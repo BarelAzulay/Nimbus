@@ -32,7 +32,11 @@ BUILD_KEYS = ("egg_common", "egg_uncommon", "egg_rare", "egg_epic", "egg_legenda
               "prop_roulette_globe",
               # (shop-area polish) the globe pile's low-poly eggs (named by LobbyMachineBuilder PILE_KEYS; "_pile", not the LOD-twin "_low")
               "egg_common_pile", "egg_uncommon_pile", "egg_rare_pile", "egg_epic_pile", "egg_legendary_pile", "egg_mythic_pile",
-              "egg_secret_pile")
+              "egg_secret_pile",
+              # (kit-b clouds wave) the B1 obby cloud set, uploaded in ee5c3b3 (named by src/shared/Config.lua Course.Clouds)
+              "cloud_obby_far_1", "cloud_obby_far_2", "cloud_obby_far_3", "cloud_obby_far_4", "cloud_obby_sea_1",
+              "cloud_obby_sea_2", "cloud_obby_under_s", "cloud_obby_under_m", "cloud_obby_under_l", "cloud_obby_under_pad",
+              "obby_storm_cloud")
 RESERVED = ("gem_world_low",)  # made with gem_world for small gem drops; nothing tags it yet
 
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

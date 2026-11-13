@@ -328,18 +328,40 @@ Config.Course = {
 			cloud_sky_big = { Width = 117, Lift = 15, Top = 36, Reach = 61.5, Min = 0.45, Max = 1.0 },
 		},
 		-- kit-b O2 (finding 2): the voxel puff each platform's slab sits in (CourseBuilder Mesh.under). The obby's own
-		-- underside keys (cloud_obby_under_s / m / l) are not baked yet, so the lobby's bridge puff stands in. UnderFit:
-		-- scale = clamp(short side / Short, Min, Max) (then 1, then Min while the puff would reach another step's slab or
-		-- the Clearance above it); Lo / Hi = the key's manifest Bounds at scale 1, so the top voxel (Hi[2] above the
-		-- pivot) meets the slab's underside. No id, or no scale clears: the Part build under the platform stays.
+		-- puffs come first (UnderKeys, UnderPad below); the lobby's bridge puff Under stands in where they have no id or
+		-- would reach another solid. UnderFit: scale = clamp(short side / Short, Min, Max) (then 1, then Min while the puff
+		-- would reach another step's slab or the Clearance above it); Lo / Hi = the key's manifest Bounds at scale 1, so the
+		-- top voxel (Hi[2] above the pivot) meets the slab's underside. No id, or no scale clears: the Part build stays.
 		Under = "cloud_puff_s",
 		UnderFit = { Short = 14, Min = 0.6, Max = 1.4, Lo = { -10.5, -10, -6.5 }, Hi = { 10.5, 3, 7.5 } },
+		-- kit-b clouds wave (B1 ids): the obby's own platform puffs. Pivot = the Seat = the slab's underside centre, X along
+		-- the long side; Slab = the footprint { long, short } its rim hugs at scale 1. A pad (Start / Checkpoint / Finish)
+		-- wears UnderPad, any other platform the UnderKeys key whose fit max(long / Slab[1], short / Slab[2]) is nearest 1;
+		-- scale = the fit clamped to UnderFit Min / Max, then 1, then Min while it would reach another solid. Lo / Hi come
+		-- from the manifest Bounds.
+		UnderKeys = {
+			{ Key = "cloud_obby_under_s", Slab = { 12.5, 10 } },
+			{ Key = "cloud_obby_under_m", Slab = { 15.5, 12.5 } },
+			{ Key = "cloud_obby_under_l", Slab = { 19, 15.5 } },
+		},
+		UnderPad = { Key = "cloud_obby_under_pad", Slab = { 30, 30 } },
 		-- kit-b O3 (finding 14): the dark cloud over a Storm step (CourseBuilder Mesh.storm), 2-3 anchors of the first key
 		-- with an id, the lowest voxel StormBase studs over the platform top; its fit comes from the key's manifest. The
-		-- lobby's cloud_storm_puff is left off on purpose: 8 boxes / 96 tris, it reads as a box at this size (O3 render),
-		-- so the Part puffs stay until the BLENDER lane bakes obby_storm_cloud.
+		-- lobby's cloud_storm_puff is left off on purpose: 8 boxes / 96 tris, it reads as a box at this size (O3 render).
+		-- obby_storm_cloud has an id since the B1 upload; at id 0 the Part puffs come back. StormBase 7: at 4.5 the B1
+		-- render put the cloud's bottom at the player's neck, so it hangs above the head (the top stays under Clearance).
 		Storm = { "obby_storm_cloud" },
-		StormBase = 4.5,
+		StormBase = 7,
+		-- kit-b clouds wave (owner's call 2026-11-13: trim far clouds on phones / Low, the 300k triangle budget stays):
+		-- each course tags PhoneTrim of its far clouds (the heaviest keys first, the smaller one on a tie) PhoneTrimTag,
+		-- and more while its cloud set still tops PhoneRoom (300,000 less the 151,554 of 16 players x 3 pets,
+		-- tools/mesh_budget.py), then sea clouds once every far one is (3 of 125 probed courses, all Saint, went past 4;
+		-- the heaviest trimmed 17 far + 1 sea); client GraphicsQuality parks them on a touch-only device (Low parks every
+		-- NC_Detail cloud anyway). Desktop High keeps them all.
+		-- tools/smoke_kitb_obby.lua obby_tris_budget_phone pins the worst case under 300k.
+		PhoneTrim = 4,
+		PhoneRoom = 148445,
+		PhoneTrimTag = "NC_PhoneTrim",
 	},
 	-- kit-b O4 (finding 12): help text that names keys, one per device. CourseBuilder writes the Keyboard text and tags
 	-- the label (Tag, attribute HelpKey); MovementController puts the text of the player's device on it and follows a

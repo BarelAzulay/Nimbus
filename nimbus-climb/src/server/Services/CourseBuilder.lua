@@ -429,6 +429,7 @@ function Mesh.fit(key)
 			Mesh.Fits[key] = {
 				Width = b.Size[1], Lift = -b.Min[2], Top = b.Max[2],
 				Reach = max(abs(b.Min[1]), abs(b.Max[1]), abs(b.Min[3]), abs(b.Max[3])), Min = 0.45, Max = 1, Depth = b.Size[3],
+				Lo = Vector3.new(b.Min[1], b.Min[2], b.Min[3]), Hi = Vector3.new(b.Max[1], b.Max[2], b.Max[3]),
 			}
 		end
 	end
@@ -865,33 +866,66 @@ end
 -- the parts go into one Model "Underside" pinned at the spot (At). A moving cloud (ctx.Attach weld): its one lite puff,
 -- welded to the slab, is the target with ML_Weld = true, so the mesh rides along (an Offset from the puff, never a fixed
 -- At). Clients hide the Part build locally; it stays the look wherever the mesh is missing. No key with an id: nothing
--- changes. Returns the scale the puff was dressed at (nil = the Part build stays). step.Solid names a plate island's
--- own solid (it carries its bridge step's Index), so only the island itself is skipped.
-function Mesh.under(ctx, step, F, parts)
+-- changes. Returns the scale the puff was dressed at and how deep its lowest voxel hangs under the slab's underside
+-- (nil = the Part build stays). step.Solid names a plate island's own solid (it carries its bridge step's Index), so
+-- only the island itself is skipped. kit-b clouds wave: the obby's own puff (Mesh.underPick: UnderPad on a pad, else
+-- the UnderKeys key that fits) is tried first, its pivot the Seat at the slab's underside; then the stand-in Under.
+function Mesh.underPick(step, big)
 	local CL = Mesh.Clouds
-	local key, fit = CL.Under, CL.UnderFit
-	if #parts == 0 or type(fit) ~= "table" or not Mesh.has(key) then
+	local long, short = max(step.Size.X, step.Size.Z), min(step.Size.X, step.Size.Z)
+	local list = big and { CL.UnderPad } or CL.UnderKeys
+	local best, bestD
+	for _, c in ipairs(type(list) == "table" and list or EMPTY) do
+		if type(c) == "table" and type(c.Slab) == "table" and Mesh.has(c.Key) and Mesh.fit(c.Key) then
+			local f = max(long / c.Slab[1], short / c.Slab[2])
+			local d = abs(math.log(f))
+			if not bestD or d < bestD - 1e-9 then
+				best, bestD = { Key = c.Key, Fit = f }, d
+			end
+		end
+	end
+	return best
+end
+
+function Mesh.under(ctx, step, F, parts, big)
+	local CL = Mesh.Clouds
+	local fit = CL.UnderFit
+	if #parts == 0 or type(fit) ~= "table" then
 		return
 	end
 	local sx, th, sz = step.Size.X, step.Size.Y, step.Size.Z
-	local lo = Vector3.new(fit.Lo[1], fit.Lo[2], fit.Lo[3])
-	local hi = Vector3.new(fit.Hi[1], fit.Hi[2], fit.Hi[3])
-	local s0 = max(fit.Min, min(fit.Max, min(sx, sz) / fit.Short))
 	local h = type(step.Hazard) == "table" and step.Hazard or EMPTY
 	local slide = typeof(h.EndOffset) == "Vector3" and h.EndOffset or nil
 	local own = step.Solid or ("s" .. tostring(step.Index))
-	local s, origin
-	for _, sc in ipairs({ s0, min(s0, 1), fit.Min }) do
-		local cf = F * CFrame.new(0, -th - hi.Y * sc, 0)
-		if sz > sx then
-			cf = cf * CFrame.Angles(0, pi / 2, 0)
+	-- each try: { key, lo, hi, seat (the pivot this far under the slab's underside, per unit scale), first scale }
+	local tries = {}
+	local pick = Mesh.underPick(step, big)
+	local m = pick and Mesh.fit(pick.Key)
+	if m and typeof(m.Lo) == "Vector3" and typeof(m.Hi) == "Vector3" then
+		tries[1] = { pick.Key, m.Lo, m.Hi, 0, max(fit.Min, min(fit.Max, pick.Fit)) }
+	end
+	if Mesh.has(CL.Under) then
+		local hi = Vector3.new(fit.Hi[1], fit.Hi[2], fit.Hi[3])
+		tries[#tries + 1] = { CL.Under, Vector3.new(fit.Lo[1], fit.Lo[2], fit.Lo[3]), hi, hi.Y, max(fit.Min, min(fit.Max, min(sx, sz) / fit.Short)) }
+	end
+	local key, s, origin, depth
+	for _, t in ipairs(tries) do
+		local lo, hi, seat, s0 = t[2], t[3], t[4], t[5]
+		for _, sc in ipairs({ s0, min(s0, 1), fit.Min }) do
+			local cf = F * CFrame.new(0, -th - seat * sc, 0)
+			if sz > sx then
+				cf = cf * CFrame.Angles(0, pi / 2, 0)
+			end
+			if Mesh.underClear(ctx, own, cf * CFrame.new((lo + hi) * (0.5 * sc)), (hi - lo) * sc, slide) then
+				key, s, origin, depth = t[1], sc, cf, (seat - lo.Y) * sc
+				break
+			end
 		end
-		if Mesh.underClear(ctx, own, cf * CFrame.new((lo + hi) * (0.5 * sc)), (hi - lo) * sc, slide) then
-			s, origin = sc, cf
+		if key then
 			break
 		end
 	end
-	if not s then
+	if not key then
 		return
 	end
 	local target
@@ -911,10 +945,11 @@ function Mesh.under(ctx, step, F, parts)
 	if abs(s - 1) > 1e-6 then
 		target:SetAttribute("ML_Scale", s)
 	end
-	return s
+	return s, depth
 end
 
--- Builds the walkable slab plus its dressing and returns (slab, frame, the underside puff's scale or nil).
+-- Builds the walkable slab plus its dressing and returns (slab, frame, the underside puff's scale or nil, how deep its
+-- lowest voxel hangs under the slab's underside).
 -- opts: Name, Slab (slab only), Attach ("weld"|"child": see mk), Lite, Under (false = no underside),
 --       LongTrim, Big, Transparency
 local function buildBase(ctx, step, look, opts)
@@ -939,12 +974,12 @@ local function buildBase(ctx, step, look, opts)
 	blk(ctx, "Decor", "TopPlate", Vector3.new(sx, 0.1, sz), F * CFrame.new(0, 0.05, 0), look.Top,
 		look.TopMat or MAT.SmoothPlastic)
 	addTrim(ctx, step, F, look.Trim, opts.LongTrim)
-	local puff
+	local puff, depth
 	if opts.Under ~= false then
 		local lite = opts.Lite or ctx.Parts > ctx.UnderCap
-		puff = Mesh.under(ctx, step, F, underside(ctx, step, look, F, opts.Big, lite))
+		puff, depth = Mesh.under(ctx, step, F, underside(ctx, step, look, F, opts.Big, lite), opts.Big)
 	end
-	return main, F, puff
+	return main, F, puff, depth
 end
 
 -- bullseye on a cannon's landing island
@@ -1029,10 +1064,11 @@ function KB.Beam(ctx, step, look)
 end
 
 -- sliding cloud: decor is welded so it rides along, a faint rail shows the route (under the puff: 5.2 under the slab
--- with the Part build, 0.8 under the dressed mesh's lowest voxel, which hangs 13 * s down)
+-- with the Part build, 0.8 under the dressed mesh's lowest voxel: Mesh.under's depth, 7-12 * s for the obby puffs,
+-- 13 * s for the stand-in)
 function KB.Moving(ctx, step, look)
 	local h = step.Hazard or EMPTY
-	local main, F, puff = buildBase(ctx, step, look, { Name = "MovingCloud_" .. step.Index, Attach = "weld", Lite = true })
+	local main, F, puff, depth = buildBase(ctx, step, look, { Name = "MovingCloud_" .. step.Index, Attach = "weld", Lite = true })
 	local eo = h.EndOffset or Vector3.new(0, 0, 6)
 	CollectionService:AddTag(main, Tags.MovingCloud)
 	main:SetAttribute("EndOffset", eo)
@@ -1051,9 +1087,8 @@ function KB.Moving(ctx, step, look)
 	end
 	ctx.Attach = nil
 	local drop = 5.2
-	local fit = Mesh.Clouds.UnderFit
-	if puff and type(fit) == "table" then
-		drop = (fit.Hi[2] - fit.Lo[2]) * puff + 0.8
+	if puff and depth then
+		drop = depth + 0.8 -- under the dressed puff's lowest voxel
 	end
 	local a = top + Vector3.new(0, -th - drop, 0)
 	local b = a + Vector3.new(eo.X, 0, eo.Z)
@@ -2331,7 +2366,9 @@ function LM.Puff(ctx, item, B, rng, col, lite)
 			local origin = B * CFrame.new(0, up, 0)
 			local y = origin.Position.Y
 			if Mesh.clear(ctx, origin.Position.X, origin.Position.Z, fit.Reach * sc, y - fit.Lift * sc, y + fit.Top * sc) then
-				Mesh.anchor(ctx, G, sea and "SeaCloud" or "FarCloud", key, origin, sc)
+				local p = Mesh.anchor(ctx, G, sea and "SeaCloud" or "FarCloud", key, origin, sc)
+				ctx.SkyClouds = ctx.SkyClouds or {}
+				ctx.SkyClouds[#ctx.SkyClouds + 1] = { Part = p, Key = key, Scale = sc, Sea = sea } -- Mesh.trim's choice
 				return
 			end
 		end
@@ -2350,6 +2387,67 @@ function LM.Puff(ctx, item, B, rng, col, lite)
 		ball(ctx, G, "FarCloud", Vector3.new(s, s * 0.7, s * 0.9),
 			B * CFrame.new((k == 1 and -1 or 1) * r * 0.6, r * 0.38, rng:NextNumber(-0.3, 0.3) * r), cloud:Lerp(C.Top, 0.25),
 			MAT.SmoothPlastic, trans)
+	end
+end
+
+-- the triangles of a key (its generated manifest's Tris), 0 when unknown
+function Mesh.tris(key)
+	Mesh.TrisOf = Mesh.TrisOf or {}
+	if Mesh.TrisOf[key] == nil then
+		local ML = Mesh.lib()
+		local ok, man = false, nil
+		if ML and type(ML.Manifest) == "function" then
+			ok, man = pcall(ML.Manifest, key)
+		end
+		local raw = ok and type(man) == "table" and (type(man.Raw) == "table" and man.Raw or man)
+		Mesh.TrisOf[key] = (raw and tonumber(raw.Tris)) or 0
+	end
+	return Mesh.TrisOf[key]
+end
+
+-- kit-b clouds wave (owner's call: trim far clouds on phones / Low, the 300k budget stays): tags far clouds
+-- Config.Course.Clouds.PhoneTrimTag, the keys with the most triangles first (the smaller scale on a tie, then build
+-- order), so client GraphicsQuality can park them on a phone: PhoneTrim of them, and more while the course's cloud set
+-- (every dressed target built so far: far, sea, platform puffs, pads, storm clouds) still tops PhoneRoom; only when
+-- every far cloud is trimmed and it still tops it, sea clouds the same way. Desktop High keeps every cloud.
+function Mesh.trim(ctx)
+	local CL = Mesh.Clouds
+	local n, tag, room = tonumber(CL.PhoneTrim) or 0, CL.PhoneTrimTag, tonumber(CL.PhoneRoom)
+	if type(tag) ~= "string" or not Mesh.lib() or not ctx.SkyClouds then
+		return
+	end
+	local total = 0
+	for _, d in ipairs(ctx.Folder:GetDescendants()) do
+		local key = d:GetAttribute("ML_DressKey")
+		if type(key) == "string" then
+			total = total + Mesh.tris(key)
+		end
+	end
+	local list = {}
+	for i, c in ipairs(ctx.SkyClouds) do
+		if c.Part.Parent then -- an item taken back by the part cap is gone
+			c.Tris, c.Order = Mesh.tris(c.Key), i
+			list[#list + 1] = c
+		end
+	end
+	table.sort(list, function(a, b)
+		if a.Sea ~= b.Sea then
+			return not a.Sea
+		end
+		if a.Tris ~= b.Tris then
+			return a.Tris > b.Tris
+		end
+		if a.Scale ~= b.Scale then
+			return a.Scale < b.Scale
+		end
+		return a.Order < b.Order
+	end)
+	for i, c in ipairs(list) do
+		if (i > n or c.Sea) and not (room and total > room) then
+			break
+		end
+		CollectionService:AddTag(c.Part, tag)
+		total = total - c.Tris
 	end
 end
 
@@ -2516,6 +2614,7 @@ function CourseBuilder.Build(layout, origin, parent)
 	end
 
 	buildScenery(ctx)
+	Mesh.trim(ctx)
 	folder:SetAttribute("BuildParts", ctx.Parts) -- the part counter (tokens not included; tools/smoke_kitb_obby.lua)
 
 	-- parent once, then do everything that needs the parts to live in the world

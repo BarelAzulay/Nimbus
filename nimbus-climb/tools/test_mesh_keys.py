@@ -137,7 +137,10 @@ def test_constants():
     # (shop-area polish) the globe pile's seven low-poly eggs (named by server/Services/LobbyMachineBuilder PILE_KEYS);
     # review round 2: "_pile", not "_low": MeshLibrary.LowKey reads "<key>_low" as that key's LOD twin
     want += ["egg_%s_pile" % r for r in rar]
-    check(list(MK.BUILD_KEYS) == want, "BUILD_KEYS are the plan's eleven keys + egg-3d's fourteen halves + the shop-area globe + its seven pile eggs", MK.BUILD_KEYS)
+    # (kit-b clouds wave) the B1 obby cloud set, uploaded in ee5c3b3 (named by shared/Config Course.Clouds)
+    want += ["cloud_obby_far_%d" % i for i in range(1, 5)] + ["cloud_obby_sea_1", "cloud_obby_sea_2"]
+    want += ["cloud_obby_under_" + s for s in ("s", "m", "l", "pad")] + ["obby_storm_cloud"]
+    check(list(MK.BUILD_KEYS) == want, "BUILD_KEYS are the plan's eleven keys + egg-3d's fourteen halves + the shop-area globe + its seven pile eggs + the B1 obby cloud set", MK.BUILD_KEYS)
     check(list(MK.RESERVED) == ["gem_world_low"], "RESERVED is gem_world_low", MK.RESERVED)
 
 

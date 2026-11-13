@@ -44,16 +44,18 @@
 --   obby_vanish_step_has_no_underside_mesh  a vanishing step has no underside target and nothing tagged under it (a
 --                                     client mesh would not fade with the server's Transparency tween)
 --
--- O3 "storm cloud, rain and course particles" (server world, pure, the same builds plus a "storm" mode: a storm cloud
--- key with an id; every build is attached to HazardService once, with a private FxSprites id table):
+-- O3 "storm cloud, rain and course particles" (server world, pure, the same builds plus the clouds wave's "shipped"
+-- mode: the real MeshIds, obby_storm_cloud among them; every build is attached to HazardService once, with a private
+-- FxSprites id table):
 --   obby_storm_volume_invisible       every StormCloud volume is invisible (Transparency 1) and still the damage
 --                                     trigger it was (tagged, touchable, no collision, its DPS)
---   obby_storm_puffs_tagged           with a storm cloud key that has an id every storm wears 2-3 invisible anchors of
---                                     that key inside its box footprint (scale clamp(box X / width, 0.6, what keeps the
---                                     top voxel under the head clearance), lowest voxel 4.5-4.9 over the top, upright),
---                                     no ball StormPuff is left, and they are NOT NC_Detail (a hazard tell stays on Low);
---                                     with the shipped key list (cloud_storm_puff has an id but reads as a box, so it is
---                                     not on the list) the Part puffs stay
+--   obby_storm_puffs_tagged           with the shipped MeshIds (obby_storm_cloud has an id since the B1 upload) every
+--                                     storm wears 2-3 invisible obby_storm_cloud anchors inside its box footprint (scale
+--                                     clamp(box X / width, 0.6, what keeps the top voxel under the head clearance), lowest
+--                                     voxel 7-7.4 over the top: above the player's head, upright), no ball StormPuff is
+--                                     left, and they are NOT NC_Detail (a hazard tell stays on Low); with no storm cloud id
+--                                     (cloud_storm_puff has one but reads as a box, so it is not on the list) the Part
+--                                     puffs stay
 --   obby_rain_uses_droplets           HazardService's rain is the Droplet sprite (fx_droplets, Grid4x4), big enough to see
 --                                     (Size x 0.31, the drop's share of its cell, at least 0.2 studs), near-white so the
 --                                     baked blue shows, and its OneShot pop lands on the storm platform top (mid speed
@@ -81,9 +83,31 @@
 --   obby_goal_and_checkpoint_tags_apart  the screenshot case (round3/build/S1/raid_on_frost.jpg): seen from the last
 --                                     checkpoint pad and the step before it, camera behind, no checkpoint tag overlaps
 --                                     the GOAL tag or the FINISH board on screen; every other checkpoint keeps its tag
+-- kit-b clouds wave (the B1 obby cloud set uploaded: the 11 keys have ids; server world, pure, a "shipped" build mode
+-- with the real MeshIds):
+--   obby_b1_keys_shipped              every B1 key ships an id and is used where O1 / O2 / O3 planned it: far clouds wear
+--                                     only cloud_obby_far_1..4, the sea only cloud_obby_sea_1..2 (all six seen), no lobby
+--                                     sky cumulus is left; platform undersides wear cloud_obby_under_s / m / l, the Start /
+--                                     Checkpoint / Finish pads cloud_obby_under_pad (all four seen; the stand-in
+--                                     cloud_puff_s only where the obby puff would reach another step); every storm wears
+--                                     obby_storm_cloud
+--   obby_b1_under_fit                 an obby platform puff: the key whose fit scale max(long / slab X, short / slab Z) is
+--                                     nearest 1 (pads: the pad key), scale clamp(fit, 0.6, 1.4) (then 1, then 0.6, only to
+--                                     clear another solid), pivot (the Seat) at the slab's underside centre, X along the
+--                                     long side, upright, its rim under the walking top, clear of every other solid; a
+--                                     moving cloud's rail hangs 0.8 under the puff's lowest voxel
+--   obby_tris_budget_phone            (owner's call: trim 2-4 far clouds on phones / Low, the budget stays 300k) per
+--                                     course, the triangles of every dressed target + 16 players x 3 pets: a phone (the
+--                                     NC_PhoneTrim far clouds parked) and Low (every NC_Detail cloud parked too) stay
+--                                     under 300,000 (the whole course's cloud set, as O2 measured the 309,794; the coin
+--                                     tokens are reported beside it); Config.Course.Clouds.PhoneTrim is 2-4 and each course
+--                                     tags that many far clouds, the heaviest keys first, more (far, then sea once every far
+--                                     one is) only while it would still top the budget; desktop High keeps every cloud
 -- Client world:
 --   client_obby_help_text_per_device  MovementController.HelpDevice maps the last input type to a device, and a tagged
 --                                     help label reads that device's text when it streams in and follows a change
+--   client_obby_phone_trim            GraphicsQuality parks an NC_PhoneTrim part on a touch-only device in High (and
+--                                     after Low -> High), also one that streams in later; a desktop keeps it in place
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -128,9 +152,32 @@ local PINNED = {
 local RAIL_DROP = 5.2 -- KB.Moving: the rail under the slab's underside while the Part build stays
 local RAIL_GAP = 0.8 -- the rail under a dressed puff's lowest voxel
 local ZERO = Vector3.new(0, 0, 0)
--- O3: the storm cloud numbers re-stated (cloud_storm_puff manifest Bounds: X 11.2, Min.Y -3.5, Max.Y 2.1; the cloud's
--- lowest voxel Base studs over the platform top plus up to Jitter, its top voxel under HEAD)
-local STORM = { Key = "cloud_storm_puff", Width = 11.2, Lift = 3.5, Top = 2.1, Base = 4.5, Jitter = 0.4, Min = 0.6 }
+-- O3: the storm cloud numbers re-stated (obby_storm_cloud manifest Bounds: X 15, Min.Y 0, Max.Y 6; the cloud's lowest
+-- voxel Base studs over the platform top plus up to Jitter, its top voxel under HEAD). Base 7: the B1 render at 4.5 put
+-- the cloud's bottom at the player's neck (a character is about 5.2 tall)
+local STORM = { Key = "obby_storm_cloud", Width = 15, Lift = 0, Top = 6, Base = 7, Jitter = 0.4, Min = 0.6 }
+-- the clouds wave: the B1 keys (MeshIds since ee5c3b3) and the obby platform puffs re-stated (manifest Bounds Lo / Hi;
+-- Slab = the footprint {long, short} the rim hugs at scale 1, blender/kit/props/obby.py under(hx, hz)); the pivot is the
+-- Seat, the slab's underside centre
+local B1_KEYS = {
+	"cloud_obby_far_1", "cloud_obby_far_2", "cloud_obby_far_3", "cloud_obby_far_4", "cloud_obby_sea_1", "cloud_obby_sea_2",
+	"cloud_obby_under_s", "cloud_obby_under_m", "cloud_obby_under_l", "cloud_obby_under_pad", "obby_storm_cloud",
+}
+local FAR_B1 = { cloud_obby_far_1 = true, cloud_obby_far_2 = true, cloud_obby_far_3 = true, cloud_obby_far_4 = true }
+local SEA_B1 = { cloud_obby_sea_1 = true, cloud_obby_sea_2 = true }
+local UNDER_B1 = {
+	{ Key = "cloud_obby_under_s", Slab = { 12.5, 10 }, Lo = Vector3.new(-8.5, -7, -6.5), Hi = Vector3.new(8.5, 1, 6.5) },
+	{ Key = "cloud_obby_under_m", Slab = { 15.5, 12.5 }, Lo = Vector3.new(-9.5, -8, -8.5), Hi = Vector3.new(9.5, 1, 8.5) },
+	{ Key = "cloud_obby_under_l", Slab = { 19, 15.5 }, Lo = Vector3.new(-11.5, -10, -9.5), Hi = Vector3.new(11.5, 1, 9.5) },
+}
+local PAD_B1 = { Key = "cloud_obby_under_pad", Slab = { 30, 30 }, Lo = Vector3.new(-17.5, -12, -17.5), Hi = Vector3.new(17.5, 1, 17.5) }
+local PAD_SLABS = { StartPlatform = true, FinishPlatform = true } -- and Checkpoint_<n>
+-- the triangle budget (owner's call 2026-11-13: trim 2-4 far clouds on phones / Low, keep 300k): the contract's scene
+-- budget, and the 16 players x 3 pets of tools/mesh_budget.py's obby scene (blender/scenes/obby_view.json: 3 High sets
+-- hydralotl 19,344 + 45 Low sets twilight_dragon_low 132,210)
+local TRI_BUDGET = 300000
+local PETS_TRIS = 151554
+local TRIM_TAG = "NC_PhoneTrim"
 local STOCK_PATH = "rbxasset://textures/particles"
 local DARKER = 0.9 -- a storm top's brightness at most this share of a plain top's in the same stage
 -- O4: the material rule (ABSOLUTE_RULES: no textured Roblox materials), the help-text tag, the screenshot's view
@@ -258,7 +305,10 @@ local function serverScenarios()
 		local RS = game:GetService("ReplicatedStorage")
 		local hadFolder = RS:FindFirstChild("MeshLibrary") ~= nil
 		local ids = {}
-		if mode ~= "empty" then
+		if mode == "shipped" then
+			-- the clouds wave: the real MeshIds (the B1 keys uploaded in ee5c3b3, the stand-ins, the shipped storm list)
+			ids = sharedModule("MeshIds") or {}
+		elseif mode ~= "empty" then
 			-- cloud_storm_puff has an id in the real MeshIds too: the shipped storm key list must still skip it
 			ids = { cloud_sky_small = 9301, cloud_sky_big = 9302, cloud_puff_s = 9303, cloud_storm_puff = 9304 }
 		end
@@ -269,12 +319,6 @@ local function serverScenarios()
 		local savedLoader = Mock.AssetLoader
 		Mock.AssetLoader = nil
 		pcall(ML.Start) -- the mock has no LoadAsset: a configured key stays "loading" (never "missing")
-		-- O3: "storm" = a storm cloud key with an id on the list (the shipped list waits for obby_storm_cloud)
-		local clouds = Config.Course and Config.Course.Clouds
-		local stormList = clouds and clouds.Storm
-		if mode == "storm" and clouds then
-			clouds.Storm = { STORM.Key }
-		end
 		-- O3: a private FxSprites id table (every role uploaded) and HazardService for the runtime emitters
 		local HS = K.mod("HazardService")
 		local FX = sharedModule("FxSprites")
@@ -323,10 +367,19 @@ local function serverScenarios()
 											scale = d:GetAttribute("ML_Scale"), pos = d.Position,
 											detail = d:HasTag(DETAIL_TAG), anchored = d.Anchored, collide = d.CanCollide,
 											touch = d.CanTouch, query = d.CanQuery, shadow = d.CastShadow,
-											transparency = d.Transparency, children = #d:GetChildren(),
+											transparency = d.Transparency, children = #d:GetChildren(), trim = d:HasTag(TRIM_TAG),
 										}
 									end
 								end
+							end
+						end
+						-- the clouds wave: every dressed target (anchor, Underside Model, welded puff) and what parks it
+						b.dressed = {}
+						for _, d in ipairs(info.Folder:GetDescendants()) do
+							if type(d:GetAttribute("ML_DressKey")) == "string" then
+								b.dressed[#b.dressed + 1] = {
+									key = d:GetAttribute("ML_DressKey"), name = d.Name, detail = d:HasTag(DETAIL_TAG), trim = d:HasTag(TRIM_TAG),
+								}
 							end
 						end
 						-- O2: the slabs, the underside targets (static Models / moving welded parts) and loose underside parts
@@ -475,9 +528,6 @@ local function serverScenarios()
 			end
 		end)
 		holder:Destroy()
-		if clouds then
-			clouds.Storm = stormList
-		end
 		if FX then
 			FX._Deps(false)
 		end
@@ -790,8 +840,9 @@ local function serverScenarios()
 	-- puff only where it starts); opts.noBridges: the old guard's solids (the steps only)
 	local function underHits(layout, key, cf, s, opts)
 		opts = opts or {}
-		local ms = (UNDER.Hi - UNDER.Lo) * s
-		local mc = cf * CFrame.new((UNDER.Lo + UNDER.Hi) * (0.5 * s))
+		local spec = opts.spec or UNDER -- the clouds wave: an obby platform puff's Lo / Hi
+		local ms = (spec.Hi - spec.Lo) * s
+		local mc = cf * CFrame.new((spec.Lo + spec.Hi) * (0.5 * s))
 		local solids = underSolids(layout, opts.noBridges)
 		local own
 		for _, so in ipairs(solids) do
@@ -824,6 +875,44 @@ local function serverScenarios()
 			end
 		end
 		return { left = true }
+	end
+
+	-- the clouds wave: a pad slab (Start / Checkpoint / Finish) wears the pad puff
+	local function isPad(sl)
+		return PAD_SLABS[sl.name] == true or startsWith(sl.name, "Checkpoint_")
+	end
+
+	-- what the clouds wave promises under one slab with the shipped ids: the obby puff (the pad key on a pad, else the
+	-- s / m / l key whose fit max(long / Slab[1], short / Slab[2]) is nearest 1) at the first of { clamp(fit, 0.6, 1.4),
+	-- at most 1, 0.6 } that keeps clear, its pivot (the Seat) at the slab's underside centre; else the O2 stand-in plan
+	-- ({ standIn = true, ... }), else { left = true }
+	local function b1Plan(b, sl)
+		local sx, sy, sz = sl.size.X, sl.size.Y, sl.size.Z
+		local long, short = max(sx, sz), min(sx, sz)
+		local spec, best
+		for _, c in ipairs(isPad(sl) and { PAD_B1 } or UNDER_B1) do
+			local f = max(long / c.Slab[1], short / c.Slab[2])
+			local d = abs(math.log(f))
+			if not best or d < best - 1e-9 then
+				spec, best = c, d
+			end
+		end
+		local s0 = clamp(max(long / spec.Slab[1], short / spec.Slab[2]), UNDER.Min, UNDER.Max)
+		local turned = sz > sx
+		for _, s in ipairs({ s0, min(s0, 1), UNDER.Min }) do
+			local cf = sl.cf * CFrame.new(0, -sy / 2, 0)
+			if turned then
+				cf = cf * CFrame.Angles(0, math.pi / 2, 0)
+			end
+			if underHits(b.layout, solidKey(sl), cf, s, { spec = spec }) == nil then
+				return { key = spec.Key, spec = spec, s = s, cf = cf, turned = turned, shrunk = s ~= s0, long = turned and sl.cf.LookVector or sl.cf.RightVector }
+			end
+		end
+		local plan = underPlan(b, sl)
+		plan.standIn = not plan.left
+		plan.key = UNDER.Key
+		plan.spec = UNDER
+		return plan
 	end
 
 	-- the underside targets (static Models or moving parts) whose dress spot is straight under `sl` (same X / Z, below)
@@ -1106,7 +1195,7 @@ local function serverScenarios()
 		local fewer = T.tally("obby: with cloud ids a course never has more parts than the same course without them")
 		local worst = { 0, "" }
 		local byWho = {}
-		for _, mode in ipairs({ "empty", "ids" }) do
+		for _, mode in ipairs({ "empty", "ids", "shipped" }) do
 			local data = collect(mode)
 			noBuildErrors(data, "obby part limit (" .. mode .. ")")
 			for _, b in ipairs(data.builds) do
@@ -1168,12 +1257,12 @@ local function serverScenarios()
 	end)
 
 	S.obby_storm_puffs_tagged = guarded("obby_storm_puffs_tagged", function()
-		local data = collect("storm")
-		if not noBuildErrors(data, "obby storm puffs (storm key)") then
+		local data = collect("shipped")
+		if not noBuildErrors(data, "obby storm puffs (shipped ids)") then
 			return
 		end
-		local count = T.tally("obby storm puffs: with a storm key id every storm wears 2-3 anchors of that key inside its box footprint")
-		local fit = T.tally("obby storm puffs: scale clamp(box X / width, 0.6, top voxel under the head clearance), lowest voxel 4.5-4.9 over the top, upright")
+		local count = T.tally("obby storm puffs: with the shipped ids every storm wears 2-3 obby_storm_cloud anchors inside its box footprint")
+		local fit = T.tally("obby storm puffs: scale clamp(box X / width, 0.6, top voxel under the head clearance), lowest voxel 7-7.4 over the top (above the head), upright")
 		local hazard = T.tally("obby storm puffs: an anchor is invisible, no collide / touch / query, and NOT NC_Detail (the hazard tell stays on Low)")
 		local balls = T.tally("obby storm puffs: with a storm key id no ball StormPuff is left")
 		local storms, anchors = 0, 0
@@ -1221,10 +1310,11 @@ local function serverScenarios()
 		fit:report()
 		hazard:report()
 		balls:report()
-		-- the shipped key list: cloud_storm_puff (an id in MeshIds, but 8 boxes: it reads as a box) is not on it
+		-- the fallback at id 0: obby_storm_cloud without an id (cloud_storm_puff has one but, 8 boxes, reads as a box: it is
+		-- not on the list)
 		local ids = collect("ids")
-		if noBuildErrors(ids, "obby storm puffs (shipped list)") then
-			local keep = T.tally("obby storm puffs: with the shipped key list (no storm cloud id) the Part puffs stay, nothing tagged")
+		if noBuildErrors(ids, "obby storm puffs (no storm cloud id)") then
+			local keep = T.tally("obby storm puffs: with no storm cloud id (the list's key at 0) the Part puffs stay, nothing tagged")
 			for _, b in ipairs(ids.builds) do
 				if #stormSteps(b.layout) > 0 then
 					keep:case(b.stormBalls > 0 and #b.stormAnchors == 0, b.who .. ": " .. b.stormBalls .. " balls, " .. #b.stormAnchors .. " anchors")
@@ -1308,7 +1398,7 @@ local function serverScenarios()
 	S.obby_no_stock_particle_paths = guarded("obby_no_stock_particle_paths", function()
 		local own = T.tally("obby particles: every course / hazard emitter (built or attached) wears an FxSprites role's sheet, no stock path")
 		local n, byRole = 0, {}
-		for _, mode in ipairs({ "empty", "ids", "storm" }) do
+		for _, mode in ipairs({ "empty", "ids", "shipped" }) do
 			local data = collect(mode)
 			noBuildErrors(data, "obby particles (" .. mode .. ")")
 			for _, b in ipairs(data.builds) do
@@ -1409,7 +1499,7 @@ local function serverScenarios()
 		local only = T.tally("obby materials: every course part (built and attached) is SmoothPlastic, Neon or Glass")
 		local rail = T.tally("obby materials: a moving cloud's route rail is a dotted line of small SmoothPlastic cubes (stops and dots, no Neon rod / ball)")
 		local seen, rails = {}, 0
-		for _, mode in ipairs({ "empty", "ids", "storm" }) do
+		for _, mode in ipairs({ "empty", "ids", "shipped" }) do
 			local data = collect(mode)
 			noBuildErrors(data, "obby materials (" .. mode .. ")")
 			for _, b in ipairs(data.builds) do
@@ -1762,6 +1852,206 @@ local function serverScenarios()
 		K.flushErrors("obby_goal_and_checkpoint_tags_apart")
 	end)
 
+	-- the clouds wave (B1 ids) ------------------------------------------------------------------------------------------
+	S.obby_b1_keys_shipped = guarded("obby_b1_keys_shipped", function()
+		local ids = sharedModule("MeshIds") or {}
+		local idTally = T.tally("obby B1: every B1 cloud key ships an id (MeshIds, the ee5c3b3 upload)")
+		for _, k in ipairs(B1_KEYS) do
+			idTally:case(type(ids[k]) == "number" and ids[k] > 0, k .. " = " .. tostring(ids[k]))
+		end
+		idTally:report()
+		local data = collect("shipped")
+		if not noBuildErrors(data, "obby B1 (shipped ids)") then
+			return
+		end
+		local far = T.tally("obby B1: with the shipped ids a far cloud wears only cloud_obby_far_1..4, a sea cloud only cloud_obby_sea_1..2 (no lobby sky cumulus)")
+		local under = T.tally("obby B1: a platform underside wears cloud_obby_under_s / m / l, a Start / Checkpoint / Finish pad cloud_obby_under_pad (cloud_puff_s only where the obby puff would reach a solid)")
+		local storm = T.tally("obby B1: a storm wears obby_storm_cloud (no ball StormPuff)")
+		local seen, standIn, pads, left = {}, 0, 0, 0
+		for _, b in ipairs(data.builds) do
+			for _, a in ipairs(b.anchors) do
+				local ok = (a.name == "FarCloud" and FAR_B1[a.key]) or (a.name == "SeaCloud" and SEA_B1[a.key])
+				far:case(ok == true, b.who .. ": " .. a.name .. " " .. tostring(a.key))
+				seen[a.key] = true
+			end
+			for _, sl in ipairs(b.slabs) do
+				if hasUnder(sl) then
+					local found = targetsOf(b, sl)
+					local plan = b1Plan(b, sl)
+					local u = found[1]
+					if plan.left then
+						left = left + 1
+						under:case(#found == 0, b.who .. ": " .. sl.name .. " would reach a solid but has " .. #found .. " targets")
+					else
+						under:case(#found == 1 and u.key == plan.key, b.who .. ": " .. sl.name .. string.format(" %.1f x %.1f", sl.size.X, sl.size.Z)
+							.. " wears " .. tostring(u and u.key) .. " (want " .. tostring(plan.key) .. ", " .. #found .. " targets)")
+						if u then
+							seen[u.key] = true
+						end
+						standIn = standIn + ((plan.standIn and 1) or 0)
+						pads = pads + ((isPad(sl) and 1) or 0)
+					end
+				end
+			end
+			for _, a in ipairs(b.stormAnchors) do
+				storm:case(a.key == STORM.Key, b.who .. ": storm anchor " .. tostring(a.key))
+				seen[a.key] = true
+			end
+			storm:case(#stormSteps(b.layout) == 0 or (b.stormBalls == 0 and #b.stormAnchors > 0), b.who .. ": " .. b.stormBalls .. " balls, " .. #b.stormAnchors .. " anchors")
+		end
+		local missing = {}
+		for _, k in ipairs(B1_KEYS) do
+			if not seen[k] then
+				missing[#missing + 1] = k
+			end
+		end
+		T.check(#missing == 0, "obby B1: all 11 B1 keys are worn somewhere in the builds", table.concat(missing, ", "))
+		T.check(not seen.cloud_sky_small and not seen.cloud_sky_big, "obby B1: no lobby sky cumulus stands in once the obby's own have ids")
+		far:report()
+		under:report()
+		storm:report()
+		T.info(string.format("*obby B1: %d builds, %d pads dressed, %d platforms on the stand-in cloud_puff_s, %d keep the Part build (every puff would reach a solid)",
+			#data.builds, pads, standIn, left))
+		K.flushErrors("obby_b1_keys_shipped")
+	end)
+
+	S.obby_b1_under_fit = guarded("obby_b1_under_fit", function()
+		local data = collect("shipped")
+		if not noBuildErrors(data, "obby B1 undersides (shipped ids)") then
+			return
+		end
+		local fit = T.tally("obby B1 undersides: key nearest fit 1, scale clamp(fit, 0.6, 1.4) (1, then 0.6, only to clear), pivot at the slab's underside centre, upright, X along the long side")
+		local rim = T.tally("obby B1 undersides: the rim stays under the walking top (Hi.Y * s < the slab's thickness)")
+		local clear = T.tally("obby B1 undersides: no obby puff reaches another solid (a moving one along its slide)")
+		local rail = T.tally("obby B1 moving clouds: the route rail and its stops hang " .. RAIL_GAP .. " under the obby puff's lowest voxel")
+		local n, turned, lo, hi = 0, 0, math.huge, -math.huge
+		local byKey = {}
+		for _, b in ipairs(data.builds) do
+			for _, sl in ipairs(b.slabs) do
+				if hasUnder(sl) then
+					local plan = b1Plan(b, sl)
+					local u = targetsOf(b, sl)[1]
+					if u and not plan.left and not plan.standIn then
+						n = n + 1
+						turned = turned + ((plan.turned and 1) or 0)
+						byKey[plan.key] = (byKey[plan.key] or 0) + 1
+						local s = tonumber(u.scale) or 1
+						lo, hi = min(lo, s), max(hi, s)
+						local why = (u.key ~= plan.key) and ("wears " .. tostring(u.key)) or spotProblem(u, plan)
+						fit:case(why == nil, b.who .. ": " .. sl.name .. string.format(" %.1f x %.1f %s: ", sl.size.X, sl.size.Z, plan.key) .. tostring(why))
+						rim:case(plan.spec.Hi.Y * s < sl.size.Y - 1e-6, b.who .. ": " .. sl.name .. string.format(" rim top %.2f over a %.1f slab", plan.spec.Hi.Y * s, sl.size.Y))
+						local hit = underHits(b.layout, solidKey(sl), u.at, s, { spec = plan.spec })
+						clear:case(hit == nil, b.who .. ": " .. sl.name .. " " .. tostring(hit))
+						if startsWith(sl.name, "MovingCloud_") then
+							local why2 = railProblem(b, sl, -plan.spec.Lo.Y * s + RAIL_GAP)
+							rail:case(why2 == nil, b.who .. ": " .. sl.name .. ": " .. tostring(why2))
+						end
+					end
+				end
+			end
+		end
+		T.check(n > 0 and turned > 0 and turned < n, "obby B1 undersides: both the plain and the turned case are measured", n .. " measured, " .. turned .. " turned")
+		fit:report()
+		rim:report()
+		clear:report()
+		rail:report()
+		local parts = {}
+		for _, c in ipairs({ "cloud_obby_under_s", "cloud_obby_under_m", "cloud_obby_under_l", "cloud_obby_under_pad" }) do
+			parts[#parts + 1] = c .. " " .. (byKey[c] or 0)
+		end
+		T.info(string.format("*obby B1 undersides: %d measured (%s), %d turned, scale %.2f-%.2f", n, table.concat(parts, ", "), turned, lo, hi))
+		K.flushErrors("obby_b1_under_fit")
+	end)
+
+	S.obby_tris_budget_phone = guarded("obby_tris_budget_phone", function()
+		local Config = K.config()
+		local CL = Config.Course and Config.Course.Clouds or {}
+		local want = CL.PhoneTrim
+		T.check(type(want) == "number" and want >= 2 and want <= 4 and want == math.floor(want), "obby tris: Config.Course.Clouds.PhoneTrim trims 2-4 far clouds (owner's call)", tostring(want))
+		T.eq(CL.PhoneTrimTag, TRIM_TAG, "obby tris: the phone trim tag is " .. TRIM_TAG)
+		local data = collect("shipped")
+		if not noBuildErrors(data, "obby tris (shipped ids)") or type(want) ~= "number" then
+			return
+		end
+		local ML = K.mod("MeshLibrary")
+		local tris = {}
+		local function trisOf(key)
+			if tris[key] == nil then
+				local ok, man = pcall(ML.Manifest, key)
+				local raw = ok and type(man) == "table" and man.Raw
+				tris[key] = (type(raw) == "table" and tonumber(raw.Tris)) or false
+			end
+			return tris[key]
+		end
+		-- the measure of the owner's 309,794 (O2): the whole course's cloud set (far, sea, platform puffs, pads, storm
+		-- clouds) as if all in view, + the 16 players x 3 pets. The coin tokens (token_*, TokenService's mesh) are not the
+		-- cloud set: their triangles are reported beside it
+		local count = T.tally("obby tris: each course tags PhoneTrim far clouds " .. TRIM_TAG .. " (all when it has fewer), more (far, then sea) only while its clouds would top the budget, and nothing else")
+		local heavy = T.tally("obby tris: the trimmed clouds are the heaviest keys (no untrimmed far / sea cloud has more triangles than a trimmed one of its kind)")
+		local known = T.tally("obby tris: every dressed key has a manifest triangle count")
+		local phone = T.tally("obby tris: a phone (the trimmed far clouds parked) stays under " .. TRI_BUDGET .. " (the course's clouds + 16 players x 3 pets)")
+		local low = T.tally("obby tris: Low graphics (every NC_Detail cloud parked too) stays under " .. TRI_BUDGET .. " (the course's clouds + 16 players x 3 pets)")
+		local worst = { High = { 0, "" }, Phone = { 0, "" }, Low = { 0, "" }, Tokens = { 0, "" } }
+		local mostTrim, beyond = 0, 0
+		for _, b in ipairs(data.builds) do
+			local all, trimmed, detail, tokens, nFar, nTrim, nSea = 0, 0, 0, 0, 0, 0, 0
+			local minTrim, maxKeep = { FarCloud = math.huge, SeaCloud = math.huge }, { FarCloud = -math.huge, SeaCloud = -math.huge }
+			for _, d in ipairs(b.dressed) do
+				local t = trisOf(d.key)
+				known:case(type(t) == "number", b.who .. ": " .. tostring(d.key))
+				t = t or 0
+				if string.sub(d.key, 1, 6) == "token_" then
+					tokens = tokens + t
+				else
+					all = all + t
+				end
+				if d.trim then
+					nTrim = nTrim + 1
+					trimmed = trimmed + t
+					count:case(d.name == "FarCloud" or d.name == "SeaCloud", b.who .. ": " .. d.name .. " " .. d.key .. " is tagged " .. TRIM_TAG)
+					if minTrim[d.name] then
+						minTrim[d.name] = min(minTrim[d.name], t)
+					end
+					nSea = nSea + ((d.name == "SeaCloud") and 1 or 0)
+				elseif d.detail then
+					detail = detail + t
+				end
+				if maxKeep[d.name] and not d.trim then
+					maxKeep[d.name] = max(maxKeep[d.name], t)
+				end
+				nFar = nFar + ((d.name == "FarCloud") and 1 or 0)
+			end
+			-- PhoneTrim far clouds, and one more (far, then sea once every far one is) only while the clouds would still top
+			-- the budget without it
+			local nFarTrim = nTrim - nSea
+			local last = (nSea > 0) and minTrim.SeaCloud or minTrim.FarCloud
+			local extra = nTrim > min(want, nFar) and (all - trimmed + last + PETS_TRIS < TRI_BUDGET)
+			count:case(nFarTrim >= min(want, nFar) and not extra and (nSea == 0 or nFarTrim == nFar), b.who .. ": " .. nFarTrim .. " of " .. nFar
+				.. " far clouds and " .. nSea .. " sea clouds trimmed" .. (extra and " (the last one was not needed)" or ""))
+			mostTrim = max(mostTrim, nTrim)
+			beyond = beyond + ((nTrim > min(want, nFar)) and 1 or 0)
+			for _, nm in ipairs({ "FarCloud", "SeaCloud" }) do
+				heavy:case(maxKeep[nm] <= minTrim[nm] or minTrim[nm] == math.huge, b.who .. string.format(": %s trimmed down to %s tris, kept up to %s", nm, tostring(minTrim[nm]), tostring(maxKeep[nm])))
+			end
+			local high, ph, lw = all + PETS_TRIS, all - trimmed + PETS_TRIS, all - trimmed - detail + PETS_TRIS
+			phone:case(ph < TRI_BUDGET, b.who .. ": " .. ph .. " tris on a phone (desktop High " .. high .. ")")
+			low:case(lw < TRI_BUDGET, b.who .. ": " .. lw .. " tris on Low")
+			for mode, v in pairs({ High = high, Phone = ph, Low = lw, Tokens = tokens }) do
+				if v > worst[mode][1] then
+					worst[mode] = { v, b.who }
+				end
+			end
+		end
+		count:report()
+		heavy:report()
+		known:report()
+		phone:report()
+		low:report()
+		T.info(string.format("*obby tris (course clouds + %d pet tris): desktop High worst %d (%s), phone worst %d (%s; up to %d clouds trimmed, %d of %d courses past PhoneTrim), Low worst %d (%s); the coin tokens add up to %d more (%s)",
+			PETS_TRIS, worst.High[1], worst.High[2], worst.Phone[1], worst.Phone[2], mostTrim, beyond, #data.builds, worst.Low[1], worst.Low[2], worst.Tokens[1], worst.Tokens[2]))
+		K.flushErrors("obby_tris_budget_phone")
+	end)
+
 	return S
 end
 
@@ -1818,6 +2108,71 @@ local function clientScenarios()
 		part:Destroy()
 		Mock.FireSignal(UIS, "LastInputTypeChanged", Enum.UserInputType.Keyboard)
 		T.check(ok, "client obby help: ran without errors", tostring(err))
+	end)
+
+	-- the clouds wave (owner's call: trim 2-4 far clouds on phones / Low): GraphicsQuality parks the NC_PhoneTrim far
+	-- clouds on a touch-only device whatever the setting; a desktop keeps them
+	S.client_obby_phone_trim = guarded("client_obby_phone_trim", function()
+		local okGQ, GQ = pcall(function()
+			return require(Mock.GetPath(ROOTS["client"] .. "/GraphicsQuality"))
+		end)
+		if not T.check(okGQ and type(GQ) == "table" and type(GQ.Apply) == "function" and type(GQ.Phone) == "function",
+			"client obby trim: GraphicsQuality loads with Apply and Phone") then
+			return
+		end
+		local UIS = game:GetService("UserInputService")
+		local CS = game:GetService("CollectionService")
+		local touch, keys = UIS.TouchEnabled, UIS.KeyboardEnabled
+		local mode = GQ.Effective()
+		local folder = Instance.new("Folder")
+		folder.Name = "SmokeObbyTrim"
+		folder.Parent = workspace
+		local made = {}
+		local function cloud(name, detail)
+			local p = Instance.new("Part")
+			made[#made + 1] = p
+			p.Name = name
+			CS:AddTag(p, TRIM_TAG)
+			if detail then
+				CS:AddTag(p, DETAIL_TAG)
+			end
+			p.Parent = folder
+			return p
+		end
+		local ok, err = pcall(function()
+			UIS.TouchEnabled, UIS.KeyboardEnabled = false, true
+			local desk = cloud("DeskCloud", true)
+			GQ.Apply("High")
+			KC.advance(0.1)
+			T.check(GQ.Phone() == false and desk.Parent == folder, "client obby trim: a desktop on High keeps a trimmed far cloud in place", tostring(desk.Parent))
+			UIS.TouchEnabled, UIS.KeyboardEnabled = true, false
+			GQ.Apply("High")
+			KC.advance(0.1)
+			T.check(GQ.Phone() == true and desk.Parent ~= folder and not desk:IsDescendantOf(workspace),
+				"client obby trim: a phone on High parks the trimmed far cloud out of the workspace", tostring(desk.Parent))
+			local plain = Instance.new("Part")
+			plain.Name = "KeptCloud"
+			CS:AddTag(plain, DETAIL_TAG)
+			plain.Parent = folder
+			local later = cloud("LateCloud", true)
+			KC.advance(0.1)
+			T.check(later.Parent ~= folder and plain.Parent == folder, "client obby trim: on a phone a trimmed cloud that streams in later is parked, an untrimmed one stays",
+				tostring(later.Parent) .. " / " .. tostring(plain.Parent))
+			GQ.Apply("Low")
+			KC.advance(0.1)
+			GQ.Apply("High")
+			KC.advance(0.1)
+			T.check(desk.Parent ~= folder and later.Parent ~= folder and plain.Parent == folder,
+				"client obby trim: Low -> High on a phone brings the decor back but keeps the trimmed clouds parked",
+				tostring(desk.Parent) .. " / " .. tostring(later.Parent) .. " / " .. tostring(plain.Parent))
+		end)
+		UIS.TouchEnabled, UIS.KeyboardEnabled = touch, keys
+		pcall(GQ.Apply, mode)
+		for _, p in ipairs(made) do
+			p:Destroy() -- a parked part lives outside the folder
+		end
+		folder:Destroy()
+		T.check(ok, "client obby trim: ran without errors", tostring(err))
 	end)
 
 	return S

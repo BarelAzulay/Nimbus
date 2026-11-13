@@ -10,10 +10,14 @@
 --           of the workspace, RenderStepped loop off, kept across its mesh rebuild)
 --   "High"  everything restored (the GfxLow preset popped, the decor and the dragon back where they were, emitters on
 --           again exactly where they were on)
+--   Phone   (kit-b clouds wave, the owner's triangle call) on a touch-only device the obby far clouds (on a heavy
+--           course some sea clouds too) tagged Config.Course.Clouds.PhoneTrimTag (CourseBuilder Mesh.trim) wait in the
+--           same holder whatever the setting, also ones that stream in later; High never brings them back there
 --
 --   GraphicsQuality.Init()          reads ClientSettings.Gfx and follows ClientSettings.Changed
 --   GraphicsQuality.Apply(setting)  "Auto" | "Low" | "High" (tests); -> the effective "Low" | "High"
 --   GraphicsQuality.Effective()     -> "Low" | "High"
+--   GraphicsQuality.Phone()         true on a touch-only device (touch, no keyboard): the phone trim applies
 --   GraphicsQuality.Recap()         while Low: when the cloud cap moved Config.Sky.LowCloudStep or more, updates GfxLow's
 --                                   cap in place (LightingStack.Update: no apply, so the sky's linear base tweens are never
 --                                   cancelled or re-eased and no fade starts); the sky's next SetBase carries it
@@ -23,6 +27,7 @@
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local Client = script.Parent
 local ClientSettings = require(Client:WaitForChild("ClientSettings"))
@@ -36,6 +41,8 @@ local PRESET_ID = "GfxLow"
 local CLOUD_CAP = 0.4 -- Terrain clouds Density on Low never above this (nor above the sky's own)
 local FADE = 0.5 -- seconds of the lighting change
 local EMITTERS = { ParticleEmitter = true, Beam = true, Trail = true }
+local CLOUDS = type(Config.Course) == "table" and type(Config.Course.Clouds) == "table" and Config.Course.Clouds or {}
+local TRIM_TAG = type(CLOUDS.PhoneTrimTag) == "string" and CLOUDS.PhoneTrimTag or "NC_PhoneTrim"
 
 local St = {
 	Mode = "High", -- the effective mode applied
@@ -44,6 +51,7 @@ local St = {
 	Hidden = {}, -- [model] = original parent
 	HiddenList = {}, -- models in the order they were hidden (restored in that order)
 	Emitters = {}, -- [emitter] = true (an emitter WE turned off)
+	Trimmed = setmetatable({}, { __mode = "k" }), -- [cloud] = its parent while the phone trim holds it (weak keys)
 	Dragon = nil, -- true while Low holds the dragon (SetHeld); { Parent } on the fallback path
 	Conns = {},
 	Started = false,
@@ -141,6 +149,50 @@ local function showAll()
 	end
 	St.HiddenList = {}
 	St.Emitters = {}
+end
+
+----------------------------------------------------------------------
+-- Phone trim (kit-b clouds wave)
+----------------------------------------------------------------------
+
+function GraphicsQuality.Phone()
+	local ok, phone = pcall(function()
+		return UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	end)
+	return ok and phone == true
+end
+
+-- parks one trimmed cloud (one Low holds already, or one in the holder, is left alone: Low's High hands it back
+-- and the next trim pass takes it)
+local function trim(inst)
+	if St.Trimmed[inst] or St.Hidden[inst] or not inst.Parent or inst:IsDescendantOf(holder()) then
+		return
+	end
+	St.Trimmed[inst] = inst.Parent
+	inst.Parent = holder()
+end
+
+-- a phone parks every tagged cloud (and follows new ones); any other device gets them back
+local function applyTrim()
+	if GraphicsQuality.Phone() then
+		for _, inst in ipairs(CollectionService:GetTagged(TRIM_TAG)) do
+			trim(inst)
+		end
+		if not St.Conns.Trim then
+			St.Conns.Trim = CollectionService:GetInstanceAddedSignal(TRIM_TAG):Connect(function(inst)
+				if GraphicsQuality.Phone() then
+					task.defer(trim, inst)
+				end
+			end)
+		end
+		return
+	end
+	for inst, parent in pairs(St.Trimmed) do
+		St.Trimmed[inst] = nil
+		if parent.Parent and inst.Parent == St.Holder then
+			inst.Parent = parent
+		end
+	end
 end
 
 local function dragonModule()
@@ -254,6 +306,7 @@ function GraphicsQuality.Apply(setting)
 		showAll()
 		pauseDragon(false)
 	end
+	applyTrim()
 	-- Phase 6 (6.4 / A6): the evolved pets' particles follow the same switch (PetFx: Low = the soft light only)
 	pcall(function()
 		require(ReplicatedStorage.Shared.PetFx).SetQuality(St.Mode)
