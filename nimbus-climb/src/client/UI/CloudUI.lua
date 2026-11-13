@@ -635,7 +635,7 @@ function CloudUI.Panel(props)
 	corner(content, 12)
 	stroke(content, WHITE, 1, 0.9)
 
-	-- title: GothamBlack 34, white with a dark stroke, over a neon underline that fades out to the right
+	-- title: the Title role 34 (T0: FredokaOne, through Theme.StyleTitle), white, over a neon underline that fades out to the right
 	local titleBar, titleLabel, underline = nil, nil, nil
 	if hasTitle then
 		titleBar = frame("TitleBar", {
@@ -656,6 +656,7 @@ function CloudUI.Panel(props)
 				ZIndex = 6,
 			},
 		})
+		Theme.StyleTitle(titleLabel)
 		titleLabel.Parent = titleBar
 		underline = frame("Underline", {
 			BackgroundColor3 = accent,

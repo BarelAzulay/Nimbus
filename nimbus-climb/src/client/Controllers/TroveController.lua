@@ -249,12 +249,12 @@ local function build(mode)
 	U.Card = card
 	U.Scale = Util.Create("UIScale", { Name = "TroveScale", Scale = 1, Parent = card.Root })
 	local body = card.Body
-	label(body, "TitleText", TEXT.Title, "Title", M.Title, {
+	Theme.StyleTitle(label(body, "TitleText", TEXT.Title, "Title", M.Title, {
 		Position = UDim2.fromOffset(M.Pad + 2, 0),
 		Size = UDim2.new(1, -(2 * M.Pad + M.Close + 8), 0, M.Bar),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Center,
-	})
+	}))
 	local close = NeonKit.Button({
 		Name = "Close",
 		Text = "",

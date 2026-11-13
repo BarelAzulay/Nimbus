@@ -737,7 +737,7 @@ function H.build()
 	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = header })
 	Theme.Gradient(U.HeaderFoot, Theme.Lighten(C.Accent, 0.12):Lerp(Theme.Darken(C.Accent, 0.28), 0.76), Theme.Darken(C.Accent, 0.28), 90)
 	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = G.Muscle, TextTruncate = Enum.TextTruncate.None })
-	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Training Place", TextXAlignment = Enum.TextXAlignment.Left })
+	U.Title = Theme.StyleTitle(label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Training Place", TextXAlignment = Enum.TextXAlignment.Left }))
 	U.Chip = label(header, "SpotsChip", "Heading", 20, {
 		ZIndex = 4, BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(40, 12, 22), TextTruncate = Enum.TextTruncate.None,
 	})

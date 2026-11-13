@@ -462,7 +462,7 @@ function H.build()
 	U.FootGradient = Theme.Gradient(U.HeaderFoot, C.Accent.Train, C.Accent.Train, 90)
 	U.Header = header
 	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, TextTruncate = Enum.TextTruncate.None })
-	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Left })
+	U.Title = Theme.StyleTitle(label(header, "Title", "Title", 34, { ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Left }))
 	U.Close = CloudUI.Button({
 		Name = "CloseButton", Text = "", Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
 		Callback = function()

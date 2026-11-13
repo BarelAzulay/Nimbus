@@ -535,12 +535,12 @@ S.client_p5neon = guarded("client_p5neon", function()
 	T.check(C.PanelTop == Color3.fromRGB(26, 32, 72) and C.PanelBottom == Color3.fromRGB(12, 15, 38) and C.PanelInk == Color3.fromRGB(8, 10, 28) and C.Navy ~= nil and C.FrameTop ~= nil,
 		"p5neon: Colors.PanelTop / PanelBottom / PanelInk (old keys kept)")
 	local F = Theme.Fonts
-	-- (kit-b U1) the pitch's roles: LuckiestGuy titles, FredokaOne buttons, Nunito ExtraBold faces over the Builder Sans
-	-- fallback for Body / Label / Toast (smoke_kitb_ui.lua theme_roles_kitb pins the whole map)
-	T.check(F.Title == Enum.Font.LuckiestGuy and F.Button == Enum.Font.FredokaOne and F.Toast == Enum.Font.BuilderSansBold and F.Display == Enum.Font.FredokaOne
+	-- (kit-b U1) the pitch's roles: FredokaOne titles (T0: the owner's title pick B) and buttons, LuckiestGuy accents, Nunito
+	-- ExtraBold faces over the Builder Sans fallback for Body / Label / Toast (smoke_kitb_ui.lua theme_roles_kitb pins the whole map)
+	T.check(F.Title == Enum.Font.FredokaOne and F.Button == Enum.Font.FredokaOne and F.Toast == Enum.Font.BuilderSansBold and F.Display == Enum.Font.FredokaOne
 		and F.Accent == Enum.Font.LuckiestGuy and F.Body == Enum.Font.BuilderSansBold and F.Label == Enum.Font.BuilderSansBold
 		and Theme.Faces.Body ~= nil and Theme.Faces.Toast ~= nil,
-		"p5neon: fonts: Title / Accent LuckiestGuy, Button / Display FredokaOne, Body / Label / Toast BuilderSansBold under the Nunito face")
+		"p5neon: fonts: Title / Button / Display FredokaOne, Accent LuckiestGuy, Body / Label / Toast BuilderSansBold under the Nunito face")
 
 	local g = CloudUI.NewScreenGui("SmokeNeon", 41)
 	-- Card: 3 px neon stroke, glow ring (+3 px frame, 5 px stroke at 0.62), floor on a short card, sheen, Body

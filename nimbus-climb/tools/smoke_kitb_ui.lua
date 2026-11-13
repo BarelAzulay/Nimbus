@@ -3,8 +3,8 @@
 -- UI line of tools/smoke.py (that line only).
 --   U1 (Theme: roles, stroke rule, tokens; fonts audit F1, F2, F5, F6, F11, F12, rejects audit 8; the owner: "all fonts in
 --   the game and gui ... cool unique style and fonts, good looking gui matching what we pitched"):
---   theme_roles_kitb          (server world, pure) the pitch's role map: Title / Sign / Accent LuckiestGuy; Heading / Button /
---                             Tag / Nameplate / Display FredokaOne; Body / Label / Toast Nunito ExtraBold through
+--   theme_roles_kitb          (server world, pure) the pitch's role map: Sign / Accent LuckiestGuy; Title (T0, the owner's
+--                             title pick B) / Heading / Button / Tag / Nameplate / Display FredokaOne; Body / Label / Toast Nunito ExtraBold through
 --                             Theme.Faces; Script Nunito Bold Italic; Signature PermanentMarker; GothamBlack and Fondamento
 --                             gone from every role; a default size for the new roles
 --   theme_style_no_default_stroke (server world, pure) Theme.Style / Theme.Label give no classic stroke and no outline
@@ -155,7 +155,7 @@ local function serverScenarios()
 		end
 		local F = Theme.Fonts
 		local want = {
-			Title = "LuckiestGuy", Sign = "LuckiestGuy", Accent = "LuckiestGuy",
+			Title = "FredokaOne", Sign = "LuckiestGuy", Accent = "LuckiestGuy",
 			Heading = "FredokaOne", Button = "FredokaOne", Tag = "FredokaOne", Nameplate = "FredokaOne", Display = "FredokaOne",
 			Signature = "PermanentMarker",
 		}
@@ -279,7 +279,7 @@ local function serverScenarios()
 			"kitb setrole: SetRole(Body) = the Nunito face, the role stamp and (Theme.FontOf) the Enum fallback", tostring(label.Font))
 		T.check(sameColor(label.TextColor3, Color3.fromRGB(200, 10, 10)) and label.TextSize == 31 and math.abs(label.TextStrokeTransparency - 0.7) < 1e-6, "kitb setrole: SetRole leaves colour, size and stroke alone")
 		Theme.SetRole(label, "Title")
-		T.check(label.Font == Theme.Fonts.Title and label.FontFace ~= Theme.Faces.Body and tostring(label.FontFace.Family):find("LuckiestGuy") ~= nil and label:GetAttribute("FontRole") == "Title",
+		T.check(label.Font == Theme.Fonts.Title and label.FontFace ~= Theme.Faces.Body and tostring(label.FontFace.Family):find("FredokaOne") ~= nil and label:GetAttribute("FontRole") == "Title",
 			"kitb setrole: SetRole(Title) after Body clears the Nunito face (the Title font is the face)", tostring(label.Font) .. " " .. faceText(label.FontFace))
 		Theme.SetRole(label, "NoSuchRole")
 		T.check(label.FontFace == Theme.Faces.Body and Theme.FontOf(label) == Theme.Fonts.Body and label:GetAttribute("FontRole") == "Body", "kitb setrole: an unknown role is Body")
@@ -475,7 +475,7 @@ local function serverScenarios()
 			"signkit roof: Shape = 'Gable' builds the Credits gable (two slopes, fascia, vent)")
 		T.check(g.Size == UDim2.fromOffset(300, 44) and not hasScale(g), "signkit roof: the gable is fixed-size too")
 
-		-- the header: navy plank, gold LuckiestGuy title, no stroke
+		-- the header: navy plank, gold FredokaOne title (T0: the owner's title pick B) through Theme.StyleTitle, no stroke
 		local win = holder(600, 400)
 		local head, plate = SK.Header(win, { Title = "PETS" })
 		T.check(head and head.Name == "Head" and head:GetAttribute("SignKit") == "Header" and plate and plate.Name == "Plate", "signkit header: Head + Plate")
@@ -484,13 +484,21 @@ local function serverScenarios()
 				hex(plate.BackgroundColor3) .. " in " .. hex(head.BackgroundColor3))
 			T.check(head.Size.X.Scale == 1 and head.Size.Y.Offset == Z.HeadH, "signkit header: full width, HeadH tall", tostring(head.Size))
 			local title = plate:FindFirstChild("Title")
-			T.check(title and title.Text == "PETS" and title.Font == Enum.Font.LuckiestGuy and sameColor(title.TextColor3, Sg.Gold),
-				"signkit header: the title is LuckiestGuy gold", title and (tostring(title.Font) .. " " .. hex(title.TextColor3)) or "none")
+			T.check(title and title.Text == "PETS" and title.Font == Enum.Font.FredokaOne and sameColor(title.TextColor3, Sg.Gold),
+				"signkit header: the title is FredokaOne gold", title and (tostring(title.Font) .. " " .. hex(title.TextColor3)) or "none")
+			T.check(title and title:GetAttribute("TitleLook") == "Plain", "signkit header: the title goes through Theme.StyleTitle (TitleLook stamp)",
+				title and tostring(title:GetAttribute("TitleLook")) or "none")
 			T.check(title and title.TextStrokeTransparency == 1 and #textStrokes(title) == 0, "signkit header: the title has no stroke (gold on navy, 9:1)")
 			T.check(plate:FindFirstChild("TitleDrop") == nil, "signkit header: no drop line unless asked")
 		end
 		local _, plate2 = SK.Header(win, { Title = "X", Drop = Color3.fromRGB(11, 19, 48), IconSlot = true })
 		T.check(plate2 and plate2:FindFirstChild("TitleDrop") and plate2:FindFirstChild("IconSlot"), "signkit header: Drop adds the drop line, IconSlot the gold icon square")
+		-- (T0) the Credits header's Sign role keeps its approved LuckiestGuy and stays out of the title treatment
+		local _, plate3 = SK.Header(win, { Title = "CREDITS", TitleRole = "Sign" })
+		local signTitle = plate3 and plate3:FindFirstChild("Title")
+		T.check(signTitle and signTitle.Font == Enum.Font.LuckiestGuy and signTitle:GetAttribute("TitleLook") == nil,
+			"signkit header: a Sign-role title stays LuckiestGuy with no title treatment",
+			signTitle and (tostring(signTitle.Font) .. " " .. tostring(signTitle:GetAttribute("TitleLook"))) or "none")
 
 		-- frame (wood) and body (stone with its lip)
 		local wood = SK.Frame(win, { Y = 60, Height = 300 })
@@ -1227,6 +1235,57 @@ local function serverScenarios()
 		K.flushErrors("theme_caps_roles")
 	end)
 
+	-- (T0, the owner's title pick B: FredokaOne titles) the one title helper: Theme.StyleTitle(label) is where a designed
+	-- title treatment (gradient / border / shadow) will go; today it adds nothing (no child, the font, size, colour, stroke
+	-- and text as they were) and stamps TitleLook = "Plain"; twice is the same as once; nil is a no-op
+	S.theme_style_title = guarded("theme_style_title", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		if not T.check(type(Theme.StyleTitle) == "function", "kitb title: Theme.StyleTitle exists") then
+			return
+		end
+		local l = Theme.Label("Pets", "Title", { Size = 34, Color = Theme.Sign.Gold })
+		local kids, font, size, colour, stroke, text = #l:GetChildren(), l.Font, l.TextSize, l.TextColor3, l.TextStrokeTransparency, l.Text
+		T.check(Theme.StyleTitle(l) == l, "kitb title: StyleTitle returns the label")
+		Theme.StyleTitle(l)
+		T.check(#l:GetChildren() == kids and l.Font == font and l.TextSize == size and sameColor(l.TextColor3, colour) and l.TextStrokeTransparency == stroke and l.Text == text,
+			"kitb title: StyleTitle adds nothing today (no child; font, size, colour, stroke, text unchanged), twice too",
+			#l:GetChildren() .. " children, " .. tostring(l.Font) .. " " .. tostring(l.TextSize))
+		T.check(l:GetAttribute("TitleLook") == "Plain", "kitb title: StyleTitle stamps TitleLook = Plain", tostring(l:GetAttribute("TitleLook")))
+		T.check(l.Font == Enum.Font.FredokaOne, "kitb title: a Title label is FredokaOne", tostring(l.Font))
+		l:Destroy()
+		T.check(Theme.StyleTitle(nil) == nil, "kitb title: StyleTitle(nil) is a no-op")
+		K.flushErrors("theme_style_title")
+	end)
+
+	-- (T0) every window title goes through Theme.StyleTitle: the window kits (CloudUI.Panel, SignKit.Header), the windows that
+	-- draw their own header title (Shop, the pet picker, Fusion, Training, the Sky Trove) and the loading board
+	S.kitb_window_titles_styled = guarded("kitb_window_titles_styled", function()
+		local files = {
+			"src/client/UI/CloudUI.lua", "src/shared/SignKit.lua", "src/client/Controllers/ShopController.lua", "src/client/UI/PetPicker.lua",
+			"src/client/Controllers/FusionController.lua", "src/client/Controllers/TrainController.lua", "src/client/Controllers/TroveController.lua",
+			"src/first/LoadingScreen.client.lua",
+		}
+		local bad, read = {}, 0
+		for _, path in ipairs(files) do
+			local fh = io.open(path, "r")
+			local src = fh and fh:read("*a") or ""
+			if fh then
+				fh:close()
+				read = read + 1
+			end
+			src = src:gsub("%-%-%[(=*)%[.-%]%1%]", ""):gsub("%-%-[^\n]*", "")
+			if not src:find("StyleTitle%(") then
+				bad[#bad + 1] = path
+			end
+		end
+		T.eq(read, #files, "kitb title: every window file is read")
+		T.check(#bad == 0, "kitb title: every window title goes through Theme.StyleTitle", table.concat(bad, ", "))
+		K.flushErrors("kitb_window_titles_styled")
+	end)
+
 	return S
 end
 
@@ -1651,7 +1710,8 @@ local function clientScenarios()
 				local title = plate and plate:FindFirstChild("Title")
 				T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "loading board: the navy header plank at " .. tag)
 				if T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "loading board: the header reads NIMBUS CLIMB at " .. tag, title and title.Text or "missing") then
-					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title, "loading board: the title is the Title role (LuckiestGuy)", tostring(title.Font))
+					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title and title:GetAttribute("TitleLook") == "Plain",
+						"loading board: the title is the Title role (FredokaOne) through Theme.StyleTitle", tostring(title.Font) .. " " .. tostring(title:GetAttribute("TitleLook")))
 					T.check(sameColor(title.TextColor3, Sign.Gold) and title.TextStrokeTransparency >= 1 and #textStrokes(title) == 0,
 						"loading board: gold on navy with no outline and no stroke", hex(title.TextColor3))
 				end
@@ -2169,7 +2229,8 @@ local function clientScenarios()
 				local title = plate and plate:FindFirstChild("Title")
 				T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "menu board: the navy header plank at " .. tag)
 				if T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "menu board: the header reads NIMBUS CLIMB at " .. tag, title and title.Text or "missing") then
-					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title, "menu board: the title is the Title role (LuckiestGuy)", tostring(title.Font))
+					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title and title:GetAttribute("TitleLook") == "Plain",
+						"menu board: the title is the Title role (FredokaOne) through Theme.StyleTitle", tostring(title.Font) .. " " .. tostring(title:GetAttribute("TitleLook")))
 					T.check(sameColor(title.TextColor3, Sign.Gold) and title.TextStrokeTransparency >= 1 and #textStrokes(title) == 0,
 						"menu board: gold on navy with no outline and no stroke", hex(title.TextColor3))
 				end
@@ -2875,8 +2936,9 @@ local function clientScenarios()
 		local t = plate and plate:FindFirstChild("Title")
 		T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "u5 window: the navy header plank at " .. tag)
 		if T.check(t ~= nil and t.Text == title, "u5 window: the header reads " .. title .. " at " .. tag, t and t.Text or "missing") then
-			T.check(t:GetAttribute("FontRole") == "Title" and t.Font == Theme.Fonts.Title and sameColor(t.TextColor3, Sign.Gold),
-				"u5 window: " .. title .. " in LuckiestGuy gold (Title role)", tostring(t.Font) .. " " .. hex(t.TextColor3))
+			T.check(t:GetAttribute("FontRole") == "Title" and t.Font == Theme.Fonts.Title and sameColor(t.TextColor3, Sign.Gold) and t:GetAttribute("TitleLook") == "Plain",
+				"u5 window: " .. title .. " in FredokaOne gold (Title role, through Theme.StyleTitle)",
+				tostring(t.Font) .. " " .. hex(t.TextColor3) .. " " .. tostring(t:GetAttribute("TitleLook")))
 		end
 		local slot = plate and plate:FindFirstChild("IconSlot")
 		T.check(slot ~= nil and WinH.icon(slot) == icon, "u5 window: the pixel " .. icon .. " on the header's gold square at " .. tag)

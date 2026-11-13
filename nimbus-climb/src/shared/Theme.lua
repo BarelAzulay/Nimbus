@@ -32,6 +32,9 @@
 -- Theme.Corner takes "Round" (a pill or a disc) beside the Theme.Radius tokens. World signs (BillboardGui / SurfaceGui) keep
 -- their one outline on their plate (the World text rule of ARCHITECTURE_V3). Casing: the Title, Sign, Accent and Tag roles
 -- read in capitals (`Theme.CapsRoles`, kept by Theme.SetRole; LuckiestGuy's lower case reads oddly: "PeTS").
+-- T0 (the owner's title pick B): the Title role is FredokaOne; LuckiestGuy stays on Accent (damage numbers, world hint
+-- words) and Sign (the approved Credits header). Every window title goes through `Theme.StyleTitle(label)`, the one place a
+-- designed title treatment will go (today it adds nothing).
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -55,12 +58,13 @@ end
 -- Font roles. Use roles, never raw Enum.Font, anywhere in the game.
 -- v3: Body and Label moved to the heavier Builder Sans cuts (far easier to read at small sizes on busy
 -- backgrounds); the chunky display faces stay.
--- kit B: the pitch's three faces. LuckiestGuy is loud, so it is for titles, signs and damage numbers only;
--- FredokaOne carries headings, buttons, tags and nameplates; reading text is Nunito ExtraBold (Theme.Faces below:
--- the Enum font of a FontFace role is only its fallback for an engine without Font.new).
+-- kit B: the pitch's three faces. LuckiestGuy is loud, so it is for the Credits sign and damage numbers only (T0: titles
+-- moved to FredokaOne); FredokaOne carries titles, headings, buttons, tags and nameplates; reading text is Nunito ExtraBold
+-- (Theme.Faces below: the Enum font of a FontFace role is only its fallback for an engine without Font.new).
 Theme.Fonts = {
-	-- THE one line for the title face (the owner's pitch: LuckiestGuy; Gemini prefers FredokaOne, a morning question)
-	Title = font("LuckiestGuy", "FredokaOne"), -- logo fallback, banners, portal names, window titles
+	-- THE one line for the title face (T0: the owner's title pick B, FredokaOne; was LuckiestGuy). Window titles also go
+	-- through Theme.StyleTitle
+	Title = font("FredokaOne"), -- logo fallback, banners, portal names, window titles
 	Display = font("FredokaOne"), -- big numbers: timer, countdown, currency counts
 	Heading = font("FredokaOne"), -- panel headers, section heads, card / pet names
 	Body = font("BuilderSansBold", "GothamBold"), -- descriptions, dialog text (face: Nunito ExtraBold)
@@ -75,7 +79,7 @@ Theme.Fonts = {
 	Nameplate = font("FredokaOne"), -- names over heads (over the world: Outline = "World")
 	-- (credits look B) the Signboard window kit: its header title, and the maker's hand-written signature + polaroid caption.
 	-- Signature is THE one place to swap that face (the owner's pick PermanentMarker; Gemini's phone pick was "Kalam").
-	-- Sign stays its own entry so the approved Credits look does not move when the Title line flips.
+	-- Sign stays its own entry so the approved Credits look does not move when the Title line flips (T0: it did; Sign kept).
 	Sign = font("LuckiestGuy", "FredokaOne"),
 	Signature = font("PermanentMarker", "FredokaOne"),
 }
@@ -834,6 +838,18 @@ function Theme.Measure(text, role, size, width)
 	local frame = Vector2.new(tonumber(width) and (tonumber(width) / spare) or 100000, 100000)
 	local raw = game:GetService("TextService"):GetTextSize(text, size, Theme.Fonts[role], frame)
 	return Vector2.new(math.ceil(raw.X * spare), raw.Y)
+end
+
+-- T0: the one title treatment. Every window title (CloudUI.Panel, SignKit.Header with the Title role, the windows that
+-- draw their own header title, the loading board) is passed here after it is styled, so a designed title look (gradient,
+-- border, shadow) is added in this one place. Today it adds nothing: it stamps attribute TitleLook = "Plain" (the look in
+-- use) and leaves the label as it was. Safe to call twice. Returns the label.
+function Theme.StyleTitle(label)
+	if not label then
+		return nil
+	end
+	label:SetAttribute("TitleLook", "Plain")
+	return label
 end
 
 -- Build a styled TextLabel. props are applied after styling so you can override anything.

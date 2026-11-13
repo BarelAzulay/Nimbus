@@ -620,7 +620,7 @@ function H.build()
 	Theme.Corner(U.Band, UDim.new(0, 18))
 	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Theme.Lighten(K.ACCENT, 0.15), Theme.Darken(K.ACCENT, 0.45)), Parent = U.Band })
 	U.Icon = label("Icon", header, NeonKit.Glyphs.Eggs, "Display", 42, { TextTruncate = Enum.TextTruncate.None })
-	U.Title = label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left })
+	U.Title = Theme.StyleTitle(label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left }))
 	local function pill(id)
 		local cur = Theme.Currency[id]
 		local root = frame("Balance_" .. id, header, { BackgroundTransparency = 0.15, BackgroundColor3 = Colors.PanelInk or K.NAVY })

@@ -252,8 +252,11 @@ S.client_ui_kit = guarded("client_ui_kit", function()
 	local grad = body and body:FindFirstChildOfClass("UIGradient")
 	T.check(grad ~= nil and grad.Color.Keypoints[1].Value == Theme.Colors.PanelTop, "...a dark navy gradient fill (PanelTop -> PanelBottom)")
 	T.check(panel.Root:FindFirstChild("CloudPuffs") == nil, "...and no cloud bumps any more (v5: 'less cute')")
-	-- (kit-b U1) the title face is the pitch's LuckiestGuy (was GothamBlack)
-	T.check(panel.TitleLabel.Font == Theme.Fonts.Title and Theme.Fonts.Title == Enum.Font.LuckiestGuy and panel.TitleLabel.TextSize == 34, "...a LuckiestGuy 34 title", tostring(panel.TitleLabel.Font) .. " " .. tostring(panel.TitleLabel.TextSize))
+	-- (kit-b U1) the title role's face (T0: the owner's title pick B, FredokaOne; was LuckiestGuy, before that GothamBlack),
+	-- through Theme.StyleTitle
+	T.check(panel.TitleLabel.Font == Theme.Fonts.Title and Theme.Fonts.Title == Enum.Font.FredokaOne and panel.TitleLabel.TextSize == 34
+		and panel.TitleLabel:GetAttribute("TitleLook") == "Plain", "...a FredokaOne 34 title through Theme.StyleTitle",
+		tostring(panel.TitleLabel.Font) .. " " .. tostring(panel.TitleLabel.TextSize) .. " " .. tostring(panel.TitleLabel:GetAttribute("TitleLook")))
 	local underline = panel.Root:FindFirstChild("Underline", true)
 	T.check(underline ~= nil and underline.BackgroundColor3 == Theme.Neon.Blue, "...over a neon underline")
 	local pets = CloudUI.Panel({ Name = "CatPanel", Category = "Pets", Title = "Pets", Size = UDim2.fromOffset(300, 200), Parent = g })
