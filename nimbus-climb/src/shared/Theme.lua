@@ -361,6 +361,7 @@ Theme.Sign = {
 	GoldLip = rgb(201, 154, 30), -- #C99A1E
 	NavyLip = rgb(23, 28, 79), -- #171C4F
 	GrassLip = rgb(63, 154, 69), -- #3F9A45
+	OnGrass = rgb(22, 50, 26), -- #16321A (U5: text and icons on a grass plank, the pitch's --onPri)
 	RedLip = rgb(184, 54, 79), -- #B8364F
 	Tile = rgb(255, 253, 246), -- #FFFDF6 (a raised stone button)
 	Well = rgb(243, 230, 200), -- #F3E6C8 (a sunk / disabled stone)

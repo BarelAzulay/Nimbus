@@ -64,12 +64,33 @@
 --   loading_board_fits        (U3 review) at 768x1024, 834x1194, 640x360, 667x375, 800x360, 740x360, 720x360 and the grid
 --                             sizes: the title fits its plate, the swinging board ends above the tip card and clear of
 --                             SKIP, SKIP clear of the card, the board below the top bar, the blocks and caption in the body
+--   U4 (the main menu Signboard): menu_* (see each scenario)
+--   U5 (Settings and Updates on the Signboard, finding 5; and the U2 / U3 review polish):
+--   settings_on_signkit       the Settings window: flat awning, navy header SETTINGS (Title role, gold, the pixel gear),
+--                             red Close plank with the pixel x, wood frame, stone body; each row its pixel icon and brown
+--                             FredokaOne title; the chips planks, the selected one gold; no neon; a portrait sheet hides
+--                             the title board behind it
+--   settings_no_emoji         no code point above U+2000 in any text of the Settings and Updates windows
+--   settings_scale_is_blockrow the 0..10 scale is a BlockRow of 10 between the - / + planks; a tap on a block sets it
+--   updates_on_signkit        WHAT'S NEW: each version a navy plank in FredokaOne gold, each line Nunito brown after a
+--                             6 px square bullet
+--   settings_hidden_under_credits the DEV panel (Restart / Skip tutorial) and a menu window are never open together
+--   loading_tip_clear_of_bulb (g) the tip's text starts 12 px or more right of the pixel bulb at every size
+--   (server world, pure) signkit_plank_press_sinks (a), signkit_plank_off_disabled (b), signkit_plank_label_fits (c),
+--   signkit_style_tokens (d), signkit_header_rim_matches_frame (e), pixelicon_clamp_and_warn (f),
+--   credits_record_needs_flag (h)
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
 
 local fmt = string.format
+
+-- record mode of credits_unchanged_on_signkit (rewrite tools/fixtures/credits_tree_u1.txt from this run): only smoke.py's
+-- explicit --record-credits-tree flag (U5 review: an environment variable left set must never rewrite the owner's look)
+local function creditsRecord()
+	return type(ARGS) == "table" and ARGS.record_credits_tree == true
+end
 
 local function hex(c)
 	if typeof(c) ~= "Color3" then
@@ -509,15 +530,15 @@ local function serverScenarios()
 		Mock.FireSignal(plank, "MouseEnter")
 		T.check(block.Position.Y.Offset == -Z.Hover and face.Position.Y.Offset == Z.Edge and plank:GetAttribute("PlankState") == "Hover", "plank: hover lifts the block 2 px", at("hover"))
 		Mock.FireSignal(plank, "MouseButton1Down")
-		T.check(block.Position.Y.Offset == 0 and face.Position.Y.Offset == Z.Edge + Z.Lip - Z.PressLip and plank:GetAttribute("PlankState") == "Press",
-			"plank: press moves the face down onto the lip (" .. Z.PressLip .. " px of lip left)", at("press"))
-		T.check(plank.Size == size0 and face.Size == face0 and block.Size == block0, "plank: pressing changes no size (no scale bounce)")
+		-- (U5) the pressed look itself (the block sinks, the lip shrinks): signkit_plank_press_sinks
+		T.check(plank:GetAttribute("PlankState") == "Press", "plank: press = the Press state", at("press"))
+		T.check(plank.Size == size0 and block.Size == block0, "plank: pressing changes no plank or block size (no scale bounce)")
 		Mock.FireSignal(plank, "MouseButton1Up")
 		T.check(face.Position.Y.Offset == Z.Edge and block.Position.Y.Offset == -Z.Hover, "plank: release lifts the face back (still hovered)", at("release"))
 		Mock.FireSignal(plank, "MouseLeave")
 		T.check(face.Position.Y.Offset == Z.Edge and block.Position.Y.Offset == 0 and plank:GetAttribute("PlankState") == "Rest", "plank: leave = rest", at("leave"))
 		SK.PlankState(plank, "Press")
-		T.check(face.Position.Y.Offset == Z.Edge + Z.Lip - Z.PressLip, "plank: SignKit.PlankState sets a state directly")
+		T.check(plank:GetAttribute("PlankState") == "Press" and block.Position.Y.Offset > 0, "plank: SignKit.PlankState sets a state directly")
 		SK.PlankState(plank, "Rest")
 		Mock.Click(plank)
 		T.check(clicks == 1, "plank: Activated runs the callback once", tostring(clicks))
@@ -794,6 +815,200 @@ local function serverScenarios()
 		K.flushErrors("pixelicon_run_merge_count")
 	end)
 
+	----------------------------------------------------------------------
+	-- U5 polish of U2 / U3 (the review's items a-f, h)
+	----------------------------------------------------------------------
+
+	-- (a) the pitch's pressed look (.dn: translateY 4px, lip 2px): the whole block sinks Sizes.Sink px and the lip shrinks to
+	-- PressLip px (the face grows down over it); hover and rest give both back; no plank or block size changes
+	S.signkit_plank_press_sinks = guarded("signkit_plank_press_sinks", function()
+		local SK = shared("SignKit")
+		if not SK then
+			return
+		end
+		local Z = SK.Sizes
+		T.eq(Z.Sink, 4, "plank press: Sizes.Sink = 4 (the pitch's translateY 4px)")
+		T.eq(Z.PressLip, 2, "plank press: Sizes.PressLip = 2 (the pitch's lip 2px)")
+		for _, lipPx in ipairs({ Z.Lip, 6 }) do
+			local plank = SK.Plank(holder(400, 200), { Text = "Feed", Width = 160, LipPx = lipPx })
+			local block, face = plank.Block, plank.Block.Face
+			local plankSize, blockSize = plank.Size, block.Size
+			local function lipShown()
+				return -(face.Size.Y.Offset + 2 * Z.Edge) -- the face's height is the block's less 2 edges and the lip
+			end
+			local tag = "lip " .. lipPx
+			T.check(block.Position.Y.Offset == 0 and face.Position.Y.Offset == Z.Edge and lipShown() == lipPx, "plank press: at rest the full lip shows (" .. tag .. ")",
+				fmt("block %d face %d lip %d", block.Position.Y.Offset, face.Position.Y.Offset, lipShown()))
+			SK.PlankState(plank, "Press")
+			T.check(block.Position.Y.Offset == Z.Sink, "plank press: the whole block sinks " .. Z.Sink .. " px (" .. tag .. ")", tostring(block.Position.Y.Offset))
+			T.check(face.Position.Y.Offset == Z.Edge, "plank press: the face stays on the block's top edge, it does not slide over the lip (" .. tag .. ")",
+				tostring(face.Position.Y.Offset))
+			T.check(lipShown() == Z.PressLip, "plank press: the lip shrinks to " .. Z.PressLip .. " px (" .. tag .. ")", tostring(lipShown()))
+			T.check(plank.Size == plankSize and block.Size == blockSize, "plank press: the plank and the block keep their size (no scale bounce) (" .. tag .. ")")
+			SK.PlankState(plank, "Hover")
+			T.check(block.Position.Y.Offset == -Z.Hover and lipShown() == lipPx, "plank press: hover lifts it with the full lip back (" .. tag .. ")")
+			SK.PlankState(plank, "Rest")
+			T.check(block.Position.Y.Offset == 0 and lipShown() == lipPx and face.Position.Y.Offset == Z.Edge, "plank press: rest restores it (" .. tag .. ")")
+		end
+		K.flushErrors("signkit_plank_press_sinks")
+	end)
+
+	-- (b) Style Off is a real disabled plank: not Active, not Selectable, no Activated callback, never moves
+	S.signkit_plank_off_disabled = guarded("signkit_plank_off_disabled", function()
+		local SK = shared("SignKit")
+		if not SK then
+			return
+		end
+		local clicks = 0
+		local off = SK.Plank(holder(400, 200), { Text = "Locked", Style = "Off", Callback = function()
+			clicks = clicks + 1
+		end })
+		T.check(off.Active == false, "plank off: Active = false", tostring(off.Active))
+		T.check(off.Selectable == false, "plank off: Selectable = false (a gamepad never lands on it)", tostring(off.Selectable))
+		Mock.Click(off)
+		T.eq(clicks, 0, "plank off: a click runs no callback")
+		Mock.FireSignal(off, "MouseEnter")
+		Mock.FireSignal(off, "MouseButton1Down")
+		T.check(off.Block.Position.Y.Offset == 0 and off:GetAttribute("PlankState") == "Rest", "plank off: it does not move")
+		local on = SK.Plank(holder(400, 200), { Text = "Feed" })
+		T.check(on.Active == true and on.Selectable == true, "plank off: a normal plank stays Active and Selectable")
+		K.flushErrors("signkit_plank_off_disabled")
+	end)
+
+	-- (c) a plank's label fits its face: it shrinks (Theme.Measure, Button role) down to 14 px, then truncates at the end
+	S.signkit_plank_label_fits = guarded("signkit_plank_label_fits", function()
+		local Theme, SK = theme(), shared("SignKit")
+		if not (Theme and SK) then
+			return
+		end
+		local Z = SK.Sizes
+		for _, c in ipairs({ { "Mouse lock (recommended)", 150, false }, { "SETTINGS", 120, true }, { "A much longer label than any plank should carry", 100, false }, { "OK", 160, false } }) do
+			local plank = SK.Plank(holder(600, 200), { Text = c[1], Width = c[2], IconSlot = c[3] })
+			local label = plank.Block.Face.Label
+			local room = c[2] - 2 * Z.Edge - label.Position.X.Offset - 2 * Z.LabelPad
+			local w = Theme.Measure(c[1], "Button", label.TextSize).X
+			local tag = fmt("%q in %d", c[1], c[2])
+			T.check(label.TextTruncate == Enum.TextTruncate.AtEnd, "plank fit: the label truncates at the end as a last resort (" .. tag .. ")")
+			T.check(w <= room or label.TextSize == 14, "plank fit: the label is measured to its face, or at the 14 px floor (" .. tag .. ")",
+				fmt("%d px text in %d px at %d", w, room, label.TextSize))
+			T.check(label.TextSize >= 14, "plank fit: never under 14 px (" .. tag .. ")", tostring(label.TextSize))
+		end
+		local wide = SK.Plank(holder(600, 200), { Text = "OK", Width = 160, TextSize = 22 })
+		T.eq(wide.Block.Face.Label.TextSize, 22, "plank fit: a label that fits keeps its size")
+		K.flushErrors("signkit_plank_label_fits")
+	end)
+
+	-- (d) the pitch's tokens: the navy plank's edge is the gold lip (--signEdge #C99A1E), text on grass is dark green
+	-- (--onPri #16321A)
+	S.signkit_style_tokens = guarded("signkit_style_tokens", function()
+		local Theme, SK = theme(), shared("SignKit")
+		if not (Theme and SK) then
+			return
+		end
+		local Sg = Theme.Sign
+		T.check(sameColor(SK.Styles.Navy.Edge, Sg.GoldLip), "plank tokens: Navy's edge is Theme.Sign.GoldLip", hex(SK.Styles.Navy.Edge))
+		T.check(typeof(Sg.OnGrass) == "Color3" and hex(Sg.OnGrass) == "#16321A", "plank tokens: Theme.Sign.OnGrass = #16321A", hex(Sg.OnGrass))
+		T.check(sameColor(SK.Styles.Grass.Text, Sg.OnGrass), "plank tokens: Grass's label is the dark green", hex(SK.Styles.Grass.Text))
+		local plank = SK.Plank(holder(400, 200), { Text = "Put in team", Style = "Grass" })
+		T.check(sameColor(plank.Block.Face.Label.TextColor3, Sg.OnGrass), "plank tokens: a Grass plank's label draws dark green")
+		local navy = SK.Plank(holder(400, 200), { Text = "v6", Style = "Navy" })
+		T.check(sameColor(navy.Block.BackgroundColor3, Sg.GoldLip), "plank tokens: a Navy plank's edge draws gold lip")
+		K.flushErrors("signkit_style_tokens")
+	end)
+
+	-- (e) the header's rim is the frame's thickness, so the wood edge runs straight from the header down the frame
+	S.signkit_header_rim_matches_frame = guarded("signkit_header_rim_matches_frame", function()
+		local SK = shared("SignKit")
+		if not SK then
+			return
+		end
+		local Z = SK.Sizes
+		T.eq(Z.Rim, Z.Frame, "header rim: Sizes.Rim = Sizes.Frame")
+		local win = holder(500, 400)
+		local _, plate = SK.Header(win, { Title = "SETTINGS" })
+		local body = SK.Body(SK.Frame(win, { Y = Z.HeadH }))
+		T.check(plate.Position.X.Offset == body.Position.X.Offset and plate.Size.X.Offset == body.Size.X.Offset,
+			"header rim: the navy plate and the stone body have the same left and right edges", fmt("plate %d,%d body %d,%d", plate.Position.X.Offset, plate.Size.X.Offset, body.Position.X.Offset, body.Size.X.Offset))
+		local inst = K.moduleInstance("first/LoadingScreen") or K.moduleInstance("first/LoadingScreen.client")
+		local src = tostring(inst and inst.Source or "")
+		if src == "" then
+			local fh = io.open("src/first/LoadingScreen.client.lua", "r")
+			src = fh and fh:read("*a") or ""
+			if fh then
+				fh:close()
+			end
+		end
+		local rim, frameW = tonumber(src:match("\n%s*RIM = (%d+),")), tonumber(src:match("\n%s*FRAME = (%d+),"))
+		T.check(rim ~= nil and rim == Z.Rim and frameW == Z.Frame, "header rim: the loading screen's copy keeps RIM = FRAME = SignKit's", fmt("RIM %s FRAME %s", tostring(rim), tostring(frameW)))
+		K.flushErrors("signkit_header_rim_matches_frame")
+	end)
+
+	-- (f) PixelIcon: a size under 9 px clamps to 9 (one px a cell); a size between multiples of 9 warns once per size
+	S.pixelicon_clamp_and_warn = guarded("pixelicon_clamp_and_warn", function()
+		local PI = shared("PixelIcon")
+		if not PI then
+			return
+		end
+		local parent = holder(100, 100)
+		local tiny = PI.New(parent, "paw", 5)
+		T.check(tiny and tiny.Size == UDim2.fromOffset(9, 9), "pixelicon clamp: 5 px draws at 9 x 9", tiny and tostring(tiny.Size) or "nil")
+		local covered = 0
+		for _, f in ipairs(tiny and tiny:GetChildren() or {}) do
+			if f:IsA("Frame") then
+				covered = covered + f.Size.X.Offset * f.Size.Y.Offset
+			end
+		end
+		T.eq(covered, 42, "pixelicon clamp: one px a cell (paw has 42 cells)")
+		T.check(type(PI.Warned) == "table", "pixelicon warn: PixelIcon.Warned records the sizes warned about")
+		local warned = PI.Warned or {}
+		for k in pairs(warned) do
+			warned[k] = nil
+		end
+		PI.New(parent, "paw", 18)
+		PI.New(parent, "paw", 27)
+		T.check(next(warned) == nil, "pixelicon warn: multiples of 9 never warn")
+		PI.New(parent, "paw", 20)
+		PI.New(parent, "gear", 20)
+		PI.New(parent, "paw", 22)
+		local n = 0
+		for _ in pairs(warned) do
+			n = n + 1
+		end
+		T.check(warned[20] == 1 and warned[22] == 1 and n == 2, "pixelicon warn: 20 and 22 px warn once each (20 asked twice)",
+			fmt("20: %s, 22: %s, %d sizes", tostring(warned[20]), tostring(warned[22]), n))
+		parent:Destroy()
+		K.flushErrors("pixelicon_clamp_and_warn")
+	end)
+
+	-- (h) the Credits baseline (tools/fixtures/credits_tree_u1.txt) is rewritten only with smoke.py's explicit
+	-- --record-credits-tree flag, never because NC_RECORD_CREDITS_TREE happens to be set during a normal run
+	S.credits_record_needs_flag = guarded("credits_record_needs_flag", function()
+		local getenv = os.getenv
+		local had = ARGS.record_credits_tree
+		local ok, err = pcall(function()
+			os.getenv = function(name)
+				if name == "NC_RECORD_CREDITS_TREE" then
+					return "1"
+				end
+				return getenv(name)
+			end
+			ARGS.record_credits_tree = nil
+			T.eq(creditsRecord(), false, "credits record: the env var alone never records (a normal run keeps the baseline)")
+			ARGS.record_credits_tree = true
+			T.eq(creditsRecord(), true, "credits record: smoke.py --record-credits-tree records")
+		end)
+		os.getenv = getenv
+		ARGS.record_credits_tree = had
+		T.check(ok, "credits record: the scenario ran", tostring(err))
+		local fh = io.open("tools/smoke.py", "r")
+		local py = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		T.check(py:find("--record-credits-tree", 1, true) ~= nil and py:find("record_credits_tree", 1, true) ~= nil, "credits record: smoke.py has the --record-credits-tree flag and passes it on")
+		K.flushErrors("credits_record_needs_flag")
+	end)
+
 	return S
 end
 
@@ -887,8 +1102,8 @@ local function clientScenarios()
 	end)
 
 	-- U2: the Credits window built from SignKit parts dumps exactly what the approved window dumped. The baseline was
-	-- recorded from the window as it stood before the move (NC_RECORD_CREDITS_TREE=1 rewrites it; never do that to make
-	-- this pass: the file IS the owner's approved look)
+	-- recorded from the window as it stood before the move (smoke.py --record-credits-tree rewrites it; never do that to
+	-- make this pass: the file IS the owner's approved look)
 	local CREDITS_TREE = "tools/fixtures/credits_tree_u1.txt"
 	local CREDITS_SIZES = { { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }
 
@@ -985,10 +1200,7 @@ local function clientScenarios()
 		Mock.SetViewport(vp0.X, vp0.Y)
 		KC.advance(0.2)
 		local text = table.concat(all, "\n") .. "\n"
-		local okEnv, record = pcall(function()
-			return os.getenv("NC_RECORD_CREDITS_TREE")
-		end)
-		if okEnv and record == "1" then
+		if creditsRecord() then
 			local fh = io.open(CREDITS_TREE, "w")
 			if fh then
 				fh:write(text)
@@ -2208,6 +2420,419 @@ local function clientScenarios()
 		MenuH.close()
 		T.check(ok, "menu shots: the scenario ran", tostring(err))
 		LKC.flushErrors("menu_titleshots_off_keeps_orbit")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U5: Settings and Updates on the Signboard (finding 5). Each scenario opens the window by itself at its size and
+	-- input (WinH.open) and closes it again (WinH.close).
+	local WinH = {}
+
+	-- opts: Size = { w, h }, Input = "Keyboard" | "Touch"; which = "Settings" | "Updates"
+	function WinH.open(which, opts)
+		opts = opts or {}
+		local UIS = game:GetService("UserInputService")
+		WinH.old = WinH.old or { Mock.Viewport, UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled }
+		local input = opts.Input or "Keyboard"
+		UIS.TouchEnabled = input == "Touch"
+		UIS.KeyboardEnabled = input == "Keyboard"
+		UIS.MouseEnabled = input == "Keyboard"
+		local size = opts.Size or { 1920, 1080 }
+		Mock.SetViewport(size[1], size[2])
+		LKC.advance(0.1)
+		local MMC = MenuH.mmc()
+		MMC.CloseWindows()
+		if which == "Updates" then
+			MMC.OpenUpdates()
+		else
+			MMC.OpenSettings()
+		end
+		LKC.advance(0.4)
+		return MMC.Window(), MMC
+	end
+	function WinH.close()
+		MenuH.mmc().CloseWindows()
+		local old = WinH.old
+		if old then
+			local UIS = game:GetService("UserInputService")
+			Mock.SetViewport(old[1].X, old[1].Y)
+			UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = old[2], old[3], old[4]
+		end
+		WinH.old = nil
+		LKC.advance(0.2)
+	end
+	function WinH.texts(root)
+		local out = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" then
+				out[#out + 1] = d
+			end
+		end
+		return out
+	end
+	function WinH.icon(root)
+		for _, d in ipairs(root:GetDescendants()) do
+			local name = d:GetAttribute("PixelIcon")
+			if name then
+				return name, d
+			end
+		end
+		return nil
+	end
+	-- the code points of a UTF-8 string
+	function WinH.codepoints(s)
+		local out, i = {}, 1
+		while i <= #s do
+			local c = s:byte(i)
+			local n, cp = 1, c
+			if c >= 0xF0 then
+				n, cp = 4, c % 0x08
+			elseif c >= 0xE0 then
+				n, cp = 3, c % 0x10
+			elseif c >= 0xC0 then
+				n, cp = 2, c % 0x20
+			end
+			for k = 1, n - 1 do
+				cp = cp * 64 + ((s:byte(i + k) or 0x80) % 0x40)
+			end
+			out[#out + 1] = cp
+			i = i + n
+		end
+		return out
+	end
+	-- no neon kit in a window: no corner, no gradient, no classic text stroke, no text outline, no neon colour, no CloudUI panel
+	function WinH.neon(holder, Theme)
+		local bad = {}
+		for _, d in ipairs(holder:GetDescendants()) do
+			if d:IsA("UIGradient") or d:IsA("UICorner") then
+				bad[#bad + 1] = d.ClassName .. " in " .. d.Parent.Name
+			elseif (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and (d.TextStrokeTransparency < 0.95 or #textStrokes(d) > 0) then
+				bad[#bad + 1] = "a stroke on " .. d.Name
+			elseif d:IsA("GuiObject") and d.BackgroundTransparency < 0.99 then
+				for name, c in pairs(Theme.Neon) do
+					if sameColor(d.BackgroundColor3, c) then
+						bad[#bad + 1] = "neon " .. name .. " on " .. d.Name
+					end
+				end
+			end
+			if d:GetAttribute("CloudUI") or d.Name:match("Panel$") then
+				bad[#bad + 1] = "a CloudUI panel " .. d.Name
+			end
+		end
+		return bad
+	end
+	-- the Signboard frame of a window: the flat awning, the navy header with `title` (Title role, gold, the pixel `icon`
+	-- on its gold square), the wood frame, the stone body and the red Close plank with the pixel x
+	function WinH.frame(holder, title, icon, Theme, tag)
+		local Sign = Theme.Sign
+		local kinds = MenuH.kinds(holder)
+		local roof = (kinds.Roof or {})[1]
+		T.check(roof ~= nil and roof:FindFirstChild("Face") and roof:FindFirstChild("SlopeL") == nil and roof.Size.X.Scale == 0,
+			"u5 window: the flat awning (a fixed-size SignKit roof) at " .. tag)
+		local head = (kinds.Header or {})[1]
+		local plate = head and head:FindFirstChild("Plate")
+		local t = plate and plate:FindFirstChild("Title")
+		T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "u5 window: the navy header plank at " .. tag)
+		if T.check(t ~= nil and t.Text == title, "u5 window: the header reads " .. title .. " at " .. tag, t and t.Text or "missing") then
+			T.check(t:GetAttribute("FontRole") == "Title" and t.Font == Theme.Fonts.Title and sameColor(t.TextColor3, Sign.Gold),
+				"u5 window: " .. title .. " in LuckiestGuy gold (Title role)", tostring(t.Font) .. " " .. hex(t.TextColor3))
+		end
+		local slot = plate and plate:FindFirstChild("IconSlot")
+		T.check(slot ~= nil and WinH.icon(slot) == icon, "u5 window: the pixel " .. icon .. " on the header's gold square at " .. tag)
+		local wood, body = (kinds.Frame or {})[1], (kinds.Body or {})[1]
+		T.check(wood and sameColor(wood.BackgroundColor3, Sign.Wood) and body and sameColor(body.BackgroundColor3, Sign.Stone), "u5 window: the wood frame and the stone body at " .. tag)
+		local close = MenuH.find(holder, "Close")
+		local cface = close and MenuH.find(close, "Face")
+		T.check(close and close:GetAttribute("SignKit") == "Plank" and cface and sameColor(cface.BackgroundColor3, Sign.Red) and WinH.icon(close) == "x",
+			"u5 window: Close is a red plank with the pixel x at " .. tag)
+		return close, body
+	end
+
+	S.settings_on_signkit = guarded("settings_on_signkit", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local CS = require(Mock.GetPath(ROOTS["client"] .. "/ClientSettings"))
+		local gfx0 = CS.Get("Gfx")
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 1920, 1080, "Keyboard" }, { 390, 844, "Touch" } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local holder = WinH.open("Settings", { Size = s, Input = s[3] })
+				if not T.check(holder ~= nil and holder:GetAttribute("DockMode") ~= nil, "settings kit: the window opens docked at " .. tag) then
+					return
+				end
+				WinH.frame(holder, "SETTINGS", "gear", Theme, tag)
+				local bad = WinH.neon(holder, Theme)
+				T.check(#bad == 0, "settings kit: no corner, gradient, stroke, neon colour or CloudUI panel at " .. tag, table.concat(bad, "; ", 1, math.min(#bad, 6)))
+				local rows = { { "Music", "music" }, { "Sfx", "speaker" }, { "Gfx", "monitor" }, { "Shake", "shake" } }
+				if s[3] == "Keyboard" then
+					rows[#rows + 1] = { "MouseLock", "mouse" }
+				end
+				for _, r in ipairs(rows) do
+					local row = MenuH.find(holder, "Row_" .. r[1])
+					local title = row and row:FindFirstChild("Title", true)
+					T.check(row ~= nil and WinH.icon(row) == r[2], "settings kit: Row_" .. r[1] .. " carries the pixel " .. r[2] .. " at " .. tag)
+					T.check(title and sameColor(title.TextColor3, Theme.TextOn("Stone")) and title:GetAttribute("FontRole") == "Heading",
+						"settings kit: Row_" .. r[1] .. "'s title is brown FredokaOne on the stone at " .. tag, title and hex(title.TextColor3) or "missing")
+				end
+				-- chips are planks; the selected one is gold with its lip (the pitch's .bt.sel), the others stone
+				local function chips()
+					local out = {}
+					for _, name in ipairs({ "Chip_AUTO", "Chip_LOW", "Chip_HIGH" }) do
+						out[#out + 1] = MenuH.find(holder, name)
+					end
+					return out
+				end
+				local function look()
+					local sel, str = 0, ""
+					for _, c in ipairs(chips()) do
+						local face = MenuH.find(c, "Face")
+						local lip = MenuH.find(c, "Lip")
+						local gold = face and sameColor(face.BackgroundColor3, Sign.Gold) and lip and sameColor(lip.BackgroundColor3, Sign.GoldLip)
+						local stone = face and sameColor(face.BackgroundColor3, Sign.Tile)
+						if c:GetAttribute("Selected") then
+							sel = sel + 1
+							str = str .. (gold and "G" or "?")
+						else
+							str = str .. (stone and "s" or "?")
+						end
+					end
+					return sel, str
+				end
+				local list = chips()
+				T.check(#list == 3 and list[1]:GetAttribute("SignKit") == "Plank" and list[2]:GetAttribute("SignKit") == "Plank", "settings kit: the Graphics chips are SignKit planks at " .. tag)
+				Mock.Click(MenuH.find(holder, "Chip_LOW"))
+				LKC.advance(0.2)
+				local sel, str = look()
+				T.check(sel == 1 and str == "sGs", "settings kit: LOW picked = the one gold plank, the others stone at " .. tag, str)
+				Mock.Click(MenuH.find(holder, "Chip_AUTO"))
+				LKC.advance(0.2)
+				sel, str = look()
+				T.check(sel == 1 and str == "Gss", "settings kit: AUTO picked moves the gold at " .. tag, str)
+				local close = MenuH.find(holder, "Close")
+				Mock.Click(close)
+				LKC.advance(0.2)
+				T.check(MenuH.mmc().Window() == nil, "settings kit: the Close plank closes the window at " .. tag)
+				WinH.close()
+			end
+		end)
+		CS.Set("Gfx", gfx0)
+		WinH.close()
+		T.check(ok, "settings kit: the scenario ran", tostring(err))
+		-- over the title screen on a portrait phone the sheet hides the docked board (its awning's ends peeked out at the
+		-- sides); closing the window brings it back
+		local ok2, err2 = pcall(function()
+			local menu, MMC = MenuH.open({ Size = { 390, 844 }, Input = "Touch" })
+			local swing = MenuH.find(menu, "Swing")
+			MMC.OpenSettings()
+			LKC.advance(0.3)
+			T.check(swing ~= nil and swing.Visible == false, "settings kit: a portrait sheet hides the title board behind it")
+			MMC.CloseWindows()
+			LKC.advance(0.1)
+			T.check(swing ~= nil and swing.Visible == true, "settings kit: closing the window shows the board again")
+		end)
+		MenuH.close()
+		T.check(ok2, "settings kit: the board scenario ran", tostring(err2))
+		LKC.flushErrors("settings_on_signkit")
+	end)
+
+	-- no emoji: no code point above U+2000 in any text of the two windows (desktop: every row)
+	S.settings_no_emoji = guarded("settings_no_emoji", function()
+		local ok, err = pcall(function()
+			for _, which in ipairs({ "Settings", "Updates" }) do
+				local holder = WinH.open(which)
+				local bad, n = {}, 0
+				for _, t in ipairs(WinH.texts(holder)) do
+					n = n + 1
+					for _, cp in ipairs(WinH.codepoints(t.Text)) do
+						if cp > 0x2000 then
+							bad[#bad + 1] = fmt("%s U+%04X", t.Name, cp)
+							break
+						end
+					end
+				end
+				T.check(n > 3, "settings emoji: (setup) the " .. which .. " window has texts", tostring(n))
+				T.check(#bad == 0, "settings emoji: no code point above U+2000 in the " .. which .. " window", table.concat(bad, ", ", 1, math.min(#bad, 8)))
+				WinH.close()
+			end
+		end)
+		WinH.close()
+		T.check(ok, "settings emoji: the scenario ran", tostring(err))
+		LKC.flushErrors("settings_no_emoji")
+	end)
+
+	-- the 0-10 scale is a SignKit BlockRow of 10: the first <value> blocks gold; - / + and a tap on a block move it
+	S.settings_scale_is_blockrow = guarded("settings_scale_is_blockrow", function()
+		local CS = require(Mock.GetPath(ROOTS["client"] .. "/ClientSettings"))
+		local music0 = CS.Get("Music")
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 1920, 1080, "Keyboard" }, { 390, 844, "Touch" } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local holder = WinH.open("Settings", { Size = s, Input = s[3] })
+				CS.Set("Music", 4)
+				LKC.advance(0.1)
+				local row = MenuH.find(holder, "Row_Music")
+				local blocks = nil
+				for _, d in ipairs(row and row:GetDescendants() or {}) do
+					if d:GetAttribute("SignKit") == "BlockRow" then
+						blocks = d
+					end
+				end
+				if not T.check(blocks ~= nil and blocks:GetAttribute("Count") == 10, "settings scale: Row_Music's scale is a SignKit BlockRow of 10 at " .. tag) then
+					return
+				end
+				T.eq(blocks:GetAttribute("Filled"), 4, "settings scale: Music 4 = 4 gold blocks at " .. tag)
+				local plus, minus = MenuH.find(row, "Plus"), MenuH.find(row, "Minus")
+				T.check(plus and minus and plus:GetAttribute("SignKit") == "Plank" and minus:GetAttribute("SignKit") == "Plank", "settings scale: - and + are planks at " .. tag)
+				T.check(WinH.icon(plus) == "plus" and WinH.icon(minus) == "minus", "settings scale: - and + carry the pixel minus / plus at " .. tag)
+				Mock.Click(plus)
+				LKC.advance(0.1)
+				T.eq(blocks:GetAttribute("Filled"), 5, "settings scale: + fills the next block at " .. tag)
+				local step = MenuH.find(row, "Step8")
+				if T.check(step ~= nil and step:IsA("TextButton"), "settings scale: each block is a tap target (Step1..Step10) at " .. tag) then
+					Mock.Click(step)
+					LKC.advance(0.1)
+					T.check(CS.Get("Music") == 8 and blocks:GetAttribute("Filled") == 8, "settings scale: a tap on block 8 sets 8 at " .. tag, tostring(CS.Get("Music")))
+				end
+				for _ = 1, 12 do
+					Mock.Click(minus)
+				end
+				LKC.advance(0.1)
+				local value = MenuH.find(row, "Value")
+				T.check(blocks:GetAttribute("Filled") == 0 and value and value.Text == "OFF", "settings scale: 0 = no gold block and the value reads OFF at " .. tag)
+				-- the row fits the window: the strip (- blocks +) inside the stone body
+				local body = holder:FindFirstChild("Body", true)
+				local b, r = MenuH.rect(body), MenuH.rect(blocks)
+				local p, m = MenuH.rect(plus), MenuH.rect(minus)
+				T.check(m.X >= b.X and p.R <= b.R and r.X >= m.R and r.R <= p.X, "settings scale: - blocks + sit in order inside the body at " .. tag,
+					MenuH.show(m) .. " " .. MenuH.show(r) .. " " .. MenuH.show(p) .. " in " .. MenuH.show(b))
+				WinH.close()
+			end
+		end)
+		CS.Set("Music", music0)
+		WinH.close()
+		T.check(ok, "settings scale: the scenario ran", tostring(err))
+		LKC.flushErrors("settings_scale_is_blockrow")
+	end)
+
+	-- Updates: WHAT'S NEW; each version head a navy plank (gold-lip edge, navy lip) in FredokaOne gold, newest first; each
+	-- line Nunito brown on the stone after a 6 px square bullet (no glyph)
+	S.updates_on_signkit = guarded("updates_on_signkit", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local notes = LoadingH.shared("UpdateNotes")
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 1920, 1080, "Keyboard" }, { 390, 844, "Touch" } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local holder = WinH.open("Updates", { Size = s, Input = s[3] })
+				if not T.check(holder ~= nil, "updates kit: the window opens at " .. tag) then
+					return
+				end
+				WinH.frame(holder, "WHAT'S NEW", "scroll", Theme, tag)
+				local bad = WinH.neon(holder, Theme)
+				T.check(#bad == 0, "updates kit: no corner, gradient, stroke, neon colour or CloudUI panel at " .. tag, table.concat(bad, "; ", 1, math.min(#bad, 6)))
+				local heads, lines, wrong = 0, 0, {}
+				local lastOrder = -1
+				for o, note in ipairs(notes.Notes) do
+					local head = MenuH.find(holder, "Head" .. o)
+					local block = head and head:FindFirstChild("Block")
+					local face = block and block:FindFirstChild("Face")
+					local lip = block and block:FindFirstChild("Lip")
+					local label = face and face:FindFirstChild("Label")
+					if block and face and lip and label and sameColor(face.BackgroundColor3, Sign.Navy) and sameColor(block.BackgroundColor3, Sign.GoldLip)
+						and sameColor(lip.BackgroundColor3, Sign.NavyLip) and label.Font == Enum.Font.FredokaOne and sameColor(label.TextColor3, Sign.Gold)
+						and label.Text:find("v" .. note.Version, 1, true) == 1 and head.LayoutOrder > lastOrder then
+						heads = heads + 1
+						lastOrder = head.LayoutOrder
+					else
+						wrong[#wrong + 1] = "Head" .. o
+					end
+					for i, text in ipairs(note.Lines or {}) do
+						local line = MenuH.find(holder, "Line" .. o .. "_" .. i)
+						local bullet = line and line:FindFirstChild("Bullet")
+						local t = line and line:FindFirstChild("Text")
+						if bullet and t and bullet.Size == UDim2.fromOffset(6, 6) and bullet.BackgroundTransparency == 0 and bullet:FindFirstChildOfClass("UICorner") == nil
+							and t.Text == text and t:GetAttribute("FontRole") == "Body" and sameColor(t.TextColor3, Theme.TextOn("Stone")) then
+							lines = lines + 1
+						elseif #wrong < 6 then
+							wrong[#wrong + 1] = "Line" .. o .. "_" .. i
+						end
+					end
+				end
+				local want = 0
+				for _, note in ipairs(notes.Notes) do
+					want = want + #(note.Lines or {})
+				end
+				T.check(heads == #notes.Notes, "updates kit: every version head is a navy plank in FredokaOne gold, newest first at " .. tag, table.concat(wrong, ", "))
+				T.check(lines == want, "updates kit: every line is Nunito brown after a 6 px square bullet at " .. tag, fmt("%d of %d; %s", lines, want, table.concat(wrong, ", ")))
+				WinH.close()
+			end
+		end)
+		WinH.close()
+		T.check(ok, "updates kit: the scenario ran", tostring(err))
+		LKC.flushErrors("updates_on_signkit")
+	end)
+
+	-- the bug of 2026-11-13: the DEV panel's Restart / Skip tutorial buttons peeked out under the Credits window. Opening a
+	-- window closes the DEV panel; a window replaces the one before it; opening the DEV panel closes a menu window, so the
+	-- two are never open together
+	S.settings_hidden_under_credits = guarded("settings_hidden_under_credits", function()
+		local pg = game:GetService("Players").LocalPlayer.PlayerGui
+		local Dev = require(Mock.GetPath(ROOTS["client"] .. "/Controllers/DevController"))
+		local MMC = MenuH.mmc()
+		local ok, err = pcall(function()
+			pg:SetAttribute("NC_Dev", true)
+			LKC.advance(1)
+			Dev.Open()
+			LKC.advance(0.5)
+			if not T.check(Dev.IsOpen() == true, "under credits: (setup) the DEV panel is open") then
+				return
+			end
+			MMC.OpenSettings()
+			LKC.advance(0.3)
+			T.check(Dev.IsOpen() == false, "under credits: opening Settings closes the DEV panel")
+			MMC.OpenCredits()
+			LKC.advance(0.3)
+			local _, name = MMC.Window()
+			local gui = pg:FindFirstChild("NimbusMainMenu")
+			T.check(name == "Credits" and gui and gui:FindFirstChild("Window_Settings") == nil, "under credits: Credits replaces Settings (nothing of Settings left under it)", tostring(name))
+			Dev.Open()
+			LKC.advance(0.5)
+			local holder = MMC.Window()
+			T.check(not (Dev.IsOpen() and holder ~= nil), "under credits: the DEV panel and a menu window are never open together (its Restart / Skip tutorial rows would peek out)",
+				fmt("dev %s, window %s", tostring(Dev.IsOpen()), tostring(holder and holder.Name)))
+			T.check(Dev.IsOpen() == true and holder == nil, "under credits: opening the DEV panel closes the menu window (the owner asked for the panel)")
+		end)
+		pcall(Dev.Close)
+		MMC.CloseWindows()
+		pg:SetAttribute("NC_Dev", nil)
+		LKC.advance(0.5)
+		T.check(ok, "under credits: the scenario ran", tostring(err))
+		LKC.flushErrors("settings_hidden_under_credits")
+	end)
+
+	-- (g) the loading tip keeps its text clear of the pixel bulb at every size: the text starts >= 12 screen px right of
+	-- the bulb's gold square, the bulb sits inside its square
+	S.loading_tip_clear_of_bulb = guarded("loading_tip_clear_of_bulb", function()
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 1920, 1080 }, { 1280, 720 }, { 390, 844 }, { 844, 390 }, { 360, 640 } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local gui = LoadingH.run({ Size = s })
+				local card = gui and gui:FindFirstChild("TipCard", true)
+				local slot = card and card:FindFirstChild("IconSlot", true)
+				local tip = card and card:FindFirstChild("Tip", true)
+				local _, bulb = WinH.icon(slot or card or gui)
+				if T.check(card and slot and tip and bulb, "loading tip: the card, its bulb and its text at " .. tag) then
+					local sr, br, tr = MenuH.rect(slot), MenuH.rect(bulb), MenuH.rect(tip)
+					T.check(tr.X >= sr.R + 12 and tr.X >= br.R + 12, "loading tip: the text starts 12 px or more right of the bulb at " .. tag,
+						fmt("text x %d, bulb right %d, square right %d", tr.X, br.R, sr.R))
+					T.check(br.X >= sr.X - 0.5 and br.R <= sr.R + 0.5 and br.Y >= sr.Y - 0.5 and br.B <= sr.B + 0.5, "loading tip: the bulb sits inside its gold square at " .. tag,
+						MenuH.show(br) .. " in " .. MenuH.show(sr))
+				end
+				LoadingH.cleanup()
+			end
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading tip: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_tip_clear_of_bulb")
 	end)
 
 	return S

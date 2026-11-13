@@ -1647,7 +1647,7 @@ local function buildSignKitGallery()
 		end
 		x = x + p[3] + 10
 	end
-	caption(body, "HOVER lifts 2 px            PRESSED: the face sits down on the lip", 18, 110, 860)
+	caption(body, "HOVER lifts 2 px            PRESSED: the plank sinks 4 px, its lip shrinks to 2", 18, 110, 860)
 	local hover = SK.Plank(body, { Style = "Stone", Text = "Hover", Width = 140, Position = UDim2.fromOffset(18, 140), Name = "PlankHover" })
 	SK.PlankState(hover, "Hover")
 	SK.Plank(body, { Style = "Grass", Text = "Rest", Width = 140, Position = UDim2.fromOffset(250, 140), Name = "PlankRest" })
@@ -3006,13 +3006,14 @@ end)
 --                        sets its Progress (0-100) for the kit B block renders
 --   settings[:hud]       the SETTINGS window over the menu (Music 6 / Sound 8 / Graphics Auto / Shake ON); ":hud" =
 --                        after PLAY, opened from the menu gear over the game HUD (the window rule)
+--   updates[:hud]        (kit B U5) the WHAT'S NEW window, the same way
 -- Every OTHER scenario boots like the smoke worlds: the menu disabled and the profile loaded (DataService's
 -- ProfileLoaded attribute), so the loading screen is gone after ~2.3 s and nothing is gated.
 local MM = { Scene = tostring(ARGS.scenario or "lobby"):lower():match("^[^:]*") or "lobby" }
 do
 	local cfg = req("shared/Config")
 	if type(cfg.MainMenu) == "table" then
-		cfg.MainMenu.Enabled = (MM.Scene == "mainmenu" or MM.Scene == "settings")
+		cfg.MainMenu.Enabled = (MM.Scene == "mainmenu" or MM.Scene == "settings" or MM.Scene == "updates")
 	end
 	-- the mock has no ReplicatedFirst:RemoveDefaultLoadingScreen (the script pcalls it anyway)
 	local rf = Mock.Classes and Mock.Classes.ReplicatedFirst
@@ -3082,6 +3083,17 @@ scenario("settings", function(where)
 		advance(6)
 	end
 	MMC.OpenSettings()
+	advance(0.6)
+end)
+-- updates[:hud] (kit B U5): the WHAT'S NEW window over the menu (":hud" = after PLAY, over the game HUD), like settings
+scenario("updates", function(where)
+	local MMC = MM.controller()
+	advance(0.5)
+	if where == "hud" then
+		MMC.Play()
+		advance(6)
+	end
+	MMC.OpenUpdates()
 	advance(0.6)
 end)
 -- [owner: menu] end

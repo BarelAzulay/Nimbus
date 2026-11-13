@@ -40,6 +40,13 @@
 --             Camera shake (ON / OFF), Mouse lock (ON / OFF, keyboard + mouse devices only; the L key toggles it too);
 --             applied at once through ClientSettings.Set (sent after a 0.4 s debounce)
 --   UPDATES   UpdateNotes.Notes newest first; opening it sends SettingsSet("SeenNotes", UpdateNotes.Latest)
+--   (kit B U5, finding 5) Both are Signboards built from SignKit, like the title screen: the flat awning, the navy header
+--             (SETTINGS / WHAT'S NEW in the Title role, gold, the pixel gear / scroll on its gold square, the red Close
+--             plank with the pixel x), the wood frame and the stone body. Settings: each row its pixel icon (music,
+--             speaker, monitor, camera shake, mouse; no emoji) and brown FredokaOne title; the 0..10 scale a BlockRow of
+--             10 between the - / + planks; the chips planks (selected = gold with its lip). Updates: each version a navy
+--             plank in FredokaOne gold, each line Nunito brown after a 6 px square bullet. Rebuilt when the screen
+--             changes size.
 --   CREDITS   (credits look B "Signed by the Maker", the owner's pick 2026-11-13) a Signboard window, not the neon panel:
 --             a small pink roof (ONE fixed-size piece, K.CR.ROOF_W x ROOF_H, never stretched with the window), a navy header
 --             with CREDITS (Theme Sign = LuckiestGuy, a dark drop line) and the drawn X, a wood frame round a cream body.
@@ -100,14 +107,24 @@ local K = {
 	ACTION = "NimbusMenuPlay",
 	WIN_W = 520,
 	WIN_H = 640,
-	NEW_GOLD = Theme.Neon.Gold,
 	INK = Theme.Colors.PanelInk or Color3.fromRGB(8, 10, 28),
 	WHITE = Color3.new(1, 1, 1),
-	GLYPH_MUSIC = "\240\159\142\181",
-	GLYPH_SOUND = "\240\159\148\138",
-	GLYPH_GFX = "\226\156\168",
-	GLYPH_SHAKE = "\240\159\147\183",
-	GLYPH_MOUSE = "\240\159\142\175",
+	-- (kit B U5) the Settings / Updates Signboard windows, design px of a 1080p screen
+	WIN = {
+		HEAD_Y = 15, -- the header under the awning (its lower edge hides behind the header)
+		HEAD_H = 64,
+		CLOSE = 44, -- the red Close plank
+		ICON = 27, -- the pixel icons (a multiple of 9)
+		PAD = 16, -- the list inside the stone body
+		BAR = 10, -- the scroll bar's room on the right
+		ROW_H = 102, -- a setting: its title line, then the strip
+		STRIP_Y = 42,
+		BTN = 52, -- - / + and the chips
+		GAP = 10,
+		BLOCK_GAP = 4,
+		BLOCK_H = 32,
+		BULLET = 6, -- the square bullet of an update line
+	},
 	MOUSE_HOLD = "MainMenu",
 	TOAST_HOLD = "MainMenu", -- NotifyController.SetHeld owner key (quick wins, win 1)
 	TAGLINE = "Climb the storm. Together.", -- when Config.Tagline is missing
@@ -962,7 +979,7 @@ function Menu.build(enter)
 			MainMenuController.Play()
 		end,
 	})
-	Menu.plankIcon(M.Ui.Play, "play", 30, Sign.Text)
+	Menu.plankIcon(M.Ui.Play, "play", 27, Sign.OnGrass) -- (U5) the label's dark green, like the pitch's icon (currentColor)
 	local halfW = math.floor((playW - B.GAP) / 2)
 	M.Ui.Settings = SignKit.Plank(body, {
 		Name = "SettingsButton",
@@ -976,7 +993,7 @@ function Menu.build(enter)
 			MainMenuController.OpenSettings()
 		end,
 	})
-	Menu.plankIcon(M.Ui.Settings, "gear", 22, Sign.Text)
+	Menu.plankIcon(M.Ui.Settings, "gear", 18, Sign.Text)
 	M.Ui.Updates = SignKit.Plank(body, {
 		Name = "UpdatesButton",
 		Text = "UPDATES",
@@ -989,10 +1006,13 @@ function Menu.build(enter)
 			MainMenuController.OpenUpdates()
 		end,
 	})
-	Menu.plankIcon(M.Ui.Updates, "scroll", 22, Sign.Text)
-	-- the one NEW marker: a gold pixel star on a dark tile at UPDATES' corner (shown while UpdateNotes.Latest > SeenNotes)
-	local badge = PixelIcon.New(M.Ui.Updates, "star", 26, Sign.Gold)
+	Menu.plankIcon(M.Ui.Updates, "scroll", 18, Sign.Text)
+	-- the one NEW marker: a gold pixel star on a dark tile at UPDATES' corner (shown while UpdateNotes.Latest > SeenNotes);
+	-- (U5) the star is drawn at 18 (a multiple of 9) and the tile grows round it by a 4 px padding
+	local badge = PixelIcon.New(M.Ui.Updates, "star", 18, Sign.Gold)
 	badge.Name = "NewBadge"
+	badge.Size = UDim2.fromOffset(26, 26)
+	Util.Create("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingTop = UDim.new(0, 4), Parent = badge })
 	badge.BackgroundTransparency = 0
 	badge.BackgroundColor3 = Sign.Text
 	badge.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1257,6 +1277,9 @@ function Win.close()
 	end
 	W.Name, W.Holder, W.Dock, W.Panel, W.Resize = nil, nil, nil, nil, nil
 	M.Settings.Rows = {}
+	if M.Ui.Swing then
+		M.Ui.Swing.Visible = true -- (U5) the title screen's board comes back (Win.open hid it behind a portrait sheet)
+	end
 	Win.bindBack(false)
 end
 
@@ -1293,131 +1316,251 @@ function Win.holder(name, prefW, prefH)
 	return holder
 end
 
-function Win.open(name, title, category, prefH)
+-- (kit B U5) a pixel icon in the middle of a plank's face (a plank with no text: Close, - and +); returns the icon
+function Win.mark(plank, name, colour, px)
+	local face = plank and plank:FindFirstChild("Face", true)
+	local icon = face and PixelIcon.New(face, name, px or K.WIN.ICON, colour)
+	if icon then
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.Position = UDim2.fromScale(0.5, 0.5)
+		icon.ZIndex = 4
+	end
+	return icon
+end
+
+-- (kit B U5) the window's scrolling list on the stone body (a 16 px margin, room for the scroll bar on the right, the
+-- body's lip kept clear)
+function Win.list(body)
+	local D, Z = K.WIN, SignKit.Sizes
+	local list = Instance.new("ScrollingFrame")
+	list.Name = "List"
+	list.BackgroundTransparency = 1
+	list.BorderSizePixel = 0
+	list.Position = UDim2.fromOffset(D.PAD, D.PAD)
+	list.Size = UDim2.new(1, -2 * D.PAD, 1, -(2 * D.PAD + Z.Lip))
+	list.CanvasSize = UDim2.new()
+	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	list.ScrollingDirection = Enum.ScrollingDirection.Y
+	list.ScrollBarThickness = 6
+	list.ScrollBarImageColor3 = Theme.Sign.Wood
+	list.ZIndex = 2
+	list.Parent = body
+	Util.Create("UIPadding", { PaddingRight = UDim.new(0, D.BAR), Parent = list })
+	Util.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 12),
+		Parent = list,
+	})
+	return list
+end
+
+-- (kit B U5, finding 5) a Signboard window like the title screen's board: the flat awning (one fixed-size piece), the
+-- navy header with `title` in the Title role (gold, stepped down until it fits), the pixel `icon` on its gold square and
+-- the red Close plank with the pixel x, the wood frame and the stone body holding the scrolling list. It is built at the
+-- docked design size and rebuilt by `reopen(true)` when the screen changes size (as Credits is). Returns the list and its
+-- content width (design px)
+function Win.open(name, title, icon, prefH, reopen)
 	local holder = Win.holder(name, K.WIN_W, prefH)
 	if not holder then
 		return nil
 	end
-	local W = M.Win
-	W.Panel = CloudUI.Panel({
-		Name = name .. "Panel",
+	local W, D, Z, Sign = M.Win, K.WIN, SignKit.Sizes, Theme.Sign
+	local w = holder.Size.X.Offset
+	local vp = H.viewport()
+	if M.Ui.Swing and vp.Y > vp.X then
+		-- a portrait sheet covers the docked title board but for its awning's ends: the board waits hidden (Win.close)
+		M.Ui.Swing.Visible = false
+	end
+	local sign = H.frame(name .. "Sign", { Size = UDim2.fromScale(1, 1) }, holder)
+	SignKit.Roof(sign, { Width = w + 20, ZIndex = 3 })
+	local room = w - 2 * Z.Rim - (12 + Z.IconSlot + 12) - (D.CLOSE + 20)
+	local size = Theme.RoleSize("Title")
+	while size > 22 do
+		local ok, m = pcall(Theme.Measure, title, "Title", size)
+		if not ok or not m or m.X <= room then
+			break
+		end
+		size = size - 2
+	end
+	local _, plate = SignKit.Header(sign, {
 		Title = title,
-		Closable = true,
-		Category = category,
-		Size = UDim2.new(1, 0, 1, 0),
-		OnClose = function()
+		TitleSize = size,
+		IconSlot = true,
+		Reserve = D.CLOSE + 20,
+		Y = D.HEAD_Y,
+		Height = D.HEAD_H,
+		ZIndex = 2,
+	})
+	local slot = plate:FindFirstChild("IconSlot")
+	local mark = slot and PixelIcon.New(slot, icon, D.ICON, Sign.Text)
+	if mark then
+		mark.AnchorPoint = Vector2.new(0.5, 0.5)
+		mark.Position = UDim2.fromScale(0.5, 0.5)
+	end
+	local close = SignKit.Plank(plate, {
+		Name = "Close",
+		Text = "",
+		Style = "Red",
+		Width = D.CLOSE,
+		Height = D.CLOSE,
+		LipPx = 6,
+		Edge = Sign.Text, -- the pitch's close X: an ink edge
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		ZIndex = 3,
+		Callback = function()
 			H.sound("Click")
 			Win.close()
 		end,
-		Parent = holder,
 	})
-	return W.Panel
+	Win.mark(close, "x", K.WHITE, 18)
+	local wood = SignKit.Frame(sign, { Y = D.HEAD_Y + D.HEAD_H, ZIndex = 1 })
+	local body = SignKit.Body(wood)
+	W.Panel = body
+	local list = Win.list(body)
+	local camera = Workspace.CurrentCamera
+	if camera and reopen then
+		-- one rebuild per burst of size changes (a window drag fires many)
+		local pending = false
+		W.Resize = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			if pending then
+				return
+			end
+			pending = true
+			task.defer(function()
+				if M.Win.Name == name and M.Win.Holder == holder then
+					H.safe(name .. " resize", reopen, true)
+				end
+			end)
+		end)
+	end
+	return list, w - 2 * Z.Frame - 2 * D.PAD - D.BAR
 end
 
--- a 0..10 setting: label, value, - [10 segments] +
-function Win.sliderRow(parent, key, title, glyph, order)
-	local row = H.frame("Row_" .. key, { Size = UDim2.new(1, 0, 0, 104), LayoutOrder = order }, parent)
-	H.label("Title", glyph .. "  " .. title, "Heading", 24, {
-		Size = UDim2.new(1, -90, 0, 34),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	}, row)
-	local value = H.label("Value", "", "Display", 28, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.fromOffset(90, 34),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	}, row)
-	local strip = H.frame("Strip", { Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 0, 52) }, row)
+-- a setting's title line on the stone: its pixel icon, the title (brown FredokaOne) and, for a scale, the value
+function Win.rowHead(row, title, icon, withValue, width)
+	local D, ink = K.WIN, Theme.TextOn("Stone")
+	local mark = PixelIcon.New(row, icon, D.ICON, ink)
+	if mark then
+		mark.Position = UDim2.fromOffset(0, 4)
+	end
+	local room = width - (D.ICON + 10 + (withValue and 90 or 0))
+	local size = 24
+	while size > 18 do
+		local ok, m = pcall(Theme.Measure, title, "Heading", size)
+		if not ok or not m or m.X <= room then
+			break
+		end
+		size = size - 1
+	end
+	local label = Theme.Label(title, "Heading", { Size = size, Color = ink })
+	label.Name = "Title"
+	label.Position = UDim2.fromOffset(D.ICON + 10, 0)
+	label.Size = UDim2.new(1, -(D.ICON + 10 + (withValue and 90 or 0)), 0, 34)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.Parent = row
+	if not withValue then
+		return nil
+	end
+	local value = Theme.Label("", "Display", { Size = 26, Color = ink })
+	value.Name = "Value"
+	value.AnchorPoint = Vector2.new(1, 0)
+	value.Position = UDim2.new(1, 0, 0, 0)
+	value.Size = UDim2.fromOffset(90, 34)
+	value.TextXAlignment = Enum.TextXAlignment.Right
+	value.Parent = row
+	return value
+end
+
+-- a 0..10 setting (kit B U5): the title line, then - [a SignKit BlockRow of 10, each block a tap target] +; the first
+-- <value> blocks are gold
+function Win.sliderRow(parent, key, title, icon, order, width)
+	local D = K.WIN
+	local row = H.frame("Row_" .. key, { Size = UDim2.new(1, 0, 0, D.ROW_H), LayoutOrder = order }, parent)
+	local value = Win.rowHead(row, title, icon, true, width)
+	local strip = H.frame("Strip", { Position = UDim2.fromOffset(0, D.STRIP_Y), Size = UDim2.new(1, 0, 0, D.BTN) }, row)
 	local function step(delta)
 		H.sound("Click")
 		ClientSettings.Set(key, (tonumber(ClientSettings.Get(key)) or 0) + delta)
 	end
-	NeonKit.Button({ Name = "Minus", Text = "-", Color = "Blue", Variant = "Outline", Size = UDim2.fromOffset(52, 52), TextSize = 30, Callback = function()
+	local minus = SignKit.Plank(strip, { Name = "Minus", Text = "", Width = D.BTN, Height = D.BTN, Callback = function()
 		step(-1)
-	end, Parent = strip })
-	NeonKit.Button({ Name = "Plus", Text = "+", Color = "Blue", Variant = "Outline", Size = UDim2.fromOffset(52, 52), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), TextSize = 30, Callback = function()
+	end })
+	Win.mark(minus, "minus", Theme.Sign.Text)
+	local plus = SignKit.Plank(strip, { Name = "Plus", Text = "", Width = D.BTN, Height = D.BTN, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Callback = function()
 		step(1)
-	end, Parent = strip })
-	local track = H.frame("Track", { Position = UDim2.fromOffset(64, 8), Size = UDim2.new(1, -128, 0, 36) }, strip)
-	Util.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 4),
-		Parent = track,
+	end })
+	Win.mark(plus, "plus", Theme.Sign.Text)
+	local trackW = width - 2 * (D.BTN + D.GAP)
+	local bw = math.max(10, math.floor((trackW - 9 * D.BLOCK_GAP) / 10))
+	local rowW = 10 * bw + 9 * D.BLOCK_GAP
+	local blocks = SignKit.BlockRow(strip, {
+		Count = 10,
+		BlockW = bw,
+		BlockH = D.BLOCK_H,
+		Gap = D.BLOCK_GAP,
+		Position = UDim2.fromOffset(D.BTN + D.GAP + math.floor((trackW - rowW) / 2), math.floor((D.BTN - SignKit.Sizes.Lip - D.BLOCK_H) / 2) + 2),
 	})
-	local segs = {}
 	for i = 1, 10 do
-		local seg = Instance.new("TextButton")
-		seg.Name = "Step" .. i
-		seg.Text = ""
-		seg.AutoButtonColor = false
-		seg.BorderSizePixel = 0
-		seg.Size = UDim2.new(0.1, -4, 0, 18 + i * 1.8)
-		seg.LayoutOrder = i
-		seg.BackgroundColor3 = K.WHITE
-		H.corner(seg, 5)
-		seg.Activated:Connect(function()
+		local tap = Instance.new("TextButton")
+		tap.Name = "Step" .. i
+		tap.Text = ""
+		tap.AutoButtonColor = false
+		tap.BackgroundTransparency = 1
+		tap.BorderSizePixel = 0
+		tap.Size = UDim2.fromScale(1, 1)
+		tap.ZIndex = 3
+		tap.Activated:Connect(function()
 			H.sound("Click")
 			local current = tonumber(ClientSettings.Get(key)) or 0
 			ClientSettings.Set(key, (current == i and i == 1) and 0 or i)
 		end)
-		seg.Parent = track
-		segs[i] = seg
+		tap.Parent = blocks:FindFirstChild("Block" .. i)
 	end
 	local function paint()
 		local v = tonumber(ClientSettings.Get(key)) or 0
 		value.Text = v == 0 and "OFF" or tostring(v)
-		for i, seg in ipairs(segs) do
-			local on = i <= v
-			seg.BackgroundColor3 = on and Theme.Neon.Cyan or Color3.fromRGB(46, 52, 96)
-			seg.BackgroundTransparency = on and 0 or 0.2
-		end
+		SignKit.FillBlocks(blocks, v)
 	end
 	paint()
 	M.Settings.Rows[key] = paint
 	return row
 end
 
--- chips: one of `options` ({ { Text, Value } }) for `key`
-function Win.chipRow(parent, key, title, glyph, options, order)
-	local row = H.frame("Row_" .. key, { Size = UDim2.new(1, 0, 0, 104), LayoutOrder = order }, parent)
-	H.label("Title", glyph .. "  " .. title, "Heading", 24, {
-		Size = UDim2.new(1, 0, 0, 34),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	}, row)
-	local strip = H.frame("Chips", { Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 0, 52) }, row)
-	Util.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 10),
-		Parent = strip,
-	})
+-- chips (kit B U5): one of `options` ({ { Text, Value } }) for `key`, as planks side by side; the selected one is gold
+-- with its lip (the pitch's .bt.sel: gold is "selected", green stays the one main action), the others stone. A chip is
+-- rebuilt when its state changes
+function Win.chipRow(parent, key, title, icon, options, order, width)
+	local D = K.WIN
+	local row = H.frame("Row_" .. key, { Size = UDim2.new(1, 0, 0, D.ROW_H), LayoutOrder = order }, parent)
+	Win.rowHead(row, title, icon, false, width)
+	local strip = H.frame("Chips", { Position = UDim2.fromOffset(0, D.STRIP_Y), Size = UDim2.new(1, 0, 0, D.BTN) }, row)
 	local chips = {}
 	local n = #options
-	-- the selected chip is a filled (Primary) green button, the others blue outlines; rebuilt on every change
+	local chipW = math.floor((width - D.GAP * (n - 1)) / n)
 	local function paint()
 		local v = ClientSettings.Get(key)
 		for i, opt in ipairs(options) do
 			local selected = v == opt[2]
 			local old = chips[i]
 			if not old or old:GetAttribute("Selected") ~= selected then
-				local chip = NeonKit.Button({
+				local chip = SignKit.Plank(strip, {
 					Name = "Chip_" .. tostring(opt[1]),
 					Text = opt[1],
-					Color = selected and "Green" or "Blue",
-					Variant = selected and "Primary" or "Outline",
-					Size = UDim2.new(1 / n, -math.ceil(10 * (n - 1) / n), 0, 52),
-					LayoutOrder = i,
+					Style = selected and "Gold" or "Stone",
+					Width = chipW,
+					Height = D.BTN,
 					TextSize = 22,
+					Position = UDim2.fromOffset((i - 1) * (chipW + D.GAP), 0),
+					LayoutOrder = i,
 					Callback = function()
 						H.sound("Click")
 						ClientSettings.Set(key, opt[2])
 					end,
 				})
 				chip:SetAttribute("Selected", selected)
-				chip.Parent = strip
 				if old then
 					old:Destroy()
 				end
@@ -1430,50 +1573,23 @@ function Win.chipRow(parent, key, title, glyph, options, order)
 	return row
 end
 
-function Win.list(panel)
-	local list = Instance.new("ScrollingFrame")
-	list.Name = "List"
-	list.BackgroundTransparency = 1
-	list.BorderSizePixel = 0
-	list.Size = UDim2.fromScale(1, 1)
-	list.CanvasSize = UDim2.new()
-	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	list.ScrollingDirection = Enum.ScrollingDirection.Y
-	list.ScrollBarThickness = 6
-	list.ScrollBarImageColor3 = K.WHITE
-	list.ZIndex = 5
-	list.Parent = panel.Content
-	Util.Create("UIPadding", {
-		PaddingTop = UDim.new(0, 14),
-		PaddingBottom = UDim.new(0, 14),
-		PaddingLeft = UDim.new(0, 18),
-		PaddingRight = UDim.new(0, 18),
-		Parent = list,
-	})
-	Util.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Vertical,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 12),
-		Parent = list,
-	})
-	return list
-end
-
-function MainMenuController.OpenSettings()
-	local panel = Win.open("Settings", "Settings", "Settings", K.WIN_H)
-	if not panel then
+-- quiet: a rebuild after a screen resize (no click, the window was already open)
+function MainMenuController.OpenSettings(quiet)
+	local list, width = Win.open("Settings", "SETTINGS", "gear", K.WIN_H, MainMenuController.OpenSettings)
+	if not list then
 		return
 	end
-	H.sound("Click")
-	local list = Win.list(panel)
-	Win.sliderRow(list, "Music", "Music", K.GLYPH_MUSIC, 1)
-	Win.sliderRow(list, "Sfx", "Sound", K.GLYPH_SOUND, 2)
-	Win.chipRow(list, "Gfx", "Graphics", K.GLYPH_GFX, { { "AUTO", "Auto" }, { "LOW", "Low" }, { "HIGH", "High" } }, 3)
-	Win.chipRow(list, "Shake", "Camera shake", K.GLYPH_SHAKE, { { "ON", true }, { "OFF", false } }, 4)
+	if quiet ~= true then
+		H.sound("Click")
+	end
+	Win.sliderRow(list, "Music", "Music", "music", 1, width)
+	Win.sliderRow(list, "Sfx", "Sound", "speaker", 2, width)
+	Win.chipRow(list, "Gfx", "Graphics", "monitor", { { "AUTO", "Auto" }, { "LOW", "Low" }, { "HIGH", "High" } }, 3, width)
+	Win.chipRow(list, "Shake", "Camera shake", "shake", { { "ON", true }, { "OFF", false } }, 4, width)
 	local desktop = H.isDesktop()
 	if desktop then
 		-- (bug batch 2 #21: on by default; the key that frees it is in the note below)
-		Win.chipRow(list, "MouseLock", "Mouse lock (recommended)", K.GLYPH_MOUSE, { { "ON", true }, { "OFF", false } }, 5)
+		Win.chipRow(list, "MouseLock", "Mouse lock (recommended)", "mouse", { { "ON", true }, { "OFF", false } }, 5, width)
 	end
 	local note = "Low graphics hides small decorations and glow. Saved to your account."
 	if desktop then
@@ -1481,46 +1597,95 @@ function MainMenuController.OpenSettings()
 		local free = (ml and ml.KEY_NAME) and (" (press " .. ml.KEY_NAME .. " to free it)") or ""
 		note = "Mouse lock: the mouse turns the camera" .. free .. ". Low graphics hides small decorations and glow. Saved to your account."
 	end
-	H.label("Note", note, "Label", 18, {
-		Outline = 2,
-		Color = Color3.fromRGB(206, 210, 240),
-		TextWrapped = true,
-		Size = UDim2.new(1, 0, 0, desktop and 72 or 48),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 6,
-	}, list)
+	local label = Theme.Label(note, "Label", { Size = 18, Color = Theme.Sign.TextMuted })
+	label.Name = "Note"
+	label.TextWrapped = true
+	label.AutomaticSize = Enum.AutomaticSize.Y
+	label.Size = UDim2.new(1, 0, 0, 24)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Top
+	label.LayoutOrder = 6
+	label.Parent = list
 end
 
-function MainMenuController.OpenUpdates()
-	local panel = Win.open("Updates", "What's new", "Index", K.WIN_H)
-	if not panel then
+-- an update's version head (kit B U5): a navy plank (the pitch's sign: a gold-lip edge, a darker navy lip) with
+-- "vN · Title" in FredokaOne gold, stepped down until it fits, then truncated
+function Win.versionHead(parent, name, text, order, width, newest)
+	local Z, Sign = SignKit.Sizes, Theme.Sign
+	local h = newest and 50 or 44
+	local head = H.frame(name, { Size = UDim2.new(1, 0, 0, h), LayoutOrder = order }, parent)
+	local block = H.frame("Block", { BackgroundTransparency = 0, BackgroundColor3 = Sign.GoldLip, Size = UDim2.fromScale(1, 1) }, head)
+	H.frame("Lip", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Sign.NavyLip,
+		Position = UDim2.fromOffset(Z.Edge, Z.Edge),
+		Size = UDim2.new(1, -2 * Z.Edge, 1, -2 * Z.Edge),
+	}, block)
+	local face = H.frame("Face", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Sign.Navy,
+		Position = UDim2.fromOffset(Z.Edge, Z.Edge),
+		Size = UDim2.new(1, -2 * Z.Edge, 1, -(2 * Z.Edge + 6)),
+		ZIndex = 2,
+	}, block)
+	local size = newest and 24 or 21
+	local room = width - 2 * Z.Edge - 24
+	while size > 16 do
+		local ok, m = pcall(Theme.Measure, text, "Heading", size)
+		if not ok or not m or m.X <= room then
+			break
+		end
+		size = size - 1
+	end
+	local label = Theme.Label(text, "Heading", { Size = size, Color = Sign.Gold })
+	label.Name = "Label"
+	label.Position = UDim2.fromOffset(12, 0)
+	label.Size = UDim2.new(1, -24, 1, 0)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.ZIndex = 3
+	label.Parent = face
+	return head
+end
+
+-- an update's line (kit B U5): a 6 px square bullet, then the text in Nunito brown on the stone, as tall as it wraps
+function Win.noteLine(parent, name, text, order)
+	local D, ink = K.WIN, Theme.TextOn("Stone")
+	local line = H.frame(name, { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order }, parent)
+	H.frame("Bullet", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.Wood,
+		Position = UDim2.fromOffset(4, 9),
+		Size = UDim2.fromOffset(D.BULLET, D.BULLET),
+	}, line)
+	local label = Theme.Label(tostring(text), "Body", { Size = 19, Color = ink })
+	label.Name = "Text"
+	label.Position = UDim2.fromOffset(4 + D.BULLET + 10, 0)
+	label.Size = UDim2.new(1, -(4 + D.BULLET + 10), 0, 24)
+	label.AutomaticSize = Enum.AutomaticSize.Y
+	label.TextWrapped = true
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Top
+	label.Parent = line
+	return line
+end
+
+-- quiet: a rebuild after a screen resize (no click, the window was already open)
+function MainMenuController.OpenUpdates(quiet)
+	local list, width = Win.open("Updates", "WHAT'S NEW", "scroll", K.WIN_H, MainMenuController.OpenUpdates)
+	if not list then
 		return
 	end
-	H.sound("Click")
+	if quiet ~= true then
+		H.sound("Click")
+	end
 	local notes = H.notes()
-	local list = Win.list(panel)
 	local order = 0
 	for _, note in ipairs(notes and notes.Notes or {}) do
 		order = order + 1
-		local newest = order == 1
-		H.label("Head" .. order, "v" .. tostring(note.Version) .. "  " .. tostring(note.Title or ""), "Heading", newest and 26 or 22, {
-			Outline = 2,
-			Color = newest and K.NEW_GOLD or K.WHITE,
-			TextWrapped = true,
-			AutomaticSize = Enum.AutomaticSize.Y,
-			Size = UDim2.new(1, 0, 0, 30),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = order * 100,
-		}, list)
+		Win.versionHead(list, "Head" .. order, "v" .. tostring(note.Version) .. " \194\183 " .. tostring(note.Title or ""), order * 100, width, order == 1)
 		for i, line in ipairs(note.Lines or {}) do
-			H.label("Line" .. order .. "_" .. i, "\226\128\162  " .. tostring(line), "Body", 19, {
-				Outline = 2,
-				TextWrapped = true,
-				AutomaticSize = Enum.AutomaticSize.Y,
-				Size = UDim2.new(1, 0, 0, 24),
-				TextXAlignment = Enum.TextXAlignment.Left,
-				LayoutOrder = order * 100 + i,
-			}, list)
+			Win.noteLine(list, "Line" .. order .. "_" .. i, line, order * 100 + i)
 		end
 	end
 	if notes and tonumber(notes.Latest) then

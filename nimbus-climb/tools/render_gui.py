@@ -12,7 +12,7 @@ portal[:<Id>[:<players>[:<studs>]]] (a portal's world GUIs mirrored flat: the pi
 countdown face as big as it looks from <studs> away; Phase 5: portal:Obby), battle[:<mode>[:<phase>]]
 (battle:<fighter|raid|duel|spectate|dungeon|ring>), arena[:<view>] (arena:practice, arena:dungeon[:<view>]),
 dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], mainmenu, loading,
-settings, or a .json dump written earlier with --json.
+settings, updates (kit B U5: the WHAT'S NEW window), or a .json dump written earlier with --json.
 
 How it works: tools/dump_gui.lua runs inside a lupa Lua world booted like tools/smoke.py boots its client world
 (tools/robloxmock.lua, src/ mounted per default.project.json, the viewport set to --size, a touch device when the
@@ -77,7 +77,7 @@ SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "coun
              "home", "home:coins", "feed", "garden", "train", "evolve", "ring", "ring:new", "petcards",
              # Phase 5: the fighter HUD (battleclient), the careui windows, the Neon kit (neonkit), the menu (menu)
              "battle:fighter", "battle:raid", "battle:duel", "battle:spectate", "battle:dungeon", "looks", "looks:epic",
-             "stats", "fusion", "fusion:mix", "neon", "neon:window", "neon:hud", "neon:party", "mainmenu", "loading", "settings",
+             "stats", "fusion", "fusion:mix", "neon", "neon:window", "neon:hud", "neon:party", "mainmenu", "loading", "settings", "updates",
              # Phase 5 (dungeonclient): the Battle Arena window and its tabs, the Dungeon window / run card views, the
              # Sky Obby picker, the one obby portal
              "arena", "arena:duels", "arena:raid", "arena:leaders", "arena:practice", "arena:dungeon", "arena:dungeon:party",

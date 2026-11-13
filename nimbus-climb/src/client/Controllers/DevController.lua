@@ -1247,6 +1247,15 @@ function DevController.Open()
 			return false
 		end
 	end
+	-- (kit B U5) a main menu window (Settings / Updates / Credits) sits above this gui: it closes, so the panel's lower rows
+	-- (Restart / Skip tutorial) never peek out from under it (opening one of those windows closes the panel the same way)
+	local mmcModule = script.Parent:FindFirstChild("MainMenuController")
+	local okMenu, mmc = pcall(function()
+		return mmcModule and require(mmcModule)
+	end)
+	if okMenu and type(mmc) == "table" and type(mmc.Window) == "function" and mmc.Window() ~= nil then
+		guard("menu window", mmc.CloseWindows)
+	end
 	panelOpen = true
 	openedAt = os.clock()
 	disarm(Reset)

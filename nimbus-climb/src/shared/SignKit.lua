@@ -9,8 +9,9 @@
 --                                 head, plate (the caller adds a close X to the plate)
 --   SignKit.Frame(parent, opts)   the wood frame under the header
 --   SignKit.Body(frame, opts)     the stone body inside it, with the stone lip along its bottom
---   SignKit.Plank(parent, opts)   a button with a real bottom lip: hover lifts the block 2 px, press moves the face down
---                                 onto the lip; SignKit.PlankState(plank, "Rest" | "Hover" | "Press") sets one directly
+--   SignKit.Plank(parent, opts)   a button with a real bottom lip: hover lifts the block 2 px, press sinks it 4 px and the
+--                                 lip shrinks to 2 px (U5: the pitch's .dn); the label shrinks to fit, then truncates;
+--                                 Style Off is disabled; SignKit.PlankState(plank, "Rest" | "Hover" | "Press") sets one
 --   SignKit.Rope(parent, opts)    a rope / post the board hangs from
 --   SignKit.BlockRow(parent, opts) n stone blocks with a darker lip; SignKit.FillBlocks(row, k) turns the first k gold
 --   SignKit.Notice(parent, opts)  a small wood-framed stone card (a tip, a notice); returns notice, face
@@ -30,7 +31,7 @@ SignKit.Sizes = {
 	RoofEdge = 4, -- the dark border round the awning
 	RoofLip = 5, -- its darker bottom lip
 	HeadH = 64,
-	Rim = 5, -- the header's wood rim (top, left, right; the frame below closes it)
+	Rim = 6, -- the header's wood rim (top, left, right; the frame below closes it): the frame's width, so the edge runs straight
 	TitleX = 18,
 	IconSlot = 42, -- the gold icon square in a header
 	Frame = 6, -- the wood frame round a body
@@ -38,7 +39,10 @@ SignKit.Sizes = {
 	Lip = 8, -- a block's darker bottom lip
 	PlankH = 50,
 	Hover = 2, -- hover lifts a plank this far
-	PressLip = 2, -- the lip left showing under a pressed face
+	Sink = 4, -- press sinks the whole plank this far (the pitch's .dn translateY 4px) ...
+	PressLip = 2, -- ... and its lip shrinks to this (.dn lip 2px)
+	LabelPad = 6, -- a plank label's room inside the face, each side
+	NoticeGap = 18, -- a notice's icon square to its text
 	RopeW = 6,
 	BlockW = 28,
 	BlockH = 22,
@@ -53,10 +57,10 @@ local Z = SignKit.Sizes
 -- plank looks: face, lip, edge, text (the pitch's .bt, .bt.pri, .bt.sel, .bt.dng, .bt.off and the navy sign)
 SignKit.Styles = {
 	Stone = { Face = Sign.Tile, Lip = Sign.StoneLip, Edge = Sign.Wood, Text = Sign.Text },
-	Grass = { Face = Sign.Grass, Lip = Sign.GrassLip, Edge = Sign.Wood, Text = Sign.Text },
+	Grass = { Face = Sign.Grass, Lip = Sign.GrassLip, Edge = Sign.Wood, Text = Sign.OnGrass },
 	Gold = { Face = Sign.Gold, Lip = Sign.GoldLip, Edge = Sign.Wood, Text = Sign.Text },
 	Red = { Face = Sign.Red, Lip = Sign.RedLip, Edge = Sign.Wood, Text = Color3.new(1, 1, 1) },
-	Navy = { Face = Sign.Navy, Lip = Sign.NavyLip, Edge = Sign.Wood, Text = Sign.Gold },
+	Navy = { Face = Sign.Navy, Lip = Sign.NavyLip, Edge = Sign.GoldLip, Text = Sign.Gold }, -- the pitch's sign edge (--signEdge)
 	Off = { Face = Sign.Well, Lip = Sign.Well, Edge = Sign.WellEdge, Text = Sign.TextMuted, Off = true },
 }
 
@@ -282,7 +286,8 @@ end
 -- plank (button)
 ----------------------------------------------------------------------
 
--- the block / face offsets of a state (no size ever changes)
+-- the block offset and the lip a state shows (the plank and the block keep their size): hover lifts the block Hover px;
+-- press sinks it Sink px and the face grows down over the lip until PressLip px of it shows (the pitch's .dn)
 function SignKit.PlankState(plank, state)
 	local block = plank and plank:FindFirstChild("Block")
 	local face = block and block:FindFirstChild("Face")
@@ -297,14 +302,29 @@ function SignKit.PlankState(plank, state)
 	if state ~= "Hover" and state ~= "Press" then
 		state = "Rest"
 	end
-	block.Position = UDim2.fromOffset(0, state == "Hover" and -Z.Hover or 0)
-	face.Position = UDim2.fromOffset(e, state == "Press" and (e + lip - Z.PressLip) or e)
+	local shown = state == "Press" and math.min(lip, Z.PressLip) or lip
+	block.Position = UDim2.fromOffset(0, (state == "Hover" and -Z.Hover) or (state == "Press" and Z.Sink) or 0)
+	face.Position = UDim2.fromOffset(e, e)
+	face.Size = UDim2.new(1, -2 * e, 1, -(2 * e + shown))
 	plank:SetAttribute("PlankState", state)
 end
 
--- opts: Text, Style (SignKit.Styles name, default Stone), Width, Height, TextSize, Face / Lip / Edge / TextColor
--- overrides, LipPx (the lip's height, default Sizes.Lip), IconSlot (a square left of the label for a PixelIcon), Callback
--- (on Activated; not for Style Off)
+-- the label's size: `size` stepped down until the text fits `room` px (Theme.Measure, Button role), never under 14
+local function fitSize(textValue, size, room)
+	while size > 14 do
+		local ok, m = pcall(Theme.Measure, textValue, "Button", size)
+		if not ok or not m or m.X <= room then
+			break
+		end
+		size = size - 1
+	end
+	return size
+end
+
+-- opts: Text, Style (SignKit.Styles name, default Stone), Width, Height, TextSize (stepped down to fit the face, then the
+-- label truncates), Face / Lip / Edge / TextColor overrides, LipPx (the lip's height, default Sizes.Lip), IconSlot (a
+-- square left of the label for a PixelIcon), Callback (on Activated). Style Off is disabled: not Active, not Selectable,
+-- no callback, it never moves
 function SignKit.Plank(parent, opts)
 	opts = opts or {}
 	local look = SignKit.Styles[opts.Style or "Stone"] or SignKit.Styles.Stone
@@ -318,6 +338,8 @@ function SignKit.Plank(parent, opts)
 	plank.BackgroundTransparency = 1
 	plank.BorderSizePixel = 0
 	plank.Size = UDim2.fromOffset(w, h)
+	plank.Active = not look.Off
+	plank.Selectable = not look.Off
 	plank:SetAttribute("EdgePx", e)
 	plank:SetAttribute("LipPx", lip)
 	if look.Off then
@@ -344,9 +366,11 @@ function SignKit.Plank(parent, opts)
 		}, face)
 		x = 10 + px
 	end
-	text("Label", opts.Text, "Button", tonumber(opts.TextSize) or 22, opts.TextColor or look.Text, {
+	local room = w - 2 * e - x - 2 * Z.LabelPad
+	text("Label", opts.Text, "Button", fitSize(tostring(opts.Text or ""), tonumber(opts.TextSize) or 22, room), opts.TextColor or look.Text, {
 		Position = UDim2.fromOffset(x, 0),
 		Size = UDim2.new(1, -x, 1, 0),
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 3,
 	}, face)
 	plank.MouseEnter:Connect(function()
@@ -466,7 +490,7 @@ function SignKit.Notice(parent, opts)
 			Size = UDim2.fromOffset(px, px),
 			ZIndex = 2,
 		}, face)
-		x = 10 + px + 10
+		x = 10 + px + Z.NoticeGap -- (U5) the text keeps clear of the icon at the phones' 0.8 scale too
 	end
 	if opts.Text then
 		text("Text", opts.Text, "Body", tonumber(opts.TextSize) or 18, Theme.TextOn("Stone"), {
