@@ -47,6 +47,18 @@
 --                             over Zone.Late (2.5 s)
 --   dungeon_end_fade_tweens_out (client) End under the black fade: the light pops at 0 s (unseen) and the frame tweens out
 --                             over Transitions.Screen.Lift (0.3 s), then the overlay is off
+--   S4 (air colours and thin Terrain clouds, staged; sky audit F6, world clouds 6; PICK behind Config.Preview):
+--   sky_air_v2_off_by_default (server world, pure) SkyAir / ThinClouds are false; Config.Sky.AirV2 has a Color / Decay per
+--                             phase and CloudsV2 a resting Cover <= 0.25 / Density <= 0.3; with the switches off every
+--                             sampled preset (the loop every 2 s, raids in / out at Day and Night, raid to raid) is
+--                             byte-equal to the one made with no V2 tables (S1's), and at rest each look shows its own air
+--                             and clouds
+--   sky_air_v2_floor          (server world, pure) with both on: the readability floor (Brightness >= 1, OutdoorAmbient
+--                             >= 70, tint near white), Density <= 0.7, Cover <= 1 at every sampled preset; at rest a
+--                             phase's air = AirV2 (a raid keeps its own) and every look's clouds are thin; each AirV2
+--                             Color has a channel >= Floor.OutdoorAmbientMin (provisional, never near black); the bridge
+--                             still lifts the cover and the cloud Density to their peaks (Transitions Cover /
+--                             CloudDensity; phase changes and raids); each switch alone moves only its group
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -372,6 +384,247 @@ local function serverScenarios()
 		end
 		tally:report()
 		T.check(n == 8, fmt("4 phases + 4 raids checked (%d)", n))
+	end)
+
+	-- S4 (sky audit F6, world clouds 6; PICK): the air coloured from the painted skies (Config.Sky.AirV2) and the thin
+	-- Terrain clouds (Config.Sky.CloudsV2), staged behind Config.Preview.SkyAir / ThinClouds for the morning A/B
+	local PHASES = { "Dawn", "Day", "Sunset", "Night" }
+
+	-- byte-equal: the same keys, numbers ==, Color3 channels ==, nothing within a tolerance
+	-- (eps: the rest checks against a look allow a float step, a blend of 1 is a Lerp; the byte-equal checks pass none)
+	local function exact(a, b, path, eps)
+		eps = eps or 0
+		if type(a) ~= type(b) or typeof(a) ~= typeof(b) then
+			return false, path .. ": " .. typeof(a) .. " vs " .. typeof(b)
+		end
+		if isColor(a) then
+			return abs(a.R - b.R) <= eps and abs(a.G - b.G) <= eps and abs(a.B - b.B) <= eps, path .. ": " .. tostring(a) .. " vs " .. tostring(b)
+		end
+		if type(a) == "number" then
+			return abs(a - b) <= eps, path .. fmt(": %.9g vs %.9g", a, b)
+		end
+		if type(a) == "table" then
+			for k, v in pairs(a) do
+				local ok, why = exact(v, b[k], path .. "." .. tostring(k), eps)
+				if not ok then
+					return false, why
+				end
+			end
+			for k in pairs(b) do
+				if a[k] == nil then
+					return false, path .. "." .. tostring(k) .. " only on one side"
+				end
+			end
+			return true
+		end
+		return a == b, path .. ": " .. tostring(a) .. " vs " .. tostring(b)
+	end
+
+	local function sortedKeys(map)
+		local out = {}
+		for k in pairs(map) do
+			out[#out + 1] = k
+		end
+		table.sort(out)
+		return out
+	end
+
+	-- every preset the sky shows, sampled: the whole loop every 2 s, each raid in (and out) at Day and at Night, raid
+	-- to raid. { { label, preset, theme } ... } in a fixed order
+	local function everyPreset(SC, cfg)
+		local out = {}
+		for t = 0, 1200, 2 do
+			local p, theme = SC.Preset(SC.At(t, 0, 1, 0), nil, 0, faces)
+			out[#out + 1] = { fmt("loop t %d", t), p, theme }
+		end
+		local bosses = sortedKeys(cfg.RaidThemes)
+		for _, bossId in ipairs(bosses) do
+			for _, t in ipairs({ 300, 1100 }) do
+				for i = 0, 20 do
+					local p, theme = SC.Preset(SC.At(t, 0, 1, 0), bossId, i / 20, faces)
+					out[#out + 1] = { fmt("%s t %d blend %.2f", bossId, t, i / 20), p, theme }
+				end
+			end
+		end
+		for i = 0, 20 do
+			local p, theme = SC.Preset(SC.At(1100, 0, 1, 0), "lava_golem", i / 20, faces, "storm_titan", 1)
+			out[#out + 1] = { fmt("storm -> lava blend %.2f", i / 20), p, theme }
+		end
+		return out
+	end
+
+	-- run fn with Config.Preview's two sky switches set, and put them back even when fn errors
+	local function withSwitches(Config, skyAir, thinClouds, fn)
+		local saved = { SkyAir = Config.Preview.SkyAir, ThinClouds = Config.Preview.ThinClouds }
+		Config.Preview.SkyAir, Config.Preview.ThinClouds = skyAir, thinClouds
+		local ok, err = pcall(fn)
+		Config.Preview.SkyAir, Config.Preview.ThinClouds = saved.SkyAir, saved.ThinClouds
+		if not ok then
+			error(err, 0)
+		end
+	end
+
+	-- AirV2 = a Color / Decay per phase, CloudsV2 = resting Cover <= 0.25 and Density <= 0.3 (world clouds 6: haze, not
+	-- weather); one failed check and nil
+	local function v2(cfg)
+		local air, thin = cfg.AirV2, cfg.CloudsV2
+		local shape = T.tally("Config.Sky.AirV2: an Atmosphere Color and Decay (Color3) for each of the four phases")
+		for _, phase in ipairs(PHASES) do
+			local a = type(air) == "table" and air[phase]
+			shape:case(type(a) == "table" and isColor(a.Color) and isColor(a.Decay), phase .. ": " .. tostring(a))
+		end
+		local okAir = shape:report()
+		local okThin = type(thin) == "table" and type(thin.Cover) == "number" and type(thin.Density) == "number" and thin.Cover >= 0 and thin.Cover <= 0.25 and thin.Density >= 0 and thin.Density <= 0.3
+		T.check(okThin, "Config.Sky.CloudsV2: resting Cover <= 0.25 and Density <= 0.3", type(thin) == "table" and fmt("Cover %s, Density %s", tostring(thin.Cover), tostring(thin.Density)) or "missing")
+		if not (okAir and okThin) then
+			return nil
+		end
+		return air, thin
+	end
+
+	S.sky_air_v2_off_by_default = guarded("sky_air_v2_off_by_default", function()
+		local SC, cfg = sky()
+		local Config = loadModule("Config")
+		if not SC or not Config then
+			return
+		end
+		T.check(type(Config.Preview) == "table" and Config.Preview.SkyAir == false and Config.Preview.ThinClouds == false, "Config.Preview.SkyAir and ThinClouds are false on the branch default")
+		-- the live tables are saved as they are (v2 is nil after a failed shape check: restoring its result would leave
+		-- Config.Sky without them for every later scenario)
+		local rawAir, rawThin = cfg.AirV2, cfg.CloudsV2
+		v2(cfg)
+		-- with both switches off the V2 tables change nothing: every sampled preset is byte-equal to the one SkyCycle
+		-- makes with no AirV2 / CloudsV2 at all (S1's code path)
+		local now = everyPreset(SC, cfg)
+		cfg.AirV2, cfg.CloudsV2 = nil, nil
+		local ok, before = pcall(everyPreset, SC, cfg)
+		cfg.AirV2, cfg.CloudsV2 = rawAir, rawThin
+		if not T.check(ok, "the presets without AirV2 / CloudsV2", tostring(before)) then
+			return
+		end
+		local tally = T.tally(fmt("switches off: all %d sampled presets (loop, raids in / out, raid to raid) byte-equal to S1's", #now))
+		for i, s in ipairs(now) do
+			local same, why = exact(s[2], before[i][2], "preset")
+			tally:case(same and s[3] == before[i][3], s[1] .. " " .. tostring(why))
+		end
+		tally:report()
+		-- and at rest each look shows its own Config.Sky.Looks air and clouds, exactly
+		local rest = T.tally("switches off: at rest each phase / raid shows its own look's Atmosphere Color / Decay and Clouds Cover / Density")
+		local start = 0
+		for _, phase in ipairs(cfg.Cycle.Order) do
+			local p = SC.Preset(SC.At(start + 10, 0, 1, 0), nil, 0, faces)
+			local look = cfg.Looks[phase]
+			for _, pair in ipairs({ { "Atmosphere", "Color" }, { "Atmosphere", "Decay" }, { "Clouds", "Cover" }, { "Clouds", "Density" } }) do
+				local same, why = exact(p[pair[1]][pair[2]], look[pair[1]][pair[2]], phase .. "." .. pair[1] .. "." .. pair[2], 1e-6)
+				rest:case(same, why)
+			end
+			start = start + cfg.Cycle.Seconds[phase]
+		end
+		for _, bossId in ipairs(sortedKeys(cfg.RaidThemes)) do
+			local p = SC.Preset(SC.At(300, 0, 1, 0), bossId, 1, faces)
+			local look = cfg.Looks[bossId]
+			for _, pair in ipairs({ { "Atmosphere", "Color" }, { "Atmosphere", "Decay" }, { "Clouds", "Cover" }, { "Clouds", "Density" } }) do
+				local same, why = exact(p[pair[1]][pair[2]], look[pair[1]][pair[2]], bossId .. "." .. pair[1] .. "." .. pair[2], 1e-6)
+				rest:case(same, why)
+			end
+		end
+		rest:report()
+	end)
+
+	S.sky_air_v2_floor = guarded("sky_air_v2_floor", function()
+		local SC, cfg, tr = sky()
+		local Config = loadModule("Config")
+		if not SC or not Config or type(Config.Preview) ~= "table" then
+			return
+		end
+		local air, thin = v2(cfg)
+		if not air then
+			return
+		end
+		local floorB, floorA, tintMin = cfg.Floor.Brightness, cfg.Floor.OutdoorAmbientMin / 255, 1 - cfg.Floor.TintMax / 255
+		-- the rest point of each phase (10 s in: blend 0) and of each raid (blend 1)
+		local function restPoints()
+			local out, start = {}, 0
+			for _, phase in ipairs(cfg.Cycle.Order) do
+				out[#out + 1] = { phase, SC.Preset(SC.At(start + 10, 0, 1, 0), nil, 0, faces) }
+				start = start + cfg.Cycle.Seconds[phase]
+			end
+			for _, bossId in ipairs(sortedKeys(cfg.RaidThemes)) do
+				out[#out + 1] = { bossId, SC.Preset(SC.At(300, 0, 1, 0), bossId, 1, faces) }
+			end
+			return out
+		end
+		local off = restPoints()
+		withSwitches(Config, true, true, function()
+			-- the floor of sky_floor and skycycle_bridge_keeps_floor at every sampled preset, bridges included
+			local tally = T.tally("switches on: every sampled preset keeps Brightness >= 1, OutdoorAmbient >= 70, the tint near white, Density <= 0.7, Cover <= 1, Haze <= 10")
+			for _, s in ipairs(everyPreset(SC, cfg)) do
+				local p, label = s[2], s[1]
+				local L, atm, cl, cc = p.Lighting or {}, p.Atmosphere or {}, p.Clouds or {}, p.ColorCorrection or {}
+				local oa, tc = L.OutdoorAmbient, cc.TintColor
+				tally:case(type(L.Brightness) == "number" and L.Brightness >= floorB - 1e-9, label .. " Brightness " .. tostring(L.Brightness))
+				tally:case(isColor(oa) and oa.R >= floorA - 1e-9 and oa.G >= floorA - 1e-9 and oa.B >= floorA - 1e-9, label .. " OutdoorAmbient " .. tostring(oa))
+				tally:case(tc == nil or (isColor(tc) and tc.R >= tintMin - 1e-9 and tc.G >= tintMin - 1e-9 and tc.B >= tintMin - 1e-9), label .. " TintColor " .. tostring(tc))
+				tally:case(type(atm.Density) == "number" and atm.Density <= 0.7 + 1e-9, label .. " Density " .. tostring(atm.Density))
+				tally:case(type(cl.Cover) == "number" and cl.Cover <= 1 + 1e-9, label .. " Cover " .. tostring(cl.Cover))
+				tally:case(type(atm.Haze) == "number" and atm.Haze <= 10, label .. " Haze " .. tostring(atm.Haze))
+			end
+			tally:report()
+			-- at rest: each phase's air is its AirV2 colour (a raid keeps its own), every look's clouds are thin
+			local rest = T.tally("switches on: at rest a phase's Atmosphere Color / Decay = AirV2 (a raid keeps its look's), Cover <= CloudsV2.Cover, Density <= CloudsV2.Density")
+			for _, r in ipairs(restPoints()) do
+				local id, p = r[1], r[2]
+				local want = air[id] or cfg.Looks[id].Atmosphere
+				for _, prop in ipairs({ "Color", "Decay" }) do
+					local same, why = exact(p.Atmosphere[prop], want[prop], id .. ".Atmosphere." .. prop, 1e-6)
+					rest:case(same, why)
+				end
+				rest:case(p.Clouds.Cover <= thin.Cover + 1e-9, fmt("%s Cover %.3f", id, p.Clouds.Cover))
+				rest:case(p.Clouds.Density <= thin.Density + 1e-9, fmt("%s Density %.3f", id, p.Clouds.Density))
+			end
+			rest:report()
+			-- the air itself is never near black (night is indigo, never black): far platforms and islands fade toward
+			-- Atmosphere Color, so each AirV2 Color's brightest channel >= Floor.OutdoorAmbientMin. A provisional bound
+			-- until the owner's A/B frame sets the real one. Decay is not bounded: under the painted skies Glare is 0, so
+			-- the engine never shows it
+			local bright = T.tally(fmt("AirV2: each phase's Atmosphere Color has a channel >= %d / 255 (never near black)", cfg.Floor.OutdoorAmbientMin))
+			for _, phase in ipairs(PHASES) do
+				local c = air[phase].Color
+				bright:case(max(c.R, c.G, c.B) >= floorA - 1e-9, fmt("%s Color %.0f, %.0f, %.0f", phase, c.R * 255, c.G * 255, c.B * 255))
+			end
+			bright:report()
+			-- the bridge still raises the cloud deck from the thin rest to its peak around each skybox swap: Cover and
+			-- Density both (Atmosphere Density does not veil the skybox itself, the deck and the haze do)
+			local cycleDeck, raidDeck = tr.Cycle.CloudDensity, tr.Raid.CloudDensity
+			if not T.check(type(cycleDeck) == "number" and type(raidDeck) == "number", "Config.Sky.Transitions.Cycle / Raid.CloudDensity (the bridge's cloud Density peak)", fmt("%s / %s", tostring(cycleDeck), tostring(raidDeck))) then
+				return
+			end
+			for i, phase in ipairs(cfg.Cycle.Order) do
+				local nextPhase = cfg.Cycle.Order[i % #cfg.Cycle.Order + 1]
+				if cfg.Themes[phase] ~= cfg.Themes[nextPhase] then
+					local peak = SC.Preset({ Phase = phase, Next = nextPhase, T = 0.99, Blend = 0.5 }, nil, 0, faces)
+					T.check(peak.Clouds.Cover >= tr.Cycle.Cover - 1e-9 and peak.Clouds.Cover > thin.Cover + 0.3, fmt("switches on: %s -> %s bridge peak Cover %.2f (Transitions.Cycle.Cover %.2f, rest %.2f)", phase, nextPhase, peak.Clouds.Cover, tr.Cycle.Cover, thin.Cover))
+					T.check(peak.Clouds.Density >= cycleDeck - 1e-9 and peak.Clouds.Density > thin.Density + 0.2, fmt("switches on: %s -> %s bridge peak cloud Density %.2f (Transitions.Cycle.CloudDensity %.2f, rest %.2f)", phase, nextPhase, peak.Clouds.Density, cycleDeck, thin.Density))
+				end
+			end
+			for _, bossId in ipairs(sortedKeys(cfg.RaidThemes)) do
+				local peak = SC.Preset(SC.At(300, 0, 1, 0), bossId, 0.5, faces)
+				T.check(peak.Clouds.Cover >= tr.Raid.Cover - 1e-9, fmt("switches on: %s raid bridge peak Cover %.2f (Transitions.Raid.Cover %.2f)", bossId, peak.Clouds.Cover, tr.Raid.Cover))
+				T.check(peak.Clouds.Density >= raidDeck - 1e-9, fmt("switches on: %s raid bridge peak cloud Density %.2f (Transitions.Raid.CloudDensity %.2f)", bossId, peak.Clouds.Density, raidDeck))
+			end
+		end)
+		-- each switch moves only its own properties: SkyAir the air colours, ThinClouds the cloud Cover / Density
+		for _, case in ipairs({ { "SkyAir", true, false, { "Clouds" } }, { "ThinClouds", false, true, { "Atmosphere" } } }) do
+			withSwitches(Config, case[2], case[3], function()
+				local tally = T.tally(case[1] .. " alone: the " .. case[4][1] .. " group at rest is unchanged")
+				for i, r in ipairs(restPoints()) do
+					local same, why = exact(r[2][case[4][1]], off[i][2][case[4][1]], r[1] .. "." .. case[4][1])
+					tally:case(same, why)
+				end
+				tally:report()
+			end)
+		end
+		T.check(Config.Preview.SkyAir == false and Config.Preview.ThinClouds == false, "the switches are back off after the scenario")
 	end)
 
 	-- S2 (sky audit F4, F12): with no owner faces in Config.Sky.Faces the boot sky is the painted Day skybox (never the

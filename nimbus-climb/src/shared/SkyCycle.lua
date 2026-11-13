@@ -36,6 +36,10 @@
 --       raid look's Decay for a raid). The swaps above all sit at blend 0.5, the bridge's peak (k = 1), so they happen
 --       behind the thickest air; a layer mixed over by a later one takes its haze with it (a full raid sky shows no
 --       cycle bridge)
+--       The staged looks (kit-b S4, read at every call): with Config.Preview.SkyAir a phase look's Atmosphere Color / Decay
+--       are Config.Sky.AirV2[phase]'s (under the painted skies only Color shows: Decay needs Glare above 0), with
+--       ThinClouds every look's resting Clouds Cover / Density are capped at Config.Sky.CloudsV2 and the bridge lifts
+--       both back toward its peaks (Cover, CloudDensity). Both off: the looks exactly as written
 --   SkyCycle.Bridge(blend, half) -> k   0 outside |blend - 0.5| < half, a smoothstep up to 1 at blend 0.5, symmetric;
 --       junk / half <= 0 = 0
 --   SkyCycle.Floor(preset) -> preset   the readability floor, in place: Lighting.Brightness >= Floor.Brightness (1.0),
@@ -139,6 +143,39 @@ local function copyLook(look)
 			props[prop] = v
 		end
 		out[group] = props
+	end
+	return out
+end
+
+-- Config.Sky.CloudsV2 while Config.Preview.ThinClouds is on, else nil
+local function thinClouds()
+	local preview = type(Config.Preview) == "table" and Config.Preview or {}
+	local thin = preview.ThinClouds == true and cfg().CloudsV2 or nil
+	return type(thin) == "table" and thin or nil
+end
+
+-- a look by its Looks key, copied, with the staged kit-b S4 looks on top while their switch is on:
+-- Config.Preview.SkyAir = the phase's Config.Sky.AirV2 Atmosphere Color / Decay (a raid look has none), ThinClouds = the
+-- Clouds Cover / Density capped at Config.Sky.CloudsV2. Both off = exactly copyLook (the presets do not change)
+local function lookOf(id)
+	local sky = cfg()
+	local out = copyLook(sky.Looks[id])
+	local preview = type(Config.Preview) == "table" and Config.Preview or {}
+	local air = preview.SkyAir == true and type(sky.AirV2) == "table" and sky.AirV2[id] or nil
+	if type(air) == "table" then
+		for _, prop in ipairs({ "Color", "Decay" }) do
+			if typeof(air[prop]) == "Color3" then
+				out.Atmosphere[prop] = air[prop]
+			end
+		end
+	end
+	local thin = thinClouds()
+	if thin then
+		for _, prop in ipairs({ "Cover", "Density" }) do
+			if type(out.Clouds[prop]) == "number" and finite(thin[prop]) then
+				out.Clouds[prop] = min(out.Clouds[prop], thin[prop])
+			end
+		end
 	end
 	return out
 end
@@ -276,6 +313,11 @@ local function bridgeOn(preset, k, tr, colors)
 	if type(clouds) == "table" and type(clouds.Cover) == "number" then
 		clouds.Cover = min(1, toward(clouds.Cover, tr.Cover, k))
 	end
+	-- the thin deck (ThinClouds) rests at Density 0.3: the bridge lifts it back toward the deck S1 was tuned on, since
+	-- Atmosphere Density does not veil the skybox itself. Off: the looks keep their own deck (S1's presets, unchanged)
+	if thinClouds() and type(clouds) == "table" and type(clouds.Density) == "number" then
+		clouds.Density = min(1, toward(clouds.Density, tr.CloudDensity, k))
+	end
 end
 
 function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
@@ -291,7 +333,7 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 	local blend = clamp(num(at.Blend, 0), 0, 1)
 	local t = clamp(num(at.T, 0), 0, 1)
 
-	local preset = mix(copyLook(looks[phase]), copyLook(looks[nextPhase]), blend)
+	local preset = mix(lookOf(phase), lookOf(nextPhase), blend)
 	local clock = clockAt(looks[phase], t)
 	local range = looks[phase].Clock
 	if clock and blend > 0 and nextPhase ~= phase and type(range) == "table" then
@@ -320,7 +362,7 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 		b = clamp(num(b, 0), 0, 1)
 		if look and b > 0 then
 			local under = theme
-			preset = mix(preset, copyLook(look), b)
+			preset = mix(preset, lookOf(id), b)
 			if sky.RaidThemes[id] ~= under and type(tr.Raid) == "table" then
 				local decay = look.Atmosphere and look.Atmosphere.Decay
 				bridgeOn(preset, SkyCycle.Bridge(b, tr.Raid.BridgeHalf), tr.Raid, { Color = decay, Decay = decay })
