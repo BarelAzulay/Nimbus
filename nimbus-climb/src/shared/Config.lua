@@ -327,6 +327,13 @@ Config.Course = {
 			cloud_sky_small = { Width = 68, Lift = 10, Top = 22, Reach = 37, Min = 0.6, Max = 1.0 },
 			cloud_sky_big = { Width = 117, Lift = 15, Top = 36, Reach = 61.5, Min = 0.45, Max = 1.0 },
 		},
+		-- kit-b O2 (finding 2): the voxel puff each platform's slab sits in (CourseBuilder Mesh.under). The obby's own
+		-- underside keys (cloud_obby_under_s / m / l) are not baked yet, so the lobby's bridge puff stands in. UnderFit:
+		-- scale = clamp(short side / Short, Min, Max) (then 1, then Min while the puff would reach another step's slab or
+		-- the Clearance above it); Lo / Hi = the key's manifest Bounds at scale 1, so the top voxel (Hi[2] above the
+		-- pivot) meets the slab's underside. No id, or no scale clears: the Part build under the platform stays.
+		Under = "cloud_puff_s",
+		UnderFit = { Short = 14, Min = 0.6, Max = 1.4, Lo = { -10.5, -10, -6.5 }, Hi = { 10.5, 3, 7.5 } },
 	},
 }
 
