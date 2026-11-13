@@ -334,6 +334,12 @@ Config.Course = {
 		-- pivot) meets the slab's underside. No id, or no scale clears: the Part build under the platform stays.
 		Under = "cloud_puff_s",
 		UnderFit = { Short = 14, Min = 0.6, Max = 1.4, Lo = { -10.5, -10, -6.5 }, Hi = { 10.5, 3, 7.5 } },
+		-- kit-b O3 (finding 14): the dark cloud over a Storm step (CourseBuilder Mesh.storm), 2-3 anchors of the first key
+		-- with an id, the lowest voxel StormBase studs over the platform top; its fit comes from the key's manifest. The
+		-- lobby's cloud_storm_puff is left off on purpose: 8 boxes / 96 tris, it reads as a box at this size (O3 render),
+		-- so the Part puffs stay until the BLENDER lane bakes obby_storm_cloud.
+		Storm = { "obby_storm_cloud" },
+		StormBase = 4.5,
 	},
 }
 

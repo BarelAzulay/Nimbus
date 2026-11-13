@@ -43,6 +43,25 @@
 -- The O2 scenarios also build the "pinned" picks (ids, the review's seeds).
 --   obby_vanish_step_has_no_underside_mesh  a vanishing step has no underside target and nothing tagged under it (a
 --                                     client mesh would not fade with the server's Transparency tween)
+--
+-- O3 "storm cloud, rain and course particles" (server world, pure, the same builds plus a "storm" mode: a storm cloud
+-- key with an id; every build is attached to HazardService once, with a private FxSprites id table):
+--   obby_storm_volume_invisible       every StormCloud volume is invisible (Transparency 1) and still the damage
+--                                     trigger it was (tagged, touchable, no collision, its DPS)
+--   obby_storm_puffs_tagged           with a storm cloud key that has an id every storm wears 2-3 invisible anchors of
+--                                     that key inside its box footprint (scale clamp(box X / width, 0.6, what keeps the
+--                                     top voxel under the head clearance), lowest voxel 4.5-4.9 over the top, upright),
+--                                     no ball StormPuff is left, and they are NOT NC_Detail (a hazard tell stays on Low);
+--                                     with the shipped key list (cloud_storm_puff has an id but reads as a box, so it is
+--                                     not on the list) the Part puffs stay
+--   obby_rain_uses_droplets           HazardService's rain is the Droplet sprite (fx_droplets, Grid4x4) and a slow Wisp
+--                                     layer (fx_wisps) drifts under the cloud
+--   obby_no_stock_particle_paths      no course or hazard emitter (built, or made by HazardService.Attach) shows a
+--                                     rbxasset://textures/particles path or an empty texture: each wears an FxSprites
+--                                     role's sheet; the CourseBuilder / HazardService sources name no stock path and
+--                                     create every emitter through FxSprites
+--   obby_storm_zone_tinted            a storm platform's top (under the cloud) is darker than a plain platform's top in
+--                                     the same stage
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -87,9 +106,29 @@ local PINNED = {
 local RAIL_DROP = 5.2 -- KB.Moving: the rail under the slab's underside while the Part build stays
 local RAIL_GAP = 0.8 -- the rail under a dressed puff's lowest voxel
 local ZERO = Vector3.new(0, 0, 0)
+-- O3: the storm cloud numbers re-stated (cloud_storm_puff manifest Bounds: X 11.2, Min.Y -3.5, Max.Y 2.1; the cloud's
+-- lowest voxel Base studs over the platform top plus up to Jitter, its top voxel under HEAD)
+local STORM = { Key = "cloud_storm_puff", Width = 11.2, Lift = 3.5, Top = 2.1, Base = 4.5, Jitter = 0.4, Min = 0.6 }
+local STOCK_PATH = "rbxasset://textures/particles"
+local DARKER = 0.9 -- a storm top's brightness at most this share of a plain top's in the same stage
 
 local function clamp(v, lo, hi)
 	return max(lo, min(hi, v))
+end
+
+-- a module of the mounted sources by path under its src root ("shared", "FxSprites"), or nil
+local function srcInstance(root, rel)
+	local path = ROOTS and ROOTS[root]
+	return path and Mock.GetPath(path .. "/" .. rel) or nil
+end
+
+local function sharedModule(name)
+	local inst = srcInstance("shared", name)
+	if not inst then
+		return nil
+	end
+	local ok, m = pcall(require, inst)
+	return ok and type(m) == "table" and m or nil
 end
 
 local function isPuffPart(d)
@@ -189,15 +228,39 @@ local function serverScenarios()
 		local hadFolder = RS:FindFirstChild("MeshLibrary") ~= nil
 		local ids = {}
 		if mode ~= "empty" then
-			ids = { cloud_sky_small = 9301, cloud_sky_big = 9302, cloud_puff_s = 9303 }
+			-- cloud_storm_puff has an id in the real MeshIds too: the shipped storm key list must still skip it
+			ids = { cloud_sky_small = 9301, cloud_sky_big = 9302, cloud_puff_s = 9303, cloud_storm_puff = 9304 }
 		end
 		ML._Reset()
 		ML._Configure({ Ids = ids, DressTag = "KitbObbyDress" }) -- a private tag: no game listener dresses these
 		pcall(ML.Start) -- the mock has no LoadAsset: a configured key stays "loading" (never "missing")
+		-- O3: "storm" = a storm cloud key with an id on the list (the shipped list waits for obby_storm_cloud)
+		local clouds = Config.Course and Config.Course.Clouds
+		local stormList = clouds and clouds.Storm
+		if mode == "storm" and clouds then
+			clouds.Storm = { STORM.Key }
+		end
+		-- O3: a private FxSprites id table (every role uploaded) and HazardService for the runtime emitters
+		local HS = K.mod("HazardService")
+		local FX = sharedModule("FxSprites")
+		local fxIds = {}
+		if FX and type(FX.Roles) == "table" then
+			local n = 0
+			for _, r in pairs(FX.Roles) do
+				n = n + 1
+				fxIds[r.Key] = 7100 + n
+			end
+			FX._Deps({ TextureIds = fxIds })
+		end
 		local holder = Instance.new("Folder")
 		holder.Name = "SmokeKitbObby"
 		holder.Parent = workspace
-		local out = { builds = {}, errors = {} }
+		local out = { builds = {}, errors = {}, fxIds = fxIds, roleTex = {} }
+		if FX then
+			for role in pairs(FX.Roles) do
+				out.roleTex[role] = FX.Texture(role)
+			end
+		end
 		local ok, err = pcall(function()
 			for _, pick in ipairs(picks) do
 				do
@@ -265,7 +328,50 @@ local function serverScenarios()
 									sl.tagged = sl.tagged + 1
 								end
 							end
+							sl.stage = sl.part:GetAttribute("Stage")
 							sl.part = nil
+						end
+						-- O3: storm volumes, storm puffs (balls / anchors), top plates, and every emitter after Attach
+						b.storms, b.stormBalls, b.stormAnchors, b.tops, b.emitters = {}, 0, {}, {}, {}
+						for _, d in ipairs(info.Folder:GetDescendants()) do
+							if d:IsA("BasePart") then
+								if d:HasTag(K.config().Tags.StormCloud) then
+									b.storms[#b.storms + 1] = {
+										transparency = d.Transparency, touch = d.CanTouch, collide = d.CanCollide, dps = d:GetAttribute("DPS"),
+									}
+								end
+								if d.Name == "StormPuff" then
+									if type(d:GetAttribute("ML_DressKey")) == "string" then
+										b.stormAnchors[#b.stormAnchors + 1] = {
+											key = d:GetAttribute("ML_DressKey"), scale = d:GetAttribute("ML_Scale"), at = ML._DressAt(d),
+											detail = d:HasTag(DETAIL_TAG), transparency = d.Transparency, collide = d.CanCollide,
+											query = d.CanQuery, touch = d.CanTouch,
+										}
+									else
+										b.stormBalls = b.stormBalls + 1
+									end
+								end
+								if d.Name == "TopPlate" then
+									b.tops[#b.tops + 1] = { pos = d.Position, color = d.Color }
+								end
+							end
+						end
+						if HS and type(HS.Attach) == "function" then
+							local okA, stop = pcall(HS.Attach, info.Folder, { IsActive = function() return false end })
+							if not okA then
+								out.errors[#out.errors + 1] = who .. ": HazardService.Attach " .. tostring(stop)
+							end
+							for _, d in ipairs(info.Folder:GetDescendants()) do
+								if d:IsA("ParticleEmitter") then
+									b.emitters[#b.emitters + 1] = {
+										where = d:GetFullName(), name = d.Name, parent = d.Parent and d.Parent.Name, texture = tostring(d.Texture),
+										role = FX and FX.RoleOf(tostring(d.Texture)), flip = d.FlipbookLayout, speed = d.Speed, rate = d.Rate,
+									}
+								end
+							end
+							if okA and type(stop) == "function" then
+								pcall(stop)
+							end
 						end
 						out.builds[#out.builds + 1] = b
 						info.Folder:Destroy()
@@ -274,6 +380,12 @@ local function serverScenarios()
 			end
 		end)
 		holder:Destroy()
+		if clouds then
+			clouds.Storm = stormList
+		end
+		if FX then
+			FX._Deps(false)
+		end
 		ML._Reset()
 		local f = RS:FindFirstChild("MeshLibrary")
 		if f and not hadFolder then
@@ -920,6 +1032,246 @@ local function serverScenarios()
 		fewer:report()
 		T.info("*obby part limit: highest count " .. worst[2] .. ": " .. worst[1])
 		K.flushErrors("obby_part_limit")
+	end)
+
+	-- O3 ------------------------------------------------------------------------------------------------------------
+	local function stormSteps(layout)
+		local out = {}
+		for _, st in ipairs(layout.Steps or {}) do
+			if st.Kind == "StormPlatform" and type(st.Hazard) == "table" and type(st.Hazard.Box) == "table" then
+				out[#out + 1] = st
+			end
+		end
+		return out
+	end
+
+	local function lum(c)
+		return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
+	end
+
+	S.obby_storm_volume_invisible = guarded("obby_storm_volume_invisible", function()
+		local seen = 0
+		local hidden = T.tally("obby storms: the StormCloud volume is invisible (Transparency 1)")
+		local trigger = T.tally("obby storms: the volume is still the damage trigger (touchable, no collision, DPS)")
+		for _, mode in ipairs({ "empty", "ids" }) do
+			local data = collect(mode)
+			noBuildErrors(data, "obby storms (" .. mode .. ")")
+			for _, b in ipairs(data.builds) do
+				for _, v in ipairs(b.storms) do
+					seen = seen + 1
+					hidden:case(v.transparency >= 0.999, mode .. " " .. b.who .. ": Transparency " .. tostring(v.transparency))
+					trigger:case(v.touch == true and v.collide == false and type(v.dps) == "number" and v.dps > 0,
+						mode .. " " .. b.who .. ": touch " .. tostring(v.touch) .. " collide " .. tostring(v.collide) .. " DPS " .. tostring(v.dps))
+				end
+			end
+		end
+		T.check(seen > 0, "obby storms: the builds have storm volumes", tostring(seen))
+		hidden:report()
+		trigger:report()
+		K.flushErrors("obby_storm_volume_invisible")
+	end)
+
+	S.obby_storm_puffs_tagged = guarded("obby_storm_puffs_tagged", function()
+		local data = collect("storm")
+		if not noBuildErrors(data, "obby storm puffs (storm key)") then
+			return
+		end
+		local count = T.tally("obby storm puffs: with a storm key id every storm wears 2-3 anchors of that key inside its box footprint")
+		local fit = T.tally("obby storm puffs: scale clamp(box X / width, 0.6, top voxel under the head clearance), lowest voxel 4.5-4.9 over the top, upright")
+		local hazard = T.tally("obby storm puffs: an anchor is invisible, no collide / touch / query, and NOT NC_Detail (the hazard tell stays on Low)")
+		local balls = T.tally("obby storm puffs: with a storm key id no ball StormPuff is left")
+		local storms, anchors = 0, 0
+		local smax = (HEAD - STORM.Base - STORM.Jitter) / (STORM.Lift + STORM.Top)
+		for _, b in ipairs(data.builds) do
+			local steps = stormSteps(b.layout)
+			local used = {}
+			for _, st in ipairs(steps) do
+				storms = storms + 1
+				local box = st.Hazard.Box
+				local BF = CFrame.new(ORIGIN + box.Pos) * CFrame.Angles(0, math.rad(box.Yaw or 0), 0)
+				local mine = {}
+				for i, a in ipairs(b.stormAnchors) do
+					local q = typeof(a.at) == "CFrame" and BF:PointToObjectSpace(a.at.Position)
+					if q and abs(q.X) <= box.Size.X / 2 + 0.01 and abs(q.Z) <= box.Size.Z / 2 + 0.01 and q.Y > 0 and q.Y < HEAD + 4 then
+						mine[#mine + 1] = a
+						used[i] = true
+					end
+				end
+				count:case(#mine >= 2 and #mine <= 3, b.who .. ": storm step " .. st.Index .. " has " .. #mine .. " anchors")
+				local want = clamp(box.Size.X / STORM.Width, STORM.Min, smax)
+				for _, a in ipairs(mine) do
+					anchors = anchors + 1
+					local s = tonumber(a.scale) or 1
+					local low = a.at.Position.Y - STORM.Lift * s - (ORIGIN.Y + box.Pos.Y)
+					local high = a.at.Position.Y + STORM.Top * s - (ORIGIN.Y + box.Pos.Y)
+					fit:case(a.key == STORM.Key and abs(s - want) <= 1e-3 and low >= STORM.Base - 0.01 and low <= STORM.Base + STORM.Jitter + 0.01
+						and high <= HEAD + 0.01 and a.at.UpVector.Y >= 0.999,
+						b.who .. ": step " .. st.Index .. " " .. tostring(a.key) .. string.format(" scale %.3f (want %.3f), lowest %.2f, top %.2f", s, want, low, high))
+					hazard:case(not a.detail and a.transparency >= 0.999 and not a.collide and not a.touch and not a.query,
+						b.who .. ": step " .. st.Index .. " detail " .. tostring(a.detail) .. " T " .. tostring(a.transparency))
+				end
+			end
+			local stray = 0
+			for i in ipairs(b.stormAnchors) do
+				if not used[i] then
+					stray = stray + 1
+				end
+			end
+			count:case(stray == 0, b.who .. ": " .. stray .. " storm anchors outside every storm box")
+			balls:case(#steps == 0 or b.stormBalls == 0, b.who .. ": " .. b.stormBalls .. " ball StormPuff parts")
+		end
+		T.check(storms > 0 and anchors > 0, "obby storm puffs: the builds have storms to dress", storms .. " storms, " .. anchors .. " anchors")
+		count:report()
+		fit:report()
+		hazard:report()
+		balls:report()
+		-- the shipped key list: cloud_storm_puff (an id in MeshIds, but 8 boxes: it reads as a box) is not on it
+		local ids = collect("ids")
+		if noBuildErrors(ids, "obby storm puffs (shipped list)") then
+			local keep = T.tally("obby storm puffs: with the shipped key list (no storm cloud id) the Part puffs stay, nothing tagged")
+			for _, b in ipairs(ids.builds) do
+				if #stormSteps(b.layout) > 0 then
+					keep:case(b.stormBalls > 0 and #b.stormAnchors == 0, b.who .. ": " .. b.stormBalls .. " balls, " .. #b.stormAnchors .. " anchors")
+				end
+			end
+			keep:report()
+		end
+		K.flushErrors("obby_storm_puffs_tagged")
+	end)
+
+	S.obby_rain_uses_droplets = guarded("obby_rain_uses_droplets", function()
+		local data = collect("empty")
+		if not noBuildErrors(data, "obby rain") then
+			return
+		end
+		local rain = T.tally("obby rain: every storm's rain is the Droplet sprite (fx_droplets on its Grid4x4 flipbook)")
+		local wisp = T.tally("obby rain: every storm has a slow Wisp layer (fx_wisps, at most 2 studs/s) drifting under the cloud")
+		local n = 0
+		for _, b in ipairs(data.builds) do
+			local storms = #stormSteps(b.layout)
+			if storms > 0 then
+				local rains, wisps = 0, 0
+				for _, e in ipairs(b.emitters) do
+					if e.parent == "StormRain" then
+						if e.name == "Rain" then
+							rains = rains + 1
+							rain:case(e.texture == data.roleTex.Droplet and e.flip == Enum.ParticleFlipbookLayout.Grid4x4,
+								b.who .. ": Rain '" .. e.texture .. "' (want '" .. tostring(data.roleTex.Droplet) .. "')")
+						elseif e.texture == data.roleTex.Wisp then
+							wisps = wisps + 1
+							wisp:case(e.speed.Max <= 2 and e.rate > 0, b.who .. ": " .. e.name .. " speed " .. tostring(e.speed.Max) .. " rate " .. tostring(e.rate))
+						end
+					end
+				end
+				n = n + storms
+				rain:case(rains == storms, b.who .. ": " .. rains .. " rain emitters for " .. storms .. " storms")
+				wisp:case(wisps == storms, b.who .. ": " .. wisps .. " wisp layers for " .. storms .. " storms")
+			end
+		end
+		T.check(n > 0, "obby rain: the builds have storms", tostring(n))
+		rain:report()
+		wisp:report()
+		K.flushErrors("obby_rain_uses_droplets")
+	end)
+
+	S.obby_no_stock_particle_paths = guarded("obby_no_stock_particle_paths", function()
+		local own = T.tally("obby particles: every course / hazard emitter (built or attached) wears an FxSprites role's sheet, no stock path")
+		local n, byRole = 0, {}
+		for _, mode in ipairs({ "empty", "ids", "storm" }) do
+			local data = collect(mode)
+			noBuildErrors(data, "obby particles (" .. mode .. ")")
+			for _, b in ipairs(data.builds) do
+				for _, e in ipairs(b.emitters) do
+					n = n + 1
+					local ok = e.role ~= nil and e.texture ~= "" and not e.texture:find(STOCK_PATH, 1, true)
+						and e.texture:find("^rbxassetid://") ~= nil and e.flip == Enum.ParticleFlipbookLayout.Grid4x4
+					own:case(ok, mode .. " " .. b.who .. ": " .. e.where .. " = '" .. e.texture .. "'")
+					if e.role then
+						byRole[e.role] = (byRole[e.role] or 0) + 1
+					end
+				end
+			end
+		end
+		T.check(n > 0, "obby particles: the builds have emitters", tostring(n))
+		own:report()
+		local parts = {}
+		for role, c in pairs(byRole) do
+			parts[#parts + 1] = role .. " " .. c
+		end
+		table.sort(parts)
+		T.info("*obby particles: " .. n .. " emitters (" .. table.concat(parts, ", ") .. ")")
+		-- the sources: no stock path, every ParticleEmitter made next to an FxSprites call
+		for _, rel in ipairs({ "Services/CourseBuilder", "Services/HazardService" }) do
+			local inst = srcInstance("server", rel)
+			local src = inst and tostring(inst.Source or "") or ""
+			if T.check(src ~= "", "obby particles: server/" .. rel .. " is mounted") then
+				local stock, bare = {}, {}
+				local lines = {}
+				for line in (src .. "\n"):gmatch("([^\n]*)\n") do
+					lines[#lines + 1] = line:gsub("%-%-.*$", "")
+				end
+				for i, code in ipairs(lines) do
+					if code:find(STOCK_PATH, 1, true) then
+						stock[#stock + 1] = tostring(i)
+					end
+					if code:find('Instance.new("ParticleEmitter")', 1, true) then
+						local found = false
+						for j = i, math.min(#lines, i + 3) do
+							found = found or lines[j]:find("FxSprites", 1, true) ~= nil
+						end
+						if not found then
+							bare[#bare + 1] = tostring(i)
+						end
+					end
+				end
+				T.check(#stock == 0, "obby particles: server/" .. rel .. " names no rbxasset particle path", "lines " .. table.concat(stock, ", "))
+				T.check(#bare == 0, "obby particles: server/" .. rel .. " hands every new ParticleEmitter to FxSprites", "lines " .. table.concat(bare, ", "))
+			end
+		end
+		K.flushErrors("obby_no_stock_particle_paths")
+	end)
+
+	S.obby_storm_zone_tinted = guarded("obby_storm_zone_tinted", function()
+		local data = collect("empty")
+		if not noBuildErrors(data, "obby storm tint") then
+			return
+		end
+		local darker = T.tally("obby storm tint: a storm platform's top is at most " .. DARKER .. " as bright as a plain platform's top in its stage")
+		local found = T.tally("obby storm tint: every storm platform has its top plate")
+		local pairsSeen = 0
+		local function topOf(b, sl)
+			local want = sl.cf.Position + Vector3.new(0, sl.size.Y / 2 + 0.05, 0)
+			for _, t in ipairs(b.tops) do
+				if (t.pos - want).Magnitude <= 0.05 then
+					return t
+				end
+			end
+			return nil
+		end
+		for _, b in ipairs(data.builds) do
+			for _, sl in ipairs(b.slabs) do
+				if startsWith(sl.name, "StormPlatform_") then
+					local top = topOf(b, sl)
+					found:case(top ~= nil, b.who .. ": " .. sl.name)
+					if top then
+						for _, other in ipairs(b.slabs) do
+							if startsWith(other.name, "Cloud_") and other.stage == sl.stage then
+								local ot = topOf(b, other)
+								if ot then
+									pairsSeen = pairsSeen + 1
+									darker:case(lum(top.color) <= DARKER * lum(ot.color),
+										b.who .. ": " .. sl.name .. string.format(" %.3f vs ", lum(top.color)) .. other.name .. string.format(" %.3f", lum(ot.color)))
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+		T.check(pairsSeen > 0, "obby storm tint: there are storm and plain platforms in one stage to compare", tostring(pairsSeen))
+		found:report()
+		darker:report()
+		K.flushErrors("obby_storm_zone_tinted")
 	end)
 
 	return S

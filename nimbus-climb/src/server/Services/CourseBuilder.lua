@@ -28,6 +28,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
+local FxSprites = require(Shared.FxSprites) -- kit-b O3: the game's own particle sprites (no stock sparkle / smoke)
 local CourseLayout = require(script.Parent.CourseLayout)
 
 local CourseBuilder = {}
@@ -88,6 +89,7 @@ local C = {
 	Iron = rgb(74, 80, 104),
 	Rock = rgb(88, 84, 104),
 	Lava = rgb(236, 120, 70),
+	EmberTint = rgb(255, 236, 214), -- a warm white: the Ember sheet is baked, so its own orange shows through
 	Wind = rgb(176, 214, 232),
 	Rainbow = {
 		rgb(222, 112, 126),
@@ -275,9 +277,10 @@ local function addLight(part, color, range, brightness)
 	return light
 end
 
-local function addSparkles(parent, color, rate, speed, lifetime, size)
+-- role: an FxSprites role (Sparkle by default; Ember for the lava sparks)
+local function addSparkles(parent, color, rate, speed, lifetime, size, role)
 	local e = Instance.new("ParticleEmitter")
-	e.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	FxSprites.Apply(e, role or "Sparkle")
 	e.Color = ColorSequence.new(color)
 	e.Rate = rate
 	e.Lifetime = NumberRange.new(lifetime * 0.6, lifetime)
@@ -292,7 +295,7 @@ end
 
 local function addSmoke(parent, color, rate, size)
 	local e = Instance.new("ParticleEmitter")
-	e.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	FxSprites.Apply(e, "Puff")
 	e.Color = ColorSequence.new(color)
 	e.Rate = rate
 	e.Lifetime = NumberRange.new(3, 5)
@@ -376,23 +379,62 @@ function Mesh.fit(key)
 		if type(b) == "table" and type(b.Min) == "table" and type(b.Max) == "table" and type(b.Size) == "table" then
 			Mesh.Fits[key] = {
 				Width = b.Size[1], Lift = -b.Min[2], Top = b.Max[2],
-				Reach = max(abs(b.Min[1]), abs(b.Max[1]), abs(b.Min[3]), abs(b.Max[3])), Min = 0.45, Max = 1,
+				Reach = max(abs(b.Min[1]), abs(b.Max[1]), abs(b.Min[3]), abs(b.Max[3])), Min = 0.45, Max = 1, Depth = b.Size[3],
 			}
 		end
 	end
 	return Mesh.Fits[key] or nil
 end
 
--- one invisible anchor Part at `origin` (the mesh pivot) wearing `key` at scale `s`, tagged NC_Detail. Built through
--- mk, so the part counter applies; At = origin (a static target: the spot never depends on replication order).
-function Mesh.anchor(ctx, group, name, key, origin, s)
+-- one invisible anchor Part at `origin` (the mesh pivot) wearing `key` at scale `s`, tagged NC_Detail (unless `tell`:
+-- a hazard tell the Low graphics setting must keep). Built through mk, so the part counter applies; At = origin (a
+-- static target: the spot never depends on replication order).
+function Mesh.anchor(ctx, group, name, key, origin, s, tell)
 	local p = mk(ctx, group, name, "Part", Vector3.new(1, 1, 1), origin, C.Top, MAT.SmoothPlastic, { Transparency = 1 })
 	Mesh.lib().Tag(p, key, { At = origin })
 	if abs(s - 1) > 1e-6 then
 		p:SetAttribute("ML_Scale", s)
 	end
-	CollectionService:AddTag(p, Mesh.Detail)
+	if not tell then
+		CollectionService:AddTag(p, Mesh.Detail)
+	end
 	return p
+end
+
+-- kit-b O3 (finding 14): the dark puffs over a storm box (frame BF, size bsize) as 2-3 anchors of the first
+-- Config.Course.Clouds.Storm key with an id: scale clamp(box X / width, 0.6, what keeps the top voxel under the head
+-- clearance), lowest voxel StormBase (+ up to 0.4) over the platform top, spread along the box's Z, flipped / turned a
+-- little at random. Not NC_Detail: with the volume invisible the cloud is the hazard's tell. false = no key with an id
+-- (or no fit): the caller builds the Part puffs.
+function Mesh.storm(ctx, BF, bsize)
+	local key
+	for _, k in ipairs(type(Mesh.Clouds.Storm) == "table" and Mesh.Clouds.Storm or EMPTY) do
+		if Mesh.has(k) and Mesh.fit(k) then
+			key = k
+			break
+		end
+	end
+	if not key then
+		return false
+	end
+	local fit = Mesh.fit(key)
+	local base = tonumber(Mesh.Clouds.StormBase) or 4.5
+	local clear = (type(Config.Course) == "table" and tonumber(Config.Course.Clearance)) or 13
+	local smax = (clear - base - 0.4) / (fit.Lift + fit.Top)
+	if smax < 0.6 then
+		return false
+	end
+	local s = max(0.6, min(smax, bsize.X / fit.Width))
+	local n = (bsize.X * bsize.Z >= 200) and 3 or 2
+	local depth = (fit.Depth or fit.Width) * s -- the puff's Z size (manifest Bounds) at this scale
+	local span = max(0, bsize.Z - depth)
+	for k = 1, n do
+		local z = ((k - 1) / (n - 1) - 0.5) * span
+		local yaw = ((ctx.Rng:NextNumber(0, 1) < 0.5) and pi or 0) + ctx.Rng:NextNumber(-0.2, 0.2)
+		local y = base + ctx.Rng:NextNumber(0, 0.4) + fit.Lift * s
+		Mesh.anchor(ctx, "Decor", "StormPuff", key, BF * CFrame.new(0, y, z) * CFrame.Angles(0, yaw, 0), s, true)
+	end
+	return true
 end
 
 ----------------------------------------------------------------------
@@ -583,6 +625,7 @@ local function lookFor(ctx, step)
 		look.Trim = C.Hazard:Lerp(look.Trim, 0.25)
 	elseif kind == "StormPlatform" then
 		look.Trim = rgb(124, 138, 190)
+		look.Top = look.Top:Lerp(C.Storm, 0.35) -- kit-b O3: the wet, shaded top under the cloud (the volume is invisible)
 	elseif kind == "LightningPlatform" then
 		look.Trim = rgb(222, 196, 96)
 	elseif kind == "Moving" then
@@ -1037,7 +1080,8 @@ function KB.SpinBarPlatform(ctx, step, look)
 	return main
 end
 
--- rain cloud: slate platform, translucent damage volume, dark puffs above (HazardService adds the rain)
+-- rain cloud: slate platform with a darker top, an invisible damage volume (kit-b O3: no see-through box), dark puffs
+-- above (Blender cloud anchors when a storm cloud key has an id, else the Part puffs). HazardService adds the rain.
 function KB.StormPlatform(ctx, step, look)
 	local h = step.Hazard or EMPTY
 	local main = buildBase(ctx, step, look, { Name = "StormPlatform_" .. step.Index })
@@ -1048,9 +1092,12 @@ function KB.StormPlatform(ctx, step, look)
 	local bsize = box.Size
 	local BF = CFrame.new(ctx.Origin + box.Pos) * CFrame.Angles(0, rad(box.Yaw or 0), 0)
 	local vol = mk(ctx, "Hazards", "StormCloud", "Part", bsize, BF * CFrame.new(0, bsize.Y / 2, 0), C.Storm,
-		MAT.SmoothPlastic, { Trigger = true, Transparency = 0.8 })
+		MAT.SmoothPlastic, { Trigger = true, Transparency = 1 })
 	CollectionService:AddTag(vol, Tags.StormCloud)
 	vol:SetAttribute("DPS", h.DPS or 8)
+	if Mesh.storm(ctx, BF, bsize) then
+		return main
+	end
 	local n = max(4, min(8, floor(step.Size.X * step.Size.Z / 40) + 3))
 	for _ = 1, n do
 		local d = ctx.Rng:NextNumber(4.2, 5.8)
@@ -1250,7 +1297,7 @@ function KB.CannonPad(ctx, step, look)
 	local fuseBase = rear + Vector3.new(0, D * 0.5, 0)
 	rod(ctx, "Decor", "Fuse", fuseBase, fuseBase + Vector3.new(0, 1.0, 0), 0.22, rgb(150, 120, 90))
 	local spark = ball(ctx, "Decor", "FuseSpark", 0.6, CFrame.new(fuseBase + Vector3.new(0, 1.1, 0)), C.Lava, MAT.Neon, 0.05)
-	addSparkles(spark, C.Lava, 6, 3, 0.8, 0.5)
+	addSparkles(spark, C.EmberTint, 6, 3, 0.8, 0.5, "Ember")
 	-- carriage and wheels
 	local top = ctx.Origin + step.Pos
 	local side = aim:Cross(Vector3.new(0, 1, 0)).Unit
@@ -2089,7 +2136,7 @@ function LM.FloatingVolcano(ctx, item, B, rng, col, lite)
 	local lava = cyl(ctx, G, "VolcanoLava", 0.5, R * 0.52, B * CFrame.new(0, topY + 0.2, 0), C.Lava, MAT.Neon, 0.1)
 	addLight(lava, C.Lava, 24, 1.0)
 	addSmoke(lava, rgb(110, 108, 124), 4, R * 0.5)
-	addSparkles(lava, C.Lava, 6, 8, 1.6, 0.6)
+	addSparkles(lava, C.EmberTint, 6, 8, 1.6, 0.6, "Ember")
 	if not lite then
 		for k = 1, 3 do
 			local a = k * 2 * pi / 3 + rng:NextNumber(-0.4, 0.4)
