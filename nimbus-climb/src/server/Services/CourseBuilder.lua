@@ -324,6 +324,78 @@ local function applyWelds(ctx)
 end
 
 ----------------------------------------------------------------------
+-- Blender meshes (kit-b O1; modelled on LobbyBuilder's Mesh.lib / Mesh.tag). The server only tags a target; every
+-- client dresses it (MeshLibrary.Dress). A key without an id ("missing": the shipped empty MeshIds) is never used, so
+-- its Part build stays. ONE table, so the main chunk stays under the 200-locals limit.
+----------------------------------------------------------------------
+local Mesh = {
+	Lib = nil,
+	Detail = "NC_Detail", -- pure decor: the Low graphics setting hides it (client GraphicsQuality)
+	Clouds = (type(Config.Course) == "table" and type(Config.Course.Clouds) == "table") and Config.Course.Clouds or EMPTY,
+	Fits = {}, -- key -> fit read from its manifest (keys without a Config Fit)
+}
+
+function Mesh.lib()
+	if Mesh.Lib == nil then
+		Mesh.Lib = false
+		local module = Shared:FindFirstChild("MeshLibrary")
+		if module then
+			local ok, result = pcall(require, module)
+			if ok and type(result) == "table" and type(result.Tag) == "function" and type(result.Status) == "function" then
+				Mesh.Lib = result
+			end
+		end
+	end
+	return Mesh.Lib or nil
+end
+
+-- true when `key` has an id and has not failed here
+function Mesh.has(key)
+	local ML = Mesh.lib()
+	if not ML or type(key) ~= "string" then
+		return false
+	end
+	local ok, st = pcall(ML.Status, key)
+	return ok and st ~= "missing" and st ~= "failed"
+end
+
+-- { Width, Lift, Top, Reach, Min, Max } of a cloud key (Config.Course.Clouds.Fit, else its manifest Bounds), or nil
+function Mesh.fit(key)
+	local fits = Mesh.Clouds.Fit
+	if type(fits) == "table" and type(fits[key]) == "table" then
+		return fits[key]
+	end
+	if Mesh.Fits[key] ~= nil then
+		return Mesh.Fits[key] or nil
+	end
+	Mesh.Fits[key] = false
+	local ML = Mesh.lib()
+	if ML and type(ML.Manifest) == "function" then
+		local ok, man = pcall(ML.Manifest, key)
+		local b = ok and type(man) == "table" and man.Bounds
+		if type(b) == "table" and type(b.Min) == "table" and type(b.Max) == "table" and type(b.Size) == "table" then
+			Mesh.Fits[key] = {
+				Width = b.Size[1], Lift = -b.Min[2], Top = b.Max[2],
+				Reach = max(abs(b.Min[1]), abs(b.Max[1]), abs(b.Min[3]), abs(b.Max[3])), Min = 0.45, Max = 1,
+			}
+		end
+	end
+	return Mesh.Fits[key] or nil
+end
+
+-- one invisible anchor Part at `origin` (the mesh pivot) wearing `key` at scale `s`, tagged NC_Detail. Built through
+-- mk, so the part counter applies; At = origin (a static target: the spot never depends on replication order).
+function Mesh.anchor(ctx, group, name, key, origin, s)
+	local p = mk(ctx, group, name, "Part", Vector3.new(1, 1, 1), origin, C.Top, MAT.SmoothPlastic, { Transparency = 1 })
+	Mesh.lib().Tag(p, key, { At = origin })
+	if abs(s - 1) > 1e-6 then
+		p:SetAttribute("ML_Scale", s)
+	end
+	CollectionService:AddTag(p, Mesh.Detail)
+	return p
+end
+
+----------------------------------------------------------------------
 -- GUI helpers (all text through Theme roles)
 ----------------------------------------------------------------------
 -- World text rule (ARCHITECTURE_V3.md): hints floating over the course are PIXEL-sized BillboardGuis (constant
@@ -1912,8 +1984,90 @@ function LM.CentralPillar(ctx, item, B, rng, col, lite)
 	ball(ctx, G, "PillarFoot", Vector3.new(r * 3.6, r * 1.4, r * 3.6), B * CFrame.new(0, 0, 0), col.Cloud)
 end
 
--- distant cloud puff / part of the cloud sea below the route
+-- the cumulus key of a far / sea puff (Config.Course.Clouds): the obby's own variants with an id take turns, else
+-- the lobby's sky cumulus by size; nil = no key with an id (the Part build stays)
+function Mesh.cloudKey(ctx, item)
+	local CL = Mesh.Clouds
+	local list = (item.Layer == "Sea") and CL.Sea or CL.Far
+	local have = {}
+	for _, key in ipairs(type(list) == "table" and list or EMPTY) do
+		if Mesh.has(key) and Mesh.fit(key) then
+			have[#have + 1] = key
+		end
+	end
+	if #have > 0 then
+		ctx.CloudTurn = (ctx.CloudTurn or 0) + 1
+		return have[((ctx.Layout.Seed or 0) + ctx.CloudTurn) % #have + 1]
+	end
+	local key = CL.Big
+	if item.Layer ~= "Sea" and item.Radius < (CL.SmallBelow or 24) then
+		key = CL.Small
+	end
+	if Mesh.has(key) and Mesh.fit(key) then
+		return key
+	end
+	return nil
+end
+
+-- true when a cloud reaching `reach` studs (horizontally) from its pivot column at (x, z) and spanning [lo, hi] keeps
+-- clear of every step, a moving step's whole slide, and the head clearance above each top. The layout only proved
+-- the old puff's footprint (Radius + 4), and a cumulus is wider and taller than that.
+function Mesh.clear(ctx, x, z, reach, lo, hi)
+	local head = (type(Config.Course) == "table" and Config.Course.Clearance) or 13
+	for _, st in ipairs(ctx.Layout.Steps or EMPTY) do
+		if typeof(st.Pos) == "Vector3" and typeof(st.Size) == "Vector3" then
+			local top = ctx.Origin.Y + st.Pos.Y
+			if hi > top - st.Size.Y and lo < top + head then
+				local need = reach + 0.5 * sqrt(st.Size.X * st.Size.X + st.Size.Z * st.Size.Z)
+				local p = ctx.Origin + st.Pos
+				local ends = { p }
+				if type(st.Hazard) == "table" and typeof(st.Hazard.EndOffset) == "Vector3" then
+					ends[2] = p + st.Hazard.EndOffset
+				end
+				for _, q in ipairs(ends) do
+					local dx, dz = q.X - x, q.Z - z
+					if dx * dx + dz * dz < need * need then
+						return false
+					end
+				end
+			end
+		end
+	end
+	return true
+end
+
+-- distant cloud puff / part of the cloud sea below the route. kit-b O1: one invisible anchor wearing a Blender voxel
+-- cumulus (Mesh.cloudKey) instead of three translucent ellipsoids. A far cloud's lowest voxel sits on the puff's base
+-- (pivot = tier top, Lift studs above the lowest voxel); a sea cloud hangs from the puff's top, so a 51-stud cumulus
+-- never rises into the route above it. A cloud that would reach a step tries the key's smallest scale, and is left out
+-- when that still reaches one (a missing far cloud costs nothing; a jelly blob among voxel clouds would). Random yaw
+-- from the layout (B), opaque. The Part build below stays for a puff with no key.
 function LM.Puff(ctx, item, B, rng, col, lite)
+	local key = Mesh.cloudKey(ctx, item)
+	if key then
+		local fit = Mesh.fit(key)
+		local sea = item.Layer == "Sea"
+		local s
+		if sea then
+			s = (Mesh.Clouds.SeaScale or 1)
+		else
+			s = 2 * item.Radius / fit.Width
+		end
+		s = max(fit.Min, min(fit.Max, s))
+		for _, sc in ipairs({ s, fit.Min }) do
+			local up = fit.Lift * sc
+			if sea then
+				up = item.Height - fit.Top * sc
+			end
+			local origin = B * CFrame.new(0, up, 0)
+			local y = origin.Position.Y
+			if Mesh.clear(ctx, origin.Position.X, origin.Position.Z, fit.Reach * sc, y - fit.Lift * sc, y + fit.Top * sc) then
+				Mesh.anchor(ctx, G, sea and "SeaCloud" or "FarCloud", key, origin, sc)
+				return
+			end
+		end
+		return
+	end
 	local r = item.Radius
 	local cloud = C.Top:Lerp(C.Side, 0.4)
 	local trans = rng:NextNumber(0.18, 0.32)
@@ -2083,6 +2237,7 @@ function CourseBuilder.Build(layout, origin, parent)
 	end
 
 	buildScenery(ctx)
+	folder:SetAttribute("BuildParts", ctx.Parts) -- the part counter (tokens not included; tools/smoke_kitb_obby.lua)
 
 	-- parent once, then do everything that needs the parts to live in the world
 	folder.Parent = parent
