@@ -1423,6 +1423,21 @@ Config.MainMenu = {
 	-- checks every enabled card in the built lobby within MaxDistance of the menu's camera orbit against this list.
 	-- Players' own tags (TitleTag) and pet cards are not world cards and stay as they are.
 	HideCards = { "GateTag", "PortalBillboard", "JoinBillboard", "TroveBillboard", "NameTag", "Nameplate", "RaidGateTag", "PortalName" },
+	-- (kit B U4) the title the Signboard's header shows (Title role). The greeting "HI, <name>!" is the owner's pick (M4):
+	-- a one-line change here
+	Header = "NIMBUS CLIMB",
+	-- (kit B U4, PICK) the title screen's two authored camera keys, used only with Config.Preview.TitleShots (off: the
+	-- orbit above). Studs from the Welcome Arch (Arch studs from Lobby.Origin towards GateFacing; LobbyBuilder builds it
+	-- at 40): Key A (wide screens) stands Back studs before it, Up studs up, looking up Pitch degrees towards the gates,
+	-- drifting Drift studs sideways and back every DriftSeconds; Key P (portrait) further back and higher. Smoke
+	-- p5menu_orbit_cards checks the hidden world cards against both
+	Shots = {
+		Fov = 50,
+		Arch = 40,
+		DriftSeconds = 30,
+		A = { Back = 26, Up = 6, Pitch = 12, Drift = 8 },
+		P = { Back = 44, Up = 12, Pitch = 10, Drift = 4 },
+	},
 }
 
 -- Kit B staged looks (.superpowers/slop-audit/round3/BUILD_PLAN.md): each look is built behind its switch and ships off

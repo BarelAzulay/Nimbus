@@ -1562,6 +1562,555 @@ local function clientScenarios()
 		LKC.flushErrors("loading_board_fits")
 	end)
 
+	------------------------------------------------------------------------------------------------
+	-- U4: the main menu Signboard. Each scenario opens the title screen afresh at its size and input (MenuH.open: MenuPlay
+	-- counts as sent, so PLAY never spawns anything), reads it after the entrance, and closes it with PLAY (MenuH.close).
+	local MenuH = {}
+
+	function MenuH.mmc()
+		return require(Mock.GetPath(ROOTS["client"] .. "/Controllers/MainMenuController"))
+	end
+	-- opts: Size = { w, h }, Input = "Keyboard" | "Touch" | "Gamepad", Wait (seconds after Open; default 1.8, the entrance done)
+	function MenuH.open(opts)
+		opts = opts or {}
+		local UIS = game:GetService("UserInputService")
+		MenuH.old = MenuH.old or { Mock.Viewport, UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled, UIS.GamepadEnabled }
+		local input = opts.Input or "Keyboard"
+		UIS.TouchEnabled = input == "Touch"
+		UIS.KeyboardEnabled = input == "Keyboard"
+		UIS.MouseEnabled = input == "Keyboard"
+		UIS.GamepadEnabled = input == "Gamepad"
+		local size = opts.Size or { 1920, 1080 }
+		Mock.SetViewport(size[1], size[2])
+		LKC.advance(0.1)
+		local Config = LoadingH.shared("Config")
+		Config.MainMenu.Enabled = true
+		local MMC = MenuH.mmc()
+		MMC._M.SentPlay = true -- PLAY closes the screen without a MenuPlay (no character dance in these scenarios)
+		MMC.Open()
+		LKC.advance(opts.Wait or 1.8)
+		local pg = game:GetService("Players").LocalPlayer.PlayerGui
+		local gui = pg:FindFirstChild("NimbusMainMenu")
+		return gui and gui:FindFirstChild("Menu"), MMC
+	end
+	function MenuH.close()
+		local MMC = MenuH.mmc()
+		if MMC.IsOpen() then
+			MMC.CloseWindows()
+			MMC.Play()
+			LKC.advance(1.5)
+		end
+		local Config = LoadingH.shared("Config")
+		Config.MainMenu.Enabled = false
+		local old = MenuH.old
+		if old then
+			local UIS = game:GetService("UserInputService")
+			Mock.SetViewport(old[1].X, old[1].Y)
+			UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled, UIS.GamepadEnabled = old[2], old[3], old[4], old[5]
+			LKC.advance(0.1)
+		end
+		MenuH.old = nil
+	end
+	function MenuH.rect(obj)
+		local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+		return { X = p.X, Y = p.Y, R = p.X + s.X, B = p.Y + s.Y }
+	end
+	function MenuH.overlap(a, b)
+		return a.X < b.R - 0.5 and b.X < a.R - 0.5 and a.Y < b.B - 0.5 and b.Y < a.B - 0.5
+	end
+	function MenuH.show(r)
+		return fmt("%d,%d..%d,%d", r.X, r.Y, r.R, r.B)
+	end
+	-- visible: the object and every GuiObject above it inside the menu
+	function MenuH.shown(obj)
+		local o = obj
+		while o and not o:IsA("LayerCollector") do
+			if o:IsA("GuiObject") and not o.Visible then
+				return false
+			end
+			o = o.Parent
+		end
+		return true
+	end
+	function MenuH.kinds(root)
+		local out = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			local kind = d:GetAttribute("SignKit")
+			if kind then
+				out[kind] = out[kind] or {}
+				table.insert(out[kind], d)
+			end
+		end
+		return out
+	end
+	function MenuH.find(root, name)
+		return root and root:FindFirstChild(name, true) or nil
+	end
+
+	-- the board of the pitch on the title screen: two ropes, the flat awning, the navy header with Config.MainMenu.Header
+	-- ("NIMBUS CLIMB", Title role, gold, no outline), the wood frame and the stone body; 60 design px from the left, 440 wide
+	S.menu_board_parts = guarded("menu_board_parts", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme and Theme.Sign
+		local ok, err = pcall(function()
+			T.eq(Config.MainMenu.Header, "NIMBUS CLIMB", "menu board: Config.MainMenu.Header is NIMBUS CLIMB (the greeting is a one-line change there)")
+			for _, s in ipairs({ { 1920, 1080 }, { 1280, 720 } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local f = Theme.ScreenFactor(s[2])
+				local menu = MenuH.open({ Size = s })
+				local board = MenuH.find(menu, "Board")
+				local swing = MenuH.find(menu, "Swing")
+				if not T.check(board ~= nil and swing ~= nil and board:IsDescendantOf(swing), "menu board: a Board hangs in a Swing at " .. tag) then
+					return
+				end
+				local kinds = MenuH.kinds(swing)
+				T.eq(#(kinds.Rope or {}), 2, "menu board: two ropes at " .. tag)
+				local roof = (kinds.Roof or {})[1]
+				local face = roof and roof:FindFirstChild("Face")
+				T.check(roof ~= nil and face ~= nil and sameColor(face.BackgroundColor3, Sign.Roof) and roof.Size.X.Scale == 0,
+					"menu board: the flat awning roof (pink face, a fixed offset width) at " .. tag, roof and tostring(roof.Size) or "missing")
+				local head = (kinds.Header or {})[1]
+				local plate = head and head:FindFirstChild("Plate")
+				local title = plate and plate:FindFirstChild("Title")
+				T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "menu board: the navy header plank at " .. tag)
+				if T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "menu board: the header reads NIMBUS CLIMB at " .. tag, title and title.Text or "missing") then
+					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title, "menu board: the title is the Title role (LuckiestGuy)", tostring(title.Font))
+					T.check(sameColor(title.TextColor3, Sign.Gold) and title.TextStrokeTransparency >= 1 and #textStrokes(title) == 0,
+						"menu board: gold on navy with no outline and no stroke", hex(title.TextColor3))
+				end
+				local wood = (kinds.Frame or {})[1]
+				local body = (kinds.Body or {})[1]
+				T.check(wood ~= nil and sameColor(wood.BackgroundColor3, Sign.Wood), "menu board: the wood frame at " .. tag)
+				T.check(body ~= nil and sameColor(body.BackgroundColor3, Sign.Stone), "menu board: the stone body at " .. tag)
+				local r = MenuH.rect(board)
+				T.near(r.X, 60 * f, 2, "menu board: the board stands 60 design px from the left at " .. tag, MenuH.show(r))
+				T.near(r.R - r.X, 440 * f, 2, "menu board: the board is 440 design px wide at " .. tag, MenuH.show(r))
+				T.check(r.Y >= Mock.TopInset and r.B <= s[2] - 8, "menu board: the board is on screen below Roblox's top bar at " .. tag, MenuH.show(r))
+				MenuH.close()
+			end
+		end)
+		MenuH.close()
+		T.check(ok, "menu board: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_board_parts")
+	end)
+
+	-- no shade over the world: no Shade frame, and nothing on the screen paints half of it (the portrait board is a third)
+	S.menu_no_shade = guarded("menu_no_shade", function()
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 1920, 1080, "Keyboard" }, { 390, 844, "Touch" } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local menu = MenuH.open({ Size = s, Input = s[3] })
+				if not T.check(menu ~= nil, "menu shade: the menu is built at " .. tag) then
+					return
+				end
+				T.check(menu:FindFirstChild("Shade") == nil, "menu shade: no Shade frame over the screen at " .. tag)
+				local big = {}
+				for _, d in ipairs({ menu, unpack(menu:GetDescendants()) }) do
+					if d:IsA("GuiObject") and d.BackgroundTransparency < 0.99 and MenuH.shown(d) then
+						local a = d.AbsoluteSize
+						if a.X * a.Y > 0.5 * s[1] * s[2] then
+							big[#big + 1] = d.Name
+						end
+					end
+				end
+				T.check(#big == 0, "menu shade: nothing paints over half the screen at " .. tag, table.concat(big, ", "))
+				MenuH.close()
+			end
+		end)
+		MenuH.close()
+		T.check(ok, "menu shade: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_no_shade")
+	end)
+
+	-- PLAY: a green SignKit plank 72 design px tall, a 6 px darker lip, FredokaOne 40, the pixel triangle; the only green on
+	-- the screen; SETTINGS and UPDATES are half-width stone planks 52 tall with the pixel gear and scroll
+	S.menu_play_is_green_plank_only = guarded("menu_play_is_green_plank_only", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local ok, err = pcall(function()
+			local menu = MenuH.open()
+			local play = MenuH.find(menu, "PlayButton")
+			if not T.check(play ~= nil and play:GetAttribute("SignKit") == "Plank", "menu play: PLAY is a SignKit plank") then
+				return
+			end
+			T.near(play.AbsoluteSize.Y, 72, 0.6, "menu play: PLAY is 72 tall")
+			T.eq(play:GetAttribute("LipPx"), 6, "menu play: PLAY's lip is 6 px")
+			local face = MenuH.find(play, "Face")
+			local lip = MenuH.find(play, "Lip")
+			T.check(face and sameColor(face.BackgroundColor3, Sign.Grass), "menu play: the face is grass green #6FCF6A", face and hex(face.BackgroundColor3) or "missing")
+			T.check(lip and sameColor(lip.BackgroundColor3, Sign.GrassLip), "menu play: the lip is the darker green", lip and hex(lip.BackgroundColor3) or "missing")
+			local label = MenuH.find(play, "Label")
+			T.check(label and label.Text == "PLAY" and label:GetAttribute("FontRole") == "Button" and label.Font == Theme.Fonts.Button and label.TextSize == 40,
+				"menu play: PLAY in FredokaOne 40 (Button role), no glyph", label and fmt("%q %s %s", label.Text, tostring(label.Font), tostring(label.TextSize)) or "missing")
+			local icon = nil
+			for _, d in ipairs(play:GetDescendants()) do
+				if d:GetAttribute("PixelIcon") == "play" then
+					icon = d
+				end
+			end
+			T.check(icon ~= nil, "menu play: the pixel play triangle is on PLAY")
+			-- one green action: every green fill on the screen is inside PLAY
+			local greens = {}
+			for _, d in ipairs(menu:GetDescendants()) do
+				if d:IsA("GuiObject") and d.BackgroundTransparency < 0.99 and MenuH.shown(d) and not d:IsDescendantOf(play) then
+					local c = d.BackgroundColor3
+					if sameColor(c, Sign.Grass) or sameColor(c, Sign.GrassLip) or (c.G > c.R + 0.25 and c.G > c.B + 0.25) then
+						greens[#greens + 1] = d:GetFullName()
+					end
+				end
+			end
+			T.check(#greens == 0, "menu play: PLAY is the only green action on the screen", table.concat(greens, ", "))
+			for _, pair in ipairs({ { "SettingsButton", "gear" }, { "UpdatesButton", "scroll" } }) do
+				local b = MenuH.find(menu, pair[1])
+				local bf = b and MenuH.find(b, "Face")
+				local hasIcon = false
+				for _, d in ipairs(b and b:GetDescendants() or {}) do
+					hasIcon = hasIcon or d:GetAttribute("PixelIcon") == pair[2]
+				end
+				T.check(b ~= nil and b:GetAttribute("SignKit") == "Plank" and bf and sameColor(bf.BackgroundColor3, Sign.Tile), "menu play: " .. pair[1] .. " is a stone plank")
+				T.near(b and b.AbsoluteSize.Y or 0, 52, 0.6, "menu play: " .. pair[1] .. " is 52 tall")
+				T.check(b and math.abs(b.AbsoluteSize.X - (play.AbsoluteSize.X - 12) / 2) <= 1.5, "menu play: " .. pair[1] .. " is half of PLAY's width (12 px gap)",
+					b and tostring(b.AbsoluteSize.X) or "")
+				T.check(hasIcon, "menu play: " .. pair[1] .. " carries the pixel " .. pair[2])
+			end
+		end)
+		MenuH.close()
+		T.check(ok, "menu play: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_play_is_green_plank_only")
+	end)
+
+	-- no neon kit on the title screen: no gradient, no rounded corner, no glow ring, no classic text stroke, no neon colour
+	S.menu_no_neon_cards = guarded("menu_no_neon_cards", function()
+		local Theme = LoadingH.shared("Theme")
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 1920, 1080, "Keyboard" }, { 844, 390, "Touch" } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local menu = MenuH.open({ Size = s, Input = s[3] })
+				local bad = {}
+				for _, d in ipairs(menu:GetDescendants()) do
+					if d:IsA("UIGradient") or d:IsA("UICorner") then
+						bad[#bad + 1] = d.ClassName .. " in " .. d.Parent.Name
+					elseif d:IsA("UIStroke") and d.ApplyStrokeMode ~= Enum.ApplyStrokeMode.Contextual then
+						bad[#bad + 1] = "a border ring on " .. d.Parent.Name
+					elseif (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextStrokeTransparency < 0.95 then
+						bad[#bad + 1] = "a classic stroke on " .. d.Name
+					elseif d:IsA("GuiObject") and d.BackgroundTransparency < 0.99 then
+						for name, c in pairs(Theme.Neon) do
+							if sameColor(d.BackgroundColor3, c) then
+								bad[#bad + 1] = "neon " .. name .. " on " .. d.Name
+							end
+						end
+					end
+				end
+				T.check(#bad == 0, "menu neon: no gradient, corner, glow ring, classic stroke or neon colour at " .. tag, table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				MenuH.close()
+			end
+		end)
+		MenuH.close()
+		T.check(ok, "menu neon: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_no_neon_cards")
+	end)
+
+	-- one NEW marker (the pixel star on UPDATES, while UpdateNotes.Latest > SeenNotes), no NEW pill, no ribbon
+	S.menu_single_new_marker = guarded("menu_single_new_marker", function()
+		local ok, err = pcall(function()
+			local notes = LoadingH.shared("UpdateNotes")
+			local CS = require(Mock.GetPath(ROOTS["client"] .. "/ClientSettings"))
+			local want = (notes and notes.Latest or 0) > (tonumber(CS.Get("SeenNotes")) or 0)
+			local menu = MenuH.open()
+			local updates = MenuH.find(menu, "UpdatesButton")
+			local badge = MenuH.find(menu, "NewBadge")
+			T.check(badge ~= nil and badge:GetAttribute("PixelIcon") == "star" and updates and badge:IsDescendantOf(updates),
+				"menu new: the NEW marker is the pixel star on UPDATES")
+			local markers, newTexts = 0, {}
+			for _, d in ipairs(menu:GetDescendants()) do
+				if d:GetAttribute("PixelIcon") == "star" and MenuH.shown(d) then
+					markers = markers + 1
+				end
+				if (d:IsA("TextLabel") or d:IsA("TextButton")) and string.find(string.upper(d.Text), "NEW", 1, true) and MenuH.shown(d) then
+					newTexts[#newTexts + 1] = d.Name
+				end
+			end
+			T.eq(markers, want and 1 or 0, "menu new: exactly one NEW marker while there are unseen notes (" .. tostring(want) .. ")")
+			T.check(#newTexts == 0, "menu new: no typed NEW pill or tag", table.concat(newTexts, ", "))
+			T.check(MenuH.find(menu, "Ribbon") == nil, "menu new: the NEW ribbon is gone (one marker, not two)")
+		end)
+		MenuH.close()
+		T.check(ok, "menu new: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_single_new_marker")
+	end)
+
+	-- the version: one Nunito line on the board "v6 · The Cute Blocks Update" that opens UPDATES; "v6" beside CREDITS (no
+	-- made-up ".0"); CREDITS is a small wood tag on a rope
+	S.menu_version_text = guarded("menu_version_text", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local ok, err = pcall(function()
+			local notes = LoadingH.shared("UpdateNotes")
+			local latest = tostring(notes.Latest)
+			local menu, MMC = MenuH.open()
+			local line = MenuH.find(menu, "VersionLine")
+			local board = MenuH.find(menu, "Board")
+			if T.check(line ~= nil and (line:IsA("TextButton") or line:IsA("TextLabel")), "menu version: the version line exists") then
+				T.eq(line.Text, "v" .. latest .. " \194\183 " .. notes.Notes[1].Title, "menu version: it reads 'v" .. latest .. " \194\183 " .. notes.Notes[1].Title .. "'")
+				T.check(line:GetAttribute("FontRole") == "Body" or line:GetAttribute("FontRole") == "Label", "menu version: in Nunito (Body / Label role)", tostring(line:GetAttribute("FontRole")))
+				T.check(board ~= nil and line:IsDescendantOf(board), "menu version: on the board")
+				T.check(line:IsA("TextButton"), "menu version: it is a button")
+				if line:IsA("TextButton") then
+					Mock.Click(line)
+					LKC.advance(0.3)
+					T.eq(MMC._M.Win.Name, "Updates", "menu version: a click opens UPDATES")
+					MMC.CloseWindows()
+					LKC.advance(0.2)
+				end
+			end
+			local version = MenuH.find(menu, "Version")
+			T.eq(version and version.Text, "v" .. latest, "menu version: 'v" .. latest .. "' beside CREDITS, no '.0'")
+			local credits = MenuH.find(menu, "CreditsButton")
+			local cf = credits and MenuH.find(credits, "Face")
+			T.check(credits ~= nil and credits:GetAttribute("SignKit") == "Plank" and cf and sameColor(cf.BackgroundColor3, Sign.Wood),
+				"menu version: CREDITS is a wood tag (a SignKit plank in wood)")
+			local tagRope = credits and credits.Parent and credits.Parent:FindFirstChild("Rope")
+			T.check(tagRope ~= nil and tagRope:GetAttribute("SignKit") == "Rope", "menu version: ...on a rope")
+			T.check(credits ~= nil and board ~= nil and not credits:IsDescendantOf(board), "menu version: the CREDITS tag hangs apart from the board")
+			local dotted = {}
+			for _, d in ipairs(menu:GetDescendants()) do
+				if (d:IsA("TextLabel") or d:IsA("TextButton")) and string.find(d.Text, "v%d+%.0") then
+					dotted[#dotted + 1] = d.Name
+				end
+			end
+			T.check(#dotted == 0, "menu version: no 'vN.0' anywhere", table.concat(dotted, ", "))
+			if credits then
+				Mock.Click(credits)
+				LKC.advance(0.3)
+				T.eq(MMC._M.Win.Name, "Credits", "menu version: the CREDITS tag opens Credits")
+				MMC.CloseWindows()
+				LKC.advance(0.2)
+			end
+		end)
+		MenuH.close()
+		T.check(ok, "menu version: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_version_text")
+	end)
+
+	-- the hint line on the board follows the input: keyboard, gamepad, touch
+	S.menu_hint_per_input = guarded("menu_hint_per_input", function()
+		local ok, err = pcall(function()
+			for _, c in ipairs({ { "Keyboard", { 1920, 1080 }, "Press ENTER to play" }, { "Gamepad", { 1920, 1080 }, "Press A to play" },
+				{ "Touch", { 844, 390 }, "Tap PLAY to jump in!" } }) do
+				local menu = MenuH.open({ Input = c[1], Size = c[2] })
+				local hint = MenuH.find(menu, "Hint")
+				local board = MenuH.find(menu, "Board")
+				T.eq(hint and hint.Text, c[3], "menu hint: " .. c[1] .. " reads '" .. c[3] .. "'")
+				T.check(hint ~= nil and board ~= nil and hint:IsDescendantOf(board) and MenuH.shown(hint), "menu hint: shown on the board (" .. c[1] .. ")")
+				MenuH.close()
+			end
+		end)
+		MenuH.close()
+		T.check(ok, "menu hint: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_hint_per_input")
+	end)
+
+	-- portrait: the board docks at the bottom, just above the thumbstick / jump zones, within the 16 px gutter; on every
+	-- phone and tablet no button or text sits in a thumb zone or under Roblox's top-bar buttons, and nothing overlaps
+	S.menu_portrait_docks_bottom = guarded("menu_portrait_docks_bottom", function()
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 390, 844, "Touch" }, { 768, 1024, "Touch" }, { 844, 390, "Touch" }, { 667, 375, "Touch" }, { 1280, 720, "Keyboard" } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local W, Hh = s[1], s[2]
+				local menu = MenuH.open({ Size = { W, Hh }, Input = s[3] })
+				local board = MenuH.find(menu, "Board")
+				if not T.check(board ~= nil, "menu dock: the board at " .. tag) then
+					return
+				end
+				local b = MenuH.rect(board)
+				local touch = s[3] == "Touch"
+				local zoneW, zoneH = 0, 0
+				if touch then
+					if math.min(W, Hh) <= 500 then
+						zoneW, zoneH = 104, 96
+					else
+						zoneW, zoneH = 206, 210
+					end
+				end
+				if Hh > W then
+					T.check(b.B <= Hh - zoneH - 4 and b.B >= Hh - zoneH - 48, "menu dock: the portrait board docks at the bottom, just above the thumb zones at " .. tag,
+						MenuH.show(b) .. fmt(" (zones %d tall)", zoneH))
+					T.check(b.X >= 15.5 and b.R <= W - 15.5, "menu dock: the board keeps the 16 px gutter at " .. tag, MenuH.show(b))
+				end
+				-- the thumb zones (bottom-left stick, bottom-right jump) and the top bar's button rows
+				local zones = {}
+				if touch then
+					zones[#zones + 1] = { X = 0, Y = Hh - zoneH, R = zoneW, B = Hh, Name = "thumbstick" }
+					zones[#zones + 1] = { X = W - zoneW, Y = Hh - zoneH, R = W, B = Hh, Name = "jump" }
+				end
+				zones[#zones + 1] = { X = 0, Y = 0, R = 120, B = Mock.TopInset, Name = "top-left buttons" }
+				zones[#zones + 1] = { X = W - 70, Y = 0, R = W, B = Mock.TopInset, Name = "top-right menu" }
+				local items = {}
+				for _, d in ipairs(menu:GetDescendants()) do
+					if MenuH.shown(d) and (d:IsA("TextButton") or ((d:IsA("TextLabel")) and d.Text ~= "")) then
+						items[#items + 1] = d
+					end
+				end
+				local hits, offs = {}, {}
+				for _, d in ipairs(items) do
+					local r = MenuH.rect(d)
+					for _, z in ipairs(zones) do
+						if MenuH.overlap(r, z) then
+							hits[#hits + 1] = d.Name .. " in " .. z.Name
+						end
+					end
+					if r.X < -0.5 or r.R > W + 0.5 or r.Y < -0.5 or r.B > Hh + 0.5 then
+						offs[#offs + 1] = d.Name .. " " .. MenuH.show(r)
+					end
+				end
+				T.check(#hits == 0, "menu dock: no button or text in a thumb zone or under the top bar at " .. tag, table.concat(hits, ", "))
+				T.check(#offs == 0, "menu dock: everything on screen at " .. tag, table.concat(offs, ", "))
+				local credits = MenuH.find(menu, "CreditsButton")
+				if credits then
+					local swing = MenuH.find(menu, "Swing")
+					local droop = math.ceil(0.5 * board.AbsoluteSize.X * math.sin(math.rad(2)))
+					local swung = { X = b.X - droop, Y = b.Y, R = b.R + droop, B = b.B + droop }
+					T.check(swing ~= nil and not MenuH.overlap(MenuH.rect(credits), swung), "menu dock: the CREDITS tag is clear of the (swinging) board at " .. tag,
+						MenuH.show(MenuH.rect(credits)) .. " vs " .. MenuH.show(swung))
+				end
+				MenuH.close()
+			end
+		end)
+		MenuH.close()
+		T.check(ok, "menu dock: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_portrait_docks_bottom")
+	end)
+
+	-- the entrance: the board drops in on its ropes (0.45 s, Back Out), settles with a 2 degree swing over 1.2 s, the buttons
+	-- pop 60 ms apart; PLAY pulls the board up (0.3 s, Quad In) while the camera tweens to the spawn view (0.8 s, Sine
+	-- InOut) and only then turns Custom
+	S.menu_entrance_and_play_tweens = guarded("menu_entrance_and_play_tweens", function()
+		local ok, err = pcall(function()
+			local function tweensOf(inst, prop)
+				local out = {}
+				for tw in pairs(Mock.ActiveTweens) do
+					if tw.Instance == inst and Mock.TweenGoals(tw)[prop] ~= nil then
+						out[#out + 1] = tw
+					end
+				end
+				return out
+			end
+			local menu, MMC = MenuH.open({ Wait = 0.05 })
+			local swing = MenuH.find(menu, "Swing")
+			if not T.check(swing ~= nil, "menu motion: (setup) the Swing exists") then
+				return
+			end
+			local drop = tweensOf(swing, "Position")[1]
+			local info = drop and drop.TweenInfo
+			T.check(info ~= nil and math.abs(info.Time - 0.45) < 1e-6 and info.EasingStyle == Enum.EasingStyle.Back and info.EasingDirection == Enum.EasingDirection.Out,
+				"menu motion: the board drops in (Position, 0.45 s, Back Out)", info and fmt("%.2f %s %s", info.Time, tostring(info.EasingStyle), tostring(info.EasingDirection)) or "no tween")
+			local rest = drop and Mock.TweenGoals(drop).Position
+			T.check(rest ~= nil and swing.Position.Y.Offset < rest.Y.Offset - 100, "menu motion: ...from above its rest place",
+				rest and fmt("%d -> %d", swing.Position.Y.Offset, rest.Y.Offset) or "")
+			local pops = {}
+			for _, name in ipairs({ "PlayButton", "SettingsButton", "UpdatesButton" }) do
+				local b = MenuH.find(menu, name)
+				local pop = b and b:FindFirstChild("Pop")
+				local tw = pop and tweensOf(pop, "Scale")[1]
+				pops[#pops + 1] = tw and tw.TweenInfo.DelayTime or -1
+			end
+			T.check(pops[1] >= 0 and math.abs(pops[2] - pops[1] - 0.06) < 1e-6 and math.abs(pops[3] - pops[2] - 0.06) < 1e-6,
+				"menu motion: PLAY, SETTINGS and UPDATES pop 60 ms apart", fmt("%.2f / %.2f / %.2f", pops[1], pops[2], pops[3]))
+			LKC.advance(0.5)
+			local settle = tweensOf(swing, "Rotation")[1]
+			local sInfo = settle and settle.TweenInfo
+			T.check(sInfo ~= nil and math.abs(sInfo.Time - 1.2) < 1e-6 and math.abs(swing.Rotation) <= 2.01 and math.abs(swing.Rotation) >= 1.99 and Mock.TweenGoals(settle).Rotation == 0,
+				"menu motion: then it settles from a 2 degree swing to rest over 1.2 s", sInfo and fmt("%.2f deg, %.2f s", swing.Rotation, sInfo.Time) or "no tween")
+			LKC.advance(1.4)
+			T.check(swing.Rotation == 0 and rest ~= nil and swing.Position.Y.Offset == rest.Y.Offset and swing.Position.X.Offset == rest.X.Offset,
+				"menu motion: at rest after the entrance")
+			-- PLAY
+			local camera = workspace.CurrentCamera
+			MMC.Play()
+			LKC.advance(0.05)
+			local pull = tweensOf(swing, "Position")[1]
+			local pInfo = pull and pull.TweenInfo
+			local goal = pull and Mock.TweenGoals(pull).Position
+			T.check(pInfo ~= nil and math.abs(pInfo.Time - 0.3) < 1e-6 and pInfo.EasingStyle == Enum.EasingStyle.Quad and pInfo.EasingDirection == Enum.EasingDirection.In,
+				"menu motion: PLAY pulls the board up (Position, 0.3 s, Quad In)", pInfo and fmt("%.2f", pInfo.Time) or "no tween")
+			T.check(goal ~= nil and rest ~= nil and goal.Y.Offset < rest.Y.Offset - 100, "menu motion: ...up off the screen")
+			local fly = tweensOf(camera, "CFrame")[1]
+			local fInfo = fly and fly.TweenInfo
+			T.check(fInfo ~= nil and math.abs(fInfo.Time - 0.8) < 1e-6 and fInfo.EasingStyle == Enum.EasingStyle.Sine and fInfo.EasingDirection == Enum.EasingDirection.InOut,
+				"menu motion: the camera tweens to the spawn view (CFrame, 0.8 s, Sine InOut)", fInfo and fmt("%.2f", fInfo.Time) or "no tween")
+			LKC.advance(0.5)
+			T.eq(camera.CameraType, Enum.CameraType.Scriptable, "menu motion: the camera stays Scriptable while it flies (0.55 s in)")
+			LKC.advance(0.6)
+			T.eq(camera.CameraType, Enum.CameraType.Custom, "menu motion: Custom once it has landed")
+			T.eq(MMC.IsOpen(), false, "menu motion: the menu is closed after PLAY")
+		end)
+		MenuH.close()
+		T.check(ok, "menu motion: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_entrance_and_play_tweens")
+	end)
+
+	-- Config.Preview.TitleShots: off (the default) keeps today's orbit and field of view; on, the camera holds Key A
+	-- (landscape) or Key P (portrait) of Config.MainMenu.Shots at FOV 50, drifting sideways, and PLAY gives the FOV back
+	S.menu_titleshots_off_keeps_orbit = guarded("menu_titleshots_off_keeps_orbit", function()
+		local Config = LoadingH.shared("Config")
+		local was = Config.Preview and Config.Preview.TitleShots
+		local ok, err = pcall(function()
+			T.eq(Config.Preview.TitleShots, false, "menu shots: Config.Preview.TitleShots ships false")
+			local shots = Config.MainMenu.Shots
+			if not T.check(type(shots) == "table" and type(shots.A) == "table" and type(shots.P) == "table" and shots.Fov == 50,
+				"menu shots: Config.MainMenu.Shots holds Key A and Key P at FOV 50") then
+				return
+			end
+			local camera = workspace.CurrentCamera
+			local fov0 = camera.FieldOfView
+			local lobby = Config.Lobby
+			local a0 = math.rad(lobby.GateFacing)
+			local dir = Vector3.new(math.cos(a0), 0, math.sin(a0))
+			local centre = lobby.Origin + dir * lobby.GateArcRadius
+			-- off: the orbit
+			local _, MMC = MenuH.open()
+			local p = camera.CFrame.Position
+			local flat = Vector3.new(p.X - centre.X, 0, p.Z - centre.Z).Magnitude
+			T.near(flat, Config.MainMenu.OrbitRadius, 0.5, "menu shots: off, the camera orbits at OrbitRadius")
+			T.near(p.Y - centre.Y, Config.MainMenu.OrbitHeight, 0.5, "menu shots: off, at OrbitHeight")
+			T.eq(camera.FieldOfView, fov0, "menu shots: off, the field of view is untouched")
+			MenuH.close()
+			-- on: Key A on a wide screen, Key P on a portrait one
+			Config.Preview.TitleShots = true
+			local arch = lobby.Origin + dir * shots.Arch
+			local right = Vector3.new(-dir.Z, 0, dir.X)
+			for _, c in ipairs({ { "A", { 1920, 1080 }, "Keyboard" }, { "P", { 390, 844 }, "Touch" } }) do
+				local key = shots[c[1]]
+				local function at(t)
+					local s = key.Drift * (0.5 - 0.5 * math.cos(math.pi * t / shots.DriftSeconds)) - key.Drift / 2
+					return arch - dir * key.Back + Vector3.new(0, key.Up, 0) + right * s
+				end
+				local _, M2 = MenuH.open({ Size = c[2], Input = c[3], Wait = 0.05 })
+				local t0 = M2._M.Orbit.T
+				T.check(t0 < 0.2, "menu shots: (setup) the drift starts with the title screen", fmt("%.2f s", t0))
+				local q = camera.CFrame.Position
+				T.check((q - at(t0)).Magnitude < 0.5, "menu shots: on, Key " .. c[1] .. " stands " .. key.Back .. " studs before the Welcome Arch, " .. key.Up .. " up",
+					fmt("%.1f,%.1f,%.1f vs %.1f,%.1f,%.1f", q.X, q.Y, q.Z, at(t0).X, at(t0).Y, at(t0).Z))
+				local look = camera.CFrame.LookVector
+				T.near(math.deg(math.asin(look.Y)), key.Pitch, 0.5, "menu shots: Key " .. c[1] .. " looks up " .. key.Pitch .. " degrees")
+				T.check(Vector3.new(look.X, 0, look.Z).Unit:Dot(dir) > 0.999, "menu shots: Key " .. c[1] .. " looks up the avenue")
+				T.eq(camera.FieldOfView, shots.Fov, "menu shots: Key " .. c[1] .. " at FOV " .. shots.Fov)
+				LKC.advance(15)
+				local mid = camera.CFrame.Position
+				T.check((mid - at(M2._M.Orbit.T)).Magnitude < 0.5 and (mid - q).Magnitude > key.Drift * 0.3, "menu shots: Key " .. c[1] .. " drifts sideways",
+					fmt("%.2f studs in 15 s", (mid - q).Magnitude))
+				MenuH.close()
+				T.near(camera.FieldOfView, fov0, 1e-6, "menu shots: PLAY gives the field of view back after Key " .. c[1])
+			end
+		end)
+		Config.Preview.TitleShots = was == true
+		MenuH.close()
+		T.check(ok, "menu shots: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_titleshots_off_keeps_orbit")
+	end)
+
 	return S
 end
 

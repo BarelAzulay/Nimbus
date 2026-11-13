@@ -303,13 +303,14 @@ function SignKit.PlankState(plank, state)
 end
 
 -- opts: Text, Style (SignKit.Styles name, default Stone), Width, Height, TextSize, Face / Lip / Edge / TextColor
--- overrides, IconSlot (a square left of the label for a PixelIcon), Callback (on Activated; not for Style Off)
+-- overrides, LipPx (the lip's height, default Sizes.Lip), IconSlot (a square left of the label for a PixelIcon), Callback
+-- (on Activated; not for Style Off)
 function SignKit.Plank(parent, opts)
 	opts = opts or {}
 	local look = SignKit.Styles[opts.Style or "Stone"] or SignKit.Styles.Stone
 	local w = tonumber(opts.Width) or 160
 	local h = tonumber(opts.Height) or Z.PlankH
-	local e, lip = Z.Edge, Z.Lip
+	local e, lip = Z.Edge, tonumber(opts.LipPx) or Z.Lip
 	local plank = Instance.new("TextButton")
 	plank.Name = "Plank"
 	plank.Text = ""

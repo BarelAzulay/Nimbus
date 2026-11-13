@@ -22,12 +22,19 @@
 -- With Enabled false: UiGate.MarkPlayed() at once, nothing gated (the loading screen fades by itself).
 -- Always: GraphicsQuality.Init() and SoundFx.Music(SoundFx.Wanted()) (Lobby unless a battle / dungeon layer is on).
 --
--- Layout (NeonKit; design px of a 1080p screen under one UIScale clamp(H / 1080, 0.8, 1.25)): a left column on
--- landscape screens (x = 60, <= 0.42 W), a centred column on portrait ones: logo NIMBUS / CLIMB, the tag line
--- (Config.Tagline, "Climb the storm. Together."), the
--- "NEW" update ribbon, PLAY (Primary Green, 76 tall), SETTINGS (Blue outline) + UPDATES (Purple outline with a NEW
--- badge while UpdateNotes.Latest > Settings.SeenNotes), a dark gradient over the world so the text reads, and a
--- version + CREDITS chip bottom-right.
+-- Layout (kit B U4, .superpowers/slop-audit/round3/BUILD_PLAN.md, findings 5 and 19; SignKit / PixelIcon; design px of a
+-- 1080p screen under one UIScale clamp(H / 1080, 0.8, 1.25)): no shade over the world. A Signboard on two ropes: landscape
+-- at x 60 (right of the thumbstick zone on touch), 440 wide; portrait docked at the bottom above the thumb zones. The flat
+-- awning, the navy header (Config.MainMenu.Header = "NIMBUS CLIMB", Title role; the greeting is the owner's pick M4), the
+-- stone body: the tag line (Config.Tagline), PLAY (the one green plank, 72 tall, a 6 px lip, FredokaOne 40, the pixel
+-- play triangle), SETTINGS (pixel gear) + UPDATES (pixel scroll; the pixel star while UpdateNotes.Latest >
+-- Settings.SeenNotes is the one NEW marker) as half-width stone planks, the version line "vN · <latest title>" (opens
+-- UPDATES) and the hint (keyboard / gamepad / touch). The CREDITS wood tag hangs on its own rope with "vN" beside it:
+-- bottom-right on a desktop, top-right under Roblox's buttons on touch / portrait. Entrance: the board drops in on its
+-- ropes (0.45 s, Back Out), settles from a 2 degree swing (1.2 s), the buttons pop 60 ms apart. PLAY: the board is pulled
+-- up (0.3 s, Quad In) while the camera tweens to the spawn view (0.8 s, Sine InOut) and turns Custom once it lands.
+-- Behind Config.Preview.TitleShots (PICK, off): the camera holds Key A / Key P of Config.MainMenu.Shots (FOV 50) instead
+-- of the orbit.
 -- Windows (docked by NeonKit.Dock: right side panel / bottom sheet):
 --   SETTINGS  Music and Sound (11 steps 0..10, - / + and the step segments), Graphics (Auto / Low / High chips),
 --             Camera shake (ON / OFF), Mouse lock (ON / OFF, keyboard + mouse devices only; the L key toggles it too);
@@ -73,6 +80,7 @@ local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local SignKit = require(Shared:WaitForChild("SignKit"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon"))
 
 local Client = script.Parent.Parent
 local UI = Client:WaitForChild("UI")
@@ -86,10 +94,6 @@ local MainMenuController = {}
 local K = {
 	GUI = "NimbusMainMenu",
 	ORDER = 40, -- above the HUD / windows (<= 30), below the loading screen (100)
-	COL_W = 500,
-	MARGIN = 60,
-	PLAY_H = 76,
-	BTN_H = 58,
 	FADE = 0.35,
 	LOADING_FADE = 0.4,
 	CHAR_WAIT = 5,
@@ -107,6 +111,32 @@ local K = {
 	MOUSE_HOLD = "MainMenu",
 	TOAST_HOLD = "MainMenu", -- NotifyController.SetHeld owner key (quick wins, win 1)
 	TAGLINE = "Climb the storm. Together.", -- when Config.Tagline is missing
+	HEADER = "NIMBUS CLIMB", -- when Config.MainMenu.Header is missing
+	-- (kit B U4) the hint line on the board, by input (H.inputKind)
+	HINTS = { Keyboard = "Press ENTER to play", Gamepad = "Press A to play", Touch = "Tap PLAY to jump in!" },
+	-- (kit B U4) the title screen's Signboard, design px of a 1080p screen, and its motion (seconds)
+	BOARD = {
+		X = 60, -- landscape: from the left edge
+		W = 440,
+		W_MAX = 560, -- portrait: the screen less the gutter, at most this
+		GUTTER = 16, -- portrait: screen px each side
+		DOCK = 16, -- portrait: screen px between the board and the thumb zones (or the bottom edge)
+		ROPE_AT = { 0.25, 0.75 }, -- the two ropes, as parts of the board's width
+		PLAY_H = 72,
+		PLAY_LIP = 6,
+		BTN_H = 52,
+		GAP = 12, -- between SETTINGS and UPDATES
+		TAG_W = 140, -- the CREDITS tag
+		TAG_H = 44,
+		DROP = 0.45, -- the entrance: the drop on the ropes (Back Out) ...
+		SETTLE = 1.2, -- ... the settle from SETTLE_DEG (Elastic Out) ...
+		SETTLE_DEG = 2,
+		POP_START = 0.1, -- ... the buttons' pops, POP apart
+		POP = 0.06,
+		POP_TIME = 0.2,
+		PULL = 0.3, -- PLAY: the board pulled up (Quad In)
+		FLY = 0.8, -- PLAY: the camera to the spawn view (Sine InOut), then Custom
+	},
 	-- (quick wins, win 1) the world name cards hidden on the title screen, by BillboardGui name: Config.MainMenu.HideCards
 	-- (review round 1: every lobby label the orbit can see); this list only when Config has none
 	WORLD_CARDS = { "GateTag", "PortalBillboard" },
@@ -433,6 +463,33 @@ function Orbit.centre()
 	return origin + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
 end
 
+-- (kit B U4, PICK) the authored shot of Config.MainMenu.Shots while Config.Preview.TitleShots is on: Key A on a wide
+-- screen, Key P on a portrait one, drifting sideways and back every DriftSeconds; returns cframe, fov (nil when off)
+function Orbit.shot()
+	local preview = Config.Preview
+	local shots = H.menuCfg().Shots
+	if not (type(preview) == "table" and preview.TitleShots == true and type(shots) == "table") then
+		return nil
+	end
+	local vp = H.viewport()
+	local key = vp.Y > vp.X and shots.P or shots.A
+	if type(key) ~= "table" then
+		return nil
+	end
+	local lobby = type(Config.Lobby) == "table" and Config.Lobby or {}
+	local origin = typeof(lobby.Origin) == "Vector3" and lobby.Origin or Vector3.new(0, 300, 0)
+	local a = math.rad(tonumber(lobby.GateFacing) or 90)
+	local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+	local right = Vector3.new(-dir.Z, 0, dir.X)
+	local drift = tonumber(key.Drift) or 0
+	local period = math.max(1, tonumber(shots.DriftSeconds) or 30)
+	local side = drift * (0.5 - 0.5 * math.cos(math.pi * M.Orbit.T / period)) - drift / 2
+	local pos = origin + dir * (tonumber(shots.Arch) or 40) - dir * (tonumber(key.Back) or 26) + Vector3.new(0, tonumber(key.Up) or 6, 0) + right * side
+	local pitch = math.rad(tonumber(key.Pitch) or 12)
+	local look = dir * math.cos(pitch) + Vector3.new(0, math.sin(pitch), 0)
+	return CFrame.lookAt(pos, pos + look), tonumber(shots.Fov) or 50
+end
+
 function Orbit.place(dt)
 	local camera = Workspace.CurrentCamera
 	if not camera then
@@ -444,6 +501,15 @@ function Orbit.place(dt)
 	local height = tonumber(cfg.OrbitHeight) or 38
 	local O = M.Orbit
 	O.T = O.T + (tonumber(dt) or 0)
+	local shot, fov = Orbit.shot()
+	if shot then
+		if O.Fov0 == nil then
+			O.Fov0 = camera.FieldOfView -- given back at PLAY
+		end
+		camera.FieldOfView = fov
+		camera.CFrame = shot
+		return
+	end
 	local angle = (O.T / math.max(1, period)) * math.pi * 2
 	local c = O.Centre
 	camera.CFrame = CFrame.lookAt(
@@ -454,10 +520,16 @@ end
 
 function Orbit.start()
 	local O = M.Orbit
+	if O.Fly then -- a PLAY's camera move still under way (/menu right after PLAY): drop it
+		local fly = O.Fly
+		O.Fly, O.Release = nil, false
+		fly:Cancel()
+	end
 	if O.Conn then
 		return
 	end
 	O.Centre = Orbit.centre()
+	O.T = 0 -- each title screen starts its orbit (or a title shot's drift) from the start
 	local camera = Workspace.CurrentCamera
 	if camera then
 		camera.CameraType = Enum.CameraType.Scriptable
@@ -466,20 +538,88 @@ function Orbit.start()
 	O.Conn = RunService.RenderStepped:Connect(Orbit.place)
 end
 
-function Orbit.stop()
+-- the orbit's frame loop off (the camera stays where it is, Scriptable); cleared before the disconnect, so one that throws
+-- is reported once
+function Orbit.halt()
 	local O = M.Orbit
-	if O.Conn then
-		O.Conn:Disconnect()
-		O.Conn = nil
+	local conn = O.Conn
+	O.Conn = nil
+	if conn then
+		conn:Disconnect()
 	end
-	local camera = Workspace.CurrentCamera
-	if camera then
-		camera.CameraType = Enum.CameraType.Custom
-		local humanoid = LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			camera.CameraSubject = humanoid
+end
+
+-- (kit B U4) where the camera lands at PLAY: behind the character (or the lobby spawn, looking towards the gates), up a little
+function Orbit.spawnView()
+	local lobby = type(Config.Lobby) == "table" and Config.Lobby or {}
+	local a = math.rad(tonumber(lobby.GateFacing) or 90)
+	local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+	local at = (typeof(lobby.Origin) == "Vector3" and lobby.Origin or Vector3.new(0, 300, 0)) + Vector3.new(0, 3, 0)
+	local root = LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		at = root.Position
+		local look = root.CFrame.LookVector
+		local flat = Vector3.new(look.X, 0, look.Z)
+		if flat.Magnitude > 0.1 then
+			dir = flat.Unit
 		end
 	end
+	return CFrame.lookAt(at - dir * 14 + Vector3.new(0, 6, 0), at + Vector3.new(0, 2, 0) + dir * 6)
+end
+
+-- (kit B U4) PLAY: the camera tweens to the spawn view (0.8 s, Sine InOut; a title shot's field of view goes back with it);
+-- Custom follows when it lands, or at the release if that comes later (Orbit.stop)
+function Orbit.fly()
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	local O = M.Orbit
+	local goal = { CFrame = Orbit.spawnView() }
+	if O.Fov0 then
+		goal.FieldOfView = O.Fov0
+	end
+	local fly = TweenService:Create(camera, TweenInfo.new(K.BOARD.FLY, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), goal)
+	O.Fly, O.Release = fly, false
+	fly.Completed:Connect(function()
+		if O.Fly ~= fly then
+			return
+		end
+		O.Fly = nil
+		if O.Release then
+			O.Release = false
+			Orbit.custom()
+		end
+	end)
+	fly:Play()
+end
+
+-- the camera back to Custom on the humanoid, a title shot's field of view given back
+function Orbit.custom()
+	local O = M.Orbit
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	if O.Fov0 then
+		camera.FieldOfView = O.Fov0
+		O.Fov0 = nil
+	end
+	camera.CameraType = Enum.CameraType.Custom
+	local humanoid = LocalPlayer and LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		camera.CameraSubject = humanoid
+	end
+end
+
+-- the release after PLAY: the orbit off and the camera Custom, once the PLAY camera move has landed
+function Orbit.stop()
+	Orbit.halt()
+	if M.Orbit.Fly then
+		M.Orbit.Release = true
+		return
+	end
+	Orbit.custom()
 end
 
 ----------------------------------------------------------------------
@@ -588,62 +728,61 @@ function Menu.refreshBadge()
 	end
 end
 
--- the logo block: NIMBUS (white) over CLIMB (gold), left-aligned (landscape) or centred (portrait)
-function Menu.logo(parent, width, size, align, order)
-	local logo = H.frame("Logo", { Size = UDim2.fromOffset(width, math.floor(size * 1.9)), LayoutOrder = order }, parent)
-	H.label("Nimbus", "NIMBUS", "Title", size, {
-		Outline = 5,
-		Color = K.WHITE,
-		Size = UDim2.new(1, 0, 0, size),
-		TextXAlignment = align,
-	}, logo)
-	H.label("Climb", "CLIMB", "Title", size, {
-		Outline = 5,
-		Color = K.NEW_GOLD,
-		Position = UDim2.fromOffset(0, math.floor(size * 0.9)),
-		Size = UDim2.new(1, 0, 0, size),
-		TextXAlignment = align,
-	}, logo)
-	return logo
-end
-
-function Menu.ribbon(parent, width, align, order)
-	local notes = H.notes()
-	local title = notes and notes.Notes and notes.Notes[1] and notes.Notes[1].Title or nil
-	if type(title) ~= "string" then
+-- (kit B U4) a PixelIcon left of a plank's label, the two centred together on the face by a row layout (the engine
+-- measures the text: AutomaticSize); returns the icon
+function Menu.plankIcon(plank, name, px, colour)
+	local face = plank:FindFirstChild("Face", true)
+	local label = face and face:FindFirstChild("Label")
+	local icon = label and PixelIcon.New(face, name, px, colour)
+	if not icon then
 		return nil
 	end
-	local row = H.frame("Ribbon", { Size = UDim2.fromOffset(width, 44), LayoutOrder = order }, parent)
-	local pillW = math.min(width, 380)
-	local pill = H.frame("Pill", {
-		BackgroundTransparency = 0.2,
-		BackgroundColor3 = K.INK,
-		Size = UDim2.fromOffset(pillW, 40),
-		Position = align == Enum.TextXAlignment.Center and UDim2.new(0.5, -pillW / 2, 0, 2) or UDim2.fromOffset(0, 2),
-	}, row)
-	H.corner(pill)
-	Util.Create("UIStroke", { Color = K.NEW_GOLD, Thickness = 2, Transparency = 0.1, Parent = pill })
-	local tag = H.label("Tag", "NEW", "Button", 18, {
-		Outline = 0,
-		Color = K.INK,
-		BackgroundTransparency = 0,
-		BackgroundColor3 = K.NEW_GOLD,
-		Position = UDim2.fromOffset(6, 6),
-		Size = UDim2.fromOffset(58, 28),
-	}, pill)
-	tag.TextStrokeTransparency = 1
-	H.corner(tag)
-	H.label("Title", title, "Heading", 20, {
-		Outline = 2,
-		Position = UDim2.fromOffset(70, 0),
-		Size = UDim2.new(1, -80, 1, 0),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	}, pill)
-	return row
+	local group = H.frame("Group", { Size = UDim2.fromScale(1, 1), ZIndex = 3 }, face)
+	Util.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, math.floor(px * 0.4)),
+		Parent = group,
+	})
+	icon.LayoutOrder = 1
+	icon.ZIndex = 3
+	icon.Parent = group
+	label.LayoutOrder = 2
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.Position = UDim2.fromOffset(0, 0)
+	label.Size = UDim2.new(0, 0, 1, 0)
+	label.Parent = group
+	return icon
 end
 
-function Menu.build()
+-- the hint line's input: a gamepad (a console, or the pad was the last input), touch, else keyboard
+function H.inputKind()
+	local UIS = game:GetService("UserInputService")
+	local last = nil
+	pcall(function()
+		last = UIS:GetLastInputType()
+	end)
+	local padLast = last ~= nil and string.find(tostring(last), "Gamepad", 1, true) ~= nil
+	if UIS.GamepadEnabled and (not UIS.KeyboardEnabled or padLast) then
+		return "Gamepad"
+	end
+	if H.isTouch() then
+		return "Touch"
+	end
+	return "Keyboard"
+end
+
+-- (kit B U4) the title screen: the Signboard hanging on two ropes over the world (no shade). Design px of a 1080p screen
+-- under one UIScale (Theme.ScreenFactor). Landscape: the board at x 60 (right of the thumbstick zone on a touch screen),
+-- 440 wide, a little above the middle; portrait: docked at the bottom just above the thumbstick / jump zones, the screen
+-- less a 16 px gutter wide (560 at most). In the board: the awning, the navy header (Config.MainMenu.Header, Title role),
+-- the stone body with the tag line, PLAY (the one green plank), SETTINGS + UPDATES (half-width stone planks; the pixel
+-- star on UPDATES is the one NEW marker), the version line (opens UPDATES) and the hint line. The CREDITS tag hangs on
+-- its own rope: bottom-right on a desktop, top-right under Roblox's buttons on a touch / portrait screen, "vN" beside it.
+-- `enter`: the board drops in on its ropes, settles with a swing, the buttons pop (Menu.enter)
+function Menu.build(enter)
 	local gui = Menu.gui()
 	if not gui then
 		return nil
@@ -652,30 +791,17 @@ function Menu.build()
 	if old then
 		old:Destroy()
 	end
+	local B, Z, Sign = K.BOARD, SignKit.Sizes, Theme.Sign
 	local vp = H.viewport()
 	local f = Theme.ScreenFactor(vp.Y)
 	local portrait = vp.Y > vp.X
-	local designW, designH = vp.X / f, vp.Y / f
-	local short = designH < 600
+	local dw, dh = vp.X / f, vp.Y / f
+	local short = dh < 600
 	local menu = H.frame("Menu", { Size = UDim2.fromScale(1, 1), Active = true, ZIndex = 1 }, gui)
 	M.Menu = menu
 	M.Ui = {}
-
-	-- the shade: dark on the text side, the world shows through on the other
-	local shade = H.frame("Shade", { BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(16, 12, 44), Size = UDim2.fromScale(1, 1) }, menu)
-	Util.Create("UIGradient", {
-		Rotation = portrait and 90 or 0,
-		Transparency = portrait and NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.2),
-			NumberSequenceKeypoint.new(0.55, 0.45),
-			NumberSequenceKeypoint.new(1, 0.92),
-		}) or NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.15),
-			NumberSequenceKeypoint.new(0.45, 0.55),
-			NumberSequenceKeypoint.new(1, 0.92),
-		}),
-		Parent = shade,
-	})
+	local content = H.frame("Content", { Size = UDim2.fromOffset(math.floor(dw + 0.5), math.floor(dh + 0.5)), ZIndex = 2 }, menu)
+	Util.Create("UIScale", { Name = "ReadScale", Scale = f, Parent = content })
 
 	-- Roblox's touch thumbstick (bottom-left) and jump button (bottom-right) zones in screen px, kept clear of every
 	-- button: the classic stick / jump button of a small phone (<= 500 px on the short side), the big ones elsewhere
@@ -690,143 +816,264 @@ function Menu.build()
 		end
 	end
 
-	-- the column (landscape touch: right of the thumbstick zone, a little higher than on a desktop)
-	local colW = portrait and math.min(K.COL_W, designW - 48) or math.min(K.COL_W, math.max(300, 0.42 * designW - K.MARGIN))
-	local align = portrait and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left
-	local logoSize = short and 70 or (portrait and 88 or 100)
-	local colX = math.max(math.floor(K.MARGIN * f), touch and (zoneW + math.floor(8 * f)) or 0)
-	local colY = touch and -math.floor(6 * f) or math.floor(22 * f)
-	local column = H.frame("Column", {
-		AnchorPoint = portrait and Vector2.new(0.5, 0) or Vector2.new(0, 0.5),
-		Position = portrait and UDim2.new(0.5, 0, 0.1, 0) or UDim2.new(0, colX, 0.5, colY),
-		Size = UDim2.fromOffset(colW, short and 420 or 560),
-		ZIndex = 2,
-	}, menu)
-	Util.Create("UIScale", { Name = "ReadScale", Scale = f, Parent = column })
-	Util.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Vertical,
-		HorizontalAlignment = portrait and Enum.HorizontalAlignment.Center or Enum.HorizontalAlignment.Left,
-		VerticalAlignment = portrait and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, short and 8 or 12),
-		Parent = column,
-	})
-	M.Ui.Column = column
-	M.Ui.Logo = Menu.logo(column, colW, logoSize, align, 1)
-	H.label("Tagline", tostring(Config.Tagline or K.TAGLINE), "Heading", short and 20 or 23, {
-		Outline = 2,
-		Color = Color3.fromRGB(255, 236, 252),
-		Size = UDim2.fromOffset(colW, 30),
-		TextXAlignment = align,
-		LayoutOrder = 2,
-	}, column)
-	if not short then
-		Menu.ribbon(column, colW, align, 3)
+	-- the board's size: header, then the body rows top-down (the tag line drops out on a short screen)
+	local boardW = portrait and math.floor(math.min(dw - 2 * B.GUTTER / f, B.W_MAX)) or B.W
+	local inner = boardW - 2 * Z.Frame
+	local pad = short and 14 or 18
+	local headY = Z.RoofH - 3
+	local headH = short and 56 or 72
+	local tagH = short and 0 or 26
+	local playW = inner - 2 * pad
+	local y = pad
+	local rows = {}
+	if tagH > 0 then
+		rows.Tag = y - 4
+		y = y + tagH + 8
 	end
-	H.frame("Gap", { Size = UDim2.fromOffset(10, short and 2 or 8), LayoutOrder = 4 }, column)
+	rows.Play = y
+	y = y + B.PLAY_H + 10
+	rows.Pair = y
+	y = y + B.BTN_H + 8
+	rows.Version = y
+	y = y + 24 + 2
+	rows.Hint = y
+	y = y + 22 + pad
+	local bodyH = y + Z.Lip
+	local woodH = bodyH + 2 * Z.Frame
+	local boardH = headY + headH + woodH
 
-	M.Ui.Play = NeonKit.Button({
+	-- where it hangs: below Roblox's top bar; a portrait board docks above the thumb zones
+	local minTop = math.ceil(58 / f) + 12
+	local boardX, topY
+	if portrait then
+		boardX = math.floor((dw - boardW) / 2)
+		topY = math.max(minTop, math.floor(dh - (zoneH + B.DOCK) / f - boardH))
+	else
+		boardX = math.max(B.X, touch and math.ceil((zoneW + 8) / f) or 0)
+		topY = math.max(minTop, math.floor((dh - boardH) * 0.42))
+	end
+	local half = topY + boardH
+	local side = 32
+	local swing = H.frame("Swing", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(boardX + math.floor(boardW / 2), 0),
+		Size = UDim2.fromOffset(boardW + 2 * side, 2 * half),
+		ZIndex = 2,
+	}, content)
+	for i, at in ipairs(B.ROPE_AT) do
+		SignKit.Rope(swing, {
+			Name = "Rope",
+			Length = topY + 20,
+			Position = UDim2.fromOffset(side + math.floor(at * boardW) - math.floor(Z.RopeW / 2), half - 12),
+			ZIndex = 1,
+			LayoutOrder = i,
+		})
+	end
+	local board = H.frame("Board", { Position = UDim2.fromOffset(side, half + topY), Size = UDim2.fromOffset(boardW, boardH), ZIndex = 2 }, swing)
+	SignKit.Roof(board, { Width = boardW + 24, ZIndex = 3 })
+	-- the header title: Config.MainMenu.Header in the Title role, stepped down until it fits the plate with 12 px each side
+	local header = tostring(H.menuCfg().Header or K.HEADER)
+	local titleSize = short and 44 or 54
+	local room = boardW - 2 * Z.Rim - 24
+	while titleSize > 24 do
+		local ok, size = pcall(Theme.Measure, header, "Title", titleSize)
+		if not ok or not size or size.X <= room then
+			break
+		end
+		titleSize = titleSize - 2
+	end
+	local _, plate = SignKit.Header(board, { Title = header, TitleSize = titleSize, Y = headY, Height = headH, ZIndex = 2 })
+	local title = plate:FindFirstChild("Title")
+	if title then
+		title.Position = UDim2.fromOffset(0, 0)
+		title.Size = UDim2.fromScale(1, 1)
+		title.TextXAlignment = Enum.TextXAlignment.Center
+	end
+	local wood = SignKit.Frame(board, { Y = headY + headH, Height = woodH, ZIndex = 1 })
+	local body = SignKit.Body(wood)
+
+	local tagline = Theme.Label(tostring(Config.Tagline or K.TAGLINE), "Body", { Size = 20, Color = Theme.TextOn("Stone") })
+	tagline.Name = "Tagline"
+	tagline.Position = UDim2.fromOffset(pad, rows.Tag or 0)
+	tagline.Size = UDim2.fromOffset(playW, math.max(tagH, 1))
+	tagline.Visible = tagH > 0
+	tagline.ZIndex = 2
+	tagline.Parent = body
+
+	M.Ui.Play = SignKit.Plank(body, {
 		Name = "PlayButton",
-		Text = "\226\150\182  PLAY",
-		Color = "Green",
-		Variant = "Primary",
-		Size = UDim2.fromOffset(colW, K.PLAY_H),
-		TextSize = 38,
-		LayoutOrder = 5,
+		Text = "PLAY",
+		Style = "Grass",
+		Width = playW,
+		Height = B.PLAY_H,
+		LipPx = B.PLAY_LIP,
+		TextSize = 40,
+		Position = UDim2.fromOffset(pad, rows.Play),
+		ZIndex = 2,
 		Callback = function()
 			MainMenuController.Play()
 		end,
-		Parent = column,
 	})
-	local row = H.frame("Row", { Size = UDim2.fromOffset(colW, K.BTN_H), LayoutOrder = 6 }, column)
-	local half = math.floor((colW - 12) / 2)
-	M.Ui.Settings = NeonKit.Button({
+	Menu.plankIcon(M.Ui.Play, "play", 30, Sign.Text)
+	local halfW = math.floor((playW - B.GAP) / 2)
+	M.Ui.Settings = SignKit.Plank(body, {
 		Name = "SettingsButton",
 		Text = "SETTINGS",
-		Color = "Blue",
-		Variant = "Outline",
-		Size = UDim2.fromOffset(half, K.BTN_H),
+		Width = halfW,
+		Height = B.BTN_H,
 		TextSize = 22,
+		Position = UDim2.fromOffset(pad, rows.Pair),
+		ZIndex = 2,
 		Callback = function()
 			MainMenuController.OpenSettings()
 		end,
-		Parent = row,
 	})
-	M.Ui.Updates = NeonKit.Button({
+	Menu.plankIcon(M.Ui.Settings, "gear", 22, Sign.Text)
+	M.Ui.Updates = SignKit.Plank(body, {
 		Name = "UpdatesButton",
 		Text = "UPDATES",
-		Color = "Purple",
-		Variant = "Outline",
-		Size = UDim2.fromOffset(half, K.BTN_H),
-		Position = UDim2.fromOffset(colW - half, 0),
+		Width = halfW,
+		Height = B.BTN_H,
 		TextSize = 22,
+		Position = UDim2.fromOffset(pad + playW - halfW, rows.Pair),
+		ZIndex = 2,
 		Callback = function()
 			MainMenuController.OpenUpdates()
 		end,
-		Parent = row,
 	})
-	local badge = H.label("NewBadge", "NEW", "Button", 18, {
-		Outline = 0,
-		Color = K.INK,
-		BackgroundTransparency = 0,
-		BackgroundColor3 = K.NEW_GOLD,
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 6, 0, 2),
-		Size = UDim2.fromOffset(60, 26),
-		ZIndex = 9,
-	}, M.Ui.Updates)
-	badge.TextStrokeTransparency = 1
-	H.corner(badge)
-	Util.Create("UIStroke", { Color = K.WHITE, Thickness = 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = badge })
+	Menu.plankIcon(M.Ui.Updates, "scroll", 22, Sign.Text)
+	-- the one NEW marker: a gold pixel star on a dark tile at UPDATES' corner (shown while UpdateNotes.Latest > SeenNotes)
+	local badge = PixelIcon.New(M.Ui.Updates, "star", 26, Sign.Gold)
+	badge.Name = "NewBadge"
+	badge.BackgroundTransparency = 0
+	badge.BackgroundColor3 = Sign.Text
+	badge.AnchorPoint = Vector2.new(0.5, 0.5)
+	badge.Position = UDim2.new(1, -6, 0, 6)
+	badge.ZIndex = 5
 	M.Ui.NewBadge = badge
 	Menu.refreshBadge()
 
-	-- the hint under the buttons (keyboard / gamepad / touch)
-	H.label("Hint", (H.isTouch() and "Tap PLAY to jump in!") or "Press ENTER to play", "Label", 18, {
-		Outline = 2,
-		Color = Color3.fromRGB(226, 220, 255),
-		Size = UDim2.fromOffset(colW, 24),
-		TextXAlignment = align,
-		LayoutOrder = 7,
-	}, column)
-
-	-- version + CREDITS chip, bottom-right
-	-- desktop: bottom-right; landscape touch: top-right under Roblox's buttons; portrait: bottom-centre, ABOVE the
-	-- thumbstick and the jump button a character would bring (never inside either zone)
-	local chipAnchor, chipPos = Vector2.new(1, 1), UDim2.new(1, -math.floor(20 * f), 1, -math.floor(18 * f))
-	if portrait then
-		chipAnchor, chipPos = Vector2.new(0.5, 1), UDim2.new(0.5, -math.floor(10 * f), 1, -(zoneH + math.floor(12 * f)))
-	elseif touch then
-		chipAnchor, chipPos = Vector2.new(1, 0), UDim2.new(1, -math.floor(16 * f), 0, 66)
-	end
-	local chip = H.frame("Chip", {
-		AnchorPoint = chipAnchor,
-		Position = chipPos,
-		Size = UDim2.fromOffset(250, 44),
-		ZIndex = 3,
-	}, menu)
-	Util.Create("UIScale", { Name = "ReadScale", Scale = f, Parent = chip })
+	-- the version line (opens UPDATES) and the hint line, Nunito on the stone
 	local notes = H.notes()
-	H.label("Version", "v" .. tostring(notes and notes.Latest or 5) .. ".0", "Label", 18, {
-		Outline = 2,
-		Color = Color3.fromRGB(226, 220, 255),
-		Size = UDim2.fromOffset(80, 44),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	}, chip)
-	M.Ui.Credits = NeonKit.Button({
+	local latest = tostring(notes and notes.Latest or 6)
+	local first = notes and type(notes.Notes) == "table" and notes.Notes[1] or nil
+	local versionText = "v" .. latest
+	if first and type(first.Title) == "string" then
+		versionText = versionText .. " \194\183 " .. first.Title
+	end
+	local version = Instance.new("TextButton")
+	version.Name = "VersionLine"
+	version.AutoButtonColor = false
+	version.BackgroundTransparency = 1
+	version.Text = versionText
+	Theme.Style(version, "Body", { Size = 18, Color = Sign.TextMuted })
+	version.TextTruncate = Enum.TextTruncate.AtEnd
+	version.Position = UDim2.fromOffset(pad, rows.Version)
+	version.Size = UDim2.fromOffset(playW, 24)
+	version.ZIndex = 2
+	version.Parent = body
+	version.Activated:Connect(function()
+		MainMenuController.OpenUpdates()
+	end)
+	local hint = Theme.Label(K.HINTS[H.inputKind()] or K.HINTS.Keyboard, "Label", { Size = 18, Color = Sign.TextMuted })
+	hint.Name = "Hint"
+	hint.Position = UDim2.fromOffset(pad, rows.Hint)
+	hint.Size = UDim2.fromOffset(playW, 22)
+	hint.ZIndex = 2
+	hint.Parent = body
+
+	-- the CREDITS tag on its rope with "vN" beside it: bottom-right on a desktop; top-right under Roblox's buttons on a
+	-- touch or portrait screen (clear of the thumb zones and of a docked board)
+	local tagW, ropeH = B.TAG_W, 22
+	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(tagW + 56, ropeH + B.TAG_H), ZIndex = 3 }, content)
+	if touch or portrait then
+		tag.AnchorPoint = Vector2.new(1, 0)
+		tag.Position = UDim2.fromOffset(math.floor(dw - 16 / f), math.ceil(58 / f) + 4)
+	else
+		tag.AnchorPoint = Vector2.new(1, 1)
+		tag.Position = UDim2.fromOffset(math.floor(dw - 20), math.floor(dh - 18))
+	end
+	H.frame("Peg", { BackgroundTransparency = 0, BackgroundColor3 = Sign.Text, Position = UDim2.fromOffset(56 + math.floor(tagW / 2) - 6, 0), Size = UDim2.fromOffset(12, 6), ZIndex = 4 }, tag)
+	SignKit.Rope(tag, { Name = "Rope", Length = ropeH + 6, Position = UDim2.fromOffset(56 + math.floor((tagW - Z.RopeW) / 2), 2), ZIndex = 3 })
+	M.Ui.Credits = SignKit.Plank(tag, {
 		Name = "CreditsButton",
 		Text = "CREDITS",
-		Color = "Pink",
-		Variant = "Outline",
-		Size = UDim2.fromOffset(150, 44),
-		Position = UDim2.fromOffset(96, 0),
+		Width = tagW,
+		Height = B.TAG_H,
 		TextSize = 18,
+		Face = Sign.Wood,
+		Lip = K.SIGN.WoodDark,
+		Edge = Sign.Text,
+		TextColor = Sign.Stone,
+		Position = UDim2.fromOffset(56, ropeH),
+		ZIndex = 4,
 		Callback = function()
 			MainMenuController.OpenCredits()
 		end,
-		Parent = chip,
 	})
+	local v = Theme.Label("v" .. latest, "Label", { Size = 18, Color = K.WHITE, Outline = "World", OutlineColor = K.INK })
+	v.Name = "Version"
+	v.Position = UDim2.fromOffset(0, ropeH)
+	v.Size = UDim2.fromOffset(48, B.TAG_H - Z.Lip)
+	v.TextXAlignment = Enum.TextXAlignment.Right
+	v.ZIndex = 4
+	v.Parent = tag
+
+	M.Ui.Swing, M.Ui.Board, M.Ui.Tag = swing, board, tag
+	M.Ui.Rest, M.Ui.Lift = swing.Position, half + 40
+	if enter then
+		Menu.enter()
+	end
 	return menu
+end
+
+-- (kit B U4) the entrance: the board drops in on its ropes (0.45 s, Back Out) and settles from a 2 degree swing (1.2 s,
+-- Elastic Out); PLAY, SETTINGS and UPDATES pop in (a UIScale "Pop" 0 -> 1) 60 ms apart while it falls
+function Menu.enter()
+	local B, ui = K.BOARD, M.Ui
+	local swing, rest = ui.Swing, ui.Rest
+	if not swing then
+		return
+	end
+	swing.Position = UDim2.new(rest.X.Scale, rest.X.Offset, rest.Y.Scale, rest.Y.Offset - ui.Lift)
+	local drop = TweenService:Create(swing, TweenInfo.new(B.DROP, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = rest })
+	ui.Drop = drop
+	drop.Completed:Connect(function()
+		if M.Ui.Drop ~= drop or M.Playing or not swing.Parent then
+			return
+		end
+		M.Ui.Drop = nil
+		swing.Rotation = B.SETTLE_DEG
+		M.Ui.Settle = TweenService:Create(swing, TweenInfo.new(B.SETTLE, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), { Rotation = 0 })
+		M.Ui.Settle:Play()
+	end)
+	drop:Play()
+	for i, plank in ipairs({ ui.Play, ui.Settings, ui.Updates }) do
+		local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0, Parent = plank })
+		TweenService:Create(pop, TweenInfo.new(B.POP_TIME, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, B.POP_START + (i - 1) * B.POP), { Scale = 1 }):Play()
+	end
+end
+
+-- (kit B U4) PLAY: the board is pulled up off the screen (0.3 s, Quad In) and the CREDITS tag fades with it
+function Menu.leave()
+	local B, ui = K.BOARD, M.Ui
+	for _, key in ipairs({ "Drop", "Settle" }) do
+		if ui[key] then
+			local tw = ui[key]
+			ui[key] = nil
+			tw:Cancel()
+		end
+	end
+	local swing = ui.Swing
+	if swing and swing.Parent then
+		local p = ui.Rest or swing.Position
+		TweenService:Create(swing, TweenInfo.new(B.PULL, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = UDim2.new(p.X.Scale, p.X.Offset, p.Y.Scale, p.Y.Offset - (ui.Lift or 600)),
+		}):Play()
+	end
+	if ui.Tag and ui.Tag.Parent then
+		Menu.fade(ui.Tag, B.PULL)
+	end
 end
 
 function H.isTouch()
@@ -1827,7 +2074,7 @@ function MainMenuController.Open()
 	Loading.hook()
 	Gate.close()
 	H.safe("cards", Cards.close)
-	local ok = H.safe("build", Menu.build)
+	local ok = H.safe("build", Menu.build, true)
 	if not ok and M.Menu then
 		M.Menu:Destroy()
 		M.Menu = nil
@@ -1847,6 +2094,10 @@ function MainMenuController.Play()
 	H.sound("Confirm")
 	Win.close()
 	Menu.bindKeys(false)
+	-- (kit B U4) the board goes up and the camera flies to the spawn view straight away (the release below waits as before)
+	H.safe("leave", Menu.leave)
+	H.safe("orbit", Orbit.halt)
+	H.safe("fly", Orbit.fly)
 	task.spawn(function()
 		if not M.SentPlay and not UiGate.HasPlayed() then
 			M.SentPlay = true

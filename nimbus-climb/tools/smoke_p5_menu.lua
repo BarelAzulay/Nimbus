@@ -179,6 +179,20 @@ local function serverScenarios()
 			local a = i / 72 * math.pi * 2
 			orbit[#orbit + 1] = Vector3.new(c.X + math.cos(a) * cfg.OrbitRadius, c.Y + cfg.OrbitHeight, c.Z + math.sin(a) * cfg.OrbitRadius)
 		end
+		-- (kit B U4) the two authored title shots behind Config.Preview.TitleShots: Key A and Key P along their whole drift
+		-- (MainMenuController Orbit.shot: Back studs before the Welcome Arch, Up studs up, Drift studs sideways)
+		local shots = cfg.Shots
+		if T.check(type(shots) == "table" and type(shots.A) == "table" and type(shots.P) == "table", "p5menu orbit: (U4) Config.MainMenu.Shots holds Key A and Key P") then
+			local dir = Vector3.new(math.cos(a0), 0, math.sin(a0))
+			local right = Vector3.new(-dir.Z, 0, dir.X)
+			local arch = lobby.Origin + dir * shots.Arch
+			for _, key in ipairs({ shots.A, shots.P }) do
+				for i = 0, 8 do
+					local s = key.Drift * (i / 8) - key.Drift / 2
+					orbit[#orbit + 1] = arch - dir * key.Back + Vector3.new(0, key.Up, 0) + right * s
+				end
+			end
+		end
 		local hide = {}
 		for _, name in ipairs(type(cfg.HideCards) == "table" and cfg.HideCards or {}) do
 			hide[name] = true
@@ -1046,7 +1060,7 @@ local function clientScenarios()
 		UiGate._ResetForTests()
 		MMC._M.SentPlay = false
 		MMC.Open()
-		H.advance(0.4)
+		H.advance(1.8) -- (kit B U4) after the entrance: the board's 0.45 s drop, its 1.2 s settle and the buttons' pops
 		local menuGui = pg:FindFirstChild("NimbusMainMenu")
 		local play = H.find(menuGui, "PlayButton")
 		if T.check(play ~= nil, "p5menu phone: the PLAY button exists") then
