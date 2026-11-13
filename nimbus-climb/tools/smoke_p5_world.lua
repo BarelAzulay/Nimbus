@@ -5,7 +5,7 @@
 -- worldstyle (W1):
 --   p5world_lighting       (server, booted) LightingService.Look = { Custom, Fallback } with the P4 numbers (ClockTime
 --                          14.5, Brightness 2.0, Bloom 0.16 / 18 / 1.6, ColorCorrection 0.1 / 0.14); boot with empty
---                          Config.Sky.Faces = Fallback (stock skybox, 2500 stars, sky-blue air with a peach horizon, white
+--                          Config.Sky.Faces and no Day theme uploaded (kit-b S2: else "Painted") = Fallback (stock skybox, 2500 stars, sky-blue air with a peach horizon, white
 --                          clouds); all six ids = Custom (the Sky's six Skybox* ids, StarCount 0, light pink air); one id
 --                          missing / unreadable -> Fallback + a warning naming it (a bare number is unreadable); Init()
 --                          twice = the same Lighting (values and children); Init never touches Players.CharacterAutoLoads
@@ -289,8 +289,13 @@ local function serverScenarios()
 		local function sky()
 			return Lighting:FindFirstChildOfClass("Sky")
 		end
+		-- kit-b S2: with the living sky's Day theme uploaded, empty / incomplete faces boot the painted Day sky ("Painted",
+		-- smoke_kitb_sky.lua lightingservice_boot_uses_painted_day); the Fallback below is the last resort, so its checks
+		-- run with the Day theme hidden (a theme with no ids)
+		local savedDay = Config.Sky.Themes and Config.Sky.Themes.Day
 		local ok, err = pcall(function()
-			-- 1. empty faces (the shipped Config) -> Fallback
+			Config.Sky.Themes.Day = "p5_no_day_theme"
+			-- 1. empty faces (the shipped Config) and no Day theme -> Fallback
 			setFaces(Config, {})
 			K.resetCursors()
 			T.eq(LS.Init(), "Fallback", "empty Config.Sky.Faces -> Init returns Fallback")
@@ -363,6 +368,9 @@ local function serverScenarios()
 		end)
 		T.check(ok, "p5world_lighting ran without errors", tostring(err))
 		-- restore the shipped Config and the boot look for the scenarios after this one
+		if Config.Sky.Themes then
+			Config.Sky.Themes.Day = savedDay
+		end
 		for k in pairs(Config.Sky.Faces) do
 			Config.Sky.Faces[k] = saved[k]
 		end

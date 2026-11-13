@@ -859,7 +859,8 @@ Config.Art = {
 -- The living sky (docs/superpowers/specs/2026-10-30-living-sky-cycle-design.md): one server-synced 20 minute loop
 -- Dawn 2 -> Day 6 -> Sunset 9 -> Night 3 min, each phase blending into the next over its last Blend seconds, plus a
 -- server-wide raid sky while a raid boss is up. shared/SkyCycle turns the server time into a phase and a preset; the
--- client re-applies it every Refresh s with a Tween s tween (LightingStack base). Faces stays LightingService's boot sky.
+-- client re-applies it every Refresh s with a Tween s tween (LightingStack base). Faces stays LightingService's boot sky
+-- (empty = the painted Day theme, kit-b S2).
 -- Each skybox swap hides behind the haze bridge (Transitions, Bridge).
 --   Themes / RaidThemes  the painted skybox (blender/sky/sky_themes.py theme id) per phase / per raid boss id; the faces
 --                        are TextureIds "sky_<theme>_<Face>" (shared/SkyFaces); a theme without all six = the boot sky
@@ -1024,8 +1025,9 @@ Config.Sky = {
 			ColorCorrection = { Brightness = 0, Contrast = 0.12, Saturation = 0.12, TintColor = skyRgb(255, 250, 247) },
 			Sky = { StarCount = 0 },
 		},
-		-- the short starry night (preview C) under Aurora Slumber: moonlit indigo ambient (never black), 3000 stars,
-		-- sparse thin violet clouds
+		-- the short starry night (preview C) under Aurora Slumber: moonlit indigo ambient (never black), sparse thin
+		-- violet clouds; no engine stars (kit-b S2, sky audit F5: the stars are painted in the skybox, 3000 engine
+		-- pinpoints popped on over them at the mid-blend)
 		Night = {
 			Clock = { 18.4, 31.0 }, -- through midnight to Dawn's 7 h (= 31 unwrapped): no backward wrap at Dawn
 			Lighting = {
@@ -1041,7 +1043,7 @@ Config.Sky = {
 			Atmosphere = { Density = 0.3, Offset = 0.15, Color = skyRgb(96, 92, 160), Decay = skyRgb(130, 92, 170), Glare = 0, Haze = 1.2 },
 			Clouds = { Cover = 0.3, Density = 0.35, Color = skyRgb(150, 128, 200) },
 			ColorCorrection = { Brightness = 0.03, Contrast = 0.08, Saturation = 0.06, TintColor = skyRgb(249, 250, 255) },
-			Sky = { StarCount = 3000 },
+			Sky = { StarCount = 0 },
 		},
 		-- raid skies (BattleCatalog.Bosses ids), fixed clocks near midday so the boss and the telegraphs keep short shadows
 		storm_titan = { -- Thunderhead Teal: a heavy teal storm deck
@@ -1095,7 +1097,7 @@ Config.Sky = {
 			ColorCorrection = { Brightness = 0, Contrast = 0.1, Saturation = 0.04, TintColor = skyRgb(248, 252, 255) },
 			Sky = { StarCount = 0 },
 		},
-		shadow_hydra = { -- Eclipse Shadow: a violet-grey eclipse, a few stars through the dim
+		shadow_hydra = { -- Eclipse Shadow: a violet-grey eclipse (its stars are painted: no engine stars, S2)
 			Clock = { 12.0, 12.0 },
 			Lighting = {
 				Brightness = 1.1,
@@ -1110,7 +1112,7 @@ Config.Sky = {
 			Atmosphere = { Density = 0.4, Offset = 0.18, Color = skyRgb(112, 100, 136), Decay = skyRgb(90, 64, 130), Glare = 0.15, Haze = 1.8 },
 			Clouds = { Cover = 0.6, Density = 0.6, Color = skyRgb(120, 108, 140) },
 			ColorCorrection = { Brightness = 0, Contrast = 0.12, Saturation = 0, TintColor = skyRgb(251, 249, 255) },
-			Sky = { StarCount = 1500 },
+			Sky = { StarCount = 0 },
 		},
 	},
 }

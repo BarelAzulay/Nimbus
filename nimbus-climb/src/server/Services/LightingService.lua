@@ -8,7 +8,12 @@
 --                   horizon, white moving clouds and 2500 stars
 --   * Look.Custom   the owner's painted skybox (branding/sky/*.png, the 6 ids pasted into Config.Sky.Faces): the same
 --                   P4 light, a light pink air to match the painted sky, no engine stars (they are painted)
--- Init() picks Custom only when ALL SIX faces are set (one missing -> Fallback, with a warning that names it).
+--   * Look.Painted  no Config.Sky.Faces (kit-b S2, sky audit F4 / F12): the living sky's painted Day theme
+--                   (SkyFaces.For(Config.Sky.Themes.Day)) with the Day look's air, no engine sun / moon / stars, Glare 0,
+--                   so every frame before SkyController's first apply (server captures, the loading screen's preload of
+--                   Lighting.Sky, a client whose SkyController failed) is the painted sky, never the stock one
+-- Init() picks Custom only when ALL SIX faces are set (one missing -> Painted, with a warning that names it); the
+-- stock-sky Fallback only when the Day theme is not uploaded either.
 -- A face is the full content id Studio's Asset Manager copies (scheme://..., an Image id); anything else counts as unset.
 -- The tuned numbers live in the Look table so the owner can tweak the mood in one place.
 -- Lighting.Technology (ShadowMap, as in Phase 4) cannot be written from a script (plugin security):
@@ -21,6 +26,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local SkyFaces = require(Shared.SkyFaces)
 
 local LightingService = {}
 
@@ -103,9 +109,31 @@ LightingService.Look = {
 		ColorCorrection = COLOR,
 		DepthOfField = DOF,
 	},
+	Painted = {
+		Lighting = p4Light(), -- = Config.Sky.Looks.Day's light: SkyController's first apply moves nothing at Day
+		Atmosphere = {
+			Density = 0.28,
+			Offset = 0.25,
+			Color = rgb(178, 198, 228), -- the Day look's sky-blue air
+			Decay = rgb(238, 200, 170),
+			Glare = 0, -- no engine sun to glare around
+			Haze = 1.0,
+		},
+		Sky = {
+			StarCount = 0, -- the painted skies have their own stars
+			CelestialBodiesShown = false, -- the painted skies have their own sun (no second, engine one)
+			SunAngularSize = 11,
+			MoonAngularSize = 9,
+		},
+		Clouds = { Enabled = true, Cover = 0.5, Density = 0.6, Color = rgb(240, 244, 252) },
+		SunRays = SUNRAYS,
+		Bloom = BLOOM,
+		ColorCorrection = COLOR,
+		DepthOfField = DOF,
+	},
 }
 
--- the look Init() applied last: "Custom" | "Fallback" | nil (before Init)
+-- the look Init() applied last: "Custom" | "Painted" | "Fallback" | nil (before Init)
 LightingService.Current = nil
 
 -- Assign every property in `props` to `inst`; a property that does not exist (or is not scriptable on this
@@ -194,10 +222,12 @@ end
 
 function LightingService.Init()
 	local faces, missing, any = LightingService.CustomFaces()
-	local name = faces and "Custom" or "Fallback"
+	-- no complete owner skybox: the living sky's painted Day faces ({ SkyboxBk = ..., the six } or nil: not uploaded)
+	local painted = not faces and type(Config.Sky) == "table" and type(Config.Sky.Themes) == "table" and SkyFaces.For(Config.Sky.Themes.Day) or nil
+	local name = faces and "Custom" or (painted and "Painted" or "Fallback")
 	if not faces and any then
 		-- the owner started pasting ids: say which ones are still missing / unreadable (a warning, not an error)
-		warn("[LightingService] Config.Sky.Faces is missing " .. table.concat(missing, ", ") .. " (paste the full id from Asset Manager -> Copy ID): using the fallback sky until all six are set")
+		warn("[LightingService] Config.Sky.Faces is missing " .. table.concat(missing, ", ") .. " (paste the full id from Asset Manager -> Copy ID): using the " .. (painted and "painted Day" or "fallback") .. " sky until all six are set")
 	end
 	local look = LightingService.Look[name]
 
@@ -208,7 +238,8 @@ function LightingService.Init()
 	local skybox = {}
 	for _, key in ipairs(FACE_KEYS) do
 		-- the fallback clears the faces (the engine's stock sky); Init twice gives the same Sky
-		skybox["Skybox" .. key] = faces and faces[key] or ""
+		local slot = "Skybox" .. key
+		skybox[slot] = faces and faces[key] or (painted and painted[slot]) or ""
 	end
 	setProps(sky, skybox)
 	setProps(ensure(Lighting, "BloomEffect", "NimbusBloom"), look.Bloom)

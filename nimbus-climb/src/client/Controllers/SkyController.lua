@@ -36,6 +36,9 @@
 --     folder, capped); none on Low (GraphicsQuality.Effective()) or by day
 --   * Low graphics: GraphicsQuality.Recap after each applied refresh (the GfxLow cloud cap follows the sky, updated in
 --     place and carried by the next refresh: it never cancels or re-eases these linear base tweens)
+--   * the preload (kit-b S2, sky audit F4; client/SkyTransition): the next theme's six faces are fetched once per blend
+--     window, at its first refresh inside it (about 37 s before the swap at blend 0.5), and the four raid themes once
+--     the menu's PLAY fires (UiGate.Played; at once when Start comes after PLAY), once per Start
 -- The "look" = the raid boss id from its eventBlend 0.5, else the next phase from the phase's Blend 0.5, else the phase
 -- (the same moments the skybox swaps).
 --
@@ -59,6 +62,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local SkyCycle = require(Shared:WaitForChild("SkyCycle"))
 local SkyFaces = require(Shared:WaitForChild("SkyFaces"))
 local LightingStack = require(Client:WaitForChild("LightingStack"))
+local SkyTransition = require(Client:WaitForChild("SkyTransition"))
 
 local SkyController = {}
 
@@ -96,6 +100,9 @@ local St = {
 	Step = nil, -- the refresh step the last refresh chose (Cycle.Refresh, or Raid.Step while a raid sky blends)
 	Waited = 0, -- real seconds the loop has waited since the last refresh (task.wait's return)
 	GQ = nil, -- client/GraphicsQuality (lazy); false = unavailable
+	Gate = nil, -- client/UiGate (lazy; tests put their own here); false = unavailable
+	Preloaded = nil, -- the blend window ("<phase>><next>") whose next theme was preloaded; nil outside a window
+	RaidsPreloaded = false, -- the four raid themes were preloaded since Start
 }
 SkyController._St = St
 
@@ -117,6 +124,18 @@ local function graphics()
 		St.GQ = (ok and type(result) == "table") and result or false
 	end
 	return St.GQ or nil
+end
+
+local function uiGate()
+	if St.Gate == nil then
+		local module = Client:FindFirstChild("UiGate")
+		local ok, result = false, nil
+		if module then
+			ok, result = pcall(require, module)
+		end
+		St.Gate = (ok and type(result) == "table") and result or false
+	end
+	return St.Gate or nil
 end
 
 local function lowGraphics()
@@ -435,6 +454,39 @@ local function setFireflies()
 end
 
 ----------------------------------------------------------------------
+-- Preload (kit-b S2)
+----------------------------------------------------------------------
+
+-- the next theme once per blend window (at = SkyCycle.At); a refresh outside every window clears the mark
+local function preloadNext(at)
+	if not (finite(at.Blend) and at.Blend > 0) then
+		St.Preloaded = nil
+		return
+	end
+	local key = tostring(at.Phase) .. ">" .. tostring(at.Next)
+	if St.Preloaded ~= key then
+		St.Preloaded = key
+		pcall(SkyTransition.Preload, cfg().Themes[at.Next])
+	end
+end
+
+-- the four raid themes (sorted by boss id: every client fetches them in the same order), once per Start
+local function preloadRaids()
+	if St.RaidsPreloaded or not St.Running then
+		return
+	end
+	St.RaidsPreloaded = true
+	local ids = {}
+	for bossId in pairs(cfg().RaidThemes) do
+		ids[#ids + 1] = bossId
+	end
+	table.sort(ids)
+	for _, bossId in ipairs(ids) do
+		pcall(SkyTransition.Preload, cfg().RaidThemes[bossId])
+	end
+end
+
+----------------------------------------------------------------------
 -- Refresh
 ----------------------------------------------------------------------
 
@@ -459,6 +511,7 @@ function SkyController.Refresh(now)
 	end
 	now = finite(now) and now or Workspace:GetServerTimeNow()
 	local at = SkyCycle.At(now, epoch, Workspace:GetAttribute(A.Speed), Workspace:GetAttribute(A.Offset))
+	preloadNext(at)
 	local event, eventBlend, fromId, fromBlend = eventNow(now)
 	local step, tween = cadence(now, at)
 	St.Step = step
@@ -554,6 +607,18 @@ function SkyController.Start()
 		St.Conns[#St.Conns + 1] = player:GetAttributeChangedSignal(Config.Attr.InBattle):Connect(function()
 			if St.Running and St.Gen == gen then
 				pcall(setLift)
+			end
+		end)
+	end
+	-- the raid skies after PLAY (a raid becomes possible), at once when PLAY came first
+	St.RaidsPreloaded = false
+	local gate = uiGate()
+	if gate and type(gate.HasPlayed) == "function" and gate.HasPlayed() then
+		preloadRaids()
+	elseif gate and type(gate.Played) == "table" and type(gate.Played.Connect) == "function" then
+		St.Conns[#St.Conns + 1] = gate.Played:Connect(function()
+			if St.Running and St.Gen == gen then
+				preloadRaids()
 			end
 		end)
 	end
