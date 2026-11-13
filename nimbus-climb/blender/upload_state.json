@@ -933,6 +933,106 @@
       "structureHash": "57fd87df515f960140d32db2a0a3dc7e",
       "uploadedAt": "2026-10-23T18:48:28Z"
     },
+    "cloud_obby_far_1": {
+      "assetId": 124407155470257,
+      "contentHash": "4f22d166975a31f65b474c4062d68312",
+      "fileSha256": "05a17e53071e9e2fbfed70e51d4285165898f4a5d7bd5696fd5830991ab2d16a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:17:32.731Z",
+      "revisionId": "1",
+      "structureHash": "88159e66e64df7d30d6e6b74885b0582",
+      "uploadedAt": "2026-11-13T13:17:35Z"
+    },
+    "cloud_obby_far_2": {
+      "assetId": 72467172777191,
+      "contentHash": "2e0a257de8562b3842aec8483f9211fe",
+      "fileSha256": "760fdbb28848aacd8491adbd5357f511a1d8eb37f483fd06eeb14eb88881c747",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:17:43.134Z",
+      "revisionId": "1",
+      "structureHash": "411953f0cb6f6b72757b2d2d770c3eab",
+      "uploadedAt": "2026-11-13T13:17:46Z"
+    },
+    "cloud_obby_far_3": {
+      "assetId": 131913458110599,
+      "contentHash": "10cca13ef565563418e5d82a6dde554e",
+      "fileSha256": "9033d9ab41ef51eabfd8efac5e40c8ea097d962d337420c4ae76b2e188e8293e",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:17:59.595Z",
+      "revisionId": "1",
+      "structureHash": "2e33877157dca95741293e71e5929488",
+      "uploadedAt": "2026-11-13T13:18:03Z"
+    },
+    "cloud_obby_far_4": {
+      "assetId": 137934493228359,
+      "contentHash": "8f75db543b829a933ae7d62f8b6fb823",
+      "fileSha256": "b53af5065a010a7b86b9915664ea304ded6cd859b9146ccf65187a52b041d2c3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:18:16.640Z",
+      "revisionId": "1",
+      "structureHash": "0f5604d798df85b7b87a6e279299e5f9",
+      "uploadedAt": "2026-11-13T13:18:20Z"
+    },
+    "cloud_obby_sea_1": {
+      "assetId": 116773648973916,
+      "contentHash": "e0690e34dce91d83591096d8b4ef7294",
+      "fileSha256": "26d1fd9d766c826ddb3856c6ee4ecbacd3d1f144d8f2765fb6c71643ca9eada8",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:18:26.830Z",
+      "revisionId": "1",
+      "structureHash": "f51a1b42ab43b18e186df4149e9c7199",
+      "uploadedAt": "2026-11-13T13:18:31Z"
+    },
+    "cloud_obby_sea_2": {
+      "assetId": 138225605546965,
+      "contentHash": "f3221fdd0596a6c851e1c45b336bd619",
+      "fileSha256": "24a5f57851de979d6b0fa7491ba6605cef1ecca150683ac7655cdc9ffcb28e46",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:18:37.070Z",
+      "revisionId": "1",
+      "structureHash": "efd880aa0ce4fbb23ec4d8dbe8b22506",
+      "uploadedAt": "2026-11-13T13:18:41Z"
+    },
+    "cloud_obby_under_l": {
+      "assetId": 127815225544805,
+      "contentHash": "d9e6f35da1065b1268c16d7f00dae43c",
+      "fileSha256": "b09ff8b7ccdb3315634e18163df1a8ae8eece332de66f28739abc687e21eb31a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:18:47.462Z",
+      "revisionId": "1",
+      "structureHash": "e47e10a667f0de48ec2b384221233e6d",
+      "uploadedAt": "2026-11-13T13:18:51Z"
+    },
+    "cloud_obby_under_m": {
+      "assetId": 94176924209074,
+      "contentHash": "45dfcc63595809a0258599063c466c62",
+      "fileSha256": "b1a70223fb98cabc63220d75b4f04470d7c62694f55f49882f52fbd5a384553a",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:18:56.605Z",
+      "revisionId": "1",
+      "structureHash": "4046e7f0c3ceabdec2a1b8532c747205",
+      "uploadedAt": "2026-11-13T13:19:01Z"
+    },
+    "cloud_obby_under_pad": {
+      "assetId": 85611839745417,
+      "contentHash": "a8d87c866eafe5b26668f59c3f9554c2",
+      "fileSha256": "4eb66fffc7b688b836c100da83ac0370ccf1463fa75faed4054bbd755079f22d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:19:07.432Z",
+      "revisionId": "1",
+      "structureHash": "29a434ee8aff8648bc9c42ff79760799",
+      "uploadedAt": "2026-11-13T13:19:11Z"
+    },
+    "cloud_obby_under_s": {
+      "assetId": 105066677046695,
+      "contentHash": "da2bc3ad22373a92adf9bb6de21465c5",
+      "fileSha256": "e6e003b3e961a3d791568082abcd21e420c7d8e2901bd9ce7f79ebe1e52d660b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:19:19.301Z",
+      "revisionId": "1",
+      "structureHash": "9bafa9e8fabb715991ff56f58c1ccc48",
+      "uploadedAt": "2026-11-13T13:19:22Z"
+    },
     "cloud_plaza": {
       "assetId": 114746028676411,
       "contentHash": "624e1e5a283ac3082878c665524d3d93",
@@ -9248,6 +9348,16 @@
       "structureHash": "b14cd0653a3cb9ee1b07801c4a6163dc",
       "uploadedAt": "2026-10-23T16:48:56Z"
     },
+    "obby_storm_cloud": {
+      "assetId": 118927440967744,
+      "contentHash": "104b01925d6761dca8b61df13dd775b9",
+      "fileSha256": "d50236ddf25b6543af6b142e375a87c746301bacf453ecf5ec8b308d86a1ca1d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-13T13:19:34.972Z",
+      "revisionId": "1",
+      "structureHash": "1dad44ca3fb84e316fa31d2b8493508e",
+      "uploadedAt": "2026-11-13T13:19:39Z"
+    },
     "pet_axolotl": {
       "assetId": 81567999436977,
       "contentHash": "a54f40f41fb02d7ad6c5b035b91ce1b3",
@@ -9830,13 +9940,13 @@
     },
     "prop_roulette_globe": {
       "assetId": 77972886482080,
-      "contentHash": "7b60f59d9a2bacbd21b8f441cbe548f4",
+      "contentHash": "0e3159905c20bf5364d99a4f3315f2a4",
       "fileSha256": "818647966662c6e42b189ebc42022d933885256dd5ed1e11b00029019b752fe6",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-11-12T22:30:59.652Z",
       "revisionId": "1",
       "structureHash": "e8fd3dc59f138a4c3928d2c99b09713b",
-      "uploadedAt": "2026-11-12T22:31:02Z"
+      "uploadedAt": "2026-11-13T13:19:50Z"
     },
     "prop_seedsack": {
       "assetId": 100559797047172,
