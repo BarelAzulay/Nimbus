@@ -432,7 +432,8 @@ local function serverScenarios()
 		local text = sign and plainText(sign) or ""
 		local mult = (type(TC.Prestige) == "table" and tonumber(TC.Prestige.IncomeMultiplier)) or 1.25
 		local want = "x" .. (string.format("%.2f", mult):gsub("0+$", ""):gsub("%.$", ""))
-		T.check(text:find("Prestige 1", 1, true) ~= nil and text:find(want, 1, true) ~= nil and text:find("income", 1, true) ~= nil,
+		-- (kit-b U6) the sign's header reads in capitals ("PRESTIGE 1")
+		T.check(text:upper():find("PRESTIGE 1", 1, true) ~= nil and text:find(want, 1, true) ~= nil and text:find("income", 1, true) ~= nil,
 			"visual plot: the Prestige pad's sign says what the reset buys ('Reset: " .. want .. " income')", text)
 
 		HB.SetOwner(spot, nil)

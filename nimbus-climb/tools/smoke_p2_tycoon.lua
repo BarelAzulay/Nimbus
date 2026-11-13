@@ -401,7 +401,8 @@ S.p2tycoon_claim = guarded("p2tycoon_claim", function()
 			T.check(golden ~= nil and golden:GetAttribute("PetId") == parsed.PetId .. "@Golden",
 				"tycoon podium: a Golden copy of the same pet takes the podium (pet keys, better tier wins the tie)",
 				golden and tostring(golden:GetAttribute("PetId")) or "none")
-			T.check(nameLabel ~= nil and def ~= nil and nameLabel.Text == tostring(def.DisplayName or def.Name),
+			-- (kit-b U6) the tag's name is a Title label: Theme keeps it in capitals
+			T.check(nameLabel ~= nil and def ~= nil and nameLabel.Text:upper() == tostring(def.DisplayName or def.Name):upper(),
 				"tycoon podium: ...and its tag names the copy", nameLabel and nameLabel.Text or "no tag")
 		else
 			T.info("*podium tier check skipped: the podium shows " .. tostring(key))

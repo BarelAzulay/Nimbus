@@ -1747,7 +1747,8 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 			local card = tag and tag:FindFirstChild("Card", true)
 			local nameLabel = tag and tag:FindFirstChild("PetName", true)
 			local shownName = def and tostring(def.DisplayName or def.Name) or "?"
-			if T.check(tag ~= nil and tag.Enabled and card ~= nil and nameLabel ~= nil and nameLabel.Text == shownName,
+			-- (kit-b U6) the tag's name is a Title label: Theme keeps it in capitals
+			if T.check(tag ~= nil and tag.Enabled and card ~= nil and nameLabel ~= nil and nameLabel.Text:upper() == shownName:upper(),
 				"flow fusion: ...and takes Ann's podium (her best pet): the tag names '" .. shownName .. "'", nameLabel and nameLabel.Text or "no tag") then
 				local minX, maxX = math.huge, -math.huge
 				for _, c in ipairs(card:GetDescendants()) do
