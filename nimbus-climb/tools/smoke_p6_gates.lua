@@ -76,12 +76,15 @@ local function build(WS, folder, i, sp)
 		Pill = sp.Pill, VortexBoost = sp.VortexBoost })
 end
 
--- an untagged WorldStyle: a copy next to copies of Voxel and Theme, with no MeshLibrary beside it
+-- an untagged WorldStyle: a copy next to copies of the shared modules it requires (Voxel, Theme, FxSprites since kit B
+-- X1, and the TextureIds FxSprites reads its sheets from), with no MeshLibrary beside it
 local function untaggedWorldStyle()
 	local _, wsInst = req("WorldStyle")
 	local _, vInst = req("Voxel")
 	local _, tInst = req("Theme")
-	if not (wsInst and vInst and tInst) then
+	local _, fxInst = req("FxSprites")
+	local _, idsInst = req("TextureIds")
+	if not (wsInst and vInst and tInst and fxInst and idsInst) then
 		return nil, nil
 	end
 	local box = Instance.new("Folder")
@@ -91,6 +94,8 @@ local function untaggedWorldStyle()
 	ws.Parent = box
 	vInst:Clone().Parent = box
 	tInst:Clone().Parent = box
+	fxInst:Clone().Parent = box
+	idsInst:Clone().Parent = box
 	local ok, mod = pcall(require, ws)
 	return ok and type(mod) == "table" and mod or nil, box
 end
