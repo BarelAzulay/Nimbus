@@ -799,7 +799,7 @@ function H.fit(lbl, texts, width, maxSize, minSize)
 	for _, t in ipairs(texts) do
 		local size = maxSize
 		while size >= minSize do
-			if H.boxW(t, size, lbl.Font) <= width then
+			if H.boxW(t, size, Theme.FontOf(lbl)) <= width then
 				lbl.Text, lbl.TextSize = t, size
 				return t
 			end
@@ -834,7 +834,7 @@ function H.fitLines(lbl, texts, width, height, maxSize, minSize)
 	for _, t in ipairs(texts) do
 		local size = maxSize
 		while size >= minSize do
-			local rows = H.rows(t, size, lbl.Font, width)
+			local rows = H.rows(t, size, Theme.FontOf(lbl), width)
 			if rows * size * 1.2 <= height + 0.5 then
 				lbl.Text, lbl.TextSize, lbl.TextWrapped = t, size, rows > 1
 				return t
@@ -1138,10 +1138,10 @@ function H.layoutHeader()
 	U.Icon.TextSize = M.IconText
 	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close) -- (its drawn X scales with it)
 	local right = W - M.HeadPad - M.Close - M.Gap
-	local font = U.TabUp.Font
+	local font = Theme.FontOf(U.TabUp)
 	local upW = math.max(M.TabUpW, H.boxW("UPGRADE", M.TabText, font) + 2 * M.TabPad)
 	local mixW = math.max(M.TabMixW, H.boxW("MIX", M.TabText, font) + 2 * M.TabPad)
-	local tokW = H.boxW(U.TokenChip.Text, M.ChipText, U.TokenChip.Font) + 2 * M.ChipPad
+	local tokW = H.boxW(U.TokenChip.Text, M.ChipText, Theme.FontOf(U.TokenChip)) + 2 * M.ChipPad
 	GemIcon.SetAmount(U.GemAmount, nil, { TextSize = M.ChipText }) -- (re-measures: the gem + the number)
 	local gemW = U.GemAmount.Size.X.Offset + 2 * M.ChipPad
 	local titleX = M.HeadPad + M.Icon + 8
@@ -1153,7 +1153,7 @@ function H.layoutHeader()
 	local function titleRoom()
 		return right - chipsW() - M.Gap - (upW + M.TabGap + mixW) - M.Gap - titleX
 	end
-	local minTitle = H.boxW(titles[#titles], M.TitleMin, U.Title.Font)
+	local minTitle = H.boxW(titles[#titles], M.TitleMin, Theme.FontOf(U.Title))
 	if titleRoom() < minTitle and showGem then
 		showGem = false
 	end
@@ -1162,7 +1162,7 @@ function H.layoutHeader()
 	if U.Title.Visible then
 		local room = titleRoom()
 		local t = H.fit(U.Title, titles, room, M.TitleText, M.TitleMin)
-		local tw = math.min(room, H.boxW(t, U.Title.TextSize, U.Title.Font) + 4)
+		local tw = math.min(room, H.boxW(t, U.Title.TextSize, Theme.FontOf(U.Title)) + 4)
 		place(U.Title, titleX, 0, tw, M.Header)
 		tabsX = titleX + tw + M.Gap
 	end
@@ -2036,7 +2036,7 @@ function H.fitWrap(lbl, texts, width, height, maxSize, minSize)
 	for _, t in ipairs(texts) do
 		local size = maxSize
 		while size >= minSize do
-			if H.boxW(t, size, lbl.Font) <= width then
+			if H.boxW(t, size, Theme.FontOf(lbl)) <= width then
 				lbl.Text, lbl.TextSize, lbl.TextWrapped = t, size, false
 				return t
 			end
@@ -2068,11 +2068,11 @@ function H.paintChip(g, c, texts, lit, off)
 	end
 	-- phone: the glyph stays; a long name wraps to a second line before the glyph is dropped
 	for _, t in ipairs(texts) do
-		if H.boxW(t, M.ChipText, b.Font) <= w then
+		if H.boxW(t, M.ChipText, Theme.FontOf(b)) <= w then
 			b.Text, b.TextSize, b.TextWrapped = t, M.ChipText, false
 			return
 		end
-		if H.rows(t, M.ChipText, b.Font, w) * M.ChipText * 1.2 <= h + 0.5 then
+		if H.rows(t, M.ChipText, Theme.FontOf(b), w) * M.ChipText * 1.2 <= h + 0.5 then
 			b.Text, b.TextSize, b.TextWrapped = t, M.ChipText, true
 			return
 		end
@@ -2132,7 +2132,7 @@ function H.paintMoves(plan)
 		local short = shortA .. sep .. shortS
 		local lbl = U.Outcome
 		for _, t in ipairs({ fullA .. sep .. fullS, short }) do
-			if H.boxW(t, geo.Max, lbl.Font) <= geo.W then
+			if H.boxW(t, geo.Max, Theme.FontOf(lbl)) <= geo.W then
 				lbl.Text, lbl.TextSize, lbl.TextWrapped = t, geo.Max, false
 				return
 			end

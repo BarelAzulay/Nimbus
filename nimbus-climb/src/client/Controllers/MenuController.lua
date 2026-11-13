@@ -727,7 +727,7 @@ function showHint(text, kind)
 	local maxW = Hint.MaxW or 300
 	local width = maxW
 	local ok, bounds = pcall(function()
-		return TextService:GetTextSize(Hint.Label.Text, Hint.Label.TextSize, Hint.Label.Font, Vector2.new(4000, 1000))
+		return Theme.MeasureLabel(Hint.Label, Hint.Label.Text, Hint.Label.TextSize, 4000)
 	end)
 	if ok and typeof(bounds) == "Vector2" and bounds.X + 6 < maxW then
 		width = math.ceil(bounds.X) + 6

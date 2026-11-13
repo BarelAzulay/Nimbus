@@ -667,7 +667,7 @@ function H.fit(lbl, texts, width, maxSize, minSize)
 	for _, t in ipairs(texts) do
 		local size = maxSize
 		while size >= minSize do
-			if H.width(t, size, lbl.Font) <= width then
+			if H.width(t, size, Theme.FontOf(lbl)) <= width then
 				lbl.Text, lbl.TextSize = t, size
 				return
 			end
@@ -972,7 +972,7 @@ function H.layoutHeader()
 	U.Icon.TextSize = M.IconText
 	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close) -- (its drawn X scales with it)
 	U.Chip.TextSize = M.ChipText
-	local chipW = math.ceil(H.width(U.Chip.Text, M.ChipText, U.Chip.Font)) + 2 * M.ChipPad
+	local chipW = math.ceil(H.width(U.Chip.Text, M.ChipText, Theme.FontOf(U.Chip))) + 2 * M.ChipPad
 	local chipX = W - M.HeadPad - M.Close - M.Gap - chipW
 	place(U.Chip, chipX, (M.Header - M.ChipH) / 2, chipW, M.ChipH)
 	local titleX = M.HeadPad + M.Icon + 8
@@ -1236,7 +1236,7 @@ function H.layoutSkillSmall(item, w, h, m)
 		topH = math.max(m.Name + 2, by - m.LineH - m.Top - 2 * gap - barH)
 		lineY = m.Top + topH + gap + barH + gap
 	end
-	local rankW = math.ceil(H.width("10/10", m.Rank, item.RankL.Font)) + 6
+	local rankW = math.ceil(H.width("10/10", m.Rank, Theme.FontOf(item.RankL))) + 6
 	place(item.NameL, pad, m.Top, w - 2 * pad - rankW - 4, topH)
 	H.fit(item.NameL, { item.NameL.Text }, w - 2 * pad - rankW - 4, m.Name, m.NameMin)
 	place(item.RankL, w - pad - rankW, m.Top, rankW, topH)
@@ -1259,7 +1259,7 @@ function H.layoutSkillRow(item, w, h, m)
 	local pad = m.Pad
 	local bx = w - 8 - m.BtnW
 	local lw = bx - pad - 8
-	local rankW = math.ceil(H.width("10/10", m.Rank, item.RankL.Font)) + 6
+	local rankW = math.ceil(H.width("10/10", m.Rank, Theme.FontOf(item.RankL))) + 6
 	local top = math.max(4, math.floor((h - 64) / 2))
 	place(item.NameL, pad, top, lw - rankW - 4, 20)
 	H.fit(item.NameL, { item.NameL.Text }, lw - rankW - 4, m.Name, m.NameMin)
@@ -1293,7 +1293,7 @@ function H.layoutConfirm()
 	local w = math.min(K.CONFIRM_W, math.floor(freeW / scale))
 	local pad = 24
 	local textW = w - 2 * pad
-	local textH = H.wrappedHeight(U.ConfirmText.Text, 20, U.ConfirmText.Font, textW)
+	local textH = H.wrappedHeight(U.ConfirmText.Text, 20, Theme.FontOf(U.ConfirmText), textW)
 	local titleH = 40
 	local btnY = pad + titleH + 12 + textH + 16
 	local h = btnY + 56 + pad
@@ -1399,7 +1399,7 @@ function H.paintPet()
 		U.Rarity.Visible = true
 		U.Rarity.Text = string.upper(tostring(def.Rarity or ""))
 		U.Rarity.BackgroundColor3 = Theme.Darken(rarityColor, 0.25)
-		local rw = math.ceil(H.width(U.Rarity.Text, U.Rarity.TextSize, U.Rarity.Font)) + (phone and 14 or 22)
+		local rw = math.ceil(H.width(U.Rarity.Text, U.Rarity.TextSize, Theme.FontOf(U.Rarity))) + (phone and 14 or 22)
 		U.Rarity.Size = UDim2.fromOffset(rw, U.Rarity.Size.Y.Offset)
 		-- the element chip (PC: there is room)
 		local elements = Bits.elementsOf(def)
@@ -1410,7 +1410,7 @@ function H.paintPet()
 			U.Element.Text = el
 			U.ElementStroke.Color = info.Color or C.White
 			U.Element.TextColor3 = Theme.Lighten(info.Color or C.White, 0.3)
-			local ew = math.ceil(H.width(el, U.Element.TextSize, U.Element.Font)) + 22
+			local ew = math.ceil(H.width(el, U.Element.TextSize, Theme.FontOf(U.Element))) + 22
 			place(U.Element, (S.CardW or 200) - 8 - ew, 8, ew, U.Element.Size.Y.Offset)
 		end
 		-- the name and the level
@@ -1611,7 +1611,7 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 			m.Line2.TextColor3 = C.Muted
 			H.fitMat(m.Line2, { "Lv " .. lv }, w - 2 * pad - 2, mm.Line, mm.LineMin)
 			m.Big.Visible = true
-			m.Big.Font = U.Note.Font
+			Theme.SetRole(m.Big, "Body") -- U.Note's role (its .Font reads Unknown: a Nunito face)
 			m.Big.TextColor3 = C.Good
 			m.Big.TextXAlignment = Enum.TextXAlignment.Left
 			place(m.Big, pad, barY, w - 2 * pad, mm.BarH)
@@ -1621,7 +1621,7 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 		local block = mm.Plus + 4 + 30
 		local top = math.floor((h - block) / 2)
 		m.Big.Visible = true
-		m.Big.Font = U.Title.Font
+		Theme.SetRole(m.Big, "Title")
 		m.Big.TextXAlignment = Enum.TextXAlignment.Center
 		m.Big.TextSize = mm.Plus
 		m.Big.Text = G.Plus
@@ -1637,7 +1637,7 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 		local block = mm.Lock + 8 + mm.LineH
 		local top = math.floor((h - block) / 2)
 		m.Big.Visible = true
-		m.Big.Font = U.Title.Font
+		Theme.SetRole(m.Big, "Title")
 		m.Big.TextXAlignment = Enum.TextXAlignment.Center
 		m.Big.TextSize = mm.Lock
 		m.Big.Text = inUse and G.Wait or G.Lock
@@ -1714,7 +1714,7 @@ function H.paintMatMini(m, st, spec, mm, w, h, face, left)
 		end
 	else
 		m.Big.Visible = true
-		m.Big.Font = U.Title.Font
+		Theme.SetRole(m.Big, "Title")
 		m.Big.TextXAlignment = Enum.TextXAlignment.Center
 		local size = st == "Add" and mm.Plus or mm.Lock
 		m.Big.TextSize = size

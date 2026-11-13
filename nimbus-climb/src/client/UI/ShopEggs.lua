@@ -468,11 +468,11 @@ function H.arrange(p, w, h, size, iconPx)
 	local items = {}
 	local priceItem = nil
 	if p.Word.Visible then
-		items[#items + 1] = { p.Word, H.textW(p.Word.Text, size, p.Word.Font), true }
+		items[#items + 1] = { p.Word, H.textW(p.Word.Text, size, Theme.FontOf(p.Word)), true }
 	end
 	if not stateOnly then
 		items[#items + 1] = { p.Icon, iconPx, false }
-		priceItem = { p.Price, H.textW(p.Price.Text, size, p.Price.Font), true }
+		priceItem = { p.Price, H.textW(p.Price.Text, size, Theme.FontOf(p.Price)), true }
 		items[#items + 1] = priceItem
 	end
 	local function rowW(gap)
@@ -487,7 +487,7 @@ function H.arrange(p, w, h, size, iconPx)
 	-- under the 15 px phone floor)
 	if priceItem and p.PriceShort and p.Price.Text ~= p.PriceShort and rowW(2) > w - 4 then
 		p.Price.Text = p.PriceShort
-		priceItem[2] = H.textW(p.PriceShort, size, p.Price.Font)
+		priceItem[2] = H.textW(p.PriceShort, size, Theme.FontOf(p.Price))
 	end
 	local gap = math.max(3, math.floor(size * 0.3))
 	if rowW(gap) > w - 8 then
@@ -574,7 +574,7 @@ function H.arrangeTravel(tr, w, h, size, iconPx)
 	tr.Icon.TextSize = iconPx
 	tr.Word.TextSize = size
 	local gap = math.max(3, math.floor(size * 0.3))
-	local ww = H.textW(tr.Word.Text, size, tr.Word.Font) + 2
+	local ww = H.textW(tr.Word.Text, size, Theme.FontOf(tr.Word)) + 2
 	local x = math.max(4, math.floor((w - (iconPx + gap + ww)) / 2))
 	place(tr.Icon, x, (h - iconPx) / 2, iconPx, iconPx)
 	local wx = x + iconPx + gap
@@ -826,13 +826,13 @@ function L.heroOddsPC(t, w)
 	-- is left out for want of room
 	local widths, total = {}, 0
 	for i, row in ipairs(t.Rows) do
-		local ww = H.textW(row.Word.Text, 24, row.Word.Font) + 2
-		local pw = H.textW(row.Pct.Text, 24, row.Pct.Font) + 2
+		local ww = H.textW(row.Word.Text, 24, Theme.FontOf(row.Word)) + 2
+		local pw = H.textW(row.Pct.Text, 24, Theme.FontOf(row.Pct)) + 2
 		widths[i] = { ww, pw }
 		total = total + math.floor(EggArt.Metrics.WIDTH * 40 + 0.5) + 8 + ww + 8 + pw
 	end
 	t.GemsOnly.TextSize = 24
-	local gw = H.textW(t.GemsOnly.Text, 24, t.GemsOnly.Font) + 2
+	local gw = H.textW(t.GemsOnly.Text, 24, Theme.FontOf(t.GemsOnly)) + 2
 	local gap = (total + 24 * #t.Rows + gw <= w) and 24 or 12
 	local x = 0
 	for i, row in ipairs(t.Rows) do
@@ -880,7 +880,7 @@ function L.heroPC(t, w, M)
 	t.Pity.TextSize = 22
 	-- (shop-area) the altar chip in the pity chip's place, as wide as its long line needs (400 at least)
 	t.AltarChip.TextSize = 22
-	local chipW = math.min(tw, math.max(400, H.textW(K.TEXT.AltarLock, 22, t.AltarChip.Font) + 32))
+	local chipW = math.min(tw, math.max(400, H.textW(K.TEXT.AltarLock, 22, Theme.FontOf(t.AltarChip)) + 32))
 	place(t.AltarChip, x, cy, chipW, 48)
 	place(t.Lock, x, cy, tw, 48)
 	t.Lock.TextSize = 20
@@ -1374,7 +1374,7 @@ function ShopEggs.Refresh(page, fromLayout)
 	else
 		-- (Portrait: the long line while it fits the chip, else the phone's "Secret in N")
 		local text = H.pityText(short)
-		if P.Mode == "Portrait" and H.textW(text, h.Pity.TextSize, h.Pity.Font) + 16 > h.Pity.Size.X.Offset then
+		if P.Mode == "Portrait" and H.textW(text, h.Pity.TextSize, Theme.FontOf(h.Pity)) + 16 > h.Pity.Size.X.Offset then
 			text = H.pityText(true)
 		end
 		h.Pity.Text = text

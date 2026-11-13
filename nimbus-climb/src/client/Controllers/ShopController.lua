@@ -1025,7 +1025,7 @@ end
 -- the rows `text` wraps to at `size` in `width` px (TextService measures the real font; 1 when it cannot)
 local function rowsOf(lbl, text, size, width)
 	local ok, v = pcall(function()
-		return TextService:GetTextSize(text, size, lbl.Font, Vector2.new(width, 10000))
+		return Theme.MeasureLabel(lbl, text, size, width)
 	end)
 	if not ok or typeof(v) ~= "Vector2" or v.Y <= 0 then
 		return 1

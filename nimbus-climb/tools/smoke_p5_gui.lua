@@ -535,9 +535,12 @@ S.client_p5neon = guarded("client_p5neon", function()
 	T.check(C.PanelTop == Color3.fromRGB(26, 32, 72) and C.PanelBottom == Color3.fromRGB(12, 15, 38) and C.PanelInk == Color3.fromRGB(8, 10, 28) and C.Navy ~= nil and C.FrameTop ~= nil,
 		"p5neon: Colors.PanelTop / PanelBottom / PanelInk (old keys kept)")
 	local F = Theme.Fonts
-	T.check(F.Title == Enum.Font.GothamBlack and F.Button == Enum.Font.GothamBlack and F.Toast == Enum.Font.GothamBlack and F.Display == Enum.Font.FredokaOne
-		and F.Accent == Enum.Font.LuckiestGuy and F.Body == Enum.Font.BuilderSansBold and F.Label == Enum.Font.BuilderSansBold,
-		"p5neon: fonts: Title / Button / Toast GothamBlack, Display FredokaOne, Accent LuckiestGuy, Body / Label BuilderSansBold")
+	-- (kit-b U1) the pitch's roles: LuckiestGuy titles, FredokaOne buttons, Nunito ExtraBold faces over the Builder Sans
+	-- fallback for Body / Label / Toast (smoke_kitb_ui.lua theme_roles_kitb pins the whole map)
+	T.check(F.Title == Enum.Font.LuckiestGuy and F.Button == Enum.Font.FredokaOne and F.Toast == Enum.Font.BuilderSansBold and F.Display == Enum.Font.FredokaOne
+		and F.Accent == Enum.Font.LuckiestGuy and F.Body == Enum.Font.BuilderSansBold and F.Label == Enum.Font.BuilderSansBold
+		and Theme.Faces.Body ~= nil and Theme.Faces.Toast ~= nil,
+		"p5neon: fonts: Title / Accent LuckiestGuy, Button / Display FredokaOne, Body / Label / Toast BuilderSansBold under the Nunito face")
 
 	local g = CloudUI.NewScreenGui("SmokeNeon", 41)
 	-- Card: 3 px neon stroke, glow ring (+3 px frame, 5 px stroke at 0.62), floor on a short card, sheen, Body
@@ -556,14 +559,14 @@ S.client_p5neon = guarded("client_p5neon", function()
 	T.check(stroke.Color == Theme.Neon.Gold and glowStroke.Color == Theme.Neon.Gold and card.Floor.BackgroundColor3 == Theme.Neon.Gold and not card.Glow.Visible, "p5neon: Card.SetColor / SetGlow")
 	local tall = NeonKit.Card({ Size = UDim2.fromOffset(600, 700), Parent = g })
 	T.check(not tall.Floor.Visible, "p5neon: a window-sized card has no floor by default")
-	-- Tile: GothamBlack label 0.2 x size (>= 18) with a 2.5 px dark stroke, icon 0.46 x size on an orb
+	-- Tile: the Button-role label (kit-b U1: FredokaOne, was GothamBlack) 0.2 x size (>= 18) with a 2.5 px dark stroke, icon 0.46 x size on an orb
 	local clicks = 0
 	local tile = NeonKit.Tile({ Size = 84, Color = "Pets", Icon = "Pets", Label = "Pets", Callback = function()
 		clicks = clicks + 1
 	end, Parent = g })
 	local outline = tile.Label and tile.Label:FindFirstChild("TextOutline")
-	T.check(tile.Label and tile.Label.Font == Enum.Font.GothamBlack and tile.Label.TextSize == 18 and tile.Label.Text == "Pets" and outline and outline.Thickness == 2.5,
-		"p5neon: Tile: the GothamBlack label (0.2 x 84 -> 18) with a 2.5 px dark stroke")
+	T.check(tile.Label and tile.Label.Font == Theme.Fonts.Button and tile.Label.TextSize == 18 and tile.Label.Text == "Pets" and outline and outline.Thickness == 2.5,
+		"p5neon: Tile: the Button-role label (0.2 x 84 -> 18) with a 2.5 px dark stroke")
 	T.check(tile.Icon and tile.Icon.TextSize and math.abs(tile.Icon.TextSize - 84 * 0.46) < 0.01 and tile.Orb and tile.Orb.Parent == tile.Card.Body, "p5neon: Tile: the icon (0.46 x size) on a glossy orb")
 	T.check(tile.Root:FindFirstChild("NeonStroke").Color == Theme.Neon.Orange, "p5neon: Tile: Color 'Pets' -> the Orange neon border")
 	Mock.Click(tile.Root)
@@ -589,7 +592,7 @@ S.client_p5neon = guarded("client_p5neon", function()
 	local btn = NeonKit.Button({ Text = "PLAY", Color = "Green", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(400, 400), Callback = function()
 		fired = fired + 1
 	end, Parent = g })
-	T.check(btn:IsA("TextButton") and btn.Text == "PLAY" and btn.Font == Enum.Font.GothamBlack and btn.TextColor3 == Color3.new(1, 1, 1), "p5neon: Button: a TextButton, white GothamBlack text")
+	T.check(btn:IsA("TextButton") and btn.Text == "PLAY" and btn.Font == Theme.Fonts.Button and btn.TextColor3 == Color3.new(1, 1, 1), "p5neon: Button: a TextButton, white Button-role text (kit-b U1: FredokaOne)")
 	local fx = btn:FindFirstChild("FxScale")
 	Mock.FireSignal(btn, "MouseEnter")
 	NK.advance(0.4)

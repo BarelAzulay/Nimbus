@@ -252,12 +252,15 @@ function G.check(root, label, opts)
 end
 
 -- (Task 9) real text widths: the advance widths (1/1000 em) of ASCII 32..126; any other character counts 0.6 em
+-- (kit-b U1) + Luckiest: Roblox's shipped LuckiestGuy-Regular.ttf, the Title / Sign / Accent face (was GothamBlack, whose
+-- Montserrat Black widths stay the fallback for any other name)
 local ADVANCE = {
+	Luckiest = { 195, 279, 480, 606, 437, 725, 630, 232, 389, 382, 542, 456, 223, 382, 222, 505, 633, 388, 509, 528, 539, 531, 573, 506, 571, 555, 248, 247, 455, 391, 455, 554, 665, 626, 594, 515, 583, 479, 487, 626, 626, 297, 510, 614, 452, 791, 704, 638, 596, 691, 606, 531, 543, 623, 613, 908, 588, 607, 487, 366, 505, 365, 485, 302, 283, 626, 594, 513, 584, 577, 488, 627, 626, 294, 510, 603, 451, 898, 652, 638, 597, 691, 606, 532, 545, 611, 614, 910, 595, 605, 496, 410, 287, 402, 576 },
 	Fredoka = { 253, 267, 429, 749, 475, 838, 748, 208, 384, 384, 503, 527, 238, 433, 237, 526, 608, 407, 609, 608, 592, 530, 560, 561, 582, 560, 238, 237, 627, 478, 627, 512, 908, 765, 646, 679, 704, 638, 637, 714, 699, 257, 549, 639, 587, 870, 720, 775, 632, 830, 631, 583, 731, 726, 783, 999, 741, 686, 643, 348, 528, 348, 526, 826, 482, 596, 592, 517, 598, 573, 450, 585, 605, 255, 252, 536, 327, 851, 606, 600, 582, 582, 457, 489, 449, 606, 638, 793, 567, 604, 586, 381, 217, 381, 651 },
 	Gotham = { 300, 314, 489, 740, 657, 917, 777, 254, 381, 381, 473, 620, 304, 390, 304, 440, 692, 418, 608, 614, 712, 619, 661, 645, 678, 661, 304, 304, 620, 620, 620, 606, 1037, 806, 773, 744, 826, 673, 644, 769, 804, 350, 574, 765, 617, 954, 804, 848, 743, 848, 745, 657, 654, 784, 786, 1206, 762, 710, 687, 410, 440, 410, 620, 500, 600, 639, 700, 615, 705, 653, 426, 711, 702, 326, 334, 713, 326, 1040, 702, 678, 700, 700, 456, 565, 460, 698, 644, 977, 645, 644, 570, 438, 320, 438, 620 },
 	Builder = { 250, 278, 458, 685, 580, 894, 704, 268, 366, 366, 431, 518, 264, 350, 264, 424, 646, 407, 585, 587, 612, 589, 615, 528, 632, 615, 292, 292, 518, 518, 518, 541, 919, 704, 635, 677, 702, 576, 574, 693, 720, 280, 505, 649, 566, 894, 720, 745, 627, 745, 641, 574, 556, 690, 716, 960, 658, 642, 559, 377, 424, 377, 476, 422, 276, 566, 613, 533, 613, 567, 405, 616, 601, 260, 255, 531, 260, 879, 601, 590, 613, 613, 415, 483, 403, 591, 574, 806, 536, 574, 465, 478, 294, 478, 600 },
 }
-local FACE = { FredokaOne = "Fredoka", BuilderSansBold = "Builder", BuilderSans = "Builder", BuilderSansMedium = "Builder", BuilderSansExtraBold = "Builder" }
+local FACE = { FredokaOne = "Fredoka", BuilderSansBold = "Builder", BuilderSans = "Builder", BuilderSansMedium = "Builder", BuilderSansExtraBold = "Builder", LuckiestGuy = "Luckiest" }
 
 function G.realWidth(text, size, font)
 	local name = (typeof(font) == "EnumItem" and font.Name) or tostring(font)
@@ -294,6 +297,30 @@ local function realRows(text, size, font, width)
 	return math.max(rows, 1)
 end
 
+-- (kit-b U1 review) the font o is measured with: a Nunito label (Body / Label / Toast / Script face) reads .Font =
+-- Enum.Font.Unknown, as in Roblox, so it is measured with its role's Enum fallback (Builder Sans), 1:1 as before the mock
+-- kept the two in step (Nunito ExtraBold runs about 1.0-1.07 x Builder Sans Bold: PIL puts the Altar hint at 342 px in
+-- Nunito Regular at 18, Builder Sans Bold 365 px; Theme.MeasureSpare's 1.06 is the layout code's safety margin, not a width)
+local themeMod = nil
+local function measuredFont(o)
+	local font = o.Font
+	if font ~= Enum.Font.Unknown then
+		return font
+	end
+	if themeMod == nil then
+		local inst = Mock.GetPath(ROOTS.shared .. "/Theme")
+		local ok, mod = false, nil
+		if inst then
+			ok, mod = pcall(require, inst)
+		end
+		themeMod = (ok and type(mod) == "table") and mod or false
+	end
+	if not themeMod then
+		return font
+	end
+	return themeMod.FontOf(o)
+end
+
 function G.fits(o)
 	if not o then
 		return false, "nil"
@@ -309,15 +336,16 @@ function G.fits(o)
 		boxW = boxW - pad.PaddingLeft.Offset - pad.PaddingRight.Offset
 		boxH = boxH - pad.PaddingTop.Offset - pad.PaddingBottom.Offset
 	end
-	local w = G.realWidth(text, o.TextSize, o.Font)
-	local detail = fmt("%s '%s' %.1f px at %d (%s) in %.0fx%.0f", o.Name, (text:gsub("[\128-\255]+", "?")), w, o.TextSize, o.Font.Name, boxW, boxH)
+	local font = measuredFont(o)
+	local w = G.realWidth(text, o.TextSize, font)
+	local detail = fmt("%s '%s' %.1f px at %d (%s) in %.0fx%.0f", o.Name, (text:gsub("[\128-\255]+", "?")), w, o.TextSize, font.Name, boxW, boxH)
 	if w <= boxW + 0.5 then
 		return true, detail
 	end
 	if not o.TextWrapped then
 		return false, detail
 	end
-	local rows = realRows(text, o.TextSize, o.Font, boxW)
+	local rows = realRows(text, o.TextSize, font, boxW)
 	return rows * o.TextSize * (o.LineHeight or 1) <= boxH + 1, detail .. " rows " .. tostring(rows)
 end
 

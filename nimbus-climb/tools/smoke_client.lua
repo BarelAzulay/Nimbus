@@ -1366,6 +1366,9 @@ S.client_final = guarded("client_final", function()
 	for _, font in pairs(Theme.Fonts) do
 		allowed[font] = true
 	end
+	for _, face in pairs(Theme.Faces or {}) do
+		allowed[face] = true -- (kit-b U1) the FontFace roles: Nunito ExtraBold reading text, Nunito Bold Italic flavour
+	end
 	local problems, total = Mock.FontAudit(allowed)
 	T.info("*font audit: " .. total .. " live text objects checked")
 	local shown = {}
@@ -1621,6 +1624,9 @@ S.client_mobile = guarded("client_mobile", function()
 	local allowed = {}
 	for _, font in pairs(Theme.Fonts) do
 		allowed[font] = true
+	end
+	for _, face in pairs(Theme.Faces or {}) do
+		allowed[face] = true -- (kit-b U1) the FontFace roles
 	end
 	local problems = Mock.FontAudit(allowed)
 	T.check(#problems == 0, "mobile buttons use Theme fonts", #problems > 0 and (problems[1].path .. ": " .. problems[1].reason) or "")

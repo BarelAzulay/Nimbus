@@ -119,7 +119,7 @@ end
 local function fitSize(lbl, max, min, width)
 	for size = max, min, -1 do
 		local ok, v = pcall(function()
-			return TextService:GetTextSize(lbl.Text, size, lbl.Font, Vector2.new(10000, 1000))
+			return Theme.MeasureLabel(lbl, lbl.Text, size, 10000)
 		end)
 		if not ok or typeof(v) ~= "Vector2" or v.X <= width then
 			return size

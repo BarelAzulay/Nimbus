@@ -3648,6 +3648,9 @@ S.final_checks = guarded("final_checks", function()
 	for role, font in pairs(Theme.Fonts) do
 		allowedFonts[font] = true
 	end
+	for _, face in pairs(Theme.Faces or {}) do
+		allowedFonts[face] = true -- (kit-b U1) the FontFace roles: Nunito ExtraBold reading text, Nunito Bold Italic flavour
+	end
 	local problems, total = Mock.FontAudit(allowedFonts)
 	T.info("*font audit: " .. total .. " live text objects checked")
 	local shown = {}
