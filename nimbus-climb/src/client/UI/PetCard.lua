@@ -27,7 +27,7 @@
 --   PetCard.Modes                        the mode table below (read-only)
 --
 -- Modes (rows top to bottom; MaxDistance in studs):
---   "Follower"  own follower:           level + XP                         15 (2026-11-12 card range, was 90: the
+--   "Follower"  own follower:           level + XP                         25 (2026-11-13 owner, was 15; first 90: the
 --                                                                          card shows only with the camera close)
 --   "Garden"    own garden pet at home: level + XP                         90
 --   "Training"  own training pet:       level + XP + the purple timer "2:10" 90
@@ -55,7 +55,7 @@ local PetCard = {}
 PetCard.__index = PetCard
 
 PetCard.Modes = {
-	Follower = { MaxDistance = 15, Xp = true }, -- own follower only (2026-11-12 card range, was 90)
+	Follower = { MaxDistance = 25, Xp = true }, -- own follower only (2026-11-13 owner: 25, was 15; first 90)
 	Garden = { MaxDistance = 90, Xp = true },
 	Training = { MaxDistance = 90, Xp = true, Timer = true },
 	Unit = { MaxDistance = 140, Hp = true, Special = true, Xp = true, OnTop = true },

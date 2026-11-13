@@ -12,7 +12,7 @@
 --                             2026-11-12 card range, named exceptions: gate and portal cards GateTag / PortalBillboard
 --                             exactly 55 (2026-11-13 owner: 55, was 45; the arena forum's Portal_Return 110, its
 --                             documented far-read exception), the
---                             own follower's pet card exactly 15, the Food Bowl sign >= 40). Surface
+--                             own follower's pet card exactly 25 (2026-11-13 owner: 25, was 15), the Food Bowl sign >= 40). Surface
 --                             signs: 40-60 px per stud, LightInfluence 0, no TextScaled, the biggest line >= 0.95 stud
 --                             (not on a label strip of info lines only: LABEL_STRIPS, the egg row's RarityStrip) and every
 --                             line >= 0.6 stud, the text fits its box. The home nameplate: "Free home" /
@@ -51,7 +51,7 @@ local LABEL_STRIPS = { RarityStrip = true }
 -- follower's pet card shows within exactly OWN_FOLLOWER_RANGE (PetCard.Modes.Follower). Every other tag keeps 50-150.
 local GATE_RANGE = 55 -- 2026-11-13 owner: 55 (was 45)
 local RETURN_RANGE = 110
-local OWN_FOLLOWER_RANGE = 15
+local OWN_FOLLOWER_RANGE = 25 -- 2026-11-13 owner: 25 (was 15)
 
 ----------------------------------------------------------------------------------------------------
 -- the audit (both worlds)

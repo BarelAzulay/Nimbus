@@ -166,6 +166,22 @@ local function ensure(parent, className, name)
 	return inst
 end
 
+-- The one Sky under Lighting: NimbusSky when there is one, else the first Sky, else a new NimbusSky. Every other Sky
+-- is destroyed: a Baseplate opened in Studio ships its own Sky, and a second one (Rojo connect never removes unknown
+-- children; default.project.json names its node Sky so Rojo can adopt the Baseplate's) would split the sky the engine
+-- draws from the one LightingStack, the loading screen and SkyController swap faces on: they take the first Sky
+-- (sky review 2026-11-13)
+local function ownSky()
+	local named = Lighting:FindFirstChild("NimbusSky")
+	local sky = (named and named:IsA("Sky")) and named or ensure(Lighting, "Sky", "NimbusSky")
+	for _, child in ipairs(Lighting:GetChildren()) do
+		if child ~= sky and child:IsA("Sky") then
+			child:Destroy()
+		end
+	end
+	return sky
+end
+
 -- One face id: the trimmed content URL (the "Copy ID" text Studio gives, scheme://...), nil when empty or unusable
 -- (a bare number, junk, a non-string), so the fallback look is used instead of a grey box.
 function LightingService.FaceId(value)
@@ -244,7 +260,7 @@ function LightingService.Init()
 
 	setProps(Lighting, look.Lighting)
 	setProps(ensure(Lighting, "Atmosphere", "NimbusAtmosphere"), look.Atmosphere)
-	local sky = ensure(Lighting, "Sky", "NimbusSky")
+	local sky = ownSky()
 	setProps(sky, look.Sky)
 	local skybox = {}
 	for _, key in ipairs(FACE_KEYS) do

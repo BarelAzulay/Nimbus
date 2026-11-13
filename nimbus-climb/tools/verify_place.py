@@ -11,7 +11,8 @@ checks, the way Rojo 7 maps files:
     and a Source that is byte-for-byte the file on disk,
   * every sub-folder is a Folder, no two siblings share a name (scripts would find the wrong one),
   * the place holds no script that src/ does not have (a stale copy would still run),
-  * the "$properties" of default.project.json made it into the place (printed).
+  * the "$properties" of default.project.json made it into the place (content ids such as the Sky faces must match,
+    the rest is printed; Rojo 7.7 stores SkyboxBk .. SkyboxUp as SkyboxBackContent .. SkyboxUpContent).
 Exit status 0 when everything matches, 1 otherwise. Needs only Python 3.
 """
 import json
@@ -22,6 +23,11 @@ import xml.etree.ElementTree as ET
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 SCRIPT_CLASSES = ("Script", "LocalScript", "ModuleScript")
+# project property name -> the name Rojo 7.7 stores it under (a Sky's six faces are Content properties now)
+STORED_AS = {
+    "SkyboxBk": "SkyboxBackContent", "SkyboxDn": "SkyboxDownContent", "SkyboxFt": "SkyboxFrontContent",
+    "SkyboxLf": "SkyboxLeftContent", "SkyboxRt": "SkyboxRightContent", "SkyboxUp": "SkyboxUpContent",
+}
 
 
 def script_class(filename):
@@ -64,7 +70,14 @@ def read_place(place):
         node = item.find("Properties")
         if node is not None:
             for child in node:
-                out[child.get("name")] = child.text if child.text is not None else ""
+                text = child.text if child.text is not None else ""
+                # a Content property keeps its value in a child element (<uri> since Rojo 7.7, <url> before); its own
+                # text is only whitespace
+                if child.tag == "Content":
+                    inner = next((sub.text or "" for sub in child if sub.tag in ("uri", "url")), None)
+                    if inner is not None:
+                        text = inner.strip()
+                out[child.get("name")] = text
         return out
 
     def walk(item, path):
@@ -79,6 +92,30 @@ def read_place(place):
     for item in top.findall("Item"):
         walk(item, ())
     return index, duplicates
+
+
+def check_properties(wanted_props, index):
+    """(problems, printed lines) for the "$properties" of default.project.json against the place index.
+
+    A key may be stored under another name (STORED_AS: Rojo 7.7 writes a Sky's SkyboxBk as SkyboxBackContent, ...).
+    A content id (a "scheme://..." string) must be stored with the same value; other values are only printed."""
+    problems, lines = [], []
+    for path, wanted in wanted_props:
+        got = index.get(path)
+        if got is None:
+            problems.append("missing " + ".".join(path))
+            continue
+        for key, value in sorted(wanted.items()):
+            shown = "%s.%s" % (".".join(path), key)
+            stored = key if key in got[1] else STORED_AS.get(key)
+            if stored not in got[1]:
+                problems.append("%s (%s in default.project.json) is not in the place" % (shown, value))
+            elif isinstance(value, str) and "://" in value and got[1][stored] != value:
+                problems.append("%s is %s in default.project.json but %r in the place (%s): rebuild the place"
+                                % (shown, value, got[1][stored], stored))
+            else:
+                lines.append("%s = %s (stored as %r)" % (shown, value, got[1][stored]))
+    return problems, lines
 
 
 def main():
@@ -148,16 +185,10 @@ def main():
     for path in duplicates:
         problems.append("DUPLICATE name " + ".".join(path))
 
-    for path, wanted in wanted_props:
-        got = index.get(path)
-        if got is None:
-            problems.append("missing " + ".".join(path))
-            continue
-        for key, value in sorted(wanted.items()):
-            if key not in got[1]:
-                problems.append("%s.%s (%s in default.project.json) is not in the place" % (".".join(path), key, value))
-            else:
-                print("%s.%s = %s (stored as %r)" % (".".join(path), key, value, got[1][key]))
+    found, lines = check_properties(wanted_props, index)
+    problems.extend(found)
+    for line in lines:
+        print(line)
 
     shown_place = os.path.abspath(place)
     if shown_place.startswith(ROOT + os.sep):
