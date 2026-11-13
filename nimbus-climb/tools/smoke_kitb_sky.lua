@@ -23,6 +23,17 @@
 --                             bridge); at speed 1 the phase blend keeps the 2 s cadence
 --   skycontroller_localevent_refreshes_now (client) SetLocalEvent on / off refreshes at once (task.defer), not on the
 --                             next 2 s tick; a stopped controller does not
+--   S2 (preload, painted boot sky, stars; sky audit F4, F5, F12):
+--   sky_painted_looks_have_no_engine_stars (server world, pure) every phase and raid look with a painted skybox has
+--                             StarCount 0 (the stars are painted; no engine field popping on at the mid-blend)
+--   lightingservice_boot_uses_painted_day (server world, booted) empty (or half-pasted) Config.Sky.Faces boots the
+--                             painted Day skybox (SkyFaces.For(Themes.Day)), StarCount 0, CelestialBodiesShown false,
+--                             Glare 0 ("Painted"); the stock sky only when the Day theme is not uploaded; six owner faces win
+--   skytransition_preloads_next_theme (client) SkyTransition.Preload(theme) = one ContentProvider:PreloadAsync with exactly
+--                             its six face ids (nothing for a missing theme); SkyController preloads the next theme once
+--                             per blend window, at its first refresh inside it
+--   skytransition_preloads_raids_after_menu (client) the four raid skies preload once the menu's PLAY fires (UiGate.Played),
+--                             once per start; a controller started after PLAY preloads them at once
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -328,6 +339,96 @@ local function serverScenarios()
 		local _ = tr
 	end)
 
+	-- S2 (sky audit F5): the painted skies have their stars painted in; 3000 engine pinpoints on top of them read as a
+	-- second star field that pops on at the mid-blend
+	S.sky_painted_looks_have_no_engine_stars = guarded("sky_painted_looks_have_no_engine_stars", function()
+		local Config = loadModule("Config")
+		local cfg = Config and Config.Sky
+		if not T.check(type(cfg) == "table" and type(cfg.Looks) == "table", "Config.Sky.Looks exists") then
+			return
+		end
+		local tally = T.tally("every look with a painted skybox (Themes / RaidThemes) has StarCount 0")
+		local n = 0
+		for _, map in ipairs({ cfg.Themes, cfg.RaidThemes }) do
+			for id, theme in pairs(map) do
+				local look = cfg.Looks[id]
+				local stars = look and look.Sky and look.Sky.StarCount
+				tally:case(stars == 0, fmt("%s (%s): StarCount %s", id, tostring(theme), tostring(stars)))
+				n = n + 1
+			end
+		end
+		tally:report()
+		T.check(n == 8, fmt("4 phases + 4 raids checked (%d)", n))
+	end)
+
+	-- S2 (sky audit F4, F12): with no owner faces in Config.Sky.Faces the boot sky is the painted Day skybox (never the
+	-- stock Roblox sky), with no engine sun / stars and no glare, so the loading screen's preload of Lighting.Sky fetches
+	-- the faces the player sees first. The stock sky stays only as the last resort (the Day theme not uploaded)
+	S.lightingservice_boot_uses_painted_day = guarded("lightingservice_boot_uses_painted_day", function()
+		local LS = K.M["server/Services/LightingService"]
+		local Config = K.config()
+		local SkyFaces = K.M["shared/SkyFaces"] or loadModule("SkyFaces")
+		local Lighting = game:GetService("Lighting")
+		if not T.check(type(LS) == "table" and type(LS.Init) == "function" and type(SkyFaces) == "table", "LightingService + SkyFaces are loaded") then
+			return
+		end
+		local savedFaces, savedDay = {}, Config.Sky.Themes.Day
+		for k, v in pairs(Config.Sky.Faces) do
+			savedFaces[k] = v
+		end
+		local function setFaces(faces)
+			for _, k in ipairs({ "Bk", "Dn", "Ft", "Lf", "Rt", "Up" }) do
+				Config.Sky.Faces[k] = faces[k] or ""
+			end
+		end
+		local function painted(label)
+			local want = SkyFaces.For(Config.Sky.Themes.Day)
+			local s = Lighting:FindFirstChildOfClass("Sky")
+			local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+			if not T.check(want ~= nil and s ~= nil and atm ~= nil, label .. ": the Day theme's faces exist, a Sky and an Atmosphere") then
+				return
+			end
+			local faces = T.tally(label .. ": the six Skybox faces = SkyFaces.For(Config.Sky.Themes.Day)")
+			for slot, id in pairs(want) do
+				faces:case(s[slot] == id and id:sub(1, 13) == "rbxassetid://", fmt("%s %s vs %s", slot, tostring(s[slot]), id))
+			end
+			faces:report()
+			T.check(s.StarCount == 0 and s.CelestialBodiesShown == false, label .. ": no engine stars, no engine sun / moon", fmt("StarCount %s, CelestialBodiesShown %s", tostring(s.StarCount), tostring(s.CelestialBodiesShown)))
+			T.check(atm.Glare == 0, label .. ": Atmosphere Glare 0", tostring(atm.Glare))
+		end
+		local ok, err = pcall(function()
+			setFaces({})
+			K.resetCursors() -- only this scenario's warnings below (not the boot's)
+			T.eq(LS.Init(), "Painted", "empty Config.Sky.Faces -> Init returns Painted")
+			T.eq(LS.Current, "Painted", "LightingService.Current = Painted")
+			T.check(type(LS.Look.Painted) == "table", "LightingService.Look.Painted exists")
+			painted("empty faces")
+			K.flushWarnings("lightingservice_boot_uses_painted_day: empty faces warn nothing")
+			-- a half-pasted Config.Sky.Faces warns (names the missing face) and still boots painted, never the stock sky
+			setFaces({ Bk = "rbxassetid://101", Dn = "rbxassetid://102", Ft = "rbxassetid://103", Lf = "rbxassetid://104", Rt = "rbxassetid://105" })
+			T.eq(LS.Init(), "Painted", "one owner face missing (Up) -> Painted")
+			painted("one owner face missing")
+			K.flushWarnings("lightingservice_boot_uses_painted_day", { "[LightingService]" })
+			-- the Day theme not uploaded: the stock sky is the last resort
+			setFaces({})
+			Config.Sky.Themes.Day = "kitb_not_uploaded"
+			T.eq(LS.Init(), "Fallback", "no Day theme faces either -> Fallback")
+			local s = Lighting:FindFirstChildOfClass("Sky")
+			T.check(s ~= nil and s.SkyboxBk == "" and s.SkyboxUp == "", "Fallback: the stock sky (faces cleared)")
+			Config.Sky.Themes.Day = savedDay
+			-- six owner faces still win
+			setFaces({ Bk = "rbxassetid://101", Dn = "rbxassetid://102", Ft = "rbxassetid://103", Lf = "rbxassetid://104", Rt = "rbxassetid://105", Up = "rbxassetid://106" })
+			T.eq(LS.Init(), "Custom", "six owner faces -> Custom")
+		end)
+		T.check(ok, "lightingservice_boot_uses_painted_day ran without errors", tostring(err))
+		Config.Sky.Themes.Day = savedDay
+		for k in pairs(Config.Sky.Faces) do
+			Config.Sky.Faces[k] = savedFaces[k]
+		end
+		LS.Init()
+		K.flushWarnings("lightingservice_boot_uses_painted_day restore", { "[LightingService]" })
+	end)
+
 	return S
 end
 
@@ -373,6 +474,7 @@ local function clientScenarios()
 			local realSetBase = LS.SetBase
 			local ok, err = pcall(fn, SC, LS)
 			LS.SetBase = realSetBase
+			Mock.PreloadHook = nil
 			T.check(ok, name .. " ran without errors", tostring(err))
 			pcall(SC.SetLocalEvent, nil)
 			SC.Stop()
@@ -567,6 +669,148 @@ local function clientScenarios()
 		KC.advance(0.05)
 		T.check(#calls == m, "a stopped controller does not refresh on SetLocalEvent", fmt("%d calls", #calls - m))
 		SC.SetLocalEvent(nil)
+	end)
+
+	-- S2 (sky audit F4): every ContentProvider:PreloadAsync list from here on (Mock.PreloadHook; withSky drops it)
+	local function preloads()
+		local lists = {}
+		Mock.PreloadHook = function(list)
+			local copy = {}
+			for i, v in ipairs(list) do
+				copy[i] = v
+			end
+			lists[#lists + 1] = copy
+		end
+		return lists
+	end
+
+	-- the list is exactly the six face ids of SkyFaces.For(theme), as strings
+	local function isTheme(list, theme)
+		local SkyFaces = require(Mock.GetPath(ROOTS["shared"] .. "/SkyFaces"))
+		local want = SkyFaces.For(theme)
+		if not want or #list ~= 6 then
+			return false
+		end
+		local left = {}
+		for _, id in pairs(want) do
+			left[id] = true
+		end
+		for _, v in ipairs(list) do
+			if type(v) ~= "string" or not left[v] then
+				return false
+			end
+			left[v] = nil
+		end
+		return next(left) == nil
+	end
+
+	local function describe(lists)
+		local out = {}
+		for i, l in ipairs(lists) do
+			out[i] = fmt("#%d (%d ids: %s)", i, #l, tostring(l[1]))
+		end
+		return #out > 0 and table.concat(out, ", ") or "none"
+	end
+
+	S.skytransition_preloads_next_theme = withSky("skytransition_preloads_next_theme", function(SC)
+		local inst = Mock.GetPath(ROOTS["client"] .. "/SkyTransition")
+		local ok, ST = false, nil
+		if inst then
+			ok, ST = pcall(require, inst)
+		end
+		if not T.check(ok and type(ST) == "table" and type(ST.Preload) == "function", "client/SkyTransition.Preload exists", tostring(ST)) then
+			return
+		end
+		local Themes = Cfg.Sky.Themes
+		-- the module alone: one PreloadAsync with the six face ids; a theme that is not uploaded preloads nothing
+		local lists = preloads()
+		ST.Preload(Themes.Sunset)
+		KC.advance(0.05)
+		T.check(#lists == 1 and isTheme(lists[1], Themes.Sunset), "Preload(theme): one PreloadAsync with exactly its six face ids", describe(lists))
+		lists = preloads()
+		ST.Preload("kitb_not_uploaded")
+		ST.Preload(nil)
+		KC.advance(0.05)
+		T.check(#lists == 0, "Preload of a missing / junk theme: nothing", describe(lists))
+		-- the controller: the next theme once, when its blend window opens (Day ends at loop 480, its window from 405)
+		SC.Stop()
+		local epoch = publish(300)
+		lists = preloads()
+		local opened = nil
+		for t = 0, 100, 2 do
+			SC.Refresh(epoch + t) -- loop 300 .. 400: no window yet
+		end
+		KC.advance(0.05)
+		T.check(#lists == 0, "no preload before the Day -> Sunset window opens", describe(lists))
+		for t = 102, 200, 2 do
+			SC.Refresh(epoch + t) -- loop 402 .. 500: the window (405-480) and on into the Sunset
+			KC.advance(0.01)
+			if opened == nil and #lists > 0 then
+				opened = 300 + t
+			end
+		end
+		T.check(#lists == 1 and isTheme(lists[1], Themes.Sunset), "Day -> Sunset: one preload of the Sunset theme's six faces in the window", describe(lists))
+		T.check(opened ~= nil and opened >= 405 and opened <= 407, "...at the first refresh inside the window (loop 405-407), 37 s before the swap", tostring(opened))
+		-- the next window: once again, the Night theme
+		lists = preloads()
+		for pos = 940, 1030, 2 do
+			SC.Refresh(epoch + pos - 300)
+		end
+		KC.advance(0.05)
+		T.check(#lists == 1 and isTheme(lists[1], Themes.Night), "Sunset -> Night: one preload of the Night theme", describe(lists))
+	end)
+
+	S.skytransition_preloads_raids_after_menu = withSky("skytransition_preloads_raids_after_menu", function(SC)
+		local Util = require(Mock.GetPath(ROOTS["shared"] .. "/Util"))
+		local St = SC._St
+		local played = false
+		local gate = { Played = Util.Signal() }
+		function gate.HasPlayed()
+			return played
+		end
+		local function raidLists(lists)
+			local seen, n = {}, 0
+			for _, l in ipairs(lists) do
+				for bossId, theme in pairs(Cfg.Sky.RaidThemes) do
+					if isTheme(l, theme) then
+						seen[bossId] = true
+						n = n + 1
+					end
+				end
+			end
+			local all = true
+			for bossId in pairs(Cfg.Sky.RaidThemes) do
+				all = all and seen[bossId] == true
+			end
+			return n, all
+		end
+		local ok, err = pcall(function()
+			SC.Stop()
+			St.Gate = gate
+			local lists = preloads()
+			publish(300) -- Day, no window near
+			SC.Start()
+			KC.advance(0.1)
+			local n = raidLists(lists)
+			T.check(n == 0, "the menu is still up: no raid sky preloaded", describe(lists))
+			played = true
+			gate.Played:Fire()
+			KC.advance(0.1)
+			local count, all = raidLists(lists)
+			T.check(count == 4 and all and #lists == 4, "PLAY: the four raid skies preload (four lists of six faces)", describe(lists))
+			gate.Played:Fire()
+			KC.advance(0.1)
+			T.check(#lists == 4, "once per start: a second Played adds nothing", describe(lists))
+			-- a controller that starts after PLAY preloads them at once
+			SC.Stop()
+			lists = preloads()
+			SC.Start()
+			KC.advance(0.1)
+			count, all = raidLists(lists)
+			T.check(count == 4 and all, "started after PLAY: the raid skies preload at once", describe(lists))
+		end)
+		St.Gate = nil
+		T.check(ok, "skytransition_preloads_raids_after_menu ran without errors", tostring(err))
 	end)
 
 	return S

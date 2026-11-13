@@ -1888,7 +1888,8 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              the chase egg on the full egg mesh, the pile on the light egg_<rarity>_pile meshes)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
-             LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
+             LightingStack (lighting looks, e.g. the Dungeon); SkyTransition (the sky faces preloaded before their swap);
+             UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); UI/TeamFaces
              (the three faces + Edit team on every battle panel); UI/PetPicker (the one full-screen pet picker sheet
              of the Training Place and the Fusion Machine: search, sorts, filters, big cards); UI/GemIcon (the drawn
