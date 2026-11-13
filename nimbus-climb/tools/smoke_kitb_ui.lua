@@ -106,6 +106,13 @@
 --                             trophies, gate stars = the difficulty's Stars, a locked pad's lock placed as a server
 --                             builds it, the pads' station icons, the closed bed's star, the bounce arrow)
 --   arena_side_invite_fits    (client) the incoming-challenge side card: trophies, power and the clock inside the card
+--   U9-1 (finding 15; the "Inventory" family: OpenPanel("Inventory") is the Pets window, and the Home window beside it):
+--   home_signboard_skin       (client) the Inventory route opens the Signboard Pets window; the Home window wears the
+--                             Signboard skin ("My Home" its ribbon), Go home / Claim a home is its one green plank, the hero
+--                             and the Prestige confirm have plain Section titles, nothing round, every card and row a block
+--                             in its wood edge, every text reads on its fill (kitb_no_neon_glow walks it too)
+--   home_fits_phone           (client) 844x390 / 390x844: the window inside the screen, nothing under the thumbstick or
+--                             the jump button (the touch controls go while it is open), back as they were on Close
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -4165,9 +4172,7 @@ local function clientScenarios()
 		local expected = {
 			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$" },
 			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$" },
-			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
-			{ "the Go home hero card", "%.Hero%.GoHome%..-%.Title$" },
-			{ "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
+			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%..-Title$" }, -- (U9-1) the Signboard header: TitleBar.Plate.Title
 			{ "the Training window", "^NimbusTrain%..-Header%.Title$" },
 			{ "the Training confirm", "^NimbusTrain%..-%.Box%.Title$" },
 			{ "the pet picker", "^NimbusPetPicker%..-%.Title$" },
@@ -4203,6 +4208,16 @@ local function clientScenarios()
 		table.sort(badList)
 		table.sort(seen)
 		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Ribbon", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
+		-- (U9-1; the owner's ruling 2026-11-14) a card heading and a dialog's title inside a window are plain Section headings
+		for _, e in ipairs({ { "the Go home hero card", "%.Hero%.GoHome%..-Title$" }, { "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" } }) do
+			local look = nil
+			for path, l in pairs(found) do
+				if path:find(e[2]) then
+					look = l
+				end
+			end
+			T.check(look == "Section", "kitb titles walk: " .. e[1] .. " is a plain Section heading (the ribbon is for window titles)", tostring(look))
+		end
 		T.check(#badList == 0, "kitb titles walk: no Title-role title without the TitleLook stamp (Plain, or a Theme.TitleExempt kind)", table.concat(badList, "; "))
 		local inScroll, shopList = {}, {}
 		for path in pairs(scrolled) do
@@ -5257,7 +5272,31 @@ local function clientScenarios()
 				Menu.Open("Index")
 				LKC.advance(1)
 				walk(pg:FindFirstChild("NimbusIndex"), "Index", bad)
-				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window and the Index (%d)", tag, #bad),
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				-- (U9-1) the Home window: with a home (the hero, the strip, the cards, the station rows, the Prestige confirm shown
+				-- over them) and without one (Claim a home and its three steps)
+				local Config = LoadingH.shared("Config")
+				local oldSpot = lp:GetAttribute(Config.Attr.SpotIndex)
+				for _, spot in ipairs({ 1, false }) do
+					lp:SetAttribute(Config.Attr.SpotIndex, spot or nil)
+					LKC.advance(0.2)
+					Menu.Open("Home")
+					LKC.advance(1)
+					local home = pg:FindFirstChild("NimbusMenu") and pg.NimbusMenu:FindFirstChild("Window_Home")
+					walk(home, spot and "Home" or "Home (no home)", bad)
+					local confirm = home and home:FindFirstChild("PrestigeConfirm", true)
+					if spot and confirm then
+						confirm.Visible = true
+						walk(confirm, "Home Prestige confirm", bad)
+						confirm.Visible = false
+					end
+					pcall(Menu.Close)
+					LKC.advance(0.4)
+				end
+				lp:SetAttribute(Config.Attr.SpotIndex, oldSpot)
+				LKC.advance(0.2)
+				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window, the Index and the Home window (%d)", tag, #bad),
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
@@ -5453,6 +5492,11 @@ local function clientScenarios()
 			end, function()
 				client("Controllers/TroveController").Close()
 			end },
+			{ "the Home window", function() -- (U9-1) its Signboard header
+				client("Controllers/MenuController").Open("Home")
+			end, function()
+				client("Controllers/MenuController").Close()
+			end },
 		}
 		for _, size in ipairs({ { 390, 844 }, { 844, 390 } }) do
 			Mock.SetViewport(size[1], size[2])
@@ -5471,6 +5515,169 @@ local function clientScenarios()
 		Mock.SetViewport(old[1], old[2])
 		LKC.advance(0.2)
 		LKC.flushErrors("kitb_title_ribbon_clear")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-1 (finding 15; BUILD_PLAN "Coverage check", U9 family 1 "Inventory"): OpenPanel("Inventory") lands on the Pets
+	-- window (a Signboard since U8), and the menu window the old Inventory sat beside, the Home window (MenuController,
+	-- in no other U9 family), is a kit B sign too. U9.at runs fn(tag, win) with the Home window open (a claimed home unless
+	-- `noHome`) and puts the home attribute back after
+	local U9 = {}
+	function U9.home()
+		local menu = U8.pg():FindFirstChild("NimbusMenu")
+		return menu and menu:FindFirstChild("Window_Home")
+	end
+	-- the contrast walk's failures inside the Home window (SmokeCommon.Contrast reads the whole PlayerGui in paint order)
+	function U9.contrast()
+		local out = {}
+		for _, line in ipairs((SmokeCommon.Contrast.Walk(U8.pg()))) do
+			if line:find("Window_Home", 1, true) then
+				out[#out + 1] = line
+			end
+		end
+		return out
+	end
+	function U9.at(w, h, touch, label, noHome, fn)
+		local Config = LoadingH.shared("Config")
+		local lp = game:GetService("Players").LocalPlayer
+		U8.at(w, h, touch, label, function(tag)
+			local oldSpot = lp:GetAttribute(Config.Attr.SpotIndex)
+			lp:SetAttribute(Config.Attr.SpotIndex, (not noHome) and 1 or nil)
+			LKC.advance(0.2)
+			U7.client("Controllers/MenuController").Open("Home")
+			LKC.advance(1)
+			local win = U9.home()
+			local ok, err = pcall(function()
+				if T.check(win ~= nil and U8.shown(win), tag .. ": the Home window opens") then
+					fn(tag, win)
+				end
+			end)
+			T.check(ok, tag .. ": the Home check ran", tostring(err))
+			pcall(U7.client("Controllers/MenuController").Close)
+			LKC.advance(0.4)
+			lp:SetAttribute(Config.Attr.SpotIndex, oldSpot)
+			LKC.advance(0.2)
+		end)
+	end
+
+	-- the Home window on the Signboard kit at 1920x1080 and 844x390: CloudUI.Panel's Signboard skin with "My Home" as the
+	-- window's T1 ribbon; the Go home hero a green kit B plank (the window's ONE green action; Claim a home when there is no
+	-- home) whose title is a plain "Section" heading, as is the Prestige confirm's (the owner's ruling 2026-11-14: the ribbon
+	-- is for WINDOW titles only); every summary card and station row a square block in its wood edge; nothing round; every
+	-- text reads on its fill (SmokeCommon.Contrast, 3:1 from 18 px, 4.5:1 below)
+	S.home_signboard_skin = guarded("home_signboard_skin", function()
+		local pets = nil
+		U8.at(1920, 1080, false, "inventory route", function(tag)
+			LKC.toClient("OpenPanel", "Inventory", {})
+			LKC.advance(1)
+			pets = U8.pg():FindFirstChild("NimbusPets")
+			local panel = pets and pets:FindFirstChild("Window_Pets", true)
+			local skinned = false
+			for _, d in ipairs(pets and pets:GetDescendants() or {}) do
+				if d:GetAttribute("Skin") == "Signboard" and U8.shown(d) then
+					skinned = true
+				end
+			end
+			T.check(panel ~= nil and U8.shown(panel) and skinned, tag .. ": OpenPanel('Inventory') opens the Pets window on the Signboard skin")
+		end)
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U9.at(s[1], s[2], s[3], "home kit b", false, function(tag, win)
+				local panel = win:FindFirstChild("HomePanel")
+				T.check(panel ~= nil and panel:GetAttribute("Skin") == "Signboard", tag .. ": the Home window wears the Signboard skin")
+				local title = panel and panel:FindFirstChild("TitleBar", true) and panel:FindFirstChild("TitleBar", true):FindFirstChild("Title", true)
+				T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": 'My Home' is the window's ribbon title",
+					title and tostring(title:GetAttribute("TitleLook")) or "no title")
+				local hero = win:FindFirstChild("GoHome", true)
+				T.check(hero ~= nil and U8.shown(hero) and hero:GetAttribute("SignLook") == "Primary" and hero:FindFirstChildOfClass("UICorner") == nil,
+					tag .. ": Go home is a green kit B plank (square, its lip, its wood edge)", hero and tostring(hero:GetAttribute("SignLook")) or "none")
+				local heroTitle = hero and hero:FindFirstChild("Title", true)
+				T.check(heroTitle ~= nil and heroTitle:GetAttribute("TitleLook") == "Section", tag .. ": the hero's 'Go home' is a plain Section heading, no ribbon",
+					heroTitle and tostring(heroTitle:GetAttribute("TitleLook")) or "none")
+				local confirmTitle = win:FindFirstChild("PrestigeConfirm", true)
+				confirmTitle = confirmTitle and confirmTitle:FindFirstChild("Box") and confirmTitle.Box:FindFirstChild("Title")
+				T.check(confirmTitle ~= nil and confirmTitle:GetAttribute("TitleLook") == "Section", tag .. ": the Prestige confirm's title is a plain Section heading",
+					confirmTitle and tostring(confirmTitle:GetAttribute("TitleLook")) or "none")
+				local greens = U8.greenActions(win)
+				T.check(#greens == 1 and greens[1] == "GoHome", tag .. ": Go home is the window's one green action", table.concat(greens, ", "))
+				local round, blocks, rows = {}, {}, 0
+				for _, d in ipairs(win:GetDescendants()) do
+					if d:IsA("UICorner") and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
+						round[#round + 1] = d.Parent.Name
+					end
+					if d:IsA("GuiObject") and U8.shown(d) and (d.Name:match("^Station_") or d.Name == "HouseCard" or d.Name == "IncomeCard" or d.Name == "PrestigeCard") then
+						rows = rows + 1
+						local edge = d:FindFirstChild("SignEdge")
+						if d.BackgroundTransparency > 0 or not edge then
+							blocks[#blocks + 1] = d.Name
+						end
+					end
+				end
+				T.check(#round == 0, tag .. ": nothing in the Home window is round (kit B is square)", table.concat(round, ", ", 1, math.min(#round, 10)))
+				T.check(rows >= 6 and #blocks == 0, fmt("%s: every summary card and station row is a solid block in its wood edge (%d seen)", tag, rows), table.concat(blocks, ", "))
+				local bad = U9.contrast()
+				T.check(#bad == 0, fmt("%s: every text of the Home window reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+			end)
+		end
+		U9.at(1920, 1080, false, "home kit b, no home", true, function(tag, win)
+			local greens = U8.greenActions(win)
+			T.check(#greens == 1 and greens[1] == "ClaimHome", tag .. ": Claim a home is the window's one green action", table.concat(greens, ", "))
+			local bad = U9.contrast()
+			T.check(#bad == 0, fmt("%s: the claim steps read on their fills (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+		end)
+		LKC.flushErrors("home_signboard_skin")
+	end)
+
+	-- the Home window on a touch phone (844x390 and 390x844): the panel inside the screen, and nothing of it under Roblox's
+	-- thumbstick or jump button: the touch controls go while it is open, as the Pets window and the Index do (its station list
+	-- scrolls Upgrade buttons through both bottom corners); they come back as they were on Close. The hero's texts sit inside
+	-- the hero
+	S.home_fits_phone = guarded("home_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			local before = GuiService.TouchControlsEnabled
+			U9.at(s[1], s[2], s[3], "home phone", false, function(tag, win)
+				local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
+				local panel = win:FindFirstChild("HomePanel")
+				local screen = { X = 0, Y = 0, R = gui.AbsoluteSize.X, B = gui.AbsoluteSize.Y }
+				local p = panel and U8.rect(panel)
+				T.check(p ~= nil and p.X >= screen.X - 0.5 and p.R <= screen.R + 0.5 and p.Y >= screen.Y - 0.5 and p.B <= screen.B + 0.5,
+					tag .. ": the Home window sits inside the screen", p and (U8.show(p) .. " in " .. U8.show(screen)) or "no panel")
+				-- Roblox's touch controls in the window's own coordinates (HudController K: the jump button J = 70, from 1.5 J + 10 to
+				-- 0.5 J + 10 off the right edge, its bottom 20 px over the bottom edge; the thumbstick's ring in the bottom-left 150 px)
+				local J = 70
+				local inset = gui.IgnoreGuiInset and 0 or 58
+				local jump = { X = s[1] - (1.5 * J + 10), R = s[1] - (0.5 * J + 10), Y = s[2] - 20 - J - inset, B = s[2] - 20 - inset }
+				local stick = { X = 0, R = 150, Y = s[2] - 150 - inset, B = s[2] - inset }
+				local hidden = GuiService.TouchControlsEnabled == false
+				local under = {}
+				for _, b in ipairs(win:GetDescendants()) do
+					if b:IsA("GuiButton") and U8.shown(b) then
+						local r = U8.rect(b)
+						if U8.overlap(r, jump) or U8.overlap(r, stick) then
+							under[#under + 1] = b.Name .. " " .. U8.show(r)
+						end
+					end
+				end
+				-- the station list scrolls its Upgrade buttons through the bottom corners, so being clear right now is not enough:
+				-- the controls go while the window is open (the list then has the whole sheet)
+				T.check(hidden, tag .. ": Roblox's thumbstick and jump button go while the Home window is open (its list scrolls through their corners)",
+					fmt("touch controls %s; buttons under them now: %s", tostring(GuiService.TouchControlsEnabled), table.concat(under, ", ")))
+				local hero = win:FindFirstChild("GoHome", true)
+				local h = hero and U8.rect(hero)
+				local out = {}
+				for _, l in ipairs(hero and hero:GetDescendants() or {}) do
+					if l:IsA("TextLabel") and U8.shown(l) and l.Text ~= "" then
+						local r = U8.rect(l)
+						if r.X < h.X - 0.5 or r.R > h.R + 0.5 or r.Y < h.Y - 0.5 or r.B > h.B + 0.5 then
+							out[#out + 1] = l.Name .. " " .. U8.show(r)
+						end
+					end
+				end
+				T.check(hero ~= nil and #out == 0, tag .. ": the Go home hero's texts sit inside it", table.concat(out, ", ") .. (h and (" | hero " .. U8.show(h)) or ""))
+			end)
+			T.eq(GuiService.TouchControlsEnabled, before, fmt("home phone %dx%d: the touch controls are back as they were after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("home_fits_phone")
 	end)
 
 	return S

@@ -2877,6 +2877,8 @@ end)
 -- Vault, House Villa, Yard Fence), 1,240 / 3,000 berries, two evolved pets (Epic stage 1, Legend stage 2) and a
 -- team of 3. These scenes replace the Phase 4 ones of the same name (registered later):
 --   home        the Home window: the flow strip, house + income, the 11 stations, prestige last
+--   home:claim  (kit-b U9-1) the Home window with no home: Claim a home and the three steps
+--   home:prestige (kit-b U9-1) a home ready to prestige with its Prestige button pressed: the confirm
 --   feed        the Food Machine window (berries, ONE Feed button per pet)
 --   garden      the garden picker;  train  the Training Place
 --   team        the Team window: FIGHTER + 2 HELPERS, "Set as fighter"
@@ -2928,10 +2930,33 @@ function CAREUI.profile()
 end
 CAREUI.ProfileFn = CAREUI.profile
 
-scenario("home", function()
-	CAREUI.profile()
+-- (kit-b U9-1) home:claim = no home yet (Claim a home and its three steps); home:prestige = a home ready to prestige
+-- (Home Level 41, the Sky Castle) with its Prestige button pressed: the confirm as ShowConfirm fills it
+scenario("home", function(variant)
+	local _, snap = CAREUI.profile()
+	if variant == "claim" then
+		LocalPlayer:SetAttribute(Config.Attr.SpotIndex, nil)
+		advance(0.2)
+	elseif variant == "prestige" then
+		snap.Home.Level = 41
+		snap.Home.Stations = { Press1 = 40, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4, FusionMachine = 3, ArenaGate = 1,
+			DecorFence = 3, DecorFountain = 3, DecorPodium = 3 }
+		CARE.plot({ IncomePerSecond = 38.5, GardenSlots = 4, HomeLevel = 41, Prestige = 1, BerryCap = 3000 })
+		toClient("ProfileSync", snap)
+		advance(0.5)
+	end
 	toClient("OpenPanel", "Home", {})
 	advance(2.5)
+	if variant == "prestige" then
+		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local menu = pgui and pgui:FindFirstChild("NimbusMenu")
+		local button = menu and menu:FindFirstChild("Window_Home") and menu.Window_Home:FindFirstChild("Prestige", true)
+		if not button then
+			fail("home:prestige: no Prestige button in the Home window")
+		end
+		Mock.Click(button)
+		advance(0.5)
+	end
 end)
 
 scenario("feed", function(key)
