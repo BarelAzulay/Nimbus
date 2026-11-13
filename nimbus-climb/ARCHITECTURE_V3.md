@@ -111,7 +111,7 @@ fine details (claws, beaks, nostrils, inner ears, feather/fur tufts). Cute and a
   (no huge empty panels), sensible MaxDistance (~60-120 studs) and LightInfluence 0. Card range (2026-11-12, slop-audit
   win 2; only the range shrinks, the text keeps its pixel size, no studs-scaled text and no distance fade): gate and
   portal name cards (`GateTag`, `PortalBillboard`, the builders' stand-in `GateTag`s) show within **55 studs**
-  (`WorldStyle.TagRange`; 2026-11-13 owner: 55, was 45; first 120), the own follower's pet card within **15** (was 90). Far-read exceptions, kept on
+  (`WorldStyle.TagRange`; 2026-11-13 owner: 55, was 45; first 120), the own follower's pet card within **25** (2026-11-13 owner: 25, was 15; first 90). Far-read exceptions, kept on
   purpose: the arena forum's Return gate 110 (`spec.TagRange`: the forum's lone way home stands ~100 studs from the
   colosseum's main gate), the Storm Altar `TitleTag` 150, the downed marker 250, the tutorial guide sign 4000, battle
   cards 140, `RaidGateTag` 120, the home portal tag and the home tags 120, the home nameplates (80), the arena boards
@@ -1168,7 +1168,7 @@ FeedPrice(def, level)       = XpToNext(level) x RarityScale(def) x FeedBase     
   6 px (XP blue, SPECIAL gold) and 9 px (HP green own / red enemy) at 1080p scaled by `Theme.ScaledSize`, card width
   96 px, LightInfluence 0, a fill is written only when it moved by > 0.004 (BattleController's rule :1464), never
   per frame. A pulsing gold "EVOLVE!" pill (an `Active` button) when the pet is ready.
-* Modes: own follower: level + XP (MaxDistance 15, the 2026-11-12 card range, was 90); own garden pet: level + XP
+* Modes: own follower: level + XP (MaxDistance 25, 2026-11-13 owner, was 15; first 90); own garden pet: level + XP
   (MaxDistance 90); own unit in a battle: level + HP + SPECIAL + XP
   (140, `BAR_DISTANCE`); enemy / NPC unit: level + HP; other players' followers: level only (60, at most 12 cards at
   once, nearest first); a training pet at home: + a purple timer bar "2:10". Followers' cards are hidden while the

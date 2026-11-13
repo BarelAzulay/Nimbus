@@ -1,8 +1,8 @@
 -- smoke_p4_pets_client.lua: Phase 4 pet cards and the follow-behind pets (ARCHITECTURE_V3.md "Phase 4 build contract"
 -- 3.6 / 3.9 / 3.10 / 8.1, pets engineer). Loaded by tools/smoke.py in the client worlds (desktop 1920x1080 and the
 -- 390x844 touch phone):
---   client_p4pets_cards      client/UI/PetCard.lua (every mode's rows, MaxDistance: own follower 15 (the 2026-11-12 card
---                            range, was 90), garden / training 90, battle units 140, other players' 60; pixel sizes, "Lv"
+--   client_p4pets_cards      client/UI/PetCard.lua (every mode's rows, MaxDistance: own follower 25 (2026-11-13 owner: 25,
+--                            was 15; the 2026-11-12 card range, first 90), garden / training 90, battle units 140, other players' 60; pixel sizes, "Lv"
 --                            22 px with a stroke, stars, fills written only when they moved by > 0.004, the EVOLVE! pill as an Active
 --                            button that calls OnEvolve, SetTimer, SetMode, Destroy) and PetController's cards: own
 --                            followers "Lv n" + XP = xp / XpToNext from State (refreshed on ProfileSync), the EVOLVE! pill
@@ -179,7 +179,7 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 	T.check(gui ~= nil and gui:IsA("BillboardGui") and gui.Adornee == part, "PetCard.New makes a BillboardGui adorned to the part")
 	T.check(gui.Parent == LocalPlayer:FindFirstChildOfClass("PlayerGui"), "...in the PlayerGui (so the EVOLVE! pill can be tapped)", tostring(gui.Parent))
 	T.check(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset == 96, "...pixel-sized, 96 px wide at 1080p", tostring(gui.Size))
-	T.check(gui.LightInfluence == 0 and gui.MaxDistance == 15 and abs(gui.StudsOffset.Y - 2.5) < 1e-6, "...LightInfluence 0, MaxDistance 15 (own follower; the 2026-11-12 card range, was 90), StudsOffset = heightStuds",
+	T.check(gui.LightInfluence == 0 and gui.MaxDistance == 25 and abs(gui.StudsOffset.Y - 2.5) < 1e-6, "...LightInfluence 0, MaxDistance 25 (own follower; 2026-11-13 owner: 25, was 15; first 90), StudsOffset = heightStuds",
 		"MaxDistance " .. tostring(gui.MaxDistance))
 	card:SetLevel(12, 0, false)
 	local lv = levelLabel(gui)
@@ -241,7 +241,7 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 	card:SetMode("Garden")
 	T.check(gui.MaxDistance == 90, "Garden mode: MaxDistance 90 (unchanged)", tostring(gui.MaxDistance))
 	card:SetMode("Follower")
-	T.check(gui.MaxDistance == 15, "back to Follower mode: MaxDistance 15 again", tostring(gui.MaxDistance))
+	T.check(gui.MaxDistance == 25, "back to Follower mode: MaxDistance 25 again", tostring(gui.MaxDistance))
 	local live = PetCard.Count and PetCard.Count() or 0
 	card:Destroy()
 	card:Destroy()
