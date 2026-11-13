@@ -900,6 +900,8 @@ Config.Art = {
 --                        Ambient, Atmosphere, clouds); TintColor stays within Floor.TintMax of white (Amber Burn shows
 --                        11 of 20 minutes, the HUD and rarity colours keep their true colours)
 --   Floor                the readability floor in every phase and raid (night is indigo, never black)
+--   AirV2 / CloudsV2     (kit-b S4, staged) the painted skies' air colours per phase / the thin Terrain clouds, used by
+--                        shared/SkyCycle in place of the looks' only while Config.Preview.SkyAir / ThinClouds is true
 local skyRgb = Color3.fromRGB
 Config.Sky = {
 	Faces = { Bk = "", Dn = "", Ft = "", Lf = "", Rt = "", Up = "" },
@@ -943,6 +945,21 @@ Config.Sky = {
 		["dusk_amber>night_aurora"] = { Color = skyRgb(122, 90, 69), Decay = skyRgb(117, 94, 90) },
 		["night_aurora>dusk_amber"] = { Color = skyRgb(122, 90, 69), Decay = skyRgb(117, 94, 90) },
 	},
+	-- (kit-b S4, sky audit F6, PICK: read only with Config.Preview.SkyAir) each phase's air taken from its painted sky, so
+	-- the haze band and the far islands carry the sky's own hue (the looks' air was tuned for the old pink sky: violet
+	-- under the teal night, pink under the orange dawn). Color = the average horizon band (the 15% above the horizon of
+	-- Ft / Bk / Lf / Rt, the band Bridge uses), Decay = the same band on the sun side (Ft: every theme's sun, moon and
+	-- feature face Ft). From blender/textures/sky/<theme>; Dawn and Sunset share Amber Burn. Raid looks keep their own
+	AirV2 = {
+		Dawn = { Color = skyRgb(220, 109, 45), Decay = skyRgb(237, 133, 64) },
+		Day = { Color = skyRgb(177, 225, 252), Decay = skyRgb(178, 226, 253) },
+		Sunset = { Color = skyRgb(220, 109, 45), Decay = skyRgb(237, 133, 64) },
+		Night = { Color = skyRgb(23, 70, 92), Decay = skyRgb(23, 69, 91) },
+	},
+	-- (S4, world clouds 6, PICK: read only with Config.Preview.ThinClouds) the engine's Terrain clouds thinned to a haze in
+	-- every look (phases and raids): Cover and Density at rest never above these, so the painted sky and the voxel cumulus
+	-- carry the clouds. The bridge still lifts Cover to Transitions' peaks around a skybox swap
+	CloudsV2 = { Cover = 0.25, Density = 0.3 },
 	Speed = { Default = 1, Min = 0.1, Max = 120 }, -- the dev /sky speed clamp (SkySpeed attribute)
 	-- the Workspace attributes server/Services/SkyService publishes (the clock: no remote traffic): Epoch = the server
 	-- time at boot, Speed / Offset = the dev /sky speed and phase jump (loop seconds), Event = the raid boss id whose sky
