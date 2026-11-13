@@ -41,7 +41,9 @@ python3 blender/kit/selftest.py                                              # h
 Classes (one catalog each, `blender/catalog/<class>.json`): `calibration` (cal_axes + the test key
 prop_portal_reference), `pets` (94 keys), `evolved` (354), `creatures` (60), `gates` (7), `lobby` (63), `home` (168),
 `arenadungeon` (52), `vfx` (22, the pet attack effect cores): 821 uploadable keys (W3 added `prop_plot_low` and the 80 home plot `_low` keys
-`home_<stem>_<level>_low`).  `blender/out/previews/<name>.png` holds the preview sheets; a catalog preview with
+`home_<stem>_<level>_low`), plus `obby` (11, kit-b B1: the obby cloud set of `kit/props/obby.py`, far / sea cumulus,
+the platform puffs with a `Seat` attachment, `obby_storm_cloud`; worst-case scene `blender/scenes/obby_view.json`,
+checks `py -3.12 blender/kit/selftest.py --only obby`).  `blender/out/previews/<name>.png` holds the preview sheets; a catalog preview with
 `"sheet": [keys]` renders a labelled contact sheet of single-part keys instead (front / three-quarter / side / top,
 tinted with `"tint"`) to `blender/<out>` (vfx: `blender/vfx/out/cores_preview.png`).
 Per key: `blender/out/<key>.fbx`, `.manifest.json`, `.tris.json.gz` (not committed, rebuilt from here) and the
@@ -155,6 +157,7 @@ also makes `build_all` exit 1).  The numbers live in each catalog's `budgets` (t
 | home | station 4000 / 8, stationBig 8000 / 8, decor 2000 / 8, house 10000 / 8, element 600 / 2 |
 | arenadungeon | tiny 900 / 4 ... island 36000 / 8 |
 | vfx | core 2000 / 1, coreBig 4000 / 1 (shell, cage), sig 6000 / 1 (one MeshPart `Core` per key) |
+| obby | cloudFar 3500 / 1, cloudSea 3500 / 1, cloudUnder 2400 / 1, cloudPad 5000 / 1, cloudStorm 2400 / 1 |
 
 evo1Body went from 40 to 44 parts in wave 2.5: keys that tests look up by name (Spark, EyeIris, EyeGlint, EyeRing,
 Basalt, HydraHead ...) may no longer be baked into `Fixed`, so a few bodies have more parts.  Any new by-name lookup

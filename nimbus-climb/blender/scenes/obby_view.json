@@ -1,0 +1,13 @@
+{
+ "name": "obby worst case (kit-b B1): every far + sea cloud of a course in view, 40 platform puffs, 6 pads, 2 storm steps, 16 players x 3 pets",
+ "doc": "py -3.12 tools/mesh_budget.py --scene blender/scenes/obby_view.json --check. CourseLayout makes 14-22 far puffs and 6-10 sea puffs per course (all counted, though a phone sees about half); 40 platform puffs (Easy l / m, Medium s) and 6 pads (Start, 4 checkpoints, Finish) is more than a 15-platform Easy view holds; each Storm step wears 3 obby_storm_cloud anchors (CourseBuilder Mesh.storm). Parts: the proposed contract 6.5 budget of tools/mesh_budget.py (PART_BUDGET instances 3000; the old 400 is over in the lobby scene too); the clouds add 84 MeshParts, the 48 pets 1506.",
+ "budget": {"tris": 300000, "parts": 3000},
+ "pets": {"High": 3, "Low": 45},
+ "petClasses": ["pets"],
+ "keys": {
+  "cloud_obby_far_1": 6, "cloud_obby_far_2": 6, "cloud_obby_far_3": 5, "cloud_obby_far_4": 5,
+  "cloud_obby_sea_1": 5, "cloud_obby_sea_2": 5,
+  "cloud_obby_under_l": 14, "cloud_obby_under_m": 14, "cloud_obby_under_s": 12, "cloud_obby_under_pad": 6,
+  "obby_storm_cloud": 6
+ }
+}

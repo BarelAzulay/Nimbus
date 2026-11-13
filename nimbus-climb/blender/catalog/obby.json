@@ -1,0 +1,119 @@
+{
+ "class": "obby",
+ "owner": "kit-b BLENDER lane (B1, slop-audit round 3)",
+ "doc": "blender/README.md + kit/props/obby.py. The obby's voxel cloud set, built with the lobby_cloud recipe (LobbyBuilder._CloudGrid of a VX.Cloud spec: tiers, puffs, rim, carve; one baked SmoothPlastic MeshPart 'Cloud'). cloud_obby_far_<n> (distant cumulus, pivot = the base tier's top centre, flat base), cloud_obby_sea_<n> (the cloud sea under the route, pivot = the top centre of its flat deck, billows rise up to 3 voxels over it), cloud_obby_under_<s|m|l|pad> (the puff a platform's slab sits in: pivot = attachment Seat = the slab's underside centre, a one-voxel rim around the slab footprint that stays below the walking top), obby_storm_cloud (the dark cloud over a Storm step, pivot = the base's bottom centre). Wired by the OBBY lane (Config.Course.Clouds) once the keys have ids.",
+ "budgets": {
+  "cloudFar": {
+   "tris": 3500,
+   "parts": 1
+  },
+  "cloudSea": {
+   "tris": 3500,
+   "parts": 1
+  },
+  "cloudUnder": {
+   "tris": 2400,
+   "parts": 1
+  },
+  "cloudPad": {
+   "tris": 5000,
+   "parts": 1
+  },
+  "cloudStorm": {
+   "tris": 2400,
+   "parts": 1
+  }
+ },
+ "keys": [
+  {
+   "key": "cloud_obby_far_1",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudFar",
+   "description": "Obby cloud: distant cumulus, one tall tower (60 studs)",
+   "args": {"design": "far_tower", "V": 2.5}
+  },
+  {
+   "key": "cloud_obby_far_2",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudFar",
+   "description": "Obby cloud: distant cumulus, two crowns (72 studs)",
+   "args": {"design": "far_twin", "V": 3.0}
+  },
+  {
+   "key": "cloud_obby_far_3",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudFar",
+   "description": "Obby cloud: distant cumulus, broad and lumpy with an off-centre crown (90 studs)",
+   "args": {"design": "far_lump", "V": 3.5}
+  },
+  {
+   "key": "cloud_obby_far_4",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudFar",
+   "description": "Obby cloud: distant cumulus bank, long and low, a chain of rounded heads (120 studs)",
+   "args": {"design": "far_bank", "V": 3.5}
+  },
+  {
+   "key": "cloud_obby_sea_1",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudSea",
+   "description": "Obby cloud sea: wide flat deck under rolling billows, a misty belly (110 studs)",
+   "args": {"design": "sea_wide", "V": 3.0}
+  },
+  {
+   "key": "cloud_obby_sea_2",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudSea",
+   "description": "Obby cloud sea: long flat drift with a misty belly (140 studs)",
+   "args": {"design": "sea_long", "V": 3.0}
+  },
+  {
+   "key": "cloud_obby_under_s",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudUnder",
+   "description": "Obby platform puff, small: a slab of about 10 x 12.5 sits in its rim (Medium steps)",
+   "args": {"design": "under_s", "V": 1.0}
+  },
+  {
+   "key": "cloud_obby_under_m",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudUnder",
+   "description": "Obby platform puff, medium: a slab of about 12.5 x 15.5 sits in its rim (Easy steps)",
+   "args": {"design": "under_m", "V": 1.0}
+  },
+  {
+   "key": "cloud_obby_under_l",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudUnder",
+   "description": "Obby platform puff, large: a slab of about 15.5 x 19 sits in its rim (big Easy steps)",
+   "args": {"design": "under_l", "V": 1.0}
+  },
+  {
+   "key": "cloud_obby_under_pad",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudPad",
+   "description": "Obby pad puff: a 30 x 30 Start / Checkpoint / Finish pad sits in its rim",
+   "args": {"design": "under_pad", "V": 1.0}
+  },
+  {
+   "key": "obby_storm_cloud",
+   "type": "prop",
+   "prop": "obby_cloud",
+   "budget": "cloudStorm",
+   "description": "Obby storm cloud: a dark heavy cumulus over a Rain Run step (about 14 x 9, 6 tall)",
+   "args": {"design": "storm", "V": 1.0}
+  }
+ ],
+ "sets": [],
+ "previews": []
+}
