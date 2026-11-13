@@ -1064,7 +1064,10 @@ local function buildGroupTile(group, index)
 	})
 	-- name on top, then a slim progress bar with the "3/6" count at its right end (kit-b U6: a card name is a Heading, the
 	-- Title face's capitals would not fit "LEGENDARY" in the narrow phone tile)
-	tile.Name = makeText(button, "GroupName", group.Rarity, "Heading", 24, WHITE, {
+	-- kit B (no outline): the name takes the ink that reads on the light top-left end of the diagonal gradient (Theme.TextOn:
+	-- brown on a light colour, white on a dark one); the count sits on a small navy plate in white (it drops under 18 px on
+	-- a phone, where no ink reads 4.5:1 on the grey and blue tiles' mid tones)
+	tile.Name = makeText(button, "GroupName", group.Rarity, "Heading", 24, Theme.TextOn(top), {
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -52, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1074,11 +1077,16 @@ local function buildGroupTile(group, index)
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 18, Parent = tile.Name })
 	tile.Progress = makeText(button, "Progress", "0/0", "Heading", 19, WHITE, {
 		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -10, 1, -4),
-		Size = UDim2.fromOffset(58, 24),
+		Position = UDim2.new(1, -8, 1, -5),
+		Size = UDim2.fromOffset(0, 22),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundTransparency = 0.15,
+		BackgroundColor3 = NAVY,
 		TextXAlignment = Enum.TextXAlignment.Right,
 		ZIndex = 2,
 	})
+	corner(tile.Progress, "M")
+	pad(tile.Progress, 7, 0, 7, 0)
 	local track = makeFrame(button, "Track", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 12, 1, -11),
@@ -1166,7 +1174,9 @@ local function buildFusionTile(index)
 		TextStrokeTransparency = 1,
 		Rotation = 12,
 	})
-	tile.Name = makeText(button, "GroupName", "Fusions", "Heading", 24, WHITE, { -- (a card name, like the rarity tiles)
+	-- kit B (no outline): the name is brown on the gold end of the gold -> pink -> violet tile; the count runs across the
+	-- pink-to-violet foot, where neither ink reads on the whole line, so it sits on a small navy plate in white
+	tile.Name = makeText(button, "GroupName", "Fusions", "Heading", 24, Theme.Sign.Text, { -- (a card name, like the rarity tiles)
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -52, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1174,11 +1184,16 @@ local function buildFusionTile(index)
 	})
 	tile.Progress = makeText(button, "Progress", "", "Heading", 19, WHITE, {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 12, 1, -4),
-		Size = UDim2.new(1, -24, 0, 24),
+		Position = UDim2.new(0, 10, 1, -5),
+		Size = UDim2.fromOffset(0, 22),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundTransparency = 0.15,
+		BackgroundColor3 = NAVY,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 2,
 	})
+	corner(tile.Progress, "M")
+	pad(tile.Progress, 7, 0, 7, 0)
 	tile.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = button })
 	button.MouseEnter:Connect(function()
 		tween(tile.Pop, 0.12, { Scale = 1.03 })

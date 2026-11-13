@@ -26,6 +26,10 @@
 --   kitb_text_stroke_or_panel (client) a walk over every text object in PlayerGui after the client run: labels with both a
 --                             classic stroke and an outline, and outlined labels on an opaque panel. U1 reports the counts
 --                             as a warning; U6 drives them to zero and makes this a failure
+--   kitb_text_contrast        (client; U6 review) every shown text with no outline reaches 3:1 (18 px and up) or 4.5:1
+--                             against the fill painted under its glyphs (SmokeCommon.Contrast; tools/fixtures/
+--                             contrast_backlog.txt is counted, not failed). theme_texton also pins Theme.TextOn of a
+--                             ColorSequence (its worst stop) and Theme.ReadableFace (a face moved the least until it reads)
 --   kitb_fit_measures_face_label (client; U1 review) the side hint (a Toast label, Nunito ExtraBold) sizes its pill from
 --                             Theme.MeasureLabel, not the 300 px it fell back to while .Font read Unknown
 --   U2 (SignKit, PixelIcon, Credits on the kit; findings 5, 7):
@@ -381,6 +385,22 @@ local function serverScenarios()
 		T.check(hex(Theme.TextOn("Panel")) == white and hex(Theme.TextOn("Dark")) == white, "kitb texton: white on today's dark panels")
 		T.check(hex(Theme.TextOn(Theme.Colors.PanelTop)) == white and hex(Theme.TextOn(Color3.fromRGB(250, 248, 240))) == brown, "kitb texton: a Color3 surface picks by contrast")
 		T.check(hex(Theme.TextOn(nil)) == white and hex(Theme.TextOn("nope")) == white, "kitb texton: nil / unknown = white (today's dark panels)")
+		-- (U6 review) a gradient fill is judged at its worst stop; a mid tone is moved the least until its ink reads
+		local pale = ColorSequence.new(Color3.fromRGB(250, 248, 240), Color3.fromRGB(150, 210, 160))
+		local mixed = ColorSequence.new(Color3.fromRGB(250, 248, 240), Color3.fromRGB(20, 24, 60))
+		T.check(hex(Theme.TextOn(pale)) == brown, "kitb texton: a pale gradient takes brown (its worst stop still reads)", hex(Theme.TextOn(pale)))
+		local mInk = Theme.TextOn(mixed)
+		T.check(math.min(Theme.Contrast(mInk, Color3.fromRGB(250, 248, 240)), Theme.Contrast(mInk, Color3.fromRGB(20, 24, 60)))
+			>= math.min(Theme.Contrast(hex(mInk) == white and Sg.Text or Theme.Colors.White, Color3.fromRGB(250, 248, 240)), Theme.Contrast(hex(mInk) == white and Sg.Text or Theme.Colors.White, Color3.fromRGB(20, 24, 60))),
+			"kitb texton: a light-to-dark gradient takes the ink with the better worst stop", hex(mInk))
+		for _, c in ipairs({ Color3.fromRGB(176, 104, 255), Color3.fromRGB(110, 128, 255), Color3.fromRGB(236, 60, 72), Color3.fromRGB(57, 147, 225), Color3.fromRGB(250, 248, 240), Color3.fromRGB(20, 24, 60) }) do
+			local face, ink = Theme.ReadableFace(c, 4.5)
+			T.check(Theme.Contrast(face, ink) >= 4.5, "kitb texton: Theme.ReadableFace reaches 4.5:1 on " .. hex(c), fmt("%s on %s %.2f:1", hex(ink), hex(face), Theme.Contrast(face, ink)))
+			local wFace, wInk = Theme.ReadableFace(c, 4.5, true)
+			T.check(hex(wInk) == white and Theme.Contrast(wFace, wInk) >= 4.5, "kitb texton: ...white only on " .. hex(c), fmt("%s on %s", hex(wInk), hex(wFace)))
+		end
+		local keep = Color3.fromRGB(20, 24, 60)
+		T.check(hex((Theme.ReadableFace(keep, 4.5))) == hex(keep), "kitb texton: Theme.ReadableFace keeps a face that already reads")
 		local R = Theme.Radius
 		T.check(type(R) == "table" and R.None == 0 and R.S == 4 and R.M == 8, "kitb texton: Theme.Radius = { None = 0, S = 4, M = 8 }")
 		local f = Instance.new("Frame")
@@ -1265,6 +1285,21 @@ local function clientScenarios()
 		-- every render scenario
 		T.check(#doubled == 0, fmt("kitb stroke walk: no text with both a classic stroke and an outline (%d)", #doubled), table.concat(doubled, "; ", 1, math.min(#doubled, 8)))
 		T.check(#panelled == 0, fmt("kitb stroke walk: no outlined text on an opaque panel (%d)", #panelled), table.concat(panelled, "; ", 1, math.min(#panelled, 8)))
+	end)
+
+	-- U6 review: the contrast rule over every shown text with no outline in PlayerGui after the client run (SmokeCommon.Contrast:
+	-- its colour against the fill painted under its glyphs, the worst gradient stop; 3:1 from 18 px, 4.5:1 below).
+	-- tools/stroke_walk.py runs the same rule over the dumps of every render scenario
+	S.kitb_text_contrast = guarded("kitb_text_contrast", function()
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(pg ~= nil, "kitb contrast: PlayerGui exists") then
+			return
+		end
+		local bad, read, owed = SmokeCommon.Contrast.Walk(pg)
+		T.info(fmt("*kitb contrast: %d texts read against their fill, %d below the rule, %d more in tools/fixtures/contrast_backlog.txt", read, #bad, owed))
+		T.check(read > 0, "kitb contrast: the client run left text on a fill in PlayerGui", tostring(read))
+		T.check(#bad == 0, fmt("kitb contrast: every text without an outline reads on its fill (3:1 from 18 px, 4.5:1 below) (%d not)", #bad),
+			table.concat(bad, "; ", 1, math.min(#bad, 10)))
 	end)
 
 	-- U6 (fonts audit F9): kit B's casing rule over every text Theme stamped with a role in PlayerGui after the client run:

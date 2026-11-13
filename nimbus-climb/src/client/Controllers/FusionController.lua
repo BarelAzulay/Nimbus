@@ -1665,7 +1665,9 @@ function H.paintHeader()
 	GemIcon.SetAmount(U.GemAmount, H.short(H.balance("Gems")))
 	for _, spec in ipairs({ { U.TabUp, "Upgrade" }, { U.TabMix, "Mix" } }) do
 		local b, on = spec[1], S.Tab == spec[2]
-		b.TextColor3 = on and C.White or C.Muted
+		local selected = ColorSequence.new(Theme.Lighten(C.Violet, 0.55), Theme.Darken(C.Violet, 0.05))
+		-- kit B (no outline): the selected tab's ink is the one that reads on its pale violet face (brown)
+		b.TextColor3 = on and Theme.TextOn(selected) or Theme.Lighten(C.Muted, 0.4) -- (unselected: a pale muted ink, 4.5:1 on the header)
 		b:SetAttribute("Selected", on)
 		local fill = U.Header:FindFirstChild(b.Name .. "Fill")
 		if fill then
@@ -1673,7 +1675,7 @@ function H.paintHeader()
 			fill.BackgroundTransparency = on and 0 or 0.55
 			local grad = fill:FindFirstChild("TabFill")
 			if grad then
-				grad.Color = on and ColorSequence.new(Theme.Lighten(C.Violet, 0.55), Theme.Darken(C.Violet, 0.05)) or ColorSequence.new(C.White, C.White)
+				grad.Color = on and selected or ColorSequence.new(C.White, C.White)
 			end
 			local st = fill:FindFirstChild("TabStroke")
 			if st then

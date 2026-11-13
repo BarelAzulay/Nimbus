@@ -681,6 +681,8 @@ local function nodeOf(inst, ctx, path, order)
 			placeholder = placeholder,
 			-- (kit-b U6) the role Theme stamped on it (Theme.SetRole), read by tools/stroke_walk.py's casing rule
 			role = inst:GetAttribute("FontRole"),
+			-- (kit-b U6 review) the mock's TextBounds in screen px: where the glyphs sit, read by render_gui.contrast_rule
+			bounds = { (tonumber(inst.TextBounds.X) or 0) * s, (tonumber(inst.TextBounds.Y) or 0) * s },
 			-- TextScaled bounds in screen px (Roblox's TextScaled tops out at 100 px before UIScale)
 			minSize = 1 * s,
 			maxSize = 100 * s,

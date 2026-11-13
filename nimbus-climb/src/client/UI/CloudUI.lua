@@ -792,17 +792,53 @@ function CloudUI.Bar(props)
 	local fillGradient = gradient(fill, fillSequence(color), 90)
 	addShine(fill, 0.34, 6, 0.7)
 
+	-- kit B (no outline on a surface): the label reads by the colour of what lies under it, and the fill moves under a
+	-- centred label. So it is drawn twice, each copy clipped to one stretch of the bar: dark ink over the bright fill
+	-- (Theme.TextOn of its gradient), white over the dark track. Both copies are named "Text"; bar.Label is the fill's.
 	local textSize = props.TextSize or Util.Clamp(math.floor(height * 0.66 + 0.5), 15, 26)
-	local label = Theme.Label(props.Label or "", "Heading", {
-		Size = textSize,
-		Props = {
-			Name = "Text",
+	local copies = {}
+	for _, spec in ipairs({ { "TextFill", Theme.TextOn(fillSequence(color)) }, { "TextTrack", WHITE } }) do
+		local clip = frame(spec[1], {
+			ClipsDescendants = true,
 			Size = UDim2.new(1, 0, 1, 0),
 			ZIndex = 3,
-			TextXAlignment = Enum.TextXAlignment.Center,
-		},
-	})
-	label.Parent = root
+		}, inner)
+		local copy = Theme.Label(props.Label or "", "Heading", {
+			Size = textSize,
+			Color = spec[2],
+			Props = {
+				Name = "Text",
+				Size = UDim2.new(1, 0, 1, 0),
+				ZIndex = 3,
+				TextXAlignment = Enum.TextXAlignment.Center,
+			},
+		})
+		copy.Parent = clip
+		copies[#copies + 1] = { Clip = clip, Label = copy }
+	end
+	local label = copies[1].Label
+
+	-- the copies' stretches follow the fill's width (its tween too): the fill's copy over [0, f], the track's over [f, 1];
+	-- each label keeps the whole bar's box, so a glyph's two halves meet at the fill's edge
+	local function placeText()
+		local f = Util.Clamp(fill.Size.X.Scale, 0, 1)
+		for i, c in ipairs(copies) do
+			local a, b = 0, f
+			if i == 2 then
+				a, b = f, 1
+			end
+			local span = b - a
+			c.Clip.Visible = span > 0.001
+			if span > 0.001 then
+				c.Clip.Position = UDim2.fromScale(a, 0)
+				c.Clip.Size = UDim2.fromScale(span, 1)
+				c.Label.Position = UDim2.fromScale(-a / span, 0)
+				c.Label.Size = UDim2.fromScale(1 / span, 1)
+			end
+		end
+	end
+	fill:GetPropertyChangedSignal("Size"):Connect(placeText)
+	placeText()
 
 	local bar = { Root = root, Fill = fill, Label = label }
 	local running = nil
@@ -826,7 +862,9 @@ function CloudUI.Bar(props)
 	end
 
 	function bar.SetText(text)
-		label.Text = tostring(text or "")
+		for _, c in ipairs(copies) do
+			c.Label.Text = tostring(text or "")
+		end
 	end
 
 	function bar.SetColor(newColor)
@@ -835,6 +873,7 @@ function CloudUI.Bar(props)
 		end
 		color = newColor
 		fillGradient.Color = fillSequence(color)
+		label.TextColor3 = Theme.TextOn(fillGradient.Color)
 	end
 	bar.TrackStroke = trackStroke
 

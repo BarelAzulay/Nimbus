@@ -468,8 +468,9 @@ function Theme.HealthColor(fraction)
 end
 
 -- kit B: the text colour for a surface. A name of Theme.Sign ("Stone", "Navy", "Wood", ...), one of today's dark fills
--- ("Panel", "Dark", "Well") or any Color3; the brown #3B2412 or white, whichever has the higher contrast on it (brown on
--- stone and gold, white on navy, wood and the dark panels). Nil / unknown = white, the dark panels' colour today.
+-- ("Panel", "Dark", "Well"), any Color3 or a ColorSequence (a gradient fill: judged at its worst stop); the brown #3B2412
+-- or white, whichever has the higher contrast on it (brown on stone and gold, white on navy, wood and the dark panels).
+-- Nil / unknown = white, the dark panels' colour today.
 local function channel(v)
 	if v <= 0.04045 then
 		return v / 12.92
@@ -493,6 +494,15 @@ local DARK_SURFACES = { Panel = "Panel", Dark = "PanelTop", Well = "WellTop" }
 
 function Theme.TextOn(surface)
 	local fill = nil
+	if typeof(surface) == "ColorSequence" then
+		-- (U6 review) a gradient fill: the ink whose worst contrast over the colour stops is higher
+		local brown, white = math.huge, math.huge
+		for _, kp in ipairs(surface.Keypoints) do
+			brown = math.min(brown, contrast(Theme.Sign.Text, kp.Value))
+			white = math.min(white, contrast(Theme.Colors.White, kp.Value))
+		end
+		return (brown > white) and Theme.Sign.Text or Theme.Colors.White
+	end
 	if typeof(surface) == "Color3" then
 		fill = surface
 	elseif type(surface) == "string" then
@@ -505,6 +515,39 @@ function Theme.TextOn(surface)
 		return Theme.Sign.Text
 	end
 	return Theme.Colors.White
+end
+
+-- (U6 review) the WCAG contrast ratio of two colours (1 .. 21)
+function Theme.Contrast(a, b)
+	return contrast(a, b)
+end
+
+-- (U6 review) a small face (a pill, a badge, a tab, a bar) and its ink for text that must reach `need`:1 (default 4.5,
+-- small text): the colour itself with Theme.TextOn's ink when that reads; a mid tone where neither ink reads is moved the
+-- least it takes, in steps of 0.04: lightened towards the pale cloud for the brown ink or darkened towards the navy shade
+-- for white. whiteOnly: the ink must be white (a bar whose text also crosses its dark track), so it is only darkened.
+-- -> face, ink
+function Theme.ReadableFace(color, need, whiteOnly)
+	need = tonumber(need) or 4.5
+	local white, brown = Theme.Colors.White, Theme.Sign.Text
+	local ink = whiteOnly and white or Theme.TextOn(color)
+	if contrast(ink, color) >= need then
+		return color, ink
+	end
+	for step = 1, 25 do
+		local k = step * 0.04
+		local dark = Theme.Darken(color, k)
+		if contrast(white, dark) >= need then
+			return dark, white
+		end
+		if not whiteOnly then
+			local light = Theme.Lighten(color, k)
+			if contrast(brown, light) >= need then
+				return light, brown
+			end
+		end
+	end
+	return Theme.Darken(color, 1), white
 end
 
 ----------------------------------------------------------------------

@@ -5240,11 +5240,19 @@ local function label(parent, text, role, size, props, world)
 	return l
 end
 
+-- a pill's face and its text colour together (kit B: no outline; Theme.ReadableFace: the ink that reads on the face, a
+-- mid tone darkened a little so its small text reaches 4.5:1); use it whenever a pill changes colour later
+local function paintPill(pill, color)
+	local face, ink = Theme.ReadableFace(color, 4.5)
+	pill.BackgroundColor3 = face
+	pill.TextColor3 = ink
+end
+
 local function smallPill(parent, text, color, props)
 	local l = Theme.Label(text, "Heading", { Size = 15 })
 	l.Name = "Pill"
 	l.BackgroundTransparency = 0
-	l.BackgroundColor3 = color
+	paintPill(l, color)
 	l.BorderSizePixel = 0
 	l.AutomaticSize = Enum.AutomaticSize.X
 	l.Size = UDim2.fromOffset(0, 22)
@@ -5541,13 +5549,28 @@ function Hud.BuildFighter()
 	F.Hp = make("Frame", { Name = "Hp", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, body)
 	Theme.Corner(F.Hp, "M")
 	Theme.Stroke(F.Hp, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
-	F.HpLoss = make("Frame", { Name = "Loss", BackgroundColor3 = COLORS.Loss, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
+	-- (the loss red a shade deeper than COLORS.Loss, so the white number crossing it reads: kit B, no outline)
+	F.HpLoss = make("Frame", { Name = "Loss", BackgroundColor3 = (Theme.ReadableFace(COLORS.Loss, 4.5, true)), BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
 	Theme.Corner(F.HpLoss, "M")
 	F.HpFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.HpGreen, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
 	Theme.Corner(F.HpFill, "M")
 	make("UIGradient", { Name = "Shine", Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(190, 200, 190)) }, F.HpFill)
-	F.HpTag = label(F.Hp, "HP", "Heading", 16, { Name = "Tag", ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Left })
-	F.HpText = label(F.Hp, "", "Heading", 16, { Name = "Text", ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Right })
+	-- kit B (no outline on a surface): "HP" and the number read by the colour of what lies under them, and the green fill
+	-- moves under them. So they are drawn twice, each pair clipped to one stretch of the bar: dark ink over the green
+	-- fill (Theme.TextOn), white over the rest (the red loss trail, the dark track). F.HpTag / F.HpText are the fill pair;
+	-- Hud.PlaceHpText moves the stretches, Hud.LayoutFighter sizes every copy.
+	F.HpCopies = {}
+	for _, spec in ipairs({ { "TextFill", Theme.TextOn(COLORS.HpGreen) }, { "TextRest", COLORS.White } }) do
+		local clip = make("Frame", { Name = spec[1], BackgroundTransparency = 1, ClipsDescendants = true, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, F.Hp)
+		local row = make("Frame", { Name = "Row", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, clip)
+		F.HpCopies[#F.HpCopies + 1] = {
+			Clip = clip,
+			Row = row,
+			Tag = label(row, "HP", "Heading", 16, { Name = "Tag", ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = spec[2] }),
+			Text = label(row, "", "Heading", 16, { Name = "Text", ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = spec[2] }),
+		}
+	end
+	F.HpTag, F.HpText = F.HpCopies[1].Tag, F.HpCopies[1].Text
 	-- ENERGY (the special meter)
 	F.Energy = make("Frame", { Name = "Energy", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, body)
 	Theme.Corner(F.Energy, "S")
@@ -5561,11 +5584,36 @@ function Hud.BuildFighter()
 		F.Hearts[i] = heart(F.Lives, i)
 	end
 	Hud.F = F
+	Hud.PlaceHpText(1)
 	-- the helpers: a portrait each (round pet picture in a ViewportFrame, the buff cooldown ring around it, Lv,
 	-- the buff name, the SWAP chip, the key hint); tap = buff, hold 0.5 s = swap
 	Hud.helperHolder = make("Frame", { Name = "Helpers", BackgroundTransparency = 1 }, team)
 	for i = 1, 2 do
 		Hud.helpers[i] = Hud.BuildHelper(i)
+	end
+end
+
+-- the HP bar's text stretches for a fill of `frac` (0..1): the dark pair shows over [0, frac], the white pair over
+-- [frac, 1]; each pair's row keeps the whole bar's box, so the two halves of a glyph meet exactly at the fill's edge
+function Hud.PlaceHpText(frac)
+	local F = Hud.F
+	if not (F and F.HpCopies) then
+		return
+	end
+	frac = clamp(tonumber(frac) or 0, 0, 1)
+	for i, copy in ipairs(F.HpCopies) do
+		local a, b = 0, frac
+		if i == 2 then
+			a, b = frac, 1
+		end
+		local span = b - a
+		copy.Clip.Visible = span > 0.001
+		if span > 0.001 then
+			copy.Clip.Position = UDim2.fromScale(a, 0)
+			copy.Clip.Size = UDim2.fromScale(span, 1)
+			copy.Row.Position = UDim2.fromScale(-a / span, 0)
+			copy.Row.Size = UDim2.fromScale(1 / span, 1)
+		end
 	end
 end
 
@@ -6211,14 +6259,16 @@ function Hud.LayoutFighter(B, m)
 	F.Hp.Position = UDim2.fromOffset(pad, y)
 	F.Hp.Size = UDim2.fromOffset(barW, hpH)
 	local hpText = compact and 14 or 16
-	F.HpTag.TextSize = hpText
-	F.HpText.TextSize = hpText
-	F.HpTag:SetAttribute("BaseText", hpText)
-	F.HpText:SetAttribute("BaseText", hpText)
-	F.HpTag.Position = UDim2.fromOffset(8, 0)
-	F.HpTag.Size = UDim2.new(0, 40, 1, 0)
-	F.HpText.Position = UDim2.fromOffset(40, 0)
-	F.HpText.Size = UDim2.new(1, -48, 1, 0)
+	for _, copy in ipairs(F.HpCopies) do
+		copy.Tag.TextSize = hpText
+		copy.Text.TextSize = hpText
+		copy.Tag:SetAttribute("BaseText", hpText)
+		copy.Text:SetAttribute("BaseText", hpText)
+		copy.Tag.Position = UDim2.fromOffset(8, 0)
+		copy.Tag.Size = UDim2.new(0, 40, 1, 0)
+		copy.Text.Position = UDim2.fromOffset(40, 0)
+		copy.Text.Size = UDim2.new(1, -48, 1, 0)
+	end
 	y = y + hpH + (compact and 5 or 7)
 	local enH = compact and 10 or 14
 	F.Energy.Position = UDim2.fromOffset(pad, y)
@@ -6315,7 +6365,8 @@ function Hud.FillFighter(B)
 	if f then
 		setText(F.Name, f.name)
 		setText(F.Level, "Lv " .. tostring(floor(f.level)))
-		F.Element.BackgroundColor3 = elementColor(f.element)
+		-- kit B: no outline on the badge; its small glyph reads on the face (Theme.ReadableFace)
+		F.Element.BackgroundColor3, F.ElementGlyph.TextColor3 = Theme.ReadableFace(elementColor(f.element), 4.5)
 		setText(F.ElementGlyph, ELEMENT_GLYPH[f.element] or "")
 		setText(F.Stars, string.rep(GLYPH.Star, clamp(f.evo or 0, 0, 2)))
 		if Hud.fighterCard.SetColor then
@@ -6461,12 +6512,13 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		Hud.bossName.Size = UDim2.fromOffset(w - 8, 22)
 		Hud.bossTrack.Position = UDim2.fromOffset(0, nameH)
 		Hud.bossTrack.Size = UDim2.fromOffset(w, 26)
-		Hud.bossFill.BackgroundColor3 = elementColor(bossUnit.element):Lerp(COLORS.Enemy, 0.5)
-		-- kit-b U6: no outline on the bar any more, so the text takes the colour that reads on its fill
-		Hud.bossText.TextColor3 = Theme.TextOn(Hud.bossFill.BackgroundColor3)
+		-- kit-b U6: no outline on the bar any more. The centred number crosses the fill and, as the boss drains, the dark
+		-- track: so it is white, and the fill is deepened where white would not read on it (Theme.ReadableFace, white only)
+		Hud.bossFill.BackgroundColor3 = Theme.ReadableFace(elementColor(bossUnit.element):Lerp(COLORS.Enemy, 0.5), 4.5, true)
+		Hud.bossText.TextColor3 = COLORS.White
 		setText(Hud.bossName, (bossUnit.kind == "MiniBoss" and (GLYPH.Crown .. " ") or "") .. bossUnit.name)
 		setText(Hud.bossElement, tostring(bossUnit.element or "?"))
-		Hud.bossElement.BackgroundColor3 = elementColor(bossUnit.element)
+		paintPill(Hud.bossElement, elementColor(bossUnit.element))
 		yy = yy + nameH + 32
 	end
 	if Hud.pills.Visible then
@@ -6622,7 +6674,11 @@ function Hud.Update(B, now, force)
 			last.hp, last.maxHp, last.fid, last.hpFrac = hp, f.maxHp, f.id, frac
 			F.HpFill.Size = UDim2.fromScale(max(frac, 0.001), 1)
 			F.HpFill.Visible = frac > 0.002
-			F.HpText.Text = Theme.ShortNumber(floor(hp + 0.5)) .. " / " .. Theme.ShortNumber(floor(f.maxHp + 0.5))
+			local hpLine = Theme.ShortNumber(floor(hp + 0.5)) .. " / " .. Theme.ShortNumber(floor(f.maxHp + 0.5))
+			for _, copy in ipairs(F.HpCopies) do
+				copy.Text.Text = hpLine
+			end
+			Hud.PlaceHpText(F.HpFill.Visible and frac or 0)
 			Hud.hpWrites = (Hud.hpWrites or 0) + 1
 			-- the red loss trail drains 0.4 s behind a loss; a heal moves it at once
 			if Hud.lossTween then
@@ -7206,7 +7262,8 @@ end
 
 function Leave.Make(parent, textSize)
 	local b = make("TextButton", { Name = "LeaveButton", Text = "Leave", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Pink, BorderSizePixel = 0, Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H), Visible = false, ZIndex = 4 }, parent)
-	Theme.Style(b, "Button", { Size = textSize })
+	-- kit B: no outline, the ink is the one that reads on the face (brown on pink; Leave.Paint repaints it per style)
+	Theme.Style(b, "Button", { Size = textSize, Color = Theme.TextOn(Theme.Buttons.Pink) })
 	Theme.Corner(b, "M")
 	Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
 	b.TextWrapped = true
@@ -7240,6 +7297,7 @@ function Leave.Paint()
 			if b:GetAttribute("LeaveStyle") ~= style then
 				b:SetAttribute("LeaveStyle", style)
 				b.BackgroundColor3 = Theme.Buttons[style] or COLORS.Ally
+				b.TextColor3 = Theme.TextOn(b.BackgroundColor3)
 			end
 		end
 	end
@@ -7568,13 +7626,14 @@ end
 
 function Retreat.Make(parent)
 	local b = make("TextButton", { Name = "Retreat", Text = "Retreat", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Blue, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
-	Theme.Style(b, "Button", { Size = 20 })
+	-- kit B: no outline, the ink that reads on the face (brown on blue and red; Retreat.Update repaints it)
+	Theme.Style(b, "Button", { Size = 20, Color = Theme.TextOn(Theme.Buttons.Blue) })
 	Theme.Corner(b, "M")
 	local stroke = Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
 	b:SetAttribute("BaseText", 20)
 	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.35, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
 	Theme.Corner(sweep, "M")
-	local key = label(b, Hud.KeyText("Retreat"), "Label", 14, { Name = "Key", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6 })
+	local key = label(b, Hud.KeyText("Retreat"), "Label", 14, { Name = "Key", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6, TextColor3 = b.TextColor3 })
 	b.Activated:Connect(function()
 		BattleController.Retreat()
 	end)
@@ -7649,6 +7708,8 @@ function Retreat.Update(B, now)
 	local color = back and Theme.Buttons.Red or Theme.Buttons.Blue
 	if R.Button.BackgroundColor3 ~= color then
 		R.Button.BackgroundColor3 = color
+		R.Button.TextColor3 = Theme.TextOn(color)
+		R.Key.TextColor3 = R.Button.TextColor3
 	end
 	local left = cdLeft(B, "Retreat", nil, now)
 	setVisible(R.Sweep, left > 0.05)

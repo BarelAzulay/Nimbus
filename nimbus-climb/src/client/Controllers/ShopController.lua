@@ -1357,7 +1357,11 @@ function H.selectTab(tab)
 	for name, t in pairs(U.Tabs) do
 		local on = name == tab
 		t.Button:SetAttribute("Selected", on)
-		t.Button.BackgroundColor3 = Theme.Darken(Theme.NeonColor(TAB_COLORS[name]), on and 0.15 or 0.55)
+		-- kit B (no outline): the ink that reads on the face, brown on a selected bright tab, white on a dark one; the label
+		-- drops under 18 px on a phone, so the face is nudged (Theme.ReadableFace) until its ink reaches 4.5:1
+		local face, ink = Theme.ReadableFace(Theme.Darken(Theme.NeonColor(TAB_COLORS[name]), on and 0.15 or 0.55), 4.5)
+		t.Button.BackgroundColor3 = face
+		t.Label.TextColor3 = ink
 		t.Stroke.Color = on and GOLD or Theme.NeonColor(TAB_COLORS[name])
 		t.Stroke.Thickness = on and 3 or 2
 	end

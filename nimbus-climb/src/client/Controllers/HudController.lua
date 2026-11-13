@@ -463,10 +463,10 @@ local function newBadge(parent, name, size, color, glow)
 	return badge, g, stroke
 end
 
--- Glossy coin badge: newBadge plus a glyph.
+-- Glossy coin badge: newBadge plus a glyph (kit B, no outline: in the ink that reads on the coin's gradient).
 local function newCoin(parent, name, size, color, glow, glyph, glyphSize)
 	local coin = newBadge(parent, name, size, color, glow)
-	newText(coin, "Glyph", glyph, "Display", glyphSize, WHITE, {
+	newText(coin, "Glyph", glyph, "Display", glyphSize, Theme.TextOn(badgeSequence(color, glow)), {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0, -1),
 		ZIndex = 2,
@@ -1142,17 +1142,59 @@ function Vitals.NewBar(parent, name, opts)
 		ZIndex = 4,
 	})
 	round(flash)
-	local label = nil
+	-- kit B (no outline on a surface): the number reads by the colour of what lies under it, and the fill moves under a
+	-- centred number. So it is drawn three times, each copy clipped to one stretch of the tube: dark ink over the fill
+	-- (Theme.TextOn of the fill's gradient), dark ink over the white damage trail, white over the dark track.
+	local label, windows = nil, {}
 	if opts.Text then
-		label = newText(root, "Text", opts.Text, "Display", 26, WHITE, {
-			TextXAlignment = Enum.TextXAlignment.Center,
-			Position = UDim2.fromOffset(0, -1),
-			ZIndex = 6,
-		})
+		for _, spec in ipairs({ { "TextFill", Theme.TextOn(Vitals.BarSequence(opts.Color)) }, { "TextTrail", Theme.TextOn(WHITE) }, { "TextTrack", WHITE } }) do
+			local clip = newFrame(inner, spec[1], {
+				ClipsDescendants = true,
+				Size = UDim2.fromScale(1, 1),
+				ZIndex = 6,
+			})
+			local copy = newText(clip, "Text", opts.Text, "Display", 26, spec[2], {
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Position = UDim2.fromOffset(0, -1),
+				ZIndex = 6,
+			})
+			windows[#windows + 1] = { Clip = clip, Label = copy }
+		end
+		label = windows[1].Label
 	end
 
-	local bar = { Root = root, Inner = inner, Fill = fill, Trail = trail, Flash = flash, Label = label }
+	local bar = { Root = root, Inner = inner, Fill = fill, Trail = trail, Flash = flash, Label = label, Labels = {} }
+	for i, w in ipairs(windows) do
+		bar.Labels[i] = w.Label
+	end
 	local shownFill, shownTrail = -1, -1
+	-- each copy shows only between a and b (fractions of the tube); its label keeps the whole tube's box
+	local function window(w, a, b)
+		local span = b - a
+		w.Clip.Visible = span > 0.001
+		if span > 0.001 then
+			w.Clip.Position = UDim2.fromScale(a, 0)
+			w.Clip.Size = UDim2.fromScale(span, 1)
+			w.Label.Position = UDim2.new(-a / span, 0, 0, -1)
+			w.Label.Size = UDim2.fromScale(1 / span, 1)
+		end
+	end
+	local function placeText()
+		if #windows == 0 then
+			return
+		end
+		local f = math.max(shownFill, 0)
+		local t = math.max(trail and shownTrail or f, f)
+		window(windows[1], 0, f)
+		window(windows[2], f, t)
+		window(windows[3], t, 1)
+	end
+	if #windows > 0 then
+		-- the fill starts full: only the fill's copy shows until the first SetFraction
+		window(windows[1], 0, 1)
+		window(windows[2], 1, 1)
+		window(windows[3], 1, 1)
+	end
 	function bar.SetFraction(value)
 		value = Util.Clamp(tonumber(value) or 0, 0, 1)
 		if value == shownFill then
@@ -1163,23 +1205,33 @@ function Vitals.NewBar(parent, name, opts)
 		-- the highlight strip is inset: it only fits once the fill is wider than tall
 		local size = inner.AbsoluteSize
 		shine.Visible = size.X * value >= size.Y
+		placeText()
 	end
 	function bar.SetTrail(value)
 		value = Util.Clamp(tonumber(value) or 0, 0, 1)
 		if trail and value ~= shownTrail then
 			shownTrail = value
 			trail.Size = UDim2.fromScale(value, 1)
+			placeText()
 		end
 	end
 	function bar.SetColor(color)
 		gradient.Color = Vitals.BarSequence(color)
+		if windows[1] then
+			windows[1].Label.TextColor3 = Theme.TextOn(Vitals.BarSequence(color))
+		end
 	end
 	function bar.Invalidate()
 		shownFill = -1 -- the size changed: re-check the highlight strip on the next SetFraction
 	end
 	function bar.SetText(text)
-		if label then
-			label.Text = tostring(text or "")
+		for _, w in ipairs(windows) do
+			w.Label.Text = tostring(text or "")
+		end
+	end
+	function bar.SetTextSize(size)
+		for _, w in ipairs(windows) do
+			w.Label.TextSize = size
 		end
 	end
 	return bar
@@ -1345,7 +1397,7 @@ function Vitals.NewDashRing(parent)
 	face.Position = UDim2.fromScale(0.5, 0.5)
 	face.ZIndex = 2
 	faceStroke.Thickness = 2
-	local glyph = newText(face, "Glyph", "\194\187", "Display", 20, WHITE, {
+	local glyph = newText(face, "Glyph", "\194\187", "Display", 20, Theme.TextOn(faceGradient.Color), {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.fromOffset(1, -2),
 		ZIndex = 2,
@@ -1372,7 +1424,7 @@ setVitalsGeometry = function(g)
 	local ringRoom = g.RING + g.RING_GAP
 	UI.HpBar.Root.Position = UDim2.fromOffset(g.HP_X, g.HP_Y)
 	UI.HpBar.Root.Size = UDim2.new(1, -(g.HP_X + g.PAD_R + (g.RING_SPAN and ringRoom or 0)), 0, g.HP_H)
-	UI.HpBar.Label.TextSize = g.HP_TEXT
+	UI.HpBar.SetTextSize(g.HP_TEXT)
 	UI.StBar.Root.Position = UDim2.fromOffset(g.ST_X, g.ST_Y)
 	UI.StBar.Root.Size = UDim2.new(1, -(g.ST_X + g.PAD_R + ringRoom), 0, g.ST_H)
 	UI.HpBar.Invalidate()
@@ -2193,6 +2245,7 @@ function Vitals.PaintRing(ready, afford)
 	else
 		ring.FaceGradient.Color = badgeSequence(Theme.Darken(Colors.Stamina, 0.55), Theme.Darken(Colors.Stamina, 0.35))
 	end
+	ring.Glyph.TextColor3 = Theme.TextOn(ring.FaceGradient.Color) -- kit B: brown on the bright face, white on the dark one
 	ring.Glyph.TextTransparency = ready and 0 or 0.35
 	if ring.GlyphOutline then
 		ring.GlyphOutline.Transparency = ready and 0 or 0.5 -- a glyph outline does not fade with its text

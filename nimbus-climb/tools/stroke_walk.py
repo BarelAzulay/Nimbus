@@ -16,7 +16,12 @@ The casing rule (fonts audit F9) runs over the same dumps: a Button-role text (T
 all-capitals word of 4+ letters, or a Tag / Title / Sign / Accent text with a lower-case letter (Theme keeps those in
 capitals). --casing reports it (not a failure: the smoke scenario kitb_casing_rule fails on the swept families; U9 renames
 the remaining windows' buttons).
-Exit status: 0 when no scenario has a stroke hit (or --warn), 1 otherwise, 2 when a dump fails.
+The contrast rule (kit-b U6 review) runs over the same dumps and fails too: a text with no outline reads by its colour
+against the opaque fill painted under its glyphs (a gradient read where the glyphs are, see-through plates blended in):
+3:1 for 18 px and up, 4.5:1 below (render_gui.contrast_rule; the client walk kitb_text_contrast is the same rule). The
+texts listed in tools/fixtures/contrast_backlog.txt are counted, not failed (the list only shrinks; --grid over every
+scenario names the lines no text hits any more).
+Exit status: 0 when no scenario has a stroke or contrast hit (or --warn), 1 otherwise, 2 when a dump fails.
 """
 import argparse
 import gc
@@ -89,7 +94,9 @@ def main():
     names = args.scenarios or [s for s in RG.SCENARIOS if s not in SKIP]
     sizes = RG.GRID_SIZES if args.grid else [(1920, 1080)]
     fonts = RG.FontBook()
-    total_d, total_p, failed, cased, bares = 0, 0, [], {}, {}
+    total_d, total_p, total_c, total_read, failed, cased, bares = 0, 0, 0, 0, [], {}, {}
+    backlog = RG.contrast_backlog()
+    owed, used = 0, set()
     for name in names:
         for (w, h) in sizes:
             try:
@@ -99,6 +106,18 @@ def main():
                 failed.append(name)
                 continue
             doubled, panelled = RG.stroke_rule(dump)
+            dim, read = RG.contrast_rule(dump)
+            total_read += read
+            # the backlog (tools/fixtures/contrast_backlog.txt): reported in the totals, not failed
+            kept = []
+            for hit in dim:
+                pattern = RG.in_backlog(backlog, hit[0])
+                if pattern:
+                    owed += 1
+                    used.add(pattern)
+                else:
+                    kept.append(hit)
+            dim = kept
             if args.bare:
                 for path, text in bare(dump):
                     bares.setdefault(path, (text, name))
@@ -109,15 +128,26 @@ def main():
             gc.collect()
             total_d += len(doubled)
             total_p += len(panelled)
-            if doubled or panelled:
-                print("%-22s %4dx%-4d %3d stroke+outline, %3d outlined on a panel" % (name, w, h, len(doubled), len(panelled)))
+            total_c += len(dim)
+            if doubled or panelled or dim:
+                print("%-22s %4dx%-4d %3d stroke+outline, %3d outlined on a panel, %3d below the contrast rule"
+                      % (name, w, h, len(doubled), len(panelled), len(dim)))
                 cap = None if args.verbose else 6
                 for p in doubled[:cap]:
                     print("    both   " + p)
                 for p in panelled[:cap]:
                     print("    panel  " + p)
-    print("stroke walk: %d scenario(s) x %d size(s): %d stroke+outline, %d outlined on a panel%s"
-          % (len(names), len(sizes), total_d, total_p, (", %d dump(s) failed" % len(failed)) if failed else ""))
+                for (p, text, ratio, need, col, fill, back) in dim[:cap]:
+                    print("    dim    %s \"%s\" #%02X%02X%02X on #%02X%02X%02X (%s) %.2f:1 < %g"
+                          % (p, text[:24], col[0], col[1], col[2], fill[0], fill[1], fill[2], back, ratio, need))
+    print("stroke walk: %d scenario(s) x %d size(s): %d stroke+outline, %d outlined on a panel, %d below the contrast rule"
+          " (%d texts read; %d more in the backlog, %d of its %d lines seen)%s"
+          % (len(names), len(sizes), total_d, total_p, total_c, total_read, owed, len(used), len(backlog),
+             (", %d dump(s) failed" % len(failed)) if failed else ""))
+    if args.grid and not args.scenarios:
+        for pattern, _ in backlog:
+            if pattern not in used:
+                print("    backlog line no longer hit (remove it): " + pattern)
     if args.casing:
         for path in sorted(cased):
             print("    casing %-70s \"%s\"  (%s)" % (path, cased[path][0], cased[path][1]))
@@ -130,7 +160,7 @@ def main():
         return 2
     if args.warn:
         return 0
-    return 1 if (total_d or total_p) else 0
+    return 1 if (total_d or total_p or total_c) else 0
 
 
 if __name__ == "__main__":

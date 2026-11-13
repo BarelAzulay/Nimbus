@@ -1,0 +1,72 @@
+# kit-b U6 review: the contrast rule's backlog (tools/stroke_walk.py and the client walk kitb_text_contrast read it).
+# Texts the U6 outline sweep left below the rule (3:1 from 18 px, 4.5:1 below) OUTSIDE the seven sites the U6 review
+# named (vitals HP number, fighter HP, battle pills, Leave, CloudUI bars, Shop rail and Fusion tabs, Index group tiles;
+# those now pass, with the HUD coins / dash glyph, Retreat, the boss bar and the fighter's element badge). A text listed
+# here is counted, not failed; any other text below the rule fails. This list only shrinks: U9 sweeps these windows; `py -3.12 tools/stroke_walk.py --grid` names
+# the lines no text hits any more. One GUI path per line, "*" = any run of characters but a dot.
+# Recorded 2026-11-13 over the 106 render scenarios at the four grid sizes: worst reading after each line.
+
+EggGallery.Root.Board.Cell_*.TextLabel  # "Epic" #B06CE8 on #1C224A 4.47:1 < 4.5
+NimbusArena.Window_*.ArenaPanel.Content.Page_*.Left.Quick.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
+NimbusArena.Window_*.ArenaPanel.Content.Page_*.Scroll.Boss.Head.Element.Element_*  # "Flame" #FFFFFF on #E16636 3.40:1 < 4.5
+NimbusArena.Window_*.ArenaPanel.Content.Page_*.Scroll.Boss.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
+NimbusArena.Window_*.ArenaPanel.Content.Page_*.Scroll.Rank*.Medal.Rank  # "2" #FFFFFF on #C8D2E2 1.52:1 < 3
+NimbusArena.Window_*.RingPanel.Content.Detail.FacesBox.TeamFaces.Face*.StageBadge  # "EVO I" #FFFFFF on #A48645 3.46:1 < 4.5
+NimbusArena.Window_*.RingPanel.Content.Detail.FacesBox.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
+NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Champion.Tags.Boss  # "👑 BOSS" #FFFFFF on #D45559 4.00:1 < 4.5
+NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Picker.Start*.Caption  # "ROUND" #FFFFFF on #74ABE9 2.41:1 < 3
+NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Picker.Start*.Number  # "1" #FFFFFF on #629ADB 2.94:1 < 3
+NimbusArenaSide.SideStack.Invite*.Body.Buttons.Accept  # "Accept" #FFFFFF on #2F895B 4.31:1 < 4.5
+NimbusBattle.Root.Enemies.Row*.Icon.Glyph  # "B" #FFFFFF on #549754 3.54:1 < 4.5
+NimbusBattle.Root.Team.Fighter.Body.Lives.Heart*  # "♥" #FF5670 on #243439 4.21:1 < 4.5
+NimbusCare.Window_*.CarePanel.Content.Body.GardenPage.GardenList.Pick_*.Info.Coins  # "Coins $441/s" #FFFFFF on #569E56 3.27:1 < 4.5
+NimbusCare.Window_*.CarePanel.Content.Body.GardenPage.GardenList.Pick_*.Info.Role  # "Economy" #FFFFFF on #5AB969 2.44:1 < 3
+NimbusCare.Window_*.CarePanel.Content.Body.GardenPage.GardenList.Pick_*.PutHere  # "Put here" #FFFFFF on #2F895B 4.32:1 < 4.5
+NimbusDaily.DailyHolder.DailyWindow.Body.DailyPage.Cells.Cell*.Body.Day  # "TODAY" #FFFFFF on #BC933D 2.84:1 < 4.5
+NimbusDaily.DailyHolder.DailyWindow.Body.PlayPage.Tiers.Tier*.Body.Time  # "30 min" #FFFFFF on #357AD2 4.33:1 < 4.5
+NimbusDaily.DailyHolder.DailyWindow.TitleBar.Tab_*  # "Play time" #D4E0F6 on #7F6737 4.06:1 < 4.5
+NimbusDev.DevPanel.Content.List.Dev_*  # "+1M tokens" #FFFFFF on #997A3A 4.05:1 < 4.5
+NimbusDungeon.Window_*.DungeonPanel.Content.Floors.Floor*.OrbHolder.Orb.Num  # "4" #FFFFFF on #6C95B4 3.19:1 < 4.5
+NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.StageBadge  # "EVO I" #FFFFFF on #A48645 3.46:1 < 4.5
+NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
+NimbusFusion.Window_*.Panel.Body.Pills.Pill_*  # "Uncommon" #FFFFFF on #498665 4.30:1 < 4.5
+NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Coin.Icon  # "☁" #FFFFFF on #C89E4A 2.49:1 < 3
+NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Price  # "500" #B0B8CE on #565B66 3.44:1 < 4.5
+NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Label  # "SPIN AGAIN" #B0B8CE on #6C7280 2.43:1 < 3
+NimbusHud.TopRight.Currency.Currency_*.RunChip.Run  # "+7" #FAE084 on #7E6939 4.05:1 < 4.5
+NimbusIndex.Window_*.IndexPanel.Content.Main.Centre.GridWell.PetGrid.IndexPet_*.Elements.Element_*  # "Nature" #FFFFFF on #61B353 2.59:1 < 4.5
+NimbusIndex.Window_*.IndexPanel.Content.Main.Detail.DetailBody.Meta.Element_*  # "Earth" #FFFFFF on #A6794D 3.84:1 < 4.5
+NimbusMenu.MenuColumn.Entry_*.MenuButton_*.Body.Badge.Mark  # "!" #FFFFFF on #FF4C64 3.25:1 < 4.5
+NimbusMenu.Window_*.HomePanel.Content.Hero.GoHome.Body.Badge.Glyph  # "➜" #FF9630 on #FFE7B1 1.80:1 < 3
+NimbusMenu.Window_*.HomePanel.Content.Hero.GoHome.Body.Sub  # "Hop in with your pet" #FFF7DE on #C79D3A 2.35:1 < 4.5
+NimbusMenu.Window_*.HomePanel.Content.Hero.GoHome.Body.Title  # "GO HOME" #FFFFFF on #CDA03B 2.41:1 < 3
+NimbusMenu.Window_*.HomePanel.Content.Stations.IncomeCard.Multiplier  # "x1.25" #FFFFFF on #E5BA4C 1.84:1 < 3
+NimbusMenu.Window_*.StatsPanel.Content.BestTimes.List.Row_*.Stars  # "★☆☆☆☆" #F4C44E on #33605C 4.33:1 < 4.5
+NimbusNotify.ToastHolder.ToastStack.ToastSlot.Toast.Icon.Glyph  # "☁" #FFFFFF on #93753B 4.33:1 < 4.5
+NimbusNpcDialog.NpcDialog.Slide.Card.Footer.Button_*  # "Next" #FFFFFF on #2F895B 4.31:1 < 4.5
+NimbusNpcDialog.NpcDialog.Slide.NameTab.Name  # "SPARKY FOX" #FFFFFF on #59B8BD 2.33:1 < 3
+NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Badge  # "x5" #FFFFFF on #1F8A3C 4.41:1 < 4.5
+NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Rarity  # "Secret" #6D6F7B on #161B34 3.40:1 < 4.5
+NimbusPets.Window_*.PetsWindow.Content.Detail.ActEvolve  # "Evolve" #FFFFFF on #98793A 4.07:1 < 4.5
+NimbusPets.Window_*.PetsWindow.Content.Detail.ActFeed  # "Feed" #FFFFFF on #98793A 4.07:1 < 4.5
+NimbusPets.Window_*.PetsWindow.Content.Detail.ActPut  # "Put in team" #FFFFFF on #2F895B 4.34:1 < 4.5
+NimbusPets.Window_*.PetsWindow.Content.GridWell.Grid.Card_*.Element  # "C" #FFFFFF on #FFD468 1.41:1 < 3
+NimbusPets.Window_*.PetsWindow.Content.GridWell.Grid.Card_*.Number  # "1" #FFFFFF on #6CD090 1.90:1 < 3
+NimbusPets.Window_*.PetsWindow.Content.Sheet.ActEvolve  # "Evolve" #FFFFFF on #98793A 4.08:1 < 4.5
+NimbusPets.Window_*.PetsWindow.Content.Sheet.ActFeed  # "Feed" #FFFFFF on #98793A 4.08:1 < 4.5
+NimbusPets.Window_*.PetsWindow.Content.Sheet.ActPut  # "Put in team" #FFFFFF on #2F895B 4.35:1 < 4.5
+NimbusPets.Window_*.PetsWindow.Content.Slot*.Tag  # "HELPER" #FFFFFF on #40AAFF 2.50:1 < 3
+NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.GetsYou  # "Gets you:" #D4E0F6 on #ECB022 1.46:1 < 4.5
+NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.Line*  # "VIP: x2 daily Cash a" #FFFFFF on #FFE192 1.28:1 < 4.5
+NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.Name  # "STARTER PACK" #FFFFFF on #FF9C2B 2.09:1 < 3
+NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.NamePlate  # "Sky" #FFFFFF on #AC844F 3.40:1 < 4.5
+NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.Odds.Odds_*.Word  # "Epic" #BC87ED on #614F42 2.88:1 < 4.5
+NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.Spin*.Price  # "15,000" #FF5C5C on #98793A 1.34:1 < 3
+NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.Spin*.TokenIcon  # "☁" #EEBE3E on #997A3A 2.33:1 < 3
+NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.Spin*.Word  # "x3" #FFFFFF on #98793A 4.08:1 < 4.5
+NimbusShop.ShopWindow.Body.Page_*.Scroll.GemPack_*.Body.Amount  # "200" #FFFFFF on #2DD498 1.91:1 < 3
+NimbusShop.ShopWindow.Body.Page_*.Scroll.GemPack_*.Body.Best  # "BEST VALUE" #FFFFFF on #C3A347 2.43:1 < 3
+NimbusShop.ShopWindow.Body.Page_*.Scroll.GemPack_*.Body.Name  # "Pouch of Gems" #FFFFFF on #23BB87 2.47:1 < 4.5
+NimbusShop.ShopWindow.Body.Page_*.Scroll.GemPack_*.Body.Ribbon  # "+10%" #FFFFFF on #E63C5A 4.07:1 < 4.5
+NimbusTrain.Window_*.Panel.Body.PetCard.Body.RarityChip  # "RARE" #FFFFFF on #467CBB 4.32:1 < 4.5
+NimbusTutorial.TutorialPanel.Slide.Main.Well.Footer.Next  # "Let's go!" #FFFFFF on #2F895B 4.31:1 < 4.5

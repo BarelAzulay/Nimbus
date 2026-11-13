@@ -1494,6 +1494,210 @@ def stroke_rule(dump):
     return doubled, panelled
 
 
+def _lin(v):
+    v = v / 255.0
+    return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+
+
+def contrast_ratio(a, b):
+    """WCAG contrast of two 0..255 RGB colours."""
+    la = 0.2126 * _lin(a[0]) + 0.7152 * _lin(a[1]) + 0.0722 * _lin(a[2])
+    lb = 0.2126 * _lin(b[0]) + 0.7152 * _lin(b[1]) + 0.0722 * _lin(b[2])
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def paint_order(dump):
+    """[(node, clip rect or None, turned, gui name)] in the order the renderer paints them (ScreenGuis by DisplayOrder;
+    Sibling: a node, then its children by ZIndex; Global: every node of the gui by ZIndex)."""
+    out = []
+    guis = sorted(dump.get("guis", []), key=lambda g: (g.get("displayOrder", 0), g.get("order", 0)))
+    for gui in guis:
+        if not gui.get("enabled", True):
+            continue
+        flat = []
+
+        def visit(n, clip, turned, ordered):
+            turned = turned or abs(float(n.get("rot", 0) or 0)) >= 1
+            flat.append((n, clip, turned, gui.get("name", ""), len(flat)))
+            child_clip = clip
+            if n.get("clip"):
+                r = (n["x"], n["y"], n["x"] + n["w"], n["y"] + n["h"])
+                child_clip = r if clip is None else (max(clip[0], r[0]), max(clip[1], r[1]), min(clip[2], r[2]), min(clip[3], r[3]))
+            kids = n.get("children", [])
+            if ordered:
+                kids = sorted(kids, key=lambda k: (k.get("z", 1), k.get("order", 0)))
+            for c in kids:
+                if n.get("group") and float(n["group"].get("t", 0)) > 0.5:
+                    continue
+                visit(c, child_clip, turned, ordered)
+
+        is_global = gui.get("zBehavior") == "Global"
+        for n in sorted(gui.get("nodes", []), key=lambda k: (k.get("z", 1), k.get("order", 0))):
+            if n.get("group") and float(n["group"].get("t", 0)) > 0.5:
+                continue
+            visit(n, None, False, not is_global)
+        if is_global:
+            flat.sort(key=lambda e: (e[0].get("z", 1), e[4]))
+        out.extend(e[:4] for e in flat)
+    return out
+
+
+def _grad_at(g, n, x, y):
+    """a UIGradient of node n at screen point (x, y), as the renderer draws it: (rgb 0..255, transparency)."""
+    rw, rh = max(float(n["w"]), 1e-6), max(float(n["h"]), 1e-6)
+    off = g.get("offset") or [0, 0]
+    xs = (x - n["x"]) / rw - float(off[0]) - 0.5
+    ys = (y - n["y"]) / rh - float(off[1]) - 0.5
+    th = math.radians(float(g.get("rot", 0) or 0))
+    t = min(1.0, max(0.0, 0.5 + xs * math.cos(th) + ys * math.sin(th)))
+    cols = sorted(g.get("colors") or [[0, 255, 255, 255], [1, 255, 255, 255]], key=lambda k: k[0])
+    rgb = tuple(float(np.interp(t, [c[0] for c in cols], [c[i] for c in cols])) for i in (1, 2, 3))
+    tr = sorted(g.get("transparency") or [[0, 0], [1, 0]], key=lambda k: k[0])
+    return rgb, float(np.interp(t, [k[0] for k in tr], [k[1] for k in tr]))
+
+
+def _fill_colors(n, points):
+    """the colours an opaque fill shows at the sample points: its colour (times its UIGradient there) where it is 0.7
+    opaque or more (BackgroundTransparency and the gradient's transparency); [] when it is opaque at none of them."""
+    bg = n.get("bg") or [0, 0, 0]
+    bg_a = 1.0 - float(n.get("bgT", 1))
+    grad = n.get("gradient")
+    if not grad:
+        return [tuple(bg)] if bg_a > 0.7 else []
+    out = []
+    for (x, y) in points:
+        rgb, t = _grad_at(grad, n, x, y)
+        if bg_a * (1.0 - t) > 0.7:
+            out.append(tuple(bg[i] * rgb[i] / 255.0 for i in range(3)))
+    return out
+
+
+def _colour_emoji(text):
+    """True when every visible character is a colour emoji (U+1F000 and up, or a variation selector / joiner): Roblox
+    draws those in their own colours, whatever TextColor3 says."""
+    chars = [ch for ch in text if not ch.isspace()]
+    return bool(chars) and all(ord(ch) >= 0x1F000 or ord(ch) in (0xFE0F, 0x200D) for ch in chars)
+
+
+def _sample_point(n, clip):
+    """[points] across a text node's glyphs (its dumped bounds placed by its alignment in its padded box), the centre
+    first, those its clip shows; None when it shows none."""
+    tx = n["text"]
+    x0, y0, x1, y1 = n["x"], n["y"], n["x"] + n["w"], n["y"] + n["h"]
+    pad = n.get("pad")
+    if pad:
+        x0, x1, y0, y1 = x0 + pad[0], x1 - pad[1], y0 + pad[2], y1 - pad[3]
+    bw, bh = (tx.get("bounds") or [x1 - x0, y1 - y0])[:2]
+    bw, bh = min(float(bw), x1 - x0), min(float(bh), y1 - y0)
+    x, y = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+    if tx.get("xa") == "Left":
+        x = x0 + bw / 2.0
+    elif tx.get("xa") == "Right":
+        x = x1 - bw / 2.0
+    if tx.get("ya") == "Top":
+        y = y0 + bh / 2.0
+    elif tx.get("ya") == "Bottom":
+        y = y1 - bh / 2.0
+    # the centre first, then four points across the glyphs (a gradient is judged where the letters are); a clip keeps the
+    # points strictly inside it (the first one shown is where the backdrop is looked up; none shown: not read)
+    pts = [(x, y)] + [(x + dx * bw * 0.35, y + dy * bh * 0.3) for dx in (-1, 1) for dy in (-1, 1)]
+    if clip is not None:
+        pts = [p for p in pts if clip[0] < p[0] < clip[2] and clip[1] < p[1] < clip[3]]
+    return pts or None
+
+
+def contrast_rule(dump):
+    """kit B's contrast rule over a dump (kit-b U6 review; smoke_common.lua's SmokeCommon.Contrast is the same rule in the
+    client run): a text with no outline reads by its colour against the last opaque fill painted before it under its
+    glyph centre (opaque: 0.7 or more, BackgroundTransparency times the gradient's transparency), with the see-through
+    plates painted between them blended in. A gradient fill is read where the glyphs are (the centre and four points
+    across the text's bounds) and the worst point counts; 3:1 for text of 18 px and up, 4.5:1 below. An image, a
+    viewport or a turned plate over the point is unknown (not checked); so is text with no fill under it (over the world:
+    the stroke rule's single outline) and a text of colour emoji only. -> ([(path, text, ratio, need, text rgb, fill
+    rgb, backdrop name)], texts read)."""
+    order = paint_order(dump)
+    bad, read = [], 0
+    for idx, (n, clip, turned, gui) in enumerate(order):
+        tx = n.get("text")
+        if not tx or turned or gui == "WorldMirror":
+            continue
+        text = re.sub(r"<[^>]*>", "", str(tx.get("text", ""))).strip()
+        if not text or _colour_emoji(text) or float(tx.get("t", 0)) > 0.5 or float(tx.get("strokeT", 1)) < 0.95:
+            continue
+        if any(k.get("mode", "Contextual") == "Contextual" and float(k.get("t", 0)) < 0.95 and float(k.get("thickness", 0)) > 0
+               for k in (n.get("strokes") or [])):
+            continue
+        pts = _sample_point(n, clip)
+        if pts is None:
+            continue
+        x, y = pts[0]
+        top, unknown, veils = None, False, []
+        for j in range(idx, -1, -1):
+            m, mclip, mturned, _ = order[j]
+            if not (m["x"] <= x <= m["x"] + m["w"] and m["y"] <= y <= m["y"] + m["h"]):
+                continue
+            if mclip is not None and not (mclip[0] <= x <= mclip[2] and mclip[1] <= y <= mclip[3]):
+                continue
+            img = m.get("image")
+            inside = [p for p in pts if m["x"] <= p[0] <= m["x"] + m["w"] and m["y"] <= p[1] <= m["y"] + m["h"]]
+            fills = _fill_colors(m, inside)
+            if j < idx and ((img and (img.get("kind") != "Image" or (img.get("image") and float(img.get("t", 0)) < 0.3)))
+                            or (mturned and fills)):
+                unknown = True
+                break
+            if fills:
+                top = m
+                break
+            a = 1.0 - float(m.get("bgT", 1))
+            if 0.01 < a:
+                vc = tuple(m.get("bg") or [0, 0, 0])
+                if m.get("gradient"):
+                    grgb, gt = _grad_at(m["gradient"], m, x, y)
+                    vc, a = tuple(vc[i] * grgb[i] / 255.0 for i in range(3)), a * (1.0 - gt)
+                veils.append((vc, a))  # a see-through plate over the fill: blended in
+        if unknown or top is None:
+            continue
+        for (vc, va) in reversed(veils):
+            fills = [tuple(f[i] * (1.0 - va) + vc[i] * va for i in range(3)) for f in fills]
+        size = float(tx.get("size", 14))
+        if tx.get("scaled"):
+            size = min(float(n["h"]), float(tx.get("maxSize", 100)))
+        need = 3.0 if size >= 18 else 4.5
+        col = tx.get("color") or [255, 255, 255]
+        worst, worst_fill = min((contrast_ratio(col, f), f) for f in fills)
+        read += 1
+        if worst < need:
+            bad.append((n.get("path", ""), text, worst, need, tuple(col), tuple(int(round(v)) for v in worst_fill),
+                        top.get("name", "")))
+    return bad, read
+
+
+CONTRAST_BACKLOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "contrast_backlog.txt")
+
+
+def contrast_backlog(path=CONTRAST_BACKLOG):
+    """[(pattern, compiled regex)] of tools/fixtures/contrast_backlog.txt: the texts U6 left below the contrast rule outside
+    the review's families (one GUI path per line, "*" = any run of characters but a dot; "#" starts a comment). A hit
+    there is reported, not failed; the list only shrinks (U9 sweeps those windows)."""
+    out = []
+    if not os.path.isfile(path):
+        return out
+    for line in open(path, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        if line:
+            out.append((line, re.compile("^" + re.escape(line).replace(r"\*", "[^.]*") + "$")))
+    return out
+
+
+def in_backlog(backlog, path):
+    """the backlog pattern that holds `path`, or None."""
+    for pattern, rx in backlog:
+        if rx.match(path):
+            return pattern
+    return None
+
+
 def describe(t):
     text = t["text"].replace("\n", " ")
     if len(text) > 34:
