@@ -2564,9 +2564,11 @@ local function clientScenarios()
 		LKC.flushErrors("menu_portrait_docks_bottom")
 	end)
 
-	-- the entrance: the board drops in on its ropes (0.45 s, Back Out), settles with a 2 degree swing over 1.2 s, the buttons
-	-- pop 60 ms apart; PLAY pulls the board up (0.3 s, Quad In) while the camera tweens to the spawn view (0.8 s, Sine
-	-- InOut) and only then turns Custom
+	-- the entrance: the board drops in on its ropes, the buttons pop 60 ms apart; PLAY pulls the board up (0.3 s, Quad In)
+	-- while the camera tweens to the spawn view (0.8 s, Sine InOut) and only then turns Custom. (sign build) The owner's
+	-- "Rope drop" replaced U4's 0.45 s Back Out drop and 2 degree / 1.2 s Elastic settle: the fall is
+	-- Config.MainMenu.Entrance.Drop (Quad In), the swing starts from level to Entrance.Swing[1], and at rest the board sways
+	-- within Sway.Degrees (smoke_kitb_sign.lua pins the rest of the new motion)
 	S.menu_entrance_and_play_tweens = guarded("menu_entrance_and_play_tweens", function()
 		local ok, err = pcall(function()
 			local function tweensOf(inst, prop)
@@ -2583,10 +2585,11 @@ local function clientScenarios()
 			if not T.check(swing ~= nil, "menu motion: (setup) the Swing exists") then
 				return
 			end
+			local E = LoadingH.shared("Config").MainMenu.Entrance
 			local drop = tweensOf(swing, "Position")[1]
 			local info = drop and drop.TweenInfo
-			T.check(info ~= nil and math.abs(info.Time - 0.45) < 1e-6 and info.EasingStyle == Enum.EasingStyle.Back and info.EasingDirection == Enum.EasingDirection.Out,
-				"menu motion: the board drops in (Position, 0.45 s, Back Out)", info and fmt("%.2f %s %s", info.Time, tostring(info.EasingStyle), tostring(info.EasingDirection)) or "no tween")
+			T.check(info ~= nil and math.abs(info.Time - E.Drop) < 1e-6 and info.EasingStyle == Enum.EasingStyle.Quad and info.EasingDirection == Enum.EasingDirection.In,
+				"menu motion: the board drops in on its ropes (Position, Entrance.Drop, Quad In)", info and fmt("%.2f %s %s", info.Time, tostring(info.EasingStyle), tostring(info.EasingDirection)) or "no tween")
 			local rest = drop and Mock.TweenGoals(drop).Position
 			T.check(rest ~= nil and swing.Position.Y.Offset < rest.Y.Offset - 100, "menu motion: ...from above its rest place",
 				rest and fmt("%d -> %d", swing.Position.Y.Offset, rest.Y.Offset) or "")
@@ -2599,14 +2602,15 @@ local function clientScenarios()
 			end
 			T.check(pops[1] >= 0 and math.abs(pops[2] - pops[1] - 0.06) < 1e-6 and math.abs(pops[3] - pops[2] - 0.06) < 1e-6,
 				"menu motion: PLAY, SETTINGS and UPDATES pop 60 ms apart", fmt("%.2f / %.2f / %.2f", pops[1], pops[2], pops[3]))
-			LKC.advance(0.5)
+			LKC.advance(E.Drop + 0.02)
 			local settle = tweensOf(swing, "Rotation")[1]
 			local sInfo = settle and settle.TweenInfo
-			T.check(sInfo ~= nil and math.abs(sInfo.Time - 1.2) < 1e-6 and math.abs(swing.Rotation) <= 2.01 and math.abs(swing.Rotation) >= 1.99 and Mock.TweenGoals(settle).Rotation == 0,
-				"menu motion: then it settles from a 2 degree swing to rest over 1.2 s", sInfo and fmt("%.2f deg, %.2f s", swing.Rotation, sInfo.Time) or "no tween")
+			T.check(sInfo ~= nil and math.abs(sInfo.Time - E.SwingTime) < 1e-6 and math.abs(swing.Rotation) < 1e-6 and Mock.TweenGoals(settle).Rotation == E.Swing[1],
+				"menu motion: then the snap swings it from level to Entrance.Swing[1]", sInfo and fmt("%.2f deg, %.2f s", swing.Rotation, sInfo.Time) or "no tween")
 			LKC.advance(1.4)
-			T.check(swing.Rotation == 0 and rest ~= nil and swing.Position.Y.Offset == rest.Y.Offset and swing.Position.X.Offset == rest.X.Offset,
-				"menu motion: at rest after the entrance")
+			local sway = LoadingH.shared("Config").MainMenu.Sway.Degrees
+			T.check(math.abs(swing.Rotation) <= sway + 1e-6 and rest ~= nil and swing.Position.Y.Offset == rest.Y.Offset and swing.Position.X.Offset == rest.X.Offset,
+				"menu motion: at rest after the entrance (swaying within Sway.Degrees)", fmt("%.2f deg", swing.Rotation))
 			-- PLAY
 			local camera = workspace.CurrentCamera
 			MMC.Play()
@@ -2633,7 +2637,9 @@ local function clientScenarios()
 	end)
 
 	-- (U4 review) a real join: the menu opens at client boot under the loading screen (NimbusLoading, no Done yet). The
-	-- board waits lifted with its buttons at pop scale 0 and no tween runs; the entrance starts when Done arrives
+	-- board waits lifted with its buttons at pop scale 0 and no tween runs; the entrance starts when Done arrives. (sign
+	-- build) The owner's pick: once the loading screen has FADED after its Done (smoke_kitb_sign.lua
+	-- menu_entrance_after_loading pins the fade)
 	S.menu_entrance_waits_for_loading = guarded("menu_entrance_waits_for_loading", function()
 		local lg = nil
 		local ok, err = pcall(function()
@@ -2670,9 +2676,9 @@ local function clientScenarios()
 				T.check(pop ~= nil and pop.Scale == 0 and #tweensOf(pop, "Scale") == 0, "menu wait: " .. b.Name .. " waits at pop scale 0, no tween",
 					pop and tostring(pop.Scale) or "no Pop")
 			end
-			-- the loading screen finishes: the entrance starts with its fade
+			-- the loading screen finishes: the entrance starts once it has faded away (0.4 s)
 			lg:SetAttribute("Done", true)
-			LKC.advance(0.05)
+			LKC.advance(0.5)
 			local drop = tweensOf(swing, "Position")[1]
 			local goal = drop and Mock.TweenGoals(drop).Position
 			T.check(goal ~= nil and goal.Y.Offset == rest.Y.Offset and goal.X.Offset == rest.X.Offset, "menu wait: at Done the board drops in to its rest place")
@@ -2681,7 +2687,7 @@ local function clientScenarios()
 				T.check(pop ~= nil and #tweensOf(pop, "Scale") == 1, "menu wait: at Done " .. b.Name .. " pops in")
 			end
 			LKC.advance(2)
-			T.check(swing.Rotation == 0 and swing.Position.Y.Offset == rest.Y.Offset, "menu wait: at rest after the entrance")
+			T.check(math.abs(swing.Rotation) <= 1.5 and swing.Position.Y.Offset == rest.Y.Offset, "menu wait: at rest after the entrance")
 			for _, b in ipairs(planks) do
 				local pop = b:FindFirstChild("Pop")
 				T.check(pop ~= nil and pop.Scale == 1, "menu wait: " .. b.Name .. " at full size after the entrance")

@@ -30,9 +30,13 @@
 -- play triangle), SETTINGS (pixel gear) + UPDATES (pixel scroll; the pixel star while UpdateNotes.Latest >
 -- Settings.SeenNotes is the one NEW marker) as half-width stone planks, the version line "vN · <latest title>" (opens
 -- UPDATES) and the hint (keyboard / gamepad / touch). The CREDITS wood tag hangs on its own rope with "vN" beside it:
--- bottom-right on a desktop, top-right under Roblox's buttons on touch / portrait. Entrance: the board drops in on its
--- ropes (0.45 s, Back Out), settles from a 2 degree swing (1.2 s), the buttons pop 60 ms apart. PLAY: the board is pulled
--- up (0.3 s, Quad In) while the camera tweens to the spawn view (0.8 s, Sine InOut) and turns Custom once it lands.
+-- bottom-right on a desktop, top-right under Roblox's buttons on touch / portrait. (sign build, the owner's picks on
+-- .superpowers/sign-pitch) Entrance "Rope drop": once the loading screen has faded, the board falls on its ropes, the
+-- ropes snap taut (two pixel dust puffs, the SignThunk hook), it bounces and swings gently (Config.MainMenu.Entrance),
+-- the buttons pop from their centre 60 ms apart; then it sways +-1 degree about the rope tops until PLAY
+-- (Config.MainMenu.Sway; Camera shake OFF = none). The board wears SignKit.Workshop's trim. It is laid out again when the
+-- viewport changes (a short screen shortens its ropes). PLAY: the board is pulled up (0.3 s, Quad In) while the camera
+-- tweens to the spawn view (0.8 s, Sine InOut); the release (the HUD back, Custom) waits for it to land.
 -- Behind Config.Preview.TitleShots (PICK, off): the camera holds Key A / Key P of Config.MainMenu.Shots (FOV 50) instead
 -- of the orbit.
 -- Windows (docked by NeonKit.Dock: right side panel / bottom sheet):
@@ -146,10 +150,10 @@ local K = {
 		GAP = 12, -- between SETTINGS and UPDATES
 		TAG_W = 140, -- the CREDITS tag
 		TAG_H = 44,
-		DROP = 0.45, -- the entrance: the drop on the ropes (Back Out) ...
-		SETTLE = 1.2, -- ... the settle from SETTLE_DEG (Elastic Out) ...
-		SETTLE_DEG = 2,
-		POP_START = 0.1, -- ... the buttons' pops, POP apart
+		ROPE_UP = 48, -- (sign build) the ropes start this far above the screen top: no rope end shows through a bounce
+		BOTTOM = 16, -- (sign build) screen px kept free under the swinging board (shorter ropes on a short screen)
+		RELAYOUT = 0.15, -- (sign build) a viewport change lays the screen out again this long after the last one
+		POP_START = 0.1, -- the entrance (Config.MainMenu.Entrance): the buttons' pops, POP apart
 		POP = 0.06,
 		POP_TIME = 0.2,
 		PULL = 0.3, -- PLAY: the board pulled up (Quad In)
@@ -736,6 +740,37 @@ function Loading.onDone(fn)
 	end)
 end
 
+-- (sign build) runs fn once the loading screen has faded away: when it is gone (Loading.fade destroys it), or its fade's
+-- length after Done should it linger; at once when none is up. The owner's pick: the sign drops in only after the fade
+function Loading.afterFade(fn)
+	local pg = H.playerGui()
+	local gui = pg and pg:FindFirstChild("NimbusLoading")
+	if not gui then
+		fn()
+		return
+	end
+	local done, conn = false, nil
+	local function finish()
+		if done then
+			return
+		end
+		done = true
+		if conn then
+			conn:Disconnect()
+			conn = nil
+		end
+		fn()
+	end
+	conn = gui.AncestryChanged:Connect(function()
+		if not gui.Parent then
+			finish()
+		end
+	end)
+	Loading.onDone(function()
+		task.delay(K.LOADING_FADE + 0.15, finish)
+	end)
+end
+
 ----------------------------------------------------------------------
 -- the menu screen
 ----------------------------------------------------------------------
@@ -923,6 +958,13 @@ function Menu.build(enter)
 		boardX = math.max(B.X, touch and math.ceil((zoneW + 8) / f) or 0)
 		topY = math.max(minTop, math.floor((dh - boardH) * 0.42))
 	end
+	-- (sign build) the swinging board ends B.BOTTOM screen px above the bottom: on a short screen its ropes shorten (it
+	-- hangs higher, at most up to 8 design px from the top)
+	local droop = math.ceil(0.5 * boardW * math.sin(math.rad(Menu.maxTilt())))
+	local lowest = math.floor(dh - B.BOTTOM / f - droop - boardH)
+	if topY > lowest then
+		topY = math.max(8, lowest)
+	end
 	local half = topY + boardH
 	local side = 32
 	local swing = H.frame("Swing", {
@@ -932,18 +974,20 @@ function Menu.build(enter)
 		ZIndex = 2,
 	}, content)
 	-- the ropes: at ROPE_AT and its mirror, moved in together until the left one clears Roblox's top-left buttons
+	-- (sign build) each from ROPE_UP above the screen top to 8 px into the board (no rope end shows through a bounce)
 	local ropeAt = math.min(math.max(B.ROPE_AT, (B.ROPE_CLEAR / f + Z.RopeW / 2 - boardX) / boardW), 0.4)
+	local ropes = {}
 	for i, at in ipairs({ ropeAt, 1 - ropeAt }) do
-		SignKit.Rope(swing, {
+		ropes[i] = SignKit.Rope(swing, {
 			Name = "Rope",
-			Length = topY + 20,
-			Position = UDim2.fromOffset(side + math.floor(at * boardW) - math.floor(Z.RopeW / 2), half - 12),
+			Length = topY + 8 + B.ROPE_UP,
+			Position = UDim2.fromOffset(side + math.floor(at * boardW) - math.floor(Z.RopeW / 2), half - B.ROPE_UP),
 			ZIndex = 1,
 			LayoutOrder = i,
 		})
 	end
 	local board = H.frame("Board", { Position = UDim2.fromOffset(side, half + topY), Size = UDim2.fromOffset(boardW, boardH), ZIndex = 2 }, swing)
-	SignKit.Roof(board, { Width = boardW + 24, ZIndex = 3 })
+	local roof = SignKit.Roof(board, { Width = boardW + 24, ZIndex = 3 })
 	-- the header title: Config.MainMenu.Header in the Title role, stepped down until it fits the plate with 12 px each side
 	local header = tostring(H.menuCfg().Header or K.HEADER)
 	local titleSize = short and 44 or 54
@@ -955,7 +999,7 @@ function Menu.build(enter)
 		end
 		titleSize = titleSize - 2
 	end
-	local _, plate = SignKit.Header(board, { Title = header, TitleSize = titleSize, Y = headY, Height = headH, ZIndex = 2 })
+	local head, plate = SignKit.Header(board, { Title = header, TitleSize = titleSize, Y = headY, Height = headH, ZIndex = 2 })
 	local title = plate:FindFirstChild("Title")
 	if title then
 		title.Position = UDim2.fromOffset(0, 0)
@@ -964,6 +1008,8 @@ function Menu.build(enter)
 	end
 	local wood = SignKit.Frame(board, { Y = headY + headH, Height = woodH, ZIndex = 1 })
 	local body = SignKit.Body(wood)
+	-- (sign build) the owner's "Workshop" trim: grain, nails, rope rings, the striped awning's notched lip, a chip
+	SignKit.Workshop({ Roof = roof, Head = head, Frame = wood, Ropes = ropes }, { Width = boardW, Factor = f })
 
 	local tagline = Theme.Label(tostring(Config.Tagline or K.TAGLINE), "Body", { Size = 20, Color = Theme.TextOn("Stone") })
 	tagline.Name = "Tagline"
@@ -1015,6 +1061,12 @@ function Menu.build(enter)
 		end,
 	})
 	Menu.plankIcon(M.Ui.Updates, "scroll", 18, Sign.Text)
+	-- (sign build, U4 minor) anchored at their centre, so the entrance's pop grows them from the middle, not a corner
+	for _, plank in ipairs({ M.Ui.Play, M.Ui.Settings, M.Ui.Updates }) do
+		local p, s = plank.Position, plank.Size
+		plank.AnchorPoint = Vector2.new(0.5, 0.5)
+		plank.Position = UDim2.fromOffset(p.X.Offset + math.floor(s.X.Offset / 2), p.Y.Offset + math.floor(s.Y.Offset / 2))
+	end
 	-- the one NEW marker: a gold pixel star on a dark tile at UPDATES' corner (shown while UpdateNotes.Latest > SeenNotes);
 	-- (U5) the star is drawn at 18 (a multiple of 9) and the tile grows round it by a 4 px padding
 	local badge = PixelIcon.New(M.Ui.Updates, "star", 18, Sign.Gold)
@@ -1097,64 +1149,317 @@ function Menu.build(enter)
 
 	M.Ui.Swing, M.Ui.Board, M.Ui.Tag = swing, board, tag
 	M.Ui.Rest, M.Ui.Lift = swing.Position, half + 40
+	-- (sign build) the screen it was laid out for, and where the dust puffs rise at the snap (beside the awning's ends)
+	M.Ui.Vp, M.Ui.Content, M.Ui.Tw = vp, content, {}
+	M.Ui.PuffAt = { L = boardX - 18, R = boardX + boardW + 18, Y = topY + 22 }
 	if enter then
 		Menu.enter()
 	end
 	return menu
 end
 
--- (kit B U4) the entrance: the board drops in on its ropes (0.45 s, Back Out) and settles from a 2 degree swing (1.2 s,
--- Elastic Out); PLAY, SETTINGS and UPDATES pop in (a UIScale "Pop" 0 -> 1) 60 ms apart while it falls. (U4 review) On a
--- real join the menu opens at boot under the loading screen: the board waits lifted, the buttons at pop scale 0, and the
--- entrance starts at the loading screen's Done (with its fade); with no loading screen up (/menu) it starts at once
+-- (sign build) the entrance and sway numbers (Config.MainMenu.Entrance / Sway)
+function Menu.entrance()
+	local E = H.menuCfg().Entrance
+	return type(E) == "table" and E or { Drop = 0.6, Bounce = {}, BounceTime = 0.13, Swing = {}, SwingTime = 0.32, Puff = 0.45 }
+end
+
+function Menu.swayCfg()
+	local W = H.menuCfg().Sway
+	return type(W) == "table" and W or { Degrees = 0, Period = 3.6 }
+end
+
+-- the sway is on: some degrees, and Settings Camera shake not OFF
+function Menu.swayOn()
+	return (tonumber(Menu.swayCfg().Degrees) or 0) > 0 and ClientSettings.Get("Shake") ~= false
+end
+
+-- the most the board turns (the entrance's swing, the sway): the layout keeps its lower corner on screen
+function Menu.maxTilt()
+	local most = tonumber(Menu.swayCfg().Degrees) or 0
+	for _, d in ipairs(Menu.entrance().Swing or {}) do
+		most = math.max(most, math.abs(tonumber(d) or 0))
+	end
+	return most
+end
+
+-- one motion of the board at a time per key ("Move" = Position, "Turn" = Rotation): a new one cancels the one before.
+-- onDone runs when it completes (never when it was cancelled, the menu was rebuilt or PLAY began); a finished tween is
+-- destroyed with its connection
+function Menu.tween(ui, key, inst, info, goal, onDone)
+	local old = ui.Tw[key]
+	if old then
+		ui.Tw[key] = nil
+		old:Cancel()
+	end
+	local tw = TweenService:Create(inst, info, goal)
+	ui.Tw[key] = tw
+	tw.Completed:Connect(function(state)
+		if ui.Tw[key] == tw then
+			ui.Tw[key] = nil
+		end
+		tw:Destroy()
+		if onDone and state == Enum.PlaybackState.Completed and M.Ui == ui and not M.Playing and inst.Parent then
+			onDone()
+		end
+	end)
+	tw:Play()
+	return tw
+end
+
+-- steps = { { Info, Goal }, ... } played one after the other on `key`, then done()
+function Menu.chain(ui, key, inst, steps, done)
+	local i = 0
+	local function step()
+		i = i + 1
+		local s = steps[i]
+		if not s then
+			if done then
+				done()
+			end
+			return
+		end
+		Menu.tween(ui, key, inst, s[1], s[2], step)
+	end
+	step()
+end
+
+-- every board motion stopped (PLAY, a re-layout)
+function Menu.stopMotion(ui)
+	for key, tw in pairs(ui.Tw or {}) do
+		ui.Tw[key] = nil
+		tw:Cancel()
+	end
+end
+
+-- (kit B U4; sign build, the owner's pick "Rope drop") the entrance. On a real join the menu opens at boot under the
+-- loading screen: the board waits lifted, the buttons at pop scale 0, and the entrance starts once the loading screen
+-- has FADED away (built again first if the screen changed size meanwhile); with no loading screen up (/menu) at once.
+-- The board falls on its ropes (Entrance.Drop, Quad In) while PLAY, SETTINGS and UPDATES pop in from their centres
+-- (a UIScale "Pop" 0 -> 1, 60 ms apart); Menu.snap follows
 function Menu.enter()
 	local ui = M.Ui
-	local swing, rest = ui.Swing, ui.Rest
-	if not swing then
+	if not Menu.lift(ui) then
 		return
 	end
+	Loading.afterFade(function()
+		if M.Ui ~= ui or not ui.Swing.Parent or M.Playing then
+			return
+		end
+		local vp = H.viewport()
+		if vp.X ~= ui.Vp.X or vp.Y ~= ui.Vp.Y then
+			if not H.safe("build", Menu.build, false) or not M.Ui.Swing then
+				return
+			end
+			ui = M.Ui
+			Menu.lift(ui)
+		end
+		Menu.run(ui)
+	end)
+end
+
+-- the board lifted off the top of the screen, the buttons at pop scale 0
+function Menu.lift(ui)
+	local swing, rest = ui.Swing, ui.Rest
+	if not swing then
+		return false
+	end
+	ui.Phase = "Waiting"
 	swing.Position = UDim2.new(rest.X.Scale, rest.X.Offset, rest.Y.Scale, rest.Y.Offset - ui.Lift)
 	ui.Pops = {}
 	for i, plank in ipairs({ ui.Play, ui.Settings, ui.Updates }) do
 		ui.Pops[i] = Util.Create("UIScale", { Name = "Pop", Scale = 0, Parent = plank })
 	end
-	Loading.onDone(function()
-		if M.Ui == ui and swing.Parent and not M.Playing then
-			Menu.run(ui)
-		end
-	end)
+	return true
 end
 
 function Menu.run(ui)
-	local B = K.BOARD
-	local swing, rest = ui.Swing, ui.Rest
-	local drop = TweenService:Create(swing, TweenInfo.new(B.DROP, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = rest })
-	ui.Drop = drop
-	drop.Completed:Connect(function()
-		if M.Ui.Drop ~= drop or M.Playing or not swing.Parent then
-			return
-		end
-		M.Ui.Drop = nil
-		swing.Rotation = B.SETTLE_DEG
-		M.Ui.Settle = TweenService:Create(swing, TweenInfo.new(B.SETTLE, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), { Rotation = 0 })
-		M.Ui.Settle:Play()
+	local B, E = K.BOARD, Menu.entrance()
+	ui.Phase = "Entering"
+	Menu.tween(ui, "Move", ui.Swing, TweenInfo.new(tonumber(E.Drop) or 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = ui.Rest }, function()
+		Menu.snap(ui)
 	end)
-	drop:Play()
 	for i, pop in ipairs(ui.Pops) do
 		TweenService:Create(pop, TweenInfo.new(B.POP_TIME, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, B.POP_START + (i - 1) * B.POP), { Scale = 1 }):Play()
 	end
 end
 
--- (kit B U4) PLAY: the board is pulled up off the screen (0.3 s, Quad In) and the CREDITS tag fades with it
-function Menu.leave()
-	local B, ui = K.BOARD, M.Ui
-	for _, key in ipairs({ "Drop", "Settle" }) do
-		if ui[key] then
-			local tw = ui[key]
-			ui[key] = nil
+-- the ropes snap taut: the thunk, two dust puffs, then the gentle bounces (up Bounce[i] design px, Sine Out, back down,
+-- Sine In) and the swing legs (Sine InOut from level: no instant tilt); with the sway on, the last leg ends where the
+-- sway starts, else the board swings back to level. Then it rests (Menu.sway)
+function Menu.snap(ui)
+	local E = Menu.entrance()
+	local swing, rest = ui.Swing, ui.Rest
+	if type(E.Sound) == "string" then
+		H.sound(E.Sound)
+	end
+	H.safe("puffs", Menu.puffs, ui)
+	local half = tonumber(E.BounceTime) or 0.13
+	local hops = {}
+	for _, b in ipairs(E.Bounce or {}) do
+		local up = UDim2.new(rest.X.Scale, rest.X.Offset, rest.Y.Scale, rest.Y.Offset - math.floor(tonumber(b) or 0))
+		hops[#hops + 1] = { TweenInfo.new(half, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { Position = up } }
+		hops[#hops + 1] = { TweenInfo.new(half, Enum.EasingStyle.Sine, Enum.EasingDirection.In), { Position = rest } }
+	end
+	Menu.chain(ui, "Move", swing, hops)
+	local legs = {}
+	for _, d in ipairs(E.Swing or {}) do
+		legs[#legs + 1] = tonumber(d) or 0
+	end
+	if Menu.swayOn() then
+		legs[math.max(1, #legs)] = -(tonumber(Menu.swayCfg().Degrees) or 0)
+	else
+		legs[#legs + 1] = 0
+	end
+	local turns = {}
+	for _, d in ipairs(legs) do
+		turns[#turns + 1] = { TweenInfo.new(tonumber(E.SwingTime) or 0.32, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Rotation = d } }
+	end
+	Menu.chain(ui, "Turn", swing, turns, function()
+		ui.Phase = "Rest"
+		Menu.sway(ui)
+	end)
+end
+
+-- two pixel dust puffs beside the awning's ends: three flat white blocks each (no image), drifting out and up while they
+-- fade, then gone
+function Menu.puffs(ui)
+	local at, content = ui.PuffAt, ui.Content
+	if not (at and content and content.Parent) then
+		return
+	end
+	local info = TweenInfo.new(tonumber(Menu.entrance().Puff) or 0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	for _, side in ipairs({ -1, 1 }) do
+		local x = side < 0 and at.L or at.R
+		local puff = H.frame("DustPuff", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromOffset(x, at.Y), Size = UDim2.fromOffset(40, 22), ZIndex = 4 }, content)
+		for _, b in ipairs({ { 0, 8 }, { 10, 0 }, { 20, 8 } }) do
+			local block = H.frame("PuffBlock", {
+				BackgroundTransparency = 0,
+				BackgroundColor3 = K.WHITE,
+				Position = UDim2.fromOffset(b[1], b[2]),
+				Size = UDim2.fromOffset(20, 14),
+				ZIndex = 4,
+			}, puff)
+			TweenService:Create(block, info, { BackgroundTransparency = 1 }):Play()
+		end
+		local drift = TweenService:Create(puff, info, { Position = UDim2.fromOffset(x + side * 26, at.Y - 14) })
+		drift.Completed:Connect(function()
+			drift:Destroy()
+			if puff.Parent then
+				puff:Destroy()
+			end
+		end)
+		drift:Play()
+	end
+end
+
+-- (sign build, the owner's note "make it stay moving gently after dropping") the board at rest sways +-Sway.Degrees about
+-- the rope tops (the Swing's centre at the screen top), Sway.Period a full back-and-forth, Sine InOut, endlessly, until
+-- PLAY; Camera shake OFF = no sway: the board turns back to level. Called again when the setting changes
+function Menu.sway(ui)
+	local swing = ui and ui.Swing
+	if not swing or not swing.Parent or ui.Phase ~= "Rest" or M.Playing or M.Ui ~= ui then
+		return
+	end
+	local W = Menu.swayCfg()
+	local d = tonumber(W.Degrees) or 0
+	if Menu.swayOn() then
+		if ui.Swaying and ui.Tw.Turn == ui.Swaying then
+			return
+		end
+		local function start()
+			ui.Swaying = Menu.tween(ui, "Turn", swing, TweenInfo.new((tonumber(W.Period) or 3.6) / 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Rotation = d })
+		end
+		if math.abs(swing.Rotation + d) > 0.01 then
+			Menu.tween(ui, "Turn", swing, TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { Rotation = -d }, start)
+		else
+			start()
+		end
+	else
+		ui.Swaying = nil
+		if math.abs(swing.Rotation) > 1e-3 then
+			Menu.tween(ui, "Turn", swing, TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), { Rotation = 0 })
+		elseif ui.Tw.Turn then
+			local tw = ui.Tw.Turn
+			ui.Tw.Turn = nil
 			tw:Cancel()
 		end
 	end
+end
+
+-- (sign build) the title screen laid out again for the screen it is on now (a viewport change): the board keeps its
+-- phase (still waiting for the loading screen, or at rest with its sway); an open portrait sheet keeps it hidden
+function Menu.relayout()
+	local old = M.Ui
+	if not M.Open or M.Playing or not M.Menu or not old.Vp then
+		return
+	end
+	local vp = H.viewport()
+	if vp.X == old.Vp.X and vp.Y == old.Vp.Y then
+		return
+	end
+	Menu.stopMotion(old)
+	if not H.safe("relayout", Menu.build, false) or not M.Ui.Swing then
+		return
+	end
+	local ui = M.Ui
+	if old.Phase == "Waiting" then
+		Menu.enter()
+	else
+		ui.Phase = "Rest"
+		Menu.sway(ui)
+	end
+	if M.Win.Name and M.Win.Name ~= "Credits" and vp.Y > vp.X then
+		ui.Swing.Visible = false
+	end
+end
+
+-- (sign build) watch the viewport while the menu is open: every change (and a new CurrentCamera, as at boot) lays the
+-- screen out again RELAYOUT s after the last one of a burst (a window drag fires many). on = false disconnects it
+function Menu.watch(on)
+	for _, key in ipairs({ "Resize", "CameraWatch" }) do
+		if M[key] then
+			M[key]:Disconnect()
+			M[key] = nil
+		end
+	end
+	M.RelayoutToken = (M.RelayoutToken or 0) + 1
+	if not on then
+		return
+	end
+	local function schedule()
+		M.RelayoutToken = M.RelayoutToken + 1
+		local token = M.RelayoutToken
+		task.delay(K.BOARD.RELAYOUT, function()
+			if M.RelayoutToken == token then
+				H.safe("relayout", Menu.relayout)
+			end
+		end)
+	end
+	local function hook(camera)
+		if M.Resize then
+			M.Resize:Disconnect()
+			M.Resize = nil
+		end
+		if camera then
+			M.Resize = camera:GetPropertyChangedSignal("ViewportSize"):Connect(schedule)
+		end
+	end
+	hook(Workspace.CurrentCamera)
+	pcall(function()
+		M.CameraWatch = Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+			hook(Workspace.CurrentCamera)
+			schedule()
+		end)
+	end)
+end
+
+-- (kit B U4) PLAY: every board motion stops (the sway too), the board is pulled up off the screen (0.3 s, Quad In) and
+-- the CREDITS tag fades with it
+function Menu.leave()
+	local B, ui = K.BOARD, M.Ui
+	Menu.stopMotion(ui)
+	ui.Phase, ui.Swaying = "Leaving", nil
 	local swing = ui.Swing
 	if swing and swing.Parent then
 		local p = ui.Rest or swing.Position
@@ -2317,6 +2622,7 @@ function MainMenuController.Open()
 	end
 	Orbit.start()
 	Menu.bindKeys(true)
+	Menu.watch(true) -- (sign build) laid out again when the screen changes size
 end
 
 function MainMenuController.Play()
@@ -2327,6 +2633,7 @@ function MainMenuController.Play()
 		return false -- the loading screen is still up (SKIP takes it away)
 	end
 	M.Playing = true
+	Menu.watch(false)
 	H.sound("Confirm")
 	Win.close()
 	Menu.bindKeys(false)
@@ -2353,6 +2660,12 @@ function MainMenuController.Play()
 			H.safe("fade", Menu.fade, M.Menu, K.FADE)
 		end
 		task.wait(K.FADE)
+		-- (sign build, U4 minor) the release waits for the camera move to land (the HUD came back mid-flight before); a
+		-- tween's Completed fires on landing and on a cancel alike
+		local fly = M.Orbit.Fly
+		if fly and fly.PlaybackState == Enum.PlaybackState.Playing then
+			fly.Completed:Wait()
+		end
 		-- (review round 1) the release always runs to the end: every step on its own guard, so one that fails never
 		-- strands the next (the HUD, the world cards and the held toasts must come back whatever happens)
 		local menu = M.Menu
@@ -2386,6 +2699,9 @@ local function onSettingChanged(key)
 	end
 	if key == "SeenNotes" then
 		Menu.refreshBadge()
+	end
+	if key == "Shake" and M.Open and not M.Playing then
+		H.safe("sway", Menu.sway, M.Ui) -- (sign build) Camera shake OFF stops the title board's sway, ON brings it back
 	end
 end
 

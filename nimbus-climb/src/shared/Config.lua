@@ -1451,6 +1451,27 @@ Config.MainMenu = {
 	-- (kit B U4) the title the Signboard's header shows (Title role). The greeting "HI, <name>!" is the owner's pick (M4):
 	-- a one-line change here
 	Header = "NIMBUS CLIMB",
+	-- (kit B sign build) the Signboard's entrance, the owner's pick "A Rope drop" (.superpowers/sign-pitch) with the
+	-- note "more gentle shake, make it stay moving gently after dropping": once the loading screen has faded, the board
+	-- falls on its ropes (Drop seconds, Quad In), the ropes snap taut (two dust puffs, the Sound hook), it bounces back up
+	-- Bounce design px (each up / down half BounceTime, Sine) and swings Swing degrees (each leg SwingTime, Sine InOut).
+	-- Gentler than the pitch mock (26 / 7 px at its 250 px board = 46 / 12 here; 3 / -2 / 1 degrees). Sound: a SoundFx
+	-- one-shot, silent until Config.Audio.Sfx has an id under that name (no thunk is uploaded yet)
+	Entrance = {
+		Drop = 0.6,
+		Bounce = { 12, 4 },
+		BounceTime = 0.13,
+		Swing = { 1.5, -0.8 }, -- with the sway on, the last leg ends where the sway starts (-Sway.Degrees)
+		SwingTime = 0.32,
+		Puff = 0.45, -- the dust puffs' life
+		Sound = "SignThunk",
+	},
+	-- ...then it keeps swaying gently while the menu is open: +-Degrees about the rope tops, Period seconds a full
+	-- back-and-forth (Sine InOut). Settings Camera shake OFF = no sway (the board rests level)
+	Sway = {
+		Degrees = 1,
+		Period = 3.6,
+	},
 	-- (kit B U4, PICK) the title screen's two authored camera keys, used only with Config.Preview.TitleShots (off: the
 	-- orbit above). Studs from the Welcome Arch (Arch studs from Lobby.Origin towards GateFacing; LobbyBuilder builds it
 	-- at 40): Key A (wide screens) stands Back studs before it, Up studs up, looking up Pitch degrees towards the gates,
