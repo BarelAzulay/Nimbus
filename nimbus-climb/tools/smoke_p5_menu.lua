@@ -395,14 +395,15 @@ local function clientScenarios()
 		H.advance(1.2)
 		T.check(skip and skip.Visible == true, "p5loading: SKIP shows after Config.Loading.SkipAfter (6 s)")
 		T.check(tip and tip.Text ~= "" and tip.Text ~= tip0, "p5loading: the tip changes every 5 s", tip0)
-		local fill = H.find(gui, "Fill")
-		local w1 = fill and fill.AbsoluteSize.X or 0
+		-- (kit B U3) the neon bar became the board's 12 blocks: the gold count only grows
+		local fill = H.find(gui, "BlockRow")
+		local w1 = fill and fill:GetAttribute("Filled") or 0
 		-- the profile arrives -> 100% -> Done -> (menu disabled) faded and destroyed 2 s later
 		LocalPlayer:SetAttribute(ATTR, true)
 		H.advance(0.5)
 		T.eq(gui:GetAttribute("Done"), true, "p5loading: Done = true at 100% (ProfileLoaded)")
 		T.near(gui:GetAttribute("Progress") or 0, 1, 1e-6, "p5loading: the bar reaches 100%")
-		T.check(fill and fill.AbsoluteSize.X >= w1, "p5loading: the fill only grows")
+		T.check(fill and (fill:GetAttribute("Filled") or 0) >= w1, "p5loading: the gold blocks only grow", tostring(w1))
 		T.check(caption and caption.Text:find("100%", 1, true) ~= nil, "p5loading: the caption says 100%", caption and caption.Text or "")
 		T.check(gui.Parent ~= nil, "p5loading: still there right after Done")
 		H.advance(2.8)

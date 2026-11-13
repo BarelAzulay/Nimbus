@@ -383,6 +383,7 @@ function analyse(file) {
 		|| (base === "SoundFx.lua" && path.basename(path.dirname(file)) === "client") // the AudioIds joiner (Config.Audio)
 		|| (base === "AttackFx.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client")
 		|| (base === "FxSprites.lua" && path.basename(path.dirname(file)) === "shared") // (kit B X1) the particle sprites by role (TextureIds fx_*)
+		|| (base === "LoadingScreen.client.lua" && path.basename(path.dirname(file)) === "first") // (kit B U3) the loading screen's picks (TextureIds keys of Config.Loading.Images)
 		|| (base === "SkyFaces.lua" && path.basename(path.dirname(file)) === "shared") // the living sky faces (TextureIds sky_<theme>_<Face>)
 		|| (base === "ShopController.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client") // the store card art (TextureIds store_*)
 		|| (base === "HatchLook.lua" && path.basename(path.dirname(file)) === "UI" && path.basename(path.dirname(path.dirname(file))) === "client") // the roll look's optional images (TextureIds hatch_*) and the card eggs' pictures (egg_card_*)

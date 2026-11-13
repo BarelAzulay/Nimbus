@@ -3002,7 +3002,8 @@ end)
 -- Phase 5 loading screen + main menu + settings (7.1-7.3):
 --   mainmenu[:<window>]  Config.MainMenu.Enabled: the menu before PLAY (logo, PLAY, SETTINGS, UPDATES + NEW badge,
 --                        CREDITS chip) over the orbiting world; window updates | credits opens that window over it
---   loading              the ReplicatedFirst loading screen 8 s in: the profile not loaded yet (85%), SKIP showing
+--   loading[:<pct>]      the ReplicatedFirst loading screen 8 s in: the profile not loaded yet (85%), SKIP showing; <pct>
+--                        sets its Progress (0-100) for the kit B block renders
 --   settings[:hud]       the SETTINGS window over the menu (Music 6 / Sound 8 / Graphics Auto / Shake ON); ":hud" =
 --                        after PLAY, opened from the menu gear over the game HUD (the window rule)
 -- Every OTHER scenario boots like the smoke worlds: the menu disabled and the profile loaded (DataService's
@@ -3062,7 +3063,17 @@ scenario("mainmenu", function(window)
 	end
 	advance(0.6)
 end)
-scenario("loading", function() end)
+-- loading:<percent> (kit B U3): the same moment with the gui's Progress set to <percent> (the blocks and the caption draw from
+-- it; the screen only ever moves it forward itself), for the 0 / 50 / 100 % renders
+scenario("loading", function(pct)
+	local n = tonumber(pct)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local gui = n and pg and pg:FindFirstChild("NimbusLoading")
+	if gui then
+		gui:SetAttribute("Progress", math.max(0, math.min(1, n / 100)))
+		advance(2)
+	end
+end)
 scenario("settings", function(where)
 	local MMC = MM.controller()
 	advance(0.5)
