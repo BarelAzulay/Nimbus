@@ -157,7 +157,7 @@
 --   RainbowArc, Spin GiantRing, Storm StormTower, Lightning LightningRods, Vanish LanternCluster, Cannon
 --   CloudFortress, Wind KiteFlock, Pendulum BellTower, Plates RuneObelisk, DashGap SkyGate, Gauntlet
 --   FloatingVolcano; plus "CentralPillar" (Spiral only, at Layout.Centre) and "Puff" (distant cloud puffs and a
---   cloud sea below the course). Within Radius + 4 horizontally of an item there is no step (vertical band
+--   cloud sea below the course; Puff only: Layer = "Far" | "Sea"). Within Radius + 4 horizontally of an item there is no step (vertical band
 --   [Pos.Y - 4, Pos.Y + Height + 4] against [step underside, top + Headroom]).
 --
 -- RULES PROVEN BY ValidateLayout (diff = Config.GetDifficulty(layout.DifficultyId), g = Config.Physics)
@@ -1848,24 +1848,24 @@ local function placeScenery(rng, steps, solids, stages, spiral, samples)
 		end
 	end
 
-	-- distant puffs, plus a cloud sea far below the route
-	local function addPuff(dist0, dist1, y0, y1)
+	-- distant puffs, plus a cloud sea far below the route (Layer "Far" / "Sea": CourseBuilder seats the two differently)
+	local function addPuff(dist0, dist1, y0, y1, layer)
 		local ang = F(0, 360) * RAD
 		local d = F(dist0, dist1)
 		local r = F(12, 34)
 		local item = {
 			Type = "Puff", Stage = 0, Pos = Vector3.new(sin(ang) * d, F(y0, y1), cos(ang) * d), Yaw = F(0, 360),
-			Radius = r, Height = r * 0.6, Seed = I(1, 99999), Tint = I(1, 8),
+			Radius = r, Height = r * 0.6, Seed = I(1, 99999), Tint = I(1, 8), Layer = layer,
 		}
 		if sceneryProblem(item, solids, samples) == nil then
 			items[#items + 1] = item
 		end
 	end
 	for _ = 1, I(14, 22) do
-		addPuff(200, 320, minY - 50, maxY + 30)
+		addPuff(200, 320, minY - 50, maxY + 30, "Far")
 	end
 	for _ = 1, I(6, 10) do
-		addPuff(0, 200, minY - 46, minY - 28)
+		addPuff(0, 200, minY - 46, minY - 28, "Sea")
 	end
 	return items
 end

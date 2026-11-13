@@ -308,6 +308,26 @@ Config.Course = {
 	-- generator keeps the underside of anything overhanging at least Clearance + 0.3 above the top. Do not
 	-- lower this below ~12: an overhanging step would make a full jump bonk its head on it.
 	Clearance = 13,
+	-- kit-b O1 (slop-audit round 3, finding 1): the far puffs and the cloud sea wear Blender voxel cumulus, one invisible
+	-- NC_Detail anchor each (CourseBuilder LM.Puff). Far / Sea list the obby's own variants: the ones with an id take
+	-- turns (layout seed + puff order, so neighbours differ). While none has an id the lobby's sky cumulus stand in:
+	-- Small for a far puff under SmallBelow studs of radius, Big above it and for the sea (at SeaScale). A puff whose key
+	-- has no id keeps today's Part build (empty MeshIds = today's game).
+	-- Fit[key]: Width = X size at scale 1 (the far scale is clamp(2r / Width, Min, Max), so the voxels stay near the
+	-- lobby's), Lift / Top = pivot to the lowest / highest voxel, Reach = the farthest X / Z voxel from the pivot (the
+	-- step clearance). A key without a Fit reads them from its manifest Bounds (Min 0.45, Max 1).
+	Clouds = {
+		Far = { "cloud_obby_far_1", "cloud_obby_far_2", "cloud_obby_far_3", "cloud_obby_far_4" },
+		Sea = { "cloud_obby_sea_1", "cloud_obby_sea_2" },
+		Small = "cloud_sky_small",
+		Big = "cloud_sky_big",
+		SmallBelow = 24,
+		SeaScale = 1,
+		Fit = {
+			cloud_sky_small = { Width = 68, Lift = 10, Top = 22, Reach = 37, Min = 0.6, Max = 1.0 },
+			cloud_sky_big = { Width = 117, Lift = 15, Top = 36, Reach = 61.5, Min = 0.45, Max = 1.0 },
+		},
+	},
 }
 
 -- Order here == order of portals around the lobby (easy -> hardest).
