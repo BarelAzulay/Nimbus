@@ -902,6 +902,7 @@ Config.Art = {
 --   Floor                the readability floor in every phase and raid (night is indigo, never black)
 --   AirV2 / CloudsV2     (kit-b S4, staged) the painted skies' air colours per phase / the thin Terrain clouds, used by
 --                        shared/SkyCycle in place of the looks' only while Config.Preview.SkyAir / ThinClouds is true
+--                        (SkyAir changes only Atmosphere Color on screen under the painted skies: Glare is 0 there)
 local skyRgb = Color3.fromRGB
 Config.Sky = {
 	Faces = { Bk = "", Dn = "", Ft = "", Lf = "", Rt = "", Up = "" },
@@ -916,6 +917,8 @@ Config.Sky = {
 	-- the cloud deck thicken toward a bridge colour, the faces, StarCount and a raid's fixed clock switch at the peak
 	-- (shared/SkyCycle.Bridge: k = 1 at blend 0.5, 0 outside |blend - 0.5| < BridgeHalf) and the air clears again.
 	-- Density / Haze / Cover = the peak the bridge lifts each toward (never lowers one already thicker); Glare goes to 0.
+	-- CloudDensity = the Clouds Density peak, used only while Config.Preview.ThinClouds is on (S4 review: the thin deck
+	-- rests at 0.3, and Atmosphere Density does not veil the skybox itself; the looks' own decks sit near these).
 	-- Tune in Studio: the faces about 85% hidden at the peak, the next obby platform (60 studs) still clearly visible.
 	--   Cycle   a phase change. BridgeHalf 0.284 of the smoothstep Blend = the middle 30 s of the 75 s window
 	--   Raid    a raid sky in (In s from SkyEventAt; raid to raid too) and out (Out s); the client refreshes every Step s
@@ -930,8 +933,8 @@ Config.Sky = {
 	--   Preload (S2 review) RaidDelay = seconds after PLAY before the four raid skies preload, one at a time (the lobby's
 	--           own assets load first)
 	Transitions = {
-		Cycle = { BridgeHalf = 0.284, Density = 0.65, Haze = 3.4, Cover = 0.85 },
-		Raid = { In = 8, Out = 6, Step = 0.5, BridgeHalf = 0.3, Density = 0.7, Haze = 4.0, Cover = 0.9 },
+		Cycle = { BridgeHalf = 0.284, Density = 0.65, Haze = 3.4, Cover = 0.85, CloudDensity = 0.6 },
+		Raid = { In = 8, Out = 6, Step = 0.5, BridgeHalf = 0.3, Density = 0.7, Haze = 4.0, Cover = 0.9, CloudDensity = 0.7 },
 		Zone = { In = 1.5, Late = 2.5, Out = 2 },
 		Screen = { Out = 0.35, Lift = 0.3 },
 		Preload = { RaidDelay = 4 },
@@ -949,7 +952,11 @@ Config.Sky = {
 	-- the haze band and the far islands carry the sky's own hue (the looks' air was tuned for the old pink sky: violet
 	-- under the teal night, pink under the orange dawn). Color = the average horizon band (the 15% above the horizon of
 	-- Ft / Bk / Lf / Rt, the band Bridge uses), Decay = the same band on the sun side (Ft: every theme's sun, moon and
-	-- feature face Ft). From blender/textures/sky/<theme>; Dawn and Sunset share Amber Burn. Raid looks keep their own
+	-- feature face Ft). From blender/textures/sky/<theme>; Dawn and Sunset share Amber Burn. Raid looks keep their own.
+	-- Under the painted skies only Color shows: Atmosphere Decay is the hue away from the sun and needs Glare above 0,
+	-- and SkyCycle.Preset sets Glare 0 whenever a theme's faces resolve. The Decay values (the sun side Ft) would sit in
+	-- the away-from-sun slot if Glare ever came back (a theme with no faces); a sun-side gradient (Ft in Color, Bk in
+	-- Decay, a small Glare) is a separate pick. Judge only Color in the A/B
 	AirV2 = {
 		Dawn = { Color = skyRgb(220, 109, 45), Decay = skyRgb(237, 133, 64) },
 		Day = { Color = skyRgb(177, 225, 252), Decay = skyRgb(178, 226, 253) },
@@ -958,7 +965,8 @@ Config.Sky = {
 	},
 	-- (S4, world clouds 6, PICK: read only with Config.Preview.ThinClouds) the engine's Terrain clouds thinned to a haze in
 	-- every look (phases and raids): Cover and Density at rest never above these, so the painted sky and the voxel cumulus
-	-- carry the clouds. The bridge still lifts Cover to Transitions' peaks around a skybox swap
+	-- carry the clouds. The bridge still lifts Cover and Density to Transitions' peaks (Cover, CloudDensity) around a
+	-- skybox swap
 	CloudsV2 = { Cover = 0.25, Density = 0.3 },
 	Speed = { Default = 1, Min = 0.1, Max = 120 }, -- the dev /sky speed clamp (SkySpeed attribute)
 	-- the Workspace attributes server/Services/SkyService publishes (the clock: no remote traffic): Epoch = the server

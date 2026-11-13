@@ -37,8 +37,9 @@
 --       behind the thickest air; a layer mixed over by a later one takes its haze with it (a full raid sky shows no
 --       cycle bridge)
 --       The staged looks (kit-b S4, read at every call): with Config.Preview.SkyAir a phase look's Atmosphere Color / Decay
---       are Config.Sky.AirV2[phase]'s, with ThinClouds every look's resting Clouds Cover / Density are capped at
---       Config.Sky.CloudsV2 (the bridge still lifts Cover to its peak). Both off: the looks exactly as written
+--       are Config.Sky.AirV2[phase]'s (under the painted skies only Color shows: Decay needs Glare above 0), with
+--       ThinClouds every look's resting Clouds Cover / Density are capped at Config.Sky.CloudsV2 and the bridge lifts
+--       both back toward its peaks (Cover, CloudDensity). Both off: the looks exactly as written
 --   SkyCycle.Bridge(blend, half) -> k   0 outside |blend - 0.5| < half, a smoothstep up to 1 at blend 0.5, symmetric;
 --       junk / half <= 0 = 0
 --   SkyCycle.Floor(preset) -> preset   the readability floor, in place: Lighting.Brightness >= Floor.Brightness (1.0),
@@ -146,6 +147,13 @@ local function copyLook(look)
 	return out
 end
 
+-- Config.Sky.CloudsV2 while Config.Preview.ThinClouds is on, else nil
+local function thinClouds()
+	local preview = type(Config.Preview) == "table" and Config.Preview or {}
+	local thin = preview.ThinClouds == true and cfg().CloudsV2 or nil
+	return type(thin) == "table" and thin or nil
+end
+
 -- a look by its Looks key, copied, with the staged kit-b S4 looks on top while their switch is on:
 -- Config.Preview.SkyAir = the phase's Config.Sky.AirV2 Atmosphere Color / Decay (a raid look has none), ThinClouds = the
 -- Clouds Cover / Density capped at Config.Sky.CloudsV2. Both off = exactly copyLook (the presets do not change)
@@ -161,8 +169,8 @@ local function lookOf(id)
 			end
 		end
 	end
-	local thin = preview.ThinClouds == true and sky.CloudsV2 or nil
-	if type(thin) == "table" then
+	local thin = thinClouds()
+	if thin then
 		for _, prop in ipairs({ "Cover", "Density" }) do
 			if type(out.Clouds[prop]) == "number" and finite(thin[prop]) then
 				out.Clouds[prop] = min(out.Clouds[prop], thin[prop])
@@ -304,6 +312,11 @@ local function bridgeOn(preset, k, tr, colors)
 	local clouds = preset.Clouds
 	if type(clouds) == "table" and type(clouds.Cover) == "number" then
 		clouds.Cover = min(1, toward(clouds.Cover, tr.Cover, k))
+	end
+	-- the thin deck (ThinClouds) rests at Density 0.3: the bridge lifts it back toward the deck S1 was tuned on, since
+	-- Atmosphere Density does not veil the skybox itself. Off: the looks keep their own deck (S1's presets, unchanged)
+	if thinClouds() and type(clouds) == "table" and type(clouds.Density) == "number" then
+		clouds.Density = min(1, toward(clouds.Density, tr.CloudDensity, k))
 	end
 end
 
