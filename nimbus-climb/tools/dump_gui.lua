@@ -299,7 +299,39 @@ local function utf8len(text)
 	return n
 end
 
+-- a Font (FontFace) as a renderer font name: its Enum name when it is one (Font.fromEnum), else the family file name plus
+-- a heavy weight and Italic ("NunitoExtraBold", "NunitoBoldItalic"); nil for a family the renderer has no name for
+local HEAVY = { SemiBold = true, Bold = true, ExtraBold = true, Heavy = true }
+local function faceName(face)
+	local okE, item = pcall(function()
+		return rawget(face, "_enum")
+	end)
+	if okE and item ~= nil then
+		return tostring(item.Name or item)
+	end
+	local fam = tostring(face.Family or ""):match("families/([%w_]+)%.json")
+	if not fam then
+		return nil
+	end
+	local wname = tostring(face.Weight and (face.Weight.Name or face.Weight) or "")
+	local sname = tostring(face.Style and (face.Style.Name or face.Style) or "")
+	return fam .. (HEAVY[wname] and wname or "") .. (sname == "Italic" and "Italic" or "")
+end
+
 local function fontNameOf(inst)
+	-- (kit-b U1) the mock keeps .Font and .FontFace as written; Roblox draws the last one written (Theme.Style writes the
+	-- Enum font, then a FontFace role's face)
+	if Mock.FontOf then
+		local last = Mock.FontOf(inst)
+		if typeof(last) == "EnumItem" then
+			return tostring(last.Name)
+		elseif typeof(last) == "Font" then
+			local name = faceName(last)
+			if name and name ~= "SourceSansPro" then
+				return name
+			end
+		end
+	end
 	local name = "SourceSans"
 	local ok, f = pcall(function()
 		return inst.Font

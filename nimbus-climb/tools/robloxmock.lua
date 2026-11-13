@@ -7323,6 +7323,13 @@ function Mock.IsDestroyed(inst)
 	return inst[STATE].destroyed
 end
 
+-- The font a text object draws with: the last of .Font / .FontFace written (Roblox keeps the two in step, the mock keeps
+-- each property as written), nil when neither was set. (kit-b U1: Theme.Style writes .Font, then a FontFace role's face)
+function Mock.FontOf(inst)
+	local st = inst and inst[STATE]
+	return st and st.fontValue or nil
+end
+
 -- All live text objects: returns list of { path, text, role } problems.
 -- allowed: set (table keyed by EnumItem) of fonts that are acceptable (i.e. Theme.Fonts values).
 function Mock.FontAudit(allowed)

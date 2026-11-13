@@ -252,7 +252,8 @@ S.client_ui_kit = guarded("client_ui_kit", function()
 	local grad = body and body:FindFirstChildOfClass("UIGradient")
 	T.check(grad ~= nil and grad.Color.Keypoints[1].Value == Theme.Colors.PanelTop, "...a dark navy gradient fill (PanelTop -> PanelBottom)")
 	T.check(panel.Root:FindFirstChild("CloudPuffs") == nil, "...and no cloud bumps any more (v5: 'less cute')")
-	T.check(panel.TitleLabel.Font == Theme.Fonts.Title and Theme.Fonts.Title == Enum.Font.GothamBlack and panel.TitleLabel.TextSize == 34, "...a GothamBlack 34 title", tostring(panel.TitleLabel.Font) .. " " .. tostring(panel.TitleLabel.TextSize))
+	-- (kit-b U1) the title face is the pitch's LuckiestGuy (was GothamBlack)
+	T.check(panel.TitleLabel.Font == Theme.Fonts.Title and Theme.Fonts.Title == Enum.Font.LuckiestGuy and panel.TitleLabel.TextSize == 34, "...a LuckiestGuy 34 title", tostring(panel.TitleLabel.Font) .. " " .. tostring(panel.TitleLabel.TextSize))
 	local underline = panel.Root:FindFirstChild("Underline", true)
 	T.check(underline ~= nil and underline.BackgroundColor3 == Theme.Neon.Blue, "...over a neon underline")
 	local pets = CloudUI.Panel({ Name = "CatPanel", Category = "Pets", Title = "Pets", Size = UDim2.fromOffset(300, 200), Parent = g })
@@ -559,6 +560,9 @@ S.client_ui_kit = guarded("client_ui_kit", function()
 	local allowed = {}
 	for _, font in pairs(Theme.Fonts) do
 		allowed[font] = true
+	end
+	for _, face in pairs(Theme.Faces or {}) do
+		allowed[face] = true -- (kit-b U1) the FontFace roles
 	end
 	local problems = Mock.FontAudit(allowed)
 	T.check(#problems == 0, "every text of the kit uses a Theme font", #problems > 0 and (problems[1].path .. ": " .. problems[1].reason) or "")

@@ -32,7 +32,12 @@ and, on touch devices, its thumbstick and jump button are sketched as faint ghos
 Fonts: Roblox fonts are mapped to installed TTF/OTF files (fc-list): a bold rounded sans is preferred for
 FredokaOne / BuilderSans / Gotham (Fredoka, Nunito, Varela Round, ...), then Inter, DejaVu Sans; symbols fall back
 to DejaVu / FreeSans, emoji to Noto Color Emoji. `-v` prints the mapping. Glyph shapes differ from Roblox's
-fonts, sizes and positions do not.
+fonts, sizes and positions do not. kit B (U1): the real Luckiest Guy, Fredoka One and Nunito files in
+tools/fixtures/fonts/ (copied from Roblox Studio's content/fonts, all OFL) come first, so the pitch's faces draw as
+themselves. Roblox ships only Nunito Regular locally (its other weights are cloud assets), so a Nunito ExtraBold /
+Bold / Heavy / Black face draws from Regular made heavier ("faux": a wider advance and a fill-coloured stroke);
+`-v` marks it. The report also lists every text that overflows its box or is cut by a clipping ancestor, and the
+kit B stroke rule (a classic stroke under an outline; an outline on an opaque panel).
 
 The report on stdout ends with the smallest on-screen text size (px) and every text under the readability floor
 (15 px on screens >= 1000 px tall, 14 px below; ARCHITECTURE_V3.md). --grid renders 1920x1080, 1280x720,
@@ -299,11 +304,24 @@ SYMBOL_FALLBACKS = [("DejaVu Sans", "Bold"), ("DejaVu Sans", "Book"), ("FreeSans
 # a Windows machine has none of the above: its own fonts, so the sheets still show their text
 WINDOWS_FALLBACKS = [("Arial Rounded MT Bold", None), ("Segoe UI", "Bold"), ("Arial", "Bold"), ("Arial", None)]
 
+# kit B (U1): the pitch's faces first (tools/fixtures/fonts), then today's stand-ins; the heavy Nunito faces of the
+# FontFace roles (dump_gui.lua names them "NunitoExtraBold", "NunitoBoldItalic", ...)
+NUNITO_HEAVY = [("Nunito", "ExtraBold"), ("Nunito", "Bold"), ("Nunito", None)] + BOLD_ROUNDED
+NUNITO_REGULAR = [("Nunito", None)] + MEDIUM
+# a heavy face the fixtures only have as Regular: (advance scale, stroke in em) for the faux weight
+FAUX_WEIGHT = {"nunitoextrabold": (1.07, 0.035), "nunitoextrabolditalic": (1.07, 0.035), "nunitoheavy": (1.09, 0.045),
+               "nunitoblack": (1.10, 0.05), "nunitobold": (1.05, 0.025), "nunitobolditalic": (1.05, 0.025),
+               "nunitosemibold": (1.03, 0.015)}
+FIXTURE_FONT_DIR = os.path.join(HERE, "fixtures", "fonts")
+
 ROBLOX_FONTS = {
+    "nunitoextrabold": NUNITO_HEAVY, "nunitoextrabolditalic": NUNITO_HEAVY, "nunitoheavy": NUNITO_HEAVY,
+    "nunitoblack": NUNITO_HEAVY, "nunitobold": NUNITO_HEAVY, "nunitobolditalic": NUNITO_HEAVY,
+    "nunitosemibold": NUNITO_HEAVY,
     "fredokaone": HEAVY_ROUNDED, "bangers": HEAVY_ROUNDED, "cartoon": HEAVY_ROUNDED, "permanentmarker": HEAVY_ROUNDED,
-    "luckiestguy": BLACK_ROUNDED, "gothamblack": BLACK_ROUNDED, "buildersansextrabold": HEAVY_ROUNDED,
+    "luckiestguy": [("Luckiest Guy", None)] + BLACK_ROUNDED, "gothamblack": BLACK_ROUNDED, "buildersansextrabold": HEAVY_ROUNDED,
     "gothambold": BOLD_ROUNDED, "gothamsemibold": BOLD_ROUNDED, "gothamssm": BOLD_ROUNDED, "buildersansbold": BOLD_ROUNDED,
-    "gothammedium": MEDIUM, "gotham": MEDIUM, "buildersans": MEDIUM, "buildersansmedium": MEDIUM, "nunito": MEDIUM,
+    "gothammedium": MEDIUM, "gotham": MEDIUM, "buildersans": MEDIUM, "buildersansmedium": MEDIUM, "nunito": NUNITO_REGULAR,
     "montserrat": MEDIUM, "sourcesans": REGULAR, "sourcesanslight": REGULAR, "sourcesansitalic": REGULAR,
     "arial": REGULAR, "legacy": REGULAR, "roboto": REGULAR, "ubuntu": REGULAR, "sourcesansbold": SANS_BOLD,
     "sourcesanssemibold": SANS_BOLD, "arialbold": SANS_BOLD, "highway": SANS_BOLD, "montserratbold": SANS_BOLD,
@@ -323,8 +341,29 @@ FONT_DIRS = ["/usr/share/fonts", "/usr/local/share/fonts", os.path.expanduser("~
              "C:\\Windows\\Fonts"]
 
 
+def fixture_fonts():
+    """The kit B faces in tools/fixtures/fonts (found first, whatever the machine has installed)."""
+    out = []
+    if not os.path.isdir(FIXTURE_FONT_DIR):
+        return out
+    for f in sorted(os.listdir(FIXTURE_FONT_DIR)):
+        if not f.lower().endswith((".ttf", ".otf")):
+            continue
+        path = os.path.join(FIXTURE_FONT_DIR, f)
+        try:
+            fam, style = ImageFont.truetype(path, 12).getname()
+        except Exception:
+            continue
+        out.append((path, [str(fam).lower()], [str(style).lower()], 0))
+    return out
+
+
 def discover_fonts():
-    """Installed fonts: [(path, [families lower], [styles lower], index)], from fc-list or by scanning font dirs."""
+    """Installed fonts: [(path, [families lower], [styles lower], index)]: the fixtures, then fc-list or the font dirs."""
+    return fixture_fonts() + system_fonts()
+
+
+def system_fonts():
     out = []
     try:
         proc = subprocess.run(["fc-list", "--format", "%{file}\t%{family}\t%{style}\t%{index}\n"],
@@ -364,6 +403,7 @@ class FontBook:
     def __init__(self):
         self.installed = discover_fonts()
         self.chains = {}
+        self.faux = {}  # font name key -> (advance scale, stroke em) when a heavy face draws from a lighter file
         self.cmaps = {}
         self.fonts = {}
         self.em_cache = {}
@@ -408,10 +448,14 @@ class FontBook:
         if candidates is None:
             candidates = BOLD_ROUNDED
         primary = None
+        picked = None
         for fam, style in list(candidates) + WINDOWS_FALLBACKS:
             primary = self.find(fam, style)
             if primary:
+                picked = (fam, style)
                 break
+        if key in FAUX_WEIGHT and picked == ("Nunito", None):
+            self.faux[key] = FAUX_WEIGHT[key]
         out = []
         for p in ([primary] if primary else []) + self.symbols:
             if p not in out:
@@ -423,8 +467,16 @@ class FontBook:
         lines = []
         for n in names:
             ch = self.chain(n)
-            lines.append("  %-20s -> %s" % (n, os.path.basename(ch[0][0]) if ch else "Pillow default"))
+            faux = self.faux_of(n)
+            lines.append("  %-20s -> %s%s" % (n, os.path.basename(ch[0][0]) if ch else "Pillow default",
+                                               "  (faux weight x%.2f)" % faux[0] if faux[1] else ""))
         return lines
+
+    def faux_of(self, name):
+        """(advance scale, stroke em) of a heavy face drawn from a lighter file; (1.0, 0.0) otherwise."""
+        key = re.sub(r"[^a-z0-9]", "", str(name).lower())
+        self.chain(name)
+        return self.faux.get(key, (1.0, 0.0))
 
     def cmap(self, ref):
         if ref in self.cmaps:
@@ -512,7 +564,9 @@ class FontBook:
         key = (name, text)
         w = self.em_cache.get(key)
         if w is None:
-            w = sum(self.run_em(ref, s) for ref, s in self.runs(name, text))
+            chain = self.chain(name)
+            scale = self.faux_of(name)[0]
+            w = sum(self.run_em(ref, s) * (scale if chain and ref == chain[0] else 1.0) for ref, s in self.runs(name, text))
             self.em_cache[key] = w
         return w
 
@@ -1068,9 +1122,19 @@ class GuiRenderer:
         vis = intersect(clip, (0, 0, self.W * s, self.H * s))
         if vis is not None and on_screen:
             on_screen = bx1 * s > vis[0] and bx0 * s < vis[2] and (top + total) * s > vis[1] and top * s < vis[3]
+        # (kit-b U1) what the new faces push out: a line wider than its box or more lines than it is tall (TextScaled
+        # shrinks to fit, so it never overflows), and text cut by a clipping ancestor or the screen edge
+        overflow = False
+        if not tx.get("scaled") and aw >= 1 and ah >= 1:
+            overflow = any(p[3] > aw + 1.0 for p in placed) or total > ah + 1.0
+        clipped = False
+        if on_screen and vis is not None:
+            clipped = (bx0 * s < vis[0] - s or bx1 * s > vis[2] + s or top * s < vis[1] - s
+                       or (top + total) * s > vis[3] + s)
         self.texts.append({"size": size, "path": n.get("path", ""), "text": re.sub(r"<[^>]*>", "", raw).strip(),
                            "scaled": bool(tx.get("scaled")), "on_screen": on_screen,
-                           "rect": (bx0, top, bx1, top + total)})
+                           "rect": (bx0, top, bx1, top + total), "overflow": overflow, "clipped": clipped,
+                           "font": font})
         # supersampled patch around the text block
         stroke_w = 0.0
         stroke_col, stroke_a = (0, 0, 0), 0.0
@@ -1096,6 +1160,8 @@ class GuiRenderer:
         ds = ImageDraw.Draw(stroke) if stroke is not None else None
         sw = max(1, int(round(stroke_w * s)))
         base_col = tuple(tx.get("color", [255, 255, 255]))
+        chain = self.fonts.chain(font)
+        faux = self.fonts.faux_of(font)
         shown = 0
         for lx, base, line, _ in placed:
             x = lx
@@ -1107,14 +1173,23 @@ class GuiRenderer:
                             break
                         sub = sub[:max(0, limit - shown)]
                     shown += len(sub)
-                    adv = self.fonts.run_em(ref, sub) * size
+                    primary = bool(chain) and ref == chain[0]
+                    adv = self.fonts.run_em(ref, sub) * size * (faux[0] if primary else 1.0)
                     X, Y = x * s - px0, base * s - py0
                     if ref == "emoji":
                         img, asc_px, left = self.fonts.emoji_image(sub, size * s)
                         fill.alpha_composite(img, dest=(int(X - left), int(Y - asc_px)))
                     elif ref is not None:
                         f = self.fonts.font(ref, size * s)
-                        df.text((X, Y), sub, font=f, fill=(colour or base_col) + (255,), anchor="ls")
+                        ink = (colour or base_col) + (255,)
+                        if primary and faux[1] > 0:  # a heavy face from a lighter file: spread each glyph, then thicken
+                            fw = max(1, int(round(faux[1] * size * s)))
+                            cx = X
+                            for c in sub:
+                                df.text((cx, Y), c, font=f, fill=ink, anchor="ls", stroke_width=fw, stroke_fill=ink)
+                                cx += self.fonts.run_em(ref, c) * size * faux[0] * s
+                        else:
+                            df.text((X, Y), sub, font=f, fill=ink, anchor="ls")
                         if ds is not None:
                             ds.text((X, Y), sub, font=f, fill=stroke_col + (255,), anchor="ls", stroke_width=sw,
                                     stroke_fill=stroke_col + (255,))
@@ -1388,6 +1463,34 @@ def text_report(renderer, height):
     return shown, small, smallest, floor_px
 
 
+def stroke_rule(dump):
+    """kit B "stroke or panel, never both" over a dump: [paths of texts with a classic stroke AND an outline],
+    [paths of outlined texts whose nearest painted background (the text's own first) is opaque]."""
+    doubled, panelled = [], []
+
+    def walk(n, backdrop):
+        bgT = float(n.get("bgT", 1))
+        here = backdrop
+        if bgT < 0.99:
+            here = (bgT < 0.3, n.get("path", ""))
+        tx = n.get("text")
+        if tx and str(tx.get("text", "")).strip() and float(tx.get("t", 0)) < 0.99:
+            classic = float(tx.get("strokeT", 1)) < 0.95
+            ring = any(k.get("mode", "Contextual") == "Contextual" and float(k.get("t", 0)) < 0.95
+                       and float(k.get("thickness", 0)) > 0 for k in (n.get("strokes") or []))
+            if classic and ring:
+                doubled.append(n.get("path", ""))
+            if (classic or ring) and here[0]:
+                panelled.append(n.get("path", ""))
+        for c in n.get("children", []):
+            walk(c, here)
+
+    for gui in dump.get("guis", []):
+        for n in gui.get("nodes", []):
+            walk(n, (False, ""))
+    return doubled, panelled
+
+
 def describe(t):
     text = t["text"].replace("\n", " ")
     if len(text) > 34:
@@ -1419,6 +1522,18 @@ def print_report(dump, renderer, label, verbose=False):
         print("  smallest on-screen text: " + describe(smallest))
     else:
         print("  smallest on-screen text: none (no text on screen)")
+    # (kit-b U1) the new faces' widths: texts that no longer fit, and the stroke rule (U6 drives both to zero)
+    for key, what in (("overflow", "overflow their box"), ("clipped", "are cut by a clipping ancestor or the screen")):
+        bad = [t for t in shown if t.get(key)]
+        if bad:
+            print("  %d text(s) %s:" % (len(bad), what))
+            for t in bad[:12]:
+                print("    %s  [%s]" % (describe(t), t.get("font", "?")))
+            if len(bad) > 12:
+                print("    ... %d more" % (len(bad) - 12))
+    doubled, panelled = stroke_rule(dump)
+    print("  kit B stroke rule: %d text(s) with a stroke under an outline, %d outlined on an opaque panel"
+          % (len(doubled), len(panelled)))
     return smallest
 
 
@@ -1538,8 +1653,8 @@ def main():
     fonts = FontBook()
     if args.verbose:
         print("fonts:")
-        for line in fonts.mapping(["FredokaOne", "GothamBlack", "GothamBold", "BuilderSansBold", "LuckiestGuy",
-                                   "Fondamento", "SourceSans"]):
+        for line in fonts.mapping(["LuckiestGuy", "FredokaOne", "NunitoExtraBold", "NunitoBoldItalic", "Nunito",
+                                   "BuilderSansBold", "GothamBlack", "SourceSans"]):
             print(line)
         print("  emoji                -> %s" % (os.path.basename(fonts.emoji_path[0]) if fonts.emoji_path else "none"))
     scenario = args.scenario

@@ -1445,8 +1445,9 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 	local function x3()
 		return G.result("Storm", "Tokens", { G.pull(PC, "Storm", rare), G.pull(PC, "Storm", leg), G.pull(PC, "Storm", epic) })
 	end
-	-- (review round 3) an x3 reveal laid out with Roblox's real font widths: RedoGeom.realWidth (Montserrat Black for the
-	-- GothamBlack roles, Fredoka One, Builder Sans) through EggStage.Metrics.MEASURE, the hook the live game leaves to TextService.
+	-- (review round 3) an x3 reveal laid out with Roblox's real font widths: RedoGeom.realWidth (Luckiest Guy for the
+	-- Title / Accent roles since kit-b U1, Fredoka One, Builder Sans for the Nunito-faced Body roles, Montserrat Black for any
+	-- other name) through EggStage.Metrics.MEASURE, the hook the live game leaves to TextService.
 	-- The mock's flat 0.5 em hid it: two NEW pets with the longest names (Frostling Penguin 175 px, Starlight Unicorn 167 px at
 	-- 18 px) were cut beside NEW!, a duplicate's note ("... you have 12 Twilight Dragon now") wrapped to three lines in 36 px,
 	-- and Sky's SPIN AGAIN x3 + coin + "3,000" filled the gold button edge to edge at 640x360

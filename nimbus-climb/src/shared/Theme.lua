@@ -5,7 +5,7 @@
 -- v3: the READABILITY RULE (ARCHITECTURE_V3.md): at 1920x1080 body text >= 18 px, small captions >= 15 px,
 -- buttons >= 20 px, titles 28-44 px; everything scales with the screen height
 -- (factor clamp(viewportY / 1080, 0.8, 1.25)) and nothing ever drops below 14 px. Every text gets a stroke
--- or sits on a solid panel.
+-- or sits on a solid panel (kit B: stroke OR panel, never both; see below).
 --   * Theme.Sizes[role]          default size per font role at 1080p (applied by Theme.Style / Theme.Label)
 --   * Theme.ScreenFactor()       the screen-height factor (1 on the server)
 --   * Theme.ScaledSize(basePx)   basePx (a 1080p size) for the current screen, never below 14
@@ -17,6 +17,13 @@
 -- colours `Theme.Neon`, the colour of every menu / window category `Theme.Category`, `Theme.NeonColor(name)`, the dark
 -- navy card fill `Colors.PanelTop / PanelBottom / PanelInk`, and the "less cute" faces: Title / Button / Toast are
 -- GothamBlack now (Display stays FredokaOne for the big friendly numbers, Accent LuckiestGuy for damage numbers).
+-- kit B (U1 of .superpowers/slop-audit/round3/BUILD_PLAN.md, the owner's approved kit pitch): the pitch's faces by role
+-- (LuckiestGuy titles and signs, FredokaOne headings / buttons / tags / nameplates, Nunito ExtraBold reading text through
+-- `Theme.Faces`, Nunito Bold Italic for flavour lines; GothamBlack and Fondamento are gone) and the readability rule
+-- "contrast by surface, outline only with no plate": Theme.Style adds no stroke by default, `Outline = "World"` gives text
+-- over the 3D world one outline and no stroke, `Theme.TextOn(surface)` picks the text colour for a fill. Also
+-- `Theme.SetRole` (a role's face without restyling), `Theme.Measure` (text size for a role), `Theme.Sign` (the kit B
+-- palette) and `Theme.Radius` (the corner tokens).
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -40,34 +47,59 @@ end
 -- Font roles. Use roles, never raw Enum.Font, anywhere in the game.
 -- v3: Body and Label moved to the heavier Builder Sans cuts (far easier to read at small sizes on busy
 -- backgrounds); the chunky display faces stay.
+-- kit B: the pitch's three faces. LuckiestGuy is loud, so it is for titles, signs and damage numbers only;
+-- FredokaOne carries headings, buttons, tags and nameplates; reading text is Nunito ExtraBold (Theme.Faces below:
+-- the Enum font of a FontFace role is only its fallback for an engine without Font.new).
 Theme.Fonts = {
-	Title = font("GothamBlack", "GothamBold"), -- logo, banners, portal names, window titles (v5: GothamBlack)
+	-- THE one line for the title face (the owner's pitch: LuckiestGuy; Gemini prefers FredokaOne, a morning question)
+	Title = font("LuckiestGuy", "FredokaOne"), -- logo fallback, banners, portal names, window titles
 	Display = font("FredokaOne"), -- big numbers: timer, countdown, currency counts
-	Heading = font("GothamBlack", "GothamBold"), -- panel headers, captions, counts
-	Body = font("BuilderSansBold", "GothamBold"), -- descriptions, dialog text
-	Label = font("BuilderSansBold", "GothamMedium"), -- small captions
+	Heading = font("FredokaOne"), -- panel headers, section heads, card / pet names
+	Body = font("BuilderSansBold", "GothamBold"), -- descriptions, dialog text (face: Nunito ExtraBold)
+	Label = font("BuilderSansBold", "GothamMedium"), -- small captions (face: Nunito ExtraBold)
 	Accent = font("LuckiestGuy", "FredokaOne"), -- damage numbers, "GO!"
-	Script = font("Fondamento", "Nunito"), -- flavour text / taglines
+	Script = font("Nunito", "BuilderSansBold"), -- flavour text / taglines (face: Nunito Bold Italic; Fondamento retired)
 	-- v2 additions
-	Toast = font("GothamBlack", "GothamBold"), -- side-of-screen system messages (v5: GothamBlack neon pills)
-	Button = font("GothamBlack", "GothamBold"), -- text on buttons, tabs and tiles (v5: GothamBlack)
+	Toast = font("BuilderSansBold", "GothamBold"), -- side-of-screen system messages (face: Nunito ExtraBold)
+	Button = font("FredokaOne"), -- text on buttons, tabs and tiles
+	-- kit B additions
+	Tag = font("FredokaOne"), -- small capital tags: FIGHTER, NEW, rarity, L30, key caps
+	Nameplate = font("FredokaOne"), -- names over heads (over the world: Outline = "World")
 	-- (credits look B) the Signboard window kit: its header title, and the maker's hand-written signature + polaroid caption.
-	-- Signature is THE one place to swap that face (the owner's pick PermanentMarker; Gemini's phone pick was "Kalam")
+	-- Signature is THE one place to swap that face (the owner's pick PermanentMarker; Gemini's phone pick was "Kalam").
+	-- Sign stays its own entry so the approved Credits look does not move when the Title line flips.
 	Sign = font("LuckiestGuy", "FredokaOne"),
 	Signature = font("PermanentMarker", "FredokaOne"),
 }
 
--- FontFace roles (a weight or style an Enum.Font has not got): put on a label with Theme.Face(label, role) after
--- Theme.Label. Nil when the engine has no Font.new (then the label keeps its role font).
+-- FontFace roles (a weight or style an Enum.Font has not got). Theme.Style / Theme.Label / Theme.SetRole put a role's
+-- face on after its Enum font (setting .Font afterwards would undo it, so use Theme.SetRole, not .Font =); Theme.Face(label,
+-- role) puts one on by itself. Nil when the engine has no Font.new (then the label keeps its role font).
 local function face(family, weight, style)
 	local ok, value = pcall(function()
 		return Font.new("rbxasset://fonts/families/" .. family .. ".json", Enum.FontWeight[weight], Enum.FontStyle[style])
 	end)
 	return ok and value or nil
 end
+local READING = face("Nunito", "ExtraBold", "Normal")
 Theme.Faces = {
 	Caps = face("Nunito", "Heavy", "Normal"), -- (credits look B) small spaced capitals ("CREATED BY")
 	Thanks = face("Nunito", "Bold", "Italic"), -- (credits look B) the gold thank-you line
+	-- kit B reading text and flavour lines
+	Body = READING,
+	Label = READING,
+	Toast = READING,
+	Script = face("Nunito", "Bold", "Italic"),
+}
+
+-- Theme.Measure's widening per FontFace role: TextService:GetTextSize only knows the Enum fallback (Builder Sans Bold),
+-- and Nunito ExtraBold runs a few per cent wider (Nunito Regular is 0.94-1.0 x Builder Sans Bold, ExtraBold about 1.07 x
+-- Regular), so these round up to never cut a word. Roles not listed measure 1:1 (their Enum font is the face).
+Theme.MeasureSpare = {
+	Body = 1.06,
+	Label = 1.06,
+	Toast = 1.06,
+	Script = 1.06,
 }
 
 ----------------------------------------------------------------------
@@ -97,6 +129,8 @@ Theme.Sizes = {
 	Script = 19,
 	Toast = 18,
 	Button = 22,
+	Tag = 16,
+	Nameplate = 20,
 	Sign = 34,
 	Signature = 56,
 }
@@ -305,6 +339,30 @@ Theme.Currency = {
 	},
 }
 
+-- kit B: the Signboard palette of the approved pitch (kit_pitch_mockups.html, BUILD_PLAN decision 5): stone body and its
+-- darker lip, wood frame, navy header plank, gold sign titles, the pink awning, green for the one main action, red, and
+-- the brown text that sits on stone (13.6:1).
+Theme.Sign = {
+	Stone = rgb(255, 247, 230), -- #FFF7E6
+	StoneLip = rgb(220, 201, 160), -- #DCC9A0
+	Wood = rgb(140, 90, 46), -- #8C5A2E
+	Navy = rgb(35, 42, 110), -- #232A6E
+	Gold = rgb(255, 210, 74), -- #FFD24A
+	Roof = rgb(238, 111, 166), -- #EE6FA6
+	Grass = rgb(111, 207, 106), -- #6FCF6A
+	Red = rgb(238, 106, 127), -- #EE6A7F
+	Text = rgb(59, 36, 18), -- #3B2412
+	TextMuted = rgb(118, 84, 54), -- #765436 (small captions on stone)
+}
+
+-- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
+-- largest token is small. Literal radii move to these in U6.
+Theme.Radius = {
+	None = 0,
+	S = 4,
+	M = 8,
+}
+
 -- In-world palette for Parts (lobby, courses, tokens, hazards). Calm, never pure white; platform
 -- tops are clearly lighter than their sides, hazards are a distinct dark red/purple, checkpoints
 -- teal. Trim colours are per difficulty id (Config.Difficulties order) and also by index.
@@ -386,6 +444,46 @@ function Theme.HealthColor(fraction)
 		return Theme.Colors.HealthMid
 	end
 	return Theme.Colors.HealthLow
+end
+
+-- kit B: the text colour for a surface. A name of Theme.Sign ("Stone", "Navy", "Wood", ...), one of today's dark fills
+-- ("Panel", "Dark", "Well") or any Color3; the brown #3B2412 or white, whichever has the higher contrast on it (brown on
+-- stone and gold, white on navy, wood and the dark panels). Nil / unknown = white, the dark panels' colour today.
+local function channel(v)
+	if v <= 0.04045 then
+		return v / 12.92
+	end
+	return ((v + 0.055) / 1.055) ^ 2.4
+end
+
+local function luminance(c)
+	return 0.2126 * channel(c.R) + 0.7152 * channel(c.G) + 0.0722 * channel(c.B)
+end
+
+local function contrast(a, b)
+	local la, lb = luminance(a), luminance(b)
+	if la < lb then
+		la, lb = lb, la
+	end
+	return (la + 0.05) / (lb + 0.05)
+end
+
+local DARK_SURFACES = { Panel = "Panel", Dark = "PanelTop", Well = "WellTop" }
+
+function Theme.TextOn(surface)
+	local fill = nil
+	if typeof(surface) == "Color3" then
+		fill = surface
+	elseif type(surface) == "string" then
+		fill = Theme.Sign[surface] or (DARK_SURFACES[surface] and Theme.Colors[DARK_SURFACES[surface]])
+	end
+	if not fill then
+		return Theme.Colors.White
+	end
+	if contrast(Theme.Sign.Text, fill) > contrast(Theme.Colors.White, fill) then
+		return Theme.Sign.Text
+	end
+	return Theme.Colors.White
 end
 
 ----------------------------------------------------------------------
@@ -492,18 +590,40 @@ function Theme.TextOutline(obj, thickness, color, transparency)
 	return outline
 end
 
--- Apply a font role + outline to any TextLabel/TextButton/TextBox.
+-- The outline thickness of Outline = "World" per role (damage numbers read from further away than a nameplate).
+local WORLD_OUTLINE = { Accent = 3, Title = 3, Sign = 3, Display = 2.5 }
+
+-- Puts a role's font on a text object and nothing else (colour, size and stroke stay): the Enum font, then the role's
+-- FontFace when it has one. Use it instead of `obj.Font = Theme.Fonts.X`, which would drop a FontFace. An unknown role
+-- is Body. Returns obj.
+function Theme.SetRole(obj, role)
+	if not obj then
+		return nil
+	end
+	if not Theme.Fonts[role] then
+		role = "Body"
+	end
+	obj.Font = Theme.Fonts[role]
+	Theme.Face(obj, role)
+	return obj
+end
+
+-- Apply a font role (and an outline when asked) to any TextLabel/TextButton/TextBox.
+-- kit B rule: text reads by the contrast of its surface (Theme.TextOn), so there is no stroke unless the caller asks.
 -- opts: Size (design px; default Theme.Sizes[role]), Color, Stroke (0..1 transparency of the classic text
---       stroke, default 0.4), StrokeColor, Scaled (bool), Outline (thickness: adds Theme.TextOutline),
---       OutlineColor, OnLight (bool: dark text stroke at full strength for pale or busy backgrounds)
+--       stroke, default 1 = none), StrokeColor, Scaled (bool), Outline (a thickness: adds Theme.TextOutline and no
+--       classic stroke; "World": text over the 3D world with no plate, one outline of the role's world thickness and no
+--       classic stroke even when Stroke is passed), OutlineThickness (with "World"), OutlineColor,
+--       OnLight (kept for old callers; no stroke any more)
 function Theme.Style(obj, role, opts)
 	opts = opts or {}
-	obj.Font = Theme.Fonts[role] or Theme.Fonts.Body
+	Theme.SetRole(obj, role)
 	obj.TextColor3 = opts.Color or Theme.Colors.White
 	obj.TextStrokeColor3 = opts.StrokeColor or Theme.Colors.Ink
+	local world = opts.Outline == "World"
 	local stroke = opts.Stroke
-	if stroke == nil then
-		stroke = opts.OnLight and 0 or 0.4
+	if stroke == nil or world then
+		stroke = 1
 	end
 	obj.TextStrokeTransparency = stroke
 	if opts.Scaled then
@@ -514,10 +634,30 @@ function Theme.Style(obj, role, opts)
 		obj.TextSize = Theme.RoleSize(role)
 	end
 	if opts.Outline then
-		local thickness = tonumber(opts.Outline) or 2
+		local thickness
+		if world then
+			thickness = tonumber(opts.OutlineThickness) or WORLD_OUTLINE[role] or 2
+		else
+			thickness = tonumber(opts.Outline) or 2
+		end
 		Theme.TextOutline(obj, thickness, opts.OutlineColor or opts.StrokeColor or Theme.Colors.TextStroke, 0)
 	end
 	return obj
+end
+
+-- The size of `text` in a role's font at `size` px (wrapped at `width` when given): TextService:GetTextSize with the role's
+-- Enum font, X widened by Theme.MeasureSpare for a FontFace role and rounded up (TextService does not know FontFace;
+-- GetTextBoundsAsync does, but it yields). An unknown role measures as Body. Returns a Vector2.
+function Theme.Measure(text, role, size, width)
+	if not Theme.Fonts[role] then
+		role = "Body"
+	end
+	text = tostring(text or "")
+	size = tonumber(size) or Theme.RoleSize(role)
+	local frame = Vector2.new(tonumber(width) or 100000, 100000)
+	local raw = game:GetService("TextService"):GetTextSize(text, size, Theme.Fonts[role], frame)
+	local spare = Theme.MeasureSpare[role] or 1
+	return Vector2.new(math.ceil(raw.X * spare), raw.Y)
 end
 
 -- Build a styled TextLabel. props are applied after styling so you can override anything.
@@ -547,7 +687,14 @@ function Theme.Face(obj, role)
 	end))
 end
 
+-- radius: a UDim, a number of px or a Theme.Radius token name ("None", "S", "M"); default 12 px.
 function Theme.Corner(parent, radius)
+	if type(radius) == "string" then
+		radius = Theme.Radius[radius] or 0
+	end
+	if type(radius) == "number" then
+		radius = UDim.new(0, radius)
+	end
 	local c = Instance.new("UICorner")
 	c.CornerRadius = radius or UDim.new(0, 12)
 	c.Parent = parent

@@ -32,3 +32,13 @@ wave 0 (ARCHITECTURE_V3.md "Phase 5 build contract", sections 9.3 and 10.1).
 
 To freeze the next release: copy the released `src/server/Services/DataService.lua` and `tools/sim_tycoon.py` here as
 `DataService_phase<N>.lua` / `sim_tycoon_phase<N>.py` (byte copies, never edited afterwards) and add a section above.
+
+## Fonts (kit B, U1)
+
+`fonts/`: byte copies of the three kit B faces from Roblox Studio's own `content/fonts` (version-3e4dd3d8efe8459d,
+2026-11-13), all under the SIL Open Font License: `LuckiestGuy-Regular.ttf` (Title / Sign / Accent),
+`FredokaOne-Regular.ttf` (Heading / Button / Tag / Nameplate / Display) and `Nunito-Regular.ttf`. `tools/render_gui.py`
+finds them before any installed font, so offline renders draw the pitch's faces. Roblox keeps Nunito's other weights as
+cloud assets (`content/fonts/families/Nunito.json`: ExtraBold rbxassetid://8075191639, Bold Italic 8075190657), so the
+ExtraBold / Bold Italic FontFace roles draw from Regular made heavier (render_gui.py `FAUX_WEIGHT`); Studio is the check
+for the real weights. Nothing was downloaded.
