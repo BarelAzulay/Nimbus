@@ -5,7 +5,8 @@
 -- client/LightingStack with a Cycle.Tween (2) s tween, so the Dungeon / GfxLow / AttackFxDim presets keep winning on
 -- top. No per-frame code (one task.wait loop), no remote traffic. While a raid sky blends in or out the refresh runs
 -- every Config.Sky.Transitions.Raid.Step (0.5) s with 0.5 s tweens instead (kit-b S1: the haze bridge around its skybox
--- swap is seen as a smooth rise, not 1-2 samples); the loop wakes every Step s and refreshes when its step is due.
+-- swap is seen as a smooth rise, not 1-2 samples), and while a phase blends on a dev /sky speed above 1 (S1 review);
+-- the loop wakes at most every Step s, counts the real seconds waited and refreshes when its step is due.
 --
 --   * no SkyEpoch attribute (an older server, tests): inert, the boot sky stays, nothing below runs
 --   * the first apply after Start is instant (seconds 0): a late joiner never sees the boot afternoon fade away
@@ -93,7 +94,7 @@ local St = {
 	Applies = 0,
 	Skipped = 0,
 	Step = nil, -- the refresh step the last refresh chose (Cycle.Refresh, or Raid.Step while a raid sky blends)
-	Waited = 0, -- loop seconds since the last refresh
+	Waited = 0, -- real seconds the loop has waited since the last refresh (task.wait's return)
 	GQ = nil, -- client/GraphicsQuality (lazy); false = unavailable
 }
 SkyController._St = St
@@ -207,11 +208,19 @@ local function resetEvent()
 end
 
 -- the refresh step and tween at server time now (after eventNow): Raid.Step / Raid.Step while a raid transition is
--- still running (something to blend, inside its In / Out s), else Cycle.Refresh / Cycle.Tween
-local function cadence(now)
+-- still running (something to blend, inside its In / Out s), else Cycle.Refresh / Cycle.Tween. Also Raid.Step while a
+-- phase blends (at.Blend > 0) on a sped-up clock (the dev /sky speed, SkySpeed > 1; kit-b S1 review): at speed 10 a
+-- 2 s step is 20 loop s against the 30 loop s haze bridge, so the faces could swap in clear air. The whole 75 s blend
+-- (not only the bridge) so the last 2 s step before it can never jump past the bridge's start; at speed 1 (play) the
+-- 2 s step is 2 loop s and stays
+local function cadence(now, at)
 	local sky = cfg()
+	local step = sky.Transitions.Raid.Step
 	if St.EvSeen and finite(St.EvAt) and (St.EvId ~= nil or St.From ~= nil) and now - St.EvAt < raidSeconds() then
-		local step = sky.Transitions.Raid.Step
+		return step, step
+	end
+	local speed = Workspace:GetAttribute(sky.Attr.Speed)
+	if finite(speed) and speed > 1 and type(at) == "table" and finite(at.Blend) and at.Blend > 0 then
 		return step, step
 	end
 	return sky.Cycle.Refresh, sky.Cycle.Tween
@@ -451,7 +460,7 @@ function SkyController.Refresh(now)
 	now = finite(now) and now or Workspace:GetServerTimeNow()
 	local at = SkyCycle.At(now, epoch, Workspace:GetAttribute(A.Speed), Workspace:GetAttribute(A.Offset))
 	local event, eventBlend, fromId, fromBlend = eventNow(now)
-	local step, tween = cadence(now)
+	local step, tween = cadence(now, at)
 	St.Step = step
 	local preset, theme = SkyCycle.Preset(at, event, eventBlend, SkyFaces.For, fromId, fromBlend)
 	-- the raid sky in charge (the same moments SkyCycle switches the clock and the skybox): the new raid from its
@@ -552,15 +561,18 @@ function SkyController.Start()
 	St.Loops = St.Loops + 1
 	St.Thread = task.spawn(function()
 		while true do
-			-- wake every Raid.Step s (cheap); refresh when the step the last refresh chose is due, so a raid that starts
-			-- mid-step goes onto the fast cadence at once
-			local tick = math.min(cfg().Transitions.Raid.Step, cfg().Cycle.Refresh)
-			task.wait(tick)
+			-- wake at most every Raid.Step s (cheap), never past the due step; refresh when the step the last refresh
+			-- chose is due, so a raid that starts mid-step goes onto the fast cadence at once. St.Waited counts the
+			-- REAL seconds task.wait returns (each wait runs up to a frame late: four nominal 0.5 s ticks drifted the
+			-- 2 s step to 2.13 s, a pause in the 2 s linear tweens); the last wait is only what is left, so a refresh
+			-- is at most one frame late, as with one task.wait(2)
+			local step = St.Step or cfg().Cycle.Refresh
+			local dt = task.wait(math.max(0, math.min(cfg().Transitions.Raid.Step, step - St.Waited)))
 			if not St.Running or St.Gen ~= gen then
 				break
 			end
-			St.Waited = St.Waited + tick
-			if St.Waited >= (St.Step or cfg().Cycle.Refresh) - 1e-6 then
+			St.Waited = St.Waited + (tonumber(dt) or 0)
+			if St.Waited >= step - 1e-6 then
 				St.Waited = 0
 				safeRefresh()
 			end

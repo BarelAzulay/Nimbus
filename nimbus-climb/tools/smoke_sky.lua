@@ -1681,6 +1681,17 @@ local function clientScenarios()
 			local p3 = M.Build()
 			T.check(near(p3.Atmosphere.Density, 0.2 + add), "a re-push while the dungeon is on never adds twice", tostring(p3.Atmosphere.Density))
 			LS.Pop("Dungeon", 0)
+			-- kit-b S1 review: a run that starts inside a haze bridge (the base at its peak) keeps the pre-S1 ceiling
+			-- (0.6: the densest look 0.42 + 0.15 = 0.57 is unchanged), never the bridge's 0.65-0.7 + 0.15 for the run
+			LS.SetBase({ Atmosphere = { Density = 0.42 } }, 0)
+			local p4 = M.Build()
+			T.check(near(p4.Atmosphere.Density, 0.42 + add), "the densest look (0.42): the dungeon still adds its full 0.15", tostring(p4.Atmosphere.Density))
+			local peaks = Cfg.Sky.Transitions
+			for _, peak in ipairs({ peaks.Cycle.Density, peaks.Raid.Density }) do
+				LS.SetBase({ Atmosphere = { Density = peak } }, 0)
+				local p5 = M.Build()
+				T.check(p5.Atmosphere.Density <= 0.6 + 1e-6, fmt("a run started at a bridge peak (%.2f): Density <= 0.6", peak), tostring(p5.Atmosphere.Density))
+			end
 		end)
 		LS.SetBase({ Atmosphere = { Density = saved } }, 0)
 		if made then

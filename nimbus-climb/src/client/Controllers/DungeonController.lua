@@ -224,6 +224,9 @@ local PRESET = {
 	Lighting = { Ambient = Color3.fromRGB(70, 62, 86), OutdoorAmbient = Color3.fromRGB(86, 78, 104) },
 	ColorCorrection = { Brightness = -0.12, Contrast = 0.1, TintColor = Color3.fromRGB(236, 226, 212) },
 	AtmosphereAdd = 0.15,
+	-- the haze's ceiling (kit-b S1 review): the pre-bridge one (the densest look 0.42 + 0.15 = 0.57 unchanged), so a
+	-- run that starts inside a sky haze bridge (base 0.65-0.7, read once) never keeps 0.8+ for the whole run
+	AtmosphereMax = 0.6,
 }
 
 ----------------------------------------------------------------------
@@ -2169,7 +2172,7 @@ function R.preset()
 			local ok, value = pcall(LS.Value, "Atmosphere", "Density", K.LIGHT_ID)
 			base = ok and type(value) == "number" and value or nil
 		end
-		preset.Atmosphere = { Density = math.min(1, (base or atmosphere.Density or 0.3) + PRESET.AtmosphereAdd) }
+		preset.Atmosphere = { Density = math.min(PRESET.AtmosphereMax, (base or atmosphere.Density or 0.3) + PRESET.AtmosphereAdd) }
 	end
 	return preset
 end

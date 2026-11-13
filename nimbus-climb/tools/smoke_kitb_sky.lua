@@ -18,6 +18,9 @@
 --                             (Cycle.EventBlend is gone); the look swaps at the blend's midpoint
 --   skycontroller_raid_cadence (client) the loop refreshes every 2 s with 2 s tweens, every 0.5 s with 0.5 s tweens while a
 --                             raid blend runs (in and out), and 2 s again after
+--   skycontroller_dev_speed_bridge (client; S1 review) at /sky speed 10 the whole phase blend refreshes every 0.5 s with
+--                             0.5 s tweens, so the faces swap under thick air (the refresh before the swap >= 0.6 into the
+--                             bridge); at speed 1 the phase blend keeps the 2 s cadence
 --   skycontroller_localevent_refreshes_now (client) SetLocalEvent on / off refreshes at once (task.defer), not on the
 --                             next 2 s tick; a stopped controller does not
 -- Plain Lua 5.1 syntax only.
@@ -482,6 +485,62 @@ local function clientScenarios()
 		judge("the full raid sky", between(evAt + R.In + 0.5, endAt), C.Refresh, 3)
 		judge("the raid blending out", between(endAt, endAt + R.Out - 0.5), R.Step, math.floor((R.Out - 0.5) / R.Step) - 1)
 		judge("the plain cycle again", between(endAt + R.Out + 0.5, endAt + 14), C.Refresh, 3)
+	end)
+
+	S.skycontroller_dev_speed_bridge = withSky("skycontroller_dev_speed_bridge", function(SC, LS)
+		local SCy = require(Mock.GetPath(ROOTS["shared"] .. "/SkyCycle"))
+		local R, C = Cfg.Sky.Transitions.Raid, Cfg.Sky.Cycle
+		local half = Cfg.Sky.Transitions.Cycle.BridgeHalf
+		-- /sky speed 10, 35 loop s before the Day -> Sunset blend (Day ends at loop 480, its blend from 405; on 2 s steps
+		-- this phase samples loop 430 (k ~0.06) and then 450 (past the swap): the faces would swap in clear air)
+		SC.Stop()
+		local epoch = publish(370)
+		Workspace:SetAttribute(A.Speed, 10)
+		SC.Start()
+		KC.advance(0.05)
+		local calls = spy(LS)
+		for _ = 1, 48 do
+			KC.advance(0.25) -- 12 s = 120 loop s: through the whole 75 s blend
+		end
+		local inBlend, bad, maxGap, prev, swapK = 0, nil, 0, nil, nil
+		for i, c in ipairs(calls) do
+			local at = SCy.At(c.t, epoch, 10, 370)
+			if at.Phase == "Day" and at.Blend > 0 then
+				inBlend = inBlend + 1
+				if c.s ~= R.Step then
+					bad = bad or fmt("#%d tween %s at blend %.2f", i, tostring(c.s), at.Blend)
+				end
+				if prev and prev.Phase == "Day" and prev.Blend > 0 then
+					maxGap = max(maxGap, c.t - calls[i - 1].t)
+				end
+				if swapK == nil and at.Blend >= 0.5 then
+					-- the faces swap at this refresh; the air on screen is still the previous refresh's target
+					swapK = prev and SCy.Bridge(prev.Phase == "Day" and prev.Blend or 0, half) or 0
+				end
+			end
+			prev = at
+		end
+		T.check(inBlend >= 10 and bad == nil and maxGap <= R.Step + 0.05, fmt("speed 10: every refresh inside the phase blend runs every %.1f s with %.1f s tweens", R.Step, R.Step), fmt("%d in the blend, %s, max gap %.2f", inBlend, tostring(bad), maxGap))
+		T.check(swapK ~= nil and swapK >= 0.6, "speed 10: the faces swap under thick air (the refresh before the swap is >= 0.6 into the bridge)", tostring(swapK))
+		-- speed 1 (play): the phase blend keeps the 2 s cadence
+		SC.Stop()
+		publish(430)
+		SC.Start()
+		KC.advance(0.05)
+		local slow = spy(LS)
+		for _ = 1, 33 do
+			KC.advance(0.25)
+		end
+		local wrong, gap = nil, 0
+		for i, c in ipairs(slow) do
+			if c.s ~= C.Tween then
+				wrong = wrong or fmt("#%d tween %s", i, tostring(c.s))
+			end
+			if i > 1 then
+				gap = max(gap, c.t - slow[i - 1].t)
+			end
+		end
+		T.check(#slow >= 3 and wrong == nil and gap <= C.Refresh + 0.05, "speed 1: the phase blend refreshes every 2 s with 2 s tweens (unchanged)", fmt("%d calls, %s, max gap %.2f", #slow, tostring(wrong), gap))
 	end)
 
 	S.skycontroller_localevent_refreshes_now = withSky("skycontroller_localevent_refreshes_now", function(SC, LS)
