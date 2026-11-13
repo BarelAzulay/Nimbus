@@ -30,7 +30,6 @@ local PetBits = {}
 local Colors = Theme.Colors
 local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
-local INK = Colors.TextStroke or Colors.Ink
 local SEEDLING = "\240\159\140\177"
 local CASH = (Theme.Currency and Theme.Currency.Cash and Theme.Currency.Cash.Glyph) or "$"
 local GARDEN_COLOR = Color3.fromRGB(120, 196, 90)
@@ -84,10 +83,6 @@ function PetBits.text(parent, name, text, role, size, color, props)
 	local label = Theme.Label(tostring(text), role, {
 		Size = size,
 		Color = color or WHITE,
-		Stroke = 0.25,
-		StrokeColor = INK,
-		Outline = 1.5,
-		OutlineColor = INK,
 		Props = p,
 	})
 	label.Parent = parent

@@ -588,7 +588,7 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	end
 	d.start()
 	local b = at("Root.LeaveButton")
-	T.check(b and shown(b) and b.Text == "LEAVE", "p4fix leave: a ring fight shows LEAVE beside ATTACK / RETREAT", b and tostring(b.Text) or "missing")
+	T.check(b and shown(b) and b.Text == "Leave", "p4fix leave: a ring fight shows LEAVE beside ATTACK / RETREAT", b and tostring(b.Text) or "missing")
 	local mark = #Mock.RemoteLog
 	if b then
 		Mock.Click(b)
@@ -596,7 +596,7 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	advance(0.1)
 	T.check(b and b.Text == "Sure? Tap again" and forfeits(mark) == 0, "p4fix leave: the first tap only asks (Sure? Tap again), nothing is sent", b and b.Text or "")
 	advance(3.3)
-	T.check(b and b.Text == "LEAVE" and forfeits(mark) == 0, "p4fix leave: without a second tap it goes back to LEAVE after ~3 s", b and b.Text or "")
+	T.check(b and b.Text == "Leave" and forfeits(mark) == 0, "p4fix leave: without a second tap it goes back to LEAVE after ~3 s", b and b.Text or "")
 	if b then
 		Mock.Click(b)
 		advance(0.4)
@@ -614,14 +614,14 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	d = newBattle("Ring", 3)
 	d.start()
 	b = at("Root.LeaveButton")
-	T.check(b and b.Text == "LEAVE", "p4fix leave: the next run's round starts with a plain LEAVE", b and b.Text or "missing")
+	T.check(b and b.Text == "Leave", "p4fix leave: the next run's round starts with a plain LEAVE", b and b.Text or "missing")
 	if b then
 		Mock.Click(b) -- armed in the fight ...
 	end
 	d.finish(ringWon(3)) -- ... and the round is won: the card starts unarmed
 	advance(0.3)
 	local nb = at("Root.NextRoundCard.LeaveButton")
-	T.check(nb and shown(nb) and nb.Text == "LEAVE" and not shown(b), "p4fix leave: the next-round card shows LEAVE (the commands are gone)", nb and tostring(nb.Text) or "missing")
+	T.check(nb and shown(nb) and nb.Text == "Leave" and not shown(b), "p4fix leave: the next-round card shows LEAVE (the commands are gone)", nb and tostring(nb.Text) or "missing")
 	T.check(BC.Command("Attack", nil) == false, "p4fix leave: between rounds ATTACK is still refused locally")
 	mark = #Mock.RemoteLog
 	if nb then
@@ -774,7 +774,7 @@ S.client_bb6_raid_leave = guarded("client_bb6_raid_leave", function()
 	d.start()
 	advance(0.3)
 	local b = at("Root.LeaveButton")
-	T.check(b and shown(b) and b.Text == "LEAVE", "bb6 raid leave: a raid fighter has LEAVE", b and tostring(b.Text) or "missing")
+	T.check(b and shown(b) and b.Text == "Leave", "bb6 raid leave: a raid fighter has LEAVE", b and tostring(b.Text) or "missing")
 	local mark = #Mock.RemoteLog
 	if b then
 		Mock.Click(b)

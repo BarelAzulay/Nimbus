@@ -336,11 +336,12 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(boltShape ~= nil and #boltShape:GetChildren() == 3, "vitals: the stamina badge draws a lightning bolt")
 	T.check(c.Heart.AbsoluteSize.X / k >= 44 and c.Bolt.AbsoluteSize.X / k >= 28 and c.Ring.AbsoluteSize.X / k >= 34, "vitals: badges and the dash ring are chunky")
 
-	-- 2. the number: big, outlined, the Display font
+	-- 2. the number: big, the Display font; kit-b U6: it sits on the HP tube, so no outline and no stroke (kit B
+	-- "stroke or panel, never both"; it was a thick outline)
 	T.check(c.HpText ~= nil and tostring(c.HpText.Text) == "117 / 117", "vitals: the HP tube reads '117 / 117'", c.HpText and tostring(c.HpText.Text))
 	local outline = c.HpText and c.HpText:FindFirstChild("TextOutline")
-	T.check(c.HpText.TextSize * scaleOf(c.HpText) >= 24 and c.HpText.Font == Theme.Fonts.Display and outline ~= nil and outline.Thickness >= 2,
-		"vitals: the HP number is big (>= 24 px at 1080p), Display font, with a thick outline (Readability rule)",
+	T.check(c.HpText.TextSize * scaleOf(c.HpText) >= 24 and c.HpText.Font == Theme.Fonts.Display and outline == nil and c.HpText.TextStrokeTransparency == 1,
+		"vitals: the HP number is big (>= 24 px at 1080p), Display font, no outline on its tube (kit-b U6)",
 		fmt("%.1f px", c.HpText.TextSize * scaleOf(c.HpText)))
 	local small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: every text of the card is >= 15 px at 1920x1080", table.concat(small, ", "))

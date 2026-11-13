@@ -761,6 +761,71 @@ function analyse(file) {
 	})();
 	// (end of the FX lane rules)
 	// -- kit B: UI lane (kitb-ui) --
+	// U6 (fonts audit F2 / F12, finding 22):
+	//   direct-font     `x.Font = ...` outside shared/Theme.lua (Theme.SetRole keeps a role's FontFace; a later .Font write
+	//                   drops it) and TextService:GetTextSize outside Theme (Theme.Measure / Theme.MeasureLabel know the faces)
+	//   radius-literal  in a file of RADIUS_SWEPT (the files U6 swept; U7 / U9 add theirs, smoke kitb_radius_tokens reads
+	//                   this list): a corner radius that is not a Theme.Radius token - Theme.Corner(x, 12),
+	//                   Theme.Corner(x, UDim.new(0, 12)), Theme.Corner(x) (the old 12 px default), a file's own corner(x, 12)
+	//                   helper call, `CornerRadius = UDim.new(0, 12)`. Tokens: "None", "S", "M", "Round" (a pill / disc).
+	(function uiLane() {
+		const RADIUS_SWEPT = [
+			"client/Controllers/MenuController.lua",
+			"client/Controllers/BattleController.lua",
+			"client/Controllers/HudController.lua",
+			"client/Controllers/IndexController.lua",
+			"client/Controllers/NotifyController.lua",
+			"client/Controllers/DamageFx.lua",
+			"client/Controllers/DungeonController.lua",
+			"client/Controllers/LeaderboardController.lua",
+			// the world sign builders (LobbyBuilder, ArenaBuilder, HomeBuilder, PortalService, NpcService, SpotService,
+			// StormAltar, DamageService, shared/WorldStyle) join when their wave sweeps them (U6 left them: their test,
+			// smoke_polish_worldtext, still asks every world text for an outline AND a plate)
+		];
+		const swept = RADIUS_SWEPT.some((p) => normPath.endsWith("/src/" + p));
+		const literalPx = (n) => n && n.type === "NumericLiteral";
+		const literalUDim = (n) => {
+			if (!n || n.type !== "CallExpression") return false;
+			const dp = dottedPath(n.base);
+			return dp && dp.join(".") === "UDim.new" && n.arguments.length === 2 && literalPx(n.arguments[0]) && n.arguments[0].value === 0 && literalPx(n.arguments[1]);
+		};
+		(function walk(n) {
+			if (!n || typeof n !== "object") return;
+			if (!isTheme && n.type === "AssignmentStatement") {
+				n.variables.forEach((v) => {
+					if (v.type === "MemberExpression" && v.identifier && v.identifier.name === "Font") {
+						report(v, "error", "direct-font", "`.Font =` drops a role's FontFace: use Theme.SetRole(obj, role) / Theme.Style");
+					}
+				});
+			}
+			if (!isTheme && n.type === "CallExpression" && n.base && n.base.type === "MemberExpression" && n.base.indexer === ":" && n.base.identifier.name === "GetTextSize") {
+				report(n, "error", "direct-font", "GetTextSize does not know FontFace: use Theme.Measure(text, role or font, size, width) / Theme.MeasureLabel");
+			}
+			if (swept && n.type === "CallExpression") {
+				const dp = dottedPath(n.base);
+				const name = dp ? dp.join(".") : null;
+				if (name === "Theme.Corner") {
+					const r = n.arguments[1];
+					if (n.arguments.length < 2 || literalPx(r) || literalUDim(r)) {
+						report(n, "error", "radius-literal", "a literal corner radius: use a Theme.Radius token (Theme.Corner(x, \"S\" / \"M\" / \"None\" / \"Round\"))");
+					}
+				} else if (isId(n.base, "corner") && (literalPx(n.arguments[1]) || literalUDim(n.arguments[1]))) {
+					report(n, "error", "radius-literal", "a literal corner radius: pass a Theme.Radius token");
+				}
+			}
+			if (swept && n.type === "AssignmentStatement") {
+				n.variables.forEach((v, i) => {
+					if (v.type === "MemberExpression" && v.identifier && v.identifier.name === "CornerRadius" && literalUDim(n.init[i]) && n.init[i].arguments[1].value !== 0) {
+						report(v, "error", "radius-literal", "a literal CornerRadius: use Theme.Corner(x, token)");
+					}
+				});
+			}
+			if (swept && n.type === "TableKeyString" && n.key && n.key.name === "CornerRadius" && literalUDim(n.value) && n.value.arguments[1].value !== 0) {
+				report(n, "error", "radius-literal", "a literal CornerRadius: use Theme.Corner(x, token)");
+			}
+			for (const c of childNodes(n)) walk(c);
+		})({ type: "Chunk", body: ast.body });
+	})();
 	// (end of the UI lane rules)
 
 	// -- contract -----------------------------------------------------------------------------

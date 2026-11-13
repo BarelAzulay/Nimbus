@@ -120,10 +120,11 @@ local function mmss(seconds)
 	return string.format("%d:%02d", math.floor(s / 60), s % 60)
 end
 
+-- kit-b U6: every board text sits on the board, a row or a tab, so it reads by contrast (no classic stroke any more)
 local function label(parent, name, text, role, size, props)
 	props = props or {}
 	props.Name = name
-	local l = Theme.Label(text, role, { Size = size, Color = props.TextColor3, Stroke = props.TextStrokeTransparency, Props = props })
+	local l = Theme.Label(text, role, { Size = size, Color = props.TextColor3, Props = props })
 	l.Parent = parent
 	return l
 end
@@ -157,14 +158,14 @@ end
 
 local function buildRow(parent, i)
 	local row = frame(parent, "Row" .. i, UDim2.fromOffset(10, (i - 1) * K.ROW_H + 1), UDim2.fromOffset(K.W - 20, K.ROW_H - 2), Theme.Colors.White, 0.92)
-	Theme.Corner(row, UDim.new(0, 8))
+	Theme.Corner(row, "M")
 	local medal = K.MEDALS[i]
 	local rank = label(row, "Rank", tostring(i), "Display", K.TEXT, {
 		Position = UDim2.fromOffset(6, 1), Size = UDim2.fromOffset(K.BADGE, K.BADGE),
 		BackgroundTransparency = medal and 0 or 0.86, BackgroundColor3 = medal or Theme.Colors.White,
-		TextColor3 = medal and Theme.Colors.Navy or Theme.Colors.White, TextStrokeTransparency = medal and 1 or 0.4,
+		TextColor3 = medal and Theme.Colors.Navy or Theme.Colors.White,
 	})
-	Theme.Corner(rank, UDim.new(0.5, 0))
+	Theme.Corner(rank, "Round")
 	local head = Instance.new("ImageLabel")
 	head.Name = "Head"
 	head.Position = UDim2.fromOffset(12 + K.BADGE, 1)
@@ -173,7 +174,7 @@ local function buildRow(parent, i)
 	head.BorderSizePixel = 0
 	head.Image = ""
 	head.ScaleType = Enum.ScaleType.Crop
-	Theme.Corner(head, UDim.new(0.5, 0))
+	Theme.Corner(head, "Round")
 	head.Parent = row
 	local name = label(row, "Name", "", "Body", K.TEXT, {
 		Position = UDim2.fromOffset(K.NAME_X, 0), Size = UDim2.fromOffset(K.NAME_W, K.ROW_H - 2),
@@ -204,7 +205,7 @@ local function build()
 	local ui = { Tabs = {}, Rows = {} }
 	local board = frame(gui, "Board", UDim2.fromOffset(0, 0), UDim2.fromOffset(K.W, K.H), Theme.Colors.White, 0)
 	Theme.Gradient(board, K.TOP, K.BOTTOM, 90)
-	Theme.Corner(board, UDim.new(0, 10))
+	Theme.Corner(board, "M")
 	Theme.Stroke(board, Theme.Colors.Navy, 3, 0)
 	ui.Board = board
 
@@ -212,7 +213,7 @@ local function build()
 	ui.IconR = frame(board, "IconR", UDim2.fromOffset(K.W - K.PAD - K.ICON_BOX, K.TITLE_Y), UDim2.fromOffset(K.ICON_BOX, K.ICON_BOX), nil, 1)
 	ui.Title = label(board, "Title", "", "Heading", K.TITLE_TEXT, {
 		Position = UDim2.fromOffset(K.PAD + K.ICON_BOX + 8, K.TITLE_Y), Size = UDim2.fromOffset(K.W - 2 * (K.PAD + K.ICON_BOX + 8), K.TITLE_H),
-		TextColor3 = K.GOLD, TextStrokeTransparency = 0.2,
+		TextColor3 = K.GOLD,
 	})
 
 	local tabs = frame(board, "Tabs", UDim2.fromOffset(K.PAD, K.TABS_Y), UDim2.fromOffset(K.W - 2 * K.PAD, K.TABS_H), nil, 1)
@@ -228,7 +229,7 @@ local function build()
 		b.Size = UDim2.fromOffset(tw, K.TABS_H)
 		b.Text = tostring((type(cfg().Labels) == "table" and cfg().Labels[stat]) or stat)
 		Theme.Style(b, "Button", { Size = K.TEXT })
-		Theme.Corner(b, UDim.new(0, 10))
+		Theme.Corner(b, "M")
 		b.Parent = tabs
 		b.Activated:Connect(function()
 			safe("tap", LeaderboardController.SetPage, stat)
@@ -250,7 +251,7 @@ local function build()
 		Position = UDim2.fromOffset(10, K.YOU_Y), Size = UDim2.fromOffset(K.W - 20, K.YOU_H),
 		BackgroundTransparency = 0, BackgroundColor3 = K.ME, TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	Theme.Corner(ui.You, UDim.new(0, 8))
+	Theme.Corner(ui.You, "M")
 	Theme.Stroke(ui.You, K.ME_RING, 2, 0)
 	local pad = Instance.new("UIPadding")
 	pad.PaddingLeft = UDim.new(0, 14)
@@ -338,7 +339,6 @@ local function render()
 		local on = key == stat
 		b.BackgroundColor3 = on and K.GOLD or K.TAB_OFF
 		b.TextColor3 = on and Theme.Colors.Navy or Theme.Colors.White
-		b.TextStrokeTransparency = on and 1 or 0.4
 	end
 	local state = S.State
 	ui.Scope.Text = (state and state.Scope == "Server") and "This server only" or "All players \194\183 all time"

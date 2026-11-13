@@ -103,7 +103,7 @@ local function frame(name, parent, props)
 end
 
 local function label(name, parent, text, role, size, props)
-	local l = Theme.Label(text or "", role, { Size = size, Stroke = 1, Outline = 2 })
+	local l = Theme.Label(text or "", role, { Size = size })
 	l.Name = name
 	l.BackgroundTransparency = 1
 	l.TextWrapped = false

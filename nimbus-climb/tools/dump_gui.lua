@@ -101,7 +101,7 @@
 -- clipping, background colour/transparency, legacy border, UICorner radius in px, UIStrokes (colour, thickness in
 -- px, transparency, ApplyStrokeMode, position, UIGradient), UIGradient, UIPadding, the text properties (font name,
 -- size in screen px, TextScaled + UITextSizeConstraint, wrapping, alignment, colours, stroke, truncation, typewriter)
--- and image / viewport placeholders. Rotation, TextScaled and ScrollingFrame clipping are left to the renderer.
+-- and image / viewport placeholders. kit-b U6: a text node also carries its Theme role (attribute FontRole) as text.role. Rotation, TextScaled and ScrollingFrame clipping are left to the renderer.
 -- Plain Lua 5.1 syntax only.
 
 local Players = game:GetService("Players")
@@ -679,6 +679,8 @@ local function nodeOf(inst, ctx, path, order)
 			maxGraphemes = tonumber(get(inst, "MaxVisibleGraphemes")) or -1,
 			truncate = enumName(get(inst, "TextTruncate")),
 			placeholder = placeholder,
+			-- (kit-b U6) the role Theme stamped on it (Theme.SetRole), read by tools/stroke_walk.py's casing rule
+			role = inst:GetAttribute("FontRole"),
 			-- TextScaled bounds in screen px (Roblox's TextScaled tops out at 100 px before UIScale)
 			minSize = 1 * s,
 			maxSize = 100 * s,

@@ -69,7 +69,6 @@ local K = {
 
 local Colors = Theme.Colors
 local WHITE = Colors.White
-local INK = Colors.PanelInk or Color3.fromRGB(8, 10, 28)
 local MUTED = Color3.fromRGB(176, 184, 214)
 local GOLD = Theme.Neon.Gold
 local GREEN = Theme.Neon.Green
@@ -121,8 +120,8 @@ local function text(parent, name, value, role, size, color, props)
 	label.BackgroundTransparency = 1
 	label.BorderSizePixel = 0
 	label.Text = tostring(value or "")
-	Theme.Style(label, role, { Size = size, Color = color or WHITE, Stroke = 1 })
-	Theme.TextOutline(label, 1.5, INK, 0.1)
+	-- kit-b U6: the card is a plate, so the text reads by contrast (no outline)
+	Theme.Style(label, role, { Size = size, Color = color or WHITE })
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.TextTruncate = Enum.TextTruncate.AtEnd

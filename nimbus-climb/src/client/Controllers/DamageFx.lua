@@ -354,12 +354,12 @@ local function spawnFloat(cfg)
 	local outlines = {}
 	local textSize = Theme.ScaledSize(cfg.TextSize or NUMBER_SIZE)
 	local outlineColor = Theme.Darken(cfg.Color or Colors.Bad, 0.72)
+	-- over the 3D world with no plate: ONE outline in the darkened colour (kit-b U6: no classic stroke under it)
 	local number = Theme.Label(cfg.Text, "Accent", {
 		Size = textSize,
 		Color = cfg.Color,
-		Stroke = 0.1,
-		StrokeColor = outlineColor,
-		Outline = 3,
+		Outline = "World",
+		OutlineThickness = 3,
 		OutlineColor = outlineColor,
 		Props = {
 			Name = "Number",
@@ -385,9 +385,8 @@ local function spawnFloat(cfg)
 		local word = Theme.Label(cfg.Word, "Accent", {
 			Size = wordSize,
 			Color = wordColor,
-			Stroke = 0.15,
-			StrokeColor = wordOutline,
-			Outline = 2,
+			Outline = "World",
+			OutlineThickness = 2,
 			OutlineColor = wordOutline,
 			Props = {
 				Name = "Word",
@@ -413,7 +412,7 @@ local function spawnFloat(cfg)
 			return
 		end
 		for _, label in ipairs(texts) do
-			Util.Tween(label, life * 0.45, { TextTransparency = 1, TextStrokeTransparency = 1 })
+			Util.Tween(label, life * 0.45, { TextTransparency = 1 })
 		end
 		for _, outline in ipairs(outlines) do
 			if outline then

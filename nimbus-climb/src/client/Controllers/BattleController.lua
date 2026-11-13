@@ -1105,7 +1105,8 @@ local function newNumber()
 		MaxDistance = K.NUMBER_DISTANCE,
 		Enabled = false,
 	})
-	local label = Theme.Label("", "Accent", { Size = K.NUMBER_PX, Stroke = 0, Outline = 2.5 })
+	-- over the 3D world with no plate: ONE outline (kit-b U6: was a classic stroke under it)
+	local label = Theme.Label("", "Accent", { Size = K.NUMBER_PX, Outline = "World", OutlineThickness = 2.5 })
 	label.Name = "Text"
 	label.Size = UDim2.fromScale(1, 1)
 	label.TextXAlignment = Enum.TextXAlignment.Center
@@ -1560,7 +1561,7 @@ local function addBar(u, adornee, height)
 		BackgroundColor3 = COLORS.Track,
 		BorderSizePixel = 0,
 	}, gui)
-	Theme.Corner(back, UDim.new(0, 4))
+	Theme.Corner(back, "S")
 	Theme.Stroke(back, u.mine and COLORS.Gold or COLORS.Ink, u.mine and 2 or 1.5, 0)
 	local fill = make("Frame", {
 		Name = "Fill",
@@ -1569,7 +1570,7 @@ local function addBar(u, adornee, height)
 		BackgroundColor3 = color,
 		BorderSizePixel = 0,
 	}, back)
-	Theme.Corner(fill, UDim.new(0, 3))
+	Theme.Corner(fill, "S")
 	gui.Parent = u.model
 	u.bar = gui
 	u.barFill = fill
@@ -5224,8 +5225,11 @@ end
 ----------------------------------------------------------------------
 -- HUD (Phase 5, contract 4.7: the battle HUD of image 24.png on the Neon kit)
 ----------------------------------------------------------------------
-local function label(parent, text, role, size, props)
-	local l = Theme.Label(text, role, { Size = size, Stroke = 0.15, Outline = 2 })
+-- kit-b U6: the battle HUD's texts sit on their cards, chips and buttons, so they read by contrast with no outline (was
+-- a classic stroke under a 2 px outline); the few that float over the arena with no plate pass world = true: ONE outline
+-- (Theme Outline = "World")
+local function label(parent, text, role, size, props, world)
+	local l = Theme.Label(text, role, { Size = size, Outline = world and "World" or nil })
 	l.BackgroundTransparency = 1
 	if props then
 		for key, value in pairs(props) do
@@ -5237,8 +5241,7 @@ local function label(parent, text, role, size, props)
 end
 
 local function smallPill(parent, text, color, props)
-	local dark = Theme.Darken(color, 0.62)
-	local l = Theme.Label(text, "Heading", { Size = 15, Stroke = 0.1, StrokeColor = dark, Outline = 1.5, OutlineColor = dark })
+	local l = Theme.Label(text, "Heading", { Size = 15 })
 	l.Name = "Pill"
 	l.BackgroundTransparency = 0
 	l.BackgroundColor3 = color
@@ -5246,7 +5249,7 @@ local function smallPill(parent, text, color, props)
 	l.AutomaticSize = Enum.AutomaticSize.X
 	l.Size = UDim2.fromOffset(0, 22)
 	l.TextXAlignment = Enum.TextXAlignment.Center
-	Theme.Corner(l, UDim.new(0, 11))
+	Theme.Corner(l, "M")
 	Theme.Stroke(l, COLORS.Navy, 2, 0)
 	make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, l)
 	if props then
@@ -5325,7 +5328,7 @@ end
 -- the key hint chip (desktop / gamepad)
 local function keyChip(parent, text, props)
 	local chip = make("Frame", { Name = "Key", BackgroundColor3 = Theme.Colors.PanelInk or COLORS.Navy, BorderSizePixel = 0, Size = UDim2.fromOffset(30, 24), ZIndex = 8 }, parent)
-	Theme.Corner(chip, UDim.new(0, 7))
+	Theme.Corner(chip, "M")
 	Theme.Stroke(chip, COLORS.White, 1.5, 0.3)
 	local l = label(chip, text, "Heading", 15, { Name = "Text", Size = UDim2.fromScale(1, 1), ZIndex = 9, TextXAlignment = Enum.TextXAlignment.Center })
 	if props then
@@ -5381,7 +5384,7 @@ local function newPie(parent, name, size, color, z)
 		ZIndex = z or 2,
 	}, parent)
 	local track = make("Frame", { Name = "Track", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = z or 2 }, root)
-	Theme.Corner(track, UDim.new(0.5, 0))
+	Theme.Corner(track, "Round")
 	local pie = { Root = root, Track = track, frac = -1, color = color }
 	for _, side in ipairs({ "R", "L" }) do
 		local clip = make("Frame", {
@@ -5401,7 +5404,7 @@ local function newPie(parent, name, size, color, z)
 			Visible = false,
 			ZIndex = z or 2,
 		}, clip)
-		Theme.Corner(disc, UDim.new(0.5, 0))
+		Theme.Corner(disc, "Round")
 		local g = make("UIGradient", { Name = "Sweep", Transparency = SWEEP, Rotation = 0 }, disc)
 		pie[side] = { clip = clip, disc = disc, g = g }
 	end
@@ -5530,27 +5533,27 @@ function Hud.BuildFighter()
 	F.Level = smallPill(body, "Lv 1", COLORS.LevelPill, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None })
 	F.Level.TextSize = 17
 	F.Element = make("Frame", { Name = "Element", BackgroundColor3 = COLORS.Ally, BorderSizePixel = 0 }, body)
-	Theme.Corner(F.Element, UDim.new(0.5, 0))
+	Theme.Corner(F.Element, "Round")
 	Theme.Stroke(F.Element, COLORS.White, 1.5, 0.25)
 	F.ElementGlyph = label(F.Element, "", "Display", 16, { Name = "Glyph", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
 	F.Stars = label(body, "", "Heading", 18, { Name = "Stars", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.Gold })
 	-- HP: track, the red loss trail, the green fill, the numbers
 	F.Hp = make("Frame", { Name = "Hp", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, body)
-	Theme.Corner(F.Hp, UDim.new(0, 7))
+	Theme.Corner(F.Hp, "M")
 	Theme.Stroke(F.Hp, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
 	F.HpLoss = make("Frame", { Name = "Loss", BackgroundColor3 = COLORS.Loss, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
-	Theme.Corner(F.HpLoss, UDim.new(0, 7))
+	Theme.Corner(F.HpLoss, "M")
 	F.HpFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.HpGreen, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
-	Theme.Corner(F.HpFill, UDim.new(0, 7))
+	Theme.Corner(F.HpFill, "M")
 	make("UIGradient", { Name = "Shine", Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(190, 200, 190)) }, F.HpFill)
 	F.HpTag = label(F.Hp, "HP", "Heading", 16, { Name = "Tag", ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Left })
 	F.HpText = label(F.Hp, "", "Heading", 16, { Name = "Text", ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Right })
 	-- ENERGY (the special meter)
 	F.Energy = make("Frame", { Name = "Energy", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, body)
-	Theme.Corner(F.Energy, UDim.new(0, 5))
+	Theme.Corner(F.Energy, "S")
 	Theme.Stroke(F.Energy, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
 	F.EnergyFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.Energy, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1) }, F.Energy)
-	Theme.Corner(F.EnergyFill, UDim.new(0, 5))
+	Theme.Corner(F.EnergyFill, "S")
 	F.EnergyText = label(body, "ENERGY 0/100", "Label", 15, { Name = "EnergyText", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.EnergyText })
 	F.Lives = make("Frame", { Name = "Lives", BackgroundTransparency = 1 }, body)
 	F.Hearts = {}
@@ -5582,7 +5585,7 @@ function Hud.BuildHelper(i)
 		Position = UDim2.fromScale(0.5, 0.5),
 		ZIndex = 4,
 	}, H.Disc)
-	Theme.Corner(face, UDim.new(0.5, 0))
+	Theme.Corner(face, "Round")
 	H.FaceStroke = Theme.Stroke(face, COLORS.Ally, 3, 0)
 	H.Face = face
 	H.View = make("ViewportFrame", {
@@ -5595,17 +5598,17 @@ function Hud.BuildHelper(i)
 	}, face)
 	H.Initial = label(face, "", "Display", 26, { Name = "Initial", Size = UDim2.fromScale(1, 1), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center })
 	H.KO = label(face, "KO", "Title", 22, { Name = "KO", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextColor3 = COLORS.White, BackgroundTransparency = 0.35, BackgroundColor3 = Color3.fromRGB(40, 44, 60) })
-	Theme.Corner(H.KO, UDim.new(0.5, 0))
+	Theme.Corner(H.KO, "Round")
 	H.Count = label(face, "", "Display", 24, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
 	H.Level = smallPill(cell, "Lv 1", COLORS.LevelPill, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None, ZIndex = 8 })
 	H.Level.TextSize = 16
-	H.Buff = label(cell, "", "Heading", 15, { Name = "Buff", TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
-	H.Swap = make("TextButton", { Name = "Swap", Text = GLYPH.Swap .. " SWAP", AutoButtonColor = true, BackgroundColor3 = Color3.fromRGB(40, 60, 120), BorderSizePixel = 0, ZIndex = 6 }, cell)
-	Theme.Style(H.Swap, "Button", { Size = 15, Stroke = 0.2, Outline = 1.5 })
-	Theme.Corner(H.Swap, UDim.new(0, 10))
+	H.Buff = label(cell, "", "Heading", 15, { Name = "Buff", TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd }, true)
+	H.Swap = make("TextButton", { Name = "Swap", Text = GLYPH.Swap .. " Swap", AutoButtonColor = true, BackgroundColor3 = Color3.fromRGB(40, 60, 120), BorderSizePixel = 0, ZIndex = 6 }, cell)
+	Theme.Style(H.Swap, "Button", { Size = 15 })
+	Theme.Corner(H.Swap, "M")
 	H.SwapStroke = Theme.Stroke(H.Swap, COLORS.SwapEdge, 2, 0)
 	H.SwapFill = make("Frame", { Name = "HoldFill", BackgroundColor3 = COLORS.White, BackgroundTransparency = 0.7, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = 7, Visible = false }, H.Swap)
-	Theme.Corner(H.SwapFill, UDim.new(0, 10))
+	Theme.Corner(H.SwapFill, "M")
 	H.Key = keyChip(cell, "1", { Name = "Key" })
 	local index = i
 	face.InputBegan:Connect(function(input)
@@ -5684,11 +5687,11 @@ function Hud.BuildActions()
 		}, Hud.cmd)
 		A.Button = b
 		A.Glow = make("Frame", { Name = "Glow", BackgroundColor3 = COLORS.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 14, 1, 14), ZIndex = 1 }, b)
-		Theme.Corner(A.Glow, UDim.new(0.5, 0))
+		Theme.Corner(A.Glow, "Round")
 		A.Ring = newPie(b, "Ring", 10, COLORS.Action[kind], 2)
 		A.Ring.Root.Size = UDim2.new(1, 0, 1, 0)
 		local face = make("Frame", { Name = "Face", BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -10, 1, -10), ZIndex = 3 }, b)
-		Theme.Corner(face, UDim.new(0.5, 0))
+		Theme.Corner(face, "Round")
 		local base = COLORS.Action[kind]
 		A.FaceGradient = make("UIGradient", { Name = "Fill", Rotation = 90, Color = ColorSequence.new(Theme.Darken(base, 0.35), Theme.Darken(base, 0.72)) }, face)
 		A.FaceStroke = Theme.Stroke(face, Theme.Lighten(base, 0.25), 2.5, 0)
@@ -5696,7 +5699,7 @@ function Hud.BuildActions()
 		A.Glyph = label(face, GLYPH[kind] or "", "Display", 30, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Center })
 		A.Count = label(face, "", "Display", 26, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 5, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
 		-- (Label: the narrower caption face, so "MARSHMALLOW" stays one word on one line)
-		A.Caption = label(b, string.upper(kind), "Label", K.CAPTION_TEXT, { Name = "Caption", AnchorPoint = Vector2.new(0.5, 0), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true })
+		A.Caption = label(b, string.upper(kind), "Label", K.CAPTION_TEXT, { Name = "Caption", AnchorPoint = Vector2.new(0.5, 0), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true }, true)
 		make("UITextSizeConstraint", { Name = "NameSize", MinTextSize = K.NAME_MIN_PX, MaxTextSize = K.NAME_MAX_PX }, A.Caption)
 		A.Key = keyChip(b, Hud.KeyText(kind), { Name = "Key", AnchorPoint = Vector2.new(0.5, 0.5) })
 		Hud.buttons[kind] = A
@@ -5737,12 +5740,12 @@ function Hud.BuildTop()
 	Hud.timer = label(mode.Body, "", "Display", 24, { Name = "Timer", TextXAlignment = Enum.TextXAlignment.Right })
 	local boss = make("Frame", { Name = "BossBar", BackgroundTransparency = 1, Visible = false }, top)
 	Hud.boss = boss
-	Hud.bossName = label(boss, "", "Heading", 18, { Name = "BossName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
+	Hud.bossName = label(boss, "", "Heading", 18, { Name = "BossName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, true)
 	Hud.bossTrack = make("Frame", { Name = "Hp", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, boss)
-	Theme.Corner(Hud.bossTrack, UDim.new(0, 8))
+	Theme.Corner(Hud.bossTrack, "M")
 	Theme.Stroke(Hud.bossTrack, Theme.Colors.PanelInk or COLORS.Navy, 2.5, 0)
 	Hud.bossFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.Enemy, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, Hud.bossTrack)
-	Theme.Corner(Hud.bossFill, UDim.new(0, 8))
+	Theme.Corner(Hud.bossFill, "M")
 	Hud.bossText = label(Hud.bossTrack, "", "Heading", 16, { Name = "Text", Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
 	Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1 }, top)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, Hud.pills)
@@ -5764,22 +5767,22 @@ local function rowFor(i)
 	end
 	row = {}
 	local f = make("TextButton", { Name = "Row" .. i, Text = "", AutoButtonColor = false, BackgroundColor3 = Theme.Colors.PanelTop or COLORS.Panel, BackgroundTransparency = 0.12, BorderSizePixel = 0 }, Hud.enemies)
-	Theme.Corner(f, UDim.new(0, 12))
+	Theme.Corner(f, "M")
 	row.Stroke = Theme.Stroke(f, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
 	make("UIGradient", { Name = "Fill", Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 156, 186)) }, f)
 	row.Frame = f
 	row.Stripe = make("Frame", { Name = "Element", BorderSizePixel = 0, BackgroundColor3 = COLORS.Ally }, f)
-	Theme.Corner(row.Stripe, UDim.new(0, 3))
+	Theme.Corner(row.Stripe, "S")
 	row.Icon = make("Frame", { Name = "Icon", BorderSizePixel = 0, BackgroundColor3 = COLORS.Enemy, ZIndex = 2 }, f)
-	Theme.Corner(row.Icon, UDim.new(0.5, 0))
+	Theme.Corner(row.Icon, "Round")
 	row.IconStroke = Theme.Stroke(row.Icon, COLORS.White, 2, 0.2)
 	row.IconText = label(row.Icon, "", "Display", 20, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center })
 	row.Alert = label(row.Icon, "!", "Title", 24, { Name = "Alert", Size = UDim2.fromScale(1, 1), ZIndex = 4, Visible = false, TextColor3 = COLORS.Alert, BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(120, 30, 40) })
-	Theme.Corner(row.Alert, UDim.new(0.5, 0))
+	Theme.Corner(row.Alert, "Round")
 	row.Name = label(f, "", "Body", 18, { Name = "PetName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2 })
 	row.Hp = thinBar(f, "Hp", 9, COLORS.Enemy, { ZIndex = 2 })
 	row.Bracket = make("Frame", { Name = "Bracket", BackgroundTransparency = 1, Size = UDim2.new(1, 8, 1, 8), Position = UDim2.fromOffset(-4, -4), Visible = false, ZIndex = 1 }, f)
-	Theme.Corner(row.Bracket, UDim.new(0, 15))
+	Theme.Corner(row.Bracket, "M")
 	Theme.Stroke(row.Bracket, COLORS.Gold, 3, 0)
 	row.Target = smallPill(f, "TARGET", COLORS.Gold, { Name = "Target", Visible = false, ZIndex = 5 })
 	row.Target.TextColor3 = Theme.Colors.PanelInk or COLORS.Navy
@@ -6140,7 +6143,9 @@ function Hud.PlaceFace(A, d, m)
 	cap.TextScaled = inFace
 	local outline = cap:FindFirstChild("TextOutline")
 	if outline then
-		outline.Thickness = inFace and 1 or 2 -- (a thick outline fills in small letters)
+		-- in the face it sits on the button's plate (no outline, kit-b U6); under the button it floats over the arena
+		outline.Thickness = 2
+		outline.Transparency = inFace and 1 or 0
 	end
 	if inFace then
 		cap.TextTruncate = Enum.TextTruncate.None
@@ -6266,7 +6271,7 @@ function Hud.LayoutFighter(B, m)
 			H.Disc.Size = UDim2.fromOffset(ringD, ringD)
 			H.Level.Position = UDim2.fromOffset(ringD / 2 - 24, ringD - 14)
 			H.Level.Size = UDim2.fromOffset(48, 18)
-			H.Buff.Font = Theme.Fonts.Label
+			Theme.SetRole(H.Buff, "Label")
 			H.Buff.Position = UDim2.fromOffset(ringD + 6, 0)
 			H.Buff.Size = UDim2.fromOffset(cellW - ringD - 6, 22)
 			H.Buff.TextXAlignment = Enum.TextXAlignment.Left
@@ -6279,7 +6284,7 @@ function Hud.LayoutFighter(B, m)
 			H.Disc.Size = UDim2.fromOffset(ringD, ringD)
 			H.Level.Position = UDim2.fromOffset(cellW / 2 - 28, ringD - 12)
 			H.Level.Size = UDim2.fromOffset(56, 20)
-			H.Buff.Font = Theme.Fonts.Heading
+			Theme.SetRole(H.Buff, "Heading")
 			H.Buff.Position = UDim2.fromOffset(0, ringD + 12)
 			H.Buff.Size = UDim2.fromOffset(cellW, 20)
 			H.Buff.TextXAlignment = Enum.TextXAlignment.Center
@@ -6457,6 +6462,8 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		Hud.bossTrack.Position = UDim2.fromOffset(0, nameH)
 		Hud.bossTrack.Size = UDim2.fromOffset(w, 26)
 		Hud.bossFill.BackgroundColor3 = elementColor(bossUnit.element):Lerp(COLORS.Enemy, 0.5)
+		-- kit-b U6: no outline on the bar any more, so the text takes the colour that reads on its fill
+		Hud.bossText.TextColor3 = Theme.TextOn(Hud.bossFill.BackgroundColor3)
 		setText(Hud.bossName, (bossUnit.kind == "MiniBoss" and (GLYPH.Crown .. " ") or "") .. bossUnit.name)
 		setText(Hud.bossElement, tostring(bossUnit.element or "?"))
 		Hud.bossElement.BackgroundColor3 = elementColor(bossUnit.element)
@@ -6739,7 +6746,7 @@ function Hud.Update(B, now, force)
 			if swapLeft > 0.05 and not down then
 				setText(H.Swap, GLYPH.Swap .. " " .. math.ceil(swapLeft - 0.05))
 			else
-				setText(H.Swap, GLYPH.Swap .. " SWAP")
+				setText(H.Swap, GLYPH.Swap .. " Swap")
 			end
 		end
 		H.index = i
@@ -6974,7 +6981,7 @@ function Hud.ShowResult(B, payload)
 		if not b then
 			b = make("TextButton", { Name = "OkButton", Text = "OK", Size = size, BackgroundColor3 = Theme.Buttons.Green, AutoButtonColor = true }, body)
 			Theme.Style(b, "Button", { Size = 22 })
-			Theme.Corner(b, UDim.new(0, 12))
+			Theme.Corner(b, "M")
 			b.Activated:Connect(function()
 				Hud.HideResult()
 			end)
@@ -7198,9 +7205,9 @@ function Leave.TopW(B)
 end
 
 function Leave.Make(parent, textSize)
-	local b = make("TextButton", { Name = "LeaveButton", Text = "LEAVE", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Pink, BorderSizePixel = 0, Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H), Visible = false, ZIndex = 4 }, parent)
-	Theme.Style(b, "Button", { Size = textSize, Stroke = 0.2, Outline = 2 })
-	Theme.Corner(b, UDim.new(0, 12))
+	local b = make("TextButton", { Name = "LeaveButton", Text = "Leave", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Pink, BorderSizePixel = 0, Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H), Visible = false, ZIndex = 4 }, parent)
+	Theme.Style(b, "Button", { Size = textSize })
+	Theme.Corner(b, "M")
 	Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
 	b.TextWrapped = true
 	b:SetAttribute("BaseText", textSize)
@@ -7219,7 +7226,7 @@ function Leave.State(now, mode)
 	elseif now < Leave.armedUntil then
 		return (mode == "Raid") and "No reward! Tap again" or "Sure? Tap again", "Red"
 	end
-	return "LEAVE", "Pink"
+	return "Leave", "Pink"
 end
 
 function Leave.Paint()
@@ -7415,14 +7422,14 @@ end
 
 function CheerUp.Make(parent)
 	local glow = make("Frame", { Name = "CheerGlow", BackgroundColor3 = COLORS.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 3 }, parent)
-	Theme.Corner(glow, UDim.new(0, 18))
+	Theme.Corner(glow, "M")
 	local b = make("TextButton", { Name = "Cheer", Text = "Cheer up!", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Gold, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
-	Theme.Style(b, "Button", { Size = 20, Stroke = 0.2, Outline = 2 })
-	Theme.Corner(b, UDim.new(0, 12))
+	Theme.Style(b, "Button", { Size = 20, Color = Theme.TextOn(Theme.Buttons.Gold) }) -- brown on gold (kit-b U6: no outline)
+	Theme.Corner(b, "M")
 	Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
 	b:SetAttribute("BaseText", 20)
 	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.35, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
-	Theme.Corner(sweep, UDim.new(0, 12))
+	Theme.Corner(sweep, "M")
 	b.Activated:Connect(function()
 		BattleController.Cheer()
 	end)
@@ -7561,12 +7568,12 @@ end
 
 function Retreat.Make(parent)
 	local b = make("TextButton", { Name = "Retreat", Text = "Retreat", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Blue, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
-	Theme.Style(b, "Button", { Size = 20, Stroke = 0.2, Outline = 2 })
-	Theme.Corner(b, UDim.new(0, 12))
+	Theme.Style(b, "Button", { Size = 20 })
+	Theme.Corner(b, "M")
 	local stroke = Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
 	b:SetAttribute("BaseText", 20)
 	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.35, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
-	Theme.Corner(sweep, UDim.new(0, 12))
+	Theme.Corner(sweep, "M")
 	local key = label(b, Hud.KeyText("Retreat"), "Label", 14, { Name = "Key", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6 })
 	b.Activated:Connect(function()
 		BattleController.Retreat()
@@ -7670,7 +7677,7 @@ end
 function AreaWarn.Make(parent)
 	local b = label(parent, "", "Title", K.AREA_TEXT, { Name = "AreaWarn", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(K.AREA_W, K.AREA_H), TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = COLORS.White, BackgroundColor3 = Theme.Darken(COLORS.Enemy, 0.35), BackgroundTransparency = 0.08, Visible = false, ZIndex = 7 })
 	b:SetAttribute("BaseText", K.AREA_TEXT)
-	Theme.Corner(b, UDim.new(0, 14))
+	Theme.Corner(b, "M")
 	Theme.Stroke(b, COLORS.Alert, 3, 0)
 	make("UIPadding", { PaddingTop = UDim.new(0, 8) }, b)
 	local sub = label(b, "Or you leave the raid.", "Body", K.AREA_SUB_TEXT, { Name = "Sub", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6), Size = UDim2.new(1, -16, 0, 24), TextColor3 = COLORS.Alert, TextWrapped = true, ZIndex = 8 })
@@ -8066,7 +8073,7 @@ function Ring.Tag(B, u, root, h)
 		ResetOnSpawn = false,
 	})
 	local plate = make("Frame", { Name = "Plate", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, th) }, gui)
-	Theme.Corner(plate, UDim.new(0, 9))
+	Theme.Corner(plate, "M")
 	Theme.Stroke(plate, Ring.GOLD, 2, 0)
 	local l = label(plate, name, "Heading", px, { Name = "Name", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Ring.GOLD })
 	l.TextStrokeColor3 = COLORS.Ink

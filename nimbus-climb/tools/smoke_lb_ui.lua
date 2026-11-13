@@ -388,7 +388,8 @@ S.client_leaderboard = guarded("client_leaderboard", function()
 		KC.toClient("LeaderboardState", G.state({ Trophies = long }))
 		KC.advance(0.2)
 		local nameL = G.nm(r1)
-		local w = TextService:GetTextSize(nameL.Text, nameL.TextSize, nameL.Font, Vector2.new(4096, 1024)).X
+		-- (kit-b U6) a Nunito face reads .Font = Unknown, which GetTextSize refuses: Theme.MeasureLabel knows the face
+		local w = Theme.MeasureLabel(nameL).X
 		T.check(nameL.Text == long[1].Name and (w <= nameL.AbsoluteSize.X or nameL.TextTruncate ~= Enum.TextTruncate.None), "leaderboard: a 20-character name fits its box (or truncates)",
 			fmt("text %d px in a %d px box", w, nameL.AbsoluteSize.X))
 		T.eq(r1.Value.Text, "1T", "leaderboard: a value of 1e12 reads 1T")

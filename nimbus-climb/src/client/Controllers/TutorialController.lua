@@ -304,14 +304,12 @@ local function gradient(parent, top, bottom)
 	return make("UIGradient", "Gradient", { Color = ColorSequence.new(top, bottom), Rotation = 90 }, parent)
 end
 
--- A Theme-styled label with a thick glyph outline (reads on any background).
+-- A Theme-styled label. kit-b U6: the tutorial panel is a plate, so no outline (the guide sign over the world keeps its
+-- own, below, until the world sign wave moves world text to kit B).
 local function label(parent, name, text, role, size, color, props)
 	local obj = Theme.Label(text, role, {
 		Size = size,
 		Color = color or C.White,
-		Stroke = 1,
-		Outline = 2,
-		OutlineColor = C.Stroke,
 	})
 	obj.Name = name
 	if props then
@@ -342,7 +340,7 @@ local function button(props)
 		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
 		Text = props.Text or "",
 	})
-	Theme.Style(obj, "Button", { Size = props.TextSize or K.BUTTON_SIZE, Stroke = 1, Outline = 2, OutlineColor = C.Stroke })
+	Theme.Style(obj, "Button", { Size = props.TextSize or K.BUTTON_SIZE })
 	corner(obj, 12)
 	stroke(obj, C.Navy, 3, 0)
 	if props.Callback then
@@ -527,7 +525,7 @@ local function bodyHeight(text, width)
 	local perLine = math.max(8, math.floor(width / (K.BODY_SIZE * 0.52)))
 	local estimate = math.max(1, math.ceil(#text / perLine)) * math.ceil(K.BODY_SIZE * 1.2) + 6
 	local ok, size = pcall(function()
-		return TextService:GetTextSize(text, K.BODY_SIZE, Theme.Fonts.Body, Vector2.new(width, 10000))
+		return Theme.Measure(text, "Body", K.BODY_SIZE, width)
 	end)
 	if ok and size and size.Y > 0 and size.X <= width + 1 then
 		return math.ceil(size.Y) + 6
@@ -538,7 +536,7 @@ end
 -- Single-line text width (design px); a rough per-character estimate when TextService cannot measure.
 local function textWidth(text, size, font)
 	local ok, measured = pcall(function()
-		return TextService:GetTextSize(text, size, font, Vector2.new(10000, 10000))
+		return Theme.Measure(text, font, size, 10000)
 	end)
 	if ok and measured and measured.X > 0 then
 		return measured.X
@@ -1438,7 +1436,7 @@ local function buildPanel()
 		Text = "Skip tutorial",
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, footer)
-	Theme.Style(skip, "Label", { Size = K.CAPTION_SIZE, Color = C.Muted, Stroke = 1, Outline = 2, OutlineColor = C.Stroke })
+	Theme.Style(skip, "Label", { Size = K.CAPTION_SIZE, Color = C.Muted })
 	UI.SkipUnderline = box("Underline", {
 		BackgroundTransparency = 0.35,
 		BackgroundColor3 = C.Muted,
@@ -2306,6 +2304,9 @@ local function buildWorldGuide()
 		TextWrapped = false,
 		LayoutOrder = 2,
 	})
+	-- world text: the World text rule (smoke_polish_worldtext) keeps its 2 px outline until the world sign wave
+	Theme.TextOutline(W.signName, 2, C.Stroke, 0)
+	Theme.TextOutline(W.signDistance, 2, C.Stroke, 0)
 end
 
 local function setWorldActive(on)

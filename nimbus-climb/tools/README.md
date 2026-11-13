@@ -251,7 +251,15 @@ python3 tools/render_gui.py match --crop 0,920,420,160 --scale 3 -o hp.png   # z
 python3 tools/render_gui.py npc --mark-small --boxes -o npc.png      # red frames on small text, every box outlined
 python3 tools/render_gui.py gallery -o gallery.png                   # renderer check: one cell per feature, known values
 python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal's world GUIs (billboard + countdown face)
+python3 tools/stroke_walk.py                                         # kit B: the stroke rule over every render scenario's dump
+python3 tools/stroke_walk.py --casing --bare lobby shop              # + the casing rule, + texts with no plate and no outline
 ```
+
+`stroke_walk.py` (kit-b U6) dumps the render scenarios one at a time (default: all but the widget galleries, at 1920x1080;
+`--grid` adds the other three sizes) and fails on any text with a classic stroke under an outline, or an outline on an
+opaque panel (kit B "stroke or panel, never both"). `--casing` lists Button-role texts in capitals and Tag-role texts with
+lower case; `--bare` lists texts with no outline and no backdrop, the candidates for `Outline = "World"`. `--warn` only
+reports.
 
 * Scenarios: `lobby`, `title` (title card up), `match` / `match:hit` (a quarter second after a hit), `countdown`,
   `party` (portal party panel), `results`, `menu:<Window>[:<Tab or Index group>]`, `tutorial[:<step>]`, `npc[:<n>]`,

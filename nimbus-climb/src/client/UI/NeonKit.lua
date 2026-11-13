@@ -2,8 +2,10 @@
 -- cards with a glowing neon border in their own colour, a soft coloured floor glow, big glossy icons on orbs and bold
 -- white GothamBlack labels with a dark stroke. Premium, game-y, and never in the way: the window rule (SideRect /
 -- Dock) keeps every window docked at the right edge (landscape) or as a bottom sheet (portrait).
+-- kit-b U6: the tile label, the badge mark, the pill's glyph and count and the button text sit on their own card, so
+-- they carry no outline any more (kit B "stroke or panel, never both").
 --
---   NeonKit.Card(props)   -> { Root, Body, Stroke, Glow, Floor, SetColor(color), SetGlow(on) }
+--   NeonKit.Card(props)  -> { Root, Body, Stroke, Glow, Floor, SetColor(color), SetGlow(on) }
 --   NeonKit.Tile(props)   -> { Root, Card, Orb, Icon, Label, SetBadge(on), SetColor(color), SetLabel(text), SetIcon(id) }
 --   NeonKit.Orb(parent, color, size)  -> Frame (a glossy disc; centred in its parent unless moved)
 --   NeonKit.Icon(parent, id, size)    -> TextLabel (emoji glyph) | ImageLabel (when Config.Icons[id] = "rbxassetid://n");
@@ -57,7 +59,7 @@ NeonKit.Metrics = {
 	TileOrb = 0.62, -- orb diameter x tile size
 	TileLabel = 0.2, -- label text size x tile size
 	TileLabelMin = 18, -- ... never below this (14.4 px on a phone at the 0.8 scale)
-	LabelStroke = 2.5, -- the dark stroke of a tile label
+	LabelStroke = 0, -- (kit-b U6) a tile label sits on its card: no outline (was a 2.5 px dark stroke)
 	Margin = 12, -- window rule: screen margin x the screen factor
 	Inset = 58, -- window rule: Roblox's top bar
 	SideMaxW = 0.44, -- landscape: a docked window is at most this much of the width
@@ -509,9 +511,6 @@ function NeonKit.Tile(props)
 	if hasLabel then
 		label = Theme.Label(props.Label, "Button", {
 			Size = math.max(MX.TileLabelMin, math.floor(s * MX.TileLabel + 0.5)),
-			Stroke = 1,
-			Outline = MX.LabelStroke,
-			OutlineColor = INK,
 			Props = {
 				Name = "Label",
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -536,9 +535,6 @@ function NeonKit.Tile(props)
 	stroke(badge, INK, 2, 0)
 	local mark = Theme.Label("!", "Button", {
 		Size = math.max(MX.TileLabelMin, math.floor(s * 0.2 + 0.5)),
-		Stroke = 1,
-		Outline = 1.5,
-		OutlineColor = INK,
 		Props = { Name = "Mark", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center },
 	})
 	mark.Parent = badge
@@ -657,9 +653,6 @@ function NeonKit.Pill(props)
 		round(shine)
 		glyph = Theme.Label(props.Glyph, "Display", {
 			Size = math.floor(coinD * 0.56 + 0.5),
-			Stroke = 1,
-			Outline = 2,
-			OutlineColor = Theme.Darken(color, 0.65),
 			Props = { Name = "Glyph", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center },
 		})
 		glyph.Parent = coin
@@ -667,9 +660,6 @@ function NeonKit.Pill(props)
 	local textLeft = hasCoin and (coinD - left + 6) or math.floor(h * 0.45)
 	local text = Theme.Label(tostring(props.Text or ""), props.Font or "Display", {
 		Size = tonumber(props.TextSize) or math.floor(h * 0.62 + 0.5),
-		Stroke = 1,
-		Outline = 2.5,
-		OutlineColor = INK,
 		Props = {
 			Name = "Text",
 			Position = UDim2.fromOffset(textLeft, 0),
@@ -723,7 +713,7 @@ function NeonKit.Button(props)
 	button.Active = true
 	button.Text = tostring(props.Text or "")
 	button.TextTruncate = Enum.TextTruncate.AtEnd
-	Theme.Style(button, "Button", { Size = props.TextSize or 22, Stroke = 1, Outline = 2, OutlineColor = INK })
+	Theme.Style(button, "Button", { Size = props.TextSize or 22 })
 	Util.Create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = button })
 	local outline = button:FindFirstChild("TextOutline")
 	local fx

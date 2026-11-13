@@ -16,7 +16,6 @@
 /CreditsSign/Head/Plate/Close | TextButton | abs 1849.0,365.5 44.0x44.0 pos {1.0,-10,0.5,0} size {0.0,44,0.0,44} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
 /CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
-/CreditsSign/Head/Plate/Close/TextOutline | UIStroke | #080A1C 2.0 Enum.ApplyStrokeMode.Contextual Enum.LineJoinMode.Round 0.00
 /CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
 /CreditsSign/Head/Plate/Close/Glow | Frame | abs 1845.0,361.5 52.0x52.0 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
 /CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
@@ -88,7 +87,6 @@
 /CreditsSign/Head/Plate/Close | TextButton | abs 1220.4,216.0 37.4x37.4 pos {1.0,-10,0.5,0} size {0.0,44,0.0,44} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
 /CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
-/CreditsSign/Head/Plate/Close/TextOutline | UIStroke | #080A1C 2.0 Enum.ApplyStrokeMode.Contextual Enum.LineJoinMode.Round 0.00
 /CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
 /CreditsSign/Head/Plate/Close/Glow | Frame | abs 1217.0,212.6 44.2x44.2 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
 /CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
@@ -160,7 +158,6 @@
 /CreditsSign/Head/Plate/Close | TextButton | abs 791.8,110.8 30.4x30.4 pos {1.0,-10,0.5,0} size {0.0,38,0.0,38} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
 /CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
-/CreditsSign/Head/Plate/Close/TextOutline | UIStroke | #080A1C 2.0 Enum.ApplyStrokeMode.Contextual Enum.LineJoinMode.Round 0.00
 /CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
 /CreditsSign/Head/Plate/Close/Glow | Frame | abs 788.6,107.6 36.8x36.8 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
 /CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
@@ -232,7 +229,6 @@
 /CreditsSign/Head/Plate/Close | TextButton | abs 338.8,444.8 30.4x30.4 pos {1.0,-10,0.5,0} size {0.0,38,0.0,38} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
 /CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
-/CreditsSign/Head/Plate/Close/TextOutline | UIStroke | #080A1C 2.0 Enum.ApplyStrokeMode.Contextual Enum.LineJoinMode.Round 0.00
 /CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
 /CreditsSign/Head/Plate/Close/Glow | Frame | abs 335.6,441.6 36.8x36.8 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
 /CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16

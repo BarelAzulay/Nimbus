@@ -270,11 +270,12 @@ S.client_raid_gate = guarded("client_raid_gate", function()
 				smallest = math.min(smallest, d.TextSize)
 				local stroke = d:FindFirstChildOfClass("UIStroke")
 				local outlined = d.TextStrokeTransparency <= 0.5 or (stroke ~= nil and stroke.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual and stroke.Thickness >= 1)
-				plated = plated and outlined and d.TextTruncate == Enum.TextTruncate.None and not d.TextScaled and d.Parent:IsA("Frame") and d.Parent.BackgroundTransparency <= 0.25
+				-- kit-b U6 (a deliberate change): on its solid plate a line reads by contrast, with no outline
+				plated = plated and not outlined and d.TextTruncate == Enum.TextTruncate.None and not d.TextScaled and d.Parent:IsA("Frame") and d.Parent.BackgroundTransparency <= 0.25
 			end
 		end
 		local biggest = find(tag, "Line1").TextSize
-		T.check(plated and smallest >= 18 and biggest >= 22, "raid gate client: its lines sit on a solid plate, outlined, >= 18 px, the name >= 22 px", tostring(smallest))
+		T.check(plated and smallest >= 18 and biggest >= 22, "raid gate client: its lines sit on a solid plate, no outline (kit-b U6), >= 18 px, the name >= 22 px", tostring(smallest))
 
 		syncProfile(TEAM_MID, { RaidRewardAt = os.time() - 300 })
 		KC.advance(1.1)

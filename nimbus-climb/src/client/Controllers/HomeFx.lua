@@ -3466,7 +3466,9 @@ function G.newLabel()
 	text.TextStrokeColor3 = Color3.fromRGB(46, 30, 12)
 	text.Parent = gui
 	if Theme then
-		text.Font = Theme.Fonts.Display
+		-- over the world with no plate: ONE outline (kit-b U6: no classic stroke under it)
+		Theme.SetRole(text, "Display")
+		text.TextStrokeTransparency = 1
 		Theme.TextOutline(text, 2, Color3.fromRGB(46, 30, 12), 0)
 	end
 	return { Anchor = anchor, Gui = gui, Text = text }

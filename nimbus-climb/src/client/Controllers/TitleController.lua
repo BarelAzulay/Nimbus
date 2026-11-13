@@ -29,7 +29,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local TextService = game:GetService("TextService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Theme = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Theme"))
@@ -167,7 +166,7 @@ local function build(player, head, kind, text, crown)
 	gui.Adornee = head
 
 	local size = (kind == "Creator") and K.CREATOR_TEXT or K.TEXT
-	local textW = math.ceil(TextService:GetTextSize(text, size, Theme.Fonts.Display, Vector2.new(4096, 1024)).X)
+	local textW = math.ceil(Theme.Measure(text, Theme.Fonts.Display, size, 4096).X)
 	local plateW = math.min(K.WIDTH, textW + 2 * K.PAD)
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"

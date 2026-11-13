@@ -213,7 +213,7 @@ local function frame(name, parent, props)
 end
 
 local function label(name, parent, text, role, size, props)
-	local l = Theme.Label(text or "", role, { Size = size, Stroke = 1, Outline = 2 })
+	local l = Theme.Label(text or "", role, { Size = size })
 	l.Name = name
 	l.BackgroundTransparency = 1
 	l.TextWrapped = false
@@ -251,7 +251,7 @@ function H.textW(text, size, font)
 		if type(K.MEASURE) == "function" then
 			return Vector2.new(K.MEASURE(text, size, font), size)
 		end
-		return TextService:GetTextSize(text, size, font, Vector2.new(10000, 1000))
+		return Theme.Measure(text, font, size, 10000)
 	end)
 	if ok and typeof(v) == "Vector2" and v.X > 0 then
 		return v.X

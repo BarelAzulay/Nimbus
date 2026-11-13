@@ -477,7 +477,7 @@ function H.textW(text, size, role)
 		if type(K.MEASURE) == "function" then
 			return Vector2.new(K.MEASURE(text, size, font), size)
 		end
-		return TextService:GetTextSize(text, size, font, Vector2.new(100000, 1000))
+		return Theme.Measure(text, font, size, 100000)
 	end)
 	if ok and typeof(v) == "Vector2" and v.X > 0 then
 		return v.X

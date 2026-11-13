@@ -182,7 +182,7 @@ local function guiInset()
 end
 
 local function label(parent, name, text, role, size, props)
-	local l = Theme.Label(text, role, { Size = size, Stroke = 1, Outline = 2, Props = props })
+	local l = Theme.Label(text, role, { Size = size, Props = props })
 	l.Name = name
 	l.Parent = parent
 	return l

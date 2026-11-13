@@ -417,10 +417,9 @@ function P.build(rec)
 	label.TextStrokeColor3 = INK
 	label.Parent = plate
 	if Theme then
-		label.Font = Theme.Fonts.Title
-		if type(Theme.TextOutline) == "function" then
-			Theme.TextOutline(label, 2, INK, 0)
-		end
+		-- (kit-b U6) the name sits on its plate: no outline and no classic stroke (the stroke above is the no-Theme fallback)
+		Theme.SetRole(label, "Title")
+		label.TextStrokeTransparency = 1
 	end
 	rec.Model, rec.Items, rec.Gui, rec.Label = model, items, gui, label
 	rec.PlacedScale, rec.PlacedFade = nil, nil

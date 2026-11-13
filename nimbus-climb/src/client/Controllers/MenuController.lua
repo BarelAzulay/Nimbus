@@ -339,7 +339,8 @@ local function makeFrame(parent, name, props)
 	return Util.Create("Frame", p)
 end
 
--- Theme-styled TextLabel (stroke + glyph outline, readable on any panel) with optional property overrides.
+-- Theme-styled TextLabel with optional property overrides. kit-b U6: every menu text sits on its window or card, so it
+-- reads by contrast and has no outline (was a 0.25 classic stroke under a 1.5 px glyph outline).
 local function makeText(parent, name, text, role, size, color, props)
 	local p = { Name = name }
 	if props then
@@ -350,29 +351,19 @@ local function makeText(parent, name, text, role, size, color, props)
 	local label = Theme.Label(tostring(text), role, {
 		Size = size,
 		Color = color or WHITE,
-		Stroke = 0.25,
-		StrokeColor = INK,
-		Outline = 1.5,
-		OutlineColor = INK,
 		Props = p,
 	})
-	local faded = tonumber(p.TextTransparency)
-	if faded and faded > 0 then
-		local outline = label:FindFirstChild("TextOutline")
-		if outline then
-			outline.Transparency = math.min(1, faded + 0.2)
-		end
-	end
 	label.Parent = parent
 	return label
 end
 
+-- radius: a Theme.Radius token ("S", "M", "None"; kit-b U6), "M" by default
 local function corner(parent, radius)
-	return Theme.Corner(parent, UDim.new(0, radius or 12))
+	return Theme.Corner(parent, radius or "M")
 end
 
 local function round(parent)
-	return Theme.Corner(parent, UDim.new(0.5, 0))
+	return Theme.Corner(parent, "Round")
 end
 
 local function stroke(parent, color, thickness, transparency)
@@ -426,7 +417,7 @@ local function makeInset(parent, name, props)
 	p.BackgroundColor3 = INSET_COLOR
 	p.BackgroundTransparency = 0.42
 	local inset = makeFrame(parent, name, p)
-	corner(inset, 12)
+	corner(inset, "M")
 	stroke(inset, WELL_EDGE, 3, 0.15)
 	return inset
 end
@@ -486,17 +477,12 @@ local function catalogTotal()
 	return #(PetCatalog.Pets or {})
 end
 
--- A solid coloured pill (tier / hybrid badges, "MAX", locks): white text with a dark outline of its own colour.
+-- A solid coloured pill (tier / hybrid badges, "MAX", locks): white text on its own colour (kit-b U6: no outline).
 local function colorPill(parent, name, text, color, textSize, layoutOrder)
-	local dark = Theme.Darken(color, 0.62)
 	local size = textSize or 18
 	local pill = Theme.Label(text, "Heading", {
 		Size = size,
 		Color = WHITE,
-		Stroke = 0.1,
-		StrokeColor = dark,
-		Outline = 1.5,
-		OutlineColor = dark,
 		Props = {
 			Name = name,
 			BackgroundTransparency = 0,
@@ -697,7 +683,7 @@ local function buildHint()
 		Visible = false,
 		ZIndex = 9,
 	})
-	corner(frame, 12)
+	corner(frame, "M")
 	stroke(frame, NAVY, 3, 0)
 	Theme.Gradient(frame, Colors.PanelLight, Colors.Panel, 90)
 	pad(frame, 14, 8, 14, 8)
@@ -1426,7 +1412,7 @@ local function buildColumn()
 		ZIndex = 3,
 		Parent = column,
 	})
-	corner(tab, 8)
+	corner(tab, "M")
 	U.TabStroke = stroke(tab, Theme.Lighten(Colors.PanelTop or NAVY, 0.35), 2, 0.1)
 	U.TabArrow = makeText(tab, "Arrow", "<", "Display", 26, WHITE, {
 		Size = UDim2.fromScale(1, 1),
@@ -1785,7 +1771,7 @@ local function buildStats(win)
 			BackgroundColor3 = Theme.Darken(difficulty.Color, 0.55),
 			LayoutOrder = index,
 		})
-		corner(row, 12)
+		corner(row, "M")
 		stroke(row, NAVY, 3, 0)
 		local bar = makeFrame(row, "Bar", {
 			Position = UDim2.fromOffset(6, 8),
@@ -2027,7 +2013,7 @@ function P5.heroCard(parent, id, callback)
 		ZIndex = 4,
 		Parent = root,
 	})
-	corner(clip, 18)
+	corner(clip, "M")
 	local shine = makeFrame(clip, "Shine", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = WHITE,
@@ -2667,7 +2653,7 @@ do
 				BackgroundTransparency = 0,
 				BackgroundColor3 = color,
 			})
-			corner(row.Disc, 16)
+			corner(row.Disc, "M")
 			stroke(row.Disc, NAVY, 3, 0)
 			Theme.Gradient(row.Disc, Theme.Lighten(color, 0.35), Theme.Darken(color, 0.2), 90)
 			makeText(row.Disc, "Glyph", tostring(def.Icon or G.House), "Title", 34, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
@@ -2695,7 +2681,7 @@ do
 					BackgroundColor3 = Color3.fromRGB(14, 20, 52),
 					LayoutOrder = i,
 				})
-				corner(pip, 3)
+				corner(pip, "S")
 				stroke(pip, NAVY, 1.5, 0)
 				row.Pips[i] = pip
 			end
@@ -2785,7 +2771,7 @@ do
 			Visible = false,
 			ZIndex = 30,
 		})
-		corner(confirm, 14)
+		corner(confirm, "M")
 		local box = makeFrame(confirm, "Box", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -2794,7 +2780,7 @@ do
 			BackgroundColor3 = WHITE, -- the UIGradient below multiplies this colour
 			ZIndex = 31,
 		})
-		corner(box, 16)
+		corner(box, "M")
 		stroke(box, GOLD, 4, 0)
 		Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
 		H.ConfirmBox = box

@@ -282,7 +282,7 @@ local function place(inst, x, y, w, h)
 end
 
 local function label(parent, name, role, size, props)
-	local l = Theme.Label("", role, { Size = size, Stroke = 0.25, StrokeColor = C.Ink, Outline = 1.5, OutlineColor = C.Ink })
+	local l = Theme.Label("", role, { Size = size })
 	l.Name = name
 	l.BackgroundTransparency = 1
 	l.BorderSizePixel = 0
@@ -654,7 +654,7 @@ end
 function H.width(text, size, font)
 	local plain = tostring(text):gsub("<[^>]*>", "")
 	local ok, v = pcall(function()
-		return TextService:GetTextSize(plain, size, font, Vector2.new(4096, 1024))
+		return Theme.Measure(plain, font, size, 4096)
 	end)
 	if ok and typeof(v) == "Vector2" then
 		return v.X
@@ -683,7 +683,7 @@ function H.wrappedHeight(text, size, font, width)
 	local lines = math.max(1, math.ceil(H.width(text, size, font) / math.max(1, width * 0.9)))
 	local h = lines * lineH
 	local ok, v = pcall(function()
-		return TextService:GetTextSize(text, size, font, Vector2.new(width, 4096))
+		return Theme.Measure(text, font, size, width)
 	end)
 	if ok and typeof(v) == "Vector2" and v.Y > h then
 		h = v.Y

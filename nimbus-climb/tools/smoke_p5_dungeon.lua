@@ -2862,7 +2862,7 @@ local function clientScenarios()
 		KC.toClient("DungeonState", "Lobby", C5.lobby(member))
 		KC.advance(0.6)
 		local ready = C5.find(win, "ReadyButton")
-		T.check(ready and C5.shown(ready) and ready.Text == "READY", "p5dgn client: a member gets READY")
+		T.check(ready and C5.shown(ready) and ready.Text == "Ready", "p5dgn client: a member gets READY")
 		mark = #Mock.RemoteLog
 		Mock.Click(ready)
 		KC.advance(0.3)
@@ -3068,7 +3068,7 @@ local function clientScenarios()
 		mark = #Mock.RemoteLog
 		T.check(C5.find(rgui, "ChestButton") == nil, "p5dgn " .. tag .. ": (#14) the run card has no CHEST button")
 		local chipBtn = chip and C5.find(chip, "LeaveButton")
-		T.check(chipBtn and chipBtn.Text == "LEAVE", "p5dgn " .. tag .. ": (#14) the phone chip's button stays LEAVE in the alcove", chipBtn and chipBtn.Text)
+		T.check(chipBtn and chipBtn.Text == "Leave", "p5dgn " .. tag .. ": (#14) the phone chip's button stays LEAVE in the alcove", chipBtn and chipBtn.Text)
 		status = phone and (chip and C5.find(chip, "Text")) or C5.find(card, "Status")
 		T.check(status and status.Text:find("Pick ONE chest!", 1, true) ~= nil, "p5dgn " .. tag .. ": (#14) the card says 'Pick ONE chest!'", status and status.Text)
 		if phone and chipBtn then

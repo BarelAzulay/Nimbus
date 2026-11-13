@@ -257,6 +257,10 @@ local function serverScenarios()
 		for _, f in pairs(Theme.Fonts) do
 			fonts[f] = true
 		end
+		-- (kit-b U6) a Nunito face reads .Font = Unknown: the Enum font it stands for is Theme.FontOf(d)
+		local function fontOf(d)
+			return Theme.FontOf and Theme.FontOf(d) or d.Font
+		end
 
 		------------------------------------------------------------------------------------------
 		-- 1. billboards (World text rule) + lock walls, on every portal
@@ -294,7 +298,7 @@ local function serverScenarios()
 					if d:IsA("TextLabel") then
 						local floor = (d == info.TitleLabel) and 22 or 18
 						local outlined = d:FindFirstChild("TextOutline") ~= nil or d.TextStrokeTransparency < 0.5
-						textRule:case(not d.TextScaled and d.TextSize >= floor and outlined and fonts[d.Font] == true, id .. ": " .. d.Name .. " (" .. tostring(d.TextSize) .. " px, scaled " .. tostring(d.TextScaled) .. ")")
+						textRule:case(not d.TextScaled and d.TextSize >= floor and outlined and fonts[fontOf(d)] == true, id .. ": " .. d.Name .. " (" .. tostring(d.TextSize) .. " px, scaled " .. tostring(d.TextScaled) .. ")")
 					end
 				end
 				local plate = gui:FindFirstChild("Plate")
@@ -354,7 +358,7 @@ local function serverScenarios()
 				local okText = true
 				for _, d in ipairs(gui:GetDescendants()) do
 					if d:IsA("TextLabel") then
-						okText = okText and not d.TextScaled and fonts[d.Font] == true and (d:FindFirstChild("TextOutline") ~= nil or d.TextStrokeTransparency < 0.5)
+						okText = okText and not d.TextScaled and fonts[fontOf(d)] == true and (d:FindFirstChild("TextOutline") ~= nil or d.TextStrokeTransparency < 0.5)
 					end
 				end
 				local num, top, cnt = letterStuds(face.Num, gui), letterStuds(face.Top, gui), letterStuds(face.Count, gui)
@@ -483,7 +487,7 @@ local function serverScenarios()
 					if d:IsA("TextLabel") then
 						local min = (d.Name == "TitleLabel" or d.Name == "Title") and 22 or 18
 						local outlined = d:FindFirstChild("TextOutline") ~= nil or d:FindFirstChildOfClass("UIStroke") ~= nil or d.TextStrokeTransparency < 0.5
-						if d.TextScaled or d.TextSize < min or not outlined or fonts[d.Font] ~= true then
+						if d.TextScaled or d.TextSize < min or not outlined or fonts[fontOf(d)] ~= true then
 							okText = false
 							bad[#bad + 1] = d.Name .. " " .. tostring(d.TextSize)
 						end

@@ -26,6 +26,10 @@
 -- palette) and `Theme.Radius` (the corner tokens).
 -- U1 review: a Nunito label reads .Font = Enum.Font.Unknown in Roblox (no Enum twin) and TextService:GetTextSize throws on
 -- it, so never measure with lbl.Font: `Theme.FontOf(lbl)` (the Enum font to measure with) and `Theme.MeasureLabel(lbl)`.
+-- U6 (the outline and font sweep): one outline at most. Theme.Style never sets a classic text stroke (an old caller's Stroke
+-- is ignored), so a label is either plain (on a panel, plank, chip or button) or carries ONE outline: Outline = "World"
+-- for text over the 3D world with no plate. Theme.Measure also takes an Enum font (the old GetTextSize helpers), and
+-- Theme.Corner takes "Round" (a pill or a disc) beside the Theme.Radius tokens.
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -370,7 +374,8 @@ Theme.Sign = {
 }
 
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
--- largest token is small. Literal radii move to these in U6.
+-- largest token is small. U6 moved the literal radii of the files it swept to these (tools/check.mjs RADIUS_SWEPT,
+-- rule radius-literal); Theme.Corner(obj, "Round") is the pill / disc (half the short side).
 Theme.Radius = {
 	None = 0,
 	S = 4,
@@ -665,22 +670,18 @@ end
 
 -- Apply a font role (and an outline when asked) to any TextLabel/TextButton/TextBox.
 -- kit B rule: text reads by the contrast of its surface (Theme.TextOn), so there is no stroke unless the caller asks.
--- opts: Size (design px; default Theme.Sizes[role]), Color, Stroke (0..1 transparency of the classic text
---       stroke, default 1 = none), StrokeColor, Scaled (bool), Outline (a thickness: adds Theme.TextOutline and no
---       classic stroke; "World": text over the 3D world with no plate, one outline of the role's world thickness and no
---       classic stroke even when Stroke is passed), OutlineThickness (with "World"), OutlineColor,
---       OnLight (kept for old callers; no stroke any more)
+-- opts: Size (design px; default Theme.Sizes[role]), Color, Scaled (bool), Outline (a thickness: adds Theme.TextOutline;
+--       "World": text over the 3D world with no plate, one outline of the role's world thickness), OutlineThickness (with
+--       "World"), OutlineColor (StrokeColor is read as the outline colour when OutlineColor is not given).
+--       Stroke and OnLight are kept for old callers and do nothing (U6: kit B has no classic text stroke; the label's own
+--       stroke is cleared, so a restyled label never ends with a stroke under its outline).
 function Theme.Style(obj, role, opts)
 	opts = opts or {}
 	Theme.SetRole(obj, role)
 	obj.TextColor3 = opts.Color or Theme.Colors.White
 	obj.TextStrokeColor3 = opts.StrokeColor or Theme.Colors.Ink
 	local world = opts.Outline == "World"
-	local stroke = opts.Stroke
-	if stroke == nil or world then
-		stroke = 1
-	end
-	obj.TextStrokeTransparency = stroke
+	obj.TextStrokeTransparency = 1
 	if opts.Scaled then
 		obj.TextScaled = true
 	elseif opts.Size then
@@ -703,8 +704,13 @@ end
 -- The size of `text` in a role's font at `size` px (wrapped at `width` when given): TextService:GetTextSize with the role's
 -- Enum font, X widened by Theme.MeasureSpare for a FontFace role and rounded up (TextService does not know FontFace;
 -- GetTextBoundsAsync does, but it yields). A wrap width is narrowed by the same factor, so the rows counted are the wider
--- face's. An unknown role measures as Body. Returns a Vector2.
+-- face's. An unknown role measures as Body. `role` may also be an Enum.Font (U6: the old GetTextSize helpers pass the
+-- font they read): measured 1:1 with that font, and Enum.Font.Unknown (a Nunito face read back) as Body. Returns a Vector2.
 function Theme.Measure(text, role, size, width)
+	if typeof(role) == "EnumItem" and role ~= Enum.Font.Unknown then
+		local frame = Vector2.new(tonumber(width) or 100000, 100000)
+		return game:GetService("TextService"):GetTextSize(tostring(text or ""), tonumber(size) or 14, role, frame)
+	end
 	if not Theme.Fonts[role] then
 		role = "Body"
 	end
@@ -743,9 +749,12 @@ function Theme.Face(obj, role)
 	end))
 end
 
--- radius: a UDim, a number of px or a Theme.Radius token name ("None", "S", "M"); default 12 px.
+-- radius: a UDim, a number of px, a Theme.Radius token name ("None", "S", "M") or "Round" (a pill / disc); default 12 px
+-- (the swept files always name a token).
 function Theme.Corner(parent, radius)
-	if type(radius) == "string" then
+	if radius == "Round" then
+		radius = UDim.new(0.5, 0)
+	elseif type(radius) == "string" then
 		radius = Theme.Radius[radius] or 0
 	end
 	if type(radius) == "number" then

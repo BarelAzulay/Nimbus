@@ -130,7 +130,7 @@ local function showHint()
 	if theme then
 		pcall(function()
 			size = tonumber(theme.ScaledSize(20)) or 20
-			label.Font = theme.Fonts.Button
+			theme.SetRole(label, "Button")
 		end)
 	end
 	label.TextSize = size
@@ -147,9 +147,7 @@ local function showHint()
 	pad.PaddingLeft = UDim.new(0, 18)
 	pad.PaddingRight = UDim.new(0, 18)
 	pad.Parent = label
-	if theme and type(theme.TextOutline) == "function" then
-		pcall(theme.TextOutline, label)
-	end
+	-- (kit-b U6) the hint is its own dark pill: no outline on its text
 	label.Parent = gui
 	gui.Parent = pg
 	St.HintGui = gui

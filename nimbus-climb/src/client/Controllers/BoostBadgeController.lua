@@ -157,7 +157,7 @@ end
 local H = {}
 
 function H.chip(name, color)
-	local l = Theme.Label("", "Heading", { Size = K.PC.Text, Stroke = 0.4, Outline = 1.5 })
+	local l = Theme.Label("", "Heading", { Size = K.PC.Text })
 	l.Name = name
 	l.BackgroundColor3 = Theme.Darken(color, 0.55)
 	l.BackgroundTransparency = 0.1

@@ -342,7 +342,7 @@ local function commas(n)
 end
 
 local function label(name, text, role, size, parent, props)
-	local l = Theme.Label(text or "", role, { Size = size, Stroke = 0.5, Outline = 1.5 })
+	local l = Theme.Label(text or "", role, { Size = size })
 	l.Name = name
 	l.TextWrapped = true
 	for k, v in pairs(props or {}) do
@@ -537,7 +537,7 @@ function H.fitText(lbl, texts)
 	local width = lbl.Size.X.Offset - K.FIT_SLACK
 	for i = 1, #texts - 1 do
 		local ok, size = pcall(function()
-			return TextService:GetTextSize(texts[i], lbl.TextSize, Theme.FontOf(lbl), Vector2.new(4096, 1024))
+			return Theme.MeasureLabel(lbl, texts[i], lbl.TextSize, 4096)
 		end)
 		if not ok or typeof(size) ~= "Vector2" or size.X <= width then
 			return texts[i]
@@ -549,7 +549,7 @@ end
 -- a text's width at a size and font (TextService; the mock's flat 0.5 em when that fails)
 function H.width(text, size, font)
 	local ok, v = pcall(function()
-		return TextService:GetTextSize(text, size, font, Vector2.new(4096, 1024))
+		return Theme.Measure(text, font, size, 4096)
 	end)
 	if ok and typeof(v) == "Vector2" then
 		return v.X
@@ -862,7 +862,7 @@ function H.tabButton(name, text)
 	b.BackgroundTransparency = 1
 	b.Text = text
 	b.ZIndex = 6
-	Theme.Style(b, "Button", { Size = 17, Stroke = 0.6, Outline = 1.5 })
+	Theme.Style(b, "Button", { Size = 17 })
 	b.Parent = U.Bar
 	return b
 end
@@ -1616,7 +1616,7 @@ function H.renderPlay(st, M)
 		end
 	end
 	local paused = not loading and p.Active == false
-	U.PlayHeader.Font = paused and Theme.Fonts.Body or Theme.Fonts.Heading
+	Theme.SetRole(U.PlayHeader, paused and "Body" or "Heading") -- (kit-b U6) SetRole keeps Body's Nunito face
 	U.PlayHeader.TextColor3 = paused and GOLD or WHITE
 	U.PlayHeader.TextSize = paused and M.PausedText or M.PlayText
 	U.PlayHeader.Text = H.fitLines(U.PlayHeader, texts, S.Mode == "Portrait" and 2 or 1)

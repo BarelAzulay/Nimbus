@@ -847,7 +847,7 @@ local function newButton(text, style, size, callback, parent)
 		BackgroundColor3 = (Theme.Buttons and Theme.Buttons[style]) or Color3.fromRGB(96, 196, 108),
 		Text = text,
 	}, nil)
-	Theme.Style(button, "Button", { Size = K.BUTTON, Outline = 2 })
+	Theme.Style(button, "Button", { Size = K.BUTTON })
 	corner(button, 12)
 	stroke(button, C.Navy, 3)
 	button.Activated:Connect(function()
@@ -982,8 +982,6 @@ local function buildDialog()
 	UI.TitleStroke = stroke(titlePill, C.Gold, 2)
 	UI.Title = Theme.Label("", "Label", {
 		Size = K.CAPTION,
-		Stroke = 0.3,
-		Outline = 1.5,
 		Props = {
 			Name = "Title",
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1010,8 +1008,6 @@ local function buildDialog()
 	UI.NameTab = nameTab
 	UI.Name = Theme.Label("", "Title", {
 		Scaled = true,
-		Stroke = 0.2,
-		Outline = 2,
 		Props = {
 			Name = "Name",
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1050,7 +1046,6 @@ local function buildDialog()
 	UI.Well = well
 	local line = Theme.Label("", "Body", {
 		Size = K.TEXT,
-		Stroke = 0.55,
 		Props = {
 			Name = "Line",
 			RichText = true,
@@ -1068,7 +1063,6 @@ local function buildDialog()
 	local more = Theme.Label("\226\150\188", "Label", { -- down triangle: "there is more"
 		Size = 20,
 		Color = C.Gold,
-		Stroke = 0.3,
 		Props = {
 			Name = "More",
 			AnchorPoint = Vector2.new(1, 1),
@@ -1440,7 +1434,6 @@ local function setPortrait(rec)
 	local name = (rec.Def and rec.Def.Name) or rec.Id
 	local initial = Theme.Label(string.sub(tostring(name), 1, 1), "Title", {
 		Size = 64,
-		Outline = 3,
 		Props = { Name = "Initial", Size = UDim2.fromScale(1, 1), ZIndex = 7 },
 	})
 	initial.Parent = holder
