@@ -17,7 +17,10 @@
 --   signkit_workshop_parts       SignKit.Workshop on the menu board and the loading screen's board: wood grain strips
 --                                (dark and light), 4 iron nails (a darker bottom-right), a metal ring on each rope, the
 --                                striped awning with a notched (stepped) lip, one chipped corner; Frames only, no stroke,
---                                gradient, corner or image, palette colours only; the Credits window has none (opt-out)
+--                                gradient, corner or image, palette colours only; the Credits window has none (opt-out).
+--                                Review: sized for the board (about 1.75x the pitch's 250 px board): grain 2 screen px or
+--                                wider (phone 0.8 too), nails 10 px+ in the face corners (header ones clear of the
+--                                teeth), rings 28 x 20+, the chip a bite that shows what is behind, a crack beside it
 --   menu_fits_short_viewport     1274x580 and 1366x600: the (swinging) board ends 16 px or more above the screen bottom,
 --                                the CREDITS tag and its "vN" on screen; built at 1920x1080 and resized to 1274x580 the
 --                                menu lays itself out again; the loading screen's board fits too (and after a resize)
@@ -469,19 +472,38 @@ local function clientScenarios()
 			for _, c in pairs(SignKit.WorkshopColors or {}) do
 				allowed[hex(c)] = true
 			end
+			-- an opaque Frame under root covering the screen point (x, y)
+			local function covered(root, x, y)
+				for _, d in ipairs(root:GetDescendants()) do
+					if d:IsA("GuiObject") and d.Visible and d.BackgroundTransparency < 1 then
+						local r = rect(d)
+						if x >= r.X and x < r.R and y >= r.Y and y < r.B then
+							return d
+						end
+					end
+				end
+				return nil
+			end
+			local function inside(a, b)
+				return a.X >= b.X - 0.5 and a.R <= b.R + 0.5 and a.Y >= b.Y - 0.5 and a.B <= b.B + 0.5
+			end
 			local function checkTrim(root, where, ropes)
 				local t = trim(root)
 				T.check(count(t, "Grain") >= 4, "sign trim: wood grain strips in the frame on the " .. where, tostring(count(t, "Grain")))
-				local dark, light = false, false
+				-- (review) the grain reads: every strip at least 2 screen px wide (at the phones' 0.8 scale too), never a 1 px shimmer
+				local dark, light, thinnest = false, false, math.huge
 				for _, g in ipairs(t.Grain or {}) do
-					local thin = math.min(g.AbsoluteSize.X, g.AbsoluteSize.Y) <= 2
+					local w = math.min(g.AbsoluteSize.X, g.AbsoluteSize.Y)
+					thinnest = math.min(thinnest, w)
+					local thin = w <= 4
 					if thin and hex(g.BackgroundColor3) == hex(SignKit.WorkshopColors.Grain) then
 						dark = true
 					elseif thin and hex(g.BackgroundColor3) == hex(SignKit.WorkshopColors.GrainLight) then
 						light = true
 					end
 				end
-				T.check(dark and light, "sign trim: the grain has darker and lighter 1 px strips on the " .. where)
+				T.check(dark and light, "sign trim: the grain has darker and lighter thin strips on the " .. where)
+				T.check(thinnest >= 1.99, "sign trim: every grain strip is 2 screen px or wider on the " .. where, fmt("thinnest %.2f px", thinnest))
 				T.eq(count(t, "Nail"), 4, "sign trim: four iron nails on the " .. where)
 				local nailOk = true
 				for _, n in ipairs(t.Nail or {}) do
@@ -492,7 +514,41 @@ local function clientScenarios()
 					end
 				end
 				T.check(nailOk, "sign trim: each nail is a square with a darker bottom-right on the " .. where)
+				-- (review) nails sized for the board (the pitch's 6 px at 250 px, about 1.75x) and in the face corners as in the
+				-- pitch: two on the navy plate below the awning's teeth, two on the body above its lip; none on a rail
+				local plate, body = Menu.find(root, "Plate"), Menu.find(root, "Body")
+				local teethB = -math.huge
+				for _, tooth in ipairs(t.Tooth or {}) do
+					for _, d in ipairs({ tooth, unpack(tooth:GetDescendants()) }) do
+						teethB = math.max(teethB, rect(d).B)
+					end
+				end
+				local small, onPlate, onBody, underTeeth = {}, 0, 0, 0
+				for _, n in ipairs(t.Nail or {}) do
+					if n.Size.X.Offset < 10 or n.Size.Y.Offset < 10 then
+						small[#small + 1] = fmt("%dx%d", n.Size.X.Offset, n.Size.Y.Offset)
+					end
+					local r = rect(n)
+					if plate and inside(r, rect(plate)) then
+						onPlate = onPlate + 1
+						if r.Y < teethB + 1 then
+							underTeeth = underTeeth + 1
+						end
+					elseif body and inside(r, rect(body)) then
+						onBody = onBody + 1
+					end
+				end
+				T.check(#small == 0, "sign trim: the nails are 10 design px or more on the " .. where, table.concat(small, ", "))
+				T.check(onPlate == 2 and onBody == 2, "sign trim: two nails in the header's face corners and two in the body's on the " .. where, fmt("%d on the plate, %d on the body", onPlate, onBody))
+				T.eq(underTeeth, 0, "sign trim: the header's nails sit clear of the awning's notched teeth on the " .. where)
 				T.eq(count(t, "Ring"), 2, "sign trim: a metal ring where each rope ties on, on the " .. where)
+				local ringOk = true
+				for _, r in ipairs(t.Ring or {}) do
+					if r.Size.X.Offset < 28 or r.Size.Y.Offset < 20 then
+						ringOk = false
+					end
+				end
+				T.check(ringOk, "sign trim: the rope rings are sized for the board (28 x 20 design px or more) on the " .. where)
 				local onRopes = 0
 				for _, r in ipairs(t.Ring or {}) do
 					for _, rope in ipairs(ropes) do
@@ -505,6 +561,28 @@ local function clientScenarios()
 				T.check(count(t, "Stripe") >= 10, "sign trim: the awning is striped on the " .. where, tostring(count(t, "Stripe")))
 				T.check(count(t, "Tooth") >= 10, "sign trim: the awning has a notched lip on the " .. where, tostring(count(t, "Tooth")))
 				T.eq(count(t, "Chip"), 1, "sign trim: one chipped corner on the " .. where)
+				-- (review) the chip is a bite out of the board's bottom-right corner (through the frame into the body) that shows
+				-- what is behind the board, a dark crack beside it; the rail further left is still wood
+				local wood = Menu.find(root, "Wood")
+				if wood and body then
+					local w, b = rect(wood), rect(body)
+					local hit0 = covered(root, w.R - 1, w.B - 1)
+					local hit1 = covered(root, b.R - 1, b.B - 1)
+					T.check(hit0 == nil and hit1 == nil, "sign trim: the chipped corner shows what is behind the board (frame and body corner bitten) on the " .. where,
+						fmt("%s / %s", hit0 and hit0:GetFullName() or "clear", hit1 and hit1:GetFullName() or "clear"))
+					T.check(covered(root, w.R - 0.25 * (w.R - w.X), w.B - 1) ~= nil and covered(root, w.R - 1, w.B - 0.5 * (w.B - w.Y)) ~= nil,
+						"sign trim: the rails away from the chip are still wood on the " .. where)
+					local crack = false
+					for _, c in ipairs(t.Chip or {}) do
+						for _, d in ipairs(c:GetDescendants()) do
+							local r = rect(d)
+							if d:IsA("Frame") and hex(d.BackgroundColor3) == hex(SignKit.WorkshopColors.Grain) and r.X > w.R - 40 and r.Y > w.B - 40 then
+								crack = true
+							end
+						end
+					end
+					T.check(crack, "sign trim: a dark crack beside the chip on the " .. where)
+				end
 				local bad = {}
 				for _, list in pairs(t) do
 					for _, part in ipairs(list) do
@@ -549,6 +627,13 @@ local function clientScenarios()
 			end
 			MMC.CloseWindows()
 			Menu.close()
+			-- (review) on a phone (factor 0.8) the trim still reads: grain 2 screen px or wider, the nails, the chip
+			local pmenu = Menu.open({ Size = { 844, 390 }, Input = "Touch" })
+			local pswing = Menu.find(pmenu, "Swing")
+			if T.check(pswing ~= nil, "sign trim: (setup) the menu board at 844x390") then
+				checkTrim(pswing, "menu board at 844x390", Menu.ropes(pswing))
+			end
+			Menu.close()
 			-- the loading screen's board gets the same trim (once SignKit is there), and keeps it fitted after a resize
 			local lg = Load.run({ 1920, 1080 })
 			local lswing = lg and lg:FindFirstChild("Swing", true)
@@ -558,7 +643,7 @@ local function clientScenarios()
 				KC.advance(0.3)
 				local roof = lswing:FindFirstChild("Roof", true)
 				local over = 0
-				local t = trim(lswing)
+				local t = checkTrim(lswing, "loading board at 1274x580", Menu.ropes(lswing))
 				for _, tooth in ipairs(t.Tooth or {}) do
 					local r = rect(tooth)
 					if r.R > roof.AbsolutePosition.X + roof.AbsoluteSize.X + 0.5 then

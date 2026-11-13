@@ -525,6 +525,7 @@ SignKit.WorkshopColors = {
 	Notch = Sign.RoofLip, -- the pitch's darker pink lip (--pinkdk)
 }
 local WC = SignKit.WorkshopColors
+local NOTCH_H = 7 -- the awning's notched lip: a 4 px tooth and its 3 px point
 
 -- one trim block: a flat Frame stamped SignKit = "Workshop", Workshop = its kind
 local function bit(kind, colour, props, parent)
@@ -543,7 +544,7 @@ local function clearTrim(parent)
 	end
 end
 
--- a 1 px grain strip on a rail: x / y as { scale, offset }, w / h the same
+-- a grain strip on a rail: x / y as { scale, offset }, w / h the same
 local function grain(parent, light, x, y, w, h, z)
 	return bit("Grain", light and WC.GrainLight or WC.Grain, {
 		Position = UDim2.new(x[1], x[2], y[1], y[2]),
@@ -552,21 +553,68 @@ local function grain(parent, light, x, y, w, h, z)
 	}, parent)
 end
 
--- an iron nail head: a square whose darker bottom-right shows round a lighter cap (the pitch's inset shadow)
-local function nail(parent, pos, z)
-	local n = bit("Nail", WC.IronDark, { Position = pos, Size = UDim2.fromOffset(6, 6), ZIndex = z }, parent)
-	fill("TrimCap", WC.Iron, { Size = UDim2.fromOffset(4, 4), ZIndex = z }, n)
+-- an iron nail head (s px): a square whose darker bottom-right (sh px) shows round a lighter cap (the pitch's inset shadow)
+local function nail(parent, pos, s, sh, z)
+	local n = bit("Nail", WC.IronDark, { Position = pos, Size = UDim2.fromOffset(s, s), ZIndex = z }, parent)
+	fill("TrimCap", WC.Iron, { Size = UDim2.fromOffset(s - sh, s - sh), ZIndex = z }, n)
 	return n
+end
+
+-- the lowest ZIndex among obj's own (non-trim) children, or 1
+local function lowestChild(obj)
+	local low = nil
+	for _, c in ipairs(obj:GetChildren()) do
+		if c:IsA("GuiObject") and c:GetAttribute("SignKit") ~= "Workshop" then
+			low = math.min(low or c.ZIndex, c.ZIndex)
+		end
+	end
+	return low or 1
+end
+
+-- cut a stepped bite out of a filled Frame's bottom-right corner, so what is behind the board shows through: the Frame
+-- turns see-through and "Cut" patches (z, under its own children) fill it again less the bite. steps: { dx, dy } from
+-- the corner, dx falling and dy rising; the bite is every x >= W - dx, y >= H - dy. maxH: the Frame's height when known
+local function cut(obj, colour, steps, z, maxH)
+	obj.BackgroundTransparency = 1
+	local d = {}
+	for _, s in ipairs(steps) do
+		if s[1] > 0 and s[2] > 0 then
+			d[#d + 1] = { s[1], maxH and math.min(s[2], maxH) or s[2] }
+		end
+	end
+	local top = d[#d] and d[#d][2] or 0
+	bit("Cut", colour, { Size = UDim2.new(1, 0, 1, -top), ZIndex = z }, obj)
+	local above = 0
+	for _, s in ipairs(d) do
+		-- the band of rows between this step and the one before, as wide as the frame less this step's bite
+		if s[2] > above then
+			bit("Cut", colour, { Position = UDim2.new(0, 0, 1, -s[2]), Size = UDim2.new(1, -s[1], 0, s[2] - above), ZIndex = z }, obj)
+		end
+		above = s[2]
+	end
 end
 
 -- parts: Roof (a flat SignKit.Roof: offset-sized, with its Face and Lip), Head (the header: rim + plate), Frame (the wood
 -- frame round the body), Ropes (the board's ropes; their lower end runs RingAt px into the board). opts: Rail (the rim /
--- frame width, default Sizes.Frame), RingAt (8). Calling it again redraws the trim (a re-layout). Returns the trim count
+-- frame width, default Sizes.Frame), RingAt (8), Width (the board's design width; default the frame's or its board's),
+-- Factor (the screen's UIScale, default Theme.ScreenFactor()). (review) The pitch drew the trim on a 250 px board, so
+-- nails, rings and the chip grow with the board (Width / 250, 1 .. 2); a grain strip stays 2 screen px or wider (3 design
+-- px under a 0.8 factor) so it never shimmers on the swinging board. Calling it again redraws the trim (a re-layout).
+-- Returns the trim count
 function SignKit.Workshop(parts, opts)
 	opts = opts or {}
 	local rail = tonumber(opts.Rail) or Z.Frame
 	local n = 0
 	local roof, head, wood = parts.Roof, parts.Head, parts.Frame
+	local width = tonumber(opts.Width)
+	if not width and wood then
+		width = wood.Size.X.Offset > 0 and wood.Size.X.Offset or (wood.Parent and wood.Parent:IsA("GuiObject") and wood.Parent.Size.X.Offset)
+	end
+	local k = math.min(math.max((tonumber(width) or 440) / 250, 1), 2)
+	local f = tonumber(opts.Factor) or Theme.ScreenFactor()
+	local g = math.min(math.max(2, math.ceil(2 / f - 0.001)), rail - 2) -- a grain strip's width
+	local gIn, gOut = 1, rail - g - 1 -- a strip's two places across a rail
+	local nailS, nailSh, nailIn = math.floor(6 * k + 0.5), math.floor(2 * k + 0.5), math.floor(3 * k + 0.5)
 	if roof then
 		clearTrim(roof)
 		local face = roof:FindFirstChild("Face")
@@ -584,7 +632,7 @@ function SignKit.Workshop(parts, opts)
 			end
 		end
 		-- the notched lip under the awning: stepped pixel teeth (10 px, then 6 px), one every 14 px
-		local notch = frame("TrimNotch", { Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 7), ZIndex = z }, roof)
+		local notch = frame("TrimNotch", { Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, NOTCH_H), ZIndex = z }, roof)
 		notch:SetAttribute("SignKit", "Workshop")
 		notch:SetAttribute("Workshop", "Notch")
 		for x = 2, w - 12, 14 do
@@ -596,49 +644,86 @@ function SignKit.Workshop(parts, opts)
 	if head then
 		clearTrim(head)
 		local z = head.ZIndex
-		-- grain along the side rails of the rim (its top hides under the awning), a nail under the awning's lip on each
-		grain(head, false, { 0, 2 }, { 0.32, 0 }, { 0, 1 }, { 0.5, 0 }, z)
-		grain(head, true, { 1, -3 }, { 0.22, 0 }, { 0, 1 }, { 0.55, 0 }, z)
-		nail(head, UDim2.fromOffset(0, 10), z)
-		nail(head, UDim2.new(1, -rail, 0, 10), z)
+		-- grain along the side rails of the rim (its top hides under the awning)
+		grain(head, false, { 0, gIn }, { 0.32, 0 }, { 0, g }, { 0.5, 0 }, z)
+		grain(head, true, { 1, -rail + gOut }, { 0.22, 0 }, { 0, g }, { 0.55, 0 }, z)
+		-- a nail in each top corner of the navy plate, as in the pitch, below the awning's notched teeth
+		local plate = head:FindFirstChild("Plate")
+		local nz = (plate and plate.ZIndex or z) + 1
+		local y = rail + nailIn
+		if roof and roof.Parent == head.Parent then
+			y = math.max(y, roof.Position.Y.Offset + roof.Size.Y.Offset + NOTCH_H - head.Position.Y.Offset + 2)
+		end
+		nail(head, UDim2.fromOffset(rail + nailIn, y), nailS, nailSh, nz)
+		nail(head, UDim2.new(1, -(rail + nailIn + nailS), 0, y), nailS, nailSh, nz)
 		n = n + 4
 	end
 	if wood then
 		clearTrim(wood)
 		local z = wood.ZIndex
 		-- grain on the left, right and bottom rails (a dark and a light run each, never the same length twice)
-		grain(wood, false, { 0, 2 }, { 0.12, 0 }, { 0, 1 }, { 0.38, 0 }, z)
-		grain(wood, true, { 0, 4 }, { 0.6, 0 }, { 0, 1 }, { 0.22, 0 }, z)
-		grain(wood, true, { 1, -3 }, { 0.08, 0 }, { 0, 1 }, { 0.3, 0 }, z)
-		grain(wood, false, { 1, -5 }, { 0.52, 0 }, { 0, 1 }, { 0.26, 0 }, z)
-		grain(wood, false, { 0.1, 0 }, { 1, -rail + 2 }, { 0.32, 0 }, { 0, 1 }, z)
-		grain(wood, true, { 0.55, 0 }, { 1, -rail + 4 }, { 0.28, 0 }, { 0, 1 }, z)
-		-- two nails on the bottom rail, in from the corners
-		nail(wood, UDim2.new(0, 2 * rail, 1, -rail), z)
-		nail(wood, UDim2.new(1, -3 * rail, 1, -rail), z)
-		-- one chipped corner (bottom-right): a stepped bite of lighter raw wood with a dark crack along its inner edge
-		local chip = bit("Chip", WC.GrainLight, { Position = UDim2.new(1, -rail, 1, -2), Size = UDim2.fromOffset(rail, 2), ZIndex = z }, wood)
-		fill("TrimStep", WC.GrainLight, { Position = UDim2.fromOffset(2, -2), Size = UDim2.fromOffset(rail - 2, 2), ZIndex = z }, chip)
-		fill("TrimStep", WC.GrainLight, { Position = UDim2.fromOffset(4, -4), Size = UDim2.fromOffset(rail - 4, 2), ZIndex = z }, chip)
-		fill("TrimCrack", WC.Grain, { Position = UDim2.fromOffset(0, -1), Size = UDim2.fromOffset(2, 1), ZIndex = z }, chip)
-		fill("TrimCrack", WC.Grain, { Position = UDim2.fromOffset(2, -3), Size = UDim2.fromOffset(2, 1), ZIndex = z }, chip)
+		grain(wood, false, { 0, gIn }, { 0.12, 0 }, { 0, g }, { 0.38, 0 }, z)
+		grain(wood, true, { 0, gOut }, { 0.6, 0 }, { 0, g }, { 0.22, 0 }, z)
+		grain(wood, true, { 1, -rail + gOut }, { 0.08, 0 }, { 0, g }, { 0.3, 0 }, z)
+		grain(wood, false, { 1, -rail + gIn }, { 0.52, 0 }, { 0, g }, { 0.26, 0 }, z)
+		grain(wood, false, { 0.1, 0 }, { 1, -rail + gOut }, { 0.32, 0 }, { 0, g }, z)
+		grain(wood, true, { 0.55, 0 }, { 1, -rail + gIn }, { 0.28, 0 }, { 0, g }, z)
+		local body = wood:FindFirstChild("Body")
+		local bz = body and body.ZIndex or z
+		local inset = body and body.Position.X.Offset or rail
+		local lip = body and body:FindFirstChild("Lip")
+		local lipH = lip and lip.Size.Y.Offset or Z.Lip
+		-- a nail in each bottom corner of the body, as in the pitch, just above its lip (over the body: a higher ZIndex)
+		local ny = -(inset + lipH + nailIn + nailS)
+		nail(wood, UDim2.new(0, inset + nailIn, 1, ny), nailS, nailSh, bz + 1)
+		nail(wood, UDim2.new(1, -(inset + nailIn + nailS), 1, ny), nailS, nailSh, bz + 1)
+		-- one chipped corner (bottom-right): a stepped bite out of the frame and the body that shows what is behind the
+		-- board (the pitch's 8 px bite in the sky colour), a dark crack running left along the lip from its inner step (clear of the nail)
+		local c = math.floor(8 * k + 0.5)
+		local s = math.floor(c / 4.5)
+		local steps = { { c, c - 2 * s }, { c - s, c - s }, { c - 2 * s, c } }
+		cut(wood, wood.BackgroundColor3, steps, bz - 1)
+		if body then
+			clearTrim(body)
+			local inner = {}
+			for i, st in ipairs(steps) do
+				inner[i] = { st[1] - inset, st[2] - inset }
+			end
+			cut(body, body.BackgroundColor3, inner, lowestChild(body) - 1)
+			if lip then
+				clearTrim(lip)
+				cut(lip, lip.BackgroundColor3, inner, lip.ZIndex, lipH)
+			end
+		end
+		local chip = bit("Chip", WC.Grain, {
+			AnchorPoint = Vector2.new(1, 1),
+			Position = UDim2.fromScale(1, 1),
+			Size = UDim2.fromOffset(c, c),
+			ZIndex = bz + 1,
+		}, wood)
+		chip.BackgroundTransparency = 1 -- a marker over the bite: only its crack shows
+		local p = math.floor(2 * k + 0.5)
+		fill("TrimCrack", WC.Grain, { Position = UDim2.fromOffset(s - p, s - g), Size = UDim2.fromOffset(p, g), ZIndex = bz + 1 }, chip)
+		fill("TrimCrack", WC.Grain, { Position = UDim2.fromOffset(s - 2 * p + 1, s), Size = UDim2.fromOffset(p - 1, g), ZIndex = bz + 1 }, chip)
 		n = n + 9
 	end
-	-- a metal ring where each rope ties on: an arch round the rope, sitting on the awning
+	-- a metal ring where each rope ties on: an arch round the rope, sitting on the awning (the pitch's 18 x 13 knot with
+	-- its 3 px bars, grown with the board)
+	local ringW, ringH, bar = math.floor(18 * k + 0.5), math.floor(13 * k + 0.5), math.floor(3 * k + 0.5)
 	for _, rope in ipairs(parts.Ropes or {}) do
 		clearTrim(rope)
 		local z = rope.ZIndex
 		local ring = frame("TrimRing", {
 			AnchorPoint = Vector2.new(0.5, 1),
 			Position = UDim2.new(0.5, 0, 1, -(tonumber(opts.RingAt) or 8)),
-			Size = UDim2.fromOffset(14, 10),
+			Size = UDim2.fromOffset(ringW, ringH),
 			ZIndex = z,
 		}, rope)
 		ring:SetAttribute("SignKit", "Workshop")
 		ring:SetAttribute("Workshop", "Ring")
-		fill("TrimTop", WC.Iron, { Size = UDim2.fromOffset(14, 3), ZIndex = z }, ring)
-		fill("TrimLeft", WC.Iron, { Size = UDim2.fromOffset(3, 10), ZIndex = z }, ring)
-		fill("TrimRight", WC.IronDark, { Position = UDim2.fromOffset(11, 0), Size = UDim2.fromOffset(3, 10), ZIndex = z }, ring)
+		fill("TrimTop", WC.Iron, { Size = UDim2.fromOffset(ringW, bar), ZIndex = z }, ring)
+		fill("TrimLeft", WC.Iron, { Size = UDim2.fromOffset(bar, ringH), ZIndex = z }, ring)
+		fill("TrimRight", WC.IronDark, { Position = UDim2.fromOffset(ringW - bar, 0), Size = UDim2.fromOffset(bar, ringH), ZIndex = z }, ring)
 		n = n + 1
 	end
 	return n

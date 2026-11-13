@@ -436,10 +436,11 @@ local function layout()
 		ui.Mascot.Position = UDim2.fromOffset(St.Geo.RowX + math.max(0, St.Blocks - 0.5) * (bw + gap), rowY)
 	end
 	-- (sign build) the owner's "Workshop" trim (SignKit.Workshop, once SignKit is there), drawn again when the board's
-	-- width changes (its awning's stripes and notched lip are cut to the width)
-	if St.Kit and St.TrimW ~= boardW then
-		St.TrimW = boardW
-		St.Kit.Workshop({ Roof = ui.Roof, Head = ui.Head, Frame = ui.Wood, Ropes = ui.Ropes })
+	-- width or the screen factor changes (its awning's stripes and notched lip are cut to the width; the trim grows with
+	-- the board, the grain keeps 2 screen px under the factor)
+	if St.Kit and (St.TrimW ~= boardW or St.TrimF ~= f) then
+		St.TrimW, St.TrimF = boardW, f
+		St.Kit.Workshop({ Roof = ui.Roof, Head = ui.Head, Frame = ui.Wood, Ropes = ui.Ropes }, { Width = boardW, Factor = f })
 	end
 end
 

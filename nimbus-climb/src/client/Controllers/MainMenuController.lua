@@ -1009,7 +1009,7 @@ function Menu.build(enter)
 	local wood = SignKit.Frame(board, { Y = headY + headH, Height = woodH, ZIndex = 1 })
 	local body = SignKit.Body(wood)
 	-- (sign build) the owner's "Workshop" trim: grain, nails, rope rings, the striped awning's notched lip, a chip
-	SignKit.Workshop({ Roof = roof, Head = head, Frame = wood, Ropes = ropes })
+	SignKit.Workshop({ Roof = roof, Head = head, Frame = wood, Ropes = ropes }, { Width = boardW, Factor = f })
 
 	local tagline = Theme.Label(tostring(Config.Tagline or K.TAGLINE), "Body", { Size = 20, Color = Theme.TextOn("Stone") })
 	tagline.Name = "Tagline"
