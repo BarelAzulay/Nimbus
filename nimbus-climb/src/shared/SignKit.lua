@@ -360,6 +360,12 @@ function SignKit.Plank(parent, opts)
 	plank.MouseButton1Up:Connect(function()
 		SignKit.PlankState(plank, plank:GetAttribute("PlankState") == "Press" and "Hover" or "Rest")
 	end)
+	-- a finger that lifts never produces MouseLeave (nor MouseButton1Up once it slid off)
+	plank.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			SignKit.PlankState(plank, "Rest")
+		end
+	end)
 	if type(opts.Callback) == "function" and not look.Off then
 		plank.Activated:Connect(opts.Callback)
 	end
