@@ -2039,7 +2039,7 @@ local OASIS = {
 }
 
 -- the fountain's sprites are FxSprites roles (kit B X1: the game's own sheets): Droplet for drops and bubbles, Puff for
--- foam and mist, Ring for the ripples; the falls' streak Beams scroll the Dash strip, their core is a plain Beam
+-- foam and mist, Ring for the ripples; the falls' streak Beams scroll the Flow strip, their core wears the Sheet strip
 local Oasis = {} -- the fountain helpers (one main-chunk local: LobbyBuilder is near the 200-locals limit)
 -- Fall direction. The Beam reference: a positive TextureSpeed scrolls the texture from Attachment0 toward Attachment1,
 -- a negative one from Attachment1 toward Attachment0. Each fall's Attachment0 is its impact and Attachment1 its lip, so
@@ -2334,7 +2334,7 @@ function Oasis.fall(anchor, origin, f, index)
 	local a0 = attach(tag .. "Impact", impact, xBottom)
 	local a1 = attach(tag .. "Lip", lip, xTop)
 	beam(tag .. "Core", a0, a1, {
-		Texture = "", -- a plain water sheet (no stock glow)
+		Texture = FxSprites.Strip("Sheet"), -- a soft-edged water sheet (the old stock glow until fx_watersheet is uploaded)
 		TextureMode = Enum.TextureMode.Stretch,
 		TextureLength = 1,
 		TextureSpeed = 0,
@@ -2355,7 +2355,7 @@ function Oasis.fall(anchor, origin, f, index)
 		local s0 = attach(tag .. "StreakImpact" .. k, impact + side * off * 1.2, xBottom)
 		local s1 = attach(tag .. "StreakLip" .. k, lip + side * off, xTop)
 		beam(tag .. "Streak" .. k, s0, s1, {
-			Texture = FxSprites.Strip("Dash"), -- dashes running downhill
+			Texture = FxSprites.Strip("Flow"), -- soft streaks running downhill (the old stock glow until fx_waterflow is uploaded)
 			TextureMode = Enum.TextureMode.Wrap,
 			TextureLength = 0.9 + k * 0.15,
 			TextureSpeed = Oasis.Flow * (2.4 + k * 0.35 + (f.Big and 0.4 or 0)),

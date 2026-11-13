@@ -712,6 +712,13 @@ local function tutorialClientChecks()
 		end
 	end
 	T.check(guide ~= nil and beam ~= nil and solid == 0, "Tutorial panel: a world target gets the guide arrow and a dotted Beam in workspace.ClientFx (visual only)", tostring(guide) .. " beam " .. tostring(beam) .. ", " .. solid .. " solid parts")
+	-- kit B X1 review: the trail must be seen: the dot strip (FxSprites Strip "Dots": its own upload or the old stock
+	-- sparkle), never "" and never the hairline fx_speedlines (Dash) strip
+	local FxSprites = require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
+	local trail = guide and guide:FindFirstChild("GuideTrail", true)
+	local trailTex = trail and tostring(trail.Texture) or "(no GuideTrail)"
+	T.check(trailTex ~= "" and trailTex == FxSprites.Strip("Dots") and trailTex ~= FxSprites.Strip("Dash"),
+		"Tutorial panel: the GuideTrail wears the dot strip (FxSprites Strip \"Dots\"), not the speed lines", trailTex .. " vs " .. FxSprites.Strip("Dots"))
 	-- in a match only the 'finish' step stays on screen
 	LocalPlayer:SetAttribute("InMatch", true)
 	advance(1.5)

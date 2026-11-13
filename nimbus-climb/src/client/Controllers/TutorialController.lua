@@ -131,7 +131,7 @@ local K = {
 	GRAVITY = 820,
 }
 
-local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the guide trail's dash strip (kit B X1)
+local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the guide trail's dot strip (kit B X1)
 local BULLET = "\194\187 " -- >>
 local TOKEN_GLYPH = "\226\152\129" -- cloud
 
@@ -2235,7 +2235,7 @@ local function buildWorldGuide()
 	W.a1 = make("Attachment", "A1", nil, trailEnd)
 	local beam = make("Beam", "GuideTrail", {
 		Attachment1 = W.a1,
-		Texture = FxSprites.Strip("Dash"), -- dashes running to the target (was the stock sparkle)
+		Texture = FxSprites.Strip("Dots"), -- bright dots running to the target (the stock sparkle until fx_dots is uploaded)
 		TextureMode = Enum.TextureMode.Wrap,
 		TextureLength = 2.6,
 		TextureSpeed = 1.1,

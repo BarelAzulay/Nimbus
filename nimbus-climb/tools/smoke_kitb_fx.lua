@@ -7,11 +7,14 @@
 --                                    Droplet, Wisp and the element / fountain ones) maps to its fx_* sheet, a positive id in
 --                                    shared/TextureIds; Texture(role) = "rbxassetid://<id>"; Apply sets that texture and
 --                                    the sheet's flipbook (Grid4x4, blender/vfx/textures.json mode + fps, a random start on
---                                    Loop sheets); RoleOf reads it back; Strip("Dash") = fx_speedlines; an unknown role
---                                    falls back to Sparkle; no role outside the list
+--                                    Loop sheets); RoleOf reads it back; Strip("Dash") = fx_speedlines; Strip("Dots" /
+--                                    "Flow" / "Sheet") (guide trail, fountain streaks / core) = their own strip or the old
+--                                    stock texture, never "" and never fx_speedlines; an unknown role falls back to
+--                                    Sparkle; no role outside the list
 --   fxsprites_fallback_when_id_zero  (server, pure) with an id of 0 or a missing key the role's old built-in texture comes
---                                    back with the flipbook off (also on an emitter that had one), Strip gives "" (a plain
---                                    Beam), RoleOf still knows it; _Deps(false) restores the real ids
+--                                    back with the flipbook off (also on an emitter that had one), Strip("Dash") gives ""
+--                                    (a plain Beam), Strip("Dots" / "Flow" / "Sheet") their old stock texture, RoleOf
+--                                    still knows it; _Deps(false) restores the real ids
 --   fx_no_stock_particles_server     (server, booted) every ParticleEmitter in the booted game plus the builders' extras
 --                                    (evolved pets of every element, Legendary / Golden / Rainbow flair, every token
 --                                    palette, every home station level, a boss in its High tier) wears an FxSprites
@@ -46,6 +49,13 @@ local WANT = {
 }
 local PLAN_ROLES = { "Sparkle", "Puff", "Glow", "Ember", "Dust", "Droplet", "Wisp" }
 local STOCK = "rbxasset://textures/particles/"
+-- X1 review: the Beam strips that must stay visible (strip -> { key, stock fallback while the id is 0 / missing }).
+-- fx_speedlines (Dash) is ~93% empty hairlines: never the guide trail or the fountain falls.
+local WANT_STRIPS = {
+	Dots = { "fx_dots", STOCK .. "sparkles_main.dds" }, -- the tutorial guide trail
+	Flow = { "fx_waterflow", STOCK .. "explosion01_implosion_main.dds" }, -- the fountain fall streaks
+	Sheet = { "fx_watersheet", STOCK .. "explosion01_implosion_main.dds" }, -- the fountain fall core
+}
 -- the OBBY lane's emitter files (BUILD_PLAN O3 moves them onto FxSprites)
 local PENDING_O3 = { CourseBuilder = true, HazardService = true }
 -- textured by their own engine (AttackFx tuneEmitter: every played layer's sheet; smoke_p7vfx_client checks them)
@@ -287,6 +297,15 @@ local function serverScenarios()
 		local strip = type(FX.Strip) == "function" and FX.Strip("Dash")
 		T.check(type(Ids.fx_speedlines) == "number" and strip == "rbxassetid://" .. tostring(Ids.fx_speedlines),
 			"FxSprites.Strip(\"Dash\") = fx_speedlines (a single-frame Beam strip)", tostring(strip))
+		local strips = T.tally("FxSprites.Strip: the trail / fountain strips are their own sheet, else the old stock texture (never empty, never fx_speedlines)")
+		for _, name in ipairs(sortedKeys(WANT_STRIPS)) do
+			local w = WANT_STRIPS[name]
+			local id = Ids[w[1]]
+			local want = (type(id) == "number" and id > 0) and ("rbxassetid://" .. tostring(id)) or w[2]
+			local got = type(FX.Strip) == "function" and FX.Strip(name) or nil
+			strips:case(got == want and got ~= "" and got ~= strip, fmt("%s: %s (want %s)", name, tostring(got), want))
+		end
+		strips:report()
 		local before = #Mock.Output
 		T.check(FX.Texture("NoSuchRole") == FX.Texture("Sparkle"), "FxSprites: an unknown role falls back to Sparkle")
 		local warned = false
@@ -321,6 +340,13 @@ local function serverScenarios()
 				"id 0: Apply sets the built-in texture and turns the flipbook off", tostring(e.Texture) .. " " .. tostring(e.FlipbookLayout))
 			e:Destroy()
 			T.eq(FX.Strip("Dash"), "", "id 0: Strip(\"Dash\") = \"\" (a plain Beam)")
+			FX._Deps({ TextureIds = { fx_dots = 0, fx_waterflow = 0, fx_watersheet = 0 } })
+			for _, name in ipairs(sortedKeys(WANT_STRIPS)) do
+				T.eq(FX.Strip(name), WANT_STRIPS[name][2], "id 0: Strip(\"" .. name .. "\") = its old stock texture (still visible)")
+			end
+			FX._Deps({ TextureIds = { fx_dots = 4242, fx_waterflow = 4343, fx_watersheet = 4444 } })
+			T.check(FX.Strip("Dots") == "rbxassetid://4242" and FX.Strip("Flow") == "rbxassetid://4343" and FX.Strip("Sheet") == "rbxassetid://4444",
+				"uploaded: Strip(\"Dots\" / \"Flow\" / \"Sheet\") = their own sheets", FX.Strip("Dots") .. " " .. FX.Strip("Flow") .. " " .. FX.Strip("Sheet"))
 		end)
 		FX._Deps(false)
 		T.check(ok, "fxsprites_fallback_when_id_zero ran without errors", tostring(err))

@@ -24,8 +24,11 @@
 --   FxSprites.Apply(emitter, role) -> emitter   Texture + flipbook: Grid4x4, the sheet's FlipbookMode and fps, a
 --                                       random start frame on Loop sheets (fallback: FlipbookLayout None)
 --   FxSprites.RoleOf(texture) -> role | nil   which role a Texture string belongs to (own id or fallback; tests)
---   FxSprites.Strip(role) -> string     a single-frame Beam / Trail strip: Dash = fx_speedlines ("" = a plain Beam
---                                       when not uploaded); Beams cannot play the 4x4 sheets
+--   FxSprites.Strip(role) -> string     a single-frame Beam / Trail strip (Beams cannot play the 4x4 sheets):
+--                                       Dash = fx_speedlines ("" = a plain Beam when not uploaded), Dots = the guide
+--                                       trail, Flow / Sheet = the fountain streaks / fall cores (their old stock
+--                                       texture when not uploaded); "" for an unknown strip
+--   FxSprites.Strips                    strip -> { Key, Stock }
 --   FxSprites._Deps({ TextureIds = t }) / FxSprites._Deps(false)   TESTS ONLY: another id table / the real one again
 -- An unknown role warns once and uses Sparkle. Plain Lua 5.1-compatible syntax only.
 
@@ -50,10 +53,17 @@ local ROLES = {
 }
 FxSprites.Roles = ROLES
 
--- single-frame strips (grid 1 in textures.json) for Beams / Trails
+-- single-frame strips (grid 1 in textures.json) for Beams / Trails: strip -> { Key, Stock = the fallback while the id
+-- is 0 / missing }. Dash (fx_speedlines) is ~93% empty hairline dashes: fine for haste afterimages, sub-pixel on a long
+-- trail or a waterfall, so the guide trail and the fountain have strips of their own (X1 review). fx_dots /
+-- fx_waterflow / fx_watersheet are pending the BLENDER lane render + the keyed upload; until then the old stock look.
 local STRIPS = {
-	Dash = "fx_speedlines",
+	Dash = { Key = "fx_speedlines", Stock = "" }, -- speed-line dashes ("" = a plain Beam)
+	Dots = { Key = "fx_dots", Stock = STOCK .. "sparkles_main.dds" }, -- a chain of bright dots / glints: the tutorial guide trail
+	Flow = { Key = "fx_waterflow", Stock = STOCK .. "explosion01_implosion_main.dds" }, -- soft water streaks: fountain falls
+	Sheet = { Key = "fx_watersheet", Stock = STOCK .. "explosion01_implosion_main.dds" }, -- a soft-edged water sheet: fall cores
 }
+FxSprites.Strips = STRIPS
 
 local realIds = nil -- shared/TextureIds, required lazily (false when missing)
 local override = nil
@@ -133,12 +143,15 @@ function FxSprites.RoleOf(texture)
 end
 
 function FxSprites.Strip(role)
-	local key = STRIPS[role]
-	local id = key and tonumber(ids()[key])
+	local s = STRIPS[role]
+	if not s then
+		return ""
+	end
+	local id = tonumber(ids()[s.Key])
 	if id and id > 0 then
 		return "rbxassetid://" .. tostring(id)
 	end
-	return ""
+	return s.Stock
 end
 
 -- TESTS ONLY
