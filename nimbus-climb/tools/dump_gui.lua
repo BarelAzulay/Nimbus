@@ -3001,7 +3001,8 @@ end)
 -- [owner: menu] begin
 -- Phase 5 loading screen + main menu + settings (7.1-7.3):
 --   mainmenu[:<window>]  Config.MainMenu.Enabled: the menu before PLAY (logo, PLAY, SETTINGS, UPDATES + NEW badge,
---                        CREDITS chip) over the orbiting world; window updates | credits opens that window over it
+--                        CREDITS chip) over the orbiting world; window updates | credits opens that window over it;
+--                        at<seconds> (sign build) the entrance that long after the board began to fall
 --   loading[:<pct>]      the ReplicatedFirst loading screen 8 s in: the profile not loaded yet (85%), SKIP showing; <pct>
 --                        sets its Progress (0-100) for the kit B block renders
 --   settings[:hud]       the SETTINGS window over the menu (Music 6 / Sound 8 / Graphics Auto / Shake ON); ":hud" =
@@ -3010,6 +3011,9 @@ end)
 -- Every OTHER scenario boots like the smoke worlds: the menu disabled and the profile loaded (DataService's
 -- ProfileLoaded attribute), so the loading screen is gone after ~2.3 s and nothing is gated.
 local MM = { Scene = tostring(ARGS.scenario or "lobby"):lower():match("^[^:]*") or "lobby" }
+-- (sign build) mainmenu:at<seconds> holds the profile back at boot, so the loading screen (and the board's entrance after
+-- it) waits for the scenario
+MM.Entrance = MM.Scene == "mainmenu" and tostring(ARGS.scenario or ""):match(":at[%d%.]+$") ~= nil
 do
 	local cfg = req("shared/Config")
 	if type(cfg.MainMenu) == "table" then
@@ -3028,16 +3032,48 @@ do
 			end
 		end
 	end
-	if LocalPlayer and MM.Scene ~= "loading" then
+	if LocalPlayer and MM.Scene ~= "loading" and not MM.Entrance then
 		LocalPlayer:SetAttribute((cfg.Attr and cfg.Attr.ProfileLoaded) or "ProfileLoaded", true)
 	end
 end
 function MM.controller()
 	return req("client/Controllers/MainMenuController")
 end
+-- (sign build) the board's entrance starts once the loading screen has faded: mainmenu waits until it has landed and
+-- rests (its sway on); mainmenu:at<seconds> stops that long after the fall began instead, the playing tweens drawn at
+-- their eased in-between values (Mock.SnapTweens): the frames of the entrance strip
+function MM.settle(MMC, at)
+	local ui = function()
+		return MMC._M and MMC._M.Ui or {}
+	end
+	local t0 = os.clock() -- the mock's clock (one advance step is 1/30 s)
+	local want = at and "Entering" or "Rest"
+	while ui().Phase ~= want and os.clock() - t0 < 8 do
+		advance(1 / 30)
+	end
+	if at then
+		t0 = os.clock()
+		while os.clock() - t0 < at - 1e-6 do
+			advance(1 / 30)
+		end
+		local snapped = type(Mock.SnapTweens) == "function" and Mock.SnapTweens() or 0
+		note(fmt("mainmenu at %.2f s into the entrance: phase %s, %d tween values snapped", os.clock() - t0, tostring(ui().Phase), snapped))
+	end
+end
 scenario("mainmenu", function(window)
-	advance(1.5)
+	local at = window and tonumber(tostring(window):match("^at([%d%.]+)$"))
+	if not at then
+		advance(1.5)
+	end
 	local MMC = MM.controller()
+	if at and LocalPlayer then
+		local cfg = req("shared/Config")
+		LocalPlayer:SetAttribute((cfg.Attr and cfg.Attr.ProfileLoaded) or "ProfileLoaded", true)
+	end
+	MM.settle(MMC, at)
+	if at then
+		return
+	end
 	if window == "updates" then
 		MMC.OpenUpdates()
 	elseif window == "credits" then

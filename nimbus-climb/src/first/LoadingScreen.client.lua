@@ -10,7 +10,8 @@ pcall(function() game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
 -- ropes: the flat pink awning, the navy header plank, the 6 px wood frame round the stone body; width min(0.5 W, 620
 -- design px) and at least 480, the screen less a 16 px gutter on each side on a portrait phone (below 700 px wide). On a
 -- short screen the header, padding and tag line shrink until the swinging board ends above the tip card. It swings
--- +-1.5 deg (Sine, 3.2 s); nothing else moves.
+-- +-1.5 deg (Sine, 3.2 s); nothing else moves. (sign build) Once SignKit is there the board wears SignKit.Workshop's
+-- trim like the title screen's (grain, nails, rope rings, the striped awning's notched lip, a chipped corner).
 --   * Before Shared.Theme replicates: the sky, the clouds and the whole board (no text), drawn with this script's own copy
 --     of the few Theme.Sign tokens and SignKit sizes it needs (smoke loading_tokens_match_theme pins them equal).
 --   * Once Theme (and SignKit, PixelIcon) exist: "NIMBUS CLIMB" in LuckiestGuy gold on the navy plank (no outline), the
@@ -434,6 +435,12 @@ local function layout()
 	if ui.Mascot then
 		ui.Mascot.Position = UDim2.fromOffset(St.Geo.RowX + math.max(0, St.Blocks - 0.5) * (bw + gap), rowY)
 	end
+	-- (sign build) the owner's "Workshop" trim (SignKit.Workshop, once SignKit is there), drawn again when the board's
+	-- width changes (its awning's stripes and notched lip are cut to the width)
+	if St.Kit and St.TrimW ~= boardW then
+		St.TrimW = boardW
+		St.Kit.Workshop({ Roof = ui.Roof, Head = ui.Head, Frame = ui.Wood, Ropes = ui.Ropes })
+	end
 end
 
 ----------------------------------------------------------------------
@@ -516,6 +523,7 @@ local function buildText(SignKit, PixelIcon)
 	if not (SignKit and PixelIcon) then
 		return
 	end
+	St.Kit = type(SignKit.Workshop) == "function" and SignKit or nil -- (sign build) layout() draws the workshop trim
 	-- the tip: a small wood-framed stone card with the pixel bulb on a gold chip
 	local card, face = SignKit.Notice(ui.Content, {
 		Name = "TipCard",

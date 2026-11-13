@@ -15,6 +15,10 @@
 --   SignKit.Rope(parent, opts)    a rope / post the board hangs from
 --   SignKit.BlockRow(parent, opts) n stone blocks with a darker lip; SignKit.FillBlocks(row, k) turns the first k gold
 --   SignKit.Notice(parent, opts)  a small wood-framed stone card (a tip, a notice); returns notice, face
+--   SignKit.Workshop(parts, opts) (sign build: the owner's pick "A Workshop") the hand-built trim on a hanging board's
+--                                 parts: wood grain strips in the frame and the header rim, iron nails, a metal ring on
+--                                 each rope, the awning striped with a notched lip, one chipped corner. Opt-in: only the
+--                                 title screen's and the loading screen's boards call it (Credits stays as approved)
 -- Every part stamps attribute SignKit = its kind. Sizes are design px of a 1080p screen (the pitch's 0.8-scale px / 0.8);
 -- opts override any colour or size, so a look the owner already approved (Credits) builds from these parts unchanged.
 -- Requires only Theme (Shared). Plain Lua 5.1-compatible syntax only.
@@ -504,6 +508,140 @@ function SignKit.Notice(parent, opts)
 	end
 	place(notice, opts, "Notice")
 	return notice, face
+end
+
+----------------------------------------------------------------------
+-- workshop trim (sign build; the owner's pick "A Workshop" on .superpowers/sign-pitch/sign_pitch.html)
+----------------------------------------------------------------------
+
+-- the trim's colours: the wood's own grain (Theme.Sign.Wood towards Text / Post) and the pitch's iron (#9AA3AD / #5D6670;
+-- Theme.Sign has no grey, a later Iron / IronDark token there wins)
+SignKit.WorkshopColors = {
+	Grain = Sign.Wood:Lerp(Sign.Text, 0.45), -- a darker grain line
+	GrainLight = Sign.Wood:Lerp(Sign.Post, 0.6), -- a lighter one, and the chipped corner's raw wood
+	Iron = Sign.Iron or Color3.fromRGB(154, 163, 173),
+	IronDark = Sign.IronDark or Color3.fromRGB(93, 102, 112),
+	Stripe = Sign.RoofLip,
+	Notch = Sign.RoofLip, -- the pitch's darker pink lip (--pinkdk)
+}
+local WC = SignKit.WorkshopColors
+
+-- one trim block: a flat Frame stamped SignKit = "Workshop", Workshop = its kind
+local function bit(kind, colour, props, parent)
+	local f = fill("Trim" .. kind, colour, props, parent)
+	f:SetAttribute("SignKit", "Workshop")
+	f:SetAttribute("Workshop", kind)
+	return f
+end
+
+-- the trim of an earlier call, so a re-layout can draw it again at the new size
+local function clearTrim(parent)
+	for _, c in ipairs(parent:GetChildren()) do
+		if c:GetAttribute("SignKit") == "Workshop" then
+			c:Destroy()
+		end
+	end
+end
+
+-- a 1 px grain strip on a rail: x / y as { scale, offset }, w / h the same
+local function grain(parent, light, x, y, w, h, z)
+	return bit("Grain", light and WC.GrainLight or WC.Grain, {
+		Position = UDim2.new(x[1], x[2], y[1], y[2]),
+		Size = UDim2.new(w[1], w[2], h[1], h[2]),
+		ZIndex = z,
+	}, parent)
+end
+
+-- an iron nail head: a square whose darker bottom-right shows round a lighter cap (the pitch's inset shadow)
+local function nail(parent, pos, z)
+	local n = bit("Nail", WC.IronDark, { Position = pos, Size = UDim2.fromOffset(6, 6), ZIndex = z }, parent)
+	fill("TrimCap", WC.Iron, { Size = UDim2.fromOffset(4, 4), ZIndex = z }, n)
+	return n
+end
+
+-- parts: Roof (a flat SignKit.Roof: offset-sized, with its Face and Lip), Head (the header: rim + plate), Frame (the wood
+-- frame round the body), Ropes (the board's ropes; their lower end runs RingAt px into the board). opts: Rail (the rim /
+-- frame width, default Sizes.Frame), RingAt (8). Calling it again redraws the trim (a re-layout). Returns the trim count
+function SignKit.Workshop(parts, opts)
+	opts = opts or {}
+	local rail = tonumber(opts.Rail) or Z.Frame
+	local n = 0
+	local roof, head, wood = parts.Roof, parts.Head, parts.Frame
+	if roof then
+		clearTrim(roof)
+		local face = roof:FindFirstChild("Face")
+		local w = roof.Size.X.Offset
+		local z = roof.ZIndex
+		if face then
+			clearTrim(face)
+			local lipObj = face:FindFirstChild("Lip")
+			local lip = lipObj and lipObj.Size.Y.Offset or Z.RoofLip
+			-- stripes: a 2 px darker line every 16 px across the face, above its lip
+			local faceW = w - 2 * Z.RoofEdge
+			for x = 14, faceW - 4, 16 do
+				bit("Stripe", WC.Stripe, { Position = UDim2.fromOffset(x, 0), Size = UDim2.new(0, 2, 1, -lip), ZIndex = face.ZIndex }, face)
+				n = n + 1
+			end
+		end
+		-- the notched lip under the awning: stepped pixel teeth (10 px, then 6 px), one every 14 px
+		local notch = frame("TrimNotch", { Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 7), ZIndex = z }, roof)
+		notch:SetAttribute("SignKit", "Workshop")
+		notch:SetAttribute("Workshop", "Notch")
+		for x = 2, w - 12, 14 do
+			local tooth = bit("Tooth", WC.Notch, { Position = UDim2.fromOffset(x, 0), Size = UDim2.fromOffset(10, 4), ZIndex = z }, notch)
+			fill("TrimPoint", WC.Notch, { Position = UDim2.fromOffset(2, 4), Size = UDim2.fromOffset(6, 3), ZIndex = z }, tooth)
+			n = n + 1
+		end
+	end
+	if head then
+		clearTrim(head)
+		local z = head.ZIndex
+		-- grain along the side rails of the rim (its top hides under the awning), a nail under the awning's lip on each
+		grain(head, false, { 0, 2 }, { 0.32, 0 }, { 0, 1 }, { 0.5, 0 }, z)
+		grain(head, true, { 1, -3 }, { 0.22, 0 }, { 0, 1 }, { 0.55, 0 }, z)
+		nail(head, UDim2.fromOffset(0, 10), z)
+		nail(head, UDim2.new(1, -rail, 0, 10), z)
+		n = n + 4
+	end
+	if wood then
+		clearTrim(wood)
+		local z = wood.ZIndex
+		-- grain on the left, right and bottom rails (a dark and a light run each, never the same length twice)
+		grain(wood, false, { 0, 2 }, { 0.12, 0 }, { 0, 1 }, { 0.38, 0 }, z)
+		grain(wood, true, { 0, 4 }, { 0.6, 0 }, { 0, 1 }, { 0.22, 0 }, z)
+		grain(wood, true, { 1, -3 }, { 0.08, 0 }, { 0, 1 }, { 0.3, 0 }, z)
+		grain(wood, false, { 1, -5 }, { 0.52, 0 }, { 0, 1 }, { 0.26, 0 }, z)
+		grain(wood, false, { 0.1, 0 }, { 1, -rail + 2 }, { 0.32, 0 }, { 0, 1 }, z)
+		grain(wood, true, { 0.55, 0 }, { 1, -rail + 4 }, { 0.28, 0 }, { 0, 1 }, z)
+		-- two nails on the bottom rail, in from the corners
+		nail(wood, UDim2.new(0, 2 * rail, 1, -rail), z)
+		nail(wood, UDim2.new(1, -3 * rail, 1, -rail), z)
+		-- one chipped corner (bottom-right): a stepped bite of lighter raw wood with a dark crack along its inner edge
+		local chip = bit("Chip", WC.GrainLight, { Position = UDim2.new(1, -rail, 1, -2), Size = UDim2.fromOffset(rail, 2), ZIndex = z }, wood)
+		fill("TrimStep", WC.GrainLight, { Position = UDim2.fromOffset(2, -2), Size = UDim2.fromOffset(rail - 2, 2), ZIndex = z }, chip)
+		fill("TrimStep", WC.GrainLight, { Position = UDim2.fromOffset(4, -4), Size = UDim2.fromOffset(rail - 4, 2), ZIndex = z }, chip)
+		fill("TrimCrack", WC.Grain, { Position = UDim2.fromOffset(0, -1), Size = UDim2.fromOffset(2, 1), ZIndex = z }, chip)
+		fill("TrimCrack", WC.Grain, { Position = UDim2.fromOffset(2, -3), Size = UDim2.fromOffset(2, 1), ZIndex = z }, chip)
+		n = n + 9
+	end
+	-- a metal ring where each rope ties on: an arch round the rope, sitting on the awning
+	for _, rope in ipairs(parts.Ropes or {}) do
+		clearTrim(rope)
+		local z = rope.ZIndex
+		local ring = frame("TrimRing", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, -(tonumber(opts.RingAt) or 8)),
+			Size = UDim2.fromOffset(14, 10),
+			ZIndex = z,
+		}, rope)
+		ring:SetAttribute("SignKit", "Workshop")
+		ring:SetAttribute("Workshop", "Ring")
+		fill("TrimTop", WC.Iron, { Size = UDim2.fromOffset(14, 3), ZIndex = z }, ring)
+		fill("TrimLeft", WC.Iron, { Size = UDim2.fromOffset(3, 10), ZIndex = z }, ring)
+		fill("TrimRight", WC.IronDark, { Position = UDim2.fromOffset(11, 0), Size = UDim2.fromOffset(3, 10), ZIndex = z }, ring)
+		n = n + 1
+	end
+	return n
 end
 
 return SignKit
