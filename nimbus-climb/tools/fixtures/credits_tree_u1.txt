@@ -1,0 +1,288 @@
+== 1920x1080
+/Fit | UIScale
+/CreditsSign | Frame | abs 1148.0,309.0 760.0x520.0 pos {0.0,0,0.0,0} size {1.0,0,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
+/CreditsSign/Drop | Frame | abs 1148.0,361.0 760.0x468.0 pos {0.0,0,0.0,52} size {1.0,0,0.0,468} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #0B1330 0.60
+/CreditsSign/Roof | Frame | abs 1378.0,309.0 300.0x44.0 pos {0.5,0,0.0,0} size {0.0,300,0.0,44} anchor 0.5,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00
+/CreditsSign/Roof/SlopeL | Frame | abs 1381.7,329.9 157.3x52.0 pos {0.0,82,0.0,46} size {0.0,157,0.0,52} anchor 0.5,0.5 rot -16.3 z 1 vis true bg #E9849B 0.00
+/CreditsSign/Roof/SlopeR | Frame | abs 1517.0,329.9 157.3x52.0 pos {0.0,217,0.0,46} size {0.0,157,0.0,52} anchor 0.5,0.5 rot 16.3 z 1 vis true bg #E9849B 0.00
+/CreditsSign/Roof/Fascia | Frame | abs 1370.0,344.0 316.0x9.0 pos {0.5,0,1.0,0} size {0.0,316,0.0,9} anchor 0.5,1.0 rot 0.0 z 2 vis true bg #B9566D 0.00
+/CreditsSign/Roof/Vent | Frame | abs 1521.0,324.0 14.0x14.0 pos {0.0,150,0.0,22} size {0.0,14,0.0,14} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #F6ECD6 0.00
+/CreditsSign/Roof/Vent/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Roof/Vent/UIStroke | UIStroke | #5E3A1D 2.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Head | Frame | abs 1148.0,353.0 760.0x64.0 pos {0.0,0,0.0,44} size {1.0,0,0.0,64} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #5E3A1D 0.00
+/CreditsSign/Head/Plate | Frame | abs 1153.0,358.0 750.0x59.0 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Head/Plate/TitleDrop | TextLabel | abs 1171.0,361.0 668.0x59.0 pos {0.0,18,0.0,3} size {1.0,-82,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREDITS" 34.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #0B1330 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Title | TextLabel | abs 1171.0,358.0 668.0x59.0 pos {0.0,18,0.0,0} size {1.0,-82,1.0,0} anchor 0.0,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00 | text "CREDITS" 34.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Close | TextButton | abs 1849.0,365.5 44.0x44.0 pos {1.0,-10,0.5,0} size {0.0,44,0.0,44} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
+/CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
+/CreditsSign/Head/Plate/Close/TextOutline | UIStroke | #080A1C 2.0 Enum.ApplyStrokeMode.Contextual Enum.LineJoinMode.Round 0.00
+/CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
+/CreditsSign/Head/Plate/Close/Glow | Frame | abs 1845.0,361.5 52.0x52.0 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
+/CreditsSign/Head/Plate/Close/Glow/UIStroke | UIStroke | #FF4C64 4.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.68
+/CreditsSign/Head/Plate/Close/Shine | Frame | abs 1861.0,368.5 20.0x2.6 pos {0.5,0,0.0,3} size {1.0,-24,0.1,0} anchor 0.5,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.80
+/CreditsSign/Head/Plate/Close/Shine/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/FxScale | UIScale
+/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 1857.8,374.3 26.4x26.4 pos {0.5,0,0.5,0} size {0.6,0,0.6,0} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 1.000
+/CreditsSign/Head/Plate/Close/CloseMark/InkA | Frame | abs 1855.8,383.3 30.4x8.5 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot 45.0 z 4 vis true bg #080A1C 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/InkA/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/InkB | Frame | abs 1855.8,383.3 30.4x8.5 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot -45.0 z 4 vis true bg #080A1C 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/InkB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/BarA | Frame | abs 1857.8,385.3 26.4x4.5 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot 45.0 z 5 vis true bg #FFFFFF 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/BarA/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/BarB | Frame | abs 1857.8,385.3 26.4x4.5 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot -45.0 z 5 vis true bg #FFFFFF 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/BarB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Wood | Frame | abs 1148.0,417.0 760.0x404.0 pos {0.0,0,0.0,108} size {1.0,0,0.0,404} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #8A5A32 0.00
+/CreditsSign/Wood/Body | Frame | abs 1154.0,423.0 748.0x392.0 pos {0.0,6,0.0,6} size {1.0,-12,1.0,-12} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #F6ECD6 0.00
+/CreditsSign/Wood/Body/Line | Frame | abs 1159.0,428.0 738.0x382.0 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-10} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
+/CreditsSign/Wood/Body/Line/UIStroke | UIStroke | #EADBB8 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/PolaroidShadow | Frame | abs 1188.6,511.0 210.0x239.0 pos {0.0,139,0.0,207} size {0.0,210,0.0,239} anchor 0.5,0.5 rot -5.0 z 2 vis true bg #281A0A 0.78
+/CreditsSign/Wood/Body/Polaroid | Frame | abs 1184.6,505.0 210.0x239.0 pos {0.0,135,0.0,201} size {0.0,210,0.0,239} anchor 0.5,0.5 rot -5.0 z 3 vis true bg #FFFFFF 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo | Frame | abs 1196.6,517.0 186.0x186.0 pos {0.0,12,0.0,12} size {0.0,186,0.0,186} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #FFFFFF 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo/UIGradient | UIGradient | 0.0=#7FC4F2 1.0=#CFEAFC rot 90.0
+/CreditsSign/Wood/Body/Polaroid/Photo/UIStroke | UIStroke | #D8CFBD 1.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo/Avatar | ImageLabel | abs 1196.6,517.0 186.0x186.0 pos {0.0,0,0.0,0} size {1.0,0,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | image "rbxthumb://type=AvatarHeadShot&id=93742920&w=420&h=420" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Polaroid/Caption | TextLabel | abs 1184.6,703.0 210.0x41.0 pos {0.0,0,0.0,198} size {0.0,210,0.0,41} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "the boss" 22.0 Enum.Font.PermanentMarker face PermanentMarker/Regular/Normal col #3A3A3A stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Wood/Body/Polaroid/Pin | Frame | abs 1278.6,496.0 22.0x22.0 pos {0.0,105,0.0,2} size {0.0,22,0.0,22} anchor 0.5,0.5 rot 0.0 z 2 vis true bg #D6455B 0.00
+/CreditsSign/Wood/Body/Polaroid/Pin/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Polaroid/Pin/UIStroke | UIStroke | #8F1F33 1.5 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Polaroid/Pin/PinShine | Frame | abs 1283.9,500.4 6.6x6.6 pos {0.2,0,0.2,0} size {0.3,0,0.3,0} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.15
+/CreditsSign/Wood/Body/Polaroid/Pin/PinShine/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column | Frame | abs 1425.0,486.0 459.0x266.0 pos {0.0,271,0.0,63} size {0.0,459,0.0,266} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
+/CreditsSign/Wood/Body/Column/Plank | Frame | abs 1425.0,486.0 304.0x82.0 pos {0.0,0,0.0,0} size {0.0,304,0.0,82} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Wood/Body/Column/Plank/UIStroke | UIStroke | #5E3A1D 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailL | Frame | abs 1429.0,524.5 5.0x5.0 pos {0.0,4,0.5,0} size {0.0,5,0.0,5} anchor 0.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailL/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Plank/NailR | Frame | abs 1720.0,524.5 5.0x5.0 pos {1.0,-4,0.5,0} size {0.0,5,0.0,5} anchor 1.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailR/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Plank/Wordmark | ImageLabel | abs 1439.0,496.0 276.0x62.0 pos {0.5,0,0.5,0} size {0.0,276,0.0,62} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #A3A2A5 1.00 | image "rbxassetid://105015128819853" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Column/Plank/Wordmark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 4.452
+/CreditsSign/Wood/Body/Column/CreatedBy | TextLabel | abs 1427.0,582.0 457.0x26.0 pos {0.0,2,0.0,96} size {0.0,457,0.0,26} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREATED BY" 20.0 Enum.Font.Unknown face Nunito/Heavy/Normal col #7A6A4C stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Bottom wrap false
+/CreditsSign/Wood/Body/Column/Signature | TextLabel | abs 1425.0,608.0 350.0x87.0 pos {0.0,0,0.0,122} size {0.0,350,0.0,87} anchor 0.0,0.0 rot -3.0 z 2 vis true bg #A3A2A5 1.00 | text "St.Gavin" 72.0 Enum.Font.PermanentMarker face PermanentMarker/Regular/Normal col #1D2B55 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Wood/Body/Column/Signature/Swash | Frame | abs 1433.0,682.0 223.0x5.0 pos {0.0,8,0.0,74} size {0.0,223,0.0,5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Wood/Body/Column/Signature/Swash/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Thanks | TextLabel | abs 1427.0,698.0 348.0x54.0 pos {0.0,2,0.0,212} size {0.0,348,0.0,54} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "Thanks for playing Nimbus Climb!" 20.0 Enum.Font.Unknown face Nunito/Bold/Italic col #8A6512 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Top wrap true
+/CreditsSign/Wood/Body/StickerShadow | Frame | abs 1796.0,711.0 92.0x92.0 pos {0.0,688,0.0,334} size {0.0,92,0.0,92} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #281A0A 0.72
+/CreditsSign/Wood/Body/StickerShadow/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/StickerRing | Frame | abs 1790.0,703.0 100.0x100.0 pos {0.0,686,0.0,330} size {0.0,100,0.0,100} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/StickerRing/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Sticker | ImageLabel | abs 1794.0,707.0 92.0x92.0 pos {0.0,686,0.0,330} size {0.0,92,0.0,92} anchor 0.5,0.5 rot 12.0 z 5 vis true bg #1D2B55 1.00 | image "rbxassetid://114032351365198" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Sticker/UICorner | UICorner | radius 1.0,0
+== 1280x720
+/Fit | UIScale
+/CreditsSign | Frame | abs 707.0,168.0 563.5x442.0 pos {0.0,0,0.0,0} size {1.0,0,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
+/CreditsSign/Drop | Frame | abs 707.0,212.2 563.5x397.8 pos {0.0,0,0.0,52} size {1.0,0,0.0,468} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #0B1330 0.60
+/CreditsSign/Roof | Frame | abs 861.3,168.0 255.0x37.4 pos {0.5,0,0.0,0} size {0.0,300,0.0,44} anchor 0.5,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00
+/CreditsSign/Roof/SlopeL | Frame | abs 864.4,185.8 133.7x44.2 pos {0.0,82,0.0,46} size {0.0,157,0.0,52} anchor 0.5,0.5 rot -16.3 z 1 vis true bg #E9849B 0.00
+/CreditsSign/Roof/SlopeR | Frame | abs 979.4,185.8 133.7x44.2 pos {0.0,217,0.0,46} size {0.0,157,0.0,52} anchor 0.5,0.5 rot 16.3 z 1 vis true bg #E9849B 0.00
+/CreditsSign/Roof/Fascia | Frame | abs 854.5,197.8 268.6x7.6 pos {0.5,0,1.0,0} size {0.0,316,0.0,9} anchor 0.5,1.0 rot 0.0 z 2 vis true bg #B9566D 0.00
+/CreditsSign/Roof/Vent | Frame | abs 982.8,180.8 11.9x11.9 pos {0.0,150,0.0,22} size {0.0,14,0.0,14} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #F6ECD6 0.00
+/CreditsSign/Roof/Vent/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Roof/Vent/UIStroke | UIStroke | #5E3A1D 2.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Head | Frame | abs 707.0,205.4 563.5x54.4 pos {0.0,0,0.0,44} size {1.0,0,0.0,64} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #5E3A1D 0.00
+/CreditsSign/Head/Plate | Frame | abs 711.2,209.7 555.0x50.1 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Head/Plate/TitleDrop | TextLabel | abs 726.5,212.2 485.3x50.1 pos {0.0,18,0.0,3} size {1.0,-82,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREDITS" 34.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #0B1330 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Title | TextLabel | abs 726.5,209.7 485.3x50.1 pos {0.0,18,0.0,0} size {1.0,-82,1.0,0} anchor 0.0,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00 | text "CREDITS" 34.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Close | TextButton | abs 1220.4,216.0 37.4x37.4 pos {1.0,-10,0.5,0} size {0.0,44,0.0,44} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
+/CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
+/CreditsSign/Head/Plate/Close/TextOutline | UIStroke | #080A1C 2.0 Enum.ApplyStrokeMode.Contextual Enum.LineJoinMode.Round 0.00
+/CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
+/CreditsSign/Head/Plate/Close/Glow | Frame | abs 1217.0,212.6 44.2x44.2 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
+/CreditsSign/Head/Plate/Close/Glow/UIStroke | UIStroke | #FF4C64 4.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.68
+/CreditsSign/Head/Plate/Close/Shine | Frame | abs 1230.6,218.6 17.0x2.2 pos {0.5,0,0.0,3} size {1.0,-24,0.1,0} anchor 0.5,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.80
+/CreditsSign/Head/Plate/Close/Shine/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/FxScale | UIScale
+/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 1227.9,223.5 22.4x22.4 pos {0.5,0,0.5,0} size {0.6,0,0.6,0} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 1.000
+/CreditsSign/Head/Plate/Close/CloseMark/InkA | Frame | abs 1226.2,231.1 25.8x7.2 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot 45.0 z 4 vis true bg #080A1C 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/InkA/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/InkB | Frame | abs 1226.2,231.1 25.8x7.2 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot -45.0 z 4 vis true bg #080A1C 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/InkB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/BarA | Frame | abs 1227.9,232.8 22.4x3.8 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot 45.0 z 5 vis true bg #FFFFFF 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/BarA/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/BarB | Frame | abs 1227.9,232.8 22.4x3.8 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot -45.0 z 5 vis true bg #FFFFFF 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/BarB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Wood | Frame | abs 707.0,259.8 563.5x343.4 pos {0.0,0,0.0,108} size {1.0,0,0.0,404} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #8A5A32 0.00
+/CreditsSign/Wood/Body | Frame | abs 712.1,264.9 553.3x333.2 pos {0.0,6,0.0,6} size {1.0,-12,1.0,-12} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #F6ECD6 0.00
+/CreditsSign/Wood/Body/Line | Frame | abs 716.4,269.2 544.8x324.7 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-10} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
+/CreditsSign/Wood/Body/Line/UIStroke | UIStroke | #EADBB8 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/PolaroidShadow | Frame | abs 741.5,339.7 178.5x203.2 pos {0.0,139,0.0,207} size {0.0,210,0.0,239} anchor 0.5,0.5 rot -5.0 z 2 vis true bg #281A0A 0.78
+/CreditsSign/Wood/Body/Polaroid | Frame | abs 738.1,334.6 178.5x203.2 pos {0.0,135,0.0,201} size {0.0,210,0.0,239} anchor 0.5,0.5 rot -5.0 z 3 vis true bg #FFFFFF 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo | Frame | abs 748.3,344.8 158.1x158.1 pos {0.0,12,0.0,12} size {0.0,186,0.0,186} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #FFFFFF 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo/UIGradient | UIGradient | 0.0=#7FC4F2 1.0=#CFEAFC rot 90.0
+/CreditsSign/Wood/Body/Polaroid/Photo/UIStroke | UIStroke | #D8CFBD 1.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo/Avatar | ImageLabel | abs 748.3,344.8 158.1x158.1 pos {0.0,0,0.0,0} size {1.0,0,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | image "rbxthumb://type=AvatarHeadShot&id=93742920&w=420&h=420" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Polaroid/Caption | TextLabel | abs 738.1,502.9 178.5x34.9 pos {0.0,0,0.0,198} size {0.0,210,0.0,41} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "the boss" 22.0 Enum.Font.PermanentMarker face PermanentMarker/Regular/Normal col #3A3A3A stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Wood/Body/Polaroid/Pin | Frame | abs 818.0,327.0 18.7x18.7 pos {0.0,105,0.0,2} size {0.0,22,0.0,22} anchor 0.5,0.5 rot 0.0 z 2 vis true bg #D6455B 0.00
+/CreditsSign/Wood/Body/Polaroid/Pin/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Polaroid/Pin/UIStroke | UIStroke | #8F1F33 1.5 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Polaroid/Pin/PinShine | Frame | abs 822.5,330.7 5.6x5.6 pos {0.2,0,0.2,0} size {0.3,0,0.3,0} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.15
+/CreditsSign/Wood/Body/Polaroid/Pin/PinShine/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column | Frame | abs 942.5,323.6 307.7x215.0 pos {0.0,271,0.0,69} size {0.0,362,0.0,253} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
+/CreditsSign/Wood/Body/Column/Plank | Frame | abs 942.5,323.6 258.4x69.7 pos {0.0,0,0.0,0} size {0.0,304,0.0,82} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Wood/Body/Column/Plank/UIStroke | UIStroke | #5E3A1D 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailL | Frame | abs 945.9,356.3 4.2x4.2 pos {0.0,4,0.5,0} size {0.0,5,0.0,5} anchor 0.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailL/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Plank/NailR | Frame | abs 1193.2,356.3 4.2x4.2 pos {1.0,-4,0.5,0} size {0.0,5,0.0,5} anchor 1.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailR/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Plank/Wordmark | ImageLabel | abs 954.4,332.1 234.6x52.7 pos {0.5,0,0.5,0} size {0.0,276,0.0,62} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #A3A2A5 1.00 | image "rbxassetid://105015128819853" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Column/Plank/Wordmark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 4.452
+/CreditsSign/Wood/Body/Column/CreatedBy | TextLabel | abs 944.2,405.1 306.0x22.1 pos {0.0,2,0.0,96} size {0.0,360,0.0,26} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREATED BY" 20.0 Enum.Font.Unknown face Nunito/Heavy/Normal col #7A6A4C stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Bottom wrap false
+/CreditsSign/Wood/Body/Column/Signature | TextLabel | abs 942.5,427.2 215.0x60.4 pos {0.0,0,0.0,122} size {0.0,253,0.0,71} anchor 0.0,0.0 rot -3.0 z 2 vis true bg #A3A2A5 1.00 | text "St.Gavin" 59.0 Enum.Font.PermanentMarker face PermanentMarker/Regular/Normal col #1D2B55 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Wood/Body/Column/Signature/Swash | Frame | abs 948.4,479.1 154.7x4.2 pos {0.0,7,0.0,61} size {0.0,182,0.0,5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Wood/Body/Column/Signature/Swash/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Thanks | TextLabel | abs 944.2,492.7 213.3x45.9 pos {0.0,2,0.0,199} size {0.0,251,0.0,54} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "Thanks for playing Nimbus Climb!" 20.0 Enum.Font.Unknown face Nunito/Bold/Italic col #8A6512 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Top wrap true
+/CreditsSign/Wood/Body/StickerShadow | Frame | abs 1175.4,509.7 78.2x78.2 pos {0.0,591,0.0,334} size {0.0,92,0.0,92} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #281A0A 0.72
+/CreditsSign/Wood/Body/StickerShadow/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/StickerRing | Frame | abs 1170.2,502.9 85.0x85.0 pos {0.0,589,0.0,330} size {0.0,100,0.0,100} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/StickerRing/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Sticker | ImageLabel | abs 1173.7,506.3 78.2x78.2 pos {0.0,589,0.0,330} size {0.0,92,0.0,92} anchor 0.5,0.5 rot 12.0 z 5 vis true bg #1D2B55 1.00 | image "rbxassetid://114032351365198" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Sticker/UICorner | UICorner | radius 1.0,0
+== 844x390
+/Fit | UIScale
+/CreditsSign | Frame | abs 463.0,68.0 371.2x312.8 pos {0.0,0,0.0,0} size {1.0,0,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
+/CreditsSign/Drop | Frame | abs 463.0,109.6 371.2x271.2 pos {0.0,0,0.0,52} size {1.0,0,0.0,339} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #0B1330 0.60
+/CreditsSign/Roof | Frame | abs 528.6,68.0 240.0x35.2 pos {0.5,0,0.0,0} size {0.0,300,0.0,44} anchor 0.5,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00
+/CreditsSign/Roof/SlopeL | Frame | abs 531.5,84.8 125.9x41.6 pos {0.0,82,0.0,46} size {0.0,157,0.0,52} anchor 0.5,0.5 rot -16.3 z 1 vis true bg #E9849B 0.00
+/CreditsSign/Roof/SlopeR | Frame | abs 639.8,84.8 125.9x41.6 pos {0.0,217,0.0,46} size {0.0,157,0.0,52} anchor 0.5,0.5 rot 16.3 z 1 vis true bg #E9849B 0.00
+/CreditsSign/Roof/Fascia | Frame | abs 522.2,96.0 252.8x7.2 pos {0.5,0,1.0,0} size {0.0,316,0.0,9} anchor 0.5,1.0 rot 0.0 z 2 vis true bg #B9566D 0.00
+/CreditsSign/Roof/Vent | Frame | abs 643.0,80.0 11.2x11.2 pos {0.0,150,0.0,22} size {0.0,14,0.0,14} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #F6ECD6 0.00
+/CreditsSign/Roof/Vent/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Roof/Vent/UIStroke | UIStroke | #5E3A1D 2.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Head | Frame | abs 463.0,103.2 371.2x41.6 pos {0.0,0,0.0,44} size {1.0,0,0.0,52} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #5E3A1D 0.00
+/CreditsSign/Head/Plate | Frame | abs 467.0,107.2 363.2x37.6 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Head/Plate/TitleDrop | TextLabel | abs 481.4,109.6 302.4x37.6 pos {0.0,18,0.0,3} size {1.0,-76,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREDITS" 28.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #0B1330 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Title | TextLabel | abs 481.4,107.2 302.4x37.6 pos {0.0,18,0.0,0} size {1.0,-76,1.0,0} anchor 0.0,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00 | text "CREDITS" 28.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Close | TextButton | abs 791.8,110.8 30.4x30.4 pos {1.0,-10,0.5,0} size {0.0,38,0.0,38} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
+/CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
+/CreditsSign/Head/Plate/Close/TextOutline | UIStroke | #080A1C 2.0 Enum.ApplyStrokeMode.Contextual Enum.LineJoinMode.Round 0.00
+/CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
+/CreditsSign/Head/Plate/Close/Glow | Frame | abs 788.6,107.6 36.8x36.8 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
+/CreditsSign/Head/Plate/Close/Glow/UIStroke | UIStroke | #FF4C64 4.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.68
+/CreditsSign/Head/Plate/Close/Shine | Frame | abs 801.4,113.2 11.2x1.8 pos {0.5,0,0.0,3} size {1.0,-24,0.1,0} anchor 0.5,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.80
+/CreditsSign/Head/Plate/Close/Shine/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/FxScale | UIScale
+/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 797.9,116.9 18.2x18.2 pos {0.5,0,0.5,0} size {0.6,0,0.6,0} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 1.000
+/CreditsSign/Head/Plate/Close/CloseMark/InkA | Frame | abs 796.3,122.8 21.4x6.3 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot 45.0 z 4 vis true bg #080A1C 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/InkA/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/InkB | Frame | abs 796.3,122.8 21.4x6.3 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot -45.0 z 4 vis true bg #080A1C 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/InkB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/BarA | Frame | abs 797.9,124.4 18.2x3.1 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot 45.0 z 5 vis true bg #FFFFFF 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/BarA/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/BarB | Frame | abs 797.9,124.4 18.2x3.1 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot -45.0 z 5 vis true bg #FFFFFF 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/BarB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Wood | Frame | abs 463.0,144.8 371.2x229.6 pos {0.0,0,0.0,96} size {1.0,0,0.0,287} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #8A5A32 0.00
+/CreditsSign/Wood/Body | Frame | abs 467.8,149.6 361.6x220.0 pos {0.0,6,0.0,6} size {1.0,-12,1.0,-12} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #F6ECD6 0.00
+/CreditsSign/Wood/Body/Line | Frame | abs 471.8,153.6 353.6x212.0 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-10} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
+/CreditsSign/Wood/Body/Line/UIStroke | UIStroke | #EADBB8 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/PolaroidShadow | Frame | abs 487.8,198.4 120.0x139.2 pos {0.0,100,0.0,148} size {0.0,150,0.0,174} anchor 0.5,0.5 rot -5.0 z 2 vis true bg #281A0A 0.78
+/CreditsSign/Wood/Body/Polaroid | Frame | abs 484.6,193.6 120.0x139.2 pos {0.0,96,0.0,142} size {0.0,150,0.0,174} anchor 0.5,0.5 rot -5.0 z 3 vis true bg #FFFFFF 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo | Frame | abs 491.0,200.0 107.2x107.2 pos {0.0,8,0.0,8} size {0.0,134,0.0,134} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #FFFFFF 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo/UIGradient | UIGradient | 0.0=#7FC4F2 1.0=#CFEAFC rot 90.0
+/CreditsSign/Wood/Body/Polaroid/Photo/UIStroke | UIStroke | #D8CFBD 1.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo/Avatar | ImageLabel | abs 491.0,200.0 107.2x107.2 pos {0.0,0,0.0,0} size {1.0,0,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | image "rbxthumb://type=AvatarHeadShot&id=93742920&w=420&h=420" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Polaroid/Caption | TextLabel | abs 484.6,307.2 120.0x25.6 pos {0.0,0,0.0,142} size {0.0,150,0.0,32} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "the boss" 18.0 Enum.Font.PermanentMarker face PermanentMarker/Regular/Normal col #3A3A3A stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Wood/Body/Polaroid/Pin | Frame | abs 537.4,188.0 14.4x14.4 pos {0.0,75,0.0,2} size {0.0,18,0.0,18} anchor 0.5,0.5 rot 0.0 z 2 vis true bg #D6455B 0.00
+/CreditsSign/Wood/Body/Polaroid/Pin/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Polaroid/Pin/UIStroke | UIStroke | #8F1F33 1.5 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Polaroid/Pin/PinShine | Frame | abs 540.9,190.9 4.3x4.3 pos {0.2,0,0.2,0} size {0.3,0,0.3,0} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.15
+/CreditsSign/Wood/Body/Polaroid/Pin/PinShine/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column | Frame | abs 619.8,172.0 200.0x175.2 pos {0.0,190,0.0,28} size {0.0,250,0.0,219} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
+/CreditsSign/Wood/Body/Column/Plank | Frame | abs 619.8,172.0 172.0x48.0 pos {0.0,0,0.0,0} size {0.0,215,0.0,60} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Wood/Body/Column/Plank/UIStroke | UIStroke | #5E3A1D 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailL | Frame | abs 623.0,194.0 4.0x4.0 pos {0.0,4,0.5,0} size {0.0,5,0.0,5} anchor 0.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailL/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Plank/NailR | Frame | abs 784.6,194.0 4.0x4.0 pos {1.0,-4,0.5,0} size {0.0,5,0.0,5} anchor 1.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailR/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Plank/Wordmark | ImageLabel | abs 627.8,178.5 156.0x35.0 pos {0.5,0,0.5,0} size {0.0,195,0.0,44} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #A3A2A5 1.00 | image "rbxassetid://105015128819853" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Column/Plank/Wordmark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 4.452
+/CreditsSign/Wood/Body/Column/CreatedBy | TextLabel | abs 621.4,226.4 198.4x19.2 pos {0.0,2,0.0,68} size {0.0,248,0.0,24} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREATED BY" 18.0 Enum.Font.Unknown face Nunito/Heavy/Normal col #7A6A4C stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Bottom wrap false
+/CreditsSign/Wood/Body/Column/Signature | TextLabel | abs 619.8,245.6 140.0x40.0 pos {0.0,0,0.0,92} size {0.0,175,0.0,50} anchor 0.0,0.0 rot -3.0 z 2 vis true bg #A3A2A5 1.00 | text "St.Gavin" 41.0 Enum.Font.PermanentMarker face PermanentMarker/Regular/Normal col #1D2B55 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Wood/Body/Column/Signature/Swash | Frame | abs 623.0,279.2 101.6x3.2 pos {0.0,4,0.0,42} size {0.0,127,0.0,4} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Wood/Body/Column/Signature/Swash/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Thanks | TextLabel | abs 621.4,288.8 138.4x58.4 pos {0.0,2,0.0,146} size {0.0,173,0.0,73} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "Thanks for playing Nimbus Climb!" 18.0 Enum.Font.Unknown face Nunito/Bold/Italic col #8A6512 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Top wrap true
+/CreditsSign/Wood/Body/StickerShadow | Frame | abs 773.4,315.2 48.0x48.0 pos {0.0,412,0.0,237} size {0.0,60,0.0,60} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #281A0A 0.72
+/CreditsSign/Wood/Body/StickerShadow/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/StickerRing | Frame | abs 769.4,309.6 52.8x52.8 pos {0.0,410,0.0,233} size {0.0,66,0.0,66} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/StickerRing/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Sticker | ImageLabel | abs 771.8,312.0 48.0x48.0 pos {0.0,410,0.0,233} size {0.0,60,0.0,60} anchor 0.5,0.5 rot 12.0 z 5 vis true bg #1D2B55 1.00 | image "rbxassetid://114032351365198" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Sticker/UICorner | UICorner | radius 1.0,0
+== 390x844
+/Fit | UIScale
+/CreditsSign | Frame | abs 10.0,402.0 371.2x432.0 pos {0.0,0,0.0,0} size {1.0,0,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
+/CreditsSign/Drop | Frame | abs 10.0,443.6 371.2x390.4 pos {0.0,0,0.0,52} size {1.0,0,0.0,488} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #0B1330 0.60
+/CreditsSign/Roof | Frame | abs 75.6,402.0 240.0x35.2 pos {0.5,0,0.0,0} size {0.0,300,0.0,44} anchor 0.5,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00
+/CreditsSign/Roof/SlopeL | Frame | abs 78.5,418.8 125.9x41.6 pos {0.0,82,0.0,46} size {0.0,157,0.0,52} anchor 0.5,0.5 rot -16.3 z 1 vis true bg #E9849B 0.00
+/CreditsSign/Roof/SlopeR | Frame | abs 186.8,418.8 125.9x41.6 pos {0.0,217,0.0,46} size {0.0,157,0.0,52} anchor 0.5,0.5 rot 16.3 z 1 vis true bg #E9849B 0.00
+/CreditsSign/Roof/Fascia | Frame | abs 69.2,430.0 252.8x7.2 pos {0.5,0,1.0,0} size {0.0,316,0.0,9} anchor 0.5,1.0 rot 0.0 z 2 vis true bg #B9566D 0.00
+/CreditsSign/Roof/Vent | Frame | abs 190.0,414.0 11.2x11.2 pos {0.0,150,0.0,22} size {0.0,14,0.0,14} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #F6ECD6 0.00
+/CreditsSign/Roof/Vent/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Roof/Vent/UIStroke | UIStroke | #5E3A1D 2.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Head | Frame | abs 10.0,437.2 371.2x41.6 pos {0.0,0,0.0,44} size {1.0,0,0.0,52} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #5E3A1D 0.00
+/CreditsSign/Head/Plate | Frame | abs 14.0,441.2 363.2x37.6 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Head/Plate/TitleDrop | TextLabel | abs 28.4,443.6 302.4x37.6 pos {0.0,18,0.0,3} size {1.0,-76,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREDITS" 28.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #0B1330 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Title | TextLabel | abs 28.4,441.2 302.4x37.6 pos {0.0,18,0.0,0} size {1.0,-76,1.0,0} anchor 0.0,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00 | text "CREDITS" 28.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Close | TextButton | abs 338.8,444.8 30.4x30.4 pos {1.0,-10,0.5,0} size {0.0,38,0.0,38} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
+/CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
+/CreditsSign/Head/Plate/Close/TextOutline | UIStroke | #080A1C 2.0 Enum.ApplyStrokeMode.Contextual Enum.LineJoinMode.Round 0.00
+/CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
+/CreditsSign/Head/Plate/Close/Glow | Frame | abs 335.6,441.6 36.8x36.8 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
+/CreditsSign/Head/Plate/Close/Glow/UIStroke | UIStroke | #FF4C64 4.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.68
+/CreditsSign/Head/Plate/Close/Shine | Frame | abs 348.4,447.2 11.2x1.8 pos {0.5,0,0.0,3} size {1.0,-24,0.1,0} anchor 0.5,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.80
+/CreditsSign/Head/Plate/Close/Shine/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/FxScale | UIScale
+/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 344.9,450.9 18.2x18.2 pos {0.5,0,0.5,0} size {0.6,0,0.6,0} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 1.000
+/CreditsSign/Head/Plate/Close/CloseMark/InkA | Frame | abs 343.3,456.8 21.4x6.3 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot 45.0 z 4 vis true bg #080A1C 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/InkA/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/InkB | Frame | abs 343.3,456.8 21.4x6.3 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot -45.0 z 4 vis true bg #080A1C 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/InkB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/BarA | Frame | abs 344.9,458.4 18.2x3.1 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot 45.0 z 5 vis true bg #FFFFFF 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/BarA/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/CloseMark/BarB | Frame | abs 344.9,458.4 18.2x3.1 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot -45.0 z 5 vis true bg #FFFFFF 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/BarB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Wood | Frame | abs 10.0,478.8 371.2x348.8 pos {0.0,0,0.0,96} size {1.0,0,0.0,436} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #8A5A32 0.00
+/CreditsSign/Wood/Body | Frame | abs 14.8,483.6 361.6x339.2 pos {0.0,6,0.0,6} size {1.0,-12,1.0,-12} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #F6ECD6 0.00
+/CreditsSign/Wood/Body/Line | Frame | abs 18.8,487.6 353.6x331.2 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-10} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
+/CreditsSign/Wood/Body/Line/UIStroke | UIStroke | #EADBB8 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/PolaroidShadow | Frame | abs 142.8,505.2 112.0x130.4 pos {0.0,230,0.0,108} size {0.0,140,0.0,163} anchor 0.5,0.5 rot -5.0 z 2 vis true bg #281A0A 0.78
+/CreditsSign/Wood/Body/Polaroid | Frame | abs 139.6,500.4 112.0x130.4 pos {0.0,226,0.0,102} size {0.0,140,0.0,163} anchor 0.5,0.5 rot -5.0 z 3 vis true bg #FFFFFF 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo | Frame | abs 146.0,506.8 99.2x99.2 pos {0.0,8,0.0,8} size {0.0,124,0.0,124} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #FFFFFF 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo/UIGradient | UIGradient | 0.0=#7FC4F2 1.0=#CFEAFC rot 90.0
+/CreditsSign/Wood/Body/Polaroid/Photo/UIStroke | UIStroke | #D8CFBD 1.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Polaroid/Photo/Avatar | ImageLabel | abs 146.0,506.8 99.2x99.2 pos {0.0,0,0.0,0} size {1.0,0,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | image "rbxthumb://type=AvatarHeadShot&id=93742920&w=420&h=420" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Polaroid/Caption | TextLabel | abs 139.6,606.0 112.0x24.8 pos {0.0,0,0.0,132} size {0.0,140,0.0,31} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "the boss" 18.0 Enum.Font.PermanentMarker face PermanentMarker/Regular/Normal col #3A3A3A stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Wood/Body/Polaroid/Pin | Frame | abs 188.4,494.8 14.4x14.4 pos {0.0,70,0.0,2} size {0.0,18,0.0,18} anchor 0.5,0.5 rot 0.0 z 2 vis true bg #D6455B 0.00
+/CreditsSign/Wood/Body/Polaroid/Pin/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Polaroid/Pin/UIStroke | UIStroke | #8F1F33 1.5 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Polaroid/Pin/PinShine | Frame | abs 191.9,497.7 4.3x4.3 pos {0.2,0,0.2,0} size {0.3,0,0.3,0} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.15
+/CreditsSign/Wood/Body/Polaroid/Pin/PinShine/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column | Frame | abs 27.6,650.8 336.0x149.6 pos {0.0,16,0.0,209} size {0.0,420,0.0,187} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
+/CreditsSign/Wood/Body/Column/Plank | Frame | abs 27.6,650.8 172.0x48.0 pos {0.0,0,0.0,0} size {0.0,215,0.0,60} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Wood/Body/Column/Plank/UIStroke | UIStroke | #5E3A1D 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailL | Frame | abs 30.8,672.8 4.0x4.0 pos {0.0,4,0.5,0} size {0.0,5,0.0,5} anchor 0.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailL/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Plank/NailR | Frame | abs 192.4,672.8 4.0x4.0 pos {1.0,-4,0.5,0} size {0.0,5,0.0,5} anchor 1.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/Column/Plank/NailR/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Plank/Wordmark | ImageLabel | abs 35.6,657.3 156.0x35.0 pos {0.5,0,0.5,0} size {0.0,195,0.0,44} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #A3A2A5 1.00 | image "rbxassetid://105015128819853" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Column/Plank/Wordmark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 4.452
+/CreditsSign/Wood/Body/Column/CreatedBy | TextLabel | abs 29.2,705.2 334.4x19.2 pos {0.0,2,0.0,68} size {0.0,418,0.0,24} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREATED BY" 18.0 Enum.Font.Unknown face Nunito/Heavy/Normal col #7A6A4C stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Bottom wrap false
+/CreditsSign/Wood/Body/Column/Signature | TextLabel | abs 27.6,724.4 279.2x52.0 pos {0.0,0,0.0,92} size {0.0,349,0.0,65} anchor 0.0,0.0 rot -3.0 z 2 vis true bg #A3A2A5 1.00 | text "St.Gavin" 54.0 Enum.Font.PermanentMarker face PermanentMarker/Regular/Normal col #1D2B55 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
+/CreditsSign/Wood/Body/Column/Signature/Swash | Frame | abs 32.4,769.2 133.6x3.2 pos {0.0,6,0.0,56} size {0.0,167,0.0,4} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
+/CreditsSign/Wood/Body/Column/Signature/Swash/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Column/Thanks | TextLabel | abs 29.2,778.8 277.6x21.6 pos {0.0,2,0.0,160} size {0.0,347,0.0,27} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "Thanks for playing Nimbus Climb!" 18.0 Enum.Font.Unknown face Nunito/Bold/Italic col #8A6512 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Top wrap true
+/CreditsSign/Wood/Body/StickerShadow | Frame | abs 320.4,768.4 48.0x48.0 pos {0.0,412,0.0,386} size {0.0,60,0.0,60} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #281A0A 0.72
+/CreditsSign/Wood/Body/StickerShadow/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/StickerRing | Frame | abs 316.4,762.8 52.8x52.8 pos {0.0,410,0.0,382} size {0.0,66,0.0,66} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #E3B341 0.00
+/CreditsSign/Wood/Body/StickerRing/UICorner | UICorner | radius 1.0,0
+/CreditsSign/Wood/Body/Sticker | ImageLabel | abs 318.8,765.2 48.0x48.0 pos {0.0,410,0.0,382} size {0.0,60,0.0,60} anchor 0.5,0.5 rot 12.0 z 5 vis true bg #1D2B55 1.00 | image "rbxassetid://114032351365198" Enum.ScaleType.Fit
+/CreditsSign/Wood/Body/Sticker/UICorner | UICorner | radius 1.0,0

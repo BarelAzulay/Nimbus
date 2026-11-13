@@ -1377,10 +1377,18 @@ Config.Icons = {}
 Config.MeshAssets = require(script.Parent.MeshIds)
 
 -- The loading screen (src/first/LoadingScreen.client.lua, ReplicatedFirst): SKIP appears after SkipAfter seconds, the
--- screen finishes by itself at 100% or after MaxSeconds.
+-- screen finishes by itself at 100% or after MaxSeconds. Images: the TextureIds keys of the owner's picks (kit B U3; the
+-- morning list, uploads): the logo that replaces the typed NIMBUS CLIMB on the header, the lobby render that replaces the
+-- drawn sky, the mascot that hops along the blocks. A key with no id in TextureIds keeps its fallback (tonight: all
+-- three; TextureIds.lua holds only uploaded ids, rule texture-ids).
 Config.Loading = {
 	SkipAfter = 6,
 	MaxSeconds = 25,
+	Images = {
+		Logo = "nimbus_logo",
+		Backdrop = "ui_loading_lobby",
+		Mascot = "ui_mascot_hop",
+	},
 }
 
 -- The main menu BEFORE spawning (7.2, judge M7): the server holds the character until the client's PLAY (remote MenuPlay)

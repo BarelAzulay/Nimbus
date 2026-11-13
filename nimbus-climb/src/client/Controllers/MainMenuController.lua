@@ -46,6 +46,9 @@
 --             shrinks before the column gets too narrow, the signature fills its row, the thank-you line wraps to as
 --             many rows as it needs, and only the rows that reach the sticker end left of it. Rebuilt when the screen
 --             changes size.
+--             (kit B, U2) The roof, header, wood frame and body are shared/SignKit parts; the gable (Shape = "Gable") and
+--             the K.SIGN colours go in as overrides, so the window looks exactly as the owner approved it
+--             (smoke credits_unchanged_on_signkit pins its dump).
 -- Every window: X, Esc (InputBegan), gamepad B ("NimbusMenuWinBack", High, bound while one is open) and CloseWindows close
 -- it; opening one fires MenuController.WindowOpened(<name>) (the game's windows close on it, as for each other) and
 -- closes the DEV panel, so nothing peeks out from under it (the Restart / Skip tutorial buttons did, under Credits).
@@ -69,6 +72,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local SignKit = require(Shared:WaitForChild("SignKit"))
 
 local Client = script.Parent.Parent
 local UI = Client:WaitForChild("UI")
@@ -1494,86 +1498,43 @@ function Credits.layout(w, h, stacked, texts)
 	return L
 end
 
--- the roof: a gable of two tilted slopes (their lower parts hide behind the header), a darker fascia board under it
--- and a round vent; one fixed-size piece centred on the header, whatever the window's width
+-- the roof: SignKit's gable (two tilted slopes whose lower parts hide behind the header, a darker fascia board, a round
+-- vent) in this window's approved colours; one fixed-size piece centred on the header, whatever the window's width
 function Credits.roof(parent)
 	local C, S = K.CR, K.SIGN
-	local roof = H.frame("Roof", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 0),
-		Size = UDim2.fromOffset(C.ROOF_W, C.ROOF_H),
+	return SignKit.Roof(parent, {
+		Shape = "Gable", -- the owner's approved look (not the kit's flat awning; morning item M5)
+		Width = C.ROOF_W,
+		Height = C.ROOF_H,
+		Slope = C.SLOPE_T,
+		Fascia = C.FASCIA_H,
+		Color = S.Roof,
+		Shade = S.RoofShade,
+		Vent = S.Cream,
+		VentEdge = S.WoodDark,
 		ZIndex = 2,
-	}, parent)
-	local halfW = C.ROOF_W / 2
-	local theta = math.atan2(C.ROOF_H, halfW)
-	local len = math.sqrt(halfW * halfW + C.ROOF_H * C.ROOF_H)
-	-- the slope's top edge runs eave -> ridge; its centre sits half a thickness below that edge's middle
-	local nx, ny = math.sin(theta), math.cos(theta)
-	local cx, cy = halfW / 2 + nx * C.SLOPE_T / 2, C.ROOF_H / 2 + ny * C.SLOPE_T / 2
-	for _, side in ipairs({ { "SlopeL", cx, -1 }, { "SlopeR", C.ROOF_W - cx, 1 } }) do
-		H.frame(side[1], {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = S.Roof,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(side[2], cy),
-			Size = UDim2.fromOffset(len + 1, C.SLOPE_T),
-			Rotation = side[3] * math.deg(theta),
-			ZIndex = 1,
-		}, roof)
-	end
-	H.frame("Fascia", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = S.RoofShade,
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, 0),
-		Size = UDim2.fromOffset(C.ROOF_W + 16, C.FASCIA_H),
-		ZIndex = 2,
-	}, roof)
-	local vent = H.frame("Vent", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = S.Cream,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(halfW, math.floor(C.ROOF_H * 0.52)),
-		Size = UDim2.fromOffset(14, 14),
-		ZIndex = 3,
-	}, roof)
-	H.corner(vent)
-	Credits.stroke(vent, S.WoodDark, 2)
-	return roof
+	})
 end
 
--- the header: dark wood rim, navy plate, CREDITS with its drop line, the drawn red X
+-- the header: SignKit's header (dark wood rim, navy plate) with CREDITS in white over its drop line, and the drawn red X
 function Credits.head(parent, L)
 	local C, S = K.CR, K.SIGN
-	local head = H.frame("Head", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = S.WoodDark,
-		Position = UDim2.fromOffset(0, L.HeadY),
-		Size = UDim2.new(1, 0, 0, L.HeadH),
-		Active = true,
-		ZIndex = 3,
-	}, parent)
-	local plate = H.frame("Plate", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = S.Navy,
-		Position = UDim2.fromOffset(C.RIM, C.RIM),
-		Size = UDim2.new(1, -2 * C.RIM, 1, -C.RIM),
-	}, head)
 	local closeSize = L.Small and 38 or 44
-	local titleSize = L.Small and 28 or Theme.Sizes.Sign
-	local box = UDim2.new(1, -(18 + closeSize + 20), 1, 0)
-	Credits.text("TitleDrop", C.TITLE, "Sign", titleSize, S.Drop, {
-		Position = UDim2.fromOffset(18, 3),
-		Size = box,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 1,
-	}, plate)
-	Credits.text("Title", C.TITLE, "Sign", titleSize, K.WHITE, {
-		Position = UDim2.fromOffset(18, 0),
-		Size = box,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 2,
-	}, plate)
+	local head, plate = SignKit.Header(parent, {
+		Title = C.TITLE,
+		TitleRole = "Sign",
+		TitleSize = L.Small and 28 or Theme.Sizes.Sign,
+		TitleColor = K.WHITE,
+		Drop = S.Drop,
+		TitleX = 18,
+		Reserve = closeSize + 20,
+		Y = L.HeadY,
+		Height = L.HeadH,
+		Rim = C.RIM,
+		RimColor = S.WoodDark,
+		Color = S.Navy,
+		ZIndex = 3,
+	})
 	local close = CloudUI.Button({
 		Name = "Close",
 		Text = "",
@@ -1794,26 +1755,14 @@ function Credits.build(holder, stacked)
 	}, sign)
 	Credits.roof(sign)
 	Credits.head(sign, L)
-	local wood = H.frame("Wood", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = S.Wood,
-		Position = UDim2.fromOffset(0, L.WoodY),
-		Size = UDim2.new(1, 0, 0, L.WoodH),
-		Active = true,
-		ZIndex = 3,
-	}, sign)
-	local body = H.frame("Body", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = S.Cream,
-		Position = UDim2.fromOffset(C.WOOD, C.WOOD),
-		Size = UDim2.new(1, -2 * C.WOOD, 1, -2 * C.WOOD),
-	}, wood)
-	local line = H.frame("Line", {
-		Position = UDim2.fromOffset(C.LINE, C.LINE),
-		Size = UDim2.new(1, -2 * C.LINE, 1, -2 * C.LINE),
-		ZIndex = 1,
-	}, body)
-	Credits.stroke(line, S.CreamLine, C.LINE_T)
+	local wood = SignKit.Frame(sign, { Y = L.WoodY, Height = L.WoodH, Color = S.Wood, ZIndex = 3 })
+	-- the cream body has no stone lip (the approved look); its inner line instead
+	local body = SignKit.Body(wood, {
+		Inset = C.WOOD,
+		Color = S.Cream,
+		Lip = 0,
+		Line = { Inset = C.LINE, Thickness = C.LINE_T, Color = S.CreamLine },
+	})
 	Credits.polaroid(body, L, texts)
 	Credits.column(body, L, texts)
 	Credits.sticker(body, L)

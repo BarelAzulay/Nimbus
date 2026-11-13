@@ -17,6 +17,9 @@
 --
 -- Scenarios (after the boot the title card is left to fade, a profile is synced and the player owns tokens):
 --   gallery               no game UI: one cell per feature the renderer draws, with known values (renderer check)
+--   signkit               (kit B, U2) no game UI: every shared/SignKit part (window, planks at rest / hover / pressed, notice,
+--                         block row, ropes, a hanging board, the Credits gable beside the flat awning) and every
+--                         shared/PixelIcon at 18, 27 and 36 px
 --   lobby                 the idle lobby HUD
 --   title                 right after joining (the title card is still up)
 --   match[:hit]           in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
@@ -1589,6 +1592,132 @@ local function buildGallery()
 	return gui
 end
 
+-- (kit B, U2) the SignKit gallery: every Signboard part and every PixelIcon at 18, 27 and 36 px, built into PlayerGui as the
+-- ScreenGui SignKitGallery (design px of a 1080p screen under one UIScale that fits the screen). No game UI.
+local function buildSignKitGallery()
+	local SK = req("shared/SignKit")
+	local PI = req("shared/PixelIcon")
+	local Theme = req("shared/Theme")
+	local Sg = Theme.Sign
+	local brown = Theme.TextOn("Stone")
+	local pg = LocalPlayer:WaitForChild("PlayerGui")
+	local gui = make("ScreenGui", { Name = "SignKitGallery", ResetOnSpawn = false, IgnoreGuiInset = false, DisplayOrder = 50,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+	local vp = Mock.Viewport
+	local area = Vector2.new(vp.X, vp.Y - (Mock.TopInset or 0))
+	local root = make("Frame", { Name = "Sheet", BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(12, 8),
+		Size = UDim2.fromOffset(1896, 1040) }, gui)
+	make("UIScale", { Scale = math.min(1, (area.X - 24) / 1896, (area.Y - 16) / 1040) }, root)
+	local function caption(parent, text, x, y, w, color)
+		local l = Theme.Label(text, "Label", { Size = 16, Color = color or brown })
+		l.Name = "Caption"
+		l.Position = UDim2.fromOffset(x, y)
+		l.Size = UDim2.fromOffset(w or 400, 20)
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l.Parent = parent
+		return l
+	end
+	local function icon(slot, name, px, colour)
+		local i = PI.New(slot, name, px, colour)
+		if i then
+			i.AnchorPoint = Vector2.new(0.5, 0.5)
+			i.Position = UDim2.fromScale(0.5, 0.5)
+		end
+		return i
+	end
+
+	-- 1 a window: awning roof (fixed width, a little wider than the window), header with the icon square, wood, stone
+	local win = make("Frame", { Name = "Window", BackgroundTransparency = 1, Position = UDim2.fromOffset(30, 6), Size = UDim2.fromOffset(900, 580) }, root)
+	local head, plate = SK.Header(win, { Title = "PETS", Y = 14, IconSlot = true, Reserve = 64 })
+	icon(plate.IconSlot, "paw", 27, Theme.TextOn("Gold"))
+	local close = SK.Plank(plate, { Style = "Red", Width = 48, Height = 48, IconSlot = true, Text = "",
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Name = "Close" })
+	icon(close.Block.Face.IconSlot, "x", 18, Color3.new(1, 1, 1))
+	SK.Roof(win, { Width = 920, ZIndex = 4 })
+	local wood = SK.Frame(win, { Y = 14 + head.Size.Y.Offset, Height = 580 - 14 - head.Size.Y.Offset })
+	local body = SK.Body(wood)
+	caption(body, "PLANKS AT REST: stone, grass (the one main action), gold (selected), red, disabled, navy", 18, 12, 860)
+	local x = 18
+	for _, p in ipairs({ { "Stone", "Feed", 140, "apple" }, { "Grass", "Put in team", 200, "plus" }, { "Gold", "A", 60 }, { "Red", "Release", 130 },
+		{ "Off", "Locked", 120 }, { "Navy", "Travel", 140, "arrow" } }) do
+		local pl = SK.Plank(body, { Style = p[1], Text = p[2], Width = p[3], IconSlot = p[4] ~= nil, Position = UDim2.fromOffset(x, 40), Name = "Plank" .. p[1] })
+		if p[4] then
+			local look = SK.Styles[p[1]]
+			icon(pl.Block.Face.IconSlot, p[4], 18, look.Text)
+		end
+		x = x + p[3] + 10
+	end
+	caption(body, "HOVER lifts 2 px            PRESSED: the face sits down on the lip", 18, 110, 860)
+	local hover = SK.Plank(body, { Style = "Stone", Text = "Hover", Width = 140, Position = UDim2.fromOffset(18, 140), Name = "PlankHover" })
+	SK.PlankState(hover, "Hover")
+	SK.Plank(body, { Style = "Grass", Text = "Rest", Width = 140, Position = UDim2.fromOffset(250, 140), Name = "PlankRest" })
+	local press = SK.Plank(body, { Style = "Grass", Text = "Pressed", Width = 140, Position = UDim2.fromOffset(400, 140), Name = "PlankPress" })
+	SK.PlankState(press, "Press")
+	local pressRed = SK.Plank(body, { Style = "Red", Text = "Pressed", Width = 140, Position = UDim2.fromOffset(550, 140), Name = "PlankPressRed" })
+	SK.PlankState(pressRed, "Press")
+	caption(body, "NOTICE (a tip card)", 18, 212, 400)
+	local _, nface = SK.Notice(body, { Width = 560, Height = 64, IconSlot = true, Text = "Tip: the blocks turn gold while the lobby loads.",
+		Position = UDim2.fromOffset(18, 238) })
+	icon(nface.IconSlot, "bulb", 27, Sg.GoldLip)
+	caption(body, "BLOCK ROW 7 / 12", 18, 322, 400)
+	local row = SK.BlockRow(body, { Count = 12, Position = UDim2.fromOffset(18, 348) })
+	SK.FillBlocks(row, 7)
+	caption(body, "ROPE", 640, 212, 80)
+	SK.Rope(body, { Length = 120, Position = UDim2.fromOffset(650, 238) })
+	SK.Rope(body, { Length = 120, Position = UDim2.fromOffset(700, 238), Width = 10 })
+
+	-- 2 a hanging board (ropes, awning, header, stone body with the block row): the shape U3's loading screen takes
+	local board = make("Frame", { Name = "Board", BackgroundTransparency = 1, Position = UDim2.fromOffset(980, 0), Size = UDim2.fromOffset(560, 300) }, root)
+	SK.Rope(board, { Length = 70, Position = UDim2.fromOffset(110, 0) })
+	SK.Rope(board, { Length = 70, Position = UDim2.fromOffset(444, 0) })
+	SK.Roof(board, { Width = 580, Y = 62, ZIndex = 4 })
+	SK.Header(board, { Title = "NIMBUS CLIMB", Y = 76 })
+	local bwood = SK.Frame(board, { Y = 140, Height = 150 })
+	local bbody = SK.Body(bwood)
+	local brow = SK.BlockRow(bbody, { Count = 12, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 22) })
+	SK.FillBlocks(brow, 5)
+	local cap = Theme.Label("Loading the lobby", "Tag", { Size = 20, Color = brown })
+	cap.Name = "Caption"
+	cap.Position = UDim2.fromOffset(0, 60)
+	cap.Size = UDim2.new(1, 0, 0, 28)
+	cap.Parent = bbody
+
+	-- 3 the Credits gable (the owner's look, passed in as an override) beside the kit's flat awning, both fixed-size
+	local roofs = make("Frame", { Name = "Roofs", BackgroundTransparency = 1, Position = UDim2.fromOffset(1580, 20), Size = UDim2.fromOffset(310, 300) }, root)
+	SK.Roof(roofs, { Shape = "Gable", Width = 300, Height = 44, Slope = 52, Fascia = 9, Y = 0 })
+	caption(roofs, "Credits gable (approved look)", 0, 100, 310, WHITE)
+	SK.Roof(roofs, { Y = 160 })
+	caption(roofs, "Kit awning (flat, fixed size)", 0, 188, 310, WHITE)
+
+	-- 4 every PixelIcon at 18, 27 and 36 px on stone
+	local names = {}
+	for name in pairs(PI.Bitmaps) do
+		names[#names + 1] = name
+	end
+	table.sort(names)
+	local panel = make("Frame", { Name = "Icons", BackgroundTransparency = 1, Position = UDim2.fromOffset(30, 610), Size = UDim2.fromOffset(1836, 420) }, root)
+	local iwood = SK.Frame(panel, { Height = 420 })
+	local ibody = SK.Body(iwood)
+	caption(ibody, "PIXEL ICONS (9 x 9) at 18 / 27 / 36 px: " .. #names .. " icons", 16, 8, 900)
+	local cols = 12
+	for i, name in ipairs(names) do
+		local c, r = (i - 1) % cols, math.floor((i - 1) / cols)
+		local cell = make("Frame", { Name = "Cell_" .. name, BackgroundTransparency = 1, Position = UDim2.fromOffset(16 + c * 150, 40 + r * 88),
+			Size = UDim2.fromOffset(140, 80) }, ibody)
+		local ix = 0
+		for _, px in ipairs({ 18, 27, 36 }) do
+			local i2 = PI.New(cell, name, px, brown)
+			if i2 then
+				i2.Position = UDim2.fromOffset(ix, 36 - px)
+			end
+			ix = ix + px + 8
+		end
+		caption(cell, name, 0, 44, 140)
+	end
+	gui.Parent = pg
+	return gui
+end
+
 -- metrics probe for the smoke test: hook a fake measure (1 em per character), read an AutomaticSize label, restore
 local function probeMetrics(gui)
 	local probe = make("TextLabel", { Name = "MetricsProbe", AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 20),
@@ -2873,7 +3002,8 @@ end)
 -- Phase 5 loading screen + main menu + settings (7.1-7.3):
 --   mainmenu[:<window>]  Config.MainMenu.Enabled: the menu before PLAY (logo, PLAY, SETTINGS, UPDATES + NEW badge,
 --                        CREDITS chip) over the orbiting world; window updates | credits opens that window over it
---   loading              the ReplicatedFirst loading screen 8 s in: the profile not loaded yet (85%), SKIP showing
+--   loading[:<pct>]      the ReplicatedFirst loading screen 8 s in: the profile not loaded yet (85%), SKIP showing; <pct>
+--                        sets its Progress (0-100) for the kit B block renders
 --   settings[:hud]       the SETTINGS window over the menu (Music 6 / Sound 8 / Graphics Auto / Shake ON); ":hud" =
 --                        after PLAY, opened from the menu gear over the game HUD (the window rule)
 -- Every OTHER scenario boots like the smoke worlds: the menu disabled and the profile loaded (DataService's
@@ -2933,7 +3063,17 @@ scenario("mainmenu", function(window)
 	end
 	advance(0.6)
 end)
-scenario("loading", function() end)
+-- loading:<percent> (kit B U3): the same moment with the gui's Progress set to <percent> (the blocks and the caption draw from
+-- it; the screen only ever moves it forward itself), for the 0 / 50 / 100 % renders
+scenario("loading", function(pct)
+	local n = tonumber(pct)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local gui = n and pg and pg:FindFirstChild("NimbusLoading")
+	if gui then
+		gui:SetAttribute("Progress", math.max(0, math.min(1, n / 100)))
+		advance(2)
+	end
+end)
 scenario("settings", function(where)
 	local MMC = MM.controller()
 	advance(0.5)
@@ -4002,6 +4142,17 @@ else
 		end
 		Mock.SetViewport(width, height)
 		buildGallery()
+		advance(0.1)
+		data = walk()
+		data.metrics = okMetrics and "font" or "mock"
+	elseif name == "signkit" then
+		-- (kit B, U2) the SignKit / PixelIcon gallery alone (no game UI)
+		local okMetrics, why = installMetrics()
+		if not okMetrics then
+			note("text metrics: " .. tostring(why))
+		end
+		Mock.SetViewport(width, height)
+		buildSignKitGallery()
 		advance(0.1)
 		data = walk()
 		data.metrics = okMetrics and "font" or "mock"

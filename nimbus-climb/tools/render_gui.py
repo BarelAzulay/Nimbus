@@ -6,7 +6,7 @@
                                 [--mark-small [PX]] [--no-chrome] [--no-labels] [--echo] [-v]
     python3 tools/render_gui.py --list
 
-Scenarios (see tools/dump_gui.lua): lobby, title, match[:hit], countdown, party, results,
+Scenarios (see tools/dump_gui.lua): gallery, signkit (kit B: every SignKit part and PixelIcon), lobby, title, match[:hit], countdown, party, results,
 pets[:phone|:pick|:sheet|:<key>], loss[:ring|:dungeon|:phone], menu:<Index|Shop|Stats>[:<Tab>], tutorial[:<step>], npc[:<n>], dev, toasts,
 portal[:<Id>[:<players>[:<studs>]]] (a portal's world GUIs mirrored flat: the pixel billboard and the eye-level
 countdown face as big as it looks from <studs> away; Phase 5: portal:Obby), battle[:<mode>[:<phase>]]
@@ -70,7 +70,7 @@ except Exception:  # pragma: no cover
 
 GRID_SIZES = [(1920, 1080), (1280, 720), (390, 844), (844, 390)]
 EGG_FILL = 0.9  # (egg-cards) HatchLook.Metrics.EGG_PIC.Fill: the egg's share of its card picture's height
-SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
+SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
              "menu:Index", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # Phase 4 (careui): the Home window, the Food Machine list, the garden picker, the Training Place, the EVOLVE
              # confirm, the Champion Ring window and the floating pet cards

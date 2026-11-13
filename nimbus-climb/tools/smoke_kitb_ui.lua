@@ -28,6 +28,42 @@
 --                             as a warning; U6 drives them to zero and makes this a failure
 --   kitb_fit_measures_face_label (client; U1 review) the side hint (a Toast label, Nunito ExtraBold) sizes its pill from
 --                             Theme.MeasureLabel, not the 300 px it fell back to while .Font read Unknown
+--   U2 (SignKit, PixelIcon, Credits on the kit; findings 5, 7):
+--   signkit_parts_shape       (server world, pure) every SignKit part by name, colour and size: the flat awning roof (a
+--                             fixed offset size whatever its parent, no UIScale; the Credits gable as Shape = "Gable"), the
+--                             navy header with its LuckiestGuy gold title, the wood frame, the stone body with its lip, the
+--                             plank, the rope, the notice; each part stamps its kind (attribute SignKit)
+--   signkit_plank_press_moves_face (server world, pure) the plank's states: hover lifts the block 2 px, press puts it back
+--                             and moves the face down onto the lip (2 px of lip left), release / leave restore it; no size
+--                             changes, no UIScale, no glow; Activated runs the callback
+--   signkit_blockrow_fill     (server world, pure) a row of n stone blocks (offset sizes), FillBlocks(row, k) turns the
+--                             first k gold (face and lip), clamped to 0..n and floored
+--   signkit_shared_only       (server world, pure) SignKit requires only Theme from Shared, PixelIcon requires nothing;
+--                             neither touches a client-only service, so the loading screen (ReplicatedFirst) can use both
+--   pixelicon_bitmaps_9x9     (server world, pure) every icon is 9 rows of 9 cells of "." / "#"; the pitch's 27 bitmaps
+--                             are kept exactly as the owner saw them; the screens' icons exist (play, gear, scroll, star,
+--                             music, speaker, monitor, shake, mouse, bulb, arrow, tick, swap, token)
+--   pixelicon_run_merge_count (server world, pure) PixelIcon.New draws one Frame per merged run (at most 25 per icon), at
+--                             whole-pixel offsets, covering exactly the "#" cells at 18, 27 and 36 px; an unknown name is nil
+--   credits_unchanged_on_signkit (client) the Credits window (built from SignKit parts) dumps the same boxes, colours,
+--                             texts and fonts as the approved window of 2026-11-13 (tools/fixtures/credits_tree_u1.txt,
+--                             recorded before the move) at 1920x1080, 1280x720, 844x390 and 390x844
+--   U3 (the loading screen in kit B; finding 4, sky F11; all client, each runs LoadingScreen.client.lua afresh):
+--   loading_board_parts       two ropes, the flat awning roof, the navy header with NIMBUS CLIMB (Title role, gold, no
+--                             outline), the 6 px wood frame round the stone body; min(0.5 W, 620 design px) wide, W - 32 px
+--                             on a portrait phone; the board swings within 1.5 degrees
+--   loading_progress_blocks   12 blocks: 0 %, 50 %, 100 % -> 0, 6, 12 gold, one by one; the caption follows
+--   loading_no_round_corners  no UICorner on the screen
+--   loading_no_neon_no_stroke no UIStroke, no classic text stroke, no gradient but the sky's, no old neon / violet colour
+--   loading_tokens_match_theme the board drawn before Theme (its own token copy) wears Theme.Sign and SignKit.Sizes
+--   loading_shows_before_theme the day sky, the stepped clouds and the whole board without Theme, no text; the title joins
+--                             the same board once Theme arrives
+--   loading_skip_is_plank     SKIP is a SignKit plank with the pixel arrow, no glyph arrow, and still finishes the screen
+--   loading_images_optional   Config.Loading.Images keys unset -> no image (typed title, drawn clouds); set -> Logo,
+--                             Backdrop and Mascot ImageLabels, the title and clouds off
+--   loading_board_fits        (U3 review) at 768x1024, 834x1194, 640x360, 667x375, 800x360, 740x360, 720x360 and the grid
+--                             sizes: the title fits its plate, the swinging board ends above the tip card and clear of
+--                             SKIP, SKIP clear of the card, the board below the top bar, the blocks and caption in the body
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -333,6 +369,431 @@ local function serverScenarios()
 		K.flushErrors("theme_texton")
 	end)
 
+	----------------------------------------------------------------------
+	-- U2: SignKit, PixelIcon
+	----------------------------------------------------------------------
+	local function shared(name)
+		local inst = K.moduleInstance("shared/" .. name)
+		local ok, mod = false, nil
+		if inst then
+			ok, mod = pcall(require, inst)
+		end
+		if not T.check(ok and type(mod) == "table", "kitb u2: shared/" .. name .. " loads", tostring(mod)) then
+			return nil
+		end
+		return mod
+	end
+
+	local function hasScale(obj)
+		for _, d in ipairs(obj:GetDescendants()) do
+			if d:IsA("UIScale") then
+				return true
+			end
+		end
+		return obj:IsA("UIScale")
+	end
+
+	local function holder(w, h)
+		local f = Instance.new("Frame")
+		f.Size = UDim2.fromOffset(w, h)
+		return f
+	end
+
+	S.signkit_parts_shape = guarded("signkit_parts_shape", function()
+		local Theme, SK = theme(), shared("SignKit")
+		if not (Theme and SK) then
+			return
+		end
+		local Sg, Z = Theme.Sign, SK.Sizes
+		T.check(type(Z) == "table" and Z.RoofW > 0 and Z.RoofH > 0 and Z.Lip > 0 and Z.Edge > 0, "signkit: SignKit.Sizes holds the kit's design px")
+		for _, key in ipairs({ "RoofEdge", "RoofLip", "GoldLip", "NavyLip", "GrassLip", "RedLip", "Tile", "Post" }) do
+			T.check(typeof(Sg[key]) == "Color3", "signkit: Theme.Sign." .. key .. " (the pitch's lip / edge tokens)")
+		end
+
+		-- the awning: one fixed-size piece, the same whatever the window under it
+		local small, wide = holder(400, 300), holder(1400, 900)
+		local r1, r2 = SK.Roof(small), SK.Roof(wide)
+		T.check(r1.Name == "Roof" and r1:GetAttribute("SignKit") == "Roof", "signkit roof: a Frame named Roof, stamped SignKit = Roof")
+		T.check(r1.Size.X.Scale == 0 and r1.Size.Y.Scale == 0 and r1.Size.X.Offset == Z.RoofW and r1.Size.Y.Offset == Z.RoofH,
+			"signkit roof: offset size only, the kit's RoofW x RoofH", tostring(r1.Size))
+		T.check(r1.Size == r2.Size, "signkit roof: the roof never scales with the window (same size under 400 and 1400 px)", tostring(r1.Size) .. " / " .. tostring(r2.Size))
+		T.check(not hasScale(r1), "signkit roof: no UIScale inside the roof")
+		local face, lip = r1:FindFirstChild("Face"), r1:FindFirstChild("Face") and r1.Face:FindFirstChild("Lip")
+		T.check(sameColor(r1.BackgroundColor3, Sg.RoofEdge) and r1.BackgroundTransparency == 0, "signkit roof: the dark roof edge", hex(r1.BackgroundColor3))
+		T.check(face ~= nil and sameColor(face.BackgroundColor3, Sg.Roof), "signkit roof: the pink face (#EE6FA6)", face and hex(face.BackgroundColor3) or "none")
+		T.check(lip ~= nil and sameColor(lip.BackgroundColor3, Sg.RoofLip) and lip.Size.Y.Offset == Z.RoofLip and lip.AnchorPoint.Y == 1,
+			"signkit roof: a darker lip along the face's bottom", lip and (hex(lip.BackgroundColor3) .. " " .. tostring(lip.Size)) or "none")
+		local r3 = SK.Roof(small, { Width = 520 })
+		T.check(r3.Size.X.Offset == 520 and r3.Size.X.Scale == 0, "signkit roof: a caller's width is still a fixed offset")
+		local g = SK.Roof(small, { Shape = "Gable", Width = 300, Height = 44, Slope = 52, Fascia = 9 })
+		T.check(g:FindFirstChild("SlopeL") and g:FindFirstChild("SlopeR") and g:FindFirstChild("Fascia") and g:FindFirstChild("Vent"),
+			"signkit roof: Shape = 'Gable' builds the Credits gable (two slopes, fascia, vent)")
+		T.check(g.Size == UDim2.fromOffset(300, 44) and not hasScale(g), "signkit roof: the gable is fixed-size too")
+
+		-- the header: navy plank, gold LuckiestGuy title, no stroke
+		local win = holder(600, 400)
+		local head, plate = SK.Header(win, { Title = "PETS" })
+		T.check(head and head.Name == "Head" and head:GetAttribute("SignKit") == "Header" and plate and plate.Name == "Plate", "signkit header: Head + Plate")
+		if head and plate then
+			T.check(sameColor(plate.BackgroundColor3, Sg.Navy) and sameColor(head.BackgroundColor3, Sg.Wood), "signkit header: a navy plate in a wood rim",
+				hex(plate.BackgroundColor3) .. " in " .. hex(head.BackgroundColor3))
+			T.check(head.Size.X.Scale == 1 and head.Size.Y.Offset == Z.HeadH, "signkit header: full width, HeadH tall", tostring(head.Size))
+			local title = plate:FindFirstChild("Title")
+			T.check(title and title.Text == "PETS" and title.Font == Enum.Font.LuckiestGuy and sameColor(title.TextColor3, Sg.Gold),
+				"signkit header: the title is LuckiestGuy gold", title and (tostring(title.Font) .. " " .. hex(title.TextColor3)) or "none")
+			T.check(title and title.TextStrokeTransparency == 1 and #textStrokes(title) == 0, "signkit header: the title has no stroke (gold on navy, 9:1)")
+			T.check(plate:FindFirstChild("TitleDrop") == nil, "signkit header: no drop line unless asked")
+		end
+		local _, plate2 = SK.Header(win, { Title = "X", Drop = Color3.fromRGB(11, 19, 48), IconSlot = true })
+		T.check(plate2 and plate2:FindFirstChild("TitleDrop") and plate2:FindFirstChild("IconSlot"), "signkit header: Drop adds the drop line, IconSlot the gold icon square")
+
+		-- frame (wood) and body (stone with its lip)
+		local wood = SK.Frame(win, { Y = 60, Height = 300 })
+		T.check(wood.Name == "Wood" and wood:GetAttribute("SignKit") == "Frame" and sameColor(wood.BackgroundColor3, Sg.Wood) and wood.Position.Y.Offset == 60 and wood.Size.Y.Offset == 300,
+			"signkit frame: the wood frame at Y, Height tall", tostring(wood.Position) .. " " .. tostring(wood.Size))
+		local body = SK.Body(wood)
+		T.check(body.Name == "Body" and body:GetAttribute("SignKit") == "Body" and sameColor(body.BackgroundColor3, Sg.Stone), "signkit body: stone")
+		T.check(body.Position == UDim2.fromOffset(Z.Frame, Z.Frame) and body.Size == UDim2.new(1, -2 * Z.Frame, 1, -2 * Z.Frame), "signkit body: inset by the frame's width", tostring(body.Position))
+		local blip = body:FindFirstChild("Lip")
+		T.check(blip and sameColor(blip.BackgroundColor3, Sg.StoneLip) and blip.Size.Y.Offset == Z.Lip and blip.AnchorPoint.Y == 1 and blip.Position.Y.Scale == 1,
+			"signkit body: the stone lip along the bottom", blip and tostring(blip.Size) or "none")
+		local flat = SK.Body(SK.Frame(win), { Lip = 0, Line = { Inset = 5, Thickness = 3, Color = Sg.StoneLip } })
+		T.check(flat:FindFirstChild("Lip") == nil and flat:FindFirstChild("Line") and flat.Line:FindFirstChildOfClass("UIStroke"), "signkit body: Lip = 0 has none; Line draws the inner line")
+
+		-- the plank (a button), rope and notice
+		local plank = SK.Plank(win, { Text = "Put in team", Style = "Grass", Width = 180 })
+		T.check(plank:IsA("TextButton") and plank.Name == "Plank" and plank:GetAttribute("SignKit") == "Plank" and plank.AutoButtonColor == false and plank.BackgroundTransparency == 1,
+			"signkit plank: a transparent TextButton hit box, no auto colour")
+		local block = plank:FindFirstChild("Block")
+		local pface = block and block:FindFirstChild("Face")
+		local plip = block and block:FindFirstChild("Lip")
+		local plabel = pface and pface:FindFirstChild("Label")
+		T.check(block and pface and plip and plabel, "signkit plank: Block (edge) > Lip + Face > Label")
+		if block and pface and plip and plabel then
+			T.check(sameColor(pface.BackgroundColor3, Sg.Grass) and sameColor(plip.BackgroundColor3, Sg.GrassLip), "signkit plank: Style Grass = grass face, grass lip")
+			T.check(plabel.Text == "Put in team" and plabel.Font == Enum.Font.FredokaOne and plabel.TextStrokeTransparency == 1, "signkit plank: the label is FredokaOne, no stroke")
+			local faceH = pface.Size.Y.Scale * Z.PlankH + pface.Size.Y.Offset -- the block fills the plank
+			T.check(faceH == Z.PlankH - 2 * Z.Edge - Z.Lip and plank.Size == UDim2.fromOffset(180, Z.PlankH), "signkit plank: the face leaves the lip showing", tostring(pface.Size))
+			T.check(not hasScale(plank) and plank:FindFirstChildWhichIsA("UIStroke", true) == nil, "signkit plank: no UIScale, no stroke glow")
+		end
+		local rope = SK.Rope(win, { Length = 90 })
+		T.check(rope.Name == "Rope" and rope:GetAttribute("SignKit") == "Rope" and rope.Size == UDim2.fromOffset(Z.RopeW, 90) and sameColor(rope.BackgroundColor3, Sg.Post),
+			"signkit rope: RopeW wide, Length long, the post colour", tostring(rope.Size))
+		local notice, nface = SK.Notice(win, { Width = 300, Height = 60, Text = "Tip: hold Space" })
+		T.check(notice.Name == "Notice" and notice:GetAttribute("SignKit") == "Notice" and sameColor(notice.BackgroundColor3, Sg.Wood) and nface and sameColor(nface.BackgroundColor3, Sg.Stone),
+			"signkit notice: a wood-framed stone card")
+		local ntext = nface and nface:FindFirstChild("Text")
+		T.check(ntext and sameColor(ntext.TextColor3, Sg.Text) and ntext.TextStrokeTransparency == 1, "signkit notice: brown text on stone, no stroke")
+		win:Destroy()
+		small:Destroy()
+		wide:Destroy()
+		K.flushErrors("signkit_parts_shape")
+	end)
+
+	S.signkit_plank_press_moves_face = guarded("signkit_plank_press_moves_face", function()
+		local SK = shared("SignKit")
+		if not SK then
+			return
+		end
+		local Z = SK.Sizes
+		local clicks = 0
+		local plank = SK.Plank(holder(400, 200), { Text = "Feed", Callback = function()
+			clicks = clicks + 1
+		end })
+		local block, face = plank.Block, plank.Block.Face
+		local size0, face0, block0 = plank.Size, face.Size, block.Size
+		local function at(state)
+			return string.format("%s: block y %d, face y %d", state, block.Position.Y.Offset, face.Position.Y.Offset)
+		end
+		T.check(block.Position.Y.Offset == 0 and face.Position.Y.Offset == Z.Edge and plank:GetAttribute("PlankState") == "Rest", "plank: at rest the face sits on the full lip", at("rest"))
+		Mock.FireSignal(plank, "MouseEnter")
+		T.check(block.Position.Y.Offset == -Z.Hover and face.Position.Y.Offset == Z.Edge and plank:GetAttribute("PlankState") == "Hover", "plank: hover lifts the block 2 px", at("hover"))
+		Mock.FireSignal(plank, "MouseButton1Down")
+		T.check(block.Position.Y.Offset == 0 and face.Position.Y.Offset == Z.Edge + Z.Lip - Z.PressLip and plank:GetAttribute("PlankState") == "Press",
+			"plank: press moves the face down onto the lip (" .. Z.PressLip .. " px of lip left)", at("press"))
+		T.check(plank.Size == size0 and face.Size == face0 and block.Size == block0, "plank: pressing changes no size (no scale bounce)")
+		Mock.FireSignal(plank, "MouseButton1Up")
+		T.check(face.Position.Y.Offset == Z.Edge and block.Position.Y.Offset == -Z.Hover, "plank: release lifts the face back (still hovered)", at("release"))
+		Mock.FireSignal(plank, "MouseLeave")
+		T.check(face.Position.Y.Offset == Z.Edge and block.Position.Y.Offset == 0 and plank:GetAttribute("PlankState") == "Rest", "plank: leave = rest", at("leave"))
+		SK.PlankState(plank, "Press")
+		T.check(face.Position.Y.Offset == Z.Edge + Z.Lip - Z.PressLip, "plank: SignKit.PlankState sets a state directly")
+		SK.PlankState(plank, "Rest")
+		Mock.Click(plank)
+		T.check(clicks == 1, "plank: Activated runs the callback once", tostring(clicks))
+		T.check(not hasScale(plank) and plank:FindFirstChildWhichIsA("UIStroke", true) == nil, "plank: no UIScale, no glow stroke after the presses")
+		-- touch: a finger that lifts never produces MouseLeave
+		local function rest()
+			return block.Position.Y.Offset == 0 and face.Position.Y.Offset == Z.Edge and plank:GetAttribute("PlankState") == "Rest"
+		end
+		SK.PlankState(plank, "Rest")
+		Mock.FireSignal(plank, "MouseEnter")
+		Mock.FireSignal(plank, "MouseButton1Down")
+		Mock.FireSignal(plank, "MouseButton1Up")
+		Mock.FireSignal(plank, "InputEnded", Mock.NewInput("Unknown", "Touch", "End"), false)
+		T.check(rest(), "plank: a touch tap ends at rest, not stuck hovered", at("tap"))
+		Mock.FireSignal(plank, "MouseEnter")
+		Mock.FireSignal(plank, "MouseButton1Down")
+		Mock.FireSignal(plank, "InputEnded", Mock.NewInput("Unknown", "Touch", "End"), false)
+		T.check(rest(), "plank: press, slide off and lift ends at rest, not stuck pressed", at("slide off"))
+		Mock.FireSignal(plank, "MouseEnter")
+		Mock.FireSignal(plank, "InputEnded", Mock.NewInput("Unknown", "MouseButton1", "End"), false)
+		T.check(plank:GetAttribute("PlankState") == "Hover", "plank: a mouse InputEnded keeps the hover", at("mouse end"))
+		SK.PlankState(plank, "Rest")
+		local off = SK.Plank(holder(400, 200), { Text = "Locked", Style = "Off" })
+		Mock.FireSignal(off, "MouseEnter")
+		Mock.FireSignal(off, "MouseButton1Down")
+		T.check(off.Block.Position.Y.Offset == 0 and off.Block.Face.Position.Y.Offset == Z.Edge, "plank: a disabled (Off) plank does not move")
+		K.flushErrors("signkit_plank_press_moves_face")
+	end)
+
+	S.signkit_blockrow_fill = guarded("signkit_blockrow_fill", function()
+		local Theme, SK = theme(), shared("SignKit")
+		if not (Theme and SK) then
+			return
+		end
+		local Sg = Theme.Sign
+		local row = SK.BlockRow(holder(800, 100), { Count = 12, BlockW = 30, BlockH = 24, Gap = 4 })
+		T.check(row.Name == "BlockRow" and row:GetAttribute("SignKit") == "BlockRow" and row.Size == UDim2.fromOffset(12 * 30 + 11 * 4, 24),
+			"blockrow: 12 blocks of 30 with 4 px gaps, offset size", tostring(row.Size))
+		local blocks = {}
+		for i = 1, 12 do
+			blocks[i] = row:FindFirstChild("Block" .. i)
+		end
+		T.check(#blocks == 12 and row:FindFirstChild("Block13") == nil, "blockrow: Block1 .. Block12")
+		if #blocks < 12 then
+			return
+		end
+		T.check(blocks[2].Position.X.Offset == 34 and blocks[12].Position.X.Offset == 11 * 34, "blockrow: blocks step by width + gap")
+		local function gold(b)
+			return sameColor(b.Face.BackgroundColor3, Sg.Gold) and sameColor(b.Face.Lip.BackgroundColor3, Sg.GoldLip)
+		end
+		local function stone(b)
+			return sameColor(b.Face.BackgroundColor3, Sg.Stone) and sameColor(b.Face.Lip.BackgroundColor3, Sg.StoneLip)
+		end
+		local function pattern()
+			local s = ""
+			for i = 1, 12 do
+				s = s .. (gold(blocks[i]) and "G" or (stone(blocks[i]) and "s" or "?"))
+			end
+			return s
+		end
+		T.check(pattern() == "ssssssssssss", "blockrow: all stone (with a darker lip) at first", pattern())
+		T.eq(SK.FillBlocks(row, 5), 5, "blockrow: FillBlocks returns the filled count")
+		T.check(pattern() == "GGGGGsssssss" and row:GetAttribute("Filled") == 5, "blockrow: 5 filled = the first 5 gold (face and lip)", pattern())
+		SK.FillBlocks(row, 99)
+		T.check(pattern() == "GGGGGGGGGGGG", "blockrow: over the count = all gold", pattern())
+		SK.FillBlocks(row, 4.7)
+		T.check(pattern() == "GGGGssssssss", "blockrow: a fraction of a block floors", pattern())
+		SK.FillBlocks(row, -3)
+		T.check(pattern() == "ssssssssssss" and row:GetAttribute("Filled") == 0, "blockrow: below 0 = none", pattern())
+		K.flushErrors("signkit_blockrow_fill")
+	end)
+
+	S.signkit_shared_only = guarded("signkit_shared_only", function()
+		local SK, PI = shared("SignKit"), shared("PixelIcon")
+		if not (SK and PI) then
+			return
+		end
+		local function code(name)
+			local inst = K.moduleInstance("shared/" .. name)
+			local src = tostring(inst and inst.Source or "")
+			local lines = {}
+			for line in (src .. "\n"):gmatch("([^\n]*)\n") do
+				lines[#lines + 1] = (line:gsub("%-%-.*$", ""))
+			end
+			return table.concat(lines, "\n")
+		end
+		for name, allowed in pairs({ SignKit = { Theme = true }, PixelIcon = {} }) do
+			local src = code(name)
+			T.check(src ~= "", "shared only: " .. name .. " has source")
+			local bad = {}
+			for arg in src:gmatch("require%s*(%b())") do
+				local sib = arg:match('^%(%s*script%.Parent:WaitForChild%("(%w+)"%)%s*%)$') or arg:match("^%(%s*script%.Parent%.(%w+)%s*%)$")
+				if not (sib and allowed[sib]) then
+					bad[#bad + 1] = arg
+				end
+			end
+			T.check(#bad == 0, "shared only: " .. name .. " requires only " .. (next(allowed) and "Theme (a sibling in Shared)" or "nothing"), table.concat(bad, ", "))
+			local client = {}
+			for _, word in ipairs({ "LocalPlayer", "PlayerGui", "UserInputService", "StarterPlayer", "ReplicatedFirst", "GetService%(\"Players\"%)", "Controllers", "client/" }) do
+				if src:find(word) then
+					client[#client + 1] = word
+				end
+			end
+			T.check(#client == 0, "shared only: " .. name .. " touches no client-only service or folder", table.concat(client, ", "))
+		end
+		K.flushErrors("signkit_shared_only")
+	end)
+
+	-- the pitch's bitmaps, exactly as kit_pitch_mockups.html:523-550 drew them for the owner
+	local PITCH_ICONS = {
+		paw = "..##.##../..##.##../##.....##/##.###.##/..#####../.#######./.#######./..##.##../.........",
+		book = "........./###...###/####.####/####.####/####.####/####.####/####.####/.###.###./.........",
+		house = "....#..../...###.../..#####../.#######./#########/.#######./.##...##./.##...##./.##...##.",
+		stats = "........./......##./......##./...##.##./...##.##./##.##.##./##.##.##./##.##.##./.........",
+		bag = "...###.../..#...#../.#######./#########/#########/#########/#########/#########/.#######.",
+		arrow = "........./....#..../....##.../#######../########./#######../....##.../....#..../.........",
+		gear = "...###.../.#.###.#./.#######./###...###/###...###/###...###/.#######./.#.###.#./...###...",
+		heart = "........./.##...##./####.####/#########/#########/.#######./..#####../...###.../....#....",
+		bolt = ".....###./....###../...###.../..######./....###../...###.../..###..../.##....../.........",
+		note = "........./........./#########/#.......#/#..###..#/#..###..#/#.......#/#########/.........",
+		coin = "..#####../.#######./####.####/####.####/####.####/####.####/####.####/.#######./..#####..",
+		gem = "........./.#######./#########/#########/.#######./..#####../...###.../....#..../.........",
+		gift = ".##...##./#..#.#..#/.#######./#########/#########/.###.###./.###.###./.###.###./.###.###.",
+		check = "........./........#/.......##/#.....##./##...##../.##.##.../..###..../...#...../.........",
+		x = "........./.##...##./.###.###./..#####../...###.../..#####../.###.###./.##...##./.........",
+		sword = "......###/.....####/....####./...####../#.####.../.####..../..##...../.#.##..../#...#....",
+		star = "....#..../....#..../...###.../#########/.#######./..#####../..#####../.##...##./.#.....#.",
+		flame = "....#..../...##..../...###.../.#.####../.#######./#########/###...###/.##...##./..#####..",
+		flake = "....#..../.#..#..#./..#.#.#../...###.../#########/...###.../..#.#.#../.#..#..#./....#....",
+		moon = "...####../..###..../.###...../.###...../.###...../.###...../.####...#/..######./...####..",
+		cloud = "........./...##..../..####.#./.#######./#########/#########/.#######./........./.........",
+		apple = ".....##../....#..../.###.###./#########/#########/#########/#########/.#######./..##.##..",
+		bell = "........./........./##.....##/##.....##/#########/##.....##/##.....##/........./.........",
+		sprout = "........./###...###/####.####/.###.###./...###.../....#..../....#..../..#####../.#######.",
+		plus = "...###.../...###.../...###.../#########/#########/#########/...###.../...###.../...###...",
+		dash = "........./##..##.../.##..##../..##..##./...##..##/..##..##./.##..##../##..##.../.........",
+		down = "........./........./##.....##/###...###/.###.###./..#####../...###.../....#..../.........",
+	}
+	-- the icons the loading screen, menu, settings and credits need beyond the pitch's (BUILD_PLAN U2)
+	local SCREEN_ICONS = { "play", "gear", "scroll", "star", "music", "speaker", "monitor", "shake", "mouse", "bulb", "arrow", "tick", "swap", "token" }
+
+	S.pixelicon_bitmaps_9x9 = guarded("pixelicon_bitmaps_9x9", function()
+		local PI = shared("PixelIcon")
+		if not PI then
+			return
+		end
+		local B = PI.Bitmaps
+		if not T.check(type(B) == "table", "pixelicon: PixelIcon.Bitmaps is a table") then
+			return
+		end
+		local bad, empty, count = {}, {}, 0
+		for name, bmp in pairs(B) do
+			count = count + 1
+			local rows = {}
+			for row in (tostring(bmp) .. "/"):gmatch("([^/]*)/") do
+				rows[#rows + 1] = row
+			end
+			local ok = #rows == 9
+			for _, row in ipairs(rows) do
+				if #row ~= 9 or row:find("[^%.#]") then
+					ok = false
+				end
+			end
+			if not ok then
+				bad[#bad + 1] = name
+			end
+			if not tostring(bmp):find("#", 1, true) then
+				empty[#empty + 1] = name
+			end
+		end
+		table.sort(bad)
+		table.sort(empty)
+		T.check(#bad == 0, "pixelicon: every icon is 9 rows of 9 cells of '.' / '#' (" .. count .. " icons)", table.concat(bad, ", "))
+		T.check(#empty == 0, "pixelicon: no icon is blank", table.concat(empty, ", "))
+		local changed = {}
+		for name, want in pairs(PITCH_ICONS) do
+			if B[name] ~= want then
+				changed[#changed + 1] = name
+			end
+		end
+		table.sort(changed)
+		T.check(#changed == 0, "pixelicon: the pitch's 27 icons are ported exactly as the owner saw them", table.concat(changed, ", "))
+		local missing = {}
+		for _, name in ipairs(SCREEN_ICONS) do
+			if not B[name] then
+				missing[#missing + 1] = name
+			end
+		end
+		T.check(#missing == 0, "pixelicon: the screens' icons exist (play, gear, scroll, star, music, speaker, monitor, shake, mouse, bulb, arrow, tick, swap, token)", table.concat(missing, ", "))
+		T.check(B.tick == B.check, "pixelicon: tick is the pitch's check")
+		T.check(B.token ~= B.coin, "pixelicon: the cloud token has its own coin (not the plain coin)")
+		K.flushErrors("pixelicon_bitmaps_9x9")
+	end)
+
+	S.pixelicon_run_merge_count = guarded("pixelicon_run_merge_count", function()
+		local PI = shared("PixelIcon")
+		if not (PI and type(PI.New) == "function" and type(PI.Bitmaps) == "table") then
+			T.check(false, "pixelicon: PixelIcon.New exists")
+			return
+		end
+		local parent = holder(200, 200)
+		local over, gaps, offgrid, worst, worstName = {}, {}, {}, 0, ""
+		local red = Color3.fromRGB(200, 30, 40)
+		for name, bmp in pairs(PI.Bitmaps) do
+			local rows = {}
+			for row in (bmp .. "/"):gmatch("([^/]*)/") do
+				rows[#rows + 1] = row
+			end
+			for _, px in ipairs({ 18, 27, 36 }) do
+				local icon = PI.New(parent, name, px, red)
+				local cell = px / 9
+				local frames = {}
+				for _, c in ipairs(icon:GetChildren()) do
+					if c:IsA("Frame") then
+						frames[#frames + 1] = c
+					end
+				end
+				if #frames > 25 then
+					over[#over + 1] = name .. "@" .. px .. " " .. #frames
+				end
+				if #frames > worst then
+					worst, worstName = #frames, name
+				end
+				-- paint the frames back onto a 9 x 9 grid: every "#" once, nothing else
+				local grid = {}
+				local ok = icon.Size == UDim2.fromOffset(px, px) and icon.BackgroundTransparency == 1 and icon:GetAttribute("PixelIcon") == name
+				for _, f in ipairs(frames) do
+					local x, y, w, h = f.Position.X.Offset, f.Position.Y.Offset, f.Size.X.Offset, f.Size.Y.Offset
+					if x % 1 ~= 0 or y % 1 ~= 0 or w % 1 ~= 0 or h % 1 ~= 0 or f.Position.X.Scale ~= 0 or f.Size.X.Scale ~= 0 then
+						offgrid[#offgrid + 1] = name .. "@" .. px
+					end
+					if not sameColor(f.BackgroundColor3, red) or f.BackgroundTransparency ~= 0 or f.BorderSizePixel ~= 0 then
+						ok = false
+					end
+					for gy = y / cell, (y + h) / cell - 1 do
+						for gx = x / cell, (x + w) / cell - 1 do
+							local k = gy * 9 + gx
+							if grid[k] then
+								ok = false
+							end
+							grid[k] = true
+						end
+					end
+				end
+				for gy = 0, 8 do
+					for gx = 0, 8 do
+						if (rows[gy + 1]:sub(gx + 1, gx + 1) == "#") ~= (grid[gy * 9 + gx] == true) then
+							ok = false
+						end
+					end
+				end
+				if not ok then
+					gaps[#gaps + 1] = name .. "@" .. px
+				end
+				icon:Destroy()
+			end
+		end
+		table.sort(over)
+		table.sort(gaps)
+		T.check(#over == 0, "pixelicon: no icon over 25 Frames (the worst: " .. worstName .. " " .. worst .. ")", table.concat(over, ", "))
+		T.check(#gaps == 0, "pixelicon: the Frames cover exactly the '#' cells, once each, in the icon's colour, at 18 / 27 / 36 px", table.concat(gaps, ", ", 1, math.min(#gaps, 8)))
+		T.check(#offgrid == 0, "pixelicon: every Frame sits on whole pixels (offsets only)", table.concat(offgrid, ", ", 1, math.min(#offgrid, 8)))
+		local odd = PI.New(parent, "paw", 20, red)
+		T.check(odd and odd.Size == UDim2.fromOffset(20, 20), "pixelicon: a size that is not a multiple of 9 keeps its box ...")
+		local snapped = true
+		for _, f in ipairs(odd and odd:GetChildren() or {}) do
+			if f:IsA("Frame") and (f.Size.Y.Offset % 2 ~= 0 or f.Position.X.Offset % 1 ~= 0) then
+				snapped = false
+			end
+		end
+		T.check(snapped, "pixelicon: ... and draws whole 2 px cells, centred")
+		T.check(PI.New(parent, "no_such_icon", 18, red) == nil, "pixelicon: an unknown icon name is nil (no error)")
+		parent:Destroy()
+		K.flushErrors("pixelicon_run_merge_count")
+	end)
+
 	return S
 end
 
@@ -423,6 +884,682 @@ local function clientScenarios()
 		T.check(label:GetAttribute("FontRole") == "Toast" and label.Font == Enum.Font.Unknown, "kitb fit: the hint is a Toast (Nunito ExtraBold) label", tostring(label.Font))
 		T.check(label.Size.X.Offset == want and want < 300, "kitb fit: the hint pill is measured to its text (not the 300 px fallback)", fmt("%d px (want %d)", label.Size.X.Offset, want))
 		KC.flushErrors("kitb_fit_measures_face_label")
+	end)
+
+	-- U2: the Credits window built from SignKit parts dumps exactly what the approved window dumped. The baseline was
+	-- recorded from the window as it stood before the move (NC_RECORD_CREDITS_TREE=1 rewrites it; never do that to make
+	-- this pass: the file IS the owner's approved look)
+	local CREDITS_TREE = "tools/fixtures/credits_tree_u1.txt"
+	local CREDITS_SIZES = { { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }
+
+	local function num(v)
+		return fmt("%.1f", tonumber(v) or 0)
+	end
+	local function udim2(u)
+		return fmt("{%s,%d,%s,%d}", num(u.X.Scale), u.X.Offset, num(u.Y.Scale), u.Y.Offset)
+	end
+	local function faceOf(obj)
+		local ok, f = pcall(function()
+			return obj.FontFace
+		end)
+		if ok and typeof(f) == "Font" then
+			return tostring(f.Family):match("([%w]+)%.json") .. "/" .. tostring(f.Weight):match("[%w]+$") .. "/" .. tostring(f.Style):match("[%w]+$")
+		end
+		return "-"
+	end
+	-- one line per instance: its path (names; "#n" for a repeated name among siblings) and the properties that make the
+	-- look: boxes, colours, texts, fonts, strokes, corners, gradients
+	local function creditsLines(root)
+		local lines = {}
+		local function visit(obj, path)
+			local seen = {}
+			for _, c in ipairs(obj:GetChildren()) do
+				seen[c.Name] = (seen[c.Name] or 0) + 1
+				local p = path .. "/" .. c.Name .. (seen[c.Name] > 1 and ("#" .. seen[c.Name]) or "")
+				local f = { p, c.ClassName }
+				if c:IsA("GuiObject") then
+					local ap, as = c.AbsolutePosition, c.AbsoluteSize
+					f[#f + 1] = fmt("abs %s,%s %sx%s pos %s size %s anchor %s,%s rot %s z %d vis %s bg %s %s", num(ap.X), num(ap.Y), num(as.X), num(as.Y),
+						udim2(c.Position), udim2(c.Size), num(c.AnchorPoint.X), num(c.AnchorPoint.Y), num(c.Rotation), c.ZIndex, tostring(c.Visible),
+						hex(c.BackgroundColor3), fmt("%.2f", c.BackgroundTransparency))
+				end
+				if c:IsA("TextLabel") or c:IsA("TextButton") then
+					f[#f + 1] = fmt("text %q %s %s face %s col %s stroke %s %s/%s wrap %s", c.Text, num(c.TextSize), tostring(c.Font), faceOf(c), hex(c.TextColor3),
+						fmt("%.2f", c.TextStrokeTransparency), tostring(c.TextXAlignment), tostring(c.TextYAlignment), tostring(c.TextWrapped))
+				end
+				if c:IsA("ImageLabel") or c:IsA("ImageButton") then
+					f[#f + 1] = fmt("image %q %s", c.Image, tostring(c.ScaleType))
+				end
+				if c:IsA("UICorner") then
+					f[#f + 1] = fmt("radius %s,%d", num(c.CornerRadius.Scale), c.CornerRadius.Offset)
+				elseif c:IsA("UIStroke") then
+					f[#f + 1] = fmt("%s %s %s %s %s", hex(c.Color), num(c.Thickness), tostring(c.ApplyStrokeMode), tostring(c.LineJoinMode), fmt("%.2f", c.Transparency))
+				elseif c:IsA("UIGradient") then
+					local keys = {}
+					for _, k in ipairs(c.Color.Keypoints) do
+						keys[#keys + 1] = num(k.Time) .. "=" .. hex(k.Value)
+					end
+					f[#f + 1] = table.concat(keys, " ") .. " rot " .. num(c.Rotation)
+				elseif c:IsA("UIAspectRatioConstraint") then
+					f[#f + 1] = "ratio " .. fmt("%.3f", c.AspectRatio)
+				end
+				lines[#lines + 1] = table.concat(f, " | ")
+				visit(c, p)
+			end
+		end
+		visit(root, "")
+		return lines
+	end
+
+	S.credits_unchanged_on_signkit = guarded("credits_unchanged_on_signkit", function()
+		local MMC = require(Mock.GetPath(ROOTS["client"] .. "/Controllers/MainMenuController"))
+		local UIS = game:GetService("UserInputService")
+		local vp0 = Mock.Viewport
+		local old = { UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled }
+		local all, kitParts = {}, {}
+		for _, s in ipairs(CREDITS_SIZES) do
+			UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = s[3], not s[3], not s[3]
+			Mock.SetViewport(s[1], s[2])
+			KC.advance(0.2)
+			MMC.CloseWindows()
+			MMC.OpenCredits()
+			KC.advance(0.3)
+			local holder = MMC.Window()
+			if not T.check(holder ~= nil, "credits on signkit: the window opens at " .. s[1] .. "x" .. s[2]) then
+				break
+			end
+			all[#all + 1] = fmt("== %dx%d", s[1], s[2])
+			for _, line in ipairs(creditsLines(holder)) do
+				all[#all + 1] = line
+			end
+			-- built from the kit: the roof, header, frame and body are SignKit parts
+			for _, pair in ipairs({ { "Roof", "Roof" }, { "Head", "Header" }, { "Wood", "Frame" }, { "Body", "Body" } }) do
+				local part = holder:FindFirstChild(pair[1], true)
+				if not (part and part:GetAttribute("SignKit") == pair[2]) then
+					kitParts[#kitParts + 1] = s[1] .. "x" .. s[2] .. " " .. pair[1]
+				end
+			end
+		end
+		MMC.CloseWindows()
+		UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = old[1], old[2], old[3]
+		Mock.SetViewport(vp0.X, vp0.Y)
+		KC.advance(0.2)
+		local text = table.concat(all, "\n") .. "\n"
+		local okEnv, record = pcall(function()
+			return os.getenv("NC_RECORD_CREDITS_TREE")
+		end)
+		if okEnv and record == "1" then
+			local fh = io.open(CREDITS_TREE, "w")
+			if fh then
+				fh:write(text)
+				fh:close()
+			end
+			T.info("*credits on signkit: recorded " .. CREDITS_TREE .. " (" .. #all .. " lines)")
+		end
+		local fh = io.open(CREDITS_TREE, "r")
+		local want = fh and fh:read("*a") or nil
+		if fh then
+			fh:close()
+		end
+		if T.check(want ~= nil, "credits on signkit: the approved window's dump exists (" .. CREDITS_TREE .. ")") then
+			local got, exp = {}, {}
+			for line in text:gmatch("([^\n]*)\n") do
+				got[#got + 1] = line
+			end
+			for line in want:gsub("\r", ""):gmatch("([^\n]*)\n") do
+				exp[#exp + 1] = line
+			end
+			local diffs = {}
+			for i = 1, math.max(#got, #exp) do
+				if got[i] ~= exp[i] then
+					diffs[#diffs + 1] = fmt("line %d: want [%s] got [%s]", i, tostring(exp[i]), tostring(got[i]))
+				end
+			end
+			T.check(#diffs == 0, fmt("credits on signkit: the window dumps the same boxes, colours, texts and fonts as the approved one (%d lines, 4 screens)", #exp),
+				fmt("%d differ; %s", #diffs, table.concat(diffs, " || ", 1, math.min(#diffs, 3))))
+		end
+		table.sort(kitParts)
+		T.check(#kitParts == 0, "credits on signkit: the roof, header, wood frame and body are SignKit parts (attribute SignKit)", table.concat(kitParts, ", "))
+		KC.flushErrors("credits_unchanged_on_signkit")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U3: the loading screen in kit B. Each scenario runs src/first/LoadingScreen.client.lua afresh (Mock.RunScript) and
+	-- reads the NEW NimbusLoading it builds; the profile is held back (no Done) while it looks, then let go so the screen
+	-- fades away before the next one.
+	local LKC = _G.KC
+	local LoadingH = {}
+
+	function LoadingH.shared(name)
+		local inst = Mock.GetPath(ROOTS.shared .. "/" .. name)
+		local ok, mod = false, nil
+		if inst then
+			ok, mod = pcall(require, inst)
+		end
+		return ok and mod or nil
+	end
+	function LoadingH.attr()
+		local Config = LoadingH.shared("Config")
+		return (Config and Config.Attr and Config.Attr.ProfileLoaded) or "ProfileLoaded"
+	end
+	-- runs the script once and returns the new NimbusLoading (nil when none was built); `opts.HideTheme` takes
+	-- Shared.Theme away for the run (the caller puts it back with LoadingH.restoreTheme)
+	function LoadingH.run(opts)
+		opts = opts or {}
+		local Players = game:GetService("Players")
+		local lp = Players.LocalPlayer
+		local pg = lp:FindFirstChildOfClass("PlayerGui")
+		local folder = ROOTS["first"] and Mock.GetPath(ROOTS["first"]) or nil
+		local script = folder and folder:FindFirstChild("LoadingScreen") or nil
+		if not script then
+			return nil
+		end
+		if opts.Size then
+			Mock.SetViewport(opts.Size[1], opts.Size[2])
+			LKC.advance(0.1)
+		end
+		local before = {}
+		for _, g in ipairs(pg:GetChildren()) do
+			before[g] = true
+		end
+		lp:SetAttribute(LoadingH.attr(), nil)
+		if opts.HideTheme then
+			local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+			LoadingH.theme = shared and shared:FindFirstChild("Theme")
+			LoadingH.sharedFolder = shared
+			if LoadingH.theme then
+				LoadingH.theme.Parent = nil
+			end
+		end
+		Mock.RunScript(script)
+		LKC.advance(opts.Wait or 0.6)
+		for _, g in ipairs(pg:GetChildren()) do
+			if not before[g] and g.Name == "NimbusLoading" then
+				return g
+			end
+		end
+		return nil
+	end
+	function LoadingH.restoreTheme()
+		if LoadingH.theme and LoadingH.sharedFolder then
+			LoadingH.theme.Parent = LoadingH.sharedFolder
+		end
+		LoadingH.theme = nil
+	end
+	-- lets the profile load so every loading screen finishes and fades away; the viewport goes back to 1920x1080
+	function LoadingH.cleanup()
+		LoadingH.restoreTheme()
+		game:GetService("Players").LocalPlayer:SetAttribute(LoadingH.attr(), true)
+		LKC.advance(4)
+		Mock.SetViewport(1920, 1080)
+		LKC.advance(0.1)
+	end
+	function LoadingH.texts(root)
+		local out = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" then
+				out[#out + 1] = d
+			end
+		end
+		return out
+	end
+	function LoadingH.gold(row, Sign)
+		local n = 0
+		for i = 1, 12 do
+			local b = row:FindFirstChild("Block" .. i)
+			local face = b and b:FindFirstChild("Face")
+			if face and sameColor(face.BackgroundColor3, Sign.Gold) then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	-- the board of the pitch: two ropes, the flat awning roof, the navy header with NIMBUS CLIMB in LuckiestGuy (gold on
+	-- navy, no outline), the 6 px wood frame round the stone body; width min(0.5 W, 620 design px) on a wide screen and the
+	-- screen less a 16 px gutter on each side on a portrait phone; the board swings (its Swing turns, within 1.5 degrees)
+	S.loading_board_parts = guarded("loading_board_parts", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme and Theme.Sign
+		if not T.check(Sign ~= nil, "loading board: (setup) Theme.Sign loads") then
+			return
+		end
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 1920, 1080 }, { 1280, 720 }, { 390, 844 } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local gui = LoadingH.run({ Size = s })
+				if not T.check(gui ~= nil, "loading board: the screen is built at " .. tag) then
+					return
+				end
+				local board = gui:FindFirstChild("Board", true)
+				local swing = gui:FindFirstChild("Swing", true)
+				if not T.check(board ~= nil and swing ~= nil and board:IsDescendantOf(swing), "loading board: a Board hangs in a Swing at " .. tag) then
+					return
+				end
+				local ropes, roof, head, wood = 0, nil, nil, nil
+				for _, d in ipairs(swing:GetDescendants()) do
+					local kind = d:GetAttribute("SignKit")
+					if kind == "Rope" then
+						ropes = ropes + 1
+					elseif kind == "Roof" then
+						roof = d
+					elseif kind == "Header" then
+						head = d
+					elseif kind == "Frame" then
+						wood = d
+					end
+				end
+				T.eq(ropes, 2, "loading board: two ropes at " .. tag)
+				local face = roof and roof:FindFirstChild("Face")
+				T.check(roof ~= nil and face ~= nil and sameColor(face.BackgroundColor3, Sign.Roof) and roof.Size.X.Scale == 0 and roof.Size.Y.Offset == 18,
+					"loading board: the flat awning roof (pink face, 18 px, a fixed offset width) at " .. tag, roof and tostring(roof.Size) or "missing")
+				local plate = head and head:FindFirstChild("Plate")
+				local title = plate and plate:FindFirstChild("Title")
+				T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "loading board: the navy header plank at " .. tag)
+				if T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "loading board: the header reads NIMBUS CLIMB at " .. tag, title and title.Text or "missing") then
+					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title, "loading board: the title is the Title role (LuckiestGuy)", tostring(title.Font))
+					T.check(sameColor(title.TextColor3, Sign.Gold) and title.TextStrokeTransparency >= 1 and #textStrokes(title) == 0,
+						"loading board: gold on navy with no outline and no stroke", hex(title.TextColor3))
+				end
+				local body = wood and wood:FindFirstChild("Body")
+				T.check(wood ~= nil and sameColor(wood.BackgroundColor3, Sign.Wood) and body ~= nil and body.Position.X.Offset == 6 and body.Position.Y.Offset == 6,
+					"loading board: a 6 px wood frame round the body at " .. tag)
+				T.check(body ~= nil and sameColor(body.BackgroundColor3, Sign.Stone), "loading board: the stone body at " .. tag)
+				local want = s[1] < 700 and (s[1] - 32) or math.min(0.5 * s[1], 620 * Theme.ScreenFactor(s[2]))
+				T.near(board.AbsoluteSize.X, want, 2, "loading board: the board is " .. math.floor(want) .. " px wide at " .. tag)
+				-- the swing is one endless tween (the mock never applies an endless tween's goal: read its goal and info)
+				local swingTween = nil
+				for tw in pairs(Mock.ActiveTweens) do
+					if tw.Instance == swing then
+						swingTween = tw
+					end
+				end
+				local goal = swingTween and Mock.TweenGoals(swingTween).Rotation
+				local info = swingTween and swingTween.TweenInfo
+				T.check(math.abs(swing.Rotation) <= 1.51 and goal ~= nil and math.abs(math.abs(goal) - 1.5) < 1e-6 and math.abs(goal - swing.Rotation) > 2.9,
+					"loading board: the board swings from -1.5 to +1.5 degrees at " .. tag, fmt("%.2f -> %s", swing.Rotation, tostring(goal)))
+				T.check(info ~= nil and info.RepeatCount < 0 and info.Reverses == true and info.EasingStyle == Enum.EasingStyle.Sine and math.abs(info.Time - 3.2) < 1e-6,
+					"loading board: ...endlessly, back and forth, Sine, 3.2 s")
+				LoadingH.cleanup()
+			end
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading board: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_board_parts")
+	end)
+
+	-- 12 stone blocks that turn gold one by one: 0 %, 50 %, 100 % -> 0, 6, 12 gold, the caption follows, and a jump of
+	-- several blocks is not drawn at once
+	S.loading_progress_blocks = guarded("loading_progress_blocks", function()
+		local Theme = LoadingH.shared("Theme")
+		local ok, err = pcall(function()
+			local gui = LoadingH.run()
+			local row = gui and gui:FindFirstChild("BlockRow", true)
+			if not T.check(row ~= nil and row:GetAttribute("SignKit") == "BlockRow", "loading blocks: a BlockRow is on the board") then
+				return
+			end
+			local blocks = 0
+			for _, c in ipairs(row:GetChildren()) do
+				if c.Name:match("^Block%d+$") then
+					blocks = blocks + 1
+				end
+			end
+			T.eq(blocks, 12, "loading blocks: 12 blocks")
+			local caption = gui:FindFirstChild("Caption", true)
+			for _, p in ipairs({ { 0, 0 }, { 0.5, 6 }, { 1, 12 } }) do
+				gui:SetAttribute("Progress", p[1])
+				if p[2] > 0 then
+					LKC.advance(0.05)
+					T.check(LoadingH.gold(row, Theme.Sign) < p[2], "loading blocks: the blocks turn gold one by one (not all at once) towards " .. p[2])
+				end
+				LKC.advance(2)
+				T.eq(LoadingH.gold(row, Theme.Sign), p[2], fmt("loading blocks: %d%% -> %d gold blocks", p[1] * 100, p[2]))
+				T.check(caption ~= nil and caption.Text:find(math.floor(p[1] * 100) .. "%", 1, true) ~= nil, fmt("loading blocks: the caption says %d%%", p[1] * 100), caption and caption.Text or "missing")
+			end
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading blocks: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_progress_blocks")
+	end)
+
+	-- no UICorner anywhere on the screen (the kit is square blocks; the round puffs and dot sparkles are gone)
+	S.loading_no_round_corners = guarded("loading_no_round_corners", function()
+		local ok, err = pcall(function()
+			local gui = LoadingH.run({ Wait = 6.6 })
+			if not T.check(gui ~= nil, "loading corners: (setup) the screen is built") then
+				return
+			end
+			local round = {}
+			for _, d in ipairs(gui:GetDescendants()) do
+				if d:IsA("UICorner") then
+					round[#round + 1] = d.Parent and d.Parent.Name or "?"
+				end
+			end
+			T.check(#round == 0, "loading corners: no UICorner on the loading screen", table.concat(round, ", "))
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading corners: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_no_round_corners")
+	end)
+
+	-- no neon: no UIStroke, no glow, no classic text stroke, no gradient but the sky's, none of the old neon colours
+	S.loading_no_neon_no_stroke = guarded("loading_no_neon_no_stroke", function()
+		local NEON = { "#40E2EC", "#B068FF", "#3C3296", "#BE6EC8", "#96F6FF" }
+		local ok, err = pcall(function()
+			local gui = LoadingH.run({ Wait = 6.6 })
+			if not T.check(gui ~= nil, "loading neon: (setup) the screen is built") then
+				return
+			end
+			local strokes, grads, classic, neon = {}, {}, {}, {}
+			for _, d in ipairs(gui:GetDescendants()) do
+				if d:IsA("UIStroke") then
+					strokes[#strokes + 1] = d.Parent and d.Parent.Name or "?"
+				elseif d:IsA("UIGradient") and not (d.Parent and d.Parent.Name == "Sky") then
+					grads[#grads + 1] = d.Parent and d.Parent.Name or "?"
+				end
+				if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextStrokeTransparency < 1 then
+					classic[#classic + 1] = d.Name
+				end
+				if d:IsA("GuiObject") and d.BackgroundTransparency < 1 then
+					for _, h in ipairs(NEON) do
+						if hex(d.BackgroundColor3) == h then
+							neon[#neon + 1] = d.Name .. " " .. h
+						end
+					end
+				end
+			end
+			T.check(#strokes == 0, "loading neon: no UIStroke (no neon edge, no glow ring, no outline)", table.concat(strokes, ", "))
+			T.check(#grads == 0, "loading neon: no gradient but the sky's", table.concat(grads, ", "))
+			T.check(#classic == 0, "loading neon: no classic text stroke", table.concat(classic, ", "))
+			T.check(#neon == 0, "loading neon: none of the old neon / violet colours", table.concat(neon, ", "))
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading neon: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_no_neon_no_stroke")
+	end)
+
+	-- the screen's own copy of the kit tokens (drawn before Theme exists) equals Theme.Sign, and its sizes SignKit.Sizes
+	S.loading_tokens_match_theme = guarded("loading_tokens_match_theme", function()
+		local Theme = LoadingH.shared("Theme")
+		local SignKit = LoadingH.shared("SignKit")
+		if not T.check(Theme ~= nil and SignKit ~= nil, "loading tokens: (setup) Theme and SignKit load") then
+			return
+		end
+		local Sign, Z = Theme.Sign, SignKit.Sizes
+		local ok, err = pcall(function()
+			local gui = LoadingH.run({ HideTheme = true })
+			local board = gui and gui:FindFirstChild("Board", true)
+			if not T.check(board ~= nil, "loading tokens: (setup) the board is drawn before Theme") then
+				return
+			end
+			local bad = {}
+			local function want(obj, key, what)
+				if not (obj and sameColor(obj.BackgroundColor3, Sign[key])) then
+					bad[#bad + 1] = what .. " ~= Theme.Sign." .. key .. " (" .. (obj and hex(obj.BackgroundColor3) or "missing") .. ")"
+				end
+			end
+			local roof = board:FindFirstChild("Roof")
+			want(roof, "RoofEdge", "roof edge")
+			want(roof and roof:FindFirstChild("Face"), "Roof", "roof face")
+			want(roof and roof:FindFirstChild("Face") and roof.Face:FindFirstChild("Lip"), "RoofLip", "roof lip")
+			local head = board:FindFirstChild("Head")
+			want(head, "Wood", "header rim")
+			want(head and head:FindFirstChild("Plate"), "Navy", "header plate")
+			local wood = board:FindFirstChild("Wood")
+			want(wood, "Wood", "frame")
+			local body = wood and wood:FindFirstChild("Body")
+			want(body, "Stone", "body")
+			want(body and body:FindFirstChild("Lip"), "StoneLip", "body lip")
+			-- the blocks already follow the progress before Theme: back to 0 % to read an empty block
+			gui:SetAttribute("Progress", 0)
+			LKC.advance(0.1)
+			local row = board:FindFirstChild("BlockRow", true)
+			local b1 = row and row:FindFirstChild("Block1")
+			want(b1, "Wood", "block edge")
+			want(b1 and b1:FindFirstChild("Face"), "Stone", "empty block")
+			want(b1 and b1:FindFirstChild("Face") and b1.Face:FindFirstChild("Lip"), "StoneLip", "empty block lip")
+			local rope = nil
+			for _, d in ipairs(gui:GetDescendants()) do
+				if d:GetAttribute("SignKit") == "Rope" then
+					rope = d
+				end
+			end
+			want(rope, "Post", "rope")
+			want(rope and rope:FindFirstChild("Shade"), "Wood", "rope shade")
+			gui:SetAttribute("Progress", 1)
+			LKC.advance(2)
+			want(b1 and b1:FindFirstChild("Face"), "Gold", "gold block")
+			want(b1 and b1:FindFirstChild("Face") and b1.Face:FindFirstChild("Lip"), "GoldLip", "gold block lip")
+			T.check(#bad == 0, "loading tokens: every colour of the board drawn before Theme equals Theme.Sign", table.concat(bad, "; "))
+			local sizes = {}
+			if not (roof and roof.Size.Y.Offset == Z.RoofH) then
+				sizes[#sizes + 1] = "roof height"
+			end
+			if not (rope and rope.Size.X.Offset == Z.RopeW) then
+				sizes[#sizes + 1] = "rope width"
+			end
+			if not (body and body.Position.X.Offset == Z.Frame) then
+				sizes[#sizes + 1] = "frame"
+			end
+			local f1 = b1 and b1:FindFirstChild("Face")
+			if not (f1 and f1.Position.X.Offset == Z.BlockEdge and f1:FindFirstChild("Lip") and f1.Lip.Size.Y.Offset == Z.BlockLip) then
+				sizes[#sizes + 1] = "block edge / lip"
+			end
+			T.check(#sizes == 0, "loading tokens: the board's sizes equal SignKit.Sizes", table.concat(sizes, ", "))
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading tokens: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_tokens_match_theme")
+	end)
+
+	-- before Shared.Theme replicates: the sky (127,196,242) -> (207,234,252), its stepped cloud rows (3-4 Frames a puff,
+	-- each row 12 px narrower on each side than the one under it) and the whole board are there; no text yet (fonts only
+	-- through Theme roles)
+	S.loading_shows_before_theme = guarded("loading_shows_before_theme", function()
+		local ok, err = pcall(function()
+			local gui = LoadingH.run({ HideTheme = true })
+			if not T.check(gui ~= nil, "loading before theme: the screen is built without Theme") then
+				return
+			end
+			local sky = gui:FindFirstChild("Sky")
+			local grad = sky and sky:FindFirstChildOfClass("UIGradient")
+			local keys = grad and grad.Color.Keypoints or {}
+			T.check(#keys >= 2 and hex(keys[1].Value) == "#7FC4F2" and hex(keys[#keys].Value) == "#CFEAFC",
+				"loading before theme: the day sky runs (127,196,242) -> (207,234,252)", #keys > 0 and (hex(keys[1].Value) .. " -> " .. hex(keys[#keys].Value)) or "no gradient")
+			local clouds = sky and sky:FindFirstChild("Clouds")
+			local puffs, badPuffs = 0, {}
+			for _, puff in ipairs(clouds and clouds:GetChildren() or {}) do
+				if puff:IsA("Frame") then
+					puffs = puffs + 1
+					local rows = {}
+					for _, r in ipairs(puff:GetChildren()) do
+						local n = tonumber(r.Name:match("^Row(%d+)$"))
+						if n then
+							rows[n] = r
+						end
+					end
+					local okRows = #rows >= 3 and #rows <= 4
+					for i = 2, #rows do
+						okRows = okRows and (rows[i - 1].Size.X.Offset - rows[i].Size.X.Offset == 24)
+					end
+					if not okRows then
+						badPuffs[#badPuffs + 1] = puff.Name
+					end
+				end
+			end
+			T.check(puffs >= 4, "loading before theme: stepped cloud puffs in the sky", tostring(puffs))
+			T.check(#badPuffs == 0, "loading before theme: every puff is 3-4 rows, each 12 px narrower on each side", table.concat(badPuffs, ", "))
+			local parts = {}
+			for _, name in ipairs({ "Swing", "Board", "Roof", "Head", "Wood", "BlockRow" }) do
+				local p = gui:FindFirstChild(name, true)
+				if not (p and p.Visible) then
+					parts[#parts + 1] = name
+				end
+			end
+			T.check(#parts == 0, "loading before theme: the board (ropes, roof, header, frame, body, blocks) shows before Theme", table.concat(parts, ", "))
+			T.eq(#LoadingH.texts(gui), 0, "loading before theme: no text yet")
+			LoadingH.restoreTheme()
+			LKC.advance(0.6)
+			local title = gui:FindFirstChild("Title", true)
+			T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "loading before theme: the title appears once Theme arrives")
+			local boards = 0
+			for _, d in ipairs(gui:GetDescendants()) do
+				if d.Name == "Board" then
+					boards = boards + 1
+				end
+			end
+			T.eq(boards, 1, "loading before theme: the same board stays (no second board when Theme arrives)")
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading before theme: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_shows_before_theme")
+	end)
+
+	-- SKIP is a SignKit plank with the pixel arrow (no "▶" glyph) and still finishes the screen
+	S.loading_skip_is_plank = guarded("loading_skip_is_plank", function()
+		local ok, err = pcall(function()
+			local gui = LoadingH.run({ Wait = 6.6 })
+			local skip = gui and gui:FindFirstChild("Skip", true)
+			if not T.check(skip ~= nil and skip.Visible, "loading skip: SKIP shows after SkipAfter") then
+				return
+			end
+			T.check(skip:IsA("TextButton") and skip:GetAttribute("SignKit") == "Plank", "loading skip: SKIP is a SignKit plank", skip.ClassName)
+			local arrow, label = false, nil
+			for _, d in ipairs(skip:GetDescendants()) do
+				if d:GetAttribute("PixelIcon") == "arrow" then
+					arrow = true
+				end
+				if d:IsA("TextLabel") and d.Text ~= "" then
+					label = d
+				end
+			end
+			T.check(arrow, "loading skip: the plank carries the pixel arrow")
+			T.check(label ~= nil and label.Text == "SKIP", "loading skip: the plank reads SKIP", label and label.Text or "no label")
+			local glyph = {}
+			for _, t in ipairs(LoadingH.texts(gui)) do
+				if t.Text:find("\226\150\182", 1, true) then
+					glyph[#glyph + 1] = t.Name
+				end
+			end
+			T.check(#glyph == 0, "loading skip: no text glyph arrow anywhere on the screen", table.concat(glyph, ", "))
+			Mock.Click(skip)
+			LKC.advance(0.3)
+			T.eq(gui:GetAttribute("Done"), true, "loading skip: the plank finishes the loading screen")
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading skip: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_skip_is_plank")
+	end)
+
+	-- the owner's picks (logo, lobby render, mascot) are TextureIds keys named in Config.Loading.Images; none set -> no
+	-- image at all (the typed title, the flat sky and its clouds); each set -> its ImageLabel, the fallback it replaces off
+	S.loading_images_optional = guarded("loading_images_optional", function()
+		local Config = LoadingH.shared("Config")
+		local ids = LoadingH.shared("TextureIds")
+		local keys = Config and Config.Loading and Config.Loading.Images
+		if not T.check(type(ids) == "table" and type(keys) == "table" and type(keys.Logo) == "string" and type(keys.Backdrop) == "string" and type(keys.Mascot) == "string",
+			"loading images: (setup) Config.Loading.Images names the Logo, Backdrop and Mascot keys") then
+			return
+		end
+		local saved = { ids[keys.Logo], ids[keys.Backdrop], ids[keys.Mascot] }
+		local ok, err = pcall(function()
+			T.check((tonumber(ids[keys.Logo]) or 0) == 0 and (tonumber(ids[keys.Backdrop]) or 0) == 0 and (tonumber(ids[keys.Mascot]) or 0) == 0,
+				"loading images: tonight no image id is set (the morning picks)")
+			local gui = LoadingH.run()
+			if not T.check(gui ~= nil, "loading images: (setup) the screen is built") then
+				return
+			end
+			local images = {}
+			for _, d in ipairs(gui:GetDescendants()) do
+				if d:IsA("ImageLabel") or d:IsA("ImageButton") then
+					images[#images + 1] = d.Name
+				end
+			end
+			T.check(#images == 0, "loading images: ids 0 -> no image on the screen", table.concat(images, ", "))
+			local title = gui:FindFirstChild("Title", true)
+			local clouds = gui:FindFirstChild("Clouds", true)
+			T.check(title ~= nil and title.Visible and clouds ~= nil and clouds.Visible, "loading images: ids 0 -> the typed title and the cloud sky")
+			LoadingH.cleanup()
+			ids[keys.Logo], ids[keys.Backdrop], ids[keys.Mascot] = 101, 202, 303
+			local g2 = LoadingH.run()
+			if not T.check(g2 ~= nil, "loading images: (setup) the screen is built with the ids set") then
+				return
+			end
+			local logo = g2:FindFirstChild("Logo", true)
+			local back = g2:FindFirstChild("Backdrop", true)
+			local mascot = g2:FindFirstChild("Mascot", true)
+			T.check(logo ~= nil and logo:IsA("ImageLabel") and logo.Image == "rbxassetid://101", "loading images: the logo id -> a Logo image in the header", logo and logo.Image or "missing")
+			local t2 = g2:FindFirstChild("Title", true)
+			T.check(t2 == nil or t2.Visible == false, "loading images: ...and the typed title is off")
+			T.check(back ~= nil and back:IsA("ImageLabel") and back.Image == "rbxassetid://202", "loading images: the lobby render id -> a Backdrop image", back and back.Image or "missing")
+			local c2 = g2:FindFirstChild("Clouds", true)
+			T.check(c2 == nil or c2.Visible == false, "loading images: ...and the drawn clouds are off")
+			T.check(mascot ~= nil and mascot:IsA("ImageLabel") and mascot.Image == "rbxassetid://303", "loading images: the mascot id -> a Mascot image on the blocks", mascot and mascot.Image or "missing")
+		end)
+		ids[keys.Logo], ids[keys.Backdrop], ids[keys.Mascot] = saved[1], saved[2], saved[3]
+		LoadingH.cleanup()
+		T.check(ok, "loading images: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_images_optional")
+	end)
+
+	-- (U3 review) the board fits every screen: portrait tablets, landscape phones (360-375 px tall) and the grid sizes.
+	-- The title stays on the plate with 12 design px each side, the board (plus the swing's droop: half its width times
+	-- sin 1.5 degrees, the mock does not turn it) ends above the tip card and clear of SKIP, SKIP clear of the tip card,
+	-- the board below Roblox's top bar, the blocks and the caption inside the stone body
+	S.loading_board_fits = guarded("loading_board_fits", function()
+		local Theme = LoadingH.shared("Theme")
+		if not T.check(Theme ~= nil and Theme.Measure ~= nil, "loading fit: (setup) Theme.Measure loads") then
+			return
+		end
+		local function rect(obj)
+			local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+			return { X = p.X, Y = p.Y, R = p.X + s.X, B = p.Y + s.Y }
+		end
+		local function overlap(a, b)
+			return a.X < b.R and b.X < a.R and a.Y < b.B and b.Y < a.B
+		end
+		local function show(r)
+			return fmt("%d,%d..%d,%d", r.X, r.Y, r.R, r.B)
+		end
+		local ok, err = pcall(function()
+			local sizes = { { 768, 1024 }, { 834, 1194 }, { 640, 360 }, { 667, 375 }, { 800, 360 }, { 740, 360 }, { 720, 360 },
+				{ 844, 390 }, { 390, 844 }, { 1920, 1080 }, { 1280, 720 } }
+			for _, s in ipairs(sizes) do
+				local tag = s[1] .. "x" .. s[2]
+				local f = Theme.ScreenFactor(s[2])
+				local gui = LoadingH.run({ Size = s })
+				local board = gui and gui:FindFirstChild("Board", true)
+				local plate = gui and gui:FindFirstChild("Plate", true)
+				local title = plate and plate:FindFirstChild("Title")
+				local tip = gui and gui:FindFirstChild("TipCard", true)
+				local skip = gui and gui:FindFirstChild("Skip", true)
+				local body = gui and gui:FindFirstChild("Body", true)
+				local row = gui and gui:FindFirstChild("BlockRow", true)
+				local caption = gui and gui:FindFirstChild("Caption", true)
+				if not T.check(board and plate and title and tip and skip and body and row and caption, "loading fit: (setup) the board, tip card and SKIP at " .. tag) then
+					return
+				end
+				local width = Theme.Measure(title.Text, "Title", title.TextSize).X
+				local room = plate.AbsoluteSize.X / f - 24
+				T.check(width <= room, "loading fit: the title stays on the plate with 12 px each side at " .. tag,
+					fmt("title %d at %d px, plate room %.0f", width, title.TextSize, room))
+				local b, t, k = rect(board), rect(tip), rect(skip)
+				local droop = math.ceil(0.5 * board.AbsoluteSize.X * math.sin(math.rad(1.5)))
+				local swung = { X = b.X, Y = b.Y, R = b.R, B = b.B + droop }
+				T.check(swung.B <= t.Y, "loading fit: the swinging board ends above the tip card at " .. tag, show(swung) .. " vs tip " .. show(t))
+				T.check(not overlap(swung, k), "loading fit: the swinging board is clear of SKIP at " .. tag, show(swung) .. " vs skip " .. show(k))
+				T.check(not overlap(k, t), "loading fit: SKIP is clear of the tip card at " .. tag, show(k) .. " vs tip " .. show(t))
+				T.check(b.Y >= Mock.TopInset, "loading fit: the board hangs below Roblox's top bar at " .. tag, show(b))
+				local inside = rect(body)
+				local r, c = rect(row), rect(caption)
+				T.check(r.Y >= inside.Y and c.B <= inside.B and r.X >= inside.X and r.R <= inside.R,
+					"loading fit: the blocks and the caption sit inside the stone body at " .. tag, show(r) .. " / " .. show(c) .. " in " .. show(inside))
+				LoadingH.cleanup()
+			end
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading fit: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_board_fits")
 	end)
 
 	return S

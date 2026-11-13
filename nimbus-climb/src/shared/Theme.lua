@@ -355,6 +355,17 @@ Theme.Sign = {
 	Red = rgb(238, 106, 127), -- #EE6A7F
 	Text = rgb(59, 36, 18), -- #3B2412
 	TextMuted = rgb(118, 84, 54), -- #765436 (small captions on stone)
+	-- U2 (SignKit): the pitch's edges and darker bottom lips (kB --*Lip tokens, the .roof border, the .posts colour)
+	RoofEdge = rgb(122, 42, 82), -- #7A2A52
+	RoofLip = rgb(196, 74, 130), -- #C44A82
+	GoldLip = rgb(201, 154, 30), -- #C99A1E
+	NavyLip = rgb(23, 28, 79), -- #171C4F
+	GrassLip = rgb(63, 154, 69), -- #3F9A45
+	RedLip = rgb(184, 54, 79), -- #B8364F
+	Tile = rgb(255, 253, 246), -- #FFFDF6 (a raised stone button)
+	Well = rgb(243, 230, 200), -- #F3E6C8 (a sunk / disabled stone)
+	WellEdge = rgb(201, 168, 119), -- #C9A877
+	Post = rgb(196, 138, 78), -- #C48A4E (sign posts and ropes; their shaded side is Wood)
 }
 
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
