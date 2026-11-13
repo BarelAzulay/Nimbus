@@ -1332,4 +1332,13 @@ Config.MainMenu = {
 	HideCards = { "GateTag", "PortalBillboard", "JoinBillboard", "TroveBillboard", "NameTag", "Nameplate", "RaidGateTag", "PortalName" },
 }
 
+-- Kit B staged looks (.superpowers/slop-audit/round3/BUILD_PLAN.md): each look is built behind its switch and ships off
+-- until the owner has seen it. TitleShots = the title screen's camera shots (U4), SkyAir = the per-phase air colours (S4),
+-- ThinClouds = the thin Terrain cloud layer (S4). Smoke kitb_preview_all_off keeps every switch false on the branch.
+Config.Preview = {
+	TitleShots = false,
+	SkyAir = false,
+	ThinClouds = false,
+}
+
 return Config

@@ -717,6 +717,18 @@ function analyse(file) {
 		fn({ body: ast.body, loc: ast.loc }, 0);
 	})();
 
+	// -- kit B lanes (.superpowers/slop-audit/round3/BUILD_PLAN.md, W0) ------------------------
+	// One anchor per lane: a lane adds its per-file rules between ITS anchor and its end line only,
+	// so the lane branches merge into kit-b without conflicts.
+	// -- kit B: SKY lane (kitb-sky) --
+	// (end of the SKY lane rules)
+	// -- kit B: OBBY lane (kitb-obby) --
+	// (end of the OBBY lane rules)
+	// -- kit B: FX lane (kitb-fx) --
+	// (end of the FX lane rules)
+	// -- kit B: UI lane (kitb-ui) --
+	// (end of the UI lane rules)
+
 	// -- contract -----------------------------------------------------------------------------
 	checkContract(file, ast);
 }
