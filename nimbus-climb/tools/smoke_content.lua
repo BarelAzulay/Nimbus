@@ -19,6 +19,14 @@
 local K = _G.K
 local T = K.T
 local guarded = K.guarded
+
+-- kit B X1: the role of one of the game's own particle sprites (shared/FxSprites), nil for any other texture
+local function fxRole(tex)
+	local ok, FX = pcall(function()
+		return require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
+	end)
+	return ok and type(FX) == "table" and FX.RoleOf(tostring(tex)) or nil
+end
 local M = K.M
 local W = K.W
 local fmt = K.fmt
@@ -1099,7 +1107,7 @@ S.petbuilder = guarded("petbuilder", function()
 		palette = T.tally("the pet is painted in its Look colours (Primary / Secondary / WingColor)"),
 		eyes = T.tally("pets have big glossy eyes (Eye parts + shine highlights); Glow pets have Neon irises"),
 		flair = T.tally("Legendary and Mythic pets carry a low-rate sparkle emitter"),
-		noAssets = T.tally("pets use no external assets (no mesh ids, no textures except built-in particles)"),
+		noAssets = T.tally("pets use no external assets (no mesh ids, no textures except the game's own FxSprites particle sheets)"),
 		animate = T.tally("Animate runs for 120 frames without errors, NaN or new instances"),
 		flap = T.tally("Animate flaps the wings (a storm cloud sways gently) and WingL/WingR mirror each other"),
 		pivot = T.tally("Animate is relative to the PrimaryPart (same pose after PivotTo)"),
@@ -1257,14 +1265,14 @@ S.petbuilder = guarded("petbuilder", function()
 			else
 				tally.flair:case(#emitters <= 1, who .. ": " .. #emitters .. " emitters on a " .. def.Rarity .. " pet")
 			end
-			-- assets: nothing but parts, built-in meshes and built-in particle textures
+			-- assets: nothing but parts, built-in meshes and the FxSprites particle sheets (kit B X1)
 			local assetBad
 			for _, d in ipairs(model:GetDescendants()) do
 				if d:IsA("MeshPart") and (d.MeshId ~= "" or d.TextureID ~= "") then
 					assetBad = assetBad or (d.Name .. " is a MeshPart with asset ids")
 				elseif d:IsA("SpecialMesh") and (d.MeshId ~= "" or d.TextureId ~= "") then
 					assetBad = assetBad or (d.Name .. " is a SpecialMesh with asset ids")
-				elseif d:IsA("ParticleEmitter") and d.Texture ~= "" and not d.Texture:find("^rbxasset://textures/particles/") then
+				elseif d:IsA("ParticleEmitter") and not fxRole(d.Texture) then
 					assetBad = assetBad or (d.Name .. ".Texture = " .. d.Texture)
 				elseif d:IsA("Decal") or d:IsA("Texture") or d:IsA("Script") or d:IsA("LocalScript") or d:IsA("Sound") or d:IsA("SurfaceAppearance") then
 					assetBad = assetBad or (d.ClassName .. " " .. d.Name)

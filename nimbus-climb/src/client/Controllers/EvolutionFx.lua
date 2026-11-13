@@ -50,7 +50,7 @@ local Workspace = game:GetService("Workspace")
 local EvolutionFx = {}
 
 local TAU = math.pi * 2
-local SPARKLE = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("FxSprites"))
 local WHITE = Color3.fromRGB(255, 255, 255)
 
 local K = {
@@ -257,7 +257,7 @@ local function newSparkles(part, c1, c2, R, u)
 	att.Parent = part
 	local em = Instance.new("ParticleEmitter")
 	em.Name = "EvolveSparkles"
-	em.Texture = SPARKLE
+	FxSprites.Apply(em, "Sparkle")
 	em.LightEmission = 1
 	em.LightInfluence = 0
 	em.Rate = 0

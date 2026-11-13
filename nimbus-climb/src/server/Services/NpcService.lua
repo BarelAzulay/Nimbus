@@ -61,7 +61,7 @@ local SETTINGS = (NpcDialog and NpcDialog.Settings) or {}
 local NPC_SCALE = tonumber(SETTINGS.Scale) or 2.2
 local PROMPT_DISTANCE = tonumber(SETTINGS.PromptDistance) or 10
 local HOVER_GAP = tonumber(SETTINGS.HoverGap) or 1.0
-local SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the game's own particle sprites (kit B X1)
 
 -- Pedestal geometry (voxel units; one voxel = PV studs, about two pet voxels at Scale 2.2)
 local PV = 0.4
@@ -685,9 +685,8 @@ local function buildNpc(def, spot, index, detached)
 		Name = "RugSparkles",
 		CFrame = promptPart.CFrame:Inverse() * (spot * CFrame.new(0, PEDESTAL_TOP + 0.1, 0)),
 	}, promptPart)
-	make("ParticleEmitter", {
+	FxSprites.Apply(make("ParticleEmitter", {
 		Name = "Sparkles",
-		Texture = SPARKLES,
 		Color = ColorSequence.new(lighten(accent, 0.55), rgb(255, 236, 170)),
 		LightEmission = 0.7,
 		LightInfluence = 0,
@@ -708,7 +707,7 @@ local function buildNpc(def, spot, index, detached)
 			NumberSequenceKeypoint.new(0.25, 0.25),
 			NumberSequenceKeypoint.new(1, 1),
 		}),
-	}, rugAttachment)
+	}, rugAttachment), "Sparkle")
 
 	if pet and pet.PrimaryPart then
 		model.PrimaryPart = pet.PrimaryPart

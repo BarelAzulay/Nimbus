@@ -139,7 +139,7 @@ local SPOT_COUNT = math.max(1, LOBBY.SpotCount or 16)
 local PLOT = LOBBY.PlotSize or 72
 local SEED = 20261009
 local MAT = Enum.Material
-local SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
 
 -- Glyphs as UTF-8 byte escapes (keeps the source file ASCII).
 local GLYPH = {
@@ -503,10 +503,10 @@ local function popSize(maxSize)
 	})
 end
 
--- Sparkle ParticleEmitter with soft defaults; `props` overrides anything.
+-- Sparkle ParticleEmitter with soft defaults; `props` overrides anything (props.Sprite: another FxSprites role).
 local function emitter(parent, props)
 	local e = Instance.new("ParticleEmitter")
-	e.Texture = SPARKLES
+	FxSprites.Apply(e, props and props.Sprite or "Sparkle")
 	e.Color = ColorSequence.new(C.TextGold)
 	e.LightEmission = 0.6
 	e.LightInfluence = 0
@@ -519,7 +519,9 @@ local function emitter(parent, props)
 	e.RotSpeed = NumberRange.new(-60, 60)
 	if props then
 		for key, value in pairs(props) do
-			e[key] = value
+			if key ~= "Sprite" then
+				e[key] = value
+			end
 		end
 	end
 	e.Parent = parent
@@ -2036,13 +2038,9 @@ local OASIS = {
 	Boat = { 0.7, -6.3 },
 }
 
--- Roblox's own particle textures (shipped with every client; nothing to upload)
+-- the fountain's sprites are FxSprites roles (kit B X1: the game's own sheets): Droplet for drops and bubbles, Puff for
+-- foam and mist, Ring for the ripples; the falls' streak Beams scroll the Dash strip, their core is a plain Beam
 local Oasis = {} -- the fountain helpers (one main-chunk local: LobbyBuilder is near the 200-locals limit)
-Oasis.Tex = {
-	Glow = "rbxasset://textures/particles/explosion01_implosion_main.dds", -- a soft round glow: drops, fall cores, streaks
-	Ring = "rbxasset://textures/particles/explosion01_shockwave_main.dds", -- a soft ring: ripples
-	Puff = "rbxasset://textures/particles/smoke_main.dds", -- a soft puff: foam, mist
-}
 -- Fall direction. The Beam reference: a positive TextureSpeed scrolls the texture from Attachment0 toward Attachment1,
 -- a negative one from Attachment1 toward Attachment0. Each fall's Attachment0 is its impact and Attachment1 its lip, so
 -- Flow = -1 runs the streaks downhill, lip -> impact. (Studio check #1 after upload: if they ever climb, the engine
@@ -2057,10 +2055,10 @@ function Oasis.at(origin, x, y, z)
 	return (origin * CFrame.new(x, y, z)).Position
 end
 
--- An emitter with the water look: soft round texture by default, never the sparkle star.
+-- An emitter with the water look: the droplet sheet by default (props.Sprite: another role), never the sparkle star.
 function Oasis.emitter(parent, props)
 	local e = emitter(parent, {
-		Texture = Oasis.Tex.Glow,
+		Sprite = props and props.Sprite or "Droplet",
 		Color = Oasis.Drop,
 		LightEmission = 0.35,
 		LightInfluence = 0.4,
@@ -2068,7 +2066,9 @@ function Oasis.emitter(parent, props)
 		RotSpeed = NumberRange.new(0, 0),
 	})
 	for k, v in pairs(props or {}) do
-		e[k] = v
+		if k ~= "Sprite" then
+			e[k] = v
+		end
 	end
 	return e
 end
@@ -2334,7 +2334,7 @@ function Oasis.fall(anchor, origin, f, index)
 	local a0 = attach(tag .. "Impact", impact, xBottom)
 	local a1 = attach(tag .. "Lip", lip, xTop)
 	beam(tag .. "Core", a0, a1, {
-		Texture = Oasis.Tex.Glow,
+		Texture = "", -- a plain water sheet (no stock glow)
 		TextureMode = Enum.TextureMode.Stretch,
 		TextureLength = 1,
 		TextureSpeed = 0,
@@ -2355,7 +2355,7 @@ function Oasis.fall(anchor, origin, f, index)
 		local s0 = attach(tag .. "StreakImpact" .. k, impact + side * off * 1.2, xBottom)
 		local s1 = attach(tag .. "StreakLip" .. k, lip + side * off, xTop)
 		beam(tag .. "Streak" .. k, s0, s1, {
-			Texture = Oasis.Tex.Glow,
+			Texture = FxSprites.Strip("Dash"), -- dashes running downhill
 			TextureMode = Enum.TextureMode.Wrap,
 			TextureLength = 0.9 + k * 0.15,
 			TextureSpeed = Oasis.Flow * (2.4 + k * 0.35 + (f.Big and 0.4 or 0)),
@@ -2394,7 +2394,7 @@ function Oasis.fall(anchor, origin, f, index)
 	})
 	Oasis.emitter(splash, {
 		Name = "Foam",
-		Texture = Oasis.Tex.Puff,
+		Sprite = "Puff",
 		Color = Oasis.Foam,
 		Rate = 9 * big,
 		Lifetime = NumberRange.new(0.6, 1.0),
@@ -2408,7 +2408,7 @@ function Oasis.fall(anchor, origin, f, index)
 	})
 	Oasis.emitter(rings, {
 		Name = "Ripples",
-		Texture = Oasis.Tex.Ring,
+		Sprite = "Ring",
 		Color = Oasis.Foam,
 		Orientation = Enum.ParticleOrientation.VelocityPerpendicular, -- flat on the water
 		EmissionDirection = Enum.NormalId.Top,
@@ -2422,7 +2422,7 @@ function Oasis.fall(anchor, origin, f, index)
 	if f.Big then
 		Oasis.emitter(splash, {
 			Name = "Mist",
-			Texture = Oasis.Tex.Puff,
+			Sprite = "Puff",
 			Color = Oasis.Foam,
 			Rate = 4,
 			Lifetime = NumberRange.new(1.6, 2.6),
@@ -3077,6 +3077,7 @@ local function buildPlazaDecor(f, L)
 	-- Fireflies and sparkle dust over the lawns.
 	local flies = anchorPart(f, "Fireflies", Vector3.new(OX, TOP + 6, OZ), Vector3.new(PLAZA_R * 1.7, 10, PLAZA_R * 1.7))
 	emitter(flies, {
+		Sprite = "Glow",
 		Color = ColorSequence.new(rgb(255, 236, 150), rgb(190, 240, 170)),
 		Rate = 10,
 		Lifetime = NumberRange.new(5, 8),
@@ -3858,6 +3859,7 @@ local function buildShop(root, L)
 		place(Props.FlowerBed(4), flatLook(at(11.5, -19) - down, S - down) * CFrame.Angles(0, math.rad(90), 0), f, "FlowerBed")
 		local flies = anchorPart(f, "Fireflies", S + Vector3.new(0, 5, 0), Vector3.new(R * 1.5, 8, R * 1.5))
 		emitter(flies, {
+			Sprite = "Glow",
 			Color = ColorSequence.new(rgb(255, 236, 150), rgb(190, 240, 170)),
 			Rate = 5,
 			Lifetime = NumberRange.new(5, 8),
@@ -4670,7 +4672,6 @@ local Meadow = (function()
 		Sack = { W = 1.15, D = 0.85, H = 1.35, Lean = 0.22 }, -- blender/kit/props/lobby_meadow.py SACK
 		Drift = { Length = 24, Width0 = 1.3, Spread = 0.3 },
 		Seeds = { Sectors = 6, MinClocks = 6, Rate = 1.2 },
-		GLOW = "rbxasset://textures/particles/explosion01_implosion_main.dds",
 		Stats = nil, -- the last scatter's numbers (tests, the build log)
 	}
 	Meadow.K = MEADOW
@@ -5167,7 +5168,7 @@ local Meadow = (function()
 				local anchor = anchorPart(model, "Seeds" .. a, Vector3.new(OX + mx, TOP + 0.4, OZ + mz),
 					Vector3.new(math.min(40, sx), 0.6, math.min(40, sz)))
 				local e = emitter(anchor, {
-					Texture = MEADOW.GLOW,
+					Sprite = "Glow",
 					Color = ColorSequence.new(rgb(255, 255, 250)),
 					LightEmission = 0.25,
 					LightInfluence = 0.6,

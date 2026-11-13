@@ -38,6 +38,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
+local FxSprites = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FxSprites"))
+
 local RingCrowdFx = {}
 
 local K = {
@@ -448,11 +450,11 @@ local function particles(rec, name, props)
 	a.Parent = body
 	local e = Instance.new("ParticleEmitter")
 	e.Name = name
-	e.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	FxSprites.Apply(e, props.Sprite or "Droplet") -- props.Sprite: an FxSprites role
 	e.LightInfluence = 0.6
 	e.Enabled = false
 	for k, v in pairs(props) do
-		if k ~= "At" then
+		if k ~= "At" and k ~= "Sprite" then
 			e[k] = v
 		end
 	end
@@ -470,6 +472,7 @@ local function ensureClientBits(rec)
 	rec.Bits = true
 	if rec.Name == "rain" then
 		rec.Weather = particles(rec, "Drips", {
+			Sprite = "Droplet",
 			At = Vector3.new(0, 0.35, -0.9),
 			Color = ColorSequence.new(Color3.fromRGB(126, 186, 242)),
 			Rate = 3,
@@ -482,6 +485,7 @@ local function ensureClientBits(rec)
 		})
 	elseif rec.Name == "snow" then
 		rec.Weather = particles(rec, "Flakes", {
+			Sprite = "Snow",
 			At = Vector3.new(0, 3.4, -0.4),
 			Color = ColorSequence.new(Color3.fromRGB(250, 252, 255)),
 			Rate = 2,
@@ -496,6 +500,7 @@ local function ensureClientBits(rec)
 	end
 	-- boss-round drizzle under every cloud
 	rec.Drizzle = particles(rec, "Drizzle", {
+		Sprite = "Droplet",
 		At = Vector3.new(0, 0.3, -0.5),
 		Color = ColorSequence.new(Color3.fromRGB(150, 176, 220)),
 		Rate = 6,

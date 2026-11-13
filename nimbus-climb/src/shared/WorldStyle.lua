@@ -65,6 +65,7 @@
 local Shared = script.Parent
 local Voxel = require(Shared:WaitForChild("Voxel", 10))
 local Theme = require(Shared:WaitForChild("Theme", 10))
+local FxSprites = require(Shared:WaitForChild("FxSprites", 10)) -- the game's own particle sprites (kit B X1)
 
 local WorldStyle = {}
 
@@ -984,7 +985,7 @@ function WorldStyle.BuildGate(parent, siteCFrame, spec)
 	light.Parent = core
 	local sparkles = Instance.new("ParticleEmitter")
 	sparkles.Name = "Sparkles"
-	sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	FxSprites.Apply(sparkles, "Sparkle")
 	sparkles.Rate = 12
 	sparkles.Lifetime = NumberRange.new(1.4, 2.2)
 	sparkles.Speed = NumberRange.new(1.5, 3.5)
