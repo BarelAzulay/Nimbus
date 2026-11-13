@@ -1318,7 +1318,7 @@ S.courses = guarded("courses", function()
 		cannons = T.tally("CloudCannon pads carry Target (world) and FlightTime from the layout"),
 		pendulums = T.tally("Pendulum beams carry Hinge (world) / Axis from the layout and hang at rest from the hinge"),
 		determinism = T.tally("building the same layout twice gives the same number of parts"),
-		signs = T.tally("signs: START, FINISH, 'Checkpoint k/N' for every stage and one 'DASH!' hint per dash gap (Theme fonts)"),
+		signs = T.tally("signs: START, FINISH, 'Checkpoint k/N' for every stage but the last and one 'DASH!' hint per dash gap (Theme fonts)"),
 	}
 	local dumped = false
 	for _, pick in ipairs(picks) do
@@ -1572,7 +1572,9 @@ S.courses = guarded("courses", function()
 			if not text:find("FINISH", 1, true) then
 				signBad[#signBad + 1] = "no FINISH sign"
 			end
-			for k = 1, diff.Stages do
+			-- kit-b O4: the last checkpoint (right before the Finish) has no tag, it sat over the GOAL tag
+			-- (smoke_kitb_obby.lua obby_goal_and_checkpoint_tags_apart); its flags still carry the number
+			for k = 1, diff.Stages - 1 do
 				if not text:find("CHECKPOINT " .. k .. "/" .. diff.Stages, 1, true) and not text:find("CHECKPOINT " .. k .. " / " .. diff.Stages, 1, true) then
 					signBad[#signBad + 1] = "no 'Checkpoint " .. k .. "/" .. diff.Stages .. "' label"
 					break

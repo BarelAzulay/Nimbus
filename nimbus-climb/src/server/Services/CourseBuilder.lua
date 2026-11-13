@@ -17,7 +17,7 @@
 --
 -- Look: a calm, slightly dim cloud world (Theme.World when it exists, own muted fallbacks otherwise).
 -- Platform tops are lighter than their sides, trims use the difficulty colour with a per-stage tint,
--- every stage theme gets its own material/tint, every step kind its own props, and every stage a
+-- every stage theme gets its own tint (SmoothPlastic only), every step kind its own props, and every stage a
 -- floating landmark. Neon is only used for small accents. Everything is Anchored; decor never collides.
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -48,9 +48,14 @@ end
 local PART_LIMIT = 2450 -- total parts we aim for (tokens included); decor shrinks to stay below it
 local TOKEN_PARTS = 7 -- rough number of parts one TokenService token is made of
 local MIN_SIZE = 0.05 -- smallest part dimension Roblox accepts everywhere
+local RAIL_STEP = 2.2 -- kit-b O4: the most studs between two cubes of a moving cloud's dotted route
+local GOAL_ORB_Y, GOAL_TAG_LIFT = 3.6, 2.9 -- the Finish's GoalOrb over the top, and its GOAL tag over the orb
+local FINISH_NEAR = 45 -- kit-b O4: the last checkpoint has no tag while the GOAL tag is this close (studs)
 local EMPTY = {}
 local SMOOTH = Enum.SurfaceType.Smooth
 local MAT = Enum.Material
+-- kit-b O4 (finding 9, ABSOLUTE_RULES "no textured materials"): the only materials mk lets through
+local MATERIAL_OK = { [MAT.SmoothPlastic] = true, [MAT.Neon] = true, [MAT.Glass] = true }
 
 ----------------------------------------------------------------------
 -- Palette (Theme.World when present, muted fallbacks otherwise)
@@ -127,23 +132,24 @@ local BRIDGE_COLORS = {
 }
 
 -- how each stage theme dresses its platforms: Hue = tint pulled into the cloud colours (Top / Side are
--- the pull strengths), Mat = side material, TopMat = top material
+-- the pull strengths). kit-b O4 (finding 9): the theme is carried by colour only, every slab is SmoothPlastic
+-- (no WoodPlanks / Slate / Concrete tiling on the big tops)
 local THEME_LOOK = {
 	Plain = { Hue = rgb(190, 200, 224), Top = 0.0, Side = 0.0 },
 	Stones = { Hue = rgb(178, 198, 226), Top = 0.12, Side = 0.2 },
-	Beams = { Hue = rgb(210, 172, 128), Top = 0.42, Side = 0.5, Mat = MAT.WoodPlanks, TopMat = MAT.WoodPlanks },
+	Beams = { Hue = rgb(210, 172, 128), Top = 0.42, Side = 0.5 },
 	Bounce = { Hue = rgb(122, 204, 164), Top = 0.28, Side = 0.34 },
 	Moving = { Hue = rgb(116, 184, 232), Top = 0.28, Side = 0.34 },
 	Spin = { Hue = rgb(196, 124, 156), Top = 0.26, Side = 0.34 },
-	Storm = { Hue = rgb(70, 78, 108), Top = 0.5, Side = 0.58, Mat = MAT.Slate },
-	Lightning = { Hue = rgb(142, 120, 196), Top = 0.4, Side = 0.5, Mat = MAT.Slate },
+	Storm = { Hue = rgb(70, 78, 108), Top = 0.5, Side = 0.58 },
+	Lightning = { Hue = rgb(142, 120, 196), Top = 0.4, Side = 0.5 },
 	Vanish = { Hue = rgb(196, 212, 236), Top = 0.2, Side = 0.2 },
-	Cannon = { Hue = rgb(148, 150, 164), Top = 0.4, Side = 0.5, Mat = MAT.Concrete },
+	Cannon = { Hue = rgb(148, 150, 164), Top = 0.4, Side = 0.5 },
 	Wind = { Hue = rgb(176, 218, 230), Top = 0.3, Side = 0.3 },
 	Pendulum = { Hue = rgb(206, 170, 112), Top = 0.32, Side = 0.4 },
 	Plates = { Hue = rgb(132, 150, 214), Top = 0.3, Side = 0.38 },
 	DashGap = { Hue = rgb(224, 192, 112), Top = 0.3, Side = 0.36 },
-	Gauntlet = { Hue = rgb(104, 96, 112), Top = 0.46, Side = 0.55, Mat = MAT.Slate },
+	Gauntlet = { Hue = rgb(104, 96, 112), Top = 0.46, Side = 0.55 },
 }
 
 ----------------------------------------------------------------------
@@ -200,7 +206,10 @@ local function mk(ctx, group, name, className, size, cf, color, material, opts)
 	p.TopSurface = SMOOTH
 	p.BottomSurface = SMOOTH
 	p.Color = color
-	p.Material = material or MAT.SmoothPlastic
+	if not MATERIAL_OK[material] then
+		material = MAT.SmoothPlastic -- kit-b O4: no textured Roblox material reaches the course
+	end
+	p.Material = material
 	if opts.Transparency then
 		p.Transparency = opts.Transparency
 	end
@@ -228,6 +237,9 @@ local function mk(ctx, group, name, className, size, cf, color, material, opts)
 	end
 	p.Parent = parent
 	ctx.Parts = ctx.Parts + 1
+	if ctx.Made then
+		ctx.Made[#ctx.Made + 1] = p -- a scenery item's parts, in case it runs past the cap (buildScenery)
+	end
 	return p
 end
 
@@ -266,6 +278,43 @@ local function rod(ctx, group, name, a, b, thick, color, material, trans)
 	end
 	return mk(ctx, group, name, "Part", Vector3.new(len, thick, thick), axisCF((a + b) / 2, d), color, material,
 		{ Shape = Enum.PartType.Cylinder, Transparency = trans })
+end
+
+-- kit-b O4 (finding 12): bunting on a rope from world point a to b (LobbyBuilder's bunting(): a rope of three straight
+-- pieces sagging `sag` in the middle, pennants hanging from those pieces, each a flag and a smaller tail)
+local function bunting(ctx, group, a, b, colors, sag)
+	local span = b - a
+	local len = span.Magnitude
+	if len < 2 then
+		return
+	end
+	local pieces = 3
+	local knots = {}
+	for i = 0, pieces do
+		local t = i / pieces
+		knots[i] = a + span * t - Vector3.new(0, sag * 4 * t * (1 - t), 0)
+	end
+	for i = 1, pieces do
+		local p, prev = knots[i], knots[i - 1]
+		blk(ctx, group, "BuntingRope", Vector3.new(0.18, 0.18, (p - prev).Magnitude + 0.1), CFrame.lookAt((p + prev) * 0.5, p),
+			rgb(92, 72, 58))
+	end
+	local flat = Vector3.new(span.X, 0, span.Z)
+	if flat.Magnitude < 1e-3 then
+		flat = Vector3.new(1, 0, 0)
+	end
+	local count = max(2, floor(len / 2.4))
+	for i = 1, count do
+		-- on the straight rope piece (not the parabola through its knots), so every pennant hangs from it
+		local t = (i - 0.5) / count
+		local k = min(pieces - 1, floor(t * pieces))
+		local p = knots[k]:Lerp(knots[k + 1], t * pieces - k)
+		local color = colors[(i - 1) % #colors + 1]
+		-- local X along the rope: the flat side faces the players walking under the arch
+		local cf = CFrame.lookAt(p, p + flat) * CFrame.Angles(0, pi / 2, 0)
+		blk(ctx, group, "Bunting", Vector3.new(1.6, 1.0, 0.12), cf * CFrame.new(0, -0.5, 0), color)
+		blk(ctx, group, "BuntingTip", Vector3.new(0.8, 0.7, 0.12), cf * CFrame.new(0, -1.35, 0), color)
+	end
 end
 
 local function addLight(part, color, range, brightness)
@@ -541,6 +590,15 @@ end
 
 local function hintLine(plate, text, role, size, color, order)
 	return worldText(plate, text, role, size, color, nil, order)
+end
+
+-- kit-b O4 (finding 12): help text that names keys (Config.Course.Help: one text per device). The label carries the
+-- keyboard text, a HelpKey and the help tag; MovementController puts the text of the player's device on it.
+local HELP = Config.Course.Help
+local function helpText(label, key)
+	label:SetAttribute("HelpKey", key)
+	CollectionService:AddTag(label, HELP.Tag)
+	return label
 end
 
 local function surfaceOn(part, face, pixelsPerStud)
@@ -999,10 +1057,22 @@ function KB.Moving(ctx, step, look)
 	end
 	local a = top + Vector3.new(0, -th - drop, 0)
 	local b = a + Vector3.new(eo.X, 0, eo.Z)
+	-- kit-b O4 (finding 9): the route is a dotted line of small cubes, not a Neon rod with two Neon balls: a cube at
+	-- each stop and an odd number of dots between them (one at the middle), at most RAIL_STEP studs apart
 	local railColor = rgb(116, 200, 232)
-	rod(ctx, "Decor", "MoveRail", a, b, 0.35, railColor, MAT.Neon, 0.55)
-	ball(ctx, "Decor", "MoveStop", 1.0, CFrame.new(a), railColor, MAT.Neon, 0.35)
-	ball(ctx, "Decor", "MoveStop", 1.0, CFrame.new(b), railColor, MAT.Neon, 0.35)
+	local turn = CFrame.Angles(0, dir.Magnitude > 0.1 and yawOf(dir.Unit) or 0, 0)
+	blk(ctx, "Decor", "MoveStop", Vector3.new(0.8, 0.8, 0.8), CFrame.new(a) * turn, railColor, MAT.SmoothPlastic)
+	blk(ctx, "Decor", "MoveStop", Vector3.new(0.8, 0.8, 0.8), CFrame.new(b) * turn, railColor, MAT.SmoothPlastic)
+	local len = (b - a).Magnitude
+	if len >= 0.05 then
+		local n = ceil(len / RAIL_STEP) - 1
+		if n % 2 == 0 then
+			n = n + 1
+		end
+		for k = 1, n do
+			blk(ctx, "Decor", "MoveRail", Vector3.new(0.4, 0.4, 0.4), CFrame.new(a:Lerp(b, k / (n + 1))) * turn, railColor, MAT.SmoothPlastic)
+		end
+	end
 	return main
 end
 
@@ -1038,7 +1108,7 @@ function KB.Bounce(ctx, step, look)
 	local padSize = h.PadSize or 4
 	local color = PAD_COLORS[(step.Index % #PAD_COLORS) + 1]
 	local pc = ctx.Origin + (h.Pos or step.Pos)
-	cyl(ctx, "Decor", "PadSkirt", 0.3, padSize + 1.4, CFrame.new(pc + Vector3.new(0, 0.15, 0)), C.Iron, MAT.Metal)
+	cyl(ctx, "Decor", "PadSkirt", 0.3, padSize + 1.4, CFrame.new(pc + Vector3.new(0, 0.15, 0)), C.Iron, MAT.SmoothPlastic)
 	local pad = mk(ctx, "Hazards", "BouncePad", "Part", Vector3.new(0.7, padSize, padSize),
 		CFrame.new(pc + Vector3.new(0, 0.35, 0)) * CFrame.Angles(0, 0, pi / 2), color, MAT.SmoothPlastic,
 		{ Shape = Enum.PartType.Cylinder, Solid = true })
@@ -1062,7 +1132,7 @@ function KB.SpinBarPlatform(ctx, step, look)
 	local count = h.Count or 1
 	cyl(ctx, "Decor", "DangerRing", 0.05, len + 0.4, CFrame.new(hub + Vector3.new(0, 0.11, 0)), C.HazardGlow, MAT.Neon, 0.5)
 	cyl(ctx, "Decor", "DangerFloor", 0.05, len - 0.2, CFrame.new(hub + Vector3.new(0, 0.13, 0)), main.Color:Lerp(C.Top, 0.7))
-	cyl(ctx, "Decor", "BarHub", 2.1, 2.2, CFrame.new(hub + Vector3.new(0, 1.05, 0)), C.Iron, MAT.Metal)
+	cyl(ctx, "Decor", "BarHub", 2.1, 2.2, CFrame.new(hub + Vector3.new(0, 1.05, 0)), C.Iron, MAT.SmoothPlastic)
 	for k = 1, count do
 		local cf = CFrame.new(hub + Vector3.new(0, h.Height or 1, 0)) * CFrame.Angles(0, rad((k - 1) * 180 / count), 0)
 		local bar = mk(ctx, "Hazards", "SpinBar", "Part", Vector3.new(len, 1.5, 1.1), cf, C.Hazard, MAT.SmoothPlastic,
@@ -1130,8 +1200,8 @@ function KB.LightningPlatform(ctx, step, look)
 	for i, c in ipairs({ { 1, 1 }, { -1, -1 } }) do
 		local px, pz = c[1] * (sx / 2 - 0.8), c[2] * (sz / 2 - 0.8)
 		local base = F * CFrame.new(px, 0, pz)
-		cyl(ctx, "Decor", "RodPole", 6, 0.34, base * CFrame.new(0, 3, 0), C.Iron, MAT.Metal)
-		cyl(ctx, "Decor", "RodBase", 0.8, 1.2, base * CFrame.new(0, 0.4, 0), C.Iron, MAT.Metal)
+		cyl(ctx, "Decor", "RodPole", 6, 0.34, base * CFrame.new(0, 3, 0), C.Iron, MAT.SmoothPlastic)
+		cyl(ctx, "Decor", "RodBase", 0.8, 1.2, base * CFrame.new(0, 0.4, 0), C.Iron, MAT.SmoothPlastic)
 		ball(ctx, "Decor", "RodTip", 0.9, base * CFrame.new(0, 6.2, 0), rgb(236, 214, 120), MAT.Neon, 0.1)
 	end
 	for _ = 1, 3 do
@@ -1169,15 +1239,15 @@ function KB.PendulumPlatform(ctx, step, look)
 		blk(ctx, "Decor", "BeamStripe", Vector3.new(bs.X + 0.04, 0.9, bs.Z + 0.06),
 			beamCF * CFrame.new(0, -len / 2 + k * len * 0.22, 0), C.Gold)
 	end
-	ball(ctx, "Decor", "BeamWeight", max(2.6, bs.Z * 3), beamCF * CFrame.new(0, -len / 2 + 1.0, 0), C.Hazard:Lerp(C.Iron, 0.5), MAT.Metal)
+	ball(ctx, "Decor", "BeamWeight", max(2.6, bs.Z * 3), beamCF * CFrame.new(0, -len / 2 + 1.0, 0), C.Hazard:Lerp(C.Iron, 0.5), MAT.SmoothPlastic)
 	ctx.Attach = nil
 	-- static frame: axle + two posts
 	local reach = bs.X / 2 + 0.9
 	local ea, eb = hinge - axis * reach, hinge + axis * reach
-	rod(ctx, "Decor", "Axle", ea, eb, 0.7, C.Iron, MAT.Metal)
+	rod(ctx, "Decor", "Axle", ea, eb, 0.7, C.Iron, MAT.SmoothPlastic)
 	for _, e in ipairs({ ea, eb }) do
-		ball(ctx, "Decor", "AxleCap", 1.2, CFrame.new(e), C.Brass, MAT.Metal)
-		rod(ctx, "Decor", "Post", e, Vector3.new(e.X, top.Y, e.Z), 0.6, C.Iron:Lerp(C.Brass, 0.3), MAT.Metal)
+		ball(ctx, "Decor", "AxleCap", 1.2, CFrame.new(e), C.Brass, MAT.SmoothPlastic)
+		rod(ctx, "Decor", "Post", e, Vector3.new(e.X, top.Y, e.Z), 0.6, C.Iron:Lerp(C.Brass, 0.3), MAT.SmoothPlastic)
 	end
 	return main
 end
@@ -1224,7 +1294,7 @@ function KB.WindPlatform(ctx, step, look)
 	cyl(ctx, "Decor", "FlagPole", 3.8, 0.25, CFrame.new(polePos + Vector3.new(0, 1.9, 0)), C.Iron:Lerp(C.Top, 0.4))
 	local flagCF = CFrame.new(polePos + Vector3.new(0, 3.2, 0) + dir * 1.35) * CFrame.Angles(0, yawOf(dir) + pi / 2, 0)
 	blk(ctx, "Decor", "WindFlag", Vector3.new(0.12, 0.9, 2.6), flagCF, look.Tint, MAT.SmoothPlastic)
-	ball(ctx, "Decor", "FlagTop", 0.5, CFrame.new(polePos + Vector3.new(0, 3.9, 0)), C.Gold, MAT.Metal)
+	ball(ctx, "Decor", "FlagTop", 0.5, CFrame.new(polePos + Vector3.new(0, 3.9, 0)), C.Gold, MAT.SmoothPlastic)
 	return main
 end
 
@@ -1247,15 +1317,15 @@ function KB.CannonPad(ctx, step, look)
 	local t = h.FlightTime or 1.3
 	local padH = 0.8
 	local padCF = CFrame.new(pc + Vector3.new(0, padH / 2, 0)) * CFrame.Angles(0, yawOf(aim), 0)
-	local pad = mk(ctx, "Hazards", "CloudCannon", "Part", Vector3.new(padR * 2, padH, padR * 2), padCF, C.Iron, MAT.Metal,
+	local pad = mk(ctx, "Hazards", "CloudCannon", "Part", Vector3.new(padR * 2, padH, padR * 2), padCF, C.Iron, MAT.SmoothPlastic,
 		{ Solid = true })
 	CollectionService:AddTag(pad, Tags.CloudCannon)
 	pad:SetAttribute("Target", target)
 	pad:SetAttribute("FlightTime", t)
 	local deck = pc + Vector3.new(0, padH, 0)
-	cyl(ctx, "Decor", "PadDisc", 0.08, padR * 1.84, CFrame.new(deck + Vector3.new(0, 0.04, 0)), C.Brass, MAT.Metal)
+	cyl(ctx, "Decor", "PadDisc", 0.08, padR * 1.84, CFrame.new(deck + Vector3.new(0, 0.04, 0)), C.Brass, MAT.SmoothPlastic)
 	cyl(ctx, "Decor", "PadGlowRing", 0.05, padR * 1.3, CFrame.new(deck + Vector3.new(0, 0.1, 0)), C.Gold, MAT.Neon, 0.3)
-	cyl(ctx, "Decor", "PadCore", 0.06, padR * 1.1, CFrame.new(deck + Vector3.new(0, 0.12, 0)), C.Iron:Lerp(C.Brass, 0.25), MAT.Metal)
+	cyl(ctx, "Decor", "PadCore", 0.06, padR * 1.1, CFrame.new(deck + Vector3.new(0, 0.12, 0)), C.Iron:Lerp(C.Brass, 0.25), MAT.SmoothPlastic)
 	for _, off in ipairs({ -0.2, 0.4 }) do
 		chevron(ctx, "Decor", "LaunchArrow", CFrame.new(deck + aim * (padR * off) + Vector3.new(0, 0.16, 0)) *
 			CFrame.Angles(0, yawOf(aim), 0), padR * 0.5, 0.3, C.Gold, MAT.Neon, 0.2)
@@ -1282,15 +1352,15 @@ function KB.CannonPad(ctx, step, look)
 	local function along(s)
 		return muzzle - d * s
 	end
-	mk(ctx, "Decor", "CannonBarrel", "Part", Vector3.new(L, D, D), axisCF(along(L / 2), d), C.Iron, MAT.Metal,
+	mk(ctx, "Decor", "CannonBarrel", "Part", Vector3.new(L, D, D), axisCF(along(L / 2), d), C.Iron, MAT.SmoothPlastic,
 		{ Shape = Enum.PartType.Cylinder })
-	ball(ctx, "Decor", "Breech", D * 1.08, CFrame.new(rear), C.Iron:Lerp(C.Ink, 0.4), MAT.Metal)
-	mk(ctx, "Decor", "MuzzleRing", "Part", Vector3.new(0.9, D * 1.22, D * 1.22), axisCF(along(0.35), d), C.Brass, MAT.Metal,
+	ball(ctx, "Decor", "Breech", D * 1.08, CFrame.new(rear), C.Iron:Lerp(C.Ink, 0.4), MAT.SmoothPlastic)
+	mk(ctx, "Decor", "MuzzleRing", "Part", Vector3.new(0.9, D * 1.22, D * 1.22), axisCF(along(0.35), d), C.Brass, MAT.SmoothPlastic,
 		{ Shape = Enum.PartType.Cylinder })
 	mk(ctx, "Decor", "MuzzleHole", "Part", Vector3.new(0.1, D * 0.82, D * 0.82), axisCF(muzzle + d * 0.04, d), rgb(24, 24, 34),
 		MAT.SmoothPlastic, { Shape = Enum.PartType.Cylinder })
 	for _, s in ipairs({ L * 0.36, L * 0.66 }) do
-		mk(ctx, "Decor", "BarrelBand", "Part", Vector3.new(0.5, D * 1.1, D * 1.1), axisCF(along(s), d), C.Brass, MAT.Metal,
+		mk(ctx, "Decor", "BarrelBand", "Part", Vector3.new(0.5, D * 1.1, D * 1.1), axisCF(along(s), d), C.Brass, MAT.SmoothPlastic,
 			{ Shape = Enum.PartType.Cylinder })
 	end
 	-- fuse
@@ -1304,12 +1374,12 @@ function KB.CannonPad(ctx, step, look)
 	local mid = along(L * 0.5)
 	local wheelY = top.Y + 1.3
 	blk(ctx, "Decor", "Carriage", Vector3.new(D * 1.3, 0.6, L * 0.55),
-		CFrame.new(mid.X, top.Y + 0.9, mid.Z) * CFrame.Angles(0, yawOf(aim), 0), C.Iron:Lerp(C.Brass, 0.2), MAT.Metal)
+		CFrame.new(mid.X, top.Y + 0.9, mid.Z) * CFrame.Angles(0, yawOf(aim), 0), C.Iron:Lerp(C.Brass, 0.2), MAT.SmoothPlastic)
 	for _, sgn in ipairs({ -1, 1 }) do
 		local wp = Vector3.new(mid.X, wheelY, mid.Z) + side * (sgn * (D * 0.65 + 0.5))
 		mk(ctx, "Decor", "Wheel", "Part", Vector3.new(0.6, 2.6, 2.6), CFrame.fromMatrix(wp, side, Vector3.new(0, 1, 0)),
-			C.Iron:Lerp(C.Brass, 0.15), MAT.Metal, { Shape = Enum.PartType.Cylinder })
-		ball(ctx, "Decor", "WheelHub", 0.9, CFrame.new(wp + side * (sgn * 0.3)), C.Brass, MAT.Metal)
+			C.Iron:Lerp(C.Brass, 0.15), MAT.SmoothPlastic, { Shape = Enum.PartType.Cylinder })
+		ball(ctx, "Decor", "WheelHub", 0.9, CFrame.new(wp + side * (sgn * 0.3)), C.Brass, MAT.SmoothPlastic)
 	end
 	-- dotted arc
 	local dots = 7
@@ -1401,12 +1471,13 @@ end
 ----------------------------------------------------------------------
 -- Start, checkpoint and finish
 ----------------------------------------------------------------------
--- dark rounded sign board standing at `localPos` (in the frame F), readable from its `face` side
-local function buildBoard(ctx, F, localPos, face, title, body, accent)
+-- dark rounded sign board standing at `localPos` (in the frame F), readable from its `face` side. helpKey: the body is
+-- Config.Course.Help[helpKey] (the keyboard text here; the client swaps in its own device's)
+local function buildBoard(ctx, F, localPos, face, title, body, accent, helpKey)
 	local cf = F * CFrame.new(localPos)
 	local board = blk(ctx, "Signs", "InfoBoard", Vector3.new(0.4, 5.6, 8.6), cf, C.Panel, MAT.SmoothPlastic)
 	for _, dz in ipairs({ -3.2, 3.2 }) do
-		cyl(ctx, "Signs", "BoardLeg", 1.0, 0.5, F * CFrame.new(localPos.X, localPos.Y - 3.3, localPos.Z + dz), C.Iron, MAT.Metal)
+		cyl(ctx, "Signs", "BoardLeg", 1.0, 0.5, F * CFrame.new(localPos.X, localPos.Y - 3.3, localPos.Z + dz), C.Iron, MAT.SmoothPlastic)
 	end
 	-- 430 x 280 px canvas: a 1-stud title, then 0.6-stud body lines
 	local gui = surfaceOn(board, face, 50)
@@ -1415,11 +1486,14 @@ local function buildBoard(ctx, F, localPos, face, title, body, accent)
 	local lines = worldText(panel, body, "Body", SIGN_INFO, C.Text, { 0.05, 0.27, 0.9, 0.69 }, nil, true)
 	lines.TextYAlignment = Enum.TextYAlignment.Top
 	lines.LineHeight = 1.12
+	if helpKey then
+		helpText(lines, helpKey)
+	end
 end
 
 -- Decor heights vs the Headroom CourseLayout reserves (nothing of another step may enter that space, so keep
 -- every arch / flag / sign below it; CourseLayout.DECOR_HEAD must stay >= these tops, measured above the step top):
---   Start       arch pillars 12.5, StartBeam top 15.9, bunting top 17.0      Headroom 18
+--   Start       arch pillars 12.5, StartBeam top 15.9 (bunting under it)    Headroom 18
 --   Checkpoint  flag poles 9.0, orbs 9.9, label from 10.0 (pixel-sized tag)  Headroom >= 13 (Config.Course.Clearance)
 --   Finish      rainbow pillars 14.4, FinishBeam top 17.8                    Headroom 18
 function KB.Start(ctx, step, look)
@@ -1438,19 +1512,19 @@ function KB.Start(ctx, step, look)
 	end
 	local beam = blk(ctx, "Signs", "StartBeam", Vector3.new(22, 3.4, 2), F * CFrame.new(0, 14.2, archZ), C.Panel)
 	blk(ctx, "Decor", "StartGlow", Vector3.new(22, 0.25, 2.1), F * CFrame.new(0, 12.45, archZ), trim, MAT.Neon, 0.1)
-	for k, c in ipairs(C.Rainbow) do
-		ball(ctx, "Decor", "Bunting", 1.2, F * CFrame.new(-9 + (k - 1) * 3.6, 16.4, archZ), c)
-	end
-	local sub = ctx.Diff.DisplayName .. " - " .. tostring(ctx.Layout.Archetype or "Straight") .. " course"
+	-- kit-b O4 (finding 12): the bunting hangs from a rope tied to the two pillars, under the beam (it used to be six
+	-- balls floating over it)
+	local tie = half - 0.8
+	bunting(ctx, "Decor", F * Vector3.new(-tie, 11.6, archZ), F * Vector3.new(tie, 11.6, archZ), C.Rainbow, 0.9)
+	-- kit-b O4 (finding 20): just the title; the little Script line under it was unreadable at play distance
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
-		local gui = surfaceOn(beam, face, 50) -- 1100 x 170 px: the title 2 studs tall, the line 0.72 stud
-		local title = worldText(gui, "START", "Title", 100, C.Text, { 0, 0, 1, 0.66 })
+		local gui = surfaceOn(beam, face, 50) -- 1100 x 170 px: the title 2 studs tall
+		local title = worldText(gui, "START", "Title", 100, C.Text, { 0, 0.08, 1, 0.84 })
 		addGradient(title, C.Text, trim:Lerp(C.Text, 0.35))
-		worldText(gui, sub, "Script", 36, trim:Lerp(C.Text, 0.4), { 0, 0.67, 1, 0.3 })
 	end
-	-- info boards on both sides
-	buildBoard(ctx, F, Vector3.new(-11.4, 3.6, -3), Enum.NormalId.Right, "HOW TO CLIMB",
-		"SHIFT  run\nSPACE  jump\nQ  dash (or tap DASH)\nGrab the floating clouds!", trim:Lerp(C.Text, 0.3))
+	-- info boards on both sides (the climb text names the keys of the device in use: MovementController swaps it)
+	buildBoard(ctx, F, Vector3.new(-11.4, 3.6, -3), Enum.NormalId.Right, "HOW TO CLIMB", HELP.Climb.Keyboard,
+		trim:Lerp(C.Text, 0.3), "Climb")
 	buildBoard(ctx, F, Vector3.new(11.4, 3.6, -3), Enum.NormalId.Left, "TEAMWORK",
 		"Flags heal everyone and\nlift up downed friends.\nHold plates for bridges.\nNobody gets left behind!",
 		C.Checkpoint:Lerp(C.Text, 0.3))
@@ -1474,7 +1548,7 @@ function KB.Checkpoint(ctx, step, look)
 	for i, sgn in ipairs({ -1, 1 }) do
 		local px = sgn * (sx / 2 - 1.3)
 		local pz = sz / 2 - 1.3
-		cyl(ctx, "Decor", "FlagPole", 9, 0.5, F * CFrame.new(px, 4.5, pz), C.Top:Lerp(C.Gold, 0.3), MAT.Metal)
+		cyl(ctx, "Decor", "FlagPole", 9, 0.5, F * CFrame.new(px, 4.5, pz), C.Top:Lerp(C.Gold, 0.3), MAT.SmoothPlastic)
 		local ballTop = ball(ctx, "Decor", "FlagTop", 1.2, F * CFrame.new(px, orbY, pz), C.Token, MAT.Neon, 0.1)
 		addLight(ballTop, C.Token:Lerp(C.Text, 0.3), 14, 0.9)
 		orb = orb or ballTop
@@ -1488,6 +1562,17 @@ function KB.Checkpoint(ctx, step, look)
 	-- The label stands right on top of the orbs (bottom edge at the orb tops, 10.0) and grows upwards; it is
 	-- pixel-sized (World text rule), so it reads the same from any distance.
 	local labelBottom = orbY + 0.7
+	-- kit-b O4 (finding 12): the last checkpoint stands right before the Finish, and from the approach its tag sat over
+	-- the GOAL tag and the FINISH board (the two tags are 22-38 studs apart, so the audit's 20-stud rule would miss it).
+	-- It keeps its flags, ring and the HUD count, and drops the tag while the GOAL tag is within FINISH_NEAR studs.
+	local steps = ctx.Layout.Steps
+	local fin = steps and steps[#steps]
+	if index == total and fin and fin.Kind == "Finish" then
+		local goalAt = ctx.Origin + fin.Pos + Vector3.new(0, GOAL_ORB_Y + GOAL_TAG_LIFT, 0)
+		if (orb.Position + Vector3.new(0, labelBottom - orbY, 0) - goalAt).Magnitude <= FINISH_NEAR then
+			return main
+		end
+	end
 	local gui = hintTag(orb, labelBottom - orbY, 120, C.Checkpoint)
 	hintLine(gui, "Checkpoint " .. index .. "/" .. total, "Title", 28, C.Text, 1)
 	local nextStage = ctx.Layout.Stages and ctx.Layout.Stages[index + 1]
@@ -1508,7 +1593,7 @@ function KB.Finish(ctx, step, look)
 		local d = 26 - (k - 1) * 4
 		cyl(ctx, "Decor", "GoalRing", 0.05, d, F * CFrame.new(0, 0.12 + (k - 1) * 0.03, 0), c, MAT.SmoothPlastic, 0.05)
 	end
-	local orb = ball(ctx, "Decor", "GoalOrb", 4.2, F * CFrame.new(0, 3.6, 0), C.Gold, MAT.Neon, 0.2)
+	local orb = ball(ctx, "Decor", "GoalOrb", 4.2, F * CFrame.new(0, GOAL_ORB_Y, 0), C.Gold, MAT.Neon, 0.2)
 	addLight(orb, C.Gold:Lerp(C.Text, 0.3), 28, 1.1)
 	local confetti = addSparkles(orb, C.Text, 14, 14, 2.6, 1.0)
 	local keys = {}
@@ -1529,13 +1614,13 @@ function KB.Finish(ctx, step, look)
 	end
 	local beam = blk(ctx, "Signs", "FinishBeam", Vector3.new(26, 3.6, 2), F * CFrame.new(0, 16, archZ), C.Panel)
 	blk(ctx, "Decor", "FinishGlow", Vector3.new(26, 0.25, 2.1), F * CFrame.new(0, 14.1, archZ), C.Gold, MAT.Neon, 0.1)
+	-- kit-b O4 (finding 20): just the title (the calligraphy "you made it" line is gone; the GOAL tag says the rest)
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
-		local gui = surfaceOn(beam, face, 50) -- 1300 x 180 px: the title 2 studs tall, the line 0.72 stud
-		local title = worldText(gui, "FINISH", "Title", 100, C.Text, { 0, 0.02, 1, 0.64 })
+		local gui = surfaceOn(beam, face, 50) -- 1300 x 180 px: the title 2 studs tall
+		local title = worldText(gui, "FINISH", "Title", 100, C.Text, { 0, 0.08, 1, 0.84 })
 		addGradient(title, C.Gold:Lerp(C.Text, 0.4), C.Rainbow[1])
-		worldText(gui, "you made it - together!", "Script", 36, C.Text, { 0, 0.67, 1, 0.3 })
 	end
-	local sign = hintTag(orb, 2.9, 120, C.Gold)
+	local sign = hintTag(orb, GOAL_TAG_LIFT, 120, C.Gold)
 	hintLine(sign, "GOAL", "Title", HINT_TITLE, C.Gold:Lerp(C.Text, 0.25), 1)
 	hintLine(sign, "wait here for your team", "Body", HINT_INFO, C.Text, 2)
 	return main
@@ -1569,14 +1654,14 @@ local function buildDashHint(ctx, step)
 	end
 	local perp = Vector3.new(dir.Z, 0, -dir.X)
 	local pole = pos + perp * 1.8
-	rod(ctx, "Decor", "DashPole", pole, pole + Vector3.new(0, 4.6, 0), 0.25, C.Brass, MAT.Metal)
+	rod(ctx, "Decor", "DashPole", pole, pole + Vector3.new(0, 4.6, 0), 0.25, C.Brass, MAT.SmoothPlastic)
 	local head = ball(ctx, "Decor", "DashBeacon", 0.9, CFrame.new(pole + Vector3.new(0, 4.8, 0)), C.Gold, MAT.Neon, 0.1)
 	local gui = hintTag(head, 0.8, 110, C.Gold)
 	hintLine(gui, "DASH!", "Accent", 32, C.Gold, 1)
 	if step.Kind == "PlateBridge" then
 		hintLine(gui, "or hold the plate for a bridge", "Body", HINT_INFO, C.Text, 2)
 	else
-		hintLine(gui, "press Q  or tap DASH", "Body", HINT_INFO, C.Text, 2)
+		helpText(hintLine(gui, HELP.Dash.Keyboard, "Body", HINT_INFO, C.Text, 2), "Dash")
 	end
 end
 
@@ -1779,7 +1864,7 @@ function LM.SkyBalloon(ctx, item, B, rng, col, lite)
 		cyl(ctx, G, "Envelope", hgt, dia, B * CFrame.new(0, yc + u * re, 0), (i % 2 == 1) and cA or cB)
 	end
 	ball(ctx, G, "BalloonCap", re * 0.18, B * CFrame.new(0, yc + re * 0.97, 0), col.Dark)
-	blk(ctx, G, "Basket", Vector3.new(2.8, 1.8, 2.8), B * CFrame.new(0, 1.4, 0), rgb(150, 116, 92), MAT.WoodPlanks)
+	blk(ctx, G, "Basket", Vector3.new(2.8, 1.8, 2.8), B * CFrame.new(0, 1.4, 0), rgb(150, 116, 92), MAT.SmoothPlastic)
 	for _, c in ipairs({ { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } }) do
 		rod(ctx, G, "Rope", worldPoint(B, c[1] * 1.3, 2.3, c[2] * 1.3), worldPoint(B, c[1] * re * 0.5, yc - re * 0.8, c[2] * re * 0.5),
 			0.15, C.Iron)
@@ -1874,7 +1959,7 @@ function LM.StormTower(ctx, item, B, rng, col, lite)
 			B * CFrame.new(cos(a) * R * 0.22, bodyH + 2 + rng:NextNumber(-0.5, 1.0), sin(a) * R * 0.22),
 			C.Storm:Lerp(rgb(120, 130, 164), rng:NextNumber(0, 0.4)), MAT.SmoothPlastic, 0.08)
 	end
-	rod(ctx, G, "TowerSpire", worldPoint(B, 0, bodyH + 2, 0), worldPoint(B, 0, H - 1.5, 0), 0.7, C.Iron, MAT.Metal)
+	rod(ctx, G, "TowerSpire", worldPoint(B, 0, bodyH + 2, 0), worldPoint(B, 0, H - 1.5, 0), 0.7, C.Iron, MAT.SmoothPlastic)
 	local beacon = ball(ctx, G, "TowerBeacon", 1.6, B * CFrame.new(0, H - 1, 0), C.HazardGlow, MAT.Neon, 0.1)
 	addLight(beacon, C.HazardGlow, 20, 1.0)
 end
@@ -1896,10 +1981,10 @@ function LM.LightningRods(ctx, item, B, rng, col, lite)
 			h = H
 		end
 		local x, z = cos(a) * r, sin(a) * r
-		cyl(ctx, G, "RodPole", h, 0.9, B * CFrame.new(x, h / 2, z), C.Iron, MAT.Metal)
-		cyl(ctx, G, "RodBase", 1.4, 2.6, B * CFrame.new(x, 0.7, z), C.Iron:Lerp(C.Side, 0.3), MAT.Metal)
+		cyl(ctx, G, "RodPole", h, 0.9, B * CFrame.new(x, h / 2, z), C.Iron, MAT.SmoothPlastic)
+		cyl(ctx, G, "RodBase", 1.4, 2.6, B * CFrame.new(x, 0.7, z), C.Iron:Lerp(C.Side, 0.3), MAT.SmoothPlastic)
 		for _, f in ipairs({ 0.4, 0.7 }) do
-			cyl(ctx, G, "RodRing", 0.3, 2.2, B * CFrame.new(x, h * f, z), C.Brass, MAT.Metal)
+			cyl(ctx, G, "RodRing", 0.3, 2.2, B * CFrame.new(x, h * f, z), C.Brass, MAT.SmoothPlastic)
 		end
 		local tip = ball(ctx, G, "RodTip", 1.7, B * CFrame.new(x, h + 0.6, z), rgb(236, 214, 130), MAT.Neon, 0.1)
 		tips[#tips + 1] = worldPoint(B, x, h + 0.6, z)
@@ -1936,8 +2021,8 @@ function LM.LanternCluster(ctx, item, B, rng, col, lite)
 		rod(ctx, G, "LanternRope", worldPoint(B, x, cloudY - 0.6, z), worldPoint(B, x, y + d * 0.6, z), 0.12, C.Iron)
 		local lamp = ball(ctx, G, "Lantern", Vector3.new(d, d * 1.2, d), B * CFrame.new(x, y, z),
 			col.Tint:Lerp(C.Gold, rng:NextNumber(0.2, 0.7)), MAT.Neon, 0.15)
-		cyl(ctx, G, "LanternCap", 0.35, d * 0.55, B * CFrame.new(x, y + d * 0.62, z), C.Iron, MAT.Metal)
-		cyl(ctx, G, "LanternCap", 0.35, d * 0.55, B * CFrame.new(x, y - d * 0.62, z), C.Iron, MAT.Metal)
+		cyl(ctx, G, "LanternCap", 0.35, d * 0.55, B * CFrame.new(x, y + d * 0.62, z), C.Iron, MAT.SmoothPlastic)
+		cyl(ctx, G, "LanternCap", 0.35, d * 0.55, B * CFrame.new(x, y - d * 0.62, z), C.Iron, MAT.SmoothPlastic)
 		if k <= 2 then
 			addLight(lamp, col.Tint:Lerp(C.Gold, 0.5), 18, 0.7)
 		end
@@ -1978,14 +2063,14 @@ function LM.CloudFortress(ctx, item, B, rng, col, lite)
 	blk(ctx, G, "FortWall", Vector3.new(1.8, wh, wl), B * CFrame.new(-tr, y0 + wh / 2, 0), col.Cloud)
 	blk(ctx, G, "FortGate", Vector3.new(R * 0.22, wh * 0.7, 0.5), B * CFrame.new(0, y0 + wh * 0.35, tr + 0.95), col.Dark)
 	local top = worldPoint(B, 0, y0 + Hk + 2.2, 0)
-	rod(ctx, G, "FortFlagPole", top, top + Vector3.new(0, H * 0.22, 0), 0.4, C.Iron, MAT.Metal)
+	rod(ctx, G, "FortFlagPole", top, top + Vector3.new(0, H * 0.22, 0), 0.4, C.Iron, MAT.SmoothPlastic)
 	blk(ctx, G, "FortFlag", Vector3.new(0.15, 2.2, 3.4), B * CFrame.new(1.8, y0 + Hk + 2.2 + H * 0.22 - 1.4, 0), col.Tint)
 	if not lite then
 		for _, cx in ipairs({ -1, 1 }) do
 			local base = worldPoint(B, cx * tr, y0 + th * 0.55, tr)
 			local muzzle = worldPoint(B, cx * (tr + R * 0.04), y0 + th * 0.55 + 1.8, tr + R * 0.17)
-			rod(ctx, G, "FortCannon", base, muzzle, 1.5, C.Iron, MAT.Metal)
-			ball(ctx, G, "FortCannonMouth", 1.9, CFrame.new(muzzle), C.Brass, MAT.Metal)
+			rod(ctx, G, "FortCannon", base, muzzle, 1.5, C.Iron, MAT.SmoothPlastic)
+			ball(ctx, G, "FortCannonMouth", 1.9, CFrame.new(muzzle), C.Brass, MAT.SmoothPlastic)
 		end
 	end
 end
@@ -1994,7 +2079,7 @@ end
 function LM.KiteFlock(ctx, item, B, rng, col, lite)
 	local R, H = item.Radius, item.Height
 	ball(ctx, G, "KiteCloud", Vector3.new(R * 1.2, 3.2, R * 1.2), B * CFrame.new(0, 0.8, 0), col.Cloud)
-	cyl(ctx, G, "KitePole", 3.6, 0.4, B * CFrame.new(0, 3.2, 0), C.Iron, MAT.Metal)
+	cyl(ctx, G, "KitePole", 3.6, 0.4, B * CFrame.new(0, 3.2, 0), C.Iron, MAT.SmoothPlastic)
 	local poleTop = worldPoint(B, 0, 5.2, 0)
 	local n = 5
 	if lite then
@@ -2044,16 +2129,16 @@ function LM.BellTower(ctx, item, B, rng, col, lite)
 			cyl(ctx, G, "BelfryPillar", fh, 1.3, B * CFrame.new(cx * W * 0.38, y0 + fh / 2, cz * W * 0.38), col.Cloud)
 		end
 	end
-	ball(ctx, G, "Bell", 3.0, B * CFrame.new(0, y0 + fh * 0.62, 0), C.Gold, MAT.Metal)
-	cyl(ctx, G, "BellFlare", 1.0, 4.2, B * CFrame.new(0, y0 + fh * 0.62 - 1.5, 0), C.Gold, MAT.Metal)
-	ball(ctx, G, "BellClapper", 0.8, B * CFrame.new(0, y0 + fh * 0.62 - 2.3, 0), C.Brass, MAT.Metal)
+	ball(ctx, G, "Bell", 3.0, B * CFrame.new(0, y0 + fh * 0.62, 0), C.Gold, MAT.SmoothPlastic)
+	cyl(ctx, G, "BellFlare", 1.0, 4.2, B * CFrame.new(0, y0 + fh * 0.62 - 1.5, 0), C.Gold, MAT.SmoothPlastic)
+	ball(ctx, G, "BellClapper", 0.8, B * CFrame.new(0, y0 + fh * 0.62 - 2.3, 0), C.Brass, MAT.SmoothPlastic)
 	blk(ctx, G, "BelfryBeam", Vector3.new(W * 0.9, 0.6, 0.6), B * CFrame.new(0, y0 + fh * 0.9, 0), col.Shade)
 	local ry = y0 + fh
 	blk(ctx, G, "BellRoof", Vector3.new(W * 1.2, 1.0, W * 1.2), B * CFrame.new(0, ry + 0.5, 0), col.Tint)
 	blk(ctx, G, "BellRoof", Vector3.new(W * 0.9, 1.0, W * 0.9), B * CFrame.new(0, ry + 1.5, 0), col.Tint:Lerp(C.Top, 0.15))
 	blk(ctx, G, "BellRoof", Vector3.new(W * 0.55, 1.0, W * 0.55), B * CFrame.new(0, ry + 2.5, 0), col.Tint:Lerp(C.Top, 0.3))
-	rod(ctx, G, "BellSpire", worldPoint(B, 0, ry + 3, 0), worldPoint(B, 0, H - 0.8, 0), 0.4, C.Iron, MAT.Metal)
-	ball(ctx, G, "BellFinial", 1.2, B * CFrame.new(0, H - 0.5, 0), C.Gold, MAT.Metal)
+	rod(ctx, G, "BellSpire", worldPoint(B, 0, ry + 3, 0), worldPoint(B, 0, H - 0.8, 0), 0.4, C.Iron, MAT.SmoothPlastic)
+	ball(ctx, G, "BellFinial", 1.2, B * CFrame.new(0, H - 0.5, 0), C.Gold, MAT.SmoothPlastic)
 end
 
 -- tapered obelisk with a glowing capstone, rune bars and floating rune stones
@@ -2124,13 +2209,13 @@ function LM.FloatingVolcano(ctx, item, B, rng, col, lite)
 	for k = 1, 6 do
 		local hk = H * 0.07
 		cyl(ctx, G, "VolcanoRock", hk, R * 2 * (0.14 + 0.15 * k), B * CFrame.new(0, hk * (k - 0.5), 0),
-			rock:Lerp(C.Shadow, (6 - k) * 0.06), MAT.Slate)
+			rock:Lerp(C.Shadow, (6 - k) * 0.06), MAT.SmoothPlastic)
 	end
 	local y0 = H * 0.42
 	local ch = H * 0.09
 	for k = 1, 5 do
 		cyl(ctx, G, "VolcanoCone", ch, R * (1.9 - 0.34 * (k - 1)), B * CFrame.new(0, y0 + ch * (k - 0.5), 0),
-			rock:Lerp(C.Hazard, 0.08 * k), MAT.Slate)
+			rock:Lerp(C.Hazard, 0.08 * k), MAT.SmoothPlastic)
 	end
 	local topY = y0 + ch * 5
 	local lava = cyl(ctx, G, "VolcanoLava", 0.5, R * 0.52, B * CFrame.new(0, topY + 0.2, 0), C.Lava, MAT.Neon, 0.1)
@@ -2279,11 +2364,21 @@ local function buildScenery(ctx)
 			local B = CFrame.new(ctx.Origin + item.Pos) * CFrame.Angles(0, rad(item.Yaw or 0), 0)
 			local rng = Random.new(item.Seed or 1)
 			ctx.Attach = nil
+			ctx.Made = {}
 			local ok, err = pcall(fn, ctx, item, B, rng, sceneryPalette(item), ctx.Parts > ctx.LiteCap)
 			ctx.Attach = nil
 			if not ok then
 				warn("[CourseBuilder] scenery " .. tostring(item.Type) .. " failed: " .. tostring(err))
 			end
+			-- kit-b O4: an item that started under the cap but ran past it is taken back whole (the counter's promise:
+			-- at or under PART_LIMIT with the tokens)
+			if ctx.Parts > ctx.Cap then
+				for _, p in ipairs(ctx.Made) do
+					p:Destroy()
+				end
+				ctx.Parts = ctx.Parts - #ctx.Made
+			end
+			ctx.Made = nil
 		end
 	end
 end

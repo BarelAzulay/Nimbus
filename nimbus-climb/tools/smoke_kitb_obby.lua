@@ -66,6 +66,24 @@
 --                                     create every emitter through FxSprites
 --   obby_storm_zone_tinted            a storm platform's top (under the cloud) is darker than a plain platform's top in
 --                                     the same stage
+--
+-- O4 "course materials, the Neon rail, and the plain Start / Finish bugs" (server world, pure, the same builds):
+--   obby_materials_whitelist          every course part, built or attached, is SmoothPlastic, Neon or Glass (no Metal,
+--                                     Slate, WoodPlanks, Concrete); a moving cloud's route rail is a dotted line of
+--                                     small SmoothPlastic cubes (its MoveStop ends and MoveRail dots, no Neon rod / ball)
+--   obby_bunting_has_rope             the Start bunting hangs from a rope tied to the two arch pillars: every pennant's
+--                                     top on the rope, every tail under a pennant, no ball, nothing inside the START beam
+--   obby_no_script_font               no course label uses the Script role or Fondamento; the source names neither
+--   obby_help_text_per_device         Config.Course.Help: Run / Jump / Dash with each device's key names (keyboard,
+--                                     touch, gamepad) for the HOW TO CLIMB board and the dash hint; the course labels
+--                                     are tagged NC_HelpText with a HelpKey, keyboard text by default, and no untagged
+--                                     label names a key
+--   obby_goal_and_checkpoint_tags_apart  the screenshot case (round3/build/S1/raid_on_frost.jpg): seen from the last
+--                                     checkpoint pad and the step before it, camera behind, no checkpoint tag overlaps
+--                                     the GOAL tag or the FINISH board on screen; every other checkpoint keeps its tag
+-- Client world:
+--   client_obby_help_text_per_device  MovementController.HelpDevice maps the last input type to a device, and a tagged
+--                                     help label reads that device's text when it streams in and follows a change
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -115,6 +133,15 @@ local ZERO = Vector3.new(0, 0, 0)
 local STORM = { Key = "cloud_storm_puff", Width = 11.2, Lift = 3.5, Top = 2.1, Base = 4.5, Jitter = 0.4, Min = 0.6 }
 local STOCK_PATH = "rbxasset://textures/particles"
 local DARKER = 0.9 -- a storm top's brightness at most this share of a plain top's in the same stage
+-- O4: the material rule (ABSOLUTE_RULES: no textured Roblox materials), the help-text tag, the screenshot's view
+-- (round3/build/S1/raid_on_frost.jpg: the player on the last checkpoint pad, the camera behind and above, the Finish
+-- ahead) and a hint plate's padding (CourseBuilder hintTag: 16 + 16 px across, 5 + 7 px and 1 px between lines)
+local OK_MATS = { SmoothPlastic = true, Neon = true, Glass = true }
+local RAIL_GAP_MAX = 2.5 -- a dotted route: no two of its cubes further apart than this
+local HELP_TAG = "NC_HelpText"
+local DEVICES = { "Keyboard", "Touch", "Gamepad" }
+local VIEW = { W = 1920, H = 1080, Fov = 70, Back = 12, Up = 7, Look = 6 }
+local PLATE_PAD = { X = 32, Y = 12, Gap = 1, Glyph = 0.56 }
 
 local function clamp(v, lo, hi)
 	return max(lo, min(hi, v))
@@ -308,7 +335,10 @@ local function serverScenarios()
 								}
 							end
 							if d:IsA("BasePart") and (d.Name == "MoveRail" or d.Name == "MoveStop") then
-								b.rails[#b.rails + 1] = { name = d.Name, pos = d.Position }
+								b.rails[#b.rails + 1] = {
+									name = d.Name, pos = d.Position, size = d.Size, mat = d.Material.Name,
+									block = not isRound(d) and not (d:IsA("Part") and d.Shape ~= Enum.PartType.Block),
+								}
 							end
 							if d:IsA("Model") and d.Name == "Underside" then
 								b.unders[#b.unders + 1] = {
@@ -378,6 +408,60 @@ local function serverScenarios()
 							end
 							if okA and type(stop) == "function" then
 								pcall(stop)
+							end
+						end
+						-- O4 (after Attach, so HazardService's parts count too): materials, the Start bunting, every
+						-- label's font role and help key, the hint tags and the FINISH board
+						b.mats, b.badMats = {}, {}
+						b.bunting = { flags = {}, tips = {}, ropes = {}, pillars = {}, balls = 0 }
+						b.labels, b.tags = {}, {}
+						for _, d in ipairs(info.Folder:GetDescendants()) do
+							if d:IsA("BasePart") then
+								local m = d.Material.Name
+								b.mats[m] = (b.mats[m] or 0) + 1
+								if not OK_MATS[m] and #b.badMats < 6 then
+									b.badMats[#b.badMats + 1] = d.Name .. " " .. m
+								end
+								local n, bt = d.Name, b.bunting
+								local rec = { cf = d.CFrame, size = d.Size }
+								if n == "Bunting" then
+									bt.flags[#bt.flags + 1] = rec
+									if isRound(d) then
+										bt.balls = bt.balls + 1
+									end
+								elseif n == "BuntingTip" then
+									bt.tips[#bt.tips + 1] = rec
+								elseif n == "BuntingRope" then
+									bt.ropes[#bt.ropes + 1] = rec
+								elseif n == "ArchPillar" then
+									bt.pillars[#bt.pillars + 1] = rec
+								elseif n == "StartBeam" then
+									bt.beam = rec
+								elseif n == "FinishBeam" then
+									b.finishBeam = rec
+								end
+							elseif d:IsA("TextLabel") then
+								local okF, family = pcall(function()
+									return d.FontFace.Family
+								end)
+								b.labels[#b.labels + 1] = {
+									text = d.Text, role = d:GetAttribute("FontRole"), font = d.Font.Name, family = okF and tostring(family) or "",
+									help = d:GetAttribute("HelpKey"), tagged = d:HasTag(HELP_TAG), size = d.TextSize,
+								}
+							elseif d:IsA("BillboardGui") and d.Name == "HintTag" and d.Parent and d.Parent:IsA("BasePart") then
+								local lines = {}
+								for _, l in ipairs(d:GetDescendants()) do
+									if l:IsA("TextLabel") then
+										lines[#lines + 1] = { text = l.Text, size = l.TextSize, order = l.LayoutOrder }
+									end
+								end
+								table.sort(lines, function(x, y)
+									return x.order < y.order
+								end)
+								b.tags[#b.tags + 1] = {
+									at = d.Parent.Position + d.StudsOffsetWorldSpace, lines = lines, maxDistance = d.MaxDistance,
+									first = lines[1] and lines[1].text or "",
+								}
 							end
 						end
 						out.builds[#out.builds + 1] = b
@@ -1316,11 +1400,421 @@ local function serverScenarios()
 		K.flushErrors("obby_storm_zone_tinted")
 	end)
 
+	S.obby_materials_whitelist = guarded("obby_materials_whitelist", function()
+		local only = T.tally("obby materials: every course part (built and attached) is SmoothPlastic, Neon or Glass")
+		local rail = T.tally("obby materials: a moving cloud's route rail is a dotted line of small SmoothPlastic cubes (stops and dots, no Neon rod / ball)")
+		local seen, rails = {}, 0
+		for _, mode in ipairs({ "empty", "ids", "storm" }) do
+			local data = collect(mode)
+			noBuildErrors(data, "obby materials (" .. mode .. ")")
+			for _, b in ipairs(data.builds) do
+				only:case(#b.badMats == 0, mode .. " " .. b.who .. ": " .. table.concat(b.badMats, ", "))
+				for m, c in pairs(b.mats) do
+					seen[m] = (seen[m] or 0) + c
+				end
+				local dots = 0
+				for _, r in ipairs(b.rails) do
+					rails = rails + 1
+					if r.name == "MoveRail" then
+						dots = dots + 1
+					end
+					local small = max(r.size.X, r.size.Y, r.size.Z) <= 1.0
+					rail:case(r.mat == "SmoothPlastic" and r.block and small,
+						mode .. " " .. b.who .. ": " .. r.name .. " " .. r.mat .. (r.block and " block " or " round ") .. tostring(r.size))
+				end
+				-- dotted: at least enough dots that no two cubes of a route are more than RAIL_GAP_MAX studs apart
+				local need = 0
+				for _, sl in ipairs(b.slabs) do
+					if startsWith(sl.name, "MovingCloud_") and typeof(sl.eo) == "Vector3" then
+						local len = Vector3.new(sl.eo.X, 0, sl.eo.Z).Magnitude
+						if len >= 0.05 then
+							need = need + max(1, math.ceil(len / RAIL_GAP_MAX) - 1)
+						end
+					end
+				end
+				rail:case(dots >= need, mode .. " " .. b.who .. ": " .. dots .. " rail dots, " .. need .. " needed")
+			end
+		end
+		T.check(rails > 0, "obby materials: the builds have moving-cloud rails", tostring(rails))
+		only:report()
+		rail:report()
+		local parts = {}
+		for m, c in pairs(seen) do
+			parts[#parts + 1] = m .. " " .. c
+		end
+		table.sort(parts)
+		T.info("*obby materials: " .. table.concat(parts, ", "))
+		-- the sources name no other material (no dead Metal / Slate the coercion would hide)
+		for _, rel in ipairs({ "Services/CourseBuilder", "Services/HazardService" }) do
+			local inst = srcInstance("server", rel)
+			local src = inst and tostring(inst.Source or "") or ""
+			if T.check(src ~= "", "obby materials: server/" .. rel .. " is mounted") then
+				local other = {}
+				for name in src:gmatch("MAT%.(%a+)") do
+					if not OK_MATS[name] then
+						other[#other + 1] = name
+					end
+				end
+				for name in src:gmatch("Enum%.Material%.(%a+)") do
+					if not OK_MATS[name] and name ~= "Air" then -- Air: HazardService reads the floor material, it makes no part
+						other[#other + 1] = name
+					end
+				end
+				T.check(#other == 0, "obby materials: server/" .. rel .. " names only SmoothPlastic, Neon and Glass", table.concat(other, ", "))
+			end
+		end
+		K.flushErrors("obby_materials_whitelist")
+	end)
+
+	-- the nearest point to p on the segment a..b
+	local function onSegment(p, a, b)
+		local ab = b - a
+		local len2 = ab:Dot(ab)
+		if len2 < 1e-6 then
+			return a
+		end
+		local t = clamp((p - a):Dot(ab) / len2, 0, 1)
+		return a + ab * t
+	end
+
+	-- true when p is inside the box rec (cf, size) grown by pad
+	local function inBox(rec, p, pad)
+		local q = rec.cf:PointToObjectSpace(p)
+		return abs(q.X) <= rec.size.X / 2 + pad and abs(q.Y) <= rec.size.Y / 2 + pad and abs(q.Z) <= rec.size.Z / 2 + pad
+	end
+
+	S.obby_bunting_has_rope = guarded("obby_bunting_has_rope", function()
+		local data = collect("empty")
+		if not noBuildErrors(data, "obby bunting") then
+			return
+		end
+		local rope = T.tally("obby bunting: the Start bunting hangs from a rope (rope pieces, pennant blocks, no floating balls)")
+		local hang = T.tally("obby bunting: every pennant's top is on the rope, every tail hangs from a pennant")
+		local tied = T.tally("obby bunting: both rope ends are tied to an arch pillar")
+		local clear = T.tally("obby bunting: no rope end or pennant is inside the START beam")
+		for _, b in ipairs(data.builds) do
+			local bt = b.bunting
+			rope:case(#bt.ropes >= 2 and #bt.flags >= 4 and bt.balls == 0,
+				b.who .. ": " .. #bt.ropes .. " rope pieces, " .. #bt.flags .. " pennants, " .. bt.balls .. " balls")
+			local ends = {}
+			for _, r in ipairs(bt.ropes) do
+				local half = r.cf.LookVector * (r.size.Z / 2)
+				r.a, r.b = r.cf.Position - half, r.cf.Position + half
+				ends[#ends + 1] = r.a
+				ends[#ends + 1] = r.b
+			end
+			local function ropeGap(p)
+				local best = math.huge
+				for _, r in ipairs(bt.ropes) do
+					best = min(best, (onSegment(p, r.a, r.b) - p).Magnitude)
+				end
+				return best
+			end
+			for i, f in ipairs(bt.flags) do
+				local top = f.cf * Vector3.new(0, f.size.Y / 2, 0)
+				local gap = ropeGap(top)
+				hang:case(gap <= 0.25, b.who .. ": pennant " .. i .. string.format(" top %.2f studs off the rope", gap))
+				clear:case(not (bt.beam and inBox(bt.beam, top, 0.05)), b.who .. ": pennant " .. i .. " inside the beam")
+			end
+			for i, t in ipairs(bt.tips) do
+				local top = t.cf * Vector3.new(0, t.size.Y / 2, 0)
+				local ok = false
+				for _, f in ipairs(bt.flags) do
+					local bottom = f.cf * Vector3.new(0, -f.size.Y / 2, 0)
+					ok = ok or (bottom - top).Magnitude <= 0.15
+				end
+				hang:case(ok, b.who .. ": tail " .. i .. " hangs from no pennant")
+			end
+			-- the rope's two outer ends: the points farthest apart
+			local e1, e2, far = nil, nil, -1
+			for i = 1, #ends do
+				for j = i + 1, #ends do
+					local d = (ends[i] - ends[j]).Magnitude
+					if d > far then
+						e1, e2, far = ends[i], ends[j], d
+					end
+				end
+			end
+			for _, e in ipairs({ e1, e2 }) do
+				local ok = false
+				for _, p in ipairs(bt.pillars) do
+					-- cyl(): the height is the part's X size, the diameter its Y / Z, the axis the world Y
+					local q = p.cf.Position
+					local rxz = Vector2.new(e.X - q.X, e.Z - q.Z).Magnitude
+					ok = ok or (rxz <= p.size.Y / 2 + 0.35 and abs(e.Y - q.Y) <= p.size.X / 2)
+				end
+				tied:case(ok, b.who .. ": a rope end at " .. tostring(e) .. " is tied to no pillar")
+				clear:case(not (bt.beam and inBox(bt.beam, e, 0.05)), b.who .. ": a rope end inside the beam")
+			end
+		end
+		rope:report()
+		hang:report()
+		tied:report()
+		clear:report()
+		K.flushErrors("obby_bunting_has_rope")
+	end)
+
+	S.obby_no_script_font = guarded("obby_no_script_font", function()
+		local data = collect("empty")
+		if not noBuildErrors(data, "obby fonts") then
+			return
+		end
+		local none = T.tally("obby fonts: no course label uses the Script role or the Fondamento face (the START subtitle and the FINISH line are gone)")
+		local n = 0
+		for _, b in ipairs(data.builds) do
+			for _, l in ipairs(b.labels) do
+				n = n + 1
+				local bad = l.role == "Script" or l.font == "Fondamento" or l.family:find("Fondamento", 1, true) ~= nil
+				none:case(not bad, b.who .. ": '" .. l.text .. "' role " .. tostring(l.role) .. ", font " .. l.font)
+			end
+		end
+		T.check(n > 0, "obby fonts: the builds have labels", tostring(n))
+		none:report()
+		local inst = srcInstance("server", "Services/CourseBuilder")
+		local src = inst and tostring(inst.Source or "") or ""
+		T.check(src ~= "" and not src:find('"Script"', 1, true) and not src:find("Fondamento", 1, true),
+			"obby fonts: server/Services/CourseBuilder names no Script role and no Fondamento")
+		K.flushErrors("obby_no_script_font")
+	end)
+
+	S.obby_help_text_per_device = guarded("obby_help_text_per_device", function()
+		local Config = K.config()
+		local help = Config.Course and Config.Course.Help
+		if not T.check(type(help) == "table" and help.Tag == HELP_TAG, "obby help: Config.Course.Help exists with Tag " .. HELP_TAG) then
+			return
+		end
+		-- the texts: Run / Jump / Dash on the climb board for every device, each with its own key names
+		local keys = {
+			Keyboard = { has = { "SHIFT", "SPACE", "Q" }, never = { "TAP", "BUTTON", "L3" } },
+			Touch = { has = { "RUN", "DASH" }, never = { "SHIFT", "SPACE", "Q ", "L3" } },
+			Gamepad = { has = { "L3", "A", "B" }, never = { "SHIFT", "SPACE", "Q ", "TAP" } },
+		}
+		for _, dev in ipairs(DEVICES) do
+			local climb = help.Climb and help.Climb[dev]
+			local dash = help.Dash and help.Dash[dev]
+			if T.check(type(climb) == "string" and type(dash) == "string", "obby help: Climb and Dash texts for " .. dev) then
+				local up = climb:upper()
+				local words = up:find("RUN", 1, true) and up:find("JUMP", 1, true) and up:find("DASH", 1, true)
+				T.check(words ~= nil, "obby help: the " .. dev .. " climb text says Run / Jump / Dash", climb)
+				for _, k in ipairs(keys[dev].has) do
+					T.check(up:find(k, 1, true) ~= nil, "obby help: the " .. dev .. " climb text names " .. k, climb)
+				end
+				for _, k in ipairs(keys[dev].never) do
+					T.check(up:find(k, 1, true) == nil and dash:upper():find(k, 1, true) == nil,
+						"obby help: the " .. dev .. " texts never name '" .. k .. "'", climb .. " | " .. dash)
+				end
+			end
+		end
+		T.check(help.Dash and help.Dash.Keyboard ~= help.Dash.Touch and help.Dash.Touch ~= help.Dash.Gamepad,
+			"obby help: the dash hint differs per device")
+		-- the courses: the HOW TO CLIMB board and every key-naming dash hint are tagged, keyboard text by default; no
+		-- untagged label names a key
+		local data = collect("empty")
+		if not noBuildErrors(data, "obby help") then
+			return
+		end
+		local board = T.tally("obby help: every course has the climb board text tagged " .. HELP_TAG .. " (HelpKey Climb, keyboard text by default)")
+		local hint = T.tally("obby help: every dash hint's key line is tagged (HelpKey Dash, keyboard text by default)")
+		local bare = T.tally("obby help: no untagged course label names a key (SHIFT / SPACE / Q / tap)")
+		local hints = 0
+		for _, b in ipairs(data.builds) do
+			local climbs = 0
+			for _, l in ipairs(b.labels) do
+				if l.help == "Climb" then
+					climbs = climbs + 1
+					board:case(l.tagged and l.text == help.Climb.Keyboard, b.who .. ": '" .. l.text .. "' tagged " .. tostring(l.tagged))
+				elseif l.help == "Dash" then
+					hints = hints + 1
+					hint:case(l.tagged and l.text == help.Dash.Keyboard, b.who .. ": '" .. l.text .. "' tagged " .. tostring(l.tagged))
+				else
+					local up = l.text:upper()
+					local named = up:find("SHIFT", 1, true) or up:find("SPACE", 1, true) or up:find("PRESS Q", 1, true)
+						or up:find("TAP DASH", 1, true) or up:find("Q  DASH", 1, true)
+					bare:case(not named, b.who .. ": '" .. l.text .. "'")
+				end
+			end
+			board:case(climbs == 1, b.who .. ": " .. climbs .. " climb boards")
+		end
+		T.info("*obby help: " .. hints .. " dash hints tagged")
+		board:report()
+		hint:report()
+		bare:report()
+		K.flushErrors("obby_help_text_per_device")
+	end)
+
+	-- a hint tag's plate on screen: { x0, y0, x1, y1 } px, its bottom centre at the projected anchor; nil when behind the
+	-- camera or past its MaxDistance
+	local function project(cam, p)
+		local q = cam:PointToObjectSpace(p)
+		if q.Z >= -0.1 then
+			return nil
+		end
+		local t = math.tan(math.rad(VIEW.Fov / 2))
+		local aspect = VIEW.W / VIEW.H
+		local x = q.X / (-q.Z * t * aspect)
+		local y = q.Y / (-q.Z * t)
+		return (x + 1) / 2 * VIEW.W, (1 - y) / 2 * VIEW.H
+	end
+	local function tagRect(cam, tag)
+		if (tag.at - cam.Position).Magnitude > tag.maxDistance then
+			return nil
+		end
+		local x, y = project(cam, tag.at)
+		if not x then
+			return nil
+		end
+		local w, h = 0, PLATE_PAD.Y
+		for _, l in ipairs(tag.lines) do
+			w = max(w, #l.text * l.size * PLATE_PAD.Glyph)
+			h = h + l.size + 4 + PLATE_PAD.Gap
+		end
+		w = w + PLATE_PAD.X
+		return { x - w / 2, y - h, x + w / 2, y }
+	end
+	local function boxRect(cam, rec)
+		local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+		for _, sx in ipairs({ -1, 1 }) do
+			for _, sy in ipairs({ -1, 1 }) do
+				for _, sz in ipairs({ -1, 1 }) do
+					local x, y = project(cam, rec.cf * Vector3.new(sx * rec.size.X / 2, sy * rec.size.Y / 2, sz * rec.size.Z / 2))
+					if not x then
+						return nil
+					end
+					x0, y0, x1, y1 = min(x0, x), min(y0, y), max(x1, x), max(y1, y)
+				end
+			end
+		end
+		return { x0, y0, x1, y1 }
+	end
+	local function overlap(r1, r2)
+		return r1 and r2 and r1[1] < r2[3] and r2[1] < r1[3] and r1[2] < r2[4] and r2[2] < r1[4]
+	end
+
+	S.obby_goal_and_checkpoint_tags_apart = guarded("obby_goal_and_checkpoint_tags_apart", function()
+		local data = collect("empty")
+		if not noBuildErrors(data, "obby goal tags") then
+			return
+		end
+		local apart = T.tally("obby goal tags: from the approach (on the last checkpoint pad and the step before it, camera behind) no checkpoint tag overlaps the GOAL tag or the FINISH board on screen")
+		local keep = T.tally("obby goal tags: every checkpoint but the last (the one right before the Finish) keeps its tag")
+		local dmin, dmax, cases = math.huge, -math.huge, 0
+		for _, b in ipairs(data.builds) do
+			local steps = b.layout.Steps
+			local fin = steps[#steps]
+			local last = steps[#steps - 1]
+			local goal, cps = nil, {}
+			for _, t in ipairs(b.tags) do
+				if t.first == "GOAL" then
+					goal = t
+				elseif t.first:find("^Checkpoint ") then
+					cps[#cps + 1] = t
+				end
+			end
+			if T.check(goal ~= nil and last and last.Kind == "Checkpoint" and fin.Kind == "Finish", b.who .. ": a GOAL tag and the last checkpoint right before the Finish") then
+				local total = 0
+				for _, st in ipairs(steps) do
+					if st.Kind == "Checkpoint" then
+						total = total + 1
+					end
+				end
+				local lastName = "Checkpoint " .. total .. "/" .. total
+				local found = {}
+				for _, t in ipairs(cps) do
+					found[t.first] = true
+					if t.first == lastName then
+						local d = (t.at - goal.at).Magnitude
+						dmin, dmax = min(dmin, d), max(dmax, d)
+					end
+				end
+				for k = 1, total - 1 do
+					keep:case(found["Checkpoint " .. k .. "/" .. total] == true, b.who .. ": no tag on checkpoint " .. k)
+				end
+				-- the screenshot's view: the player on the last checkpoint pad (and one step earlier), the camera behind
+				-- and above, looking at the Finish
+				local finTop = ORIGIN + fin.Pos
+				for _, st in ipairs({ last, steps[#steps - 2] }) do
+					local top = ORIGIN + st.Pos
+					local ahead = Vector3.new(finTop.X - top.X, 0, finTop.Z - top.Z)
+					if ahead.Magnitude > 1 then
+						local eye = top - ahead.Unit * VIEW.Back + Vector3.new(0, VIEW.Up, 0)
+						local cam = CFrame.lookAt(eye, finTop + Vector3.new(0, VIEW.Look, 0))
+						local goalR = tagRect(cam, goal)
+						local beamR = b.finishBeam and boxRect(cam, b.finishBeam)
+						for _, t in ipairs(cps) do
+							local r = tagRect(cam, t)
+							cases = cases + 1
+							apart:case(not overlap(r, goalR) and not overlap(r, beamR),
+								b.who .. ": '" .. t.first .. "' over the " .. (overlap(r, goalR) and "GOAL tag" or "FINISH board") .. " seen from " .. (st == last and "the last checkpoint" or "the step before it"))
+						end
+					end
+				end
+			end
+		end
+		T.info(string.format("*obby goal tags: %d tag views checked; last checkpoint tag to GOAL tag %s", cases,
+			dmin < math.huge and string.format("%.1f-%.1f studs", dmin, dmax) or "(no last checkpoint tag left)"))
+		apart:report()
+		keep:report()
+		K.flushErrors("obby_goal_and_checkpoint_tags_apart")
+	end)
+
 	return S
 end
 
 local function clientScenarios()
+	local KC = _G.KC
 	local S = {}
+
+	-- O4: MovementController swaps a tagged help label's key names for the device in use (and follows a change)
+	S.client_obby_help_text_per_device = guarded("client_obby_help_text_per_device", function()
+		local Cfg = require(Mock.GetPath(ROOTS["shared"] .. "/Config"))
+		local help = Cfg.Course and Cfg.Course.Help
+		if not T.check(type(help) == "table" and type(help.Tag) == "string", "client obby help: Config.Course.Help exists") then
+			return
+		end
+		local inst = Mock.GetPath(ROOTS["client"] .. "/Controllers/MovementController")
+		local okM, MC = pcall(require, inst)
+		if not T.check(okM and type(MC) == "table" and type(MC.HelpDevice) == "function", "client obby help: MovementController.HelpDevice exists") then
+			return
+		end
+		T.eq(MC.HelpDevice(Enum.UserInputType.Touch), "Touch", "client obby help: Touch input -> Touch")
+		T.eq(MC.HelpDevice(Enum.UserInputType.Gamepad1), "Gamepad", "client obby help: Gamepad1 input -> Gamepad")
+		T.eq(MC.HelpDevice(Enum.UserInputType.Keyboard), "Keyboard", "client obby help: Keyboard input -> Keyboard")
+		T.eq(MC.HelpDevice(Enum.UserInputType.MouseButton1), "Keyboard", "client obby help: a mouse click -> Keyboard")
+		local UIS = game:GetService("UserInputService")
+		local CS = game:GetService("CollectionService")
+		local part = Instance.new("Part")
+		part.Name = "SmokeHelpBoard"
+		local gui = Instance.new("SurfaceGui")
+		gui.Parent = part
+		local labels = {}
+		for _, key in ipairs({ "Climb", "Dash" }) do
+			local l = Instance.new("TextLabel")
+			l.Text = help[key].Keyboard
+			l:SetAttribute("HelpKey", key)
+			CS:AddTag(l, help.Tag)
+			l.Parent = gui
+			labels[key] = l
+		end
+		local ok, err = pcall(function()
+			Mock.FireSignal(UIS, "LastInputTypeChanged", Enum.UserInputType.Touch)
+			KC.advance(0.1)
+			part.Parent = workspace -- streamed in while the player is on touch
+			KC.advance(0.1)
+			T.eq(labels.Climb.Text, help.Climb.Touch, "client obby help: a board streamed in on touch reads the touch text")
+			T.eq(labels.Dash.Text, help.Dash.Touch, "client obby help: a dash hint streamed in on touch reads the touch text")
+			Mock.FireSignal(UIS, "LastInputTypeChanged", Enum.UserInputType.Gamepad1)
+			KC.advance(0.1)
+			T.eq(labels.Climb.Text, help.Climb.Gamepad, "client obby help: picking up a gamepad swaps the board to the gamepad text")
+			T.eq(labels.Dash.Text, help.Dash.Gamepad, "client obby help: ...and the dash hint")
+			Mock.FireSignal(UIS, "LastInputTypeChanged", Enum.UserInputType.Keyboard)
+			KC.advance(0.1)
+			T.eq(labels.Climb.Text, help.Climb.Keyboard, "client obby help: back on the keyboard, the keyboard text")
+		end)
+		part:Destroy()
+		Mock.FireSignal(UIS, "LastInputTypeChanged", Enum.UserInputType.Keyboard)
+		T.check(ok, "client obby help: ran without errors", tostring(err))
+	end)
+
 	return S
 end
 
