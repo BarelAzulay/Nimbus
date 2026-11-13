@@ -686,35 +686,70 @@ local function underside(ctx, step, look, F, big, lite)
 	return out
 end
 
--- true when the upright box `size` centred at `cf` keeps out of every other step's slab and the head clearance above
--- it (a moving step at both ends of its slide): the Y ranges, then the X / Z rectangles on their four edge axes
-function Mesh.underClear(ctx, step, cf, size)
+-- the walkable solids a puff keeps out of, each its slab plus the head clearance above it (a box: Frame, Size): every
+-- step (a moving one with its Slide, the EndOffset) and every PlateBridge's span and two plate islands, framed as
+-- KB.PlateBridge builds them. Key "s<i>" = step i, "b<i>" = its span, "b<i>_<k>" = its island k. Built once per course.
+function Mesh.underSolids(ctx)
+	if ctx.UnderSolids then
+		return ctx.UnderSolids
+	end
 	local head = (type(Config.Course) == "table" and Config.Course.Clearance) or 13
+	local out = {}
+	local function add(key, pos, size, yaw, slide)
+		if typeof(pos) == "Vector3" and typeof(size) == "Vector3" then
+			local F = CFrame.new(ctx.Origin + pos) * CFrame.Angles(0, rad(yaw or 0), 0)
+			out[#out + 1] = {
+				Key = key, Slide = slide,
+				Frame = F * CFrame.new(0, (head - size.Y) / 2, 0), Size = Vector3.new(size.X, size.Y + head, size.Z),
+			}
+		end
+	end
 	for _, st in ipairs(ctx.Layout.Steps or EMPTY) do
-		if st.Index ~= step.Index and typeof(st.Pos) == "Vector3" and typeof(st.Size) == "Vector3" then
-			local th = st.Size.Y
-			local osize = Vector3.new(st.Size.X, th + head, st.Size.Z)
-			local Fo = stepFrame(ctx, st) * CFrame.new(0, (head - th) / 2, 0)
-			local frames = { Fo }
-			if type(st.Hazard) == "table" and typeof(st.Hazard.EndOffset) == "Vector3" then
-				frames[2] = Fo + st.Hazard.EndOffset
+		local h = type(st.Hazard) == "table" and st.Hazard or EMPTY
+		add("s" .. tostring(st.Index), st.Pos, st.Size, st.Yaw, typeof(h.EndOffset) == "Vector3" and h.EndOffset or nil)
+		if st.Kind == "PlateBridge" then
+			if type(h.Span) == "table" then
+				add("b" .. tostring(st.Index), h.Span.Pos, h.Span.Size, h.Span.Yaw or 0)
 			end
-			for _, oc in ipairs(frames) do
-				local d = oc.Position - cf.Position
-				local meet = abs(d.Y) < (size.Y + osize.Y) / 2
-				if meet then
-					for _, ax in ipairs({ cf.RightVector, cf.LookVector, oc.RightVector, oc.LookVector }) do
-						local ra = abs(cf.RightVector:Dot(ax)) * size.X / 2 + abs(cf.LookVector:Dot(ax)) * size.Z / 2
-						local rb = abs(oc.RightVector:Dot(ax)) * osize.X / 2 + abs(oc.LookVector:Dot(ax)) * osize.Z / 2
-						if abs(d:Dot(ax)) >= ra + rb then
+			for k, side in ipairs(type(h.Sides) == "table" and h.Sides or EMPTY) do
+				if type(side) == "table" then
+					add("b" .. tostring(st.Index) .. "_" .. k, side.Pos, side.Size, side.Yaw or st.Yaw)
+				end
+			end
+		end
+	end
+	ctx.UnderSolids = out
+	return out
+end
+
+-- true when the upright box `size` centred at `cf`, swept along `slide` (its own step's EndOffset, nil = still), keeps
+-- out of every solid but `key` (Mesh.underSolids, a moving one swept along its slide): the Y ranges (stretched by the
+-- slides' rise), then the X / Z shapes (rectangle + slide segment) on both rectangles' edge axes and each slide's
+-- normal. Touching is not reaching.
+function Mesh.underClear(ctx, key, cf, size, slide)
+	local still = Vector3.new(0, 0, 0)
+	local va = slide or still
+	for _, so in ipairs(Mesh.underSolids(ctx)) do
+		if so.Key ~= key then
+			local oc, osize, vb = so.Frame, so.Size, so.Slide or still
+			local d = (oc.Position + vb * 0.5) - (cf.Position + va * 0.5)
+			local meet = abs(d.Y) < (size.Y + osize.Y + abs(va.Y) + abs(vb.Y)) / 2 - 1e-4
+			if meet then
+				local axes = { cf.RightVector, cf.LookVector, oc.RightVector, oc.LookVector, Vector3.new(-va.Z, 0, va.X), Vector3.new(-vb.Z, 0, vb.X) }
+				for _, ax in ipairs(axes) do
+					if ax.Magnitude > 1e-6 then
+						ax = ax.Unit
+						local ra = abs(cf.RightVector:Dot(ax)) * size.X / 2 + abs(cf.LookVector:Dot(ax)) * size.Z / 2 + abs(va:Dot(ax)) / 2
+						local rb = abs(oc.RightVector:Dot(ax)) * osize.X / 2 + abs(oc.LookVector:Dot(ax)) * osize.Z / 2 + abs(vb:Dot(ax)) / 2
+						if abs(d:Dot(ax)) >= ra + rb - 1e-4 then
 							meet = false
 							break
 						end
 					end
 				end
-				if meet then
-					return false
-				end
+			end
+			if meet then
+				return false
 			end
 		end
 	end
@@ -723,12 +758,14 @@ end
 
 -- kit-b O2 (finding 2): the Part build under a platform wears the Blender voxel puff the slab sits in
 -- (Config.Course.Clouds.Under): scale clamp(short side / Short, Min, Max), the puff's top voxel (Hi[2] above its pivot)
--- at the slab's underside, its long X axis along the platform's long side. A puff that would reach another step (or the
--- head clearance above it) tries scale 1, then Min; when even that reaches one, the Part build stays. A static platform:
+-- at the slab's underside, its long X axis along the platform's long side. A puff that would reach another solid
+-- (Mesh.underSolids: a step's slab or the head clearance above it, a bridge span, a plate island; a moving cloud's puff
+-- along its whole slide) tries scale 1, then Min; when even that reaches one, the Part build stays. A static platform:
 -- the parts go into one Model "Underside" pinned at the spot (At). A moving cloud (ctx.Attach weld): its one lite puff,
 -- welded to the slab, is the target with ML_Weld = true, so the mesh rides along (an Offset from the puff, never a fixed
 -- At). Clients hide the Part build locally; it stays the look wherever the mesh is missing. No key with an id: nothing
--- changes.
+-- changes. Returns the scale the puff was dressed at (nil = the Part build stays). step.Solid names a plate island's
+-- own solid (it carries its bridge step's Index), so only the island itself is skipped.
 function Mesh.under(ctx, step, F, parts)
 	local CL = Mesh.Clouds
 	local key, fit = CL.Under, CL.UnderFit
@@ -739,13 +776,16 @@ function Mesh.under(ctx, step, F, parts)
 	local lo = Vector3.new(fit.Lo[1], fit.Lo[2], fit.Lo[3])
 	local hi = Vector3.new(fit.Hi[1], fit.Hi[2], fit.Hi[3])
 	local s0 = max(fit.Min, min(fit.Max, min(sx, sz) / fit.Short))
+	local h = type(step.Hazard) == "table" and step.Hazard or EMPTY
+	local slide = typeof(h.EndOffset) == "Vector3" and h.EndOffset or nil
+	local own = step.Solid or ("s" .. tostring(step.Index))
 	local s, origin
 	for _, sc in ipairs({ s0, min(s0, 1), fit.Min }) do
 		local cf = F * CFrame.new(0, -th - hi.Y * sc, 0)
 		if sz > sx then
 			cf = cf * CFrame.Angles(0, pi / 2, 0)
 		end
-		if Mesh.underClear(ctx, step, cf * CFrame.new((lo + hi) * (0.5 * sc)), (hi - lo) * sc) then
+		if Mesh.underClear(ctx, own, cf * CFrame.new((lo + hi) * (0.5 * sc)), (hi - lo) * sc, slide) then
 			s, origin = sc, cf
 			break
 		end
@@ -770,9 +810,10 @@ function Mesh.under(ctx, step, F, parts)
 	if abs(s - 1) > 1e-6 then
 		target:SetAttribute("ML_Scale", s)
 	end
+	return s
 end
 
--- Builds the walkable slab plus its dressing and returns (slab, frame).
+-- Builds the walkable slab plus its dressing and returns (slab, frame, the underside puff's scale or nil).
 -- opts: Name, Slab (slab only), Attach ("weld"|"child": see mk), Lite, Under (false = no underside),
 --       LongTrim, Big, Transparency
 local function buildBase(ctx, step, look, opts)
@@ -797,11 +838,12 @@ local function buildBase(ctx, step, look, opts)
 	blk(ctx, "Decor", "TopPlate", Vector3.new(sx, 0.1, sz), F * CFrame.new(0, 0.05, 0), look.Top,
 		look.TopMat or MAT.SmoothPlastic)
 	addTrim(ctx, step, F, look.Trim, opts.LongTrim)
+	local puff
 	if opts.Under ~= false then
 		local lite = opts.Lite or ctx.Parts > ctx.UnderCap
-		Mesh.under(ctx, step, F, underside(ctx, step, look, F, opts.Big, lite))
+		puff = Mesh.under(ctx, step, F, underside(ctx, step, look, F, opts.Big, lite))
 	end
-	return main, F
+	return main, F, puff
 end
 
 -- bullseye on a cannon's landing island
@@ -885,10 +927,11 @@ function KB.Beam(ctx, step, look)
 	return main
 end
 
--- sliding cloud: decor is welded so it rides along, a faint rail shows the route
+-- sliding cloud: decor is welded so it rides along, a faint rail shows the route (under the puff: 5.2 under the slab
+-- with the Part build, 0.8 under the dressed mesh's lowest voxel, which hangs 13 * s down)
 function KB.Moving(ctx, step, look)
 	local h = step.Hazard or EMPTY
-	local main, F = buildBase(ctx, step, look, { Name = "MovingCloud_" .. step.Index, Attach = "weld", Lite = true })
+	local main, F, puff = buildBase(ctx, step, look, { Name = "MovingCloud_" .. step.Index, Attach = "weld", Lite = true })
 	local eo = h.EndOffset or Vector3.new(0, 0, 6)
 	CollectionService:AddTag(main, Tags.MovingCloud)
 	main:SetAttribute("EndOffset", eo)
@@ -906,7 +949,12 @@ function KB.Moving(ctx, step, look)
 		end
 	end
 	ctx.Attach = nil
-	local a = top + Vector3.new(0, -th - 5.2, 0)
+	local drop = 5.2
+	local fit = Mesh.Clouds.UnderFit
+	if puff and type(fit) == "table" then
+		drop = (fit.Hi[2] - fit.Lo[2]) * puff + 0.8
+	end
+	local a = top + Vector3.new(0, -th - drop, 0)
 	local b = a + Vector3.new(eo.X, 0, eo.Z)
 	local railColor = rgb(116, 200, 232)
 	rod(ctx, "Decor", "MoveRail", a, b, 0.35, railColor, MAT.Neon, 0.55)
@@ -1265,7 +1313,7 @@ function KB.PlateBridge(ctx, step, look)
 	for i, side in ipairs(h.Sides or EMPTY) do
 		local fake = {
 			Index = step.Index, Stage = step.Stage, Kind = "Platform", Pos = side.Pos, Size = side.Size,
-			Yaw = side.Yaw or step.Yaw, Variant = ((step.Variant or 1) + i) % 4 + 1,
+			Yaw = side.Yaw or step.Yaw, Variant = ((step.Variant or 1) + i) % 4 + 1, Solid = "b" .. step.Index .. "_" .. i,
 		}
 		local sideLook = {
 			Top = look.Top, Side = look.Side, Mat = look.Mat, TopMat = look.TopMat, Trim = color,

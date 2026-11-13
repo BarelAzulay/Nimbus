@@ -32,9 +32,15 @@
 --                                     bigger puff reaches another step's slab or the head clearance above it), the mesh
 --                                     pivot 3 * s under the slab's underside (the puff's top voxel at +3 meets the slab),
 --                                     upright, its 21-stud X axis along the platform's long side (turned 90 degrees when
---                                     sz > sx); no puff reaches another step (a moving one at both ends of its slide)
+--                                     sz > sx); no puff reaches another step (a moving one along its whole slide, a
+--                                     moving cloud's own puff along its slide too) or a PlateBridge's span / plate
+--                                     islands; the review's pinned cases (Medium seed 38, Hard seeds 39 and 4) are what
+--                                     they stand for: clear to the old start-only, steps-only guard, not to this one
 --   obby_moving_cloud_mesh_welded     a moving cloud's target is a BasePart welded to its slab, ML_Weld = true, no ML_At
---                                     (a fixed spot would leave the mesh behind), its dress spot = the slab's underside spot
+--                                     (a fixed spot would leave the mesh behind), its dress spot = the slab's underside
+--                                     spot; its route rail and two stops hang 0.8 under the dressed puff's lowest voxel
+--                                     (5.2 under the slab where the Part build stays, and with empty MeshIds)
+-- The O2 scenarios also build the "pinned" picks (ids, the review's seeds).
 --   obby_vanish_step_has_no_underside_mesh  a vanishing step has no underside target and nothing tagged under it (a
 --                                     client mesh would not fade with the server's Transparency tween)
 -- Plain Lua 5.1 syntax only.
@@ -68,6 +74,19 @@ local UNDER = {
 	Lo = Vector3.new(-10.5, -10, -6.5), Hi = Vector3.new(10.5, 3, 7.5),
 }
 local UNDER_PARTS = { Puff = true, Stalactite = true, RimPuff = true, Belly = true }
+-- the O2 review's seeds (layout-only probe over 200 courses): a moving cloud's puff that only reaches a step along its
+-- slide (Medium 38: MovingCloud_27 over Checkpoint 17; Hard 39: MovingCloud_45 over PendulumPlatform 29) and puffs
+-- that only reach a PlateBridge's span / plate island (Hard 4: steps 28 and 29 over bridge 18)
+local PINNED_PICKS = { { "Medium", 38 }, { "Hard", 39 }, { "Hard", 4 } }
+local PINNED = {
+	{ who = "Medium seed 38", index = 27, via = "slide" },
+	{ who = "Hard seed 39", index = 45, via = "slide" },
+	{ who = "Hard seed 4", index = 28, via = "bridge" },
+	{ who = "Hard seed 4", index = 29, via = "bridge" },
+}
+local RAIL_DROP = 5.2 -- KB.Moving: the rail under the slab's underside while the Part build stays
+local RAIL_GAP = 0.8 -- the rail under a dressed puff's lowest voxel
+local ZERO = Vector3.new(0, 0, 0)
 
 local function clamp(v, lo, hi)
 	return max(lo, min(hi, v))
@@ -154,6 +173,10 @@ local function serverScenarios()
 		local picks = {}
 		if mode == "guard" then
 			picks[1] = { who = "Easy seed 1 + two puffs by step 2", layout = guardLayout(CB) }
+		elseif mode == "pinned" then
+			for _, p in ipairs(PINNED_PICKS) do
+				picks[#picks + 1] = { who = p[1] .. " seed " .. p[2], layout = CB.GenerateLayout(p[1], p[2]) }
+			end
 		else
 			for _, diff in ipairs(Config.Difficulties) do
 				for seed = 1, (ARGS and ARGS.quick) and 2 or 3 do
@@ -209,12 +232,16 @@ local function serverScenarios()
 							end
 						end
 						-- O2: the slabs, the underside targets (static Models / moving welded parts) and loose underside parts
-						b.slabs, b.unders, b.movers, b.loose, b.loosePos = {}, {}, {}, 0, {}
+						b.slabs, b.unders, b.movers, b.loose, b.loosePos, b.rails = {}, {}, {}, 0, {}, {}
 						for _, d in ipairs(info.Folder:GetDescendants()) do
 							if d:IsA("BasePart") and d:GetAttribute("StepIndex") ~= nil then
 								b.slabs[#b.slabs + 1] = {
 									name = d.Name, index = d:GetAttribute("StepIndex"), cf = d.CFrame, size = d.Size, part = d, tagged = 0,
+									eo = d:GetAttribute("EndOffset"),
 								}
+							end
+							if d:IsA("BasePart") and (d.Name == "MoveRail" or d.Name == "MoveStop") then
+								b.rails[#b.rails + 1] = { name = d.Name, pos = d.Position }
 							end
 							if d:IsA("Model") and d.Name == "Underside" then
 								b.unders[#b.unders + 1] = {
@@ -488,18 +515,22 @@ local function serverScenarios()
 		return not (startsWith(sl.name, "Beam_") or startsWith(sl.name, "VanishCloud_"))
 	end
 
-	-- two upright boxes (centre CFrame, size) overlap: their Y ranges and their X / Z rectangles (separating axes)
-	local function boxesMeet(ca, sa, cb, sb)
-		if abs(ca.Position.Y - cb.Position.Y) >= (sa.Y + sb.Y) / 2 - 1e-6 then
+	-- two upright boxes (centre CFrame, size) overlap, each swept along its slide (va / vb, nil = still): their Y ranges
+	-- (stretched by the slides' rise) and their X / Z shapes (rectangle + slide segment) on the separating axes: both
+	-- rectangles' edge axes and the normal of each slide
+	local function boxesMeet(ca, sa, cb, sb, va, vb)
+		va, vb = va or ZERO, vb or ZERO
+		local d = (cb.Position + vb * 0.5) - (ca.Position + va * 0.5)
+		if abs(d.Y) >= (sa.Y + sb.Y + abs(va.Y) + abs(vb.Y)) / 2 - 1e-6 then
 			return false
 		end
-		local d = cb.Position - ca.Position
-		for _, ax in ipairs({ ca.RightVector, ca.LookVector, cb.RightVector, cb.LookVector }) do
+		local axes = { ca.RightVector, ca.LookVector, cb.RightVector, cb.LookVector, Vector3.new(-va.Z, 0, va.X), Vector3.new(-vb.Z, 0, vb.X) }
+		for _, ax in ipairs(axes) do
 			ax = Vector3.new(ax.X, 0, ax.Z)
 			if ax.Magnitude > 1e-6 then
 				ax = ax.Unit
-				local ra = abs(ca.RightVector:Dot(ax)) * sa.X / 2 + abs(ca.LookVector:Dot(ax)) * sa.Z / 2
-				local rb = abs(cb.RightVector:Dot(ax)) * sb.X / 2 + abs(cb.LookVector:Dot(ax)) * sb.Z / 2
+				local ra = abs(ca.RightVector:Dot(ax)) * sa.X / 2 + abs(ca.LookVector:Dot(ax)) * sa.Z / 2 + abs(va:Dot(ax)) / 2
+				local rb = abs(cb.RightVector:Dot(ax)) * sb.X / 2 + abs(cb.LookVector:Dot(ax)) * sb.Z / 2 + abs(vb:Dot(ax)) / 2
 				if abs(d:Dot(ax)) >= ra + rb - 1e-6 then
 					return false
 				end
@@ -508,41 +539,70 @@ local function serverScenarios()
 		return true
 	end
 
-	-- nil when the puff's box (UNDER Lo / Hi at scale s, pivot `cf`) keeps out of every other step's slab and the head
-	-- clearance above it (a moving step at both ends of its slide; a puff under a moving step also at the end of its own
-	-- slide), else which step it reaches
-	local function underHits(layout, index, cf, s)
-		local ms = (UNDER.Hi - UNDER.Lo) * s
-		local spots = { cf * CFrame.new((UNDER.Lo + UNDER.Hi) * (0.5 * s)) }
-		for _, st in ipairs(layout.Steps or {}) do
-			if st.Index == index and st.Hazard and typeof(st.Hazard.EndOffset) == "Vector3" then
-				spots[2] = spots[1] + st.Hazard.EndOffset
-			end
+	-- the walkable solids a puff keeps out of, each its slab plus the head clearance above (a box centre and size): every
+	-- step (a moving one with its slide) and, unless noBridges, every PlateBridge's span and two plate islands, built as
+	-- CourseBuilder builds them (span yaw Span.Yaw or 0, an island's Side.Yaw or the step's). key "s<i>" = step i,
+	-- "b<i>" = its span, "b<i>_<k>" = its island k
+	local function underSolids(layout, noBridges)
+		local out = {}
+		local function add(key, what, pos, size, yaw, slide)
+			local F = CFrame.new(ORIGIN + pos) * CFrame.Angles(0, math.rad(yaw or 0), 0)
+			out[#out + 1] = {
+				key = key, what = what, slide = slide,
+				cf = F * CFrame.new(0, (HEAD - size.Y) / 2, 0), size = Vector3.new(size.X, size.Y + HEAD, size.Z),
+			}
 		end
 		for _, st in ipairs(layout.Steps or {}) do
-			if st.Index ~= index then
-				local th = st.Size.Y
-				local ends = { st.Pos }
-				if st.Hazard and typeof(st.Hazard.EndOffset) == "Vector3" then
-					ends[2] = st.Pos + st.Hazard.EndOffset
+			local h = type(st.Hazard) == "table" and st.Hazard or {}
+			add("s" .. st.Index, "step " .. tostring(st.Index) .. " (" .. tostring(st.Kind) .. ")", st.Pos, st.Size, st.Yaw,
+				typeof(h.EndOffset) == "Vector3" and h.EndOffset or nil)
+			if st.Kind == "PlateBridge" and not noBridges then
+				if type(h.Span) == "table" then
+					add("b" .. st.Index, "the bridge span of step " .. st.Index, h.Span.Pos, h.Span.Size, h.Span.Yaw or 0)
 				end
-				for _, p in ipairs(ends) do
-					local F = CFrame.new(ORIGIN + p) * CFrame.Angles(0, math.rad(st.Yaw or 0), 0)
-					for k, mc in ipairs(spots) do
-						if boxesMeet(mc, ms, F * CFrame.new(0, (HEAD - th) / 2, 0), Vector3.new(st.Size.X, th + HEAD, st.Size.Z)) then
-							return "reaches step " .. tostring(st.Index) .. " (" .. tostring(st.Kind) .. ")" .. (k == 2 and " at the end of its slide" or "")
-						end
-					end
+				for k, side in ipairs(h.Sides or {}) do
+					add("b" .. st.Index .. "_" .. k, "plate island " .. k .. " of step " .. st.Index, side.Pos, side.Size, side.Yaw or st.Yaw)
 				end
+			end
+		end
+		return out
+	end
+
+	-- which solid a slab is (a plate island is built with its bridge step's StepIndex)
+	local function solidKey(sl)
+		local i, k = string.match(sl.name, "^PlateIsland_(%d+)_(%d+)$")
+		if i then
+			return "b" .. i .. "_" .. k
+		end
+		return "s" .. tostring(sl.index)
+	end
+
+	-- nil when the puff's box (UNDER Lo / Hi at scale s, pivot `cf`), swept along its own solid's slide, keeps out of
+	-- every other solid (a moving one swept along its slide), else what it reaches. opts.still: the old guard's view (the
+	-- puff only where it starts); opts.noBridges: the old guard's solids (the steps only)
+	local function underHits(layout, key, cf, s, opts)
+		opts = opts or {}
+		local ms = (UNDER.Hi - UNDER.Lo) * s
+		local mc = cf * CFrame.new((UNDER.Lo + UNDER.Hi) * (0.5 * s))
+		local solids = underSolids(layout, opts.noBridges)
+		local own
+		for _, so in ipairs(solids) do
+			if so.key == key and not opts.still then
+				own = so.slide
+			end
+		end
+		for _, so in ipairs(solids) do
+			if so.key ~= key and boxesMeet(mc, ms, so.cf, so.size, own, so.slide) then
+				return "reaches " .. so.what .. (own and " (along its slide)" or "")
 			end
 		end
 		return nil
 	end
 
 	-- what O2 promises under one slab: { s, cf = the mesh pivot, long = the slab's long axis (world), turned, shrunk } at
-	-- the first scale of { clamp(min(sx, sz) / 14), at most 1, the clamp floor } that keeps clear of the other steps, or
-	-- { left = true } (the Part build stays)
-	local function underPlan(b, sl)
+	-- the first scale of { clamp(min(sx, sz) / 14), at most 1, the clamp floor } that keeps clear of the other solids, or
+	-- { left = true } (the Part build stays). opts: underHits' (the old guard's view, for the pinned cases)
+	local function underPlan(b, sl, opts)
 		local sx, sy, sz = sl.size.X, sl.size.Y, sl.size.Z
 		local s0 = clamp(min(sx, sz) / UNDER.Short, UNDER.Min, UNDER.Max)
 		local turned = sz > sx
@@ -551,7 +611,7 @@ local function serverScenarios()
 			if turned then
 				cf = cf * CFrame.Angles(0, math.pi / 2, 0)
 			end
-			if underHits(b.layout, sl.index, cf, s) == nil then
+			if underHits(b.layout, solidKey(sl), cf, s, opts) == nil then
 				return { s = s, cf = cf, turned = turned, shrunk = s ~= s0, long = turned and sl.cf.LookVector or sl.cf.RightVector }
 			end
 		end
@@ -573,6 +633,48 @@ local function serverScenarios()
 	local function targetsOf(b, sl)
 		local moving = startsWith(sl.name, "MovingCloud_")
 		return underOf(moving and b.movers or b.unders, sl), underOf(moving and b.unders or b.movers, sl)
+	end
+
+	-- the route rail of a moving slab: its two stops (under the slab's centre at the start and at start + EndOffset) and
+	-- the rail between them, `drop` under the slab's underside; nil = fine, else why not
+	local function railProblem(b, sl, drop)
+		local eo = sl.eo
+		if typeof(eo) ~= "Vector3" then
+			return "no EndOffset on the slab"
+		end
+		local a = sl.cf.Position - Vector3.new(0, sl.size.Y / 2 + drop, 0)
+		local flat = Vector3.new(eo.X, 0, eo.Z)
+		local want = { { "MoveStop", a }, { "MoveStop", a + flat } }
+		if flat.Magnitude >= 0.05 then
+			want[3] = { "MoveRail", a + flat * 0.5 }
+		end
+		for _, w in ipairs(want) do
+			local ok, seen = false, nil
+			for _, r in ipairs(b.rails) do
+				if r.name == w[1] and abs(r.pos.X - w[2].X) <= 0.05 and abs(r.pos.Z - w[2].Z) <= 0.05 then
+					seen = r.pos.Y
+					ok = ok or abs(r.pos.Y - w[2].Y) <= 0.05
+				end
+			end
+			if not ok then
+				return string.format("%s at y %s (want %.2f, %.2f under the slab)", w[1], seen and string.format("%.2f", seen) or "none", w[2].Y, drop)
+			end
+		end
+		return nil
+	end
+
+	-- the O2 builds: the "ids" picks plus the review's pinned seeds (built with the same ids)
+	local function underData()
+		local out = { builds = {}, errors = {} }
+		for _, d in ipairs({ collect("ids"), collect("pinned") }) do
+			for _, b in ipairs(d.builds) do
+				out.builds[#out.builds + 1] = b
+			end
+			for _, e in ipairs(d.errors) do
+				out.errors[#out.errors + 1] = e
+			end
+		end
+		return out
 	end
 
 	-- the spot / scale / axes of one target against its plan; nil = fine, else why not
@@ -606,7 +708,7 @@ local function serverScenarios()
 	end
 
 	S.obby_underside_tagged = guarded("obby_underside_tagged", function()
-		local data = collect("ids")
+		local data = underData()
 		if not noBuildErrors(data, "obby undersides (ids)") then
 			return
 		end
@@ -661,12 +763,12 @@ local function serverScenarios()
 	end)
 
 	S.obby_underside_scale_and_turn = guarded("obby_underside_scale_and_turn", function()
-		local data = collect("ids")
+		local data = underData()
 		if not noBuildErrors(data, "obby undersides (ids)") then
 			return
 		end
 		local fit = T.tally("obby undersides: scale clamp(min(sx, sz) / 14, 0.6, 1.4) (1, then 0.6, only to clear another step), pivot 3 * s under the slab, upright, 21-stud axis along the long side")
-		local clear = T.tally("obby undersides: no puff reaches another step's slab or the head clearance above it (a moving step at both slide ends)")
+		local clear = T.tally("obby undersides: no puff reaches another step's slab or the head clearance above it (a moving step along its slide, a moving cloud's puff along its own) or a bridge span / plate island")
 		local n, turned, shrunk, lo, hi = 0, 0, 0, math.huge, -math.huge
 		for _, b in ipairs(data.builds) do
 			for _, sl in ipairs(b.slabs) do
@@ -677,7 +779,7 @@ local function serverScenarios()
 						local plan = underPlan(b, sl)
 						local why = plan.left and "should have been left out" or spotProblem(u, plan)
 						fit:case(why == nil, b.who .. ": " .. sl.name .. " " .. string.format("%.1f x %.1f", sl.size.X, sl.size.Z) .. ": " .. tostring(why))
-						local hit = underHits(b.layout, sl.index, u.at, tonumber(u.scale) or 1)
+						local hit = underHits(b.layout, solidKey(sl), u.at, tonumber(u.scale) or 1)
 						clear:case(hit == nil, b.who .. ": " .. sl.name .. " " .. tostring(hit))
 						n = n + 1
 						turned = turned + ((plan.turned and 1) or 0)
@@ -691,17 +793,39 @@ local function serverScenarios()
 		T.check(n > 0 and turned > 0 and turned < n, "obby undersides: both the plain and the turned case are measured", n .. " measured, " .. turned .. " turned")
 		fit:report()
 		clear:report()
+		-- the review's pinned cases: at the scale the old guard (the puff where it starts, the steps only) would pick, the
+		-- puff reaches what the case stands for, so this guard shrinks it or leaves it out (the tallies above check how)
+		local pinned = collect("pinned")
+		for _, pc in ipairs(PINNED) do
+			local b, sl
+			for _, pb in ipairs(pinned.builds) do
+				if pb.who == pc.who then
+					b = pb
+				end
+			end
+			for _, ps in ipairs(b and b.slabs or {}) do
+				if solidKey(ps) == "s" .. pc.index then
+					sl = ps
+				end
+			end
+			local old = sl and underPlan(b, sl, (pc.via == "slide") and { still = true, noBridges = true } or { noBridges = true })
+			local hit = old and not old.left and underHits(b.layout, solidKey(sl), old.cf, old.s)
+			T.check(type(hit) == "string" and (pc.via == "bridge") == (string.find(hit, "bridge span", 1, true) ~= nil or string.find(hit, "plate island", 1, true) ~= nil),
+				"obby undersides pinned: " .. pc.who .. " step " .. pc.index .. " is clear to the old guard but reaches " .. ((pc.via == "slide") and "a step along its slide" or "a bridge"),
+				tostring(sl and sl.name) .. " old scale " .. tostring(old and old.s) .. ": " .. tostring(hit))
+		end
 		T.info(string.format("*obby undersides: %d measured, %d turned, %d shrunk to clear a step, scale %.2f-%.2f", n, turned, shrunk, lo, hi))
 		K.flushErrors("obby_underside_scale_and_turn")
 	end)
 
 	S.obby_moving_cloud_mesh_welded = guarded("obby_moving_cloud_mesh_welded", function()
-		local data = collect("ids")
+		local data = underData()
 		if not noBuildErrors(data, "obby undersides (ids)") then
 			return
 		end
 		local weld = T.tally("obby moving clouds: the underside target is welded to its slab, ML_Weld, no fixed ML_At, unanchored")
 		local spot = T.tally("obby moving clouds: the mesh's dress spot is the slab's underside spot (scale, pivot, turn)")
+		local rail = T.tally("obby moving clouds: the route rail and its stops hang " .. RAIL_GAP .. " under a dressed puff's lowest voxel (13 * s under the slab), " .. RAIL_DROP .. " under the slab where the Part build stays")
 		local n, dressed = 0, 0
 		for _, b in ipairs(data.builds) do
 			for _, sl in ipairs(b.slabs) do
@@ -710,6 +834,9 @@ local function serverScenarios()
 					local plan = underPlan(b, sl)
 					local found = underOf(b.movers, sl)
 					local m = found[1]
+					local drop = plan.left and RAIL_DROP or ((UNDER.Hi.Y - UNDER.Lo.Y) * plan.s + RAIL_GAP)
+					local why = railProblem(b, sl, drop)
+					rail:case(why == nil, b.who .. ": " .. sl.name .. ": " .. tostring(why))
 					if plan.left then
 						weld:case(#found == 0, b.who .. ": " .. sl.name .. " would reach a step but has " .. #found .. " targets")
 					else
@@ -727,11 +854,25 @@ local function serverScenarios()
 		T.check(dressed > 0, "obby moving clouds: the builds have dressed moving clouds", dressed .. " of " .. n)
 		weld:report()
 		spot:report()
+		rail:report()
+		local empty = collect("empty")
+		if noBuildErrors(empty, "obby moving clouds (no ids)") then
+			local keep = T.tally("obby moving clouds: with empty MeshIds the route rail stays " .. RAIL_DROP .. " under the slab")
+			for _, b in ipairs(empty.builds) do
+				for _, sl in ipairs(b.slabs) do
+					if startsWith(sl.name, "MovingCloud_") then
+						local why = railProblem(b, sl, RAIL_DROP)
+						keep:case(why == nil, b.who .. ": " .. sl.name .. ": " .. tostring(why))
+					end
+				end
+			end
+			keep:report()
+		end
 		K.flushErrors("obby_moving_cloud_mesh_welded")
 	end)
 
 	S.obby_vanish_step_has_no_underside_mesh = guarded("obby_vanish_step_has_no_underside_mesh", function()
-		local data = collect("ids")
+		local data = underData()
 		if not noBuildErrors(data, "obby undersides (ids)") then
 			return
 		end
