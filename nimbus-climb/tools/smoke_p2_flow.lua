@@ -140,7 +140,7 @@ end
 
 local abs, floor, max, min = math.abs, math.floor, math.max, math.min
 local advance, config, mod = K.advance, K.config, K.mod
-local STAR = "\226\152\133"
+local STAR = " star" -- (kit-b U7b) the nameplate says its Prestige stars in words ("Home Level 12 <bullet> 1 star")
 local SECRET = "Secret"
 local ALLOWED_WARNINGS = { "[DataService]", "[GemService]", "HomeBuilder is missing" }
 

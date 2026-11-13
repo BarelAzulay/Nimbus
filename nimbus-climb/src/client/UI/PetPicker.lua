@@ -56,6 +56,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the picker's icons
 
 local UI = script.Parent
 local Client = UI.Parent
@@ -132,12 +133,9 @@ local C = {
 	Count = Color3.fromRGB(8, 12, 40),
 	Accent = { Train = Color3.fromRGB(228, 104, 96), Upgrade = Color3.fromRGB(155, 107, 255), Mix = Color3.fromRGB(155, 107, 255) },
 }
-local G = {
-	Star = "\226\152\133",
-	Down = "\226\150\190",
-	Glass = "\240\159\148\141",
-	Icon = { Train = "\240\159\146\170", Upgrade = "\226\156\168", Mix = "\226\156\168" },
-}
+-- (kit-b U7b) PixelIcons, not emoji: the team star, the sort arrow, the search glass, the header's icon per context
+local ICON = { Star = "star", Down = "down", Glass = "glass", Context = { Train = "weight", Upgrade = "sparkle", Mix = "sparkle" } }
+local LEVEL_STAR = 20 -- px a level line's evolution star takes (18 + its cell gap)
 
 local H = {}
 local U = { Cards = {}, Chips = {}, Views = {} } -- widgets; Views[key] = { Handle, Stage } (cached viewports)
@@ -484,7 +482,7 @@ function H.build()
 	Theme.Stroke(search, Color3.fromRGB(70, 84, 150), 2, 0)
 	U.SearchPad = Util.Create("UIPadding", { PaddingLeft = UDim.new(0, 44), PaddingRight = UDim.new(0, 10), Parent = search })
 	U.Glass = label(search, "Glass", "Body", 20, { ZIndex = 4, TextTruncate = Enum.TextTruncate.None })
-	U.Glass.Text = G.Glass
+	PixelIcon.Host(U.Glass, ICON.Glass, 18)
 	search:GetPropertyChangedSignal("Text"):Connect(function()
 		if not S.Silent and S.Open then
 			S.Query = search.Text
@@ -767,14 +765,16 @@ function H.layoutCard(item, w, h, M)
 	local pad = phone and 4 or 8
 	local text = M.Text
 	item.Level.TextSize = text
-	local lw = math.min(w - 2 * pad, H.width(item.Level.Text, text, Theme.FontOf(item.Level)) + (phone and 12 or 16))
+	local stars = tonumber(item.Level:GetAttribute("Stars")) or 0 -- (kit-b U7b) the stars drawn after the text
+	local lw = math.min(w - 2 * pad, H.width(item.Level.Text, text, Theme.FontOf(item.Level)) + (phone and 12 or 16) + (stars > 0 and (stars * LEVEL_STAR + 4) or 0))
 	place(item.Level, pad, pad, lw, M.ChipRowH)
 	local bw = M.ChipRowH
-	if item.Badge.Text ~= G.Star then
+	local starBadge = item.Badge:GetAttribute("HostMark") ~= nil and item.Badge:GetAttribute("HostMark") ~= ""
+	if not starBadge then
 		bw = H.width(item.Badge.Text, text, Theme.FontOf(item.Badge)) + (phone and 12 or 16)
 	end
 	place(item.Badge, w - pad - bw, pad, bw, M.ChipRowH)
-	item.Badge.TextSize = item.Badge.Text == G.Star and (phone and 18 or 24) or text
+	item.Badge.TextSize = starBadge and (phone and 18 or 24) or text
 	local nameY, nameSize = h - M.NameH - (phone and 4 or 40), M.NameText or text
 	place(item.Name, pad, nameY, w - 2 * pad, M.NameH)
 	H.fit(item.Name, item.Names or { "" }, w - 2 * pad - 4, nameSize, nameSize)
@@ -812,12 +812,9 @@ end
 ----------------------------------------------------------------------
 -- Cards
 ----------------------------------------------------------------------
+-- "Lv 34" and its evolution stars (0-2), drawn after it as gold PixelIcons (kit-b U7b)
 function H.levelText(e)
-	local text = "Lv " .. tostring(e.Level)
-	if e.Stage > 0 then
-		text = text .. ' <font color="#FFD34D">' .. string.rep(G.Star, math.min(2, e.Stage)) .. "</font>"
-	end
-	return text
+	return "Lv " .. tostring(e.Level), math.min(2, math.max(0, tonumber(e.Stage) or 0))
 end
 
 function H.jobText(job)
@@ -839,18 +836,22 @@ function H.paintCard(item, e)
 	if tier ~= "Normal" then
 		item.Names = { e.Name, tier .. " " .. last, last }
 	end
-	item.Level.Text = H.levelText(e)
+	local levelText, stars = H.levelText(e)
+	item.Level.Text = levelText
+	item.Level:SetAttribute("Stars", stars)
+	PixelIcon.Mark(item.Level, stars > 0 and ICON.Star or nil, { After = true, Count = stars, Of = stars, Colour = C.Gold, Px = 18 })
 	item.Rarity.Text = tostring(e.Rarity or "")
 	item.Rarity.TextColor3 = Theme.Lighten(tint, 0.35)
 	-- the corner badge
 	local badge = item.Badge
 	if ctx == "Train" then
 		badge.Visible = e.Team ~= nil
-		badge.Text = G.Star
 		badge.TextColor3 = C.Gold
+		PixelIcon.Set(badge, ICON.Star) -- (kit-b U7b) a team member
 		badge.BackgroundTransparency = 1
 	else
 		badge.Visible = true
+		PixelIcon.Set(badge, nil)
 		badge.Text = "x" .. tostring(e.Copies)
 		badge.TextColor3 = C.White
 		badge.BackgroundTransparency = e.Ready and 0 or 0.35
@@ -964,8 +965,9 @@ function H.paintSort()
 	local M = H.metrics()
 	local name = H.sortLabel()
 	local short = SHORT[name] or name
-	local arrow = " " .. G.Down
-	H.fit(U.Sort, { "Sort: " .. name .. arrow, "Sort: " .. short .. arrow, short .. arrow }, M.SortW - 22, M.SortText, M.SortMin)
+	-- (kit-b U7b) the arrow is a PixelIcon after the text (18 px + its gap)
+	H.fit(U.Sort, { "Sort: " .. name, "Sort: " .. short, short }, M.SortW - 22 - 22, M.SortText, M.SortMin)
+	PixelIcon.Mark(U.Sort, ICON.Down, { After = true, Px = 18 })
 end
 
 function H.cycleSort()
@@ -1150,7 +1152,7 @@ function PetPicker.Open(spec)
 	U.HeaderGradient.Color = ColorSequence.new(Theme.Lighten(accent, 0.12), Theme.Darken(accent, 0.28))
 	U.FootGradient.Color = ColorSequence.new(Theme.Lighten(accent, 0.12):Lerp(Theme.Darken(accent, 0.28), 0.76), Theme.Darken(accent, 0.28))
 	U.PanelStroke.Color = accent
-	U.Icon.Text = G.Icon[S.Context]
+	PixelIcon.Set(U.Icon, ICON.Context[S.Context])
 	U.Title.Text = tostring(spec.Title or "Pick a pet")
 	S.Open = true
 	U.Holder.Visible = true

@@ -251,6 +251,14 @@ local function auditGui(gui, opts)
 			end
 		end
 	end
+	-- (kit-b U7b) a PixelIcon drawn in place of a glyph (an empty label hosting it: the closed bed's star) is a mark of its
+	-- size: it counts for the biggest line, not for the smallest
+	for _, d in ipairs(gui:GetDescendants()) do
+		if d:IsA("Frame") and d.Name == "Icon" and type(d:GetAttribute("PixelIcon")) == "string" and d.Parent and isText(d.Parent)
+			and plain(d.Parent.Text) == "" and visibleWithin(d, gui) then
+			maxPx = math.max(maxPx, d.Size.Y.Offset * scaleWithin(d, gui))
+		end
+	end
 	rec.maxPx, rec.minPx = maxPx, minPx
 	if #scaled > 0 then
 		bad("TextScaled text " .. table.concat(scaled, ", "))

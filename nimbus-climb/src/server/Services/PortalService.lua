@@ -47,6 +47,7 @@ local Config = require(Shared.Config)
 local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
 local Theme = require(Shared.Theme)
+local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the difficulty stars on the gate cards
 
 local ObbyLevels = nil
 do
@@ -121,9 +122,7 @@ local FACE = {
 	CountText = 40, -- 0.8 stud
 }
 
-local STAR_FULL = "\226\152\133"
-local STAR_EMPTY = "\226\152\134"
-local MAX_STARS = 5
+local MAX_STARS = 5 -- a difficulty's rating: PixelIcon stars (kit-b U7b; they were the star glyphs)
 
 ----------------------------------------------------------------------
 -- State
@@ -360,10 +359,6 @@ local function allowPick(player)
 	return true
 end
 
-local function hex(color)
-	return string.format("#%02X%02X%02X", math.floor(color.R * 255 + 0.5), math.floor(color.G * 255 + 0.5), math.floor(color.B * 255 + 0.5))
-end
-
 ----------------------------------------------------------------------
 -- Collision groups + lock walls
 ----------------------------------------------------------------------
@@ -590,15 +585,12 @@ end
 ----------------------------------------------------------------------
 local INK = Theme.Colors.TextStroke or Theme.Colors.Ink
 local GOLD = Theme.Colors.Gold or Theme.Colors.Token
-local STAR_OFF = Color3.fromRGB(150, 158, 186)
-
-local function starText(filled)
+-- (kit-b U7b) the rating on an empty label: `filled` gold PixelIcon stars of MAX_STARS, the rest dim
+local function starRating(label, filled)
 	filled = math.max(0, math.min(MAX_STARS, math.floor(tonumber(filled) or 1)))
-	local out = string.format('<font color="%s">%s</font>', hex(GOLD), string.rep(STAR_FULL, filled))
-	if filled < MAX_STARS then
-		out = out .. string.format('<font color="%s">%s</font>', hex(STAR_OFF), string.rep(STAR_EMPTY, MAX_STARS - filled))
-	end
-	return out
+	label.Text = ""
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	PixelIcon.Lead(label, "star", { Count = filled, Of = MAX_STARS, Colour = GOLD })
 end
 
 local function plateLabel(parent, name, text, role, size, color, outlineColor, order)
@@ -758,8 +750,7 @@ local function buildBillboard(party)
 	listLayout(infoRow, Enum.FillDirection.Horizontal, 12)
 	infoRow.Parent = plate
 	local stars = plateLabel(infoRow, "StarLabel", "", "Heading", BB.InfoText, GOLD, INK, 1)
-	stars.RichText = true
-	stars.Text = starText(diff.Stars)
+	starRating(stars, diff.Stars)
 	local count = plateLabel(infoRow, "CountLabel", "0/" .. tostring(Config.Match.MaxPlayers) .. " players", "Heading", BB.InfoText, Theme.Colors.White, INK, 2)
 
 	local pill = Instance.new("Frame")
@@ -1076,7 +1067,18 @@ local function refreshLabels(party)
 	if info.InfoLabel then
 		local diff = party.Diff
 		local stars = math.max(0, math.min(MAX_STARS, math.floor(tonumber(diff.Stars) or 1)))
-		setText(info.InfoLabel, string.format("%s %s - %d/%d players", tostring(diff.DisplayName or diff.Id), string.rep(STAR_FULL, stars), n, max), "LastInfo", party)
+		setText(info.InfoLabel, string.format("%s - %d/%d players", tostring(diff.DisplayName or diff.Id), n, max), "LastInfo", party)
+		-- (kit-b U7b) the gate card's stars lead the line as PixelIcons ("<3 stars> Hard - 2/4 players"), redrawn on a change
+		if party.LastInfoStars ~= stars then
+			party.LastInfoStars = stars
+			pcall(function()
+				if stars > 0 then
+					PixelIcon.Lead(info.InfoLabel, "star", { Count = stars, Of = stars, Colour = GOLD })
+				else
+					PixelIcon.Clear(info.InfoLabel)
+				end
+			end)
+		end
 	end
 
 	local status, mode
@@ -1139,7 +1141,7 @@ local function applyLevel(party)
 	local info = party.Info
 	if info.StarLabel then
 		pcall(function()
-			info.StarLabel.Text = starText(party.Diff.Stars)
+			starRating(info.StarLabel, party.Diff.Stars)
 		end)
 	end
 	party.PillMode = nil

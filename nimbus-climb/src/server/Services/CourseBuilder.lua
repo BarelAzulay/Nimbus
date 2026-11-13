@@ -28,6 +28,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
+local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the bounce pads' arrow
 local FxSprites = require(Shared.FxSprites) -- kit-b O3: the game's own particle sprites (no stock sparkle / smoke)
 local CourseLayout = require(script.Parent.CourseLayout)
 
@@ -1119,7 +1120,9 @@ function KB.Bounce(ctx, step, look)
 	local glyph = blk(ctx, "Decor", "PadGlyph", Vector3.new(padSize * 0.7, 0.05, padSize * 0.7),
 		CFrame.new(pc + Vector3.new(0, 0.76, 0)), color, MAT.SmoothPlastic, 1)
 	local gui = surfaceOn(glyph, Enum.NormalId.Top, 60)
-	worldText(gui, "▲", "Accent", faceTextSize(glyph, Enum.NormalId.Top, 60, 0.75), C.Ink, { 0, 0.05, 1, 0.9 })
+	-- (kit-b U7b) the bounce arrow is a PixelIcon (it was the glyph U+25B2)
+	local size = faceTextSize(glyph, Enum.NormalId.Top, 60, 0.75)
+	PixelIcon.Host(worldText(gui, "", "Accent", size, C.Ink, { 0, 0.05, 1, 0.9 }), "up", PixelIcon.Snap(size))
 	return main
 end
 

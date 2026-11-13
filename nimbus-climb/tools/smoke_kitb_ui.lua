@@ -1204,11 +1204,11 @@ local function serverScenarios()
 		K.flushErrors("kitb_no_direct_font")
 	end)
 
-	-- (U7a) the Cloud Token's cloud glyph (U+2601, as bytes or as the escape \226\152\129) is gone from every script but the
-	-- glyph tables and world signs U7b redraws (the arena, dungeon and obby tables, the home and lobby signs, the tycoon
-	-- catalog): the currency is the PixelIcon coin (Theme.Currency.Tokens.Icon) and a sentence says "Tokens"
+	-- (U7a) the Cloud Token's cloud glyph (U+2601, as bytes or as the escape \226\152\129) is gone from every script: the
+	-- currency is the PixelIcon coin (Theme.Currency.Tokens.Icon) and a sentence says "Tokens". U7a let U7b's glyph tables
+	-- keep it; U7b redrew them, so no script is excused any more
 	S.token_glyph_sources = guarded("token_glyph_sources", function()
-		local U7B = { ArenaController = true, DungeonController = true, ObbyController = true, HomeBuilder = true, LobbyBuilder = true, TycoonCatalog = true }
+		local U7B = {}
 		local hits, n = {}, 0
 		for _, f in ipairs(gameSources()) do
 			n = n + 1
@@ -1217,8 +1217,131 @@ local function serverScenarios()
 			end
 		end
 		T.check(n > 20, "token glyph: the game's scripts are mounted", tostring(n))
-		T.check(#hits == 0, "token glyph: no script outside U7b's tables writes the cloud glyph (the token is its PixelIcon)", table.concat(hits, ", "))
+		T.check(#hits == 0, "token glyph: no script writes the cloud glyph (the token is its PixelIcon)", table.concat(hits, ", "))
 		K.flushErrors("token_glyph_sources")
+	end)
+
+	-- (U7b) the emoji code points of a string (SmokeCommon.Emoji.Is), its decimal escapes (\240\159\143\134) read as the
+	-- bytes they stand for; rich-text tags are NOT dropped (this reads source, where "<" is a comparison)
+	local function emojiIn(s)
+		local Is = SmokeCommon.Emoji.Is
+		s = tostring(s or ""):gsub("\\(%d%d?%d?)", function(d)
+			local b = tonumber(d)
+			return b < 256 and string.char(b) or nil
+		end)
+		local out, i = {}, 1
+		while i <= #s do
+			local c = s:byte(i)
+			local n, cp = 1, c
+			if c >= 0xF0 then
+				n, cp = 4, c % 0x08
+			elseif c >= 0xE0 then
+				n, cp = 3, c % 0x10
+			elseif c >= 0xC0 then
+				n, cp = 2, c % 0x20
+			end
+			for k = 1, n - 1 do
+				local b = s:byte(i + k)
+				if not b or b < 0x80 or b > 0xBF then
+					n, cp = 1, 0 -- not a UTF-8 sequence (a byte range in a pattern, "[\128-\255]"): one byte, no code point
+					break
+				end
+				cp = cp * 64 + (b % 0x40)
+			end
+			if cp <= 0x10FFFF and Is(cp) then
+				out[#out + 1] = string.format("U+%04X", cp)
+			end
+			i = i + n
+		end
+		return out
+	end
+
+	-- (U7b) the walk of U7a with zero allowed, at the source: no game script writes an emoji or pictographic code point
+	-- (as UTF-8 or as escapes, comments aside): the glyph tables of the battle HUD, the arena, dungeon, train, care, fusion,
+	-- index, obby, pets and picker windows, the tycoon catalog and the world signs are PixelIcons (Host / Lead) or words.
+	-- Typography stays (the middle dot, the bullet, the dashes, the multiplication sign, the angle quotes)
+	S.kitb_no_emoji_sources = guarded("kitb_no_emoji_sources", function()
+		local hits, n = {}, 0
+		for _, f in ipairs(gameSources()) do
+			n = n + 1
+			local cps = emojiIn(f.src)
+			if #cps > 0 then
+				hits[#hits + 1] = f.inst.Name .. " x" .. #cps .. " (" .. table.concat(cps, " ", 1, math.min(#cps, 4)) .. ")"
+			end
+		end
+		T.check(n > 20, "kitb emoji sources: the game's scripts are mounted", tostring(n))
+		T.check(#hits == 0, fmt("kitb emoji sources: no script writes an emoji code point (%d)", #hits), table.concat(hits, "; "))
+		K.flushErrors("kitb_no_emoji_sources")
+	end)
+
+	-- (U7b) the icons U7b added and where they are named: each a 9 x 9 PixelIcon; TycoonCatalog's icons (a station's, a house
+	-- tier's, the prestige pad's) are PixelIcon names, so the Home window and the pad signs draw them
+	S.pixelicon_u7b_set = guarded("pixelicon_u7b_set", function()
+		local PI = shared("PixelIcon")
+		local TC = shared("TycoonCatalog")
+		if not (PI and TC) then
+			return
+		end
+		local missing = {}
+		for _, name in ipairs({ "drop", "leaf", "target", "skull", "hourglass", "glass", "castle", "berry", "pot", "weight", "vault", "fence", "fountain", "basket", "pip", "up", "left", "shift" }) do
+			if not (PI.Runs(name) and #PI.Runs(name) > 0) then
+				missing[#missing + 1] = name
+			end
+		end
+		T.check(#missing == 0, "pixelicon u7b: the battle, dungeon, train and home icons exist", table.concat(missing, ", "))
+		local bad = {}
+		local function want(where, icon)
+			if not (type(icon) == "string" and PI.Bitmaps[icon]) then
+				bad[#bad + 1] = where .. "=" .. tostring(icon)
+			end
+		end
+		for key, icon in pairs(TC.Icons or {}) do
+			want("Icons." .. key, icon)
+		end
+		for _, def in ipairs(TC.Stations or {}) do
+			want(def.Id, def.Icon)
+		end
+		for _, tier in ipairs(TC.HouseTiers or {}) do
+			want(tier.Id, tier.Icon)
+		end
+		local pp = type(TC.Get) == "function" and TC.Get("Prestige")
+		want("Prestige", pp and pp.Icon)
+		table.sort(bad)
+		T.check(#bad == 0, "pixelicon u7b: every TycoonCatalog icon is a PixelIcon name", table.concat(bad, ", "))
+		K.flushErrors("pixelicon_u7b_set")
+	end)
+
+	-- (U7b) the world signs (BillboardGui / SurfaceGui text the server builds: the lobby gates, the portals, the arena
+	-- boards, the home pads, the spots' showcase tags, the courses): after the server run no text in the workspace carries
+	-- an emoji code point, and the ratings and marks they had are PixelIcons there (the gates' stars at least). World
+	-- signs stay still (owner 2026-11-13: only the menu and loading signs sway): an icon adds no motion
+	S.kitb_no_emoji_world = guarded("kitb_no_emoji_world", function()
+		local ws = game:GetService("Workspace")
+		local hits, texts, icons = {}, 0, {}
+		for _, d in ipairs(ws:GetDescendants()) do
+			if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+				texts = texts + 1
+				local cps = emojiIn(d.Text)
+				if #cps > 0 then
+					hits[#hits + 1] = d:GetFullName() .. " '" .. tostring(d.Text) .. "'"
+				end
+			end
+			local icon = d:GetAttribute("PixelIcon")
+			if type(icon) == "string" and (d:FindFirstAncestorWhichIsA("BillboardGui") or d:FindFirstAncestorWhichIsA("SurfaceGui")) then
+				icons[icon] = (icons[icon] or 0) + 1
+			end
+		end
+		table.sort(hits)
+		local names = {}
+		for k, v in pairs(icons) do
+			names[#names + 1] = k .. " x" .. v
+		end
+		table.sort(names)
+		T.info(fmt("*kitb emoji world: %d texts, world sign icons: %s", texts, table.concat(names, ", ")))
+		T.check(texts > 20, "kitb emoji world: the server built its signs", tostring(texts))
+		T.check(#hits == 0, fmt("kitb emoji world: no world sign text carries an emoji code point (%d)", #hits), table.concat(hits, "; ", 1, math.min(#hits, 8)))
+		T.check((icons.star or 0) > 0, "kitb emoji world: the gates' difficulty stars are PixelIcons on their signs")
+		K.flushErrors("kitb_no_emoji_world")
 	end)
 
 	-- corner radii are Theme.Radius tokens ("None", "S", "M", and "Round" for a pill or a disc) in every file U6 swept; the
@@ -3558,6 +3681,28 @@ local function clientScenarios()
 		end)
 		look()
 	end
+	-- (U7b) the windows of U7b's glyph tables, opened the way the server opens them (OpenPanel): the Arena on each tab, the
+	-- Champion Ring, the Dungeon, the Training Place, the Home window, the Food Machine and the garden picker, the Obby
+	-- picker; `look()` runs after each
+	function U7.openU7b(look)
+		local panels = {
+			{ "Arena", { Tab = "Duels" } }, { "Arena", { Tab = "Raid" } }, { "Arena", { Tab = "Leaderboard" } }, { "Ring", {} },
+			{ "Dungeon", {} }, { "Train", {} }, { "Home", {} }, { "Pets", { Tab = "Pets", Action = "Feed" } },
+			{ "Pets", { Action = "Garden", Slot = 3 } }, { "Obby", {} },
+		}
+		for _, p in ipairs(panels) do
+			U7.try("the " .. p[1] .. " panel " .. tostring(p[2].Tab or p[2].Action or ""), function()
+				LKC.toClient("OpenPanel", p[1], p[2])
+				LKC.advance(1)
+			end)
+			look()
+			pcall(function()
+				LKC.toClient("ClosePanel", p[1])
+			end)
+			pcall(U7.client("Controllers/MenuController").Close)
+			LKC.advance(0.3)
+		end
+	end
 
 	-- the emoji rule over PlayerGui (tools/stroke_walk.py --emoji runs it over the dump of every render scenario): after the
 	-- client run and with each window U7a reworked open in turn (the menu's Pets / Index / Stats, the Shop on every tab,
@@ -3574,10 +3719,12 @@ local function clientScenarios()
 		Mock.SetViewport(1920, 1080)
 		LKC.advance(0.1)
 		local hits, owed, walks = {}, {}, 0
-		U7.openAll(function()
+		local function walk()
 			walks = walks + 1
 			Emoji.Walk(pg, hits, owed)
-		end)
+		end
+		U7.openAll(walk)
+		U7.openU7b(walk) -- (U7b) and the windows of the glyph tables U7b redrew; the backlog is empty
 		local list, n = {}, 0
 		for path, cps in pairs(hits) do
 			list[#list + 1] = path .. " " .. cps
@@ -3588,6 +3735,8 @@ local function clientScenarios()
 		table.sort(list)
 		T.info(fmt("*kitb emoji walk: %d walks, %d texts with an emoji outside the backlog, %d in tools/fixtures/emoji_backlog.txt", walks, #list, n))
 		T.check(#list == 0, fmt("kitb emoji walk: no shown text carries an emoji code point (%d)", #list), table.concat(list, "; ", 1, math.min(#list, 10)))
+		local backlog = SmokeCommon.Contrast.Backlog(Emoji.BACKLOG)
+		T.check(#backlog == 0 and n == 0, "kitb emoji walk: U7b emptied tools/fixtures/emoji_backlog.txt (zero allowed)", #backlog .. " line(s), " .. n .. " text(s) on them")
 		Mock.SetViewport(old[1], old[2])
 		LKC.advance(0.2)
 		LKC.flushErrors("kitb_no_emoji_ui")

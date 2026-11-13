@@ -115,6 +115,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the trophy board's trophies
 
 local ArenaBuilder = {}
 ArenaBuilder.Teleported = Util.Signal()
@@ -305,12 +306,10 @@ local function flameColor(color)
 	return color:Lerp(rgb(255, 250, 230), 0.18)
 end
 
+-- typography only (kit-b U7b: the trophy board draws its PixelIcon trophy; the emoji went)
 local GLYPH = {
-	Trophy = "\240\159\143\134",
-	Swords = "\226\154\148",
 	Dot = "\194\183",
 	Dash = "\226\128\147",
-	Clock = "\226\143\176",
 }
 
 ----------------------------------------------------------------------
@@ -2179,6 +2178,7 @@ local function buildLeaderboard(parent, cf)
 		local rank = signText(row, "Rank", tostring(i), "Display", 32, rankColor, 0.01, 0, 0.1, 1)
 		local name = signText(row, "PlayerName", "", "Heading", 32, C.Text, 0.12, 0, 0.6, 1, Enum.TextXAlignment.Left)
 		local trophies = signText(row, "Trophies", "", "Display", 32, C.TextGold, 0.72, 0, 0.27, 1, Enum.TextXAlignment.Right)
+		PixelIcon.Lead(trophies, "trophy", { After = true }) -- (kit-b U7b) the trophy after the count, drawn
 		rows[i] = { Frame = row, Rank = rank, Name = name, Trophies = trophies }
 	end
 	local empty = signText(p, "EmptyLabel", "No champions yet!", "Heading", 36, C.Text, 0.04, 0.42, 0.92, 0.1)
@@ -2332,7 +2332,7 @@ local function drawLeaders(list)
 			local nameW = LEADER_W * SIGN_PPS * 0.94 * 0.6
 			row.Name.Text = fitText(tostring(e.Name or ("Player " .. tostring(e.UserId))), 32, nameW - 6)
 			local t = max(0, floor(tonumber(e.Trophies) or 0))
-			row.Trophies.Text = commas(t) .. " " .. GLYPH.Trophy
+			row.Trophies.Text = commas(t)
 		else
 			row.Frame.Visible = false
 			row.Name.Text = ""

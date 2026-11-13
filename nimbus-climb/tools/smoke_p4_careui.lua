@@ -757,13 +757,13 @@ S.client_p4careui_panels = guarded("client_p4careui_panels", function()
 	local detail = find(inv, "Detail")
 	local meta = find(detail, "Meta")
 	T.check(meta.Text:find("Lv 57 / 100", 1, true), "careui pets: 'Lv 57 / 100'", meta.Text)
-	T.check(meta.Text:find("\226\152\133", 1, true), "careui pets: the evolution stars", meta.Text)
+	T.check(SmokeCommon.IconOn(meta, "Trail") == "star", "careui pets: the evolution stars (PixelIcons after the line, kit-b U7b)", meta.Text)
 	local coins = find(inv, "Row_Income")
 	T.check(coins and find(coins, "Label").Text == "Coins" and find(coins, "Value").Text:find("^%$"), "careui pets: the Coins row", coins and find(coins, "Value").Text or "")
 	local card = find(inv, "Card_" .. P.FOLLOW)
 	local tag = card and find(card, "Level")
 	local evoTag = card and find(card, "Stars")
-	T.check(tag and tag.Text == "L57" and evoTag and evoTag.Visible and evoTag.Text:find("\226\152\133", 1, true),
+	T.check(tag and tag.Text == "L57" and evoTag and evoTag.Visible and SmokeCommon.IconOn(evoTag) == "star",
 		"careui pets: the card shows the level and the evolution star", tag and tag.Text or "no card")
 	M.Open("Pets", { Key = P.COMBAT })
 	advance(0.3)
@@ -799,7 +799,11 @@ S.client_p4careui_panels = guarded("client_p4careui_panels", function()
 	end
 	T.check(strip and shown(strip), "careui home: the flow strip is on top of the Home window")
 	T.eq(tileText("Farm"), "Berry Farm | Lv 5", "careui home: strip 1 = the Berry Farm and its level")
-	T.eq(tileText("Poop"), "Pets eat & poop | " .. TC.FormatCash(floor(38.5 * 60 + 0.5)) .. " a minute", "careui home: strip 2 = Cloud Cash a minute (IncomePerSecond x 60)")
+	-- (kit-b U7b, rejects audit 5) the tile was "Pets eat & poop" with the pile-of-poo emoji: it says what the player gets
+	T.eq(tileText("Earn"), "Pets earn Cash | " .. TC.FormatCash(floor(38.5 * 60 + 0.5)) .. " a minute", "careui home: strip 2 = Cloud Cash a minute (IncomePerSecond x 60)")
+	local earnIcon = strip and find(strip, "Flow_Earn") and find(find(strip, "Flow_Earn"), "Icon")
+	T.check(earnIcon ~= nil and earnIcon:GetAttribute("PixelIcon") == "note", "careui home: ...its icon is the Cash note (a PixelIcon), no poo glyph",
+		earnIcon and tostring(earnIcon:GetAttribute("PixelIcon")) or "no icon")
 	T.eq(tileText("Basket"), "Berry Basket | 1,240 / 3,000", "careui home: strip 3 = the Berry Basket (Berries / BerryCap)")
 	T.eq(tileText("Machine"), "Food Machine | Feed = XP", "careui home: strip 4 = the Food Machine")
 	local gardenCard = find(win, "GardenCard")

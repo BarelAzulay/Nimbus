@@ -95,7 +95,7 @@ local UI = Client:WaitForChild("UI")
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
-local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token chip's coin
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token chip's coin; (U7b) the window's icons
 local PetPicker = require(UI:WaitForChild("PetPicker"))
 local State = require(Client:WaitForChild("State"))
 
@@ -198,20 +198,23 @@ local C = {
 local TOKEN_INFO = Theme.Currency and Theme.Currency.Tokens or { Icon = "token", Color = C.Gold } -- (kit-b U7a) the coin
 local GEM_INFO = Theme.Currency and Theme.Currency.Gems or { Color = Colors.Gem } -- (drawn: GemIcon, never a glyph)
 
--- glyphs as UTF-8 byte escapes (the source stays plain ASCII)
+-- typography as UTF-8 byte escapes (the source stays plain ASCII). kit-b U7b: the icons are PixelIcons (ICON), the emoji
+-- went
 local G = {
-	Crystal = "\240\159\148\174",
-	Arrow = "\226\150\182",
 	Plus = "+",
-	Swap = "\226\135\132",
-	Spark = "\226\156\166",
-	Lock = "\240\159\148\146",
 	Dot = "\194\183",
 	Question = "?",
-	Sword = "\226\154\148", -- the normal attack chip
-	Star = "\226\152\133", -- the special chip
-	Check = "\226\156\148", -- the lit chip's badge
 }
+local ICON = {
+	Machine = "sparkle", -- the Fusion tile's icon (Config.Icons.Fusion): the header and the locked card
+	Arrow = "play",
+	Swap = "swap",
+	Spark = "sparkle",
+	Attack = "sword", -- the normal attack chip
+	Special = "star", -- the special chip
+	Check = "check", -- the lit chip's badge
+}
+local CHIP_ICON = 18 -- px: a move chip's icon, left of its text (inside ChipPad)
 local NEXT_TIER = { Normal = "Golden", Golden = "Rainbow" }
 local TIER_RANK = { Normal = 1, Golden = 2, Rainbow = 3 }
 local TEXTS = {
@@ -432,10 +435,10 @@ end
 function H.unlocked()
 	local stars = tonumber(H.home().Prestige) or 0
 	if stars < H.unlockStars() then
-		return false, G.Lock .. " The Fusion Machine unlocks at Prestige " .. H.unlockStars()
+		return false, "The Fusion Machine unlocks at Prestige " .. H.unlockStars()
 	end
 	if H.machineLevel() < 1 then
-		return false, G.Lock .. " Build the Fusion Machine at your home first"
+		return false, "Build the Fusion Machine at your home first"
 	end
 	return true
 end
@@ -926,16 +929,23 @@ function H.moveChip(parent, side, which)
 	stroke.Name = "ChipStroke"
 	local pad = Util.Create("UIPadding", { Name = "ChipPad", Parent = b })
 	local check = label(b, "Check", "Heading", 15, {
-		Text = G.Check, BackgroundTransparency = 0, BackgroundColor3 = C.Gold, TextColor3 = C.Navy, ZIndex = 8, Visible = false,
+		Text = "", BackgroundTransparency = 0, BackgroundColor3 = C.Gold, TextColor3 = C.Navy, ZIndex = 8, Visible = false,
 		TextTruncate = Enum.TextTruncate.None, TextXAlignment = Enum.TextXAlignment.Center,
 	})
+	PixelIcon.Host(check, ICON.Check) -- (kit-b U7b) follows the badge's TextSize
+	-- (kit-b U7b) the chip's move icon (sword / star) left of its text, in the padding (the layout widens PaddingLeft for it)
+	local icon = PixelIcon.New(b, ICON[which], CHIP_ICON, b.TextColor3)
+	icon.Name = "MoveIcon"
+	icon.AnchorPoint = Vector2.new(0, 0.5)
+	icon.Position = UDim2.new(0, -(CHIP_ICON + 6), 0.5, 0)
+	icon.ZIndex = 7
 	Theme.Corner(check, UDim.new(0.5, 0))
 	Theme.Stroke(check, C.Navy, 2, 0)
 	pcall(NeonKit.AttachFx, b)
 	b.Activated:Connect(function()
 		safe("chip", H.onChip, side, which)
 	end)
-	return { Button = b, Stroke = stroke, Pad = pad, Check = check }
+	return { Button = b, Stroke = stroke, Pad = pad, Check = check, Icon = icon }
 end
 
 function H.build()
@@ -960,7 +970,8 @@ function H.build()
 	U.Header = header
 	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = header })
 	Theme.Gradient(U.HeaderFoot, Theme.Lighten(C.Violet, 0.12):Lerp(Theme.Darken(C.Violet, 0.28), 0.76), Theme.Darken(C.Violet, 0.28), 90)
-	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = G.Crystal, TextTruncate = Enum.TextTruncate.None })
+	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = "", TextTruncate = Enum.TextTruncate.None })
+	PixelIcon.Host(U.Icon, ICON.Machine) -- (kit-b U7b)
 	U.Title = Theme.StyleTitle(label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Fusion Machine", TextXAlignment = Enum.TextXAlignment.Left }))
 	U.TabUp = H.tabButton("Tab_Upgrade", "UPGRADE")
 	U.TabMix = H.tabButton("Tab_Mix", "MIX")
@@ -1011,7 +1022,8 @@ function H.build()
 		U.Slots[slot[1]] = item
 	end
 	U.Plus = label(body, "Plus", "Title", 40, { ZIndex = 4, Text = G.Plus, TextTruncate = Enum.TextTruncate.None })
-	U.Swap = NeonKit.Button({ Name = "SwapButton", Text = G.Swap, Color = C.Blue, Size = UDim2.fromOffset(72, 72), TextSize = 34, ZIndex = 5, Parent = body })
+	U.Swap = NeonKit.Button({ Name = "SwapButton", Text = "", Color = C.Blue, Size = UDim2.fromOffset(72, 72), TextSize = 34, ZIndex = 5, Parent = body })
+	PixelIcon.Host(U.Swap, ICON.Swap) -- (kit-b U7b)
 	local swapPad = U.Swap:FindFirstChildOfClass("UIPadding")
 	if swapPad then
 		swapPad.PaddingLeft, swapPad.PaddingRight = UDim.new(0, 0), UDim.new(0, 0)
@@ -1028,7 +1040,8 @@ function H.build()
 	U.Outcome = label(body, "Outcome", "Body", 15, {
 		ZIndex = 4, Visible = false, TextColor3 = C.GoldLabel, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None,
 	})
-	U.Arrow = label(body, "Arrow", "Title", 60, { ZIndex = 4, Text = G.Arrow, TextColor3 = C.Gold, TextScaled = true, TextTruncate = Enum.TextTruncate.None })
+	U.Arrow = label(body, "Arrow", "Title", 60, { ZIndex = 4, Text = "", TextColor3 = C.Gold, TextScaled = true, TextTruncate = Enum.TextTruncate.None })
+	PixelIcon.Host(U.Arrow, ICON.Arrow, 45) -- (kit-b U7b)
 	-- the result: big and glowing
 	U.Result = H.petCard(body, "Result", "Frame", 4)
 	U.Result.PetName.Name = "ResultName"
@@ -1038,7 +1051,8 @@ function H.build()
 	end
 	U.Sparks = {}
 	for i = 1, 4 do
-		U.Sparks[i] = label(U.Result.Card.Body, "Spark" .. i, "Title", 34, { ZIndex = 9, Text = G.Spark, TextColor3 = Color3.fromRGB(255, 248, 208), TextTruncate = Enum.TextTruncate.None, Visible = false })
+		U.Sparks[i] = label(U.Result.Card.Body, "Spark" .. i, "Title", 34, { ZIndex = 9, Text = "", TextColor3 = Color3.fromRGB(255, 248, 208), TextTruncate = Enum.TextTruncate.None, Visible = false })
+		PixelIcon.Host(U.Sparks[i], ICON.Spark, 27) -- (kit-b U7b) follows the spark's fade
 	end
 	U.Shimmer = Util.Create("UIGradient", {
 		Name = "Shimmer", Enabled = false, Rotation = 0, Parent = U.Result.Card.Stroke,
@@ -1080,7 +1094,8 @@ function H.build()
 	U.Locked = Util.Create("Frame", { Name = "Locked", BackgroundTransparency = 0, BackgroundColor3 = C.White, BorderSizePixel = 0, Visible = false, ZIndex = 20, Parent = body })
 	Theme.Corner(U.Locked, UDim.new(0, 18))
 	Theme.Gradient(U.Locked, Color3.fromRGB(58, 46, 120), Color3.fromRGB(18, 22, 56), 90)
-	U.LockedIcon = label(U.Locked, "Icon", "Title", 64, { ZIndex = 21, Text = G.Crystal, TextTruncate = Enum.TextTruncate.None })
+	U.LockedIcon = label(U.Locked, "Icon", "Title", 64, { ZIndex = 21, Text = "", TextTruncate = Enum.TextTruncate.None })
+	PixelIcon.Host(U.LockedIcon, ICON.Machine, 54) -- (kit-b U7b)
 	U.LockedText = label(U.Locked, "Text", "Heading", 24, { ZIndex = 21, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
 	U.LockedSub = label(U.Locked, "Sub", "Body", 20, { ZIndex = 21, Text = TEXTS.LockedSub, TextWrapped = true, TextColor3 = Color3.fromRGB(196, 186, 240), TextTruncate = Enum.TextTruncate.None })
 	-- the cursor is free while the window is shown (client/MouseLock, as the docked windows)
@@ -1250,7 +1265,7 @@ function H.layoutChips(side, x, y, w, form)
 	for i, which in ipairs({ "Attack", "Special" }) do
 		local c = g[which]
 		place(c.Button, 0, (i - 1) * (M.ChipH + M.ChipGap), w, M.ChipH)
-		c.Pad.PaddingLeft, c.Pad.PaddingRight = UDim.new(0, M.ChipPad), UDim.new(0, M.ChipPad)
+		c.Pad.PaddingLeft, c.Pad.PaddingRight = UDim.new(0, M.ChipPad + CHIP_ICON + 6), UDim.new(0, M.ChipPad) -- (+ the move icon)
 		-- the badge's centre near the chip's top-right corner (the position is inside the padding: the right edge is w - pad)
 		local bs = M.Badge
 		c.Check.AnchorPoint = Vector2.new(0, 0)
@@ -2061,11 +2076,12 @@ function H.paintChip(g, c, texts, lit, off)
 	b.BackgroundColor3 = lit and Color3.fromRGB(86, 64, 20) or C.Well
 	b.BackgroundTransparency = off and 0.3 or 0
 	b.TextColor3 = lit and C.White or C.Muted
+	PixelIcon.Tint(c.Icon, b.TextColor3)
 	c.Stroke.Color = lit and C.Gold or C.WellEdge
 	c.Stroke.Thickness = lit and 3 or 2
 	c.Stroke.Transparency = off and 0.35 or 0
 	c.Check.Visible = lit
-	local w, h = (g.W or 0) - 2 * M.ChipPad, g.H or M.ChipH
+	local w, h = (g.W or 0) - 2 * M.ChipPad - CHIP_ICON - 6, g.H or M.ChipH
 	if g.Form == "pc" then
 		-- PC: one line (the kind / element word drops before anything wraps)
 		H.fitWrap(b, texts, w, h, M.ChipText, M.ChipMin)
@@ -2108,11 +2124,11 @@ function H.paintMoves(plan)
 			local a, s = own.Attack, own.Special
 			local attackTexts, specialTexts
 			if g.Form == "pc" then
-				attackTexts = { G.Sword .. " " .. a.Name .. " " .. G.Dot .. " " .. a.Element, G.Sword .. " " .. a.Name, a.Name }
-				specialTexts = { G.Star .. " " .. s.Name .. " " .. G.Dot .. " " .. H.kindWord(s.Kind), G.Star .. " " .. s.Name, s.Name }
+				attackTexts = { a.Name .. " " .. G.Dot .. " " .. a.Element, a.Name }
+				specialTexts = { s.Name .. " " .. G.Dot .. " " .. H.kindWord(s.Kind), s.Name }
 			else
-				attackTexts = { G.Sword .. " " .. a.Name, a.Name }
-				specialTexts = { G.Star .. " " .. s.Name, s.Name }
+				attackTexts = { a.Name }
+				specialTexts = { s.Name }
 			end
 			H.paintChip(g, g.Attack, attackTexts, same or string.sub(moves, 1, 1) == letter, same)
 			H.paintChip(g, g.Special, specialTexts, string.sub(moves, 2, 2) == letter, false)

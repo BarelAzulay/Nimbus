@@ -45,6 +45,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the "more" mark
 local Util = require(Shared:WaitForChild("Util"))
 
 local function optionalShared(name)
@@ -1060,7 +1061,7 @@ local function buildDialog()
 	})
 	line.Parent = well
 	UI.Line = line
-	local more = Theme.Label("\226\150\188", "Label", { -- down triangle: "there is more"
+	local more = Theme.Label("", "Label", { -- the PixelIcon down arrow: "there is more" (kit-b U7b; it was U+25BC)
 		Size = 20,
 		Color = C.Gold,
 		Props = {
@@ -1073,6 +1074,7 @@ local function buildDialog()
 		},
 	})
 	more.Parent = well
+	PixelIcon.Host(more, "down", 18)
 	UI.More = more
 
 	-- page dots in the bottom row of the well

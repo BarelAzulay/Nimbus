@@ -60,6 +60,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the skill, lock and wait icons
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -174,23 +175,20 @@ local C = {
 	},
 }
 
--- glyphs as UTF-8 byte escapes (the source stays plain ASCII)
+-- typography as UTF-8 byte escapes (the source stays plain ASCII). kit-b U7b: the icons are PixelIcons (ICON), the
+-- emoji went; "->" is the plain arrow of a rank's next step
 local G = {
-	Muscle = "\240\159\146\170", -- the Training Place's station icon (TycoonCatalog Gym) and the picker's Train icon
-	Star = "\226\152\133",
 	Prev = "\226\128\185",
 	Next = "\226\128\186",
-	Arrow = "\226\134\146",
+	Arrow = "->",
 	Dot = "\194\183",
 	Plus = "+",
-	Lock = "\240\159\148\146",
-	Wait = "\226\143\179", -- an hourglass: an open mat whose spot a job on a closed mat holds ("InUse")
-	Icons = {
-		Speed = "\226\154\161",
-		Physique = "\226\157\164\239\184\143",
-		Ability = "\226\156\168",
-		Defense = "\240\159\155\161\239\184\143",
-	},
+}
+local ICON = {
+	Train = "weight", -- the Training Place's station icon (TycoonCatalog Gym) and the picker's Train icon
+	Lock = "lock",
+	Wait = "hourglass", -- an open mat whose spot a job on a closed mat holds ("InUse")
+	Skills = { Speed = "bolt", Physique = "heart", Ability = "sparkle", Defense = "shield" },
 }
 
 local SKILLS = (BattleCatalog and type(BattleCatalog.TrainingSkills) == "table" and #BattleCatalog.TrainingSkills == 4) and BattleCatalog.TrainingSkills
@@ -736,7 +734,8 @@ function H.build()
 	U.Header = header
 	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = header })
 	Theme.Gradient(U.HeaderFoot, Theme.Lighten(C.Accent, 0.12):Lerp(Theme.Darken(C.Accent, 0.28), 0.76), Theme.Darken(C.Accent, 0.28), 90)
-	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = G.Muscle, TextTruncate = Enum.TextTruncate.None })
+	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = "", TextTruncate = Enum.TextTruncate.None })
+	PixelIcon.Host(U.Icon, ICON.Train) -- (kit-b U7b)
 	U.Title = Theme.StyleTitle(label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Training Place", TextXAlignment = Enum.TextXAlignment.Left }))
 	U.Chip = label(header, "SpotsChip", "Heading", 20, {
 		ZIndex = 4, BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(40, 12, 22), TextTruncate = Enum.TextTruncate.None,
@@ -833,8 +832,9 @@ function H.newSkill(skill)
 	item.Orb = NeonKit.Orb(item.IconHolder, color, 64)
 	item.Orb.ZIndex = 4
 	item.Icon = label(item.IconHolder, "Icon", "Display", 34, {
-		ZIndex = 5, Text = G.Icons[id] or G.Muscle, Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 5, Text = "", Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None,
 	})
+	PixelIcon.Host(item.Icon, ICON.Skills[id] or ICON.Train) -- (kit-b U7b) the skill's PixelIcon in its orb
 	item.NameL = label(body, "Name", "Title", 30, { ZIndex = 5, Text = skill.Name or H.skillName(id), TextXAlignment = Enum.TextXAlignment.Left })
 	item.RankL = label(body, "Rank", "Heading", 22, { ZIndex = 5, TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Bar = Util.Create("Frame", { Name = "Bar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = body })
@@ -883,8 +883,9 @@ function H.newMat(i)
 	Theme.Corner(m.Fill, UDim.new(0.5, 0))
 	m.BarText = label(m.Bar, "Left", "Heading", 18, { ZIndex = 8, Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
 	m.Badge = label(body, "LockBadge", "Heading", 18, {
-		ZIndex = 9, Visible = false, Text = G.Lock, BackgroundTransparency = 0.05, BackgroundColor3 = Color3.fromRGB(28, 20, 60), TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 9, Visible = false, Text = "", BackgroundTransparency = 0.05, BackgroundColor3 = Color3.fromRGB(28, 20, 60), TextTruncate = Enum.TextTruncate.None,
 	})
+	PixelIcon.Host(m.Badge, ICON.Lock) -- (kit-b U7b)
 	Theme.Corner(m.Badge, UDim.new(0.5, 0))
 	Theme.Stroke(m.Badge, C.Gold, 2, 0.1)
 	root.Activated:Connect(function()
@@ -1328,14 +1329,10 @@ function H.chipText(level, used, slots)
 	return "Training spots: " .. used .. " / " .. slots .. " in use"
 end
 
+-- "Lv 57 / 100" and the evolution stars drawn after it (kit-b U7b: gold PixelIcon stars, 0-2)
 function H.levelText(key, def)
 	local lv = Bits.petLevel(key)
-	local text = "Lv " .. lv .. " / " .. Bits.levelCap(key, def)
-	local stage = Bits.stage(key)
-	if stage > 0 then
-		text = text .. ' <font color="#FFD34D">' .. string.rep(G.Star, math.min(2, stage)) .. "</font>"
-	end
-	return text
+	return "Lv " .. lv .. " / " .. Bits.levelCap(key, def), math.min(2, Bits.stage(key))
 end
 
 function H.paint()
@@ -1421,7 +1418,9 @@ function H.paintPet()
 		local last = name:match("(%S+)$") or name
 		H.fit(U.Name, { name, last }, U.Name.Size.X.Offset - 4, nameMax, nameMin)
 		U.Name.TextColor3 = Theme.Lighten(rarityColor, 0.3)
-		U.Level.Text = H.levelText(key, def)
+		local levelText, stars = H.levelText(key, def)
+		U.Level.Text = levelText
+		PixelIcon.Mark(U.Level, stars > 0 and "star" or nil, { After = true, Count = stars, Of = stars, Colour = C.Gold })
 		U.Change.Text = (phone and "Change") or "Change pet"
 		H.showView(key, def, Bits.stage(key))
 	end
@@ -1611,6 +1610,7 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 			m.Line2.TextColor3 = C.Muted
 			H.fitMat(m.Line2, { "Lv " .. lv }, w - 2 * pad - 2, mm.Line, mm.LineMin)
 			m.Big.Visible = true
+			PixelIcon.Set(m.Big, nil) -- (kit-b U7b) a lock / wait icon from before goes
 			Theme.SetRole(m.Big, "Body") -- U.Note's role (its .Font reads Unknown: a Nunito face)
 			m.Big.TextColor3 = C.Good
 			m.Big.TextXAlignment = Enum.TextXAlignment.Left
@@ -1624,6 +1624,7 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 		Theme.SetRole(m.Big, "Title")
 		m.Big.TextXAlignment = Enum.TextXAlignment.Center
 		m.Big.TextSize = mm.Plus
+		PixelIcon.Set(m.Big, nil)
 		m.Big.Text = G.Plus
 		place(m.Big, 0, top, w, mm.Plus)
 		m.Line1.Visible = true
@@ -1640,7 +1641,7 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 		Theme.SetRole(m.Big, "Title")
 		m.Big.TextXAlignment = Enum.TextXAlignment.Center
 		m.Big.TextSize = mm.Lock
-		m.Big.Text = inUse and G.Wait or G.Lock
+		PixelIcon.Set(m.Big, inUse and ICON.Wait or ICON.Lock, PixelIcon.Snap(mm.Lock)) -- (kit-b U7b)
 		place(m.Big, 0, top, w, mm.Lock + 4)
 		m.Line2.Visible = true
 		m.Line2.TextXAlignment = Enum.TextXAlignment.Center
@@ -1686,10 +1687,10 @@ function H.paintMatPhone(m, st, spec, mm, w, h, name, lastWord, face, badgeW, le
 			H.fitMat(m.Line1, { G.Plus .. " Add a pet", G.Plus .. " Add" }, w - 2 * pad - 2, mm.Text, mm.Text)
 		elseif st == "InUse" then
 			m.Line1.TextColor3 = C.Muted
-			H.fitMat(m.Line1, { G.Wait .. " In use", "In use" }, w - 2 * pad - 2, mm.Text, mm.Text)
+			H.fitMat(m.Line1, { "In use" }, w - 2 * pad - 2, mm.Text, mm.Text)
 		else
 			m.Line1.TextColor3 = C.Muted
-			H.fitMat(m.Line1, { G.Lock .. " Lv " .. (spec.Unlock or m.Index) }, w - 2 * pad - 2, mm.Text, mm.Text)
+			H.fitMat(m.Line1, { "Opens at Lv " .. (spec.Unlock or m.Index), "Lv " .. (spec.Unlock or m.Index) }, w - 2 * pad - 2, mm.Text, mm.Text)
 		end
 	end
 end
@@ -1718,7 +1719,12 @@ function H.paintMatMini(m, st, spec, mm, w, h, face, left)
 		m.Big.TextXAlignment = Enum.TextXAlignment.Center
 		local size = st == "Add" and mm.Plus or mm.Lock
 		m.Big.TextSize = size
-		m.Big.Text = (st == "Add" and G.Plus) or (st == "InUse" and G.Wait) or G.Lock
+		if st == "Add" then
+			PixelIcon.Set(m.Big, nil)
+			m.Big.Text = G.Plus
+		else
+			PixelIcon.Set(m.Big, st == "InUse" and ICON.Wait or ICON.Lock, PixelIcon.Snap(size)) -- (kit-b U7b)
+		end
 		place(m.Big, 0, math.max(2, math.floor((lineY - size) / 2)), w, size + 4)
 		if st == "Add" then
 			text = { "Add" }
@@ -2044,7 +2050,7 @@ function H.askTrain(key, stat)
 	local seconds = tonumber(Bits.catalogCall("TrainSeconds", rank)) or 60
 	local name = Bits.displayName(key, def)
 	H.showConfirm({
-		Title = G.Muscle .. " Train " .. H.skillName(stat) .. "?",
+		Title = "Train " .. H.skillName(stat) .. "?",
 		Text = name .. " goes to Rank " .. rank .. " " .. H.skillName(stat) .. " for " .. H.money(cost) .. ". It takes "
 			.. H.minutes(seconds) .. ". " .. name .. " rests at home until it's done, then comes back by itself.",
 		YesText = "Train " .. H.money(cost),

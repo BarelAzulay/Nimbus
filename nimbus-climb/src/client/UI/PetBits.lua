@@ -30,7 +30,6 @@ local PetBits = {}
 local Colors = Theme.Colors
 local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
-local SEEDLING = "\240\159\140\177"
 local CASH = (Theme.Currency and Theme.Currency.Cash and Theme.Currency.Cash.Glyph) or "$"
 local GARDEN_COLOR = Color3.fromRGB(120, 196, 90)
 
@@ -598,7 +597,7 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 	PetBits.corner(box, 16)
 	PetBits.stroke(box, GARDEN_COLOR, 4, 0)
 	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
-	Theme.StyleTitle(PetBits.text(box, "Title", SEEDLING .. " This pet is gardening!", "Title", 28, GARDEN_COLOR, {
+	Theme.StyleTitle(PetBits.text(box, "Title", "This pet is gardening!", "Title", 28, GARDEN_COLOR, { -- (kit-b U7b: no seedling emoji)
 		Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
 	}))
 	PetBits.text(box, "Body", "Take it out of the garden and put it in your team?", "Body", 20, WHITE, {

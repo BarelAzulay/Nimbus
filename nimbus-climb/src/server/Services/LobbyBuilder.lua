@@ -101,6 +101,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
+local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the token coin on the machines' price signs
 local LobbyBoardBuilder = require(script.Parent.LobbyBoardBuilder) -- lobby shop: the egg row and the leaderboard board
 local LobbyMachineBuilder = require(script.Parent.LobbyMachineBuilder) -- shop-area 16.17.1: the Gumball Globe's eggs
 
@@ -141,11 +142,9 @@ local SEED = 20261009
 local MAT = Enum.Material
 local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
 
--- Glyphs as UTF-8 byte escapes (keeps the source file ASCII).
+-- Glyphs as UTF-8 byte escapes (keeps the source file ASCII): typography only. kit-b U7b: the prices' token is the
+-- PixelIcon coin (tokenPrice); the star and cloud emoji went with the unused star row
 local GLYPH = {
-	StarFull = "\226\152\133",
-	StarEmpty = "\226\152\134",
-	Cloud = "\226\152\129",
 	Bullet = "\226\128\162",
 	Ellipsis = "\226\128\166",
 }
@@ -751,22 +750,16 @@ local function textGradient(label, keypoints, rotation)
 	return g
 end
 
-local function hex(color)
-	return string.format("#%02X%02X%02X", math.floor(color.R * 255 + 0.5), math.floor(color.G * 255 + 0.5), math.floor(color.B * 255 + 0.5))
-end
-
--- "50 <cloud>" / "5,000 <cloud>"
+-- "50" / "5,000" (kit-b U7b: the token is the PixelIcon coin in front, tokenPrice)
 local function priceText(price)
-	return Util.Commas(price) .. " " .. GLYPH.Cloud
+	return Util.Commas(price)
 end
 
--- Rich-text star row: `filled` gold stars then dim hollow ones up to `total`.
-local function starRow(filled, total)
-	local out = string.format('<font color="%s">%s</font>', hex(C.TextGold), string.rep(GLYPH.StarFull, filled))
-	if total > filled then
-		out = out .. string.format('<font color="%s">%s</font>', hex(C.StarOff), string.rep(GLYPH.StarEmpty, total - filled))
-	end
-	return out
+-- (kit-b U7b) a token price label: the coin (Theme.Currency.Tokens.Icon) drawn in front of the amount
+local function tokenPrice(label)
+	local cur = Theme.Currency and Theme.Currency.Tokens
+	PixelIcon.Lead(label, cur and cur.Icon or "token")
+	return label
 end
 
 -- A key-cap chip + a description: one row of a notice board (fractions of the 550 x 400 px board canvas).
@@ -3264,7 +3257,7 @@ local function machineTag(anchor, roulette, lift)
 	local gui = newTag(anchor, "PriceBillboard", 320, 110, lift, 60)
 	local plate = tagPlate(gui, color, 160)
 	tagText(plate, "NameLabel", roulette.DisplayName or roulette.Id, "Title", 26, color:Lerp(C.Text, 0.55), 1)
-	tagText(plate, "PriceLabel", priceText(roulette.Price or 0), "Display", 24, C.TextGold, 2)
+	tokenPrice(tagText(plate, "PriceLabel", priceText(roulette.Price or 0), "Display", 24, C.TextGold, 2))
 	return gui
 end
 
@@ -3614,7 +3607,7 @@ local function buildRarityBoard(parent, cf)
 		local y = top / H
 		local color = roulette.Color or C.Rose
 		signText(panel, roulette.DisplayName or roulette.Id, "Heading", SIGN_INFO, color:Lerp(C.Text, 0.35), "Name" .. i, 0.04, y, 0.6, RB.Name / H, Enum.TextXAlignment.Left)
-		signText(panel, priceText(roulette.Price or 0), "Body", SIGN_INFO, C.TextGold, "Price" .. i, 0.6, y, 0.36, RB.Name / H, Enum.TextXAlignment.Right)
+		tokenPrice(signText(panel, priceText(roulette.Price or 0), "Body", SIGN_INFO, C.TextGold, "Price" .. i, 0.6, y, 0.36, RB.Name / H, Enum.TextXAlignment.Right))
 		local pills = plainFrame(panel, "Rarities" .. i, {
 			Position = UDim2.new(0.04, 0, (top + RB.PillTop) / H, 0),
 			Size = UDim2.new(0.92, 0, RB.Pill / H, 0),

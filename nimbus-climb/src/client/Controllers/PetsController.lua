@@ -51,6 +51,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the power sword, the stars, the busy marks
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -117,15 +118,12 @@ local XP_COLOR = Color3.fromRGB(120, 200, 255)
 local ROW_COLORS = { Income = Colors.Cash or Color3.fromRGB(112, 204, 98), Power = Color3.fromRGB(236, 112, 96), Health = Color3.fromRGB(240, 120, 150), Speed = Color3.fromRGB(98, 172, 232) }
 local ROWS = { { "Income", "Coins" }, { "Power", "Battle power" }, { "Health", "Health" }, { "Speed", "Speed" } }
 
+-- typography (kit-b U7b: the sword, the stars and the busy / work marks are PixelIcons, ICON; the emoji went)
 local G = {
-	Star = "\226\152\133",
-	Swords = "\226\154\148",
-	Seedling = "\240\159\140\177",
-	Muscle = "\240\159\146\170",
-	Sparkle = "\226\156\166",
 	Bullet = "\194\183",
 	Close = "\195\151",
 }
+local ICON = { Power = "sword", Star = "star", Training = "weight", Garden = "sprout", Evolve = "sparkle" }
 
 local frame, text, corner, round, stroke = Bits.frame, Bits.text, Bits.corner, Bits.round, Bits.stroke
 
@@ -797,6 +795,7 @@ function H.buildSlot(index)
 	item.Name = text(button, "PetName", "", "Heading", 18, WHITE, { TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4 })
 	item.Level = text(button, "Level", "", "Heading", 18, WHITE, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
 	item.Power = text(button, "Power", "", "Heading", 18, POWER_GOLD, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 4 })
+	PixelIcon.Lead(item.Power, ICON.Power) -- (kit-b U7b)
 	item.Busy = text(button, "Busy", "", "Heading", 18, WHITE, {
 		BackgroundTransparency = 0.35,
 		BackgroundColor3 = Color3.fromRGB(12, 16, 36),
@@ -840,6 +839,7 @@ function H.buildCard(key)
 	item.Name = text(button, "Name", "", "Body", 18, WHITE, { TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 })
 	item.Level = text(button, "Level", "", "Heading", 18, WHITE, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 })
 	item.Power = text(button, "Power", "", "Heading", 18, POWER_GOLD, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3 })
+	PixelIcon.Lead(item.Power, ICON.Power) -- (kit-b U7b)
 	item.Element = text(button, "Element", "", "Button", 18, WHITE, { BackgroundTransparency = 0, ZIndex = 4 })
 	round(item.Element)
 	stroke(item.Element, NAVY, 2, 0)
@@ -1611,7 +1611,8 @@ function H.refreshSlots(keys)
 		item.Name.Visible = def ~= nil and S.Mode == "PC"
 		item.Glow.Visible = S.Pick == i
 		item.Busy.Visible = busy ~= nil
-		item.Busy.Text = busy == "Training" and (G.Muscle .. " Training") or (busy and (G.Seedling .. " Gardening") or "")
+		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
+		PixelIcon.Mark(item.Busy, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
 		local stage = def and Bits.stage(key) or 0
 		local viewKey = def and (key .. "|" .. stage) or nil
 		if item.ViewKey ~= viewKey then
@@ -1637,7 +1638,7 @@ function H.refreshSlots(keys)
 			local level = Bits.petLevel(key)
 			item.Name.Text = Bits.displayName(key, def)
 			item.Level.Text = "L" .. level
-			item.Power.Text = G.Swords .. " " .. commas(H.powerOf(key))
+			item.Power.Text = commas(H.powerOf(key))
 		end
 	end
 end
@@ -1817,7 +1818,7 @@ function H.refreshCards(keys)
 		item.Rarity.Thickness = selected and 4 or 3
 		item.Name.Text = Bits.displayName(key, def)
 		item.Level.Text = "L" .. level
-		item.Power.Text = G.Swords .. " " .. commas(H.powerOf(key))
+		item.Power.Text = commas(H.powerOf(key))
 		local element = Bits.elementsOf(def)[1]
 		local info = element and Config.Elements.Info[element]
 		item.Element.Visible = info ~= nil
@@ -1837,13 +1838,16 @@ function H.refreshCards(keys)
 			item.TierMark.Text = mark
 		end
 		item.Stars.Visible = stage > 0
-		item.Stars.Text = string.rep(G.Star, math.min(2, stage))
+		if stage > 0 then
+			PixelIcon.Mark(item.Stars, ICON.Star, { Count = math.min(2, stage), Of = math.min(2, stage) }) -- (kit-b U7b)
+		end
 		local copies = State.OwnedCount(key)
 		item.Count.Visible = copies > 1
 		item.Count.Text = "x" .. copies
 		local busy = Bits.busyOf(key)
 		item.Busy.Visible = busy ~= nil
-		item.Busy.Text = busy == "Training" and (G.Muscle .. "\nTraining") or (busy and (G.Seedling .. "\nGardening") or "")
+		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
+		PixelIcon.Mark(item.Busy, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
 		item.Busy.TextColor3 = WHITE
 		item.Busy.BackgroundColor3 = busy == "Training" and Theme.Darken(TRAIN_COLOR, 0.55) or (busy and Theme.Darken(GARDEN_COLOR, 0.55) or NAVY)
 	end
@@ -1921,10 +1925,9 @@ function H.refreshDetail(keys, order)
 	for _, element in ipairs(Bits.elementsOf(def)) do
 		meta[#meta + 1] = element
 	end
-	if stage > 0 then
-		meta[#meta + 1] = string.rep(G.Star, math.min(2, stage))
-	end
 	d.Meta.Text = table.concat(meta, " " .. G.Bullet .. " ")
+	-- (kit-b U7b) the evolution stars after the line, drawn
+	PixelIcon.Mark(d.Meta, stage > 0 and ICON.Star or nil, { After = true, Count = math.min(2, stage), Of = math.min(2, stage), Colour = GOLD })
 	local need = Bits.xpToNext(level)
 	if level >= cap then
 		d.Xp.SetFraction(1)
@@ -1946,21 +1949,23 @@ function H.refreshDetail(keys, order)
 	local map = type(home.Garden) == "table" and home.Garden or {}
 	local placed = #Bits.slotsHolding(map, key) > 0
 	local ready = Bits.canEvolve(key, def, level)
-	local work, workColor, lines = "", Theme.Lighten(GOOD, 0.35), 1
+	local work, workColor, lines, mark = "", Theme.Lighten(GOOD, 0.35), 1, nil
 	if job then
-		work = G.Muscle .. " Training " .. Bits.skillName(job.Stat) .. " (" .. Bits.jobLeft(job) .. " left)"
+		work, mark = "Training " .. Bits.skillName(job.Stat) .. " (" .. Bits.jobLeft(job) .. " left)", ICON.Training
 		workColor = Theme.Lighten(TRAIN_COLOR, 0.35)
 	elseif placed then
-		work = G.Seedling .. " Working in your Garden"
+		work, mark = "Working in your Garden", ICON.Garden
 	end
 	if ready then
 		if work ~= "" then
 			work = work .. "\n"
 			lines = 2
 		end
-		work = work .. G.Sparkle .. " Ready to evolve!"
+		work = work .. "Ready to evolve!"
+		mark = mark or ICON.Evolve
 	end
 	d.Work.Text = work
+	PixelIcon.Mark(d.Work, lines == 1 and mark or nil) -- (kit-b U7b) a one-line work note leads with its mark
 	d.Work.TextColor3 = workColor
 	d.WorkLines = lines
 	-- the special, then the follow perks

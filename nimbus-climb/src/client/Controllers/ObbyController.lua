@@ -34,6 +34,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the levels' stars, lock and tick
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local ObbyLevels = require(Shared:WaitForChild("ObbyLevels"))
 
@@ -76,13 +77,8 @@ local C = {
 	Token = Colors.Token or Color3.fromRGB(255, 210, 90),
 }
 
+-- typography (kit-b U7b: the stars, the lock and the tick are PixelIcons, a level's tokens and best time say it in words)
 local G = {
-	Star = "\226\152\133",
-	StarOff = "\226\152\134",
-	Lock = "\240\159\148\146",
-	Check = "\226\156\147",
-	Cloud = "\226\152\129",
-	Clock = "\226\143\177",
 	Dot = "\194\183",
 }
 
@@ -191,9 +187,12 @@ function H.diff(id)
 	return { Id = id, DisplayName = tostring(id), Stars = 1, Color = C.Accent }
 end
 
-function H.stars(n)
-	n = math.max(0, math.min(5, math.floor(tonumber(n) or 0)))
-	return string.rep(G.Star, math.max(1, n))
+-- (kit-b U7b) a level's difficulty on an empty label: 1-5 PixelIcon stars in the label's colour
+function H.stars(label, n)
+	n = math.max(1, math.min(5, math.floor(tonumber(n) or 0)))
+	label.Text = ""
+	PixelIcon.Lead(label, "star", { Count = n, Of = n, Px = 18 })
+	return label
 end
 
 function H.clock(seconds)
@@ -360,7 +359,7 @@ function H.card(i, id)
 	local stripe = H.frame(row, "Stripe", { BackgroundTransparency = 0, BackgroundColor3 = color, Position = UDim2.fromOffset(5, 8), Size = UDim2.new(0, 6, 1, -16) })
 	H.corner(stripe, 3)
 	local name = H.text(row, "LevelName", tostring(d.DisplayName or id), "Heading", 23, WHITE, { Position = UDim2.fromOffset(20, 8), Size = UDim2.new(0, 150, 0, 30) })
-	local stars = H.text(row, "Stars", H.stars(d.Stars), "Heading", 20, C.Gold, { Position = UDim2.fromOffset(170, 8), Size = UDim2.new(1, -310, 0, 30), TextTruncate = Enum.TextTruncate.AtEnd })
+	local stars = H.stars(H.text(row, "Stars", "", "Heading", 20, C.Gold, { Position = UDim2.fromOffset(170, 8), Size = UDim2.new(1, -310, 0, 30), TextTruncate = Enum.TextTruncate.AtEnd }), d.Stars)
 	local blurb = H.text(row, "Blurb", tostring(d.Blurb or ""), "Body", 18, C.Muted, { Position = UDim2.fromOffset(20, 38), Size = UDim2.new(1, -150, 0, 24), TextTruncate = Enum.TextTruncate.AtEnd })
 	local info = H.text(row, "Info", "", "Body", 18, WHITE, { Position = UDim2.fromOffset(20, 64), Size = UDim2.new(1, -150, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd })
 	local chip = H.frame(row, "Chip", { BackgroundTransparency = 0, BackgroundColor3 = C.RowDark, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(118, 40) })
@@ -394,10 +393,10 @@ function H.refresh()
 		local win = H.winTokens(id)
 		local parts = {}
 		if t and t > 0 then
-			parts[#parts + 1] = G.Clock .. " Best " .. H.clock(t)
+			parts[#parts + 1] = "Best " .. H.clock(t)
 		end
 		if win then
-			parts[#parts + 1] = "Win +" .. win .. " " .. G.Cloud .. " tokens"
+			parts[#parts + 1] = "Win +" .. win .. " tokens"
 		end
 		ui.Root.Size = UDim2.new(1, 0, 0, short and K.CARD_H_SHORT or K.CARD_H)
 		ui.Blurb.Visible = not short
@@ -407,15 +406,19 @@ function H.refresh()
 		ui.Info.Size = UDim2.new(1, -150, 0, short and 24 or 26)
 		local prev = list[i - 1] and H.diff(list[i - 1]) or nil
 		if not open then
-			ui.Info.Text = G.Lock .. " Beat " .. tostring(prev and prev.DisplayName or "the level before") .. " to unlock"
+			ui.Info.Text = "Beat " .. tostring(prev and prev.DisplayName or "the level before") .. " to unlock"
+			PixelIcon.Mark(ui.Info, "lock") -- (kit-b U7b)
 			ui.Info.TextColor3 = C.Muted
 			ui.ChipText.Text = "LOCKED"
+			PixelIcon.Mark(ui.ChipText, nil)
 			ui.ChipRim.Color = C.Grey
 			ui.ChipText.TextColor3 = C.Muted
 		else
 			ui.Info.Text = (#parts > 0) and table.concat(parts, "  " .. G.Dot .. "  ") or "Not beaten yet"
+			PixelIcon.Mark(ui.Info, nil)
 			ui.Info.TextColor3 = WHITE
-			ui.ChipText.Text = isPicked and (G.Check .. " PICKED") or "PICK"
+			ui.ChipText.Text = isPicked and "PICKED" or "PICK"
+			PixelIcon.Mark(ui.ChipText, isPicked and "check" or nil) -- (kit-b U7b)
 			ui.ChipRim.Color = isPicked and C.Green or ui.Color
 			ui.ChipText.TextColor3 = WHITE
 		end

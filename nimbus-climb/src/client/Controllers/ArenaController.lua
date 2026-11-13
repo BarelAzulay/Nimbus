@@ -65,6 +65,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the trophies, swords and crowns
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -153,23 +154,20 @@ local C = {
 	Medal = { Color3.fromRGB(246, 200, 70), Color3.fromRGB(200, 210, 226), Color3.fromRGB(214, 146, 92) },
 }
 
--- glyphs as UTF-8 escapes (the source stays ASCII)
+-- typography as UTF-8 escapes (the source stays ASCII). kit-b U7b: the trophies, swords and crowns are PixelIcons
+-- (lead(): the icon in front of a label's text), a sentence says the word ("+20 trophies", "200 tokens"); the emoji went
 local G = {
-	Swords = "\226\154\148",
-	Trophy = "\240\159\143\134",
-	Cloud = "\226\152\129",
 	-- (no gem glyph: lobby-shop Task 15, spec 5.7: text-only lines say "gems" in words)
-	Lock = "\240\159\148\146",
-	Check = "\226\156\147",
-	Crown = "\240\159\145\145",
-	Clock = "\226\143\177",
-	Star = "\226\152\133",
 	Bullet = "\194\183",
-	Heart = "\226\157\164",
-	Skull = "\240\159\146\128",
-	Double = "\226\156\150", -- heavy multiplication x
-	Up = "\226\150\178",
+	Double = "\195\151", -- the multiplication sign (x2 rewards), a Latin-1 sign every UI font has
 }
+local ICON = { Trophy = "trophy", Swords = "sword", Crown = "crown" }
+
+-- (kit-b U7b) the PixelIcon `icon` in front of `label`'s text (set once: the text may change after); returns the label
+local function lead(label, icon)
+	PixelIcon.Lead(label, ICON[icon] or icon)
+	return label
+end
 
 ----------------------------------------------------------------------
 -- Module state
@@ -918,11 +916,14 @@ function Ring.startTile(ui, round, order)
 		Color = ColorSequence.new(Theme.Lighten(base, 0.22), Theme.Darken(base, 0.18)),
 		Parent = tile.Button,
 	})
-	makeText(tile.Button, "Caption", boss and (G.Crown .. " BOSS") or "ROUND", "Heading", 18, WHITE, {
+	local caption = makeText(tile.Button, "Caption", boss and "BOSS" or "ROUND", "Heading", 18, WHITE, {
 		Position = UDim2.fromOffset(0, 4),
 		Size = UDim2.new(1, 0, 0, 22),
 		ZIndex = 3,
 	})
+	if boss then
+		lead(caption, "Crown")
+	end
 	makeText(tile.Button, "Number", tostring(round), "Display", 30, WHITE, {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -4),
@@ -973,12 +974,12 @@ function Ring.build()
 	local board = inset(ui.Side, "ServerBest", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	pad(board, 14, 8, 14, 10)
 	listLayout(board, Enum.FillDirection.Vertical, 4)
-	makeText(board, "Caption", G.Trophy .. " Best in this server", "Heading", 20, WHITE, {
+	lead(makeText(board, "Caption", "Best in this server", "Heading", 20, WHITE, {
 		Size = UDim2.new(1, 0, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 1,
-	})
+	}), "Trophy")
 	for i = 1, 3 do
 		local row = makeFrame(board, "Row" .. i, { Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1 + i })
 		local name = makeText(row, "Name", "", "Body", 19, WHITE, {
@@ -1041,23 +1042,23 @@ function Ring.build()
 		Size = UDim2.new(0.5, 0, 0, 24),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	ui.ChampPower = makeText(powers, "ChampValue", "", "Display", 30, C.Power, {
+	ui.ChampPower = lead(makeText(powers, "ChampValue", "", "Display", 30, C.Power, {
 		Position = UDim2.fromOffset(0, 24),
 		Size = UDim2.new(0.5, 0, 0, 36),
 		TextXAlignment = Enum.TextXAlignment.Left,
-	})
+	}), "Swords")
 	makeText(powers, "TeamCaption", "Your team", "Heading", 19, MUTED, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
 		Size = UDim2.new(0.5, 0, 0, 24),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
-	ui.TeamPower = makeText(powers, "TeamValue", "", "Display", 30, WHITE, {
+	ui.TeamPower = lead(makeText(powers, "TeamValue", "", "Display", 30, WHITE, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 24),
 		Size = UDim2.new(0.5, 0, 0, 36),
 		TextXAlignment = Enum.TextXAlignment.Right,
-	})
+	}), "Swords")
 	ui.Verdict = wrapText(champ, "Verdict", "", "Body", 19, C.GoodText, 4)
 
 	local rewards = inset(d, "Rewards", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
@@ -1232,7 +1233,7 @@ function Ring.refresh(win, ui)
 	local tagParent = ui.TagsInline and ui.ChampHead or ui.ChampTags
 	ui.ChampTags.Visible = not ui.TagsInline
 	if p.Boss then
-		colorPill(tagParent, "Boss", G.Crown .. " BOSS", C.Boss, 18, 1)
+		lead(colorPill(tagParent, "Boss", "BOSS", C.Boss, 18, 1), "Crown")
 	end
 	if p.Band ~= "" then
 		colorPill(tagParent, "Band", p.Band, Color3.fromRGB(90, 120, 190), 18, 2)
@@ -1240,8 +1241,8 @@ function Ring.refresh(win, ui)
 	-- the fighters
 	ui.Faces.Refresh()
 	local mine = teamPower(Ring.fighters())
-	ui.ChampPower.Text = G.Swords .. " " .. commas(p.Power)
-	ui.TeamPower.Text = G.Swords .. " " .. commas(mine)
+	ui.ChampPower.Text = commas(p.Power)
+	ui.TeamPower.Text = commas(mine)
 	local ratio = p.Power > 0 and mine / p.Power or 1
 	ui.TeamPower.TextColor3 = ratio >= 1 and C.GoodText or (ratio >= 0.9 and C.WarnText or C.BadText)
 	local verdict, color = Ring.verdict(mine, p.Power)
@@ -1251,7 +1252,7 @@ function Ring.refresh(win, ui)
 	ui.NextWin.Text = "Next win: +" .. Ring.money(p.Cash) .. "  +" .. commas(p.Xp) .. " XP"
 	local recordText
 	if p.Record then
-		recordText = G.Star .. " New record: x" .. tostring(Ring.cfg().RecordMult or 3) .. " Cash!"
+		recordText = "New record: x" .. tostring(Ring.cfg().RecordMult or 3) .. " Cash!"
 		if p.Boss and p.Tokens > 0 then
 			recordText = recordText .. "  +" .. commas(p.Tokens) .. " Tokens for the boss"
 		end
@@ -1352,9 +1353,9 @@ function Ring.zoneTick()
 		return
 	end
 	if inside then
-		toast(G.Swords .. " Battle Arena: pets can battle here", "info")
+		toast("Battle Arena: pets can battle here", "info")
 	else
-		toast(G.Heart .. " Safe zone: no pet battles here", "good")
+		toast("Safe zone: no pet battles here", "good")
 	end
 end
 
@@ -1364,7 +1365,7 @@ function Ring.leaderSection(parent, order)
 	local box = inset(parent, "RingBoard", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
 	pad(box, 14, 10, 14, 12)
 	listLayout(box, Enum.FillDirection.Vertical, 4)
-	wrapText(box, "Title", G.Crown .. " Champion Ring: best in this server", "Heading", 21, WHITE, 1)
+	lead(wrapText(box, "Title", "Champion Ring: best in this server", "Heading", 21, WHITE, 1), "Crown")
 	local board = Ring.board()
 	for i, entry in ipairs(board) do
 		local mine = LocalPlayer and entry.Name == LocalPlayer.Name
@@ -1399,9 +1400,9 @@ end
 -- Arena panel: Duels | Boss Raid | Leaders
 ----------------------------------------------------------------------
 local TABS = {
-	{ Id = "Duels", Label = G.Swords .. " Duels", Short = "Duels" },
-	{ Id = "Raid", Label = G.Skull .. " Boss Raid", Short = "Raid" },
-	{ Id = "Leaderboard", Label = G.Trophy .. " Leaders", Short = "Leaders" },
+	{ Id = "Duels", Label = "Duels", Short = "Duels" },
+	{ Id = "Raid", Label = "Boss Raid", Short = "Raid" },
+	{ Id = "Leaderboard", Label = "Leaders", Short = "Leaders" },
 }
 
 local function normalizeTab(tab)
@@ -1519,7 +1520,7 @@ local function buildArena()
 	stroke(chip, NAVY, 3, 0)
 	pad(chip, 12, 0, 14, 0)
 	listLayout(chip, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.Trophies = autoText(chip, "Value", G.Trophy .. " 0", "Display", 28, WHITE, 1)
+	ui.Trophies = lead(autoText(chip, "Value", "0", "Display", 28, WHITE, 1), "Trophy")
 	ui.Chip = chip
 
 	local function page(id)
@@ -1577,7 +1578,7 @@ local function buildArena()
 		LayoutOrder = 1,
 	})
 	ui.RecordText = wrapText(record, "Lines", "", "Body", 19, WHITE, 2)
-	wrapText(record, "Rules", "Win: +" .. "20 " .. G.Trophy .. "   Loss: -10 " .. G.Trophy .. "   Nobody ever loses a pet!", "Body", 18, MUTED, 3)
+	wrapText(record, "Rules", "Win: +20 trophies   Loss: -10 trophies   Nobody ever loses a pet!", "Body", 18, MUTED, 3)
 	ui.RecordRules = record:FindFirstChild("Rules")
 	ui.InviteBox = inset(ui.DuelLeft, "Invites", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 })
 	pad(ui.InviteBox, 14, 10, 14, 12)
@@ -1697,12 +1698,12 @@ local function buildArena()
 		local practice = invite.Practice == true
 		stroke(row, practice and C.Practice or C.Arena, 3, 0)
 		row:SetAttribute("Practice", practice)
-		makeText(row, "Name", G.Swords .. " " .. tostring(invite.FromName or "Someone") .. (practice and " wants a practice duel" or " challenges you!"), "Heading", 20, WHITE, {
+		lead(makeText(row, "Name", tostring(invite.FromName or "Someone") .. (practice and " wants a practice duel" or " challenges you!"), "Heading", 20, WHITE, {
 			Position = UDim2.fromOffset(12, 6),
 			Size = UDim2.new(1, -24, 0, 28),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-		})
+		}), "Swords")
 		if practice then
 			-- Phase 5 (4.2): the two teams are far apart in power: the duel is practice (no trophies, no rewards)
 			row.Size = UDim2.new(1, 0, 0, 146)
@@ -1713,8 +1714,8 @@ local function buildArena()
 				TextTruncate = Enum.TextTruncate.AtEnd,
 			})
 		end
-		makeText(row, "Info", G.Trophy .. " " .. commas(invite.Trophies or 0) .. "    " .. G.Swords .. " " .. commas(invite.Power or 0)
-			.. "    " .. clock(lobbySeconds(invite.ExpiresIn) or 0), "Body", 19, MUTED, {
+		makeText(row, "Info", commas(invite.Trophies or 0) .. " trophies  " .. G.Bullet .. "  " .. commas(invite.Power or 0) .. " power  " .. G.Bullet .. "  "
+			.. clock(lobbySeconds(invite.ExpiresIn) or 0), "Body", 19, MUTED, {
 			Position = UDim2.fromOffset(12, 34),
 			Size = UDim2.new(1, -24, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -1764,11 +1765,11 @@ local function buildArena()
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
 		local trophies = trophiesOf(player.UserId)
-		makeText(row, "Trophies", G.Trophy .. " " .. (trophies and commas(trophies) or "?"), "Heading", 18, C.Power, {
+		lead(makeText(row, "Trophies", trophies and commas(trophies) or "?", "Heading", 18, C.Power, {
 			Position = UDim2.fromOffset(12, 34),
 			Size = UDim2.new(1, -190, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
-		})
+		}), "Trophy")
 		if sent then
 			local pill = colorPill(row, "Sent", "Sent " .. clock(lobbySeconds(sent.ExpiresIn) or 0), Color3.fromRGB(110, 118, 146), 18, 0)
 			pill.AnchorPoint = Vector2.new(1, 0.5)
@@ -1814,13 +1815,12 @@ local function buildArena()
 		end
 		CloudUI.SetDisabled(ui.QueueButton, battleId() ~= nil)
 		local b = battleData()
-		ui.RecordText.Text = G.Trophy .. " " .. commas(b.Trophies or 0) .. " trophies     " .. commas(b.PvPWins or 0) .. " won " .. G.Bullet .. " "
+		ui.RecordText.Text = commas(b.Trophies or 0) .. " trophies     " .. commas(b.PvPWins or 0) .. " won " .. G.Bullet .. " "
 			.. commas(b.PvPLosses or 0) .. " lost"
 		local BC = catalog()
 		local rules = BC and type(BC.Trophies) == "table" and BC.Trophies or nil
 		if rules and ui.RecordRules then
-			ui.RecordRules.Text = "Win: +" .. commas(rules.Win or 0) .. " " .. G.Trophy .. "   Loss: " .. tostring(rules.Loss or 0) .. " "
-				.. G.Trophy .. "   Nobody ever loses a pet!"
+			ui.RecordRules.Text = "Win: +" .. commas(rules.Win or 0) .. " trophies   Loss: " .. tostring(rules.Loss or 0) .. " trophies   Nobody ever loses a pet!"
 		end
 		-- incoming invites
 		clearChildren(ui.InviteBox)
@@ -1873,7 +1873,7 @@ local function buildArena()
 		local colors = { Gold = C.Medal[1], Silver = Color3.fromRGB(150, 164, 190), Bronze = C.Medal[3], Helper = Color3.fromRGB(90, 120, 190) }
 		colorPill(row, "Name", tostring(tier.Id), colors[tier.Id] or Color3.fromRGB(90, 120, 190), 18, 1)
 		local share = math.floor((tonumber(tier.MinShare) or 0) * 100 + 0.5)
-		local text = (share > 0 and (share .. "%+ damage: ") or "Any damage: ") .. G.Cloud .. " " .. commas(tier.Tokens or 0)
+		local text = (share > 0 and (share .. "%+ damage: ") or "Any damage: ") .. commas(tier.Tokens or 0) .. " tokens"
 		if (tonumber(tier.Gems) or 0) > 0 then
 			text = text .. ", " .. math.floor((tonumber(tier.GemChance) or 0) * 100 + 0.5) .. "% for " .. commas(tier.Gems) .. " gems"
 		end
@@ -2036,19 +2036,19 @@ local function buildArena()
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTruncate = Enum.TextTruncate.AtEnd,
 				})
-				makeText(frame, "Trophies", G.Trophy .. " " .. commas(row.Trophies or 0), "Display", 26, C.Power, {
+				lead(makeText(frame, "Trophies", commas(row.Trophies or 0), "Display", 26, C.Power, {
 					AnchorPoint = Vector2.new(1, 0),
 					Position = UDim2.new(1, -14, 0, 0),
 					Size = UDim2.new(0, 160, 1, 0),
 					TextXAlignment = Enum.TextXAlignment.Right,
-				})
+				}), "Trophy")
 			end
 		end
 		if #list == 0 then
 			wrapText(ui.LeaderScroll, "Empty", "The leaderboard fills up as soon as the arena reports in.", "Body", 19, MUTED, 1)
 		end
 		if not meShown and LocalPlayer then
-			wrapText(ui.LeaderScroll, "Mine", "You: " .. G.Trophy .. " " .. commas(battleData().Trophies or 0) .. " trophies. Win duels to climb the board!", "Heading", 20, C.Power, 20)
+			wrapText(ui.LeaderScroll, "Mine", "You: " .. commas(battleData().Trophies or 0) .. " trophies. Win duels to climb the board!", "Heading", 20, C.Power, 20)
 		end
 		Ring.leaderSection(ui.LeaderScroll, 25)
 		local BC = catalog()
@@ -2057,8 +2057,8 @@ local function buildArena()
 		pad(note, 14, 10, 14, 12)
 		listLayout(note, Enum.FillDirection.Vertical, 4)
 		wrapText(note, "Title", "How trophies work", "Heading", 20, WHITE, 1)
-		wrapText(note, "Text", "Win a duel: +" .. commas(rules.Win or 20) .. " " .. G.Trophy .. "   Lose one: " .. tostring(rules.Loss or -10) .. " "
-			.. G.Trophy .. " (never below 0). Duel on the rings in front of the colosseum, or join the quick queue!", "Body", 19, MUTED, 2)
+		wrapText(note, "Text", "Win a duel: +" .. commas(rules.Win or 20) .. " trophies   Lose one: " .. tostring(rules.Loss or -10) .. " trophies"
+			.. " (never below 0). Duel on the rings in front of the colosseum, or join the quick queue!", "Body", 19, MUTED, 2)
 	end
 
 	win.Refresh = function()
@@ -2078,7 +2078,7 @@ local function buildArena()
 		elseif tab == "Raid" then
 			ui.RaidFaces.Refresh()
 		end
-		ui.Trophies.Text = G.Trophy .. " " .. commas(battleData().Trophies or 0)
+		ui.Trophies.Text = commas(battleData().Trophies or 0)
 		if tab == "Duels" then
 			refreshDuels()
 		elseif tab == "Raid" then
@@ -2230,11 +2230,11 @@ function refreshSide()
 				local practice = invite.Practice == true
 				local card = sideCard("Invite" .. i, practice and C.Practice or C.Arena, 10 + i)
 				card.Parent:SetAttribute("Practice", practice)
-				makeText(card, "Title", G.Swords .. (practice and " Practice duel" or " Duel challenge!"), "Heading", 21, practice and C.Practice or Theme.Lighten(C.Arena, 0.4), {
+				lead(makeText(card, "Title", practice and "Practice duel" or "Duel challenge!", "Heading", 21, practice and C.Practice or Theme.Lighten(C.Arena, 0.4), {
 					Size = UDim2.new(1, 0, 0, 28),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					LayoutOrder = 1,
-				})
+				}), "Swords")
 				if practice then
 					-- Phase 5 (4.2): a challenge more than Duel.PracticeInvite apart in TeamPower
 					makeText(card, "PracticeFlag", "No trophies or rewards", "Body", 18, C.Practice, {
@@ -2293,7 +2293,7 @@ function refreshSide()
 				local total = math.max(1, tonumber(invite.ExpiresIn) or 30)
 				table.insert(U.SideCards, function()
 					local left = lobbySeconds(invite.ExpiresIn) or 0
-					info.Text = G.Trophy .. " " .. commas(invite.Trophies or 0) .. "   " .. G.Swords .. " " .. commas(invite.Power or 0) .. "   " .. G.Clock .. " " .. clock(left)
+					info.Text = commas(invite.Trophies or 0) .. " trophies  " .. G.Bullet .. "  " .. commas(invite.Power or 0) .. " power  " .. G.Bullet .. "  " .. clock(left)
 					fill.Size = UDim2.new(Util.Clamp(left / total, 0, 1), 0, 1, 0)
 				end)
 			end
@@ -2311,7 +2311,7 @@ function refreshSide()
 				LayoutOrder = 1,
 			})
 			table.insert(U.SideCards, function()
-				text.Text = G.Swords .. " Waiting for " .. tostring(sent.ToName or "them") .. " to accept... " .. clock(lobbySeconds(sent.ExpiresIn) or 0)
+				text.Text = "Waiting for " .. tostring(sent.ToName or "them") .. " to accept... " .. clock(lobbySeconds(sent.ExpiresIn) or 0)
 			end)
 		end
 		-- 3. the quick queue

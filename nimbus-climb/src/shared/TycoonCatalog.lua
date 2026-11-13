@@ -90,31 +90,22 @@ TycoonCatalog.OfflineMinSeconds = 120 -- shorter absences pay nothing (no rejoin
 TycoonCatalog.Kinds = { "Farm", "Garden", "FoodMachine", "Training", "Vault", "House", "Fusion", "Arena", "Decor" }
 TycoonCatalog.TierMultiplier = { Normal = 1, Golden = 1.5, Rainbow = 2.5 } -- PetKeys.StatMultiplier
 
--- Icons (UTF-8 emoji, drawn as text on pad signs and in the Home window).
+-- Icons: PixelIcon names (kit-b U7b; they were emoji), drawn on the pad signs (HomeBuilder) and in the Home window
+-- (MenuController) with PixelIcon.Host / Lead. Only the icons a station, a house tier or the prestige pad names are kept.
 local ICON = {
-	Cloud = "\226\152\129",
-	Money = "\240\159\146\176",
-	Seedling = "\240\159\140\177",
-	Cook = "\240\159\141\179",
-	Stew = "\240\159\141\178",
-	Muscle = "\240\159\146\170",
-	Bank = "\240\159\143\166",
-	House = "\240\159\143\160",
-	Castle = "\240\159\143\176",
-	Crystal = "\240\159\148\174",
-	Swords = "\226\154\148",
-	Lantern = "\240\159\143\174",
-	Garden = "\240\159\143\161",
-	Tulip = "\240\159\140\183",
-	Fountain = "\226\155\178",
-	Flag = "\240\159\154\169",
-	Trophy = "\240\159\143\134",
-	Star = "\226\173\144",
-	Berry = "\240\159\141\147",
-	Carrot = "\240\159\165\149",
-	Melon = "\240\159\141\136",
-	Tree = "\240\159\140\179",
-	Magnet = "\240\159\167\178",
+	House = "house",
+	Castle = "castle",
+	Star = "star",
+	Berry = "berry",
+	Seedling = "sprout",
+	Stew = "pot",
+	Muscle = "weight",
+	Bank = "vault",
+	Crystal = "sparkle", -- the Fusion Machine: the Fusion tile's sparkle (Config.Icons.Fusion)
+	Swords = "sword",
+	Garden = "fence", -- the Yard Fence
+	Fountain = "fountain",
+	Trophy = "trophy", -- the Pet Podium
 }
 TycoonCatalog.Icons = ICON
 

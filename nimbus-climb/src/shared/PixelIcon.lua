@@ -13,7 +13,10 @@
 --                                      colour), TextTransparency and ZIndex (and with px nil its TextSize): an icon a
 --                                      caller treats as a glyph
 --   PixelIcon.Lead(label, name[, opts]) (U7a) the icon in front of a label's text ("<coin> 1,250"), the text inset past it;
---                                      opts.After / Count / Of: a rating after the text ("Easy" + 3 lit stars of 5)
+--                                      opts.After / Count / Of: a rating after the text ("Easy" + 3 lit stars of 5); opts.Gap
+--   PixelIcon.Clear(label[, opts])     (U7b) takes a Lead icon off again (a row whose mark comes and goes), insets back
+--   PixelIcon.Mark(label, name|nil[, opts])  (U7b) Lead / Clear only when the mark changed: a status line set each refresh
+--   PixelIcon.Set(host, name|nil[, px])      (U7b) Host only when the icon changed (the text emptied): a glyph label
 -- Runs: each row's horizontal runs, then runs with the same columns in the rows below merged into one taller rectangle,
 -- so an icon is a handful of Frames (smoke: at most 25). A generated sheet (one upload) can replace the Frames later in
 -- dense grids; it would be drawn from this same data.
@@ -85,6 +88,27 @@ PixelIcon.Bitmaps = {
 	chest = "........./.#######./#########/#########/........./###...###/####.####/#########/#########", -- the Sky Trove
 	people = ".##...##./####.####/.##...##./........./.###.###./####.####/####.####/####.####/.........", -- the Trove's group
 	clock = "..#####../.###.###./####.####/####.####/####...##/#########/#########/.#######./..#####..", -- a play-time tier
+
+	-- (U7b) the battle HUD's elements and actions, the dungeon, the Training Place and the Home window's stations (the
+	-- emoji they replace in brackets), same style
+	drop = "....#..../....#..../...###.../..#####../.#######./.##.####./.#######./..#####../.........", -- Water
+	leaf = ".....####/...######/..####.##/.####.###/.###.####/.##.####./..####.../.#......./#........", -- Nature
+	target = "..#####../.#.....#./#..###..#/#.#...#.#/#.#.#.#.#/#.#...#.#/#..###..#/.#.....#./..#####..", -- the Target button
+	skull = "..#####../.#######./#########/##..#..##/##..#..##/####.####/.#######./..#.#.#../..#####..", -- a dungeon boss room
+	hourglass = "#########/.#######./..#####../...###.../....#..../...#.#.../..#...#../.#######./#########", -- a wait
+	glass = ".####..../##..##.../#....#.../#....#.../##..##.../.####.#../......##./.......##/........#", -- search
+	castle = "#.#.#.#.#/#########/#########/##.###.##/#########/####.####/###...###/###...###/###...###", -- the Sky Castle
+	berry = "...#.#.../..#####../.#######./##.###.##/#########/.###.###./.#######./..#####../...###...", -- the Berry Farm
+	pot = "..#.#.#../..#.#.#../........./#########/#########/.#######./.#######./..#####../.##...##.", -- the Food Machine
+	weight = "..#####../.#.....#./.#.....#./..#####../.#######./#########/#########/#########/.#######.", -- training (a kettlebell: a dumbbell read as an H)
+	vault = "#########/#.......#/#..###..#/#.#...#.#/#.#.#.#.#/#.#...#.#/#..###..#/#########/.#.....#.", -- the Vault
+	fence = ".#..#..#./.#..#..#./#########/.#..#..#./.#..#..#./#########/.#..#..#./.#..#..#./.........", -- the Yard Fence
+	fountain = "....#..../..#.#.#../.#..#..#./....#..../..#####../....#..../#########/#########/.#######.", -- the Fountain
+	basket = "...###.../..#...#../.#.....#./#########/#.#.#.#.#/#########/.#.#.#.#./.#######./.........", -- the berry basket
+	pip = "........./........./..#####../..#####../..#####../..#####../..#####../........./.........", -- a progress pip
+	up = "........./....#..../...###.../..#####../.###.###./###...###/##.....##/........./.........", -- a bounce pad (down, turned)
+	left = "........./....#..../...##..../..#######/.########/..#######/...##..../....#..../.........", -- the D-pad left (arrow, turned)
+	shift = "....#..../...###.../..##.##../.##...##./####.####/..##.##../..##.##../..#####../.........", -- the Shift key (hollow up arrow)
 }
 -- tick is the pitch's check (one drawing, two names)
 PixelIcon.Bitmaps.tick = PixelIcon.Bitmaps.check
@@ -288,7 +312,7 @@ function PixelIcon.Lead(label, name, opts)
 	local count = math.max(0, math.floor(tonumber(opts.Count) or 1))
 	local of = math.max(count, math.floor(tonumber(opts.Of) or count), 1)
 	local w = of * px + (of - 1) * cell
-	local gap = math.max(3, math.floor(px / 4))
+	local gap = tonumber(opts.Gap) or math.max(3, math.floor(px / 4)) -- (U7b) opts.Gap: px between the text and the icons
 	local pad = label:FindFirstChildOfClass("UIPadding")
 	if not pad then
 		pad = Instance.new("UIPadding")
@@ -341,6 +365,11 @@ function PixelIcon.Lead(label, name, opts)
 		box.AnchorPoint = Vector2.new(after and 0 or 1, 0.5)
 		if align == Enum.TextXAlignment.Right then
 			box.Position = after and UDim2.new(1, gap, 0.5, 0) or UDim2.new(1, -(textW + gap), 0.5, 0)
+		elseif align == Enum.TextXAlignment.Center and label.Text == "" and not after then
+			-- (U7b) icons alone on an empty centred label (a rating badge): centred in the label (the left inset moved the
+			-- text area's centre right by half of w + gap)
+			box.AnchorPoint = Vector2.new(0.5, 0.5)
+			box.Position = UDim2.new(0.5, -math.floor((w + gap) / 2), 0.5, 0)
 		elseif align == Enum.TextXAlignment.Center then
 			box.Position = UDim2.new(0.5, math.floor(after and (textW / 2 + gap) or -(textW / 2 + gap)), 0.5, 0)
 		else
@@ -363,6 +392,62 @@ function PixelIcon.Lead(label, name, opts)
 		label:GetPropertyChangedSignal("Text"):Connect(place),
 	}
 	return box
+end
+
+-- (U7b) a status line's mark set on every refresh: PixelIcon.Lead only when the mark (name, Count, Of) changed since the
+-- last call (the label's attribute Mark_<child>), PixelIcon.Clear when name is nil. Cheap to call each frame
+function PixelIcon.Mark(label, name, opts)
+	opts = opts or {}
+	local attr = "Mark_" .. (opts.Name or (opts.After == true and "TrailIcon" or "LeadIcon"))
+	local key = name and (name .. ":" .. tostring(opts.Count or "") .. ":" .. tostring(opts.Of or "")) or ""
+	if label:GetAttribute(attr) == key then
+		return
+	end
+	label:SetAttribute(attr, key)
+	if name then
+		PixelIcon.Lead(label, name, opts)
+	else
+		PixelIcon.Clear(label, opts)
+	end
+end
+
+-- (U7b) PixelIcon.Host only when the icon changed since the last call (the host's attribute HostMark); nil or an
+-- unknown name drops the icon. For a glyph label a refresh rewrites (a ready tick, a lock badge that comes and goes)
+function PixelIcon.Set(host, name, px, colour)
+	local key = (name and PixelIcon.Bitmaps[name]) and (name .. ":" .. tostring(px or "")) or ""
+	if host:GetAttribute("HostMark") == key then
+		return
+	end
+	host:SetAttribute("HostMark", key)
+	host.Text = ""
+	PixelIcon.Host(host, key ~= "" and name or "", px, colour)
+end
+
+-- (U7b) takes the icon PixelIcon.Lead put on `label` off again (opts.After / opts.Name as given to Lead) and puts the
+-- label's own insets back: a row whose mark comes and goes (a pet that stops training, a rating that drops to none)
+function PixelIcon.Clear(label, opts)
+	opts = opts or {}
+	local after = opts.After == true
+	local childName = opts.Name or (after and "TrailIcon" or "LeadIcon")
+	local old = label:FindFirstChild(childName)
+	if old then
+		old:Destroy()
+	end
+	if leadConns[label] then
+		for _, c in ipairs(leadConns[label][childName] or {}) do
+			c:Disconnect()
+		end
+		leadConns[label][childName] = nil
+	end
+	local pad = label:FindFirstChildOfClass("UIPadding")
+	local baseL, baseR = label:GetAttribute("LeadInsetL"), label:GetAttribute("LeadInsetR")
+	if pad and baseL ~= nil then
+		if after then
+			pad.PaddingRight = UDim.new(pad.PaddingRight.Scale, baseR)
+		else
+			pad.PaddingLeft = UDim.new(pad.PaddingLeft.Scale, baseL)
+		end
+	end
 end
 
 return PixelIcon

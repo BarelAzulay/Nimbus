@@ -144,14 +144,8 @@ local ACCENT = Color3.fromRGB(70, 182, 196) -- the Index teal (menu tile + title
 local INSET = Color3.fromRGB(20, 30, 70)
 local SILHOUETTE = Color3.new(0, 0, 0)
 local ROLE_COLORS = { Economy = Color3.fromRGB(96, 196, 108), Combat = Color3.fromRGB(228, 104, 96) }
-local G = {
-	Check = "\226\156\147",
-	Star = "\226\152\133",
-	Arrow = "\226\150\182", -- right-pointing triangle
-	Swap = "\226\135\132", -- left-right arrows
-	Book = "\240\159\147\150",
-	Sparkle = "\226\156\166",
-}
+-- (kit-b U7b) the window's marks are PixelIcons, not emoji (the title says "Pet Index" in words: the menu tile has the book)
+local ICON = { Check = "check", Star = "star", Arrow = "play", Swap = "swap", Sparkle = "sparkle" }
 
 ----------------------------------------------------------------------
 -- Module state
@@ -814,12 +808,12 @@ local function renderFooter()
 	if U.Panel then
 		if S.Short then
 			if S.Tall then
-				U.Panel.SetTitle(string.format("%s Pet Index %d/%d", G.Book, unlocked, total))
+				U.Panel.SetTitle(string.format("Pet Index %d/%d", unlocked, total))
 			else
-				U.Panel.SetTitle(string.format("%s Pet Index   Unlocked: %d/%d", G.Book, unlocked, total))
+				U.Panel.SetTitle(string.format("Pet Index   Unlocked: %d/%d", unlocked, total))
 			end
 		else
-			U.Panel.SetTitle(G.Book .. " Pet Index")
+			U.Panel.SetTitle("Pet Index")
 		end
 	end
 end
@@ -1054,7 +1048,7 @@ local function buildGroupTile(group, index)
 		Size = UDim2.new(1, -16, 0, 10),
 	})
 	round(gloss)
-	makeText(button, "Art", G.Star, "Title", 38, Theme.Lighten(accent, 0.5), {
+	local art = makeText(button, "Art", "", "Title", 38, Theme.Lighten(accent, 0.5), {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -8, 0, 0),
 		Size = UDim2.fromOffset(40, 40),
@@ -1062,6 +1056,7 @@ local function buildGroupTile(group, index)
 		TextStrokeTransparency = 1,
 		Rotation = 12,
 	})
+	PixelIcon.Host(art, ICON.Star, 36) -- (kit-b U7b) the tile's faint star, see-through as the glyph was
 	-- name on top, then a slim progress bar with the "3/6" count at its right end (kit-b U6: a card name is a Heading, the
 	-- Title face's capitals would not fit "LEGENDARY" in the narrow phone tile)
 	-- kit B (no outline): the name takes the ink that reads on the light top-left end of the diagonal gradient (Theme.TextOn:
@@ -1166,7 +1161,7 @@ local function buildFusionTile(index)
 		Size = UDim2.new(1, -16, 0, 10),
 	})
 	round(gloss)
-	makeText(button, "Art", G.Sparkle, "Title", 38, WHITE, {
+	local art = makeText(button, "Art", "", "Title", 38, WHITE, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -8, 0, 0),
 		Size = UDim2.fromOffset(40, 40),
@@ -1174,6 +1169,7 @@ local function buildFusionTile(index)
 		TextStrokeTransparency = 1,
 		Rotation = 12,
 	})
+	PixelIcon.Host(art, ICON.Sparkle, 36) -- (kit-b U7b)
 	-- kit B (no outline): the name is brown on the gold end of the gold -> pink -> violet tile; the count runs across the
 	-- pink-to-violet foot, where neither ink reads on the whole line, so it sits on a small navy plate in white
 	tile.Name = makeText(button, "GroupName", "Fusions", "Heading", 24, Theme.Sign.Text, { -- (a card name, like the rarity tiles)
@@ -1222,11 +1218,13 @@ local function refreshGroupTiles()
 			if claimable then
 				tile.Badge.Visible = true
 				tile.Badge.BackgroundColor3 = BUTTONS.Red or BAD
+				PixelIcon.Set(tile.BadgeText, nil)
 				tile.BadgeText.Text = "!"
 			elseif claimed then
 				tile.Badge.Visible = true
 				tile.Badge.BackgroundColor3 = BUTTONS.Green or GOOD
-				tile.BadgeText.Text = G.Check
+				tile.BadgeText.Text = ""
+				PixelIcon.Set(tile.BadgeText, ICON.Check) -- (kit-b U7b)
 			else
 				tile.Badge.Visible = false
 			end
@@ -1498,7 +1496,8 @@ end
 local function renderHeader()
 	if S.GroupId == FUSIONS then
 		local n = #S.TileOrder
-		U.GroupTitle.Text = G.Sparkle .. " Fusions"
+		U.GroupTitle.Text = "Fusions"
+		PixelIcon.Mark(U.GroupTitle, ICON.Sparkle) -- (kit-b U7b)
 		U.GroupTitle.TextColor3 = Theme.Lighten(FUSION_COLOR, 0.45)
 		U.HeaderFill.Size = UDim2.new(n > 0 and 1 or 0, 0, 1, 0)
 		U.HeaderFill.BackgroundColor3 = Theme.Lighten(FUSION_COLOR, 0.15)
@@ -1512,6 +1511,7 @@ local function renderHeader()
 	local found, total, complete = groupStatus(group)
 	local accent = rarityAccent(group.Rarity)
 	U.GroupTitle.Text = group.Rarity .. " Pets"
+	PixelIcon.Mark(U.GroupTitle, nil)
 	U.GroupTitle.TextColor3 = Theme.Lighten(accent, 0.4)
 	U.HeaderFill.Size = UDim2.new(total > 0 and found / total or 0, 0, 1, 0)
 	U.HeaderFill.BackgroundColor3 = complete and (BUTTONS.Green or GOOD) or Theme.Lighten(accent, 0.15)
@@ -2076,13 +2076,14 @@ local function buildElementsCard()
 			elementPill(holder, element, 18, 1)
 			-- arrow half way to the next element, pointing clockwise (screen y grows downwards)
 			local mid = angle + math.rad(180 / n)
-			makeText(wheel, "Arrow" .. i, G.Arrow, "Title", 24, GOLD, {
+			local arrow = makeText(wheel, "Arrow" .. i, "", "Title", 24, GOLD, {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(0.5 + math.cos(mid) * 0.41, 0, 0.5 + math.sin(mid) * 0.43, 0),
 				Size = UDim2.fromOffset(28, 28),
 				Rotation = math.deg(mid) + 90,
 				ZIndex = 23,
 			})
+			PixelIcon.Host(arrow, ICON.Arrow, 18) -- (kit-b U7b) the label's rotation turns it with the wheel
 		end
 		makeText(wheel, "Centre", "beats", "Script", 20, MUTED, {
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -2109,7 +2110,7 @@ local function buildElementsCard()
 			elementPill(row, element, 18, 1)
 			if partner and partner ~= element then
 				done[partner] = true
-				makeText(row, "Both", G.Swap, "Title", 24, GOLD, { Size = UDim2.fromOffset(34, 32), LayoutOrder = 2, ZIndex = 22 })
+				PixelIcon.Host(makeText(row, "Both", "", "Title", 24, GOLD, { Size = UDim2.fromOffset(34, 32), LayoutOrder = 2, ZIndex = 22 }), ICON.Swap, 18) -- (kit-b U7b)
 				elementPill(row, partner, 18, 3)
 			end
 		end
@@ -2200,11 +2201,12 @@ local function buildCentre(centre)
 	-- the Fusions tab without any fused pet yet
 	U.FusionEmpty = makeFrame(well, "FusionEmpty", { Size = UDim2.new(1, 0, 1, 0), Visible = false, ZIndex = 5 })
 	listLayout(U.FusionEmpty, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-	makeText(U.FusionEmpty, "Glyph", G.Sparkle, "Title", 54, Theme.Lighten(FUSION_COLOR, 0.4), {
+	local emptyGlyph = makeText(U.FusionEmpty, "Glyph", "", "Title", 54, Theme.Lighten(FUSION_COLOR, 0.4), {
 		Size = UDim2.new(1, 0, 0, 60),
 		LayoutOrder = 1,
 		ZIndex = 5,
 	})
+	PixelIcon.Host(emptyGlyph, ICON.Sparkle, 54) -- (kit-b U7b)
 	Theme.StyleTitle(makeText(U.FusionEmpty, "Title", "No fused pets yet", "Title", 28, WHITE, {
 		Size = UDim2.new(1, -30, 0, 34),
 		LayoutOrder = 2,
@@ -2406,11 +2408,12 @@ local function buildDetail(detail)
 		LayoutOrder = 8,
 	})
 	U.Special = special
-	makeText(special, "Caption", G.Sparkle .. " SPECIAL", "Heading", 18, GOLD, {
+	local specialCaption = makeText(special, "Caption", "SPECIAL", "Heading", 18, GOLD, {
 		Position = UDim2.fromOffset(10, 4),
 		Size = UDim2.new(1, -20, 0, 22),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
+	PixelIcon.Lead(specialCaption, ICON.Sparkle) -- (kit-b U7b)
 	U.SpecialName = makeText(special, "SpecialName", "", "Title", 22, WHITE, {
 		Position = UDim2.fromOffset(10, 26),
 		Size = UDim2.new(1, -110, 0, 28),
@@ -2462,7 +2465,7 @@ local function buildWindow()
 	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
 	local panel = CloudUI.Panel({
 		Name = "IndexPanel",
-		Title = G.Book .. " Pet Index",
+		Title = "Pet Index",
 		Closable = true,
 		Category = "Index",
 		Size = UDim2.new(1, 0, 1, 0),

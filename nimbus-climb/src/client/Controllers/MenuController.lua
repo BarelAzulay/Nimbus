@@ -253,19 +253,16 @@ local C2 = {
 }
 
 -- Text glyphs as UTF-8 byte escapes (the source stays plain ASCII). kit-b U7a: the tiles, the coins and the Stats window
--- draw PixelIcons (NeonKit.Icon, PixelIcon.Lead); the emoji that were here unused went. What is left is typography (the
--- dash, the bullet, the cash sign) and the Home window's text glyphs (House, Star, Lock, Check, Seedling), which U7b
--- redraws with the tycoon station icons (tools/fixtures/emoji_backlog.txt lists them until then).
+-- draw PixelIcons (NeonKit.Icon, PixelIcon.Lead); the emoji that were here unused went. U7b: the Home window's marks are
+-- PixelIcons too (HOME_ICON; a station's icon is its TycoonCatalog Icon, a PixelIcon name). What is left is typography
+-- (the dash, the bullet, the cash sign).
 local G = {
-	House = "\240\159\143\160",
-	Lock = "\240\159\148\146",
-	Star = "\226\152\133",
 	Dash = "\226\128\148",
 	Cash = (CURRENCY.Cash and CURRENCY.Cash.Glyph) or "$",
 	Bullet = "\194\183", -- middle dot
-	Check = "\226\156\147",
-	Seedling = "\240\159\140\177",
 }
+-- (kit-b U7b) the Home window's PixelIcons
+local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "play" }
 
 ----------------------------------------------------------------------
 -- Module state
@@ -1862,12 +1859,14 @@ end
 -- Home window (Phase 2): the house, income, the Collector, prestige, and every station with its upgrade
 ----------------------------------------------------------------------
 -- Phase 5 (3.4): the Home window's flow strip, the first item of its list: four neon tiles that tell the home loop
--- "Berry Farm Lv 13" -> "Pets eat & poop $3,000/min" -> "Berry Basket 1,240 / 3,000" -> "Food Machine: Feed = XP".
+-- "Berry Farm Lv 13" -> "Pets earn Cash $3,000/min" -> "Berry Basket 1,240 / 3,000" -> "Food Machine: Feed = XP".
+-- (kit-b U7b) each tile's Glyph is a PixelIcon name (NeonKit.Icon draws it); the second tile was "Pets eat & poop" with
+-- the pile-of-poo emoji (rejects audit 5): it says what the player gets, the Cash note icon (Config.Icons.Cash)
 P5.STRIP = {
-	{ Id = "Farm", Title = "Berry Farm", Glyph = "\240\159\141\147", Color = "Pink" },
-	{ Id = "Poop", Title = "Pets eat & poop", Glyph = "\240\159\146\169", Color = "Green" },
-	{ Id = "Basket", Title = "Berry Basket", Glyph = "\240\159\167\186", Color = "Purple" },
-	{ Id = "Machine", Title = "Food Machine", Glyph = "\240\159\141\178", Color = "Orange" },
+	{ Id = "Farm", Title = "Berry Farm", Glyph = "berry", Color = "Pink" },
+	{ Id = "Earn", Title = "Pets earn Cash", Glyph = "note", Color = "Green" },
+	{ Id = "Basket", Title = "Berry Basket", Glyph = "basket", Color = "Purple" },
+	{ Id = "Machine", Title = "Food Machine", Glyph = "pot", Color = "Orange" },
 }
 function P5.buildStrip(H, _content)
 	local strip = makeFrame(H.List, "FlowStrip", { Size = UDim2.new(1, 0, 0, 84), LayoutOrder = -1000 })
@@ -1894,7 +1893,8 @@ function P5.buildStrip(H, _content)
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 18, Parent = value })
 		H.StripTiles[i] = { Card = card, Title = title, Value = value }
 		if i < #P5.STRIP then
-			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "\226\150\182", "Title", 18, GOLD, { Size = UDim2.fromOffset(20, 76) })
+			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "", "Title", 18, GOLD, { Size = UDim2.fromOffset(20, 76) })
+			PixelIcon.Host(H.StripArrows[i], HOME_ICON.Arrow, 9) -- (kit-b U7b; 9 px: the gap between two tiles' rims is ~14 px)
 		end
 	end
 end
@@ -2440,7 +2440,8 @@ do
 		round(disc)
 		stroke(disc, NAVY, 3, 0)
 		Theme.Gradient(disc, Theme.Lighten(C2.Kind.House, 0.35), Theme.Darken(C2.Kind.House, 0.2), 90)
-		H.HouseGlyph = makeText(disc, "Glyph", G.House, "Title", 36, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
+		H.HouseGlyph = makeText(disc, "Glyph", "", "Title", 36, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
+		PixelIcon.Set(H.HouseGlyph, HOME_ICON.House, 36) -- (kit-b U7b) the tier's PixelIcon (paintSummary)
 		H.HouseName = makeText(house, "Tier", "Cottage", "Title", 30, Theme.Lighten(C2.Kind.House, 0.4), {
 			Position = UDim2.fromOffset(88, 8),
 			Size = UDim2.new(1, -170, 0, 36),
@@ -2494,11 +2495,11 @@ do
 		-- the Pet Garden: coins waiting on the lawn, coins per minute, places, the legacy lines (no Collect: kids walk
 		-- over their coins)
 		local garden = card("GardenCard", 3, 168)
-		makeText(garden, "Caption", G.Seedling .. " Pet Garden", "Heading", 19, MUTED, {
+		PixelIcon.Lead(makeText(garden, "Caption", "Pet Garden", "Heading", 19, MUTED, {
 			Position = UDim2.fromOffset(14, 8),
 			Size = UDim2.new(0.6, -14, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
-		})
+		}), HOME_ICON.Seedling) -- (kit-b U7b)
 		H.Places = makeText(garden, "Places", "", "Heading", 18, Theme.Lighten(C2.Kind.Garden, 0.35), {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -14, 0, 8),
@@ -2557,7 +2558,7 @@ do
 		})
 		H.PrestigeButton = CloudUI.Button({
 			Name = "Prestige",
-			Text = G.Star .. " Prestige",
+			Text = "Prestige",
 			Style = "Gold",
 			AnchorPoint = Vector2.new(0.5, 1),
 			Position = UDim2.new(0.5, 0, 1, -10),
@@ -2645,7 +2646,8 @@ do
 			corner(row.Disc, "M")
 			stroke(row.Disc, NAVY, 3, 0)
 			Theme.Gradient(row.Disc, Theme.Lighten(color, 0.35), Theme.Darken(color, 0.2), 90)
-			makeText(row.Disc, "Glyph", tostring(def.Icon or G.House), "Title", 34, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
+			-- (kit-b U7b) the station's PixelIcon (its TycoonCatalog Icon), the house for one that names none
+			PixelIcon.Host(makeText(row.Disc, "Glyph", "", "Title", 34, WHITE, { Size = UDim2.new(1, 0, 1, 0) }), PixelIcon.Bitmaps[def.Icon] and def.Icon or HOME_ICON.House, 36)
 			row.Name = makeText(frame, "Name", def.Name, "Title", 24, WHITE, {
 				Position = UDim2.fromOffset(88, 6),
 				Size = UDim2.new(1, -360, 0, 30),
@@ -2773,7 +2775,7 @@ do
 		stroke(box, GOLD, 4, 0)
 		Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
 		H.ConfirmBox = box
-		Theme.StyleTitle(makeText(box, "Title", G.Star .. " Prestige now?", "Title", 32, GOLD, {
+		Theme.StyleTitle(makeText(box, "Title", "Prestige now?", "Title", 32, GOLD, {
 			Position = UDim2.fromOffset(16, 12),
 			Size = UDim2.new(1, -32, 0, 40),
 			ZIndex = 32,
@@ -2818,7 +2820,7 @@ do
 		listLayout(buttons, Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
 		local yes = CloudUI.Button({
 			Name = "ConfirmPrestige",
-			Text = G.Star .. " Prestige!",
+			Text = "Prestige!",
 			Style = "Gold",
 			Size = UDim2.fromOffset(220, 56),
 			TextSize = 25,
@@ -2944,7 +2946,8 @@ do
 				row.Button.Visible = false
 				row.Price.Visible = false
 				row.Lock.Visible = true
-				row.Lock.Text = G.Lock .. " " .. tostring(lock)
+				row.Lock.Text = tostring(lock)
+				PixelIcon.Mark(row.Lock, HOME_ICON.Lock) -- (kit-b U7b)
 				return
 			end
 			row.Lock.Visible = false
@@ -2971,11 +2974,17 @@ do
 			else
 				H.HouseName.Text = (type(tier) == "table" and tier.Name) or "Cottage"
 			end
-			H.HouseGlyph.Text = (type(tier) == "table" and tier.Icon) or G.House
+			local houseIcon = type(tier) == "table" and tier.Icon or nil
+			PixelIcon.Set(H.HouseGlyph, PixelIcon.Bitmaps[houseIcon] and houseIcon or HOME_ICON.House, 36)
 			H.HomeLevel.Text = "Home Level " .. homeLevel
 			-- prestige stars in the corner (none before the first prestige)
 			H.Stars.Visible = stars > 0
-			H.Stars.Text = stars <= 3 and string.rep(G.Star, stars) or (G.Star .. " x" .. stars)
+			-- (kit-b U7b) PixelIcon stars: one per prestige up to three, then one star and "x7"
+			H.Stars.Text = stars <= 3 and "" or ("x" .. stars)
+			if stars > 0 then
+				local shown = stars <= 3 and stars or 1
+				PixelIcon.Mark(H.Stars, HOME_ICON.Star, { Count = shown, Of = shown })
+			end
 			local nextTier = tiers[(houseLevel >= 1 and (tierIndex or 1) or 0) + 1]
 			H.NextHouse.TextColor3 = MUTED
 			if houseLevel < 1 then
@@ -2983,7 +2992,7 @@ do
 			elseif type(nextTier) == "table" then
 				local at = tonumber(nextTier.HomeLevel) or 0
 				if homeLevel >= at then
-					H.NextHouse.Text = G.Check .. " Upgrade the House to a " .. tostring(nextTier.Name) .. "!"
+					H.NextHouse.Text = "Upgrade the House to a " .. tostring(nextTier.Name) .. "!"
 					H.NextHouse.TextColor3 = Theme.Lighten(GOOD, 0.35)
 				else
 					H.NextHouse.Text = "Next: " .. tostring(nextTier.Name) .. " at Home Level " .. at
@@ -2991,18 +3000,21 @@ do
 			else
 				H.NextHouse.Text = "Your " .. ((type(tier) == "table" and tier.Name) or "house") .. " is complete!"
 			end
+			PixelIcon.Mark(H.NextHouse, H.NextHouse.Text:sub(1, 7) == "Upgrade" and HOME_ICON.Check or nil) -- (kit-b U7b)
 			-- prestige
 			local P = TycoonCatalog and TycoonCatalog.Prestige or {}
 			local need = tonumber(P.HomeLevel) or 40
-			H.PrestigeTitle.Text = "Prestige  " .. G.Star .. " " .. stars .. "  ->  " .. (stars + 1)
+			H.PrestigeTitle.Text = "Prestige  " .. stars .. "  ->  " .. (stars + 1) .. ((stars + 1 == 1) and " star" or " stars")
 			H.PrestigeBar.SetFraction(need > 0 and math.min(1, homeLevel / need) or 0)
 			H.PrestigeBar.SetText("Home Level " .. math.min(homeLevel, need) .. "/" .. need)
 			local ok, reason = P2.catalogCall("CanPrestige", home)
 			if ok then
-				H.PrestigeNeed.Text = G.Check .. " Ready to prestige!"
+				H.PrestigeNeed.Text = "Ready to prestige!"
+				PixelIcon.Mark(H.PrestigeNeed, HOME_ICON.Check) -- (kit-b U7b)
 				H.PrestigeNeed.TextColor3 = Theme.Lighten(GOOD, 0.35)
 			else
-				H.PrestigeNeed.Text = G.Lock .. " " .. tostring(reason or "Not ready yet")
+				H.PrestigeNeed.Text = tostring(reason or "Not ready yet")
+				PixelIcon.Mark(H.PrestigeNeed, HOME_ICON.Lock)
 				H.PrestigeNeed.TextColor3 = C2.Lock
 			end
 			local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0

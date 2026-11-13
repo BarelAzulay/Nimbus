@@ -23,6 +23,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Theme = require(Shared:WaitForChild("Theme"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the power sword and the busy marks
 
 local UI = script.Parent
 local Client = UI.Parent
@@ -54,8 +55,9 @@ local GOLD = Colors.Gold or Colors.Token
 local ROW = Color3.fromRGB(34, 44, 92)
 local ROW_DARK = Color3.fromRGB(20, 26, 60)
 local POWER_GOLD = Color3.fromRGB(255, 214, 110)
-local SWORDS = "\226\154\148"
-local BUSY_GLYPH = { Training = "\240\159\146\170", Garden = "\240\159\140\177" }
+-- (kit-b U7b) PixelIcons, not emoji: the sword before a power, a busy slot's mark (training: the weight, garden: the sprout)
+local POWER_ICON = "sword"
+local BUSY_ICON = { Training = "weight", Garden = "sprout" }
 local BUSY_WORD = { Training = "Training", Garden = "Gardening" }
 
 local frame, text, corner, stroke = Bits.frame, Bits.text, Bits.corner, Bits.stroke
@@ -283,14 +285,28 @@ local function paintFace(face, entry, busy, mode, shown)
 	face.Cell.BackgroundColor3 = entry and ROW or ROW_DARK
 	if entry then
 		face.Level.Text = "L" .. tostring(entry.Level)
-		face.Power.Text = mode == "Compact" and shortPower(entry.Power) or (SWORDS .. " " .. commas(entry.Power))
+		-- (kit-b U7b) the sword before a full power (a Compact face has room for the short number only); drawn on a change
+		local sword = mode ~= "Compact"
+		if face.PowerIcon ~= sword then
+			face.PowerIcon = sword
+			if sword then
+				PixelIcon.Lead(face.Power, POWER_ICON)
+			else
+				PixelIcon.Clear(face.Power)
+			end
+		end
+		face.Power.Text = sword and commas(entry.Power) or shortPower(entry.Power)
 		face.Rim.Color = CloudUI.RarityColor(entry.Def.Rarity)
 		face.Stage_.Text = stage >= 2 and "EVO II" or "EVO I"
 		face.Stage_.Visible = stage > 0 and mode == "Card" -- (the picture shows the stage; the smaller faces have no room for the badge)
 	else
 		face.Stage_.Visible = false
 		face.Empty.Text = busy and BUSY_WORD[busy] or "Empty"
-		face.Busy.Text = busy and BUSY_GLYPH[busy] or ""
+		local mark = busy and BUSY_ICON[busy] or nil
+		if face.BusyIcon ~= mark then
+			face.BusyIcon = mark
+			PixelIcon.Host(face.Busy, mark or "") -- an unknown name drops the old mark
+		end
 		if mode == "Compact" then
 			-- the mark above the word when the slot's pet is busy
 			place(face.Empty, 2, busy and 42 or 22, 1, -4, busy and 20 or 40)
@@ -419,7 +435,16 @@ function TeamFaces.New(parent, props)
 			paintFace(face, entries[i], busy[i - #entries], mode, shown)
 		end
 		local total = commas(TeamFaces.Power())
-		power.Text = mode == "Column" and (SWORDS .. " " .. total) or ("Team power " .. total)
+		local sword = mode == "Column" -- (kit-b U7b) a Column row says the power with the sword in front
+		if row.PowerIcon ~= sword then
+			row.PowerIcon = sword
+			if sword then
+				PixelIcon.Lead(power, POWER_ICON)
+			else
+				PixelIcon.Clear(power)
+			end
+		end
+		power.Text = sword and total or ("Team power " .. total)
 	end
 
 	function row.SetMode(newMode)

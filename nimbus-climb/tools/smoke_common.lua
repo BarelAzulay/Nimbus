@@ -707,6 +707,27 @@ function Emoji.Walk(pg, hits, owed)
 	return hits, owed
 end
 
+-- (kit-b U7b) the PixelIcon a text object shows in place of a glyph: (name, count) of its PixelIcon.Lead row ("LeadIcon",
+-- or "TrailIcon" with which = "Trail"; either when which is nil), else of the icon it hosts (PixelIcon.Host: "Icon");
+-- nil, 0 when it has none
+function SmokeCommon.IconOn(label, which)
+	if not label then
+		return nil, 0
+	end
+	local box = label:FindFirstChild(which == "Trail" and "TrailIcon" or "LeadIcon")
+	if not box and which == nil then
+		box = label:FindFirstChild("TrailIcon")
+	end
+	if box and box:GetAttribute("PixelIcon") then
+		return box:GetAttribute("PixelIcon"), tonumber(box:GetAttribute("IconCount")) or 1
+	end
+	local icon = label:FindFirstChild("Icon")
+	if icon and icon:GetAttribute("PixelIcon") then
+		return icon:GetAttribute("PixelIcon"), 1
+	end
+	return nil, 0
+end
+
 -- (battle-feel T3, the real server cast) a special press's effects land BattleCatalog.Damage.SpecialCast[kind] s after the
 -- press (Cast event first, the Special + its hits at `at`). `evs` = the events of the step after the press: when they hold
 -- a Cast of unit `unitId` (any unit when nil) and no Special of it, the battle is stepped `dt` (0.05) at a time until its
