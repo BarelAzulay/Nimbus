@@ -96,6 +96,7 @@ if [ $do_static -eq 1 ]; then
 		step "Parallel runner tests (tools/test_smoke_parallel.py, offline)" python3 tools/test_smoke_parallel.py
 		step "Model router tests (tools/test_pick_model.py, offline)" python3 tools/test_pick_model.py
 		step "Mesh key scanner tests (tools/test_mesh_keys.py, offline)" python3 tools/test_mesh_keys.py
+		step "Place verifier tests (tools/test_verify_place.py, offline)" python3 tools/test_verify_place.py
 		# lobby-shop review round 1: the key contract itself (every Mesh.tag key has a manifest; every manifest this build
 		# adds is tagged), not only the scanner's unit tests
 		step "Mesh key contract (tools/mesh_keys.py --check)" python3 tools/mesh_keys.py --check

@@ -48,7 +48,9 @@ a Fable high review). Change a route in the spec and here together; `test_pick_m
 `src/**/*.lua` must be in the place at its path with the class Rojo 7 gives it (`*.server.lua` Script,
 `*.client.lua` LocalScript, any other `.lua` ModuleScript) and a Source identical to the file on disk; sub-folders
 must be Folders, no two siblings may share a name, the place may hold no script that `src/` does not have, and the
-`$properties` of `default.project.json` (the lighting technology) must be there. It names every mismatch (with the
+`$properties` of `default.project.json` (the lighting technology, the Lighting Sky's six faces) must be there; a content
+id such as a Sky face must hold the same id (Rojo 7.7 stores `SkyboxBk` .. `SkyboxUp` as `SkyboxBackContent` ..
+`SkyboxUpContent`; `test_verify_place.py` pins that). It names every mismatch (with the
 first differing line) and exits 1, so run it after every rebuild:
 
 ```sh

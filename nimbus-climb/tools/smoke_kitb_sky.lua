@@ -26,7 +26,7 @@
 --   S2 (preload, painted boot sky, stars; sky audit F4, F5, F12):
 --   sky_painted_looks_have_no_engine_stars (server world, pure) every phase and raid look with a painted skybox has
 --                             StarCount 0 (the stars are painted; no engine field popping on at the mid-blend)
---   sky_edit_mode_day_faces  (server world, pure; 2026-11-13 owner) default.project.json's Lighting.NimbusSky (Studio's
+--   sky_edit_mode_day_faces  (server world, pure; 2026-11-13 owner) default.project.json's Lighting.Sky (Studio's
 --                             edit-mode sky) has the six faces of SkyFaces.For(Config.Sky.Themes.Day), the same as
 --                             SkyCycle.Preset's Day faces, and its StarCount / CelestialBodiesShown (0 / false)
 --   lightingservice_boot_uses_painted_day (server world, booted) empty (or half-pasted) Config.Sky.Faces boots the
@@ -34,6 +34,9 @@
 --                             uploaded), StarCount 0, CelestialBodiesShown false, Glare 0, its own SunRays at 0 ("Painted"):
 --                             faces / stars / sun / glare / rays = SkyCycle.Preset at that phase; the stock sky only when
 --                             neither theme is uploaded; six owner faces win
+--   lightingservice_owns_one_sky (server world, booted; sky review) a Baseplate's stock Sky next to the project's: Init
+--                             keeps exactly one Sky (NimbusSky, else the first), destroys the rest, the kept one carries
+--                             the look's faces and StarCount; Init twice keeps the same Sky
 --   skytransition_preloads_next_theme (client) SkyTransition.Preload(theme) = one ContentProvider:PreloadAsync with exactly
 --                             its six face ids (nothing for a missing theme); SkyController preloads the next theme once
 --                             per blend window, at its first refresh inside it
@@ -390,7 +393,7 @@ local function serverScenarios()
 	end)
 
 	-- (2026-11-13 owner: "edit-mode sky = YES") Studio's edit mode shows the painted Day sky, not the stock one: the
-	-- Lighting.NimbusSky of default.project.json carries the Day theme's six faces in their Skybox slots (SkyFaces' Lf / Rt
+	-- Lighting.Sky of default.project.json carries the Day theme's six faces in their Skybox slots (SkyFaces' Lf / Rt
 	-- swap included), no engine stars and no engine sun / moon, the same as SkyCycle.Preset writes for the Day. The two
 	-- places cannot drift: a re-uploaded Day theme in TextureIds without the project file fails here
 	S.sky_edit_mode_day_faces = guarded("sky_edit_mode_day_faces", function()
@@ -417,13 +420,13 @@ local function serverScenarios()
 			return
 		end
 		local lighting = text:match('"Lighting"%s*:%s*(%b{})')
-		local node = lighting and lighting:match('"NimbusSky"%s*:%s*(%b{})')
-		if not T.check(node ~= nil and node:match('"%$className"%s*:%s*"Sky"') ~= nil, "default.project.json has Lighting.NimbusSky ($className Sky)") then
+		local node = lighting and lighting:match('"Sky"%s*:%s*(%b{})')
+		if not T.check(node ~= nil and node:match('"%$className"%s*:%s*"Sky"') ~= nil, "default.project.json has Lighting.Sky ($className Sky; named Sky so Rojo connect adopts a Baseplate's Sky)") then
 			return
 		end
 		local props = node:match('"%$properties"%s*:%s*(%b{})') or ""
 		local p = SkyCycle.Preset({ Phase = "Day", Next = "Day", T = 0, Blend = 0 }, nil, 0, SkyFaces.For).Sky
-		local faces = T.tally("Lighting.NimbusSky's six faces = SkyFaces.For(" .. tostring(theme) .. ") = SkyCycle.Preset's Day faces")
+		local faces = T.tally("Lighting.Sky's six faces = SkyFaces.For(" .. tostring(theme) .. ") = SkyCycle.Preset's Day faces")
 		local n = 0
 		for slot, id in pairs(want) do
 			local got = props:match('"' .. slot .. '"%s*:%s*"([^"]*)"')
@@ -434,7 +437,7 @@ local function serverScenarios()
 		T.check(n == 6, fmt("six faces compared (%d)", n))
 		local stars = tonumber(props:match('"StarCount"%s*:%s*(%-?%d+)'))
 		local bodies = props:match('"CelestialBodiesShown"%s*:%s*(%a+)')
-		T.check(stars == p.StarCount and bodies == tostring(p.CelestialBodiesShown), "Lighting.NimbusSky: StarCount / CelestialBodiesShown = SkyCycle.Preset's Day (no engine stars or sun on the painted sky)",
+		T.check(stars == p.StarCount and bodies == tostring(p.CelestialBodiesShown), "Lighting.Sky: StarCount / CelestialBodiesShown = SkyCycle.Preset's Day (no engine stars or sun on the painted sky)",
 			fmt("project %s / %s, Preset %s / %s", tostring(stars), tostring(bodies), tostring(p.StarCount), tostring(p.CelestialBodiesShown)))
 	end)
 
@@ -772,6 +775,92 @@ local function serverScenarios()
 		end
 		LS.Init()
 		K.flushWarnings("lightingservice_boot_uses_painted_day restore", { "[LightingService]" })
+	end)
+
+	-- (sky review 2026-11-13) a Baseplate opened in Studio ships its own Lighting.Sky and Rojo connect adds the project's
+	-- next to it (it never removes unknown children). LightingStack, the loading screen and SkyController take the FIRST
+	-- Sky, so the faces they swap and the sky the engine draws could differ: Init keeps exactly one Sky (NimbusSky when
+	-- there is one, else the first) and destroys the rest, before the look is written
+	S.lightingservice_owns_one_sky = guarded("lightingservice_owns_one_sky", function()
+		local LS = K.M["server/Services/LightingService"]
+		local Lighting = game:GetService("Lighting")
+		if not T.check(type(LS) == "table" and type(LS.Init) == "function", "LightingService is loaded") then
+			return
+		end
+		local function skies()
+			local out = {}
+			for _, c in ipairs(Lighting:GetChildren()) do
+				if c:IsA("Sky") then
+					out[#out + 1] = c
+				end
+			end
+			return out
+		end
+		local function clear()
+			for _, s in ipairs(skies()) do
+				s:Destroy()
+			end
+		end
+		local SLOTS = { "SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp" }
+		local function stock(name)
+			local s = Instance.new("Sky")
+			s.Name = name
+			for i, slot in ipairs(SLOTS) do
+				s[slot] = "rbxassetid://" .. (590 + i) -- a template's own faces
+			end
+			s.StarCount = 3000
+			s.Parent = Lighting
+			return s
+		end
+		local ok, err = pcall(function()
+			-- the look's faces on a Lighting with no Sky (Init makes one)
+			clear()
+			local look = LS.Init()
+			local base = skies()[1]
+			if not T.check(#skies() == 1 and base ~= nil, "a Lighting with no Sky: Init makes one", tostring(#skies())) then
+				return
+			end
+			local want = {}
+			for _, slot in ipairs(SLOTS) do
+				want[slot] = base[slot]
+			end
+			local function owns(label, keep)
+				local list = skies()
+				if not T.check(#list == 1, label .. ": exactly one Sky under Lighting after Init", tostring(#list)) then
+					return
+				end
+				local s = list[1]
+				if keep then
+					T.check(s == keep, label .. ": the kept Sky is " .. keep.Name, s.Name)
+				end
+				local faces = T.tally(label .. ": the kept Sky carries the look's six faces (" .. tostring(look) .. ")")
+				for _, slot in ipairs(SLOTS) do
+					faces:case(s[slot] == want[slot], fmt("%s %s vs %s", slot, tostring(s[slot]), tostring(want[slot])))
+				end
+				faces:report()
+				T.check(s.StarCount == base.StarCount, label .. ": the look's StarCount", fmt("%s vs %s", tostring(s.StarCount), tostring(base.StarCount)))
+			end
+			-- a Baseplate's stock "Sky" first, then a NimbusSky (the one Init makes, left in a saved place): NimbusSky stays
+			clear()
+			stock("Sky")
+			local nimbus = stock("NimbusSky")
+			T.eq(LS.Init(), look, "stock Sky + NimbusSky: the same look")
+			owns("stock Sky + NimbusSky", nimbus)
+			-- two template Skies, neither named NimbusSky (a Baseplate's and the project's Lighting.Sky, when Rojo did not adopt it):
+			-- the first stays
+			clear()
+			local first = stock("Sky")
+			stock("Sky")
+			LS.Init()
+			owns("two stock Skies", first)
+			-- Init again keeps that same Sky
+			LS.Init()
+			owns("Init twice", first)
+		end)
+		T.check(ok, "lightingservice_owns_one_sky ran without errors", tostring(err))
+		clear()
+		LS.Init()
+		K.flushWarnings("lightingservice_owns_one_sky restore", { "[LightingService]" })
 	end)
 
 	return S
