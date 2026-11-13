@@ -991,13 +991,34 @@ local function ribbonTail(tail, w, h, notch, outer)
 	end
 end
 
--- sizes the band, tails, underline and steps for the label's text now
+-- (kit-b merge) the product of the UIScales on `obj` and every GuiObject above it, up to its ScreenGui: TextBounds and
+-- AbsoluteSize are screen px (after all of them), the ribbon's offsets are the label's own px (PixelIcon's scaleOf)
+local function uiScaleOf(obj)
+	local s = 1
+	local cur = obj
+	while cur and not cur:IsA("LayerCollector") do
+		if cur:IsA("GuiObject") then
+			local ui = cur:FindFirstChildOfClass("UIScale")
+			if ui and ui.Scale > 0 then
+				s = s * ui.Scale
+			end
+		end
+		cur = cur.Parent
+	end
+	return s
+end
+
+-- sizes the band, tails, underline and steps for the label's text now, in the label's own px
 local function ribbonLayout(label, rib)
 	local R = Theme.TitleRibbon
 	local size = tonumber(label.TextSize) or R.Base
 	local okB, bounds = pcall(function()
 		return label.TextBounds
 	end)
+	local scale = uiScaleOf(label)
+	if okB and bounds then
+		bounds = Vector2.new(bounds.X / scale, bounds.Y / scale)
+	end
 	if label.TextScaled and okB and bounds and bounds.Y > 0 then
 		size = bounds.Y
 	end
@@ -1030,7 +1051,7 @@ local function ribbonLayout(label, rib)
 	-- the box's real width (0 = not laid out yet: no limit)
 	local boxW = 0
 	pcall(function()
-		boxW = label.AbsoluteSize.X
+		boxW = label.AbsoluteSize.X / scale
 	end)
 	if boxW <= 0 and label.Size.X.Scale == 0 then
 		boxW = label.Size.X.Offset

@@ -1942,6 +1942,50 @@ local function serverScenarios()
 		K.flushErrors("theme_style_title")
 	end)
 
+	-- (kit-b merge, U8 x T1) a header title's ribbon under a UIScale: Roblox's TextBounds and AbsoluteSize are screen px
+	-- (after every UIScale on and above the label) while the ribbon's offsets are the label's own px. The Pets window's
+	-- Signboard header sits under its Fit UIScale; at 390x844 the right tail's notch reached 16 px past the title's box,
+	-- onto the A button. At 0.8, 1, 1.25 and 1.7 the right tail (its notch too) ends inside the box and the underline is
+	-- as wide as the text in the label's own px
+	S.theme_title_ribbon_uiscale = guarded("theme_title_ribbon_uiscale", function()
+		local Theme = theme()
+		local Mock = rawget(_G, "Mock")
+		if not (Theme and Theme.StyleTitle and Mock) then
+			return
+		end
+		local gui = Instance.new("ScreenGui")
+		gui.IgnoreGuiInset = true
+		for _, sc in ipairs({ 0.8, 1, 1.25, 1.7 }) do
+			local root = Instance.new("Frame")
+			root.Size = UDim2.fromOffset(400, 200)
+			local ui = Instance.new("UIScale")
+			ui.Scale = sc
+			ui.Parent = root
+			root.Parent = gui
+			local l = Theme.Label("PETS", "Title", { Size = 24 })
+			l.Size = UDim2.fromOffset(110, 40)
+			l.TextXAlignment = Enum.TextXAlignment.Left
+			l.Parent = root
+			Theme.StyleTitle(l)
+			local tailR, under = l:FindFirstChild("TailR"), l:FindFirstChild("RibbonUnderline")
+			local reach = math.huge
+			if tailR then
+				reach = tailR.Position.X.Offset + tailR.Size.X.Offset
+				for _, n in ipairs(tailR:GetChildren()) do
+					reach = math.max(reach, tailR.Position.X.Offset + n.Position.X.Offset + n.Size.X.Offset)
+				end
+			end
+			T.check(tailR ~= nil and tailR.Position.X.Scale == 0 and reach <= 110,
+				fmt("kitb title: UIScale %.2f, the right tail (its notch too) ends inside the 110 px box", sc), fmt("reaches %s", tostring(reach)))
+			local own = Mock.TextExtent(l)
+			T.check(under ~= nil and math.abs(under.Size.X.Offset - own) <= 2,
+				fmt("kitb title: UIScale %.2f, the underline is the text's width in the label's own px", sc),
+				fmt("underline %s, text %.1f", under and tostring(under.Size.X.Offset) or "missing", own))
+		end
+		gui:Destroy()
+		K.flushErrors("theme_title_ribbon_uiscale")
+	end)
+
 	return S
 end
 
@@ -4934,7 +4978,8 @@ local function clientScenarios()
 					elseif d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and neonName(d.Color) then
 						bad[#bad + 1] = family .. ": a neon " .. neonName(d.Color) .. " border on " .. p.Name
 					end
-				elseif d:IsA("UIGradient") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and not ALLOWED[d.Name] and not inGemIcon(d) then
+				elseif d:IsA("UIGradient") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and not ALLOWED[d.Name] and not inGemIcon(d)
+					and not designedLook(d) then -- (kit-b merge) the title's T1 ribbon: its gold bands and TitleHide are the owner's pick
 					bad[#bad + 1] = family .. ": a gloss gradient on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
 				elseif d:IsA("GuiObject") and d.BackgroundTransparency < 0.5 and U8.shown(d) and neonName(d.BackgroundColor3) then
 					bad[#bad + 1] = family .. ": a neon " .. neonName(d.BackgroundColor3) .. " fill on " .. d.Name
@@ -5032,7 +5077,9 @@ local function clientScenarios()
 				"panel skin: the red close block with the drawn X")
 			local bad = {}
 			for _, d in ipairs(root:GetDescendants()) do
-				if d:IsA("UIGradient") or d:IsA("UICorner") then
+				if designedLook(d) then
+					-- (kit-b merge) the title's T1 ribbon (the owner's pick)
+				elseif d:IsA("UIGradient") or d:IsA("UICorner") then
 					bad[#bad + 1] = d.ClassName .. " on " .. d.Parent.Name
 				elseif d.Name == "Glow" and d:IsA("GuiObject") and d.Visible then
 					bad[#bad + 1] = "a glow on " .. d.Parent.Name

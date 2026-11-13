@@ -1503,7 +1503,10 @@ function H.layoutHeader(panel, phone)
 		head.Size = UDim2.fromOffset(w, K.PHONE_TITLE[3])
 		title.TextSize = 24
 		title.Position = UDim2.fromOffset(10, 0)
-		title.Size = UDim2.new(1, -16, 1, 0)
+		-- (kit-b merge) the title's width in px (the plate's, less 16), so turning the phone resizes the title itself and its
+		-- T1 ribbon re-fits the box (it follows the label's Size; the test mock fires no AbsoluteSize on a parent's resize)
+		local plateW = plate and plate.Size.X.Scale == 1 and w + plate.Size.X.Offset or w
+		title.Size = UDim2.new(0, plateW - 16, 1, 0)
 	else
 		head.Position = UDim2.fromOffset(0, 0)
 		head.Size = U.HeadSize

@@ -1878,6 +1878,8 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              FxSprites (the game's own particle sprites by role: every emitter outside AttackFx takes its texture
              here)  PixelIcon (the kit B icon set: 9 x 9 one-colour bitmaps drawn as merged Frames)  SignKit (the
              Signboard parts every window and the loading screen build from: roof, header, frame, body, planks)
+             Logo (the game's logo on the menu and loading boards: the L1 picture once its TextureIds key has an id,
+             else the L2 drawn letters)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
