@@ -4698,7 +4698,7 @@ local function clientScenarios()
 		end
 		return cur ~= nil and cur.Enabled ~= false
 	end
-	function U8.feed(team, garden, growth) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth
+	function U8.feed(team, garden, growth, stations) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth; stations: Home.Stations
 		local pets, levels, discovered = {}, {}, {}
 		for i, key in ipairs(U8.KEYS) do
 			pets[key] = 1
@@ -4713,7 +4713,7 @@ local function clientScenarios()
 			Discovered = discovered, IndexClaimed = {},
 			Tutorial = { Step = 1000, Done = true, Gifted = true },
 			Cash = 48200, Gems = 320,
-			Home = { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = garden or {}, Gym = {}, CollectorCash = 0 },
+			Home = { Level = 5, Prestige = 0, Stations = stations or { Garden = 1 }, Garden = garden or {}, Gym = {}, CollectorCash = 0 },
 			Food = {}, Tiers = {}, Hybrids = {}, PetLevels = levels,
 			Teams = { Presets = { preset, {}, {} }, Active = 1, Slots = 3, Busy = {} },
 			Battle = { Trophies = 120, TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} },
@@ -5484,6 +5484,48 @@ local function clientScenarios()
 				T.check(ok, tag .. ": " .. f[1] .. " has at most its one green action", table.concat(greens, ", "))
 				U9.close()
 			end
+		end)
+		-- (U9-5 review) the Feed buttons are stone peers, so a feed the basket cannot pay for says so on its own: its price in
+		-- Theme.Sign.RedLip (as Train's short TRAIN), still pressable; a feed the basket holds has no red. Every row at 0
+		-- berries is short, none at a full basket
+		U8.at(1920, 1080, false, "care feed short look", function(tag)
+			local Theme = LoadingH.shared("Theme")
+			local LP = game:GetService("Players").LocalPlayer
+			local red = '<font color="#' .. string.format("%02x%02x%02x", math.floor(Theme.Sign.RedLip.R * 255 + 0.5),
+				math.floor(Theme.Sign.RedLip.G * 255 + 0.5), math.floor(Theme.Sign.RedLip.B * 255 + 0.5)) .. '">'
+			local old = LP:GetAttribute("Berries")
+			U8.feed(nil, nil, nil, { Garden = 1, Kitchen = 2 }) -- the Food Machine built: the Feed buttons show their price
+			U9.open("feed")
+			local function feeds()
+				local out = {}
+				local gui = U8.pg():FindFirstChild("NimbusCare")
+				for _, d in ipairs(gui and gui:GetDescendants() or {}) do
+					if d:IsA("TextButton") and d.Name == "Feed" and d.Parent and d.Parent.Name == "Buttons" then
+						local cost = d.Text:gsub("<[^>]->", ""):match("^Feed  ([%d,]+) berries")
+						if cost then
+							out[#out + 1] = { Button = d, Cost = tonumber((cost:gsub(",", ""))) }
+						end
+					end
+				end
+				return out
+			end
+			for _, case in ipairs({ { 0, true }, { 10 ^ 9, false } }) do
+				LP:SetAttribute("Berries", case[1])
+				LKC.advance(1)
+				local rows, wrong = feeds(), {}
+				for _, r in ipairs(rows) do
+					local marked = r.Button.RichText and r.Button.Text:lower():find(red, 1, true) ~= nil
+					if marked ~= case[2] or r.Button:GetAttribute("Disabled") == true then
+						wrong[#wrong + 1] = fmt("%s %q (cost %d)", r.Button.Parent.Parent.Name, r.Button.Text, r.Cost)
+					end
+				end
+				T.check(#rows > 0 and #wrong == 0, fmt("%s: at %d berries every priced Feed %s the red short price and stays pressable (%d rows)", tag,
+					case[1], case[2] and "carries" or "has no", #rows), table.concat(wrong, "; ", 1, math.min(#wrong, 6)))
+			end
+			LP:SetAttribute("Berries", old)
+			LKC.advance(0.5)
+			U9.close()
+			U8.feed()
 		end)
 		LKC.flushErrors("care_family_one_green")
 	end)

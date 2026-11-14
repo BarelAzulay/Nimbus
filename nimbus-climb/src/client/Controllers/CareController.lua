@@ -539,6 +539,14 @@ function H.commas(n)
 	return Util.Commas(math.floor(tonumber(n) or 0))
 end
 
+-- a Color3 as RichText's "rrggbb"
+function H.hex(c)
+	local function byte(v)
+		return math.max(0, math.min(255, math.floor(v * 255 + 0.5)))
+	end
+	return string.format("%02x%02x%02x", byte(c.R), byte(c.G), byte(c.B))
+end
+
 function H.inMatch()
 	return LocalPlayer ~= nil and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true
 end
@@ -1143,6 +1151,7 @@ function H.newFeedRow(key, def)
 		H.feed(key)
 	end)
 	row.Feed.LayoutOrder = 1
+	row.Feed.RichText = true -- (a short basket shows the price in red: H.paintFeedRow)
 	-- (Phase 5: no "Level up" button: ONE Feed button = one feed)
 	row.Evolve = H.button(buttons, "Evolve", "EVOLVE!", "Gray", UDim2.fromOffset(122, 58), 20, function()
 		CareController.ConfirmEvolve(key)
@@ -1241,8 +1250,13 @@ function H.paintFeedRow(row, home, cash)
 		CloudUI.SetStyle(row.Feed, "Gray")
 		CloudUI.SetDisabled(row.Feed, busy)
 	else
-		row.Feed.Text = "Feed  " .. H.commas(one.Cost) .. " berries  (+" .. H.commas(one.Xp) .. " XP)"
-		-- (kit-b U9-5) every row's Feed is a peer: stone; H.oneGreen lights the window's one green action
+		-- (kit-b U9-5) every row's Feed is a peer: stone; H.oneGreen lights the window's one green action. A feed the basket
+		-- cannot pay for shows its price in red (as Train's short TRAIN) and stays pressable, so it says why
+		local price = H.commas(one.Cost) .. " berries"
+		if H.berries() < one.Cost then
+			price = '<font color="#' .. H.hex(SIGN.RedLip) .. '">' .. price .. "</font>"
+		end
+		row.Feed.Text = "Feed  " .. price .. "  (+" .. H.commas(one.Xp) .. " XP)"
 		CloudUI.SetDisabled(row.Feed, busy)
 	end
 	-- EVOLVE when ready
