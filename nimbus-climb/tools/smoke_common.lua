@@ -152,7 +152,8 @@ end
 --   Active, the button not clipping, drawn above the button's other children) centred on the button within 1 px and
 --   inside it; BarA (+45) / BarB (-45) white bars over InkA / InkB dark bars (larger, drawn under the white ones), every
 --   bar shown, not Active, no UIStroke; with opts.MinTap (a phone window: 44) the button is at least that big.
--- opts.Shown: the visibility test (default KC.isShown in the client world).
+-- opts.Shown: the visibility test (default KC.isShown in the client world). (kit-b U9-2) opts.Bar / opts.Ink (Color3): a
+-- kit B close block's X (square bars in a Danger block's brown ink over its red lip) is these colours, not white over dark.
 SmokeCommon.CLOSE_TEXTS = { "X", "x", "\226\156\149", "\195\151" }
 function SmokeCommon.closeMarkIssues(button, opts)
 	opts = type(opts) == "table" and opts or {}
@@ -218,10 +219,19 @@ function SmokeCommon.closeMarkIssues(button, opts)
 			out[#out + 1] = want[1] .. " is not visible"
 		elseif bar.Active ~= false or bar:FindFirstChildOfClass("UIStroke") then
 			out[#out + 1] = want[1] .. " is Active or has a UIStroke"
+		elseif want[3] and opts.Bar then
+			if (c.R - opts.Bar.R) ^ 2 + (c.G - opts.Bar.G) ^ 2 + (c.B - opts.Bar.B) ^ 2 > 0.0004 then
+				out[#out + 1] = want[1] .. " is not the kit B ink " .. tostring(c)
+			end
+		elseif not want[3] and opts.Ink then
+			if (c.R - opts.Ink.R) ^ 2 + (c.G - opts.Ink.G) ^ 2 + (c.B - opts.Ink.B) ^ 2 > 0.0004 then
+				out[#out + 1] = want[1] .. " is not the kit B lip " .. tostring(c)
+			end
 		elseif want[3] and not (c.R > 0.9 and c.G > 0.9 and c.B > 0.9) then
 			out[#out + 1] = want[1] .. " is not white " .. tostring(c)
 		elseif not want[3] and not (c.R < 0.25 and c.G < 0.25 and c.B < 0.25) then
 			out[#out + 1] = want[1] .. " is not dark " .. tostring(c)
+
 		end
 	end
 	for _, pair in ipairs({ { "BarA", "InkA" }, { "BarB", "InkB" } }) do

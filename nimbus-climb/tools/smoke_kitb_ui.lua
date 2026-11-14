@@ -5218,10 +5218,26 @@ local function clientScenarios()
 			end
 			return false
 		end
+		-- (U9-2) the Shop's illustrations are art, not panels: the gumball machines (attribute Art) and the EggArt eggs
+		-- (attributes Form + Rarity) keep their glass sheen and egg tones; a scroll row's edge "Fade" is a flat colour fading
+		-- out (no gloss)
+		ALLOWED.Fade = true
+		local function inArt(d)
+			local cur = d.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur:GetAttribute("Art") ~= nil or (cur:GetAttribute("Form") ~= nil and cur:GetAttribute("Rarity") ~= nil) then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
 		local function walk(root, family, bad)
 			for _, d in ipairs(root and root:GetDescendants() or {}) do
 				local p = d.Parent
-				if d:IsA("UIStroke") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and d.Transparency < 0.95 then
+				if inArt(d) then
+					-- (U9-2) an illustration's own paint
+				elseif d:IsA("UIStroke") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and d.Transparency < 0.95 then
 					if d.Name == "GlowStroke" or (p.Name == "Glow" and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border) then
 						bad[#bad + 1] = family .. ": a glow ring on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
 					elseif d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and neonName(d.Color) then
@@ -5300,7 +5316,25 @@ local function clientScenarios()
 				end
 				lp:SetAttribute(Config.Attr.SpotIndex, oldSpot)
 				LKC.advance(0.2)
-				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window, the Index and the Home window (%d)", tag, #bad),
+				-- (U9-2) the Shop on every tab (the Secret card at the altar and away from it on Eggs)
+				local Shop = U7.client("Controllers/ShopController")
+				local SE = U7.client("UI/ShopEggs")
+				local oldAltar = SE and SE._AtAltar
+				for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
+					Shop.Open({ Tab = tab })
+					LKC.advance(1)
+					walk(pg:FindFirstChild("NimbusShop"), "Shop " .. tab, bad)
+					if tab == "Eggs" and SE then
+						SE._AtAltar = false
+						Shop.Open({ Tab = tab })
+						LKC.advance(1.2)
+						walk(pg:FindFirstChild("NimbusShop"), "Shop Eggs (away)", bad)
+						SE._AtAltar = oldAltar
+					end
+				end
+				pcall(Shop.Close)
+				LKC.advance(0.4)
+				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window, the Index, the Home window and the Shop (%d)", tag, #bad),
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
@@ -5761,6 +5795,252 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("home_prestige_fits")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-2 (finding 15; BUILD_PLAN "Coverage check", U9 family 2 "Shop + Gems + Robux Store"): the Shop window (ShopController
+	-- with its Eggs page ShopEggs and Gems page ShopGems) on the Signboard kit, and the render gate's three Shop findings:
+	-- the balances shown twice (the window's pills and the HUD strips), the X over the HUD strips at 1280x720, the x3 / gem
+	-- row cut by the window's bottom edge at 1280x720. U92.at runs fn(tag, win) with the Shop open on `tab`, on an account
+	-- that may spin (allowed, gems settled, at the altar unless `away`), and puts everything back after
+	local U92 = {}
+	function U92.win()
+		local gui = U8.pg():FindFirstChild("NimbusShop")
+		return gui and gui:FindFirstChild("ShopWindow")
+	end
+	-- the contrast walk's failures inside the Shop
+	function U92.contrast()
+		local out = {}
+		for _, line in ipairs((SmokeCommon.Contrast.Walk(U8.pg()))) do
+			if line:find("NimbusShop", 1, true) then
+				out[#out + 1] = line
+			end
+		end
+		return out
+	end
+	-- an illustration, not a panel: the gumball machine (attribute Art), an EggArt egg (attributes Form + Rarity), the
+	-- drawn cut gem (GemIcon), a pet viewport; their round shapes and tone gradients are the art
+	function U92.inArt(d)
+		local cur = d
+		while cur and not cur:IsA("LayerCollector") do
+			if cur:GetAttribute("Art") ~= nil or (cur:GetAttribute("Form") ~= nil and cur:GetAttribute("Rarity") ~= nil) or cur.Name == "GemIcon"
+				or cur.Name == "GemAmount" or cur:IsA("ViewportFrame") then
+				return true
+			end
+			cur = cur.Parent
+		end
+		return false
+	end
+	function U92.at(w, h, touch, label, tab, away, fn)
+		local Shop = U7.client("Controllers/ShopController")
+		local SE = U7.client("UI/ShopEggs")
+		local lp = game:GetService("Players").LocalPlayer
+		U8.at(w, h, touch, label, function(tag)
+			local old = { lp:GetAttribute("PaidRandomItemsRestricted"), lp:GetAttribute("GemsSettled"), lp:GetAttribute("SecretPityLeft"), SE._AtAltar,
+				lp:GetAttribute("StorePreview"), SE._InLobby }
+			SE._InLobby = true -- (in the lobby: TRAVEL can fly)
+			lp:SetAttribute("StorePreview", true) -- (the Packs / Passes / Boosts cards show as PREVIEW cards: no product is created here)
+			lp:SetAttribute("PaidRandomItemsRestricted", false)
+			lp:SetAttribute("GemsSettled", true)
+			lp:SetAttribute("SecretPityLeft", 5)
+			SE._AtAltar = not away
+			LKC.advance(0.2)
+			Shop.Open({ Tab = tab })
+			LKC.advance(1.2)
+			local win = U92.win()
+			local ok, err = pcall(function()
+				if T.check(win ~= nil and U8.shown(win), tag .. ": the Shop opens on " .. tab) then
+					fn(tag, win)
+				end
+			end)
+			T.check(ok, tag .. ": the Shop check ran", tostring(err))
+			pcall(Shop.Close)
+			LKC.advance(0.4)
+			lp:SetAttribute("PaidRandomItemsRestricted", old[1])
+			lp:SetAttribute("GemsSettled", old[2])
+			lp:SetAttribute("SecretPityLeft", old[3])
+			SE._AtAltar = old[4]
+			lp:SetAttribute("StorePreview", old[5])
+			SE._InLobby = old[6]
+			LKC.advance(0.2)
+		end)
+	end
+	U92.CARD = { "^ShopCard_", "^Card_", "^GemPack_", "^TokenPack_", "^GemHero$", "^GemPotion$", "^Tab_" }
+	function U92.isCard(name)
+		for _, p in ipairs(U92.CARD) do
+			if name:match(p) then
+				return true
+			end
+		end
+		return false
+	end
+	-- the one green action each tab may show (the page's hero action)
+	U92.GREEN = { Eggs = { Spin = true, Travel = true }, Gems = { Buy = true }, Packs = { Buy = true }, Passes = { Buy = true }, Boosts = { Buy = true } }
+
+	-- the Shop window on the Signboard kit, every tab, at 1920x1080 and 844x390: the wood frame round a stone body, the flat
+	-- awning (SignKit roof, fixed size), the navy header with "Shop" as the window's ribbon, the red close block with the drawn
+	-- X, the balances as kit B tags; every tab and card a square block in its wood edge (stone, gold when selected, a hero
+	-- card on the navy plank); card headings plain Section titles; nothing round but the art; at most one green action per
+	-- tab, its hero's (finding 15: one colour by role); every text reads on its fill (SmokeCommon.Contrast)
+	S.shop_signboard_skin = guarded("shop_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
+				U92.at(s[1], s[2], s[3], "shop kit b " .. tab, tab, false, function(tag, win)
+					local panel = win:FindFirstChild("Panel")
+					local stone = panel and panel:FindFirstChild("Stone")
+					T.check(panel ~= nil and sameColor(panel.BackgroundColor3, Sign.Wood) and panel.BackgroundTransparency < 0.05 and stone ~= nil
+						and sameColor(stone.BackgroundColor3, Sign.Stone), tag .. ": the window is the wood frame round a stone body",
+						panel and hex(panel.BackgroundColor3) or "no Panel")
+					local roof = win:FindFirstChild("Roof")
+					T.check(roof ~= nil and roof:GetAttribute("SignKit") == "Roof" and roof.Size.X.Scale == 0, tag .. ": the flat awning over the top (a SignKit roof of fixed size)")
+					-- (render gate, the Pets rule) no roof on a phone: over the short header it lay across the title and the pills
+					T.check(roof ~= nil and U8.shown(roof) == not s[3], tag .. (s[3] and ": no roof stub over a phone's header" or ": the roof shows on a PC"))
+					local header = win:FindFirstChild("Header")
+					local band = header and header:FindFirstChild("Band")
+					T.check(band ~= nil and sameColor(band.BackgroundColor3, Sign.Navy), tag .. ": the header is the navy sign plank", band and hex(band.BackgroundColor3) or "no Band")
+					local title = header and header:FindFirstChild("Title")
+					T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": 'Shop' is the window's ribbon title")
+					local close = header and header:FindFirstChild("CloseButton")
+					T.check(close ~= nil and close:GetAttribute("Skin") == "Sign" and U8.faceOf(close) and sameColor(U8.faceOf(close), Sign.Red) and close:FindFirstChild("CloseMark") ~= nil,
+						tag .. ": the X is the red close block with the drawn X")
+					for _, id in ipairs({ "Gems", "Tokens" }) do
+						local pill = header and header:FindFirstChild("Balance_" .. id)
+						T.check(pill ~= nil and pill:FindFirstChild("SignEdge") ~= nil and pill.BackgroundTransparency < 0.05 and pill:FindFirstChildOfClass("UICorner") == nil,
+							tag .. ": Balance_" .. id .. " is a kit B tag (a square block in its wood edge)")
+					end
+					local round, loose, cards = {}, {}, 0
+					for _, d in ipairs(win:GetDescendants()) do
+						if d:IsA("UICorner") and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) and not U92.inArt(d) then
+							round[#round + 1] = d.Parent.Name
+						end
+						if d:IsA("GuiObject") and U8.shown(d) and U92.isCard(d.Name) then
+							cards = cards + 1
+							if d.BackgroundTransparency > 0.05 or d:FindFirstChild("SignEdge") == nil then
+								loose[#loose + 1] = d.Name
+							end
+						end
+					end
+					T.check(#round == 0, tag .. ": nothing in the Shop is round but its art (kit B is square)", table.concat(round, ", ", 1, math.min(#round, 10)))
+					T.check(cards >= 6 and #loose == 0, fmt("%s: every tab and card is a solid block in its wood edge (%d seen)", tag, cards), table.concat(loose, ", ", 1, math.min(#loose, 10)))
+					local selected = header and win:FindFirstChild("Rail") and win.Rail:FindFirstChild("Tab_" .. tab)
+					T.check(selected ~= nil and sameColor(selected.BackgroundColor3, Sign.Gold), tag .. ": the selected tab is the gold block",
+						selected and hex(selected.BackgroundColor3) or "no tab")
+					-- card headings: plain Section titles (the ribbon is the window's name only)
+					local ribbons = {}
+					for _, d in ipairs(win:GetDescendants()) do
+						if d:IsA("TextLabel") and d:GetAttribute("TitleLook") == "Ribbon" and d ~= title then
+							ribbons[#ribbons + 1] = d:GetFullName():gsub("^.-ShopWindow%.", "")
+						end
+					end
+					T.check(#ribbons == 0, tag .. ": no ribbon inside the Shop but its header's (card headings are Section)", table.concat(ribbons, ", "))
+					-- kit B's casing rule (U6): a button reads in sentence case ("Spin", "Travel", "Preview"; the Shop is not open
+					-- during kitb_casing_rule's walk, so it is checked here)
+					local shouty = {}
+					for _, d in ipairs(win:GetDescendants()) do
+						if (d:IsA("TextLabel") or d:IsA("TextButton")) and d:GetAttribute("FontRole") == "Button" and U8.shown(d) then
+							for word in tostring(d.Text):gmatch("%a+") do
+								if #word >= 4 and word == word:upper() then
+									shouty[#shouty + 1] = d.Parent.Name .. "." .. d.Name .. " \"" .. d.Text .. "\""
+									break
+								end
+							end
+						end
+					end
+					T.check(#shouty == 0, tag .. ": the Shop's buttons read in sentence case", table.concat(shouty, ", ", 1, math.min(#shouty, 6)))
+					local greens = U8.greenActions(win)
+					local ok = #greens == 0 or (#greens == 1 and U92.GREEN[tab][greens[1]] == true)
+					T.check(ok, tag .. ": at most one green action, the page's hero action", table.concat(greens, ", "))
+					local bad = U92.contrast()
+					T.check(#bad == 0, fmt("%s: every text of the Shop reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				end)
+			end
+		end
+		-- the Eggs page's one green action is the Secret hero's: SPIN at the Storm Altar, TRAVEL away from it
+		U92.at(1920, 1080, false, "shop kit b hero", "Eggs", false, function(tag, win)
+			local greens = U8.greenActions(win)
+			local hero = win:FindFirstChild("ShopCard_Secret", true)
+			local spin = hero and hero:FindFirstChild("Spin", true)
+			T.check(#greens == 1 and greens[1] == "Spin" and spin ~= nil and U8.faceOf(spin) ~= nil and U8.green(U8.faceOf(spin)),
+				tag .. ": at the altar the Secret SPIN is the one green action", table.concat(greens, ", "))
+		end)
+		U92.at(1920, 1080, false, "shop kit b away", "Eggs", true, function(tag, win)
+			local greens = U8.greenActions(win)
+			T.check(#greens == 1 and greens[1] == "Travel", tag .. ": away from the altar TRAVEL is the one green action", table.concat(greens, ", "))
+		end)
+		LKC.flushErrors("shop_signboard_skin")
+	end)
+
+	-- (render gate) the balances show once: while the Shop is open the HUD's currency strips step aside (the window's own
+	-- Balance_Gems / Balance_Tokens sit beside the prices), so the X never sits over them (1280x720); they come back on Close
+	S.shop_currency_once = guarded("shop_currency_once", function()
+		for _, s in ipairs(U8.SIZES) do
+			local hudCur = nil
+			U92.at(s[1], s[2], s[3], "shop currency", "Eggs", false, function(tag, win)
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				hudCur = hud and hud:FindFirstChild("Currency", true)
+				T.check(hudCur ~= nil, tag .. ": (setup) the HUD has its currency strips")
+				T.check(hudCur == nil or not U8.shown(hudCur), tag .. ": the HUD's currency strips step aside while the Shop is open")
+				local header = win:FindFirstChild("Header")
+				for _, id in ipairs({ "Gems", "Tokens" }) do
+					local pill = header and header:FindFirstChild("Balance_" .. id)
+					T.check(pill ~= nil and U8.shown(pill), tag .. ": the window shows Balance_" .. id)
+				end
+				-- the X clear of every other shown HUD part
+				local close = header and header:FindFirstChild("CloseButton")
+				local c = close and U8.rect(close)
+				local over = {}
+				for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+					if c and d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 0.95 and U8.overlap(U8.rect(d), c) then
+						over[#over + 1] = d.Name
+					end
+				end
+				T.check(#over == 0, tag .. ": the X sits over no HUD part", table.concat(over, ", ", 1, math.min(#over, 6)))
+			end)
+			-- (U92.at closed the Shop; back in the lobby the strips show again)
+			T.check(hudCur ~= nil and U8.shown(hudCur), fmt("shop currency %dx%d: the strips are back after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("shop_currency_once")
+	end)
+
+	-- (render gate) the Shop fits every grid size: the window inside the screen; on PC (1920x1080, 1280x720) every Eggs
+	-- button (SPIN, x3, the gem spin, the hero's SPIN / TRAVEL) and every Gems buy lies whole inside the body, the page at
+	-- the top (the x3 / gem row was cut by the bottom edge at 1280x720); on a touch phone Roblox's thumbstick and jump
+	-- button go while it is open (the rows scroll through both corners) and come back on Close
+	S.shop_fits = guarded("shop_fits", function()
+		local GuiService = game:GetService("GuiService")
+		for _, s in ipairs(U8.SIZES) do
+			for _, tab in ipairs({ "Eggs", "Gems" }) do
+				local before = GuiService.TouchControlsEnabled
+				U92.at(s[1], s[2], s[3], "shop fits " .. tab, tab, false, function(tag, win)
+					local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
+					local wr = U8.rect(win)
+					T.check(wr.X >= -0.5 and wr.Y >= -0.5 and wr.R <= gui.AbsoluteSize.X + 0.5 and wr.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the window sits inside the screen", U8.show(wr))
+					if s[3] then
+						T.check(GuiService.TouchControlsEnabled == false, tag .. ": the thumbstick and jump button go while the Shop is open")
+						return
+					end
+					local body = win:FindFirstChild("Body")
+					local b = body and U8.rect(body)
+					local cut = {}
+					local names = tab == "Eggs" and { Spin = true, Spin3 = true, SpinGems = true, Travel = true } or { Buy = true }
+					for _, d in ipairs(win:GetDescendants()) do
+						-- (the Gems page scrolls on to the potion and the token packs: its first screen is the hero and the gem packs)
+						local first = tab == "Eggs" or d:FindFirstAncestor("GemHero") ~= nil or (d.Parent and d.Parent.Parent and d.Parent.Parent.Name:match("^GemPack_") ~= nil)
+						if d:IsA("GuiButton") and names[d.Name] and U8.shown(d) and first then
+							local r = U8.rect(d)
+							if r.X < b.X - 0.5 or r.R > b.R + 0.5 or r.Y < b.Y - 0.5 or r.B > b.B + 0.5 then
+								cut[#cut + 1] = d.Parent.Parent.Name .. "." .. d.Name .. " " .. U8.show(r)
+							end
+						end
+					end
+					T.check(#cut == 0, tag .. ": every buy button lies whole inside the body (no row cut by the edge)", table.concat(cut, ", ", 1, math.min(#cut, 6)) .. " | body " .. U8.show(b))
+				end)
+				T.eq(GuiService.TouchControlsEnabled, before, fmt("shop fits %s %dx%d: the touch controls are back as they were after Close", tab, s[1], s[2]))
+			end
+		end
+		LKC.flushErrors("shop_fits")
 	end)
 
 	return S

@@ -39,17 +39,5 @@ NimbusNpcDialog.NpcDialog.Slide.Card.Footer.Button_*  # "Next" #FFFFFF on #2F895
 NimbusNpcDialog.NpcDialog.Slide.NameTab.Name  # "SPARKY FOX" #FFFFFF on #59B8BD 2.33:1 < 3
 NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Badge  # "x5" #FFFFFF on #1F8A3C 4.41:1 < 4.5
 NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Rarity  # "Secret" #6D6F7B on #161B34 3.40:1 < 4.5
-NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.GetsYou  # "Gets you:" #D4E0F6 on #ECB022 1.46:1 < 4.5
-NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.Line*  # "VIP: x2 daily Cash a" #FFFFFF on #FFE192 1.28:1 < 4.5
-NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.Name  # "STARTER PACK" #FFFFFF on #FF9C2B 2.09:1 < 3
-NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.NamePlate  # "Sky" #FFFFFF on #AC844F 3.40:1 < 4.5
-NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.Odds.Odds_*.Word  # "Epic" #BC87ED on #614F42 2.88:1 < 4.5
-NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.Spin*.Price  # "15,000" #FF5C5C on #98793A 1.34:1 < 3
-NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.Spin*.TokenIcon  # "☁" #EEBE3E on #997A3A 2.33:1 < 3
-NimbusShop.ShopWindow.Body.Page_*.Scroll.Cards.ShopCard_*.Body.Spin*.Word  # "x3" #FFFFFF on #98793A 4.08:1 < 4.5
-NimbusShop.ShopWindow.Body.Page_*.Scroll.GemPack_*.Body.Amount  # "200" #FFFFFF on #2DD498 1.91:1 < 3
-NimbusShop.ShopWindow.Body.Page_*.Scroll.GemPack_*.Body.Best  # "BEST VALUE" #FFFFFF on #C3A347 2.43:1 < 3
-NimbusShop.ShopWindow.Body.Page_*.Scroll.GemPack_*.Body.Name  # "Pouch of Gems" #FFFFFF on #23BB87 2.47:1 < 4.5
-NimbusShop.ShopWindow.Body.Page_*.Scroll.GemPack_*.Body.Ribbon  # "+10%" #FFFFFF on #E63C5A 4.07:1 < 4.5
 NimbusTrain.Window_*.Panel.Body.PetCard.Body.RarityChip  # "RARE" #FFFFFF on #467CBB 4.32:1 < 4.5
 NimbusTutorial.TutorialPanel.Slide.Main.Well.Footer.Next  # "Let's go!" #FFFFFF on #2F895B 4.31:1 < 4.5

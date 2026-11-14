@@ -507,9 +507,11 @@ function G.noOverlapNames()
 end
 -- slop-audit win 6 (2026-11-12): the X is drawn (NeonKit.CloseMark), not the U+2715 glyph that showed a missing-glyph box.
 -- The problems of a close button ({} = good): the shared check (smoke_common.lua SmokeCommon.closeMarkIssues, review
--- round 1), with a tap target of at least 44 px.
+-- round 1), with a tap target of at least 44 px. (kit-b U9-2) the Shop's X is the kit B close block's: square bars in the
+-- Danger block's brown ink over its red lip.
 function G.closeMarkIssues(button)
-	return SmokeCommon.closeMarkIssues(button, { Shown = G.shown, MinTap = 44 })
+	local Sign = G.req("shared/Theme").Sign
+	return SmokeCommon.closeMarkIssues(button, { Shown = G.shown, MinTap = 44, Bar = Sign.Text, Ink = Sign.RedLip })
 end
 -- (review round 1) across ScreenGuis: the HUD Gifts button (NimbusDaily, the same DisplayOrder 19) is shown with the Shop
 -- closed, hidden while it is open (it sat over Balance_Tokens / the X), and back after Close
@@ -980,7 +982,8 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 		G.advance(1.2)
 		local cel = G.eggBtn("Celestial", "Spin")
 		local celPrice = cel and cel:FindFirstChild("Price", true)
-		T.check(SE.CardState("Celestial") == "Short" and G.priceOf(cel) == "5,000" and celPrice and celPrice.TextColor3.R > 0.8 and celPrice.TextColor3.G < 0.5 and not G.disabled(cel),
+		-- (kit-b U9-2) the short red is a dark red that reads on stone (rgb 140, 24, 48)
+		T.check(SE.CardState("Celestial") == "Short" and G.priceOf(cel) == "5,000" and celPrice and celPrice.TextColor3.R > 0.5 and celPrice.TextColor3.G < 0.2 and not G.disabled(cel),
 			"shop eggs: Short (4,000 tokens, Celestial 5,000): the price kept, drawn red, the button still taps", tostring(SE.CardState("Celestial")) .. " / " .. tostring(G.priceOf(cel)))
 		T.eq(SE.CardState("Cloud"), "Ready", "shop eggs: ...while Cloud (50) stays Ready")
 		local mS, hS = #Mock.RemoteLog, #hints
@@ -1359,7 +1362,7 @@ S.client_shop_gems = guarded("client_shop_gems", function()
 	G.setAttr("Gems", 99)
 	G.advance(1.2)
 	_, value = potionShows()
-	T.check(value ~= nil and value.TextColor3.R > 0.8 and value.TextColor3.G < 0.5, "shop gems: Short keeps the price, the amount red")
+	T.check(value ~= nil and value.TextColor3.R > 0.5 and value.TextColor3.G < 0.2, "shop gems: Short keeps the price, the amount red (kit-b U9-2: the dark red that reads on stone)")
 	T.eq(G.calls("StoreRequest", mark, "GemBuy"), 0, "shop gems: no GemBuy outside Ready")
 	G.setAttr("Gems", 100)
 	G.advance(1.2)
@@ -1562,8 +1565,10 @@ S.client_shop_sizes = guarded("client_shop_sizes", function()
 				T.check(G.near(heroH, 240) and G.near(cardH, 550) and canvasH <= bodyH + 0.5 and G.near(G.rel(cloud, G.body()).y, 276),
 					label .. ": Eggs: the reference layout (hero 240, cards 550 at y 276), no vertical scroll", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
 			else
-				T.check(G.near(heroH, 200) and G.near(cardH, 516) and canvasH > bodyH + 0.5,
-					label .. ": Eggs: the shrunk layout (hero 200, cards 516) and the page scrolls vertically", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
+				-- (kit-b U9-2; the render gate: the x3 / gem row ran under the bottom edge at 1280x720) a body under 760 takes the
+				-- tight plan: the hero 180, the cards from y 208 down to the body's bottom, no vertical scroll
+				T.check(G.near(heroH, 180) and G.near(cardH, bodyH - 216) and canvasH <= bodyH + 0.5 and G.near(G.rel(cloud, G.body()).y, 208),
+					label .. ": Eggs: the tight layout (hero 180, the cards from y 208 to the body's bottom), no vertical scroll", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
 			end
 		end
 		G.spinRowsCheck(label)
@@ -2005,8 +2010,8 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- (shop-area polish) the hero's hint follows the state: Locked keeps the rule line, Altar says what TRAVEL does, Ready (at
 -- the altar) says where you are
-local ALTAR = { Lock = "Available at the Storm Altar", Short = "At the Storm Altar", Hint = "Secret rolls happen at the Storm Altar", Word = "TRAVEL",
-	HintTravel = "TRAVEL flies you to the Storm Altar", HintHere = "You are at the Storm Altar" }
+local ALTAR = { Lock = "Available at the Storm Altar", Short = "At the Storm Altar", Hint = "Secret rolls happen at the Storm Altar", Word = "Travel",
+	HintTravel = "Travel flies you to the Storm Altar", HintHere = "You are at the Storm Altar" } -- (kit-b U9-2: sentence case)
 
 -- the hero's widgets: Spin, Travel (the button), AltarChip, PityChip, Dim, Hint, Lock
 function G.heroKit()
@@ -2119,9 +2124,10 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		T.check(not G.shown(k.Spin) and G.shown(k.Travel) and G.near(tb.x, hb.w - 320) and G.near(tb.y, 66) and G.near(tb.w, 290) and G.near(tb.h, 100),
 			"secret lock: SPIN hidden; a 290 x 100 TRAVEL button exactly where SPIN sits (w - 320, 66)", G.heroLook(k) .. "; " .. fmt("%.0f,%.0f %.0fx%.0f", tb.x, tb.y, tb.w, tb.h))
 		local icon = k.Travel:FindFirstChild("Icon")
-		T.check(k.Travel:GetAttribute("Style") == "Blue" and G.text(k.Travel, "Word") == ALTAR.Word and icon ~= nil and G.shown(icon) and icon:FindFirstChild("Icon") ~= nil and icon:FindFirstChild("Icon"):GetAttribute("PixelIcon") == NK.IconName("Travel")
+		T.check(k.Travel:GetAttribute("Style") == "Green" and G.text(k.Travel, "Word") == ALTAR.Word and icon ~= nil and G.shown(icon) and icon:FindFirstChild("Icon") ~= nil and icon:FindFirstChild("Icon"):GetAttribute("PixelIcon") == NK.IconName("Travel")
 			and k.Travel:FindFirstChild("Price", true) == nil and k.Travel:FindFirstChild("GemIcon", true) == nil and not G.disabled(k.Travel),
-			"secret lock: ...blue (Style 'Blue'), 'TRAVEL' with the travel icon (kit-b U7a: the pixel arrow), no price, active", G.texts(k.Travel))
+			"secret lock: ...the green plank (Style 'Green', kit-b U9-2: the page's one main action away from the altar), 'TRAVEL' with the travel icon (kit-b U7a: the pixel arrow), no price, active", G.texts(k.Travel))
+
 		local cb, pb = G.rel(k.Chip, k.Hero), k.Pity and G.rel(k.Pity, k.Hero)
 		T.check(G.shown(k.Chip) and k.Chip.Text == ALTAR.Lock and k.Pity and not G.shown(k.Pity) and G.near(cb.x, 360) and G.near(cb.y, 132) and G.near(cb.h, 48) and cb.w >= 400 - 1
 			and k.Chip.TextSize == 22 and pb and G.near(pb.x, cb.x) and G.near(pb.y, cb.y),

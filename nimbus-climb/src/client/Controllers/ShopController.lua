@@ -64,11 +64,15 @@
 -- StoreRequest("GemBuy", "XpPotionGems") shares it): the client never prompts a purchase or decides a price.
 -- Prices: MarketplaceService:GetProductInfo once per session per created id, in the background, one retry after
 -- Config.Store.PriceRetrySeconds; "..." meanwhile (Buy never waits for it).
--- Colours (the owner's "make colors for every pack"): every pack its own PALETTE entry (a saturated Top -> Bottom gradient
--- on the card's Paint frame, an Edge colour on its neon stroke and glow); the hero runs Bottom -> Top -> a near-white
--- highlight with a thicker edge; a Have-it card goes grey; every card text keeps its dark outline.
--- Shine (GraphicsQuality High only, built on open, torn down on close): the hero's UIGradient "HeroSpin" turns every 8 s,
--- a sheen sweeps it every 6-9 s, its Buy pulses (1 -> 1.04) every 2.5 s, pet cards show a turning CloudUI.PetViewport.
+-- Look (kit-b U9-2, finding 15: the Signboard kit of the Pets window): the wood frame round a stone body, the fixed-size
+-- awning (SignKit.Roof) over the top, the navy header plank with the egg on its gold square and "Shop" as the window's
+-- ribbon, the balances as stone tags, the red close block; tabs are stone blocks (the selected one gold); every card a
+-- kit B block (NeonKit.Card Skin "Sign"): stone, a hero on the navy plank, a Have-it card the sunk well, the pack's own
+-- PALETTE colour (the owner's "make colors for every pack") on its lip; card names plain Section headings; the hero's
+-- Buy is the page's one green plank, every other Buy stone. While open the HUD's currency strips step aside
+-- (HudController.SetCurrencyHidden("Shop")), so the balances show once.
+-- Shine (GraphicsQuality High only, built on open, torn down on close): the hero's Buy pulses (1 -> 1.04) every 2.5 s, pet
+-- cards show a turning CloudUI.PetViewport (kit B: no gloss gradient or sheen sweep).
 -- Sounds: StorePop on a card tap (Click until AudioIds has it), StoreBuy on a purchase toast (Reward).
 -- Art: the store_* render of spec 9 (TextureIds[ART_KEYS key], an ImageLabel "Image") when it has an id, else the glyph.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles; no asset ids (TextureIds numbers only).
@@ -88,6 +92,7 @@ local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local StoreCatalog = require(Shared:WaitForChild("StoreCatalog"))
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-2) the awning over the window
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
@@ -110,6 +115,9 @@ end
 
 local K = {
 	DISPLAY_ORDER = 19,
+	-- (kit-b U9-2) the Signboard: the wood frame's width round the stone body, the awning's fixed width
+	FRAME = 6,
+	ROOF_W = 360,
 	-- the window box (NeonKit.BigRect; spec 16.3 "Window")
 	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1540, Y1 = 910 },
 	MARGIN = 12,
@@ -125,10 +133,6 @@ local K = {
 	-- switch over the label, >= 44 px at the 0.8 scale)
 	FAST = { PC = { W = 224, H = 52, Text = 20, SwitchW = 56, SwitchH = 30 }, Compact = { W = 112, H = 64, Text = 18, SwitchW = 48, SwitchH = 24 } },
 	HATCH_WAIT = ((EggStage.Metrics and EggStage.Metrics.WAIT_TIMEOUT) or 7) + 0.1, -- an unanswered spin gives up: repaint
-	SPIN_SECONDS = 8, -- the hero gradient's turn
-	SHEEN_MIN = 6,
-	SHEEN_MAX = 9,
-	SHEEN_TIME = 0.9,
 	PULSE_EVERY = 2.5,
 	PULSE_SCALE = 1.04,
 	ROBUX_GLYPH = "\238\128\130", -- U+E002
@@ -170,6 +174,7 @@ local Colors = Theme.Colors
 local WHITE = Colors.White
 local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Theme.Neon.Gold
+local SIGN = Theme.Sign -- (kit-b U9-2) the Signboard palette: brown ink on stone, wood edges, navy hero planks
 local TAB_COLORS = { Eggs = "Green", Gems = "Blue", Packs = "Gold", Passes = "Purple", Boosts = "Pink" }
 
 -- every pack's own colours (the owner's note, 2026-11-04): Top -> Bottom is the card's gradient (saturated, the Bottom
@@ -194,10 +199,8 @@ local PALETTE = {
 	Cash3 = { Top = rgb(60, 200, 130), Bottom = rgb(10, 95, 55), Edge = rgb(170, 255, 205) },
 }
 local DIM_PALETTE = { Top = rgb(120, 124, 140), Bottom = rgb(45, 48, 60), Edge = rgb(150, 155, 170) } -- a Have-it card
-local HERO_LIFT = 0.7 -- the hero's highlight stop (right, behind the price and Buy): Top this far toward white
 local HERO_EDGE = 4.5 -- the hero's neon stroke (a card's is NeonKit's 3)
 local CARD_EDGE = 3
-local CARD_CORNER = 14 -- NeonKit.Card's default corner (the Paint frame follows it)
 
 -- the store_* render of each item (spec 9; TextureIds keys, the glyph while a key has no id)
 local ART_KEYS = {
@@ -227,6 +230,7 @@ local S = {
 	LastBuy = 0,
 	Glyph = nil,
 	TouchOff = false,
+	CurrencyOff = false, -- (kit-b U9-2) the HUD's currency strips stepped aside (HudController.SetCurrencyHidden)
 	BackBound = false,
 	Shine = nil, -- { Tweens, Conn, Parts } while the shine runs
 	Warned = {},
@@ -301,6 +305,19 @@ local function now()
 		return t
 	end
 	return os.time()
+end
+
+-- (kit-b U9-2) a square wood edge (mitred) on a kit B part
+function H.edge(obj, px, color)
+	local s = Util.Create("UIStroke", {
+		Name = "SignEdge",
+		Color = color or SIGN.Wood,
+		Thickness = px or 3,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter,
+		Parent = obj,
+	})
+	return s
 end
 
 function H.controller(name)
@@ -608,43 +625,65 @@ function H.build()
 	local holder = frame("ShopWindow", U.Gui, { Visible = false, Active = true })
 	U.Holder = holder
 	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
-	-- the frame: the navy panel with the A outline
-	local panel = frame("Panel", holder, { BackgroundTransparency = 0, BackgroundColor3 = WHITE, Size = UDim2.fromScale(1, 1) })
-	Theme.Corner(panel, UDim.new(0, 18))
-	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Colors.PanelTop or rgb(26, 32, 72), Colors.PanelBottom or rgb(12, 15, 38)), Parent = panel })
-	Theme.Stroke(panel, K.NAVY, 3, 0)
+	-- (kit-b U9-2) the frame: the wood frame round the stone body with its lip (the Signboard skin of the Pets window)
+	local panel = frame("Panel", holder, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Wood, Size = UDim2.fromScale(1, 1) })
+	panel:SetAttribute("SignKit", "Frame")
+	local stone = frame("Stone", panel, {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Stone,
+		Position = UDim2.fromOffset(K.FRAME, K.FRAME),
+		Size = UDim2.new(1, -2 * K.FRAME, 1, -2 * K.FRAME),
+	})
+	stone:SetAttribute("SignKit", "Body")
+	frame("Lip", stone, {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.StoneLip,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, SignKit.Sizes.Lip),
+	})
 
-	-- the header: the accent band, the egg, "Shop", the two balances, the X
+	-- the header: the navy plank, the egg on its gold square, "Shop", the two balances, the X
 	local header = frame("Header", holder)
 	U.Header = header
-	U.Band = frame("Band", header, { BackgroundTransparency = 0, BackgroundColor3 = K.ACCENT })
-	Theme.Corner(U.Band, UDim.new(0, 18))
-	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Theme.Lighten(K.ACCENT, 0.15), Theme.Darken(K.ACCENT, 0.45)), Parent = U.Band })
-	U.Icon = label("Icon", header, "", "Display", 42, { TextTruncate = Enum.TextTruncate.None })
+	U.Band = frame("Band", header, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Navy })
+	frame("Lip", U.Band, {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.NavyLip,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 4),
+	})
+	U.Icon = label("Icon", header, "", "Display", 42, {
+		TextTruncate = Enum.TextTruncate.None, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text,
+	})
+	H.edge(U.Icon, 3)
 	PixelIcon.Host(U.Icon, NeonKit.IconName("Eggs")) -- (kit-b U7a) the egg, sized with the label
 	U.Title = label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left })
-	U.Title:SetAttribute("RibbonBand", "NoTails") -- (render gate) on the navy header the tails read as a glitchy block (U9 wave 2 redraws it)
+	U.Title:SetAttribute("RibbonBand", "NoTails") -- (render gate) the band ends square on the navy plank (its tails read as a glitchy block there)
 	Theme.StyleTitle(U.Title)
+	-- (kit-b U9-2) the balances: stone tags in their wood edge, brown amounts (the HUD strips step aside while the Shop is
+	-- open: HudController.SetCurrencyHidden, so they show once)
 	local function pill(id)
 		local cur = Theme.Currency[id]
-		local root = frame("Balance_" .. id, header, { BackgroundTransparency = 0.15, BackgroundColor3 = Colors.PanelInk or K.NAVY })
-		Theme.Corner(root, UDim.new(0.5, 0))
-		Theme.Stroke(root, cur.Color, 2, 0.1)
+		local root = frame("Balance_" .. id, header, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile })
+		H.edge(root, 3)
 		return root, cur
 	end
 	U.GemsPill = pill("Gems")
-	U.GemsAmount = GemIcon.Amount(U.GemsPill, "0", { TextSize = 22 })
+	U.GemsAmount = GemIcon.Amount(U.GemsPill, "0", { TextSize = 22, Color = SIGN.Text })
 	U.GemsAmount.AnchorPoint = Vector2.new(0.5, 0.5)
 	U.GemsAmount.Position = UDim2.fromScale(0.5, 0.5)
 	local tokPill, tokCur = pill("Tokens")
 	U.TokPill = tokPill
-	U.TokGlyph = label("Glyph", tokPill, "", "Display", 22, { TextColor3 = tokCur.Color, TextTruncate = Enum.TextTruncate.None })
+	U.TokGlyph = label("Glyph", tokPill, "", "Display", 22, { TextColor3 = SIGN.GoldLip, TextTruncate = Enum.TextTruncate.None })
 	PixelIcon.Host(U.TokGlyph, tokCur.Icon) -- (kit-b U7a) the Cloud Token coin, sized with the label
-	U.TokText = label("Text", tokPill, "0", "Display", 22, { TextXAlignment = Enum.TextXAlignment.Left })
+	U.TokText = label("Text", tokPill, "0", "Display", 22, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.Text })
 	U.Close = CloudUI.Button({
 		Name = "CloseButton",
 		Text = "",
 		Style = "Red",
+		Skin = "Sign",
 		Size = UDim2.fromOffset(44, 44),
 		TextSize = 22,
 		Callback = function()
@@ -652,9 +691,11 @@ function H.build()
 		end,
 		Parent = header,
 	})
-	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
+	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- the drawn X in a Danger block's brown ink
+	-- the awning: one fixed-size piece over the top rim (never stretched with the window: the sign rule)
+	U.Roof = SignKit.Roof(holder, { Width = K.ROOF_W, Y = -10, ZIndex = 3 })
 
-	-- the rail
+	-- the rail: stone tab blocks, the selected one gold (H.selectTab paints them)
 	local rail = frame("Rail", holder)
 	U.Rail = rail
 	for i, tab in ipairs(K.TABS) do
@@ -663,41 +704,36 @@ function H.build()
 		button.Text = ""
 		button.AutoButtonColor = false
 		button.BorderSizePixel = 0
-		button.BackgroundColor3 = Theme.Darken(Theme.NeonColor(TAB_COLORS[tab]), 0.55)
 		button.LayoutOrder = i
-		Theme.Corner(button, UDim.new(0, 12))
-		local outline = Theme.Stroke(button, Theme.NeonColor(TAB_COLORS[tab]), 2, 0.2)
 		local name = label("Label", button, tab, "Button", 26, { TextXAlignment = Enum.TextXAlignment.Left })
+		local outline = CloudUI.SignBlock(button, "Stone", { Pad = false })
 		button.Parent = rail
 		button.Activated:Connect(function()
 			safe("tab", H.tapTab, tab)
 		end)
 		U.Tabs[tab] = { Button = button, Label = name, Stroke = outline }
 	end
-	U.Dot = frame("Dot", U.Tabs.Packs.Button, { BackgroundTransparency = 0, BackgroundColor3 = GOLD, Visible = false, ZIndex = 3 })
-	Theme.Corner(U.Dot, UDim.new(0.5, 0))
-	Theme.Stroke(U.Dot, WHITE, 2, 0) -- (a white ring: the gold dot reads on the gold Packs tab)
+	-- the Starter Pack's mark: a small red square in its wood edge (the HUD tiles' attention badge)
+	U.Dot = frame("Dot", U.Tabs.Packs.Button, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Red, Visible = false, ZIndex = 3 })
+	H.edge(U.Dot, 2)
 	U.Divider = frame("RobuxDivider", rail)
-	U.DivGlyph = label("Glyph", U.Divider, robuxGlyph(), "Display", 24, { TextColor3 = rgb(120, 230, 140), TextTruncate = Enum.TextTruncate.None })
-	U.DivLabel = label("Label", U.Divider, "Robux items", "Body", 18, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = MUTED })
-	U.DivLine = frame("Line", U.Divider, { BackgroundTransparency = 0.4, BackgroundColor3 = MUTED })
-	-- the Fast hatch toggle (Eggs only): a TextButton with its Label and a Switch (Knob); attribute On
+	U.DivGlyph = label("Glyph", U.Divider, robuxGlyph(), "Display", 24, { TextColor3 = SIGN.Text, TextTruncate = Enum.TextTruncate.None })
+	U.DivLabel = label("Label", U.Divider, "Robux items", "Body", 18, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.TextMuted })
+	U.DivLine = frame("Line", U.Divider, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.WellEdge })
+	-- the Fast hatch toggle (Eggs only): a stone block with its Label and a Switch (a sunk well, the square Knob slides;
+	-- gold while on); attribute On
 	local fast = Instance.new("TextButton")
 	fast.Name = "FastHatch"
 	fast.Text = ""
 	fast.AutoButtonColor = false
 	fast.BorderSizePixel = 0
-	fast.BackgroundColor3 = Colors.PanelInk or K.NAVY
-	fast.BackgroundTransparency = 0.15
 	fast.Visible = false
-	Theme.Corner(fast, UDim.new(0, 12))
-	Theme.Stroke(fast, Theme.NeonColor("Green"), 2, 0.3)
-	U.FastLabel = label("Label", fast, "Fast hatch", "Button", 20, { TextXAlignment = Enum.TextXAlignment.Left })
-	U.FastSwitch = frame("Switch", fast, { BackgroundTransparency = 0, BackgroundColor3 = MUTED })
-	Theme.Corner(U.FastSwitch, UDim.new(0.5, 0))
-	Theme.Stroke(U.FastSwitch, K.NAVY, 2, 0)
-	U.FastKnob = frame("Knob", U.FastSwitch, { BackgroundTransparency = 0, BackgroundColor3 = WHITE })
-	Theme.Corner(U.FastKnob, UDim.new(0.5, 0))
+	U.FastLabel = label("Label", fast, "Fast hatch", "Button", 20, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.Text })
+	CloudUI.SignBlock(fast, "Stone", { Pad = false })
+	U.FastSwitch = frame("Switch", fast, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Well })
+	H.edge(U.FastSwitch, 2, SIGN.WellEdge)
+	U.FastKnob = frame("Knob", U.FastSwitch, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile })
+	H.edge(U.FastKnob, 2)
 	fast.Parent = rail
 	fast.Activated:Connect(function()
 		safe("fast hatch", H.toggleFast)
@@ -741,7 +777,7 @@ function H.build()
 		end,
 		LockText = H.lockText,
 	})
-	U.Soon = label("Soon", body, K.SOON, "Heading", 30, { Visible = false, TextWrapped = true, Size = UDim2.fromScale(1, 1) })
+	U.Soon = label("Soon", body, K.SOON, "Heading", 30, { Visible = false, TextWrapped = true, Size = UDim2.fromScale(1, 1), TextColor3 = SIGN.Text })
 	local ml = H.mouseLock()
 	if ml then
 		safe("mouse lock", ml.WatchVisible, "Shop", holder)
@@ -764,6 +800,7 @@ function H.syncTabIcon(tab, px)
 		t.Icon:Destroy()
 	end
 	t.Icon = NeonKit.Icon(t.Button, tab, px)
+	t.Icon.TextColor3 = SIGN.Text -- (kit-b U9-2) brown on the stone / gold tab
 	t.IconImage = want
 	t.IconPx = px
 end
@@ -778,27 +815,33 @@ function H.palette(item)
 	return { Top = c, Bottom = Theme.Darken(c, 0.6), Edge = Theme.Lighten(c, 0.3) }
 end
 
--- paints a card: the gradient on its Paint frame, the edge on its neon stroke and glow (the hero brighter and thicker)
+-- (kit-b U9-2) paints a card as a kit B block: the face stone (a hero the navy plank, a Have-it card the sunk well), the
+-- wood edge, the lip in the pack's own colour (the owner's "make colors for every pack" lives there; one colour by role:
+-- the face never carries it); the art in its well; the texts in the ink that reads on the face (H.ink)
 function H.paint(entry, dim)
 	local p = dim and DIM_PALETTE or H.palette(entry.Item)
-	local keys
-	local rotation = 90
-	if entry.Hero and not dim then
-		-- left to right: the dark stop under the art and the texts, the highlight behind the price pill and Buy
-		keys = {
-			ColorSequenceKeypoint.new(0, p.Bottom),
-			ColorSequenceKeypoint.new(0.5, p.Top),
-			ColorSequenceKeypoint.new(1, p.Top:Lerp(WHITE, HERO_LIFT)),
-		}
-		rotation = 12
-	else
-		keys = { ColorSequenceKeypoint.new(0, p.Top), ColorSequenceKeypoint.new(1, p.Bottom) }
-	end
-	entry.PaintGradient.Color = ColorSequence.new(keys)
-	entry.PaintGradient.Rotation = rotation
-	entry.Card.SetColor(p.Edge)
+	local hero = entry.Hero and not dim
+	entry.Card.SetFill(hero and SIGN.Navy or (dim and SIGN.Well or SIGN.Tile))
+	entry.Card.SetColor(dim and SIGN.WellEdge or p.Top)
+	entry.Card.Stroke.Color = hero and SIGN.GoldLip or SIGN.Wood
 	entry.Card.Stroke.Thickness = entry.Hero and HERO_EDGE or CARD_EDGE
-	entry.Art.BackgroundColor3 = Theme.Darken(p.Bottom, 0.35)
+	entry.Art.BackgroundColor3 = hero and SIGN.NavyLight or SIGN.PetWell
+	entry.Glyph.TextColor3 = hero and SIGN.Gold or SIGN.Text
+end
+
+-- (kit-b U9-2) a card text's ink: on the navy hero the gold heading, white lines and gold status; on stone brown, the
+-- muted brown for the small print
+function H.ink(entry, kind)
+	if entry.Hero and entry.Dim ~= true then
+		if kind == "Name" or kind == "Status" then
+			return SIGN.Gold
+		end
+		return WHITE
+	end
+	if kind == "Muted" or kind == "Status" then
+		return SIGN.TextMuted
+	end
+	return SIGN.Text
 end
 
 -- the art box shows the render (Image) or the glyph, unless a pet viewport covers it (High)
@@ -824,34 +867,22 @@ end
 
 -- one card: Art | Name + Gets you lines + Status | PricePill over Buy
 function H.buildCard(item, page, isHero)
-	local color = TAB_COLORS[item.Tab] or "Blue"
+	-- (kit-b U9-2) a kit B block (NeonKit.Card Skin "Sign"): H.paint gives it its face, edge and the pack's lip
 	local card = NeonKit.Card({
 		Name = "Card_" .. item.Key,
 		Class = "TextButton",
-		Color = color,
+		Skin = "Sign",
 		Size = UDim2.fromOffset(600, 108),
-		Floor = false,
 		ClipsDescendants = isHero == true,
 		Parent = page,
 	})
 	card.Root:SetAttribute("Hero", isHero == true)
 	card.Root:SetAttribute("Key", item.Key)
-	-- the pack's own gradient: a Paint frame under the Body (the root is a TextButton, whose own gradient is NeonKit's)
-	card.Root.BackgroundTransparency = 1
-	local paint = frame("Paint", card.Root, {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = card.Root.ZIndex - 1,
-	})
-	Theme.Corner(paint, UDim.new(0, CARD_CORNER))
-	local paintGradient = Util.Create("UIGradient", { Name = "PaintGradient", Rotation = 90, Parent = paint })
 	card.Root.Activated:Connect(function()
 		sfx("StorePop", "Click")
 	end)
 	local b = card.Body
-	local art = frame("Art", b, { BackgroundTransparency = 0.35, BackgroundColor3 = Theme.Darken(H.palette(item).Bottom, 0.35) })
-	Theme.Corner(art, UDim.new(0, 12))
+	local art = frame("Art", b, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.PetWell })
 	local glyph = label("Glyph", art, "", "Display", 40, { Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
 	glyph:SetAttribute("PixelIcon", H.artGlyph(item))
 	PixelIcon.Host(glyph, H.artGlyph(item)) -- (kit-b U7a) the card's icon, sized with the art box
@@ -870,7 +901,8 @@ function H.buildCard(item, page, isHero)
 		})
 		glyph.Visible = false
 	end
-	local name = label("Name", b, item.Name or item.Key, "Title", 24, { TextXAlignment = Enum.TextXAlignment.Left })
+	-- (kit-b U9-2; the owner's ruling 2026-11-14) a card's name is a plain Section heading: the ribbon is the window's
+	local name = Theme.StyleTitle(label("Name", b, item.Name or item.Key, "Title", 24, { TextXAlignment = Enum.TextXAlignment.Left }), "Section")
 	local gets = label("GetsYou", b, "Gets you:", "Body", 16, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = MUTED })
 	local lines = {}
 	local texts = StoreCatalog.GrantLines(item.Grants)
@@ -881,14 +913,18 @@ function H.buildCard(item, page, isHero)
 		lines[i] = label("Line" .. i, b, text, "Body", 16, { TextXAlignment = Enum.TextXAlignment.Left })
 	end
 	local status = label("Status", b, "", "Body", 15, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = GOLD })
-	local pricePill = NeonKit.Card({ Name = "PricePill", Color = "Gold", Corner = 12, Glow = false, Floor = false, Sheen = false, Parent = b })
-	local price = label("Text", pricePill.Body, "...", "Display", 20, { Size = UDim2.fromScale(1, 1) })
+	-- the price: a gold tag in its wood edge (brown ink)
+	local pricePill = NeonKit.Card({ Name = "PricePill", Skin = "Sign", Face = SIGN.Gold, Lip = SIGN.GoldLip, Parent = b })
+	pricePill.Stroke.Thickness = 2
+	local price = label("Text", pricePill.Body, "...", "Display", 20, { Size = UDim2.fromScale(1, 1), TextColor3 = SIGN.Text })
 	local buyHolder = frame("BuyHolder", b)
 	local pulse = Util.Create("UIScale", { Name = "Pulse", Scale = 1, Parent = buyHolder })
+	-- one colour by role: the hero's Buy is the page's one green plank, every other Buy a stone plank
 	local buy = CloudUI.Button({
 		Name = "Buy",
 		Text = "Buy",
-		Style = "Green",
+		Style = isHero and "Green" or "Blue",
+		Skin = "Sign",
 		Size = UDim2.fromScale(1, 1),
 		TextSize = 20,
 		Callback = function()
@@ -899,7 +935,7 @@ function H.buildCard(item, page, isHero)
 	local entry = {
 		Item = item, Card = card, Root = card.Root, Art = art, Glyph = glyph, Image = image, Name = name, GetsYou = gets,
 		Lines = lines, Status = status, PricePill = pricePill, Price = price, BuyHolder = buyHolder, Pulse = pulse, Buy = buy,
-		Hero = isHero == true, Paint = paint, PaintGradient = paintGradient,
+		Hero = isHero == true,
 	}
 	H.paint(entry, false)
 	U.Cards[item.Key] = entry
@@ -1091,12 +1127,16 @@ end
 function H.layoutHeader(W, R)
 	local portrait = S.Layout == "Portrait"
 	place(U.Header, 0, 0, W, R.Header)
-	place(U.Band, 0, 0, W, portrait and R.Row or R.Header)
-	local closeY = portrait and 0 or math.floor((R.Header - R.Close) / 2)
-	place(U.Close, W - R.Close - (portrait and 3 or 10), closeY, R.Close, R.Close) -- (its drawn X scales with it)
+	-- (kit-b U9-2) the navy plank inside the wood frame (the frame's edge shows round it)
+	local F = K.FRAME
+	place(U.Band, F, F, W - 2 * F, (portrait and R.Row or R.Header) - F)
+	local closeY = portrait and 0 or math.floor((R.Header - R.Close) / 2) -- (portrait: clear of the balances' row under it)
+	place(U.Close, W - R.Close - (portrait and F + 3 or 10), closeY, R.Close, R.Close) -- (its drawn X scales with it)
 	local rowH = portrait and R.Row or R.Header
-	place(U.Icon, portrait and 8 or 14, (rowH - R.Icon) / 2, R.Icon + 4, R.Icon)
-	U.Icon.TextSize = R.Icon
+	-- the egg on its gold square (the Signboard header's icon slot), the icon a little inside it
+	local slot = R.Icon + 4
+	place(U.Icon, portrait and 10 or 16, F + math.floor((rowH - F - slot) / 2), slot, slot)
+	U.Icon.TextSize = math.max(12, R.Icon - 10)
 	U.Title.TextSize = R.TitleText
 	local gw, tw, py
 	if portrait then
@@ -1220,7 +1260,7 @@ function H.paintFast()
 	local F = K.FAST[S.Layout] or K.FAST.PC
 	local k = F.SwitchH - 6
 	place(U.FastKnob, on and (F.SwitchW - k - 3) or 3, 3, k, k)
-	U.FastSwitch.BackgroundColor3 = on and Theme.NeonColor("Green") or MUTED
+	U.FastSwitch.BackgroundColor3 = on and SIGN.Gold or SIGN.Well -- (kit-b U9-2) gold while on (selected), the sunk well off
 end
 
 function H.toggleFast()
@@ -1280,6 +1320,11 @@ function H.layout()
 	local R = K.WIN[S.Layout]
 	place(U.Holder, r.x, r.y, W, Hh)
 	U.Fit.Scale = r.scale
+	-- (kit-b U9-2) the awning reaches 10 px over the top on PC; no roof on a phone (the Pets rule: a phone window starts
+	-- right under Roblox's top bar, and inside the short header the roof lay across the title and the pills)
+	U.Roof.Position = UDim2.new(0.5, 0, 0, -10)
+	U.Roof.Visible = r.mode ~= "Phone"
+
 	H.layoutHeader(W, R)
 	local top = H.layoutRail(W, Hh, R)
 	local bx, bw, by
@@ -1318,7 +1363,7 @@ function H.computeStates()
 	S.States = states
 end
 
-local BUY_TEXT = { Buy = "Buy", Active = "Buy", Owned = "Owned", Claimed = "Claimed!", HaveIt = "Buy", Preview = "PREVIEW", Loading = "...", Locked = "Locked" }
+local BUY_TEXT = { Buy = "Buy", Active = "Buy", Owned = "Owned", Claimed = "Claimed!", HaveIt = "Buy", Preview = "Preview", Loading = "...", Locked = "Locked" } -- (kit-b U9-2: sentence case)
 
 function H.paintCards()
 	local match = H.inMatch()
@@ -1334,10 +1379,13 @@ function H.paintCards()
 		entry.Status.Text = st.Status
 		entry.StatusFirst = st.State == "Locked"
 		local dim = st.State == "HaveIt"
+		entry.Dim = dim
 		H.paint(entry, dim)
-		entry.Name.TextColor3 = dim and MUTED or WHITE
+		entry.Name.TextColor3 = H.ink(entry, dim and "Muted" or "Name")
+		entry.GetsYou.TextColor3 = H.ink(entry, "Muted")
+		entry.Status.TextColor3 = H.ink(entry, "Status")
 		for _, line in ipairs(entry.Lines) do
-			line.TextColor3 = dim and MUTED or WHITE
+			line.TextColor3 = H.ink(entry, dim and "Muted" or "Line")
 		end
 	end
 	-- the balances (Theme.ShortNumber from 1e6) and the Starter dot
@@ -1364,13 +1412,12 @@ function H.selectTab(tab)
 	for name, t in pairs(U.Tabs) do
 		local on = name == tab
 		t.Button:SetAttribute("Selected", on)
-		-- kit B (no outline): the ink that reads on the face, brown on a selected bright tab, white on a dark one; the label
-		-- drops under 18 px on a phone, so the face is nudged (Theme.ReadableFace) until its ink reaches 4.5:1
-		local face, ink = Theme.ReadableFace(Theme.Darken(Theme.NeonColor(TAB_COLORS[name]), on and 0.15 or 0.55), 4.5)
-		t.Button.BackgroundColor3 = face
-		t.Label.TextColor3 = ink
-		t.Stroke.Color = on and GOLD or Theme.NeonColor(TAB_COLORS[name])
-		t.Stroke.Thickness = on and 3 or 2
+		-- (kit-b U9-2) a stone tab block, the selected one gold (one colour by role); brown ink and icon on both
+		CloudUI.SignBlock(t.Button, on and "Selected" or "Stone", { Pad = false })
+		t.Label.TextColor3 = SIGN.Text
+		if t.Icon then
+			t.Icon.TextColor3 = SIGN.Text
+		end
 	end
 	for name, page in pairs(U.Pages) do
 		page.Visible = name == tab
@@ -1516,54 +1563,10 @@ function H.shineOn()
 	local shine = S.Shine
 	local hero = H.heroEntry()
 	if hero then
-		local over = frame("HeroShine", hero.Card.Body, {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundTransparency = 0.82,
-			BackgroundColor3 = WHITE,
-			ZIndex = hero.Root.ZIndex,
-		})
-		Theme.Corner(over, UDim.new(0, 14))
-		local grad = Util.Create("UIGradient", {
-			Name = "HeroSpin",
-			Rotation = 35,
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, H.palette(hero.Item).Edge),
-				ColorSequenceKeypoint.new(0.5, WHITE),
-				ColorSequenceKeypoint.new(1, H.palette(hero.Item).Top),
-			}),
-			Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.2),
-				NumberSequenceKeypoint.new(0.5, 0.75),
-				NumberSequenceKeypoint.new(1, 0.2),
-			}),
-			Parent = over,
-		})
-		shine.Parts[#shine.Parts + 1] = over
+		-- (kit-b U9-2, finding 15) no gloss on the hero any more: the turning HeroSpin gradient and the sheen sweep went;
+		-- its Buy still pulses (High)
 		if high then
-			local t0 = os.clock()
-			shine.Conn = RunService.Heartbeat:Connect(function()
-				grad.Rotation = ((os.clock() - t0) / K.SPIN_SECONDS * 360) % 360
-			end)
-			local sheen = frame("Sheen", hero.Card.Body, {
-				Size = UDim2.new(0.12, 0, 1.6, 0),
-				Position = UDim2.new(-0.3, 0, -0.3, 0),
-				Rotation = 18,
-				BackgroundTransparency = 0.7,
-				BackgroundColor3 = WHITE,
-				ZIndex = hero.Root.ZIndex,
-			})
-			shine.Parts[#shine.Parts + 1] = sheen
 			local mine = S.Token
-			task.spawn(function()
-				while S.Open and S.Token == mine and S.Shine == shine do
-					task.wait(K.SHEEN_MIN + math.random() * (K.SHEEN_MAX - K.SHEEN_MIN))
-					if not (S.Open and S.Token == mine and S.Shine == shine) or sheen.Parent == nil then
-						break
-					end
-					sheen.Position = UDim2.new(-0.3, 0, -0.3, 0)
-					H.track(Util.Tween(sheen, K.SHEEN_TIME, { Position = UDim2.new(1.2, 0, -0.3, 0) }, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut))
-				end
-			end)
 			task.spawn(function()
 				while S.Open and S.Token == mine and S.Shine == shine do
 					task.wait(K.PULSE_EVERY)
@@ -1678,6 +1681,15 @@ function H.coverColumn()
 	local menu = H.controller("MenuController")
 	if menu and type(menu.SetColumnCovered) == "function" then
 		safe("cover", menu.SetColumnCovered, (S.Open and S.Rect) and S.Rect.x or nil, "Shop")
+	end
+	-- (kit-b U9-2; the render gate) the header shows Gems and Tokens beside the prices: the HUD's strips step aside while
+	-- the Shop is open (they showed twice, and the X sat over them at 1280x720)
+	if S.CurrencyOff ~= S.Open then
+		local hud = H.controller("HudController")
+		if hud and type(hud.SetCurrencyHidden) == "function" then
+			S.CurrencyOff = S.Open
+			safe("currency", hud.SetCurrencyHidden, "Shop", S.Open)
+		end
 	end
 	H.syncTouch()
 end

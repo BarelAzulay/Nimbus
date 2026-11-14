@@ -1,9 +1,10 @@
 -- smoke_fixr_store_ui.lua: the Store window's review fixes (review E, the client half; docs/superpowers/specs/2026-11-04-shop-retention-design.md
 -- 5.1 / 7 Z6 / 9, plan Task 7). Loaded by tools/smoke.py in the client world only (client_files):
---   client_fixr_store_colors      every card its own saturated gradient (UIGradient) and outline (UIStroke): no two packs share a
---                                 colour pair (on a tab or in the whole Store), every card text has a stroke and every card a dark
---                                 stop under it, the tab's hero is the brightest card of its tab with the thickest outline; a
---                                 Have-it card greys out and gets its colours back
+--   client_fixr_store_colors      (kit-b U9-2, finding 15: one colour by role) every card a kit B block: its pack's own
+--                                 saturated colour on its lip, a wood edge (SignEdge), no gradient; no two packs share a lip
+--                                 colour (on a tab or in the whole Store); the face is the stone tile, the tab's hero the navy
+--                                 plank with the thickest edge; no card text has a stroke; a Have-it card sinks into the well
+--                                 (face and lip) and gets its colours back
 --   client_fixr_store_loading     StoreBought absent (the record still loading / provisional): the Once cards read "..."
 --                                 disabled and send nothing, the hero never promotes a Once pack (VIP leads); the record
 --                                 arriving ("") makes them Buy with the Starter hero, "Starter" makes it Claimed!
@@ -148,50 +149,25 @@ local function clientScenarios()
 	function H.hex(c)
 		return fmt("%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
 	end
-	-- the card's paint: its own UIGradient (the most saturated one on the card or a direct child frame, never inside the
-	-- Body's texts) and its outline (the card's direct UIStroke)
+	-- (kit-b U9-2) the card's paint as a kit B block: its face (the card's own fill), its lip (the Frame "Lip" along its
+	-- bottom: the pack's own colour), its wood edge (UIStroke "SignEdge") and any gradient left on it or a direct child
 	function H.paint(card)
-		local best, bestSat = nil, -1
-		local stroke = nil
-		local pool = {}
-		for _, ch in ipairs(card:GetChildren()) do
-			pool[#pool + 1] = ch
-			if ch:IsA("GuiObject") and ch.Name ~= "Body" then
-				for _, g in ipairs(ch:GetChildren()) do
-					if g:IsA("UIGradient") then
-						pool[#pool + 1] = g
-					end
-				end
-			end
-		end
-		for _, ch in ipairs(pool) do
-			if ch:IsA("UIGradient") then
-				local s = 0
-				for _, kp in ipairs(ch.Color.Keypoints) do
-					s = math.max(s, H.sat(kp.Value))
-				end
-				if s > bestSat then
-					best, bestSat = ch, s
-				end
-			elseif ch:IsA("UIStroke") and stroke == nil then
-				stroke = ch
-			end
-		end
-		if not best then
+		local lip = card:FindFirstChild("Lip")
+		local stroke = card:FindFirstChild("SignEdge")
+		if not (lip and lip:IsA("GuiObject") and stroke and stroke:IsA("UIStroke")) then
 			return nil
 		end
-		local kps = best.Color.Keypoints
-		local peak, dark, vivid, darkSat = 0, 1, 0, 0
-		for _, kp in ipairs(kps) do
-			peak = math.max(peak, H.lum(kp.Value))
-			vivid = math.max(vivid, H.sat(kp.Value))
-			if H.lum(kp.Value) < dark then
-				dark, darkSat = H.lum(kp.Value), H.sat(kp.Value)
+		local gradients = 0
+		for _, ch in ipairs(card:GetChildren()) do
+			if ch:IsA("UIGradient") then
+				gradients = gradients + 1
+			elseif ch:IsA("GuiObject") and ch.Name ~= "Body" and ch:FindFirstChildOfClass("UIGradient") then
+				gradients = gradients + 1
 			end
 		end
 		return {
-			Gradient = best, Stroke = stroke, Top = kps[1].Value, Bottom = kps[#kps].Value, Peak = peak, Dark = dark, Vivid = vivid, DarkSat = darkSat,
-			Edge = stroke and stroke.Color or nil, Thick = stroke and stroke.Thickness or 0,
+			Lip = lip.BackgroundColor3, Face = card.BackgroundColor3, Opaque = card.BackgroundTransparency < 0.05, Stroke = stroke,
+			Edge = stroke.Color, Thick = stroke.Thickness, Gradients = gradients,
 		}
 	end
 	-- a text has a stroke: TextStroke on, or a Contextual UIStroke (Theme.TextOutline)
@@ -428,6 +404,7 @@ local function clientScenarios()
 		local cards = H.cards(win)
 		-- (lobby-shop Task 21: the gem and token packs are Gems-tab tiles now; the Packs / Passes / Boosts cards are 7)
 		T.check(#cards >= 7, "store colors: every created Robux pack has a card", #cards .. " cards")
+		local Sign = H.moduleAt("shared", "Theme").Sign
 		local missing, dull, pale, unstroked = {}, {}, {}, {}
 		local seenTab, seenAll, clash = {}, {}, {}
 		local byTab = {}
@@ -435,29 +412,28 @@ local function clientScenarios()
 			local key = card:GetAttribute("Key")
 			local tab = SC.Cards()[key] and SC.Cards()[key].Tab or "?"
 			local p = H.paint(card)
-			if not (p and p.Stroke) then
-				missing[#missing + 1] = tostring(key)
+			if not (p and p.Stroke) or p.Gradients > 0 or not p.Opaque then
+				missing[#missing + 1] = tostring(key) .. (p and fmt(" (%d gradients)", p.Gradients) or "")
 			else
-				-- (the most saturated stop and the darkest one: a hero also carries a near-white highlight stop)
-				if p.Vivid < 0.6 or p.DarkSat < 0.4 or H.sat(p.Edge) < 0.3 then
-					dull[#dull + 1] = fmt("%s top %s bottom %s edge %s", key, H.hex(p.Top), H.hex(p.Bottom), H.hex(p.Edge))
+				-- the pack's own colour lives on the lip (saturated); the face carries no colour of its own (one colour by role)
+				if H.sat(p.Lip) < 0.4 then
+					dull[#dull + 1] = fmt("%s lip %s", key, H.hex(p.Lip))
 				end
-				if p.Dark > 0.2 then
-					pale[#pale + 1] = fmt("%s darkest %.2f", key, p.Dark)
+				local hero = card:GetAttribute("Hero") == true
+				if H.hex(p.Face) ~= H.hex(hero and Sign.Navy or Sign.Tile) then
+					pale[#pale + 1] = fmt("%s face %s", key, H.hex(p.Face))
 				end
-				local pair = H.hex(p.Top) .. "/" .. H.hex(p.Bottom) .. "/" .. H.hex(p.Edge)
 				seenTab[tab] = seenTab[tab] or {}
-				if seenTab[tab][pair] then
-					clash[#clash + 1] = fmt("%s = %s on %s", key, seenTab[tab][pair], tab)
+				if seenTab[tab][H.hex(p.Lip)] then
+					clash[#clash + 1] = fmt("%s = %s on %s", key, seenTab[tab][H.hex(p.Lip)], tab)
 				end
-				seenTab[tab][pair] = key
-				local pairAll = H.hex(p.Top) .. "/" .. H.hex(p.Edge)
-				if seenAll[pairAll] then
-					clash[#clash + 1] = fmt("%s = %s (store)", key, seenAll[pairAll])
+				seenTab[tab][H.hex(p.Lip)] = key
+				if seenAll[H.hex(p.Lip)] then
+					clash[#clash + 1] = fmt("%s = %s (store)", key, seenAll[H.hex(p.Lip)])
 				end
-				seenAll[pairAll] = key
+				seenAll[H.hex(p.Lip)] = key
 				byTab[tab] = byTab[tab] or {}
-				byTab[tab][#byTab[tab] + 1] = { Key = key, Hero = card:GetAttribute("Hero") == true, Paint = p }
+				byTab[tab][#byTab[tab] + 1] = { Key = key, Hero = hero, Paint = p }
 			end
 			for _, d in ipairs(card:GetDescendants()) do
 				-- kit-b U6 (a deliberate change): the card's dark stop carries its white text, so no card text has a stroke
@@ -466,10 +442,10 @@ local function clientScenarios()
 				end
 			end
 		end
-		T.check(#missing == 0, "store colors: every card has its own UIGradient and UIStroke", table.concat(missing, ", "))
-		T.check(#dull == 0, "store colors: every gradient stop and outline is saturated", table.concat(dull, "; "))
-		T.check(#clash == 0, "store colors: no two packs share a colour pair (on a tab, or in the whole Store)", table.concat(clash, "; "))
-		T.check(#pale == 0, "store colors: every card has a dark stop under its white text", table.concat(pale, "; "))
+		T.check(#missing == 0, "store colors: every card is a kit B block (a solid face, its lip, a wood edge, no gradient)", table.concat(missing, ", "))
+		T.check(#dull == 0, "store colors: every pack's own colour on its lip is saturated", table.concat(dull, "; "))
+		T.check(#clash == 0, "store colors: no two packs share a lip colour (on a tab, or in the whole Store)", table.concat(clash, "; "))
+		T.check(#pale == 0, "store colors: every face is the stone tile, a hero's the navy plank", table.concat(pale, "; "))
 		T.check(#unstroked == 0, "store colors: no card text has a stroke (kit-b U6: it sits on the card's dark stop)", table.concat(unstroked, ", ", 1, math.min(#unstroked, 8)))
 		local heroes, dim = 0, {}
 		for tab, list in pairs(byTab) do
@@ -482,25 +458,26 @@ local function clientScenarios()
 			if hero then
 				heroes = heroes + 1
 				for _, e in ipairs(list) do
-					if e ~= hero and (e.Paint.Peak >= hero.Paint.Peak or e.Paint.Thick >= hero.Paint.Thick) then
-						dim[#dim + 1] = fmt("%s: %s peak %.2f / %.1f px >= hero %s %.2f / %.1f px", tab, e.Key, e.Paint.Peak, e.Paint.Thick, hero.Key, hero.Paint.Peak, hero.Paint.Thick)
+					if e ~= hero and e.Paint.Thick >= hero.Paint.Thick then
+						dim[#dim + 1] = fmt("%s: %s %.1f px >= hero %s %.1f px", tab, e.Key, e.Paint.Thick, hero.Key, hero.Paint.Thick)
 					end
 				end
 			end
 		end
-		T.check(heroes >= 2 and #dim == 0, "store colors: each tab's hero is its brightest card with the thickest outline", heroes .. " heroes; " .. table.concat(dim, "; "))
+		T.check(heroes >= 2 and #dim == 0, "store colors: each tab's hero is the navy plank with the thickest edge", heroes .. " heroes; " .. table.concat(dim, "; "))
 		-- a Have-it card greys out (x2 Pet XP owned) and gets its own colours back
 		local before = H.paint(H.card(win, "XpPotion1"))
 		H.setAttr("OwnedPasses", "PetXp2x")
 		KC.advance(0.4)
 		local greyed = H.paint(H.card(win, "XpPotion1"))
-		T.check(SC.Cards().XpPotion1.State == "HaveIt" and greyed ~= nil and H.sat(greyed.Edge) < 0.2,
-			"store colors: a Have-it card greys out", greyed and H.hex(greyed.Edge) or "no paint")
+		T.check(SC.Cards().XpPotion1.State == "HaveIt" and greyed ~= nil and H.hex(greyed.Face) == H.hex(Sign.Well) and H.hex(greyed.Lip) == H.hex(Sign.WellEdge),
+			"store colors: a Have-it card sinks into the well (face and lip)", greyed and (H.hex(greyed.Face) .. "/" .. H.hex(greyed.Lip)) or "no paint")
 		H.setAttr("OwnedPasses", "")
 		KC.advance(0.4)
 		local back = H.paint(H.card(win, "XpPotion1"))
-		T.check(before ~= nil and back ~= nil and H.hex(back.Edge) == H.hex(before.Edge) and H.hex(back.Top) == H.hex(before.Top),
-			"store colors: ...and gets its own colours back", back and (H.hex(back.Top) .. "/" .. H.hex(back.Edge)) or "no paint")
+		T.check(before ~= nil and back ~= nil and H.hex(back.Lip) == H.hex(before.Lip) and H.hex(back.Face) == H.hex(before.Face),
+			"store colors: ...and gets its own colours back", back and (H.hex(back.Face) .. "/" .. H.hex(back.Lip)) or "no paint")
+
 		H.finish(saved)
 		KC.flushErrors("client_fixr_store_colors")
 	end)
