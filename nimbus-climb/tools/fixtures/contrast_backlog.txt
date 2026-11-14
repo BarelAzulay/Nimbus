@@ -17,8 +17,6 @@ NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Champion.Tags.Boss  # "👑
 NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Picker.Start*.Caption  # "ROUND" #FFFFFF on #74ABE9 2.41:1 < 3
 NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Picker.Start*.Number  # "1" #FFFFFF on #629ADB 2.94:1 < 3
 NimbusArenaSide.SideStack.Invite*.Body.Buttons.Accept  # "Accept" #FFFFFF on #2F895B 4.31:1 < 4.5
-NimbusBattle.Root.Enemies.Row*.Icon.Glyph  # "B" #FFFFFF on #549754 3.54:1 < 4.5
-NimbusBattle.Root.Team.Fighter.Body.Lives.Heart*  # "♥" #FF5670 on #243439 4.21:1 < 4.5
 NimbusDaily.DailyHolder.DailyWindow.Body.DailyPage.Cells.Cell*.Body.Day  # "TODAY" #FFFFFF on #BC933D 2.84:1 < 4.5
 NimbusDaily.DailyHolder.DailyWindow.Body.PlayPage.Tiers.Tier*.Body.Time  # "30 min" #FFFFFF on #357AD2 4.33:1 < 4.5
 NimbusDaily.DailyHolder.DailyWindow.TitleBar.Tab_*  # "Play time" #D4E0F6 on #7F6737 4.06:1 < 4.5

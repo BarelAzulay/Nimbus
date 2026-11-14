@@ -109,7 +109,8 @@
 --     PetController where each player's fighter was drawn last (the followers walk back from there).
 --
 -- * The battle HUD (only while the local player fights; ScreenGui "NimbusBattle", designed in 1080p px under one
---   UIScale of Theme.ScreenFactor(), NeonKit cards, fonts via Theme roles, nothing in the screen centre):
+--   UIScale of Theme.ScreenFactor(), kit B cards (kit-b U9-6: stone in a wood edge with a lip in the role colour, square
+--   tags and bars, flat round buttons, no glow / gloss / neon; KB), fonts via Theme roles, nothing in the screen centre):
 --   * Team (top left): the FIGHTER card: name (Heading 26) + "Lv 34" pill + element badge + stars; HP 320 x 22 green
 --     with a red loss trail draining 0.4 s behind (TweenService; HP written only on change); ENERGY 320 x 14 blue
 --     ("ENERGY 72/100", gold at 100); 3 hearts = lives. Under it the two HELPER portraits (a round PetBuilder Low
@@ -124,9 +125,10 @@
 --     its element / ENRAGED / minions / players / wave pills; the ring's pay pills.
 --   * Commands (bottom right): SPECIAL (88, the biggest), TARGET, ELEMENT, DASH (64) round buttons with cooldown rings
 --     (SPECIAL = the energy, gold at 100) and key chips on desktop. Evolved forms: SPECIAL and ELEMENT show the attack's
---     name (the form's at the pet's stage): under the button on wide screens, up to 2 lines; on touch inside the face, the
---     glyph above it, 2 lines at 11-15 px (the one place under MIN_TEXT_PX, by the spec's call), with SPECIAL at least
---     SPECIAL_TOUCH_PX and ELEMENT at least ELEMENT_TOUCH_PX on the screen so the longest names fit.
+--     name (the form's at the pet's stage): under the button on wide screens, up to 2 lines; on touch on a stone tag over
+--     the lower part of the face, the glyph above it, up to 2 lines at NAME_PX (14 px, the phone floor; kit-b U9-6: was
+--     11-15 px scaled), the tag wider than the face for a long word, with SPECIAL at least SPECIAL_TOUCH_PX and ELEMENT at
+--     least ELEMENT_TOUCH_PX on the screen.
 --   * Compact layout (touch, or a screen under 900 x 600 px): a smaller fighter card, the portraits in a column, the
 --     enemy list 2 rows, the mode line under the list when the top is full, the cluster a 2 x 2 grid above the jump /
 --     RUN buttons (portrait) or left of the jump button (landscape); the menu column hides while fighting.
@@ -397,6 +399,7 @@ local K = {
 	RING = 74,
 	HELPER_W = 122,
 	HELPER_W_COMPACT = 150,
+	HELPER_W_WIDE = 180, -- (kit-b U9-6) a landscape phone's helper column, where the screen's 30% has the room
 	ROW_W = 300,
 	ROW_H = 44,
 	ROW_W_COMPACT = 210,
@@ -404,6 +407,7 @@ local K = {
 	ROW_GAP = 6,
 	ROWS_MAX = 8,
 	ROWS_COMPACT = 2,
+	TARGET_OVER = 12, -- the TARGET tab reaches this far over its row's top edge (wide screens)
 	TOP_W = 470,
 	TOP_W_COMPACT = 300,
 	MODE_H = 40,
@@ -415,11 +419,14 @@ local K = {
 	ELEMENT_TOUCH_PX = 68,
 	ELEMENT_TOUCH_MIN_PX = 56,
 	SMALL_TOUCH_PX = 48, -- TARGET, DASH
-	CAPTION_TEXT = 14, -- a caption under its button (design px; FixText keeps it >= MIN_TEXT_PX on the screen)
-	NAME_MIN_PX = 11, -- a name inside a face on touch: TextScaled between these (the spec's call: long names must fit)
-	NAME_MAX_PX = 15,
-	NAME_GLYPH = 0.55, -- ...and the glyph keeps this top share of the face
-	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule; the names above are the one exception)
+	CAPTION_TEXT = 15, -- a caption under its button (design px; FixText keeps it >= the floor on the screen)
+	-- (kit-b U9-6, the render gate: the names were the one text under the floor, 11-12 px) a name on touch sits on a stone
+	-- tag over the lower part of its face at NAME_PX on the screen, one size (no TextScaled), in at most 2 lines; the tag
+	-- grows past the face's width for a long word (NAME_EM: the HUD's 0.62 em estimate, as textWidth)
+	NAME_PX = 14,
+	NAME_GLYPH = 0.55, -- ...and the glyph keeps at least this top share of the face where the tag leaves it room
+	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule)
+	MIN_TEXT_PX_TALL = 15, -- ...on a screen 1000 px tall or more
 	RESULT_W = 440,
 	-- LEAVE (Ring and Raid): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
 	LEAVE_CONFIRM = 3,
@@ -500,6 +507,27 @@ local COLORS = {
 		Special = Theme.Neon and Theme.Neon.Gold or Color3.fromRGB(255, 196, 64),
 		Dash = Theme.Neon and Theme.Neon.Cyan or Color3.fromRGB(64, 226, 236),
 	},
+}
+
+-- (kit-b U9-6) the battle HUD on kit B (the owner's "Cloud Shop Signboard"): stone cards in a wood edge with a lip in the
+-- card's role colour, a navy plank for the mode line, square bars and tags, flat faces, no glow, gloss or neon. One colour by
+-- role: green = the result card's OK (the one main action), gold = the special / selected (the locked row, Cheer up!), red =
+-- danger (the target, LEAVE, the enemies' HP), sky = the dash and the energy, the element's own colour for the element
+local SIGN = Theme.Sign
+local KB = {
+	Face = SIGN.Tile,
+	Well = SIGN.Well, -- a bar's track, a cooldown ring's
+	Edge = SIGN.Wood,
+	Ink = SIGN.Text,
+	Muted = SIGN.TextMuted,
+	Hp = SIGN.Grass,
+	HpLip = SIGN.GrassLip,
+	Loss = SIGN.Red, -- the HP's loss trail (brown reads on it 4.8:1, as on the well)
+	Energy = SIGN.Sky,
+	Life = SIGN.Red,
+	LifeLost = SIGN.WellEdge,
+	Action = { Target = SIGN.Red, Element = SIGN.Sky, Special = SIGN.Gold, Dash = SIGN.Sky },
+	Mode = { Raid = SIGN.Red, Dungeon = SIGN.Violet, Ring = SIGN.Gold, Duel = SIGN.Sky },
 }
 
 ----------------------------------------------------------------------
@@ -5249,6 +5277,42 @@ local function paintPill(pill, color)
 	pill.TextColor3 = ink
 end
 
+-- (kit-b U9-6) a kit B edge: the wood line round a block (UIStroke "SignEdge", mitred corners: square)
+local function signEdge(obj, color, thickness)
+	local edge = obj:FindFirstChild("SignEdge")
+	if not edge then
+		edge = make("UIStroke", { Name = "SignEdge", ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Miter }, obj)
+	end
+	edge.Color = color or KB.Edge
+	edge.Thickness = thickness or 2
+	edge.Transparency = 0
+	return edge
+end
+
+-- (kit-b U9-6) paints a Frame / TextLabel / TextButton as a kit B block in place: a flat face, the wood edge and a darker lip
+-- along its bottom (Frame "Lip"; lipPx 0 = none); a text object gets the ink. Calling it again repaints (a state change)
+local function signBlock(obj, face, lip, ink, lipPx)
+	obj.BackgroundTransparency = 0
+	obj.BackgroundColor3 = face
+	obj.BorderSizePixel = 0
+	signEdge(obj)
+	lipPx = lipPx or 4
+	local l = obj:FindFirstChild("Lip")
+	if not l and lipPx > 0 then
+		l = make("Frame", { Name = "Lip", BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), ZIndex = obj.ZIndex }, obj)
+	end
+	if l then
+		l.Size = UDim2.new(1, 0, 0, lipPx)
+		l.BackgroundColor3 = lip or Theme.Darken(face, 0.2)
+		l.Visible = lipPx > 0
+	end
+	if ink and (obj:IsA("TextButton") or obj:IsA("TextLabel")) then
+		obj.TextColor3 = ink
+	end
+	return obj
+end
+
+-- a kit B tag (the pitch's .tag): a flat block of `color` in a wood edge, square, the ink that reads on it (Theme.ReadableFace)
 local function smallPill(parent, text, color, props)
 	local l = Theme.Label(text, "Heading", { Size = 15 })
 	l.Name = "Pill"
@@ -5258,8 +5322,7 @@ local function smallPill(parent, text, color, props)
 	l.AutomaticSize = Enum.AutomaticSize.X
 	l.Size = UDim2.fromOffset(0, 22)
 	l.TextXAlignment = Enum.TextXAlignment.Center
-	Theme.Corner(l, "M")
-	Theme.Stroke(l, COLORS.Navy, 2, 0)
+	signEdge(l, KB.Edge, 2)
 	make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, l)
 	if props then
 		for key, value in pairs(props) do
@@ -5270,17 +5333,16 @@ local function smallPill(parent, text, color, props)
 	return l
 end
 
--- a thin bar without text (timers): returns { Root, Fill }
+-- a thin bar without text (timers): returns { Root, Fill }. Kit B: a square well in a thin wood edge, a flat fill
 local function thinBar(parent, name, height, color, props)
-	local root = make("Frame", { Name = name, BackgroundColor3 = COLORS.Track, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, height) }, parent)
+	local root = make("Frame", { Name = name, BackgroundColor3 = KB.Well, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, height) }, parent)
 	if props then
 		for key, value in pairs(props) do
 			root[key] = value
 		end
 	end
-	Theme.Corner(root, UDim.new(0, max(2, floor(height / 2))))
+	signEdge(root, KB.Edge, 1)
 	local fill = make("Frame", { Name = "Fill", BackgroundColor3 = color, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, root)
-	Theme.Corner(fill, UDim.new(0, max(2, floor(height / 2))))
 	return { Root = root, Fill = fill, frac = 1 }
 end
 
@@ -5298,6 +5360,18 @@ local function textWidth(text, size)
 	return #tostring(text or "") * size * 0.62
 end
 
+-- (kit-b U9-6, the render gate: "TARGET" spilled out of its fixed 78 px tab) a pill at least as wide as its text at its drawn
+-- size (the larger of Theme's width and the rough 0.62 em) with its padding (a lead icon's inset too) and 4 px to spare, and
+-- AutomaticSize X on top: the engine, which knows the face's real widths, grows it further where the guess is short
+local function fitPill(l, h)
+	local pad = l:FindFirstChildOfClass("UIPadding")
+	local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 16
+	local ok, size = pcall(Theme.MeasureLabel, l)
+	local tw = max((ok and typeof(size) == "Vector2") and size.X or 0, textWidth(l.Text, l.TextSize))
+	l.AutomaticSize = Enum.AutomaticSize.X
+	l.Size = UDim2.fromOffset(math.ceil(tw) + inset + 4, h or 22)
+end
+
 local function setText(lbl, text)
 	if lbl and lbl.Text ~= text then
 		lbl.Text = text
@@ -5310,11 +5384,13 @@ local function setVisible(obj, on)
 	end
 end
 
--- a NeonKit card (a Theme panel when the kit is missing): { Root, Body, SetColor }
+-- a kit B card (NeonKit.Card Skin "Sign": a flat face, the wood edge, a lip along its bottom in the card's role colour;
+-- props.Face, default stone; a Theme panel when the kit is missing): { Root, Body, SetColor }
 local function neonCard(parent, name, color, props)
 	local c
 	if Mods.NeonKit and type(Mods.NeonKit.Card) == "function" then
-		local ok, result = pcall(Mods.NeonKit.Card, { Name = name, Color = color, Parent = parent, Size = props and props.Size, Glow = props and props.Glow, Floor = props and props.Floor, Class = props and props.Class })
+		local ok, result = pcall(Mods.NeonKit.Card, { Name = name, Skin = "Sign", Face = props and props.Face or KB.Face, Color = color, LipPx = props and props.LipPx or 6,
+			Parent = parent, Size = props and props.Size, Class = props and props.Class })
 		if ok and type(result) == "table" then
 			c = result
 		end
@@ -5326,7 +5402,7 @@ local function neonCard(parent, name, color, props)
 	end
 	if props then
 		for key, value in pairs(props) do
-			if key ~= "Size" and key ~= "Glow" and key ~= "Floor" and key ~= "Class" then
+			if key ~= "Size" and key ~= "Glow" and key ~= "Floor" and key ~= "Class" and key ~= "Face" and key ~= "LipPx" then
 				c.Root[key] = value
 			end
 		end
@@ -5334,12 +5410,11 @@ local function neonCard(parent, name, color, props)
 	return c
 end
 
--- the key hint chip (desktop / gamepad)
+-- the key hint chip (desktop / gamepad): a navy key cap in its gold edge, square (kit B)
 local function keyChip(parent, text, props)
-	local chip = make("Frame", { Name = "Key", BackgroundColor3 = Theme.Colors.PanelInk or COLORS.Navy, BorderSizePixel = 0, Size = UDim2.fromOffset(30, 24), ZIndex = 8 }, parent)
-	Theme.Corner(chip, "M")
-	Theme.Stroke(chip, COLORS.White, 1.5, 0.3)
-	local l = label(chip, text, "Heading", 15, { Name = "Text", Size = UDim2.fromScale(1, 1), ZIndex = 9, TextXAlignment = Enum.TextXAlignment.Center })
+	local chip = make("Frame", { Name = "Key", BackgroundColor3 = SIGN.Navy, BorderSizePixel = 0, Size = UDim2.fromOffset(30, 24), ZIndex = 8 }, parent)
+	signEdge(chip, SIGN.GoldLip, 1.5)
+	local l = label(chip, text, "Heading", 15, { Name = "Text", Size = UDim2.fromScale(1, 1), ZIndex = 9, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = SIGN.Stone })
 	if props then
 		for key, value in pairs(props) do
 			chip[key] = value
@@ -5348,10 +5423,33 @@ local function keyChip(parent, text, props)
 	return chip, l
 end
 
--- every HUD text stays >= MIN_TEXT_PX on the screen: design sizes grow to MIN_TEXT_PX / factor on small screens
+-- the readability floor on this screen (screen px): MIN_TEXT_PX_TALL on a screen 1000 px tall or more, MIN_TEXT_PX below
+-- (kit-b U9-6: the render gate's floors, ARCHITECTURE_V3's Readability rule)
+function Hud.FloorPx()
+	local cam = workspace.CurrentCamera
+	local vy = cam and cam.ViewportSize.Y or 1080
+	return (vy >= 1000) and K.MIN_TEXT_PX_TALL or K.MIN_TEXT_PX
+end
+
+-- (kit-b U9-6) the first of `texts` that fits `l`'s box on one line at the size it is drawn at (the floor's design size on a
+-- small screen; Theme.MeasureLabel: the real width), else the last (cut at its end)
+function Hud.SetFit(l, texts, m)
+	local f = max(0.05, (m and m.F) or 1)
+	local px = max(l:GetAttribute("BaseText") or l.TextSize, math.ceil(Hud.FloorPx() / f - 1e-6))
+	local room = l.Size.X.Offset - 2 / f
+	for i, text in ipairs(texts) do
+		local ok, size = pcall(Theme.MeasureLabel, l, text, px)
+		if i == #texts or (ok and typeof(size) == "Vector2" and size.X <= room) then
+			setText(l, text)
+			return text
+		end
+	end
+end
+
+-- every HUD text stays >= the floor on the screen: design sizes grow to the floor / factor on small screens
 -- (the 1080p design sizes are kept as the attribute BaseText)
 function Hud.FixText(root, factor)
-	local minDesign = math.ceil(K.MIN_TEXT_PX / max(0.05, factor) - 1e-6)
+	local minDesign = math.ceil(Hud.FloorPx() / max(0.05, factor) - 1e-6)
 	for _, d in ipairs(root:GetDescendants()) do
 		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
 			local base = d:GetAttribute("BaseText")
@@ -5392,7 +5490,7 @@ local function newPie(parent, name, size, color, z)
 		Size = UDim2.fromOffset(size, size),
 		ZIndex = z or 2,
 	}, parent)
-	local track = make("Frame", { Name = "Track", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = z or 2 }, root)
+	local track = make("Frame", { Name = "Track", BackgroundColor3 = KB.Well, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = z or 2 }, root) -- (kit-b U9-6) the light well
 	Theme.Corner(track, "Round")
 	local pie = { Root = root, Track = track, frac = -1, color = color }
 	for _, side in ipairs({ "R", "L" }) do
@@ -5489,7 +5587,7 @@ function Hud.Ensure()
 	Hud.enemies = make("Frame", { Name = "Enemies", BackgroundTransparency = 1, Visible = false }, root)
 	Hud.top = make("Frame", { Name = "TopCard", BackgroundTransparency = 1, Visible = false, AnchorPoint = Vector2.new(0.5, 0) }, root)
 	Hud.cmd = make("Frame", { Name = "Commands", BackgroundTransparency = 1, Visible = false, AnchorPoint = Vector2.new(1, 1) }, root)
-	Hud.resultCard = neonCard(root, "ResultCard", "Gold", { Visible = false, Size = UDim2.fromOffset(K.RESULT_W, 200), Floor = false })
+	Hud.resultCard = neonCard(root, "ResultCard", SIGN.Gold, { Visible = false, Size = UDim2.fromOffset(K.RESULT_W, 200) })
 	Hud.result = Hud.resultCard.Root
 	Hud.rows = {}
 	Hud.helpers = {}
@@ -5544,41 +5642,44 @@ end
 -- the fighter card (top left) + the two helper portraits under it
 ----------------------------------------------------------------------
 local function heart(parent, i)
-	local l = label(parent, "", "Display", 20, { Name = "Heart" .. i, Size = UDim2.fromOffset(22, 22), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = COLORS.Life })
+	local l = label(parent, "", "Display", 20, { Name = "Heart" .. i, Size = UDim2.fromOffset(22, 22), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = KB.Life })
 	PixelIcon.Host(l, ICON.Heart, 18) -- (kit-b U7b) lit / lost by its TextColor3
 	return l
 end
 
+-- (kit-b U9-6) a square bar in kit B: the well in its wood edge (the HP bar, the energy bar, the boss bar)
+local function signWell(parent, name, edgePx)
+	local f = make("Frame", { Name = name, BackgroundColor3 = KB.Well, BorderSizePixel = 0 }, parent)
+	signEdge(f, KB.Edge, edgePx or 2)
+	return f
+end
+
 function Hud.BuildFighter()
 	local team = Hud.team
-	local card = neonCard(team, "Fighter", "Green", { Size = UDim2.fromOffset(K.FC_W, K.FC_H), Floor = true })
+	-- (kit-b U9-6) a stone card with its lip in the fighter's element colour (Hud.FillFighter)
+	local card = neonCard(team, "Fighter", KB.Hp, { Size = UDim2.fromOffset(K.FC_W, K.FC_H), LipPx = 6 })
 	Hud.fighterCard = card
 	local body = card.Body
 	local F = {}
-	F.Name = label(body, "", "Heading", 26, { Name = "PetName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
-	F.Level = smallPill(body, "Lv 1", COLORS.LevelPill, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None })
+	F.Name = label(body, "", "Heading", 26, { Name = "PetName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = KB.Ink })
+	F.Level = smallPill(body, "Lv 1", SIGN.Navy, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None })
 	F.Level.TextSize = 17
 	F.Element = make("Frame", { Name = "Element", BackgroundColor3 = COLORS.Ally, BorderSizePixel = 0 }, body)
-	Theme.Corner(F.Element, "Round")
-	Theme.Stroke(F.Element, COLORS.White, 1.5, 0.25)
+	signEdge(F.Element, KB.Edge, 2) -- (kit-b U9-6) the pitch's square element chip
 	F.ElementGlyph = label(F.Element, "", "Display", 16, { Name = "Glyph", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
-	F.Stars = label(body, "", "Heading", 18, { Name = "Stars", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.Gold })
-	-- HP: track, the red loss trail, the green fill, the numbers
-	F.Hp = make("Frame", { Name = "Hp", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, body)
-	Theme.Corner(F.Hp, "M")
-	Theme.Stroke(F.Hp, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
-	-- (the loss red a shade deeper than COLORS.Loss, so the white number crossing it reads: kit B, no outline)
-	F.HpLoss = make("Frame", { Name = "Loss", BackgroundColor3 = (Theme.ReadableFace(COLORS.Loss, 4.5, true)), BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
-	Theme.Corner(F.HpLoss, "M")
-	F.HpFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.HpGreen, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
-	Theme.Corner(F.HpFill, "M")
-	make("UIGradient", { Name = "Shine", Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(190, 200, 190)) }, F.HpFill)
+	F.Stars = label(body, "", "Heading", 18, { Name = "Stars", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.GoldDeep })
+	-- HP: the well, the red loss trail, the green fill (its darker lip), the numbers
+	F.Hp = signWell(body, "Hp", 2)
+	F.HpLoss = make("Frame", { Name = "Loss", BackgroundColor3 = KB.Loss, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
+	F.HpFill = make("Frame", { Name = "Fill", BackgroundColor3 = KB.Hp, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, F.Hp)
+	make("Frame", { Name = "Lip", BackgroundColor3 = KB.HpLip, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 0.25) }, F.HpFill)
 	-- kit B (no outline on a surface): "HP" and the number read by the colour of what lies under them, and the green fill
-	-- moves under them. So they are drawn twice, each pair clipped to one stretch of the bar: dark ink over the green
-	-- fill (Theme.TextOn), white over the rest (the red loss trail, the dark track). F.HpTag / F.HpText are the fill pair;
-	-- Hud.PlaceHpText moves the stretches, Hud.LayoutFighter sizes every copy.
+	-- moves under them. So they are drawn twice, each pair clipped to one stretch of the bar: the ink that reads on the
+	-- green fill (Theme.TextOn) over it, brown over the rest (the red loss trail, the well: brown reads on both). F.HpTag /
+	-- F.HpText are the fill pair; Hud.PlaceHpText moves the stretches, Hud.LayoutFighter sizes every copy. (The rest's copy
+	-- is TextTrack, as CloudUI.Bar's and the vitals' copies: the render gate knows the split copies by these names.)
 	F.HpCopies = {}
-	for _, spec in ipairs({ { "TextFill", Theme.TextOn(COLORS.HpGreen) }, { "TextRest", COLORS.White } }) do
+	for _, spec in ipairs({ { "TextFill", Theme.TextOn(KB.Hp) }, { "TextTrack", KB.Ink } }) do
 		local clip = make("Frame", { Name = spec[1], BackgroundTransparency = 1, ClipsDescendants = true, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, F.Hp)
 		local row = make("Frame", { Name = "Row", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3 }, clip)
 		F.HpCopies[#F.HpCopies + 1] = {
@@ -5590,12 +5691,9 @@ function Hud.BuildFighter()
 	end
 	F.HpTag, F.HpText = F.HpCopies[1].Tag, F.HpCopies[1].Text
 	-- ENERGY (the special meter)
-	F.Energy = make("Frame", { Name = "Energy", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, body)
-	Theme.Corner(F.Energy, "S")
-	Theme.Stroke(F.Energy, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
-	F.EnergyFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.Energy, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1) }, F.Energy)
-	Theme.Corner(F.EnergyFill, "S")
-	F.EnergyText = label(body, "ENERGY 0/100", "Label", 15, { Name = "EnergyText", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.EnergyText })
+	F.Energy = signWell(body, "Energy", 2)
+	F.EnergyFill = make("Frame", { Name = "Fill", BackgroundColor3 = KB.Energy, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1) }, F.Energy)
+	F.EnergyText = label(body, "ENERGY 0/100", "Label", 15, { Name = "EnergyText", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink })
 	F.Lives = make("Frame", { Name = "Lives", BackgroundTransparency = 1 }, body)
 	F.Hearts = {}
 	for i = 1, 3 do
@@ -5645,7 +5743,7 @@ function Hud.BuildHelper(i)
 		Name = "Portrait",
 		Text = "",
 		AutoButtonColor = false,
-		BackgroundColor3 = Theme.Colors.PanelTop or COLORS.Navy,
+		BackgroundColor3 = SIGN.PetWell, -- (kit-b U9-6) the light well a pet stands in (the pitch's pet card)
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
@@ -5662,20 +5760,20 @@ function Hud.BuildHelper(i)
 		Ambient = Color3.fromRGB(200, 205, 220),
 		LightColor = Color3.fromRGB(255, 250, 235),
 	}, face)
-	H.Initial = label(face, "", "Display", 26, { Name = "Initial", Size = UDim2.fromScale(1, 1), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center })
-	H.KO = label(face, "KO", "Title", 22, { Name = "KO", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextColor3 = COLORS.White, BackgroundTransparency = 0.35, BackgroundColor3 = Color3.fromRGB(40, 44, 60) })
+	H.Initial = label(face, "", "Display", 26, { Name = "Initial", Size = UDim2.fromScale(1, 1), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = KB.Ink })
+	H.KO = label(face, "KO", "Title", 22, { Name = "KO", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextColor3 = SIGN.Stone, BackgroundTransparency = 0.3, BackgroundColor3 = KB.Ink })
 	Theme.Corner(H.KO, "Round")
 	H.Count = label(face, "", "Display", 24, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
-	H.Level = smallPill(cell, "Lv 1", COLORS.LevelPill, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None, ZIndex = 8 })
+	H.Level = smallPill(cell, "Lv 1", SIGN.Navy, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None, ZIndex = 8 })
 	H.Level.TextSize = 16
 	H.Buff = label(cell, "", "Heading", 15, { Name = "Buff", TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd }, true)
-	H.Swap = make("TextButton", { Name = "Swap", Text = "Swap", AutoButtonColor = true, BackgroundColor3 = Color3.fromRGB(40, 60, 120), BorderSizePixel = 0, ZIndex = 6 }, cell)
+	-- (kit-b U9-6) SWAP: a small stone block (Hud.Update greys it to the sunk well while it cannot swap)
+	H.Swap = make("TextButton", { Name = "Swap", Text = "Swap", AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 6 }, cell)
 	Theme.Style(H.Swap, "Button", { Size = 15 })
 	PixelIcon.Lead(H.Swap, ICON.Swap) -- (kit-b U7b) the swap arrows before "Swap" / the countdown
-	Theme.Corner(H.Swap, "M")
-	H.SwapStroke = Theme.Stroke(H.Swap, COLORS.SwapEdge, 2, 0)
-	H.SwapFill = make("Frame", { Name = "HoldFill", BackgroundColor3 = COLORS.White, BackgroundTransparency = 0.7, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = 7, Visible = false }, H.Swap)
-	Theme.Corner(H.SwapFill, "M")
+	signBlock(H.Swap, KB.Face, SIGN.StoneLip, KB.Ink, 3)
+	H.SwapStroke = H.Swap:FindFirstChild("SignEdge")
+	H.SwapFill = make("Frame", { Name = "HoldFill", BackgroundColor3 = SIGN.Gold, BackgroundTransparency = 0.45, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = 7, Visible = false }, H.Swap)
 	H.Key = keyChip(cell, "1", { Name = "Key" })
 	local index = i
 	face.InputBegan:Connect(function(input)
@@ -5753,22 +5851,28 @@ function Hud.BuildActions()
 			ZIndex = 2,
 		}, Hud.cmd)
 		A.Button = b
-		A.Glow = make("Frame", { Name = "Glow", BackgroundColor3 = COLORS.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 14, 1, 14), ZIndex = 1 }, b)
+		-- (kit-b U9-6) the cue ring behind the button (DASH's dodge call, a full SPECIAL): a flat disc in the role's colour that
+		-- blinks, no soft glow
+		A.Glow = make("Frame", { Name = "Glow", BackgroundColor3 = SIGN.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 14, 1, 14), ZIndex = 1 }, b)
 		Theme.Corner(A.Glow, "Round")
-		A.Ring = newPie(b, "Ring", 10, COLORS.Action[kind], 2)
+		local base = KB.Action[kind]
+		A.Ring = newPie(b, "Ring", 10, Theme.Darken(base, 0.3), 2)
 		A.Ring.Root.Size = UDim2.new(1, 0, 1, 0)
-		local face = make("Frame", { Name = "Face", BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -10, 1, -10), ZIndex = 3 }, b)
+		-- (kit-b U9-6) a flat round face in the role's colour in a wood edge (round: the touch buttons' family with RUN, DASH and
+		-- Roblox's jump button), the ink that reads on it (Hud.PaintFace)
+		local face = make("Frame", { Name = "Face", BackgroundColor3 = base, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -10, 1, -10), ZIndex = 3 }, b)
 		Theme.Corner(face, "Round")
-		local base = COLORS.Action[kind]
-		A.FaceGradient = make("UIGradient", { Name = "Fill", Rotation = 90, Color = ColorSequence.new(Theme.Darken(base, 0.35), Theme.Darken(base, 0.72)) }, face)
-		A.FaceStroke = Theme.Stroke(face, Theme.Lighten(base, 0.25), 2.5, 0)
+		A.FaceStroke = Theme.Stroke(face, KB.Edge, 2.5, 0)
 		A.Face = face
 		A.Glyph = label(face, "", "Display", 30, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Center })
 		PixelIcon.Set(A.Glyph, ICON[kind]) -- (kit-b U7b) follows the glyph's TextSize, colour and fade
 		A.Count = label(face, "", "Display", 26, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 5, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
+		Hud.PaintFace(A, base)
+		-- (kit-b U9-6) the name's stone tag on touch (Hud.PlaceFaceName sizes it; hidden on wide screens)
+		A.NamePlate = make("Frame", { Name = "NamePlate", BackgroundColor3 = KB.Face, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0), Visible = false, ZIndex = 5 }, b)
+		signEdge(A.NamePlate, KB.Edge, 2)
 		-- (Label: the narrower caption face, so "MARSHMALLOW" stays one word on one line)
 		A.Caption = label(b, string.upper(kind), "Label", K.CAPTION_TEXT, { Name = "Caption", AnchorPoint = Vector2.new(0.5, 0), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true }, true)
-		make("UITextSizeConstraint", { Name = "NameSize", MinTextSize = K.NAME_MIN_PX, MaxTextSize = K.NAME_MAX_PX }, A.Caption)
 		A.Key = keyChip(b, "", { Name = "Key", AnchorPoint = Vector2.new(0.5, 0.5) })
 		Hud.SetKey(A.Key:FindFirstChild("Text"), Hud.KeyText(kind))
 		Hud.buttons[kind] = A
@@ -5803,26 +5907,28 @@ end
 ----------------------------------------------------------------------
 function Hud.BuildTop()
 	local top = Hud.top
-	local mode = neonCard(top, "ModeCard", "Blue", { Size = UDim2.fromOffset(K.TOP_W, K.MODE_H), Floor = false })
+	-- (kit-b U9-6) the mode line is a navy plank (the HUD's top bar's look) in its wood edge, its lip in the mode's colour
+	-- (Hud.LayoutTop); the line in cream, the timer in gold
+	local mode = neonCard(top, "ModeCard", KB.Mode.Duel, { Size = UDim2.fromOffset(K.TOP_W, K.MODE_H), Face = SIGN.Navy, LipPx = 5 })
 	Hud.modeCard = mode
-	Hud.mode = label(mode.Body, "", "Heading", 20, { Name = "Mode", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
-	Hud.timer = label(mode.Body, "", "Display", 24, { Name = "Timer", TextXAlignment = Enum.TextXAlignment.Right })
+	Hud.mode = label(mode.Body, "", "Heading", 20, { Name = "Mode", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = SIGN.Stone })
+	Hud.timer = label(mode.Body, "", "Display", 24, { Name = "Timer", TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = SIGN.Gold })
 	local boss = make("Frame", { Name = "BossBar", BackgroundTransparency = 1, Visible = false }, top)
 	Hud.boss = boss
 	Hud.bossName = label(boss, "", "Heading", 18, { Name = "BossName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd }, true)
-	Hud.bossTrack = make("Frame", { Name = "Hp", BackgroundColor3 = COLORS.Track, BorderSizePixel = 0 }, boss)
-	Theme.Corner(Hud.bossTrack, "M")
-	Theme.Stroke(Hud.bossTrack, Theme.Colors.PanelInk or COLORS.Navy, 2.5, 0)
-	Hud.bossFill = make("Frame", { Name = "Fill", BackgroundColor3 = COLORS.Enemy, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, Hud.bossTrack)
-	Theme.Corner(Hud.bossFill, "M")
-	Hud.bossText = label(Hud.bossTrack, "", "Heading", 16, { Name = "Text", Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- (kit-b U9-6) the boss bar: the well in its wood edge, a flat red fill with its darker lip; the number brown (it reads on
+	-- the red and on the well alike, so one copy crosses the fill's edge)
+	Hud.bossTrack = signWell(boss, "Hp", 2.5)
+	Hud.bossFill = make("Frame", { Name = "Fill", BackgroundColor3 = KB.Loss, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, Hud.bossTrack)
+	make("Frame", { Name = "Lip", BackgroundColor3 = SIGN.RedLip, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 0.25) }, Hud.bossFill)
+	Hud.bossText = label(Hud.bossTrack, "", "Heading", 16, { Name = "Text", Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 1, 0), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = KB.Ink })
 	Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1 }, top)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, Hud.pills)
-	Hud.bossElement = smallPill(Hud.pills, "", COLORS.Enemy, { Name = "Element", LayoutOrder = 1 })
-	Hud.enragePill = smallPill(Hud.pills, "ENRAGED", COLORS.Enemy, { Name = "Enraged", LayoutOrder = 2, Visible = false })
-	Hud.minionPill = smallPill(Hud.pills, "", Color3.fromRGB(150, 110, 220), { Name = "Minions", LayoutOrder = 3, Visible = false })
-	Hud.playersPill = smallPill(Hud.pills, "", COLORS.Ally, { Name = "Players", LayoutOrder = 4, Visible = false })
-	Hud.wavePill = smallPill(Hud.pills, "", Theme.Neon.Purple or COLORS.Ally, { Name = "Wave", LayoutOrder = 5, Visible = false })
+	Hud.bossElement = smallPill(Hud.pills, "", KB.Loss, { Name = "Element", LayoutOrder = 1 })
+	Hud.enragePill = smallPill(Hud.pills, "ENRAGED", KB.Loss, { Name = "Enraged", LayoutOrder = 2, Visible = false })
+	Hud.minionPill = smallPill(Hud.pills, "", SIGN.Violet, { Name = "Minions", LayoutOrder = 3, Visible = false })
+	Hud.playersPill = smallPill(Hud.pills, "", SIGN.Sky, { Name = "Players", LayoutOrder = 4, Visible = false })
+	Hud.wavePill = smallPill(Hud.pills, "", SIGN.Violet, { Name = "Wave", LayoutOrder = 5, Visible = false })
 	Ring.BuildInfo(top)
 end
 
@@ -5835,26 +5941,23 @@ local function rowFor(i)
 		return row
 	end
 	row = {}
-	local f = make("TextButton", { Name = "Row" .. i, Text = "", AutoButtonColor = false, BackgroundColor3 = Theme.Colors.PanelTop or COLORS.Panel, BackgroundTransparency = 0.12, BorderSizePixel = 0 }, Hud.enemies)
-	Theme.Corner(f, "M")
-	row.Stroke = Theme.Stroke(f, Theme.Colors.PanelInk or COLORS.Navy, 2, 0)
-	make("UIGradient", { Name = "Fill", Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 156, 186)) }, f)
+	-- (kit-b U9-6) a stone row in its wood edge with a stone lip (the locked one gold: the selected look), a square element
+	-- stripe and chip, a square red HP bar, the gold bracket and the gold TARGET tag
+	local f = make("TextButton", { Name = "Row" .. i, Text = "", AutoButtonColor = false, BorderSizePixel = 0 }, Hud.enemies)
+	signBlock(f, KB.Face, SIGN.StoneLip, nil, 4)
+	row.Stroke = f:FindFirstChild("SignEdge")
 	row.Frame = f
 	row.Stripe = make("Frame", { Name = "Element", BorderSizePixel = 0, BackgroundColor3 = COLORS.Ally }, f)
-	Theme.Corner(row.Stripe, "S")
 	row.Icon = make("Frame", { Name = "Icon", BorderSizePixel = 0, BackgroundColor3 = COLORS.Enemy, ZIndex = 2 }, f)
-	Theme.Corner(row.Icon, "Round")
-	row.IconStroke = Theme.Stroke(row.Icon, COLORS.White, 2, 0.2)
+	row.IconStroke = signEdge(row.Icon, KB.Edge, 2)
 	row.IconText = label(row.Icon, "", "Display", 20, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 3, TextXAlignment = Enum.TextXAlignment.Center })
-	row.Alert = label(row.Icon, "!", "Title", 24, { Name = "Alert", Size = UDim2.fromScale(1, 1), ZIndex = 4, Visible = false, TextColor3 = COLORS.Alert, BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(120, 30, 40) })
-	Theme.Corner(row.Alert, "Round")
-	row.Name = label(f, "", "Body", 18, { Name = "PetName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2 })
-	row.Hp = thinBar(f, "Hp", 9, COLORS.Enemy, { ZIndex = 2 })
+	row.Alert = label(row.Icon, "!", "Title", 24, { Name = "Alert", Size = UDim2.fromScale(1, 1), ZIndex = 4, Visible = false, TextColor3 = SIGN.Gold, BackgroundTransparency = 0, BackgroundColor3 = SIGN.RedLip })
+	row.Name = label(f, "", "Body", 18, { Name = "PetName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2, TextColor3 = KB.Ink })
+	row.Hp = thinBar(f, "Hp", 9, KB.Loss, { ZIndex = 2 })
 	row.Bracket = make("Frame", { Name = "Bracket", BackgroundTransparency = 1, Size = UDim2.new(1, 8, 1, 8), Position = UDim2.fromOffset(-4, -4), Visible = false, ZIndex = 1 }, f)
-	Theme.Corner(row.Bracket, "M")
-	Theme.Stroke(row.Bracket, COLORS.Gold, 3, 0)
-	row.Target = smallPill(f, "TARGET", COLORS.Gold, { Name = "Target", Visible = false, ZIndex = 5 })
-	row.Target.TextColor3 = Theme.Colors.PanelInk or COLORS.Navy
+	signEdge(row.Bracket, SIGN.Gold, 3)
+	row.Target = smallPill(f, "TARGET", SIGN.Gold, { Name = "Target", Visible = false, ZIndex = 5 })
+	row.Target.TextColor3 = KB.Ink
 	local index = i
 	f.Activated:Connect(function()
 		local id = row.unitId
@@ -5923,7 +6026,8 @@ function Hud.LayoutEnemies(B, m)
 			local icon = h - 10
 			row.Icon.Size = UDim2.fromOffset(icon, icon)
 			row.Icon.Position = UDim2.fromOffset(16, 5)
-			row.Icon.BackgroundColor3 = elementColor(u.element):Lerp(COLORS.Navy, 0.25)
+			-- (kit-b U9-6) the chip in the element's colour, its initial / crown in the ink that reads on it (Theme.ReadableFace)
+			row.Icon.BackgroundColor3, row.IconText.TextColor3 = Theme.ReadableFace(elementColor(u.element), 4.5)
 			local boss = u.kind == "MiniBoss" or u.info.boss ~= nil
 			PixelIcon.Set(row.IconText, boss and ICON.Crown or nil) -- (kit-b U7b) a boss's crown, else its initial
 			if not boss then
@@ -5936,7 +6040,8 @@ function Hud.LayoutEnemies(B, m)
 			row.Name.Size = UDim2.fromOffset(w - x - 10, h - 18)
 			row.Name.TextSize = m.Compact and 16 or 18
 			row.Name:SetAttribute("BaseText", row.Name.TextSize)
-			setText(row.Name, (u.info.wild and not boss) and ("Wild " .. u.name) or u.name)
+			-- (kit-b U9-6, the render gate: a phone's row cut "Wild Bamboo Panda") the name whole: "Wild" goes first when the row is short
+			Hud.SetFit(row.Name, (u.info.wild and not boss) and { "Wild " .. u.name, u.name } or { u.name }, m)
 			row.Hp.Root.Position = UDim2.fromOffset(x, h - 15)
 			row.Hp.Root.Size = UDim2.fromOffset(w - x - 10, 9)
 			row.Bracket.Visible = locked
@@ -5944,10 +6049,15 @@ function Hud.LayoutEnemies(B, m)
 			row.Target.Visible = locked and not m.Compact
 			row.Target.AnchorPoint = Vector2.new(1, 0.5)
 			row.Target.Position = UDim2.new(1, -10, 0, -2)
-			row.Target.Size = UDim2.fromOffset(78, 20)
-			row.Target.AutomaticSize = Enum.AutomaticSize.None
 			row.Target.TextSize = 15
-			row.Stroke.Color = locked and COLORS.Gold or (boss and COLORS.Gold:Lerp(COLORS.Navy, 0.45) or (Theme.Colors.PanelInk or COLORS.Navy))
+			fitPill(row.Target, 22)
+			-- (kit-b U9-6) the locked row is the selected card (the gold face, the ink edge); a boss's row keeps a gold lip
+			row.Stroke.Color = locked and KB.Ink or KB.Edge
+			row.Frame.BackgroundColor3 = locked and SIGN.Selected or KB.Face
+			local lip = row.Frame:FindFirstChild("Lip")
+			if lip then
+				lip.BackgroundColor3 = (locked or boss) and SIGN.GoldLip or SIGN.StoneLip
+			end
 			row.hpKey = nil
 			y = y + h + K.ROW_GAP
 		end
@@ -6152,7 +6262,9 @@ function Hud.Rebuild()
 	end
 	Hud.teamPlace = (isFighting or between) and "TopLeft" or nil
 	-- enemy list (right) -----------------------------------------------------------------------------
-	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and (curBottom + 6) or topY
+	-- (kit-b U9-6, the render gate: the TARGET tab sat on the currency strip) a wide screen's locked row carries its TARGET
+	-- tab over its top edge: the list starts that much lower under the strips
+	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and (curBottom + 6 + (m.Compact and 0 or K.TARGET_OVER)) or topY
 	Hud.listTop = rightY
 	Hud.enemies.Visible = isFighting
 	local listH = 0
@@ -6203,19 +6315,18 @@ end
 -- Touch: the caption sits inside the face (DASH keeps a plain face), the glyph and the countdown above it
 function Hud.PlaceFace(A, d, m)
 	local inFace = m.Touch and A.kind ~= "Dash"
-	local share = inFace and (1 - Hud.FaceNameH(A, d) / (d - 10)) or 1
-	A.Glyph.Size = UDim2.fromScale(1, share)
-	A.Glyph.TextSize = floor(d * (inFace and 0.3 or 0.4))
+	A.Glyph.Size = UDim2.fromScale(1, 1)
+	A.Glyph.TextSize = floor(d * 0.4)
 	A.Glyph:SetAttribute("BaseText", A.Glyph.TextSize)
-	A.Count.Size = UDim2.fromScale(1, share)
-	A.Count.TextSize = floor(d * (inFace and 0.3 or 0.36))
+	A.Count.Size = UDim2.fromScale(1, 1)
+	A.Count.TextSize = floor(d * 0.36)
 	A.Count:SetAttribute("BaseText", A.Count.TextSize)
 	local cap = A.Caption
 	cap.Visible = inFace or not m.Touch
-	cap.TextScaled = inFace
+	cap.TextScaled = false -- (kit-b U9-6) one size: the floor on touch (Hud.PlaceFaceName), CAPTION_TEXT under the button
 	local outline = cap:FindFirstChild("TextOutline")
 	if outline then
-		-- in the face it sits on the button's plate (no outline, kit-b U6); under the button it floats over the arena
+		-- in the face it sits on its stone tag (no outline, kit-b U6); under the button it floats over the arena
 		outline.Thickness = 2
 		outline.Transparency = inFace and 1 or 0
 	end
@@ -6223,28 +6334,98 @@ function Hud.PlaceFace(A, d, m)
 		cap.TextTruncate = Enum.TextTruncate.None
 		Hud.PlaceFaceName(A, d, false)
 	else
+		A.NamePlate.Visible = false
 		cap.TextTruncate = Enum.TextTruncate.AtEnd
+		cap.TextColor3 = COLORS.White
 		cap.Position = UDim2.new(0.5, 0, 1, 2)
 		cap.Size = UDim2.fromOffset(d + ((A.kind == "Special") and 56 or (A.kind == "Element") and 40 or 24), Hud.CaptionH(m))
 	end
 end
 
--- the height of a touch button's name in its face (design px): the part under the glyph, at least its lines at NAME_MIN_PX
--- (a name has two, TARGET one)
-function Hud.FaceNameH(A, d)
-	local lines = (A.kind == "Target") and 1 or 2
-	return max((d - 10) * (1 - K.NAME_GLYPH), lines * math.ceil(K.NAME_MIN_PX * 1.2) / max(0.05, Hud.m and Hud.m.F or 1))
+-- (kit-b U9-6) a face's colour and the ink of what sits on it (the glyph, the countdown)
+function Hud.PaintFace(A, color)
+	A.Face.BackgroundColor3 = color
+	A.faceColor = color
+	local ink = Theme.TextOn(color)
+	A.Glyph.TextColor3 = ink
+	A.Count.TextColor3 = ink
 end
 
--- a touch button's name: the lower part of the face (an attack's name a little wider than the face: letters with an
--- outline read on its ring and past it; TARGET is short and on a phone sits at the edge of the middle of the screen), or
--- the whole face (`whole`: TARGET's flash, the glyph steps aside)
+-- the lines `text` takes in a box `w` design px wide at `px` (greedy word wrap at the HUD's 0.62 em estimate, textWidth)
+local function wrapLines(text, w, px)
+	local lines, cur = 0, -1
+	for word in string.gmatch(tostring(text or ""), "%S+") do
+		local ww = textWidth(word, px)
+		if cur < 0 or cur + textWidth(" ", px) + ww > w then
+			lines = lines + 1
+			cur = ww
+		else
+			cur = cur + textWidth(" ", px) + ww
+		end
+	end
+	return max(1, lines)
+end
+
+-- a touch button's name (kit-b U9-6; was a TextScaled label at 11-15 px): at NAME_PX on the screen, one size, on a stone tag
+-- over the lower part of the face (a little wider than the face; wider still where a word or the 2-line wrap needs it),
+-- 1 or 2 lines; the glyph and the countdown keep the face above it. `whole`: TARGET's flash (NEXT / AUTO / ONE ENEMY) takes the
+-- whole face, no tag, the glyph steps aside
 function Hud.PlaceFaceName(A, d, whole)
 	local face = d - 10
-	local h = whole and face or Hud.FaceNameH(A, d)
-	A.Caption.Position = UDim2.new(0.5, 0, 0, 5 + face - h)
-	A.Caption.Size = UDim2.fromOffset(d + ((A.kind == "Target") and 0 or 14), h)
-	A.Caption.TextYAlignment = whole and Enum.TextYAlignment.Center or Enum.TextYAlignment.Top
+	local f = max(0.05, Hud.m and Hud.m.F or 1)
+	local px = math.ceil(K.NAME_PX / f - 1e-6)
+	local cap, plate = A.Caption, A.NamePlate
+	cap.TextSize = px
+	cap:SetAttribute("BaseText", px)
+	local text = cap.Text
+	local w = d + ((A.kind == "Target") and 0 or 14)
+	local pad = 6
+	for word in string.gmatch(tostring(text), "%S+") do
+		w = max(w, math.ceil(textWidth(word, px)) + 2 * pad)
+	end
+	local maxLines = (whole or A.kind ~= "Target") and 2 or 1
+	while wrapLines(text, w - 2 * pad, px) > maxLines and w < 3 * d do
+		w = w + 2
+	end
+	local lines = min(maxLines, wrapLines(text, w - 2 * pad, px))
+	local h = whole and face or (lines * math.ceil(px * 1.2) + 4)
+	-- the tag ends on the face's bottom edge (the button's ring shows under it), centred on it; a tag wider than the button
+	-- moves aside only to stay out of the screen's centre 40% (where its button is clear of it) and on the screen
+	local top = 5 + face - h
+	local shift = 0
+	local okA, ax, bw = pcall(function()
+		return A.Button.AbsolutePosition.X + A.Button.AbsoluteSize.X / 2, A.Button.AbsoluteSize.X
+	end)
+	local cam = workspace.CurrentCamera
+	local vx = cam and cam.ViewportSize.X or 0
+	if w > d and okA and vx > 0 and (bw or 0) > 0 then
+		local s = bw / d -- screen px per design px
+		local half, bhalf = w * s / 2, bw / 2
+		if ax >= vx / 2 and ax - bhalf >= vx * 0.7 - 0.5 and ax - half < vx * 0.7 then
+			shift = vx * 0.7 - (ax - half)
+		elseif ax < vx / 2 and ax + bhalf <= vx * 0.3 + 0.5 and ax + half > vx * 0.3 then
+			shift = vx * 0.3 - (ax + half)
+		end
+		shift = min(shift, vx - 4 - (ax + half))
+		shift = max(shift, 4 - (ax - half))
+		shift = shift / s
+	end
+	cap.Position = UDim2.new(0.5, shift, 0, top)
+	cap.Size = UDim2.fromOffset(w, h)
+	cap.TextYAlignment = Enum.TextYAlignment.Center
+	cap.TextColor3 = whole and Theme.TextOn(A.faceColor or KB.Face) or KB.Ink
+	plate.Visible = not whole
+	plate.Position = cap.Position
+	plate.Size = cap.Size
+	-- the glyph and the countdown share what the tag leaves of the face (never under NAME_GLYPH of it for a one-line name)
+	local share = whole and 1 or clamp(1 - h / face, 0.2, 1)
+	A.Glyph.Size = UDim2.fromScale(1, share)
+	A.Count.Size = UDim2.fromScale(1, share)
+	local room = floor(face * share) - 2
+	A.Glyph.TextSize = max(8, min(floor(d * 0.3), room))
+	A.Glyph:SetAttribute("BaseText", A.Glyph.TextSize)
+	A.Count.TextSize = max(math.ceil(K.MIN_TEXT_PX / f - 1e-6), min(floor(d * 0.3), room))
+	A.Count:SetAttribute("BaseText", A.Count.TextSize)
 end
 
 -- the fighter card + helper cells (sizes + positions; Team-local); returns the Team block's size
@@ -6328,10 +6509,18 @@ function Hud.LayoutFighter(B, m)
 	local ringD = disc + (compact and 8 or 10)
 	local cellW = compact and K.HELPER_W_COMPACT or K.HELPER_W
 	if compact then
-		cellW = max(ringD + 70, min(cellW, floor(m.W * 0.3) - K.EDGE)) -- (a phone: the column ends before the centre 40%)
+		-- (a phone: the column ends before the centre 40%; kit-b U9-6: a landscape phone has room for a longer buff name)
+		cellW = max(ringD + 70, min(m.Landscape and K.HELPER_W_WIDE or cellW, floor(m.W * 0.3) - K.EDGE))
 	end
+	-- (kit-b U9-6, the render gate: "Lv 34" spilled out of its 48 px pill) the helpers' level tags: a size that stays at the
+	-- floor on the screen, a box as tall as its text, as wide as its text (Hud.FitLevel, on every fill)
+	local lvPx = max(16, minSize)
+	Hud.helperLevel = { Px = lvPx, H = lvPx + 6, RingD = ringD, CellW = cellW, Compact = compact, Tall = compact and not m.Landscape }
 	Hud.helperCellW = cellW
-	local cellH = compact and max(ringD + 4, 56) or (ringD + 70)
+	-- (kit-b U9-6, a portrait phone: the column's 30% leaves no room for "TIDE MEND" and "Swap" beside the ring; the buff
+	-- name takes two lines beside the ring, SWAP the cell's width under it)
+	local tall = compact and not m.Landscape
+	local cellH = tall and (ringD + 6 + 30 + 2) or compact and max(ringD + 4, 56) or (ringD + 70)
 	local hy = cardH + (compact and 8 or 10)
 	Hud.helperHolder.Position = UDim2.fromOffset(0, hy)
 	local shown = 0
@@ -6343,29 +6532,30 @@ function Hud.LayoutFighter(B, m)
 			cell.Position = UDim2.fromOffset(0, (i - 1) * (cellH + 6))
 			H.Disc.Position = UDim2.fromOffset(0, 2)
 			H.Disc.Size = UDim2.fromOffset(ringD, ringD)
-			H.Level.Position = UDim2.fromOffset(ringD / 2 - 24, ringD - 14)
-			H.Level.Size = UDim2.fromOffset(48, 18)
 			Theme.SetRole(H.Buff, "Label")
-			H.Buff.Position = UDim2.fromOffset(ringD + 6, 0)
-			H.Buff.Size = UDim2.fromOffset(cellW - ringD - 6, 22)
+			H.Buff.Position = UDim2.fromOffset(ringD + 8, 0)
+			H.Buff.Size = UDim2.fromOffset(cellW - ringD - 8, tall and ringD or 22)
 			H.Buff.TextXAlignment = Enum.TextXAlignment.Left
-			H.Swap.Position = UDim2.fromOffset(ringD + 6, 24)
-			H.Swap.Size = UDim2.fromOffset(cellW - ringD - 6, 30)
+			H.Buff.TextWrapped = tall
+			H.Swap.Position = UDim2.fromOffset(tall and 0 or (ringD + 8), tall and (ringD + 6) or 24)
+			H.Swap.Size = UDim2.fromOffset(tall and cellW or (cellW - ringD - 8), 30)
 			H.Key.Position = UDim2.fromOffset(-4, -2)
 		else
 			cell.Position = UDim2.fromOffset((i - 1) * (cellW + 12), 0)
 			H.Disc.Position = UDim2.fromOffset((cellW - ringD) / 2, 0)
 			H.Disc.Size = UDim2.fromOffset(ringD, ringD)
-			H.Level.Position = UDim2.fromOffset(cellW / 2 - 28, ringD - 12)
-			H.Level.Size = UDim2.fromOffset(56, 20)
 			Theme.SetRole(H.Buff, "Heading")
 			H.Buff.Position = UDim2.fromOffset(0, ringD + 12)
 			H.Buff.Size = UDim2.fromOffset(cellW, 20)
 			H.Buff.TextXAlignment = Enum.TextXAlignment.Center
+			H.Buff.TextWrapped = false
 			H.Swap.Position = UDim2.fromOffset((cellW - 104) / 2, ringD + 36)
 			H.Swap.Size = UDim2.fromOffset(104, 28)
 			H.Key.Position = UDim2.fromOffset((cellW - ringD) / 2 - 6, -4)
 		end
+		H.Level.TextSize = lvPx
+		H.Level:SetAttribute("BaseText", lvPx)
+		Hud.FitLevel(H)
 		H.Ring.Root.Size = UDim2.fromOffset(ringD, ringD)
 		H.Face.Size = UDim2.fromOffset(disc, disc)
 		H.Initial.TextSize = floor(disc * 0.45)
@@ -6382,6 +6572,34 @@ function Hud.LayoutFighter(B, m)
 	return max(w, compact and cellW or (2 * cellW + 12)), hy + helpersH
 end
 
+-- (kit-b U9-6) a helper's level tag sized to its text, grown by the engine (AutomaticSize X: the face's real widths; 5 px padding
+-- each side), centred under its portrait's ring, its top on the ring's lower edge (a phone's buff name starts right of the ring)
+function Hud.FitLevel(H)
+	local L = Hud.helperLevel
+	if not L then
+		return
+	end
+	local pad = H.Level:FindFirstChildOfClass("UIPadding")
+	if pad then
+		pad.PaddingLeft = UDim.new(0, 5)
+		pad.PaddingRight = UDim.new(0, 5)
+	end
+	-- (at least the larger of Theme's width and 0.55 em per character, 2 px to spare: the engine only ever grows it)
+	local okM, size = pcall(Theme.MeasureLabel, H.Level, nil, L.Px)
+	local tw = max((okM and typeof(size) == "Vector2") and size.X or 0, #H.Level.Text * L.Px * 0.55)
+	H.Level.AutomaticSize = Enum.AutomaticSize.X
+	H.Level.AnchorPoint = Vector2.new(0.5, 0)
+	local w = math.ceil(tw) + 10 + 2
+	H.Level.Size = UDim2.fromOffset(w, L.H)
+	H.Level.Position = UDim2.fromOffset(L.Compact and (L.RingD / 2) or (L.CellW / 2), L.RingD - L.H + 6)
+	if L.Compact and not L.Tall then
+		-- (a landscape phone: SWAP sits beside the ring, so it starts right of a tag wider than the ring)
+		local x = max(L.RingD + 8, math.ceil(L.RingD / 2 + w / 2) + 6)
+		H.Swap.Position = UDim2.fromOffset(x, H.Swap.Position.Y.Offset)
+		H.Swap.Size = UDim2.fromOffset(L.CellW - x, H.Swap.Size.Y.Offset)
+	end
+end
+
 -- the fighter card's static texts (name, level, element, stars) and the helper cells' pets (on Start / Swap)
 function Hud.FillFighter(B)
 	local F = Hud.F
@@ -6396,7 +6614,7 @@ function Hud.FillFighter(B)
 		setText(F.Stars, "")
 		PixelIcon.Mark(F.Stars, evo > 0 and ICON.Star or nil, { Count = evo, Of = evo })
 		if Hud.fighterCard.SetColor then
-			pcall(Hud.fighterCard.SetColor, elementColor(f.element):Lerp(Theme.Neon.Green or COLORS.Mine, 0.55))
+			pcall(Hud.fighterCard.SetColor, elementColor(f.element)) -- (kit-b U9-6) the card's lip in the fighter's element
 		end
 	end
 	local bench = Hud.Bench(B)
@@ -6407,6 +6625,7 @@ function Hud.FillFighter(B)
 		if u then
 			H.slot = u.slot
 			setText(H.Level, "Lv " .. tostring(floor(u.level)))
+			Hud.FitLevel(H)
 			local buff = type(u.info.buff) == "table" and u.info.buff or nil
 			H.buffName = buff and string.upper(tostring(buff.Name or buff.Kind or "BUFF")) or "BUFF"
 			setText(H.Buff, H.buffName)
@@ -6446,18 +6665,27 @@ function Hud.Captions(B)
 	if T and Hud.m and Hud.m.Touch then
 		-- (a phone: the flash takes the whole face, "ONE ENEMY" is two lines)
 		setVisible(T.Glyph, St.targetFlash == nil)
-		Hud.PlaceFaceName(T, T.Button.Size.X.Offset, St.targetFlash ~= nil)
 	end
 	for kind, A in pairs(Hud.buttons) do
 		setText(A.Caption, caps[kind] or kind)
+		if Hud.m and Hud.m.Touch and kind ~= "Dash" then
+			-- (kit-b U9-6) the name's tag follows its text (a swap changes the attack's name)
+			Hud.PlaceFaceName(A, A.Button.Size.X.Offset, kind == "Target" and St.targetFlash ~= nil)
+		end
 		if kind == "Element" and f then
 			PixelIcon.Set(A.Glyph, ELEMENT_ICON[f.element] or ICON.Special)
 			local c = elementColor(f.element)
-			A.FaceGradient.Color = ColorSequence.new(Theme.Darken(c, 0.3), Theme.Darken(c, 0.7))
-			A.FaceStroke.Color = Theme.Lighten(c, 0.25)
-			setPie(A.Ring, A.Ring.frac >= 0 and A.Ring.frac or 1, c)
+			Hud.PaintFace(A, c)
+			setPie(A.Ring, A.Ring.frac >= 0 and A.Ring.frac or 1, Theme.Darken(c, 0.3))
 		end
 	end
+end
+
+-- the top of a tall phone's centre band in our design px (the gui area starts under the Roblox top bar: the band is 30% of
+-- the SCREEN's height down, so the inset comes off; kit-b U9-6: it was 30% of the gui area, 25 px too low at 390x844, and the
+-- top card + boss bar reached into the band) less a 4 px margin
+function Hud.BandTop(m)
+	return (m.VY * 0.3 - m.Inset) / max(0.05, m.F) - 4
 end
 
 -- the top card: the mode line + timer (+ the boss bar in raids / boss rooms, the ring pills); returns nothing
@@ -6490,7 +6718,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			y = rightY + listH + 10
 			underList = listH > 0
 			local guess = K.MODE_H + 6 + (bossUnit and 32 or 0) + ((B.Mode == "Ring") and 30 or 0)
-			if underList and not m.Landscape and Hud.team.Visible and Hud.fighterCard and y + guess > m.H * 0.3 - 4 then
+			if underList and not m.Landscape and Hud.team.Visible and Hud.fighterCard and y + guess > Hud.BandTop(m) then
 				-- (the right column starts low - currency pills up there - and would reach the centre band: the top
 				-- card goes under the fighter card instead, the helper column moves down under it)
 				leftTop = true
@@ -6511,7 +6739,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	end
 	top.AnchorPoint = Vector2.new(anchor, 0)
 	top.Position = UDim2.fromOffset(x, y)
-	local modeText, modeColor = Hud.ModeText(B)
+	local _, modeColor = Hud.ModeText(B)
 	Hud.modeColor = modeColor
 	if Hud.modeCard.SetColor then
 		pcall(Hud.modeCard.SetColor, modeColor)
@@ -6520,7 +6748,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	Hud.modeCard.Root.Size = UDim2.fromOffset(w, mh)
 	Hud.mode.Position = UDim2.fromOffset(14, 0)
 	Hud.mode.Size = UDim2.fromOffset(w - 14 - 76, mh)
-	Hud.mode.TextColor3 = COLORS.White
+	Hud.mode.TextColor3 = SIGN.Stone
 	Hud.timer.Position = UDim2.new(1, -78, 0, 0)
 	Hud.timer.Size = UDim2.fromOffset(66, mh)
 	local yy = mh + 6
@@ -6540,8 +6768,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		Hud.bossTrack.Size = UDim2.fromOffset(w, 26)
 		-- kit-b U6: no outline on the bar any more. The centred number crosses the fill and, as the boss drains, the dark
 		-- track: so it is white, and the fill is deepened where white would not read on it (Theme.ReadableFace, white only)
-		Hud.bossFill.BackgroundColor3 = Theme.ReadableFace(elementColor(bossUnit.element):Lerp(COLORS.Enemy, 0.5), 4.5, true)
-		Hud.bossText.TextColor3 = COLORS.White
+		-- (kit-b U9-6) the flat red fill and the brown number (Hud.BuildTop)
+		Hud.bossFill.BackgroundColor3 = KB.Loss
+		Hud.bossText.TextColor3 = KB.Ink
 		setText(Hud.bossName, bossUnit.name)
 		PixelIcon.Mark(Hud.bossName, bossUnit.kind == "MiniBoss" and ICON.Crown or nil) -- (kit-b U7b)
 		setText(Hud.bossElement, tostring(bossUnit.element or "?"))
@@ -6560,7 +6789,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		local fcH = Hud.fighterCard.Root.Size.Y.Offset
 		Hud.helperHolder.Position = UDim2.fromOffset(0, fcH + 8 + yy + 8)
 	end
-	if underList and y + yy > m.H * 0.3 - 4 then
+	if underList and y + yy > Hud.BandTop(m) then
 		-- (a tall phone whose right column starts low: the top card first, the enemy list under it, both above
 		-- the centre band)
 		y = rightY
@@ -6624,17 +6853,19 @@ function Hud.Update(B, now, force)
 	end
 	local last = Hud.last or {}
 	Hud.last = last
-	local modeText = Hud.ModeText(B)
-	if last.mode ~= modeText then
+	local modeText, _, modeShort = Hud.ModeText(B)
+	if last.mode ~= modeText or last.modeW ~= Hud.mode.Size.X.Offset then
 		last.mode = modeText
-		Hud.mode.Text = modeText
+		last.modeW = Hud.mode.Size.X.Offset
+		-- (kit-b U9-6) the line whole: a narrow card shows the short form (Hud.ModeText's third value)
+		Hud.SetFit(Hud.mode, modeShort and { modeText, modeShort } or { modeText }, Hud.m)
 	end
 	local left = B.TimeLimit > 0 and (B.TimeLimit - B.renderT) or 0
 	local timerText = B.TimeLimit > 0 and fmtTime(left) or ""
 	if last.timer ~= timerText then
 		last.timer = timerText
 		Hud.timer.Text = timerText
-		Hud.timer.TextColor3 = (left < 15 and B.TimeLimit > 0) and COLORS.Enemy:Lerp(COLORS.White, 0.25) or COLORS.White
+		Hud.timer.TextColor3 = (left < 15 and B.TimeLimit > 0) and SIGN.Red or SIGN.Gold -- (kit-b U9-6: on the navy plank)
 	end
 	local bossUnit = Hud.boss.Visible and Hud.BossUnit(B) or nil
 	if bossUnit then
@@ -6686,6 +6917,14 @@ function Hud.Update(B, now, force)
 			Hud.wavePill.Visible = waveText ~= ""
 			Hud.wavePill.Text = waveText
 		end
+		-- (kit-b U9-6) each pill as wide as its text
+		local key = Hud.bossElement.Text .. "|" .. Hud.enragePill.Text .. "|" .. Hud.minionPill.Text .. "|" .. Hud.playersPill.Text .. "|" .. waveText .. "|" .. Hud.bossElement.TextSize
+		if last.pillKey ~= key then
+			last.pillKey = key
+			for _, pill in ipairs({ Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill }) do
+				fitPill(pill)
+			end
+		end
 	end
 	if not B.Fighter then
 		return
@@ -6727,16 +6966,16 @@ function Hud.Update(B, now, force)
 		if force or last.meter ~= meter then
 			last.meter = meter
 			F.EnergyFill.Size = UDim2.fromScale(meter / METER_MAX, 1)
-			F.EnergyFill.BackgroundColor3 = (meter >= METER_MAX) and COLORS.Gold or COLORS.Energy
+			-- (kit-b U9-6) the bar turns gold at 100; the caption stays brown on the stone (gold text would not read there)
+			F.EnergyFill.BackgroundColor3 = (meter >= METER_MAX) and SIGN.Gold or KB.Energy
 			F.EnergyText.Text = (Hud.energyShort and "" or "ENERGY ") .. meter .. "/" .. METER_MAX
-			F.EnergyText.TextColor3 = (meter >= METER_MAX) and COLORS.Gold or COLORS.EnergyText
 		end
 	end
 	local lives = B.lives or 3
 	if force or last.lives ~= lives then
 		last.lives = lives
 		for i, h in ipairs(F.Hearts) do
-			h.TextColor3 = (i <= lives) and COLORS.Life or COLORS.LifeLost
+			h.TextColor3 = (i <= lives) and KB.Life or KB.LifeLost
 			h.TextTransparency = (i <= lives) and 0 or 0.25
 		end
 	end
@@ -6773,7 +7012,7 @@ function Hud.Update(B, now, force)
 	Retreat.Update(B, now)
 	AreaWarn.Update(B, now)
 	for kind, A in pairs(Hud.buttons) do
-		local frac, color, countText = 1, COLORS.Action[kind], ""
+		local frac, color, countText = 1, Theme.Darken(KB.Action[kind], 0.3), "" -- (kit-b U9-6) the ring a shade under the face
 		if kind == "Element" or kind == "Dash" then
 			local leftS = cdLeft(B, kind, nil, now)
 			frac = 1 - leftS / cdLen(B, kind)
@@ -6781,11 +7020,11 @@ function Hud.Update(B, now, force)
 				countText = tostring(math.ceil(leftS - 0.05))
 			end
 			if kind == "Element" and f then
-				color = elementColor(f.element)
+				color = Theme.Darken(elementColor(f.element), 0.3)
 			end
 		elseif kind == "Special" then
 			frac = f and clamp(f.meter / METER_MAX, 0, 1) or 0
-			color = frac >= 1 and COLORS.Gold or COLORS.Action.Special
+			color = frac >= 1 and SIGN.GoldDeep or color
 		end
 		setPie(A.Ring, frac, color)
 		setText(A.Count, countText)
@@ -6796,7 +7035,7 @@ function Hud.Update(B, now, force)
 		local glow = cue and (0.45 + 0.35 * (0.5 + 0.5 * sin(now * 8))) or 1
 		if abs(A.Glow.BackgroundTransparency - glow) > 0.02 then
 			A.Glow.BackgroundTransparency = glow
-			A.Glow.BackgroundColor3 = (kind == "Dash") and COLORS.Dodge or COLORS.Gold
+			A.Glow.BackgroundColor3 = (kind == "Dash") and SIGN.Sky or SIGN.Gold
 		end
 		setDisabled(A.Button, kind == "Special" and not ready)
 	end
@@ -6818,8 +7057,9 @@ function Hud.Update(B, now, force)
 				H.View.ImageColor3 = down and Color3.fromRGB(120, 124, 140) or Color3.fromRGB(255, 255, 255)
 				H.Buff.TextColor3 = down and COLORS.Weak or COLORS.White
 				setDisabled(H.Swap, down or swapLeft > 0.05)
-				H.Swap.BackgroundColor3 = (down or swapLeft > 0.05) and Color3.fromRGB(60, 66, 92) or Color3.fromRGB(40, 70, 150)
-				H.Swap.TextTransparency = (down or swapLeft > 0.05) and 0.45 or 0
+				-- (kit-b U9-6) a swap that cannot happen sinks into the well (the pitch's Off block), else the stone block
+				local off = down or swapLeft > 0.05
+				signBlock(H.Swap, off and KB.Well or KB.Face, off and SIGN.WellEdge or SIGN.StoneLip, off and KB.Muted or KB.Ink, 3)
 			end
 			local hold = Input.HoldFrac(i, now)
 			setVisible(H.SwapFill, hold > 0)
@@ -6837,40 +7077,44 @@ function Hud.Update(B, now, force)
 end
 
 function Hud.ModeText(B)
-	local text, color
+	local text, color, short
 	if B.Mode == "Raid" then
-		text, color = "BOSS RAID", COLORS.Enemy
+		text, color = "BOSS RAID", KB.Mode.Raid
 		if B.Raid and B.Raid.Tier then
 			text = text .. " - " .. tostring(B.Raid.Tier)
 		end
 	elseif B.Mode == "Dungeon" then
 		local d = B.Dungeon or {}
 		local compact = Hud.m and Hud.m.Compact
-		text, color = "DUNGEON - Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1)), Theme.Neon.Purple or COLORS.Ally
+		text, color = "DUNGEON - Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1)), KB.Mode.Dungeon
 		if compact then
 			-- (a phone's line is short: the room + the wave; DungeonController's side card shows the floor)
 			local waves = num(d.Waves, 0)
 			if waves > 1 then
-				text = "Room " .. tostring(num(d.Room, 1)) .. " - Wave " .. clamp(max(num(d.Wave, 1), B.wave or 0), 1, waves) .. "/" .. waves
+				local wave = "Wave " .. clamp(max(num(d.Wave, 1), B.wave or 0), 1, waves) .. "/" .. waves
+				text = "Room " .. tostring(num(d.Room, 1)) .. " - " .. wave
+				short = wave -- (kit-b U9-6: a portrait phone's narrow card: the wave, the room is on the side card)
 			else
 				text = "Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1))
 			end
 		end
 		if d.Boss == true and num(d.Room, 0) >= 3 then
 			text = text .. " (BOSS)"
+			short = short and (short .. " (BOSS)")
 		end
 	elseif B.Mode == "Ring" then
-		text, color = Ring.TitleText(B), Ring.GOLD
+		text, color = Ring.TitleText(B), KB.Mode.Ring
 	else
-		text, color = "DUEL", COLORS.Ally
+		text, color = "DUEL", KB.Mode.Duel
 		if B.Fighter then
 			text = "DUEL - vs " .. Hud.SideName(B, B.Side == 1 and 2 or 1)
 		end
 	end
 	if B.Spectator then
 		text = "WATCHING - " .. ((B.Mode == "Duel") and (Hud.SideName(B, 1) .. " vs " .. Hud.SideName(B, 2)) or text)
+		short = nil
 	end
-	return text, color
+	return text, color, short
 end
 
 function Hud.SideName(B, side)
@@ -6950,13 +7194,14 @@ function Hud.ShowResult(B, payload)
 		outcome = payload.Won and "Win" or "Loss"
 	end
 	local raid = B.Mode == "Raid"
-	local titleText, color = "DEFEAT", COLORS.Enemy
+	-- (kit-b U9-6) `color` is the card's lip (one colour by role); the title is the plain kit B title in brown
+	local titleText, color = "DEFEAT", SIGN.Red
 	if outcome == "Win" then
-		titleText, color = raid and "BOSS DEFEATED!" or "VICTORY!", COLORS.Gold
+		titleText, color = raid and "BOSS DEFEATED!" or "VICTORY!", SIGN.Gold
 	elseif outcome == "Draw" then
-		titleText, color = "DRAW", COLORS.Ally
+		titleText, color = "DRAW", SIGN.Sky
 	elseif outcome == "Left" then
-		titleText, color = "YOU LEFT", COLORS.Weak
+		titleText, color = "YOU LEFT", SIGN.WellEdge
 	elseif raid then
 		titleText = "THE BOSS WON"
 	end
@@ -6984,7 +7229,7 @@ function Hud.ShowResult(B, payload)
 	if B.Mode == "Ring" then
 		titleText, color, sub = Ring.ResultTitle(B, payload, sub)
 	elseif B.Mode == "Dungeon" and outcome ~= "Win" then
-		titleText, color = "KNOCKED OUT", Theme.Neon.Purple or COLORS.Enemy
+		titleText, color = "KNOCKED OUT", SIGN.Violet
 	end
 	local card = Hud.resultCard
 	if card and card.SetColor then
@@ -7003,8 +7248,8 @@ function Hud.ShowResult(B, payload)
 	-- (a short landscape screen: the OK button shares the title's line, long titles step down a size)
 	local titleW = w - 2 * K.PAD - 8 - (short and 100 or 0)
 	local titleSize = short and (#titleText > 9 and 25 or 30) or 34
-	local title = part(Theme.StyleTitle(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd })))
-	title.TextStrokeColor3 = COLORS.Ink
+	-- (the owner's ruling 2026-11-14: the gold T1 ribbon is for window titles; a pop-up card's title is the plain "Section" one)
+	part(Theme.StyleTitle(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink, TextTruncate = Enum.TextTruncate.AtEnd }), "Section"))
 	y = y + 42
 	local plain = { Wipe = true, KO = true, Cleared = true, BossDown = true }
 	local floorLine = false
@@ -7019,7 +7264,7 @@ function Hud.ShowResult(B, payload)
 		sub = (sub:gsub("^Champion Ring: (%l)", string.upper)) -- "You left after round 8": one line
 	end
 	if sub ~= "" then
-		part(label(body, sub, "Body", 18, { Name = "Reason", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 24), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextColor3 = COLORS.Muted }))
+		part(label(body, sub, "Body", 18, { Name = "Reason", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 24), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextColor3 = KB.Muted }))
 		y = y + 28
 	end
 	local list = part(make("Frame", { Name = "Rewards", BackgroundTransparency = 1, Position = UDim2.fromOffset(K.PAD, y), Size = UDim2.fromOffset(w - 2 * K.PAD, 10) }, body))
@@ -7038,11 +7283,11 @@ function Hud.ShowResult(B, payload)
 		local extra = type(rw.Extra) == "table" and rw.Extra or {}
 		local dg = B.Dungeon or {}
 		if not floorLine then
-			lines[#lines + 1] = { "Floor " .. tostring(num(extra.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(extra.Room, num(dg.Room, 1))), Theme.Neon.Purple or COLORS.Ally }
+			lines[#lines + 1] = { "Floor " .. tostring(num(extra.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(extra.Room, num(dg.Room, 1))), SIGN.Violet }
 		end
 		local name = extra.Name or dg.Name
 		if name then
-			lines[#lines + 1] = { tostring(name), Theme.Neon.Purple or COLORS.Ally }
+			lines[#lines + 1] = { tostring(name), SIGN.Violet }
 		end
 	end
 	for i, line in ipairs(lines) do
@@ -7053,34 +7298,27 @@ function Hud.ShowResult(B, payload)
 	local rowsN = math.ceil(#lines / cols)
 	list.Size = UDim2.fromOffset(w - 2 * K.PAD, max(0, rowsN * 36 - 6))
 	y = y + rowsN * 36 + (rowsN > 0 and 4 or 0)
+	-- (kit-b U9-6) OK: the card's one green action, a grass block in its wood edge with its lip
 	local function okButton(size)
-		local b
-		if Mods.NeonKit and type(Mods.NeonKit.Button) == "function" then
-			local okB, nb = pcall(Mods.NeonKit.Button, { Name = "OkButton", Text = "OK", Color = "Green", Size = size, TextSize = 22, Parent = body, Callback = function()
-				Hud.HideResult()
-			end })
-			b = okB and nb or nil
-		end
-		if not b then
-			b = make("TextButton", { Name = "OkButton", Text = "OK", Size = size, BackgroundColor3 = Theme.Buttons.Green, AutoButtonColor = true }, body)
-			Theme.Style(b, "Button", { Size = 22 })
-			Theme.Corner(b, "M")
-			b.Activated:Connect(function()
-				Hud.HideResult()
-			end)
-		end
+		local b = make("TextButton", { Name = "OkButton", Text = "OK", Size = size, AutoButtonColor = false }, body)
+		Theme.Style(b, "Button", { Size = 22 })
+		signBlock(b, SIGN.Grass, SIGN.GrassLip, SIGN.OnGrass, 5)
+		make("UIPadding", { Name = "LipPad", PaddingBottom = UDim.new(0, 5) }, b)
+		b.Activated:Connect(function()
+			Hud.HideResult()
+		end)
 		return part(b)
 	end
 	if short then
 		local ok = okButton(UDim2.fromOffset(88, 44))
 		ok.Position = UDim2.new(1, -K.PAD - 88, 0, K.PAD)
-		Hud.resultTimer = thinBar(body, "Timer", 6, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 6) })
+		Hud.resultTimer = thinBar(body, "Timer", 6, SIGN.Sky, { Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 6) })
 		part(Hud.resultTimer.Root)
 		y = y + 6 + K.PAD
 	else
 		local ok = okButton(UDim2.fromOffset(120, 46))
 		ok.Position = UDim2.new(1, -K.PAD - 120, 0, y)
-		Hud.resultTimer = thinBar(body, "Timer", 8, COLORS.Muted, { Position = UDim2.fromOffset(K.PAD + 4, y + 19), Size = UDim2.fromOffset(w - 2 * K.PAD - 140, 8) })
+		Hud.resultTimer = thinBar(body, "Timer", 8, SIGN.Sky, { Position = UDim2.fromOffset(K.PAD + 4, y + 19), Size = UDim2.fromOffset(w - 2 * K.PAD - 140, 8) })
 		part(Hud.resultTimer.Root)
 		y = y + 46 + K.PAD
 	end
@@ -7277,6 +7515,13 @@ end
 Leave.armedUntil = 0
 Leave.sentUntil = 0
 Leave.buttons = {}
+-- (kit-b U9-6) a style's kit B block: { face, lip, ink }. Leave is danger (red); armed ("Sure? Tap again") the deep red with
+-- cream ink; leaving the sunk well
+Leave.LOOK = {
+	Pink = { SIGN.Red, SIGN.RedLip, SIGN.Text },
+	Red = { SIGN.RedLip, SIGN.RoofEdge, SIGN.Stone },
+	Gray = { SIGN.Well, SIGN.WellEdge, SIGN.TextMuted },
+}
 
 function Leave.Allowed(B)
 	return B ~= nil and B.Fighter == true and (B.Mode == "Ring" or B.Mode == "Raid")
@@ -7288,11 +7533,10 @@ function Leave.TopW(B)
 end
 
 function Leave.Make(parent, textSize)
-	local b = make("TextButton", { Name = "LeaveButton", Text = "Leave", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Pink, BorderSizePixel = 0, Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H), Visible = false, ZIndex = 4 }, parent)
-	-- kit B: no outline, the ink is the one that reads on the face (brown on pink; Leave.Paint repaints it per style)
-	Theme.Style(b, "Button", { Size = textSize, Color = Theme.TextOn(Theme.Buttons.Pink) })
-	Theme.Corner(b, "M")
-	Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
+	local b = make("TextButton", { Name = "LeaveButton", Text = "Leave", AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H), Visible = false, ZIndex = 4 }, parent)
+	-- kit B: no outline; a block by role (Leave.Paint repaints it per style: danger red, armed the deep red, leaving the well)
+	Theme.Style(b, "Button", { Size = textSize })
+	signBlock(b, Leave.LOOK.Pink[1], Leave.LOOK.Pink[2], Leave.LOOK.Pink[3], 4)
 	b.TextWrapped = true
 	b:SetAttribute("BaseText", textSize)
 	b:SetAttribute("LeaveStyle", "Pink")
@@ -7323,8 +7567,8 @@ function Leave.Paint()
 			setText(b, text)
 			if b:GetAttribute("LeaveStyle") ~= style then
 				b:SetAttribute("LeaveStyle", style)
-				b.BackgroundColor3 = Theme.Buttons[style] or COLORS.Ally
-				b.TextColor3 = Theme.TextOn(b.BackgroundColor3)
+				local look = Leave.LOOK[style] or Leave.LOOK.Pink
+				signBlock(b, look[1], look[2], look[3], 4)
 			end
 		end
 	end
@@ -7506,15 +7750,14 @@ function CheerUp.Key(v, hidden, withRetreat)
 end
 
 function CheerUp.Make(parent)
-	local glow = make("Frame", { Name = "CheerGlow", BackgroundColor3 = COLORS.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 3 }, parent)
-	Theme.Corner(glow, "M")
-	local b = make("TextButton", { Name = "Cheer", Text = "Cheer up!", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Gold, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
-	Theme.Style(b, "Button", { Size = 20, Color = Theme.TextOn(Theme.Buttons.Gold) }) -- brown on gold (kit-b U6: no outline)
-	Theme.Corner(b, "M")
-	Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
+	-- (kit-b U9-6) the boost's flat gold frame behind the button (it blinks while the boost lasts; no soft glow), the button a
+	-- gold block (the selected / special colour) in its wood edge, square; the cooldown's veil a flat brown sheet
+	local glow = make("Frame", { Name = "CheerGlow", BackgroundColor3 = SIGN.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 3 }, parent)
+	local b = make("TextButton", { Name = "Cheer", Text = "Cheer up!", AutoButtonColor = false, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
+	Theme.Style(b, "Button", { Size = 20 }) -- (kit-b U6: no outline)
+	signBlock(b, SIGN.Gold, SIGN.GoldLip, SIGN.Text, 4)
 	b:SetAttribute("BaseText", 20)
-	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.35, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
-	Theme.Corner(sweep, "M")
+	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = SIGN.Text, BackgroundTransparency = 0.45, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
 	b.Activated:Connect(function()
 		BattleController.Cheer()
 	end)
@@ -7652,14 +7895,14 @@ function Retreat.Allowed(B)
 end
 
 function Retreat.Make(parent)
-	local b = make("TextButton", { Name = "Retreat", Text = "Retreat", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Blue, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
-	-- kit B: no outline, the ink that reads on the face (brown on blue and red; Retreat.Update repaints it)
-	Theme.Style(b, "Button", { Size = 20, Color = Theme.TextOn(Theme.Buttons.Blue) })
-	Theme.Corner(b, "M")
-	local stroke = Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
+	local b = make("TextButton", { Name = "Retreat", Text = "Retreat", AutoButtonColor = false, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
+	-- kit B: no outline; a stone block (Engage: the red block; Retreat.Update repaints it), its wood edge the pulsing stroke
+	Theme.Style(b, "Button", { Size = 20 })
+	signBlock(b, KB.Face, SIGN.StoneLip, KB.Ink, 4)
+	local stroke = b:FindFirstChild("SignEdge")
+	stroke.Thickness = 3
 	b:SetAttribute("BaseText", 20)
-	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.35, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
-	Theme.Corner(sweep, "M")
+	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = SIGN.Text, BackgroundTransparency = 0.45, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
 	local key = label(b, "", "Label", 14, { Name = "Key", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6, TextColor3 = b.TextColor3 })
 	b.Activated:Connect(function()
 		BattleController.Retreat()
@@ -7733,10 +7976,10 @@ function Retreat.Update(B, now)
 	end
 	local back = B.retreated == true
 	setText(R.Button, back and "Engage" or "Retreat")
-	local color = back and Theme.Buttons.Red or Theme.Buttons.Blue
+	local color = back and SIGN.Red or KB.Face
 	if R.Button.BackgroundColor3 ~= color then
-		R.Button.BackgroundColor3 = color
-		R.Button.TextColor3 = Theme.TextOn(color)
+		signBlock(R.Button, color, back and SIGN.RedLip or SIGN.StoneLip, KB.Ink, 4)
+		R.Stroke.Thickness = 3
 		R.Key.TextColor3 = R.Button.TextColor3
 	end
 	local left = cdLeft(B, "Retreat", nil, now)
@@ -7764,12 +8007,13 @@ end
 -- left (under it is the screen's middle), so the banner lies over the top card, a little bigger than it, for those seconds.
 ----------------------------------------------------------------------
 function AreaWarn.Make(parent)
-	local b = label(parent, "", "Title", K.AREA_TEXT, { Name = "AreaWarn", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(K.AREA_W, K.AREA_H), TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = COLORS.White, BackgroundColor3 = Theme.Darken(COLORS.Enemy, 0.35), BackgroundTransparency = 0.08, Visible = false, ZIndex = 7 })
+	-- (kit-b U9-6) a deep red sign in its gold edge with its lip, cream letters (no glow, no corner)
+	local b = label(parent, "", "Title", K.AREA_TEXT, { Name = "AreaWarn", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(K.AREA_W, K.AREA_H), TextYAlignment = Enum.TextYAlignment.Top, Visible = false, ZIndex = 7 })
 	b:SetAttribute("BaseText", K.AREA_TEXT)
-	Theme.Corner(b, "M")
-	Theme.Stroke(b, COLORS.Alert, 3, 0)
+	signBlock(b, SIGN.RedLip, SIGN.RoofEdge, SIGN.Stone, 5)
+	signEdge(b, SIGN.Gold, 3)
 	make("UIPadding", { PaddingTop = UDim.new(0, 8) }, b)
-	local sub = label(b, "Or you leave the raid.", "Body", K.AREA_SUB_TEXT, { Name = "Sub", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6), Size = UDim2.new(1, -16, 0, 24), TextColor3 = COLORS.Alert, TextWrapped = true, ZIndex = 8 })
+	local sub = label(b, "Or you leave the raid.", "Body", K.AREA_SUB_TEXT, { Name = "Sub", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -8), Size = UDim2.new(1, -16, 0, 24), TextColor3 = SIGN.Stone, TextWrapped = true, ZIndex = 8 })
 	sub:SetAttribute("BaseText", K.AREA_SUB_TEXT)
 	Hud.area = b
 	return b
@@ -8252,14 +8496,14 @@ function Ring.EnsureNext()
 	if not Hud.root then
 		return nil
 	end
-	local f = neonCard(Hud.root, "NextRoundCard", Ring.GOLD, { Visible = false, Floor = false }).Root
+	-- (kit-b U9-6) a stone card with a gold lip; its heading is the plain kit B title (a card heading, not a window's name)
+	local f = neonCard(Hud.root, "NextRoundCard", SIGN.Gold, { Visible = false }).Root
 	Hud.next = f
-	Hud.nextTitle = label(f, "", "Title", 28, { Name = "Title", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Ring.GOLD })
-	Hud.nextTitle.TextStrokeColor3 = COLORS.Ink
-	Hud.nextLine = label(f, "", "Heading", 21, { Name = "Pay", TextXAlignment = Enum.TextXAlignment.Left })
-	Hud.nextExtra = label(f, "", "Label", 18, { Name = "Extra", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.Mine })
-	Hud.nextCount = label(f, "", "Display", 24, { Name = "Countdown", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = COLORS.White })
-	Hud.nextBar = thinBar(f, "Timer", 8, Ring.GOLD)
+	Hud.nextTitle = Theme.StyleTitle(label(f, "", "Title", 28, { Name = "Title", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink }), "Section")
+	Hud.nextLine = label(f, "", "Heading", 21, { Name = "Pay", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink })
+	Hud.nextExtra = label(f, "", "Label", 18, { Name = "Extra", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.GrassLip })
+	Hud.nextCount = label(f, "", "Display", 24, { Name = "Countdown", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink })
+	Hud.nextBar = thinBar(f, "Timer", 8, SIGN.Gold)
 	Hud.nextLeave = Leave.Make(f, 20) -- LEAVE between two rounds (BattleService takes "Forfeit" during the intermission)
 	return f
 end

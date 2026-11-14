@@ -1128,7 +1128,9 @@ class GuiRenderer:
         if not tx.get("scaled") and aw >= 1 and ah >= 1:
             overflow = any(p[3] > aw + 1.0 for p in placed) or total > ah + 1.0
         clipped = False
-        if on_screen and vis is not None:
+        # (kit-b U9-6) a bar's split text copies (TextFill / TextTrail / TextTrack) are cut at the fill's edge on purpose
+        split = any(part in ("TextFill", "TextTrail", "TextTrack") for part in str(n.get("path", "")).split("."))
+        if on_screen and vis is not None and not split:
             clipped = (bx0 * s < vis[0] - s or bx1 * s > vis[2] + s or top * s < vis[1] - s
                        or (top + total) * s > vis[3] + s)
         self.texts.append({"size": size, "path": n.get("path", ""), "text": re.sub(r"<[^>]*>", "", raw).strip(),

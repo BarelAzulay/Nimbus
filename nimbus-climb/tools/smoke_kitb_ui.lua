@@ -106,6 +106,11 @@
 --                             trophies, gate stars = the difficulty's Stars, a locked pad's lock placed as a server
 --                             builds it, the pads' station icons, the closed bed's star, the bounce arrow)
 --   arena_side_invite_fits    (client) the incoming-challenge side card: trophies, power and the clock inside the card
+--   U9-6 (the battle HUD and the loss screen; U96.FAMILY, the fights from smoke_p5_battleclient's driver _G.P5BattleH):
+--   battle_family_fits        (client) at the four grid sizes no text under the floor (15 / 14 px) and none TextScaled, the
+--                             enemy list clear of the currency strips; on the phones every text and button whole on the
+--                             screen, uncut, one-line texts fitting at real widths, nothing under the stick / jump button.
+--                             kitb_no_neon_glow and kitb_no_emoji_ui walk the family's views too
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -4176,8 +4181,8 @@ local function clientScenarios()
 			{ "the Fusion window", "^NimbusFusion%..-%.Title$" },
 			{ "the Shop", "^NimbusShop%..-%.Title$" },
 			{ "the Sky Trove", "^NimbusTrove%..-%.TitleText$" },
-			{ "the loss card", "^NimbusLoss%.LossCard%..-%.Title$" },
-			{ "the battle result card", "%.ResultCard%..-%.Title$" },
+			{ "the loss card", "^NimbusLoss%.LossCard%..-%.Title$", "Section" }, -- (U9-6) pop-up cards wear the plain kit B title
+			{ "the battle result card", "%.ResultCard%..-%.Title$", "Section" },
 			{ "the hatch stage", "^NimbusHatch%..-%.Title$" },
 			{ "the garden recall dialog", "%.GardenRecall%.Box%.Title$" },
 			{ "the party panel", "^NimbusHud%..-%.PartyPanel%..-%.Title$" },
@@ -4387,6 +4392,16 @@ local function clientScenarios()
 		end
 	end
 
+	-- (U9-6) the battle family: the battle HUD (NimbusBattle) in a dungeon room with a mini-boss (the fighter card, the
+	-- helpers, the enemy list, the top card with the boss bar and pills, the commands, Cheer up!), a boss raid (the raid's
+	-- boss bar, Retreat, LEAVE), a Champion Ring round (LEAVE, the pay pills), the ring's next-round card, the run's result
+	-- card, and the loss screen (NimbusLoss). The fights come from smoke_p5_battleclient's driver (_G.P5BattleH: a real
+	-- BattleSim sent the way BattleService sends it). U96.FAMILY: { view, the ScreenGui that shows it }
+	local U96 = {}
+	U96.FAMILY = {
+		{ "battle:dungeon", "NimbusBattle" }, { "battle:raid", "NimbusBattle" }, { "battle:ring", "NimbusBattle" },
+		{ "battle:next", "NimbusBattle" }, { "battle:result", "NimbusBattle" }, { "loss", "NimbusLoss" },
+	}
 	-- the emoji rule over PlayerGui (tools/stroke_walk.py --emoji runs it over the dump of every render scenario): after the
 	-- client run and with each window U7a reworked open in turn (the menu's Pets / Index / Stats, the Shop on every tab,
 	-- the Gifts window, Fusion, a token toast, a match result, the hatch stage), no shown text carries an emoji or
@@ -4414,6 +4429,13 @@ local function clientScenarios()
 			end)
 			walk()
 			U9.close()
+		end
+		for _, f in ipairs(U96.FAMILY) do -- (U9-6) and every view of the battle family (the HUD, its cards, the loss screen)
+			U7.try("the battle family " .. f[1], function()
+				U96.open(f[1])
+			end)
+			walk()
+			U96.close()
 		end
 		local list, n = {}, 0
 		for path, cps in pairs(hits) do
@@ -4784,6 +4806,79 @@ local function clientScenarios()
 		end
 		table.sort(out)
 		return out
+	end
+
+	-- (U9-6) the battle family's views (U96.FAMILY, declared above: the emoji walk opens them too), defined here, after U8
+	function U96.close()
+		local H = _G.P5BattleH
+		local BC = U7.client("Controllers/BattleController")
+		pcall(U7.client("Controllers/LossScreen").Hide)
+		if H and BC then
+			pcall(H.cleanup, BC, U96.d)
+		end
+		U96.d = nil
+		game:GetService("Players").LocalPlayer:SetAttribute(LoadingH.shared("Config").Attr.InBattle, nil)
+		LKC.advance(0.5)
+	end
+	function U96.open(view)
+		local H = _G.P5BattleH
+		local lp = game:GetService("Players").LocalPlayer
+		if view == "loss" then
+			local pets = {}
+			for i = 1, 3 do
+				pets[i] = { Key = U8.KEYS[i], PetId = U8.KEYS[i], Before = 18 + i, After = (i == 1) and 20 or (18 + i), XpFrac = 0.6, XpBefore = 0.2 }
+			end
+			U7.client("Controllers/LossScreen").Show({ Mode = "Ring", Title = "RUN OVER", Sub = "Champion Ring: the champion won round 3", Pets = pets,
+				Lines = { { "+$1,240 Cash" }, { "+96 Pet XP" }, { "+8 Tokens" } }, Start = 1, OnFightAgain = function() end, OnClose = function() end })
+			LKC.advance(1)
+			return
+		end
+		if not H then
+			return
+		end
+		local sub = view:match("^battle:(.*)$")
+		local me = lp.UserId
+		local d
+		if sub == "dungeon" then
+			d = H.dungeon(4, true)
+		elseif sub == "raid" then
+			d = H.driver({ Mode = "Raid", Boss = "storm_titan", Teams = { { Owner = me, Side = 1, Pets = H.team(3, 0, 30) },
+				{ Owner = 77, Side = 1, Pets = H.team(3, 2, 26), Auto = true } } })
+		else
+			local BCat = LoadingH.shared("BattleCatalog")
+			d = H.driver({ Mode = "Ring", Round = 8, Zone = { X = 44, Z = 44 }, TimeLimit = 90,
+				Teams = { { Owner = me, Side = 1, Pets = H.team(3, 0, 30) }, BCat.ChampionTeam(8, 7) },
+				Ring = { Round = 8, Best = 12, Start = 1, Champion = {} } })
+		end
+		if not d then
+			return
+		end
+		U96.d = d
+		H.begin(d)
+		d:run(1, 30)
+		if sub == "next" or sub == "result" then
+			LKC.toClient("BattleState", "End", { BattleId = d.id, Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe",
+				Rewards = { Won = true, Next = 9, Round = 8, Cash = 428, Xp = 68, Tokens = 0, Record = false, LevelUps = 0 } }, d.id)
+			LKC.advance(0.9)
+			if sub == "result" then
+				LKC.toClient("BattleState", "End", { BattleId = d.id, Mode = "Ring", Outcome = "Left", Won = false, Spectator = false, Reason = "Forfeit", Round = 8,
+					Rewards = { Won = false, Final = true, Round = 8, Cash = 0, Xp = 0, LevelUps = 2,
+						Run = { Wins = 8, Cash = 2571, Xp = 806, Tokens = 0, Round = 8, Start = 1, Best = 12 } } }, d.id)
+				LKC.advance(0.8)
+			end
+		end
+	end
+	-- the view shows: its ScreenGui enabled with a shown part in it
+	function U96.showing(gui)
+		if not gui or gui.Enabled == false then
+			return false
+		end
+		for _, d in ipairs(gui:GetDescendants()) do
+			if d:IsA("GuiObject") and d.BackgroundTransparency < 1 and d.AbsoluteSize.X > 0 and U8.shown(d) then
+				return true
+			end
+		end
+		return false
 	end
 
 	-- (U8) the gift docks under the currency strips (the pitch's HUD stage: a small pink block right-aligned under them): its
@@ -5340,6 +5435,36 @@ local function clientScenarios()
 				T.check(opened == #U9.FAMILY, fmt("%s: every Care family view opened (%d of %d)", tag, opened, #U9.FAMILY))
 				T.check(#family == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the Care family (%d)", tag, #family),
 					table.concat(family, "; ", 1, math.min(#family, 12)))
+				-- (U9-6) and the battle family: the HUD in a dungeon room, a raid and a ring round, the next-round card, the run's
+				-- result card and the loss screen. Stricter than the walk above: kit B is square and flat, so a shown gradient is
+				-- only a pie's hard-edged Sweep (a cooldown ring) or the title's designed look, and a corner only rounds a disc (a
+				-- round button, a portrait: CornerRadius 0.5)
+				local battle, seen = {}, 0
+				for _, f in ipairs(U96.FAMILY) do
+					U96.open(f[1])
+					local gui = pg:FindFirstChild(f[2])
+					if U96.showing(gui) then
+						seen = seen + 1
+					end
+					walk(gui, f[1], battle)
+					for _, d in ipairs(gui and gui:GetDescendants() or {}) do
+						local p = d.Parent
+						if p and p:IsA("GuiObject") and U8.shown(p) and not designedLook(d) then
+							local where = f[1] .. ": " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+							if d:IsA("UIGradient") and d.Enabled ~= false and d.Name ~= "Sweep" and d.Name ~= "Fill" and d.Name ~= "Lip" then
+								battle[#battle + 1] = where .. " has a gradient (" .. d.Name .. ")"
+							elseif d:IsA("UIGradient") and d.Enabled ~= false and d.Name == "Fill" then
+								battle[#battle + 1] = where .. " has a gloss fill gradient"
+							elseif d:IsA("UICorner") and not (d.CornerRadius.Scale >= 0.49 and p.AbsoluteSize.X > 0 and math.abs(p.AbsoluteSize.X - p.AbsoluteSize.Y) <= 1.5) then
+								battle[#battle + 1] = where .. " has a rounded corner"
+							end
+						end
+					end
+					U96.close()
+				end
+				T.check(seen == #U96.FAMILY, fmt("%s: every battle family view opened (%d of %d)", tag, seen, #U96.FAMILY))
+				T.check(#battle == 0, fmt("%s: no glow, gradient, neon or rounded corner in the battle family (%d)", tag, #battle),
+					table.concat(battle, "; ", 1, math.min(#battle, 12)))
 			end)
 		end
 		LKC.flushErrors("kitb_no_neon_glow")
@@ -5528,6 +5653,153 @@ local function clientScenarios()
 			U8.feed()
 		end)
 		LKC.flushErrors("care_family_one_green")
+	end)
+
+	-- (U9-6; the GATE_KITB render gate's battle findings) the battle family fits every screen. At 844x390 and 390x844 (touch)
+	-- every view of the family (U96.FAMILY): each shown text and button is whole on the screen, never cut by a clipping
+	-- frame above it (a bar's text copies, TextFill / TextTrail / TextTrack, are cut at the fill's edge on purpose), every
+	-- one-line text fits its box at FredokaOne's / LuckiestGuy's real widths (other faces through Theme.MeasureLabel) with 2
+	-- px to spare, and nothing sits under Roblox's thumbstick or jump button unless the view hid them. At every grid size:
+	-- no text is drawn under the readability floor (15 px on a screen 1000 px tall or more, 14 below) and none is TextScaled
+	-- (a scaled text's drawn size is the font engine's guess: the HUD sizes its names itself), and the enemy list (its
+	-- TARGET tab too) stays clear of the HUD's currency strips
+	S.battle_family_fits = guarded("battle_family_fits", function()
+		local Theme = LoadingH.shared("Theme")
+		local GuiService = game:GetService("GuiService")
+		local RealWidth = SmokeCommon.RealWidth
+		if not T.check(_G.P5BattleH ~= nil, "battle family fits: (setup) smoke_p5_battleclient's battle driver is loaded") then
+			return
+		end
+		local function width(o)
+			local text = o.Text
+			if o.RichText then
+				text = text:gsub("<[^>]->", "")
+			end
+			local role = o:GetAttribute("FontRole")
+			if role and Theme.CapsRoles[role] then
+				text = Theme.Caps(text)
+			end
+			local w = RealWidth(text, o.TextSize, Theme.FontOf(o), true)
+			return (w or Theme.MeasureLabel(o).X) * U8.scaleOf(o)
+		end
+		local SPLIT = { TextFill = true, TextTrail = true, TextTrack = true }
+		local function clipper(o)
+			local cur = o.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur:IsA("GuiObject") and cur.ClipsDescendants and not SPLIT[cur.Name] then
+					return cur
+				end
+				cur = cur.Parent
+			end
+			return nil
+		end
+		local function inside(a, b)
+			return a.X >= b.X - 1 and a.R <= b.R + 1 and a.Y >= b.Y - 1 and a.B <= b.B + 1
+		end
+		local function texty(d)
+			return (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextTransparency < 1
+		end
+		for _, s in ipairs(U8.SIZES) do
+			local W, Hh, touch = s[1], s[2], s[3]
+			local floorPx = (Hh >= 1000) and 15 or 14
+			for _, f in ipairs(U96.FAMILY) do
+				U8.at(W, Hh, touch, "battle family " .. f[1], function(tag)
+					U96.open(f[1])
+					local gui = U8.pg():FindFirstChild(f[2])
+					if not T.check(U96.showing(gui), tag .. ": the view shows (" .. f[2] .. ")") then
+						U96.close()
+						return
+					end
+					local dy = gui.IgnoreGuiInset and 0 or Mock.TopInset
+					local screen = { X = 0, Y = -dy, R = W, B = Hh - dy }
+					local small, scaled = {}, {}
+					local off, cut, tight, under = {}, {}, {}, {}
+					local zones = {}
+					if touch and GuiService.TouchControlsEnabled ~= false then
+						zones[1] = { X = 25, Y = Hh - 90 - dy, R = 95, B = Hh - 20 - dy, Name = "thumbstick" }
+						zones[2] = { X = W - 115, Y = Hh - 90 - dy, R = W - 45, B = Hh - 20 - dy, Name = "jump" }
+					end
+					for _, d in ipairs(gui:GetDescendants()) do
+						local tx = texty(d)
+						if (tx or d:IsA("GuiButton")) and U8.shown(d) and d.AbsoluteSize.X > 0 then
+							local name = d:GetFullName():gsub("^.-" .. f[2] .. "%.", "")
+							if tx then
+								local px = d.TextSize * U8.scaleOf(d)
+								if d.TextScaled then
+									scaled[#scaled + 1] = name
+								elseif px < floorPx - 0.01 then
+									small[#small + 1] = fmt("%s %q %.1f px", name, d.Text, px)
+								end
+							end
+							do -- (every size: the gate's clipped HP text and the TARGET tab's overflow were on the desktop)
+								local r = U8.rect(d)
+								if not inside(r, screen) then
+									off[#off + 1] = name .. " " .. U8.show(r)
+								end
+								local c = clipper(d)
+								if c and not inside(r, U8.rect(c)) then
+									cut[#cut + 1] = name .. " " .. U8.show(r) .. " in " .. c.Name .. " " .. U8.show(U8.rect(c))
+								end
+								if tx and not d.TextWrapped and not d.TextScaled then
+									local pad = d:FindFirstChildOfClass("UIPadding")
+									local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) * U8.scaleOf(d) or 0
+									local w = width(d)
+									if w + inset + 2 > d.AbsoluteSize.X + 0.01 then
+										tight[#tight + 1] = fmt("%s %q %.0f px in %.0f", name, d.Text, w + inset, d.AbsoluteSize.X)
+									end
+								end
+								for _, z in ipairs(zones) do
+									if U8.overlap(r, z) then
+										under[#under + 1] = name .. " under the " .. z.Name
+									end
+								end
+							end
+						end
+					end
+					T.check(#small == 0, fmt("%s: every text at %d px or more on the screen (%d)", tag, floorPx, #small), table.concat(small, "; ", 1, math.min(#small, 8)))
+					T.check(#scaled == 0, fmt("%s: no TextScaled text (%d)", tag, #scaled), table.concat(scaled, "; ", 1, math.min(#scaled, 8)))
+					T.check(#off == 0, fmt("%s: every text and button is on the screen (%d)", tag, #off), table.concat(off, "; ", 1, math.min(#off, 8)))
+					T.check(#cut == 0, fmt("%s: no text or button cut by a clipping frame (%d)", tag, #cut), table.concat(cut, "; ", 1, math.min(#cut, 8)))
+					T.check(#tight == 0, fmt("%s: every one-line text fits its box (%d)", tag, #tight), table.concat(tight, "; ", 1, math.min(#tight, 8)))
+					if touch then
+						T.check(#under == 0, fmt("%s: nothing under the thumbstick or the jump button (touch controls %s) (%d)", tag,
+							tostring(GuiService.TouchControlsEnabled), #under), table.concat(under, "; ", 1, math.min(#under, 8)))
+					end
+					-- the enemy list (with the TARGET tab on its locked row) clear of the currency strips
+					local enemies = gui:FindFirstChild("Enemies", true)
+					local hud = U8.pg():FindFirstChild("NimbusHud")
+					local over = {}
+					if enemies and U8.shown(enemies) then
+						for _, strip in ipairs(hud and hud:GetDescendants() or {}) do
+							if strip.Name:match("^Currency_") and strip:IsA("GuiObject") and U8.shown(strip) then
+								local sr = U8.rect(strip)
+								sr = { X = sr.X, R = sr.R, Y = sr.Y + (hud.IgnoreGuiInset and 0 or Mock.TopInset) - dy, B = sr.B + (hud.IgnoreGuiInset and 0 or Mock.TopInset) - dy }
+								for _, d in ipairs(enemies:GetDescendants()) do
+									if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 1 and U8.overlap(U8.rect(d), sr) then
+										over[#over + 1] = d.Name .. " " .. U8.show(U8.rect(d)) .. " on " .. strip.Name .. " " .. U8.show(sr)
+									end
+								end
+							end
+						end
+					end
+					T.check(#over == 0, fmt("%s: the enemy list and its TARGET tab stay clear of the currency strips (%d)", tag, #over), table.concat(over, "; ", 1, math.min(#over, 6)))
+					-- kit B's contrast rule on this view (3:1 from 18 px, 4.5:1 below; the family has no backlog lines left)
+					-- (the walk reads the whole PlayerGui, so the screens under the view are its backdrop; only this view's texts count)
+					local all, read, low = SmokeCommon.Contrast.Walk(U8.pg()), 0, {}
+					for _, line in ipairs(all) do
+						if line:sub(1, #f[2] + 1) == f[2] .. "." then
+							low[#low + 1] = line
+						end
+					end
+					for _, d in ipairs(gui:GetDescendants()) do
+						read = read + (texty(d) and U8.shown(d) and 1 or 0)
+					end
+					T.check(read > 0 and #low == 0, fmt("%s: every text reads on its fill (%d read, %d not)", tag, read, #low), table.concat(low, "; ", 1, math.min(#low, 6)))
+					U96.close()
+				end)
+			end
+		end
+		LKC.flushErrors("battle_family_fits")
 	end)
 
 	-- (U8) CloudUI.Panel's Signboard skin (Skin = "Signboard"; the Pets window and the Index wear it): the flat pink awning at a

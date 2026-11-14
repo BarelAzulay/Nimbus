@@ -10,10 +10,12 @@
 --   LossScreen.Hide()       closed and forgotten
 --   LossScreen.IsOpen() -> bool
 --
--- ScreenGui NimbusLoss (DisplayOrder 24: above the battle HUD's result card, below Notify 30), card LossCard (NeonKit.Card, centred
+-- ScreenGui NimbusLoss (DisplayOrder 24: above the battle HUD's result card, below Notify 30), card LossCard (NeonKit.Card, kit B's
+-- cream sign with a red lip (kit-b U9-6: square, flat, colour by role: a loss is the danger red; brown ink), centred
 -- under the top bar; 16 px side gutters on a phone; every button >= 44 px): Title, Sub, PetRow1..3 (Face viewport, Name, Levels
 -- "L1 -> L3" with a pop + one SoundFx "Reward" for the whole card, or "L1" + XpBar moving from XpBefore to XpFrac), Lines,
 -- FightAgain ("Fight again", hidden without OnFightAgain), EditTeam ("Edit team"), CloseButton (its X drawn: NeonKit.CloseMark).
+-- The buttons are kit B blocks (CloudUI.Button Skin "Sign": Fight again the one green action, Edit team stone, Close danger red).
 -- Fight again and Edit team wait for the return teleport: while Config.Attr.InBattle is still set (RETURN_DELAY after the end) the
 -- button says "Returning..." and ignores taps, then acts once. A refused start leaves the screen (the server's toast says why) and
 -- the button works again after START_WAIT; the next battle's InBattle closes the screen.
@@ -45,7 +47,7 @@ local K = {
 	W_WIDE = 848, -- design px of a 1080p screen (at the phone scale the buttons end left of the jump button)
 	W_TALL = 440, -- a portrait phone: the rows stack
 	TOUCH_SCALE = 0.8, -- a narrow phone's card is narrower rather than under this fit: K.CLOSE and K.BUTTON_H stay >= 44 px
-	JUMP_RIGHT = 95, -- a low screen: the buttons end this far from its right edge (Roblox's jump button, 70 px, 25 px in)
+	JUMP_RIGHT = 120, -- a low screen: the buttons end this far from its right edge (Roblox's jump button: 70 px, 45 px in; kit-b U9-6)
 	ROW_W_SHORT = 260, -- design px: a narrower pet row takes "L99 -> L100" at LEVELS_SHORT
 	LEVELS_SHORT = 22,
 	PAD = 16,
@@ -67,13 +69,15 @@ local K = {
 	XP_SECONDS = 0.9,
 }
 
-local Colors = Theme.Colors
-local WHITE = Colors.White
-local MUTED = Color3.fromRGB(176, 184, 214)
-local GOLD = Theme.Neon.Gold
-local GREEN = Theme.Neon.Green
-local BAR_BACK = Color3.fromRGB(18, 22, 52)
-local ROW_BACK = Color3.fromRGB(30, 36, 78)
+-- (kit-b U9-6) the Cloud Shop Signboard: brown ink on the cream sign, the pets in their wells, the XP bar a grass fill in a well
+local SIGN = Theme.Sign
+local INK = SIGN.Text
+local MUTED = SIGN.TextMuted
+local LIP = SIGN.Red -- the card's lip: a loss
+local LIFT = Theme.Darken(SIGN.GrassLip, 0.35) -- "L1 -> L3": the levels gained (a deep grass that reads on the pet well)
+local BAR_BACK = SIGN.Well
+local BAR_FILL = SIGN.Grass
+local ROW_BACK = SIGN.PetWell
 
 local LocalPlayer = Players.LocalPlayer
 local IN_BATTLE = (Config.Attr and Config.Attr.InBattle) or "InBattle"
@@ -121,7 +125,7 @@ local function text(parent, name, value, role, size, color, props)
 	label.BorderSizePixel = 0
 	label.Text = tostring(value or "")
 	-- kit-b U6: the card is a plate, so the text reads by contrast (no outline)
-	Theme.Style(label, role, { Size = size, Color = color or WHITE })
+	Theme.Style(label, role, { Size = size, Color = color or INK })
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.TextTruncate = Enum.TextTruncate.AtEnd
@@ -130,6 +134,22 @@ local function text(parent, name, value, role, size, color, props)
 	end
 	label.Parent = parent
 	return label
+end
+
+-- (kit-b U9-6) a square wood edge (kit B: no rounded corners)
+local function edge(obj, color, thickness)
+	return Util.Create("UIStroke", { Name = "SignEdge", ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Miter, Color = color, Thickness = thickness, Parent = obj })
+end
+
+-- a run line's colour where it reads on the cream sign (4.5:1), else the brown ink
+local function lineInk(color)
+	if typeof(color) == "Color3" then
+		local ok, ratio = pcall(Theme.Contrast, color, SIGN.Tile)
+		if ok and tonumber(ratio) and ratio >= 4.5 then
+			return color
+		end
+	end
+	return INK
 end
 
 ----------------------------------------------------------------------
@@ -259,7 +279,7 @@ local function petRow(i, entry)
 	root.BackgroundColor3 = ROW_BACK
 	root.BorderSizePixel = 0
 	root.Parent = U.Card.Body
-	Util.Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = root })
+	edge(root, SIGN.Wood, 2)
 	local rowH = viewportSize().X < viewportSize().Y and K.ROW_H_TALL or K.ROW_H
 	local faceSize = rowH - 32 -- (the rest of the column holds "L99 -> L100" at this size)
 	local face = Instance.new("Frame")
@@ -277,11 +297,11 @@ local function petRow(i, entry)
 		handle = okV and h or nil
 	end
 	local x = faceSize + 16
-	text(root, "Name", def and (def.DisplayName or def.Name) or entry.PetId or key, "Body", 19, WHITE, {
+	text(root, "Name", def and (def.DisplayName or def.Name) or entry.PetId or key, "Body", 19, INK, {
 		Position = UDim2.fromOffset(x, 8),
 		Size = UDim2.new(1, -x - 6, 0, 26),
 	})
-	local levels = text(root, "Levels", gained and ("L" .. before .. " -> L" .. after) or ("L" .. after), "Heading", gained and 26 or 24, gained and GOLD or WHITE, {
+	local levels = text(root, "Levels", gained and ("L" .. before .. " -> L" .. after) or ("L" .. after), "Heading", gained and 26 or 24, gained and LIFT or INK, {
 		Position = UDim2.fromOffset(x, 36),
 		Size = UDim2.new(1, -x - 6, 0, 36),
 	})
@@ -294,14 +314,13 @@ local function petRow(i, entry)
 	bar.Size = UDim2.new(1, -x - 10, 0, 12)
 	bar.Visible = not gained
 	bar.Parent = root
-	Util.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = bar })
+	edge(bar, SIGN.WellEdge, 1)
 	local fill = Instance.new("Frame")
 	fill.Name = "Fill"
-	fill.BackgroundColor3 = GREEN
+	fill.BackgroundColor3 = BAR_FILL
 	fill.BorderSizePixel = 0
 	fill.Size = UDim2.fromScale(math.max(0, math.min(1, tonumber(entry.XpBefore) or 0)), 1)
 	fill.Parent = bar
-	Util.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = fill })
 	return { Root = root, Handle = handle, Gained = gained, Levels = levels, Pop = pop, Fill = fill, To = math.max(0, math.min(1, tonumber(entry.XpFrac) or 0)) }
 end
 
@@ -408,7 +427,7 @@ local function build()
 	end
 	gui.IgnoreGuiInset = true
 	gui.Enabled = false
-	local card = NeonKit.Card({ Name = "LossCard", Size = UDim2.fromOffset(K.W_WIDE, 400), Color = GOLD, Floor = false, Active = true, Parent = gui })
+	local card = NeonKit.Card({ Name = "LossCard", Skin = "Sign", Size = UDim2.fromOffset(K.W_WIDE, 400), Color = LIP, LipPx = 8, Active = true, Parent = gui })
 	card.Root.Visible = false
 	local fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = card.Root })
 	local body = card.Body
@@ -421,20 +440,21 @@ local function build()
 		Gui = gui,
 		Card = card,
 		Fit = fit,
-		Title = Theme.StyleTitle(text(body, "Title", "", "Title", 34, GOLD, { TextXAlignment = Enum.TextXAlignment.Left })), -- (T0) the one title treatment
+		-- (owner ruling 2026-11-14: a pop-up's title is kit B's plain Section title, the gold ribbon is for windows)
+		Title = Theme.StyleTitle(text(body, "Title", "", "Title", 34, INK, { TextXAlignment = Enum.TextXAlignment.Left }), "Section"),
 		Sub = text(body, "Sub", "", "Body", 19, MUTED),
 		Lines = lines,
-		Close = NeonKit.Button({ Name = "CloseButton", Text = "", Color = "Red", Variant = "Outline", Size = UDim2.fromOffset(K.CLOSE, K.CLOSE), TextSize = 24, Parent = body, Callback = function()
+		Close = CloudUI.Button({ Name = "CloseButton", Text = "", Style = "Red", Skin = "Sign", Size = UDim2.fromOffset(K.CLOSE, K.CLOSE), TextSize = 24, Parent = body, Callback = function()
 			local payload = S.Payload
 			LossScreen.Hide()
 			if payload and payload.OnClose then
 				safe("close", payload.OnClose)
 			end
 		end }),
-		FightAgain = NeonKit.Button({ Name = "FightAgain", Text = "Fight again", Color = "Green", Size = UDim2.fromOffset(300, K.BUTTON_H), TextSize = 24, Parent = body, Callback = fightAgain }),
-		EditTeam = NeonKit.Button({ Name = "EditTeam", Text = "Edit team", Color = "Blue", Variant = "Outline", Size = UDim2.fromOffset(300, K.BUTTON_H), TextSize = 24, Parent = body, Callback = editTeam }),
+		FightAgain = CloudUI.Button({ Name = "FightAgain", Text = "Fight again", Style = "Green", Skin = "Sign", Size = UDim2.fromOffset(300, K.BUTTON_H), TextSize = 24, Parent = body, Callback = fightAgain }),
+		EditTeam = CloudUI.Button({ Name = "EditTeam", Text = "Edit team", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(300, K.BUTTON_H), TextSize = 24, Parent = body, Callback = editTeam }),
 	}
-	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
+	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = INK }) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
 	local mouse = optional(Client, "MouseLock")
 	if mouse and type(mouse.WatchVisible) == "function" then
 		safe("mouse", mouse.WatchVisible, "LossScreen", card.Root) -- the cursor is free while the card shows
@@ -458,9 +478,9 @@ local function build()
 end
 
 local function fill(payload)
-	U.Card.SetColor(payload.Color or GOLD)
+	U.Card.SetColor(LIP) -- (kit-b U9-6: the lip by role; the payload's Color was the neon card's tint)
 	U.Title.Text = tostring(payload.Title or "RUN OVER")
-	U.Title.TextColor3 = payload.Color or GOLD
+	U.Title.TextColor3 = INK
 	U.Sub.Text = tostring(payload.Sub or "")
 	for _, c in ipairs(U.Lines:GetChildren()) do
 		if c:IsA("TextLabel") then
@@ -468,7 +488,7 @@ local function fill(payload)
 		end
 	end
 	for i, line in ipairs(type(payload.Lines) == "table" and payload.Lines or {}) do
-		text(U.Lines, "Line" .. i, line[1], "Body", 18, line[2] or WHITE, { LayoutOrder = i })
+		text(U.Lines, "Line" .. i, line[1], "Body", 18, lineInk(line[2]), { LayoutOrder = i })
 	end
 	clearRows()
 	for i, entry in ipairs(type(payload.Pets) == "table" and payload.Pets or {}) do
