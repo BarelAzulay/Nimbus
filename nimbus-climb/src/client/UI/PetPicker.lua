@@ -57,6 +57,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the picker's icons
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-5) the awning over the sheet
 
 local UI = script.Parent
 local Client = UI.Parent
@@ -84,6 +85,9 @@ local K = {
 	OPEN_FROM = 0.92,
 	SHADE = 0.55,
 	PHONE_FILTERS = 3,
+	FRAME = 6, -- (kit-b U9-5) px of the wood frame round the stone body
+	ROOF_W = 360, -- (kit-b U9-5) the awning's fixed width (the Pets window's)
+	CARD_LIP = 6, -- (kit-b U9-5) px of a card's rarity lip
 	PHONE = {
 		Header = 50, Close = 44, CloseY = 3, HeadPad = 10, Icon = 36, IconText = 24, TitleText = 20, TitleMin = 16,
 		Pad = 10, RowY = 4, Row = 44, RowGap = 8, Gap = 8, ChipH = 44, ChipGap = 6, ChipText = 15, SearchW = 220, SortW = 170,
@@ -120,18 +124,24 @@ local SHORT = { ["Training first"] = "Training", ["Ready first"] = "Ready", ["Te
 local FILTER_IDS = { "All", "Team", "Training", "Ready", "Rare", "Epic" }
 local FILTER_LABELS = { All = "All", Team = "Team", Training = "Training", Ready = "Ready", Rare = "Rare and up", Epic = "Epic and up" }
 
-local Colors = Theme.Colors
+-- (kit-b U9-5) the Signboard palette (the pitch's kit B, as the Pets window): brown ink on stone tiles in a sunk well, the
+-- rarity on each card's lip, gold for the selected card and filter, green for a Ready count, violet for a pet in training
+local SIGN = Theme.Sign
 local C = {
-	White = Colors.White,
-	Ink = Colors.TextStroke or Colors.Ink,
-	Navy = Color3.fromRGB(11, 16, 48),
-	Well = Color3.fromRGB(20, 26, 64),
-	Muted = Color3.fromRGB(154, 165, 204),
-	Gold = Color3.fromRGB(255, 211, 77),
-	Purple = Color3.fromRGB(106, 63, 184),
-	Ready = Color3.fromRGB(31, 138, 60),
-	Count = Color3.fromRGB(8, 12, 40),
-	Accent = { Train = Color3.fromRGB(228, 104, 96), Upgrade = Color3.fromRGB(155, 107, 255), Mix = Color3.fromRGB(155, 107, 255) },
+	White = Theme.Colors.White,
+	Ink = SIGN.Text,
+	Navy = SIGN.Navy,
+	Stone = SIGN.Stone,
+	Tile = SIGN.Tile,
+	Wood = SIGN.Wood,
+	Well = SIGN.Well,
+	WellEdge = SIGN.WellEdge,
+	Muted = SIGN.TextMuted,
+	Gold = SIGN.Gold,
+	GoldInk = SIGN.GoldLip, -- gold marks on stone (the stars)
+	Purple = SIGN.Violet,
+	Ready = SIGN.Grass,
+	Count = SIGN.Stone,
 }
 -- (kit-b U7b) PixelIcons, not emoji: the team star, the sort arrow, the search glass, the header's icon per context
 local ICON = { Star = "star", Down = "down", Glass = "glass", Context = { Train = "weight", Upgrade = "sparkle", Mix = "sparkle" } }
@@ -181,12 +191,21 @@ local function place(inst, x, y, w, h)
 	inst.Size = UDim2.fromOffset(math.max(0, math.floor(w + 0.5)), math.max(0, math.floor(h + 0.5)))
 end
 
+-- (kit-b U9-5) a square edge (a mitred border UIStroke named SignEdge)
+function H.edge(obj, color, px)
+	local s = Theme.Stroke(obj, color, px or 2, 0)
+	s.Name = "SignEdge"
+	s.LineJoinMode = Enum.LineJoinMode.Miter
+	return s
+end
+
 local function label(parent, name, role, size, props)
 	local l = Theme.Label("", role, { Size = size })
 	l.Name = name
 	l.BackgroundTransparency = 1
 	l.BorderSizePixel = 0
 	l.TextTruncate = Enum.TextTruncate.AtEnd
+	l.TextColor3 = C.Ink -- (kit-b U9-5) brown ink on stone unless the caller says otherwise
 	for k, v in pairs(props or {}) do
 		l[k] = v
 	end
@@ -439,47 +458,54 @@ function H.build()
 	local gui = U.Gui
 	U.Shade = Util.Create("TextButton", {
 		Name = "Shade", Text = "", AutoButtonColor = false, BorderSizePixel = 0, Active = true, Selectable = false,
-		BackgroundColor3 = Color3.fromRGB(4, 6, 20), BackgroundTransparency = K.SHADE, Visible = false, Parent = gui,
+		BackgroundColor3 = SIGN.NavyLip, BackgroundTransparency = K.SHADE, Visible = false, Parent = gui,
 	})
 	local holder = Util.Create("Frame", { Name = "Window_PetPicker", BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Visible = false, ZIndex = 2, Parent = gui })
 	U.Holder = holder
 	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
+	-- (kit-b U9-5) the sheet as a kit B sign: a wood frame (Panel) round a stone body, the navy header plank (the title's T1
+	-- band is the plank: RibbonBand = "Header"; one look for every context), on a PC screen the fixed-size pink awning
 	local panel = Util.Create("Frame", {
-		Name = "Panel", BackgroundColor3 = C.Navy, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Name = "Panel", BackgroundColor3 = C.Wood, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = holder,
 	})
-	Theme.Corner(panel, UDim.new(0, 18))
-	U.PanelStroke = Theme.Stroke(panel, C.Accent.Train, 3, 0)
 	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel })
 	U.Panel = panel
-	-- header: the accent strip, square at the bottom
-	local header = Util.Create("Frame", { Name = "Header", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = panel })
-	Theme.Corner(header, UDim.new(0, 18))
-	U.HeaderGradient = Theme.Gradient(header, C.Accent.Train, C.Accent.Train, 90)
-	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = header })
-	U.FootGradient = Theme.Gradient(U.HeaderFoot, C.Accent.Train, C.Accent.Train, 90)
+	local stone = Util.Create("Frame", {
+		Name = "Stone", BackgroundColor3 = C.Stone, BorderSizePixel = 0, Position = UDim2.fromOffset(K.FRAME, K.FRAME),
+		Size = UDim2.new(1, -2 * K.FRAME, 1, -2 * K.FRAME), ZIndex = 1, Parent = panel,
+	})
+	Util.Create("Frame", {
+		Name = "Lip", BackgroundColor3 = SIGN.StoneLip, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 6), ZIndex = 1, Parent = stone,
+	})
+	local header = Util.Create("Frame", { Name = "Header", BackgroundColor3 = C.Navy, BorderSizePixel = 0, ZIndex = 3, Parent = panel })
+	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = SIGN.NavyLip, BorderSizePixel = 0, ZIndex = 3, Parent = header })
 	U.Header = header
-	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, TextTruncate = Enum.TextTruncate.None })
-	U.Title = Theme.StyleTitle(label(header, "Title", "Title", 34, { ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Left }))
+	U.Roof = SignKit.Roof(panel, { Width = K.ROOF_W, Y = -10, ZIndex = 4 })
+	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, TextColor3 = C.Gold, TextTruncate = Enum.TextTruncate.None })
+	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
+	U.Title:SetAttribute("RibbonBand", "Header")
+	Theme.StyleTitle(U.Title)
 	U.Close = CloudUI.Button({
-		Name = "CloseButton", Text = "", Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
+		Name = "CloseButton", Text = "", Style = "Red", Skin = "Sign", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
 		Callback = function()
 			PetPicker.Close()
 		end,
 		Parent = header,
 	})
-	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
+	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = C.Ink }) -- slop audit 2026-11-12: a drawn X (no glyph)
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
 	local search = Util.Create("TextBox", {
 		Name = "Search", Text = "", PlaceholderText = "Search pets", ClearTextOnFocus = false, BorderSizePixel = 0,
-		BackgroundColor3 = C.Well, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = body,
+		BackgroundColor3 = C.Tile, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = body,
 	})
 	Theme.Style(search, "Body", { Size = 22 })
+	search.TextColor3 = C.Ink -- (kit-b U9-5) a stone field in a wood edge
 	search.PlaceholderColor3 = C.Muted
-	Theme.Corner(search, UDim.new(0, 12))
-	Theme.Stroke(search, Color3.fromRGB(70, 84, 150), 2, 0)
+	H.edge(search, C.Wood, 3)
 	U.SearchPad = Util.Create("UIPadding", { PaddingLeft = UDim.new(0, 44), PaddingRight = UDim.new(0, 10), Parent = search })
 	U.Glass = label(search, "Glass", "Body", 20, { ZIndex = 4, TextTruncate = Enum.TextTruncate.None })
 	PixelIcon.Host(U.Glass, ICON.Glass, 18)
@@ -490,8 +516,8 @@ function H.build()
 		end
 	end)
 	U.Search = search
-	U.Sort = NeonKit.Button({
-		Name = "SortButton", Text = "Sort", Color = Color3.fromRGB(74, 91, 184), Size = UDim2.fromOffset(170, 44), TextSize = 22, ZIndex = 3,
+	U.Sort = CloudUI.Button({
+		Name = "SortButton", Text = "Sort", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(170, 44), TextSize = 22, ZIndex = 3,
 		Callback = function()
 			H.cycleSort()
 		end,
@@ -500,11 +526,11 @@ function H.build()
 	for _, id in ipairs(FILTER_IDS) do
 		local chip = Util.Create("TextButton", {
 			Name = "Filter_" .. id, Text = FILTER_LABELS[id], AutoButtonColor = false, BorderSizePixel = 0,
-			BackgroundColor3 = C.Well, Visible = false, ZIndex = 3, Parent = body,
+			BackgroundColor3 = C.Tile, Visible = false, ZIndex = 3, Parent = body,
 		})
 		Theme.Style(chip, "Button", { Size = 20 })
-		Theme.Corner(chip, UDim.new(0.5, 0))
-		local outline = Theme.Stroke(chip, Color3.fromRGB(70, 84, 150), 2, 0)
+		-- (kit-b U9-5) a stone block; the active filter turns gold (H.paintChips)
+		local outline = CloudUI.SignBlock(chip, "Stone", { LipPx = 4 })
 		chip.Activated:Connect(function()
 			PetPicker.SetFilter(id)
 		end)
@@ -512,7 +538,7 @@ function H.build()
 	end
 	local grid = Util.Create("ScrollingFrame", {
 		Name = "Grid", BackgroundTransparency = 1, BorderSizePixel = 0, ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 8, ScrollBarImageColor3 = Color3.fromRGB(200, 210, 240), CanvasSize = UDim2.fromOffset(0, 0),
+		ScrollBarThickness = 8, ScrollBarImageColor3 = C.Wood, CanvasSize = UDim2.fromOffset(0, 0),
 		ZIndex = 3, Parent = body,
 	})
 	grid:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
@@ -523,16 +549,16 @@ function H.build()
 	U.Empty = empty
 	U.EmptyText = label(empty, "EmptyText", "Heading", 24, { ZIndex = 5, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
 	U.Clear = CloudUI.Button({
-		Name = "ClearButton", Text = "Clear", Style = "Blue", Size = UDim2.fromOffset(160, 44), TextSize = 20, ZIndex = 5,
+		Name = "ClearButton", Text = "Clear", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(160, 44), TextSize = 20, ZIndex = 5,
 		Callback = function()
 			H.clear()
 		end,
 		Parent = empty,
 	})
 	U.Hint = label(body, "HintLine", "Heading", 20, {
-		Visible = false, ZIndex = 8, BackgroundTransparency = 0.15, BackgroundColor3 = Color3.fromRGB(8, 10, 28), TextWrapped = true,
+		Visible = false, ZIndex = 8, BackgroundTransparency = 0, BackgroundColor3 = C.Navy, TextColor3 = C.Stone, TextWrapped = true,
 	})
-	Theme.Corner(U.Hint, UDim.new(0, 10))
+	H.edge(U.Hint, C.Wood, 3) -- (kit-b U9-5) a small navy sign
 	U.Cache = Util.Create("Frame", { Name = "ViewCache", BackgroundTransparency = 1, Visible = false, Size = UDim2.fromOffset(10, 10), Parent = holder })
 	-- the cursor is free while the sheet is shown (client/MouseLock, as the Pets window)
 	local mouseLock = Client:FindFirstChild("MouseLock")
@@ -547,31 +573,30 @@ end
 function H.newCard(key)
 	local item = { Key = key }
 	local b = Util.Create("TextButton", {
-		Name = "Card_" .. key, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = C.White, ZIndex = 3, Parent = U.Grid,
+		Name = "Card_" .. key, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = C.Tile, ZIndex = 3, Parent = U.Grid,
 	})
 	item.Button = b
-	item.Corner = Theme.Corner(b, UDim.new(0, 12))
-	item.Stroke = Theme.Stroke(b, C.White, 3, 0)
-	item.Stroke.Name = "RarityStroke"
-	item.Fill = Theme.Gradient(b, C.Navy, C.Navy, 90)
-	item.Art = Util.Create("Frame", { Name = "Art", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3, Parent = b })
+	-- (kit-b U9-5) the pitch's .pc: a stone tile, the rarity on its lip (H.paintCard), the pet in a light well; selected = the
+	-- gold-tinted face and the ink edge (was a neon gradient card with a rarity border)
+	item.Stroke, item.Lip = CloudUI.SignBlock(b, "Stone", { LipPx = K.CARD_LIP, Pad = false })
+	item.Art = Util.Create("Frame", { Name = "Art", BackgroundTransparency = 0, BackgroundColor3 = SIGN.PetWell, BorderSizePixel = 0, ZIndex = 3, Parent = b })
 	item.Level = label(b, "Level", "Heading", 18, {
-		ZIndex = 5, RichText = true, BackgroundTransparency = 0.35, BackgroundColor3 = C.Count, TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 5, RichText = true, BackgroundTransparency = 0, BackgroundColor3 = C.Count, TextTruncate = Enum.TextTruncate.None,
 	})
-	Theme.Corner(item.Level, UDim.new(0.5, 0))
+	H.edge(item.Level, C.Wood, 2)
 	item.Badge = label(b, "Badge", "Heading", 18, { ZIndex = 5, BackgroundTransparency = 1, TextTruncate = Enum.TextTruncate.None })
-	Theme.Corner(item.Badge, UDim.new(0.5, 0))
+	item.BadgeEdge = H.edge(item.Badge, C.Wood, 2)
 	item.Name = label(b, "Name", "Button", 18, { ZIndex = 5 })
-	item.Rarity = label(b, "Rarity", "Label", 18, { ZIndex = 5 })
+	item.Rarity = label(b, "Rarity", "Label", 18, { ZIndex = 5, TextColor3 = C.Muted })
 	item.Chip = label(b, "TrainChip", "Heading", 18, {
 		ZIndex = 6, Visible = false, BackgroundTransparency = 0, BackgroundColor3 = C.Purple, TextTruncate = Enum.TextTruncate.None,
 	})
-	Theme.Corner(item.Chip, UDim.new(0.5, 0))
+	H.edge(item.Chip, C.Wood, 2)
+	-- dimmed / blocked: a sunk stone cover (the word in brown on it)
 	item.Shade = Util.Create("Frame", {
-		Name = "Shade", BackgroundColor3 = Color3.fromRGB(8, 10, 28), BackgroundTransparency = 0.45, BorderSizePixel = 0,
+		Name = "Shade", BackgroundColor3 = C.Well, BackgroundTransparency = 0.45, BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 7, Parent = b,
 	})
-	Theme.Corner(item.Shade, UDim.new(0, 12))
 	item.Word = label(item.Shade, "BlockWord", "Heading", 18, { ZIndex = 8, Visible = false, Size = UDim2.fromScale(1, 1) })
 	b.Activated:Connect(function()
 		PetPicker.Pick(key)
@@ -604,10 +629,13 @@ end
 
 -- the first text that fits `width` at a size from maxSize down to minSize; the last text at minSize when none does
 function H.fit(lbl, texts, width, maxSize, minSize)
+	-- (kit-b U9-5) a capitals role (a title, a tag) is measured as it shows: in capitals
+	local role = lbl:GetAttribute("FontRole")
+	local caps = role ~= nil and Theme.CapsRoles[role] == true
 	for _, t in ipairs(texts) do
 		local size = maxSize
 		while size >= minSize do
-			if H.width(t, size, Theme.FontOf(lbl)) <= width then
+			if H.width(caps and Theme.Caps(t) or t, size, Theme.FontOf(lbl)) <= width then
 				lbl.Text, lbl.TextSize = t, size
 				return
 			end
@@ -666,14 +694,15 @@ function H.layout()
 	place(U.Shade, 0, inset, vp.X, math.max(0, vp.Y - inset))
 	-- header
 	place(U.Header, 0, 0, W, M.Header)
-	place(U.HeaderFoot, 0, M.Header - 18, W, 18)
+	place(U.HeaderFoot, 0, M.Header - 5, W, 5) -- (kit-b U9-5) the plank's darker lip
+	U.Roof.Visible = not phone -- (kit-b U9-5) a phone sheet sits right under Roblox's top bar: no awning stub
 	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
 	U.Icon.TextSize = M.IconText
 	place(U.Close, W - M.HeadPad - M.Close, M.CloseY, M.Close, M.Close) -- (its drawn X scales with it)
 	local titleX = M.HeadPad + M.Icon + 8
 	local titleW = W - titleX - M.Close - 2 * M.HeadPad
-	place(U.Title, titleX, 0, titleW, M.Header)
-	H.fit(U.Title, { U.Title.Text }, titleW, M.TitleText, M.TitleMin)
+	place(U.Title, titleX, 6, titleW, M.Header - 12) -- (kit-b U9-5) 6 px in top and bottom: the ribbon lifts its letters (Drop), their box stays on the plank
+	H.fit(U.Title, { U.Title.Text }, titleW - 4, M.TitleText, M.TitleMin) -- (kit-b U9-5) 2 px each side for its outline
 	-- body
 	local bodyH = Hh - M.Header
 	place(U.Body, 0, M.Header, W, bodyH)
@@ -784,7 +813,6 @@ function H.layoutCard(item, w, h, M)
 	place(item.Chip, phone and 4 or 10, nameY - M.ChipRowH - (phone and 0 or 4), w - (phone and 8 or 20), M.ChipRowH)
 	item.Chip.TextSize = text
 	item.Word.TextSize = M.Block
-	item.Corner.CornerRadius = UDim.new(0, M.Corner)
 end
 
 -- positions the shown cards in rows filling the grid's width; the canvas follows
@@ -824,10 +852,12 @@ end
 function H.paintCard(item, e)
 	local ctx = S.Context
 	local tint = CloudUI.RarityColor(e.Rarity)
-	item.Fill.Color = ColorSequence.new(Theme.Darken(tint, 0.45), Theme.Darken(tint, 0.72))
 	local selected = S.Selected == e.Key
-	item.Stroke.Color = selected and C.Gold or Theme.Lighten(tint, 0.15)
-	item.Stroke.Thickness = selected and 5 or 3
+	-- (kit-b U9-5) the rarity on the lip; the selected card's gold-tinted face and ink edge
+	item.Lip.BackgroundColor3 = tint
+	item.Button.BackgroundColor3 = selected and SIGN.Selected or C.Tile
+	item.Stroke.Color = selected and C.Ink or C.Wood
+	item.Stroke.Thickness = selected and 4 or 3
 	item.Button:SetAttribute("Selected", selected)
 	-- the name, then (a Golden / Rainbow copy) its finish + last word, then the last word
 	local last = string.match(e.Name, "(%S+)%s*$") or e.Name
@@ -839,22 +869,22 @@ function H.paintCard(item, e)
 	local levelText, stars = H.levelText(e)
 	item.Level.Text = levelText
 	item.Level:SetAttribute("Stars", stars)
-	PixelIcon.Mark(item.Level, stars > 0 and ICON.Star or nil, { After = true, Count = stars, Of = stars, Colour = C.Gold, Px = 18 })
+	PixelIcon.Mark(item.Level, stars > 0 and ICON.Star or nil, { After = true, Count = stars, Of = stars, Colour = C.GoldInk, Px = 18 })
 	item.Rarity.Text = tostring(e.Rarity or "")
-	item.Rarity.TextColor3 = Theme.Lighten(tint, 0.35)
-	-- the corner badge
+	-- the corner badge (kit-b U9-5: a team member's gold square with the brown star; a count on a stone tag, green when Ready)
 	local badge = item.Badge
 	if ctx == "Train" then
 		badge.Visible = e.Team ~= nil
-		badge.TextColor3 = C.Gold
+		badge.TextColor3 = C.Ink
 		PixelIcon.Set(badge, ICON.Star) -- (kit-b U7b) a team member
-		badge.BackgroundTransparency = 1
+		badge.BackgroundTransparency = 0
+		badge.BackgroundColor3 = C.Gold
 	else
 		badge.Visible = true
 		PixelIcon.Set(badge, nil)
 		badge.Text = "x" .. tostring(e.Copies)
-		badge.TextColor3 = C.White
-		badge.BackgroundTransparency = e.Ready and 0 or 0.35
+		badge.TextColor3 = e.Ready and SIGN.OnGrass or C.Ink
+		badge.BackgroundTransparency = 0
 		badge.BackgroundColor3 = e.Ready and C.Ready or C.Count
 	end
 	item.Button:SetAttribute("Ready", e.Ready == true)
@@ -940,12 +970,10 @@ function H.paintChips()
 	for id, chip in pairs(U.Chips) do
 		local on = id == active
 		chip.Button:SetAttribute("Selected", on)
-		chip.Button.BackgroundColor3 = on and Theme.Darken(C.Gold, 0.15) or C.Well
-		chip.Button.TextColor3 = on and C.Navy or C.White
+		CloudUI.SignBlock(chip.Button, on and "Selected" or "Stone", { LipPx = 4 }) -- (kit-b U9-5) gold = selected
 		if chip.Glyphs then
-			chip.Glyphs.Transparency = on and 1 or 0 -- dark text on gold reads without its outline
+			chip.Glyphs.Transparency = 1
 		end
-		chip.Stroke.Color = on and C.Gold or Color3.fromRGB(70, 84, 150)
 	end
 end
 
@@ -1148,11 +1176,7 @@ function PetPicker.Open(spec)
 	S.Silent = true
 	U.Search.Text = ""
 	S.Silent = false
-	local accent = C.Accent[S.Context]
-	U.HeaderGradient.Color = ColorSequence.new(Theme.Lighten(accent, 0.12), Theme.Darken(accent, 0.28))
-	U.FootGradient.Color = ColorSequence.new(Theme.Lighten(accent, 0.12):Lerp(Theme.Darken(accent, 0.28), 0.76), Theme.Darken(accent, 0.28))
-	U.PanelStroke.Color = accent
-	PixelIcon.Set(U.Icon, ICON.Context[S.Context])
+	PixelIcon.Set(U.Icon, ICON.Context[S.Context]) -- (kit-b U9-5) one navy plank for every context; the icon tells them apart
 	U.Title.Text = tostring(spec.Title or "Pick a pet")
 	S.Open = true
 	U.Holder.Visible = true

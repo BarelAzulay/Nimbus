@@ -56,6 +56,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the stars, the where marks, the berry
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-5) the docked window's title plate stays inside it
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -137,6 +138,13 @@ local ACCENTS = {
 	Garden = Color3.fromRGB(110, 190, 90),
 }
 local ROLE_COLORS = { Economy = Color3.fromRGB(96, 196, 108), Combat = Color3.fromRGB(228, 104, 96) }
+-- (kit-b U9-5) the Signboard palette (the pitch's kit B; one colour by role): brown ink on stone rows in the window's stone
+-- body, sunk wells for the footer and the garden header, the rarity on a pet's well edge, gold for a pet ready to evolve;
+-- green / violet text darkened until it reads on stone (4.5:1)
+local SIGN = Theme.Sign
+local INK = SIGN.Text
+local SIGN_MUTED = SIGN.TextMuted
+local GOOD_INK = Color3.fromRGB(46, 125, 50) -- #2E7D32: 5.1:1 on the stone tile
 
 -- (kit-b U7b) the marks are PixelIcons, not emoji: a pet's evolution stars, where it is (training: the weight, the
 -- garden: the sprout, following: the star), the berry basket
@@ -221,7 +229,7 @@ function H.text(parent, name, text, role, size, color, props)
 	end
 	local label = Theme.Label(tostring(text), role, {
 		Size = size,
-		Color = color or WHITE,
+		Color = color or INK, -- (kit-b U9-5) brown on stone
 		Props = p,
 	})
 	label.Parent = parent
@@ -266,51 +274,77 @@ function H.scroller(parent, name, props)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
 	p.ScrollBarThickness = 10
-	p.ScrollBarImageColor3 = Colors.FrameTop or Colors.Cloud
+	p.ScrollBarImageColor3 = SIGN.Wood
 	p.ScrollBarImageTransparency = 0.1
 	p.Parent = parent
 	return Util.Create("ScrollingFrame", p)
 end
 
+-- (kit-b U9-5) a square edge (a mitred border UIStroke named SignEdge)
+function H.edge(parent, color, thickness)
+	local s = Theme.Stroke(parent, color, thickness or 2, 0)
+	s.Name = "SignEdge"
+	s.LineJoinMode = Enum.LineJoinMode.Miter
+	return s
+end
+
+-- (kit-b U9-5) a sunk stone well in a square edge (the footer, the garden header; was a navy inset)
 function H.inset(parent, name, props)
 	local p = props or {}
-	p.BackgroundColor3 = INSET
-	p.BackgroundTransparency = 0.42
+	p.BackgroundColor3 = SIGN.Well
+	p.BackgroundTransparency = 0
 	local f = H.frame(parent, name, p)
-	H.corner(f, 12)
-	H.stroke(f, WELL_EDGE, 3, 0.15)
+	H.edge(f, SIGN.WellEdge, 2)
 	return f
 end
 
--- a solid coloured pill (role, status): white text with a dark outline of its own colour
+-- (kit-b U9-5) a pet's row: a raised stone tile in a wood edge with a darker lip (gold when the pet can evolve)
+function H.rowTile(parent, name, props)
+	local p = props or {}
+	p.BackgroundColor3 = SIGN.Tile
+	p.BackgroundTransparency = 0
+	local f = H.frame(parent, name, p)
+	H.edge(f, SIGN.Wood, 2)
+	H.frame(f, "Lip", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.StoneLip,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 5),
+	})
+	return f
+end
+
+-- a solid coloured tag (role, status). (kit-b U9-5) square, in a wood edge, its colour nudged until its ink reads
+-- (Theme.ReadableFace, 4.5:1); no gradient
 function H.pill(parent, name, text, color, size, order)
-	local dark = Theme.Darken(color, 0.62)
 	local px = size or 18
+	local face, ink = Theme.ReadableFace(color, 4.5)
 	local pill = Theme.Label(text, "Heading", {
 		Size = px,
-		Color = WHITE,
+		Color = ink,
 		Props = {
 			Name = name,
 			BackgroundTransparency = 0,
-			BackgroundColor3 = color,
+			BackgroundColor3 = face,
 			AutomaticSize = Enum.AutomaticSize.X,
 			Size = UDim2.fromOffset(0, px + 9),
 			LayoutOrder = order or 0,
 		},
 	})
-	Theme.Corner(pill, UDim.new(0.5, 0))
-	H.stroke(pill, NAVY, 2, 0)
-	Theme.Gradient(pill, Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 206, 226), 90)
+	H.edge(pill, SIGN.Wood, 2)
 	H.pad(pill, 9, 0, 9, 1)
 	pill.Parent = parent
 	return pill
 end
 
+-- (kit-b U9-5) a kit B block (CloudUI.Button Skin "Sign": one colour by role, no glow)
 function H.button(parent, name, text, style, size, textSize, callback)
 	local b = CloudUI.Button({
 		Name = name,
 		Text = text,
 		Style = style,
+		Skin = "Sign",
 		Size = size,
 		TextSize = textSize or 20,
 		Callback = callback,
@@ -620,15 +654,15 @@ function H.whereText(key, home)
 	local job = H.job(key)
 	if job then
 		local left = (tonumber(job.Ends) or 0) - H.now()
-		return H.skillName(job.Stat) .. " " .. H.clock(left), Theme.Lighten(PURPLE, 0.3), ICON.Training
+		return H.skillName(job.Stat) .. " " .. H.clock(left), SIGN.VioletLip, ICON.Training -- (kit-b U9-5) inks that read on stone
 	end
 	if #H.gardenSlots(home or H.home(), key) > 0 then
-		return "In Garden", Theme.Lighten(GOOD, 0.3), ICON.Garden
+		return "In Garden", GOOD_INK, ICON.Garden
 	end
 	if H.equippedCount(key) > 0 then
-		return "Following", GOLD, ICON.Following
+		return "Following", SIGN.Wood, ICON.Following
 	end
-	return nil, MUTED, nil
+	return nil, SIGN_MUTED, nil
 end
 
 -- the room left below the level cap, in XP
@@ -802,18 +836,16 @@ function H.dropRow(row)
 	end
 end
 
--- the pet disc of a row: a rarity-tinted circle with the viewport inside
+-- the pet of a row: (kit-b U9-5) a square light well (the pitch's pet well) in its rarity's edge, the viewport inside
 function H.petDisc(parent, def, size)
 	local color = CloudUI.RarityColor(def and def.Rarity)
 	local disc = H.frame(parent, "Pet", {
 		Size = UDim2.fromOffset(size, size),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Darken(color, 0.35),
+		BackgroundColor3 = SIGN.PetWell,
 		ZIndex = 3,
 	})
-	Theme.Corner(disc, UDim.new(0, 14))
-	H.stroke(disc, Theme.Lighten(color, 0.1), 3, 0)
-	Theme.Gradient(disc, Theme.Lighten(color, 0.05), Theme.Darken(color, 0.45), 90)
+	H.edge(disc, color, 3)
 	local holder = H.frame(disc, "ViewHolder", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 4 })
 	return disc, holder
 end
@@ -833,25 +865,25 @@ function H.buildFeedPage(body)
 		Size = UDim2.new(1, 0, 0, K.FOOT_H),
 	})
 	U.Foot = foot
-	U.Leftovers = H.text(foot, "Leftovers", "", "Heading", 18, Color3.fromRGB(255, 226, 150), {
+	U.Leftovers = H.text(foot, "Leftovers", "", "Heading", 18, INK, {
 		Position = UDim2.fromOffset(14, 8),
 		Size = UDim2.new(1, -220, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	U.Machine = H.text(foot, "Machine", "", "Body", 19, WHITE, {
+	U.Machine = H.text(foot, "Machine", "", "Body", 19, INK, {
 		Position = UDim2.fromOffset(14, 36),
 		Size = UDim2.new(1, -220, 0, 62),
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 	})
-	U.Upgrade = H.button(foot, "UpgradeMachine", "Upgrade", "Gold", UDim2.fromOffset(190, 54), 21, function()
+	U.Upgrade = H.button(foot, "UpgradeMachine", "Upgrade", "Gray", UDim2.fromOffset(190, 54), 21, function()
 		H.upgradeMachine()
 	end)
 	U.Upgrade.AnchorPoint = Vector2.new(1, 0.5)
 	U.Upgrade.Position = UDim2.new(1, -12, 0.5, 0)
-	U.FeedEmpty = H.text(page, "Empty", "", "Body", 20, MUTED, {
+	U.FeedEmpty = H.text(page, "Empty", "", "Body", 20, SIGN_MUTED, {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 40),
 		Size = UDim2.new(1, -60, 0, 80),
@@ -865,18 +897,19 @@ function H.buildGardenPage(body)
 	U.GardenPage = page
 	local head = H.inset(page, "GardenHeader", { Size = UDim2.new(1, 0, 0, 72) })
 	U.GardenHead = head
-	U.GardenPlace = H.text(head, "Place", "", "Title", 24, WHITE, {
+	U.GardenPlace = H.text(head, "Place", "", "Title", 24, INK, {
 		Position = UDim2.fromOffset(14, 6),
 		Size = UDim2.new(1, -220, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	U.GardenNow = H.text(head, "Now", "", "Body", 18, MUTED, {
+	Theme.StyleTitle(U.GardenPlace, "Section") -- (kit-b U9-5) a section head: the plain kit B title
+	U.GardenNow = H.text(head, "Now", "", "Body", 18, SIGN_MUTED, {
 		Position = UDim2.fromOffset(14, 38),
 		Size = UDim2.new(1, -220, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	U.TakeOut = H.button(head, "TakeOut", "Take out", "Pink", UDim2.fromOffset(180, 50), 21, function()
+	U.TakeOut = H.button(head, "TakeOut", "Take out", "Red", UDim2.fromOffset(180, 50), 21, function()
 		if S.Slot then
 			H.fire("garden", "HomeAction", "GardenSet", { Slot = S.Slot })
 		end
@@ -899,23 +932,22 @@ function H.buildConfirm()
 	})
 	U.Confirm = holder
 	U.ConfirmFit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
+	-- (kit-b U9-5) a stone notice in a wood frame; the plain kit B title (the ribbon is for window titles)
 	local box = H.frame(holder, "Box", {
 		Size = UDim2.new(1, 0, 1, 0),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE, -- the UIGradient multiplies it
+		BackgroundColor3 = SIGN.Stone,
 		ZIndex = 31,
 	})
-	H.corner(box, 16)
-	U.ConfirmStroke = H.stroke(box, GOLD, 4, 0)
-	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
-	U.ConfirmTitle = Theme.StyleTitle(H.text(box, "Title", "", "Title", 30, GOLD, {
+	U.ConfirmStroke = H.edge(box, SIGN.Wood, 6)
+	U.ConfirmTitle = Theme.StyleTitle(H.text(box, "Title", "", "Title", 30, INK, {
 		Position = UDim2.fromOffset(16, 12),
 		Size = UDim2.new(1, -32, 0, 40),
 		TextScaled = true,
 		ZIndex = 32,
-	}))
+	}), "Section")
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 22, Parent = U.ConfirmTitle })
-	U.ConfirmText = H.text(box, "Text", "", "Body", 20, WHITE, {
+	U.ConfirmText = H.text(box, "Text", "", "Body", 20, INK, {
 		Position = UDim2.fromOffset(20, 60),
 		Size = UDim2.new(1, -40, 1, -146),
 		TextWrapped = true,
@@ -932,7 +964,8 @@ function H.buildConfirm()
 	U.ConfirmYes = CloudUI.Button({
 		Name = "ConfirmYes",
 		Text = "Yes",
-		Style = "Gold",
+		Style = "Green", -- (kit-b U9-5) the dialog's one main action
+		Skin = "Sign",
 		Size = UDim2.fromOffset(230, 56),
 		TextSize = 23,
 		LayoutOrder = 1,
@@ -949,7 +982,8 @@ function H.buildConfirm()
 	U.ConfirmNo = CloudUI.Button({
 		Name = "ConfirmNo",
 		Text = "Not now",
-		Style = "Blue",
+		Style = "Gray",
+		Skin = "Sign",
 		Size = UDim2.fromOffset(170, 56),
 		TextSize = 22,
 		LayoutOrder = 2,
@@ -978,8 +1012,8 @@ function H.buildWindow()
 		Name = "CarePanel",
 		Title = TITLES.Feed,
 		Closable = true,
-		Category = "Care",
-		Accent = ACCENTS.Feed,
+		Skin = "Signboard", -- (kit-b U9-5) the pitch's window: awning, navy header with the berry, wood frame, stone body
+		Icon = ICON.Berry,
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -989,11 +1023,13 @@ function H.buildWindow()
 		Parent = holder,
 	})
 	U.Panel = panel
+	-- (kit-b U9-5) docked to the screen edge: no ribbon tails out over the frame (they ran off the screen)
+	SignKit.HeaderOverhang(panel.TitleBar, false)
 	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel.Root })
 	local content = panel.Content
 	-- the info line + the Cash chip
 	U.Top = H.frame(content, "Top", { Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -24, 0, K.TOP_H) })
-	U.Info = H.text(U.Top, "Info", "", "Body", 19, MUTED, {
+	U.Info = H.text(U.Top, "Info", "", "Body", 19, SIGN_MUTED, {
 		Size = UDim2.new(1, -220, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
@@ -1006,16 +1042,17 @@ function H.buildWindow()
 		Size = UDim2.new(1, -180, 0, 32),
 		Height = 32,
 		TextSize = 19,
-		Color = Color3.fromRGB(236, 84, 140),
+		Color = SIGN.Roof,
+		Skin = "Sign", -- (kit-b U9-5) a flat bar
 		Parent = U.Top,
 	})
-	U.BasketIcon = H.text(U.Top, "BasketIcon", "", "Title", 26, WHITE, {
+	U.BasketIcon = H.text(U.Top, "BasketIcon", "", "Title", 26, SIGN.RedLip, {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0.5, 0),
 		Size = UDim2.fromOffset(30, 32),
 	})
 	PixelIcon.Host(U.BasketIcon, ICON.Berry, 27) -- (kit-b U7b)
-	U.BasketRate = H.text(U.Top, "BasketRate", "", "Heading", 18, Color3.fromRGB(255, 196, 226), {
+	U.BasketRate = H.text(U.Top, "BasketRate", "", "Heading", 18, SIGN.RoofEdge, {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, 0, 0.5, 0),
 		Size = UDim2.fromOffset(140, 40),
@@ -1045,18 +1082,18 @@ function H.rowHead(f, row, def)
 	disc.Position = UDim2.fromOffset(10, 10)
 	row.Disc = disc
 	row.ViewHolder = holder
-	row.Name = H.text(f, "Name", "", "Title", 23, H.rarityText(def), {
+	row.Name = H.text(f, "Name", "", "Title", 23, INK, {
 		Position = UDim2.fromOffset(K.VIEW + 22, 6),
 		Size = UDim2.new(0, 300, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	row.Level = H.text(f, "Level", "", "Heading", 19, WHITE, {
+	row.Level = H.text(f, "Level", "", "Heading", 19, SIGN_MUTED, {
 		Position = UDim2.fromOffset(K.VIEW + 22, 38),
 		Size = UDim2.fromOffset(140, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	row.Where = H.text(f, "Where", "", "Heading", 18, MUTED, {
+	row.Where = H.text(f, "Where", "", "Heading", 18, SIGN_MUTED, {
 		Position = UDim2.fromOffset(K.VIEW + 166, 39),
 		Size = UDim2.new(0, 260, 0, 24),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1070,9 +1107,9 @@ function H.paintHead(row, key, def, home)
 	local stage = H.stage(key)
 	local stars = H.stars(stage)
 	row.Name.Text = H.name(key, def)
-	PixelIcon.Mark(row.Name, stars > 0 and ICON.Star or nil, { After = true, Count = stars, Of = stars, Colour = GOLD })
+	PixelIcon.Mark(row.Name, stars > 0 and ICON.Star or nil, { After = true, Count = stars, Of = stars, Colour = SIGN.GoldLip })
 	row.Level.Text = "Lv " .. level .. " / " .. cap
-	row.Level.TextColor3 = level >= cap and GOLD or WHITE
+	row.Level.TextColor3 = level >= cap and INK or SIGN_MUTED
 	local where, color, icon = H.whereText(key, home)
 	row.Where.Text = where or ""
 	row.Where.TextColor3 = color
@@ -1082,7 +1119,7 @@ end
 
 function H.newFeedRow(key, def)
 	local row = { Key = key, Def = def }
-	local f = H.inset(U.FeedList, "Feed_" .. key, { Size = UDim2.new(1, 0, 0, K.ROW_H) })
+	local f = H.rowTile(U.FeedList, "Feed_" .. key, { Size = UDim2.new(1, 0, 0, K.ROW_H) })
 	row.Frame = f
 	H.rowHead(f, row, def)
 	row.Bar = CloudUI.Bar({
@@ -1092,6 +1129,7 @@ function H.newFeedRow(key, def)
 		Height = 28,
 		TextSize = 18,
 		Color = XP,
+		Skin = "Sign", -- (kit-b U9-5) a flat bar
 		Parent = f,
 	})
 	local buttons = H.frame(f, "Buttons", {
@@ -1101,12 +1139,12 @@ function H.newFeedRow(key, def)
 	})
 	row.Buttons = buttons
 	H.list(buttons, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
-	row.Feed = H.button(buttons, "Feed", "Feed", "Green", UDim2.fromOffset(240, 58), 20, function()
+	row.Feed = H.button(buttons, "Feed", "Feed", "Gray", UDim2.fromOffset(240, 58), 20, function()
 		H.feed(key)
 	end)
 	row.Feed.LayoutOrder = 1
 	-- (Phase 5: no "Level up" button: ONE Feed button = one feed)
-	row.Evolve = H.button(buttons, "Evolve", "EVOLVE!", "Gold", UDim2.fromOffset(122, 58), 20, function()
+	row.Evolve = H.button(buttons, "Evolve", "EVOLVE!", "Gray", UDim2.fromOffset(122, 58), 20, function()
 		CareController.ConfirmEvolve(key)
 	end)
 	row.Evolve.LayoutOrder = 3
@@ -1204,7 +1242,7 @@ function H.paintFeedRow(row, home, cash)
 		CloudUI.SetDisabled(row.Feed, busy)
 	else
 		row.Feed.Text = "Feed  " .. H.commas(one.Cost) .. " berries  (+" .. H.commas(one.Xp) .. " XP)"
-		CloudUI.SetStyle(row.Feed, H.berries() >= one.Cost and "Green" or "Gray")
+		-- (kit-b U9-5) every row's Feed is a peer: stone; H.oneGreen lights the window's one green action
 		CloudUI.SetDisabled(row.Feed, busy)
 	end
 	-- EVOLVE when ready
@@ -1218,17 +1256,21 @@ function H.paintFeedRow(row, home, cash)
 	row.Ready = nextStage
 	CloudUI.SetDisabled(row.Evolve, busy)
 	if row.Frame then
-		local edge = row.Frame:FindFirstChildOfClass("UIStroke")
+		-- (kit-b U9-5) a pet that can evolve: the gold lip and the ink edge (the "selected" look)
+		local edge = row.Frame:FindFirstChild("SignEdge")
 		if edge then
-			edge.Color = nextStage and GOLD or WELL_EDGE
-			edge.Transparency = nextStage and 0 or 0.15
+			edge.Color = nextStage and INK or SIGN.Wood
+		end
+		local lip = row.Frame:FindFirstChild("Lip")
+		if lip then
+			lip.BackgroundColor3 = nextStage and SIGN.Gold or SIGN.StoneLip
 		end
 	end
 end
 
 function H.newGardenRow(key, def)
 	local row = { Key = key, Def = def }
-	local f = H.inset(U.GardenList, "Pick_" .. key, { Size = UDim2.new(1, 0, 0, K.ROW_H) })
+	local f = H.rowTile(U.GardenList, "Pick_" .. key, { Size = UDim2.new(1, 0, 0, K.ROW_H) })
 	row.Frame = f
 	H.rowHead(f, row, def)
 	local info = H.frame(f, "Info", { Position = UDim2.fromOffset(K.VIEW + 22, 70), Size = UDim2.new(1, -(K.VIEW + 220), 0, 30) })
@@ -1241,7 +1283,7 @@ function H.newGardenRow(key, def)
 	row.RoleShort = role
 	row.Role = H.pill(info, "Role", row.RoleText, ROLE_COLORS[role] or Theme.Buttons.Blue, 18, 1)
 	row.Coins = H.pill(info, "Coins", "Coins $0/s", Theme.Darken(CASH, 0.2), 18, 2)
-	row.Put = H.button(f, "PutHere", "Put here", "Green", UDim2.fromOffset(170, 56), 21, function()
+	row.Put = H.button(f, "PutHere", "Put here", "Gray", UDim2.fromOffset(170, 56), 21, function()
 		if S.Slot then
 			H.fire("garden", "HomeAction", "GardenSet", { Slot = S.Slot, Key = key })
 		end
@@ -1400,6 +1442,7 @@ function H.refreshFeed(home, cash)
 	for _, row in pairs(U.Rows) do
 		H.paintFeedRow(row, home, cash)
 	end
+	H.oneGreen(home)
 	U.FeedEmpty.Visible = #keys == 0
 	U.FeedEmpty.Text = "No pets yet! Spin a roulette in the Shop to hatch one."
 	-- how it works (the kid rule, 3.4), always the same words
@@ -1445,13 +1488,49 @@ function H.refreshFeed(home, cash)
 	local share = (TycoonCatalog and type(TycoonCatalog.Berries) == "table" and tonumber(TycoonCatalog.Berries.Share)) or 0.25
 	if type(cap) == "number" and cap > 0 then
 		U.Basket.SetFraction(math.min(1, berries / cap))
-		U.Basket.SetText("Berry Basket " .. H.commas(berries) .. " / " .. H.commas(math.floor(cap)))
+		U.Basket.SetText(H.basketText(H.commas(berries) .. " / " .. H.commas(math.floor(cap))))
 	else
 		U.Basket.SetFraction(berries > 0 and 1 or 0)
-		U.Basket.SetText("Berry Basket " .. H.commas(berries))
+		U.Basket.SetText(H.basketText(H.commas(berries)))
 	end
 	U.BasketRate.Text = (type(income) == "number" and income > 0) and ("+" .. H.commas(math.floor(income * share * 60 + 0.5)) .. " a minute") or ""
 	U.Info.Text = ""
+end
+
+-- (kit-b U9-5) one colour by role: the Food Machine's one green action is its next step, the first pet in the list that
+-- can evolve (its EVOLVE), else the first one the basket holds a feed for (its Feed); every other button stays stone
+function H.oneGreen(home)
+	local rows = {}
+	for _, row in pairs(U.Rows) do
+		rows[#rows + 1] = row
+	end
+	table.sort(rows, function(a, b)
+		return a.Frame.LayoutOrder < b.Frame.LayoutOrder
+	end)
+	local lit = nil
+	for _, row in ipairs(rows) do
+		if row.Evolve.Visible and row.Evolve:GetAttribute("Disabled") ~= true then
+			lit = row.Evolve
+			break
+		end
+	end
+	if not lit and H.station(home, "Kitchen") >= 1 then
+		local have = H.berries()
+		for _, row in ipairs(rows) do
+			if row.Feed:GetAttribute("Disabled") ~= true and H.level(row.Key) < H.cap(row.Def, row.Key) and (tonumber(row.Cost) or math.huge) <= have then
+				lit = row.Feed
+				break
+			end
+		end
+	end
+	for _, row in ipairs(rows) do
+		for _, b in ipairs({ row.Feed, row.Evolve }) do
+			local style = (b == lit) and "Green" or "Gray"
+			if b:GetAttribute("Style") ~= style then
+				CloudUI.SetStyle(b, style)
+			end
+		end
+	end
 end
 
 function H.kitchenPad(home)
@@ -1505,15 +1584,25 @@ function H.refreshGarden(home)
 		end
 	end
 	local current = slot and type(home.Garden) == "table" and home.Garden[slot] or nil
-	U.GardenPlace.Text = slot and ("Garden place " .. slot .. (open > 0 and ("  (" .. open .. " open)") or "")) or "Pet Garden"
-	if current and type(current) == "string" then
-		U.GardenNow.Text = "Now here: " .. H.name(current) .. ". Pick a pet to swap, or take it out."
-	elseif slot and slot > open then
-		U.GardenNow.Text = "This place opens with a Prestige."
+	-- (kit-b U9-5) each line with its shorter forms: H.fitGardenHead shows the longest one that fits on a phone
+	if slot then
+		local count = open > 0 and ("  (" .. open .. " open)") or ""
+		S.GardenTexts = { "Garden place " .. slot .. count, "Place " .. slot .. count, "Place " .. slot }
 	else
-		U.GardenNow.Text = "Pick a pet: it eats at the Food Bowl and poops Cloud Cash."
+		S.GardenTexts = { "Pet Garden" }
 	end
+	if current and type(current) == "string" then
+		local name = H.name(current)
+		S.GardenNowTexts = { "Now here: " .. name .. ". Pick a pet to swap, or take it out.", "Now here: " .. name .. ".", name }
+	elseif slot and slot > open then
+		S.GardenNowTexts = { "This place opens with a Prestige.", "Opens with a Prestige." }
+	else
+		S.GardenNowTexts = { "Pick a pet: it eats at the Food Bowl and poops Cloud Cash.", "Pick a pet: it poops Cloud Cash.", "Pick a pet to work here." }
+	end
+	U.GardenPlace.Text = S.GardenTexts[1]
+	U.GardenNow.Text = S.GardenNowTexts[1]
 	U.TakeOut.Visible = type(current) == "string"
+	H.fitGardenHead()
 	CloudUI.SetDisabled(U.TakeOut, H.inMatch())
 	U.Info.Text = "Every pet can work here: it eats at the Food Bowl and poops Cloud Cash!"
 end
@@ -1525,7 +1614,7 @@ function H.refresh()
 	local home = H.home()
 	local cash = H.cash()
 	U.CashChip.Text = H.money(cash)
-	U.Info.TextColor3 = MUTED
+	U.Info.TextColor3 = SIGN_MUTED
 	local feedMode = S.Mode == "Feed"
 	U.CashChip.Visible = not feedMode and not S.Tall
 	U.Info.Visible = not feedMode
@@ -1555,6 +1644,64 @@ function H.refreshSoon()
 	end)
 end
 
+-- (kit-b U9-5) the garden header's two lines: the whole width when the Take out button is not beside them (portrait puts it
+-- under them; an empty place has none), and on a narrow window the longest form of each line that fits its box (the
+-- place line from 24 down to 18 px, the hint line from 18 down to 16; a portrait hint wraps). Widths are design px: the
+-- label's share of the window times the dock's design width, so the open pop's scale does not count
+function H.fitGardenHead()
+	if not (U.GardenPlace and U.Panel and U.Dock) then
+		return
+	end
+	local tall = S.Tall == true
+	local wide = tall or not U.TakeOut.Visible
+	U.GardenPlace.Size = UDim2.new(1, wide and -28 or -220, 0, 30)
+	U.GardenNow.Size = UDim2.new(1, wide and -28 or -220, 0, tall and 48 or 26)
+	local rect, root = U.Dock.Rect, U.Panel.Root
+	local rootW = root and root.AbsoluteSize.X or 0
+	if not rect or rootW <= 0 then
+		return
+	end
+	local k = rect.designW / rootW
+	local function fit(lbl, texts, maxSize, minSize, wrapped)
+		if type(texts) ~= "table" or #texts == 0 then
+			return
+		end
+		if wrapped then
+			lbl.Text, lbl.TextSize = texts[1], maxSize
+			return
+		end
+		local room = lbl.AbsoluteSize.X * k - 4 -- (2 px each side to spare)
+		for _, t in ipairs(texts) do
+			for size = maxSize, minSize, -1 do
+				if Theme.MeasureLabel(lbl, t, size).X <= room then
+					lbl.Text, lbl.TextSize = t, size
+					return
+				end
+			end
+		end
+		lbl.Text, lbl.TextSize = texts[#texts], minSize
+	end
+	fit(U.GardenPlace, S.GardenTexts, 24, 18, false)
+	fit(U.GardenNow, S.GardenNowTexts, 18, 16, tall)
+end
+
+-- (kit-b U9-5) "Berry Basket 1,240 / 3,000", or the numbers alone when the words do not fit the bar (a phone: the berry
+-- icon beside it names it). Widths in design px, as H.fitGardenHead
+function H.basketText(numbers)
+	local full = "Berry Basket " .. numbers
+	local label = U.Basket and U.Basket.Label
+	local rect, root = U.Dock and U.Dock.Rect, U.Panel and U.Panel.Root
+	local rootW = root and root.AbsoluteSize.X or 0
+	if not (label and rect and rootW > 0) then
+		return full
+	end
+	local room = label.AbsoluteSize.X * rect.designW / rootW - 8
+	if room > 0 and Theme.MeasureLabel(label, full).X > room then
+		return numbers
+	end
+	return full
+end
+
 function H.relayout()
 	if not S.Built then
 		return
@@ -1575,6 +1722,10 @@ function H.relayout()
 	-- (landscape phones keep the Berry Basket bar in the Food Machine, the other windows drop their info line)
 	local topH = short and ((S.Mode == "Feed") and 38 or 0) or K.TOP_H
 	U.Top.Visible = topH > 0
+	-- (kit-b U9-5) no roof on a phone: over the short window it covered the top bar
+	if U.Panel.Roof then
+		U.Panel.Roof.Visible = not (short or tall)
+	end
 	U.Top.Size = UDim2.new(1, -24, 0, topH)
 	U.Top.Position = UDim2.fromOffset(12, 8)
 	U.CashChip.Visible = not tall
@@ -1611,9 +1762,8 @@ function H.relayout()
 	U.GardenHead.Size = UDim2.new(1, 0, 0, tall and 118 or 72)
 	U.GardenList.Position = UDim2.fromOffset(0, tall and 128 or 82)
 	U.GardenList.Size = UDim2.new(1, 0, 1, -(tall and 128 or 82))
-	U.GardenPlace.Size = UDim2.new(1, tall and -28 or -220, 0, 30)
-	U.GardenNow.Size = UDim2.new(1, tall and -28 or -220, 0, tall and 48 or 26)
 	U.GardenNow.TextWrapped = tall
+	H.fitGardenHead()
 	U.GardenNow.TextYAlignment = Enum.TextYAlignment.Top
 	if tall then
 		U.TakeOut.AnchorPoint = Vector2.new(1, 1)
@@ -1688,9 +1838,10 @@ function H.showConfirm(spec)
 	U.ConfirmTitle.Text = spec.Title or ""
 	U.ConfirmText.Text = spec.Text or ""
 	U.ConfirmYes.Text = spec.Yes and (spec.YesText or "Yes") or "OK"
-	CloudUI.SetStyle(U.ConfirmYes, spec.Style or "Gold")
-	U.ConfirmStroke.Color = spec.Color or GOLD
-	U.ConfirmTitle.TextColor3 = spec.Color or GOLD
+	-- (kit-b U9-5) Yes is the dialog's one green action (a red one stays red); brown title, the wood frame for every kind
+	local style = spec.Style or "Green"
+	CloudUI.SetStyle(U.ConfirmYes, (style == "Gold") and "Green" or style)
+	U.ConfirmTitle.TextColor3 = INK
 	U.ConfirmNo.Text = spec.NoText or "Not now"
 	H.relayoutConfirm()
 	U.Confirm.Visible = true
@@ -1929,8 +2080,25 @@ end
 ----------------------------------------------------------------------
 -- open / close
 ----------------------------------------------------------------------
+-- (kit-b U9-5) on a touch-only device Roblox's thumbstick and jump button go while Feed / Garden is up (the sheet fills the
+-- bottom of a phone: its footer and its Put here buttons sat under them), as the Training Place and the Fusion Machine do
+-- (MenuController.SetTouchHidden("Care")); they come back as they were on close
+function H.syncTouch()
+	local touchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	local want = S.Open and touchOnly
+	if want == (S.TouchOff == true) then
+		return
+	end
+	S.TouchOff = want
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		safe("touch", menu.SetTouchHidden, "Care", want)
+	end
+end
+
 -- gamepad B closes the confirm / the window while one is up (bound only then, so it never eats the dash)
 function H.syncBack()
+	H.syncTouch()
 	local want = S.Open or S.Confirm ~= nil
 	local ContextActionService = game:GetService("ContextActionService")
 	if want and not S.BackBound then

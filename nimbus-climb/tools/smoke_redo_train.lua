@@ -708,7 +708,7 @@ local function clientScenarios()
 						KC.advance(0.6)
 						local b = H.part("Speed", "Action")
 						local txt = H.text(b)
-						local red = '<font color="#ff6e6e">$'
+						local red = '<font color="#b8364f">$' -- (kit-b U9-5) C.Bad is kit B's red (Theme.Sign.RedLip): it reads on the stone button
 						T.check(TC.SkillState("Speed") == "Short" and H.disabled(b) and b.RichText == true and txt:find("TRAIN", 1, true) == 1,
 							label .. ": (phone) cash short: TRAIN greyed out", txt)
 						T.check(txt:find("$", 1, true) == nil or txt:find(red, 1, true) ~= nil, label .. ": ...its price in red (C.Bad)", txt)

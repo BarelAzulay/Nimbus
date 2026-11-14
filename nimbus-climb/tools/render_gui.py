@@ -1381,7 +1381,8 @@ class GuiRenderer:
             for k in range(3):
                 cx = (x + 13 + k * 9) * s
                 d.ellipse([cx - 2 * s, (y + b / 2 - 2) * s, cx + 2 * s, (y + b / 2 + 2) * s], fill=(255, 255, 255, 170))
-        if self.dump.get("touch"):
+        ghosts = self.dump.get("touch") and self.dump.get("touchControls", True) is not False  # (U9-5) hidden by a window: none
+        if ghosts:
             small = min(self.W, self.H) <= 500
             j = 70.0 if small else 120.0
             jx0 = self.W - (j * 1.5 + 10)
@@ -1394,7 +1395,7 @@ class GuiRenderer:
                 d.ellipse(box, outline=(255, 255, 255, 150), width=max(1, int(3 * s)))
                 d.ellipse([box[0] + 6 * s, box[1] + 6 * s, box[2] - 6 * s, box[3] - 6 * s], fill=(255, 255, 255, 38))
         layer.img.alpha_composite(over.img)
-        if self.dump.get("touch"):
+        if ghosts:
             for (x0, y1, size, name) in ((jx0, jy1, j, "jump"), (tx0, ty1, stick, "thumbstick")):
                 self.label(layer, None, (x0 + size / 2.0) * s, (y1 - size / 2.0) * s, "Roblox " + name, 140 * s,
                            (240, 244, 252), (20, 26, 50, 120), size_px=10)

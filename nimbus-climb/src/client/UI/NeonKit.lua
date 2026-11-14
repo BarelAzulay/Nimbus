@@ -215,9 +215,86 @@ end
 --        false, the outer glow ring only when asked for),
 --        Floor (bool; default: the card is at most 260 design px tall), Fill ({ top, bottom } Color3s; default
 --        PanelTop -> PanelBottom), Sheen (bool, default true), Class ("Frame" default | "TextButton": a clickable
---        card, Text = "" and AutoButtonColor off), Transparency (the fill, default 0), Active, ClipsDescendants
+--        card, Text = "" and AutoButtonColor off), Transparency (the fill, default 0), Active, ClipsDescendants,
+--        Skin ("Sign": the kit B block, see signCard)
+-- (kit-b U9-5) Skin = "Sign": the pitch's card (.pc / .bk) in place of the neon one: a flat stone face (props.Face, default
+-- Theme.Sign.Tile), a wood edge (UIStroke "SignEdge", mitred), a lip along the bottom (Frame "Lip", props.LipPx, default 6)
+-- in the card's colour (SetColor: a rarity, a skill, a mat's state; the rarity-on-the-lip rule), square, no glow, floor,
+-- sheen or gradient. The table keeps the neon card's shape so a caller only adds the Skin: Stroke = the edge, Glow = a
+-- frame that never shows (its GlowStroke disabled), SetGlow(on) = the selected look (the gold-tinted face, the ink edge),
+-- SetFill ignored (one face per card), SetFace(color) repaints the face. Body sits above the lip.
+local SIGN = Theme.Sign
+local function signCard(props, size, z, class)
+	local root = Instance.new(class)
+	root.Name = props.Name or "SignCard"
+	root.BorderSizePixel = 0
+	root.BackgroundTransparency = 0
+	root.Size = size
+	root.Position = props.Position or UDim2.new()
+	root.AnchorPoint = props.AnchorPoint or Vector2.new(0, 0)
+	root.LayoutOrder = props.LayoutOrder or 0
+	root.ZIndex = z
+	if props.Active ~= nil then
+		root.Active = props.Active
+	end
+	if class == "TextButton" then
+		root.Text = ""
+		root.AutoButtonColor = false
+		if props.Active == nil then
+			root.Active = true
+		end
+	end
+	root:SetAttribute("Skin", "Sign")
+	local face = props.Face or SIGN.Tile
+	local edge = stroke(root, SIGN.Wood, tonumber(props.Stroke) or 3, 0, "SignEdge")
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	local lipPx = tonumber(props.LipPx) or 6
+	local color = colorOf(props.Color, SIGN.StoneLip)
+	local lip = frame("Lip", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = color,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, lipPx),
+		ZIndex = z,
+	}, root)
+	local glow = frame("Glow", { Size = UDim2.fromScale(1, 1), ZIndex = z, Visible = false }, root)
+	local glowStroke = stroke(glow, SIGN.Gold, 3, 1, "GlowStroke")
+	glowStroke.Enabled = false
+	local body = frame("Body", {
+		Size = UDim2.new(1, 0, 1, -lipPx),
+		ZIndex = z,
+		ClipsDescendants = props.ClipsDescendants == true,
+	}, root)
+	local card = { Root = root, Body = body, Stroke = edge, Glow = glow, GlowStroke = glowStroke, Lip = lip, Color = color, Skin = "Sign", Selected = false }
+	local function paint()
+		root.BackgroundColor3 = card.Selected and SIGN.Selected or face
+		edge.Color = card.Selected and SIGN.Text or SIGN.Wood
+	end
+	function card.SetColor(newColor)
+		card.Color = colorOf(newColor, card.Color)
+		lip.BackgroundColor3 = card.Color
+	end
+	function card.SetGlow(on)
+		card.Selected = on and true or false
+		paint()
+	end
+	function card.SetFill() end
+	function card.SetFace(newFace)
+		face = newFace or SIGN.Tile
+		paint()
+	end
+	paint()
+	root.Parent = props.Parent
+	return card
+end
+
 function NeonKit.Card(props)
 	props = props or {}
+	if props.Skin == "Sign" then
+		local class = (props.Class == "TextButton") and "TextButton" or "Frame"
+		return signCard(props, toUDim2(props.Size, UDim2.fromOffset(200, 120)), props.ZIndex or 1, class)
+	end
 	local color = colorOf(props.Color)
 	local size = toUDim2(props.Size, UDim2.fromOffset(200, 120))
 	local radius = tonumber(props.Corner) or MX.Corner

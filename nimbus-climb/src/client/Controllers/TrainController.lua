@@ -61,6 +61,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the skill, lock and wait icons
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-5) the awning over the window
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -104,6 +105,8 @@ local K = {
 	OPEN_TIME = 0.22,
 	VIEW_CACHE = 6, -- pet viewports kept (the shown one + parked ones)
 	CONFIRM_W = 560,
+	FRAME = 6, -- (kit-b U9-5) px of the wood frame round the stone body
+	ROOF_W = 360, -- (kit-b U9-5) the awning's fixed width (CloudUI.Metrics.SignRoofW, the Pets window's)
 	BACK_ACTION = "NimbusTrainBack",
 	MAX_MATS = 5, -- the Training Place's mats (Gym Slots 1..5; PetCareService / HomeFx MAX_TRAIN_SLOTS)
 	MAT_VIEW_CACHE = 8, -- mat face viewports kept (the five shown + parked ones)
@@ -152,21 +155,29 @@ local K = {
 	},
 }
 
-local Colors = Theme.Colors
+-- (kit-b U9-5) the Signboard palette (the pitch's kit B; one colour by role): brown ink on stone, the navy header plank in
+-- its wood frame, violet for a pet in training (as the Pets window's busy cover), a skill's own colour on its icon chip,
+-- its lip and its lit rank blocks; green / red text darkened until it reads on stone (4.5:1)
+local SIGN = Theme.Sign
 local C = {
-	White = Colors.White,
-	Ink = Colors.TextStroke or Colors.Ink,
-	Navy = Color3.fromRGB(11, 16, 48),
-	Well = Color3.fromRGB(20, 26, 64),
-	WellEdge = Color3.fromRGB(70, 84, 150),
-	Muted = Color3.fromRGB(170, 180, 214),
-	Gold = Color3.fromRGB(255, 211, 77),
-	Good = Color3.fromRGB(120, 230, 120),
-	Bad = Color3.fromRGB(255, 110, 110),
-	Purple = Theme.Neon.Purple,
-	Grey = Theme.Neon.Grey,
-	SegOff = Color3.fromRGB(30, 38, 86),
-	Accent = Color3.fromRGB(228, 104, 96),
+	White = Theme.Colors.White,
+	Ink = SIGN.Text,
+	Navy = SIGN.Navy,
+	Stone = SIGN.Stone,
+	Tile = SIGN.Tile,
+	Wood = SIGN.Wood,
+	Well = SIGN.Well,
+	WellEdge = SIGN.WellEdge,
+	Muted = SIGN.TextMuted,
+	Gold = SIGN.Gold,
+	GoldInk = SIGN.GoldLip, -- gold marks on stone (the evolution stars)
+	Good = Color3.fromRGB(46, 125, 50), -- #2E7D32: 5.1:1 on the stone tile
+	Bad = SIGN.RedLip,
+	Purple = SIGN.Violet,
+	PurpleInk = SIGN.VioletLip, -- violet text on stone
+	Grey = SIGN.StoneLip,
+	SegOff = SIGN.Well,
+	Accent = SIGN.Navy,
 	Skill = {
 		Speed = Color3.fromRGB(63, 200, 255),
 		Physique = Color3.fromRGB(255, 107, 129),
@@ -285,11 +296,33 @@ local function label(parent, name, role, size, props)
 	l.BackgroundTransparency = 1
 	l.BorderSizePixel = 0
 	l.TextTruncate = Enum.TextTruncate.AtEnd
+	l.TextColor3 = C.Ink -- (kit-b U9-5) brown ink on stone unless the caller says otherwise
 	for k, v in pairs(props or {}) do
 		l[k] = v
 	end
 	l.Parent = parent
 	return l
+end
+
+-- (kit-b U9-5) a square edge (a mitred border UIStroke named SignEdge)
+function H.edge(obj, color, px)
+	local s = Theme.Stroke(obj, color, px or 2, 0)
+	s.Name = "SignEdge"
+	s.LineJoinMode = Enum.LineJoinMode.Miter
+	return s
+end
+
+-- (kit-b U9-5) the stone body inside a window's wood frame (K.FRAME px of wood on every side), its darker lip at the bottom
+function H.signBody(panel)
+	local stone = Util.Create("Frame", {
+		Name = "Stone", BackgroundColor3 = C.Stone, BorderSizePixel = 0, Position = UDim2.fromOffset(K.FRAME, K.FRAME),
+		Size = UDim2.new(1, -2 * K.FRAME, 1, -2 * K.FRAME), ZIndex = 1, Parent = panel,
+	})
+	Util.Create("Frame", {
+		Name = "Lip", BackgroundColor3 = SIGN.StoneLip, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 6), ZIndex = 1, Parent = stone,
+	})
+	return stone
 end
 
 ----------------------------------------------------------------------
@@ -662,10 +695,13 @@ end
 
 -- the first text that fits `width` at a size from maxSize down to minSize; the last text at minSize when none does
 function H.fit(lbl, texts, width, maxSize, minSize)
+	-- (kit-b U9-5) a capitals role (a title, a tag) is measured as it shows: in capitals
+	local role = lbl:GetAttribute("FontRole")
+	local caps = role ~= nil and Theme.CapsRoles[role] == true
 	for _, t in ipairs(texts) do
 		local size = maxSize
 		while size >= minSize do
-			if H.width(t, size, Theme.FontOf(lbl)) <= width then
+			if H.width(caps and Theme.Caps(t) or t, size, Theme.FontOf(lbl)) <= width then
 				lbl.Text, lbl.TextSize = t, size
 				return
 			end
@@ -720,36 +756,37 @@ function H.build()
 	local holder = Util.Create("Frame", { Name = "Window_Train", BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Visible = false, ZIndex = 2, Parent = U.Gui })
 	U.Holder = holder
 	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
+	-- (kit-b U9-5) the window as a kit B sign: a wood frame (Panel) round a stone body (Stone, its lip along the bottom), the
+	-- navy header plank on top (the title's T1 band is the plank: RibbonBand = "Header"), on a PC screen the pink awning
+	-- (SignKit.Roof: one fixed-size piece, never stretched with the window); square, no glow, no gradient
 	local panel = Util.Create("Frame", {
-		Name = "Panel", BackgroundColor3 = C.Navy, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Name = "Panel", BackgroundColor3 = C.Wood, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = holder,
 	})
-	Theme.Corner(panel, UDim.new(0, 18))
-	Theme.Stroke(panel, C.Accent, 3, 0)
 	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel })
-	-- header: the accent strip, square at the bottom
-	local header = Util.Create("Frame", { Name = "Header", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = panel })
-	Theme.Corner(header, UDim.new(0, 18))
-	Theme.Gradient(header, Theme.Lighten(C.Accent, 0.12), Theme.Darken(C.Accent, 0.28), 90)
+	H.signBody(panel)
+	local header = Util.Create("Frame", { Name = "Header", BackgroundColor3 = C.Navy, BorderSizePixel = 0, ZIndex = 3, Parent = panel })
 	U.Header = header
-	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = header })
-	Theme.Gradient(U.HeaderFoot, Theme.Lighten(C.Accent, 0.12):Lerp(Theme.Darken(C.Accent, 0.28), 0.76), Theme.Darken(C.Accent, 0.28), 90)
-	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = "", TextTruncate = Enum.TextTruncate.None })
+	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = SIGN.NavyLip, BorderSizePixel = 0, ZIndex = 3, Parent = header })
+	U.Roof = SignKit.Roof(panel, { Width = K.ROOF_W, Y = -10, ZIndex = 4 })
+	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = "", TextColor3 = C.Gold, TextTruncate = Enum.TextTruncate.None })
 	PixelIcon.Host(U.Icon, ICON.Train) -- (kit-b U7b)
-	U.Title = Theme.StyleTitle(label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Training Place", TextXAlignment = Enum.TextXAlignment.Left }))
+	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Training Place", TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
+	U.Title:SetAttribute("RibbonBand", "Header") -- the navy plank is the title's band
+	Theme.StyleTitle(U.Title)
+	-- the spots in use: a small stone tag on the plank
 	U.Chip = label(header, "SpotsChip", "Heading", 20, {
-		ZIndex = 4, BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(40, 12, 22), TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 4, BackgroundTransparency = 0, BackgroundColor3 = C.Stone, TextTruncate = Enum.TextTruncate.None,
 	})
-	Theme.Corner(U.Chip, UDim.new(0.5, 0))
-	Theme.Stroke(U.Chip, Theme.Lighten(C.Accent, 0.35), 2, 0.2)
+	H.edge(U.Chip, C.Wood, 2)
 	U.Close = CloudUI.Button({
-		Name = "CloseButton", Text = "", Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
+		Name = "CloseButton", Text = "", Style = "Red", Skin = "Sign", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
 		Callback = function()
 			TrainController.Close()
 		end,
 		Parent = header,
 	})
-	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
+	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = C.Ink }) -- slop audit 2026-11-12: a drawn X (no glyph)
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
@@ -759,42 +796,44 @@ function H.build()
 		H.newMat(i)
 	end
 	-- the big pet card (tap: the sheet)
-	U.Card = NeonKit.Card({ Name = "PetCard", Class = "TextButton", Color = C.Grey, Corner = 18, Floor = true, ZIndex = 3, Parent = body })
+	-- (kit-b U9-5) a stone card with the pet's rarity on its lip; the pet stands in a light well
+	U.Card = NeonKit.Card({ Name = "PetCard", Class = "TextButton", Skin = "Sign", Color = C.Grey, LipPx = 8, ZIndex = 3, Parent = body })
 	U.Card.Root.Activated:Connect(function()
 		H.openSheet()
 	end)
-	U.Art = Util.Create("Frame", { Name = "Art", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 4, Parent = U.Card.Body })
+	U.Art = Util.Create("Frame", { Name = "Art", BackgroundTransparency = 0, BackgroundColor3 = SIGN.PetWell, BorderSizePixel = 0, ZIndex = 4, Parent = U.Card.Body })
+	-- the rarity: a stone tag (brown ink) in a wood edge; the element: a tag in its own colour's edge
 	U.Rarity = label(U.Card.Body, "RarityChip", "Heading", 18, {
-		ZIndex = 6, BackgroundTransparency = 0, BackgroundColor3 = C.Grey, TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 6, BackgroundTransparency = 0, BackgroundColor3 = C.Tile, TextTruncate = Enum.TextTruncate.None,
 	})
-	Theme.Corner(U.Rarity, UDim.new(0.5, 0))
+	H.edge(U.Rarity, C.Wood, 2)
 	U.Element = label(U.Card.Body, "ElementChip", "Heading", 18, {
-		ZIndex = 6, BackgroundTransparency = 0.1, BackgroundColor3 = C.Well, TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 6, BackgroundTransparency = 0, BackgroundColor3 = C.Tile, TextTruncate = Enum.TextTruncate.None,
 	})
-	Theme.Corner(U.Element, UDim.new(0.5, 0))
-	U.ElementStroke = Theme.Stroke(U.Element, C.White, 2, 0)
+	U.ElementStroke = H.edge(U.Element, C.Wood, 2)
 	U.Prompt = label(U.Card.Body, "PickPrompt", "Heading", 30, {
 		ZIndex = 6, Visible = false, RichText = true, TextWrapped = true, TextTruncate = Enum.TextTruncate.None,
 		Size = UDim2.fromScale(1, 1),
 	})
 	U.Name = label(body, "PetName", "Title", 42, { ZIndex = 3 })
+	Theme.StyleTitle(U.Name, "Section") -- (kit-b U9-5) a card heading: the plain kit B title (the ribbon is for window titles)
 	U.Level = label(body, "PetLevel", "Heading", 26, { ZIndex = 3, RichText = true, TextColor3 = C.Muted })
-	U.Prev = NeonKit.Button({
-		Name = "PrevButton", Text = G.Prev, Color = "Blue", Size = UDim2.fromOffset(76, 76), TextSize = 40, ZIndex = 3,
+	U.Prev = CloudUI.Button({
+		Name = "PrevButton", Text = G.Prev, Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(76, 76), TextSize = 40, ZIndex = 3,
 		Callback = function()
 			TrainController.Step(-1)
 		end,
 		Parent = body,
 	})
-	U.Change = NeonKit.Button({
-		Name = "ChangeButton", Text = "Change pet", Color = "Blue", Size = UDim2.fromOffset(220, 76), TextSize = 24, ZIndex = 3,
+	U.Change = CloudUI.Button({
+		Name = "ChangeButton", Text = "Change pet", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(220, 76), TextSize = 24, ZIndex = 3,
 		Callback = function()
 			H.openSheet()
 		end,
 		Parent = body,
 	})
-	U.Next = NeonKit.Button({
-		Name = "NextButton", Text = G.Next, Color = "Blue", Size = UDim2.fromOffset(76, 76), TextSize = 40, ZIndex = 3,
+	U.Next = CloudUI.Button({
+		Name = "NextButton", Text = G.Next, Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(76, 76), TextSize = 40, ZIndex = 3,
 		Callback = function()
 			TrainController.Step(1)
 		end,
@@ -806,10 +845,11 @@ function H.build()
 		H.newSkill(skill)
 	end
 	U.Empty = label(body, "Empty", "Heading", 24, { ZIndex = 5, Visible = false, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
+	-- the hint: a small navy sign with stone words
 	U.Hint = label(body, "HintLine", "Heading", 20, {
-		ZIndex = 9, Visible = false, BackgroundTransparency = 0.12, BackgroundColor3 = Color3.fromRGB(8, 10, 28), TextWrapped = true,
+		ZIndex = 9, Visible = false, BackgroundTransparency = 0, BackgroundColor3 = C.Navy, TextColor3 = C.Stone, TextWrapped = true,
 	})
-	Theme.Corner(U.Hint, UDim.new(0, 10))
+	H.edge(U.Hint, C.Wood, 3)
 	U.Cache = Util.Create("Frame", { Name = "ViewCache", BackgroundTransparency = 1, Visible = false, Size = UDim2.fromOffset(10, 10), Parent = holder })
 	H.buildConfirm()
 	-- the cursor is free while the window is shown (client/MouseLock, as the Pets window)
@@ -825,22 +865,27 @@ end
 function H.newSkill(skill)
 	local id = skill.Id
 	local color = C.Skill[id] or C.Accent
-	local card = NeonKit.Card({ Name = "Skill_" .. id, Color = color, Corner = 16, Floor = true, ZIndex = 3, Parent = U.SkillsFrame })
+	-- (kit-b U9-5) a stone card with the skill's colour on its lip and on a square icon chip (was a neon card and a glossy orb)
+	local card = NeonKit.Card({ Name = "Skill_" .. id, Skin = "Sign", Color = color, ZIndex = 3, Parent = U.SkillsFrame })
 	local body = card.Body
 	local item = { Id = id, Color = color, Card = card, Root = card.Root, Segs = {} }
 	item.IconHolder = Util.Create("Frame", { Name = "IconHolder", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 4, Parent = body })
-	item.Orb = NeonKit.Orb(item.IconHolder, color, 64)
-	item.Orb.ZIndex = 4
+	item.Orb = Util.Create("Frame", {
+		Name = "Chip", BackgroundColor3 = color, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(64, 64), ZIndex = 4, Parent = item.IconHolder,
+	})
+	H.edge(item.Orb, C.Wood, 3)
 	item.Icon = label(item.IconHolder, "Icon", "Display", 34, {
-		ZIndex = 5, Text = "", Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 5, Text = "", Size = UDim2.fromScale(1, 1), TextColor3 = Theme.TextOn(color), TextTruncate = Enum.TextTruncate.None,
 	})
 	PixelIcon.Host(item.Icon, ICON.Skills[id] or ICON.Train) -- (kit-b U7b) the skill's PixelIcon in its orb
 	item.NameL = label(body, "Name", "Title", 30, { ZIndex = 5, Text = skill.Name or H.skillName(id), TextXAlignment = Enum.TextXAlignment.Left })
-	item.RankL = label(body, "Rank", "Heading", 22, { ZIndex = 5, TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
+	item.RankL = label(body, "Rank", "Heading", 22, { ZIndex = 5, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Bar = Util.Create("Frame", { Name = "Bar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = body })
 	for i = 1, 10 do
+		-- (kit-b U9-5) square rank blocks (the pitch's block row): sunk stone, lit in the skill's colour
 		local seg = Util.Create("Frame", { Name = "Seg" .. i, BackgroundColor3 = C.SegOff, BorderSizePixel = 0, ZIndex = 6, Parent = item.Bar })
-		Theme.Corner(seg, UDim.new(0, 4))
+		H.edge(seg, C.WellEdge, 1)
 		seg:SetAttribute("Lit", false)
 		item.Segs[i] = seg
 	end
@@ -848,46 +893,45 @@ function H.newSkill(skill)
 	item.Next = label(body, "Next", "Body", 20, { ZIndex = 5, TextColor3 = C.Good, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Cost = label(body, "Cost", "Display", 26, { ZIndex = 5, TextColor3 = C.Good, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Time = label(body, "Time", "Body", 20, { ZIndex = 5, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
-	item.Action = NeonKit.Button({ Name = "Action", Text = "TRAIN", Color = "Green", Size = UDim2.fromOffset(200, 64), TextSize = 24, ZIndex = 6, Parent = body })
+	item.Action = CloudUI.Button({ Name = "Action", Text = "TRAIN", Style = "Green", Skin = "Sign", Size = UDim2.fromOffset(200, 64), TextSize = 24, ZIndex = 6, Parent = body })
 	item.Action.RichText = true -- (the small cards' "TRAIN $26,250" shows a short price in red: H.paintSkill)
 	-- (not the Button's Callback: a disabled button still says why, on the HintLine)
 	item.Action.Activated:Connect(function()
 		H.onAction(id)
 	end)
+	-- rank 10: a gold tag (the top rank is the card's "selected" thing)
 	item.MaxTag = label(body, "MaxTag", "Display", 30, {
-		ZIndex = 6, Visible = false, Text = "MAX", TextColor3 = C.Gold, BackgroundTransparency = 0.2, BackgroundColor3 = Color3.fromRGB(60, 44, 8),
+		ZIndex = 6, Visible = false, Text = "MAX", TextColor3 = C.Ink, BackgroundTransparency = 0, BackgroundColor3 = C.Gold,
 		TextTruncate = Enum.TextTruncate.None,
 	})
-	Theme.Corner(item.MaxTag, UDim.new(0, 14))
-	Theme.Stroke(item.MaxTag, C.Gold, 2, 0.1)
+	H.edge(item.MaxTag, C.Wood, 3)
 	U.Skills[id] = item
 end
 
 -- one mat: a clickable card with a face, two lines, a big glyph, a timer bar, a lock badge and the dashed edge of "+ Add a pet"
 function H.newMat(i)
-	local card = NeonKit.Card({ Name = "Mat" .. i, Class = "TextButton", Color = C.WellEdge, Corner = K.MAT.Corner, Floor = false, Glow = false, ZIndex = 4, Parent = U.Mats })
+	-- (kit-b U9-5) a stone mat with its state on the lip (violet training, gold pending); no scale bounce (kit B)
+	local card = NeonKit.Card({ Name = "Mat" .. i, Class = "TextButton", Skin = "Sign", Color = C.WellEdge, LipPx = 5, ZIndex = 4, Parent = U.Mats })
 	local root, body = card.Root, card.Body
 	root:SetAttribute("State", "Locked")
 	root:SetAttribute("LockBadge", false)
 	root:SetAttribute("Selected", false)
-	pcall(NeonKit.AttachFx, root)
 	local m = { Index = i, Card = card, Root = root, Dashes = {} }
 	m.Dash = Util.Create("Frame", { Name = "Dashes", BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = body })
 	m.Art = Util.Create("Frame", { Name = "Face", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = body })
 	m.Line1 = label(body, "Line1", "Heading", 22, { ZIndex = 7 })
 	m.Line2 = label(body, "Line2", "Body", 19, { ZIndex = 7 })
 	m.Big = label(body, "Big", "Display", 48, { ZIndex = 7, TextTruncate = Enum.TextTruncate.None })
+	-- the timer: a flat sunk bar with a violet fill (square)
 	m.Bar = Util.Create("Frame", { Name = "TimerBar", BackgroundColor3 = C.SegOff, BorderSizePixel = 0, ZIndex = 6, Parent = body })
-	Theme.Corner(m.Bar, UDim.new(0.5, 0))
-	m.Fill = Util.Create("Frame", { Name = "Fill", BackgroundColor3 = Theme.Lighten(C.Purple, 0.25), BorderSizePixel = 0, ZIndex = 7, Size = UDim2.fromScale(0, 1), Parent = m.Bar })
-	Theme.Corner(m.Fill, UDim.new(0.5, 0))
+	H.edge(m.Bar, C.WellEdge, 1)
+	m.Fill = Util.Create("Frame", { Name = "Fill", BackgroundColor3 = C.Purple, BorderSizePixel = 0, ZIndex = 7, Size = UDim2.fromScale(0, 1), Parent = m.Bar })
 	m.BarText = label(m.Bar, "Left", "Heading", 18, { ZIndex = 8, Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
 	m.Badge = label(body, "LockBadge", "Heading", 18, {
-		ZIndex = 9, Visible = false, Text = "", BackgroundTransparency = 0.05, BackgroundColor3 = Color3.fromRGB(28, 20, 60), TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 9, Visible = false, Text = "", BackgroundTransparency = 0, BackgroundColor3 = C.Gold, TextColor3 = C.Ink, TextTruncate = Enum.TextTruncate.None,
 	})
 	PixelIcon.Host(m.Badge, ICON.Lock) -- (kit-b U7b)
-	Theme.Corner(m.Badge, UDim.new(0.5, 0))
-	Theme.Stroke(m.Badge, C.Gold, 2, 0.1)
+	H.edge(m.Badge, C.Wood, 2)
 	root.Activated:Connect(function()
 		safe("mat tap", H.onMat, i)
 	end)
@@ -897,7 +941,7 @@ end
 function H.buildConfirm()
 	U.Shade = Util.Create("TextButton", {
 		Name = "ConfirmShade", Text = "", AutoButtonColor = false, BorderSizePixel = 0, Active = true, Selectable = false, Visible = false,
-		BackgroundColor3 = Color3.fromRGB(4, 6, 20), BackgroundTransparency = 0.5, Size = UDim2.fromScale(1, 1), ZIndex = 40, Parent = U.Gui,
+		BackgroundColor3 = SIGN.NavyLip, BackgroundTransparency = 0.5, Size = UDim2.fromScale(1, 1), ZIndex = 40, Parent = U.Gui,
 	})
 	U.Shade.Activated:Connect(function()
 		H.closeConfirm()
@@ -905,16 +949,16 @@ function H.buildConfirm()
 	local holder = Util.Create("Frame", { Name = "Confirm", BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Visible = false, ZIndex = 41, Parent = U.Gui })
 	U.Confirm = holder
 	U.ConfirmFit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
-	local box = Util.Create("Frame", { Name = "Box", BackgroundColor3 = C.Navy, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 42, Parent = holder })
-	Theme.Corner(box, UDim.new(0, 18))
-	U.ConfirmStroke = Theme.Stroke(box, C.Good, 4, 0)
+	-- (kit-b U9-5) a stone notice in a wood frame; the plain kit B title (the ribbon is for window titles)
+	local box = Util.Create("Frame", { Name = "Box", BackgroundColor3 = C.Stone, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = 42, Parent = holder })
+	U.ConfirmStroke = H.edge(box, C.Wood, 6)
 	U.ConfirmPop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = box })
-	U.ConfirmTitle = Theme.StyleTitle(label(box, "Title", "Title", 30, { ZIndex = 43 }))
+	U.ConfirmTitle = Theme.StyleTitle(label(box, "Title", "Title", 30, { ZIndex = 43 }), "Section")
 	U.ConfirmText = label(box, "Text", "Body", 20, {
 		ZIndex = 43, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextYAlignment = Enum.TextYAlignment.Top,
 	})
 	U.ConfirmYes = CloudUI.Button({
-		Name = "Yes", Text = "Yes", Style = "Green", Size = UDim2.fromOffset(250, 56), TextSize = 23, ZIndex = 44,
+		Name = "Yes", Text = "Yes", Style = "Green", Skin = "Sign", Size = UDim2.fromOffset(250, 56), TextSize = 23, ZIndex = 44,
 		Callback = function()
 			local c = S.Confirm
 			H.closeConfirm()
@@ -925,7 +969,7 @@ function H.buildConfirm()
 		Parent = box,
 	})
 	U.ConfirmNo = CloudUI.Button({
-		Name = "No", Text = "Not now", Style = "Blue", Size = UDim2.fromOffset(190, 56), TextSize = 22, ZIndex = 44,
+		Name = "No", Text = "Not now", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(190, 56), TextSize = 22, ZIndex = 44,
 		Callback = function()
 			H.closeConfirm()
 		end,
@@ -968,7 +1012,8 @@ function H.layoutHeader()
 	local M = H.metrics()
 	local W = S.W or 0
 	place(U.Header, 0, 0, W, M.Header)
-	place(U.HeaderFoot, 0, M.Header - 18, W, 18)
+	place(U.HeaderFoot, 0, M.Header - 5, W, 5) -- (kit-b U9-5) the plank's darker lip
+	U.Roof.Visible = S.Mode ~= "Phone" -- (kit-b U9-5) a phone window sits right under Roblox's top bar: no awning stub
 	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
 	U.Icon.TextSize = M.IconText
 	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close) -- (its drawn X scales with it)
@@ -978,8 +1023,8 @@ function H.layoutHeader()
 	place(U.Chip, chipX, (M.Header - M.ChipH) / 2, chipW, M.ChipH)
 	local titleX = M.HeadPad + M.Icon + 8
 	local titleW = math.max(40, chipX - M.Gap - titleX)
-	place(U.Title, titleX, 0, titleW, M.Header)
-	H.fit(U.Title, { "Training Place", "Training" }, titleW, M.TitleText, M.TitleMin)
+	place(U.Title, titleX, 6, titleW, M.Header - 12) -- (kit-b U9-5) 6 px in top and bottom: the ribbon lifts its letters (Drop), their box stays on the plank
+	H.fit(U.Title, { "Training Place", "Training" }, titleW - 4, M.TitleText, M.TitleMin) -- (kit-b U9-5) 2 px each side for its outline
 end
 
 function H.layoutPC(W, Hh)
@@ -1347,7 +1392,9 @@ function H.paint()
 	local used, slots = H.used(), H.slots(home)
 	local hasPets = #H.order() > 0
 	U.Chip.Text = H.chipText(level, used, slots)
-	U.Chip.TextColor3 = (level >= 1 and slots > 0 and used >= slots) and C.Gold or C.White
+	-- (kit-b U9-5) every spot in use: the tag turns gold (brown ink on both faces)
+	U.Chip.BackgroundColor3 = (level >= 1 and slots > 0 and used >= slots) and C.Gold or C.Stone
+	U.Chip.TextColor3 = C.Ink
 	H.layoutHeader()
 	-- the pet column
 	for _, o in ipairs({ U.Card.Root, U.Name, U.Level, U.Prev, U.Change, U.Next, U.SkillsFrame }) do
@@ -1394,8 +1441,7 @@ function H.paintPet()
 		U.Prompt.Visible = false
 		-- the rarity chip
 		U.Rarity.Visible = true
-		U.Rarity.Text = string.upper(tostring(def.Rarity or ""))
-		U.Rarity.BackgroundColor3 = Theme.Darken(rarityColor, 0.25)
+		U.Rarity.Text = string.upper(tostring(def.Rarity or "")) -- (kit-b U9-5) a stone tag; the colour is on the card's lip
 		local rw = math.ceil(H.width(U.Rarity.Text, U.Rarity.TextSize, Theme.FontOf(U.Rarity))) + (phone and 14 or 22)
 		U.Rarity.Size = UDim2.fromOffset(rw, U.Rarity.Size.Y.Offset)
 		-- the element chip (PC: there is room)
@@ -1405,8 +1451,8 @@ function H.paintPet()
 		U.Element.Visible = (not S.CardSmall) and info ~= nil
 		if U.Element.Visible then
 			U.Element.Text = el
-			U.ElementStroke.Color = info.Color or C.White
-			U.Element.TextColor3 = Theme.Lighten(info.Color or C.White, 0.3)
+			U.ElementStroke.Color = info.Color or C.Wood -- (kit-b U9-5) the element's colour on the tag's edge, brown ink
+			U.Element.TextColor3 = C.Ink
 			local ew = math.ceil(H.width(el, U.Element.TextSize, Theme.FontOf(U.Element))) + 22
 			place(U.Element, (S.CardW or 200) - 8 - ew, 8, ew, U.Element.Size.Y.Offset)
 		end
@@ -1417,10 +1463,10 @@ function H.paintPet()
 		local nameMin = S.Portrait and 15 or M.NameMin
 		local last = name:match("(%S+)$") or name
 		H.fit(U.Name, { name, last }, U.Name.Size.X.Offset - 4, nameMax, nameMin)
-		U.Name.TextColor3 = Theme.Lighten(rarityColor, 0.3)
+		U.Name.TextColor3 = C.Ink
 		local levelText, stars = H.levelText(key, def)
 		U.Level.Text = levelText
-		PixelIcon.Mark(U.Level, stars > 0 and "star" or nil, { After = true, Count = stars, Of = stars, Colour = C.Gold })
+		PixelIcon.Mark(U.Level, stars > 0 and "star" or nil, { After = true, Count = stars, Of = stars, Colour = C.GoldInk })
 		U.Change.Text = (phone and "Change") or "Change pet"
 		H.showView(key, def, Bits.stage(key))
 	end
@@ -1530,24 +1576,25 @@ function H.paintMat(m, spec, selected)
 	local lastWord = name:match("(%S+)$") or name
 	-- the card
 	local job = st == "Job"
-	local color, fillTop, fillBottom = C.WellEdge, Color3.fromRGB(26, 32, 74), Color3.fromRGB(14, 18, 46)
+	-- (kit-b U9-5) the state on the lip (violet training, gold pending); a pet's mat is a raised stone tile, a free / locked
+	-- one a sunk well (the free one with its dashed edge and no lip); selected = the gold-tinted face with the ink edge
+	local color = C.WellEdge
 	if job then
-		color, fillTop, fillBottom = C.Purple, Color3.fromRGB(56, 36, 110), Color3.fromRGB(24, 16, 58)
+		color = C.Purple
 	elseif st == "Pending" then
-		color, fillTop, fillBottom = C.Gold, Color3.fromRGB(58, 52, 40), Color3.fromRGB(24, 22, 40)
-	elseif st == "Add" then
-		color, fillTop, fillBottom = C.Muted, Color3.fromRGB(24, 30, 70), Color3.fromRGB(16, 20, 52)
+		color = C.Gold
 	end
 	card.SetColor(color)
-	card.SetFill(fillTop, fillBottom)
+	card.SetFace((job or st == "Pending") and C.Tile or C.Well)
+	card.Lip.Visible = st ~= "Add"
 	card.Stroke.Transparency = st == "Add" and 1 or 0
-	root.BackgroundTransparency = st == "Add" and 0.35 or 0
+	root.BackgroundTransparency = 0
 	card.SetGlow(st == "Pending" or (job and isSelected))
 	m.Dash.Visible = st == "Add"
 	-- reset the insides
 	m.Line1.Visible, m.Line2.Visible, m.Big.Visible, m.Bar.Visible = false, false, false, false
 	m.Line1.TextXAlignment, m.Line2.TextXAlignment = Enum.TextXAlignment.Left, Enum.TextXAlignment.Left
-	m.Line1.TextColor3, m.Line2.TextColor3, m.Big.TextColor3 = C.White, C.White, C.White
+	m.Line1.TextColor3, m.Line2.TextColor3, m.Big.TextColor3 = C.Ink, C.Ink, C.Ink
 	local face = (job or st == "Pending") and def ~= nil
 	H.matView(m, face and key or nil, def, face and Bits.stage(key) or 0)
 	m.Art.Visible = face
@@ -1668,7 +1715,7 @@ function H.paintMatPhone(m, st, spec, mm, w, h, name, lastWord, face, badgeW, le
 		m.Line2.Visible = true
 		place(m.Line2, fx, y1 + mm.LineH, tw, mm.LineH)
 		if job then
-			m.Line2.TextColor3 = Theme.Lighten(C.Purple, 0.45)
+			m.Line2.TextColor3 = C.PurpleInk
 			H.fitMat(m.Line2, { H.clock(left) .. " left", H.clock(left) }, tw - 2, mm.Text, mm.Text)
 			m.Bar.Visible = true
 			place(m.Bar, fx, h - mm.BarH - 4, tw, mm.BarH)
@@ -1707,7 +1754,7 @@ function H.paintMatMini(m, st, spec, mm, w, h, face, left)
 			place(m.Art, math.floor((w - mm.Face) / 2), 3, mm.Face, mm.Face)
 		end
 		if st == "Job" then
-			m.Line2.TextColor3 = Theme.Lighten(C.Purple, 0.45)
+			m.Line2.TextColor3 = C.PurpleInk
 			text = { H.clock(left) }
 		else
 			m.Line2.TextColor3 = C.Good
@@ -1883,10 +1930,10 @@ function H.paintSkill(item)
 		nowText = "Now: " .. words
 		nextText = "Rank " .. jobRank .. ": " .. eff.Sign .. H.pct(id, jobRank) .. "%"
 		timeText = "Rank " .. jobRank .. " " .. G.Dot .. " " .. H.clock(left) .. " left"
-		timeColor = Theme.Lighten(C.Purple, 0.45)
+		timeColor = C.PurpleInk
 	elseif st == "Max" then
 		nowText = "Now: " .. words
-		nextText, nextColor = "Top rank!", C.Gold
+		nextText, nextColor = "Top rank!", C.Ink
 	else
 		nowText = "Now: " .. words
 		nextText = "Rank " .. (rank + 1) .. ": " .. eff.Sign .. nextPct .. "%"
@@ -1904,7 +1951,7 @@ function H.paintSkill(item)
 			line = nowShort .. " " .. G.Arrow .. " " .. eff.Sign .. nextPct .. "% " .. G.Dot .. " " .. timeText
 		end
 		H.fit(item.Now, { line, (line:gsub(" " .. G.Dot .. " .*$", "")) }, item.Now.Size.X.Offset - 2, m.Line, m.Line)
-		item.Now.TextColor3 = st == "Training" and timeColor or C.White
+		item.Now.TextColor3 = st == "Training" and timeColor or C.Ink
 	else
 		local fits = { nowText }
 		if not noPet and rank > 0 then
@@ -1914,7 +1961,7 @@ function H.paintSkill(item)
 			fits[#fits + 1] = "Now: " .. nowShort
 		end
 		H.fit(item.Now, fits, item.Now.Size.X.Offset - 2, m.Line, math.max(18, m.Line - 2))
-		item.Now.TextColor3 = C.White
+		item.Now.TextColor3 = C.Ink
 		item.Next.Text, item.Next.TextColor3 = nextText, nextColor
 		item.Cost.Text = costText
 		item.Cost.TextColor3 = st == "Short" and C.Bad or C.Good
@@ -1925,7 +1972,8 @@ function H.paintSkill(item)
 	item.Action.Visible = not maxed
 	item.MaxTag.Visible = maxed
 	if not maxed then
-		local text, colorName, disabled = "TRAIN", "Green", false
+		-- (kit-b U9-5) one colour by role: the four TRAIN buttons are peers, so stone (no green action here); STOP is the red one
+		local text, colorName, disabled = "TRAIN", "Gray", false
 		if st == "Ready" or st == "Short" then
 			if small then
 				-- cash short: the price inside the greyed button in red, as the full card's Cost line (spec 5.5)
@@ -1946,8 +1994,8 @@ function H.paintSkill(item)
 		elseif st == "NoPlace" then
 			text, disabled = "No Training Place", true
 		end
-		if item.Action:GetAttribute("Color") ~= colorName then
-			item.Action:SetAttribute("Color", colorName)
+		if item.Action:GetAttribute("Style") ~= colorName then
+			CloudUI.SetStyle(item.Action, colorName)
 		end
 		if item.Action:GetAttribute("Disabled") ~= disabled then
 			item.Action:SetAttribute("Disabled", disabled)
@@ -2016,8 +2064,7 @@ function H.showConfirm(spec)
 	end
 	S.Confirm = spec
 	U.ConfirmTitle.Text = spec.Title or ""
-	U.ConfirmTitle.TextColor3 = spec.Color or C.Good
-	U.ConfirmStroke.Color = spec.Color or C.Good
+	U.ConfirmTitle.TextColor3 = C.Ink -- (kit-b U9-5) brown on stone; the wood frame stays (spec.Color was the neon edge)
 	U.ConfirmText.Text = spec.Text or ""
 	U.ConfirmYes.Text = spec.YesText or "Yes"
 	CloudUI.SetStyle(U.ConfirmYes, spec.Style or "Green")

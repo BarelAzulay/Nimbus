@@ -4161,15 +4161,17 @@ local function clientScenarios()
 		end)
 		walk()
 		pcall(client("UI/PetBits").closeRecall)
-		-- the window titles this walk must have seen as "Ribbon" (a Lua pattern on the path inside PlayerGui each)
+		-- the window titles this walk must have seen as "Ribbon" (a Lua pattern on the path inside PlayerGui each); (U9-5, the
+		-- owner's ruling 2026-11-14: the T1 ribbon is for window titles only) a third field names another look: the Care
+		-- family's dialogs wear the plain kit B "Section" title
 		local expected = {
-			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$" },
+			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$", "Section" },
 			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$" },
 			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
 			{ "the Go home hero card", "%.Hero%.GoHome%..-%.Title$" },
 			{ "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
 			{ "the Training window", "^NimbusTrain%..-Header%.Title$" },
-			{ "the Training confirm", "^NimbusTrain%..-%.Box%.Title$" },
+			{ "the Training confirm", "^NimbusTrain%..-%.Box%.Title$", "Section" },
 			{ "the pet picker", "^NimbusPetPicker%..-%.Title$" },
 			{ "the Fusion window", "^NimbusFusion%..-%.Title$" },
 			{ "the Shop", "^NimbusShop%..-%.Title$" },
@@ -4184,7 +4186,7 @@ local function clientScenarios()
 		for _, e in ipairs(expected) do
 			local hit = false
 			for path, look in pairs(found) do
-				if look == "Ribbon" and path:find(e[2]) then
+				if look == (e[3] or "Ribbon") and path:find(e[2]) then
 					hit = true
 					break
 				end
@@ -4330,6 +4332,61 @@ local function clientScenarios()
 		end
 	end
 
+	-- (U9-5) the Care family, opened the way the game opens it: the Training Place, the Food Machine and the garden picker
+	-- (OpenPanel), the Fusion Machine on both tabs, and the shared pet picker over the window that opens it (Train's
+	-- Change, Fusion's slots). U9.FAMILY: { view, the ScreenGui that shows it }
+	local U9 = {}
+	U9.FAMILY = {
+		{ "train", "NimbusTrain" }, { "feed", "NimbusCare" }, { "garden", "NimbusCare" }, { "fusion:upgrade", "NimbusFusion" },
+		{ "fusion:mix", "NimbusFusion" }, { "picker:train", "NimbusPetPicker" }, { "picker:upgrade", "NimbusPetPicker" },
+		{ "picker:mix", "NimbusPetPicker" },
+	}
+	function U9.close()
+		pcall(U7.client("UI/PetPicker").Close)
+		pcall(U7.client("Controllers/FusionController").Close)
+		pcall(U7.client("Controllers/TrainController").Close)
+		pcall(U7.client("Controllers/CareController").Close)
+		pcall(U7.client("Controllers/MenuController").Close)
+		LKC.advance(0.5)
+	end
+	-- the view's window shows: its ScreenGui enabled with a shown window frame in it
+	function U9.showing(gui)
+		if not gui or gui.Enabled == false then
+			return false
+		end
+		for _, c in ipairs(gui:GetChildren()) do
+			if c:IsA("GuiObject") and c.Visible and c.Name ~= "Shade" then
+				return true
+			end
+		end
+		return false
+	end
+	function U9.open(view)
+		local FC = U7.client("Controllers/FusionController")
+		local PP = U7.client("UI/PetPicker")
+		local base, sub = tostring(view):match("^([^:]+):?(.*)$")
+		if base == "train" or (base == "picker" and sub == "train") then
+			LKC.toClient("OpenPanel", "Train", {})
+		elseif base == "feed" then
+			LKC.toClient("OpenPanel", "Pets", { Tab = "Pets", Action = "Feed" })
+		elseif base == "garden" then
+			LKC.toClient("OpenPanel", "Pets", { Action = "Garden", Slot = 3 })
+		elseif base == "fusion" or base == "picker" then
+			FC.Open((sub == "mix") and "Mix" or "Upgrade", {})
+		end
+		LKC.advance(1)
+		if base == "picker" then
+			if sub == "train" then
+				PP.Open({ Context = "Train", Title = "Pick a pet to train" })
+			elseif sub == "upgrade" then
+				PP.Open({ Context = "Upgrade", Title = "Pick a pet to upgrade" })
+			else
+				PP.Open({ Context = "Mix", Title = "Pick the Style pet" })
+			end
+			LKC.advance(1)
+		end
+	end
+
 	-- the emoji rule over PlayerGui (tools/stroke_walk.py --emoji runs it over the dump of every render scenario): after the
 	-- client run and with each window U7a reworked open in turn (the menu's Pets / Index / Stats, the Shop on every tab,
 	-- the Gifts window, Fusion, a token toast, a match result, the hatch stage), no shown text carries an emoji or
@@ -4351,6 +4408,13 @@ local function clientScenarios()
 		end
 		U7.openAll(walk)
 		U7.openU7b(walk) -- (U7b) and the windows of the glyph tables U7b redrew; the backlog is empty
+		for _, f in ipairs(U9.FAMILY) do -- (U9-5) and every view of the Care family (Fusion's Mix tab, the pet picker)
+			U7.try("the care family " .. f[1], function()
+				U9.open(f[1])
+			end)
+			walk()
+			U9.close()
+		end
 		local list, n = {}, 0
 		for path, cps in pairs(hits) do
 			list[#list + 1] = path .. " " .. cps
@@ -5259,9 +5323,169 @@ local function clientScenarios()
 				walk(pg:FindFirstChild("NimbusIndex"), "Index", bad)
 				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window and the Index (%d)", tag, #bad),
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
+				-- (U9-5) and the Care family: the Training Place, the Food Machine, the garden picker, the Fusion Machine on both
+				-- tabs and the pet picker in its three contexts
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				local family, opened = {}, 0
+				for _, f in ipairs(U9.FAMILY) do
+					U9.open(f[1])
+					local gui = pg:FindFirstChild(f[2])
+					if U9.showing(gui) then
+						opened = opened + 1
+					end
+					walk(gui, f[1], family)
+					U9.close()
+				end
+				T.check(opened == #U9.FAMILY, fmt("%s: every Care family view opened (%d of %d)", tag, opened, #U9.FAMILY))
+				T.check(#family == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the Care family (%d)", tag, #family),
+					table.concat(family, "; ", 1, math.min(#family, 12)))
 			end)
 		end
 		LKC.flushErrors("kitb_no_neon_glow")
+	end)
+
+	-- (U9-5) the Care family fits a phone: at 844x390 and 390x844 (touch) every view of the family (U9.FAMILY) shows, and in
+	-- it every shown text and button is whole on the screen, never cut by a clipping frame above it (a ScrollingFrame's
+	-- rows scroll, so they are left out), every one-line text fits its box at FredokaOne's / LuckiestGuy's real widths
+	-- (SmokeCommon.RealWidth; other faces through Theme.MeasureLabel) with 2 px to spare, and nothing sits under Roblox's
+	-- thumbstick or jump button (the render's ghosts: 70 px circles 20 px over the bottom edge, the stick 25 px in from the
+	-- left, the jump 45 px in from the right) unless the window hid them (GuiService.TouchControlsEnabled false)
+	S.care_family_fits_phone = guarded("care_family_fits_phone", function()
+		local Theme = LoadingH.shared("Theme")
+		local GuiService = game:GetService("GuiService")
+		local RealWidth = SmokeCommon.RealWidth
+		local function width(o)
+			local text = o.Text
+			local role = o:GetAttribute("FontRole")
+			if role and Theme.CapsRoles[role] then
+				text = Theme.Caps(text)
+			end
+			local w = RealWidth(text, o.TextSize, Theme.FontOf(o), true)
+			return (w or Theme.MeasureLabel(o).X) * U8.scaleOf(o)
+		end
+		local function inScroll(o)
+			local cur = o.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur:IsA("ScrollingFrame") then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		-- (a CloudUI bar's text is two copies, each cut at the fill's edge on purpose: TextFill / TextTrack are not counted)
+		local SPLIT = { TextFill = true, TextTrack = true }
+		local function clipper(o)
+			local cur = o.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur:IsA("GuiObject") and cur.ClipsDescendants and not SPLIT[cur.Name] then
+					return cur
+				end
+				cur = cur.Parent
+			end
+			return nil
+		end
+		local function inside(a, b)
+			return a.X >= b.X - 1 and a.R <= b.R + 1 and a.Y >= b.Y - 1 and a.B <= b.B + 1
+		end
+		-- the windows fit their titles and names with Theme.Measure on an Enum font (TextService): the mock's is a flat 0.5 em,
+		-- so for the test it measures one line of a known face at its real width, as Roblox does
+		local mockMeasure = Theme.Measure
+		Theme.Measure = function(text, role, size, width)
+			if (tonumber(width) == nil or tonumber(width) >= 4096) and not tostring(text):find("\n") then
+				local font, spare = role, 1
+				text = tostring(text or "")
+				if type(role) == "string" and Theme.Fonts[role] then -- a role: its capitals and its spare widening, as Theme.Measure
+					font, spare = Theme.Fonts[role], Theme.MeasureSpare[role] or 1
+					if Theme.CapsRoles[role] then
+						text = Theme.Caps(text)
+					end
+				end
+				local w = typeof(font) == "EnumItem" and RealWidth(text, tonumber(size) or 14, font, true) or nil
+				if w then
+					return Vector2.new(math.ceil(w * spare), tonumber(size) or 14)
+				end
+			end
+			return mockMeasure(text, role, size, width)
+		end
+		for _, s in ipairs({ { 844, 390 }, { 390, 844 } }) do
+			local W, Hh = s[1], s[2]
+			for _, f in ipairs(U9.FAMILY) do
+				U8.at(W, Hh, true, "care family " .. f[1], function(tag)
+					U9.open(f[1])
+					local gui = U8.pg():FindFirstChild(f[2])
+					if not T.check(U9.showing(gui), tag .. ": the window shows (" .. f[2] .. ")") then
+						U9.close()
+						return
+					end
+					local dy = gui.IgnoreGuiInset and 0 or Mock.TopInset
+					local screen = { X = 0, Y = -dy, R = W, B = Hh - dy }
+					local zones = {}
+					if GuiService.TouchControlsEnabled ~= false then
+						zones[1] = { X = 25, Y = Hh - 90 - dy, R = 95, B = Hh - 20 - dy, Name = "thumbstick" }
+						zones[2] = { X = W - 115, Y = Hh - 90 - dy, R = W - 45, B = Hh - 20 - dy, Name = "jump" }
+					end
+					local off, cut, tight, under = {}, {}, {}, {}
+					for _, d in ipairs(gui:GetDescendants()) do
+						local texty = (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextTransparency < 1
+						if (texty or d:IsA("GuiButton")) and U8.shown(d) and not inScroll(d) and d.AbsoluteSize.X > 0 then
+							local r = U8.rect(d)
+							local name = d:GetFullName():gsub("^.-" .. f[2] .. "%.", "")
+							if not inside(r, screen) then
+								off[#off + 1] = name .. " " .. U8.show(r)
+							end
+							local c = clipper(d)
+							if c and not inside(r, U8.rect(c)) then
+								cut[#cut + 1] = name .. " " .. U8.show(r) .. " in " .. c.Name .. " " .. U8.show(U8.rect(c))
+							end
+							if texty and not d.TextWrapped and not d.TextScaled then
+								local pad = d:FindFirstChildOfClass("UIPadding")
+								local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) * U8.scaleOf(d) or 0
+								local w = width(d)
+								if w + inset + 2 > d.AbsoluteSize.X + 0.01 then
+									tight[#tight + 1] = fmt("%s %q %.0f px in %.0f", name, d.Text, w + inset, d.AbsoluteSize.X)
+								end
+							end
+							for _, z in ipairs(zones) do
+								if U8.overlap(r, z) then
+									under[#under + 1] = name .. " under the " .. z.Name
+								end
+							end
+						end
+					end
+					T.check(#off == 0, fmt("%s: every text and button is on the screen (%d)", tag, #off), table.concat(off, "; ", 1, math.min(#off, 8)))
+					T.check(#cut == 0, fmt("%s: no text or button cut by a clipping frame (%d)", tag, #cut), table.concat(cut, "; ", 1, math.min(#cut, 8)))
+					T.check(#tight == 0, fmt("%s: every one-line text fits its box (%d)", tag, #tight), table.concat(tight, "; ", 1, math.min(#tight, 8)))
+					T.check(#under == 0, fmt("%s: nothing under the thumbstick or the jump button (touch controls %s) (%d)", tag,
+						tostring(GuiService.TouchControlsEnabled), #under), table.concat(under, "; ", 1, math.min(#under, 8)))
+					U9.close()
+				end)
+			end
+		end
+		Theme.Measure = mockMeasure
+		LKC.flushErrors("care_family_fits_phone")
+	end)
+
+	-- (U9-5) one colour by role in the Care family: at most one green action in a window. The Training Place's four TRAIN
+	-- buttons are peers (stone), the Food Machine's one green is its next step, the garden picker has none, the Fusion
+	-- Machine's is FUSE!, the pet picker has none
+	S.care_family_one_green = guarded("care_family_one_green", function()
+		U8.at(1920, 1080, false, "care family one green", function(tag)
+			for _, f in ipairs(U9.FAMILY) do
+				U9.open(f[1])
+				local greens = U8.greenActions(U8.pg():FindFirstChild(f[2]))
+				local ok = #greens <= 1
+				if f[1] == "train" or f[1] == "garden" or f[1]:match("^picker") then
+					ok = #greens == 0
+				elseif f[1]:match("^fusion") then
+					ok = #greens == 0 or (#greens == 1 and greens[1] == "FuseButton")
+				end
+				T.check(ok, tag .. ": " .. f[1] .. " has at most its one green action", table.concat(greens, ", "))
+				U9.close()
+			end
+		end)
+		LKC.flushErrors("care_family_one_green")
 	end)
 
 	-- (U8) CloudUI.Panel's Signboard skin (Skin = "Signboard"; the Pets window and the Index wear it): the flat pink awning at a

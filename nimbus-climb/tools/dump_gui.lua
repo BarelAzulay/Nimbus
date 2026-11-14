@@ -757,6 +757,8 @@ local function walk()
 		viewport = { Mock.Viewport.X, Mock.Viewport.Y },
 		inset = Mock.TopInset or 0,
 		touch = UserInputService.TouchEnabled == true,
+		-- (U9-5) false while a window hid Roblox's thumbstick and jump button (MenuController.SetTouchHidden): no ghosts drawn
+		touchControls = game:GetService("GuiService").TouchControlsEnabled ~= false,
 		guis = {},
 		skipped3d = 0,
 		hidden = 0,
