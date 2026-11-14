@@ -113,6 +113,10 @@
 --                             in its wood edge, every text reads on its fill (kitb_no_neon_glow walks it too)
 --   home_fits_phone           (client) 844x390 / 390x844: the window inside the screen, nothing under the thumbstick or
 --                             the jump button (the touch controls go while it is open), back as they were on Close
+--   home_prestige_fits        (client) 390x844 / 844x390, a home ready for its first star (the longest "You get"): the
+--                             Prestige button opens the confirm; every line's text inside its line, the buttons inside the
+--                             box's wood edge, the three lines in the list with no scroll on the portrait phone, every
+--                             text reads on its fill, Prestige! the dialog's one green plank
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -4649,7 +4653,7 @@ local function clientScenarios()
 		end
 		return cur ~= nil and cur.Enabled ~= false
 	end
-	function U8.feed(team, garden, growth) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth
+	function U8.feed(team, garden, growth, home) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth; home: the Home record (U9-1)
 		local pets, levels, discovered = {}, {}, {}
 		for i, key in ipairs(U8.KEYS) do
 			pets[key] = 1
@@ -4664,7 +4668,7 @@ local function clientScenarios()
 			Discovered = discovered, IndexClaimed = {},
 			Tutorial = { Step = 1000, Done = true, Gifted = true },
 			Cash = 48200, Gems = 320,
-			Home = { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = garden or {}, Gym = {}, CollectorCash = 0 },
+			Home = home or { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = garden or {}, Gym = {}, CollectorCash = 0 },
 			Food = {}, Tiers = {}, Hybrids = {}, PetLevels = levels,
 			Teams = { Presets = { preset, {}, {} }, Active = 1, Slots = 3, Busy = {} },
 			Battle = { Trophies = 120, TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} },
@@ -5678,6 +5682,85 @@ local function clientScenarios()
 			T.eq(GuiService.TouchControlsEnabled, before, fmt("home phone %dx%d: the touch controls are back as they were after Close", s[1], s[2]))
 		end
 		LKC.flushErrors("home_fits_phone")
+	end)
+
+	-- the Prestige confirm on a touch phone (390x844 and 844x390), for a home ready for its FIRST star (Sky Castle, Home Level
+	-- 41: the "You get" line also names the Fusion Machine, the longest it gets), opened by its Prestige button as a player
+	-- does: each line's text inside its line, Prestige! and Not yet inside the box's 6 px wood edge, on the portrait phone the
+	-- three lines whole in the list (sized from the real text, not an estimate: no scroll while the window has room), the box
+	-- inside the screen, every text reads on its fill with the dialog up, and Prestige! the dialog's one green plank
+	S.home_prestige_fits = guarded("home_prestige_fits", function()
+		local ready = { Level = 41, Prestige = 0, Garden = {}, Gym = {}, CollectorCash = 0, Stations = { Press1 = 40, Garden = 8, Kitchen = 5, Gym = 5,
+			Vault = 5, House = 4, FusionMachine = 3, ArenaGate = 1, DecorFence = 3, DecorFountain = 3, DecorPodium = 3 } }
+		for _, s in ipairs({ { 390, 844, true }, { 844, 390, true } }) do
+			U9.at(s[1], s[2], s[3], "home prestige", false, function(tag, win)
+				U8.feed(nil, nil, nil, ready)
+				LKC.advance(0.5)
+				local button = win:FindFirstChild("Prestige", true)
+				T.check(button ~= nil and button:IsA("GuiButton"), tag .. ": (setup) the Home window has its Prestige button")
+				if button then
+					Mock.Click(button)
+					LKC.advance(0.5)
+				end
+				local confirm = win:FindFirstChild("PrestigeConfirm", true)
+				local box = confirm and confirm:FindFirstChild("Box")
+				local list = box and box:FindFirstChild("Lines")
+				if not T.check(box ~= nil and list ~= nil and U8.shown(box), tag .. ": the Prestige button opens the confirm") then
+					return
+				end
+				local gain = list:FindFirstChild("Line_Gain") and list.Line_Gain:FindFirstChild("Text")
+				T.check(gain ~= nil and gain.Text:find("Fusion Machine", 1, true) ~= nil, tag .. ": (setup) the first star's 'You get' names the Fusion Machine",
+					gain and gain.Text or "no Gain text")
+				local function inside(r, o)
+					return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+				end
+				local out, cut = {}, {}
+				local l = U8.rect(list)
+				for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
+					local line = list:FindFirstChild("Line_" .. id)
+					local text = line and line:FindFirstChild("Text")
+					if not line or not text then
+						out[#out + 1] = id .. " missing"
+					else
+						local r, lr = U8.rect(text), U8.rect(line)
+						-- the drawn text (TextBounds, screen px) fits the label's box, and the label sits in its line
+						if not inside(r, lr) or text.TextBounds.Y > text.AbsoluteSize.Y + 0.5 then
+							out[#out + 1] = fmt("%s text %s (%d px of text) in line %s", id, U8.show(r), text.TextBounds.Y, U8.show(lr))
+						end
+						if not inside(lr, l) then
+							cut[#cut + 1] = id .. " " .. U8.show(lr)
+						end
+					end
+				end
+				T.check(#out == 0, tag .. ": every line's text sits inside its line", table.concat(out, "; "))
+				if s[2] > s[1] then
+					T.check(#cut == 0, tag .. ": the three lines are whole in the list, no scroll (the window has the room)",
+						table.concat(cut, ", ") .. " | list " .. U8.show(l))
+				end
+				local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
+				local b = U8.rect(box)
+				T.check(inside(b, { X = 0, Y = 0, R = gui.AbsoluteSize.X, B = gui.AbsoluteSize.Y }), tag .. ": the confirm box sits inside the screen", U8.show(b))
+				-- the buttons' row is the box less its 16 px margins (the 6 px wood edge and a gap): a button wider than the row
+				-- runs past the margin onto the frame
+				local edge = 6 * U8.scaleOf(box)
+				local row = box:FindFirstChild("Buttons")
+				local inner = row and U8.rect(row) or { X = b.X + edge, Y = b.Y + edge, R = b.R - edge, B = b.B - edge }
+				local spill = {}
+				for _, name in ipairs({ "ConfirmPrestige", "CancelPrestige" }) do
+					local btn = box:FindFirstChild(name, true)
+					local r = btn and U8.rect(btn)
+					if not r or not inside(r, inner) or r.X < b.X + edge or r.R > b.R - edge then
+						spill[#spill + 1] = name .. " " .. (r and U8.show(r) or "missing")
+					end
+				end
+				T.check(#spill == 0, tag .. ": Prestige! and Not yet sit inside their row, clear of the box's wood edge", table.concat(spill, ", ") .. " | row " .. U8.show(inner) .. " | box " .. U8.show(b))
+				local bad = U9.contrast()
+				T.check(#bad == 0, fmt("%s: every text reads on its fill with the confirm up (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				local greens = U8.greenActions(confirm)
+				T.check(#greens == 1 and greens[1] == "ConfirmPrestige", tag .. ": Prestige! is the dialog's one green plank", table.concat(greens, ", "))
+			end)
+		end
+		LKC.flushErrors("home_prestige_fits")
 	end)
 
 	return S

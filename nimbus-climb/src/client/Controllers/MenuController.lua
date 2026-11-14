@@ -2814,7 +2814,7 @@ do
 			ZIndex = 32,
 		}), "Section")
 		-- three lines: what starts over, what stays, what the new star gives
-		-- (kit-b U9-1) the lines scroll when a phone's window is too short for them (H.Layout sizes them to their text)
+		-- (kit-b U9-1) the lines scroll when a phone's window is too short for them (H.FitConfirm sizes them to their text)
 		local lines = scroller(box, "Lines", {
 			Position = UDim2.fromOffset(16, 62),
 			Size = UDim2.new(1, -32, 0, 3 * 62 + 2 * 8),
@@ -2830,8 +2830,9 @@ do
 			{ "Keep", "You keep", P5.GOOD },
 			{ "Gain", "You get", P5.HS.Wood },
 		}) do
-			-- (kit-b U9-1) a line and its text grow with a text longer than H.Layout's estimate instead of spilling out
-			local line = P5.signBlock(lines, "Line_" .. spec[1], { Size = UDim2.new(1, 0, 0, 62), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = i, ZIndex = 32 })
+			-- (kit-b U9-1 review) a line and its text are sized by H.FitConfirm from the text's real bounds, so the box and
+			-- its list know every line's height (an AutomaticSize line grew behind their backs and was cut by the list)
+			local line = P5.signBlock(lines, "Line_" .. spec[1], { Size = UDim2.new(1, 0, 0, 62), LayoutOrder = i, ZIndex = 32 })
 			H.ConfirmRows[#H.ConfirmRows + 1] = line
 			makeText(line, "Label", spec[2], "Heading", 19, spec[3], {
 				Position = UDim2.fromOffset(12, 0),
@@ -2842,7 +2843,6 @@ do
 			H.ConfirmLines[spec[1]] = makeText(line, "Text", "", "Body", 19, P5.HS.Text, {
 				Position = UDim2.fromOffset(132, 0),
 				Size = UDim2.new(1, -144, 0, 56),
-				AutomaticSize = Enum.AutomaticSize.Y,
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				ZIndex = 33,
@@ -2917,6 +2917,59 @@ do
 				H.ConfirmLines.Gain.Text = gain
 			end
 			confirm.Visible = on == true
+			if on then
+				H.FitConfirm()
+			end
+		end
+
+		-- (kit-b U9-1 review) each line as tall as the text it really shows (its TextBounds at the column's width: the first
+		-- star's "You get" names the Fusion Machine too, longer than any estimate from the sample words), the list as tall
+		-- as the three lines and the box as tall as that or the room H.Layout found; the list scrolls only past that room.
+		-- A text with no bounds yet (a hidden dialog, before its first layout) is estimated from its words.
+		function H.FitConfirm()
+			local fit = H.ConfirmFit
+			if not fit then
+				return
+			end
+			-- TextBounds is screen px; the sizes below are the box's own px (the window's UIScales sit above it)
+			local scale, cur = 1, box
+			while cur and not cur:IsA("LayerCollector") do
+				local ui = cur:IsA("GuiObject") and cur:FindFirstChildOfClass("UIScale")
+				if ui and ui.Scale > 0 then
+					scale = scale * ui.Scale
+				end
+				cur = cur.Parent
+			end
+			local words = fit.Short and P5.PRESTIGE_TEXT.Short or P5.PRESTIGE_TEXT
+			local content = 2 * 8
+			for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
+				local text = H.ConfirmLines[id]
+				local okB, bounds = pcall(function()
+					return text.TextBounds
+				end)
+				local textH
+				if text.Text ~= "" and okB and bounds and bounds.Y > 0 then
+					textH = math.ceil(bounds.Y / scale)
+				else
+					local said = text.Text ~= "" and text.Text or words[id]
+					textH = math.ceil(Theme.Measure(said, "Body", 19).X * 1.1 / fit.Column) * 23 -- (word wrap leaves a ragged edge)
+				end
+				local lineH = math.max(fit.Short and 50 or 62, textH + (fit.Short and 6 or 14))
+				text.Parent.Size = UDim2.new(1, -12, 0, lineH)
+				text.Size = UDim2.new(1, -144, 0, lineH - 6) -- the lip's room below
+				content = content + lineH
+			end
+			local boxH = math.min(fit.Top + content + fit.Foot, fit.Room)
+			H.ConfirmList.Size = UDim2.new(1, -32, 0, boxH - fit.Top - fit.Foot)
+			box.Size = UDim2.fromOffset(fit.BoxW, boxH)
+		end
+		-- a text whose bounds arrive or change after the fit (Roblox lays text out on its next frame) fits again
+		for _, text in pairs(H.ConfirmLines) do
+			text:GetPropertyChangedSignal("TextBounds"):Connect(function()
+				if confirm.Visible then
+					H.FitConfirm()
+				end
+			end)
 		end
 
 		------------------------------------------------------------------
@@ -3230,25 +3283,10 @@ do
 					row.Price.Size = UDim2.new(1, -((narrow and 140 or 164) + 12), 0, 32)
 				end
 			end
-			-- (kit-b U9-1) each line as tall as its longest text needs at this width (phones wrapped it to three lines and
-			-- spilt it out of the line), the box as tall as that or the window allows, its list scrolling past that
+			-- (kit-b U9-1) the box as wide as the window allows; H.FitConfirm makes each line as tall as its text and the box
+			-- as tall as those lines or the window allows, its list scrolling past that
 			local boxW = math.min(K.CONFIRM_W, w - 40)
-			local column = math.max(80, boxW - 32 - 12 - 144)
 			H.ShortConfirm = short == true
-			local words = short and P5.PRESTIGE_TEXT.Short or P5.PRESTIGE_TEXT
-			local widest = 0
-			for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
-				widest = math.max(widest, Theme.Measure(words[id], "Body", 19).X)
-			end
-			local textRows = math.ceil(widest * 1.1 / column) -- (word wrap leaves a ragged edge)
-			local lineH = math.max(short and 50 or 62, textRows * 23 + (short and 6 or 14))
-			for _, line in ipairs(H.ConfirmRows) do
-				line.Size = UDim2.new(1, -12, 0, lineH)
-				local text = line:FindFirstChild("Text")
-				if text then
-					text.Size = UDim2.new(1, -144, 0, lineH - 6) -- the lip's room below
-				end
-			end
 			-- a short window gets a tighter title and buttons, so its list keeps the room for its three lines
 			local top = short and 50 or 62
 			local buttonH = short and 48 or 56
@@ -3256,14 +3294,22 @@ do
 			H.ConfirmTitle.Position = UDim2.fromOffset(16, short and 6 or 12)
 			H.ConfirmButtons.Size = UDim2.new(1, -32, 0, buttonH)
 			H.ConfirmButtons.Position = UDim2.new(0.5, 0, 1, short and -10 or -14)
-			H.ConfirmYes.Size = UDim2.fromOffset(220, buttonH)
-			H.ConfirmNo.Size = UDim2.fromOffset(170, buttonH)
-			local want = top + 3 * lineH + 2 * 8 + foot
-			local room = math.max(240, (tonumber(_h) or 900) - CloudUI.ContentInset(true) - 12 - 16)
-			local boxH = math.min(want, room)
+			-- (kit-b U9-1 review) the two buttons share their row (the box less its 16 px margins), so a phone's narrow box
+			-- never pushes them onto the wood frame; a wide one keeps 220 and 170
+			local rowW = boxW - 32
+			local yesW = math.min(220, math.floor((rowW - 14) * 0.56))
+			H.ConfirmYes.Size = UDim2.fromOffset(yesW, buttonH)
+			H.ConfirmNo.Size = UDim2.fromOffset(math.min(170, rowW - 14 - yesW), buttonH)
+			H.ConfirmFit = {
+				BoxW = boxW,
+				Column = math.max(80, boxW - 32 - 12 - 144),
+				Short = short == true,
+				Top = top,
+				Foot = foot,
+				Room = math.max(240, (tonumber(_h) or 900) - CloudUI.ContentInset(true) - 12 - 16),
+			}
 			H.ConfirmList.Position = UDim2.fromOffset(16, top)
-			H.ConfirmList.Size = UDim2.new(1, -32, 0, boxH - top - foot)
-			box.Size = UDim2.fromOffset(boxW, boxH)
+			H.FitConfirm()
 		end
 
 		win.Refresh = H.Refresh
