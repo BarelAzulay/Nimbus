@@ -909,7 +909,7 @@ function H.buildConfirm()
 	Theme.Corner(box, UDim.new(0, 18))
 	U.ConfirmStroke = Theme.Stroke(box, C.Good, 4, 0)
 	U.ConfirmPop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = box })
-	U.ConfirmTitle = Theme.StyleTitle(label(box, "Title", "Title", 30, { ZIndex = 43 }))
+	U.ConfirmTitle = Theme.StyleTitle(label(box, "Title", "Title", 30, { ZIndex = 43 }), "Section") -- (kit-b prep) a dialog's title
 	U.ConfirmText = label(box, "Text", "Body", 20, {
 		ZIndex = 43, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextYAlignment = Enum.TextYAlignment.Top,
 	})

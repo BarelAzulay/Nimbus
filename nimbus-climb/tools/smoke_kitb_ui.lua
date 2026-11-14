@@ -105,6 +105,8 @@
 --   kitb_world_sign_icons     (server world) each world sign's icon by sign (machine and rarity-board coins, arena
 --                             trophies, gate stars = the difficulty's Stars, a locked pad's lock placed as a server
 --                             builds it, the pads' station icons, the closed bed's star, the bounce arrow)
+--   kitb_templates_hold_no_listeners (server world; kit-b prep, the leak hunt) HomeBuilder's cached station templates
+--                             are built frozen: no Theme caps / PixelIcon follow listener stays on a template label
 --   arena_side_invite_fits    (client) the incoming-challenge side card: trophies, power and the clock inside the card
 -- Plain Lua 5.1 syntax only.
 
@@ -1439,6 +1441,100 @@ local function serverScenarios()
 		T.check(#hits == 0, fmt("kitb emoji world: no world sign text carries an emoji code point (%d)", #hits), table.concat(hits, "; ", 1, math.min(#hits, 8)))
 		T.check((icons.star or 0) > 0, "kitb emoji world: the gates' difficulty stars are PixelIcons on their signs")
 		K.flushErrors("kitb_no_emoji_world")
+	end)
+
+	-- (kit-b prep, the leak hunt) final_checks' "no event connections leak across matches" went red at U6: its
+	-- TextLabel.Changed:* growth was traced to HomeBuilder's cached station templates (every (station, level[, open]) is
+	-- built once and only ever cloned; Clone copies no connections): each template sign kept Theme's caps listener
+	-- (Text) and each closed garden bed's star kept PixelIcon.Host's three follow listeners (TextColor3 /
+	-- TextTransparency / ZIndex), for the server's life. Templates are now built frozen (Theme.SetFrozen /
+	-- PixelIcon.SetFrozen): building every station level, and every garden bed count, adds no TextLabel listener; a frozen
+	-- caps label still reads in capitals, and a label set up after the freeze still keeps its capitals
+	S.kitb_templates_hold_no_listeners = guarded("kitb_templates_hold_no_listeners", function()
+		local Mock = rawget(_G, "Mock")
+		local function mod(key)
+			local inst = K.moduleInstance(key)
+			local ok, m = false, nil
+			if inst then
+				ok, m = pcall(require, inst)
+			end
+			return ok and type(m) == "table" and m or nil
+		end
+		local Theme, PI, HB, TC = theme(), mod("shared/PixelIcon"), mod("server/Services/HomeBuilder"), mod("shared/TycoonCatalog")
+		if not T.check(Theme and PI and HB and TC and Mock, "kitb templates: Theme, PixelIcon, HomeBuilder and TycoonCatalog load") then
+			return
+		end
+		local NAMES = { "TextLabel.Changed:Text", "TextLabel.Changed:TextColor3", "TextLabel.Changed:TextTransparency", "TextLabel.Changed:ZIndex" }
+		local function counts()
+			collectgarbage("collect")
+			local c = Mock.Stats().connections
+			local out = {}
+			for _, n in ipairs(NAMES) do
+				out[n] = c[n] or 0
+			end
+			return out
+		end
+		local function grown(a, b)
+			local out = {}
+			for _, n in ipairs(NAMES) do
+				if b[n] > a[n] then
+					out[#out + 1] = n .. " " .. a[n] .. " -> " .. b[n]
+				end
+			end
+			return out
+		end
+		-- the switches: frozen, a caps label is in capitals and connects nothing; Host / Lead draw and connect nothing
+		T.check(type(Theme.SetFrozen) == "function" and type(PI.SetFrozen) == "function", "kitb templates: Theme.SetFrozen and PixelIcon.SetFrozen exist")
+		if type(Theme.SetFrozen) ~= "function" or type(PI.SetFrozen) ~= "function" then
+			return
+		end
+		local before = counts()
+		local wasT, wasP = Theme.SetFrozen(true), PI.SetFrozen(true)
+		local frozenLabel = Theme.Label("frozen sign", "Title", { Size = 20 })
+		local icon = Theme.Label("", "Title", { Size = 20 })
+		local drawn = PI.Host(icon, "star", 18)
+		local lead = Theme.Label("lead", "Body", { Size = 18 })
+		local leadBox = PI.Lead(lead, "lock")
+		Theme.SetFrozen(wasT)
+		PI.SetFrozen(wasP)
+		local mid = counts()
+		T.check(frozenLabel.Text == "FROZEN SIGN", "kitb templates: a frozen caps label still reads in capitals", frozenLabel.Text)
+		T.check(drawn ~= nil and leadBox ~= nil, "kitb templates: frozen, Host and Lead still draw their icons")
+		local g = grown(before, mid)
+		T.check(#g == 0, "kitb templates: frozen, Theme and PixelIcon connect no TextLabel listener", table.concat(g, ", "))
+		-- after the freeze a caps label keeps its capitals as before (the listener is there)
+		local live = Theme.Label("live", "Title", { Size = 20 })
+		live.Text = "changed later"
+		T.eq(live.Text, "CHANGED LATER", "kitb templates: after the freeze a caps label still keeps its capitals")
+		for _, l in ipairs({ frozenLabel, icon, lead, live }) do
+			l:Destroy()
+		end
+		-- every station level (and every garden bed count) built as a template: no TextLabel listener stays behind
+		local start = counts()
+		local built = 0
+		for _, def in ipairs(TC.Stations or {}) do
+			local max = math.max(1, math.floor(tonumber(def.MaxLevel) or 1))
+			for level = 1, max do
+				if pcall(HB.Points, def.Id, level) then
+					built = built + 1
+				end
+				if def.Kind == "Garden" then
+					local beds = def.Slot and type(def.Slot.Beds) == "table" and #def.Slot.Beds or 0
+					for open = 0, beds do
+						local ok, m = pcall(HB.BuildStationModel, def.Id, level, nil, open)
+						if ok and m then
+							built = built + 1
+							m:Destroy()
+						end
+					end
+				end
+			end
+		end
+		local after = counts()
+		T.check(built > 0, "kitb templates: (setup) the station templates were built", tostring(built))
+		g = grown(start, after)
+		T.check(#g == 0, "kitb templates: building every station template leaves no TextLabel listener behind", table.concat(g, ", "))
+		K.flushErrors("kitb_templates_hold_no_listeners")
 	end)
 
 	-- (U7b review) each world sign U7b redrew holds its icon, by sign: the token coin before every machine tag's price and
@@ -3248,8 +3344,9 @@ local function clientScenarios()
 		LKC.flushErrors("menu_single_new_marker")
 	end)
 
-	-- the version: one Nunito line on the board "v6 · The Cute Blocks Update" that opens UPDATES; "v6" beside CREDITS (no
-	-- made-up ".0"); CREDITS is a small wood tag on a rope
+	-- the version: one Nunito line on the board with the latest update's title ("The Cute Blocks Update") that opens UPDATES;
+	-- (kit-b prep, the owner's "v6 once") the version number shows ONCE, on the rig's brass plate: no "v6 ·" on the line and
+	-- no "v6" beside CREDITS (no made-up ".0" either); CREDITS is a small wood tag on a rope
 	S.menu_version_text = guarded("menu_version_text", function()
 		local Theme = LoadingH.shared("Theme")
 		local Sign = Theme.Sign
@@ -3260,7 +3357,7 @@ local function clientScenarios()
 			local line = MenuH.find(menu, "VersionLine")
 			local board = MenuH.find(menu, "Board")
 			if T.check(line ~= nil and (line:IsA("TextButton") or line:IsA("TextLabel")), "menu version: the version line exists") then
-				T.eq(line.Text, "v" .. latest .. " \194\183 " .. notes.Notes[1].Title, "menu version: it reads 'v" .. latest .. " \194\183 " .. notes.Notes[1].Title .. "'")
+				T.eq(line.Text, notes.Notes[1].Title, "menu version: it reads '" .. notes.Notes[1].Title .. "' (no 'v" .. latest .. " \194\183')")
 				T.check(line:GetAttribute("FontRole") == "Body" or line:GetAttribute("FontRole") == "Label", "menu version: in Nunito (Body / Label role)", tostring(line:GetAttribute("FontRole")))
 				T.check(board ~= nil and line:IsDescendantOf(board), "menu version: on the board")
 				T.check(line:IsA("TextButton"), "menu version: it is a button")
@@ -3272,8 +3369,15 @@ local function clientScenarios()
 					LKC.advance(0.2)
 				end
 			end
-			local version = MenuH.find(menu, "Version")
-			T.eq(version and version.Text, "v" .. latest, "menu version: 'v" .. latest .. "' beside CREDITS, no '.0'")
+			T.check(MenuH.find(menu, "Version") == nil, "menu version: no 'v" .. latest .. "' label beside CREDITS")
+			-- the number once: the brass plate's "V6" is the one text on the title screen that names the version
+			local named = {}
+			for _, d in ipairs(menu:GetDescendants()) do
+				if (d:IsA("TextLabel") or d:IsA("TextButton")) and MenuH.shown(d) and string.find(string.lower(d.Text), "v" .. latest, 1, true) then
+					named[#named + 1] = d.Name .. " '" .. d.Text .. "'"
+				end
+			end
+			T.check(#named == 1 and named[1]:find("^PlateText") ~= nil, "menu version: 'v" .. latest .. "' shows once, on the brass plate", table.concat(named, ", "))
 			local credits = MenuH.find(menu, "CreditsButton")
 			local cf = credits and MenuH.find(credits, "Face")
 			T.check(credits ~= nil and credits:GetAttribute("SignKit") == "Plank" and cf and sameColor(cf.BackgroundColor3, Sign.Wood),
@@ -3382,6 +3486,27 @@ local function clientScenarios()
 					local swung = { X = b.X - droop, Y = b.Y, R = b.R + droop, B = b.B + droop }
 					T.check(swing ~= nil and not MenuH.overlap(MenuH.rect(credits), swung), "menu dock: the CREDITS tag is clear of the (swinging) board at " .. tag,
 						MenuH.show(MenuH.rect(credits)) .. " vs " .. MenuH.show(swung))
+				end
+				-- (kit-b prep, gate GATE_KITB) the CREDITS tag's posts (its pegs and ropes) clear the rig's brass version plate
+				local plate = nil
+				for _, d in ipairs(board:GetDescendants()) do
+					if d:GetAttribute("Rig") == "Plate" then
+						plate = d
+					end
+				end
+				local tagFrame = credits and credits.Parent
+				if plate and tagFrame then
+					local pr, posts, hit = MenuH.rect(plate), 0, {}
+					for _, d in ipairs(tagFrame:GetChildren()) do
+						if d.Name == "Peg" or d:GetAttribute("SignKit") == "Rope" then
+							posts = posts + 1
+							if MenuH.overlap(MenuH.rect(d), pr) then
+								hit[#hit + 1] = d.Name .. " " .. MenuH.show(MenuH.rect(d))
+							end
+						end
+					end
+					T.check(posts > 0 and #hit == 0, "menu dock: the CREDITS tag's posts clear the brass version plate at " .. tag,
+						table.concat(hit, ", ") .. " vs plate " .. MenuH.show(pr))
 				end
 				-- (U4 review) the board's two ropes run from above the screen to the board: clear of Roblox's top-left buttons
 				-- and of the CREDITS tag (its plank and its "vN"), so no rope crosses anything at the top of the screen
@@ -4045,6 +4170,9 @@ local function clientScenarios()
 	-- Title-role TextLabel named Title / TitleText / Headline in PlayerGui whose TitleLook is not "Ribbon" (a window title: the owner's T1)
 	-- or a kind of Theme.TitleExempt (a heading that skips the title look on purpose, each kind with its reason). Each
 	-- expected window title must be found as "Ribbon", so a window that stops building fails here instead of passing absent.
+	-- (kit-b prep, the owner's "ribbon on WINDOW titles only") each dialog / pop-up / card title must be found as "Section",
+	-- and every ribbon the walk meets must be a window's title (a CloudUI title bar, a header, the loading board's plate,
+	-- the Sky Trove's title bar).
 	S.kitb_titles_stamped = guarded("kitb_titles_stamped", function()
 		local Theme = LoadingH.shared("Theme")
 		local PC = LoadingH.shared("PetCatalog")
@@ -4072,11 +4200,12 @@ local function clientScenarios()
 		local found, bad = {}, {}
 		-- (sign/logo review) the ribbon is a window's NAME: never on a heading inside a scrolling body (a Shop card's
 		-- SECRET ROULETTE, Gems, XP Potion), and the Shop holds one ribbon (its header's "Shop")
-		local scrolled, shopRibbons = {}, {}
+		local scrolled, shopRibbons, ribbons = {}, {}, {}
 		local function walk()
 			for _, d in ipairs(pg:GetDescendants()) do
 				if d:IsA("TextLabel") and d:GetAttribute("TitleLook") == "Ribbon" then
 					local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					ribbons[path] = true
 					if d:FindFirstAncestorWhichIsA("ScrollingFrame") then
 						scrolled[path] = true
 					end
@@ -4163,36 +4292,61 @@ local function clientScenarios()
 		pcall(client("UI/PetBits").closeRecall)
 		-- the window titles this walk must have seen as "Ribbon" (a Lua pattern on the path inside PlayerGui each)
 		local expected = {
+			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
+			{ "the Training window", "^NimbusTrain%..-Header%.Title$" },
+			{ "the pet picker", "^NimbusPetPicker%..-Header%.Title$" },
+			{ "the Fusion window", "^NimbusFusion%..-Header%.Title$" },
+			{ "the Shop", "^NimbusShop%..-Header%.Title$" },
+			{ "the Sky Trove", "^NimbusTrove%..-%.TitleText$" },
+		}
+		-- (kit-b prep) the dialog, pop-up and card titles this walk must have seen as the plain "Section" title
+		local expectedSection = {
 			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$" },
 			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$" },
-			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
 			{ "the Go home hero card", "%.Hero%.GoHome%..-%.Title$" },
 			{ "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
-			{ "the Training window", "^NimbusTrain%..-Header%.Title$" },
 			{ "the Training confirm", "^NimbusTrain%..-%.Box%.Title$" },
-			{ "the pet picker", "^NimbusPetPicker%..-%.Title$" },
-			{ "the Fusion window", "^NimbusFusion%..-%.Title$" },
-			{ "the Shop", "^NimbusShop%..-%.Title$" },
-			{ "the Sky Trove", "^NimbusTrove%..-%.TitleText$" },
 			{ "the loss card", "^NimbusLoss%.LossCard%..-%.Title$" },
 			{ "the battle result card", "%.ResultCard%..-%.Title$" },
 			{ "the hatch stage", "^NimbusHatch%..-%.Title$" },
 			{ "the garden recall dialog", "%.GardenRecall%.Box%.Title$" },
 			{ "the party panel", "^NimbusHud%..-%.PartyPanel%..-%.Title$" },
 		}
-		local missing = {}
-		for _, e in ipairs(expected) do
-			local hit = false
-			for path, look in pairs(found) do
-				if look == "Ribbon" and path:find(e[2]) then
-					hit = true
+		local function seenAs(list, want)
+			local out = {}
+			for _, e in ipairs(list) do
+				local hit = false
+				for path, look in pairs(found) do
+					if look == want and path:find(e[2]) then
+						hit = true
+						break
+					end
+				end
+				if not hit then
+					out[#out + 1] = e[1]
+				end
+			end
+			return out
+		end
+		local missing = seenAs(expected, "Ribbon")
+		local notPlain = seenAs(expectedSection, "Section")
+		-- a ribbon is a window's NAME: a CloudUI title bar, a header (SignKit's plate, the Training / Fusion / picker
+		-- header), the loading board's plate, the Sky Trove's title bar; anything else wearing it is a stray
+		local windowTitle = { "%.TitleBar%.Title$", "%.Header%.Title$", "%.Header%.Plate%.Title$", "%.Plate%.Title$", "^NimbusTrove%..-%.TitleText$" }
+		local strays = {}
+		for path in pairs(ribbons) do
+			local ok = false
+			for _, pat in ipairs(windowTitle) do
+				if path:find(pat) then
+					ok = true
 					break
 				end
 			end
-			if not hit then
-				missing[#missing + 1] = e[1]
+			if not ok then
+				strays[#strays + 1] = path
 			end
 		end
+		table.sort(strays)
 		local badList, seen = {}, {}
 		for path, look in pairs(bad) do
 			badList[#badList + 1] = path .. " (" .. look .. ")"
@@ -4203,6 +4357,8 @@ local function clientScenarios()
 		table.sort(badList)
 		table.sort(seen)
 		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Ribbon", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
+		T.check(#notPlain == 0, "kitb titles walk: every dialog / pop-up / card title is built and stamped the plain Section title", table.concat(notPlain, ", ") .. " | seen: " .. table.concat(seen, "; "))
+		T.check(#strays == 0, "kitb titles walk: the ribbon appears only on window titles", table.concat(strays, "; "))
 		T.check(#badList == 0, "kitb titles walk: no Title-role title without the TitleLook stamp (Plain, or a Theme.TitleExempt kind)", table.concat(badList, "; "))
 		local inScroll, shopList = {}, {}
 		for path in pairs(scrolled) do

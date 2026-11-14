@@ -738,6 +738,17 @@ end
 -- labels already listening for their text (weak keys: the label owns its connection)
 local capsHooked = setmetatable({}, { __mode = "k" })
 
+-- (kit-b prep, the leak hunt) while frozen, a caps-role label gets its capitals now and no Text listener: for a tree that
+-- is only ever cloned (HomeBuilder's cached station templates; Clone copies no connections), where the listener would
+-- only sit on the template for the server's life. A label set up again after the freeze is hooked as usual.
+-- SetFrozen(on) -> the previous setting
+local capsFrozen = false
+function Theme.SetFrozen(on)
+	local was = capsFrozen
+	capsFrozen = on == true
+	return was
+end
+
 local function keepCaps(obj)
 	if obj:IsA("TextBox") then
 		return -- what a player types stays as typed
@@ -746,7 +757,7 @@ local function keepCaps(obj)
 	if obj.Text ~= now then
 		obj.Text = now
 	end
-	if capsHooked[obj] then
+	if capsFrozen or capsHooked[obj] then
 		return
 	end
 	capsHooked[obj] = true
@@ -897,8 +908,9 @@ end
 -- text, size, alignment and transparency.
 Theme.TitleExempt = {
 	Section = "a section head, a card's heading or an empty-state line inside a window (Best times, Quick match, Elements, a Home "
-		.. "section, the Shop's SECRET ROULETTE / Gems / XP Potion cards): "
-		.. "the window's own title carries the title look, its sections stay plain under it",
+		.. "section, the Home hero cards, the Shop's SECRET ROULETTE / Gems / XP Potion cards), or a dialog / pop-up / HUD panel "
+		.. "title (the confirms, the garden recall, the loss / battle result / dungeon end cards, the hatch stage, the party "
+		.. "panel): the owner's rule (kit-b prep) is the ribbon on WINDOW titles only, everything else stays plain",
 	OwnGradient = "a headline that paints its own gradient over white text (the race result's VICTORY! / DEFEAT, the HUD's "
 		.. "game-name card); a second title treatment would fight that gradient",
 	Logo = "a letter of the game's logo (shared/Logo.lua, L2): the lockup draws its own letter look (bands, outline, block "

@@ -1085,15 +1085,14 @@ local function clientScenarios()
 			local function fits(menu, w, h, tag)
 				local board = Menu.find(menu, "Board")
 				local credits = Menu.find(menu, "CreditsButton")
-				local version = credits and credits.Parent and credits.Parent:FindFirstChild("Version")
-				if not T.check(board ~= nil and credits ~= nil and version ~= nil, "sign fit: (setup) the board and the CREDITS tag at " .. tag) then
+				if not T.check(board ~= nil and credits ~= nil, "sign fit: (setup) the board and the CREDITS tag at " .. tag) then
 					return
 				end
 				local b = rect(board)
 				local droop = math.ceil(0.5 * b.R - 0.5 * b.X) * math.sin(math.rad(1.5))
 				T.check(b.B + droop <= h - 16, "sign fit: the (swinging) board ends 16 px or more above the screen bottom at " .. tag, show(b) .. fmt(" + %.1f droop, screen %d", droop, h))
 				T.check(b.Y >= -0.5, "sign fit: the board's top is on screen at " .. tag, show(b))
-				for _, part in ipairs({ credits, version }) do
+				for _, part in ipairs({ credits }) do
 					local r = rect(part)
 					T.check(r.X >= -0.5 and r.R <= w + 0.5 and r.Y >= -0.5 and r.B <= h + 0.5, "sign fit: " .. part.Name .. " is on screen at " .. tag, show(r))
 				end

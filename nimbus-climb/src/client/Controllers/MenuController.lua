@@ -2039,7 +2039,7 @@ function P5.heroCard(parent, id, callback)
 		TextYAlignment = Enum.TextYAlignment.Bottom,
 		TextScaled = true,
 		ZIndex = 6,
-	}))
+	}), "Section") -- (kit-b prep) a card's heading inside the Home window: the window's bar wears the ribbon
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 24, Parent = hero.Title })
 	hero.Sub = makeText(card.Body, "Sub", spec.Sub, "Body", 19, Color3.fromRGB(255, 247, 222), {
 		Position = UDim2.new(0, 96, 0.5, 2),
@@ -2781,7 +2781,7 @@ do
 			Position = UDim2.fromOffset(16, 12),
 			Size = UDim2.new(1, -32, 0, 40),
 			ZIndex = 32,
-		}))
+		}), "Section") -- (kit-b prep) a dialog's title: the ribbon is for window titles only
 		-- three lines: what starts over, what stays, what the new star gives
 		local lines = makeFrame(box, "Lines", {
 			Position = UDim2.fromOffset(16, 62),

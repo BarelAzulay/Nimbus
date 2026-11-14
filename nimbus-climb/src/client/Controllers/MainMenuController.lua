@@ -28,9 +28,10 @@
 -- awning, the navy header (Config.MainMenu.Header = "NIMBUS CLIMB", Title role; the greeting is the owner's pick M4), the
 -- stone body: the tag line (Config.Tagline), PLAY (the one green plank, 72 tall, a 6 px lip, FredokaOne 40, the pixel
 -- play triangle), SETTINGS (pixel gear) + UPDATES (pixel scroll; the pixel star while UpdateNotes.Latest >
--- Settings.SeenNotes is the one NEW marker) as half-width stone planks, the version line "vN · <latest title>" (opens
--- UPDATES) and the hint (keyboard / gamepad / touch). The CREDITS wood tag hangs on its own rope with "vN" beside it:
--- bottom-right on a desktop, top-right under Roblox's buttons on touch / portrait. (sign build, the owner's picks on
+-- Settings.SeenNotes is the one NEW marker) as half-width stone planks, the version line "<latest title>" (opens
+-- UPDATES; the number "vN" shows once, on the rig's brass plate) and the hint (keyboard / gamepad / touch). The CREDITS
+-- wood tag hangs on its own rope: bottom-right on a desktop, top-right under Roblox's buttons on touch, under the board
+-- on two ropes straddling the brass plate on portrait. (sign build, the owner's picks on
 -- .superpowers/sign-pitch) Entrance "Rope drop": once the loading screen has faded, the board falls on its ropes, the
 -- ropes snap taut (two pixel dust puffs, the SignThunk hook), it bounces and swings gently (Config.MainMenu.Entrance),
 -- the buttons pop from their centre 60 ms apart; then it sways +-1 degree about the rope tops until PLAY
@@ -138,6 +139,7 @@ local K = {
 	TOAST_HOLD = "MainMenu", -- NotifyController.SetHeld owner key (quick wins, win 1)
 	TAGLINE = "Climb the storm. Together.", -- when Config.Tagline is missing
 	HEADER = "NIMBUS CLIMB", -- when Config.MainMenu.Header is missing
+	NOTES_LINE = "What's new", -- the version line when the latest note has no title
 	-- (kit B U4) the hint line on the board, by input (H.inputKind)
 	HINTS = { Keyboard = "Press ENTER to play", Gamepad = "Press A to play", Touch = "Tap PLAY to jump in!" },
 	-- (kit B U4) the title screen's Signboard, design px of a 1080p screen, and its motion (seconds)
@@ -898,7 +900,7 @@ end
 -- less a 16 px gutter wide (560 at most). In the board: the awning, the navy header (Config.MainMenu.Header, Title role),
 -- the stone body with the tag line, PLAY (the one green plank), SETTINGS + UPDATES (half-width stone planks; the pixel
 -- star on UPDATES is the one NEW marker), the version line (opens UPDATES) and the hint line. The CREDITS tag hangs on
--- its own rope, "vN" beside it: bottom-right on a desktop, top-right under Roblox's buttons on a landscape touch screen,
+-- its own rope: bottom-right on a desktop, top-right under Roblox's buttons on a landscape touch screen,
 -- and under the board (swinging with it, between the thumb zones) on a portrait one, where the top strip has room only
 -- for the board's two ropes (U4 review). The ropes keep right of Roblox's top-left buttons (ROPE_CLEAR).
 -- `enter`: the board drops in on its ropes, settles with a swing, the buttons pop (Menu.enter)
@@ -962,15 +964,11 @@ function Menu.build(enter)
 	local woodH = bodyH + 2 * Z.Frame
 	local boardH = headY + headH + woodH
 
-	-- the CREDITS tag: its rope, then the plank; "vN" (its measured width) on its left
+	-- the CREDITS tag: its rope, then the plank (kit-b prep, the owner's "v6 once": the version shows only on the rig's
+	-- brass plate, no "vN" beside the tag)
 	local notes = H.notes()
 	local latest = tostring(notes and notes.Latest or 6)
-	local tagW, ropeH, vW = B.TAG_W, 22, 48
-	local okV, vSize = pcall(Theme.Measure, "v" .. latest, "Label", 18)
-	if okV and vSize then
-		vW = math.ceil(vSize.X) + 6
-	end
-	local lead = vW + 8
+	local tagW, ropeH = B.TAG_W, 22
 
 	-- where it hangs: below Roblox's top bar; a portrait board docks above the thumb zones (and above the CREDITS tag
 	-- hanging under it where there are no thumb zones)
@@ -1117,11 +1115,12 @@ function Menu.build(enter)
 	M.Ui.NewBadge = badge
 	Menu.refreshBadge()
 
-	-- the version line (opens UPDATES) and the hint line, Nunito on the stone
+	-- the version line (opens UPDATES) and the hint line, Nunito on the stone; the line names the latest update, its number
+	-- is on the brass plate (kit-b prep, "v6 once")
 	local first = notes and type(notes.Notes) == "table" and notes.Notes[1] or nil
-	local versionText = "v" .. latest
+	local versionText = K.NOTES_LINE
 	if first and type(first.Title) == "string" then
-		versionText = versionText .. " \194\183 " .. first.Title
+		versionText = first.Title
 	end
 	local version = Instance.new("TextButton")
 	version.Name = "VersionLine"
@@ -1144,12 +1143,19 @@ function Menu.build(enter)
 	hint.ZIndex = 2
 	hint.Parent = body
 
-	-- the CREDITS tag on its rope with "vN" beside it: bottom-right on a desktop; top-right under Roblox's buttons on a
-	-- landscape touch screen (clear of the thumb zones); on a portrait screen it hangs from the board's bottom edge,
-	-- centred between the thumb zones, and drops, swings and leaves with the board (it is in the Swing)
-	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(lead + tagW, ropeH + B.TAG_H), ZIndex = 3 }, portrait and swing or content)
+	-- the CREDITS tag on its rope: bottom-right on a desktop; top-right under Roblox's buttons on a landscape touch screen
+	-- (clear of the thumb zones); on a portrait screen it hangs from the board's bottom edge, centred between the thumb
+	-- zones, and drops, swings and leaves with the board (it is in the Swing). (kit-b prep, gate GATE_KITB) Under the board
+	-- one centred post would land on the rig's brass version plate, and between a phone's thumb zones there is no room to
+	-- slide the tag past it, so there it hangs on two short ropes that straddle the plate
+	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(tagW, ropeH + B.TAG_H), ZIndex = 3 }, portrait and swing or content)
+	local posts = { math.floor(tagW / 2) }
 	if portrait then
-		tag.Position = UDim2.fromOffset(side + math.floor((boardW - lead - tagW) / 2), half + topY + boardH)
+		tag.Position = UDim2.fromOffset(side + math.floor((boardW - tagW) / 2), half + topY + boardH)
+		-- the plate's half width as SignKit.Rig draws it on this board, then the 6 px peg half and a 6 px gap
+		local rk = math.min(math.max(boardW / 250, 1), 2)
+		local d = math.min(math.floor(SignKit.RigSizes.PlateW * rk + 0.5) / 2 + 12, math.floor(tagW / 2) - 12)
+		posts = { math.floor(tagW / 2 - d), math.ceil(tagW / 2 + d) }
 	elseif touch then
 		tag.AnchorPoint = Vector2.new(1, 0)
 		tag.Position = UDim2.fromOffset(math.floor(dw - 16 / f), math.ceil(58 / f) + 4)
@@ -1157,8 +1163,10 @@ function Menu.build(enter)
 		tag.AnchorPoint = Vector2.new(1, 1)
 		tag.Position = UDim2.fromOffset(math.floor(dw - 20), math.floor(dh - 18))
 	end
-	H.frame("Peg", { BackgroundTransparency = 0, BackgroundColor3 = Sign.Text, Position = UDim2.fromOffset(lead + math.floor(tagW / 2) - 6, 0), Size = UDim2.fromOffset(12, 6), ZIndex = 4 }, tag)
-	SignKit.Rope(tag, { Name = "Rope", Length = ropeH + 6, Position = UDim2.fromOffset(lead + math.floor((tagW - Z.RopeW) / 2), 2), ZIndex = 3 })
+	for i, x in ipairs(posts) do
+		H.frame("Peg", { BackgroundTransparency = 0, BackgroundColor3 = Sign.Text, Position = UDim2.fromOffset(x - 6, 0), Size = UDim2.fromOffset(12, 6), ZIndex = 4, LayoutOrder = i }, tag)
+		SignKit.Rope(tag, { Name = "Rope", Length = ropeH + 6, Position = UDim2.fromOffset(x - math.floor(Z.RopeW / 2), 2), ZIndex = 3, LayoutOrder = i })
+	end
 	M.Ui.Credits = SignKit.Plank(tag, {
 		Name = "CreditsButton",
 		Text = "CREDITS",
@@ -1169,19 +1177,12 @@ function Menu.build(enter)
 		Lip = K.SIGN.WoodDark,
 		Edge = Sign.Text,
 		TextColor = Sign.Stone,
-		Position = UDim2.fromOffset(lead, ropeH),
+		Position = UDim2.fromOffset(0, ropeH),
 		ZIndex = 4,
 		Callback = function()
 			MainMenuController.OpenCredits()
 		end,
 	})
-	local v = Theme.Label("v" .. latest, "Label", { Size = 18, Color = K.WHITE, Outline = "World", OutlineColor = K.INK })
-	v.Name = "Version"
-	v.Position = UDim2.fromOffset(0, ropeH)
-	v.Size = UDim2.fromOffset(vW, B.TAG_H - Z.Lip)
-	v.TextXAlignment = Enum.TextXAlignment.Right
-	v.ZIndex = 4
-	v.Parent = tag
 
 	M.Ui.Swing, M.Ui.Board, M.Ui.Tag = swing, board, tag
 	M.Ui.Rest, M.Ui.Lift = swing.Position, half + 40

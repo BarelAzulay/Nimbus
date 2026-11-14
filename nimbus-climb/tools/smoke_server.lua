@@ -3677,9 +3677,36 @@ S.final_checks = guarded("final_checks", function()
 	advance(5)
 	local stats = Mock.Stats()
 	local base = W.baseline or stats
+	-- (kit-b prep, the leak hunt) the one traced growth that is not a leak: a spot's showcase tag (SpotService.buildTag)
+	-- is built on the spot's first claim and kept for the server's life, and its pet name (a caps role) keeps its capitals
+	-- with ONE Text listener (the name changes with the pet). Bounded one-time building, at most one tag per spot: those
+	-- listeners are allowed, never more tags than spots. (The rest of U6's growth, HomeBuilder's cached templates, is
+	-- fixed in the code: kitb_templates_hold_no_listeners.)
+	local allow = {}
+	do
+		local spotsFolder = workspace:FindFirstChild("NimbusLobby") and workspace.NimbusLobby:FindFirstChild("Spots")
+		local spotCount, tags, capsLabels = 0, 0, 0
+		for _, c in ipairs(spotsFolder and spotsFolder:GetChildren() or {}) do
+			if c.Name:match("^Spot_%d+$") then
+				spotCount = spotCount + 1
+			end
+		end
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("BillboardGui") and d.Name == "ShowcaseTag" then
+				tags = tags + 1
+				for _, l in ipairs(d:GetDescendants()) do
+					if l:IsA("TextLabel") and Theme.CapsRoles[l:GetAttribute("FontRole")] then
+						capsLabels = capsLabels + 1
+					end
+				end
+			end
+		end
+		T.check(tags <= spotCount, "the showcase tags are one per spot at most (built once, kept)", tags .. " tags, " .. spotCount .. " spots")
+		allow["TextLabel.Changed:Text"] = capsLabels
+	end
 	local grew = {}
 	for name, n in pairs(stats.connections) do
-		local b = base.connections[name] or 0
+		local b = (base.connections[name] or 0) + (allow[name] or 0)
 		-- Players.* events keep one connection per service; other counts must not grow with matches
 		if n > b + 2 then
 			grew[#grew + 1] = name .. " " .. b .. " -> " .. n

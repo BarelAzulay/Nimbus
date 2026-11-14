@@ -2087,6 +2087,18 @@ local ART_BY_ID = {
 	DecorPodium = Art.Podium,
 }
 
+-- (kit-b prep, the leak hunt) a template is only ever cloned and Clone copies no connections: its art is built frozen
+-- (Theme.SetFrozen / PixelIcon.SetFrozen: the signs get their capitals and icons, but no follow listeners), or every
+-- cached template kept a caps listener per sign and three icon listeners per closed bed's star for the server's life
+-- (final_checks: TextLabel.Changed:Text / TextColor3 / TextTransparency / ZIndex grew with every template built)
+local function frozenCall(fn, ...)
+	local wasT, wasP = Theme.SetFrozen(true), PixelIcon.SetFrozen(true)
+	local ok, result = pcall(fn, ...)
+	Theme.SetFrozen(wasT)
+	PixelIcon.SetFrozen(wasP)
+	return ok, result
+end
+
 -- template for (def, level); the Garden's open bed count changes its art (cache key Garden:<level>:<open>)
 local function stationTemplate(def, level, accent, open)
 	local key = def.Id .. ":" .. level
@@ -2103,9 +2115,9 @@ local function stationTemplate(def, level, accent, open)
 	local ok, result = false, nil
 	if fn then
 		if garden then
-			ok, result = pcall(fn, def, level, open)
+			ok, result = frozenCall(fn, def, level, open)
 		else
-			ok, result = pcall(fn, def, level, TycoonCatalog and TycoonCatalog.PlotSize or 72, accent)
+			ok, result = frozenCall(fn, def, level, TycoonCatalog and TycoonCatalog.PlotSize or 72, accent)
 		end
 		if not ok then
 			warn("[HomeBuilder] art for " .. key .. " failed: " .. tostring(result))

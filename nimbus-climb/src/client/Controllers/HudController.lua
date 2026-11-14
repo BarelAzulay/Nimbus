@@ -1886,7 +1886,7 @@ local function buildParty(holder)
 		Size = UDim2.new(1, -(M.PartyLeaveW + 8), 0, M.TitleH),
 		RichText = true,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	}))
+	}), "Section") -- (kit-b prep) a HUD panel, not a window: no ribbon
 	UI.PartyLeave = CloudUI.Button({
 		Name = "LeaveParty",
 		Text = "Leave",

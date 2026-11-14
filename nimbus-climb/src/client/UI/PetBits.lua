@@ -599,7 +599,7 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
 	Theme.StyleTitle(PetBits.text(box, "Title", "This pet is gardening!", "Title", 28, GARDEN_COLOR, { -- (kit-b U7b: no seedling emoji)
 		Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
-	}))
+	}), "Section") -- (kit-b prep) a dialog's title: the ribbon is for window titles only
 	PetBits.text(box, "Body", "Take it out of the garden and put it in your team?", "Body", 20, WHITE, {
 		Position = UDim2.fromOffset(16, 54), Size = UDim2.new(1, -32, 0, 60), TextWrapped = true, ZIndex = 62,
 	})

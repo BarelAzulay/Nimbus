@@ -913,7 +913,7 @@ function H.buildConfirm()
 		Size = UDim2.new(1, -32, 0, 40),
 		TextScaled = true,
 		ZIndex = 32,
-	}))
+	}), "Section") -- (kit-b prep) a dialog's title: the ribbon is for window titles only
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 22, Parent = U.ConfirmTitle })
 	U.ConfirmText = H.text(box, "Text", "", "Body", 20, WHITE, {
 		Position = UDim2.fromOffset(20, 60),

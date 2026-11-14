@@ -421,7 +421,7 @@ local function build()
 		Gui = gui,
 		Card = card,
 		Fit = fit,
-		Title = Theme.StyleTitle(text(body, "Title", "", "Title", 34, GOLD, { TextXAlignment = Enum.TextXAlignment.Left })), -- (T0) the one title treatment
+		Title = Theme.StyleTitle(text(body, "Title", "", "Title", 34, GOLD, { TextXAlignment = Enum.TextXAlignment.Left }), "Section"), -- (kit-b prep) a pop-up card's title: no ribbon
 		Sub = text(body, "Sub", "", "Body", 19, MUTED),
 		Lines = lines,
 		Close = NeonKit.Button({ Name = "CloseButton", Text = "", Color = "Red", Variant = "Outline", Size = UDim2.fromOffset(K.CLOSE, K.CLOSE), TextSize = 24, Parent = body, Callback = function()

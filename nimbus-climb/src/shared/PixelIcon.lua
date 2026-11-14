@@ -221,6 +221,16 @@ end
 -- Hosting again on the same host drops the old icon and its connections first (a mark that changes, a coin resized).
 local hosted = setmetatable({}, { __mode = "k" }) -- [host] = { icon = Frame, conns = { connections } }
 
+-- (kit-b prep, the leak hunt) while frozen, Host and Lead draw and place the icon once and connect nothing: for a tree
+-- that is only ever cloned (HomeBuilder's cached station templates; Clone copies no connections), where a follow
+-- listener would only sit on the template for the server's life. SetFrozen(on) -> the previous setting
+local frozen = false
+function PixelIcon.SetFrozen(on)
+	local was = frozen
+	frozen = on == true
+	return was
+end
+
 function PixelIcon.Host(host, name, px, colour)
 	local old = hosted[host]
 	if old then
@@ -262,6 +272,9 @@ function PixelIcon.Host(host, name, px, colour)
 		sync()
 	end
 	draw()
+	if frozen then
+		return icon
+	end
 	local conns = entry.conns
 	conns[#conns + 1] = host:GetPropertyChangedSignal("TextColor3"):Connect(sync)
 	conns[#conns + 1] = host:GetPropertyChangedSignal("TextTransparency"):Connect(sync)
@@ -422,6 +435,10 @@ function PixelIcon.Lead(label, name, opts)
 	sync()
 	place()
 	box.Parent = label
+	if frozen then
+		leadConns[label][childName] = nil
+		return box
+	end
 	leadConns[label][childName] = {
 		label:GetPropertyChangedSignal("TextColor3"):Connect(sync),
 		label:GetPropertyChangedSignal("TextTransparency"):Connect(sync),
