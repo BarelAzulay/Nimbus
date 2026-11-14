@@ -123,11 +123,13 @@
 --                             headings, best-time rows with their difficulty's lip, nothing round, every text readable
 --   stats_fits_phone          (client) 844x390 / 390x844: inside the screen, the touch controls gone while open and back
 --                             on Close, every stat's chip / number / caption inside its block, captions whole
---   stats_clear_of_hud        (client) 1920x1080 / 1280x720: the window and its awning over no HUD part (the currency
---                             strips step aside while it is open), the strips back on Close
+--   stats_clear_of_hud        (client) 1920x1080 / 1280x720 / 844x390 / 390x844: the window and its awning over no HUD
+--                             part (the currency strips step aside on PC, the vitals card on a phone, while it is open),
+--                             both back on Close
 --   titles_kitb_tags          (client) each title over a head a flat opaque kit B tag in its role's colour (Top10 gold,
 --                             Top100 stone, Creator navy), Nameplate text in the look's ink, no outline / gradient /
---                             tween; the VIP crown gold on its wood lip, the lobby crown a pixel gap above its anchor
+--                             tween, the plate with its wood edge inside the (clipping) billboard and 26 px above the
+--                             anchor; the VIP crown gold on its wood lip, the lobby crown a pixel gap above its anchor
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -6326,12 +6328,15 @@ local function clientScenarios()
 	-- (U9-3 renders: at 1280x720 the HUD's currency strips peeked out over the Stats window's awning, its X over them, as the
 	-- render gate found for the Shop) on PC the Stats window, its awning included, lies over no shown part of the HUD: the
 	-- currency strips step aside while it is open and come back on Close
+	-- (U9-3 review: at 844x390 the docked window cut the vitals card's bars) and on a phone, landscape and portrait: a window
+	-- that would reach over part of the vitals card hides the card (HideVitals) and it comes back on Close
 	S.stats_clear_of_hud = guarded("stats_clear_of_hud", function()
-		for _, s in ipairs({ { 1920, 1080, false }, { 1280, 720, false } }) do
-			local strips = nil
+		for _, s in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }) do
+			local strips, vitals = nil, nil
 			U93.at(s[1], s[2], s[3], "stats hud", function(tag, win)
 				local hud = U8.pg():FindFirstChild("NimbusHud")
 				strips = hud and hud:FindFirstChild("Currency", true)
+				vitals = hud and hud:FindFirstChild("Vitals", true)
 				local boxes = { U8.rect(win) }
 				local roof = win:FindFirstChild("Roof", true)
 				if roof and U8.shown(roof) then
@@ -6355,7 +6360,10 @@ local function clientScenarios()
 				end
 				T.check(#over == 0, tag .. ": the Stats window and its awning lie over no HUD part", table.concat(over, ", ", 1, math.min(#over, 8)) .. " | window " .. U8.show(boxes[1]))
 			end)
-			T.check(strips ~= nil and U8.shown(strips), fmt("stats hud %dx%d: the currency strips are back after Close", s[1], s[2]))
+			if not s[3] then
+				T.check(strips ~= nil and U8.shown(strips), fmt("stats hud %dx%d: the currency strips are back after Close", s[1], s[2]))
+			end
+			T.check(vitals ~= nil and U8.shown(vitals), fmt("stats hud %dx%d: the vitals card is back after Close", s[1], s[2]))
 		end
 		LKC.flushErrors("stats_clear_of_hud")
 	end)
@@ -6423,6 +6431,30 @@ local function clientScenarios()
 			end
 			local inTag = TC and TC.TagOf(players[3])
 			crownOk(inTag and inTag:FindFirstChild("Crown"), "titles kit b: the Creator's crown inside the tag")
+			-- (U9-3 review) a BillboardGui clips what lies outside its Size, and the plate's wood edge is a Border stroke drawn
+			-- outside the plate: the plate with its edge lies whole inside the billboard (a tag sitting flush on the gui's
+			-- bottom showed only its side edges), with the crown and without; the plate's face still 26 px above the anchor
+			for i, kind in ipairs({ "Top10", "Top100", "Creator" }) do
+				local k = "titles kit b: " .. kind .. (i == 3 and " (with the crown)" or "")
+				local tag = TC and TC.TagOf(players[i])
+				local plate = tag and tag:FindFirstChild("Plate")
+				local edge = plate and plate:FindFirstChild("SignEdge")
+				if T.check(plate ~= nil and edge ~= nil, k .. ": (setup) the plate and its edge") then
+					local W, H = tag.Size.X.Offset, tag.Size.Y.Offset
+					local ox, oy = 0, 0
+					pcall(function()
+						ox, oy = tag.AbsolutePosition.X, tag.AbsolutePosition.Y
+					end)
+					local e = edge.Thickness
+					local x, y = plate.AbsolutePosition.X - ox, plate.AbsolutePosition.Y - oy
+					local r, b = x + plate.AbsoluteSize.X, y + plate.AbsoluteSize.Y
+					T.check(x - e >= -0.5 and y - e >= -0.5 and r + e <= W + 0.5 and b + e <= H + 0.5,
+						fmt("%s: the plate and its %d px edge lie inside the %dx%d billboard (it clips)", k, e, W, H),
+						fmt("edge box %.1f,%.1f .. %.1f,%.1f", x - e, y - e, r + e, b + e))
+					local above = (tag.SizeOffset.Y - 0.5) * H + (H - b)
+					T.check(math.abs(above - 26) <= 0.5, fmt("%s: the plate's face sits 26 px above the anchor (%.1f)", k, above))
+				end
+			end
 			local own = nil
 			for _, bb in ipairs(U93.boards({ players[4] })) do
 				own = own or (bb.Name == "VipCrown" and bb or nil)

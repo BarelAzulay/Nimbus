@@ -2,15 +2,15 @@
 -- (client/Controllers/TitleController) and the VIP crown drawn inside a titled player's tag (VipController). Loaded by
 -- tools/smoke.py in the CLIENT world:
 --   client_titles   (client, 1920x1080)
---     the tag per kind on dummy players: a BillboardGui TitleTag on the head (240 x 36 px, StudsOffset (0, 2.0, 0),
---       SizeOffset.Y == 0.5 + 26 / H, MaxDistance 90, not on top, LightInfluence 0) > Plate > Label; the texts
+--     the tag per kind on dummy players: a BillboardGui TitleTag on the head (240 x 40 px: the 36 px plate and its 2 px
+--       edge inside the clipping gui, StudsOffset (0, 2.0, 0), SizeOffset.Y == 0.5 + (26 - 2) / H, MaxDistance 90, not on top, LightInfluence 0) > Plate > Label; the texts
 --       "TOP 10 \194\183 #3" / "TOP 100" / "CREATOR" at >= 20 px; (kit-b U9-3, finding 15) the Plate a flat kit B tag of the
 --       text's width, centred: opaque, its role's face (Top10 gold, Top100 stone, Creator navy) in a wood edge with its lip,
 --       square; the Label FredokaOne (Nameplate) in the look's ink, no outline; no gradient and no tween (the Top10 rainbow
 --       and the gold / cyan-violet gradients went)
 --     hidden while that player is InBattle; the local player's tag hidden with the camera at the head and shown at 12
 --       studs (another player's tag ignores the camera); the tag looks the same on Low graphics (nothing to pause)
---     a titled VIP: the Crown inside the TitleTag (34 x 34, centred, 4 px above the Plate, the billboard 240 x 74) and no
+--     a titled VIP: the Crown inside the TitleTag (34 x 34, centred, 4 px above the Plate, the billboard 240 x 76) and no
 --       VipCrown on that head; the crown follows VipController's rule (gone in InMatch and on Low graphics, back after);
 --       the title cleared on a VIP -> the VipCrown back at 2.4 studs; an untitled VIP -> the VipCrown, no TitleTag
 --     respawn (Review Focus 5): one tag on the new head, the old one destroyed; the attribute cleared -> the tag removed;
@@ -197,9 +197,9 @@ S.client_titles = guarded("client_titles", function()
 		T.eq(G.tagsOf(w.p), 1, k .. ": exactly one TitleTag on that character")
 		if okTag then
 			local H = tag.Size.Y.Offset
-			T.check(tag.Size.X.Scale == 0 and tag.Size.Y.Scale == 0 and tag.Size.X.Offset == 240 and H == 36, k .. ": 240 x 36 px (a constant on-screen size)", tostring(tag.Size))
+			T.check(tag.Size.X.Scale == 0 and tag.Size.Y.Scale == 0 and tag.Size.X.Offset == 240 and H == 40, k .. ": 240 x 40 px (a constant on-screen size; the plate's 36 and its 2 px edge each side)", tostring(tag.Size))
 			T.check(tag.StudsOffset.X == 0 and abs(tag.StudsOffset.Y - 2.0) < 1e-6 and tag.StudsOffset.Z == 0, k .. ": StudsOffset (0, 2.0, 0)", tostring(tag.StudsOffset))
-			T.check(tag.SizeOffset.X == 0 and abs(tag.SizeOffset.Y - (0.5 + 26 / H)) < 1e-6, k .. ": SizeOffset.Y == 0.5 + 26 / H (the plate 26 px above the anchor at any distance)", tostring(tag.SizeOffset))
+			T.check(tag.SizeOffset.X == 0 and abs(tag.SizeOffset.Y - (0.5 + 24 / H)) < 1e-6, k .. ": SizeOffset.Y == 0.5 + (26 - 2) / H (the plate 26 px above the anchor at any distance)", tostring(tag.SizeOffset))
 			T.check(tag.MaxDistance == 90 and tag.AlwaysOnTop == false and tag.LightInfluence == 0 and tag.Enabled == true, k .. ": MaxDistance 90, not on top, LightInfluence 0, shown",
 				fmt("max %s, top %s, light %s, enabled %s", tostring(tag.MaxDistance), tostring(tag.AlwaysOnTop), tostring(tag.LightInfluence), tostring(tag.Enabled)))
 			T.check(#tag:GetDescendants() <= 6, k .. ": at most 6 instances inside the tag (no crown)", tostring(#tag:GetDescendants()))
@@ -291,12 +291,12 @@ S.client_titles = guarded("client_titles", function()
 			return
 		end
 		T.check(G.vipCrown(pv) == nil, "titles: " .. label .. ": no VipCrown billboard on that head")
-		T.check(tag.Size.X.Offset == 240 and tag.Size.Y.Offset == 74 and abs(tag.SizeOffset.Y - (0.5 + 26 / 74)) < 1e-6, "titles: " .. label .. ": the billboard is 240 x 74 with the crown slot, SizeOffset.Y 0.5 + 26 / 74",
+		T.check(tag.Size.X.Offset == 240 and tag.Size.Y.Offset == 76 and abs(tag.SizeOffset.Y - (0.5 + 24 / 76)) < 1e-6, "titles: " .. label .. ": the billboard is 240 x 76 with the crown slot, SizeOffset.Y 0.5 + (26 - 2) / 76",
 			fmt("%s, %s", tostring(tag.Size), tostring(tag.SizeOffset)))
 		T.check(crown.AbsoluteSize.X == 34 and crown.AbsoluteSize.Y == 34 and abs(crown.AbsolutePosition.X + 17 - 120) <= 1, "titles: " .. label .. ": the Crown is 34 x 34, centred",
 			fmt("%dx%d at %d", crown.AbsoluteSize.X, crown.AbsoluteSize.Y, crown.AbsolutePosition.X))
 		T.check(abs(plate.AbsolutePosition.Y - (crown.AbsolutePosition.Y + 34) - 4) <= 0.5 and abs(plate.AbsolutePosition.Y + plate.AbsoluteSize.Y - 74) <= 0.5,
-			"titles: " .. label .. ": the Crown sits 4 px above the Plate, the Plate at the bottom", fmt("crown y %d, plate y %d h %d", crown.AbsolutePosition.Y, plate.AbsolutePosition.Y, plate.AbsoluteSize.Y))
+			"titles: " .. label .. ": the Crown sits 4 px above the Plate, the Plate 2 px (its edge) above the bottom", fmt("crown y %d, plate y %d h %d", crown.AbsolutePosition.Y, plate.AbsolutePosition.Y, plate.AbsoluteSize.Y))
 		-- (kit-b U7a) the crown is a PixelIcon: its host, its Frame and one Frame per merged run; (U9-3) twice (the gold crown
 		-- over its wood lip) in a holder, on top of the tag's 6
 		local PI = G.req("shared/PixelIcon")
@@ -307,7 +307,7 @@ S.client_titles = guarded("client_titles", function()
 		local tag = TC.TagOf(pv)
 		local crown = tag and tag:FindFirstChild("Crown")
 		T.check(tag ~= nil and (crown == nil or crown.Visible == false) and G.vipCrown(pv) == nil, "titles: " .. label .. ": no crown at all")
-		T.check(tag ~= nil and abs(tag.SizeOffset.Y - (0.5 + 26 / tag.Size.Y.Offset)) < 1e-6, "titles: " .. label .. ": SizeOffset.Y follows the billboard's height")
+		T.check(tag ~= nil and abs(tag.SizeOffset.Y - (0.5 + 24 / tag.Size.Y.Offset)) < 1e-6, "titles: " .. label .. ": SizeOffset.Y follows the billboard's height")
 	end
 	crownCheck("title over VIP")
 	pv:SetAttribute(IN_MATCH, true)

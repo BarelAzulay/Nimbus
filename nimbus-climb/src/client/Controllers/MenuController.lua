@@ -726,6 +726,9 @@ local function layoutWindow(win)
 	if changed and win.Built and win.OnLayout then
 		safe("layout " .. win.Id, win.OnLayout, w, h, w < K.NARROW, h < K.SHORT, w < K.TALL)
 	end
+	if win.Shown then
+		P5.vitalsFor(win, true) -- (U9-3 review) the docked box moved: over the vitals card or clear of it now
+	end
 end
 
 local function createWindow(spec)
@@ -772,23 +775,57 @@ end
 -- (kit-b U9-3; the U9-3 renders, as the render gate found for the Shop) a window with HideCurrency steps the HUD's currency
 -- strips aside while it is shown (HudController.SetCurrencyHidden, keyed by the window's id): docked right on a 1280x720
 -- screen its awning and X lay over them. They come back when it closes
-function P5.currencyFor(win, on)
-	if not win.Spec.HideCurrency then
-		return
-	end
+-- the HudController module, or nil (looked up once)
+function P5.hud()
 	if P5.HudModule == nil then
 		P5.HudModule = false
 		local module = script.Parent:FindFirstChild("HudController")
 		local ok, mod = pcall(function()
 			return module and require(module)
 		end)
-		if ok and type(mod) == "table" and type(mod.SetCurrencyHidden) == "function" then
+		if ok and type(mod) == "table" then
 			P5.HudModule = mod
 		end
 	end
-	if P5.HudModule then
-		safe("currency " .. win.Id, P5.HudModule.SetCurrencyHidden, win.Id, on == true)
+	return P5.HudModule or nil
+end
+
+function P5.currencyFor(win, on)
+	if not win.Spec.HideCurrency then
+		return
 	end
+	local hud = P5.hud()
+	if hud and type(hud.SetCurrencyHidden) == "function" then
+		safe("currency " .. win.Id, hud.SetCurrencyHidden, win.Id, on == true)
+	end
+end
+
+-- (U9-3 review; the U9-3 renders: at 844x390 the docked Stats window cut the vitals card's bars) a window with HideVitals
+-- hides the HUD's vitals card while it is shown and its docked box lies over the card's slot by more than a shared edge
+-- (HudController.SetVitalsHidden, keyed by the window's id): on a phone it reaches over the card, on PC it clears it and
+-- the card stays. Checked again on every layout (the screen turned or resized); the card comes back when it closes
+function P5.vitalsFor(win, on)
+	if not win.Spec.HideVitals then
+		return
+	end
+	local hud = P5.hud()
+	if not (hud and type(hud.SetVitalsHidden) == "function") then
+		return
+	end
+	local over = false
+	local rect = on == true and win.Dock and win.Dock.Rect
+	if rect and type(hud.GetLayout) == "function" then
+		local ok, layout = pcall(hud.GetLayout)
+		local slot = ok and type(layout) == "table" and layout.VitalsSlot
+		if slot then
+			-- the dock's box is in screen px (top bar included), the HUD's in gui-area px
+			local y = rect.y - P5.inset()
+			local w = math.min(rect.x + rect.w, slot.X + slot.W) - math.max(rect.x, slot.X)
+			local h = math.min(y + rect.h, slot.Y + slot.H) - math.max(y, slot.Y)
+			over = w > 4 and h > 4
+		end
+	end
+	safe("vitals " .. win.Id, hud.SetVitalsHidden, win.Id, over)
 end
 
 local function ensureBuilt(win)
@@ -936,6 +973,7 @@ function openWindow(id, args)
 	ensureBuilt(win)
 	P5.touchFor(win, true)
 	P5.currencyFor(win, true)
+	P5.vitalsFor(win, true) -- after the currency step: the HUD re-lays out then
 	win.Holder.Visible = true
 	if not wasShown then
 		win.Pop.Scale = 0.86
@@ -965,6 +1003,7 @@ function closeWindow(id, instant)
 	syncBackBinding()
 	P5.touchFor(win, false)
 	P5.currencyFor(win, false)
+	P5.vitalsFor(win, false)
 	if win.OnClose then
 		safe("close " .. id, win.OnClose)
 	end
@@ -3673,9 +3712,10 @@ function MenuController.Init()
 	buildHint()
 	buildColumn()
 	-- (kit-b U9-3) the Stats window on the Signboard kit too; its lists scroll through both bottom corners on a phone, so the
-	-- touch controls go while it is open (HideTouch, as Home), and the HUD's currency strips step aside (HideCurrency)
+	-- touch controls go while it is open (HideTouch, as Home), and the HUD's currency strips step aside (HideCurrency);
+	-- (U9-3 review) on a phone, where it reaches over the vitals card, the card hides too (HideVitals)
 	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true, Skin = "Signboard", Icon = Config.Icons.Stats or "stats",
-		HideTouch = true, HideCurrency = true })
+		HideTouch = true, HideCurrency = true, HideVitals = true })
 	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true, Skin = "Signboard", Icon = HOME_ICON.House, HideTouch = true })
 	relayoutMenu()
 	updateMenuActive()

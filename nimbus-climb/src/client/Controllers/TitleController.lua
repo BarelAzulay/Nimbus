@@ -6,10 +6,11 @@
 --                                                          drawn inside the TitleTag (a pixel gap, never a stud gap)
 --
 -- Per player: the Title / TitleRank attributes (only the server writes them: LeaderboardService), CharacterAdded and
--- InBattle. A BillboardGui "TitleTag" on the head (Adornee = Head, 240 x 36 px, 240 x 74 with the crown slot, MaxDistance
--- 90, not on top, LightInfluence 0) > Plate (the text's width) > Label (22 px, 24 for Creator). Its height above Roblox's
--- name is set in pixels: StudsOffset (0, 2.0, 0) (about where Roblox anchors the name) and SizeOffset (0, 0.5 + 26 / H),
--- so the plate's bottom stays 26 px above that point at any distance (the tag, the crown and Roblox's name are all
+-- InBattle. A BillboardGui "TitleTag" on the head (Adornee = Head, 240 x 40 px, 240 x 76 with the crown slot: the plate's
+-- 36 plus its 2 px wood edge kept inside the clipping gui, MaxDistance 90, not on top, LightInfluence 0) > Plate (the
+-- text's width, 2 px above the gui's bottom) > Label (22 px, 24 for Creator). Its height above Roblox's name is set in
+-- pixels: StudsOffset (0, 2.0, 0) (about where Roblox anchors the name) and SizeOffset (0, 0.5 + (26 - 2) / H), so the
+-- plate's bottom stays 26 px above that point at any distance (the tag, the crown and Roblox's name are all
 -- constant-pixel billboards: a stud gap shrinks on screen with distance and lets them slide into each other).
 -- (kit-b U9-3, finding 15) the tag is a kit B sign tag, one colour by role, no glow, gloss or animation: the Plate a flat
 -- opaque face with its darker lip along the bottom and a 2 px wood edge, square (CloudUI.SignBlock); the Label FredokaOne
@@ -130,12 +131,15 @@ local function drop(player)
 end
 
 local function build(player, head, kind, text, crown)
-	local H = crown and (K.CROWN + K.CROWN_GAP + K.PLATE_H) or K.PLATE_H
+	-- (U9-3 review) a BillboardGui clips its descendants and the wood edge is a Border stroke outside the plate: the gui
+	-- keeps K.EDGE px under the plate (and above it without the crown; the crown slot's gap holds the edge otherwise)
+	local top = crown and (K.CROWN + K.CROWN_GAP) or K.EDGE
+	local H = top + K.PLATE_H + K.EDGE
 	local gui = Instance.new("BillboardGui")
 	gui.Name = K.NAME
 	gui.Size = UDim2.fromOffset(K.WIDTH, H)
 	gui.StudsOffset = Vector3.new(0, K.STUDS, 0)
-	gui.SizeOffset = Vector2.new(0, 0.5 + K.ABOVE / H)
+	gui.SizeOffset = Vector2.new(0, 0.5 + (K.ABOVE - K.EDGE) / H) -- the plate's face, not the gui, 26 px up
 	gui.MaxDistance = K.MAX_DISTANCE
 	gui.AlwaysOnTop = false
 	gui.LightInfluence = 0
@@ -143,11 +147,11 @@ local function build(player, head, kind, text, crown)
 
 	local size = (kind == "Creator") and K.CREATOR_TEXT or K.TEXT
 	local textW = math.ceil(Theme.Measure(text, "Nameplate", size, 4096).X)
-	local plateW = math.min(K.WIDTH, textW + 2 * K.PAD)
+	local plateW = math.min(K.WIDTH - 2 * K.EDGE, textW + 2 * K.PAD)
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
-	plate.Position = UDim2.fromScale(0.5, 1)
+	plate.Position = UDim2.new(0.5, 0, 1, -K.EDGE)
 	plate.Size = UDim2.fromOffset(plateW, K.PLATE_H)
 	plate.BorderSizePixel = 0
 	-- (kit-b U9-3) the flat block: its face, the wood edge, the lip
