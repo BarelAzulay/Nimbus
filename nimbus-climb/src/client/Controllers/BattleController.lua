@@ -407,7 +407,7 @@ local K = {
 	ROW_GAP = 6,
 	ROWS_MAX = 8,
 	ROWS_COMPACT = 2,
-	TARGET_OVER = 12, -- the TARGET tab reaches this far over its row's top edge (wide screens)
+	TARGET_OVER = 22, -- the TARGET tab sits on its row's top edge, this far over it with 2 px to spare (wide screens; U9-6 review: was 12, the tab hung over the name)
 	TOP_W = 470,
 	TOP_W_COMPACT = 300,
 	MODE_H = 40,
@@ -5368,6 +5368,12 @@ local function fitPill(l, h)
 	local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 16
 	local ok, size = pcall(Theme.MeasureLabel, l)
 	local tw = max((ok and typeof(size) == "Vector2") and size.X or 0, textWidth(l.Text, l.TextSize))
+	-- (U9-6 review: "TARGET" in capitals is wider than the 0.62 em guess) the role's own width too, with its spare widening
+	local role = l:GetAttribute("FontRole")
+	local okR, sizeR = pcall(Theme.Measure, l.Text, role, l.TextSize)
+	if role and okR and typeof(sizeR) == "Vector2" then
+		tw = max(tw, sizeR.X)
+	end
 	l.AutomaticSize = Enum.AutomaticSize.X
 	l.Size = UDim2.fromOffset(math.ceil(tw) + inset + 4, h or 22)
 end
@@ -5763,7 +5769,10 @@ function Hud.BuildHelper(i)
 	H.Initial = label(face, "", "Display", 26, { Name = "Initial", Size = UDim2.fromScale(1, 1), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = KB.Ink })
 	H.KO = label(face, "KO", "Title", 22, { Name = "KO", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextColor3 = SIGN.Stone, BackgroundTransparency = 0.3, BackgroundColor3 = KB.Ink })
 	Theme.Corner(H.KO, "Round")
-	H.Count = label(face, "", "Display", 24, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
+	-- (kit-b U9-6 review: a white number on the light well read 1.35:1) the buff countdown in stone on a navy veil over the
+	-- portrait: it reads over the well and over any pet, and the dimmed pet says it is cooling down
+	H.Count = label(face, "", "Display", 24, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = SIGN.Stone, BackgroundTransparency = 0.25, BackgroundColor3 = SIGN.Navy })
+	Theme.Corner(H.Count, "Round")
 	H.Level = smallPill(cell, "Lv 1", SIGN.Navy, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None, ZIndex = 8 })
 	H.Level.TextSize = 16
 	H.Buff = label(cell, "", "Heading", 15, { Name = "Buff", TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd }, true)
@@ -6045,11 +6054,15 @@ function Hud.LayoutEnemies(B, m)
 			row.Hp.Root.Position = UDim2.fromOffset(x, h - 15)
 			row.Hp.Root.Size = UDim2.fromOffset(w - x - 10, 9)
 			row.Bracket.Visible = locked
-			-- "TARGET": a gold tab on the locked row's top edge (wide screens; a phone keeps the bracket only)
+			-- "TARGET": a gold tab standing on the locked row's top edge, all of it over the row (wide screens; a phone keeps the
+			-- bracket only; U9-6 review: it hung 9 px into the row, over the name's end). The locked row is the first, so the
+			-- tab has the K.TARGET_OVER band above the list to itself
 			row.Target.Visible = locked and not m.Compact
-			row.Target.AnchorPoint = Vector2.new(1, 0.5)
-			row.Target.Position = UDim2.new(1, -10, 0, -2)
-			row.Target.TextSize = 15
+			row.Target.AnchorPoint = Vector2.new(1, 1)
+			row.Target.Position = UDim2.new(1, -10, 0, 2)
+			-- (sized at the size Hud.FixText will draw it at: the floor's design size on a small screen)
+			row.Target.TextSize = max(15, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
+			row.Target:SetAttribute("BaseText", 15)
 			fitPill(row.Target, 22)
 			-- (kit-b U9-6) the locked row is the selected card (the gold face, the ink edge); a boss's row keeps a gold lip
 			row.Stroke.Color = locked and KB.Ink or KB.Edge
@@ -6182,8 +6195,18 @@ function Hud.ClusterLayout(m)
 		local row2 = base + bigPx + gap
 		out.Element = at(right - elementPx / 2, row2 + elementPx / 2, element)
 		local row3 = row2 + elementPx + gap
-		out.Dash = at(right - smallPx / 2, row3 + smallPx / 2, small)
 		out.Target = at(right - smallPx - gap - smallPx / 2, row3 + smallPx / 2, small)
+		-- (kit-b U9-6 review: TARGET's tag, kept out of the centre 40%, ran under DASH) DASH steps up just enough that its
+		-- round face clears TARGET's tag by 3 px (a tag spans the lower part of its face; the row has no room to widen)
+		local tw, th = Hud.FaceTag("Target", "TARGET", small, false)
+		local tagX = right - smallPx - gap - smallPx / 2 + Hud.FaceTagShift(out.Target, tw, m) * f
+		local dashX, r = right - smallPx / 2, smallPx / 2 + 3
+		local dx = max(0, dashX - (tagX + tw * f / 2))
+		local dashY = row3 + smallPx / 2
+		if dx < r then
+			dashY = max(dashY, row3 + (5 + th) * f + math.sqrt(r * r - dx * dx))
+		end
+		out.Dash = at(dashX, dashY, small)
 	else
 		-- landscape: [TARGET][SPECIAL] left of the jump button (the bottom strip), ELEMENT then DASH above SPECIAL. A small
 		-- phone: the vitals card ends the strip and the enemy list (two rows + "+n more") the stack, so SPECIAL, ELEMENT and
@@ -6191,10 +6214,16 @@ function Hud.ClusterLayout(m)
 		local left = r.jump[1] - gap
 		local base = r.jump[2] - 4
 		local v = CheerUp.Layout()
-		bigPx = clamp(left - (v and (v.X + v.W) or 0) - 2 * gap - smallPx, K.SPECIAL_TOUCH_MIN_PX, bigPx)
+		-- (kit-b U9-6 review: TARGET's tag butted against SPECIAL's) the row spaces the buttons by their name tags where a tag
+		-- is wider than its face: SPECIAL's (its attack's name) and TARGET's
+		local names = Hud.CaptionTexts(St.battle)
+		local targetW = max(smallPx, Hud.FaceTag("Target", "TARGET", small, false) * f)
+		local specialOver = max(0, Hud.FaceTag("Special", names.Special, big, false) - big) * f / 2
+		bigPx = clamp(left - (v and (v.X + v.W) or 0) - 2 * gap - targetW - specialOver, K.SPECIAL_TOUCH_MIN_PX, bigPx)
 		big = bigPx / f
+		specialOver = max(0, Hud.FaceTag("Special", names.Special, big, false) - big) * f / 2
 		out.Special = at(left - bigPx / 2, base + bigPx / 2, big)
-		out.Target = at(left - bigPx - gap - smallPx / 2, base + smallPx / 2, small)
+		out.Target = at(left - bigPx - specialOver - gap - targetW / 2, base + smallPx / 2, small)
 		local row2 = base + bigPx + gap
 		local listBottom = ((Hud.listTop or K.EDGE) + K.ROWS_COMPACT * (K.ROW_H_COMPACT + K.ROW_GAP) + 24 - K.ROW_GAP) * f
 		local room = m.VY - m.Inset - listBottom - row2 - gap
@@ -6264,7 +6293,9 @@ function Hud.Rebuild()
 	-- enemy list (right) -----------------------------------------------------------------------------
 	-- (kit-b U9-6, the render gate: the TARGET tab sat on the currency strip) a wide screen's locked row carries its TARGET
 	-- tab over its top edge: the list starts that much lower under the strips
-	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and (curBottom + 6 + (m.Compact and 0 or K.TARGET_OVER)) or topY
+	-- (U9-6 review) with no strip up there the tab still needs its band: under the top edge, not into Roblox's bar
+	local over = m.Compact and 0 or K.TARGET_OVER
+	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and (curBottom + 6 + over) or (topY + over)
 	Hud.listTop = rightY
 	Hud.enemies.Visible = isFighting
 	local listH = 0
@@ -6366,50 +6397,61 @@ local function wrapLines(text, w, px)
 	return max(1, lines)
 end
 
--- a touch button's name (kit-b U9-6; was a TextScaled label at 11-15 px): at NAME_PX on the screen, one size, on a stone tag
--- over the lower part of the face (a little wider than the face; wider still where a word or the 2-line wrap needs it),
--- 1 or 2 lines; the glyph and the countdown keep the face above it. `whole`: TARGET's flash (NEXT / AUTO / ONE ENEMY) takes the
--- whole face, no tag, the glyph steps aside
-function Hud.PlaceFaceName(A, d, whole)
-	local face = d - 10
+-- a touch button's name tag for `text` on a button `d` design px wide (kit-b U9-6): w, h, the text size (design px). At
+-- NAME_PX on the screen, one size, a little wider than the face (TARGET's: the face's width), wider still where a word or
+-- the 2-line wrap needs it, 1 or 2 lines (TARGET: 1). `whole`: TARGET's flash takes the whole face. Hud.ClusterLayout
+-- leaves the tags their room with it (U9-6 review)
+function Hud.FaceTag(kind, text, d, whole)
 	local f = max(0.05, Hud.m and Hud.m.F or 1)
 	local px = math.ceil(K.NAME_PX / f - 1e-6)
-	local cap, plate = A.Caption, A.NamePlate
-	cap.TextSize = px
-	cap:SetAttribute("BaseText", px)
-	local text = cap.Text
-	local w = d + ((A.kind == "Target") and 0 or 14)
+	local w = d + ((kind == "Target") and 0 or 14)
 	local pad = 6
 	for word in string.gmatch(tostring(text), "%S+") do
 		w = max(w, math.ceil(textWidth(word, px)) + 2 * pad)
 	end
-	local maxLines = (whole or A.kind ~= "Target") and 2 or 1
+	local maxLines = (whole or kind ~= "Target") and 2 or 1
 	while wrapLines(text, w - 2 * pad, px) > maxLines and w < 3 * d do
 		w = w + 2
 	end
 	local lines = min(maxLines, wrapLines(text, w - 2 * pad, px))
-	local h = whole and face or (lines * math.ceil(px * 1.2) + 4)
-	-- the tag ends on the face's bottom edge (the button's ring shows under it), centred on it; a tag wider than the button
-	-- moves aside only to stay out of the screen's centre 40% (where its button is clear of it) and on the screen
-	local top = 5 + face - h
-	local shift = 0
-	local okA, ax, bw = pcall(function()
-		return A.Button.AbsolutePosition.X + A.Button.AbsoluteSize.X / 2, A.Button.AbsoluteSize.X
-	end)
-	local cam = workspace.CurrentCamera
-	local vx = cam and cam.ViewportSize.X or 0
-	if w > d and okA and vx > 0 and (bw or 0) > 0 then
-		local s = bw / d -- screen px per design px
-		local half, bhalf = w * s / 2, bw / 2
-		if ax >= vx / 2 and ax - bhalf >= vx * 0.7 - 0.5 and ax - half < vx * 0.7 then
-			shift = vx * 0.7 - (ax - half)
-		elseif ax < vx / 2 and ax + bhalf <= vx * 0.3 + 0.5 and ax + half > vx * 0.3 then
-			shift = vx * 0.3 - (ax + half)
-		end
-		shift = min(shift, vx - 4 - (ax + half))
-		shift = max(shift, 4 - (ax - half))
-		shift = shift / s
+	return w, whole and (d - 10) or (lines * math.ceil(px * 1.2) + 4), px
+end
+
+-- how far a tag `w` design px wide moves aside from the centre of its button (spec = Hud.ClusterLayout's { x, y, d }): only
+-- to stay out of the screen's centre 40% (where its button is clear of it) and on the screen. From the layout's own numbers
+-- (U9-6 review: it read AbsolutePosition, which can be stale before the first layout pass). Design px
+function Hud.FaceTagShift(spec, w, m)
+	if not (spec and m) or w <= spec[3] then
+		return 0
 	end
+	local f = max(0.05, m.F)
+	local vx = m.VX
+	local ax = vx + spec[1] * f -- the button's centre on the screen (Commands' right edge is the screen's)
+	local half, bhalf = w * f / 2, spec[3] * f / 2
+	local shift = 0
+	if ax >= vx / 2 and ax - bhalf >= vx * 0.7 - 0.5 and ax - half < vx * 0.7 then
+		shift = vx * 0.7 - (ax - half)
+	elseif ax < vx / 2 and ax + bhalf <= vx * 0.3 + 0.5 and ax + half > vx * 0.3 then
+		shift = vx * 0.3 - (ax + half)
+	end
+	shift = min(shift, vx - 4 - (ax + half))
+	shift = max(shift, 4 - (ax - half))
+	return shift / f
+end
+
+-- a touch button's name (kit-b U9-6; was a TextScaled label at 11-15 px) on its stone tag (Hud.FaceTag) over the lower part
+-- of the face; the glyph and the countdown keep the face above it. `whole`: TARGET's flash (NEXT / AUTO / ONE ENEMY) takes
+-- the whole face, no tag, the glyph steps aside
+function Hud.PlaceFaceName(A, d, whole)
+	local face = d - 10
+	local f = max(0.05, Hud.m and Hud.m.F or 1)
+	local cap, plate = A.Caption, A.NamePlate
+	local w, h, px = Hud.FaceTag(A.kind, cap.Text, d, whole)
+	cap.TextSize = px
+	cap:SetAttribute("BaseText", px)
+	-- the tag ends on the face's bottom edge (the button's ring shows under it), centred on it (Hud.FaceTagShift)
+	local top = 5 + face - h
+	local shift = Hud.FaceTagShift(Hud.cluster and Hud.cluster[A.kind], w, Hud.m)
 	cap.Position = UDim2.new(0.5, shift, 0, top)
 	cap.Size = UDim2.fromOffset(w, h)
 	cap.TextYAlignment = Enum.TextYAlignment.Center
@@ -6651,16 +6693,21 @@ function Hud.Bench(B)
 end
 
 -- the action captions: the attacks' names (the form's at the pet's stage), TARGET + its flash (NEXT / AUTO / ONE ENEMY)
-function Hud.Captions(B)
-	local f = B.fighterId and B.units[B.fighterId]
+function Hud.CaptionTexts(B)
+	local f = B and B.fighterId and B.units[B.fighterId]
 	local ea = f and type(f.info.elementAttack) == "table" and f.info.elementAttack or nil
 	local sp = f and type(f.info.special) == "table" and f.info.special or nil
-	local caps = {
+	return {
 		Target = St.targetFlash or "TARGET",
 		Element = ea and string.upper(tostring(ea.Name)) or "ELEMENT",
 		Special = sp and string.upper(tostring(sp.Name)) or "SPECIAL",
 		Dash = "DASH",
 	}
+end
+
+function Hud.Captions(B)
+	local f = B.fighterId and B.units[B.fighterId]
+	local caps = Hud.CaptionTexts(B)
 	local T = Hud.buttons.Target
 	if T and Hud.m and Hud.m.Touch then
 		-- (a phone: the flash takes the whole face, "ONE ENEMY" is two lines)
@@ -6853,12 +6900,16 @@ function Hud.Update(B, now, force)
 	end
 	local last = Hud.last or {}
 	Hud.last = last
-	local modeText, _, modeShort = Hud.ModeText(B)
+	local modeText, _, modeShorts = Hud.ModeText(B)
 	if last.mode ~= modeText or last.modeW ~= Hud.mode.Size.X.Offset then
 		last.mode = modeText
 		last.modeW = Hud.mode.Size.X.Offset
-		-- (kit-b U9-6) the line whole: a narrow card shows the short form (Hud.ModeText's third value)
-		Hud.SetFit(Hud.mode, modeShort and { modeText, modeShort } or { modeText }, Hud.m)
+		-- (kit-b U9-6) the line whole: a narrow card shows a short form (Hud.ModeText's third value)
+		local forms = { modeText }
+		for _, t in ipairs(modeShorts or {}) do
+			forms[#forms + 1] = t
+		end
+		Hud.SetFit(Hud.mode, forms, Hud.m)
 	end
 	local left = B.TimeLimit > 0 and (B.TimeLimit - B.renderT) or 0
 	local timerText = B.TimeLimit > 0 and fmtTime(left) or ""
@@ -7030,7 +7081,8 @@ function Hud.Update(B, now, force)
 		setText(A.Count, countText)
 		setVisible(A.Count, countText ~= "")
 		local ready = frac >= 1
-		A.Glyph.TextTransparency = (countText ~= "") and 0.7 or 0
+		-- (kit-b U9-6 review: the countdown over the faded glyph's ink pixels read 2.8:1) the countdown takes the glyph's place
+		A.Glyph.TextTransparency = (countText ~= "") and 1 or 0
 		local cue = (kind == "Dash" and B.cue == "Dash") or (kind == "Special" and ready and f ~= nil and f.special ~= nil)
 		local glow = cue and (0.45 + 0.35 * (0.5 + 0.5 * sin(now * 8))) or 1
 		if abs(A.Glow.BackgroundTransparency - glow) > 0.02 then
@@ -7076,45 +7128,59 @@ function Hud.Update(B, now, force)
 	end
 end
 
+-- the mode line, its colour and its short forms, longest first (kit-b U9-6 review: every mode has one, so Hud.SetFit never
+-- has to cut the line on a narrow card - a portrait phone's under-card cut "Round 8 - Best 12")
 function Hud.ModeText(B)
-	local text, color, short
+	local text, color, shorts
 	if B.Mode == "Raid" then
 		text, color = "BOSS RAID", KB.Mode.Raid
 		if B.Raid and B.Raid.Tier then
 			text = text .. " - " .. tostring(B.Raid.Tier)
+			shorts = { "BOSS RAID" }
 		end
 	elseif B.Mode == "Dungeon" then
 		local d = B.Dungeon or {}
 		local compact = Hud.m and Hud.m.Compact
-		text, color = "DUNGEON - Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1)), KB.Mode.Dungeon
+		local room = "Room " .. tostring(num(d.Room, 1))
+		text, color = "DUNGEON - Floor " .. tostring(num(d.Floor, 1)) .. " - " .. room, KB.Mode.Dungeon
+		shorts = { room }
 		if compact then
 			-- (a phone's line is short: the room + the wave; DungeonController's side card shows the floor)
 			local waves = num(d.Waves, 0)
 			if waves > 1 then
 				local wave = "Wave " .. clamp(max(num(d.Wave, 1), B.wave or 0), 1, waves) .. "/" .. waves
-				text = "Room " .. tostring(num(d.Room, 1)) .. " - " .. wave
-				short = wave -- (kit-b U9-6: a portrait phone's narrow card: the wave, the room is on the side card)
+				text = room .. " - " .. wave
+				shorts = { wave } -- (kit-b U9-6: a portrait phone's narrow card: the wave, the room is on the side card)
 			else
-				text = "Floor " .. tostring(num(d.Floor, 1)) .. " - Room " .. tostring(num(d.Room, 1))
+				text = "Floor " .. tostring(num(d.Floor, 1)) .. " - " .. room
 			end
 		end
 		if d.Boss == true and num(d.Room, 0) >= 3 then
 			text = text .. " (BOSS)"
-			short = short and (short .. " (BOSS)")
+			shorts = { shorts[1] .. " (BOSS)", shorts[1] }
 		end
 	elseif B.Mode == "Ring" then
+		local round = "Round " .. tostring(B.Round > 0 and B.Round or 1)
 		text, color = Ring.TitleText(B), KB.Mode.Ring
+		shorts = { round }
+		local best = B.Ring and num(B.Ring.Best, 0) or 0
+		if best > 0 and not (Hud.m and Hud.m.Compact) then
+			shorts = { round .. " - Best " .. best, round } -- (a phone's whole line is already this)
+		end
 	else
 		text, color = "DUEL", KB.Mode.Duel
 		if B.Fighter then
-			text = "DUEL - vs " .. Hud.SideName(B, B.Side == 1 and 2 or 1)
+			local vs = "vs " .. Hud.SideName(B, B.Side == 1 and 2 or 1)
+			text = "DUEL - " .. vs
+			shorts = { vs, "DUEL" }
 		end
 	end
 	if B.Spectator then
-		text = "WATCHING - " .. ((B.Mode == "Duel") and (Hud.SideName(B, 1) .. " vs " .. Hud.SideName(B, 2)) or text)
-		short = nil
+		local what = (B.Mode == "Duel") and (Hud.SideName(B, 1) .. " vs " .. Hud.SideName(B, 2)) or text
+		text = "WATCHING - " .. what
+		shorts = { what, "WATCHING" }
 	end
-	return text, color, short
+	return text, color, shorts
 end
 
 function Hud.SideName(B, side)
@@ -10963,6 +11029,7 @@ BattleController._Me = Me -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Eclip
 BattleController._Fx = Fx -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Special pre-charge, Task 11b: numbers / flashes)
 BattleController._Ring = Ring -- TESTS ONLY (tools/smoke_ring_noheal_client.lua: the run card's line, HUD cleanup Task 4)
 BattleController._Hud = Hud -- TESTS ONLY (tools/smoke_wave6.lua: the vitals hold let go without a battle gui, quick wins review)
+BattleController._St = St -- TESTS ONLY (tools/smoke_kitb_ui.lua battle_family_fits: Hud.ModeText of the drawn battle, U9-6 review)
 
 -- TESTS ONLY (Task 11b): the raw battle unit record (its drawn HP, hold, hurt time) and my predicted charge
 function BattleController._Unit(id)

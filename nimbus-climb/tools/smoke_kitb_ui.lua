@@ -4398,7 +4398,10 @@ local function clientScenarios()
 	-- card, and the loss screen (NimbusLoss). The fights come from smoke_p5_battleclient's driver (_G.P5BattleH: a real
 	-- BattleSim sent the way BattleService sends it). U96.FAMILY: { view, the ScreenGui that shows it }
 	local U96 = {}
+	-- (U9-6 review) battle:fighter is render_gui's battle:fighter: a Champion Ring round (Round 8 - Best 12) drawn over a
+	-- pack of three wild pets, the second one locked (the TARGET tab, the portrait under-card, the three-row list)
 	U96.FAMILY = {
+		{ "battle:fighter", "NimbusBattle" },
 		{ "battle:dungeon", "NimbusBattle" }, { "battle:raid", "NimbusBattle" }, { "battle:ring", "NimbusBattle" },
 		{ "battle:next", "NimbusBattle" }, { "battle:result", "NimbusBattle" }, { "loss", "NimbusLoss" },
 	}
@@ -4777,6 +4780,33 @@ local function clientScenarios()
 		LKC.advance(0.6)
 	end
 	U8.SIZES = { { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }
+	-- the screens fit their texts with Theme.Measure on an Enum font (TextService): the mock's is a flat 0.5 em, so for a fit
+	-- test it measures one line of a known face at its real width, as Roblox does. Returns the function that puts the mock's back
+	function U8.measureReal()
+		local Theme = LoadingH.shared("Theme")
+		local RealWidth = SmokeCommon.RealWidth
+		local mockMeasure = Theme.Measure
+		Theme.Measure = function(text, role, size, width)
+			if (tonumber(width) == nil or tonumber(width) >= 4096) and not tostring(text):find("\n") then
+				local font, spare = role, 1
+				text = tostring(text or "")
+				if type(role) == "string" and Theme.Fonts[role] then -- a role: its capitals and its spare widening, as Theme.Measure
+					font, spare = Theme.Fonts[role], Theme.MeasureSpare[role] or 1
+					if Theme.CapsRoles[role] then
+						text = Theme.Caps(text)
+					end
+				end
+				local w = typeof(font) == "EnumItem" and RealWidth(text, tonumber(size) or 14, font, true) or nil
+				if w then
+					return Vector2.new(math.ceil(w * spare), tonumber(size) or 14)
+				end
+			end
+			return mockMeasure(text, role, size, width)
+		end
+		return function()
+			Theme.Measure = mockMeasure
+		end
+	end
 	-- a fill counts as green: the grass plank of kit B, or any colour whose green leads red and blue clearly
 	function U8.green(c)
 		local Sign = LoadingH.shared("Theme").Sign
@@ -4839,7 +4869,31 @@ local function clientScenarios()
 		local sub = view:match("^battle:(.*)$")
 		local me = lp.UserId
 		local d
-		if sub == "dungeon" then
+		if sub == "fighter" then
+			-- (dump_gui's fixture: a dungeon sim with the wild pack, its Start sent as a ring round)
+			local wave = H.team(3, 3, 30)
+			for _, p in ipairs(wave) do
+				p.Wild = true
+			end
+			d = H.driver({ Mode = "Dungeon", Seed = 11, Zone = { X = 44, Z = 44 }, TimeLimit = 90, Wave = wave,
+				Teams = { { Owner = me, Side = 1, Pets = H.team(3, 0, 30), Auto = true } }, Ring = { Round = 8, Best = 12, Start = 1, Champion = {} } })
+			if not d then
+				return
+			end
+			U96.d = d
+			lp:SetAttribute("InBattle", d.id)
+			local p = d:startPayload()
+			p.Mode = "Ring"
+			LKC.toClient("BattleState", "Start", p, d.id)
+			d:step(30)
+			d:step(30)
+			local ids = d:enemyIds()
+			if ids[2] then
+				d.sim:Command(me, "Target", ids[2])
+			end
+			d:run(1, 30)
+			return
+		elseif sub == "dungeon" then
 			d = H.dungeon(4, true)
 		elseif sub == "raid" then
 			d = H.driver({ Mode = "Raid", Boss = "storm_titan", Teams = { { Owner = me, Side = 1, Pets = H.team(3, 0, 30) },
@@ -5514,26 +5568,8 @@ local function clientScenarios()
 		local function inside(a, b)
 			return a.X >= b.X - 1 and a.R <= b.R + 1 and a.Y >= b.Y - 1 and a.B <= b.B + 1
 		end
-		-- the windows fit their titles and names with Theme.Measure on an Enum font (TextService): the mock's is a flat 0.5 em,
-		-- so for the test it measures one line of a known face at its real width, as Roblox does
-		local mockMeasure = Theme.Measure
-		Theme.Measure = function(text, role, size, width)
-			if (tonumber(width) == nil or tonumber(width) >= 4096) and not tostring(text):find("\n") then
-				local font, spare = role, 1
-				text = tostring(text or "")
-				if type(role) == "string" and Theme.Fonts[role] then -- a role: its capitals and its spare widening, as Theme.Measure
-					font, spare = Theme.Fonts[role], Theme.MeasureSpare[role] or 1
-					if Theme.CapsRoles[role] then
-						text = Theme.Caps(text)
-					end
-				end
-				local w = typeof(font) == "EnumItem" and RealWidth(text, tonumber(size) or 14, font, true) or nil
-				if w then
-					return Vector2.new(math.ceil(w * spare), tonumber(size) or 14)
-				end
-			end
-			return mockMeasure(text, role, size, width)
-		end
+		-- the windows fit their titles and names with Theme.Measure at the faces' real widths (U8.measureReal)
+		local restoreMeasure = U8.measureReal()
 		for _, s in ipairs({ { 844, 390 }, { 390, 844 } }) do
 			local W, Hh = s[1], s[2]
 			for _, f in ipairs(U9.FAMILY) do
@@ -5588,7 +5624,7 @@ local function clientScenarios()
 				end)
 			end
 		end
-		Theme.Measure = mockMeasure
+		restoreMeasure()
 		LKC.flushErrors("care_family_fits_phone")
 	end)
 
@@ -5662,7 +5698,10 @@ local function clientScenarios()
 	-- px to spare, and nothing sits under Roblox's thumbstick or jump button unless the view hid them. At every grid size:
 	-- no text is drawn under the readability floor (15 px on a screen 1000 px tall or more, 14 below) and none is TextScaled
 	-- (a scaled text's drawn size is the font engine's guess: the HUD sizes its names itself), and the enemy list (its
-	-- TARGET tab too) stays clear of the HUD's currency strips
+	-- TARGET tab too) stays clear of the HUD's currency strips. U9-6 review: the HUD measures at the faces' real widths
+	-- (U8.measureReal); battle:fighter is the render's fixture (the locked row's tab, the portrait under-card); the mode line
+	-- is its whole text or a short form; a wrapped text that cuts its end fits; no name tag / caption on another button or
+	-- name, no TARGET tab on an enemy's name; a helper's buff countdown reads 4.5:1 over the pet well and a white pet
 	S.battle_family_fits = guarded("battle_family_fits", function()
 		local Theme = LoadingH.shared("Theme")
 		local GuiService = game:GetService("GuiService")
@@ -5699,6 +5738,37 @@ local function clientScenarios()
 		local function texty(d)
 			return (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextTransparency < 1
 		end
+		-- a wrapped text's lines in its box (greedy, at the faces' real widths) and its widest line, screen px
+		local function wrapped(o)
+			local text = o.Text
+			if o.RichText then
+				text = text:gsub("<[^>]->", "")
+			end
+			local role = o:GetAttribute("FontRole")
+			if role and Theme.CapsRoles[role] then
+				text = Theme.Caps(text)
+			end
+			local sc = U8.scaleOf(o)
+			local function w(t)
+				return (RealWidth(t, o.TextSize, Theme.FontOf(o), true) or Theme.MeasureLabel(o, t).X) * sc
+			end
+			local pad = o:FindFirstChildOfClass("UIPadding")
+			local room = o.AbsoluteSize.X - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) * sc or 0)
+			local lines, cur, widest = 0, -1, 0
+			for word in text:gmatch("%S+") do
+				local ww = w(word)
+				if cur < 0 or cur + w(" ") + ww > room then
+					lines, cur = lines + 1, ww
+				else
+					cur = cur + w(" ") + ww
+				end
+				widest = math.max(widest, cur)
+			end
+			return math.max(1, lines), widest
+		end
+		local BC = U7.client("Controllers/BattleController")
+		-- the HUD fits its texts with Theme.Measure at the faces' real widths, as on Roblox (U8.measureReal)
+		local restoreMeasure = U8.measureReal()
 		for _, s in ipairs(U8.SIZES) do
 			local W, Hh, touch = s[1], s[2], s[3]
 			local floorPx = (Hh >= 1000) and 15 or 14
@@ -5795,10 +5865,112 @@ local function clientScenarios()
 						read = read + (texty(d) and U8.shown(d) and 1 or 0)
 					end
 					T.check(read > 0 and #low == 0, fmt("%s: every text reads on its fill (%d read, %d not)", tag, read, #low), table.concat(low, "; ", 1, math.min(#low, 6)))
+					-- (U9-6 review: the render cut "Round 8 - Best 12" on the portrait under-card) the mode line shows its whole text
+					-- or one of its short forms (Hud.ModeText's third value), never one the box cuts (the fit checks above)
+					local Hd = BC and BC._Hud
+					local B = BC and BC._St and BC._St.battle
+					if f[2] == "NimbusBattle" and Hd and Hd.mode and B and U8.shown(Hd.mode) then
+						local full, _, shorts = Hd.ModeText(B)
+						local ok = Hd.mode.Text == full
+						for _, t in ipairs(shorts or {}) do
+							ok = ok or Hd.mode.Text == t
+						end
+						T.check(ok, fmt("%s: the mode line is its whole text or a short form (%q)", tag, Hd.mode.Text), tostring(full))
+						if f[1] == "battle:fighter" and W < Hh then
+							T.check(Hd.top.AnchorPoint.X == 0, tag .. ": (fixture) the top card is the narrow card under the fighter card", tostring(Hd.top.AnchorPoint))
+						end
+					end
+					-- a wrapped text that cuts its end (TextTruncate) fits its box too: every word on a line, its lines in its height
+					local cutWrap = {}
+					for _, d in ipairs(gui:GetDescendants()) do
+						if texty(d) and U8.shown(d) and d.TextWrapped and not d.TextScaled and d.TextTruncate ~= Enum.TextTruncate.None and d.AbsoluteSize.X > 0 then
+							local lines, widest = wrapped(d)
+							if widest > d.AbsoluteSize.X + 0.01 or lines * d.TextSize * U8.scaleOf(d) > d.AbsoluteSize.Y + 1 then
+								cutWrap[#cutWrap + 1] = fmt("%s %q %d line(s), %.0f px wide in %.0fx%.0f", d.Name, d.Text, lines, widest, d.AbsoluteSize.X, d.AbsoluteSize.Y)
+							end
+						end
+					end
+					T.check(#cutWrap == 0, fmt("%s: every wrapped text that cuts its end fits its box (%d)", tag, #cutWrap), table.concat(cutWrap, "; ", 1, math.min(#cutWrap, 6)))
+					-- (U9-6 review: the phone's TARGET tag ran under DASH and into COSY GUARD's) the action cluster's names: a name tag
+					-- (touch) or a caption's drawn text (under its button) stays 2 px off every other button's round face and every other
+					-- name; the TARGET tab stays off every enemy's name
+					local GAP = 2
+					local discs, names, hits = {}, {}, {}
+					local cmds = gui:FindFirstChild("Commands", true)
+					for _, b in ipairs(cmds and cmds:GetChildren() or {}) do
+						if b:IsA("GuiButton") and U8.shown(b) and b.AbsoluteSize.X > 0 then
+							local r = U8.rect(b)
+							discs[#discs + 1] = { b.Name, (r.X + r.R) / 2, (r.Y + r.B) / 2, (r.R - r.X) / 2 }
+							local plate, cap = b:FindFirstChild("NamePlate"), b:FindFirstChild("Caption")
+							if plate and U8.shown(plate) then
+								names[#names + 1] = { b.Name, U8.rect(plate) }
+							elseif cap and texty(cap) and U8.shown(cap) then
+								local cr = U8.rect(cap)
+								local lines, widest = wrapped(cap)
+								local cx = (cr.X + cr.R) / 2
+								names[#names + 1] = { b.Name, { X = cx - widest / 2, R = cx + widest / 2, Y = cr.Y, B = cr.Y + lines * cap.TextSize * U8.scaleOf(cap) } }
+							end
+						end
+					end
+					local function onDisc(r, c)
+						local px, py = math.max(r.X, math.min(c[2], r.R)), math.max(r.Y, math.min(c[3], r.B))
+						return (px - c[2]) ^ 2 + (py - c[3]) ^ 2 < (c[4] + GAP) ^ 2
+					end
+					local function near(a, b)
+						return a.X < b.R + GAP and b.X < a.R + GAP and a.Y < b.B + GAP and b.Y < a.B + GAP
+					end
+					for i, n in ipairs(names) do
+						for _, c in ipairs(discs) do
+							if c[1] ~= n[1] and onDisc(n[2], c) then
+								hits[#hits + 1] = fmt("%s's name %s on %s", n[1], U8.show(n[2]), c[1])
+							end
+						end
+						for j = i + 1, #names do
+							if near(n[2], names[j][2]) then
+								hits[#hits + 1] = fmt("%s's name %s on %s's %s", n[1], U8.show(n[2]), names[j][1], U8.show(names[j][2]))
+							end
+						end
+					end
+					local tabs = 0
+					local list = gui:FindFirstChild("Enemies", true)
+					for _, row in ipairs(list and list:GetChildren() or {}) do
+						local tab = row:FindFirstChild("Target")
+						if tab and U8.shown(tab) then
+							tabs = tabs + 1
+							for _, other in ipairs(list:GetChildren()) do
+								local nm = other:FindFirstChild("PetName")
+								if nm and U8.shown(nm) and nm.Text ~= "" and U8.overlap(U8.rect(tab), U8.rect(nm)) then
+									hits[#hits + 1] = fmt("the TARGET tab %s on %s's name %q %s", U8.show(U8.rect(tab)), other.Name, nm.Text, U8.show(U8.rect(nm)))
+								end
+							end
+						end
+					end
+					T.check(#hits == 0, fmt("%s: no name on another button or name, no TARGET tab on an enemy's name (%d)", tag, #hits), table.concat(hits, "; ", 1, math.min(#hits, 6)))
+					if f[1] == "battle:fighter" and not touch then
+						T.check(tabs == 1, tag .. ": (fixture) the locked row shows its TARGET tab", tostring(tabs))
+					end
+					-- (U9-6 review: a white "11" on the light pet well) a helper's buff countdown reads on its veil over the well and
+					-- over a white pet (the walk above takes the pet's ViewportFrame for a picture)
+					if f[1] == "battle:fighter" and Hd then
+						local weak = {}
+						for i, H in ipairs(Hd.helpers or {}) do
+							local c = H.Count
+							local a = 1 - c.BackgroundTransparency
+							for _, base in ipairs({ Theme.Sign.PetWell, Color3.new(1, 1, 1) }) do
+								local fill = c.BackgroundColor3:Lerp(base, 1 - a)
+								local ratio = Theme.Contrast(c.TextColor3, fill)
+								if ratio < 4.5 then
+									weak[#weak + 1] = fmt("helper %d: %.2f:1 over %s", i, ratio, tostring(base))
+								end
+							end
+						end
+						T.check(#(Hd.helpers or {}) > 0 and #weak == 0, tag .. ": a helper's buff countdown reads 4.5:1 over the pet well and a white pet", table.concat(weak, "; "))
+					end
 					U96.close()
 				end)
 			end
 		end
+		restoreMeasure()
 		LKC.flushErrors("battle_family_fits")
 	end)
 
