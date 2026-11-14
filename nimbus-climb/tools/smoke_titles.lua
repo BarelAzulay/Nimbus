@@ -3,22 +3,20 @@
 -- tools/smoke.py in the CLIENT world:
 --   client_titles   (client, 1920x1080)
 --     the tag per kind on dummy players: a BillboardGui TitleTag on the head (240 x 36 px, StudsOffset (0, 2.0, 0),
---       SizeOffset.Y == 0.5 + 26 / H, MaxDistance 90, not on top, LightInfluence 0) > Plate > Label > Fill; the texts
---       "TOP 10 \194\183 #3" / "TOP 100" / "CREATOR" at >= 20 px in the Display font with a 2 px UIStroke; a navy Plate at 0.35
---       of the text's width, centred; the Top10 Label twice the text width and left-aligned (the Plate keeps the text
---       width); the rainbow (seven hues twice across 0..1, periodic so the loop is seamless) with its one endless tween
---       (Fill.Offset (0, 0) -> (-0.5, 0), 2.4 s, Linear, repeat -1) for Top10 only; the gold (Rotation 90) and the
---       Creator gradients static
+--       SizeOffset.Y == 0.5 + 26 / H, MaxDistance 90, not on top, LightInfluence 0) > Plate > Label; the texts
+--       "TOP 10 \194\183 #3" / "TOP 100" / "CREATOR" at >= 20 px; (kit-b U9-3, finding 15) the Plate a flat kit B tag of the
+--       text's width, centred: opaque, its role's face (Top10 gold, Top100 stone, Creator navy) in a wood edge with its lip,
+--       square; the Label FredokaOne (Nameplate) in the look's ink, no outline; no gradient and no tween (the Top10 rainbow
+--       and the gold / cyan-violet gradients went)
 --     hidden while that player is InBattle; the local player's tag hidden with the camera at the head and shown at 12
---       studs (another player's tag ignores the camera); Low graphics pauses the rainbow (the tag still shows), High
---       plays it again
+--       studs (another player's tag ignores the camera); the tag looks the same on Low graphics (nothing to pause)
 --     a titled VIP: the Crown inside the TitleTag (34 x 34, centred, 4 px above the Plate, the billboard 240 x 74) and no
 --       VipCrown on that head; the crown follows VipController's rule (gone in InMatch and on Low graphics, back after);
 --       the title cleared on a VIP -> the VipCrown back at 2.4 studs; an untitled VIP -> the VipCrown, no TitleTag
---     respawn (Review Focus 5): one tag on the new head, the old one destroyed and its tween stopped; the attribute
---       cleared -> the tag removed and its tween stopped; ten Top10 players -> ten tweens and no per-frame connection
---       added (Heartbeat / RenderStepped / Stepped / PreRender / Pre- and PostSimulation counts unchanged); a tag holds
---       at most 6 instances (7 with the crown); every tag gone once the dummies leave
+--     respawn (Review Focus 5): one tag on the new head, the old one destroyed; the attribute cleared -> the tag removed;
+--       ten Top10 players -> no tween and no per-frame connection added (Heartbeat / RenderStepped / Stepped / PreRender /
+--       Pre- and PostSimulation counts unchanged); a tag holds at most 6 instances (the crown's two pixel crowns on top);
+--       every tag gone once the dummies leave
 -- Deterministic: mock clock only. The graphics answer (GraphicsQuality.Effective is stubbed, as smoke_gem_icon does),
 -- the camera, the viewport and the local player's attributes are put back; the dummy players leave. Plain Lua 5.1 syntax.
 
@@ -88,12 +86,11 @@ function G.tagsOf(player)
 	end
 	return n
 end
--- the tag's Plate, Label and Fill (TitleTag > Plate > Label > Fill)
+-- the tag's Plate and Label (TitleTag > Plate > Label)
 function G.parts(tag)
 	local plate = tag and tag:FindFirstChild("Plate")
 	local label = plate and plate:FindFirstChild("Label")
-	local fill = label and label:FindFirstChild("Fill")
-	return plate, label, fill
+	return plate, label
 end
 function G.target(tw)
 	local ok, target = pcall(function()
@@ -101,25 +98,12 @@ function G.target(tw)
 	end)
 	return ok and target or nil
 end
--- the tweens playing on `inst`
-function G.tweensOn(inst)
-	local out = {}
-	if not inst then
-		return out
-	end
-	for tw in pairs(Mock.ActiveTweens) do
-		if G.target(tw) == inst and tw.PlaybackState.Name == "Playing" then
-			out[#out + 1] = tw
-		end
-	end
-	return out
-end
--- playing tweens on a Fill under a TitleTag that is still in the world
+-- playing tweens on anything under a TitleTag that is still in the world
 function G.titleTweens()
 	local n = 0
 	for tw in pairs(Mock.ActiveTweens) do
 		local target = G.target(tw)
-		if target and target.Name == "Fill" and tw.PlaybackState.Name == "Playing" then
+		if target and tw.PlaybackState.Name == "Playing" then
 			local cur = target.Parent
 			while cur and cur.Name ~= "TitleTag" do
 				cur = cur.Parent
@@ -143,47 +127,8 @@ function G.frameConns()
 	end
 	return n
 end
-function G.rgb(c, r, g, b)
-	return c ~= nil and abs(c.R * 255 - r) < 1 and abs(c.G * 255 - g) < 1 and abs(c.B * 255 - b) < 1
-end
 function G.same(a, b)
 	return a ~= nil and b ~= nil and abs(a.R - b.R) < 1e-3 and abs(a.G - b.G) < 1e-3 and abs(a.B - b.B) < 1e-3
-end
-function G.colorAt(seq, t)
-	for _, kp in ipairs(seq.Keypoints) do
-		if abs(kp.Time - t) < 1e-6 then
-			return kp.Value
-		end
-	end
-	return nil
-end
--- the rainbow: at least 14 keypoints, seven distinct hues in the first half, every first-half keypoint repeated 0.5
--- later in the same colour, and 0 / 0.5 / 1 the same colour (the loop is seamless)
-function G.rainbowOk(seq)
-	local kps = seq and seq.Keypoints or {}
-	if #kps < 14 then
-		return false, "only " .. #kps .. " keypoints"
-	end
-	local hues = {}
-	for _, kp in ipairs(kps) do
-		if kp.Time < 0.5 - 1e-6 then
-			local twin = G.colorAt(seq, kp.Time + 0.5)
-			if not G.same(twin, kp.Value) then
-				return false, fmt("no twin of %.3f at %.3f", kp.Time, kp.Time + 0.5)
-			end
-			local key = fmt("%d,%d,%d", kp.Value.R * 255 + 0.5, kp.Value.G * 255 + 0.5, kp.Value.B * 255 + 0.5)
-			hues[key] = true
-		end
-	end
-	local n = 0
-	for _ in pairs(hues) do
-		n = n + 1
-	end
-	local c0, c5, c1 = G.colorAt(seq, 0), G.colorAt(seq, 0.5), G.colorAt(seq, 1)
-	if not (G.same(c0, c5) and G.same(c5, c1)) then
-		return false, "0 / 0.5 / 1 differ"
-	end
-	return n == 7, n .. " hues in one period"
 end
 
 S.client_titles = guarded("client_titles", function()
@@ -258,45 +203,31 @@ S.client_titles = guarded("client_titles", function()
 			T.check(tag.MaxDistance == 90 and tag.AlwaysOnTop == false and tag.LightInfluence == 0 and tag.Enabled == true, k .. ": MaxDistance 90, not on top, LightInfluence 0, shown",
 				fmt("max %s, top %s, light %s, enabled %s", tostring(tag.MaxDistance), tostring(tag.AlwaysOnTop), tostring(tag.LightInfluence), tostring(tag.Enabled)))
 			T.check(#tag:GetDescendants() <= 6, k .. ": at most 6 instances inside the tag (no crown)", tostring(#tag:GetDescendants()))
-			local plate, label, fill = G.parts(tag)
-			if T.check(plate ~= nil and plate:IsA("Frame") and label ~= nil and label:IsA("TextLabel") and fill ~= nil and fill:IsA("UIGradient"), k .. ": TitleTag > Plate > Label > Fill (a UIGradient)") then
+			local plate, label = G.parts(tag)
+			if T.check(plate ~= nil and plate:IsA("Frame") and label ~= nil and label:IsA("TextLabel"), k .. ": TitleTag > Plate > Label") then
 				T.eq(label.Text, w.text, k .. ": the text")
-				T.check(label.TextSize == w.size and label.TextSize >= 20 and label.Font == Theme.Fonts.Display, k .. ": " .. w.size .. " px (>= 20) in the Display font",
-					fmt("%s px, %s", tostring(label.TextSize), tostring(label.Font)))
-				local stroke = label:FindFirstChildWhichIsA("UIStroke")
-				T.check(stroke ~= nil and stroke.Thickness == 2, k .. ": a 2 px UIStroke on the text")
-				T.check(G.same(plate.BackgroundColor3, Theme.Colors.Navy) and abs(plate.BackgroundTransparency - 0.35) < 1e-6 and plate:FindFirstChildWhichIsA("UICorner") ~= nil
-					and plate:FindFirstChildWhichIsA("UIStroke") ~= nil and plate:FindFirstChildWhichIsA("UIStroke").Thickness == 2, k .. ": a navy plate at 0.35 with round corners and a 2 px stroke")
+				T.check(label.TextSize == w.size and label.TextSize >= 20 and label:GetAttribute("FontRole") == "Nameplate", k .. ": " .. w.size .. " px (>= 20) in the Nameplate role",
+					fmt("%s px, %s", tostring(label.TextSize), tostring(label:GetAttribute("FontRole"))))
+				-- (kit-b U9-3) a flat kit B tag: an opaque face in its role's colour, a wood edge, its lip, square; no outline,
+				-- no gradient
+				local face = ({ Top10 = Theme.Sign.Gold, Top100 = Theme.Sign.Tile, Creator = Theme.Sign.Navy })[w.kind]
+				T.check(label:FindFirstChildWhichIsA("UIStroke") == nil, k .. ": no outline on the text (it sits on an opaque face)")
+				T.check(G.same(plate.BackgroundColor3, face) and plate.BackgroundTransparency == 0 and plate:FindFirstChildWhichIsA("UICorner") == nil
+					and plate:FindFirstChild("SignEdge") ~= nil and plate:FindFirstChild("Lip") ~= nil, k .. ": an opaque square plate in its role's colour, a wood edge and its lip")
+				local gradients = 0
+				for _, d in ipairs(tag:GetDescendants()) do
+					gradients = gradients + (d:IsA("UIGradient") and 1 or 0)
+				end
+				T.eq(gradients, 0, k .. ": no gradient in the tag")
 				local tw = G.textWidth(label)
 				local px, pw = plate.AbsolutePosition.X, plate.AbsoluteSize.X
 				local lx, lw = label.AbsolutePosition.X, label.AbsoluteSize.X
 				T.check(pw >= tw and pw <= tw + 40 and abs(px + pw / 2 - 120) <= 1, k .. ": the plate is the text's width (plus padding), centred",
 					fmt("plate %d at %d, text %d", pw, px, tw))
-				T.check(lx >= px and lx + tw <= px + pw + 0.5, k .. ": the text sits inside the plate", fmt("label %d..%d, plate %d..%d", lx, lx + tw, px, px + pw))
-				local tweens = G.tweensOn(fill)
-				if w.kind == "Top10" then
-					T.check(abs(lw - 2 * tw) <= 1 and label.TextXAlignment == Enum.TextXAlignment.Left, k .. ": the Label is twice the text width and left-aligned (the seamless rainbow)",
-						fmt("label %d, text %d, %s", lw, tw, tostring(label.TextXAlignment)))
-					local okRb, why = G.rainbowOk(fill.Color)
-					T.check(okRb and fill.Rotation == 0, k .. ": seven hues twice across 0..1, periodic", why)
-					local tw1 = tweens[1]
-					local info = tw1 and tw1.TweenInfo
-					local goal = tw1 and Mock.TweenGoals(tw1).Offset
-					T.check(#tweens == 1 and info ~= nil and abs(info.Time - 2.4) < 1e-6 and info.RepeatCount == -1 and info.EasingStyle == Enum.EasingStyle.Linear
-						and goal ~= nil and goal.X == -0.5 and goal.Y == 0, k .. ": one endless tween of Fill.Offset to (-0.5, 0), 2.4 s Linear",
-						fmt("%d tweens, %s", #tweens, info and fmt("%.2f s repeat %d %s", info.Time, info.RepeatCount, tostring(info.EasingStyle)) or "no info"))
-					T.check(fill.Offset.X == 0 and fill.Offset.Y == 0, k .. ": the rainbow starts at Offset (0, 0)")
-				else
-					T.check(abs(lw - tw) <= 1, k .. ": the Label is the text's width", fmt("label %d, text %d", lw, tw))
-					T.eq(#tweens, 0, k .. ": a static gradient (no tween)")
-					local kps = fill.Color.Keypoints
-					if w.kind == "Top100" then
-						T.check(#kps == 3 and G.rgb(kps[1].Value, 255, 236, 150) and G.rgb(kps[2].Value, 242, 182, 68) and G.rgb(kps[3].Value, 196, 128, 32) and fill.Rotation == 90,
-							k .. ": the gold gradient (255,236,150 -> 242,182,68 -> 196,128,32, Rotation 90)")
-					else
-						T.check(G.rgb(kps[1].Value, 120, 220, 255) and G.rgb(kps[#kps].Value, 160, 120, 255), k .. ": the cyan -> violet gradient")
-					end
-				end
+				local textX = lx + (lw - tw) / 2
+				T.check(label.TextXAlignment == Enum.TextXAlignment.Center and textX >= px - 0.5 and textX + tw <= px + pw + 0.5, k .. ": the text sits centred inside the plate",
+					fmt("text %d..%d, plate %d..%d", textX, textX + tw, px, px + pw))
+				T.eq(G.titleTweens(), 0, k .. ": nothing in a tag tweens (no rainbow)")
 			end
 		end
 	end
@@ -311,17 +242,15 @@ S.client_titles = guarded("client_titles", function()
 	t100 = TC.TagOf(p100)
 	T.check(t100 ~= nil and t100.Enabled, "titles: back after the battle")
 
-	------------------------------------------------------------------ Low graphics: a still rainbow
-	local _, _, fill10 = G.parts(TC.TagOf(p10))
-	local playing = G.tweensOn(fill10)[1]
+	------------------------------------------------------------------ Low graphics: the same flat tag
+	local tag10 = TC.TagOf(p10)
 	gfx = "Low"
 	G.advance(0.6)
-	T.check(playing ~= nil and playing.PlaybackState.Name == "Paused" and #G.tweensOn(fill10) == 0, "titles: Low graphics pauses the rainbow",
-		playing and playing.PlaybackState.Name or "no tween")
-	T.check(TC.TagOf(p10) ~= nil and TC.TagOf(p10).Enabled, "titles: the Top10 tag still shows on Low (a still rainbow)")
+	T.check(TC.TagOf(p10) == tag10 and tag10 ~= nil and tag10.Enabled, "titles: the Top10 tag still shows on Low, unchanged (kit B: nothing to pause)")
+	T.eq(G.titleTweens(), 0, "titles: no tween on Low")
 	gfx = "High"
 	G.advance(0.6)
-	T.eq(#G.tweensOn(fill10), 1, "titles: High plays the rainbow again")
+	T.eq(G.titleTweens(), 0, "titles: ...nor on High")
 
 	------------------------------------------------------------------ the local player: third person only
 	title(LocalPlayer, "Top100", 40)
@@ -368,10 +297,11 @@ S.client_titles = guarded("client_titles", function()
 			fmt("%dx%d at %d", crown.AbsoluteSize.X, crown.AbsoluteSize.Y, crown.AbsolutePosition.X))
 		T.check(abs(plate.AbsolutePosition.Y - (crown.AbsolutePosition.Y + 34) - 4) <= 0.5 and abs(plate.AbsolutePosition.Y + plate.AbsoluteSize.Y - 74) <= 0.5,
 			"titles: " .. label .. ": the Crown sits 4 px above the Plate, the Plate at the bottom", fmt("crown y %d, plate y %d h %d", crown.AbsolutePosition.Y, plate.AbsolutePosition.Y, plate.AbsoluteSize.Y))
-		-- (kit-b U7a) the crown is a PixelIcon now: its Frame and one Frame per merged run on top of the 7
+		-- (kit-b U7a) the crown is a PixelIcon: its host, its Frame and one Frame per merged run; (U9-3) twice (the gold crown
+		-- over its wood lip) in a holder, on top of the tag's 6
 		local PI = G.req("shared/PixelIcon")
-		local budget = 7 + 1 + (PI and #PI.Runs("crown") or 0)
-		T.check(#tag:GetDescendants() <= budget, "titles: " .. label .. ": at most " .. budget .. " instances inside the tag with the crown (7 + the pixel crown)", tostring(#tag:GetDescendants()))
+		local budget = 6 + 1 + 2 * (2 + (PI and #PI.Runs("crown") or 0))
+		T.check(#tag:GetDescendants() <= budget, "titles: " .. label .. ": at most " .. budget .. " instances inside the tag with the crown (6 + the crown on its lip)", tostring(#tag:GetDescendants()))
 	end
 	local function noCrown(label)
 		local tag = TC.TagOf(pv)
@@ -407,27 +337,19 @@ S.client_titles = guarded("client_titles", function()
 
 	------------------------------------------------------------------ respawn (Review Focus 5)
 	local oldTag = TC.TagOf(p10)
-	local _, _, oldFill = G.parts(oldTag)
-	local oldTween = G.tweensOn(oldFill)[1]
 	Mock.Respawn(p10)
 	G.advance(0.5)
 	local newTag = TC.TagOf(p10)
 	T.check(newTag ~= nil and newTag ~= oldTag and newTag.Adornee == G.head(p10) and newTag:IsDescendantOf(p10.Character), "titles: respawn -> a tag on the new head")
 	T.eq(G.tagsOf(p10), 1, "titles: respawn -> exactly one tag on the new character")
 	T.check(oldTag ~= nil and oldTag.Parent == nil, "titles: respawn -> the old tag is gone")
-	T.check(oldTween ~= nil and oldTween.PlaybackState.Name ~= "Playing", "titles: respawn -> the old tag's tween stopped", oldTween and oldTween.PlaybackState.Name or "no tween")
-	local _, _, newFill = G.parts(newTag)
-	T.eq(#G.tweensOn(newFill), 1, "titles: respawn -> the new tag's rainbow plays")
 
 	------------------------------------------------------------------ the attribute cleared
-	local _, _, fillA = G.parts(newTag)
-	local twA = G.tweensOn(fillA)[1]
 	title(p10, nil, nil)
 	G.advance(0.3)
 	T.check(TC.TagOf(p10) == nil and G.tagsOf(p10) == 0 and newTag.Parent == nil, "titles: the attribute cleared -> the tag removed")
-	T.check(twA ~= nil and twA.PlaybackState.Name ~= "Playing", "titles: the attribute cleared -> its tween stopped", twA and twA.PlaybackState.Name or "no tween")
 
-	------------------------------------------------------------------ ten Top10 players: engine tweens only
+	------------------------------------------------------------------ ten Top10 players: no tween, no per-frame work
 	title(p100, nil, nil)
 	title(pc, nil, nil)
 	G.advance(0.3)
@@ -437,12 +359,12 @@ S.client_titles = guarded("client_titles", function()
 	end
 	G.advance(0.5)
 	local frames0, tweens0 = G.frameConns(), G.titleTweens()
-	T.eq(tweens0, 0, "titles: no rainbow left playing before the ten")
+	T.eq(tweens0, 0, "titles: no tag tween before the ten")
 	for i, p in ipairs(ten) do
 		title(p, "Top10", i)
 	end
 	G.advance(1)
-	T.eq(G.titleTweens(), 10, "titles: ten Top10 players -> ten tweens")
+	T.eq(G.titleTweens(), 0, "titles: ten Top10 players -> no tween (kit B: a flat tag)")
 	T.eq(G.frameConns(), frames0, "titles: ten Top10 players -> no per-frame connection added")
 	local _, label7 = G.parts(TC.TagOf(ten[7]))
 	T.eq(label7 and label7.Text, RT.Tag.Top10 .. " " .. DOT .. " #7", "titles: rank 7 reads #7")
@@ -453,7 +375,7 @@ S.client_titles = guarded("client_titles", function()
 	end
 	G.advance(0.5)
 	T.eq(#G.allTags(), 0, "titles: every tag is gone once the players leave")
-	T.eq(G.titleTweens(), 0, "titles: no rainbow left playing")
+	T.eq(G.titleTweens(), 0, "titles: no tag tween left playing")
 	local stale = 0
 	for _, p in ipairs(added) do
 		if TC.TagOf(p) ~= nil then

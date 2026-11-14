@@ -217,16 +217,12 @@ K.CONFIRM_H = 356
 local Colors = Theme.Colors
 local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
-local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Colors.Gold or Colors.Token
 local INK = Colors.TextStroke or Colors.Ink
 local GOOD = Colors.Good
 local BAD = Colors.Bad
-local WELL_EDGE = Colors.WellEdge or NAVY
 local BUTTONS = Theme.Buttons or {}
 local KINDS = Theme.Kinds or {}
-local PURPLE = Color3.fromRGB(150, 122, 226)
-local INSET_COLOR = Color3.fromRGB(20, 30, 70)
 local CURRENCY = Theme.Currency or {}
 -- Phase 2 colours (one table: the main chunk stays under Lua's 200-local limit)
 local C2 = {
@@ -391,17 +387,6 @@ end
 
 local function tween(inst, seconds, goal, style, direction)
 	return Util.Tween(inst, seconds, goal, style, direction)
-end
-
--- The dark inset card used inside the windows.
-local function makeInset(parent, name, props)
-	local p = props or {}
-	p.BackgroundColor3 = INSET_COLOR
-	p.BackgroundTransparency = 0.42
-	local inset = makeFrame(parent, name, p)
-	corner(inset, "M")
-	stroke(inset, WELL_EDGE, 3, 0.15)
-	return inset
 end
 
 local function commas(n)
@@ -784,6 +769,28 @@ function P5.touchFor(win, on)
 	safe("touch " .. win.Id, MenuController.SetTouchHidden, win.Id, want and true or false)
 end
 
+-- (kit-b U9-3; the U9-3 renders, as the render gate found for the Shop) a window with HideCurrency steps the HUD's currency
+-- strips aside while it is shown (HudController.SetCurrencyHidden, keyed by the window's id): docked right on a 1280x720
+-- screen its awning and X lay over them. They come back when it closes
+function P5.currencyFor(win, on)
+	if not win.Spec.HideCurrency then
+		return
+	end
+	if P5.HudModule == nil then
+		P5.HudModule = false
+		local module = script.Parent:FindFirstChild("HudController")
+		local ok, mod = pcall(function()
+			return module and require(module)
+		end)
+		if ok and type(mod) == "table" and type(mod.SetCurrencyHidden) == "function" then
+			P5.HudModule = mod
+		end
+	end
+	if P5.HudModule then
+		safe("currency " .. win.Id, P5.HudModule.SetCurrencyHidden, win.Id, on == true)
+	end
+end
+
 local function ensureBuilt(win)
 	if win.Built then
 		return
@@ -928,6 +935,7 @@ function openWindow(id, args)
 	layoutWindow(win)
 	ensureBuilt(win)
 	P5.touchFor(win, true)
+	P5.currencyFor(win, true)
 	win.Holder.Visible = true
 	if not wasShown then
 		win.Pop.Scale = 0.86
@@ -956,6 +964,7 @@ function closeWindow(id, instant)
 	end
 	syncBackBinding()
 	P5.touchFor(win, false)
+	P5.currencyFor(win, false)
 	if win.OnClose then
 		safe("close " .. id, win.OnClose)
 	end
@@ -1656,6 +1665,43 @@ end
 ----------------------------------------------------------------------
 -- Stats window
 ----------------------------------------------------------------------
+-- (kit-b U9-3, finding 15) the Stats window on the Signboard kit (the window's Skin "Signboard": the awning, the navy
+-- header with "Stats" as its ribbon, the wood frame round the stone body), as the Home window is. Each stat is a raised
+-- stone block in its wood edge (P5.signBlock) with a square chip in its group's colour holding the stat's PixelIcon and
+-- the number in brown (the pitch's pet stats: chip, caption, number); the groups: obby races sky, tokens gold, egg spins
+-- the awning's pink, pets violet. The perks, the battle record and the best times sit under plain Section headings (the
+-- owner's ruling 2026-11-14: the ribbon is for window titles only); each difficulty's row is a stone block whose lip and
+-- side bar carry the difficulty's colour. The dark wells, the coloured numbers, the round corners went.
+P5.STAT_TILES = {
+	{ "Matches", "Matches played", "mountain", Theme.Sign.Sky },
+	{ "Wins", "Victories", "trophy", Theme.Sign.Sky },
+	{ "WinRate", "Win rate", "target", Theme.Sign.Sky },
+	{ "Tokens", "Cloud tokens", "token", Theme.Sign.Gold }, -- the chip's coin is the token icon (U7a: no second coin)
+	{ "Earned", "Tokens earned", "token", Theme.Sign.Gold },
+	{ "Spins", "Roulette spins", "gumball", Theme.Sign.Roof },
+	{ "Found", "Pets discovered", "book", Theme.Sign.Violet },
+	{ "Owned", "Pets owned", "paw", Theme.Sign.Violet },
+}
+
+-- a stone card with a plain Section heading over a padded list (the perks, the battle record): the card is the block,
+-- its "Inner" frame holds the padding and the list (the block's lip is a child of the card and must stay out of a list)
+function P5.statCard(parent, name, title, order)
+	local card = P5.signBlock(parent, name, {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order,
+	})
+	local inner = makeFrame(card, "Inner", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	pad(inner, 14, 8, 14, 14)
+	listLayout(inner, Enum.FillDirection.Vertical, 4)
+	Theme.StyleTitle(makeText(inner, "Title", title, "Title", 24, P5.HS.Text, {
+		Size = UDim2.new(1, 0, 0, 30),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+	}), "Section")
+	return card, inner
+end
+
 local function buildStats(win)
 	local content = win.Panel.Content
 	local tiles = {} -- key -> value label
@@ -1666,6 +1712,7 @@ local function buildStats(win)
 		Position = UDim2.fromOffset(14, 14),
 		Size = UDim2.new(0.55, -21, 1, -28),
 	})
+	left.ScrollBarImageColor3 = P5.HS.Wood -- (kit-b U9-3)
 	pad(left, 2, 2, 12, 6)
 	listLayout(left, Enum.FillDirection.Vertical, 10)
 	local grid = makeFrame(left, "Tiles", {
@@ -1678,49 +1725,27 @@ local function buildStats(win)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = grid,
 	})
-	local TILES = {
-		{ "Matches", "Matches played", WHITE },
-		{ "Wins", "Victories", Theme.Lighten(GOOD, 0.25) },
-		{ "WinRate", "Win rate", WHITE },
-		{ "Tokens", "Cloud tokens", Colors.Token },
-		{ "Earned", "Tokens earned", Colors.Token },
-		{ "Spins", "Roulette spins", WHITE },
-		{ "Found", "Pets discovered", Theme.Lighten(PURPLE, 0.35) },
-		{ "Owned", "Pets owned", WHITE },
-	}
-	for index, spec in ipairs(TILES) do
-		local tile = makeInset(grid, "Tile_" .. spec[1], { LayoutOrder = index })
-		local value = makeText(tile, "Value", "0", "Display", 34, spec[3], {
-			Position = UDim2.fromOffset(14, 8),
-			Size = UDim2.new(1, -28, 0, 42),
+	for index, spec in ipairs(P5.STAT_TILES) do
+		local tile = P5.signBlock(grid, "Tile_" .. spec[1], { LayoutOrder = index })
+		local chip = P5.signChip(tile, "Chip", spec[4], spec[3], 30)
+		chip.Position = UDim2.fromOffset(12, 10)
+		local value = makeText(tile, "Value", "0", "Display", 34, P5.HS.Text, {
+			Position = UDim2.fromOffset(52, 5),
+			Size = UDim2.new(1, -60, 0, 40),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 18, Parent = value })
-		if spec[1] == "Tokens" or spec[1] == "Earned" then
-			PixelIcon.Lead(value, Theme.Currency.Tokens.Icon, { Px = 27 }) -- (kit-b U7a) the coin before the amount
-		end
-		makeText(tile, "Caption", spec[2], "Heading", 18, MUTED, {
-			Position = UDim2.fromOffset(14, 56),
-			Size = UDim2.new(1, -28, 0, 24),
+		makeText(tile, "Caption", spec[2], "Heading", 18, P5.HS.TextMuted, {
+			Position = UDim2.fromOffset(12, 52),
+			Size = UDim2.new(1, -20, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
 		tiles[spec[1]] = value
 	end
 
-	local perks = makeInset(left, "Perks", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 2,
-	})
-	pad(perks, 14, 10, 14, 12)
-	listLayout(perks, Enum.FillDirection.Vertical, 4)
-	makeText(perks, "Title", "Pet perks", "Heading", 22, WHITE, {
-		Size = UDim2.new(1, 0, 0, 28),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 1,
-	})
-	local perksLabel = makeText(perks, "Lines", "", "Body", 19, Theme.Lighten(GOOD, 0.25), {
+	local _, perks = P5.statCard(left, "Perks", "Pet perks", 2)
+	local perksLabel = makeText(perks, "Lines", "", "Body", 19, P5.GOOD, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextWrapped = true,
@@ -1729,19 +1754,8 @@ local function buildStats(win)
 	})
 
 	-- Phase 3: the battle record (trophies from PvP duels, the Trial ladder, raids)
-	local battle = makeInset(left, "Battle", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 3,
-	})
-	pad(battle, 14, 10, 14, 12)
-	listLayout(battle, Enum.FillDirection.Vertical, 4)
-	makeText(battle, "Title", "Pet battles", "Heading", 22, WHITE, {
-		Size = UDim2.new(1, 0, 0, 28),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 1,
-	})
-	local battleLabel = makeText(battle, "Lines", "", "Body", 19, WHITE, {
+	local _, battle = P5.statCard(left, "Battle", "Pet battles", 3)
+	local battleLabel = makeText(battle, "Lines", "", "Body", 19, P5.HS.Text, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextWrapped = true,
@@ -1749,52 +1763,49 @@ local function buildStats(win)
 		LayoutOrder = 2,
 	})
 
-	-- right: best time per difficulty
-	local right = makeInset(content, "BestTimes", {
+	-- right: best time per difficulty (kit-b U9-3: on the stone body itself, as the Home window's station list)
+	local right = makeFrame(content, "BestTimes", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -14, 0, 14),
 		Size = UDim2.new(0.45, -21, 1, -28),
 	})
 	local list = scroller(right, "List", {
-		Position = UDim2.fromOffset(6, 6),
-		Size = UDim2.new(1, -12, 1, -12),
+		Size = UDim2.new(1, 0, 1, 0),
 	})
-	pad(list, 8, 4, 14, 8)
+	list.ScrollBarImageColor3 = P5.HS.Wood
+	pad(list, 2, 2, 14, 8)
 	listLayout(list, Enum.FillDirection.Vertical, 8)
-	Theme.StyleTitle(makeText(list, "Title", "Best times", "Title", 28, WHITE, {
-		Size = UDim2.new(1, 0, 0, 36),
+	Theme.StyleTitle(makeText(list, "Title", "Best times", "Title", 24, P5.HS.Text, {
+		Size = UDim2.new(1, 0, 0, 32),
+		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 0,
 	}), "Section")
 	for index, difficulty in ipairs(Config.Difficulties) do
-		local row = makeFrame(list, "Row_" .. difficulty.Id, {
-			Size = UDim2.new(1, 0, 0, 66),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Theme.Darken(difficulty.Color, 0.55),
+		local row = P5.signBlock(list, "Row_" .. difficulty.Id, {
+			Size = UDim2.new(1, 0, 0, 70),
 			LayoutOrder = index,
-		})
-		corner(row, "M")
-		stroke(row, NAVY, 3, 0)
-		local bar = makeFrame(row, "Bar", {
-			Position = UDim2.fromOffset(6, 8),
-			Size = UDim2.new(0, 7, 1, -16),
+		}, difficulty.Color)
+		-- the difficulty's colour down the left side, square, in the row's wood edge
+		makeFrame(row, "Bar", {
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.new(0, 8, 1, -5),
 			BackgroundTransparency = 0,
 			BackgroundColor3 = difficulty.Color,
 		})
-		round(bar)
-		makeText(row, "Name", difficulty.DisplayName, "Title", 24, Theme.Lighten(difficulty.Color, 0.45), {
-			Position = UDim2.fromOffset(22, 5),
-			Size = UDim2.new(0.55, -22, 0, 30),
+		makeText(row, "Name", difficulty.DisplayName, "Title", 24, P5.HS.Text, {
+			Position = UDim2.fromOffset(20, 5),
+			Size = UDim2.new(0.55, -20, 0, 30),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
-		starRating(makeText(row, "Stars", "", "Heading", 18, GOLD, {
-			Position = UDim2.fromOffset(22, 36),
-			Size = UDim2.new(0.55, -22, 0, 24),
+		starRating(makeText(row, "Stars", "", "Heading", 18, P5.HS.GoldDeep, {
+			Position = UDim2.fromOffset(20, 36),
+			Size = UDim2.new(0.55, -20, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		}), difficulty.Stars)
-		rows[difficulty.Id] = makeText(row, "Time", "--:--", "Display", 30, WHITE, {
+		rows[difficulty.Id] = makeText(row, "Time", "--:--", "Display", 30, P5.HS.Text, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -14, 0, 0),
-			Size = UDim2.new(0.45, 0, 1, 0),
+			Size = UDim2.new(0.45, 0, 1, -5),
 			TextXAlignment = Enum.TextXAlignment.Right,
 		})
 	end
@@ -1838,10 +1849,10 @@ local function buildStats(win)
 			local seconds = stats.BestTimes[id]
 			if type(seconds) == "number" and seconds > 0 then
 				label.Text = Util.FormatTime(seconds)
-				label.TextColor3 = WHITE
+				label.TextColor3 = P5.HS.Text
 			else
 				label.Text = "--:--"
-				label.TextColor3 = MUTED
+				label.TextColor3 = P5.HS.TextMuted
 			end
 		end
 
@@ -1864,10 +1875,10 @@ local function buildStats(win)
 		end
 		if #lines > 0 then
 			perksLabel.Text = table.concat(lines, "     ")
-			perksLabel.TextColor3 = Theme.Lighten(GOOD, 0.25)
+			perksLabel.TextColor3 = P5.GOOD
 		else
 			perksLabel.Text = "No perks yet. Put a pet in your team!"
-			perksLabel.TextColor3 = MUTED
+			perksLabel.TextColor3 = P5.HS.TextMuted
 		end
 	end
 end
@@ -3661,7 +3672,10 @@ function MenuController.Init()
 
 	buildHint()
 	buildColumn()
-	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true })
+	-- (kit-b U9-3) the Stats window on the Signboard kit too; its lists scroll through both bottom corners on a phone, so the
+	-- touch controls go while it is open (HideTouch, as Home), and the HUD's currency strips step aside (HideCurrency)
+	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true, Skin = "Signboard", Icon = Config.Icons.Stats or "stats",
+		HideTouch = true, HideCurrency = true })
 	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true, Skin = "Signboard", Icon = HOME_ICON.House, HideTouch = true })
 	relayoutMenu()
 	updateMenuActive()

@@ -117,6 +117,17 @@
 --                             Prestige button opens the confirm; every line's text inside its line, the buttons inside the
 --                             box's wood edge, the three lines in the list with no scroll on the portrait phone, every
 --                             text reads on its fill, Prestige! the dialog's one green plank
+--   U9-3 (finding 15; the "Stats + Titles + VIP tags" family; kitb_no_neon_glow and kitb_no_emoji_ui walk them too):
+--   stats_signboard_skin      (client) the Stats window wears the Signboard skin ("Stats" its ribbon, the stats icon in
+--                             the header), each stat a stone block with an icon chip and a brown number, plain Section
+--                             headings, best-time rows with their difficulty's lip, nothing round, every text readable
+--   stats_fits_phone          (client) 844x390 / 390x844: inside the screen, the touch controls gone while open and back
+--                             on Close, every stat's chip / number / caption inside its block, captions whole
+--   stats_clear_of_hud        (client) 1920x1080 / 1280x720: the window and its awning over no HUD part (the currency
+--                             strips step aside while it is open), the strips back on Close
+--   titles_kitb_tags          (client) each title over a head a flat opaque kit B tag in its role's colour (Top10 gold,
+--                             Top100 stone, Creator navy), Nameplate text in the look's ink, no outline / gradient /
+--                             tween; the VIP crown gold on its wood lip, the lobby crown a pixel gap above its anchor
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -4349,11 +4360,64 @@ local function clientScenarios()
 		end
 	end
 
+	-- (U9-3) the titles over heads: runs fn(players) with four dummy players in the lobby on High graphics (the crown shows
+	-- on High only): Top10 #3, Top100 #57, the Creator wearing the VIP pass (the crown inside the tag) and an untitled VIP
+	-- (the VipCrown billboard of its own); they leave after and the graphics answer is put back
+	local U93 = {}
+	function U93.titled(fn)
+		local Config = LoadingH.shared("Config")
+		local GQ = U7.client("GraphicsQuality")
+		local real = GQ and GQ.Effective
+		if GQ then
+			GQ.Effective = function()
+				return "High"
+			end
+		end
+		local who = { { "U93TopTen", 986001, "Top10", 3 }, { "U93TopHundred", 986002, "Top100", 57 }, { "U93Creator", 986003, "Creator", 1, true },
+			{ "U93Vip", 986004, nil, nil, true } }
+		local players = {}
+		for i, w in ipairs(who) do
+			players[i] = Mock.AddPlayer(w[1], w[2])
+		end
+		LKC.advance(0.5)
+		for i, w in ipairs(who) do
+			if w[5] then
+				players[i]:SetAttribute("OwnedPasses", "VIP")
+			end
+			if w[3] then
+				players[i]:SetAttribute(Config.Attr.TitleRank, w[4])
+				players[i]:SetAttribute(Config.Attr.Title, w[3])
+			end
+		end
+		LKC.advance(1.2)
+		local ok, err = pcall(fn, players)
+		T.check(ok, "u9-3 titles: the check ran", tostring(err))
+		for _, p in ipairs(players) do
+			Mock.RemovePlayer(p)
+		end
+		if GQ then
+			GQ.Effective = real
+		end
+		LKC.advance(0.5)
+	end
+	-- the TitleTag and VipCrown billboards on these players' characters
+	function U93.boards(players)
+		local out = {}
+		for _, p in ipairs(players) do
+			for _, d in ipairs(p.Character and p.Character:GetDescendants() or {}) do
+				if d:IsA("BillboardGui") and (d.Name == "TitleTag" or d.Name == "VipCrown") then
+					out[#out + 1] = d
+				end
+			end
+		end
+		return out
+	end
+
 	-- the emoji rule over PlayerGui (tools/stroke_walk.py --emoji runs it over the dump of every render scenario): after the
 	-- client run and with each window U7a reworked open in turn (the menu's Pets / Index / Stats, the Shop on every tab,
 	-- the Gifts window, Fusion, a token toast, a match result, the hatch stage), no shown text carries an emoji or
 	-- pictographic symbol code point (SmokeCommon.Emoji). The texts in tools/fixtures/emoji_backlog.txt (U7b's glyph
-	-- tables) are counted, not failed; U7b empties that list.
+	-- tables) are counted, not failed; U7b empties that list. (U9-3) The titles and the VIP crown over heads too.
 	S.kitb_no_emoji_ui = guarded("kitb_no_emoji_ui", function()
 		local Emoji = SmokeCommon.Emoji
 		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -4370,6 +4434,15 @@ local function clientScenarios()
 		end
 		U7.openAll(walk)
 		U7.openU7b(walk) -- (U7b) and the windows of the glyph tables U7b redrew; the backlog is empty
+		local boards = 0
+		U93.titled(function(players) -- (U9-3) the titles and the VIP crown over heads
+			for _, bb in ipairs(U93.boards(players)) do
+				boards = boards + 1
+				walks = walks + 1
+				Emoji.Walk(bb, hits, owed)
+			end
+		end)
+		T.check(boards == 4, "kitb emoji walk: (setup) three titles and the untitled VIP's crown were walked", tostring(boards))
 		local list, n = {}, 0
 		for path, cps in pairs(hits) do
 			list[#list + 1] = path .. " " .. cps
@@ -4653,7 +4726,8 @@ local function clientScenarios()
 		end
 		return cur ~= nil and cur.Enabled ~= false
 	end
-	function U8.feed(team, garden, growth, home) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth; home: the Home record (U9-1)
+	-- (U9-3) extra: fields that replace the profile's own (a record of matches, best times and perks for the Stats window)
+	function U8.feed(team, garden, growth, home, extra) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth; home: the Home record (U9-1)
 		local pets, levels, discovered = {}, {}, {}
 		for i, key in ipairs(U8.KEYS) do
 			pets[key] = 1
@@ -4661,7 +4735,7 @@ local function clientScenarios()
 			discovered[key] = true
 		end
 		local preset = team or { U8.KEYS[1], U8.KEYS[2] }
-		LKC.toClient("ProfileSync", {
+		local snap = {
 			Tokens = 1250, Pets = pets, Equipped = preset, Items = {},
 			Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
 			Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 },
@@ -4673,7 +4747,11 @@ local function clientScenarios()
 			Teams = { Presets = { preset, {}, {} }, Active = 1, Slots = 3, Busy = {} },
 			Battle = { Trophies = 120, TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} },
 			PetGrowth = growth or {}, Ring = { Best = 0, Runs = 0 },
-		})
+		}
+		for k, v in pairs(extra or {}) do
+			snap[k] = v
+		end
+		LKC.toClient("ProfileSync", snap)
 		LKC.advance(0.2)
 	end
 	function U8.closeAll()
@@ -4739,6 +4817,22 @@ local function clientScenarios()
 		end
 		table.sort(out)
 		return out
+	end
+	-- (U9-3) the Stats window, inside U8.at's lobby: a record to show (U8.feed zeroes the stats): matches and wins, two best
+	-- times, two perks
+	U93.RECORD = {
+		Stats = { Matches = 12, Wins = 7, TokensEarned = 900, Spins = 5, BestTimes = { Easy = 123.4, Medium = 201.5 } },
+		Perks = { MaxHealth = 0.12, TokenBonus = 0.25, StaminaRegen = 0, CheckpointHeal = 0 },
+	}
+	function U93.win()
+		local menu = U8.pg():FindFirstChild("NimbusMenu")
+		return menu and menu:FindFirstChild("Window_Stats")
+	end
+	function U93.open()
+		U8.feed(nil, nil, nil, nil, U93.RECORD)
+		U7.client("Controllers/MenuController").Open("Stats")
+		LKC.advance(1)
+		return U93.win()
 	end
 
 	-- (U8) the gift docks under the currency strips (the pitch's HUD stage: a small pink block right-aligned under them): its
@@ -5334,7 +5428,16 @@ local function clientScenarios()
 				end
 				pcall(Shop.Close)
 				LKC.advance(0.4)
-				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window, the Index, the Home window and the Shop (%d)", tag, #bad),
+				-- (U9-3) the Stats window, and the titles and the VIP crown over heads (BillboardGuis on the characters)
+				walk(U93.open(), "Stats", bad)
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				U93.titled(function(players)
+					for _, bb in ipairs(U93.boards(players)) do
+						walk(bb, bb.Name .. " " .. bb.Parent.Parent.Name, bad)
+					end
+				end)
+				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window, the Index, the Home window, the Shop, the Stats window and the tags over heads (%d)", tag, #bad),
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
@@ -6041,6 +6144,297 @@ local function clientScenarios()
 			end
 		end
 		LKC.flushErrors("shop_fits")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-3 (finding 15; BUILD_PLAN "Coverage check", U9 family 3 "Stats + Titles + VIP tags"): the Stats window
+	-- (MenuController's buildStats) on the Signboard kit; the rank / Creator titles over heads (TitleController) and the VIP
+	-- crown (VipController) as kit B sign tags. U93.at runs fn(tag, win) with the Stats window open on U93.RECORD
+	function U93.at(w, h, touch, label, fn)
+		U8.at(w, h, touch, label, function(tag)
+			local win = U93.open()
+			local ok, err = pcall(function()
+				if T.check(win ~= nil and U8.shown(win), tag .. ": the Stats window opens") then
+					fn(tag, win)
+				end
+			end)
+			T.check(ok, tag .. ": the Stats check ran", tostring(err))
+			pcall(U7.client("Controllers/MenuController").Close)
+			LKC.advance(0.4)
+		end)
+	end
+	-- the contrast walk's failures inside the Stats window
+	function U93.contrast()
+		local out = {}
+		for _, line in ipairs((SmokeCommon.Contrast.Walk(U8.pg()))) do
+			if line:find("Window_Stats", 1, true) then
+				out[#out + 1] = line
+			end
+		end
+		return out
+	end
+	U93.TILES = { "Matches", "Wins", "WinRate", "Tokens", "Earned", "Spins", "Found", "Owned" }
+
+	-- the Stats window on the Signboard kit at 1920x1080 and 844x390: CloudUI.Panel's Signboard skin with "Stats" as the
+	-- window's ribbon and the stats PixelIcon in its header; each stat a square stone block in its wood edge with a chip
+	-- (a PixelIcon in its group's colour) and its number in brown; the perks, the battle record and the best times under
+	-- plain Section headings (the owner's ruling 2026-11-14: the ribbon is for window titles only) on blocks; each best-time
+	-- row a block whose lip is its difficulty's colour; nothing round, no green action (the window has none), every text
+	-- reads on its fill
+	S.stats_signboard_skin = guarded("stats_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U93.at(s[1], s[2], s[3], "stats kit b", function(tag, win)
+				local panel = win:FindFirstChild("StatsPanel")
+				T.check(panel ~= nil and panel:GetAttribute("Skin") == "Signboard", tag .. ": the Stats window wears the Signboard skin")
+				local bar = panel and panel:FindFirstChild("TitleBar", true)
+				local title = bar and bar:FindFirstChild("Title", true)
+				T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": 'Stats' is the window's ribbon title",
+					title and tostring(title:GetAttribute("TitleLook")) or "no title")
+				local icon = false
+				for _, d in ipairs(bar and bar:GetDescendants() or {}) do
+					icon = icon or d:GetAttribute("PixelIcon") == "stats"
+				end
+				T.check(icon, tag .. ": the header carries the stats PixelIcon")
+				-- the section headings: plain Section titles in brown, and no other ribbon in the window
+				for _, id in ipairs({ "Perks", "Battle", "BestTimes" }) do
+					local box = win:FindFirstChild(id, true)
+					local head = box and box:FindFirstChild("Title", true)
+					T.check(head ~= nil and head:GetAttribute("TitleLook") == "Section" and sameColor(head.TextColor3, Sign.Text),
+						tag .. ": " .. id .. "'s heading is a plain Section title in brown", head and (tostring(head:GetAttribute("TitleLook")) .. " " .. hex(head.TextColor3)) or "no heading")
+				end
+				local ribbons = {}
+				for _, d in ipairs(win:GetDescendants()) do
+					if d:IsA("TextLabel") and d:GetAttribute("TitleLook") == "Ribbon" and d ~= title then
+						ribbons[#ribbons + 1] = d:GetFullName():gsub("^.-Window_Stats%.", "")
+					end
+				end
+				T.check(#ribbons == 0, tag .. ": no ribbon inside the window but its header's", table.concat(ribbons, ", "))
+				-- the stat blocks: stone, a wood edge, a chip with its PixelIcon, the number in brown
+				local loose = {}
+				for _, id in ipairs(U93.TILES) do
+					local tile = win:FindFirstChild("Tile_" .. id, true)
+					local chip = tile and tile:FindFirstChild("Chip")
+					local glyph = nil
+					for _, d in ipairs(chip and chip:GetDescendants() or {}) do
+						glyph = glyph or d:GetAttribute("PixelIcon")
+					end
+					local value = tile and tile:FindFirstChild("Value")
+					if not (tile and tile.BackgroundTransparency < 0.05 and sameColor(tile.BackgroundColor3, Sign.Tile) and tile:FindFirstChild("SignEdge")
+						and chip and chip.BackgroundTransparency < 0.05 and glyph and value and sameColor(value.TextColor3, Sign.Text)) then
+						loose[#loose + 1] = id
+					end
+				end
+				T.check(#loose == 0, tag .. ": every stat is a stone block in its wood edge with an icon chip and a brown number", table.concat(loose, ", "))
+				local tokens = win:FindFirstChild("Tile_Tokens", true)
+				local coin = nil
+				for _, d in ipairs(tokens and tokens:GetDescendants() or {}) do
+					coin = coin or (d:GetAttribute("PixelIcon") == "token" and d or nil)
+				end
+				T.check(coin ~= nil and coin:FindFirstAncestor("Chip") ~= nil, tag .. ": the tokens' coin is the chip's icon (no second coin before the number)")
+				-- the cards and the best-time rows
+				local blocks, rows = {}, 0
+				for _, id in ipairs({ "Perks", "Battle" }) do
+					local card = win:FindFirstChild(id, true)
+					if not (card and card.BackgroundTransparency < 0.05 and card:FindFirstChild("SignEdge")) then
+						blocks[#blocks + 1] = id
+					end
+				end
+				for _, d in ipairs(Config.Difficulties) do
+					local row = win:FindFirstChild("Row_" .. d.Id, true)
+					local lip = row and row:FindFirstChild("Lip")
+					rows = rows + (row and 1 or 0)
+					if not (row and row.BackgroundTransparency < 0.05 and row:FindFirstChild("SignEdge") and lip and sameColor(lip.BackgroundColor3, d.Color)) then
+						blocks[#blocks + 1] = "Row_" .. d.Id
+					end
+				end
+				T.check(rows == #Config.Difficulties and #blocks == 0, fmt("%s: the perks, the battle record and every best-time row are blocks in their wood edge, a row's lip its difficulty's colour (%d rows)", tag, rows),
+					table.concat(blocks, ", "))
+				local round = {}
+				for _, d in ipairs(win:GetDescendants()) do
+					if d:IsA("UICorner") and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
+						round[#round + 1] = d.Parent.Name
+					end
+				end
+				T.check(#round == 0, tag .. ": nothing in the Stats window is round (kit B is square)", table.concat(round, ", ", 1, math.min(#round, 10)))
+				local greens = U8.greenActions(win)
+				T.check(#greens == 0, tag .. ": no green action (the window only shows)", table.concat(greens, ", "))
+				local bad = U93.contrast()
+				T.check(#bad == 0, fmt("%s: every text of the Stats window reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+			end)
+		end
+		LKC.flushErrors("stats_signboard_skin")
+	end)
+
+	-- the Stats window on a touch phone (844x390 and 390x844): the panel inside the screen; Roblox's thumbstick and jump button
+	-- go while it is open (its lists scroll through both bottom corners: the best times under the jump button at 844x390 on
+	-- the neon window) and come back as they were on Close; every stat's number and caption inside its block, each caption
+	-- whole at its size (real FredokaOne widths), every best-time row's texts inside the row
+	S.stats_fits_phone = guarded("stats_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			local before = GuiService.TouchControlsEnabled
+			U93.at(s[1], s[2], s[3], "stats phone", function(tag, win)
+				local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
+				local panel = win:FindFirstChild("StatsPanel")
+				local p = panel and U8.rect(panel)
+				T.check(p ~= nil and p.X >= -0.5 and p.Y >= -0.5 and p.R <= gui.AbsoluteSize.X + 0.5 and p.B <= gui.AbsoluteSize.Y + 0.5,
+					tag .. ": the Stats window sits inside the screen", p and U8.show(p) or "no panel")
+				T.check(GuiService.TouchControlsEnabled == false, tag .. ": Roblox's thumbstick and jump button go while the Stats window is open")
+				local function inside(r, o)
+					return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+				end
+				local out, tight = {}, {}
+				for _, id in ipairs(U93.TILES) do
+					local tile = win:FindFirstChild("Tile_" .. id, true)
+					local t = tile and U8.rect(tile)
+					for _, name in ipairs({ "Value", "Caption", "Chip" }) do
+						local o = tile and tile:FindFirstChild(name)
+						if not o or not inside(U8.rect(o), t) then
+							out[#out + 1] = id .. "." .. name .. (o and (" " .. U8.show(U8.rect(o))) or " missing")
+						end
+					end
+					local cap = tile and tile:FindFirstChild("Caption")
+					if cap then
+						local w = SmokeCommon.RealWidth(cap.Text, cap.TextSize, cap.Font)
+						local room = cap.AbsoluteSize.X / U8.scaleOf(cap)
+						if w and w > room + 0.5 then
+							tight[#tight + 1] = fmt("%s %q %.1f px in %.1f", id, cap.Text, w, room)
+						end
+					end
+				end
+				for _, d in ipairs(LoadingH.shared("Config").Difficulties) do
+					local row = win:FindFirstChild("Row_" .. d.Id, true)
+					local r = row and U8.rect(row)
+					for _, name in ipairs({ "Name", "Time" }) do
+						local o = row and row:FindFirstChild(name)
+						if not o or not inside(U8.rect(o), r) then
+							out[#out + 1] = "Row_" .. d.Id .. "." .. name
+						end
+					end
+				end
+				T.check(#out == 0, tag .. ": every stat's chip, number and caption sit inside its block, every row's name and time inside the row", table.concat(out, ", ", 1, math.min(#out, 8)))
+				T.check(#tight == 0, tag .. ": every stat's caption fits its block at its size", table.concat(tight, "; "))
+			end)
+			T.eq(GuiService.TouchControlsEnabled, before, fmt("stats phone %dx%d: the touch controls are back as they were after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("stats_fits_phone")
+	end)
+
+	-- (U9-3 renders: at 1280x720 the HUD's currency strips peeked out over the Stats window's awning, its X over them, as the
+	-- render gate found for the Shop) on PC the Stats window, its awning included, lies over no shown part of the HUD: the
+	-- currency strips step aside while it is open and come back on Close
+	S.stats_clear_of_hud = guarded("stats_clear_of_hud", function()
+		for _, s in ipairs({ { 1920, 1080, false }, { 1280, 720, false } }) do
+			local strips = nil
+			U93.at(s[1], s[2], s[3], "stats hud", function(tag, win)
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				strips = hud and hud:FindFirstChild("Currency", true)
+				local boxes = { U8.rect(win) }
+				local roof = win:FindFirstChild("Roof", true)
+				if roof and U8.shown(roof) then
+					boxes[2] = U8.rect(roof) -- the awning is wider than the window
+				end
+				-- more than a shared edge: the vitals card's right edge meets the docked window's left edge within 2 px at
+				-- 1280x720 (the SideRect's rounding), which is a touch, not a part laid over
+				local function over4(a, b)
+					return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
+				end
+				local over = {}
+				for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+					if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 0.95 then
+						for _, b in ipairs(boxes) do
+							if over4(U8.rect(d), b) then
+								over[#over + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+								break
+							end
+						end
+					end
+				end
+				T.check(#over == 0, tag .. ": the Stats window and its awning lie over no HUD part", table.concat(over, ", ", 1, math.min(#over, 8)) .. " | window " .. U8.show(boxes[1]))
+			end)
+			T.check(strips ~= nil and U8.shown(strips), fmt("stats hud %dx%d: the currency strips are back after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("stats_clear_of_hud")
+	end)
+
+	-- the titles over heads as kit B sign tags (finding 15: no glow, no gloss, colour by role): each TitleTag's Plate a flat
+	-- opaque face in a wood edge with its darker lip, square (no corner), its role's colour (Top10 the gold block, Top100
+	-- the stone block, Creator the navy plank); the text FredokaOne (Nameplate) in the look's ink, readable on the face
+	-- (4.5:1), no outline and no classic stroke; no gradient and no tween anywhere in the tag (the Top10 rainbow went). The
+	-- VIP crown, in a titled tag and on its own billboard: the gold pixel crown with its wood lip one cell under it
+	S.titles_kitb_tags = guarded("titles_kitb_tags", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local TC = U7.client("Controllers/TitleController")
+		local FACE = { Top10 = { Sign.Gold, Sign.Text }, Top100 = { Sign.Tile, Sign.Text }, Creator = { Sign.Navy, Sign.Gold } }
+		local function tweened(root)
+			for tw in pairs(Mock.ActiveTweens) do
+				local ok, target = pcall(function()
+					return tw.Instance
+				end)
+				if ok and target and (target == root or target:IsDescendantOf(root)) and tw.PlaybackState.Name == "Playing" then
+					return true
+				end
+			end
+			return false
+		end
+		local function crownOk(holder, label)
+			local icon = holder and holder:FindFirstChild("Icon")
+			local lip = holder and holder:FindFirstChild("Lip")
+			T.check(icon ~= nil and icon:GetAttribute("PixelIcon") == "crown" and sameColor(icon.TextColor3, Sign.Gold), label .. ": the gold pixel crown",
+				icon and hex(icon.TextColor3) or "no Icon")
+			T.check(lip ~= nil and lip:GetAttribute("PixelIcon") == "crown" and sameColor(lip.TextColor3, Sign.Wood) and lip.AbsolutePosition.Y > icon.AbsolutePosition.Y
+				and lip.AbsolutePosition.X == icon.AbsolutePosition.X, label .. ": its wood lip, the same crown a cell lower behind it",
+				lip and fmt("lip %s at %d,%d; icon at %d,%d", hex(lip.TextColor3), lip.AbsolutePosition.X, lip.AbsolutePosition.Y, icon.AbsolutePosition.X, icon.AbsolutePosition.Y) or "no Lip")
+		end
+		U93.titled(function(players)
+			for i, kind in ipairs({ "Top10", "Top100", "Creator" }) do
+				local k = "titles kit b: " .. kind
+				local tag = TC and TC.TagOf(players[i])
+				local plate = tag and tag:FindFirstChild("Plate")
+				local label = plate and plate:FindFirstChild("Label")
+				if T.check(plate ~= nil and label ~= nil, k .. ": (setup) TitleTag > Plate > Label") then
+					local edge = plate:FindFirstChild("SignEdge")
+					local lip = plate:FindFirstChild("Lip")
+					T.check(plate.BackgroundTransparency == 0 and sameColor(plate.BackgroundColor3, FACE[kind][1]) and edge ~= nil and edge:IsA("UIStroke")
+						and edge.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and lip ~= nil and lip.Visible,
+						k .. ": the plate is an opaque kit B block in its role's colour, a wood edge and its lip", hex(plate.BackgroundColor3))
+					local gloss = {}
+					for _, d in ipairs(tag:GetDescendants()) do
+						if d:IsA("UICorner") or d:IsA("UIGradient") then
+							gloss[#gloss + 1] = d.ClassName .. " on " .. d.Parent.Name
+						end
+					end
+					T.check(#gloss == 0, k .. ": no round corner and no gradient in the tag", table.concat(gloss, ", "))
+					local outline = false
+					for _, c in ipairs(label:GetChildren()) do
+						outline = outline or (c:IsA("UIStroke") and c.Enabled ~= false)
+					end
+					T.check(not outline and (label.TextStrokeTransparency or 1) >= 0.99, k .. ": the text has no outline and no classic stroke (it sits on an opaque face)")
+					T.check(label:GetAttribute("FontRole") == "Nameplate" and sameColor(label.TextColor3, FACE[kind][2]), k .. ": the text is the Nameplate role in the look's ink",
+						tostring(label:GetAttribute("FontRole")) .. " " .. hex(label.TextColor3))
+					local ratio = SmokeCommon.Contrast.Ratio(label.TextColor3, plate.BackgroundColor3)
+					T.check(ratio >= 4.5, fmt("%s: the text reads on its face (%.1f:1 >= 4.5)", k, ratio))
+					T.check(not tweened(tag), k .. ": nothing in the tag tweens (no rainbow)")
+				end
+			end
+			local inTag = TC and TC.TagOf(players[3])
+			crownOk(inTag and inTag:FindFirstChild("Crown"), "titles kit b: the Creator's crown inside the tag")
+			local own = nil
+			for _, bb in ipairs(U93.boards({ players[4] })) do
+				own = own or (bb.Name == "VipCrown" and bb or nil)
+			end
+			crownOk(own and own:FindFirstChild("Crown"), "titles kit b: an untitled VIP's crown billboard")
+			-- (U9-3 renders: the crown sat on Roblox's name, 0.4 stud above it, a gap that shrinks with distance) the crown's
+			-- bottom is a pixel gap above its 2.4-stud point, as the TitleTag's is: Roblox's name (about 20 px tall, centred
+			-- about 2.0 studs up) never meets it at any distance
+			local above = own and (own.SizeOffset.Y * own.Size.Y.Offset - own.Size.Y.Offset / 2) or 0
+			T.check(own ~= nil and own.SizeOffset.X == 0 and above >= 14, fmt("titles kit b: the lobby crown's bottom sits %.1f px (>= 14) above its anchor at any distance", above))
+		end)
+		LKC.flushErrors("titles_kitb_tags")
 	end)
 
 	return S

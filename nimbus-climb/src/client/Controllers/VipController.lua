@@ -7,7 +7,10 @@
 --   '<font color="#FFC440">[VIP]</font> <font color="#FFC440">' .. message.PrefixText .. '</font>' when the message's
 --   TextSource.UserId is a VIP in this server; any other message (no source, a non-VIP, an error) is left as it is (nil).
 --   Set under pcall: a place without the property (the legacy chat) keeps its nil callback.
--- Lobby crown: a BillboardGui "VipCrown" (the VipCrown glyph, 2.4 studs above the head, MaxDistance 60, client-only)
+--   VipController.Crown(parent, px) -> Frame "Crown"   (kit-b U9-3) the crown's kit B look: the gold pixel crown on its
+--                                                      wood lip (the lobby crown and a titled player's TitleTag)
+-- Lobby crown: a BillboardGui "VipCrown" (VipController.Crown, its bottom 16 px over a point 2.4 studs above the head,
+--   MaxDistance 60, client-only)
 --   on every VIP character while Graphics is High; disabled while that player is InBattle / InMatch; every player's
 --   OwnedPasses / InBattle / InMatch attributes and CharacterAdded are watched, and a 1 s sweep follows the graphics
 --   level; the crown and the connections go when the player leaves.
@@ -24,6 +27,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
+local Theme = require(Shared:WaitForChild("Theme"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon"))
 
 local Client = script.Parent.Parent
 local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
@@ -38,6 +43,7 @@ local K = {
 	OFFSET = 2.4, -- studs above the head
 	MAX_DISTANCE = 60,
 	SIZE = 34, -- the billboard (px)
+	ABOVE = 16, -- (kit-b U9-3) px between the crown's bottom and its anchor below it (Roblox's name is about 20 px tall)
 	SWEEP = 1, -- seconds between two graphics-level sweeps
 	-- the chat callback's return class: creatable in Roblox (the TextChatService.OnIncomingMessage docs build one with
 	-- Instance.new); tools/roblox-api.json predates it, so the name is kept here rather than as a literal at the call
@@ -141,18 +147,44 @@ local function wantsCrown(player)
 	return player:GetAttribute(Config.Attr.InMatch) ~= true and player:GetAttribute(Config.Attr.InBattle or "InBattle") == nil
 end
 
+-- (kit-b U9-3, finding 15) the crown in kit B: the gold pixel crown (Theme.Sign.Gold) over the same crown in wood one cell
+-- lower, the flat block's darker lip, so it reads on the sky and on the grass with no glow. A transparent px x px Frame
+-- "Crown" holding the wood "Lip" and the gold "Icon" (NeonKit.Icon: attribute PixelIcon = "crown"), both drawn at the
+-- 27 px icon (3 px cells) a 34 px slot held before; the caller places the holder. Used by the lobby crown here and by a
+-- titled player's TitleTag (TitleController)
+K.CROWN_ICON = 30 -- NeonKit.Icon's size: the PixelIcon draws at 0.9 x this = 27 px
+function VipController.Crown(parent, px)
+	local holder = Instance.new("Frame")
+	holder.Name = "Crown"
+	holder.BackgroundTransparency = 1
+	holder.BorderSizePixel = 0
+	holder.Size = UDim2.fromOffset(px, px)
+	local cell = math.floor(PixelIcon.Snap(K.CROWN_ICON * 0.9) / 9)
+	-- the lip under the gold one (ZIndex 1 / 2: the pixel frames follow their host's)
+	for _, part in ipairs({ { "Lip", Theme.Sign.Wood, cell, 1 }, { "Icon", Theme.Sign.Gold, 0, 2 } }) do
+		local icon = NeonKit.Icon(holder, "VipCrown", K.CROWN_ICON)
+		icon.Name = part[1]
+		icon.TextColor3 = part[2]
+		icon.Position = UDim2.new(0.5, 0, 0.5, part[3])
+		icon.ZIndex = part[4]
+	end
+	holder.Parent = parent
+	return holder
+end
+
 local function makeCrown(head)
 	local bb = Instance.new("BillboardGui")
 	bb.Name = K.CROWN
 	bb.Size = UDim2.fromOffset(K.SIZE, K.SIZE)
 	bb.StudsOffset = Vector3.new(0, K.OFFSET, 0)
+	-- (kit-b U9-3) the crown's bottom ABOVE px over that point, a pixel gap that holds at any distance (the 0.4 stud between
+	-- it and Roblox's name shrank on screen, so the crown sat on the name; the TitleTag's rule)
+	bb.SizeOffset = Vector2.new(0, 0.5 + K.ABOVE / K.SIZE)
 	bb.MaxDistance = K.MAX_DISTANCE
 	bb.AlwaysOnTop = false
 	bb.LightInfluence = 0
 	bb.Adornee = head
-	local icon = NeonKit.Icon(bb, "VipCrown", K.SIZE * 0.8)
-	icon.Size = UDim2.fromScale(1, 1)
-	icon.TextScaled = true
+	VipController.Crown(bb, K.SIZE)
 	bb.Parent = head
 	return bb
 end

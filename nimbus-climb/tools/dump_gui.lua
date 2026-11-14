@@ -3653,6 +3653,8 @@ end)
 --                       name -> plate and plate -> crown, which stay the same at every distance (pixel offsets). The
 --                       mirrored plate is re-fitted with the renderer's font metrics (the mock's GetTextSize is 0.5 em
 --                       per character). The renderer's FredokaOne stand-in (Arial Rounded) has no middle dot glyph.
+--                       (kit-b U9-3) a fourth dummy, an untitled VIP ("VipOnly"), shows the lobby crown's own
+--                       VipCrown billboard (2.4 studs over the head, lifted by its SizeOffset), mirrored the same way.
 local TT = { FOV_HALF_TAN = math.tan(math.rad(35)) }
 -- a front-view character sketch (studs, y up from the head's centre), like the mock's R15 rig
 function TT.figure(parent, cx, headY, pps)
@@ -3672,18 +3674,28 @@ scenario("titles", function(studs)
 	local d = max(4, tonumber(studs) or 14)
 	local TC = req("client/Controllers/TitleController", true)
 	NK.hideGame()
-	local who = { { "SkyRunner", 990001, "Top10", 3 }, { "CloudHopper", 990002, "Top100", 57 }, { "GameCreator", 990003, "Creator", 1, true } }
+	local who = { { "SkyRunner", 990001, "Top10", 3 }, { "CloudHopper", 990002, "Top100", 57 }, { "GameCreator", 990003, "Creator", 1, true },
+		{ "VipOnly", 990004, nil, nil, true } }
+	-- the lobby crown shows on High graphics only
+	local GQ = req("client/GraphicsQuality", true)
+	if GQ then
+		GQ.Effective = function()
+			return "High"
+		end
+	end
 	local players = {}
 	for i, w in ipairs(who) do
 		players[i] = Mock.AddPlayer(w[1], w[2])
 	end
 	advance(0.5)
 	for i, w in ipairs(who) do
-		players[i]:SetAttribute(Config.Attr.TitleRank, w[4])
 		if w[5] then
 			players[i]:SetAttribute(Config.Attr.OwnedPasses or "OwnedPasses", "VIP")
 		end
-		players[i]:SetAttribute(Config.Attr.Title, w[3])
+		if w[3] then
+			players[i]:SetAttribute(Config.Attr.TitleRank, w[4])
+			players[i]:SetAttribute(Config.Attr.Title, w[3])
+		end
 	end
 	advance(1.2)
 	local screen = make("ScreenGui", { Name = "WorldMirror", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
@@ -3695,10 +3707,24 @@ scenario("titles", function(studs)
 		TextXAlignment = Enum.TextXAlignment.Left, TextStrokeTransparency = 0.2, TextStrokeColor3 = NAVY,
 	})
 	for i, p in ipairs(players) do
-		local cx = floor(vp.X * i / 4)
+		local cx = floor(vp.X * i / (#players + 1))
 		TT.figure(screen, cx, headY, pps)
 		local tag = TC and TC.TagOf(p)
 		local anchorY = headY - (tag and tag.StudsOffset.Y or 2.0) * pps
+		-- (kit-b U9-3) an untitled VIP: its own VipCrown billboard, centred StudsOffset.Y over the head
+		local own = not tag and p.Character and p.Character:FindFirstChild("VipCrown", true)
+		if own then
+			local w, h = own.Size.X.Offset, own.Size.Y.Offset
+			local top = headY - own.StudsOffset.Y * pps - own.SizeOffset.Y * h - h / 2
+			local cell = make("Frame", { Name = "VipCrown", BackgroundTransparency = 1, Position = UDim2.fromOffset(cx - w / 2, top), Size = UDim2.fromOffset(w, h) }, screen)
+			for _, c in ipairs(own:GetChildren()) do
+				if c:IsA("GuiObject") then
+					c:Clone().Parent = cell
+				end
+			end
+			local nameTop = (headY - 2.0 * pps) - 10
+			note(fmt("%s: the VipCrown billboard %.1f studs over the head, its bottom %.1f px above the name stand-in", p.Name, own.StudsOffset.Y, nameTop - (top + h)))
+		end
 		label(screen, p.DisplayName, 18, {
 			Name = "NameStandIn", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(cx, anchorY), Size = UDim2.fromOffset(200, 20),
 			TextStrokeTransparency = 0.3, TextStrokeColor3 = NAVY,
@@ -3714,15 +3740,13 @@ scenario("titles", function(studs)
 			end
 			-- the mock's TextService:GetTextSize is a flat 0.5 em per character, Roblox's measures the font: the mirrored
 			-- plate is re-fitted with the renderer's metrics (Mock.TextExtent) by the controller's own rule (the text + 2 x
-			-- PAD, the Top10 Label twice the text, left-aligned)
+			-- PAD; kit-b U9-3: the Label spans the plate, its text centred)
 			local mPlate = cell:FindFirstChild("Plate")
 			local mLabel = mPlate and mPlate:FindFirstChild("Label")
 			if mLabel then
 				local tw = ceil((Mock.TextExtent(mLabel)))
 				local pw = min(w, tw + 2 * ((TC.K and TC.K.PAD) or 12))
 				mPlate.Size = UDim2.fromOffset(pw, mPlate.Size.Y.Offset)
-				mLabel.Position = UDim2.fromOffset(floor((pw - tw) / 2), 0)
-				mLabel.Size = UDim2.new(0, (who[i][3] == "Top10") and 2 * tw or tw, 1, 0)
 			end
 			local plate, crown = tag:FindFirstChild("Plate"), tag:FindFirstChild("Crown")
 			local plateTop = top + plate.AbsolutePosition.Y
@@ -3730,7 +3754,7 @@ scenario("titles", function(studs)
 			local gapCrown = crown and (plateTop - (top + crown.AbsolutePosition.Y + crown.AbsoluteSize.Y)) or nil
 			note(fmt("%s from %d studs: name -> plate %.1f px%s", tostring(tag:FindFirstChild("Label", true).Text), d, gapName,
 				gapCrown and fmt(", plate -> crown %.1f px", gapCrown) or ""))
-		else
+		elseif not own then
 			note("no TitleTag for " .. p.Name)
 		end
 	end
