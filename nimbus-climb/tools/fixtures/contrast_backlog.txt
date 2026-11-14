@@ -30,6 +30,7 @@ NimbusDungeon.Window_*.DungeonPanel.Content.Floors.Floor*.OrbHolder.Orb.Num  # "
 NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.StageBadge  # "EVO I" #FFFFFF on #A48645 3.46:1 < 4.5
 NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
 NimbusFusion.Window_*.Panel.Body.Pills.Pill_*  # "Uncommon" #FFFFFF on #498665 4.30:1 < 4.5
+# (U9-2 review) the hatch screen is wave U9-2b, split from U9-2 (needs a pitch item first): these three stay until it lands
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Coin.Icon  # "☁" #FFFFFF on #C89E4A 2.49:1 < 3
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Price  # "500" #B0B8CE on #565B66 3.44:1 < 4.5
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Label  # "SPIN AGAIN" #B0B8CE on #6C7280 2.43:1 < 3
