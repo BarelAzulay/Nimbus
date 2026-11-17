@@ -540,7 +540,8 @@ end
 -- (kit-b U8) the pitch's HUD tile (.sb): a stone block with a wood edge and its darker lip, the PixelIcon and the label in
 -- brown, no orb and no glow. SetColor("Gold") = the selected tile (gold face), "Grey" = disabled (the sunk well), any other
 -- colour = stone (one colour by role). tile.Card is a stand-in with SetColor / SetGlow (no glow on this skin)
-local SIGN_TILE_LIP = 5
+local SIGN_TILE_LIP = 6 -- (LOOK-ui) 6: on the column's 2/3 step a 4 px lip, on 1 a 6 px one (5 drew 3.33 px)
+local SIGN_TILE_PRESS = 3 -- a pressed tile's lip (2 / 3 screen px on the column's steps)
 local function signTile(props, s, hasLabel)
 	local Sign = Theme.Sign
 	local root = Instance.new("TextButton")
@@ -622,7 +623,7 @@ local function signTile(props, s, hasLabel)
 		end
 		root.BackgroundColor3 = face
 		lip.BackgroundColor3 = lipColor
-		lip.Size = UDim2.new(1, 0, 0, press and 2 or SIGN_TILE_LIP)
+		lip.Size = UDim2.new(1, 0, 0, press and SIGN_TILE_PRESS or SIGN_TILE_LIP)
 		local ink = look == "Grey" and Sign.TextMuted or Sign.Text
 		icon.TextColor3 = ink
 		if label then
@@ -972,6 +973,36 @@ end
 --   opts (optional) = { Color = Color3 (the bars; default white), Ink = Color3 (default PanelInk), Square = true (kit B:
 --   bars with square ends), Scale = number,
 --                       ZIndex = number (the mark and the ink; the white bars one above) }
+-- (LOOK-ui, kitb-look1) a kit B block's pixel x redrawn at `px` (a multiple of 9): the screen's glyph size, so the X
+-- shares its window's one pixel size (27 on PC, 18 on a phone where the window draws its icons at 18 / 36)
+function NeonKit.CloseMarkPx(button, px)
+	local mark = button and button:FindFirstChild("CloseMark")
+	px = tonumber(px)
+	if not (mark and mark:GetAttribute("PixelX") and px and px >= 9) then
+		return
+	end
+	if mark:GetAttribute("Px") == px and mark:FindFirstChild("Icon") then
+		return
+	end
+	mark:SetAttribute("Px", px)
+	local half = math.floor(px / 2)
+	mark.Position = UDim2.new(0.5, -half, 0.5, -half)
+	mark.Size = UDim2.fromOffset(px, px)
+	for _, child in ipairs(mark:GetChildren()) do
+		child:Destroy()
+	end
+	local z = mark.ZIndex
+	local icon = PixelIcon.New(mark, "x", px, mark:GetAttribute("InkColor") or INK)
+	if icon then
+		icon.ZIndex = z
+		for _, cell in ipairs(icon:GetChildren()) do
+			if cell:IsA("GuiObject") then
+				cell.ZIndex = z
+			end
+		end
+	end
+end
+
 function NeonKit.CloseMark(button, opts)
 	if not (button and button:IsA("GuiButton")) then
 		return nil
@@ -1006,25 +1037,15 @@ function NeonKit.CloseMark(button, opts)
 		-- no rotated bars, the only smooth diagonals beside the 9 x 9 icons. 27 px on a block of 36 px or more, 18 below,
 		-- placed by a whole-pixel offset from the button's centre (an AnchorPoint of 0.5 put it on a half pixel)
 		local short = math.min(button.Size.X.Offset, button.Size.Y.Offset)
-		local px = (short <= 0 or short >= 36) and 27 or 18
-		local half = math.floor(px / 2)
+		local px = tonumber(opts.Px) or ((short <= 0 or short >= 36) and 27 or 18)
 		local mark = frame("CloseMark", {
-			Position = UDim2.new(0.5, -half, 0.5, -half),
-			Size = UDim2.fromOffset(px, px),
 			Active = false,
 			ZIndex = z,
 		})
 		mark:SetAttribute("PixelX", true)
-		local icon = PixelIcon.New(mark, "x", px, colorOf(opts.Color, INK))
-		if icon then
-			icon.ZIndex = z
-			for _, cell in ipairs(icon:GetChildren()) do
-				if cell:IsA("GuiObject") then
-					cell.ZIndex = z
-				end
-			end
-		end
+		mark:SetAttribute("InkColor", colorOf(opts.Color, INK))
 		mark.Parent = button
+		NeonKit.CloseMarkPx(button, px)
 		return mark
 	end
 	local scale = tonumber(opts.Scale) or MX.CloseMark
@@ -1109,6 +1130,11 @@ function NeonKit.SideRect(prefW, prefH, minW, minH, opts)
 				scale = MX.MinScaleTouch
 			else
 				scale = math.max(MX.MinScaleDesktop, maxW / prefW)
+			end
+			-- (LOOK-ui, shared: name it at the merge) a scale just under 1 (the Index at 1920x1080 sat at 0.982) is 1: the
+			-- window's design width gives up the last few px instead, so every pixel part draws on whole px at 1080p
+			if scale >= 0.95 and scale < 1 and f >= 1 and not (minW and maxW < minW) then
+				scale = 1
 			end
 		end
 		local w = math.min(prefW, maxW / scale)

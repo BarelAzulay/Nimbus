@@ -1509,7 +1509,7 @@ S.client_mobile = guarded("client_mobile", function()
 						T.check(not overlaps(col, o), label .. ": the menu column does not cover " .. other[2], show(col) .. " vs " .. show(o))
 					end
 				end
-				-- MenuController (bug batch 2 #1, option A; HUD cleanup): four 66 px tiles (gap 6: Pets, Index, Home, Stats; no
+				-- MenuController (bug batch 2 #1, option A; HUD cleanup): four 66 px tiles (gap 12: Pets, Index, Home, Stats; no
 				-- gear: Shop / Travel / Settings are TopBarController's pill) in
 				-- ONE column, wrapped into two (or three) columns where one column would push the tiles under 44 px, under ONE
 				-- UIScale (ColumnScale). Its height must be the laid-out rows, scaled once (the mock used to apply the UIScale
@@ -1552,7 +1552,8 @@ S.client_mobile = guarded("client_mobile", function()
 					local landscapeDesk = w >= h and not (game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
 					T.check(#grid == 4 and columns * rows >= 4 and columns <= 3 and (columns == 1 or not landscapeDesk) and (columns - 1) * rows < 4,
 						label .. ": the four tiles form one column (wrapped only where a column does not fit)", #grid .. " tiles, " .. columns .. " column(s), " .. rows .. " row(s)")
-					local expected = (rows * 66 + (rows - 1) * 6) * factor
+					-- (LOOK-ui) the gap is 12 design px: 6 px of sky between two tiles' 3 px wood edges
+					local expected = (rows * 66 + (rows - 1) * 12) * factor
 					T.check(math.abs(menuColumn.AbsoluteSize.Y - expected) <= 1.5, label .. ": the menu column height is its rows, scaled once", fmt(menuColumn.AbsoluteSize.Y, 1) .. " px vs " .. fmt(expected, 1))
 					T.check(biggest >= 44 - 0.5, label .. ": the tiles stay >= 44 px", fmt(biggest, 1) .. " px")
 					local smallest = math.huge

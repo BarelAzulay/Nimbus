@@ -2321,6 +2321,8 @@ function PetsController.Init()
 	LocalPlayer = Players.LocalPlayer
 	pcall(State.Init)
 	U.Gui = CloudUI.NewScreenGui("NimbusPets", K.DISPLAY_ORDER)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(U.Gui)
 	U.Gui.IgnoreGuiInset = true
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		if S.Open then

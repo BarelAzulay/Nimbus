@@ -181,6 +181,19 @@ end
 
 -- The screen-height factor of the readability rule: clamp(viewportY / 1080, 0.8, 1.25).
 -- `height` (optional) overrides the measured viewport height. On the server (no screen) it is 1.
+-- (LOOK-ui, kitb-look1: shared token for the merge) n design px under a UIScale of `scale`, rounded to a whole number of
+-- screen px (at least one while n > 0) and given back in design px: the kit B pixel grid at every screen size (a 2 px edge
+-- under 0.8 is 2.5 design px = 2 screen px, not 1.6). The same rule as PixelIcon.Px (PixelIcon.Whole keeps a part on it
+-- when the scale changes)
+function Theme.Px(n, scale)
+	n = tonumber(n) or 0
+	scale = tonumber(scale) or 1
+	if n <= 0 or scale <= 0 then
+		return n
+	end
+	return math.max(1, math.floor(n * scale + 0.5)) / scale
+end
+
 function Theme.ScreenFactor(height)
 	local r = Theme.Readability
 	local h = tonumber(height)

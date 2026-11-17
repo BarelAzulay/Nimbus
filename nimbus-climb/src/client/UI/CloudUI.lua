@@ -495,6 +495,7 @@ function CloudUI.SignBlock(obj, look, opts)
 	end
 	obj.BackgroundTransparency = 0
 	obj.BackgroundColor3 = opts.Face or look.Face
+	obj.BorderSizePixel = 0 -- (LOOK-ui) a label's default 1 px blue-black border leaked round the wood edge (the boost chips)
 	local edge = obj:FindFirstChild("SignEdge")
 	if not edge then
 		edge = stroke(obj, look.Edge, opts.EdgePx or SM.Edge, 0)
@@ -502,6 +503,9 @@ function CloudUI.SignBlock(obj, look, opts)
 		edge.LineJoinMode = Enum.LineJoinMode.Miter
 	end
 	edge.Color = opts.Edge or look.Edge
+	-- (LOOK-ui) the edge and the lip a whole number of screen px under the window's scale (PixelIcon.Px): a 3 px edge at a
+	-- 0.8 Fit drew 2.4 px, its lip 4 px of a 5 px design
+	PixelIcon.WholeStroke(edge, tonumber(opts.EdgePx) or edge:GetAttribute("DesignPx") or SM.Edge)
 	local lipPx = tonumber(opts.LipPx) or SM.Lip
 	local lip = obj:FindFirstChild("Lip")
 	if not lip then
@@ -513,6 +517,7 @@ function CloudUI.SignBlock(obj, look, opts)
 		}, obj)
 	end
 	lip.Size = UDim2.new(1, 0, 0, lipPx)
+	PixelIcon.WholeHeight(lip, lipPx)
 	lip.BackgroundColor3 = opts.LipColor or opts.Lip or look.Lip
 	lip.Visible = lipPx > 0
 	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
@@ -850,14 +855,15 @@ local function signPanel(props)
 		ZIndex = 2,
 	}, body)
 	stone:SetAttribute("SignKit", "Body")
-	frame("Lip", {
+	PixelIcon.WholeInset(stone, edge) -- (LOOK-ui) the wood frame a whole number of screen px at every Fit
+	PixelIcon.WholeHeight(frame("Lip", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, SignKit.Sizes.Lip),
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.StoneLip,
 		ZIndex = 2,
-	}, stone)
+	}, stone), SignKit.Sizes.Lip)
 	local content = frame("Content", {
 		Position = UDim2.new(0, PANEL_PAD, 0, topInset),
 		Size = UDim2.new(1, -2 * PANEL_PAD, 1, -(topInset + PANEL_PAD)),
@@ -1144,6 +1150,11 @@ function CloudUI.Bar(props)
 		Position = UDim2.new(0, 3, 0, 3),
 		Size = UDim2.new(1, -6, 1, -6),
 	}, root)
+	if sign then
+		-- (LOOK-ui) the wood edge and the 3 px inset on whole screen px under the window's scale
+		PixelIcon.WholeStroke(trackStroke, 2)
+		PixelIcon.WholeInset(inner, 3)
+	end
 
 	local fill = frame("Fill", {
 		BackgroundColor3 = WHITE,
@@ -1171,6 +1182,14 @@ function CloudUI.Bar(props)
 			BackgroundTransparency = 0,
 			BackgroundColor3 = Theme.Darken(color, 0.22),
 		}, fill)
+		-- (LOOK-ui) a bar of a fixed height: its lip the bottom third in whole screen px (a third of a scaled height fell
+		-- between pixels)
+		local fixedH = root.Size.Y.Scale == 0 and root.Size.Y.Offset or nil
+		if fixedH and fixedH > 6 then
+			local n = math.max(2, math.floor((fixedH - 6) * 0.3 + 0.5))
+			fillLip.Size = UDim2.new(1, 0, 0, n)
+			PixelIcon.WholeHeight(fillLip, n)
+		end
 	else
 		round(fill)
 		fillGradient = gradient(fill, fillSequence(color), 90)

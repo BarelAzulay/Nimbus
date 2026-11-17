@@ -741,7 +741,8 @@ local function serverScenarios()
 		end
 		-- (U7b review) PixelIcon may require Theme too, but only inside a function (Lead measuring a server-built sign's
 		-- text): at load it still requires nothing, so the loading screen can draw icons before Theme arrives
-		for name, allowed in pairs({ SignKit = { Theme = true }, PixelIcon = { Theme = true } }) do
+		-- (LOOK-ui) SignKit may require PixelIcon too (its whole-px edges and lips): PixelIcon requires nothing at load
+		for name, allowed in pairs({ SignKit = { Theme = true, PixelIcon = true }, PixelIcon = { Theme = true } }) do
 			local src = code(name)
 			T.check(src ~= "", "shared only: " .. name .. " has source")
 			local bad = {}
@@ -5496,6 +5497,92 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("kitb_no_neon_glow")
+	end)
+
+	-- (LOOK-ui, kitb-look1: the owner's look bar "pixel edges snapped to whole pixels at every screen size") at 1920x1080,
+	-- 1280x720, 844x390 and 390x844, in the lobby HUD (strips, gift, tiles, vitals), the Pets window, the Index, the Home
+	-- window, the Shop on its tabs and the Stats window: every PixelIcon cell is a whole number of screen px wide and tall and
+	-- sits a whole number of px from its icon's other cells (one cell size, no lumpy 1-and-2 px cells), every kit lip (a
+	-- Frame "Lip" of a fixed height) is a whole number of px tall and every kit edge (UIStroke "SignEdge") a whole number of
+	-- px thick. A shown icon or edge under a transient pop is measured at rest (the pops rest at 1)
+	S.kitb_whole_pixels = guarded("kitb_whole_pixels", function()
+		local Menu = U7.client("Controllers/MenuController")
+		local PC = U7.client("Controllers/PetsController")
+		local Shop = U7.client("Controllers/ShopController")
+		local PI = LoadingH.shared("PixelIcon")
+		if not T.check(Menu and PC and Shop and PI and PI.RestScale, "whole pixels: the windows and PixelIcon.RestScale load") then
+			return
+		end
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) <= 0.02
+		end
+		local function walk(root, family, bad, seen)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) then
+					local first = nil
+					for _, cell in ipairs(d:GetChildren()) do
+						if cell:IsA("Frame") and cell.Name:match("^R%d+$") then -- PixelIcon.New's runs (a Lead box holds icons)
+							seen.cells = seen.cells + 1
+							local s, p = cell.AbsoluteSize, cell.AbsolutePosition
+							first = first or p
+							if not (whole(s.X) and whole(s.Y) and whole(p.X - first.X) and whole(p.Y - first.Y)) then
+								bad[#bad + 1] = fmt("%s: %s icon cell %.2fx%.2f", family, tostring(d:GetAttribute("PixelIcon")), s.X, s.Y)
+								break
+							end
+						end
+					end
+				elseif d:IsA("Frame") and d.Name == "Lip" and d.Size.Y.Scale == 0 and d.Size.Y.Offset > 0 and U8.shown(d) then
+					seen.lips = seen.lips + 1
+					if not whole(d.AbsoluteSize.Y) then
+						bad[#bad + 1] = fmt("%s: lip %.2f px on %s", family, d.AbsoluteSize.Y, d.Parent.Name)
+					end
+				elseif d:IsA("UIStroke") and d.Name == "SignEdge" and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) and d.Enabled ~= false then
+					seen.edges = seen.edges + 1
+					local px = d.Thickness * PI.RestScale(d.Parent)
+					if not whole(px) then
+						bad[#bad + 1] = fmt("%s: edge %.2f px on %s", family, px, d.Parent.Name)
+					end
+				end
+			end
+		end
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "whole pixels", function(tag)
+				local pg = U8.pg()
+				local bad, seen = {}, { cells = 0, lips = 0, edges = 0 }
+				walk(pg:FindFirstChild("NimbusHud"), "HUD", bad, seen)
+				local menu = pg:FindFirstChild("NimbusMenu")
+				walk(menu and menu:FindFirstChild("MenuColumn"), "HUD tiles", bad, seen)
+				local daily = pg:FindFirstChild("NimbusDaily")
+				walk(daily and daily:FindFirstChild("GiftsButton"), "HUD gift", bad, seen)
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1)
+				walk(pg:FindFirstChild("NimbusPets"), "Pets", bad, seen)
+				PC.Close(true)
+				LKC.advance(0.4)
+				for _, name in ipairs({ "Index", "Home" }) do
+					Menu.Open(name)
+					LKC.advance(1)
+					walk(name == "Index" and pg:FindFirstChild("NimbusIndex") or (menu and menu:FindFirstChild("Window_Home")), name, bad, seen)
+					pcall(Menu.Close)
+					LKC.advance(0.4)
+				end
+				for _, tab in ipairs({ "Eggs", "Gems", "Passes" }) do
+					Shop.Open({ Tab = tab })
+					LKC.advance(1)
+					walk(pg:FindFirstChild("NimbusShop"), "Shop " .. tab, bad, seen)
+				end
+				pcall(Shop.Close)
+				LKC.advance(0.4)
+				walk(U93.open(), "Stats", bad, seen)
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				T.check(seen.cells > 50 and seen.lips > 10 and seen.edges > 10, tag .. ": the walk met icons, lips and edges",
+					fmt("%d cells, %d lips, %d edges", seen.cells, seen.lips, seen.edges))
+				T.check(#bad == 0, fmt("%s: every pixel icon cell, kit lip and kit edge is a whole number of screen px (%d off)", tag, #bad),
+					table.concat(bad, "; ", 1, math.min(#bad, 14)))
+			end)
+		end
+		LKC.flushErrors("kitb_whole_pixels")
 	end)
 
 	-- (U8) CloudUI.Panel's Signboard skin (Skin = "Signboard"; the Pets window and the Index wear it): the flat pink awning at a

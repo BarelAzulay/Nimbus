@@ -899,6 +899,17 @@ function H.layoutButton()
 	end
 	U.Button.Size = UDim2.fromOffset(size, size)
 	U.Button.Position = UDim2.fromOffset(x + S.ShakeX, y)
+	-- (LOOK-ui) the HUD's one edge token: the block sits at scale 1, so its 3 px edge and 5 px lip follow the screen factor
+	-- in whole px (3 / 5 at 1080p, 2 / 4 below), like the strips above it under their 0.8 scale
+	local f = Theme.ScreenFactor(viewport().Y)
+	local edge = U.Button:FindFirstChild("SignEdge")
+	if edge then
+		edge.Thickness = math.max(2, math.floor(3 * f + 0.5))
+	end
+	local lip = U.Button:FindFirstChild("Lip")
+	if lip then
+		lip.Size = UDim2.new(1, 0, 0, math.max(4, math.floor(5 * f + 0.5)))
+	end
 	-- the pixel gift over the word, sized to the block (the word never under 14 px)
 	local iconPx = math.max(18, math.floor(size * 0.48 / 9) * 9)
 	if U.Icon.TextSize ~= iconPx then
@@ -1294,6 +1305,7 @@ function H.layoutHeader(M, W, winTop)
 	U.Roof.Visible = S.Mode == "PC" or (portrait and (tonumber(winTop) or 0) - K.ROOF_CLEAR >= H.stripsBottom())
 	local closeX = bw - M.Close - (10 - F)
 	place(U.Close, closeX, math.floor((M.Header - M.Close) / 2) - F, M.Close, M.Close) -- (its drawn X scales with it)
+	NeonKit.CloseMarkPx(U.Close, H.px("Glyph")) -- (LOOK-ui) the x at the screen's glyph size: one pixel size
 	-- (portrait: the tabs have their own row, so the band only holds the gift and the title)
 	local tabsW = portrait and 0 or (M.TabW[1] + M.TabGap + M.TabW[2])
 	local slot = M.Icon + 4
@@ -2406,6 +2418,8 @@ function DailyController.Init()
 	initialized = true
 	LocalPlayer = Players.LocalPlayer
 	U.Gui = CloudUI.NewScreenGui("NimbusDaily", K.DISPLAY_ORDER)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(U.Gui)
 	U.Gui.IgnoreGuiInset = false
 	H.buildButton()
 	S.SpawnAt = time()

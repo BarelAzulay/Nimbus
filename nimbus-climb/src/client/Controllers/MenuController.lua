@@ -1211,12 +1211,14 @@ local MENU = {
 	{ Id = "Stats", Label = "Stats", Icon = "Stats", Color = "Cyan", Action = menuActionStats },
 }
 P5.TILE = 66 -- design px of a tile
-P5.GAP = 6 -- between two tiles (design px)
+P5.GAP = 12 -- between two tiles (design px). (LOOK-ui) 6 + both 3 px wood edges (a Border stroke draws outside the
+-- tile): 6 px of sky shows between two tiles at 1080p, so each tile is its own block with its own lip as in the pitch
 P5.TILE_PX = 56 -- on-screen tile on a 1080p desktop (x the screen factor)
 P5.TOUCH_TILE_PX = 50 -- ... on touch screens (tablets: the larger of this and TILE_PX x the factor)
 P5.MIN_TILE_PX = 44 -- one column needs this much per tile, else the tiles wrap into two columns (a thumb)
 P5.TAB_GAP = 4 -- design px between the tiles and the arrow tab
-P5.TAB_W = 24 -- design width of the arrow tab (touch: TAB_W_TOUCH, wider for a thumb)
+P5.TAB_W = 30 -- design width of the arrow tab (touch: TAB_W_TOUCH, wider for a thumb). (LOOK-ui) 30: its 27 px pixel
+-- arrow (3 px cells, 2 px on the column's 2/3 step) fits inside the wood edge
 P5.TAB_W_TOUCH = 30
 P5.MAX_COLS = 3 -- the tiles wrap into at most this many columns (the shortest landscape phones)
 P5.CENTRE_TOL = 0.145 -- the column never reaches into the screen middle (|dx| < 14.5% of the width: HudController's rule)
@@ -1356,8 +1358,21 @@ function P5.paintTab()
 		return
 	end
 	local arrow = U.Collapsed and ">" or "<"
-	if U.TabArrow.Text ~= arrow then
-		U.TabArrow.Text = arrow
+	if U.TabArrow:GetAttribute("Dir") ~= arrow then
+		U.TabArrow:SetAttribute("Dir", arrow)
+		local old = U.TabArrow:FindFirstChild("Icon")
+		if old then
+			old:Destroy()
+		end
+		local icon = PixelIcon.New(U.TabArrow, U.Collapsed and "arrow" or "left", 27, Theme.Sign.Text)
+		if icon then
+			icon.AnchorPoint = Vector2.new(0.5, 0.5)
+			icon.Position = UDim2.fromScale(0.5, 0.5)
+			icon.ZIndex = 4
+			for _, cell in ipairs(icon:GetChildren()) do
+				cell.ZIndex = 4
+			end
+		end
 	end
 	local badge = false
 	if U.Collapsed then
@@ -1461,9 +1476,18 @@ local function buildColumn()
 	})
 	U.TabStroke = stroke(tab, Theme.Sign.Wood, 3, 0)
 	U.TabStroke.LineJoinMode = Enum.LineJoinMode.Miter
-	U.TabArrow = makeText(tab, "Arrow", "<", "Display", 26, Theme.Sign.Text, {
-		Size = UDim2.fromScale(1, 1),
-		TextXAlignment = Enum.TextXAlignment.Center,
+	-- (LOOK-ui) the tab is a kit block like the tiles: the same 6 px stone lip, and the arrow a PixelIcon ("left" while the
+	-- column is out, "arrow" (right) while folded; attribute Dir "<" / ">"), not the "<" letter
+	makeFrame(tab, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 6),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.StoneLip,
+		ZIndex = 3,
+	})
+	U.TabArrow = makeFrame(tab, "Arrow", {
+		Size = UDim2.new(1, 0, 1, -6),
 		ZIndex = 4,
 	})
 	U.TabBadge = makeFrame(tab, "Badge", {
@@ -1607,11 +1631,23 @@ function relayoutMenu()
 	end
 	P5.placeTiles(cols)
 	local w, h = U.ColumnW, U.ColumnH
-	local scale = math.min(pref, avail / h)
 	-- never into the middle of the screen (a narrow portrait phone): the column's right edge stays left of it
 	local camera = workspace.CurrentCamera
 	local vpX = (camera and camera.ViewportSize.X > 2) and camera.ViewportSize.X or area.X
-	scale = math.min(scale, math.max(minScale * 0.9, (vpX * (0.5 - P5.CENTRE_TOL) - 2 - margin) / w))
+	local limit = math.min(avail / h, math.max(minScale * 0.9, (vpX * (0.5 - P5.CENTRE_TOL) - 2 - margin) / w))
+	local scale = math.min(pref, limit)
+	-- (LOOK-ui) the column's scale is a step of thirds (1/3, 2/3, 1, 4/3), the nearest to the wanted one that still fits:
+	-- the tiles' 3 px edges, 6 px lips and 27 px icons (3 px cells) then land on whole screen px (2/3: a 44 px tile with
+	-- 2 px cells and edges, 4 px lips; 1: 66 px, 3 px cells). A free scale (0.68 .. 0.85) drew 2.04 .. 2.54 px cells
+	-- A step a hair over the room (<= 3 %: a narrow portrait phone with a party panel wanted 0.654) is taken; a step down
+	-- that would put the tiles under 44 px keeps the free scale (the old rule) instead
+	local step = math.floor(scale * 3 + 0.5) / 3
+	if step > limit * 1.03 + 1e-6 then
+		step = math.floor(limit * 3 + 1e-6) / 3
+	end
+	if step >= minScale - 1e-6 then
+		scale = step
+	end
 	local top = first + math.max(0, (avail - h * scale) / 2)
 	U.ColumnScale.Scale = scale
 	-- a squeezed column (short screens) grows its labels so they stay >= 14 screen px
@@ -3708,6 +3744,8 @@ function MenuController.Init()
 	pcall(State.Init)
 
 	gui = CloudUI.NewScreenGui("NimbusMenu", 20)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(gui)
 
 	buildHint()
 	buildColumn()

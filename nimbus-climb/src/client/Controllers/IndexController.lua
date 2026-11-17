@@ -2665,6 +2665,8 @@ function IndexController.Init()
 	pcall(State.Init)
 
 	local gui = CloudUI.NewScreenGui("NimbusIndex", K.DISPLAY_ORDER)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(gui)
 	U.Gui = gui
 	U.Kit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
 

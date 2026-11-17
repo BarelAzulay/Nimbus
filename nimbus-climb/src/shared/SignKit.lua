@@ -32,9 +32,12 @@
 --                                 propellers (2 frames, never a rotation); SignKit.PropFrame(root, n) sets one
 -- Every part stamps attribute SignKit = its kind. Sizes are design px of a 1080p screen (the pitch's 0.8-scale px / 0.8);
 -- opts override any colour or size, so a look the owner already approved (Credits) builds from these parts unchanged.
--- Requires only Theme (Shared). Plain Lua 5.1-compatible syntax only.
+-- (LOOK-ui, kitb-look1) every edge, inset and lip is a whole number of screen px under the window's scale (PixelIcon.Px /
+-- PixelIcon.Whole): at a 0.8 Fit a 2 px edge draws 2 screen px, not 1.6.
+-- Requires only Theme and PixelIcon (Shared; PixelIcon requires nothing at load). Plain Lua 5.1-compatible syntax only.
 
 local Theme = require(script.Parent:WaitForChild("Theme"))
+local PixelIcon = require(script.Parent:WaitForChild("PixelIcon"))
 
 local SignKit = {}
 
@@ -113,8 +116,19 @@ local function line(parent, colour, thickness)
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	s.LineJoinMode = Enum.LineJoinMode.Miter
 	s.Parent = parent
+	PixelIcon.WholeStroke(s, thickness) -- (LOOK-ui) a whole number of screen px under the window's scale
 	return s
 end
+
+-- (LOOK-ui) a lip `n` design px tall along its parent's bottom, and a face inset `e` px from its parent's sides (`extra`
+-- px more off its height: the lip it leaves showing), both whole screen px under the window's scale
+local function lipOf(lip, n)
+	return PixelIcon.WholeHeight(lip, n)
+end
+local function inset(face, e, extra)
+	return PixelIcon.WholeInset(face, e, extra)
+end
+SignKit.Inset = inset
 
 -- the caller's placement (Position, AnchorPoint, ZIndex, LayoutOrder, Name, Active, Visible), then the kind stamp
 local PLACE = { "Position", "AnchorPoint", "ZIndex", "LayoutOrder", "Name", "Active", "Visible" }
@@ -197,11 +211,12 @@ function SignKit.Roof(parent, opts)
 			Position = UDim2.fromOffset(e, e),
 			Size = UDim2.new(1, -2 * e, 1, -2 * e),
 		}, roof)
-		fill("Lip", opts.Lip or Sign.RoofLip, {
+		inset(face, e)
+		lipOf(fill("Lip", opts.Lip or Sign.RoofLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
 			Size = UDim2.new(1, 0, 0, tonumber(opts.LipPx) or Z.RoofLip),
-		}, face)
+		}, face), tonumber(opts.LipPx) or Z.RoofLip)
 	end
 	return place(roof, opts, "Roof")
 end
@@ -354,11 +369,11 @@ function SignKit.Body(parentFrame, opts)
 	}, parentFrame)
 	local lip = tonumber(opts.Lip) or Z.Lip
 	if lip > 0 then
-		fill("Lip", opts.LipColor or Sign.StoneLip, {
+		lipOf(fill("Lip", opts.LipColor or Sign.StoneLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
 			Size = UDim2.new(1, 0, 0, lip),
-		}, body)
+		}, body), lip)
 	end
 	if type(opts.Line) == "table" then
 		local li = tonumber(opts.Line.Inset) or 5
@@ -396,6 +411,11 @@ function SignKit.PlankState(plank, state)
 	block.Position = UDim2.fromOffset(0, (state == "Hover" and -Z.Hover) or (state == "Press" and Z.Sink) or 0)
 	face.Position = UDim2.fromOffset(e, e)
 	face.Size = UDim2.new(1, -2 * e, 1, -(2 * e + shown))
+	inset(face, e, shown) -- (LOOK-ui) the edge and the lip that shows on whole screen px
+	local under = block:FindFirstChild("Lip")
+	if under then
+		inset(under, e)
+	end
 	plank:SetAttribute("PlankState", state)
 end
 
@@ -531,11 +551,12 @@ function SignKit.BlockRow(parent, opts)
 			Position = UDim2.fromOffset(e, e),
 			Size = UDim2.new(1, -2 * e, 1, -2 * e),
 		}, b)
-		fill("Lip", Sign.StoneLip, {
+		inset(face, e)
+		lipOf(fill("Lip", Sign.StoneLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
 			Size = UDim2.new(1, 0, 0, lipPx),
-		}, face)
+		}, face), lipPx)
 	end
 	place(row, opts, "BlockRow")
 	SignKit.FillBlocks(row, 0)
@@ -575,11 +596,12 @@ function SignKit.Notice(parent, opts)
 		Position = UDim2.fromOffset(e, e),
 		Size = UDim2.new(1, -2 * e, 1, -2 * e),
 	}, notice)
-	fill("Lip", Sign.StoneLip, {
+	inset(face, e)
+	lipOf(fill("Lip", Sign.StoneLip, {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, Z.NoticeLip),
-	}, face)
+	}, face), Z.NoticeLip)
 	local x = 12
 	if opts.IconSlot then
 		local px = 30

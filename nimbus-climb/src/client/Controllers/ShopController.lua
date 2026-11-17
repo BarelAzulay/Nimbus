@@ -1883,6 +1883,8 @@ function ShopController.Init()
 	pcall(State.Init)
 	robuxGlyph()
 	U.Gui = CloudUI.NewScreenGui("NimbusShop", K.DISPLAY_ORDER)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(U.Gui)
 	U.Gui.IgnoreGuiInset = true
 	U.Gui.ResetOnSpawn = false
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
