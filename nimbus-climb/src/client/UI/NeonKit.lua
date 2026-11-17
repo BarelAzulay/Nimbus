@@ -1014,6 +1014,32 @@ function NeonKit.CloseMark(button, opts)
 		end
 		z = z + 1
 	end
+	if opts.Square then
+		-- (kit-b U9-7 look) a kit B block's X is the pitch's pixel x (PixelIcon "x", 9 x 9 square cells in the brown ink):
+		-- no rotated bars, the only smooth diagonals beside the 9 x 9 icons. 27 px on a block of 36 px or more, 18 below,
+		-- placed by a whole-pixel offset from the button's centre (an AnchorPoint of 0.5 put it on a half pixel)
+		local short = math.min(button.Size.X.Offset, button.Size.Y.Offset)
+		local px = (short <= 0 or short >= 36) and 27 or 18
+		local half = math.floor(px / 2)
+		local mark = frame("CloseMark", {
+			Position = UDim2.new(0.5, -half, 0.5, -half),
+			Size = UDim2.fromOffset(px, px),
+			Active = false,
+			ZIndex = z,
+		})
+		mark:SetAttribute("PixelX", true)
+		local icon = PixelIcon.New(mark, "x", px, colorOf(opts.Color, INK))
+		if icon then
+			icon.ZIndex = z
+			for _, cell in ipairs(icon:GetChildren()) do
+				if cell:IsA("GuiObject") then
+					cell.ZIndex = z
+				end
+			end
+		end
+		mark.Parent = button
+		return mark
+	end
 	local scale = tonumber(opts.Scale) or MX.CloseMark
 	local mark = frame("CloseMark", {
 		AnchorPoint = Vector2.new(0.5, 0.5),

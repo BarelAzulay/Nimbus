@@ -447,7 +447,8 @@ function H.build()
 		Closable = true,
 		Skin = "Signboard", -- (kit-b U9-7) roof, navy header with the sword, wood frame, stone body
 		Icon = Config.Icons.Battle,
-		TitleSize = 32, -- (the prompt's words, "Dare a higher tier": at 34 px they ran 4 px past the header beside the icon on a phone)
+		TitleSize = 30, -- (the prompt's words, "Dare a higher tier": at 34 px they ran 4 px past the header beside the icon on a phone;
+		-- U9-7 look: 30, the band inside the frame on the dock and 12 px more clear of the X)
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -456,13 +457,16 @@ function H.build()
 		end,
 		Parent = holder,
 	})
+	-- (U9-7 look) a docked window's band stays inside the frame, no tails (its right tail ran off the screen edge): the
+	-- header shape Index and the Food Machine wear on the same dock
+	SignKit.HeaderOverhang(panel.TitleBar, false)
 	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel.Root })
 	local list = Instance.new("Frame")
 	list.Name = "Rows"
 	list.BackgroundTransparency = 1
 	list.BorderSizePixel = 0
-	list.Position = UDim2.fromOffset(14, 8)
-	list.Size = UDim2.new(1, -28, 1, -16)
+	list.Position = UDim2.fromOffset(CloudUI.Metrics.SignPagePad, 8) -- (U9-7 look) the dock family's page inset
+	list.Size = UDim2.new(1, -2 * CloudUI.Metrics.SignPagePad, 1, -16)
 	list.Parent = panel.Content
 	Util.Create("UIListLayout", { Padding = UDim.new(0, K.GAP), SortOrder = Enum.SortOrder.LayoutOrder, Parent = list })
 	U.List = list

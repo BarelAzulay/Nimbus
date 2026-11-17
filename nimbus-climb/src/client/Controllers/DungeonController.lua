@@ -704,15 +704,20 @@ function W.build()
 		Parent = holder,
 	})
 	U.Panel = panel
+	-- (U9-7 look) a docked window's band stays inside the frame, no tails (its right tail ran off the screen edge): the
+	-- header shape Index and the Food Machine wear on the same dock
+	SignKit.HeaderOverhang(panel.TitleBar, false)
 	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel.Root })
 	local content = panel.Content
 	-- the record line
-	U.Top = H.frame(content, "Top", { Size = UDim2.new(1, 0, 0, 30) })
-	U.Record = H.text(U.Top, "Record", "", "Heading", 19, INK, { Size = UDim2.new(1, -122, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+	-- (U9-7 look) the dock family's page inset (CloudUI.Metrics.SignPagePad) on the record line, the lists and the hint
+	local PAD = CloudUI.Metrics.SignPagePad
+	U.Top = H.frame(content, "Top", { Position = UDim2.fromOffset(PAD, 0), Size = UDim2.new(1, -2 * PAD, 0, 30) })
+	U.Record = H.text(U.Top, "Record", "", "Heading", 19, INK, { Size = UDim2.new(1, -110, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
 	U.Power = H.text(U.Top, "Power", "", "Heading", 19, INK, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.new(0, 118, 1, 0),
+		Size = UDim2.new(0, 106, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
 	PixelIcon.Lead(U.Power, "sword") -- (kit-b U7b) the team's power
@@ -721,12 +726,12 @@ function W.build()
 	U.Floors.Name = "Floors"
 	H.well(U.Floors)
 	U.Floors.BorderSizePixel = 0
-	U.Floors.ScrollBarThickness = 8
+	U.Floors.ScrollBarThickness = SignKit.Sizes.ScrollBar
 	U.Floors.ScrollBarImageColor3 = SIGN.Wood
 	U.Floors.ScrollingDirection = Enum.ScrollingDirection.Y
 	U.Floors.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	U.Floors.CanvasSize = UDim2.new(0, 0, 0, 0)
-	U.Floors.Position = UDim2.fromOffset(0, 36)
+	U.Floors.Position = UDim2.fromOffset(PAD, 36)
 	U.Floors.Parent = content
 	H.pad(U.Floors, 8, 8, 14, 8)
 	H.list(U.Floors, Enum.FillDirection.Vertical, 6)
@@ -739,7 +744,7 @@ function W.build()
 	U.Party.Name = "Party"
 	H.well(U.Party)
 	U.Party.BorderSizePixel = 0
-	U.Party.ScrollBarThickness = 6
+	U.Party.ScrollBarThickness = SignKit.Sizes.ScrollBar
 	U.Party.ScrollBarImageColor3 = SIGN.Wood
 	U.Party.ScrollingDirection = Enum.ScrollingDirection.Y
 	U.Party.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -750,8 +755,8 @@ function W.build()
 	-- the footer hint
 	U.Footer = H.text(content, "Footer", "", "Body", 18, C.Muted, {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, 0, 0, 26),
+		Position = UDim2.new(0, PAD, 1, 0),
+		Size = UDim2.new(1, -2 * PAD, 0, 26),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
 	return true
@@ -870,7 +875,7 @@ function W.refreshFloors(rec, short)
 			subColor = C.Good
 			chip, chipFace, chipInk = "CLEARED", SIGN.Tile, C.Good
 		else
-			status = "Recommended power " .. (rp and H.commas(rp) or "?")
+			status = "Recommended " .. (rp and H.commas(rp) or "?") -- (U9-7 look) the sword says "power" (PixelIcon.Mark below)
 			subColor = (rp and power >= rp) and C.Good or C.Warn
 			if f == nextF then
 				chip, chipFace = "NEXT", SIGN.Gold
@@ -879,7 +884,7 @@ function W.refreshFloors(rec, short)
 			end
 		end
 		ui.Sub.Text = status
-		PixelIcon.Mark(ui.Sub, (not open) and "lock" or (cleared and "check" or nil)) -- (kit-b U7b)
+		PixelIcon.Mark(ui.Sub, (not open) and "lock" or (cleared and "check" or "sword")) -- (kit-b U7b)
 		ui.Sub.TextColor3 = subColor
 		ui.ChipText.Text = chip
 		H.paintTag(ui.Chip, chipFace, chipInk)
@@ -1013,7 +1018,7 @@ function W.partyRow(box, p, i, short)
 	local row = H.frame(box, "Open" .. i, { Size = UDim2.new(1, 0, 0, W.openRowH(short)), LayoutOrder = 4 + i })
 	CloudUI.SignBlock(row, "Stone", { EdgePx = 2, LipPx = 3 }) -- (kit-b U9-7) a stone tile in the well
 	local count = tostring(p.Count or 1) .. "/" .. tostring(p.Max or 4)
-	local where = p.InRun and ("in room " .. tostring(p.Room or 1)) or ("Floor " .. tostring(p.Floor or 1))
+	local where = p.InRun and ("room " .. tostring(p.Room or 1)) or ("Floor " .. tostring(p.Floor or 1)) -- (U9-7 look) fits a phone row
 	-- (kit-b U9-7) the leader with the crown (the list is headed "Open parties"; "'s party" ran past a phone's row)
 	local label = H.text(row, "Text", tostring(p.LeaderName or "Someone") .. " " .. G.Dot .. " " .. where .. " " .. G.Dot .. " " .. count, "Body", 18, INK, {
 		Position = UDim2.fromOffset(10, 0),
@@ -1321,9 +1326,10 @@ function W.refresh()
 	if short then
 		listH = K.LIST_MIN_SHORT
 	end
-	U.Floors.Size = UDim2.new(1, 0, 0, listH)
-	U.Party.Position = UDim2.fromOffset(0, 36 + listH + 6)
-	U.Party.Size = UDim2.new(1, 0, 0, W.partyBoxH(math.max(60, contentH - 36 - listH - 6 - footerH - 6), short, mine))
+	local pad = CloudUI.Metrics.SignPagePad
+	U.Floors.Size = UDim2.new(1, -2 * pad, 0, listH)
+	U.Party.Position = UDim2.fromOffset(pad, 36 + listH + 6)
+	U.Party.Size = UDim2.new(1, -2 * pad, 0, W.partyBoxH(math.max(60, contentH - 36 - listH - 6 - footerH - 6), short, mine))
 	W.footer()
 	if S.ScrollTo and U.Dock.Rect and U.Dock.Rect.mode == "Sheet" then
 		-- (a portrait sheet keeps the list at the top: its rows scrolled above the sheet would count as covered screen

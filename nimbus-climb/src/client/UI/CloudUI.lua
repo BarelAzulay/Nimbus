@@ -800,6 +800,9 @@ end
 -- nothing on this skin (one look for every window).
 CloudUI.Metrics.SignRoofW = 360
 CloudUI.Metrics.SignFrame = 6
+-- (U9-7 look) a Signboard window's page inset: the design px between Panel.Content's edges and the window's pages, left and
+-- right (the dock family: the Arena and Ring pages, the Dungeon's rows, the dare list)
+CloudUI.Metrics.SignPagePad = 14
 
 local function signPanel(props)
 	local hasTitle = type(props.Title) == "string" and props.Title ~= ""

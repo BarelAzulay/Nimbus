@@ -54,6 +54,7 @@ SignKit.Sizes = {
 	LabelPad = 6, -- a plank label's room inside the face, each side
 	NoticeGap = 18, -- a notice's icon square to its text
 	RopeW = 6,
+	ScrollBar = 8, -- (U9-7 look) a scrolling list's bar on kit B: this thick, in the wood, opaque (every window's lists)
 	BlockW = 28,
 	BlockH = 22,
 	BlockGap = 4,

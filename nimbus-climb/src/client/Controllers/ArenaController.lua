@@ -242,6 +242,7 @@ local S = {
 	ArenaBox = nil, -- { CFrame, Size } of workspace.BattleArena (static, measured once)
 }
 local Win = {} -- per-window widget tables: Win.Arena, Win.Ring
+local PAGE_PAD = CloudUI.Metrics.SignPagePad -- (U9-7 look) the dock family's one page inset
 
 local refreshOpen, refreshSide, screenFactor -- forward declarations
 
@@ -338,9 +339,9 @@ local function scroller(parent, name, props)
 	p.CanvasSize = UDim2.new(0, 0, 0, 0)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
-	p.ScrollBarThickness = 10
-	p.ScrollBarImageColor3 = Colors.FrameTop or Colors.Cloud
-	p.ScrollBarImageTransparency = 0.1
+	p.ScrollBarThickness = SignKit.Sizes.ScrollBar -- (U9-7 look) the kit's wood bar (was the old kit's pale blue)
+	p.ScrollBarImageColor3 = SIGN.Wood
+	p.ScrollBarImageTransparency = 0
 	p.Parent = parent
 	return Util.Create("ScrollingFrame", p)
 end
@@ -726,6 +727,9 @@ local function newWindow(id, title)
 		end,
 		Parent = win.Holder,
 	})
+-- (U9-7 look) a docked window's band stays inside the frame, no tails (its right tail ran off the screen edge): the
+	-- header shape Index and the Food Machine wear on the same dock
+	SignKit.HeaderOverhang(win.Panel.TitleBar, false)
 	win.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = win.Panel.Root })
 	Win[id] = win
 	return win
@@ -1209,19 +1213,19 @@ function Ring.build()
 			local detailH = h - K.INSET_Y - 20 - (short and 0 or (sideH + 10))
 			ui.Side.Visible = not short
 			ui.BestInline.Visible = short
-			ui.Detail.Position = UDim2.fromOffset(12, 10)
-			ui.Detail.Size = UDim2.new(1, -24, 0, detailH)
-			ui.Side.Position = UDim2.fromOffset(12, 10 + detailH + 10)
-			ui.Side.Size = UDim2.new(1, -24, 0, sideH)
-			detailW = cw - 24
+			ui.Detail.Position = UDim2.fromOffset(PAGE_PAD, 10)
+			ui.Detail.Size = UDim2.new(1, -2 * PAGE_PAD, 0, detailH)
+			ui.Side.Position = UDim2.fromOffset(PAGE_PAD, 10 + detailH + 10)
+			ui.Side.Size = UDim2.new(1, -2 * PAGE_PAD, 0, sideH)
+			detailW = cw - 2 * PAGE_PAD
 		else
 			ui.Side.Visible = true
 			ui.BestInline.Visible = false
-			ui.Side.Position = UDim2.fromOffset(12, 10)
+			ui.Side.Position = UDim2.fromOffset(PAGE_PAD, 10)
 			ui.Side.Size = UDim2.new(0, sideW, 1, -20)
-			ui.Detail.Position = UDim2.fromOffset(12 + sideW + 12, 10)
-			ui.Detail.Size = UDim2.new(1, -(sideW + 36), 1, -20)
-			detailW = cw - sideW - 36
+			ui.Detail.Position = UDim2.fromOffset(PAGE_PAD + sideW + 12, 10)
+			ui.Detail.Size = UDim2.new(1, -(sideW + 12 + 2 * PAGE_PAD), 1, -20)
+			detailW = cw - sideW - 12 - 2 * PAGE_PAD
 		end
 		-- a landscape phone: two columns, the split on the window's middle (the panel's frame + the detail's margin = 24 px of its
 		-- left side): the scroller and START on the left, the team on the right, above Roblox's jump button
@@ -1604,7 +1608,7 @@ local function buildArena()
 	win.Ui = ui
 
 	-- tab bar + trophies
-	ui.Bar = makeFrame(content, "TabBar", { Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 0, 50) })
+	ui.Bar = makeFrame(content, "TabBar", { Position = UDim2.fromOffset(PAGE_PAD, 10), Size = UDim2.new(1, -2 * PAGE_PAD, 0, 50) })
 	local tabRow = makeFrame(ui.Bar, "Tabs", { Size = UDim2.new(1, -180, 1, 0) })
 	listLayout(tabRow, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	for i, tab in ipairs(TABS) do
@@ -1765,7 +1769,7 @@ local function buildArena()
 		local cw = w - K.INSET_X
 		-- (U9-7 look) the tabs alone: the trophy chip moved into the Quick match title row
 		local barH = 60
-		ui.Bar.Size = UDim2.new(1, -28, 0, barH)
+		ui.Bar.Size = UDim2.new(1, -2 * PAGE_PAD, 0, barH)
 		local tabW = tall and math.floor((cw - 28 - 16) / 3) or (narrow and 180 or 200)
 		for _, tab in ipairs(TABS) do
 			local button = ui.TabButtons[tab.Id]
@@ -1776,8 +1780,8 @@ local function buildArena()
 		ui.TabRow.Size = tall and UDim2.new(1, 0, 0, 58) or UDim2.new(1, 0, 1, 0)
 		local top = 10 + barH + 12
 		for _, frame in pairs(ui.Pages) do
-			frame.Position = UDim2.fromOffset(14, top)
-			frame.Size = UDim2.new(1, -28, 1, -(top + 10))
+			frame.Position = UDim2.fromOffset(PAGE_PAD, top)
+			frame.Size = UDim2.new(1, -2 * PAGE_PAD, 1, -(top + 10))
 		end
 		ui.RaidScroll.Size = UDim2.new(1, 0, 1, 0)
 		ui.LeaderScroll.Size = UDim2.new(1, 0, 1, 0)
