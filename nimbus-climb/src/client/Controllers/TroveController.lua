@@ -21,18 +21,21 @@
 -- as the screen allows up to 400, 274 tall, 12 px over the bottom right) so the character stays clear.
 -- (kit-b U9-4, finding 15) the Signboard kit: "TrovePanel" is the wood frame round "Stone" (the stone body with its
 -- lip); (U9-4 look review) "Header" is SignKit.Header as the Stats / My Home side panels build theirs: the wood rim, the
--- navy "Plate" the title's band (out over the frame with its tails on PC, inside the rim on a phone) holding "TroveIcon"
--- (the gold icon square in its 2 px ink edge with the pixel chest), "TitleText" ("SKY TROVE" with its stair), and
--- "Close" (the red block on the plate, its X in brown ink); "Roof" the fixed-size awning (PC 360, the portrait sheet 288
--- under clear sky, never the landscape phone panel; never stretched). Each ask is a stone block ("Row_Group",
+-- navy "Plate" the title's band (look review 2: inside the rim with no tails at every size, the docked panel's rule)
+-- holding "TroveIcon" (the gold icon square in its 2 px ink edge with the pixel chest), "TitleText" ("SKY TROVE" with its
+-- stair), and "Close" (the red block on the plate, its X in brown ink; a phone: 36 px over its 44 px "CloseTap");
+-- "Roof" the fixed-size awning (PC 360, the portrait sheet 240 under clear sky, never the landscape phone panel; never
+-- stretched). Each ask is a stone block ("Row_Group",
 -- "Row_Like") with a square icon chip ("Chip": the pixel people on sky, the heart on pink); the rewards are gold tags
 -- ("CashChip" "$2,000", "TokenChip" the token coin + "200"); while the reward waits (Open) two pixel sparkles by the tags
 -- take turns every second (the family's glint, as the Gifts window's today tile); "JoinButton" is the panel's one green
 -- action. Nothing round or glossy, no neon.
 --   PC:    header 60 (the 42 icon square, Title 32, X 40); subtitle Body 20 "Help Nimbus grow and the Trove pays you!"; rows 100 /
---          76 (chip 56, label 20, tags 19, button 140 x 52); the footer 19 (>= 15 px at 1280x720's 0.8 scale)
---   phone: header 50 (a 36 square, Title 22, X 44); no subtitle (the panel keeps clear of the jump button); rows 62 / 46
---          (chip 34, label 15-16 on one line, tags 15, button 96 x 44), the footer 15; (U9-4 review) the game's DASH
+--          88 (chip 72 with its 54 px icon, label 20, tags 19 on 36, button 140 x 52); the footer 19 (>= 15 px at 1280x720's
+--          0.8 scale)
+--   phone: header 50 (a 36 square, Title 22, a 36 px X in its 44 px touch box); no subtitle (the panel keeps clear of the
+--          jump button); rows 62 / 46 (chip 34, or 48 where both rows have room, label 15-16 on one line, tags 15,
+--          button 96 x 44), the footer 15; (U9-4 review) the game's DASH
 --          button sits 10 px over the jump button, so a 226 px panel ended on it on touch phones 390 to 460 px tall
 --          (under the 58 px top bar: a sliver of DASH under its edge); there the panel stretches into that gap (228 at
 --          844x390, 231 at 852x393, 268 at 932x430), covering DASH and its stroke whole and keeping the controls; a
@@ -86,9 +89,13 @@ local K = {
 	MARGIN = 12, TOP_GAP = 8,
 	FRAME = 6, -- the wood frame round the stone body
 	ROOF_W = 360, ROOF_OVER = 10, -- the awning: a fixed 360 px, its top 10 design px over the panel's
-	-- (U9-4 look review) the portrait sheet's awning: the 288 px the 0.8 windows show on a phone, wherever ROOF_CLEAR px of
-	-- clear screen lie over the sheet's top (never on the landscape panel, which starts under Roblox's top bar)
-	ROOF_PHONE_W = 288, ROOF_CLEAR = 16,
+	-- (U9-4 look review) the portrait sheet's awning (SignKit.Sizes.RoofPhoneW: look review 2, 240, its right end clear of
+	-- the close block), wherever ROOF_CLEAR px of clear screen lie over the sheet's top (never on the landscape panel,
+	-- which starts under Roblox's top bar)
+	ROOF_PHONE_W = SignKit.Sizes.RoofPhoneW, ROOF_CLEAR = 16,
+	-- (U9-4 look review 2) a phone plate's close: a CloseBlock px red block centred on the plate, its 3 px stroke
+	-- CLOSE_INSET - 3 px inside the plate's right end, over its Close px touch box ("CloseTap", under it): the Gifts window's
+	CLOSE_INSET = 7,
 	REST_DEG = 18, OPEN_DEG = 70, LID_TIME = 0.35,
 	COINS = 18, COIN_TIME = 0.8, COIN_FLIGHT = 0.55,
 	TWINKLE = 1, -- s each sparkle stays lit
@@ -104,16 +111,25 @@ local K = {
 -- design px; Header = the SignKit header's height (its wood rim on top, the navy plate under it); rows from the panel's
 -- top. (U9-4 look review) the header is SignKit.Header as the Stats / My Home side panels build it: Slot = the gold icon
 -- square (SignKit.Sizes.IconSlot on PC; a phone's 44 px plate takes a 36 px square), SlotIcon the pixel chest in it,
--- Close the red block on the plate (40 on PC as the Stats window's, 44 on a phone: the touch floor)
-local PC = { W = 520, H = 380, Header = 60, Slot = 42, SlotIcon = 27, TitleText = 32, Close = 40, Pad = 16,
-	Sub = 20, SubY = 72, SubH = 26, Row1 = 108, Row1H = 100, Row2 = 216, Row2H = 76, Chip = 56, ChipIcon = 36, Label = 20,
-	Lines = 2, Tag = 19, TagH = 30, Coin = 18, BtnW = 140, BtnH = 52, BtnText = 24, Foot = 19, FootY = 298, FootH = 56, Spark = 18 }
-local PHONE = { W = 420, H = 226, Header = 50, Slot = 36, SlotIcon = 27, TitleText = 22, Close = 44, Pad = 12,
-	Sub = 0, Row1 = 56, Row1H = 62, Row2 = 124, Row2H = 46, Chip = 34, ChipIcon = 27, Label = 16, Lines = 1,
-	Tag = 15, TagH = 24, Coin = 18, BtnW = 96, BtnH = 44, BtnText = 20, Foot = 15, FootY = 174, FootH = 38, Spark = 9 }
-local PORTRAIT = { W = 400, H = 274, Header = 50, Slot = 36, SlotIcon = 27, TitleText = 22, Close = 44, Pad = 12,
-	Sub = 0, Row1 = 56, Row1H = 80, Row2 = 142, Row2H = 62, Chip = 34, ChipIcon = 27, Label = 16, Lines = 2,
-	Tag = 15, TagH = 24, Coin = 18, BtnW = 96, BtnH = 44, BtnText = 20, Foot = 15, FootY = 208, FootH = 52, Spark = 9 }
+-- Close the red block on the plate (40 on PC as the Stats window's, 44 on a phone: the touch floor; look review 2, a
+-- phone draws a CloseBlock px block in that touch box).
+-- (U9-4 look review 2: one pixel size per screen) every pixel icon at one of the kit's two sizes (SignKit.Sizes.Pixel,
+-- as the Gifts window): PC the chest, the coin and the sparkles at the glyph size (27, 3 px cells), a row's icon at the
+-- art size (54 on a 72 chip); a phone the glyph size (18, 2 px cells) and a row's icon the art size (36 on a 48 chip,
+-- ChipBig) where both rows have room for it, else the glyph size on the 34 px chip
+local PX = SignKit.Sizes.Pixel
+local PC = { W = 520, H = 380, Header = 60, Slot = 42, SlotIcon = PX.PC.Glyph, TitleText = 32, Close = 40, Pad = 16,
+	Sub = 20, SubY = 72, SubH = 26, Row1 = 108, Row1H = 100, Row2 = 216, Row2H = 88, Chip = 72, ChipIcon = PX.PC.Art, Label = 20,
+	Lines = 2, Tag = 19, TagH = 36, Coin = PX.PC.Glyph, BtnW = 140, BtnH = 52, BtnText = 24, Foot = 19, FootY = 310, FootH = 50,
+	Spark = PX.PC.Glyph }
+local PHONE = { W = 420, H = 226, Header = 50, Slot = 36, SlotIcon = PX.Phone.Glyph, TitleText = 22, Close = 44, CloseBlock = 36, Pad = 12,
+	Sub = 0, Row1 = 56, Row1H = 62, Row2 = 124, Row2H = 46, Chip = 34, ChipIcon = PX.Phone.Glyph, ChipBig = 48, ChipIconBig = PX.Phone.Art,
+	Label = 16, Lines = 1, Tag = 15, TagH = 24, Coin = PX.Phone.Glyph, BtnW = 96, BtnH = 44, BtnText = 20, Foot = 15, FootY = 174, FootH = 38,
+	Spark = PX.Phone.Glyph }
+local PORTRAIT = { W = 400, H = 274, Header = 50, Slot = 36, SlotIcon = PX.Phone.Glyph, TitleText = 22, Close = 44, CloseBlock = 36, Pad = 12,
+	Sub = 0, Row1 = 56, Row1H = 80, Row2 = 142, Row2H = 62, Chip = 34, ChipIcon = PX.Phone.Glyph, ChipBig = 48, ChipIconBig = PX.Phone.Art,
+	Label = 16, Lines = 2, Tag = 15, TagH = 24, Coin = PX.Phone.Glyph, BtnW = 96, BtnH = 44, BtnText = 20, Foot = 15, FootY = 208, FootH = 52,
+	Spark = PX.Phone.Glyph }
 local MODES = { PC = PC, Phone = PHONE, Portrait = PORTRAIT }
 local TEXT = {
 	Title = "SKY TROVE",
@@ -282,11 +298,11 @@ end
 -- the panel
 ----------------------------------------------------------------------
 -- (kit-b U9-4) a gold reward tag in its wood edge with brown words (and, for the tokens, the token coin before them)
-local function tag(parent, name, coin)
+local function tag(parent, name, coin, M)
 	local f = block(name, SIGN.Gold, parent, 6)
 	CloudUI.SignBlock(f, "Selected", { EdgePx = 2, LipPx = 3 })
 	if coin then
-		U.Coin = icon(f, "token", PHONE.Coin, SIGN.Text, 7)
+		U.Coin = icon(f, "token", M.Coin, SIGN.Text, 7) -- (look review 2: the layout's glyph size, 27 on PC)
 		if U.Coin then
 			U.Coin.Name = "Coin"
 		end
@@ -350,9 +366,8 @@ local function build(mode)
 	lip(stone, SIGN.StoneLip, SignKit.Sizes.Lip)
 	place(stone, F, F, M.W - 2 * F, M.H - 2 * F)
 	-- (U9-4 look review) the header as the Stats / My Home side panels build theirs (SignKit.Header, Ribbon): the wood rim,
-	-- the navy plate as the title's band with its piping the whole header wide, out over the frame with its tails on PC
-	-- (SignKit.HeaderOverhang; a phone keeps it inside the rim), the pixel chest on the gold icon square in its 2 px ink
-	-- edge, SKY TROVE with its stair, the red close on the plate
+	-- the navy plate as the title's band with its piping the whole header wide (inside the rim: the dock rule below), the
+	-- pixel chest on the gold icon square in its 2 px ink edge, SKY TROVE with its stair, the red close on the plate
 	local head, plate = SignKit.Header(panel, {
 		Title = TEXT.Title, TitleSize = M.TitleText, Height = M.Header, Rim = F, IconSlot = true, Ribbon = true,
 		Reserve = M.Close + 18, Name = "Header", ZIndex = 5,
@@ -384,15 +399,30 @@ local function build(mode)
 			U.Title.Size = U.Title.Size + UDim2.fromOffset(d, 0)
 		end
 	end
-	SignKit.HeaderOverhang(head, mode == "PC")
-	U.Close = CloudUI.Button({ Name = "Close", Text = "", Style = "Red", Skin = "Sign", Size = UDim2.fromOffset(M.Close, M.Close), TextSize = 22,
+	-- (U9-4 look review 2) docked 12 px from the screen's edge (or across a phone), the band's tails would leave the screen
+	-- (its right tail and notches ran past x 1920): the band stays the header's width inside the rim, no tails, the render
+	-- gate's dock rule (the Index; the Arena / Dungeon docks on kitb-ui2)
+	SignKit.HeaderOverhang(head, false)
+	local blockPx = M.CloseBlock or M.Close
+	U.Close = CloudUI.Button({ Name = "Close", Text = "", Style = "Red", Skin = "Sign", Size = UDim2.fromOffset(blockPx, blockPx), TextSize = 22,
 		ZIndex = 3, Parent = head, Callback = function()
 			TroveController.Close()
 		end })
 	-- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box); kit B: square bars in brown ink
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text })
+	-- (U9-4 look review 2) a phone's 44 px touch box under the 36 px block (a tap on the ring round the block closes too)
+	U.CloseTap = nil
+	if M.CloseBlock then
+		U.CloseTap = Util.Create("TextButton", {
+			Name = "CloseTap", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Selectable = false,
+			Active = true, ZIndex = 2, Parent = head,
+		})
+		U.CloseTap.Activated:Connect(function()
+			TroveController.Close()
+		end)
+	end
 	-- the awning: one fixed-size piece over the top rim (never stretched with the panel: the sign rule); PC 360, the
-	-- portrait sheet 288 where the sky over it is clear (layout), never the landscape phone panel
+	-- portrait sheet ROOF_PHONE_W where the sky over it is clear (layout), never the landscape phone panel
 	U.Roof = SignKit.Roof(panel, { Width = mode == "PC" and K.ROOF_W or K.ROOF_PHONE_W, Y = -K.ROOF_OVER, ZIndex = 7 })
 	U.Roof.Visible = mode == "PC"
 	U.Subtitle = label(panel, "Subtitle", TEXT.Sub, "Body", math.max(15, M.Sub), {
@@ -408,8 +438,8 @@ local function build(mode)
 		TextWrapped = true, ZIndex = 6,
 	})
 	U.Chips = Util.Create("Frame", { Name = "Chips", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 6, Parent = group })
-	U.CashChip = tag(U.Chips, "CashChip", false)
-	U.TokenChip = tag(U.Chips, "TokenChip", true)
+	U.CashChip = tag(U.Chips, "CashChip", false, M)
+	U.TokenChip = tag(U.Chips, "TokenChip", true, M)
 	U.Sparkles = makeSparkles(group, M)
 	U.Join = CloudUI.Button({ Name = "JoinButton", Text = TEXT.Button.Open, Style = "Green", Skin = "Sign", Size = UDim2.fromOffset(M.BtnW, M.BtnH),
 		TextSize = M.BtnText, ZIndex = 6, Parent = group, Callback = function()
@@ -497,7 +527,19 @@ local function arrange(W)
 	-- the header (SignKit.Header lays its plate out; the close sits on the plate, 10 px in from the frame's right edge as
 	-- the Gifts window's, centred on the plate under the rim)
 	place(U.Header, 0, 0, W, M.Header)
-	place(U.Close, W - 10 - M.Close, F + math.floor((M.Header - F - M.Close) / 2), M.Close, M.Close)
+	if M.CloseBlock then
+		-- (U9-4 look review 2) a phone: the 36 px block centred on the plate (4 px of plate over and under it, the icon
+		-- square's height), its stroke 4 px inside the plate's right end; the 44 px touch box centred on it
+		local b = M.CloseBlock
+		local x, y = W - F - K.CLOSE_INSET - b, F + math.floor((M.Header - F - b) / 2)
+		place(U.Close, x, y, b, b)
+		local d = math.floor((M.Close - b) / 2)
+		if U.CloseTap then
+			place(U.CloseTap, x - d, y - d, M.Close, M.Close)
+		end
+	else
+		place(U.Close, W - 10 - M.Close, F + math.floor((M.Header - F - M.Close) / 2), M.Close, M.Close)
+	end
 	if M.Sub > 0 then
 		place(U.Subtitle, M.Pad + 2, M.SubY, W - 2 * M.Pad - 4, M.SubH)
 	end
@@ -505,15 +547,29 @@ local function arrange(W)
 	local rowW = W - 2 * M.Pad
 	local lipPx = SignKit.Sizes.BlockLip
 	local inner = M.Pad == PC.Pad and 12 or 8
-	local textX = inner + M.Chip + (M.Pad == PC.Pad and 14 or 10)
-	for _, r in ipairs({ { U.Group, M.Row1, M.Row1H }, { U.Like, M.Row2, M.Row2H } }) do
+	-- (U9-4 look review 2) a phone's row icon at the art size on the bigger chip where both rows have room for it (4 px
+	-- of face over and under the chip), else the glyph size on the small chip: both rows alike
+	local chipPx, iconPx = M.Chip, M.ChipIcon
+	if M.ChipBig and math.min(M.Row1H, M.Row2H) - lipPx >= M.ChipBig + 8 then
+		chipPx, iconPx = M.ChipBig, M.ChipIconBig
+	end
+	U.ChipPx = chipPx
+	local textX = inner + chipPx + (M.Pad == PC.Pad and 14 or 10)
+	for _, r in ipairs({ { U.Group, M.Row1, M.Row1H, "Group" }, { U.Like, M.Row2, M.Row2H, "Like" } }) do
 		local row, y, h = r[1], r[2], r[3]
 		place(row, M.Pad, y, rowW, h)
 		local chip = row:FindFirstChild("Chip")
-		place(chip, inner, math.floor((h - lipPx - M.Chip) / 2), M.Chip, M.Chip)
+		place(chip, inner, math.floor((h - lipPx - chipPx) / 2), chipPx, chipPx)
 		local glyph = chip:FindFirstChild("Glyph")
+		if glyph and glyph.Size.X.Offset ~= iconPx then
+			glyph:Destroy()
+			glyph = icon(chip, NeonKit.IconName(ASK[r[4]].Icon) or Config.Icons[ASK[r[4]].Icon], iconPx, SIGN.Text, 6)
+			if glyph then
+				glyph.Name = "Glyph"
+			end
+		end
 		if glyph then
-			place(glyph, math.floor((M.Chip - M.ChipIcon) / 2), math.floor((M.Chip - 3 - M.ChipIcon) / 2), M.ChipIcon, M.ChipIcon)
+			place(glyph, math.floor((chipPx - iconPx) / 2), math.floor((chipPx - 3 - iconPx) / 2), iconPx, iconPx)
 		end
 	end
 	local face1 = M.Row1H - lipPx

@@ -220,6 +220,44 @@ end
 -- a layout resizes). Returns the icon Frame (attribute PixelIcon = name; a redraw replaces it); nil for an unknown name.
 -- Hosting again on the same host drops the old icon and its connections first (a mark that changes, a coin resized).
 local hosted = setmetatable({}, { __mode = "k" }) -- [host] = { icon = Frame, conns = { connections } }
+local scaleOf -- (below, with Lead: the UIScales over an object)
+
+-- (U9-4 look review 2: whole pixels) the host's padded box in its own px: its laid-out AbsoluteSize (a grid cell or an
+-- aspect constraint can size it other than its Size), else, before its first layout, its Size where that is a fixed
+-- offset; nil for a scaled host not laid out yet. A UIPadding insets the icon as it insets the text
+local function hostBox(host)
+	local size = host.Size
+	local w, h = nil, nil
+	local a, s = host.AbsoluteSize, scaleOf(host)
+	if a.X > 0 and a.Y > 0 and s > 0 then
+		w, h = math.floor(a.X / s + 0.5), math.floor(a.Y / s + 0.5)
+	elseif size.X.Scale == 0 and size.Y.Scale == 0 and host.AutomaticSize == Enum.AutomaticSize.None then
+		w, h = size.X.Offset, size.Y.Offset
+	end
+	if not w then
+		return nil
+	end
+	local pad = host:FindFirstChildOfClass("UIPadding")
+	if pad then
+		w = w - pad.PaddingLeft.Offset - pad.PaddingRight.Offset - (pad.PaddingLeft.Scale + pad.PaddingRight.Scale) * w
+		h = h - pad.PaddingTop.Offset - pad.PaddingBottom.Offset - (pad.PaddingTop.Scale + pad.PaddingBottom.Scale) * h
+	end
+	return w, h
+end
+
+-- the icon centred in its host by a whole-px offset (an AnchorPoint of 0.5 put it on a half pixel wherever the host and
+-- the icon differ by an odd number of px); before a scaled host's first layout, centred by scale
+local function centreIn(icon, host)
+	local w, h = hostBox(host)
+	local px = icon.Size.X.Offset
+	if w then
+		icon.AnchorPoint = Vector2.new(0, 0)
+		icon.Position = UDim2.fromOffset(math.floor((w - px) / 2), math.floor((h - px) / 2))
+	else
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.Position = UDim2.fromScale(0.5, 0.5)
+	end
+end
 
 function PixelIcon.Host(host, name, px, colour)
 	local old = hosted[host]
@@ -256,16 +294,23 @@ function PixelIcon.Host(host, name, px, colour)
 			icon:Destroy()
 		end
 		icon = PixelIcon.New(host, name, PixelIcon.Snap(px or (tonumber(host.TextSize) or 18) * 0.9), colour or host.TextColor3)
-		icon.AnchorPoint = Vector2.new(0.5, 0.5)
-		icon.Position = UDim2.fromScale(0.5, 0.5)
+		centreIn(icon, host)
 		entry.icon = icon
 		sync()
+	end
+	local function recentre()
+		if icon then
+			centreIn(icon, host)
+		end
 	end
 	draw()
 	local conns = entry.conns
 	conns[#conns + 1] = host:GetPropertyChangedSignal("TextColor3"):Connect(sync)
 	conns[#conns + 1] = host:GetPropertyChangedSignal("TextTransparency"):Connect(sync)
 	conns[#conns + 1] = host:GetPropertyChangedSignal("ZIndex"):Connect(sync)
+	-- (U9-4 look review 2) a resized host keeps its icon on whole px
+	conns[#conns + 1] = host:GetPropertyChangedSignal("Size"):Connect(recentre)
+	conns[#conns + 1] = host:GetPropertyChangedSignal("AbsoluteSize"):Connect(recentre)
 	if px == nil then
 		conns[#conns + 1] = host:GetPropertyChangedSignal("TextSize"):Connect(function()
 			if icon and icon.Size.X.Offset ~= PixelIcon.Snap((tonumber(host.TextSize) or 18) * 0.9) then
@@ -281,7 +326,7 @@ local leadConns = setmetatable({}, { __mode = "k" }) -- [label] = { [childName] 
 -- (U7a review) the product of the UIScales on `obj` and every GuiObject above it, up to its ScreenGui: Roblox's
 -- TextBounds is screen px (after all of them), a Position offset is the object's own px. A HUD panel's ScreenFactor
 -- (0.8 on a phone, up to 1.25) and a token pop (about 1.7) are among them
-local function scaleOf(obj)
+function scaleOf(obj)
 	local s = 1
 	local cur = obj
 	while cur and not cur:IsA("LayerCollector") do

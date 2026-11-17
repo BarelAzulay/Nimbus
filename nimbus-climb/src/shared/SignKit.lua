@@ -45,10 +45,17 @@ SignKit.Sizes = {
 	RoofH = 18,
 	RoofEdge = 4, -- the dark border round the awning
 	RoofLip = 5, -- its darker bottom lip
+	-- (U9-4 look review 2) a phone window's awning (the portrait Gifts window, the portrait Trove sheet): 240, so its right
+	-- end keeps clear of the close block on a 390 px screen (the 288 of the 0.8 windows lay over it)
+	RoofPhoneW = 240,
 	HeadH = 64,
 	Rim = 6, -- the header's wood rim (top, left, right; the frame below closes it): the frame's width, so the edge runs straight
 	TitleX = 18,
 	IconSlot = 42, -- the gold icon square in a header
+	-- (U9-4 look review 2: one pixel size per screen) a window's pixel icons draw at one of two sizes, one double the other:
+	-- Glyph (a header icon, a sparkle, a clock, a reward's coin) and Art (a reward's art on its chip, a tick, a row's
+	-- icon): 3 / 6 px cells on PC (27 / 54 at 1080p), 2 / 4 px on a phone (18 / 36). The Gifts window and the Trove read it
+	Pixel = { PC = { Glyph = 27, Art = 54 }, Phone = { Glyph = 18, Art = 36 } },
 	Frame = 6, -- the wood frame round a body
 	Edge = 5, -- a block's edge (planks, notices)
 	Lip = 8, -- a block's darker bottom lip

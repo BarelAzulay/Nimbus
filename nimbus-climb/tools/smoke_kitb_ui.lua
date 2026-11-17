@@ -6712,6 +6712,116 @@ local function clientScenarios()
 		end
 		return out
 	end
+	-- (U9-4 look review 2: whole pixels) the shown pixel icons under `root` (a Frame with attribute PixelIcon, and each of
+	-- its cells) whose screen position or size is not a whole number of px (a half pixel draws the icon soft)
+	function U94.halfPixels(root)
+		local out = {}
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) < 0.01
+		end
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			local icon = d:IsA("Frame") and (d:GetAttribute("PixelIcon") ~= nil or (d.Parent and d.Parent:IsA("Frame") and d.Parent:GetAttribute("PixelIcon") ~= nil))
+			if icon and U8.shown(d) and d.AbsoluteSize.X > 0 then
+				local p, s = d.AbsolutePosition, d.AbsoluteSize
+				if not (whole(p.X) and whole(p.Y) and whole(s.X) and whole(s.Y)) then
+					out[#out + 1] = fmt("%s.%s at %.2f,%.2f %.2fx%.2f", d.Parent and d.Parent.Name or "?", d.Name, p.X, p.Y, s.X, s.Y)
+				end
+			end
+		end
+		return out
+	end
+	-- a block's box with its outside stroke (SignEdge) in screen px
+	function U94.strokeBox(o)
+		local e = o:FindFirstChild("SignEdge")
+		local t = (e and e.Thickness or 0) * U8.scaleOf(o)
+		local r = U8.rect(o)
+		return { X = r.X - t, R = r.R + t, Y = r.Y - t, B = r.B + t }
+	end
+	-- the px of space between two boxes (negative: they overlap)
+	function U94.apart(a, b)
+		return math.max(b.X - a.R, a.X - b.R, b.Y - a.B, a.Y - b.B)
+	end
+	-- (U9-4 look review 2) today's raised tile, whichever day today is (1..7), keeps >= 4 px of stone between its stroke and
+	-- the streak / VIP chips' strokes (the VIP chip sat on the raised TODAY tile on a portrait phone). Puts the `view`
+	-- payload back after. Returns the problems
+	function U94.todayClear(holder, view)
+		local out = {}
+		for today = 1, 7 do
+			local p = U94.payload(view or "")
+			p.Cell = today
+			for i, d in ipairs(p.Days) do
+				d.Claimed, d.Today = i < today, i == today
+			end
+			LKC.toClient("DailyState", p)
+			LKC.advance(0.2)
+			local c = holder:FindFirstChild("Cell" .. today, true)
+			if not (c and c:GetAttribute("Today") == true) then
+				out[#out + 1] = "Cell" .. today .. " is not today's raised tile"
+			else
+				local k = U8.scaleOf(c)
+				local tb = U94.strokeBox(c)
+				for _, name in ipairs({ "StreakChip", "VipChip" }) do
+					local chip = holder:FindFirstChild(name, true)
+					if chip and U8.shown(chip) then
+						local cb = U94.strokeBox(chip)
+						if U94.apart(tb, cb) < 4 * k - 0.5 then
+							out[#out + 1] = fmt("today %d: Cell%d %s and %s %s %.1f px apart", today, today, U8.show(tb), name, U8.show(cb), U94.apart(tb, cb))
+						end
+					end
+				end
+			end
+		end
+		LKC.toClient("DailyState", U94.payload(view or ""))
+		LKC.advance(0.2)
+		return out
+	end
+	-- (U9-4 look review 2) the Play page's Claim all: its stroke >= 4 px under the navy band and under the close block's
+	-- stroke, and (landscape) its right edge on the right edge of the first row's last box (Tier<lastInRow>)
+	function U94.claimAllRoom(holder, lastInRow)
+		local out = {}
+		local all = holder:FindFirstChild("ClaimAll", true)
+		local bar = holder:FindFirstChild("TitleBar", true)
+		local close = bar and bar:FindFirstChild("CloseButton")
+		if not (all and bar and close) then
+			return { "no ClaimAll / TitleBar / CloseButton" }
+		end
+		local k = U8.scaleOf(all)
+		local a = U94.strokeBox(all)
+		for _, b in ipairs({ { "the band", U8.rect(bar) }, { "the close block", U94.strokeBox(close) } }) do
+			if a.Y < b[2].B + 4 * k - 0.5 then
+				out[#out + 1] = fmt("ClaimAll's stroke top %.1f is %.1f px under %s (%.1f)", a.Y, a.Y - b[2].B, b[1], b[2].B)
+			end
+		end
+		local last = lastInRow and holder:FindFirstChild("Tier" .. lastInRow, true)
+		if last and math.abs(U8.rect(all).R - U8.rect(last).R) > 0.5 then
+			out[#out + 1] = fmt("ClaimAll ends at %.1f, the row's last box at %.1f", U8.rect(all).R, U8.rect(last).R)
+		end
+		return out
+	end
+	-- (U9-4 look review 2) a phone band's close: the 36 px red block inside the band (its stroke >= 1 px inside the band's
+	-- top, its right end 4 px in), over its centred >= 44 px touch box (CloseTap). `band` is the navy band / plate
+	function U94.phoneClose(close, tap, band)
+		if not (close and tap and band) then
+			return { "no close / CloseTap / band" }
+		end
+		local out = {}
+		local k = U8.scaleOf(close)
+		local c, t, b = U8.rect(close), U8.rect(tap), U8.rect(band)
+		local s = U94.strokeBox(close)
+		if math.abs((c.R - c.X) / k - 36) > 0.5 or math.abs((c.B - c.Y) / k - 36) > 0.5 then
+			out[#out + 1] = fmt("the block is %.1fx%.1f, not 36", (c.R - c.X) / k, (c.B - c.Y) / k)
+		end
+		if not (U8.shown(tap) and (t.R - t.X) >= 44 - 0.5 and (t.B - t.Y) >= 44 - 0.5) then
+			out[#out + 1] = "the touch box " .. U8.show(t) .. " is under 44 px or hidden"
+		end
+		if math.abs((t.X + t.R) / 2 - (c.X + c.R) / 2) > 1 or math.abs((t.Y + t.B) / 2 - (c.Y + c.B) / 2) > 1 then
+			out[#out + 1] = "the touch box " .. U8.show(t) .. " is not centred on the block " .. U8.show(c)
+		end
+		if s.Y < b.Y + 0.5 or math.abs(b.R - s.R - 4 * k) > 0.5 then
+			out[#out + 1] = fmt("the block's stroke %s is not inside the band %s (4 px from its right end)", U8.show(s), U8.show(b))
+		end
+		return out
+	end
 
 	-- the Gifts window on the Signboard kit (1920x1080 and 844x390, both tabs): the wood frame round a stone body, the navy
 	-- header plank, the fixed-size awning on PC only (none on a phone), the tabs stone blocks (the selected one gold), the
@@ -6750,6 +6860,13 @@ local function clientScenarios()
 				local close = bar and bar:FindFirstChild("CloseButton")
 				T.check(close ~= nil and sameColor(close.BackgroundColor3, Sign.Red) and close:FindFirstChild("SignEdge") ~= nil and close:FindFirstChild("CloseMark") ~= nil,
 					tag .. ": the close is the red block with the drawn X", close and hex(close.BackgroundColor3) or "no close")
+				if not pc then
+					-- (U9-4 look review 2) a phone band's close: the 36 px block inside the band over its 44 px touch box (the 44 px
+					-- block filled the band and its stroke hung onto the stone)
+					local closeBad = U94.phoneClose(close, bar and bar:FindFirstChild("CloseTap"), bar)
+					T.check(#closeBad == 0, tag .. ": the close is a 36 px block inside the band, its stroke 4 px from the band's end, over a 44 px touch box",
+						table.concat(closeBad, "; "))
+				end
 				-- the header as the Shop's: the navy band inside the wood frame, the gift on its gold square, "Gifts" the window's
 				-- ribbon title, then the tabs and the X, in a row without overlap
 				local wr, br = win and U8.rect(win), bar and U8.rect(bar)
@@ -6897,21 +7014,31 @@ local function clientScenarios()
 				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 })
 				T.check(#odd == 0, tag .. ": every pixel icon at one of the screen's two pixel sizes (" .. (pc and "3 / 6" or "2 / 4") .. " px cells)",
 					table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
-				-- each day's reward on its role's chip, as the HUD's strips colour each currency: cash grass, tokens gold, gems navy
-				local ROLE = { [4] = { "Cash", Sign.Grass }, [5] = { "Tokens", Sign.Gold }, [6] = { "Gems", Sign.Navy } }
+				-- each day's reward on its role's chip, as the HUD's strips colour each currency: cash grass, tokens gold, gems navy;
+				-- (U9-4 look review 2) the art a pixel icon (the gem the pitch's pixel gem in sky, no cut gem in the window)
+				local ROLE = { [4] = { "Cash", Sign.Grass, "note" }, [5] = { "Tokens", Sign.Gold, "token" }, [6] = { "Gems", Sign.Navy, "gem" } }
 				local chipBad = {}
 				for i, want in pairs(ROLE) do
 					local c = holder:FindFirstChild("Cell" .. i, true)
 					local chip = c and c:FindFirstChild("Chip", true)
-					local art = false
+					local art = nil
 					for _, d in ipairs(chip and chip:GetDescendants() or {}) do
-						art = art or d:GetAttribute("PixelIcon") ~= nil or d.Name == "GemIcon"
+						art = art or d:GetAttribute("PixelIcon")
 					end
-					if not (chip and U8.shown(chip) and chip:GetAttribute("Role") == want[1] and sameColor(chip.BackgroundColor3, want[2]) and chip:FindFirstChild("SignEdge") and art) then
-						chipBad[#chipBad + 1] = "Cell" .. i .. (chip and (" " .. tostring(chip:GetAttribute("Role")) .. " " .. hex(chip.BackgroundColor3)) or " no chip")
+					if not (chip and U8.shown(chip) and chip:GetAttribute("Role") == want[1] and sameColor(chip.BackgroundColor3, want[2]) and chip:FindFirstChild("SignEdge") and art == want[3]) then
+						chipBad[#chipBad + 1] = "Cell" .. i .. (chip and (" " .. tostring(chip:GetAttribute("Role")) .. " " .. hex(chip.BackgroundColor3) .. " " .. tostring(art)) or " no chip")
 					end
 				end
-				T.check(#chipBad == 0, tag .. ": each day's reward sits on its role's chip (cash grass, tokens gold, gems navy) with its art", table.concat(chipBad, ", "))
+				local cut = holder:FindFirstChild("GemIcon", true)
+				T.check(#chipBad == 0 and cut == nil, tag .. ": each day's reward sits on its role's chip (cash grass, tokens gold, gems navy) with its pixel art (no cut gem)",
+					table.concat(chipBad, ", ") .. (cut and " | a GemIcon in the window" or ""))
+				-- (U9-4 look review 2: whole pixels) every pixel icon and its cells on whole screen px (no AnchorPoint 0.5 half px)
+				local halves = U94.halfPixels(holder)
+				T.check(#halves == 0, fmt("%s: every pixel icon of the Daily page on whole px (%d not)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+				-- (U9-4 look review 2) whichever day is today, its raised tile keeps 4 px of stone to the streak / VIP chips
+				local crowd = U94.todayClear(holder, "")
+				T.check(#crowd == 0, tag .. ": today's raised tile keeps >= 4 px of stone to the streak and VIP chips on every day 1..7",
+					table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
 				local round = U94.roundOrGloss(holder)
 				T.check(#round == 0, tag .. ": nothing round or glossy in the Gifts window", table.concat(round, ", ", 1, math.min(#round, 10)))
 				local bad = U94.contrast("NimbusDaily")
@@ -6973,7 +7100,9 @@ local function clientScenarios()
 				T.check(#room == 0, tag .. ": stone round every gift box, its Claim off its lip", table.concat(room, "; ", 1, math.min(#room, 6)))
 				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 })
 				T.check(#odd == 0, tag .. ": every pixel icon on the Play page at one of the screen's two pixel sizes", table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
-				-- the reward line in the Trove's tag language: the kind's pixel icon before the amount (no "Tokens" / "Gems" words)
+				-- the reward line in the Trove's tag language: the kind's pixel icon before the amount (no "Tokens" / "Gems" words);
+				-- (U9-4 look review 2) each currency on its role's tag (a kit B block in its wood edge: cash grass, tokens gold with
+				-- the coin, gems navy with the sky gem), the Berry Basket a plain line
 				local kindBad = {}
 				for i, want in pairs({ [2] = "token", [4] = "gem", [5] = "token", [7] = "gem" }) do
 					local r = holder:FindFirstChild("Tier" .. i, true)
@@ -6984,6 +7113,45 @@ local function clientScenarios()
 					end
 				end
 				T.check(#kindBad == 0, tag .. ": tokens and gems read as their pixel icon + the amount (the Trove's tags)", table.concat(kindBad, ", "))
+				local TAG = { [1] = { "Cash", Sign.Grass }, [2] = { "Tokens", Sign.Gold }, [3] = { "Cash", Sign.Grass }, [4] = { "Gems", Sign.Navy },
+					[5] = { "Tokens", Sign.Gold }, [7] = { "Gems", Sign.Navy } }
+				local tagBad = {}
+				for i = 1, 7 do
+					local box = holder:FindFirstChild("Tier" .. i, true)
+					local r = box and box:FindFirstChild("Reward", true)
+					local want = TAG[i]
+					if want then
+						local mark = r and r:FindFirstChild("KindIcon")
+						local ink = mark and mark:FindFirstChild("R1")
+						if not (r and r:GetAttribute("Role") == want[1] and r.BackgroundTransparency == 0 and sameColor(r.BackgroundColor3, want[2])
+							and r:FindFirstChild("SignEdge") and (want[1] ~= "Gems" or (ink and sameColor(ink.BackgroundColor3, Sign.Sky)))
+							and U8.rect(r).X >= U8.rect(box).X and U8.rect(r).R <= U8.rect(box).R) then
+							tagBad[#tagBad + 1] = "Tier" .. i .. (r and (" " .. tostring(r:GetAttribute("Role")) .. " " .. hex(r.BackgroundColor3)) or " no reward")
+						end
+					elseif r and (r.BackgroundTransparency < 1 or r:FindFirstChild("SignEdge")) then
+						tagBad[#tagBad + 1] = "Tier" .. i .. " (the basket) is on a tag"
+					end
+				end
+				T.check(#tagBad == 0, tag .. ": each currency reward on its role's tag inside its box (cash grass, tokens gold, gems navy with the sky gem), the basket plain",
+					table.concat(tagBad, ", "))
+				-- (U9-4 look review 2) the gift is the box's hero: the Daily chip's block (72 / 48) holding the gift at the art size
+				local giftBad = {}
+				local chipPx, artPx = pc and 72 or 48, pc and 54 or 36
+				for i = 3, 7 do
+					local box = holder:FindFirstChild("Tier" .. i, true)
+					local block = box and box:FindFirstChild("Block", true)
+					local icon = block and block:FindFirstChild("Icon")
+					local k = box and U8.scaleOf(box) or 1
+					if not (block and icon and math.abs(block.AbsoluteSize.X / k - chipPx) <= 0.5 and math.abs(icon.AbsoluteSize.X / k - artPx) <= 0.5
+						and block:FindFirstChild("SignEdge") and block:FindFirstChild("SignEdge").Thickness == 2) then
+						giftBad[#giftBad + 1] = "Tier" .. i .. (block and fmt(" block %.1f icon %.1f", block.AbsoluteSize.X / k, icon and icon.AbsoluteSize.X / k or 0) or " no block")
+					end
+				end
+				T.check(#giftBad == 0, fmt("%s: each gift a %d px block in a 2 px edge holding the %d px gift (the Daily chip)", tag, chipPx, artPx), table.concat(giftBad, ", "))
+				local allBad = U94.claimAllRoom(holder, pc and 4 or 7)
+				T.check(#allBad == 0, tag .. ": Claim all keeps 4 px of stone under the band and the close, its right edge on the row's last box", table.concat(allBad, "; "))
+				local halves = U94.halfPixels(holder)
+				T.check(#halves == 0, fmt("%s: every pixel icon of the Play page on whole px (%d not)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
 				-- the next gift to open (60 min, 47 min played, paused) shows the minutes toward it as the kit's block bar over
 				-- its countdown: 5 blocks, 3 filled (the gold lip while paused); no other box has one
 				local bars = {}
@@ -6996,14 +7164,25 @@ local function clientScenarios()
 				end
 				local bar4 = holder:FindFirstChild("Tier4", true)
 				bar4 = bar4 and bar4:FindFirstChild("PlayBar", true)
-				local face1 = bar4 and bar4:FindFirstChild("Block1")
-				face1 = face1 and face1:FindFirstChild("Face")
 				local clock4 = holder:FindFirstChild("Tier4", true)
 				clock4 = clock4 and clock4:FindFirstChild("Clock", true)
+				-- (U9-4 look review 2) in the Wisp bar's block language: a filled block keeps its gold lip under the face (the
+				-- deep gold face while paused), an empty block is the sunk well with no lip
+				local segBad = {}
+				for b = 1, 5 do
+					local face = bar4 and bar4:FindFirstChild("Block" .. b)
+					face = face and face:FindFirstChild("Face")
+					local lip = face and face:FindFirstChild("Lip")
+					local on = b <= 3
+					if not (face and lip and sameColor(face.BackgroundColor3, on and Sign.GoldDeep or Sign.Well)
+						and ((on and U8.shown(lip) and sameColor(lip.BackgroundColor3, Sign.GoldLip)) or (not on and not U8.shown(lip)))) then
+						segBad[#segBad + 1] = "Block" .. b .. (face and (" " .. hex(face.BackgroundColor3)) or "")
+					end
+				end
 				T.check(#bars == 1 and bars[1] == "Tier4" and bar4:GetAttribute("SignKit") == "BlockRow" and bar4:GetAttribute("Count") == 5 and bar4:GetAttribute("Filled") == 3
-					and face1 ~= nil and sameColor(face1.BackgroundColor3, Sign.GoldLip) and clock4 ~= nil and U8.shown(clock4) and U8.rect(clock4).Y >= U8.rect(bar4).B - 0.5,
-					tag .. ": the next gift's minutes are a 5-block bar (3 filled, the gold lip while paused) over its countdown; no other box has one",
-					table.concat(bars, ", ") .. (bar4 and fmt(" filled %s", tostring(bar4:GetAttribute("Filled"))) or ""))
+					and #segBad == 0 and clock4 ~= nil and U8.shown(clock4) and U8.rect(clock4).Y >= U8.rect(bar4).B - 0.5,
+					tag .. ": the next gift's minutes are a 5-block bar (3 filled on their gold lip, the deep gold face while paused; empty the lipless well) over its countdown; no other box has one",
+					table.concat(bars, ", ") .. (bar4 and fmt(" filled %s ", tostring(bar4:GetAttribute("Filled"))) or "") .. table.concat(segBad, ", "))
 				local round = U94.roundOrGloss(holder)
 				T.check(#round == 0, tag .. ": nothing round or glossy on the Play page", table.concat(round, ", ", 1, math.min(#round, 10)))
 				local bad = U94.contrast("NimbusDaily")
@@ -7022,6 +7201,26 @@ local function clientScenarios()
 			local bad = U94.contrast("NimbusDaily")
 			T.check(#bad == 0, fmt("%s: the locked claim's lines read on it (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
 		end)
+		-- (U9-4 look review 2) the shortest PC window (the Compact rows: 1280x600) keeps today's raised tile off the chips too
+		U94.at(1280, 600, false, "daily kit b compact", "Daily", "", function(tag, holder)
+			T.check(DCm._S.Mode == "PC", tag .. ": 1280x600 lays the PC window out (its Compact rows)", tostring(DCm._S.Mode))
+			local crowd = U94.todayClear(holder, "")
+			T.check(#crowd == 0, tag .. ": today's raised tile keeps >= 4 px of stone to the streak and VIP chips on every day 1..7",
+				table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
+		end)
+		-- (U9-4 look review 2: whole pixels) the HUD's Gift block (the window closed): its pixel gift on whole px (it sat at
+		-- y .72 / .28, centred by scale)
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true }, { 390, 844, true } }) do
+			U8.at(s[1], s[2], s[3], "daily gift block", function(tag)
+				LKC.toClient("DailyState", U94.payload(""))
+				LKC.advance(0.5)
+				local gui = U8.pg():FindFirstChild("NimbusDaily")
+				local button = gui and gui:FindFirstChild("GiftsButton")
+				local halves = button and U94.halfPixels(button) or {}
+				T.check(button ~= nil and U8.shown(button) and #halves == 0, fmt("%s: the Gift block's pixel gift on whole px (%d not)", tag, #halves),
+					table.concat(halves, "; ", 1, math.min(#halves, 4)))
+			end)
+		end
 		LKC.flushErrors("daily_signboard_skin")
 	end)
 
@@ -7069,15 +7268,18 @@ local function clientScenarios()
 					T.check(ok, tag .. ": the two tabs have their own row under the band, each about half the inside, over the body, >= 44 px taps",
 						df and pf and (U8.show(U8.rect(df)) .. " / " .. U8.show(U8.rect(pf)) .. " band " .. U8.show(br)) or "no tabs")
 				end
-				-- (U9-4 look review) the awning: the portrait window has clear sky over it, so it wears the phones' 288 px roof
-				-- clear of the HUD's strips; the landscape window starts under Roblox's top bar and has none
+				-- (U9-4 look review) the awning: the portrait window has clear sky over it, so it wears the phones' awning
+				-- (look review 2: SignKit.Sizes.RoofPhoneW, 240) clear of the HUD's strips and >= 4 px clear of the close
+				-- block's stroke; the landscape window starts under Roblox's top bar and has none
 				local roof = win and win:FindFirstChild("Roof")
 				if portrait then
 					local hud = U8.pg():FindFirstChild("NimbusHud")
 					local strips = hud and hud:FindFirstChild("Currency", true)
 					local rr = roof and U8.rect(roof)
-					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Offset == 288 and (not (strips and U8.shown(strips)) or rr.Y >= U8.rect(strips).B + 6),
-						tag .. ": the portrait window wears the 288 px awning, clear of the HUD's strips", rr and U8.show(rr) or "no roof")
+					local x = bar and bar:FindFirstChild("CloseButton")
+					local gap = (rr and x) and U94.apart(rr, U94.strokeBox(x)) or -1
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Offset == 240 and (not (strips and U8.shown(strips)) or rr.Y >= U8.rect(strips).B + 6) and gap >= 4 - 0.5,
+						tag .. ": the portrait window wears the 240 px awning, clear of the HUD's strips and of the close block", (rr and U8.show(rr) or "no roof") .. fmt(" | %.1f px from the close", gap))
 				else
 					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on the landscape window (it starts under Roblox's top bar)")
 				end
@@ -7130,6 +7332,20 @@ local function clientScenarios()
 					local cramped = U94.tileRoom(holder, tab == "Daily" and "Cell" or "Tier")
 					T.check(#cramped == 0, tag .. ": every tile / box keeps 3 px of stone to the frame and the stone lip, 4 px to the next, its Claim 4 px over its lip",
 						table.concat(cramped, "; ", 1, math.min(#cramped, 6)))
+					-- (U9-4 look review 2) the close a 36 px block inside the band over its 44 px touch box; every pixel icon on whole
+					-- px; today's raised tile off the chips (Daily); Claim all off the band and the close (Play)
+					local closeBad = U94.phoneClose(bar and bar:FindFirstChild("CloseButton"), bar and bar:FindFirstChild("CloseTap"), bar)
+					T.check(#closeBad == 0, tag .. ": the close is a 36 px block inside the band over a 44 px touch box", table.concat(closeBad, "; "))
+					local halves = U94.halfPixels(holder)
+					T.check(#halves == 0, fmt("%s: every pixel icon on whole px (%d not)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+					if tab == "Daily" then
+						local crowd = U94.todayClear(holder, "")
+						T.check(#crowd == 0, tag .. ": today's raised tile keeps >= 4 px of stone to the streak and VIP chips on every day 1..7",
+							table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
+					else
+						local allBad = U94.claimAllRoom(holder, (not portrait) and 7 or nil)
+						T.check(#allBad == 0, tag .. ": Claim all keeps 4 px of stone under the band and the close (landscape: it ends with the row)", table.concat(allBad, "; "))
+					end
 				end)
 				T.eq(GuiService.TouchControlsEnabled, before, fmt("daily phone %dx%d %s: the touch controls are back as they were after Close", s[1], s[2], tab))
 			end
@@ -7250,13 +7466,13 @@ local function clientScenarios()
 				local pr, hr = U8.rect(panel), head and U8.rect(head)
 				local plr = plate and U8.rect(plate)
 				local k = U8.scaleOf(panel)
-				local tails = head and head:FindFirstChild("TailL") and U8.shown(head.TailL) and head:FindFirstChild("TailR") and U8.shown(head.TailR)
-				local overOk = plr ~= nil and (pc and math.abs(plr.X - (pr.X - 10 * k)) <= 1 and math.abs(plr.R - (pr.R + 10 * k)) <= 1 and tails)
-					or (not pc and plr ~= nil and plr.X >= pr.X + 5.5 and plr.R <= pr.R - 5.5 and not tails)
+				-- (U9-4 look review 2) the docked panel's band stays inside the rim with no tails at every size (the render gate's
+				-- dock rule, as the Index: on PC the right tail ran off the screen)
+				local tails = head and ((head:FindFirstChild("TailL") and U8.shown(head.TailL)) or (head:FindFirstChild("TailR") and U8.shown(head.TailR)))
+				local overOk = plr ~= nil and plr.X >= pr.X + 5.5 * k and plr.R <= pr.R - 5.5 * k and not tails
 				T.check(head ~= nil and U8.shown(head) and head:GetAttribute("SignKit") == "Header" and head:GetAttribute("Ribbon") == true and plate ~= nil
 					and sameColor(plate.BackgroundColor3, Sign.Navy) and plr.Y >= pr.Y + 5.5 * k and overOk,
-					tag .. (pc and ": the header is SignKit.Header, its navy plate the title's band out over the frame with its tails (as Stats)"
-						or ": the header is SignKit.Header, its navy plate inside the wood rim (no tails on a phone)"),
+					tag .. ": the header is SignKit.Header, its navy plate inside the wood rim with no tails (the docked panel's rule)",
 					plr and (U8.show(plr) .. " in " .. U8.show(pr) .. " tails " .. tostring(tails)) or "no plate")
 				local icon = plate and plate:FindFirstChild("TroveIcon")
 				local chest = false
@@ -7272,14 +7488,20 @@ local function clientScenarios()
 				local title = plate and plate:FindFirstChild("TitleText")
 				local close = head and head:FindFirstChild("Close")
 				T.check(title ~= nil and U8.shown(title) and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": SKY TROVE is the window's ribbon title")
-				T.check(close ~= nil and math.abs(close.AbsoluteSize.X / k - (pc and 40 or 44)) <= 0.5, tag .. ": the close is 40 px on PC (as Stats), 44 on a phone (the touch floor)",
-					close and tostring(close.AbsoluteSize) or "no close")
+				if pc then
+					T.check(close ~= nil and math.abs(close.AbsoluteSize.X / k - 40) <= 0.5, tag .. ": the close is 40 px on PC (as Stats)", close and tostring(close.AbsoluteSize) or "no close")
+				else
+					-- (U9-4 look review 2) a phone: the 36 px block inside the plate over its 44 px touch box (the 44 px block was
+					-- as tall as the plate and its stroke hung onto the stone)
+					local closeBad = U94.phoneClose(close, head and head:FindFirstChild("CloseTap"), plate)
+					T.check(#closeBad == 0, tag .. ": the close is a 36 px block inside the plate over a 44 px touch box (the touch floor)", table.concat(closeBad, "; "))
+				end
 				if icon and title and close then
 					local ir, tr, cr = U8.rect(icon), U8.rect(title), U8.rect(close)
 					T.check(ir.R <= tr.X + 0.5 and tr.R <= cr.X - 4 and ir.X >= pr.X and cr.R <= pr.R, tag .. ": the header reads chest, title, close left to right with no overlap",
 						fmt("icon %s, title %s, close %s", U8.show(ir), U8.show(tr), U8.show(cr)))
 				end
-				local closeIssues = SmokeCommon.closeMarkIssues(close, { Shown = U8.shown, MinTap = s[3] and 44 or nil, Bar = Sign.Text, Ink = Sign.RedLip })
+				local closeIssues = SmokeCommon.closeMarkIssues(close, { Shown = U8.shown, Bar = Sign.Text, Ink = Sign.RedLip })
 				T.check(close ~= nil and sameColor(close.BackgroundColor3, Sign.Red) and close:FindFirstChild("SignEdge") ~= nil and #closeIssues == 0,
 					tag .. ": the close is the red block with the drawn X in brown ink", (close and hex(close.BackgroundColor3) or "no close") .. " " .. table.concat(closeIssues, "; "))
 				local roof = panel:FindFirstChild("Roof")
@@ -7346,6 +7568,13 @@ local function clientScenarios()
 				T.check(#floating == 0, tag .. ": every block's lip is flush (Join, the close, the asks, the tags)", table.concat(floating, "; ", 1, math.min(#floating, 6)))
 				local round = U94.roundOrGloss(panel)
 				T.check(#round == 0, tag .. ": nothing round or glossy in the Trove panel", table.concat(round, ", ", 1, math.min(#round, 10)))
+				-- (U9-4 look review 2: one pixel size per screen) every pixel icon at the glyph or the art size, one double the
+				-- other (3 / 6 px cells on PC, 2 / 4 on a phone; there were three sizes, not doubles), on whole px
+				local cells, odd = U94.pixelCells(panel, pc and { 3, 6 } or { 2, 4 })
+				T.check(#odd == 0, tag .. ": every pixel icon of the Trove at one of the screen's two pixel sizes (" .. (pc and "3 / 6" or "2 / 4") .. " px cells)",
+					table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
+				local halves = U94.halfPixels(panel)
+				T.check(#halves == 0, fmt("%s: every pixel icon of the Trove on whole px (%d not)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
 				local bad = U94.contrast("NimbusTrove")
 				T.check(#bad == 0, fmt("%s: every text of the Trove panel reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
 				for state, word in pairs({ Done = "Done", Preview = "Preview" }) do
@@ -7467,17 +7696,21 @@ local function clientScenarios()
 				end
 				T.check(#out == 0, tag .. ": every text inside the panel and each ask's line inside its block", table.concat(out, "; "))
 				T.check(#small == 0, tag .. ": every text >= 15 px", table.concat(small, ", "))
-				-- (U9-4 look review) the portrait sheet sits under clear sky: it wears the phones' 288 px awning; the landscape
-				-- panel starts under Roblox's top bar and has none
+				-- (U9-4 look review) the portrait sheet sits under clear sky: it wears the phones' awning (look review 2: 240 px
+				-- so its right end keeps >= 4 px clear of the close's stroke; the 288 px one ran into it); the landscape panel
+				-- starts under Roblox's top bar and has none
 				local roof = panel:FindFirstChild("Roof")
+				local join, close, tap = panel:FindFirstChild("JoinButton", true), panel:FindFirstChild("Close", true), panel:FindFirstChild("CloseTap", true)
 				if s[2] > s[1] then
-					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Offset == 288, tag .. ": the portrait sheet wears the 288 px awning", roof and tostring(roof.Size) or "no roof")
+					local gap = (roof and close) and U94.apart(U8.rect(roof), U94.strokeBox(close)) or -1
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Offset == 240 and gap >= 4 - 0.5,
+						fmt("%s: the portrait sheet wears the 240 px awning, %.1f px clear of the close (>= 4)", tag, gap), roof and tostring(roof.Size) or "no roof")
 				else
 					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on the landscape phone panel")
 				end
-				local join, close = panel:FindFirstChild("JoinButton", true), panel:FindFirstChild("Close", true)
-				T.check(join ~= nil and join.AbsoluteSize.Y >= 44 and close ~= nil and close.AbsoluteSize.X >= 44 and close.AbsoluteSize.Y >= 44,
-					tag .. ": Join and the close are >= 44 px taps", fmt("join %s, close %s", join and tostring(join.AbsoluteSize) or "-", close and tostring(close.AbsoluteSize) or "-"))
+				-- (look review 2) the close's touch box is the 44 px CloseTap under the 36 px block
+				T.check(join ~= nil and join.AbsoluteSize.Y >= 44 and tap ~= nil and U8.shown(tap) and tap.AbsoluteSize.X >= 44 and tap.AbsoluteSize.Y >= 44,
+					tag .. ": Join and the close's touch box are >= 44 px taps", fmt("join %s, close tap %s", join and tostring(join.AbsoluteSize) or "-", tap and tostring(tap.AbsoluteSize) or "-"))
 				U94.closeTrove()
 				local after = hud and hud.GetLayout and hud.GetLayout()
 				T.check(not (after and after.VitalsSlot) or after.Vitals ~= nil, tag .. ": the vitals card is back after Close")
@@ -7529,6 +7762,22 @@ local function clientScenarios()
 				end
 				T.check(#over == 0, tag .. ": no shown HUD part lies under the panel or its awning (no sliver of a strip)", table.concat(over, ", ", 1, math.min(#over, 8)) .. " | panel " .. U8.show(p))
 				T.check(strips ~= nil and U8.shown(strips), tag .. ": the currency strips stay shown while the panel is open (the reward lands where the player sees it)")
+				-- (U9-4 look review 2) every shown part of the header and the awning inside the screen (the band's right tail ran
+				-- off the screen's edge; the docked panel's band has no tails)
+				local off = {}
+				local head = panel:FindFirstChild("Header", true)
+				local parts = head and head:GetDescendants() or {}
+				parts[#parts + 1] = head
+				parts[#parts + 1] = roof
+				for _, d in ipairs(parts) do
+					if d and d:IsA("GuiObject") and U8.shown(d) then
+						local r = U8.rect(d)
+						if r.X < -0.5 or r.Y < -0.5 or r.R > gui.AbsoluteSize.X + 0.5 or r.B > gui.AbsoluteSize.Y + 0.5 then
+							off[#off + 1] = d.Name .. " " .. U8.show(r)
+						end
+					end
+				end
+				T.check(head ~= nil and #off == 0, tag .. ": every shown part of the header and the awning lies inside the screen (no tail off its edge)", table.concat(off, ", ", 1, math.min(#off, 6)))
 				U94.closeTrove()
 			end)
 		end

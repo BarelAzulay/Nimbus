@@ -900,8 +900,9 @@ local function clientScenarios()
 						end
 						T.check(row, label .. ": seven boxes in one row", RedoGeom.desc(t[1]) .. " .. " .. RedoGeom.desc(t[7]))
 						if sz[1] == 844 then
-							-- (U9-4 look review) 14 px sides and a 20 px bottom keep stone round the boxes: 102 x 202 (was 104 x 204)
-							T.check(H.near(t[1].AbsoluteSize.X, 102) and H.near(t[1].AbsoluteSize.Y, 202), label .. ": the boxes are 102 x 202", RedoGeom.desc(t[1]))
+							-- (U9-4 look review) 14 px sides and a 20 px bottom keep stone round the boxes: 102 x 202 (was 104 x 204);
+							-- (look review 2) CLAIM ALL sits 6 px lower so it keeps stone under the band, the rows with it: 102 x 196
+							T.check(H.near(t[1].AbsoluteSize.X, 102) and H.near(t[1].AbsoluteSize.Y, 196), label .. ": the boxes are 102 x 196", RedoGeom.desc(t[1]))
 						end
 					else
 						local function y(o)
@@ -919,12 +920,15 @@ local function clientScenarios()
 							T.check(H.near(t[1].AbsoluteSize.X, 260) and H.near(t[1].AbsoluteSize.Y, 250), label .. ": the boxes are 260 x 250 at 1080p", RedoGeom.desc(t[1]))
 						end
 					end
-					-- CLAIM ALL at the top right of the body, right of the header line
+					-- CLAIM ALL at the top right of the body, right of the header line; (U9-4 look review 2) its right edge on the
+					-- top row's last box (Tier7 in the phone's one row, Tier4 on PC), not the window's edge
 					local all, header, body = H.claimAll(), H.find("PlayHeader"), H.find("Body")
-					local rightGap = all and win and (win.AbsolutePosition.X + win.AbsoluteSize.X) - (all.AbsolutePosition.X + all.AbsoluteSize.X) or -1
+					local last = t[sz[4] == "Phone" and 7 or 4]
+					local rightGap = all and last and (last.AbsolutePosition.X + last.AbsoluteSize.X) - (all.AbsolutePosition.X + all.AbsoluteSize.X) or 99
 					T.check(all ~= nil and header ~= nil and body ~= nil and all.AbsolutePosition.X >= header.AbsolutePosition.X + header.AbsoluteSize.X - 1
-						and rightGap >= 0 and rightGap <= 40 and all.AbsolutePosition.Y - body.AbsolutePosition.Y <= 20,
-						label .. ": CLAIM ALL at the top right, right of the header", RedoGeom.desc(all) .. " / " .. RedoGeom.desc(header) .. fmt(" gap %.0f", rightGap))
+						and math.abs(rightGap) <= 1 and all.AbsolutePosition.Y - body.AbsolutePosition.Y <= 20,
+						label .. ": CLAIM ALL at the top right, right of the header, its right edge on the top row's last box",
+						RedoGeom.desc(all) .. " / " .. RedoGeom.desc(header) .. fmt(" gap %.0f", rightGap))
 				end)
 			end)
 		end

@@ -695,7 +695,8 @@ local function clientScenarios()
 			end
 			T.check(ok, label, table.concat(bad, "; "))
 		end
-		targets({ H.tab("CloseButton"), H.tab("Tab_Daily"), H.tab("Tab_Play") }, "fixr daily phone: 360x640 the X and both tabs on screen, >= 44 px")
+		-- (U9-4 look review 2) a phone's X is a 36 px block over its 44 px touch box (CloseTap): the tap floor is the box's
+		targets({ H.tab("CloseTap"), H.tab("Tab_Daily"), H.tab("Tab_Play") }, "fixr daily phone: 360x640 the X's touch box and both tabs on screen, >= 44 px")
 		local cellsIn, cellBad = true, {}
 		for i = 1, 7 do
 			if not (H.shown(H.cell(i)) and H.inside(H.cell(i), 0, 0, GW, GH)) then
@@ -732,7 +733,7 @@ local function clientScenarios()
 		win = H.win()
 		-- (gui-redo Task 9: the BigRect box, 820x330 on 844x390; it was the 560x300 drop-down)
 		T.check(win ~= nil and abs(win.AbsoluteSize.X - 820) <= 1 and abs(win.AbsoluteSize.Y - 330) <= 1, "fixr daily phone: 844x390 is the 820x330 window", H.desc(win))
-		targets({ H.tab("CloseButton"), H.tab("Tab_Daily"), H.tab("Tab_Play"), H.tierButton(4), H.tierButton(5) }, "fixr daily phone: 844x390 the X, the tabs and the tier CLAIM buttons >= 44 px")
+		targets({ H.tab("CloseTap"), H.tab("Tab_Daily"), H.tab("Tab_Play"), H.tierButton(4), H.tierButton(5) }, "fixr daily phone: 844x390 the X's touch box, the tabs and the tier CLAIM buttons >= 44 px")
 		local wx, wy, ww, wh = H.rect(win)
 		local all = true
 		for i = 1, 7 do

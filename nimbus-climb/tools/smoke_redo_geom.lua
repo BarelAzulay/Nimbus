@@ -177,6 +177,9 @@ function G.check(root, label, opts)
 		list[#list + 1] = d
 	end
 	local skipped = {}
+	-- (U9-4 look review 2) a smaller target wholly inside a touch box (an empty, see-through button of >= minTarget px,
+	-- as the phone close's CloseTap round its 36 px block) is tapped through that box, so it passes
+	local under, pads = {}, {}
 	for _, o in ipairs(list) do
 		local cut = false
 		local cur = o
@@ -211,7 +214,9 @@ function G.check(root, label, opts)
 				-- targets
 				if (o:IsA("GuiButton") and o.Active ~= false) or o:IsA("TextBox") then
 					if b.w < minTarget - TOL or b.h < minTarget - TOL then
-						tiny[#tiny + 1] = G.desc(o)
+						under[#under + 1] = { o, b }
+					elseif o:IsA("GuiButton") and o.BackgroundTransparency >= 0.99 and (o:IsA("TextButton") and o.Text == "" or o:IsA("ImageButton") and o.Image == "") then
+						pads[#pads + 1] = b
 					end
 				end
 				-- screen (a scroller's child is clipped by the scroller, which is checked itself)
@@ -222,6 +227,15 @@ function G.check(root, label, opts)
 					end
 				end
 			end
+		end
+	end
+	for _, u in ipairs(under) do
+		local b, padded = u[2], false
+		for _, p in ipairs(pads) do
+			padded = padded or (b.x >= p.x - TOL and b.y >= p.y - TOL and b.x + b.w <= p.x + p.w + TOL and b.y + b.h <= p.y + p.h + TOL)
+		end
+		if not padded then
+			tiny[#tiny + 1] = G.desc(u[1])
 		end
 	end
 	local ok = true

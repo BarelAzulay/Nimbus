@@ -334,9 +334,11 @@ local function clientScenarios()
 	-- slop-audit win 6: the problems of a close button's drawn X ({} = good): the shared check (smoke_common.lua
 	-- SmokeCommon.closeMarkIssues, review round 1), with a tap of at least 44 px. (kit-b U9-4) the Gifts window's X is the kit
 	-- B close block's, as the Shop's: square bars in the Danger block's brown ink over its red lip
-	function H.closeMarkIssues(button)
+	-- minTap: the tap floor the button itself must meet (44; false: none, U9-4 look review 2: a phone's 36 px block whose
+	-- 44 px touch box is the CloseTap beside it)
+	function H.closeMarkIssues(button, minTap)
 		local Sign = select(3, KC.env()).Sign
-		return SmokeCommon.closeMarkIssues(button, { Shown = H.shown, MinTap = 44, Bar = Sign.Text, Ink = Sign.RedLip })
+		return SmokeCommon.closeMarkIssues(button, { Shown = H.shown, MinTap = minTap ~= false and 44 or nil, Bar = Sign.Text, Ink = Sign.RedLip })
 	end
 	-- win 5: the Gifts button, its ring and its pip as { button, ring, pip } shown flags; (U9-4 look review) the ring is the
 	-- PlayBar in the block's lip now
@@ -1031,11 +1033,19 @@ local function clientScenarios()
 			and win.AbsolutePosition.Y >= 0 and win.AbsolutePosition.Y + win.AbsoluteSize.Y <= gui.AbsoluteSize.Y,
 			"daily mobile: centred at 12,59, inside the screen", win and fmt("%d,%d in %dx%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, gui.AbsoluteSize.X, gui.AbsoluteSize.Y) or "")
 		local cell = H.cell(1)
-		-- (U9-4 look review) a 10 px gap keeps 4 px of stone between two tiles' strokes: 90 wide (was 92 at an 8 px gap)
-		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 90) <= 1 and abs(cell.AbsoluteSize.Y - 122) <= 1, "daily mobile: tiles 90x122", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
-		-- (slop-audit win 6, Review Focus 5) the phone layout re-sizes the X (56 -> 44 px): the drawn mark follows it
-		local closeIssues = H.closeMarkIssues(H.find(win, "CloseButton"))
-		T.check(#closeIssues == 0, "daily mobile: the 44 px CloseButton keeps its drawn X centred", table.concat(closeIssues, "; "))
+		-- (U9-4 look review) a 10 px gap keeps 4 px of stone between two tiles' strokes: 90 wide (was 92 at an 8 px gap);
+		-- (look review 2) the tiles start 2 px lower (TilesY 50) so today's raised tile clears the chips: 120 tall (was 122)
+		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 90) <= 1 and abs(cell.AbsoluteSize.Y - 120) <= 1, "daily mobile: tiles 90x120", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
+		-- (slop-audit win 6, Review Focus 5) the phone layout re-sizes the X (56 -> 44 px): the drawn mark follows it.
+		-- (U9-4 look review 2) a phone draws a 36 px block in the band over its 44 px touch box (CloseTap, centred on it)
+		local closeBtn, closeTap = H.find(win, "CloseButton"), H.find(win, "CloseTap")
+		local closeIssues = H.closeMarkIssues(closeBtn, false)
+		local tapOk = closeBtn ~= nil and closeTap ~= nil and H.shown(closeTap) and closeTap.AbsoluteSize.X >= 44 - 0.5 and closeTap.AbsoluteSize.Y >= 44 - 0.5
+			and abs(closeBtn.AbsoluteSize.X - 36) <= 0.5
+			and abs(closeTap.AbsolutePosition.X + closeTap.AbsoluteSize.X / 2 - (closeBtn.AbsolutePosition.X + closeBtn.AbsoluteSize.X / 2)) <= 1
+			and abs(closeTap.AbsolutePosition.Y + closeTap.AbsoluteSize.Y / 2 - (closeBtn.AbsolutePosition.Y + closeBtn.AbsoluteSize.Y / 2)) <= 1
+		T.check(#closeIssues == 0 and tapOk, "daily mobile: the 36 px close block keeps its drawn X centred over its 44 px touch box",
+			table.concat(closeIssues, "; ") .. (closeBtn and closeTap and fmt(" | block %s tap %s", tostring(closeBtn.AbsoluteSize), tostring(closeTap.AbsoluteSize)) or " | no close / tap"))
 		local claim = H.claimButton()
 		T.check(claim ~= nil and abs(claim.AbsoluteSize.X - 230) <= 1 and abs(claim.AbsoluteSize.Y - 64) <= 1, "daily mobile: CLAIM! 230x64", claim and fmt("%dx%d", claim.AbsoluteSize.X, claim.AbsoluteSize.Y) or "")
 		local function smallest(root)
