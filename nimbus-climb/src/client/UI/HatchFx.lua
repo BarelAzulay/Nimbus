@@ -49,6 +49,8 @@
 --     and the Lighting effects on (Dim)
 --   opts.Track (Rays / Shock / CloudRing): a weak-keyed table that also gets every tween the handle plays (the egg
 --     stage counts and cancels them with its own)
+--   (kit-b U9-2b) every effect's root (Sparks, Stars, Rays, Shock, CloudRing) carries the attribute Art = "Hatch": the
+--     stage's art keeps its own paint (soft rays, round puffs and sparks), the kit B walks read it as illustration
 --
 -- Positions: the holder's local px are the screen px divided by the UIScale(s) above it (UIScale shrinks the design
 -- canvas on a phone). Plain Lua 5.1-compatible syntax only.
@@ -545,6 +547,7 @@ function HatchFx.Pool(parent, n, z, opts)
 	holder.Size = UDim2.fromScale(1, 1)
 	holder.ZIndex = z or 20
 	holder.Parent = parent
+	holder:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
 	local pool = setmetatable({
 		Holder = holder,
 		N = math.max(1, math.floor(tonumber(n) or K.N)),
@@ -571,6 +574,7 @@ function HatchFx.Stars(parent, n)
 	holder.BorderSizePixel = 0
 	holder.Size = UDim2.fromScale(1, 1)
 	holder.Parent = parent
+	holder:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
 	local tweens = {}
 	n = math.max(0, math.floor(tonumber(n) or 0))
 	for i = 1, n do
@@ -686,6 +690,7 @@ function HatchFx.Rays(parent, rarity, opts)
 		Name = "Rays", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), GroupTransparency = 1,
 		Visible = false, ZIndex = opts.ZIndex or 1,
 	}, parent)
+	holder:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
 	local color = rayColor(rarity)
 	if type(opts.Image) == "string" then
 		-- (roll-look review round 1, spec 16.15 "Fallbacks") the hatch_rays fan: one ImageLabel in the wedges' box, tinted
@@ -737,6 +742,7 @@ function HatchFx.Shock(parent, rarity, opts)
 	local ring = new("Frame", {
 		Name = "Shock", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = opts.ZIndex or 3,
 	}, parent)
+	ring:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
 	new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, ring)
 	local stroke = new("UIStroke", { Color = lighter(colorOf(rarity, 1), 0.1), Thickness = 6, Transparency = 0 }, ring)
 	local h = handle(ring, 12, opts)
@@ -772,6 +778,7 @@ function HatchFx.CloudRing(parent, color, opts)
 		Name = "CloudRing", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), GroupTransparency = 1,
 		GroupColor3 = K.RING_TINT, Visible = false, ZIndex = opts.ZIndex or 1,
 	}, parent)
+	ring:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
 	local swell = new("UIScale", { Name = "Swell", Scale = 1 }, ring)
 	-- the puffs: white (GroupColor3 tints them), on a circle RING_R of the ring's size out, big and small in turn and see-
 	-- through (roll-look, spec 16.15: the pitch mock's cloudRing, a halo of soft cloud bubbles round the egg rather than

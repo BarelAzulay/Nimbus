@@ -1206,7 +1206,8 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
 		G.advance(0.4)
 		local stBack = againState()
-		T.check(stBack.Text == "SPIN AGAIN" and stBack.Price and not stBack.Off, "egg stage: ...enough tokens again: 'SPIN AGAIN', its price shown, on again",
+		-- (kit-b U9-2b: the plank's words in sentence case)
+		T.check(stBack.Text == "Spin again" and stBack.Price and not stBack.Off, "egg stage: ...enough tokens again: 'Spin again', its price shown, on again",
 			fmt("'%s', price %s, off %s", stBack.Text, tostring(stBack.Price), tostring(stBack.Off)))
 		ES.Done()
 		G.advance(0.2)
@@ -1221,7 +1222,7 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
 		G.advance(0.4)
 		local stOpen = againState()
-		T.check(stOpen.Text == "SPIN AGAIN" and stOpen.Price and not stOpen.Off, "egg stage: ...the policy answered false: 'SPIN AGAIN', its price shown, on again",
+		T.check(stOpen.Text == "Spin again" and stOpen.Price and not stOpen.Off, "egg stage: ...the policy answered false: 'Spin again', its price shown, on again",
 			fmt("'%s', price %s, off %s", stOpen.Text, tostring(stOpen.Price), tostring(stOpen.Off)))
 		ES.Done()
 		G.advance(0.2)

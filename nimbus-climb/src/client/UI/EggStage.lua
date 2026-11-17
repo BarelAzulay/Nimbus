@@ -34,6 +34,13 @@
 -- the disc's centre line, K.LOOK.PET_FOOT) on a soft contact shadow; the title fades over the rise; the crack word is
 -- dressed like the reveal word (one HatchLook.Word label); the three optional images (HatchLook.IMAGES) are wired to the
 -- rays, the sparks and every glow; SPIN AGAIN / DONE arm only once their rise is in place.
+-- (kit-b U9-2b, finding 15) the chrome is the Signboard kit's, the motion unchanged: the strip a flat navy rail in its
+-- wood frame (Outer), the cards stone blocks in mitred wood edges with the rarity's plate along the bottom (the landed
+-- card the selected cream, the others the sunk well), the window a square gold frame with stepped pixel notches and no
+-- glow; the rarity and crack words the title look's hard bands with one outline (no glow); Spin again the gold block with
+-- its stone price tag, Done the stage's one green action (sentence case), the chips navy blocks, NEW! / EVOLVED flat
+-- tags. The stage's art (vignette, flash, spot, backlights, plinths, halves, the pet's contact shadow, the Secret aura,
+-- HatchFx's effects) keeps its softness and carries attribute Art = "Hatch" (the kit B walks skip it).
 --
 --   EggStage.Init()                        connects the RouletteResult listener (once)
 --   EggStage.Show(result) -> bool          plays a RouletteResult (new shape with Pulls, or the old top-level shape); a
@@ -73,9 +80,9 @@
 -- Strips > Strip1..3 > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero (UIScale
 -- "Punch") > Spot, Rays, CloudRing1..3, Backlight1..3, Pedestal1..3 (> Top, Rim, Side, Wall, Edge, Ring, Cover, Glow1..2
 -- or Glow: the plinth's ellipses, HatchLook.Plinth),
--- Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord (a HatchLook.Word label: UIGradient + UIStroke); Burst (UIScale "Punch",
--- following Hero's) > Shock, Sparks (the pool of 64);
--- Reveal > TextIn (the rise's NumberValue), Col1..3 > Banner (Word: L1..Ln + Glow1..2, attribute Text; an x3 phone
+-- Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord (a HatchLook.Word label: UIGradient "Bands" + UIStroke); Burst
+-- (UIScale "Punch", following Hero's) > Shock, Sparks (the pool of 64);
+-- Reveal > TextIn (the rise's NumberValue), Col1..3 > Banner (Word: L1..Ln, attribute Text; an x3 phone
 -- column: one TextLabel), Aura (Secret), Pet (> Pop, Shadow, the PetViewport), Name, New (beside the name; an x3 phone /
 -- portrait column puts it on the pet frame's bottom-left corner), Note (a long one broken at its dots: H.fitNote),
 -- EvolvedRibbon (review round 2: in the name row after NEW! when the name still fits, else PC the model's shoulder, a
@@ -83,7 +90,7 @@
 -- FastHatch (the chips), SpinAgain, Done (the pills), PillsIn; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
 -- between another frame's, and the rays belong behind the egg, the pedestal and the pet.) Strip cells are recycled (at
 -- most 12 per strip): a cell re-skins its egg with EggArt.SetRarity when it wraps (Task 26: lean Medium eggs, Rim = false
--- and Budget = 9; Rare and up wear a rarity ring on the cell's stroke; only the landed cell's egg gets its VFX).
+-- and Budget = 9; the cell's stroke is its wood edge; only the landed cell's egg gets its VFX).
 -- Attributes for tests: Strip<j>.Landed, Egg<j>.State (Rise / Crack / Burst / Open), Burst.Sparks (the last burst's count).
 --
 -- Never breaks the player (16.4): it writes nothing to the Camera or the Humanoid and plays on through a death or a
@@ -151,11 +158,8 @@ local K = {
 	DIM = 0.45, -- the navy dim's final transparency (0.55 strong)
 	VIGNETTE = 0.25, -- the vignette edges' final transparency
 	NAVY = Color3.fromRGB(8, 12, 32),
-	INK = Color3.fromRGB(11, 16, 48),
 	GOLD = Color3.fromRGB(242, 182, 68),
 	WHITE = Color3.new(1, 1, 1),
-	TRACK = Color3.fromRGB(14, 22, 58),
-	CELL = Color3.fromRGB(44, 70, 132),
 	SECRET_TEXT = Color3.fromRGB(180, 150, 255), -- Secret's own colour is near black: the readable violet on navy
 	SECRET_ID = (Config.Gems and Config.Gems.SecretRoulette and Config.Gems.SecretRoulette.Id) or "Secret",
 	RESTRICTED_ATTR = "PaidRandomItemsRestricted",
@@ -242,16 +246,15 @@ K.EGG3D = { Turn = -28, Spin = 9, Settle = 0.3, Dip = 0.06, Turns = { "Cracks", 
 -- (roll-look, spec 16.15 "Roll look A+B") the dressed strip (client/UI/HatchLook builds the pieces): B's colour tell (Rare
 -- and up: the window turns the coming colour Before s ahead of the land, in Tween s; Fast hatch in brackets), the
 -- overshoot (Px x the strip's scale past the winner at the end of the ease, then the Back Out spring over Land), the
--- track's colours, the card and window sizes per layout (design px at the 1080p strip; x3 and a shrunk strip scale them)
+-- track's colours, the card and window sizes per layout (design px at the 1080p strip; x3 and a shrunk strip scale them).
+-- (kit-b U9-2b) the track is the kit's navy rail (Rail) in its wood frame (Outer, Rim px), square; a card's Edge is its
+-- wood edge, its Plate the rarity band along its bottom
 K.LOOK = {
 	TELL = { Before = 0.7, Fast = 0.25, Tween = 0.25, TweenFast = 0.1 },
 	OVERSHOOT = { Px = 18, Fast = 8 },
-	TRACK = {
-		Top = Color3.fromRGB(20, 31, 82), Bottom = Color3.fromRGB(8, 13, 40), Outer = Color3.fromRGB(3, 5, 15), OuterA = 0.15, Rim = 4,
-		Edge = Color3.fromRGB(44, 63, 136), Fade = Color3.fromRGB(14, 22, 61), FadeW = 0.12,
-	},
-	PC = { Card = { Corner = 18, Shadow = 8, Shine = 3, Plate = 30, Notch = 16, Win = 4, WinGlow = 10, Pad = 8 } },
-	PHONE = { Card = { Corner = 12, Shadow = 5, Shine = 2, Plate = 22, Notch = 10, Win = 3, WinGlow = 6, Pad = 6 } },
+	TRACK = { Rail = Theme.Sign.Navy, Outer = Theme.Sign.Wood, Rim = 4, FadeW = 0.12 },
+	PC = { Card = { Edge = 3, Plate = 30, Notch = 16, Win = 4, Pad = 8 } },
+	PHONE = { Card = { Edge = 2, Plate = 22, Notch = 10, Win = 3, Pad = 6 } },
 	-- (Task 2) Gemini's shake tweak (Rare and up, at the first shake: the plinth, the cloud ring and the rays to the rarity
 	-- colour in Tween s, Fast hatch in Fast s; the rays rest at GroupTransparency Rays); the burst's punch (Stage's UIScale
 	-- to Scale in Up s, back in Down s; squeezed into a Fast hatch's shorter burst); the plinth's pop over the rise (From ->
@@ -282,7 +285,6 @@ K.LOOK = {
 	-- flash ends 0.1 s before its pet pops); rolls without a silhouette keep 16.4's 0.25 / 0.6
 	GOLD_OUT_SIL = 0.15,
 	CHEVRONS = "\226\128\186\226\128\186",
-	NEW = { Edge = Color3.fromRGB(107, 66, 0), Ink = Color3.fromRGB(58, 34, 0), Tilt = -6 },
 }
 EggStage.Metrics = K
 
@@ -1112,6 +1114,9 @@ function B.gui()
 		H.safe("tap", H.tap)
 	end)
 	local vig = H.frame(stage, "Vignette", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
+	-- (kit-b U9-2b) attribute Art = "Hatch": the stage's art (the vignette, the flash, the spot, the backlights, the
+	-- plinths, the halves, the FX), soft on purpose; the kit B walks check only the chrome around it
+	vig:SetAttribute("Art", "Hatch")
 	for _, e in ipairs({ { "Top", 0, 0, 1, 0.14, 90 }, { "Bottom", 0, 0.86, 1, 0.14, 270 }, { "Left", 0, 0, 0.1, 1, 0 }, { "Right", 0.9, 0, 0.1, 1, 180 } }) do
 		local edge = H.frame(vig, e[1], { Position = UDim2.fromScale(e[2], e[3]), Size = UDim2.fromScale(e[4], e[5]), BackgroundColor3 = K.NAVY, BackgroundTransparency = 1, ZIndex = 2 })
 		Util.Create("UIGradient", { Rotation = e[6], Transparency = NumberSequence.new(0, 1), Parent = edge })
@@ -1119,6 +1124,7 @@ function B.gui()
 	S.Content = H.frame(stage, "Content", { ZIndex = 3 })
 	S.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = S.Content })
 	S.Flash = H.frame(stage, "Flash", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = K.WHITE, BackgroundTransparency = 1, ZIndex = 4 })
+	S.Flash:SetAttribute("Art", "Hatch")
 	S.Gui, S.Stage, S.Vignette = gui, stage, vig
 	gui.Parent = pg
 	return true
@@ -1175,26 +1181,21 @@ function B.strip(roll, j)
 	local tk = K.LOOK.TRACK
 	local geo = H.cardGeo(S.Lay)
 	st.Frame = H.frame(roll.UI.Strips, "Strip" .. j, { ZIndex = 1 })
-	-- (roll-look) the track: navy glass (a vertical gradient) in a dark rim, a thin blue edge, its ends fading out
-	st.Outer = H.frame(st.Frame, "Outer", { BackgroundColor3 = tk.Outer, BackgroundTransparency = tk.OuterA, ZIndex = 0 })
-	st.OuterCorner = H.corner(st.Outer, geo.TrackCorner + tk.Rim)
+	-- (kit-b U9-2b) the track: the kit's navy rail, flat and square, in its wood frame (Outer, Rim px round it), its ends
+	-- fading out over the cards
+	st.Outer = H.frame(st.Frame, "Outer", { BackgroundColor3 = tk.Outer, BackgroundTransparency = 0, ZIndex = 0 })
 	st.Track = Util.Create("ScrollingFrame", {
-		Name = "Track", BorderSizePixel = 0, BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ClipsDescendants = true, Active = false,
+		Name = "Track", BorderSizePixel = 0, BackgroundColor3 = tk.Rail, BackgroundTransparency = 0, ClipsDescendants = true, Active = false,
 		ScrollingEnabled = false, ScrollBarThickness = 0, CanvasSize = UDim2.new(0, 0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = st.Frame,
 	})
-	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(tk.Top, tk.Bottom), Parent = st.Track })
-	st.TrackCorner = H.corner(st.Track, geo.TrackCorner)
-	H.stroke(st.Track, tk.Edge, 2)
-	st.FadeL, st.FadeR = HatchLook.TrackFades(st.Track, tk.Fade, geo.Corner)
+	st.FadeL, st.FadeR = HatchLook.TrackFades(st.Track, tk.Rail)
 	-- the gold winner window (its root keeps the name Pointer) and the dims beside it
 	st.Pointer = H.frame(st.Frame, "Pointer", { ZIndex = 3 })
-	st.Win = HatchLook.Window(st.Frame, st.Pointer, {
-		Phone = not S.Lay.PC, Gold = K.GOLD, Stroke = geo.Win, Glow = geo.WinGlow, Notch = geo.Notch, Corner = geo.WinCorner, Track = S.Tweens,
-		NotchEdge = roll.N == 1, -- (x3: plain notches, the budget)
-	})
+	st.Win = HatchLook.Window(st.Frame, st.Pointer, { Phone = not S.Lay.PC, Gold = K.GOLD, Stroke = geo.Win, Notch = geo.Notch, Track = S.Tweens })
 	if roll.Hi then
 		-- (Task 27) soft speed streaks over the glass at full speed (High only; placed each frame inside the track)
 		st.Streaks = H.frame(st.Frame, "Streaks", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
+		st.Streaks:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) motion streaks: the stage's art
 		st.StreakBars = {}
 		local fade = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.25), NumberSequenceKeypoint.new(1, 1) })
 		for i = 1, 4 do
@@ -1225,14 +1226,12 @@ function B.cells(roll, j)
 	local pics = HatchLook.EggPictures()
 	local side = math.floor(g.Egg / HatchLook.Metrics.EGG_PIC.Fill + 0.5)
 	for slot = 1, st.Slots do
-		local f = H.frame(st.Track, "Cell" .. slot, { Size = UDim2.fromOffset(g.CellW, g.CellH), BackgroundColor3 = K.CELL, BackgroundTransparency = 0.15, Visible = false, ZIndex = 2 })
-		H.corner(f, 12)
-		local stroke = H.stroke(f, Theme.Colors.WellEdge, 3)
-		-- (roll-look, spec 16.15) the glossy card: a navy face with the rarity tint, the rim, a shine line; x1 adds the
-		-- rarity plate holding the word and a shadow beside the cell (x3: lite, <= 16 instances a cell)
+		local f = H.frame(st.Track, "Cell" .. slot, { Size = UDim2.fromOffset(g.CellW, g.CellH), BackgroundColor3 = Theme.Sign.Tile, BackgroundTransparency = 0, Visible = false, ZIndex = 2 })
+		local stroke = H.stroke(f, Theme.Sign.Wood, geo.Edge)
+		-- (kit-b U9-2b) the card: a stone block in its mitred wood edge; x1 its plate along the bottom in the rarity's
+		-- colour holding the word (x3: lite, the rarity on its lip, <= 16 instances a cell)
 		local card = HatchLook.Card(f, {
-			W = g.CellW, H = g.CellH, Corner = geo.Corner, Shadow = geo.Shadow, Shine = geo.Shine, Plate = geo.Plate, Word = g.Word,
-			Lite = roll.N > 1, Phone = not S.Lay.PC,
+			W = g.CellW, H = g.CellH, Edge = geo.Edge, Plate = geo.Plate, Word = g.Word, Lite = roll.N > 1, Phone = not S.Lay.PC,
 		})
 		-- (Task 26) a lean egg: no rim light and <= 9 instances (spec 16.15: <= 20 per x1 cell, the card included)
 		local egg = nil
@@ -1247,9 +1246,9 @@ function B.cells(roll, j)
 			local plateY = card.Plate.Position.Y.Offset
 			eggTop = math.max(g.CellH * 0.06, (plateY - g.Egg) * 0.55)
 		elseif g.Word then
-			-- (an x3 card's word: the text stroke only, no outline instance: the x3 budget)
+			-- (an x3 card's word: brown on the stone under the egg, no stroke; its rarity's colour is on the card's lip)
 			eggTop = g.CellH * 0.08
-			word = Theme.Label("", "Heading", { Size = g.Word, Stroke = 0.2 })
+			word = Theme.Label("", "Heading", { Size = g.Word, Color = Theme.Sign.Text })
 			word.Name = "Word"
 			word.ZIndex = 3
 			word.Position = UDim2.fromOffset(0, g.CellH * 0.08 + g.Egg + 2)
@@ -1276,7 +1275,7 @@ end
 
 -- (roll-look) the card and window sizes of this layout: the PC / phone table at the 1080p x1 strip, scaled with the cells
 -- when they are smaller (x3, a shrunk strip); the plate never gets shorter than its word; an x3 phone's strips sit 6 px
--- apart, so their windows go without notches
+-- apart, so their windows go without notches. (kit-b U9-2b) a card's wood edge stays 2 px at the least
 function H.cardGeo(lay)
 	local base = lay.PC and K.LOOK.PC.Card or K.LOOK.PHONE.Card
 	local g = lay.Strip
@@ -1285,12 +1284,10 @@ function H.cardGeo(lay)
 		return math.max(1, math.floor(v * k + 0.5))
 	end
 	local geo = {
-		Corner = px(base.Corner), Shadow = px(base.Shadow), Shine = px(base.Shine), Plate = math.max(px(base.Plate), (g.Word or 0) + 6), Pad = px(base.Pad),
-		Win = math.max(2, math.floor(base.Win * math.max(k, 0.6) + 0.5)), WinGlow = math.max(3, math.floor(base.WinGlow * math.max(k, 0.6) + 0.5)),
+		Edge = math.max(2, px(base.Edge)), Plate = math.max(px(base.Plate), (g.Word or 0) + 6), Pad = px(base.Pad),
+		Win = math.max(2, math.floor(base.Win * math.max(k, 0.6) + 0.5)),
 		Notch = (lay.X3 and not lay.PC) and 0 or px(base.Notch),
 	}
-	geo.WinCorner = geo.Corner + math.floor(geo.Pad / 2 + 0.5)
-	geo.TrackCorner = math.min(geo.Corner + geo.Pad, math.floor(g.H / 2))
 	return geo
 end
 
@@ -1315,12 +1312,13 @@ function B.bar(roll)
 		H.safe("tap", H.tap)
 	end)
 	-- (review round 2) DONE and SPIN AGAIN read Activated themselves: a tap on them while they are not armed still counts
-	-- as a tap and restarts the wait (H.press)
-	roll.UI.Done = HatchLook.Pill(bar, { Name = "Done", Kind = "Green", Text = "DONE", TextSize = P.Bar.Text, Phone = phone, ZIndex = 6 })
+	-- as a tap and restarts the wait (H.press). (kit-b U9-2b) kit B planks in sentence case: Done the stage's one green
+	-- action, Spin again the gold block with its stone price tag
+	roll.UI.Done = HatchLook.Pill(bar, { Name = "Done", Kind = "Green", Text = "Done", TextSize = P.Bar.Text, Phone = phone, ZIndex = 6 })
 	roll.UI.Done.Activated:Connect(function()
 		H.safe("done", H.doneTap)
 	end)
-	local again = HatchLook.Pill(bar, { Name = "SpinAgain", Kind = "Gold", Text = "SPIN AGAIN", TextSize = P.Bar.Text, Price = true, Coin = P.Bar.Coin, Phone = phone, ZIndex = 6 })
+	local again = HatchLook.Pill(bar, { Name = "SpinAgain", Kind = "Gold", Text = "Spin again", TextSize = P.Bar.Text, Price = true, Coin = P.Bar.Coin, Phone = phone, ZIndex = 6 })
 	again.Activated:Connect(function()
 		H.safe("again", H.againTap)
 	end)
@@ -1330,7 +1328,10 @@ function B.bar(roll)
 		local gem = GemIcon.New(parts.Coin, P.Bar.Coin, { ZIndex = z })
 		gem.Position = UDim2.fromOffset(0, 0)
 	else
+		-- the token coin: a PixelIcon at 0.9 x the coin (27 px on a PC, 18 on a phone: whole cells), in the price's brown
+		-- ink (the repaint below; the plank's paint keeps it so, muted when disabled)
 		NeonKit.Icon(parts.Coin, "Tokens", P.Bar.Coin).ZIndex = z
+		HatchLook.PillState(again, "Rest")
 	end
 	roll.UI.Again, roll.UI.AgainLabel, roll.UI.AgainCoin, roll.UI.AgainPrice = again, parts.Label, parts.Coin, parts.Price
 	-- the pills' rise (spec 16.15 "Pills"): one NumberValue tweened 0 -> 1 drives both (H.pillsIn)
@@ -1387,6 +1388,7 @@ function B.cols(roll)
 		if pull.Rarity == "Secret" then
 			-- (Task 27) Secret's violet aura: a soft ring behind the pet, inside its frame
 			local aura = H.frame(col, "Aura", { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = K.AURA, BackgroundTransparency = 0.8, ZIndex = 4 })
+			aura:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art, not its chrome
 			H.corner(aura, 0.5)
 			Util.Create("UIStroke", { Color = K.AURA, Thickness = 3, Transparency = 0.6, Parent = aura })
 			Util.Create("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.5, 0.9), NumberSequenceKeypoint.new(1, 0.2) }), Rotation = 90, Parent = aura })
@@ -1400,6 +1402,7 @@ function B.cols(roll)
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, K.LOOK.PET_FOOT), Size = UDim2.fromScale(ps.W, ps.H),
 			BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = ps.A, ZIndex = 4,
 		})
+		shadow:SetAttribute("Art", "Hatch")
 		H.corner(shadow, 0.5)
 		Util.Create("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.25), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(0.7, 0.25), NumberSequenceKeypoint.new(1, 1) }), Parent = shadow })
 		local stage = 0
@@ -1418,22 +1421,13 @@ function B.cols(roll)
 		-- (roll-look, the mock's sceneA) the name white in the round display face with the ink outline under the coloured word
 		local name = H.label(col, "Name", pull.Def.Name, "Display", 18, { ZIndex = 5, TextColor3 = K.WHITE, TextTruncate = Enum.TextTruncate.AtEnd })
 		-- (ZIndex 6 / 7 like the EvolvedRibbon: on a phone's x3 it sits on the pet frame's corner, over the pet's view)
-		-- (roll-look) NEW! is a small gold pill with ink text (the mock's newPill), popping in at the chain's SIL + 0.4
-		local new = H.frame(col, "New", { BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = 6, Visible = pull.IsNew })
-		H.corner(new, 0.5)
-		Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 224, 138), Color3.fromRGB(240, 166, 52)), Parent = new })
-		H.stroke(new, K.LOOK.NEW.Edge, 2)
-		local newText = Theme.Label("NEW!", "Button", { Size = 15, Stroke = 1 })
-		newText.Name, newText.Size, newText.ZIndex, newText.TextColor3, newText.Parent = "Text", UDim2.fromScale(1, 1), 7, K.LOOK.NEW.Ink, new
+		-- (roll-look) NEW! pops in at the chain's SIL + 0.4; (kit-b U9-2b) a flat gold kit B tag, square and untilted
+		local new = HatchLook.Tag(col, "New", "NEW!", "Selected", { ZIndex = 6, Visible = pull.IsNew })
 		local newPop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = new })
 		local note = H.label(col, "Note", EggStage.NoteText(pull, pull.Rarity, brief), "Body", 15, { ZIndex = 5, TextWrapped = true, TextColor3 = Theme.Colors.Muted })
 		if stage >= 1 then
-			local ribbon = H.frame(col, "EvolvedRibbon", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, Rotation = 8, ZIndex = 6 })
-			H.corner(ribbon, 10)
-			H.stroke(ribbon, K.INK, 2)
-			-- (kit-b U6) on its gold plate: dark text by contrast, no outline
-			local ribbonText = Theme.Label(stage >= 2 and "Evolved II" or "Evolved", "Button", { Size = 15, Color = Theme.TextOn(K.GOLD) })
-			ribbonText.Name, ribbonText.Size, ribbonText.ZIndex, ribbonText.Parent = "Text", UDim2.fromScale(1, 1), 7, ribbon
+			-- (kit-b U9-2b) the evolved stage's tag: navy with gold words (the kit's navy sign), square and untilted
+			HatchLook.Tag(col, "EvolvedRibbon", stage >= 2 and "EVOLVED II" or "EVOLVED", "Navy", { ZIndex = 6 })
 		end
 		-- the chain's fades: { object, property, its shown value } (the name and note: their text, classic stroke, outline)
 		local fade = {}
@@ -1548,20 +1542,16 @@ function H.applyStrips(roll, lay)
 		H.place(st.Frame, g.X, g.Y[j], g.W, g.H)
 		if st.Outer then
 			H.place(st.Outer, -rim, -rim, g.W + 2 * rim, g.H + 2 * rim)
-			st.OuterCorner.CornerRadius = UDim.new(0, geo.TrackCorner + rim)
 		end
-		st.TrackCorner.CornerRadius = UDim.new(0, geo.TrackCorner)
-		-- the ends fade over the card band (the track's own gradient shows above and below it)
-		H.place(st.FadeL, 0, band, fw, g.CellH)
-		H.place(st.FadeR, g.W - fw, band, fw, g.CellH)
-		for _, fade in ipairs({ st.FadeL, st.FadeR }) do
-			fade:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, geo.Corner)
-		end
+		-- the ends fade over the card band (with its wood edge)
+		local e = geo.Edge
+		H.place(st.FadeL, 0, band - e, fw, g.CellH + 2 * e)
+		H.place(st.FadeR, g.W - fw, band - e, fw, g.CellH + 2 * e)
 		if st.Geo ~= g then
 			B.cells(roll, j)
 		end
 		-- the gold window round the landed cell's box + Pad a side, the dims beside it over the track
-		st.Win:Style({ Stroke = geo.Win, Glow = geo.WinGlow, Notch = geo.Notch, Corner = geo.WinCorner })
+		st.Win:Style({ Stroke = geo.Win, Notch = geo.Notch })
 		st.Win:Place(g.W / 2 - g.CellW / 2 - geo.Pad, band - geo.Pad, g.CellW + 2 * geo.Pad, g.CellH + 2 * geo.Pad, g.W, g.H)
 		R.cells(roll, j, st.C or K.START_CELL)
 	end
@@ -1718,7 +1708,7 @@ function H.applyReveal(roll, lay)
 			-- of the frame), NEW! on the bottom-left one (never stacked over the pet's head)
 			local rw, ribW, inRow = 0, 0, false
 			if ribbon then
-				local tw = H.textW(ribbonText and ribbonText.Text or "Evolved", ribbonSize, "Button") + (lay.PC and 28 or 14)
+				local tw = H.textW(ribbonText and ribbonText.Text or "EVOLVED", ribbonSize, "Tag") + (lay.PC and 28 or 14)
 				rw = lay.PC and math.min(150, math.max(tw, 0.36 * g.Pet.S)) or math.min(96, tw)
 				inRow = not corner and nameW + newW + rw + 8 <= nw
 				ribW = inRow and (rw + 8) or 0
@@ -1737,11 +1727,10 @@ function H.applyReveal(roll, lay)
 					-- the pet's head: the two stacked over the head covered most of a 110 px pet)
 					local hang = math.min(14, g.Pet.X)
 					H.place(new, g.Pet.X - hang, g.Pet.Y + 0.62 * g.Pet.S, g.New.W, g.New.H)
-					new.Rotation = -8
 				else
 					H.place(new, rowX + textW + 8, g.NameY + (g.NameH - g.New.H) / 2, g.New.W, g.New.H)
-					new.Rotation = K.LOOK.NEW.Tilt
 				end
+				new.Rotation = 0 -- (kit-b U9-2b) a kit B tag sits square (no sticker tilt)
 				local t = new:FindFirstChild("Text")
 				if t then
 					t.TextSize = g.New.Size
@@ -1865,7 +1854,7 @@ function H.refreshAgain()
 	end
 	local parts = roll.UI.PillParts and roll.UI.PillParts[1] or nil
 	local lbl = roll.UI.AgainLabel
-	lbl.Text = reason or ((roll.N > 1) and "SPIN AGAIN x3" or "SPIN AGAIN")
+	lbl.Text = reason or ((roll.N > 1) and "Spin again x3" or "Spin again")
 	local priceText = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
 	local chipW = 0
 	if reason == nil then
@@ -1950,13 +1939,11 @@ function R.cells(roll, j, c)
 							EggArt.SetRarity(egg, rarity)
 						end
 					end
-					-- (roll-look, spec 16.15) the card by rarity: the face tint, the rim (Rare and up opaque in Shade(c, .05),
-					-- below Shade(c, -.1) at 0.25), the plate's word; the landed card's rim is 5 thick and its egg gets its
-					-- VFX, the others dim to 0.6 once the strip has landed
+					-- (kit-b U9-2b) the card by rarity: the plate (or the lite card's lip) in the rarity's colour with its word;
+					-- the landed card the selected face (its egg gets its VFX), the others the sunk well once the strip has landed
 					HatchLook.SetCard(cell.Card, rarity or false, landed and "Landed" or (st.Landed and "Dim") or "Idle")
 					if cell.Word and not cell.OnPlate then
-						cell.Word.Text = rarity or ""
-						cell.Word.TextColor3 = H.color(rarity)
+						cell.Word.Text = rarity and string.upper(rarity) or "" -- (a rarity tag in capitals, as on the x1 plate)
 					end
 					-- (only a painted egg wears the landed VFX: a picture has none)
 					local vfx = landed and rarity ~= nil and rarity ~= false and image == nil
@@ -2087,6 +2074,7 @@ end
 -- the egg's foot, its thin side, an inner ring and a soft halo; nothing stacked under it). It starts neutral.
 function B.pedestal(hero, j, rarity, e)
 	local box = H.frame(hero, "Pedestal" .. j, { ZIndex = 5 })
+	box:SetAttribute("Art", "Hatch")
 	-- (x3: one halo disc under the smaller plinths, the 750-instance budget)
 	e.Plinth = HatchLook.Plinth(box, rarity, not S.Lay.PC, { Track = S.Tweens, Glows = S.Roll and S.Roll.N > 1 and 1 or 2 })
 	return box
@@ -2098,6 +2086,7 @@ end
 function B.backlight(hero, j, rarity)
 	local glow = EggArt.Glow(rarity)
 	local back = H.frame(hero, "Backlight" .. j, { Visible = glow > 0, ZIndex = 4 })
+	back:SetAttribute("Art", "Hatch")
 	local discs = {}
 	local image = HatchLook.Image(HatchLook.IMAGES.Glow)
 	if image then
@@ -2161,6 +2150,7 @@ function R.rise(roll, quick)
 	local hero = roll.UI.Hero
 	if not quick then
 		roll.Spot = H.frame(hero, "Spot", { BackgroundColor3 = K.SPOT_COLOR, BackgroundTransparency = 1, ZIndex = 1 })
+		roll.Spot:SetAttribute("Art", "Hatch")
 		H.corner(roll.Spot, 0.5)
 		-- (roll-look) fainter than 16.4's 0.84 / 0.6: its straight sides read as a pale box behind the plinth's halo
 		Util.Create("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.45, 0.92), NumberSequenceKeypoint.new(1, 0.76) }), Parent = roll.Spot })
@@ -2396,6 +2386,7 @@ function B.halves(roll, j)
 	local cr = S.Lay.Crack
 	local w = math.floor(EggArt.Metrics.WIDTH * cr.E + 0.5)
 	local holder = H.frame(roll.UI.Hero, "Halves" .. j, { Visible = false, ZIndex = 6 })
+	holder:SetAttribute("Art", "Hatch")
 	H.place(holder, cr.Cx[j] - w / 2, cr.EggY, w, cr.E)
 	e.Holder, e.HolderSize = holder, cr.E
 	-- (egg-3d) a 3D egg whose two Blender halves are usable here splits into them at the burst (the ViewportFrame moves

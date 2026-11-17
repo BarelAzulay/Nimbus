@@ -7,46 +7,45 @@
 --   HatchLook.RarityColor(rarity) -> Color3   Config.Rarities' colour; Secret the readable violet 180,150,255; an unknown
 --                                             rarity the neutral 168,178,194
 --   HatchLook.Order(rarity) -> number         Config.Rarities' Order (1 when unknown)
---   HatchLook.Card(cell, geo) -> card         skins a strip cell (a Frame with a UICorner and a UIStroke, its egg inside):
---                                             geo = { W, H, Corner, Shadow, Shine, Plate, Word, Lite, Phone, Z }. The face is
---                                             the cell's own UIGradient "Face" (navy 37,51,122 -> 17,25,68; from Rare up the
---                                             rarity tint rides in its top: c at 0.5 fading out by 0.75 of the height), the
---                                             rim is the cell's UIStroke, a white "Shine" line under the top edge; not Lite:
---                                             the rarity "Plate" pill holding the upper-case white "Word", and a
---                                             "Shadow<slot>" frame BESIDE the cell in its track (+Shadow px below it: a child
---                                             would draw over the card). card = { Frame, Face, Tint (= Face), Shine, Plate,
---                                             PlateText, Shadow, Rim }. Adds 6 instances to the cell (the Face gradient, the
---                                             Shine, the Plate with its corner, stroke and Word; Lite: 2), +2 beside it
---                                             (the Shadow and its corner): spec 16.15 "Budgets" (review round 2)
---   HatchLook.SetCard(card, rarity|false, state)   state "Idle" | "Landed" | "Dim": the face tint, the rim (Rare and up
---                                             Shade(c, .05) opaque, below Shade(c, -.1) at 0.25; 5 px Landed, else 3), the
---                                             plate (Shade(c, -.45), its stroke Shade(c, .1)) and its word; Dim: the face at
---                                             0.6 (as before the redo), the plate, word, rim and shine faded with it
+--   (kit-b U9-2b, finding 15) the chrome is the Signboard kit's: square flat blocks (CloudUI.SignBlock: a face, a mitred
+--   "SignEdge" and a darker "Lip"), cream / wood / navy, no gloss, shine, drop shadow or soft glow. The stage's art (the
+--   plinth, the rays, the backlight, the FX, the eggs) keeps its roll-look softness and carries attribute Art = "Hatch".
+--   HatchLook.Card(cell, geo) -> card         skins a strip cell (a Frame, its egg inside) as a stone block: the face
+--                                             Theme.Sign.Tile, the cell's own UIStroke the mitred wood "SignEdge" (geo.Edge
+--                                             px), no corner. geo = { W, H, Edge, Plate, Word, Lite, Phone, Z }. Not Lite: the
+--                                             "Plate" band (geo.Plate px) along the bottom holding the upper-case "Word";
+--                                             Lite (x3): a "Lip" band only. card = { Frame, Plate, PlateText, Rim }. Adds only
+--                                             the Plate and its Word to the cell (Lite: the Lip; the edge is the cell's own
+--                                             stroke, no shadow beside it): spec 16.15 "Budgets"
+--   HatchLook.SetCard(card, rarity|false, state)   state "Idle" | "Landed" | "Dim": the face Tile / the Selected cream /
+--                                             the sunk Well; the plate (or lip) in RarityColor(r) (StoneLip without one), its
+--                                             word in Theme.TextOn of it, 0.3 clear when Dim
 --   HatchLook.ShowCard(card, cx, cy) / HideCard(card)   places a card by its centre (AnchorPoint 0.5: its pop grows round
---                                             the middle) with its shadow, or hides both
---   HatchLook.DropCard(card)                  destroys the cell and its shadow
+--                                             the middle), or hides it
+--   HatchLook.DropCard(card)                  destroys the cell
 --   HatchLook.LandPop(card, fast, track) -> { tween }   the land: a UIScale "Pop" on the card 1 -> 1.15 (0.1 s Quad Out)
---                                             -> 1.09 (0.15 s Quad InOut; Fast 0.05 / 0.07) and one white "Sweep" (a
---                                             gradient band, Offset -1 -> 1 in 0.3 s, Fast 0.12; destroyed after). Every
+--                                             -> 1.09 (0.15 s Quad InOut; Fast 0.05 / 0.07) and one white "Sweep" (a hard-
+--                                             edged flat band, Offset -1 -> 1 in 0.3 s, Fast 0.12; destroyed after). Every
 --                                             tween it plays (the chained one too) goes into `track`
 --   HatchLook.SetPop(card, scale)             the pop at rest (a resize cancelled its tweens)
 --   HatchLook.Window(parent, pointer, opts) -> win   the gold winner window on the strip's existing "Pointer" frame (its
---                                             root): children Glow (a wide soft stroke), Window (the gold stroke), NotchTop /
---                                             NotchBottom (45-degree squares centred on its top and bottom edges), a UIScale
---                                             "Bounce"; beside it in `parent`, DimL / DimR darken the track outside the window
---                                             after the land. opts = { Gold, Stroke, Glow, Notch (0 = none), NotchEdge (false
---                                             = no dark edge on the notches), Corner, Track (the tween set) }.
+--                                             root): children Window (the square gold frame: a mitred stroke), NotchTop /
+--                                             NotchBottom (stepped pixel pointers: a 5-unit row on the frame's edge, child
+--                                             rows Row2 / Row3 of 3 and 1 units stepping in; a unit = Notch / 4 px), a
+--                                             UIScale "Bounce"; beside it in `parent`, DimL / DimR darken the track outside
+--                                             the window after the land. opts = { Phone, Gold, Stroke, Notch (0 = none),
+--                                             Track (the tween set) }.
 --                                             win:Place(x, y, w, h, trackW, trackH)  the window's box (the landed cell's + pad)
---                                             win:Style(opts)            a layout's strokes, corners and notches (a resize)
+--                                             win:Style(opts)            a layout's stroke and notches (a resize)
 --                                             win:Tell(color, seconds)   every gold part turns `color` (attribute Tell = true)
 --                                             win:Reset()                gold again (Tell = nil)
 --                                             win:Bounce(seconds) / win:Rest()   a 1.08 -> 1 Back Out pop / at rest
 --                                             win:SetDim(k)              the dims at k (0 = clear .. 1 = dark), per frame
---                                             win:DropGlow()             the soft glow goes (the rise: the winner lifted out)
+--                                             win:DropGlow()             nothing (no glow any more; kept for the rise's call)
 --                                             win:DropDims()             the dims go (an x3 strip at the rise: the budget)
 --                                             win:Destroy()
---   HatchLook.TrackFades(track, color, corner) -> FadeL, FadeR   the strip's ends fading from `color` to clear over the
---                                             cards (EggStage places them over the card band)
+--   HatchLook.TrackFades(track, color) -> FadeL, FadeR   the strip's square ends: `color` fading to clear over the cards
+--                                             (a UIGradient "Fade"; EggStage places them over the card band)
 --   HatchLook.KEEP / HatchLook.ROBLOX         the ScreenGuis the stage never switches off: KEEP = spec 16.15's list (the
 --                                             stage, toasts, the cursor hint, the tooltip, the Shop under the stage, the dev
 --                                             tools, the main menu, the loading screen); ROBLOX = Roblox's own PlayerGui guis
@@ -124,48 +123,48 @@
 --   (Task 3: the reveal)
 --   HatchLook.Word(parent, text, rarity, size, opts) -> word   the rarity word: a Frame opts.Name ("Word") with the
 --                                             attribute Text; opts.Letters: one Theme "Title" TextLabel per glyph "L1..Ln"
---                                             (white under a vertical UIGradient Shade(c, .78) / .22 / -.18, a round
---                                             UIStroke Shade(c, -.68) of clamp(round(size x 0.06), 2, 6) px: the mock's
---                                             0.12 x size SVG stroke is centred on the glyph's edge, half of it shows; a
---                                             UIScale "Pop") 0.04 x size apart, over a soft Glow (c, its centre about 0.55
---                                             clear, the word + 1.0 x size wide, 1.8 x size tall); no Letters: one such
---                                             TextLabel (an x3 phone column, the crack word). opts = { Letters, Name,
---                                             ZIndex, Measure = function(text, size) -> px (the stage's real text widths) }
+--                                             (kit-b U9-2b: the title look's face, white under a UIGradient "Bands" of three
+--                                             hard bands Shade(c, .45) / c / Shade(c, -.2), one UIStroke Shade(c, -.68) of
+--                                             clamp(round(size x 0.06), 2, 6) px, a UIScale "Pop") 0.04 x size apart, no
+--                                             glow; no Letters: one such TextLabel (an x3 phone column, the crack word).
+--                                             opts = { Letters, Name, ZIndex, Measure = function(text, size) -> px (the
+--                                             stage's real text widths) }
 --                                             word:Width() -> px            word:Place(cx, y)   (y = the top)
 --                                             word:SetSize(size)            word:Destroy()
---                                             word:SetRarity(rarity)        the gradient, outline and glow re-coloured
+--                                             word:SetRarity(rarity)        the bands and the outline re-coloured
 --                                             word:SetText(text)            a one-label word's text (+ attribute Text)
 --                                             word:Pop(startAt, stagger, track)   letter i (from 0) 0 -> 1.3 (0.12 s Quad
---                                                 Out) -> 1 (0.14 s Quad In) at startAt + stagger x i, the glow in over
---                                                 0.2 s from startAt + 0.05 (task.delay; the tweens go into `track`); one
---                                                 label: hidden until startAt
---                                             word:Settle()   every letter at 1, the glow shown, pending pops dropped (a
---                                                 resize mid-chain)
---   HatchLook.Pill(parent, opts) -> TextButton   a glossy pill button named opts.Name (transparent tap box, Text ""):
---                                             "Shadow" (2,4,14 at 0.5, 7 px down, 4 px in), "Face" (a CanvasGroup: the
---                                             rise and fade) > "Body" (the capsule: UIGradient "Fill" of the Kind, UIStroke
---                                             "Edge" 3 px), "Shine" (white at 0.7 over the top third), "Label" (Theme
---                                             "Button"; Gold: ink 58,34,0; Green: white with the ink outline) and, with
---                                             opts.Price, "Chip" (black at 0.8, right-aligned 7 px in) > "Coin" (the stage
---                                             puts the icon in it), "Price" (Theme "Display"). The attribute Disabled
---                                             (CloudUI.SetDisabled) repaints it grey (stroke 60,64,76, text 176,184,206).
+--                                                 Out) -> 1 (0.14 s Quad In) at startAt + stagger x i (task.delay; the
+--                                                 tweens go into `track`); one label: hidden until startAt
+--                                             word:Settle()   every letter at 1, pending pops dropped (a resize mid-chain)
+--   HatchLook.Pill(parent, opts) -> TextButton   a kit B plank named opts.Name (transparent tap box, Text ""): "Face" (a
+--                                             CanvasGroup: the rise and fade) > "Body" (the block, CloudUI.SignBlock: Gold
+--                                             the "Selected" look, Green the "Primary" grass; its wood "SignEdge" 3 px inside
+--                                             the group and its "Lip" 5 px), "Label" (Theme "Button", the look's ink) and,
+--                                             with opts.Price, "Chip" (the stone price tag, edge 2, lip 3, right-aligned 7 px
+--                                             in) > "Coin" (the stage puts the icon in it), "Price" (Theme "Display",
+--                                             brown). The attribute Disabled (CloudUI.SetDisabled) paints the sunk "Off"
+--                                             well with muted words. A press sinks the face onto its lip (PillState).
 --                                             opts = { Name, Kind = "Gold" | "Green", Text, TextSize, Price, Coin, Phone,
 --                                             ZIndex }
---   HatchLook.PillParts(btn) -> { Shadow, Face, Body, Fill, Edge, Shine, Label, Chip, Coin, Price }
---   HatchLook.SizePill(btn, textSize, phone, coin)   a layout's text and coin sizes
---   HatchLook.FitPill(btn, labelW, priceW, parts?) -> chipW, fits   the price chip's width (80 / phone 66 at the least,
+--   HatchLook.PillParts(btn) -> { Face, Body, Lip, Edge, Label, Chip, Coin, Price }
+--   HatchLook.PillState(btn, "Press" | "Rest")   the press: the lip 2 px, the words and the tag 3 px lower; Rest: back
+--   HatchLook.SizePill(btn, textSize, phone, coin)   a layout's text and coin sizes (coin default 27, phone 18)
+--   HatchLook.FitPill(btn, labelW, priceW, parts?) -> chipW, fits   the price tag's width (80 / phone 66 at the least,
 --                                             its content's when the label needs the room) and whether the label fits
---   HatchLook.SetPillChip(btn, w, parts?)     the chip w px wide (0: hidden, the label takes the whole pill). parts: the
+--   HatchLook.SetPillChip(btn, w, parts?)     the tag w px wide (0: hidden, the label takes the whole face). parts: the
 --                                             button's PillParts already looked up (review round 2: no lookups per refresh)
---   HatchLook.PillIn(parts, k, rise)          the rise: the Face rise x (1 - k) px lower and 1 - k clear, the shadow
---                                             with it (k = 1: in place)
+--   HatchLook.PillIn(parts, k, rise)          the rise: the Face rise x (1 - k) px lower and 1 - k clear (k = 1: in place)
 --   HatchLook.Chip(parent, opts) -> TextButton   a small chip: a transparent 44 px tap box drawing a "Pill" (36 px, phone
---                                             32; black at 0.55) with its "Label" (227,233,255). opts = { Name, Text,
---                                             TextSize, Phone, ZIndex }
---   HatchLook.FastChip(parent, opts) -> TextButton   the Fast hatch chip: the Pill navy 11,18,51 at 0.15 with a 44,63,136
---                                             edge, its "Switch" (34 x 18, phone 30 x 16) and "Knob", the "Label"
---   HatchLook.SetFast(chip, on)               the switch Theme.Colors.Good / 44,63,136, the knob's side, attribute On
+--                                             32): the navy SignBlock (its gold-lip edge 2 px, lip 3) with its cream
+--                                             "Label". opts = { Name, Text, TextSize, Phone, ZIndex }
+--   HatchLook.FastChip(parent, opts) -> TextButton   the Fast hatch chip: the navy chip with its square "Switch" (a slot
+--                                             with a mitred "SlotEdge") and square stone "Knob", the "Label"
+--   HatchLook.SetFast(chip, on)               the switch grass / the navy slot, the knob's side, attribute On
 --   HatchLook.SizeChip(chip, textSize, phone) / HatchLook.SetChipText(chip, text)
+--   HatchLook.Tag(parent, name, text, look, opts) -> tag, words   a flat reveal tag (NEW!, EVOLVED): a SignBlock in the
+--                                             CloudUI.SignLooks `look` (edge 2, lip 3) with its "Text" (Theme "Tag") above
+--                                             the lip; square, never tilted. opts = { ZIndex, Visible, TextSize }
 --
 -- Plain Lua 5.1-compatible syntax only. Text goes through Theme roles.
 
@@ -177,27 +176,19 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Util = require(Shared:WaitForChild("Util"))
 local Theme = require(Shared:WaitForChild("Theme"))
+local CloudUI = require(script.Parent:WaitForChild("CloudUI")) -- (kit-b U9-2b) CloudUI.SignBlock / SignLooks: the kit's blocks
 
 local HatchLook = {}
 
 local rgb = Color3.fromRGB
+local Sign = Theme.Sign
 local K = {
 	WHITE = Color3.new(1, 1, 1),
 	BLACK = Color3.new(0, 0, 0),
 	SECRET = rgb(180, 150, 255), -- Secret's own colour is near black: the readable violet (EggStage.Metrics.SECRET_TEXT)
 	NEUTRAL = rgb(168, 178, 194),
 	GOLD = rgb(242, 182, 68), -- the window's rest gold = EggStage.Metrics.GOLD
-	WIN_GLOW = rgb(244, 196, 78),
 	NOTCH = rgb(255, 215, 106),
-	NOTCH_EDGE = rgb(90, 54, 0),
-	FACE_TOP = rgb(37, 51, 122),
-	FACE_BOT = rgb(17, 25, 68),
-	EDGE = rgb(44, 63, 136), -- a rarity-less cell's rim, the track's stroke
-	SHADOW = rgb(2, 4, 14),
-	SHADOW_A = 0.45,
-	SHINE_A = 0.65,
-	TINT_A = 0.5, -- the rarity tint over the face's top, gone by TINT_TO of the height
-	TINT_TO = 0.75,
 	DIM = rgb(4, 6, 22),
 	DIM_A = 0.5, -- the dims' darkest (transparency 1 - DIM_A)
 	POP = { Peak = 1.15, Rest = 1.09, Up = 0.1, Down = 0.15, UpFast = 0.05, DownFast = 0.07 },
@@ -241,30 +232,33 @@ local K = {
 	-- glyph; a UIStroke's Thickness is all outside, so 0.06 x size draws the mock's outline (0.12 drew it twice as heavy).
 	-- The glow: a halo taller and wider than the word (GlowW x size more, GlowH x size tall, less where the screen's edge
 	-- is nearer), its fallback discs' centre about 0.68 clear (GlowA): the mock's blurred 0.5 stroke, never a slab
+	-- (kit-b U9-2b) the letters wear the title look (Theme.StyleTitle's T1 face): white under HARD bands of the rarity's
+	-- tones (Shade(c, Top) to BandA, c itself to BandB, Shade(c, Bottom) under it: no blend, the pixel kit's stepped
+	-- shading) with ONE outline Shade(c, Outline); no glow halo (kit B: no glow)
 	WORD = {
-		Top = 0.78, Mid = 0.22, Bottom = -0.18, Outline = -0.68, OutlineK = 0.06, OutlineMin = 2, OutlineMax = 6, Spacing = 0.04, Pad = 0.2,
-		Stagger = 0.05, Up = 0.12, Down = 0.14, Peak = 1.3, GlowAt = 0.05, GlowIn = 0.2, GlowA = 0.65, GlowW = 1.0, GlowH = 1.8,
-		-- the word glow's fallback: three nested capsules, each fading out to its sides (no hard side edge), stacked so
-		-- the halo also falls off up and down; at GlowA their centre is about 0.55 clear
-		Discs = {
-			{ W = 1, H = 1, Rotation = 0, Fade = { { 0, 1 }, { 0.2, 0.93 }, { 0.5, 0.8 }, { 0.8, 0.93 }, { 1, 1 } } },
-			{ W = 0.88, H = 0.66, Rotation = 0, Fade = { { 0, 1 }, { 0.2, 0.9 }, { 0.5, 0.72 }, { 0.8, 0.9 }, { 1, 1 } } },
-			{ W = 0.74, H = 0.38, Rotation = 0, Fade = { { 0, 1 }, { 0.25, 0.88 }, { 0.5, 0.65 }, { 0.75, 0.88 }, { 1, 1 } } },
-		},
+		Top = 0.45, Mid = 0, Bottom = -0.2, BandA = 0.45, BandB = 0.8, Outline = -0.68, OutlineK = 0.06, OutlineMin = 2, OutlineMax = 6, Spacing = 0.04, Pad = 0.2,
+		Stagger = 0.05, Up = 0.12, Down = 0.14, Peak = 1.3,
 	},
-	-- the glossy pills (the mock's pillBtn): the face gradients top / middle (at Mid) / bottom, the stroke and text ink
+	-- (kit-b U9-2b) the bottom bar's planks: kit B blocks (CloudUI.SignBlock) in a CanvasGroup "Face" that rises and fades
+	-- in; Kind -> its sign look (Gold: the gold block, brown words; Green: the grass block, the stage's one green action;
+	-- disabled: the sunk Off well); Edge / Lip px (the kit's 3 / 5), the press leaves PressLip of the lip (the face sinks
+	-- onto it); the price tag a stone block (TagEdge / TagLip) ChipIn px inside the face's right edge, ChipV px shorter than
+	-- the face, its coin and price ChipPad / CoinGap apart; the label LabelL from the face's left, LabelGap before the tag
 	PILL = {
-		Gold = { Top = rgb(255, 224, 138), Mid = rgb(246, 178, 60), Bottom = rgb(223, 143, 38), Edge = rgb(107, 66, 0), Ink = rgb(58, 34, 0) },
-		Green = { Top = rgb(124, 240, 162), Mid = rgb(47, 184, 102), Bottom = rgb(29, 138, 74), Edge = rgb(13, 77, 42), Ink = rgb(255, 255, 255), Outline = true },
-		Off = { Top = rgb(120, 126, 140), Mid = rgb(102, 108, 122), Bottom = rgb(84, 90, 104), Edge = rgb(60, 64, 76), Ink = rgb(176, 184, 206) },
-		MidAt = 0.55, Shadow = rgb(2, 4, 14), ShadowA = 0.5, ShadowY = 7, ShadowIn = 4, Edge = 3, ShineA = 0.7, ShineOffA = 0.88, ShineX = 12, ShineY = 4,
-		ShineH = 0.34, ChipA = 0.8, ChipIn = 7, ChipV = 16, ChipW = 80, ChipWPhone = 66, ChipPad = 9, CoinGap = 4, LabelL = 8, LabelGap = 4,
+		Look = { Gold = "Selected", Green = "Primary" }, Edge = 3, Lip = 5, PressLip = 2, TagEdge = 2, TagLip = 3,
+		ChipIn = 7, ChipV = 14, ChipW = 80, ChipWPhone = 66, ChipPad = 9, CoinGap = 4, LabelL = 8, LabelGap = 4,
 	},
-	-- the chips (the mock's chip / fastChip): the pill heights in the 44 px tap box, colours, the switch
+	-- (kit-b U9-2b) the chips (Skip, Fast hatch): a navy block (the kit's navy sign: gold-lip edge, darker lip) H / HPhone
+	-- tall in the 44 px tap box, cream words; Fast hatch's switch a square slot (navy lip, its lit edge) with a square
+	-- stone knob, the slot grass when on
 	CHIP = {
-		H = 36, HPhone = 32, A = 0.55, Ink = rgb(227, 233, 255), Pad = 12, FastBg = rgb(11, 18, 51), FastA = 0.15, FastEdge = rgb(44, 63, 136),
-		Edge = 2, EdgePhone = 1.5, SwitchW = 34, SwitchH = 18, SwitchWPhone = 30, SwitchHPhone = 16, SwitchX = 10, Off = rgb(44, 63, 136),
+		H = 36, HPhone = 32, Pad = 12, Edge = 2, Lip = 3, Ink = Sign.Stone,
+		SwitchW = 34, SwitchH = 18, SwitchWPhone = 30, SwitchHPhone = 16, SwitchX = 10, Slot = Sign.NavyLip, SlotEdge = Sign.NavyTop, On = Sign.Grass, OnEdge = Sign.GrassLip, Knob = Sign.Stone,
 	},
+	-- (kit-b U9-2b) the strip's cards: stone blocks (Sign.Tile; the landed card Sign.Selected, the dimmed ones the sunk
+	-- Well) in a mitred wood edge Edge px thick, the rarity's colour on the plate along the bottom (a lite x3 card: a Lip
+	-- px lip), the word in the ink that reads on it; the window's pixel notches: three rows Unit px tall stepping in
+	CARD = { Edge = 3, EdgePhone = 2, Lip = 5, LipPhone = 4, DimText = 0.3 },
 	-- (egg-cards, spec 16.18) the card eggs' pictures (blender/textures/build_egg_cards.py): the egg's projected box is Fill
 	-- of the square picture's height, centred; a cell draws the picture (egg px) / Fill square on the painted egg's box
 	EGG_PIC = { Fill = 0.9 },
@@ -336,67 +330,49 @@ local function stroke(parent, color, thickness, transparency)
 end
 
 ----------------------------------------------------------------------
--- the strip cards
+-- the strip cards (kit-b U9-2b: stone blocks on the navy rail)
 ----------------------------------------------------------------------
--- the face: navy top to bottom; with a tint colour, that colour at TINT_A over the top fading out by TINT_TO (the two
--- layers of the mock folded into one gradient: same colours, one instance less per card)
-local function faceColors(tint)
-	local function at(y)
-		local base = K.FACE_TOP:Lerp(K.FACE_BOT, y)
-		if not tint or y >= K.TINT_TO then
-			return base
-		end
-		return base:Lerp(tint, K.TINT_A * (1 - y / K.TINT_TO))
-	end
-	return ColorSequence.new({
-		ColorSequenceKeypoint.new(0, at(0)),
-		ColorSequenceKeypoint.new(K.TINT_TO / 2, at(K.TINT_TO / 2)),
-		ColorSequenceKeypoint.new(K.TINT_TO, at(K.TINT_TO)),
-		ColorSequenceKeypoint.new(1, at(1)),
-	})
-end
-
 function HatchLook.Card(cell, geo)
 	local W, H = geo.W, geo.H
-	local cr = geo.Corner or 12
+	local C = K.CARD
 	local z = geo.Z or cell.ZIndex
 	local card = { Frame = cell, Geo = geo, Lite = geo.Lite == true }
 	cell.AnchorPoint = Vector2.new(0.5, 0.5)
-	cell.BackgroundColor3 = K.WHITE
+	cell.BackgroundColor3 = Sign.Tile
 	cell.BackgroundTransparency = 0
-	local uc = cell:FindFirstChildOfClass("UICorner") or corner(cell, cr)
-	uc.CornerRadius = UDim.new(0, cr)
-	card.Rim = cell:FindFirstChildOfClass("UIStroke") or stroke(cell, K.EDGE, 3)
-	card.Face = Util.Create("UIGradient", { Name = "Face", Rotation = 90, Color = faceColors(nil), Parent = cell })
-	card.Tint = card.Face
-	local inset = math.floor(cr * 0.67 + 0.5)
-	card.Shine = frame(cell, "Shine", {
-		Position = UDim2.fromOffset(inset, math.max(2, math.floor(cr / 3 + 0.5))), Size = UDim2.fromOffset(math.max(0, W - 2 * inset), geo.Shine or 3),
-		BackgroundColor3 = K.WHITE, BackgroundTransparency = K.SHINE_A, ZIndex = z + 1,
-	})
-	if not card.Lite then
+	for _, c in ipairs(cell:GetChildren()) do
+		if c:IsA("UICorner") or c:IsA("UIGradient") then
+			c:Destroy()
+		end
+	end
+	-- the cell's own stroke is the block's mitred wood edge
+	local rim = cell:FindFirstChildOfClass("UIStroke") or stroke(cell, Sign.Wood, 3)
+	rim.Name = "SignEdge"
+	rim.Color = Sign.Wood
+	rim.Transparency = 0
+	rim.LineJoinMode = Enum.LineJoinMode.Miter
+	rim.Thickness = geo.Edge or (geo.Phone and C.EdgePhone or C.Edge)
+	card.Rim = rim
+	if card.Lite then
+		-- (an x3 card: the rarity's colour on its lip only, the x3 budget)
+		local lip = geo.Phone and C.LipPhone or C.Lip
+		card.Plate = frame(cell, "Lip", {
+			Position = UDim2.fromOffset(0, H - lip), Size = UDim2.new(1, 0, 0, lip), BackgroundColor3 = Sign.StoneLip, BackgroundTransparency = 0, ZIndex = z + 1,
+		})
+	else
+		-- the plate: the card's lip band in the rarity's colour, the rarity's word on it
 		local ph = geo.Plate or 30
 		card.Plate = frame(cell, "Plate", {
-			AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(W / 2, H - ph - math.floor(ph * 0.4 + 0.5)), Size = UDim2.fromOffset(math.floor(W * 0.8 + 0.5), ph),
-			BackgroundColor3 = K.FACE_BOT, BackgroundTransparency = 0, ZIndex = z + 1, Visible = false,
+			Position = UDim2.fromOffset(0, H - ph), Size = UDim2.new(1, 0, 0, ph), BackgroundColor3 = Sign.StoneLip, BackgroundTransparency = 0, ZIndex = z + 1,
 		})
-		corner(card.Plate, 0.5)
-		card.PlateEdge = stroke(card.Plate, K.EDGE, geo.Phone and 1.5 or 2)
-		local word = Theme.Label("", geo.Phone and "Label" or "Heading", { Size = geo.Word or 18, Stroke = 0.75 })
+		local word = Theme.Label("", geo.Phone and "Label" or "Heading", { Size = geo.Word or 18 })
 		word.Name = "Word"
 		word.Size = UDim2.fromScale(1, 1)
-		word.TextColor3 = K.WHITE
+		word.TextColor3 = Sign.Text
 		word.TextXAlignment = Enum.TextXAlignment.Center
 		word.ZIndex = z + 2
 		word.Parent = card.Plate
 		card.PlateText = word
-		-- the shadow sits beside the cell in its track, under it (ZIndex: a child would always draw over the card)
-		local slot = cell.Name:match("%d+") or ""
-		card.Shadow = frame(cell.Parent, "Shadow" .. slot, {
-			AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(W, H), BackgroundColor3 = K.SHADOW, BackgroundTransparency = K.SHADOW_A,
-			ZIndex = math.max(1, z - 1), Visible = false,
-		})
-		corner(card.Shadow, cr)
 	end
 	return card
 end
@@ -413,57 +389,27 @@ function HatchLook.SetCard(card, rarity, state)
 	local cell = card.Frame
 	local dim = state == "Dim"
 	local c = rarity and HatchLook.RarityColor(rarity) or nil
-	local strong = rarity and HatchLook.Order(rarity) >= 3
-	card.Face.Color = faceColors((c and not card.Lite) and c or nil)
-	cell.BackgroundTransparency = dim and 0.6 or 0
-	local rim = card.Rim
-	if c then
-		rim.Color = strong and HatchLook.Shade(c, 0.05) or HatchLook.Shade(c, -0.1)
-		rim.Transparency = strong and 0 or 0.25
-	else
-		rim.Color = K.EDGE
-		rim.Transparency = 0.25
-	end
-	if dim then
-		rim.Transparency = math.max(rim.Transparency, 0.5)
-	end
-	rim.Thickness = state == "Landed" and 5 or 3
-	card.Shine.BackgroundTransparency = dim and 0.88 or K.SHINE_A
-	if card.Plate then
-		card.Plate.Visible = c ~= nil
-		if c then
-			card.Plate.BackgroundColor3 = HatchLook.Shade(c, -0.45)
-			card.Plate.BackgroundTransparency = dim and 0.45 or 0
-			card.PlateEdge.Color = HatchLook.Shade(c, 0.1)
-			card.PlateEdge.Transparency = dim and 0.5 or 0
-			card.PlateText.Text = string.upper(rarity)
-			card.PlateText.TextTransparency = dim and 0.35 or 0
-		end
+	-- the face: stone, the landed card the selected face, the others sunk once the strip has landed
+	cell.BackgroundColor3 = (state == "Landed" and Sign.Selected) or (dim and Sign.Well) or Sign.Tile
+	cell.BackgroundTransparency = 0
+	card.Plate.BackgroundColor3 = c or Sign.StoneLip
+	if card.PlateText then
+		card.PlateText.Text = c and string.upper(rarity) or ""
+		card.PlateText.TextColor3 = c and Theme.TextOn(c) or Sign.Text
+		card.PlateText.TextTransparency = dim and K.CARD.DimText or 0
 	end
 end
 
 function HatchLook.ShowCard(card, cx, cy)
 	card.Frame.Position = UDim2.fromOffset(cx, cy)
 	card.Frame.Visible = true
-	local sh = card.Shadow
-	if sh then
-		sh.Position = UDim2.fromOffset(cx, cy + (card.Geo.Shadow or 8))
-		sh.Visible = true
-	end
 end
 
 function HatchLook.HideCard(card)
 	card.Frame.Visible = false
-	if card.Shadow then
-		card.Shadow.Visible = false
-	end
 end
 
 function HatchLook.DropCard(card)
-	if card.Shadow then
-		card.Shadow:Destroy()
-		card.Shadow = nil
-	end
 	card.Frame:Destroy()
 end
 
@@ -499,15 +445,15 @@ function HatchLook.LandPop(card, fast, track)
 			end
 		end)
 	end
-	-- one shine sweep across the card (the clutter cap: one, at the land)
+	-- one shine sweep across the card (the clutter cap: one, at the land); (kit-b U9-2b) a flat band with hard edges, no
+	-- soft falloff (the pixel look: no blur)
 	local sw = K.SWEEP
 	local sweep = frame(card.Frame, "Sweep", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = card.Frame.ZIndex + 4 })
-	corner(sweep, card.Geo.Corner or 12)
 	local band = Util.Create("UIGradient", {
-		Rotation = sw.Rotation, Offset = Vector2.new(-1, 0),
+		Name = "Sweep", Rotation = sw.Rotation, Offset = Vector2.new(-1, 0),
 		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.4, 1), NumberSequenceKeypoint.new(0.5, sw.Band),
-			NumberSequenceKeypoint.new(0.6, 1), NumberSequenceKeypoint.new(1, 1),
+			NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.42, 1), NumberSequenceKeypoint.new(0.4201, sw.Band),
+			NumberSequenceKeypoint.new(0.58, sw.Band), NumberSequenceKeypoint.new(0.5801, 1), NumberSequenceKeypoint.new(1, 1),
 		}),
 		Parent = sweep,
 	})
@@ -529,6 +475,21 @@ end
 local Win = {}
 Win.__index = Win
 
+-- (kit-b U9-2b) a notch is a pixel pointer: its own frame the widest row (5 units wide) on the window's edge, two child
+-- rows (3 units, 1 unit) stepping in towards the card; a unit is a quarter of the notch size, whole px
+local function placeNotch(notch, n, i, edge)
+	local u = math.max(1, math.floor(n / 4 + 0.5))
+	local down = i == 1 -- the top notch points down into the window, the bottom one up
+	notch.AnchorPoint = Vector2.new(0.5, down and 0 or 1)
+	notch.Position = UDim2.new(0.5, 0, i - 1, down and -edge or edge)
+	notch.Size = UDim2.fromOffset(5 * u, u)
+	for r, row in ipairs({ notch:FindFirstChild("Row2"), notch:FindFirstChild("Row3") }) do
+		row.Position = UDim2.fromOffset(r * u, (down and 1 or -1) * r * u)
+		row.Size = UDim2.fromOffset((5 - 2 * r) * u, u)
+	end
+	notch.Visible = n > 0
+end
+
 function HatchLook.Window(parent, pointer, opts)
 	opts = opts or {}
 	local phone = opts.Phone == true
@@ -536,7 +497,6 @@ function HatchLook.Window(parent, pointer, opts)
 	self.Gold = opts.Gold or K.GOLD
 	self.Track = opts.Track
 	self.Root = pointer
-	self.Corner = opts.Corner or (phone and 15 or 22)
 	pointer.AnchorPoint = Vector2.new(0.5, 0.5)
 	pointer.BackgroundTransparency = 1
 	for _, c in ipairs(pointer:GetChildren()) do
@@ -544,23 +504,18 @@ function HatchLook.Window(parent, pointer, opts)
 	end
 	local z = pointer.ZIndex
 	self.Scale = Util.Create("UIScale", { Name = "Bounce", Scale = 1, Parent = pointer })
-	self.Glow = frame(pointer, "Glow", { Size = UDim2.fromScale(1, 1), ZIndex = z })
-	corner(self.Glow, self.Corner)
-	self.GlowStroke = stroke(self.Glow, K.WIN_GLOW, opts.Glow or (phone and 6 or 10), 0.65)
+	-- (kit-b U9-2b) a square gold frame, mitred, no soft glow round it
 	self.Window = frame(pointer, "Window", { Size = UDim2.fromScale(1, 1), ZIndex = z + 1 })
-	corner(self.Window, self.Corner)
 	self.WinStroke = stroke(self.Window, self.Gold, opts.Stroke or (phone and 3 or 4), 0)
-	local n = opts.Notch or (phone and 10 or 16)
+	self.WinStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	self.NotchN = opts.Notch or (phone and 10 or 16)
 	self.Notches = {}
 	for i, name in ipairs({ "NotchTop", "NotchBottom" }) do
-		local notch = frame(pointer, name, {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, i - 1), Size = UDim2.fromOffset(n, n), Rotation = 45,
-			BackgroundColor3 = K.NOTCH, BackgroundTransparency = 0, ZIndex = z + 2, Visible = n > 0,
-		})
-		if opts.NotchEdge ~= false then
-			self.Edges = self.Edges or {}
-			self.Edges[i] = stroke(notch, K.NOTCH_EDGE, phone and 1.5 or 2, 0)
+		local notch = frame(pointer, name, { BackgroundColor3 = K.NOTCH, BackgroundTransparency = 0, ZIndex = z + 2 })
+		for _, row in ipairs({ "Row2", "Row3" }) do
+			frame(notch, row, { BackgroundColor3 = K.NOTCH, BackgroundTransparency = 0, ZIndex = z + 2 })
 		end
+		placeNotch(notch, self.NotchN, i, self.WinStroke.Thickness)
 		self.Notches[i] = notch
 	end
 	-- the dims beside the window (the mock's landDim: the track darkens round the winner). Square: past the track's
@@ -572,13 +527,8 @@ function HatchLook.Window(parent, pointer, opts)
 	return self
 end
 
--- the soft glow goes (the rise: the winner has lifted out of the window)
-function Win:DropGlow()
-	if self.Glow then
-		self.Glow:Destroy()
-		self.Glow, self.GlowStroke = nil, nil
-	end
-end
+-- (kit-b U9-2b: the window has no soft glow any more) kept for the rise's call
+function Win:DropGlow() end
 
 -- (Task 2) the dims go (an x3 strip sliding away at the rise: the budget)
 function Win:DropDims()
@@ -601,38 +551,27 @@ function Win:Place(x, y, w, h, trackW, trackH)
 	end
 end
 
--- the sizes of a layout (a resize): strokes, corners, notches (0 = none)
+-- the sizes of a layout (a resize): the frame's stroke, the notches (0 = none); (kit-b U9-2b) square: no corner, no glow
 function Win:Style(opts)
 	if opts.Stroke then
 		self.WinStroke.Thickness = opts.Stroke
 	end
-	if opts.Glow and self.GlowStroke then
-		self.GlowStroke.Thickness = opts.Glow
-	end
-	if opts.Corner then
-		self.Corner = opts.Corner
-		if self.Glow then
-			self.Glow:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, opts.Corner)
-		end
-		self.Window:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, opts.Corner)
-	end
 	if opts.Notch then
-		for _, notch in ipairs(self.Notches) do
-			notch.Size = UDim2.fromOffset(opts.Notch, opts.Notch)
-			notch.Visible = opts.Notch > 0
-		end
+		self.NotchN = opts.Notch
+	end
+	for i, notch in ipairs(self.Notches) do
+		placeNotch(notch, self.NotchN, i, self.WinStroke.Thickness)
 	end
 end
 
 function Win:paint(color, seconds)
 	local out = {}
-	local parts = { { self.WinStroke, "Color" }, { self.Notches[1], "BackgroundColor3" }, { self.Notches[2], "BackgroundColor3" } }
-	if self.GlowStroke then
-		parts[#parts + 1] = { self.GlowStroke, "Color" }
-	end
-	-- (the notches' dark edge follows, a deep shade of the same colour)
-	for _, edge in pairs(self.Edges or {}) do
-		parts[#parts + 1] = { edge, "Color", HatchLook.Shade(color, -0.6) }
+	local parts = { { self.WinStroke, "Color" } }
+	for _, notch in ipairs(self.Notches) do
+		parts[#parts + 1] = { notch, "BackgroundColor3" }
+		for _, row in ipairs(notch:GetChildren()) do
+			parts[#parts + 1] = { row, "BackgroundColor3" }
+		end
 	end
 	for _, p in ipairs(parts) do
 		local inst, prop, goal = p[1], p[2], p[3] or color
@@ -655,14 +594,11 @@ function Win:Reset()
 	self.Root:SetAttribute("Tell", nil)
 	self.TellColor = nil
 	self.WinStroke.Color = self.Gold
-	if self.GlowStroke then
-		self.GlowStroke.Color = K.WIN_GLOW
-	end
 	for _, notch in ipairs(self.Notches) do
 		notch.BackgroundColor3 = K.NOTCH
-	end
-	for _, edge in pairs(self.Edges or {}) do
-		edge.Color = K.NOTCH_EDGE
+		for _, row in ipairs(notch:GetChildren()) do
+			row.BackgroundColor3 = K.NOTCH
+		end
 	end
 end
 
@@ -692,12 +628,12 @@ function Win:Destroy()
 	self.Root:Destroy()
 end
 
-function HatchLook.TrackFades(track, color, cr)
+-- (kit-b U9-2b) square ends: the rail's own flat navy fading out over the cards ("Fade": a flat colour, no gloss)
+function HatchLook.TrackFades(track, color)
 	local out = {}
 	for i, name in ipairs({ "FadeL", "FadeR" }) do
 		local f = frame(track, name, { BackgroundColor3 = color, BackgroundTransparency = 0, ZIndex = 4 })
-		corner(f, cr or 12)
-		Util.Create("UIGradient", { Transparency = i == 1 and NumberSequence.new(0, 1) or NumberSequence.new(1, 0), Parent = f })
+		Util.Create("UIGradient", { Name = "Fade", Transparency = i == 1 and NumberSequence.new(0, 1) or NumberSequence.new(1, 0), Parent = f })
 		out[i] = f
 	end
 	return out[1], out[2]
@@ -1045,10 +981,14 @@ end
 local Word = {}
 Word.__index = Word
 
+-- (kit-b U9-2b) the title look's hard bands in the rarity's tones (no blend between them)
 local function wordColors(c)
 	local W = K.WORD
+	local top, mid, low = HatchLook.Shade(c, W.Top), HatchLook.Shade(c, W.Mid), HatchLook.Shade(c, W.Bottom)
 	return ColorSequence.new({
-		ColorSequenceKeypoint.new(0, HatchLook.Shade(c, W.Top)), ColorSequenceKeypoint.new(0.5, HatchLook.Shade(c, W.Mid)), ColorSequenceKeypoint.new(1, HatchLook.Shade(c, W.Bottom)),
+		ColorSequenceKeypoint.new(0, top), ColorSequenceKeypoint.new(W.BandA, top),
+		ColorSequenceKeypoint.new(W.BandA + 0.0001, mid), ColorSequenceKeypoint.new(W.BandB, mid),
+		ColorSequenceKeypoint.new(W.BandB + 0.0001, low), ColorSequenceKeypoint.new(1, low),
 	})
 end
 
@@ -1056,11 +996,11 @@ local function wordLabel(parent, name, text, size, c, z)
 	local W = K.WORD
 	local l = Theme.Label(text, "Title", { Size = size, Stroke = 1 })
 	l.Name = name
-	l.TextColor3 = K.WHITE -- (the gradient tints it)
+	l.TextColor3 = K.WHITE -- (the bands tint it)
 	l.TextXAlignment = Enum.TextXAlignment.Center
 	l.TextYAlignment = Enum.TextYAlignment.Center
 	l.ZIndex = z
-	Util.Create("UIGradient", { Rotation = 90, Color = wordColors(c), Parent = l })
+	Util.Create("UIGradient", { Name = "Bands", Rotation = 90, Color = wordColors(c), Parent = l })
 	Util.Create("UIStroke", { Color = HatchLook.Shade(c, W.Outline), Thickness = 2, LineJoinMode = Enum.LineJoinMode.Round, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = l })
 	l.Parent = parent
 	return l
@@ -1078,8 +1018,6 @@ function HatchLook.Word(parent, text, rarity, size, opts)
 	local self = setmetatable({ Text = tostring(text), Size = size, Letters = {}, Measure = opts.Measure, Token = 0, Tw = {} }, Word)
 	if opts.Letters then
 		self.Frame = frame(parent, opts.Name or "Word", { ZIndex = z })
-		self.Glow = HatchLook.Glow(self.Frame, c, { Name = "Glow", Z = z, Discs = K.WORD.Discs })
-		self.Glow:SetAlpha(K.WORD.GlowA)
 		local i = 0
 		for ch in self.Text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
 			i = i + 1
@@ -1129,36 +1067,16 @@ function Word:SetSize(size)
 		L.Label.Size = UDim2.fromOffset(L.W + pad, size)
 		x = x + L.W + gap
 	end
-	self:placeGlow()
 end
 
--- the halo round the word: GlowW x size wider and GlowH x size tall, at most room.Up above / below it and room.Half to
--- either side of its centre (the screen's edges: never off the screen)
-function Word:placeGlow()
-	if not self.Glow then
-		return
-	end
-	local size, w, room = self.Size, self:Width(), self.Room
-	local gw, gh = w + K.WORD.GlowW * size, K.WORD.GlowH * size
-	if room then
-		gw = math.min(gw, math.max(w, 2 * room.Half))
-		gh = math.min(gh, math.max(size, size + 2 * room.Up))
-	end
-	self.Glow:Place(UDim2.fromOffset(w / 2, size / 2), UDim2.fromOffset(gw, gh))
-end
-
--- room (optional) = { Up = px free above the word's top, Half = px free from its centre to the nearer side }
-function Word:Place(cx, y, room)
+-- (cx, y) = the word's centre and top; room (the old glow's screen room) is no longer used: the word has no halo
+function Word:Place(cx, y)
 	local w = self:Width()
 	if #self.Letters == 0 then
 		w = w + K.WORD.Pad * self.Size
 	end
 	self.Frame.Position = UDim2.fromOffset(cx - w / 2, y)
 	self.Frame.Size = UDim2.fromOffset(w, self.Size)
-	if room then
-		self.Room = room
-		self:placeGlow()
-	end
 end
 
 function Word:drop()
@@ -1192,7 +1110,6 @@ function Word:Pop(startAt, stagger, track)
 		end
 		return tw
 	end
-	self.Glow:SetAlpha(0)
 	for i, L in ipairs(self.Letters) do
 		L.Pop.Scale = 0
 		task.delay(startAt + (stagger or W.Stagger) * (i - 1), function()
@@ -1209,22 +1126,12 @@ function Word:Pop(startAt, stagger, track)
 			end
 		end)
 	end
-	task.delay(startAt + W.GlowAt, function()
-		if self.Token == mine and self.Frame.Parent then
-			for _, tw in ipairs(self.Glow:Fade(W.GlowA, W.GlowIn, track)) do
-				self.Tw[tw] = true
-			end
-		end
-	end)
 end
 
 function Word:Settle()
 	self:drop()
 	for _, L in ipairs(self.Letters) do
 		L.Pop.Scale = 1
-	end
-	if self.Glow then
-		self.Glow:SetAlpha(K.WORD.GlowA)
 	end
 	if #self.Letters == 0 and self.Frame.Parent then
 		self.Frame.Visible = true
@@ -1236,8 +1143,8 @@ function Word:Destroy()
 	self.Frame:Destroy()
 end
 
--- (review round 1) another rarity's colours on the same instances: the gradient, the outline and the glow (the crack
--- word moves on to the next egg of an x3)
+-- (review round 1) another rarity's colours on the same instances: the bands and the outline (the crack word moves on
+-- to the next egg of an x3)
 function Word:SetRarity(rarity)
 	local c = HatchLook.RarityColor(rarity)
 	local seq, edge = wordColors(c), HatchLook.Shade(c, K.WORD.Outline)
@@ -1258,9 +1165,6 @@ function Word:SetRarity(rarity)
 			s.Color = edge
 		end
 	end
-	if self.Glow then
-		self.Glow:SetColor(c, 0)
-	end
 end
 
 -- a one-label word's new text (the attribute Text follows); a letter word keeps its letters
@@ -1273,70 +1177,90 @@ function Word:SetText(text)
 end
 
 ----------------------------------------------------------------------
--- (Task 3) the glossy pills and the small chips of the bottom bar
+-- (Task 3; kit-b U9-2b) the planks and the small chips of the bottom bar, the reveal's tags
 ----------------------------------------------------------------------
-local function pillFill(look)
-	return ColorSequence.new({
-		ColorSequenceKeypoint.new(0, look.Top), ColorSequenceKeypoint.new(K.PILL.MidAt, look.Mid), ColorSequenceKeypoint.new(1, look.Bottom),
-	})
-end
-
 function HatchLook.PillParts(btn)
 	local face = btn:FindFirstChild("Face")
 	local body = face and face:FindFirstChild("Body")
 	local chip = face and face:FindFirstChild("Chip")
 	return {
-		Shadow = btn:FindFirstChild("Shadow"), Face = face, Body = body, Fill = body and body:FindFirstChild("Fill"), Edge = body and body:FindFirstChild("Edge"),
-		Shine = face and face:FindFirstChild("Shine"), Label = face and face:FindFirstChild("Label"), Chip = chip, Coin = chip and chip:FindFirstChild("Coin"),
-		Price = chip and chip:FindFirstChild("Price"),
+		Face = face, Body = body, Lip = body and body:FindFirstChild("Lip"), Edge = body and body:FindFirstChild("SignEdge"), Label = face and face:FindFirstChild("Label"),
+		Chip = chip, Coin = chip and chip:FindFirstChild("Coin"), Price = chip and chip:FindFirstChild("Price"),
 	}
 end
 
-local function paintPill(btn)
-	local p = HatchLook.PillParts(btn)
-	local off = btn:GetAttribute("Disabled") == true
-	local look = off and K.PILL.Off or (K.PILL[btn:GetAttribute("Kind")] or K.PILL.Gold)
-	p.Fill.Color = pillFill(look)
-	p.Edge.Color = look.Edge
-	p.Label.TextColor3 = look.Ink
-	p.Shine.BackgroundTransparency = off and K.PILL.ShineOffA or K.PILL.ShineA
-	if p.Price then
-		p.Price.TextColor3 = look.Ink
+local function pressed(btn)
+	return btn:GetAttribute("PillState") == "Press" and btn:GetAttribute("Disabled") ~= true
+end
+
+-- the words and the price tag on the face above the lip; a press moves them down with the face (the lip shrinks under it)
+local function layoutPill(btn, p)
+	local P = K.PILL
+	local e = P.Edge
+	local lip = pressed(btn) and P.PressLip or P.Lip
+	local drop = P.Lip - lip
+	local w = btn:GetAttribute("ChipW") or 0
+	local right = (w > 0) and (P.LabelGap + w + P.ChipIn) or P.LabelL
+	p.Label.Position = UDim2.fromOffset(e + P.LabelL, e + drop)
+	p.Label.Size = UDim2.new(1, -(2 * e + P.LabelL + right), 1, -(2 * e + P.Lip))
+	if p.Chip then
+		p.Chip.Visible = w > 0
+		p.Chip.Position = UDim2.new(1, -(e + P.ChipIn), 0.5, drop - P.Lip / 2)
+		p.Chip.Size = UDim2.new(0, math.max(0, w), 1, -(2 * e + P.Lip + P.ChipV))
 	end
 end
 
+local function paintPill(btn)
+	local P = K.PILL
+	local p = HatchLook.PillParts(btn)
+	local off = btn:GetAttribute("Disabled") == true
+	local role = off and "Off" or (P.Look[btn:GetAttribute("Kind")] or "Selected")
+	CloudUI.SignBlock(p.Body, role, { EdgePx = P.Edge, LipPx = pressed(btn) and P.PressLip or P.Lip, Pad = false })
+	p.Label.TextColor3 = CloudUI.SignLooks[role].Text
+	if p.Price then
+		p.Price.TextColor3 = off and Sign.TextMuted or Sign.Text
+		-- the token coin (a PixelIcon hosted in a text label: it follows TextColor3) in the price's ink: never white on the
+		-- cream tag (a GemIcon keeps its own colours)
+		local icon = p.Coin and p.Coin:FindFirstChild("Icon")
+		if icon and icon:IsA("TextLabel") then
+			icon.TextColor3 = p.Price.TextColor3
+		end
+	end
+	layoutPill(btn, p)
+end
+
+-- a plank's state: "Press" (the face sunk onto its lip, the lip PressLip px) or "Rest"; a disabled plank never sinks
+function HatchLook.PillState(btn, state)
+	if btn and btn.Parent then
+		btn:SetAttribute("PillState", state == "Press" and "Press" or "Rest")
+		paintPill(btn)
+	end
+end
+
+-- (kit-b U9-2b) a kit B plank in the bottom bar: a transparent tap box holding the CanvasGroup "Face" (the rise and the
+-- fade) > "Body" (the block: its face colour, the wood edge "SignEdge" inside the group, the darker "Lip"), "Label"
+-- (Button role) and, with opts.Price, "Chip" (the stone price tag) > "Coin" (the stage draws the icon in it), "Price"
+-- (Display role, brown). Attribute Disabled (CloudUI.SetDisabled) paints the sunk Off well; a press sinks the face
 function HatchLook.Pill(parent, opts)
 	opts = opts or {}
 	local P = K.PILL
 	local z = opts.ZIndex or 1
-	local kind = P[opts.Kind or "Gold"] and (opts.Kind or "Gold") or "Gold"
+	local kind = P.Look[opts.Kind or "Gold"] and (opts.Kind or "Gold") or "Gold"
 	local btn = Util.Create("TextButton", {
 		Name = opts.Name or "Pill", Text = "", AutoButtonColor = false, Active = true, BorderSizePixel = 0, BackgroundTransparency = 1, ZIndex = z, Parent = parent,
 	})
 	btn:SetAttribute("Kind", kind)
-	local shadow = frame(btn, "Shadow", {
-		Position = UDim2.fromOffset(P.ShadowIn, P.ShadowY), Size = UDim2.new(1, -2 * P.ShadowIn, 1, 0), BackgroundColor3 = P.Shadow, BackgroundTransparency = P.ShadowA, ZIndex = z,
-	})
-	corner(shadow, 0.5)
 	local face = Util.Create("CanvasGroup", { Name = "Face", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = z + 1, Parent = btn })
-	-- the capsule sits its stroke's width inside the group (a Border stroke draws outside its frame: never clipped)
-	local body = frame(face, "Body", { Position = UDim2.fromOffset(P.Edge, P.Edge), Size = UDim2.new(1, -2 * P.Edge, 1, -2 * P.Edge), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z + 1 })
-	corner(body, 0.5)
-	Util.Create("UIGradient", { Name = "Fill", Rotation = 90, Color = pillFill(P[kind]), Parent = body })
-	stroke(body, P[kind].Edge, P.Edge, 0).Name = "Edge"
-	local shine = frame(face, "Shine", { Position = UDim2.fromOffset(P.ShineX, P.ShineY), Size = UDim2.new(1, -2 * P.ShineX, P.ShineH, 0), BackgroundColor3 = K.WHITE, BackgroundTransparency = P.ShineA, ZIndex = z + 2 })
-	corner(shine, 0.5)
+	-- the block sits its edge's width inside the group (a Border stroke draws outside its frame: never clipped)
+	frame(face, "Body", { Position = UDim2.fromOffset(P.Edge, P.Edge), Size = UDim2.new(1, -2 * P.Edge, 1, -2 * P.Edge), BackgroundTransparency = 0, ZIndex = z + 1 })
 	local label = Theme.Label(opts.Text or "", "Button", { Size = opts.TextSize or 22, Stroke = 1 })
 	label.Name = "Label"
 	label.TextXAlignment = Enum.TextXAlignment.Center
 	label.ZIndex = z + 3
 	label.Parent = face
-	if P[kind].Outline then
-		Theme.TextOutline(label, 2, K.INK, 0)
-	end
 	if opts.Price then
-		local chip = frame(face, "Chip", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -P.ChipIn, 0.5, 0), BackgroundColor3 = K.BLACK, BackgroundTransparency = P.ChipA, ZIndex = z + 2 })
-		corner(chip, 0.5)
+		local chip = frame(face, "Chip", { AnchorPoint = Vector2.new(1, 0.5), ZIndex = z + 2 })
+		CloudUI.SignBlock(chip, "Stone", { EdgePx = P.TagEdge, LipPx = P.TagLip, Pad = false })
 		frame(chip, "Coin", { AnchorPoint = Vector2.new(0, 0.5), ZIndex = z + 3 })
 		local price = Theme.Label("", "Display", { Size = 20, Stroke = 1 })
 		price.Name = "Price"
@@ -1344,39 +1268,56 @@ function HatchLook.Pill(parent, opts)
 		price.ZIndex = z + 3
 		price.Parent = chip
 	end
+	btn:SetAttribute("PillState", "Rest")
 	btn:GetAttributeChangedSignal("Disabled"):Connect(function()
 		paintPill(btn)
 	end)
+	btn.MouseButton1Down:Connect(function()
+		HatchLook.PillState(btn, "Press")
+	end)
+	btn.MouseButton1Up:Connect(function()
+		HatchLook.PillState(btn, "Rest")
+	end)
+	btn.MouseLeave:Connect(function()
+		HatchLook.PillState(btn, "Rest")
+	end)
+	-- a finger that lifts never produces MouseLeave (nor MouseButton1Up once it slid off)
+	btn.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch then
+			HatchLook.PillState(btn, "Rest")
+		end
+	end)
+	btn:SetAttribute("ChipW", opts.Price and (opts.Phone and P.ChipWPhone or P.ChipW) or 0)
 	paintPill(btn)
 	HatchLook.SizePill(btn, opts.TextSize or 22, opts.Phone, opts.Coin)
-	HatchLook.SetPillChip(btn, opts.Price and (opts.Phone and P.ChipWPhone or P.ChipW) or 0)
 	return btn
 end
 
+-- a layout's text and coin sizes; the coin and the price sit on the price tag's face, above its lip
 function HatchLook.SizePill(btn, textSize, phone, coin)
 	local P = K.PILL
 	local p = HatchLook.PillParts(btn)
 	p.Label.TextSize = textSize
 	btn:SetAttribute("Phone", phone == true)
 	if p.Price then
-		coin = coin or (phone and 20 or 30)
+		coin = coin or (phone and 18 or 27)
 		p.Price.TextSize = math.max(15, textSize - 2)
 		p.Coin.Size = UDim2.fromOffset(coin, coin)
-		p.Coin.Position = UDim2.new(0, P.ChipPad, 0.5, 0)
+		p.Coin.Position = UDim2.new(0, P.ChipPad, 0.5, -math.floor(P.TagLip / 2))
 		p.Price.Position = UDim2.fromOffset(P.ChipPad + coin + P.CoinGap, 0)
-		p.Price.Size = UDim2.new(1, -(2 * P.ChipPad + coin + P.CoinGap), 1, 0)
+		p.Price.Size = UDim2.new(1, -(2 * P.ChipPad + coin + P.CoinGap), 1, -P.TagLip)
 	end
 end
 
--- the chip's width for a price priceW px wide: the mock's 80 / 66 at the least, only its content's when the label needs
--- the room; fits = the label (labelW px) fits beside it
+-- the price tag's width for a price priceW px wide: the mock's 80 / 66 at the least, only its content's when the label
+-- needs the room; fits = the label (labelW px) fits beside it on the face (inside the block's edges)
 function HatchLook.FitPill(btn, labelW, priceW, parts)
 	local P = K.PILL
 	local p = parts or HatchLook.PillParts(btn)
 	local coin = p.Coin and p.Coin.Size.X.Offset or 0
 	local content = 2 * P.ChipPad + coin + P.CoinGap + priceW
 	local least = btn:GetAttribute("Phone") == true and P.ChipWPhone or P.ChipW
-	local room = btn.Size.X.Offset - P.ChipIn - P.LabelL - P.LabelGap
+	local room = btn.Size.X.Offset - 2 * P.Edge - P.ChipIn - P.LabelL - P.LabelGap
 	local w = math.max(content, least)
 	if labelW > room - w then
 		w = content
@@ -1384,29 +1325,21 @@ function HatchLook.FitPill(btn, labelW, priceW, parts)
 	return math.ceil(w), labelW <= room - w
 end
 
+-- the price tag w px wide (0: hidden, the label takes the whole face). parts: the button's PillParts already looked up
+-- (review round 2: no lookups per refresh)
 function HatchLook.SetPillChip(btn, w, parts)
-	local P = K.PILL
-	local p = parts or HatchLook.PillParts(btn)
-	if p.Chip then
-		p.Chip.Visible = w > 0
-		p.Chip.Size = UDim2.new(0, math.max(0, w), 1, -P.ChipV)
-	end
-	if w > 0 then
-		p.Label.Position = UDim2.fromOffset(P.LabelL, 0)
-		p.Label.Size = UDim2.new(1, -(P.LabelL + P.LabelGap + w + P.ChipIn), 1, 0)
-	else
-		p.Label.Position = UDim2.fromOffset(P.LabelL, 0)
-		p.Label.Size = UDim2.new(1, -2 * P.LabelL, 1, 0)
-	end
+	btn:SetAttribute("ChipW", math.max(0, w))
+	layoutPill(btn, parts or HatchLook.PillParts(btn))
 end
 
 function HatchLook.PillIn(parts, k, rise)
 	k = math.max(0, math.min(1, k))
 	parts.Face.Position = UDim2.fromOffset(0, (1 - k) * (rise or 0))
 	parts.Face.GroupTransparency = 1 - k
-	parts.Shadow.BackgroundTransparency = 1 - k * (1 - K.PILL.ShadowA)
 end
 
+-- (kit-b U9-2b) a small chip: a transparent 44 px tap box drawing the navy "Pill" block (the kit's navy sign: its gold-lip
+-- edge, its darker lip) with its cream "Label"
 function HatchLook.Chip(parent, opts)
 	opts = opts or {}
 	local C = K.CHIP
@@ -1414,8 +1347,8 @@ function HatchLook.Chip(parent, opts)
 	local btn = Util.Create("TextButton", {
 		Name = opts.Name or "Chip", Text = "", AutoButtonColor = false, Active = true, BorderSizePixel = 0, BackgroundTransparency = 1, ZIndex = z, Parent = parent,
 	})
-	local pill = frame(btn, "Pill", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = K.BLACK, BackgroundTransparency = C.A, ZIndex = z })
-	corner(pill, 0.5)
+	local pill = frame(btn, "Pill", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 0, ZIndex = z })
+	CloudUI.SignBlock(pill, "Navy", { EdgePx = C.Edge, LipPx = C.Lip, Pad = false })
 	local label = Theme.Label(opts.Text or "", "Label", { Size = opts.TextSize or 18, Stroke = 1 })
 	label.Name = "Label"
 	label.TextColor3 = C.Ink
@@ -1427,47 +1360,64 @@ function HatchLook.Chip(parent, opts)
 	return btn
 end
 
+-- the Fast hatch chip: the navy chip with its square "Switch" (a slot in its lit edge) and the square stone "Knob"
 function HatchLook.FastChip(parent, opts)
 	opts = opts or {}
 	local C = K.CHIP
 	local z = opts.ZIndex or 1
 	local btn = HatchLook.Chip(parent, { Name = opts.Name or "FastHatch", Text = "Fast hatch", TextSize = opts.TextSize, Phone = opts.Phone, ZIndex = z })
 	local pill = btn:FindFirstChild("Pill")
-	pill.BackgroundColor3 = C.FastBg
-	pill.BackgroundTransparency = C.FastA
-	stroke(pill, C.FastEdge, opts.Phone and C.EdgePhone or C.Edge, 0).Name = "Edge"
-	local sw = frame(pill, "Switch", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = C.Off, BackgroundTransparency = 0, ZIndex = z + 1 })
-	corner(sw, 0.5)
-	corner(frame(sw, "Knob", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z + 2 }), 0.5)
+	local sw = frame(pill, "Switch", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = C.Slot, BackgroundTransparency = 0, ZIndex = z + 1 })
+	local edge = stroke(sw, C.SlotEdge, 2, 0)
+	edge.Name = "SlotEdge"
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	frame(sw, "Knob", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = C.Knob, BackgroundTransparency = 0, ZIndex = z + 2 })
 	HatchLook.SizeChip(btn, opts.TextSize or 18, opts.Phone)
 	HatchLook.SetFast(btn, false)
 	return btn
 end
 
+-- a layout's chip: the block H / HPhone tall inside the tap box (its edge inside the box too), the words over the lip
 function HatchLook.SizeChip(btn, textSize, phone)
 	local C = K.CHIP
 	local pill = btn:FindFirstChild("Pill")
 	local label = pill:FindFirstChild("Label")
-	pill.Size = UDim2.new(1, 0, 0, phone and C.HPhone or C.H)
+	pill.Size = UDim2.new(1, -2 * C.Edge, 0, (phone and C.HPhone or C.H) - 2 * C.Edge)
 	label.TextSize = textSize
 	local sw = pill:FindFirstChild("Switch")
 	if sw then
 		local w, h = phone and C.SwitchWPhone or C.SwitchW, phone and C.SwitchHPhone or C.SwitchH
-		sw.Position = UDim2.new(0, C.SwitchX, 0.5, 0)
+		sw.Position = UDim2.new(0, C.SwitchX, 0.5, -math.floor(C.Lip / 2))
 		sw.Size = UDim2.fromOffset(w, h)
 		sw:FindFirstChild("Knob").Size = UDim2.fromOffset(h - 4, h - 4)
-		local edge = pill:FindFirstChild("Edge")
-		if edge then
-			edge.Thickness = phone and C.EdgePhone or C.Edge
-		end
 		-- the label centred in the room right of the switch
 		label.Position = UDim2.fromOffset(C.SwitchX + w + 4, 0)
-		label.Size = UDim2.new(1, -(C.SwitchX + w + 4 + C.SwitchX), 1, 0)
+		label.Size = UDim2.new(1, -(C.SwitchX + w + 4 + C.SwitchX), 1, -C.Lip)
 		HatchLook.SetFast(btn, btn:GetAttribute("On") == true)
 	else
 		label.Position = UDim2.fromOffset(C.Pad, 0)
-		label.Size = UDim2.new(1, -2 * C.Pad, 1, 0)
+		label.Size = UDim2.new(1, -2 * C.Pad, 1, -C.Lip)
 	end
+end
+
+-- (kit-b U9-2b) a flat tag of the reveal (NEW!, EVOLVED): a Frame named `name` painted as a kit B block in `look` (a
+-- CloudUI.SignLooks name: its face, wood or gold-lip edge Edge px and darker lip) with its words "Text" (Tag role, in
+-- capitals) on the face above the lip, the look's ink; square, never tilted
+HatchLook.TAG = { Edge = 2, Lip = 3 }
+function HatchLook.Tag(parent, name, text, look, opts)
+	opts = opts or {}
+	local T = HatchLook.TAG
+	local z = opts.ZIndex or 6
+	local tag = frame(parent, name, { BackgroundTransparency = 0, ZIndex = z, Visible = opts.Visible ~= false })
+	CloudUI.SignBlock(tag, look, { EdgePx = T.Edge, LipPx = T.Lip, Pad = false })
+	local words = Theme.Label(text, "Tag", { Size = opts.TextSize or 15 })
+	words.Name = "Text"
+	words.Size = UDim2.new(1, 0, 1, -T.Lip)
+	words.ZIndex = z + 1
+	words.TextColor3 = CloudUI.SignLooks[look].Text
+	words.TextXAlignment = Enum.TextXAlignment.Center
+	words.Parent = tag
+	return tag, words
 end
 
 function HatchLook.SetChipText(btn, text)
@@ -1484,8 +1434,13 @@ function HatchLook.SetFast(btn, on)
 	if not sw then
 		return
 	end
+	local C = K.CHIP
 	local knob = sw:FindFirstChild("Knob")
-	sw.BackgroundColor3 = on and Theme.Colors.Good or K.CHIP.Off
+	sw.BackgroundColor3 = on and C.On or C.Slot
+	local edge = sw:FindFirstChild("SlotEdge")
+	if edge then
+		edge.Color = on and C.OnEdge or C.SlotEdge
+	end
 	if knob then
 		knob.Position = on and UDim2.new(1, -knob.Size.X.Offset - 2, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)
 	end

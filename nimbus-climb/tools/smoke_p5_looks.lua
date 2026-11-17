@@ -5,7 +5,7 @@
 --   client_p5looks         every careui site that draws an OWNED pet draws its stored stage, evolved at Low: the Pets grid
 --                          slot (EvolvedView) and the detail card, the Index tile + detail (State.BestStage), the Team
 --                          card + picker tiles, the Fusion tiles, the Food Machine / garden / Training rows and the roulette
---                          reveal of an evolved key (+ the gold "Evolved" ribbon). (Garden pets, followers, the Ring cards
+--                          reveal of an evolved key (+ the "EVOLVED" tag, kit-b U9-2b). (Garden pets, followers, the Ring cards
 --                          and battle units belong to homefx / pets / dungeonclient / battleclient and their own tests.)
 --   client_p5support_power the Pets panel detail of an Economy (Support) pet shows "Battle power N" = BattleCatalog.UnitPower
 --                          (its Support role), never the raw Power 2-4 (m17)
@@ -361,8 +361,9 @@ local function clientScenarios()
 				break
 			end
 		end
-		T.check(ribbon and shown(ribbon) and find(ribbon, "Text") and find(ribbon, "Text").Text:find("Evolved", 1, true),
-			"p5looks reveal: rolling a copy of an evolved key shows the gold 'Evolved' ribbon")
+		-- (kit-b U9-2b: a navy kit B tag in capitals)
+		T.check(ribbon and shown(ribbon) and find(ribbon, "Text") and find(ribbon, "Text").Text:find("EVOLVED", 1, true),
+			"p5looks reveal: rolling a copy of an evolved key shows the 'EVOLVED' tag")
 		T.check(lowAt(evolvedModel(ribbon and ribbon.Parent, 1), 1), "p5looks reveal: ...and the evolved model (stage 1, Low)")
 		closeAll()
 		advance(1)
