@@ -155,6 +155,8 @@ local C = {
 	Down = SIGN.Sky,
 	Sent = SIGN.Well,
 	Medal = { SIGN.Gold, Color3.fromRGB(200, 210, 226), Color3.fromRGB(214, 146, 92) }, -- gold, silver, bronze (brown ink on each)
+	-- (U9-7 look) a raid tier's chip, rising in heat (the Raid page's rows and the dare panel: ArenaController.TierColor)
+	Tier = { Starter = SIGN.Grass, Mid = SIGN.Sky, High = SIGN.Gold, Max = SIGN.Red },
 }
 
 -- typography as UTF-8 escapes (the source stays ASCII). kit-b U7b: the trophies, swords and crowns are PixelIcons
@@ -1601,6 +1603,47 @@ local function raidRewardLine()
 	return ""
 end
 
+-- (U9-7 look) a raid tier's chip colour (the Raid page and the dare panel); a stone tile for an unknown tier
+function ArenaController.TierColor(id)
+	return C.Tier[tostring(id)] or SIGN.Tile
+end
+
+-- (U9-7 look) a fact tag: a stone tag with its pixel icon before a short value ("crown L40", "sword x0.8", "coin x0.7")
+local function factTag(parent, name, icon, text, order)
+	return lead(colorPill(parent, name, text, SIGN.Tile, 18, order), icon)
+end
+
+-- (U9-7 look) a tier's facts in `parent` (a horizontal list): its chip (in chipParent when given: the caption's line),
+-- the boss's level, its hits and the rewards
+function ArenaController.TierFacts(parent, tier, chipParent)
+	colorPill(chipParent or parent, "Tier", tostring(tier.Id), ArenaController.TierColor(tier.Id), 18, 1)
+	factTag(parent, "BossLevel", "crown", "L" .. tostring(tier.BossLevel), 2)
+	factTag(parent, "Hits", "sword", "x" .. tostring(tier.Hit), 3)
+	factTag(parent, "Rewards", "coin", "x" .. tostring(tier.Reward), 4)
+end
+
+-- (U9-7 look) one live raid fight on the Raid page: a stone tile, its tier chip, the fighters and the floor tag on top, the
+-- boss's health under them as a block bar (10 red blocks on a 3 px lip) with the percent. The fight was one sentence
+function ArenaController.FightRow(parent, id, order)
+	local root = tile(parent, "Fight_" .. tostring(id), { Size = UDim2.new(1, 0, 0, 64), LayoutOrder = order })
+	local line = makeFrame(root, "Line", { Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 0, 28) })
+	listLayout(line, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	colorPill(line, "Tier", tostring(id), ArenaController.TierColor(id), 18, 1)
+	local players = autoText(line, "Players", "", "Heading", 18, INK, 2)
+	players.TextXAlignment = Enum.TextXAlignment.Left -- (before its icon: PixelIcon.Lead reads the alignment once)
+	lead(players, "people")
+	local floor = colorPill(line, "Floor", "Floor", SIGN.Well, 18, 3)
+	local bar = SignKit.BlockRow(root, { Count = 10, BlockW = 16, BlockH = 14, Gap = 3, LipPx = 3, Fill = SIGN.Red, FillLip = SIGN.RedLip })
+	bar.Name = "Health"
+	bar.Position = UDim2.fromOffset(10, 40)
+	local percent = makeText(root, "Percent", "", "Heading", 18, INK, {
+		Position = UDim2.fromOffset(10 + 10 * 16 + 9 * 3 + 10, 36),
+		Size = UDim2.fromOffset(90, 22),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+	return { Root = root, Players = players, Floor = floor, Bar = bar, Percent = percent }
+end
+
 local function buildArena()
 	local win = newWindow("Arena", "Battle Arena")
 	local content = win.Panel.Content
@@ -1724,20 +1767,39 @@ local function buildArena()
 	listLayout(ui.BossCard, Enum.FillDirection.Vertical, 8)
 	ui.RaidFaces = TeamFaces.New(ui.BossCard, { LayoutOrder = 0, ReturnTo = panelReturn })
 	local bossHead = makeFrame(ui.BossCard, "Head", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
-	listLayout(bossHead, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	listLayout(bossHead, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	ui.BossState = colorPill(bossHead, "State", "LIVE", C.Boss, 18, 1)
 	ui.BossName = autoText(bossHead, "Name", "", "Title", 30, INK, 2)
+	ui.BossName.TextXAlignment = Enum.TextXAlignment.Left -- (U9-7 look) the name 8 px after the chip (centred, its fitted box left a hole)
 	-- (kit-b U9-7) the element chip on its own row under the name (beside it, a phone's docked window cut "Flame" off)
 	ui.BossElement = makeFrame(ui.BossCard, "Element", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
 	listLayout(ui.BossElement, Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	ui.BossBlurb = wrapText(ui.BossCard, "Blurb", "", "Body", 19, MUTED, 3)
-	ui.TierLine = wrapText(ui.BossCard, "TierLine", "", "Heading", 20, INK, 4)
+	-- (U9-7 look) my tier as a stone tile of facts: the tier's chip, the boss's level, its hits and the rewards, each a
+	-- pixel icon and a number (was one sentence)
+	ui.TierLine = tile(ui.BossCard, "TierLine", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 }, 0)
+	pad(ui.TierLine, 12, 8, 12, 10)
+	listLayout(ui.TierLine, Enum.FillDirection.Vertical, 6)
+	ui.TierHead = makeFrame(ui.TierLine, "Head", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 1 })
+	listLayout(ui.TierHead, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	local caption = autoText(ui.TierHead, "Caption", "Your tier", "Heading", 18, MUTED, 0)
+	caption.TextXAlignment = Enum.TextXAlignment.Left
+	ui.TierFacts = makeFrame(ui.TierLine, "Facts", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
+	listLayout(ui.TierFacts, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	ui.RewardLine = wrapText(ui.BossCard, "RewardLine", "", "Heading", 20, C.Power, 5)
 	ui.BossLine = wrapText(ui.BossCard, "Line", "", "Body", 19, INK, 6)
 	ui.FightList = makeFrame(ui.BossCard, "Fights", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 7 })
-	listLayout(ui.FightList, Enum.FillDirection.Vertical, 4)
+	listLayout(ui.FightList, Enum.FillDirection.Vertical, 6)
 	ui.FightRows = {}
-	ui.NextBoss = wrapText(ui.BossCard, "NextBoss", "", "Body", 19, MUTED, 8)
+	-- (U9-7 look) the next boss on a navy timer plate, the time in gold (the side cards' x2 Rewards chip)
+	ui.NextBoss = makeFrame(ui.BossCard, "NextBoss", { Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 8 })
+	CloudUI.SignBlock(ui.NextBoss, "Navy", { EdgePx = 2, LipPx = 0 })
+	pad(ui.NextBoss, 12, 0, 14, 0)
+	listLayout(ui.NextBoss, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	ui.NextBossName = autoText(ui.NextBoss, "Label", "", "Heading", 18, SIGN.Stone, 1)
+	ui.NextBossName.TextXAlignment = Enum.TextXAlignment.Left
+	lead(ui.NextBossName, "hourglass")
+	ui.NextBossClock = autoText(ui.NextBoss, "Clock", "", "Display", 22, SIGN.Gold, 2)
 
 	ui.NextCard = inset(ui.RaidScroll, "Next", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	pad(ui.NextCard, 16, 10, 16, 12)
@@ -2051,12 +2113,26 @@ local function buildArena()
 			ui.BossState.Text = "DOWN"
 			paintPill(ui.BossState, C.Down)
 			ui.BossLine.Text = tostring(tier.Id) .. " boss back in " .. tostring(math.ceil(closed)) .. " s"
+			PixelIcon.Mark(ui.BossLine, "hourglass")
 		else
+			PixelIcon.Mark(ui.BossLine, nil)
 			ui.BossState.Text = mine and (mine.Enraged and "ENRAGED" or "LIVE") or "WAITING"
 			paintPill(ui.BossState, mine and C.Boss or C.Waiting)
 			ui.BossLine.Text = "Walk through the iron boss gate beside the colosseum's main entrance to fight. Its pillar lets you dare a higher tier."
 		end
-		ui.TierLine.Text = tier and ("Your tier: " .. tostring(tier.Id) .. " - boss L" .. tostring(tier.BossLevel) .. ", hits x" .. tostring(tier.Hit) .. ", rewards x" .. tostring(tier.Reward)) or ""
+		ui.TierLine.Visible = tier ~= nil
+		local tierSig = tier and table.concat({ tostring(tier.Id), tostring(tier.BossLevel), tostring(tier.Hit), tostring(tier.Reward) }, "|") or ""
+		if ui.TierSig ~= tierSig then
+			ui.TierSig = tierSig
+			clearChildren(ui.TierFacts)
+			local oldChip = ui.TierHead:FindFirstChild("Tier")
+			if oldChip then
+				oldChip:Destroy()
+			end
+			if tier then
+				ArenaController.TierFacts(ui.TierFacts, tier, ui.TierHead)
+			end
+		end
 		ui.RewardLine.Text = raidRewardLine()
 		-- the fights running now, one row per tier
 		local anyFight = false
@@ -2067,15 +2143,18 @@ local function buildArena()
 			if type(fight) == "table" then
 				anyFight = true
 				if not row then
-					row = wrapText(ui.FightList, "Fight_" .. id, "", "Body", 19, INK, i)
+					row = ArenaController.FightRow(ui.FightList, id, i)
 					ui.FightRows[id] = row
 				end
 				local maxHp = tonumber(fight.MaxHp) or 0
-				local percent = maxHp > 0 and math.floor(Util.Clamp((tonumber(fight.Hp) or 0) / maxHp, 0, 1) * 100 + 0.5) or 0
-				row.Text = id .. " - " .. commas(fight.Players or 0) .. " fighting - HP " .. percent .. "%" .. (fight.Floor == true and " (floor)" or "")
-				row.Visible = true
+				local share = maxHp > 0 and Util.Clamp((tonumber(fight.Hp) or 0) / maxHp, 0, 1) or 0
+				row.Players.Text = commas(fight.Players or 0) .. " fighting"
+				row.Floor.Visible = fight.Floor == true
+				SignKit.FillBlocks(row.Bar, math.ceil(share * 10 - 0.001))
+				row.Percent.Text = "HP " .. math.floor(share * 100 + 0.5) .. "%"
+				row.Root.Visible = true
 			elseif row then
-				row.Visible = false
+				row.Root.Visible = false
 			end
 		end
 		ui.FightList.Visible = anyFight
@@ -2083,7 +2162,8 @@ local function buildArena()
 		local nextInfo = raid and bossInfo(raid.NextBoss)
 		ui.NextBoss.Visible = nextIn ~= nil
 		if nextIn then
-			ui.NextBoss.Text = "Next boss: " .. tostring(nextInfo and nextInfo.Name or "?") .. " in " .. clock(nextIn)
+			ui.NextBossName.Text = "Next boss " .. tostring(nextInfo and nextInfo.Name or "?") .. " in"
+			ui.NextBossClock.Text = clock(nextIn)
 		end
 		-- Double Rewards: on its way or running (the boss rotation is the line above, not an event)
 		local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next.Kind == "DoubleRewards" and S.Arena.Next or nil
@@ -2443,8 +2523,10 @@ function refreshSide()
 					end,
 				})
 				-- (kit-b U9-7) the time left as a row of gold blocks that go out one by one (the bar's block language)
-				local track = makeFrame(card, "TimerRow", { Size = UDim2.new(1, 0, 0, 12), LayoutOrder = 5 })
-				local blocks = SignKit.BlockRow(track, { Count = K.TIMER_BLOCKS, BlockW = 22, BlockH = 10, Gap = 3 })
+				-- (U9-7 look) blocks 14 px high on a 3 px lip (10 px with the kit's 4 px lip were dark slabs: 2 px of gold),
+				-- the loading bar's proportions; 6 px clear of the card's lip below
+				local track = makeFrame(card, "TimerRow", { Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 5 })
+				local blocks = SignKit.BlockRow(track, { Count = K.TIMER_BLOCKS, BlockW = 22, BlockH = 14, Gap = 3, LipPx = 3 })
 				blocks.Name = "Timer"
 				local total = math.max(1, tonumber(invite.ExpiresIn) or 30)
 				table.insert(U.SideCards, function()

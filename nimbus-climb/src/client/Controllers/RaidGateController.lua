@@ -57,9 +57,10 @@ RaidGateController.Closed = Util.Signal()
 local K = {
 	DISPLAY_ORDER = 23,
 	PREF_W = 560, -- design px of the dare panel
-	PREF_H = 500,
+	PREF_H = 500, -- (U9-7 look) the most it takes: H.fitDock sizes the panel to its rows (a fixed 500 left a third blank)
 	INTRO_H = 30,
-	ROW_H = 72,
+	ROW_H = 78, -- (U9-7 look) two lines: the tier's steps and chip, then its facts
+	STEP = 8, -- (U9-7 look) a step of the tier's stair: 8 px wide, 6 px higher than the one before
 	GAP = 8,
 	BUTTON_W = 120,
 	BUTTON_H = 56, -- >= 44 px under the 0.8 touch scale
@@ -482,8 +483,41 @@ function H.dare(tierId)
 	end)
 end
 
+-- (U9-7 look) the tier's stair: `n` gold steps rising left to right (the header ribbon's step motif), each on its lip
+function H.steps(parent, n)
+	local holder = Instance.new("Frame")
+	holder.Name = "Steps"
+	holder.BackgroundTransparency = 1
+	holder.BorderSizePixel = 0
+	holder.Size = UDim2.fromOffset(3 * (K.STEP + 2), 24)
+	holder.LayoutOrder = 0
+	holder.Parent = parent
+	for j = 1, 3 do
+		local lit = j <= n
+		local step = Instance.new("Frame")
+		step.Name = "Step" .. j
+		step.BorderSizePixel = 0
+		step.BackgroundColor3 = lit and SIGN.Gold or SIGN.Well
+		step.AnchorPoint = Vector2.new(0, 1)
+		step.Position = UDim2.new(0, (j - 1) * (K.STEP + 2), 1, 0)
+		step.Size = UDim2.fromOffset(K.STEP, 6 * j + 4)
+		step.Parent = holder
+		local lip = Instance.new("Frame")
+		lip.Name = "Lip"
+		lip.BorderSizePixel = 0
+		lip.BackgroundColor3 = lit and SIGN.GoldLip or SIGN.WellEdge
+		lip.AnchorPoint = Vector2.new(0, 1)
+		lip.Position = UDim2.new(0, 0, 1, 0)
+		lip.Size = UDim2.new(1, 0, 0, 2)
+		lip.Parent = step
+	end
+	return holder
+end
+
 function H.row(tier, order)
-	-- (kit-b U9-7) a stone tile per tier; Dare is a red (risky) block, the window has no green
+	-- (kit-b U9-7) a stone tile per tier; Dare is a red (risky) block, the window has no green. (U9-7 look) Two lines: the
+	-- tier's rising steps and its chip, then its facts as the Raid page's tags (crown L40, sword x0.8, coin x0.7; the
+	-- comma sentence wrapped on a phone)
 	local row = Instance.new("Frame")
 	row.Name = "Row_" .. tostring(tier.Id)
 	row.BorderSizePixel = 0
@@ -491,12 +525,42 @@ function H.row(tier, order)
 	row.LayoutOrder = order
 	row.Parent = U.List
 	CloudUI.SignBlock(row, "Stone", { EdgePx = 2, LipPx = 4 })
-	H.text(row, "Text", tostring(tier.Id) .. " - boss L" .. tostring(tier.BossLevel) .. ", hits x" .. tostring(tier.Hit) .. ", rewards x" .. tostring(tier.Reward), "Body", 19, INK, {
-		Position = UDim2.fromOffset(12, 0),
-		Size = UDim2.new(1, -(K.BUTTON_W + 32), 1, -4),
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
+	local arena = H.controller("ArenaController")
+	local rank = 0
+	local BC = H.catalog()
+	for i, id in ipairs(BC and BC.RaidTierOrder or {}) do
+		if id == tier.Id then
+			rank = i - 1
+		end
+	end
+	local function line(name, y)
+		local f = Instance.new("Frame")
+		f.Name = name
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel = 0
+		f.Position = UDim2.fromOffset(12, y)
+		f.Size = UDim2.new(1, -(K.BUTTON_W + 32), 0, 30)
+		f.Parent = row
+		Util.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Parent = f,
+		})
+		return f
+	end
+	local head = line("Head", 6)
+	H.steps(head, math.max(1, math.min(3, rank)))
+	local facts = line("Facts", 40)
+	if arena and type(arena.TierFacts) == "function" then
+		pcall(arena.TierFacts, facts, tier, head)
+	else
+		H.text(facts, "Text", tostring(tier.Id) .. "  L" .. tostring(tier.BossLevel) .. "  x" .. tostring(tier.Hit) .. "  x" .. tostring(tier.Reward), "Heading", 18, INK, {
+			Size = UDim2.new(1, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+	end
 	CloudUI.Button({
 		Name = "Dare_" .. tostring(tier.Id),
 		Text = "Dare",
@@ -534,6 +598,21 @@ function H.fillRows()
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 1,
 	})
+	H.fitDock(count)
+end
+
+-- (U9-7 look) the panel as tall as its rows: the frame round Panel.Content (82), the list's 8 px top and bottom, the intro
+-- and `count` rows (at least one), 14 px to spare; the dock is made again for a new height
+function H.fitDock(count)
+	local h = math.min(K.PREF_H, 82 + 8 + K.INTRO_H + math.max(1, count) * (K.ROW_H + K.GAP) + 8 + 14)
+	if U.DockH == h or not U.Holder then
+		return
+	end
+	U.DockH = h
+	if U.Dock and U.Dock.Disconnect then
+		U.Dock.Disconnect()
+	end
+	U.Dock = NeonKit.Dock(U.Holder, U.Fit, K.PREF_W, h)
 end
 
 function H.onBack(_name, inputState)

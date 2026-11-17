@@ -1820,9 +1820,31 @@ function R.chipText(room, count)
 	return "Back soon..."
 end
 
--- (kit-b U7b) the room pips after the room line: `room` lit PixelIcon pips of `count`, the rest dim
+-- (kit-b U7b) the room pips after the room line; (U9-7 look) in the bar language: a small SignKit block row at the line's
+-- right end (14 x 12 blocks on a 2 px lip), lit gold up to the room the run is in, the boss room's block red (its lip
+-- red while it is ahead). The flat pips had no edge and no lip
 function R.pips(label, room, count)
-	PixelIcon.Mark(label, "pip", { After = true, Count = math.max(0, math.min(room, count)), Of = count, Gap = 12 })
+	local row = label:FindFirstChild("Rooms")
+	if row and row:GetAttribute("Count") ~= count then
+		row:Destroy()
+		row = nil
+	end
+	if not row then
+		row = SignKit.BlockRow(label, { Count = count, BlockW = 14, BlockH = 12, Gap = 3, LipPx = 2 })
+		row.Name = "Rooms"
+		row.AnchorPoint = Vector2.new(1, 0)
+		row.Position = UDim2.new(1, 0, 0, math.floor((label.Size.Y.Offset - 12) / 2))
+	end
+	local lit = SignKit.FillBlocks(row, math.max(0, math.min(room, count)))
+	local boss = row:FindFirstChild("Block" .. count)
+	local face = boss and boss:FindFirstChild("Face")
+	if face then
+		face.BackgroundColor3 = (lit >= count) and SIGN.Red or SIGN.Stone
+		local lip = face:FindFirstChild("Lip")
+		if lip then
+			lip.BackgroundColor3 = SIGN.RedLip
+		end
+	end
 end
 
 function R.lootText()

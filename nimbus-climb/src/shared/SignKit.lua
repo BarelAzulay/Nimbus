@@ -502,15 +502,21 @@ function SignKit.Rope(parent, opts)
 	return place(rope, opts, "Rope")
 end
 
--- opts: Count, BlockW, BlockH, Gap
+-- opts: Count, BlockW, BlockH, Gap, (U9-7 look) LipPx (the lip under each face: Sizes.BlockLip; a small block keeps its
+-- face about three quarters of its height, as the loading bar's), EdgePx (Sizes.BlockEdge), Fill / FillLip (the lit
+-- blocks' face and lip: gold by default; a role colour, e.g. a boss's health in red)
+local BLOCK_FILL = setmetatable({}, { __mode = "k" }) -- [row] = { face, lip }
 function SignKit.BlockRow(parent, opts)
 	opts = opts or {}
 	local n = math.max(1, math.floor(tonumber(opts.Count) or 12))
 	local bw, bh = tonumber(opts.BlockW) or Z.BlockW, tonumber(opts.BlockH) or Z.BlockH
 	local gap = tonumber(opts.Gap) or Z.BlockGap
-	local e = Z.BlockEdge
+	local e = tonumber(opts.EdgePx) or Z.BlockEdge
+	local lipPx = tonumber(opts.LipPx) or Z.BlockLip
 	local row = frame("BlockRow", { Size = UDim2.fromOffset(n * bw + (n - 1) * gap, bh) }, parent)
 	row:SetAttribute("Count", n)
+	row:SetAttribute("LipPx", lipPx)
+	BLOCK_FILL[row] = { typeof(opts.Fill) == "Color3" and opts.Fill or Sign.Gold, typeof(opts.FillLip) == "Color3" and opts.FillLip or Sign.GoldLip }
 	for i = 1, n do
 		local b = fill("Block" .. i, Sign.Wood, {
 			Position = UDim2.fromOffset((i - 1) * (bw + gap), 0),
@@ -523,7 +529,7 @@ function SignKit.BlockRow(parent, opts)
 		fill("Lip", Sign.StoneLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
-			Size = UDim2.new(1, 0, 0, Z.BlockLip),
+			Size = UDim2.new(1, 0, 0, lipPx),
 		}, face)
 	end
 	place(row, opts, "BlockRow")
@@ -531,19 +537,21 @@ function SignKit.BlockRow(parent, opts)
 	return row
 end
 
--- the first k blocks gold (face and lip), the rest stone; k is floored and clamped to 0..Count. Returns k
+-- the first k blocks lit (gold, or the row's Fill: face and lip), the rest stone; k is floored and clamped to 0..Count.
+-- Returns k
 function SignKit.FillBlocks(row, k)
 	local n = row:GetAttribute("Count") or 0
+	local lit = BLOCK_FILL[row] or { Sign.Gold, Sign.GoldLip }
 	k = math.max(0, math.min(n, math.floor(tonumber(k) or 0)))
 	for i = 1, n do
 		local b = row:FindFirstChild("Block" .. i)
 		local face = b and b:FindFirstChild("Face")
 		if face then
 			local on = i <= k
-			face.BackgroundColor3 = on and Sign.Gold or Sign.Stone
+			face.BackgroundColor3 = on and lit[1] or Sign.Stone
 			local lip = face:FindFirstChild("Lip")
 			if lip then
-				lip.BackgroundColor3 = on and Sign.GoldLip or Sign.StoneLip
+				lip.BackgroundColor3 = on and lit[2] or Sign.StoneLip
 			end
 		end
 	end

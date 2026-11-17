@@ -428,7 +428,10 @@ S.client_raid_dare = guarded("client_raid_dare", function()
 		end
 		T.check(find(win, "Dare_High") and find(win, "Dare_Max") and find(win, "Dare_Mid") == nil and find(win, "Dare_Starter") == nil, "raid dare client: a Mid team sees High and Max only")
 		local high, max = textOf(find(win, "Row_High")), textOf(find(win, "Row_Max"))
-		T.check(high:find("L70", 1, true) and high:find("hits x1", 1, true) and high:find("rewards x1", 1, true) and max:find("L95", 1, true) and max:find("x1.3", 1, true), "raid dare client: rows name the boss level, the hit and the reward scale", high .. " / " .. max)
+		-- (U9-7 look) each fact a tag with its pixel icon (crown level, sword hits, coin rewards)
+		local highRow = find(win, "Row_High")
+		T.check(high:find("L70", 1, true) and high:find("x1", 1, true) and max:find("L95", 1, true) and max:find("x1.3", 1, true)
+			and highRow and find(highRow, "Hits") and find(highRow, "Rewards") and find(highRow, "BossLevel"), "raid dare client: rows name the boss level, the hit and the reward scale", high .. " / " .. max)
 
 		-- the Arena panel takes over one side panel at a time, both ways
 		AC.OpenArena("Raid")
@@ -518,16 +521,30 @@ S.client_raid_panel = guarded("client_raid_panel", function()
 			return
 		end
 		T.check(find(win, "JoinRaid") == nil and find(win, "Why") == nil, "raid panel client: no Join button, no join reason")
+		-- (U9-7 look) my tier as a tile of tags: the chip, crown L40, sword x0.8, coin x0.7
 		local tier = find(win, "TierLine")
-		T.check(tier and KC.isShown(tier) and tier.Text:find("Your tier: Mid", 1, true) and tier.Text:find("L40", 1, true) and tier.Text:find("x0.8", 1, true) and tier.Text:find("x0.7", 1, true), "raid panel client: my tier, its boss level, hits and rewards", tier and tier.Text)
+		local tierText = textOf(tier):upper()
+		T.check(tier and KC.isShown(tier) and tierText:find("YOUR TIER", 1, true) and tierText:find("MID", 1, true) and tierText:find("L40", 1, true)
+			and tierText:find("X0.8", 1, true) and tierText:find("X0.7", 1, true), "raid panel client: my tier, its boss level, hits and rewards", tierText)
+		local hits, rewards = find(tier, "Hits"), find(tier, "Rewards")
+		local hitsIcon, rewardsIcon = hits and hits:FindFirstChild("LeadIcon"), rewards and rewards:FindFirstChild("LeadIcon")
+		T.check(hitsIcon and hitsIcon:GetAttribute("PixelIcon") == "sword" and rewardsIcon and rewardsIcon:GetAttribute("PixelIcon") == "coin",
+			"raid panel client: ...each fact a pixel icon before its value (sword hits, coin rewards)")
 		local reward = find(win, "RewardLine")
 		T.check(reward and reward.Text == "Rewards ready", "raid panel client: the reward state", reward and reward.Text)
+		-- (U9-7 look) one stone row per running fight: its chip, the fighters, the floor tag, the boss's health as a block bar
 		local fights = find(win, "Fights")
-		local list = fights and textOf(fights) or ""
-		T.check(list:find("High - 2 fighting - HP 50%", 1, true) and list:find("(floor)", 1, true) and list:find("Starter - 1 fighting - HP 30%", 1, true), "raid panel client: one row per running fight, the floor one marked", list)
-		T.check(not textOf(find(fights, "Fight_Starter")):find("(floor)", 1, true), "raid panel client: ...a pocket fight is not marked")
+		local high, starter = find(fights, "Fight_High"), find(fights, "Fight_Starter")
+		local highText, starterText = textOf(high):upper(), textOf(starter):upper()
+		local highBar, starterBar = high and find(high, "Health"), starter and find(starter, "Health")
+		T.check(highText:find("2 FIGHTING", 1, true) and highText:find("HP 50%", 1, true) and highText:find("FLOOR", 1, true)
+			and starterText:find("1 FIGHTING", 1, true) and starterText:find("HP 30%", 1, true), "raid panel client: one row per running fight, the floor one marked", highText .. " / " .. starterText)
+		T.check(not starterText:find("FLOOR", 1, true), "raid panel client: ...a pocket fight is not marked", starterText)
+		T.check(highBar and highBar:GetAttribute("Filled") == 5 and starterBar and starterBar:GetAttribute("Filled") == 3,
+			"raid panel client: ...the boss's health is a 10-block bar (50% -> 5, 30% -> 3)", tostring(highBar and highBar:GetAttribute("Filled")) .. " / " .. tostring(starterBar and starterBar:GetAttribute("Filled")))
 		local nextBoss = find(win, "NextBoss")
-		T.check(nextBoss and KC.isShown(nextBoss) and nextBoss.Text:find("5:00", 1, true) ~= nil or (nextBoss and nextBoss.Text:find("4:5", 1, true) ~= nil), "raid panel client: when the boss changes", nextBoss and nextBoss.Text)
+		local nextText = textOf(nextBoss)
+		T.check(nextBoss and KC.isShown(nextBoss) and (nextText:find("5:00", 1, true) ~= nil or nextText:find("4:5", 1, true) ~= nil), "raid panel client: when the boss changes", nextText)
 		local name = find(win, "BossBlurb") or find(win, "Name")
 		T.check(textOf(find(win, "Boss")):upper():find("FROST WYRM", 1, true) ~= nil, "raid panel client: the boss's name", name and name.Text)
 		T.check(textOf(find(win, "Tips")):find("350", 1, true) ~= nil and find(win, "TiersTitle") ~= nil, "raid panel client: the medal rows show my tier's numbers (Gold 500 x0.7)", textOf(find(win, "Tips")))
@@ -548,7 +565,7 @@ S.client_raid_panel = guarded("client_raid_panel", function()
 		-- a dared tier's numbers change with my team
 		syncProfile(TEAM_MAX)
 		KC.advance(0.3)
-		T.check(tier.Text:find("Your tier: Max", 1, true) ~= nil and textOf(find(win, "Tips")):find("650", 1, true) ~= nil, "raid panel client: a Max team reads Max numbers", textOf(find(win, "Tips")))
+		T.check(textOf(tier):upper():find("MAX", 1, true) ~= nil and textOf(find(win, "Tips")):find("650", 1, true) ~= nil, "raid panel client: a Max team reads Max numbers", textOf(find(win, "Tips")))
 		syncProfile(TEAM_MID)
 		AC.Close()
 		KC.advance(0.4)
