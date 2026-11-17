@@ -5131,6 +5131,21 @@ local function clientScenarios()
 					local r, m, d = U8.rect(stars), U8.rect(meta), U8.rect(detail)
 					T.check(r.R <= m.R + 0.5 and r.R <= d.R + 0.5, tag .. ": ...inside the line's box and the detail panel", fmt("stars %s, line %s, panel %s", U8.show(r), U8.show(m), U8.show(d)))
 				end
+				-- (LOOK-ui, kitb-look1: at 1280x720 the element chip ran 28 px past the panel) every chip of the meta row inside
+				-- the row and the detail panel, and the row's chips as tall as its box at most
+				local row = meta and meta.Parent
+				if detail and row and row.Name == "MetaRow" and U8.shown(row) then
+					local out, rr, dr = {}, U8.rect(row), U8.rect(detail)
+					for _, c in ipairs(row:GetChildren()) do
+						if c:IsA("GuiObject") and U8.shown(c) then
+							local cr = U8.rect(c)
+							if cr.R > rr.R + 0.5 or cr.R > dr.R + 0.5 or cr.B > rr.B + 0.5 then
+								out[#out + 1] = c.Name .. " " .. U8.show(cr)
+							end
+						end
+					end
+					T.check(#out == 0, tag .. ": the detail's level line and its chips sit inside the row and the panel", table.concat(out, ", ") .. " | row " .. U8.show(rr))
+				end
 				PC.Close(true)
 			end)
 		end

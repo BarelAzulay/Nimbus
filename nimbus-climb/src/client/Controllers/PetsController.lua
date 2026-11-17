@@ -1311,7 +1311,8 @@ function H.layoutDetail(w, h)
 		local x = pad + pic + 8
 		local nameW = w - x - pad - (phone and 50 or 0)
 		place(d.Name, x, 6, nameW, phone and 28 or 34)
-		place(d.MetaRow, x, phone and 35 or 41, w - x - pad - (phone and narrow and 50 or 0), 24)
+		place(d.MetaRow, x, phone and 35 or 41, w - x - pad - (phone and narrow and 50 or 0), phone and 24 or 28)
+		H.fitMetaRow()
 		place(d.Xp.Root, x, phone and 62 or 70, w - x - pad, 24)
 		y = phone and 92 or 108
 		if narrow then
@@ -1331,6 +1332,7 @@ function H.layoutDetail(w, h)
 		y = pic + 6
 		place(d.Name, pad, y, textW, 36)
 		place(d.MetaRow, pad, y + 38, textW, 28)
+		H.fitMetaRow()
 		place(d.Xp.Root, pad, y + 70, textW, 26)
 		y = y + 102
 		H.placeRows(pad, y, textW, 30, 10, phone)
@@ -2064,11 +2066,60 @@ function H.fitMeta()
 	meta.Size = UDim2.new(0, math.ceil(textW) + room + 2, 1, 0)
 end
 
+-- (LOOK-ui, kitb-look1: at 1280x720 the element chip ran 28 px past the detail, at 960x640 and 390x844 the rarity did)
+-- the level line and its chips fit the row's width: first the element chips drop their names (their icon only, as the
+-- cards' corner chips), then the level line drops its "/ 100". Measured from the texts (not AbsoluteSize: AutomaticSize
+-- resolves a frame later), at the chips' own text size; rebuilds the chips when that changes
+function H.metaSize()
+	return S.Mode == "Phone" and 15 or 18 -- (the window's 18 design px floor on PC)
+end
+
+-- a chip text's width at `size` in the Heading face (Theme.Measure runs wide, never short), whole px
+function H.metaTextW(text, size)
+	local ok, v = pcall(Theme.Measure, text, "Heading", size)
+	return math.ceil((ok and typeof(v) == "Vector2" and v.X > 0) and v.X or #text * size * 0.6)
+end
+
+function H.fitMetaRow()
+	local d = U.D
+	local key = S.Selected
+	local def = key and Bits.defOfKey(key) or nil
+	local rowW = d.MetaRow.Size.X.Offset
+	if not def or rowW <= 0 then
+		return
+	end
+	local size = H.metaSize()
+	local gap = 6 -- the row's UIListLayout padding
+	local rarity = gap + H.metaTextW(tostring(def.Rarity), size) + 12
+	local chips, names = rarity, 0
+	for _, element in ipairs(Bits.elementsOf(def)) do
+		chips = chips + gap + size + 9
+		names = names + H.metaTextW(element, size) + 11
+	end
+	if d.MetaFull then
+		d.Meta.Text = d.MetaFull
+	end
+	H.fitMeta()
+	local tight = d.Meta.Size.X.Offset + chips + names > rowW
+	if tight and d.MetaShort and d.Meta.Size.X.Offset + chips > rowW then
+		d.Meta.Text = d.MetaShort
+		H.fitMeta()
+	end
+	-- (last: a 390 px portrait sheet with an evolved pet) the element chips stay off the line; the rarity keeps its tag
+	local mode = (d.Meta.Size.X.Offset + chips > rowW and "Hide") or (tight and "Tight") or "Full"
+	if d.MetaRow:GetAttribute("Fit") ~= mode then
+		d.MetaRow:SetAttribute("Fit", mode)
+		H.metaChips(def)
+	end
+end
+
 -- (LOOK-ui, kitb-look1) the detail's chips after its level line: the rarity's tag in its colour (CloudUI.RarityColor; the
 -- ink by Theme.TextOn), each element's CloudUI.ElementChip with its name. Rebuilt only when the pet's set changes
 function H.metaChips(def)
 	local d = U.D
-	local want = tostring(def.Rarity) .. "|" .. table.concat(Bits.elementsOf(def), ",")
+	local fit = d.MetaRow:GetAttribute("Fit") or "Full"
+	local tight = fit == "Tight"
+	local want = tostring(def.Rarity) .. "|" .. table.concat(Bits.elementsOf(def), ",") .. "|" .. fit .. "|" .. tostring(S.Mode)
 	if d.ChipsKey == want then
 		return
 	end
@@ -2078,14 +2129,13 @@ function H.metaChips(def)
 			child:Destroy()
 		end
 	end
-	local phone = S.Mode == "Phone"
-	local size = phone and 15 or 18 -- (the window's 18 design px floor on PC)
+	local size = H.metaSize()
 	local color = CloudUI.RarityColor(def.Rarity)
+	-- (the chips' widths set from the measure, not AutomaticSize: H.fitMetaRow sums the same numbers)
 	local tag = text(d.MetaRow, "RarityChip", tostring(def.Rarity), "Heading", size, Theme.TextOn(color), {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = color,
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, size + 9),
+		Size = UDim2.fromOffset(H.metaTextW(tostring(def.Rarity), size) + 12, size + 9),
 		LayoutOrder = 2,
 		ZIndex = 22,
 	})
@@ -2093,15 +2143,23 @@ function H.metaChips(def)
 	tagEdge.Name = "SignEdge"
 	tagEdge.LineJoinMode = Enum.LineJoinMode.Miter
 	Bits.pad(tag, 6, 0, 6, 0)
-	for i, element in ipairs(Bits.elementsOf(def)) do
-		CloudUI.ElementChip(d.MetaRow, element, size + 9, {
-			Label = element,
+	for i, element in ipairs(fit == "Hide" and {} or Bits.elementsOf(def)) do
+		local chip = CloudUI.ElementChip(d.MetaRow, element, size + 9, {
+			Label = not tight and element or nil,
 			TextSize = size,
 			Role = "Heading",
 			Name = "Element_" .. element,
 			LayoutOrder = 2 + i,
 			ZIndex = 22,
 		})
+		local label = chip and chip:FindFirstChild("Label")
+		if label then
+			local nameW = H.metaTextW(element, size) + 11
+			label.AutomaticSize = Enum.AutomaticSize.None
+			label.Size = UDim2.fromOffset(nameW, size + 9)
+			chip.AutomaticSize = Enum.AutomaticSize.None
+			chip.Size = UDim2.fromOffset(size + 9 + nameW, size + 9)
+		end
 	end
 end
 
@@ -2160,11 +2218,15 @@ function H.refreshDetail(keys, order)
 	if Bits.isHybrid(key, def) then
 		meta[#meta + 1] = "Hybrid"
 	end
-	d.Meta.Text = table.concat(meta, " " .. G.Bullet .. " ")
+	d.MetaFull = table.concat(meta, " " .. G.Bullet .. " ")
+	meta[1] = "Lv " .. level -- (LOOK-ui, kitb-look1) the line a narrow row shows (H.fitMetaRow)
+	d.MetaShort = table.concat(meta, " " .. G.Bullet .. " ")
+	d.Meta.Text = d.MetaFull
 	H.metaChips(def)
 	-- (kit-b U7b) the evolution stars after the line, drawn; (render gate) inside the line's box: the text truncates first
 	PixelIcon.Mark(d.Meta, stage > 0 and ICON.Star or nil, { After = true, Room = true, Count = math.min(2, stage), Of = math.min(2, stage), Colour = SIGN.GoldLip })
 	H.fitMeta()
+	H.fitMetaRow()
 	local need = Bits.xpToNext(level)
 	if level >= cap then
 		d.Xp.SetFraction(1)
