@@ -43,7 +43,10 @@
 --   garden[:<slot>]       the garden picker for place <slot> (default 3: an empty place)
 --   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop);
 --                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
---   daily[:locked|:play]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block)
+--   daily[:locked|:play|:week]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block); week (kit-b U9-4) =
+--                         a paid Day 7 claim caught mid-celebration (the banner and the kit confetti)
+--   trove[:done|:preview] (kit-b U9-4) the Sky Trove panel (TroveController) opened by the chest's prompt, its Group row
+--                         open (Join); done = claimed (Done), preview = the Studio preview (GroupId 0)
 --   gems[:store]          lobby-shop Task 15: the drawn cut gem at every size, piles, chips, the HUD coin; store = the Shop's
 --                         Gems tab with the gem pack piles ([lobby-shop] block)
 --   shop[:<tab>]          lobby-shop Tasks 21/22: the one Shop window (ShopController) on Eggs (default) / Gems / Packs /
@@ -3499,6 +3502,39 @@ scenario("daily", function(view)
 	local DC = req("client/Controllers/DailyController")
 	DC.Open({ Tab = view == "play" and "Play" or "Daily" })
 	advance(1.5)
+	if view == "week" then
+		-- (kit-b U9-4) day 7 claimed on a paid week (Weeks 1 -> 2): the banner and the confetti, caught mid-fall (the
+		-- confetti plays on High graphics only)
+		local GQ = req("client/GraphicsQuality", true)
+		if GQ then
+			GQ.Effective = function()
+				return "High"
+			end
+		end
+		local p = dailyPayload("")
+		p.Cell, p.Streak, p.Paid, p.Weeks = 7, 14, 14, 2
+		for i, d in ipairs(p.Days) do
+			d.Claimed, d.Today = true, false
+		end
+		p.ReadyAt = p.ServerNow + 20 * 3600
+		toClient("DailyState", p)
+		advance(0.6)
+		-- the falling bits at their eased in-between places (the mock holds a tween's start value until it ends)
+		if type(Mock.SnapTweens) == "function" then
+			Mock.SnapTweens()
+		end
+	end
+end)
+-- trove[:done|:preview]  (kit-b U9-4) the Sky Trove panel as the chest's prompt opens it (OpenPanel("Trove") + TroveState):
+--                        the Group row open (Join), done = claimed (Done, disabled), preview = GroupId 0 under StorePreview
+scenario("trove", function(view)
+	view = tostring(view or ""):lower()
+	local state = (view == "done" and "Done") or (view == "preview" and "Preview") or "Open"
+	CAREUI.profile() -- (the HUD's balances as in play: the panel docks under them)
+	toClient("OpenPanel", "Trove")
+	toClient("TroveState", { GroupId = state == "Preview" and 0 or 777, Preview = state == "Preview",
+		Asks = { { Id = "Group", State = state, Reward = { Cash = 2000, Tokens = 200 } }, { Id = "Like" } } })
+	advance(1)
 end)
 -- fusion[:upgrade|:mix]  gui-redo Task 11: the Fusion Machine window (FusionController, card A) on the picker's collection
 --                       with 3 of the 5 Maple Fox copies on the team and 12,480 Cloud Tokens: upgrade (the default) = the stack of

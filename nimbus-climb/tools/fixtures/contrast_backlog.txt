@@ -22,9 +22,6 @@ NimbusBattle.Root.Team.Fighter.Body.Lives.Heart*  # "♥" #FF5670 on #243439 4.2
 NimbusCare.Window_*.CarePanel.Content.Body.GardenPage.GardenList.Pick_*.Info.Coins  # "Coins $441/s" #FFFFFF on #569E56 3.27:1 < 4.5
 NimbusCare.Window_*.CarePanel.Content.Body.GardenPage.GardenList.Pick_*.Info.Role  # "Economy" #FFFFFF on #5AB969 2.44:1 < 3
 NimbusCare.Window_*.CarePanel.Content.Body.GardenPage.GardenList.Pick_*.PutHere  # "Put here" #FFFFFF on #2F895B 4.32:1 < 4.5
-NimbusDaily.DailyHolder.DailyWindow.Body.DailyPage.Cells.Cell*.Body.Day  # "TODAY" #FFFFFF on #BC933D 2.84:1 < 4.5
-NimbusDaily.DailyHolder.DailyWindow.Body.PlayPage.Tiers.Tier*.Body.Time  # "30 min" #FFFFFF on #357AD2 4.33:1 < 4.5
-NimbusDaily.DailyHolder.DailyWindow.TitleBar.Tab_*  # "Play time" #D4E0F6 on #7F6737 4.06:1 < 4.5
 NimbusDev.DevPanel.Content.List.Dev_*  # "+1M tokens" #FFFFFF on #997A3A 4.05:1 < 4.5
 NimbusDungeon.Window_*.DungeonPanel.Content.Floors.Floor*.OrbHolder.Orb.Num  # "4" #FFFFFF on #6C95B4 3.19:1 < 4.5
 NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.StageBadge  # "EVO I" #FFFFFF on #A48645 3.46:1 < 4.5

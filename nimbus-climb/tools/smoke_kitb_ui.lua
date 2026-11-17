@@ -130,6 +130,25 @@
 --                             Top100 stone, Creator navy), Nameplate text in the look's ink, no outline / gradient /
 --                             tween, the plate with its wood edge inside the (clipping) billboard and 26 px above the
 --                             anchor; the VIP crown gold on its wood lip, the lobby crown a pixel gap above its anchor
+--   U9-4 (finding 15, finding 26; the "Daily + Sky Trove" family; kitb_no_neon_glow and kitb_no_emoji_ui walk them too,
+--   kitb_casing_rule fails on NimbusDaily / NimbusTrove buttons in capitals):
+--   daily_signboard_skin      (client) the Gifts window: wood frame, stone body, navy header, the awning on PC only, tab
+--                             blocks (selected gold), the red close; day tiles and gift boxes kit B blocks (claimed the
+--                             well, today gold) with their day / tier colour on the lip, the gift the pink gift block, the
+--                             header a Section title, square chips and Wisp blocks; one green action per page (Claim! /
+--                             Claim all), sentence-case buttons, nothing round or glossy, every text readable (locked too)
+--   daily_fits_phone          (client) 844x390 / 390x844, both tabs: inside the screen, the touch controls gone while open
+--                             and back on Close, every tile / box part inside its tile / box and the window's body
+--   daily_week_kit_confetti   (client) a paid week: 24 flat confetti bits in the prize's gold and the gift's pink (and their
+--                             lips), no rainbow, no sweep band; the banner a gold block with brown words
+--   trove_signboard_skin      (client) the Sky Trove panel: stone body in its wood frame, the navy header band (chest square,
+--                             SKY TROVE the ribbon, red close, in that order), the awning on PC only, asks as stone blocks
+--                             with icon chips one under the other, gold reward tags ($2,000, the token coin + 200) with two
+--                             sparkles taking turns while the reward waits, Join the one green action, Done / Preview the
+--                             Off block, the pending hint in red ink, sentence case, nothing round, every text readable
+--   trove_fits_phone          (client) touch phones (844x390 keeps the controls, 667x375 / 640x360 keep them only where the
+--                             panel clears the thumbstick and the jump button by 6 px, 390x844 hides them): back on Close,
+--                             the vitals card steps aside under the panel, texts inside and >= 15 px, Join / X >= 44 px
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -2166,7 +2185,7 @@ local function clientScenarios()
 	-- capitals fails in the ScreenGuis of the families U6 swept (CASING_SWEPT); elsewhere it is a warning with the count (U9 sweeps those windows; the SignKit planks of the main menu, Settings and the loading screen keep
 	-- the capitals of the owner's approved U2-U5 boards until the owner rules on it).
 	local CASING_SWEPT = { NimbusMenu = true, NimbusBattle = true, NimbusHud = true, NimbusIndex = true, NimbusNotify = true,
-		NimbusDungeon = true, NimbusDungeonRun = true }
+		NimbusDungeon = true, NimbusDungeonRun = true, NimbusDaily = true, NimbusTrove = true } -- (U9-4) the Gifts window and the Sky Trove
 	S.kitb_casing_rule = guarded("kitb_casing_rule", function()
 		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
 		if not T.check(pg ~= nil, "kitb casing: PlayerGui exists") then
@@ -4366,6 +4385,7 @@ local function clientScenarios()
 	-- on High only): Top10 #3, Top100 #57, the Creator wearing the VIP pass (the crown inside the tag) and an untitled VIP
 	-- (the VipCrown billboard of its own); they leave after and the graphics answer is put back
 	local U93 = {}
+	local U94 = {} -- (U9-4) the Gifts window and the Sky Trove helpers (filled in the U9-4 block below)
 	function U93.titled(fn)
 		local Config = LoadingH.shared("Config")
 		local GQ = U7.client("GraphicsQuality")
@@ -4445,6 +4465,20 @@ local function clientScenarios()
 			end
 		end)
 		T.check(boards == 4, "kitb emoji walk: (setup) three titles and the untitled VIP's crown were walked", tostring(boards))
+		-- (U9-4) the Gifts window's Play page (openAll opens the Daily page) and the Sky Trove panel
+		local DCw = U7.client("Controllers/DailyController")
+		U7.try("the Gifts window's Play page", function()
+			LKC.toClient("DailyState", U94.payload("play"))
+			LKC.advance(0.2)
+			DCw.Open({ Tab = "Play" })
+		end)
+		walk()
+		pcall(DCw.Close)
+		U7.try("the Sky Trove", function()
+			U94.trove("Open")
+		end)
+		walk()
+		U94.closeTrove()
 		local list, n = {}, 0
 		for path, cps in pairs(hits) do
 			list[#list + 1] = path .. " " .. cps
@@ -5439,7 +5473,23 @@ local function clientScenarios()
 						walk(bb, bb.Name .. " " .. bb.Parent.Parent.Name, bad)
 					end
 				end)
-				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window, the Index, the Home window, the Shop, the Stats window and the tags over heads (%d)", tag, #bad),
+				-- (U9-4) the Gifts window on both tabs (a day due, the play gifts paused with one ready) and the Sky Trove panel
+				-- (Join open, then Done)
+				local DCw = U7.client("Controllers/DailyController")
+				for _, view in ipairs({ { "Daily", "" }, { "Play", "play" } }) do
+					LKC.toClient("DailyState", U94.payload(view[2]))
+					LKC.advance(0.2)
+					DCw.Open({ Tab = view[1] })
+					LKC.advance(1)
+					walk(U94.holder(), "Gifts " .. view[1], bad)
+				end
+				pcall(DCw.Close)
+				LKC.advance(0.4)
+				for _, state in ipairs({ "Open", "Done" }) do
+					walk(U94.trove(state), "Trove " .. state, bad)
+				end
+				U94.closeTrove()
+				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window, the Index, the Home window, the Shop, the Stats window, the tags over heads, the Gifts window and the Sky Trove (%d)", tag, #bad),
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
@@ -6467,6 +6517,694 @@ local function clientScenarios()
 			T.check(own ~= nil and own.SizeOffset.X == 0 and above >= 14, fmt("titles kit b: the lobby crown's bottom sits %.1f px (>= 14) above its anchor at any distance", above))
 		end)
 		LKC.flushErrors("titles_kitb_tags")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-4 (finding 15, finding 26; BUILD_PLAN "Coverage check", U9 family 4 "Daily + Sky Trove"): the Gifts window
+	-- (DailyController) and the Sky Trove panel (TroveController) on the Signboard kit, the week's confetti in the kit's
+	-- colours (no rainbow). U94.payload(view) is dump_gui's daily payload: a VIP on Week 2 Day 3 (Streak 9, days 1-2
+	-- claimed, today's $1,450 due), "locked" = held by the 10-minute rule, "play" = 47 min played and paused, tiers 1-2
+	-- claimed, the 30 min gift ready
+	function U94.payload(view)
+		local now = workspace:GetServerTimeNow()
+		local days = {
+			{ Kind = "Cash", Amount = 400, Claimed = true, Today = false },
+			{ Kind = "Tokens", Amount = 50, Claimed = true, Today = false },
+			{ Kind = "Cash", Amount = 1450, Claimed = false, Today = true },
+			{ Kind = "Cash", Amount = 1000, Claimed = false, Today = false },
+			{ Kind = "Tokens", Amount = 250, Claimed = false, Today = false },
+			{ Kind = "Gems", Amount = 25, Claimed = false, Today = false },
+			{ Kind = "Pet", PetId = "week_wisp", Claimed = false, Today = false },
+		}
+		local tiers = {
+			{ Min = 10, Kind = "Cash", Amount = 200, Claimed = true, Ready = false },
+			{ Min = 20, Kind = "Tokens", Amount = 40, Claimed = true, Ready = false },
+			{ Min = 30, Kind = "Cash", Amount = 600, Claimed = false, Ready = true },
+			{ Min = 60, Kind = "Gems", Amount = 10, Claimed = false, Ready = false },
+			{ Min = 90, Kind = "Tokens", Amount = 150, Claimed = false, Ready = false },
+			{ Min = 120, Kind = "Berries", Claimed = false, Ready = false },
+			{ Min = 180, Kind = "Gems", Amount = 25, Claimed = false, Ready = false },
+		}
+		return {
+			Loading = false, Streak = 9, Paid = 9, Weeks = 1, Pet = true, ReadyAt = now - 1, KeepUntil = now + 28 * 3600, StaleAt = 0,
+			Cell = 3, Repair = false, Vip = true, StepBack = 0, Days = days, ServerNow = now,
+			Unlock = { Need = 600, Left = view == "locked" and 330 or 0 },
+			Play = { Seconds = (view == "play" and 47 or 36) * 60, DayEnds = now + 5 * 3600 + 600, Active = view ~= "play", Tiers = tiers },
+		}
+	end
+	function U94.holder()
+		local gui = U8.pg():FindFirstChild("NimbusDaily")
+		return gui and gui:FindFirstChild("DailyHolder")
+	end
+	-- runs fn(tag, holder) inside U8.at's lobby with the Gifts window open on `tab` ("Daily" | "Play") over U94.payload(view)
+	function U94.at(w, h, touch, label, tab, view, fn)
+		U8.at(w, h, touch, label, function(tag)
+			local DC = U7.client("Controllers/DailyController")
+			LKC.toClient("DailyState", U94.payload(view))
+			LKC.advance(0.3)
+			DC.Open({ Tab = tab })
+			LKC.advance(1)
+			local holder = U94.holder()
+			local ok, err = pcall(function()
+				if T.check(holder ~= nil and U8.shown(holder), tag .. ": the Gifts window opens on " .. tab) then
+					fn(tag, holder)
+				end
+			end)
+			T.check(ok, tag .. ": the Gifts check ran", tostring(err))
+			pcall(DC.Close)
+			LKC.advance(0.4)
+		end)
+	end
+	-- the contrast walk's failures under one ScreenGui
+	function U94.contrast(guiName)
+		local out = {}
+		for _, line in ipairs((SmokeCommon.Contrast.Walk(U8.pg()))) do
+			if line:find("^" .. guiName .. "%.") then
+				out[#out + 1] = line
+			end
+		end
+		return out
+	end
+	-- the kit's casing rule on the shown buttons under `root`: sentence case (no word of 4+ letters in capitals)
+	function U94.shouty(root)
+		local out = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("TextButton") and U8.shown(d) and d:GetAttribute("FontRole") == "Button" then
+				for word in tostring(d.Text):gsub("<[^>]->", ""):gmatch("%a+") do
+					if #word >= 4 and word == word:upper() then
+						out[#out + 1] = d.Name .. " \"" .. d.Text .. "\""
+						break
+					end
+				end
+			end
+		end
+		return out
+	end
+	-- the shown UICorners and UIGradients under `root` (kit B is square and flat; GemIcon art, a pet's viewport, the HUD
+	-- ring's Step and the window title's T1 ribbon, the owner's designed look, are not panels)
+	function U94.roundOrGloss(root)
+		local out = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			local p = d.Parent
+			if (d:IsA("UICorner") or (d:IsA("UIGradient") and d.Name ~= "Step")) and p and p:IsA("GuiObject") and U8.shown(p) and not designedLook(d) then
+				local cur, art = p, false
+				while cur and not cur:IsA("LayerCollector") do
+					art = art or cur.Name == "GemIcon" or cur.Name == "PetViewport"
+					cur = cur.Parent
+				end
+				if not art then
+					out[#out + 1] = d.ClassName .. " on " .. p.Name
+				end
+			end
+		end
+		return out
+	end
+
+	-- the Gifts window on the Signboard kit (1920x1080 and 844x390, both tabs): the wood frame round a stone body, the navy
+	-- header plank, the fixed-size awning on PC only (none on a phone), the tabs stone blocks (the selected one gold), the
+	-- red close block; the day tiles kit B blocks (stone, today gold, a claimed day the sunk well) each with its own day
+	-- colour on its lip (the owner's colourful days, colour by role), the header a plain Section title, the streak / VIP
+	-- chips square tags, the Wisp bar flat blocks (claimed grass, today gold, open well); the Play page's gift boxes the same
+	-- blocks with their tier colour on the lip and the gift as the pink gift block (no glossy orb); one green action per
+	-- page (Claim! on Daily, Claim all on Play: a box's Claim is stone); nothing round or glossy, every text reads on its
+	-- fill (the locked claim too), every button in sentence case
+	S.daily_signboard_skin = guarded("daily_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local DCm = U7.client("Controllers/DailyController")
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			local pc = not s[3]
+			U94.at(s[1], s[2], s[3], "daily kit b", "Daily", "", function(tag, holder)
+				local win = holder:FindFirstChild("DailyWindow")
+				local stone = win and win:FindFirstChild("Stone")
+				local bar = win and win:FindFirstChild("TitleBar")
+				T.check(win ~= nil and win.BackgroundTransparency == 0 and sameColor(win.BackgroundColor3, Sign.Wood) and stone ~= nil and sameColor(stone.BackgroundColor3, Sign.Stone),
+					tag .. ": the window is the wood frame round a stone body", win and hex(win.BackgroundColor3) or "no window")
+				T.check(bar ~= nil and bar.BackgroundTransparency == 0 and sameColor(bar.BackgroundColor3, Sign.Navy), tag .. ": the header is the navy plank", bar and hex(bar.BackgroundColor3) or "no bar")
+				local roof = holder:FindFirstChild("Roof", true)
+				if pc then
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Scale == 0 and roof.Size.X.Offset == 360 and roof.Size.Y.Scale == 0,
+						tag .. ": the awning sits over the top at a fixed 360 px (never stretched with the window)", roof and tostring(roof.Size) or "no roof")
+				else
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on a phone (the window starts under Roblox's top bar)")
+				end
+				local dailyFill = bar and bar:FindFirstChild("Tab_DailyFill")
+				local playFill = bar and bar:FindFirstChild("Tab_PlayFill")
+				local dailyTab = bar and bar:FindFirstChild("Tab_Daily")
+				T.check(dailyFill and playFill and sameColor(dailyFill.BackgroundColor3, Sign.Gold) and sameColor(playFill.BackgroundColor3, Sign.Tile)
+					and dailyFill:FindFirstChild("SignEdge") and dailyTab and sameColor(dailyTab.TextColor3, Sign.Text),
+					tag .. ": the tabs are blocks, the selected one gold, the other stone, brown words", dailyFill and (hex(dailyFill.BackgroundColor3) .. " / " .. hex(playFill.BackgroundColor3)) or "no tabs")
+				local close = bar and bar:FindFirstChild("CloseButton")
+				T.check(close ~= nil and sameColor(close.BackgroundColor3, Sign.Red) and close:FindFirstChild("SignEdge") ~= nil and close:FindFirstChild("CloseMark") ~= nil,
+					tag .. ": the close is the red block with the drawn X", close and hex(close.BackgroundColor3) or "no close")
+				-- the header as the Shop's: the navy band inside the wood frame, the gift on its gold square, "Gifts" the window's
+				-- ribbon title, then the tabs and the X, in a row without overlap
+				local wr, br = win and U8.rect(win), bar and U8.rect(bar)
+				T.check(wr ~= nil and br ~= nil and br.Y >= wr.Y + 5.5 and br.X >= wr.X + 5.5 and br.R <= wr.R - 5.5,
+					tag .. ": the navy band sits inside the wood frame (the frame shows round its top)", br and (U8.show(br) .. " in " .. U8.show(wr)) or "no bar")
+				local icon = bar and bar:FindFirstChild("GiftsIcon")
+				local gift = false
+				for _, d in ipairs(icon and icon:GetDescendants() or {}) do
+					gift = gift or d:GetAttribute("PixelIcon") == "gift"
+				end
+				T.check(icon ~= nil and U8.shown(icon) and sameColor(icon.BackgroundColor3, Sign.Gold) and icon:FindFirstChild("SignEdge") ~= nil and gift,
+					tag .. ": the pixel gift on its gold square at the left of the header")
+				local title = bar and bar:FindFirstChild("WindowTitle")
+				T.check(title ~= nil and U8.shown(title) and title:GetAttribute("TitleLook") == "Ribbon" and title.Text:upper() == "GIFTS",
+					tag .. ": 'Gifts' is the window's ribbon title", title and (title.Text .. " " .. tostring(title:GetAttribute("TitleLook"))) or "no title")
+				local row, prev = { icon or false, title or false, dailyFill or false, playFill or false, close or false }, nil
+				local order = true
+				for i = 1, 5 do
+					local o = row[i]
+					local r = o and U8.rect(o)
+					if not r or (prev and r.X < prev.R - 0.5) then
+						order = false
+					end
+					prev = r or prev
+				end
+				T.check(order, tag .. ": the square, the title, the two tabs and the X in a row, none over another")
+				-- the day tiles
+				local lips, loose = {}, {}
+				for i = 1, 7 do
+					local c = holder:FindFirstChild("Cell" .. i, true)
+					local lip = c and c:FindFirstChild("Lip")
+					local face = (i <= 2 and Sign.Well) or (i == 3 and Sign.Gold) or Sign.Tile
+					if not (c and c:GetAttribute("Skin") == "Sign" and c:FindFirstChild("SignEdge") and sameColor(c.BackgroundColor3, face)
+						and lip and sameColor(lip.BackgroundColor3, DCm.DayColors[i])) then
+						loose[#loose + 1] = "Cell" .. i .. (c and (" " .. hex(c.BackgroundColor3)) or "")
+					end
+					if lip then
+						lips[hex(lip.BackgroundColor3)] = true
+					end
+					local day = c and c:FindFirstChild("Day", true)
+					if day and not sameColor(day.TextColor3, Sign.Text) then
+						loose[#loose + 1] = "Cell" .. i .. ".Day " .. hex(day.TextColor3)
+					end
+				end
+				local n = 0
+				for _ in pairs(lips) do
+					n = n + 1
+				end
+				T.check(#loose == 0 and n == 7, fmt("%s: every day a kit B block (claimed the well, today gold, the rest stone) with its own day colour on its lip (%d colours)", tag, n),
+					table.concat(loose, ", "))
+				local header = holder:FindFirstChild("Header", true)
+				T.check(header ~= nil and header:GetAttribute("TitleLook") == "Section" and sameColor(header.TextColor3, Sign.Text),
+					tag .. ": 'Day 3 of 7 . Week 2' is a plain Section heading in brown", header and tostring(header:GetAttribute("TitleLook")) or "no header")
+				for name, face in pairs({ StreakChip = Sign.Tile, VipChip = Sign.Gold }) do
+					local chip = holder:FindFirstChild(name, true)
+					T.check(chip ~= nil and chip.BackgroundTransparency == 0 and sameColor(chip.BackgroundColor3, face) and chip:FindFirstChild("SignEdge") ~= nil
+						and sameColor(chip.TextColor3, Sign.Text), tag .. ": the " .. name .. " is a square tag in its wood edge", chip and hex(chip.BackgroundColor3) or "no chip")
+				end
+				-- (the kit's block-bar language: a filled block has its darker lip, an open one is the sunk well with none)
+				local segFace = { Sign.Grass, Sign.Grass, Sign.Gold, Sign.Well, Sign.Well, Sign.Well, Sign.Well }
+				local segLip = { Sign.GrassLip, Sign.GrassLip, Sign.GoldLip }
+				local segBad = {}
+				for i = 1, 7 do
+					local seg = holder:FindFirstChild("Seg" .. i, true)
+					local lip = seg and seg:FindFirstChild("Lip")
+					local lipOk = lip ~= nil and ((segLip[i] and U8.shown(lip) and lip.AbsoluteSize.Y >= 3 and sameColor(lip.BackgroundColor3, segLip[i]))
+						or (not segLip[i] and not U8.shown(lip)))
+					if not (seg and sameColor(seg.BackgroundColor3, segFace[i]) and seg:FindFirstChild("SignEdge") and lipOk) then
+						segBad[#segBad + 1] = "Seg" .. i .. (seg and (" " .. hex(seg.BackgroundColor3)) or "") .. (lipOk and "" or " (lip)")
+					end
+				end
+				T.check(#segBad == 0, tag .. ": the Wisp bar's blocks: claimed grass, today gold (each on its darker lip), open the well (no lip)", table.concat(segBad, ", "))
+				-- the one claimable tile glints: two pixel sparkles on today's tile that take turns on the window's 1 s tick (a
+				-- handmade touch, no glow); no other tile has them
+				local function sparkles(c)
+					local box = c and c:FindFirstChild("Sparkles", true)
+					local icons, lit = 0, nil
+					for _, d in ipairs(box and box:GetChildren() or {}) do
+						if d:GetAttribute("PixelIcon") == "sparkle" then
+							icons = icons + 1
+							if U8.shown(d) then
+								lit = (lit and (lit .. "+") or "") .. d.Name
+							end
+						end
+					end
+					return box ~= nil and U8.shown(box), icons, lit
+				end
+				local on, icons, lit = sparkles(holder:FindFirstChild("Cell3", true))
+				local others = {}
+				for _, i in ipairs({ 1, 2, 4, 5, 6, 7 }) do
+					if (sparkles(holder:FindFirstChild("Cell" .. i, true))) then
+						others[#others + 1] = "Cell" .. i
+					end
+				end
+				T.check(on and icons == 2 and lit ~= nil and not lit:find("+", 1, true) and #others == 0,
+					tag .. ": today's claimable tile carries two pixel sparkles, one lit at a time; no other tile", fmt("%s %d %s | %s", tostring(on), icons, tostring(lit), table.concat(others, ",")))
+				LKC.advance(1.05)
+				local _, _, lit2 = sparkles(holder:FindFirstChild("Cell3", true))
+				T.check(lit2 ~= nil and lit2 ~= lit, tag .. ": ...and they take turns on the tick (a twinkle, two frames)", tostring(lit) .. " -> " .. tostring(lit2))
+				local greens = U8.greenActions(holder)
+				T.check(#greens == 1 and greens[1] == "ClaimButton", tag .. ": Claim! is the Daily page's one green action", table.concat(greens, ", "))
+				local claim = holder:FindFirstChild("ClaimButton", true)
+				T.check(claim ~= nil and claim.Text == "Claim!", tag .. ": the claim reads Claim! (sentence case)", claim and claim.Text or "no button")
+				local round = U94.roundOrGloss(holder)
+				T.check(#round == 0, tag .. ": nothing round or glossy in the Gifts window", table.concat(round, ", ", 1, math.min(#round, 10)))
+				local bad = U94.contrast("NimbusDaily")
+				T.check(#bad == 0, fmt("%s: every text of the Daily page reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				local loud = U94.shouty(holder)
+				T.check(#loud == 0, tag .. ": every button in sentence case", table.concat(loud, "; "))
+			end)
+			U94.at(s[1], s[2], s[3], "daily kit b play", "Play", "play", function(tag, holder)
+				local loose = {}
+				for i = 1, 7 do
+					local c = holder:FindFirstChild("Tier" .. i, true)
+					local lip = c and c:FindFirstChild("Lip")
+					local face = i <= 2 and Sign.Well or Sign.Tile
+					if not (c and c:GetAttribute("Skin") == "Sign" and c:FindFirstChild("SignEdge") and sameColor(c.BackgroundColor3, face)
+						and lip and sameColor(lip.BackgroundColor3, DCm.TierColors[i])) then
+						loose[#loose + 1] = "Tier" .. i .. (c and (" " .. hex(c.BackgroundColor3)) or "")
+					end
+					local gift = c and c:FindFirstChild("Gift", true)
+					local block = gift and gift:FindFirstChild("Block")
+					if i > 2 and not (block and sameColor(block.BackgroundColor3, Sign.Roof) and block:FindFirstChild("SignEdge") and block:FindFirstChild("Icon", true)) then
+						loose[#loose + 1] = "Tier" .. i .. ".Gift (not the pink gift block)"
+					end
+				end
+				T.check(#loose == 0, tag .. ": every gift box a kit B block (claimed the well, the rest stone) with its tier colour on its lip, the gift the pink gift block",
+					table.concat(loose, ", "))
+				-- the ready box glints as today's tile does (its two sparkles); a locked or claimed box does not
+				local glints = {}
+				for i = 1, 7 do
+					local box = holder:FindFirstChild("Tier" .. i, true)
+					local sp = box and box:FindFirstChild("Sparkles", true)
+					if sp and U8.shown(sp) then
+						glints[#glints + 1] = "Tier" .. i
+					end
+				end
+				T.check(#glints == 1 and glints[1] == "Tier3", tag .. ": only the ready box (30 min) carries the sparkles", table.concat(glints, ", "))
+				local greens = U8.greenActions(holder)
+				T.check(#greens == 1 and greens[1] == "ClaimAll", tag .. ": Claim all is the Play page's one green action (a box's Claim is stone)", table.concat(greens, ", "))
+				local all = holder:FindFirstChild("ClaimAll", true)
+				local box = holder:FindFirstChild("Tier3", true)
+				local claim3 = box and box:FindFirstChild("Claim", true)
+				T.check(all ~= nil and all.Text == "Claim all (1)" and claim3 ~= nil and U8.shown(claim3) and claim3.Text == "Claim" and sameColor(claim3.BackgroundColor3, Sign.Tile),
+					tag .. ": Claim all (1) and the ready box's stone Claim", (all and all.Text or "?") .. " / " .. (claim3 and (claim3.Text .. " " .. hex(claim3.BackgroundColor3)) or "?"))
+				local round = U94.roundOrGloss(holder)
+				T.check(#round == 0, tag .. ": nothing round or glossy on the Play page", table.concat(round, ", ", 1, math.min(#round, 10)))
+				local bad = U94.contrast("NimbusDaily")
+				T.check(#bad == 0, fmt("%s: every text of the Play page reads on its fill, the paused header too (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				local loud = U94.shouty(holder)
+				T.check(#loud == 0, tag .. ": every button in sentence case", table.concat(loud, "; "))
+			end)
+		end
+		-- the locked claim (the 10-minute rule): the Off block, its two lines readable
+		U94.at(1920, 1080, false, "daily kit b locked", "Daily", "locked", function(tag, holder)
+			local claim = holder:FindFirstChild("ClaimButton", true)
+			T.check(claim ~= nil and U8.shown(claim) and sameColor(claim.BackgroundColor3, Sign.Well), tag .. ": the locked claim is the sunk Off block", claim and hex(claim.BackgroundColor3) or "no button")
+			local sp = holder:FindFirstChild("Cell3", true)
+			sp = sp and sp:FindFirstChild("Sparkles", true)
+			T.check(not (sp and U8.shown(sp)), tag .. ": a held gift does not glint (nothing to claim yet)")
+			local bad = U94.contrast("NimbusDaily")
+			T.check(#bad == 0, fmt("%s: the locked claim's lines read on it (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+		end)
+		LKC.flushErrors("daily_signboard_skin")
+	end)
+
+	-- the Gifts window on a touch phone (844x390 and 390x844, both tabs): the window inside the screen, Roblox's thumbstick
+	-- and jump button gone while it is open and back on Close; every day tile's day and amount inside the tile, every gift
+	-- box's time, reward and slot (Claim or the clock) inside the box, the claim, the Wisp line and the keep line inside
+	-- the window (nothing clipped)
+	S.daily_fits_phone = guarded("daily_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		local function inside(r, o)
+			return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+		end
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			local before = GuiService.TouchControlsEnabled
+			for _, tab in ipairs({ "Daily", "Play" }) do
+				U94.at(s[1], s[2], s[3], "daily phone", tab, tab == "Play" and "play" or "", function(tag, holder)
+					local gui = holder:FindFirstAncestorWhichIsA("LayerCollector")
+					local win = holder:FindFirstChild("DailyWindow")
+					local w = win and U8.rect(win)
+					T.check(w ~= nil and w.X >= -0.5 and w.Y >= -0.5 and w.R <= gui.AbsoluteSize.X + 0.5 and w.B <= gui.AbsoluteSize.Y + 0.5,
+						tag .. ": the Gifts window sits inside the screen", w and U8.show(w) or "no window")
+					T.check(GuiService.TouchControlsEnabled == false, tag .. ": Roblox's thumbstick and jump button go while the Gifts window is open")
+				-- the header's shown parts (the gift square and the title only where they fit) in a row inside the window, none over another
+				local bar = win and win:FindFirstChild("TitleBar")
+				local prev, row, rowOk = nil, {}, true
+				for _, name in ipairs({ "GiftsIcon", "WindowTitle", "Tab_DailyFill", "Tab_PlayFill", "CloseButton" }) do
+					local o = bar and bar:FindFirstChild(name)
+					if o and U8.shown(o) then
+						local r = U8.rect(o)
+						row[#row + 1] = name
+						if (prev and r.X < prev.R - 0.5) or not (w and r.X >= w.X - 0.5 and r.R <= w.R + 0.5) then
+							rowOk = false
+						end
+						prev = r
+					end
+				end
+				T.check(rowOk and #row >= 3, tag .. ": the header's square / title / tabs / X in a row inside the window, none over another", table.concat(row, ", "))
+					local body = holder:FindFirstChild("Body", true)
+					local b = body and U8.rect(body)
+					local out = {}
+					local function need(o, box, what)
+						if o and U8.shown(o) and not inside(U8.rect(o), box) then
+							out[#out + 1] = what .. " " .. U8.show(U8.rect(o)) .. " in " .. U8.show(box)
+						end
+					end
+					if tab == "Daily" then
+						for i = 1, 7 do
+							local c = holder:FindFirstChild("Cell" .. i, true)
+							local r = c and U8.rect(c)
+							need(c and c:FindFirstChild("Day", true), r, "Cell" .. i .. ".Day")
+							need(c and c:FindFirstChild("Amount", true), r, "Cell" .. i .. ".Amount")
+							need(c, b, "Cell" .. i)
+						end
+						for _, name in ipairs({ "ClaimButton", "WispText", "WispBar", "Keep", "Header", "StreakChip", "VipChip" }) do
+							need(holder:FindFirstChild(name, true), b, name)
+						end
+					else
+						for i = 1, 7 do
+							local c = holder:FindFirstChild("Tier" .. i, true)
+							local r = c and U8.rect(c)
+							for _, name in ipairs({ "Time", "Reward", "Claim", "Clock" }) do
+								need(c and c:FindFirstChild(name, true), r, "Tier" .. i .. "." .. name)
+							end
+							need(c, b, "Tier" .. i)
+						end
+						for _, name in ipairs({ "ClaimAll", "PlayHeader" }) do
+							need(holder:FindFirstChild(name, true), b, name)
+						end
+					end
+					T.check(#out == 0, tag .. ": every part sits inside its tile / box and the window's body", table.concat(out, "; ", 1, math.min(#out, 8)))
+				end)
+				T.eq(GuiService.TouchControlsEnabled, before, fmt("daily phone %dx%d %s: the touch controls are back as they were after Close", s[1], s[2], tab))
+			end
+		end
+		LKC.flushErrors("daily_fits_phone")
+	end)
+
+	-- (finding 26: the week reward's rainbow sweep and rainbow confetti) a paid week (Weeks 1 -> 2) on High: the banner a gold
+	-- block with brown words, 24 confetti bits inside the window, each a flat bit (no gradient, no corner) in the kit's
+	-- colours by role (the prize's gold, the gift's pink, each with its lip tone), none of Theme.Colors.Rainbow, and no
+	-- sweep band across the window
+	S.daily_week_kit_confetti = guarded("daily_week_kit_confetti", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local GQ = U7.client("GraphicsQuality")
+		local oldEffective = GQ and GQ.Effective
+		if GQ then
+			GQ.Effective = function()
+				return "High"
+			end
+		end
+		local KIT = { Sign.Gold, Sign.GoldLip, Sign.Roof, Sign.RoofLip }
+		U94.at(1920, 1080, false, "daily week", "Daily", "", function(tag, holder)
+			local p = U94.payload("")
+			p.Cell, p.Streak, p.Paid, p.Weeks = 7, 14, 14, 2
+			for _, d in ipairs(p.Days) do
+				d.Claimed, d.Today = true, false
+			end
+			p.ReadyAt = p.ServerNow + 20 * 3600
+			LKC.toClient("DailyState", p)
+			LKC.advance(0.1)
+			local fx = holder:FindFirstChild("Fx", true)
+			local bits, off, gloss, rainbow = 0, {}, {}, {}
+			for _, d in ipairs(fx and fx:GetDescendants() or {}) do
+				if d:IsA("UIGradient") or d:IsA("UICorner") then
+					gloss[#gloss + 1] = d.ClassName .. " on " .. d.Parent.Name
+				end
+				if d.Name == "Sweep" then
+					gloss[#gloss + 1] = "the sweep band"
+				end
+				if d:IsA("Frame") and d.Name == "Confetti" then
+					bits = bits + 1
+					local kit = false
+					for _, c in ipairs(KIT) do
+						kit = kit or sameColor(d.BackgroundColor3, c)
+					end
+					if not kit then
+						off[#off + 1] = hex(d.BackgroundColor3)
+					end
+					for _, c in ipairs(Theme.Colors.Rainbow or {}) do
+						if sameColor(d.BackgroundColor3, c) then
+							rainbow[#rainbow + 1] = hex(c)
+						end
+					end
+				end
+			end
+			T.check(bits == 24, tag .. ": a paid week drops 24 confetti bits inside the window (High)", tostring(bits))
+			T.check(#off == 0 and #rainbow == 0, tag .. ": every bit is the prize's gold or the gift's pink (with their lip tones), none of the rainbow",
+				table.concat(off, ", ") .. " | rainbow: " .. table.concat(rainbow, ", "))
+			T.check(#gloss == 0, tag .. ": no sweep band, gradient or round bit in the celebration", table.concat(gloss, ", "))
+			local banner = holder:FindFirstChild("WeekBanner", true)
+			T.check(banner ~= nil and U8.shown(banner) and banner.BackgroundTransparency == 0 and sameColor(banner.BackgroundColor3, Sign.Gold)
+				and sameColor(banner.TextColor3, Sign.Text), tag .. ": the week banner is a gold block with brown words", banner and hex(banner.BackgroundColor3) or "no banner")
+			LKC.advance(3)
+		end)
+		if GQ then
+			GQ.Effective = oldEffective
+		end
+		LKC.flushErrors("daily_week_kit_confetti")
+	end)
+
+	-- the Sky Trove panel, opened as the chest's prompt opens it (OpenPanel + TroveState)
+	function U94.trove(state)
+		LKC.toClient("OpenPanel", "Trove")
+		LKC.toClient("TroveState", { GroupId = state == "Preview" and 0 or 777, Preview = state == "Preview",
+			Asks = { { Id = "Group", State = state, Reward = { Cash = 2000, Tokens = 200 } }, { Id = "Like" } } })
+		LKC.advance(0.6)
+		local gui = U8.pg():FindFirstChild("NimbusTrove")
+		return gui and gui:FindFirstChild("TrovePanel")
+	end
+	function U94.closeTrove()
+		local TC = U7.client("Controllers/TroveController")
+		if TC then
+			pcall(TC.Close)
+		end
+		LKC.advance(0.3)
+	end
+
+	-- the Sky Trove panel on the Signboard kit (1920x1080 and 844x390), built as the Gifts window is: the wood frame round a
+	-- stone body with its lip, the navy "Header" band inside the frame (its darker lip) with the pixel chest on its gold square
+	-- ("TroveIcon"), "SKY TROVE" the window's ribbon after it and the red close block (its X in the Danger block's brown ink)
+	-- at the right, in that order with no overlap; the fixed-size awning on PC only; each ask a stone block in its wood edge
+	-- with a square icon chip (a PixelIcon; no glossy orb), the rows one under the other between the header and the footer;
+	-- the rewards gold tags with brown words ($2,000 and the token coin + 200, the U7a rule); while the reward waits (Open)
+	-- two pixel sparkles by the tags take turns (the family's glint: Daily's today tile), none once claimed; Join the
+	-- panel's one green action (sentence case), Done and Preview the Off block; the pending hint in the kit's red ink;
+	-- nothing round or glossy, every text reads on its fill
+	S.trove_signboard_skin = guarded("trove_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			local pc = not s[3]
+			U8.at(s[1], s[2], s[3], "trove kit b", function(tag)
+				local panel = U94.trove("Open")
+				if not T.check(panel ~= nil and U8.shown(panel), tag .. ": the Trove panel opens") then
+					return
+				end
+				local stone = panel:FindFirstChild("Stone")
+				local lip = stone and stone:FindFirstChild("Lip")
+				T.check(panel.BackgroundTransparency == 0 and sameColor(panel.BackgroundColor3, Sign.Wood) and stone ~= nil and sameColor(stone.BackgroundColor3, Sign.Stone)
+					and lip ~= nil and sameColor(lip.BackgroundColor3, Sign.StoneLip), tag .. ": the panel is the wood frame round a stone body with its lip",
+					hex(panel.BackgroundColor3) .. (stone and (" / " .. hex(stone.BackgroundColor3)) or " / no stone"))
+				local head = panel:FindFirstChild("Header")
+				local pr, hr = U8.rect(panel), head and U8.rect(head)
+				local headLip = head and head:FindFirstChild("Lip")
+				T.check(head ~= nil and U8.shown(head) and sameColor(head.BackgroundColor3, Sign.Navy) and headLip ~= nil and sameColor(headLip.BackgroundColor3, Sign.NavyLip)
+					and hr.Y >= pr.Y + 3 and hr.X >= pr.X + 3 and hr.R <= pr.R - 3, tag .. ": the header is the navy band with its lip inside the wood frame",
+					head and (hex(head.BackgroundColor3) .. " " .. U8.show(hr) .. " in " .. U8.show(pr)) or "no header")
+				local icon = head and head:FindFirstChild("TroveIcon")
+				local chest = false
+				for _, d in ipairs(icon and icon:GetDescendants() or {}) do
+					chest = chest or d:GetAttribute("PixelIcon") == "chest"
+				end
+				T.check(icon ~= nil and U8.shown(icon) and sameColor(icon.BackgroundColor3, Sign.Gold) and icon:FindFirstChild("SignEdge") ~= nil and chest,
+					tag .. ": the pixel chest on its gold square in the header")
+				local title = head and head:FindFirstChild("TitleText")
+				local close = head and head:FindFirstChild("Close")
+				T.check(title ~= nil and U8.shown(title) and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": SKY TROVE is the window's ribbon title")
+				if icon and title and close then
+					local ir, tr, cr = U8.rect(icon), U8.rect(title), U8.rect(close)
+					T.check(ir.R <= tr.X + 0.5 and tr.R <= cr.X - 4 and ir.X >= hr.X and cr.R <= pr.R, tag .. ": the header reads chest, title, close left to right with no overlap",
+						fmt("icon %s, title %s, close %s", U8.show(ir), U8.show(tr), U8.show(cr)))
+				end
+				local closeIssues = SmokeCommon.closeMarkIssues(close, { Shown = U8.shown, MinTap = s[3] and 44 or nil, Bar = Sign.Text, Ink = Sign.RedLip })
+				T.check(close ~= nil and sameColor(close.BackgroundColor3, Sign.Red) and close:FindFirstChild("SignEdge") ~= nil and #closeIssues == 0,
+					tag .. ": the close is the red block with the drawn X in brown ink", (close and hex(close.BackgroundColor3) or "no close") .. " " .. table.concat(closeIssues, "; "))
+				local roof = panel:FindFirstChild("Roof")
+				if pc then
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Scale == 0 and roof.Size.X.Offset == 360 and roof.Size.Y.Scale == 0,
+						tag .. ": the awning sits over the top at a fixed 360 px (never stretched with the panel)", roof and tostring(roof.Size) or "no roof")
+				else
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on a phone (the panel starts under Roblox's top bar)")
+				end
+				local loose = {}
+				for _, id in ipairs({ "Group", "Like" }) do
+					local row = panel:FindFirstChild("Row_" .. id, true)
+					local chip = row and row:FindFirstChild("Chip")
+					local glyph = nil
+					for _, d in ipairs(chip and chip:GetDescendants() or {}) do
+						glyph = glyph or d:GetAttribute("PixelIcon")
+					end
+					if not (row and row.BackgroundTransparency == 0 and sameColor(row.BackgroundColor3, Sign.Tile) and row:FindFirstChild("SignEdge")
+						and chip and chip.BackgroundTransparency == 0 and chip:FindFirstChild("SignEdge") and glyph) then
+						loose[#loose + 1] = "Row_" .. id
+					end
+				end
+				for _, name in ipairs({ "CashChip", "TokenChip" }) do
+					local chip = panel:FindFirstChild(name, true)
+					local text = chip and chip:FindFirstChild("Text")
+					if not (chip and chip.BackgroundTransparency == 0 and sameColor(chip.BackgroundColor3, Sign.Gold) and chip:FindFirstChild("SignEdge") and text and sameColor(text.TextColor3, Sign.Text)) then
+						loose[#loose + 1] = name
+					end
+				end
+				T.check(#loose == 0, tag .. ": each ask a stone block with its icon chip, the rewards gold tags with brown words", table.concat(loose, ", "))
+				local group, like, footer = panel:FindFirstChild("Row_Group", true), panel:FindFirstChild("Row_Like", true), panel:FindFirstChild("Footer", true)
+				if head and group and like and footer then
+					local gr, lr, fr = U8.rect(group), U8.rect(like), U8.rect(footer)
+					T.check(hr.B <= gr.Y and gr.B <= lr.Y and lr.B <= fr.Y + 0.5 and fr.B <= pr.B and gr.X >= pr.X and gr.R <= pr.R,
+						tag .. ": the asks lie one under the other between the header and the footer", fmt("head %s, group %s, like %s, footer %s", U8.show(hr), U8.show(gr), U8.show(lr), U8.show(fr)))
+				end
+				local cash, tok = panel:FindFirstChild("CashChip", true), panel:FindFirstChild("TokenChip", true)
+				local coin = false
+				for _, d in ipairs(tok and tok:GetDescendants() or {}) do
+					coin = coin or (d:GetAttribute("PixelIcon") == "token" and U8.shown(d))
+				end
+				local cashText, tokText = cash and cash:FindFirstChild("Text"), tok and tok:FindFirstChild("Text")
+				T.check(cashText ~= nil and cashText.Text == "$2,000" and tokText ~= nil and tokText.Text == "200" and coin,
+					tag .. ": the rewards read $2,000 and the token coin + 200", (cashText and cashText.Text or "?") .. " / " .. (tokText and tokText.Text or "?") .. " coin " .. tostring(coin))
+				-- the reward that waits glints: two pixel sparkles by the tags, one lit at a time, taking turns
+				local sparkles = group and group:FindFirstChild("Sparkles")
+				local a, b = sparkles and sparkles:FindFirstChild("SparkleA"), sparkles and sparkles:FindFirstChild("SparkleB")
+				local seenA, seenB, both = false, false, false
+				if a and b and U8.shown(sparkles) then
+					for _ = 1, 10 do
+						seenA = seenA or (a.Visible and not b.Visible)
+						seenB = seenB or (b.Visible and not a.Visible)
+						both = both or (a.Visible == b.Visible)
+						LKC.advance(0.25)
+					end
+				end
+				T.check(a ~= nil and b ~= nil and a:GetAttribute("PixelIcon") == "sparkle" and seenA and seenB and not both,
+					tag .. ": two pixel sparkles by the waiting reward take turns", fmt("a %s, b %s, A lit %s, B lit %s, both/none %s", tostring(a ~= nil), tostring(b ~= nil), tostring(seenA), tostring(seenB), tostring(both)))
+				local greens = U8.greenActions(panel)
+				local join = panel:FindFirstChild("JoinButton", true)
+				T.check(#greens == 1 and greens[1] == "JoinButton" and join.Text == "Join", tag .. ": Join is the panel's one green action, in sentence case",
+					table.concat(greens, ", ") .. " / " .. (join and join.Text or "?"))
+				local round = U94.roundOrGloss(panel)
+				T.check(#round == 0, tag .. ": nothing round or glossy in the Trove panel", table.concat(round, ", ", 1, math.min(#round, 10)))
+				local bad = U94.contrast("NimbusTrove")
+				T.check(#bad == 0, fmt("%s: every text of the Trove panel reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				for state, word in pairs({ Done = "Done", Preview = "Preview" }) do
+					panel = U94.trove(state)
+					join = panel and panel:FindFirstChild("JoinButton", true)
+					T.check(join ~= nil and U8.shown(join) and join.Text == word and sameColor(join.BackgroundColor3, Sign.Well),
+						tag .. ": " .. state .. " shows " .. word .. " on the sunk Off block", join and (join.Text .. " " .. hex(join.BackgroundColor3)) or "no button")
+					local loud = U94.shouty(panel)
+					T.check(#loud == 0, tag .. ": " .. state .. ": every button in sentence case", table.concat(loud, "; "))
+					local worse = U94.contrast("NimbusTrove")
+					T.check(#worse == 0, fmt("%s: %s: every text reads on its fill (%d not)", tag, state, #worse), table.concat(worse, "; ", 1, math.min(#worse, 8)))
+					if state == "Done" then
+						local sp = panel and panel:FindFirstChild("Sparkles", true)
+						T.check(sp == nil or not U8.shown(sp), tag .. ": Done: no glint once the reward is claimed")
+					end
+				end
+				-- the hint that takes the footer's place (a pending join) reads on the stone in the kit's red ink
+				local TC = U7.client("Controllers/TroveController")
+				panel = U94.trove("Open")
+				local GroupS = game:GetService("GroupService")
+				GroupS.PromptJoinAsync = function()
+					return Enum.GroupMembershipStatus.JoinRequestPending
+				end
+				if TC and TC._Join then
+					TC._Join()
+				end
+				LKC.advance(0.3)
+				GroupS.PromptJoinAsync = nil
+				local hint = panel and panel:FindFirstChild("Hint", true)
+				T.check(hint ~= nil and U8.shown(hint) and sameColor(hint.TextColor3, Sign.RedLip), tag .. ": the pending hint shows in the kit's red ink", hint and hex(hint.TextColor3) or "no hint")
+				local hintBad = U94.contrast("NimbusTrove")
+				T.check(#hintBad == 0, fmt("%s: the hint reads on the stone (%d not)", tag, #hintBad), table.concat(hintBad, "; ", 1, math.min(#hintBad, 8)))
+				U94.closeTrove()
+			end)
+		end
+		LKC.flushErrors("trove_signboard_skin")
+	end)
+
+	-- the Sky Trove panel on a touch phone. The panel never lies on Roblox's touch controls (the owner's rule): docked right
+	-- in landscape it keeps them (the player can walk off) wherever the whole panel clears the thumbstick's zone and the jump
+	-- button by 6 px (HudController's rects: on a phone the stick 110 x 96 at the bottom left, 150 tall in portrait, the
+	-- jump button J = 70 from 1.5 J + 10 to 0.5 J + 10 off the right edge, its bottom 20 px over the bottom edge); where it
+	-- cannot (a short landscape phone) and on a portrait phone (the bottom sheet) the touch controls go while it is open and
+	-- come back on Close. 844x390 (the common phone) keeps them. The HUD's vitals card steps aside while the panel lies over
+	-- it. Every text inside the panel and each ask's line inside its block, every text >= 15 px, the close and Join >= 44 px
+	S.trove_fits_phone = guarded("trove_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		local function inside(r, o)
+			return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+		end
+		local function over4(a, b)
+			return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
+		end
+		-- keep: true = the controls must stay, false = they must go, nil = either (kept only where the panel clears both)
+		for _, s in ipairs({ { 844, 390, true }, { 667, 375, nil }, { 640, 360, nil }, { 390, 844, false } }) do
+			local before = GuiService.TouchControlsEnabled
+			local keep = s[3]
+			U8.at(s[1], s[2], true, "trove phone", function(tag)
+				local panel = U94.trove("Open")
+				if not T.check(panel ~= nil and U8.shown(panel), tag .. ": the Trove panel opens") then
+					return
+				end
+				local gui = panel:FindFirstAncestorWhichIsA("LayerCollector")
+				local p = U8.rect(panel)
+				T.check(p.X >= -0.5 and p.Y >= -0.5 and p.R <= gui.AbsoluteSize.X + 0.5 and p.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the panel sits inside the screen", U8.show(p))
+				local J = 70
+				local area = gui.AbsoluteSize
+				local jump = { X = area.X - (1.5 * J + 10) - 6, R = area.X - (0.5 * J + 10) + 6, Y = area.Y - 20 - J - 6, B = area.Y - 20 + 6 }
+				local stick = { X = 0, R = 110 + 6, Y = area.Y - (s[2] > s[1] and 150 or 96) - 6, B = area.Y }
+				local kept = GuiService.TouchControlsEnabled == true
+				if keep == true then
+					T.check(kept, tag .. ": Roblox's touch controls stay (the player can walk off)")
+				elseif keep == false then
+					T.check(not kept, tag .. ": the panel would lie over the thumb zones, so the touch controls go while it is open")
+				end
+				if kept then
+					T.check(not U8.overlap(p, jump) and not U8.overlap(p, stick), tag .. ": with the controls kept the panel lies 6 px clear of the jump button and the thumbstick",
+						fmt("panel %s, jump %s, stick %s", U8.show(p), U8.show(jump), U8.show(stick)))
+				end
+				local hud = U7.client("Controllers/HudController")
+				local layout = hud and hud.GetLayout and hud.GetLayout()
+				local slot = layout and layout.VitalsSlot
+				if slot then
+					local over = over4(p, { X = slot.X, R = slot.X + slot.W, Y = slot.Y, B = slot.Y + slot.H })
+					T.check(not over or layout.Vitals == nil, tag .. ": the vitals card steps aside while the panel lies over it",
+						fmt("panel %s, vitals %d,%d %dx%d shown %s", U8.show(p), slot.X, slot.Y, slot.W, slot.H, tostring(layout.Vitals ~= nil)))
+				end
+				local out, small = {}, {}
+				for _, d in ipairs(panel:GetDescendants()) do
+					if (d:IsA("TextLabel") or d:IsA("TextButton")) and U8.shown(d) and d.Text ~= "" then
+						if not inside(U8.rect(d), p) then
+							out[#out + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+						end
+						if d.TextSize < 15 then
+							small[#small + 1] = d.Name .. " " .. d.TextSize
+						end
+					end
+				end
+				for _, id in ipairs({ "Group", "Like" }) do
+					local row = panel:FindFirstChild("Row_" .. id, true)
+					local label = row and row:FindFirstChild("Label")
+					if label and not inside(U8.rect(label), U8.rect(row)) then
+						out[#out + 1] = "Row_" .. id .. ".Label"
+					end
+				end
+				T.check(#out == 0, tag .. ": every text inside the panel and each ask's line inside its block", table.concat(out, "; "))
+				T.check(#small == 0, tag .. ": every text >= 15 px", table.concat(small, ", "))
+				local join, close = panel:FindFirstChild("JoinButton", true), panel:FindFirstChild("Close", true)
+				T.check(join ~= nil and join.AbsoluteSize.Y >= 44 and close ~= nil and close.AbsoluteSize.X >= 44 and close.AbsoluteSize.Y >= 44,
+					tag .. ": Join and the close are >= 44 px taps", fmt("join %s, close %s", join and tostring(join.AbsoluteSize) or "-", close and tostring(close.AbsoluteSize) or "-"))
+				U94.closeTrove()
+				local after = hud and hud.GetLayout and hud.GetLayout()
+				T.check(not (after and after.VitalsSlot) or after.Vitals ~= nil, tag .. ": the vitals card is back after Close")
+			end)
+			T.eq(GuiService.TouchControlsEnabled, before, fmt("trove phone %dx%d: the touch controls are as they were after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("trove_fits_phone")
 	end)
 
 	return S

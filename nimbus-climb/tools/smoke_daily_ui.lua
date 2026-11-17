@@ -332,9 +332,11 @@ local function clientScenarios()
 		return KC.serverCalls("DailyRequest", mark)
 	end
 	-- slop-audit win 6: the problems of a close button's drawn X ({} = good): the shared check (smoke_common.lua
-	-- SmokeCommon.closeMarkIssues, review round 1), with a tap of at least 44 px
+	-- SmokeCommon.closeMarkIssues, review round 1), with a tap of at least 44 px. (kit-b U9-4) the Gifts window's X is the kit
+	-- B close block's, as the Shop's: square bars in the Danger block's brown ink over its red lip
 	function H.closeMarkIssues(button)
-		return SmokeCommon.closeMarkIssues(button, { Shown = H.shown, MinTap = 44 })
+		local Sign = select(3, KC.env()).Sign
+		return SmokeCommon.closeMarkIssues(button, { Shown = H.shown, MinTap = 44, Bar = Sign.Text, Ink = Sign.RedLip })
 	end
 	-- win 5: the Gifts button, its ring and its pip as { button, ring, pip } shown flags
 	function H.giftsParts()
@@ -408,7 +410,7 @@ local function clientScenarios()
 		-- the week banner and the toast keep the full name; smoke_fixr_daily_ui.lua client_fixr_daily_fit checks the fit)
 		T.check(H.find(H.cell(7), "PetViewport") ~= nil and H.cellText(7):find("Wisp", 1, true) ~= nil, "daily window: day 7 shows the Week Wisp (its viewport, named 'Wisp' in the cell)", H.cellText(7))
 		local claim = H.claimButton()
-		T.check(claim ~= nil and claim.Text == "CLAIM!" and claim.AbsoluteSize.X >= 260 and claim.AbsoluteSize.Y >= 56, "daily window: CLAIM! when ready",
+		T.check(claim ~= nil and claim.Text == "Claim!" and claim.AbsoluteSize.X >= 260 and claim.AbsoluteSize.Y >= 56, "daily window: Claim! when ready (kit-b U9-4: sentence case)",
 			claim and fmt("%s %dx%d", claim.Text, claim.AbsoluteSize.X, claim.AbsoluteSize.Y) or H.footer())
 		local mark = #Mock.RemoteLog
 		H.tap(claim)

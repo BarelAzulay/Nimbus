@@ -262,7 +262,7 @@ local function clientScenarios()
 		H.tap(H.tab(name))
 	end
 	function H.stroke(card)
-		local s = card and card:FindFirstChild("NeonStroke")
+		local s = card and (card:FindFirstChild("SignEdge") or card:FindFirstChild("NeonStroke")) -- (kit-b U9-4: a kit B block's wood edge)
 		return s and s:IsA("UIStroke") and s or nil
 	end
 	function H.fill(card)
@@ -505,28 +505,28 @@ local function clientScenarios()
 			end
 		end
 		T.check(n == 7 and H.find(win, "Rows") == nil, "fixr play cells: seven gift boxes (Tiers > Tier1..7), one per tier, no rows", fmt("%d boxes", n))
-		-- each tier its own saturated colour: the cell's NeonStroke and its Fill gradient
-		local seen, distinct, saturated, gradients = {}, 0, true, true
+		-- each tier its own colour: (kit-b U9-4, finding 15: colour by role) on the box's lip, a colour of the kit (not grey);
+		-- the face is flat (no Fill gradient)
+		local seen, distinct, coloured, flat = {}, 0, true, true
 		local detail = {}
 		for i = 1, 7 do
 			local c = H.tier(i)
-			local st, g = H.stroke(c), H.fill(c)
-			local col = st and st.Color
+			local lip = c and c:FindFirstChild("Lip")
+			local col = lip and lip.BackgroundColor3
 			if col and not seen[H.key(col)] then
 				seen[H.key(col)] = true
 				distinct = distinct + 1
 			end
-			if not col or H.spread(col) < 120 then
-				saturated = false
+			if not col or H.spread(col) < 80 then
+				coloured = false
 			end
-			local kp = g and g.Color and g.Color.Keypoints
-			if not (kp and #kp >= 2 and H.spread(kp[1].Value) >= 50) then
-				gradients = false
+			if H.fill(c) ~= nil or (c and c:FindFirstChildOfClass("UIGradient")) then
+				flat = false
 			end
 			detail[#detail + 1] = H.key(col)
 		end
-		T.check(distinct == 7 and saturated, "fixr play cells: seven distinct saturated cell outlines (NeonStroke)", table.concat(detail, " / "))
-		T.check(gradients, "fixr play cells: every cell carries a coloured Fill gradient (UIGradient)")
+		T.check(distinct == 7 and coloured, "fixr play cells: seven distinct box colours (kit-b U9-4: on each box's lip)", table.concat(detail, " / "))
+		T.check(flat, "fixr play cells: every box's face is flat (kit-b U9-4: no Fill gradient)")
 		-- the time and the reward
 		local t1, t6 = H.texts(H.tier(1)), H.texts(H.tier(6))
 		-- (re-review 1: "Full Berry Basket" is wider than the PC cell, so the cell says "Berry Basket"; client_fixr_daily_fit
@@ -542,7 +542,7 @@ local function clientScenarios()
 		T.check(state(1) == "Claimed" and H.shown(H.find(H.tier(1), "Check")) and H.shown(H.find(H.tier(1), "Dim")) and H.tierButton(1) == nil
 			and not H.shown(H.find(H.tier(1), "Clock")), "fixr play cells: a claimed box shows its tick over the dim", H.texts(H.tier(1)))
 		local b4 = H.tierButton(4)
-		T.check(state(4) == "Ready" and b4 ~= nil and b4.Text == "CLAIM" and not H.shown(H.find(H.tier(4), "Clock")), "fixr play cells: a ready box has its CLAIM", H.texts(H.tier(4)))
+		T.check(state(4) == "Ready" and b4 ~= nil and b4.Text == "Claim" and not H.shown(H.find(H.tier(4), "Clock")), "fixr play cells: a ready box has its Claim (kit-b U9-4: sentence case)", H.texts(H.tier(4)))
 		local clock5 = H.find(H.tier(5), "Clock")
 		T.check(state(5) == "Locked" and H.tierButton(5) == nil and H.shown(clock5) and clock5.Text == "28:00" and not H.shown(H.find(H.tier(5), "Check")),
 			"fixr play cells: a locked box counts down to its gift (its own clock)", H.texts(H.tier(5)))
@@ -566,26 +566,26 @@ local function clientScenarios()
 		-- the Daily strip: coloured per day too, today Gold
 		H.tapTab("Tab_Daily")
 		local Theme = select(3, KC.env())
-		local dseen, dn, dsat, dgrad = {}, 0, true, true
+		-- (kit-b U9-4, finding 15: colour by role) each day's colour on its tile's lip, the faces flat; today's face is the gold
+		local dseen, dn, dsat, dflat = {}, 0, true, true
 		for i = 1, 7 do
 			local c = H.cell(i)
-			local st, g = H.stroke(c), H.fill(c)
-			local col = st and st.Color
+			local lip = c and c:FindFirstChild("Lip")
+			local col = lip and lip.BackgroundColor3
 			if col and not dseen[H.key(col)] then
 				dseen[H.key(col)] = true
 				dn = dn + 1
 			end
-			if not col or H.spread(col) < 120 then
+			if not col or H.spread(col) < 80 then
 				dsat = false
 			end
-			local kp = g and g.Color and g.Color.Keypoints
-			if not (kp and #kp >= 2 and H.spread(kp[1].Value) >= 50) then
-				dgrad = false
+			if H.fill(c) ~= nil or (c and c:FindFirstChildOfClass("UIGradient")) then
+				dflat = false
 			end
 		end
-		local today = H.stroke(H.cell(3))
-		T.check(dn == 7 and dsat and dgrad, "fixr play cells: the Daily cells are coloured per day (outline + Fill gradient)", tostring(dn))
-		T.check(today ~= nil and H.key(today.Color) == H.key(Theme.Neon.Gold), "fixr play cells: today's Daily cell stays Gold", today and H.key(today.Color) or "")
+		local today = H.cell(3)
+		T.check(dn == 7 and dsat and dflat, "fixr play cells: the Daily cells are coloured per day (kit-b U9-4: on each tile's lip, flat faces)", tostring(dn))
+		T.check(today ~= nil and H.key(today.BackgroundColor3) == H.key(Theme.Sign.Gold), "fixr play cells: today's Daily cell stays Gold (kit-b U9-4: its face)", today and H.key(today.BackgroundColor3) or "")
 		DC.Close()
 		KC.advance(0.3)
 		H.fire(H.base(H.now()))
@@ -793,7 +793,7 @@ local function clientScenarios()
 				T.check(amount ~= nil and amount.Text == "Repair" and H.texts(c3):find("$", 1, true) == nil,
 					"fixr daily repair: " .. tag .. " ...it reads 'Repair', no amount", H.texts(c3))
 				local claim = H.find(win, "ClaimButton")
-				T.check(H.shown(claim) and claim.Text == REPAIR and H.body():find("CLAIM!", 1, true) == nil,
+				T.check(H.shown(claim) and claim.Text == REPAIR and H.body():find("Claim!", 1, true) == nil,
 					"fixr daily repair: " .. tag .. " the footer button says 'Repair streak (no gift)', never CLAIM!", claim and claim.Text or "no button")
 				local ok, detail = H.fits(claim)
 				local wx, wy, ww, wh = H.rect(win)
@@ -812,8 +812,8 @@ local function clientScenarios()
 				H.fire(p)
 				KC.advance(0.1)
 				claim = H.find(H.win(), "ClaimButton")
-				T.check(H.shown(claim) and claim.Text == "CLAIM!" and H.cell(4):GetAttribute("Today") == true and H.find(H.cell(4), "Amount").Text ~= "Repair",
-					"fixr daily repair: " .. tag .. " a kept streak shows CLAIM! and day 4's gift again", claim and claim.Text or "no button")
+				T.check(H.shown(claim) and claim.Text == "Claim!" and H.cell(4):GetAttribute("Today") == true and H.find(H.cell(4), "Amount").Text ~= "Repair",
+					"fixr daily repair: " .. tag .. " a kept streak shows Claim! (kit-b U9-4: sentence case) and day 4's gift again", claim and claim.Text or "no button")
 				DC.Close()
 				KC.advance(0.2)
 			end
@@ -1098,8 +1098,8 @@ local function clientScenarios()
 			DC.Open({ Tab = "Daily" })
 			KC.advance(0.3)
 			local claim = H.find(H.win(), "ClaimButton")
-			T.check(H.shown(claim) and claim.Text == "CLAIM!" and H.cell(3):GetAttribute("Today") == true,
-				"fixr daily stale: (setup) before StaleAt the window shows CLAIM! and day 3's gold cell", claim and claim.Text or "no button")
+			T.check(H.shown(claim) and claim.Text == "Claim!" and H.cell(3):GetAttribute("Today") == true,
+				"fixr daily stale: (setup) before StaleAt the window shows Claim! and day 3's gold cell", claim and claim.Text or "no button")
 			KC.advance(3.2) -- the window's 1 s tick runs past StaleAt; no fresh payload yet
 			claim = H.find(H.win(), "ClaimButton")
 			local count = H.find(H.win(), "Countdown")
