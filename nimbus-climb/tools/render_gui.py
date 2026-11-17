@@ -80,7 +80,7 @@ SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "coun
              "stats", "fusion", "fusion:mix", "neon", "neon:window", "neon:hud", "neon:party", "mainmenu", "loading", "settings", "updates",
              # Phase 5 (dungeonclient): the Battle Arena window and its tabs, the Dungeon window / run card views, the
              # Sky Obby picker, the one obby portal
-             "arena", "arena:duels", "arena:raid", "arena:leaders", "arena:practice", "arena:dungeon", "arena:dungeon:party",
+             "arena", "arena:duels", "arena:raid", "arena:leaders", "arena:practice", "arena:dare", "arena:dungeon", "arena:dungeon:party",
              "dungeon", "dungeon:lobby", "dungeon:party", "dungeon:leader", "dungeon:countdown", "dungeon:run", "dungeon:loot",
              "dungeon:treasure", "dungeon:end", "dungeon:wipe", "obby", "obby:party", "obby:toast", "portal:Obby",
              # gui-redo (Task 6): the shared pet picker sheet in its Train, Upgrade and Mix contexts; (Task 8) the

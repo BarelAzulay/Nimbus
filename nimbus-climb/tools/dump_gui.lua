@@ -3158,7 +3158,7 @@ end)
 -- [owner: dungeonclient] begin
 -- Phase 5 side panels of dungeonclient (W4): the Dungeon window + run card + End card (DungeonController), the obby
 -- level picker (ObbyController), the Champion Ring and Arena windows (ArenaController, docked; arena:trials is gone).
---   arena[:<view>]          team | team4 | newteam (MenuController, unchanged) | duels | raid | leaders | side | practice
+--   arena[:<view>]          team | team4 | newteam (MenuController, unchanged) | duels | raid | leaders | side | practice | dare
 --                           (a practice invite on the side card) | dungeon[:<dview>] (= dungeon:<dview>)
 --   dungeon[:<dview>]       lobby (default: the window, two open parties) | party (a member, READY not pressed) |
 --                           leader (the leader: KICK, START, the 30 s READY clock) | countdown (window closed: the side
@@ -3292,6 +3292,18 @@ do
 		if view == "trials" then
 			note("arena:trials is gone (Phase 5): showing arena:dungeon")
 			DGC.dungeon("lobby")
+			return
+		end
+		if view == "dare" then
+			-- (kit-b U9-7) the boss gate pillar's dare panel (RaidGateController.OpenDare) over the raid's state
+			if phase3Arena then
+				phase3Arena("raid", arg)
+			end
+			local RG = req("client/Controllers/RaidGateController", true)
+			if RG and type(RG.OpenDare) == "function" then
+				try("dare", RG.OpenDare)
+			end
+			advance(1.2)
 			return
 		end
 		if view == "practice" then

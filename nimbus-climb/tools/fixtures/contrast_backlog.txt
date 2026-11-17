@@ -7,23 +7,10 @@
 # Recorded 2026-11-13 over the 106 render scenarios at the four grid sizes: worst reading after each line.
 
 EggGallery.Root.Board.Cell_*.TextLabel  # "Epic" #B06CE8 on #1C224A 4.47:1 < 4.5
-NimbusArena.Window_*.ArenaPanel.Content.Page_*.Left.Quick.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
-NimbusArena.Window_*.ArenaPanel.Content.Page_*.Scroll.Boss.Head.Element.Element_*  # "Flame" #FFFFFF on #E16636 3.40:1 < 4.5
-NimbusArena.Window_*.ArenaPanel.Content.Page_*.Scroll.Boss.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
-NimbusArena.Window_*.ArenaPanel.Content.Page_*.Scroll.Rank*.Medal.Rank  # "2" #FFFFFF on #C8D2E2 1.52:1 < 3
-NimbusArena.Window_*.RingPanel.Content.Detail.FacesBox.TeamFaces.Face*.StageBadge  # "EVO I" #FFFFFF on #A48645 3.46:1 < 4.5
-NimbusArena.Window_*.RingPanel.Content.Detail.FacesBox.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
-NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Champion.Tags.Boss  # "👑 BOSS" #FFFFFF on #D45559 4.00:1 < 4.5
-NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Picker.Start*.Caption  # "ROUND" #FFFFFF on #74ABE9 2.41:1 < 3
-NimbusArena.Window_*.RingPanel.Content.Detail.Scroll.Picker.Start*.Number  # "1" #FFFFFF on #629ADB 2.94:1 < 3
-NimbusArenaSide.SideStack.Invite*.Body.Buttons.Accept  # "Accept" #FFFFFF on #2F895B 4.31:1 < 4.5
 NimbusDaily.DailyHolder.DailyWindow.Body.DailyPage.Cells.Cell*.Body.Day  # "TODAY" #FFFFFF on #BC933D 2.84:1 < 4.5
 NimbusDaily.DailyHolder.DailyWindow.Body.PlayPage.Tiers.Tier*.Body.Time  # "30 min" #FFFFFF on #357AD2 4.33:1 < 4.5
 NimbusDaily.DailyHolder.DailyWindow.TitleBar.Tab_*  # "Play time" #D4E0F6 on #7F6737 4.06:1 < 4.5
 NimbusDev.DevPanel.Content.List.Dev_*  # "+1M tokens" #FFFFFF on #997A3A 4.05:1 < 4.5
-NimbusDungeon.Window_*.DungeonPanel.Content.Floors.Floor*.OrbHolder.Orb.Num  # "4" #FFFFFF on #6C95B4 3.19:1 < 4.5
-NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.StageBadge  # "EVO I" #FFFFFF on #A48645 3.46:1 < 4.5
-NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Coin.Icon  # "☁" #FFFFFF on #C89E4A 2.49:1 < 3
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Price  # "500" #B0B8CE on #565B66 3.44:1 < 4.5
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Label  # "SPIN AGAIN" #B0B8CE on #6C7280 2.43:1 < 3

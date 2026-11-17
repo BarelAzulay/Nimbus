@@ -17,6 +17,7 @@
 --   SignKit.Rope(parent, opts)    a rope / post the board hangs from
 --   SignKit.BlockRow(parent, opts) n stone blocks with a darker lip; SignKit.FillBlocks(row, k) turns the first k gold
 --   SignKit.Notice(parent, opts)  a small wood-framed stone card (a tip, a notice); returns notice, face
+--   SignKit.Nails(board, opts)    (U9-7) two nail heads on a hanging board's top corners (the handmade touch)
 --   SignKit.Rig(parts, opts)      (sign/logo build: the owner's pick B2 "Sky-climber's rig", 2026-11-13; it replaced the
 --                                 Workshop trim) a hanging board's canopy (canvas under navy stripes, a scalloped
 --                                 valance with brass piping, a stitched patch), the frame's bevel, rope lashings on its
@@ -587,6 +588,29 @@ function SignKit.Notice(parent, opts)
 	end
 	place(notice, opts, "Notice")
 	return notice, face
+end
+
+-- (kit-b U9-7, the owner's look bar 2026-11-17: small handmade touches that read as this game) two nail heads on a
+-- hanging board's top corners, so a card that hangs on the screen is nailed up, not floating: plain WoodDark squares
+-- (opts.Size design px, default 4) opts.Inset px in from the corner (default 6), above the board's face (opts.ZIndex,
+-- default one over the board). Returns the two Frames (NailL, NailR; attribute SignKit = "Nail")
+function SignKit.Nails(board, opts)
+	opts = opts or {}
+	local s = math.max(2, math.floor(tonumber(opts.Size) or 4))
+	local inset = math.floor(tonumber(opts.Inset) or 6)
+	local z = tonumber(opts.ZIndex) or (board.ZIndex + 1)
+	local out = {}
+	for i, side in ipairs({ 0, 1 }) do
+		local nail = fill(i == 1 and "NailL" or "NailR", opts.Color or Sign.WoodDark, {
+			AnchorPoint = Vector2.new(side, 0),
+			Position = UDim2.new(side, (side == 0) and inset or -inset, 0, inset),
+			Size = UDim2.fromOffset(s, s),
+			ZIndex = z,
+		}, board)
+		nail:SetAttribute("SignKit", "Nail")
+		out[i] = nail
+	end
+	return out[1], out[2]
 end
 
 ----------------------------------------------------------------------

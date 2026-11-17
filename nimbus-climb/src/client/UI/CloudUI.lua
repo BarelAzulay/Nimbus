@@ -598,7 +598,8 @@ end
 ----------------------------------------------------------------------
 -- props: Text, Style ("Green"|"Pink"|"Red"|"Blue"|"Gold"|"Gray"), Size (default 160x50), Position,
 --        AnchorPoint, Callback (called as Callback(button)), Parent, TextSize (default 22), Name,
---        LayoutOrder, ZIndex, Skin ("Sign": a kit B block, see signButton)
+--        LayoutOrder, ZIndex, Skin ("Sign": a kit B block, see signButton; a child Frame "PressFace" holding the
+--        caller's own labels sinks onto the lip with the face, kit-b U9-7)
 local function signButton(props)
 	local state = { Style = isStyleName(props.Style) and titleCase(props.Style) or "Gray" }
 	local button = Util.Create("TextButton", {
@@ -636,6 +637,11 @@ local function signButton(props)
 		local pad = button:FindFirstChild("LipPad")
 		if pad then
 			pad.PaddingTop = UDim.new(0, pressing and (SM.Lip - SM.PressLip) or 0)
+		end
+		-- (kit-b U9-7) a block that carries its own labels keeps them in a Frame "PressFace": it sinks with the face too
+		local face = button:FindFirstChild("PressFace")
+		if face then
+			face.Position = UDim2.fromOffset(0, pressing and (SM.Lip - SM.PressLip) or 0)
 		end
 	end
 	fx = attachFx(button, { Hover = 1, Press = 1, OnState = paint })

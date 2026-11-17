@@ -22,6 +22,7 @@
 --   * The gate tag: one pixel-sized BillboardGui RaidGateTag on the gate's crest (tag NC_RaidGateCrest, else the RaidGate part):
 --     "<Boss> - your tier: <Tier> (L<n> boss)", the reward line, "<Tier> boss back in N s" while my tier's fight is closed, else "Walk
 --     through to fight". Refreshed every second from the last ArenaState; hidden while the player fights.
+--   * (kit-b U9-7: the tag is a stone notice nailed up, the panel a Signboard window with stone tiers and red Dare blocks)
 --   * The dare panel: a NeonKit side panel (docked right on landscape screens, a bottom sheet on portrait phones) with one row per
 --     tier above mine, "<Tier> - boss L<n>, hits x<h>, rewards x<r>" and a Dare button. One side panel at a time; Esc / gamepad B / the
 --     red X / walking away from the pillar / my fight's Start close it. Dare with an empty team leads to the Pets window (TeamFaces.Ensure).
@@ -40,6 +41,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-7) the tag's nails
 
 local Client = script.Parent.Parent
 local UI = Client:WaitForChild("UI")
@@ -76,14 +78,14 @@ local K = {
 	BACK_ACTION = "NimbusRaidDareBack",
 }
 
-local Colors = Theme.Colors
-local WHITE = Colors.White
+-- (kit-b U9-7) the Signboard palette (the Arena's): brown ink on stone, the muted brown for the intro, raised stone tiles
+-- for the tiers; the gate's tag is a stone notice nailed up over the gate, its reward clock in the burnt orange that reads
+-- 4.5:1 on stone
+local SIGN = Theme.Sign
+local INK = SIGN.Text
 local C = {
-	Accent = Color3.fromRGB(214, 92, 96), -- the Arena panels' crimson
-	Gold = (Theme.Neon and Theme.Neon.Gold) or Color3.fromRGB(255, 196, 64),
-	Muted = Color3.fromRGB(176, 184, 214),
-	Row = Color3.fromRGB(30, 36, 78),
-	Plate = Color3.fromRGB(28, 36, 78),
+	Muted = SIGN.TextMuted,
+	Reward = Color3.fromRGB(148, 86, 10), -- #94560A
 }
 
 local LocalPlayer = nil
@@ -173,7 +175,7 @@ function H.text(parent, name, text, role, size, color, props)
 	label.BorderSizePixel = 0
 	label.Text = tostring(text or "")
 	-- kit-b U6: the window is a plate, so the text reads by contrast (no outline)
-	Theme.Style(label, role or "Body", { Size = size, Color = color or WHITE })
+	Theme.Style(label, role or "Body", { Size = size, Color = color or INK })
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	for k, v in pairs(props or {}) do
 		label[k] = v
@@ -370,17 +372,17 @@ function H.buildTag(adornee)
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.Adornee = adornee
+	-- (kit-b U9-7) a stone notice in its wood edge with the stone lip, nailed up at its top corners (was a navy rounded
+	-- plate with a gold rim)
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
-	plate.BackgroundColor3 = C.Plate
-	plate.BackgroundTransparency = 0.1
 	plate.BorderSizePixel = 0
 	plate.Size = UDim2.new(1, 0, 1, 0)
 	plate.Parent = gui
-	Util.Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = plate })
-	Util.Create("UIStroke", { Color = C.Gold, Thickness = 2, Transparency = 0.1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = plate })
+	CloudUI.SignBlock(plate, "Stone", { LipPx = 5 })
+	SignKit.Nails(plate, { Inset = 5 })
 	local lines = {}
-	for i, spec in ipairs({ { "Heading", 22, WHITE, 6, 56 }, { "Body", 18, C.Gold, 62, 26 }, { "Heading", 18, WHITE, 90, 26 } }) do
+	for i, spec in ipairs({ { "Heading", 22, INK, 6, 56 }, { "Body", 18, C.Reward, 62, 26 }, { "Heading", 18, INK, 88, 26 } }) do
 		lines[i] = H.text(plate, "Line" .. i, "", spec[1], spec[2], spec[3], {
 			Position = UDim2.fromOffset(8, spec[4]),
 			Size = UDim2.new(1, -16, 0, spec[5]),
@@ -443,7 +445,9 @@ function H.build()
 		Name = "DarePanel",
 		Title = "Dare a higher tier",
 		Closable = true,
-		Category = "Arena",
+		Skin = "Signboard", -- (kit-b U9-7) roof, navy header with the sword, wood frame, stone body
+		Icon = Config.Icons.Battle,
+		TitleSize = 32, -- (the prompt's words, "Dare a higher tier": at 34 px they ran 4 px past the header beside the icon on a phone)
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -475,17 +479,17 @@ function H.dare(tierId)
 end
 
 function H.row(tier, order)
+	-- (kit-b U9-7) a stone tile per tier; Dare is a red (risky) block, the window has no green
 	local row = Instance.new("Frame")
 	row.Name = "Row_" .. tostring(tier.Id)
-	row.BackgroundColor3 = C.Row
 	row.BorderSizePixel = 0
 	row.Size = UDim2.new(1, 0, 0, K.ROW_H)
 	row.LayoutOrder = order
 	row.Parent = U.List
-	Util.Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = row })
-	H.text(row, "Text", tostring(tier.Id) .. " - boss L" .. tostring(tier.BossLevel) .. ", hits x" .. tostring(tier.Hit) .. ", rewards x" .. tostring(tier.Reward), "Body", 19, WHITE, {
+	CloudUI.SignBlock(row, "Stone", { EdgePx = 2, LipPx = 4 })
+	H.text(row, "Text", tostring(tier.Id) .. " - boss L" .. tostring(tier.BossLevel) .. ", hits x" .. tostring(tier.Hit) .. ", rewards x" .. tostring(tier.Reward), "Body", 19, INK, {
 		Position = UDim2.fromOffset(12, 0),
-		Size = UDim2.new(1, -(K.BUTTON_W + 32), 1, 0),
+		Size = UDim2.new(1, -(K.BUTTON_W + 32), 1, -4),
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
@@ -493,9 +497,10 @@ function H.row(tier, order)
 		Name = "Dare_" .. tostring(tier.Id),
 		Text = "Dare",
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -8, 0.5, 0),
+		Position = UDim2.new(1, -8, 0.5, -2),
 		Size = UDim2.fromOffset(K.BUTTON_W, K.BUTTON_H),
 		Style = "Red",
+		Skin = "Sign",
 		TextSize = 22,
 		Parent = row,
 		Callback = function()
@@ -552,6 +557,20 @@ function H.syncBack()
 	end
 end
 
+-- (kit-b U9-7) on a touch screen Roblox's thumbstick and jump button go while the panel is open (the jump button sat on
+-- Dare_Max at 844x390) and come back as they were: MenuController keeps the one owner set, as the Arena and the Index do
+function H.syncTouch()
+	local want = S.Open == true and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	if want == (S.TouchOff == true) then
+		return
+	end
+	S.TouchOff = want
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		H.safe("touch", menu.SetTouchHidden, "Dare", want)
+	end
+end
+
 function RaidGateController.OpenDare(prompt)
 	if not initialized then
 		RaidGateController.Init()
@@ -580,6 +599,7 @@ function RaidGateController.OpenDare(prompt)
 	S.Open = true
 	S.Token = S.Token + 1
 	H.syncBack()
+	H.syncTouch()
 	if U.Dock and U.Dock.Refresh then
 		U.Dock.Refresh()
 	end
@@ -601,6 +621,7 @@ function RaidGateController.Close()
 	S.Token = S.Token + 1
 	local mine = S.Token
 	H.syncBack()
+	H.syncTouch()
 	if U.Pop then
 		Util.Tween(U.Pop, 0.12, { Scale = 0.92 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	end

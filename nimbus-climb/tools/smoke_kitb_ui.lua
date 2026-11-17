@@ -111,6 +111,13 @@
 --                             enemy list clear of the currency strips; on the phones every text and button whole on the
 --                             screen, uncut, one-line texts fitting at real widths, nothing under the stick / jump button.
 --                             kitb_no_neon_glow and kitb_no_emoji_ui walk the family's views too
+--   U9-7 (the Arena, Ring, Dungeon and raid gate docks, TeamFaces inside them; U97.FAMILY):
+--   arena_family_fits         (client) at the four grid sizes every view: no text under the floor or TextScaled, outside a
+--                             scrolling list whole on the screen and uncut, one-line texts fitting at real widths, every
+--                             text reading on its fill (the family's contrast_backlog lines gone); on the phones nothing
+--                             under the stick / jump button (the docked windows hide them, as the Pets window and the Index)
+--   arena_family_one_green    (client) at most one green action per view, the right one; the selected Arena tab gold.
+--                             kitb_no_neon_glow, kitb_no_emoji_ui and kitb_titles_stamped walk the family's views too
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -4044,6 +4051,19 @@ local function clientScenarios()
 		LKC.flushErrors("loading_tip_clear_of_bulb")
 	end)
 
+	-- (U9-7) the dock family: the Battle Arena window on its three tabs, the Champion Ring window, the Dungeon window as a
+	-- visitor (two open parties), a member and the leader, the run card in a run, the End card of a cleared floor, the
+	-- arena's side cards (an invite, the sent one, the queue, the Double Rewards chip) and the raid gate's dare panel, fed
+	-- with dump_gui's data (an open raid, a leaderboard, two more players in the server). U97.FAMILY: { view, its ScreenGui };
+	-- U97.open / close / showing are defined after U8 and U96 (they use both)
+	local U97 = {}
+	U97.FAMILY = {
+		{ "arena:duels", "NimbusArena" }, { "arena:raid", "NimbusArena" }, { "arena:leaders", "NimbusArena" }, { "ring", "NimbusArena" },
+		{ "dungeon:lobby", "NimbusDungeon" }, { "dungeon:party", "NimbusDungeon" }, { "dungeon:leader", "NimbusDungeon" },
+		{ "dungeon:run", "NimbusDungeonRun" }, { "dungeon:end", "NimbusDungeonRun" }, { "arena:side", "NimbusArenaSide" },
+		{ "dare", "NimbusRaidGate" },
+	}
+
 	-- (T0 review) every window title goes through Theme.StyleTitle, seen at run time: the walk opens the windows that build
 	-- late (Training with its confirm, Fusion, the pet picker, the Shop, the Home window with its hero cards and Prestige
 	-- confirm, the loss screen, a battle's result card, the hatch stage, the garden recall dialog), then fails on any
@@ -4166,12 +4186,26 @@ local function clientScenarios()
 		end)
 		walk()
 		pcall(client("UI/PetBits").closeRecall)
+		-- (U9-7) the dock family's windows (they build on their first open)
+		for _, f in ipairs({ { "arena:duels" }, { "ring" }, { "dungeon:lobby" }, { "dare" } }) do
+			try("the dock window " .. f[1], function()
+				U97.open(f[1])
+			end)
+			walk()
+			U97.close()
+		end
 		-- the window titles this walk must have seen as "Ribbon" (a Lua pattern on the path inside PlayerGui each); (U9-5, the
 		-- owner's ruling 2026-11-14: the T1 ribbon is for window titles only) a third field names another look: the Care
 		-- family's dialogs wear the plain kit B "Section" title
 		local expected = {
 			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$", "Section" },
-			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$" },
+			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$", "Section" }, -- (U9-7) a pop-up card: the plain kit B title
+			{ "the Battle Arena window", "^NimbusArena%.Window_Arena%..-%.TitleBar%..-Title$" },
+			{ "the Champion Ring window", "^NimbusArena%.Window_Ring%..-%.TitleBar%..-Title$" },
+			{ "the Dungeon window", "^NimbusDungeon%.Window_Dungeon%..-%.TitleBar%..-Title$" },
+			{ "the dare panel", "^NimbusRaidGate%.Dare%..-%.TitleBar%..-Title$" },
+			{ "the Arena's Quick match head", "^NimbusArena%.Window_Arena%..-%.Quick%.Title$", "Section" },
+			{ "the Ring's champion head", "^NimbusArena%.Window_Ring%..-%.Champion%.Head%.Title$", "Section" },
 			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
 			{ "the Go home hero card", "%.Hero%.GoHome%..-%.Title$" },
 			{ "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
@@ -4440,6 +4474,13 @@ local function clientScenarios()
 			walk()
 			U96.close()
 		end
+		for _, f in ipairs(U97.FAMILY) do -- (U9-7) and every view of the dock family (Arena, Ring, Dungeon, side cards, dare)
+			U7.try("the dock family " .. f[1], function()
+				U97.open(f[1])
+			end)
+			walk()
+			U97.close()
+		end
 		local list, n = {}, 0
 		for path, cps in pairs(hits) do
 			list[#list + 1] = path .. " " .. cps
@@ -4477,7 +4518,7 @@ local function clientScenarios()
 		LKC.advance(0.6)
 		local side = pg:FindFirstChild("NimbusArenaSide")
 		local card = side and side:FindFirstChild("Invite1", true)
-		local body = card and card:FindFirstChild("Body")
+		local body = card and card:FindFirstChild("Body", true) -- (U9-7) in the card's Inner frame (its padding; the lip and nails sit outside it)
 		local info = body and body:FindFirstChild("Info")
 		if T.check(card and body and info and LKC.isShown(card), "arena side invite: the card shows with its Info line") then
 			local sc = card.AbsoluteSize.X / 340
@@ -4934,6 +4975,131 @@ local function clientScenarios()
 		end
 		return false
 	end
+
+	-- (U9-7) the dock family's views (U97.FAMILY, declared above), defined here, after U8
+	U97.added = {}
+	-- StormChaser (501) and CloudyKnight (502) in the server (no characters), or gone again
+	function U97.others(on)
+		if on then
+			for _, p in ipairs({ { "StormChaser", 501 }, { "CloudyKnight", 502 } }) do
+				if not U97.added[p[2]] and type(Mock.AddPlayer) == "function" then
+					local ok, pl = pcall(Mock.AddPlayer, p[1], p[2], { character = false })
+					if ok and pl then
+						U97.added[p[2]] = pl
+					end
+				end
+			end
+		else
+			for id, pl in pairs(U97.added) do
+				pcall(Mock.RemovePlayer, pl)
+				U97.added[id] = nil
+			end
+		end
+	end
+	function U97.record()
+		return { Best = 4, Cleared = { true, true, true, true, false, false, false, false, false, false, false, false }, Runs = 12, Clears = 7 }
+	end
+	function U97.open(view)
+		local lp = game:GetService("Players").LocalPlayer
+		local me = lp.UserId
+		local base, sub = tostring(view):match("^([^:]+):?(.*)$")
+		U97.others(true)
+		if base == "arena" or base == "ring" or base == "dare" then
+			LKC.toClient("ArenaState", {
+				Next = { Kind = "DoubleRewards", Name = "Double Rewards", StartsIn = 95, Announced = true },
+				Raid = { Active = true, BossId = "lava_golem", Name = "Lava Golem", BattleId = "R1", FloorTier = "High", FloorHiddenIn = 0, NextBoss = "storm_titan",
+					NextBossIn = 1180, Closed = {}, Fights = { High = { Tier = "High", Floor = true, Players = 3, Hp = 61000, MaxHp = 90000, EndsIn = 214 },
+						Mid = { Tier = "Mid", Floor = false, Players = 2, Hp = 20000, MaxHp = 40000, EndsIn = 120 } } },
+				Double = { Active = false, EndsIn = 0 },
+				Leaderboard = { { UserId = 501, Name = "StormChaser", Trophies = 1210 }, { UserId = 502, Name = "CloudyKnight", Trophies = 980 },
+					{ UserId = me, Name = lp.Name, Trophies = 120 }, { UserId = 503, Name = "PuddleFan", Trophies = 90 } },
+			})
+			if sub == "duels" or sub == "side" then
+				LKC.toClient("BattleState", "Lobby", {
+					Queue = { Queued = sub == "side", Waiting = 2, Seconds = 14 },
+					Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 1210, Power = 1380, ExpiresIn = 24 } },
+					Sent = { ToUserId = 502, ToName = "CloudyKnight", ExpiresIn = 18 },
+				})
+			end
+			LKC.advance(0.4)
+			if sub == "duels" then
+				LKC.toClient("OpenPanel", "Arena", { Tab = "Duels" })
+			elseif sub == "raid" then
+				LKC.toClient("OpenPanel", "Arena", { Tab = "Raid" })
+			elseif sub == "leaders" then
+				LKC.toClient("OpenPanel", "Arena", { Tab = "Leaderboard" })
+			elseif base == "ring" then
+				-- (a player with a home: START is on, the window's one green; without one it is off and says why)
+				U97.spot, U97.spotSet = lp:GetAttribute("SpotIndex"), true
+				lp:SetAttribute("SpotIndex", 3)
+				LKC.toClient("OpenPanel", "Ring", {})
+			elseif base == "dare" then
+				U7.client("Controllers/RaidGateController").OpenDare()
+			end
+			LKC.advance(1.2)
+			return
+		end
+		-- the dungeon
+		local lobby = { Record = U97.record(), Parties = {
+			{ Leader = 501, LeaderName = "StormChaser", Floor = 3, Count = 2, Max = 4, Open = true, InRun = false },
+			{ Leader = 502, LeaderName = "CloudyKnight", Floor = 5, Count = 3, Max = 4, Open = true, InRun = true, Room = 2 },
+		} }
+		if sub == "party" then
+			lobby.Mine = { Leader = 501, Floor = 3, Members = { { UserId = 501, Name = "StormChaser", Ready = true, Power = 420 },
+				{ UserId = me, Name = lp.Name, Ready = false, Power = 310 } } }
+		elseif sub == "leader" then
+			lobby.Mine = { Leader = me, Floor = 4, Countdown = 24, Members = { { UserId = me, Name = lp.Name, Ready = true, Power = 310 },
+				{ UserId = 501, Name = "StormChaser", Ready = true, Power = 420 }, { UserId = 502, Name = "CloudyKnight", Ready = false, Power = 188 } } }
+		end
+		LKC.toClient("DungeonState", "Lobby", lobby)
+		LKC.advance(0.3)
+		if sub == "run" or sub == "end" then
+			lp:SetAttribute("InBattle", "U97")
+			LKC.toClient("DungeonState", "Run", { RunId = "U97", Floor = 3, Name = "Flooded Vaults", Element = "Water", Room = 2, RoomCount = 4, Wave = 2, Waves = 2,
+				State = "Fight", Members = { { UserId = me, Name = lp.Name, Downed = false, Left = false }, { UserId = 501, Name = "StormChaser", Downed = true, Left = false } },
+				Joinable = true })
+			LKC.advance(0.3)
+			LKC.toClient("DungeonState", "Loot", { Room = 1, Cash = 340, Tokens = 24, Xp = 70, LevelUps = 0 })
+			if sub == "end" then
+				LKC.toClient("DungeonState", "End", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4,
+					Totals = { Cash = 1630, Tokens = 170, Xp = 360, Gems = 0 }, FirstClear = { Tokens = 900, Gems = 5 }, Unlocked = 4, NewBest = 3 })
+				lp:SetAttribute("InBattle", nil)
+			end
+			LKC.advance(0.8)
+			return
+		end
+		LKC.toClient("OpenPanel", "Dungeon", { Floor = 3 })
+		LKC.advance(1.5)
+	end
+	function U97.close()
+		local lp = game:GetService("Players").LocalPlayer
+		local DC = U7.client("Controllers/DungeonController")
+		pcall(U7.client("Controllers/ArenaController").Close)
+		pcall(DC.Close)
+		pcall(U7.client("Controllers/RaidGateController").Close)
+		local okS, st = pcall(DC.GetState)
+		if okS and type(st) == "table" and st.Run then
+			LKC.toClient("DungeonState", "End", { Floor = 3, Name = "Flooded Vaults", Cleared = false, Reason = "Quit", Room = 2, Totals = { Cash = 0, Tokens = 0, Xp = 0, Gems = 0 } })
+			LKC.advance(0.2)
+		end
+		local runGui = U8.pg():FindFirstChild("NimbusDungeonRun")
+		local ok = runGui and runGui:FindFirstChild("OkButton", true)
+		if ok and U8.shown(ok) then
+			pcall(Mock.Click, ok)
+		end
+		lp:SetAttribute("InBattle", nil)
+		if U97.spotSet then
+			lp:SetAttribute("SpotIndex", U97.spot)
+			U97.spotSet = nil
+		end
+		LKC.toClient("DungeonState", "Lobby", { Parties = {}, Record = U97.record() })
+		LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
+		LKC.toClient("ArenaState", { Double = { Active = false }, Leaderboard = {} })
+		U97.others(false)
+		LKC.advance(0.6)
+	end
+	-- the view shows: its ScreenGui enabled with a shown part in it (U96's rule)
+	U97.showing = U96.showing
 
 	-- (U8) the gift docks under the currency strips (the pitch's HUD stage: a small pink block right-aligned under them): its
 	-- right edge on the strips' right edge, its top a small gap under the last strip, never over a strip, and the HUD's
@@ -5519,6 +5685,33 @@ local function clientScenarios()
 				T.check(seen == #U96.FAMILY, fmt("%s: every battle family view opened (%d of %d)", tag, seen, #U96.FAMILY))
 				T.check(#battle == 0, fmt("%s: no glow, gradient, neon or rounded corner in the battle family (%d)", tag, #battle),
 					table.concat(battle, "; ", 1, math.min(#battle, 12)))
+				-- (U9-7) and the dock family (U97.FAMILY: the Arena, Ring, Dungeon and dare windows, the run / End cards, the side
+				-- cards), as strict as the battle family: square and flat, so no gradient but a designed look and no corner but a
+				-- disc's; and the team rows (TeamFaces) inside them
+				local dock, shown = {}, 0
+				for _, f in ipairs(U97.FAMILY) do
+					U97.open(f[1])
+					local gui = pg:FindFirstChild(f[2])
+					if U97.showing(gui) then
+						shown = shown + 1
+					end
+					walk(gui, f[1], dock)
+					for _, d in ipairs(gui and gui:GetDescendants() or {}) do
+						local p = d.Parent
+						if p and p:IsA("GuiObject") and U8.shown(p) and not designedLook(d) then
+							local where = f[1] .. ": " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+							if d:IsA("UIGradient") and d.Enabled ~= false then
+								dock[#dock + 1] = where .. " has a gradient (" .. d.Name .. ")"
+							elseif d:IsA("UICorner") and not (d.CornerRadius.Scale >= 0.49 and p.AbsoluteSize.X > 0 and math.abs(p.AbsoluteSize.X - p.AbsoluteSize.Y) <= 1.5) then
+								dock[#dock + 1] = where .. " has a rounded corner"
+							end
+						end
+					end
+					U97.close()
+				end
+				T.check(shown == #U97.FAMILY, fmt("%s: every dock family view opened (%d of %d)", tag, shown, #U97.FAMILY))
+				T.check(#dock == 0, fmt("%s: no glow, gradient, neon or rounded corner in the dock family (%d)", tag, #dock),
+					table.concat(dock, "; ", 1, math.min(#dock, 12)))
 			end)
 		end
 		LKC.flushErrors("kitb_no_neon_glow")
@@ -5972,6 +6165,181 @@ local function clientScenarios()
 		end
 		restoreMeasure()
 		LKC.flushErrors("battle_family_fits")
+	end)
+
+	-- (U9-7) the dock family fits every screen: at the four grid sizes every view of U97.FAMILY shows, no text is drawn under
+	-- the readability floor (15 px on a screen 1000 px tall or more, 14 below) or TextScaled, every text and button outside a
+	-- scrolling list is whole on the screen and never cut by a clipping frame above it, every one-line text fits its box at
+	-- FredokaOne's / LuckiestGuy's real widths with 2 px to spare, and every text reads on its fill (kit B's contrast rule,
+	-- the family's contrast_backlog lines are gone). On the phones (touch) nothing sits under Roblox's thumbstick or jump
+	-- button unless the view hid them: the four docked windows do (GuiService.TouchControlsEnabled false while one is
+	-- open, as the Pets window and the Index), the run card, the End card and the side cards keep clear of them
+	S.arena_family_fits = guarded("arena_family_fits", function()
+		local Theme = LoadingH.shared("Theme")
+		local GuiService = game:GetService("GuiService")
+		local RealWidth = SmokeCommon.RealWidth
+		local function plain(o)
+			local text = o.Text
+			if o.RichText then
+				text = text:gsub("<[^>]->", "")
+			end
+			local role = o:GetAttribute("FontRole")
+			if role and Theme.CapsRoles[role] then
+				text = Theme.Caps(text)
+			end
+			return text
+		end
+		local function width(o)
+			local w = RealWidth(plain(o), o.TextSize, Theme.FontOf(o), true)
+			return (w or Theme.MeasureLabel(o).X) * U8.scaleOf(o)
+		end
+		local function inScroll(o)
+			local cur = o.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur:IsA("ScrollingFrame") then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		local SPLIT = { TextFill = true, TextTrail = true, TextTrack = true }
+		local function clipper(o)
+			local cur = o.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur:IsA("GuiObject") and cur.ClipsDescendants and not SPLIT[cur.Name] then
+					return cur
+				end
+				cur = cur.Parent
+			end
+			return nil
+		end
+		local function inside(a, b)
+			return a.X >= b.X - 1 and a.R <= b.R + 1 and a.Y >= b.Y - 1 and a.B <= b.B + 1
+		end
+		local function texty(d)
+			return (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextTransparency < 1
+		end
+		local WINDOWS = { NimbusArena = true, NimbusDungeon = true, NimbusRaidGate = true }
+		local restoreMeasure = U8.measureReal()
+		for _, s in ipairs(U8.SIZES) do
+			local W, Hh, touch = s[1], s[2], s[3]
+			local floorPx = (Hh >= 1000) and 15 or 14
+			for _, f in ipairs(U97.FAMILY) do
+				U8.at(W, Hh, touch, "dock family " .. f[1], function(tag)
+					U97.open(f[1])
+					local gui = U8.pg():FindFirstChild(f[2])
+					if not T.check(U97.showing(gui), tag .. ": the view shows (" .. f[2] .. ")") then
+						U97.close()
+						return
+					end
+					local dy = gui.IgnoreGuiInset and 0 or Mock.TopInset
+					local screen = { X = 0, Y = -dy, R = W, B = Hh - dy }
+					local zones = {}
+					if touch and GuiService.TouchControlsEnabled ~= false then
+						zones[1] = { X = 25, Y = Hh - 90 - dy, R = 95, B = Hh - 20 - dy, Name = "thumbstick" }
+						zones[2] = { X = W - 115, Y = Hh - 90 - dy, R = W - 45, B = Hh - 20 - dy, Name = "jump" }
+					end
+					if touch and WINDOWS[f[2]] then
+						T.check(GuiService.TouchControlsEnabled == false, tag .. ": a docked window hides Roblox's thumbstick and jump button on a touch screen")
+					end
+					local small, scaled, off, cut, tight, under = {}, {}, {}, {}, {}, {}
+					for _, d in ipairs(gui:GetDescendants()) do
+						local tx = texty(d)
+						if (tx or d:IsA("GuiButton")) and U8.shown(d) and d.AbsoluteSize.X > 0 then
+							local name = d:GetFullName():gsub("^.-" .. f[2] .. "%.", "")
+							if tx then
+								local px = d.TextSize * U8.scaleOf(d)
+								if d.TextScaled then
+									scaled[#scaled + 1] = name
+								elseif px < floorPx - 0.01 then
+									small[#small + 1] = fmt("%s %q %.1f px", name, d.Text, px)
+								end
+							end
+							if not inScroll(d) then
+								local r = U8.rect(d)
+								if not inside(r, screen) then
+									off[#off + 1] = name .. " " .. U8.show(r)
+								end
+								local c = clipper(d)
+								if c and not inside(r, U8.rect(c)) then
+									cut[#cut + 1] = name .. " " .. U8.show(r) .. " in " .. c.Name .. " " .. U8.show(U8.rect(c))
+								end
+								for _, z in ipairs(zones) do
+									if U8.overlap(r, z) then
+										under[#under + 1] = name .. " under the " .. z.Name
+									end
+								end
+							end
+							if tx and not d.TextWrapped and not d.TextScaled then
+								local pad = d:FindFirstChildOfClass("UIPadding")
+								local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) * U8.scaleOf(d) or 0
+								local w = width(d)
+								if w + inset + 2 > d.AbsoluteSize.X + 0.01 then
+									tight[#tight + 1] = fmt("%s %q %.0f px in %.0f", name, d.Text, w + inset, d.AbsoluteSize.X)
+								end
+							end
+						end
+					end
+					T.check(#small == 0, fmt("%s: every text at %d px or more on the screen (%d)", tag, floorPx, #small), table.concat(small, "; ", 1, math.min(#small, 8)))
+					T.check(#scaled == 0, fmt("%s: no TextScaled text (%d)", tag, #scaled), table.concat(scaled, "; ", 1, math.min(#scaled, 8)))
+					T.check(#off == 0, fmt("%s: every text and button is on the screen (%d)", tag, #off), table.concat(off, "; ", 1, math.min(#off, 8)))
+					T.check(#cut == 0, fmt("%s: no text or button cut by a clipping frame (%d)", tag, #cut), table.concat(cut, "; ", 1, math.min(#cut, 8)))
+					T.check(#tight == 0, fmt("%s: every one-line text fits its box (%d)", tag, #tight), table.concat(tight, "; ", 1, math.min(#tight, 8)))
+					if touch then
+						T.check(#under == 0, fmt("%s: nothing under the thumbstick or the jump button (touch controls %s) (%d)", tag,
+							tostring(GuiService.TouchControlsEnabled), #under), table.concat(under, "; ", 1, math.min(#under, 8)))
+					end
+					-- kit B's contrast rule on this view (3:1 from 18 px, 4.5:1 below; the family's backlog lines are gone)
+					local all, low, read = SmokeCommon.Contrast.Walk(U8.pg()), {}, 0
+					for _, line in ipairs(all) do
+						if line:sub(1, #f[2] + 1) == f[2] .. "." then
+							low[#low + 1] = line
+						end
+					end
+					for _, d in ipairs(gui:GetDescendants()) do
+						read = read + ((texty(d) and U8.shown(d)) and 1 or 0)
+					end
+					T.check(read > 0 and #low == 0, fmt("%s: every text reads on its fill (%d read, %d not)", tag, read, #low), table.concat(low, "; ", 1, math.min(#low, 6)))
+					U97.close()
+				end)
+			end
+		end
+		restoreMeasure()
+		LKC.flushErrors("arena_family_fits")
+	end)
+
+	-- (U9-7) one colour by role in the dock family: at most one green action in a view, and the right one: the Duels page's
+	-- Find a match (an invite's Accept and the Challenge buttons are stone peers), the Ring's START, the Dungeon's Solo, a
+	-- member's Ready, the leader's Start, the side card's Accept; the Raid and Leaders pages, the run card, the End card and
+	-- the dare panel none (Leave and Dare are red, the End card's OK stone). The selected Arena tab is gold
+	S.arena_family_one_green = guarded("arena_family_one_green", function()
+		local WANT = { ["arena:duels"] = "Queue", ring = "Start", ["dungeon:lobby"] = "SoloButton", ["dungeon:party"] = "ReadyButton",
+			["dungeon:leader"] = "StartButton", ["arena:side"] = "Accept" }
+		local Sign = LoadingH.shared("Theme").Sign
+		U8.at(1920, 1080, false, "dock family one green", function(tag)
+			for _, f in ipairs(U97.FAMILY) do
+				U97.open(f[1])
+				local gui = U8.pg():FindFirstChild(f[2])
+				local greens = U8.greenActions(gui)
+				local want = WANT[f[1]]
+				T.check((want == nil and #greens == 0) or (want ~= nil and #greens == 1 and greens[1] == want),
+					fmt("%s: %s has %s", tag, f[1], want and ("its one green action " .. want) or "no green action"), table.concat(greens, ", "))
+				if f[1]:match("^arena:") and f[1] ~= "arena:side" then
+					local tabs, gold = 0, 0
+					for _, d in ipairs(gui:GetDescendants()) do
+						if d:IsA("TextButton") and d.Name:match("^Tab_") and U8.shown(d) then
+							tabs = tabs + 1
+							local face = U8.faceOf(d)
+							gold = gold + ((face and sameColor(face, Sign.Gold)) and 1 or 0)
+						end
+					end
+					T.check(tabs == 3 and gold == 1, fmt("%s: %s shows three tabs, the selected one gold", tag, f[1]), fmt("%d tabs, %d gold", tabs, gold))
+				end
+				U97.close()
+			end
+		end)
+		LKC.flushErrors("arena_family_one_green")
 	end)
 
 	-- (U8) CloudUI.Panel's Signboard skin (Skin = "Signboard"; the Pets window and the Index wear it): the flat pink awning at a

@@ -98,6 +98,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the dungeon's marks
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-7) the cards' nails
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -132,6 +133,7 @@ local K = {
 	MEMBER_H = 46,
 	MEMBER_H_SHORT = 40,
 	CARD_W = 330, -- the desktop run card
+	CARD_LIP = 6, -- (kit-b U9-7) design px of the run / End card's lip (NeonKit's Sign card: the body sits above it)
 	CHIP_H = 50, -- the phone chip (design px; scale 0.8)
 	END_W = 400,
 	LEAVE_CONFIRM = 3, -- seconds the first LEAVE press stays armed
@@ -181,25 +183,26 @@ local K = {
 	DUNGEON_SHOULDER = Vector3.new(1.4, 0.35, 0), -- Humanoid.CameraOffset inside a run (bug #15 "3D" camera)
 }
 
+-- (kit-b U9-7) the Signboard palette (the Arena's: one colour by role): brown ink on stone, the muted brown for captions,
+-- sunk stone wells for the lists, raised stone tiles for the rows, square tags in a role's colour with the ink that reads
+-- on it; coloured text is darkened until it reads 4.5:1 on a well (#F3E6C8) and on the picked row's pale gold
 local Colors = Theme.Colors
-local NEON = Theme.Neon or {}
-local WHITE = Colors.White
-local INK = Colors.PanelInk or Color3.fromRGB(8, 10, 28)
+local SIGN = Theme.Sign
+local INK = SIGN.Text
+local MUTED = SIGN.TextMuted
+local ENTER_INK = Colors.PanelInk or Color3.fromRGB(8, 10, 28) -- the entry blocks' thin edge (a world effect, not a plate)
 local C = {
-	Accent = Theme.NeonColor and Theme.NeonColor("Dungeon") or Color3.fromRGB(176, 104, 255),
-	Gold = NEON.Gold or Color3.fromRGB(255, 196, 64),
-	Green = NEON.Green or Color3.fromRGB(72, 224, 120),
-	Red = NEON.Red or Color3.fromRGB(255, 76, 100),
-	Blue = NEON.Blue or Color3.fromRGB(64, 170, 255),
-	Grey = NEON.Grey or Color3.fromRGB(150, 166, 204),
-	Muted = Color3.fromRGB(176, 184, 214),
-	Row = Color3.fromRGB(30, 36, 78),
-	RowDark = Color3.fromRGB(18, 22, 52),
-	Locked = Color3.fromRGB(110, 116, 150),
-	Power = Color3.fromRGB(255, 214, 110),
-	Cash = Color3.fromRGB(120, 230, 140),
-	Token = Colors.Token or Color3.fromRGB(255, 210, 90),
-	Gem = Colors.Gem or Color3.fromRGB(84, 196, 246),
+	Accent = SIGN.Violet, -- the dungeon's own colour (an unknown element, the loss screen's lip)
+	Gold = SIGN.Gold,
+	Green = SIGN.Grass,
+	Red = SIGN.Red,
+	Blue = SIGN.Sky,
+	Muted = MUTED,
+	Good = Color3.fromRGB(37, 107, 41), -- #256B29: 5.3:1 on a well
+	Warn = Color3.fromRGB(148, 86, 10), -- #94560A: 4.7:1 on a well, 4.9:1 on the pale gold
+	Bad = SIGN.RedLip,
+	Token = SIGN.Gold,
+	Gem = SIGN.Sky,
 }
 
 -- typography as UTF-8 escapes (the source stays ASCII). kit-b U7b: the marks are PixelIcons (the sword before a power, the
@@ -364,7 +367,7 @@ function H.text(parent, name, text, role, size, color, props)
 	label.BorderSizePixel = 0
 	label.Text = tostring(text or "")
 	-- kit-b U6: the dungeon window, the run card and the chip are plates, so the text reads by contrast (no outline)
-	Theme.Style(label, role or "Body", { Size = size, Color = color or WHITE })
+	Theme.Style(label, role or "Body", { Size = size, Color = color or INK })
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	for k, v in pairs(props or {}) do
@@ -374,14 +377,9 @@ function H.text(parent, name, text, role, size, color, props)
 	return label
 end
 
--- radius: a Theme.Radius token ("S", "M", "Round"; kit-b U6), "M" by default
-function H.corner(parent, radius)
-	return Theme.Corner(parent, radius or "M")
-end
-
 function H.stroke(parent, color, thickness, transparency)
 	return Util.Create("UIStroke", {
-		Color = color or INK,
+		Color = color or SIGN.Wood,
 		Thickness = thickness or 2,
 		Transparency = transparency or 0,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
@@ -408,6 +406,48 @@ function H.pad(parent, l, t, r, b)
 		PaddingBottom = UDim.new(0, b or 0),
 		Parent = parent,
 	})
+end
+
+-- (kit-b U9-7) a square edge with mitred corners (kit B has no rounded blocks)
+function H.edge(parent, color, thickness)
+	local s = H.stroke(parent, color, thickness, 0)
+	s.Name = "SignEdge"
+	s.LineJoinMode = Enum.LineJoinMode.Miter
+	return s
+end
+
+-- (kit-b U9-7) the colour a tag paints: a mid-tone that no ink reads 4.5:1 on is lightened until brown does
+function H.readable(color)
+	for _ = 1, 6 do
+		if Theme.Contrast(Theme.TextOn(color), color) >= 4.6 then
+			break
+		end
+		color = Theme.Lighten(color, 0.08)
+	end
+	return color
+end
+
+-- (kit-b U9-7) a square tag frame holding a centred label "Text" (a floor's state); H.paintTag colours it
+function H.tag(parent, name, size, props)
+	local tag = H.frame(parent, name, props)
+	tag.Size = size
+	tag.BackgroundTransparency = 0
+	H.edge(tag, SIGN.Wood, 2)
+	H.text(tag, "Text", "", "Tag", 18, INK, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
+	return tag
+end
+
+function H.paintTag(tag, face, ink)
+	tag.BackgroundColor3 = face
+	tag:FindFirstChild("Text").TextColor3 = ink or Theme.TextOn(face)
+end
+
+-- (kit-b U9-7) a sunk stone well around a list (the pitch's .wl): flat, its own darker edge
+function H.well(obj)
+	obj.BackgroundColor3 = SIGN.Well
+	obj.BackgroundTransparency = 0
+	H.edge(obj, SIGN.WellEdge, 2)
+	return obj
 end
 
 function H.clear(frame)
@@ -642,7 +682,8 @@ function W.build()
 		Name = "DungeonPanel",
 		Title = "The Dungeon",
 		Closable = true,
-		Category = "Dungeon",
+		Skin = "Signboard", -- (kit-b U9-7) roof, navy header with the key, wood frame, stone body
+		Icon = Config.Icons.Dungeon,
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -656,28 +697,26 @@ function W.build()
 	local content = panel.Content
 	-- the record line
 	U.Top = H.frame(content, "Top", { Size = UDim2.new(1, 0, 0, 30) })
-	U.Record = H.text(U.Top, "Record", "", "Heading", 19, WHITE, { Size = UDim2.new(1, -150, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
-	U.Power = H.text(U.Top, "Power", "", "Heading", 19, C.Power, {
+	U.Record = H.text(U.Top, "Record", "", "Heading", 19, INK, { Size = UDim2.new(1, -122, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+	U.Power = H.text(U.Top, "Power", "", "Heading", 19, INK, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.new(0, 150, 1, 0),
+		Size = UDim2.new(0, 118, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
 	PixelIcon.Lead(U.Power, "sword") -- (kit-b U7b) the team's power
 	-- the floor list
 	U.Floors = Instance.new("ScrollingFrame")
 	U.Floors.Name = "Floors"
-	U.Floors.BackgroundTransparency = 0.25
-	U.Floors.BackgroundColor3 = C.RowDark
+	H.well(U.Floors)
 	U.Floors.BorderSizePixel = 0
 	U.Floors.ScrollBarThickness = 8
-	U.Floors.ScrollBarImageColor3 = C.Accent
+	U.Floors.ScrollBarImageColor3 = SIGN.Wood
 	U.Floors.ScrollingDirection = Enum.ScrollingDirection.Y
 	U.Floors.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	U.Floors.CanvasSize = UDim2.new(0, 0, 0, 0)
 	U.Floors.Position = UDim2.fromOffset(0, 36)
 	U.Floors.Parent = content
-	H.corner(U.Floors, "M")
 	H.pad(U.Floors, 8, 8, 14, 8)
 	H.list(U.Floors, Enum.FillDirection.Vertical, 6)
 	U.FloorRows = {}
@@ -687,16 +726,14 @@ function W.build()
 	-- the party box
 	U.Party = Instance.new("ScrollingFrame")
 	U.Party.Name = "Party"
-	U.Party.BackgroundTransparency = 0.2
-	U.Party.BackgroundColor3 = C.RowDark
+	H.well(U.Party)
 	U.Party.BorderSizePixel = 0
 	U.Party.ScrollBarThickness = 6
-	U.Party.ScrollBarImageColor3 = C.Accent
+	U.Party.ScrollBarImageColor3 = SIGN.Wood
 	U.Party.ScrollingDirection = Enum.ScrollingDirection.Y
 	U.Party.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	U.Party.CanvasSize = UDim2.new(0, 0, 0, 0)
 	U.Party.Parent = content
-	H.corner(U.Party, "M")
 	H.pad(U.Party, 10, 8, 10, 8)
 	H.list(U.Party, Enum.FillDirection.Vertical, 6)
 	-- the footer hint
@@ -709,7 +746,9 @@ function W.build()
 	return true
 end
 
--- one floor row (a TextButton: tap to select it)
+-- one floor row (a TextButton: tap to select it). (kit-b U9-7) a stone block (pale gold with an ink edge when picked, a
+-- sunk well when locked: W.refreshFloors) with a square stripe in the floor's element colour, the floor's number on a
+-- square tile in that colour (was a glossy orb), the name and the status, a square tag at the right
 function W.floorRow(f)
 	local info = H.floorInfo(f)
 	local color = H.elementColor(info.Element)
@@ -718,41 +757,49 @@ function W.floorRow(f)
 	row.AutoButtonColor = false
 	row.Text = ""
 	row.BorderSizePixel = 0
-	row.BackgroundColor3 = C.Row
 	row.Size = UDim2.new(1, 0, 0, K.ROW_H)
 	row.LayoutOrder = f
 	row.Parent = U.Floors
-	H.corner(row, "M")
-	local rim = H.stroke(row, Theme.Darken(color, 0.35), 2, 0.2)
-	local stripe = H.frame(row, "Stripe", { BackgroundTransparency = 0, BackgroundColor3 = color, Size = UDim2.new(0, 6, 1, -12), Position = UDim2.fromOffset(4, 6) })
-	H.corner(stripe, "S")
-	local orbHolder = H.frame(row, "OrbHolder", { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0, 48, 1, 0) })
-	local orb = NeonKit.Orb(orbHolder, color, 44)
-	local num = H.text(orb, "Num", tostring(f), "Title", 22, WHITE, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
-	local name = H.text(row, "FloorName", info.Name, "Heading", 21, WHITE, {
+	CloudUI.SignBlock(row, "Stone", { EdgePx = 2, LipPx = 4, Pad = false })
+	H.frame(row, "Stripe", { BackgroundTransparency = 0, BackgroundColor3 = color, Size = UDim2.new(0, 6, 1, -16), Position = UDim2.fromOffset(4, 6) })
+	local face = H.readable(color)
+	local badge = H.frame(row, "Badge", {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 16, 0.5, -2),
+		Size = UDim2.fromOffset(42, 42),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = face,
+	})
+	H.edge(badge, SIGN.Wood, 2)
+	H.frame(badge, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 4),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Darken(face, 0.22),
+	})
+	local num = H.text(badge, "Num", tostring(f), "Title", 22, Theme.TextOn(face), {
+		Size = UDim2.new(1, 0, 1, -4),
+		TextXAlignment = Enum.TextXAlignment.Center,
+	})
+	local name = H.text(row, "FloorName", info.Name, "Heading", 21, INK, {
 		Position = UDim2.fromOffset(70, 6),
 		Size = UDim2.new(1, -190, 0, 28),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	local sub = H.text(row, "Status", "", "Body", 18, C.Muted, {
+	local sub = H.text(row, "Status", "", "Body", 18, MUTED, {
 		Position = UDim2.fromOffset(70, 34),
 		Size = UDim2.new(1, -190, 0, 24),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	local chip = H.frame(row, "Chip", {
+	local chip = H.tag(row, "Chip", UDim2.fromOffset(106, 34), {
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -10, 0.5, 0),
-		Size = UDim2.fromOffset(106, 34),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = C.RowDark,
+		Position = UDim2.new(1, -10, 0.5, -2),
 	})
-	H.corner(chip, "Round")
-	local chipRim = H.stroke(chip, color, 2, 0)
-	local chipText = H.text(chip, "Text", "", "Tag", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
 	row.Activated:Connect(function()
 		H.safe("pick floor", W.pick, f)
 	end)
-	return { Root = row, Rim = rim, Orb = orb, Num = num, Name = name, Sub = sub, Chip = chip, ChipRim = chipRim, ChipText = chipText, Color = color }
+	return { Root = row, Orb = badge, Num = num, Name = name, Sub = sub, Chip = chip, ChipText = chip:FindFirstChild("Text"), Color = color }
 end
 
 -- a tap on floor f: select it (the leader of a party also moves the party's floor)
@@ -800,48 +847,55 @@ function W.refreshFloors(rec, short)
 		ui.Name.Position = UDim2.fromOffset(70, short and 2 or 6)
 		ui.Sub.Position = UDim2.fromOffset(70, short and 26 or 34)
 		ui.Sub.Size = UDim2.new(1, -190, 0, short and 22 or 24)
-		local status, subColor, chip, chipColor
+		-- (kit-b U9-7) the tag by role: a locked floor a sunk well in muted ink, a cleared one stone with the green tick,
+		-- the next floor gold (the one to go for), any other open floor sky
+		local status, subColor, chip, chipFace, chipInk
 		if not open then
 			status = "Clear floor " .. (f - 1) .. " first"
-			subColor = C.Muted
-			chip, chipColor = "LOCKED", C.Locked
+			subColor = MUTED
+			chip, chipFace, chipInk = "LOCKED", SIGN.Well, MUTED
 		elseif cleared then
 			status = "Cleared"
-			subColor = C.Green
-			chip, chipColor = "CLEARED", C.Green
+			subColor = C.Good
+			chip, chipFace, chipInk = "CLEARED", SIGN.Tile, C.Good
 		else
 			status = "Recommended power " .. (rp and H.commas(rp) or "?")
-			subColor = (rp and power >= rp) and C.Green or C.Power
+			subColor = (rp and power >= rp) and C.Good or C.Warn
 			if f == nextF then
-				chip, chipColor = "NEXT", C.Gold
+				chip, chipFace = "NEXT", SIGN.Gold
 			else
-				chip, chipColor = "OPEN", C.Blue
+				chip, chipFace = "OPEN", SIGN.Sky
 			end
 		end
 		ui.Sub.Text = status
 		PixelIcon.Mark(ui.Sub, (not open) and "lock" or (cleared and "check" or nil)) -- (kit-b U7b)
 		ui.Sub.TextColor3 = subColor
 		ui.ChipText.Text = chip
-		ui.ChipRim.Color = chipColor
-		ui.ChipText.TextColor3 = (chip == "LOCKED") and C.Muted or WHITE
-		ui.Root.BackgroundColor3 = (f == sel) and Theme.Lighten(C.Row, 0.14) or (open and C.Row or C.RowDark)
-		ui.Rim.Color = (f == sel) and C.Accent or Theme.Darken(ui.Color, 0.35)
-		ui.Rim.Thickness = (f == sel) and 3 or 2
-		ui.Rim.Transparency = (f == sel) and 0 or 0.2
-		ui.Name.TextColor3 = open and WHITE or C.Muted
+		H.paintTag(ui.Chip, chipFace, chipInk)
+		local picked = f == sel
+		CloudUI.SignBlock(ui.Root, open and "Stone" or "Off", {
+			Face = picked and SIGN.Selected or nil,
+			Edge = picked and SIGN.Text or nil,
+			EdgePx = picked and 3 or 2,
+			LipPx = 4,
+			Pad = false,
+		})
+		ui.Name.TextColor3 = open and INK or MUTED
 		ui.Root:SetAttribute("Selected", f == sel)
 		ui.Root:SetAttribute("Unlocked", open)
 		ui.Root:SetAttribute("Cleared", cleared)
 	end
 end
 
--- a button inside the party box (NeonKit); returns the TextButton
-function W.button(parent, name, text, color, size, order, callback, variant)
-	return NeonKit.Button({
+-- a button inside the party box and on the cards; returns the TextButton. (kit-b U9-7) a kit B block (CloudUI's Sign
+-- skin; was a NeonKit neon button): style is a CloudUI style, Green THE main action of the view, Red leave / remove,
+-- Gray a stone block
+function W.button(parent, name, text, style, size, order, callback)
+	return CloudUI.Button({
 		Name = name,
 		Text = text,
-		Color = color,
-		Variant = variant or "Primary",
+		Style = style,
+		Skin = "Sign",
 		Size = size,
 		TextSize = 20,
 		LayoutOrder = order,
@@ -902,7 +956,7 @@ end
 -- the party box when the player has no party: SOLO / PARTY + the open parties
 function W.partyNone(box, short, sel)
 	local info = H.floorInfo(sel)
-	H.text(box, "Title", "Floor " .. sel .. " " .. G.Dot .. " " .. tostring(info.Name), "Heading", 20, WHITE, {
+	H.text(box, "Title", "Floor " .. sel .. " " .. G.Dot .. " " .. tostring(info.Name), "Heading", 20, INK, {
 		Size = UDim2.new(1, 0, 0, 26),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 1,
@@ -911,14 +965,14 @@ function W.partyNone(box, short, sel)
 	local row = H.frame(box, "Buttons", { Size = W.buttonRow(short), LayoutOrder = 3 })
 	H.list(row, Enum.FillDirection.Horizontal, 10)
 	local bw = UDim2.new(0.5, -5, 1, 0)
-	U.Solo = W.button(row, "SoloButton", "Solo", C.Green, bw, 1, function()
+	U.Solo = W.button(row, "SoloButton", "Solo", "Green", bw, 1, function()
 		H.withTeam(function()
 			if H.request("Solo", W.selected()) then
 				H.hint("Starting floor " .. W.selected() .. "...", 3)
 			end
 		end)
 	end)
-	U.Create = W.button(row, "PartyButton", "Party", C.Accent, bw, 2, function()
+	U.Create = W.button(row, "PartyButton", "Party", "Gray", bw, 2, function()
 		H.withTeam(function()
 			if H.request("Create", W.selected()) then
 				H.hint("Party made! Friends can JOIN it here", 4)
@@ -945,16 +999,18 @@ function W.partyNone(box, short, sel)
 end
 
 function W.partyRow(box, p, i, short)
-	local row = H.frame(box, "Open" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.Row, Size = UDim2.new(1, 0, 0, W.openRowH(short)), LayoutOrder = 4 + i })
-	H.corner(row, "M")
+	local row = H.frame(box, "Open" .. i, { Size = UDim2.new(1, 0, 0, W.openRowH(short)), LayoutOrder = 4 + i })
+	CloudUI.SignBlock(row, "Stone", { EdgePx = 2, LipPx = 3 }) -- (kit-b U9-7) a stone tile in the well
 	local count = tostring(p.Count or 1) .. "/" .. tostring(p.Max or 4)
 	local where = p.InRun and ("in room " .. tostring(p.Room or 1)) or ("Floor " .. tostring(p.Floor or 1))
-	H.text(row, "Text", tostring(p.LeaderName or "Someone") .. "'s party " .. G.Dot .. " " .. where .. " " .. G.Dot .. " " .. count, "Body", 18, WHITE, {
+	-- (kit-b U9-7) the leader with the crown (the list is headed "Open parties"; "'s party" ran past a phone's row)
+	local label = H.text(row, "Text", tostring(p.LeaderName or "Someone") .. " " .. G.Dot .. " " .. where .. " " .. G.Dot .. " " .. count, "Body", 18, INK, {
 		Position = UDim2.fromOffset(10, 0),
 		Size = UDim2.new(1, -120, 1, 0),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	local join = W.button(row, "JoinButton", p.Open and "Join" or (p.InRun and "Busy" or "Full"), C.Blue, UDim2.fromOffset(96, W.openRowH(short) - 6), 1, function()
+	PixelIcon.Lead(label, "crown")
+	local join = W.button(row, "JoinButton", p.Open and "Join" or (p.InRun and "Busy" or "Full"), "Gray", UDim2.fromOffset(96, W.openRowH(short) - 8), 1, function()
 		if not p.Open then
 			return
 		end
@@ -965,7 +1021,7 @@ function W.partyRow(box, p, i, short)
 		end)
 	end)
 	join.AnchorPoint = Vector2.new(1, 0.5)
-	join.Position = UDim2.new(1, -6, 0.5, 0)
+	join.Position = UDim2.new(1, -6, 0.5, -1)
 	W.setDisabled(join, p.Open ~= true)
 	join:SetAttribute("Leader", p.Leader)
 end
@@ -976,14 +1032,14 @@ function W.partyMine(box, short, mine)
 	local leader = mine.Leader == me
 	local f = math.floor(tonumber(mine.Floor) or 1)
 	local info = H.floorInfo(f)
-	H.text(box, "Title", (leader and "Your party" or "Party") .. " " .. G.Dot .. " Floor " .. f .. " " .. G.Dot .. " " .. tostring(info.Name), "Heading", 20, WHITE, {
+	H.text(box, "Title", (leader and "Your party" or "Party") .. " " .. G.Dot .. " Floor " .. f .. " " .. G.Dot .. " " .. tostring(info.Name), "Heading", 20, INK, {
 		Size = UDim2.new(1, 0, 0, 26),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 1,
 	})
 	W.faces(box)
 	local cd = W.countdownText(mine)
-	U.Countdown = H.text(box, "Countdown", cd or (leader and "Press START when everyone is READY" or "Press READY, the leader starts"), "Body", 18, cd and C.Gold or C.Muted, {
+	U.Countdown = H.text(box, "Countdown", cd or (leader and "Press START when everyone is READY" or "Press READY, the leader starts"), "Body", 18, cd and C.Warn or MUTED, {
 		Size = UDim2.new(1, 0, 0, 24),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 3,
@@ -996,36 +1052,39 @@ function W.partyMine(box, short, mine)
 			if isMe and S.ReadyWant ~= nil and not leader then
 				ready = S.ReadyWant
 			end
-			local row = H.frame(box, "Member" .. i, { BackgroundTransparency = 0, BackgroundColor3 = isMe and Theme.Lighten(C.Row, 0.1) or C.Row, Size = UDim2.new(1, 0, 0, h), LayoutOrder = 10 + i })
-			H.corner(row, "M")
+			-- (kit-b U9-7) a stone tile, my own pale gold
+			local row = H.frame(box, "Member" .. i, { Size = UDim2.new(1, 0, 0, h), LayoutOrder = 10 + i })
+			CloudUI.SignBlock(row, "Stone", { EdgePx = 2, LipPx = 3, Face = isMe and SIGN.Selected or nil })
 			row:SetAttribute("UserId", m.UserId)
 			row:SetAttribute("Ready", ready)
-			local tick = H.text(row, "Ready", "", "Heading", 20, ready and C.Green or C.Muted, {
+			local tick = H.text(row, "Ready", "", "Heading", 20, ready and C.Good or MUTED, {
 				Position = UDim2.fromOffset(8, 0),
 				Size = UDim2.new(0, 28, 1, 0),
 				TextXAlignment = Enum.TextXAlignment.Center,
 			})
 			PixelIcon.Set(tick, ready and "check" or "hourglass", 18) -- (kit-b U7b)
 			tick:SetAttribute("Ready", ready)
-			local name = H.text(row, "Name", tostring(m.Name or "?"), "Body", 19, WHITE, { Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -190, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+			local name = H.text(row, "Name", tostring(m.Name or "?"), "Body", 19, INK, { Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -190, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
 			if m.UserId == mine.Leader then
 				PixelIcon.Lead(name, "crown") -- (kit-b U7b) the party leader
 			end
-			PixelIcon.Lead(H.text(row, "Power", H.commas(m.Power or 0), "Heading", 18, C.Power, {
+			PixelIcon.Lead(H.text(row, "Power", H.commas(m.Power or 0), "Heading", 18, INK, {
 				AnchorPoint = Vector2.new(1, 0),
 				Position = UDim2.new(1, leader and not isMe and -52 or -10, 0, 0),
 				Size = UDim2.new(0, 110, 1, 0),
 				TextXAlignment = Enum.TextXAlignment.Right,
 			}), "sword")
 			if leader and not isMe then
-				local kick = W.button(row, "KickButton", "", C.Red, UDim2.fromOffset(38, h - 8), 1, function()
+				local kick = W.button(row, "KickButton", "", "Red", UDim2.fromOffset(38, h - 10), 1, function()
 					if H.request("Kick", m.UserId) then
 						H.hint("Removed " .. tostring(m.Name or "the player"), 3)
 					end
-				end, "Outline")
-				NeonKit.CloseMark(kick) -- (review round 1) the drawn X of every close button, not the U+2715 glyph
+				end)
+				-- (review round 1) the drawn X of every close button, not the U+2715 glyph; (kit-b U9-7) square bars in the
+				-- Danger block's brown ink, the windows' red X
+				NeonKit.CloseMark(kick, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text })
 				kick.AnchorPoint = Vector2.new(1, 0.5)
-				kick.Position = UDim2.new(1, -6, 0.5, 0)
+				kick.Position = UDim2.new(1, -6, 0.5, -1)
 				kick:SetAttribute("UserId", m.UserId)
 			end
 		end
@@ -1036,7 +1095,7 @@ function W.partyMine(box, short, mine)
 	local bw = UDim2.new(0.5, -5, 1, 0)
 	if leader then
 		-- (START needs only the leader's own team: the server checks every member's)
-		U.Start = W.button(row, "StartButton", "Start", C.Green, bw, 1, function()
+		U.Start = W.button(row, "StartButton", "Start", "Green", bw, 1, function()
 			H.withTeam(function()
 				if H.request("Start") then
 					H.hint(W.allReady(mine) and "Starting..." or "Waiting 30 s for READY...", 3)
@@ -1046,7 +1105,7 @@ function W.partyMine(box, short, mine)
 		W.setDisabled(U.Start, W.countdown(mine) ~= nil and W.allReady(mine))
 	else
 		local want = W.myReady(mine)
-		U.Ready = W.button(row, "ReadyButton", want and "Not ready" or "Ready", want and C.Grey or C.Green, bw, 1, function()
+		U.Ready = W.button(row, "ReadyButton", want and "Not ready" or "Ready", want and "Gray" or "Green", bw, 1, function()
 			local now = not W.myReady(mine)
 			local function send()
 				if H.request("Ready", now) then
@@ -1061,12 +1120,12 @@ function W.partyMine(box, short, mine)
 			end
 		end)
 	end
-	U.LeaveParty = W.button(row, "LeaveButton", "Leave", C.Red, bw, 2, function()
+	U.LeaveParty = W.button(row, "LeaveButton", "Leave", "Red", bw, 2, function()
 		if H.request("Leave") then
 			S.ReadyWant = nil
 			H.hint("You left the party", 3)
 		end
-	end, "Outline")
+	end)
 end
 
 -- the team's faces at the top of the party box (LayoutOrder 2; the Compact row on a phone: its window is narrow and low)
@@ -1195,7 +1254,7 @@ function W.refresh()
 		local cd = W.countdownText(mine)
 		if cd then
 			U.Countdown.Text = cd
-			U.Countdown.TextColor3 = C.Gold
+			U.Countdown.TextColor3 = C.Warn
 		end
 	end
 	local contentH = U.Holder.Size.Y.Offset - 82
@@ -1273,6 +1332,21 @@ function W.syncBack()
 	end
 end
 
+-- (kit-b U9-7) on a touch screen Roblox's thumbstick and jump button go while the window is open (the jump button sat on
+-- SOLO and READY at 844x390) and come back as they were: MenuController keeps the one owner set (looked up at open / close
+-- time: no require cycle), as the Index, the Pets window and the Arena do
+function W.syncTouch()
+	local want = S.Open == true and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	if want == (S.TouchOff == true) then
+		return
+	end
+	S.TouchOff = want
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		H.safe("touch", menu.SetTouchHidden, "Dungeon", want)
+	end
+end
+
 function W.closeOthers()
 	for _, name in ipairs({ "MenuController", "IndexController", "FusionController", "CareController", "ArenaController", "ObbyController" }) do
 		local mod = H.controller(name)
@@ -1311,6 +1385,7 @@ function DungeonController.Open(floorIndex, portal)
 		S.ScrollTo = W.selected()
 	end
 	W.syncBack()
+	W.syncTouch()
 	U.Holder.Visible = true
 	if not was then
 		U.Pop.Scale = 0.9
@@ -1334,6 +1409,7 @@ function DungeonController.Close()
 	S.Token = S.Token + 1
 	local mine = S.Token
 	W.syncBack()
+	W.syncTouch()
 	if U.Pop then
 		H.tween(U.Pop, 0.12, { Scale = 0.92 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	end
@@ -1386,7 +1462,9 @@ function R.build()
 	local gui = CloudUI.NewScreenGui("NimbusDungeonRun", K.RUN_ORDER)
 	U.RunGui = gui
 	-- the side card
-	local card = NeonKit.Card({ Name = "RunCard", Size = UDim2.fromOffset(K.CARD_W, 200), Color = C.Accent, Glow = true, Parent = gui })
+	-- (kit-b U9-7) a hanging stone notice nailed up at its top corners, its lip in the floor's element colour (R.refresh)
+	local card = NeonKit.Card({ Name = "RunCard", Skin = "Sign", Size = UDim2.fromOffset(K.CARD_W, 200), Color = C.Accent, LipPx = K.CARD_LIP, Parent = gui })
+	SignKit.Nails(card.Root, { Inset = 5, ZIndex = 3 })
 	card.Root.Visible = false
 	U.Card = card
 	U.CardScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 1, Parent = card.Root })
@@ -1394,53 +1472,56 @@ function R.build()
 	H.pad(body, 14, 10, 12, 12)
 	H.list(body, Enum.FillDirection.Vertical, 6)
 	U.CardList = body
-	U.CardTitle = H.text(body, "Title", "", "Heading", 21, WHITE, { Size = UDim2.new(1, 0, 0, 28), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 })
-	U.CardRoom = H.text(body, "Room", "", "Heading", 19, C.Gold, { Size = UDim2.new(1, 0, 0, 26), RichText = false, LayoutOrder = 2 })
-	U.CardWave = H.text(body, "Wave", "", "Body", 18, WHITE, { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 3 })
-	U.CardStatus = H.text(body, "Status", "", "Body", 19, WHITE, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 4 })
-	U.CardToast = H.frame(body, "LootToast", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Darken(C.Gold, 0.55), Size = UDim2.new(1, 0, 0, 58), Visible = false, LayoutOrder = 5 })
-	H.corner(U.CardToast, "M")
-	H.stroke(U.CardToast, C.Gold, 2, 0)
+	U.CardTitle = H.text(body, "Title", "", "Heading", 21, INK, { Size = UDim2.new(1, 0, 0, 28), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 })
+	U.CardRoom = H.text(body, "Room", "", "Heading", 19, INK, { Size = UDim2.new(1, 0, 0, 26), RichText = false, LayoutOrder = 2 })
+	U.CardWave = H.text(body, "Wave", "", "Body", 18, MUTED, { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 3 })
+	U.CardStatus = H.text(body, "Status", "", "Body", 19, INK, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 4 })
+	-- (kit-b U9-7) the loot toast: a square plate in the toast's colour (gold loot, sky a lost room) with the ink that reads on it
+	U.CardToast = H.frame(body, "LootToast", { BackgroundTransparency = 0, BackgroundColor3 = C.Gold, Size = UDim2.new(1, 0, 0, 58), Visible = false, LayoutOrder = 5 })
+	H.edge(U.CardToast, SIGN.Wood, 2)
 	H.pad(U.CardToast, 10, 6, 10, 6)
-	U.CardToastText = H.text(U.CardToast, "Text", "", "Heading", 19, WHITE, { Size = UDim2.new(1, 0, 1, 0), TextWrapped = true })
+	U.CardToastText = H.text(U.CardToast, "Text", "", "Heading", 19, INK, { Size = UDim2.new(1, 0, 1, 0), TextWrapped = true })
 	U.CardMembers = H.frame(body, "Members", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 6 })
 	Util.Create("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 0, 26), CellPadding = UDim2.fromOffset(6, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = U.CardMembers })
-	U.CardLoot = H.text(body, "Loot", "", "Heading", 18, C.Cash, { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 7 })
+	U.CardLoot = H.text(body, "Loot", "", "Heading", 18, C.Good, { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 7 })
 	local buttons = H.frame(body, "Buttons", { Size = UDim2.new(1, 0, 0, 48), LayoutOrder = 8 })
 	U.CardButtons = buttons
 	H.list(buttons, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right)
 	-- (bug batch 2 #14: no CHEST button; a chest is picked only with its own E prompt in the alcove)
-	U.CardReady = W.button(buttons, "ReadyButton", "Ready", C.Green, UDim2.new(0.5, -4, 1, 0), 2, R.ready)
-	U.CardLeave = W.button(buttons, "LeaveButton", "Leave", C.Red, UDim2.new(0.5, -4, 1, 0), 3, R.leave, "Outline")
+	U.CardReady = W.button(buttons, "ReadyButton", "Ready", "Green", UDim2.new(0.5, -4, 1, 0), 2, R.ready)
+	U.CardLeave = W.button(buttons, "LeaveButton", "Leave", "Red", UDim2.new(0.5, -4, 1, 0), 3, R.leave)
 	-- the phone chip (one line in Roblox's top band)
-	local chip = NeonKit.Card({ Name = "RunChip", Size = UDim2.fromOffset(420, K.CHIP_H), Color = C.Accent, Glow = false, Floor = false, Parent = gui })
+	local chip = NeonKit.Card({ Name = "RunChip", Skin = "Sign", Size = UDim2.fromOffset(420, K.CHIP_H), Color = C.Accent, LipPx = 4, Parent = gui })
 	chip.Root.Visible = false
 	U.Chip = chip
 	U.ChipScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 0.8, Parent = chip.Root })
-	U.ChipText = H.text(chip.Body, "Text", "", "Heading", 19, WHITE, { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -112, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
-	U.ChipButton = W.button(chip.Body, "LeaveButton", "Leave", C.Red, UDim2.fromOffset(92, K.CHIP_H - 10), 1, function()
+	U.ChipText = H.text(chip.Body, "Text", "", "Heading", 19, INK, { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -112, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+	U.ChipButton = W.button(chip.Body, "LeaveButton", "Leave", "Red", UDim2.fromOffset(92, K.CHIP_H - 12), 1, function()
 		if S.Run then
 			R.leave()
 		elseif S.Lobby and S.Lobby.Mine and LocalPlayer and S.Lobby.Mine.Leader ~= LocalPlayer.UserId and not W.myReady(S.Lobby.Mine) then
 			R.ready()
 		end
-	end, "Outline")
+	end)
 	U.ChipButton.AnchorPoint = Vector2.new(1, 0.5)
 	U.ChipButton.Position = UDim2.new(1, -5, 0.5, 0)
 	-- the End card
-	local endCard = NeonKit.Card({ Name = "EndCard", Size = UDim2.fromOffset(K.END_W, 200), Color = C.Accent, Glow = true, Parent = gui })
+	-- (kit-b U9-7) the End card: a stone notice nailed up, its lip green for a cleared floor, red for a lost run (R.fillEnd)
+	local endCard = NeonKit.Card({ Name = "EndCard", Skin = "Sign", Size = UDim2.fromOffset(K.END_W, 200), Color = C.Accent, LipPx = K.CARD_LIP, Parent = gui })
+	SignKit.Nails(endCard.Root, { Inset = 5, ZIndex = 3 })
 	endCard.Root.Visible = false
 	U.End = endCard
 	U.EndScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 1, Parent = endCard.Root })
 	local eb = H.frame(endCard.Body, "List", { Size = UDim2.new(1, 0, 1, 0) })
 	H.pad(eb, 16, 12, 16, 14)
 	H.list(eb, Enum.FillDirection.Vertical, 6)
-	U.EndTitle = Theme.StyleTitle(H.text(eb, "Title", "", "Title", 28, WHITE, { Size = UDim2.new(1, 0, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 }))
+	-- (kit-b U9-7, the owner's ruling: the gold ribbon is for window titles only) a pop-up card's title is a Section head
+	U.EndTitle = Theme.StyleTitle(H.text(eb, "Title", "", "Title", 28, INK, { Size = UDim2.new(1, 0, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 }), "Section")
 	U.EndReason = H.text(eb, "Reason", "", "Body", 19, C.Muted, { Size = UDim2.new(1, 0, 0, 50), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2 })
-	U.EndTotals = H.text(eb, "Totals", "", "Heading", 20, WHITE, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 3 })
-	U.EndFirst = H.text(eb, "FirstClear", "", "Heading", 20, C.Gold, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 4 })
-	U.EndUnlock = H.text(eb, "Unlocked", "", "Heading", 19, C.Green, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 5 })
-	local ok = W.button(eb, "OkButton", "OK", C.Accent, UDim2.new(1, 0, 0, 46), 6, function()
+	U.EndTotals = H.text(eb, "Totals", "", "Heading", 20, INK, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 3 })
+	U.EndFirst = H.text(eb, "FirstClear", "", "Heading", 20, C.Warn, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 4 })
+	U.EndUnlock = H.text(eb, "Unlocked", "", "Heading", 19, C.Good, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 5 })
+	local ok = W.button(eb, "OkButton", "OK", "Gray", UDim2.new(1, 0, 0, 46), 6, function()
 		S.End = nil
 		R.refresh()
 	end)
@@ -1621,7 +1702,7 @@ function R.cardHeight()
 			n = n + 1
 		end
 	end
-	h = h + math.max(0, n - 1) * 6
+	h = h + math.max(0, n - 1) * 6 + K.CARD_LIP
 	U.Card.Root.Size = UDim2.fromOffset(K.CARD_W, h)
 end
 
@@ -1805,6 +1886,7 @@ function R.refresh()
 		U.CardLeave.Visible = false
 		U.ChipText.Text = cd
 		U.ChipButton.Text = "Ready"
+		CloudUI.SetStyle(U.ChipButton, "Green") -- (kit-b U9-7) READY is the chip's one green; in a run it is Leave (red)
 		U.ChipButton.Visible = needReady
 		R.cardHeight()
 		return
@@ -1827,7 +1909,9 @@ function R.refresh()
 	U.CardToast.Visible = toast ~= nil
 	if toast then
 		U.CardToastText.Text = toast.Text
-		U.CardToast.BackgroundColor3 = Theme.Darken(toast.Color, 0.6)
+		local face = H.readable(toast.Color or C.Gold)
+		U.CardToast.BackgroundColor3 = face
+		U.CardToastText.TextColor3 = Theme.TextOn(face)
 	end
 	-- members (a party only)
 	local members = type(run.Members) == "table" and run.Members or {}
@@ -1845,9 +1929,10 @@ function R.refresh()
 				break
 			end
 			local mark = (not m.Left) and (m.Downed and "skull" or "check") or nil -- (kit-b U7b) PixelIcons; a member who left keeps the sign
-			local color = m.Left and C.Muted or (m.Downed and C.Red or C.Green)
-			local chipF = H.frame(U.CardMembers, "Member" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.RowDark, LayoutOrder = i })
-			H.corner(chipF, "M")
+			local color = m.Left and MUTED or (m.Downed and C.Bad or C.Good)
+			-- (kit-b U9-7) a square well tag per member: the green tick up, the red skull down
+			local chipF = H.frame(U.CardMembers, "Member" .. i, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Well, LayoutOrder = i })
+			H.edge(chipF, SIGN.WellEdge, 2)
 			chipF:SetAttribute("Downed", m.Downed == true)
 			chipF:SetAttribute("Left", m.Left == true)
 			local chipText = H.text(chipF, "Text", (m.Left and (G.Gone .. " ") or "") .. tostring(m.Name or "?"), "Body", 18, color, { Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -8, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
@@ -1865,11 +1950,12 @@ function R.refresh()
 	U.CardLeave.Text = armed and "Sure? Tap again" or "Leave"
 	-- the phone chip: room / wave or the toast or the status
 	U.ChipText.Text = toast and (toast.Short or toast.Text) or R.chipText(room, count)
-	U.ChipButton.Visible = run.State ~= "Ending"
+	-- (kit-b U9-7) the loot flash takes the whole chip for its few seconds (beside LEAVE it ran past a portrait phone's chip)
+	U.ChipButton.Visible = run.State ~= "Ending" and toast == nil
 	R.cardHeight()
 	-- (bug batch 2 #14: the chip's button is LEAVE in the alcove too; chests open only at the chest)
 	U.ChipButton.Text = armed and "Sure?" or "Leave"
-	U.ChipButton:SetAttribute("Color", "Red")
+	CloudUI.SetStyle(U.ChipButton, "Red")
 end
 
 -- team balance (spec 2026-10-31 s.7): a lost floor (Wipe / Timeout, End.Pets from the server): the loss screen in place of the
@@ -1885,7 +1971,7 @@ function R.showLoss(e)
 	local timeout = e.Reason == "Timeout"
 	local t = type(e.Totals) == "table" and e.Totals or S.Totals
 	local lines = {
-		{ "+$" .. H.commas(t.Cash) .. " Cash", C.Cash },
+		{ "+$" .. H.commas(t.Cash) .. " Cash", C.Good },
 		{ "+" .. H.commas(t.Tokens) .. " Tokens", C.Token },
 		{ "+" .. H.commas(t.Xp) .. " Pet XP", C.Blue },
 	}
@@ -1924,9 +2010,10 @@ function R.fillEnd()
 	local f = math.floor(tonumber(e.Floor) or 1)
 	local info = H.floorInfo(f)
 	local name = tostring(e.Name or info.Name)
-	U.End.SetColor(cleared and C.Green or C.Red)
+	U.End.SetColor(cleared and SIGN.GrassLip or SIGN.RedLip)
 	U.EndTitle.Text = cleared and ("Floor " .. f .. " cleared!") or "Run over"
-	U.EndTitle.TextColor3 = cleared and C.Green or WHITE
+	U.EndTitle.TextColor3 = cleared and C.Good or INK
+	PixelIcon.Mark(U.EndTitle, cleared and "sparkle" or nil, { Colour = SIGN.GoldLip }) -- (kit-b U9-7) a pixel sparkle on a win
 	local reason = tostring(e.Reason or "")
 	local text
 	if cleared then
@@ -1965,6 +2052,7 @@ function R.fillEnd()
 	-- fixed rows (no AutomaticSize): the card is exactly as tall as what it shows; a narrow card (portrait phone)
 	-- gives every row two lines
 	local narrow = U.End.Root.Size.X.Offset < 340
+	U.EndTitle.TextSize = narrow and 20 or 28 -- (kit-b U9-7) "FLOOR 3 CLEARED!" and its sparkle on a portrait phone
 	local row = narrow and 46 or 26
 	local reasonH = (#text > (narrow and 26 or 40)) and 50 or 26
 	U.EndReason.Size = UDim2.new(1, 0, 0, reasonH)
@@ -1973,7 +2061,7 @@ function R.fillEnd()
 		label.TextWrapped = narrow
 		label.TextTruncate = narrow and Enum.TextTruncate.None or Enum.TextTruncate.AtEnd
 	end
-	local h = 12 + 36 + 6 + reasonH + 6 + row + 6 + (first and (row + 6) or 0) + (#lines > 0 and (row + 6) or 0) + 46 + 14
+	local h = 12 + 36 + 6 + reasonH + 6 + row + 6 + (first and (row + 6) or 0) + (#lines > 0 and (row + 6) or 0) + 46 + 14 + K.CARD_LIP
 	U.End.Root.Size = UDim2.fromOffset(U.End.Root.Size.X.Offset, h)
 end
 
@@ -3016,7 +3104,7 @@ function R.buildEnter(cols, rows)
 				ZIndex = 10,
 				Parent = U.EnterGrid,
 			})
-			local stroke = H.stroke(f, INK, 1, 0)
+			local stroke = H.stroke(f, ENTER_INK, 1, 0)
 			local dx, dy = c + 0.5 - cols / 2, r + 0.5 - rows / 2
 			local hash = (c * 7 + r * 13 + c * r * 3) % 17
 			U.EnterCells[#U.EnterCells + 1] = {

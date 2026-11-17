@@ -17,6 +17,8 @@
 --   TeamFaces.Ensure(continueFn, returnTo) -> bool   continueFn() at once when the team is not empty. With 0 owned pets the hint "You need
 --       a pet: spin a roulette in the Cloud Shop." and nothing else. Otherwise the Pets window with slot 1 in pick mode and NO
 --       automatic continue: the player presses the panel's button again after editing. A team whose pets are all busy says so.
+-- (kit-b U9-7) On the Signboard kit, as the Pets window's team slots: the row a sunk stone well, the faces stone tiles with the
+-- rarity on their lip, FIGHTER / HELPER red / sky tags, Edit team a stone block (the panel's own action is its one green).
 -- The server decides again (BattleService.TEAM_REFUSALS). Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -40,6 +42,7 @@ local K = {
 	EDIT_H = 56,
 	EDIT_W = 150,
 	EDIT_W_COMPACT = 100,
+	EDIT_W_TWO_LINES = 76, -- (kit-b U9-7) the Compact row's Edit team block, its words on two lines
 	CARD_H = 96, -- the height of a face per mode
 	COMPACT_H = 64,
 	COLUMN_H = 44,
@@ -48,19 +51,28 @@ local K = {
 	ALL_BUSY = "Your whole team is busy: training or gardening",
 }
 
-local Colors = Theme.Colors
-local WHITE = Colors.White
-local MUTED = Colors.Muted or Colors.CloudShade
-local GOLD = Colors.Gold or Colors.Token
-local ROW = Color3.fromRGB(34, 44, 92)
-local ROW_DARK = Color3.fromRGB(20, 26, 60)
-local POWER_GOLD = Color3.fromRGB(255, 214, 110)
+-- (kit-b U9-7) the Signboard palette (the Pets window's team slots, U8): the row is a sunk stone well, each face a raised
+-- stone tile with the pet's rarity on its lip and the pet standing in a light well, FIGHTER a red tag and HELPER a sky
+-- tag in brown ink, EVO a gold tag; brown ink on stone, the muted brown for the level and an empty slot
+local SIGN = Theme.Sign
+local INK = SIGN.Text
+local MUTED = SIGN.TextMuted
+local LIP = 4 -- design px of a face's lip
+local ROLE_COLOR = { FIGHTER = SIGN.Red, HELPER = SIGN.Sky }
 -- (kit-b U7b) PixelIcons, not emoji: the sword before a power, a busy slot's mark (training: the weight, garden: the sprout)
 local POWER_ICON = "sword"
 local BUSY_ICON = { Training = "weight", Garden = "sprout" }
 local BUSY_WORD = { Training = "Training", Garden = "Gardening" }
 
-local frame, text, corner, stroke = Bits.frame, Bits.text, Bits.corner, Bits.stroke
+local frame, text, stroke = Bits.frame, Bits.text, Bits.stroke
+
+-- (kit-b U9-7) a square edge with mitred corners (kit B has no rounded blocks)
+local function edge(parent, color, thickness)
+	local s = stroke(parent, color, thickness, 0)
+	s.Name = "SignEdge"
+	s.LineJoinMode = Enum.LineJoinMode.Miter
+	return s
+end
 
 local S = {
 	Rows = {}, -- live rows
@@ -186,31 +198,39 @@ end
 -- One face
 ----------------------------------------------------------------------
 local function buildFace(root, i)
-	local cell = frame(root, "Face" .. i, { BackgroundTransparency = 0, BackgroundColor3 = ROW })
-	corner(cell, 10)
-	local face = { Cell = cell, Rim = stroke(cell, Theme.Darken(Theme.Neon.Grey, 0.4), 2, 0.1), Key = nil, Stage = 0 }
-	face.Picture = frame(cell, "Picture", { ZIndex = 2 })
-	face.Tag = text(cell, "Tag", i == 1 and "FIGHTER" or "HELPER", "Tag", 18, WHITE, {
+	-- (kit-b U9-7) a raised stone tile in a wood edge; its lip takes the pet's rarity (paintFace)
+	local cell = frame(root, "Face" .. i, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile })
+	local face = { Cell = cell, Rim = edge(cell, SIGN.Wood, 2), Key = nil, Stage = 0 }
+	face.Lip = frame(cell, "Lip", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Darken(i == 1 and Theme.Neon.Red or Theme.Neon.Blue, 0.2),
+		BackgroundColor3 = SIGN.StoneLip,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, LIP),
+		ZIndex = 2,
+	})
+	face.Picture = frame(cell, "Picture", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.PetWell, ZIndex = 2 })
+	local role = i == 1 and "FIGHTER" or "HELPER"
+	face.Tag = text(cell, "Tag", role, "Tag", 18, INK, {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = ROLE_COLOR[role],
 		ZIndex = 4,
 	})
-	corner(face.Tag, 6)
-	face.Stage_ = text(cell, "StageBadge", "", "Button", 18, WHITE, {
+	face.Stage_ = text(cell, "StageBadge", "", "Button", 18, INK, {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Darken(GOLD, 0.35),
+		BackgroundColor3 = SIGN.Gold,
 		Visible = false,
 		ZIndex = 4,
 	})
-	corner(face.Stage_, 6)
-	face.Level = text(cell, "Level", "", "Heading", 18, Theme.Neon.Gold, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 })
-	face.Power = text(cell, "Power", "", "Heading", 18, POWER_GOLD, {
+	edge(face.Stage_, SIGN.Wood, 2)
+	face.Level = text(cell, "Level", "", "Heading", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 })
+	face.Power = text(cell, "Power", "", "Heading", 18, INK, {
 		TextXAlignment = Enum.TextXAlignment.Right,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 3,
 	})
 	face.Empty = text(cell, "Empty", "Empty", "Heading", 18, MUTED, { ZIndex = 3 })
-	face.Busy = text(cell, "Busy", "", "Heading", 18, WHITE, { Visible = false, ZIndex = 4 })
+	face.Busy = text(cell, "Busy", "", "Heading", 18, INK, { Visible = false, ZIndex = 4 })
 	return face
 end
 
@@ -222,34 +242,36 @@ end
 
 -- where a face's parts sit: everything hangs off the cell's edges, so a cell can be any width
 local function layoutFace(face, mode)
+	-- (kit-b U9-7) everything stays above the face's LIP px rarity lip
 	if mode == "Column" then
 		-- [picture] FIGHTER
 		--           L12    sword 358
 		local h = K.COLUMN_H
-		local x = h + 2
-		place(face.Picture, 2, 2, 0, h - 4, h - 4)
+		local p = h - 2 - LIP
+		local x = p + 6
+		place(face.Picture, 2, 2, 0, p, p)
 		place(face.Tag, x, 2, 0, 88, 20)
-		place(face.Level, x, 22, 0, 44, 20)
-		place(face.Power, x + 44, 22, 1, -(x + 48), 20)
-		place(face.Empty, x, 22, 1, -(x + 4), 20)
-		place(face.Busy, 2, 2, 0, h - 4, h - 4)
+		place(face.Level, x, 20, 0, 44, 20)
+		place(face.Power, x + 44, 20, 1, -(x + 48), 20)
+		place(face.Empty, x, 20, 1, -(x + 4), 20)
+		place(face.Busy, 2, 2, 0, p, p)
 	elseif mode == "Compact" then
 		-- FIGHTER (a line across)
 		-- [picture] L12 / 358
 		place(face.Tag, 2, 2, 1, -4, 20)
-		place(face.Picture, 2, 22, 0, 34, 40)
+		place(face.Picture, 2, 22, 0, 34, 38 - LIP)
 		place(face.Level, 38, 22, 1, -40, 20)
-		place(face.Power, 38, 42, 1, -40, 20)
+		place(face.Power, 38, 40, 1, -40, 20)
 		place(face.Busy, 2, 22, 1, -4, 20)
 	else
 		local h = K.CARD_H
-		place(face.Picture, 4, 2, 1, -8, h - 30)
+		place(face.Picture, 4, 4, 1, -8, h - 34)
 		place(face.Tag, 4, 4, 0, 88, 22)
 		place(face.Stage_, 96, 4, 0, 62, 22)
-		place(face.Level, 8, h - 26, 0, 46, 24)
-		place(face.Power, 54, h - 26, 1, -60, 24)
-		place(face.Empty, 4, 28, 1, -8, h - 32)
-		place(face.Busy, 8, 28, 0, 26, h - 32)
+		place(face.Level, 8, h - 28, 0, 46, 24)
+		place(face.Power, 54, h - 28, 1, -60, 24)
+		place(face.Empty, 4, 28, 1, -8, h - 32 - LIP)
+		place(face.Busy, 8, 28, 0, 26, h - 32 - LIP)
 	end
 end
 
@@ -282,7 +304,9 @@ local function paintFace(face, entry, busy, mode, shown)
 	face.Power.Visible = entry ~= nil
 	face.Empty.Visible = entry == nil
 	face.Busy.Visible = entry == nil and busy ~= nil
-	face.Cell.BackgroundColor3 = entry and ROW or ROW_DARK
+	-- (kit-b U9-7) an open slot is a sunk stone well, a filled one a raised tile
+	face.Cell.BackgroundColor3 = entry and SIGN.Tile or SIGN.Well
+	face.Rim.Color = entry and SIGN.Wood or SIGN.WellEdge
 	if entry then
 		face.Level.Text = "L" .. tostring(entry.Level)
 		-- (kit-b U7b) the sword before a full power (a Compact face has room for the short number only); drawn on a change
@@ -296,7 +320,7 @@ local function paintFace(face, entry, busy, mode, shown)
 			end
 		end
 		face.Power.Text = sword and commas(entry.Power) or shortPower(entry.Power)
-		face.Rim.Color = CloudUI.RarityColor(entry.Def.Rarity)
+		face.Lip.BackgroundColor3 = CloudUI.RarityColor(entry.Def.Rarity) -- (kit-b U9-7) the rarity on the lip
 		face.Stage_.Text = stage >= 2 and "EVO II" or "EVO I"
 		face.Stage_.Visible = stage > 0 and mode == "Card" -- (the picture shows the stage; the smaller faces have no room for the badge)
 	else
@@ -309,9 +333,9 @@ local function paintFace(face, entry, busy, mode, shown)
 		end
 		if mode == "Compact" then
 			-- the mark above the word when the slot's pet is busy
-			place(face.Empty, 2, busy and 42 or 22, 1, -4, busy and 20 or 40)
+			place(face.Empty, 2, busy and 40 or 22, 1, -4, busy and 20 or 38 - LIP)
 		end
-		face.Rim.Color = Theme.Darken(Theme.Neon.Grey, 0.4)
+		face.Lip.BackgroundColor3 = SIGN.WellEdge
 	end
 end
 
@@ -345,25 +369,26 @@ end
 function TeamFaces.New(parent, props)
 	props = props or {}
 	local mode = (props.Column and "Column") or (props.Compact and "Compact") or "Card"
+	-- (kit-b U9-7) the row: a sunk stone well in its own darker edge (the pitch's .wl), square
 	local root = frame(parent, "TeamFaces", {
-		BackgroundTransparency = 0.15,
-		BackgroundColor3 = ROW_DARK,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Well,
 		LayoutOrder = props.LayoutOrder or 0,
 	})
-	corner(root, 12)
-	stroke(root, Theme.Darken(Theme.Neon.Red, 0.3), 2, 0.1)
+	edge(root, SIGN.WellEdge, 2)
 	local faces = {}
 	for i = 1, K.SLOTS do
 		faces[i] = buildFace(root, i)
 	end
-	local power = text(root, "TeamPower", "", "Heading", 19, POWER_GOLD, {
+	local power = text(root, "TeamPower", "", "Heading", 19, INK, {
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
 	local edit = CloudUI.Button({
 		Name = "EditTeam",
 		Text = "Edit team",
-		Style = "Blue",
+		Style = "Gray",
+		Skin = "Sign", -- (kit-b U9-7) a stone block: the panel's own action keeps the green
 		AnchorPoint = Vector2.new(1, 0),
 		Size = UDim2.fromOffset(K.EDIT_W, K.EDIT_H),
 		TextSize = 20,
@@ -414,9 +439,10 @@ function TeamFaces.New(parent, props)
 			edit.Size = UDim2.fromOffset(K.EDIT_W_COMPACT, K.EDIT_H)
 			place(power, pad + 2, y, 1, -(2 * pad + K.EDIT_W_COMPACT + 6), K.EDIT_H)
 		elseif mode == "Compact" then
-			faceRow(K.EDIT_W_COMPACT + K.GAP, K.COMPACT_H)
+			-- (kit-b U9-7) "Edit team" on two lines in a narrower block: the faces get the room for a whole FIGHTER tag
+			faceRow(K.EDIT_W_TWO_LINES + K.GAP, K.COMPACT_H)
 			edit.Position = UDim2.new(1, -pad, 0, pad + (K.COMPACT_H - K.EDIT_H) / 2)
-			edit.Size = UDim2.fromOffset(K.EDIT_W_COMPACT, K.EDIT_H)
+			edit.Size = UDim2.fromOffset(K.EDIT_W_TWO_LINES, K.EDIT_H)
 		else
 			faceRow(0, K.CARD_H)
 			local y = pad + K.CARD_H + K.GAP
@@ -425,6 +451,10 @@ function TeamFaces.New(parent, props)
 			place(power, pad + 2, y, 1, -(2 * pad + K.EDIT_W + 6), K.EDIT_H)
 		end
 		power.Visible = mode ~= "Compact" -- (a Compact row sits in a panel that shows the team's power already)
+		edit.TextWrapped = mode == "Compact"
+		edit.TextTruncate = (mode == "Compact") and Enum.TextTruncate.None or Enum.TextTruncate.AtEnd
+		edit.LineHeight = (mode == "Compact") and 0.9 or 1
+		edit.TextSize = (mode == "Compact") and 19 or 20
 	end
 
 	function row.Refresh()

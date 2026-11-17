@@ -206,6 +206,9 @@ function SmokeCommon.closeMarkIssues(button, opts)
 		out[#out + 1] = sfmt("mark %.1f,%.1f %.1fx%.1f not inside button %.1f,%.1f %.1fx%.1f", mp.X, mp.Y, ms.X, ms.Y, bp.X, bp.Y, bs.X, bs.Y)
 	end
 	local parts = {}
+	-- (kit-b U9-7) a kit B block (CloudUI's Sign skin, attribute Skin = "Sign") wears the windows' square X: brown bars over
+	-- the red lip's ink (NeonKit.CloseMark Square), where the neon buttons' X is white bars over a dark ink
+	local signSkin = button:GetAttribute("Skin") == "Sign"
 	for _, want in ipairs({ { "BarA", 45, true }, { "BarB", -45, true }, { "InkA", 45, false }, { "InkB", -45, false } }) do
 		local bar = mark:FindFirstChild(want[1])
 		parts[want[1]] = bar
@@ -218,9 +221,13 @@ function SmokeCommon.closeMarkIssues(button, opts)
 			out[#out + 1] = want[1] .. " is not visible"
 		elseif bar.Active ~= false or bar:FindFirstChildOfClass("UIStroke") then
 			out[#out + 1] = want[1] .. " is Active or has a UIStroke"
-		elseif want[3] and not (c.R > 0.9 and c.G > 0.9 and c.B > 0.9) then
+		elseif signSkin and want[3] and not (c.R < 0.3 and c.G < 0.3 and c.B < 0.3) then
+			out[#out + 1] = want[1] .. " is not the brown ink " .. tostring(c)
+		elseif signSkin and not want[3] and not (c.R > 0.5 and c.R > c.G + 0.3 and c.R > c.B + 0.3) then
+			out[#out + 1] = want[1] .. " is not the red lip " .. tostring(c)
+		elseif not signSkin and want[3] and not (c.R > 0.9 and c.G > 0.9 and c.B > 0.9) then
 			out[#out + 1] = want[1] .. " is not white " .. tostring(c)
-		elseif not want[3] and not (c.R < 0.25 and c.G < 0.25 and c.B < 0.25) then
+		elseif not signSkin and not want[3] and not (c.R < 0.25 and c.G < 0.25 and c.B < 0.25) then
 			out[#out + 1] = want[1] .. " is not dark " .. tostring(c)
 		end
 	end
