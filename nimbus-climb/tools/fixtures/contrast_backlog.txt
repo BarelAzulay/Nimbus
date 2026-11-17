@@ -31,10 +31,6 @@ NimbusFusion.Window_*.Panel.Body.Pills.Pill_*  # "Uncommon" #FFFFFF on #498665 4
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Coin.Icon  # "☁" #FFFFFF on #C89E4A 2.49:1 < 3
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Price  # "500" #B0B8CE on #565B66 3.44:1 < 4.5
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Label  # "SPIN AGAIN" #B0B8CE on #6C7280 2.43:1 < 3
-NimbusNotify.ToastHolder.ToastStack.ToastSlot.Toast.Icon.Glyph  # "☁" #FFFFFF on #93753B 4.33:1 < 4.5
-NimbusNpcDialog.NpcDialog.Slide.Card.Footer.Button_*  # "Next" #FFFFFF on #2F895B 4.31:1 < 4.5
-NimbusNpcDialog.NpcDialog.Slide.NameTab.Name  # "SPARKY FOX" #FFFFFF on #59B8BD 2.33:1 < 3
 NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Badge  # "x5" #FFFFFF on #1F8A3C 4.41:1 < 4.5
 NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Rarity  # "Secret" #6D6F7B on #161B34 3.40:1 < 4.5
 NimbusTrain.Window_*.Panel.Body.PetCard.Body.RarityChip  # "RARE" #FFFFFF on #467CBB 4.32:1 < 4.5
-NimbusTutorial.TutorialPanel.Slide.Main.Well.Footer.Next  # "Let's go!" #FFFFFF on #2F895B 4.31:1 < 4.5
