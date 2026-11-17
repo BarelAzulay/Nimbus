@@ -168,7 +168,9 @@ local ICON = { Trophy = "trophy", Swords = "sword", Crown = "crown" }
 
 -- (kit-b U9-7) a label sized to its text (the U9-6 fitPill rule): at least its measured width with its padding (a lead
 -- icon's inset too) and 4 px to spare, refitted when its text changes; AutomaticSize X on top lets the engine, which knows
--- the face's real widths, grow it further where the guess is short
+-- the face's real widths, grow it further where the guess is short. (U9-7 review) FITS holds `true` only: Luau has no
+-- ephemerons, so a value that closed over its label would keep every destroyed label alive; the Text connection (the
+-- label's own, dropped on Destroy) holds the only closure, as Theme.keepCaps does
 local FITS = setmetatable({}, { __mode = "k" })
 -- a rough width of `text` at `size` px in the rounded face (capitals and digits 0.68 em, small letters 0.58, a space
 -- 0.3, a sign 0.4): the floor under the measured width, so a label built before the font's metrics are known is never short
@@ -187,20 +189,22 @@ local function roughWidth(text, size)
 	end
 	return em * size
 end
+local function fit(label)
+	local pad = label:FindFirstChildOfClass("UIPadding")
+	local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0
+	local role = label:GetAttribute("FontRole") or "Body"
+	local shown = Theme.CapsRoles[role] and Theme.Caps(label.Text) or label.Text
+	local ok, size = pcall(Theme.Measure, label.Text, role, label.TextSize)
+	local tw = math.max((ok and typeof(size) == "Vector2") and size.X or 0, roughWidth(shown, label.TextSize))
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.Size = UDim2.new(0, math.ceil(tw) + inset + 4, label.Size.Y.Scale, label.Size.Y.Offset)
+end
 local function fitWidth(label)
-	local function fit()
-		local pad = label:FindFirstChildOfClass("UIPadding")
-		local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0
-		local role = label:GetAttribute("FontRole") or "Body"
-		local shown = Theme.CapsRoles[role] and Theme.Caps(label.Text) or label.Text
-		local ok, size = pcall(Theme.Measure, label.Text, role, label.TextSize)
-		local tw = math.max((ok and typeof(size) == "Vector2") and size.X or 0, roughWidth(shown, label.TextSize))
-		label.AutomaticSize = Enum.AutomaticSize.X
-		label.Size = UDim2.new(0, math.ceil(tw) + inset + 4, label.Size.Y.Scale, label.Size.Y.Offset)
-	end
-	FITS[label] = fit
-	fit()
-	label:GetPropertyChangedSignal("Text"):Connect(fit)
+	FITS[label] = true
+	fit(label)
+	label:GetPropertyChangedSignal("Text"):Connect(function()
+		fit(label)
+	end)
 	return label
 end
 
@@ -208,7 +212,7 @@ end
 local function lead(label, icon)
 	PixelIcon.Lead(label, ICON[icon] or icon)
 	if FITS[label] then
-		FITS[label]() -- the icon's inset came after the fit
+		fit(label) -- the icon's inset came after the fit
 	end
 	return label
 end
@@ -1139,6 +1143,7 @@ function Ring.build()
 		Size = UDim2.new(0.5, 0, 0, 36),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	}), "Swords")
+	ui.Stacked = false -- the powers side by side (OnLayout stacks them in a narrow column)
 	ui.Verdict = wrapText(champ, "Verdict", "", "Body", 19, C.GoodText, 4)
 
 	local rewards = tile(d, "Rewards", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 }, 0)
@@ -1251,6 +1256,13 @@ function Ring.build()
 			value.Position = UDim2.new(right and 1 or 0, 0, 0, y + 24)
 			value.Size = UDim2.new(stacked and 1 or 0.5, 0, 0, 36)
 			value.TextXAlignment = caption.TextXAlignment
+		end
+		if ui.Stacked ~= stacked then
+			-- (U9-7 review) the team's power changes sides (right-aligned beside the champion's, left-aligned stacked):
+			-- PixelIcon.Lead reads the alignment once, so the sword is placed again, its insets reset both ways
+			ui.Stacked = stacked
+			PixelIcon.Clear(ui.TeamPower)
+			lead(ui.TeamPower, "Swords")
 		end
 		ui.ChampCaption.Text = stacked and "Champion" or "Champion (about)"
 		ui.Powers.Size = UDim2.new(1, 0, 0, stacked and 126 or 62)

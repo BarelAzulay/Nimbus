@@ -115,9 +115,14 @@
 --   arena_family_fits         (client) at the four grid sizes every view: no text under the floor or TextScaled, outside a
 --                             scrolling list whole on the screen and uncut, one-line texts fitting at real widths, every
 --                             text reading on its fill (the family's contrast_backlog lines gone); on the phones nothing
---                             under the stick / jump button (the docked windows hide them, as the Pets window and the Index)
+--                             under the stick / jump button (the docked windows hide them, as the Pets window and the Index);
+--                             (review) every lead / trail icon beside its text, not on it
 --   arena_family_one_green    (client) at most one green action per view, the right one; the selected Arena tab gold.
 --                             kitb_no_neon_glow, kitb_no_emoji_ui and kitb_titles_stamped walk the family's views too
+--   arena_fit_labels_freed    (client, review) a fitted label a refresh destroyed is collected (fitWidth holds no closure)
+--   dungeon_chip_leave_reachable (client, review) both phones, a room fight / the chest alcove / a lobby countdown: the
+--                             chip's button whole on the screen, the chip clear of the top bar's pill, Roblox's "..."
+--                             button, the strips, the gift, the boost chips, the battle HUD and the stick / jump button
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -4052,7 +4057,8 @@ local function clientScenarios()
 	end)
 
 	-- (U9-7) the dock family: the Battle Arena window on its three tabs, the Champion Ring window, the Dungeon window as a
-	-- visitor (two open parties), a member and the leader, the run card in a run, the End card of a cleared floor, the
+	-- visitor (two open parties), a member and the leader, the run card in a room fight (with its battle HUD) and in the
+	-- chest alcove, the End card of a cleared floor, the
 	-- arena's side cards (an invite, the sent one, the queue, the Double Rewards chip) and the raid gate's dare panel, fed
 	-- with dump_gui's data (an open raid, a leaderboard, two more players in the server). U97.FAMILY: { view, its ScreenGui };
 	-- U97.open / close / showing are defined after U8 and U96 (they use both)
@@ -4060,8 +4066,8 @@ local function clientScenarios()
 	U97.FAMILY = {
 		{ "arena:duels", "NimbusArena" }, { "arena:raid", "NimbusArena" }, { "arena:leaders", "NimbusArena" }, { "ring", "NimbusArena" },
 		{ "dungeon:lobby", "NimbusDungeon" }, { "dungeon:party", "NimbusDungeon" }, { "dungeon:leader", "NimbusDungeon" },
-		{ "dungeon:run", "NimbusDungeonRun" }, { "dungeon:end", "NimbusDungeonRun" }, { "arena:side", "NimbusArenaSide" },
-		{ "dare", "NimbusRaidGate" },
+		{ "dungeon:run", "NimbusDungeonRun" }, { "dungeon:treasure", "NimbusDungeonRun" }, { "dungeon:end", "NimbusDungeonRun" },
+		{ "arena:side", "NimbusArenaSide" }, { "dare", "NimbusRaidGate" },
 	}
 
 	-- (T0 review) every window title goes through Theme.StyleTitle, seen at run time: the walk opens the windows that build
@@ -5050,13 +5056,41 @@ local function clientScenarios()
 		elseif sub == "leader" then
 			lobby.Mine = { Leader = me, Floor = 4, Countdown = 24, Members = { { UserId = me, Name = lp.Name, Ready = true, Power = 310 },
 				{ UserId = 501, Name = "StormChaser", Ready = true, Power = 420 }, { UserId = 502, Name = "CloudyKnight", Ready = false, Power = 188 } } }
+		elseif sub == "countdown" then
+			-- (U9-7 review) the party's countdown with the window closed, in the lobby: the chip with READY (I am not ready yet)
+			lobby.Mine = { Leader = 501, Floor = 3, Countdown = 20, Members = { { UserId = 501, Name = "StormChaser", Ready = true, Power = 420 },
+				{ UserId = me, Name = lp.Name, Ready = false, Power = 310 } } }
 		end
 		LKC.toClient("DungeonState", "Lobby", lobby)
 		LKC.advance(0.3)
-		if sub == "run" or sub == "end" then
-			lp:SetAttribute("InBattle", "U97")
-			LKC.toClient("DungeonState", "Run", { RunId = "U97", Floor = 3, Name = "Flooded Vaults", Element = "Water", Room = 2, RoomCount = 4, Wave = 2, Waves = 2,
-				State = "Fight", Members = { { UserId = me, Name = lp.Name, Downed = false, Left = false }, { UserId = 501, Name = "StormChaser", Downed = true, Left = false } },
+		if sub == "countdown" then
+			LKC.advance(0.9)
+			return
+		end
+		if sub == "run" or sub == "end" or sub == "treasure" then
+			-- (U9-7 review) the room fight as a phone shows it: a real battle start (the battle HUD; on a phone the HUD's
+			-- currency strips go into Roblox's top band), the run's own InBattle id (a "D" id: DungeonController drops a run
+			-- whose id is not one), the Loot toast waited out (it takes the chip's LEAVE for its few seconds). treasure: the
+			-- chest alcove after the fight (no battle HUD, the strips still in the band). The three strips a real player has:
+			-- the HUD shows Cash and Gems once the server set their attributes (U97.close puts the old values back)
+			local Attr = LoadingH.shared("Config").Attr
+			if not U97.attrs then
+				U97.attrs = { Cash = lp:GetAttribute(Attr.Cash), Gems = lp:GetAttribute(Attr.Gems) }
+			end
+			lp:SetAttribute(Attr.Cash, 48200)
+			lp:SetAttribute(Attr.Gems, 320)
+			local BH = _G.P5BattleH
+			if sub == "run" and BH then
+				U97.battle = BH.dungeon(4, true)
+				if U97.battle then
+					BH.begin(U97.battle)
+				end
+			end
+			lp:SetAttribute("InBattle", "D97")
+			local treasure = sub == "treasure"
+			LKC.toClient("DungeonState", "Run", { RunId = "D97", Floor = 3, Name = "Flooded Vaults", Element = "Water", Room = treasure and 4 or 2, RoomCount = 4,
+				Wave = 2, Waves = 2, State = treasure and "Treasure" or "Fight", ChestOwed = treasure and { me } or nil,
+				Members = { { UserId = me, Name = lp.Name, Downed = false, Left = false }, { UserId = 501, Name = "StormChaser", Downed = true, Left = false } },
 				Joinable = true })
 			LKC.advance(0.3)
 			LKC.toClient("DungeonState", "Loot", { Room = 1, Cash = 340, Tokens = 24, Xp = 70, LevelUps = 0 })
@@ -5064,8 +5098,10 @@ local function clientScenarios()
 				LKC.toClient("DungeonState", "End", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4,
 					Totals = { Cash = 1630, Tokens = 170, Xp = 360, Gems = 0 }, FirstClear = { Tokens = 900, Gems = 5 }, Unlocked = 4, NewBest = 3 })
 				lp:SetAttribute("InBattle", nil)
+				LKC.advance(0.8)
+				return
 			end
-			LKC.advance(0.8)
+			LKC.advance(4.4) -- the toast's 4 s
 			return
 		end
 		LKC.toClient("OpenPanel", "Dungeon", { Floor = 3 })
@@ -5086,6 +5122,16 @@ local function clientScenarios()
 		local ok = runGui and runGui:FindFirstChild("OkButton", true)
 		if ok and U8.shown(ok) then
 			pcall(Mock.Click, ok)
+		end
+		if U97.battle and _G.P5BattleH then
+			pcall(_G.P5BattleH.cleanup, U7.client("Controllers/BattleController"), U97.battle) -- (the run view's room fight)
+		end
+		U97.battle = nil
+		if U97.attrs then
+			local Attr = LoadingH.shared("Config").Attr
+			lp:SetAttribute(Attr.Cash, U97.attrs.Cash)
+			lp:SetAttribute(Attr.Gems, U97.attrs.Gems)
+			U97.attrs = nil
 		end
 		lp:SetAttribute("InBattle", nil)
 		if U97.spotSet then
@@ -6220,6 +6266,22 @@ local function clientScenarios()
 		local function texty(d)
 			return (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextTransparency < 1
 		end
+		-- (U9-7 review) where a label's text is drawn (screen px): its measured width (TextBounds, what PixelIcon places
+		-- from) at its alignment inside the padded box
+		local function textSpan(d)
+			local r, s = U8.rect(d), U8.scaleOf(d)
+			local pad = d:FindFirstChildOfClass("UIPadding")
+			local l = r.X + (pad and pad.PaddingLeft.Offset * s or 0)
+			local rr = r.R - (pad and pad.PaddingRight.Offset * s or 0)
+			local tw = math.max(0, math.min(d.TextBounds.X, rr - l))
+			local x0 = l
+			if d.TextXAlignment == Enum.TextXAlignment.Right then
+				x0 = rr - tw
+			elseif d.TextXAlignment == Enum.TextXAlignment.Center then
+				x0 = (l + rr - tw) / 2
+			end
+			return { X = x0, R = x0 + tw, Y = r.Y, B = r.B }
+		end
 		local WINDOWS = { NimbusArena = true, NimbusDungeon = true, NimbusRaidGate = true }
 		local restoreMeasure = U8.measureReal()
 		for _, s in ipairs(U8.SIZES) do
@@ -6243,11 +6305,26 @@ local function clientScenarios()
 					if touch and WINDOWS[f[2]] then
 						T.check(GuiService.TouchControlsEnabled == false, tag .. ": a docked window hides Roblox's thumbstick and jump button on a touch screen")
 					end
-					local small, scaled, off, cut, tight, under = {}, {}, {}, {}, {}, {}
+					local small, scaled, off, cut, tight, under, onText = {}, {}, {}, {}, {}, {}, {}
 					for _, d in ipairs(gui:GetDescendants()) do
 						local tx = texty(d)
 						if (tx or d:IsA("GuiButton")) and U8.shown(d) and d.AbsoluteSize.X > 0 then
 							local name = d:GetFullName():gsub("^.-" .. f[2] .. "%.", "")
+							-- (U9-7 review) a lead icon sits before its text and a trail icon after it, never on the letters (a
+							-- label whose alignment changed after its icon was placed draws the icon over its digits)
+							for _, kind in ipairs(tx and { "LeadIcon", "TrailIcon" } or {}) do
+								local icon = d:FindFirstChild(kind)
+								if icon and icon:IsA("GuiObject") and U8.shown(icon) and icon.AbsoluteSize.X > 0 then
+									local ir, span = U8.rect(icon), textSpan(d)
+									local clear = ir.X >= span.R - 0.5 -- a trail icon: after the text
+									if kind == "LeadIcon" then
+										clear = ir.R <= span.X + 0.5
+									end
+									if not clear then
+										onText[#onText + 1] = fmt("%s.%s %s on the text %.0f..%.0f", name, kind, U8.show(ir), span.X, span.R)
+									end
+								end
+							end
 							if tx then
 								local px = d.TextSize * U8.scaleOf(d)
 								if d.TextScaled then
@@ -6286,6 +6363,7 @@ local function clientScenarios()
 					T.check(#off == 0, fmt("%s: every text and button is on the screen (%d)", tag, #off), table.concat(off, "; ", 1, math.min(#off, 8)))
 					T.check(#cut == 0, fmt("%s: no text or button cut by a clipping frame (%d)", tag, #cut), table.concat(cut, "; ", 1, math.min(#cut, 8)))
 					T.check(#tight == 0, fmt("%s: every one-line text fits its box (%d)", tag, #tight), table.concat(tight, "; ", 1, math.min(#tight, 8)))
+					T.check(#onText == 0, fmt("%s: every lead / trail icon sits beside its text, not on it (%d)", tag, #onText), table.concat(onText, "; ", 1, math.min(#onText, 8)))
 					if touch then
 						T.check(#under == 0, fmt("%s: nothing under the thumbstick or the jump button (touch controls %s) (%d)", tag,
 							tostring(GuiService.TouchControlsEnabled), #under), table.concat(under, "; ", 1, math.min(#under, 8)))
@@ -6340,6 +6418,123 @@ local function clientScenarios()
 			end
 		end)
 		LKC.flushErrors("arena_family_one_green")
+	end)
+
+	-- (U9-7 review) a fitted label lets go when it is destroyed. fitWidth's weak-key table must hold nothing that points back
+	-- at its label: Luau has no ephemerons, so a value that closes over its key keeps the key (and the destroyed label) alive
+	-- for good. The Ring's BAND tag is rebuilt on every refresh; after one, the old tag is collected like a plain TextLabel
+	-- destroyed beside it (the control: the mock frees a destroyed label nothing else holds)
+	S.arena_fit_labels_freed = guarded("arena_fit_labels_freed", function()
+		U8.at(1920, 1080, false, "fit labels freed", function(tag)
+			U97.open("ring")
+			local probe = setmetatable({}, { __mode = "v" })
+			-- (in its own call: a dead local of this frame would still hold the old tag during the collection)
+			local function grab()
+				local gui = U8.pg():FindFirstChild("NimbusArena")
+				for _, d in ipairs(gui and gui:GetDescendants() or {}) do
+					if d.Name == "Band" and d:IsA("TextLabel") and U8.shown(d) then
+						probe.band = d
+						local control = Instance.new("TextLabel")
+						control.Name = "FitControl"
+						control.Parent = d.Parent
+						probe.control = control
+						break
+					end
+				end
+			end
+			grab()
+			if not T.check(probe.band ~= nil and probe.control ~= nil, tag .. ": the Ring shows its BAND tag") then
+				U97.close()
+				return
+			end
+			U8.feed() -- State.Changed: Ring.refresh destroys the old tag (and the control beside it) and builds a new one
+			LKC.advance(0.4)
+			collectgarbage("collect")
+			collectgarbage("collect")
+			T.check(probe.control == nil, tag .. ": a destroyed plain TextLabel is collected (the probe works)")
+			T.check(probe.band == nil, tag .. ": the BAND tag a refresh destroyed is collected (fitWidth keeps no hold on it)")
+			U97.close()
+		end)
+		LKC.flushErrors("arena_fit_labels_freed")
+	end)
+
+	-- (U9-7 review) a phone's dungeon LEAVE is reachable (the run chip's button is the only one a phone player has in a run):
+	-- at both phone sizes, in the room fight (the battle HUD up, the HUD's strips in Roblox's top band) and in the chest
+	-- alcove, after the loot toast: the chip's LEAVE shows, whole on the screen, not under the top bar's pill (it draws above
+	-- the run gui: a tap there opens Settings), Roblox's "..." button, the HUD's currency strips, any part of the battle HUD
+	-- or the thumbstick / jump button, and the chip stays out of the screen's centre third. The same for the party
+	-- countdown's chip in the lobby (its READY), where the gift and the boost chips hang under the strips too
+	S.dungeon_chip_leave_reachable = guarded("dungeon_chip_leave_reachable", function()
+		local GuiService = game:GetService("GuiService")
+		local function screenRect(o)
+			local gui = o:FindFirstAncestorWhichIsA("LayerCollector")
+			local dy = (gui and gui.IgnoreGuiInset) and 0 or Mock.TopInset
+			local r = U8.rect(o)
+			return { X = r.X, Y = r.Y + dy, R = r.R, B = r.B + dy }
+		end
+		local function solid(o)
+			return o:IsA("GuiObject") and U8.shown(o) and o.AbsoluteSize.X > 4 and o.AbsoluteSize.Y > 4
+		end
+		for _, s in ipairs({ { 844, 390 }, { 390, 844 } }) do
+			local W, Hh = s[1], s[2]
+			for _, view in ipairs({ "dungeon:run", "dungeon:treasure", "dungeon:countdown" }) do
+				U8.at(W, Hh, true, "dungeon chip " .. view, function(tag)
+					U97.open(view)
+					local pg = U8.pg()
+					local chip = pg:FindFirstChild("NimbusDungeonRun") and pg.NimbusDungeonRun:FindFirstChild("RunChip")
+					local leave = chip and chip:FindFirstChild("LeaveButton", true) -- (LEAVE in a run, READY in a countdown)
+					if not T.check(leave ~= nil and U8.shown(leave) and leave.Text ~= "", tag .. ": the chip shows its button (" .. tostring(leave and leave.Text) .. ")") then
+						U97.close()
+						return
+					end
+					local lr, cr = screenRect(leave), screenRect(chip)
+					T.check(lr.X >= -0.5 and lr.R <= W + 0.5 and lr.Y >= -0.5 and lr.B <= Hh + 0.5, tag .. ": the chip's button is whole on the screen", U8.show(lr))
+					local hits = {}
+					local function avoid(o, what)
+						if o and solid(o) and U8.overlap(cr, screenRect(o)) then
+							hits[#hits + 1] = what .. " " .. U8.show(screenRect(o))
+						end
+					end
+					local bar = pg:FindFirstChild("NimbusTopBar")
+					avoid(bar and bar.Enabled and bar:FindFirstChild("Pill"), "the top bar's pill")
+					local hud = pg:FindFirstChild("NimbusHud")
+					avoid(hud and hud:FindFirstChild("Currency", true), "the currency strips")
+					local daily = pg:FindFirstChild("NimbusDaily")
+					avoid(daily and daily.Enabled and daily:FindFirstChild("GiftsButton"), "the gift")
+					local boosts = pg:FindFirstChild("NimbusBoosts")
+					avoid(boosts and boosts.Enabled and boosts:FindFirstChild("BoostChips"), "the boost chips")
+					local bg = pg:FindFirstChild("NimbusBattle")
+					local root = bg and bg.Enabled and bg:FindFirstChild("Root")
+					for _, c in ipairs(root and root:GetChildren() or {}) do
+						avoid(c, "the battle HUD's " .. c.Name)
+					end
+					for _, d in ipairs(bg and bg.Enabled and bg:GetDescendants() or {}) do
+						if d:IsA("GuiButton") then
+							avoid(d, "the battle HUD's " .. d.Name)
+						end
+					end
+					-- (Roblox's "..." button: 44 px, 12 px off the right edge, centred in the top band, as render_gui sketches it)
+					local by = (Mock.TopInset - 44) / 2
+					local zones = { { X = W - 56, Y = by, R = W - 12, B = by + 44, Name = "Roblox's \"...\" button" } }
+					T.info(fmt("%s: the chip %s, LEAVE %s, the HUD's strips %s", tag, U8.show(cr), U8.show(lr), tostring(hud and hud:GetAttribute("CurrencyMode"))))
+					if GuiService.TouchControlsEnabled ~= false then
+						zones[#zones + 1] = { X = 25, Y = Hh - 90, R = 95, B = Hh - 20, Name = "the thumbstick" }
+						zones[#zones + 1] = { X = W - 115, Y = Hh - 90, R = W - 45, B = Hh - 20, Name = "the jump button" }
+					end
+					for _, z in ipairs(zones) do
+						if U8.overlap(cr, z) then
+							hits[#hits + 1] = z.Name
+						end
+					end
+					T.check(#hits == 0, fmt("%s: the chip %s is clear of the top bar, the strips, the battle HUD and Roblox's buttons (%d)", tag, U8.show(cr), #hits),
+						table.concat(hits, "; ", 1, math.min(#hits, 6)))
+					local cx, cy = (cr.X + cr.R) / 2, (cr.Y + cr.B) / 2
+					T.check(not (cx > W / 3 and cx < 2 * W / 3 and cy > Hh / 3 and cy < 2 * Hh / 3), tag .. ": the chip is not in the screen's centre third", U8.show(cr))
+					U97.close()
+				end)
+			end
+		end
+		LKC.flushErrors("dungeon_chip_leave_reachable")
 	end)
 
 	-- (U8) CloudUI.Panel's Signboard skin (Skin = "Signboard"; the Pets window and the Index wear it): the flat pink awning at a

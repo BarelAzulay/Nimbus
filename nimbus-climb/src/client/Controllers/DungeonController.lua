@@ -135,6 +135,15 @@ local K = {
 	CARD_W = 330, -- the desktop run card
 	CARD_LIP = 6, -- (kit-b U9-7) design px of the run / End card's lip (NeonKit's Sign card: the body sits above it)
 	CHIP_H = 50, -- the phone chip (design px; scale 0.8)
+	-- (U9-7 review) where the chip goes (R.placeChip): screen px unless noted
+	CHIP_SCALE = 0.8,
+	CHIP_MAX_W = 520, -- design px of a chip in Roblox's top band at most (it is as wide as the free span there) ...
+	CHIP_BAND_MIN = 200, -- ... which must hold this much (the text keeps about 140 design px beside LEAVE), else it drops
+	CHIP_DROP_W = 320, -- design px of a chip under the band ("Pick ONE chest! 0:40" whole beside LEAVE)
+	CHIP_LEAVE_W = 102, -- design px of a chip that is its LEAVE alone (the 92 px button, 5 px each side)
+	CHIP_RIGHT = 60, -- the band's right end kept free: Roblox's "..." button (44 px, 12 px off the edge) and 4 px
+	CHIP_EDGE = 20, -- a dropped chip's right margin (the HUD's touch margin: the strips' right edge)
+	CHIP_GAP = 6, -- between a dropped chip and what it hangs under
 	END_W = 400,
 	LEAVE_CONFIRM = 3, -- seconds the first LEAVE press stays armed
 	TOAST_SECONDS = 4,
@@ -255,6 +264,7 @@ local S = {
 	Built = false,
 	Short = false,
 	CardMode = nil, -- "Card" | "Chip" | nil
+	ChipCompact = false, -- (U9-7 review) the phone chip is its LEAVE alone (dropped under the band in a fight)
 	Warned = {},
 	Doors = {}, -- connections watching the pocket's doors
 	Pocket = nil,
@@ -1759,7 +1769,8 @@ function R.inset()
 	return (ok and tonumber(inset)) or 0
 end
 
-function R.place()
+-- view: R.view()'s answer (a dropped chip is its LEAVE alone only in a run)
+function R.place(view)
 	local vp = H.viewport()
 	local w, h = vp.X, vp.Y
 	local top = R.inset()
@@ -1796,20 +1807,141 @@ function R.place()
 	end
 	-- the run card / chip
 	if phone then
-		local scale = 0.8
-		local x0 = (w < h) and 132 or math.max(300, math.floor(w * 0.36), R.pillsRight() + 8)
-		local x1 = w - ((w < h) and 54 or 68)
-		local width = math.max(220, math.floor((x1 - x0) / scale))
-		width = math.min(width, 520)
-		U.ChipScale.Scale = scale
-		U.Chip.Root.Size = UDim2.fromOffset(width, K.CHIP_H)
-		U.Chip.Root.Position = UDim2.fromOffset(x0, 4 - top)
+		R.placeChip(w, h, top, view)
 		S.CardMode = "Chip"
 	else
 		U.CardScale.Scale = f
 		U.Card.Root.Position = UDim2.fromOffset(math.floor(w - 12 - K.CARD_W * f), math.floor(h * 0.4) - top)
 		S.CardMode = "Card"
 	end
+end
+
+-- (U9-7 review) the phone chip. In Roblox's top band right of the top bar's pill (and of the HUD's strips when a battle
+-- puts them in the band) and left of Roblox's "..." button, as wide as that span allows: the text truncates before LEAVE
+-- moves. A span under K.CHIP_BAND_MIN (a run's three strips fill a landscape band, the pill a portrait one) drops the chip
+-- under the band at the right edge, below what hangs there (the pill, the strips, the battle HUD's enemy list), where the
+-- desktop card hangs too. In a room fight the battle HUD's mode card already says the room and the wave: a dropped chip
+-- is then its LEAVE alone (S.ChipCompact), small enough to stay clear of the action buttons
+function R.placeChip(w, h, top, view)
+	local scale = K.CHIP_SCALE
+	U.ChipScale.Scale = scale
+	local pill = R.shownRect(R.guiPart("NimbusTopBar", "Pill"))
+	local x0 = math.max((w < h) and 132 or math.max(300, math.floor(w * 0.36)), pill and math.ceil(pill.x1 + 8) or 0, R.pillsRight() + 8)
+	local x1 = w - K.CHIP_RIGHT
+	S.ChipCompact = false
+	if x1 - x0 >= K.CHIP_BAND_MIN then
+		U.Chip.Root.Size = UDim2.fromOffset(math.min(K.CHIP_MAX_W, math.floor((x1 - x0) / scale)), K.CHIP_H)
+		U.Chip.Root.Position = UDim2.fromOffset(x0, 4 - top)
+		return
+	end
+	local battle = R.battleParts()
+	S.ChipCompact = view == "Run" and battle.TopCard ~= nil and S.Run ~= nil and S.Run.State ~= "Ending"
+	local right = w - K.CHIP_EDGE
+	local width = K.CHIP_LEAVE_W
+	if not S.ChipCompact then
+		width = math.min(K.CHIP_DROP_W, math.floor((right - R.menuRight(w) - 8) / scale))
+	end
+	local left = right - width * scale
+	-- what hangs at the top: the pill, the strips, the HUD's whole top-right block (in the lobby the gift docks under the
+	-- strips: HudController's TopRightLeft / TopRightBottom, gui px), the boost chips under it, the battle HUD's parts
+	local below = {}
+	for _, r in ipairs(battle.Parts) do
+		below[#below + 1] = r
+	end
+	below[#below + 1] = pill
+	below[#below + 1] = R.shownRect(R.guiPart("NimbusHud", "Currency"))
+	below[#below + 1] = R.shownRect(R.guiPart("NimbusBoosts", "BoostChips"))
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local block = (hud and hud:GetAttribute("CurrencyMode") == "TopRight") and tonumber(hud:GetAttribute("TopRightBottom")) or 0
+	if block > 0 then
+		below[#below + 1] = { x0 = tonumber(hud:GetAttribute("TopRightLeft")) or 0, y0 = top, x1 = right, y1 = top + block }
+	end
+	-- down past everything in the chip's columns that it would touch (a few rounds: one step can meet the next part);
+	-- -> its top (screen px) and the part it hangs under (nil: right under the band)
+	local chipH = K.CHIP_H * scale
+	local function drop(x0, x1)
+		local y, under = top + K.CHIP_GAP, nil
+		for _ = 1, 8 do
+			local moved = false
+			for _, r in ipairs(below) do
+				if r.x0 < x1 and x0 < r.x1 and r.y0 < y + chipH and y < r.y1 then
+					y, under = math.ceil(r.y1 + K.CHIP_GAP), r
+					moved = true
+				end
+			end
+			if not moved then
+				break
+			end
+		end
+		return y, under
+	end
+	local y, under = drop(left, right)
+	if under and math.abs(under.x1 - right) <= 24 and under.x1 <= w - 4 then
+		-- flush with the right edge of the part it hangs under (the enemy list, the strips): one column, not two
+		left, right = left + (under.x1 - right), under.x1
+		y = drop(left, right)
+	end
+	U.Chip.Root.Size = UDim2.fromOffset(width, K.CHIP_H)
+	U.Chip.Root.Position = UDim2.fromOffset(math.floor(left + 0.5), y - top)
+end
+
+-- a gui part by its ScreenGui's name and its own (searched below it), or nil
+function R.guiPart(guiName, partName)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local gui = pg and pg:FindFirstChild(guiName)
+	return gui and gui:FindFirstChild(partName, true) or nil
+end
+
+-- a shown GuiObject's box in screen px { x0, y0, x1, y1 } (its ScreenGui's inset added back), nil while it is hidden,
+-- empty or its ScreenGui is off
+function R.shownRect(obj)
+	if not obj or not obj:IsA("GuiObject") then
+		return nil
+	end
+	local cur = obj
+	while cur and not cur:IsA("LayerCollector") do
+		if cur:IsA("GuiObject") and not cur.Visible then
+			return nil
+		end
+		cur = cur.Parent
+	end
+	if not cur or not cur:IsA("ScreenGui") or not cur.Enabled then
+		return nil
+	end
+	local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+	if s.X <= 4 or s.Y <= 4 then
+		return nil
+	end
+	local dy = cur.IgnoreGuiInset and 0 or R.inset()
+	return { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + s.Y + dy }
+end
+
+-- the battle HUD's shown parts (its root's children, screen px) and its mode card's box (TopCard: shown in a fight)
+function R.battleParts()
+	local out = { Parts = {}, TopCard = nil }
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local gui = pg and pg:FindFirstChild("NimbusBattle")
+	local root = gui and gui:FindFirstChild("Root")
+	if not root or not R.shownRect(root) then
+		return out
+	end
+	for _, child in ipairs(root:GetChildren()) do
+		local r = R.shownRect(child)
+		if r then
+			out.Parts[#out.Parts + 1] = r
+			if child.Name == "TopCard" then
+				out.TopCard = r
+			end
+		end
+	end
+	return out
+end
+
+-- the right edge of MenuController's tile column (screen px) while it shows on the left, else 0
+function R.menuRight(w)
+	local r = R.shownRect(R.guiPart("NimbusMenu", "MenuColumn"))
+	return (r and r.x1 < w * 0.3) and math.ceil(r.x1) or 0
 end
 
 -- just below the HUD's currency strips when they sit in the top-right corner under the top bar (gui-area px, the
@@ -1851,7 +1983,7 @@ function R.refresh()
 		U.End.Root.Visible = false
 		return
 	end
-	R.place()
+	R.place(view)
 	local toast = S.Toast and now < S.Toast.Until and S.Toast or nil
 	local chip = S.CardMode == "Chip"
 	U.Card.Root.Visible = view ~= nil and not chip
@@ -1884,6 +2016,7 @@ function R.refresh()
 		U.CardToast.Visible = false
 		U.CardReady.Visible = needReady
 		U.CardLeave.Visible = false
+		U.ChipText.Visible = true
 		U.ChipText.Text = cd
 		U.ChipButton.Text = "Ready"
 		CloudUI.SetStyle(U.ChipButton, "Green") -- (kit-b U9-7) READY is the chip's one green; in a run it is Leave (red)
@@ -1950,8 +2083,10 @@ function R.refresh()
 	U.CardLeave.Text = armed and "Sure? Tap again" or "Leave"
 	-- the phone chip: room / wave or the toast or the status
 	U.ChipText.Text = toast and (toast.Short or toast.Text) or R.chipText(room, count)
-	-- (kit-b U9-7) the loot flash takes the whole chip for its few seconds (beside LEAVE it ran past a portrait phone's chip)
-	U.ChipButton.Visible = run.State ~= "Ending" and toast == nil
+	-- (kit-b U9-7) the loot flash takes the whole chip for its few seconds (beside LEAVE it ran past a portrait phone's chip);
+	-- (U9-7 review) a chip that is its LEAVE alone (a fight: R.placeChip) keeps LEAVE and shows no text
+	U.ChipText.Visible = not S.ChipCompact
+	U.ChipButton.Visible = run.State ~= "Ending" and (toast == nil or S.ChipCompact == true)
 	R.cardHeight()
 	-- (bug batch 2 #14: the chip's button is LEAVE in the alcove too; chests open only at the chest)
 	U.ChipButton.Text = armed and "Sure?" or "Leave"
