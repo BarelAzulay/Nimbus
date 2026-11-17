@@ -35,6 +35,12 @@
 --                                    a small member list and a "Back to lobby in Ns" line. It closes when the
 --                                    server clears MatchState (the player is back in the lobby), when the
 --                                    player presses its X, or a few seconds after the countdown ends.
+--                                    (U9-9 review) On a touch screen it stays clear of Roblox's jump button, the
+--                                    touch RUN and the currency strip; the touch DASH lies wholly under it or wholly
+--                                    clear (its taps pass through the card); where even the compact rows do not fit
+--                                    (a 360 to 390 px tall landscape phone, a portrait phone above the centre band)
+--                                    it is the mini card (no team, no difficulty line, 250 wide); the HUD's vitals
+--                                    card steps aside under it.
 --   MatchState(nil)               -> closes the result card.
 --   DashFx(userId)                -> a cheap puff + trail on that player's character (own dashes are ignored,
 --                                    MovementController already shows those).
@@ -121,12 +127,20 @@ local RESULT_CLOSE = 46 -- the banner's room at its right end for the red close 
 -- tighter and the card's top room under the awning used (Trim; Slack the room under the footer), no "Win bonus" row
 -- when there is no bonus (a loss: it read "-") and a team of three or four in two columns of names with their ticks /
 -- crosses (the player's own tokens are the Tokens row). Every text stays >= 18 design px (14.4 px at the phones' 0.8).
--- A member line stays 26 high: at 0.8 its 18 px icons (2 px cells, PixelCrisp) need that room to sit apart line to line
+-- A member line stays 26 high: at 0.8 its 18 px icons (2 px cells, PixelCrisp) need that room to sit apart line to line.
+-- (U9-9 review) Mini: where even the compact card is taller than its room (a 360 to 390 px tall landscape phone, between
+-- the currency strip and the jump button; a portrait phone, above the centre band): the compact rows with no team and no
+-- difficulty line (the result, the reason in its short words, the stats and the countdown), W 250 (the toast column's
+-- width, so it clears the centre band on a 640 px phone)
 local RESULT_ROWS = {
-	Full = { Title = 46, Headline = 34, Diff = 28, Reason = 24, Gap = 8, Row = 34, Member = 28, Foot = 28, Value = 20, Trim = 0, Slack = 10 },
+	Full = { Title = 46, Headline = 34, Diff = 28, Reason = 24, Gap = 8, Row = 34, Member = 28, Foot = 28, Value = 20, Trim = 0, Slack = 10,
+		W = RESULT_W },
 	Compact = { Title = 38, Headline = 30, Diff = 26, Reason = 22, Gap = 4, Row = 28, Member = 26, Foot = 22, Value = 18, Trim = 10, Slack = 4,
-		SkipZeroBonus = true, Columns = 2 },
+		SkipZeroBonus = true, Columns = 2, W = RESULT_W },
+	Mini = { Title = 38, Headline = 30, Diff = 0, Reason = 22, Gap = 4, Row = 28, Member = 26, Foot = 22, Value = 18, Trim = 10, Slack = 4,
+		SkipZeroBonus = true, NoTeam = true, NoDiff = true, ShortReason = true, W = 250 },
 }
+local RESULT_TIERS = { "Full", "Compact", "Mini" } -- the first whose card fits its room (the last when none does)
 NotifyController.ResultRows = RESULT_ROWS
 local RESULT_Y = 0.47 -- vertical position (fraction of the screen), right edge
 -- On narrow (portrait) screens the scaled card reaches into the middle of the screen. The game must never say
@@ -172,6 +186,10 @@ local REASON_TEXT = {
 	timeout = "Out of time",
 	abandoned = "Match abandoned",
 }
+-- (U9-9 review) the mini card's 250 px row cut "The whole team went down" short
+local REASON_SHORT = {
+	defeat = "The team went down",
+}
 
 ----------------------------------------------------------------------
 -- State
@@ -187,7 +205,7 @@ local held = {} -- toasts waiting for the hold to end: { Text, Kind, Duration, K
 local released = {} -- held toasts let go and not shown yet (the drain), oldest first
 local drainArmed = false -- a drain step is scheduled
 local toastSerial = 0
-local result = { Panel = nil, Serial = 0, Height = 0 } -- the open result card (Height: design px)
+local result = { Panel = nil, Serial = 0, Height = 0, Width = RESULT_W } -- the open result card (Height, Width: design px)
 local lastDashFx = {}
 local hud = { Gui = nil, Conn = nil } -- the NimbusHud gui whose layout attributes we follow
 
@@ -339,10 +357,14 @@ end
 -- Lowest gui y a toast column whose left edge is at `toastLeft` (right edge `toastRight`) may reach: above the
 -- centre band when the column reaches into it sideways (portrait phones), above the touch RUN / DASH buttons
 -- under the column, (kit B U9-9) 6 px above Roblox's jump button, and never into the lower quarter of the screen.
-local function bottomLimitFor(toastLeft, toastRight)
+-- (U9-9 review) card: the result card's limit. The touch DASH under it is left out and returned as its rows with its
+-- stroke ({ Top, Bottom }, gui px): the card lies wholly over it or wholly clear of it (resultSpan), its taps pass through
+-- the card. On a touch screen the touch buttons are the card's floor, not the lower quarter (the big phones' DASH reaches
+-- into that quarter: a card over it ends at the jump button)
+local function bottomLimitFor(toastLeft, toastRight, card)
 	local vp = viewportSize()
 	local inset = topInset()
-	local limit = (vp.Y - inset) * 0.72
+	local limit = (card and isTouchDevice()) and (vp.Y - inset) or (vp.Y - inset) * 0.72
 	if toastLeft < vp.X * (0.5 + CENTRE_BAND) and toastRight > vp.X * (0.5 - CENTRE_BAND) then
 		limit = math.min(limit, vp.Y * (0.5 - CENTRE_BAND) - CENTRE_MARGIN - inset)
 	end
@@ -350,6 +372,7 @@ local function bottomLimitFor(toastLeft, toastRight)
 	if jx0 and toastRight > jx0 - 6 and toastLeft < jx1 + 6 then
 		limit = math.min(limit, jy0 - 6)
 	end
+	local dash = nil
 	local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	local mobile = playerGui and playerGui:FindFirstChild("MobileControls")
 	if mobile and mobile:IsA("ScreenGui") and mobile.Enabled then
@@ -359,12 +382,19 @@ local function bottomLimitFor(toastLeft, toastRight)
 				local x0 = d.AbsolutePosition.X
 				local x1 = x0 + d.AbsoluteSize.X
 				if x1 > toastLeft and x0 < toastRight then
-					limit = math.min(limit, d.AbsolutePosition.Y + dy - TOAST_GAP)
+					local y0 = d.AbsolutePosition.Y + dy
+					if card and d.Name == "DashButton" then
+						local stroke = d:FindFirstChildOfClass("UIStroke")
+						local s = (stroke and stroke.Enabled ~= false) and stroke.Thickness or 0
+						dash = { Top = y0 - s, Bottom = y0 + d.AbsoluteSize.Y + s, Clear = y0 - TOAST_GAP }
+					else
+						limit = math.min(limit, y0 - TOAST_GAP)
+					end
 				end
 			end
 		end
 	end
-	return limit
+	return limit, dash
 end
 
 -- Where the toast column goes: { Top, Right (padding from the right edge), Bottom (lowest y) } in gui px.
@@ -466,29 +496,77 @@ local function applyMargins()
 	end
 end
 
+-- Where a result card `width` design px wide goes: true = at the right edge, from its left x to its right x (gui px).
+-- (U9-9 review) Every landscape screen keeps it there (a phone under 720 px wide took the centre-band rule below, which
+-- never asked bottomLimitFor about the touch buttons); a portrait one only when the scaled card stays right of the
+-- centre band
+local function resultOnEdge(width)
+	local vp = viewportSize()
+	local side = isTouchDevice() and TOUCH_EDGE or EDGE
+	local cardLeft = vp.X - side - width * currentScale()
+	return vp.X > vp.Y or cardLeft >= vp.X * (0.5 + CENTRE_BAND), cardLeft, vp.X - side
+end
+
+-- (kit B U9-9; review) The rows the right-edge card may use (gui px): Top = under the HUD's top-right block and the awning,
+-- Clear = the lowest y that keeps the touch DASH wholly clear, Cover = the lowest y bottomLimitFor allows (jump button, RUN,
+-- the centre band) when the card may lie wholly over DASH (it reaches past DASH's stroke), else Clear; Dash = DASH's rows
+-- with its stroke (nil without one under the card). Never a sliver of DASH under the card's edge (the U9-4 rule)
+local function resultSpan(width)
+	local k = currentScale()
+	local _, cardLeft, cardRight = resultOnEdge(width)
+	local top = math.max(EDGE, hudValue("TopRightBottom") + HUD_GAP) + RESULT_ROOF_UP * k
+	local cover, dash = bottomLimitFor(cardLeft, cardRight, true)
+	local clear = cover
+	if dash and dash.Clear < cover then
+		clear = dash.Clear
+		if cover < dash.Bottom then
+			cover = clear
+		end
+	end
+	return top, clear, cover, dash
+end
+
+-- a whole gui px for the card's centre y, kept inside lo .. hi when those leave one (the DASH window is 1 px)
+local function snapInside(y, lo, hi)
+	local a, b = math.ceil(lo), math.floor(hi)
+	if a <= b then
+		return math.min(math.max(math.floor(y + 0.5), a), b)
+	end
+	return math.floor(y)
+end
+
 -- Position of the (right-edge) result card: `xScale` 1 = on screen, > 1 = parked off screen. The card sits at
 -- RESULT_Y of the screen height; when the screen is so narrow that the scaled card reaches into the centre band
 -- it is lifted above that band instead (never below it: the thumb controls live there).
-local function resultPosition(xScale, panelHeight)
+local function resultPosition(xScale, panelHeight, panelWidth)
 	local vp = viewportSize()
 	local k = currentScale()
-	local side = isTouchDevice() and TOUCH_EDGE or EDGE
-	local cardLeft = vp.X - side - RESULT_W * k
+	local width = panelWidth or result.Width
 	local half = (panelHeight or result.Height) * k / 2
 	local roof = RESULT_ROOF_UP * k -- (kit B U9-9) the awning over the card's top
-	if cardLeft >= vp.X * (0.5 + CENTRE_BAND) then
+	if resultOnEdge(width) then
 		-- keep clear of a top-right currency stack on short screens
-		local floorY = hudValue("TopRightBottom") + HUD_GAP + roof + half
+		local top, clear, cover, dash = resultSpan(width)
 		local y = (vp.Y - topInset()) * RESULT_Y
-		-- v5: a short screen lifts the card so it never covers the touch RUN / DASH / jump buttons below it
-		local lowest = bottomLimitFor(cardLeft, vp.X - side) - half
-		if y > lowest then
-			return UDim2.new(xScale, 0, 0, math.floor(math.max(math.min(floorY, lowest), EDGE + roof + half)))
+		local lo, hi = top + half, clear - half
+		if hi < lo and cover > clear then
+			-- (U9-9 review) too tall to end above the touch DASH: the card lies wholly over it (a short landscape phone),
+			-- or on a screen with no room either way it ends at the cover limit, never over the top edge
+			lo, hi = math.max(lo, dash.Bottom - half), cover - half
+			if lo <= hi then
+				return UDim2.new(xScale, 0, 0, snapInside(y, lo, hi))
+			end
+			return UDim2.new(xScale, 0, 0, math.floor(math.max(hi, EDGE + roof + half)))
 		end
-		if y >= floorY then
-			return UDim2.new(xScale, 0, RESULT_Y, 0)
+		if hi < lo then
+			-- no room at all (a tiny screen): as low as the limit lets it, never over the top edge
+			return UDim2.new(xScale, 0, 0, math.floor(math.max(hi, EDGE + roof + half)))
 		end
-		return UDim2.new(xScale, 0, 0, math.floor(floorY))
+		-- v5: a short screen lifts the card under the HUD so it never covers the touch RUN / DASH / jump buttons below it
+		if y > hi or y < lo then
+			y = lo
+		end
+		return UDim2.new(xScale, 0, 0, snapInside(y, lo, hi))
 	end
 	-- the ScreenGui area starts below the top bar (IgnoreGuiInset = false), so gui y = screen y - inset
 	local ceiling = vp.Y * (0.5 - CENTRE_BAND) - CENTRE_MARGIN - half - topInset()
@@ -496,21 +574,52 @@ local function resultPosition(xScale, panelHeight)
 	return UDim2.new(xScale, 0, 0, math.floor(math.max(ceiling, floorY)))
 end
 
--- (kit B U9-9) the design px of height the card has where resultPosition puts it: from under the HUD's top-right block
--- and the awning down to the lowest y bottomLimitFor allows (the right edge), or to the centre band (a narrow screen)
-local function resultRoom()
+-- (kit B U9-9) the design px of height a card `width` design px wide has where resultPosition puts it: from under the HUD's
+-- top-right block and the awning down to the lowest y it may reach (the right edge: resultSpan's Cover), or to the centre
+-- band (a narrow portrait screen)
+local function resultRoom(width)
 	local vp = viewportSize()
 	local k = math.max(0.01, currentScale())
-	local side = isTouchDevice() and TOUCH_EDGE or EDGE
-	local cardLeft = vp.X - side - RESULT_W * k
-	local top = math.max(EDGE, hudValue("TopRightBottom") + HUD_GAP) + RESULT_ROOF_UP * k
-	local bottom
-	if cardLeft >= vp.X * (0.5 + CENTRE_BAND) then
-		bottom = bottomLimitFor(cardLeft, vp.X - side)
-	else
-		bottom = vp.Y * (0.5 - CENTRE_BAND) - CENTRE_MARGIN - topInset()
+	if resultOnEdge(width) then
+		local top, _, cover = resultSpan(width)
+		return (cover - top) / k
 	end
-	return (bottom - top) / k
+	local top = math.max(EDGE, hudValue("TopRightBottom") + HUD_GAP) + RESULT_ROOF_UP * k
+	return (vp.Y * (0.5 - CENTRE_BAND) - CENTRE_MARGIN - topInset() - top) / k
+end
+
+-- (U9-9 review, look) the HUD's vitals card steps aside while the open card lies over a part of it (a short landscape
+-- phone: the mini card's corner over the card's right end), as the Trove and Gifts windows do; back when the card goes
+local function syncVitals()
+	local off = false
+	local panel = result.Panel
+	local module = script.Parent:FindFirstChild("HudController")
+	local okHud, hud = false, nil
+	if module then
+		okHud, hud = pcall(require, module)
+	end
+	if not (okHud and type(hud) == "table") then
+		return
+	end
+	if panel and panel.Root and panel.Root.Parent and type(hud.GetLayout) == "function" then
+		local okLayout, layout = pcall(hud.GetLayout)
+		local slot = okLayout and type(layout) == "table" and layout.VitalsSlot
+		if slot then
+			local vp, k = viewportSize(), currentScale()
+			local x1 = vp.X - (isTouchDevice() and TOUCH_EDGE or EDGE)
+			local x0 = x1 - result.Width * k
+			local pos = resultPosition(1)
+			local cy = pos.Y.Scale * (vp.Y - topInset()) + pos.Y.Offset
+			local y0, y1 = cy - result.Height * k / 2, cy + result.Height * k / 2
+			local w = math.min(x1, slot.X + slot.W) - math.max(x0, slot.X)
+			local h = math.min(y1, slot.Y + slot.H) - math.max(y0, slot.Y)
+			off = w > 4 and h > 4
+		end
+	end
+	if off ~= (result.VitalsOff == true) and type(hud.SetVitalsHidden) == "function" then
+		result.VitalsOff = off
+		pcall(hud.SetVitalsHidden, "ResultCard", off)
+	end
 end
 
 -- Tells the HUD where the open result card starts (gui x of its left edge; 0 = no card), so on a narrow
@@ -522,11 +631,12 @@ local function publishResultCard()
 	local value = 0
 	if result.Panel and result.Panel.Root and result.Panel.Root.Parent then
 		local side = isTouchDevice() and TOUCH_EDGE or EDGE
-		value = math.floor(viewportSize().X - side - RESULT_W * currentScale())
+		value = math.floor(viewportSize().X - side - result.Width * currentScale())
 	end
 	if UI.Gui:GetAttribute("ResultCardLeft") ~= value then
 		UI.Gui:SetAttribute("ResultCardLeft", value)
 	end
+	syncVitals()
 end
 
 local function relayout()
@@ -809,6 +919,9 @@ local function addToast(text, kind, duration)
 	while #toasts > MAX_TOASTS do
 		dismissToast(toasts[1])
 	end
+	-- (U9-9 review) the column where trimToasts measures it: the touch RUN / DASH may have come or gone since the last
+	-- relayout (MovementController shows them on a spawn), and nothing on the HUD moved to tell us
+	applyMargins()
 	trimToasts()
 
 	toast.Card.Position = UDim2.new(0, TOAST_W + 40, 0, 0)
@@ -1015,17 +1128,17 @@ local function buildResults(data)
 	local diffColor = (diff and diff.Color) or Colors.Stamina
 	local starCount = tonumber(data.Stars) or (diff and diff.Stars) or 0
 	local members = normaliseMembers(data.Members)
-	local showMembers = #members > 1
 	local reason = (not won) and REASON_TEXT[tostring(data.Reason or "defeat")] or nil
 
 	-- fixed vertical layout (inner coordinates); (kit B U9-9) the stat rows are stone blocks 6 px apart; the compact rows
-	-- when the full card is taller than the screen's room for it (RESULT_ROWS)
+	-- when the full card is taller than the screen's room for it, the mini card when the compact one is too (RESULT_ROWS)
 	local insetTop, _, insetBottom = CloudUI.ContentInset(false, true)
 	local hasBonus = (tonumber(data.Bonus) or 0) >= 1
 	local function layoutWith(rows)
 		local out = { Rows = rows }
 		out.Stats = (rows.SkipZeroBonus and not hasBonus) and 2 or 3
 		out.Cols = (rows.Columns and #members > 2) and rows.Columns or 1
+		out.Members = #members > 1 and not rows.NoTeam
 		local y = 0
 		out.TitleY = y
 		y = y + rows.Title
@@ -1039,7 +1152,7 @@ local function buildResults(data)
 		out.StatsY = y
 		y = y + rows.Row * out.Stats + 4
 		out.MembersY = y
-		if showMembers then
+		if out.Members then
 			y = y + math.ceil(#members / out.Cols) * rows.Member + 6
 		end
 		out.FootY = y
@@ -1047,25 +1160,29 @@ local function buildResults(data)
 		out.PanelH = insetTop + insetBottom + rows.Slack + y - rows.Trim
 		return out
 	end
-	local L = layoutWith(RESULT_ROWS.Full)
-	local okRoom, room = pcall(resultRoom)
-	if okRoom and type(room) == "number" and L.PanelH > room then
-		L = layoutWith(RESULT_ROWS.Compact)
+	local L, tier = nil, nil
+	for _, name in ipairs(RESULT_TIERS) do
+		L, tier = layoutWith(RESULT_ROWS[name]), name
+		local okRoom, room = pcall(resultRoom, L.Rows.W)
+		if not okRoom or type(room) ~= "number" or L.PanelH <= room then
+			break
+		end
 	end
 	local R = L.Rows
 	local TITLE_H, DIFF_H, REASON_H, ROW_H, MEMBER_H, FOOT_H = R.Title, R.Diff, R.Reason, R.Row, R.Member, R.Foot
 	local titleY, diffY, reasonY, statsY, membersY, footY = L.TitleY, L.DiffY, L.ReasonY, L.StatsY, L.MembersY, L.FootY
-	local panelH = L.PanelH
-	result.Height = panelH
+	local showMembers = L.Members
+	local panelH, panelW = L.PanelH, R.W
+	result.Height, result.Width = panelH, panelW
 
 	-- (kit B U9-9) the Signboard skin: wood frame, stone body and its lip, the red close block; the awning as wide as the
 	-- card (the pitch's roof reaches 10 px past each side; a fixed size, never stretched)
 	local panel = CloudUI.Panel({
 		Name = "ResultCard",
 		Skin = "Signboard",
-		Size = UDim2.fromOffset(RESULT_W, panelH),
+		Size = UDim2.fromOffset(panelW, panelH),
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = resultPosition(1.8, panelH),
+		Position = resultPosition(1.8, panelH, panelW),
 		Closable = true,
 		OnClose = function()
 			closeResults(false)
@@ -1074,14 +1191,15 @@ local function buildResults(data)
 	})
 	panel.Body.Active = false
 	if panel.Roof then
-		panel.Roof.Size = UDim2.fromOffset(RESULT_W + 2 * RESULT_ROOF_OVER, panel.Roof.Size.Y.Offset)
+		panel.Roof.Size = UDim2.fromOffset(panelW + 2 * RESULT_ROOF_OVER, panel.Roof.Size.Y.Offset)
 	end
 	addViewportScale(panel.Root)
 	local inner = newFrame(panel.Content, "Inner", {
 		Position = UDim2.new(0, 4, 0, 2 - R.Trim),
 		Size = UDim2.new(1, -8, 1, -4 + R.Trim),
 	})
-	panel.Root:SetAttribute("Compact", R == RESULT_ROWS.Compact)
+	panel.Root:SetAttribute("Compact", R ~= RESULT_ROWS.Full)
+	panel.Root:SetAttribute("Rows", tier) -- (U9-9 review) Full / Compact / Mini
 
 	-- the headline: a banner block across the card's top (VICTORY! gold, DEFEAT stone) with brown words, a plain Section
 	-- title (a pop-up's title: the window ribbon is for window names); the red close block sits on its right end
@@ -1104,28 +1222,33 @@ local function buildResults(data)
 		panel.CloseButton.Position = UDim2.new(1, -(12 + 4 + 6), 0, insetTop2 + 2 - R.Trim + titleY + math.floor((TITLE_H - 5) / 2))
 	end
 
-	-- difficulty + stars: brown, the stars in the deep gold that reads on stone
-	local diffText = tostring(data.DifficultyName or data.DifficultyId or "")
-	-- (kit B U9-9) the line ends above its colour bar (DIFF_H - 4) so the bar never runs through the letters
-	local diffLabel = newText(inner, "Difficulty", diffText, "Heading", 21, SIGN.Text, {
-		Position = UDim2.fromOffset(0, diffY),
-		Size = UDim2.new(1, 0, 0, DIFF_H - 4),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		RichText = true,
-	})
-	if starCount > 0 then -- (kit-b U7a) the stars are gold PixelIcons after the name
-		-- (kit B U9-9) every icon of the card on whole screen px at the card's scale (PixelCrisp.Adopt)
-		PixelCrisp.Adopt(PixelIcon.Lead(diffLabel, "star", { After = true, Count = math.min(5, starCount), Px = 18, Colour = STAR_INK }))
+	-- difficulty + stars: brown, the stars in the deep gold that reads on stone (the mini card has no difficulty line)
+	if not R.NoDiff then
+		local diffText = tostring(data.DifficultyName or data.DifficultyId or "")
+		-- (kit B U9-9) the line ends above its colour bar (DIFF_H - 4) so the bar never runs through the letters
+		local diffLabel = newText(inner, "Difficulty", diffText, "Heading", 21, SIGN.Text, {
+			Position = UDim2.fromOffset(0, diffY),
+			Size = UDim2.new(1, 0, 0, DIFF_H - 4),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			RichText = true,
+		})
+		if starCount > 0 then -- (kit-b U7a) the stars are gold PixelIcons after the name
+			-- (kit B U9-9) every icon of the card on whole screen px at the card's scale (PixelCrisp.Adopt)
+			PixelCrisp.Adopt(PixelIcon.Lead(diffLabel, "star", { After = true, Count = math.min(5, starCount), Px = 18, Colour = STAR_INK }))
+		end
+		-- the difficulty's own colour: a short bar under the line (its role colour, as a best-time row's lip)
+		newFrame(inner, "DiffBar", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, diffY + DIFF_H - 4),
+			Size = UDim2.fromOffset(64, 4),
+			BackgroundTransparency = 0,
+			BackgroundColor3 = diffColor,
+		})
 	end
-	-- the difficulty's own colour: a short bar under the line (its role colour, as a best-time row's lip)
-	newFrame(inner, "DiffBar", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, diffY + DIFF_H - 4),
-		Size = UDim2.fromOffset(64, 4),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = diffColor,
-	})
 	if reason then
+		if R.ShortReason then
+			reason = REASON_SHORT[tostring(data.Reason or "defeat")] or reason
+		end
 		newText(inner, "Reason", reason, "Body", 18, SIGN.TextMuted, {
 			Position = UDim2.fromOffset(0, reasonY),
 			Size = UDim2.new(1, 0, 0, REASON_H),

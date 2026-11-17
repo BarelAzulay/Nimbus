@@ -169,6 +169,16 @@ K.PORTRAIT_EDGE = 3 -- the portrait's wood edge
 K.PORTRAIT_LIP = 6 -- its lip in the NPC's accent colour
 K.TAG_LIP = 3
 K.NAME_LIP = 5 -- the name plank's navy lip
+-- (kit B U9-9) the card's rows (design px): Well = the well's room under it (the footer, its gaps and the stone lip),
+-- FootUp = the footer's offset from the card's bottom (its height and the room under it), Lip = the stone lip, Tab = the
+-- name plank's height and TabAbove how far it rides over the card (its edge included; it ends 24 px into the card).
+-- (U9-9 review) Short: a phone too short for the card even at MIN_SCALE (360 px tall: the top bar's pill drew over the
+-- name plank) takes the 12 px back from the footer's gaps and the lip (Cut: the old bubble's 216 / 250 again, the line
+-- keeps its room) and a plank 8 px lower, so the plank clears the pill
+K.ROWS = {
+	Tall = { Cut = 0, Well = 30, FootUp = 22, Lip = 8, Tab = 46, TabAbove = K.TAB_ABOVE },
+	Short = { Cut = 12, Well = 18, FootUp = 14, Lip = 4, Tab = 38, TabAbove = K.TAB_ABOVE - 8 },
+}
 K.DOT = 10
 K.DOT_GAP = 8
 
@@ -961,7 +971,7 @@ local function buildDialog()
 		ZIndex = 3,
 	}, card)
 	stone:SetAttribute("SignKit", "Body")
-	lipOf(stone, SIGN.StoneLip, 8)
+	UI.StoneLip = lipOf(stone, SIGN.StoneLip, K.ROWS.Tall.Lip)
 	UI.Card = card
 
 	-- portrait: a sky well in a wood edge, the NPC's accent colour on its lip, a little pixel cloud in its corner
@@ -1071,7 +1081,7 @@ local function buildDialog()
 		BackgroundColor3 = C.Well,
 		BorderSizePixel = 0,
 		Position = UDim2.fromOffset(K.WELL_X, K.WELL_TOP),
-		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 1, -(K.WELL_TOP + K.FOOTER_H + 30)),
+		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 1, -(K.WELL_TOP + K.FOOTER_H + K.ROWS.Tall.Well)),
 		ZIndex = 6,
 	}, card)
 	edge(well, SIGN.Wood, K.EDGE_PX)
@@ -1129,10 +1139,11 @@ local function buildDialog()
 
 	-- footer: Close (a stone plank), Next (the green plank: the dialog's one action), right-aligned under the well
 	local footer = box("Footer", {
-		Position = UDim2.new(0, K.WELL_X, 1, -(K.FOOTER_H + 22)),
+		Position = UDim2.new(0, K.WELL_X, 1, -(K.FOOTER_H + K.ROWS.Tall.FootUp)),
 		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 0, K.FOOTER_H),
 		ZIndex = 6,
 	}, card)
+	UI.Footer = footer
 
 	UI.Next = newButton("Next", "Green", UDim2.fromOffset(118, K.FOOTER_H), function()
 		NpcController.Advance()
@@ -1211,11 +1222,12 @@ local function hotbarRect()
 end
 
 -- Fits the card into the box left..rightLimit x topLimit..bottom (gui px): returns scale, design width, design
--- height. Narrow boxes get the compact card; the scale may come out below K.MIN_SCALE (= does not fit).
+-- height and its bottom rows (K.ROWS). Narrow boxes get the compact card, (U9-9 review) a box too short for it even at
+-- K.MIN_SCALE the short rows; the scale may come out below K.MIN_SCALE (= does not fit).
 local function fitCard(left, bottom, topLimit, rightLimit, f)
 	local availW, availH = rightLimit - left, bottom - topLimit
 	if availW <= 0 or availH <= 0 then
-		return 0, K.W_MIN, K.H_COMPACT
+		return 0, K.W_MIN, K.H_COMPACT - K.ROWS.Short.Cut, K.ROWS.Short
 	end
 	local scale = f
 	local w = K.W
@@ -1229,10 +1241,15 @@ local function fitCard(left, bottom, topLimit, rightLimit, f)
 	if w < K.W - 60 then
 		h = K.H_COMPACT
 	end
-	if (h + K.TAB_ABOVE) * scale > availH then
-		scale = availH / (h + K.TAB_ABOVE)
+	local rows = K.ROWS.Tall
+	if (h + rows.TabAbove) * K.MIN_SCALE > availH then
+		rows = K.ROWS.Short
+		h = h - rows.Cut
 	end
-	return scale, w, h
+	if (h + rows.TabAbove) * scale > availH then
+		scale = availH / (h + rows.TabAbove)
+	end
+	return scale, w, h, rows
 end
 
 local function layoutDialog()
@@ -1296,10 +1313,10 @@ local function layoutDialog()
 				left = math.max(left, alt)
 			end
 		end
-		local s, cw, ch = fitCard(left, b, topLimit, rightLimit, f)
-		return s, cw, ch, left
+		local s, cw, ch, rows = fitCard(left, b, topLimit, rightLimit, f)
+		return s, cw, ch, left, rows
 	end
-	local scale, w, h, left = placeAt(bottom)
+	local scale, w, h, left, rows = placeAt(bottom)
 	-- desktops: the vitals card is bottom-CENTRE now, so the dialog only has to stand above it when its x-span
 	-- actually meets the card (or the hotbar under it); otherwise it keeps its own default bottom near the edge.
 	-- (Touch keeps the HUD's line: Roblox's thumbstick owns the bottom-left corner there.)
@@ -1314,9 +1331,9 @@ local function layoutDialog()
 			return bar == nil or b <= bar.y0 - K.GAP or x1 + K.GAP <= bar.x0 or l >= bar.x1 + K.GAP
 		end
 		if low > bottom + 1 and clear(bottom, left, scale, w) then
-			local s2, w2, h2, l2 = placeAt(low)
+			local s2, w2, h2, l2, r2 = placeAt(low)
 			if clear(low, l2, s2, w2) then
-				bottom, scale, w, h, left = low, s2, w2, h2, l2
+				bottom, scale, w, h, left, rows = low, s2, w2, h2, l2, r2
 			end
 		end
 	end
@@ -1324,17 +1341,29 @@ local function layoutDialog()
 	if scale < K.MIN_SCALE and column and column.y0 > topLimit then
 		-- 2) narrow screens: above the menu column, from the left edge
 		local b2 = column.y0 - K.GAP
-		local s2, w2, h2 = fitCard(edge, b2, topLimit, area.X - edge, f)
+		local s2, w2, h2, r2 = fitCard(edge, b2, topLimit, area.X - edge, f)
 		if s2 >= K.MIN_SCALE then
-			scale, w, h, x, y = s2, w2, h2, edge, b2
+			scale, w, h, x, y, rows = s2, w2, h2, edge, b2, r2
 		end
 	end
 	scale = math.max(K.MIN_SCALE, scale) -- never below readable text, even if the card then overlaps a little
 	root.Size = UDim2.fromOffset(w, h)
+	-- (U9-9 review) the bottom rows of the tall or the short card: the well's room under it, the footer, the stone lip
+	if UI.Well then
+		UI.Well.Size = UDim2.new(1, -(K.WELL_X + K.PAD), 1, -(K.WELL_TOP + K.FOOTER_H + rows.Well))
+	end
+	if UI.Footer then
+		UI.Footer.Position = UDim2.new(0, K.WELL_X, 1, -(K.FOOTER_H + rows.FootUp))
+	end
+	if UI.StoneLip then
+		UI.StoneLip.Size = UDim2.new(1, 0, 0, rows.Lip)
+	end
+	UI.Root:SetAttribute("Rows", rows == K.ROWS.Short and "Short" or "Tall")
 	root.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
 	UI.Scale.Scale = scale
 	if UI.NameTab then
-		UI.NameTab.Size = UDim2.fromOffset(math.min(250, w - K.WELL_X - 104), 46)
+		UI.NameTab.Size = UDim2.fromOffset(math.min(250, w - K.WELL_X - 104), rows.Tab)
+		UI.NameTab.Position = UDim2.fromOffset(K.WELL_X, 24 - rows.Tab) -- it ends 24 px into the card
 	end
 	if PixelCrisp then
 		PixelCrisp.Refresh(root) -- (kit B U9-9) the icons and wood edges back on whole pixels at the new scale
