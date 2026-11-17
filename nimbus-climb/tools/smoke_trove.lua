@@ -21,8 +21,10 @@
 --                        only (Low), Checked / Soon / Preview, nothing in the screen centre, the window rule; (kit-b U9-4)
 --                        the buttons in sentence case, the tokens tag the token coin + "200", its top 8 x factor + the
 --                        awning's 10 px under the top bar
---   client_trove_mobile  (phone world) 844x390: (kit-b U9-4) 420 x 226 at scale 1 (no subtitle: it clears the jump button),
---                        12 px from the right, top = inset + 8, texts >= 15 px, the button >= 44 px, Roblox's touch controls stay
+--   client_trove_mobile  (phone world) 844x390: (kit-b U9-4) 420 wide at scale 1 (no subtitle: it clears the jump button),
+--                        (U9-4 review) its bottom 6 px over Roblox's jump button (228 tall under a 58 px top bar: the 226 px
+--                        box ended on the game's DASH button's stroke), 12 px from the right, top = inset + 8, texts >= 15 px,
+--                        the button >= 44 px, Roblox's touch controls stay
 -- White-box: the doubles are written straight onto the player / GroupService (props, never methods). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -809,8 +811,12 @@ local function clientScenarios()
 			return
 		end
 		local scale = panel:FindFirstChildOfClass("UIScale")
-		-- (kit-b U9-4) 420 x 226: no subtitle, so the docked panel ends above Roblox's jump button on a 390 px tall phone
-		T.check(math.abs(panel.AbsoluteSize.X - 420) <= 1 and math.abs(panel.AbsoluteSize.Y - 226) <= 1 and (scale == nil or scale.Scale == 1), "trove mobile: 420 x 226 at scale 1", string.format("%.0fx%.0f", panel.AbsoluteSize.X, panel.AbsoluteSize.Y))
+		-- (kit-b U9-4) 420 wide, no subtitle, so the docked panel ends above Roblox's jump button on a 390 px tall phone;
+		-- (U9-4 review) it reaches down to 6 px over it (the jump button's top 90 px over the bottom edge), which covers the
+		-- game's DASH button and its stroke whole: 228 tall under a 58 px top bar
+		local wantH = math.max(226, gui.AbsoluteSize.Y - 90 - 6 - 8)
+		T.check(math.abs(panel.AbsoluteSize.X - 420) <= 1 and math.abs(panel.AbsoluteSize.Y - wantH) <= 1 and (scale == nil or scale.Scale == 1),
+			string.format("trove mobile: 420 x %d at scale 1 (its bottom 6 px over the jump button)", wantH), string.format("%.0fx%.0f", panel.AbsoluteSize.X, panel.AbsoluteSize.Y))
 		local right = 844 - (panel.AbsolutePosition.X + panel.AbsoluteSize.X)
 		T.check(math.abs(right - 12) <= 1, "trove mobile: 12 px from the right", tostring(right))
 		local guiTop = gui.IgnoreGuiInset and 0 or insetY()

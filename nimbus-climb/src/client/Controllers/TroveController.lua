@@ -14,8 +14,9 @@
 -- docked right so the chest stays in view. Box: NeonKit.SideRect(520, 380, 420, 226) answers whether the 1080p design
 -- fits; when it does the PC layout (520 x 380 design px at the rect's scale, 12 px x factor from the right, its top
 -- 8 px x factor + the awning's 10 px under Roblox's top bar), otherwise the phone layout at scale 1 (420 x 226, 12 px
--- from the right, top = inset + 8); a portrait screen gets the bottom sheet (as wide as the screen allows up to 400,
--- 274 tall, 12 px over the bottom right) so the character stays clear.
+-- from the right, top = inset + 8; on a touch screen where that box would end on the game's DASH button it reaches down
+-- to THUMB_GAP px over Roblox's jump button instead, see phoneHeight); a portrait screen gets the bottom sheet (as wide
+-- as the screen allows up to 400, 274 tall, 12 px over the bottom right) so the character stays clear.
 -- (kit-b U9-4, finding 15) the Signboard kit, as the Gifts window: "TrovePanel" is the wood frame round "Stone" (the
 -- stone body with its lip), "Header" the navy band with its darker lip inside the frame holding "TroveIcon" (the pixel
 -- chest on its gold square), "TitleText" ("SKY TROVE", the window's ribbon) and "Close" (the red block, its X drawn in
@@ -26,9 +27,12 @@
 -- action. Nothing round or glossy, no neon.
 --   PC:    header 60 (icon 40, Title 32, X 44); subtitle Body 20 "Help Nimbus grow and the Trove pays you!"; rows 100 /
 --          76 (chip 56, label 20, tags 19, button 140 x 52); the footer 19 (>= 15 px at 1280x720's 0.8 scale)
---   phone: header 44 (icon 28, Title 22, X 44); no subtitle (the panel keeps clear of the jump button; at 844x390 it
---          covers the game's DASH button whole, as the old panel did, no sliver under its edge); rows 62 / 46 (chip 34,
---          label 15-16 on one line, tags 15, button 96 x 44), the footer 15; portrait: the lines wrap
+--   phone: header 44 (icon 28, Title 22, X 44); no subtitle (the panel keeps clear of the jump button); rows 62 / 46
+--          (chip 34, label 15-16 on one line, tags 15, button 96 x 44), the footer 15; (U9-4 review) the game's DASH
+--          button sits 10 px over the jump button, so a 226 px panel ended on it on touch phones 390 to 460 px tall
+--          (under the 58 px top bar: a sliver of DASH under its edge); there the panel stretches into that gap (228 at
+--          844x390, 231 at 852x393, 268 at 932x430), covering DASH and its stroke whole and keeping the controls; a
+--          quarter of the spare to each ask, the rest to the gaps round them; portrait: the lines wrap
 -- The Group row: "Join the Nimbus Climb group" + the tags; its button reads Join (Open), Done (disabled, Done), Preview
 -- (disabled, Preview: GroupId 0 in the Studio preview), sentence case (the kit's casing rule); no button for Checked /
 -- Unavailable / Loading / Soon (Soon's label reads "Coming soon"). The Like row has no button. The footer: "Community
@@ -86,6 +90,9 @@ local K = {
 	-- (small) or 0.75 J over the bottom edge; the panel keeps THUMB_GAP px clear of both or the controls go
 	SMALL_PHONE = 500, STICK_W_SMALL = 110, STICK_H_SMALL = 96, STICK_H_PORTRAIT = 150, STICK_W_LARGE = 190, STICK_H_LARGE = 210,
 	JUMP_SMALL = 70, JUMP_LARGE = 120, THUMB_GAP = 6,
+	-- (U9-4 review) the game's DASH button (MovementController's layoutMobileControls; keep in sync): D x D centred over
+	-- the jump button, its bottom DASH_GAP px over the jump button's top, a DASH_STROKE px stroke round it
+	DASH_SMALL = 66, DASH_LARGE = 84, DASH_GAP = 10, DASH_STROKE = 3,
 }
 -- design px; Header = the frame's top edge + the navy band (its 4 px lip included); rows from the panel's top
 local PC = { W = 520, H = 380, Header = 66, Icon = 40, TitleText = 32, TitleW = 210, Close = 44, Pad = 16,
@@ -317,6 +324,7 @@ local function build(mode)
 	end
 	U.M = M
 	U.Width = nil
+	U.Height = nil
 	S.Mode = mode
 	S.Lit = false
 	local F = K.FRAME
@@ -601,6 +609,46 @@ local function thumbZones()
 	}
 end
 
+-- (U9-4 review) the landscape phone panel's height: PHONE.H, unless on a touch screen (where the game's DASH button
+-- shows) that box would end on DASH; then as tall as reaches THUMB_GAP px over Roblox's jump button, which lands in the
+-- DASH_GAP px between the two, so DASH and its stroke lie whole under the panel and the controls stay. A screen short
+-- enough that PHONE.H already passes the jump button keeps PHONE.H (DASH lies whole under it; the controls go)
+local function phoneHeight()
+	if not UserInputService.TouchEnabled then
+		return PHONE.H
+	end
+	local vp = viewport()
+	local jumpTop = thumbZones()[2][2]
+	local dash = math.min(vp.X, vp.Y) <= K.SMALL_PHONE and K.DASH_SMALL or K.DASH_LARGE
+	if K.TOP_GAP + PHONE.H <= jumpTop - K.DASH_GAP - dash - K.DASH_STROKE then
+		return PHONE.H -- DASH lies whole below the panel
+	end
+	return math.max(PHONE.H, math.floor(jumpTop - K.THUMB_GAP - K.TOP_GAP))
+end
+
+-- the phone layout's metrics for a panel h design px tall (h >= PHONE.H): a quarter of the spare height to each ask's
+-- block, the rest in three even steps to the gaps under the header and each ask; the footer takes what is left
+local function stretched(h)
+	local spare = math.max(0, math.floor(h - PHONE.H))
+	if spare == 0 then
+		return PHONE
+	end
+	local M = {}
+	for k, v in pairs(PHONE) do
+		M[k] = v
+	end
+	local grow = math.floor(spare / 4)
+	local step = math.floor((spare - 2 * grow) / 3)
+	M.H = PHONE.H + spare
+	M.Row1 = PHONE.Row1 + step
+	M.Row1H = PHONE.Row1H + grow
+	M.Row2 = PHONE.Row2 + 2 * step + grow
+	M.Row2H = PHONE.Row2H + grow
+	M.FootY = PHONE.FootY + 3 * step + 2 * grow
+	M.FootH = PHONE.FootH + spare - 3 * step - 2 * grow
+	return M
+end
+
 -- while open on a touch-only screen Roblox's touch controls go if the panel comes within THUMB_GAP px of them, and the
 -- HUD's vitals card steps aside while the panel lies over it by more than a shared edge; both come back on Close
 local function cover()
@@ -657,16 +705,21 @@ local function layout()
 	if S.Mode ~= mode or not U.Panel then
 		build(mode)
 	end
-	local M = U.M
-	local pw = M.W
+	local pw, ph = U.M.W, U.M.H
 	if sheet then
 		pw = math.min(PORTRAIT.W, W - 2 * K.MARGIN)
+	elseif phone then
+		ph = phoneHeight()
 	end
-	if U.Width ~= pw then
-		U.Width = pw
-		U.Panel.Size = UDim2.fromOffset(pw, M.H)
+	if U.Width ~= pw or U.Height ~= ph then
+		U.Width, U.Height = pw, ph
+		if mode == "Phone" then
+			U.M = stretched(ph)
+		end
+		U.Panel.Size = UDim2.fromOffset(pw, ph)
 		arrange(pw)
 	end
+	local M = U.M
 	render()
 	-- (the gui starts below Roblox's top bar: y is in the gui's area, so "inset + 8" on screen is 8 here)
 	local inset = U.Gui.IgnoreGuiInset and 0 or guiInset()

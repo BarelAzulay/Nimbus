@@ -146,9 +146,11 @@
 --                             with icon chips one under the other, gold reward tags ($2,000, the token coin + 200) with two
 --                             sparkles taking turns while the reward waits, Join the one green action, Done / Preview the
 --                             Off block, the pending hint in red ink, sentence case, nothing round, every text readable
---   trove_fits_phone          (client) touch phones (844x390 keeps the controls, 667x375 / 640x360 keep them only where the
---                             panel clears the thumbstick and the jump button by 6 px, 390x844 hides them): back on Close,
---                             the vitals card steps aside under the panel, texts inside and >= 15 px, Join / X >= 44 px
+--   trove_fits_phone          (client) touch phones (844x390 / 852x393 / 932x430 keep the controls, 667x375 / 640x360 keep
+--                             them only where the panel clears the thumbstick and the jump button by 6 px, 390x844 hides
+--                             them): back on Close, the game's DASH button wholly under the panel or wholly clear (no
+--                             sliver), the vitals card steps aside under the panel, header / asks / footer in order, texts
+--                             inside and >= 15 px, Join / X >= 44 px
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -7131,8 +7133,11 @@ local function clientScenarios()
 	-- button by 6 px (HudController's rects: on a phone the stick 110 x 96 at the bottom left, 150 tall in portrait, the
 	-- jump button J = 70 from 1.5 J + 10 to 0.5 J + 10 off the right edge, its bottom 20 px over the bottom edge); where it
 	-- cannot (a short landscape phone) and on a portrait phone (the bottom sheet) the touch controls go while it is open and
-	-- come back on Close. 844x390 (the common phone) keeps them. The HUD's vitals card steps aside while the panel lies over
-	-- it. Every text inside the panel and each ask's line inside its block, every text >= 15 px, the close and Join >= 44 px
+	-- come back on Close. 844x390 (the common phone), 852x393 and 932x430 keep them. The game's DASH button (MovementController:
+	-- 66 px centred over the jump button, its bottom 10 px over the jump button's top, a 3 px stroke round it) lies wholly
+	-- under the panel or wholly clear of it, never a sliver under the panel's edge (U9-4 review). The HUD's vitals card steps
+	-- aside while the panel lies over it. The header, the asks and the footer one under the other, every text inside the
+	-- panel and each ask's line inside its block, every text >= 15 px, the close and Join >= 44 px
 	S.trove_fits_phone = guarded("trove_fits_phone", function()
 		local GuiService = game:GetService("GuiService")
 		local function inside(r, o)
@@ -7142,7 +7147,7 @@ local function clientScenarios()
 			return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
 		end
 		-- keep: true = the controls must stay, false = they must go, nil = either (kept only where the panel clears both)
-		for _, s in ipairs({ { 844, 390, true }, { 667, 375, nil }, { 640, 360, nil }, { 390, 844, false } }) do
+		for _, s in ipairs({ { 844, 390, true }, { 852, 393, true }, { 932, 430, true }, { 667, 375, nil }, { 640, 360, nil }, { 390, 844, false } }) do
 			local before = GuiService.TouchControlsEnabled
 			local keep = s[3]
 			U8.at(s[1], s[2], true, "trove phone", function(tag)
@@ -7166,6 +7171,17 @@ local function clientScenarios()
 				if kept then
 					T.check(not U8.overlap(p, jump) and not U8.overlap(p, stick), tag .. ": with the controls kept the panel lies 6 px clear of the jump button and the thumbstick",
 						fmt("panel %s, jump %s, stick %s", U8.show(p), U8.show(jump), U8.show(stick)))
+				end
+				-- (U9-4 review) DASH with its stroke, as MovementController lays it out (its gui ignores the inset, but it is
+				-- placed from the bottom edge, so the gui's area places it the same)
+				local dash = { X = area.X - 47 - 66 - 3, R = area.X - 47 + 3, Y = area.Y - 100 - 66 - 3, B = area.Y - 100 + 3 }
+				T.check(inside(dash, p) or not U8.overlap(dash, p), tag .. ": the game's DASH button lies wholly under the panel or wholly clear of it (no sliver)",
+					fmt("panel %s, dash %s", U8.show(p), U8.show(dash)))
+				local head, group, like, footer = panel:FindFirstChild("Header", true), panel:FindFirstChild("Row_Group", true), panel:FindFirstChild("Row_Like", true), panel:FindFirstChild("Footer", true)
+				if T.check(head ~= nil and group ~= nil and like ~= nil and footer ~= nil, tag .. ": the header, both asks and the footer are there") then
+					local hr, gr, lr, fr = U8.rect(head), U8.rect(group), U8.rect(like), U8.rect(footer)
+					T.check(hr.B <= gr.Y and gr.B <= lr.Y and lr.B <= fr.Y + 0.5 and fr.B <= p.B, tag .. ": the header, the asks and the footer lie one under the other inside the panel",
+						fmt("head %s, group %s, like %s, footer %s, panel %s", U8.show(hr), U8.show(gr), U8.show(lr), U8.show(fr), U8.show(p)))
 				end
 				local hud = U7.client("Controllers/HudController")
 				local layout = hud and hud.GetLayout and hud.GetLayout()
