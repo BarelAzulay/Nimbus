@@ -22,6 +22,7 @@
 --                                 Style Off is disabled; SignKit.PlankState(plank, "Rest" | "Hover" | "Press") sets one
 --   SignKit.Rope(parent, opts)    a rope / post the board hangs from
 --   SignKit.BlockRow(parent, opts) n stone blocks with a darker lip; SignKit.FillBlocks(row, k) turns the first k gold
+--   SignKit.FitBlocks(parent, opts) (LOOK-ui) a BlockRow filling its own box (a bar's place): n blocks of one whole width
 --   SignKit.Notice(parent, opts)  a small wood-framed stone card (a tip, a notice); returns notice, face
 --   SignKit.Scroll(sf, thickness) (LOOK-ui) the kit's one scroll bar on a ScrollingFrame: wood, opaque, square ends
 --   SignKit.Rig(parts, opts)      (sign/logo build: the owner's pick B2 "Sky-climber's rig", 2026-11-13; it replaced the
@@ -561,6 +562,76 @@ function SignKit.BlockRow(parent, opts)
 		}, face), lipPx)
 	end
 	place(row, opts, "BlockRow")
+	SignKit.FillBlocks(row, 0)
+	return row
+end
+
+-- (LOOK-ui, kitb-look1: the owner's look bar 2026-11-17, "every bar in the block-bar language") a BlockRow that fills its
+-- own box, for a bar laid out by the screen (opts Size / Position / AnchorPoint, Scale allowed): Count blocks sharing its
+-- width (each 1/Count of it less its share of the gaps: it fits whatever the box becomes, a block's edge and lip stay on
+-- whole screen px). opts: Count, Gap (2), EdgePx (2), LipPx (3), Fill / FillLip, Size, Position, AnchorPoint, ZIndex,
+-- Name. SignKit.FillBlocks lights it; SignKit.SetBlockCount changes Count
+local function fitBlock(row, i, e, lipPx)
+	local b = fill("Block" .. i, Sign.Wood, { Size = UDim2.new(0, 0, 1, 0) }, row)
+	local face = fill("Face", Sign.Stone, {
+		Position = UDim2.fromOffset(e, e),
+		Size = UDim2.new(1, -2 * e, 1, -2 * e),
+	}, b)
+	inset(face, e)
+	lipOf(fill("Lip", Sign.StoneLip, {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, lipPx),
+	}, face), lipPx)
+	return b
+end
+
+local function layFit(row)
+	local n = row:GetAttribute("Count") or 0
+	if n < 1 then
+		return
+	end
+	local gap = row:GetAttribute("Gap") or 2
+	for i = 1, n do
+		local b = row:FindFirstChild("Block" .. i)
+		if b then
+			b.Position = UDim2.new((i - 1) / n, (i - 1) * gap / n, 0, 0)
+			b.Size = UDim2.new(1 / n, -(n - 1) * gap / n, 1, 0)
+		end
+	end
+end
+
+function SignKit.FitBlocks(parent, opts)
+	opts = opts or {}
+	local row = frame("BlockRow", { Size = opts.Size or UDim2.new(1, 0, 0, Z.BlockH) }, parent)
+	row:SetAttribute("Gap", tonumber(opts.Gap) or 2)
+	row:SetAttribute("EdgePx", tonumber(opts.EdgePx) or 2)
+	row:SetAttribute("LipPx", tonumber(opts.LipPx) or 3)
+	row:SetAttribute("Fit", true)
+	BLOCK_FILL[row] = { typeof(opts.Fill) == "Color3" and opts.Fill or Sign.Gold, typeof(opts.FillLip) == "Color3" and opts.FillLip or Sign.GoldLip }
+	place(row, opts, "BlockRow")
+	SignKit.SetBlockCount(row, opts.Count)
+	return row
+end
+
+-- a FitBlocks row with `n` blocks (rebuilt; none lit); Fill / FillLip (optional) the lit colours from now on
+function SignKit.SetBlockCount(row, n, fillColor, fillLip)
+	n = math.max(1, math.floor(tonumber(n) or 10))
+	if typeof(fillColor) == "Color3" then
+		BLOCK_FILL[row] = { fillColor, typeof(fillLip) == "Color3" and fillLip or fillColor }
+	end
+	if row:GetAttribute("Count") ~= n or not row:FindFirstChild("Block1") then
+		for _, c in ipairs(row:GetChildren()) do
+			if c.Name:match("^Block%d+$") then
+				c:Destroy()
+			end
+		end
+		row:SetAttribute("Count", n)
+		for i = 1, n do
+			fitBlock(row, i, row:GetAttribute("EdgePx") or 2, row:GetAttribute("LipPx") or 3)
+		end
+	end
+	layFit(row)
 	SignKit.FillBlocks(row, 0)
 	return row
 end

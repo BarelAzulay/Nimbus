@@ -666,30 +666,16 @@ S.client_p5stamina = guarded("client_p5stamina", function()
 	T.check(math.abs(runFor - 10.7) < 0.05, "p5stamina: a full bar runs ~10.7 s", string.format("%.2f s", runFor))
 	T.check(refill <= 3.5, "p5stamina: it refills in <= 3.5 s", string.format("%.2f s", refill))
 	T.eq(dashes, 4, "p5stamina: 4 dashes from full")
+	-- (LOOK-ui, kitb-look1; was a tube with 4 thin dark ticks, one per dash) the pitch's stamina row: five kit blocks (a
+	-- SignKit.BlockRow), the bar's eased fraction in its attribute Fill
 	local bar = NK.pg():FindFirstChild("NimbusHud") and NK.pg().NimbusHud:FindFirstChild("StaminaBar", true)
-	local inner = bar and bar:FindFirstChild("Inner")
-	local ticks = {}
-	if inner then
-		for i = 1, 8 do
-			local t = inner:FindFirstChild("Tick" .. i)
-			if t then
-				ticks[#ticks + 1] = t
-			end
-		end
-	end
-	T.eq(#ticks, 4, "p5stamina: the HUD stamina tube shows 4 thin dark ticks")
-	local placed = #ticks == 4
-	for i, t in ipairs(ticks) do
-		placed = placed and math.abs(t.Position.X.Scale - i * 35 / 150) < 1e-6 and t.Size.X.Offset <= 3
-		local r, fr = NK.rect(t), NK.rect(inner)
-		placed = placed and math.abs((r.x0 + r.x1) / 2 - (fr.x0 + (fr.x1 - fr.x0) * i * 35 / 150)) < 1.5
-	end
-	T.check(placed, "p5stamina: ...at 35 / 70 / 105 / 140 of 150 (one per dash)")
+	local row = bar and bar:FindFirstChild("BlockRow")
+	T.check(row ~= nil and row:GetAttribute("Count") == 5, "p5stamina: the HUD stamina row is the pitch's five blocks", row and tostring(row:GetAttribute("Count")) or "no row")
 	local LocalPlayer = game:GetService("Players").LocalPlayer
 	LocalPlayer:SetAttribute(Config.Attr.Stamina, 75)
 	NK.advance(1)
-	local fill = inner and inner:FindFirstChild("Fill")
-	T.check(fill and math.abs(fill.Size.X.Scale - 0.5) < 0.03, "p5stamina: 75 of 150 fills half the tube", fill and string.format("%.2f", fill.Size.X.Scale) or "no fill")
+	local frac = bar and tonumber(bar:GetAttribute("Fill"))
+	T.check(frac ~= nil and math.abs(frac - 0.5) < 0.03, "p5stamina: 75 of 150 fills half the row", frac and string.format("%.2f", frac) or "no fill")
 	LocalPlayer:SetAttribute(Config.Attr.Stamina, 150)
 	NK.advance(1)
 	NK.KC().flushErrors("client_p5stamina")

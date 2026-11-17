@@ -234,18 +234,33 @@ local C2 = {
 	Xp = Color3.fromRGB(120, 200, 255),
 	Lock = Color3.fromRGB(255, 206, 120), -- amber: why something is locked (reads on the dark wells)
 	Secret = Color3.fromRGB(70, 90, 200),
+	-- (LOOK-ui, kitb-look1: colour by role from the kit's tokens) each station kind's colour is a Theme.Sign token (was a
+	-- near-token of its own), KindLip its darker lip
 	Kind = {
-		Plant = Color3.fromRGB(226, 96, 130), -- berries, carrots, melons, starfruit (Phase 4 kinds)
-		Magnet = Color3.fromRGB(110, 170, 236),
-		Garden = Color3.fromRGB(120, 196, 90),
-		FoodMachine = Color3.fromRGB(240, 150, 80),
-		Training = Color3.fromRGB(228, 104, 96),
-		Vault = Color3.fromRGB(150, 160, 190),
-		House = Color3.fromRGB(240, 186, 90),
-		Fusion = Color3.fromRGB(150, 110, 232),
-		Arena = Color3.fromRGB(200, 120, 90),
-		Decor = Color3.fromRGB(226, 120, 170),
-		Prestige = Color3.fromRGB(244, 196, 78),
+		Plant = Theme.Sign.Roof, -- berries, carrots, melons, starfruit (Phase 4 kinds)
+		Magnet = Theme.Sign.Sky,
+		Garden = Theme.Sign.Grass,
+		FoodMachine = Theme.Sign.GoldDeep,
+		Training = Theme.Sign.Red,
+		Vault = Theme.Sign.Iron,
+		House = Theme.Sign.Gold,
+		Fusion = Theme.Sign.Violet,
+		Arena = Theme.Sign.WoodLight,
+		Decor = Theme.Sign.Roof,
+		Prestige = Theme.Sign.Gold,
+	},
+	KindLip = {
+		Plant = Theme.Sign.RoofLip,
+		Magnet = Theme.Sign.SkyLip,
+		Garden = Theme.Sign.GrassLip,
+		FoodMachine = Theme.Darken(Theme.Sign.GoldDeep, 0.25),
+		Training = Theme.Sign.RedLip,
+		Vault = Theme.Sign.IronDark,
+		House = Theme.Sign.GoldLip,
+		Fusion = Theme.Sign.VioletLip,
+		Arena = Theme.Sign.Wood,
+		Decor = Theme.Sign.RoofLip,
+		Prestige = Theme.Sign.GoldLip,
 	},
 }
 
@@ -1235,7 +1250,7 @@ P5.TOUCH_TILE_PX = 50 -- ... on touch screens (tablets: the larger of this and T
 P5.MIN_TILE_PX = 44 -- one column needs this much per tile, else the tiles wrap into two columns (a thumb)
 P5.TAB_GAP = 4 -- design px between the tiles and the arrow tab
 P5.TAB_W = 30 -- design width of the arrow tab (touch: TAB_W_TOUCH, wider for a thumb). (LOOK-ui) 30: its 27 px pixel
--- arrow (3 px cells, 2 px on the column's 2/3 step) fits inside the wood edge
+-- arrow fits inside the wood edge
 P5.TAB_W_TOUCH = 30
 P5.MAX_COLS = 3 -- the tiles wrap into at most this many columns (the shortest landscape phones)
 P5.CENTRE_TOL = 0.145 -- the column never reaches into the screen middle (|dx| < 14.5% of the width: HudController's rule)
@@ -1651,20 +1666,9 @@ function relayoutMenu()
 	-- never into the middle of the screen (a narrow portrait phone): the column's right edge stays left of it
 	local camera = workspace.CurrentCamera
 	local vpX = (camera and camera.ViewportSize.X > 2) and camera.ViewportSize.X or area.X
-	local limit = math.min(avail / h, math.max(minScale * 0.9, (vpX * (0.5 - P5.CENTRE_TOL) - 2 - margin) / w))
-	local scale = math.min(pref, limit)
-	-- (LOOK-ui) the column's scale is a step of thirds (1/3, 2/3, 1, 4/3), the nearest to the wanted one that still fits:
-	-- the tiles' 3 px edges, 6 px lips and 27 px icons (3 px cells) then land on whole screen px (2/3: a 44 px tile with
-	-- 2 px cells and edges, 4 px lips; 1: 66 px, 3 px cells). A free scale (0.68 .. 0.85) drew 2.04 .. 2.54 px cells
-	-- A step a hair over the room (<= 3 %: a narrow portrait phone with a party panel wanted 0.654) is taken; a step down
-	-- that would put the tiles under 44 px keeps the free scale (the old rule) instead
-	local step = math.floor(scale * 3 + 0.5) / 3
-	if step > limit * 1.03 + 1e-6 then
-		step = math.floor(limit * 3 + 1e-6) / 3
-	end
-	if step >= minScale - 1e-6 then
-		scale = step
-	end
+	-- (LOOK-ui) the free scale stays (the owner's 56 px tile at 1080p): the tiles' icons, edges and lips snap to whole
+	-- screen px themselves (PixelIcon.New, PixelIcon.WholeTree on NimbusMenu)
+	local scale = math.min(pref, avail / h, math.max(minScale * 0.9, (vpX * (0.5 - P5.CENTRE_TOL) - 2 - margin) / w))
 	local top = first + math.max(0, (avail - h * scale) / 2)
 	U.ColumnScale.Scale = scale
 	-- a squeezed column (short screens) grows its labels so they stay >= 14 screen px
@@ -2799,17 +2803,17 @@ do
 				Position = UDim2.fromOffset(186, 42),
 				Size = UDim2.fromOffset(170, 16),
 			})
-			listLayout(row.PipRow, Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-			for i = 1, math.min(def.MaxLevel or 1, 10) do
-				-- (kit-b U9-1) square pips: sunk wells in their edge, filled in the kind colour (paintRow)
-				local pip = makeFrame(row.PipRow, "Pip" .. i, {
-					Size = UDim2.fromOffset(13, 13),
-					BackgroundTransparency = 0,
-					BackgroundColor3 = P5.HS.StoneLip,
-					LayoutOrder = i,
-				})
-				stroke(pip, P5.HS.WellEdge, 1.5, 0).LineJoinMode = Enum.LineJoinMode.Miter
-				row.Pips[i] = pip
+			-- (kit-b U9-1) a pip per level; (LOOK-ui, kitb-look1: every bar in the block-bar language) as kit blocks (a
+			-- SignKit.BlockRow: wood edge, face, lip), painted by paintRow: built in the kind's colour, the next level the
+			-- Selected gold, open levels the well, the levels behind the house's cap the stone
+			local blocks = SignKit.BlockRow(row.PipRow, {
+				Count = math.min(def.MaxLevel or 1, 10), BlockW = 14, BlockH = 14, Gap = 3, EdgePx = 2, LipPx = 3,
+				Fill = color, FillLip = C2.KindLip[def.Kind] or Theme.Darken(color, 0.25),
+				Position = UDim2.fromOffset(0, 1),
+			})
+			for i = 1, blocks:GetAttribute("Count") do
+				local block = blocks:FindFirstChild("Block" .. i)
+				row.Pips[i] = block and block:FindFirstChild("Face")
 			end
 			row.Info = makeText(frame, "Info", "", "Body", 18, P5.HS.TextMuted, {
 				Position = UDim2.fromOffset(88, 64),
@@ -3095,14 +3099,24 @@ do
 			end
 			row.Level.Text = "Lv " .. level .. "/" .. maxLevel
 			row.Level.TextColor3 = level >= maxLevel and P5.HS.Text or P5.HS.TextMuted
-			-- (kit-b U9-1) built = the kind colour, open now = a light well, behind the house's cap = the darker stone
-			for i, pip in ipairs(row.Pips) do
+			-- (kit-b U9-1) built = the kind colour, open now = a light well, behind the house's cap = the darker stone;
+			-- (LOOK-ui) each pip a kit block: its face and its lip, the next level to buy the Selected gold
+			local kindLip = C2.KindLip[def.Kind] or Theme.Darken(color, 0.25)
+			for i, face in ipairs(row.Pips) do
+				local lip = face:FindFirstChild("Lip")
+				local f, l
 				if i <= level then
-					pip.BackgroundColor3 = color
+					f, l = color, kindLip
+				elseif i == level + 1 and i <= cap then
+					f, l = Theme.Sign.Selected, Theme.Sign.GoldLip
 				elseif i <= cap then
-					pip.BackgroundColor3 = P5.HS.Well
+					f, l = P5.HS.Well, P5.HS.WellEdge
 				else
-					pip.BackgroundColor3 = P5.HS.StoneLip
+					f, l = P5.HS.StoneLip, Theme.Darken(P5.HS.StoneLip, 0.12)
+				end
+				face.BackgroundColor3 = f
+				if lip then
+					lip.BackgroundColor3 = l
 				end
 			end
 			-- what it does now -> next

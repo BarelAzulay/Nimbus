@@ -2,7 +2,7 @@
 -- shift"). Loaded by tools/smoke.py in the client world and the phone world:
 --   client_bug2gui_layout (client, 1920x1080 + 1280x720 desktop) the menu is ONE slim column at the left edge,
 --                         vertically centred, top to bottom Pets, Index, Home, Stats (HUD cleanup: Shop / Travel /
---                         Settings are TopBarController's pill; no Items / Team tile), 66 px (LOOK-ui: a step of thirds)
+--                         Settings are TopBarController's pill; no Items / Team tile), 56 px
 --                         tiles at 1080p; the arrow tab (MenuColumn.Toggle) sits beside the last tile; the currencies are
 --                         thin strips stacked top-right under Roblox's top bar, right-aligned; the vitals card sits
 --                         bottom-centre in the old hotbar's spot, compact; the HUD publishes BottomLeftTop /
@@ -166,8 +166,7 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 			end
 		end
 		T.check(oneColumn, label .. ": ONE column of four tiles, Pets .. Stats top to bottom")
-		-- (LOOK-ui) the column's scale is a step of thirds: 66 px tiles (scale 1) at 1080p, 44 px (2/3) at 720p
-		local want = (W == 1920) and 66 or 44
+		local want = (W == 1920) and 56 or 44.8
 		local sizeOk = oneColumn
 		for _, r in ipairs(rects) do
 			sizeOk = sizeOk and math.abs((r.x1 - r.x0) - want) <= 2 and (r.x1 - r.x0) >= 44

@@ -138,7 +138,7 @@ local K = {
 	PANEL_INSET_W = 24, -- the Neon panel's content inset (left + right, design px)
 	REWARD_ROOMY_W = 480, -- a reward box narrower than this (design px) gets the 150 x 52 CLAIM button
 	REWARD_LABEL_W = 112, -- "Rewards:" (Heading 22) and its gap
-	REWARD_AMOUNT_W = 140, -- the widest amount (the Secret group's "<coin> 10,000" in Display 30)
+	REWARD_AMOUNT_W = 148, -- the widest amount (the Secret group's "<coin> 10,000" in Display 30; LOOK-ui: measured 144)
 	REWARD_SUB_MIN_W = 150, -- narrower than this, the line under the amount is left out (no 4-line wrap)
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
@@ -357,6 +357,22 @@ end
 
 local function commas(n)
 	return Util.Commas(tonumber(n) or 0)
+end
+
+-- (LOOK-ui, kitb-look1) a group's block bar: a block per pet up to 12, ten blocks (tenths) past that
+local function H_blockCount(total)
+	total = math.floor(tonumber(total) or 0)
+	return total > 12 and 10 or math.max(1, total)
+end
+
+-- lights `found` of `total` on a block bar (a block per pet, or the tenths; any found pet lights one at least)
+local function H_fillBlocks(row, found, total)
+	local n = row:GetAttribute("Count") or 1
+	local k = (total or 0) > 0 and math.floor(found / total * n) or 0
+	if found > 0 then
+		k = math.max(1, k)
+	end
+	SignKit.FillBlocks(row, k)
 end
 
 ----------------------------------------------------------------------
@@ -842,7 +858,8 @@ local function renderFooter()
 	local unlocked = unlockedCount()
 	if U.FooterText then
 		U.FooterText.Text = string.format("Unlocked: %d/%d", unlocked, total)
-		U.FooterFill.Size = UDim2.new(total > 0 and unlocked / total or 0, 0, 1, 0)
+		local n = U.FooterBlocks:GetAttribute("Count") or 10
+		SignKit.FillBlocks(U.FooterBlocks, total > 0 and math.floor(unlocked / total * n) or 0)
 		U.FooterPercent.Text = string.format("%d%%", total > 0 and math.floor(unlocked / total * 100) or 0)
 	end
 	-- the compact layout has no footer: the title carries the count
@@ -892,6 +909,12 @@ local function relayout()
 	local footerH = short and 0 or K.FOOTER_H
 	U.Main.Size = UDim2.new(1, -20, 1, -(20 + footerH))
 	U.Footer.Visible = not short
+	-- (LOOK-ui) the footer's block bar: tenths where it has room, fifths on a narrow window (ten blocks were slivers)
+	local footerBlocks = (w - K.PANEL_INSET_W - 370) >= 200 and 10 or 5
+	if U.FooterBlocks and U.FooterBlocks:GetAttribute("Count") ~= footerBlocks then
+		SignKit.SetBlockCount(U.FooterBlocks, footerBlocks)
+		safe("footer", renderFooter)
+	end
 	if tall then
 		-- top: a sideways strip of group tiles (+ Elements); then the centre (header, grid, rewards); the detail
 		-- card fills the bottom
@@ -968,6 +991,12 @@ local function relayout()
 		local small = tall or centreW < K.REWARD_ROOMY_W
 		local buttonW, buttonH = small and 150 or 184, small and 52 or 60
 		local textW = math.max(0, centreW - 16 - (buttonW + 14 + 10)) -- the room left of the button
+		if small and textW < K.REWARD_AMOUNT_W then
+			-- (LOOK-ui: at 1080p the docked window sits at a whole scale of 1, a few px narrower) a narrower CLAIM before the
+			-- amount is crowded
+			buttonW = math.max(132, buttonW - (K.REWARD_AMOUNT_W - textW))
+			textW = math.max(0, centreW - 16 - (buttonW + 14 + 10))
+		end
 		local withLabel = textW >= K.REWARD_LABEL_W + K.REWARD_AMOUNT_W
 		U.RewardLabel.Visible = withLabel
 		S.RewardLabelOk = withLabel
@@ -1123,20 +1152,20 @@ local function buildGroupTile(group, index)
 		TextXAlignment = Enum.TextXAlignment.Right,
 		ZIndex = 2,
 	})
-	local track = makeFrame(button, "Track", {
+	-- (LOOK-ui, kitb-look1: every bar in the block-bar language) one small block per pet of the group (H.blockCount), the
+	-- found ones in the rarity's colour
+	tile.Blocks = SignKit.FitBlocks(button, {
+		Name = "Track",
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 12, 1, -13),
-		Size = UDim2.new(1, -80, 0, 10),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Well,
+		Position = UDim2.new(0, 12, 1, -12),
+		Size = UDim2.new(1, -80, 0, 12),
+		Count = H_blockCount(#(group.Pets or {})),
+		Gap = 2,
+		EdgePx = 2,
+		LipPx = 2,
+		Fill = accent,
+		FillLip = Theme.Darken(accent, 0.25),
 		ZIndex = 2,
-	})
-	edge(track, SIGN.WellEdge, 2)
-	tile.Fill = makeFrame(track, "Fill", {
-		Size = UDim2.new(0, 0, 1, 0),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = accent,
-		ZIndex = 3,
 	})
 	-- top-right corner: a check when claimed, a red "!" when the reward waits
 	tile.Badge = makeFrame(button, "Badge", {
@@ -1229,7 +1258,7 @@ local function refreshGroupTiles()
 		if tile then
 			local found, total, complete, claimed, claimable = groupStatus(group)
 			tile.Progress.Text = string.format("%d/%d", found, total)
-			tile.Fill.Size = UDim2.new(total > 0 and found / total or 0, 0, 1, 0)
+			H_fillBlocks(tile.Blocks, found, total)
 			local selected = S.GroupId == group.Id
 			H_paintTab(tile, selected)
 			if claimable then
@@ -1507,8 +1536,8 @@ local function renderHeader()
 		U.GroupTitle.Text = "Fusions"
 		PixelIcon.Mark(U.GroupTitle, ICON.Sparkle) -- (kit-b U7b)
 		U.GroupTitle.TextColor3 = INK
-		U.HeaderFill.Size = UDim2.new(n > 0 and 1 or 0, 0, 1, 0)
-		U.HeaderFill.BackgroundColor3 = FUSION_COLOR
+		SignKit.SetBlockCount(U.HeaderBlocks, 1, FUSION_COLOR, Theme.Darken(FUSION_COLOR, 0.25))
+		SignKit.FillBlocks(U.HeaderBlocks, n > 0 and 1 or 0)
 		U.HeaderCount.Text = n == 1 and "1 fused pet" or (n .. " fused pets")
 		return
 	end
@@ -1521,8 +1550,9 @@ local function renderHeader()
 	U.GroupTitle.Text = group.Rarity .. " Pets"
 	PixelIcon.Mark(U.GroupTitle, nil)
 	U.GroupTitle.TextColor3 = INK
-	U.HeaderFill.Size = UDim2.new(total > 0 and found / total or 0, 0, 1, 0)
-	U.HeaderFill.BackgroundColor3 = complete and SIGN.Grass or accent
+	local lit = complete and SIGN.Grass or accent
+	SignKit.SetBlockCount(U.HeaderBlocks, H_blockCount(total), lit, complete and SIGN.GrassLip or Theme.Darken(lit, 0.25))
+	H_fillBlocks(U.HeaderBlocks, found, total)
 	U.HeaderCount.Text = string.format("%d/%d", found, total)
 end
 
@@ -1722,11 +1752,12 @@ function renderDetail()
 		if type(value) == "number" then
 			row.Value.Text = commas(math.floor(value + 0.5))
 			row.Value.TextColor3 = INK
-			row.Fill.Size = UDim2.new(Util.Clamp(value / (maxes[statKey] or 1), 0.04, 1), 0, 1, 0)
+			-- (a stat above zero lights one block at least)
+			SignKit.FillBlocks(row.Fill, math.max(value > 0 and 1 or 0, math.floor(Util.Clamp(value / (maxes[statKey] or 1), 0, 1) * 5 + 0.5)))
 		else
 			row.Value.Text = "?"
 			row.Value.TextColor3 = MUTED
-			row.Fill.Size = UDim2.new(0, 0, 1, 0)
+			SignKit.FillBlocks(row.Fill, 0)
 		end
 	end
 
@@ -2138,21 +2169,27 @@ local function buildCentre(centre)
 		TextScaled = true,
 	})
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 28, MinTextSize = 18, Parent = U.GroupTitle })
+	-- (kit-b U8) the group's progress; (LOOK-ui, kitb-look1) as a block bar: a block per pet, the found ones in the rarity's
+	-- colour (all grass once complete), the "2/6" count at its right end on the stone
 	local track = makeFrame(header, "Progress", {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -14, 0.5, 0),
-		Size = UDim2.new(0.46, 0, 0, 30),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Tile,
+		Size = UDim2.new(0.48, -14, 0, 30),
 	})
-	edge(track, SIGN.Wood, 2) -- (kit-b U8) a flat bar: stone track, wood edge, the rarity's fill
-	U.HeaderFill = makeFrame(track, "Fill", {
-		Size = UDim2.new(0, 0, 1, 0),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Grass,
+	U.HeaderBlocks = SignKit.FitBlocks(track, {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(1, -64, 0, 18),
+		Count = 6,
+		Gap = 3,
+		EdgePx = 2,
+		LipPx = 4,
 	})
 	U.HeaderCount = makeText(track, "Count", "0/0", "Display", 22, INK, {
-		Size = UDim2.new(1, 0, 1, 0),
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 0),
+		Size = UDim2.new(0, 58, 1, 0),
+		TextXAlignment = Enum.TextXAlignment.Right,
 		ZIndex = 3,
 	})
 
@@ -2341,18 +2378,19 @@ local function buildDetail(detail)
 			Size = UDim2.new(0, 86, 1, 0),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
-		local bar = makeFrame(row, "Bar", {
+		-- (LOOK-ui, kitb-look1) a five-block bar in the stat's role colour
+		local roleColor = statColors[statKey] or GOLD
+		local fill = SignKit.FitBlocks(row, {
+			Name = "Bar",
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.new(0, 90, 0.5, 0),
-			Size = UDim2.new(1, -150, 0, 12),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = SIGN.Tile,
-		})
-		edge(bar, SIGN.WellEdge, 2)
-		local fill = makeFrame(bar, "Fill", {
-			Size = UDim2.new(0, 0, 1, 0),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = statColors[statKey] or GOLD,
+			Size = UDim2.new(1, -150, 0, 14),
+			Count = 5,
+			Gap = 2,
+			EdgePx = 2,
+			LipPx = 3,
+			Fill = roleColor,
+			FillLip = Theme.Darken(roleColor, 0.25),
 		})
 		local value = makeText(row, "Value", "?", "Heading", 18, INK, {
 			AnchorPoint = Vector2.new(1, 0),
@@ -2505,18 +2543,16 @@ local function buildWindow()
 		Size = UDim2.new(0, 260, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	local track = makeFrame(footer, "Bar", {
+	-- (LOOK-ui, kitb-look1) ten gold blocks, a tenth of every pet each
+	U.FooterBlocks = SignKit.FitBlocks(footer, {
+		Name = "Bar",
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 270, 0.5, 0),
-		Size = UDim2.new(1, -350, 0, 18),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Well,
-	})
-	edge(track, SIGN.Wood, 2)
-	U.FooterFill = makeFrame(track, "Fill", {
-		Size = UDim2.new(0, 0, 1, 0),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = GOLD,
+		Size = UDim2.new(1, -350, 0, 20),
+		Count = 10,
+		Gap = 3,
+		EdgePx = 2,
+		LipPx = 4,
 	})
 	U.FooterPercent = makeText(footer, "Percent", "0%", "Display", 24, INK, {
 		AnchorPoint = Vector2.new(1, 0),

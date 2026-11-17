@@ -164,7 +164,7 @@ local function clientScenarios()
 		KC.advance(0.5)
 		local function indexRow(name)
 			local row = find(indexGui, "Stat_" .. name)
-			return { Value = row and find(row, "Value"), Fill = row and find(row, "Fill") }
+			return { Value = row and find(row, "Value"), Bar = row and find(row, "Bar") }
 		end
 		local battle1, garden1 = BC.BattleStatsOf("stormfang", 1), PC.GetStats("stormfang", 1)
 		T.check(indexRow("Power").Value.Text == commas(floor(battle1.Power + 0.5)), "tb stats: the Index Power row shows the battle number", indexRow("Power").Value.Text)
@@ -175,7 +175,11 @@ local function clientScenarios()
 		for _, def in ipairs(PC.Pets) do
 			top = math.max(top, BC.BattleStatsOf(def.Id, 1).Power)
 		end
-		T.check(near(indexRow("Power").Fill.Size.X.Scale, math.max(0.04, battle1.Power / top), 1e-6), "tb stats: the Index Power bar is relative to the top battle number", tostring(indexRow("Power").Fill.Size.X.Scale))
+		-- (LOOK-ui, kitb-look1) the bar is five blocks: the share of the top battle number in fifths, one at least
+		local powerBar = indexRow("Power").Bar
+		local wantLit = math.max(1, floor(math.min(1, battle1.Power / top) * 5 + 0.5))
+		T.check(powerBar ~= nil and powerBar:GetAttribute("Filled") == wantLit, "tb stats: the Index Power bar is relative to the top battle number (lit blocks of 5)",
+			powerBar and tostring(powerBar:GetAttribute("Filled")) .. " vs " .. wantLit or "no bar")
 		IC.Close()
 		KC.advance(0.4)
 		-- the Pets detail: the pet's own level
