@@ -53,10 +53,11 @@
 --     (a 10 px Sign red square, kit-b U8: an unlocked
 --     claim (ClaimView "Claim" / "Repair") or a ready play tier, >= Config.Daily.PipDelaySeconds after the last
 --     CharacterAdded, the tutorial at its spin step or later), a 0.4 s shake when a play tier becomes Ready in a payload
---     that is not the first after a join / Loading one. Frame "Ring" (around the button, attribute Fill = Play.Seconds /
---     the next tier's seconds): two half arcs (RingRight / RingLeft, each a clipped circle whose UIStroke carries a stepped
---     UIGradient), Neon.Gold, 40 % transparent while Play.Active == false. The button, the pip and the ring stay where they
---     were before the window redo.
+--     that is not the first after a join / Loading one. (U9-4 look review: the bar census) Frame "PlayBar" in the block's
+--     lip (attribute Fill = Play.Seconds / the next tier's seconds, Filled, Paused): K.BAR_SEGS blocks with K.BAR_GAP px
+--     of lip between them, the first floor(Fill x BAR_SEGS) gold (the gold lip while Play.Active == false, never alpha),
+--     the rest the lip's pink: the kit's block bar (it replaced a gradient-swept gold outline round the block). The
+--     button and the pip stay where they were before the window redo.
 --   * The window: Frame "DailyHolder" (UIScale "Fit") centred in its NeonKit.BigRect box (RECT 820 x 330 at 390 px high ->
 --     1180 x 720 at 1080 px; MARGIN 12, PHONE_W 900, SHORT 560, PC_MIN_H 600, PC_MAX_W 0.76: an 820 x 330 box at 12,59 on a
 --     844 x 390 phone, "Phone" at scale 1; "PC" at the screen factor; a phone box taller than wide is "Portrait"). The PC
@@ -158,9 +159,8 @@ local K = {
 	WINDOW_POLL = 0.25, -- seconds: no shared close signal exists, so a watcher re-lays the button out when that answer changes
 	WINDOW_RETRY = 2, -- seconds before a K.WINDOWS module not found yet is looked up again (review round 1)
 	PIP = 10,
-	RING_PAD = 4, -- the ring sits this far outside the button
-	RING_STROKE = 3,
-	RING_DIM = 0.4, -- the ring's transparency while the play clock is paused
+	BAR_SEGS = 4, -- (U9-4 look review) the PlayBar's blocks in the button's lip ...
+	BAR_GAP = 2, -- ... and the px of lip between two
 	SHAKE = { 4, -4, 3, -3, 2, -2, 1, 0 }, -- px offsets, one per SHAKE_STEP (0.4 s)
 	SHAKE_STEP = 0.05,
 	CLAIM_GAP = 1, -- seconds between two sends of one action
@@ -731,49 +731,28 @@ function H.buildButton()
 	U.Word.TextXAlignment = Enum.TextXAlignment.Center
 	U.Word.ZIndex = 3
 	U.Word.Parent = button
-	-- the ring: two clipped halves of one circle, each stroke under a stepped gradient (spec 8: "fills toward the next tier")
-	local ring = Instance.new("Frame")
-	ring.Name = "Ring"
-	ring.BackgroundTransparency = 1
-	ring.BorderSizePixel = 0
-	ring.ZIndex = 3
-	ring.Parent = U.Gui
-	U.Ring = ring
-	U.Arcs = {}
-	for i, side in ipairs({ "RingRight", "RingLeft" }) do
-		local half = Instance.new("Frame")
-		half.Name = side
-		half.BackgroundTransparency = 1
-		half.BorderSizePixel = 0
-		half.ClipsDescendants = true
-		half.Size = UDim2.fromScale(0.5, 1)
-		half.Position = UDim2.fromScale(i == 1 and 0.5 or 0, 0)
-		half.ZIndex = 3
-		half.Parent = ring
-		-- (kit-b U8) square, round the square block: the stepped gradient still sweeps it clockwise
-		local arc = Instance.new("Frame")
-		arc.Name = "Arc"
-		arc.BackgroundTransparency = 1
-		arc.BorderSizePixel = 0
-		arc.Size = UDim2.fromScale(2, 1)
-		arc.Position = UDim2.fromScale(i == 1 and -1 or 0, 0)
-		arc.ZIndex = 3
-		arc.Parent = half
-		local stroke = Instance.new("UIStroke")
-		stroke.Name = "RingStroke"
-		stroke.LineJoinMode = Enum.LineJoinMode.Miter
-		stroke.Color = Theme.Sign.Gold
-		stroke.Thickness = K.RING_STROKE
-		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		stroke.Parent = arc
-		local grad = Instance.new("UIGradient")
-		grad.Name = "Step"
-		grad.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0),
-			NumberSequenceKeypoint.new(0.501, 1), NumberSequenceKeypoint.new(1, 1),
-		})
-		grad.Parent = stroke
-		U.Arcs[i] = { Stroke = stroke, Gradient = grad }
+	-- (U9-4 look review: the bar census) the play clock's progress toward the next tier (spec 8: "fills toward the next
+	-- tier") in the kit's block-bar language, inside the block: Frame "PlayBar" over the block's lip, K.BAR_SEGS blocks
+	-- with K.BAR_GAP px of the lip between them, filled left to right in gold (whole blocks, whole px), the gold lip while
+	-- the clock is paused (never alpha); the rest stays the lip's own pink. It replaced a gold outline swept by a rotating
+	-- gradient round the block (no segments, no lip, alpha-dimmed)
+	local bar = Instance.new("Frame")
+	bar.Name = "PlayBar"
+	bar.BackgroundTransparency = 1
+	bar.BorderSizePixel = 0
+	bar.Size = UDim2.fromScale(1, 1)
+	bar.ZIndex = 3
+	bar.Parent = lip
+	U.PlayBar = bar
+	U.BarSegs = {}
+	for i = 1, K.BAR_SEGS do
+		local seg = Instance.new("Frame")
+		seg.Name = "Seg" .. i
+		seg.BorderSizePixel = 0
+		seg.BackgroundColor3 = Sign.RoofLip
+		seg.ZIndex = 3
+		seg.Parent = bar
+		U.BarSegs[i] = seg
 	end
 	local pip = Instance.new("Frame")
 	pip.Name = "Pip"
@@ -797,21 +776,31 @@ function H.buildButton()
 	end)
 end
 
+-- the PlayBar: the segments laid out across the block's width (whole px; the last one takes the rounding), the first
+-- floor(fill x K.BAR_SEGS) gold (the gold lip while paused), the rest the lip's pink; hidden with no play tiers
 function H.paintRing()
-	if not U.Ring then
+	if not U.PlayBar then
 		return
 	end
 	local st = S.State
 	local fill = ringFill(st)
-	U.Ring:SetAttribute("Fill", fill)
-	local right = math.min(fill, 0.5) * 360
-	local left = 180 + math.max(0, math.min(fill - 0.5, 0.5)) * 360
+	local n = K.BAR_SEGS
+	local k = math.max(0, math.min(n, math.floor(fill * n + 1e-6)))
+	U.PlayBar:SetAttribute("Fill", fill)
+	U.PlayBar:SetAttribute("Filled", k)
 	local paused = type(st) == "table" and st.Loading ~= true and play(st).Active == false
-	for i, arc in ipairs(U.Arcs) do
-		arc.Gradient.Rotation = i == 1 and right or left
-		arc.Stroke.Transparency = paused and K.RING_DIM or 0
+	U.PlayBar:SetAttribute("Paused", paused)
+	local w = U.Button and U.Button.Size.X.Offset or 0
+	local segW = math.max(1, math.floor((w - (n - 1) * K.BAR_GAP) / n))
+	local Sign = Theme.Sign
+	for i, seg in ipairs(U.BarSegs) do
+		local x = (i - 1) * (segW + K.BAR_GAP)
+		seg.Position = UDim2.fromOffset(x, 0)
+		seg.Size = UDim2.new(0, i == n and math.max(1, w - x) or segW, 1, 0)
+		seg.BackgroundColor3 = i <= k and (paused and Sign.GoldLip or Sign.Gold) or Sign.RoofLip
+		seg.BackgroundTransparency = 0
 	end
-	U.Ring.Visible = not S.Hidden and type(st) == "table" and st.Loading ~= true and #tiers(st) > 0
+	U.PlayBar.Visible = type(st) == "table" and st.Loading ~= true and #tiers(st) > 0
 end
 
 -- (lobby-shop review round 1: the Shop only; slop audit 2026-11-12, win 5: every window) a window over the button's
@@ -902,13 +891,7 @@ function H.layoutButton()
 	U.Word.Size = UDim2.new(1, 0, 0, U.Word.TextSize + 2)
 	U.Word.Position = UDim2.fromScale(0.5, 0.76)
 	U.Button.Visible = not S.Hidden
-	local r = size + 2 * K.RING_PAD
-	U.Ring.Size = UDim2.fromOffset(r, r)
-	U.Ring.Position = UDim2.fromOffset(x + S.ShakeX - K.RING_PAD, y - K.RING_PAD)
-	H.paintRing()
-	if S.Hidden then
-		U.Ring.Visible = false
-	end
+	H.paintRing() -- (the PlayBar lives in the block's lip: it hides and shakes with the block)
 	H.refreshPip()
 end
 

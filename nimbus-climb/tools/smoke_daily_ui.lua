@@ -338,10 +338,11 @@ local function clientScenarios()
 		local Sign = select(3, KC.env()).Sign
 		return SmokeCommon.closeMarkIssues(button, { Shown = H.shown, MinTap = 44, Bar = Sign.Text, Ink = Sign.RedLip })
 	end
-	-- win 5: the Gifts button, its ring and its pip as { button, ring, pip } shown flags
+	-- win 5: the Gifts button, its ring and its pip as { button, ring, pip } shown flags; (U9-4 look review) the ring is the
+	-- PlayBar in the block's lip now
 	function H.giftsParts()
 		local b = H.btn()
-		local ring = H.gui() and H.gui():FindFirstChild("Ring")
+		local ring = b and b:FindFirstChild("PlayBar", true)
 		return { H.shown(b), H.shown(ring), H.shown(H.find(b, "Pip")) }
 	end
 	function H.partsText(p)
@@ -786,25 +787,38 @@ local function clientScenarios()
 		T.eq(moves(0.4), true, "daily pip: a tier that becomes Ready shakes the button within 0.4 s")
 		KC.advance(0.3)
 		T.eq(btn.Position.X.Offset, settled, "daily pip: ...then it settles")
-		-- the ring: Play.Seconds / the next tier's seconds, dimmed while paused
+		-- the play bar: Play.Seconds / the next tier's seconds; (U9-4 look review) the kit's block bar in the block's lip:
+		-- whole blocks gold (47/60 of 4 = 3), the gold lip while paused, never alpha, no gradient
 		H.fire(H.base(now))
-		local ring = H.find(btn.Parent, "Ring")
+		local ring = H.find(btn, "PlayBar")
 		local fill = ring and ring:GetAttribute("Fill")
-		T.check(type(fill) == "number" and abs(fill - 47 / 60) <= 0.02, "daily pip: the ring fills 47/60 toward the 60 min tier", tostring(fill))
-		local strokeT = function()
-			local worst = 1
+		T.check(type(fill) == "number" and abs(fill - 47 / 60) <= 0.02, "daily pip: the play bar fills 47/60 toward the 60 min tier", tostring(fill))
+		local Sign = select(3, KC.env()).Sign
+		local function segs()
+			local gold, dim, rest, alpha, grad = 0, 0, 0, false, false
 			for _, d in ipairs(ring and ring:GetDescendants() or {}) do
-				if d:IsA("UIStroke") then
-					worst = math.min(worst, d.Transparency)
+				if d:IsA("Frame") and d.Name:match("^Seg%d$") then
+					alpha = alpha or d.BackgroundTransparency ~= 0
+					if d.BackgroundColor3 == Sign.Gold then
+						gold = gold + 1
+					elseif d.BackgroundColor3 == Sign.GoldLip then
+						dim = dim + 1
+					else
+						rest = rest + 1
+					end
 				end
+				grad = grad or d:IsA("UIGradient") or d:IsA("UIStroke")
 			end
-			return worst
+			return gold, dim, rest, alpha, grad
 		end
-		T.check(ring ~= nil and strokeT() < 0.4, "daily pip: the ring is bright while the clock counts", tostring(strokeT()))
+		local g, d, r, a, gr = segs()
+		T.check(ring ~= nil and g == 3 and d == 0 and r == 1 and not a and not gr, "daily pip: the play bar's blocks: 3 of 4 gold while the clock counts (no alpha, no gradient)",
+			fmt("gold %d, dim %d, rest %d, alpha %s, gradient %s", g, d, r, tostring(a), tostring(gr)))
 		local paused = H.base(now)
 		paused.Play.Active = false
 		H.fire(paused)
-		T.check(strokeT() >= 0.4, "daily pip: the ring dims to 40 % while Play.Active == false", tostring(strokeT()))
+		g, d, r, a = segs()
+		T.check(g == 0 and d == 3 and r == 1 and not a, "daily pip: paused, the filled blocks turn the gold lip (never faded)", fmt("gold %d, dim %d, rest %d, alpha %s", g, d, r, tostring(a)))
 		-- the strips hide in a match: the button too
 		LocalPlayer:SetAttribute("InMatch", true)
 		KC.advance(0.3)

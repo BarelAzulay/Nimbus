@@ -20,7 +20,7 @@
 --   signkit               (kit B, U2) no game UI: every shared/SignKit part (window, planks at rest / hover / pressed, notice,
 --                         block row, ropes, a hanging board, the Credits gable beside the flat awning) and every
 --                         shared/PixelIcon at 18, 27 and 36 px
---   lobby                 the idle lobby HUD
+--   lobby[:gift]          the idle lobby HUD (gift: U9-4 look review, the daily payload in, the Gifts block's PlayBar)
 --   title                 right after joining (the title card is still up)
 --   match[:hit]           in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
 --                         (":hit" = a quarter second after a hit, damage feedback included)
@@ -3525,6 +3525,20 @@ scenario("daily", function(view)
 		end
 	end
 end)
+-- lobby:gift  (U9-4 look review: the bar census) the lobby HUD with the daily payload in and the Gifts window closed: the
+--             Gifts block under the strips with its PlayBar in the lip (36 of 60 min: 2 of 4 blocks gold), so the bar is
+--             reviewed with the HUD
+do
+	local lobbyScene = SCENARIOS.lobby
+	SCENARIOS.lobby = function(arg)
+		if tostring(arg or ""):lower() == "gift" then
+			toClient("DailyState", dailyPayload(""))
+			advance(1.2)
+			return
+		end
+		return lobbyScene(arg)
+	end
+end
 -- trove[:done|:preview]  (kit-b U9-4) the Sky Trove panel as the chest's prompt opens it (OpenPanel("Trove") + TroveState):
 --                        the Group row open (Join), done = claimed (Done, disabled), preview = GroupId 0 under StorePreview
 scenario("trove", function(view)
