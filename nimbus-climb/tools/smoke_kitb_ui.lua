@@ -5125,7 +5125,7 @@ local function clientScenarios()
 				end
 				-- the detail's stars (K1 is evolved twice) inside its line and its panel
 				local detail = holder:FindFirstChild("Detail", true) or holder:FindFirstChild("Sheet", true)
-				local meta = detail and detail:FindFirstChild("Meta")
+				local meta = detail and detail:FindFirstChild("Meta", true) -- (LOOK-ui: in the detail's MetaRow)
 				local stars = meta and meta:FindFirstChild("TrailIcon")
 				if T.check(stars ~= nil, tag .. ": the detail shows the evolution stars after its line") then
 					local r, m, d = U8.rect(stars), U8.rect(meta), U8.rect(detail)

@@ -1192,8 +1192,10 @@ S.client_menu = guarded("client_menu", function()
 			-- v3 (ARCHITECTURE_V3.md section 11): the selected pet's element, in its line and on its card
 			local element = petElements(PetCatalog, def)[1]
 			if element then
-				local meta = detail and descendantNamed(detail, "Meta")
-				T.check(meta ~= nil and meta.Text:find(element, 1, true) ~= nil, "...and its element (" .. element .. ")", meta and meta.Text or "")
+				-- (LOOK-ui, kitb-look1) the element is a chip with its name after the level line (CloudUI.ElementChip)
+				local echip = detail and descendantNamed(detail, "Element_" .. element)
+				local elabel = echip and echip:FindFirstChild("Label")
+				T.check(elabel ~= nil and elabel.Text:find(element, 1, true) ~= nil, "...and its element (" .. element .. ")", elabel and elabel.Text or "no chip")
 				local chip = descendantNamed(slots.Card_pebble_pup, "Element")
 				T.check(chip ~= nil and chip.BackgroundColor3 == Config.Elements.Info[element].Color, "...its card's chip coloured from Config.Elements.Info")
 			end

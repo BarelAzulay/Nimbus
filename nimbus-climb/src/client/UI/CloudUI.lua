@@ -690,7 +690,10 @@ local function signButton(props)
 		end
 		-- attribute Outline = true: the ink edge of the pitch's selected card (a shown-but-not-active team, say)
 		local edge = (not disabled and button:GetAttribute("Outline") == true) and SIGN.Text or nil
-		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, LipPx = pressing and SM.PressLip or SM.Lip })
+		-- (LOOK-ui) attribute Ink (a Color3): the label's ink instead of the look's (a stone Remove plank in red ink)
+		local ink = button:GetAttribute("Ink")
+		ink = (not disabled and typeof(ink) == "Color3") and ink or nil
+		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, Text = ink, LipPx = pressing and SM.PressLip or SM.Lip })
 		local pad = button:FindFirstChild("LipPad")
 		if pad then
 			pad.PaddingTop = UDim.new(0, pressing and (SM.Lip - SM.PressLip) or 0)
@@ -700,6 +703,7 @@ local function signButton(props)
 	paint()
 	button:GetAttributeChangedSignal("Disabled"):Connect(paint)
 	button:GetAttributeChangedSignal("Outline"):Connect(paint)
+	button:GetAttributeChangedSignal("Ink"):Connect(paint)
 	button:GetPropertyChangedSignal("Active"):Connect(paint)
 	button:GetAttributeChangedSignal("Style"):Connect(function()
 		local style = button:GetAttribute("Style")
