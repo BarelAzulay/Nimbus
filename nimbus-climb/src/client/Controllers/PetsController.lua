@@ -2079,7 +2079,7 @@ function H.metaChips(def)
 		end
 	end
 	local phone = S.Mode == "Phone"
-	local size = phone and 15 or 17
+	local size = phone and 15 or 18 -- (the window's 18 design px floor on PC)
 	local color = CloudUI.RarityColor(def.Rarity)
 	local tag = text(d.MetaRow, "RarityChip", tostring(def.Rarity), "Heading", size, Theme.TextOn(color), {
 		BackgroundTransparency = 0,

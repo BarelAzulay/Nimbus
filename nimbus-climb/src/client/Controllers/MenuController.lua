@@ -1840,7 +1840,7 @@ local function buildStats(win)
 		tiles[spec[1]] = value
 	end
 
-	local _, perks = P5.statCard(left, "Perks", "Pet perks", 2)
+	local _, perks = P5.statCard(left, "Perks", "Pet perks", 3)
 	local perksLabel = makeText(perks, "Lines", "", "Body", 19, P5.GOOD, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -1850,7 +1850,7 @@ local function buildStats(win)
 	})
 
 	-- Phase 3: the battle record (trophies from PvP duels, the Trial ladder, raids)
-	local _, battle = P5.statCard(left, "Battle", "Pet battles", 3)
+	local _, battle = P5.statCard(left, "Battle", "Pet battles", 4)
 	local battleLabel = makeText(battle, "Lines", "", "Body", 19, P5.HS.Text, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -1860,7 +1860,10 @@ local function buildStats(win)
 	})
 
 	-- right: best time per difficulty (kit-b U9-3: on the stone body itself, as the Home window's station list)
-	local right = makeFrame(content, "BestTimes", {
+	-- (LOOK-ui, kitb-look1: two lists stacked in the narrow window, each with its own bar, each cutting a row in half) the
+	-- best times are one section that moves: in their own column beside the stats on a wide window, under the stat tiles
+	-- in the one list on a narrow one (the window is narrow at every PC size: 640 wide)
+	local right = makeFrame(content, "Right", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -14, 0, 14),
 		Size = UDim2.new(0.45, -21, 1, -28),
@@ -1871,13 +1874,19 @@ local function buildStats(win)
 	list.ScrollBarImageColor3 = P5.HS.Wood
 	pad(list, 2, 2, 14, 8)
 	listLayout(list, Enum.FillDirection.Vertical, 8)
-	Theme.StyleTitle(makeText(list, "Title", "Best times", "Title", 24, P5.HS.Text, {
+	local times = makeFrame(list, "BestTimes", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 2,
+	})
+	listLayout(times, Enum.FillDirection.Vertical, 8)
+	Theme.StyleTitle(makeText(times, "Title", "Best times", "Title", 24, P5.HS.Text, {
 		Size = UDim2.new(1, 0, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 0,
 	}), "Section")
 	for index, difficulty in ipairs(Config.Difficulties) do
-		local row = P5.signBlock(list, "Row_" .. difficulty.Id, {
+		local row = P5.signBlock(times, "Row_" .. difficulty.Id, {
 			Size = UDim2.new(1, 0, 0, 70),
 			LayoutOrder = index,
 		}, difficulty.Color)
@@ -1907,18 +1916,15 @@ local function buildStats(win)
 	end
 
 	win.OnLayout = function(_w, _h, _narrow, _short, tall)
+		left.Position = UDim2.fromOffset(14, 14)
 		if tall then
-			left.Position = UDim2.fromOffset(14, 14)
-			left.Size = UDim2.new(1, -28, 0.6, -21)
-			right.AnchorPoint = Vector2.new(0, 1)
-			right.Position = UDim2.new(0, 14, 1, -14)
-			right.Size = UDim2.new(1, -28, 0.4, -21)
+			left.Size = UDim2.new(1, -28, 1, -28)
+			times.Parent = left
+			right.Visible = false
 		else
-			left.Position = UDim2.fromOffset(14, 14)
 			left.Size = UDim2.new(0.55, -21, 1, -28)
-			right.AnchorPoint = Vector2.new(1, 0)
-			right.Position = UDim2.new(1, -14, 0, 14)
-			right.Size = UDim2.new(0.45, -21, 1, -28)
+			times.Parent = list
+			right.Visible = true
 		end
 	end
 

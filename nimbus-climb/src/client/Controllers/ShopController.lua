@@ -883,6 +883,14 @@ function H.buildCard(item, page, isHero)
 	end)
 	local b = card.Body
 	local art = frame("Art", b, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.PetWell })
+	-- (LOOK-ui, kitb-look1: the pitch's .dw) the art's well in its 2 px edge, as the pet wells
+	local artEdge = Instance.new("UIStroke")
+	artEdge.Name = "SignEdge"
+	artEdge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	artEdge.LineJoinMode = Enum.LineJoinMode.Miter
+	artEdge.Color = SIGN.WellEdge
+	artEdge.Thickness = 2
+	artEdge.Parent = art
 	local glyph = label("Glyph", art, "", "Display", 40, { Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
 	glyph:SetAttribute("PixelIcon", H.artGlyph(item))
 	PixelIcon.Host(glyph, H.artGlyph(item)) -- (kit-b U7a) the card's icon, sized with the art box
@@ -953,6 +961,20 @@ function H.artGlyph(item)
 	end
 	if g.Cash and not g.Pets then
 		return Theme.Currency.Cash.Icon
+	end
+	-- (LOOK-ui, kitb-look1: one ticket on every pass, one potion on every boost) a pass shows what it doubles, a boost its
+	-- potion
+	if not g.Pets then
+		for _, perk in ipairs(type(g.Perks) == "table" and g.Perks or {}) do
+			if perk == "CashX2" then
+				return Theme.Currency.Cash.Icon
+			elseif perk == "XpX2" or perk == "ProXp" then
+				return "star"
+			end
+		end
+		if type(g.Boost) == "table" and g.Boost.XpPotion then
+			return "potion"
+		end
 	end
 	return NeonKit.IconName(item.Tab) or NeonKit.IconName("Store")
 end
