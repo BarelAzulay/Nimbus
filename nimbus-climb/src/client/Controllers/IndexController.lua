@@ -295,11 +295,8 @@ local function scroller(parent, name, props)
 	p.CanvasSize = UDim2.new(0, 0, 0, 0)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
-	p.ScrollBarThickness = SignKit.Sizes.ScrollBar -- (U9-7 look) the kit's wood bar (was the old kit's pale blue)
-	p.ScrollBarImageColor3 = SIGN.Wood
-	p.ScrollBarImageTransparency = 0
 	p.Parent = parent
-	return Util.Create("ScrollingFrame", p)
+	return SignKit.Scroll(Util.Create("ScrollingFrame", p)) -- (U9-7 look, LOOK-ui) the kit's wood bar, square ends
 end
 
 local function tween(inst, seconds, goal, style, direction)
@@ -870,6 +867,9 @@ local function fitWindow()
 	end
 	U.Dock.Refresh()
 	local r = U.Dock.Rect
+	if S.Open and syncHud then
+		syncHud() -- (LOOK-ui) the box moved: over the HUD's vitals / strips or clear of them now
+	end
 	return math.floor(r.designW + 0.5), math.floor(r.designH + 0.5)
 end
 
@@ -901,6 +901,8 @@ local function relayout()
 		U.GroupLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 		U.GroupLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 		U.GroupList.ScrollingDirection = Enum.ScrollingDirection.X
+		-- (LOOK-ui) no bar under the sideways tab strip (a swipe moves it; the cut tile at its edge says there is more)
+		SignKit.Scroll(U.GroupList, 0)
 		U.GroupList.AutomaticCanvasSize = Enum.AutomaticSize.X
 		U.GroupList.Size = UDim2.new(1, U.ElementsButton and -(K.ELEMENTS_STRIP_W + 8) or 0, 1, 0)
 		U.GroupPad.PaddingTop = UDim.new(0, 0)
@@ -923,6 +925,7 @@ local function relayout()
 		U.GroupLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 		U.GroupLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 		U.GroupList.ScrollingDirection = Enum.ScrollingDirection.Y
+		SignKit.Scroll(U.GroupList)
 		U.GroupList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		U.GroupPad.PaddingTop = UDim.new(0, 6)
 		U.GroupPad.PaddingBottom = UDim.new(0, 6)
@@ -1085,7 +1088,7 @@ end
 ----------------------------------------------------------------------
 -- Group list (left)
 ----------------------------------------------------------------------
-local refreshAll, selectGroup, selectPet, renderDetail, showElements, revealGroupTile, H_paintTab, syncTouch
+local refreshAll, selectGroup, selectPet, renderDetail, showElements, revealGroupTile, H_paintTab, syncTouch, syncHud
 
 local function buildGroupTile(group, index)
 	local color = rarityColor(group.Rarity)
@@ -2546,6 +2549,29 @@ function syncTouch()
 	end
 end
 
+-- (LOOK-ui, kitb-look1: the docked window cut the vitals card and lay over the strips at 1280x720) the HUD steps aside
+-- where the open window and its awning lie over it (HudController.Overlaps, as MenuController's Home and Stats): the
+-- vitals card, the currency strips; both back when it closes. Checked again on every layout
+function syncHud()
+	local module = script.Parent:FindFirstChild("HudController")
+	local ok, hud = pcall(require, module)
+	if not (ok and type(hud) == "table" and type(hud.Overlaps) == "function") then
+		return
+	end
+	local vitals, strips = false, false
+	local rect = S.Open and U.Dock and U.Dock.Rect
+	if rect then
+		local okO, v, st = pcall(hud.Overlaps, rect, 10 * (rect.scale or 1)) -- (the awning: CloudUI.Panel's roof at Y -10)
+		vitals, strips = okO and v == true, okO and st == true
+	end
+	if type(hud.SetCurrencyHidden) == "function" then
+		safe("currency", hud.SetCurrencyHidden, "Index", strips)
+	end
+	if type(hud.SetVitalsHidden) == "function" then
+		safe("vitals", hud.SetVitalsHidden, "Index", vitals)
+	end
+end
+
 function IndexController.IsOpen()
 	return S.Open
 end
@@ -2612,6 +2638,7 @@ function IndexController.Open(groupId)
 	safe("select", selectGroup, target)
 	safe("refresh", refreshAll)
 	syncTouch()
+	syncHud()
 	if not wasOpen then
 		IndexController.Opened:Fire(target)
 	end
@@ -2626,6 +2653,7 @@ function IndexController.Close()
 	local mine = S.Token
 	syncBackBinding()
 	syncTouch()
+	syncHud()
 	tween(U.Pop, 0.12, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	task.delay(0.13, function()
 		if S.Token == mine and not S.Open and U.Holder then

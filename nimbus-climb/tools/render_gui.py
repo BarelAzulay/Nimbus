@@ -1290,7 +1290,7 @@ class GuiRenderer:
         for bx0, by0, bx1, by1 in patch_layer:
             px0, py0 = int(bx0), int(by0)
             patch = Image.new("RGBA", (int(bx1 - px0) + 1, int(by1 - py0) + 1), (0, 0, 0, 0))
-            rr(ImageDraw.Draw(patch), bx0 - px0, by0 - py0, bx1 - px0, by1 - py0, bar * s / 2.0, col)
+            rr(ImageDraw.Draw(patch), bx0 - px0, by0 - py0, bx1 - px0, by1 - py0, 0 if sc.get("square") else bar * s / 2.0, col)
             self.composite(layer, patch, px0, py0, intersect(clip, (x0, y0, x1, y1)))
 
     def draw_global(self, gui, layer):

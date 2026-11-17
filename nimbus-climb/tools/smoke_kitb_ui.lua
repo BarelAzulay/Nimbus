@@ -5504,7 +5504,8 @@ local function clientScenarios()
 	-- window, the Shop on its tabs and the Stats window: every PixelIcon cell is a whole number of screen px wide and tall and
 	-- sits a whole number of px from its icon's other cells (one cell size, no lumpy 1-and-2 px cells), every kit lip (a
 	-- Frame "Lip" of a fixed height) is a whole number of px tall and every kit edge (UIStroke "SignEdge") a whole number of
-	-- px thick. A shown icon or edge under a transient pop is measured at rest (the pops rest at 1)
+	-- px thick. A shown icon or edge under a transient pop is measured at rest (the pops rest at 1). Every shown scroll bar
+	-- there is the kit's one bar (SignKit.Scroll: wood, opaque, square ends, 8 px or a phone list's 6)
 	S.kitb_whole_pixels = guarded("kitb_whole_pixels", function()
 		local Menu = U7.client("Controllers/MenuController")
 		local PC = U7.client("Controllers/PetsController")
@@ -5516,8 +5517,28 @@ local function clientScenarios()
 		local function whole(v)
 			return math.abs(v - math.floor(v + 0.5)) <= 0.02
 		end
+		local SK = LoadingH.shared("SignKit")
+		local Sign = LoadingH.shared("Theme").Sign
 		local function walk(root, family, bad, seen)
 			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:IsA("ScrollingFrame") and d.ScrollBarThickness > 0 and U8.shown(d) then
+					seen.bars = seen.bars + 1
+					local t = d.ScrollBarThickness
+					if not (sameColor(d.ScrollBarImageColor3, Sign.Wood) and d.ScrollBarImageTransparency == 0 and d.TopImage == d.MidImage
+						and d.BottomImage == d.MidImage and (t == SK.Sizes.ScrollBar or t == SK.Sizes.ScrollBarPhone)) then
+						seen.badBars[#seen.badBars + 1] = fmt("%s: %s bar %d px %s @%.2f%s", family, d.Name, t, hex(d.ScrollBarImageColor3),
+							d.ScrollBarImageTransparency, d.TopImage == d.MidImage and "" or " round ends")
+					end
+				end
+				if d:IsA("Frame") and d.Name == "CloseMark" and d:GetAttribute("PixelX") and U8.shown(d) then
+					-- (LOOK-ui) the pitch's .x block: red face, the red lip, the edge in the ink (not the wood)
+					seen.closes = seen.closes + 1
+					local b = d.Parent
+					local e, lip = b:FindFirstChild("SignEdge"), b:FindFirstChild("Lip")
+					if not (e and sameColor(e.Color, Sign.Text) and lip and sameColor(lip.BackgroundColor3, Sign.RedLip) and sameColor(b.BackgroundColor3, Sign.Red)) then
+						seen.badCloses[#seen.badCloses + 1] = fmt("%s: %s edge %s lip %s", family, b.Name, e and hex(e.Color) or "none", lip and hex(lip.BackgroundColor3) or "none")
+					end
+				end
 				if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) then
 					local first = nil
 					for _, cell in ipairs(d:GetChildren()) do
@@ -5548,7 +5569,7 @@ local function clientScenarios()
 		for _, s in ipairs(U8.SIZES) do
 			U8.at(s[1], s[2], s[3], "whole pixels", function(tag)
 				local pg = U8.pg()
-				local bad, seen = {}, { cells = 0, lips = 0, edges = 0 }
+				local bad, seen = {}, { cells = 0, lips = 0, edges = 0, bars = 0, badBars = {}, closes = 0, badCloses = {} }
 				walk(pg:FindFirstChild("NimbusHud"), "HUD", bad, seen)
 				local menu = pg:FindFirstChild("NimbusMenu")
 				walk(menu and menu:FindFirstChild("MenuColumn"), "HUD tiles", bad, seen)
@@ -5580,6 +5601,10 @@ local function clientScenarios()
 					fmt("%d cells, %d lips, %d edges", seen.cells, seen.lips, seen.edges))
 				T.check(#bad == 0, fmt("%s: every pixel icon cell, kit lip and kit edge is a whole number of screen px (%d off)", tag, #bad),
 					table.concat(bad, "; ", 1, math.min(#bad, 14)))
+				T.check(seen.bars > 0 and #seen.badBars == 0, fmt("%s: every scroll bar is the kit's one bar (wood, opaque, square ends, %d / %d px; %d seen)",
+					tag, SK.Sizes.ScrollBar, SK.Sizes.ScrollBarPhone, seen.bars), table.concat(seen.badBars, "; ", 1, math.min(#seen.badBars, 10)))
+				T.check(seen.closes >= 4 and #seen.badCloses == 0, fmt("%s: every close is the pitch's x block (red face and lip, the ink edge; %d seen)", tag, seen.closes),
+					table.concat(seen.badCloses, "; ", 1, math.min(#seen.badCloses, 8)))
 			end)
 		end
 		LKC.flushErrors("kitb_whole_pixels")
@@ -6505,6 +6530,64 @@ local function clientScenarios()
 			T.check(vitals ~= nil and U8.shown(vitals), fmt("stats hud %dx%d: the vitals card is back after Close", s[1], s[2]))
 		end
 		LKC.flushErrors("stats_clear_of_hud")
+	end)
+
+	-- (LOOK-ui, kitb-look1: the docked Index and Home windows cut the vitals card at 1080p and 720p and lay over the strips at
+	-- 720p) at the four grid sizes the open Index and Home windows, their awnings included, lie over no shown HUD part (a
+	-- shared edge of 4 px or less is a touch): the vitals card and the strips step aside only where the box meets them (at
+	-- 1920x1080 the strips stay, the window starts under them), and both are back after Close
+	S.kitb_windows_clear_of_hud = guarded("kitb_windows_clear_of_hud", function()
+		local Menu = U7.client("Controllers/MenuController")
+		if not T.check(Menu ~= nil, "windows clear of hud: MenuController loads") then
+			return
+		end
+		local function over4(a, b)
+			return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
+		end
+		for _, s in ipairs(U8.SIZES) do
+			for _, name in ipairs({ "Index", "Home" }) do
+				local strips, vitals = nil, nil
+				U8.at(s[1], s[2], s[3], "clear of hud " .. name, function(tag)
+					local pg = U8.pg()
+					local hud = pg:FindFirstChild("NimbusHud")
+					strips = hud and hud:FindFirstChild("Currency", true)
+					vitals = hud and hud:FindFirstChild("Vitals", true)
+					Menu.Open(name)
+					LKC.advance(1)
+					local menu = pg:FindFirstChild("NimbusMenu")
+					local idx = pg:FindFirstChild("NimbusIndex")
+					local win = name == "Index" and idx and idx:FindFirstChild("Window_Index") or (menu and menu:FindFirstChild("Window_Home"))
+					if not T.check(win ~= nil and U8.shown(win), tag .. ": the window opens") then
+						return
+					end
+					local boxes = { U8.rect(win) }
+					local roof = win:FindFirstChild("Roof", true)
+					if roof and U8.shown(roof) then
+						boxes[2] = U8.rect(roof)
+					end
+					local over = {}
+					for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+						if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 0.95 then
+							for _, b in ipairs(boxes) do
+								if over4(U8.rect(d), b) then
+									over[#over + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+									break
+								end
+							end
+						end
+					end
+					T.check(#over == 0, tag .. ": the window and its awning lie over no HUD part", table.concat(over, ", ", 1, math.min(#over, 8)) .. " | window " .. U8.show(boxes[1]))
+					if s[1] == 1920 then
+						T.check(strips ~= nil and U8.shown(strips), tag .. ": the strips stay (the window starts under them)")
+					end
+					pcall(Menu.Close)
+					LKC.advance(0.6)
+				end)
+				T.check(strips ~= nil and U8.shown(strips) and vitals ~= nil and U8.shown(vitals),
+					fmt("clear of hud %s %dx%d: the strips and the vitals card are back after Close", name, s[1], s[2]))
+			end
+		end
+		LKC.flushErrors("kitb_windows_clear_of_hud")
 	end)
 
 	-- the titles over heads as kit B sign tags (finding 15: no glow, no gloss, colour by role): each TitleTag's Plate a flat

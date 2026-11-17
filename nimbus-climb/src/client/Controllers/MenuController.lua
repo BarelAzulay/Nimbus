@@ -95,6 +95,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the Stats window's coins and stars
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui) the kit's one scroll bar
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -378,11 +379,8 @@ local function scroller(parent, name, props)
 	p.CanvasSize = UDim2.new(0, 0, 0, 0)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
-	p.ScrollBarThickness = 8 -- (U9-7 look) the kit's wood list bar (SignKit.Sizes.ScrollBar; was the old kit's pale blue)
-	p.ScrollBarImageColor3 = Theme.Sign.Wood
-	p.ScrollBarImageTransparency = 0
 	p.Parent = parent
-	return Util.Create("ScrollingFrame", p)
+	return SignKit.Scroll(Util.Create("ScrollingFrame", p)) -- (U9-7 look, LOOK-ui) the kit's wood list bar, square ends
 end
 
 local function tween(inst, seconds, goal, style, direction)
@@ -720,6 +718,14 @@ local function layoutWindow(win)
 	if not rect then
 		return
 	end
+	-- (LOOK-ui, kitb-look1: the docked Home window's band and tail ran off the screen's edge) a Signboard window's band goes
+	-- out over its frame with its tails only with P5.BAND_ROOM screen px to both screen edges; docked at an edge (12 px)
+	-- or a bottom sheet it stays inside the rim, as the Index's
+	if win.Panel and win.Panel.TitleBar and win.Spec.Skin == "Signboard" then
+		local camera = workspace.CurrentCamera
+		local vpX = camera and camera.ViewportSize.X or 0
+		SignKit.HeaderOverhang(win.Panel.TitleBar, vpX > 0 and math.min(rect.x, vpX - rect.x - rect.w) >= P5.BAND_ROOM)
+	end
 	local w, h = math.floor(rect.designW + 0.5), math.floor(rect.designH + 0.5)
 	local changed = win.W ~= w or win.H ~= h
 	win.W, win.H = w, h
@@ -727,6 +733,7 @@ local function layoutWindow(win)
 		safe("layout " .. win.Id, win.OnLayout, w, h, w < K.NARROW, h < K.SHORT, w < K.TALL)
 	end
 	if win.Shown then
+		P5.currencyFor(win, true) -- (LOOK-ui) over the strips or clear of them now (HideCurrency "Over")
 		P5.vitalsFor(win, true) -- (U9-3 review) the docked box moved: over the vitals card or clear of it now
 	end
 end
@@ -790,13 +797,23 @@ function P5.hud()
 	return P5.HudModule or nil
 end
 
+-- (LOOK-ui) HideCurrency = "Over": only while the docked box and its awning lie over the strips (HudController.Overlaps;
+-- a 1280x720 window reaches them, a 1080p one starts under them), checked again on every layout
+P5.BAND_ROOM = 24 -- (LOOK-ui) screen px a Signboard window keeps to both screen edges for its band's tails
+P5.AWNING = 10 -- design px of awning over a Signboard window's top (CloudUI.Panel's roof at Y -10)
 function P5.currencyFor(win, on)
 	if not win.Spec.HideCurrency then
 		return
 	end
 	local hud = P5.hud()
 	if hud and type(hud.SetCurrencyHidden) == "function" then
-		safe("currency " .. win.Id, hud.SetCurrencyHidden, win.Id, on == true)
+		local want = on == true
+		local rect = win.Dock and win.Dock.Rect
+		if want and win.Spec.HideCurrency == "Over" and type(hud.Overlaps) == "function" then
+			local ok, _, strips = pcall(hud.Overlaps, rect, P5.AWNING * ((rect and rect.scale) or 1))
+			want = ok and strips == true
+		end
+		safe("currency " .. win.Id, hud.SetCurrencyHidden, win.Id, want)
 	end
 end
 
@@ -3754,7 +3771,9 @@ function MenuController.Init()
 	-- (U9-3 review) on a phone, where it reaches over the vitals card, the card hides too (HideVitals)
 	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true, Skin = "Signboard", Icon = Config.Icons.Stats or "stats",
 		HideTouch = true, HideCurrency = true, HideVitals = true })
-	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true, Skin = "Signboard", Icon = HOME_ICON.House, HideTouch = true })
+	-- (LOOK-ui) Home steps the HUD aside as Stats does where it lies over it: the vitals card, the strips (only then)
+	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true, Skin = "Signboard", Icon = HOME_ICON.House, HideTouch = true,
+		HideCurrency = "Over", HideVitals = true })
 	relayoutMenu()
 	updateMenuActive()
 

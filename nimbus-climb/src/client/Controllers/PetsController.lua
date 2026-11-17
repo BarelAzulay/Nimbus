@@ -1436,7 +1436,7 @@ function H.layoutPC(W, H0)
 	U.GridLayout.CellSize = UDim2.fromOffset(K.PC_CARD[1], K.PC_CARD[2])
 	U.GridLayout.CellPadding = UDim2.fromOffset(K.PC_CARD[3], K.PC_CARD[3])
 	H.gridPad(6)
-	U.Grid.ScrollBarThickness = 10
+	SignKit.Scroll(U.Grid) -- (LOOK-ui) the kit's one bar
 end
 
 function H.layoutPhone(W, H0)
@@ -1518,7 +1518,7 @@ function H.layoutPhone(W, H0)
 	U.GridLayout.CellSize = UDim2.fromOffset(K.PHONE_CARD[1], K.PHONE_CARD[2])
 	U.GridLayout.CellPadding = UDim2.fromOffset(K.PHONE_CARD[3], K.PHONE_CARD[3])
 	H.gridPad(2)
-	U.Grid.ScrollBarThickness = 6
+	SignKit.Scroll(U.Grid, SignKit.Sizes.ScrollBarPhone)
 	place(U.D.Frame, sheetX, sheetY, sheetW, sheetH)
 	U.D.Frame.Name = "Sheet"
 	H.layoutDetail(sheetW, sheetH)

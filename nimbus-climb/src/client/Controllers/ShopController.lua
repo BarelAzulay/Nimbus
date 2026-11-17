@@ -144,7 +144,7 @@ local K = {
 	SHORT_GEMS = "Not enough gems.",
 	POTION_KEY = "XpPotionGems",
 	RESTRICTED_ATTR = "PaidRandomItemsRestricted", -- GemService: true while restricted or unknown, false when allowed
-	SCROLLBAR = 6,
+	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
 	ACCENT = rgb(90, 168, 232), -- the header (the A mock)
 	NAVY = rgb(11, 16, 48),
 	TABS = { "Eggs", "Gems", "Packs", "Passes", "Boosts" },
@@ -973,7 +973,7 @@ function H.rebuild()
 		page.Name = "Page_" .. tab
 		page.BackgroundTransparency = 1
 		page.BorderSizePixel = 0
-		page.ScrollBarThickness = K.SCROLLBAR
+		SignKit.Scroll(page, K.SCROLLBAR)
 		page.ScrollingDirection = Enum.ScrollingDirection.Y
 		page.CanvasSize = UDim2.new()
 		page.Size = UDim2.fromScale(1, 1)

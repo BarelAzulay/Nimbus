@@ -88,6 +88,7 @@ local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token coin, TRAVEL's arrow
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui) the kit's one scroll bar
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local EggArt = require(UI:WaitForChild("EggArt"))
 local Egg3D = require(UI:WaitForChild("Egg3D"))
@@ -125,7 +126,7 @@ local K = {
 	TILE_MAX = 266,
 	HERO_PHONE = 200,
 	FADE = 48,
-	SCROLLBAR = 6,
+	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
 	FIT_H = 826, -- a PC / Compact body under this shrinks the page
 	PORTRAIT_CARD = 250,
 	PORTRAIT_HERO = 200,
@@ -243,7 +244,7 @@ local function scroller(name, parent, direction)
 	s.Name = name
 	s.BackgroundTransparency = 1
 	s.BorderSizePixel = 0
-	s.ScrollBarThickness = K.SCROLLBAR
+	SignKit.Scroll(s, K.SCROLLBAR)
 	s.ScrollingDirection = direction
 	s.CanvasSize = UDim2.new()
 	s.Parent = parent

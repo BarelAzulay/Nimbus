@@ -96,6 +96,7 @@ local TITLE_H = 50
 local TITLE_GAP = 10
 local TITLE_TEXT = 34
 local CLOSE_SIZE = 40
+local SIGN_CLOSE = 44 -- (LOOK-ui) a Signboard window's red close block: one size with the Shop's, the Gifts' and the Pets sheet's
 local UNTITLED_TOP_CLOUDS = 20 -- v5: no cloud bumps any more; an untitled panel keeps this room for its corner X
 
 CloudUI.Metrics = {
@@ -522,7 +523,9 @@ function CloudUI.SignBlock(obj, look, opts)
 	lip.Visible = lipPx > 0
 	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
 		obj.TextColor3 = opts.Text or look.Text
-		if opts.Pad ~= false and lipPx > 0 then
+		-- (LOOK-ui) not under a close block's pixel x: it sits on the block's centre (NeonKit.CloseMark), a repaint (hover,
+		-- the ink Outline) must not pad it up
+		if opts.Pad ~= false and lipPx > 0 and not obj:FindFirstChild("CloseMark") then
 			local pad = obj:FindFirstChild("LipPad")
 			if not pad then
 				pad = Util.Create("UIPadding", { Name = "LipPad", Parent = obj })
@@ -878,7 +881,7 @@ local function signPanel(props)
 			Rim = edge,
 			IconSlot = props.Icon ~= nil,
 			Ribbon = true, -- (render gate) the T1 band the header's width, out over the frame with its tails (title_T1)
-			Reserve = props.Closable and (CLOSE_SIZE + 18) or 16,
+			Reserve = props.Closable and (SIGN_CLOSE + 18) or 16,
 			Name = "TitleBar",
 			ZIndex = 3,
 		})
@@ -921,14 +924,14 @@ local function signPanel(props)
 		root:Destroy()
 	end
 	if props.Closable then
-		local position = hasTitle and UDim2.new(1, -(PANEL_PAD + 4 + CLOSE_SIZE / 2), 0, TITLE_TOP + math.floor(TITLE_H / 2) - 2)
-			or UDim2.new(1, -12 - CLOSE_SIZE / 2, 0, 8 + CLOSE_SIZE / 2)
+		local position = hasTitle and UDim2.new(1, -(PANEL_PAD + 4 + SIGN_CLOSE / 2), 0, TITLE_TOP + math.floor(TITLE_H / 2) - 2)
+			or UDim2.new(1, -12 - SIGN_CLOSE / 2, 0, 8 + SIGN_CLOSE / 2)
 		local closeButton = CloudUI.Button({
 			Name = "Close",
 			Text = "",
 			Style = "Red",
 			Skin = "Sign",
-			Size = UDim2.fromOffset(CLOSE_SIZE, CLOSE_SIZE),
+			Size = UDim2.fromOffset(SIGN_CLOSE, SIGN_CLOSE),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = position,
 			ZIndex = 8,
@@ -2489,10 +2492,8 @@ function CloudUI.Grid(parent, cellSize, cellPadding)
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 10,
-		ScrollBarImageColor3 = Theme.Lighten(NEON.Blue, 0.2),
-		ScrollBarImageTransparency = 0.1,
 	})
+	SignKit.Scroll(scroll) -- (LOOK-ui) the kit's wood bar, square ends (was the old kit's pale blue)
 	padding(scroll, 10, 10, 10, 10)
 	Util.Create("UIGridLayout", {
 		Name = "Layout",

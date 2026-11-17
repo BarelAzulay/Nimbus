@@ -23,6 +23,7 @@
 --   SignKit.Rope(parent, opts)    a rope / post the board hangs from
 --   SignKit.BlockRow(parent, opts) n stone blocks with a darker lip; SignKit.FillBlocks(row, k) turns the first k gold
 --   SignKit.Notice(parent, opts)  a small wood-framed stone card (a tip, a notice); returns notice, face
+--   SignKit.Scroll(sf, thickness) (LOOK-ui) the kit's one scroll bar on a ScrollingFrame: wood, opaque, square ends
 --   SignKit.Rig(parts, opts)      (sign/logo build: the owner's pick B2 "Sky-climber's rig", 2026-11-13; it replaced the
 --                                 Workshop trim) a hanging board's canopy (canvas under navy stripes, a scalloped
 --                                 valance with brass piping, a stitched patch), the frame's bevel, rope lashings on its
@@ -63,6 +64,7 @@ SignKit.Sizes = {
 	NoticeGap = 18, -- a notice's icon square to its text
 	RopeW = 6,
 	ScrollBar = 8, -- (U9-7 look) a scrolling list's bar on kit B: this thick, in the wood, opaque (every window's lists)
+	ScrollBarPhone = 6, -- (LOOK-ui) the same bar in a phone layout's list
 	BlockW = 28,
 	BlockH = 22,
 	BlockGap = 4,
@@ -583,6 +585,18 @@ function SignKit.FillBlocks(row, k)
 	end
 	row:SetAttribute("Filled", k)
 	return k
+end
+
+-- (LOOK-ui, kitb-look1: the owner's look bar, one style across screens) the kit's one scroll bar: in the wood, opaque,
+-- square ends (Roblox's round end caps swapped for its straight middle piece), Sizes.ScrollBar thick (`thickness`:
+-- Sizes.ScrollBarPhone in a phone layout's list, 0 for none). Call again to change the thickness
+function SignKit.Scroll(sf, thickness)
+	sf.ScrollBarThickness = math.floor(tonumber(thickness) or Z.ScrollBar)
+	sf.ScrollBarImageColor3 = Sign.Wood
+	sf.ScrollBarImageTransparency = 0
+	sf.TopImage = sf.MidImage
+	sf.BottomImage = sf.MidImage
+	return sf
 end
 
 -- opts: Width, Height, Text, TextSize, IconSlot (a square at the left for a PixelIcon)

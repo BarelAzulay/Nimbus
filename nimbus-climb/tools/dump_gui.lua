@@ -746,6 +746,8 @@ local function nodeOf(inst, ctx, path, order)
 			bar = (tonumber(inst.ScrollBarThickness) or 12) * s,
 			color = rgb(inst.ScrollBarImageColor3),
 			t = tonumber(inst.ScrollBarImageTransparency) or 0,
+			-- (LOOK-ui) the end caps swapped for the middle piece: a square bar
+			square = get(inst, "MidImage") ~= nil and get(inst, "TopImage") == get(inst, "MidImage") and get(inst, "BottomImage") == get(inst, "MidImage") or nil,
 			direction = enumName(get(inst, "ScrollingDirection")),
 			canvas = { cw, ch },
 			position = { cp.X, cp.Y },

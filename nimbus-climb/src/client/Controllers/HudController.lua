@@ -3110,6 +3110,33 @@ function HudController.SetCurrencyHidden(who, on)
 	end
 end
 
+-- (LOOK-ui, kitb-look1: the Index and Home windows lay over the vitals card and the strips) which HUD parts a docked
+-- window lies over by more than a shared edge (4 px): `rect` its box in screen px (NeonKit.SideRect: x, y, w, h, the top
+-- bar included), `above` px of awning over its top. Returns vitals, strips (booleans). The strips' box is the one the
+-- layout publishes (TopRightLeft .. the screen's right, the top .. the gift's dock), whether they show or not
+function HudController.Overlaps(rect, above)
+	if type(rect) ~= "table" or not (tonumber(rect.x) and tonumber(rect.y) and tonumber(rect.w) and tonumber(rect.h)) then
+		return false, false
+	end
+	local inset = 0
+	pcall(function()
+		inset = GuiService:GetGuiInset().Y
+	end)
+	local x0, x1 = rect.x, rect.x + rect.w
+	local y0, y1 = rect.y - inset - (tonumber(above) or 0), rect.y - inset + rect.h
+	local function over(ax0, ay0, ax1, ay1)
+		return math.min(x1, ax1) - math.max(x0, ax0) > 4 and math.min(y1, ay1) - math.max(y0, ay0) > 4
+	end
+	local vitals = vitalsRect ~= nil and over(vitalsRect.X, vitalsRect.Y, vitalsRect.X + vitalsRect.W, vitalsRect.Y + vitalsRect.H)
+	local strips = false
+	local left = published.TopRightLeft
+	if left and left > 0 then
+		local bottom = (published.GiftSize or 0) > 0 and published.GiftTop or published.TopRightBottom or 0
+		strips = over(left, 0, math.huge, bottom)
+	end
+	return vitals, strips
+end
+
 -- Where the HUD currently is (gui-area pixels of an IgnoreGuiInset = false ScreenGui; 0 = nothing there).
 function HudController.GetLayout()
 	return {

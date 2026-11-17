@@ -1045,6 +1045,11 @@ function NeonKit.CloseMark(button, opts)
 		mark:SetAttribute("PixelX", true)
 		mark:SetAttribute("InkColor", colorOf(opts.Color, INK))
 		mark.Parent = button
+		-- (LOOK-ui, kitb-look1: the pitch's .x block) the close block's edge in the ink, not the wood (CloudUI.Button's
+		-- Outline paint keeps it through hover and press)
+		if button:GetAttribute("Skin") == "Sign" then
+			button:SetAttribute("Outline", true)
+		end
 		NeonKit.CloseMarkPx(button, px)
 		return mark
 	end

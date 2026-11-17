@@ -51,6 +51,7 @@ local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token piles, the potion
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui) the kit's one scroll bar
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 
 local ShopGems = {}
@@ -74,7 +75,7 @@ local K = {
 	STEP = 174,
 	TILE_MAX = 266,
 	FADE = 48,
-	SCROLLBAR = 6,
+	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
 	-- the pitch's PILE shares (GemIcon's), reused for the token art
 	SPOTS = {
 		[1] = { { 0.5, 0.55, 0.8 } },
@@ -390,7 +391,7 @@ function ShopGems.Build(page, ctx)
 	scroll.Name = "Scroll"
 	scroll.BackgroundTransparency = 1
 	scroll.BorderSizePixel = 0
-	scroll.ScrollBarThickness = K.SCROLLBAR
+	SignKit.Scroll(scroll, K.SCROLLBAR)
 	scroll.CanvasSize = UDim2.new()
 	scroll.Size = UDim2.fromScale(1, 1)
 	scroll.Parent = page
