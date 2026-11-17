@@ -115,6 +115,9 @@ PixelIcon.Bitmaps = {
 	shift = "....#..../...###.../..##.##../.##...##./####.####/..##.##../..##.##../..#####../.........", -- the Shift key (hollow up arrow)
 	-- (LOOK-ui) the vitals' downed mark (was the "!" letter on the heart tile)
 	bang = "...###.../...###.../...###.../...###.../...###.../....#..../........./...###.../...###...",
+	-- (LOOK-ui, kitb-look1) a narrow pointer, three cells wide: at 18 px (2 px cells, the screen's own size) it fits the
+	-- ~14 px gap between two tiles that "play" (8 cells) at 9 px (1 px cells) filled
+	nub = "........./........./...#...../...##..../...###.../...##..../...#...../........./.........",
 }
 -- tick is the pitch's check (one drawing, two names)
 PixelIcon.Bitmaps.tick = PixelIcon.Bitmaps.check

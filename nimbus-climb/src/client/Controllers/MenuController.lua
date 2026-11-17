@@ -274,7 +274,7 @@ local G = {
 	Bullet = "\194\183", -- middle dot
 }
 -- (kit-b U7b) the Home window's PixelIcons
-local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "play" }
+local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "nub" }
 
 ----------------------------------------------------------------------
 -- Module state
@@ -2082,7 +2082,9 @@ function P5.buildStrip(H, _content)
 		H.StripTiles[i] = { Root = tile, Title = title, Value = value }
 		if i < #P5.STRIP then
 			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "", "Title", 18, P5.HS.Wood, { Size = UDim2.fromOffset(20, 76) })
-			PixelIcon.Host(H.StripArrows[i], HOME_ICON.Arrow, 9) -- (kit-b U7b; 9 px: the gap between two tiles' rims is ~14 px)
+			-- (kit-b U7b: the gap between two tiles' rims is ~14 px; LOOK-ui, kitb-look1: the narrow nub at 18 px, the screen's
+			-- 2 px cells, not "play" at 9 px and 1 px cells)
+			PixelIcon.Host(H.StripArrows[i], HOME_ICON.Arrow, 18)
 		end
 	end
 end

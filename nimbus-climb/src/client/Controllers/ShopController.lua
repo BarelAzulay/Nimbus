@@ -657,7 +657,9 @@ function H.build()
 	U.Icon = label("Icon", header, "", "Display", 42, {
 		TextTruncate = Enum.TextTruncate.None, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text,
 	})
-	H.edge(U.Icon, 3)
+	-- (LOOK-ui, kitb-look1: one style across screens) the Signboard header's icon slot: SignKit.Sizes.IconSlot square, a 2 px
+	-- brown ink line (was a 46 px square in a 3 px wood edge)
+	H.edge(U.Icon, 2, SIGN.Text)
 	PixelIcon.Host(U.Icon, NeonKit.IconName("Eggs")) -- (kit-b U7a) the egg, sized with the label
 	U.Title = label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left })
 	U.Title:SetAttribute("RibbonBand", "NoTails") -- (render gate) the band ends square on the navy plank (its tails read as a glitchy block there)
@@ -1156,7 +1158,7 @@ function H.layoutHeader(W, R)
 	place(U.Close, W - R.Close - (portrait and F + 3 or 10), closeY, R.Close, R.Close) -- (its drawn X scales with it)
 	local rowH = portrait and R.Row or R.Header
 	-- the egg on its gold square (the Signboard header's icon slot), the icon a little inside it
-	local slot = R.Icon + 4
+	local slot = R.Icon -- (LOOK-ui, kitb-look1) SignKit.Sizes.IconSlot on PC (42), as every Signboard window
 	place(U.Icon, portrait and 10 or 16, F + math.floor((rowH - F - slot) / 2), slot, slot)
 	U.Icon.TextSize = math.max(12, R.Icon - 10)
 	U.Title.TextSize = R.TitleText
