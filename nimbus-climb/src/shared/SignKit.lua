@@ -8,7 +8,13 @@
 --   SignKit.Header(parent, opts)  the navy sign plank in a wood rim, its title in FredokaOne gold (Title role, through
 --                                 Theme.StyleTitle); returns head, plate (the caller adds a close X to the plate).
 --                                 opts.Ribbon: the plate is the T1 band out over the frame with its tails
---                                 (SignKit.HeaderOverhang(head, on) pulls it in and drops the tails)
+--                                 (SignKit.HeaderOverhang(head, on) pulls it in and drops the tails).
+--                                 (U9-4 look review, the one header rule) every untabbed window and side panel
+--                                 (Pets, Index, Stats, My Home, Settings, What's New, the Sky Trove) uses this
+--                                 header with Ribbon. A TABBED window (the Shop, the Gifts window) keeps its navy
+--                                 band inside the frame instead: its tabs sit on the band, where the ribbon's piping
+--                                 and tails would run under them. Both share the icon square (Sizes.IconSlot, a 2 px
+--                                 ink edge), the gold ribbon title and the red close block
 --   SignKit.Frame(parent, opts)   the wood frame under the header
 --   SignKit.Body(frame, opts)     the stone body inside it, with the stone lip along its bottom
 --   SignKit.Plank(parent, opts)   a button with a real bottom lip: hover lifts the block 2 px, press sinks it 4 px and the
