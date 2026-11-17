@@ -876,6 +876,8 @@ local function renderFooter()
 	end
 end
 
+local syncHud -- (LOOK-ui, kitb-look1) declared before fitWindow, which calls it (defined with the HUD helpers below)
+
 -- Phase 5 (6.6): the window rule. NeonKit.Dock keeps the holder docked right (landscape) / a bottom sheet (portrait)
 -- and returns its design size.
 local function fitWindow()
@@ -1117,7 +1119,7 @@ end
 ----------------------------------------------------------------------
 -- Group list (left)
 ----------------------------------------------------------------------
-local refreshAll, selectGroup, selectPet, renderDetail, showElements, revealGroupTile, H_paintTab, syncTouch, syncHud
+local refreshAll, selectGroup, selectPet, renderDetail, showElements, revealGroupTile, H_paintTab, syncTouch
 
 local function buildGroupTile(group, index)
 	local color = rarityColor(group.Rarity)
