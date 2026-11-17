@@ -6364,6 +6364,61 @@ local function clientScenarios()
 					T.check(#cut == 0, fmt("%s: no text or button cut by a clipping frame (%d)", tag, #cut), table.concat(cut, "; ", 1, math.min(#cut, 8)))
 					T.check(#tight == 0, fmt("%s: every one-line text fits its box (%d)", tag, #tight), table.concat(tight, "; ", 1, math.min(#tight, 8)))
 					T.check(#onText == 0, fmt("%s: every lead / trail icon sits beside its text, not on it (%d)", tag, #onText), table.concat(onText, "; ", 1, math.min(#onText, 8)))
+					-- (U9-7 look) the look round's placements, in screen px (each ScreenGui's inset added back): no plank cut by the
+					-- fold of its scrolling list in the first view (whole or wholly below it), Find a match whole in the Duels
+					-- page's left pane, the side stack clear of the HUD's currency strips and under Roblox's band, the desktop run
+					-- card clear of the battle HUD's enemy list and ability buttons, the End card clear of DASH / RUN and the vitals
+					local function srect(o)
+						local r = U8.rect(o)
+						local g = o:FindFirstAncestorWhichIsA("LayerCollector")
+						local k = (g and not g.IgnoreGuiInset) and Mock.TopInset or 0
+						return { X = r.X, Y = r.Y + k, R = r.R, B = r.B + k }
+					end
+					local function part(gname, pname)
+						local g = U8.pg():FindFirstChild(gname)
+						local o = g and g:FindFirstChild(pname, true)
+						return (o and o:IsA("GuiObject") and U8.shown(o) and o.AbsoluteSize.X > 4 and o.AbsoluteSize.Y > 4) and o or nil
+					end
+					local folds, clash = {}, {}
+					for _, d in ipairs(gui:GetDescendants()) do
+						local sc = d:IsA("GuiButton") and U8.shown(d) and d.AbsoluteSize.X > 0 and d:FindFirstAncestorWhichIsA("ScrollingFrame")
+						if sc and sc.CanvasPosition.Y < 1 then
+							local r, c = U8.rect(d), U8.rect(sc)
+							if U8.overlap(r, c) and not inside(r, c) then
+								folds[#folds + 1] = d.Name .. " " .. U8.show(r) .. " in " .. sc.Name .. " " .. U8.show(c)
+							end
+						end
+					end
+					T.check(#folds == 0, fmt("%s: no plank cut by its list's fold in the first view (%d)", tag, #folds), table.concat(folds, "; ", 1, math.min(#folds, 6)))
+					local function clear(a, aName, b, bName, gap)
+						if a and b then
+							local ra, rb = srect(a), srect(b)
+							gap = gap or 0
+							if U8.overlap({ X = ra.X - gap, Y = ra.Y - gap, R = ra.R + gap, B = ra.B + gap }, rb) then
+								clash[#clash + 1] = fmt("%s %s on %s %s", aName, U8.show(ra), bName, U8.show(rb))
+							end
+						end
+					end
+					if f[1] == "arena:duels" then
+						local q, left = part("NimbusArena", "Queue"), part("NimbusArena", "Left")
+						T.check(q and left and inside(U8.rect(q), U8.rect(left)), tag .. ": Find a match whole inside the Duels page's left pane",
+							(q and left) and (U8.show(U8.rect(q)) .. " in " .. U8.show(U8.rect(left))) or "missing")
+					elseif f[1] == "arena:side" then
+						local stack = part("NimbusArenaSide", "SideStack")
+						clear(stack, "the side stack", part("NimbusHud", "Currency"), "the currency strips")
+						T.check(stack and srect(stack).Y >= Mock.TopInset - 0.5, tag .. ": the side stack starts under Roblox's band", stack and U8.show(srect(stack)) or "missing")
+					elseif f[1] == "dungeon:run" and not touch then
+						local card = part("NimbusDungeonRun", "RunCard")
+						clear(card, "the run card", part("NimbusBattle", "Enemies"), "the enemy list", 4)
+						clear(card, "the run card", part("NimbusBattle", "Commands"), "the ability buttons", 4)
+					elseif f[1] == "dungeon:end" and touch then
+						local card = part("NimbusDungeonRun", "EndCard")
+						clear(card, "the End card", part("MobileControls", "DashButton"), "DASH", 4)
+						clear(card, "the End card", part("MobileControls", "RunButton"), "RUN", 4)
+						clear(card, "the End card", part("NimbusHud", "Vitals"), "the vitals", 4)
+						T.check(card and srect(card).Y >= Mock.TopInset - 0.5, tag .. ": the End card starts under Roblox's band", card and U8.show(srect(card)) or "missing")
+					end
+					T.check(#clash == 0, fmt("%s: the cards keep clear of the HUD, the battle HUD and the touch buttons (%d)", tag, #clash), table.concat(clash, "; "))
 					if touch then
 						T.check(#under == 0, fmt("%s: nothing under the thumbstick or the jump button (touch controls %s) (%d)", tag,
 							tostring(GuiService.TouchControlsEnabled), #under), table.concat(under, "; ", 1, math.min(#under, 8)))

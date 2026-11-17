@@ -1624,18 +1624,6 @@ local function buildArena()
 		})
 	end
 	ui.TabRow = tabRow
-	-- (kit-b U9-7) the trophies on a navy plate in gold (the header's colours: a counter, not a button)
-	local chip = makeFrame(ui.Bar, "Trophies", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0),
-		Size = UDim2.fromOffset(0, 48),
-		AutomaticSize = Enum.AutomaticSize.X,
-	})
-	CloudUI.SignBlock(chip, "Navy", { EdgePx = 2, LipPx = 0 })
-	pad(chip, 12, 0, 14, 0)
-	listLayout(chip, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.Trophies = lead(autoText(chip, "Value", "0", "Display", 28, SIGN.Gold, 1), "Trophy")
-	ui.Chip = chip
 
 	local function page(id)
 		local frame = makeFrame(content, "Page_" .. id, { Visible = false })
@@ -1652,14 +1640,32 @@ local function buildArena()
 	pad(quick, 14, 10, 14, 14)
 	listLayout(quick, Enum.FillDirection.Vertical, 8)
 	ui.DuelFaces = TeamFaces.New(quick, { LayoutOrder = 0, ReturnTo = panelReturn })
-	Theme.StyleTitle(makeText(quick, "Title", "Quick match", "Title", 26, INK, {
-		Size = UDim2.new(1, 0, 0, 32),
+	-- (U9-7 look) the section title with the trophies on its right (they set who you are paired with; the chip had a row
+	-- of its own under the tabs on every page), then the page's one green action, then the words: Find a match stays in
+	-- the first view at every size
+	ui.QuickHead = makeFrame(quick, "Head", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
+	Theme.StyleTitle(makeText(ui.QuickHead, "Title", "Quick match", "Title", 26, INK, {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(1, -170, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 1,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 	}), "Section")
-	wrapText(quick, "Text", "Get paired with a player near your trophies. Both of you stay in the arena: the duel runs on a free ring.", "Body", 19, MUTED, 2)
+	-- (kit-b U9-7) the trophies on a navy plate in gold (the header's colours: a counter, not a button)
+	local chip = makeFrame(ui.QuickHead, "Trophies", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+	})
+	CloudUI.SignBlock(chip, "Navy", { EdgePx = 2, LipPx = 0 })
+	pad(chip, 10, 0, 12, 0)
+	listLayout(chip, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	ui.Trophies = lead(autoText(chip, "Value", "0", "Display", 24, SIGN.Gold, 1), "Trophy")
+	ui.Chip = chip
+	local queueRow = makeFrame(quick, "Buttons", { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 2 })
 	ui.QueueStatus = wrapText(quick, "Status", "", "Heading", 20, C.Power, 3)
-	local queueRow = makeFrame(quick, "Buttons", { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 4 })
+	ui.QuickText = wrapText(quick, "Text", "Get paired with a player near your trophies. Both of you stay in the arena: the duel runs on a free ring.", "Body", 19, MUTED, 4)
 	ui.QueueButton = CloudUI.Button({
 		Name = "Queue",
 		Text = "Find a match",
@@ -1757,8 +1763,8 @@ local function buildArena()
 
 	win.OnLayout = function(w, h, narrow, short, tall)
 		local cw = w - K.INSET_X
-		-- (a landscape phone drops the trophy chip: the Record box has them, and the team's row stays whole on the page)
-		local barH = (tall and not short) and 118 or 60
+		-- (U9-7 look) the tabs alone: the trophy chip moved into the Quick match title row
+		local barH = 60
 		ui.Bar.Size = UDim2.new(1, -28, 0, barH)
 		local tabW = tall and math.floor((cw - 28 - 16) / 3) or (narrow and 180 or 200)
 		for _, tab in ipairs(TABS) do
@@ -1767,16 +1773,7 @@ local function buildArena()
 			button.TextSize = tall and 20 or 22
 			button.Text = tall and (tab.Short or tab.Label) or tab.Label
 		end
-		if tall then
-			ui.TabRow.Size = UDim2.new(1, 0, 0, 58)
-			ui.Chip.AnchorPoint = Vector2.new(0, 0)
-			ui.Chip.Position = UDim2.fromOffset(0, 68)
-			ui.Chip.Visible = not short
-		else
-			ui.TabRow.Size = UDim2.new(1, -180, 1, 0)
-			ui.Chip.AnchorPoint = Vector2.new(1, 0.5)
-			ui.Chip.Position = UDim2.new(1, 0, 0.5, 0)
-		end
+		ui.TabRow.Size = tall and UDim2.new(1, 0, 0, 58) or UDim2.new(1, 0, 1, 0)
 		local top = 10 + barH + 12
 		for _, frame in pairs(ui.Pages) do
 			frame.Position = UDim2.fromOffset(14, top)
@@ -1784,12 +1781,34 @@ local function buildArena()
 		end
 		ui.RaidScroll.Size = UDim2.new(1, 0, 1, 0)
 		ui.LeaderScroll.Size = UDim2.new(1, 0, 1, 0)
+		local mode = w < K.FACES_NARROW and "Compact" or "Card"
+		ui.DuelFaces.SetMode(mode)
+		ui.RaidFaces.SetMode(mode)
+		-- (U9-7 look) a landscape phone keeps the team and Find a match: the title row (the Record box says the
+		-- trophies) and the blurb go
+		ui.QuickHead.Visible = not short
 		if tall then
+			-- whole design px (the split was a share: the Challenge pane started at y .24), and the left pane at least down
+			-- to the bottom of Find a match: the list's pad, the card's pad, the faces, the title row, the button and its lip;
+			-- the status line under it where there is room, the blurb only when it shows whole (the fold cut it mid-line)
+			local pageH = h - K.INSET_Y - (top + 10)
+			local share = math.floor(pageH * (short and 0.68 or 0.58)) - 6
+			local need = 2 + 10 + ui.DuelFaces.Height() + 8 + (short and 0 or 48) + 56 + 6
+			local withStatus = need + 8 + 28
+			local lines = math.ceil(roughWidth(ui.QuickText.Text, 19) / math.max(1, cw - 28 - 28 - 16))
+			local whole = withStatus + 8 + lines * 26 + 14
+			ui.QuickText.Visible = not short and share >= whole
+			local leftH = share
+			if short then
+				leftH = math.max(share, need)
+			elseif share < whole then
+				leftH = math.max(need, withStatus) -- the fold on the card's bottom edge, not through a line
+			end
+			leftH = math.max(0, math.min(leftH, pageH - 12 - 44)) -- the Challenge pane keeps its heading
 			ui.DuelLeft.Position = UDim2.fromOffset(0, 0)
-			local share = short and 0.68 or 0.58
-			ui.DuelLeft.Size = UDim2.new(1, 0, share, -6)
-			ui.Challenge.Position = UDim2.new(0, 0, share, 6)
-			ui.Challenge.Size = UDim2.new(1, 0, 1 - share, -6)
+			ui.DuelLeft.Size = UDim2.new(1, 0, 0, leftH)
+			ui.Challenge.Position = UDim2.fromOffset(0, leftH + 12)
+			ui.Challenge.Size = UDim2.new(1, 0, 1, -(leftH + 12))
 		else
 			local leftW = math.floor((cw - 28) * 0.48)
 			ui.DuelLeft.Position = UDim2.fromOffset(0, 0)
@@ -1798,9 +1817,6 @@ local function buildArena()
 			ui.Challenge.Size = UDim2.new(1, -(leftW + 12), 1, 0)
 		end
 		ui.BossName.TextSize = tall and 24 or 30
-		local mode = w < K.FACES_NARROW and "Compact" or "Card"
-		ui.DuelFaces.SetMode(mode)
-		ui.RaidFaces.SetMode(mode)
 	end
 
 	local function inviteRow(parent, invite, order)
@@ -2277,8 +2293,18 @@ local function relayoutSide()
 		bottom = K.SIDE_BOTTOM_PORTRAIT * factor
 	end
 	-- (kit-b U9-7) a landscape phone: the stack steps left of the HUD's gift dock (under the currency strips at the right
-	-- edge, where an invite's Decline sat under it at 844x390)
-	local right = (area.Y < 500 and area.X > area.Y) and K.SIDE_RIGHT_SHORT or 12
+	-- edge, where an invite's Decline sat under it at 844x390); (U9-7 look) and left of the strips themselves: the HUD's
+	-- whole top-right block (TopRightLeft, gui px) reaches down beside a card on a screen this low
+	local right = 12
+	if area.Y < 500 and area.X > area.Y then
+		right = K.SIDE_RIGHT_SHORT
+		local hud = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		hud = hud and hud:FindFirstChild("NimbusHud")
+		local left = hud and hud:GetAttribute("CurrencyMode") == "TopRight" and tonumber(hud:GetAttribute("TopRightLeft"))
+		if left and left > 0 and left < area.X then
+			right = math.max(right, math.ceil(area.X - left + 8))
+		end
+	end
 	U.Side.Position = UDim2.new(1, -right, 1, -math.floor(bottom + 0.5))
 end
 
@@ -2334,6 +2360,7 @@ function refreshSide()
 	if hidden then
 		return
 	end
+	relayoutSide() -- (U9-7 look) the HUD publishes its top-right block after it builds: follow it
 	local sig = sideSignature()
 	if sig ~= S.SideSig then
 		S.SideSig = sig
@@ -2474,7 +2501,9 @@ function refreshSide()
 		local starts = nextEvent and arenaSeconds(nextEvent.StartsIn)
 		local double = S.Arena and type(S.Arena.Double) == "table" and S.Arena.Double
 		local showNext = starts and starts <= K.ANNOUNCE and starts > 0
-		if showNext or (double and double.Active) then
+		-- (U9-7 look) a short screen holds one item: a card under the chip pushed the stack's top into Roblox's band
+		local room = not (area.Y < 500 and count > 0)
+		if room and (showNext or (double and double.Active)) then
 			-- (kit-b U9-7) a navy plate with the time in gold (the trophy chip's colours: an event, not a button)
 			local chip = makeFrame(U.Side, "Countdown", {
 				Size = UDim2.fromOffset(0, 46),

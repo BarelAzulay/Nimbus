@@ -124,7 +124,8 @@ local K = {
 	FACES_NARROW = 560, -- a docked window narrower than this (phones) shows the team's faces in the Compact row
 	TOUCH_H = 56, -- design px of the party box's buttons on a phone: >= 44 px under the 0.8 touch scale
 	JUMP_INSET = 110, -- design px a landscape phone's button row keeps free on its right
-	LIST_MIN_SHORT = 70, -- design px of the floor list on a landscape phone: the team and SOLO / PARTY fit under it
+	LIST_MIN_SHORT = 66, -- design px of the floor list on a landscape phone: (U9-7 look) one whole row (the 8 px pad, a 52 px
+	-- row, the 6 px gap: the next row starts at the edge), the team and SOLO / PARTY under it
 	FIRE_GAP = 0.3, -- seconds between two sends of the same request
 	WALK_AWAY = 40, -- studs from the gate that close a window opened there
 	FLOORS = 12,
@@ -1099,8 +1100,15 @@ function W.partyMine(box, short, mine)
 			end
 		end
 	end
-	-- the buttons come before the member list (a phone's sheet bottom sits under the thumbstick / jump buttons)
-	local row = H.frame(box, "Buttons", { Size = W.buttonRow(short), LayoutOrder = 4 })
+	-- the buttons come before the member list (a phone's sheet bottom sits under the thumbstick / jump buttons); (U9-7 look) a
+	-- landscape phone puts them right under the title, before the faces (the box's fold cut them through their labels)
+	local row = H.frame(box, "Buttons", { Size = W.buttonRow(short), LayoutOrder = short and 2 or 4 })
+	if short then
+		if U.Faces then
+			U.Faces.Root.LayoutOrder = 3
+		end
+		U.Countdown.LayoutOrder = 4
+	end
 	H.list(row, Enum.FillDirection.Horizontal, 10)
 	local bw = UDim2.new(0.5, -5, 1, 0)
 	if leader then
@@ -1198,6 +1206,43 @@ function W.partyHeight(short, mine)
 	return h
 end
 
+-- (U9-7 look) the party box ends on a whole row: as tall as the rows that fit in `avail` (the next one starts at the box's
+-- edge; the fold cut a Join, a Kick or Ready / Leave through their labels), `avail` when every row fits. The rows as
+-- partyNone / partyMine lay them out: the 8 px pad, 6 px gaps
+function W.partyBoxH(avail, short, mine)
+	local faces = math.max(0, W.facesHeight() - 6)
+	local buttons = W.buttonH(short)
+	local hs = { 26 }
+	if mine then
+		local rest = short and { buttons, faces, 24 } or { faces, 24, buttons }
+		for _, h in ipairs(rest) do
+			hs[#hs + 1] = h
+		end
+		for _ = 1, #(type(mine.Members) == "table" and mine.Members or {}) do
+			hs[#hs + 1] = short and K.MEMBER_H_SHORT or K.MEMBER_H
+		end
+	else
+		for _, h in ipairs({ faces, buttons, 24 }) do
+			hs[#hs + 1] = h
+		end
+		local parties = S.Lobby and type(S.Lobby.Parties) == "table" and #S.Lobby.Parties or 0
+		for _ = 1, math.min(parties, W.maxParties(short)) do
+			hs[#hs + 1] = W.openRowH(short)
+		end
+	end
+	local y, best = 8, nil
+	for _, h in ipairs(hs) do
+		if h > 0 then
+			if y + h + 6 > avail then
+				return best or avail
+			end
+			best = y + h + 6
+			y = best
+		end
+	end
+	return avail
+end
+
 function W.footer()
 	if not U.Footer then
 		return
@@ -1273,9 +1318,12 @@ function W.refresh()
 	local footerH = H.isPhone() and 0 or 26
 	U.Footer.Visible = footerH > 0
 	local listH = math.max(short and K.LIST_MIN_SHORT or 150, contentH - 36 - partyH - footerH - 12)
+	if short then
+		listH = K.LIST_MIN_SHORT
+	end
 	U.Floors.Size = UDim2.new(1, 0, 0, listH)
 	U.Party.Position = UDim2.fromOffset(0, 36 + listH + 6)
-	U.Party.Size = UDim2.new(1, 0, 0, math.max(60, contentH - 36 - listH - 6 - footerH - 6))
+	U.Party.Size = UDim2.new(1, 0, 0, W.partyBoxH(math.max(60, contentH - 36 - listH - 6 - footerH - 6), short, mine))
 	W.footer()
 	if S.ScrollTo and U.Dock.Rect and U.Dock.Rect.mode == "Sheet" then
 		-- (a portrait sheet keeps the list at the top: its rows scrolled above the sheet would count as covered screen
@@ -1290,7 +1338,12 @@ function W.refresh()
 		local rowH = (short and K.ROW_H_SHORT or K.ROW_H) + 6
 		local top = 8 + (f - 1) * rowH
 		local maxY = math.max(0, 8 + H.floorCount() * rowH + 8 - listH)
-		U.Floors.CanvasPosition = Vector2.new(0, math.max(0, math.min(maxY, top - rowH * 0.5)))
+		-- (U9-7 look) a landscape phone's one-row list shows the selected row whole (half a row above it read as cut)
+		local want = short and (top - 8) or (top - rowH * 0.5)
+		-- CanvasPosition is screen px (it runs to AbsoluteCanvasSize - AbsoluteWindowSize): the design px times the dock's
+		-- scale (0.8 on a phone put the selected row half a row too high)
+		local scale = (U.Dock.Rect and tonumber(U.Dock.Rect.scale)) or 1
+		U.Floors.CanvasPosition = Vector2.new(0, math.max(0, math.min(maxY, want)) * scale)
 	end
 end
 
@@ -1716,6 +1769,35 @@ function R.cardHeight()
 	U.Card.Root.Size = UDim2.fromOffset(K.CARD_W, h)
 end
 
+-- (U9-7 look) a desktop card pushed down under a long enemy list (R.place) still ends 8 px above the battle HUD's ability
+-- buttons: the Wave line goes first (the HUD's mode card says the wave in a fight), then the status line, then the loot
+-- line (the room's loot still flashes on the card's toast)
+function R.fitCard()
+	if S.CardMode ~= "Card" then
+		return
+	end
+	local cmd = R.shownRect(R.guiPart("NimbusBattle", "Commands"))
+	if not cmd then
+		return
+	end
+	local f = U.CardScale.Scale
+	local root = U.Card.Root
+	local x0 = root.Position.X.Offset
+	local y0 = root.Position.Y.Offset + R.inset()
+	if cmd.x0 >= x0 + K.CARD_W * f or cmd.x1 <= x0 then
+		return
+	end
+	for _, line in ipairs({ U.CardWave, U.CardStatus, U.CardLoot }) do
+		if y0 + root.Size.Y.Offset * f <= cmd.y0 - 8 then
+			return
+		end
+		if line.Visible then
+			line.Visible = false
+			R.cardHeight()
+		end
+	end
+end
+
 -- the phone chip's one line (the battle HUD shows the wave during a fight)
 function R.chipText(room, count)
 	local run = S.Run
@@ -1791,15 +1873,31 @@ function R.place(view)
 	elseif phone then
 		-- landscape: below the strips it must still end above Roblox's jump button (70 px, 20 px off the bottom); it
 		-- shrinks down to 0.7 (20 px design text -> 14 px) for that, else it keeps its old spot and the strips hide
-		local y = math.max(52 - top, strips)
+		-- (U9-7 look) never above the gui area (the card's top was 6 px inside Roblox's band), and left of the game's own
+		-- DASH / RUN touch buttons where the card reaches down beside them (it covered the top of DASH)
+		local y = math.max(0, 52 - top, strips)
 		local scale = math.min(0.8, (h - top - 90 - 8 - y) / math.max(1, endH))
 		if scale < 0.7 then
-			y, scale = 52 - top, 0.8
+			y, scale = math.max(0, 52 - top), 0.8
 		end
 		local width = math.min(K.END_W, math.floor(w * 0.44 / scale))
+		local right = w - 12
+		local bottom = top + y + endH * scale
+		for _, name in ipairs({ "DashButton", "RunButton" }) do
+			local r = R.shownRect(R.guiPart("MobileControls", name))
+			if r and r.y0 < bottom + 8 and r.x0 - 8 < right then
+				right = math.floor(r.x0 - 8)
+			end
+		end
+		-- the HUD's vitals under the card's new column: the card ends 8 px above them (down to the 0.7 floor)
+		local vitals = R.shownRect(R.guiPart("NimbusHud", "Vitals"))
+		if vitals and vitals.x1 > right - width * scale and vitals.y0 < bottom + 8 then
+			scale = math.max(0.7, math.min(scale, (vitals.y0 - 8 - top - y) / math.max(1, endH)))
+			width = math.min(K.END_W, math.floor(w * 0.44 / scale))
+		end
 		U.EndScale.Scale = scale
 		U.End.Root.Size = UDim2.fromOffset(width, endH)
-		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - width * scale), y)
+		U.End.Root.Position = UDim2.fromOffset(math.floor(right - width * scale), y)
 	else
 		U.EndScale.Scale = f
 		U.End.Root.Size = UDim2.fromOffset(K.END_W, endH)
@@ -1810,8 +1908,16 @@ function R.place(view)
 		R.placeChip(w, h, top, view)
 		S.CardMode = "Chip"
 	else
+		-- (U9-7 look) below the battle HUD's enemy list when it reaches the card's column (four strips at 1280x720 end
+		-- under 40 % of the height), the phone chip's rule; the 4 Hz refresh re-places it as the list grows or shrinks
 		U.CardScale.Scale = f
-		U.Card.Root.Position = UDim2.fromOffset(math.floor(w - 12 - K.CARD_W * f), math.floor(h * 0.4) - top)
+		local x0 = math.floor(w - 12 - K.CARD_W * f)
+		local y = math.floor(h * 0.4)
+		local enemies = R.shownRect(R.guiPart("NimbusBattle", "Enemies"))
+		if enemies and enemies.x1 > x0 then
+			y = math.max(y, math.ceil(enemies.y1 + 8))
+		end
+		U.Card.Root.Position = UDim2.fromOffset(x0, y - top)
 		S.CardMode = "Card"
 	end
 end
@@ -2088,6 +2194,7 @@ function R.refresh()
 	U.ChipText.Visible = not S.ChipCompact
 	U.ChipButton.Visible = run.State ~= "Ending" and (toast == nil or S.ChipCompact == true)
 	R.cardHeight()
+	R.fitCard()
 	-- (bug batch 2 #14: the chip's button is LEAVE in the alcove too; chests open only at the chest)
 	U.ChipButton.Text = armed and "Sure?" or "Leave"
 	CloudUI.SetStyle(U.ChipButton, "Red")
