@@ -6428,6 +6428,17 @@ local function clientScenarios()
 						clear(card, "the End card", part("MobileControls", "RunButton"), "RUN", 4)
 						clear(card, "the End card", part("NimbusHud", "Vitals"), "the vitals", 4)
 						T.check(card and srect(card).Y >= Mock.TopInset - 0.5, tag .. ": the End card starts under Roblox's band", card and U8.show(srect(card)) or "missing")
+						-- (U9-7 look) at the kit's 0.8 on a phone either way up (a landscape phone shrank it to 0.7: its own pixel size)
+						local read = card and card:FindFirstChild("ReadScale")
+						T.check(read and read.Scale >= 0.8 - 1e-6, tag .. ": the End card at the kit's 0.8 or more", read and tostring(read.Scale) or "missing")
+					end
+					-- (U9-7 look) a window docked beside the screen (not a phone's sheet) keeps the HUD's vitals card clear: the card
+					-- slides left of the dock, or steps aside while it shows
+					for _, d in ipairs(gui:GetDescendants()) do
+						local mode = d:IsA("GuiObject") and d:GetAttribute("DockMode")
+						if mode and mode ~= "Sheet" and U8.shown(d) then
+							clear(d, "the docked window", part("NimbusHud", "Vitals"), "the vitals")
+						end
 					end
 					T.check(#clash == 0, fmt("%s: the cards keep clear of the HUD, the battle HUD and the touch buttons (%d)", tag, #clash), table.concat(clash, "; "))
 					-- (U9-7 look) the pixel rules: no rotated part (the close / kick X is the pixel x); at 1920x1080 (scale 1)
@@ -6493,6 +6504,83 @@ local function clientScenarios()
 							sizes[#sizes + 1] = k
 						end
 						T.check(#sizes <= 1, fmt("%s: one pixel size for the 18 / 27 px icons on a 0.8 screen (%s)", tag, table.concat(sizes, ", ")))
+					end
+					-- (U9-7 look, kit-level) every list's bar is the kit's square wood bar (SignKit.ScrollBar: one square piece for
+					-- its three images; Roblox's default capped it round), and every sign block's lip sits flush on its wood edge, the
+					-- block's full width at its bottom (a padded block's lip floated up by the padding, inset at the sides)
+					local round, lips, nLips = {}, {}, 0
+					for _, d in ipairs(gui:GetDescendants()) do
+						if d:IsA("ScrollingFrame") and U8.shown(d) and d.ScrollBarThickness > 0 then
+							if not (d.TopImage == d.MidImage and d.BottomImage == d.MidImage and d:GetAttribute("SignBar")) then
+								round[#round + 1] = d:GetFullName():gsub("^.-" .. f[2] .. "%.", "")
+							end
+						elseif d:IsA("Frame") and d.Name == "Lip" and d.Parent and d.Parent:FindFirstChild("SignEdge") and U8.shown(d) and d.AbsoluteSize.Y > 0 then
+							nLips = nLips + 1
+							local lr, br = U8.rect(d), U8.rect(d.Parent)
+							if math.abs(lr.B - br.B) > 0.5 or math.abs(lr.X - br.X) > 0.5 or math.abs(lr.R - br.R) > 0.5 then
+								lips[#lips + 1] = fmt("%s lip %s on %s", d.Parent:GetFullName():gsub("^.-" .. f[2] .. "%.", ""), U8.show(lr), U8.show(br))
+							end
+						end
+					end
+					T.check(#round == 0, fmt("%s: every list's bar is the kit's square bar (%d not)", tag, #round), table.concat(round, "; ", 1, math.min(#round, 6)))
+					T.check(#lips == 0, fmt("%s: every sign block's lip flush on its bottom edge (%d lips, %d not)", tag, nLips, #lips), table.concat(lips, "; ", 1, math.min(#lips, 6)))
+					-- (U9-7 look) the Ring's lists and the Duels page's two panes end after their last whole card: in the first
+					-- view a card is whole or wholly below the fold (one taller than its list may be cut; a short window's one
+					-- list, the landscape phone's Ring and the phones' Duels page, scrolls as one)
+					local wholeIn = nil
+					if f[1] == "ring" and W ~= 844 then
+						wholeIn = { Scroll = true, Side = true }
+					elseif f[1] == "arena:duels" and not touch then
+						wholeIn = { Left = true, List = true }
+					end
+					if wholeIn then
+						local cutCards, lists = {}, 0
+						for _, sc in ipairs(gui:GetDescendants()) do
+							if sc:IsA("ScrollingFrame") and wholeIn[sc.Name] and U8.shown(sc) and sc.AbsoluteSize.Y > 0 and sc.CanvasPosition.Y < 1 then
+								lists = lists + 1
+								local c = U8.rect(sc)
+								for _, card in ipairs(sc:GetChildren()) do
+									if card:IsA("GuiObject") and U8.shown(card) and card.AbsoluteSize.Y > 0 and card.AbsoluteSize.Y <= sc.AbsoluteSize.Y then
+										local r = U8.rect(card)
+										if r.Y < c.B - 0.5 and r.B > c.B + 0.5 then
+											cutCards[#cutCards + 1] = fmt("%s.%s %s in %s", sc.Name, card.Name, U8.show(r), U8.show(c))
+										end
+									end
+								end
+							end
+						end
+						T.check(lists > 0 and #cutCards == 0, fmt("%s: every card of the lists whole or below their fold (%d lists, %d cut)", tag, lists, #cutCards),
+							table.concat(cutCards, "; "))
+					end
+					-- (U9-7 look) my leaderboard row: the YOU chip after my name's box and apart from the trophies' icon (it sat on it)
+					if f[1] == "arena:leaders" then
+						local page = gui:FindFirstChild("Page_Leaderboard", true)
+						local you = page and page:FindFirstChild("You", true)
+						local row = you and you.Parent
+						local icon = row and row:FindFirstChild("Trophies") and row.Trophies:FindFirstChild("LeadIcon")
+						local name = row and row:FindFirstChild("Name")
+						local ok = you and icon and name and U8.shown(you) and true or false
+						local why = "missing"
+						if ok then
+							local yr, ir, nr = U8.rect(you), U8.rect(icon), U8.rect(name)
+							ok = yr.R <= ir.X - 2 and nr.R <= yr.X + 0.5
+							why = fmt("name %s, YOU %s, trophy %s", U8.show(nr), U8.show(yr), U8.show(ir))
+						end
+						T.check(ok, tag .. ": my row's YOU chip between my name and the trophies, apart from both", why)
+					end
+					-- (U9-7 look) the raid's next-boss plate is the Boss card's width (sized to its words it ran out of a phone's
+					-- card), its words left of the clock
+					if f[1] == "arena:raid" then
+						local nb = gui:FindFirstChild("NextBoss", true)
+						local label, clock = nb and nb:FindFirstChild("Label"), nb and nb:FindFirstChild("Clock")
+						local ok = nb and label and clock and U8.shown(nb) and true or false
+						local why = "missing"
+						if ok then
+							local r, c, lr, cr = U8.rect(nb), U8.rect(nb.Parent), U8.rect(label), U8.rect(clock)
+							ok = r.X >= c.X - 0.5 and r.R <= c.R + 0.5 and lr.R <= cr.X + 0.5 and cr.R <= r.R + 0.5
+							why = fmt("plate %s in %s, words %s, clock %s", U8.show(r), U8.show(c), U8.show(lr), U8.show(cr))
+						end
+						T.check(ok, tag .. ": the next-boss plate inside the Boss card, its words before the clock", why)
 					end
 					-- (U9-7 look) the Ring's champion against the team is pinned in the team row: whole, outside the scroller, apart
 					if f[1] == "ring" then

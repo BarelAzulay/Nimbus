@@ -56,7 +56,9 @@ function NK.protoRect(W, H, touch, prefW, prefH)
 		end
 		local w = math.min(prefW, maxW / scale)
 		local h = math.min(prefH, maxH / scale)
-		return { x = W - m - w * scale, y = 58 + m + (maxH - h * scale) / 2, w = w * scale, h = h * scale, scale = scale }
+		-- (contract deviation, U9-7 look: the prototype centred the dock under the top bar, which put a short dock's roof
+		-- into the HUD's currency strips at 1080p; it sits on the bottom margin, the same box when it is full height)
+		return { x = W - m - w * scale, y = H - m - h * scale, w = w * scale, h = h * scale, scale = scale }
 	end
 	-- (contract deviation, neonkit W2: the prototype let the sheet's bottom margin push its top to 0.44 H - m; the
 	-- sheet is m shorter so the top 44% really stays clear, as the cover rule checks)
@@ -103,6 +105,20 @@ function NK.rect(obj)
 	local p, sz = obj.AbsolutePosition, obj.AbsoluteSize
 	return { x0 = p.X, y0 = p.Y + dy, x1 = p.X + sz.X, y1 = p.Y + dy + sz.Y }
 end
+-- (U9-7 look) an object's box cut to every scrolling frame (and ClipsDescendants frame) above it: a list's rows scrolled
+-- out of its window draw nothing, so they cover nothing (the Dungeon's floor list scrolled to the picked floor)
+function NK.clipped(obj)
+	local r = NK.rect(obj)
+	local cur = obj.Parent
+	while cur and cur:IsA("GuiObject") do
+		if cur:IsA("ScrollingFrame") or cur.ClipsDescendants then
+			local c = NK.rect(cur)
+			r = { x0 = math.max(r.x0, c.x0), y0 = math.max(r.y0, c.y0), x1 = math.min(r.x1, c.x1), y1 = math.min(r.y1, c.y1) }
+		end
+		cur = cur.Parent
+	end
+	return r
+end
 -- the coverage.py port: % of the screen under opaque GUI (BackgroundTransparency < 0.5, images, viewports) of every
 -- enabled ScreenGui, on a 4 px grid; also the smallest on-screen text and any visible "Backdrop"
 function NK.coverage()
@@ -119,7 +135,7 @@ function NK.coverage()
 					end
 					local opaque = d.BackgroundTransparency < 0.5 or d:IsA("ImageLabel") or d:IsA("ImageButton") or d:IsA("ViewportFrame")
 					if opaque then
-						local r = NK.rect(d)
+						local r = NK.clipped(d)
 						local x0, y0 = math.max(0, math.floor(r.x0 / 4)), math.max(0, math.floor(r.y0 / 4))
 						local x1, y1 = math.min(cols, math.floor(r.x1 / 4)), math.min(rows, math.floor(r.y1 / 4))
 						for y = y0, y1 - 1 do

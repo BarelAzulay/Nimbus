@@ -488,7 +488,6 @@ function CloudUI.SignBlock(obj, look, opts)
 			ZIndex = obj.ZIndex,
 		}, obj)
 	end
-	lip.Size = UDim2.new(1, 0, 0, lipPx)
 	lip.BackgroundColor3 = opts.LipColor or opts.Lip or look.Lip
 	lip.Visible = lipPx > 0
 	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
@@ -501,6 +500,15 @@ function CloudUI.SignBlock(obj, look, opts)
 			pad.PaddingBottom = UDim.new(0, lipPx)
 		end
 	end
+	-- (U9-7 look) a UIPadding lays out the block's children too: the lip is pushed back out by it, so it stays flush on the
+	-- wood edge (the pitch, the planks, tiles and BlockRows) and not 5 px up with a strip of face under it. The padding
+	-- Roblox applies is the block's first UIPadding (the LipPad, or a caller's own); a press's PaddingTop does not move it
+	local applied = obj:FindFirstChildOfClass("UIPadding")
+	local pl = applied and applied.PaddingLeft.Offset or 0
+	local pr = applied and applied.PaddingRight.Offset or 0
+	local pb = applied and applied.PaddingBottom.Offset or 0
+	lip.Position = UDim2.new(0, -pl, 1, pb)
+	lip.Size = UDim2.new(1, pl + pr, 0, lipPx)
 	if name then
 		obj:SetAttribute("SignLook", name)
 	end
@@ -2451,10 +2459,8 @@ function CloudUI.Grid(parent, cellSize, cellPadding)
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 10,
-		ScrollBarImageColor3 = Theme.Lighten(NEON.Blue, 0.2),
-		ScrollBarImageTransparency = 0.1,
 	})
+	SignKit.ScrollBar(scroll) -- (U9-7 look) the kit's wood bar, square ends (was the old kit's 10 px neon blue)
 	padding(scroll, 10, 10, 10, 10)
 	Util.Create("UIGridLayout", {
 		Name = "Layout",

@@ -16,6 +16,7 @@
 --                                 Style Off is disabled; SignKit.PlankState(plank, "Rest" | "Hover" | "Press") sets one
 --   SignKit.Rope(parent, opts)    a rope / post the board hangs from
 --   SignKit.BlockRow(parent, opts) n stone blocks with a darker lip; SignKit.FillBlocks(row, k) turns the first k gold
+--   SignKit.ScrollBar(scroll, opts) (U9-7 look) a list's bar: the kit's thickness, the wood, square ends
 --   SignKit.Notice(parent, opts)  a small wood-framed stone card (a tip, a notice); returns notice, face
 --   SignKit.Nails(board, opts)    (U9-7) two nail heads on a hanging board's top corners (the handmade touch)
 --   SignKit.Rig(parts, opts)      (sign/logo build: the owner's pick B2 "Sky-climber's rig", 2026-11-13; it replaced the
@@ -131,6 +132,27 @@ local function text(name, value, role, size, colour, props, parent)
 	end
 	l.Parent = parent
 	return l
+end
+
+----------------------------------------------------------------------
+-- scroll bar
+----------------------------------------------------------------------
+
+-- (U9-7 look) every kit B list's bar: Sizes.ScrollBar thick, opaque, in the wood, and square at both ends. Roblox's own
+-- top / bottom images are round caps (a smooth capsule beside the square planks, a brown pill when the thumb is short):
+-- all three parts take the built-in middle piece, so the bar is a plain block (no upload). opts: Thickness, Color.
+-- Returns the ScrollingFrame.
+SignKit.ScrollImage = "rbxasset://textures/ui/Scroll/scroll-middle.png"
+function SignKit.ScrollBar(scroll, opts)
+	opts = opts or {}
+	scroll.ScrollBarThickness = tonumber(opts.Thickness) or Z.ScrollBar
+	scroll.ScrollBarImageColor3 = opts.Color or Sign.Wood
+	scroll.ScrollBarImageTransparency = 0
+	scroll.TopImage = SignKit.ScrollImage
+	scroll.MidImage = SignKit.ScrollImage
+	scroll.BottomImage = SignKit.ScrollImage
+	scroll:SetAttribute("SignBar", true)
+	return scroll
 end
 
 ----------------------------------------------------------------------

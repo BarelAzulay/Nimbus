@@ -111,6 +111,10 @@ local State = require(Client:WaitForChild("State"))
 local DungeonController = {}
 DungeonController.Opened = Util.Signal()
 DungeonController.Closed = Util.Signal()
+-- (U9-7 look) MEASURE(label, text, width) -> Vector2: replaces TextService (Theme.MeasureLabel) for the End card's reason
+-- line and the phone chip's width; tools/dump_gui.lua's renders pass the renderer's font metrics (the mock's GetTextSize is
+-- a flat 0.5 em per character and never wraps)
+DungeonController.Metrics = { MEASURE = nil }
 
 ----------------------------------------------------------------------
 -- Tunables (design px of a 1080p screen unless noted)
@@ -146,6 +150,7 @@ local K = {
 	CHIP_EDGE = 20, -- a dropped chip's right margin (the HUD's touch margin: the strips' right edge)
 	CHIP_GAP = 6, -- between a dropped chip and what it hangs under
 	END_W = 400,
+	END_MIN_W = 300, -- (U9-7 look) design px: a landscape phone's End card is never squeezed narrower for a spot
 	CHIP_ROW = 30, -- (U9-7 look) design px of a reward chip (H.rewardChip) and of the End card's first-clear plate
 	ICON_TILE = 30, -- (U9-7 look) the pitch toast's icon tile on the loot plate and the phone chip (H.iconTile)
 	LEAVE_CONFIRM = 3, -- seconds the first LEAVE press stays armed
@@ -765,8 +770,7 @@ function W.build()
 	U.Floors.Name = "Floors"
 	H.well(U.Floors)
 	U.Floors.BorderSizePixel = 0
-	U.Floors.ScrollBarThickness = SignKit.Sizes.ScrollBar
-	U.Floors.ScrollBarImageColor3 = SIGN.Wood
+	SignKit.ScrollBar(U.Floors) -- (U9-7 look) the kit's wood bar, square ends
 	U.Floors.ScrollingDirection = Enum.ScrollingDirection.Y
 	U.Floors.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	U.Floors.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -783,8 +787,7 @@ function W.build()
 	U.Party.Name = "Party"
 	H.well(U.Party)
 	U.Party.BorderSizePixel = 0
-	U.Party.ScrollBarThickness = SignKit.Sizes.ScrollBar
-	U.Party.ScrollBarImageColor3 = SIGN.Wood
+	SignKit.ScrollBar(U.Party)
 	U.Party.ScrollingDirection = Enum.ScrollingDirection.Y
 	U.Party.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	U.Party.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -1365,17 +1368,15 @@ function W.refresh()
 	if short then
 		listH = K.LIST_MIN_SHORT
 	end
+	-- (U9-7 look) whole rows only: the list's top pad and n rows with their gaps (238 px at 1080p showed half a row at
+	-- each end); what is left goes to the party box under it
+	local rowStep = (short and K.ROW_H_SHORT or K.ROW_H) + 6
+	listH = 8 + math.max(1, math.floor((listH - 8) / rowStep)) * rowStep
 	local pad = CloudUI.Metrics.SignPagePad
 	U.Floors.Size = UDim2.new(1, -2 * pad, 0, listH)
 	U.Party.Position = UDim2.fromOffset(pad, 36 + listH + 6)
 	U.Party.Size = UDim2.new(1, -2 * pad, 0, W.partyBoxH(math.max(60, contentH - 36 - listH - 6 - footerH - 6), short, mine))
 	W.footer()
-	if S.ScrollTo and U.Dock.Rect and U.Dock.Rect.mode == "Sheet" then
-		-- (a portrait sheet keeps the list at the top: its rows scrolled above the sheet would count as covered screen
-		-- for the coverage rule, which does not clip scrolling frames)
-		S.ScrollTo = nil
-		U.Floors.CanvasPosition = Vector2.new(0, 0)
-	end
 	if S.ScrollTo then
 		-- bring the selected floor into view once after opening
 		local f = S.ScrollTo
@@ -1383,8 +1384,10 @@ function W.refresh()
 		local rowH = (short and K.ROW_H_SHORT or K.ROW_H) + 6
 		local top = 8 + (f - 1) * rowH
 		local maxY = math.max(0, 8 + H.floorCount() * rowH + 8 - listH)
-		-- (U9-7 look) a landscape phone's one-row list shows the selected row whole (half a row above it read as cut)
-		local want = short and (top - 8) or (top - rowH * 0.5)
+		-- (U9-7 look) the selected row whole at the top of the list, on every screen (a portrait sheet kept the list at
+		-- floor 1 and showed floors 1-2 with the picked floor 3 under the fold; half a row above it read as cut on PC). The
+		-- coverage checks clip a scrolling frame's rows to it, so the rows scrolled away no longer count as covered screen
+		local want = top - 8
 		-- CanvasPosition is screen px (it runs to AbsoluteCanvasSize - AbsoluteWindowSize): the design px times the dock's
 		-- scale (0.8 on a phone put the selected row half a row too high)
 		local scale = (U.Dock.Rect and tonumber(U.Dock.Rect.scale)) or 1
@@ -1623,6 +1626,13 @@ function R.build()
 	end)
 	U.ChipButton.AnchorPoint = Vector2.new(1, 0.5)
 	U.ChipButton.Position = UDim2.new(1, -5, 0.5, 0)
+	-- (U9-7 look) the bars' one language on the phone chip too: the countdown's five gold blocks (the desktop card's row)
+	-- and a run's room blocks, at the chip's right end before its button (R.fitChip places them and fits the chip round
+	-- its words and blocks: it was a wide plank with only words, about 60 % blank)
+	U.ChipCount = SignKit.BlockRow(chip.Body, { Count = 5, BlockW = 22, BlockH = 14, Gap = 4, LipPx = 3 })
+	U.ChipCount.Name = "CountBlocks"
+	U.ChipCount.AnchorPoint = Vector2.new(1, 0.5)
+	U.ChipCount.Visible = false
 	-- the End card
 	-- (kit-b U9-7) the End card: a stone notice nailed up, its lip green for a cleared floor, red for a lost run (R.fillEnd)
 	local endCard = NeonKit.Card({ Name = "EndCard", Skin = "Sign", Size = UDim2.fromOffset(K.END_W, 200), Color = C.Accent, LipPx = K.CARD_LIP, Parent = gui })
@@ -1846,7 +1856,9 @@ end
 
 -- (U9-7 look) a desktop card pushed down under a long enemy list (R.place) still ends 8 px above the battle HUD's ability
 -- buttons: the Wave line goes first (the HUD's mode card says the wave in a fight), then the status line, then the loot
--- line (the room's loot still flashes on the card's toast)
+-- line (the room's loot still flashes on the card's toast), then the party's chips and the room line (the mode card says
+-- the room too); a card that still reaches them (the loot plate under four enemy rows) takes the chip form meanwhile.
+-- R.refresh shows every line again on its next pass
 function R.fitCard()
 	if S.CardMode ~= "Card" then
 		return
@@ -1862,13 +1874,73 @@ function R.fitCard()
 	if cmd.x0 >= x0 + K.CARD_W * f or cmd.x1 <= x0 then
 		return
 	end
-	for _, line in ipairs({ U.CardWave, U.CardStatus, U.CardLoot }) do
+	for _, line in ipairs({ U.CardWave, U.CardStatus, U.CardLoot, U.CardMembers, U.CardRoom }) do
 		if y0 + root.Size.Y.Offset * f <= cmd.y0 - 8 then
 			return
 		end
 		if line.Visible then
 			line.Visible = false
 			R.cardHeight()
+		end
+	end
+	if y0 + root.Size.Y.Offset * f > cmd.y0 - 8 then
+		local vp = H.viewport()
+		R.placeChip(vp.X, vp.Y, R.inset(), R.view())
+		S.CardMode = "Chip"
+		root.Visible = false
+		U.Chip.Root.Visible = true
+		R.fitChip()
+	end
+end
+
+-- (U9-7 look) the phone chip round what it shows: its icon tile, its words (measured with the widest digits, so a ticking
+-- clock does not resize it every second), its block row and its button, 8 px each side and 16 px to spare; never wider
+-- than R.placeChip gave it (S.ChipMaxW: a chip fitted round a short toast grows back for longer words). A chip under the
+-- band keeps its right edge (S.ChipRight), one in the band its left
+function R.fitChip()
+	local root = U.Chip.Root
+	local maxW = S.ChipMaxW or root.Size.X.Offset
+	if not U.ChipText.Visible or maxW <= 0 then
+		return
+	end
+	local ix = U.ChipIcon.Visible and (K.ICON_TILE + 4) or 0
+	local m = R.measure(U.ChipText, (U.ChipText.Text:gsub("%d", "8")), nil)
+	local textW = m and math.ceil(m.X) or math.ceil(#U.ChipText.Text * U.ChipText.TextSize * 0.6)
+	local blocks = nil
+	if U.ChipCount.Visible then
+		blocks = U.ChipCount
+	else
+		blocks = U.ChipText:FindFirstChild("Rooms")
+	end
+	local blocksW = blocks and (blocks.Size.X.Offset + 10) or 0
+	local buttonW = U.ChipButton.Visible and (U.ChipButton.Size.X.Offset + 5) or 0
+	local want = 12 + ix + textW + blocksW + buttonW + 8 + 16
+	-- the room blocks only beside words that stay whole ("Pick ONE chest! 0:40" beside LEAVE fills a dropped chip): the
+	-- words say what to do, the blocks only where the run is
+	local rooms = U.ChipText:FindFirstChild("Rooms")
+	if rooms then
+		rooms.Visible = want <= maxW
+		if not rooms.Visible then
+			want = want - blocksW
+			blocksW = 0
+		end
+	end
+	local width = math.min(maxW, want)
+	-- the words fill what is left of the chip; the blocks sit right after them, inside it
+	local textBox = width - 12 - ix - blocksW - buttonW - 8
+	U.ChipText.Size = UDim2.new(0, math.max(0, textBox), 1, 0)
+	if U.ChipCount.Visible then
+		U.ChipCount.Position = UDim2.new(1, -(buttonW + 8), 0.5, 0)
+	end
+	if rooms then
+		-- the room blocks hang off the words' right end (R.pips anchors them to the label's right edge)
+		rooms.AnchorPoint = Vector2.new(1, 0.5)
+		rooms.Position = UDim2.new(1, 10 + rooms.Size.X.Offset, 0.5, 0)
+	end
+	if width ~= root.Size.X.Offset then
+		root.Size = UDim2.fromOffset(width, root.Size.Y.Offset)
+		if S.ChipRight then
+			root.Position = UDim2.fromOffset(math.floor(S.ChipRight - width * U.ChipScale.Scale + 0.5), root.Position.Y.Offset)
 		end
 	end
 end
@@ -1894,9 +1966,12 @@ end
 -- red while it is ahead). The flat pips had no edge and no lip
 function R.pips(label, room, count)
 	local row = label:FindFirstChild("Rooms")
-	if row and row:GetAttribute("Count") ~= count then
+	if row and (room == nil or row:GetAttribute("Count") ~= count) then
 		row:Destroy()
 		row = nil
+	end
+	if room == nil then
+		return -- (U9-7 look) no blocks (the phone chip's countdown, a toast)
 	end
 	if not row then
 		row = SignKit.BlockRow(label, { Count = count, BlockW = 14, BlockH = 12, Gap = 3, LipPx = 2 })
@@ -1964,50 +2039,16 @@ function R.place(view)
 	if phone and w < h then
 		-- portrait: right of the menu tile column, under the currency strips (clear of the screen's centre)
 		S.EndCompact = false
+		S.EndVitalsOff = false
 		local scale = 0.8
 		U.EndScale.Scale = scale
 		U.End.Root.Size = UDim2.fromOffset(math.floor((w - 172) / scale), endH)
 		U.End.Root.Position = UDim2.fromOffset(160, math.max(math.floor(h * 0.18) - top, strips))
 	elseif phone then
-		-- landscape: below the strips it must still end above Roblox's jump button (70 px, 20 px off the bottom); it
-		-- shrinks down to 0.7 (20 px design text -> 14 px) for that, else it keeps its old spot and the strips hide
-		-- (U9-7 look) never above the gui area (the card's top was 6 px inside Roblox's band), and left of the game's own
-		-- DASH / RUN touch buttons where the card reaches down beside them (it covered the top of DASH)
-		local y = math.max(0, 52 - top, strips)
-		-- (U9-7 look) the kit B card runs taller: below the strips it drops its reason line (the title says the floor)
-		-- before it gives their place up; R.fillEnd, right after this, reads S.EndCompact. Weighed on every refresh, as
-		-- the strips' bottom moves (the gift steps aside once the card is up)
-		local function scaleFor(cardH)
-			return math.min(0.8, (h - top - 90 - 8 - y) / math.max(1, cardH))
-		end
-		local reasonRow = U.EndReason.Size.Y.Offset + 6
-		local fullH = S.EndCompact and (endH + reasonRow) or endH
-		S.EndCompact = S.End ~= nil and scaleFor(fullH) < 0.7 and scaleFor(fullH - reasonRow) >= 0.7
-		endH = S.EndCompact and (fullH - reasonRow) or fullH
-		local scale = scaleFor(endH)
-		if scale < 0.7 then
-			y, scale = math.max(0, 52 - top), 0.8
-		end
-		local width = math.min(K.END_W, math.floor(w * 0.44 / scale))
-		local right = w - 12
-		local bottom = top + y + endH * scale
-		for _, name in ipairs({ "DashButton", "RunButton" }) do
-			local r = R.shownRect(R.guiPart("MobileControls", name))
-			if r and r.y0 < bottom + 8 and r.x0 - 8 < right then
-				right = math.floor(r.x0 - 8)
-			end
-		end
-		-- the HUD's vitals under the card's new column: the card ends 8 px above them (down to the 0.7 floor)
-		local vitals = R.shownRect(R.guiPart("NimbusHud", "Vitals"))
-		if vitals and vitals.x1 > right - width * scale and vitals.y0 < bottom + 8 then
-			scale = math.max(0.7, math.min(scale, (vitals.y0 - 8 - top - y) / math.max(1, endH)))
-			width = math.min(K.END_W, math.floor(w * 0.44 / scale))
-		end
-		U.EndScale.Scale = scale
-		U.End.Root.Size = UDim2.fromOffset(width, endH)
-		U.End.Root.Position = UDim2.fromOffset(math.floor(right - width * scale), y)
+		R.placeEndLandscape(w, h, top, endH, strips)
 	else
 		S.EndCompact = false
+		S.EndVitalsOff = false
 		U.EndScale.Scale = f
 		U.End.Root.Size = UDim2.fromOffset(K.END_W, endH)
 		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - K.END_W * f), math.floor(h * 0.3) - top)
@@ -2031,6 +2072,118 @@ function R.place(view)
 	end
 end
 
+-- (U9-7 look) the End card on a landscape phone, always at the kit's 0.8 (it shrank to 0.7 under the strips: a pixel size of
+-- its own, reward text under the 14 px floor, and it still sat on the HUD's vitals). The first spot that holds it whole,
+-- 8 px clear of the vitals, of DASH / RUN and above Roblox's jump band: the column LEFT of the HUD's currency strips at the
+-- top of the gui area (the strips stay in view), under the strips, then the top-right corner (the strips step aside:
+-- HudController's corner card); each with the reason line, then without it (the title says the floor). None: the corner
+-- without it, the vitals card hidden while it shows (S.EndVitalsOff -> R.endVitals). Weighed on every refresh (R.fillEnd,
+-- right after, reads S.EndCompact); the inputs are the HUD's laid-out slots, so hiding the strips or the vitals does not
+-- feed back. strips: R.stripsBottom()
+function R.placeEndLandscape(w, h, top, endH, strips)
+	local scale = 0.8
+	local reasonRow = U.EndReason.Size.Y.Offset + 6
+	local fullH = S.EndCompact and (endH + reasonRow) or endH
+	local y0 = math.max(0, 52 - top) -- never above the gui area
+	local maxW = math.min(K.END_W, math.floor(w * 0.44 / scale))
+	local buttons = {}
+	for _, name in ipairs({ "DashButton", "RunButton" }) do
+		buttons[#buttons + 1] = R.shownRect(R.guiPart("MobileControls", name))
+	end
+	local vitals = R.vitalsSlot(top)
+	local leftEdge = R.menuRight(w) + 8
+	-- one spot: the card's right edge (screen px), its top (gui px), its design height -> right, width or nil
+	local function try(right, y, cardH, ignoreVitals)
+		local bottom = top + y + cardH * scale
+		if bottom > h - 90 - 8 then
+			return nil -- into Roblox's jump button (70 px, 20 px off the bottom)
+		end
+		for _, r in ipairs(buttons) do
+			if r.y0 < bottom + 8 and r.x0 - 8 < right and r.x1 + 8 > right - maxW * scale then
+				right = math.floor(r.x0 - 8)
+			end
+		end
+		local width = math.min(maxW, math.floor((right - leftEdge) / scale))
+		if width < K.END_MIN_W then
+			return nil
+		end
+		local left = right - width * scale
+		if vitals and not ignoreVitals and left < vitals.x1 + 8 and vitals.x0 < right + 8 and top + y < vitals.y1 + 8 and vitals.y0 < bottom + 8 then
+			return nil
+		end
+		return right, width
+	end
+	local spots = {}
+	local stripsLeft = R.stripsLeft()
+	if stripsLeft then
+		spots[#spots + 1] = { stripsLeft - 8, y0 }
+	end
+	if strips > 0 then
+		spots[#spots + 1] = { w - 12, math.max(y0, strips) }
+	end
+	spots[#spots + 1] = { w - 12, y0 }
+	local right, width, y, compact = nil, nil, y0, false
+	for _, spot in ipairs(spots) do
+		for _, drop in ipairs({ false, true }) do
+			if not right and (not drop or S.End ~= nil) then
+				right, width = try(spot[1], spot[2], drop and (fullH - reasonRow) or fullH)
+				y, compact = spot[2], drop
+			end
+		end
+	end
+	S.EndVitalsOff = false
+	if not right then
+		-- nowhere clear of the vitals: the corner without the reason line, and the vitals card steps aside meanwhile
+		y, compact = y0, S.End ~= nil
+		right, width = try(w - 12, y0, compact and (fullH - reasonRow) or fullH, true)
+		right, width = right or (w - 12), width or maxW
+		S.EndVitalsOff = vitals ~= nil
+	end
+	S.EndCompact = compact
+	U.EndScale.Scale = scale
+	U.End.Root.Size = UDim2.fromOffset(width, compact and (fullH - reasonRow) or fullH)
+	U.End.Root.Position = UDim2.fromOffset(math.floor(right - width * scale), y)
+end
+
+-- (U9-7 look) the HUD's vitals card slot in screen px (HudController.GetLayout().VitalsSlot: the same rect shown or
+-- hidden, so the card's own hide does not move the End card), else its shown box, else nil
+function R.vitalsSlot(top)
+	local hud = H.controller("HudController")
+	local ok, layout = pcall(function()
+		return hud and hud.GetLayout()
+	end)
+	local slot = ok and type(layout) == "table" and layout.VitalsSlot or nil
+	if type(slot) == "table" and tonumber(slot.W) and slot.W > 0 then
+		return { x0 = slot.X, y0 = slot.Y + top, x1 = slot.X + slot.W, y1 = slot.Y + slot.H + top }
+	end
+	return R.shownRect(R.guiPart("NimbusHud", "Vitals"))
+end
+
+-- (U9-7 look) the left edge of the HUD's currency strips in the top-right corner (screen px = gui px across), nil when
+-- they are elsewhere: HudController's TopRightLeft, laid out whether or not a corner card hides them meanwhile
+function R.stripsLeft()
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	if not hud or hud:GetAttribute("CurrencyMode") ~= "TopRight" then
+		return nil
+	end
+	local left = tonumber(hud:GetAttribute("TopRightLeft"))
+	return (left and left > 0) and math.floor(left) or nil
+end
+
+-- (U9-7 look) the vitals card steps aside while the End card has nowhere else (HudController.SetVitalsHidden "DungeonEnd")
+function R.endVitals(off)
+	off = off == true
+	if S.EndVitalsHid == off then
+		return
+	end
+	S.EndVitalsHid = off
+	local hud = H.controller("HudController")
+	if hud and type(hud.SetVitalsHidden) == "function" then
+		H.safe("vitals", hud.SetVitalsHidden, "DungeonEnd", off)
+	end
+end
+
 -- (U9-7 review) the phone chip. In Roblox's top band right of the top bar's pill (and of the HUD's strips when a battle
 -- puts them in the band) and left of Roblox's "..." button, as wide as that span allows: the text truncates before LEAVE
 -- moves. A span under K.CHIP_BAND_MIN (a run's three strips fill a landscape band, the pill a portrait one) drops the chip
@@ -2044,9 +2197,11 @@ function R.placeChip(w, h, top, view)
 	local x0 = math.max((w < h) and 132 or math.max(300, math.floor(w * 0.36)), pill and math.ceil(pill.x1 + 8) or 0, R.pillsRight() + 8)
 	local x1 = w - K.CHIP_RIGHT
 	S.ChipCompact = false
+	S.ChipRight = nil -- (U9-7 look) R.fitChip: a chip in the band keeps its left edge
 	if x1 - x0 >= K.CHIP_BAND_MIN then
 		U.Chip.Root.Size = UDim2.fromOffset(math.min(K.CHIP_MAX_W, math.floor((x1 - x0) / scale)), K.CHIP_H)
 		U.Chip.Root.Position = UDim2.fromOffset(x0, 4 - top)
+		S.ChipMaxW = U.Chip.Root.Size.X.Offset
 		return
 	end
 	local battle = R.battleParts()
@@ -2099,6 +2254,8 @@ function R.placeChip(w, h, top, view)
 	end
 	U.Chip.Root.Size = UDim2.fromOffset(width, K.CHIP_H)
 	U.Chip.Root.Position = UDim2.fromOffset(math.floor(left + 0.5), y - top)
+	S.ChipRight = right -- (U9-7 look) R.fitChip: a dropped chip keeps its right edge
+	S.ChipMaxW = width
 end
 
 -- a gui part by its ScreenGui's name and its own (searched below it), or nil
@@ -2196,6 +2353,7 @@ function R.refresh()
 		U.Card.Root.Visible = false
 		U.Chip.Root.Visible = false
 		U.End.Root.Visible = false
+		R.endVitals(false)
 		return
 	end
 	R.place(view)
@@ -2208,6 +2366,7 @@ function R.refresh()
 	-- the End card
 	local endShown = S.End ~= nil and now - S.EndAt < K.END_SECONDS and not H.inMatch()
 	U.End.Root.Visible = endShown
+	R.endVitals(endShown and S.EndVitalsOff == true)
 	if endShown then
 		R.fillEnd()
 	end
@@ -2222,6 +2381,8 @@ function R.refresh()
 		local f = math.floor(tonumber(mine.Floor) or 1)
 		U.CardTitle.Text = "The Dungeon " .. G.Dot .. " Floor " .. f
 		PixelIcon.Mark(U.CardTitle, "flame") -- (kit-b U7b) the torch of the countdown
+		U.CardStatus.Visible = true -- (U9-7 look) R.fitCard hides lines for one pass only
+		U.CardRoom.Visible = true
 		U.CardRoom.Text = cd
 		PixelIcon.Mark(U.CardRoom, nil, { After = true })
 		U.CardWave.Visible = false
@@ -2235,11 +2396,15 @@ function R.refresh()
 		U.CardLeave.Visible = false
 		U.ChipText.Visible = true
 		U.ChipText.Text = cd
+		U.ChipCount.Visible = true
+		SignKit.FillBlocks(U.ChipCount, math.min(5, W.countdown(mine) or 0))
+		R.pips(U.ChipText, nil) -- (no room blocks before a run)
 		U.ChipButton.Text = "Ready"
 		CloudUI.SetStyle(U.ChipButton, "Green") -- (kit-b U9-7) READY is the chip's one green; in a run it is Leave (red)
 		U.ChipButton.Visible = needReady
 		H.setIconTile(U.ChipIcon, nil)
 		R.cardHeight()
+		R.fitChip()
 		return
 	end
 	local run = S.Run
@@ -2250,6 +2415,8 @@ function R.refresh()
 	U.Card.SetColor(H.elementColor(run.Element or info.Element))
 	U.CardTitle.Text = "Floor " .. f .. " " .. G.Dot .. " " .. tostring(run.Name or info.Name)
 	PixelIcon.Mark(U.CardTitle, nil)
+	U.CardStatus.Visible = true -- (U9-7 look) R.fitCard hides lines for one pass only
+	U.CardRoom.Visible = true
 	U.CardRoom.Text = (room >= count) and "Boss room" or ("Room " .. room .. " / " .. count)
 	R.pips(U.CardRoom, room, count)
 	local waves = tonumber(run.Waves)
@@ -2311,7 +2478,11 @@ function R.refresh()
 	U.ChipText.Visible = not S.ChipCompact
 	U.ChipButton.Visible = run.State ~= "Ending" and (toast == nil or S.ChipCompact == true)
 	H.setIconTile(U.ChipIcon, (toast and not S.ChipCompact) and toast.Icon or nil)
+	U.ChipCount.Visible = false
+	-- (U9-7 look) the run's room blocks after the chip's words (not on a toast, not on a chip that is its LEAVE alone)
+	R.pips(U.ChipText, (toast == nil and not S.ChipCompact) and room or nil, count)
 	R.cardHeight()
+	R.fitChip()
 	R.fitCard()
 	-- (bug batch 2 #14: the chip's button is LEAVE in the alcove too; chests open only at the chest)
 	U.ChipButton.Text = armed and "Sure?" or "Leave"
@@ -2362,6 +2533,33 @@ function R.showLoss(e)
 		H.safe("result card", battle.HideResult)
 	end
 	return true
+end
+
+-- (U9-7 look) a text's size in a label's font: DungeonController.Metrics.MEASURE, else Theme.MeasureLabel (TextService);
+-- width: the wrap width (nil: one line). -> Vector2 or nil
+function R.measure(label, text, width)
+	local hook = DungeonController.Metrics.MEASURE
+	local ok, size = pcall(function()
+		if hook then
+			return hook(label, text, width)
+		end
+		return Theme.MeasureLabel(label, text, label.TextSize, width)
+	end)
+	return (ok and typeof(size) == "Vector2") and size or nil
+end
+
+-- the design px a wrapped label needs for `text` at `width`: its rows at the label's size (a row is TextSize tall in Roblox)
+-- and 7 px under them (one row: the 26 px row it had). A measure that did not wrap (wider than the width) counts its rows
+function R.textHeight(label, text, width)
+	local size = label.TextSize
+	local m = R.measure(label, text, width)
+	local rows = 1
+	if m and m.X <= width + 1 then
+		rows = math.max(1, math.floor(m.Y / size + 0.5))
+	elseif m then
+		rows = math.max(1, math.ceil(m.X / math.max(1, width)))
+	end
+	return rows * size + 7
 end
 
 function R.fillEnd()
@@ -2437,7 +2635,9 @@ function R.fillEnd()
 	local narrow = U.End.Root.Size.X.Offset < 340
 	U.EndTitle.TextSize = narrow and 20 or 28 -- (kit-b U9-7) "FLOOR 3 CLEARED!" and its sparkle on a portrait phone
 	local row = narrow and 46 or 26
-	local reasonH = (#text > (narrow and 26 or 40)) and 50 or 26
+	-- (U9-7 look) the reason row as tall as its wrapped text (a fixed two-line row cut a portrait phone's four-line wipe
+	-- through its third line, under the reward chips, and lost the fourth)
+	local reasonH = R.textHeight(U.EndReason, text, U.End.Root.Size.X.Offset - 32)
 	U.EndReason.Size = UDim2.new(1, 0, 0, reasonH)
 	U.EndReason.Visible = not S.EndCompact
 	local reasonRow = S.EndCompact and 0 or (reasonH + 6)

@@ -804,14 +804,16 @@ local function clientScenarios()
 			local row = find(arenaWin, "Rank" .. i)
 			if row then
 				rows = rows + 1
-				local nm = row:FindFirstChild("Name")
-				if nm and nm.Text:lower():find("(you)", 1, true) then
+				-- (U9-7 look) the player's own row carries a YOU chip before the trophies (the "(you)" suffix got cut)
+				local you = row:FindFirstChild("You")
+				local word = you and you:FindFirstChild("Word")
+				if word and shown(you) and word.Text == "YOU" then
 					mine = i
 				end
 			end
 		end
 		T.eq(rows, 3, "p3ui arena: one leaderboard row per ArenaState.Leaderboard entry")
-		T.eq(mine, 2, "p3ui arena: the player's own row is marked (you)")
+		T.eq(mine, 2, "p3ui arena: the player's own row is marked with its YOU chip")
 		local small3 = smallTexts(arenaWin, 18)
 		T.check(#small3 == 0, "p3ui arena: every text of the leaders tab is >= 18 design px", table.concat(small3, ", "))
 		-- a duel pad prompt (RingIndex) opens the Duels tab

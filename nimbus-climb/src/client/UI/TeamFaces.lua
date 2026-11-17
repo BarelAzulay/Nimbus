@@ -9,7 +9,8 @@
 --       hidden): beside Edit team in a Card row, a line of SlotH.Compact px under the faces in a Compact row, a line of
 --       SlotH.Column px under a full-width Edit team in a Column (no height: no line). The Ring pins its champion there.
 --       Frame "TeamFaces": Face1..Face3 (Picture, Tag "FIGHTER" | "HELPER", Level "L12", Power, Busy, StageBadge + attribute Stage; an open
---       slot shows Empty "Empty", a slot whose pet is busy shows Empty "Training" | "Gardening" and the Busy mark), TeamPower and
+--       slot shows Empty "Empty", a slot whose pet is busy shows Empty "Training" | "Gardening" and the Busy mark; a Compact
+--       face the word alone, "Training" | "Garden"), TeamPower and
 --       the TextButton EditTeam ("Edit team", 56 design px: >= 44 px under the 0.8 touch scale).
 --         Card     the faces in a row, a line below with TeamPower and EditTeam (wide windows)
 --         Compact  the faces in a row with EditTeam beside them, one line high (phones: the Dungeon's party box); no TeamPower
@@ -67,6 +68,9 @@ local ROLE_COLOR = { FIGHTER = SIGN.Red, HELPER = SIGN.Sky }
 local POWER_ICON = "sword"
 local BUSY_ICON = { Training = "weight", Garden = "sprout" }
 local BUSY_WORD = { Training = "Training", Garden = "Gardening" }
+-- (U9-7 look) a Compact face's busy slot: the word alone, centred under the tag (as an open slot's "Empty"); the 18 px mark
+-- had a 20 px row between the tag and the word (it ran into both), and "Gardening" filled the tile edge to edge
+local BUSY_SHORT = { Training = "Training", Garden = "Garden" }
 
 local frame, text, stroke = Bits.frame, Bits.text, Bits.stroke
 
@@ -309,7 +313,7 @@ local function paintFace(face, entry, busy, mode, shown)
 	face.Level.Visible = entry ~= nil
 	face.Power.Visible = entry ~= nil
 	face.Empty.Visible = entry == nil
-	face.Busy.Visible = entry == nil and busy ~= nil
+	face.Busy.Visible = entry == nil and busy ~= nil and mode ~= "Compact"
 	-- (kit-b U9-7) an open slot is a sunk stone well, a filled one a raised tile
 	face.Cell.BackgroundColor3 = entry and SIGN.Tile or SIGN.Well
 	face.Rim.Color = entry and SIGN.Wood or SIGN.WellEdge
@@ -331,15 +335,14 @@ local function paintFace(face, entry, busy, mode, shown)
 		face.Stage_.Visible = stage > 0 and mode == "Card" -- (the picture shows the stage; the smaller faces have no room for the badge)
 	else
 		face.Stage_.Visible = false
-		face.Empty.Text = busy and BUSY_WORD[busy] or "Empty"
+		face.Empty.Text = busy and ((mode == "Compact") and BUSY_SHORT[busy] or BUSY_WORD[busy]) or "Empty"
 		local mark = busy and BUSY_ICON[busy] or nil
 		if face.BusyIcon ~= mark then
 			face.BusyIcon = mark
 			PixelIcon.Host(face.Busy, mark or "") -- an unknown name drops the old mark
 		end
 		if mode == "Compact" then
-			-- the mark above the word when the slot's pet is busy
-			place(face.Empty, 2, busy and 40 or 22, 1, -4, busy and 20 or 38 - LIP)
+			place(face.Empty, 2, 22, 1, -4, 38 - LIP)
 		end
 		face.Lip.BackgroundColor3 = SIGN.WellEdge
 	end

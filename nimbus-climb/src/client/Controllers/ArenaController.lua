@@ -109,6 +109,7 @@ local K = {
 	TALL = 760, -- windows narrower than this use the single-column layout (every docked window)
 	NARROW = 1000,
 	SHORT = 560, -- docked lower than this (landscape phones): the compact rows
+	DUELS_ONE_H = 700, -- (U9-7 look) a docked window lower than this (a portrait sheet, a landscape phone) shows Duels as one list
 	FACES_NARROW = 560, -- a window narrower than this (phones) shows the team's faces in the Compact row
 	LOW = 640, -- a Ring window lower than this (a portrait phone) keeps only a thin record under the detail
 	INSET_X = 24, -- the panel frame around Panel.Content (CloudUI.ContentInset)
@@ -342,11 +343,40 @@ local function scroller(parent, name, props)
 	p.CanvasSize = UDim2.new(0, 0, 0, 0)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
-	p.ScrollBarThickness = SignKit.Sizes.ScrollBar -- (U9-7 look) the kit's wood bar (was the old kit's pale blue)
-	p.ScrollBarImageColor3 = SIGN.Wood
-	p.ScrollBarImageTransparency = 0
 	p.Parent = parent
-	return Util.Create("ScrollingFrame", p)
+	return SignKit.ScrollBar(Util.Create("ScrollingFrame", p)) -- (U9-7 look) the kit's wood bar, square ends
+end
+
+-- (U9-7 look) the design px of a list's viewport that ends after its last WHOLE card: its top pad, the cards and the gaps
+-- between them, `edge` px for the last card's outer edge (a stroke draws outside its box); the whole content (its bottom
+-- pad too) when it all fits; `avail` when fewer than `minCards` (default 1) fit (that list scrolls). Measured from the
+-- cards' own heights (a list's viewport never changes them), `s` = the window's scale. -> design px, whole cards shown
+local function wholeCards(scroll, avail, padTop, padBottom, gap, edgePx, s, minCards)
+	local cards = {}
+	for _, c in ipairs(scroll:GetChildren()) do
+		if c:IsA("GuiObject") and c.Visible and c.AbsoluteSize.Y > 0 then
+			cards[#cards + 1] = c
+		end
+	end
+	table.sort(cards, function(a, b)
+		return a.LayoutOrder < b.LayoutOrder
+	end)
+	local y, last, n = padTop, nil, 0
+	for _, c in ipairs(cards) do
+		local bottom = y + c.AbsoluteSize.Y / s
+		if bottom + edgePx > avail then
+			break
+		end
+		last, n = bottom, n + 1
+		y = bottom + gap
+	end
+	if not last or n < (minCards or 1) then
+		return avail, n
+	end
+	if n == #cards then
+		return math.min(avail, math.ceil(math.max(last + edgePx, last + padBottom))), n
+	end
+	return math.ceil(last + edgePx), n
 end
 
 -- (kit-b U9-7) a sunk stone well (the pitch's .wl): flat, its own darker edge
@@ -776,7 +806,6 @@ local Ring = {
 	BUTTON_H = 56, -- design px of START: >= 44 px under the 0.8 touch scale
 	VS_H = 56, -- (U9-7 look) the champion vs your team in the team row: caption over number (beside Edit team, a column's line)
 	VS_LINE_H = 30, -- ...caption and number on one line under the faces of a Compact row (a portrait phone)
-	SLIVER = 28, -- design px: a card showing less than this above the detail's fold ends the viewport before it
 }
 
 -- where the Pets window comes back to when the team is edited from an open panel (spec s.2: the same tab and start round)
@@ -1102,31 +1131,6 @@ function Ring.layoutVs(ui)
 	end
 end
 
--- (U9-7 look) design px to take off the detail's viewport so it ends on a card edge: a card that would show less than
--- Ring.SLIVER px above the fold (a blank strip that reads as an empty box) is left wholly below it. `cutH`: the design px the
--- viewport is shorter than the detail (the footer and the team row); measured from the detail, not from the viewport's
--- own size, so the trim never feeds back into itself
-function Ring.foldTrim(ui, cutH)
-	local sc, detail = ui.DetailScroll, ui.Detail
-	local win = Win.Ring
-	local s = (win and win.Fit and win.Fit.Scale > 0) and win.Fit.Scale or 1
-	if detail.AbsoluteSize.Y <= 0 then
-		return 0
-	end
-	local foldY = detail.AbsolutePosition.Y + (4 - cutH) * s + detail.AbsoluteSize.Y -- (the viewport sits 4 px down)
-	local scroll = sc.CanvasPosition.Y
-	local trim = 0
-	for _, card in ipairs(sc:GetChildren()) do
-		if card:IsA("GuiObject") and card.Visible and card.AbsoluteSize.Y > 0 then
-			local showing = foldY - (card.AbsolutePosition.Y + scroll)
-			if showing > 0 and showing < Ring.SLIVER * s then
-				trim = math.max(trim, math.ceil(showing / s) + 10)
-			end
-		end
-	end
-	return trim
-end
-
 function Ring.build()
 	local win = newWindow("Ring", "Champion Ring")
 	local content = win.Panel.Content
@@ -1290,10 +1294,13 @@ function Ring.build()
 			ui.Detail.Size = UDim2.new(1, -2 * PAGE_PAD, 0, detailH)
 			ui.Side.Position = UDim2.fromOffset(PAGE_PAD, 10 + detailH + 10)
 			ui.Side.Size = UDim2.new(1, -2 * PAGE_PAD, 0, sideH)
+			-- (U9-7 look) Ring.live ends the detail after its last whole card and hands what it saves to the side
+			ui.Stack = (not short) and { DetailH = detailH, SideH = sideH } or nil
 			detailW = cw - 2 * PAGE_PAD
 		else
 			ui.Side.Visible = true
 			ui.BestInline.Visible = false
+			ui.Stack = nil
 			ui.Side.Position = UDim2.fromOffset(PAGE_PAD, 10)
 			ui.Side.Size = UDim2.new(0, sideW, 1, -20)
 			ui.Detail.Position = UDim2.fromOffset(PAGE_PAD + sideW + 12, 10)
@@ -1448,18 +1455,36 @@ function Ring.live(_win, ui)
 	local footerH = why and (Ring.BUTTON_H + 4 + (ui.WhyH or 44)) or Ring.BUTTON_H
 	ui.Footer.Size = UDim2.new(1, -(ui.FooterInset or 28), 0, footerH)
 	local rowH = ui.Faces.Height()
+	-- (U9-7 look) the detail's viewport ends after its last WHOLE card (3 px for its outer edge), never inside one and never
+	-- taller than its cards (a portrait phone cut the champion card through its tags, 1280x720 the Next win card after its
+	-- first line, 1080p left a 40 px blank band above the team): the start picker at least stays whole. The team row and
+	-- START move up by what that saves and the side column under them gets it, with the same whole-card rule
+	local win = Win.Ring
+	local s = (win and win.Fit and win.Fit.Scale > 0) and win.Fit.Scale or 1
 	if ui.ColumnX then
 		ui.FacesBox.AnchorPoint = Vector2.new(0, 0)
 		ui.FacesBox.Position = UDim2.fromOffset(ui.ColumnX, 4)
 		ui.FacesBox.Size = UDim2.new(1, -(ui.ColumnX + 6), 0, rowH)
-		local cutH = footerH + 22
-		ui.DetailScroll.Size = UDim2.new(0, ui.ColumnX - 8, 1, -(cutH + Ring.foldTrim(ui, cutH)))
+		local avail = (ui.Detail.Size.Y.Offset > 0 and ui.Detail.Size.Y.Offset or math.floor(ui.Detail.AbsoluteSize.Y / s)) - 8 - (footerH + 22)
+		local viewH = wholeCards(ui.DetailScroll, avail, 10, 12, 10, 3, s, 2)
+		ui.DetailScroll.Size = UDim2.new(0, ui.ColumnX - 8, 0, viewH)
 	else
 		ui.FacesBox.AnchorPoint = Vector2.new(0, 1)
 		ui.FacesBox.Position = UDim2.new(0, 10, 1, -(footerH + 16))
 		ui.FacesBox.Size = UDim2.new(1, -20, 0, rowH)
 		local cutH = footerH + rowH + 26
-		ui.DetailScroll.Size = UDim2.new(1, -8, 1, -(cutH + Ring.foldTrim(ui, cutH)))
+		local stack = ui.Stack
+		if stack then
+			local avail = stack.DetailH - 8 - cutH
+			local viewH = wholeCards(ui.DetailScroll, avail, 10, 12, 10, 3, s, 2)
+			local saved = math.max(0, avail - viewH)
+			ui.DetailScroll.Size = UDim2.new(1, -8, 0, viewH)
+			ui.Detail.Size = UDim2.new(1, -2 * PAGE_PAD, 0, stack.DetailH - saved)
+			ui.Side.Position = UDim2.fromOffset(PAGE_PAD, 10 + stack.DetailH - saved + 10)
+			ui.Side.Size = UDim2.new(1, -2 * PAGE_PAD, 0, wholeCards(ui.Side, stack.SideH + saved, 4, 8, 10, 3, s))
+		else
+			ui.DetailScroll.Size = UDim2.new(1, -8, 1, -cutH)
+		end
 	end
 end
 
@@ -1783,7 +1808,7 @@ local function buildArena()
 			end
 		end,
 	})
-	local record = inset(ui.DuelLeft, "Record", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
+	local record = inset(ui.DuelLeft, "Record", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 })
 	pad(record, 14, 10, 14, 12)
 	listLayout(record, Enum.FillDirection.Vertical, 4)
 	makeText(record, "Title", "Your record", "Heading", 22, INK, {
@@ -1794,14 +1819,20 @@ local function buildArena()
 	ui.RecordText = wrapText(record, "Lines", "", "Body", 19, INK, 2)
 	wrapText(record, "Rules", "Win: +20 trophies   Loss: -10 trophies   Nobody ever loses a pet!", "Body", 18, MUTED, 3)
 	ui.RecordRules = record:FindFirstChild("Rules")
-	ui.InviteBox = inset(ui.DuelLeft, "Invites", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 })
+	ui.InviteBox = inset(ui.DuelLeft, "Invites", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
 	pad(ui.InviteBox, 14, 10, 14, 12)
 	listLayout(ui.InviteBox, Enum.FillDirection.Vertical, 8)
 
+	-- the players to challenge: their own pane under the left one (a tall window), or (U9-7 look) a card in the left list
+	-- itself on a short one (a portrait sheet, a landscape phone): one scroller, one bar, one fold (OnLayout picks)
 	ui.Challenge = inset(duels, "Challenge", {})
-	ui.ChallengeList = scroller(ui.Challenge, "List", { Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8) })
-	pad(ui.ChallengeList, 12, 8, 14, 10)
-	listLayout(ui.ChallengeList, Enum.FillDirection.Vertical, 8)
+	ui.ChallengePane = scroller(ui.Challenge, "List", { Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8) })
+	pad(ui.ChallengePane, 12, 8, 14, 10)
+	listLayout(ui.ChallengePane, Enum.FillDirection.Vertical, 8)
+	ui.ChallengeCard = inset(ui.DuelLeft, "ChallengeCard", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Visible = false })
+	pad(ui.ChallengeCard, 12, 8, 14, 10)
+	listLayout(ui.ChallengeCard, Enum.FillDirection.Vertical, 8)
+	ui.ChallengeList = ui.ChallengePane
 
 	------------------------------------------------------------ Boss Raid
 	local raid = page("Raid")
@@ -1838,14 +1869,24 @@ local function buildArena()
 	listLayout(ui.FightList, Enum.FillDirection.Vertical, 6)
 	ui.FightRows = {}
 	-- (U9-7 look) the next boss on a navy timer plate, the time in gold (the side cards' x2 Rewards chip)
-	ui.NextBoss = makeFrame(ui.BossCard, "NextBoss", { Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 8 })
+	-- (U9-7 look) as wide as the card (sized to its words it ran 16 px out of a phone's Boss card, under the scroll bar):
+	-- the words fill the plate left of the clock and cut at their end, the clock right-aligned
+	ui.NextBoss = makeFrame(ui.BossCard, "NextBoss", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 8 })
 	CloudUI.SignBlock(ui.NextBoss, "Navy", { EdgePx = 2, LipPx = 0 })
 	pad(ui.NextBoss, 12, 0, 14, 0)
-	listLayout(ui.NextBoss, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.NextBossName = autoText(ui.NextBoss, "Label", "", "Heading", 18, SIGN.Stone, 1)
-	ui.NextBossName.TextXAlignment = Enum.TextXAlignment.Left
-	lead(ui.NextBossName, "hourglass")
-	ui.NextBossClock = autoText(ui.NextBoss, "Clock", "", "Display", 22, SIGN.Gold, 2)
+	ui.NextBossClock = fitWidth(makeText(ui.NextBoss, "Clock", "", "Display", 22, SIGN.Gold, {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.fromOffset(0, 30),
+		TextXAlignment = Enum.TextXAlignment.Right,
+	}))
+	ui.NextBossName = lead(makeText(ui.NextBoss, "Label", "", "Heading", 18, SIGN.Stone, {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(1, -90, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	}), "hourglass")
 
 	ui.NextCard = inset(ui.RaidScroll, "Next", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	pad(ui.NextCard, 16, 10, 16, 12)
@@ -1900,28 +1941,38 @@ local function buildArena()
 		-- trophies) and the blurb go
 		ui.QuickHead.Visible = not short
 		if tall then
-			-- whole design px (the split was a share: the Challenge pane started at y .24), and the left pane at least down
-			-- to the bottom of Find a match: the list's pad, the card's pad, the faces, the title row, the button and its lip;
-			-- the status line under it where there is room, the blurb only when it shows whole (the fold cut it mid-line)
+			-- (U9-7 look) a window under K.DUELS_ONE_H (a portrait sheet, a landscape phone) shows the Duels page as ONE list;
+			-- a taller one splits it in two panes from the cards' real heights (ui.FitDuels, after every refresh too)
 			local pageH = h - K.INSET_Y - (top + 10)
-			local share = math.floor(pageH * (short and 0.68 or 0.58)) - 6
-			local need = 2 + 10 + ui.DuelFaces.Height() + 8 + (short and 0 or 48) + 56 + 6
-			local withStatus = need + 8 + 28
-			local lines = math.ceil(roughWidth(ui.QuickText.Text, 19) / math.max(1, cw - 28 - 28 - 16))
-			local whole = withStatus + 8 + lines * 26 + 14
-			ui.QuickText.Visible = not short and share >= whole
-			local leftH = share
-			if short then
-				leftH = math.max(share, need)
-			elseif share < whole then
-				leftH = math.max(need, withStatus) -- the fold on the card's bottom edge, not through a line
+			local one = h < K.DUELS_ONE_H
+			ui.DuelPageH = pageH
+			if ui.DuelOne ~= one then
+				ui.DuelOne = one
+				clearChildren(ui.ChallengeList)
+				ui.ChallengeList = one and ui.ChallengeCard or ui.ChallengePane
+				ui.ChallengeCard.Visible = one
+				ui.Challenge.Visible = not one
 			end
-			leftH = math.max(0, math.min(leftH, pageH - 12 - 44)) -- the Challenge pane keeps its heading
+			-- the blurb only in a split page where it shows whole (the fold cut it mid-line); never in the one list (it
+			-- pushed the players down)
+			local share = math.floor(pageH * 0.58) - 6
+			local need = 2 + 10 + ui.DuelFaces.Height() + 8 + 48 + 56 + 6 + 8 + 28
+			local lines = math.ceil(roughWidth(ui.QuickText.Text, 19) / math.max(1, cw - 28 - 28 - 16))
+			ui.QuickText.Visible = not one and share >= need + 8 + lines * 26 + 14
 			ui.DuelLeft.Position = UDim2.fromOffset(0, 0)
-			ui.DuelLeft.Size = UDim2.new(1, 0, 0, leftH)
-			ui.Challenge.Position = UDim2.fromOffset(0, leftH + 12)
-			ui.Challenge.Size = UDim2.new(1, 0, 1, -(leftH + 12))
+			ui.DuelLeft.Size = UDim2.new(1, 0, 1, 0)
+			ui.Challenge.Position = UDim2.fromOffset(0, 0)
+			if not one then
+				ui.FitDuels()
+			end
 		else
+			if ui.DuelOne then
+				ui.DuelOne = false
+				clearChildren(ui.ChallengeList)
+				ui.ChallengeList = ui.ChallengePane
+				ui.ChallengeCard.Visible = false
+				ui.Challenge.Visible = true
+			end
 			local leftW = math.floor((cw - 28) * 0.48)
 			ui.DuelLeft.Position = UDim2.fromOffset(0, 0)
 			ui.DuelLeft.Size = UDim2.new(0, leftW, 1, 0)
@@ -1929,6 +1980,56 @@ local function buildArena()
 			ui.Challenge.Size = UDim2.new(1, -(leftW + 12), 1, 0)
 		end
 		ui.BossName.TextSize = tall and 24 or 30
+	end
+
+	-- (U9-7 look) a tall window's two panes from the cards' real heights (the hand-summed need fell about 28 px short of the
+	-- Quick card: the fold cut its status line and the well's bottom edge). Each pane gets what its cards need when both
+	-- fit; else the players' pane keeps its title and two whole rows (or all of them, when fewer) and the left pane the
+	-- rest, ending after its last whole card (the Quick card at least)
+	function ui.FitDuels()
+		local win = Win.Arena
+		if ui.DuelOne ~= false or not win or not ui.DuelPageH then
+			return
+		end
+		local s = (win.Fit and win.Fit.Scale > 0) and win.Fit.Scale or 1
+		local pageH = ui.DuelPageH
+		-- the players' list: its 4 px inset each side, its pads 8 / 10, 8 px between rows
+		local _, nAll = wholeCards(ui.ChallengePane, math.huge, 8, 10, 8, 2, s)
+		local chAll = select(1, wholeCards(ui.ChallengePane, math.huge, 8, 10, 8, 2, s)) + 8
+		local chMin = chAll
+		do
+			local kids = {}
+			for _, c in ipairs(ui.ChallengePane:GetChildren()) do
+				if c:IsA("GuiObject") and c.Visible and c.AbsoluteSize.Y > 0 then
+					kids[#kids + 1] = c
+				end
+			end
+			table.sort(kids, function(a, b)
+				return a.LayoutOrder < b.LayoutOrder
+			end)
+			if #kids > 3 then
+				local y = 8
+				for i = 1, 3 do
+					y = y + kids[i].AbsoluteSize.Y / s + (i < 3 and 8 or 0)
+				end
+				chMin = math.ceil(y + 10) + 8
+			end
+		end
+		local leftAll = wholeCards(ui.DuelLeft, math.huge, 2, 6, 10, 2, s)
+		local leftH
+		if leftAll + 12 + chAll <= pageH or nAll == 0 then
+			leftH = math.min(leftAll, pageH - 12 - math.min(chAll, chMin))
+		else
+			leftH = wholeCards(ui.DuelLeft, pageH - 12 - chMin, 2, 6, 10, 2, s)
+		end
+		local quick = ui.DuelLeft:FindFirstChild("Quick")
+		local quickH = quick and math.ceil(2 + quick.AbsoluteSize.Y / s + 2) or 0
+		leftH = math.max(leftH, math.min(quickH, pageH - 12 - 44)) -- Find a match whole; the players' pane keeps its heading
+		if ui.DuelLeft.Size.Y.Offset ~= leftH or ui.DuelLeft.Size.Y.Scale ~= 0 then
+			ui.DuelLeft.Size = UDim2.new(1, 0, 0, leftH)
+			ui.Challenge.Position = UDim2.fromOffset(0, leftH + 12)
+			ui.Challenge.Size = UDim2.new(1, 0, 1, -(leftH + 12))
+		end
 	end
 
 	local function inviteRow(parent, invite, order)
@@ -2111,6 +2212,7 @@ local function buildArena()
 		if #others == 0 then
 			wrapText(ui.ChallengeList, "Empty", "Nobody else is in this server yet. Invite a friend, or try the Dungeon meanwhile!", "Body", 19, MUTED, 1)
 		end
+		ui.FitDuels() -- (U9-7 look) the panes follow the cards
 	end
 
 	local function tierLine(parent, tier, order)
@@ -2210,6 +2312,7 @@ local function buildArena()
 		if nextIn then
 			ui.NextBossName.Text = "Next boss " .. tostring(nextInfo and nextInfo.Name or "?") .. " in"
 			ui.NextBossClock.Text = clock(nextIn)
+			ui.NextBossName.Size = UDim2.new(1, -(ui.NextBossClock.Size.X.Offset + 10), 0, 26) -- (the clock's fitted width)
 		end
 		-- Double Rewards: on its way or running (the boss rotation is the line above, not an event)
 		local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next.Kind == "DoubleRewards" and S.Arena.Next or nil
@@ -2292,18 +2395,35 @@ local function buildArena()
 				})
 				edge(medal, SIGN.Wood, 2)
 				makeText(medal, "Rank", tostring(i), "Display", 24, INK, { Size = UDim2.new(1, 0, 1, 0) })
-				makeText(frame, "Name", tostring(row.Name or "?") .. (me and "  (you)" or ""), "Title", 23, INK, {
+				-- (U9-7 look) the value sized to its digits and my own row's YOU chip before it (the trophies chip's navy and gold):
+				-- the name takes the rest whole ("SKYCLIMBER (Y..." cut its "(you)" suffix with 35 px free before the value)
+				-- (left-aligned in its fitted box, so the trophy sits inside it: a right-aligned number's icon stands outside)
+				local value = lead(fitWidth(makeText(frame, "Trophies", commas(row.Trophies or 0), "Display", 26, C.Power, {
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -14, 0, 0),
+					Size = UDim2.new(0, 0, 1, -4),
+					TextXAlignment = Enum.TextXAlignment.Left,
+				})), "Trophy")
+				local right = 14 + value.Size.X.Offset + 8
+				if me then
+					local you = makeFrame(frame, "You", {
+						AnchorPoint = Vector2.new(1, 0.5),
+						Position = UDim2.new(1, -right, 0.5, -2),
+						Size = UDim2.fromOffset(0, 30),
+						AutomaticSize = Enum.AutomaticSize.X,
+					})
+					CloudUI.SignBlock(you, "Navy", { EdgePx = 2, LipPx = 0 })
+					pad(you, 8, 0, 8, 0)
+					local word = autoText(you, "Word", "YOU", "Display", 18, SIGN.Gold, 1)
+					word.Size = UDim2.fromOffset(word.Size.X.Offset, 30)
+					right = right + 16 + word.Size.X.Offset + 8
+				end
+				makeText(frame, "Name", tostring(row.Name or "?"), "Title", 23, INK, {
 					Position = UDim2.fromOffset(62, 0),
-					Size = UDim2.new(1, -196, 1, -4),
+					Size = UDim2.new(1, -(62 + right), 1, -4),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTruncate = Enum.TextTruncate.AtEnd,
 				})
-				lead(makeText(frame, "Trophies", commas(row.Trophies or 0), "Display", 26, C.Power, {
-					AnchorPoint = Vector2.new(1, 0),
-					Position = UDim2.new(1, -14, 0, 0),
-					Size = UDim2.new(0, 120, 1, -4),
-					TextXAlignment = Enum.TextXAlignment.Right,
-				}), "Trophy")
 			end
 		end
 		if #list == 0 then
@@ -2360,6 +2480,7 @@ local function buildArena()
 				local seconds = (tonumber(queue.Seconds) or 0) + (os.clock() - S.LobbyAt)
 				ui.QueueStatus.Text = "Searching... " .. clock(seconds) .. "   (" .. commas(queue.Waiting or 1) .. " in the queue)"
 			end
+			ui.FitDuels() -- (U9-7 look) again once the cards' automatic sizes have settled (a frame after a rebuild)
 		end
 	end
 	return win

@@ -426,10 +426,12 @@ S.client_bug2gui_mobile = guarded("client_bug2gui_mobile", function()
 			if T.check(card ~= nil and H.shown(card), label .. ": (setup) the dungeon End card shows") then
 				local covered = H.shown(p.Currency) and H.overlap(H.rect(card), H.rect(p.Currency))
 				T.check(not covered, label .. ": the dungeon End card never sits on the currency strips", H.fmt(H.rect(card)) .. " vs " .. H.fmt(cur))
-				-- the card starts below the strips (DungeonController reads TopRightBottom), so they stay in view
+				-- the card starts below the strips (DungeonController reads TopRightBottom), or (U9-7 look) a landscape phone's
+				-- card at the kit's 0.8 stands left of them (TopRightLeft): either way they stay in view
 				local cr = H.rect(card)
-				T.check(H.shown(p.Currency) and cr.y0 >= H.rect(p.Currency).y1 and cr.y1 <= Hh and not H.overlap(cr, touch.Jump),
-					label .. ": ...it starts below them (the strips stay in view), on screen and clear of the jump button", H.fmt(cr))
+				local sr = H.rect(p.Currency)
+				T.check(H.shown(p.Currency) and (cr.y0 >= sr.y1 or cr.x1 <= sr.x0) and cr.y1 <= Hh and not H.overlap(cr, touch.Jump),
+					label .. ": ...it starts below them or stands left of them (the strips stay in view), on screen and clear of the jump button", H.fmt(cr) .. " vs " .. H.fmt(sr))
 				local ok = card:FindFirstChild("OkButton", true)
 				if ok then
 					Mock.Click(ok)

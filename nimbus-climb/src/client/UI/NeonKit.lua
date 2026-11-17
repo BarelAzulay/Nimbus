@@ -19,6 +19,7 @@
 --   NeonKit.SideRect(prefW, prefH, minW, minH) -> { x, y, w, h, scale, mode = "Side" | "Sheet", designW, designH }
 --   NeonKit.BigRect(K, opts) -> { x, y, w, h, scale, mode = "PC" | "Phone", portrait }   (the Pets / Store window box)
 --   NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH) -> { Rect, Refresh(), Disconnect() }
+--   NeonKit.OpenDocks() -> { { x0, y0, x1, y1, mode }... } the docked windows on screen (U9-7 look: the HUD keeps clear)
 --     (also a MouseLock hold while the holder is shown: client/MouseLock.WatchVisible; dungeon-fixes decision 6)
 --
 -- Conventions (the same as CloudUI): sizes are DESIGN pixels of a 1920x1080 screen; put the tree under one UIScale
@@ -1000,6 +1001,13 @@ function NeonKit.CloseMark(button, opts)
 			child:Destroy()
 		end
 	end
+	-- (U9-7 look) a sign block's lip sits out by the block's padding (CloudUI.SignBlock): with the padding gone it goes back
+	-- flush on the bottom edge (it hung 5 px under the close and kick blocks)
+	local lip = button:FindFirstChild("Lip")
+	if lip and lip:IsA("GuiObject") and button:FindFirstChild("SignEdge") then
+		lip.Position = UDim2.new(0, 0, 1, 0)
+		lip.Size = UDim2.new(1, 0, 0, lip.Size.Y.Offset)
+	end
 	local existing = button:FindFirstChild("CloseMark")
 	if existing then
 		return existing
@@ -1093,8 +1101,10 @@ end
 
 -- The window rule (contract 6.6, the prototype's side_rect). Returns screen pixels (top bar included):
 --   x, y, w, h   the window's box on screen;  scale  the UIScale to put on a window designed at designW x designH;
---   mode         "Side" (landscape: docked right, <= 44% of the width, never left of 0.56 W - margin, vertically
---                centred below the top bar) | "Sheet" (portrait: a bottom sheet, scale 0.8, full width minus the
+--   mode         "Side" (landscape: docked right, <= 44% of the width, never left of 0.56 W - margin, on the bottom
+--                margin below the top bar; U9-7 look: it was centred, which put a short dock's roof into the HUD's
+--                currency strips at 1080p, so a dock that is not full height now sits on the bottom margin, clear of
+--                the top-right corner) | "Sheet" (portrait: a bottom sheet, scale 0.8, full width minus the
 --                margins, <= 56% of the height: the top 44% where the character stands stays clear)
 -- prefW / prefH: the preferred window size in design px; minW / minH (optional): the smallest design size the
 -- content accepts (the scale shrinks instead, down to the phone scale).
@@ -1135,7 +1145,7 @@ function NeonKit.SideRect(prefW, prefH, minW, minH, opts)
 		end
 		rect = {
 			x = W - m - w * scale,
-			y = inset + m + (maxH - h * scale) / 2,
+			y = H - m - h * scale, -- (U9-7 look) the bottom margin (a full-height dock: inset + m, as before)
 			w = w * scale,
 			h = h * scale,
 			scale = scale,
@@ -1210,6 +1220,8 @@ function NeonKit.BigRect(K, opts)
 	}
 end
 
+local DOCKS = setmetatable({}, { __mode = "k" }) -- (U9-7 look) [holder] = true for every docked window (NeonKit.OpenDocks)
+
 local function guiInsetOf(holder)
 	local gui = holder and holder:FindFirstAncestorOfClass("ScreenGui")
 	if gui and gui.IgnoreGuiInset then
@@ -1250,6 +1262,7 @@ function NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH)
 	if not holder then
 		return dock
 	end
+	DOCKS[holder] = true
 	if not (uiScale and uiScale:IsA("UIScale")) then
 		uiScale = holder:FindFirstChild("DockScale")
 		if not (uiScale and uiScale:IsA("UIScale")) then
@@ -1300,6 +1313,29 @@ function NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH)
 		pcall(ml.WatchVisible, "Dock:" .. holder.Name, holder)
 	end
 	return dock
+end
+
+-- (U9-7 look) the boxes of the docked windows on screen now (screen px, the top bar included: { x0, y0, x1, y1, mode }),
+-- for the HUD parts that must keep clear of them (HudController's vitals card). A holder counts while it and every
+-- ancestor is Visible in an Enabled ScreenGui.
+function NeonKit.OpenDocks()
+	local out = {}
+	for holder in pairs(DOCKS) do
+		local shown = holder.Parent ~= nil
+		local cur = holder
+		while shown and cur and not cur:IsA("LayerCollector") do
+			if cur:IsA("GuiObject") and not cur.Visible then
+				shown = false
+			end
+			cur = cur.Parent
+		end
+		if shown and cur and cur:IsA("ScreenGui") and cur.Enabled and holder.AbsoluteSize.X > 4 then
+			local dy = cur.IgnoreGuiInset and 0 or guiInsetOf(holder)
+			local p, s = holder.AbsolutePosition, holder.AbsoluteSize
+			out[#out + 1] = { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + s.Y + dy, mode = holder:GetAttribute("DockMode") }
+		end
+	end
+	return out
 end
 
 -- The local player's PlayerGui (nil on the server); a convenience for window owners.

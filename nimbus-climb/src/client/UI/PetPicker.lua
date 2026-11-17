@@ -538,9 +538,10 @@ function H.build()
 	end
 	local grid = Util.Create("ScrollingFrame", {
 		Name = "Grid", BackgroundTransparency = 1, BorderSizePixel = 0, ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 8, ScrollBarImageColor3 = C.Wood, CanvasSize = UDim2.fromOffset(0, 0),
+		CanvasSize = UDim2.fromOffset(0, 0),
 		ZIndex = 3, Parent = body,
 	})
+	SignKit.ScrollBar(grid, { Color = C.Wood }) -- (U9-7 look) the kit's list bar, square ends
 	grid:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		S.ViewDirty = true
 	end)

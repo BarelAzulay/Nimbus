@@ -225,6 +225,21 @@ local VS = {
 	Solid = NumberSequence.new(0),
 }
 local Vitals = {} -- builders and painters of the vitals card (one table keeps the chunk's locals down)
+
+-- (U9-7 look) the docked side windows on screen (NeonKit.OpenDocks: Arena, Ring, Dungeon, the dare panel, Home, the Food
+-- Machine...) in gui-area px; a portrait sheet covers the whole bottom and is left out. The vitals card keeps clear of them
+function Vitals.DockRects(inset)
+	local ok, docks = pcall(function()
+		return require(Client:WaitForChild("UI"):WaitForChild("NeonKit")).OpenDocks()
+	end)
+	local out = {}
+	for _, r in ipairs((ok and type(docks) == "table") and docks or {}) do
+		if r.mode ~= "Sheet" then
+			out[#out + 1] = { x0 = r.x0, y0 = r.y0 - inset, x1 = r.x1, y1 = r.y1 - inset }
+		end
+	end
+	return out
+end
 local CUR = Theme.Currency or {}
 
 -- Currency rows, top to bottom. Tokens is always shown (and sits right above the HP bar); the others appear
@@ -830,6 +845,7 @@ local function applyMargins(animate, force)
 	local column = menuRect(area)
 	local buttons = touch and mobileRects() or {}
 	local cornerCard = cornerCardRect()
+	local docks = Vitals.DockRects(inset)
 	local hasPanel, hasTitle, topH = topLeftState()
 	local currencies = visibleCurrencies()
 	local inMatch = S.match ~= nil or (player and player:GetAttribute(Config.Attr.InMatch) == true)
@@ -848,6 +864,9 @@ local function applyMargins(animate, force)
 	end
 	for _, r in ipairs(buttons) do
 		table.insert(parts, rectKey(r))
+	end
+	for _, r in ipairs(docks) do
+		table.insert(parts, "d" .. rectKey(r))
 	end
 	local key = table.concat(parts, "|")
 	if not force and key == layoutKey and not animate then
@@ -913,9 +932,27 @@ local function applyMargins(animate, force)
 			table.insert(obstacles, r)
 		end
 	end
+	-- (U9-7 look) an open side dock: the card slides left until its right edge is OBSTACLE_GAP px from the dock's frame
+	-- (its wood edge covered the HP bar's right end and the dash chip at 844x390 and touched the card at 1280x720)
+	for _, r in ipairs(docks) do
+		table.insert(obstacles, r)
+	end
 	local vitalsLeft, vitalsW
 	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, vitalsBottom, cx, obstacles, side, band.y1)
 	local vitalsTop = vitalsBottom - vitalsH * k
+	-- ... and where no row beside the dock is wide enough the card steps aside while the dock is open (never half under it)
+	local underDock = false
+	for _, r in ipairs(docks) do
+		if vitalsLeft < r.x1 and vitalsLeft + vitalsW * k > r.x0 and vitalsTop < r.y1 and vitalsBottom > r.y0 then
+			underDock = true
+		end
+	end
+	if (S.vitalsOwners.Dock == true) ~= underDock then
+		S.vitalsOwners.Dock = underDock or nil
+		if UI.Vitals then
+			UI.Vitals.Visible = next(S.vitalsOwners) == nil
+		end
+	end
 	if UI.Vitals then
 		UI.Vitals.AnchorPoint = Vector2.new(0, 1)
 		UI.Vitals.Size = UDim2.fromOffset(vitalsW, vitalsH)

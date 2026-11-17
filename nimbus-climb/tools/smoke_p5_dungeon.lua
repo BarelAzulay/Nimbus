@@ -2676,7 +2676,16 @@ local function clientScenarios()
 			if g:IsA("ScreenGui") and g.Enabled then
 				for _, d in ipairs(g:GetDescendants()) do
 					if d:IsA("GuiObject") and C5.shown(d) and (d.BackgroundTransparency < 0.5 or d:IsA("ImageLabel") or d:IsA("ViewportFrame")) then
+						-- (U9-7 look) cut to the scrolling frames above it: rows scrolled out of a list cover nothing
 						local r = C5.rect(d)
+						local cur = d.Parent
+						while cur and cur:IsA("GuiObject") do
+							if cur:IsA("ScrollingFrame") or cur.ClipsDescendants then
+								local c = C5.rect(cur)
+								r = { x0 = math.max(r.x0, c.x0), y0 = math.max(r.y0, c.y0), x1 = math.min(r.x1, c.x1), y1 = math.min(r.y1, c.y1) }
+							end
+							cur = cur.Parent
+						end
 						for y = math.max(0, math.floor(r.y0 / 4)), math.min(rows, math.floor(r.y1 / 4)) - 1 do
 							for x = math.max(0, math.floor(r.x0 / 4)), math.min(cols, math.floor(r.x1 / 4)) - 1 do
 								local k = y * cols + x

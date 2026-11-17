@@ -743,6 +743,8 @@ local function nodeOf(inst, ctx, path, order)
 			bar = (tonumber(inst.ScrollBarThickness) or 12) * s,
 			color = rgb(inst.ScrollBarImageColor3),
 			t = tonumber(inst.ScrollBarImageTransparency) or 0,
+			-- (U9-7 look) square ends when the top and bottom images are the middle piece (SignKit.ScrollBar)
+			square = get(inst, "TopImage") ~= nil and get(inst, "TopImage") == get(inst, "MidImage") and get(inst, "BottomImage") == get(inst, "MidImage"),
 			direction = enumName(get(inst, "ScrollingDirection")),
 			canvas = { cw, ch },
 			position = { cp.X, cp.Y },
@@ -3210,6 +3212,25 @@ end
 
 function DGC.dungeon(view)
 	view = tostring(view or "lobby"):lower()
+	-- (U9-7 look) the End card's reason row and the phone chip measure their text (DungeonController.Metrics.MEASURE): the
+	-- renderer's font metrics, wrapped as the drawing wraps (the mock's GetTextSize is a flat 0.5 em and never wraps)
+	local DCm = req("client/Controllers/DungeonController")
+	local ThemeM = req("shared/Theme")
+	if DCm and type(DCm.Metrics) == "table" then
+		local probe = Instance.new("TextLabel")
+		DCm.Metrics.MEASURE = function(label, text, width)
+			local role = label:GetAttribute("FontRole")
+			text = tostring(text or "")
+			if ThemeM and role and ThemeM.CapsRoles and ThemeM.CapsRoles[role] then
+				text = ThemeM.Caps(text)
+			end
+			probe.FontFace = label.FontFace
+			probe.TextSize = label.TextSize
+			probe.Text = text
+			local w, h = Mock.TextExtent(probe, width)
+			return Vector2.new(w, h)
+		end
+	end
 	DGC.profile()
 	local me, myName = DGC.me()
 	if type(Mock.AddPlayer) == "function" then

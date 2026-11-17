@@ -273,11 +273,8 @@ function H.scroller(parent, name, props)
 	p.CanvasSize = UDim2.new(0, 0, 0, 0)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
-	p.ScrollBarThickness = SignKit.Sizes.ScrollBar -- (U9-7 look) the kit's one list bar
-	p.ScrollBarImageColor3 = SIGN.Wood
-	p.ScrollBarImageTransparency = 0
 	p.Parent = parent
-	return Util.Create("ScrollingFrame", p)
+	return SignKit.ScrollBar(Util.Create("ScrollingFrame", p)) -- (U9-7 look) the kit's one list bar, square ends
 end
 
 -- (kit-b U9-5) a square edge (a mitred border UIStroke named SignEdge)
