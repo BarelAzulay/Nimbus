@@ -6966,10 +6966,44 @@ local function clientScenarios()
 					T.check(w ~= nil and w.X >= -0.5 and w.Y >= -0.5 and w.R <= gui.AbsoluteSize.X + 0.5 and w.B <= gui.AbsoluteSize.Y + 0.5,
 						tag .. ": the Gifts window sits inside the screen", w and U8.show(w) or "no window")
 					T.check(GuiService.TouchControlsEnabled == false, tag .. ": Roblox's thumbstick and jump button go while the Gifts window is open")
-				-- the header's shown parts (the gift square and the title only where they fit) in a row inside the window, none over another
+				-- the header's shown parts (the gift square and the title only where they fit) in a row inside the window, none over
+				-- another; (U9-4 look review) a portrait window's band holds the square, GIFTS and the X (it has a name, as every
+				-- kit window), the two tabs their own row under the band, each half the inside, >= 44 px touch boxes
 				local bar = win and win:FindFirstChild("TitleBar")
+				local portrait = s[2] > s[1]
 				local prev, row, rowOk = nil, {}, true
-				for _, name in ipairs({ "GiftsIcon", "WindowTitle", "Tab_DailyFill", "Tab_PlayFill", "CloseButton" }) do
+				local bandRow = portrait and { "GiftsIcon", "WindowTitle", "CloseButton" } or { "GiftsIcon", "WindowTitle", "Tab_DailyFill", "Tab_PlayFill", "CloseButton" }
+				if portrait then
+					local title = bar and bar:FindFirstChild("WindowTitle")
+					T.check(title ~= nil and U8.shown(title) and title.Text:upper() == "GIFTS" and title:GetAttribute("TitleLook") == "Ribbon",
+						tag .. ": the portrait window keeps its GIFTS ribbon on the band")
+					local br = bar and U8.rect(bar)
+					local df, pf = bar and bar:FindFirstChild("Tab_DailyFill"), bar and bar:FindFirstChild("Tab_PlayFill")
+					local dt, pt = bar and bar:FindFirstChild("Tab_Daily"), bar and bar:FindFirstChild("Tab_Play")
+					local bodyR = U8.rect(holder:FindFirstChild("Body", true))
+					local ok = df and pf and dt and pt and U8.shown(df) and U8.shown(pf)
+					if ok then
+						local a, b = U8.rect(df), U8.rect(pf)
+						local inside = w.R - w.X - 2 * 6
+						ok = a.Y >= br.B and b.Y >= br.B and a.R <= b.X - 4 and math.abs((a.R - a.X) - (b.R - b.X)) <= 1
+							and (a.R - a.X) >= inside / 2 - 20 and a.B <= bodyR.Y + 0.5 and dt.AbsoluteSize.Y >= 44 and pt.AbsoluteSize.Y >= 44
+					end
+					T.check(ok, tag .. ": the two tabs have their own row under the band, each about half the inside, over the body, >= 44 px taps",
+						df and pf and (U8.show(U8.rect(df)) .. " / " .. U8.show(U8.rect(pf)) .. " band " .. U8.show(br)) or "no tabs")
+				end
+				-- (U9-4 look review) the awning: the portrait window has clear sky over it, so it wears the phones' 288 px roof
+				-- clear of the HUD's strips; the landscape window starts under Roblox's top bar and has none
+				local roof = win and win:FindFirstChild("Roof")
+				if portrait then
+					local hud = U8.pg():FindFirstChild("NimbusHud")
+					local strips = hud and hud:FindFirstChild("Currency", true)
+					local rr = roof and U8.rect(roof)
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Offset == 288 and (not (strips and U8.shown(strips)) or rr.Y >= U8.rect(strips).B + 6),
+						tag .. ": the portrait window wears the 288 px awning, clear of the HUD's strips", rr and U8.show(rr) or "no roof")
+				else
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on the landscape window (it starts under Roblox's top bar)")
+				end
+				for _, name in ipairs(bandRow) do
 					local o = bar and bar:FindFirstChild(name)
 					if o and U8.shown(o) then
 						local r = U8.rect(o)
@@ -7355,6 +7389,14 @@ local function clientScenarios()
 				end
 				T.check(#out == 0, tag .. ": every text inside the panel and each ask's line inside its block", table.concat(out, "; "))
 				T.check(#small == 0, tag .. ": every text >= 15 px", table.concat(small, ", "))
+				-- (U9-4 look review) the portrait sheet sits under clear sky: it wears the phones' 288 px awning; the landscape
+				-- panel starts under Roblox's top bar and has none
+				local roof = panel:FindFirstChild("Roof")
+				if s[2] > s[1] then
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Offset == 288, tag .. ": the portrait sheet wears the 288 px awning", roof and tostring(roof.Size) or "no roof")
+				else
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on the landscape phone panel")
+				end
 				local join, close = panel:FindFirstChild("JoinButton", true), panel:FindFirstChild("Close", true)
 				T.check(join ~= nil and join.AbsoluteSize.Y >= 44 and close ~= nil and close.AbsoluteSize.X >= 44 and close.AbsoluteSize.Y >= 44,
 					tag .. ": Join and the close are >= 44 px taps", fmt("join %s, close %s", join and tostring(join.AbsoluteSize) or "-", close and tostring(close.AbsoluteSize) or "-"))

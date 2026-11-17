@@ -65,7 +65,8 @@
 --     with its lip; UIScale "Pop" for the 0.22 s Back-Out open) > "TitleBar" (the navy header plank with its lip: Tab_Daily
 --     "Daily", Tab_Play "Play time" as blocks on their Tab_*Fill frames, stone, the selected one gold; the red CloseButton
 --     block: 56 px PC / 44 px phone, its X drawn by NeonKit.CloseMark, header 76 / 50), "Roof" (SignKit.Roof: the awning
---     at a fixed K.ROOF_W, never stretched; PC only, as the Shop's) and "Body" > DailyPage, PlayPage, Fx. While open on a phone (or a touch-only device) Roblox's stick and jump are hidden (MenuController.
+--     at a fixed K.ROOF_W, never stretched; PC, and (U9-4 look review) the portrait window at K.ROOF_PHONE_W under clear
+--     sky; a portrait window's band holds the gift, GIFTS and the close, its two tabs their own row under it) and "Body" > DailyPage, PlayPage, Fx. While open on a phone (or a touch-only device) Roblox's stick and jump are hidden (MenuController.
 --     SetTouchHidden("Daily", on)), the menu tiles step aside (MenuController.SetColumnCovered(windowLeft, "Daily")) and
 --     the HUD's vitals card hides (HudController.SetVitalsHidden("Daily", on): the window's edge would cut it on PC).
 --   * DailyPage (card A): Header "Day 3 of 7 . Week 2" (the middle dot; a plain Section title, the owner's ruling
@@ -171,6 +172,9 @@ local K = {
 	-- (kit-b U9-4) the Signboard: the wood frame's width round the stone body, the awning's fixed width (the Shop's)
 	FRAME = 6,
 	ROOF_W = 360,
+	-- (U9-4 look review) the portrait window's awning: the 288 px the 0.8 windows show on a phone, wherever ROOF_CLEAR px
+	-- of clear screen lie over the window's top (never at 844x390, where the window starts under Roblox's top bar)
+	ROOF_PHONE_W = 288, ROOF_CLEAR = 16,
 	-- the window box: NeonKit.BigRect, the Pets window / Store / Training Place rule (spec 5.1)
 	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1180, Y1 = 720 },
 	MARGIN = 12,
@@ -234,6 +238,9 @@ local K = {
 	PORTRAIT = {
 		Header = 50, HeadPad = 10, TabY = 9, TabH = 34, TabW = { 100, 130 }, TabGap = 6, TabText = 17, Close = 44, CloseY = 3,
 		Icon = 28, TitleText = 20, TitleW = 92, TitleGap = 14, TapH = 44,
+		-- (U9-4 look review) the band holds the gift, GIFTS and the close; the two tabs get their own row under it, each
+		-- half the inside wide: TabRow the row's px over the body (TabRowGap over the TabRowH blocks)
+		TabRow = 50, TabRowGap = 6, TabRowH = 40, TabRowSide = 15, TabRowMid = 10,
 		Side = 15, HeaderY = 4, HeaderH = 26, HeaderText = 18, ChipY = 34, ChipH = 28, ChipText = 15, ChipPad = 10,
 		StreakW = 104, VipW = 84, ChipGap = 8,
 		TileGap = 10, TileW = 92, TileMaxH = 122, TileMinH = 64, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
@@ -1230,9 +1237,10 @@ function H.layout()
 	U.Fit.Scale = r.scale
 	S.WindowX = math.floor(r.x + 0.5)
 	local M = H.metrics()
-	H.layoutHeader(M, W)
-	local B = Hh - M.Header
-	place(U.Body, 0, M.Header, W, B)
+	H.layoutHeader(M, W, r.y - H.inset())
+	local top = M.Header + (M.TabRow or 0)
+	local B = Hh - top
+	place(U.Body, 0, top, W, B)
 	H.layoutDaily(M, W, B)
 	H.layoutPlay(M, W, B)
 end
@@ -1241,16 +1249,34 @@ end
 -- its gold square, "Gifts" (the ribbon), the two tab blocks, the red close at the right; where the band is too short for
 -- all of them (a portrait phone) the title goes first, then the square. The tab buttons keep a TapH touch box over
 -- their blocks (>= 44 px on a phone). Positions are in the band's own px
-function H.layoutHeader(M, W)
+-- the bottom of the HUD's currency strips in gui-area px (over the gift's square, which hides while this window is open)
+function H.stripsBottom()
+	local hud = H.hud()
+	if not hud then
+		return 0
+	end
+	local gift = tonumber(hud:GetAttribute("GiftSize")) or 0
+	if gift > 0 then
+		return tonumber(hud:GetAttribute("GiftTop")) or 0
+	end
+	return tonumber(hud:GetAttribute("TopRightBottom")) or 0
+end
+
+-- winTop: the window's top in gui-area px (the awning's room)
+function H.layoutHeader(M, W, winTop)
 	local F = K.FRAME
 	local bw, bh = W - 2 * F, M.Header - F
 	place(U.Bar, F, F, bw, bh)
-	-- (the awning reaches 10 px over the top on PC; no roof on a phone: the Shop's rule, a phone window starts right under
-	-- Roblox's top bar)
-	U.Roof.Visible = S.Mode == "PC"
+	-- (the awning reaches 10 px over the top on PC; no roof on a landscape phone: the Shop's rule, that window starts
+	-- right under Roblox's top bar. U9-4 look review: the portrait window has clear sky over it, so it keeps the awning at
+	-- the phones' 288 px whenever ROOF_CLEAR px lie between the HUD's strips and its top)
+	local portrait = S.Mode == "Portrait"
+	U.Roof.Size = UDim2.fromOffset(portrait and K.ROOF_PHONE_W or K.ROOF_W, U.Roof.Size.Y.Offset)
+	U.Roof.Visible = S.Mode == "PC" or (portrait and (tonumber(winTop) or 0) - K.ROOF_CLEAR >= H.stripsBottom())
 	local closeX = bw - M.Close - (10 - F)
 	place(U.Close, closeX, math.floor((M.Header - M.Close) / 2) - F, M.Close, M.Close) -- (its drawn X scales with it)
-	local tabsW = M.TabW[1] + M.TabGap + M.TabW[2]
+	-- (portrait: the tabs have their own row, so the band only holds the gift and the title)
+	local tabsW = portrait and 0 or (M.TabW[1] + M.TabGap + M.TabW[2])
 	local slot = M.Icon + 4
 	local x = 10
 	local room = closeX - 8
@@ -1270,11 +1296,25 @@ function H.layoutHeader(M, W)
 		x = x + M.TitleW + M.TitleGap -- (the ribbon's stair keeps clear of the first tab)
 	end
 	-- (the touch box centred on the block's face, over its lip: the word sits where the face is)
-	local tapY = math.floor((M.TabY - F) + (M.TabH - CloudUI.SignMetrics.Lip) / 2 - M.TapH / 2 + 0.5)
-	for i, tab in ipairs({ U.TabDaily, U.TabPlay }) do
-		place(tab, x, tapY, M.TabW[i], M.TapH)
-		place(U.Bar:FindFirstChild(tab.Name .. "Fill"), x, M.TabY - F, M.TabW[i], M.TabH)
-		x = x + M.TabW[i] + M.TabGap
+	if portrait then
+		-- the tab row under the band (still the bar's children, so they move with it): two halves of the inside, each a
+		-- TabRowH block with its TapH touch box
+		local tw = math.floor((W - 2 * M.TabRowSide - M.TabRowMid) / 2)
+		local ty = bh + M.TabRowGap
+		local tapY = math.floor(ty + (M.TabRowH - CloudUI.SignMetrics.Lip) / 2 - M.TapH / 2 + 0.5)
+		x = M.TabRowSide - F
+		for _, tab in ipairs({ U.TabDaily, U.TabPlay }) do
+			place(tab, x, tapY, tw, M.TapH)
+			place(U.Bar:FindFirstChild(tab.Name .. "Fill"), x, ty, tw, M.TabRowH)
+			x = x + tw + M.TabRowMid
+		end
+	else
+		local tapY = math.floor((M.TabY - F) + (M.TabH - CloudUI.SignMetrics.Lip) / 2 - M.TapH / 2 + 0.5)
+		for i, tab in ipairs({ U.TabDaily, U.TabPlay }) do
+			place(tab, x, tapY, M.TabW[i], M.TapH)
+			place(U.Bar:FindFirstChild(tab.Name .. "Fill"), x, M.TabY - F, M.TabW[i], M.TabH)
+			x = x + M.TabW[i] + M.TabGap
+		end
 	end
 	U.TabDaily.TextSize, U.TabPlay.TextSize = M.TabText, M.TabText
 end
