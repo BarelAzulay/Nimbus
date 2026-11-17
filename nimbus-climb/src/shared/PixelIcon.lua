@@ -381,6 +381,30 @@ function PixelIcon.Lead(label, name, opts)
 		end
 	end
 	local align = label.TextXAlignment
+	-- (U9-7 look) the icon a whole design px from the label's padded box: its height from a fixed Size or, laid out, from
+	-- AbsoluteSize (the label's own px), so the top is floor((h - px) / 2) and a centred text's icon floor(w / 2 ...) (half
+	-- of an odd height or width put an icon on a half pixel); before the first layout the 0.5 scales
+	local function padded()
+		local s = scaleOf(label)
+		local a = label.AbsoluteSize
+		local pw, ph = nil, nil
+		if a.X > 0 and a.Y > 0 and s > 0 then
+			pw = math.floor(a.X / s + 0.5) - pad.PaddingLeft.Offset - pad.PaddingRight.Offset
+			ph = math.floor(a.Y / s + 0.5) - pad.PaddingTop.Offset - pad.PaddingBottom.Offset
+		end
+		local sy = label.Size.Y
+		local auto = label.AutomaticSize == Enum.AutomaticSize.Y or label.AutomaticSize == Enum.AutomaticSize.XY
+		if sy.Scale == 0 and sy.Offset > 0 and not auto then
+			ph = sy.Offset - pad.PaddingTop.Offset - pad.PaddingBottom.Offset
+		end
+		return pw, ph
+	end
+	local function vertical(ph)
+		if ph then
+			return 0, UDim.new(0, math.floor((ph - px) / 2))
+		end
+		return 0.5, UDim.new(0.5, 0)
+	end
 	-- a UIPadding insets the label's children as it insets the text, so the icon is placed in the same padded box as the
 	-- letters: scale 0 / 0.5 / 1 are the text area's left edge, centre and right edge. TextBounds is screen px: back to
 	-- the label's own px (a UIScale tween changes TextBounds, so a pop re-places it at the new scale). (U7b review) No
@@ -400,18 +424,28 @@ function PixelIcon.Lead(label, name, opts)
 				textW = math.min(textW, boxW - pad.PaddingLeft.Offset - pad.PaddingRight.Offset)
 			end
 		end
-		box.AnchorPoint = Vector2.new(after and 0 or 1, 0.5)
+		textW = math.ceil(textW - 0.01) -- (U9-7 look) the icon a whole px from the text's measured end
+		local pw, ph = padded()
+		local ay, y = vertical(ph)
+		box.AnchorPoint = Vector2.new(after and 0 or 1, ay)
 		if align == Enum.TextXAlignment.Right then
-			box.Position = after and UDim2.new(1, gap, 0.5, 0) or UDim2.new(1, -(textW + gap), 0.5, 0)
+			box.Position = after and UDim2.new(1, gap, y.Scale, y.Offset) or UDim2.new(1, -(textW + gap), y.Scale, y.Offset)
 		elseif align == Enum.TextXAlignment.Center and label.Text == "" and not after then
 			-- (U7b) icons alone on an empty centred label (a rating badge): centred in the label (the left inset moved the
 			-- text area's centre right by half of w + gap)
-			box.AnchorPoint = Vector2.new(0.5, 0.5)
-			box.Position = UDim2.new(0.5, -math.floor((w + gap) / 2), 0.5, 0)
+			box.AnchorPoint = Vector2.new(0.5, ay)
+			box.Position = UDim2.new(0.5, -math.floor((w + gap) / 2), y.Scale, y.Offset)
+			if pw then
+				box.AnchorPoint = Vector2.new(0, ay)
+				box.Position = UDim2.new(0, math.floor(pw / 2 - (w + gap) / 2 - w / 2), y.Scale, y.Offset)
+			end
 		elseif align == Enum.TextXAlignment.Center then
-			box.Position = UDim2.new(0.5, math.floor(after and (textW / 2 + gap) or -(textW / 2 + gap)), 0.5, 0)
+			box.Position = UDim2.new(0.5, math.floor(after and (textW / 2 + gap) or -(textW / 2 + gap)), y.Scale, y.Offset)
+			if pw then
+				box.Position = UDim2.new(0, math.floor(pw / 2 + (after and (textW / 2 + gap) or -(textW / 2 + gap))), y.Scale, y.Offset)
+			end
 		else
-			box.Position = after and UDim2.new(0, textW + gap, 0.5, 0) or UDim2.new(0, -gap, 0.5, 0)
+			box.Position = after and UDim2.new(0, textW + gap, y.Scale, y.Offset) or UDim2.new(0, -gap, y.Scale, y.Offset)
 		end
 	end
 	if not after and align ~= Enum.TextXAlignment.Right then
@@ -428,11 +462,10 @@ function PixelIcon.Lead(label, name, opts)
 		label:GetPropertyChangedSignal("ZIndex"):Connect(sync),
 		label:GetPropertyChangedSignal("TextBounds"):Connect(place),
 		label:GetPropertyChangedSignal("Text"):Connect(place),
+		label:GetPropertyChangedSignal("Size"):Connect(place), -- (U9-7 look) a new height moves the icon's whole-px top
 	}
-	if opts.Room == true then
-		table.insert(leadConns[label][childName], label:GetPropertyChangedSignal("AbsoluteSize"):Connect(place))
-		table.insert(leadConns[label][childName], label:GetPropertyChangedSignal("Size"):Connect(place))
-	end
+	-- (U9-7 look) a laid-out size places the icon on whole px (padded()): every lead follows its label's AbsoluteSize
+	table.insert(leadConns[label][childName], label:GetPropertyChangedSignal("AbsoluteSize"):Connect(place))
 	return box
 end
 

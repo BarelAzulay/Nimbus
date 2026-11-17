@@ -819,6 +819,9 @@ end
 -- nothing on this skin (one look for every window).
 CloudUI.Metrics.SignRoofW = 360
 CloudUI.Metrics.SignFrame = 6
+-- (U9-7 look) a Signboard window's page inset: the design px between Panel.Content's edges and the window's pages, left and
+-- right (the dock family: the Arena and Ring pages, the Dungeon's rows, the dare list)
+CloudUI.Metrics.SignPagePad = 14
 
 local function signPanel(props)
 	local hasTitle = type(props.Title) == "string" and props.Title ~= ""
@@ -883,8 +886,10 @@ local function signPanel(props)
 		if slot and props.Icon then
 			local icon = PixelIcon.New(slot, props.Icon, 27, SIGN.Text)
 			if icon then
-				icon.AnchorPoint = Vector2.new(0.5, 0.5)
-				icon.Position = UDim2.fromScale(0.5, 0.5)
+				-- (U9-7 look) by a whole-pixel offset: centred by AnchorPoint 0.5 the 27 px icon in the 42 px square sat on a
+				-- half pixel on every Signboard window
+				local inset = math.floor((slot.Size.X.Offset - 27) / 2)
+				icon.Position = UDim2.fromOffset(inset, inset)
 			end
 		end
 	end
