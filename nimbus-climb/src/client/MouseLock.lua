@@ -136,18 +136,54 @@ local function showHint()
 	label.TextSize = size
 	label.Size = UDim2.fromOffset(0, math.floor(size * 2 + 0.5))
 	label.AutomaticSize = Enum.AutomaticSize.X
-	label.BackgroundColor3 = Color3.fromRGB(18, 20, 40)
-	label.BackgroundTransparency = 0.25
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	-- (LOOK-ui, kitb-look1: one style across screens; was a dark round pill) the pitch's toast: a kit B block (the tile face,
+	-- the wood edge, the stone lip, square), brown text, the pixel mouse on its gold icon square at the left
+	local sign = theme and theme.Sign or {}
+	label.BackgroundColor3 = sign.Tile or Color3.fromRGB(255, 253, 246)
+	label.BackgroundTransparency = 0
+	label.BorderSizePixel = 0
+	label.TextColor3 = sign.Text or Color3.fromRGB(59, 36, 18)
 	label.Text = "Mouse lock is ON  \194\183  press " .. K.KEY_NAME .. " to free the cursor"
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = label
+	local padL, padR, lipH, square = 52, 18, 4, 28
 	local pad = Instance.new("UIPadding")
-	pad.PaddingLeft = UDim.new(0, 18)
-	pad.PaddingRight = UDim.new(0, 18)
+	pad.PaddingLeft = UDim.new(0, padL)
+	pad.PaddingRight = UDim.new(0, padR)
 	pad.Parent = label
-	-- (kit-b U6) the hint is its own dark pill: no outline on its text
+	local edge = Instance.new("UIStroke")
+	edge.Name = "SignEdge"
+	edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	edge.Thickness = 3
+	edge.Color = sign.Wood or Color3.fromRGB(140, 90, 46)
+	edge.Parent = label
+	-- (the padding moves children too: the lip and the square reach back out by it)
+	local lip = Instance.new("Frame")
+	lip.Name = "Lip"
+	lip.BorderSizePixel = 0
+	lip.BackgroundColor3 = sign.StoneLip or Color3.fromRGB(220, 201, 160)
+	lip.AnchorPoint = Vector2.new(0, 1)
+	lip.Position = UDim2.new(0, -padL, 1, 0)
+	lip.Size = UDim2.new(1, padL + padR, 0, lipH)
+	lip.Parent = label
+	local box = Instance.new("Frame")
+	box.Name = "IconSquare"
+	box.BorderSizePixel = 0
+	box.BackgroundColor3 = sign.Gold or Color3.fromRGB(255, 210, 74)
+	box.AnchorPoint = Vector2.new(0, 0.5)
+	box.Position = UDim2.new(0, -padL + 12, 0.5, -math.floor(lipH / 2))
+	box.Size = UDim2.fromOffset(square, square)
+	box.Parent = label
+	local boxEdge = edge:Clone()
+	boxEdge.Thickness = 2
+	boxEdge.Parent = box
+	pcall(function()
+		local PixelIcon = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("PixelIcon"))
+		local icon = PixelIcon.New(box, "mouse", 18, sign.Text or Color3.fromRGB(59, 36, 18))
+		if icon then
+			icon.Position = UDim2.fromOffset(5, 5)
+		end
+	end)
+	-- (kit-b U6) no outline on its text: it sits on its own opaque block
 	label.Parent = gui
 	gui.Parent = pg
 	St.HintGui = gui

@@ -540,6 +540,31 @@ function CloudUI.SignBlock(obj, look, opts)
 	return edge, lip
 end
 
+-- (LOOK-ui, kitb-look1: no gradient in a pixel screen) "more this way" at a sideways row's right edge: a small stone kit
+-- block with the pixel arrow, right-centred in `holder` (a transparent frame the caller shows and hides; the row's old
+-- edge fade). Returns the block
+function CloudUI.MoreMark(holder, zIndex)
+	local z = tonumber(zIndex) or holder.ZIndex
+	local block = frame("More", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -4, 0.5, 0),
+		Size = UDim2.fromOffset(30, 34),
+		ZIndex = z,
+	}, holder)
+	CloudUI.SignBlock(block, "Stone", { Face = SIGN.Tile, EdgePx = 2, LipPx = 4, Pad = false })
+	local icon = PixelIcon.New(block, "arrow", 18, SIGN.Text)
+	if icon then
+		icon.Position = UDim2.fromOffset(6, 6) -- (the 30 x 30 face over the 4 px lip; the edge is drawn outside)
+		icon.ZIndex = z + 1
+		for _, cell in ipairs(icon:GetChildren()) do
+			if cell:IsA("GuiObject") then
+				cell.ZIndex = z + 1
+			end
+		end
+	end
+	return block
+end
+
 -- A small square chip in an element's colour holding its PixelIcon (Config.Elements.Info[element].Icon) in the ink that
 -- reads on it, with a wood edge (the pitch's .el). opts: Label (the element's name after the icon, on its own stone tag
 -- inside the chip's edge: brown on stone reads at any size, where no ink reads 4.5:1 on the mid-tone element colours),

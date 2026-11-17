@@ -5352,9 +5352,8 @@ local function clientScenarios()
 			return false
 		end
 		-- (U9-2) the Shop's illustrations are art, not panels: the gumball machines (attribute Art) and the EggArt eggs
-		-- (attributes Form + Rarity) keep their glass sheen and egg tones; a scroll row's edge "Fade" is a flat colour fading
-		-- out (no gloss)
-		ALLOWED.Fade = true
+		-- (attributes Form + Rarity) keep their glass sheen and egg tones. (LOOK-ui, kitb-look1) a scroll row's edge "Fade" no
+		-- longer fades: it holds CloudUI.MoreMark, so no gradient is allowed for it
 		local function inArt(d)
 			local cur = d.Parent
 			while cur and not cur:IsA("LayerCollector") do
@@ -5530,6 +5529,10 @@ local function clientScenarios()
 							d.ScrollBarImageTransparency, d.TopImage == d.MidImage and "" or " round ends")
 					end
 				end
+				if d:IsA("GuiObject") and d.BorderSizePixel > 0 and d.BackgroundTransparency < 1 and U8.shown(d) then
+					-- (LOOK-ui) Roblox's default 1 px dark border round an opaque part: kit B draws edges with strokes only
+					seen.borders[#seen.borders + 1] = fmt("%s: %s", family, d:GetFullName():match("[^%.]+%.[^%.]+$") or d.Name)
+				end
 				if d:IsA("Frame") and d.Name == "CloseMark" and d:GetAttribute("PixelX") and U8.shown(d) then
 					-- (LOOK-ui) the pitch's .x block: red face, the red lip, the edge in the ink (not the wood)
 					seen.closes = seen.closes + 1
@@ -5569,7 +5572,7 @@ local function clientScenarios()
 		for _, s in ipairs(U8.SIZES) do
 			U8.at(s[1], s[2], s[3], "whole pixels", function(tag)
 				local pg = U8.pg()
-				local bad, seen = {}, { cells = 0, lips = 0, edges = 0, bars = 0, badBars = {}, closes = 0, badCloses = {} }
+				local bad, seen = {}, { cells = 0, lips = 0, edges = 0, bars = 0, badBars = {}, closes = 0, badCloses = {}, borders = {} }
 				walk(pg:FindFirstChild("NimbusHud"), "HUD", bad, seen)
 				local menu = pg:FindFirstChild("NimbusMenu")
 				walk(menu and menu:FindFirstChild("MenuColumn"), "HUD tiles", bad, seen)
@@ -5603,6 +5606,8 @@ local function clientScenarios()
 					table.concat(bad, "; ", 1, math.min(#bad, 14)))
 				T.check(seen.bars > 0 and #seen.badBars == 0, fmt("%s: every scroll bar is the kit's one bar (wood, opaque, square ends, %d / %d px; %d seen)",
 					tag, SK.Sizes.ScrollBar, SK.Sizes.ScrollBarPhone, seen.bars), table.concat(seen.badBars, "; ", 1, math.min(#seen.badBars, 10)))
+				T.check(#seen.borders == 0, fmt("%s: no opaque part keeps Roblox's 1 px default border (%d do)", tag, #seen.borders),
+					table.concat(seen.borders, "; ", 1, math.min(#seen.borders, 10)))
 				T.check(seen.closes >= 4 and #seen.badCloses == 0, fmt("%s: every close is the pitch's x block (red face and lip, the ink edge; %d seen)", tag, seen.closes),
 					table.concat(seen.badCloses, "; ", 1, math.min(#seen.badCloses, 8)))
 			end)

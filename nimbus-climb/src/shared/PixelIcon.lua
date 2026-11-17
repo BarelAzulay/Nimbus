@@ -312,9 +312,15 @@ end
 
 -- (LOOK-ui) every kit edge (a Border UIStroke) and every kit lip (a Frame "Lip" of a fixed height) under `root`, now and
 -- whenever one is added later, drawn on whole screen px (WholeStroke / WholeHeight). For a window's or the HUD's whole
--- gui, so a card built later (a list row, a pet card) stays on the grid without each builder asking. Once per root
+-- gui, so a card built later (a list row, a pet card) stays on the grid without each builder asking. Once per root.
+-- (LOOK-ui: border leaks) and no GuiObject there keeps Roblox's default 1 px dark border (BorderSizePixel 1 on a new
+-- Frame / TextLabel: it showed round the Pets busy marks, the Shop's header icon, the BEST VALUE tag): kit B draws its
+-- edges with strokes only
 local treed = setmetatable({}, { __mode = "k" })
 local function adopt(d)
+	if d:IsA("GuiObject") and d.BorderSizePixel ~= 0 then
+		d.BorderSizePixel = 0
+	end
 	if followed[d] ~= nil then
 		return
 	end
@@ -338,6 +344,9 @@ function PixelIcon.WholeTree(root)
 		adopt(d)
 	end
 	root.DescendantAdded:Connect(function(d)
+		if d:IsA("GuiObject") and d.BorderSizePixel ~= 0 then
+			d.BorderSizePixel = 0
+		end
 		if d:IsA("UIStroke") or (d:IsA("Frame") and d.Name == "Lip") then
 			-- its builder names and sizes it right after parenting it: look once that is done
 			task.defer(function()

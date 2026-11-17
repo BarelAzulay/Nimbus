@@ -396,12 +396,10 @@ function ShopGems.Build(page, ctx)
 	scroll.Size = UDim2.fromScale(1, 1)
 	scroll.Parent = page
 	P.Scroll = scroll
-	local fade = frame("Fade", page, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Stone, Visible = false, ZIndex = 6 })
-	Util.Create("UIGradient", {
-		Name = "Fade", -- (kit-b U9-2) the stone body fading in at the row's edge (no gloss)
-		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.08) }),
-		Parent = fade,
-	})
+	-- (kit-b U9-2) the row's right edge while more is that way; (LOOK-ui, kitb-look1: no gradient in a pixel screen) a stone
+	-- block with the pixel arrow there, not the stone fading in
+	local fade = frame("Fade", page, { BackgroundTransparency = 1, Visible = false, ZIndex = 6 })
+	CloudUI.MoreMark(fade, 6)
 	P.Fade = fade
 	P.Hero = buildHero(P)
 	for i = 1, #(Config.Gems.Products or {}) do

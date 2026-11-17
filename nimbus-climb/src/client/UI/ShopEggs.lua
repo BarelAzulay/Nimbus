@@ -701,12 +701,10 @@ function ShopEggs.Build(page, ctx)
 	CUR.Page = page
 	P.Scroll = scroller("Scroll", page, Enum.ScrollingDirection.Y)
 	P.Scroll.Size = UDim2.fromScale(1, 1)
-	P.Fade = frame("Fade", page, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Stone, Visible = false, ZIndex = 6 })
-	Util.Create("UIGradient", {
-		Name = "Fade", -- (kit-b U9-2) the stone body fading in at the row's edge (no gloss)
-		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.08) }),
-		Parent = P.Fade,
-	})
+	-- (kit-b U9-2) the row's right edge while more is that way; (LOOK-ui, kitb-look1: no gradient in a pixel screen) a stone
+	-- block with the pixel arrow there, not the stone fading in
+	P.Fade = frame("Fade", page, { BackgroundTransparency = 1, Visible = false, ZIndex = 6 })
+	CloudUI.MoreMark(P.Fade, 6)
 	P.Hero = H.buildHero(P, P.Scroll)
 	P.Row = scroller("Cards", P.Scroll, Enum.ScrollingDirection.X)
 	for i, id in ipairs(K.MACHINES) do
