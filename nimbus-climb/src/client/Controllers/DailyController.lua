@@ -206,7 +206,7 @@ local K = {
 		Side = 28, HeaderY = 18, HeaderH = 44, HeaderText = 34, ChipY = 20, ChipH = 44, ChipText = 22, ChipPad = 18,
 		StreakW = 220, VipW = 150, ChipGap = 16, LongStreak = true,
 		TileSide = 22, TileGap = 16, TileW = 128, TileMaxH = 260, Raise = 8, PadTop = 12, PadBottom = 14, DayText = 22,
-		AmountText = 30, IconPx = 76, PetPx = 150, CheckText = 60,
+		AmountText = 30, ChipPx = 72, PetPx = 150,
 		WispW = 700, WispText = 24, BannerW = 900, BannerText = 28, SegGap = 6, ClaimW = 360, RepairW = 440, ClaimText = 40,
 		RepairText = 32, Line1 = 24, Line2 = 22, CountText = 28, KeepW = 800, KeepText = 22,
 		FullBody = 644, CompactBody = 485,
@@ -215,7 +215,7 @@ local K = {
 		-- the Play page (card B at 1080p: body 1180 x 644; the rows slide from PlayCompact to PlayFull like the Daily page)
 		PlaySide = 28, PlayY = 18, PlayH = 44, PlayText = 32, PausedText = 26, AllW = 252, AllH = 60, AllY = 12, AllText = 24,
 		AllGap = 16, BoxSide = 28, BoxW = 260, BoxMaxH = 250, BoxCols = 4, BoxGap = 28, BoxPadTop = 12, BoxPadBottom = 14,
-		TimeText = 24, GiftPx = 110, RewardText = 24, SlotH = 56, TierBtnW = 200, TierBtnText = 24, ClockText = 26, TickText = 40,
+		TimeText = 24, GiftPx = 110, RewardText = 24, SlotH = 56, TierBtnW = 200, TierBtnText = 24, ClockText = 26,
 		BoxMinGap = 6,
 		PlayFull = { BoxRowsY = 92, BoxRowGap = 30, BoxBottom = 22 }, PlayCompact = { BoxRowsY = 80, BoxRowGap = 14, BoxBottom = 20 },
 	},
@@ -225,7 +225,7 @@ local K = {
 		Side = 14, HeaderY = 6, HeaderH = 30, HeaderText = 18, ChipY = 6, ChipH = 30, ChipText = 15, ChipPad = 10,
 		StreakW = 118, VipW = 84, ChipGap = 8,
 		TileSide = 14, TileGap = 10, TileW = 92, TileMaxH = 122, TileMinH = 80, Raise = 8, PadTop = 6, PadBottom = 8, DayText = 15,
-		AmountText = 17, IconPx = 40, PetPx = 60, CheckText = 36,
+		AmountText = 17, ChipPx = 48, PetPx = 60,
 		TilesY = 48, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 16, BarGap = 8, SegGap = 4, KeepH = 40,
 		KeepText = 15, Bottom = 8, ColGap = 16, BannerText = 15, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26,
 		RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
@@ -233,7 +233,7 @@ local K = {
 		PlaySide = 14, PlayY = 2, PlayH = 44, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 2, AllText = 15,
 		AllGap = 12, BoxSide = 14, BoxW = 104, BoxMaxH = 204, BoxCols = 7, BoxGap = 12, BoxRowsY = 58, BoxRowGap = 0,
 		BoxBottom = 20, BoxPadTop = 6, BoxPadBottom = 12, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
-		TierBtnText = 16, ClockText = 16, TickText = 28, BoxMinGap = 4,
+		TierBtnText = 16, ClockText = 16, BoxMinGap = 4,
 	},
 	PORTRAIT = {
 		Header = 50, HeadPad = 10, TabY = 9, TabH = 34, TabW = { 100, 130 }, TabGap = 6, TabText = 17, Close = 44, CloseY = 3,
@@ -244,7 +244,7 @@ local K = {
 		Side = 15, HeaderY = 4, HeaderH = 26, HeaderText = 18, ChipY = 34, ChipH = 28, ChipText = 15, ChipPad = 10,
 		StreakW = 104, VipW = 84, ChipGap = 8,
 		TileGap = 10, TileW = 92, TileMaxH = 122, TileMinH = 64, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
-		AmountText = 15, IconPx = 28, PetPx = 44, CheckText = 28,
+		AmountText = 15, ChipPx = 48, PetPx = 44,
 		TilesY = 72, RowGap = 12, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 14, BarGap = 10, SegGap = 4,
 		ClaimH = 64, ClaimGap = 8, KeepH = 40, KeepText = 15, Bottom = 6, BannerText = 15, ClaimW = 230, RepairW = 300,
 		ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
@@ -252,7 +252,7 @@ local K = {
 		PlaySide = 15, PlayY = 4, PlayH = 40, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 48, AllText = 15,
 		AllGap = 0, BoxSide = 15, BoxW = 104, BoxMaxH = 204, BoxCols = 4, BoxGap = 10, BoxRowsY = 100, BoxRowGap = 10,
 		BoxBottom = 20, BoxPadTop = 4, BoxPadBottom = 12, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
-		TierBtnText = 15, ClockText = 15, TickText = 28, BoxMinGap = 4,
+		TierBtnText = 15, ClockText = 15, BoxMinGap = 4,
 	},
 }
 DailyController.K = K
@@ -317,6 +317,23 @@ K.PULSE_EDGE = SIGN.GoldLip -- the pulse's second frame
 -- (kit-b U9-4, finding 26) the week's confetti: the prize's gold and the gift's pink (the Gifts button's block), each with
 -- its lip tone, in place of the rainbow
 K.CONFETTI_COLORS = { SIGN.Gold, SIGN.Roof, SIGN.GoldLip, SIGN.RoofLip }
+-- (U9-4 look review: one pixel size per screen) every pixel icon in the window draws at one of two sizes, one double the
+-- other: Glyph (the header gift, the sparkles, the clock, a reward's coin) and Art (a day's reward, the ticks, a box's
+-- gift): 3 / 6 px cells on PC (27 / 54 at 1080p), 2 / 4 px on a phone (18 / 36)
+K.PIXEL = { PC = { Glyph = 27, Art = 54 }, Phone = { Glyph = 18, Art = 36 } }
+-- (U9-4 look review) a day's reward art sits on its role's chip, as the HUD's strips colour each currency: cash the
+-- grass block, tokens gold, gems navy (the cut gem, as the HUD's), the rest stone; Ink = the pixel art's colour on it
+K.ART_CHIP = {
+	Cash = { Face = SIGN.Grass, Lip = SIGN.GrassLip, Ink = SIGN.OnGrass },
+	Tokens = { Face = SIGN.Gold, Lip = SIGN.GoldLip, Ink = SIGN.Text },
+	Gems = { Face = SIGN.Navy, Lip = SIGN.NavyLip, Ink = SIGN.Gold },
+	Other = { Face = SIGN.Tile, Lip = SIGN.StoneLip, Ink = SIGN.Text },
+}
+K.ART_LIP = 4
+-- (U9-4 look review) the next gift to open shows the minutes played toward it as the kit's block bar (SignKit.BlockRow,
+-- Count blocks filled gold, the gold lip while the clock is paused) over its countdown; H = the blocks' height, Gap the
+-- px between them, MaxW a block's widest
+K.TIER_BAR = { Count = 5, PC = { H = 16, Gap = 4, MaxW = 26 }, Phone = { H = 12, Gap = 2, MaxW = 16 } }
 -- the Wisp bar's blocks per state, in the kit's block-bar language (SignKit.BlockRow, the pitch's .seg): a filled block
 -- has its darker lip (a claimed day grass, the green of the claimed tick; today gold), an open one is the sunk well
 -- with no lip; each in a 2 px wood edge
@@ -479,14 +496,16 @@ local function paysNothing(tier)
 	return tier.Kind ~= "Pet" and amount ~= nil and amount < 1
 end
 
--- the words of a play tier's reward, the longest form first ("+$200", "+40 Tokens", "Full Berry Basket" / "Berry Basket"
--- / "Full Basket"; a full Basket, Amount 0: "Basket is full" / "Basket full")
+-- the words of a play tier's reward, the longest form first ("+$200", "+40" after the token coin, "Full Berry Basket" /
+-- "Berry Basket" / "Full Basket"; a full Basket, Amount 0: "Basket is full" / "Basket full"). (U9-4 look review) tokens
+-- and gems read as the Trove's tags do: their pixel icon (TIER_ICON, PixelIcon.Mark) before the amount, not the word
+local TIER_ICON = { Tokens = "token", Gems = "gem" }
 local function tierRewards(tier)
 	local kind = tier.Kind
 	if kind == "Cash" then
 		return { "+$" .. commas(tier.Amount), "+$" .. short(tier.Amount) }
 	elseif kind == "Tokens" or kind == "Gems" then
-		return { "+" .. commas(tier.Amount) .. " " .. kind, "+" .. short(tier.Amount) .. " " .. kind, "+" .. short(tier.Amount) }
+		return { "+" .. commas(tier.Amount), "+" .. short(tier.Amount) }
 	elseif kind == "Berries" and paysNothing(tier) then
 		return { "Basket is full", "Basket full" }
 	elseif kind == "Berries" then
@@ -1004,9 +1023,26 @@ function H.twinkle(box, flip)
 	end
 end
 
--- a sparkle's px for an art box of `art` px: 18 on a big tile, 9 (one px a cell) on a phone's
-local function sparklePx(art)
-	return math.max(9, math.min(18, 9 * math.floor((tonumber(art) or 0) / 36)))
+-- (U9-4 look review) a pixel size of the laid-out screen (K.PIXEL): "Glyph" or "Art"
+function H.px(kind)
+	local set = K.PIXEL[S.Mode == "PC" and "PC" or "Phone"]
+	return set[kind] or set.Glyph
+end
+
+-- the largest of the screen's two pixel sizes that fits `room` px (the glyph size when neither does)
+function H.fitPx(room)
+	local art = H.px("Art")
+	return (tonumber(room) or 0) >= art and art or H.px("Glyph")
+end
+
+-- a sparkle's px: the screen's glyph size
+local function sparklePx()
+	return H.px("Glyph")
+end
+
+-- the TextSize of a label whose hosted PixelIcon (0.9 x the TextSize, snapped to 9s) must draw at `px`
+local function hostSize(px)
+	return math.ceil(px / 0.9)
 end
 
 -- (kit-b U9-4) a day tile: a kit B block (NeonKit.Card Skin "Sign"; H.paintLook gives it its face and edge, the day's
@@ -1415,13 +1451,19 @@ function H.placeTile(cell, M, today, wide)
 	local artY = M.PadTop + dayH + 1
 	local artH = math.max(0, amountY - 1 - artY)
 	place(cell.Art, 0, artY, w, artH)
-	local check = math.max(15, math.min(M.CheckText, math.floor(math.min(w, h) * 0.5)))
+	-- (U9-4 look review) the tick at the screen's art size (6 px cells on PC, 4 on a phone)
+	local tick = H.px("Art")
+	local check = hostSize(tick)
 	cell.Check.TextSize = check
 	place(cell.Check, (w - check - 8) / 2, (h - check - 8) / 2, check + 8, check + 8)
-	cell.ArtPx = math.max(12, math.min(wide and M.PetPx or M.IconPx, artH, w - 8))
+	-- the reward's chip (ChipPx, or less where the tile is small) and the art on it at one of the screen's two pixel
+	-- sizes; the Week Wisp's viewport as big as the room allows
+	cell.PetPx = math.max(12, math.min(M.PetPx, artH, w - 8))
+	cell.ChipPx = math.max(12, math.min(M.ChipPx, artH, w - 8))
+	cell.ArtPx = H.fitPx(cell.ChipPx - 12)
 	-- (kit-b U9-4) the glint round the art (a cream sparkle reads on today's gold)
-	local a = cell.ArtPx
-	H.placeSparkles(cell.Sparkles, (w - a) / 2, artY + (artH - a) / 2, a, a, sparklePx(a), SIGN.Tile)
+	local a = wide and cell.PetPx or cell.ChipPx
+	H.placeSparkles(cell.Sparkles, (w - a) / 2, artY + (artH - a) / 2, a, a, sparklePx(), SIGN.Tile)
 end
 
 -- the streak / VIP chips and the header's width (they follow the payload)
@@ -1570,7 +1612,7 @@ function H.layoutTier(cell, bw, bh, M)
 	place(cell.Gift, (bw - px) / 2, y, px, px)
 	cell.GiftX, cell.GiftY, cell.GiftPx = cell.Gift.Position.X.Offset, cell.Gift.Position.Y.Offset, px
 	-- (kit-b U9-4) the glint round the gift block (a deep gold sparkle reads on the stone box)
-	H.placeSparkles(cell.Sparkles, cell.GiftX, cell.GiftY, px, px, sparklePx(px), SIGN.GoldDeep)
+	H.placeSparkles(cell.Sparkles, cell.GiftX, cell.GiftY, px, px, sparklePx(), SIGN.GoldDeep)
 	y = y + px + gap
 	place(cell.Reward, 4, y, inner, rewardH)
 	cell.Reward.TextSize = M.RewardText
@@ -1588,10 +1630,31 @@ function H.layoutTier(cell, bw, bh, M)
 		pad.PaddingLeft, pad.PaddingRight = UDim.new(0, side), UDim.new(0, side)
 	end
 	cell.Clock.TextSize, cell.Glyph.TextSize = M.ClockText, M.ClockText
-	local tick = M.TickText
+	-- (U9-4 look review) the tick at the screen's art size, as a day tile's
+	local tick = hostSize(H.px("Art"))
 	cell.Check.TextSize = tick
 	place(cell.Check, (bw - tick - 8) / 2, slotY + (M.SlotH - tick - 8) / 2, tick + 8, tick + 8)
 	cell.GiftKey, cell.ClockKey = nil, nil
+	cell.BoxW = bw
+	cell.Reward:SetAttribute("Mark_KindIcon", nil) -- (the reward's coin is redrawn at the new screen's glyph size)
+	-- (U9-4 look review) the next gift's bar: Count blocks across the slot's middle, rebuilt when its size changes
+	local TB = K.TIER_BAR[S.Mode == "PC" and "PC" or "Phone"]
+	local n = K.TIER_BAR.Count
+	local blockW = math.max(6, math.min(TB.MaxW, math.floor((inner - 8 - (n - 1) * TB.Gap) / n)))
+	local barKey = blockW .. "x" .. TB.H .. ":" .. TB.Gap
+	if not cell.Bar or cell.BarKey ~= barKey then
+		if cell.Bar then
+			cell.Bar:Destroy()
+		end
+		cell.Bar = SignKit.BlockRow(cell.Card.Body, { Count = n, BlockW = blockW, BlockH = TB.H, Gap = TB.Gap, Name = "PlayBar", ZIndex = 5, Visible = false })
+		for _, d in ipairs(cell.Bar:GetDescendants()) do
+			if d:IsA("GuiObject") then
+				d.ZIndex = 5
+			end
+		end
+		cell.BarKey = barKey
+	end
+	cell.BarH = TB.H
 end
 
 -- the menu tiles (NimbusMenu draws above this window) step aside while the open window reaches over them, on a
@@ -1636,8 +1699,8 @@ function H.paintTab(button, selected)
 end
 
 function H.paintArt(cell, entry)
-	local px = cell.ArtPx or 28
-	local key = tostring(entry.Kind) .. ":" .. tostring(entry.PetId) .. ":" .. px
+	local px, chipPx = cell.ArtPx or 18, cell.ChipPx or 30
+	local key = tostring(entry.Kind) .. ":" .. tostring(entry.PetId) .. ":" .. px .. ":" .. chipPx .. ":" .. tostring(cell.PetPx)
 	if cell.ArtKey == key then
 		return
 	end
@@ -1647,7 +1710,7 @@ function H.paintArt(cell, entry)
 	end
 	if entry.Kind == "Pet" and type(entry.PetId) == "string" then
 		local ok = pcall(function()
-			local vp = CloudUI.PetViewport(cell.Art, entry.PetId, px, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Spin = "sway" })
+			local vp = CloudUI.PetViewport(cell.Art, entry.PetId, cell.PetPx or px, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Spin = "sway" })
 			vp.Name = "PetViewport"
 			vp.ZIndex = 5
 		end)
@@ -1655,9 +1718,38 @@ function H.paintArt(cell, entry)
 			return
 		end
 	end
-	local icon = NeonKit.Icon(cell.Art, (entry.Kind == "Pet" and "Gifts") or (entry.Kind == "Berries" and "Berries") or tostring(entry.Kind or "Gifts"), px)
-	icon.TextColor3 = SIGN.Text -- (kit-b U9-4) brown on the stone / gold block
-	icon.ZIndex = 5
+	-- (U9-4 look review) the reward on its role's chip (K.ART_CHIP: a kit B block, 2 px wood edge, its darker lip), the
+	-- pixel art centred on the face at the screen's art size (the cut gem on the navy chip, as the HUD's gem strip)
+	local kind = tostring(entry.Kind or "")
+	local look = K.ART_CHIP[kind] or K.ART_CHIP.Other
+	local chip = Util.Create("Frame", {
+		Name = "Chip", BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(chipPx, chipPx), ZIndex = 5, Parent = cell.Art,
+	})
+	CloudUI.SignBlock(chip, { Face = look.Face, Lip = look.Lip, Edge = SIGN.Wood, Text = SIGN.Text }, { EdgePx = 2, LipPx = K.ART_LIP })
+	chip:SetAttribute("Role", K.ART_CHIP[kind] and kind or "Other")
+	local x, y = math.floor((chipPx - px) / 2), math.floor((chipPx - K.ART_LIP - px) / 2)
+	if kind == "Gems" then
+		local ok, gem = pcall(function()
+			return require(Client:WaitForChild("UI"):WaitForChild("GemIcon")).New(chip, px, { ZIndex = 6 })
+		end)
+		if ok and gem then
+			gem.AnchorPoint = Vector2.new(0, 0)
+			gem.Position = UDim2.fromOffset(x, y)
+			return
+		end
+	end
+	local id = (kind == "Pet" and "Gifts") or (kind == "" and "Gifts") or kind
+	local name = NeonKit.IconName(id) or NeonKit.IconName("Gifts") or "gift"
+	local icon = PixelIcon.New(chip, name, px, look.Ink)
+	if icon then
+		icon.Name = "Icon"
+		icon.Position = UDim2.fromOffset(x, y)
+		icon.ZIndex = 6
+		for _, f in ipairs(icon:GetChildren()) do
+			f.ZIndex = 6
+		end
+	end
 end
 
 -- a cell's colour (its lip) and its CELL_LOOK state (the face and the edge), painted only when they change
@@ -1702,7 +1794,8 @@ function H.paintGift(cell)
 		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(side, side), ZIndex = 5, Parent = cell.Gift,
 	})
 	CloudUI.SignBlock(block, "Gift", { LipPx = math.max(2, math.floor(side / 12)) })
-	local icon = NeonKit.Icon(block, "Gifts", math.max(9, math.floor(side * 0.55 / 9) * 9))
+	-- (U9-4 look review) the gift at one of the screen's two pixel sizes (the art size where the block has room)
+	local icon = NeonKit.Icon(block, "Gifts", hostSize(H.fitPx(math.floor(side * 0.55))))
 	icon.TextColor3 = SIGN.Text
 	icon.Position = UDim2.new(0.5, 0, 0.5, -1)
 	icon.ZIndex = 6
@@ -1710,12 +1803,22 @@ end
 
 -- the clock slot: the countdown centred with the clock glyph before it, or alone when both would not fit the box
 function H.placeClock(cell, text)
-	local key = text .. "|" .. tostring(cell.SlotY) .. "|" .. tostring(cell.Inner) .. "|" .. cell.Clock.TextSize
+	local barOn = cell.Bar ~= nil and cell.Bar.Visible
+	local key = text .. "|" .. tostring(cell.SlotY) .. "|" .. tostring(cell.Inner) .. "|" .. cell.Clock.TextSize .. "|" .. tostring(barOn)
 	if cell.ClockKey == key then
 		return
 	end
 	cell.ClockKey = key
 	local inner, slotY, slotH = cell.Inner or 0, cell.SlotY or 0, cell.SlotH or 44
+	if barOn then
+		-- (U9-4 look review) the next gift: its block bar on top of the slot, the countdown under it
+		local bar = cell.Bar
+		local barW = bar.Size.X.Offset
+		place(bar, ((cell.BoxW or inner + 8) - barW) / 2, slotY, barW, cell.BarH or 12)
+		local gap = 2
+		slotY = slotY + (cell.BarH or 12) + gap
+		slotH = slotH - (cell.BarH or 12) - gap
+	end
 	local size = cell.Clock.TextSize
 	local textW = H.width(text, size, Theme.FontOf(cell.Clock))
 	local room = size + 8 -- the glyph's box (size + 4) and a 4 px gap
@@ -1853,6 +1956,14 @@ function H.renderPlay(st, M)
 	U.ClaimAll.Text = string.format(TEXT.ClaimAll, readyCount)
 	U.ClaimAll:SetAttribute("Disabled", readyCount == 0)
 	local list = tiers(st)
+	-- (U9-4 look review) the next gift to open: the first one still locked; its bar fills with the minutes played toward it
+	local nextTier = nil
+	for i, t in ipairs(list) do
+		if nextTier == nil and type(t) == "table" and t.Claimed ~= true and t.Ready ~= true then
+			nextTier = i
+		end
+	end
+	local live = H.liveSeconds(st, at)
 	for i, cell in ipairs(U.Tiers) do
 		local t = list[i]
 		cell.Root.Visible = type(t) == "table"
@@ -1860,6 +1971,7 @@ function H.renderPlay(st, M)
 			local color = TIER_COLORS[i] or SIGN.Gold
 			cell.Time.Text = tostring(tonumber(t.Min) or 0) .. " min"
 			cell.Reward.Text = H.fitLines(cell.Reward, tierRewards(t), cell.Lines)
+			PixelIcon.Mark(cell.Reward, TIER_ICON[t.Kind], { Px = H.px("Glyph"), Colour = SIGN.Text, Name = "KindIcon" })
 			H.paintGift(cell)
 			local claimed = t.Claimed == true
 			local ready = not claimed and t.Ready == true and not loading
@@ -1877,6 +1989,25 @@ function H.renderPlay(st, M)
 			local countdown = state == "Locked" and DailyController.TierCountdown(i, st, at) or ""
 			cell.Clock.Text = countdown
 			cell.Clock.Visible = countdown ~= ""
+			if cell.Bar then
+				local on = i == nextTier and countdown ~= "" and not loading
+				cell.Bar.Visible = on
+				if on then
+					local need = math.max(1, (tonumber(t.Min) or 1) * 60)
+					local k = SignKit.FillBlocks(cell.Bar, math.floor(K.TIER_BAR.Count * math.min(1, live / need) + 1e-6))
+					cell.Bar:SetAttribute("Paused", paused)
+					if paused then
+						-- (the clock holds: the filled blocks turn the gold lip, never faded)
+						for b = 1, k do
+							local face = cell.Bar:FindFirstChild("Block" .. b)
+							face = face and face:FindFirstChild("Face")
+							if face then
+								face.BackgroundColor3 = SIGN.GoldLip
+							end
+						end
+					end
+				end
+			end
 			H.placeClock(cell, countdown)
 			H.paintLook(cell, color, state) -- (just ready: the ink edge at once; the tick then swaps it)
 			cell.State = state

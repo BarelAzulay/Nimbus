@@ -6602,6 +6602,31 @@ local function clientScenarios()
 		end
 		return out
 	end
+	-- (U9-4 look review: one pixel size per screen) the cell sizes (screen px) of the shown PixelIcons under `root`, as a
+	-- sorted list of distinct values, and the icons whose cell is not one of `allowed`
+	function U94.pixelCells(root, allowed)
+		local seen, odd = {}, {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+				local c = d.AbsoluteSize.X / 9
+				local key = fmt("%.2f", c)
+				seen[key] = true
+				local ok = false
+				for _, a in ipairs(allowed) do
+					ok = ok or math.abs(c - a) < 0.01
+				end
+				if not ok then
+					odd[#odd + 1] = fmt("%s %s (%s px cells)", d.Parent and d.Parent.Name or "?", tostring(d:GetAttribute("PixelIcon")), key)
+				end
+			end
+		end
+		local list = {}
+		for k in pairs(seen) do
+			list[#list + 1] = k
+		end
+		table.sort(list)
+		return list, odd
+	end
 	-- (U9-4 look review: the floating lip) the shown kit B blocks under `root` (a SignEdge stroke and a Lip child) whose lip
 	-- is not flush: its bottom the block's bottom, its left and right the block's (a UIPadding on a text block used to pad
 	-- the lip up off the bottom and in from the sides)
@@ -6867,6 +6892,26 @@ local function clientScenarios()
 					table.concat(edgeBad, ", ") .. fmt(" | pulse ink %s gold %s tween %s", tostring(seen[hex(Sign.Text)]), tostring(seen[hex(Sign.GoldLip)]), tostring(tweened)))
 				local room = U94.tileRoom(holder, "Cell")
 				T.check(#room == 0, tag .. ": stone round every day tile (3 px to the frame, 4 px between)", table.concat(room, "; ", 1, math.min(#room, 6)))
+				-- (U9-4 look review) one pixel size per screen: every pixel icon in the window at the glyph or the art size,
+				-- one double the other (3 / 6 px cells on PC, 2 / 4 on a phone): the header gift, the sparkles, the ticks, the art
+				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 })
+				T.check(#odd == 0, tag .. ": every pixel icon at one of the screen's two pixel sizes (" .. (pc and "3 / 6" or "2 / 4") .. " px cells)",
+					table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
+				-- each day's reward on its role's chip, as the HUD's strips colour each currency: cash grass, tokens gold, gems navy
+				local ROLE = { [4] = { "Cash", Sign.Grass }, [5] = { "Tokens", Sign.Gold }, [6] = { "Gems", Sign.Navy } }
+				local chipBad = {}
+				for i, want in pairs(ROLE) do
+					local c = holder:FindFirstChild("Cell" .. i, true)
+					local chip = c and c:FindFirstChild("Chip", true)
+					local art = false
+					for _, d in ipairs(chip and chip:GetDescendants() or {}) do
+						art = art or d:GetAttribute("PixelIcon") ~= nil or d.Name == "GemIcon"
+					end
+					if not (chip and U8.shown(chip) and chip:GetAttribute("Role") == want[1] and sameColor(chip.BackgroundColor3, want[2]) and chip:FindFirstChild("SignEdge") and art) then
+						chipBad[#chipBad + 1] = "Cell" .. i .. (chip and (" " .. tostring(chip:GetAttribute("Role")) .. " " .. hex(chip.BackgroundColor3)) or " no chip")
+					end
+				end
+				T.check(#chipBad == 0, tag .. ": each day's reward sits on its role's chip (cash grass, tokens gold, gems navy) with its art", table.concat(chipBad, ", "))
 				local round = U94.roundOrGloss(holder)
 				T.check(#round == 0, tag .. ": nothing round or glossy in the Gifts window", table.concat(round, ", ", 1, math.min(#round, 10)))
 				local bad = U94.contrast("NimbusDaily")
@@ -6926,6 +6971,39 @@ local function clientScenarios()
 				T.check(#tierBad == 0, tag .. ": box edges are solid tokens (claimed the Off edge, ready ink, locked wood; none faded)", table.concat(tierBad, ", "))
 				local room = U94.tileRoom(holder, "Tier")
 				T.check(#room == 0, tag .. ": stone round every gift box, its Claim off its lip", table.concat(room, "; ", 1, math.min(#room, 6)))
+				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 })
+				T.check(#odd == 0, tag .. ": every pixel icon on the Play page at one of the screen's two pixel sizes", table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
+				-- the reward line in the Trove's tag language: the kind's pixel icon before the amount (no "Tokens" / "Gems" words)
+				local kindBad = {}
+				for i, want in pairs({ [2] = "token", [4] = "gem", [5] = "token", [7] = "gem" }) do
+					local r = holder:FindFirstChild("Tier" .. i, true)
+					r = r and r:FindFirstChild("Reward", true)
+					local mark = r and r:FindFirstChild("KindIcon")
+					if not (r and mark and mark:GetAttribute("PixelIcon") == want and not r.Text:find("%a")) then
+						kindBad[#kindBad + 1] = "Tier" .. i .. (r and (" '" .. r.Text .. "' " .. tostring(mark and mark:GetAttribute("PixelIcon"))) or "")
+					end
+				end
+				T.check(#kindBad == 0, tag .. ": tokens and gems read as their pixel icon + the amount (the Trove's tags)", table.concat(kindBad, ", "))
+				-- the next gift to open (60 min, 47 min played, paused) shows the minutes toward it as the kit's block bar over
+				-- its countdown: 5 blocks, 3 filled (the gold lip while paused); no other box has one
+				local bars = {}
+				for i = 1, 7 do
+					local box = holder:FindFirstChild("Tier" .. i, true)
+					local bar = box and box:FindFirstChild("PlayBar", true)
+					if bar and U8.shown(bar) then
+						bars[#bars + 1] = "Tier" .. i
+					end
+				end
+				local bar4 = holder:FindFirstChild("Tier4", true)
+				bar4 = bar4 and bar4:FindFirstChild("PlayBar", true)
+				local face1 = bar4 and bar4:FindFirstChild("Block1")
+				face1 = face1 and face1:FindFirstChild("Face")
+				local clock4 = holder:FindFirstChild("Tier4", true)
+				clock4 = clock4 and clock4:FindFirstChild("Clock", true)
+				T.check(#bars == 1 and bars[1] == "Tier4" and bar4:GetAttribute("SignKit") == "BlockRow" and bar4:GetAttribute("Count") == 5 and bar4:GetAttribute("Filled") == 3
+					and face1 ~= nil and sameColor(face1.BackgroundColor3, Sign.GoldLip) and clock4 ~= nil and U8.shown(clock4) and U8.rect(clock4).Y >= U8.rect(bar4).B - 0.5,
+					tag .. ": the next gift's minutes are a 5-block bar (3 filled, the gold lip while paused) over its countdown; no other box has one",
+					table.concat(bars, ", ") .. (bar4 and fmt(" filled %s", tostring(bar4:GetAttribute("Filled"))) or ""))
 				local round = U94.roundOrGloss(holder)
 				T.check(#round == 0, tag .. ": nothing round or glossy on the Play page", table.concat(round, ", ", 1, math.min(#round, 10)))
 				local bad = U94.contrast("NimbusDaily")
