@@ -116,8 +116,11 @@
 --                             scrolling list whole on the screen and uncut, one-line texts fitting at real widths, every
 --                             text reading on its fill (the family's contrast_backlog lines gone); on the phones nothing
 --                             under the stick / jump button (the docked windows hide them, as the Pets window and the Index);
---                             (review) every lead / trail icon beside its text, not on it
---   arena_family_one_green    (client) at most one green action per view, the right one; the selected Arena tab gold.
+--                             (review) every lead / trail icon beside its text, not on it; (look) no plank cut by its
+--                             list's fold, the cards clear of the HUD / battle HUD / touch buttons, no rotated part, every
+--                             pixel icon's cells whole screen px at every size (one cell size for 18 / 27 px icons at 0.8),
+--                             the Ring's champion vs team pinned whole in the team row, the End card's totals as chips
+--   arena_family_one_green   (client) at most one green action per view, the right one; the selected Arena tab gold.
 --                             kitb_no_neon_glow, kitb_no_emoji_ui and kitb_titles_stamped walk the family's views too
 --   arena_fit_labels_freed    (client, review) a fitted label a refresh destroyed is collected (fitWidth holds no closure)
 --   dungeon_chip_leave_reachable (client, review) both phones, a room fight / the chest alcove / a lobby countdown: the
@@ -1128,11 +1131,19 @@ local function serverScenarios()
 				local x1 = ap.X + as.X - (pad and pad.PaddingRight.Offset or 0) * sc
 				local tw = label.TextBounds.X
 				local t0 = (align == L and x0) or (align == R and x1 - tw) or ((x0 + x1 - tw) / 2)
-				local ip, is = box.AbsolutePosition, box.AbsoluteSize
-				local space = after and (ip.X - (t0 + tw)) or (t0 - (ip.X + is.X))
-				T.check(space >= gap - 0.5 and space <= gap + sc + 0.5,
+				-- (U9-7 look) measured from the cells as drawn: under 0.8 an 18 px icon's whole-px cells draw past its box
+				-- (2 px cells, 18 px on the screen in a 14.4 px box) and Lead steps the box out by that much
+				local d0, d1 = math.huge, -math.huge
+				for _, r in ipairs(box:GetDescendants()) do
+					if r:IsA("Frame") and r.Name:match("^R%d+$") then
+						d0 = math.min(d0, r.AbsolutePosition.X)
+						d1 = math.max(d1, r.AbsolutePosition.X + r.AbsoluteSize.X)
+					end
+				end
+				local space = after and (d0 - (t0 + tw)) or (t0 - d1)
+				T.check(space >= gap - 0.5 and space <= gap + 2 * sc + 0.5,
 					fmt("pixelicon lead: UIScale %.2f, %s, %s: the icon sits its gap outside the text", sc, align.Name, after and "after" or "before"),
-					fmt("space %.1f, gap %.1f (text %.1f..%.1f, icon %.1f..%.1f)", space, gap, t0, t0 + tw, ip.X, ip.X + is.X))
+					fmt("space %.1f, gap %.1f (text %.1f..%.1f, icon drawn %.1f..%.1f)", space, gap, t0, t0 + tw, d0, d1))
 			end
 		end
 		gui:Destroy()
@@ -6452,6 +6463,87 @@ local function clientScenarios()
 					T.check(#rotated == 0, fmt("%s: no rotated part (%d)", tag, #rotated), table.concat(rotated, "; ", 1, math.min(#rotated, 6)))
 					if W == 1920 then
 						T.check(#halves == 0, fmt("%s: every pixel icon and team face on whole pixels (%d)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+					end
+					-- (U9-7 look, kit-level) at every size, under the windows' 0.8 too, a pixel icon's cells are whole screen px
+					-- (PixelIcon fits round(cell x scale): 2.4 px cells drew as uneven 2 / 3 px columns), and the 18 / 27 px
+					-- icons share one cell size on a 0.8 screen
+					local softCells, cellSizes, nIcons = {}, {}, 0
+					for _, d in ipairs(gui:GetDescendants()) do
+						local px = d:IsA("Frame") and d:GetAttribute("PixelIcon") and d:FindFirstChild("R1") and d.Size.X.Offset
+						if px and U8.shown(d) then
+							nIcons = nIcons + 1
+							local cpx = d:GetAttribute("CellPx")
+							if px == 18 or px == 27 then
+								cellSizes[tostring(cpx)] = true
+							end
+							for _, r in ipairs(d:GetChildren()) do
+								local a = r:IsA("Frame") and r.AbsoluteSize
+								if a and not (whole(a.X) and whole(a.Y) and cpx and whole(a.X / cpx) and whole(a.Y / cpx)) then
+									softCells[#softCells + 1] = fmt("%s.%s %.2fx%.2f (cell %s)", d:GetFullName():gsub("^.-" .. f[2] .. "%.", ""), r.Name, a.X, a.Y, tostring(cpx))
+									break
+								end
+							end
+						end
+					end
+					T.check(#softCells == 0, fmt("%s: every pixel icon's cells whole screen px (%d icons, %d not)", tag, nIcons, #softCells),
+						table.concat(softCells, "; ", 1, math.min(#softCells, 6)))
+					if W ~= 1920 then
+						local sizes = {}
+						for k in pairs(cellSizes) do
+							sizes[#sizes + 1] = k
+						end
+						T.check(#sizes <= 1, fmt("%s: one pixel size for the 18 / 27 px icons on a 0.8 screen (%s)", tag, table.concat(sizes, ", ")))
+					end
+					-- (U9-7 look) the Ring's champion against the team is pinned in the team row: whole, outside the scroller, apart
+					if f[1] == "ring" then
+						local win = gui:FindFirstChild("Window_Ring")
+						local slot = win and win:FindFirstChild("Slot", true)
+						local champ, team = slot and slot:FindFirstChild("ChampValue"), slot and slot:FindFirstChild("TeamValue")
+						local okVs = champ and team and not champ:FindFirstAncestorWhichIsA("ScrollingFrame") and true or false
+						for _, n in ipairs({ "ChampValue", "TeamValue", "ChampCaption", "TeamCaption" }) do
+							local o = slot and slot:FindFirstChild(n)
+							okVs = okVs and o ~= nil and U8.shown(o) and inside(U8.rect(o), U8.rect(slot.Parent))
+						end
+						local cr, tr = champ and U8.rect(champ), team and U8.rect(team)
+						T.check(okVs and not U8.overlap(cr, tr), tag .. ": the champion's power and the team's are pinned whole in the team row (not in the scroller, apart)",
+							(cr and tr) and (U8.show(cr) .. " / " .. U8.show(tr)) or "missing")
+					end
+					-- (U9-7 look) the dare panel: a tier's fact tags end before its Dare block (they ran under it on a phone)
+					if f[1] == "dare" then
+						local under, rows = {}, 0
+						for _, row in ipairs(gui:GetDescendants()) do
+							local facts = row.Name:match("^Row_") and row:FindFirstChild("Facts")
+							local dare = facts and row:FindFirstChildWhichIsA("GuiButton")
+							rows = rows + (dare and 1 or 0)
+							for _, t in ipairs(facts and facts:GetChildren() or {}) do
+								if t:IsA("GuiObject") and U8.shown(t) and dare and U8.overlap(U8.rect(t), U8.rect(dare)) then
+									under[#under + 1] = row.Name .. "." .. t.Name
+								end
+							end
+						end
+						T.check(rows > 0 and #under == 0, fmt("%s: every tier's fact tags end before its Dare block (%d rows, %d under)", tag, rows, #under), table.concat(under, "; "))
+					end
+					-- (U9-7 look) the End card's totals are reward chips, each with its pixel icon, apart and inside the card
+					if f[1] == "dungeon:end" then
+						local card = gui:FindFirstChild("EndCard")
+						local totals = card and card:FindFirstChild("Totals", true)
+						local chips, bad = {}, {}
+						for _, c in ipairs(totals and totals:GetChildren() or {}) do
+							if c:IsA("TextLabel") and U8.shown(c) then
+								chips[#chips + 1] = c
+								if not (c:FindFirstChild("LeadIcon") and inside(U8.rect(c), U8.rect(card))) then
+									bad[#bad + 1] = c.Name .. " " .. U8.show(U8.rect(c))
+								end
+							end
+						end
+						for i = 1, #chips do
+							for j = i + 1, #chips do
+								if U8.overlap(U8.rect(chips[i]), U8.rect(chips[j])) then
+									bad[#bad + 1] = chips[i].Name .. " on " .. chips[j].Name
+								end
+							end
+						end
+						T.check(#chips >= 3 and #bad == 0, fmt("%s: the End card's totals are %d reward chips with their icons, apart, inside the card", tag, #chips), table.concat(bad, "; "))
 					end
 					if touch then
 						T.check(#under == 0, fmt("%s: nothing under the thumbstick or the jump button (touch controls %s) (%d)", tag,

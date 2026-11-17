@@ -2,8 +2,12 @@
 -- beside them. It replaces client/TeamPick's strip and its "Pick your battle team" popup: there is one flow and no silent auto-fill.
 --
 --   TeamFaces.New(parent, props) -> { Root, Refresh = fn, SetMode = fn(mode), Height = fn() -> design px, Destroy = fn }
---       props = { LayoutOrder, Compact = bool, Column = bool, ReturnTo = table | fn() -> table (what Edit team hands to the Pets window) };
+--       props = { LayoutOrder, Compact = bool, Column = bool, ReturnTo = table | fn() -> table (what Edit team hands to the Pets window),
+--         SlotH = { Compact = h, Column = h } };
 --       SetMode("Card" | "Compact" | "Column") when the window's layout changes.
+--       (U9-7 look) props.SlotH: row.Slot, an empty frame "Slot" the window fills, takes the power line's place (TeamPower stays
+--       hidden): beside Edit team in a Card row, a line of SlotH.Compact px under the faces in a Compact row, a line of
+--       SlotH.Column px under a full-width Edit team in a Column (no height: no line). The Ring pins its champion there.
 --       Frame "TeamFaces": Face1..Face3 (Picture, Tag "FIGHTER" | "HELPER", Level "L12", Power, Busy, StageBadge + attribute Stage; an open
 --       slot shows Empty "Empty", a slot whose pet is busy shows Empty "Training" | "Gardening" and the Busy mark), TeamPower and
 --       the TextButton EditTeam ("Edit team", 56 design px: >= 44 px under the 0.8 touch scale).
@@ -419,15 +423,28 @@ function TeamFaces.New(parent, props)
 		end,
 	})
 
-	local row = { Root = root }
+	local slotH = type(props.SlotH) == "table" and props.SlotH or nil
+	local slot = slotH and frame(root, "Slot", {}) or nil
+	local row = { Root = root, Slot = slot }
+
+	-- (U9-7 look) the slot's own line in a Compact or Column row (a Card row has it beside Edit team)
+	local function slotLine()
+		local h = slotH and tonumber(slotH[mode]) or 0
+		return (mode ~= "Card" and h > 0) and h or 0
+	end
 
 	function row.Height()
+		local extra = slotLine() > 0 and (K.GAP + slotLine()) or 0
 		if mode == "Column" then
-			return K.COLUMN_PAD * 2 + K.SLOTS * K.COLUMN_H + (K.SLOTS - 1) * K.COLUMN_PAD + K.GAP + K.EDIT_H
+			return K.COLUMN_PAD * 2 + K.SLOTS * K.COLUMN_H + (K.SLOTS - 1) * K.COLUMN_PAD + K.GAP + K.EDIT_H + extra
 		elseif mode == "Compact" then
-			return K.PAD * 2 + K.COMPACT_H
+			return K.PAD * 2 + K.COMPACT_H + extra
 		end
 		return K.PAD * 2 + K.CARD_H + K.GAP + K.EDIT_H
+	end
+
+	function row.Mode()
+		return mode
 	end
 
 	-- the cells of a row of faces: `taken` px of the row's width are not theirs. (U9-7 look) Whole design px once the row's
@@ -475,21 +492,33 @@ function TeamFaces.New(parent, props)
 			end
 			local y = pad + K.SLOTS * K.COLUMN_H + (K.SLOTS - 1) * pad + K.GAP
 			edit.Position = UDim2.new(1, -pad, 0, y)
-			edit.Size = UDim2.fromOffset(K.EDIT_W_COMPACT, K.EDIT_H)
+			edit.Size = slot and UDim2.new(1, -2 * pad, 0, K.EDIT_H) or UDim2.fromOffset(K.EDIT_W_COMPACT, K.EDIT_H)
 			place(power, pad + 2, y, 1, -(2 * pad + K.EDIT_W_COMPACT + 6), K.EDIT_H)
+			if slot then
+				place(slot, pad, y + K.EDIT_H + K.GAP, 1, -2 * pad, slotLine())
+			end
 		elseif mode == "Compact" then
 			-- (kit-b U9-7) "Edit team" on two lines in a narrower block: the faces get the room for a whole FIGHTER tag
 			faceRow(K.EDIT_W_TWO_LINES + K.GAP, K.COMPACT_H)
 			edit.Position = UDim2.new(1, -pad, 0, pad + (K.COMPACT_H - K.EDIT_H) / 2)
 			edit.Size = UDim2.fromOffset(K.EDIT_W_TWO_LINES, K.EDIT_H)
+			if slot then
+				place(slot, pad + 2, pad + K.COMPACT_H + K.GAP, 1, -(2 * pad + 4), slotLine())
+			end
 		else
 			faceRow(0, K.CARD_H)
 			local y = pad + K.CARD_H + K.GAP
 			edit.Position = UDim2.new(1, -pad, 0, y)
 			edit.Size = UDim2.fromOffset(K.EDIT_W, K.EDIT_H)
 			place(power, pad + 2, y, 1, -(2 * pad + K.EDIT_W + 6), K.EDIT_H)
+			if slot then
+				place(slot, pad + 2, y, 1, -(2 * pad + K.EDIT_W + 6), K.EDIT_H)
+			end
 		end
-		power.Visible = mode ~= "Compact" -- (a Compact row sits in a panel that shows the team's power already)
+		power.Visible = mode ~= "Compact" and not slot -- (a Compact row sits in a panel that shows the team's power already)
+		if slot then
+			slot.Visible = mode == "Card" or slotLine() > 0
+		end
 		edit.TextWrapped = mode == "Compact"
 		edit.TextTruncate = (mode == "Compact") and Enum.TextTruncate.None or Enum.TextTruncate.AtEnd
 		edit.LineHeight = (mode == "Compact") and 0.9 or 1

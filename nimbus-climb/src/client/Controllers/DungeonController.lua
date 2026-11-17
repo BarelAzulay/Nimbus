@@ -146,6 +146,8 @@ local K = {
 	CHIP_EDGE = 20, -- a dropped chip's right margin (the HUD's touch margin: the strips' right edge)
 	CHIP_GAP = 6, -- between a dropped chip and what it hangs under
 	END_W = 400,
+	CHIP_ROW = 30, -- (U9-7 look) design px of a reward chip (H.rewardChip) and of the End card's first-clear plate
+	ICON_TILE = 30, -- (U9-7 look) the pitch toast's icon tile on the loot plate and the phone chip (H.iconTile)
 	LEAVE_CONFIRM = 3, -- seconds the first LEAVE press stays armed
 	TOAST_SECONDS = 4,
 	END_SECONDS = 14, -- the End card hides by itself after this
@@ -252,6 +254,7 @@ local S = {
 	PhaseKey = nil,
 	End = nil, -- last "End" (the End card)
 	EndAt = 0,
+	EndCompact = false, -- (U9-7 look) true: the End card dropped its reason line to fit under a landscape phone's strips
 	Loot = nil, -- last "Loot"
 	Totals = { Cash = 0, Tokens = 0, Xp = 0, Gems = 0 },
 	Toast = nil, -- { Text, Color, Until }
@@ -459,6 +462,42 @@ function H.well(obj)
 	obj.BackgroundTransparency = 0
 	H.edge(obj, SIGN.WellEdge, 2)
 	return obj
+end
+
+-- (U9-7 look) a reward chip: the dock family's fact tag (ArenaController's factTag: a stone tag in a wood edge, its pixel
+-- icon before the number), 30 px high and sized to its text. The End card's totals are a row of them (they were one
+-- run-on line, "$1,630 170 tokens +360 XP", whose "XP" wrapped alone on a portrait phone)
+function H.rewardChip(parent, name, icon, text)
+	local chip = H.text(parent, name, text, "Heading", 19, INK, {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Tile,
+		Size = UDim2.fromOffset(0, K.CHIP_ROW),
+		TextXAlignment = Enum.TextXAlignment.Center, -- (the fitted width runs generous: the icon and number sit centred)
+	})
+	H.edge(chip, SIGN.Wood, 2)
+	local pad = H.pad(chip, 9, 0, 9, 1)
+	PixelIcon.Lead(chip, icon)
+	local ok, size = pcall(Theme.Measure, text, "Heading", 19)
+	local tw = math.max((ok and typeof(size) == "Vector2") and size.X or 0, #text * 19 * 0.55)
+	chip.Size = UDim2.fromOffset(math.ceil(tw) + pad.PaddingLeft.Offset + pad.PaddingRight.Offset + 4, K.CHIP_ROW)
+	return chip
+end
+
+-- (U9-7 look) the pitch toast's icon tile: a 30 px stone square in a wood edge, an 18 px pixel icon in its middle
+-- (H.setIconTile picks the icon; nil hides the tile)
+function H.iconTile(parent, name, props)
+	local tile = H.text(parent, name, "", "Heading", 18, INK, props)
+	tile.BackgroundTransparency = 0
+	tile.BackgroundColor3 = SIGN.Tile
+	tile.Size = UDim2.fromOffset(K.ICON_TILE, K.ICON_TILE)
+	tile.Visible = false
+	H.edge(tile, SIGN.Wood, 2)
+	return tile
+end
+
+function H.setIconTile(tile, icon)
+	tile.Visible = icon ~= nil
+	PixelIcon.Set(tile, icon, 18, INK)
 end
 
 function H.clear(frame)
@@ -1544,12 +1583,20 @@ function R.build()
 	U.CardTitle = H.text(body, "Title", "", "Heading", 21, INK, { Size = UDim2.new(1, 0, 0, 28), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 })
 	U.CardRoom = H.text(body, "Room", "", "Heading", 19, INK, { Size = UDim2.new(1, 0, 0, 26), RichText = false, LayoutOrder = 2 })
 	U.CardWave = H.text(body, "Wave", "", "Body", 18, MUTED, { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 3 })
+	-- (U9-7 look) a party's countdown as five gold blocks, one going out a second over the last five (the bars' one
+	-- language: the loading bar's blocks, lip and all); in the Wave line's place, which a countdown never shows
+	U.CardCount = SignKit.BlockRow(body, { Count = 5, BlockW = 22, BlockH = 14, Gap = 4, LipPx = 3 })
+	U.CardCount.Name = "CountBlocks"
+	U.CardCount.LayoutOrder = 3
+	U.CardCount.Visible = false
 	U.CardStatus = H.text(body, "Status", "", "Body", 19, INK, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 4 })
 	-- (kit-b U9-7) the loot toast: a square plate in the toast's colour (gold loot, sky a lost room) with the ink that reads on it
 	U.CardToast = H.frame(body, "LootToast", { BackgroundTransparency = 0, BackgroundColor3 = C.Gold, Size = UDim2.new(1, 0, 0, 58), Visible = false, LayoutOrder = 5 })
 	H.edge(U.CardToast, SIGN.Wood, 2)
 	H.pad(U.CardToast, 10, 6, 10, 6)
 	U.CardToastText = H.text(U.CardToast, "Text", "", "Heading", 19, INK, { Size = UDim2.new(1, 0, 1, 0), TextWrapped = true })
+	-- (U9-7 look) the pitch toast's icon tile at the plate's left (the room's chest, the chest's coin); the text after it
+	U.CardToastIcon = H.iconTile(U.CardToast, "IconTile", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0, 0.5) })
 	U.CardMembers = H.frame(body, "Members", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 6 })
 	Util.Create("UIGridLayout", { CellSize = UDim2.new(0.5, -4, 0, 26), CellPadding = UDim2.fromOffset(6, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = U.CardMembers })
 	U.CardLoot = H.text(body, "Loot", "", "Heading", 18, C.Good, { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 7 })
@@ -1565,6 +1612,8 @@ function R.build()
 	U.Chip = chip
 	U.ChipScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 0.8, Parent = chip.Root })
 	U.ChipText = H.text(chip.Body, "Text", "", "Heading", 19, INK, { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -112, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+	-- (U9-7 look) a toast on the chip (a phone's loot / chest flash) wears the plate's icon tile before its words
+	U.ChipIcon = H.iconTile(chip.Body, "IconTile", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0) })
 	U.ChipButton = W.button(chip.Body, "LeaveButton", "Leave", "Red", UDim2.fromOffset(92, K.CHIP_H - 12), 1, function()
 		if S.Run then
 			R.leave()
@@ -1587,9 +1636,26 @@ function R.build()
 	-- (kit-b U9-7, the owner's ruling: the gold ribbon is for window titles only) a pop-up card's title is a Section head
 	U.EndTitle = Theme.StyleTitle(H.text(eb, "Title", "", "Title", 28, INK, { Size = UDim2.new(1, 0, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 }), "Section")
 	U.EndReason = H.text(eb, "Reason", "", "Body", 19, C.Muted, { Size = UDim2.new(1, 0, 0, 50), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2 })
-	U.EndTotals = H.text(eb, "Totals", "", "Heading", 20, INK, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 3 })
-	U.EndFirst = H.text(eb, "FirstClear", "", "Heading", 20, C.Warn, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 4 })
-	U.EndUnlock = H.text(eb, "Unlocked", "", "Heading", 19, C.Good, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 5 })
+	-- (U9-7 look) the totals a row of reward chips (R.fillEnd lays them out, two rows on a narrow card); the first clear a
+	-- gold plate (the loot plate's) with the star and two pixel twinkles; the unlock in ink with the key: one ink, the
+	-- title's green and the plate's gold (the card had five text colours)
+	U.EndTotals = H.frame(eb, "Totals", { Size = UDim2.new(1, 0, 0, K.CHIP_ROW), LayoutOrder = 3 })
+	U.EndFirst = H.text(eb, "FirstClear", "", "Heading", 19, Theme.TextOn(SIGN.Gold), {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Gold,
+		Size = UDim2.new(1, 0, 0, K.CHIP_ROW),
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		LayoutOrder = 4,
+	})
+	H.edge(U.EndFirst, SIGN.Wood, 2)
+	H.pad(U.EndFirst, 10, 0, 30, 1)
+	for i, at in ipairs({ { 8, 3 }, { 17, 14 } }) do
+		local twinkle = PixelIcon.New(U.EndFirst, "sparkle", 9, SIGN.Stone)
+		twinkle.Name = "Twinkle" .. i
+		twinkle.Position = UDim2.new(1, at[1], 0, at[2]) -- (in the plate's right padding)
+	end
+	U.EndUnlock = H.text(eb, "Unlocked", "", "Heading", 19, INK, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 5 })
+	PixelIcon.Lead(U.EndUnlock, Config.Icons.Dungeon or "key")
 	local ok = W.button(eb, "OkButton", "OK", "Gray", UDim2.new(1, 0, 0, 46), 6, function()
 		S.End = nil
 		R.refresh()
@@ -1664,8 +1730,9 @@ function R.leave()
 	R.refresh()
 end
 
-function R.toast(text, color, seconds, short)
-	S.Toast = { Text = tostring(text), Short = short, Color = color or C.Gold, Until = os.clock() + (seconds or K.TOAST_SECONDS) }
+-- icon: (U9-7 look) the PixelIcon the toast's tile shows on the loot plate and the phone chip (nil: no tile)
+function R.toast(text, color, seconds, short, icon)
+	S.Toast = { Text = tostring(text), Short = short, Color = color or C.Gold, Icon = icon, Until = os.clock() + (seconds or K.TOAST_SECONDS) }
 	R.refresh()
 end
 
@@ -1762,7 +1829,9 @@ end
 -- the run card is exactly as tall as its visible rows (fixed rows, no AutomaticSize)
 function R.cardHeight()
 	U.CardButtons.Visible = U.CardReady.Visible or U.CardLeave.Visible
-	U.ChipText.Size = UDim2.new(1, U.ChipButton.Visible and -112 or -20, 1, 0)
+	local ix = U.ChipIcon.Visible and (K.ICON_TILE + 4) or 0 -- (U9-7 look) the words after the toast's icon tile
+	U.ChipText.Position = UDim2.fromOffset(12 + ix, 0)
+	U.ChipText.Size = UDim2.new(1, (U.ChipButton.Visible and -112 or -20) - ix, 1, 0)
 	local h = 10 + 12
 	local n = 0
 	for _, child in ipairs(U.CardList:GetChildren()) do
@@ -1894,6 +1963,7 @@ function R.place(view)
 	local strips = R.stripsBottom()
 	if phone and w < h then
 		-- portrait: right of the menu tile column, under the currency strips (clear of the screen's centre)
+		S.EndCompact = false
 		local scale = 0.8
 		U.EndScale.Scale = scale
 		U.End.Root.Size = UDim2.fromOffset(math.floor((w - 172) / scale), endH)
@@ -1904,7 +1974,17 @@ function R.place(view)
 		-- (U9-7 look) never above the gui area (the card's top was 6 px inside Roblox's band), and left of the game's own
 		-- DASH / RUN touch buttons where the card reaches down beside them (it covered the top of DASH)
 		local y = math.max(0, 52 - top, strips)
-		local scale = math.min(0.8, (h - top - 90 - 8 - y) / math.max(1, endH))
+		-- (U9-7 look) the kit B card runs taller: below the strips it drops its reason line (the title says the floor)
+		-- before it gives their place up; R.fillEnd, right after this, reads S.EndCompact. Weighed on every refresh, as
+		-- the strips' bottom moves (the gift steps aside once the card is up)
+		local function scaleFor(cardH)
+			return math.min(0.8, (h - top - 90 - 8 - y) / math.max(1, cardH))
+		end
+		local reasonRow = U.EndReason.Size.Y.Offset + 6
+		local fullH = S.EndCompact and (endH + reasonRow) or endH
+		S.EndCompact = S.End ~= nil and scaleFor(fullH) < 0.7 and scaleFor(fullH - reasonRow) >= 0.7
+		endH = S.EndCompact and (fullH - reasonRow) or fullH
+		local scale = scaleFor(endH)
 		if scale < 0.7 then
 			y, scale = math.max(0, 52 - top), 0.8
 		end
@@ -1927,6 +2007,7 @@ function R.place(view)
 		U.End.Root.Size = UDim2.fromOffset(width, endH)
 		U.End.Root.Position = UDim2.fromOffset(math.floor(right - width * scale), y)
 	else
+		S.EndCompact = false
 		U.EndScale.Scale = f
 		U.End.Root.Size = UDim2.fromOffset(K.END_W, endH)
 		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - K.END_W * f), math.floor(h * 0.3) - top)
@@ -2144,6 +2225,8 @@ function R.refresh()
 		U.CardRoom.Text = cd
 		PixelIcon.Mark(U.CardRoom, nil, { After = true })
 		U.CardWave.Visible = false
+		U.CardCount.Visible = true
+		SignKit.FillBlocks(U.CardCount, math.min(5, W.countdown(mine) or 0))
 		U.CardStatus.Text = "Stay near the Dungeon gate"
 		U.CardMembers.Visible = false
 		U.CardLoot.Visible = false
@@ -2155,6 +2238,7 @@ function R.refresh()
 		U.ChipButton.Text = "Ready"
 		CloudUI.SetStyle(U.ChipButton, "Green") -- (kit-b U9-7) READY is the chip's one green; in a run it is Leave (red)
 		U.ChipButton.Visible = needReady
+		H.setIconTile(U.ChipIcon, nil)
 		R.cardHeight()
 		return
 	end
@@ -2171,6 +2255,7 @@ function R.refresh()
 	local waves = tonumber(run.Waves)
 	local wave = tonumber(run.Wave)
 	U.CardWave.Visible = waves ~= nil and waves > 0 and run.State == "Fight"
+	U.CardCount.Visible = false
 	U.CardWave.Text = "Wave " .. tostring(wave or 1) .. " / " .. tostring(waves or 1)
 	U.CardStatus.Text = R.statusText()
 	U.CardToast.Visible = toast ~= nil
@@ -2179,6 +2264,10 @@ function R.refresh()
 		local face = H.readable(toast.Color or C.Gold)
 		U.CardToast.BackgroundColor3 = face
 		U.CardToastText.TextColor3 = Theme.TextOn(face)
+		H.setIconTile(U.CardToastIcon, toast.Icon)
+		local x = toast.Icon and (K.ICON_TILE + 8) or 0
+		U.CardToastText.Position = UDim2.fromOffset(x, 0)
+		U.CardToastText.Size = UDim2.new(1, -x, 1, 0)
 	end
 	-- members (a party only)
 	local members = type(run.Members) == "table" and run.Members or {}
@@ -2221,6 +2310,7 @@ function R.refresh()
 	-- (U9-7 review) a chip that is its LEAVE alone (a fight: R.placeChip) keeps LEAVE and shows no text
 	U.ChipText.Visible = not S.ChipCompact
 	U.ChipButton.Visible = run.State ~= "Ending" and (toast == nil or S.ChipCompact == true)
+	H.setIconTile(U.ChipIcon, (toast and not S.ChipCompact) and toast.Icon or nil)
 	R.cardHeight()
 	R.fitCard()
 	-- (bug batch 2 #14: the chip's button is LEAVE in the alcove too; chests open only at the chest)
@@ -2299,11 +2389,34 @@ function R.fillEnd()
 	end
 	U.EndReason.Text = text
 	local t = type(e.Totals) == "table" and e.Totals or S.Totals
-	local parts = { "$" .. H.commas(t.Cash), H.commas(t.Tokens) .. " tokens", "+" .. H.commas(t.Xp) .. " XP" }
+	-- (U9-7 look) a reward chip each, laid out in rows across the card's inner width (a narrow card wraps to a second row)
+	local items = {
+		{ Config.Icons.Cash, "$" .. H.commas(t.Cash) },
+		{ Config.Icons.Tokens, H.commas(t.Tokens) },
+		{ "up", "+" .. H.commas(t.Xp) .. " XP" },
+	}
 	if (tonumber(t.Gems) or 0) > 0 then
-		parts[#parts + 1] = H.commas(t.Gems) .. " gems"
+		items[#items + 1] = { "gem", H.commas(t.Gems) }
 	end
-	U.EndTotals.Text = table.concat(parts, "   ")
+	local avail = U.End.Root.Size.X.Offset - 32
+	local sig = avail .. "|" .. items[#items][2] .. "|" .. items[1][2] .. "|" .. items[2][2] .. "|" .. items[3][2]
+	if U.EndTotals:GetAttribute("Sig") ~= sig then
+		-- (built again only when an amount or the card's width changes: the End card refreshes 4 times a second)
+		U.EndTotals:SetAttribute("Sig", sig)
+		H.clear(U.EndTotals)
+		local x, y = 0, 0
+		for i, item in ipairs(items) do
+			local chip = H.rewardChip(U.EndTotals, "Reward" .. i, item[1], item[2])
+			local cw = chip.Size.X.Offset
+			if x > 0 and x + cw > avail then
+				x, y = 0, y + K.CHIP_ROW + 6
+			end
+			chip.Position = UDim2.fromOffset(x, y)
+			x = x + cw + 6
+		end
+		U.EndTotals.Size = UDim2.new(1, 0, 0, y + K.CHIP_ROW)
+	end
+	local totalsH = U.EndTotals.Size.Y.Offset
 	local first = type(e.FirstClear) == "table" and e.FirstClear or nil
 	U.EndFirst.Visible = first ~= nil
 	if first then
@@ -2326,12 +2439,16 @@ function R.fillEnd()
 	local row = narrow and 46 or 26
 	local reasonH = (#text > (narrow and 26 or 40)) and 50 or 26
 	U.EndReason.Size = UDim2.new(1, 0, 0, reasonH)
-	for _, label in ipairs({ U.EndTotals, U.EndFirst, U.EndUnlock }) do
-		label.Size = UDim2.new(1, 0, 0, row)
+	U.EndReason.Visible = not S.EndCompact
+	local reasonRow = S.EndCompact and 0 or (reasonH + 6)
+	local firstH = narrow and 46 or K.CHIP_ROW
+	for _, pair in ipairs({ { U.EndFirst, firstH }, { U.EndUnlock, row } }) do
+		local label = pair[1]
+		label.Size = UDim2.new(1, 0, 0, pair[2])
 		label.TextWrapped = narrow
 		label.TextTruncate = narrow and Enum.TextTruncate.None or Enum.TextTruncate.AtEnd
 	end
-	local h = 12 + 36 + 6 + reasonH + 6 + row + 6 + (first and (row + 6) or 0) + (#lines > 0 and (row + 6) or 0) + 46 + 14 + K.CARD_LIP
+	local h = 12 + 36 + 6 + reasonRow + totalsH + 6 + (first and (firstH + 6) or 0) + (#lines > 0 and (row + 6) or 0) + 46 + 14 + K.CARD_LIP
 	U.End.Root.Size = UDim2.fromOffset(U.End.Root.Size.X.Offset, h)
 end
 
@@ -3730,7 +3847,8 @@ function R.onState(kind, payload)
 				text = text .. " (" .. math.floor(payload.LevelUps) .. " level up!)"
 			end
 		end
-		R.toast(text, payload.Loss and C.Blue or C.Gold, nil, "+$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. " tokens +" .. H.commas(payload.Xp) .. "XP")
+		R.toast(text, payload.Loss and C.Blue or C.Gold, nil, "+$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. " tokens +" .. H.commas(payload.Xp) .. "XP",
+			payload.Loss and "up" or Config.Icons.Trove) -- (U9-7 look) the room's chest; a lost room's XP
 		if not payload.Loss then
 			R.sound("Reward")
 		end
@@ -3747,7 +3865,8 @@ function R.onState(kind, payload)
 		S.ChestOpened = true
 		H.safe("chests", R.lockChests)
 		local label = (kindName == "Cash") and ("$" .. H.commas(amount)) or (H.commas(amount) .. " " .. (kindName == "Gems" and "Gems" or "tokens"))
-		R.toast("Chest: +" .. label .. "!", (kindName == "Gems") and C.Gem or C.Gold, nil, "+" .. label)
+		local icon = (kindName == "Gems") and "gem" or ((kindName == "Cash") and Config.Icons.Cash or Config.Icons.Tokens)
+		R.toast("Chest: +" .. label .. "!", (kindName == "Gems") and C.Gem or C.Gold, nil, "+" .. label, icon)
 		R.sound("Reward")
 	elseif kind == "Fade" then
 		if S.Run then
@@ -3756,6 +3875,7 @@ function R.onState(kind, payload)
 	elseif kind == "End" then
 		S.End = (not R.showLoss(payload)) and payload or nil
 		S.EndAt = os.clock()
+		S.EndCompact = false -- (U9-7 look) a new result shows its reason line again until it must drop it (R.place)
 		S.Run = nil
 		S.PhaseKey = nil
 		S.LeaveArmed = 0

@@ -7,7 +7,9 @@
 --   PixelIcon.New(parent, name, px, colour)  a transparent px x px Frame (attribute PixelIcon = name) holding one Frame per
 --                                      merged rectangle, snapped to whole pixels (cell = floor(px / 9), centred); nil for
 --                                      an unknown name. px under 9 draws at 9; a px between multiples of 9 warns once
---                                      (PixelIcon.Warned)
+--                                      (PixelIcon.Warned). (U9-7 look) Under a UIScale the cells are whole screen px
+--                                      (round(cell x scale), attribute CellPx), refitted when that scale changes
+--   PixelIcon.Fit(icon)                (U9-7 look) fits an icon to the UIScales above it now (New and moves do it)
 --   PixelIcon.Snap(px)                 the multiple of 9 nearest px (at least 9): the size an icon for a px glyph draws at
 --   PixelIcon.Host(host, name, px[, colour])  (U7a) the icon centred in a text object, following its TextColor3 (unless
 --                                      colour), TextTransparency and ZIndex (and with px nil its TextSize): an icon a
@@ -167,6 +169,101 @@ function PixelIcon.Runs(name)
 	return rects
 end
 
+-- (U9-7 look) the cells on whole SCREEN pixels under a window's or a HUD's UIScale. A dock at 0.8 drew a 27 px icon's 3 px
+-- cells 2.4 px wide (Roblox rounds each Frame's edges to the pixel, so the columns came out 2 and 3 px: uneven) and an
+-- 18 px icon's 1.6 px wide. A cell is now round(cell x scale) screen px (a half rounds down, never under 2 for a 2+ px
+-- cell; at 0.7 - 0.8 both sizes draw 2 px cells: one pixel size on a phone), centred in the icon's box, which keeps its
+-- design size (the layout is unchanged; PixelIcon.Lead keeps its gap to the text past what draws outside the box).
+-- The short tweens on top (a press, a pop, a pulse) are not counted. Fitted when the icon is parented under a ScreenGui
+-- (here, or when it or an ancestor moves there) and again when one of the UIScales above it changes. At scale 1 the
+-- cells are exactly the old ones. Attribute CellPx = the screen px of a cell
+local TWEEN_SCALES = { Pop = true, PopScale = true, FxScale = true, Punch = true, Pulse = true, Swell = true, Bounce = true }
+local scaleSets = setmetatable({}, { __mode = "k" }) -- [UIScale] = { [icon] = true } (weak both ways)
+local scaleConns = setmetatable({}, { __mode = "k" })
+
+-- the product of the layout UIScales on `obj` and above it, the list of them, and whether it reached a ScreenGui
+local function layoutScale(obj)
+	local s, scales = 1, {}
+	local cur = obj
+	while cur do
+		if cur:IsA("LayerCollector") then
+			return s, scales, true
+		end
+		if cur:IsA("GuiObject") then
+			local ui = cur:FindFirstChildOfClass("UIScale")
+			if ui and ui.Scale > 0 and not TWEEN_SCALES[ui.Name] then
+				s = s * ui.Scale
+				scales[#scales + 1] = ui
+			end
+		end
+		cur = cur.Parent
+	end
+	return s, scales, false
+end
+
+-- the screen px of a cell of `cell` design px under scale s: the nearest whole px (a half rounds down), and never under
+-- 2 for a cell of 2 or more, so an 18 px icon stays legible and every icon of a phone screen (0.7 - 0.8) draws 2 px cells
+local function screenCellOf(cell, s)
+	return math.max(1, math.min(cell, 2), math.ceil(cell * s - 0.5))
+end
+
+-- design px an icon of px draws past each side of its box under scale s (0 when it draws inside it)
+local function overflowOf(px, s)
+	local sc = screenCellOf(math.floor(px / 9), s)
+	return math.max(0, (9 * sc / s - px) / 2)
+end
+
+local fitCells
+local function watchScale(scale)
+	if scaleConns[scale] then
+		return scaleSets[scale]
+	end
+	local set = setmetatable({}, { __mode = "k" })
+	scaleSets[scale] = set
+	scaleConns[scale] = scale:GetPropertyChangedSignal("Scale"):Connect(function()
+		for icon in pairs(set) do
+			if icon.Parent then
+				fitCells(icon)
+			end
+		end
+	end)
+	return set
+end
+
+fitCells = function(icon)
+	local rects = PixelIcon.Runs(icon:GetAttribute("PixelIcon"))
+	if not rects then
+		return
+	end
+	local s, scales, rooted = layoutScale(icon.Parent)
+	if not rooted then
+		return
+	end
+	local px = icon.Size.X.Offset
+	local cell = math.floor(px / 9)
+	local screenCell = screenCellOf(cell, s)
+	local dc = screenCell / s
+	local pad = math.floor((px * s - 9 * screenCell) / 2) / s
+	for i, r in ipairs(rects) do
+		local f = icon:FindFirstChild("R" .. i)
+		if f then
+			f.Position = UDim2.fromOffset(pad + r[1] * dc, pad + r[2] * dc)
+			f.Size = UDim2.fromOffset(r[3] * dc, r[4] * dc)
+		end
+	end
+	icon:SetAttribute("CellPx", screenCell)
+	for _, scale in ipairs(scales) do
+		watchScale(scale)[icon] = true
+	end
+end
+
+-- (U9-7 look) fits an icon made by PixelIcon.New to the UIScales above it now (New and a move do it by themselves)
+function PixelIcon.Fit(icon)
+	if icon and icon:GetAttribute("PixelIcon") then
+		fitCells(icon)
+	end
+end
+
 -- draws icon `name` at px x px in `colour` into `parent`; nil for an unknown name
 function PixelIcon.New(parent, name, px, colour)
 	local rects = PixelIcon.Runs(name)
@@ -197,6 +294,11 @@ function PixelIcon.New(parent, name, px, colour)
 		f.Parent = icon
 	end
 	icon.Parent = parent
+	-- (U9-7 look) whole screen pixels under the UIScales above it, now and whenever it lands under a ScreenGui
+	fitCells(icon)
+	icon.AncestryChanged:Connect(function()
+		fitCells(icon)
+	end)
 	return icon
 end
 
@@ -411,6 +513,23 @@ function PixelIcon.Lead(label, name, opts)
 	-- bounds for a text that has letters (the server; a client before its first layout, which re-places on TextBounds):
 	-- measured (measuredWidth)
 	local function place()
+		-- (U9-7 look) under a UIScale an icon's whole-px cells can draw past its box (18 px at 0.8: 2 px cells, 18 px on
+		-- the screen in a 14.4 px box): the text's inset grows by what draws outside one side and the box steps out by the
+		-- same, so the gap to the text still shows (the drawn icon's outer side takes that much of the label's own inset)
+		local extra = math.ceil(overflowOf(px, (layoutScale(label))) - 0.01)
+		local g = gap + extra
+		-- (a rating's icons step apart by the same, so their drawn cells never touch)
+		local step = px + cell + 2 * extra
+		local w = (of - 1) * step + px
+		box.Size = UDim2.fromOffset(w, px)
+		for i, icon in ipairs(icons) do
+			icon.Position = UDim2.fromOffset((i - 1) * step, 0)
+		end
+		if not after and align ~= Enum.TextXAlignment.Right then
+			pad.PaddingLeft = UDim.new(pad.PaddingLeft.Scale, baseL + w + gap + extra)
+		elseif after and (align ~= Enum.TextXAlignment.Left or opts.Room == true) then
+			pad.PaddingRight = UDim.new(pad.PaddingRight.Scale, baseR + w + gap + extra)
+		end
 		local textW = label.TextBounds.X / scaleOf(label)
 		if textW <= 0 and label.Text ~= "" then
 			textW = measuredWidth(label)
@@ -429,7 +548,7 @@ function PixelIcon.Lead(label, name, opts)
 		local ay, y = vertical(ph)
 		box.AnchorPoint = Vector2.new(after and 0 or 1, ay)
 		if align == Enum.TextXAlignment.Right then
-			box.Position = after and UDim2.new(1, gap, y.Scale, y.Offset) or UDim2.new(1, -(textW + gap), y.Scale, y.Offset)
+			box.Position = after and UDim2.new(1, g, y.Scale, y.Offset) or UDim2.new(1, -(textW + g), y.Scale, y.Offset)
 		elseif align == Enum.TextXAlignment.Center and label.Text == "" and not after then
 			-- (U7b) icons alone on an empty centred label (a rating badge): centred in the label (the left inset moved the
 			-- text area's centre right by half of w + gap)
@@ -440,12 +559,12 @@ function PixelIcon.Lead(label, name, opts)
 				box.Position = UDim2.new(0, math.floor(pw / 2 - (w + gap) / 2 - w / 2), y.Scale, y.Offset)
 			end
 		elseif align == Enum.TextXAlignment.Center then
-			box.Position = UDim2.new(0.5, math.floor(after and (textW / 2 + gap) or -(textW / 2 + gap)), y.Scale, y.Offset)
+			box.Position = UDim2.new(0.5, math.floor(after and (textW / 2 + g) or -(textW / 2 + g)), y.Scale, y.Offset)
 			if pw then
-				box.Position = UDim2.new(0, math.floor(pw / 2 + (after and (textW / 2 + gap) or -(textW / 2 + gap))), y.Scale, y.Offset)
+				box.Position = UDim2.new(0, math.floor(pw / 2 + (after and (textW / 2 + g) or -(textW / 2 + g))), y.Scale, y.Offset)
 			end
 		else
-			box.Position = after and UDim2.new(0, textW + gap, y.Scale, y.Offset) or UDim2.new(0, -gap, y.Scale, y.Offset)
+			box.Position = after and UDim2.new(0, textW + g, y.Scale, y.Offset) or UDim2.new(0, -g, y.Scale, y.Offset)
 		end
 	end
 	if not after and align ~= Enum.TextXAlignment.Right then

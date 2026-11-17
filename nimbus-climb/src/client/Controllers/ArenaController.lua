@@ -35,7 +35,8 @@
 --   * Champion Ring window (Portal_Ring's prompt, OpenPanel = "Ring"): the record "Best: Round N" and the runs, the best
 --     of this server (Portal_Ring's RingBoard attribute, top 3), the start picker (round 1 or a boss round 10, 20 ...
 --     already beaten), the start round's champion, "Next win: +$X +Y XP", the TeamFaces row (the team the server will field;
---     pinned above the buttons, on a landscape phone in the right column) with Edit team (back here at the same start)
+--     pinned above the buttons, on a landscape phone in the right column; the champion's power against the team's rides
+--     in it, U9-7 look) with Edit team (back here at the same start)
 --     and START / CONTINUE -> BattleRequest("Ring", start), straight in; an empty team opens the Pets window instead. The
 --     server's refusal toasts also show in the footer. A side toast when the player crosses the arena's edge: "Battle
 --     Arena: pets can battle here" / "Safe zone: no pet battles here".
@@ -729,7 +730,7 @@ local function newWindow(id, title)
 		end,
 		Parent = win.Holder,
 	})
--- (U9-7 look) a docked window's band stays inside the frame, no tails (its right tail ran off the screen edge): the
+	-- (U9-7 look) a docked window's band stays inside the frame, no tails (its right tail ran off the screen edge): the
 	-- header shape Index and the Food Machine wear on the same dock
 	SignKit.HeaderOverhang(win.Panel.TitleBar, false)
 	win.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = win.Panel.Root })
@@ -773,6 +774,9 @@ local Ring = {
 	BattleAt = -100, -- os.clock() when the player last fought (no zone toast right after a battle's return teleport)
 	TILE_H = 66, -- design px of a start picker tile
 	BUTTON_H = 56, -- design px of START: >= 44 px under the 0.8 touch scale
+	VS_H = 56, -- (U9-7 look) the champion vs your team in the team row: caption over number (beside Edit team, a column's line)
+	VS_LINE_H = 30, -- ...caption and number on one line under the faces of a Compact row (a portrait phone)
+	SLIVER = 28, -- design px: a card showing less than this above the detail's fold ends the viewport before it
 }
 
 -- where the Pets window comes back to when the team is edited from an open panel (spec s.2: the same tab and start round)
@@ -1034,6 +1038,95 @@ function Ring.startTile(ui, round, order)
 	return tile
 end
 
+-- (U9-7 look) the champion against your team, pinned in the team row's slot (TeamFaces props.SlotH) so the reason to press
+-- START is never under the detail's fold: beside Edit team in a Card row, under it in a Column, under the faces in a
+-- Compact row. Ring.refresh writes the numbers (the team's in the verdict's colour)
+function Ring.buildVs(ui, slot)
+	ui.VsPairs = {}
+	for i, spec in ipairs({ { "Champ", "Champion (about)", C.Power }, { "Team", "Your team", INK } }) do
+		local caption = fitWidth(makeText(slot, spec[1] .. "Caption", spec[2], "Heading", 19, MUTED, { Size = UDim2.fromOffset(0, 24) }))
+		local value = lead(fitWidth(makeText(slot, spec[1] .. "Value", "", "Display", 26, spec[3], { Size = UDim2.fromOffset(0, 32) })), "Swords")
+		ui[spec[1] .. "Caption"] = caption
+		ui[spec[1] == "Champ" and "ChampPower" or "TeamPower"] = value
+		ui.VsPairs[i] = { Caption = caption, Value = value }
+	end
+end
+
+-- the champion's pair, then the team's: caption over number side by side (a Card row, beside Edit team), caption left and
+-- number right on a line each (a Column: the right column of a landscape phone), or on one line, the champion's at the
+-- left end and the team's at the right end (a Compact row). Placed from the fitted widths (Ring.refresh calls it again
+-- after the numbers change)
+function Ring.layoutVs(ui)
+	local mode = ui.Faces.Mode()
+	ui.ChampCaption.Text = (mode == "Card") and "Champion (about)" or "Champion"
+	for i, pair in ipairs(ui.VsPairs) do
+		local cap, val = pair.Caption, pair.Value
+		-- one line on a portrait phone: 18 / 20 px (14.4 / 16 on the screen) so both pairs fit with room between them
+		cap.TextSize = (mode == "Card") and 19 or 18
+		-- a number held at the right end is right-aligned in its box (the box is fitted from a generous measure, so a
+		-- left-aligned number would start short of the end, on its caption)
+		local atRight = mode == "Column" or (mode == "Compact" and i == 2)
+		local align = atRight and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+		cap.TextXAlignment = (mode == "Compact" and i == 2) and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+		local size = (mode == "Card") and 26 or 20
+		if val.TextSize ~= size or val.TextXAlignment ~= align then
+			val.TextSize = size
+			val.TextXAlignment = align
+			PixelIcon.Clear(val) -- the sword follows the number's size and side (Lead reads both once)
+			lead(val, "Swords")
+		end
+		fit(cap)
+		fit(val)
+		local capW, valW = cap.Size.X.Offset, val.Size.X.Offset
+		-- a right-aligned number's sword stands left of its box (Lead insets only a left-aligned text)
+		local px = PixelIcon.Snap(size * 0.9)
+		local swordW = atRight and (px + math.max(3, math.floor(px / 4))) or 0
+		local left, right = Vector2.new(0, 0), Vector2.new(1, 0)
+		if mode == "Compact" then
+			local h = Ring.VS_LINE_H
+			cap.Size, val.Size = UDim2.fromOffset(capW, h), UDim2.fromOffset(valW, h)
+			cap.AnchorPoint, val.AnchorPoint = (i == 1) and left or right, (i == 1) and left or right
+			cap.Position = (i == 1) and UDim2.fromOffset(0, 0) or UDim2.new(1, -(valW + swordW + 6), 0, 0)
+			val.Position = (i == 1) and UDim2.fromOffset(capW + 4, 0) or UDim2.new(1, 0, 0, 0)
+		elseif mode == "Column" then
+			local y = (i - 1) * 28
+			cap.Size, val.Size = UDim2.fromOffset(capW, 28), UDim2.fromOffset(valW, 28)
+			cap.AnchorPoint, val.AnchorPoint = left, right
+			cap.Position, val.Position = UDim2.fromOffset(0, y), UDim2.new(1, 0, 0, y)
+		else
+			local x = (i - 1) * 0.5
+			cap.Size, val.Size = UDim2.fromOffset(capW, 24), UDim2.fromOffset(valW, 32)
+			cap.AnchorPoint, val.AnchorPoint = left, left
+			cap.Position, val.Position = UDim2.new(x, 0, 0, 0), UDim2.new(x, 0, 0, 24)
+		end
+	end
+end
+
+-- (U9-7 look) design px to take off the detail's viewport so it ends on a card edge: a card that would show less than
+-- Ring.SLIVER px above the fold (a blank strip that reads as an empty box) is left wholly below it. `cutH`: the design px the
+-- viewport is shorter than the detail (the footer and the team row); measured from the detail, not from the viewport's
+-- own size, so the trim never feeds back into itself
+function Ring.foldTrim(ui, cutH)
+	local sc, detail = ui.DetailScroll, ui.Detail
+	local win = Win.Ring
+	local s = (win and win.Fit and win.Fit.Scale > 0) and win.Fit.Scale or 1
+	if detail.AbsoluteSize.Y <= 0 then
+		return 0
+	end
+	local foldY = detail.AbsolutePosition.Y + (4 - cutH) * s + detail.AbsoluteSize.Y -- (the viewport sits 4 px down)
+	local scroll = sc.CanvasPosition.Y
+	local trim = 0
+	for _, card in ipairs(sc:GetChildren()) do
+		if card:IsA("GuiObject") and card.Visible and card.AbsoluteSize.Y > 0 then
+			local showing = foldY - (card.AbsolutePosition.Y + scroll)
+			if showing > 0 and showing < Ring.SLIVER * s then
+				trim = math.max(trim, math.ceil(showing / s) + 10)
+			end
+		end
+	end
+	return trim
+end
+
 function Ring.build()
 	local win = newWindow("Ring", "Champion Ring")
 	local content = win.Panel.Content
@@ -1126,30 +1219,7 @@ function Ring.build()
 	ui.ChampTitle.TextXAlignment = Enum.TextXAlignment.Left
 	ui.ChampTags = makeFrame(champ, "Tags", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
 	listLayout(ui.ChampTags, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	local powers = makeFrame(champ, "Powers", { Size = UDim2.new(1, 0, 0, 62), LayoutOrder = 3 })
-	ui.Powers = powers
-	ui.ChampCaption = makeText(powers, "ChampCaption", "Champion (about)", "Heading", 19, MUTED, {
-		Size = UDim2.new(0.5, 0, 0, 24),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	ui.ChampPower = lead(makeText(powers, "ChampValue", "", "Display", 30, C.Power, {
-		Position = UDim2.fromOffset(0, 24),
-		Size = UDim2.new(0.5, 0, 0, 36),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	}), "Swords")
-	ui.TeamCaption = makeText(powers, "TeamCaption", "Your team", "Heading", 19, MUTED, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.new(0.5, 0, 0, 24),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	})
-	ui.TeamPower = lead(makeText(powers, "TeamValue", "", "Display", 30, INK, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 24),
-		Size = UDim2.new(0.5, 0, 0, 36),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	}), "Swords")
-	ui.Stacked = false -- the powers side by side (OnLayout stacks them in a narrow column)
+	-- (U9-7 look) the two powers are pinned in the team row (Ring.buildVs): the card keeps the title, the tags and the verdict
 	ui.Verdict = wrapText(champ, "Verdict", "", "Body", 19, C.GoodText, 4)
 
 	local rewards = tile(d, "Rewards", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 }, 0)
@@ -1170,7 +1240,8 @@ function Ring.build()
 
 	-- the team, pinned outside the scroller so it is never cut off: above the footer, in the right column on a landscape phone
 	ui.FacesBox = makeFrame(ui.Detail, "FacesBox", {})
-	ui.Faces = TeamFaces.New(ui.FacesBox, { ReturnTo = panelReturn })
+	ui.Faces = TeamFaces.New(ui.FacesBox, { ReturnTo = panelReturn, SlotH = { Compact = Ring.VS_LINE_H, Column = Ring.VS_H } })
+	Ring.buildVs(ui, ui.Faces.Slot)
 
 	-- footer (always in view): why START is off, START
 	ui.Footer = makeFrame(ui.Detail, "Footer", {
@@ -1243,35 +1314,7 @@ function Ring.build()
 		-- landscape phones: "Next win" comes right under the picker
 		ui.Rewards.LayoutOrder = short and 3 or 4
 		ui.Champ.LayoutOrder = short and 4 or 3
-		-- (kit-b U9-7) a narrow column (a landscape phone's left half) stacks the two powers: caption over number, the
-		-- champion's first (side by side they had 58 px each, "Champion (about)" needs 131)
-		local stacked = inner < 300
-		local rows = {
-			{ ui.ChampCaption, ui.ChampPower },
-			{ ui.TeamCaption, ui.TeamPower },
-		}
-		for i, pair in ipairs(rows) do
-			local caption, value = pair[1], pair[2]
-			local right = (not stacked) and i == 2
-			local y = stacked and (i - 1) * 64 or 0
-			caption.AnchorPoint = Vector2.new(right and 1 or 0, 0)
-			caption.Position = UDim2.new(right and 1 or 0, 0, 0, y)
-			caption.Size = UDim2.new(stacked and 1 or 0.5, 0, 0, 24)
-			caption.TextXAlignment = right and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
-			value.AnchorPoint = caption.AnchorPoint
-			value.Position = UDim2.new(right and 1 or 0, 0, 0, y + 24)
-			value.Size = UDim2.new(stacked and 1 or 0.5, 0, 0, 36)
-			value.TextXAlignment = caption.TextXAlignment
-		end
-		if ui.Stacked ~= stacked then
-			-- (U9-7 review) the team's power changes sides (right-aligned beside the champion's, left-aligned stacked):
-			-- PixelIcon.Lead reads the alignment once, so the sword is placed again, its insets reset both ways
-			ui.Stacked = stacked
-			PixelIcon.Clear(ui.TeamPower)
-			lead(ui.TeamPower, "Swords")
-		end
-		ui.ChampCaption.Text = stacked and "Champion" or "Champion (about)"
-		ui.Powers.Size = UDim2.new(1, 0, 0, stacked and 126 or 62)
+		Ring.layoutVs(ui)
 		ui.FooterInset = ui.ColumnX and (detailW - ui.ColumnX + 20) or 28
 	end
 
@@ -1365,6 +1408,7 @@ function Ring.refresh(win, ui)
 	ui.TeamPower.Text = commas(mine)
 	local ratio = p.Power > 0 and mine / p.Power or 1
 	ui.TeamPower.TextColor3 = ratio >= 1 and C.GoodText or (ratio >= 0.9 and C.WarnText or C.BadText)
+	Ring.layoutVs(ui) -- (U9-7 look) the pinned pairs placed from their new widths
 	local verdict, color = Ring.verdict(mine, p.Power)
 	ui.Verdict.Text = verdict
 	ui.Verdict.TextColor3 = color
@@ -1408,12 +1452,14 @@ function Ring.live(_win, ui)
 		ui.FacesBox.AnchorPoint = Vector2.new(0, 0)
 		ui.FacesBox.Position = UDim2.fromOffset(ui.ColumnX, 4)
 		ui.FacesBox.Size = UDim2.new(1, -(ui.ColumnX + 6), 0, rowH)
-		ui.DetailScroll.Size = UDim2.new(0, ui.ColumnX - 8, 1, -(footerH + 22))
+		local cutH = footerH + 22
+		ui.DetailScroll.Size = UDim2.new(0, ui.ColumnX - 8, 1, -(cutH + Ring.foldTrim(ui, cutH)))
 	else
 		ui.FacesBox.AnchorPoint = Vector2.new(0, 1)
 		ui.FacesBox.Position = UDim2.new(0, 10, 1, -(footerH + 16))
 		ui.FacesBox.Size = UDim2.new(1, -20, 0, rowH)
-		ui.DetailScroll.Size = UDim2.new(1, -8, 1, -(footerH + rowH + 26))
+		local cutH = footerH + rowH + 26
+		ui.DetailScroll.Size = UDim2.new(1, -8, 1, -(cutH + Ring.foldTrim(ui, cutH)))
 	end
 end
 

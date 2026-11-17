@@ -62,7 +62,7 @@ local K = {
 	ROW_H = 78, -- (U9-7 look) two lines: the tier's steps and chip, then its facts
 	STEP = 8, -- (U9-7 look) a step of the tier's stair: 8 px wide, 6 px higher than the one before
 	GAP = 8,
-	BUTTON_W = 120,
+	BUTTON_W = 96, -- (U9-7 look) was 120: on a landscape phone the three fact tags ran under the Dare block
 	BUTTON_H = 56, -- >= 44 px under the 0.8 touch scale
 	TICK = 0.25, -- seconds between two looks at the state (the idle boss, the walk-away)
 	TAG_EVERY = 1, -- seconds between two tag refreshes
@@ -543,7 +543,7 @@ function H.row(tier, order)
 		f.Parent = row
 		Util.Create("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
-			Padding = UDim.new(0, 8),
+			Padding = UDim.new(0, 6),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
 			Parent = f,
