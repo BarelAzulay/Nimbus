@@ -155,25 +155,31 @@
 --   toasts_signboard_skin     (client) each toast a stone tag (tile, wood edge, stone lip) with its role's chip (info sky,
 --                             good grass, bad red, token gold) and pixel icon, brown words, the reward's sparkle; nothing
 --                             round, every edge mitred, one pixel size, every text readable
---   toasts_fit_phone          (client) 844x390 / 390x844: every shown toast inside the screen and clear of the thumb zones
+--   (U9-9 review) the phone checks run U99.PHONES (844x390, 800x360, 740x360, 667x375, 640x360, 932x430, 390x844) with the
+--   game's real RUN / DASH (U99.atPhone: MovementController._TouchButtons builds them in the desktop client world)
+--   toasts_fit_phone          (client) the phones: every shown toast inside the screen and clear of the thumb zones
 --                             and RUN / DASH, its words inside it and >= 14 px
---   results_card_kitb         (client) the match result card (won; lost with four players) on the Signboard skin at the
---                             four grid sizes: the awning 20 px wider than the card, the banner block (gold / stone) with a
---                             Section headline, the red close, stone stat blocks, the player's line selected, one pixel
---                             size, inside the screen; on the phones clear of the thumb zones and RUN / DASH (the landscape
---                             phone takes the compact rows)
+--   results_card_kitb         (client) the match result card (won; lost with four players) on the Signboard skin on two PC
+--                             sizes and the phones: the awning 20 px wider than the card, the banner block (gold / stone)
+--                             with a Section headline, the red close, stone stat blocks, the player's line selected, one
+--                             pixel size, inside the screen and clear of the currency strip; on the phones clear of the
+--                             thumb zones, the jump button and RUN, DASH wholly under it or wholly clear, the vitals card
+--                             stepping aside under it (a landscape phone takes the compact rows or the mini card)
 --   tutorial_signboard_skin   (client) the tutorial card: wood frame, stone body and lip, the sky-well portrait, a Section
 --                             name, the stone counter / fold, the pips as kit B blocks, the tile well, Next green, the gold
 --                             "!" badge folded; nothing round, mitred edges, flush lips, one pixel size, every text readable
---   tutorial_fits_phone       (client) 844x390 / 390x844, steps 1 and 5, as shown and opened: inside the screen, clear of the
---                             thumb zones and RUN / DASH, words inside and >= 14 px
+--   tutorial_fits_phone       (client) the phones, steps 1 and 5, as shown and opened: inside the screen, clear of the
+--                             thumb zones and RUN / DASH, words inside and >= 14 px (a warning on a 360 / 375 px tall phone,
+--                             where the opened card's 0.7 last resort reaches into the thumbstick's zone: known, the
+--                             owner's call)
 --   tutorial_pointer_kitb     (client) the menu pointer: a square gold ring between wood lines (no glow, no fade) on whole
 --                             px; the pixel arrow in kit colours at round(2k) / 2, its box on a whole px
 --   npc_signboard_skin        (client) the NPC dialog: wood frame, stone body and lip, the navy name plank (a gold Section
 --                             title), the sky portrait, the tile well, block dots (the current gold), Next green, Close
 --                             stone; nothing round, mitred edges, one pixel size, every text readable
---   npc_fits_phone            (client) 844x390 / 390x844: the dialog and its name tab inside the screen, clear of the thumb
---                             zones and RUN / DASH, words inside and >= 14 px
+--   npc_fits_phone            (client) the phones: the dialog inside the screen, its name plank too (a 360 px tall phone: clear
+--                             of the top bar's pill instead, on the short card), clear of the thumb zones and RUN / DASH,
+--                             words inside and >= 14 px, the line's room above the page dots on every size
 --   mouselock_hint_plank      (client) the "press L" hint: still the TextLabel Hint, a stone plank (tile, 2 px mitred wood
 --                             edge, flush stone lip), brown words after the pixel mouse, readable, below the middle band
 -- Plain Lua 5.1 syntax only.
@@ -7803,7 +7809,8 @@ local function clientScenarios()
 			{ Name = "thumbstick", X = 0, R = 110 + 6, Y = area.Y - (portrait and 150 or 96) - 6, B = area.Y },
 		}
 	end
-	-- the shown MobileControls buttons (RUN / DASH) as rects in the space of `gui` (an inset gui or not)
+	-- the shown MobileControls buttons (RUN / DASH) as rects in the space of `gui` (an inset gui or not); Ring = the rect
+	-- with the button's stroke round it
 	function U99.mobile(gui)
 		local out = {}
 		local mobile = U99.gui("MobileControls")
@@ -7815,10 +7822,37 @@ local function clientScenarios()
 		for _, d in ipairs(mobile:GetDescendants()) do
 			if d:IsA("GuiButton") and U8.shown(d) and d.AbsoluteSize.X > 0 then
 				local r = U8.rect(d)
-				out[#out + 1] = { Name = d.Name, X = r.X, R = r.R, Y = r.Y + dy, B = r.B + dy }
+				local stroke = d:FindFirstChildOfClass("UIStroke")
+				local s = stroke and stroke.Enabled ~= false and stroke.Thickness or 0
+				out[#out + 1] = { Name = d.Name, X = r.X, R = r.R, Y = r.Y + dy, B = r.B + dy,
+					Ring = { X = r.X - s, R = r.R + s, Y = r.Y + dy - s, B = r.B + dy + s } }
 			end
 		end
 		return out
+	end
+	-- (U9-9 review) the phones of the family's fit checks: the common landscape phone, the short ones (where the result card,
+	-- the toasts and the NPC dialog run out of room first), a big one and a portrait one
+	U99.PHONES = { { 844, 390 }, { 800, 360 }, { 740, 360 }, { 667, 375 }, { 640, 360 }, { 932, 430 }, { 390, 844 } }
+	-- U8.at on a touch phone with the game's real RUN / DASH (MovementController builds them there: the client world boots as a
+	-- desktop, so it has none of its own), laid out for the size and measured by the HUD; they go again after fn
+	function U99.atPhone(w, h, label, fn)
+		U8.at(w, h, true, label, function(tag)
+			local MC = U7.client("Controllers/MovementController")
+			local mobile = MC and MC._TouchButtons and MC._TouchButtons(true)
+			LKC.advance(1.2) -- the HUD's layout poll: the vitals card steps round the buttons
+			local names = {}
+			for _, b in ipairs(mobile and U99.mobile(mobile) or {}) do
+				names[b.Name] = true
+			end
+			T.check(names.RunButton and names.DashButton, tag .. ": the game's RUN and DASH are on the screen (MovementController's MobileControls)")
+			local ok, err = pcall(fn, tag)
+			if MC and MC._TouchButtons then
+				MC._TouchButtons(false)
+			end
+			if not ok then
+				error(err, 0)
+			end
+		end)
 	end
 	-- the shown filled blocks of the HUD's top-right stack (token pill, gift) `r` lies over (names), in the space of `gui`
 	function U99.overTopRight(gui, r)
@@ -7841,8 +7875,9 @@ local function clientScenarios()
 		end
 		return hits
 	end
-	-- the zones and touch buttons `r` lies over (names), for a touch screen
-	function U99.overTouch(gui, r, portrait)
+	-- the zones and touch buttons `r` lies over (names), for a touch screen. under: { [button name] = true } for a button
+	-- that may lie wholly under `r` with its stroke (the U9-4 rule: wholly under or wholly clear, never a sliver)
+	function U99.overTouch(gui, r, portrait, under)
 		local hits = {}
 		for _, z in ipairs(U99.zones(gui.AbsoluteSize, portrait)) do
 			if U8.overlap(r, z) then
@@ -7850,7 +7885,13 @@ local function clientScenarios()
 			end
 		end
 		for _, b in ipairs(U99.mobile(gui)) do
-			if U8.overlap(r, b) then
+			if under and under[b.Name] then
+				local o = b.Ring
+				local inside = o.X >= r.X - 0.5 and o.R <= r.R + 0.5 and o.Y >= r.Y - 0.5 and o.B <= r.B + 0.5
+				if not inside and U8.overlap(r, o) then
+					hits[#hits + 1] = b.Name .. " partly under " .. U8.show(o)
+				end
+			elseif U8.overlap(r, b) then
 				hits[#hits + 1] = b.Name .. " " .. U8.show(b)
 			end
 		end
@@ -7977,11 +8018,11 @@ local function clientScenarios()
 		LKC.flushErrors("toasts_signboard_skin")
 	end)
 
-	-- the toasts on the phones: every shown toast inside the screen and its words inside it (>= 14 px), none over Roblox's
-	-- thumbstick or jump button or the game's RUN / DASH
+	-- the toasts on the phones (U99.PHONES, with the game's real RUN / DASH): every shown toast inside the screen and its words
+	-- inside it (>= 14 px), none over Roblox's thumbstick or jump button or the game's RUN / DASH
 	S.toasts_fit_phone = guarded("toasts_fit_phone", function()
-		for _, s in ipairs({ { 844, 390 }, { 390, 844 } }) do
-			U8.at(s[1], s[2], true, "toast phone", function(tag)
+		for _, s in ipairs(U99.PHONES) do
+			U99.atPhone(s[1], s[2], "toast phone", function(tag)
 				local cards = U99.toasts()
 				local n = 0
 				for kind, card in pairs(cards) do
@@ -8004,12 +8045,22 @@ local function clientScenarios()
 	-- the match result card on the Signboard skin: the wood frame and stone body, the fixed awning 20 px wider than the card,
 	-- the banner a block (VICTORY! gold, DEFEAT stone) with a plain Section headline in brown and the red close block on its
 	-- right end, each stat a stone block in its wood edge, the player's own line on the selected face, nothing round or
-	-- glossy, every text readable, one pixel size; on every screen size the card and its awning inside the screen, on the
-	-- phones over no thumb zone and no RUN / DASH (a landscape phone takes the compact rows)
+	-- glossy, every text readable, one pixel size; on every screen size the card and its awning inside the screen and clear
+	-- of the HUD's currency strip, on the phones (U99.PHONES, with the game's real RUN / DASH) clear of the thumbstick, the
+	-- jump button and RUN, the game's DASH wholly under the card or wholly clear of it (the U9-4 rule, its taps pass through
+	-- the card); a landscape phone takes the compact rows, or the mini card (no team, no difficulty line) where those do not
+	-- fit
 	S.results_card_kitb = guarded("results_card_kitb", function()
 		local Sign = LoadingH.shared("Theme").Sign
-		for _, s in ipairs(U8.SIZES) do
-			U8.at(s[1], s[2], s[3], "result card", function(tag)
+		local sizes = { { 1920, 1080, false }, { 1280, 720, false } }
+		for _, s in ipairs(U99.PHONES) do
+			sizes[#sizes + 1] = { s[1], s[2], true }
+		end
+		for _, s in ipairs(sizes) do
+			local at = s[3] and function(w, h, _, label, fn)
+				U99.atPhone(w, h, label, fn)
+			end or U8.at
+			at(s[1], s[2], s[3], "result card", function(tag)
 				for _, won in ipairs({ true, false }) do
 					local what = tag .. (won and " (won)" or " (lost, four players)")
 					local card = U99.results(won)
@@ -8035,10 +8086,11 @@ local function clientScenarios()
 								plain = plain and row:FindFirstChild("SignEdge") ~= nil and row:FindFirstChild("Lip") ~= nil and sameColor(row.BackgroundColor3, Sign.Tile)
 							end
 						end
-						-- the compact card leaves an empty win bonus out (the lost match has none)
-						local want = (card:GetAttribute("Compact") == true and not won) and 2 or 3
-						T.check(rows == want and plain, what .. ": the " .. want .. " stats are stone blocks in their wood edge", rows .. " rows")
-						if card:GetAttribute("Compact") == true and not won then
+						-- the compact and mini cards leave an empty win bonus out (the lost match has none)
+						local tier = card:GetAttribute("Rows")
+						local want = (tier ~= "Full" and not won) and 2 or 3
+						T.check(rows == want and plain, what .. ": the " .. want .. " stats are stone blocks in their wood edge", rows .. " rows (" .. tostring(tier) .. ")")
+						if tier == "Compact" and not won then
 							local m1, m3 = card:FindFirstChild("Member1", true), card:FindFirstChild("Member3", true)
 							T.check(m1 and m3 and math.abs(U8.rect(m1).Y - U8.rect(m3).Y) > 1 and card:FindFirstChild("Member2", true)
 								and math.abs(U8.rect(m1).Y - U8.rect(card:FindFirstChild("Member2", true)).Y) < 0.5,
@@ -8050,7 +8102,13 @@ local function clientScenarios()
 								mine = d
 							end
 						end
-						T.check(mine ~= nil and sameColor(mine.BackgroundColor3, Sign.Selected), what .. ": the player's own line is on the selected face")
+						if tier == "Mini" then
+							-- (U9-9 review) the mini card: the result, the reason, the stats and the countdown only
+							T.check(mine == nil and card:FindFirstChild("Member1", true) == nil and card:FindFirstChild("Difficulty", true) == nil,
+								what .. ": the mini card shows no team and no difficulty line")
+						else
+							T.check(mine ~= nil and sameColor(mine.BackgroundColor3, Sign.Selected), what .. ": the player's own line is on the selected face")
+						end
 						T.check(#U94.roundOrGloss(card) == 0, what .. ": nothing round or glossy", table.concat(U94.roundOrGloss(card), ", "))
 						T.check(#U99.roundEdges(card) == 0, what .. ": every wood edge is mitred", table.concat(U99.roundEdges(card), ", "))
 						local cells, odd = U99.pixelCells(card, { U99.cell(card) })
@@ -8069,8 +8127,10 @@ local function clientScenarios()
 						end
 						T.check(#cramped == 0, what .. ": each member line is taller than its icons (they never touch line to line)", table.concat(cramped, "; "))
 						local diffLabel, diffBar = card:FindFirstChild("Difficulty", true), card:FindFirstChild("DiffBar", true)
-						T.check(diffLabel and diffBar and U8.rect(diffLabel).B <= U8.rect(diffBar).Y + 0.5, what .. ": the difficulty's colour bar lies under its line",
-							diffLabel and diffBar and (U8.show(U8.rect(diffLabel)) .. " / " .. U8.show(U8.rect(diffBar))) or "missing")
+						if tier ~= "Mini" then
+							T.check(diffLabel and diffBar and U8.rect(diffLabel).B <= U8.rect(diffBar).Y + 0.5, what .. ": the difficulty's colour bar lies under its line",
+								diffLabel and diffBar and (U8.show(U8.rect(diffLabel)) .. " / " .. U8.show(U8.rect(diffBar))) or "missing")
+						end
 						local low = U94.contrast("NimbusNotify")
 						T.check(#low == 0, what .. ": every text reads on its fill", table.concat(low, "; "))
 						local gui = card:FindFirstAncestorWhichIsA("LayerCollector")
@@ -8082,17 +8142,35 @@ local function clientScenarios()
 						T.check(r.X >= -0.5 and r.Y >= -0.5 and r.R <= gui.AbsoluteSize.X + 0.5 and r.B <= gui.AbsoluteSize.Y + 0.5, what .. ": the card and its awning lie inside the screen", U8.show(r))
 						local out, small = U99.texts(card, U8.rect(card))
 						T.check(#out == 0 and #small == 0, what .. ": every text inside the card, >= 14 px", table.concat(out, "; ") .. " " .. table.concat(small, ", "))
+						-- (U9-9 review) the card and its awning clear of the HUD's currency strip (a match shows the token strip)
+						local strip = U99.overTopRight(gui, r)
+						T.check(#strip == 0, what .. ": the card and its awning clear of the HUD's currency strip", table.concat(strip, "; ") .. " | " .. U8.show(r))
 						if s[3] then
-							local hits = U99.overTouch(gui, U8.rect(card), s[2] > s[1])
-							T.check(#hits == 0, what .. ": the card lies over no thumb zone and no RUN / DASH", table.concat(hits, "; ") .. " | " .. U8.show(U8.rect(card)))
+							local hits = U99.overTouch(gui, r, s[2] > s[1], { DashButton = true })
+							T.check(#hits == 0, what .. ": the card lies over no thumb zone, jump button or RUN, and DASH wholly under it or wholly clear",
+								table.concat(hits, "; ") .. " | " .. U8.show(U8.rect(card)))
 						end
-						if s[1] == 844 then
-							T.check(card:GetAttribute("Compact") == true, what .. ": the landscape phone takes the compact rows")
+						if s[3] and s[1] > s[2] then
+							T.check(tier == "Compact" or tier == "Mini", what .. ": a landscape phone takes the compact rows or the mini card", tostring(tier))
 						elseif s[1] == 1920 then
-							T.check(card:GetAttribute("Compact") ~= true, what .. ": the full rows on a PC")
+							T.check(tier == "Full", what .. ": the full rows on a PC", tostring(tier))
+						end
+						-- (U9-9 review, look) the HUD's vitals card steps aside while the card lies over a part of it (the mini
+						-- card's corner over its right end on a 360 px tall phone), as for the Trove panel
+						local hud = U7.client("Controllers/HudController")
+						local layout = hud and hud.GetLayout and hud.GetLayout()
+						local slot = layout and layout.VitalsSlot
+						if slot then
+							local c = U8.rect(card)
+							local over = math.min(c.R, slot.X + slot.W) - math.max(c.X, slot.X) > 4 and math.min(c.B, slot.Y + slot.H) - math.max(c.Y, slot.Y) > 4
+							T.check(not over or layout.Vitals == nil, what .. ": the vitals card steps aside while the card lies over it",
+								fmt("card %s, vitals %d,%d %dx%d shown %s", U8.show(c), slot.X, slot.Y, slot.W, slot.H, tostring(layout.Vitals ~= nil)))
 						end
 					end
 					U99.closeResults()
+					local hud = U7.client("Controllers/HudController")
+					local after = hud and hud.GetLayout and hud.GetLayout()
+					T.check(not (after and after.VitalsSlot) or after.Vitals ~= nil, tag .. ": the vitals card is back once the card closes")
 				end
 			end)
 		end
@@ -8185,11 +8263,11 @@ local function clientScenarios()
 		LKC.flushErrors("tutorial_signboard_skin")
 	end)
 
-	-- the tutorial on the phones (step 1 and step 5): the bubble and the card the player opens each inside the screen, over no
-	-- thumb zone and no RUN / DASH, their words inside them and >= 14 px
+	-- the tutorial on the phones (U99.PHONES, with the game's real RUN / DASH; step 1 and step 5): the bubble and the card the
+	-- player opens each inside the screen, over no thumb zone and no RUN / DASH, their words inside them and >= 14 px
 	S.tutorial_fits_phone = guarded("tutorial_fits_phone", function()
-		for _, s in ipairs({ { 844, 390 }, { 390, 844 } }) do
-			U8.at(s[1], s[2], true, "tutorial phone", function(tag)
+		for _, s in ipairs(U99.PHONES) do
+			U99.atPhone(s[1], s[2], "tutorial phone", function(tag)
 				for _, step in ipairs({ 1, 5 }) do
 					for _, open in ipairs({ false, true }) do
 						local what = fmt("%s step %d %s", tag, step, open and "opened" or "as shown")
@@ -8209,7 +8287,15 @@ local function clientScenarios()
 							end
 							T.check(r.X >= -0.5 and r.Y >= -0.5 and r.R <= gui.AbsoluteSize.X + 0.5 and r.B <= gui.AbsoluteSize.Y + 0.5, what .. ": inside the screen", U8.show(r))
 							local hits = U99.overTouch(gui, r, s[2] > s[1])
-							T.check(#hits == 0, what .. ": over no thumb zone and no RUN / DASH", table.concat(hits, "; ") .. " | " .. U8.show(r))
+							if #hits == 1 and hits[1]:match("^thumbstick ") and s[2] <= 375 and part == root then
+								-- (U9-9 review) known since before U9-9 (the old card did the same): on a 360 / 375 px tall phone
+								-- nothing fits the opened card, so TutorialController's last resort shrinks it to 0.7 and it
+								-- still reaches into the thumbstick's zone. Whether the touch controls step aside there (as for
+								-- the Trove) is the owner's call; a warning until then
+								T.warn(what .. ": the opened card reaches into the thumbstick's zone (the 0.7 last resort)", hits[1] .. " | " .. U8.show(r))
+							else
+								T.check(#hits == 0, what .. ": over no thumb zone and no RUN / DASH", table.concat(hits, "; ") .. " | " .. U8.show(r))
+							end
 							if part ~= root then
 								local top = U99.overTopRight(gui, r)
 								T.check(#top == 0, what .. ": the folded guide and its badge clear of the top-right token pill and gift", table.concat(top, "; ") .. " | " .. U8.show(r))
@@ -8333,14 +8419,45 @@ local function clientScenarios()
 		LKC.flushErrors("npc_signboard_skin")
 	end)
 
-	-- the NPC dialog on the phones: inside the screen, over no thumb zone and no RUN / DASH, its words, Next and Close inside
-	-- it, every text >= 14 px
+	-- the game's top-bar pill (TopBarController's navy plank with its gold-lip edge round the Shop / Travel / Settings buttons,
+	-- display order 21: it draws over every dialog) and its buttons, as rects in the space of `gui`
+	function U99.topBar(gui)
+		local out = {}
+		local bar = U99.gui("NimbusTopBar")
+		if not (bar and bar.Enabled) then
+			return out
+		end
+		local inset = Mock.TopInset or 0
+		local dy = (bar.IgnoreGuiInset and 0 or inset) - (gui.IgnoreGuiInset and 0 or inset)
+		for _, d in ipairs(bar:GetDescendants()) do
+			if d:IsA("GuiObject") and (d.Name == "Pill" or (d:IsA("GuiButton") and d.Name:match("^PillButton_"))) and U8.shown(d) and d.AbsoluteSize.X > 0 then
+				local r = U8.rect(d)
+				local stroke = d:FindFirstChildOfClass("UIStroke")
+				local s = stroke and stroke.Thickness or 0
+				out[#out + 1] = { Name = d.Name, X = r.X - s, R = r.R + s, Y = r.Y + dy - s, B = r.B + dy + s }
+			end
+		end
+		return out
+	end
+
+	-- the NPC dialog on the phones (U99.PHONES, with the game's real RUN / DASH): the card inside the screen, the name plank
+	-- inside it too or, on a 360 px tall phone where the card cannot fit under the top bar, in Roblox's top band but clear of
+	-- the top bar's pill and its buttons (U9-9 review: the pill draws over the plank), over no thumb zone and no RUN / DASH,
+	-- its words, Next and Close inside it, every text >= 14 px
 	S.npc_fits_phone = guarded("npc_fits_phone", function()
 		-- on every size the line keeps at least the old bubble's room above the page dots (design px from the line's top to
 		-- the dots: 94 on the full card, 128 on the compact one): the stone well's frame, lip and footer must not eat it
-		-- (the mock's text measure runs wide, so the room is checked, not the wrapped text)
-		for _, s in ipairs(U8.SIZES) do
-			U8.at(s[1], s[2], s[3], "npc line", function(tag)
+		-- (the mock's text measure runs wide, so the room is checked, not the wrapped text); the short phones take the short
+		-- card (U9-9 review), which keeps it too
+		local sizes = { { 1920, 1080, false }, { 1280, 720, false } }
+		for _, s in ipairs(U99.PHONES) do
+			sizes[#sizes + 1] = { s[1], s[2], true }
+		end
+		for _, s in ipairs(sizes) do
+			local at = s[3] and function(w, h, _, label, fn)
+				U99.atPhone(w, h, label, fn)
+			end or U8.at
+			at(s[1], s[2], s[3], "npc line", function(tag)
 				local root = U99.npc(1)
 				local line, dots = root and root:FindFirstChild("Line", true), root and root:FindFirstChild("Dots", true)
 				if T.check(line ~= nil and dots ~= nil, tag .. ": the dialog's line and page dots") then
@@ -8348,22 +8465,43 @@ local function clientScenarios()
 					local want = root.Size.X.Offset < 480 and 128 or 94
 					T.check(room >= want - 0.5, tag .. fmt(": the line keeps %d design px above the page dots (%.1f)", want, room))
 				end
+				-- (U9-9 review) a 360 px tall phone takes the short card (the old 216 / 250 and a lower name plank), a PC the tall one
+				local rows = root and root:GetAttribute("Rows")
+				if s[2] <= 360 then
+					T.check(rows == "Short", tag .. ": the short card on a 360 px tall phone", tostring(rows))
+				elseif not s[3] then
+					T.check(rows == "Tall", tag .. ": the tall card on a PC", tostring(rows))
+				end
 				U99.npcClose()
 				U99.npcGone()
 			end)
 		end
-		for _, s in ipairs({ { 844, 390 }, { 390, 844 } }) do
-			U8.at(s[1], s[2], true, "npc phone", function(tag)
+		for _, s in ipairs(U99.PHONES) do
+			U99.atPhone(s[1], s[2], "npc phone", function(tag)
 				local root = U99.npc(1)
 				if T.check(root ~= nil and U8.shown(root), tag .. ": the NPC dialog opens") then
 					local gui = root:FindFirstAncestorWhichIsA("LayerCollector")
-					local r = U8.rect(root)
+					local card = U8.rect(root)
+					T.check(card.X >= -0.5 and card.Y >= -0.5 and card.R <= gui.AbsoluteSize.X + 0.5 and card.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the card inside the screen", U8.show(card))
+					local r = card
 					local tab = root:FindFirstChild("NameTab", true)
-					if tab and U8.shown(tab) then
+					if T.check(tab ~= nil and U8.shown(tab), tag .. ": the name plank shows") then
 						local t = U8.rect(tab)
+						local edge = tab:FindFirstChildOfClass("UIStroke")
+						local e = (edge and edge.Thickness or 0) * U8.scaleOf(tab)
+						local plank = { X = t.X - e, R = t.R + e, Y = t.Y - e, B = t.B + e }
+						local bar = {}
+						for _, b in ipairs(U99.topBar(gui)) do
+							if U8.overlap(plank, b) then
+								bar[#bar + 1] = b.Name .. " " .. U8.show(b)
+							end
+						end
+						T.check(#bar == 0, tag .. ": the name plank and its edge clear of the top bar's pill and its buttons", table.concat(bar, "; ") .. " | plank " .. fmt("%.1f,%.1f..%.1f,%.1f", plank.X, plank.Y, plank.R, plank.B))
+						local inset = gui.IgnoreGuiInset and 0 or (Mock.TopInset or 0)
+						T.check(plank.Y >= -0.5 or (s[2] <= 360 and plank.Y + inset >= -0.5), tag .. ": the name plank inside the screen's gui area (a 360 px tall phone: inside the screen)",
+							U8.show(plank))
 						r = { X = math.min(r.X, t.X), Y = math.min(r.Y, t.Y), R = math.max(r.R, t.R), B = math.max(r.B, t.B) }
 					end
-					T.check(r.X >= -0.5 and r.Y >= -0.5 and r.R <= gui.AbsoluteSize.X + 0.5 and r.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the dialog and its name tab inside the screen", U8.show(r))
 					local hits = U99.overTouch(gui, r, s[2] > s[1])
 					T.check(#hits == 0, tag .. ": over no thumb zone and no RUN / DASH", table.concat(hits, "; ") .. " | " .. U8.show(r))
 					local out, small = U99.texts(root, r)

@@ -4,6 +4,7 @@
 --   MovementController.GetDashCooldownFraction() -> number   -- 0 = ready .. 1 = just used
 --   MovementController.HelpDevice(inputType) -> "Keyboard" | "Touch" | "Gamepad" | nil   -- kit-b O4: the course help
 --                                              labels (Config.Course.Help) read the text of this device
+--   MovementController._TouchButtons(on) -> gui | nil   (tests) the touch RUN / DASH in a world that booted as a desktop
 --
 -- How it works
 --   * Input is bound once with ContextActionService (high priority, so Shift never toggles
@@ -1475,6 +1476,33 @@ end
 function MovementController.MobileLayout()
 	local m = ui and ui.mobile
 	return m and m.rects or nil
+end
+
+-- (tests, kit B U9-9 review) smoke_kitb_ui runs its phone sizes in the desktop client world, where buildGui made no touch
+-- buttons: on = build them there once (as a touch boot does, laid out for the current screen) and show them; off = take
+-- the ones built here out of the PlayerGui again (kept for the next call; a touch boot's own are never touched).
+-- -> the MobileControls gui (nil while off, or before buildGui ran)
+local parkedMobile = nil
+function MovementController._TouchButtons(on)
+	if not ui then
+		return nil
+	end
+	local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	if on and not ui.mobile and playerGui then
+		if parkedMobile then
+			ui.mobile, parkedMobile = parkedMobile, nil
+			ui.mobile.Gui.Parent = playerGui
+		else
+			ui.mobile = buildMobileControls(playerGui)
+			ui.mobile.ForTests = true
+		end
+		layoutMobileControls(ui.mobile)
+		setMobileVisible(true)
+	elseif not on and ui.mobile and ui.mobile.ForTests then
+		parkedMobile, ui.mobile = ui.mobile, nil
+		parkedMobile.Gui.Parent = nil
+	end
+	return ui.mobile and ui.mobile.Gui or nil
 end
 
 -- on: a dash costs no stamina (and never exhausts); cooldown: the dash cooldown meanwhile (the battle's DashCooldown)
