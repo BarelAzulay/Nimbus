@@ -784,16 +784,18 @@ local function clientScenarios()
 					H.fire(nearP)
 					KC.advance(5)
 					T.check(H.text(H.part(4, "Clock")) == "0:01" and H.slot(4) == "Clock", label .. ": it holds at '0:01' until a payload says Ready", H.slot(4) .. " '" .. H.text(H.part(4, "Clock")) .. "'")
-					-- the payload that marks it Ready: CLAIM, and its border bright at once (not only on the next pulse)
+					-- the payload that marks it Ready: CLAIM, and its border bright at once (not only on the next pulse); (U9-4
+					-- look review) a locked box keeps a solid wood edge (no fade), the ready one turns the ink edge at once
 					local stroke4 = H.tier(4):FindFirstChild("SignEdge") -- (kit-b U9-4: the kit B block's edge)
-					local dimBefore = stroke4 and stroke4.Transparency or -1
+					local woodBefore = stroke4 ~= nil and stroke4.Color == Theme.Sign.Wood and stroke4.Transparency == 0
 					local readyP = H.play(H.now())
 					readyP.Play.Seconds = 60 * 60 + 5
 					readyP.Play.Tiers[4].Ready = true
 					KC.toClient("DailyState", readyP)
 					KC.advance(0.02)
-					T.check(H.slot(4) == "Claim" and dimBefore > 0.3 and stroke4.Transparency < 0.05, label .. ": the Ready payload: CLAIM, the border bright at once",
-						fmt("%s, border %.2f -> %.2f", H.slot(4), dimBefore, stroke4 and stroke4.Transparency or -1))
+					T.check(H.slot(4) == "Claim" and woodBefore and stroke4.Color == Theme.Sign.Text and stroke4.Transparency == 0,
+						label .. ": the Ready payload: CLAIM, the edge solid wood -> the ink edge at once (never faded)",
+						fmt("%s, wood before %s, after %s @%.2f", H.slot(4), tostring(woodBefore), stroke4 and tostring(stroke4.Color) or "-", stroke4 and stroke4.Transparency or -1))
 					-- CLAIM ALL sends one request
 					H.fire(H.play(H.now()))
 					KC.advance(1.1)
@@ -898,7 +900,8 @@ local function clientScenarios()
 						end
 						T.check(row, label .. ": seven boxes in one row", RedoGeom.desc(t[1]) .. " .. " .. RedoGeom.desc(t[7]))
 						if sz[1] == 844 then
-							T.check(H.near(t[1].AbsoluteSize.X, 104) and H.near(t[1].AbsoluteSize.Y, 204), label .. ": the boxes are 104 x 204", RedoGeom.desc(t[1]))
+							-- (U9-4 look review) 14 px sides and a 20 px bottom keep stone round the boxes: 102 x 202 (was 104 x 204)
+							T.check(H.near(t[1].AbsoluteSize.X, 102) and H.near(t[1].AbsoluteSize.Y, 202), label .. ": the boxes are 102 x 202", RedoGeom.desc(t[1]))
 						end
 					else
 						local function y(o)

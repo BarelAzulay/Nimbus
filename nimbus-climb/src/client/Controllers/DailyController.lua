@@ -171,7 +171,6 @@ local K = {
 	-- (kit-b U9-4) the Signboard: the wood frame's width round the stone body, the awning's fixed width (the Shop's)
 	FRAME = 6,
 	ROOF_W = 360,
-	PULSE = 0.55, -- today's border fades to this and back, once a second
 	-- the window box: NeonKit.BigRect, the Pets window / Store / Training Place rule (spec 5.1)
 	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1180, Y1 = 720 },
 	MARGIN = 12,
@@ -189,12 +188,17 @@ local K = {
 	-- design px per layout. PC: card A at 1080p (body 1180 x 644) is the largest form; the vertical parts slide from Full
 	-- (a 644 body) to Compact (a 485 body, the shortest PC box) and the tiles take the rest. Phone: card A on a 844 x 390
 	-- phone (body 820 x 280). Portrait: one column, four tiles a row.
-	-- (kit-b U9-4) the header as the Shop's: Icon = the gold square's icon px (the square is 4 px more), TitleText /
+	-- (kit-b U9-4) the header as the Shop's: Icon = the gold square's icon px (the square is 4 px more: PC 42, SignKit's
+	-- IconSlot), TitleText /
 	-- TitleW the window's title ("Gifts", the ribbon) before the tabs; TabY / TabH the tab blocks inside the navy band, a
-	-- tab's touch box keeps TapH
+	-- tab's touch box keeps TapH.
+	-- (U9-4 look review: the cramped phone pages) the body's x 0 is the window's outer edge, so a tile or a gift box keeps
+	-- >= 3 px of stone round its 3 px outside stroke to the 6 px frame and to the 8 px stone lip, and 4 px between two
+	-- tiles' strokes: sides >= 12, gaps >= 10, BoxBottom >= 20; a box's Claim clears the box's 5 px lip and its own
+	-- stroke by 4 px (BoxPadBottom >= 12) and is 8 px narrower than the box's inside
 	PC = {
 		Header = 76, HeadPad = 24, TabY = 12, TabH = 52, TabW = { 170, 200 }, TabGap = 10, TabText = 26, Close = 56, CloseY = 10,
-		Icon = 42, TitleText = 34, TitleW = 150, TitleGap = 22, TapH = 52,
+		Icon = 38, TitleText = 34, TitleW = 150, TitleGap = 22, TapH = 52,
 		Side = 28, HeaderY = 18, HeaderH = 44, HeaderText = 34, ChipY = 20, ChipH = 44, ChipText = 22, ChipPad = 18,
 		StreakW = 220, VipW = 150, ChipGap = 16, LongStreak = true,
 		TileSide = 22, TileGap = 16, TileW = 128, TileMaxH = 260, Raise = 8, PadTop = 12, PadBottom = 14, DayText = 22,
@@ -209,38 +213,38 @@ local K = {
 		AllGap = 16, BoxSide = 28, BoxW = 260, BoxMaxH = 250, BoxCols = 4, BoxGap = 28, BoxPadTop = 12, BoxPadBottom = 14,
 		TimeText = 24, GiftPx = 110, RewardText = 24, SlotH = 56, TierBtnW = 200, TierBtnText = 24, ClockText = 26, TickText = 40,
 		BoxMinGap = 6,
-		PlayFull = { BoxRowsY = 92, BoxRowGap = 30, BoxBottom = 22 }, PlayCompact = { BoxRowsY = 80, BoxRowGap = 14, BoxBottom = 10 },
+		PlayFull = { BoxRowsY = 92, BoxRowGap = 30, BoxBottom = 22 }, PlayCompact = { BoxRowsY = 80, BoxRowGap = 14, BoxBottom = 20 },
 	},
 	PHONE = {
 		Header = 50, HeadPad = 10, TabY = 9, TabH = 34, TabW = { 110, 140 }, TabGap = 6, TabText = 17, Close = 44, CloseY = 3,
 		Icon = 28, TitleText = 20, TitleW = 92, TitleGap = 14, TapH = 44,
 		Side = 14, HeaderY = 6, HeaderH = 30, HeaderText = 18, ChipY = 6, ChipH = 30, ChipText = 15, ChipPad = 10,
 		StreakW = 118, VipW = 84, ChipGap = 8,
-		TileSide = 14, TileGap = 8, TileW = 92, TileMaxH = 122, TileMinH = 80, Raise = 8, PadTop = 6, PadBottom = 8, DayText = 15,
+		TileSide = 14, TileGap = 10, TileW = 92, TileMaxH = 122, TileMinH = 80, Raise = 8, PadTop = 6, PadBottom = 8, DayText = 15,
 		AmountText = 17, IconPx = 40, PetPx = 60, CheckText = 36,
 		TilesY = 48, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 16, BarGap = 8, SegGap = 4, KeepH = 40,
 		KeepText = 15, Bottom = 8, ColGap = 16, BannerText = 15, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26,
 		RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
 		-- the Play page (card B on a 844 x 390 phone: body 820 x 280, seven boxes in one row)
 		PlaySide = 14, PlayY = 2, PlayH = 44, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 2, AllText = 15,
-		AllGap = 12, BoxSide = 10, BoxW = 104, BoxMaxH = 204, BoxCols = 7, BoxGap = 12, BoxRowsY = 58, BoxRowGap = 0,
-		BoxBottom = 6, BoxPadTop = 6, BoxPadBottom = 6, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
+		AllGap = 12, BoxSide = 14, BoxW = 104, BoxMaxH = 204, BoxCols = 7, BoxGap = 12, BoxRowsY = 58, BoxRowGap = 0,
+		BoxBottom = 20, BoxPadTop = 6, BoxPadBottom = 12, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
 		TierBtnText = 16, ClockText = 16, TickText = 28, BoxMinGap = 4,
 	},
 	PORTRAIT = {
 		Header = 50, HeadPad = 10, TabY = 9, TabH = 34, TabW = { 100, 130 }, TabGap = 6, TabText = 17, Close = 44, CloseY = 3,
 		Icon = 28, TitleText = 20, TitleW = 92, TitleGap = 14, TapH = 44,
-		Side = 10, HeaderY = 4, HeaderH = 26, HeaderText = 18, ChipY = 34, ChipH = 28, ChipText = 15, ChipPad = 10,
+		Side = 15, HeaderY = 4, HeaderH = 26, HeaderText = 18, ChipY = 34, ChipH = 28, ChipText = 15, ChipPad = 10,
 		StreakW = 104, VipW = 84, ChipGap = 8,
-		TileGap = 8, TileW = 92, TileMaxH = 122, TileMinH = 64, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
+		TileGap = 10, TileW = 92, TileMaxH = 122, TileMinH = 64, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
 		AmountText = 15, IconPx = 28, PetPx = 44, CheckText = 28,
 		TilesY = 72, RowGap = 12, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 14, BarGap = 10, SegGap = 4,
 		ClaimH = 64, ClaimGap = 8, KeepH = 40, KeepText = 15, Bottom = 6, BannerText = 15, ClaimW = 230, RepairW = 300,
 		ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
 		-- the Play page: the header on two lines, CLAIM ALL centred under it, four boxes a row
-		PlaySide = 10, PlayY = 4, PlayH = 40, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 48, AllText = 15,
-		AllGap = 0, BoxSide = 8, BoxW = 104, BoxMaxH = 204, BoxCols = 4, BoxGap = 6, BoxRowsY = 100, BoxRowGap = 10,
-		BoxBottom = 6, BoxPadTop = 4, BoxPadBottom = 4, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
+		PlaySide = 15, PlayY = 4, PlayH = 40, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 48, AllText = 15,
+		AllGap = 0, BoxSide = 15, BoxW = 104, BoxMaxH = 204, BoxCols = 4, BoxGap = 10, BoxRowsY = 100, BoxRowGap = 10,
+		BoxBottom = 20, BoxPadTop = 4, BoxPadBottom = 12, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
 		TierBtnText = 15, ClockText = 15, TickText = 28, BoxMinGap = 4,
 	},
 }
@@ -290,16 +294,19 @@ local TIER_COLORS = {
 }
 DailyController.DayColors = DAY_COLORS
 DailyController.TierColors = TIER_COLORS
--- (kit-b U9-4) a block's face, its edge (the ink edge of the pitch's selected card on today and a ready box; else wood)
--- and the edge's transparency per state: today gold, a claimed day / box the sunk well, the rest stone; a locked box's
--- edge fades (a ready one is bright at once and pulses on the tick)
+-- (kit-b U9-4) a block's face and its edge per state: today gold, a claimed day / box the sunk well, the rest stone.
+-- (U9-4 look review) the edges are solid kit tokens, never faded by alpha: wood on an open day and a locked box (a day or
+-- a gift still to come keeps its frame), the Off block's edge on a claimed one, the ink edge of the pitch's selected
+-- card on today and a ready box; those two pulse as a 2-frame swap on the 1 s tick (ink <-> the gold lip, no tween)
 local CELL_LOOK = {
-	Today = { Face = SIGN.Gold, Ink = true, Edge = 0 },
-	Open = { Face = SIGN.Tile, Edge = 0 },
-	Ready = { Face = SIGN.Tile, Ink = true, Edge = 0 },
-	Locked = { Face = SIGN.Tile, Edge = 0.35 },
-	Claimed = { Face = SIGN.Well, Edge = 0.5 },
+	Today = { Face = SIGN.Gold, Edge = SIGN.Text, Pulse = true },
+	Open = { Face = SIGN.Tile, Edge = SIGN.Wood },
+	Ready = { Face = SIGN.Tile, Edge = SIGN.Text, Pulse = true },
+	Locked = { Face = SIGN.Tile, Edge = SIGN.Wood },
+	Claimed = { Face = SIGN.Well, Edge = SIGN.WellEdge },
 }
+DailyController.CellLook = CELL_LOOK
+K.PULSE_EDGE = SIGN.GoldLip -- the pulse's second frame
 -- (kit-b U9-4, finding 26) the week's confetti: the prize's gold and the gift's pink (the Gifts button's block), each with
 -- its lip tone, in place of the rainbow
 K.CONFETTI_COLORS = { SIGN.Gold, SIGN.Roof, SIGN.GoldLip, SIGN.RoofLip }
@@ -1096,10 +1103,12 @@ function H.ensureWindow()
 	U.GiftsIcon = label("GiftsIcon", "", "Display", 32, bar, {
 		TextTruncate = Enum.TextTruncate.None, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text, ZIndex = 6,
 	})
+	-- (U9-4 look review) the kit's header icon square (SignKit.Header's IconSlot, the pitch's .hi): 42 px on PC, a 2 px
+	-- ink edge, as every window's
 	local iconEdge = Instance.new("UIStroke")
 	iconEdge.Name = "SignEdge"
-	iconEdge.Color = SIGN.Wood
-	iconEdge.Thickness = 3
+	iconEdge.Color = SIGN.Text
+	iconEdge.Thickness = 2
 	iconEdge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	iconEdge.LineJoinMode = Enum.LineJoinMode.Miter
 	iconEdge.Parent = U.GiftsIcon
@@ -1546,7 +1555,7 @@ function H.layoutTier(cell, bw, bh, M)
 	cell.Lines = lines
 	local slotY = bh - M.BoxPadBottom - M.SlotH
 	cell.SlotY, cell.SlotH, cell.Inner = slotY, M.SlotH, inner
-	local btnW = math.min(M.TierBtnW, inner)
+	local btnW = math.min(M.TierBtnW, inner - 8) -- (U9-4 look review: the plank never fills the box edge to edge)
 	place(cell.Claim, (bw - btnW) / 2, slotY, btnW, M.SlotH)
 	cell.Claim.TextSize = M.TierBtnText
 	local pad = cell.Claim:FindFirstChildOfClass("UIPadding")
@@ -1638,7 +1647,15 @@ function H.paintLook(cell, color, look)
 	local L = CELL_LOOK[look] or CELL_LOOK.Open
 	cell.Card.SetColor(color)
 	cell.Card.SetFill(L.Face)
-	cell.Card.Stroke.Color = L.Ink and SIGN.Text or SIGN.Wood
+	cell.Card.Stroke.Color = L.Edge
+	cell.Card.Stroke.Transparency = 0
+end
+
+-- (U9-4 look review) the pulse of today's tile / a ready box: its edge swaps between the ink and the gold lip, one frame
+-- a tick (no tween, never faded)
+function H.pulseEdge(cell, lit)
+	cell.Card.Stroke.Color = lit and K.PULSE_EDGE or SIGN.Text
+	cell.Card.Stroke.Transparency = 0
 end
 
 -- (kit-b U9-4) a box's gift: the Gifts button's pink block (its lip, its wood edge) holding the brown pixel gift, as big
@@ -1740,9 +1757,6 @@ function H.renderDaily(st, M)
 		-- (kit-b U9-4) only a gift the claim takes now glints (a held one, Locked, waits)
 		cell.Sparkles.Visible = today and (view.Mode == "Claim" or view.Mode == "Repair")
 		H.paintLook(cell, DAY_COLORS[i], today and "Today" or (claimed and "Claimed" or "Open"))
-		if not today then
-			cell.Card.Stroke.Transparency = claimed and CELL_LOOK.Claimed.Edge or 0
-		end
 		if today and e.Repair == true then
 			-- the claim re-earns this day and pays nothing: no amount, no gift art (re-review 1)
 			cell.Amount.Text = "Repair"
@@ -1841,12 +1855,7 @@ function H.renderPlay(st, M)
 			cell.Clock.Text = countdown
 			cell.Clock.Visible = countdown ~= ""
 			H.placeClock(cell, countdown)
-			H.paintLook(cell, color, state)
-			if not ready then
-				cell.Card.Stroke.Transparency = CELL_LOOK[state].Edge
-			elseif cell.State ~= "Ready" then
-				cell.Card.Stroke.Transparency = CELL_LOOK.Ready.Edge -- (just ready: bright at once; the tick then pulses it)
-			end
+			H.paintLook(cell, color, state) -- (just ready: the ink edge at once; the tick then swaps it)
 			cell.State = state
 		end
 	end
@@ -1883,10 +1892,10 @@ function H.tick()
 		end
 	end
 	if S.Tab == "Play" then
-		-- a ready gift box: its border pulses and its gift bobs
+		-- a ready gift box: its edge pulses (two frames) and its gift bobs
 		for _, cell in ipairs(U.Tiers) do
 			if cell.Root:GetAttribute("Pulsing") == true then
-				Util.Tween(cell.Card.Stroke, 0.9, { Transparency = S.Pulse and K.PULSE or 0 })
+				H.pulseEdge(cell, S.Pulse)
 			end
 			if cell.Gift:GetAttribute("Bobbing") == true and cell.GiftY then
 				Util.Tween(cell.Gift, 0.9, { Position = UDim2.fromOffset(cell.GiftX, cell.GiftY - (S.Pulse and K.BOB or 0)) },
@@ -1897,7 +1906,7 @@ function H.tick()
 	end
 	for _, cell in ipairs(U.Cells) do
 		if cell.Root:GetAttribute("Pulsing") == true then
-			Util.Tween(cell.Card.Stroke, 0.9, { Transparency = S.Pulse and K.PULSE or 0 })
+			H.pulseEdge(cell, S.Pulse)
 		end
 	end
 end

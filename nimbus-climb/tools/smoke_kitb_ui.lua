@@ -6618,6 +6618,56 @@ local function clientScenarios()
 		end
 		return out
 	end
+	-- (U9-4 look review: the cramped phone pages) the room round the Gifts window's shown day tiles / gift boxes (prefix
+	-- "Cell" | "Tier"): each one's outer box (its 3 px outside stroke included) keeps >= 3 px of stone to the wood frame and
+	-- to the stone lip, >= 4 px of stone to the next one's, and a box's shown Claim plank (its stroke included) ends >= 4 px
+	-- over the box's colour lip. Returns the problems
+	function U94.tileRoom(holder, prefix)
+		local out = {}
+		local win = holder:FindFirstChild("DailyWindow")
+		local stone = win and win:FindFirstChild("Stone")
+		local slip = stone and stone:FindFirstChild("Lip")
+		if not (stone and slip) then
+			return { "no stone body" }
+		end
+		local k = U8.scaleOf(stone)
+		local st, lp = U8.rect(stone), U8.rect(slip)
+		local room = { X = st.X + 3 * k, R = st.R - 3 * k, Y = st.Y, B = lp.Y - 3 * k }
+		local boxes = {}
+		for i = 1, 7 do
+			local c = holder:FindFirstChild(prefix .. i, true)
+			if c and U8.shown(c) then
+				local edge = c:FindFirstChild("SignEdge")
+				local e = (edge and edge.Thickness or 0) * k
+				local r = U8.rect(c)
+				local o = { X = r.X - e, R = r.R + e, Y = r.Y - e, B = r.B + e, Name = c.Name }
+				if o.X < room.X - 0.5 or o.R > room.R + 0.5 or o.B > room.B + 0.5 then
+					out[#out + 1] = fmt("%s %s too near the frame / the stone lip (room %s)", c.Name, U8.show(o), U8.show(room))
+				end
+				boxes[#boxes + 1] = o
+				local claim = c:FindFirstChild("Claim", true)
+				local lip = c:FindFirstChild("Lip")
+				if claim and U8.shown(claim) and lip then
+					local ce = claim:FindFirstChild("SignEdge")
+					local cb = U8.rect(claim).B + (ce and ce.Thickness or 0) * k
+					if cb > U8.rect(lip).Y - 4 * k + 0.5 then
+						out[#out + 1] = fmt("%s.Claim ends at %.1f, on the box's lip at %.1f", c.Name, cb, U8.rect(lip).Y)
+					end
+				end
+			end
+		end
+		for i = 1, #boxes do
+			for j = i + 1, #boxes do
+				local a, b = boxes[i], boxes[j]
+				local gx = math.max(b.X - a.R, a.X - b.R)
+				local gy = math.max(b.Y - a.B, a.Y - b.B)
+				if math.max(gx, gy) < 4 * k - 0.5 then
+					out[#out + 1] = fmt("%s and %s %.1f px apart", a.Name, b.Name, math.max(gx, gy))
+				end
+			end
+		end
+		return out
+	end
 	-- the shown UICorners and UIGradients under `root` (kit B is square and flat; GemIcon art, a pet's viewport, the HUD
 	-- ring's Step and the window title's T1 ribbon, the owner's designed look, are not panels)
 	function U94.roundOrGloss(root)
@@ -6781,6 +6831,42 @@ local function clientScenarios()
 				local floating = U94.floatingLips(holder)
 				T.check(#floating == 0, tag .. ": every block's lip is flush (Claim!, the tabs, the tiles, the close: bottom and sides on the block's)",
 					table.concat(floating, "; ", 1, math.min(#floating, 6)))
+				-- (U9-4 look review) every tile's edge a solid kit token, never faded: the claimed days the Off edge, today
+				-- the ink edge (its pulse swaps it with the gold lip, two frames, no tween), the days to come wood
+				local function edges(prefix, want, pulsing)
+					local bad = {}
+					for i = 1, 7 do
+						local c = holder:FindFirstChild(prefix .. i, true)
+						local e = c and c:FindFirstChild("SignEdge")
+						local ok = e ~= nil and e.Transparency == 0 and (sameColor(e.Color, want[i]) or (i == pulsing and sameColor(e.Color, Sign.GoldLip)))
+						if not ok then
+							bad[#bad + 1] = prefix .. i .. (e and fmt(" %s @%.2f", hex(e.Color), e.Transparency) or " no edge")
+						end
+					end
+					return bad
+				end
+				local DAY_EDGE = { Sign.WellEdge, Sign.WellEdge, Sign.Text, Sign.Wood, Sign.Wood, Sign.Wood, Sign.Wood }
+				local edgeBad = edges("Cell", DAY_EDGE, 3)
+				local today = holder:FindFirstChild("Cell3", true)
+				local te = today and today:FindFirstChild("SignEdge")
+				local seen, tweened = {}, false
+				for _ = 1, 3 do
+					if te then
+						seen[hex(te.Color)] = true
+						for tw in pairs(Mock.ActiveTweens) do
+							local okI, target = pcall(function()
+								return tw.Instance
+							end)
+							tweened = tweened or (okI and target == te)
+						end
+					end
+					LKC.advance(1.02)
+				end
+				T.check(#edgeBad == 0 and seen[hex(Sign.Text)] and seen[hex(Sign.GoldLip)] and not tweened,
+					tag .. ": tile edges are solid tokens (claimed the Off edge, today ink pulsing ink <-> gold lip in two frames, the rest wood)",
+					table.concat(edgeBad, ", ") .. fmt(" | pulse ink %s gold %s tween %s", tostring(seen[hex(Sign.Text)]), tostring(seen[hex(Sign.GoldLip)]), tostring(tweened)))
+				local room = U94.tileRoom(holder, "Cell")
+				T.check(#room == 0, tag .. ": stone round every day tile (3 px to the frame, 4 px between)", table.concat(room, "; ", 1, math.min(#room, 6)))
 				local round = U94.roundOrGloss(holder)
 				T.check(#round == 0, tag .. ": nothing round or glossy in the Gifts window", table.concat(round, ", ", 1, math.min(#round, 10)))
 				local bad = U94.contrast("NimbusDaily")
@@ -6826,6 +6912,20 @@ local function clientScenarios()
 				local floating = U94.floatingLips(holder)
 				T.check(#floating == 0, tag .. ": every block's lip is flush (Claim all, the box's Claim with its side padding, the boxes)",
 					table.concat(floating, "; ", 1, math.min(#floating, 6)))
+				-- (U9-4 look review) every box's edge a solid token: claimed the Off edge, the ready box ink (or its pulse
+				-- frame, the gold lip), a locked box wood like a day to come (never faded)
+				local TIER_EDGE = { Sign.WellEdge, Sign.WellEdge, Sign.Text, Sign.Wood, Sign.Wood, Sign.Wood, Sign.Wood }
+				local tierBad = {}
+				for i = 1, 7 do
+					local c = holder:FindFirstChild("Tier" .. i, true)
+					local e = c and c:FindFirstChild("SignEdge")
+					if not (e and e.Transparency == 0 and (sameColor(e.Color, TIER_EDGE[i]) or (i == 3 and sameColor(e.Color, Sign.GoldLip)))) then
+						tierBad[#tierBad + 1] = "Tier" .. i .. (e and fmt(" %s @%.2f", hex(e.Color), e.Transparency) or " no edge")
+					end
+				end
+				T.check(#tierBad == 0, tag .. ": box edges are solid tokens (claimed the Off edge, ready ink, locked wood; none faded)", table.concat(tierBad, ", "))
+				local room = U94.tileRoom(holder, "Tier")
+				T.check(#room == 0, tag .. ": stone round every gift box, its Claim off its lip", table.concat(room, "; ", 1, math.min(#room, 6)))
 				local round = U94.roundOrGloss(holder)
 				T.check(#round == 0, tag .. ": nothing round or glossy on the Play page", table.concat(round, ", ", 1, math.min(#round, 10)))
 				local bad = U94.contrast("NimbusDaily")
@@ -6914,6 +7014,10 @@ local function clientScenarios()
 						end
 					end
 					T.check(#out == 0, tag .. ": every part sits inside its tile / box and the window's body", table.concat(out, "; ", 1, math.min(#out, 8)))
+					-- (U9-4 look review) nothing cramped: stone round every tile / box, a box's Claim off its lip
+					local cramped = U94.tileRoom(holder, tab == "Daily" and "Cell" or "Tier")
+					T.check(#cramped == 0, tag .. ": every tile / box keeps 3 px of stone to the frame and the stone lip, 4 px to the next, its Claim 4 px over its lip",
+						table.concat(cramped, "; ", 1, math.min(#cramped, 6)))
 				end)
 				T.eq(GuiService.TouchControlsEnabled, before, fmt("daily phone %dx%d %s: the touch controls are back as they were after Close", s[1], s[2], tab))
 			end

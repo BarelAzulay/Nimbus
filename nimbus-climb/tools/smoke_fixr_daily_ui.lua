@@ -547,8 +547,12 @@ local function clientScenarios()
 		T.check(state(5) == "Locked" and H.tierButton(5) == nil and H.shown(clock5) and clock5.Text == "28:00" and not H.shown(H.find(H.tier(5), "Check")),
 			"fixr play cells: a locked box counts down to its gift (its own clock)", H.texts(H.tier(5)))
 		local s4, s5 = H.stroke(H.tier(4)), H.stroke(H.tier(5))
-		T.check(s4 and s5 and s4.Transparency < s5.Transparency, "fixr play cells: a ready box's outline is brighter than a locked one's",
-			fmt("ready %s, locked %s", tostring(s4 and s4.Transparency), tostring(s5 and s5.Transparency)))
+		-- (U9-4 look review) the edges are solid kit tokens, never faded: the ready box stands out by the ink edge (its pulse
+		-- frame the gold lip), a locked one keeps wood
+		local Sign = select(3, KC.env()).Sign
+		T.check(s4 and s5 and s4.Transparency == 0 and s5.Transparency == 0 and (s4.Color == Sign.Text or s4.Color == Sign.GoldLip) and s5.Color == Sign.Wood,
+			"fixr play cells: a ready box has the ink edge, a locked one wood (both solid)",
+			fmt("ready %s @%s, locked %s @%s", tostring(s4 and s4.Color), tostring(s4 and s4.Transparency), tostring(s5 and s5.Color), tostring(s5 and s5.Transparency)))
 		local mark = #Mock.RemoteLog
 		H.tap(b4)
 		local sent = KC.serverCalls("DailyRequest", mark)

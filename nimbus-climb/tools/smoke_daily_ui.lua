@@ -1017,7 +1017,8 @@ local function clientScenarios()
 			and win.AbsolutePosition.Y >= 0 and win.AbsolutePosition.Y + win.AbsoluteSize.Y <= gui.AbsoluteSize.Y,
 			"daily mobile: centred at 12,59, inside the screen", win and fmt("%d,%d in %dx%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, gui.AbsoluteSize.X, gui.AbsoluteSize.Y) or "")
 		local cell = H.cell(1)
-		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 92) <= 1 and abs(cell.AbsoluteSize.Y - 122) <= 1, "daily mobile: tiles 92x122", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
+		-- (U9-4 look review) a 10 px gap keeps 4 px of stone between two tiles' strokes: 90 wide (was 92 at an 8 px gap)
+		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 90) <= 1 and abs(cell.AbsoluteSize.Y - 122) <= 1, "daily mobile: tiles 90x122", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
 		-- (slop-audit win 6, Review Focus 5) the phone layout re-sizes the X (56 -> 44 px): the drawn mark follows it
 		local closeIssues = H.closeMarkIssues(H.find(win, "CloseButton"))
 		T.check(#closeIssues == 0, "daily mobile: the 44 px CloseButton keeps its drawn X centred", table.concat(closeIssues, "; "))
