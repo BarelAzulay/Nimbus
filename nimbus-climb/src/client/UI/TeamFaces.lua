@@ -45,7 +45,7 @@ local K = {
 	EDIT_W_TWO_LINES = 76, -- (kit-b U9-7) the Compact row's Edit team block, its words on two lines
 	CARD_H = 96, -- the height of a face per mode
 	COMPACT_H = 64,
-	COLUMN_H = 44,
+	COLUMN_H = 46, -- (U9-7 look) the tag's line and the level's line no longer share 2 px
 	COLUMN_PAD = 4,
 	NO_PET = "You need a pet: spin a roulette in the Cloud Shop.",
 	ALL_BUSY = "Your whole team is busy: training or gardening",
@@ -246,14 +246,16 @@ local function layoutFace(face, mode)
 	if mode == "Column" then
 		-- [picture] FIGHTER
 		--           L12    sword 358
+		-- (U9-7 look) the tag 2..20, the line under it 22..40: 2 px clear of each other and of the lip (the tag sat on the
+		-- tops of "L57" and the sword, "Gardening" ran into the lip)
 		local h = K.COLUMN_H
 		local p = h - 2 - LIP
 		local x = p + 6
 		place(face.Picture, 2, 2, 0, p, p)
-		place(face.Tag, x, 2, 0, 88, 20)
-		place(face.Level, x, 20, 0, 44, 20)
-		place(face.Power, x + 44, 20, 1, -(x + 48), 20)
-		place(face.Empty, x, 20, 1, -(x + 4), 20)
+		place(face.Tag, x, 2, 0, 88, 18)
+		place(face.Level, x, 22, 0, 44, 18)
+		place(face.Power, x + 44, 22, 1, -(x + 48), 18)
+		place(face.Empty, x, 22, 1, -(x + 4), 18)
 		place(face.Busy, 2, 2, 0, p, p)
 	elseif mode == "Compact" then
 		-- FIGHTER (a line across)
@@ -342,6 +344,21 @@ end
 ----------------------------------------------------------------------
 -- The row
 ----------------------------------------------------------------------
+-- (U9-7 look) an object's width in its own design px: AbsoluteSize over the UIScales above it; 0 before the first layout
+local function designWidth(obj)
+	local s, cur = 1, obj
+	while cur and not cur:IsA("LayerCollector") do
+		if cur:IsA("GuiObject") then
+			local ui = cur:FindFirstChildOfClass("UIScale")
+			if ui and ui.Scale > 0 then
+				s = s * ui.Scale
+			end
+		end
+		cur = cur.Parent
+	end
+	local w = obj.AbsoluteSize.X
+	return (w > 0) and (w / s + 0.001) or 0
+end
 -- the row's window and page are on screen: a hidden row builds no pet viewports (its window refreshes it when it opens)
 local function isShown(obj)
 	while obj and obj:IsA("GuiObject") do
@@ -413,15 +430,37 @@ function TeamFaces.New(parent, props)
 		return K.PAD * 2 + K.CARD_H + K.GAP + K.EDIT_H
 	end
 
-	-- the cells of a row of faces: `taken` px of the row's width are not theirs
+	-- the cells of a row of faces: `taken` px of the row's width are not theirs. (U9-7 look) Whole design px once the row's
+	-- width is known (thirds of it put the slot edges and rarity lips between pixels: 172.67 / 181.33 px), the remainder
+	-- to the last face; a share of the width before the first layout
+	local rowTaken, rowH = 0, 0
 	local function faceRow(taken, h)
+		rowTaken, rowH = taken, h
 		local pad, n = K.PAD, K.SLOTS
+		local width = designWidth(root)
+		if width > 0 then
+			local avail = math.floor(width) - 2 * pad - (n - 1) * K.GAP - taken
+			local each = math.floor(avail / n)
+			local x = pad
+			for i, face in ipairs(faces) do
+				local cw = (i == n) and (avail - each * (n - 1)) or each
+				face.Cell.Position = UDim2.fromOffset(x, pad)
+				face.Cell.Size = UDim2.fromOffset(cw, h)
+				x = x + cw + K.GAP
+			end
+			return
+		end
 		local share = (2 * pad + (n - 1) * K.GAP + taken) / n
 		for i, face in ipairs(faces) do
 			face.Cell.Position = UDim2.new((i - 1) / n, pad + (i - 1) * (K.GAP - share), 0, pad)
 			face.Cell.Size = UDim2.new(1 / n, -share, 0, h)
 		end
 	end
+	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if mode ~= "Column" and rowH > 0 then
+			faceRow(rowTaken, rowH)
+		end
+	end)
 
 	local function layout()
 		root.Size = UDim2.new(1, 0, 0, row.Height())
@@ -458,6 +497,9 @@ function TeamFaces.New(parent, props)
 	end
 
 	function row.Refresh()
+		if mode ~= "Column" and rowH > 0 and designWidth(root) > 0 then
+			faceRow(rowTaken, rowH) -- (U9-7 look) whole px once the row is laid out
+		end
 		local entries = TeamFaces.Entries()
 		local busy = busyOfTeam()
 		local shown = isShown(root)

@@ -4210,7 +4210,7 @@ local function clientScenarios()
 			{ "the Champion Ring window", "^NimbusArena%.Window_Ring%..-%.TitleBar%..-Title$" },
 			{ "the Dungeon window", "^NimbusDungeon%.Window_Dungeon%..-%.TitleBar%..-Title$" },
 			{ "the dare panel", "^NimbusRaidGate%.Dare%..-%.TitleBar%..-Title$" },
-			{ "the Arena's Quick match head", "^NimbusArena%.Window_Arena%..-%.Quick%.Title$", "Section" },
+			{ "the Arena's Quick match head", "^NimbusArena%.Window_Arena%..-%.Quick%.Head%.Title$", "Section" }, -- (U9-7 look) in its title row
 			{ "the Ring's champion head", "^NimbusArena%.Window_Ring%..-%.Champion%.Head%.Title$", "Section" },
 			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
 			{ "the Go home hero card", "%.Hero%.GoHome%..-%.Title$" },
@@ -6419,6 +6419,40 @@ local function clientScenarios()
 						T.check(card and srect(card).Y >= Mock.TopInset - 0.5, tag .. ": the End card starts under Roblox's band", card and U8.show(srect(card)) or "missing")
 					end
 					T.check(#clash == 0, fmt("%s: the cards keep clear of the HUD, the battle HUD and the touch buttons (%d)", tag, #clash), table.concat(clash, "; "))
+					-- (U9-7 look) the pixel rules: no rotated part (the close / kick X is the pixel x); at 1920x1080 (scale 1)
+					-- every pixel icon and every team face starts on a whole pixel and a face is a whole number of px wide
+					local rotated, halves = {}, {}
+					local function whole(v)
+						return math.abs(v - math.floor(v + 0.5)) < 0.01
+					end
+					for _, d in ipairs(gui:GetDescendants()) do
+						if d:IsA("GuiObject") and U8.shown(d) then
+							if d.Rotation ~= 0 then
+								rotated[#rotated + 1] = d:GetFullName():gsub("^.-" .. f[2] .. "%.", "") .. " " .. tostring(d.Rotation)
+							end
+							-- a lead / trail icon is placed from its label (PixelIcon.Lead): whole px from the label's box; a face and
+							-- an icon on a frame (the header's) whole px on the screen
+							local face = d.Name:match("^Face%d$") and d.Parent and d.Parent.Name == "TeamFaces"
+							local host = d:GetAttribute("PixelIcon") and d.Parent
+							if host and host:IsA("Frame") and host:GetAttribute("PixelIcon") then
+								host = host.Parent -- (the Icon inside a lead box)
+							end
+							local rel = host and (host:IsA("TextLabel") or host:IsA("TextButton")) and host or nil
+							if W == 1920 and (d:GetAttribute("PixelIcon") or face) and d.AbsoluteSize.X > 0 then
+								local p, sz = d.AbsolutePosition, d.AbsoluteSize
+								if rel then
+									p = p - rel.AbsolutePosition
+								end
+								if not (whole(p.X) and whole(p.Y) and (not face or whole(sz.X))) then
+									halves[#halves + 1] = fmt("%s %.2f,%.2f %.2fx%.2f", d:GetFullName():gsub("^.-" .. f[2] .. "%.", ""), p.X, p.Y, sz.X, sz.Y)
+								end
+							end
+						end
+					end
+					T.check(#rotated == 0, fmt("%s: no rotated part (%d)", tag, #rotated), table.concat(rotated, "; ", 1, math.min(#rotated, 6)))
+					if W == 1920 then
+						T.check(#halves == 0, fmt("%s: every pixel icon and team face on whole pixels (%d)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+					end
 					if touch then
 						T.check(#under == 0, fmt("%s: nothing under the thumbstick or the jump button (touch controls %s) (%d)", tag,
 							tostring(GuiService.TouchControlsEnabled), #under), table.concat(under, "; ", 1, math.min(#under, 8)))

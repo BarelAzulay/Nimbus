@@ -1357,8 +1357,7 @@ function Ring.refresh(win, ui)
 	if p.Band ~= "" then
 		colorPill(tagParent, "Band", p.Band, C.Band, 18, 2)
 	end
-	-- the fighters
-	ui.Faces.Refresh()
+	-- the fighters (their row redrawn after Ring.live has sized its box: TeamFaces lays the faces out in whole px)
 	local mine = teamPower(Ring.fighters())
 	ui.ChampPower.Text = commas(p.Power)
 	ui.TeamPower.Text = commas(mine)
@@ -1382,6 +1381,7 @@ function Ring.refresh(win, ui)
 	ui.CashNote.Text = Ring.income() > 0 and "Each win pays a few seconds of your garden's coins (more every round) and XP to every fighter."
 		or "Put pets in your Pet Garden: ring wins pay more when your garden makes coins!"
 	Ring.live(win, ui)
+	ui.Faces.Refresh()
 end
 
 -- the footer only (4 times a second while the window is open: the walk to the portal, the server's answer)

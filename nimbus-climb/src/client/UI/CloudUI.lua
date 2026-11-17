@@ -867,8 +867,10 @@ local function signPanel(props)
 		if slot and props.Icon then
 			local icon = PixelIcon.New(slot, props.Icon, 27, SIGN.Text)
 			if icon then
-				icon.AnchorPoint = Vector2.new(0.5, 0.5)
-				icon.Position = UDim2.fromScale(0.5, 0.5)
+				-- (U9-7 look) by a whole-pixel offset: centred by AnchorPoint 0.5 the 27 px icon in the 42 px square sat on a
+				-- half pixel on every Signboard window
+				local inset = math.floor((slot.Size.X.Offset - 27) / 2)
+				icon.Position = UDim2.fromOffset(inset, inset)
 			end
 		end
 	end
