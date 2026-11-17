@@ -455,6 +455,30 @@ local function signLook(look)
 	return CloudUI.SignLooks[look or "Stone"] or CloudUI.SignLooks.Stone
 end
 
+-- (U9-4 look review: the floating lip) a UIPadding on the block also pads its Lip child, so a text block's lip drew its
+-- padding above the bottom (Claim! showed 5 px of face under it) and inset by the side padding (an underline under the
+-- word). The lip reaches back out by the padding: its bottom is the block's bottom, its width the block's width, whatever
+-- the padding is now; a pad changed later (a press, a caller's side padding) moves it again (one watcher per pad)
+local function syncLip(obj)
+	local lip = obj:FindFirstChild("Lip")
+	if not lip then
+		return
+	end
+	local pad = obj:FindFirstChildOfClass("UIPadding")
+	local left = pad and pad.PaddingLeft.Offset or 0
+	local right = pad and pad.PaddingRight.Offset or 0
+	local bottom = pad and pad.PaddingBottom.Offset or 0
+	lip.Position = UDim2.new(0, -left, 1, bottom)
+	lip.Size = UDim2.new(1, left + right, 0, lip.Size.Y.Offset)
+	if pad and not pad:GetAttribute("LipWatch") then
+		pad:SetAttribute("LipWatch", true)
+		pad.Changed:Connect(function()
+			syncLip(obj)
+		end)
+	end
+end
+CloudUI.SyncLip = syncLip
+
 -- Paints `obj` (a Frame / TextLabel / TextButton) as a kit B block, in place: its face, a wood edge (UIStroke "SignEdge",
 -- mitred corners) and the lip (Frame "Lip" along its bottom); any UICorner, UIGradient and border UIStroke it had go. A
 -- text object gets the look's ink and a bottom padding over the lip. Calling it again repaints (a state change).
@@ -501,6 +525,7 @@ function CloudUI.SignBlock(obj, look, opts)
 			pad.PaddingBottom = UDim.new(0, lipPx)
 		end
 	end
+	syncLip(obj)
 	if name then
 		obj:SetAttribute("SignLook", name)
 	end

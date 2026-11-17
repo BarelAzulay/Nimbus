@@ -670,11 +670,14 @@ local function clientScenarios()
 		T.check(1920 - right >= 0 and 1920 - right <= 12 * f + 1, "client trove: docked right, 12 x factor from the edge", tostring(1920 - right))
 		T.check(panel.AbsoluteSize.X <= 0.44 * 1920, "client trove: width <= 0.44 W", tostring(panel.AbsoluteSize.X))
 		local guiTop = gui.IgnoreGuiInset and 0 or insetY() -- AbsolutePosition is in the gui's area (below the top bar unless IgnoreGuiInset)
-		-- (kit-b U9-4) the awning reaches 10 design px over the panel's top: the panel starts that much lower, the awning's top
-		-- at inset + 8 x factor
+		-- (kit-b U9-4) the awning reaches 10 design px over the panel's top: the panel starts that much lower; (U9-4 look
+		-- review) docked under the HUD's strips and gift square (NimbusHud TopRightBottom), the awning's top 8 x factor under them
 		local ps = panel:FindFirstChildOfClass("UIScale")
 		local roofOver = 10 * (ps and ps.Scale or 1)
-		T.check(math.abs(panel.AbsolutePosition.Y + guiTop - (insetY() + 8 * f + roofOver)) <= 1, "client trove: top = inset + 8 x factor + the awning's 10 px (screen space)", tostring(panel.AbsolutePosition.Y + guiTop))
+		local hud = gui.Parent and gui.Parent:FindFirstChild("NimbusHud")
+		local hudBottom = hud and tonumber(hud:GetAttribute("TopRightBottom")) or 0
+		T.check(math.abs(panel.AbsolutePosition.Y + guiTop - (insetY() + hudBottom + 8 * f + roofOver)) <= 1,
+			"client trove: top = inset + the HUD's TopRightBottom + 8 x factor + the awning's 10 px (screen space)", string.format("%s (TopRightBottom %s)", tostring(panel.AbsolutePosition.Y + guiTop), tostring(hudBottom)))
 		local join = find(panel, "JoinButton")
 		T.check(join ~= nil and KC.isShown(join) and join.Text == "Join" and not disabled(join), "client trove: Join enabled (kit-b U9-4: sentence case)", join and join.Text)
 		local like = find(panel, "Row_Like")

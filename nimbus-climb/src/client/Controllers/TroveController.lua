@@ -13,21 +13,25 @@
 -- The panel (ScreenGui NimbusTrove, DisplayOrder 18; IgnoreGuiInset false like every text-bearing gui, client_load):
 -- docked right so the chest stays in view. Box: NeonKit.SideRect(520, 380, 420, 226) answers whether the 1080p design
 -- fits; when it does the PC layout (520 x 380 design px at the rect's scale, 12 px x factor from the right, its top
--- 8 px x factor + the awning's 10 px under Roblox's top bar), otherwise the phone layout at scale 1 (420 x 226, 12 px
+-- 8 px x factor + the awning's 10 px under the HUD's currency strips and the gift's square: NimbusHud TopRightBottom, as
+-- the Stats window docks; U9-4 look review: on top of them a sliver of the strips showed), otherwise (or where that dock
+-- would run off a short desktop window) the phone layout at scale 1 (420 x 226, 12 px
 -- from the right, top = inset + 8; on a touch screen where that box would end on the game's DASH button it reaches down
 -- to THUMB_GAP px over Roblox's jump button instead, see phoneHeight); a portrait screen gets the bottom sheet (as wide
 -- as the screen allows up to 400, 274 tall, 12 px over the bottom right) so the character stays clear.
--- (kit-b U9-4, finding 15) the Signboard kit, as the Gifts window: "TrovePanel" is the wood frame round "Stone" (the
--- stone body with its lip), "Header" the navy band with its darker lip inside the frame holding "TroveIcon" (the pixel
--- chest on its gold square), "TitleText" ("SKY TROVE", the window's ribbon) and "Close" (the red block, its X drawn in
--- brown ink); "Roof" the fixed-size awning (PC only, never stretched). Each ask is a stone block ("Row_Group",
+-- (kit-b U9-4, finding 15) the Signboard kit: "TrovePanel" is the wood frame round "Stone" (the stone body with its
+-- lip); (U9-4 look review) "Header" is SignKit.Header as the Stats / My Home side panels build theirs: the wood rim, the
+-- navy "Plate" the title's band (out over the frame with its tails on PC, inside the rim on a phone) holding "TroveIcon"
+-- (the gold icon square in its 2 px ink edge with the pixel chest), "TitleText" ("SKY TROVE" with its stair), and
+-- "Close" (the red block on the plate, its X in brown ink); "Roof" the fixed-size awning (PC 360, the portrait sheet 288
+-- under clear sky, never the landscape phone panel; never stretched). Each ask is a stone block ("Row_Group",
 -- "Row_Like") with a square icon chip ("Chip": the pixel people on sky, the heart on pink); the rewards are gold tags
 -- ("CashChip" "$2,000", "TokenChip" the token coin + "200"); while the reward waits (Open) two pixel sparkles by the tags
 -- take turns every second (the family's glint, as the Gifts window's today tile); "JoinButton" is the panel's one green
 -- action. Nothing round or glossy, no neon.
---   PC:    header 60 (icon 40, Title 32, X 44); subtitle Body 20 "Help Nimbus grow and the Trove pays you!"; rows 100 /
+--   PC:    header 60 (the 42 icon square, Title 32, X 40); subtitle Body 20 "Help Nimbus grow and the Trove pays you!"; rows 100 /
 --          76 (chip 56, label 20, tags 19, button 140 x 52); the footer 19 (>= 15 px at 1280x720's 0.8 scale)
---   phone: header 44 (icon 28, Title 22, X 44); no subtitle (the panel keeps clear of the jump button); rows 62 / 46
+--   phone: header 50 (a 36 square, Title 22, X 44); no subtitle (the panel keeps clear of the jump button); rows 62 / 46
 --          (chip 34, label 15-16 on one line, tags 15, button 96 x 44), the footer 15; (U9-4 review) the game's DASH
 --          button sits 10 px over the jump button, so a 226 px panel ended on it on touch phones 390 to 460 px tall
 --          (under the 58 px top bar: a sliver of DASH under its edge); there the panel stretches into that gap (228 at
@@ -81,7 +85,10 @@ local K = {
 	PREF_W = 520, PREF_H = 380, MIN_W = 420, MIN_H = 226,
 	MARGIN = 12, TOP_GAP = 8,
 	FRAME = 6, -- the wood frame round the stone body
-	ROOF_W = 360, ROOF_OVER = 10, -- the awning: a fixed 360 px, its top 10 design px over the panel's (PC only)
+	ROOF_W = 360, ROOF_OVER = 10, -- the awning: a fixed 360 px, its top 10 design px over the panel's
+	-- (U9-4 look review) the portrait sheet's awning: the 288 px the 0.8 windows show on a phone, wherever ROOF_CLEAR px of
+	-- clear screen lie over the sheet's top (never on the landscape panel, which starts under Roblox's top bar)
+	ROOF_PHONE_W = 288, ROOF_CLEAR = 16,
 	REST_DEG = 18, OPEN_DEG = 70, LID_TIME = 0.35,
 	COINS = 18, COIN_TIME = 0.8, COIN_FLIGHT = 0.55,
 	TWINKLE = 1, -- s each sparkle stays lit
@@ -94,14 +101,17 @@ local K = {
 	-- the jump button, its bottom DASH_GAP px over the jump button's top, a DASH_STROKE px stroke round it
 	DASH_SMALL = 66, DASH_LARGE = 84, DASH_GAP = 10, DASH_STROKE = 3,
 }
--- design px; Header = the frame's top edge + the navy band (its 4 px lip included); rows from the panel's top
-local PC = { W = 520, H = 380, Header = 66, Icon = 40, TitleText = 32, TitleW = 210, Close = 44, Pad = 16,
-	Sub = 20, SubY = 76, SubH = 26, Row1 = 108, Row1H = 100, Row2 = 216, Row2H = 76, Chip = 56, ChipIcon = 36, Label = 20,
+-- design px; Header = the SignKit header's height (its wood rim on top, the navy plate under it); rows from the panel's
+-- top. (U9-4 look review) the header is SignKit.Header as the Stats / My Home side panels build it: Slot = the gold icon
+-- square (SignKit.Sizes.IconSlot on PC; a phone's 44 px plate takes a 36 px square), SlotIcon the pixel chest in it,
+-- Close the red block on the plate (40 on PC as the Stats window's, 44 on a phone: the touch floor)
+local PC = { W = 520, H = 380, Header = 60, Slot = 42, SlotIcon = 27, TitleText = 32, Close = 40, Pad = 16,
+	Sub = 20, SubY = 72, SubH = 26, Row1 = 108, Row1H = 100, Row2 = 216, Row2H = 76, Chip = 56, ChipIcon = 36, Label = 20,
 	Lines = 2, Tag = 19, TagH = 30, Coin = 18, BtnW = 140, BtnH = 52, BtnText = 24, Foot = 19, FootY = 298, FootH = 56, Spark = 18 }
-local PHONE = { W = 420, H = 226, Header = 50, Icon = 28, TitleText = 22, TitleW = 140, Close = 44, Pad = 12,
+local PHONE = { W = 420, H = 226, Header = 50, Slot = 36, SlotIcon = 27, TitleText = 22, Close = 44, Pad = 12,
 	Sub = 0, Row1 = 56, Row1H = 62, Row2 = 124, Row2H = 46, Chip = 34, ChipIcon = 27, Label = 16, Lines = 1,
 	Tag = 15, TagH = 24, Coin = 18, BtnW = 96, BtnH = 44, BtnText = 20, Foot = 15, FootY = 174, FootH = 38, Spark = 9 }
-local PORTRAIT = { W = 400, H = 274, Header = 50, Icon = 28, TitleText = 22, TitleW = 140, Close = 44, Pad = 12,
+local PORTRAIT = { W = 400, H = 274, Header = 50, Slot = 36, SlotIcon = 27, TitleText = 22, Close = 44, Pad = 12,
 	Sub = 0, Row1 = 56, Row1H = 80, Row2 = 142, Row2H = 62, Chip = 34, ChipIcon = 27, Label = 16, Lines = 2,
 	Tag = 15, TagH = 24, Coin = 18, BtnW = 96, BtnH = 44, BtnText = 20, Foot = 15, FootY = 208, FootH = 52, Spark = 9 }
 local MODES = { PC = PC, Phone = PHONE, Portrait = PORTRAIT }
@@ -339,29 +349,51 @@ local function build(mode)
 	stone:SetAttribute("SignKit", "Body")
 	lip(stone, SIGN.StoneLip, SignKit.Sizes.Lip)
 	place(stone, F, F, M.W - 2 * F, M.H - 2 * F)
-	-- the navy band with its darker lip inside the frame: the chest on its gold square, the ribbon title, the close
-	local head = block("Header", SIGN.Navy, panel, 5)
-	lip(head, SIGN.NavyLip, 4)
-	U.Header = head
-	U.Icon = label(head, "TroveIcon", "", "Display", 30, {
-		TextTruncate = Enum.TextTruncate.None, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text, ZIndex = 6,
+	-- (U9-4 look review) the header as the Stats / My Home side panels build theirs (SignKit.Header, Ribbon): the wood rim,
+	-- the navy plate as the title's band with its piping the whole header wide, out over the frame with its tails on PC
+	-- (SignKit.HeaderOverhang; a phone keeps it inside the rim), the pixel chest on the gold icon square in its 2 px ink
+	-- edge, SKY TROVE with its stair, the red close on the plate
+	local head, plate = SignKit.Header(panel, {
+		Title = TEXT.Title, TitleSize = M.TitleText, Height = M.Header, Rim = F, IconSlot = true, Ribbon = true,
+		Reserve = M.Close + 18, Name = "Header", ZIndex = 5,
 	})
-	Util.Create("UIStroke", { Name = "SignEdge", Color = SIGN.Wood, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		LineJoinMode = Enum.LineJoinMode.Miter, Parent = U.Icon })
-	PixelIcon.Host(U.Icon, Config.Icons.Trove or "chest") -- the pixel chest, sized with the label
-	U.Title = label(head, "TitleText", TEXT.Title, "Title", M.TitleText, {
-		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center, TextWrapped = false, ZIndex = 6,
-	})
-	U.Title:SetAttribute("RibbonBand", "NoTails") -- (as the Gifts window's: the band ends square on the navy plank)
-	Theme.StyleTitle(U.Title)
+	U.Header, U.Plate = head, plate
+	U.Title = plate:FindFirstChild("Title")
+	if U.Title then
+		U.Title.Name = "TitleText"
+		U.Title.TextTruncate = Enum.TextTruncate.AtEnd
+	end
+	U.Icon = plate:FindFirstChild("IconSlot")
+	if U.Icon then
+		U.Icon.Name = "TroveIcon"
+		U.Icon.Size = UDim2.fromOffset(M.Slot, M.Slot)
+		local edge = U.Icon:FindFirstChildOfClass("UIStroke")
+		if edge then
+			edge.Name = "SignEdge"
+		end
+		local chest = icon(U.Icon, Config.Icons.Trove or "chest", M.SlotIcon, SIGN.Text, 3)
+		if chest then
+			chest.Name = "Chest"
+			local at = math.floor((M.Slot - M.SlotIcon) / 2) -- whole px inside the square
+			chest.Position = UDim2.fromOffset(at, at)
+		end
+		if M.Slot ~= SignKit.Sizes.IconSlot and U.Title then
+			-- (a phone's smaller square: the title keeps the kit's 12 px gap after it)
+			local d = SignKit.Sizes.IconSlot - M.Slot
+			U.Title.Position = U.Title.Position - UDim2.fromOffset(d, 0)
+			U.Title.Size = U.Title.Size + UDim2.fromOffset(d, 0)
+		end
+	end
+	SignKit.HeaderOverhang(head, mode == "PC")
 	U.Close = CloudUI.Button({ Name = "Close", Text = "", Style = "Red", Skin = "Sign", Size = UDim2.fromOffset(M.Close, M.Close), TextSize = 22,
-		ZIndex = 7, Parent = head, Callback = function()
+		ZIndex = 3, Parent = head, Callback = function()
 			TroveController.Close()
 		end })
 	-- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box); kit B: square bars in brown ink
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text })
-	-- the awning: one fixed-size piece over the top rim (never stretched with the panel: the sign rule); PC only
-	U.Roof = SignKit.Roof(panel, { Width = K.ROOF_W, Y = -K.ROOF_OVER, ZIndex = 7 })
+	-- the awning: one fixed-size piece over the top rim (never stretched with the panel: the sign rule); PC 360, the
+	-- portrait sheet 288 where the sky over it is clear (layout), never the landscape phone panel
+	U.Roof = SignKit.Roof(panel, { Width = mode == "PC" and K.ROOF_W or K.ROOF_PHONE_W, Y = -K.ROOF_OVER, ZIndex = 7 })
 	U.Roof.Visible = mode == "PC"
 	U.Subtitle = label(panel, "Subtitle", TEXT.Sub, "Body", math.max(15, M.Sub), {
 		TextColor3 = SIGN.Text, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
@@ -462,16 +494,10 @@ local function arrange(W)
 	local F = K.FRAME
 	local H = M.H
 	place(U.Panel:FindFirstChild("Stone"), F, F, W - 2 * F, H - 2 * F)
-	-- the header (band px)
-	local bw, bh = W - 2 * F, M.Header - F
-	place(U.Header, F, F, bw, bh)
-	local closeX = bw - M.Close - (10 - F)
-	place(U.Close, closeX, math.floor((M.Header - M.Close) / 2) - F, M.Close, M.Close)
-	local slot = M.Icon + 4
-	place(U.Icon, 10, math.floor((bh - 4 - slot) / 2), slot, slot)
-	U.Icon.TextSize = math.max(12, M.Icon - 10)
-	U.Title.TextSize = M.TitleText
-	place(U.Title, 10 + slot + 10, 0, math.min(M.TitleW, closeX - 8 - (10 + slot + 10)), bh - 4)
+	-- the header (SignKit.Header lays its plate out; the close sits on the plate, 10 px in from the frame's right edge as
+	-- the Gifts window's, centred on the plate under the rim)
+	place(U.Header, 0, 0, W, M.Header)
+	place(U.Close, W - 10 - M.Close, F + math.floor((M.Header - F - M.Close) / 2), M.Close, M.Close)
 	if M.Sub > 0 then
 		place(U.Subtitle, M.Pad + 2, M.SubY, W - 2 * M.Pad - 4, M.SubH)
 	end
@@ -689,9 +715,35 @@ local function cover()
 	end
 end
 
--- the panel's box: the PC layout when the 1080p design fits SideRect, else the phone layout at scale 1 (the bottom sheet
--- on a portrait screen)
-local function layout()
+local layout -- (forward: the HUD watcher re-lays the panel out)
+
+-- (U9-4 look review) the HUD's top-right block (the currency strips and the gift's square under them) in gui-area px:
+-- its bottom (NimbusHud TopRightBottom, 0 = none) and the strips' own bottom (over the gift's square, which hides while
+-- this panel is open). A change re-lays an open panel out (watched once, when the HUD is first found)
+local function hudTop()
+	local p = localPlayer()
+	local pg = p and p:FindFirstChildOfClass("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	if not hud then
+		return 0, 0
+	end
+	if not S.HudWatch then
+		S.HudWatch = true
+		hud:GetAttributeChangedSignal("TopRightBottom"):Connect(function()
+			if S.Open then
+				safe("layout", layout)
+			end
+		end)
+	end
+	local bottom = tonumber(hud:GetAttribute("TopRightBottom")) or 0
+	local gift = tonumber(hud:GetAttribute("GiftSize")) or 0
+	local strips = gift > 0 and (tonumber(hud:GetAttribute("GiftTop")) or bottom) or bottom
+	return bottom, strips
+end
+
+-- the panel's box: the PC layout when the 1080p design fits SideRect and, docked under the HUD's strips, the screen, else
+-- the phone layout at scale 1 (the bottom sheet on a portrait screen)
+function layout()
 	if not U.Gui then
 		return
 	end
@@ -700,7 +752,15 @@ local function layout()
 	local f = Theme.ScreenFactor(H)
 	local rect = NeonKit.SideRect(K.PREF_W, K.PREF_H, K.MIN_W, K.MIN_H)
 	local sheet = rect.mode == "Sheet"
-	local phone = sheet or rect.designW < K.PREF_W - 0.5 or rect.designH < K.PREF_H - 0.5
+	local inset = U.Gui.IgnoreGuiInset and 0 or guiInset()
+	-- (U9-4 look review, the blocker) the PC panel docks UNDER the HUD's strips (and the gift's square: TopRightBottom),
+	-- as the Stats window does: the old top dock, pushed 10 px down for the awning, left a sliver of the Cash strip over
+	-- the frame's top and the strips' edges along its right. The $2,000 then lands in balances the player can see. Where
+	-- that dock would run off the bottom (a short desktop window) the phone layout takes over (it covers the strips whole)
+	local hudBottom, stripsBottom = hudTop()
+	local dockY = hudBottom + K.TOP_GAP * f + K.ROOF_OVER * rect.scale
+	local docks = dockY + K.PREF_H * rect.scale <= (H - inset) - K.MARGIN * f
+	local phone = sheet or rect.designW < K.PREF_W - 0.5 or rect.designH < K.PREF_H - 0.5 or not docks
 	local mode = sheet and "Portrait" or (phone and "Phone" or "PC")
 	if S.Mode ~= mode or not U.Panel then
 		build(mode)
@@ -722,7 +782,6 @@ local function layout()
 	local M = U.M
 	render()
 	-- (the gui starts below Roblox's top bar: y is in the gui's area, so "inset + 8" on screen is 8 here)
-	local inset = U.Gui.IgnoreGuiInset and 0 or guiInset()
 	local x, y, scale
 	if phone then
 		scale = 1
@@ -735,8 +794,11 @@ local function layout()
 	else
 		scale = rect.scale
 		x = W - K.MARGIN * f - PC.W * scale
-		y = K.TOP_GAP * f + K.ROOF_OVER * scale -- (the awning's top 8 px x factor under the top bar)
+		y = dockY -- (the awning's top 8 px x factor under the HUD's block)
 	end
+	-- the awning: PC always; the portrait sheet where ROOF_CLEAR px of clear screen lie over its top (the strips' bottom,
+	-- or the top of the gui's area)
+	U.Roof.Visible = mode == "PC" or (sheet and y - K.ROOF_CLEAR >= stripsBottom)
 	U.Scale.Scale = scale
 	U.Panel.AnchorPoint = Vector2.new(0, 0)
 	U.Panel.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
