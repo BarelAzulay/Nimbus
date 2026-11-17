@@ -3,7 +3,8 @@
 -- Roblox's shift-lock without holding a key. Keyboard + mouse devices only: touch / gamepad-only devices are untouched.
 -- Bug batch 2 #21: the setting defaults to ON (the game is played with E / F prompts); "Mouse lock (recommended)" in
 -- Settings, OFF stays possible (not recommended), and a saved OFF is kept. The first lock of a session that lasts
--- HINT_DELAY shows a "press L to free the cursor" pill low on the screen for HINT_SECONDS (NimbusMouseLockHint).
+-- HINT_DELAY shows a "press L to free the cursor" pill low on the screen for HINT_SECONDS (NimbusMouseLockHint; kit B
+-- U9-9: a stone plank with the pixel mouse, the TextLabel "Hint" still holding the whole line).
 --
 --   MouseLock.Start()           idempotent; reads ClientSettings "MouseLock" and follows its Changed signal
 --   MouseLock.SetEnabled(on)    turns the lock on / off on this client (not saved; the setting goes through ClientSettings)
@@ -104,6 +105,17 @@ local function hintTheme()
 	return (ok and type(theme) == "table") and theme or nil
 end
 
+-- (kit B U9-9) shared/PixelIcon (optional too): the pixel mouse before the words
+local function hintIcons()
+	local ok, icons = pcall(function()
+		local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+		local module = shared and shared:FindFirstChild("PixelIcon")
+		return module and require(module) or nil
+	end)
+	return (ok and type(icons) == "table") and icons or nil
+end
+local HINT_EDGE, HINT_LIP = 2, 4 -- the plank's wood edge and its stone lip (px)
+
 local function showHint()
 	if not St.Locked or St.HintGui then
 		if not St.Locked then
@@ -136,18 +148,42 @@ local function showHint()
 	label.TextSize = size
 	label.Size = UDim2.fromOffset(0, math.floor(size * 2 + 0.5))
 	label.AutomaticSize = Enum.AutomaticSize.X
-	label.BackgroundColor3 = Color3.fromRGB(18, 20, 40)
-	label.BackgroundTransparency = 0.25
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	-- (kit B U9-9) a stone plank (the Signboard kit): the pale tile in a mitred wood edge, its stone lip along the
+	-- bottom, brown words after the pixel mouse; square, no outline on its text
+	local sign = (theme and type(theme.Sign) == "table") and theme.Sign or {}
+	label.BorderSizePixel = 0
+	label.BackgroundColor3 = sign.Tile or Color3.fromRGB(255, 253, 246)
+	label.BackgroundTransparency = 0
+	label.TextColor3 = sign.Text or Color3.fromRGB(59, 36, 18)
 	label.Text = "Mouse lock is ON  \194\183  press " .. K.KEY_NAME .. " to free the cursor"
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = label
+	local edge = Instance.new("UIStroke")
+	edge.Name = "SignEdge"
+	edge.Color = sign.Wood or Color3.fromRGB(140, 90, 46)
+	edge.Thickness = HINT_EDGE
+	edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	edge.Parent = label
 	local pad = Instance.new("UIPadding")
 	pad.PaddingLeft = UDim.new(0, 18)
 	pad.PaddingRight = UDim.new(0, 18)
+	pad.PaddingBottom = UDim.new(0, HINT_LIP)
 	pad.Parent = label
-	-- (kit-b U6) the hint is its own dark pill: no outline on its text
+	local icons = hintIcons()
+	if icons then
+		pcall(function()
+			icons.Lead(label, "mouse", { Px = 18 }) -- the kit's 2 px icon cell
+		end)
+	end
+	-- the lip: a UIPadding pads a label's children too, so it reaches back out to the plank's sides and bottom
+	local lip = Instance.new("Frame")
+	lip.Name = "Lip"
+	lip.BorderSizePixel = 0
+	lip.BackgroundColor3 = sign.StoneLip or Color3.fromRGB(220, 201, 160)
+	lip.AnchorPoint = Vector2.new(0, 1)
+	lip.Position = UDim2.new(0, -pad.PaddingLeft.Offset, 1, pad.PaddingBottom.Offset)
+	lip.Size = UDim2.new(1, pad.PaddingLeft.Offset + pad.PaddingRight.Offset, 0, HINT_LIP)
+	lip.ZIndex = label.ZIndex
+	lip.Parent = label
 	label.Parent = gui
 	gui.Parent = pg
 	St.HintGui = gui

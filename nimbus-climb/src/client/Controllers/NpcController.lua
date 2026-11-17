@@ -17,6 +17,14 @@
 -- card (BottomCentreLeft / BottomCentreRight) or the hotbar under it, else near the bottom edge (desktops; touch
 -- keeps the HUD's line above the thumbstick), and right of the menu column when they would overlap, never centred. It shows the NPC's name tab, a portrait viewport of the pet, its title, the line in a dark text
 -- well with a typewriter reveal (numbers and key phrases highlighted), page dots, and Next / Close buttons.
+-- kit B U9-9 (finding 15; it was v3's rounded cloud card with puffs and gradients): the card is a Signboard block, a 6 px
+-- wood frame round the stone body with its stone lip, square, no shadow, glow or gradient. The name rides on a navy plank
+-- (its gold-lip edge, its navy lip, two brass rivets) in gold, a plain Section title (a dialog's title, not a window's
+-- ribbon); the portrait a sky well in a wood edge with the NPC's accent colour on its lip and a little pixel cloud; the title
+-- under it a stone tag; the line brown on a pale well in a wood edge, a stepped pixel tail pointing at the portrait, its
+-- highlights the accent / the numbers' gold moved until they read 4.5:1 there; the page dots square blocks (the line shown
+-- gold, the rest the sunk well); Next the green plank (the dialog's one action), Close a stone plank. Pixel icons and wood
+-- edges land on whole screen pixels at any card scale (client/UI/PixelCrisp).
 -- Lines cycle (Next on the last line starts over). Triggering the prompt again (E) also advances; clicking the
 -- text finishes the current line. The card closes when you walk away, die or enter a match.
 -- Sounds (audio wave 2, client/SoundFx; a missing id is silent): "DialogOpen" when the card opens (not when switching
@@ -45,7 +53,6 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
-local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the "more" mark
 local Util = require(Shared:WaitForChild("Util"))
 
 local function optionalShared(name)
@@ -73,6 +80,15 @@ do
 	end)
 	if ok and type(result) == "table" then
 		CloudUI = result
+	end
+end
+local PixelCrisp = nil -- (kit B U9-9) whole-pixel icons and edges under the card's scale
+do
+	local ok, result = pcall(function()
+		return require(Client:WaitForChild("UI"):WaitForChild("PixelCrisp"))
+	end)
+	if ok and type(result) == "table" then
+		PixelCrisp = result
 	end
 end
 
@@ -108,9 +124,9 @@ local K = {
 	READY_TIMEOUT = 12,
 	-- dialog card
 	W = 540, -- full card
-	H = 216,
+	H = 228, -- (kit B U9-9) 12 more than the bubble's 216: the footer clears the stone lip and the line keeps its room
 	W_MIN = 420, -- compact card for narrow screens (taller, so long lines still fit)
-	H_COMPACT = 250,
+	H_COMPACT = 262,
 	TAB_ABOVE = 24, -- the name tab rides this far above the card
 	PAD = 14,
 	PORTRAIT = 128,
@@ -138,18 +154,36 @@ local SETTINGS = (NpcDialog and NpcDialog.Settings) or {}
 local CLOSE_DISTANCE = tonumber(SETTINGS.CloseDistance) or 16
 local TOKEN_WORD = (Theme.Currency and Theme.Currency.Tokens and Theme.Currency.Tokens.Word) or "Tokens" -- (kit-b U7a) "50 Tokens"
 
+-- (kit B U9-9) the Signboard palette (Theme.Sign)
+local SIGN = Theme.Sign
 local C = {
 	White = Theme.Colors.White,
-	Navy = Theme.Colors.Navy or Theme.Colors.Ink,
-	FrameTop = Theme.Colors.FrameTop or Color3.fromRGB(176, 212, 244),
-	FrameBottom = Theme.Colors.FrameBottom or Color3.fromRGB(112, 158, 216),
-	WellTop = Theme.Colors.WellTop or Color3.fromRGB(60, 96, 164),
-	WellBottom = Theme.Colors.WellBottom or Color3.fromRGB(40, 68, 128),
-	WellEdge = Theme.Colors.WellEdge or Color3.fromRGB(22, 34, 82),
-	Gold = Theme.Colors.Gold or Color3.fromRGB(244, 196, 78),
-	Shadow = Color3.fromRGB(14, 20, 46),
-	DotOff = Color3.fromRGB(70, 96, 150),
+	Gold = SIGN.Gold,
+	Text = SIGN.Text,
+	Well = SIGN.Tile, -- the line's pale well
+	DotOff = SIGN.Well,
 }
+K.FRAME = 6 -- the card's wood frame
+K.EDGE_PX = 2 -- a block's wood edge (the well, the title tag, the dots)
+K.PORTRAIT_EDGE = 3 -- the portrait's wood edge
+K.PORTRAIT_LIP = 6 -- its lip in the NPC's accent colour
+K.TAG_LIP = 3
+K.NAME_LIP = 5 -- the name plank's navy lip
+K.DOT = 10
+K.DOT_GAP = 8
+
+-- `color` moved towards the brown ink until it reads `need`:1 on the line's pale well (a highlight keeps its hue)
+local function inkOnWell(color, need)
+	need = need or 4.5
+	local out = color
+	for step = 1, 20 do
+		if Theme.Contrast(out, C.Well) >= need then
+			return out
+		end
+		out = color:Lerp(SIGN.Text, step * 0.05)
+	end
+	return SIGN.Text
+end
 
 ----------------------------------------------------------------------
 -- State
@@ -265,16 +299,31 @@ local function make(className, props, parent)
 	return inst
 end
 
-local function corner(parent, px)
-	return make("UICorner", { CornerRadius = UDim.new(0, px) }, parent)
+-- (kit B U9-9) a block's wood edge: a mitred border stroke named SignEdge, kept on whole screen pixels
+local function edge(parent, color, px)
+	local s = make("UIStroke", {
+		Name = "SignEdge",
+		Color = color or SIGN.Wood,
+		Thickness = px,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter,
+	}, parent)
+	if PixelCrisp then
+		PixelCrisp.Edge(s, px)
+	end
+	return s
 end
 
-local function stroke(parent, color, thickness, transparency)
-	return make("UIStroke", {
-		Color = color,
-		Thickness = thickness,
-		Transparency = transparency or 0,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+-- a flat lip along the bottom of `parent` (px tall)
+local function lipOf(parent, color, px)
+	return make("Frame", {
+		Name = "Lip",
+		BorderSizePixel = 0,
+		BackgroundColor3 = color,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, px),
+		ZIndex = parent.ZIndex,
 	}, parent)
 end
 
@@ -369,8 +418,9 @@ local function richLine(text, def, accent)
 		end
 		return true
 	end
-	local keyColor = hex(accent:Lerp(Color3.new(1, 1, 1), 0.55))
-	local numColor = hex(Color3.fromRGB(255, 214, 102))
+	-- (kit B U9-9) on the pale well: the accent and the numbers' gold moved until they read (4.5:1)
+	local keyColor = hex(inkOnWell(accent))
+	local numColor = hex(inkOnWell(SIGN.GoldDeep))
 	-- key phrases, longest first, whole words only
 	local keys = {}
 	if def and type(def.Keywords) == "table" then
@@ -398,11 +448,11 @@ local function richLine(text, def, accent)
 			init = e + 1
 		end
 	end
-	-- words painted in their own colour (element names), lightened to read on the dark well
+	-- words painted in their own colour (element names), moved until they read on the pale well
 	if def and type(def.ColorWords) == "table" then
 		for word, color in pairs(def.ColorWords) do
 			if type(word) == "string" and word ~= "" and typeof(color) == "Color3" then
-				local wordColor = hex(color:Lerp(Color3.new(1, 1, 1), 0.3))
+				local wordColor = hex(inkOnWell(color))
 				local from = 1
 				while true do
 					local s, e = string.find(text, word, from, true)
@@ -831,6 +881,7 @@ local function newButton(text, style, size, callback, parent)
 			Name = "Button_" .. text,
 			Text = text,
 			Style = style,
+			Skin = "Sign", -- (kit B U9-9) a plank with its lip: a press sinks it onto the lip
 			Size = size,
 			TextSize = K.BUTTON,
 			Callback = callback,
@@ -845,12 +896,11 @@ local function newButton(text, style, size, callback, parent)
 		Size = size,
 		AutoButtonColor = true,
 		BorderSizePixel = 0,
-		BackgroundColor3 = (Theme.Buttons and Theme.Buttons[style]) or Color3.fromRGB(96, 196, 108),
+		BackgroundColor3 = style == "Green" and SIGN.Grass or SIGN.Tile,
 		Text = text,
 	}, nil)
-	Theme.Style(button, "Button", { Size = K.BUTTON })
-	corner(button, 12)
-	stroke(button, C.Navy, 3)
+	Theme.Style(button, "Button", { Size = K.BUTTON, Color = style == "Green" and SIGN.OnGrass or SIGN.Text })
+	edge(button, SIGN.Wood, 3)
 	button.Activated:Connect(function()
 		callback(button)
 	end)
@@ -858,8 +908,9 @@ local function newButton(text, style, size, callback, parent)
 	return button
 end
 
--- cloud bumps on the top edge, right of the name tab: { x offset from the right edge, diameter, y offset }
-local PUFFS = { { -96, 34, 3 }, { -60, 46, -1 }, { -24, 30, 4 } }
+-- (kit B U9-9) the speech tail: a stepped pixel wedge (rows of 4 px, 4 / 8 / 12 / 8 / 4 wide) in the wood colour, its
+-- point at the portrait, its base on the well's left edge
+local TAIL_ROWS = { 4, 8, 12, 8, 4 }
 
 local function buildDialog()
 	local gui
@@ -893,101 +944,67 @@ local function buildDialog()
 	local slide = box("Slide", { Size = UDim2.fromScale(1, 1) }, root)
 	UI.Slide = slide
 
-	local shadow = box("Shadow", {
-		BackgroundTransparency = 0.6,
-		BackgroundColor3 = C.Shadow,
-		Position = UDim2.fromOffset(0, 7),
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 1,
-	}, slide)
-	corner(shadow, 20)
-
-	-- cloud puffs along the top-right edge (navy rings behind, pale puffs in front of the card's outline)
-	local rings = box("PuffRings", { Size = UDim2.fromScale(1, 1), ZIndex = 2 }, slide)
-	local puffs = box("Puffs", { Size = UDim2.fromScale(1, 1), ZIndex = 4 }, slide)
-	for i, spec in ipairs(PUFFS) do
-		local d = spec[2]
-		local ring = box("Ring" .. i, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = C.Navy,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(1, spec[1], 0, spec[3]),
-			Size = UDim2.fromOffset(d + 8, d + 8),
-			ZIndex = 2,
-		}, rings)
-		corner(ring, 999)
-		local puff = box("Puff" .. i, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = C.FrameTop,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(1, spec[1], 0, spec[3]),
-			Size = UDim2.fromOffset(d, d),
-			ZIndex = 4,
-		}, puffs)
-		corner(puff, 999)
-	end
-
+	-- the card: the wood frame round the stone body, its stone lip along the bottom (the Signboard window's parts)
 	local card = box("Card", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = SIGN.Wood,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 3,
 		Active = true, -- clicks on the card never fall through to the world
 	}, slide)
-	corner(card, 20)
-	stroke(card, C.Navy, 4)
-	Theme.Gradient(card, C.FrameTop, C.FrameBottom, 90)
-	local rim = box("Rim", { Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6), ZIndex = 3 }, card)
-	corner(rim, 17)
-	stroke(rim, Theme.Lighten(C.FrameTop, 0.55), 2, 0.35)
+	card:SetAttribute("SignKit", "Frame")
+	local stone = box("Stone", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Stone,
+		Position = UDim2.fromOffset(K.FRAME, K.FRAME),
+		Size = UDim2.new(1, -2 * K.FRAME, 1, -2 * K.FRAME),
+		ZIndex = 3,
+	}, card)
+	stone:SetAttribute("SignKit", "Body")
+	lipOf(stone, SIGN.StoneLip, 8)
 	UI.Card = card
 
-	-- portrait: accent tile with the pet's viewport and a couple of pixel glints
+	-- portrait: a sky well in a wood edge, the NPC's accent colour on its lip, a little pixel cloud in its corner
 	local portrait = box("Portrait", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = SIGN.Sky,
 		Position = UDim2.fromOffset(K.PAD, 16),
 		Size = UDim2.fromOffset(K.PORTRAIT, K.PORTRAIT),
 		ZIndex = 5,
 	}, card)
-	corner(portrait, 18)
-	stroke(portrait, C.Navy, 3)
-	UI.PortraitGradient = Theme.Gradient(portrait, C.FrameTop, C.FrameBottom, 90)
+	edge(portrait, SIGN.Wood, K.PORTRAIT_EDGE)
+	UI.PortraitLip = lipOf(portrait, SIGN.SkyLip, K.PORTRAIT_LIP)
+	UI.PortraitLip.ZIndex = 8 -- over the pet's feet, like the ground it stands on
 	UI.Portrait = portrait
-	UI.PortraitHolder = box("Holder", { Size = UDim2.fromScale(1, 1), ZIndex = 6 }, portrait)
-	box("Glint", {
-		BackgroundTransparency = 0.25,
-		BackgroundColor3 = C.White,
-		Position = UDim2.fromOffset(10, 10),
-		Size = UDim2.fromOffset(8, 8),
-		ZIndex = 7,
-	}, portrait)
-	box("Glint2", {
-		BackgroundTransparency = 0.45,
-		BackgroundColor3 = C.White,
-		Position = UDim2.fromOffset(20, 10),
-		Size = UDim2.fromOffset(4, 4),
-		ZIndex = 7,
-	}, portrait)
+	UI.PortraitHolder = box("Holder", { Size = UDim2.new(1, 0, 1, -K.PORTRAIT_LIP), ZIndex = 6 }, portrait)
+	if PixelCrisp then
+		PixelCrisp.Icon(portrait, "cloud", 18, SIGN.Stone, {
+			Name = "Cloud",
+			AnchorPoint = Vector2.new(0, 0),
+			Position = UDim2.fromOffset(6, 4),
+			ZIndex = 6,
+		})
+	end
 
-	-- title caption under the portrait
+	-- title caption under the portrait: a stone tag
 	local titlePill = box("TitlePill", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.Navy,
+		BackgroundColor3 = SIGN.Tile,
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.fromOffset(K.PAD + K.PORTRAIT / 2, 16 + K.PORTRAIT + 8),
 		Size = UDim2.fromOffset(K.PORTRAIT + 8, 46),
 		ZIndex = 6,
 	}, card)
-	corner(titlePill, 12)
-	UI.TitleStroke = stroke(titlePill, C.Gold, 2)
+	UI.TitleStroke = edge(titlePill, SIGN.Wood, K.EDGE_PX)
+	lipOf(titlePill, SIGN.StoneLip, K.TAG_LIP)
 	UI.Title = Theme.Label("", "Label", {
 		Size = K.CAPTION,
+		Color = SIGN.Text,
 		Props = {
 			Name = "Title",
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(1, -10, 1, -4),
+			Position = UDim2.new(0.5, 0, 0.5, -1),
+			Size = UDim2.new(1, -10, 1, -(4 + K.TAG_LIP)),
 			TextWrapped = true,
 			LineHeight = 0.9,
 			ZIndex = 7,
@@ -995,58 +1012,73 @@ local function buildDialog()
 	})
 	UI.Title.Parent = titlePill
 
-	-- name tab riding on the top edge
+	-- the name on a navy plank riding on the top edge: gold, a plain Section title; a brass rivet at each end
 	local nameTab = box("NameTab", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = SIGN.Navy,
 		Position = UDim2.fromOffset(K.WELL_X, -22),
 		Size = UDim2.fromOffset(250, 46),
 		ZIndex = 8,
 	}, slide)
-	corner(nameTab, 14)
-	stroke(nameTab, C.Navy, 3)
-	UI.NameGradient = Theme.Gradient(nameTab, C.FrameTop, C.FrameBottom, 90)
+	edge(nameTab, SIGN.GoldLip, 3)
+	lipOf(nameTab, SIGN.NavyLip, K.NAME_LIP)
+	for _, side in ipairs({ { "RivetL", 0, 6 }, { "RivetR", 1, -10 } }) do
+		box(side[1], {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = SIGN.Brass,
+			Position = UDim2.new(side[2], side[3], 0.5, -4),
+			Size = UDim2.fromOffset(4, 4),
+			ZIndex = 9,
+		}, nameTab)
+	end
 	UI.NameTab = nameTab
 	UI.Name = Theme.Label("", "Title", {
 		Scaled = true,
+		Color = SIGN.Gold,
 		Props = {
 			Name = "Name",
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(1, -20, 1, -10),
+			Position = UDim2.new(0.5, 0, 0.5, -2),
+			Size = UDim2.new(1, -28, 1, -(10 + K.NAME_LIP)),
 			ZIndex = 9,
 		},
 	})
 	make("UITextSizeConstraint", { MaxTextSize = K.NAME, MinTextSize = 20 }, UI.Name)
+	Theme.StyleTitle(UI.Name, "Section")
 	UI.Name.Parent = nameTab
 
-	-- the text well (dark, high contrast) with a speech tail toward the portrait
+	-- the stepped pixel tail toward the portrait, then the text well (pale, high contrast)
 	local tail = box("Tail", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = C.WellTop,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(K.WELL_X, K.WELL_TOP + 34),
-		Size = UDim2.fromOffset(16, 16),
-		Rotation = 45,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromOffset(K.WELL_X - K.EDGE_PX, K.WELL_TOP + 24),
+		Size = UDim2.fromOffset(12, 4 * #TAIL_ROWS),
 		ZIndex = 5,
 	}, card)
-	stroke(tail, C.WellEdge, 2)
+	for i, w in ipairs(TAIL_ROWS) do
+		box("Step" .. i, {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = SIGN.Wood,
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, (i - 1) * 4),
+			Size = UDim2.fromOffset(w, 4),
+			ZIndex = 5,
+		}, tail)
+	end
 	local well = make("TextButton", {
 		Name = "Well",
 		AutoButtonColor = false,
 		Text = "",
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = C.Well,
 		BorderSizePixel = 0,
 		Position = UDim2.fromOffset(K.WELL_X, K.WELL_TOP),
-		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 1, -(K.WELL_TOP + K.FOOTER_H + 18)),
+		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 1, -(K.WELL_TOP + K.FOOTER_H + 30)),
 		ZIndex = 6,
 	}, card)
-	corner(well, 14)
-	stroke(well, C.WellEdge, 2)
-	Theme.Gradient(well, C.WellTop, C.WellBottom, 90)
+	edge(well, SIGN.Wood, K.EDGE_PX)
 	UI.Well = well
 	local line = Theme.Label("", "Body", {
 		Size = K.TEXT,
+		Color = SIGN.Text,
 		Props = {
 			Name = "Line",
 			RichText = true,
@@ -1061,27 +1093,24 @@ local function buildDialog()
 	})
 	line.Parent = well
 	UI.Line = line
-	local more = Theme.Label("", "Label", { -- the PixelIcon down arrow: "there is more" (kit-b U7b; it was U+25BC)
-		Size = 20,
-		Color = C.Gold,
-		Props = {
-			Name = "More",
-			AnchorPoint = Vector2.new(1, 1),
-			Position = UDim2.new(1, -10, 1, -6),
-			Size = UDim2.fromOffset(20, 20),
-			Visible = false,
-			ZIndex = 8,
-		},
-	})
-	more.Parent = well
-	PixelIcon.Host(more, "down", 18)
+	-- the pixel down arrow: "there is more" (kit-b U7b; it was U+25BC), brown, on whole screen pixels
+	local more = box("More", {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -10, 1, -6),
+		Size = UDim2.fromOffset(18, 18),
+		Visible = false,
+		ZIndex = 8,
+	}, well)
+	if PixelCrisp then
+		PixelCrisp.Icon(more, "down", 18, SIGN.Text, { ZIndex = 8 })
+	end
 	UI.More = more
 
-	-- page dots in the bottom row of the well
+	-- page dots in the bottom row of the well: square blocks in a wood edge (the line shown gold, the rest the sunk well)
 	local dots = box("Dots", {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 12, 1, -6),
-		Size = UDim2.fromOffset(K.MAX_DOTS * 18, 16),
+		Position = UDim2.new(0, 12, 1, -8),
+		Size = UDim2.fromOffset(K.MAX_DOTS * (K.DOT + K.DOT_GAP), K.DOT),
 		ZIndex = 8,
 	}, well)
 	UI.Dots = {}
@@ -1089,20 +1118,18 @@ local function buildDialog()
 		local dot = box("Dot" .. i, {
 			BackgroundTransparency = 0,
 			BackgroundColor3 = C.DotOff,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset((i - 1) * 18 + 7, 8),
-			Size = UDim2.fromOffset(10, 10),
+			Position = UDim2.fromOffset((i - 1) * (K.DOT + K.DOT_GAP), 0),
+			Size = UDim2.fromOffset(K.DOT, K.DOT),
 			ZIndex = 9,
 			Visible = false,
 		}, dots)
-		corner(dot, 999)
-		stroke(dot, C.Navy, 2)
+		edge(dot, SIGN.Wood, K.EDGE_PX)
 		UI.Dots[i] = dot
 	end
 
-	-- footer: Close, Next (right-aligned under the well)
+	-- footer: Close (a stone plank), Next (the green plank: the dialog's one action), right-aligned under the well
 	local footer = box("Footer", {
-		Position = UDim2.new(0, K.WELL_X, 1, -(K.FOOTER_H + 12)),
+		Position = UDim2.new(0, K.WELL_X, 1, -(K.FOOTER_H + 22)),
 		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 0, K.FOOTER_H),
 		ZIndex = 6,
 	}, card)
@@ -1113,11 +1140,11 @@ local function buildDialog()
 	UI.Next.AnchorPoint = Vector2.new(1, 0.5)
 	UI.Next.Position = UDim2.new(1, 0, 0.5, 0)
 	UI.Next.ZIndex = 8
-	UI.Close = newButton("Close", "Pink", UDim2.fromOffset(110, K.FOOTER_H), function()
+	UI.Close = newButton("Close", "Gray", UDim2.fromOffset(110, K.FOOTER_H), function()
 		NpcController.Close()
 	end, footer)
 	UI.Close.AnchorPoint = Vector2.new(1, 0.5)
-	UI.Close.Position = UDim2.new(1, -128, 0.5, 0)
+	UI.Close.Position = UDim2.new(1, -130, 0.5, 0)
 	UI.Close.ZIndex = 8
 
 	well.Activated:Connect(function()
@@ -1309,22 +1336,21 @@ local function layoutDialog()
 	if UI.NameTab then
 		UI.NameTab.Size = UDim2.fromOffset(math.min(250, w - K.WELL_X - 104), 46)
 	end
+	if PixelCrisp then
+		PixelCrisp.Refresh(root) -- (kit B U9-9) the icons and wood edges back on whole pixels at the new scale
+	end
 	dialog.Width = w
 end
 
 ----------------------------------------------------------------------
 -- Dialog flow
 ----------------------------------------------------------------------
+-- (kit B U9-9) the line shown gold, the rest the sunk well; every dot the same square (no size jump)
 local function setDots(count, index)
 	for i, dot in ipairs(UI.Dots or {}) do
 		dot.Visible = i <= count
-		if i == index then
-			dot.BackgroundColor3 = C.Gold
-			dot.Size = UDim2.fromOffset(13, 13)
-		else
-			dot.BackgroundColor3 = C.DotOff
-			dot.Size = UDim2.fromOffset(10, 10)
-		end
+		dot.BackgroundColor3 = i == index and C.Gold or C.DotOff
+		dot:SetAttribute("Current", i == index)
 	end
 end
 
@@ -1436,6 +1462,7 @@ local function setPortrait(rec)
 	local name = (rec.Def and rec.Def.Name) or rec.Id
 	local initial = Theme.Label(string.sub(tostring(name), 1, 1), "Title", {
 		Size = 64,
+		Color = SIGN.Text, -- brown on the sky well
 		Props = { Name = "Initial", Size = UDim2.fromScale(1, 1), ZIndex = 7 },
 	})
 	initial.Parent = holder
@@ -1502,11 +1529,10 @@ local function openRec(rec)
 	local accent = rec.Accent or C.Gold
 	UI.Name.Text = def.Name or rec.Model:GetAttribute("NpcName") or rec.Id
 	UI.Title.Text = def.Title or rec.Model:GetAttribute("Title") or ""
-	UI.TitleStroke.Color = accent
-	local nameTop = accent:Lerp(Color3.new(1, 1, 1), 0.25)
-	local nameBottom = accent:Lerp(Color3.fromRGB(26, 30, 52), 0.22)
-	UI.NameGradient.Color = ColorSequence.new(nameTop, nameBottom)
-	UI.PortraitGradient.Color = ColorSequence.new(accent:Lerp(Color3.new(1, 1, 1), 0.55), accent:Lerp(Color3.new(1, 1, 1), 0.12))
+	-- (kit B U9-9) the NPC's colour by role: on the portrait's lip (the ground it stands on), nothing glossy
+	if UI.PortraitLip then
+		UI.PortraitLip.BackgroundColor3 = accent
+	end
 	setPortrait(rec)
 	layoutDialog()
 	layoutTimer = 0

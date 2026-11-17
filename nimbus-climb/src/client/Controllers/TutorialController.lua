@@ -39,6 +39,17 @@
 -- Per-frame work runs in ONE RenderStepped connection, only while something is shown.
 -- Phase 5: nothing shows before the player pressed PLAY on the main menu (UiGate.WaitForPlay(600) before the first panel);
 -- the portal step's world target is Portal_Obby (the ONE Obby portal of the Gate Court).
+-- (kit B U9-9) The card and the pointer wear the Signboard kit, the layout and behaviour unchanged: the card is the wood
+-- frame round a stone body with its lip (no shadow, puffs, gloss or gradient), the portrait a square sky well in a wood
+-- frame (a little pixel cloud in its corner, the ground lip over Nimbus' feet), the name a plain Section title in brown,
+-- the counter a stone tag, the fold a stone block with the pixel minus, the pips kit B blocks (a done step grass, the
+-- current one gold, the rest the sunk well, each in a wood edge), the text well a pale tile in a wood edge, the hint line
+-- in navy ink, Next the one green plank (gold on the last step), the skip confirm a red and a stone plank, the "!" badge
+-- a gold block and "Tap me!" a navy plank. Confetti in the kit's gold and pink, flat squares that flip (no rotation) on
+-- whole pixels. The menu pointer's ring is a square gold frame in wood lines that breathes in whole pixels (no glow, no
+-- fade); the pixel arrow is gold with a brown outline, its scale snapped so each 4 px cell is twice the screen's icon pixel. Icons and
+-- edges under the card's scale stay on whole screen px (client/UI/PixelCrisp). The world guide sign is the world-text
+-- wave's.
 -- Plain Lua 5.1-compatible syntax only. All fonts come from Theme roles.
 
 local Players = game:GetService("Players")
@@ -129,6 +140,14 @@ local K = {
 	CONFETTI_SMALL = 26,
 	CONFETTI_BIG = 64,
 	GRAVITY = 820,
+	-- (kit B U9-9) the Signboard card
+	FRAME = 6, -- the wood frame round the stone body
+	CARD_LIP = 6, -- the stone body's lip
+	FOOT_PAD = 18, -- the card's room under the text well (the frame, the lip and 4 px of stone)
+	EDGE_PX = 2, -- a block's wood edge (the well, the tags, the pips)
+	TAG_LIP = 3, -- a tag's lip (the counter, the fold, the badge, Tap me!)
+	PORTRAIT_FRAME = 3, -- the portrait's wood frame
+	PORTRAIT_LIP = 6, -- its ground lip
 }
 
 local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the guide trail's dot strip (kit B X1)
@@ -140,35 +159,21 @@ local function rgb(r, g, b)
 end
 
 local TC = Theme.Colors
+local SIGN = Theme.Sign -- (kit B U9-9) the Signboard palette
+-- (the world guide below keeps its own colours until the world sign wave)
 local C = {
 	Navy = TC.Navy or TC.Ink,
-	Ink = TC.Ink,
 	Stroke = TC.TextStroke or TC.Ink,
 	White = TC.White,
 	Gold = TC.Gold or TC.Token,
-	Muted = TC.Muted or TC.Cloud,
-	FrameTop = TC.FrameTop or TC.Cloud,
-	FrameBottom = TC.FrameBottom or TC.CloudShade,
-	WellTop = TC.WellTop or TC.PanelLight,
-	WellBottom = TC.WellBottom or TC.Panel,
-	WellEdge = TC.WellEdge or TC.Navy or TC.Ink,
-	DiscTop = rgb(156, 204, 248),
-	DiscBottom = rgb(96, 152, 224),
 	ArrowLight = rgb(255, 226, 128),
 	Arrow = rgb(246, 190, 64),
 	ArrowDark = rgb(198, 132, 38),
 	ArrowShine = rgb(255, 248, 222),
-	Shadow = rgb(8, 12, 32),
-	Confetti = {
-		rgb(244, 196, 78),
-		rgb(238, 126, 176),
-		rgb(96, 196, 108),
-		rgb(90, 158, 234),
-		rgb(176, 120, 236),
-		rgb(255, 236, 168),
-		rgb(240, 150, 84),
-	},
+	-- (kit B U9-9) the kit's confetti: the reward's gold and the gift's pink, each with its lip (no rainbow)
+	Confetti = { SIGN.Gold, SIGN.Roof, SIGN.GoldLip, SIGN.RoofLip },
 }
+TutorialController.Confetti = C.Confetti
 
 -- client event -> the CompleteOn it completes (mirrors TutorialService)
 local EVENT_NEEDS = { Next = "Next", ShopOpened = "ShopOpened", IndexOpened = "IndexOpened", PetsOpened = "Equipped" }
@@ -246,8 +251,8 @@ local function mod(name)
 	local cached = Mods[name]
 	if cached == nil then
 		local loaded
-		if name == "CloudUI" then
-			loaded = loadModule(Client:FindFirstChild("UI"), "CloudUI", 5)
+		if name == "CloudUI" or name == "PixelCrisp" then
+			loaded = loadModule(Client:FindFirstChild("UI"), name, 5)
 		elseif name == "MenuController" or name == "IndexController" then
 			loaded = loadModule(script.Parent, name)
 		else
@@ -287,10 +292,6 @@ local function corner(parent, px)
 	return make("UICorner", "Corner", { CornerRadius = UDim.new(0, px) }, parent)
 end
 
-local function round(parent)
-	return make("UICorner", "Corner", { CornerRadius = UDim.new(0.5, 0) }, parent)
-end
-
 local function stroke(parent, color, thickness, transparency)
 	return make("UIStroke", "Stroke", {
 		Color = color,
@@ -300,8 +301,52 @@ local function stroke(parent, color, thickness, transparency)
 	}, parent)
 end
 
-local function gradient(parent, top, bottom)
-	return make("UIGradient", "Gradient", { Color = ColorSequence.new(top, bottom), Rotation = 90 }, parent)
+-- (kit B U9-9) a block's wood edge: a mitred border stroke named SignEdge, kept on whole screen px under the card's scale
+local function edge(parent, color, px)
+	local s = make("UIStroke", "SignEdge", {
+		Color = color or SIGN.Wood,
+		Thickness = px,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter,
+	}, parent)
+	local crisp = mod("PixelCrisp")
+	if crisp then
+		crisp.Edge(s, px)
+	end
+	return s
+end
+
+-- a flat lip along the bottom of `parent` (px tall)
+local function lipOf(parent, color, px)
+	return box("Lip", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = color,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, px),
+		ZIndex = parent.ZIndex,
+	}, parent)
+end
+
+-- a pixel icon on whole screen px (PixelCrisp.Icon; a hosted glyph label when PixelCrisp is missing)
+local function crispIcon(parent, name, px, colour, opts)
+	local crisp = mod("PixelCrisp")
+	if crisp then
+		return crisp.Icon(parent, name, px, colour, opts)
+	end
+	opts = opts or {}
+	local glyph = make("TextLabel", opts.Name or "Crisp", {
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Text = "",
+		TextColor3 = colour,
+		AnchorPoint = opts.AnchorPoint or Vector2.new(0.5, 0.5),
+		Position = opts.Position or UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(px, px),
+		ZIndex = opts.ZIndex or 1,
+	}, parent)
+	PixelIcon.Host(glyph, name, px)
+	return glyph, glyph
 end
 
 -- A Theme-styled label. kit-b U6: the tutorial panel is a plate, so no outline (the guide sign over the world keeps its
@@ -321,8 +366,10 @@ local function label(parent, name, text, role, size, color, props)
 	return obj
 end
 
--- Chunky cloud button (CloudUI.Button when available, a Theme-styled fallback otherwise).
+-- (kit B U9-9) a Signboard plank (CloudUI.Button Skin "Sign" when available, a flat kit B fallback otherwise).
+local FALLBACK_FACE = { Green = "Grass", Gold = "Gold", Red = "Red" }
 local function button(props)
+	props.Skin = "Sign"
 	local CloudUI = mod("CloudUI")
 	if CloudUI and type(CloudUI.Button) == "function" then
 		local ok, made = pcall(CloudUI.Button, props)
@@ -330,7 +377,7 @@ local function button(props)
 			return made
 		end
 	end
-	local base = (Theme.Buttons and Theme.Buttons[props.Style or "Green"]) or C.Gold
+	local base = SIGN[FALLBACK_FACE[props.Style or "Green"] or "Tile"]
 	local obj = make("TextButton", props.Name or "Button", {
 		AutoButtonColor = true,
 		BorderSizePixel = 0,
@@ -340,9 +387,8 @@ local function button(props)
 		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
 		Text = props.Text or "",
 	})
-	Theme.Style(obj, "Button", { Size = props.TextSize or K.BUTTON_SIZE })
-	corner(obj, 12)
-	stroke(obj, C.Navy, 3, 0)
+	Theme.Style(obj, "Button", { Size = props.TextSize or K.BUTTON_SIZE, Color = props.Style == "Green" and SIGN.OnGrass or SIGN.Text })
+	edge(obj, SIGN.Wood, 3)
 	if props.Callback then
 		obj.Activated:Connect(function()
 			if obj:GetAttribute("Disabled") ~= true then
@@ -571,7 +617,7 @@ local function panelHeight(width)
 	end
 	local wellW = width - 2 * K.PAD - 2 * K.WELL_PAD
 	local bodyH = bodyHeight(text, wellW)
-	local h = K.HEADER_H + 10 + bodyH + 8 + K.PAD
+	local h = K.HEADER_H + 10 + bodyH + 8 + K.FOOT_PAD -- (kit B U9-9) the well ends above the stone lip
 	if hintShown() then
 		h = h + K.HINT_H + 4
 	end
@@ -765,7 +811,14 @@ local function applyGeometry(width, height, bodyH)
 	UI.Name.Size = UDim2.new(0, nameRoom, 0, 34)
 	UI.Name.TextSize = fitTextSize(UI.Name.Text, K.NAME_SIZE, K.NAME_MIN, Theme.Fonts.Title, nameRoom)
 	local headRoom = width - x0 - K.PAD
-	UI.StepTitle.TextSize = fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, K.CAPTION_SIZE, Theme.Fonts.Heading, headRoom)
+	-- (kit B U9-9) a card shrunk to fit a short phone (down to 0.7) keeps its small words at 14 screen px or more: the
+	-- caption size grows to 14 / scale (18 -> 20 at 0.7)
+	local cap = math.max(K.CAPTION_SIZE, math.ceil(14 / math.max(0.1, UI.Scale.Scale) - 1e-6))
+	UI.Counter.TextSize = cap
+	UI.Hint.TextSize = cap
+	UI.SkipLink.TextSize = cap
+	UI.ConfirmQuestion.TextSize = math.max(19, cap)
+	UI.StepTitle.TextSize = fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_SIZE, cap), Theme.Fonts.Heading, headRoom)
 	-- pips (and their gaps) shrink to fit the header; the rings draw outside each pip, so both ends keep room for
 	-- them. When even tight pips cannot fit (many steps on a narrow card), a progress bar replaces the pips.
 	local total = #UI.PipList
@@ -781,11 +834,20 @@ local function applyGeometry(width, height, bodyH)
 		UI.PipBar.Visible = asBar
 		if not asBar then
 			UI.PipLayout.Padding = UDim.new(0, gap)
+			local crisp = mod("PixelCrisp")
 			for _, pipFrame in ipairs(UI.PipList) do
 				pipFrame.Size = UDim2.fromOffset(pip, pip)
-				local pipRing = pipFrame:FindFirstChild("Stroke")
+				local pipRing = pipFrame:FindFirstChild("SignEdge")
 				if pipRing then
 					pipRing.Thickness = ring
+					if crisp then
+						crisp.Edge(pipRing, ring)
+					end
+				end
+				-- (kit B U9-9) the block's lip: a quarter of the pip, at least 1 px
+				local pipLip = pipFrame:FindFirstChild("Lip")
+				if pipLip then
+					pipLip.Size = UDim2.new(1, 0, 0, math.max(1, math.floor(pip / 4)))
 				end
 			end
 		end
@@ -796,7 +858,7 @@ local function applyGeometry(width, height, bodyH)
 	local skipW = shortSkip and K.SKIP_SHORT_W or K.SKIP_W
 	UI.SkipLink.Text = shortSkip and "Skip" or "Skip tutorial"
 	UI.SkipLink.Size = UDim2.fromOffset(skipW, 34)
-	UI.SkipUnderline.Size = UDim2.fromOffset(math.ceil(textWidth(UI.SkipLink.Text, K.CAPTION_SIZE, Theme.Fonts.Label)), 2)
+	UI.SkipUnderline.Size = UDim2.fromOffset(math.ceil(textWidth(UI.SkipLink.Text, cap, Theme.Fonts.Label)), 2)
 	UI.Next.Size = UDim2.fromOffset(math.min(K.NEXT_W, footerW - skipW - K.GAP), K.BUTTON_H)
 	-- and the skip confirmation: smaller buttons first, then the short question
 	local confirmW = K.CONFIRM_W
@@ -821,8 +883,11 @@ local function layout()
 	local area = guiArea()
 	local k = Theme.ScreenFactor()
 	S.compactCard = false -- measured with the objective line first (a short screen's opened card may drop it below)
-	if UI.PointerScale and UI.PointerScale.Scale ~= k then
-		UI.PointerScale.Scale = k
+	-- (kit B U9-9) the pixel arrow's 4 px cells are twice the screen's icon pixel (a 2 px icon cell drawn at k lands on
+	-- round(2k) whole screen px; PixelCrisp): its scale is round(2k) / 2
+	local ps = math.max(1, math.floor(2 * k + 0.5)) / 2
+	if UI.PointerScale and UI.PointerScale.Scale ~= ps then
+		UI.PointerScale.Scale = ps
 	end
 	local edge = UserInputService.TouchEnabled and K.TOUCH_EDGE or K.EDGE
 	local inset = topInset()
@@ -858,7 +923,7 @@ local function layout()
 			l = math.max(edge, column.x1 + K.GAP * k)
 		end
 		if target and t < target.y1 + K.GAP * k and t + h > target.y0 - K.GAP * k then
-			l = math.max(l, target.x1 + K.POINTER_ROOM * k)
+			l = math.max(l, target.x1 + K.POINTER_ROOM * math.max(k, ps))
 		end
 		return l
 	end
@@ -992,6 +1057,20 @@ local function layout()
 			top = math.max(edge, bottomLimit - bubbleH) - K.PORTRAIT_Y * k
 			left = leftFor(top, (K.PORTRAIT + K.PORTRAIT_Y) * k)
 		end
+		-- (kit B U9-9) the portrait and its "!" badge (30 px round x -8 / y 10 of its top-right corner, its 2 px edge) stay
+		-- clear of the top-right stack (token pill, gift): on a portrait phone the pixel arrow's whole-pixel scale leaves
+		-- the bubble less room beside the menu, so when the two meet the bubble drops just below that stack
+		if hud.TopRightLeft > 0 then
+			local reachR = left + (K.PAD + K.PORTRAIT + 9) * k
+			local reachTop = top + (K.PORTRAIT_Y - 7) * k
+			if reachR > hud.TopRightLeft - K.GAP * k and reachTop < hud.TopRightBottom + K.GAP * k then
+				local below = hud.TopRightBottom + K.GAP * k - (K.PORTRAIT_Y - 7) * k
+				if below + (K.PORTRAIT_Y + K.PORTRAIT) * k <= bottomLimit then
+					top = below
+					left = leftFor(top, (K.PORTRAIT + K.PORTRAIT_Y) * k)
+				end
+			end
+		end
 		-- the "Tap me!" tag right of the portrait must not run into the top-right stack (token pill)
 		local tagRight = left + (K.PAD + K.PORTRAIT + 8 + 104) * k
 		local portraitTop = top + K.PORTRAIT_Y * k
@@ -1000,6 +1079,10 @@ local function layout()
 		end
 	end
 	applyGeometry(width, designH, bodyH)
+	local crisp = mod("PixelCrisp")
+	if crisp then
+		crisp.Refresh(UI.Root) -- (kit B U9-9) icons and edges back on whole screen px at the card's scale
+	end
 	UI.Main.Visible = not folded
 	UI.Badge.Visible = folded
 	UI.TapTag.Visible = folded and S.manual == nil and S.canOpen and not S.windowOpen and tagRoom
@@ -1029,7 +1112,13 @@ end
 ----------------------------------------------------------------------
 -- Panel: building
 ----------------------------------------------------------------------
-local PUFFS = { { 0.34, 30, -3 }, { 0.44, 40, -7 }, { 0.54, 28, -2 } } -- x scale, diameter, centre y
+-- (kit B U9-9) the pips in the kit's block-bar language (DailyController's Wisp bar): a done step a grass block with its
+-- lip, the current one gold with its lip, the rest the sunk well with none; each in a wood edge
+local PIP_LOOK = {
+	Done = { Face = SIGN.Grass, Lip = SIGN.GrassLip },
+	Current = { Face = SIGN.Gold, Lip = SIGN.GoldLip },
+	Open = { Face = SIGN.Well },
+}
 
 local function buildPips(total)
 	for _, old in ipairs(UI.PipList) do
@@ -1039,30 +1128,35 @@ local function buildPips(total)
 	for i = 1, total do
 		local pip = box("Pip" .. i, {
 			BackgroundTransparency = 0,
-			BackgroundColor3 = C.Navy,
+			BackgroundColor3 = SIGN.Well,
 			Size = UDim2.fromOffset(K.PIP, K.PIP),
 			LayoutOrder = i,
 		}, UI.Pips)
-		corner(pip, 3)
-		stroke(pip, C.Navy, 2, 0)
+		edge(pip, SIGN.Wood, K.EDGE_PX)
+		lipOf(pip, SIGN.GrassLip, 3)
 		UI.PipList[i] = pip
 	end
 end
 
 local function paintPips(current, allDone)
 	for i, pip in ipairs(UI.PipList) do
+		local state = "Open"
 		if allDone or i < current then
-			pip.BackgroundColor3 = C.Gold
-			pip.BackgroundTransparency = 0
+			state = "Done"
 		elseif i == current then
-			pip.BackgroundColor3 = C.White
-			pip.BackgroundTransparency = 0
-		else
-			pip.BackgroundColor3 = C.WellBottom
-			pip.BackgroundTransparency = 0.15
+			state = "Current"
+		end
+		local look = PIP_LOOK[state]
+		pip.BackgroundColor3 = look.Face
+		pip.BackgroundTransparency = 0
+		pip:SetAttribute("State", state)
+		local pipLip = pip:FindFirstChild("Lip")
+		if pipLip then
+			pipLip.Visible = look.Lip ~= nil
+			pipLip.BackgroundColor3 = look.Lip or look.Face
 		end
 	end
-	-- the progress bar (narrow cards): gold for the steps done, white for the current one
+	-- the progress bar (narrow cards): grass for the steps done, gold for the current one
 	local total = #UI.PipList
 	if total > 0 then
 		local done = allDone and total or math.clamp(current - 1, 0, total)
@@ -1075,73 +1169,86 @@ local function paintPips(current, allDone)
 end
 
 local function buildPortrait(parent)
+	-- (kit B U9-9) a square sky well in a wood frame (the NPC dialog's portrait): a little pixel cloud in its corner,
+	-- Nimbus in front of it, the ground lip over Nimbus' feet
 	local holder = box("Portrait", {
 		Size = UDim2.fromOffset(K.PORTRAIT, K.PORTRAIT),
 		Position = UDim2.fromOffset(K.PAD, K.PORTRAIT_Y),
 		ZIndex = 2,
 	}, parent)
-	local disc = box("Disc", { BackgroundTransparency = 0, BackgroundColor3 = C.White, Size = UDim2.fromScale(1, 1) }, holder)
-	round(disc)
-	stroke(disc, C.Navy, 4, 0)
-	gradient(disc, C.DiscTop, C.DiscBottom)
-	-- a soft cloud bank behind Nimbus
-	local bank = box("CloudBank", {
-		BackgroundTransparency = 0.2,
-		BackgroundColor3 = C.FrameTop,
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -3),
-		Size = UDim2.new(0.86, 0, 0.3, 0),
-	}, disc)
-	round(bank)
+	local f = K.PORTRAIT_FRAME
+	local frame = box("Frame", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Wood, Size = UDim2.fromScale(1, 1), ZIndex = 2 }, holder)
+	frame:SetAttribute("SignKit", "Frame")
+	local sky = box("Sky", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Sky,
+		Position = UDim2.fromOffset(f, f),
+		Size = UDim2.new(1, -2 * f, 1, -2 * f),
+		ZIndex = 2,
+	}, frame)
+	crispIcon(sky, "cloud", 18, SIGN.Stone, {
+		Name = "Cloud",
+		AnchorPoint = Vector2.new(0, 0),
+		Position = UDim2.fromOffset(5, 4),
+		ZIndex = 2,
+	})
 	local view = make("ViewportFrame", "Nimbus", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(3, 3),
-		Size = UDim2.new(1, -6, 1, -6),
+		Position = UDim2.fromOffset(f, f),
+		Size = UDim2.new(1, -2 * f, 1, -2 * f),
 		Ambient = rgb(186, 192, 218),
 		LightColor = rgb(255, 246, 232),
 		LightDirection = Vector3.new(-0.4, -0.8, 1),
+		ZIndex = 2,
 	}, holder)
-	round(view)
-	local ring = box("Ring", { Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6) }, holder)
-	round(ring)
-	stroke(ring, C.Gold, 3, 0)
+	box("Ground", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.SkyLip,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, f, 1, -f),
+		Size = UDim2.new(1, -2 * f, 0, K.PORTRAIT_LIP),
+		ZIndex = 2,
+	}, holder)
 	local toggle = make("TextButton", "Toggle", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Text = "",
 		Size = UDim2.fromScale(1, 1),
+		ZIndex = 2,
 	}, holder)
-	-- "!" badge, shown while the card is folded away
+	-- "!" badge, shown while the card is folded away: a gold block in its wood edge
 	local badge = box("Badge", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.Gold,
+		BackgroundColor3 = SIGN.Gold,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(1, -8, 0, 10),
 		Size = UDim2.fromOffset(30, 30),
 		Visible = false,
+		ZIndex = 3,
 	}, holder)
-	round(badge)
-	stroke(badge, C.Navy, 3, 0)
-	label(badge, "Mark", "!", "Title", 22, C.White, { Size = UDim2.fromScale(1, 1) })
-	-- "Tap me!" tag beside the bubble when the screen is too small for the card
+	edge(badge, SIGN.Wood, K.EDGE_PX)
+	lipOf(badge, SIGN.GoldLip, K.TAG_LIP)
+	label(badge, "Mark", "!", "Title", 22, SIGN.Text, { Size = UDim2.new(1, 0, 1, -K.TAG_LIP), ZIndex = 3 })
+	-- "Tap me!" tag beside the bubble when the screen is too small for the card: a navy plank, gold words
 	local tag = box("TapTag", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.Navy,
+		BackgroundColor3 = SIGN.Navy,
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(1, 8, 0.5, 0),
 		Size = UDim2.fromOffset(104, 34),
 		Visible = false,
+		ZIndex = 3,
 	}, holder)
-	corner(tag, 10)
-	stroke(tag, C.Gold, 2, 0)
-	label(tag, "Text", "Tap me!", "Heading", K.CAPTION_SIZE, C.Gold, { Size = UDim2.fromScale(1, 1) })
+	edge(tag, SIGN.GoldLip, K.EDGE_PX)
+	lipOf(tag, SIGN.NavyLip, K.TAG_LIP)
+	label(tag, "Text", "Tap me!", "Heading", K.CAPTION_SIZE, SIGN.Gold, { Size = UDim2.new(1, 0, 1, -K.TAG_LIP), ZIndex = 3 })
 	UI.Portrait, UI.View, UI.Toggle, UI.Badge, UI.TapTag = holder, view, toggle, badge, tag
 end
 
 local function buildPixelArrow(parent)
-	-- a chunky left-pointing pixel arrow: navy outline, three gold shades and a glint pixel
+	-- a chunky left-pointing pixel arrow: (kit B U9-9) a brown outline, the gold's three bands and a stone glint pixel
 	local cols, rows, cell = 17, 11, 4
 	local function inside(r, c)
 		if r < 0 or r >= rows or c < 0 or c >= cols then
@@ -1151,7 +1258,7 @@ local function buildPixelArrow(parent)
 		local shaft = r >= 3 and r <= 7 and c >= 6
 		return head or shaft
 	end
-	local palette = { o = C.Navy, L = C.ArrowLight, G = C.Arrow, D = C.ArrowDark, W = C.ArrowShine }
+	local palette = { o = SIGN.Text, L = SIGN.GoldLight, G = SIGN.Gold, D = SIGN.GoldLip, W = SIGN.Stone }
 	for r = 0, rows - 1 do
 		local runKey, runStart = nil, 0
 		for c = 0, cols do
@@ -1194,25 +1301,29 @@ local function buildPointer()
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		DisplayOrder = K.POINTER_ORDER,
 	}, nil)
+	-- (kit B U9-9) the ring: a square gold frame (4 px) between two wood lines (2 px), the kit's selected-block edge; it
+	-- breathes in whole screen px (updateMenuPointer), no glow, no fade
 	local ring = box("Ring", { AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, Active = false }, gui)
-	corner(ring, 18)
-	UI.RingStroke = stroke(ring, C.Gold, 4, 0)
-	local glow = box("Glow", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(1, 12, 1, 12),
-		Active = false,
+	UI.RingStroke = make("UIStroke", "SignEdge", {
+		Color = SIGN.Gold,
+		Thickness = 4,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter,
 	}, ring)
-	corner(glow, 22)
-	UI.GlowStroke = stroke(glow, C.ArrowLight, 3, 0.5)
-	local inner = box("Inner", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(1, -8, 1, -8),
-		Active = false,
-	}, ring)
-	corner(inner, 14)
-	stroke(inner, C.Navy, 2, 0.2)
+	for _, spec in ipairs({ { "Rim", 8 }, { "Inner", -4 } }) do
+		local line = box(spec[1], {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(1, spec[2], 1, spec[2]),
+			Active = false,
+		}, ring)
+		make("UIStroke", "SignEdge", {
+			Color = SIGN.Wood,
+			Thickness = 2,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			LineJoinMode = Enum.LineJoinMode.Miter,
+		}, line)
+	end
 	local arrow = box("Arrow", { AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, Active = false }, gui)
 	buildPixelArrow(arrow)
 	UI.PointerScale = make("UIScale", "ReadScale", { Scale = 1 }, arrow)
@@ -1258,75 +1369,37 @@ local function buildPanel()
 
 	local main = box("Main", { Size = UDim2.fromScale(1, 1), ZIndex = 1 }, slide)
 	UI.Main = main
-	local shadow = box("Shadow", {
-		BackgroundTransparency = 0.62,
-		BackgroundColor3 = C.Shadow,
-		Position = UDim2.fromOffset(0, 6),
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 1,
-	}, main)
-	corner(shadow, 18)
-	local rings = box("PuffRings", { Size = UDim2.fromScale(1, 1), ZIndex = 2 }, main)
+	-- (kit B U9-9) the card: the wood frame round the stone body, its lip along the bottom (the NPC dialog's card)
 	local card = box("Card", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = SIGN.Wood,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 3,
 		Active = true, -- clicks on the card never fall through to the world
 	}, main)
-	corner(card, 18)
-	stroke(card, C.Navy, 4, 0)
-	gradient(card, C.FrameTop, C.FrameBottom)
-	local rim = box("Rim", { Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6) }, card)
-	corner(rim, 15)
-	stroke(rim, Theme.Lighten(C.FrameTop, 0.55), 2, 0.35)
-	local gloss = box("Gloss", {
-		BackgroundTransparency = 0.62,
-		BackgroundColor3 = C.White,
-		Position = UDim2.fromOffset(K.PAD + K.PORTRAIT + 8, 6),
-		Size = UDim2.new(1, -(2 * K.PAD + K.PORTRAIT + 16), 0, 5),
+	card:SetAttribute("SignKit", "Frame")
+	local stone = box("Stone", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Stone,
+		Position = UDim2.fromOffset(K.FRAME, K.FRAME),
+		Size = UDim2.new(1, -2 * K.FRAME, 1, -2 * K.FRAME),
+		ZIndex = 3,
 	}, card)
-	round(gloss)
-	local puffs = box("Puffs", { Size = UDim2.fromScale(1, 1), ZIndex = 4 }, main)
-	for i, spec in ipairs(PUFFS) do
-		local d = spec[2]
-		local ringFrame = box("Ring" .. i, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = C.Navy,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(spec[1], 0, 0, spec[3]),
-			Size = UDim2.fromOffset(d + 8, d + 8),
-		}, rings)
-		round(ringFrame)
-		local puff = box("Puff" .. i, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = C.FrameTop,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(spec[1], 0, 0, spec[3]),
-			Size = UDim2.fromOffset(d, d),
-		}, puffs)
-		round(puff)
-		local tuft = box("Tuft", {
-			BackgroundTransparency = 0.6,
-			BackgroundColor3 = C.White,
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.42, 0, 0.14, 0),
-			Size = UDim2.new(0.5, 0, 0.3, 0),
-		}, puff)
-		round(tuft)
-	end
+	stone:SetAttribute("SignKit", "Body")
+	lipOf(stone, SIGN.StoneLip, K.CARD_LIP)
 
-	-- header: name, step title, pips, counter pill, fold button (kit-b U6: no outline any more, so the name and the step
-	-- title on the pale cloud frame read in navy; gold and white had no contrast there)
+	-- header: name, step title, pips, counter tag, fold block (kit B U9-9: brown on the stone body, the name a plain
+	-- Section title)
 	local header = box("Header", { Size = UDim2.new(1, 0, 0, K.HEADER_H), ZIndex = 5 }, main)
 	local x0 = K.PAD + K.PORTRAIT + 12
-	UI.Name = label(header, "GuideName", "Nimbus", "Title", K.NAME_SIZE, C.Navy, {
+	UI.Name = label(header, "GuideName", "Nimbus", "Title", K.NAME_SIZE, SIGN.Text, {
 		Position = UDim2.fromOffset(x0, 12),
 		Size = UDim2.new(1, -(x0 + 150), 0, 34),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	UI.StepTitle = label(header, "StepTitle", "", "Heading", K.TITLE_SIZE, C.Navy, {
+	Theme.StyleTitle(UI.Name, "Section")
+	UI.StepTitle = label(header, "StepTitle", "", "Heading", K.TITLE_SIZE, SIGN.Text, {
 		Position = UDim2.fromOffset(x0, 46),
 		Size = UDim2.new(1, -(x0 + K.PAD), 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1341,64 +1414,57 @@ local function buildPanel()
 	}, UI.Pips)
 	UI.PipList = {}
 	-- the progress bar that stands in for the pips on narrow cards (its ring stays inside the header room)
+	-- the progress bar that stands in for the pips on narrow cards (many steps): the sunk well in a wood edge, the steps
+	-- done grass, the current one gold (flat, square)
 	local bar = box("PipBar", {
-		BackgroundTransparency = 0.15,
-		BackgroundColor3 = C.WellBottom,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Well,
 		Position = UDim2.fromOffset(x0 + 2, 76 + math.floor((K.PIP + 2 - K.PIP_BAR_H) / 2)),
 		Size = UDim2.new(1, -(x0 + K.PAD + 4), 0, K.PIP_BAR_H),
 		Visible = false,
 	}, header)
-	round(bar)
-	stroke(bar, C.Navy, 2, 0)
-	UI.PipBarDone = box("Done", { BackgroundTransparency = 0, BackgroundColor3 = C.Gold, Size = UDim2.fromScale(0, 1) }, bar)
-	round(UI.PipBarDone)
-	UI.PipBarNow = box("Now", { BackgroundTransparency = 0, BackgroundColor3 = C.White, Size = UDim2.fromScale(0, 1) }, bar)
-	round(UI.PipBarNow)
+	edge(bar, SIGN.Wood, K.EDGE_PX)
+	UI.PipBarDone = box("Done", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Grass, Size = UDim2.fromScale(0, 1) }, bar)
+	UI.PipBarNow = box("Now", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, Size = UDim2.fromScale(0, 1) }, bar)
 	UI.PipBar = bar
+	-- the counter: a stone tag in its wood edge, brown words
 	local pill = box("Counter", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.Navy,
+		BackgroundColor3 = SIGN.Tile,
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -(K.PAD + 44), 0, 12),
 		Size = UDim2.fromOffset(104, 32),
 	}, header)
-	corner(pill, 10)
-	stroke(pill, C.Gold, 2, 0)
-	UI.Counter = label(pill, "Text", "Step 1/1", "Heading", K.CAPTION_SIZE, C.White, { Size = UDim2.fromScale(1, 1) })
+	edge(pill, SIGN.Wood, K.EDGE_PX)
+	lipOf(pill, SIGN.StoneLip, K.TAG_LIP)
+	UI.Counter = label(pill, "Text", "Step 1/1", "Heading", K.CAPTION_SIZE, SIGN.Text, { Size = UDim2.new(1, 0, 1, -K.TAG_LIP) })
 	UI.CounterPill = pill
+	-- the fold: a stone block with the pixel minus
 	local fold = make("TextButton", "Fold", {
-		BackgroundColor3 = Theme.Buttons and Theme.Buttons.Blue or C.WellTop,
+		BackgroundColor3 = SIGN.Tile,
 		BorderSizePixel = 0,
-		AutoButtonColor = true,
+		AutoButtonColor = false,
 		Text = "",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -K.PAD, 0, 12),
 		Size = UDim2.fromOffset(36, 32),
 	}, header)
-	corner(fold, 10)
-	stroke(fold, C.Navy, 3, 0)
-	box("Bar", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.56),
-		Size = UDim2.fromOffset(16, 5),
-	}, fold)
+	edge(fold, SIGN.Wood, K.EDGE_PX)
+	lipOf(fold, SIGN.StoneLip, K.TAG_LIP)
+	crispIcon(fold, "minus", 18, SIGN.Text, { Name = "Bar", Position = UDim2.new(0.5, 0, 0.5, -1) })
 	UI.Fold = fold
 
-	-- text well
+	-- text well: a pale tile in a wood edge
 	local well = box("Well", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = SIGN.Tile,
 		Position = UDim2.fromOffset(K.PAD, K.HEADER_H),
-		Size = UDim2.new(1, -2 * K.PAD, 1, -(K.HEADER_H + K.PAD)),
+		Size = UDim2.new(1, -2 * K.PAD, 1, -(K.HEADER_H + K.FOOT_PAD)),
 		ZIndex = 6,
 	}, main)
-	corner(well, 12)
-	stroke(well, C.WellEdge, 3, 0.05)
-	gradient(well, C.WellTop, C.WellBottom)
+	edge(well, SIGN.Wood, K.EDGE_PX)
 	UI.Well = well
-	UI.Body = label(well, "Body", "", "Body", K.BODY_SIZE, C.White, {
+	UI.Body = label(well, "Body", "", "Body", K.BODY_SIZE, SIGN.Text, {
 		Position = UDim2.fromOffset(K.WELL_PAD, 10),
 		Size = UDim2.new(1, -2 * K.WELL_PAD, 0, 60),
 		TextWrapped = true,
@@ -1413,7 +1479,7 @@ local function buildPanel()
 		Position = UI.Body.Position,
 		Size = UI.Body.Size,
 	}, well)
-	UI.Hint = label(well, "Hint", "", "Label", K.CAPTION_SIZE, C.Gold, {
+	UI.Hint = label(well, "Hint", "", "Label", K.CAPTION_SIZE, SIGN.Navy, { -- (kit B U9-9) the objective in navy ink
 		Position = UDim2.fromOffset(K.WELL_PAD, 70),
 		Size = UDim2.new(1, -2 * K.WELL_PAD, 0, K.HINT_H),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1437,10 +1503,10 @@ local function buildPanel()
 		Text = "Skip tutorial",
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, footer)
-	Theme.Style(skip, "Label", { Size = K.CAPTION_SIZE, Color = C.Muted })
+	Theme.Style(skip, "Label", { Size = K.CAPTION_SIZE, Color = SIGN.TextMuted })
 	UI.SkipUnderline = box("Underline", {
-		BackgroundTransparency = 0.35,
-		BackgroundColor3 = C.Muted,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.TextMuted,
 		Position = UDim2.new(0, 0, 1, -5),
 		Size = UDim2.new(0, 104, 0, 2),
 	}, skip)
@@ -1459,7 +1525,7 @@ local function buildPanel()
 
 	local confirm = box("Confirm", { Size = UDim2.fromScale(1, 1), Visible = false }, footer)
 	UI.Confirm = confirm
-	UI.ConfirmQuestion = label(confirm, "Question", "Skip the tutorial?", "Body", 19, C.White, {
+	UI.ConfirmQuestion = label(confirm, "Question", "Skip the tutorial?", "Body", 19, SIGN.Text, {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0.5, 0),
 		Size = UDim2.new(1, -196, 1, 0),
@@ -1560,8 +1626,8 @@ local function setupPortraitModel()
 	end
 	if not model then
 		-- no pet art available: a friendly cloud glyph instead of an empty bubble
-		local fallback = label(view.Parent, "Fallback", "", "Title", 52, C.White, { Size = UDim2.fromScale(1, 1), ZIndex = 3 })
-		PixelIcon.Host(fallback, "cloud", 45) -- (kit-b U7a) the pitch's pixel cloud
+		-- (kit-b U7a) the pitch's pixel cloud; (kit B U9-9) on whole screen px, stone on the sky
+		crispIcon(view.Parent, "cloud", 45, SIGN.Stone, { Name = "Fallback", ZIndex = 2 })
 		return
 	end
 	model.Parent = view
@@ -1649,7 +1715,7 @@ local function burst(big)
 			if #Fx.pool >= K.CONFETTI_BIG * 2 then
 				break
 			end
-			local frameObj = box("Bit", { BackgroundTransparency = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false }, UI.Fx)
+			local frameObj = box("Bit", { BackgroundTransparency = 0, Visible = false }, UI.Fx)
 			piece = { frame = frameObj, alive = false }
 			table.insert(Fx.pool, piece)
 		end
@@ -1664,11 +1730,13 @@ local function burst(big)
 		piece.vr = (math.random() - 0.5) * 720
 		piece.age = 0
 		piece.life = 1.1 + math.random() * (big and 0.9 or 0.5)
+		piece.px = px
 		local f = piece.frame
 		f.BackgroundColor3 = C.Confetti[(i % #C.Confetti) + 1]
 		f.Size = UDim2.fromOffset(px, px)
 		f.BackgroundTransparency = 0
-		f.Position = UDim2.fromOffset(piece.x, piece.y)
+		f.Rotation = 0
+		f.Position = UDim2.fromOffset(math.floor(piece.x - px / 2 + 0.5), math.floor(piece.y - px / 2 + 0.5))
 		f.Visible = true
 	end
 	Fx.live = 0
@@ -1697,9 +1765,11 @@ local function updateConfetti(dt)
 				p.x = p.x + p.vx * dt
 				p.y = p.y + p.vy * dt
 				p.rot = p.rot + p.vr * dt
+				-- (kit B U9-9) a flat bit that flips (its width follows the turn) on whole screen px, never a rotated square
 				local f = p.frame
-				f.Position = UDim2.fromOffset(p.x, p.y)
-				f.Rotation = p.rot
+				local w = math.max(1, math.floor(p.px * math.abs(math.cos(math.rad(p.rot))) + 0.5))
+				f.Size = UDim2.fromOffset(w, p.px)
+				f.Position = UDim2.fromOffset(math.floor(p.x - w / 2 + 0.5), math.floor(p.y - p.px / 2 + 0.5))
 				local fade = (p.age - p.life * 0.65) / (p.life * 0.35)
 				if fade > 0 then
 					f.BackgroundTransparency = math.min(1, fade)
@@ -2085,15 +2155,17 @@ local function updateMenuPointer(dt, t)
 		return
 	end
 	local k = Theme.ScreenFactor()
+	local pk = UI.PointerScale and UI.PointerScale.Scale or k -- the arrow's snapped scale (layout)
 	local pulse = (math.sin(t * 4.2) + 1) * 0.5
+	-- (kit B U9-9) the ring breathes in whole screen px: its edges on whole px, no fade
 	local pad = (5 + 5 * pulse) * k
-	UI.Ring.Position = UDim2.fromOffset((r.x0 + r.x1) * 0.5, (r.y0 + r.y1) * 0.5)
-	UI.Ring.Size = UDim2.fromOffset(w + 2 * pad, h + 2 * pad)
-	UI.RingStroke.Transparency = 0.25 * pulse
-	UI.GlowStroke.Transparency = 0.3 + 0.55 * pulse
+	local x0, y0 = math.floor(r.x0 - pad + 0.5), math.floor(r.y0 - pad + 0.5)
+	local x1, y1 = math.floor(r.x1 + pad + 0.5), math.floor(r.y1 + pad + 0.5)
+	UI.Ring.Position = UDim2.fromOffset((x0 + x1) * 0.5, (y0 + y1) * 0.5)
+	UI.Ring.Size = UDim2.fromOffset(x1 - x0, y1 - y0)
 	-- the side is re-chosen after every layout pass (M.side = nil there, twice a second at most)
 	if not M.side then
-		local okSide, side, rotation = pcall(choosePointerSide, r, k, guiArea(), M.button)
+		local okSide, side, rotation = pcall(choosePointerSide, r, pk, guiArea(), M.button)
 		if okSide then
 			M.side, M.rotation = side, rotation
 		else
@@ -2107,9 +2179,18 @@ local function updateMenuPointer(dt, t)
 		end
 		return
 	end
-	local bounce = (8 + 7 * (math.sin(t * 5) + 1) * 0.5) * k
-	local cx, cy = pointerCentre(M.side, r, 68 * k, 44 * k, bounce)
-	UI.Arrow.Rotation = M.rotation or 0
+	local bounce = (8 + 7 * (math.sin(t * 5) + 1) * 0.5) * pk
+	local len, thick = 68 * pk, 44 * pk
+	local cx, cy = pointerCentre(M.side, r, len, thick, bounce)
+	local rotation = M.rotation or 0
+	-- (kit B U9-9) the arrow's box (after its quarter turn) starts on a whole screen px, so every cell is whole
+	local bw, bh = len, thick
+	if rotation % 180 ~= 0 then
+		bw, bh = thick, len
+	end
+	cx = math.floor(cx - bw / 2 + 0.5) + bw / 2
+	cy = math.floor(cy - bh / 2 + 0.5) + bh / 2
+	UI.Arrow.Rotation = rotation
 	UI.Arrow.Position = UDim2.fromOffset(cx, cy)
 	UI.Arrow.Visible = true
 end

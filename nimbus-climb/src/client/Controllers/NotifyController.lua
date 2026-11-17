@@ -39,8 +39,14 @@
 --   DashFx(userId)                -> a cheap puff + trail on that player's character (own dashes are ignored,
 --                                    MovementController already shows those).
 --
--- v5 (Phase 5, contract 6.6): the toasts are neon pills (the Neon kit: dark navy, a glowing border in the kind's
--- colour, a dark orb with the kind glyph, GothamBlack text); the result card is a Neon CloudUI.Panel.
+-- kit B U9-9 (finding 15, the pitch's .toast; it was v5's neon pill): a toast is a kit B block like the HUD's currency
+-- strips above it: the stone tile face, a 2 px wood edge, the darker stone lip along its bottom, square, no glow or
+-- gradient; the kind's colour by role on a square chip in its left end (info sky + the bulb, good grass + the tick, bad red
+-- + the x, token gold + the coin, with a pixel sparkle: a reward), the pixel icon on whole screen pixels at any scale
+-- (client/UI/PixelCrisp), the text brown. A merged repeat flashes the face pale gold. The result card is a Signboard
+-- CloudUI.Panel (wood frame, stone body, an awning as wide as the card): VICTORY! a gold banner block and DEFEAT a stone
+-- one (plain Section titles: a pop-up's title, not a window's ribbon), the stats stone rows with brown values, the
+-- member list brown with a tick / x chip, the footer brown; its confetti the kit's gold and pink bits (no rainbow).
 -- The GUI is "NimbusNotify" (display order 30, IgnoreGuiInset = false). Sizes follow the v3 readability rule:
 -- panels are designed in 1080p pixels and carry a UIScale of Theme.ScreenFactor() (same as the HUD), inside
 -- full-screen holder frames whose UIPadding is the screen margin, so scaling never detaches them from the edge.
@@ -61,6 +67,7 @@ local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the t
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
+local PixelCrisp = require(Client:WaitForChild("UI"):WaitForChild("PixelCrisp")) -- (kit B U9-9) whole-pixel icons
 
 local NotifyController = {}
 
@@ -75,7 +82,10 @@ local TOAST_W = 250
 local TOAST_GAP = 8
 local TOAST_TEXT_SIZE = 18
 local TOAST_ICON = 30
-local TOAST_BG = 0.06
+local TOAST_BG = 0 -- (kit B U9-9) an opaque stone block
+local TOAST_EDGE = 2 -- the wood edge (as the HUD's currency strips)
+local TOAST_LIP = 4 -- the darker stone lip along the bottom
+local TOAST_GLYPH = 18 -- the chip's pixel icon (2 px cells at 1080p)
 local DEFAULT_DURATION = 3
 local MIN_DURATION = 1.5
 local MAX_DURATION = 8
@@ -102,6 +112,22 @@ local HUD_GAP = 10 -- kept below the HUD pieces the stack has to clear
 
 -- result card
 local RESULT_W = 290
+local RESULT_ROOF_OVER = 10 -- (kit B U9-9) the awning reaches this far past each side of the card ...
+local RESULT_ROOF_UP = 10 -- ... and this far above its top: the card is placed so the awning clears the HUD too
+local RESULT_CLOSE = 46 -- the banner's room at its right end for the red close block (36 px)
+-- (kit B U9-9) the card's rows (design px): the full card, and the compact one for a screen whose room for the card
+-- (resultRoom: under the HUD's top-right block and the awning, above the touch buttons, the lower quarter or the centre
+-- band) is less than the full card's height (a landscape phone): the stat blocks thinner, the banner and the gaps
+-- tighter and the card's top room under the awning used (Trim; Slack the room under the footer), no "Win bonus" row
+-- when there is no bonus (a loss: it read "-") and a team of three or four in two columns of names with their ticks /
+-- crosses (the player's own tokens are the Tokens row). Every text stays >= 18 design px (14.4 px at the phones' 0.8).
+-- A member line stays 26 high: at 0.8 its 18 px icons (2 px cells, PixelCrisp) need that room to sit apart line to line
+local RESULT_ROWS = {
+	Full = { Title = 46, Headline = 34, Diff = 28, Reason = 24, Gap = 8, Row = 34, Member = 28, Foot = 28, Value = 20, Trim = 0, Slack = 10 },
+	Compact = { Title = 38, Headline = 30, Diff = 26, Reason = 22, Gap = 4, Row = 28, Member = 26, Foot = 22, Value = 18, Trim = 10, Slack = 4,
+		SkipZeroBonus = true, Columns = 2 },
+}
+NotifyController.ResultRows = RESULT_ROWS
 local RESULT_Y = 0.47 -- vertical position (fraction of the screen), right edge
 -- On narrow (portrait) screens the scaled card reaches into the middle of the screen. The game must never say
 -- anything there, so the card moves up until it sits above this central band (fractions of the screen size).
@@ -115,10 +141,6 @@ local FX_MIN_INTERVAL = 0.2
 local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the game's own particle sprites (kit B X1)
 
 local Colors = Theme.Colors
-local WHITE = Colors.White
-local NAVY = Colors.Navy or Colors.Ink
-local MUTED = Colors.Muted or Colors.CloudShade
-local GOLD = Colors.Gold or Colors.Token
 
 local FALLBACK_KINDS = {
 	info = Color3.fromRGB(90, 158, 234),
@@ -126,15 +148,24 @@ local FALLBACK_KINDS = {
 	bad = Color3.fromRGB(228, 90, 92),
 	token = Color3.fromRGB(240, 188, 66),
 }
-local KIND_GLYPH = {
-	info = "i",
-	bad = "!",
+-- (kit B U9-9) each kind's chip: its colour by role (the pitch's .ti, the HUD's coin squares), the lip under it and the
+-- pixel icon in the ink that reads on it. Every kind is a PixelIcon now (the "i" / "!" letters went)
+local SIGN = Theme.Sign
+local KIND_CHIP = {
+	info = { Face = SIGN.Sky, Lip = SIGN.SkyLip, Icon = "bulb", Ink = SIGN.Text },
+	good = { Face = SIGN.Grass, Lip = SIGN.GrassLip, Icon = "check", Ink = SIGN.OnGrass },
+	bad = { Face = SIGN.Red, Lip = SIGN.RedLip, Icon = "x", Ink = SIGN.Text },
+	token = { Face = SIGN.Gold, Lip = SIGN.GoldLip, Icon = "token", Ink = SIGN.Text, Sparkle = true },
 }
--- (kit-b U7a) the kinds whose badge is a PixelIcon, not a letter: a tick, the Cloud Token coin
-local KIND_ICON = {
-	good = "check",
-	token = "token",
-}
+NotifyController.KindChip = KIND_CHIP
+-- the result card's difficulty stars: the deep gold moved towards the brown ink until it reads 3:1 on the stone (an icon)
+local STAR_INK = SIGN.GoldDeep
+for step = 1, 20 do
+	if Theme.Contrast(STAR_INK, SIGN.Stone) >= 3 then
+		break
+	end
+	STAR_INK = SIGN.GoldDeep:Lerp(SIGN.Text, step * 0.05)
+end
 
 local REASON_TEXT = {
 	defeat = "The whole team went down",
@@ -232,10 +263,6 @@ local function newText(parent, name, text, role, size, color, props)
 	return label
 end
 
-local function round(inst)
-	return Theme.Corner(inst, "Round")
-end
-
 local function addViewportScale(root)
 	local s = Instance.new("UIScale")
 	s.Name = "ViewportScale"
@@ -294,15 +321,34 @@ local function hudValue(name)
 	return 0
 end
 
+-- (kit B U9-9) Roblox's own jump button on a touch screen (its TouchGui is not the game's to read), as the kit's fit tests
+-- place it: J = 70 px on a small screen (shorter side <= 500), from 1.5 J + 10 to 0.5 J + 10 in from the right and 20 + J
+-- up from the bottom; a big screen's 120 px button sits higher (210 up). -> x0, x1, y0 in gui px; nil without touch
+local function jumpButton()
+	if not isTouchDevice() then
+		return nil
+	end
+	local vp = viewportSize()
+	local areaY = vp.Y - topInset()
+	if math.min(vp.X, vp.Y) <= 500 then
+		return vp.X - 115, vp.X - 45, areaY - 90
+	end
+	return vp.X - 190, vp.X - 50, areaY - 210
+end
+
 -- Lowest gui y a toast column whose left edge is at `toastLeft` (right edge `toastRight`) may reach: above the
 -- centre band when the column reaches into it sideways (portrait phones), above the touch RUN / DASH buttons
--- under the column, and never into the lower quarter of the screen.
+-- under the column, (kit B U9-9) 6 px above Roblox's jump button, and never into the lower quarter of the screen.
 local function bottomLimitFor(toastLeft, toastRight)
 	local vp = viewportSize()
 	local inset = topInset()
 	local limit = (vp.Y - inset) * 0.72
 	if toastLeft < vp.X * (0.5 + CENTRE_BAND) and toastRight > vp.X * (0.5 - CENTRE_BAND) then
 		limit = math.min(limit, vp.Y * (0.5 - CENTRE_BAND) - CENTRE_MARGIN - inset)
+	end
+	local jx0, jx1, jy0 = jumpButton()
+	if jx0 and toastRight > jx0 - 6 and toastLeft < jx1 + 6 then
+		limit = math.min(limit, jy0 - 6)
 	end
 	local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	local mobile = playerGui and playerGui:FindFirstChild("MobileControls")
@@ -364,7 +410,8 @@ local function estimateToastHeight(text)
 		len = #tostring(text or "")
 	end
 	local lines = math.max(1, math.ceil(len / perLine))
-	return math.max(44, lines * math.ceil(TOAST_TEXT_SIZE * 1.15) + 16)
+	-- (kit B U9-9) the stone tag's padding (8 over, 8 and its lip under) and its wood edge outside it
+	return math.max(44, lines * math.ceil(TOAST_TEXT_SIZE * 1.15) + 16 + TOAST_LIP) + 2 * TOAST_EDGE
 end
 
 local dismissToast -- defined below
@@ -428,14 +475,15 @@ local function resultPosition(xScale, panelHeight)
 	local side = isTouchDevice() and TOUCH_EDGE or EDGE
 	local cardLeft = vp.X - side - RESULT_W * k
 	local half = (panelHeight or result.Height) * k / 2
+	local roof = RESULT_ROOF_UP * k -- (kit B U9-9) the awning over the card's top
 	if cardLeft >= vp.X * (0.5 + CENTRE_BAND) then
 		-- keep clear of a top-right currency stack on short screens
-		local floorY = hudValue("TopRightBottom") + HUD_GAP + half
+		local floorY = hudValue("TopRightBottom") + HUD_GAP + roof + half
 		local y = (vp.Y - topInset()) * RESULT_Y
 		-- v5: a short screen lifts the card so it never covers the touch RUN / DASH / jump buttons below it
 		local lowest = bottomLimitFor(cardLeft, vp.X - side) - half
 		if y > lowest then
-			return UDim2.new(xScale, 0, 0, math.floor(math.max(math.min(floorY, lowest), EDGE + half)))
+			return UDim2.new(xScale, 0, 0, math.floor(math.max(math.min(floorY, lowest), EDGE + roof + half)))
 		end
 		if y >= floorY then
 			return UDim2.new(xScale, 0, RESULT_Y, 0)
@@ -444,8 +492,25 @@ local function resultPosition(xScale, panelHeight)
 	end
 	-- the ScreenGui area starts below the top bar (IgnoreGuiInset = false), so gui y = screen y - inset
 	local ceiling = vp.Y * (0.5 - CENTRE_BAND) - CENTRE_MARGIN - half - topInset()
-	local floorY = math.max(EDGE, hudValue("TopRightBottom") + HUD_GAP) + half
+	local floorY = math.max(EDGE, hudValue("TopRightBottom") + HUD_GAP) + roof + half
 	return UDim2.new(xScale, 0, 0, math.floor(math.max(ceiling, floorY)))
+end
+
+-- (kit B U9-9) the design px of height the card has where resultPosition puts it: from under the HUD's top-right block
+-- and the awning down to the lowest y bottomLimitFor allows (the right edge), or to the centre band (a narrow screen)
+local function resultRoom()
+	local vp = viewportSize()
+	local k = math.max(0.01, currentScale())
+	local side = isTouchDevice() and TOUCH_EDGE or EDGE
+	local cardLeft = vp.X - side - RESULT_W * k
+	local top = math.max(EDGE, hudValue("TopRightBottom") + HUD_GAP) + RESULT_ROOF_UP * k
+	local bottom
+	if cardLeft >= vp.X * (0.5 + CENTRE_BAND) then
+		bottom = bottomLimitFor(cardLeft, vp.X - side)
+	else
+		bottom = vp.Y * (0.5 - CENTRE_BAND) - CENTRE_MARGIN - topInset()
+	end
+	return (bottom - top) / k
 end
 
 -- Tells the HUD where the open result card starts (gui x of its left edge; 0 = no card), so on a narrow
@@ -476,9 +541,11 @@ local function relayout()
 	end
 	applyMargins()
 	trimToasts()
+	PixelCrisp.Refresh(UI.Stack) -- (kit B U9-9) the icons and edges back on whole pixels at the new scale
 	local panel = result.Panel
 	if panel and panel.Root and panel.Root.Parent then
 		panel.Root.Position = resultPosition(1)
+		PixelCrisp.Refresh(panel.Root)
 	end
 	publishResultCard()
 end
@@ -525,12 +592,13 @@ local function setToastAlpha(toast, a, seconds)
 	local goals = {
 		{ toast.Card, { BackgroundTransparency = TOAST_BG + (1 - TOAST_BG) * a } },
 		{ toast.Stroke, { Transparency = a } },
-		{ toast.GlowStroke, { Transparency = 0.7 + 0.3 * a } },
-		{ toast.Accent, { BackgroundTransparency = 0.78 + 0.22 * a } },
+		{ toast.Lip, { BackgroundTransparency = a } },
 		{ toast.Label, { TextTransparency = a } },
 		{ toast.Icon, { BackgroundTransparency = a } },
 		{ toast.IconStroke, { Transparency = a } },
+		{ toast.IconLip, { BackgroundTransparency = a } },
 		{ toast.IconGlyph, { TextTransparency = a } },
+		{ toast.Sparkle, { TextTransparency = a } },
 	}
 	for _, entry in ipairs(goals) do
 		if entry[1] then
@@ -599,12 +667,14 @@ local function refreshToastText(toast)
 	toast.Label.Text = text
 end
 
-local function toastTextColor(color)
-	return Theme.Lighten(color, 0.55)
+-- (kit B U9-9) brown on the stone tile, whatever the kind (the chip carries the kind's colour)
+local function toastTextColor()
+	return SIGN.Text
 end
 
 local function buildToast(text, kind)
 	local color, kindName = kindColor(kind)
+	local chip = KIND_CHIP[kindName] or KIND_CHIP.info
 	toastSerial = toastSerial + 1
 
 	-- the slot is the list item (it keeps its place while the card slides); the card is what moves
@@ -613,65 +683,68 @@ local function buildToast(text, kind)
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = -toastSerial, -- newest on top
 	})
-	-- v5: a neon pill: the dark navy card fill, the kind colour as a glowing border (+ a faint outer glow ring)
+	-- (kit B U9-9) the stone block: tile face, wood edge, the stone lip along its bottom (CloudUI.SignBlock keeps the lip
+	-- flush with the block's edges under the padding)
 	local card = newFrame(slot, "Toast", {
 		Position = UDim2.new(0, TOAST_W + 40, 0, 0),
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundTransparency = 1,
-		BackgroundColor3 = WHITE,
 	})
-	Theme.Corner(card, "M")
-	Theme.Gradient(card, Colors.PanelTop or Colors.Panel, Colors.PanelBottom or Colors.Panel, 90)
-	local stroke = Theme.Stroke(card, color, 2.5, 1)
 	Util.Create("UISizeConstraint", { MinSize = Vector2.new(0, 44), Parent = card })
 	local pad = Instance.new("UIPadding")
 	pad.PaddingTop = UDim.new(0, 8)
-	pad.PaddingBottom = UDim.new(0, 8)
-	pad.PaddingLeft = UDim.new(0, 14)
+	pad.PaddingBottom = UDim.new(0, 8 + TOAST_LIP)
+	pad.PaddingLeft = UDim.new(0, 8)
 	pad.PaddingRight = UDim.new(0, 10)
 	pad.Parent = card
-
-	-- the outer glow ring (outside the padding box: pulled out by the padding)
-	local glow = newFrame(card, "Glow", {
-		Position = UDim2.new(0, -17, 0, -11),
-		Size = UDim2.new(1, 30, 1, 22),
+	local stroke, lip = CloudUI.SignBlock(card, { Face = SIGN.Tile, Lip = SIGN.StoneLip, Edge = SIGN.Wood, Text = SIGN.Text }, {
+		EdgePx = TOAST_EDGE,
+		LipPx = TOAST_LIP,
 	})
-	Theme.Corner(glow, "M")
-	local glowStroke = Theme.Stroke(glow, color, 4, 1)
-	-- the kind colour glowing up from the floor of the pill (the neon "floor")
-	local accent = newFrame(card, "Accent", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, -11, 1, 5),
-		Size = UDim2.new(1, 18, 0.55, 0),
-		BackgroundTransparency = 1,
-		BackgroundColor3 = color,
-	})
-	Theme.Corner(accent, "M")
-	local fade = Instance.new("UIGradient")
-	fade.Rotation = 90
-	fade.Transparency = NumberSequence.new(1, 0)
-	fade.Parent = accent
+	PixelCrisp.Edge(stroke, TOAST_EDGE)
+	card.BackgroundTransparency = 1 -- faded in by setToastAlpha
+	stroke.Transparency = 1
+	lip.BackgroundTransparency = 1
 
+	-- the kind's chip: its colour by role, a wood edge, its own darker lip; the pixel icon on whole screen pixels
 	local icon = newFrame(card, "Icon", {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0.5, 0),
 		Size = UDim2.fromOffset(TOAST_ICON, TOAST_ICON),
 		BackgroundTransparency = 1,
-		BackgroundColor3 = Theme.Darken(color, 0.45),
+		BackgroundColor3 = chip.Face,
 	})
-	round(icon)
-	local iconStroke = Theme.Stroke(icon, color, 2, 1)
-	local glyph = newText(icon, "Glyph", KIND_ICON[kindName] and "" or (KIND_GLYPH[kindName] or "i"), "Heading", 18, WHITE, {
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextTransparency = 1,
+	local iconStroke = Theme.Stroke(icon, SIGN.Wood, TOAST_EDGE, 1)
+	iconStroke.Name = "SignEdge"
+	iconStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	PixelCrisp.Edge(iconStroke, TOAST_EDGE)
+	local iconLip = newFrame(icon, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 3),
+		BackgroundTransparency = 1,
+		BackgroundColor3 = chip.Lip,
 	})
-	if KIND_ICON[kindName] then
-		glyph:SetAttribute("PixelIcon", KIND_ICON[kindName])
-		PixelIcon.Host(glyph, KIND_ICON[kindName], 18) -- fades in and out with the glyph's TextTransparency
+	local holder, glyph = PixelCrisp.Icon(icon, chip.Icon, TOAST_GLYPH, chip.Ink, {
+		Position = UDim2.new(0.5, 0, 0.5, -1), -- centred on the face above the lip
+	})
+	glyph.TextTransparency = 1 -- the icon fades in and out with the glyph's TextTransparency
+	icon:SetAttribute("Kind", kindName)
+	-- a reward gets one pixel sparkle on the chip's top-right corner (the Sky Trove's reward tags have two), in the deep
+	-- gold that shows on the tile and at the icon's own pixel size (one pixel size per screen)
+	local sparkle = nil
+	if chip.Sparkle then
+		local _, s = PixelCrisp.Icon(icon, "sparkle", TOAST_GLYPH, SIGN.GoldDeep, {
+			Name = "Sparkle",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(1, 2, 0, 2),
+			ZIndex = 3,
+		})
+		sparkle = s
+		sparkle.TextTransparency = 1
 	end
 
-	local label = newText(card, "Text", text, "Toast", TOAST_TEXT_SIZE, toastTextColor(color), {
+	local label = newText(card, "Text", text, "Toast", TOAST_TEXT_SIZE, toastTextColor(), {
 		Position = UDim2.new(0, TOAST_ICON + 10, 0, 0),
 		Size = UDim2.new(1, -(TOAST_ICON + 10), 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -680,9 +753,9 @@ local function buildToast(text, kind)
 	})
 
 	return {
-		Slot = slot, Card = card, Stroke = stroke, Accent = accent, Icon = icon, IconStroke = iconStroke,
-		IconGlyph = glyph, Label = label, Text = text, Kind = kindName, Count = 1, Dead = false, Expiry = 0,
-		Color = color, Glow = glow, GlowStroke = glowStroke,
+		Slot = slot, Card = card, Stroke = stroke, Lip = lip, Icon = icon, IconStroke = iconStroke, IconLip = iconLip,
+		IconGlyph = glyph, IconHolder = holder, Sparkle = sparkle, Label = label, Text = text, Kind = kindName, Count = 1,
+		Dead = false, Expiry = 0, Color = color,
 	}
 end
 
@@ -718,8 +791,9 @@ local function addToast(text, kind, duration)
 		if not live.Dead and live.Text == text and live.Kind == kindName then
 			live.Count = live.Count + 1
 			refreshToastText(live)
-			live.Label.TextColor3 = WHITE
-			tween(live.Label, 0.35, { TextColor3 = toastTextColor(live.Color) }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			-- (kit B U9-9) the repeat flashes the stone face pale gold (the text stays brown and readable)
+			live.Card.BackgroundColor3 = SIGN.Selected
+			tween(live.Card, 0.35, { BackgroundColor3 = SIGN.Tile }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 			scheduleExpiry(live, duration)
 			return
 		end
@@ -872,9 +946,12 @@ local function countUp(label, target, delay, seconds, format, serial)
 	end)
 end
 
--- Square "pixel" confetti (the voxel world's little sparkle) falling over the card.
+-- Square "pixel" confetti (the voxel world's little sparkle) falling over the card. (kit B U9-9) In the kit's gold and pink
+-- with their lips (the Gifts window's week confetti), no rainbow.
+local KIT_CONFETTI = { SIGN.Gold, SIGN.Roof, SIGN.GoldLip, SIGN.RoofLip }
+NotifyController.Confetti = KIT_CONFETTI
 local function burstConfetti(root, serial)
-	local palette = Theme.World and Theme.World.Rainbow or Colors.Rainbow
+	local palette = KIT_CONFETTI
 	for i = 1, CONFETTI_PIECES do
 		local x = rng:NextNumber(0.06, 0.94)
 		local startY = rng:NextNumber(-6, 18)
@@ -941,37 +1018,54 @@ local function buildResults(data)
 	local showMembers = #members > 1
 	local reason = (not won) and REASON_TEXT[tostring(data.Reason or "defeat")] or nil
 
-	-- fixed vertical layout (inner coordinates)
-	local TITLE_H, DIFF_H, REASON_H, ROW_H, MEMBER_H, FOOT_H = 46, 26, 24, 32, 26, 28
-	local y = 0
-	local titleY = y
-	y = y + TITLE_H
-	local diffY = y
-	y = y + DIFF_H
-	local reasonY = y
-	if reason then
-		y = y + REASON_H
-	end
-	y = y + 8
-	local statsY = y
-	y = y + ROW_H * 3 + 4
-	local membersY = y
-	if showMembers then
-		y = y + #members * MEMBER_H + 6
-	end
-	local footY = y
-	y = y + FOOT_H
+	-- fixed vertical layout (inner coordinates); (kit B U9-9) the stat rows are stone blocks 6 px apart; the compact rows
+	-- when the full card is taller than the screen's room for it (RESULT_ROWS)
 	local insetTop, _, insetBottom = CloudUI.ContentInset(false, true)
-	local panelH = insetTop + insetBottom + 10 + y
+	local hasBonus = (tonumber(data.Bonus) or 0) >= 1
+	local function layoutWith(rows)
+		local out = { Rows = rows }
+		out.Stats = (rows.SkipZeroBonus and not hasBonus) and 2 or 3
+		out.Cols = (rows.Columns and #members > 2) and rows.Columns or 1
+		local y = 0
+		out.TitleY = y
+		y = y + rows.Title
+		out.DiffY = y
+		y = y + rows.Diff
+		out.ReasonY = y
+		if reason then
+			y = y + rows.Reason
+		end
+		y = y + rows.Gap
+		out.StatsY = y
+		y = y + rows.Row * out.Stats + 4
+		out.MembersY = y
+		if showMembers then
+			y = y + math.ceil(#members / out.Cols) * rows.Member + 6
+		end
+		out.FootY = y
+		y = y + rows.Foot
+		out.PanelH = insetTop + insetBottom + rows.Slack + y - rows.Trim
+		return out
+	end
+	local L = layoutWith(RESULT_ROWS.Full)
+	local okRoom, room = pcall(resultRoom)
+	if okRoom and type(room) == "number" and L.PanelH > room then
+		L = layoutWith(RESULT_ROWS.Compact)
+	end
+	local R = L.Rows
+	local TITLE_H, DIFF_H, REASON_H, ROW_H, MEMBER_H, FOOT_H = R.Title, R.Diff, R.Reason, R.Row, R.Member, R.Foot
+	local titleY, diffY, reasonY, statsY, membersY, footY = L.TitleY, L.DiffY, L.ReasonY, L.StatsY, L.MembersY, L.FootY
+	local panelH = L.PanelH
 	result.Height = panelH
 
-	local accent = won and (Theme.Buttons and Theme.Buttons.Gold or GOLD) or Color3.fromRGB(118, 130, 204)
+	-- (kit B U9-9) the Signboard skin: wood frame, stone body and its lip, the red close block; the awning as wide as the
+	-- card (the pitch's roof reaches 10 px past each side; a fixed size, never stretched)
 	local panel = CloudUI.Panel({
 		Name = "ResultCard",
+		Skin = "Signboard",
 		Size = UDim2.fromOffset(RESULT_W, panelH),
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = resultPosition(1.8, panelH),
-		Accent = accent,
 		Closable = true,
 		OnClose = function()
 			closeResults(false)
@@ -979,37 +1073,60 @@ local function buildResults(data)
 		Parent = UI.ResultHolder,
 	})
 	panel.Body.Active = false
+	if panel.Roof then
+		panel.Roof.Size = UDim2.fromOffset(RESULT_W + 2 * RESULT_ROOF_OVER, panel.Roof.Size.Y.Offset)
+	end
 	addViewportScale(panel.Root)
 	local inner = newFrame(panel.Content, "Inner", {
-		Position = UDim2.new(0, 12, 0, 5),
-		Size = UDim2.new(1, -24, 1, -10),
+		Position = UDim2.new(0, 4, 0, 2 - R.Trim),
+		Size = UDim2.new(1, -8, 1, -4 + R.Trim),
 	})
+	panel.Root:SetAttribute("Compact", R == RESULT_ROWS.Compact)
 
-	-- headline with a gradient (the label itself stays white, the gradient colours it)
-	local headline = Theme.StyleTitle(newText(inner, "Headline", won and "VICTORY!" or "DEFEAT", "Title", 40, WHITE, {
+	-- the headline: a banner block across the card's top (VICTORY! gold, DEFEAT stone) with brown words, a plain Section
+	-- title (a pop-up's title: the window ribbon is for window names); the red close block sits on its right end
+	local banner = newFrame(inner, "Banner", {
 		Position = UDim2.fromOffset(0, titleY),
 		Size = UDim2.new(1, 0, 0, TITLE_H),
+	})
+	local bannerEdge = CloudUI.SignBlock(banner, won and "Selected" or "Stone", { EdgePx = 3, LipPx = 5 })
+	PixelCrisp.Edge(bannerEdge, 3)
+	Theme.StyleTitle(newText(banner, "Headline", won and "VICTORY!" or "DEFEAT", "Title", R.Headline, SIGN.Text, {
+		Size = UDim2.new(1, -RESULT_CLOSE, 1, -5),
 		TextXAlignment = Enum.TextXAlignment.Center,
-	}), "OwnGradient")
-	if won then
-		Theme.Gradient(headline, Colors.TokenGlow, Colors.Token, 90)
-	else
-		Theme.Gradient(headline, Color3.fromRGB(196, 208, 246), Color3.fromRGB(132, 142, 216), 90)
+		ZIndex = 2,
+	}), "Section")
+	if panel.CloseButton then
+		panel.CloseButton.Size = UDim2.fromOffset(RESULT_CLOSE - 10, RESULT_CLOSE - 10)
+		panel.CloseButton.AnchorPoint = Vector2.new(1, 0.5)
+		-- root px: the card's Content sits at (12, the untitled inset), Inner 4 / 2 inside it
+		local insetTop2 = CloudUI.ContentInset(false, true)
+		panel.CloseButton.Position = UDim2.new(1, -(12 + 4 + 6), 0, insetTop2 + 2 - R.Trim + titleY + math.floor((TITLE_H - 5) / 2))
 	end
 
-	-- difficulty + stars
+	-- difficulty + stars: brown, the stars in the deep gold that reads on stone
 	local diffText = tostring(data.DifficultyName or data.DifficultyId or "")
-	local diffLabel = newText(inner, "Difficulty", diffText, "Heading", 21, Theme.Lighten(diffColor, 0.3), {
+	-- (kit B U9-9) the line ends above its colour bar (DIFF_H - 4) so the bar never runs through the letters
+	local diffLabel = newText(inner, "Difficulty", diffText, "Heading", 21, SIGN.Text, {
 		Position = UDim2.fromOffset(0, diffY),
-		Size = UDim2.new(1, 0, 0, DIFF_H),
+		Size = UDim2.new(1, 0, 0, DIFF_H - 4),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		RichText = true,
 	})
 	if starCount > 0 then -- (kit-b U7a) the stars are gold PixelIcons after the name
-		PixelIcon.Lead(diffLabel, "star", { After = true, Count = math.min(5, starCount), Px = 18, Colour = GOLD })
+		-- (kit B U9-9) every icon of the card on whole screen px at the card's scale (PixelCrisp.Adopt)
+		PixelCrisp.Adopt(PixelIcon.Lead(diffLabel, "star", { After = true, Count = math.min(5, starCount), Px = 18, Colour = STAR_INK }))
 	end
+	-- the difficulty's own colour: a short bar under the line (its role colour, as a best-time row's lip)
+	newFrame(inner, "DiffBar", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, diffY + DIFF_H - 4),
+		Size = UDim2.fromOffset(64, 4),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = diffColor,
+	})
 	if reason then
-		newText(inner, "Reason", reason, "Body", 18, MUTED, {
+		newText(inner, "Reason", reason, "Body", 18, SIGN.TextMuted, {
 			Position = UDim2.fromOffset(0, reasonY),
 			Size = UDim2.new(1, 0, 0, REASON_H),
 			TextXAlignment = Enum.TextXAlignment.Center,
@@ -1019,23 +1136,22 @@ local function buildResults(data)
 
 	-- stats
 	local serial = result.Serial
+	-- (kit B U9-9) a stat row: a stone block (tile face, 2 px wood edge, its lip), the caption and the value brown
 	local function statRow(index, caption, valueText, valueColor)
 		local rowY = statsY + (index - 1) * ROW_H
 		local bar = newFrame(inner, "Row" .. caption, {
-			Position = UDim2.fromOffset(0, rowY),
-			Size = UDim2.new(1, 0, 0, ROW_H - 4),
-			BackgroundTransparency = 0.45,
-			BackgroundColor3 = Colors.Ink,
+			Position = UDim2.fromOffset(2, rowY),
+			Size = UDim2.new(1, -4, 0, ROW_H - 6),
 		})
-		Theme.Corner(bar, "M")
-		newText(bar, "Caption", caption, "Body", 18, MUTED, {
+		PixelCrisp.Edge(CloudUI.SignBlock(bar, "Stone", { EdgePx = 2, LipPx = 4 }), 2)
+		newText(bar, "Caption", caption, "Body", 18, SIGN.Text, {
 			Position = UDim2.new(0, 10, 0, 0),
-			Size = UDim2.new(0.45, 0, 1, 0),
+			Size = UDim2.new(0.45, 0, 1, -4),
 		})
-		return newText(bar, "Value", valueText, "Heading", 20, valueColor, {
+		return newText(bar, "Value", valueText, "Heading", R.Value, valueColor, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -10, 0, 0),
-			Size = UDim2.new(0.55, 0, 1, 0),
+			Size = UDim2.new(0.55, 0, 1, -4),
 			TextXAlignment = Enum.TextXAlignment.Right,
 		})
 	end
@@ -1047,16 +1163,17 @@ local function buildResults(data)
 	local bonus = math.max(0, math.floor(tonumber(data.Bonus) or 0))
 	local seconds = tonumber(data.Seconds) or 0
 
-	statRow(1, "Time", Util.FormatTime(seconds), WHITE)
+	statRow(1, "Time", Util.FormatTime(seconds), SIGN.Text)
 	-- (kit-b U7a) the amounts end in the Cloud Token coin (a PixelIcon after the number)
-	local tokenValue = statRow(2, "Tokens", "0", Colors.TokenGlow)
-	PixelIcon.Lead(tokenValue, Theme.Currency.Tokens.Icon, { After = true })
-	local bonusValue = statRow(3, "Win bonus", bonus > 0 and "+0" or "-", bonus > 0 and GOLD or MUTED)
+	local tokenValue = statRow(2, "Tokens", "0", SIGN.Text)
+	PixelCrisp.Adopt(PixelIcon.Lead(tokenValue, Theme.Currency.Tokens.Icon, { After = true }))
+	-- (kit B U9-9) the compact card leaves a missing bonus out (L.Stats 2)
+	local bonusValue = L.Stats >= 3 and statRow(3, "Win bonus", bonus > 0 and "+0" or "-", bonus > 0 and SIGN.Text or SIGN.TextMuted) or nil
 	countUp(tokenValue, ownTokens, 0.45, 0.8, function(n)
 		return tostring(n)
 	end, serial)
-	if bonus > 0 then
-		PixelIcon.Lead(bonusValue, Theme.Currency.Tokens.Icon, { After = true })
+	if bonus > 0 and bonusValue then
+		PixelCrisp.Adopt(PixelIcon.Lead(bonusValue, Theme.Currency.Tokens.Icon, { After = true }))
 		countUp(bonusValue, bonus, 0.9, 0.7, function(n)
 			return "+" .. tostring(n)
 		end, serial)
@@ -1064,30 +1181,43 @@ local function buildResults(data)
 
 	-- members
 	if showMembers then
+		-- (kit B U9-9) the compact card lays a team of three or four in two columns: each a name and its tick / cross
+		local cols = L.Cols
 		for i, m in ipairs(members) do
+			local col = (i - 1) % cols
+			local line = math.floor((i - 1) / cols)
 			local row = newFrame(inner, "Member" .. i, {
-				Position = UDim2.fromOffset(0, membersY + (i - 1) * MEMBER_H),
-				Size = UDim2.new(1, 0, 0, MEMBER_H),
+				Position = UDim2.new(col / cols, col > 0 and 3 or 0, 0, membersY + line * MEMBER_H),
+				Size = UDim2.new(1 / cols, cols > 1 and -3 or 0, 0, MEMBER_H),
 			})
 			local mine = isLocalName(m.Name)
-			newText(row, "Name", m.Name, "Body", 18, mine and Colors.TokenGlow or WHITE, {
+			-- (kit B U9-9) the player's own line on a pale gold strip (the selected face); every name brown
+			if mine then
+				row.BackgroundTransparency = 0
+				row.BackgroundColor3 = SIGN.Selected
+				row:SetAttribute("Mine", true)
+			end
+			newText(row, "Name", m.Name, "Body", 18, SIGN.Text, {
 				Position = UDim2.new(0, 6, 0, 0),
-				Size = UDim2.new(1, -104, 1, 0),
+				Size = UDim2.new(1, cols > 1 and -32 or -104, 1, 0),
 				TextTruncate = Enum.TextTruncate.AtEnd,
 			})
-			local tokens = newText(row, "Tokens", tostring(m.Tokens), "Heading", 18, Colors.TokenGlow, {
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, -28, 0, 0),
-				Size = UDim2.fromOffset(70, MEMBER_H),
-				TextXAlignment = Enum.TextXAlignment.Right,
-			})
-			PixelIcon.Lead(tokens, Theme.Currency.Tokens.Icon) -- (kit-b U7a) the coin before the amount
-			-- (kit-b U7a) the state is a PixelIcon: a tick when finished, an x when downed
-			local mark, stateColor = nil, WHITE
+			if cols == 1 then
+				local tokens = newText(row, "Tokens", tostring(m.Tokens), "Heading", 18, SIGN.Text, {
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -28, 0, 0),
+					Size = UDim2.fromOffset(70, MEMBER_H),
+					TextXAlignment = Enum.TextXAlignment.Right,
+				})
+				PixelCrisp.Adopt(PixelIcon.Lead(tokens, Theme.Currency.Tokens.Icon)) -- (kit-b U7a) the coin before the amount
+			end
+			-- (kit-b U7a) the state is a PixelIcon: a tick when finished, an x when downed (kit B: the grass / red lips'
+			-- deep tones that read on stone)
+			local mark, stateColor = nil, SIGN.Text
 			if m.Finished then
-				mark, stateColor = "check", Colors.Good
+				mark, stateColor = "check", SIGN.GrassLip
 			elseif m.Downed then
-				mark, stateColor = "x", Colors.Bad
+				mark, stateColor = "x", SIGN.RedLip
 			end
 			local state = newText(row, "State", "", "Heading", 18, stateColor, {
 				AnchorPoint = Vector2.new(1, 0),
@@ -1097,13 +1227,13 @@ local function buildResults(data)
 			})
 			if mark then
 				state:SetAttribute("PixelIcon", mark)
-				PixelIcon.Host(state, mark, 18)
+				PixelCrisp.Adopt(PixelIcon.Host(state, mark, 18))
 			end
 		end
 	end
 
 	-- footer: countdown to the lobby
-	local footer = newText(inner, "Footer", "", "Toast", 19, Colors.Cloud, {
+	local footer = newText(inner, "Footer", "", "Toast", 19, SIGN.TextMuted, {
 		Position = UDim2.fromOffset(0, footY),
 		Size = UDim2.new(1, 0, 0, FOOT_H),
 		TextXAlignment = Enum.TextXAlignment.Center,
