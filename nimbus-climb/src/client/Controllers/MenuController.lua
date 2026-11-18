@@ -196,8 +196,9 @@ local K = {
 -- dims the game. (lobby-shop Task 22: the Cloud Shop, its odds popup and its roulette stage left for ShopController,
 -- client/UI/ShopEggs and client/UI/EggStage.)
 -- (LOOK-ui, kitb-look1: Stats docked 640 x 760, Index 860 x 900, Home 820 x 900, so three tops, widths and Fits) the
--- docked windows share one box: 820 x 900 (IndexController.K.PREF_W / PREF_H the same)
-K.DOCK_BOX = { 820, 900 }
+-- docked windows share one box: 860 x 900, the Index's (IndexController.K.PREF_W / PREF_H; at 820 its three 1080p
+-- columns wrapped the group heading)
+K.DOCK_BOX = { 860, 900 }
 K.WIN = {
 	Stats = K.DOCK_BOX,
 	Home = K.DOCK_BOX,

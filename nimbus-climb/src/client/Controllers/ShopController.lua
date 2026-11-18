@@ -1059,9 +1059,6 @@ function H.layoutCard(entry, w, h, M)
 	local nameH = M.Name + 4
 	local lineH = M.Line + 3
 	local statusOn = entry.Status.Text ~= ""
-	local n = #entry.Lines + (statusOn and 1 or 0)
-	local room = h - 2 * pad - nameH - 2
-	local getsOn = (n + 1) * lineH <= room
 	place(entry.Name, textX, pad, textW, nameH)
 	entry.Name.TextSize = M.Name
 	local y = pad + nameH + 2
@@ -1069,14 +1066,10 @@ function H.layoutCard(entry, w, h, M)
 	if statusOn and entry.StatusFirst then
 		place(entry.Status, textX, y, textW, M.Status + 3)
 		y = y + M.Status + 3
-		getsOn = false
 	end
-	entry.GetsYou.Visible = getsOn
-	if getsOn then
-		place(entry.GetsYou, textX, y, textW, lineH)
-		entry.GetsYou.TextSize = M.Line
-		y = y + lineH
-	end
+	-- (LOOK-ui, kitb-look1: the Starter card said "Gets you:" over its lines, the Pro card under it did not, by room alone)
+	-- the lines speak for themselves on every card: no "Gets you:" heading
+	entry.GetsYou.Visible = false
 	for _, line in ipairs(entry.Lines) do
 		place(line, textX, y, textW, lineH)
 		line.TextSize = M.Line
@@ -1123,10 +1116,7 @@ function H.layoutCardPortrait(entry, w, M)
 	if statusOn and entry.StatusFirst then
 		put(entry.Status, M.Status, M.StatusRows, M.Status + 3)
 	end
-	entry.GetsYou.Visible = #entry.Lines > 0
-	if entry.GetsYou.Visible then
-		put(entry.GetsYou, M.Line, 1, M.Line + 3)
-	end
+	entry.GetsYou.Visible = false -- (LOOK-ui) no "Gets you:" heading on any card (as the landscape layout)
 	for _, line in ipairs(entry.Lines) do
 		line.Visible = true
 		put(line, M.Line, M.LineRows, M.Line + 3)
