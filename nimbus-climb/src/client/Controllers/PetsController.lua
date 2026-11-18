@@ -1363,6 +1363,7 @@ end
 
 function H.layoutDetail(w, h)
 	local d = U.D
+	d.LayoutW, d.LayoutH = w, h -- (merge) refreshDetail lays it out again for a pet whose perks need the room
 	local phone = S.Mode == "Phone"
 	local narrow = w < 420
 	local pad = phone and 10 or 14
@@ -1409,7 +1410,8 @@ function H.layoutDetail(w, h)
 		end
 	else
 		-- the pet on top
-		local pic = h >= 620 and 170 or 130
+		-- (merge kitb-look1) the 130 px picture too for a pet whose special strip and perks need its 40 px (TightPerks)
+		local pic = (h >= 620 and not d.TightPerks) and 170 or 130
 		place(d.Glow, math.floor(w / 2 - pic / 2) + 8, 12, pic - 16, pic - 16)
 		place(d.Picture, math.floor(w / 2 - pic / 2), 4, pic, pic)
 		y = pic + 6
@@ -2456,6 +2458,16 @@ function H.refreshDetail(keys, order)
 	d.ActTrain.Text = job and "Training" or "Train"
 	d.ActGarden.Text = placed and "Leave Garden" or "Garden"
 	H.placeActions()
+	-- (merge kitb-look1) the special's strip took the perks' room under the 170 px picture (PerksH 2 at 1080p: a pet with
+	-- a special showed no perk at all): such a pet takes the 130 px one, the others keep the big picture
+	if S.Mode ~= "Phone" and d.LayoutH and d.LayoutH >= 620 then
+		local need = #d.PerkLines * d.PerkLineH
+		local tight = (d.TightPerks and (d.PerksH - 40) or d.PerksH) < need
+		if tight ~= (d.TightPerks == true) then
+			d.TightPerks = tight
+			H.layoutDetail(d.LayoutW, d.LayoutH)
+		end
+	end
 	d.Perks.Visible = d.PerksH >= d.PerkLineH
 	local shown = {}
 	for i = 1, math.min(#d.PerkLines, math.floor(d.PerksH / d.PerkLineH)) do

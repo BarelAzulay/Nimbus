@@ -968,7 +968,22 @@ local function indexWindowChecks(PetCatalog)
 		Index.Open("Mythic")
 		advance(1.5)
 		local tile = descendantNamed(window, "IndexPet_" .. mascotDef.Id)
-		T.check(tile ~= nil and elementBadge(tile, mascotElement) ~= nil, "Pet Index: a discovered pet's card shows its element badge (" .. mascotElement .. ", coloured from Config.Elements.Info)", describeBadge(tile, mascotElement))
+		-- (merge kitb-look1) a kit B tile shows the element as its icon chip (CloudUI.ElementChip "Element_<id>": the
+		-- element's colour behind its drawn icon, no name on a tile); a text badge still counts
+		local function iconChip(root, element)
+			local chip = root and descendantNamed(root, "Element_" .. element)
+			local info = KC.env().Elements.Info[element]
+			if not (chip and info and isShown(chip) and chip.BackgroundColor3 == info.Color) then
+				return nil
+			end
+			for _, d in ipairs(chip:GetDescendants()) do
+				if d:GetAttribute("PixelIcon") ~= nil then
+					return chip
+				end
+			end
+			return nil
+		end
+		T.check(tile ~= nil and (elementBadge(tile, mascotElement) ~= nil or iconChip(tile, mascotElement) ~= nil), "Pet Index: a discovered pet's card shows its element badge (" .. mascotElement .. ", coloured from Config.Elements.Info)", describeBadge(tile, mascotElement))
 		if hidden then
 			local hiddenElement = petElements(PetCatalog, hidden)[1]
 			local hiddenTile = descendantNamed(window, "IndexPet_" .. hidden.Id)

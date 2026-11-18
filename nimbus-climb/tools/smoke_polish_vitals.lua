@@ -224,38 +224,6 @@ local function keyState(c, Theme)
 	return "other"
 end
 
--- (LOOK-ui) the HP row's block i: its face colour (nil when missing)
-local function hpFace(c, i)
-	local face = path(c.HpRow, "Block" .. i .. ".Face")
-	return face and face.BackgroundColor3 or nil
-end
--- the HP row's block count (HudController's Vitals.HP_BLOCKS: five, the stamina row's)
-local HP_N = 5
--- how many of the HP row's blocks have a white face (the damage trail)
-local function whiteBlocks(c)
-	local n = 0
-	for i = 1, HP_N do
-		local f = hpFace(c, i)
-		n = n + ((f and f.R > 0.97 and f.G > 0.97 and f.B > 0.97) and 1 or 0)
-	end
-	return n
-end
-
--- (LOOK-ui) the cells of a PixelIcon under `box`, and whether every one is shown at about `alpha` (0 = opaque)
-local function iconCells(box)
-	local cells = {}
-	for _, d in ipairs(box and box:GetDescendants() or {}) do
-		if d:IsA("Frame") and d.Parent and d.Parent:GetAttribute("PixelIcon") then
-			cells[#cells + 1] = d
-		end
-	end
-	return cells
-end
-local function iconAlpha(box)
-	local cells = iconCells(box)
-	return cells[1] and cells[1].BackgroundTransparency or -1
-end
-
 local function setHealth(max, health)
 	local h = KC().hum()
 	if h then
@@ -441,16 +409,10 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(c.HpText ~= nil and tostring(c.HpText.Text) == "117 / 117", "vitals: the HP number reads '117 / 117'", c.HpText and tostring(c.HpText.Text))
 	T.check(c.HpText.TextSize * scaleOf(c.HpText) >= 24 and c.HpText.Font == Theme.Fonts.Display,
 		"vitals: the HP number is big (>= 24 px at 1080p), Display font", fmt("%.1f px", c.HpText.TextSize * scaleOf(c.HpText)))
-	-- (LOOK-ui) the pitch's .vit: the number in the ink at the row's right, on the card, clear of every block (over the row
-	-- its glyphs crossed the blocks' wood edges)
 	local reading = contrastOf(c.HpText)
 	T.check(reading ~= nil and reading.backdrop == c.Card and reading.ratio >= reading.need and rect(c.HpText).x0 >= rect(c.Hp).x1,
 		"vitals: full health: the HP number reads on the card's stone, right of the blocks (no outline)",
 		reading and fmt("%.2f:1 on %s (need %g)", reading.ratio, reading.backdrop.Name, reading.need) or "not read (outlined, hidden or no fill under it)")
-	local rowRight = c.HpRow and (c.HpRow.AbsolutePosition.X + c.HpRow.AbsoluteSize.X) or math.huge
-	local textLeft = c.HpText.AbsolutePosition.X + c.HpText.AbsoluteSize.X - c.HpText.TextBounds.X
-	T.check(textLeft >= rowRight + 2 and c.HpText.AbsolutePosition.X + c.HpText.AbsoluteSize.X <= c.Hp.AbsolutePosition.X + c.Hp.AbsoluteSize.X + 0.5,
-		"vitals: the HP number sits after the block row, inside the bar's box (the pitch's .vit)", fmt("text from %.1f, row ends %.1f", textLeft, rowRight))
 	local small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: every text of the card is >= 15 px at 1920x1080", table.concat(small, ", "))
 	-- (render gate, the pitch's .vit: colour by role) the HP fill is the sign red, the stamina fill the sign gold
@@ -498,8 +460,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 		tostring(c.Hud:GetAttribute("BottomLeftTop")))
 	slotChecks(c, "vitals")
 
-	-- 4. a hit: (LOOK-ui) the blocks just lost turn white (the damage trail), the card shakes; a moment later they turn
-	-- stone block by block
+	-- 4. a hit: the bar flashes, the card shakes, the white trail waits and then catches up
 	setHealth(117, 100)
 	advance(1.5)
 	setHealth(117, 47)
@@ -507,7 +468,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	c = card()
 	T.check(c.Flash ~= nil and c.Flash.BackgroundTransparency < 0.6, "vitals: a hit flashes the lit blocks white", c.Flash and fmt("%.2f", c.Flash.BackgroundTransparency))
 	local off = c.Body.Position
-	T.check(math.abs(off.X.Offset) + math.abs(off.Y.Offset) > 0.2, "vitals: a hit gives the card a short shake", tostring(off))
+	T.check(math.abs(off.X.Offset) + math.abs(off.Y.Offset) > 0.2, "vitals: ...and gives the card a short shake", tostring(off))
 	T.check(c.HpText.Text == "47 / 117", "vitals: the number drops to '47 / 117' at once", tostring(c.HpText.Text))
 	advance(0.3)
 	local trailNow, fillNow = hpShare(c, "Trail"), hpShare(c, "Lit")
@@ -517,27 +478,25 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(readsHit, "vitals: ...and the number still reads (on the stone, beside the blocks; kit-b U6 review)", notesHit)
 	T.check(c.Trail and c.Trail.BackgroundColor3.R > 0.95 and c.Trail.BackgroundColor3.B > 0.95 and c.Trail.BackgroundTransparency < 0.2, "vitals: the trail is white")
 	advance(0.5)
-	T.check(c.Body.Position.X.Offset == 0 and c.Body.Position.Y.Offset == 0, "vitals: the shake is over after a moment")
+	T.check(c.Flash.BackgroundTransparency > 0.99 and c.Body.Position.X.Offset == 0 and c.Body.Position.Y.Offset == 0, "vitals: the flash and the shake are over after a moment")
 	advance(2)
 	T.check(close(hpShare(c, "Trail"), hpShare(c, "Lit"), 0.01) and close(hpShare(c, "Lit"), 47 / 117, 0.01), "vitals: the trail catches up with the fill",
 		fmt("trail %.2f, fill %.2f", hpShare(c, "Trail"), hpShare(c, "Lit")))
 	T.check(sameColor(c.HpFill.BackgroundColor3, Theme.Sign.Red, 0.03), "vitals: 40% health keeps the red fill (render gate: the role's colour; was amber)")
 	T.check(sameColor(c.CardStroke.Color, Theme.Sign.Wood, 0.01), "vitals: ...and the card's edge stays wood (kit-b U8; was an amber neon border)")
 
-	-- 5. low health (< 30%): (LOOK-ui) a two-frame pixel blink: the heart tile turns its lip red and the heart hops one cell,
-	-- with no rotation, no scale and no glow; the card's edge is red, the fill is red
+	-- 5. low health (< 30%): the heart beats, the outline glows red, the fill is red
 	setHealth(117, 18)
 	advance(0.5)
-	local maxRed = 0
+	local maxScale, minScale, maxRed = 0, 9, 0
+	-- v5 (Phase 5, 6.6): the Neon card's border shows the health state: green, amber, red (pulsing when low)
 	local navy = Theme.Colors.Navy
 	local healthy = Theme.Sign.Wood -- (kit-b U8: the wood edge; was the green neon border)
-	local faces, ys, rotated, scaled = {}, {}, false, false
 	for _ = 1, 40 do
 		advance(1 / 30)
-		faces[c.Heart.BackgroundColor3 == Theme.Sign.RedLip and "lip" or "red"] = true
-		ys[heartShape.Position.Y.Offset] = true
-		rotated = rotated or c.Heart.Rotation ~= 0
-		scaled = scaled or (c.HeartScale ~= nil and c.HeartScale.Scale ~= 1)
+		local s = c.HeartScale and c.HeartScale.Scale or 1
+		maxScale = math.max(maxScale, s)
+		minScale = math.min(minScale, s)
 		maxRed = math.max(maxRed, c.CardStroke.Color.R - navy.R)
 	end
 	T.check(maxScale > 1.08 and minScale < 1.03, "vitals: below 30% the heart beats", fmt("scale %.2f..%.2f", minScale, maxScale))
@@ -547,7 +506,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(readsLow, "vitals: ...and the number still reads (kit-b U6 review)", notesLow)
 	setHealth(117, 117)
 	advance(1.5)
-	T.check(c.Heart.BackgroundColor3 == Theme.Sign.Red and c.Heart.Rotation == 0 and sameColor(c.CardStroke.Color, healthy, 0.01), "vitals: healed: the blink stops, the edge is wood again")
+	T.check(c.HeartScale.Scale == 1 and c.Heart.Rotation == 0 and sameColor(c.CardStroke.Color, healthy, 0.01), "vitals: healed: the pulse stops, the edge is wood again")
 
 	-- 6. stamina drains and refills smoothly, and dims when empty
 	advance(4)

@@ -591,9 +591,13 @@ local function clientScenarios()
 							local py0, py1 = pill.AbsolutePosition.Y, pill.AbsolutePosition.Y + pill.AbsoluteSize.Y
 							local vy0 = vitals.AbsolutePosition.Y
 							local areaH = hg.AbsoluteSize.Y
-							T.check(py1 <= vy0 and py0 >= 0.645 * areaH - 0.5,
-								string.format("bug2 mouse %dx%d: the 'press L' pill sits above the vitals card, below the middle band", size[1], size[2]),
-								string.format("pill %.0f-%.0f, vitals top %.0f, area %.0f", py0, py1, vy0, areaH))
+							-- (merge U9-8 x U9-9) or docked beside the card (MouseLock's U9-9 look 2 rule when the card leaves no room
+							-- above it under the band: U9-8's taller vitals card does at 1280 x 600), clear of its right edge
+							local vx1 = vitals.AbsolutePosition.X + vitals.AbsoluteSize.X
+							local docked = hg:GetAttribute("Docked") == true and pill.AbsolutePosition.X >= vx1
+							T.check((py1 <= vy0 or docked) and py0 >= 0.645 * areaH - 0.5,
+								string.format("bug2 mouse %dx%d: the 'press L' pill sits above the vitals card (or docked beside it), below the middle band", size[1], size[2]),
+								string.format("pill %.0f-%.0f x %.0f, vitals top %.0f right %.0f, area %.0f, docked %s", py0, py1, pill.AbsolutePosition.X, vy0, vx1, areaH, tostring(hg:GetAttribute("Docked"))))
 						end
 						ML.Hold("bug2:hint")
 						ML.Release("bug2:hint")
