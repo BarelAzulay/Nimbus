@@ -158,7 +158,7 @@ local K = {
 	SPAN_MARGIN = 4, -- two vertical spans closer than this count as touching
 
 	LOW_HEALTH = 0.3, -- below this the heart beats and the card pulses red
-	TRAIL_HOLD = 0.45, -- seconds the white damage trail waits before it catches up
+	TRAIL_HOLD = 0.25, -- seconds the blocks just lost stay white (the damage trail) before they turn stone (LOOK-ui)
 	TRAIL_SPEED = 0.6, -- ... then drains this much of the bar per second
 	HIT_SECONDS = 0.32, -- damage flash + card shake
 	SHAKE_PX = 5,
@@ -181,7 +181,7 @@ local VG = {
 	Regular = {
 		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 0, CARD_CORNER = 0, -- (kit-b U8: square)
 		BADGE_X = 25, HEART = 32, HEART_Y = 26, HEART_TEXT = 22, BOLT = 32, BOLT_Y = 72,
-		HP_X = 49, HP_Y = 8, HP_H = 36, HP_TEXT = 26, PAD_R = 10,
+		HP_X = 49, HP_Y = 8, HP_H = 36, HP_TEXT = 24, PAD_R = 10, -- (LOOK-ui) the number beside the row now: 24 px
 		ST_X = 49, ST_Y = 61, ST_H = 22,
 		-- (LOOK-ui) the pitch's .key on the stamina row, inside the card (above its lip)
 		KEY_W = 36, KEY_H = 30, KEY_Y = 72, KEY_GAP = 8, KEY_SPAN = false,
@@ -630,7 +630,12 @@ local function mobileRects()
 	local dy = insetShift(mobile)
 	for _, d in ipairs(mobile:GetDescendants()) do
 		if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.AbsoluteSize.X > 0 and shownIn(d, mobile) then
-			table.insert(out, rectOf(d, dy))
+			-- (LOOK-ui) a kit tile's wood edge is a Border stroke drawn outside its box: it counts
+			local r = rectOf(d, dy)
+			local edge = d:FindFirstChild("SignEdge")
+			local e = (edge and edge:IsA("UIStroke")) and edge.Thickness or 0
+			r.x0, r.y0, r.x1, r.y1 = r.x0 - e, r.y0 - e, r.x1 + e, r.y1 + e
+			table.insert(out, r)
 		end
 	end
 	return out
@@ -1127,148 +1132,148 @@ end
 -- (a sweep that fills clockwise while the dash recharges). Shapes are Frames (no font glyphs, no images);
 -- the parts are placed by setVitalsGeometry (VG.Regular / VG.Compact).
 
--- Fill of a vitals tube (kit-b U8: the pitch's .hp i): the flat colour and a hard darker lip along the bottom (no gloss).
-function Vitals.BarSequence(color)
-	return ColorSequence.new({
-		ColorSequenceKeypoint.new(0, color),
-		ColorSequenceKeypoint.new(0.7, color),
-		ColorSequenceKeypoint.new(0.72, Theme.Darken(color, 0.22)),
-		ColorSequenceKeypoint.new(1, Theme.Darken(color, 0.22)),
-	})
-end
-
--- A chunky tube: dark inset track with a rounded outline, an optional white damage trail behind a gradient
--- fill with a highlight strip, a white flash layer on the fill and an optional centred number.
--- opts: Color, Trail (bool), Text. Placed and sized by setVitalsGeometry.
+-- (LOOK-ui, kitb-look1: the owner's bar language, "every bar in the same pixel block-bar language") the HP is a block bar
+-- like the stamina row under it: SignKit.FitBlocks, Vitals.HP_BLOCKS blocks with the stamina row's 2 px wood edge, 4 px
+-- lip and 4 px gap, lit in the sign red on the red lip token (was a continuous fill whose lip was a UIGradient step in a
+-- darkened red). Whole fifths red, the fifth still left a red run of whole px across a well block (the stamina row's
+-- charge), the empty ones the well. Damage: the blocks just lost turn white (the trail, H.Trail) for a moment, then stone.
+-- The number sits at the row's right in the ink, as the pitch's .vit ("100 / 100" after the bar): over the row its glyphs
+-- crossed the blocks' wood edges (2.5:1). Five blocks, not ten: beside the number a 236 px card leaves ~70 px of row, ten
+-- blocks there are 4 px faces (pips). opts: Color, Text. Placed and sized by setVitalsGeometry. Returns { Root
+-- ("HealthBar"), Row, Label, SetFraction, SetTrail, SetColor, Invalidate, SetText, SetTextSize }
+Vitals.HP_BLOCKS = 5
+Vitals.HP_TEXT_GAP = 8 -- design px between the row and its number
 function Vitals.NewBar(parent, name, opts)
-	-- (kit-b U8) the track is the stone well in a wood edge, square (the pitch's .hp)
-	local root = newFrame(parent, name, {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Sign.Well,
+	local root = newFrame(parent, name, { ZIndex = 2 })
+	local n = Vitals.HP_BLOCKS
+	local color = opts.Color or Theme.Sign.Red
+	local row = SignKit.FitBlocks(root, {
+		Name = "BlockRow",
+		Count = n,
+		Size = UDim2.fromScale(1, 1),
+		Gap = 4, -- (the stamina row's gap, edge and lip: one block language on the card)
+		EdgePx = 2,
+		LipPx = 4,
+		Fill = color,
+		FillLip = Theme.SignLipOf(color),
 		ZIndex = 2,
 	})
-	local edge = Theme.Stroke(root, Theme.Sign.Wood, 2, 0)
-	edge.LineJoinMode = Enum.LineJoinMode.Miter
-
-	local inner = newFrame(root, "Inner", {
-		Position = UDim2.fromOffset(3, 3),
-		Size = UDim2.new(1, -6, 1, -6),
+	local label = newText(root, "Text", opts.Text or "", "Display", 26, Theme.Sign.Text, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(1, 0),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Size = UDim2.new(0, 0, 1, -2), -- (on the faces' line, over the lips)
+		ZIndex = 6,
 	})
-	local trail = nil
-	if opts.Trail then
-		trail = newFrame(inner, "DamageTrail", {
-			BackgroundTransparency = 0.04,
-			BackgroundColor3 = WHITE,
-			Size = UDim2.fromScale(1, 1),
-			ZIndex = 1,
-		})
-	end
-	local fill = newFrame(inner, "Fill", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 2,
-	})
-	local gradient = Instance.new("UIGradient")
-	gradient.Name = "Lip"
-	gradient.Rotation = 90
-	gradient.Color = Vitals.BarSequence(opts.Color)
-	gradient.Parent = fill
-	local flash = newFrame(fill, "Flash", {
-		BackgroundTransparency = 1,
-		BackgroundColor3 = WHITE,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 4,
-	})
-	-- kit B (no outline on a surface): the number reads by the colour of what lies under it, and the fill moves under a
-	-- centred number. So it is drawn three times, each copy clipped to one stretch of the tube: dark ink over the fill
-	-- (Theme.TextOn of the fill's gradient), dark ink over the white damage trail, white over the dark track.
-	local label, windows = nil, {}
-	if opts.Text then
-		for _, spec in ipairs({ { "TextFill", Theme.TextOn(Vitals.BarSequence(opts.Color)) }, { "TextTrail", Theme.TextOn(WHITE) }, { "TextTrack", Theme.TextOn("Well") } }) do
-			local clip = newFrame(inner, spec[1], {
-				ClipsDescendants = true,
-				Size = UDim2.fromScale(1, 1),
-				ZIndex = 6,
-			})
-			local copy = newText(clip, "Text", opts.Text, "Display", 26, spec[2], {
-				TextXAlignment = Enum.TextXAlignment.Center,
-				Position = UDim2.fromOffset(0, -1),
-				ZIndex = 6,
-			})
-			windows[#windows + 1] = { Clip = clip, Label = copy }
-		end
-		label = windows[1].Label
-	end
-
-	local bar = { Root = root, Inner = inner, Fill = fill, Trail = trail, Flash = flash, Label = label, Labels = {} }
-	for i, w in ipairs(windows) do
-		bar.Labels[i] = w.Label
-	end
-	local shownFill, shownTrail = -1, -1
-	-- each copy shows only between a and b (fractions of the tube); its label keeps the whole tube's box
-	local function window(w, a, b)
-		local span = b - a
-		w.Clip.Visible = span > 0.001
-		if span > 0.001 then
-			w.Clip.Position = UDim2.fromScale(a, 0)
-			w.Clip.Size = UDim2.fromScale(span, 1)
-			w.Label.Position = UDim2.new(-a / span, 0, 0, -1)
-			w.Label.Size = UDim2.fromScale(1 / span, 1)
+	-- the number's box: as wide as its text with every digit an 8 at the size it has, and only ever growing (the row does
+	-- not jump at each hit; "DOWNED" may widen it once)
+	local textW = 0
+	local function fitText()
+		local probe = string.gsub(label.Text, "%d", "8")
+		local ok, m = pcall(Theme.Measure, probe, "Display", label.TextSize)
+		local w = math.ceil((ok and typeof(m) == "Vector2" and m.X > 0) and m.X or #probe * label.TextSize * 0.6)
+		if w > textW then
+			textW = w
+			label.Size = UDim2.new(0, w, 1, -2)
+			row.Size = UDim2.new(1, -(w + Vitals.HP_TEXT_GAP), 1, 0)
 		end
 	end
-	local function placeText()
-		if #windows == 0 then
+	local bar = { Root = root, Row = row, Label = label, Labels = { label } }
+	local shownFill, shownTrail, painted = 1, 1, nil
+	local function paint()
+		local lip = Theme.SignLipOf(color)
+		local units = Util.Clamp(shownFill, 0, 1) * n
+		local k = math.floor(units + 1e-6)
+		local part = units - k
+		-- the trail's blocks past the fill (none once it caught up: the block still charging is not a lost one)
+		local trailU = math.max(shownTrail, shownFill) * n
+		local lost = trailU > units + 1e-4 and math.ceil(trailU - 1e-6) or k
+		local key = string.format("%d:%.3f:%d:%s", k, part, lost, tostring(color))
+		if painted == key then
 			return
 		end
-		local f = math.max(shownFill, 0)
-		local t = math.max(trail and shownTrail or f, f)
-		window(windows[1], 0, f)
-		window(windows[2], f, t)
-		window(windows[3], t, 1)
-	end
-	if #windows > 0 then
-		-- the fill starts full: only the fill's copy shows until the first SetFraction
-		window(windows[1], 0, 1)
-		window(windows[2], 1, 1)
-		window(windows[3], 1, 1)
+		painted = key
+		root:SetAttribute("Fill", shownFill)
+		root:SetAttribute("Lit", k)
+		root:SetAttribute("Lost", math.max(0, lost - k))
+		for i = 1, n do
+			local block = row:FindFirstChild("Block" .. i)
+			local face = block and block:FindFirstChild("Face")
+			local faceLip = face and face:FindFirstChild("Lip")
+			local run = face and face:FindFirstChild("Charge")
+			if face and faceLip then
+				local charging = i == k + 1 and part > 0.001
+				if i <= k then
+					face.BackgroundColor3, faceLip.BackgroundColor3 = color, lip
+				elseif i <= lost then
+					face.BackgroundColor3, faceLip.BackgroundColor3 = WHITE, Theme.Sign.StoneLip -- just lost: white, then stone
+				else
+					face.BackgroundColor3, faceLip.BackgroundColor3 = Theme.Sign.Well, Theme.Sign.Well
+				end
+				if charging then
+					if not run then
+						run = newFrame(face, "Charge", { BackgroundTransparency = 0, ZIndex = 3 })
+						newFrame(run, "Lip", {
+							AnchorPoint = Vector2.new(0, 1),
+							Position = UDim2.new(0, 0, 1, 0),
+							BackgroundTransparency = 0,
+							ZIndex = 3,
+						})
+					end
+					local s = PixelIcon.RestScale(face)
+					local fw = face.AbsoluteSize.X
+					local px = (s > 0 and fw > 0) and (math.floor(part * fw) / s) or 0
+					run.Size = UDim2.new(0, px, 1, 0)
+					run.BackgroundColor3 = color
+					run.Lip.BackgroundColor3 = lip
+					run.Lip.Size = UDim2.new(1, 0, 0, PixelIcon.Px(4, s))
+					run.Visible = px > 0
+				elseif run then
+					run.Visible = false
+				end
+			end
+		end
 	end
 	function bar.SetFraction(value)
 		value = Util.Clamp(tonumber(value) or 0, 0, 1)
-		if value == shownFill then
-			return
+		if value ~= shownFill then
+			shownFill = value
+			paint()
 		end
-		shownFill = value
-		fill.Size = UDim2.fromScale(value, 1)
-		placeText()
 	end
 	function bar.SetTrail(value)
 		value = Util.Clamp(tonumber(value) or 0, 0, 1)
-		if trail and value ~= shownTrail then
+		if value ~= shownTrail then
 			shownTrail = value
-			trail.Size = UDim2.fromScale(value, 1)
-			placeText()
+			paint()
 		end
 	end
-	function bar.SetColor(color)
-		gradient.Color = Vitals.BarSequence(color)
-		if windows[1] then
-			windows[1].Label.TextColor3 = Theme.TextOn(Vitals.BarSequence(color))
+	function bar.SetColor(newColor)
+		if typeof(newColor) == "Color3" and newColor ~= color then
+			color = newColor
+			SignKit.SetBlockCount(row, n, color, Theme.SignLipOf(color))
+			painted = nil
+			paint()
 		end
 	end
 	function bar.Invalidate()
-		shownFill = -1 -- the size changed: place the text windows again on the next SetFraction
+		painted = nil -- the size changed: the charging run is measured again on the next paint
+		paint()
 	end
 	function bar.SetText(text)
-		for _, w in ipairs(windows) do
-			w.Label.Text = tostring(text or "")
-		end
+		label.Text = tostring(text or "")
+		fitText()
 	end
 	function bar.SetTextSize(size)
-		for _, w in ipairs(windows) do
-			w.Label.TextSize = size
+		if label.TextSize ~= size then
+			label.TextSize = size
+			textW = 0 -- measured again at the new size
+			fitText()
 		end
 	end
+	row:GetPropertyChangedSignal("AbsoluteSize"):Connect(bar.Invalidate)
+	fitText()
+	paint()
 	return bar
 end
 
@@ -2176,19 +2181,16 @@ local function updateHealth(dt, now)
 		end
 	end
 
-	-- a hit: a white flash on the fill and a short shake of the card, both fading out
-	local flash = UI.HpBar.Flash
+	-- a hit: a short shake of the card, fading out (LOOK-ui: the blocks just lost are the flash, white on the trail)
 	local since = now - H.HitAt
 	if since >= 0 and since < K.HIT_SECONDS then
 		local k = 1 - since / K.HIT_SECONDS
-		flash.BackgroundTransparency = 1 - 0.85 * k
 		local amp = K.SHAKE_PX * k
 		-- (LOOK-ui) the shake moves the card by whole px (a fractional offset blurred every edge of the card)
 		UI.VitalsBody.Position = UDim2.fromOffset(math.floor(math.sin(since * 70) * amp + 0.5), math.floor(math.cos(since * 52) * amp * 0.5 + 0.5))
 		H.HitFx = true
 	elseif H.HitFx then
 		H.HitFx = false
-		flash.BackgroundTransparency = 1
 		UI.VitalsBody.Position = UDim2.fromOffset(0, 0)
 	end
 

@@ -198,8 +198,9 @@ local K = {
 	-- tab's touch box keeps TapH.
 	-- (U9-4 look review: the cramped phone pages) the body's x 0 is the window's outer edge, so a tile or a gift box keeps
 	-- >= 3 px of stone round its 3 px outside stroke to the 6 px frame and to the 8 px stone lip, and 4 px between two
-	-- tiles' strokes: sides >= 12, gaps >= 10, BoxBottom >= 20; a box's Claim clears the box's 5 px lip and its own
-	-- stroke by 4 px (BoxPadBottom >= 12) and is 8 px narrower than the box's inside
+	-- tiles' strokes: sides >= 12, gaps >= 10, BoxBottom >= 20; a box's Claim clears the box's lip and its own stroke by
+	-- 4 px (LOOK-ui, kitb-look1: CloudUI.SignMetrics is SignKit's 5 px edge / 8 px lip now, was 3 / 5, so BoxPadBottom >= 15,
+	-- was 12) and is 8 px narrower than the box's inside
 	PC = {
 		Header = 76, HeadPad = 24, TabY = 12, TabH = 52, TabW = { 170, 200 }, TabGap = 10, TabText = 26, Close = 56, CloseY = 10,
 		Icon = 38, TitleText = 34, TitleW = 150, TitleGap = 22, TapH = 52,
@@ -214,7 +215,7 @@ local K = {
 		Compact = { TilesY = 76, AfterTiles = 16, WispH = 30, WispGap = 4, BarH = 20, BarGap = 16, ClaimH = 72, ClaimGap = 8, KeepH = 30, Bottom = 10 },
 		-- the Play page (card B at 1080p: body 1180 x 644; the rows slide from PlayCompact to PlayFull like the Daily page)
 		PlaySide = 28, PlayY = 18, PlayH = 44, PlayText = 32, PausedText = 26, AllW = 252, AllH = 60, AllY = 12, AllText = 24,
-		AllGap = 16, BoxSide = 28, BoxW = 260, BoxMaxH = 250, BoxCols = 4, BoxGap = 28, BoxPadTop = 12, BoxPadBottom = 14,
+		AllGap = 16, BoxSide = 28, BoxW = 260, BoxMaxH = 250, BoxCols = 4, BoxGap = 28, BoxPadTop = 12, BoxPadBottom = 17,
 		TimeText = 24, GiftPx = 110, RewardText = 24, SlotH = 56, TierBtnW = 200, TierBtnText = 24, ClockText = 26,
 		BoxMinGap = 6,
 		PlayFull = { BoxRowsY = 92, BoxRowGap = 30, BoxBottom = 22 }, PlayCompact = { BoxRowsY = 80, BoxRowGap = 14, BoxBottom = 20 },
@@ -232,7 +233,7 @@ local K = {
 		-- the Play page (card B on a 844 x 390 phone: body 820 x 280, seven boxes in one row)
 		PlaySide = 14, PlayY = 2, PlayH = 44, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 2, AllText = 15,
 		AllGap = 12, BoxSide = 14, BoxW = 104, BoxMaxH = 204, BoxCols = 7, BoxGap = 12, BoxRowsY = 58, BoxRowGap = 0,
-		BoxBottom = 20, BoxPadTop = 6, BoxPadBottom = 12, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
+		BoxBottom = 20, BoxPadTop = 6, BoxPadBottom = 15, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
 		TierBtnText = 16, ClockText = 16, BoxMinGap = 4,
 	},
 	PORTRAIT = {
@@ -251,7 +252,7 @@ local K = {
 		-- the Play page: the header on two lines, CLAIM ALL centred under it, four boxes a row
 		PlaySide = 15, PlayY = 4, PlayH = 40, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 48, AllText = 15,
 		AllGap = 0, BoxSide = 15, BoxW = 104, BoxMaxH = 204, BoxCols = 4, BoxGap = 10, BoxRowsY = 100, BoxRowGap = 10,
-		BoxBottom = 20, BoxPadTop = 4, BoxPadBottom = 12, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
+		BoxBottom = 20, BoxPadTop = 4, BoxPadBottom = 15, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
 		TierBtnText = 15, ClockText = 15, BoxMinGap = 4,
 	},
 }

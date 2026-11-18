@@ -1348,8 +1348,10 @@ local function paintTile(tile)
 				child:Destroy()
 			end
 		end
+		-- (LOOK-ui, kitb-look1: "Nature" ran 5 px past a 91 px card into the next one) the Pets cards' icon-only corner chip:
+		-- one card, one look in both windows; the element's name is in the detail
 		for i, element in ipairs(elements) do
-			elementPill(tile.Elements, element, 18, i)
+			CloudUI.ElementChip(tile.Elements, element, 26, { Name = "Element_" .. element, LayoutOrder = i, ZIndex = 4 })
 		end
 	end
 	-- fused pets: a tier / hybrid chip (top-right) and the copy's level
@@ -1475,8 +1477,8 @@ local function buildTile(def, index)
 		ZIndex = 4,
 	})
 	tile.Elements = makeFrame(button, "Elements", {
-		Position = UDim2.fromOffset(6, 6),
-		Size = UDim2.new(1, -12, 0, 26),
+		Position = UDim2.fromOffset(7, 7), -- (LOOK-ui) where the Pets card's corner chip sits
+		Size = UDim2.new(1, -14, 0, 28),
 		ZIndex = 4,
 	})
 	listLayout(tile.Elements, Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)

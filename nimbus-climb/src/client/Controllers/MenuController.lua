@@ -2685,7 +2685,8 @@ do
 			Height = 30,
 			TextSize = 20,
 			Color = P5.HS.Gold,
-			Skin = "Sign", -- (kit-b U9-1) a flat well track in a wood edge, the gold fill and its lip
+			Skin = "Sign", -- (LOOK-ui) a block bar: gold blocks on the gold lip token, the level beside it
+			LabelSide = "Right",
 			Parent = prestige,
 		})
 		H.PrestigeNeed = makeText(prestige, "Need", "", "Heading", 18, P5.HS.TextMuted, {

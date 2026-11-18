@@ -107,7 +107,6 @@ local K = {
 	POWER_W = 240, -- design px Team power needs beside the button columns (a big number at 24 px); with less (a tablet) the top row stacks
 	STACK_W = 446, -- design px of a stacked top row: Auto-fill + Clear + the three team buttons
 	STACK_CLEAR_W = 100, -- ... Clear's (or Undo's) part of it
-	WIDE_ROWS_W = 380, -- design px of the detail's rows: below this the two columns share them unevenly
 	WIDE_W = 1150, -- design px: from this window width the buttons and the detail take their full size
 	PHONE_CARD = { 104, 130, 6 },
 	CARD_LIP = 6, -- (kit-b U8) px of a card's rarity lip
@@ -127,7 +126,8 @@ local GARDEN_COLOR = SIGN.Grass
 local TRAIN_COLOR = SIGN.Violet
 local TIER_COLORS = { Golden = Color3.fromRGB(246, 196, 64), Rainbow = Color3.fromRGB(226, 110, 214), Hybrid = Color3.fromRGB(150, 110, 232) }
 local XP_COLOR = SIGN.Sky
-local ROWS = { { "Income", "Coins" }, { "Power", "Battle power" }, { "Health", "Health" }, { "Speed", "Speed" } }
+-- id, name, the short name a one-line tile falls back to (LOOK-ui: "Battle powe13,213" ran into its number)
+local ROWS = { { "Income", "Coins", "Coins" }, { "Power", "Battle power", "Power" }, { "Health", "Health", "Health" }, { "Speed", "Speed", "Speed" } }
 
 -- typography (kit-b U7b: the sword, the stars and the busy / work marks are PixelIcons, ICON; the emoji went)
 local G = {
@@ -896,23 +896,29 @@ function H.buildDetail()
 	-- (LOOK-ui, kitb-look1: the pitch's .di) the level line, then the rarity and the element as chips on one row (MetaRow:
 	-- Meta "Lv 1 / 100" and its stars, a rarity tag in its colour, each element's CloudUI.ElementChip with its name)
 	d.MetaRow = frame(d.Frame, "MetaRow", { ZIndex = 21 })
-	Util.Create("UIListLayout", {
+	d.MetaLayout = Util.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, 6),
 		Parent = d.MetaRow,
 	})
+	d.MetaLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		safe("metaOverflow", H.metaOverflow)
+	end)
 	d.Meta = text(d.MetaRow, "Meta", "", "Body", 19, MUTED, {
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Size = UDim2.new(0, 80, 1, 0), -- (its width: the text and its stars, H.fitMeta)
 		LayoutOrder = 1,
 		ZIndex = 21,
 	})
-	d.Xp = CloudUI.Bar({ Name = "XpBar", Height = 26, TextSize = 18, Color = XP_COLOR, Skin = "Sign", Parent = d.Frame })
+	-- (LOOK-ui, kitb-look1) the XP as a block bar (CloudUI.Bar Sign: ten sky blocks on the sky lip token), its numbers beside it
+	d.Xp = CloudUI.Bar({ Name = "XpBar", Height = 26, TextSize = 18, Color = XP_COLOR, Skin = "Sign", LabelSide = "Right", Parent = d.Frame })
 	d.Xp.Root.ZIndex = 21
 	-- (LOOK-ui, kitb-look1: the pitch's .sv) each stat a tile: the tile face in its wood edge, an icon square in the stat's
-	-- role colour with its pixel icon (coins gold, battle power red, health pink, speed sky), the name, the number
+	-- role colour with its pixel icon (coins gold, battle power red, health pink, speed sky), the name, the number. The
+	-- square is sized from the icon's whole-px cells (PixelIcon.Chip), so the icon never hangs over it; H.placeRows lays the
+	-- name over the number on PC (the pitch's two lines), beside it on a phone (H.fitRows keeps them apart)
 	for _, row in ipairs(ROWS) do
 		local look = ROW_LOOK[row[1]] or { "coin", SIGN.Gold }
 		local holder = frame(d.Frame, "Row_" .. row[1], { ZIndex = 21, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile })
@@ -920,7 +926,7 @@ function H.buildDetail()
 		edge.Name = "SignEdge"
 		edge.LineJoinMode = Enum.LineJoinMode.Miter
 		local chip = frame(holder, "Chip", { BackgroundTransparency = 0, BackgroundColor3 = look[2], ZIndex = 22 })
-		local icon = PixelIcon.New(chip, look[1], 18, Theme.TextOn(look[2]))
+		local icon = PixelIcon.Chip(chip, look[1], 18, Theme.TextOn(look[2]))
 		if icon then
 			icon.ZIndex = 23
 			for _, cell in ipairs(icon:GetChildren()) do
@@ -929,7 +935,11 @@ function H.buildDetail()
 		end
 		local label = text(holder, "Label", row[2], "Body", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 22 })
 		local value = text(holder, "Value", "", "Heading", 19, INK, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 22 })
-		U.Rows[row[1]] = { Frame = holder, Label = label, Value = value, Chip = chip, Icon = icon }
+		local r = { Frame = holder, Label = label, Value = value, Chip = chip, Icon = icon, Name = row[2], Short = row[3] }
+		U.Rows[row[1]] = r
+		value:GetPropertyChangedSignal("Text"):Connect(function()
+			H.fitRow(r)
+		end)
 	end
 	-- (LOOK-ui, kitb-look1: the pitch's .sp) the pet's special on a Selected strip in its wood edge, the pixel star first
 	d.Special = frame(d.Frame, "Special", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Selected, ZIndex = 21 })
@@ -1210,7 +1220,7 @@ function H.layoutCard(item)
 	end
 	item.TierMark.TextSize = fs
 	if item.Element then
-		place(item.Element, 7, 7, K.CHIP, K.CHIP)
+		item.Element.Position = UDim2.fromOffset(7, 7) -- (LOOK-ui) it sizes itself from its icon's whole-px cells
 	end
 	place(item.Number, w - 7 - K.CHIP, 7, K.CHIP, K.CHIP)
 	place(item.Tier, w - 7 - K.CHIP, 11 + K.CHIP, K.CHIP, K.CHIP)
@@ -1221,6 +1231,37 @@ function H.layoutCard(item)
 	place(item.Busy, 0, 0, w, phone and 58 or 70)
 	H.padTop(item.Busy, 7 + K.CHIP) -- the label and its mark under the chips row (the team number stays on top)
 	item.Busy.TextWrapped = true
+end
+
+-- (LOOK-ui, kitb-look1: on a 116 px card "Gardening" with its mark 6 px before it ran edge to edge, the mark glued to the
+-- word) a card cover's mark sits in the cover's top-left corner, on the chips' row (the team number's mirror), the word
+-- alone centred under it. The mark is the label's "Icon" (PixelIcon.New, 2 px cells); nil takes it off
+function H.busyMark(item, name)
+	local busy = item.Busy
+	PixelIcon.Mark(busy, nil)
+	local mark = busy:FindFirstChild("Icon")
+	if mark and mark:GetAttribute("PixelIcon") ~= name then
+		mark:Destroy()
+		mark = nil
+	end
+	if not name then
+		return
+	end
+	if not mark then
+		mark = PixelIcon.New(busy, name, 18, busy.TextColor3)
+		if not mark then
+			return
+		end
+		mark.ZIndex = busy.ZIndex
+		for _, cell in ipairs(mark:GetChildren()) do
+			cell.ZIndex = busy.ZIndex
+		end
+	end
+	-- the cover's padding moves its children: undone, so the mark sits 7 + 4 px in from the card's corner
+	local pad = busy:FindFirstChildOfClass("UIPadding")
+	local top = pad and pad.PaddingTop.Offset or 0
+	local left = pad and pad.PaddingLeft.Offset or 0
+	mark.Position = UDim2.fromOffset(7 + (K.CHIP - 18) / 2 - left, 7 + (K.CHIP - 18) / 2 - top)
 end
 
 -- the slot's parts: a square on PC, a short wide card on a phone
@@ -1258,25 +1299,64 @@ end
 -- label there and a pet's power the long number.
 -- (LOOK-ui) the stat tiles two by two, ROW_VGAP between the lines; each tile's icon square, name and number inside it
 local ROW_VGAP = 6
+-- (LOOK-ui, kitb-look1: the blocker "Battle powe13,213") a PC tile is the pitch's .sv: two lines, the name small and muted
+-- on top, the number under it in the Heading face (45 design px: whole px under the 0.8 Fit). A phone tile keeps one
+-- line, its name fitted beside the number (H.fitRows)
+local ROW2_H = 45
 function H.placeRows(x, y, totalW, rowH, gap, phone)
+	-- (two lines: both columns the same width, the long name no longer shares its line with the number)
 	local leftW = math.floor((totalW - gap) / 2)
 	local rightW = leftW
-	if not phone and totalW < K.WIDE_ROWS_W then
-		leftW = math.floor((totalW - gap) * 0.41)
-		rightW = totalW - gap - leftW
-	end
-	local chipW = rowH - 6
+	local two = not phone
+	local s = S.Scale or 1
+	local chipW = PixelIcon.BoxPx(18, 2, s) -- the icon square from its whole-px cells (PixelIcon.Chip sizes it the same)
 	for i, row in ipairs(ROWS) do
 		local right, line = (i - 1) % 2 == 1, math.floor((i - 1) / 2)
 		local r = U.Rows[row[1]]
-		place(r.Frame, right and x + leftW + gap or x, y + line * (rowH + ROW_VGAP), right and rightW or leftW, rowH)
-		place(r.Chip, 3, 3, chipW, chipW)
-		if r.Icon then
-			local inset = math.floor((chipW - 18) / 2)
-			r.Icon.Position = UDim2.fromOffset(inset, inset)
+		local tileW = right and rightW or leftW
+		place(r.Frame, right and x + leftW + gap or x, y + line * (rowH + ROW_VGAP), tileW, rowH)
+		local chipY = Theme.Px(math.max(0, (rowH - chipW) / 2), s)
+		r.Chip.Position = UDim2.fromOffset(Theme.Px(4, s), math.floor(chipY * s + 1e-6) / s)
+		local textX = Theme.Px(4, s) + chipW + Theme.Px(8, s)
+		r.TileW, r.TextX, r.Two = tileW, textX, two
+		if two then
+			r.Label.Text = r.Name
+			r.Label.TextYAlignment = Enum.TextYAlignment.Top
+			r.Value.TextXAlignment = Enum.TextXAlignment.Left
+			r.Value.TextYAlignment = Enum.TextYAlignment.Top
+			place(r.Label, textX, Theme.Px(3, s), tileW - textX - 6, 18)
+			place(r.Value, textX, Theme.Px(21, s), tileW - textX - 6, 22)
+		else
+			r.Label.TextYAlignment = Enum.TextYAlignment.Center
+			r.Value.TextXAlignment = Enum.TextXAlignment.Right
+			r.Value.TextYAlignment = Enum.TextYAlignment.Center
+			place(r.Value, 0, 0, tileW - 6, rowH)
 		end
-		place(r.Label, chipW + 9, 0, (right and rightW or leftW) - chipW - 9 - 6, rowH)
-		place(r.Value, 0, 0, (right and rightW or leftW) - 6, rowH)
+	end
+	H.fitRows()
+end
+
+-- (LOOK-ui, kitb-look1) a one-line tile's name stops 6 px before its number (measured): the full name while it fits,
+-- else the short one ("Power"), else truncated. Run after the numbers change (H.refreshDetail)
+function H.fitRow(r)
+	if not (r.TileW and not r.Two) then
+		return
+	end
+	local ok, m = pcall(Theme.MeasureLabel, r.Value)
+	local valueW = math.ceil((ok and typeof(m) == "Vector2" and m.X > 0) and m.X or #r.Value.Text * r.Value.TextSize * 0.6)
+	local room = r.TileW - 6 - valueW - 6 - r.TextX
+	local name = r.Name
+	local okN, n = pcall(Theme.Measure, name, "Body", r.Label.TextSize)
+	if okN and typeof(n) == "Vector2" and n.X > room and r.Short then
+		name = r.Short
+	end
+	r.Label.Text = name
+	place(r.Label, r.TextX, 0, math.max(0, room), r.Frame.Size.Y.Offset)
+end
+
+function H.fitRows()
+	for _, r in pairs(U.Rows) do
+		H.fitRow(r)
 	end
 end
 
@@ -1313,14 +1393,16 @@ function H.layoutDetail(w, h)
 		place(d.Name, x, 6, nameW, phone and 28 or 34)
 		place(d.MetaRow, x, phone and 35 or 41, w - x - pad - (phone and narrow and 50 or 0), phone and 24 or 28)
 		H.fitMetaRow()
-		place(d.Xp.Root, x, phone and 62 or 70, w - x - pad, 24)
-		y = phone and 92 or 108
+		-- (LOOK-ui) a whole 6 px between the chips' row and the XP bar (it sat 0 to 1 px under them)
+		place(d.Xp.Root, x, phone and 65 or 75, w - x - pad, 24)
+		y = phone and 95 or 108
 		if narrow then
 			y = pic + 14
 		end
 		local rowX = (narrow or not phone) and pad or x
-		H.placeRows(rowX, y, w - rowX - pad, 26, 8, phone)
-		y = y + 2 * 26 + ROW_VGAP + 4
+		local rowH = phone and 26 or ROW2_H
+		H.placeRows(rowX, y, w - rowX - pad, rowH, 8, phone)
+		y = y + 2 * rowH + ROW_VGAP + 4
 		if phone and not narrow then
 			y = math.max(y, pic + 12)
 		end
@@ -1333,10 +1415,11 @@ function H.layoutDetail(w, h)
 		place(d.Name, pad, y, textW, 36)
 		place(d.MetaRow, pad, y + 38, textW, 28)
 		H.fitMetaRow()
-		place(d.Xp.Root, pad, y + 70, textW, 26)
-		y = y + 102
-		H.placeRows(pad, y, textW, 30, 10, phone)
-		y = y + 2 * 30 + ROW_VGAP + 6
+		place(d.Xp.Root, pad, y + 72, textW, 26)
+		y = y + 104
+		local rowH = phone and 30 or ROW2_H
+		H.placeRows(pad, y, textW, rowH, 10, phone)
+		y = y + 2 * rowH + ROW_VGAP + 6
 	end
 	d.TextY = y
 	d.TextW = textW
@@ -2015,7 +2098,7 @@ function H.refreshCards(keys)
 			item.Element = element and CloudUI.ElementChip(item.Button, element, K.CHIP, { ZIndex = 4 }) or nil
 			item.ElementId = element
 			if item.Element then
-				place(item.Element, 7, 7, K.CHIP, K.CHIP)
+				item.Element.Position = UDim2.fromOffset(7, 7)
 			end
 		end
 		local slot = slotOf[key]
@@ -2040,7 +2123,7 @@ function H.refreshCards(keys)
 		local busy = Bits.busyOf(key)
 		item.Busy.Visible = busy ~= nil
 		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
-		PixelIcon.Mark(item.Busy, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
+		H.busyMark(item, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
 		item.Busy.BackgroundColor3 = busy == "Training" and TRAIN_COLOR or GARDEN_COLOR
 	end
 	U.Grid.Visible = #order > 0
@@ -2080,6 +2163,16 @@ function H.metaTextW(text, size)
 	return math.ceil((ok and typeof(v) == "Vector2" and v.X > 0) and v.X or #text * size * 0.6)
 end
 
+-- (LOOK-ui, kitb-look1) the chips' height: the element chip's icon square (PixelIcon.BoxPx: 22 screen px at 2 px cells)
+function H.metaChipH()
+	return PixelIcon.BoxPx(18, 2, S.Scale or 1)
+end
+
+-- the measure's spare: Theme.Measure came out about 13 % short of the drawn FredokaOne in the renders, so the row steps
+-- down early; the chips size themselves (AutomaticSize) and H.metaOverflow steps down once more if they still overrun
+local META_SPARE = 1.15
+local META_RANK = { Full = 1, Tight = 2, Hide = 3 }
+
 function H.fitMetaRow()
 	local d = U.D
 	local key = S.Selected
@@ -2090,11 +2183,13 @@ function H.fitMetaRow()
 	end
 	local size = H.metaSize()
 	local gap = 6 -- the row's UIListLayout padding
-	local rarity = gap + H.metaTextW(tostring(def.Rarity), size) + 12
+	local chipH = H.metaChipH()
+	-- (LOOK-ui) a tag's text with 8 px each side; an element chip's square, 4 px, its name, 8 px
+	local rarity = gap + H.metaTextW(tostring(def.Rarity), size) * META_SPARE + 16
 	local chips, names = rarity, 0
 	for _, element in ipairs(Bits.elementsOf(def)) do
-		chips = chips + gap + size + 9
-		names = names + H.metaTextW(element, size) + 11
+		chips = chips + gap + chipH
+		names = names + H.metaTextW(element, size) * META_SPARE + 12
 	end
 	if d.MetaFull then
 		d.Meta.Text = d.MetaFull
@@ -2107,9 +2202,26 @@ function H.fitMetaRow()
 	end
 	-- (last: a 390 px portrait sheet with an evolved pet) the element chips stay off the line; the rarity keeps its tag
 	local mode = (d.Meta.Size.X.Offset + chips > rowW and "Hide") or (tight and "Tight") or "Full"
+	-- (LOOK-ui) a step H.metaOverflow took for this pet at this width holds (no flicker back up on the next refresh)
+	local floorKey = tostring(key) .. "|" .. rowW .. "|" .. size
+	if d.MetaFloorKey == floorKey and d.MetaFloor and META_RANK[d.MetaFloor] > META_RANK[mode] then
+		mode = d.MetaFloor
+		if d.MetaFloorShort and d.MetaShort then
+			d.Meta.Text = d.MetaShort
+			H.fitMeta()
+		end
+	end
 	if d.MetaRow:GetAttribute("Fit") ~= mode then
 		d.MetaRow:SetAttribute("Fit", mode)
 		H.metaChips(def)
+	end
+	-- a frame later, laid out, once more (the list's signal does not see an AutomaticSize chip growing inside it)
+	if not d.MetaCheck then
+		d.MetaCheck = true
+		task.delay(0, function()
+			d.MetaCheck = false
+			safe("metaOverflow", H.metaOverflow)
+		end)
 	end
 end
 
@@ -2131,20 +2243,23 @@ function H.metaChips(def)
 	end
 	local size = H.metaSize()
 	local color = CloudUI.RarityColor(def.Rarity)
-	-- (the chips' widths set from the measure, not AutomaticSize: H.fitMetaRow sums the same numbers)
+	local chipH = H.metaChipH()
+	-- (LOOK-ui, kitb-look1: "Mythic" and "Legendary" filled their tags edge to edge) the chips size themselves to their
+	-- drawn text (AutomaticSize) with 8 px each side; the element chip's name 4 px after its square (CloudUI.ElementChip)
 	local tag = text(d.MetaRow, "RarityChip", tostring(def.Rarity), "Heading", size, Theme.TextOn(color), {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = color,
-		Size = UDim2.fromOffset(H.metaTextW(tostring(def.Rarity), size) + 12, size + 9),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, chipH),
 		LayoutOrder = 2,
 		ZIndex = 22,
 	})
 	local tagEdge = stroke(tag, SIGN.Wood, 2, 0)
 	tagEdge.Name = "SignEdge"
 	tagEdge.LineJoinMode = Enum.LineJoinMode.Miter
-	Bits.pad(tag, 6, 0, 6, 0)
+	Bits.pad(tag, 8, 0, 8, 0)
 	for i, element in ipairs(fit == "Hide" and {} or Bits.elementsOf(def)) do
-		local chip = CloudUI.ElementChip(d.MetaRow, element, size + 9, {
+		CloudUI.ElementChip(d.MetaRow, element, 25, {
 			Label = not tight and element or nil,
 			TextSize = size,
 			Role = "Heading",
@@ -2152,15 +2267,53 @@ function H.metaChips(def)
 			LayoutOrder = 2 + i,
 			ZIndex = 22,
 		})
-		local label = chip and chip:FindFirstChild("Label")
-		if label then
-			local nameW = H.metaTextW(element, size) + 11
-			label.AutomaticSize = Enum.AutomaticSize.None
-			label.Size = UDim2.fromOffset(nameW, size + 9)
-			chip.AutomaticSize = Enum.AutomaticSize.None
-			chip.Size = UDim2.fromOffset(size + 9 + nameW, size + 9)
+	end
+end
+
+-- (LOOK-ui, kitb-look1) laid out, the row's chips still run past it (the drawn face is wider than the measure): one step
+-- down (names off the element chips, then the short level line, then the element chips off the line)
+function H.metaOverflow()
+	local d = U.D
+	local layout = d and d.MetaLayout
+	local key = S.Selected
+	local def = key and Bits.defOfKey(key) or nil
+	if not (layout and def and d.MetaRow.Visible) then
+		return
+	end
+	local s = PixelIcon.RestScale(d.MetaRow)
+	-- the row's content: the list's size, or the right edge of its farthest chip when that is wider (an AutomaticSize
+	-- chip can grow after the list measured it)
+	local content = layout.AbsoluteContentSize.X
+	local left = d.MetaRow.AbsolutePosition.X
+	for _, child in ipairs(d.MetaRow:GetChildren()) do
+		if child:IsA("GuiObject") and child.Visible then
+			content = math.max(content, child.AbsolutePosition.X + child.AbsoluteSize.X - left)
 		end
 	end
+	local room = d.MetaRow.AbsoluteSize.X
+	if s <= 0 or room <= 0 or content <= room + 0.5 then
+		return
+	end
+	local fit = d.MetaRow:GetAttribute("Fit") or "Full"
+	local floorKey = tostring(key) .. "|" .. d.MetaRow.Size.X.Offset .. "|" .. H.metaSize()
+	if d.MetaFloorKey ~= floorKey then
+		d.MetaFloorKey, d.MetaFloor, d.MetaFloorShort = floorKey, nil, nil
+	end
+	if fit == "Full" then
+		fit = "Tight"
+	elseif d.MetaShort and d.Meta.Text ~= d.MetaShort then
+		d.Meta.Text = d.MetaShort
+		d.MetaFloorShort = true
+		H.fitMeta()
+		return
+	elseif fit == "Tight" then
+		fit = "Hide"
+	else
+		return
+	end
+	d.MetaFloor = fit
+	d.MetaRow:SetAttribute("Fit", fit)
+	H.metaChips(def)
 end
 
 function H.refreshDetail(keys, order)
@@ -2243,6 +2396,7 @@ function H.refreshDetail(keys, order)
 	U.Rows.Power.Value.Text = commas(H.powerOf(key))
 	U.Rows.Health.Value.Text = commas(math.floor((tonumber(stats.Health) or 0) + 0.5))
 	U.Rows.Speed.Value.Text = commas(math.floor((tonumber(stats.Speed) or 0) + 0.5))
+	H.fitRows() -- (LOOK-ui) a one-line tile's name keeps clear of its new number
 	-- where it works / trains, and its evolution
 	local job = Bits.job(key)
 	local map = type(home.Garden) == "table" and home.Garden or {}

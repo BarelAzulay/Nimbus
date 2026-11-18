@@ -1128,6 +1128,8 @@ local function serverScenarios()
 			root.Size = UDim2.fromOffset(400, 400)
 			local ui = Instance.new("UIScale")
 			ui.Scale = sc
+			-- (LOOK-ui) a window's Fit is a rest scale (the gap is 6 screen px under it); a token pop (about 1.7) is transient
+			ui.Name = sc == 1.7 and "Pop" or "Fit"
 			ui.Parent = root
 			root.Parent = gui
 			-- the mock's TextBounds scales like Roblox's
@@ -1149,8 +1151,11 @@ local function serverScenarios()
 				label.TextXAlignment = align
 				label.Parent = root
 				local box = PI.Lead(label, "token", { After = after })
-				local px = PI.Snap(18)
-				local gap = math.max(3, math.floor(px / 4)) * sc
+				-- (LOOK-ui, kitb-look1) a whole 6 screen px under the rest scale (scaled by a transient pop)
+				local gap = 6 / PI.RestScale(label) * sc
+				T.check(math.abs(box.AbsoluteSize.X - 9 * PI.Px(2, PI.RestScale(label)) * sc) < 0.01,
+					fmt("pixelicon lead: UIScale %.2f, %s, %s: the box is the icon's whole-px cells wide", sc, align.Name, after and "after" or "before"),
+					fmt("%.2f px", box.AbsoluteSize.X))
 				local pad = label:FindFirstChildOfClass("UIPadding")
 				local ap, as = label.AbsolutePosition, label.AbsoluteSize
 				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0) * sc
@@ -1208,8 +1213,7 @@ local function serverScenarios()
 			Mock.TextExtent = realExtent
 			local tag = fmt("pixelicon lead, server: %s, %s%s", align.Name, after and "after" or "before", auto and ", auto-sized" or "")
 			if T.check(ok and box ~= nil, tag .. ": Lead draws with TextBounds at 0", tostring(box)) then
-				local px = PI.Snap(22 * 0.9)
-				local gap = math.max(3, math.floor(px / 4))
+				local gap = 6 -- (LOOK-ui) a whole 6 px (no scale on a world sign)
 				local pad = label:FindFirstChildOfClass("UIPadding")
 				local ap, as = label.AbsolutePosition, label.AbsoluteSize
 				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0)
@@ -2310,7 +2314,9 @@ local function clientScenarios()
 				if c:IsA("UICorner") then
 					f[#f + 1] = fmt("radius %s,%d", num(c.CornerRadius.Scale), c.CornerRadius.Offset)
 				elseif c:IsA("UIStroke") then
-					f[#f + 1] = fmt("%s %s %s %s %s", hex(c.Color), num(c.Thickness), tostring(c.ApplyStrokeMode), tostring(c.LineJoinMode), fmt("%.2f", c.Transparency))
+					-- (LOOK-ui) a kit edge is drawn a whole number of screen px (PixelIcon.WholeStroke: its Thickness the snapped design
+					-- px under the window's scale): the approved tree holds its design px, kept as attribute DesignPx
+					f[#f + 1] = fmt("%s %s %s %s %s", hex(c.Color), num(c:GetAttribute("DesignPx") or c.Thickness), tostring(c.ApplyStrokeMode), tostring(c.LineJoinMode), fmt("%.2f", c.Transparency))
 				elseif c:IsA("UIGradient") then
 					local keys = {}
 					for _, k in ipairs(c.Color.Keypoints) do
@@ -5145,6 +5151,44 @@ local function clientScenarios()
 						end
 					end
 					T.check(#out == 0, tag .. ": the detail's level line and its chips sit inside the row and the panel", table.concat(out, ", ") .. " | row " .. U8.show(rr))
+				end
+				-- (LOOK-ui, kitb-look1: the blocker "Battle powe13,213") a stat tile's name never runs into its number (pinned with
+				-- a five-digit power): on PC the name sits over the number (the pitch's two-line .sv), on a phone it stops 4 px or
+				-- more before it; and the tile's icon square holds its whole icon (sized from the icon's whole-px cells)
+				local Th = LoadingH.shared("Theme")
+				for _, id in ipairs({ "Income", "Power", "Health", "Speed" }) do
+					local tile = detail and detail:FindFirstChild("Row_" .. id, true)
+					local label, value = tile and tile:FindFirstChild("Label"), tile and tile:FindFirstChild("Value")
+					if tile and label and value and U8.shown(tile) then
+						if id == "Power" then
+							value.Text = "37,922"
+							LKC.advance(0.05)
+						end
+						local lr, vr = U8.rect(label), U8.rect(value)
+						local s = U8.scaleOf(label)
+						local lw = math.min(Th.MeasureLabel(label).X * s, lr.R - lr.X)
+						local vw = Th.MeasureLabel(value).X * s
+						local vStart = value.TextXAlignment == Enum.TextXAlignment.Right and vr.R - vw or vr.X
+						local sameLine = lr.Y < vr.B - 0.5 and vr.Y < lr.B - 0.5
+						T.check(not sameLine or lr.X + lw <= vStart - 4, fmt("%s: the %s tile's name (\"%s\") stays clear of its number (\"%s\")", tag, id, label.Text, value.Text),
+							fmt("name ends %.1f, number starts %.1f", lr.X + lw, vStart))
+						if not phone then
+							T.check(lr.B <= vr.Y + 0.5, fmt("%s: the %s tile reads on two lines, the name over the number (the pitch's .sv)", tag, id), U8.show(lr) .. " / " .. U8.show(vr))
+						end
+						local chip = tile:FindFirstChild("Chip")
+						local cr = chip and U8.rect(chip)
+						local spill = nil
+						for _, cell in ipairs(chip and chip:GetDescendants() or {}) do
+							if cell:IsA("Frame") and cell.Name:match("^R%d+$") then
+								local q = U8.rect(cell)
+								if q.X < cr.X - 0.01 or q.Y < cr.Y - 0.01 or q.R > cr.R + 0.01 or q.B > cr.B + 0.01 then
+									spill = U8.show(q) .. " outside " .. U8.show(cr)
+									break
+								end
+							end
+						end
+						T.check(chip ~= nil and spill == nil, fmt("%s: the %s tile's icon square holds its whole icon", tag, id), spill or "")
+					end
 				end
 				PC.Close(true)
 			end)

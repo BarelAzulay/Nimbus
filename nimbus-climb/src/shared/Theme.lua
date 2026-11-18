@@ -426,6 +426,25 @@ Theme.Sign = {
 	CloudSide = rgb(201, 214, 238), -- #C9D6EE (their block side)
 }
 
+-- (LOOK-ui, kitb-look1: a lip from a token, never Darken(colour)) the kit's lip token under a role face: gold, sky,
+-- grass, red, violet, the roof's pink, stone (tile / stone / selected), navy; another colour gets its darker shade
+local SIGN_LIPS = {
+	{ "Gold", "GoldLip" }, { "Sky", "SkyLip" }, { "Grass", "GrassLip" }, { "Red", "RedLip" }, { "Violet", "VioletLip" },
+	{ "Roof", "RoofLip" }, { "Tile", "StoneLip" }, { "Stone", "StoneLip" }, { "Selected", "GoldLip" }, { "Navy", "NavyLip" },
+}
+function Theme.SignLipOf(face)
+	if typeof(face) ~= "Color3" then
+		return Theme.Sign.StoneLip
+	end
+	for _, pair in ipairs(SIGN_LIPS) do
+		local c = Theme.Sign[pair[1]]
+		if math.abs(c.R - face.R) < 0.004 and math.abs(c.G - face.G) < 0.004 and math.abs(c.B - face.B) < 0.004 then
+			return Theme.Sign[pair[2]]
+		end
+	end
+	return Theme.Darken(face, 0.22)
+end
+
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
 -- largest token is small. U6 moved the literal radii of the files it swept to these (tools/check.mjs RADIUS_SWEPT,
 -- rule radius-literal); Theme.Corner(obj, "Round") is the pill / disc (half the short side).

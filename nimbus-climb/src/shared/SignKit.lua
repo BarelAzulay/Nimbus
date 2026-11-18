@@ -586,17 +586,53 @@ local function fitBlock(row, i, e, lipPx)
 	return b
 end
 
+-- (LOOK-ui, kitb-look1: blocks laid as shares of the row were fractional at every size, 11.67 px with a 7.67 px face at
+-- 1080p, a 2 px smudge on a phone) laid out in whole screen px from the row's AbsoluteSize: every block w = floor((rowW -
+-- (n - 1) x gap) / n) wide, block i at i x (w + gap), the spare px left at the row's end, the height whole; again when
+-- the row's size or scale changes. A block whose face would be under 4 px drops its edge (an edgeless pip on its 2 px
+-- lip). Before the first layout (no size yet) the shares stand in
+local MIN_FACE = 4
 local function layFit(row)
 	local n = row:GetAttribute("Count") or 0
 	if n < 1 then
 		return
 	end
 	local gap = row:GetAttribute("Gap") or 2
+	local abs = row.AbsoluteSize
+	local s = PixelIcon.RestScale(row)
+	if abs.X < 1 or abs.Y < 1 or s <= 0 then
+		for i = 1, n do
+			local b = row:FindFirstChild("Block" .. i)
+			if b then
+				b.Position = UDim2.new((i - 1) / n, (i - 1) * gap / n, 0, 0)
+				b.Size = UDim2.new(1 / n, -(n - 1) * gap / n, 1, 0)
+			end
+		end
+		return
+	end
+	local g = math.max(1, math.floor(gap * s + 0.5))
+	local w = math.max(1, math.floor((math.floor(abs.X + 1e-6) - (n - 1) * g) / n))
+	local h = math.max(1, math.floor(abs.Y + 1e-6))
+	local e = PixelIcon.Px(row:GetAttribute("EdgePx") or 2, s) * s
+	local pip = w - 2 * e < MIN_FACE
+	row:SetAttribute("Pips", pip)
+	row:SetAttribute("BlockPx", w)
 	for i = 1, n do
 		local b = row:FindFirstChild("Block" .. i)
 		if b then
-			b.Position = UDim2.new((i - 1) / n, (i - 1) * gap / n, 0, 0)
-			b.Size = UDim2.new(1 / n, -(n - 1) * gap / n, 1, 0)
+			b.Position = UDim2.fromOffset((i - 1) * (w + g) / s, 0)
+			b.Size = UDim2.fromOffset(w / s, h / s)
+			b.BackgroundTransparency = pip and 1 or 0
+			local face = b:FindFirstChild("Face")
+			if face then
+				PixelIcon.WholeInset(face, pip and 0 or (row:GetAttribute("EdgePx") or 2))
+				local lip = face:FindFirstChild("Lip")
+				if lip and pip then
+					PixelIcon.WholeHeight(lip, 2)
+				elseif lip then
+					PixelIcon.WholeHeight(lip, row:GetAttribute("LipPx") or 3)
+				end
+			end
 		end
 	end
 end
@@ -611,6 +647,10 @@ function SignKit.FitBlocks(parent, opts)
 	BLOCK_FILL[row] = { typeof(opts.Fill) == "Color3" and opts.Fill or Sign.Gold, typeof(opts.FillLip) == "Color3" and opts.FillLip or Sign.GoldLip }
 	place(row, opts, "BlockRow")
 	SignKit.SetBlockCount(row, opts.Count)
+	-- (LOOK-ui) whole screen px again whenever the row is laid out anew (a window resized, a Fit changed)
+	row:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		layFit(row)
+	end)
 	return row
 end
 

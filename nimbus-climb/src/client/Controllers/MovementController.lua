@@ -109,10 +109,12 @@ local DEV_SPEED_HINT = "NC_DevSpeed" -- PlayerGui attribute set by DevService (o
 local DEV_SPEED_MULT = 2
 
 local LINE_COUNT = 18 -- screen speed lines
-local BUTTON_ALPHA = 0.2
-local BUTTON_ALPHA_LOCKED = 0.7
 
 local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
+local PixelIcon = require(Shared:WaitForChild("PixelIcon"))
+-- (LOOK-ui, kitb-look1) the touch RUN / DASH are kit B tiles (CloudUI.SignBlock), not the old neon discs
+local CloudUI = require(script.Parent.Parent:WaitForChild("UI"):WaitForChild("CloudUI"))
+local Sign = Theme.Sign
 
 ----------------------------------------------------------------------
 -- State
@@ -347,60 +349,116 @@ local function buildSpeedLines(playerGui)
 	return holder, lines
 end
 
--- Round button with a cooldown overlay (UIGradient with a hard edge, so it stays circular).
-local function makeCircleButton(parent, name, text, diameter, position, accent, onPress)
+-- (LOOK-ui, kitb-look1: the owner's look bar, one kit) the touch RUN / DASH are kit B tiles: square, the wood edge and
+-- the darker bottom lip of CloudUI.SignBlock on whole px (this gui has no UIScale: its px are screen px), opaque, no
+-- corner, no ring. DASH is the sky tile with the pixel "dash" over its label (the HUD's dash key); RUN the stone tile,
+-- gold while running; a locked control is the well (Off). A press sinks the face onto its lip; the dash's cooldown is the
+-- well filling bottom-up in the sky colour by whole icon cells (the dash key's charge); a refused tap flashes the edge
+-- red (no rotation: a turned Frame goes soft).
+local TILE_LOOKS = {
+	Dash = { Face = Sign.Sky, Lip = Sign.SkyLip, Edge = Sign.Wood, Text = Sign.Text },
+	Run = { Face = Sign.Tile, Lip = Sign.StoneLip, Edge = Sign.Wood, Text = Sign.Text },
+	RunOn = { Face = Sign.Gold, Lip = Sign.GoldLip, Edge = Sign.Wood, Text = Sign.Text },
+}
+local TILE_ICON = 18 -- 2 px cells, as the HUD's dash key
+local TILE_CELL = 2
+
+-- the tile's look painted again (rest, pressed, locked, running, cooling down); the label and the icon follow the face
+local function paintTile(handle)
+	local m = CloudUI.SignMetrics
+	local look = handle.Locked and CloudUI.SignLooks.Off or TILE_LOOKS[handle.Look] or TILE_LOOKS.Run
+	local face = look.Face
+	if handle.Cooling and not handle.Locked then
+		face = Sign.Well -- the charge fills it back to the sky
+	end
+	local lip = handle.Pressed and m.PressLip or m.Lip
+	CloudUI.SignBlock(handle.Button, look, { Face = face, Edge = handle.Deny and Sign.Red or nil, LipPx = lip, Pad = false })
+	-- the content sits on the face above the lip: a press drops it by what the lip lost
+	handle.Content.Position = UDim2.fromOffset(0, handle.Pressed and (m.Lip - m.PressLip) or 0)
+	handle.Content.Size = UDim2.new(1, 0, 1, -m.Lip)
+	handle.Charge.Position = UDim2.new(0, 0, 1, -lip)
+	handle.Charge.Size = UDim2.new(1, 0, 0, handle.ChargePx or 0)
+	handle.Charge.Visible = handle.Cooling == true and not handle.Locked and (handle.ChargePx or 0) > 0
+	handle.Charge.BackgroundColor3 = look.Face
+	local ink = handle.Locked and look.Text or Sign.Text
+	handle.Label.TextColor3 = ink
+	if handle.Icon then
+		PixelIcon.Tint(handle.Icon, ink)
+	end
+end
+
+local function makeTileButton(parent, name, text, size, position, look, iconName, onPress)
 	local button = Instance.new("TextButton")
 	button.Name = name
 	button.AnchorPoint = Vector2.new(1, 1)
-	button.Size = UDim2.fromOffset(diameter, diameter)
+	button.Size = UDim2.fromOffset(size, size)
 	button.Position = position
-	button.BackgroundColor3 = Theme.Colors.Panel
-	button.BackgroundTransparency = BUTTON_ALPHA
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.Text = ""
 	button.Parent = parent
-	Theme.Corner(button, UDim.new(0.5, 0))
-	local stroke = Theme.Stroke(button, accent, 3, 0.1)
 
-	local scale = Instance.new("UIScale")
-	scale.Parent = button
+	-- the cooldown's charge: the sky rising from the lip in whole icon cells (under the content)
+	local charge = Instance.new("Frame")
+	charge.Name = "Charge"
+	charge.AnchorPoint = Vector2.new(0, 1)
+	charge.Position = UDim2.new(0, 0, 1, 0)
+	charge.BorderSizePixel = 0
+	charge.Visible = false
+	charge.ZIndex = 2
+	charge.Parent = button
 
-	local overlay = Instance.new("Frame")
-	overlay.Name = "Cooldown"
-	overlay.Size = UDim2.fromScale(1, 1)
-	overlay.BackgroundColor3 = Theme.Colors.Ink
-	overlay.BorderSizePixel = 0
-	overlay.Visible = false
-	overlay.ZIndex = 2
-	overlay.Parent = button
-	Theme.Corner(overlay, UDim.new(0.5, 0))
-	local gradient = Instance.new("UIGradient")
-	gradient.Rotation = 90 -- top (0) -> bottom (1)
-	gradient.Parent = overlay
+	local content = Instance.new("Frame")
+	content.Name = "Content"
+	content.BackgroundTransparency = 1
+	content.BorderSizePixel = 0
+	content.ZIndex = 3
+	content.Parent = button
 
-	local label = Theme.Label(text, "Heading", {
-		Size = math.floor(diameter * 0.26),
-		Props = { Size = UDim2.fromScale(1, 1), ZIndex = 3 },
+	local icon = nil
+	if iconName then
+		local box = Instance.new("Frame")
+		box.Name = "IconBox"
+		box.BackgroundTransparency = 1
+		box.AnchorPoint = Vector2.new(0.5, 0)
+		box.Size = UDim2.fromOffset(TILE_ICON, TILE_ICON)
+		box.ZIndex = 3
+		box.Parent = content
+		icon = PixelIcon.New(box, iconName, TILE_ICON, Sign.Text)
+		if icon then
+			icon.ZIndex = 3
+			for _, cell in ipairs(icon:GetChildren()) do
+				cell.ZIndex = 3
+			end
+		end
+	end
+	local label = Theme.Label(text, "Button", {
+		Size = 16,
+		Color = Sign.Text,
+		Props = { Size = UDim2.fromScale(1, 1), ZIndex = 4 },
 	})
-	label.Parent = button
+	label.Name = "Label"
+	label.Parent = content
 
 	local handle = {
 		Button = button,
-		Stroke = stroke,
-		Accent = accent,
-		Overlay = overlay,
-		Gradient = gradient,
+		Content = content,
+		Charge = charge,
 		Label = label,
+		Icon = icon,
+		IconBox = icon and icon.Parent or nil,
+		Look = look,
 		LastFrac = nil,
 	}
+	paintTile(handle)
 
 	local lastPress = 0
 	button.InputBegan:Connect(function(input)
 		local kind = input.UserInputType
 		if kind == Enum.UserInputType.Touch or kind == Enum.UserInputType.MouseButton1 then
 			local now = os.clock()
-			tween(scale, 0.07, { Scale = 0.9 })
+			handle.Pressed = true
+			paintTile(handle)
 			if now - lastPress > 0.12 then -- guards against touch + emulated-mouse double events
 				lastPress = now
 				onPress()
@@ -410,46 +468,58 @@ local function makeCircleButton(parent, name, text, diameter, position, accent, 
 	button.InputEnded:Connect(function(input)
 		local kind = input.UserInputType
 		if kind == Enum.UserInputType.Touch or kind == Enum.UserInputType.MouseButton1 then
-			tween(scale, 0.18, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			handle.Pressed = false
+			paintTile(handle)
 		end
 	end)
 
 	return handle
 end
 
--- frac: 0 = hidden, 1 = fully dimmed, in between the dim area drains toward the bottom.
+-- the tile's label and icon for its size: the icon over the label on the face (whole px), or the label alone centred
+local function layoutTile(handle, size)
+	local m = CloudUI.SignMetrics
+	local faceH = size - m.Lip
+	local textSize = size >= 70 and 18 or 16
+	handle.Label.TextSize = textSize
+	if handle.IconBox then
+		local block = TILE_ICON + 2 + textSize
+		local top = math.floor((faceH - block) / 2)
+		handle.IconBox.Position = UDim2.new(0.5, 0, 0, top)
+		handle.Label.Position = UDim2.fromOffset(0, top + TILE_ICON + 2)
+		handle.Label.Size = UDim2.new(1, 0, 0, textSize)
+	else
+		handle.Label.Position = UDim2.fromOffset(0, 0)
+		handle.Label.Size = UDim2.fromScale(1, 1)
+	end
+end
+
+-- frac: 0 = ready (the tile's own face), 1 = just used: the well, its sky charge rising from the lip as the cooldown
+-- runs out, in whole icon cells
 local function setCooldownOverlay(handle, frac)
-	local q = math.floor(Util.Clamp(frac, 0, 1) * 40 + 0.5) / 40
+	local size = handle.Button.Size.Y.Offset
+	local faceH = size - CloudUI.SignMetrics.Lip
+	local steps = math.floor((1 - Util.Clamp(frac, 0, 1)) * faceH / TILE_CELL)
+	local q = frac <= 0 and -1 or steps
 	if handle.LastFrac == q then
 		return
 	end
 	handle.LastFrac = q
-	if q <= 0 then
-		handle.Overlay.Visible = false
-		return
-	end
-	handle.Overlay.Visible = true
-	if q >= 1 then
-		handle.Gradient.Transparency = NumberSequence.new(0.45)
-		return
-	end
-	local edge = 1 - q -- strictly inside (0, 1) because q is a multiple of 1/40
-	handle.Gradient.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(edge, 1),
-		NumberSequenceKeypoint.new(math.min(edge + 0.001, 0.9995), 0.45),
-		NumberSequenceKeypoint.new(1, 0.45),
-	})
+	handle.Cooling = frac > 0
+	handle.ChargePx = frac > 0 and steps * TILE_CELL or 0
+	paintTile(handle)
 end
 
 local function denyFeedback(handle)
 	if not handle then
 		return
 	end
-	handle.Button.Rotation = 9
-	tween(handle.Button, 0.35, { Rotation = 0 }, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
-	handle.Stroke.Color = Theme.Colors.Bad
-	tween(handle.Stroke, 0.4, { Color = handle.Accent })
+	handle.Deny = true
+	paintTile(handle)
+	task.delay(0.35, function()
+		handle.Deny = false
+		paintTile(handle)
+	end)
 end
 
 local function toggleRun()
@@ -532,7 +602,7 @@ local function layoutMobileControls(m)
 		local runRight = math.max(14, jump + 10 - runSize * 0.5)
 		local runBottom = jumpTop + 10
 		m.run.Button.Size = UDim2.fromOffset(runSize, runSize)
-		m.run.Label.TextSize = math.floor(runSize * 0.26)
+		layoutTile(m.run, runSize)
 		m.run.Button.Position = UDim2.new(1, -runRight, 1, -runBottom)
 		m.dash.Button.Visible = false
 		m.rects = {
@@ -563,10 +633,10 @@ local function layoutMobileControls(m)
 	end
 
 	m.dash.Button.Size = UDim2.fromOffset(dashSize, dashSize)
-	m.dash.Label.TextSize = math.floor(dashSize * 0.26)
+	layoutTile(m.dash, dashSize)
 	m.dash.Button.Position = UDim2.new(1, -dashRight, 1, -dashBottom)
 	m.run.Button.Size = UDim2.fromOffset(runSize, runSize)
-	m.run.Label.TextSize = math.floor(runSize * 0.26)
+	layoutTile(m.run, runSize)
 	m.run.Button.Position = UDim2.new(1, -runRight, 1, -runBottom)
 	m.rects = {
 		jump = { jumpRect[1] + 4, jumpRect[2] + 4, jumpRect[3] - 4, jumpRect[4] - 4 },
@@ -586,10 +656,10 @@ local function buildMobileControls(playerGui)
 
 	-- an arc above / left of the default jump button, within thumb reach; the exact offsets depend on the
 	-- size of Roblox's jump button and on the HUD, so layoutMobileControls places (and sizes) them below
-	local dashButton = makeCircleButton(gui, "DashButton", "DASH", 76, UDim2.new(1, -30, 1, -175), Theme.Colors.Stamina, function()
+	local dashButton = makeTileButton(gui, "DashButton", "Dash", 66, UDim2.new(1, -30, 1, -175), "Dash", "dash", function()
 		tryDash()
 	end)
-	local runButton = makeCircleButton(gui, "RunButton", "RUN", 64, UDim2.new(1, -120, 1, -150), Theme.Colors.Good, function()
+	local runButton = makeTileButton(gui, "RunButton", "Run", 58, UDim2.new(1, -120, 1, -150), "Run", nil, function()
 		toggleRun()
 	end)
 
@@ -634,33 +704,31 @@ local function updateMobileUi(locked)
 	end
 	setCooldownOverlay(m.dash, MovementController.GetDashCooldownFraction())
 
+	-- (LOOK-ui) a locked control is the kit's Off tile (the well), never see-through
 	if m.locked ~= locked then
 		m.locked = locked
-		local alpha = BUTTON_ALPHA
-		if locked then
-			alpha = BUTTON_ALPHA_LOCKED
-		end
-		m.dash.Button.BackgroundTransparency = alpha
-		m.run.Button.BackgroundTransparency = alpha
+		m.dash.Locked = locked
+		m.run.Locked = locked
+		paintTile(m.dash)
 		m.runOn = nil -- force the run button to refresh its colours
 	end
 
+	-- running: the RUN tile turns gold (face and lip)
 	if m.runOn ~= runToggled then
 		m.runOn = runToggled
-		if runToggled then
-			tween(m.run.Button, 0.15, { BackgroundColor3 = Theme.Colors.Good:Lerp(Theme.Colors.Panel, 0.5) })
-		else
-			tween(m.run.Button, 0.15, { BackgroundColor3 = Theme.Colors.Panel })
-		end
+		m.run.Look = runToggled and "RunOn" or "Run"
+		paintTile(m.run)
 	end
 
+	-- out of stamina for a dash: its label and icon fade on the tile (the face stays opaque)
 	local lowStamina = (not freeDash) and stamina < P.DashStaminaCost
 	if m.lowStamina ~= lowStamina then
 		m.lowStamina = lowStamina
-		if lowStamina then
-			m.dash.Label.TextTransparency = 0.5
-		else
-			m.dash.Label.TextTransparency = 0
+		m.dash.Label.TextTransparency = lowStamina and 0.5 or 0
+		for _, cell in ipairs(m.dash.Icon and m.dash.Icon:GetChildren() or {}) do
+			if cell:IsA("GuiObject") then
+				cell.BackgroundTransparency = lowStamina and 0.5 or 0
+			end
 		end
 	end
 end
