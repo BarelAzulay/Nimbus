@@ -7920,8 +7920,9 @@ local function clientScenarios()
 		return out, small
 	end
 	-- the screen px of one icon cell under `root`: a 2 px design cell at the scale above it, rounded (PixelCrisp)
+	-- (U9-9 look) a 2 px cell never drops to 1 px: one pixel size per screen (PixelCrisp.Px)
 	function U99.cell(obj)
-		return math.max(1, math.floor(2 * U8.scaleOf(obj) + 0.5))
+		return math.max(2, math.floor(2 * U8.scaleOf(obj) + 0.5))
 	end
 	-- U94.pixelCells measured by height: a PixelIcon.Lead box of two or more icons is wider than 9 cells (its icons and
 	-- their gaps) but always 9 cells tall, so its cell is its height / 9
@@ -7947,6 +7948,34 @@ local function clientScenarios()
 		end
 		table.sort(list)
 		return list, odd
+	end
+	-- (U9-9 look) the shown blocks under `root` (a frame with a SignEdge, a lip, a pixel icon, the frames named in `names`)
+	-- whose drawn top-left, or a lip's height, or a wood edge's thickness, is off the whole-pixel grid (the owner's look bar:
+	-- whole pixels, one pixel size per screen)
+	function U99.offGrid(root, names)
+		local out = {}
+		local function frac(v)
+			return math.abs(v - math.floor(v + 0.5)) > 0.02
+		end
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+				local named = names and names[d.Name]
+				local block = d:FindFirstChild("SignEdge") ~= nil or d.Name == "Lip" or d:GetAttribute("PixelIcon") ~= nil or named
+				if block then
+					local r = U8.rect(d)
+					-- (a lip lies on its block's bottom: its height is what must be whole)
+					if (d.Name == "Lip" and frac(r.B - r.Y)) or (d.Name ~= "Lip" and (frac(r.X) or frac(r.Y))) then
+						out[#out + 1] = (d.Parent and d.Parent.Name or "?") .. "." .. d.Name .. " " .. U8.show(r)
+					end
+				end
+			elseif d:IsA("UIStroke") and d.Name == "SignEdge" and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
+				local px = d.Thickness * U8.scaleOf(d.Parent)
+				if frac(px) then
+					out[#out + 1] = fmt("%s edge %.2f px", d.Parent.Name, px)
+				end
+			end
+		end
+		return out
 	end
 	-- the shown UIStrokes named SignEdge under `root` that are not mitred
 	function U99.roundEdges(root)
@@ -8011,6 +8040,8 @@ local function clientScenarios()
 			T.check(#U94.floatingLips(stack) == 0, tag .. ": every lip lies flush along its block's bottom", table.concat(U94.floatingLips(stack), "; "))
 			local cells, odd = U99.pixelCells(stack, { U99.cell(stack) })
 			T.check(#odd == 0, tag .. ": one pixel size: every toast icon (the sparkle too) on " .. U99.cell(stack) .. " px cells", table.concat(odd, "; ") .. " | " .. table.concat(cells, ", "))
+			local grid = U99.offGrid(stack, { Toast = true })
+			T.check(#grid == 0, tag .. ": every toast, chip, lip, icon and wood edge on whole screen px", table.concat(grid, "; "))
 			local low = U94.contrast("NimbusNotify")
 			T.check(#low == 0, tag .. ": every toast text reads on its fill", table.concat(low, "; "))
 			U99.clearToasts()
@@ -8034,6 +8065,12 @@ local function clientScenarios()
 					T.check(#hits == 0, tag .. ": the " .. kind .. " toast lies over no thumb zone or touch button", table.concat(hits, "; ") .. " | " .. U8.show(r))
 					local out, small = U99.texts(card, r)
 					T.check(#out == 0 and #small == 0, tag .. ": the " .. kind .. " toast's words inside it, >= 14 px", table.concat(out, "; ") .. " " .. table.concat(small, ", "))
+					-- (U9-9 look) at the phone's scale too: the card, its chip, lips, icon and edges on whole screen px
+					local grid = U99.offGrid(card, {})
+					if not (math.abs(r.X - math.floor(r.X + 0.5)) <= 0.02 and math.abs(r.Y - math.floor(r.Y + 0.5)) <= 0.02) then
+						grid[#grid + 1] = "Toast " .. U8.show(r)
+					end
+					T.check(#grid == 0, tag .. ": the " .. kind .. " toast on whole screen px", table.concat(grid, "; "))
 				end
 				T.check(n >= 1, tag .. ": at least the newest toast shows", tostring(n))
 				U99.clearToasts()
@@ -8088,7 +8125,8 @@ local function clientScenarios()
 						end
 						-- the compact and mini cards leave an empty win bonus out (the lost match has none)
 						local tier = card:GetAttribute("Rows")
-						local want = (tier ~= "Full" and not won) and 2 or 3
+						-- (U9-9 look) the mini card shows a win bonus in the Tokens row ("11  +10", MergeBonus)
+						local want = (tier == "Mini" or (tier ~= "Full" and not won)) and 2 or 3
 						T.check(rows == want and plain, what .. ": the " .. want .. " stats are stone blocks in their wood edge", rows .. " rows (" .. tostring(tier) .. ")")
 						if tier == "Compact" and not won then
 							local m1, m3 = card:FindFirstChild("Member1", true), card:FindFirstChild("Member3", true)
@@ -8126,11 +8164,64 @@ local function clientScenarios()
 							end
 						end
 						T.check(#cramped == 0, what .. ": each member line is taller than its icons (they never touch line to line)", table.concat(cramped, "; "))
-						local diffLabel, diffBar = card:FindFirstChild("Difficulty", true), card:FindFirstChild("DiffBar", true)
+						-- (U9-9 look) the difficulty a role chip (its colour on the face, a darker lip, a wood edge, the word and its
+						-- stars inside), centred under the banner with a gap; no loose colour bar
+						local chip, banner2 = card:FindFirstChild("DiffChip", true), card:FindFirstChild("Banner", true)
 						if tier ~= "Mini" then
-							T.check(diffLabel and diffBar and U8.rect(diffLabel).B <= U8.rect(diffBar).Y + 0.5, what .. ": the difficulty's colour bar lies under its line",
-								diffLabel and diffBar and (U8.show(U8.rect(diffLabel)) .. " / " .. U8.show(U8.rect(diffBar))) or "missing")
+							local inner = chip and chip.Parent
+							local ok = chip and U8.shown(chip) and chip:FindFirstChild("SignEdge") ~= nil and chip:FindFirstChild("Lip") ~= nil
+								and chip:FindFirstChild("Difficulty") ~= nil and card:FindFirstChild("DiffBar", true) == nil
+							local cr = chip and U8.rect(chip)
+							local ir = inner and U8.rect(inner)
+							local br = banner2 and U8.rect(banner2)
+							T.check(ok and math.abs((cr.X + cr.R) / 2 - (ir.X + ir.R) / 2) <= 1 and cr.Y >= br.B + 3,
+								what .. ": the difficulty is a role chip centred under the banner (no colour bar)",
+								cr and br and (U8.show(cr) .. " under " .. U8.show(br)) or "missing")
 						end
+						-- (U9-9 look) one grammar with the run's other end cards: the outcome on the stone body's lip (green won, red
+						-- lost) and two dark nails at its top corners
+						local stoneLip = stone and stone:FindFirstChild("Lip")
+						T.check(stoneLip and sameColor(stoneLip.BackgroundColor3, won and Sign.GrassLip or Sign.RedLip) and card:FindFirstChild("NailL", true) and card:FindFirstChild("NailR", true),
+							what .. ": the outcome on the body's lip (" .. (won and "green" or "red") .. ") and two nails", stoneLip and hex(stoneLip.BackgroundColor3) or "no lip")
+						-- (U9-9 look) a stat block is taller than its coin: the icon inside the face with a pixel clear above it and
+						-- above the lip; and the close block no taller than the banner's face
+						local tight = {}
+						for _, name in ipairs({ "RowTime", "RowTokens", "RowWin bonus" }) do
+							local row = card:FindFirstChild(name, true)
+							local lip = row and row:FindFirstChild("Lip")
+							for _, f in ipairs(row and row:GetDescendants() or {}) do
+								if f:IsA("Frame") and f:GetAttribute("PixelIcon") and U8.shown(f) and lip then
+									local fr, rr = U8.rect(f), U8.rect(row)
+									if fr.Y < rr.Y + 1 - 0.01 or fr.B > U8.rect(lip).Y - 1 + 0.01 then
+										tight[#tight + 1] = fmt("%s %s %s in %s", name, tostring(f:GetAttribute("PixelIcon")), U8.show(fr), U8.show(rr))
+									end
+								end
+							end
+						end
+						T.check(#tight == 0, what .. ": each stat block holds its coin inside its face", table.concat(tight, "; "))
+						local closeB = card:FindFirstChild("Close", true)
+						if closeB and banner2 then
+							local bl = banner2:FindFirstChild("Lip")
+							local cb, bb = U8.rect(closeB), U8.rect(banner2)
+							T.check(cb.Y >= bb.Y - 0.5 and cb.B <= (bl and U8.rect(bl).Y or bb.B) + 0.5, what .. ": the close block inside the banner's face", U8.show(cb) .. " in " .. U8.show(bb))
+						end
+						-- (U9-9 look) the blocks on whole screen px: the banner, the chip, the stat rows, the nails, and every
+						-- wood edge a whole px thick
+						local off = {}
+						for _, d in ipairs(card:GetDescendants()) do
+							if d:IsA("GuiObject") and U8.shown(d) and (d.Name == "Banner" or d.Name == "DiffChip" or d.Name:match("^Row") or d.Name:match("^Nail")) then
+								local r = U8.rect(d)
+								if math.abs(r.X - math.floor(r.X + 0.5)) > 0.01 or math.abs(r.Y - math.floor(r.Y + 0.5)) > 0.01 then
+									off[#off + 1] = d.Name .. " " .. U8.show(r)
+								end
+							elseif d:IsA("UIStroke") and d.Name == "SignEdge" and d.Parent and U8.shown(d.Parent) then
+								local px = d.Thickness * U8.scaleOf(d.Parent)
+								if math.abs(px - math.floor(px + 0.5)) > 0.01 then
+									off[#off + 1] = fmt("%s edge %.2f px", d.Parent.Name, px)
+								end
+							end
+						end
+						T.check(#off == 0, what .. ": its blocks and wood edges on whole screen px", table.concat(off, "; "))
 						local low = U94.contrast("NimbusNotify")
 						T.check(#low == 0, what .. ": every text reads on its fill", table.concat(low, "; "))
 						local gui = card:FindFirstAncestorWhichIsA("LayerCollector")
@@ -8212,6 +8303,10 @@ local function clientScenarios()
 			local name, step = root:FindFirstChild("GuideName", true), root:FindFirstChild("StepTitle", true)
 			T.check(name and name:GetAttribute("TitleLook") == "Section" and sameColor(name.TextColor3, Sign.Text) and step and sameColor(step.TextColor3, Sign.Text),
 				tag .. ": the name a plain Section title and the step title, both brown")
+			-- (U9-9 look) the counter tag lies clear of the name's box (it lay 12 px over it)
+			local counterTag = root:FindFirstChild("Counter", true)
+			T.check(not (name and counterTag and U8.shown(counterTag)) or U8.rect(name).R <= U8.rect(counterTag).X + 0.5, tag .. ": the counter tag clear of the name",
+				name and counterTag and (U8.show(U8.rect(name)) .. " / " .. U8.show(U8.rect(counterTag))) or "")
 			local counter, fold = root:FindFirstChild("Counter", true), root:FindFirstChild("Fold", true)
 			local minus = false
 			for _, d in ipairs(fold and fold:GetDescendants() or {}) do
@@ -8219,20 +8314,36 @@ local function clientScenarios()
 			end
 			T.check(counter and sameColor(counter.BackgroundColor3, Sign.Tile) and counter:FindFirstChild("SignEdge") ~= nil and fold and fold:FindFirstChild("SignEdge") ~= nil and minus,
 				tag .. ": the counter a stone tag, the fold a stone block with the pixel minus")
-			local pips = root:FindFirstChild("Pips", true)
+			-- (U9-9 look) the progress is ONE SignKit block row (the kit's block-bar language), a block per step here (1080p:
+			-- each gets 10 px or more), no pips and no thin bar left; its blocks whole screen px
+			local row = root:FindFirstChild("BlockRow", true)
 			local states, wrong = {}, {}
-			for _, p in ipairs(pips and pips:GetChildren() or {}) do
-				local i = tonumber((p.Name:match("^Pip(%d+)$")))
-				if i then
-					local want = i < 5 and "Done" or (i == 5 and "Current" or "Open")
-					local face = ({ Done = Sign.Grass, Current = Sign.Gold, Open = Sign.Well })[want]
-					states[#states + 1] = p:GetAttribute("State")
-					if p:GetAttribute("State") ~= want or not sameColor(p.BackgroundColor3, face) or p:FindFirstChild("SignEdge") == nil then
-						wrong[#wrong + 1] = p.Name .. " " .. tostring(p:GetAttribute("State"))
-					end
+			local per = row and row:GetAttribute("PerBlock") or 1
+			for i = 1, (row and row:GetAttribute("Count") or 0) do
+				local b = row:FindFirstChild("Block" .. i)
+				local face = b and b:FindFirstChild("Face")
+				local now = math.ceil(5 / per)
+				local want = i < now and "Done" or (i == now and "Current" or "Open")
+				local colour = ({ Done = Sign.Grass, Current = Sign.Gold, Open = Sign.Well })[want]
+				states[#states + 1] = b and b:GetAttribute("State")
+				if not (b and face and b:GetAttribute("State") == want and sameColor(face.BackgroundColor3, colour) and sameColor(b.BackgroundColor3, Sign.Wood)) then
+					wrong[#wrong + 1] = "Block" .. i .. " " .. tostring(b and b:GetAttribute("State"))
+				end
+				local r = b and U8.rect(b)
+				if r and (math.abs(r.X - math.floor(r.X + 0.5)) > 0.01 or math.abs(r.Y - math.floor(r.Y + 0.5)) > 0.01 or math.abs(r.R - r.X - math.floor(r.R - r.X + 0.5)) > 0.01) then
+					wrong[#wrong + 1] = "Block" .. i .. " off the pixel grid " .. U8.show(r)
 				end
 			end
-			T.check(#states > 5 and #wrong == 0, tag .. ": the pips are kit B blocks: done grass, the current gold, the rest the sunk well, each in its wood edge", table.concat(wrong, ", "))
+			T.check(row ~= nil and row:GetAttribute("SignKit") == "BlockRow" and per == 1 and #states > 5 and #wrong == 0,
+				tag .. ": the progress is one SignKit block row, a block per step (done grass, the current gold, the rest the sunk well), on whole px",
+				table.concat(wrong, ", ") .. " | per " .. tostring(per))
+			local old = {}
+			for _, name in ipairs({ "Pips", "PipBar", "Pip1" }) do
+				if root:FindFirstChild(name, true) then
+					old[#old + 1] = name
+				end
+			end
+			T.check(#old == 0, tag .. ": no pips and no thin progress bar left (one look for the progress)", table.concat(old, ", "))
 			local well = main:FindFirstChild("Well")
 			T.check(well and sameColor(well.BackgroundColor3, Sign.Tile) and well:FindFirstChild("SignEdge") ~= nil, tag .. ": the text well is a pale tile in a wood edge")
 			local nextB = root:FindFirstChild("Next", true)
@@ -8302,10 +8413,36 @@ local function clientScenarios()
 							end
 							local out, small = U99.texts(part, r)
 							T.check(#out == 0 and #small == 0, what .. ": its words inside it, >= 14 px", table.concat(out, "; ") .. " " .. table.concat(small, ", "))
+							if part == root then
+								-- (U9-9 look) the name never cut ("NIMB..."): TextScaled under a size floor of 14 screen px; the
+								-- objective wraps to a second line instead of "Tap the glowing Pet..."
+								local name, hint = root:FindFirstChild("GuideName", true), root:FindFirstChild("Hint", true)
+								local fit = name and name:FindFirstChildOfClass("UITextSizeConstraint")
+								T.check(name and name.TextScaled and fit and fit.MinTextSize * U8.scaleOf(name) >= 14 - 0.01, what .. ": the name fits by the engine's own measure, >= 14 px",
+									fit and fmt("min %d at %.2f", fit.MinTextSize, U8.scaleOf(name)) or "no size floor")
+								T.check(not (hint and U8.shown(hint)) or (hint.TextWrapped and hint.TextTruncate == Enum.TextTruncate.None), what .. ": the objective wraps, never cut")
+								-- (U9-9 look) its blocks, lips, icons and wood edges on whole screen px at the card's scale
+								local grid = U99.offGrid(root, { Progress = true, Block1 = true, Counter = true, Fold = true, Well = true })
+								T.check(#grid == 0, what .. ": the card's blocks, lips, icons and wood edges on whole screen px", table.concat(grid, "; "))
+								-- (U9-9 look) the opened card over a part of the vitals card: the vitals step aside (as for the
+								-- result card and the Trove)
+								local hud = U7.client("Controllers/HudController")
+								local layout = hud and hud.GetLayout and hud.GetLayout()
+								local slot = layout and layout.VitalsSlot
+								if slot then
+									local c = U8.rect(root)
+									local over = math.min(c.R, slot.X + slot.W) - math.max(c.X, slot.X) > 4 and math.min(c.B, slot.Y + slot.H) - math.max(c.Y, slot.Y) > 4
+									T.check(not over or layout.Vitals == nil, what .. ": the vitals card steps aside while the card lies over it",
+										fmt("card %s, vitals %d,%d %dx%d shown %s", U8.show(c), slot.X, slot.Y, slot.W, slot.H, tostring(layout.Vitals ~= nil)))
+								end
+							end
 						end
 					end
 				end
 				U99.tutorialOff()
+				local hud = U7.client("Controllers/HudController")
+				local after = hud and hud.GetLayout and hud.GetLayout()
+				T.check(not (after and after.VitalsSlot) or after.Vitals ~= nil, tag .. ": the vitals card is back once the tutorial goes")
 			end)
 		end
 		LKC.flushErrors("tutorial_fits_phone")
@@ -8511,6 +8648,47 @@ local function clientScenarios()
 				U99.npcGone()
 			end)
 		end
+		-- (U9-9 look) a small PC window (640 x 360: the pill drew over the name plank's words) and a 720p one: the plank and its
+		-- gold edge clear of the top bar's pill, the HUD's vitals card stepped aside while the card lies over it (back once it
+		-- closes), and the card's blocks, lips, icons and wood edges on whole screen px
+		for _, s in ipairs({ { 640, 360 }, { 1280, 720 }, { 1920, 1080 } }) do
+			U8.at(s[1], s[2], false, "npc window", function(tag)
+				local root = U99.npc(1)
+				if T.check(root ~= nil and U8.shown(root), tag .. ": the NPC dialog opens") then
+					local gui = root:FindFirstAncestorWhichIsA("LayerCollector")
+					local tab = root:FindFirstChild("NameTab", true)
+					if tab then
+						local t = U8.rect(tab)
+						local edge = tab:FindFirstChildOfClass("UIStroke")
+						local e = (edge and edge.Thickness or 0) * U8.scaleOf(tab)
+						local plank = { X = t.X - e, R = t.R + e, Y = t.Y - e, B = t.B + e }
+						local bar = {}
+						for _, b in ipairs(U99.topBar(gui)) do
+							if U8.overlap(plank, b) then
+								bar[#bar + 1] = b.Name .. " " .. U8.show(b)
+							end
+						end
+						T.check(#bar == 0, tag .. ": the name plank and its edge clear of the top bar's pill", table.concat(bar, "; ") .. " | plank " .. U8.show(plank))
+					end
+					local hud = U7.client("Controllers/HudController")
+					local layout = hud and hud.GetLayout and hud.GetLayout()
+					local slot = layout and layout.VitalsSlot
+					if slot then
+						local c = U8.rect(root)
+						local over = math.min(c.R, slot.X + slot.W) - math.max(c.X, slot.X) > 4 and math.min(c.B, slot.Y + slot.H) - math.max(c.Y, slot.Y) > 4
+						T.check(not over or layout.Vitals == nil, tag .. ": the vitals card steps aside while the card lies over it",
+							fmt("card %s, vitals %d,%d %dx%d shown %s", U8.show(c), slot.X, slot.Y, slot.W, slot.H, tostring(layout.Vitals ~= nil)))
+					end
+					local grid = U99.offGrid(root, { NameTab = true, Portrait = true, TitlePill = true, Tail = true, NpcDialog = true })
+					T.check(#grid == 0, tag .. ": the card's blocks, lips, icons and wood edges on whole screen px", table.concat(grid, "; "))
+				end
+				U99.npcClose()
+				U99.npcGone()
+				local hud = U7.client("Controllers/HudController")
+				local after = hud and hud.GetLayout and hud.GetLayout()
+				T.check(not (after and after.VitalsSlot) or after.Vitals ~= nil, tag .. ": the vitals card is back once the dialog closes")
+			end)
+		end
 		LKC.flushErrors("npc_fits_phone")
 	end)
 
@@ -8534,6 +8712,12 @@ local function clientScenarios()
 				T.check(#low == 0, tag .. ": the words read on the tile", table.concat(low, "; "))
 				local r, gr = U8.rect(hint), hint.Parent.AbsoluteSize
 				T.check(r.X >= 0 and r.R <= gr.X and r.Y >= 0.645 * gr.Y - 0.5 and r.B <= gr.Y, tag .. ": inside the screen, below the middle band", U8.show(r))
+				-- (U9-9 look) the plank on whole screen px: its left edge, top and width whole (it sat at x 714.38, 491.24 wide)
+				local grid = U99.offGrid(hint.Parent, { Hint = true })
+				if math.abs(r.R - r.X - math.floor(r.R - r.X + 0.5)) > 0.02 then
+					grid[#grid + 1] = "width " .. fmt("%.2f", r.R - r.X)
+				end
+				T.check(#grid == 0, tag .. ": the plank, its lip, the mouse and the wood edge on whole screen px", table.concat(grid, "; ") .. fmt(" | %.2f,%.2f %.2f wide", r.X, r.Y, r.R - r.X))
 			end
 			restore()
 		end)

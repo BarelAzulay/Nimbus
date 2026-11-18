@@ -90,12 +90,15 @@ local K = {
 	BUTTON_SIZE = 22,
 	NEXT_W = 150,
 	BUTTON_H = 44,
-	PIP = 12,
-	PIP_GAP = 5,
-	PIP_MIN = 6, -- smallest pip with the 2 px ring; below it the ring thins to 1 px and the gaps tighten
-	PIP_TIGHT_GAP = 3,
-	PIP_TIGHT_MIN = 4, -- smallest pip at all; below it a progress bar replaces the pips
-	PIP_BAR_H = 8,
+	-- (U9-9 look) the step progress, one SignKit block row in whole SCREEN px (layoutProgress): its blocks PROG_H tall,
+	-- PROG_GAP apart, a block per step while each gets PROG_MIN px (at most PROG_MAX), else a block per chapter of
+	-- PROG_CHAPTER steps; the kit's 2 px wood edge and a PROG_LIP lip
+	PROG_H = 12,
+	PROG_GAP = 2,
+	PROG_MIN = 10,
+	PROG_MAX = 14,
+	PROG_CHAPTER = 3,
+	PROG_LIP = 2,
 	NAME_MIN = 20, -- narrow cards shrink the name (and the step title down to CAPTION_SIZE) before truncating
 	OUTLINE_ROOM = 6, -- the labels' glyph outline + stroke draw this much wider than TextService measures
 	SKIP_W = 132,
@@ -187,8 +190,8 @@ local DEFAULT_HINTS = {
 	NearSpot = "Walk to your plot",
 	ShopOpened = "Open the shop",
 	Rolled = "Spin a roulette",
-	Equipped = "Tap the glowing Pets button",
-	IndexOpened = "Tap the glowing Index button",
+	Equipped = "Tap the Pets button", -- (U9-9 look) the kit B ring is a gold frame: nothing glows
+	IndexOpened = "Tap the Index button",
 	MatchStarted = "Step into the portal",
 	MatchEnded = "Reach the finish",
 }
@@ -253,7 +256,7 @@ local function mod(name)
 		local loaded
 		if name == "CloudUI" or name == "PixelCrisp" then
 			loaded = loadModule(Client:FindFirstChild("UI"), name, 5)
-		elseif name == "MenuController" or name == "IndexController" then
+		elseif name == "MenuController" or name == "IndexController" or name == "HudController" then
 			loaded = loadModule(script.Parent, name)
 		else
 			loaded = loadModule(Shared, name, 5)
@@ -316,9 +319,9 @@ local function edge(parent, color, px)
 	return s
 end
 
--- a flat lip along the bottom of `parent` (px tall)
+-- a flat lip along the bottom of `parent` (px tall), (U9-9 look) whole screen px at any card scale
 local function lipOf(parent, color, px)
-	return box("Lip", {
+	local lip = box("Lip", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = color,
 		AnchorPoint = Vector2.new(0, 1),
@@ -326,6 +329,11 @@ local function lipOf(parent, color, px)
 		Size = UDim2.new(1, 0, 0, px),
 		ZIndex = parent.ZIndex,
 	}, parent)
+	local crisp = mod("PixelCrisp")
+	if crisp then
+		crisp.Lip(lip, px)
+	end
+	return lip
 end
 
 -- a pixel icon on whole screen px (PixelCrisp.Icon; a hosted glyph label when PixelCrisp is missing)
@@ -579,10 +587,12 @@ local function bodyHeight(text, width)
 	return estimate
 end
 
--- Single-line text width (design px); a rough per-character estimate when TextService cannot measure.
-local function textWidth(text, size, font)
+-- Single-line text width (design px) in a Theme role, as the label shows it ((U9-9 look) a caps role in capitals, a
+-- FontFace role widened: the Title role's Enum font in lower case measured "NIMBUS" 10 % short, and the name came out
+-- "NIMB..."); a rough per-character estimate when TextService cannot measure.
+local function textWidth(text, size, role)
 	local ok, measured = pcall(function()
-		return Theme.Measure(text, font, size, 10000)
+		return Theme.Measure(text, role, size, 10000)
 	end)
 	if ok and measured and measured.X > 0 then
 		return measured.X
@@ -590,12 +600,28 @@ local function textWidth(text, size, font)
 	return #text * size * 0.62
 end
 
--- The largest text size from `size` down to `minSize` (steps of 2) whose text fits `room` design px.
-local function fitTextSize(text, size, minSize, font, room)
-	while size > minSize and textWidth(text, size, font) + K.OUTLINE_ROOM > room do
+-- The largest text size from `size` down to `minSize` (steps of 2, the last step to minSize itself) whose text fits
+-- `room` design px.
+local function fitTextSize(text, size, minSize, role, room)
+	while size > minSize and textWidth(text, size, role) + K.OUTLINE_ROOM > room do
 		size = math.max(minSize, size - 2)
 	end
 	return size
+end
+
+-- (U9-9 look) the objective line wraps to a second line rather than cut its words (it was "Tap the glowing Pet..." on a
+-- portrait phone): measured at the size it takes on the smallest card (14 screen px at 0.7) with the room the distance
+-- suffix needs, so the card never jumps in height as the player walks. Returns its row's design height and its lines
+local HINT_MEASURE = math.max(K.CAPTION_SIZE, math.ceil(14 / 0.7 - 1e-6))
+local function hintHeight(width)
+	local st = S.state
+	local text = st and (st.Hint or DEFAULT_HINTS[st.CompleteOn]) or ""
+	if st and type(st.Target) == "table" and WORLD_KINDS[st.Target.Kind] then
+		text = text .. "  9483  you're here!"
+	end
+	local ok, size = pcall(Theme.Measure, BULLET .. text, "Label", HINT_MEASURE, width)
+	local lines = (ok and typeof(size) == "Vector2" and size.Y > HINT_MEASURE * 1.5) and 2 or 1
+	return K.HINT_H + (lines - 1) * math.ceil(HINT_MEASURE * 1.2), lines
 end
 
 local function hintShown()
@@ -608,24 +634,27 @@ local function footerShown()
 	return not S.finale
 end
 
--- Design-pixel height of the expanded panel at `width` (cached per width + text).
+-- Design-pixel height of the expanded panel at `width` (cached per width + text), its body's and its hint's.
 local function panelHeight(width)
 	local text = S.fullText or ""
-	local key = tostring(width) .. "|" .. text .. "|" .. tostring(hintShown()) .. "|" .. tostring(footerShown())
+	local st = S.state
+	local key = tostring(width) .. "|" .. text .. "|" .. tostring(hintShown()) .. "|" .. tostring(footerShown()) .. "|" .. tostring(st and st.Step)
 	if S.heightKey == key then
-		return S.heightValue, S.bodyValue
+		return S.heightValue, S.bodyValue, S.hintValue
 	end
 	local wellW = width - 2 * K.PAD - 2 * K.WELL_PAD
 	local bodyH = bodyHeight(text, wellW)
 	local h = K.HEADER_H + 10 + bodyH + 8 + K.FOOT_PAD -- (kit B U9-9) the well ends above the stone lip
+	local hintH = K.HINT_H
 	if hintShown() then
-		h = h + K.HINT_H + 4
+		hintH = hintHeight(wellW)
+		h = h + hintH + 4
 	end
 	if footerShown() then
 		h = h + K.FOOTER_H
 	end
-	S.heightKey, S.heightValue, S.bodyValue = key, h, bodyH
-	return h, bodyH
+	S.heightKey, S.heightValue, S.bodyValue, S.hintValue = key, h, bodyH, hintH
+	return h, bodyH, hintH
 end
 
 -- MenuController's column (or the union of its MenuButton_* tiles) in our gui coordinates.
@@ -795,70 +824,177 @@ local function collapsed()
 	return S.manual ~= "expanded" and S.autoCollapse == true
 end
 
+-- (U9-9 look) the step progress: ONE SignKit.BlockRow (the kit's block-bar language: a wood edge, the face, its darker
+-- lip) in a holder that undoes the card's scale, so its blocks, gaps, edges and lips are whole screen px at every card
+-- size. A block per step while each gets K.PROG_MIN px, else a block per chapter of K.PROG_CHAPTER steps: done grass,
+-- the current gold, the rest the sunk well with no lip. (The pips, their tight variant and the thin bar it replaces
+-- were four looks for one thing.)
+local PROG_LOOK = {
+	Done = { Face = SIGN.Grass, Lip = SIGN.GrassLip },
+	Current = { Face = SIGN.Gold, Lip = SIGN.GoldLip },
+	Open = { Face = SIGN.Well },
+}
+
+-- paints the row for `current` (the step shown; 0 with allDone for the finale); no arguments: the last ones again
+local function paintProgress(current, allDone)
+	if current ~= nil then
+		S.progStep, S.progDone = current, allDone == true
+	end
+	local row = UI.ProgressRow
+	if not row then
+		return
+	end
+	local per = row:GetAttribute("PerBlock") or 1
+	local n = row:GetAttribute("Count") or 0
+	local step = S.progStep or 0
+	local now = step >= 1 and math.ceil(step / per) or 0
+	for i = 1, n do
+		local state = "Open"
+		if S.progDone or i < now then
+			state = "Done"
+		elseif i == now then
+			state = "Current"
+		end
+		local block = row:FindFirstChild("Block" .. i)
+		local face = block and block:FindFirstChild("Face")
+		if face then
+			local look = PROG_LOOK[state]
+			block:SetAttribute("State", state)
+			face.BackgroundColor3 = look.Face
+			face.BackgroundTransparency = 0
+			local lip = face:FindFirstChild("Lip")
+			if lip then
+				lip.Visible = look.Lip ~= nil
+				lip.BackgroundColor3 = look.Lip or look.Face
+			end
+		end
+	end
+	row:SetAttribute("Current", (S.progDone and 0) or now)
+end
+
+-- the face of the block the current step is in (it breathes), nil when there is none
+local function currentProgressFace()
+	local row = UI.ProgressRow
+	local now = row and row:GetAttribute("Current")
+	local block = row and now and now > 0 and row:FindFirstChild("Block" .. now)
+	return block and block:FindFirstChild("Face") or nil
+end
+
+-- sizes the row to `room` design px of the header at the card's scale, rebuilding it when its blocks change
+local function layoutProgress(room)
+	local holder = UI.Progress
+	if not holder then
+		return
+	end
+	local crisp = mod("PixelCrisp")
+	local k = math.max(0.1, crisp and crisp.ScaleAbove(holder) or UI.Scale.Scale)
+	local total = S.progTotal or 0
+	local roomPx = math.max(0, math.floor(room * k))
+	local per, n = 1, total
+	local bw = n > 0 and math.floor((roomPx + K.PROG_GAP) / n) - K.PROG_GAP or 0
+	if bw < K.PROG_MIN then
+		per = K.PROG_CHAPTER
+		n = math.ceil(total / per)
+		bw = n > 0 and math.floor((roomPx + K.PROG_GAP) / n) - K.PROG_GAP or 0
+	else
+		bw = math.min(bw, K.PROG_MAX)
+	end
+	local unscale = holder:FindFirstChild("Unscale")
+	if unscale and unscale.Scale ~= 1 / k then
+		unscale.Scale = 1 / k
+	end
+	holder.Size = UDim2.fromOffset(roomPx, K.PROG_H)
+	local key = n .. "|" .. bw .. "|" .. per .. "|" .. total
+	if S.progKey ~= key or not (UI.ProgressRow and UI.ProgressRow.Parent) then
+		S.progKey = key
+		if UI.ProgressRow then
+			UI.ProgressRow:Destroy()
+			UI.ProgressRow = nil
+		end
+		local SignKit = mod("SignKit")
+		if SignKit and n > 0 and bw > 0 then
+			local row = SignKit.BlockRow(holder, { Count = n, BlockW = bw, BlockH = K.PROG_H, Gap = K.PROG_GAP })
+			row:SetAttribute("PerBlock", per)
+			row:SetAttribute("Steps", total)
+			for i = 1, n do
+				local block = row:FindFirstChild("Block" .. i)
+				local face = block and block:FindFirstChild("Face")
+				local lip = face and face:FindFirstChild("Lip")
+				if lip then
+					lip.Size = UDim2.new(1, 0, 0, K.PROG_LIP)
+				end
+			end
+			UI.ProgressRow = row
+		end
+	end
+	paintProgress()
+end
+
+-- (U9-9 look) the HUD's vitals card steps aside while the opened card lies over a part of it (the plain lobby's card
+-- the player opened on a short screen), as the result card and the NPC dialog do; back when the card folds or goes.
+-- `rect`: the opened card in gui px, nil when it is folded or hidden
+local function syncVitals(rect)
+	local off = false
+	local hud = mod("HudController")
+	if rect and hud and type(hud.GetLayout) == "function" then
+		local okLayout, lay = pcall(hud.GetLayout)
+		local slot = okLayout and type(lay) == "table" and lay.VitalsSlot
+		if slot then -- (gui-area px of an IgnoreGuiInset = false gui, as ours)
+			local w = math.min(rect.x1, slot.X + slot.W) - math.max(rect.x0, slot.X)
+			local h = math.min(rect.y1, slot.Y + slot.H) - math.max(rect.y0, slot.Y)
+			off = w > 4 and h > 4
+		end
+	end
+	if off ~= (S.vitalsOff == true) and hud and type(hud.SetVitalsHidden) == "function" then
+		S.vitalsOff = off
+		pcall(hud.SetVitalsHidden, "Tutorial", off)
+	end
+end
+
 -- Applies the inner geometry of the panel for a design width / height.
-local function applyGeometry(width, height, bodyH)
+local function applyGeometry(width, height, bodyH, hintH)
 	UI.Root.Size = UDim2.fromOffset(width, height)
 	UI.Body.Size = UDim2.new(1, -2 * K.WELL_PAD, 0, bodyH)
 	UI.TypeSkip.Size = UI.Body.Size
 	UI.Hint.Position = UDim2.fromOffset(K.WELL_PAD, 10 + bodyH + 4)
+	UI.Hint.Size = UDim2.new(1, -2 * K.WELL_PAD, 0, hintH or K.HINT_H) -- (U9-9 look) one or two lines
 	UI.Hint.Visible = hintShown()
 	UI.Footer.Visible = footerShown()
-	-- narrow cards drop the counter pill (the pips still show the progress) so the name keeps its room
-	local x0 = K.PAD + K.PORTRAIT + 12
-	local roomy = width - x0 - 150 >= 96
-	UI.CounterPill.Visible = roomy
-	local nameRoom = width - (roomy and (x0 + 150) or (x0 + 56))
-	UI.Name.Size = UDim2.new(0, nameRoom, 0, 34)
-	UI.Name.TextSize = fitTextSize(UI.Name.Text, K.NAME_SIZE, K.NAME_MIN, Theme.Fonts.Title, nameRoom)
-	local headRoom = width - x0 - K.PAD
 	-- (kit B U9-9) a card shrunk to fit a short phone (down to 0.7) keeps its small words at 14 screen px or more: the
 	-- caption size grows to 14 / scale (18 -> 20 at 0.7)
 	local cap = math.max(K.CAPTION_SIZE, math.ceil(14 / math.max(0.1, UI.Scale.Scale) - 1e-6))
+	-- narrow cards drop the counter pill (the progress row still shows the progress) so the name keeps its room
+	local x0 = K.PAD + K.PORTRAIT + 12
+	-- (U9-9 look) the name's room ends 6 px before the counter tag (PAD + 44 + 104 from the right; it was 150 and the tag
+	-- lay 12 px over the name)
+	local tagsW = K.PAD + 44 + 104 + 6
+	local roomy = width - x0 - tagsW >= 90
+	UI.CounterPill.Visible = roomy
+	local nameRoom = width - (roomy and (x0 + tagsW) or (x0 + 56))
+	UI.Name.Size = UDim2.new(0, nameRoom, 0, 34)
+	-- (U9-9 look) measured as it shows (the Title role in capitals), down to the caption size before it would cut; the
+	-- label is TextScaled under that size (as the NPC's name), so the engine's own fit has the last word
+	local nameMin = math.min(K.NAME_MIN, cap)
+	local nameSize = fitTextSize(UI.Name.Text, K.NAME_SIZE, nameMin, "Title", nameRoom)
+	UI.Name.TextSize = nameSize
+	if UI.NameFit then
+		UI.NameFit.MinTextSize = nameMin
+		UI.NameFit.MaxTextSize = nameSize
+	end
+	local headRoom = width - x0 - K.PAD
 	UI.Counter.TextSize = cap
 	UI.Hint.TextSize = cap
 	UI.SkipLink.TextSize = cap
 	UI.ConfirmQuestion.TextSize = math.max(19, cap)
-	UI.StepTitle.TextSize = fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_SIZE, cap), Theme.Fonts.Heading, headRoom)
-	-- pips (and their gaps) shrink to fit the header; the rings draw outside each pip, so both ends keep room for
-	-- them. When even tight pips cannot fit (many steps on a narrow card), a progress bar replaces the pips.
-	local total = #UI.PipList
-	if total > 0 then
-		local ring, gap = 2, K.PIP_GAP
-		local pip = math.min(K.PIP, math.floor((headRoom - 2 * ring + gap) / total) - gap)
-		if pip < K.PIP_MIN then
-			ring, gap = 1, K.PIP_TIGHT_GAP
-			pip = math.floor((headRoom - 2 * ring + gap) / total) - gap
-		end
-		local asBar = pip < K.PIP_TIGHT_MIN
-		UI.Pips.Visible = not asBar
-		UI.PipBar.Visible = asBar
-		if not asBar then
-			UI.PipLayout.Padding = UDim.new(0, gap)
-			local crisp = mod("PixelCrisp")
-			for _, pipFrame in ipairs(UI.PipList) do
-				pipFrame.Size = UDim2.fromOffset(pip, pip)
-				local pipRing = pipFrame:FindFirstChild("SignEdge")
-				if pipRing then
-					pipRing.Thickness = ring
-					if crisp then
-						crisp.Edge(pipRing, ring)
-					end
-				end
-				-- (kit B U9-9) the block's lip: a quarter of the pip, at least 1 px
-				local pipLip = pipFrame:FindFirstChild("Lip")
-				if pipLip then
-					pipLip.Size = UDim2.new(1, 0, 0, math.max(1, math.floor(pip / 4)))
-				end
-			end
-		end
-	end
+	UI.StepTitle.TextSize = fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_SIZE, cap), "Heading", headRoom)
+	layoutProgress(headRoom)
 	-- narrow footers: "Skip tutorial" shortens to "Skip" and the Next button narrows, so they never overlap
 	local footerW = width - 2 * K.PAD - 2 * K.WELL_PAD
 	local shortSkip = footerW < K.SKIP_W + K.GAP + K.NEXT_W
 	local skipW = shortSkip and K.SKIP_SHORT_W or K.SKIP_W
 	UI.SkipLink.Text = shortSkip and "Skip" or "Skip tutorial"
 	UI.SkipLink.Size = UDim2.fromOffset(skipW, 34)
-	UI.SkipUnderline.Size = UDim2.fromOffset(math.ceil(textWidth(UI.SkipLink.Text, cap, Theme.Fonts.Label)), 2)
+	UI.SkipUnderline.Size = UDim2.fromOffset(math.ceil(textWidth(UI.SkipLink.Text, cap, "Label")), 2)
 	UI.Next.Size = UDim2.fromOffset(math.min(K.NEXT_W, footerW - skipW - K.GAP), K.BUTTON_H)
 	-- and the skip confirmation: smaller buttons first, then the short question
 	local confirmW = K.CONFIRM_W
@@ -1041,7 +1177,7 @@ local function layout()
 		UI.Scale.Scale = cardScale
 	end
 
-	local designH, bodyH = panelHeight(width)
+	local designH, bodyH, hintH = panelHeight(width)
 	local tagRoom = true
 	if folded then
 		local bubbleTop = top + K.PORTRAIT_Y * k
@@ -1078,7 +1214,7 @@ local function layout()
 			tagRoom = false
 		end
 	end
-	applyGeometry(width, designH, bodyH)
+	applyGeometry(width, designH, bodyH, hintH)
 	local crisp = mod("PixelCrisp")
 	if crisp then
 		crisp.Refresh(UI.Root) -- (kit B U9-9) icons and edges back on whole screen px at the card's scale
@@ -1088,6 +1224,12 @@ local function layout()
 	UI.TapTag.Visible = folded and S.manual == nil and S.canOpen and not S.windowOpen and tagRoom
 
 	local goal = UDim2.fromOffset(math.floor(left + 0.5), math.floor(top + 0.5))
+	if folded or not S.shown then
+		syncVitals(nil)
+	else
+		local gx, gy = goal.X.Offset, goal.Y.Offset
+		syncVitals({ x0 = gx, y0 = gy, x1 = gx + width * cardScale, y1 = gy + designH * cardScale })
+	end
 	if S.placed ~= goal then
 		S.placed = goal
 		if UI.Root.Visible and S.hasPlaced then
@@ -1112,62 +1254,6 @@ end
 ----------------------------------------------------------------------
 -- Panel: building
 ----------------------------------------------------------------------
--- (kit B U9-9) the pips in the kit's block-bar language (DailyController's Wisp bar): a done step a grass block with its
--- lip, the current one gold with its lip, the rest the sunk well with none; each in a wood edge
-local PIP_LOOK = {
-	Done = { Face = SIGN.Grass, Lip = SIGN.GrassLip },
-	Current = { Face = SIGN.Gold, Lip = SIGN.GoldLip },
-	Open = { Face = SIGN.Well },
-}
-
-local function buildPips(total)
-	for _, old in ipairs(UI.PipList) do
-		old:Destroy()
-	end
-	UI.PipList = {}
-	for i = 1, total do
-		local pip = box("Pip" .. i, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = SIGN.Well,
-			Size = UDim2.fromOffset(K.PIP, K.PIP),
-			LayoutOrder = i,
-		}, UI.Pips)
-		edge(pip, SIGN.Wood, K.EDGE_PX)
-		lipOf(pip, SIGN.GrassLip, 3)
-		UI.PipList[i] = pip
-	end
-end
-
-local function paintPips(current, allDone)
-	for i, pip in ipairs(UI.PipList) do
-		local state = "Open"
-		if allDone or i < current then
-			state = "Done"
-		elseif i == current then
-			state = "Current"
-		end
-		local look = PIP_LOOK[state]
-		pip.BackgroundColor3 = look.Face
-		pip.BackgroundTransparency = 0
-		pip:SetAttribute("State", state)
-		local pipLip = pip:FindFirstChild("Lip")
-		if pipLip then
-			pipLip.Visible = look.Lip ~= nil
-			pipLip.BackgroundColor3 = look.Lip or look.Face
-		end
-	end
-	-- the progress bar (narrow cards): grass for the steps done, gold for the current one
-	local total = #UI.PipList
-	if total > 0 then
-		local done = allDone and total or math.clamp(current - 1, 0, total)
-		UI.PipBarDone.Size = UDim2.fromScale(done / total, 1)
-		UI.PipBarDone.Visible = done > 0
-		UI.PipBarNow.Position = UDim2.fromScale(done / total, 0)
-		UI.PipBarNow.Size = UDim2.fromScale(1 / total, 1)
-		UI.PipBarNow.Visible = not allDone and current >= 1 and current <= total
-	end
-end
-
 local function buildPortrait(parent)
 	-- (kit B U9-9) a square sky well in a wood frame (the NPC dialog's portrait): a little pixel cloud in its corner,
 	-- Nimbus in front of it, the ground lip over Nimbus' feet
@@ -1366,6 +1452,10 @@ local function buildPanel()
 	UI.Scale = make("UIScale", "ReadScale", { Scale = 1 }, root)
 	local slide = box("Slide", { Size = UDim2.fromScale(1, 1) }, root)
 	UI.Slide = slide
+	local crisp = mod("PixelCrisp")
+	if crisp then
+		crisp.Root(slide) -- (U9-9 look) it slides in; the card's blocks sit on whole px of it at rest
+	end
 
 	local main = box("Main", { Size = UDim2.fromScale(1, 1), ZIndex = 1 }, slide)
 	UI.Main = main
@@ -1394,10 +1484,12 @@ local function buildPanel()
 	local x0 = K.PAD + K.PORTRAIT + 12
 	UI.Name = label(header, "GuideName", "Nimbus", "Title", K.NAME_SIZE, SIGN.Text, {
 		Position = UDim2.fromOffset(x0, 12),
-		Size = UDim2.new(1, -(x0 + 150), 0, 34),
+		Size = UDim2.new(1, -(x0 + K.PAD + 44 + 104 + 6), 0, 34),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
+	UI.Name.TextScaled = true -- (U9-9 look) under UI.NameFit (applyGeometry): never cut to "NIMB..."
+	UI.NameFit = make("UITextSizeConstraint", "Fit", { MinTextSize = K.NAME_MIN, MaxTextSize = K.NAME_SIZE }, UI.Name)
 	Theme.StyleTitle(UI.Name, "Section")
 	UI.StepTitle = label(header, "StepTitle", "", "Heading", K.TITLE_SIZE, SIGN.Text, {
 		Position = UDim2.fromOffset(x0, 46),
@@ -1405,28 +1497,13 @@ local function buildPanel()
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	UI.Pips = box("Pips", { Position = UDim2.fromOffset(x0, 76), Size = UDim2.new(1, -(x0 + K.PAD), 0, K.PIP + 2) }, header)
-	UI.PipLayout = make("UIListLayout", "List", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		Padding = UDim.new(0, K.PIP_GAP),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-	}, UI.Pips)
-	UI.PipList = {}
-	-- the progress bar that stands in for the pips on narrow cards (its ring stays inside the header room)
-	-- the progress bar that stands in for the pips on narrow cards (many steps): the sunk well in a wood edge, the steps
-	-- done grass, the current one gold (flat, square)
-	local bar = box("PipBar", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Well,
-		Position = UDim2.fromOffset(x0 + 2, 76 + math.floor((K.PIP + 2 - K.PIP_BAR_H) / 2)),
-		Size = UDim2.new(1, -(x0 + K.PAD + 4), 0, K.PIP_BAR_H),
-		Visible = false,
-	}, header)
-	edge(bar, SIGN.Wood, K.EDGE_PX)
-	UI.PipBarDone = box("Done", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Grass, Size = UDim2.fromScale(0, 1) }, bar)
-	UI.PipBarNow = box("Now", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, Size = UDim2.fromScale(0, 1) }, bar)
-	UI.PipBar = bar
+	-- (U9-9 look) the step progress: one SignKit block row in whole screen px (layoutProgress), its holder undoing the
+	-- card's scale (Unscale) and its top-left on a whole px
+	UI.Progress = box("Progress", { Position = UDim2.fromOffset(x0, 76), Size = UDim2.fromOffset(200, K.PROG_H) }, header)
+	make("UIScale", "Unscale", { Scale = 1 }, UI.Progress)
+	if crisp then
+		crisp.Box(UI.Progress)
+	end
 	-- the counter: a stone tag in its wood edge, brown words
 	local pill = box("Counter", {
 		BackgroundTransparency = 0,
@@ -1483,7 +1560,7 @@ local function buildPanel()
 		Position = UDim2.fromOffset(K.WELL_PAD, 70),
 		Size = UDim2.new(1, -2 * K.WELL_PAD, 0, K.HINT_H),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
+		TextWrapped = true, -- (U9-9 look) a second line (hintHeight), never cut
 	})
 
 	local footer = box("Footer", {
@@ -1561,6 +1638,23 @@ local function buildPanel()
 		end,
 		Parent = confirm,
 	})
+
+	-- (U9-9 look) the tags, the well and the planks on whole screen px of the card at any scale: their top-left (Box), and
+	-- a CloudUI plank's wood edge and lip (2.1 / 2.4 px drew uneven)
+	if crisp then
+		for _, block in ipairs({ UI.CounterPill, UI.Fold, UI.Well, UI.Next, UI.ConfirmYes, UI.ConfirmStay }) do
+			if block ~= UI.CounterPill and block ~= UI.Fold and block ~= UI.Well then
+				for _, c in ipairs(block:GetChildren()) do
+					if c:IsA("UIStroke") and c:GetAttribute("CrispEdge") == nil then
+						crisp.Edge(c, c.Thickness)
+					elseif c.Name == "Lip" and c:IsA("GuiObject") and c:GetAttribute("CrispLip") == nil then
+						crisp.Lip(c, c.Size.Y.Offset)
+					end
+				end
+			end
+			crisp.Box(block)
+		end
+	end
 
 	buildPortrait(slide)
 
@@ -1887,10 +1981,8 @@ local function renderStep()
 	end
 	UI.StepTitle.Text = st.Title ~= "" and st.Title or "Nimbus says"
 	UI.Counter.Text = "Step " .. st.Step .. "/" .. st.Total
-	if #UI.PipList ~= st.Total then
-		buildPips(st.Total)
-	end
-	paintPips(st.Step, false)
+	S.progTotal = st.Total -- (layout builds the row for it)
+	paintProgress(st.Step, false)
 	UI.Hint.Text = hintText()
 	local isNext = nextShown(st)
 	UI.Next.Text = st.Button or "Next"
@@ -1910,7 +2002,7 @@ local function renderFinale(reward)
 	S.typing = false
 	UI.StepTitle.Text = "All done!"
 	UI.Counter.Text = "Complete!"
-	paintPips(0, true)
+	paintProgress(0, true)
 	local text = "You know the basics now. Happy climbing, see you in the clouds!"
 	if type(reward) == "number" and reward > 0 then
 		text = "+" .. reward .. " Cloud Tokens are yours! You know the basics now. Happy climbing!"
@@ -1962,6 +2054,7 @@ local function setPanelShown(on)
 			S.typeDelay = math.max(S.typeDelay or 0, 0.35) -- let the card arrive before talking
 		end
 	else
+		syncVitals(nil)
 		local out = tween(UI.Slide, 0.3, { Position = UDim2.fromOffset(hiddenX, 0) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		out.Completed:Connect(function()
 			if not S.shown and UI.Root then
@@ -2807,11 +2900,11 @@ function TutorialController.Step(dt)
 				S.skipLockUntil = 0
 				setDisabled(UI.ConfirmYes, false)
 			end
-			-- the current pip breathes
+			-- the current step's block breathes
 			local st = S.state
-			local pip = st and not S.finale and (UI.PipBar.Visible and UI.PipBarNow or UI.PipList[st.Step])
-			if pip then
-				pip.BackgroundTransparency = (math.sin(t * 6) + 1) * 0.2
+			local face = st and not S.finale and currentProgressFace()
+			if face then
+				face.BackgroundTransparency = (math.sin(t * 6) + 1) * 0.2
 			end
 		end
 		if UI.Badge.Visible then

@@ -85,12 +85,17 @@ local LocalPlayer = Players.LocalPlayer
 -- toasts
 local MAX_TOASTS = 4
 local TOAST_W = 250
-local TOAST_GAP = 8
+-- (U9-9 look) the column's rows in multiples of 5 design px, whole screen px at the phones' 0.8 and at 1080p (a UDim's
+-- Offset is whole in Roblox, so 8 px of padding would draw 6.4): the gap, the padding, the lip
+local TOAST_GAP = 10
+local TOAST_PAD = 10
 local TOAST_TEXT_SIZE = 18
+local TOAST_TEXT_MIN = 25 -- a one-line toast's text row (the card is then 50 design px: 40 px at 0.8)
 local TOAST_ICON = 30
 local TOAST_BG = 0 -- (kit B U9-9) an opaque stone block
 local TOAST_EDGE = 2 -- the wood edge (as the HUD's currency strips)
-local TOAST_LIP = 4 -- the darker stone lip along the bottom
+local TOAST_LIP = 5 -- the darker stone lip along the bottom (4 px at 0.8)
+local TOAST_CHIP_LIP = 3 -- the chip's own lip
 local TOAST_GLYPH = 18 -- the chip's pixel icon (2 px cells at 1080p)
 local DEFAULT_DURATION = 3
 local MIN_DURATION = 1.5
@@ -120,7 +125,6 @@ local HUD_GAP = 10 -- kept below the HUD pieces the stack has to clear
 local RESULT_W = 290
 local RESULT_ROOF_OVER = 10 -- (kit B U9-9) the awning reaches this far past each side of the card ...
 local RESULT_ROOF_UP = 10 -- ... and this far above its top: the card is placed so the awning clears the HUD too
-local RESULT_CLOSE = 46 -- the banner's room at its right end for the red close block (36 px)
 -- (kit B U9-9) the card's rows (design px): the full card, and the compact one for a screen whose room for the card
 -- (resultRoom: under the HUD's top-right block and the awning, above the touch buttons, the lower quarter or the centre
 -- band) is less than the full card's height (a landscape phone): the stat blocks thinner, the banner and the gaps
@@ -132,14 +136,25 @@ local RESULT_CLOSE = 46 -- the banner's room at its right end for the red close 
 -- the currency strip and the jump button; a portrait phone, above the centre band): the compact rows with no team and no
 -- difficulty line (the result, the reason in its short words, the stats and the countdown), W 250 (the toast column's
 -- width, so it clears the centre band on a 640 px phone)
+-- (U9-9 look) every row a multiple of 5 design px, so its edges land on whole screen px at the phones' 0.8 and at 1080p,
+-- and a stat block tall enough for its 18 px coin: Row - RowGap is the block (30 -> 24 px at 0.8: its value row 20 px, a
+-- pixel clear of the coin above and of its lip below), RowGap the stone between two blocks (their 2 px edges and 4 px of
+-- stone between them at 0.8); Close the red close block
+-- (inside the banner's face above its lip); Diff the difficulty's role chip (30 high, 4 px under the banner's edge). The
+-- mini card's win bonus rides in the Tokens row ("11 +10", MergeBonus)
 local RESULT_ROWS = {
-	Full = { Title = 46, Headline = 34, Diff = 28, Reason = 24, Gap = 8, Row = 34, Member = 28, Foot = 28, Value = 20, Trim = 0, Slack = 10,
-		W = RESULT_W },
-	Compact = { Title = 38, Headline = 30, Diff = 26, Reason = 22, Gap = 4, Row = 28, Member = 26, Foot = 22, Value = 18, Trim = 10, Slack = 4,
-		SkipZeroBonus = true, Columns = 2, W = RESULT_W },
-	Mini = { Title = 38, Headline = 30, Diff = 0, Reason = 22, Gap = 4, Row = 28, Member = 26, Foot = 22, Value = 18, Trim = 10, Slack = 4,
-		SkipZeroBonus = true, NoTeam = true, NoDiff = true, ShortReason = true, W = 250 },
+	Full = { Title = 45, Headline = 34, Diff = 45, Reason = 25, Gap = 5, Row = 45, RowGap = 10, Member = 30, Foot = 30, Value = 20, Trim = 0,
+		Slack = 10, Close = 35, W = RESULT_W },
+	Compact = { Title = 40, Headline = 30, Diff = 45, Reason = 25, Gap = 5, Row = 40, RowGap = 10, Member = 30, Foot = 25, Value = 18, Trim = 10,
+		Slack = 5, Close = 30, SkipZeroBonus = true, Columns = 2, W = RESULT_W },
+	Mini = { Title = 40, Headline = 30, Diff = 0, Reason = 25, Gap = 10, Row = 40, RowGap = 10, Member = 30, Foot = 20, Value = 18, Trim = 10,
+		Slack = 0, Close = 30, SkipZeroBonus = true, MergeBonus = true, NoTeam = true, NoDiff = true, ShortReason = true, W = 250 },
 }
+local RESULT_ROW_LIP = 5 -- a stat block's lip (4 px at 0.8)
+local RESULT_BANNER_LIP = 5
+local RESULT_ICON_GAP = 5 -- the room between a value and its coin / tick (4 px at 0.8)
+local RESULT_NAIL = 4 -- (U9-9 look) the stone body's two nails at its top corners (the dungeon End card's, U9-7) ...
+local RESULT_NAIL_IN = 5 -- ... this far in from the corner
 local RESULT_TIERS = { "Full", "Compact", "Mini" } -- the first whose card fits its room (the last when none does)
 NotifyController.ResultRows = RESULT_ROWS
 local RESULT_Y = 0.47 -- vertical position (fraction of the screen), right edge
@@ -172,14 +187,7 @@ local KIND_CHIP = {
 	token = { Face = SIGN.Gold, Lip = SIGN.GoldLip, Icon = "token", Ink = SIGN.Text, Sparkle = true },
 }
 NotifyController.KindChip = KIND_CHIP
--- the result card's difficulty stars: the deep gold moved towards the brown ink until it reads 3:1 on the stone (an icon)
-local STAR_INK = SIGN.GoldDeep
-for step = 1, 20 do
-	if Theme.Contrast(STAR_INK, SIGN.Stone) >= 3 then
-		break
-	end
-	STAR_INK = SIGN.GoldDeep:Lerp(SIGN.Text, step * 0.05)
-end
+-- (U9-9 look) the result card's difficulty stars are drawn in the ink of the difficulty's chip (buildResults)
 
 local REASON_TEXT = {
 	defeat = "The whole team went down",
@@ -440,8 +448,34 @@ local function estimateToastHeight(text)
 		len = #tostring(text or "")
 	end
 	local lines = math.max(1, math.ceil(len / perLine))
-	-- (kit B U9-9) the stone tag's padding (8 over, 8 and its lip under) and its wood edge outside it
-	return math.max(44, lines * math.ceil(TOAST_TEXT_SIZE * 1.15) + 16 + TOAST_LIP) + 2 * TOAST_EDGE
+	-- (kit B U9-9) the stone tag's padding (over it, and with its lip under it) and its wood edge outside it
+	return math.max(TOAST_TEXT_MIN, lines * math.ceil(TOAST_TEXT_SIZE * 1.15)) + 2 * TOAST_PAD + TOAST_LIP + 2 * TOAST_EDGE
+end
+
+-- (U9-9 look) a toast's text row: the height its wrapped text takes (TextBounds, in the label's own px; a measure until the
+-- text is laid out), picked so the card's edges land on whole screen px (PixelCrisp.Len), at least one line's
+-- TOAST_TEXT_MIN; the card is its padding, this row and its lip, each whole px, so its height is set, not automatic
+local function sizeToastText(toast)
+	local label, card = toast.Label, toast.Card
+	if not (label and label.Parent and card) then
+		return
+	end
+	local k = PixelCrisp.ScaleAbove(label)
+	local h = label.TextBounds.Y / math.max(0.01, k)
+	if h <= 0 then
+		local room = TOAST_W - 2 * TOAST_PAD - (TOAST_ICON + 10)
+		local okM, m = pcall(Theme.Measure, label.Text, "Toast", TOAST_TEXT_SIZE, room)
+		h = (okM and typeof(m) == "Vector2") and m.Y or TOAST_TEXT_MIN
+	end
+	h = PixelCrisp.Len(math.max(TOAST_TEXT_MIN, math.ceil(h - 0.01)), k)
+	local want = UDim2.new(1, -(TOAST_ICON + 10), 0, h)
+	if label.Size ~= want then
+		label.Size = want
+	end
+	local cardH = UDim2.new(1, 0, 0, 2 * TOAST_PAD + TOAST_LIP + h)
+	if card.Size ~= cardH then
+		card.Size = cardH
+	end
 end
 
 local dismissToast -- defined below
@@ -649,8 +683,15 @@ local function relayout()
 			table.remove(scalers, i)
 		end
 	end
+	-- (U9-9 look) the column's scale rounded so its 250 px width is whole screen px (its cards' edges on whole px)
+	if UI.StackScale then
+		UI.StackScale.Scale = math.max(1, math.floor(TOAST_W * k + 0.5)) / TOAST_W
+	end
 	applyMargins()
 	trimToasts()
+	for _, toast in ipairs(toasts) do
+		sizeToastText(toast)
+	end
 	PixelCrisp.Refresh(UI.Stack) -- (kit B U9-9) the icons and edges back on whole pixels at the new scale
 	local panel = result.Panel
 	if panel and panel.Root and panel.Root.Parent then
@@ -775,6 +816,8 @@ local function refreshToastText(toast)
 		text = text .. "  x" .. tostring(toast.Count)
 	end
 	toast.Label.Text = text
+	sizeToastText(toast) -- (U9-9 look) "x2" may take a second line
+	PixelCrisp.Refresh(toast.Card)
 end
 
 -- (kit B U9-9) brown on the stone tile, whatever the kind (the chip carries the kind's colour)
@@ -797,21 +840,23 @@ local function buildToast(text, kind)
 	-- flush with the block's edges under the padding)
 	local card = newFrame(slot, "Toast", {
 		Position = UDim2.new(0, TOAST_W + 40, 0, 0),
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 2 * TOAST_PAD + TOAST_LIP + TOAST_TEXT_MIN), -- sizeToastText
 	})
-	Util.Create("UISizeConstraint", { MinSize = Vector2.new(0, 44), Parent = card })
+	-- (U9-9 look) the card is a crisp root: it slides in, and its chip and icons sit on whole px of it at rest (its
+	-- padding, text row and lip are whole px, so the column's cards rest on whole px too)
+	PixelCrisp.Root(card)
 	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 8)
-	pad.PaddingBottom = UDim.new(0, 8 + TOAST_LIP)
-	pad.PaddingLeft = UDim.new(0, 8)
-	pad.PaddingRight = UDim.new(0, 10)
+	pad.PaddingTop = UDim.new(0, TOAST_PAD)
+	pad.PaddingBottom = UDim.new(0, TOAST_PAD + TOAST_LIP)
+	pad.PaddingLeft = UDim.new(0, TOAST_PAD)
+	pad.PaddingRight = UDim.new(0, TOAST_PAD)
 	pad.Parent = card
 	local stroke, lip = CloudUI.SignBlock(card, { Face = SIGN.Tile, Lip = SIGN.StoneLip, Edge = SIGN.Wood, Text = SIGN.Text }, {
 		EdgePx = TOAST_EDGE,
 		LipPx = TOAST_LIP,
 	})
 	PixelCrisp.Edge(stroke, TOAST_EDGE)
+	PixelCrisp.Lip(lip, TOAST_LIP)
 	card.BackgroundTransparency = 1 -- faded in by setToastAlpha
 	stroke.Transparency = 1
 	lip.BackgroundTransparency = 1
@@ -831,10 +876,11 @@ local function buildToast(text, kind)
 	local iconLip = newFrame(icon, "Lip", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, 0, 0, 3),
+		Size = UDim2.new(1, 0, 0, TOAST_CHIP_LIP),
 		BackgroundTransparency = 1,
 		BackgroundColor3 = chip.Lip,
 	})
+	PixelCrisp.Lip(iconLip, TOAST_CHIP_LIP)
 	local holder, glyph = PixelCrisp.Icon(icon, chip.Icon, TOAST_GLYPH, chip.Ink, {
 		Position = UDim2.new(0.5, 0, 0.5, -1), -- centred on the face above the lip
 	})
@@ -856,17 +902,28 @@ local function buildToast(text, kind)
 
 	local label = newText(card, "Text", text, "Toast", TOAST_TEXT_SIZE, toastTextColor(), {
 		Position = UDim2.new(0, TOAST_ICON + 10, 0, 0),
-		Size = UDim2.new(1, -(TOAST_ICON + 10), 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, -(TOAST_ICON + 10), 0, TOAST_TEXT_MIN),
 		TextWrapped = true,
 		TextTransparency = 1,
 	})
 
-	return {
+	local toast = {
 		Slot = slot, Card = card, Stroke = stroke, Lip = lip, Icon = icon, IconStroke = iconStroke, IconLip = iconLip,
 		IconGlyph = glyph, IconHolder = holder, Sparkle = sparkle, Label = label, Text = text, Kind = kindName, Count = 1,
 		Dead = false, Expiry = 0, Color = color,
 	}
+	-- (U9-9 look) the text row sized to whole px (again once the text is laid out), then the chip and its icons on whole
+	-- px of the card
+	sizeToastText(toast)
+	label:GetPropertyChangedSignal("TextBounds"):Connect(function()
+		if not toast.Dead then
+			sizeToastText(toast)
+			PixelCrisp.Refresh(card)
+		end
+	end)
+	PixelCrisp.Box(icon)
+	PixelCrisp.Refresh(card)
+	return toast
 end
 
 -- (audio wave 2 fix) client/SoundFx, lazy; false = unavailable
@@ -1013,6 +1070,7 @@ local function buildToastStack()
 	list.Parent = stack
 	UI.Stack = stack
 	UI.StackScale = addViewportScale(stack)
+	UI.StackScale.Scale = math.max(1, math.floor(TOAST_W * currentScale() + 0.5)) / TOAST_W -- (U9-9 look) as relayout
 end
 
 ----------------------------------------------------------------------
@@ -1136,7 +1194,7 @@ local function buildResults(data)
 	local hasBonus = (tonumber(data.Bonus) or 0) >= 1
 	local function layoutWith(rows)
 		local out = { Rows = rows }
-		out.Stats = (rows.SkipZeroBonus and not hasBonus) and 2 or 3
+		out.Stats = (rows.MergeBonus or (rows.SkipZeroBonus and not hasBonus)) and 2 or 3
 		out.Cols = (rows.Columns and #members > 2) and rows.Columns or 1
 		out.Members = #members > 1 and not rows.NoTeam
 		local y = 0
@@ -1150,14 +1208,24 @@ local function buildResults(data)
 		end
 		y = y + rows.Gap
 		out.StatsY = y
-		y = y + rows.Row * out.Stats + 4
+		y = y + rows.Row * out.Stats -- (U9-9 look) each row ends in its RowGap of stone
 		out.MembersY = y
 		if out.Members then
-			y = y + math.ceil(#members / out.Cols) * rows.Member + 6
+			y = y + math.ceil(#members / out.Cols) * rows.Member + 5
 		end
 		out.FootY = y
 		y = y + rows.Foot
 		out.PanelH = insetTop + insetBottom + rows.Slack + y - rows.Trim
+		-- (U9-9 look) the card's height an even number of screen px where one is near: its centre sits on a whole px
+		-- (resultPosition), so its top and bottom do too
+		local k = currentScale()
+		for add = 0, 20 do
+			local v = (out.PanelH + add) * k
+			if math.abs(v - math.floor(v + 0.5)) < 1e-4 and math.floor(v + 0.5) % 2 == 0 then
+				out.PanelH = out.PanelH + add
+				break
+			end
+		end
 		return out
 	end
 	local L, tier = nil, nil
@@ -1169,7 +1237,7 @@ local function buildResults(data)
 		end
 	end
 	local R = L.Rows
-	local TITLE_H, DIFF_H, REASON_H, ROW_H, MEMBER_H, FOOT_H = R.Title, R.Diff, R.Reason, R.Row, R.Member, R.Foot
+	local TITLE_H, REASON_H, ROW_H, MEMBER_H, FOOT_H = R.Title, R.Reason, R.Row, R.Member, R.Foot
 	local titleY, diffY, reasonY, statsY, membersY, footY = L.TitleY, L.DiffY, L.ReasonY, L.StatsY, L.MembersY, L.FootY
 	local showMembers = L.Members
 	local panelH, panelW = L.PanelH, R.W
@@ -1200,50 +1268,117 @@ local function buildResults(data)
 	})
 	panel.Root:SetAttribute("Compact", R ~= RESULT_ROWS.Full)
 	panel.Root:SetAttribute("Rows", tier) -- (U9-9 review) Full / Compact / Mini
+	-- (U9-9 look) the card is a crisp root: it slides in, and its blocks and icons sit on whole px of it at rest
+	PixelCrisp.Root(panel.Root)
 
-	-- the headline: a banner block across the card's top (VICTORY! gold, DEFEAT stone) with brown words, a plain Section
-	-- title (a pop-up's title: the window ribbon is for window names); the red close block sits on its right end
+	-- (U9-9 look) one grammar with the run's other end cards (U9-6 RUN OVER, U9-7 FLOOR CLEARED): the outcome on the stone
+	-- body's lip (green for a win, red for a loss) and two dark nails at the body's top corners (U9-7's SignKit.Nails look:
+	-- WoodDark, 4 px, 5 in); the awning and the banner stay this card's own
+	local stone = panel.Body and panel.Body:FindFirstChild("Stone")
+	local stoneLip = stone and stone:FindFirstChild("Lip")
+	if stoneLip then
+		stoneLip.BackgroundColor3 = won and SIGN.GrassLip or SIGN.RedLip
+		stoneLip:SetAttribute("Outcome", won and "Win" or "Loss")
+		PixelCrisp.Lip(stoneLip, stoneLip.Size.Y.Offset)
+	end
+	if stone then
+		-- on the root over the content: the compact cards' banner rides up under the awning (Trim), and the nails hold it
+		local inX, inY = stone.Position.X.Offset + RESULT_NAIL_IN, stone.Position.Y.Offset + RESULT_NAIL_IN
+		for _, side in ipairs({ 0, 1 }) do
+			local nail = newFrame(panel.Root, side == 0 and "NailL" or "NailR", {
+				AnchorPoint = Vector2.new(side, 0),
+				Position = UDim2.new(side, side == 0 and inX or -inX, 0, inY),
+				Size = UDim2.fromOffset(RESULT_NAIL, RESULT_NAIL),
+				BackgroundTransparency = 0,
+				BackgroundColor3 = SIGN.WoodDark,
+				ZIndex = 9,
+			})
+			nail:SetAttribute("SignKit", "Nail")
+			PixelCrisp.Adopt(nail, RESULT_NAIL) -- a whole-px square on a whole px
+		end
+	end
+
+	-- the headline: a banner block across the card's top (VICTORY! gold, DEFEAT stone with the loss's red lip) with brown
+	-- words, a plain Section title (a pop-up's title: the window ribbon is for window names); the red close block sits on
+	-- its right end, inside the banner's face above its lip
 	local banner = newFrame(inner, "Banner", {
 		Position = UDim2.fromOffset(0, titleY),
 		Size = UDim2.new(1, 0, 0, TITLE_H),
 	})
-	local bannerEdge = CloudUI.SignBlock(banner, won and "Selected" or "Stone", { EdgePx = 3, LipPx = 5 })
+	local bannerEdge, bannerLip = CloudUI.SignBlock(banner, won and "Selected" or "Stone", {
+		EdgePx = 3,
+		LipPx = RESULT_BANNER_LIP,
+		Lip = (not won) and SIGN.RedLip or nil,
+	})
 	PixelCrisp.Edge(bannerEdge, 3)
+	PixelCrisp.Lip(bannerLip, RESULT_BANNER_LIP)
+	PixelCrisp.Box(banner)
 	Theme.StyleTitle(newText(banner, "Headline", won and "VICTORY!" or "DEFEAT", "Title", R.Headline, SIGN.Text, {
-		Size = UDim2.new(1, -RESULT_CLOSE, 1, -5),
+		Size = UDim2.new(1, -(R.Close + 10), 1, -RESULT_BANNER_LIP),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 2,
 	}), "Section")
 	if panel.CloseButton then
-		panel.CloseButton.Size = UDim2.fromOffset(RESULT_CLOSE - 10, RESULT_CLOSE - 10)
-		panel.CloseButton.AnchorPoint = Vector2.new(1, 0.5)
+		local close = panel.CloseButton
+		close.Size = UDim2.fromOffset(R.Close, R.Close)
+		close.AnchorPoint = Vector2.new(1, 0.5)
 		-- root px: the card's Content sits at (12, the untitled inset), Inner 4 / 2 inside it
 		local insetTop2 = CloudUI.ContentInset(false, true)
-		panel.CloseButton.Position = UDim2.new(1, -(12 + 4 + 6), 0, insetTop2 + 2 - R.Trim + titleY + math.floor((TITLE_H - 5) / 2))
+		close.Position = UDim2.new(1, -(12 + 4 + 6), 0, insetTop2 + 2 - R.Trim + titleY + math.floor((TITLE_H - RESULT_BANNER_LIP) / 2))
+		-- (U9-9 look) its wood edge and lip on whole px (2.4 px drew uneven)
+		for _, c in ipairs(close:GetChildren()) do
+			if c:IsA("UIStroke") then
+				PixelCrisp.Edge(c, c:GetAttribute("CrispEdge") or c.Thickness)
+			elseif c.Name == "Lip" and c:IsA("GuiObject") then
+				PixelCrisp.Lip(c, c:GetAttribute("CrispLip") or c.Size.Y.Offset)
+			end
+		end
+		PixelCrisp.Box(close)
 	end
 
-	-- difficulty + stars: brown, the stars in the deep gold that reads on stone (the mini card has no difficulty line)
+	-- (U9-9 look) the difficulty is a role chip in the kit's tag language (as FIGHTER / HELPER and the rarity tags): its
+	-- colour on the face, its darker lip, a 2 px wood edge, the word and its stars inside in the ink that reads on it, the
+	-- whole chip centred 4 px under the banner (the short bar under the words read as a slip). The mini card has none
 	if not R.NoDiff then
 		local diffText = tostring(data.DifficultyName or data.DifficultyId or "")
-		-- (kit B U9-9) the line ends above its colour bar (DIFF_H - 4) so the bar never runs through the letters
-		local diffLabel = newText(inner, "Difficulty", diffText, "Heading", 21, SIGN.Text, {
-			Position = UDim2.fromOffset(0, diffY),
-			Size = UDim2.new(1, 0, 0, DIFF_H - 4),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			RichText = true,
-		})
-		if starCount > 0 then -- (kit-b U7a) the stars are gold PixelIcons after the name
-			-- (kit B U9-9) every icon of the card on whole screen px at the card's scale (PixelCrisp.Adopt)
-			PixelCrisp.Adopt(PixelIcon.Lead(diffLabel, "star", { After = true, Count = math.min(5, starCount), Px = 18, Colour = STAR_INK }))
-		end
-		-- the difficulty's own colour: a short bar under the line (its role colour, as a best-time row's lip)
-		newFrame(inner, "DiffBar", {
+		local k = currentScale()
+		local ink = Theme.TextOn(diffColor)
+		local stars = math.min(5, math.max(0, math.floor(starCount)))
+		local starsW = stars > 0 and (stars * 18 + (stars - 1) * 2 + RESULT_ICON_GAP) or 0
+		local chip = newFrame(inner, "DiffChip", {
 			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, diffY + DIFF_H - 4),
-			Size = UDim2.fromOffset(64, 4),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = diffColor,
+			Position = UDim2.new(0.5, 0, 0, diffY + 10),
+			Size = UDim2.fromOffset(200, 30),
 		})
+		local chipEdge, chipLip = CloudUI.SignBlock(chip, { Face = diffColor, Lip = Theme.Darken(diffColor, 0.35), Edge = SIGN.Wood, Text = ink }, {
+			EdgePx = 2,
+			LipPx = RESULT_BANNER_LIP,
+		})
+		PixelCrisp.Edge(chipEdge, 2)
+		PixelCrisp.Lip(chipLip, RESULT_BANNER_LIP)
+		chip:SetAttribute("Difficulty", tostring(data.DifficultyId or ""))
+		local diffLabel = newText(chip, "Difficulty", diffText, "Heading", 18, ink, {
+			Position = UDim2.fromOffset(10, 0),
+			Size = UDim2.new(1, -20, 1, -RESULT_BANNER_LIP),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 2,
+		})
+		if stars > 0 then -- (kit-b U7a) the stars are PixelIcons after the name, (U9-9 look) in the chip's ink
+			PixelCrisp.Adopt(PixelIcon.Lead(diffLabel, "star", { After = true, Count = stars, Px = 18, Colour = ink, Gap = RESULT_ICON_GAP }))
+		end
+		-- the chip as wide as its word (as laid out; a measure until then) and its stars, whole px wide
+		local function fitChip()
+			local textW = diffLabel.TextBounds.X / math.max(0.01, PixelCrisp.ScaleAbove(diffLabel))
+			if textW <= 0 then
+				local okW, measured = pcall(Theme.Measure, diffText, "Heading", 18)
+				textW = (okW and typeof(measured) == "Vector2") and measured.X or #diffText * 11
+			end
+			chip.Size = UDim2.fromOffset(PixelCrisp.Len(math.ceil(textW) + starsW + 20, k), 30)
+			PixelCrisp.Refresh(chip)
+		end
+		fitChip()
+		diffLabel:GetPropertyChangedSignal("TextBounds"):Connect(fitChip)
+		PixelCrisp.Box(chip)
 	end
 	if reason then
 		if R.ShortReason then
@@ -1259,25 +1394,31 @@ local function buildResults(data)
 
 	-- stats
 	local serial = result.Serial
-	-- (kit B U9-9) a stat row: a stone block (tile face, 2 px wood edge, its lip), the caption and the value brown
+	-- (kit B U9-9) a stat row: a stone block (tile face, 2 px wood edge, its lip), the caption and the value brown. (U9-9
+	-- look) The block is Row - RowGap high (whole px at 0.8 and 1080p) and its value row ends on the lip, so an 18 px coin
+	-- sits inside the face with a pixel clear above it and above the lip
 	local function statRow(index, caption, valueText, valueColor)
 		local rowY = statsY + (index - 1) * ROW_H
 		local bar = newFrame(inner, "Row" .. caption, {
-			Position = UDim2.fromOffset(2, rowY),
-			Size = UDim2.new(1, -4, 0, ROW_H - 6),
+			Position = UDim2.fromOffset(2, rowY + 2),
+			Size = UDim2.new(1, -4, 0, ROW_H - R.RowGap),
 		})
-		PixelCrisp.Edge(CloudUI.SignBlock(bar, "Stone", { EdgePx = 2, LipPx = 4 }), 2)
+		local barEdge, barLip = CloudUI.SignBlock(bar, "Stone", { EdgePx = 2, LipPx = RESULT_ROW_LIP })
+		PixelCrisp.Edge(barEdge, 2)
+		PixelCrisp.Lip(barLip, RESULT_ROW_LIP)
+		PixelCrisp.Box(bar)
 		newText(bar, "Caption", caption, "Body", 18, SIGN.Text, {
 			Position = UDim2.new(0, 10, 0, 0),
-			Size = UDim2.new(0.45, 0, 1, -4),
+			Size = UDim2.new(0.45, 0, 1, -RESULT_ROW_LIP),
 		})
 		return newText(bar, "Value", valueText, "Heading", R.Value, valueColor, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -10, 0, 0),
-			Size = UDim2.new(0.55, 0, 1, -4),
+			Size = UDim2.new(0.55, 0, 1, -RESULT_ROW_LIP),
 			TextXAlignment = Enum.TextXAlignment.Right,
 		})
 	end
+	local coinOpts = { After = true, Gap = RESULT_ICON_GAP }
 
 	-- MatchTokens is what was PAID OUT to this player (pet TokenBonus and rounding carry included), while
 	-- TotalTokens is the course's raw token value, so the two must not be shown as "own / total" ("48 / 24"
@@ -1289,14 +1430,16 @@ local function buildResults(data)
 	statRow(1, "Time", Util.FormatTime(seconds), SIGN.Text)
 	-- (kit-b U7a) the amounts end in the Cloud Token coin (a PixelIcon after the number)
 	local tokenValue = statRow(2, "Tokens", "0", SIGN.Text)
-	PixelCrisp.Adopt(PixelIcon.Lead(tokenValue, Theme.Currency.Tokens.Icon, { After = true }))
-	-- (kit B U9-9) the compact card leaves a missing bonus out (L.Stats 2)
+	PixelCrisp.Adopt(PixelIcon.Lead(tokenValue, Theme.Currency.Tokens.Icon, coinOpts))
+	-- (kit B U9-9) the compact card leaves a missing bonus out (L.Stats 2); (U9-9 look) the mini card shows it in the
+	-- Tokens row ("11 +10")
+	local merged = R.MergeBonus and bonus > 0
 	local bonusValue = L.Stats >= 3 and statRow(3, "Win bonus", bonus > 0 and "+0" or "-", bonus > 0 and SIGN.Text or SIGN.TextMuted) or nil
 	countUp(tokenValue, ownTokens, 0.45, 0.8, function(n)
-		return tostring(n)
+		return merged and (tostring(n) .. "  +" .. tostring(bonus)) or tostring(n)
 	end, serial)
 	if bonus > 0 and bonusValue then
-		PixelCrisp.Adopt(PixelIcon.Lead(bonusValue, Theme.Currency.Tokens.Icon, { After = true }))
+		PixelCrisp.Adopt(PixelIcon.Lead(bonusValue, Theme.Currency.Tokens.Icon, coinOpts))
 		countUp(bonusValue, bonus, 0.9, 0.7, function(n)
 			return "+" .. tostring(n)
 		end, serial)
@@ -1313,6 +1456,7 @@ local function buildResults(data)
 				Position = UDim2.new(col / cols, col > 0 and 3 or 0, 0, membersY + line * MEMBER_H),
 				Size = UDim2.new(1 / cols, cols > 1 and -3 or 0, 0, MEMBER_H),
 			})
+			PixelCrisp.Box(row) -- (U9-9 look) on a whole px of the card
 			local mine = isLocalName(m.Name)
 			-- (kit B U9-9) the player's own line on a pale gold strip (the selected face); every name brown
 			if mine then
@@ -1320,19 +1464,21 @@ local function buildResults(data)
 				row.BackgroundColor3 = SIGN.Selected
 				row:SetAttribute("Mine", true)
 			end
+			-- (U9-9 look) the amount ends 5 design px (4 px at 0.8) before the tick's 18 px icon, the coin as far before it
 			newText(row, "Name", m.Name, "Body", 18, SIGN.Text, {
 				Position = UDim2.new(0, 6, 0, 0),
-				Size = UDim2.new(1, cols > 1 and -32 or -104, 1, 0),
+				Size = UDim2.new(1, cols > 1 and -36 or -110, 1, 0),
 				TextTruncate = Enum.TextTruncate.AtEnd,
 			})
 			if cols == 1 then
 				local tokens = newText(row, "Tokens", tostring(m.Tokens), "Heading", 18, SIGN.Text, {
 					AnchorPoint = Vector2.new(1, 0),
-					Position = UDim2.new(1, -28, 0, 0),
+					Position = UDim2.new(1, -35, 0, 0),
 					Size = UDim2.fromOffset(70, MEMBER_H),
 					TextXAlignment = Enum.TextXAlignment.Right,
 				})
-				PixelCrisp.Adopt(PixelIcon.Lead(tokens, Theme.Currency.Tokens.Icon)) -- (kit-b U7a) the coin before the amount
+				-- (kit-b U7a) the coin before the amount
+				PixelCrisp.Adopt(PixelIcon.Lead(tokens, Theme.Currency.Tokens.Icon, { Gap = RESULT_ICON_GAP }))
 			end
 			-- (kit-b U7a) the state is a PixelIcon: a tick when finished, an x when downed (kit B: the grass / red lips'
 			-- deep tones that read on stone)
@@ -1344,8 +1490,8 @@ local function buildResults(data)
 			end
 			local state = newText(row, "State", "", "Heading", 18, stateColor, {
 				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, -4, 0, 0),
-				Size = UDim2.fromOffset(20, MEMBER_H),
+				Position = UDim2.new(1, -5, 0, 0),
+				Size = UDim2.fromOffset(25, MEMBER_H),
 				TextXAlignment = Enum.TextXAlignment.Center,
 			})
 			if mark then
@@ -1362,6 +1508,7 @@ local function buildResults(data)
 		TextXAlignment = Enum.TextXAlignment.Center,
 	})
 
+	PixelCrisp.Refresh(panel.Root) -- (U9-9 look) every block, lip, edge and icon on whole px of the card
 	return panel, footer, serial
 end
 

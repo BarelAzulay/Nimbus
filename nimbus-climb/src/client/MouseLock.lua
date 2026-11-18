@@ -197,6 +197,33 @@ local function showHint()
 		local y = math.max(0.65 * areaH, math.min(0.7 * areaH, top - 8 - label.Size.Y.Offset))
 		label.Position = UDim2.new(0.5, 0, 0, math.floor(y))
 	end
+	-- (U9-9 look) the plank on whole screen px: once its words have set its width, that width rounded up to an even
+	-- number of px and its left edge on a whole px of the centre (an odd or fractional width put it at x 714.38)
+	local settled = false
+	local function settle()
+		local w = label.AbsoluteSize.X
+		local areaW = gui.AbsoluteSize.X
+		if settled or w <= 0 or areaW <= 0 or not label.Parent then
+			return
+		end
+		settled = true
+		local even = 2 * math.ceil(w / 2 - 1e-6)
+		local p = label.Position
+		label.AutomaticSize = Enum.AutomaticSize.None
+		label.Size = UDim2.new(0, even, 0, label.Size.Y.Offset)
+		label.AnchorPoint = Vector2.new(0, 0)
+		label.Position = UDim2.fromOffset(math.floor((areaW - even) / 2), math.floor(p.Y.Scale * gui.AbsoluteSize.Y + p.Y.Offset))
+	end
+	settle()
+	if not settled then
+		local conn
+		conn = label:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			settle()
+			if settled and conn then
+				conn:Disconnect()
+			end
+		end)
+	end
 	task.delay(K.HINT_SECONDS, function()
 		if St.HintGui == gui then
 			hideHint()
