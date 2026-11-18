@@ -750,13 +750,19 @@ local function clientScenarios()
 		T.check(LS.IsOpen() and H.shown(H.card()), "tb loss: a lost run shows the loss screen")
 		T.check(not H.shown(H.resultCard()), "tb loss: ...the plain card is not shown")
 		local row1, row2 = H.widget("PetRow1"), H.widget("PetRow2")
-		T.check(row1 and H.find(row1, "Levels").Text == "L1 -> L3" and not H.shown(H.find(row1, "XpBar")), "tb loss: L1 -> L3 for a pet that gained levels", row1 and H.find(row1, "Levels").Text or "no row")
-		T.check(row2 and H.find(row2, "Levels").Text == "L1" and H.shown(H.find(row2, "XpBar")), "tb loss: the XP bar for a pet without a level-up")
+		-- (LOOK-ui2) "L1", the kit's pixel arrow, "L3" (no ASCII arrow) and a gold sparkle on a levelled-up row
+		local function lift(row)
+			local a, b = H.find(row, "Levels"), H.find(row, "LevelTo")
+			local arrow = H.find(row, "Arrow")
+			return a and b and arrow and arrow:GetAttribute("PixelIcon") ~= nil and (a.Text .. " -> " .. b.Text) or (a and a.Text) or "no row"
+		end
+		T.check(row1 and lift(row1) == "L1 -> L3" and H.find(row1, "Sparkle") ~= nil and not H.shown(H.find(row1, "XpBar")), "tb loss: L1, the pixel arrow, L3 for a pet that gained levels", row1 and lift(row1) or "no row")
+		T.check(row2 and H.find(row2, "Levels").Text == "L1" and H.find(row2, "LevelTo") == nil and H.shown(H.find(row2, "XpBar")), "tb loss: the XP bar for a pet without a level-up")
 		T.check(H.find(row1, "Face") ~= nil and H.find(row1, "Name").Text ~= "", "tb loss: each row has the pet's face and name")
 		T.check(H.widget("Title").Text == "RUN OVER" and tostring(H.widget("Sub").Text):find("champion won round 2", 1, true) ~= nil, "tb loss: the Ring's title and line", tostring(H.widget("Sub").Text))
 		T.check(H.shown(H.widget("FightAgain")) and H.widget("FightAgain").Text == "Fight again" and H.shown(H.widget("EditTeam")) and H.widget("EditTeam").Text == "Edit team" and H.shown(H.widget("CloseButton")),
 			"tb loss: Fight again + Edit team + Close")
-		local fill = H.find(H.find(row2, "XpBar"), "Fill")
+		local xpRow = H.find(row2, "XpBar")
 		KC.advance(0.5)
 		local rewards = 0
 		for _, name in ipairs(played) do
@@ -764,7 +770,8 @@ local function clientScenarios()
 		end
 		T.check(rewards == 1, "tb loss: the level-up moment plays once", tostring(rewards))
 		KC.advance(1.5)
-		T.check(fill and math.abs(fill.Size.X.Scale - 0.6) < 0.01, "tb loss: the XP bar moved to XpFrac", fill and tostring(fill.Size.X.Scale) or "no fill")
+		-- (LOOK-ui2: was a smooth grass fill) ten sky kit blocks, lit up to XpFrac (0.6: six)
+		T.check(xpRow and xpRow:GetAttribute("Count") == 10 and xpRow:GetAttribute("Filled") == 6, "tb loss: the XP blocks lit up to XpFrac", xpRow and tostring(xpRow:GetAttribute("Filled")) or "no row")
 		local lines = H.widget("Lines")
 		local sawCash = false
 		for _, c in ipairs(lines and lines:GetChildren() or {}) do
@@ -787,7 +794,7 @@ local function clientScenarios()
 		KC.advance(0.2)
 		PC.Close()
 		KC.advance(0.6)
-		T.check(not PC.IsOpen() and LS.IsOpen() and H.find(H.widget("PetRow1"), "Levels").Text == "L1 -> L3", "tb loss: ...and returns here")
+		T.check(not PC.IsOpen() and LS.IsOpen() and lift(H.widget("PetRow1")) == "L1 -> L3", "tb loss: ...and returns here")
 		rewards = 0
 		for _, name in ipairs(played) do
 			rewards = rewards + (name == "Reward" and 1 or 0)
@@ -995,9 +1002,13 @@ local function clientScenarios()
 			for i = 1, 3 do
 				local row = H.widget("PetRow" .. i)
 				T.check(row and row.AbsolutePosition.Y + row.AbsoluteSize.Y <= y + ch + 0.5 and row.AbsolutePosition.X + row.AbsoluteSize.X <= x + cw + 0.5, tag .. ": PetRow" .. i .. " is inside the card")
-				local levels = row and row:FindFirstChild("Levels")
-				-- (the mock's TextBounds is screen px, like AbsoluteSize)
-				T.check(levels and levels.Text == "L99 -> L100" and levels.TextBounds.X <= levels.AbsoluteSize.X + 0.5, tag .. ": PetRow" .. i .. "'s level text fits", levels and fmt("%.0f in %.0f", levels.TextBounds.X, levels.AbsoluteSize.X) or "missing")
+				local levels = row and row:FindFirstChild("Levels", true)
+				local to = row and row:FindFirstChild("LevelTo", true)
+				-- (the mock's TextBounds is screen px, like AbsoluteSize; LOOK-ui2: "L99", the pixel arrow, "L100", each in its box,
+				-- the line inside the row)
+				local fits = levels and to and levels.Text == "L99" and to.Text == "L100" and levels.TextBounds.X <= levels.AbsoluteSize.X + 0.5 and to.TextBounds.X <= to.AbsoluteSize.X + 0.5
+					and to.AbsolutePosition.X + to.AbsoluteSize.X <= row.AbsolutePosition.X + row.AbsoluteSize.X + 0.5
+				T.check(fits, tag .. ": PetRow" .. i .. "'s level text fits", levels and to and fmt("%.0f in %.0f, %.0f in %.0f", levels.TextBounds.X, levels.AbsoluteSize.X, to.TextBounds.X, to.AbsoluteSize.X) or "missing")
 			end
 			local small = {}
 			for _, d in ipairs(card:GetDescendants()) do

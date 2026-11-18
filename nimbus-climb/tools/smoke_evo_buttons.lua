@@ -804,9 +804,18 @@ local function clientScenarios()
 					T.check(px >= 13.99, tag .. "...at the HUD's readable size", fmt("%.1f px", px))
 					T.check(r.x0 >= 0 and r.x1 <= Mock.Viewport.X and r.y1 <= Mock.Viewport.Y - (Mock.TopInset or 0), tag .. "...whole on the screen", rstr(r))
 					local tcap = H.find("Root.Commands.TargetButton.Caption")
-					-- "MARSHMALLOW" must not break either: a 11-letter word on one line
-					ok, lines, widest = H.fits("MARSHMALLOW STAMPEDE", r.x1 - r.x0, r.y1 - r.y0, px)
-					T.check(ok, tag .. "...and the longest word fits on one line", fmt("widest %.0f, box %.0f", widest, r.x1 - r.x0))
+					-- "MARSHMALLOW" must not break either: a 11-letter word on one line (LOOK-ui2: the tag is sized to the name it
+					-- shows, clamped to the key's width + 16 unless a word needs more, so the long name is placed and measured)
+					local Hud0 = BC._Hud
+					local A0 = Hud0 and Hud0.buttons and Hud0.buttons.Special
+					local oldText = cap.Text
+					cap.Text = "MARSHMALLOW STAMPEDE"
+					Hud0.PlaceFace(A0, A0.Button.Size.X.Offset, Hud0.m)
+					local r2 = rectOf(cap)
+					ok, lines, widest = H.fits(cap.Text, r2.x1 - r2.x0, r2.y1 - r2.y0, px)
+					cap.Text = oldText
+					Hud0.PlaceFace(A0, A0.Button.Size.X.Offset, Hud0.m)
+					T.check(ok and r2.x0 >= 0 and r2.x1 <= Mock.Viewport.X, tag .. "...and the longest word fits on one line", fmt("widest %.0f, box %.0f", widest, r2.x1 - r2.x0))
 					T.check(tcap ~= nil and tcap.Text == "TARGET", tag .. "the Target caption", tcap and tcap.Text or "nil")
 					-- Element's two lines stay above Special's top edge
 					local ecap = H.find("Root.Commands.ElementButton.Caption")

@@ -547,7 +547,7 @@ local function clientScenarios()
 		end
 		for _, name in ipairs({ "MenuController", "PetsController", "ShopController", "StoreController", "TroveController", "IndexController", "FusionController",
 			"CareController", "TrainController", "DungeonController", "ObbyController", "RaidGateController", "ArenaController", "LossScreen",
-			"NpcController" }) do -- (owner 2026-11-13) the NPC talk box too
+			"NpcController", "BattleController" }) do -- (owner 2026-11-13) the NPC talk box too; (LOOK-ui2) the battle's result card
 			if not inList[name] then
 				wrong[#wrong + 1] = "missing " .. name
 			end

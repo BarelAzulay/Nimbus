@@ -430,7 +430,17 @@ local function clientScenarios()
 				end
 				T.eq(cards, 3, "fusion ui: ...three fanned copies")
 				local front = RedoGeom.find(stack, "Copy3")
-				T.check(front and front.Rotation ~= 0 and RedoGeom.find(stack, "Copy1").Rotation ~= front.Rotation, "fusion ui: ...fanned (each card turned its own way)")
+				-- (LOOK-ui2: the fan was turned -7 / -1 / +5 degrees, soft edges off the pixel grid) a straight stack, each copy
+				-- right of and above the one behind it in whole px
+				local c1, c2 = RedoGeom.find(stack, "Copy1"), RedoGeom.find(stack, "Copy2")
+				local function whole(v)
+					return math.abs(v - math.floor(v + 0.5)) < 1e-6
+				end
+				T.check(front and c1 and c2 and front.Rotation == 0 and c1.Rotation == 0 and c2.Rotation == 0
+					and front.Position.X.Offset > c2.Position.X.Offset and c2.Position.X.Offset > c1.Position.X.Offset
+					and front.Position.Y.Offset < c2.Position.Y.Offset and c2.Position.Y.Offset < c1.Position.Y.Offset
+					and whole(front.Position.X.Offset) and whole(c1.Position.Y.Offset),
+					"fusion ui: ...stacked straight, stepped in whole px (no card turned)")
 				T.eq(H.t("Label", front), "COPIES", "fusion ui: the front copy says COPIES")
 				T.eq(H.t("PetName", front), "Maple Fox", "fusion ui: ...the pet's name")
 				T.eq(H.t("Sub", front), "Uncommon " .. DOT .. " Flame", "fusion ui: ...'Uncommon . Flame'")

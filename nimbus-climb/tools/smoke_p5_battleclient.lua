@@ -398,10 +398,17 @@ S.client_p5hud_fighter = guarded("client_p5hud_fighter", function()
 	local nameLbl = H.find("Root.Team.Fighter.Body.PetName")
 	local Theme = H.moduleAt("shared", "Theme")
 	T.check(nameLbl and Theme and nameLbl.Font == Theme.Fonts.Heading and (nameLbl:GetAttribute("BaseText") or nameLbl.TextSize) == 26, "p5 hud: the name is the Heading role at 26 (design px)")
+	-- (LOOK-ui2) HP and ENERGY are rows of ten kit blocks (SignKit.FitBlocks); the HP number sits beside the row, never on it:
+	-- row + 8 px + number = the card's 320 px line
 	local hp = H.find("Root.Team.Fighter.Body.Hp")
-	T.check(hp and hp.Size.X.Offset == 320 and hp.Size.Y.Offset == 22, "p5 hud: HP bar 320 x 22", hp and (hp.Size.X.Offset .. "x" .. hp.Size.Y.Offset) or "nil")
+	local hpText = H.find("Root.Team.Fighter.Body.HpText")
+	local hpRow = H.find("Root.Team.Fighter.Body.Hp.Blocks")
+	T.check(hp and hpText and hp.Size.Y.Offset == 22 and hp.Size.X.Offset + 8 + hpText.Size.X.Offset == 320 and hpText.Position.X.Offset >= hp.Position.X.Offset + hp.Size.X.Offset,
+		"p5 hud: HP row 22 px tall, its number beside it on the 320 px line", hp and hpText and (hp.Size.X.Offset .. "x" .. hp.Size.Y.Offset .. " + " .. hpText.Size.X.Offset) or "nil")
+	T.check(hpRow and hpRow:GetAttribute("Count") == 10 and hpRow:FindFirstChild("Block10") ~= nil, "p5 hud: the HP row is ten kit blocks", hpRow and tostring(hpRow:GetAttribute("Count")) or "nil")
 	local en = H.find("Root.Team.Fighter.Body.Energy")
-	T.check(en and en.Size.X.Offset == 320 and en.Size.Y.Offset == 14, "p5 hud: ENERGY bar 320 x 14", en and (en.Size.X.Offset .. "x" .. en.Size.Y.Offset) or "nil")
+	T.check(en and hp and en.Size.X.Offset == hp.Size.X.Offset and en.Size.Y.Offset == 14 and H.find("Root.Team.Fighter.Body.Energy.Blocks") ~= nil,
+		"p5 hud: ENERGY a 14 px block row as long as the HP row", en and (en.Size.X.Offset .. "x" .. en.Size.Y.Offset) or "nil")
 	-- hearts = lives (from the fighter's snapshot record)
 	local function litHearts()
 		local n = 0
@@ -445,15 +452,26 @@ S.client_p5hud_fighter = guarded("client_p5hud_fighter", function()
 	simF.hp = simF.hp * 0.55
 	d:step(30)
 	H.step(2, 1 / 60)
-	local fill = H.find("Root.Team.Fighter.Body.Hp.Fill")
-	local loss = H.find("Root.Team.Fighter.Body.Hp.Loss")
+	-- (LOOK-ui2) the loss trail: the blocks the hit took stay red (Sign.Red on its lip) for ~0.4 s, then go stone
 	T.check(BC.GetStats().HpWrites > stats0.HpWrites, "p5 hud: a loss writes the HP once it arrives")
-	T.check(fill and loss and loss.Size.X.Scale > fill.Size.X.Scale + 0.05, "p5 hud: the red loss trail stays behind the green fill right after a loss",
-		fill and loss and (H.fmt(fill.Size.X.Scale) .. " < " .. H.fmt(loss.Size.X.Scale)) or "nil")
+	local function trailRed()
+		local n = 0
+		for i = 1, 10 do
+			local face = hpRow and hpRow:FindFirstChild("Block" .. i) and hpRow["Block" .. i]:FindFirstChild("Face")
+			if face and face.BackgroundColor3 == Theme.Sign.Red then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	T.check((hp:GetAttribute("Trail") or 0) > 0 and trailRed() == hp:GetAttribute("Trail"), "p5 hud: the blocks the hit took stay red right after a loss",
+		tostring(hp:GetAttribute("Trail")) .. " trail, " .. trailRed() .. " red")
 	H.step(40, 1 / 60)
-	T.check(fill and loss and abs(loss.Size.X.Scale - fill.Size.X.Scale) < 0.02, "p5 hud: ... and drains to it within ~0.4 s", loss and H.fmt(loss.Size.X.Scale) or "nil")
+	T.check((hp:GetAttribute("Trail") or 0) == 0 and trailRed() == 0, "p5 hud: ... and go stone within ~0.4 s", tostring(hp:GetAttribute("Trail")))
 	local frac = simF.hp / simF.maxHp
-	T.check(fill and abs(fill.Size.X.Scale - frac) < 0.03, "p5 hud: HP fill = hp / maxHp", fill and (H.fmt(fill.Size.X.Scale) .. " vs " .. H.fmt(frac)) or "nil")
+	local want = math.max(1, math.ceil(frac * 10 - 1e-6))
+	T.check(hpRow and hpRow:GetAttribute("Filled") == want and hp:GetAttribute("Lit") == want, "p5 hud: HP blocks lit = ceil(hp / maxHp x 10)",
+		hpRow and (tostring(hpRow:GetAttribute("Filled")) .. " vs " .. want) or "nil")
 	-- energy
 	simF.meter = 60
 	d:step(30)
@@ -492,8 +510,11 @@ S.client_p5hud_fighter = guarded("client_p5hud_fighter", function()
 	H.step(4, 0.1)
 	local count = H.find("Root.Team.Helpers.Helper1.Disc.Portrait.Count")
 	T.check(count and H.shown(count) and tonumber(count.Text) ~= nil, "p5 hud: the portrait counts its cooldown down", count and count.Text or "nil")
-	local ring = H.find("Root.Team.Helpers.Helper1.Disc.Ring.R.Disc")
-	T.check(ring ~= nil, "p5 hud: the ring is a two-half pie (UIGradient sweep)")
+	-- (LOOK-ui2: was a round two-half gradient pie) the buff's cooldown is four kit blocks under the square tile, lit as it
+	-- comes back
+	local cd = H.find("Root.Team.Helpers.Helper1.Cooldown")
+	T.check(cd and cd:GetAttribute("Count") == 4 and (cd:GetAttribute("Filled") or 4) < 4 and H.find("Root.Team.Helpers.Helper1.Disc.Ring") == nil,
+		"p5 hud: the buff cooldown is a 4-block row, not lit while cooling (no pie ring)", cd and tostring(cd:GetAttribute("Filled")) or "nil")
 	-- KO greys the portrait (white-box: the helper goes down)
 	local h2 = d:unit(bench[2])
 	h2.hp = 0

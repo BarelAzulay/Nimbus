@@ -114,23 +114,25 @@ local K = {
 	MAT = {
 		pc = {
 			Gap = 12, Pad = 10, Top = 8, Face = 56, Name = 22, NameMin = 18, Line = 19, LineMin = 18, LineH = 26, BarH = 28,
-			BarText = 18, Plus = 52, Lock = 36, Badge = 30, BadgeText = 18, Dash = 14, DashGap = 8,
+			-- (LOOK-ui2) the lock 27 px, one of the kit's two icon sizes (was 36)
+			BarText = 18, Plus = 52, Lock = 27, Badge = 30, BadgeText = 18, Dash = 14, DashGap = 8,
 		},
-		phone = { Gap = 8, Pad = 4, Face = 44, Text = 15, LineH = 18, BarH = 5, Badge = 18, BadgeText = 15, Dash = 8, DashGap = 6 },
+		phone = { Gap = 8, Pad = 4, Face = 44, Text = 15, LineH = 18, BarH = 8, Badge = 18, BadgeText = 15, Dash = 8, DashGap = 6 },
 		mini = { Gap = 6, Pad = 2, Face = 32, Text = 15, LineH = 19, Plus = 26, Lock = 18, Badge = 17, BadgeText = 15, Dash = 6, DashGap = 5 },
 		Corner = 12,
 		DashThick = 2,
 		FitMargin = 0.25, -- x the text size: px kept free beside a fitted mat text (its outline and the side bearings)
+		NameEm = 0.52, -- (LOOK-ui2) a pet's name on a mat: never measured under this many em a letter
 	},
 	PC = {
-		Header = 76, HeadPad = 24, Icon = 52, IconText = 36, TitleText = 34, TitleMin = 24, Close = 56, ChipText = 20,
+		Header = 76, HeadPad = 24, Icon = 42, IconPx = 27, IconText = 36, TitleText = 34, TitleMin = 24, Close = 56, ChipText = 20,
 		ChipH = 44, ChipPad = 18, Gap = 16, Pad = 24, MatsY = 12, MatsH = 132, Top = 158, Bottom = 14, LeftMax = 420,
 		LeftShare = 0.292, ColGap = 24, NameH = 46, NameText = 42, NameMin = 28, LevelH = 30, LevelText = 26, Arrow = 76,
 		ArrowText = 40, ChangeText = 24, NoteH = 50, NoteText = 19, CardGap = 16, PromptText = 30, ChipText2 = 18,
 		Empty = 26, Hint = 20, HintH = 44,
 	},
 	PHONE = {
-		Header = 50, HeadPad = 10, Icon = 36, IconText = 24, TitleText = 20, TitleMin = 16, Close = 44, ChipText = 15,
+		Header = 50, HeadPad = 10, Icon = 30, IconPx = 18, IconText = 24, TitleText = 20, TitleMin = 16, Close = 44, ChipText = 15,
 		ChipH = 30, ChipPad = 10, Gap = 8, Pad = 14, MatsY = 4, MatsH = 52, Top = 64, Bottom = 4, Left = 200,
 		CardH = 112, NameH = 22, NameText = 18, NameMin = 15, LevelH = 20, LevelText = 15, Arrow = 44, ArrowText = 24,
 		ChangeText = 16, ColGap = 12, CardGapX = 8, CardGapY = 6, PromptText = 18, ChipText2 = 15, Empty = 18, Hint = 15,
@@ -171,18 +173,19 @@ local C = {
 	Muted = SIGN.TextMuted,
 	Gold = SIGN.Gold,
 	GoldInk = SIGN.GoldLip, -- gold marks on stone (the evolution stars)
-	Good = Color3.fromRGB(46, 125, 50), -- #2E7D32: 5.1:1 on the stone tile
+	Good = SIGN.Good, -- #2E7D32: 5.1:1 on the stone tile (LOOK-ui2: kit B's one good ink)
 	Bad = SIGN.RedLip,
 	Purple = SIGN.Violet,
 	PurpleInk = SIGN.VioletLip, -- violet text on stone
 	Grey = SIGN.StoneLip,
 	SegOff = SIGN.Well,
 	Accent = SIGN.Navy,
+	-- (LOOK-ui2: the old neon set, #3FC8FF / #FF6B81 / #B47CFF / #FFB347) the four skills in the kit's own role colours
 	Skill = {
-		Speed = Color3.fromRGB(63, 200, 255),
-		Physique = Color3.fromRGB(255, 107, 129),
-		Ability = Color3.fromRGB(180, 124, 255),
-		Defense = Color3.fromRGB(255, 179, 71),
+		Speed = SIGN.Sky,
+		Physique = SIGN.Red,
+		Ability = SIGN.Violet,
+		Defense = SIGN.Gold,
 	},
 }
 
@@ -694,21 +697,30 @@ function H.width(text, size, font)
 end
 
 -- the first text that fits `width` at a size from maxSize down to minSize; the last text at minSize when none does
-function H.fit(lbl, texts, width, maxSize, minSize)
-	-- (kit-b U9-5) a capitals role (a title, a tag) is measured as it shows: in capitals
+function H.fit(lbl, texts, width, maxSize, minSize, em)
+	-- (kit-b U9-5) a capitals role (a title, a tag) is measured as it shows: in capitals. `em` (optional): a mixed-case
+	-- text is never taken under that many em a letter (LOOK-ui2: the mats' pet names)
 	local role = lbl:GetAttribute("FontRole")
 	local caps = role ~= nil and Theme.CapsRoles[role] == true
 	for _, t in ipairs(texts) do
 		local size = maxSize
 		while size >= minSize do
-			if H.width(caps and Theme.Caps(t) or t, size, Theme.FontOf(lbl)) <= width then
+			-- (LOOK-ui2: "TRAINING PLACE" drew 158.6 px where it measured 139) capitals never under 0.62 em a letter
+			local w = H.width(caps and Theme.Caps(t) or t, size, Theme.FontOf(lbl))
+			if caps then
+				w = math.max(w, #t * size * 0.62)
+			elseif em then
+				w = math.max(w, #t * size * em)
+			end
+			if w <= width then
 				lbl.Text, lbl.TextSize = t, size
-				return
+				return true
 			end
 			size = size - 1
 		end
 	end
 	lbl.Text, lbl.TextSize = texts[#texts], minSize
+	return false
 end
 
 -- the height of a wrapped text in `width` (TextService, never less than the lines its single-line width needs)
@@ -737,6 +749,9 @@ function H.ensureGui()
 	end
 	U.Gui = CloudUI.NewScreenGui("NimbusTrain", K.DISPLAY_ORDER)
 	U.Gui.IgnoreGuiInset = true
+	-- (LOOK-ui2: under the window's Fit of 0.8 a 2 px edge drew 1.6 screen px, a 8 px lip 6.4) every wood edge and lip of the
+	-- window, now and as rows are added, on whole screen px (PixelIcon.WholeTree, kitb-look1's one helper)
+	PixelIcon.WholeTree(U.Gui)
 	S.Built = false
 	U.Skills, U.Views, S.ViewId = {}, {}, nil
 	U.MatList, U.MatViews = {}, {}
@@ -770,7 +785,7 @@ function H.build()
 	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = SIGN.NavyLip, BorderSizePixel = 0, ZIndex = 3, Parent = header })
 	U.Roof = SignKit.Roof(panel, { Width = K.ROOF_W, Y = -10, ZIndex = 4 })
 	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = "", TextColor3 = C.Gold, TextTruncate = Enum.TextTruncate.None })
-	PixelIcon.Host(U.Icon, ICON.Train) -- (kit-b U7b)
+	SignKit.IconSlot(U.Icon, ICON.Train, 27) -- (LOOK-ui2) the header's gold icon square, as Pets and the Food Machine
 	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Training Place", TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
 	U.Title:SetAttribute("RibbonBand", "Header") -- the navy plank is the title's band
 	Theme.StyleTitle(U.Title)
@@ -787,6 +802,7 @@ function H.build()
 		Parent = header,
 	})
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = C.Ink }) -- slop audit 2026-11-12: a drawn X (no glyph)
+	NeonKit.CloseBlock(U.Close) -- (LOOK-ui2) the kit's one close block: never under 44 screen px, its x in 3 px cells
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
@@ -882,13 +898,9 @@ function H.newSkill(skill)
 	item.NameL = label(body, "Name", "Title", 30, { ZIndex = 5, Text = skill.Name or H.skillName(id), TextXAlignment = Enum.TextXAlignment.Left })
 	item.RankL = label(body, "Rank", "Heading", 22, { ZIndex = 5, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Bar = Util.Create("Frame", { Name = "Bar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = body })
-	for i = 1, 10 do
-		-- (kit-b U9-5) square rank blocks (the pitch's block row): sunk stone, lit in the skill's colour
-		local seg = Util.Create("Frame", { Name = "Seg" .. i, BackgroundColor3 = C.SegOff, BorderSizePixel = 0, ZIndex = 6, Parent = item.Bar })
-		H.edge(seg, C.WellEdge, 1)
-		seg:SetAttribute("Lit", false)
-		item.Segs[i] = seg
-	end
+	-- (LOOK-ui2: a private row of flat squares in a 1 px edge, no lip, gaps of 2 and 3 px) ten kit blocks (SignKit.FitBlocks:
+	-- whole px, the wood edge, the darker lip), lit in the skill's colour; the rank in training is the gold block
+	item.Blocks = SignKit.FitBlocks(item.Bar, { Name = "Blocks", Size = UDim2.fromScale(1, 1), Count = 10, Gap = 3, EdgePx = 2, LipPx = 3, Fill = color, FillLip = Theme.SignLipOf(color), ZIndex = 6 })
 	item.Now = label(body, "Now", "Body", 20, { ZIndex = 5, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Next = label(body, "Next", "Body", 20, { ZIndex = 5, TextColor3 = C.Good, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Cost = label(body, "Cost", "Display", 26, { ZIndex = 5, TextColor3 = C.Good, TextXAlignment = Enum.TextXAlignment.Left })
@@ -922,11 +934,12 @@ function H.newMat(i)
 	m.Line1 = label(body, "Line1", "Heading", 22, { ZIndex = 7 })
 	m.Line2 = label(body, "Line2", "Body", 19, { ZIndex = 7 })
 	m.Big = label(body, "Big", "Display", 48, { ZIndex = 7, TextTruncate = Enum.TextTruncate.None })
-	-- the timer: a flat sunk bar with a violet fill (square)
-	m.Bar = Util.Create("Frame", { Name = "TimerBar", BackgroundColor3 = C.SegOff, BorderSizePixel = 0, ZIndex = 6, Parent = body })
-	H.edge(m.Bar, C.WellEdge, 1)
-	m.Fill = Util.Create("Frame", { Name = "Fill", BackgroundColor3 = C.Purple, BorderSizePixel = 0, ZIndex = 7, Size = UDim2.fromScale(0, 1), Parent = m.Bar })
-	m.BarText = label(m.Bar, "Left", "Heading", 18, { ZIndex = 8, Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
+	-- (LOOK-ui2: a smooth violet fill with "2:07 left" across its edge) the timer: five violet kit blocks lit as the job runs,
+	-- the time in the ink beside them (H.paintTimer)
+	m.Bar = Util.Create("Frame", { Name = "TimerBar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 6, Parent = body })
+	m.Blocks = SignKit.FitBlocks(m.Bar, { Name = "Blocks", Size = UDim2.fromScale(1, 1), Count = 5, Gap = 2, EdgePx = 2, LipPx = 3, Fill = SIGN.Violet, FillLip = SIGN.VioletLip, ZIndex = 7 })
+	m.BarText = label(m.Bar, "Left", "Heading", 18, { ZIndex = 8, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1),
+		TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.None })
 	m.Badge = label(body, "LockBadge", "Heading", 18, {
 		ZIndex = 9, Visible = false, Text = "", BackgroundTransparency = 0, BackgroundColor3 = C.Gold, TextColor3 = C.Ink, TextTruncate = Enum.TextTruncate.None,
 	})
@@ -1015,13 +1028,13 @@ function H.layoutHeader()
 	place(U.HeaderFoot, 0, M.Header - 5, W, 5) -- (kit-b U9-5) the plank's darker lip
 	U.Roof.Visible = S.Mode ~= "Phone" -- (kit-b U9-5) a phone window sits right under Roblox's top bar: no awning stub
 	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
-	U.Icon.TextSize = M.IconText
+	SignKit.IconSlot(U.Icon, nil, M.IconPx)
 	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close) -- (its drawn X scales with it)
 	U.Chip.TextSize = M.ChipText
 	local chipW = math.ceil(H.width(U.Chip.Text, M.ChipText, Theme.FontOf(U.Chip))) + 2 * M.ChipPad
 	local chipX = W - M.HeadPad - M.Close - M.Gap - chipW
 	place(U.Chip, chipX, (M.Header - M.ChipH) / 2, chipW, M.ChipH)
-	local titleX = M.HeadPad + M.Icon + 8
+	local titleX = M.HeadPad + M.Icon + 12
 	local titleW = math.max(40, chipX - M.Gap - titleX)
 	place(U.Title, titleX, 6, titleW, M.Header - 12) -- (kit-b U9-5) 6 px in top and bottom: the ribbon lifts its letters (Drop), their box stays on the plank
 	H.fit(U.Title, { "Training Place", "Training" }, titleW - 4, M.TitleText, M.TitleMin) -- (kit-b U9-5) 2 px each side for its outline
@@ -1231,13 +1244,18 @@ function H.layoutDashes(m, w, h, mm)
 	end
 end
 
+-- (LOOK-ui2) a mat's timer: the blocks lit for the share of the job done, `text` ("2:07 left") beside them in the ink
+function H.paintTimer(m, frac, text)
+	SignKit.FillBlocks(m.Blocks, math.floor(math.max(0, math.min(1, tonumber(frac) or 0)) * 5 + 1e-6))
+	m.BarText.Text = text
+	m.BarText.Visible = text ~= ""
+	local tw = (text ~= "") and math.ceil(H.width(text, m.BarText.TextSize, Theme.FontOf(m.BarText)) * 1.1) + 4 or 0
+	m.BarText.Size = UDim2.new(0, tw, 1, 0)
+	m.Blocks.Size = UDim2.new(1, -(tw > 0 and tw + 6 or 0), 1, 0)
+end
+
 function H.layoutBar(item, x, y, w, h)
-	place(item.Bar, x, y, w, h)
-	local gap = h >= 16 and 6 or 3
-	local segW = (w - 9 * gap) / 10
-	for i, seg in ipairs(item.Segs) do
-		place(seg, (i - 1) * (segW + gap), 0, segW, h)
-	end
+	place(item.Bar, x, y, w, math.max(10, h)) -- (the blocks lay themselves out in it; under 10 px a face would vanish)
 end
 
 -- PC full / compact: icon + name + rank, the bar, Now, Next, and the cost / time beside the button
@@ -1274,12 +1292,15 @@ function H.layoutSkillSmall(item, w, h, m)
 	item.IconHolder.Visible = false
 	local pad = m.Pad
 	local topH, barH, gap = m.TopH, m.BarH, 3
-	local by = h - m.BtnH - m.Bottom
+	-- (LOOK-ui2: at 844x390 the plank lay on the card's lip, the line on the plank) the plank's wood edge (drawn outside
+	-- its box) ends 4 px above the card's 6 px lip, and the line keeps 6 px over that edge
+	local edge = CloudUI.SignMetrics and CloudUI.SignMetrics.Edge or 5
+	local by = h - m.BtnH - math.max(m.Bottom, 6 + 4 + edge)
 	local lineY = m.Top + topH + gap + barH + gap
-	if lineY + m.LineH > by then
+	if lineY + m.LineH + 6 + edge > by then
 		-- a short card: a slimmer bar and gaps
-		barH, gap = 6, 2
-		topH = math.max(m.Name + 2, by - m.LineH - m.Top - 2 * gap - barH)
+		barH, gap = 10, 2
+		topH = math.max(m.Name + 2, by - 6 - edge - m.LineH - m.Top - 2 * gap - barH)
 		lineY = m.Top + topH + gap + barH + gap
 	end
 	local rankW = math.ceil(H.width("10/10", m.Rank, Theme.FontOf(item.RankL))) + 6
@@ -1290,7 +1311,8 @@ function H.layoutSkillSmall(item, w, h, m)
 	item.RankL.TextXAlignment = Enum.TextXAlignment.Right
 	H.layoutBar(item, pad, m.Top + topH + gap, w - 2 * pad, barH)
 	item.Next.Visible, item.Cost.Visible, item.Time.Visible = false, false, false
-	item.Now.Visible = true
+	-- (the line only where it keeps 6 px over the plank's edge)
+	item.Now.Visible = lineY + m.LineH + 6 + edge <= by
 	place(item.Now, pad, lineY, w - 2 * pad, m.LineH)
 	item.Now.TextSize = m.Line
 	place(item.Action, pad, by, w - 2 * pad, m.BtnH)
@@ -1369,7 +1391,8 @@ function H.chipText(level, used, slots)
 		return S.Portrait and "Not built yet" or "No Training Place yet"
 	end
 	if S.Mode == "Phone" then
-		return used .. " / " .. slots .. " spots"
+		-- (LOOK-ui2: "1 / 2 spots" took the title's room, "TRAINING PL..") the count alone on a phone's plank
+		return used .. "/" .. slots
 	end
 	return "Training spots: " .. used .. " / " .. slots .. " in use"
 end
@@ -1462,7 +1485,29 @@ function H.paintPet()
 		local nameMax = S.Portrait and 18 or M.NameText
 		local nameMin = S.Portrait and 15 or M.NameMin
 		local last = name:match("(%S+)$") or name
-		H.fit(U.Name, { name, last }, U.Name.Size.X.Offset - 4, nameMax, nameMin)
+		U.Name.TextWrapped = false
+		if S.Portrait then
+			H.fit(U.Name, { name, last }, U.Name.Size.X.Offset - 4, nameMax, nameMin)
+		else
+			-- (LOOK-ui2: "BLOSSOM BUN..." at 1280x720, a pet's name cut in the window's largest type) measured in the capitals
+			-- it is drawn in, from 42 down to 26; past that its whole name on two lines, never cut, never just its last word
+			local room = U.Name.Size.X.Offset - 4
+			local size = nameMax
+			local function capsW(px)
+				return math.max(H.width(string.upper(name), px, Theme.FontOf(U.Name)), #name * px * 0.66)
+			end
+			while size > math.min(nameMax, 26) and capsW(size) > room do
+				size = size - 1
+			end
+			U.Name.Text = name
+			U.Name.TextTruncate = Enum.TextTruncate.None
+			if capsW(size) <= room then
+				U.Name.TextSize = size
+			else
+				U.Name.TextWrapped = true
+				U.Name.TextSize = math.max(18, math.min(size, math.floor(U.Name.Size.Y.Offset / 2.3)))
+			end
+		end
 		U.Name.TextColor3 = C.Ink
 		local levelText, stars = H.levelText(key, def)
 		U.Level.Text = levelText
@@ -1549,14 +1594,16 @@ end
 
 -- a text that fits `width`: refit only when the texts, the width or the label's own text changed (the 0.5 s tick
 -- repaints the mats; TextService is not asked again for the same answer)
-function H.fitMat(lbl, texts, width, maxSize, minSize)
-	local sig = table.concat(texts, "\n") .. "|" .. width .. "|" .. maxSize .. "|" .. minSize
+function H.fitMat(lbl, texts, width, maxSize, minSize, em)
+	local sig = table.concat(texts, "\n") .. "|" .. width .. "|" .. maxSize .. "|" .. minSize .. "|" .. tostring(em)
 	local c = S.FitSigs[lbl]
 	if c and c.Sig == sig and c.Text == lbl.Text and c.Size == lbl.TextSize then
 		return
 	end
 	-- (the outlined text needs a little more than its measured width: a quarter of its size, K.MAT.FitMargin)
-	H.fit(lbl, texts, width - math.ceil(maxSize * K.MAT.FitMargin), maxSize, minSize)
+	-- (LOOK-ui2: "Blossom Bun..." at 1280x720) `em`: a pet's name is never taken under 0.52 em a letter (K.MAT.NameEm), so
+	-- its last word takes over before a cut
+	H.fit(lbl, texts, width - math.ceil(maxSize * K.MAT.FitMargin), maxSize, minSize, em)
 	S.FitSigs[lbl] = { Sig = sig, Text = lbl.Text, Size = lbl.TextSize }
 end
 
@@ -1638,7 +1685,7 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 		local nameW = w - fx - pad - badgeW
 		m.Line1.Visible = true
 		place(m.Line1, fx, mm.Top, nameW, mm.Face)
-		H.fitMat(m.Line1, { name, lastWord }, nameW - 2, mm.Name, mm.NameMin)
+		H.fitMat(m.Line1, { name, lastWord }, nameW - 2, mm.Name, mm.NameMin, K.MAT.NameEm)
 		local y2 = mm.Top + mm.Face + 2
 		m.Line2.Visible = true
 		place(m.Line2, pad, y2, w - 2 * pad, mm.LineH)
@@ -1647,9 +1694,8 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 			H.fitMat(m.Line2, statLines, w - 2 * pad - 2, mm.Line, mm.LineMin)
 			m.Bar.Visible = true
 			place(m.Bar, pad, barY, w - 2 * pad, mm.BarH)
-			m.Fill.Size = UDim2.fromScale(frac, 1)
 			m.BarText.TextSize = mm.BarText
-			m.BarText.Text = H.clock(left) .. " left"
+			H.paintTimer(m, frac, H.clock(left) .. " left")
 		else
 			-- the pending pet: its level, then the call to pick a skill
 			local key = spec.Key
@@ -1711,7 +1757,7 @@ function H.paintMatPhone(m, st, spec, mm, w, h, name, lastWord, face, badgeW, le
 		local y1 = job and 3 or math.floor(h / 2) - mm.LineH - 1
 		m.Line1.Visible = true
 		place(m.Line1, fx, y1, tw - badgeW, mm.LineH)
-		H.fitMat(m.Line1, { name, lastWord }, tw - badgeW - 2, mm.Text, mm.Text)
+		H.fitMat(m.Line1, { name, lastWord }, tw - badgeW - 2, mm.Text, mm.Text, K.MAT.NameEm)
 		m.Line2.Visible = true
 		place(m.Line2, fx, y1 + mm.LineH, tw, mm.LineH)
 		if job then
@@ -1719,8 +1765,7 @@ function H.paintMatPhone(m, st, spec, mm, w, h, name, lastWord, face, badgeW, le
 			H.fitMat(m.Line2, { H.clock(left) .. " left", H.clock(left) }, tw - 2, mm.Text, mm.Text)
 			m.Bar.Visible = true
 			place(m.Bar, fx, h - mm.BarH - 4, tw, mm.BarH)
-			m.Fill.Size = UDim2.fromScale(frac, 1)
-			m.BarText.Text = ""
+			H.paintTimer(m, frac, "")
 		else
 			m.Line2.TextColor3 = C.Good
 			H.fitMat(m.Line2, { "Pick a skill", "Pick" }, tw - 2, mm.Text, mm.Text)
@@ -1905,17 +1950,18 @@ function H.paintSkill(item)
 		item.RankL.Text = "Rank " .. rank .. " / " .. maxRank
 	end
 	local trainingSeg = (st == "Training" and job) and math.floor(tonumber(job.Rank) or (rank + 1)) or nil
-	for i, seg in ipairs(item.Segs) do
-		local lit = (not noPet) and i <= rank
-		seg:SetAttribute("Lit", lit)
-		if lit then
-			seg.BackgroundColor3 = Theme.Lighten(item.Color, 0.1)
-		elseif trainingSeg == i then
-			seg.BackgroundColor3 = C.Purple
-		else
-			seg.BackgroundColor3 = C.SegOff
+	SignKit.FillBlocks(item.Blocks, noPet and 0 or rank)
+	-- (LOOK-ui2: it was violet, Ability's own colour) the rank in training: a gold block
+	local b = trainingSeg and trainingSeg > rank and item.Blocks:FindFirstChild("Block" .. trainingSeg)
+	local face = b and b:FindFirstChild("Face")
+	if face then
+		face.BackgroundColor3 = C.Gold
+		local lip = face:FindFirstChild("Lip")
+		if lip then
+			lip.BackgroundColor3 = SIGN.GoldLip
 		end
 	end
+	item.Blocks:SetAttribute("Training", face and trainingSeg or nil)
 	-- the texts
 	local nowText, nextText, costText, timeText = "", "", "", ""
 	local nextColor, timeColor = C.Good, C.Muted
@@ -2215,7 +2261,33 @@ function H.coverColumn()
 	if menu and type(menu.SetColumnCovered) == "function" then
 		safe("cover", menu.SetColumnCovered, (S.Open and S.Rect) and S.Rect.x or nil, "Train")
 	end
+	H.coverVitals()
 	H.syncTouch()
+end
+
+-- (LOOK-ui2: at 1920x1080 the window left a 6% sliver of the vitals card under its bottom edge) the open window hides
+-- the HUD's vitals card while it covers any of it (HudController.SetVitalsHidden "Train"; the slot is gui-area px, the
+-- window's rect screen px)
+function H.coverVitals()
+	local hud = H.controller("HudController")
+	if not (hud and type(hud.SetVitalsHidden) == "function") then
+		return
+	end
+	local cover = false
+	local r = S.Open and S.Rect
+	if r then
+		local ok, layout = pcall(hud.GetLayout)
+		local slot = ok and type(layout) == "table" and layout.VitalsSlot or nil
+		if type(slot) == "table" and tonumber(slot.W) and slot.W > 0 then
+			local okI, inset = pcall(function()
+				return GuiService:GetGuiInset().Y
+			end)
+			local top = (okI and tonumber(inset)) or 0
+			local x0, y0 = slot.X, slot.Y + top
+			cover = r.x < x0 + slot.W and r.x + r.w > x0 and r.y < y0 + slot.H and r.y + r.h > y0
+		end
+	end
+	safe("vitals", hud.SetVitalsHidden, "Train", cover)
 end
 
 -- Esc / B: the confirm first, then our sheet, then the window

@@ -424,6 +424,9 @@ Theme.Sign = {
 	Canvas = rgb(243, 230, 200), -- #F3E6C8 (the canopy's weathered cream stripes)
 	CloudShade = rgb(221, 230, 247), -- #DDE6F7 (the logo's cream letters, lower band)
 	CloudSide = rgb(201, 214, 238), -- #C9D6EE (their block side)
+	-- (LOOK-ui2, kitb-look2: "good" was #2E7D32 in Care / Train and #2E6B3F on the Loss card) a gain / ready line's ink on
+	-- stone (5.1:1 on Stone, 5.5:1 on Tile)
+	Good = rgb(46, 125, 50), -- #2E7D32
 }
 
 -- (LOOK-ui, kitb-look1: a lip from a token, never Darken(colour)) the kit's lip token under a role face: gold, sky,

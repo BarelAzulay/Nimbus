@@ -2199,9 +2199,24 @@ local function clientScenarios()
 			local B1 = BC.GetBattle()
 			T.check(H.count(mark, "Cheer") == 1, "cheer button: a click sends exactly ONE BattleCommand(\"Cheer\")", H.count(mark, "Cheer") .. " sent")
 			local sweep = b and b:FindFirstChild("Sweep")
-			local glowF = H.find("Root.CheerGlow")
-			T.check(B1.Cheering == true and b:GetAttribute("Cheering") == true and glowF ~= nil and shownIn(glowF) and glowF.BackgroundTransparency < 0.9,
-				"cheer button: the server's Cheer event starts the gold glow", fmt("Cheering %s, glow %.2f", tostring(B1.Cheering), glowF and glowF.BackgroundTransparency or -1))
+			-- (LOOK-ui2: was a see-through gold frame blinking behind the button, a glow) the boost blinks the button's wood edge
+			-- deep gold
+			local Sign = H.moduleAt("shared", "Theme").Sign
+			local edge = b and b:FindFirstChild("SignEdge")
+			local function edgeBlinks()
+				local lit = false
+				-- (0.6 s in 0.1 s steps: the blink's lit half is 0.52 s, so a lit frame is always seen)
+				for _ = 1, 6 do
+					d:run(0.1, 30)
+					if edge and edge.Color == Sign.GoldDeep then
+						lit = true
+					end
+				end
+				return lit
+			end
+			local blinked = edgeBlinks()
+			T.check(B1.Cheering == true and b:GetAttribute("Cheering") == true and H.find("Root.CheerGlow") == nil and blinked,
+				"cheer button: the server's Cheer event blinks its edge deep gold (no see-through glow frame)", fmt("Cheering %s, blink %s", tostring(B1.Cheering), tostring(blinked)))
 			T.check(sweep ~= nil and shownIn(sweep) and abs(sweep.Size.X.Scale - B1.Cooldowns.Cheer / 20) < 0.06 and B1.Cooldowns.Cheer > 18.5,
 				"cheer button: ...and the cooldown sweep over 20 s", fmt("sweep %.2f, cooldown %.1f s", sweep and sweep.Size.X.Scale or -1, B1.Cooldowns.Cheer or -1))
 			T.check(#calls - n0 == 1, "cheer button: ...and my avatar cheers once (TrainerCheer)", (#calls - n0) .. " plays")
@@ -2213,12 +2228,13 @@ local function clientScenarios()
 			d:run(0.3, 30)
 			T.check(H.count(mark2, "Cheer") == 0 and (b:GetAttribute("Shakes") or 0) == shakes + 1, "cheer button: a click during the cooldown sends nothing and shakes the button",
 				fmt("%d sent, shakes %d -> %d", H.count(mark2, "Cheer"), shakes, b:GetAttribute("Shakes") or 0))
-			-- the glow ends after 5 s, the sweep after 20 s
-			d:run(4.6, 10)
+			-- the blink ends after 5 s, the sweep after 20 s (the samples took 0.6 s: the times below are the press's as before)
+			d:run(3.8, 10)
 			local B2 = BC.GetBattle()
-			T.check(B2.Cheering == false and b:GetAttribute("Cheering") == false and glowF.BackgroundTransparency > 0.98 and shownIn(sweep),
-				"cheer button: the glow is gone after 5 s, the sweep still runs", fmt("Cheering %s, glow %.2f", tostring(B2.Cheering), glowF.BackgroundTransparency))
-			d:run(14.4, 10)
+			local still = edgeBlinks()
+			T.check(B2.Cheering == false and b:GetAttribute("Cheering") == false and not still and shownIn(sweep),
+				"cheer button: the blink is gone after 5 s, the sweep still runs", fmt("Cheering %s, blink %s", tostring(B2.Cheering), tostring(still)))
+			d:run(14.0, 10)
 			T.check(shownIn(sweep) and BC.GetBattle().Cheering == false, "cheer button: 19.8 s after the press the sweep still shows")
 			d:run(0.8, 10)
 			T.check(not shownIn(sweep) and (BC.GetBattle().Cooldowns.Cheer or 1) == 0, "cheer button: after 20 s the sweep is gone (ready again)",

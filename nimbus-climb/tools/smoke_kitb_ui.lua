@@ -202,6 +202,10 @@
 --                             enemy list clear of the currency strips; on the phones every text and button whole on the
 --                             screen, uncut, one-line texts fitting at real widths, nothing under the stick / jump button.
 --                             kitb_no_neon_glow and kitb_no_emoji_ui walk the family's views too
+--   look2_screens_pixels     (client, LOOK-ui2) the Care and battle families at the four grid sizes: whole-px icon cells,
+--                             edges and lips, block bars only, no corner or gradient; the result card clear of the menu
+--                             column and the Gift block on the phones; round two: no frame turned off the grid, every lip
+--                             flush on its block's edge, none of the old off-kit colours, a header icon in its IconSlot
 --   U9-7 (the Arena, Ring, Dungeon and raid gate docks, TeamFaces inside them; U97.FAMILY):
 --   arena_family_fits         (client) at the four grid sizes every view: no text under the floor or TextScaled, outside a
 --                             scrolling list whole on the screen and uncut, one-line texts fitting at real widths, every
@@ -7072,6 +7076,157 @@ local function clientScenarios()
 		end
 		restoreMeasure()
 		LKC.flushErrors("battle_family_fits")
+	end)
+
+	-- (LOOK-ui2, the owner's look bar on the U9-5 / U9-6 screens) the pixel rules over every view of the Care family (U9.FAMILY:
+	-- Training Place, Food Machine, Pet Garden, Fusion, the pet picker) and the battle family (U96.FAMILY: the HUD, the result
+	-- card, the loss screen) at the four grid sizes, under the windows' and the HUD's 0.8 too: every pixel icon's cells whole
+	-- screen px; every wood edge (a Border UIStroke) and every lip (a "Lip" frame) whole screen px (PixelIcon.WholeTree); no
+	-- smooth bar (a "Fill" frame: every bar is a row of kit blocks, SignKit.FitBlocks / BlockRow); no round corner or gradient
+	-- (a cooldown Sweep veil is a flat sheet). And at 390x844 / 844x390 the battle's result card lies clear of the menu column
+	-- and the Gift block (it moved under the top-right stack; the menu column steps aside where the card needs its room)
+	-- (LOOK-ui2, round two) and on the same views: no frame turned off the grid (the Fusion copies were fanned -7 / -1 / +5); every
+	-- block's lip flush on its bottom edge (a UIPadding laid them out 5 px up, or 22 px short of a side); none of the old
+	-- off-kit colours (the neon skill set, Feed's #78C8FF XP, the role pills' #60C46C / #E46860); a window header's icon in
+	-- its gold IconSlot square (SignKit.IconSlot / Header)
+	local LOOK2 = {
+		OFF_KIT = {
+			[Color3.fromRGB(63, 200, 255):ToHex()] = "old Speed #3FC8FF",
+			[Color3.fromRGB(255, 107, 129):ToHex()] = "old Physique #FF6B81",
+			[Color3.fromRGB(180, 124, 255):ToHex()] = "old Ability #B47CFF",
+			[Color3.fromRGB(255, 179, 71):ToHex()] = "old Defense #FFB347",
+			[Color3.fromRGB(120, 200, 255):ToHex()] = "Feed's XP #78C8FF",
+			[Color3.fromRGB(96, 196, 108):ToHex()] = "old Economy #60C46C",
+			[Color3.fromRGB(228, 104, 96):ToHex()] = "old Combat #E46860",
+		},
+	}
+	function LOOK2.hex(c)
+		local ok, h = pcall(function()
+			return c:ToHex()
+		end)
+		if ok then
+			return h
+		end
+		return string.format("%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+	end
+	function LOOK2.whole(v)
+		return math.abs(v - math.floor(v + 0.5)) < 0.02
+	end
+	function LOOK2.misses(gui)
+		local out = {}
+		local whole = LOOK2.whole
+		for _, d in ipairs(gui:GetDescendants()) do
+			local p = d.Parent
+			-- (the owner's designed looks, a window title's T1 ribbon: designedLook)
+			local on = p and p:IsA("GuiObject") and U8.shown(p) and p.AbsoluteSize.X > 0 and not designedLook(d)
+			if designedLook(d) then
+				on = false
+			elseif on and d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0) then
+				out[#out + 1] = "round corner on " .. p.Name
+			elseif on and d:IsA("UIGradient") and d.Enabled ~= false and not d:FindFirstAncestor("GemIcon") then
+				-- (GemIcon's drawn gem, its faces and the ShineBar sweep: the Shop's shared gem, left to its own lane)
+				out[#out + 1] = "gradient on " .. p:GetFullName():gsub("^.-%.([^.]+%.[^.]+%.[^.]+)$", "%1")
+			elseif on and d:IsA("UIStroke") and d.Enabled ~= false and d.Transparency < 1 and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then
+				local t = d.Thickness * U8.scaleOf(p)
+				if not whole(t) then
+					out[#out + 1] = fmt("%s edge %.2f px", p.Name, t)
+				end
+			end
+			if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 and not designedLook(d) then
+				-- (a quarter turn keeps the grid: the portrait arrow points down; GemIcon's gem is its own lane's diamond)
+				if d.Rotation % 90 ~= 0 and not d:FindFirstAncestor("GemIcon") then
+					out[#out + 1] = fmt("%s turned %.1f deg", d.Name, d.Rotation)
+				end
+				local bad = d.BackgroundTransparency < 1 and LOOK2.OFF_KIT[LOOK2.hex(d.BackgroundColor3)]
+				if bad then
+					out[#out + 1] = d.Name .. " in the " .. bad
+				end
+				if d.Name == "Icon" and p and p.Name == "Header" and d:GetAttribute("SlotIcon") == nil and d:IsA("TextLabel") then
+					out[#out + 1] = "header icon outside its gold IconSlot (" .. (d:GetFullName():match("[^.]+%.[^.]+%.[^.]+$") or d.Name) .. ")"
+				end
+			end
+			if d:IsA("Frame") and U8.shown(d) and d.AbsoluteSize.X > 0 and not designedLook(d) then
+				if d.Name == "Lip" and d.Size.Y.Scale == 0 and d.BackgroundTransparency < 1 then
+					local t = d.Size.Y.Offset * U8.scaleOf(d)
+					if not whole(t) then
+						out[#out + 1] = fmt("%s lip %.2f px", p and p.Name or "?", t)
+					end
+					-- (flush: its bottom on the block's bottom, its sides on the block's sides; a block's press may sink it)
+					if p and p:IsA("GuiObject") and p.AbsoluteSize.X > 0 and not p:GetAttribute("Pressed") then
+						local db, pb = d.AbsolutePosition.Y + d.AbsoluteSize.Y, p.AbsolutePosition.Y + p.AbsoluteSize.Y
+						local dl, pl = d.AbsolutePosition.X, p.AbsolutePosition.X
+						local dr, pr = dl + d.AbsoluteSize.X, pl + p.AbsoluteSize.X
+						if math.abs(db - pb) > 1 or math.abs(dl - pl) > 1 or math.abs(dr - pr) > 1 then
+							out[#out + 1] = fmt("%s lip off its edge (bottom %+.1f, left %+.1f, right %+.1f px)", p.Name, db - pb, dl - pl, dr - pr)
+						end
+					end
+				elseif d.Name == "Fill" and d.BackgroundTransparency < 1 then
+					out[#out + 1] = "smooth bar " .. (p and p.Name or "?") .. ".Fill"
+				elseif d:GetAttribute("PixelIcon") and d:FindFirstChild("R1") then
+					local cpx = d:GetAttribute("CellPx")
+					for _, r in ipairs(d:GetChildren()) do
+						local a = r:IsA("Frame") and r.AbsoluteSize
+						if a and not (whole(a.X) and whole(a.Y) and cpx and whole(a.X / cpx) and whole(a.Y / cpx)) then
+							out[#out + 1] = fmt("icon %s.%s %.2fx%.2f (cell %s)", p and p.Name or "?", d.Name, a.X, a.Y, tostring(cpx))
+							break
+						end
+					end
+				end
+			end
+		end
+		return out
+	end
+	S.look2_screens_pixels = guarded("look2_screens_pixels", function()
+		local views = {}
+		for _, f in ipairs(U9.FAMILY) do
+			views[#views + 1] = { f[1], f[2], U9 }
+		end
+		for _, f in ipairs(U96.FAMILY) do
+			views[#views + 1] = { f[1], f[2], U96 }
+		end
+		for _, s in ipairs(U8.SIZES) do
+			local W, Hh, touch = s[1], s[2], s[3]
+			for _, v in ipairs(views) do
+				U8.at(W, Hh, touch, "look2 " .. v[1], function(tag)
+					v[3].open(v[1])
+					local gui = U8.pg():FindFirstChild(v[2])
+					if not T.check(v[3].showing(gui), tag .. ": the view shows (" .. v[2] .. ")") then
+						v[3].close()
+						return
+					end
+					local miss = LOOK2.misses(gui)
+					T.check(#miss == 0, fmt("%s: whole-px icons, edges and lips; block bars only; no corner or gradient (%d)", tag, #miss),
+						table.concat(miss, "; ", 1, math.min(#miss, 8)))
+					if v[1] == "battle:result" and touch then
+						local card = gui:FindFirstChild("ResultCard", true)
+						local dy = gui.IgnoreGuiInset and 0 or Mock.TopInset
+						local hits = {}
+						if card and U8.shown(card) then
+							local cr = U8.rect(card)
+							for _, other in ipairs(U8.pg():GetChildren()) do
+								if other:IsA("ScreenGui") and other ~= gui and other.Enabled then
+									local ody = other.IgnoreGuiInset and 0 or Mock.TopInset
+									for _, o in ipairs(other:GetDescendants()) do
+										-- (a menu tile: a shown button in the column, whose frame keeps its place while its tiles step aside)
+										local col = o:FindFirstAncestor("MenuColumn")
+										if ((col and o:IsA("GuiButton")) or o.Name == "GiftsButton") and o:IsA("GuiObject") and U8.shown(o) and o.AbsoluteSize.X > 0 then
+											local r = U8.rect(o)
+											r = { X = r.X, R = r.R, Y = r.Y + ody - dy, B = r.B + ody - dy }
+											if U8.overlap(cr, r) then
+												hits[#hits + 1] = o.Name .. " " .. U8.show(r) .. " on the card " .. U8.show(cr)
+											end
+										end
+									end
+								end
+							end
+						end
+						T.check(card ~= nil and #hits == 0, tag .. ": the result card is clear of the menu column and the Gift block", table.concat(hits, "; "))
+					end
+					v[3].close()
+				end)
+			end
+		end
+		LKC.flushErrors("look2_screens_pixels")
 	end)
 
 	-- (U9-7) the dock family fits every screen: at the four grid sizes every view of U97.FAMILY shows, no text is drawn under
