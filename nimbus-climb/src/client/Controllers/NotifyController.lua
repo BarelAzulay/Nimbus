@@ -147,14 +147,17 @@ local RESULT_ROWS = {
 		Slack = 10, Close = 35, W = RESULT_W },
 	Compact = { Title = 40, Headline = 30, Diff = 45, Reason = 25, Gap = 5, Row = 40, RowGap = 10, Member = 30, Foot = 25, Value = 18, Trim = 10,
 		Slack = 5, Close = 30, SkipZeroBonus = true, Columns = 2, W = RESULT_W },
-	Mini = { Title = 40, Headline = 30, Diff = 0, Reason = 25, Gap = 10, Row = 40, RowGap = 10, Member = 30, Foot = 20, Value = 18, Trim = 10,
-		Slack = 0, Close = 30, SkipZeroBonus = true, MergeBonus = true, NoTeam = true, NoDiff = true, ShortReason = true, W = 250 },
+	-- (U9-9 look 2) Mini: Slack 5 under the countdown (it stood on the outcome lip, its "y" in it), taken from the Gap
+	Mini = { Title = 40, Headline = 30, Diff = 0, Reason = 25, Gap = 5, Row = 40, RowGap = 10, Member = 30, Foot = 20, Value = 18, Trim = 10,
+		Slack = 5, Close = 30, SkipZeroBonus = true, MergeBonus = true, NoTeam = true, NoDiff = true, ShortReason = true, W = 250 },
 }
 local RESULT_ROW_LIP = 5 -- a stat block's lip (4 px at 0.8)
 local RESULT_BANNER_LIP = 5
 local RESULT_ICON_GAP = 5 -- the room between a value and its coin / tick (4 px at 0.8)
 local RESULT_NAIL = 4 -- (U9-9 look) the stone body's two nails at its top corners (the dungeon End card's, U9-7) ...
 local RESULT_NAIL_IN = 5 -- ... this far in from the corner
+local RESULT_CHIP_H = 20 -- (U9-9 look 2) the mini card's win bonus chip (the HUD's gold run chip): its height and lip
+local RESULT_CHIP_LIP = 3
 local RESULT_TIERS = { "Full", "Compact", "Mini" } -- the first whose card fits its room (the last when none does)
 NotifyController.ResultRows = RESULT_ROWS
 local RESULT_Y = 0.47 -- vertical position (fraction of the screen), right edge
@@ -180,6 +183,9 @@ local FALLBACK_KINDS = {
 -- (kit B U9-9) each kind's chip: its colour by role (the pitch's .ti, the HUD's coin squares), the lip under it and the
 -- pixel icon in the ink that reads on it. Every kind is a PixelIcon now (the "i" / "!" letters went)
 local SIGN = Theme.Sign
+-- (U9-9 look 2) the result card's inline coins in the Shop's deep gold ("x3 [coin] 150", ShopEggs), not the brown ink:
+-- one currency, one colour
+local RESULT_COIN = SIGN.GoldLip
 local KIND_CHIP = {
 	info = { Face = SIGN.Sky, Lip = SIGN.SkyLip, Icon = "bulb", Ink = SIGN.Text },
 	good = { Face = SIGN.Grass, Lip = SIGN.GrassLip, Icon = "check", Ink = SIGN.OnGrass },
@@ -1326,14 +1332,43 @@ local function buildResults(data)
 		local insetTop2 = CloudUI.ContentInset(false, true)
 		close.Position = UDim2.new(1, -(12 + 4 + 6), 0, insetTop2 + 2 - R.Trim + titleY + math.floor((TITLE_H - RESULT_BANNER_LIP) / 2))
 		-- (U9-9 look) its wood edge and lip on whole px (2.4 px drew uneven)
+		local lipPx = 0
 		for _, c in ipairs(close:GetChildren()) do
 			if c:IsA("UIStroke") then
 				PixelCrisp.Edge(c, c:GetAttribute("CrispEdge") or c.Thickness)
 			elseif c.Name == "Lip" and c:IsA("GuiObject") then
-				PixelCrisp.Lip(c, c:GetAttribute("CrispLip") or c.Size.Y.Offset)
+				lipPx = c:GetAttribute("CrispLip") or c.Size.Y.Offset
+				PixelCrisp.Lip(c, lipPx)
 			end
 		end
 		PixelCrisp.Box(close)
+		-- (U9-9 look 2) the X is the pitch's pixel icon (ic("x")) on the card's 2 px cell, brown on the red block, centred in
+		-- the face above the lip: NeonKit.CloseMark's four bars turned 45 degrees drew a smooth anti-aliased X beside the
+		-- toasts' crisp pixel x. (The same change for every kit B window's close block belongs in NeonKit.CloseMark, a
+		-- shared file: raised at the gate)
+		local old = close:FindFirstChild("CloseMark")
+		local z = old and old.ZIndex or (close.ZIndex + 2)
+		if old then
+			old:Destroy()
+		end
+		PixelCrisp.Icon(close, "x", 18, SIGN.Text, {
+			Name = "CloseMark",
+			Position = UDim2.new(0.5, 0, 0.5, -math.floor(lipPx / 2)),
+			ZIndex = z + 1,
+		})
+	end
+	-- (U9-9 look 2) the frame's parts on whole px on all four sides: the stone inside the wood (4.8 px), the awning and
+	-- its face (14.4 px high, a 3.2 px border)
+	PixelCrisp.Box(panel.Body)
+	if stone then
+		PixelCrisp.Box(stone)
+	end
+	if panel.Roof then
+		PixelCrisp.Box(panel.Roof)
+		local face = panel.Roof:FindFirstChild("Face")
+		if face then
+			PixelCrisp.Box(face)
+		end
 	end
 
 	-- (U9-9 look) the difficulty is a role chip in the kit's tag language (as FIGHTER / HELPER and the rarity tags): its
@@ -1418,7 +1453,7 @@ local function buildResults(data)
 			TextXAlignment = Enum.TextXAlignment.Right,
 		})
 	end
-	local coinOpts = { After = true, Gap = RESULT_ICON_GAP }
+	local coinOpts = { After = true, Gap = RESULT_ICON_GAP, Colour = RESULT_COIN }
 
 	-- MatchTokens is what was PAID OUT to this player (pet TokenBonus and rounding carry included), while
 	-- TotalTokens is the course's raw token value, so the two must not be shown as "own / total" ("48 / 24"
@@ -1432,12 +1467,53 @@ local function buildResults(data)
 	local tokenValue = statRow(2, "Tokens", "0", SIGN.Text)
 	PixelCrisp.Adopt(PixelIcon.Lead(tokenValue, Theme.Currency.Tokens.Icon, coinOpts))
 	-- (kit B U9-9) the compact card leaves a missing bonus out (L.Stats 2); (U9-9 look) the mini card shows it in the
-	-- Tokens row ("11 +10")
+	-- Tokens row. (U9-9 look 2) On a gold chip (the kit's Selected face and its lip, the HUD's run chip) left of the total,
+	-- so the "+10" reads as the win bonus (plain "11  +10" said nothing)
 	local merged = R.MergeBonus and bonus > 0
 	local bonusValue = L.Stats >= 3 and statRow(3, "Win bonus", bonus > 0 and "+0" or "-", bonus > 0 and SIGN.Text or SIGN.TextMuted) or nil
 	countUp(tokenValue, ownTokens, 0.45, 0.8, function(n)
-		return merged and (tostring(n) .. "  +" .. tostring(bonus)) or tostring(n)
+		return tostring(n)
 	end, serial)
+	if merged then
+		local row = tokenValue.Parent
+		local text = "+" .. tostring(bonus)
+		local okW, measured = pcall(Theme.Measure, text, "Heading", 18)
+		local textW = (okW and typeof(measured) == "Vector2") and measured.X or #text * 11
+		local chip = newFrame(row, "BonusChip", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Size = UDim2.fromOffset(math.ceil(textW) + 12, RESULT_CHIP_H), -- (PixelCrisp.Box below: on whole px)
+			ZIndex = 2,
+		})
+		-- (no wood edge of its own: in the row's 20 px face the chip's edge doubled the row's wood line; the gold face and
+		-- its lip set inside the stone with a clear pixel above and below)
+		local chipEdge, chipLip = CloudUI.SignBlock(chip, "Selected", { EdgePx = 2, LipPx = RESULT_CHIP_LIP })
+		chipEdge:Destroy()
+		PixelCrisp.Lip(chipLip, RESULT_CHIP_LIP)
+		chip:SetAttribute("Bonus", bonus)
+		newText(chip, "Bonus", text, "Heading", 18, SIGN.Text, {
+			Size = UDim2.new(1, 0, 1, -RESULT_CHIP_LIP),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 3,
+		})
+		-- 6 px left of the count's first digit (the digits end RESULT_ICON_GAP before the coin, PixelIcon.Lead),
+		-- re-placed as the count runs up; in the face above the row's lip
+		local function placeChip()
+			local k = math.max(0.01, PixelCrisp.ScaleAbove(tokenValue))
+			local digits = tokenValue.TextBounds.X
+			if digits <= 0 then
+				local okV, v = pcall(Theme.Measure, tokenValue.Text, "Heading", R.Value)
+				digits = ((okV and typeof(v) == "Vector2") and v.X or 0) * k
+			end
+			local coin = tokenValue:FindFirstChild("TrailIcon")
+			local textR = coin and coin.AbsolutePosition.X - RESULT_ICON_GAP * k or (tokenValue.AbsolutePosition.X + tokenValue.AbsoluteSize.X)
+			local fromRight = (row.AbsolutePosition.X + row.AbsoluteSize.X - (textR - digits)) / k
+			chip.Position = UDim2.new(1, -math.ceil(fromRight + 6), 0.5, -math.floor(RESULT_ROW_LIP / 2))
+		end
+		placeChip()
+		tokenValue:GetPropertyChangedSignal("TextBounds"):Connect(placeChip)
+		tokenValue:GetPropertyChangedSignal("Text"):Connect(placeChip)
+		PixelCrisp.Box(chip)
+	end
 	if bonus > 0 and bonusValue then
 		PixelCrisp.Adopt(PixelIcon.Lead(bonusValue, Theme.Currency.Tokens.Icon, coinOpts))
 		countUp(bonusValue, bonus, 0.9, 0.7, function(n)
@@ -1478,7 +1554,7 @@ local function buildResults(data)
 					TextXAlignment = Enum.TextXAlignment.Right,
 				})
 				-- (kit-b U7a) the coin before the amount
-				PixelCrisp.Adopt(PixelIcon.Lead(tokens, Theme.Currency.Tokens.Icon, { Gap = RESULT_ICON_GAP }))
+				PixelCrisp.Adopt(PixelIcon.Lead(tokens, Theme.Currency.Tokens.Icon, { Gap = RESULT_ICON_GAP, Colour = RESULT_COIN }))
 			end
 			-- (kit-b U7a) the state is a PixelIcon: a tick when finished, an x when downed (kit B: the grass / red lips'
 			-- deep tones that read on stone)

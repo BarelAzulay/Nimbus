@@ -19,7 +19,7 @@
 --                               the tutorial bubble / card never covers the HP + stamina card during the portal wait and
 --                               the climb (an opened card is folded back when the match starts), never runs off the
 --                               screen or over the hotbar; the menu pointer arrow never sits on a neighbouring tile or
---                               on the tutorial card, and the ring + arrow hide (and the card folds) while a window is open
+--                               on the tutorial card, and the gold tile + arrow go (and the card folds) while a window is open
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -717,12 +717,15 @@ S.client_release_touch_mobile = guarded("client_release_touch_mobile", function(
 		advance(2.5)
 		local target = tutorialPayload(step).Target.Id
 		local label = fmt("release touch 844x390 step %d (%s)", step, target)
-		local ring = path(playerGui(), "NimbusTutorialPointer.Ring")
+		-- (kit B U9-9 look 2) the pointed tile wears the kit's Selected gold face (MenuController.SetPointed): no ring round
+		-- it (the rail's tiles lie edge to edge, a ring covered the next one)
+		local gold = req("Theme").Sign.Gold
 		local arrow = path(playerGui(), "NimbusTutorialPointer.Arrow")
 		local button = MC.GetButton and MC.GetButton(target)
-		if T.check(ring ~= nil and shown(ring) and button ~= nil, label .. ": the ring marks the menu button") then
-			local rr, br = screenRect(ring), screenRect(button)
-			T.check(abs((rr.x0 + rr.x1) - (br.x0 + br.x1)) < 3 and abs((rr.y0 + rr.y1) - (br.y0 + br.y1)) < 3, label .. ": ...centred on MenuButton_" .. target)
+		local function pointed()
+			return button ~= nil and shown(button) and button.BackgroundColor3 == gold
+		end
+		if T.check(pointed() and path(playerGui(), "NimbusTutorialPointer.Ring") == nil, label .. ": the menu button turns gold (no ring)") then
 			if arrow and shown(arrow) then
 				-- the arrow's box after its Rotation (multiples of 90 degrees)
 				local a = screenRect(arrow)
@@ -742,18 +745,18 @@ S.client_release_touch_mobile = guarded("client_release_touch_mobile", function(
 				local tr = tutorialRect()
 				T.check(not (tr and overlap(box, tr)), label .. ": the arrow does not sit on the tutorial card / bubble", show(box) .. " vs " .. (tr and show(tr) or "-"))
 			else
-				T.info("*" .. label .. ": no free side for the arrow, the ring alone marks the button")
+				T.info("*" .. label .. ": no free side for the arrow, the gold tile alone marks the button")
 			end
 		end
-		-- a window on top: ring + arrow hidden, the card folded; back when it closes
+		-- a window on top: the tile's own look back and the arrow hidden, the card folded; back when it closes
 		KC().toClient("OpenPanel", "Stats", nil)
 		advance(1.0)
-		T.check(not shown(ring) and not (arrow and shown(arrow)), label .. ": the ring and arrow hide while a window is open (they drew over the Stats window)")
+		T.check(not pointed() and not (arrow and shown(arrow)), label .. ": the gold mark and the arrow go while a window is open (the arrow drew over the Stats window)")
 		local _, kindOpen = tutorialRect()
 		T.check(kindOpen ~= "card", label .. ": the tutorial card folds while a window is open", tostring(kindOpen))
 		KC().toClient("OpenPanel", "close", nil)
 		advance(1.2)
-		T.check(shown(ring), label .. ": ...and the ring comes back when the window closes")
+		T.check(pointed(), label .. ": ...and the tile turns gold again when the window closes")
 	end
 
 	-- leave the world as we found it

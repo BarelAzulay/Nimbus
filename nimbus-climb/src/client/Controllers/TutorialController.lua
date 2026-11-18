@@ -73,13 +73,26 @@ local TutorialController = {}
 ----------------------------------------------------------------------
 -- Tunables (design pixels of a 1080p screen unless noted)
 ----------------------------------------------------------------------
+-- (U9-9 look 2) the card's lengths on the 0.8 grid (multiples of 5: whole px at 0.8 and 1.0; PixelCrisp snaps the rest,
+-- at 0.7 or a fitted scale, on all four sides)
 local K = {
 	PANEL_W = 440,
 	PANEL_MIN_W = 260,
-	PAD = 14,
-	PORTRAIT = 96,
-	PORTRAIT_Y = -14, -- the portrait pops a little above the card
-	HEADER_H = 96, -- card height above the text well
+	PAD = 15,
+	PORTRAIT = 95,
+	-- the portrait pops above the card, (U9-9 look 2) its top level with the name plank's gold edge (TAB_Y): the guide's
+	-- name rides the card's top edge on a navy plank, as an NPC's does
+	PORTRAIT_Y = -30,
+	TAB_Y = -27, -- the name plank's top (its 3 px gold edge reaches PORTRAIT_Y) ...
+	TAB_H = 35, -- ... and height: it ends 8 px into the card, clear above the counter tag and the fold (TAG_Y)
+	TAB_INSET = 22, -- the name starts this far in from each end of its plank (12 px clear of a brass rivet; the NPC's)
+	TAB_TEXT = 24, -- the name's largest size on the plank
+	POP_EDGE = 6, -- at the screen's top edge the portrait and the plank may ride up to this far from the top (layout)
+	TAG_Y = 16, -- the counter tag and the fold block (30 high), under the name plank's row
+	TAG_H = 30,
+	COUNTER_W = 105,
+	FOLD_W = 35,
+	HEADER_H = 95, -- card height above the text well
 	WELL_PAD = 12,
 	HINT_H = 26,
 	FOOTER_H = 48,
@@ -89,7 +102,7 @@ local K = {
 	CAPTION_SIZE = 18,
 	BUTTON_SIZE = 22,
 	NEXT_W = 150,
-	BUTTON_H = 44,
+	BUTTON_H = 45,
 	-- (U9-9 look) the step progress, one SignKit block row in whole SCREEN px (layoutProgress): its blocks PROG_H tall,
 	-- PROG_GAP apart, a block per step while each gets PROG_MIN px (at most PROG_MAX), else a block per chapter of
 	-- PROG_CHAPTER steps; the kit's 2 px wood edge and a PROG_LIP lip
@@ -151,6 +164,13 @@ local K = {
 	TAG_LIP = 3, -- a tag's lip (the counter, the fold, the badge, Tap me!)
 	PORTRAIT_FRAME = 3, -- the portrait's wood frame
 	PORTRAIT_LIP = 6, -- its ground lip
+	NAME_LIP = 5, -- (U9-9 look 2) the name plank's navy lip (the NPC's)
+	BADGE = 30, -- the folded guide's "!" block, its centre BADGE_IN in from the portrait's top-right corner
+	BADGE_IN = 10,
+	TAP_W = 105, -- the "Tap me!" plank, TAP_GAP right of the portrait
+	TAP_H = 35,
+	TAP_GAP = 10,
+	BADGE_HOP = 0.4, -- (U9-9 look 2) seconds between the badge's two frames (up 2 px / down): a pixel hop, never a Rotation
 }
 
 local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the guide trail's dot strip (kit B X1)
@@ -355,6 +375,15 @@ local function crispIcon(parent, name, px, colour, opts)
 	}, parent)
 	PixelIcon.Host(glyph, name, px)
 	return glyph, glyph
+end
+
+-- (U9-9 look 2) a block on whole screen px of the card on all four sides (PixelCrisp.Box: its top-left and its size)
+local function crispBox(obj)
+	local crisp = mod("PixelCrisp")
+	if crisp and obj then
+		crisp.Box(obj)
+	end
+	return obj
 end
 
 -- A Theme-styled label. kit-b U6: the tutorial panel is a plate, so no outline (the guide sign over the world keeps its
@@ -963,25 +992,26 @@ local function applyGeometry(width, height, bodyH, hintH)
 	-- (kit B U9-9) a card shrunk to fit a short phone (down to 0.7) keeps its small words at 14 screen px or more: the
 	-- caption size grows to 14 / scale (18 -> 20 at 0.7)
 	local cap = math.max(K.CAPTION_SIZE, math.ceil(14 / math.max(0.1, UI.Scale.Scale) - 1e-6))
-	-- narrow cards drop the counter pill (the progress row still shows the progress) so the name keeps its room
+	-- narrow cards drop the counter tag (the progress row still shows the progress): the counter and the fold share the
+	-- row under the name plank (U9-9 look 2), the fold always shown
 	local x0 = K.PAD + K.PORTRAIT + 12
-	-- (U9-9 look) the name's room ends 6 px before the counter tag (PAD + 44 + 104 from the right; it was 150 and the tag
-	-- lay 12 px over the name)
-	local tagsW = K.PAD + 44 + 104 + 6
-	local roomy = width - x0 - tagsW >= 90
-	UI.CounterPill.Visible = roomy
-	local nameRoom = width - (roomy and (x0 + tagsW) or (x0 + 56))
-	UI.Name.Size = UDim2.new(0, nameRoom, 0, 34)
-	-- (U9-9 look) measured as it shows (the Title role in capitals), down to the caption size before it would cut; the
-	-- label is TextScaled under that size (as the NPC's name), so the engine's own fit has the last word
+	local headRoom = width - x0 - K.PAD
+	UI.CounterPill.Visible = headRoom >= K.COUNTER_W + 6 + K.FOLD_W
+	-- (U9-9 look 2) the name on its navy plank: as wide as the name at its size (measured as it shows, the Title role in
+	-- capitals) and its insets, never wider than the header; the name down to the caption size before it would cut, the
+	-- label TextScaled under that size (as the NPC's name), so the engine's own fit has the last word
+	local nameRoom = headRoom - 2 * K.TAB_INSET
 	local nameMin = math.min(K.NAME_MIN, cap)
-	local nameSize = fitTextSize(UI.Name.Text, K.NAME_SIZE, nameMin, "Title", nameRoom)
+	local nameSize = fitTextSize(UI.Name.Text, K.TAB_TEXT, nameMin, "Title", nameRoom)
 	UI.Name.TextSize = nameSize
 	if UI.NameFit then
 		UI.NameFit.MinTextSize = nameMin
 		UI.NameFit.MaxTextSize = nameSize
 	end
-	local headRoom = width - x0 - K.PAD
+	if UI.NameTab then
+		local plankW = math.ceil(textWidth(UI.Name.Text, nameSize, "Title")) + K.OUTLINE_ROOM + 2 * K.TAB_INSET
+		UI.NameTab.Size = UDim2.fromOffset(math.min(headRoom, plankW), K.TAB_H)
+	end
 	UI.Counter.TextSize = cap
 	UI.Hint.TextSize = cap
 	UI.SkipLink.TextSize = cap
@@ -994,7 +1024,7 @@ local function applyGeometry(width, height, bodyH, hintH)
 	local skipW = shortSkip and K.SKIP_SHORT_W or K.SKIP_W
 	UI.SkipLink.Text = shortSkip and "Skip" or "Skip tutorial"
 	UI.SkipLink.Size = UDim2.fromOffset(skipW, 34)
-	UI.SkipUnderline.Size = UDim2.fromOffset(math.ceil(textWidth(UI.SkipLink.Text, cap, "Label")), 2)
+	UI.SkipUnderline.Size = UDim2.fromOffset(math.ceil(textWidth(UI.SkipLink.Text, cap, "Label")), 2) -- (a crisp lip: 2 px)
 	UI.Next.Size = UDim2.fromOffset(math.min(K.NEXT_W, footerW - skipW - K.GAP), K.BUTTON_H)
 	-- and the skip confirmation: smaller buttons first, then the short question
 	local confirmW = K.CONFIRM_W
@@ -1019,9 +1049,10 @@ local function layout()
 	local area = guiArea()
 	local k = Theme.ScreenFactor()
 	S.compactCard = false -- measured with the objective line first (a short screen's opened card may drop it below)
-	-- (kit B U9-9) the pixel arrow's 4 px cells are twice the screen's icon pixel (a 2 px icon cell drawn at k lands on
-	-- round(2k) whole screen px; PixelCrisp): its scale is round(2k) / 2
-	local ps = math.max(1, math.floor(2 * k + 0.5)) / 2
+	-- (kit B U9-9) the pixel arrow's cells are whole screen px. (U9-9 look 2) Its 2 px cells are the screen's icon pixel (a
+	-- 2 px icon cell drawn at k lands on round(2k) whole screen px, never under 2; PixelCrisp.Px): its scale is that / 2
+	-- (the arrow drew on 4 px cells, twice as coarse as the paw beside it)
+	local ps = math.max(2, math.floor(2 * k + 0.5)) / 2
 	if UI.PointerScale and UI.PointerScale.Scale ~= ps then
 		UI.PointerScale.Scale = ps
 	end
@@ -1033,12 +1064,15 @@ local function layout()
 	local midY1 = screenH * (0.5 + K.MIDDLE) - inset
 	local hud = hudBounds(area)
 	local column = menuRect()
-	-- the portrait pokes PORTRAIT_Y above the card: the card starts that much lower
-	local top = edge
+	-- the portrait pokes PORTRAIT_Y above the card: the card starts that much lower. (U9-9 look 2) At the screen's top
+	-- edge the portrait and the name plank that ride the card's top edge may use the edge margin (down to POP_EDGE from
+	-- the top): the card's body stays as high as it was before the plank (a landscape phone's opened card kept clear of
+	-- the thumbstick's zone); under a top-left panel they keep the whole gap
+	local cardTop0 = math.max(edge, K.POP_EDGE - K.PORTRAIT_Y * k)
+	local top = cardTop0
 	if hud.TopLeftBottom > 0 then
-		top = math.max(edge, hud.TopLeftBottom + K.GAP * k)
+		top = math.max(edge, hud.TopLeftBottom + K.GAP * k) - K.PORTRAIT_Y * k
 	end
-	top = top - K.PORTRAIT_Y * k
 	-- the HUD's bottom-left block (vitals card / currency stack) is a hard limit for the bubble and the card
 	local bottomLimit = math.min(area.Y - edge, hud.BottomLeftTop - K.GAP * k)
 
@@ -1104,7 +1138,7 @@ local function layout()
 		local positions = { { Top = top, Left = nil } }
 		if hud.TopLeftRight > 0 then
 			-- beside the top-left panel (party panel) at the top edge
-			positions[#positions + 1] = { Top = edge - K.PORTRAIT_Y * k, Left = hud.TopLeftRight + K.GAP * k }
+			positions[#positions + 1] = { Top = cardTop0, Left = hud.TopLeftRight + K.GAP * k }
 		end
 		if hud.TopRightBottom > 0 then
 			-- below the HUD's top-right block (the currency strips) when they leave the top too narrow
@@ -1144,7 +1178,7 @@ local function layout()
 			elseif lastResort then
 				-- shrink just enough (never below 0.7: body text 14 px) to keep the card on screen
 				local fit = math.max(0.7, math.min(k, (floorY - t) / designH2))
-				local t2 = math.max(edge - K.PORTRAIT_Y * k, math.min(t, floorY - designH2 * fit))
+				local t2 = math.max(edge, K.POP_EDGE - K.PORTRAIT_Y * fit, math.min(t, floorY - designH2 * fit))
 				return { Width = w2, Left = l, Top = t2, H = designH2 * fit, Scale = fit, Compact = compact }
 			end
 			return nil
@@ -1180,6 +1214,7 @@ local function layout()
 	local designH, bodyH, hintH = panelHeight(width)
 	local tagRoom = true
 	if folded then
+		top = math.max(top, edge - K.PORTRAIT_Y * k) -- (the folded guide keeps the whole edge margin: no plank rides it)
 		local bubbleTop = top + K.PORTRAIT_Y * k
 		local bubbleH = K.PORTRAIT * k
 		if bubbleTop + bubbleH <= bottomLimit then
@@ -1193,11 +1228,11 @@ local function layout()
 			top = math.max(edge, bottomLimit - bubbleH) - K.PORTRAIT_Y * k
 			left = leftFor(top, (K.PORTRAIT + K.PORTRAIT_Y) * k)
 		end
-		-- (kit B U9-9) the portrait and its "!" badge (30 px round x -8 / y 10 of its top-right corner, its 2 px edge) stay
+		-- (kit B U9-9) the portrait and its "!" badge (30 px round x -10 / y 10 of its top-right corner, its 2 px edge) stay
 		-- clear of the top-right stack (token pill, gift): on a portrait phone the pixel arrow's whole-pixel scale leaves
 		-- the bubble less room beside the menu, so when the two meet the bubble drops just below that stack
 		if hud.TopRightLeft > 0 then
-			local reachR = left + (K.PAD + K.PORTRAIT + 9) * k
+			local reachR = left + (K.PAD + K.PORTRAIT - K.BADGE_IN + K.BADGE / 2 + K.EDGE_PX) * k
 			local reachTop = top + (K.PORTRAIT_Y - 7) * k
 			if reachR > hud.TopRightLeft - K.GAP * k and reachTop < hud.TopRightBottom + K.GAP * k then
 				local below = hud.TopRightBottom + K.GAP * k - (K.PORTRAIT_Y - 7) * k
@@ -1208,7 +1243,7 @@ local function layout()
 			end
 		end
 		-- the "Tap me!" tag right of the portrait must not run into the top-right stack (token pill)
-		local tagRight = left + (K.PAD + K.PORTRAIT + 8 + 104) * k
+		local tagRight = left + (K.PAD + K.PORTRAIT + K.TAP_GAP + K.TAP_W) * k
 		local portraitTop = top + K.PORTRAIT_Y * k
 		if hud.TopRightLeft > 0 and tagRight > hud.TopRightLeft and portraitTop < hud.TopRightBottom + K.GAP * k then
 			tagRoom = false
@@ -1272,6 +1307,11 @@ local function buildPortrait(parent)
 		Size = UDim2.new(1, -2 * f, 1, -2 * f),
 		ZIndex = 2,
 	}, frame)
+	-- (U9-9 look 2) the portrait, its frame and the sky in it on whole px on all four sides (crispBox): the wood frame a
+	-- whole px wide on every side at any card scale (2.4 px drew soft)
+	crispBox(holder)
+	crispBox(frame)
+	crispBox(sky)
 	crispIcon(sky, "cloud", 18, SIGN.Stone, {
 		Name = "Cloud",
 		AnchorPoint = Vector2.new(0, 0),
@@ -1288,14 +1328,14 @@ local function buildPortrait(parent)
 		LightDirection = Vector3.new(-0.4, -0.8, 1),
 		ZIndex = 2,
 	}, holder)
-	box("Ground", {
+	crispBox(box("Ground", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.SkyLip,
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, f, 1, -f),
 		Size = UDim2.new(1, -2 * f, 0, K.PORTRAIT_LIP),
 		ZIndex = 2,
-	}, holder)
+	}, holder))
 	local toggle = make("TextButton", "Toggle", {
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -1304,46 +1344,52 @@ local function buildPortrait(parent)
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 2,
 	}, holder)
-	-- "!" badge, shown while the card is folded away: a gold block in its wood edge
+	-- "!" badge, shown while the card is folded away: a gold block in its wood edge; (U9-9 look 2) it hops 2 px in whole px
+	-- (the step loop), never turns
 	local badge = box("Badge", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.Gold,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -8, 0, 10),
-		Size = UDim2.fromOffset(30, 30),
+		Position = UDim2.new(1, -K.BADGE_IN, 0, K.BADGE_IN),
+		Size = UDim2.fromOffset(K.BADGE, K.BADGE),
 		Visible = false,
 		ZIndex = 3,
 	}, holder)
 	edge(badge, SIGN.Wood, K.EDGE_PX)
 	lipOf(badge, SIGN.GoldLip, K.TAG_LIP)
 	label(badge, "Mark", "!", "Title", 22, SIGN.Text, { Size = UDim2.new(1, 0, 1, -K.TAG_LIP), ZIndex = 3 })
+	crispBox(badge)
 	-- "Tap me!" tag beside the bubble when the screen is too small for the card: a navy plank, gold words
 	local tag = box("TapTag", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.Navy,
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(1, 8, 0.5, 0),
-		Size = UDim2.fromOffset(104, 34),
+		Position = UDim2.new(1, K.TAP_GAP, 0.5, 0),
+		Size = UDim2.fromOffset(K.TAP_W, K.TAP_H),
 		Visible = false,
 		ZIndex = 3,
 	}, holder)
 	edge(tag, SIGN.GoldLip, K.EDGE_PX)
 	lipOf(tag, SIGN.NavyLip, K.TAG_LIP)
 	label(tag, "Text", "Tap me!", "Heading", K.CAPTION_SIZE, SIGN.Gold, { Size = UDim2.new(1, 0, 1, -K.TAG_LIP), ZIndex = 3 })
+	crispBox(tag)
 	UI.Portrait, UI.View, UI.Toggle, UI.Badge, UI.TapTag = holder, view, toggle, badge, tag
 end
 
 local function buildPixelArrow(parent)
-	-- a chunky left-pointing pixel arrow: (kit B U9-9) a brown outline, the gold's three bands and a stone glint pixel
-	local cols, rows, cell = 17, 11, 4
+	-- a chunky left-pointing pixel arrow: (kit B U9-9) a brown outline, the gold's three bands and a stone glint. (U9-9 look
+	-- 2) Drawn on the icons' 2 px cell (34 x 22 cells, the same 68 x 44 silhouette): one pixel size on the screen, its
+	-- head's steps as fine as the paw's beside it (on 4 px cells they were twice as coarse)
+	local cols, rows, cell = 34, 22, 2
 	local function inside(r, c)
 		if r < 0 or r >= rows or c < 0 or c >= cols then
 			return false
 		end
-		local head = c <= 7 and c >= math.abs(r - 5)
-		local shaft = r >= 3 and r <= 7 and c >= 6
+		local head = c <= 15 and c >= math.abs(r - 10.5) - 0.5
+		local shaft = r >= 6 and r <= 15 and c >= 12
 		return head or shaft
 	end
+	local glint = { ["8_7"] = true, ["9_6"] = true } -- two stone cells along the head's upper edge
 	local palette = { o = SIGN.Text, L = SIGN.GoldLight, G = SIGN.Gold, D = SIGN.GoldLip, W = SIGN.Stone }
 	for r = 0, rows - 1 do
 		local runKey, runStart = nil, 0
@@ -1353,11 +1399,11 @@ local function buildPixelArrow(parent)
 				local edgeCell = not (inside(r - 1, c) and inside(r + 1, c) and inside(r, c - 1) and inside(r, c + 1))
 				if edgeCell then
 					key = "o"
-				elseif r == 4 and c == 3 then
+				elseif glint[r .. "_" .. c] then
 					key = "W"
-				elseif r <= 4 then
+				elseif r <= 9 then
 					key = "L"
-				elseif r == 5 then
+				elseif r <= 11 then
 					key = "G"
 				else
 					key = "D"
@@ -1387,33 +1433,13 @@ local function buildPointer()
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		DisplayOrder = K.POINTER_ORDER,
 	}, nil)
-	-- (kit B U9-9) the ring: a square gold frame (4 px) between two wood lines (2 px), the kit's selected-block edge; it
-	-- breathes in whole screen px (updateMenuPointer), no glow, no fade
-	local ring = box("Ring", { AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, Active = false }, gui)
-	UI.RingStroke = make("UIStroke", "SignEdge", {
-		Color = SIGN.Gold,
-		Thickness = 4,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		LineJoinMode = Enum.LineJoinMode.Miter,
-	}, ring)
-	for _, spec in ipairs({ { "Rim", 8 }, { "Inner", -4 } }) do
-		local line = box(spec[1], {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(1, spec[2], 1, spec[2]),
-			Active = false,
-		}, ring)
-		make("UIStroke", "SignEdge", {
-			Color = SIGN.Wood,
-			Thickness = 2,
-			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-			LineJoinMode = Enum.LineJoinMode.Miter,
-		}, line)
-	end
+	-- (U9-9 look 2) no ring: the pointed tile wears the kit's Selected look itself (MenuController.SetPointed: the gold face
+	-- and its lip, the pitch's .sb.on), as the rail's tiles lie edge to edge and a ring round one covered the next ("ndex");
+	-- the pixel arrow points at it
 	local arrow = box("Arrow", { AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, Active = false }, gui)
 	buildPixelArrow(arrow)
 	UI.PointerScale = make("UIScale", "ReadScale", { Scale = 1 }, arrow)
-	UI.PointerGui, UI.Ring, UI.Arrow = gui, ring, arrow
+	UI.PointerGui, UI.Arrow = gui, arrow
 	gui.Parent = pg
 end
 
@@ -1477,19 +1503,49 @@ local function buildPanel()
 	}, card)
 	stone:SetAttribute("SignKit", "Body")
 	lipOf(stone, SIGN.StoneLip, K.CARD_LIP)
+	-- (U9-9 look 2) the card and the stone in it on whole px on all four sides: the wood frame a whole px wide everywhere
+	crispBox(card)
+	crispBox(stone)
 
-	-- header: name, step title, pips, counter tag, fold block (kit B U9-9: brown on the stone body, the name a plain
-	-- Section title)
+	-- header: the name plank, step title, block row, counter tag, fold block (kit B U9-9: brown on the stone body)
 	local header = box("Header", { Size = UDim2.new(1, 0, 0, K.HEADER_H), ZIndex = 5 }, main)
 	local x0 = K.PAD + K.PORTRAIT + 12
-	UI.Name = label(header, "GuideName", "Nimbus", "Title", K.NAME_SIZE, SIGN.Text, {
-		Position = UDim2.fromOffset(x0, 12),
-		Size = UDim2.new(1, -(x0 + K.PAD + 44 + 104 + 6), 0, 34),
-		TextXAlignment = Enum.TextXAlignment.Left,
+	-- (U9-9 look 2) the speaker's name on the NPC dialog's plank (one header language for the two speaker cards): a navy
+	-- plank in a gold-lip edge with its navy lip and two brass rivets, riding the card's top edge from the header's x0, the
+	-- name a plain Section title in gold (it was brown words on the stone, the plain one of the family)
+	local nameTab = box("NameTab", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Navy,
+		Position = UDim2.fromOffset(x0, K.TAB_Y),
+		Size = UDim2.fromOffset(160, K.TAB_H),
+		ZIndex = 6,
+	}, main)
+	edge(nameTab, SIGN.GoldLip, 3)
+	lipOf(nameTab, SIGN.NavyLip, K.NAME_LIP)
+	local crispMod = mod("PixelCrisp")
+	for _, side in ipairs({ { "RivetL", 0, 6 }, { "RivetR", 1, -10 } }) do
+		local rivet = box(side[1], {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = SIGN.Brass,
+			Position = UDim2.new(side[2], side[3], 0.5, -4),
+			Size = UDim2.fromOffset(4, 4),
+			ZIndex = 7,
+		}, nameTab)
+		if crispMod then
+			crispMod.Adopt(rivet, 4) -- a whole-px square on a whole px
+		end
+	end
+	UI.NameTab = crispBox(nameTab)
+	UI.Name = label(nameTab, "GuideName", "Nimbus", "Title", K.TAB_TEXT, SIGN.Gold, {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, -2),
+		Size = UDim2.new(1, -2 * K.TAB_INSET, 1, -(6 + K.NAME_LIP)),
+		TextXAlignment = Enum.TextXAlignment.Center,
 		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 7,
 	})
 	UI.Name.TextScaled = true -- (U9-9 look) under UI.NameFit (applyGeometry): never cut to "NIMB..."
-	UI.NameFit = make("UITextSizeConstraint", "Fit", { MinTextSize = K.NAME_MIN, MaxTextSize = K.NAME_SIZE }, UI.Name)
+	UI.NameFit = make("UITextSizeConstraint", "Fit", { MinTextSize = K.NAME_MIN, MaxTextSize = K.TAB_TEXT }, UI.Name)
 	Theme.StyleTitle(UI.Name, "Section")
 	UI.StepTitle = label(header, "StepTitle", "", "Heading", K.TITLE_SIZE, SIGN.Text, {
 		Position = UDim2.fromOffset(x0, 46),
@@ -1504,13 +1560,13 @@ local function buildPanel()
 	if crisp then
 		crisp.Box(UI.Progress)
 	end
-	-- the counter: a stone tag in its wood edge, brown words
+	-- the counter: a stone tag in its wood edge, brown words; (U9-9 look 2) under the name plank's row, left of the fold
 	local pill = box("Counter", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.Tile,
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -(K.PAD + 44), 0, 12),
-		Size = UDim2.fromOffset(104, 32),
+		Position = UDim2.new(1, -(K.PAD + K.FOLD_W + 6), 0, K.TAG_Y),
+		Size = UDim2.fromOffset(K.COUNTER_W, K.TAG_H),
 	}, header)
 	edge(pill, SIGN.Wood, K.EDGE_PX)
 	lipOf(pill, SIGN.StoneLip, K.TAG_LIP)
@@ -1523,8 +1579,8 @@ local function buildPanel()
 		AutoButtonColor = false,
 		Text = "",
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -K.PAD, 0, 12),
-		Size = UDim2.fromOffset(36, 32),
+		Position = UDim2.new(1, -K.PAD, 0, K.TAG_Y),
+		Size = UDim2.fromOffset(K.FOLD_W, K.TAG_H),
 	}, header)
 	edge(fold, SIGN.Wood, K.EDGE_PX)
 	lipOf(fold, SIGN.StoneLip, K.TAG_LIP)
@@ -1581,12 +1637,19 @@ local function buildPanel()
 		TextXAlignment = Enum.TextXAlignment.Left,
 	}, footer)
 	Theme.Style(skip, "Label", { Size = K.CAPTION_SIZE, Color = SIGN.TextMuted })
+	-- (U9-9 look 2) a 2 px line on whole px at any card scale (it drew 1.6 px): a crisp lip on a crisp origin
 	UI.SkipUnderline = box("Underline", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.TextMuted,
-		Position = UDim2.new(0, 0, 1, -5),
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, -3),
 		Size = UDim2.new(0, 104, 0, 2),
 	}, skip)
+	if crispMod then
+		UI.SkipUnderline:SetAttribute("CrispLipWhole", true) -- (its width a whole px as well)
+		crispMod.Lip(UI.SkipUnderline, 2)
+		crispMod.Box(UI.SkipUnderline)
+	end
 	UI.SkipLink = skip
 	UI.Next = button({
 		Name = "Next",
@@ -2131,10 +2194,25 @@ local function refreshClickHook()
 	end
 end
 
-local function hidePointer()
-	if UI.Ring and UI.Ring.Visible then
-		UI.Ring.Visible = false
+-- (U9-9 look 2) the menu tile the pointer marks (MenuController.SetPointed: the kit's Selected gold face); nil = none
+local function setPointed(id)
+	if M.pointed == id then
+		return
 	end
+	local menu = mod("MenuController")
+	if menu and type(menu.SetPointed) == "function" then
+		if M.pointed then
+			pcall(menu.SetPointed, M.pointed, false)
+		end
+		if id then
+			pcall(menu.SetPointed, id, true)
+		end
+	end
+	M.pointed = id
+end
+
+local function hidePointer()
+	setPointed(nil)
 	if UI.Arrow and UI.Arrow.Visible then
 		UI.Arrow.Visible = false
 	end
@@ -2176,7 +2254,7 @@ end
 -- Where the arrow goes around target rect `r`: right of it pointing left (the default), else above it pointing
 -- down, below it pointing up or left of it pointing right, whichever first stays on screen and clear of the
 -- neighbouring tiles and the tutorial card / bubble (the 2 x 3 phone grid has a tile right of Index). Returns
--- side, rotation; side "none" when every side is taken: then only the ring marks the button (an arrow on a
+-- side, rotation; side "none" when every side is taken: then only the gold tile marks the button (an arrow on a
 -- neighbouring tile would point the new player at the wrong button).
 local POINTER_SIDES = { { "right", 0 }, { "above", -90 }, { "below", 90 }, { "left", 180 } }
 local function pointerCentre(side, r, len, thick, push)
@@ -2249,13 +2327,8 @@ local function updateMenuPointer(dt, t)
 	end
 	local k = Theme.ScreenFactor()
 	local pk = UI.PointerScale and UI.PointerScale.Scale or k -- the arrow's snapped scale (layout)
-	local pulse = (math.sin(t * 4.2) + 1) * 0.5
-	-- (kit B U9-9) the ring breathes in whole screen px: its edges on whole px, no fade
-	local pad = (5 + 5 * pulse) * k
-	local x0, y0 = math.floor(r.x0 - pad + 0.5), math.floor(r.y0 - pad + 0.5)
-	local x1, y1 = math.floor(r.x1 + pad + 0.5), math.floor(r.y1 + pad + 0.5)
-	UI.Ring.Position = UDim2.fromOffset((x0 + x1) * 0.5, (y0 + y1) * 0.5)
-	UI.Ring.Size = UDim2.fromOffset(x1 - x0, y1 - y0)
+	-- (U9-9 look 2) the tile itself turns gold (the kit's Selected look); no ring over its neighbours
+	setPointed(st.Target.Id)
 	-- the side is re-chosen after every layout pass (M.side = nil there, twice a second at most)
 	if not M.side then
 		local okSide, side, rotation = pcall(choosePointerSide, r, pk, guiArea(), M.button)
@@ -2265,7 +2338,6 @@ local function updateMenuPointer(dt, t)
 			M.side, M.rotation = "right", 0
 		end
 	end
-	UI.Ring.Visible = true
 	if M.side == "none" then
 		if UI.Arrow.Visible then
 			UI.Arrow.Visible = false
@@ -2908,7 +2980,16 @@ function TutorialController.Step(dt)
 			end
 		end
 		if UI.Badge.Visible then
-			UI.Badge.Rotation = math.sin(t * 5) * 10
+			-- (U9-9 look 2) a 2-frame pixel hop (SignKit.Spin's way): up 2 screen px, then back, every BADGE_HOP s; a
+			-- turned block went soft (the kit's rule: never a Rotation). PixelCrisp.Box keeps it on whole px
+			local up = math.floor(t / K.BADGE_HOP) % 2 == 1
+			local k = math.max(0.1, UI.Scale.Scale)
+			local lift = up and math.max(1, math.floor(2 / k + 0.5)) or 0
+			local want = UDim2.new(1, -K.BADGE_IN, 0, K.BADGE_IN - lift)
+			if S.badgeAt ~= want then
+				S.badgeAt = want
+				UI.Badge.Position = want
+			end
 		end
 	end
 	safe("menu pointer", updateMenuPointer, dt, t)

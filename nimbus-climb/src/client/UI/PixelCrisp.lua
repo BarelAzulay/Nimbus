@@ -25,7 +25,11 @@
 --                                root (or the screen): a correction in its Position's Scale (Roblox keeps a UDim's Offset
 --                                whole, so a 0.4 px nudge cannot go there), kept apart from the caller's own Position. When
 --                                the caller (or PixelIcon.Lead) moves the frame again it is snapped again. A frame a
---                                UIListLayout / UIGridLayout places is left alone. Icons and Adopted frames are Boxes too
+--                                UIListLayout / UIGridLayout places is left alone. Icons and Adopted frames are Boxes too.
+--                                (U9-9 look 2) Its right and bottom edges too: a correction in its Size's Scale (any card
+--                                scale, a fitted 0.724 as well), so a block, the stone inside its wood frame and a plank are
+--                                whole px on all four sides; not for a frame with its own UIScale or an AutomaticSize. Box
+--                                the parents with the children: a block lies on whole px of its parent's snapped box
 --   PixelCrisp.Root(frame)       (U9-9 look) marks a frame its owner keeps on a whole screen px at rest (a card's root, a
 --                                toast that slides in, a dialog's slide): the Boxes under it snap relative to it, so a
 --                                slide or a tween of the root never leaves them half a pixel off
@@ -129,28 +133,75 @@ end
 
 local watched = setmetatable({}, { __mode = "k" }) -- [frame] = true once its Position is watched
 
+-- (U9-9 look 2) a Box's size is snapped too: its right and bottom edges on whole px as well as its top-left (a block of
+-- 104 x 32 design px at 0.8 drew 83.2 x 25.6, one side crisp and the other soft). Not for a frame that sizes itself (a
+-- UIScale of its own: an icon holder, an Adopted drawing; AutomaticSize). A CloudUI plank's hover / press "FxScale" is
+-- allowed: it is snapped at rest (Scale 1)
+local function sizes(obj)
+	if obj:GetAttribute("CrispBox") ~= true or obj.AutomaticSize ~= Enum.AutomaticSize.None then
+		return false
+	end
+	for _, c in ipairs(obj:GetChildren()) do
+		if c:IsA("UIScale") and c.Name ~= "FxScale" then
+			return false
+		end
+	end
+	return true
+end
+
 local function snapOrigin(obj)
 	local parent = obj.Parent
 	if not (obj:IsA("GuiObject") and parent and parent:IsA("GuiBase2d")) or laidOut(obj) then
 		return
 	end
+	local fx = obj:FindFirstChild("FxScale")
+	if fx and fx:IsA("UIScale") and math.abs(fx.Scale - 1) > 1e-6 then
+		return -- (a plank mid hover / press: it grows round its anchor; the next snap finds it at rest)
+	end
 	local pw, ph = contentSize(parent)
 	if pw <= 0 or ph <= 0 then
 		return
 	end
-	local p = obj.Position
-	local sx, sy = 0, 0
+	local p, z = obj.Position, obj.Size
+	local sx, sy, wx, wy = 0, 0, 0, 0
 	if obj:GetAttribute("CrispAt") == p then
 		sx, sy = obj:GetAttribute("CrispSX") or 0, obj:GetAttribute("CrispSY") or 0
 	end
-	local a = obj.AbsolutePosition
+	local sizing = sizes(obj)
+	if sizing and obj:GetAttribute("CrispSizeAt") == z then
+		wx, wy = obj:GetAttribute("CrispWX") or 0, obj:GetAttribute("CrispWY") or 0
+	end
+	local a, s = obj.AbsolutePosition, obj.AbsoluteSize
+	local ax, ay = obj.AnchorPoint.X, obj.AnchorPoint.Y
 	local root = rootOf(obj)
 	local o = root and root.AbsolutePosition or Vector2.new(0, 0)
-	-- where it sits from its root without the correction, and the nudge (in Scale) that puts that on a whole px
-	local rx, ry = a.X - o.X - sx * pw, a.Y - o.Y - sy * ph
-	local nx, ny = (round(rx) - rx) / pw, (round(ry) - ry) / ph
-	if math.abs(nx - sx) < 1e-7 and math.abs(ny - sy) < 1e-7 and obj:GetAttribute("CrispAt") == p then
+	-- where it sits from its root and how big it is without the corrections (a size nudge moves an anchored frame's
+	-- top-left by its AnchorPoint's share), then the nudges (in Scale) that put its edges on whole px
+	local w0, h0 = s.X - wx * pw, s.Y - wy * ph
+	local rx, ry = a.X - o.X - sx * pw + ax * wx * pw, a.Y - o.Y - sy * ph + ay * wy * ph
+	local left, top = round(rx), round(ry)
+	local nwx, nwy = 0, 0
+	if sizing then
+		nwx = (round(rx + w0) - left - w0) / pw
+		nwy = (round(ry + h0) - top - h0) / ph
+	end
+	local nx, ny = (left - rx + ax * nwx * pw) / pw, (top - ry + ay * nwy * ph) / ph
+	local same = math.abs(nx - sx) < 1e-7 and math.abs(ny - sy) < 1e-7 and obj:GetAttribute("CrispAt") == p
+	if sizing then
+		same = same and math.abs(nwx - wx) < 1e-7 and math.abs(nwy - wy) < 1e-7 and obj:GetAttribute("CrispSizeAt") == z
+	end
+	if same then
 		return
+	end
+	if sizing then
+		local newSize = UDim2.new(z.X.Scale - wx + nwx, z.X.Offset, z.Y.Scale - wy + nwy, z.Y.Offset)
+		obj:SetAttribute("CrispWX", nwx)
+		obj:SetAttribute("CrispWY", nwy)
+		obj:SetAttribute("CrispSizeAt", newSize) -- (before the write: a watcher that runs at once sees it done)
+		if newSize ~= z then
+			obj.Size = newSize
+		end
+		obj:SetAttribute("CrispSizeAt", obj.Size)
 	end
 	local new = UDim2.new(p.X.Scale - sx + nx, p.X.Offset, p.Y.Scale - sy + ny, p.Y.Offset)
 	obj:SetAttribute("CrispSX", nx)
@@ -170,6 +221,12 @@ local function watch(obj)
 	-- the caller (a layout, PixelIcon.Lead's place) moved it: snap again from its new Position
 	obj:GetPropertyChangedSignal("Position"):Connect(function()
 		if obj:GetAttribute("CrispAt") ~= obj.Position and obj.Parent then
+			snapOrigin(obj)
+		end
+	end)
+	-- (U9-9 look 2) or resized a Box: its new Size is the caller's own, snapped again
+	obj:GetPropertyChangedSignal("Size"):Connect(function()
+		if sizes(obj) and obj:GetAttribute("CrispSizeAt") ~= obj.Size and obj.Parent then
 			snapOrigin(obj)
 		end
 	end)
@@ -250,7 +307,12 @@ local function snapLip(lip)
 		if pw <= 0 then
 			return
 		end
-		want = UDim2.new((pw * base.X.Scale + base.X.Offset * k) / (pw * s), 0, 0, px)
+		local w = pw * base.X.Scale + base.X.Offset * k
+		if lip:GetAttribute("CrispLipWhole") == true then
+			-- (U9-9 look 2) a free line (a link's underline, its width from its words): its drawn width a whole px too
+			w = math.max(1, math.floor(w + 0.5))
+		end
+		want = UDim2.new(w / (pw * s), 0, 0, px)
 	end
 	scale.Scale = s
 	lip:SetAttribute("CrispLipAt", want) -- (before the write: a watcher that runs at once sees it done)

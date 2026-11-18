@@ -7949,23 +7949,24 @@ local function clientScenarios()
 		table.sort(list)
 		return list, odd
 	end
-	-- (U9-9 look) the shown blocks under `root` (a frame with a SignEdge, a lip, a pixel icon, the frames named in `names`)
-	-- whose drawn top-left, or a lip's height, or a wood edge's thickness, is off the whole-pixel grid (the owner's look bar:
-	-- whole pixels, one pixel size per screen)
+	-- (U9-9 look) the shown blocks under `root` whose edges, or a wood edge's thickness, are off the whole-pixel grid (the
+	-- owner's look bar: whole pixels, one pixel size per screen). (U9-9 look 2) A block is any shown frame with a face (an
+	-- opaque fill: the card, the stone in its wood frame, a well, a tag, a plank, the sky in a portrait), a SignEdge, a lip,
+	-- a pixel icon or a name in `names`, and all four of its edges are checked (X, Y, R, B: a block's right and bottom
+	-- edges drew soft while its top-left was whole); the result card's confetti (flying pieces) aside
 	function U99.offGrid(root, names)
 		local out = {}
 		local function frac(v)
 			return math.abs(v - math.floor(v + 0.5)) > 0.02
 		end
 		for _, d in ipairs(root:GetDescendants()) do
-			if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+			if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 and d.Name ~= "Confetti" then
 				local named = names and names[d.Name]
-				local block = d:FindFirstChild("SignEdge") ~= nil or d.Name == "Lip" or d:GetAttribute("PixelIcon") ~= nil or named
+				local block = d.BackgroundTransparency < 1 or d:FindFirstChild("SignEdge") ~= nil or d.Name == "Lip" or d:GetAttribute("PixelIcon") ~= nil or named
 				if block then
 					local r = U8.rect(d)
-					-- (a lip lies on its block's bottom: its height is what must be whole)
-					if (d.Name == "Lip" and frac(r.B - r.Y)) or (d.Name ~= "Lip" and (frac(r.X) or frac(r.Y))) then
-						out[#out + 1] = (d.Parent and d.Parent.Name or "?") .. "." .. d.Name .. " " .. U8.show(r)
+					if frac(r.X) or frac(r.Y) or frac(r.R) or frac(r.B) then
+						out[#out + 1] = (d.Parent and d.Parent.Name or "?") .. "." .. d.Name .. " " .. fmt("%.2f,%.2f..%.2f,%.2f", r.X, r.Y, r.R, r.B)
 					end
 				end
 			elseif d:IsA("UIStroke") and d.Name == "SignEdge" and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
@@ -8204,6 +8205,57 @@ local function clientScenarios()
 							local bl = banner2:FindFirstChild("Lip")
 							local cb, bb = U8.rect(closeB), U8.rect(banner2)
 							T.check(cb.Y >= bb.Y - 0.5 and cb.B <= (bl and U8.rect(bl).Y or bb.B) + 0.5, what .. ": the close block inside the banner's face", U8.show(cb) .. " in " .. U8.show(bb))
+							-- (U9-9 look 2) the X the pitch's pixel icon (ic("x")) on the card's cell, nothing in the block turned (the
+							-- four rotated bars drew a smooth anti-aliased X)
+							local mark = closeB:FindFirstChild("CloseMark")
+							local icon, turned = nil, {}
+							for _, d in ipairs(closeB:GetDescendants()) do
+								if d:IsA("GuiObject") and d:GetAttribute("PixelIcon") == "x" then
+									icon = d
+								end
+								if d:IsA("GuiObject") and d.Rotation ~= 0 then
+									turned[#turned + 1] = d.Name
+								end
+							end
+							T.check(mark and icon and icon:IsDescendantOf(mark) and #turned == 0, what .. ": the close mark is the pixel x, nothing turned", table.concat(turned, ", "))
+						end
+						-- (U9-9 look 2) the coins in the Shop's deep gold (one currency, one colour), not the brown ink
+						local Theme = LoadingH.shared("Theme")
+						local coinName = Theme.Currency.Tokens.Icon
+						local brown, coins = {}, 0
+						for _, d in ipairs(card:GetDescendants()) do
+							if d:IsA("Frame") and d:GetAttribute("PixelIcon") == coinName and U8.shown(d) then
+								coins = coins + 1
+								for _, f in ipairs(d:GetDescendants()) do
+									if f:IsA("Frame") and f.BackgroundTransparency < 0.5 and not sameColor(f.BackgroundColor3, Sign.GoldLip) then
+										brown[#brown + 1] = hex(f.BackgroundColor3)
+										break
+									end
+								end
+							end
+						end
+						T.check(coins >= 1 and #brown == 0, what .. ": the coins in the deep gold", coins .. " coins " .. table.concat(brown, ", "))
+						-- (U9-9 look 2) the countdown's line above the body's lip (the mini card's stood on it, its "y" in the lip)
+						local footer, sLip = card:FindFirstChild("Footer", true), stone and stone:FindFirstChild("Lip")
+						if footer and sLip and U8.shown(footer) then
+							T.check(U8.rect(footer).B <= U8.rect(sLip).Y + 0.01, what .. ": the countdown's line above the body's lip", U8.show(U8.rect(footer)) .. " / lip " .. fmt("%.1f", U8.rect(sLip).Y))
+						end
+						-- (U9-9 look 2) the mini card's win bonus a gold chip (the Selected face and its lip) in the Tokens row's face,
+						-- left of the total with a clear gap; the total its own number
+						if tier == "Mini" and won then
+							local chip = card:FindFirstChild("BonusChip", true)
+							local row = card:FindFirstChild("RowTokens", true)
+							local value = row and row:FindFirstChild("Value")
+							local chipLip, rowLip = chip and chip:FindFirstChild("Lip"), row and row:FindFirstChild("Lip")
+							if T.check(chip and U8.shown(chip) and sameColor(chip.BackgroundColor3, Sign.Gold) and chipLip and sameColor(chipLip.BackgroundColor3, Sign.GoldLip)
+								and tostring(chip:FindFirstChild("Bonus") and chip.Bonus.Text):match("^%+%d+$") and value and tostring(value.Text):match("^%d+$"),
+								what .. ": the win bonus a gold chip ('+N'), the total its own number", value and value.Text or "") then
+								local c, rr, coin = U8.rect(chip), U8.rect(row), value:FindFirstChild("TrailIcon")
+								-- (the digits end the value's 5 px icon gap before its coin, PixelIcon.Lead)
+								local digits = coin and (U8.rect(coin).X - 5 * U8.scaleOf(value) - value.TextBounds.X) or U8.rect(value).R
+								T.check(c.Y >= rr.Y + 1 - 0.01 and c.B <= U8.rect(rowLip).Y - 1 + 0.01 and c.R <= digits - 3 + 0.01,
+									what .. ": the chip inside the row's face, 3 px or more left of the digits", U8.show(c) .. fmt(" | row %s, digits at %.1f", U8.show(rr), digits))
+							end
 						end
 						-- (U9-9 look) the blocks on whole screen px: the banner, the chip, the stat rows, the nails, and every
 						-- wood edge a whole px thick
@@ -8222,6 +8274,10 @@ local function clientScenarios()
 							end
 						end
 						T.check(#off == 0, what .. ": its blocks and wood edges on whole screen px", table.concat(off, "; "))
+						-- (U9-9 look 2) all four edges of every block with a face (the stone in its wood frame drew 4.8 px wide, the
+						-- awning 14.4 px high), lip and icon
+						local grid = U99.offGrid(card, {})
+						T.check(#grid == 0, what .. ": every block, lip and icon on whole screen px (all four edges)", table.concat(grid, "; "))
 						local low = U94.contrast("NimbusNotify")
 						T.check(#low == 0, what .. ": every text reads on its fill", table.concat(low, "; "))
 						local gui = card:FindFirstAncestorWhichIsA("LayerCollector")
@@ -8301,12 +8357,40 @@ local function clientScenarios()
 				and portrait:FindFirstChild("Toggle") ~= nil and portrait:FindFirstChild("Nimbus") ~= nil,
 				tag .. ": the portrait is a sky well in a wood frame (its ground lip, a pixel cloud, Nimbus' viewport, the tap target)")
 			local name, step = root:FindFirstChild("GuideName", true), root:FindFirstChild("StepTitle", true)
-			T.check(name and name:GetAttribute("TitleLook") == "Section" and sameColor(name.TextColor3, Sign.Text) and step and sameColor(step.TextColor3, Sign.Text),
-				tag .. ": the name a plain Section title and the step title, both brown")
-			-- (U9-9 look) the counter tag lies clear of the name's box (it lay 12 px over it)
-			local counterTag = root:FindFirstChild("Counter", true)
-			T.check(not (name and counterTag and U8.shown(counterTag)) or U8.rect(name).R <= U8.rect(counterTag).X + 0.5, tag .. ": the counter tag clear of the name",
-				name and counterTag and (U8.show(U8.rect(name)) .. " / " .. U8.show(U8.rect(counterTag))) or "")
+			-- (U9-9 look 2) the speaker's name on the NPC dialog's plank (one header language for the two speaker cards): a
+			-- navy plank in a gold-lip edge, its navy lip, two brass rivets, the name a plain Section title in gold, riding the
+			-- card's top edge; the step title brown on the stone
+			local plank = name and name.Parent
+			local rivets = 0
+			for _, n in ipairs({ "RivetL", "RivetR" }) do
+				local rv = plank and plank:FindFirstChild(n)
+				if rv and U8.shown(rv) and sameColor(rv.BackgroundColor3, Sign.Brass) then
+					rivets = rivets + 1
+				end
+			end
+			local plankEdge, plankLip = plank and plank:FindFirstChild("SignEdge"), plank and plank:FindFirstChild("Lip")
+			T.check(name and name:GetAttribute("TitleLook") == "Section" and sameColor(name.TextColor3, Sign.Gold) and plank and plank.Name == "NameTab"
+				and sameColor(plank.BackgroundColor3, Sign.Navy) and plankEdge and sameColor(plankEdge.Color, Sign.GoldLip) and plankLip and sameColor(plankLip.BackgroundColor3, Sign.NavyLip)
+				and rivets == 2 and step and sameColor(step.TextColor3, Sign.Text),
+				tag .. ": the name a plain Section title in gold on the NPC's navy plank (gold-lip edge, navy lip, two rivets), the step title brown")
+			local cardR = card and U8.rect(card)
+			local pr = plank and U8.rect(plank)
+			T.check(pr and cardR and pr.Y < cardR.Y - 0.5 and pr.B > cardR.Y + 0.5, tag .. ": the name plank rides the card's top edge",
+				pr and cardR and (U8.show(pr) .. " / card top " .. fmt("%.1f", cardR.Y)) or "")
+			-- (U9-9 look) the counter tag lies clear of the name (it lay 12 px over it); (U9-9 look 2) the plank and its gold
+			-- edge clear of the counter tag and the fold block (their wood edges too)
+			local clash = {}
+			for _, n in ipairs({ "Counter", "Fold" }) do
+				local b = root:FindFirstChild(n, true)
+				if b and U8.shown(b) and pr then
+					local e1, e2 = 3 * U8.scaleOf(plank), 2 * U8.scaleOf(b)
+					local br = U8.rect(b)
+					if U8.overlap({ X = pr.X - e1, R = pr.R + e1, Y = pr.Y - e1, B = pr.B + e1 }, { X = br.X - e2, R = br.R + e2, Y = br.Y - e2, B = br.B + e2 }) then
+						clash[#clash + 1] = n .. " " .. U8.show(br)
+					end
+				end
+			end
+			T.check(#clash == 0, tag .. ": the name plank clear of the counter tag and the fold", table.concat(clash, "; "))
 			local counter, fold = root:FindFirstChild("Counter", true), root:FindFirstChild("Fold", true)
 			local minus = false
 			for _, d in ipairs(fold and fold:GetDescendants() or {}) do
@@ -8369,6 +8453,31 @@ local function clientScenarios()
 			T.check(badge and U8.shown(badge) and sameColor(badge.BackgroundColor3, Sign.Gold) and badge:FindFirstChild("SignEdge") ~= nil and badge:FindFirstChild("Lip") ~= nil,
 				tag .. ": folded, the '!' badge is a gold block in its wood edge")
 			T.check(#U94.roundOrGloss(root) == 0, tag .. ": the bubble is square too", table.concat(U94.roundOrGloss(root), ", "))
+			-- (U9-9 look 2) the badge hops in whole px (two frames, 2 px apart), never turns: a turned block goes soft (the
+			-- kit's rule: never a Rotation)
+			if badge then
+				local turned, soft, ys = {}, {}, {}
+				for i = 1, 6 do
+					LKC.advance(0.23)
+					local r = U8.rect(badge)
+					ys[fmt("%.0f", r.Y)] = true
+					if badge.Rotation ~= 0 then
+						turned[#turned + 1] = fmt("%.1f deg", badge.Rotation)
+					end
+					local f = function(v)
+						return math.abs(v - math.floor(v + 0.5)) > 0.02
+					end
+					if f(r.X) or f(r.Y) or f(r.R) or f(r.B) then
+						soft[#soft + 1] = U8.show(r)
+					end
+				end
+				local frames = 0
+				for _ in pairs(ys) do
+					frames = frames + 1
+				end
+				T.check(#turned == 0 and #soft == 0 and frames == 2, tag .. ": the folded '!' badge hops between two whole-px frames, Rotation 0",
+					table.concat(turned, ", ") .. " | " .. table.concat(soft, "; ") .. " | " .. frames .. " frames")
+			end
 			U99.tutorialOff()
 		end)
 		LKC.flushErrors("tutorial_signboard_skin")
@@ -8387,7 +8496,17 @@ local function clientScenarios()
 							local main = root:FindFirstChild("Main", true)
 							local part = (main and U8.shown(main)) and root or root:FindFirstChild("Portrait", true)
 							local r = U8.rect(part)
-							if part ~= root then
+							if part == root then
+								-- (U9-9 look 2) the opened card with the portrait and the name plank riding its top edge
+								for _, n in ipairs({ "NameTab", "Portrait" }) do
+									local p = root:FindFirstChild(n, true)
+									if p and U8.shown(p) then
+										local pr = U8.rect(p)
+										local e = n == "NameTab" and 3 * U8.scaleOf(p) or 0
+										r = { X = math.min(r.X, pr.X - e), Y = math.min(r.Y, pr.Y - e), R = math.max(r.R, pr.R + e), B = math.max(r.B, pr.B) }
+									end
+								end
+							else
 								-- the folded guide: the portrait with its "!" badge and "Tap me!" tag, which hang off its corner and side
 								for _, d in ipairs(part:GetDescendants()) do
 									if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 then
@@ -8410,6 +8529,10 @@ local function clientScenarios()
 							if part ~= root then
 								local top = U99.overTopRight(gui, r)
 								T.check(#top == 0, what .. ": the folded guide and its badge clear of the top-right token pill and gift", table.concat(top, "; ") .. " | " .. U8.show(r))
+								-- (U9-9 look 2) the folded guide every phone player sees on whole px: the portrait's frame, sky and
+								-- ground, the "!" badge and the "Tap me!" plank, all four edges
+								local grid = U99.offGrid(part, {})
+								T.check(#grid == 0, what .. ": the folded guide's blocks on whole screen px (all four edges)", table.concat(grid, "; "))
 							end
 							local out, small = U99.texts(part, r)
 							T.check(#out == 0 and #small == 0, what .. ": its words inside it, >= 14 px", table.concat(out, "; ") .. " " .. table.concat(small, ", "))
@@ -8421,9 +8544,11 @@ local function clientScenarios()
 								T.check(name and name.TextScaled and fit and fit.MinTextSize * U8.scaleOf(name) >= 14 - 0.01, what .. ": the name fits by the engine's own measure, >= 14 px",
 									fit and fmt("min %d at %.2f", fit.MinTextSize, U8.scaleOf(name)) or "no size floor")
 								T.check(not (hint and U8.shown(hint)) or (hint.TextWrapped and hint.TextTruncate == Enum.TextTruncate.None), what .. ": the objective wraps, never cut")
-								-- (U9-9 look) its blocks, lips, icons and wood edges on whole screen px at the card's scale
-								local grid = U99.offGrid(root, { Progress = true, Block1 = true, Counter = true, Fold = true, Well = true })
-								T.check(#grid == 0, what .. ": the card's blocks, lips, icons and wood edges on whole screen px", table.concat(grid, "; "))
+								-- (U9-9 look) its blocks, lips, icons and wood edges on whole screen px at the card's scale; (U9-9 look 2) all
+								-- four edges of every block with a face or a wood edge (the card, the stone in its frame, the portrait's
+								-- frame, sky and ground, the name plank, the tags, the well, the planks, the skip line)
+								local grid = U99.offGrid(root, { Progress = true, Block1 = true })
+								T.check(#grid == 0, what .. ": the card's blocks, lips, icons and wood edges on whole screen px (all four edges)", table.concat(grid, "; "))
 								-- (U9-9 look) the opened card over a part of the vitals card: the vitals step aside (as for the
 								-- result card and the Trove)
 								local hud = U7.client("Controllers/HudController")
@@ -8448,40 +8573,61 @@ local function clientScenarios()
 		LKC.flushErrors("tutorial_fits_phone")
 	end)
 
-	-- the menu pointer (step 5, a menu target) on a PC and a landscape phone: the ring a square gold frame (4 px, mitred)
-	-- between two wood lines, no glow ring and no fade, its box on whole screen px; the pixel arrow gold with a brown
-	-- outline (no navy), its scale such that each 4 px cell is twice the screen's icon pixel, its box on whole px
+	-- the menu pointer (step 5, a menu target) on a PC and the phones: (U9-9 look 2) the pointed tile wears the kit's Selected
+	-- look itself (the gold face and its lip, MenuController.SetPointed) and nothing of the pointer lies over another menu
+	-- tile (a ring round the tile covered the next one: "ndex"); the tile's own look back once the step goes. The pixel
+	-- arrow gold with a brown outline (no navy) on the screen's icon pixel (its 2 px cells: one pixel size), its box on
+	-- whole px
 	S.tutorial_pointer_kitb = guarded("tutorial_pointer_kitb", function()
 		local Theme = LoadingH.shared("Theme")
 		local Sign = Theme.Sign
 		local KIT = { Sign.Text, Sign.GoldLight, Sign.Gold, Sign.GoldLip, Sign.Stone }
-		for _, s in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true } }) do
+		for _, s in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 640, 360, true }, { 390, 844, true } }) do
 			U8.at(s[1], s[2], s[3], "tutorial pointer", function(tag)
 				U99.tutorial(5, false)
 				local pg = U99.gui("NimbusTutorialPointer")
-				local ring, arrow = pg and pg:FindFirstChild("Ring"), pg and pg:FindFirstChild("Arrow")
-				if T.check(ring ~= nil and U8.shown(ring), tag .. ": the ring marks the menu button") then
-					local gold = ring:FindFirstChild("SignEdge")
-					T.check(ring:FindFirstChildOfClass("UICorner") == nil and gold and sameColor(gold.Color, Sign.Gold) and gold.Thickness == 4 and gold.Transparency == 0
-						and gold.LineJoinMode == Enum.LineJoinMode.Miter, tag .. ": the ring is a square gold frame, 4 px, opaque")
-					local wood = 0
-					for _, n in ipairs({ "Rim", "Inner" }) do
-						local line = ring:FindFirstChild(n)
-						local e = line and line:FindFirstChild("SignEdge")
-						if e and sameColor(e.Color, Sign.Wood) and line:FindFirstChildOfClass("UICorner") == nil then
-							wood = wood + 1
+				local arrow = pg and pg:FindFirstChild("Arrow")
+				local menu = U99.gui("NimbusMenu")
+				local tile = menu and menu:FindFirstChild("MenuButton_Pets", true)
+				local lip = tile and tile:FindFirstChild("Lip")
+				T.check(tile and U8.shown(tile) and sameColor(tile.BackgroundColor3, Sign.Gold) and lip and sameColor(lip.BackgroundColor3, Sign.GoldLip),
+					tag .. ": the pointed Pets tile wears the Selected look (the gold face, its gold lip)", tile and hex(tile.BackgroundColor3) or "no tile")
+				T.check(pg and pg:FindFirstChild("Ring", true) == nil and pg:FindFirstChild("Glow", true) == nil, tag .. ": no ring and no glow round the tile")
+				-- nothing the pointer draws lies over another shown menu tile (with its wood edge)
+				local over = {}
+				for _, d in ipairs(menu and menu:GetDescendants() or {}) do
+					if d:IsA("GuiObject") and d.Name:match("^MenuButton_") and d ~= tile and U8.shown(d) then
+						local e = d:FindFirstChild("SignEdge")
+						local t = (e and e.Thickness or 0) * U8.scaleOf(d)
+						local b = U8.rect(d)
+						b = { X = b.X - t, R = b.R + t, Y = b.Y - t, B = b.B + t }
+						for _, p in ipairs(pg and pg:GetChildren() or {}) do
+							if p:IsA("GuiObject") and U8.shown(p) and U8.overlap(U8.rect(p), b) then
+								over[#over + 1] = p.Name .. " over " .. d.Name
+							end
 						end
 					end
-					T.check(wood == 2 and ring:FindFirstChild("Glow", true) == nil, tag .. ": two wood lines round the gold, no glow ring", tostring(wood))
-					local r = U8.rect(ring)
-					T.check(math.abs(r.X - math.floor(r.X + 0.5)) < 0.01 and math.abs(r.Y - math.floor(r.Y + 0.5)) < 0.01 and math.abs(r.R - math.floor(r.R + 0.5)) < 0.01,
-						tag .. ": the ring's box starts and ends on whole screen px", U8.show(r) .. fmt(" (%.2f, %.2f)", r.X, r.Y))
 				end
+				T.check(#over == 0, tag .. ": the pointer lies over no other menu tile", table.concat(over, "; "))
 				if arrow and U8.shown(arrow) then
 					local scale = arrow:FindFirstChildOfClass("UIScale")
 					local k = Theme.ScreenFactor()
-					local want = math.max(1, math.floor(2 * k + 0.5)) / 2
-					T.check(scale and math.abs(scale.Scale - want) < 1e-6, tag .. fmt(": the arrow's scale %.3f = round(2k) / 2 (k %.2f): its cells are twice the icon pixel", scale and scale.Scale or -1, k))
+					local want = math.max(2, math.floor(2 * k + 0.5)) / 2
+					T.check(scale and math.abs(scale.Scale - want) < 1e-6, tag .. fmt(": the arrow's scale %.3f = max(2, round(2k)) / 2 (k %.2f): its 2 px cells are the icon pixel", scale and scale.Scale or -1, k))
+					local cells = {}
+					for _, px in ipairs(arrow:GetChildren()) do
+						if px:IsA("Frame") then
+							cells[fmt("%.2f", px.AbsoluteSize.Y)] = true
+						end
+					end
+					local one = math.max(2, math.floor(2 * k + 0.5)) -- the screen's icon pixel (PixelCrisp.Px of a 2 px cell)
+					local odd = {}
+					for c in pairs(cells) do
+						if math.abs(tonumber(c) - one) > 0.01 then
+							odd[#odd + 1] = c
+						end
+					end
+					T.check(#odd == 0, tag .. ": one pixel size: the arrow's rows are the icons' " .. one .. " px cell", table.concat(odd, ", "))
 					local odd = {}
 					for _, px in ipairs(arrow:GetChildren()) do
 						if px:IsA("Frame") then
@@ -8498,9 +8644,11 @@ local function clientScenarios()
 					local a = U8.rect(arrow)
 					T.check(math.abs(a.X - math.floor(a.X + 0.5)) < 0.01 and math.abs(a.Y - math.floor(a.Y + 0.5)) < 0.01, tag .. ": the arrow's box starts on a whole screen px", fmt("%.2f, %.2f", a.X, a.Y))
 				else
-					T.info("*" .. tag .. ": no free side for the arrow, the ring alone marks the button")
+					T.info("*" .. tag .. ": no free side for the arrow, the gold tile alone marks the button")
 				end
 				U99.tutorialOff()
+				LKC.advance(1.2)
+				T.check(tile and not sameColor(tile.BackgroundColor3, Sign.Gold), tag .. ": the tile's own look back once the step goes", tile and hex(tile.BackgroundColor3) or "")
 			end)
 		end
 		LKC.flushErrors("tutorial_pointer_kitb")
@@ -8680,13 +8828,80 @@ local function clientScenarios()
 							fmt("card %s, vitals %d,%d %dx%d shown %s", U8.show(c), slot.X, slot.Y, slot.W, slot.H, tostring(layout.Vitals ~= nil)))
 					end
 					local grid = U99.offGrid(root, { NameTab = true, Portrait = true, TitlePill = true, Tail = true, NpcDialog = true })
-					T.check(#grid == 0, tag .. ": the card's blocks, lips, icons and wood edges on whole screen px", table.concat(grid, "; "))
+					T.check(#grid == 0, tag .. ": the card's blocks, lips, icons and wood edges on whole screen px (all four edges)", table.concat(grid, "; "))
+					-- (U9-9 look 2) the line's well and the buttons under it apart: at least 4 screen px between their wood edges
+					-- (the 640 x 360 card's 13 px design gap drew 0.7 px)
+					local well = root:FindFirstChild("Well", true)
+					local tight = {}
+					for _, n in ipairs({ "Button_Next", "Button_Close" }) do
+						local b = root:FindFirstChild(n, true)
+						if well and b and U8.shown(b) then
+							local we, be = well:FindFirstChild("SignEdge"), b:FindFirstChild("SignEdge")
+							local gap = (U8.rect(b).Y - (be and be.Thickness or 0) * U8.scaleOf(b)) - (U8.rect(well).B + (we and we.Thickness or 0) * U8.scaleOf(well))
+							if U8.rect(b).X < U8.rect(well).R and gap < 4 - 0.01 then
+								tight[#tight + 1] = fmt("%s %.1f px", n, gap)
+							end
+						end
+					end
+					T.check(#tight == 0, tag .. ": the buttons at least 4 px under the line's well (edges counted)", table.concat(tight, "; "))
+					if s[1] == 1280 then
+						-- (U9-9 look 2) a 720p window docks the card in the low-left corner, clear of the vitals card (lifted, the
+						-- menu rail pushed it 2 px from the vitals' corner, floating mid-left)
+						local c = U8.rect(root)
+						local clearV = not slot or c.R + 8 <= slot.X + 0.5 or c.B + 8 <= slot.Y + 0.5
+						T.check(gui.AbsoluteSize.Y - c.B <= 40 and clearV, tag .. ": the card docks low-left, at least 8 px clear of the vitals card",
+							U8.show(c) .. (slot and fmt(" | vitals %d,%d %dx%d", slot.X, slot.Y, slot.W, slot.H) or ""))
+					end
 				end
 				U99.npcClose()
 				U99.npcGone()
 				local hud = U7.client("Controllers/HudController")
 				local after = hud and hud.GetLayout and hud.GetLayout()
 				T.check(not (after and after.VitalsSlot) or after.Vitals ~= nil, tag .. ": the vitals card is back once the dialog closes")
+			end)
+		end
+		-- (U9-9 look 2) every NPC's name on its plank on the narrow cards (a 640 x 360 window, a portrait phone): each word
+		-- whole at the plank's 20 px floor, a name too long for one line on two (the plank grows a row), never cut or
+		-- squeezed under 20 px; and the compact card's left column (the portrait, its title tag and Close) on the portrait's
+		-- line, Close and Next on one bottom line
+		local ND = LoadingH.shared("NpcDialog")
+		local Theme = LoadingH.shared("Theme")
+		for _, s in ipairs({ { 640, 360, false }, { 390, 844, true } }) do
+			local at = s[3] and function(w, h, _, label, fn)
+				U99.atPhone(w, h, label, fn)
+			end or U8.at
+			at(s[1], s[2], s[3], "npc names", function(tag)
+				for i = 1, #ND.Npcs do
+					local root = U99.npc(i)
+					local tab = root and root:FindFirstChild("NameTab", true)
+					local name = tab and tab:FindFirstChild("Name")
+					if T.check(name ~= nil and U8.shown(name), tag .. ": NPC " .. i .. "'s name plank shows") then
+						local k = U8.scaleOf(name)
+						local nr = U8.rect(name)
+						local longest, words = 0, 0
+						for word in tostring(name.Text):gmatch("%S+") do
+							words = words + 1
+							local okM, m = pcall(Theme.Measure, word, "Title", 20)
+							longest = math.max(longest, (okM and typeof(m) == "Vector2") and m.X or 0)
+						end
+						local okW, whole = pcall(Theme.Measure, name.Text, "Title", 20)
+						local oneLine = okW and typeof(whole) == "Vector2" and whole.X * k <= (nr.R - nr.X) + 0.5
+						local lines = oneLine and 1 or 2
+						T.check(longest * k <= (nr.R - nr.X) + 0.5 and (nr.B - nr.Y) >= lines * 20 * k * 0.9 - 0.5 and (lines == 1 or (words >= 2 and name.TextWrapped)),
+							tag .. ": " .. name.Text .. " whole on its plank at 20 px or more (" .. lines .. " line" .. (lines == 1 and "" or "s") .. ")",
+							fmt("words %.0f px, box %.1f x %.1f, k %.2f", longest * k, nr.R - nr.X, nr.B - nr.Y, k))
+						if root:GetAttribute("Compact") == true then
+							local nextB, closeB = root:FindFirstChild("Button_Next", true), root:FindFirstChild("Button_Close", true)
+							local portrait = root:FindFirstChild("Portrait", true)
+							local ok = nextB and closeB and portrait and U8.shown(closeB)
+								and math.abs(U8.rect(nextB).B - U8.rect(closeB).B) <= 0.5 and math.abs(U8.rect(closeB).X - U8.rect(portrait).X) <= 0.5
+							T.check(ok, tag .. ": NPC " .. i .. " compact: Close under the portrait's column, on Next's bottom line",
+								ok and "" or (nextB and closeB and portrait) and (U8.show(U8.rect(closeB)) .. " / " .. U8.show(U8.rect(nextB)) .. " / " .. U8.show(U8.rect(portrait))) or "missing")
+						end
+					end
+					U99.npcClose()
+				end
+				U99.npcGone()
 			end)
 		end
 		LKC.flushErrors("npc_fits_phone")
@@ -8721,6 +8936,30 @@ local function clientScenarios()
 			end
 			restore()
 		end)
+		-- (U9-9 look 2) short desktop windows: the plank (its wood edge counted) 8 px or more above the HUD's vitals card, or,
+		-- where the middle band leaves no room above it (960 x 540: the card covered the plank's lower 9 px), docked beside
+		-- the card on its top line, 8 px or more right of it; below the middle band and inside the screen either way
+		for _, s in ipairs({ { 960, 540 }, { 1024, 576 }, { 1280, 600 }, { 1280, 720 } }) do
+			U8.at(s[1], s[2], false, "mouse hint", function(tag)
+				local hint, restore = U99.mouseHint()
+				local hud = U99.gui("NimbusHud")
+				local top, left, right = hud and hud:GetAttribute("BottomCentreTop"), hud and hud:GetAttribute("BottomCentreLeft"), hud and hud:GetAttribute("BottomCentreRight")
+				if T.check(hint ~= nil and U8.shown(hint) and type(top) == "number" and type(right) == "number", tag .. ": the hint and the vitals card show") then
+					local r, gr = U8.rect(hint), hint.Parent.AbsoluteSize
+					local e = 2 * U8.scaleOf(hint)
+					local p = { X = r.X - e, R = r.R + e, Y = r.Y - e, B = r.B + e }
+					local above = p.B + 8 <= top + 0.5
+					local beside = p.X >= right + 8 - 0.5 and math.abs(r.Y - top) <= 1
+					local v = { X = left or 0, R = right, Y = top, B = gr.Y }
+					T.check((above or beside) and not U8.overlap(p, v), tag .. ": the plank 8 px or more above the vitals card, or beside it on its top line",
+						fmt("plank %.1f,%.1f..%.1f,%.1f | vitals top %.1f, %.1f..%.1f | docked %s", p.X, p.Y, p.R, p.B, top, left or -1, right, tostring(hint.Parent:GetAttribute("Docked"))))
+					T.check(r.Y >= 0.645 * gr.Y - 0.5 and p.X >= -0.5 and p.R <= gr.X + 0.5 and p.B <= gr.Y + 0.5, tag .. ": below the middle band, inside the screen", U8.show(r))
+					local grid = U99.offGrid(hint.Parent, { Hint = true })
+					T.check(#grid == 0, tag .. ": the plank on whole screen px", table.concat(grid, "; "))
+				end
+				restore()
+			end)
+		end
 		LKC.flushErrors("mouselock_hint_plank")
 	end)
 

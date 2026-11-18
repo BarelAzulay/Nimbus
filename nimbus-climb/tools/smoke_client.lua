@@ -678,25 +678,29 @@ local function tutorialClientChecks()
 		advance(0.6)
 	end
 	T.check(T.contains(events(mark), "ShopOpened"), "Tutorial panel: opening the Shop sends TutorialEvent('ShopOpened')", table.concat(events(mark), ","))
-	-- a menu target: a pulsing ring around MenuButton_Pets
+	-- a menu target: (kit B U9-9 look 2) MenuButton_Pets wears the kit's Selected gold face (MenuController.SetPointed; a
+	-- ring round it covered the next tile) and the pointer's pixel arrow (NimbusTutorialPointer) lies beside it
 	toClient("TutorialState", tutorialPayload(Steps, 5))
 	advance(2.5)
 	local pointer = gui():FindFirstChild("NimbusTutorialPointer")
-	local ring = pointer and pointer:FindFirstChild("Ring")
+	local arrow = pointer and pointer:FindFirstChild("Arrow")
 	local petsButton
 	for _, d in ipairs(gui():GetDescendants()) do
 		if d.Name == "MenuButton_Pets" then
 			petsButton = d
 		end
 	end
-	if T.check(ring ~= nil and isShown(ring) and petsButton ~= nil, "Tutorial panel: a Menu target rings the menu button (NimbusTutorialPointer)") then
-		local rc = ring.AbsolutePosition + ring.AbsoluteSize / 2
+	local gold = Theme.Sign and Theme.Sign.Gold
+	if T.check(petsButton ~= nil and gold ~= nil and petsButton.BackgroundColor3 == gold and (pointer == nil or pointer:FindFirstChild("Ring") == nil),
+		"Tutorial panel: a Menu target turns the menu button gold (no ring)", petsButton and tostring(petsButton.BackgroundColor3) or "no MenuButton_Pets") and arrow and isShown(arrow) then
+		local ac = arrow.AbsolutePosition + arrow.AbsoluteSize / 2
 		local bc = petsButton.AbsolutePosition + petsButton.AbsoluteSize / 2
 		local function shift(inst)
 			local owner = inst:FindFirstAncestorOfClass("ScreenGui")
 			return (owner and owner.IgnoreGuiInset) and 0 or (Mock.TopInset or 0)
 		end
-		T.check((Vector2.new(rc.X, rc.Y + shift(ring)) - Vector2.new(bc.X, bc.Y + shift(petsButton))).Magnitude < 12, "Tutorial panel: ...centred on MenuButton_Pets", tostring(rc) .. " vs " .. tostring(bc))
+		local reach = (petsButton.AbsoluteSize.Magnitude + arrow.AbsoluteSize.Magnitude) / 2 + 24
+		T.check((Vector2.new(ac.X, ac.Y + shift(arrow)) - Vector2.new(bc.X, bc.Y + shift(petsButton))).Magnitude < reach, "Tutorial panel: ...and the arrow points at it from beside it", tostring(ac) .. " vs " .. tostring(bc))
 	end
 	-- a world target: a 3D arrow + dotted beam in workspace.ClientFx (client-side parts only)
 	local portalPos = Config.Lobby.Origin + Vector3.new(60, 0, 40)

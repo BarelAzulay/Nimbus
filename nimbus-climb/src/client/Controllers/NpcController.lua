@@ -124,15 +124,23 @@ local K = {
 	READY_TIMEOUT = 12,
 	-- dialog card
 	W = 540, -- full card
-	H = 228, -- (kit B U9-9) 12 more than the bubble's 216: the footer clears the stone lip and the line keeps its room
+	-- (kit B U9-9) taller than the bubble's 216: the footer clears the stone lip and the line keeps its room. (U9-9 look 2)
+	-- the card's lengths are multiples of 10 design px where they can be (whole px at 0.7, 0.8 and 1.0; PixelCrisp snaps
+	-- the rest), and the line keeps its room over the page dots under the wider stone between the well and the footer
+	H = 230,
 	W_MIN = 420, -- compact card for narrow screens (taller, so long lines still fit)
-	H_COMPACT = 262,
+	H_COMPACT = 270,
 	TAB_ABOVE = 24, -- the name tab rides this far above the card
 	PAD = 14,
-	PORTRAIT = 128,
-	WELL_X = 158,
+	PORTRAIT = 130,
+	WELL_X = 160,
 	WELL_TOP = 30,
-	FOOTER_H = 42,
+	FOOTER_H = 40,
+	NEXT_W = 120,
+	CLOSE_W = 110,
+	BUTTON_GAP = 14, -- (U9-9 look 2) between Close and Next, the well and the footer, the title tag and Close: one rhythm
+	TAB_INSET = 22, -- (U9-9 look 2) the name's room starts this far in from each end of its plank (12 px clear of a rivet)
+	NAME_ROW = 20, -- (U9-9 look 2) a name too long for one row at the 20 px floor grows its plank by one row
 	TEXT = 20,
 	NAME = 28,
 	CAPTION = 20, -- the title under the portrait (wraps to two rows when needed)
@@ -174,16 +182,19 @@ K.NAME_LIP = 5 -- the name plank's navy lip
 -- name plank's height and TabAbove how far it rides over the card (its edge included; it ends 24 px into the card).
 -- (U9-9 review) Short: a phone too short for the card even at MIN_SCALE (360 px tall: the top bar's pill drew over the
 -- name plank) takes the 12 px back from the footer's gaps and the lip (Cut: the old bubble's 216 / 250 again, the line
--- keeps its room) and a plank 8 px lower, so the plank clears the pill
+-- keeps its room) and a plank 8 px lower, so the plank clears the pill. (U9-9 look 2) Well - FootUp is the stone between
+-- the well and the footer: BUTTON_GAP on the tall card (the one rhythm: 14 between the buttons, 14 over them), 12 on the
+-- short one (the 94 px line room allows no more), so their whole-px wood edges never meet (4 px of stone or more at 0.7;
+-- 10 drew 3 px)
 K.ROWS = {
-	Tall = { Cut = 0, Well = 30, FootUp = 22, Lip = 8, Tab = 46, TabAbove = K.TAB_ABOVE, TitleTag = 52 },
-	Short = { Cut = 12, Well = 18, FootUp = 14, Lip = 4, Tab = 38, TabAbove = K.TAB_ABOVE - 8, TitleTag = 46 },
+	Tall = { Cut = 0, Well = 36, FootUp = 22, Lip = 8, Tab = 46, TabAbove = K.TAB_ABOVE, TitleTag = 50 },
+	Short = { Cut = 12, Well = 26, FootUp = 14, Lip = 4, Tab = 38, TabAbove = K.TAB_ABOVE - 8, TitleTag = 46 },
 }
 K.DOT = 10
 K.DOT_GAP = 8
 -- (U9-9 look) a portrait phone's compact card is this much taller (there is free sky above it): its six-line speech kept 6
 -- px over the page dots at the 0.7 floor
-K.PORTRAIT_EXTRA = 28
+K.PORTRAIT_EXTRA = 30
 K.PILL_GAP = 4 -- the name plank stays this far under the top bar's pill (NimbusTopBar, display order 21: it draws over us)
 K.ICON = 18 -- the pixel icons (the cloud, the "more" chevron): 18 screen px everywhere (PixelCrisp), their slot 18 / k
 
@@ -992,7 +1003,10 @@ local function buildDialog()
 	}, card)
 	stone:SetAttribute("SignKit", "Body")
 	UI.StoneLip = lipOf(stone, SIGN.StoneLip, K.ROWS.Tall.Lip)
-	UI.Card = card
+	-- (U9-9 look 2) the card and the stone in it on whole px on all four sides: the wood frame round the stone is whole
+	-- px wide on every side at any card scale (it drew 4.8 / 4.2 px, one side crisp and the other soft)
+	UI.Card = crispBox(card)
+	crispBox(stone)
 
 	-- portrait: a sky well in a wood edge, the NPC's accent colour on its lip, a little pixel cloud in its corner
 	local portrait = box("Portrait", {
@@ -1017,14 +1031,15 @@ local function buildDialog()
 		})
 	end
 
-	-- title caption under the portrait: a stone tag ((U9-9 look) 52 high on the tall card: its two rows of words clear
-	-- of its edge and lip)
+	-- title caption under the portrait: a stone tag ((U9-9 look) 50 high on the tall card: its two rows of words clear
+	-- of its edge and lip). (U9-9 look 2) PORTRAIT + 2 wide: its 2 px edge lines up with the portrait's 3 px edge; its
+	-- bottom on the footer's bottom line (layoutDialog)
 	local titlePill = box("TitlePill", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.Tile,
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.fromOffset(K.PAD + K.PORTRAIT / 2, 16 + K.PORTRAIT + 8),
-		Size = UDim2.fromOffset(K.PORTRAIT + 8, K.ROWS.Tall.TitleTag),
+		Position = UDim2.fromOffset(K.PAD + K.PORTRAIT / 2, 16 + K.PORTRAIT + 12),
+		Size = UDim2.fromOffset(K.PORTRAIT + 2, K.ROWS.Tall.TitleTag),
 		ZIndex = 6,
 	}, card)
 	UI.TitleStroke = edge(titlePill, SIGN.Wood, K.EDGE_PX)
@@ -1075,7 +1090,8 @@ local function buildDialog()
 			Name = "Name",
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.new(0.5, 0, 0.5, -2),
-			Size = UDim2.new(1, -28, 1, -(10 + K.NAME_LIP)),
+			-- (U9-9 look 2) TAB_INSET in from each end: the letters 12 px clear of the brass rivets
+			Size = UDim2.new(1, -2 * K.TAB_INSET, 1, -(10 + K.NAME_LIP)),
 			ZIndex = 9,
 		},
 	})
@@ -1179,17 +1195,19 @@ local function buildDialog()
 	}, card)
 	UI.Footer = footer
 
-	UI.Next = newButton("Next", "Green", UDim2.fromOffset(118, K.FOOTER_H), function()
+	UI.Next = newButton("Next", "Green", UDim2.fromOffset(K.NEXT_W, K.FOOTER_H), function()
 		NpcController.Advance()
 	end, footer)
 	UI.Next.AnchorPoint = Vector2.new(1, 0.5)
 	UI.Next.Position = UDim2.new(1, 0, 0.5, 0)
 	UI.Next.ZIndex = 8
-	UI.Close = newButton("Close", "Gray", UDim2.fromOffset(110, K.FOOTER_H), function()
+	-- (U9-9 look 2) on the full card Close stands BUTTON_GAP left of Next; the compact card moves it into the left column
+	-- under the title tag and Next spans the well (placeButtons)
+	UI.Close = newButton("Close", "Gray", UDim2.fromOffset(K.CLOSE_W, K.FOOTER_H), function()
 		NpcController.Close()
 	end, footer)
 	UI.Close.AnchorPoint = Vector2.new(1, 0.5)
-	UI.Close.Position = UDim2.new(1, -130, 0.5, 0)
+	UI.Close.Position = UDim2.new(1, -(K.NEXT_W + K.BUTTON_GAP), 0.5, 0)
 	UI.Close.ZIndex = 8
 	-- (U9-9 look) the planks' wood edges and lips on whole px at the card's scale (2.1 px drew uneven), from whole px
 	if PixelCrisp then
@@ -1327,6 +1345,24 @@ end
 -- height and its bottom rows (K.ROWS). Narrow boxes get the compact card, (U9-9 review) a box too short for it even at
 -- K.MIN_SCALE the short rows; the scale may come out below K.MIN_SCALE (= does not fit). (U9-9 look) On a portrait
 -- screen (`tall`) the compact card is K.PORTRAIT_EXTRA taller: its speech kept clear of the page dots.
+-- (U9-9 look 2) the name plank on a card of design width w: on the compact card it spans the well (flush with its right
+-- edge), on the full card it is at most 250 wide; its name gets one row, or a second NAME_ROW when the name at the 20 px floor is wider than its room (TAB_INSET in from
+-- each end): the plank grows up by that row instead of TextScaled wrapping two rows inside a one-row plank. -> width, extra
+local function tabFor(w)
+	local tabW = w - K.WELL_X - K.PAD
+	if w >= K.W - 60 then
+		tabW = math.min(250, tabW) -- (the full card's plank: the compact card's spans its whole well)
+	end
+	local text = UI.Name and UI.Name.Text or ""
+	if text ~= "" then
+		local ok, size = pcall(Theme.Measure, text, "Title", 20)
+		if ok and typeof(size) == "Vector2" and size.X > tabW - 2 * K.TAB_INSET then
+			return tabW, K.NAME_ROW
+		end
+	end
+	return tabW, 0
+end
+
 local function fitCard(left, bottom, topLimit, rightLimit, f, tall)
 	local availW, availH = rightLimit - left, bottom - topLimit
 	if availW <= 0 or availH <= 0 then
@@ -1344,13 +1380,19 @@ local function fitCard(left, bottom, topLimit, rightLimit, f, tall)
 	if w < K.W - 60 then
 		h = K.H_COMPACT + (tall and K.PORTRAIT_EXTRA or 0)
 	end
+	local _, extra = tabFor(w)
 	local rows = K.ROWS.Tall
-	if (h + rows.TabAbove) * K.MIN_SCALE > availH then
+	if (h + rows.TabAbove + extra) * K.MIN_SCALE > availH then
 		rows = K.ROWS.Short
 		h = h - rows.Cut
 	end
-	if (h + rows.TabAbove) * scale > availH then
-		scale = availH / (h + rows.TabAbove)
+	if (h + rows.TabAbove + extra) * scale > availH then
+		scale = availH / (h + rows.TabAbove + extra)
+	end
+	-- (U9-9 look 2) a fitted scale steps down to a tenth (0.724 -> 0.7): the card's lengths, multiples of 10, are whole px
+	-- there (at 0.724 none could be); never under MIN_SCALE (a scale under it still says "does not fit")
+	if scale < f and scale >= K.MIN_SCALE then
+		scale = math.max(K.MIN_SCALE, math.floor(scale * 10 + 1e-6) / 10)
 	end
 	return scale, w, h, rows
 end
@@ -1434,7 +1476,10 @@ local function layoutDialog()
 			end
 			return bar == nil or b <= bar.y0 - K.GAP or x1 + K.GAP <= bar.x0 or l >= bar.x1 + K.GAP
 		end
-		if low > bottom + 1 and clear(bottom, left, scale, w) then
+		-- (U9-9 look 2) the corner dock is tried whenever there is room under the HUD's line, not only when the lifted card
+		-- is already clear of the vitals: lifted, the menu rail pushed a 720p card right against the vitals card (it floated
+		-- mid-left, 2 px from the vitals' corner); docked low it starts at the edge, clear of both (as at 1080p)
+		if low > bottom + 1 then
 			local s2, w2, h2, l2, r2 = placeAt(low)
 			if clear(low, l2, s2, w2) then
 				bottom, scale, w, h, left, rows = low, s2, w2, h2, l2, r2
@@ -1454,11 +1499,13 @@ local function layoutDialog()
 	-- (U9-9 look) the name plank never under the top bar's pill (it draws over the card: on a 640 x 360 window the pill
 	-- hid the plank's words): the card steps down until the plank's gold edge is K.PILL_GAP under the pill, and the
 	-- HUD's vitals card steps aside if the card then lies over it (syncVitals below)
-	local tabW = math.min(250, w - K.WELL_X - 104)
+	-- (U9-9 look 2) the plank spans the well (it was 104 px short of it: "CAPTAIN PENGUIN" wrapped to two rows on its lip)
+	local tabW, extra = tabFor(w)
+	local tabH = rows.Tab + extra
 	local pill = topBarPillRect()
 	if pill then
 		local px0, px1 = x + (K.WELL_X - 3) * scale, x + (K.WELL_X + tabW + 3) * scale
-		local ptop = y - h * scale + (24 - rows.Tab - 3) * scale
+		local ptop = y - h * scale + (24 - tabH - 3) * scale
 		if px1 > pill.x0 and px0 < pill.x1 and ptop < pill.y1 + K.PILL_GAP then
 			y = math.min(area.Y, y + (pill.y1 + K.PILL_GAP - ptop))
 		end
@@ -1475,8 +1522,37 @@ local function layoutDialog()
 		UI.StoneLip.Size = UDim2.new(1, 0, 0, rows.Lip)
 	end
 	UI.Root:SetAttribute("Rows", rows == K.ROWS.Short and "Short" or "Tall")
+	-- (U9-9 look 2) the left column ends on the footer's bottom line, as the right one does: the full card's title tag
+	-- stands on that line under a square portrait; the compact card puts Close there (under the title tag, BUTTON_GAP
+	-- apart) and lets Next span the well, its one wide action, and the portrait takes the column's height above them
+	local compact = w < K.W - 60
+	local footTop = h - (K.FOOTER_H + rows.FootUp)
+	local tagTop = h - rows.FootUp - rows.TitleTag
+	if compact then
+		tagTop = footTop - K.BUTTON_GAP - rows.TitleTag
+	end
+	UI.Root:SetAttribute("Compact", compact)
 	if UI.TitlePill then
-		UI.TitlePill.Size = UDim2.fromOffset(K.PORTRAIT + 8, rows.TitleTag)
+		UI.TitlePill.Size = UDim2.fromOffset(K.PORTRAIT + 2, rows.TitleTag)
+		UI.TitlePill.Position = UDim2.fromOffset(K.PAD + K.PORTRAIT / 2, tagTop)
+	end
+	if UI.Portrait then
+		UI.Portrait.Size = UDim2.fromOffset(K.PORTRAIT, math.max(K.PORTRAIT - 30, tagTop - 12 - 16))
+	end
+	if UI.Close and UI.Next and UI.Footer and UI.Card then
+		if compact then
+			UI.Close.Parent = UI.Card
+			UI.Close.AnchorPoint = Vector2.new(0, 0)
+			UI.Close.Position = UDim2.fromOffset(K.PAD, footTop)
+			UI.Close.Size = UDim2.fromOffset(K.PORTRAIT, K.FOOTER_H)
+			UI.Next.Size = UDim2.new(1, 0, 0, K.FOOTER_H)
+		else
+			UI.Close.Parent = UI.Footer
+			UI.Close.AnchorPoint = Vector2.new(1, 0.5)
+			UI.Close.Position = UDim2.new(1, -(K.NEXT_W + K.BUTTON_GAP), 0.5, 0)
+			UI.Close.Size = UDim2.fromOffset(K.CLOSE_W, K.FOOTER_H)
+			UI.Next.Size = UDim2.fromOffset(K.NEXT_W, K.FOOTER_H)
+		end
 	end
 	if UI.More then
 		local slot = math.ceil(K.ICON / scale - 1e-6) -- (U9-9 look) the chevron's 18 screen px inside its slot
@@ -1488,8 +1564,9 @@ local function layoutDialog()
 	root.Position = UDim2.fromOffset(math.floor(x + 0.5), top)
 	UI.Scale.Scale = scale
 	if UI.NameTab then
-		UI.NameTab.Size = UDim2.fromOffset(tabW, rows.Tab)
-		UI.NameTab.Position = UDim2.fromOffset(K.WELL_X, 24 - rows.Tab) -- it ends 24 px into the card
+		UI.NameTab.Size = UDim2.fromOffset(tabW, tabH)
+		UI.NameTab.Position = UDim2.fromOffset(K.WELL_X, 24 - tabH) -- it ends 24 px into the card
+		UI.NameTab:SetAttribute("Rows", extra > 0 and 2 or 1)
 	end
 	syncVitals({ x0 = math.floor(x + 0.5), y0 = top, x1 = math.floor(x + 0.5) + w * scale, y1 = top + h * scale })
 	if PixelCrisp then

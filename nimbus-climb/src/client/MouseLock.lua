@@ -189,30 +189,56 @@ local function showHint()
 	St.HintGui = gui
 	-- short desktop windows: 70 % down would reach the HUD's bottom-centre vitals card (bug batch 2 #1), so the pill
 	-- stands just above the card's top (NimbusHud attribute BottomCentreTop, same gui-area pixels: both keep the
-	-- inset), but never up into the middle of the screen (the v2 rule's band ends at 64.5 % of the height)
+	-- inset), but never up into the middle of the screen (the v2 rule's band ends at 64.5 % of the height). (U9-9 look 2)
+	-- Its wood edge counted, and when the card leaves no room above it under the band (a 960 x 540 window: the card covered
+	-- the plank's lower 9 px) the plank docks beside the card instead, its top on the card's top line, BAND_GAP right of
+	-- it (on two lines when one is too wide for the room there)
+	local BAND, BAND_GAP = 0.65, 8
 	local hud = pg:FindFirstChild("NimbusHud")
 	local top = hud and tonumber(hud:GetAttribute("BottomCentreTop"))
+	local cardR = hud and tonumber(hud:GetAttribute("BottomCentreRight"))
 	local areaH = gui.AbsoluteSize.Y
+	local dock = nil
 	if top and top > 0 and areaH > 0 then
-		local y = math.max(0.65 * areaH, math.min(0.7 * areaH, top - 8 - label.Size.Y.Offset))
-		label.Position = UDim2.new(0.5, 0, 0, math.floor(y))
+		local above = top - BAND_GAP - label.Size.Y.Offset - HINT_EDGE
+		if above >= BAND * areaH or not (cardR and cardR > 0) then
+			local y = math.max(BAND * areaH, math.min(0.7 * areaH, above))
+			label.Position = UDim2.new(0.5, 0, 0, math.floor(y))
+		else
+			dock = { X = math.ceil(cardR + BAND_GAP + HINT_EDGE), Y = math.floor(top) }
+			label.AnchorPoint = Vector2.new(0, 0)
+			label.Position = UDim2.fromOffset(dock.X, dock.Y)
+		end
 	end
+	gui:SetAttribute("Docked", dock ~= nil)
 	-- (U9-9 look) the plank on whole screen px: once its words have set its width, that width rounded up to an even
 	-- number of px and its left edge on a whole px of the centre (an odd or fractional width put it at x 714.38)
-	local settled = false
+	local settled, wrapped = false, false
 	local function settle()
 		local w = label.AbsoluteSize.X
 		local areaW = gui.AbsoluteSize.X
 		if settled or w <= 0 or areaW <= 0 or not label.Parent then
 			return
 		end
+		if dock and not wrapped and dock.X + w + HINT_EDGE > areaW - BAND_GAP then
+			-- too wide for the room beside the card: the same words on two lines (the plank grows down for the second)
+			wrapped = true
+			label.Text = "Mouse lock is ON\npress " .. K.KEY_NAME .. " to free the cursor"
+			label.AutomaticSize = Enum.AutomaticSize.XY
+			return
+		end
 		settled = true
 		local even = 2 * math.ceil(w / 2 - 1e-6)
+		local h = 2 * math.ceil(label.AbsoluteSize.Y / 2 - 1e-6)
 		local p = label.Position
 		label.AutomaticSize = Enum.AutomaticSize.None
-		label.Size = UDim2.new(0, even, 0, label.Size.Y.Offset)
+		label.Size = UDim2.new(0, even, 0, math.max(label.Size.Y.Offset, h))
 		label.AnchorPoint = Vector2.new(0, 0)
-		label.Position = UDim2.fromOffset(math.floor((areaW - even) / 2), math.floor(p.Y.Scale * gui.AbsoluteSize.Y + p.Y.Offset))
+		if dock then
+			label.Position = UDim2.fromOffset(dock.X, dock.Y)
+		else
+			label.Position = UDim2.fromOffset(math.floor((areaW - even) / 2), math.floor(p.Y.Scale * gui.AbsoluteSize.Y + p.Y.Offset))
+		end
 	end
 	settle()
 	if not settled then
