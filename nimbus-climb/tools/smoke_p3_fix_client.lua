@@ -356,10 +356,10 @@ S.client_p3fixcli_telegraph = guarded("client_p3fixcli_telegraph", function()
 		end
 		if bb.Threat then
 			threatSeen = true
+			-- (LOOK-ui2: was a see-through halo disc) the DASH keycap's edge and lip blink sky while the call is on
 			local db = find("Root.Commands.DashButton")
-			local glow = db and db:FindFirstChild("Glow")
 			cues[#cues + 1] = tostring(bb.Cue)
-			if bb.Cue == "Dash" and glow and glow.BackgroundTransparency < 0.95 then
+			if bb.Cue == "Dash" and db and db:GetAttribute("Cue") == true and db:FindFirstChild("Glow") == nil then
 				dashCue = true
 			end
 		end
@@ -443,8 +443,9 @@ S.client_p3fixcli_retreat = guarded("client_p3fixcli_retreat", function()
 	d:step()
 	d:step()
 	step(4, 0.05)
-	local ring = find("Root.Commands.SpecialButton.Ring.R.Disc")
-	T.check(special:GetAttribute("Disabled") ~= true and ring and ring.BackgroundColor3.R > 0.9 and ring.BackgroundColor3.G > 0.6 and ring.BackgroundColor3.B < 0.4, "#8: at 100 SPECIAL lights up gold")
+	-- (LOOK-ui2: was the gradient ring turning gold) the keycap's gold face out of the well, its edge and lip blinking gold
+	local face = find("Root.Commands.SpecialButton.Face")
+	T.check(special:GetAttribute("Disabled") ~= true and special:GetAttribute("Cue") == true and face and face.BackgroundColor3.R > 0.9 and face.BackgroundColor3.G > 0.6 and face.BackgroundColor3.B < 0.4, "#8: at 100 SPECIAL lights up gold")
 	idx = #Mock.RemoteLog
 	Mock.Click(special)
 	local cmds = commandsSince(idx)

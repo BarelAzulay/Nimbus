@@ -801,7 +801,7 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	T.check(grows, "raid: a telegraph fills up before the hit", #fills > 0 and (fmt(fills[1]) .. " -> " .. fmt(peak) .. " studs") or "no samples")
 	T.check(teleGone, "raid: a telegraph vanishes after its hit")
 	T.check(hasText(find("Root.TopCard"), "Storm Titan") and hasText(find("Root.TopCard"), "BOSS RAID %- High"), "raid HUD: the top card names the boss and the fight's tier")
-	T.check(shown(find("Root.TopCard.BossBar")) and shown(find("Root.TopCard.BossBar.Hp.Fill")), "raid HUD: the boss bar at the top centre")
+	T.check(shown(find("Root.TopCard.BossBar")) and shown(find("Root.TopCard.BossBar.Hp.Blocks")), "raid HUD: the boss bar at the top centre")
 	T.check(shown(find("Root.Team.Fighter")) and shown(find("Root.Team.Helpers.Helper1")) and shown(find("Root.Team.Helpers.Helper2")), "raid HUD: my fighter card + two helper portraits")
 	-- a minion wave + enrage + a leaving team
 	local unitsBefore = BC.GetBattle().Units

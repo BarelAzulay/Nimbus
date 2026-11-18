@@ -40,6 +40,7 @@ local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local GemIcon = require(script.Parent:WaitForChild("GemIcon"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon"))
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui) the close block's token (NeonKit.CloseBlock)
 
 local NeonKit = {}
 
@@ -986,6 +987,78 @@ end
 --   opts (optional) = { Color = Color3 (the bars; default white), Ink = Color3 (default PanelInk), Square = true (kit B:
 --   bars with square ends), Scale = number,
 --                       ZIndex = number (the mark and the ink; the white bars one above) }
+-- (LOOK-ui, kitb-look1) a kit B block's pixel x redrawn at `px` (a multiple of 9): the screen's glyph size, so the X
+-- shares its window's one pixel size (27 on PC, 18 on a phone where the window draws its icons at 18 / 36)
+function NeonKit.CloseMarkPx(button, px)
+	local mark = button and button:FindFirstChild("CloseMark")
+	px = tonumber(px)
+	if not (mark and mark:GetAttribute("PixelX") and px and px >= 9) then
+		return
+	end
+	if mark:GetAttribute("Px") == px and mark:FindFirstChild("Icon") then
+		return
+	end
+	mark:SetAttribute("Px", px)
+	local half = math.floor(px / 2)
+	mark.Position = UDim2.new(0.5, -half, 0.5, -half)
+	mark.Size = UDim2.fromOffset(px, px)
+	for _, child in ipairs(mark:GetChildren()) do
+		child:Destroy()
+	end
+	local z = mark.ZIndex
+	local icon = PixelIcon.New(mark, "x", px, mark:GetAttribute("InkColor") or INK)
+	if icon then
+		icon.ZIndex = z
+		for _, cell in ipairs(icon:GetChildren()) do
+			if cell:IsA("GuiObject") then
+				cell.ZIndex = z
+			end
+		end
+	end
+end
+
+-- (LOOK-ui, kitb-look1) one close block for the kit B windows (SignKit.Sizes.CloseMin / CloseCell): a CloseMark Square
+-- block that never draws under CloseMin screen px square (counter-scaled under its window's Fit, grown about its centre
+-- whenever its owner sizes it smaller) with its x in CloseCell screen px cells at every rest scale. Returns the button
+function NeonKit.CloseBlock(button)
+	local mark = button and button:FindFirstChild("CloseMark")
+	if not (mark and mark:GetAttribute("PixelX")) then
+		return button
+	end
+	button:SetAttribute("CloseBlock", true)
+	local sizing = false
+	local function grow(s)
+		if sizing or s <= 0 then
+			return
+		end
+		local side = math.min(button.Size.X.Offset, button.Size.Y.Offset)
+		local need = SignKit.Sizes.CloseMin / s
+		if side > 0 and side * s < SignKit.Sizes.CloseMin - 0.01 then
+			sizing = true
+			local more = need - side
+			local a = button.AnchorPoint
+			button.Size = UDim2.fromOffset(need, need)
+			button.Position = button.Position + UDim2.fromOffset(-more * (0.5 - a.X), -more * (0.5 - a.Y))
+			sizing = false
+		end
+	end
+	PixelIcon.Whole(mark, function(s)
+		-- the cell: the design px that draw CloseCell screen px under s (4 at 0.8, 3 at 1)
+		local want = SignKit.Sizes.CloseCell
+		local cell = math.max(1, math.floor(want / s + 0.5))
+		while cell > 1 and PixelIcon.Px(cell, s) * s > want + 1e-6 do
+			cell = cell - 1
+		end
+		mark:SetAttribute("Px", nil) -- redrawn at the new cell
+		NeonKit.CloseMarkPx(button, 9 * cell)
+		grow(s)
+	end)
+	button:GetPropertyChangedSignal("Size"):Connect(function()
+		grow(PixelIcon.RestScale(button))
+	end)
+	return button
+end
+
 function NeonKit.CloseMark(button, opts)
 	if not (button and button:IsA("GuiButton")) then
 		return nil
@@ -1036,6 +1109,8 @@ function NeonKit.CloseMark(button, opts)
 			ZIndex = z,
 		})
 		mark:SetAttribute("PixelX", true)
+		mark:SetAttribute("InkColor", colorOf(opts.Color, INK)) -- (LOOK-ui2) for NeonKit.CloseMarkPx / CloseBlock
+		mark:SetAttribute("Px", px)
 		local icon = PixelIcon.New(mark, "x", px, colorOf(opts.Color, INK))
 		if icon then
 			icon.ZIndex = z

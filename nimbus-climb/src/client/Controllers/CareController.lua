@@ -2429,6 +2429,9 @@ function CareController.Init()
 	LocalPlayer = Players.LocalPlayer
 	pcall(State.Init)
 	U.Gui = CloudUI.NewScreenGui("NimbusCare", K.DISPLAY_ORDER)
+	-- (LOOK-ui2: under the window's Fit of 0.8 a 2 px edge drew 1.6 screen px, a 8 px lip 6.4) every wood edge and lip of the
+	-- window, now and as rows are added, on whole screen px (PixelIcon.WholeTree, kitb-look1's one helper)
+	PixelIcon.WholeTree(U.Gui)
 	H.buildConfirm()
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		safe("relayout", H.relayout)

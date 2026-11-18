@@ -146,6 +146,7 @@ local K = {
 		"MenuController", "PetsController", "ShopController", "StoreController", "TroveController", "IndexController",
 		"FusionController", "CareController", "TrainController", "DungeonController", "ObbyController", "RaidGateController",
 		"ArenaController", "LossScreen", "NpcController",
+		"BattleController", -- (LOOK-ui2) its result card holds the top-right corner a moment (IsOpen: the card is up)
 	},
 	WINDOW_POLL = 0.25, -- seconds: no shared close signal exists, so a watcher re-lays the button out when that answer changes
 	WINDOW_RETRY = 2, -- seconds before a K.WINDOWS module not found yet is looked up again (review round 1)

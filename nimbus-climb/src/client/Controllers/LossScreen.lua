@@ -12,9 +12,11 @@
 --
 -- ScreenGui NimbusLoss (DisplayOrder 24: above the battle HUD's result card, below Notify 30), card LossCard (NeonKit.Card, kit B's
 -- cream sign with a red lip (kit-b U9-6: square, flat, colour by role: a loss is the danger red; brown ink), centred
--- under the top bar; 16 px side gutters on a phone; every button >= 44 px): Title, Sub, PetRow1..3 (Face viewport, Name, Levels
--- "L1 -> L3" with a pop + one SoundFx "Reward" for the whole card, or "L1" + XpBar moving from XpBefore to XpFrac), Lines,
--- FightAgain ("Fight again", hidden without OnFightAgain), EditTeam ("Edit team"), CloseButton (its X drawn: NeonKit.CloseMark).
+-- under the top bar over a Shade that dims the screen below the top bar; 16 px side gutters on a phone; every button >= 44 px;
+-- nailed up like the Dungeon End card): Title, Sub, PetRow1..3 (Face viewport, Name, Lift: Levels "L1", the pixel arrow, LevelTo
+-- "L3" with a pop + one SoundFx "Reward" for the whole card and a gold sparkle on the row, or Levels "L1" + XpBar, ten sky kit
+-- blocks lighting from XpBefore to XpFrac), Lines (the run's rewards as stone fact tags with their pixel icons), FightAgain
+-- ("Fight again", hidden without OnFightAgain), EditTeam ("Edit team"), CloseButton (NeonKit.CloseBlock: its X drawn).
 -- The buttons are kit B blocks (CloudUI.Button Skin "Sign": Fight again the one green action, Edit team stone, Close danger red).
 -- Fight again and Edit team wait for the return teleport: while Config.Attr.InBattle is still set (RETURN_DELAY after the end) the
 -- button says "Returning..." and ignores taps, then acts once. A refused start leaves the screen (the server's toast says why) and
@@ -36,6 +38,8 @@ local Client = script.Parent.Parent
 local UI = Client:WaitForChild("UI")
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local NeonKit = require(UI:WaitForChild("NeonKit"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (LOOK-ui2) whole-px edges and lips, the reward and level icons
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui2) the XP block rows, the nails
 local State = require(Client:WaitForChild("State"))
 
 local LossScreen = {}
@@ -58,6 +62,9 @@ local K = {
 	ROW_H_TALL = 96,
 	ROW_GAP = 8,
 	LINE_H = 36,
+	TAG_H = 32, -- (LOOK-ui2) a reward's fact tag in its LINE_H row
+	XP_BLOCKS = 10,
+	SHADE = 0.55, -- the PetPicker's shade under the card
 	BUTTON_H = 60,
 	CLOSE = 56,
 	SHORT = 500, -- a screen lower than this keeps the card up at the top, clear of the jump button
@@ -69,15 +76,41 @@ local K = {
 	XP_SECONDS = 0.9,
 }
 
--- (kit-b U9-6) the Cloud Shop Signboard: brown ink on the cream sign, the pets in their wells, the XP bar a grass fill in a well
+-- (kit-b U9-6) the Cloud Shop Signboard: brown ink on the cream sign, the pets in their wells; (LOOK-ui2) the XP a row of kit
+-- blocks in XP's one role colour, sky (as Pets and Feed; it was grass here)
 local SIGN = Theme.Sign
 local INK = SIGN.Text
 local MUTED = SIGN.TextMuted
 local LIP = SIGN.Red -- the card's lip: a loss
-local LIFT = Theme.Darken(SIGN.GrassLip, 0.35) -- "L1 -> L3": the levels gained (a deep grass that reads on the pet well)
-local BAR_BACK = SIGN.Well
-local BAR_FILL = SIGN.Grass
+local LIFT = SIGN.Good or Theme.Darken(SIGN.GrassLip, 0.35) -- "L1 -> L3": the levels gained (kit B's good ink, as Care and Train)
+local XP_FILL, XP_LIP = SIGN.Sky, SIGN.SkyLip
 local ROW_BACK = SIGN.PetWell
+
+-- (LOOK-ui2) a reward line's pixel icon (the dock family's fact tag: the Dungeon End card's chips), by what it pays
+local REWARD_ICONS = {
+	{ "Tokens", Config.Icons and Config.Icons.Tokens or "token" }, { "Gems", "gem" }, { "Cash", Config.Icons and Config.Icons.Cash or "note" },
+	{ "Trophies", "trophy" }, { "Pet XP", "up" }, { "Rounds won", "crown" }, { "Best", "star" }, { "Floor", "key" },
+}
+local function rewardIcon(line)
+	line = tostring(line or "")
+	for _, pair in ipairs(REWARD_ICONS) do
+		if line:find(pair[1], 1, true) then
+			return pair[2]
+		end
+	end
+	return nil
+end
+
+-- (LOOK-ui2) a rough drawn width (FredokaOne: 0.72 em a capital, 0.58 any other letter or digit, 0.3 a space), or
+-- Theme.Measure's when it is wider
+local function drawnW(value, role, px)
+	local est = 0
+	for ch in tostring(value):gmatch(".") do
+		est = est + ((ch == " ") and 0.3 or (ch:match("%u") and 0.72 or 0.58))
+	end
+	local okM, size = pcall(Theme.Measure, tostring(value), role, px)
+	return math.ceil(math.max(est * px, (okM and typeof(size) == "Vector2") and size.X or 0))
+end
 
 local LocalPlayer = Players.LocalPlayer
 local IN_BATTLE = (Config.Attr and Config.Attr.InBattle) or "InBattle"
@@ -141,17 +174,6 @@ local function edge(obj, color, thickness)
 	return Util.Create("UIStroke", { Name = "SignEdge", ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Miter, Color = color, Thickness = thickness, Parent = obj })
 end
 
--- a run line's colour where it reads on the cream sign (4.5:1), else the brown ink
-local function lineInk(color)
-	if typeof(color) == "Color3" then
-		local ok, ratio = pcall(Theme.Contrast, color, SIGN.Tile)
-		if ok and tonumber(ratio) and ratio >= 4.5 then
-			return color
-		end
-	end
-	return INK
-end
-
 ----------------------------------------------------------------------
 -- Layout: one UIScale fits the card inside the screen, under the top bar
 ----------------------------------------------------------------------
@@ -193,12 +215,12 @@ local function layout()
 		end
 		row.Root.Size = UDim2.fromOffset(rowW, rowH)
 		if row.Gained then
-			row.Levels.TextSize = rowW < K.ROW_W_SHORT and K.LEVELS_SHORT or 26
+			row.PlaceLift(rowW < K.ROW_W_SHORT and K.LEVELS_SHORT or 26)
 		end
 	end
 	y = y + (tall and (n * (rowH + K.ROW_GAP)) or (rowH + K.ROW_GAP))
 
-	-- the run's lines: one row, two columns on a portrait phone
+	-- the run's rewards (LOOK-ui2: were three bare text lines): fact tags as wide as their words, 6 px apart, in rows
 	local lines = {}
 	for _, c in ipairs(U.Lines:GetChildren()) do
 		if c:IsA("TextLabel") then
@@ -208,13 +230,17 @@ local function layout()
 	table.sort(lines, function(a, b)
 		return a.LayoutOrder < b.LayoutOrder
 	end)
-	local cols = tall and 2 or math.max(1, #lines)
-	local cellW = math.floor(inner / cols)
-	for i, label in ipairs(lines) do
-		label.Position = UDim2.fromOffset(((i - 1) % cols) * cellW + 4, math.floor((i - 1) / cols) * K.LINE_H)
-		label.Size = UDim2.fromOffset(cellW - 8, K.LINE_H)
+	local lx, lineRows = 0, (#lines > 0) and 1 or 0
+	for _, label in ipairs(lines) do
+		local pad = label:FindFirstChildOfClass("UIPadding")
+		local tw = math.min(inner, drawnW(label.Text, "Heading", label.TextSize) + (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 20) + 4)
+		if lx > 0 and lx + tw > inner then
+			lx, lineRows = 0, lineRows + 1
+		end
+		label.Position = UDim2.fromOffset(lx, (lineRows - 1) * K.LINE_H + math.floor((K.LINE_H - K.TAG_H) / 2))
+		label.Size = UDim2.fromOffset(tw, K.TAG_H)
+		lx = lx + tw + 6
 	end
-	local lineRows = math.ceil(#lines / cols)
 	U.Lines.Position = UDim2.fromOffset(K.PAD, y)
 	U.Lines.Size = UDim2.fromOffset(inner, lineRows * K.LINE_H)
 	y = y + lineRows * K.LINE_H + K.ROW_GAP
@@ -251,6 +277,10 @@ local function layout()
 	U.EditTeam.Position = again and UDim2.fromOffset(K.PAD + half + K.ROW_GAP, buttonsY) or UDim2.fromOffset(K.PAD, buttonsY)
 	U.EditTeam.Size = again and UDim2.fromOffset(half, K.BUTTON_H) or UDim2.fromOffset(buttonsW, K.BUTTON_H)
 
+	-- (LOOK-ui2: the HUD stayed live round the card: the wallet pills, half of DASH, the Index tile cut by its edge) the
+	-- PetPicker's shade dims everything under the top bar while the card is up
+	U.Shade.Position = UDim2.fromOffset(0, inset)
+	U.Shade.Size = UDim2.fromOffset(vp.X, math.max(0, vp.Y - inset))
 	U.Card.Root.AnchorPoint = Vector2.new(0.5, 0.5)
 	local h = y * U.Fit.Scale
 	local free = vp.Y - inset - h
@@ -301,27 +331,72 @@ local function petRow(i, entry)
 		Position = UDim2.fromOffset(x, 8),
 		Size = UDim2.new(1, -x - 6, 0, 26),
 	})
-	local levels = text(root, "Levels", gained and ("L" .. before .. " -> L" .. after) or ("L" .. after), "Heading", gained and 26 or 24, gained and LIFT or INK, {
-		Position = UDim2.fromOffset(x, 36),
-		Size = UDim2.new(1, -x - 6, 0, 36),
+	-- (LOOK-ui2: "L18 -> L20" with an ASCII arrow) the levels gained: "L18", the kit's pixel arrow, "L20" (Lift, which pops),
+	-- and a gold pixel sparkle in the row's corner; no level-up: "L18" and the XP as ten sky kit blocks
+	local lift = Instance.new("Frame")
+	lift.Name = "Lift"
+	lift.BackgroundTransparency = 1
+	lift.BorderSizePixel = 0
+	lift.Position = UDim2.fromOffset(x, 36)
+	lift.Size = UDim2.new(1, -x - 6, 0, 36)
+	lift.Parent = root
+	local pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = lift })
+	local levels = text(lift, "Levels", "L" .. (gained and before or after), "Heading", gained and 26 or 24, gained and LIFT or INK, {
+		Size = UDim2.new(1, 0, 1, 0),
+		TextTruncate = Enum.TextTruncate.None,
 	})
-	local pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = levels })
-	local bar = Instance.new("Frame")
-	bar.Name = "XpBar"
-	bar.BackgroundColor3 = BAR_BACK
-	bar.BorderSizePixel = 0
-	bar.Position = UDim2.fromOffset(x, 76)
-	bar.Size = UDim2.new(1, -x - 10, 0, 12)
-	bar.Visible = not gained
-	bar.Parent = root
-	edge(bar, SIGN.WellEdge, 1)
-	local fill = Instance.new("Frame")
-	fill.Name = "Fill"
-	fill.BackgroundColor3 = BAR_FILL
-	fill.BorderSizePixel = 0
-	fill.Size = UDim2.fromScale(math.max(0, math.min(1, tonumber(entry.XpBefore) or 0)), 1)
-	fill.Parent = bar
-	return { Root = root, Handle = handle, Gained = gained, Levels = levels, Pop = pop, Fill = fill, To = math.max(0, math.min(1, tonumber(entry.XpFrac) or 0)) }
+	local out = { Root = root, Handle = handle, Gained = gained, Levels = levels, Pop = pop, To = math.max(0, math.min(1, tonumber(entry.XpFrac) or 0)) }
+	if gained then
+		local to = text(lift, "LevelTo", "L" .. after, "Heading", 26, LIFT, { TextTruncate = Enum.TextTruncate.None })
+		local arrow = PixelIcon.New(lift, "arrow", 18, LIFT)
+		arrow.Name = "Arrow"
+		out.LevelTo, out.Arrow = to, arrow
+		-- the line's parts side by side at `px`: the arrow 6 px off each number, centred on the line
+		function out.PlaceLift(px)
+			levels.TextSize, to.TextSize = px, px
+			local w1 = drawnW(levels.Text, "Heading", px) + 2
+			local w2 = drawnW(to.Text, "Heading", px) + 2
+			levels.Size = UDim2.new(0, w1, 1, 0)
+			arrow.AnchorPoint = Vector2.new(0, 0.5)
+			arrow.Position = UDim2.new(0, w1 + 6, 0.5, 0)
+			to.Position = UDim2.fromOffset(w1 + 6 + 18 + 6, 0)
+			to.Size = UDim2.new(0, w2, 1, 0)
+		end
+		out.PlaceLift(26)
+		local spark = PixelIcon.New(root, "sparkle", 18, SIGN.Gold)
+		spark.Name = "Sparkle"
+		spark.AnchorPoint = Vector2.new(1, 0)
+		spark.Position = UDim2.new(1, -6, 0, 6)
+	else
+		out.Bar = SignKit.FitBlocks(root, { Name = "XpBar", Count = K.XP_BLOCKS, Gap = 2, EdgePx = 2, LipPx = 3, Fill = XP_FILL, FillLip = XP_LIP,
+			Position = UDim2.fromOffset(x, 76), Size = UDim2.new(1, -x - 10, 0, 14) })
+		SignKit.FillBlocks(out.Bar, math.floor(math.max(0, math.min(1, tonumber(entry.XpBefore) or 0)) * K.XP_BLOCKS + 1e-6))
+	end
+	return out
+end
+
+-- (LOOK-ui2) the XP row lights block by block from what it held to where it ends, over K.XP_SECONDS
+local function xpTo(row, token)
+	local bar = row.Bar
+	if not bar then
+		return
+	end
+	local from = bar:GetAttribute("Filled") or 0
+	local to = math.floor(row.To * K.XP_BLOCKS + 1e-6)
+	if to <= from then
+		SignKit.FillBlocks(bar, to)
+		return
+	end
+	local step = K.XP_SECONDS / (to - from)
+	task.spawn(function()
+		for k = from + 1, to do
+			task.wait(step)
+			if token ~= S.Token or not bar.Parent then
+				return
+			end
+			SignKit.FillBlocks(bar, k)
+		end
+	end)
 end
 
 local function moment(token)
@@ -331,7 +406,7 @@ local function moment(token)
 			any = true
 			row.Pop.Scale = 0.4
 		else
-			TweenService:Create(row.Fill, TweenInfo.new(K.XP_SECONDS, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromScale(row.To, 1) }):Play()
+			xpTo(row, token)
 		end
 	end
 	if not any then
@@ -426,9 +501,19 @@ local function build()
 		return false
 	end
 	gui.IgnoreGuiInset = true
+	-- (LOOK-ui2: under the card's Fit of 0.8 a 2 px edge drew 1.6 screen px, a 8 px lip 6.4) every wood edge and lip of the
+	-- card, now and as rows are added, on whole screen px (PixelIcon.WholeTree, kitb-look1's one helper)
+	PixelIcon.WholeTree(gui)
 	gui.Enabled = false
+	-- (LOOK-ui2) the shade under the card (the PetPicker's: kit B's navy lip, see-through); an Active frame, not a button, so
+	-- it takes the HUD's taps but never sits as a control under Roblox's thumbstick or jump button
+	local shade = Util.Create("Frame", {
+		Name = "Shade", BorderSizePixel = 0, Active = true, BackgroundColor3 = SIGN.NavyLip, BackgroundTransparency = K.SHADE, Parent = gui,
+	})
 	local card = NeonKit.Card({ Name = "LossCard", Skin = "Sign", Size = UDim2.fromOffset(K.W_WIDE, 400), Color = LIP, LipPx = 8, Active = true, Parent = gui })
 	card.Root.Visible = false
+	card.Root.ZIndex = math.max(2, card.Root.ZIndex)
+	SignKit.Nails(card.Root, { Inset = 5, ZIndex = 3 }) -- (LOOK-ui2) nailed up like its sibling, the Dungeon End card
 	local fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = card.Root })
 	local body = card.Body
 	local lines = Instance.new("Frame")
@@ -438,6 +523,7 @@ local function build()
 	lines.Parent = body
 	U = {
 		Gui = gui,
+		Shade = shade,
 		Card = card,
 		Fit = fit,
 		-- (owner ruling 2026-11-14: a pop-up's title is kit B's plain Section title, the gold ribbon is for windows)
@@ -455,6 +541,7 @@ local function build()
 		EditTeam = CloudUI.Button({ Name = "EditTeam", Text = "Edit team", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(300, K.BUTTON_H), TextSize = 24, Parent = body, Callback = editTeam }),
 	}
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = INK }) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
+	NeonKit.CloseBlock(U.Close) -- (LOOK-ui2) one close for kit B: never under 44 screen px, its x in 3 px cells
 	local mouse = optional(Client, "MouseLock")
 	if mouse and type(mouse.WatchVisible) == "function" then
 		safe("mouse", mouse.WatchVisible, "LossScreen", card.Root) -- the cursor is free while the card shows
@@ -488,7 +575,15 @@ local function fill(payload)
 		end
 	end
 	for i, line in ipairs(type(payload.Lines) == "table" and payload.Lines or {}) do
-		text(U.Lines, "Line" .. i, line[1], "Body", 18, lineInk(line[2]), { LayoutOrder = i })
+		-- (LOOK-ui2) the dock family's fact tag: stone in a 2 px wood edge, the pixel icon before the words in the ink
+		local tag = text(U.Lines, "Line" .. i, line[1], "Heading", 18, INK, { LayoutOrder = i, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile,
+			TextXAlignment = Enum.TextXAlignment.Center })
+		edge(tag, SIGN.Wood, 2)
+		Util.Create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = tag })
+		local icon = rewardIcon(line[1])
+		if icon then
+			PixelIcon.Lead(tag, icon)
+		end
 	end
 	clearRows()
 	for i, entry in ipairs(type(payload.Pets) == "table" and payload.Pets or {}) do
@@ -535,7 +630,9 @@ function LossScreen.Reopen()
 	end
 	present(payload)
 	for _, row in ipairs(S.Rows) do
-		row.Fill.Size = UDim2.fromScale(row.To, 1)
+		if row.Bar then
+			SignKit.FillBlocks(row.Bar, math.floor(row.To * K.XP_BLOCKS + 1e-6))
+		end
 	end
 end
 

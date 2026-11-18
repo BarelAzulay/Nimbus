@@ -445,7 +445,10 @@ CloudUI.SignLooks = {
 }
 -- a CloudUI.Button style -> its kit B role
 CloudUI.SignRole = { Green = "Primary", Gold = "Selected", Red = "Danger", Pink = "Danger", Blue = "Stone", Gray = "Stone" }
-CloudUI.SignMetrics = { Edge = 3, Lip = 5, PressLip = 2 }
+-- (LOOK-ui, kitb-look1: two plank weights in one kit) one token with SignKit's planks (the Settings window, the main
+-- menu, the loading board) and the pitch's .bk: a 5 px edge and an 8 px lip at 1080p, 4 + 6 at the 0.8 Fit (was 3 / 5:
+-- 2 + 4, half as heavy beside them). Chips, key caps and bar blocks under 30 px keep SignKit's BlockEdge / BlockLip
+CloudUI.SignMetrics = { Edge = SignKit.Sizes.Edge, Lip = SignKit.Sizes.Lip, PressLip = SignKit.Sizes.PressLip }
 local SM = CloudUI.SignMetrics
 
 local function signLook(look)
@@ -1100,14 +1103,112 @@ end
 ----------------------------------------------------------------------
 -- Bar
 ----------------------------------------------------------------------
--- props: Size, Color, Label, Parent, Height, Position, AnchorPoint, Name, LayoutOrder, TextSize, Skin ("Sign", kit-b U8: a
---        flat well track in a wood edge, a flat fill with its darker lip, square, no gloss)
+-- (LOOK-ui, kitb-look1: the owner's look bar, every bar in the pixel block-bar language) the Sign skin is a block bar: a
+-- SignKit.FitBlocks row filling the bar's box (props.Blocks blocks, default 10: wood edges, stone faces, the darker lip),
+-- the first ones lit in the role colour with that role's lip token (Theme.SignLipOf: the XP's sky on Sign.SkyLip, the
+-- Prestige's gold on Sign.GoldLip; was a continuous fill whose lip was the colour darkened), the label over it in the
+-- ink. No well, no gradient, no tween (the blocks step)
+local function signBar(props)
+	local height = props.Height or 24
+	local color = props.Color or SIGN.Sky
+	local count = math.max(2, math.floor(tonumber(props.Blocks) or 10))
+	local fraction = 1
+	local root = frame(props.Name or "CloudBar", {
+		Size = props.Size or UDim2.new(1, 0, 0, height),
+		Position = props.Position or UDim2.new(),
+		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
+		LayoutOrder = props.LayoutOrder or 0,
+	})
+	root:SetAttribute("BlockBar", true)
+	local row = SignKit.FitBlocks(root, {
+		Name = "Blocks",
+		Count = count,
+		Size = UDim2.fromScale(1, 1),
+		Fill = color,
+		FillLip = Theme.SignLipOf(color),
+		EdgePx = 2,
+		LipPx = 3,
+	})
+	local textSize = props.TextSize or Util.Clamp(math.floor(height * 0.66 + 0.5), 15, 26)
+	-- props.LabelSide "Right" (the pitch's XP line: the number beside its bar, no glyph across a block's edge): the label
+	-- after the blocks, the row giving up its width; default "Over", centred on the faces over the lips
+	local right = props.LabelSide == "Right"
+	local label = Theme.Label(props.Label or "", "Heading", {
+		Size = textSize,
+		Color = SIGN.Text,
+		Props = {
+			Name = "Text",
+			AnchorPoint = right and Vector2.new(1, 0) or Vector2.new(0, 0),
+			Position = right and UDim2.fromScale(1, 0) or UDim2.new(),
+			Size = UDim2.new(1, 0, 1, -2),
+			ZIndex = 3,
+			TextXAlignment = right and Enum.TextXAlignment.Right or Enum.TextXAlignment.Center,
+		},
+	})
+	label.Parent = root
+	-- the label sizes itself to its drawn text (AutomaticSize; Theme.Measure runs short of FredokaOne), the row takes the
+	-- rest less 10 px; a first guess from the measure until the label has laid out
+	local function rowFor(w)
+		row.Size = UDim2.new(1, -(math.ceil(w) + 10), 1, 0)
+	end
+	local function fitLabel()
+		if not right then
+			return
+		end
+		local ok, m = pcall(Theme.Measure, label.Text, "Heading", label.TextSize)
+		rowFor((ok and typeof(m) == "Vector2" and m.X > 0) and m.X * 1.15 + 2 or #label.Text * label.TextSize * 0.6)
+	end
+	if right then
+		label.AutomaticSize = Enum.AutomaticSize.X
+		label.Size = UDim2.new(0, 0, 1, -2)
+		label:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			local s = PixelIcon.RestScale(label)
+			if s > 0 and label.AbsoluteSize.X > 0 then
+				rowFor(label.AbsoluteSize.X / s)
+			end
+		end)
+	end
+	local bar = { Root = root, Fill = row, Row = row, Label = label }
+	local function paint()
+		SignKit.FillBlocks(row, math.floor(fraction * count + 1e-6))
+	end
+	function bar.SetFraction(value)
+		fraction = Util.Clamp(tonumber(value) or 0, 0, 1)
+		root:SetAttribute("Fraction", fraction)
+		paint()
+	end
+	function bar.GetFraction()
+		return fraction
+	end
+	function bar.SetText(text)
+		label.Text = tostring(text or "")
+		fitLabel()
+	end
+	function bar.SetColor(newColor)
+		if typeof(newColor) ~= "Color3" then
+			return
+		end
+		color = newColor
+		SignKit.SetBlockCount(row, count, color, Theme.SignLipOf(color))
+		paint()
+	end
+	label:GetPropertyChangedSignal("TextSize"):Connect(fitLabel)
+	fitLabel()
+	bar.SetFraction(1)
+	root.Parent = props.Parent
+	return bar
+end
+
+-- props: Size, Color, Label, Parent, Height, Position, AnchorPoint, Name, LayoutOrder, TextSize, Skin ("Sign": the block
+--        bar above), Blocks (Sign: the block count)
 function CloudUI.Bar(props)
 	props = props or {}
+	if props.Skin == "Sign" then
+		return signBar(props)
+	end
 	local height = props.Height or 24
 	local color = props.Color or Colors.Health
 	local fraction = 1
-	local sign = props.Skin == "Sign"
 
 	local root = frame(props.Name or "CloudBar", {
 		BackgroundColor3 = WHITE,
@@ -1117,17 +1218,10 @@ function CloudUI.Bar(props)
 		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
 		LayoutOrder = props.LayoutOrder or 0,
 	})
-	-- v5: a dark ink track with a thin light rim (the fill carries the colour); kit B: the stone well in its wood edge
-	local trackStroke
-	if sign then
-		root.BackgroundColor3 = SIGN.Well
-		trackStroke = stroke(root, SIGN.Wood, 2, 0)
-		trackStroke.LineJoinMode = Enum.LineJoinMode.Miter
-	else
-		round(root)
-		trackStroke = stroke(root, Theme.Lighten(PANEL_TOP, 0.12), 2.5, 0)
-		gradient(root, ColorSequence.new(INK, PANEL_TOP), 90)
-	end
+	-- v5: a dark ink track with a thin light rim (the fill carries the colour)
+	round(root)
+	local trackStroke = stroke(root, Theme.Lighten(PANEL_TOP, 0.12), 2.5, 0)
+	gradient(root, ColorSequence.new(INK, PANEL_TOP), 90)
 
 	local inner = frame("Inner", {
 		Position = UDim2.new(0, 3, 0, 3),
@@ -1140,38 +1234,22 @@ function CloudUI.Bar(props)
 		Size = UDim2.new(1, 0, 1, 0),
 	}, inner)
 	local function fillSequence(c)
-		if sign then
-			return ColorSequence.new(c)
-		end
 		return ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Theme.Lighten(c, 0.34)),
 			ColorSequenceKeypoint.new(0.5, c),
 			ColorSequenceKeypoint.new(1, Theme.Darken(c, 0.16)),
 		})
 	end
-	local fillGradient, fillLip = nil, nil
-	if sign then
-		-- the flat fill and its darker lip (the pitch's .hp i: an inset bottom band)
-		fill.BackgroundColor3 = color
-		fillLip = frame("Lip", {
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.new(0, 0, 1, 0),
-			Size = UDim2.new(1, 0, 0.3, 0),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Theme.Darken(color, 0.22),
-		}, fill)
-	else
-		round(fill)
-		fillGradient = gradient(fill, fillSequence(color), 90)
-		addShine(fill, 0.34, 6, 0.7)
-	end
+	round(fill)
+	local fillGradient = gradient(fill, fillSequence(color), 90)
+	addShine(fill, 0.34, 6, 0.7)
 
 	-- kit B (no outline on a surface): the label reads by the colour of what lies under it, and the fill moves under a
 	-- centred label. So it is drawn twice, each copy clipped to one stretch of the bar: dark ink over the bright fill
 	-- (Theme.TextOn of its gradient), white over the dark track. Both copies are named "Text"; bar.Label is the fill's.
 	local textSize = props.TextSize or Util.Clamp(math.floor(height * 0.66 + 0.5), 15, 26)
 	local copies = {}
-	for _, spec in ipairs({ { "TextFill", Theme.TextOn(fillSequence(color)) }, { "TextTrack", sign and Theme.TextOn("Well") or WHITE } }) do
+	for _, spec in ipairs({ { "TextFill", Theme.TextOn(fillSequence(color)) }, { "TextTrack", WHITE } }) do
 		local clip = frame(spec[1], {
 			ClipsDescendants = true,
 			Size = UDim2.new(1, 0, 1, 0),
@@ -1246,12 +1324,7 @@ function CloudUI.Bar(props)
 			return
 		end
 		color = newColor
-		if sign then
-			fill.BackgroundColor3 = color
-			fillLip.BackgroundColor3 = Theme.Darken(color, 0.22)
-		else
-			fillGradient.Color = fillSequence(color)
-		end
+		fillGradient.Color = fillSequence(color)
 		label.TextColor3 = Theme.TextOn(fillSequence(color))
 	end
 	bar.TrackStroke = trackStroke

@@ -181,6 +181,19 @@ end
 
 -- The screen-height factor of the readability rule: clamp(viewportY / 1080, 0.8, 1.25).
 -- `height` (optional) overrides the measured viewport height. On the server (no screen) it is 1.
+-- (LOOK-ui, kitb-look1: shared token for the merge) n design px under a UIScale of `scale`, rounded to a whole number of
+-- screen px (at least one while n > 0) and given back in design px: the kit B pixel grid at every screen size (a 2 px edge
+-- under 0.8 is 2.5 design px = 2 screen px, not 1.6). The same rule as PixelIcon.Px (PixelIcon.Whole keeps a part on it
+-- when the scale changes)
+function Theme.Px(n, scale)
+	n = tonumber(n) or 0
+	scale = tonumber(scale) or 1
+	if n <= 0 or scale <= 0 then
+		return n
+	end
+	return math.max(1, math.floor(n * scale + 0.5)) / scale
+end
+
 function Theme.ScreenFactor(height)
 	local r = Theme.Readability
 	local h = tonumber(height)
@@ -411,7 +424,29 @@ Theme.Sign = {
 	Canvas = rgb(243, 230, 200), -- #F3E6C8 (the canopy's weathered cream stripes)
 	CloudShade = rgb(221, 230, 247), -- #DDE6F7 (the logo's cream letters, lower band)
 	CloudSide = rgb(201, 214, 238), -- #C9D6EE (their block side)
+	-- (LOOK-ui2, kitb-look2: "good" was #2E7D32 in Care / Train and #2E6B3F on the Loss card) a gain / ready line's ink on
+	-- stone (5.1:1 on Stone, 5.5:1 on Tile)
+	Good = rgb(46, 125, 50), -- #2E7D32
 }
+
+-- (LOOK-ui, kitb-look1: a lip from a token, never Darken(colour)) the kit's lip token under a role face: gold, sky,
+-- grass, red, violet, the roof's pink, stone (tile / stone / selected), navy; another colour gets its darker shade
+local SIGN_LIPS = {
+	{ "Gold", "GoldLip" }, { "Sky", "SkyLip" }, { "Grass", "GrassLip" }, { "Red", "RedLip" }, { "Violet", "VioletLip" },
+	{ "Roof", "RoofLip" }, { "Tile", "StoneLip" }, { "Stone", "StoneLip" }, { "Selected", "GoldLip" }, { "Navy", "NavyLip" },
+}
+function Theme.SignLipOf(face)
+	if typeof(face) ~= "Color3" then
+		return Theme.Sign.StoneLip
+	end
+	for _, pair in ipairs(SIGN_LIPS) do
+		local c = Theme.Sign[pair[1]]
+		if math.abs(c.R - face.R) < 0.004 and math.abs(c.G - face.G) < 0.004 and math.abs(c.B - face.B) < 0.004 then
+			return Theme.Sign[pair[2]]
+		end
+	end
+	return Theme.Darken(face, 0.22)
+end
 
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
 -- largest token is small. U6 moved the literal radii of the files it swept to these (tools/check.mjs RADIUS_SWEPT,

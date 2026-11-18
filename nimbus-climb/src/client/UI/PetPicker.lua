@@ -427,6 +427,9 @@ function H.ensureGui()
 	end
 	U.Gui = CloudUI.NewScreenGui("NimbusPetPicker", K.DISPLAY_ORDER)
 	U.Gui.IgnoreGuiInset = true
+	-- (LOOK-ui2: under the window's Fit of 0.8 a 2 px edge drew 1.6 screen px, a 8 px lip 6.4) every wood edge and lip of the
+	-- window, now and as rows are added, on whole screen px (PixelIcon.WholeTree, kitb-look1's one helper)
+	PixelIcon.WholeTree(U.Gui)
 	S.Built = false
 	U.Cards, U.Chips, U.Views = {}, {}, {}
 	if not S.Hooked then
