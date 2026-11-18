@@ -807,7 +807,8 @@ local function serverScenarios()
 		end
 		-- (U7b review) PixelIcon may require Theme too, but only inside a function (Lead measuring a server-built sign's
 		-- text): at load it still requires nothing, so the loading screen can draw icons before Theme arrives
-		for name, allowed in pairs({ SignKit = { Theme = true }, PixelIcon = { Theme = true } }) do
+		-- (LOOK-ui) SignKit may require PixelIcon too (its whole-px edges and lips): PixelIcon requires nothing at load
+		for name, allowed in pairs({ SignKit = { Theme = true, PixelIcon = true }, PixelIcon = { Theme = true } }) do
 			local src = code(name)
 			T.check(src ~= "", "shared only: " .. name .. " has source")
 			local bad = {}
@@ -1193,6 +1194,8 @@ local function serverScenarios()
 			root.Size = UDim2.fromOffset(400, 400)
 			local ui = Instance.new("UIScale")
 			ui.Scale = sc
+			-- (LOOK-ui) a window's Fit is a rest scale (the gap is 6 screen px under it); a token pop (about 1.7) is transient
+			ui.Name = sc == 1.7 and "Pop" or "Fit"
 			ui.Parent = root
 			root.Parent = gui
 			-- the mock's TextBounds scales like Roblox's
@@ -1214,8 +1217,11 @@ local function serverScenarios()
 				label.TextXAlignment = align
 				label.Parent = root
 				local box = PI.Lead(label, "token", { After = after })
-				local px = PI.Snap(18)
-				local gap = math.max(3, math.floor(px / 4)) * sc
+				-- (LOOK-ui, kitb-look1) a whole 6 screen px under the rest scale (scaled by a transient pop)
+				local gap = 6 / PI.RestScale(label) * sc
+				T.check(math.abs(box.AbsoluteSize.X - 9 * PI.Px(2, PI.RestScale(label)) * sc) < 0.01,
+					fmt("pixelicon lead: UIScale %.2f, %s, %s: the box is the icon's whole-px cells wide", sc, align.Name, after and "after" or "before"),
+					fmt("%.2f px", box.AbsoluteSize.X))
 				local pad = label:FindFirstChildOfClass("UIPadding")
 				local ap, as = label.AbsolutePosition, label.AbsoluteSize
 				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0) * sc
@@ -1281,8 +1287,7 @@ local function serverScenarios()
 			Mock.TextExtent = realExtent
 			local tag = fmt("pixelicon lead, server: %s, %s%s", align.Name, after and "after" or "before", auto and ", auto-sized" or "")
 			if T.check(ok and box ~= nil, tag .. ": Lead draws with TextBounds at 0", tostring(box)) then
-				local px = PI.Snap(22 * 0.9)
-				local gap = math.max(3, math.floor(px / 4))
+				local gap = 6 -- (LOOK-ui) a whole 6 px (no scale on a world sign)
 				local pad = label:FindFirstChildOfClass("UIPadding")
 				local ap, as = label.AbsolutePosition, label.AbsoluteSize
 				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0)
@@ -2493,7 +2498,9 @@ local function clientScenarios()
 				if c:IsA("UICorner") then
 					f[#f + 1] = fmt("radius %s,%d", num(c.CornerRadius.Scale), c.CornerRadius.Offset)
 				elseif c:IsA("UIStroke") then
-					f[#f + 1] = fmt("%s %s %s %s %s", hex(c.Color), num(c.Thickness), tostring(c.ApplyStrokeMode), tostring(c.LineJoinMode), fmt("%.2f", c.Transparency))
+					-- (LOOK-ui) a kit edge is drawn a whole number of screen px (PixelIcon.WholeStroke: its Thickness the snapped design
+					-- px under the window's scale): the approved tree holds its design px, kept as attribute DesignPx
+					f[#f + 1] = fmt("%s %s %s %s %s", hex(c.Color), num(c:GetAttribute("DesignPx") or c.Thickness), tostring(c.ApplyStrokeMode), tostring(c.LineJoinMode), fmt("%.2f", c.Transparency))
 				elseif c:IsA("UIGradient") then
 					local keys = {}
 					for _, k in ipairs(c.Color.Keypoints) do
@@ -5937,11 +5944,64 @@ local function clientScenarios()
 				end
 				-- the detail's stars (K1 is evolved twice) inside its line and its panel
 				local detail = holder:FindFirstChild("Detail", true) or holder:FindFirstChild("Sheet", true)
-				local meta = detail and detail:FindFirstChild("Meta")
+				local meta = detail and detail:FindFirstChild("Meta", true) -- (LOOK-ui: in the detail's MetaRow)
 				local stars = meta and meta:FindFirstChild("TrailIcon")
 				if T.check(stars ~= nil, tag .. ": the detail shows the evolution stars after its line") then
 					local r, m, d = U8.rect(stars), U8.rect(meta), U8.rect(detail)
 					T.check(r.R <= m.R + 0.5 and r.R <= d.R + 0.5, tag .. ": ...inside the line's box and the detail panel", fmt("stars %s, line %s, panel %s", U8.show(r), U8.show(m), U8.show(d)))
+				end
+				-- (LOOK-ui, kitb-look1: at 1280x720 the element chip ran 28 px past the panel) every chip of the meta row inside
+				-- the row and the detail panel, and the row's chips as tall as its box at most
+				local row = meta and meta.Parent
+				if detail and row and row.Name == "MetaRow" and U8.shown(row) then
+					local out, rr, dr = {}, U8.rect(row), U8.rect(detail)
+					for _, c in ipairs(row:GetChildren()) do
+						if c:IsA("GuiObject") and U8.shown(c) then
+							local cr = U8.rect(c)
+							if cr.R > rr.R + 0.5 or cr.R > dr.R + 0.5 or cr.B > rr.B + 0.5 then
+								out[#out + 1] = c.Name .. " " .. U8.show(cr)
+							end
+						end
+					end
+					T.check(#out == 0, tag .. ": the detail's level line and its chips sit inside the row and the panel", table.concat(out, ", ") .. " | row " .. U8.show(rr))
+				end
+				-- (LOOK-ui, kitb-look1: the blocker "Battle powe13,213") a stat tile's name never runs into its number (pinned with
+				-- a five-digit power): on PC the name sits over the number (the pitch's two-line .sv), on a phone it stops 4 px or
+				-- more before it; and the tile's icon square holds its whole icon (sized from the icon's whole-px cells)
+				local Th = LoadingH.shared("Theme")
+				for _, id in ipairs({ "Income", "Power", "Health", "Speed" }) do
+					local tile = detail and detail:FindFirstChild("Row_" .. id, true)
+					local label, value = tile and tile:FindFirstChild("Label"), tile and tile:FindFirstChild("Value")
+					if tile and label and value and U8.shown(tile) then
+						if id == "Power" then
+							value.Text = "37,922"
+							LKC.advance(0.05)
+						end
+						local lr, vr = U8.rect(label), U8.rect(value)
+						local s = U8.scaleOf(label)
+						local lw = math.min(Th.MeasureLabel(label).X * s, lr.R - lr.X)
+						local vw = Th.MeasureLabel(value).X * s
+						local vStart = value.TextXAlignment == Enum.TextXAlignment.Right and vr.R - vw or vr.X
+						local sameLine = lr.Y < vr.B - 0.5 and vr.Y < lr.B - 0.5
+						T.check(not sameLine or lr.X + lw <= vStart - 4, fmt("%s: the %s tile's name (\"%s\") stays clear of its number (\"%s\")", tag, id, label.Text, value.Text),
+							fmt("name ends %.1f, number starts %.1f", lr.X + lw, vStart))
+						if not phone then
+							T.check(lr.B <= vr.Y + 0.5, fmt("%s: the %s tile reads on two lines, the name over the number (the pitch's .sv)", tag, id), U8.show(lr) .. " / " .. U8.show(vr))
+						end
+						local chip = tile:FindFirstChild("Chip")
+						local cr = chip and U8.rect(chip)
+						local spill = nil
+						for _, cell in ipairs(chip and chip:GetDescendants() or {}) do
+							if cell:IsA("Frame") and cell.Name:match("^R%d+$") then
+								local q = U8.rect(cell)
+								if q.X < cr.X - 0.01 or q.Y < cr.Y - 0.01 or q.R > cr.R + 0.01 or q.B > cr.B + 0.01 then
+									spill = U8.show(q) .. " outside " .. U8.show(cr)
+									break
+								end
+							end
+						end
+						T.check(chip ~= nil and spill == nil, fmt("%s: the %s tile's icon square holds its whole icon", tag, id), spill or "")
+					end
 				end
 				PC.Close(true)
 			end)
@@ -6164,9 +6224,8 @@ local function clientScenarios()
 			return false
 		end
 		-- (U9-2) the Shop's illustrations are art, not panels: the gumball machines (attribute Art) and the EggArt eggs
-		-- (attributes Form + Rarity) keep their glass sheen and egg tones; a scroll row's edge "Fade" is a flat colour fading
-		-- out (no gloss)
-		ALLOWED.Fade = true
+		-- (attributes Form + Rarity) keep their glass sheen and egg tones. (LOOK-ui, kitb-look1) a scroll row's edge "Fade" no
+		-- longer fades: it holds CloudUI.MoreMark, so no gradient is allowed for it
 		local function inArt(d)
 			local cur = d.Parent
 			while cur and not cur:IsA("LayerCollector") do
@@ -6446,6 +6505,123 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("kitb_no_neon_glow")
+	end)
+
+	-- (LOOK-ui, kitb-look1: the owner's look bar "pixel edges snapped to whole pixels at every screen size") at 1920x1080,
+	-- 1280x720, 844x390 and 390x844, in the lobby HUD (strips, gift, tiles, vitals), the Pets window, the Index, the Home
+	-- window, the Shop on its tabs and the Stats window: every PixelIcon cell is a whole number of screen px wide and tall and
+	-- sits a whole number of px from its icon's other cells (one cell size, no lumpy 1-and-2 px cells), every kit lip (a
+	-- Frame "Lip" of a fixed height) is a whole number of px tall and every kit edge (UIStroke "SignEdge") a whole number of
+	-- px thick. A shown icon or edge under a transient pop is measured at rest (the pops rest at 1). Every shown scroll bar
+	-- there is the kit's one bar (SignKit.Scroll: wood, opaque, square ends, 8 px or a phone list's 6)
+	S.kitb_whole_pixels = guarded("kitb_whole_pixels", function()
+		local Menu = U7.client("Controllers/MenuController")
+		local PC = U7.client("Controllers/PetsController")
+		local Shop = U7.client("Controllers/ShopController")
+		local PI = LoadingH.shared("PixelIcon")
+		if not T.check(Menu and PC and Shop and PI and PI.RestScale, "whole pixels: the windows and PixelIcon.RestScale load") then
+			return
+		end
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) <= 0.02
+		end
+		local SK = LoadingH.shared("SignKit")
+		local Sign = LoadingH.shared("Theme").Sign
+		local function walk(root, family, bad, seen)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:IsA("ScrollingFrame") and d.ScrollBarThickness > 0 and U8.shown(d) then
+					seen.bars = seen.bars + 1
+					local t = d.ScrollBarThickness
+					if not (sameColor(d.ScrollBarImageColor3, Sign.Wood) and d.ScrollBarImageTransparency == 0 and d.TopImage == d.MidImage
+						and d.BottomImage == d.MidImage and (t == SK.Sizes.ScrollBar or t == SK.Sizes.ScrollBarPhone)) then
+						seen.badBars[#seen.badBars + 1] = fmt("%s: %s bar %d px %s @%.2f%s", family, d.Name, t, hex(d.ScrollBarImageColor3),
+							d.ScrollBarImageTransparency, d.TopImage == d.MidImage and "" or " round ends")
+					end
+				end
+				if d:IsA("GuiObject") and d.BorderSizePixel > 0 and d.BackgroundTransparency < 1 and U8.shown(d) then
+					-- (LOOK-ui) Roblox's default 1 px dark border round an opaque part: kit B draws edges with strokes only
+					seen.borders[#seen.borders + 1] = fmt("%s: %s", family, d:GetFullName():match("[^%.]+%.[^%.]+$") or d.Name)
+				end
+				if d:IsA("Frame") and d.Name == "CloseMark" and d:GetAttribute("PixelX") and U8.shown(d) then
+					-- (LOOK-ui) the pitch's .x block: red face, the red lip, the edge in the ink (not the wood)
+					seen.closes = seen.closes + 1
+					local b = d.Parent
+					local e, lip = b:FindFirstChild("SignEdge"), b:FindFirstChild("Lip")
+					if not (e and sameColor(e.Color, Sign.Text) and lip and sameColor(lip.BackgroundColor3, Sign.RedLip) and sameColor(b.BackgroundColor3, Sign.Red)) then
+						seen.badCloses[#seen.badCloses + 1] = fmt("%s: %s edge %s lip %s", family, b.Name, e and hex(e.Color) or "none", lip and hex(lip.BackgroundColor3) or "none")
+					end
+				end
+				if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) then
+					local first = nil
+					for _, cell in ipairs(d:GetChildren()) do
+						if cell:IsA("Frame") and cell.Name:match("^R%d+$") then -- PixelIcon.New's runs (a Lead box holds icons)
+							seen.cells = seen.cells + 1
+							local s, p = cell.AbsoluteSize, cell.AbsolutePosition
+							first = first or p
+							if not (whole(s.X) and whole(s.Y) and whole(p.X - first.X) and whole(p.Y - first.Y)) then
+								bad[#bad + 1] = fmt("%s: %s icon cell %.2fx%.2f", family, tostring(d:GetAttribute("PixelIcon")), s.X, s.Y)
+								break
+							end
+						end
+					end
+				elseif d:IsA("Frame") and d.Name == "Lip" and d.Size.Y.Scale == 0 and d.Size.Y.Offset > 0 and U8.shown(d) then
+					seen.lips = seen.lips + 1
+					if not whole(d.AbsoluteSize.Y) then
+						bad[#bad + 1] = fmt("%s: lip %.2f px on %s", family, d.AbsoluteSize.Y, d.Parent.Name)
+					end
+				elseif d:IsA("UIStroke") and d.Name == "SignEdge" and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) and d.Enabled ~= false then
+					seen.edges = seen.edges + 1
+					local px = d.Thickness * PI.RestScale(d.Parent)
+					if not whole(px) then
+						bad[#bad + 1] = fmt("%s: edge %.2f px on %s", family, px, d.Parent.Name)
+					end
+				end
+			end
+		end
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "whole pixels", function(tag)
+				local pg = U8.pg()
+				local bad, seen = {}, { cells = 0, lips = 0, edges = 0, bars = 0, badBars = {}, closes = 0, badCloses = {}, borders = {} }
+				walk(pg:FindFirstChild("NimbusHud"), "HUD", bad, seen)
+				local menu = pg:FindFirstChild("NimbusMenu")
+				walk(menu and menu:FindFirstChild("MenuColumn"), "HUD tiles", bad, seen)
+				local daily = pg:FindFirstChild("NimbusDaily")
+				walk(daily and daily:FindFirstChild("GiftsButton"), "HUD gift", bad, seen)
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1)
+				walk(pg:FindFirstChild("NimbusPets"), "Pets", bad, seen)
+				PC.Close(true)
+				LKC.advance(0.4)
+				for _, name in ipairs({ "Index", "Home" }) do
+					Menu.Open(name)
+					LKC.advance(1)
+					walk(name == "Index" and pg:FindFirstChild("NimbusIndex") or (menu and menu:FindFirstChild("Window_Home")), name, bad, seen)
+					pcall(Menu.Close)
+					LKC.advance(0.4)
+				end
+				for _, tab in ipairs({ "Eggs", "Gems", "Passes" }) do
+					Shop.Open({ Tab = tab })
+					LKC.advance(1)
+					walk(pg:FindFirstChild("NimbusShop"), "Shop " .. tab, bad, seen)
+				end
+				pcall(Shop.Close)
+				LKC.advance(0.4)
+				walk(U93.open(), "Stats", bad, seen)
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				T.check(seen.cells > 50 and seen.lips > 10 and seen.edges > 10, tag .. ": the walk met icons, lips and edges",
+					fmt("%d cells, %d lips, %d edges", seen.cells, seen.lips, seen.edges))
+				T.check(#bad == 0, fmt("%s: every pixel icon cell, kit lip and kit edge is a whole number of screen px (%d off)", tag, #bad),
+					table.concat(bad, "; ", 1, math.min(#bad, 14)))
+				T.check(seen.bars > 0 and #seen.badBars == 0, fmt("%s: every scroll bar is the kit's one bar (wood, opaque, square ends, %d / %d px; %d seen)",
+					tag, SK.Sizes.ScrollBar, SK.Sizes.ScrollBarPhone, seen.bars), table.concat(seen.badBars, "; ", 1, math.min(#seen.badBars, 10)))
+				T.check(#seen.borders == 0, fmt("%s: no opaque part keeps Roblox's 1 px default border (%d do)", tag, #seen.borders),
+					table.concat(seen.borders, "; ", 1, math.min(#seen.borders, 10)))
+				T.check(seen.closes >= 4 and #seen.badCloses == 0, fmt("%s: every close is the pitch's x block (red face and lip, the ink edge; %d seen)", tag, seen.closes),
+					table.concat(seen.badCloses, "; ", 1, math.min(#seen.badCloses, 8)))
+			end)
+		end
+		LKC.flushErrors("kitb_whole_pixels")
 	end)
 
 	-- (U9-5) the Care family fits a phone: at 844x390 and 390x844 (touch) every view of the family (U9.FAMILY) shows, and in
@@ -10623,6 +10799,122 @@ local function clientScenarios()
 			T.eq(GuiService.TouchControlsEnabled, before, fmt("trove phone %dx%d: the touch controls are as they were after Close", s[1], s[2]))
 		end
 		LKC.flushErrors("trove_fits_phone")
+	end)
+
+	-- (LOOK-ui, kitb-look1: the docked Index and Home windows cut the vitals card at 1080p and 720p and lay over the strips at
+	-- 720p) at the four grid sizes the open Index and Home windows, their awnings included, lie over no shown HUD part (a
+	-- shared edge of 4 px or less is a touch): the vitals card and the strips step aside only where the box meets them (at
+	-- 1920x1080 the strips stay, the window starts under them), and both are back after Close
+	S.kitb_windows_clear_of_hud = guarded("kitb_windows_clear_of_hud", function()
+		local Menu = U7.client("Controllers/MenuController")
+		if not T.check(Menu ~= nil, "windows clear of hud: MenuController loads") then
+			return
+		end
+		local function over4(a, b)
+			return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
+		end
+		-- (LOOK-ui, kitb-look1: the closes drew 35 to 47 px with 2 or 3 px cells by their window's Fit) the window's close is
+		-- the kit's one close block (NeonKit.CloseBlock): >= 44 screen px square, its x in 3 screen px cells
+		local function closeBlockOk(win, tag)
+			local close = nil
+			for _, d in ipairs(win:GetDescendants()) do
+				if d:IsA("GuiButton") and d:GetAttribute("CloseBlock") and U8.shown(d) then
+					close = d
+					break
+				end
+			end
+			if not T.check(close ~= nil, tag .. ": the window's close is the kit's close block (NeonKit.CloseBlock)") then
+				return
+			end
+			local r = U8.rect(close)
+			local mark = close:FindFirstChild("CloseMark")
+			local icon = mark and mark:FindFirstChild("Icon")
+			local cell = math.huge
+			for _, f in ipairs(icon and icon:GetChildren() or {}) do
+				if f:IsA("GuiObject") then
+					cell = math.min(cell, f.AbsoluteSize.X, f.AbsoluteSize.Y)
+				end
+			end
+			T.check(r.R - r.X >= 44 - 0.5 and r.B - r.Y >= 44 - 0.5 and math.abs(cell - 3) < 0.05,
+				tag .. ": the close block is >= 44 screen px with its x in 3 px cells", fmt("%.1f x %.1f, cell %.2f", r.R - r.X, r.B - r.Y, cell))
+		end
+		for _, s in ipairs(U8.SIZES) do
+			local docked = {}
+			for _, name in ipairs({ "Index", "Home", "Stats" }) do
+				local strips, vitals = nil, nil
+				U8.at(s[1], s[2], s[3], "clear of hud " .. name, function(tag)
+					local pg = U8.pg()
+					local hud = pg:FindFirstChild("NimbusHud")
+					strips = hud and hud:FindFirstChild("Currency", true)
+					vitals = hud and hud:FindFirstChild("Vitals", true)
+					Menu.Open(name)
+					LKC.advance(1)
+					local menu = pg:FindFirstChild("NimbusMenu")
+					local idx = pg:FindFirstChild("NimbusIndex")
+					local win = name == "Index" and idx and idx:FindFirstChild("Window_Index") or (menu and menu:FindFirstChild("Window_" .. name))
+					if not T.check(win ~= nil and U8.shown(win), tag .. ": the window opens") then
+						return
+					end
+					local boxes = { U8.rect(win) }
+					local roof = win:FindFirstChild("Roof", true)
+					if roof and U8.shown(roof) then
+						boxes[2] = U8.rect(roof)
+					end
+					local over = {}
+					for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+						if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 0.95 then
+							for _, b in ipairs(boxes) do
+								if over4(U8.rect(d), b) then
+									over[#over + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+									break
+								end
+							end
+						end
+					end
+					T.check(#over == 0, tag .. ": the window and its awning lie over no HUD part", table.concat(over, ", ", 1, math.min(#over, 8)) .. " | window " .. U8.show(boxes[1]))
+					-- (LOOK-ui, kitb-look1: the Stats window docked 3 px from the vitals card at 1280x720) a shown vitals card keeps
+					-- 12 px to the window (MenuController K.VITALS_MARGIN), or it steps aside
+					if vitals and U8.shown(vitals) then
+						local v, b = U8.rect(vitals), boxes[1]
+						local gapX = math.max(b.X - v.R, v.X - b.R)
+						local gapY = math.max(b.Y - v.B, v.Y - b.B)
+						T.check(math.max(gapX, gapY) >= 12 - 0.5, tag .. ": the shown vitals card keeps 12 px to the window",
+							fmt("gap %.1f x, %.1f y | card %s", gapX, gapY, U8.show(v)))
+					end
+					-- (LOOK-ui, kitb-look1) the docked windows share one box: Index, Home and Stats the same size and top
+					docked[name] = U8.rect(win)
+					closeBlockOk(win, tag)
+					if s[1] == 1920 then
+						T.check(strips ~= nil and U8.shown(strips), tag .. ": the strips stay (the window starts under them)")
+					end
+					pcall(Menu.Close)
+					LKC.advance(0.6)
+				end)
+				T.check(strips ~= nil and U8.shown(strips) and vitals ~= nil and U8.shown(vitals),
+					fmt("clear of hud %s %dx%d: the strips and the vitals card are back after Close", name, s[1], s[2]))
+			end
+			local a, b, c = docked.Index, docked.Home, docked.Stats
+			if a and b and c then
+				local same = math.abs(a.X - b.X) < 1 and math.abs(a.Y - b.Y) < 1 and math.abs(a.R - b.R) < 1 and math.abs(a.B - b.B) < 1
+					and math.abs(a.X - c.X) < 1 and math.abs(a.Y - c.Y) < 1 and math.abs(a.R - c.R) < 1 and math.abs(a.B - c.B) < 1
+				T.check(same, fmt("docked box %dx%d: Index, Home and Stats dock in one box", s[1], s[2]),
+					fmt("Index %s, Home %s, Stats %s", U8.show(a), U8.show(b), U8.show(c)))
+			end
+			-- the big windows' closes: the same block
+			for _, name in ipairs({ "Pets", "Shop" }) do
+				U8.at(s[1], s[2], s[3], "close block " .. name, function(tag)
+					Menu.Open(name)
+					LKC.advance(1)
+					local win = U8.pg():FindFirstChild(name == "Shop" and "ShopWindow" or "Window_" .. name, true)
+					if T.check(win ~= nil and U8.shown(win), tag .. ": the window opens") then
+						closeBlockOk(win, tag)
+					end
+					pcall(Menu.Close)
+					LKC.advance(0.6)
+				end)
+			end
+		end
+		LKC.flushErrors("kitb_windows_clear_of_hud")
 	end)
 
 	-- (U9-4 look review, the blocker) the PC Trove panel docks UNDER the HUD's currency strips, as the Stats window does:

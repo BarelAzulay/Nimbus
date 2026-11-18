@@ -95,6 +95,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the Stats window's coins and stars
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui) the kit's one scroll bar
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -194,10 +195,15 @@ local K = {
 -- screens (NeonKit.SideRect, <= 0.44 W) and are a bottom sheet on portrait ones (the top 44% stays clear); no backdrop
 -- dims the game. (lobby-shop Task 22: the Cloud Shop, its odds popup and its roulette stage left for ShopController,
 -- client/UI/ShopEggs and client/UI/EggStage.)
+-- (LOOK-ui, kitb-look1: Stats docked 640 x 760, Index 860 x 900, Home 820 x 900, so three tops, widths and Fits) the
+-- docked windows share one box: 860 x 900, the Index's (IndexController.K.PREF_W / PREF_H; at 820 its three 1080p
+-- columns wrapped the group heading)
+K.DOCK_BOX = { 860, 900 }
 K.WIN = {
-	Stats = { 640, 760 },
-	Home = { 820, 900 },
+	Stats = K.DOCK_BOX,
+	Home = K.DOCK_BOX,
 }
+K.VITALS_MARGIN = 12 -- (LOOK-ui) screen px a docked window keeps to the vitals card, or the card steps aside
 -- Portrait screens (a phone held upright): a window may get as narrow as TALL_MIN_W design px (and as tall as
 -- TALL_MAX_H) so its text keeps the readability scale instead of shrinking to fit 800 px; windows narrower than
 -- TALL switch to their single-column ("tall") layout.
@@ -233,18 +239,33 @@ local C2 = {
 	Xp = Color3.fromRGB(120, 200, 255),
 	Lock = Color3.fromRGB(255, 206, 120), -- amber: why something is locked (reads on the dark wells)
 	Secret = Color3.fromRGB(70, 90, 200),
+	-- (LOOK-ui, kitb-look1: colour by role from the kit's tokens) each station kind's colour is a Theme.Sign token (was a
+	-- near-token of its own), KindLip its darker lip
 	Kind = {
-		Plant = Color3.fromRGB(226, 96, 130), -- berries, carrots, melons, starfruit (Phase 4 kinds)
-		Magnet = Color3.fromRGB(110, 170, 236),
-		Garden = Color3.fromRGB(120, 196, 90),
-		FoodMachine = Color3.fromRGB(240, 150, 80),
-		Training = Color3.fromRGB(228, 104, 96),
-		Vault = Color3.fromRGB(150, 160, 190),
-		House = Color3.fromRGB(240, 186, 90),
-		Fusion = Color3.fromRGB(150, 110, 232),
-		Arena = Color3.fromRGB(200, 120, 90),
-		Decor = Color3.fromRGB(226, 120, 170),
-		Prestige = Color3.fromRGB(244, 196, 78),
+		Plant = Theme.Sign.Roof, -- berries, carrots, melons, starfruit (Phase 4 kinds)
+		Magnet = Theme.Sign.Sky,
+		Garden = Theme.Sign.Grass,
+		FoodMachine = Theme.Sign.GoldDeep,
+		Training = Theme.Sign.Red,
+		Vault = Theme.Sign.Iron,
+		House = Theme.Sign.Gold,
+		Fusion = Theme.Sign.Violet,
+		Arena = Theme.Sign.WoodLight,
+		Decor = Theme.Sign.Roof,
+		Prestige = Theme.Sign.Gold,
+	},
+	KindLip = {
+		Plant = Theme.Sign.RoofLip,
+		Magnet = Theme.Sign.SkyLip,
+		Garden = Theme.Sign.GrassLip,
+		FoodMachine = Theme.Darken(Theme.Sign.GoldDeep, 0.25),
+		Training = Theme.Sign.RedLip,
+		Vault = Theme.Sign.IronDark,
+		House = Theme.Sign.GoldLip,
+		Fusion = Theme.Sign.VioletLip,
+		Arena = Theme.Sign.Wood,
+		Decor = Theme.Sign.RoofLip,
+		Prestige = Theme.Sign.GoldLip,
 	},
 }
 
@@ -258,7 +279,7 @@ local G = {
 	Bullet = "\194\183", -- middle dot
 }
 -- (kit-b U7b) the Home window's PixelIcons
-local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "play" }
+local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "nub" }
 
 ----------------------------------------------------------------------
 -- Module state
@@ -379,8 +400,7 @@ local function scroller(parent, name, props)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
 	p.Parent = parent
-	-- (U9-7 look) the kit's wood list bar, square ends (SignKit required here: the main chunk keeps its locals down)
-	return require(Shared:WaitForChild("SignKit")).ScrollBar(Util.Create("ScrollingFrame", p))
+	return SignKit.Scroll(Util.Create("ScrollingFrame", p)) -- (U9-7 look, LOOK-ui) the kit's wood list bar, square ends
 end
 
 local function tween(inst, seconds, goal, style, direction)
@@ -718,6 +738,14 @@ local function layoutWindow(win)
 	if not rect then
 		return
 	end
+	-- (LOOK-ui, kitb-look1: the docked Home window's band and tail ran off the screen's edge) a Signboard window's band goes
+	-- out over its frame with its tails only with P5.BAND_ROOM screen px to both screen edges; docked at an edge (12 px)
+	-- or a bottom sheet it stays inside the rim, as the Index's
+	if win.Panel and win.Panel.TitleBar and win.Spec.Skin == "Signboard" then
+		local camera = workspace.CurrentCamera
+		local vpX = camera and camera.ViewportSize.X or 0
+		SignKit.HeaderOverhang(win.Panel.TitleBar, vpX > 0 and math.min(rect.x, vpX - rect.x - rect.w) >= P5.BAND_ROOM)
+	end
 	local w, h = math.floor(rect.designW + 0.5), math.floor(rect.designH + 0.5)
 	local changed = win.W ~= w or win.H ~= h
 	win.W, win.H = w, h
@@ -725,6 +753,7 @@ local function layoutWindow(win)
 		safe("layout " .. win.Id, win.OnLayout, w, h, w < K.NARROW, h < K.SHORT, w < K.TALL)
 	end
 	if win.Shown then
+		P5.currencyFor(win, true) -- (LOOK-ui) over the strips or clear of them now (HideCurrency "Over")
 		P5.vitalsFor(win, true) -- (U9-3 review) the docked box moved: over the vitals card or clear of it now
 	end
 end
@@ -788,13 +817,23 @@ function P5.hud()
 	return P5.HudModule or nil
 end
 
+-- (LOOK-ui) HideCurrency = "Over": only while the docked box and its awning lie over the strips (HudController.Overlaps;
+-- a 1280x720 window reaches them, a 1080p one starts under them), checked again on every layout
+P5.BAND_ROOM = 24 -- (LOOK-ui) screen px a Signboard window keeps to both screen edges for its band's tails
+P5.AWNING = 10 -- design px of awning over a Signboard window's top (CloudUI.Panel's roof at Y -10)
 function P5.currencyFor(win, on)
 	if not win.Spec.HideCurrency then
 		return
 	end
 	local hud = P5.hud()
 	if hud and type(hud.SetCurrencyHidden) == "function" then
-		safe("currency " .. win.Id, hud.SetCurrencyHidden, win.Id, on == true)
+		local want = on == true
+		local rect = win.Dock and win.Dock.Rect
+		if want and win.Spec.HideCurrency == "Over" and type(hud.Overlaps) == "function" then
+			local ok, _, strips = pcall(hud.Overlaps, rect, P5.AWNING * ((rect and rect.scale) or 1))
+			want = ok and strips == true
+		end
+		safe("currency " .. win.Id, hud.SetCurrencyHidden, win.Id, want)
 	end
 end
 
@@ -818,9 +857,11 @@ function P5.vitalsFor(win, on)
 		if slot then
 			-- the dock's box is in screen px (top bar included), the HUD's in gui-area px
 			local y = rect.y - P5.inset()
-			local w = math.min(rect.x + rect.w, slot.X + slot.W) - math.max(rect.x, slot.X)
-			local h = math.min(y + rect.h, slot.Y + slot.H) - math.max(y, slot.Y)
-			over = w > 4 and h > 4
+			-- (LOOK-ui, kitb-look1: at 1280x720 the Stats window docked 3 px from the card) within K.VITALS_MARGIN px counts
+			local m = K.VITALS_MARGIN
+			local w = math.min(rect.x + rect.w, slot.X + slot.W + m) - math.max(rect.x, slot.X - m)
+			local h = math.min(y + rect.h, slot.Y + slot.H + m) - math.max(y, slot.Y - m)
+			over = w > 0 and h > 0
 		end
 	end
 	safe("vitals " .. win.Id, hud.SetVitalsHidden, win.Id, over)
@@ -1209,12 +1250,14 @@ local MENU = {
 	{ Id = "Stats", Label = "Stats", Icon = "Stats", Color = "Cyan", Action = menuActionStats },
 }
 P5.TILE = 66 -- design px of a tile
-P5.GAP = 6 -- between two tiles (design px)
+P5.GAP = 12 -- between two tiles (design px). (LOOK-ui) 6 + both 3 px wood edges (a Border stroke draws outside the
+-- tile): 6 px of sky shows between two tiles at 1080p, so each tile is its own block with its own lip as in the pitch
 P5.TILE_PX = 56 -- on-screen tile on a 1080p desktop (x the screen factor)
 P5.TOUCH_TILE_PX = 50 -- ... on touch screens (tablets: the larger of this and TILE_PX x the factor)
 P5.MIN_TILE_PX = 44 -- one column needs this much per tile, else the tiles wrap into two columns (a thumb)
 P5.TAB_GAP = 4 -- design px between the tiles and the arrow tab
-P5.TAB_W = 24 -- design width of the arrow tab (touch: TAB_W_TOUCH, wider for a thumb)
+P5.TAB_W = 30 -- design width of the arrow tab (touch: TAB_W_TOUCH, wider for a thumb). (LOOK-ui) 30: its 27 px pixel
+-- arrow fits inside the wood edge
 P5.TAB_W_TOUCH = 30
 P5.MAX_COLS = 3 -- the tiles wrap into at most this many columns (the shortest landscape phones)
 P5.CENTRE_TOL = 0.145 -- the column never reaches into the screen middle (|dx| < 14.5% of the width: HudController's rule)
@@ -1356,8 +1399,21 @@ function P5.paintTab()
 		return
 	end
 	local arrow = U.Collapsed and ">" or "<"
-	if U.TabArrow.Text ~= arrow then
-		U.TabArrow.Text = arrow
+	if U.TabArrow:GetAttribute("Dir") ~= arrow then
+		U.TabArrow:SetAttribute("Dir", arrow)
+		local old = U.TabArrow:FindFirstChild("Icon")
+		if old then
+			old:Destroy()
+		end
+		local icon = PixelIcon.New(U.TabArrow, U.Collapsed and "arrow" or "left", 27, Theme.Sign.Text)
+		if icon then
+			icon.AnchorPoint = Vector2.new(0.5, 0.5)
+			icon.Position = UDim2.fromScale(0.5, 0.5)
+			icon.ZIndex = 4
+			for _, cell in ipairs(icon:GetChildren()) do
+				cell.ZIndex = 4
+			end
+		end
 	end
 	local badge = false
 	if U.Collapsed then
@@ -1461,9 +1517,18 @@ local function buildColumn()
 	})
 	U.TabStroke = stroke(tab, Theme.Sign.Wood, 3, 0)
 	U.TabStroke.LineJoinMode = Enum.LineJoinMode.Miter
-	U.TabArrow = makeText(tab, "Arrow", "<", "Display", 26, Theme.Sign.Text, {
-		Size = UDim2.fromScale(1, 1),
-		TextXAlignment = Enum.TextXAlignment.Center,
+	-- (LOOK-ui) the tab is a kit block like the tiles: the same 6 px stone lip, and the arrow a PixelIcon ("left" while the
+	-- column is out, "arrow" (right) while folded; attribute Dir "<" / ">"), not the "<" letter
+	makeFrame(tab, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 6),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.StoneLip,
+		ZIndex = 3,
+	})
+	U.TabArrow = makeFrame(tab, "Arrow", {
+		Size = UDim2.new(1, 0, 1, -6),
 		ZIndex = 4,
 	})
 	U.TabBadge = makeFrame(tab, "Badge", {
@@ -1607,11 +1672,12 @@ function relayoutMenu()
 	end
 	P5.placeTiles(cols)
 	local w, h = U.ColumnW, U.ColumnH
-	local scale = math.min(pref, avail / h)
 	-- never into the middle of the screen (a narrow portrait phone): the column's right edge stays left of it
 	local camera = workspace.CurrentCamera
 	local vpX = (camera and camera.ViewportSize.X > 2) and camera.ViewportSize.X or area.X
-	scale = math.min(scale, math.max(minScale * 0.9, (vpX * (0.5 - P5.CENTRE_TOL) - 2 - margin) / w))
+	-- (LOOK-ui) the free scale stays (the owner's 56 px tile at 1080p): the tiles' icons, edges and lips snap to whole
+	-- screen px themselves (PixelIcon.New, PixelIcon.WholeTree on NimbusMenu)
+	local scale = math.min(pref, avail / h, math.max(minScale * 0.9, (vpX * (0.5 - P5.CENTRE_TOL) - 2 - margin) / w))
 	local top = first + math.max(0, (avail - h * scale) / 2)
 	U.ColumnScale.Scale = scale
 	-- a squeezed column (short screens) grows its labels so they stay >= 14 screen px
@@ -1783,7 +1849,7 @@ local function buildStats(win)
 		tiles[spec[1]] = value
 	end
 
-	local _, perks = P5.statCard(left, "Perks", "Pet perks", 2)
+	local _, perks = P5.statCard(left, "Perks", "Pet perks", 3)
 	local perksLabel = makeText(perks, "Lines", "", "Body", 19, P5.GOOD, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -1793,7 +1859,7 @@ local function buildStats(win)
 	})
 
 	-- Phase 3: the battle record (trophies from PvP duels, the Trial ladder, raids)
-	local _, battle = P5.statCard(left, "Battle", "Pet battles", 3)
+	local _, battle = P5.statCard(left, "Battle", "Pet battles", 4)
 	local battleLabel = makeText(battle, "Lines", "", "Body", 19, P5.HS.Text, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -1803,7 +1869,10 @@ local function buildStats(win)
 	})
 
 	-- right: best time per difficulty (kit-b U9-3: on the stone body itself, as the Home window's station list)
-	local right = makeFrame(content, "BestTimes", {
+	-- (LOOK-ui, kitb-look1: two lists stacked in the narrow window, each with its own bar, each cutting a row in half) the
+	-- best times are one section that moves: in their own column beside the stats on a wide window, under the stat tiles
+	-- in the one list on a narrow one (the window is narrow at every PC size: 640 wide)
+	local right = makeFrame(content, "Right", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -14, 0, 14),
 		Size = UDim2.new(0.45, -21, 1, -28),
@@ -1814,13 +1883,19 @@ local function buildStats(win)
 	list.ScrollBarImageColor3 = P5.HS.Wood
 	pad(list, 2, 2, 14, 8)
 	listLayout(list, Enum.FillDirection.Vertical, 8)
-	Theme.StyleTitle(makeText(list, "Title", "Best times", "Title", 24, P5.HS.Text, {
+	local times = makeFrame(list, "BestTimes", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 2,
+	})
+	listLayout(times, Enum.FillDirection.Vertical, 8)
+	Theme.StyleTitle(makeText(times, "Title", "Best times", "Title", 24, P5.HS.Text, {
 		Size = UDim2.new(1, 0, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 0,
 	}), "Section")
 	for index, difficulty in ipairs(Config.Difficulties) do
-		local row = P5.signBlock(list, "Row_" .. difficulty.Id, {
+		local row = P5.signBlock(times, "Row_" .. difficulty.Id, {
 			Size = UDim2.new(1, 0, 0, 70),
 			LayoutOrder = index,
 		}, difficulty.Color)
@@ -1850,18 +1925,15 @@ local function buildStats(win)
 	end
 
 	win.OnLayout = function(_w, _h, _narrow, _short, tall)
+		left.Position = UDim2.fromOffset(14, 14)
 		if tall then
-			left.Position = UDim2.fromOffset(14, 14)
-			left.Size = UDim2.new(1, -28, 0.6, -21)
-			right.AnchorPoint = Vector2.new(0, 1)
-			right.Position = UDim2.new(0, 14, 1, -14)
-			right.Size = UDim2.new(1, -28, 0.4, -21)
+			left.Size = UDim2.new(1, -28, 1, -28)
+			times.Parent = left
+			right.Visible = false
 		else
-			left.Position = UDim2.fromOffset(14, 14)
 			left.Size = UDim2.new(0.55, -21, 1, -28)
-			right.AnchorPoint = Vector2.new(1, 0)
-			right.Position = UDim2.new(1, -14, 0, 14)
-			right.Size = UDim2.new(0.45, -21, 1, -28)
+			times.Parent = list
+			right.Visible = true
 		end
 	end
 
@@ -2019,7 +2091,9 @@ function P5.buildStrip(H, _content)
 		H.StripTiles[i] = { Root = tile, Title = title, Value = value }
 		if i < #P5.STRIP then
 			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "", "Title", 18, P5.HS.Wood, { Size = UDim2.fromOffset(20, 76) })
-			PixelIcon.Host(H.StripArrows[i], HOME_ICON.Arrow, 9) -- (kit-b U7b; 9 px: the gap between two tiles' rims is ~14 px)
+			-- (kit-b U7b: the gap between two tiles' rims is ~14 px; LOOK-ui, kitb-look1: the narrow nub at 18 px, the screen's
+			-- 2 px cells, not "play" at 9 px and 1 px cells)
+			PixelIcon.Host(H.StripArrows[i], HOME_ICON.Arrow, 18)
 		end
 	end
 end
@@ -2620,7 +2694,8 @@ do
 			Height = 30,
 			TextSize = 20,
 			Color = P5.HS.Gold,
-			Skin = "Sign", -- (kit-b U9-1) a flat well track in a wood edge, the gold fill and its lip
+			Skin = "Sign", -- (LOOK-ui) a block bar: gold blocks on the gold lip token, the level beside it
+			LabelSide = "Right",
 			Parent = prestige,
 		})
 		H.PrestigeNeed = makeText(prestige, "Need", "", "Heading", 18, P5.HS.TextMuted, {
@@ -2746,17 +2821,17 @@ do
 				Position = UDim2.fromOffset(186, 42),
 				Size = UDim2.fromOffset(170, 16),
 			})
-			listLayout(row.PipRow, Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-			for i = 1, math.min(def.MaxLevel or 1, 10) do
-				-- (kit-b U9-1) square pips: sunk wells in their edge, filled in the kind colour (paintRow)
-				local pip = makeFrame(row.PipRow, "Pip" .. i, {
-					Size = UDim2.fromOffset(13, 13),
-					BackgroundTransparency = 0,
-					BackgroundColor3 = P5.HS.StoneLip,
-					LayoutOrder = i,
-				})
-				stroke(pip, P5.HS.WellEdge, 1.5, 0).LineJoinMode = Enum.LineJoinMode.Miter
-				row.Pips[i] = pip
+			-- (kit-b U9-1) a pip per level; (LOOK-ui, kitb-look1: every bar in the block-bar language) as kit blocks (a
+			-- SignKit.BlockRow: wood edge, face, lip), painted by paintRow: built in the kind's colour, the next level the
+			-- Selected gold, open levels the well, the levels behind the house's cap the stone
+			local blocks = SignKit.BlockRow(row.PipRow, {
+				Count = math.min(def.MaxLevel or 1, 10), BlockW = 14, BlockH = 14, Gap = 3, EdgePx = 2, LipPx = 3,
+				Fill = color, FillLip = C2.KindLip[def.Kind] or Theme.Darken(color, 0.25),
+				Position = UDim2.fromOffset(0, 1),
+			})
+			for i = 1, blocks:GetAttribute("Count") do
+				local block = blocks:FindFirstChild("Block" .. i)
+				row.Pips[i] = block and block:FindFirstChild("Face")
 			end
 			row.Info = makeText(frame, "Info", "", "Body", 18, P5.HS.TextMuted, {
 				Position = UDim2.fromOffset(88, 64),
@@ -3042,14 +3117,24 @@ do
 			end
 			row.Level.Text = "Lv " .. level .. "/" .. maxLevel
 			row.Level.TextColor3 = level >= maxLevel and P5.HS.Text or P5.HS.TextMuted
-			-- (kit-b U9-1) built = the kind colour, open now = a light well, behind the house's cap = the darker stone
-			for i, pip in ipairs(row.Pips) do
+			-- (kit-b U9-1) built = the kind colour, open now = a light well, behind the house's cap = the darker stone;
+			-- (LOOK-ui) each pip a kit block: its face and its lip, the next level to buy the Selected gold
+			local kindLip = C2.KindLip[def.Kind] or Theme.Darken(color, 0.25)
+			for i, face in ipairs(row.Pips) do
+				local lip = face:FindFirstChild("Lip")
+				local f, l
 				if i <= level then
-					pip.BackgroundColor3 = color
+					f, l = color, kindLip
+				elseif i == level + 1 and i <= cap then
+					f, l = Theme.Sign.Selected, Theme.Sign.GoldLip
 				elseif i <= cap then
-					pip.BackgroundColor3 = P5.HS.Well
+					f, l = P5.HS.Well, P5.HS.WellEdge
 				else
-					pip.BackgroundColor3 = P5.HS.StoneLip
+					f, l = P5.HS.StoneLip, Theme.Darken(P5.HS.StoneLip, 0.12)
+				end
+				face.BackgroundColor3 = f
+				if lip then
+					lip.BackgroundColor3 = l
 				end
 			end
 			-- what it does now -> next
@@ -3722,6 +3807,8 @@ function MenuController.Init()
 	pcall(State.Init)
 
 	gui = CloudUI.NewScreenGui("NimbusMenu", 20)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(gui)
 
 	buildHint()
 	buildColumn()
@@ -3729,8 +3816,10 @@ function MenuController.Init()
 	-- touch controls go while it is open (HideTouch, as Home), and the HUD's currency strips step aside (HideCurrency);
 	-- (U9-3 review) on a phone, where it reaches over the vitals card, the card hides too (HideVitals)
 	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true, Skin = "Signboard", Icon = Config.Icons.Stats or "stats",
-		HideTouch = true, HideCurrency = true, HideVitals = true })
-	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true, Skin = "Signboard", Icon = HOME_ICON.House, HideTouch = true })
+		HideTouch = true, HideCurrency = "Over", HideVitals = true }) -- (LOOK-ui) Home's box now: the strips step aside as for Home
+	-- (LOOK-ui) Home steps the HUD aside as Stats does where it lies over it: the vitals card, the strips (only then)
+	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true, Skin = "Signboard", Icon = HOME_ICON.House, HideTouch = true,
+		HideCurrency = "Over", HideVitals = true })
 	relayoutMenu()
 	updateMenuActive()
 

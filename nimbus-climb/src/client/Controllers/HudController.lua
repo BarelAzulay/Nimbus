@@ -647,7 +647,12 @@ local function mobileRects()
 	local dy = insetShift(mobile)
 	for _, d in ipairs(mobile:GetDescendants()) do
 		if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.AbsoluteSize.X > 0 and shownIn(d, mobile) then
-			table.insert(out, rectOf(d, dy))
+			-- (LOOK-ui) a kit tile's wood edge is a Border stroke drawn outside its box: it counts
+			local r = rectOf(d, dy)
+			local edge = d:FindFirstChild("SignEdge")
+			local e = (edge and edge:IsA("UIStroke")) and edge.Thickness or 0
+			r.x0, r.y0, r.x1, r.y1 = r.x0 - e, r.y0 - e, r.x1 + e, r.y1 + e
+			table.insert(out, r)
 		end
 	end
 	return out
@@ -1798,11 +1803,14 @@ local function setRowGeometry(c, compact)
 		c.Chip.Position = UDim2.new(1, strip and -4 or -7, 0.5, 0)
 		c.RunLabel.TextSize = strip and 18 or 21
 	end
-	-- (kit-b U8) the block spans the row; the coin square sits inside its left end, the amount after it
-	c.Lip.Size = UDim2.new(1, 0, 0, strip and 4 or 5)
+	-- (kit-b U8) the block spans the row; the coin square sits inside its left end, the amount after it. (LOOK-ui) The HUD's
+	-- one edge token: a 3 px wood edge and a 5 px lip at 1080p, whole screen px below it (2 and 4 at 720p), as the vitals card
+	-- and the Gift tile: the strip's 1.6 px edge sat right on the Gift's 3 px one
+	c.Lip.Size = UDim2.new(1, 0, 0, 5)
+	PixelIcon.WholeHeight(c.Lip, 5)
 	c.Amount.Position = UDim2.new(0, 4 + coinSize + (strip and 6 or 8), 0.5, -2)
 	if c.Stroke then
-		c.Stroke.Thickness = strip and 2 or 3
+		PixelIcon.WholeStroke(c.Stroke, 3)
 	end
 end
 
@@ -3150,6 +3158,33 @@ function HudController.SetCurrencyHidden(who, on)
 	end
 end
 
+-- (LOOK-ui, kitb-look1: the Index and Home windows lay over the vitals card and the strips) which HUD parts a docked
+-- window lies over by more than a shared edge (4 px): `rect` its box in screen px (NeonKit.SideRect: x, y, w, h, the top
+-- bar included), `above` px of awning over its top. Returns vitals, strips (booleans). The strips' box is the one the
+-- layout publishes (TopRightLeft .. the screen's right, the top .. the gift's dock), whether they show or not
+function HudController.Overlaps(rect, above)
+	if type(rect) ~= "table" or not (tonumber(rect.x) and tonumber(rect.y) and tonumber(rect.w) and tonumber(rect.h)) then
+		return false, false
+	end
+	local inset = 0
+	pcall(function()
+		inset = GuiService:GetGuiInset().Y
+	end)
+	local x0, x1 = rect.x, rect.x + rect.w
+	local y0, y1 = rect.y - inset - (tonumber(above) or 0), rect.y - inset + rect.h
+	local function over(ax0, ay0, ax1, ay1)
+		return math.min(x1, ax1) - math.max(x0, ax0) > 4 and math.min(y1, ay1) - math.max(y0, ay0) > 4
+	end
+	local vitals = vitalsRect ~= nil and over(vitalsRect.X, vitalsRect.Y, vitalsRect.X + vitalsRect.W, vitalsRect.Y + vitalsRect.H)
+	local strips = false
+	local left = published.TopRightLeft
+	if left and left > 0 then
+		local bottom = (published.GiftSize or 0) > 0 and published.GiftTop or published.TopRightBottom or 0
+		strips = over(left, 0, math.huge, bottom)
+	end
+	return vitals, strips
+end
+
 -- Where the HUD currently is (gui-area pixels of an IgnoreGuiInset = false ScreenGui; 0 = nothing there).
 function HudController.GetLayout()
 	return {
@@ -3173,6 +3208,8 @@ end
 local function buildGui()
 	M = panelMetrics(isTouchDevice())
 	local gui = CloudUI.NewScreenGui("NimbusHud", 10)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(gui)
 	UI.Gui = gui
 
 	local topLeft = newHolder(gui, "TopLeft")

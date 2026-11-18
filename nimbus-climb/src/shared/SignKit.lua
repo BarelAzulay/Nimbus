@@ -23,8 +23,10 @@
 --   SignKit.Rope(parent, opts)    a rope / post the board hangs from
 --   SignKit.BlockRow(parent, opts) n stone blocks with a darker lip; SignKit.FillBlocks(row, k) turns the first k gold
 --   SignKit.ScrollBar(scroll, opts) (U9-7 look) a list's bar: the kit's thickness, the wood, square ends
+--   SignKit.FitBlocks(parent, opts) (LOOK-ui) a BlockRow filling its own box (a bar's place): n blocks of one whole width
 --   SignKit.Notice(parent, opts)  a small wood-framed stone card (a tip, a notice); returns notice, face
 --   SignKit.Nails(board, opts)    (U9-7) two nail heads on a hanging board's top corners (the handmade touch)
+--   SignKit.Scroll(sf, thickness) (LOOK-ui) the kit's one scroll bar on a ScrollingFrame: wood, opaque, square ends
 --   SignKit.Rig(parts, opts)      (sign/logo build: the owner's pick B2 "Sky-climber's rig", 2026-11-13; it replaced the
 --                                 Workshop trim) a hanging board's canopy (canvas under navy stripes, a scalloped
 --                                 valance with brass piping, a stitched patch), the frame's bevel, rope lashings on its
@@ -34,9 +36,12 @@
 --                                 propellers (2 frames, never a rotation); SignKit.PropFrame(root, n) sets one
 -- Every part stamps attribute SignKit = its kind. Sizes are design px of a 1080p screen (the pitch's 0.8-scale px / 0.8);
 -- opts override any colour or size, so a look the owner already approved (Credits) builds from these parts unchanged.
--- Requires only Theme (Shared). Plain Lua 5.1-compatible syntax only.
+-- (LOOK-ui, kitb-look1) every edge, inset and lip is a whole number of screen px under the window's scale (PixelIcon.Px /
+-- PixelIcon.Whole): at a 0.8 Fit a 2 px edge draws 2 screen px, not 1.6.
+-- Requires only Theme and PixelIcon (Shared; PixelIcon requires nothing at load). Plain Lua 5.1-compatible syntax only.
 
 local Theme = require(script.Parent:WaitForChild("Theme"))
+local PixelIcon = require(script.Parent:WaitForChild("PixelIcon"))
 
 local SignKit = {}
 
@@ -69,6 +74,7 @@ SignKit.Sizes = {
 	NoticeGap = 18, -- a notice's icon square to its text
 	RopeW = 6,
 	ScrollBar = 8, -- (U9-7 look) a scrolling list's bar on kit B: this thick, in the wood, opaque (every window's lists)
+	ScrollBarPhone = 6, -- (LOOK-ui) the same bar in a phone layout's list
 	BlockW = 28,
 	BlockH = 22,
 	BlockGap = 4,
@@ -76,6 +82,11 @@ SignKit.Sizes = {
 	BlockLip = 4,
 	NoticeEdge = 4,
 	NoticeLip = 4,
+	-- (LOOK-ui, kitb-look1: the Pets, Index, Home, Stats and Shop closes drew 35 to 47 screen px with 2 or 3 px cells, by
+	-- their window's Fit) one close block: never under CloseMin screen px square, its x in CloseCell screen px cells
+	-- (NeonKit.CloseBlock)
+	CloseMin = 44,
+	CloseCell = 3,
 }
 local Z = SignKit.Sizes
 
@@ -124,12 +135,19 @@ local function line(parent, colour, thickness)
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	s.LineJoinMode = Enum.LineJoinMode.Miter
 	s.Parent = parent
-	-- (U9-8 look) whole screen px under the scale above it (SignKit.Whole, below)
-	SignKit.Whole(s, function(sc)
-		s.Thickness = SignKit.Px(thickness, sc)
-	end)
+	PixelIcon.WholeStroke(s, thickness) -- (LOOK-ui) a whole number of screen px under the window's scale
 	return s
 end
+
+-- (LOOK-ui) a lip `n` design px tall along its parent's bottom, and a face inset `e` px from its parent's sides (`extra`
+-- px more off its height: the lip it leaves showing), both whole screen px under the window's scale
+local function lipOf(lip, n)
+	return PixelIcon.WholeHeight(lip, n)
+end
+local function inset(face, e, extra)
+	return PixelIcon.WholeInset(face, e, extra)
+end
+SignKit.Inset = inset
 
 -- the caller's placement (Position, AnchorPoint, ZIndex, LayoutOrder, Name, Active, Visible), then the kind stamp
 local PLACE = { "Position", "AnchorPoint", "ZIndex", "LayoutOrder", "Name", "Active", "Visible" }
@@ -317,18 +335,16 @@ function SignKit.Roof(parent, opts)
 			Position = UDim2.fromOffset(e, e),
 			Size = UDim2.new(1, -2 * e, 1, -2 * e),
 		}, roof)
-		local lip = fill("Lip", opts.Lip or Sign.RoofLip, {
+		inset(face, e)
+		lipOf(fill("Lip", opts.Lip or Sign.RoofLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
 			Size = UDim2.new(1, 0, 0, lipPx),
-		}, face)
-		-- (U9-8 look) the sprite, its border and its lip whole screen px under the window's scale (was 14.4 px high at 0.8)
+		}, face), lipPx)
+		-- (U9-8 look) the sprite itself whole screen px under the window's scale (was 14.4 px high at 0.8); its border
+		-- and its lip snap through inset / lipOf (LOOK-ui)
 		SignKit.Whole(roof, function(sc)
-			local ew = SignKit.Px(e, sc)
 			roof.Size = UDim2.fromOffset(SignKit.Px(w, sc), SignKit.Px(h, sc))
-			face.Position = UDim2.fromOffset(ew, ew)
-			face.Size = UDim2.new(1, -2 * ew, 1, -2 * ew)
-			lip.Size = UDim2.new(1, 0, 0, SignKit.Px(lipPx, sc))
 		end)
 	end
 	return place(roof, opts, "Roof")
@@ -488,11 +504,11 @@ function SignKit.Body(parentFrame, opts)
 	local lip = tonumber(opts.Lip) or Z.Lip
 	local lipFrame = nil
 	if lip > 0 then
-		lipFrame = fill("Lip", opts.LipColor or Sign.StoneLip, {
+		lipFrame = lipOf(fill("Lip", opts.LipColor or Sign.StoneLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
 			Size = UDim2.new(1, 0, 0, lip),
-		}, body)
+		}, body), lip)
 	end
 	-- (U9-8 look) the wood frame round it and its lip whole screen px under the window's scale
 	SignKit.Whole(body, function(sc)
@@ -684,11 +700,12 @@ function SignKit.BlockRow(parent, opts)
 			Position = UDim2.fromOffset(e, e),
 			Size = UDim2.new(1, -2 * e, 1, -2 * e),
 		}, b)
-		fill("Lip", Sign.StoneLip, {
+		inset(face, e)
+		lipOf(fill("Lip", Sign.StoneLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
 			Size = UDim2.new(1, 0, 0, lipPx),
-		}, face)
+		}, face), lipPx)
 	end
 	-- (U9-8 look) each block's wood edge and lip whole screen px under the scale above the row (the blocks keep their
 	-- design widths, so no window's layout moves)
@@ -708,6 +725,119 @@ function SignKit.BlockRow(parent, opts)
 		end
 	end)
 	place(row, opts, "BlockRow")
+	SignKit.FillBlocks(row, 0)
+	return row
+end
+
+-- (LOOK-ui, kitb-look1: the owner's look bar 2026-11-17, "every bar in the block-bar language") a BlockRow that fills its
+-- own box, for a bar laid out by the screen (opts Size / Position / AnchorPoint, Scale allowed): Count blocks sharing its
+-- width (each 1/Count of it less its share of the gaps: it fits whatever the box becomes, a block's edge and lip stay on
+-- whole screen px). opts: Count, Gap (2), EdgePx (2), LipPx (3), Fill / FillLip, Size, Position, AnchorPoint, ZIndex,
+-- Name. SignKit.FillBlocks lights it; SignKit.SetBlockCount changes Count
+local function fitBlock(row, i, e, lipPx)
+	local b = fill("Block" .. i, Sign.Wood, { Size = UDim2.new(0, 0, 1, 0) }, row)
+	local face = fill("Face", Sign.Stone, {
+		Position = UDim2.fromOffset(e, e),
+		Size = UDim2.new(1, -2 * e, 1, -2 * e),
+	}, b)
+	inset(face, e)
+	lipOf(fill("Lip", Sign.StoneLip, {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, lipPx),
+	}, face), lipPx)
+	return b
+end
+
+-- (LOOK-ui, kitb-look1: blocks laid as shares of the row were fractional at every size, 11.67 px with a 7.67 px face at
+-- 1080p, a 2 px smudge on a phone) laid out in whole screen px from the row's AbsoluteSize: every block w = floor((rowW -
+-- (n - 1) x gap) / n) wide, block i at i x (w + gap), the spare px left at the row's end, the height whole; again when
+-- the row's size or scale changes. A block whose face would be under 4 px drops its edge (an edgeless pip on its 2 px
+-- lip). Before the first layout (no size yet) the shares stand in
+local MIN_FACE = 4
+local function layFit(row)
+	local n = row:GetAttribute("Count") or 0
+	if n < 1 then
+		return
+	end
+	local gap = row:GetAttribute("Gap") or 2
+	local abs = row.AbsoluteSize
+	local s = PixelIcon.RestScale(row)
+	if abs.X < 1 or abs.Y < 1 or s <= 0 then
+		for i = 1, n do
+			local b = row:FindFirstChild("Block" .. i)
+			if b then
+				b.Position = UDim2.new((i - 1) / n, (i - 1) * gap / n, 0, 0)
+				b.Size = UDim2.new(1 / n, -(n - 1) * gap / n, 1, 0)
+			end
+		end
+		return
+	end
+	local g = math.max(1, math.floor(gap * s + 0.5))
+	local w = math.max(1, math.floor((math.floor(abs.X + 1e-6) - (n - 1) * g) / n))
+	local h = math.max(1, math.floor(abs.Y + 1e-6))
+	local e = PixelIcon.Px(row:GetAttribute("EdgePx") or 2, s) * s
+	local pip = w - 2 * e < MIN_FACE
+	row:SetAttribute("Pips", pip)
+	row:SetAttribute("BlockPx", w)
+	-- each block is its share of the row plus the whole-px correction measured now: exact while the row keeps this size,
+	-- and still inside the row if it changes before the next layout (the share follows it; a resize may not be signalled)
+	local W, Hh = abs.X / s, abs.Y / s
+	for i = 1, n do
+		local b = row:FindFirstChild("Block" .. i)
+		if b then
+			b.Position = UDim2.new((i - 1) / n, (i - 1) * (w + g) / s - (i - 1) / n * W, 0, 0)
+			b.Size = UDim2.new(1 / n, w / s - W / n, 1, h / s - Hh)
+			b.BackgroundTransparency = pip and 1 or 0
+			local face = b:FindFirstChild("Face")
+			if face then
+				PixelIcon.WholeInset(face, pip and 0 or (row:GetAttribute("EdgePx") or 2))
+				local lip = face:FindFirstChild("Lip")
+				if lip and pip then
+					PixelIcon.WholeHeight(lip, 2)
+				elseif lip then
+					PixelIcon.WholeHeight(lip, row:GetAttribute("LipPx") or 3)
+				end
+			end
+		end
+	end
+end
+
+function SignKit.FitBlocks(parent, opts)
+	opts = opts or {}
+	local row = frame("BlockRow", { Size = opts.Size or UDim2.new(1, 0, 0, Z.BlockH) }, parent)
+	row:SetAttribute("Gap", tonumber(opts.Gap) or 2)
+	row:SetAttribute("EdgePx", tonumber(opts.EdgePx) or 2)
+	row:SetAttribute("LipPx", tonumber(opts.LipPx) or 3)
+	row:SetAttribute("Fit", true)
+	BLOCK_FILL[row] = { typeof(opts.Fill) == "Color3" and opts.Fill or Sign.Gold, typeof(opts.FillLip) == "Color3" and opts.FillLip or Sign.GoldLip }
+	place(row, opts, "BlockRow")
+	SignKit.SetBlockCount(row, opts.Count)
+	-- (LOOK-ui) whole screen px again whenever the row is laid out anew (a window resized, a Fit changed)
+	row:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		layFit(row)
+	end)
+	return row
+end
+
+-- a FitBlocks row with `n` blocks (rebuilt; none lit); Fill / FillLip (optional) the lit colours from now on
+function SignKit.SetBlockCount(row, n, fillColor, fillLip)
+	n = math.max(1, math.floor(tonumber(n) or 10))
+	if typeof(fillColor) == "Color3" then
+		BLOCK_FILL[row] = { fillColor, typeof(fillLip) == "Color3" and fillLip or fillColor }
+	end
+	if row:GetAttribute("Count") ~= n or not row:FindFirstChild("Block1") then
+		for _, c in ipairs(row:GetChildren()) do
+			if c.Name:match("^Block%d+$") then
+				c:Destroy()
+			end
+		end
+		row:SetAttribute("Count", n)
+		for i = 1, n do
+			fitBlock(row, i, row:GetAttribute("EdgePx") or 2, row:GetAttribute("LipPx") or 3)
+		end
+	end
+	layFit(row)
 	SignKit.FillBlocks(row, 0)
 	return row
 end
@@ -734,6 +864,14 @@ function SignKit.FillBlocks(row, k)
 	return k
 end
 
+-- (LOOK-ui, kitb-look1: the owner's look bar, one style across screens) the kit's one scroll bar: in the wood, opaque,
+-- square ends (Roblox's round end caps swapped for its straight middle piece), Sizes.ScrollBar thick (`thickness`:
+-- Sizes.ScrollBarPhone in a phone layout's list, 0 for none). Call again to change the thickness
+-- (merge kitb-look1 x kitb-ui2: the two builds of the kit's one bar are one) SignKit.ScrollBar draws it, thickness in px
+function SignKit.Scroll(sf, thickness)
+	return SignKit.ScrollBar(sf, { Thickness = math.floor(tonumber(thickness) or Z.ScrollBar) })
+end
+
 -- opts: Width, Height, Text, TextSize, IconSlot (a square at the left for a PixelIcon)
 function SignKit.Notice(parent, opts)
 	opts = opts or {}
@@ -745,11 +883,12 @@ function SignKit.Notice(parent, opts)
 		Position = UDim2.fromOffset(e, e),
 		Size = UDim2.new(1, -2 * e, 1, -2 * e),
 	}, notice)
-	fill("Lip", Sign.StoneLip, {
+	inset(face, e)
+	lipOf(fill("Lip", Sign.StoneLip, {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, Z.NoticeLip),
-	}, face)
+	}, face), Z.NoticeLip)
 	local x = 12
 	if opts.IconSlot then
 		local px = 30

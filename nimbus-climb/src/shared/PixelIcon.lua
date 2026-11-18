@@ -115,6 +115,11 @@ PixelIcon.Bitmaps = {
 	up = "........./....#..../...###.../..#####../.###.###./###...###/##.....##/........./.........", -- a bounce pad (down, turned)
 	left = "........./....#..../...##..../..#######/.########/..#######/...##..../....#..../.........", -- the D-pad left (arrow, turned)
 	shift = "....#..../...###.../..##.##../.##...##./####.####/..##.##../..##.##../..#####../.........", -- the Shift key (hollow up arrow)
+	-- (LOOK-ui) the vitals' downed mark (was the "!" letter on the heart tile)
+	bang = "...###.../...###.../...###.../...###.../...###.../....#..../........./...###.../...###...",
+	-- (LOOK-ui, kitb-look1) a narrow pointer, three cells wide: at 18 px (2 px cells, the screen's own size) it fits the
+	-- ~14 px gap between two tiles that "play" (8 cells) at 9 px (1 px cells) filled
+	nub = "........./........./...#...../...##..../...###.../...##..../...#...../........./.........",
 }
 -- tick is the pitch's check (one drawing, two names)
 PixelIcon.Bitmaps.tick = PixelIcon.Bitmaps.check
@@ -168,6 +173,210 @@ function PixelIcon.Runs(name)
 	cache[name] = rects
 	return rects
 end
+
+----------------------------------------------------------------------
+-- (LOOK-ui, kitb-look1: the owner's look bar 2026-11-17, "pixel edges snapped to whole pixels at every screen size")
+-- whole device px under a UIScale. A window or the HUD sits under a Fit / ViewportScale of 0.8 or 0.85 below 1080p, so a
+-- 2 px design cell drew 1.6 screen px (lumpy 1-and-2 px cells in the game, soft in the renders). A part that must stay
+-- on the pixel grid asks for its design px through PixelIcon.Px(n, s): the nearest whole number of screen px (at least
+-- one), back in design px. PixelIcon.Whole re-runs a part's sizing whenever the rest scale above it changes.
+----------------------------------------------------------------------
+-- n design px under rest scale s: a whole number of screen px (at least one while n > 0), in design px
+function PixelIcon.Px(n, s)
+	n = tonumber(n) or 0
+	s = tonumber(s) or 1
+	if n <= 0 or s <= 0 then
+		return n
+	end
+	return math.max(1, math.floor(n * s + 0.5)) / s
+end
+
+-- a UIScale that tweens and rests at 1 (a pop, a pulse, the HUD's unnamed ones) is left out of the rest scale: the
+-- grid is the one the part rests on
+local TRANSIENT = { Pop = true, Pulse = true, PopScale = true, FxScale = true, UIScale = true }
+
+-- the product of the resting UIScales on `obj` and every GuiObject above it, up to its ScreenGui; `found` (optional) gets
+-- each one
+local function restScaleOf(obj, found)
+	local s = 1
+	local cur = obj
+	while cur and not cur:IsA("LayerCollector") do
+		if cur:IsA("GuiObject") then
+			for _, ui in ipairs(cur:GetChildren()) do
+				if ui:IsA("UIScale") and not TRANSIENT[ui.Name] then
+					if ui.Scale > 0 then
+						s = s * ui.Scale
+					end
+					if found then
+						found[#found + 1] = ui
+					end
+				end
+			end
+		end
+		cur = cur.Parent
+	end
+	return s
+end
+PixelIcon.RestScale = restScaleOf
+
+local watched = setmetatable({}, { __mode = "k" }) -- [part] = { Fn = fn(s), S = the scale it was last sized for }
+local hookedScales = setmetatable({}, { __mode = "k" }) -- [UIScale] = true once its Scale is watched
+local passPending = false
+
+local function applyWhole(part, entry, force)
+	local found = {}
+	local s = restScaleOf(part, found)
+	for _, ui in ipairs(found) do
+		if not hookedScales[ui] then
+			hookedScales[ui] = true
+			ui:GetPropertyChangedSignal("Scale"):Connect(function()
+				if not passPending then
+					passPending = true
+					task.defer(function()
+						passPending = false
+						for p, e in pairs(watched) do
+							if p.Parent then
+								applyWhole(p, e, false)
+							end
+						end
+					end)
+				end
+			end)
+		end
+	end
+	if force or entry.S ~= s then
+		entry.S = s
+		entry.Fn(s)
+	end
+end
+
+-- runs fn(s) now (s = the rest scale above `part`) and again whenever that scale changes: `part` moved under another
+-- window, or a Fit / ViewportScale above it set to a new value. One watcher per part (a second call replaces fn)
+function PixelIcon.Whole(part, fn)
+	local entry = watched[part]
+	if entry then
+		entry.Fn = fn
+		applyWhole(part, entry, true)
+		return
+	end
+	entry = { Fn = fn, S = nil }
+	watched[part] = entry
+	applyWhole(part, entry, true)
+	part.AncestryChanged:Connect(function()
+		if part.Parent then
+			applyWhole(part, entry, false)
+		end
+	end)
+end
+
+-- a stroke `n` design px thick (attribute DesignPx), drawn a whole number of screen px. Call again to change n; a
+-- thickness its owner sets later (a selected card's thicker edge) is taken as the new design px and snapped too
+local followed = setmetatable({}, { __mode = "k" }) -- [stroke or lip] = the value this module set last
+function PixelIcon.WholeStroke(stroke, n)
+	stroke:SetAttribute("DesignPx", tonumber(n) or stroke.Thickness)
+	local first = followed[stroke] == nil
+	followed[stroke] = -1
+	PixelIcon.Whole(stroke, function(s)
+		local px = PixelIcon.Px(stroke:GetAttribute("DesignPx") or 0, s)
+		followed[stroke] = px
+		stroke.Thickness = px
+	end)
+	if first then
+		stroke:GetPropertyChangedSignal("Thickness"):Connect(function()
+			if math.abs(stroke.Thickness - (followed[stroke] or -1)) > 1e-4 then
+				PixelIcon.WholeStroke(stroke, stroke.Thickness)
+			end
+		end)
+	end
+	return stroke
+end
+
+-- a bar along an edge (a lip) `n` design px tall (attribute DesignPx; its width and position are the caller's), drawn a
+-- whole number of screen px tall. Call again to change n; a height its owner sets later (a press thins the lip) is taken
+-- as the new design px
+function PixelIcon.WholeHeight(obj, n)
+	obj:SetAttribute("DesignPx", tonumber(n) or obj.Size.Y.Offset)
+	local first = followed[obj] == nil
+	followed[obj] = -1
+	PixelIcon.Whole(obj, function(s)
+		local size = obj.Size
+		local px = PixelIcon.Px(obj:GetAttribute("DesignPx") or 0, s)
+		followed[obj] = px
+		obj.Size = UDim2.new(size.X.Scale, size.X.Offset, size.Y.Scale, px)
+	end)
+	if first then
+		obj:GetPropertyChangedSignal("Size"):Connect(function()
+			local y = obj.Size.Y
+			if y.Scale == 0 and math.abs(y.Offset - (followed[obj] or -1)) > 1e-4 then
+				PixelIcon.WholeHeight(obj, y.Offset)
+			end
+		end)
+	end
+	return obj
+end
+
+-- (LOOK-ui) every kit edge (a Border UIStroke) and every kit lip (a Frame "Lip" of a fixed height) under `root`, now and
+-- whenever one is added later, drawn on whole screen px (WholeStroke / WholeHeight). For a window's or the HUD's whole
+-- gui, so a card built later (a list row, a pet card) stays on the grid without each builder asking. Once per root.
+-- (LOOK-ui: border leaks) and no GuiObject there keeps Roblox's default 1 px dark border (BorderSizePixel 1 on a new
+-- Frame / TextLabel: it showed round the Pets busy marks, the Shop's header icon, the BEST VALUE tag): kit B draws its
+-- edges with strokes only
+local treed = setmetatable({}, { __mode = "k" })
+local function adopt(d)
+	if d:IsA("GuiObject") and d.BorderSizePixel ~= 0 then
+		d.BorderSizePixel = 0
+	end
+	if followed[d] ~= nil then
+		return
+	end
+	if d:IsA("UIStroke") then
+		if d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and d.Thickness > 0 then
+			PixelIcon.WholeStroke(d, d.Thickness)
+		end
+	elseif d:IsA("Frame") and d.Name == "Lip" then
+		local y = d.Size.Y
+		if y.Scale == 0 and y.Offset > 0 then
+			PixelIcon.WholeHeight(d, y.Offset)
+		end
+	end
+end
+function PixelIcon.WholeTree(root)
+	if not root or treed[root] then
+		return
+	end
+	treed[root] = true
+	for _, d in ipairs(root:GetDescendants()) do
+		adopt(d)
+	end
+	root.DescendantAdded:Connect(function(d)
+		if d:IsA("GuiObject") and d.BorderSizePixel ~= 0 then
+			d.BorderSizePixel = 0
+		end
+		if d:IsA("UIStroke") or (d:IsA("Frame") and d.Name == "Lip") then
+			-- its builder names and sizes it right after parenting it: look once that is done
+			task.defer(function()
+				if d.Parent then
+					adopt(d)
+				end
+			end)
+		end
+	end)
+end
+
+-- a face inset `e` design px from every side of its parent (`extra` px more off its height: the lip it leaves showing
+-- under it), both whole screen px (attributes InsetPx, InsetExtra). Call again to change them (a plank's press)
+function PixelIcon.WholeInset(face, e, extra)
+	face:SetAttribute("InsetPx", tonumber(e) or 0)
+	face:SetAttribute("InsetExtra", tonumber(extra) or 0)
+	PixelIcon.Whole(face, function(s)
+		local px = PixelIcon.Px(face:GetAttribute("InsetPx") or 0, s)
+		local more = PixelIcon.Px(face:GetAttribute("InsetExtra") or 0, s)
+		face.Position = UDim2.fromOffset(px, px)
+		face.Size = UDim2.new(1, -2 * px, 1, -(2 * px + more))
+	end)
+	return face
+end
+
 
 -- (U9-7 look) the cells on whole SCREEN pixels under a window's or a HUD's UIScale. A dock at 0.8 drew a 27 px icon's 3 px
 -- cells 2.4 px wide (Roblox rounds each Frame's edges to the pixel, so the columns came out 2 and 3 px: uneven) and an
@@ -276,29 +485,76 @@ function PixelIcon.New(parent, name, px, colour)
 		warn("[PixelIcon] " .. px .. " px is not a multiple of 9: the cells draw at " .. (9 * math.floor(px / 9)) .. " px in a padded box")
 	end
 	local cell = math.floor(px / 9)
-	local pad = math.floor((px - 9 * cell) / 2)
 	local icon = Instance.new("Frame")
 	icon.Name = "Icon"
 	icon.BackgroundTransparency = 1
 	icon.BorderSizePixel = 0
 	icon.Size = UDim2.fromOffset(px, px)
 	icon:SetAttribute("PixelIcon", name)
+	icon:SetAttribute("Cell", cell)
+	local cells = {}
 	for i, r in ipairs(rects) do
 		local f = Instance.new("Frame")
 		f.Name = "R" .. i
 		f.BorderSizePixel = 0
 		f.BackgroundTransparency = 0
 		f.BackgroundColor3 = colour or Color3.new(1, 1, 1)
-		f.Position = UDim2.fromOffset(pad + r[1] * cell, pad + r[2] * cell)
-		f.Size = UDim2.fromOffset(r[3] * cell, r[4] * cell)
 		f.Parent = icon
+		cells[i] = f
+	end
+	local function lay(s)
+		local dc = (math.abs(s - 1) < 1e-4) and cell or PixelIcon.Px(cell, s)
+		-- the cells centred in the box, their origin on a whole screen px of the box
+		local pad = math.floor((px - 9 * dc) / 2 * s + 1e-6) / s
+		for i, r in ipairs(rects) do
+			cells[i].Position = UDim2.fromOffset(pad + r[1] * dc, pad + r[2] * dc)
+			cells[i].Size = UDim2.fromOffset(r[3] * dc, r[4] * dc)
+		end
 	end
 	icon.Parent = parent
+	-- (merge kitb-look1 x kitb-ui2) the design layout first (lay at scale 1), then fitCells puts the cells on whole
+	-- screen px under the UIScales above (U9-7 look), now and whenever it lands under a ScreenGui
+	lay(1)
 	-- (U9-7 look) whole screen pixels under the UIScales above it, now and whenever it lands under a ScreenGui
 	fitCells(icon)
 	icon.AncestryChanged:Connect(function()
 		fitCells(icon)
 	end)
+	return icon
+end
+
+-- (LOOK-ui, kitb-look1: the host from the snapped icon, not the icon from the host) the design px a box needs round icon
+-- `px` with `margin` screen px of face on each side, under rest scale s: 9 whole-px cells plus the margins (22 screen px
+-- for a 2 px cell, 31 for 3), back in design px. A box sized from its host (a 16 px chip at 0.8 under an 18 px icon) let
+-- the icon hang over its edge
+function PixelIcon.BoxPx(px, margin, s)
+	s = (tonumber(s) or 1) > 0 and s or 1
+	local cell = math.floor(math.max(9, tonumber(px) or 18) / 9)
+	return (9 * screenCellOf(cell, s) + 2 * (tonumber(margin) or 2)) / s -- (merge) the cell rule of fitCells (New)
+end
+
+-- (LOOK-ui) icon `name` at px (its cell size) in `chip`, a square the caller places: the chip is sized from the icon's
+-- whole-px cells (PixelIcon.BoxPx: `margin` screen px of face round them, default 2) and the cells start `margin` px in,
+-- again whenever the rest scale above changes. Returns the icon (nil for an unknown name)
+function PixelIcon.Chip(chip, name, px, colour, margin)
+	px = math.max(9, math.floor(tonumber(px) or 18))
+	margin = tonumber(margin) or 2
+	local icon = PixelIcon.New(chip, name, px, colour)
+	if not icon then
+		return nil
+	end
+	local cell = math.floor(px / 9)
+	PixelIcon.Whole(chip, function(s)
+		local sc = screenCellOf(cell, s)
+		local side = PixelIcon.BoxPx(px, margin, s)
+		chip.Size = UDim2.fromOffset(side, side)
+		-- New centres its cells in the px box with this inset (fitCells; negative when they overflow it): undo it,
+		-- then the margin
+		local pad = math.floor((px * s - 9 * sc) / 2) / s
+		icon.AnchorPoint = Vector2.new(0, 0)
+		icon.Position = UDim2.fromOffset(margin / s - pad, margin / s - pad)
+	end)
+	chip:SetAttribute("IconChip", name)
 	return icon
 end
 

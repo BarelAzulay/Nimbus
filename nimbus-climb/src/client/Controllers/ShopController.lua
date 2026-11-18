@@ -144,7 +144,7 @@ local K = {
 	SHORT_GEMS = "Not enough gems.",
 	POTION_KEY = "XpPotionGems",
 	RESTRICTED_ATTR = "PaidRandomItemsRestricted", -- GemService: true while restricted or unknown, false when allowed
-	SCROLLBAR = 6,
+	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
 	ACCENT = rgb(90, 168, 232), -- the header (the A mock)
 	NAVY = rgb(11, 16, 48),
 	TABS = { "Eggs", "Gems", "Packs", "Passes", "Boosts" },
@@ -657,7 +657,9 @@ function H.build()
 	U.Icon = label("Icon", header, "", "Display", 42, {
 		TextTruncate = Enum.TextTruncate.None, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text,
 	})
-	H.edge(U.Icon, 3)
+	-- (LOOK-ui, kitb-look1: one style across screens) the Signboard header's icon slot: SignKit.Sizes.IconSlot square, a 2 px
+	-- brown ink line (was a 46 px square in a 3 px wood edge)
+	H.edge(U.Icon, 2, SIGN.Text)
 	PixelIcon.Host(U.Icon, NeonKit.IconName("Eggs")) -- (kit-b U7a) the egg, sized with the label
 	U.Title = label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left })
 	U.Title:SetAttribute("RibbonBand", "NoTails") -- (render gate) the band ends square on the navy plank (its tails read as a glitchy block there)
@@ -692,6 +694,7 @@ function H.build()
 		Parent = header,
 	})
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- the drawn X in a Danger block's brown ink
+	NeonKit.CloseBlock(U.Close) -- (LOOK-ui, kitb-look1) the windows' one close block: its x in 3 px cells (was 2 at the 0.8 Fit)
 	-- the awning: one fixed-size piece over the top rim (never stretched with the window: the sign rule)
 	U.Roof = SignKit.Roof(holder, { Width = K.ROOF_W, Y = -10, ZIndex = 3 })
 
@@ -882,6 +885,14 @@ function H.buildCard(item, page, isHero)
 	end)
 	local b = card.Body
 	local art = frame("Art", b, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.PetWell })
+	-- (LOOK-ui, kitb-look1: the pitch's .dw) the art's well in its 2 px edge, as the pet wells
+	local artEdge = Instance.new("UIStroke")
+	artEdge.Name = "SignEdge"
+	artEdge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	artEdge.LineJoinMode = Enum.LineJoinMode.Miter
+	artEdge.Color = SIGN.WellEdge
+	artEdge.Thickness = 2
+	artEdge.Parent = art
 	local glyph = label("Glyph", art, "", "Display", 40, { Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
 	glyph:SetAttribute("PixelIcon", H.artGlyph(item))
 	PixelIcon.Host(glyph, H.artGlyph(item)) -- (kit-b U7a) the card's icon, sized with the art box
@@ -953,6 +964,20 @@ function H.artGlyph(item)
 	if g.Cash and not g.Pets then
 		return Theme.Currency.Cash.Icon
 	end
+	-- (LOOK-ui, kitb-look1: one ticket on every pass, one potion on every boost) a pass shows what it doubles, a boost its
+	-- potion
+	if not g.Pets then
+		for _, perk in ipairs(type(g.Perks) == "table" and g.Perks or {}) do
+			if perk == "CashX2" then
+				return Theme.Currency.Cash.Icon
+			elseif perk == "XpX2" or perk == "ProXp" then
+				return "star"
+			end
+		end
+		if type(g.Boost) == "table" and g.Boost.XpPotion then
+			return "potion"
+		end
+	end
 	return NeonKit.IconName(item.Tab) or NeonKit.IconName("Store")
 end
 
@@ -972,7 +997,7 @@ function H.rebuild()
 		page.Name = "Page_" .. tab
 		page.BackgroundTransparency = 1
 		page.BorderSizePixel = 0
-		page.ScrollBarThickness = K.SCROLLBAR
+		SignKit.Scroll(page, K.SCROLLBAR)
 		page.ScrollingDirection = Enum.ScrollingDirection.Y
 		page.CanvasSize = UDim2.new()
 		page.Size = UDim2.fromScale(1, 1)
@@ -1033,9 +1058,6 @@ function H.layoutCard(entry, w, h, M)
 	local nameH = M.Name + 4
 	local lineH = M.Line + 3
 	local statusOn = entry.Status.Text ~= ""
-	local n = #entry.Lines + (statusOn and 1 or 0)
-	local room = h - 2 * pad - nameH - 2
-	local getsOn = (n + 1) * lineH <= room
 	place(entry.Name, textX, pad, textW, nameH)
 	entry.Name.TextSize = M.Name
 	local y = pad + nameH + 2
@@ -1043,14 +1065,10 @@ function H.layoutCard(entry, w, h, M)
 	if statusOn and entry.StatusFirst then
 		place(entry.Status, textX, y, textW, M.Status + 3)
 		y = y + M.Status + 3
-		getsOn = false
 	end
-	entry.GetsYou.Visible = getsOn
-	if getsOn then
-		place(entry.GetsYou, textX, y, textW, lineH)
-		entry.GetsYou.TextSize = M.Line
-		y = y + lineH
-	end
+	-- (LOOK-ui, kitb-look1: the Starter card said "Gets you:" over its lines, the Pro card under it did not, by room alone)
+	-- the lines speak for themselves on every card: no "Gets you:" heading
+	entry.GetsYou.Visible = false
 	for _, line in ipairs(entry.Lines) do
 		place(line, textX, y, textW, lineH)
 		line.TextSize = M.Line
@@ -1097,10 +1115,7 @@ function H.layoutCardPortrait(entry, w, M)
 	if statusOn and entry.StatusFirst then
 		put(entry.Status, M.Status, M.StatusRows, M.Status + 3)
 	end
-	entry.GetsYou.Visible = #entry.Lines > 0
-	if entry.GetsYou.Visible then
-		put(entry.GetsYou, M.Line, 1, M.Line + 3)
-	end
+	entry.GetsYou.Visible = false -- (LOOK-ui) no "Gets you:" heading on any card (as the landscape layout)
 	for _, line in ipairs(entry.Lines) do
 		line.Visible = true
 		put(line, M.Line, M.LineRows, M.Line + 3)
@@ -1133,7 +1148,7 @@ function H.layoutHeader(W, R)
 	place(U.Close, W - R.Close - (portrait and F + 3 or 10), closeY, R.Close, R.Close) -- (its drawn X scales with it)
 	local rowH = portrait and R.Row or R.Header
 	-- the egg on its gold square (the Signboard header's icon slot), the icon a little inside it
-	local slot = R.Icon + 4
+	local slot = R.Icon -- (LOOK-ui, kitb-look1) SignKit.Sizes.IconSlot on PC (42), as every Signboard window
 	place(U.Icon, portrait and 10 or 16, F + math.floor((rowH - F - slot) / 2), slot, slot)
 	U.Icon.TextSize = math.max(12, R.Icon - 10)
 	U.Title.TextSize = R.TitleText
@@ -1880,6 +1895,8 @@ function ShopController.Init()
 	pcall(State.Init)
 	robuxGlyph()
 	U.Gui = CloudUI.NewScreenGui("NimbusShop", K.DISPLAY_ORDER)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(U.Gui)
 	U.Gui.IgnoreGuiInset = true
 	U.Gui.ResetOnSpawn = false
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()

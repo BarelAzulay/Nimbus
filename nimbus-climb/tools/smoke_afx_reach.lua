@@ -866,13 +866,16 @@ local function clientScenarios()
 			MC.Open("Pets", { Key = key })
 			KC.advance(1.5)
 			local gui = LocalPlayer.PlayerGui:FindFirstChild("NimbusPets")
-			local perks = nil
+			local perks, special = nil, nil
 			for _, d in ipairs(gui and gui:GetDescendants() or {}) do
 				if d.Name == "Perks" then
 					perks = d
+				elseif d.Name == "SpecialText" then
+					special = d
 				end
 			end
-			local text = perks and tostring(perks.Text) or ""
+			-- (LOOK-ui, kitb-look1) the special sits on its own strip right above the perks list
+			local text = (special and special.Text ~= "" and (special.Text .. "\n") or "") .. (perks and tostring(perks.Text) or "")
 			MC.Close()
 			KC.advance(0.4)
 			return text

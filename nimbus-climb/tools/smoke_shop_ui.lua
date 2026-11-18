@@ -2136,9 +2136,14 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		local egg = G.part(k.Hero, "HeroEgg")
 		local sparks = G.part(k.Hero, "Sparks")
 		local holder = k.Travel.Parent
-		T.check(G.shown(k.Dim) and G.near(db.x, 0) and G.near(db.y, 0) and G.near(db.w, hb.w) and G.near(db.h, hb.h) and abs(k.Dim.BackgroundTransparency - 0.35) < 1e-6
-			and k.Dim.BackgroundTransparency < 1 and k.Dim.Parent == k.Chip.Parent,
-			"secret lock: Dim (K.NAVY at 0.35) covers the card body", fmt("%.0f,%.0f %.0fx%.0f t %.2f", db.x, db.y, db.w, db.h, k.Dim.BackgroundTransparency))
+		-- (LOOK-ui, kitb-look1) the veil is the art column's only: the title, the odds and the chip (from x 360) stay clear,
+		-- and the chip leads with the padlock
+		local titleAt = G.rel(G.part(k.Hero, "Title"), k.Hero)
+		T.check(G.shown(k.Dim) and G.near(db.x, 0) and G.near(db.y, 0) and G.near(db.w, 352) and G.near(db.h, hb.h) and abs(k.Dim.BackgroundTransparency - 0.35) < 1e-6
+			and k.Dim.BackgroundTransparency < 1 and k.Dim.Parent == k.Chip.Parent and titleAt.x >= db.x + db.w and cb.x >= db.x + db.w,
+			"secret lock: Dim (K.NAVY at 0.35) veils the art column only (0..352), the title and the chip clear of it", fmt("%.0f,%.0f %.0fx%.0f t %.2f, title x %.0f", db.x, db.y, db.w, db.h, k.Dim.BackgroundTransparency, titleAt.x))
+		local lead = k.Chip:FindFirstChild("LeadIcon")
+		T.check(lead ~= nil and lead:GetAttribute("PixelIcon") == "lock" and G.shown(lead), "secret lock: the AltarChip leads with the pixel padlock", lead and tostring(lead:GetAttribute("PixelIcon")) or "no LeadIcon")
 		T.check(k.Dim.ZIndex > (egg and egg.ZIndex or 0) and k.Dim.ZIndex > (sparks and sparks.ZIndex or 0) and k.Dim.ZIndex < k.Chip.ZIndex and holder and k.Dim.ZIndex < holder.ZIndex and k.Dim.ZIndex < k.Hint.ZIndex,
 			"secret lock: ...over the machine, the big egg and its sparks, under the chip, the TRAVEL button and the hint",
 			fmt("dim %d, egg %s, sparks %s, chip %d, holder %s, hint %d", k.Dim.ZIndex, tostring(egg and egg.ZIndex), tostring(sparks and sparks.ZIndex), k.Chip.ZIndex, tostring(holder and holder.ZIndex), k.Hint.ZIndex))

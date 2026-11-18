@@ -107,11 +107,11 @@ local K = {
 	POWER_W = 240, -- design px Team power needs beside the button columns (a big number at 24 px); with less (a tablet) the top row stacks
 	STACK_W = 446, -- design px of a stacked top row: Auto-fill + Clear + the three team buttons
 	STACK_CLEAR_W = 100, -- ... Clear's (or Undo's) part of it
-	WIDE_ROWS_W = 380, -- design px of the detail's rows: below this the two columns share them unevenly
 	WIDE_W = 1150, -- design px: from this window width the buttons and the detail take their full size
 	PHONE_CARD = { 104, 130, 6 },
 	CARD_LIP = 6, -- (kit-b U8) px of a card's rarity lip
-	PHONE_TITLE = { 104, 134, 42 }, -- a phone's title sign: portrait width, landscape width, height
+	PHONE_TITLE = { 140, 134, 42 }, -- a phone's title sign: portrait width, landscape width, height (LOOK-ui: room for the paw)
+	PHONE_SLOT = 30, -- (LOOK-ui) the paw's gold square on a phone's title sign (18 px paw)
 	CHIP = 26, -- px of a card's element / number / tier chips
 }
 
@@ -126,7 +126,8 @@ local GARDEN_COLOR = SIGN.Grass
 local TRAIN_COLOR = SIGN.Violet
 local TIER_COLORS = { Golden = Color3.fromRGB(246, 196, 64), Rainbow = Color3.fromRGB(226, 110, 214), Hybrid = Color3.fromRGB(150, 110, 232) }
 local XP_COLOR = SIGN.Sky
-local ROWS = { { "Income", "Coins" }, { "Power", "Battle power" }, { "Health", "Health" }, { "Speed", "Speed" } }
+-- id, name, the short name a one-line tile falls back to (LOOK-ui: "Battle powe13,213" ran into its number)
+local ROWS = { { "Income", "Coins", "Coins" }, { "Power", "Battle power", "Power" }, { "Health", "Health", "Health" }, { "Speed", "Speed", "Speed" } }
 
 -- typography (kit-b U7b: the sword, the stars and the busy / work marks are PixelIcons, ICON; the emoji went)
 local G = {
@@ -134,6 +135,9 @@ local G = {
 	Close = "\195\151",
 }
 local ICON = { Power = "sword", Star = "star", Training = "weight", Garden = "sprout", Evolve = "sparkle" }
+-- (LOOK-ui, kitb-look1) the detail's stat tiles (icon, role colour: the pitch's .ci) and the actions' lead icons
+local ROW_LOOK = { Income = { "coin", Theme.Sign.Gold }, Power = { "sword", Theme.Sign.Red }, Health = { "heart", Theme.Sign.Roof }, Speed = { "dash", Theme.Sign.Sky } }
+local ACT_ICON = { ActPut = "plus", ActFeed = "apple", ActTrain = "bell", ActGarden = "sprout", ActEvolve = "sparkle", ActFighter = "sword" }
 
 local frame, text, stroke = Bits.frame, Bits.text, Bits.stroke
 
@@ -889,15 +893,66 @@ function H.buildDetail()
 	stroke(d.Glow, SIGN.WellEdge, 2, 0).LineJoinMode = Enum.LineJoinMode.Miter
 	d.Picture = frame(d.Frame, "Picture", { ZIndex = 22 })
 	d.Name = text(d.Frame, "Name", "", "Title", 30, INK, { TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
-	d.Meta = text(d.Frame, "Meta", "", "Body", 19, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
-	d.Xp = CloudUI.Bar({ Name = "XpBar", Height = 26, TextSize = 18, Color = XP_COLOR, Skin = "Sign", Parent = d.Frame })
+	-- (LOOK-ui, kitb-look1: the pitch's .di) the level line, then the rarity and the element as chips on one row (MetaRow:
+	-- Meta "Lv 1 / 100" and its stars, a rarity tag in its colour, each element's CloudUI.ElementChip with its name)
+	d.MetaRow = frame(d.Frame, "MetaRow", { ZIndex = 21 })
+	d.MetaLayout = Util.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 6),
+		Parent = d.MetaRow,
+	})
+	d.MetaLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		safe("metaOverflow", H.metaOverflow)
+	end)
+	d.Meta = text(d.MetaRow, "Meta", "", "Body", 19, MUTED, {
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(0, 80, 1, 0), -- (its width: the text and its stars, H.fitMeta)
+		LayoutOrder = 1,
+		ZIndex = 21,
+	})
+	-- (LOOK-ui, kitb-look1) the XP as a block bar (CloudUI.Bar Sign: ten sky blocks on the sky lip token), its numbers beside it
+	d.Xp = CloudUI.Bar({ Name = "XpBar", Height = 26, TextSize = 18, Color = XP_COLOR, Skin = "Sign", LabelSide = "Right", Parent = d.Frame })
 	d.Xp.Root.ZIndex = 21
+	-- (LOOK-ui, kitb-look1: the pitch's .sv) each stat a tile: the tile face in its wood edge, an icon square in the stat's
+	-- role colour with its pixel icon (coins gold, battle power red, health pink, speed sky), the name, the number. The
+	-- square is sized from the icon's whole-px cells (PixelIcon.Chip), so the icon never hangs over it; H.placeRows lays the
+	-- name over the number on PC (the pitch's two lines), beside it on a phone (H.fitRows keeps them apart)
 	for _, row in ipairs(ROWS) do
-		local holder = frame(d.Frame, "Row_" .. row[1], { ZIndex = 21 })
-		local label = text(holder, "Label", row[2], "Body", 18, MUTED, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
-		local value = text(holder, "Value", "", "Heading", 19, INK, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 22 })
-		U.Rows[row[1]] = { Frame = holder, Label = label, Value = value }
+		local look = ROW_LOOK[row[1]] or { "coin", SIGN.Gold }
+		local holder = frame(d.Frame, "Row_" .. row[1], { ZIndex = 21, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile })
+		local edge = stroke(holder, SIGN.Wood, 2, 0)
+		edge.Name = "SignEdge"
+		edge.LineJoinMode = Enum.LineJoinMode.Miter
+		local chip = frame(holder, "Chip", { BackgroundTransparency = 0, BackgroundColor3 = look[2], ZIndex = 22 })
+		local icon = PixelIcon.Chip(chip, look[1], 18, Theme.TextOn(look[2]))
+		if icon then
+			icon.ZIndex = 23
+			for _, cell in ipairs(icon:GetChildren()) do
+				cell.ZIndex = 23
+			end
+		end
+		local label = text(holder, "Label", row[2], "Body", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 22 })
+		local value = text(holder, "Value", "", "Heading", 19, INK, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 22 })
+		local r = { Frame = holder, Label = label, Value = value, Chip = chip, Icon = icon, Name = row[2], Short = row[3] }
+		U.Rows[row[1]] = r
+		value:GetPropertyChangedSignal("Text"):Connect(function()
+			H.fitRow(r)
+		end)
 	end
+	-- (LOOK-ui, kitb-look1: the pitch's .sp) the pet's special on a Selected strip in its wood edge, the pixel star first
+	d.Special = frame(d.Frame, "Special", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Selected, ZIndex = 21 })
+	local specialEdge = stroke(d.Special, SIGN.Wood, 2, 0)
+	specialEdge.Name = "SignEdge"
+	specialEdge.LineJoinMode = Enum.LineJoinMode.Miter
+	d.SpecialText = text(d.Special, "SpecialText", "", "Heading", 18, INK, {
+		Position = UDim2.fromOffset(8, 0),
+		Size = UDim2.new(1, -16, 1, 0),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		ZIndex = 22,
+	})
 	d.Work = text(d.Frame, "Work", "", "Heading", 18, INK, {
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -929,10 +984,12 @@ function H.buildDetail()
 		d[name] = button
 		return button
 	end
-	-- (kit-b U8) one colour by role: Put in team is the green one, Remove the red one, the rest stone
+	-- (kit-b U8) one colour by role: Put in team is the green one, Remove the red one, the rest stone. (LOOK-ui, kitb-look1:
+	-- red is the close block's alone) Remove is a stone plank with red ink
 	action("ActPut", "Put in team", "Green", H.putInTeam)
 	action("ActFighter", "Make fighter", "Gray", H.makeFighter)
-	action("ActRemove", "Remove", "Red", H.removeSelected)
+	action("ActRemove", "Remove", "Gray", H.removeSelected)
+	d.ActRemove:SetAttribute("Ink", SIGN.RedLip)
 	action("ActFeed", "Feed", "Gray", function()
 		H.careOpen("Feed")
 	end)
@@ -957,6 +1014,7 @@ function H.buildDetail()
 		Parent = d.Frame,
 	})
 	NeonKit.CloseMark(d.Close, { Square = true, Ink = SIGN.RedLip, Color = INK }) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
+	NeonKit.CloseBlock(d.Close) -- (LOOK-ui, kitb-look1) the windows' one close block
 end
 
 function H.build()
@@ -1163,7 +1221,7 @@ function H.layoutCard(item)
 	end
 	item.TierMark.TextSize = fs
 	if item.Element then
-		place(item.Element, 7, 7, K.CHIP, K.CHIP)
+		item.Element.Position = UDim2.fromOffset(7, 7) -- (LOOK-ui) it sizes itself from its icon's whole-px cells
 	end
 	place(item.Number, w - 7 - K.CHIP, 7, K.CHIP, K.CHIP)
 	place(item.Tier, w - 7 - K.CHIP, 11 + K.CHIP, K.CHIP, K.CHIP)
@@ -1174,6 +1232,37 @@ function H.layoutCard(item)
 	place(item.Busy, 0, 0, w, phone and 58 or 70)
 	H.padTop(item.Busy, 7 + K.CHIP) -- the label and its mark under the chips row (the team number stays on top)
 	item.Busy.TextWrapped = true
+end
+
+-- (LOOK-ui, kitb-look1: on a 116 px card "Gardening" with its mark 6 px before it ran edge to edge, the mark glued to the
+-- word) a card cover's mark sits in the cover's top-left corner, on the chips' row (the team number's mirror), the word
+-- alone centred under it. The mark is the label's "Icon" (PixelIcon.New, 2 px cells); nil takes it off
+function H.busyMark(item, name)
+	local busy = item.Busy
+	PixelIcon.Mark(busy, nil)
+	local mark = busy:FindFirstChild("Icon")
+	if mark and mark:GetAttribute("PixelIcon") ~= name then
+		mark:Destroy()
+		mark = nil
+	end
+	if not name then
+		return
+	end
+	if not mark then
+		mark = PixelIcon.New(busy, name, 18, busy.TextColor3)
+		if not mark then
+			return
+		end
+		mark.ZIndex = busy.ZIndex
+		for _, cell in ipairs(mark:GetChildren()) do
+			cell.ZIndex = busy.ZIndex
+		end
+	end
+	-- the cover's padding moves its children: undone, so the mark sits 7 + 4 px in from the card's corner
+	local pad = busy:FindFirstChildOfClass("UIPadding")
+	local top = pad and pad.PaddingTop.Offset or 0
+	local left = pad and pad.PaddingLeft.Offset or 0
+	mark.Position = UDim2.fromOffset(7 + (K.CHIP - 18) / 2 - left, 7 + (K.CHIP - 18) / 2 - top)
 end
 
 -- the slot's parts: a square on PC, a short wide card on a phone
@@ -1209,16 +1298,66 @@ end
 
 -- the four rows in two columns. On PC the right column is the wider one under the full detail's width: 'Battle power' is the long
 -- label there and a pet's power the long number.
+-- (LOOK-ui) the stat tiles two by two, ROW_VGAP between the lines; each tile's icon square, name and number inside it
+local ROW_VGAP = 6
+-- (LOOK-ui, kitb-look1: the blocker "Battle powe13,213") a PC tile is the pitch's .sv: two lines, the name small and muted
+-- on top, the number under it in the Heading face (45 design px: whole px under the 0.8 Fit). A phone tile keeps one
+-- line, its name fitted beside the number (H.fitRows)
+local ROW2_H = 45
 function H.placeRows(x, y, totalW, rowH, gap, phone)
+	-- (two lines: both columns the same width, the long name no longer shares its line with the number)
 	local leftW = math.floor((totalW - gap) / 2)
 	local rightW = leftW
-	if not phone and totalW < K.WIDE_ROWS_W then
-		leftW = math.floor((totalW - gap) * 0.41)
-		rightW = totalW - gap - leftW
-	end
+	local two = not phone
+	local s = S.Scale or 1
+	local chipW = PixelIcon.BoxPx(18, 2, s) -- the icon square from its whole-px cells (PixelIcon.Chip sizes it the same)
 	for i, row in ipairs(ROWS) do
 		local right, line = (i - 1) % 2 == 1, math.floor((i - 1) / 2)
-		place(U.Rows[row[1]].Frame, right and x + leftW + gap or x, y + line * rowH, right and rightW or leftW, rowH)
+		local r = U.Rows[row[1]]
+		local tileW = right and rightW or leftW
+		place(r.Frame, right and x + leftW + gap or x, y + line * (rowH + ROW_VGAP), tileW, rowH)
+		local chipY = Theme.Px(math.max(0, (rowH - chipW) / 2), s)
+		r.Chip.Position = UDim2.fromOffset(Theme.Px(4, s), math.floor(chipY * s + 1e-6) / s)
+		local textX = Theme.Px(4, s) + chipW + Theme.Px(8, s)
+		r.TileW, r.TextX, r.Two = tileW, textX, two
+		if two then
+			r.Label.Text = r.Name
+			r.Label.TextYAlignment = Enum.TextYAlignment.Top
+			r.Value.TextXAlignment = Enum.TextXAlignment.Left
+			r.Value.TextYAlignment = Enum.TextYAlignment.Top
+			place(r.Label, textX, Theme.Px(3, s), tileW - textX - 6, 18)
+			place(r.Value, textX, Theme.Px(21, s), tileW - textX - 6, 22)
+		else
+			r.Label.TextYAlignment = Enum.TextYAlignment.Center
+			r.Value.TextXAlignment = Enum.TextXAlignment.Right
+			r.Value.TextYAlignment = Enum.TextYAlignment.Center
+			place(r.Value, 0, 0, tileW - 6, rowH)
+		end
+	end
+	H.fitRows()
+end
+
+-- (LOOK-ui, kitb-look1) a one-line tile's name stops 6 px before its number (measured): the full name while it fits,
+-- else the short one ("Power"), else truncated. Run after the numbers change (H.refreshDetail)
+function H.fitRow(r)
+	if not (r.TileW and not r.Two) then
+		return
+	end
+	local ok, m = pcall(Theme.MeasureLabel, r.Value)
+	local valueW = math.ceil((ok and typeof(m) == "Vector2" and m.X > 0) and m.X or #r.Value.Text * r.Value.TextSize * 0.6)
+	local room = r.TileW - 6 - valueW - 6 - r.TextX
+	local name = r.Name
+	local okN, n = pcall(Theme.Measure, name, "Body", r.Label.TextSize)
+	if okN and typeof(n) == "Vector2" and n.X > room and r.Short then
+		name = r.Short
+	end
+	r.Label.Text = name
+	place(r.Label, r.TextX, 0, math.max(0, room), r.Frame.Size.Y.Offset)
+end
+
+function H.fitRows()
+	for _, r in pairs(U.Rows) do
+		H.fitRow(r)
 	end
 end
 
@@ -1230,6 +1369,8 @@ function H.layoutDetail(w, h)
 	local fs = phone and 15 or 18
 	d.Name.TextSize = phone and 22 or 30
 	d.Meta.TextSize = fs
+	H.fitMeta()
+	d.SpecialText.TextSize = phone and 15 or 18
 	d.Work.TextSize = fs
 	d.Perks.TextSize = fs
 	for _, row in pairs(U.Rows) do
@@ -1251,16 +1392,18 @@ function H.layoutDetail(w, h)
 		local x = pad + pic + 8
 		local nameW = w - x - pad - (phone and 50 or 0)
 		place(d.Name, x, 6, nameW, phone and 28 or 34)
-		place(d.Meta, x, phone and 36 or 42, w - x - pad - (phone and narrow and 50 or 0), 22)
-		d.Meta.TextWrapped = narrow
-		place(d.Xp.Root, x, phone and 60 or 68, w - x - pad, 24)
-		y = phone and 88 or 108
+		place(d.MetaRow, x, phone and 35 or 41, w - x - pad - (phone and narrow and 50 or 0), phone and 24 or 28)
+		H.fitMetaRow()
+		-- (LOOK-ui) a whole 6 px between the chips' row and the XP bar (it sat 0 to 1 px under them)
+		place(d.Xp.Root, x, phone and 65 or 75, w - x - pad, 24)
+		y = phone and 95 or 108
 		if narrow then
 			y = pic + 14
 		end
 		local rowX = (narrow or not phone) and pad or x
-		H.placeRows(rowX, y, w - rowX - pad, 24, 8, phone)
-		y = y + 2 * 24 + 2
+		local rowH = phone and 26 or ROW2_H
+		H.placeRows(rowX, y, w - rowX - pad, rowH, 8, phone)
+		y = y + 2 * rowH + ROW_VGAP + 4
 		if phone and not narrow then
 			y = math.max(y, pic + 12)
 		end
@@ -1271,12 +1414,13 @@ function H.layoutDetail(w, h)
 		place(d.Picture, math.floor(w / 2 - pic / 2), 4, pic, pic)
 		y = pic + 6
 		place(d.Name, pad, y, textW, 36)
-		place(d.Meta, pad, y + 38, textW, 24)
-		d.Meta.TextWrapped = false
-		place(d.Xp.Root, pad, y + 66, textW, 26)
-		y = y + 98
-		H.placeRows(pad, y, textW, 28, 12, phone)
-		y = y + 2 * 28 + 4
+		place(d.MetaRow, pad, y + 38, textW, 28)
+		H.fitMetaRow()
+		place(d.Xp.Root, pad, y + 72, textW, 26)
+		y = y + 104
+		local rowH = phone and 30 or ROW2_H
+		H.placeRows(pad, y, textW, rowH, 10, phone)
+		y = y + 2 * rowH + ROW_VGAP + 6
 	end
 	d.TextY = y
 	d.TextW = textW
@@ -1344,6 +1488,13 @@ function H.placeActions()
 	place(d.Work, pad, d.TextY, d.TextW, workH)
 	d.Work.Visible = workH > 0 and d.TextY + workH <= bottomText
 	local perksY = d.TextY + workH + 2
+	-- (LOOK-ui) the special's strip first, the other perks under it
+	local specialH = (d.HasSpecial and (phone and 26 or 32)) or 0
+	if specialH > 0 then
+		place(d.Special, pad, perksY, d.TextW, specialH)
+		perksY = perksY + specialH + (phone and 4 or 6)
+	end
+	d.Special.Visible = specialH > 0 and perksY <= bottomText
 	local perksH = bottomText - perksY
 	place(d.Perks, pad, perksY, d.TextW, math.max(0, perksH))
 	d.PerksH = perksH
@@ -1436,7 +1587,7 @@ function H.layoutPC(W, H0)
 	U.GridLayout.CellSize = UDim2.fromOffset(K.PC_CARD[1], K.PC_CARD[2])
 	U.GridLayout.CellPadding = UDim2.fromOffset(K.PC_CARD[3], K.PC_CARD[3])
 	H.gridPad(6)
-	U.Grid.ScrollBarThickness = 10
+	SignKit.Scroll(U.Grid) -- (LOOK-ui) the kit's one bar
 end
 
 function H.layoutPhone(W, H0)
@@ -1448,9 +1599,13 @@ function H.layoutPhone(W, H0)
 	local sheetX, sheetY, sheetW, sheetH
 	if S.Portrait then
 		-- the slots in a row under the controls, the grid below them
-		place(U.Presets[1], 110, top, 46, chipH)
-		place(U.Presets[2], 160, top, 46, chipH)
-		place(U.Presets[3], 210, top, 46, chipH)
+		-- (LOOK-ui, kitb-look1: the stone showed as an empty block between C and the X) A / B / C share the row from the
+		-- title sign to the close block
+		local px0 = K.PHONE_TITLE[1] + 6
+		local pw = math.floor((W - closeW - 10 - px0 - 2 * 4) / 3)
+		for i = 1, 3 do
+			place(U.Presets[i], px0 + (i - 1) * (pw + 4), top, pw, chipH)
+		end
 		local rowY = top + chipH + 4
 		local cell = math.floor((W - 2 * x0 - 2 * 6) / 3)
 		place(U.Sort, x0, rowY, cell, chipH)
@@ -1518,7 +1673,7 @@ function H.layoutPhone(W, H0)
 	U.GridLayout.CellSize = UDim2.fromOffset(K.PHONE_CARD[1], K.PHONE_CARD[2])
 	U.GridLayout.CellPadding = UDim2.fromOffset(K.PHONE_CARD[3], K.PHONE_CARD[3])
 	H.gridPad(2)
-	U.Grid.ScrollBarThickness = 6
+	SignKit.Scroll(U.Grid, SignKit.Sizes.ScrollBarPhone)
 	place(U.D.Frame, sheetX, sheetY, sheetW, sheetH)
 	U.D.Frame.Name = "Sheet"
 	H.layoutDetail(sheetW, sheetH)
@@ -1555,8 +1710,35 @@ function H.layoutHeader(panel, phone, band)
 		title.Position = U.TitlePos
 		title.Size = U.TitleSize
 	end
+	-- (LOOK-ui, kitb-look1: one style across screens) the paw on its gold square on a phone's sign too: a smaller square,
+	-- the 18 px paw, the title after it
 	if slot then
-		slot.Visible = not phone
+		U.SlotPos = U.SlotPos or slot.Position
+		U.SlotSize = U.SlotSize or slot.Size
+		local icon = slot:FindFirstChild("Icon")
+		local iconName = icon and icon:GetAttribute("PixelIcon") or slot:GetAttribute("IconName")
+		slot:SetAttribute("IconName", iconName)
+		local px = phone and 18 or 27
+		local side = phone and K.PHONE_SLOT or U.SlotSize.X.Offset
+		slot.Position = phone and UDim2.new(0, 6, 0.5, 0) or U.SlotPos
+		slot.Size = UDim2.fromOffset(side, side)
+		if iconName and not (icon and icon:GetAttribute("Px") == px) then
+			if icon then
+				icon:Destroy()
+			end
+			icon = PixelIcon.New(slot, iconName, px, INK)
+			if icon then
+				icon:SetAttribute("Px", px)
+				local inset = math.floor((side - px) / 2)
+				icon.Position = UDim2.fromOffset(inset, inset)
+			end
+		end
+		slot.Visible = true
+		if phone then
+			local x = 6 + K.PHONE_SLOT + 6
+			title.Position = UDim2.fromOffset(x, 0)
+			title.Size = UDim2.new(0, math.max(0, title.Size.X.Offset - (x - 10)), 1, 0)
+		end
 	end
 	-- (render gate) no roof on a phone: over the short title sign it was a stub that covered the currency strips (portrait)
 	-- or sat under Roblox's top-left buttons (landscape)
@@ -1917,7 +2099,7 @@ function H.refreshCards(keys)
 			item.Element = element and CloudUI.ElementChip(item.Button, element, K.CHIP, { ZIndex = 4 }) or nil
 			item.ElementId = element
 			if item.Element then
-				place(item.Element, 7, 7, K.CHIP, K.CHIP)
+				item.Element.Position = UDim2.fromOffset(7, 7)
 			end
 		end
 		local slot = slotOf[key]
@@ -1942,7 +2124,7 @@ function H.refreshCards(keys)
 		local busy = Bits.busyOf(key)
 		item.Busy.Visible = busy ~= nil
 		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
-		PixelIcon.Mark(item.Busy, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
+		H.busyMark(item, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
 		item.Busy.BackgroundColor3 = busy == "Training" and TRAIN_COLOR or GARDEN_COLOR
 	end
 	U.Grid.Visible = #order > 0
@@ -1955,6 +2137,184 @@ function H.refreshCards(keys)
 	end
 	H.fillCards()
 	return order
+end
+
+-- (LOOK-ui) the level line as wide as its text and its stars' room (the padding PixelIcon.Mark left), so the chips follow
+-- right after it and the stars stay inside its box
+function H.fitMeta()
+	local meta = U.D.Meta
+	local ok, size = pcall(Theme.MeasureLabel, meta)
+	local textW = (ok and typeof(size) == "Vector2" and size.X > 0) and size.X or #meta.Text * meta.TextSize * 0.6
+	local pad = meta:FindFirstChildOfClass("UIPadding")
+	local room = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0
+	meta.Size = UDim2.new(0, math.ceil(textW) + room + 2, 1, 0)
+end
+
+-- (LOOK-ui, kitb-look1: at 1280x720 the element chip ran 28 px past the detail, at 960x640 and 390x844 the rarity did)
+-- the level line and its chips fit the row's width: first the element chips drop their names (their icon only, as the
+-- cards' corner chips), then the level line drops its "/ 100". Measured from the texts (not AbsoluteSize: AutomaticSize
+-- resolves a frame later), at the chips' own text size; rebuilds the chips when that changes
+function H.metaSize()
+	return S.Mode == "Phone" and 15 or 18 -- (the window's 18 design px floor on PC)
+end
+
+-- a chip text's width at `size` in the Heading face (Theme.Measure runs wide, never short), whole px
+function H.metaTextW(text, size)
+	local ok, v = pcall(Theme.Measure, text, "Heading", size)
+	return math.ceil((ok and typeof(v) == "Vector2" and v.X > 0) and v.X or #text * size * 0.6)
+end
+
+-- (LOOK-ui, kitb-look1) the chips' height: the element chip's icon square (PixelIcon.BoxPx: 22 screen px at 2 px cells)
+function H.metaChipH()
+	return PixelIcon.BoxPx(18, 2, S.Scale or 1)
+end
+
+-- the measure's spare: Theme.Measure came out about 13 % short of the drawn FredokaOne in the renders, so the row steps
+-- down early; the chips size themselves (AutomaticSize) and H.metaOverflow steps down once more if they still overrun
+local META_SPARE = 1.15
+local META_RANK = { Full = 1, Tight = 2, Hide = 3 }
+
+function H.fitMetaRow()
+	local d = U.D
+	local key = S.Selected
+	local def = key and Bits.defOfKey(key) or nil
+	local rowW = d.MetaRow.Size.X.Offset
+	if not def or rowW <= 0 then
+		return
+	end
+	local size = H.metaSize()
+	local gap = 6 -- the row's UIListLayout padding
+	local chipH = H.metaChipH()
+	-- (LOOK-ui) a tag's text with 8 px each side; an element chip's square, 4 px, its name, 8 px
+	local rarity = gap + H.metaTextW(tostring(def.Rarity), size) * META_SPARE + 16
+	local chips, names = rarity, 0
+	for _, element in ipairs(Bits.elementsOf(def)) do
+		chips = chips + gap + chipH
+		names = names + H.metaTextW(element, size) * META_SPARE + 12
+	end
+	if d.MetaFull then
+		d.Meta.Text = d.MetaFull
+	end
+	H.fitMeta()
+	local tight = d.Meta.Size.X.Offset + chips + names > rowW
+	if tight and d.MetaShort and d.Meta.Size.X.Offset + chips > rowW then
+		d.Meta.Text = d.MetaShort
+		H.fitMeta()
+	end
+	-- (last: a 390 px portrait sheet with an evolved pet) the element chips stay off the line; the rarity keeps its tag
+	local mode = (d.Meta.Size.X.Offset + chips > rowW and "Hide") or (tight and "Tight") or "Full"
+	-- (LOOK-ui) a step H.metaOverflow took for this pet at this width holds (no flicker back up on the next refresh)
+	local floorKey = tostring(key) .. "|" .. rowW .. "|" .. size
+	if d.MetaFloorKey == floorKey and d.MetaFloor and META_RANK[d.MetaFloor] > META_RANK[mode] then
+		mode = d.MetaFloor
+		if d.MetaFloorShort and d.MetaShort then
+			d.Meta.Text = d.MetaShort
+			H.fitMeta()
+		end
+	end
+	if d.MetaRow:GetAttribute("Fit") ~= mode then
+		d.MetaRow:SetAttribute("Fit", mode)
+		H.metaChips(def)
+	end
+	-- a frame later, laid out, once more (the list's signal does not see an AutomaticSize chip growing inside it)
+	if not d.MetaCheck then
+		d.MetaCheck = true
+		task.delay(0, function()
+			d.MetaCheck = false
+			safe("metaOverflow", H.metaOverflow)
+		end)
+	end
+end
+
+-- (LOOK-ui, kitb-look1) the detail's chips after its level line: the rarity's tag in its colour (CloudUI.RarityColor; the
+-- ink by Theme.TextOn), each element's CloudUI.ElementChip with its name. Rebuilt only when the pet's set changes
+function H.metaChips(def)
+	local d = U.D
+	local fit = d.MetaRow:GetAttribute("Fit") or "Full"
+	local tight = fit == "Tight"
+	local want = tostring(def.Rarity) .. "|" .. table.concat(Bits.elementsOf(def), ",") .. "|" .. fit .. "|" .. tostring(S.Mode)
+	if d.ChipsKey == want then
+		return
+	end
+	d.ChipsKey = want
+	for _, child in ipairs(d.MetaRow:GetChildren()) do
+		if child:IsA("GuiObject") and child ~= d.Meta then
+			child:Destroy()
+		end
+	end
+	local size = H.metaSize()
+	local color = CloudUI.RarityColor(def.Rarity)
+	local chipH = H.metaChipH()
+	-- (LOOK-ui, kitb-look1: "Mythic" and "Legendary" filled their tags edge to edge) the chips size themselves to their
+	-- drawn text (AutomaticSize) with 8 px each side; the element chip's name 4 px after its square (CloudUI.ElementChip)
+	local tag = text(d.MetaRow, "RarityChip", tostring(def.Rarity), "Heading", size, Theme.TextOn(color), {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = color,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, chipH),
+		LayoutOrder = 2,
+		ZIndex = 22,
+	})
+	local tagEdge = stroke(tag, SIGN.Wood, 2, 0)
+	tagEdge.Name = "SignEdge"
+	tagEdge.LineJoinMode = Enum.LineJoinMode.Miter
+	Bits.pad(tag, 8, 0, 8, 0)
+	for i, element in ipairs(fit == "Hide" and {} or Bits.elementsOf(def)) do
+		CloudUI.ElementChip(d.MetaRow, element, 25, {
+			Label = not tight and element or nil,
+			TextSize = size,
+			Role = "Heading",
+			Name = "Element_" .. element,
+			LayoutOrder = 2 + i,
+			ZIndex = 22,
+		})
+	end
+end
+
+-- (LOOK-ui, kitb-look1) laid out, the row's chips still run past it (the drawn face is wider than the measure): one step
+-- down (names off the element chips, then the short level line, then the element chips off the line)
+function H.metaOverflow()
+	local d = U.D
+	local layout = d and d.MetaLayout
+	local key = S.Selected
+	local def = key and Bits.defOfKey(key) or nil
+	if not (layout and def and d.MetaRow.Visible) then
+		return
+	end
+	local s = PixelIcon.RestScale(d.MetaRow)
+	-- the row's content: the list's size, or the right edge of its farthest chip when that is wider (an AutomaticSize
+	-- chip can grow after the list measured it)
+	local content = layout.AbsoluteContentSize.X
+	local left = d.MetaRow.AbsolutePosition.X
+	for _, child in ipairs(d.MetaRow:GetChildren()) do
+		if child:IsA("GuiObject") and child.Visible then
+			content = math.max(content, child.AbsolutePosition.X + child.AbsoluteSize.X - left)
+		end
+	end
+	local room = d.MetaRow.AbsoluteSize.X
+	if s <= 0 or room <= 0 or content <= room + 0.5 then
+		return
+	end
+	local fit = d.MetaRow:GetAttribute("Fit") or "Full"
+	local floorKey = tostring(key) .. "|" .. d.MetaRow.Size.X.Offset .. "|" .. H.metaSize()
+	if d.MetaFloorKey ~= floorKey then
+		d.MetaFloorKey, d.MetaFloor, d.MetaFloorShort = floorKey, nil, nil
+	end
+	if fit == "Full" then
+		fit = "Tight"
+	elseif d.MetaShort and d.Meta.Text ~= d.MetaShort then
+		d.Meta.Text = d.MetaShort
+		d.MetaFloorShort = true
+		H.fitMeta()
+		return
+	elseif fit == "Tight" then
+		fit = "Hide"
+	else
+		return
+	end
+	d.MetaFloor = fit
+	d.MetaRow:SetAttribute("Fit", fit)
+	H.metaChips(def)
 end
 
 function H.refreshDetail(keys, order)
@@ -1970,7 +2330,7 @@ function H.refreshDetail(keys, order)
 	-- (a landscape sheet's own X sits where the window's is: one X at a time, the top one closes the top thing)
 	U.Panel.CloseButton.Visible = not (d.Frame.Visible and S.Mode == "Phone" and not S.Portrait)
 	d.Hint.Visible = not has
-	for _, part in ipairs({ d.Glow, d.Picture, d.Name, d.Meta, d.Xp.Root, d.Work, d.Perks, d.ActPut, d.ActFighter, d.ActRemove, d.ActFeed, d.ActTrain, d.ActGarden, d.ActEvolve }) do
+	for _, part in ipairs({ d.Glow, d.Picture, d.Name, d.MetaRow, d.Xp.Root, d.Work, d.Perks, d.Special, d.ActPut, d.ActFighter, d.ActRemove, d.ActFeed, d.ActTrain, d.ActGarden, d.ActEvolve }) do
 		part.Visible = has
 	end
 	for _, row in pairs(U.Rows) do
@@ -2004,19 +2364,23 @@ function H.refreshDetail(keys, order)
 	-- "Lv 1 / 100, Epic, Celestial", the copy's tier / evolution in the same line
 	local level, xp = Bits.petLevel(key)
 	local cap = Bits.levelCap(key, def)
-	local meta = { "Lv " .. level .. " / " .. cap, tostring(def.Rarity) }
+	-- (LOOK-ui) "Lv 1 / 100" (and the copy's tier / Hybrid), then the rarity and each element as chips (H.metaChips)
+	local meta = { "Lv " .. level .. " / " .. cap }
 	if tier ~= "Normal" then
 		meta[#meta + 1] = tier
 	end
 	if Bits.isHybrid(key, def) then
 		meta[#meta + 1] = "Hybrid"
 	end
-	for _, element in ipairs(Bits.elementsOf(def)) do
-		meta[#meta + 1] = element
-	end
-	d.Meta.Text = table.concat(meta, " " .. G.Bullet .. " ")
+	d.MetaFull = table.concat(meta, " " .. G.Bullet .. " ")
+	meta[1] = "Lv " .. level -- (LOOK-ui, kitb-look1) the line a narrow row shows (H.fitMetaRow)
+	d.MetaShort = table.concat(meta, " " .. G.Bullet .. " ")
+	d.Meta.Text = d.MetaFull
+	H.metaChips(def)
 	-- (kit-b U7b) the evolution stars after the line, drawn; (render gate) inside the line's box: the text truncates first
 	PixelIcon.Mark(d.Meta, stage > 0 and ICON.Star or nil, { After = true, Room = true, Count = math.min(2, stage), Of = math.min(2, stage), Colour = SIGN.GoldLip })
+	H.fitMeta()
+	H.fitMetaRow()
 	local need = Bits.xpToNext(level)
 	if level >= cap then
 		d.Xp.SetFraction(1)
@@ -2033,6 +2397,7 @@ function H.refreshDetail(keys, order)
 	U.Rows.Power.Value.Text = commas(H.powerOf(key))
 	U.Rows.Health.Value.Text = commas(math.floor((tonumber(stats.Health) or 0) + 0.5))
 	U.Rows.Speed.Value.Text = commas(math.floor((tonumber(stats.Speed) or 0) + 0.5))
+	H.fitRows() -- (LOOK-ui) a one-line tile's name keeps clear of its new number
 	-- where it works / trains, and its evolution
 	local job = Bits.job(key)
 	local map = type(home.Garden) == "table" and home.Garden or {}
@@ -2056,9 +2421,12 @@ function H.refreshDetail(keys, order)
 	PixelIcon.Mark(d.Work, lines == 1 and mark or nil) -- (kit-b U7b) a one-line work note leads with its mark
 	d.WorkLines = lines
 	-- the special, then the follow perks
+	-- (LOOK-ui) the special on its own strip (d.Special), the other perks in the list under it
 	local perkLines = {}
-	if type(def.Special) == "table" then
-		perkLines[1] = "Special: " .. tostring(BattleCatalog.FormNameOf(def.Id, def.Special.Kind, stage) or def.Special.Name or "Special")
+	d.HasSpecial = type(def.Special) == "table"
+	if d.HasSpecial then
+		d.SpecialText.Text = "Special: " .. tostring(BattleCatalog.FormNameOf(def.Id, def.Special.Kind, stage) or def.Special.Name or "Special")
+		PixelIcon.Mark(d.SpecialText, ICON.Star, { Colour = SIGN.GoldLip })
 	end
 	if stage >= 1 then
 		perkLines[#perkLines + 1] = string.format("Reach +%d%%", math.floor((BattleCatalog.ReachOf(stage) - 1) * 100 + 0.5))
@@ -2072,7 +2440,14 @@ function H.refreshDetail(keys, order)
 			end
 		end
 	end
-	d.PerkLines = #perkLines > 0 and perkLines or { "No perks" }
+	d.PerkLines = #perkLines > 0 and perkLines or (d.HasSpecial and {} or { "No perks" })
+	for name, icon in pairs(ACT_ICON) do
+		local button = d[name]
+		if button and button:GetAttribute("LeadDone") ~= icon then
+			button:SetAttribute("LeadDone", icon)
+			PixelIcon.Mark(button, icon)
+		end
+	end
 	-- the actions
 	local at = H.indexOf(key)
 	d.InTeam = at ~= nil
@@ -2321,6 +2696,8 @@ function PetsController.Init()
 	LocalPlayer = Players.LocalPlayer
 	pcall(State.Init)
 	U.Gui = CloudUI.NewScreenGui("NimbusPets", K.DISPLAY_ORDER)
+	-- (LOOK-ui) every kit edge and lip in it, now and later, on whole screen px
+	PixelIcon.WholeTree(U.Gui)
 	U.Gui.IgnoreGuiInset = true
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		if S.Open then

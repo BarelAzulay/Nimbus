@@ -181,8 +181,11 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 		local gear = rects[#H.ORDER]
 		T.check(H.shown(p.Tab) and gear ~= nil and tab.x0 >= gear.x1 and tab.y0 >= gear.y0 - 1 and tab.y1 <= gear.y1 + 1 and (tab.x1 - tab.x0) >= 16,
 			label .. ": the hide arrow tab sits right of the last tile", H.fmt(tab))
+		-- (LOOK-ui) the arrow is a PixelIcon ("left" out, "arrow" folded), its direction in the attribute Dir
 		local arrow = p.Tab:FindFirstChild("Arrow")
-		T.check(arrow ~= nil and arrow.Text == "<", label .. ": ...pointing left ('<') while the column is out", arrow and arrow.Text or "none")
+		local icon = arrow and arrow:FindFirstChild("Icon")
+		T.check(arrow ~= nil and arrow:GetAttribute("Dir") == "<" and icon ~= nil and icon:GetAttribute("PixelIcon") == "left",
+			label .. ": ...pointing left (the pixel 'left' arrow) while the column is out", arrow and tostring(arrow:GetAttribute("Dir")) or "none")
 		-- 3. the currencies: thin strips top-right under the top bar
 		local cur = H.rect(p.Currency)
 		local strips, stripOk = 0, true
@@ -231,7 +234,9 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 	T.check(MC.IsColumnCollapsed() == true and p.Menu:GetAttribute("MenuCollapsed") == true, "bug2gui fold: a click on the tab folds the column (MenuCollapsed)")
 	local tab = H.rect(p.Tab)
 	T.check(pets ~= nil and not H.shown(pets) and H.shown(p.Tab) and tab.x0 <= 1 and tab.x0 >= -1, "bug2gui fold: ...the tiles are gone, only the tab shows, flush with the left edge", H.fmt(tab))
-	T.check(p.Tab.Arrow.Text == ">", "bug2gui fold: ...its arrow points right ('>')", p.Tab.Arrow.Text)
+	local foldIcon = p.Tab.Arrow:FindFirstChild("Icon")
+	T.check(p.Tab.Arrow:GetAttribute("Dir") == ">" and foldIcon ~= nil and foldIcon:GetAttribute("PixelIcon") == "arrow",
+		"bug2gui fold: ...its arrow points right (the pixel 'arrow')", tostring(p.Tab.Arrow:GetAttribute("Dir")))
 	Mock.SetViewport(1280, 720)
 	KC.advance(0.8)
 	Mock.SetViewport(1920, 1080)

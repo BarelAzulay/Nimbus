@@ -1430,6 +1430,30 @@ S.client_mobile = guarded("client_mobile", function()
 		end
 	end
 	T.check(run ~= nil, "a RUN button exists")
+	-- (LOOK-ui, kitb-look1: the owner's look bar, one kit) RUN / DASH are kit B tiles (CloudUI.SignBlock), not the old neon
+	-- discs: square, opaque, no corner, the wood edge and a darker lip on whole px; DASH the sky tile with the pixel "dash",
+	-- RUN the stone tile (gold while running); their labels in the Button role
+	if run and dash then
+		local Sign = Theme.Sign
+		local function same(a, b)
+			return a and b and math.abs(a.R - b.R) < 0.01 and math.abs(a.G - b.G) < 0.01 and math.abs(a.B - b.B) < 0.01
+		end
+		for name, b in pairs({ DASH = dash, RUN = run }) do
+			local edge, lip = b:FindFirstChild("SignEdge"), b:FindFirstChild("Lip")
+			local label = b:FindFirstChild("Label", true)
+			T.check(b:FindFirstChildOfClass("UICorner") == nil and b.BackgroundTransparency == 0 and b.Size.X.Offset == b.Size.Y.Offset,
+				"client mobile: " .. name .. " is a square, opaque kit tile (no corner)", string.format("%dx%d @%.2f", b.Size.X.Offset, b.Size.Y.Offset, b.BackgroundTransparency))
+			T.check(edge and edge:IsA("UIStroke") and same(edge.Color, Sign.Wood) and edge.Thickness == math.floor(edge.Thickness) and lip and lip.Visible
+				and lip.Size.Y.Offset == math.floor(lip.Size.Y.Offset), "client mobile: " .. name .. " has the kit's wood edge and its lip on whole px")
+			T.check(label and label:GetAttribute("FontRole") == "Button", "client mobile: " .. name .. "'s label is in the Button role")
+		end
+		local dashIcon = false
+		for _, d in ipairs(dash:GetDescendants()) do
+			dashIcon = dashIcon or d:GetAttribute("PixelIcon") == "dash"
+		end
+		T.check(same(dash.BackgroundColor3, Sign.Sky) and same(dash.Lip.BackgroundColor3, Sign.SkyLip) and dashIcon, "client mobile: DASH is the sky tile with the pixel dash")
+		T.check(same(run.BackgroundColor3, Sign.Tile) and same(run.Lip.BackgroundColor3, Sign.StoneLip), "client mobile: RUN is the stone tile at rest")
+	end
 	if T.check(dash ~= nil, "a DASH button exists") then
 		hum().MoveDirection = Vector3.new(0, 0, -1)
 		local mark = #Mock.RemoteLog
@@ -1442,6 +1466,8 @@ S.client_mobile = guarded("client_mobile", function()
 		Mock.Click(run)
 		advance(1.5)
 		T.check(hum().WalkSpeed > before + 5, "tapping RUN toggles running", before .. " -> " .. hum().WalkSpeed)
+		local gold = Theme.Sign.Gold
+		T.check(math.abs(run.BackgroundColor3.R - gold.R) < 0.01 and math.abs(run.BackgroundColor3.G - gold.G) < 0.01, "client mobile: RUN turns the gold tile while running")
 		Mock.Click(run)
 		advance(1.5)
 		T.near(hum().WalkSpeed, Config.Physics.WalkSpeed, 1.5, "tapping RUN again stops running")
@@ -1513,7 +1539,7 @@ S.client_mobile = guarded("client_mobile", function()
 						T.check(not overlaps(col, o), label .. ": the menu column does not cover " .. other[2], show(col) .. " vs " .. show(o))
 					end
 				end
-				-- MenuController (bug batch 2 #1, option A; HUD cleanup): four 66 px tiles (gap 6: Pets, Index, Home, Stats; no
+				-- MenuController (bug batch 2 #1, option A; HUD cleanup): four 66 px tiles (gap 12: Pets, Index, Home, Stats; no
 				-- gear: Shop / Travel / Settings are TopBarController's pill) in
 				-- ONE column, wrapped into two (or three) columns where one column would push the tiles under 44 px, under ONE
 				-- UIScale (ColumnScale). Its height must be the laid-out rows, scaled once (the mock used to apply the UIScale
@@ -1556,7 +1582,8 @@ S.client_mobile = guarded("client_mobile", function()
 					local landscapeDesk = w >= h and not (game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
 					T.check(#grid == 4 and columns * rows >= 4 and columns <= 3 and (columns == 1 or not landscapeDesk) and (columns - 1) * rows < 4,
 						label .. ": the four tiles form one column (wrapped only where a column does not fit)", #grid .. " tiles, " .. columns .. " column(s), " .. rows .. " row(s)")
-					local expected = (rows * 66 + (rows - 1) * 6) * factor
+					-- (LOOK-ui) the gap is 12 design px: 6 px of sky between two tiles' 3 px wood edges
+					local expected = (rows * 66 + (rows - 1) * 12) * factor
 					T.check(math.abs(menuColumn.AbsoluteSize.Y - expected) <= 1.5, label .. ": the menu column height is its rows, scaled once", fmt(menuColumn.AbsoluteSize.Y, 1) .. " px vs " .. fmt(expected, 1))
 					T.check(biggest >= 44 - 0.5, label .. ": the tiles stay >= 44 px", fmt(biggest, 1) .. " px")
 					local smallest = math.huge

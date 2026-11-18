@@ -88,6 +88,7 @@ local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token coin, TRAVEL's arrow
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui) the kit's one scroll bar
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local EggArt = require(UI:WaitForChild("EggArt"))
 local Egg3D = require(UI:WaitForChild("Egg3D"))
@@ -125,7 +126,7 @@ local K = {
 	TILE_MAX = 266,
 	HERO_PHONE = 200,
 	FADE = 48,
-	SCROLLBAR = 6,
+	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
 	FIT_H = 826, -- a PC / Compact body under this shrinks the page
 	PORTRAIT_CARD = 250,
 	PORTRAIT_HERO = 200,
@@ -243,7 +244,7 @@ local function scroller(name, parent, direction)
 	s.Name = name
 	s.BackgroundTransparency = 1
 	s.BorderSizePixel = 0
-	s.ScrollBarThickness = K.SCROLLBAR
+	SignKit.Scroll(s, K.SCROLLBAR)
 	s.ScrollingDirection = direction
 	s.CanvasSize = UDim2.new()
 	s.Parent = parent
@@ -564,12 +565,15 @@ function H.buildHero(P, parent)
 	t.Egg = EggArt.New(b, "Secret", K.HERO_EGG.Ref[1], { Name = "HeroEgg", Form = "Full", Still = true, ZIndex = 3 })
 	-- shop-area (spec 16.17.3): away from the Storm Altar the card greys under Dim (over the art, the egg and its sparks),
 	-- AltarChip takes the PityChip's box and TRAVEL takes SPIN's in the same holder (over the Dim with the hint)
+	-- (LOOK-ui, kitb-look1: the veil over the whole card greyed the title and the odds below the contrast rule) the Dim
+	-- veils the art column only (the layouts place it); the texts stay whole and the chip's padlock says why
 	t.Dim = frame("Dim", b, { BackgroundTransparency = K.DIM, BackgroundColor3 = SIGN.NavyLip, Size = UDim2.fromScale(1, 1), ZIndex = K.Z_DIM, Visible = false })
 	-- (kit-b U9-2) the altar note: a stone tag in its wood edge (brown ink)
 	t.AltarChip = label("AltarChip", b, K.TEXT.AltarLock, "Heading", 22, {
 		BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile, TextColor3 = SIGN.Text, ZIndex = K.Z_OVER, Visible = false,
 	})
 	H.edge(t.AltarChip)
+	PixelIcon.Lead(t.AltarChip, "lock", { Px = 18, Gap = 8 }) -- (LOOK-ui, kitb-look1) the padlock before "Available at the Storm Altar"
 	t.Travel = H.travelButton(P, t.Holder)
 	return t
 end
@@ -700,12 +704,10 @@ function ShopEggs.Build(page, ctx)
 	CUR.Page = page
 	P.Scroll = scroller("Scroll", page, Enum.ScrollingDirection.Y)
 	P.Scroll.Size = UDim2.fromScale(1, 1)
-	P.Fade = frame("Fade", page, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Stone, Visible = false, ZIndex = 6 })
-	Util.Create("UIGradient", {
-		Name = "Fade", -- (kit-b U9-2) the stone body fading in at the row's edge (no gloss)
-		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.08) }),
-		Parent = P.Fade,
-	})
+	-- (kit-b U9-2) the row's right edge while more is that way; (LOOK-ui, kitb-look1: no gradient in a pixel screen) a stone
+	-- block with the pixel arrow there, not the stone fading in
+	P.Fade = frame("Fade", page, { BackgroundTransparency = 1, Visible = false, ZIndex = 6 })
+	CloudUI.MoreMark(P.Fade, 6)
 	P.Hero = H.buildHero(P, P.Scroll)
 	P.Row = scroller("Cards", P.Scroll, Enum.ScrollingDirection.X)
 	for i, id in ipairs(K.MACHINES) do
@@ -916,8 +918,10 @@ function L.heroPC(t, w, M)
 	t.Pity.TextSize = 22
 	-- (shop-area) the altar chip in the pity chip's place, as wide as its long line needs (400 at least)
 	t.AltarChip.TextSize = 22
-	local chipW = math.min(tw, math.max(400, H.textW(K.TEXT.AltarLock, 22, Theme.FontOf(t.AltarChip)) + 32))
+	local chipW = math.min(tw, math.max(400, H.textW(K.TEXT.AltarLock, 22, Theme.FontOf(t.AltarChip)) + 32 + 26)) -- (+ the padlock and its gap)
 	place(t.AltarChip, x, cy, chipW, 48)
+	t.Dim.Position = UDim2.fromOffset(0, 0)
+	t.Dim.Size = UDim2.new(0, x - 8, 1, 0) -- the machine and the big egg; the texts from x stay clear
 	place(t.Lock, x, cy, tw, 48)
 	t.Lock.TextSize = 20
 	place(t.Holder, w - 320, ref and 66 or 46, 290, 100)
@@ -1062,6 +1066,7 @@ function L.heroPhone(t, w, th)
 	place(t.Title, 6, 6, w - 12, 30)
 	place(t.Machine.Root, 8, 40, 64, 74)
 	H.sizeMachine(t.Machine, 64)
+	place(t.Dim, 0, 36, 76, 82) -- the machine only
 	t.Egg.Visible = false -- (Task 26: no room on the phone card)
 	t.GemsOnly.Visible = false
 	L.phoneOdds(t, 80, 40, w - 88)
@@ -1147,6 +1152,7 @@ function L.heroPortrait(t, w, h)
 	place(t.Title, 8, 8, w - 16, 30)
 	place(t.Machine.Root, 8, 44, 64, 74)
 	H.sizeMachine(t.Machine, 64)
+	place(t.Dim, 0, 40, 76, 82) -- the machine only
 	t.Egg.Visible = false -- (Task 26: no room on the portrait card)
 	t.GemsOnly.Visible = false
 	L.portraitOdds(t, 80, 46, w - 88)

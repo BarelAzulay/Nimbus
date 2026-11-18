@@ -96,6 +96,7 @@ local TITLE_H = 50
 local TITLE_GAP = 10
 local TITLE_TEXT = 34
 local CLOSE_SIZE = 40
+local SIGN_CLOSE = 44 -- (LOOK-ui) a Signboard window's red close block: one size with the Shop's, the Gifts' and the Pets sheet's
 local UNTITLED_TOP_CLOUDS = 20 -- v5: no cloud bumps any more; an untitled panel keeps this room for its corner X
 
 CloudUI.Metrics = {
@@ -447,7 +448,10 @@ CloudUI.SignLooks = {
 }
 -- a CloudUI.Button style -> its kit B role
 CloudUI.SignRole = { Green = "Primary", Gold = "Selected", Red = "Danger", Pink = "Danger", Blue = "Stone", Gray = "Stone" }
-CloudUI.SignMetrics = { Edge = 3, Lip = 5, PressLip = 2 }
+-- (LOOK-ui, kitb-look1: two plank weights in one kit) one token with SignKit's planks (the Settings window, the main
+-- menu, the loading board) and the pitch's .bk: a 5 px edge and an 8 px lip at 1080p, 4 + 6 at the 0.8 Fit (was 3 / 5:
+-- 2 + 4, half as heavy beside them). Chips, key caps and bar blocks under 30 px keep SignKit's BlockEdge / BlockLip
+CloudUI.SignMetrics = { Edge = SignKit.Sizes.Edge, Lip = SignKit.Sizes.Lip, PressLip = SignKit.Sizes.PressLip }
 local SM = CloudUI.SignMetrics
 
 local function signLook(look)
@@ -498,6 +502,7 @@ function CloudUI.SignBlock(obj, look, opts)
 	end
 	obj.BackgroundTransparency = 0
 	obj.BackgroundColor3 = opts.Face or look.Face
+	obj.BorderSizePixel = 0 -- (LOOK-ui) a label's default 1 px blue-black border leaked round the wood edge (the boost chips)
 	local edge = obj:FindFirstChild("SignEdge")
 	if not edge then
 		edge = stroke(obj, look.Edge, opts.EdgePx or SM.Edge, 0)
@@ -505,6 +510,9 @@ function CloudUI.SignBlock(obj, look, opts)
 		edge.LineJoinMode = Enum.LineJoinMode.Miter
 	end
 	edge.Color = opts.Edge or look.Edge
+	-- (LOOK-ui) the edge and the lip a whole number of screen px under the window's scale (PixelIcon.Px): a 3 px edge at a
+	-- 0.8 Fit drew 2.4 px, its lip 4 px of a 5 px design
+	PixelIcon.WholeStroke(edge, tonumber(opts.EdgePx) or edge:GetAttribute("DesignPx") or SM.Edge)
 	local lipPx = tonumber(opts.LipPx) or SM.Lip
 	local lip = obj:FindFirstChild("Lip")
 	if not lip then
@@ -519,7 +527,9 @@ function CloudUI.SignBlock(obj, look, opts)
 	lip.Visible = lipPx > 0
 	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
 		obj.TextColor3 = opts.Text or look.Text
-		if opts.Pad ~= false and lipPx > 0 then
+		-- (LOOK-ui) not under a close block's pixel x: it sits on the block's centre (NeonKit.CloseMark), a repaint (hover,
+		-- the ink Outline) must not pad it up
+		if opts.Pad ~= false and lipPx > 0 and not obj:FindFirstChild("CloseMark") then
 			local pad = obj:FindFirstChild("LipPad")
 			if not pad then
 				pad = Util.Create("UIPadding", { Name = "LipPad", Parent = obj })
@@ -587,6 +597,31 @@ function CloudUI.SetSignSwitch(sw, on)
 	sw:SetAttribute("On", on)
 end
 
+-- (LOOK-ui, kitb-look1: no gradient in a pixel screen) "more this way" at a sideways row's right edge: a small stone kit
+-- block with the pixel arrow, right-centred in `holder` (a transparent frame the caller shows and hides; the row's old
+-- edge fade). Returns the block
+function CloudUI.MoreMark(holder, zIndex)
+	local z = tonumber(zIndex) or holder.ZIndex
+	local block = frame("More", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -4, 0.5, 0),
+		Size = UDim2.fromOffset(30, 34),
+		ZIndex = z,
+	}, holder)
+	CloudUI.SignBlock(block, "Stone", { Face = SIGN.Tile, EdgePx = 2, LipPx = 4, Pad = false })
+	local icon = PixelIcon.New(block, "arrow", 18, SIGN.Text)
+	if icon then
+		icon.Position = UDim2.fromOffset(6, 6) -- (the 30 x 30 face over the 4 px lip; the edge is drawn outside)
+		icon.ZIndex = z + 1
+		for _, cell in ipairs(icon:GetChildren()) do
+			if cell:IsA("GuiObject") then
+				cell.ZIndex = z + 1
+			end
+		end
+	end
+	return block
+end
+
 -- A small square chip in an element's colour holding its PixelIcon (Config.Elements.Info[element].Icon) in the ink that
 -- reads on it, with a wood edge (the pitch's .el). opts: Label (the element's name after the icon, on its own stone tag
 -- inside the chip's edge: brown on stone reads at any size, where no ink reads 4.5:1 on the mid-tone element colours),
@@ -602,9 +637,12 @@ function CloudUI.ElementChip(parent, element, px, opts)
 	local ink = Theme.TextOn(info.Color)
 	local chip = Instance.new("Frame")
 	chip.Size = UDim2.fromOffset(px, px)
+	local label = nil
 	if opts.Label then
+		-- (LOOK-ui, kitb-look1: "Mythic", "Shadow" filled their chips edge to edge) the name sizes its own stone tag
+		-- (AutomaticSize) with 4 px after the icon square and 8 px before the chip's edge
 		chip.AutomaticSize = Enum.AutomaticSize.X
-		local label = Theme.Label(tostring(opts.Label), opts.Role or "Tag", { Size = opts.TextSize or 16, Color = SIGN.Text })
+		label = Theme.Label(tostring(opts.Label), opts.Role or "Tag", { Size = opts.TextSize or 16, Color = SIGN.Text })
 		label.Name = "Label"
 		label.AutomaticSize = Enum.AutomaticSize.X
 		label.Position = UDim2.fromOffset(px, 0)
@@ -613,7 +651,7 @@ function CloudUI.ElementChip(parent, element, px, opts)
 		label.BackgroundColor3 = SIGN.Tile
 		label.BorderSizePixel = 0
 		label.ZIndex = opts.ZIndex or 1
-		padding(label, 5, 0, 6, 0)
+		padding(label, 4, 0, 8, 0)
 		label.Parent = chip
 	end
 	chip.Name = opts.Name or "Element"
@@ -626,15 +664,28 @@ function CloudUI.ElementChip(parent, element, px, opts)
 	edge.Name = "SignEdge"
 	edge.LineJoinMode = Enum.LineJoinMode.Miter
 	local iconPx = math.max(9, 9 * math.floor((px - 6) / 9))
-	local icon = info.Icon and PixelIcon.New(chip, info.Icon, iconPx, ink)
+	-- (LOOK-ui, kitb-look1: the host from the snapped icon) the square is the icon's whole-px cells and 2 screen px round
+	-- them (PixelIcon.Chip: 22 px at 2 px cells, at every scale), the name's tag beside it as tall
+	local square = Instance.new("Frame")
+	square.Name = "Square"
+	square.BackgroundTransparency = 1
+	square.BorderSizePixel = 0
+	square.Parent = chip
+	local icon = info.Icon and PixelIcon.Chip(square, info.Icon, iconPx, ink)
 	if icon then
-		icon.AnchorPoint = Vector2.new(0, 0.5)
-		icon.Position = UDim2.new(0, math.floor((px - iconPx) / 2), 0.5, 0)
 		icon.ZIndex = chip.ZIndex
 		for _, f in ipairs(icon:GetChildren()) do
 			f.ZIndex = chip.ZIndex
 		end
 	end
+	PixelIcon.Whole(chip, function(s)
+		local side = PixelIcon.BoxPx(iconPx, 2, s)
+		chip.Size = UDim2.fromOffset(side, side)
+		if label then
+			label.Position = UDim2.fromOffset(side, 0)
+			label.Size = UDim2.fromOffset(0, side)
+		end
+	end)
 	chip:SetAttribute("Element", element)
 	chip.Parent = parent
 	return chip
@@ -713,7 +764,10 @@ local function signButton(props)
 		end
 		-- attribute Outline = true: the ink edge of the pitch's selected card (a shown-but-not-active team, say)
 		local edge = (not disabled and button:GetAttribute("Outline") == true) and SIGN.Text or nil
-		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, LipPx = pressing and SM.PressLip or SM.Lip })
+		-- (LOOK-ui) attribute Ink (a Color3): the label's ink instead of the look's (a stone Remove plank in red ink)
+		local ink = button:GetAttribute("Ink")
+		ink = (not disabled and typeof(ink) == "Color3") and ink or nil
+		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, Text = ink, LipPx = pressing and SM.PressLip or SM.Lip })
 		local pad = button:FindFirstChild("LipPad")
 		if pad then
 			pad.PaddingTop = UDim.new(0, pressing and (SM.Lip - SM.PressLip) or 0)
@@ -728,6 +782,7 @@ local function signButton(props)
 	paint()
 	button:GetAttributeChangedSignal("Disabled"):Connect(paint)
 	button:GetAttributeChangedSignal("Outline"):Connect(paint)
+	button:GetAttributeChangedSignal("Ink"):Connect(paint)
 	button:GetPropertyChangedSignal("Active"):Connect(paint)
 	button:GetAttributeChangedSignal("Style"):Connect(function()
 		local style = button:GetAttribute("Style")
@@ -941,7 +996,7 @@ local function signPanel(props)
 			Rim = edge,
 			IconSlot = props.Icon ~= nil,
 			Ribbon = true, -- (render gate) the T1 band the header's width, out over the frame with its tails (title_T1)
-			Reserve = props.Closable and (CLOSE_SIZE + 18) or 16,
+			Reserve = props.Closable and (SIGN_CLOSE + 18) or 16,
 			Name = "TitleBar",
 			ZIndex = 3,
 		})
@@ -984,14 +1039,14 @@ local function signPanel(props)
 		root:Destroy()
 	end
 	if props.Closable then
-		local position = hasTitle and UDim2.new(1, -(PANEL_PAD + 4 + CLOSE_SIZE / 2), 0, TITLE_TOP + math.floor(TITLE_H / 2) - 2)
-			or UDim2.new(1, -12 - CLOSE_SIZE / 2, 0, 8 + CLOSE_SIZE / 2)
+		local position = hasTitle and UDim2.new(1, -(PANEL_PAD + 4 + SIGN_CLOSE / 2), 0, TITLE_TOP + math.floor(TITLE_H / 2) - 2)
+			or UDim2.new(1, -12 - SIGN_CLOSE / 2, 0, 8 + SIGN_CLOSE / 2)
 		local closeButton = CloudUI.Button({
 			Name = "Close",
 			Text = "",
 			Style = "Red",
 			Skin = "Sign",
-			Size = UDim2.fromOffset(CLOSE_SIZE, CLOSE_SIZE),
+			Size = UDim2.fromOffset(SIGN_CLOSE, SIGN_CLOSE),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = position,
 			ZIndex = 8,
@@ -1001,6 +1056,7 @@ local function signPanel(props)
 			Parent = root,
 		})
 		NeonKit.CloseMark(closeButton, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- square bars in a Danger block's brown ink
+		NeonKit.CloseBlock(closeButton) -- (LOOK-ui) the kit's one close block (>= 44 screen px, 3 px cells)
 		panel.CloseButton = closeButton
 	end
 	root.Parent = props.Parent
@@ -1180,14 +1236,112 @@ end
 ----------------------------------------------------------------------
 -- Bar
 ----------------------------------------------------------------------
--- props: Size, Color, Label, Parent, Height, Position, AnchorPoint, Name, LayoutOrder, TextSize, Skin ("Sign", kit-b U8: a
---        flat well track in a wood edge, a flat fill with its darker lip, square, no gloss)
+-- (LOOK-ui, kitb-look1: the owner's look bar, every bar in the pixel block-bar language) the Sign skin is a block bar: a
+-- SignKit.FitBlocks row filling the bar's box (props.Blocks blocks, default 10: wood edges, stone faces, the darker lip),
+-- the first ones lit in the role colour with that role's lip token (Theme.SignLipOf: the XP's sky on Sign.SkyLip, the
+-- Prestige's gold on Sign.GoldLip; was a continuous fill whose lip was the colour darkened), the label over it in the
+-- ink. No well, no gradient, no tween (the blocks step)
+local function signBar(props)
+	local height = props.Height or 24
+	local color = props.Color or SIGN.Sky
+	local count = math.max(2, math.floor(tonumber(props.Blocks) or 10))
+	local fraction = 1
+	local root = frame(props.Name or "CloudBar", {
+		Size = props.Size or UDim2.new(1, 0, 0, height),
+		Position = props.Position or UDim2.new(),
+		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
+		LayoutOrder = props.LayoutOrder or 0,
+	})
+	root:SetAttribute("BlockBar", true)
+	local row = SignKit.FitBlocks(root, {
+		Name = "Blocks",
+		Count = count,
+		Size = UDim2.fromScale(1, 1),
+		Fill = color,
+		FillLip = Theme.SignLipOf(color),
+		EdgePx = 2,
+		LipPx = 3,
+	})
+	local textSize = props.TextSize or Util.Clamp(math.floor(height * 0.66 + 0.5), 15, 26)
+	-- props.LabelSide "Right" (the pitch's XP line: the number beside its bar, no glyph across a block's edge): the label
+	-- after the blocks, the row giving up its width; default "Over", centred on the faces over the lips
+	local right = props.LabelSide == "Right"
+	local label = Theme.Label(props.Label or "", "Heading", {
+		Size = textSize,
+		Color = SIGN.Text,
+		Props = {
+			Name = "Text",
+			AnchorPoint = right and Vector2.new(1, 0) or Vector2.new(0, 0),
+			Position = right and UDim2.fromScale(1, 0) or UDim2.new(),
+			Size = UDim2.new(1, 0, 1, -2),
+			ZIndex = 3,
+			TextXAlignment = right and Enum.TextXAlignment.Right or Enum.TextXAlignment.Center,
+		},
+	})
+	label.Parent = root
+	-- the label sizes itself to its drawn text (AutomaticSize; Theme.Measure runs short of FredokaOne), the row takes the
+	-- rest less 10 px; a first guess from the measure until the label has laid out
+	local function rowFor(w)
+		row.Size = UDim2.new(1, -(math.ceil(w) + 10), 1, 0)
+	end
+	local function fitLabel()
+		if not right then
+			return
+		end
+		local ok, m = pcall(Theme.Measure, label.Text, "Heading", label.TextSize)
+		rowFor((ok and typeof(m) == "Vector2" and m.X > 0) and m.X * 1.15 + 2 or #label.Text * label.TextSize * 0.6)
+	end
+	if right then
+		label.AutomaticSize = Enum.AutomaticSize.X
+		label.Size = UDim2.new(0, 0, 1, -2)
+		label:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			local s = PixelIcon.RestScale(label)
+			if s > 0 and label.AbsoluteSize.X > 0 then
+				rowFor(label.AbsoluteSize.X / s)
+			end
+		end)
+	end
+	local bar = { Root = root, Fill = row, Row = row, Label = label }
+	local function paint()
+		SignKit.FillBlocks(row, math.floor(fraction * count + 1e-6))
+	end
+	function bar.SetFraction(value)
+		fraction = Util.Clamp(tonumber(value) or 0, 0, 1)
+		root:SetAttribute("Fraction", fraction)
+		paint()
+	end
+	function bar.GetFraction()
+		return fraction
+	end
+	function bar.SetText(text)
+		label.Text = tostring(text or "")
+		fitLabel()
+	end
+	function bar.SetColor(newColor)
+		if typeof(newColor) ~= "Color3" then
+			return
+		end
+		color = newColor
+		SignKit.SetBlockCount(row, count, color, Theme.SignLipOf(color))
+		paint()
+	end
+	label:GetPropertyChangedSignal("TextSize"):Connect(fitLabel)
+	fitLabel()
+	bar.SetFraction(1)
+	root.Parent = props.Parent
+	return bar
+end
+
+-- props: Size, Color, Label, Parent, Height, Position, AnchorPoint, Name, LayoutOrder, TextSize, Skin ("Sign": the block
+--        bar above), Blocks (Sign: the block count)
 function CloudUI.Bar(props)
 	props = props or {}
+	if props.Skin == "Sign" then
+		return signBar(props)
+	end
 	local height = props.Height or 24
 	local color = props.Color or Colors.Health
 	local fraction = 1
-	local sign = props.Skin == "Sign"
 
 	local root = frame(props.Name or "CloudBar", {
 		BackgroundColor3 = WHITE,
@@ -1197,17 +1351,10 @@ function CloudUI.Bar(props)
 		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
 		LayoutOrder = props.LayoutOrder or 0,
 	})
-	-- v5: a dark ink track with a thin light rim (the fill carries the colour); kit B: the stone well in its wood edge
-	local trackStroke
-	if sign then
-		root.BackgroundColor3 = SIGN.Well
-		trackStroke = stroke(root, SIGN.Wood, 2, 0)
-		trackStroke.LineJoinMode = Enum.LineJoinMode.Miter
-	else
-		round(root)
-		trackStroke = stroke(root, Theme.Lighten(PANEL_TOP, 0.12), 2.5, 0)
-		gradient(root, ColorSequence.new(INK, PANEL_TOP), 90)
-	end
+	-- v5: a dark ink track with a thin light rim (the fill carries the colour)
+	round(root)
+	local trackStroke = stroke(root, Theme.Lighten(PANEL_TOP, 0.12), 2.5, 0)
+	gradient(root, ColorSequence.new(INK, PANEL_TOP), 90)
 
 	local inner = frame("Inner", {
 		Position = UDim2.new(0, 3, 0, 3),
@@ -1220,38 +1367,22 @@ function CloudUI.Bar(props)
 		Size = UDim2.new(1, 0, 1, 0),
 	}, inner)
 	local function fillSequence(c)
-		if sign then
-			return ColorSequence.new(c)
-		end
 		return ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Theme.Lighten(c, 0.34)),
 			ColorSequenceKeypoint.new(0.5, c),
 			ColorSequenceKeypoint.new(1, Theme.Darken(c, 0.16)),
 		})
 	end
-	local fillGradient, fillLip = nil, nil
-	if sign then
-		-- the flat fill and its darker lip (the pitch's .hp i: an inset bottom band)
-		fill.BackgroundColor3 = color
-		fillLip = frame("Lip", {
-			AnchorPoint = Vector2.new(0, 1),
-			Position = UDim2.new(0, 0, 1, 0),
-			Size = UDim2.new(1, 0, 0.3, 0),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Theme.Darken(color, 0.22),
-		}, fill)
-	else
-		round(fill)
-		fillGradient = gradient(fill, fillSequence(color), 90)
-		addShine(fill, 0.34, 6, 0.7)
-	end
+	round(fill)
+	local fillGradient = gradient(fill, fillSequence(color), 90)
+	addShine(fill, 0.34, 6, 0.7)
 
 	-- kit B (no outline on a surface): the label reads by the colour of what lies under it, and the fill moves under a
 	-- centred label. So it is drawn twice, each copy clipped to one stretch of the bar: dark ink over the bright fill
 	-- (Theme.TextOn of its gradient), white over the dark track. Both copies are named "Text"; bar.Label is the fill's.
 	local textSize = props.TextSize or Util.Clamp(math.floor(height * 0.66 + 0.5), 15, 26)
 	local copies = {}
-	for _, spec in ipairs({ { "TextFill", Theme.TextOn(fillSequence(color)) }, { "TextTrack", sign and Theme.TextOn("Well") or WHITE } }) do
+	for _, spec in ipairs({ { "TextFill", Theme.TextOn(fillSequence(color)) }, { "TextTrack", WHITE } }) do
 		local clip = frame(spec[1], {
 			ClipsDescendants = true,
 			Size = UDim2.new(1, 0, 1, 0),
@@ -1326,12 +1457,7 @@ function CloudUI.Bar(props)
 			return
 		end
 		color = newColor
-		if sign then
-			fill.BackgroundColor3 = color
-			fillLip.BackgroundColor3 = Theme.Darken(color, 0.22)
-		else
-			fillGradient.Color = fillSequence(color)
-		end
+		fillGradient.Color = fillSequence(color)
 		label.TextColor3 = Theme.TextOn(fillSequence(color))
 	end
 	bar.TrackStroke = trackStroke
