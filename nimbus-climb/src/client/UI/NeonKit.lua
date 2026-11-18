@@ -19,6 +19,7 @@
 --   NeonKit.SideRect(prefW, prefH, minW, minH) -> { x, y, w, h, scale, mode = "Side" | "Sheet", designW, designH }
 --   NeonKit.BigRect(K, opts) -> { x, y, w, h, scale, mode = "PC" | "Phone", portrait }   (the Pets / Store window box)
 --   NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH) -> { Rect, Refresh(), Disconnect() }
+--   NeonKit.OpenDocks() -> { { x0, y0, x1, y1, mode }... } the docked windows on screen (U9-7 look: the HUD keeps clear)
 --     (also a MouseLock hold while the holder is shown: client/MouseLock.WatchVisible; dungeon-fixes decision 6)
 --
 -- Conventions (the same as CloudUI): sizes are DESIGN pixels of a 1920x1080 screen; put the tree under one UIScale
@@ -216,28 +217,31 @@ end
 --        Floor (bool; default: the card is at most 260 design px tall), Fill ({ top, bottom } Color3s; default
 --        PanelTop -> PanelBottom), Sheen (bool, default true), Class ("Frame" default | "TextButton": a clickable
 --        card, Text = "" and AutoButtonColor off), Transparency (the fill, default 0), Active, ClipsDescendants,
---        Skin ("Sign": the kit B card, see signCard)
--- (kit-b U9-2) Skin = "Sign": the card as a kit B block (the pitch's .bk): a flat face (props.Face, default the stone
--- tile), a wood edge (Stroke, UIStroke "SignEdge", 3 px, mitred) and a darker lip along its bottom (Frame "Lip", 5 px)
--- in props.Lip (default the stone lip); square, no glow, gloss, floor or sheen. The card keeps the plain card's fields:
--- SetColor(c) paints the lip (one colour by role: a pack's or a roulette's own colour lives there), SetFill(face) the
--- face, SetGlow does nothing; Stroke is the wood edge (a caller's focus ring recolours it)
+--        Skin ("Sign": the kit B block, see signCard)
+-- (kit-b U9-2 + U9-5: one Sign card for the Shop / Gifts family and the Care / battle family) Skin = "Sign": the pitch's
+-- card (.pc / .bk) in place of the neon one: a flat face (props.Face, default Theme.Sign.Tile), a wood edge (Stroke,
+-- UIStroke "SignEdge", mitred; props.Edge, default the wood; props.Stroke px, default 3) and a darker lip along its
+-- bottom (Frame "Lip", props.LipPx px, default 5 as every kit B block) in props.Lip or props.Color (default the stone
+-- lip: one colour by role, a pack's / a rarity's / a skill's own colour lives there); square, no glow, gloss, floor,
+-- sheen or gradient. Body sits above the lip; props.BodyOverLip = true keeps it the whole card (a layout that draws its
+-- own bottom row over the lip: the Shop and the Gifts cards). The table keeps the neon card's shape so a caller only
+-- adds the Skin: Stroke = the edge (a caller's focus ring recolours it), Glow = a frame that never shows (its GlowStroke
+-- disabled), SetColor(c) paints the lip, SetGlow(on) = the selected look (the gold-tinted face, the ink edge),
+-- SetFill(face) / SetFace(face) repaint the face
+local SIGN = Theme.Sign
 local SIGN_CARD_LIP = 5
 local function signCard(props)
-	local Sign = Theme.Sign
 	local class = (props.Class == "TextButton") and "TextButton" or "Frame"
 	local z = props.ZIndex or 1
 	local root = Instance.new(class)
-	root.Name = props.Name or "NeonCard"
+	root.Name = props.Name or "SignCard"
 	root.BorderSizePixel = 0
 	root.BackgroundTransparency = 0
-	root.BackgroundColor3 = typeof(props.Face) == "Color3" and props.Face or Sign.Tile
 	root.Size = toUDim2(props.Size, UDim2.fromOffset(200, 120))
 	root.Position = props.Position or UDim2.new()
 	root.AnchorPoint = props.AnchorPoint or Vector2.new(0, 0)
 	root.LayoutOrder = props.LayoutOrder or 0
 	root.ZIndex = z
-	root.ClipsDescendants = props.ClipsDescendants == true
 	if props.Active ~= nil then
 		root.Active = props.Active
 	end
@@ -249,30 +253,57 @@ local function signCard(props)
 		end
 	end
 	root:SetAttribute("Skin", "Sign")
-	local edge = stroke(root, typeof(props.Edge) == "Color3" and props.Edge or Sign.Wood, 3, 0, "SignEdge")
+	local face = typeof(props.Face) == "Color3" and props.Face or SIGN.Tile
+	local edgeColor = typeof(props.Edge) == "Color3" and props.Edge or SIGN.Wood
+	local edge = stroke(root, edgeColor, tonumber(props.Stroke) or 3, 0, "SignEdge")
 	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	local lipPx = tonumber(props.LipPx) or SIGN_CARD_LIP
+	local color = typeof(props.Lip) == "Color3" and props.Lip or colorOf(props.Color, SIGN.StoneLip)
 	local lip = frame("Lip", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = typeof(props.Lip) == "Color3" and props.Lip or Sign.StoneLip,
+		BackgroundColor3 = color,
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, 0, 0, SIGN_CARD_LIP),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, lipPx),
 		ZIndex = z,
 	}, root)
-	local body = frame("Body", { Size = UDim2.fromScale(1, 1), ZIndex = z }, root)
-	local card = { Root = root, Body = body, Stroke = edge, Lip = lip, Skin = "Sign", Color = lip.BackgroundColor3 }
+	local glow = frame("Glow", { Size = UDim2.fromScale(1, 1), ZIndex = z, Visible = false }, root)
+	local glowStroke = stroke(glow, SIGN.Gold, 3, 1, "GlowStroke")
+	glowStroke.Enabled = false
+	local overLip = props.BodyOverLip == true
+	local clip = props.ClipsDescendants == true
+	local body = frame("Body", {
+		Size = overLip and UDim2.fromScale(1, 1) or UDim2.new(1, 0, 1, -lipPx),
+		ZIndex = z,
+		ClipsDescendants = clip and not overLip,
+	}, root)
+	-- a whole-card body clips at the card (the Shop's hero card), as it always did
+	root.ClipsDescendants = clip and overLip
+	local card = { Root = root, Body = body, Stroke = edge, Glow = glow, GlowStroke = glowStroke, Lip = lip, Color = color, Skin = "Sign", Selected = false }
+	local function paint()
+		root.BackgroundColor3 = card.Selected and SIGN.Selected or face
+		edge.Color = card.Selected and SIGN.Text or edgeColor
+	end
 	function card.SetColor(newColor)
-		if typeof(newColor) == "Color3" then
-			card.Color = newColor
-			lip.BackgroundColor3 = newColor
+		card.Color = colorOf(newColor, card.Color)
+		lip.BackgroundColor3 = card.Color
+	end
+	function card.SetGlow(on)
+		card.Selected = on and true or false
+		paint()
+	end
+	-- the face only: a caller that recolours Stroke after it (a focus ring, a state's edge) keeps its edge
+	function card.SetFill(newFace)
+		if typeof(newFace) == "Color3" then
+			face = newFace
+			root.BackgroundColor3 = card.Selected and SIGN.Selected or face
 		end
 	end
-	function card.SetGlow() end
-	function card.SetFill(face)
-		if typeof(face) == "Color3" then
-			root.BackgroundColor3 = face
-		end
+	function card.SetFace(newFace)
+		face = newFace or SIGN.Tile
+		paint()
 	end
+	paint()
 	root.Parent = props.Parent
 	return card
 end
@@ -987,6 +1018,13 @@ function NeonKit.CloseMark(button, opts)
 			child:Destroy()
 		end
 	end
+	-- (U9-7 look) a sign block's lip sits out by the block's padding (CloudUI.SignBlock): with the padding gone it goes back
+	-- flush on the bottom edge (it hung 5 px under the close and kick blocks)
+	local lip = button:FindFirstChild("Lip")
+	if lip and lip:IsA("GuiObject") and button:FindFirstChild("SignEdge") then
+		lip.Position = UDim2.new(0, 0, 1, 0)
+		lip.Size = UDim2.new(1, 0, 0, lip.Size.Y.Offset)
+	end
 	local existing = button:FindFirstChild("CloseMark")
 	if existing then
 		return existing
@@ -1000,6 +1038,32 @@ function NeonKit.CloseMark(button, opts)
 			end
 		end
 		z = z + 1
+	end
+	if opts.Square then
+		-- (kit-b U9-7 look) a kit B block's X is the pitch's pixel x (PixelIcon "x", 9 x 9 square cells in the brown ink):
+		-- no rotated bars, the only smooth diagonals beside the 9 x 9 icons. 27 px on a block of 36 px or more, 18 below,
+		-- placed by a whole-pixel offset from the button's centre (an AnchorPoint of 0.5 put it on a half pixel)
+		local short = math.min(button.Size.X.Offset, button.Size.Y.Offset)
+		local px = (short <= 0 or short >= 36) and 27 or 18
+		local half = math.floor(px / 2)
+		local mark = frame("CloseMark", {
+			Position = UDim2.new(0.5, -half, 0.5, -half),
+			Size = UDim2.fromOffset(px, px),
+			Active = false,
+			ZIndex = z,
+		})
+		mark:SetAttribute("PixelX", true)
+		local icon = PixelIcon.New(mark, "x", px, colorOf(opts.Color, INK))
+		if icon then
+			icon.ZIndex = z
+			for _, cell in ipairs(icon:GetChildren()) do
+				if cell:IsA("GuiObject") then
+					cell.ZIndex = z
+				end
+			end
+		end
+		mark.Parent = button
+		return mark
 	end
 	local scale = tonumber(opts.Scale) or MX.CloseMark
 	local mark = frame("CloseMark", {
@@ -1054,8 +1118,10 @@ end
 
 -- The window rule (contract 6.6, the prototype's side_rect). Returns screen pixels (top bar included):
 --   x, y, w, h   the window's box on screen;  scale  the UIScale to put on a window designed at designW x designH;
---   mode         "Side" (landscape: docked right, <= 44% of the width, never left of 0.56 W - margin, vertically
---                centred below the top bar) | "Sheet" (portrait: a bottom sheet, scale 0.8, full width minus the
+--   mode         "Side" (landscape: docked right, <= 44% of the width, never left of 0.56 W - margin, on the bottom
+--                margin below the top bar; U9-7 look: it was centred, which put a short dock's roof into the HUD's
+--                currency strips at 1080p, so a dock that is not full height now sits on the bottom margin, clear of
+--                the top-right corner) | "Sheet" (portrait: a bottom sheet, scale 0.8, full width minus the
 --                margins, <= 56% of the height: the top 44% where the character stands stays clear)
 -- prefW / prefH: the preferred window size in design px; minW / minH (optional): the smallest design size the
 -- content accepts (the scale shrinks instead, down to the phone scale).
@@ -1096,7 +1162,7 @@ function NeonKit.SideRect(prefW, prefH, minW, minH, opts)
 		end
 		rect = {
 			x = W - m - w * scale,
-			y = inset + m + (maxH - h * scale) / 2,
+			y = H - m - h * scale, -- (U9-7 look) the bottom margin (a full-height dock: inset + m, as before)
 			w = w * scale,
 			h = h * scale,
 			scale = scale,
@@ -1171,6 +1237,8 @@ function NeonKit.BigRect(K, opts)
 	}
 end
 
+local DOCKS = setmetatable({}, { __mode = "k" }) -- (U9-7 look) [holder] = true for every docked window (NeonKit.OpenDocks)
+
 local function guiInsetOf(holder)
 	local gui = holder and holder:FindFirstAncestorOfClass("ScreenGui")
 	if gui and gui.IgnoreGuiInset then
@@ -1211,6 +1279,7 @@ function NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH)
 	if not holder then
 		return dock
 	end
+	DOCKS[holder] = true
 	if not (uiScale and uiScale:IsA("UIScale")) then
 		uiScale = holder:FindFirstChild("DockScale")
 		if not (uiScale and uiScale:IsA("UIScale")) then
@@ -1261,6 +1330,29 @@ function NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH)
 		pcall(ml.WatchVisible, "Dock:" .. holder.Name, holder)
 	end
 	return dock
+end
+
+-- (U9-7 look) the boxes of the docked windows on screen now (screen px, the top bar included: { x0, y0, x1, y1, mode }),
+-- for the HUD parts that must keep clear of them (HudController's vitals card). A holder counts while it and every
+-- ancestor is Visible in an Enabled ScreenGui.
+function NeonKit.OpenDocks()
+	local out = {}
+	for holder in pairs(DOCKS) do
+		local shown = holder.Parent ~= nil
+		local cur = holder
+		while shown and cur and not cur:IsA("LayerCollector") do
+			if cur:IsA("GuiObject") and not cur.Visible then
+				shown = false
+			end
+			cur = cur.Parent
+		end
+		if shown and cur and cur:IsA("ScreenGui") and cur.Enabled and holder.AbsoluteSize.X > 4 then
+			local dy = cur.IgnoreGuiInset and 0 or guiInsetOf(holder)
+			local p, s = holder.AbsolutePosition, holder.AbsoluteSize
+			out[#out + 1] = { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + s.Y + dy, mode = holder:GetAttribute("DockMode") }
+		end
+	end
+	return out
 end
 
 -- The local player's PlayerGui (nil on the server); a convenience for window owners.

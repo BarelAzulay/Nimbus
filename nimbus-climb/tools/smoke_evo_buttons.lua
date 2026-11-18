@@ -909,29 +909,43 @@ local function clientScenarios()
 					end
 					T.check(#bad == 0, tag .. "nothing overlaps (the buttons, the stick, the jump button, the vitals, Cheer up!, another button)", table.concat(bad, "; "))
 				end
-				-- the names sit inside the face: the longest special name in 2 lines at >= 11 px
+				-- (kit-b U9-6: the readability floor, 14 px on a phone) the names sit on a stone tag along the face's bottom edge, sized
+				-- by the HUD for the name it shows (Hud.PlaceFaceName): never TextScaled, the longest special name in 2 lines at 14 px
+				local Hud = BC._Hud
+				local function tryName(kind, capName, name)
+					local A = Hud and Hud.buttons and Hud.buttons[kind]
+					local c = H.find("Root.Commands." .. capName .. ".Caption")
+					local old = c.Text
+					c.Text = name
+					Hud.PlaceFaceName(A, A.Button.Size.X.Offset, false)
+					local r = rectOf(c)
+					c.Text = old
+					Hud.PlaceFaceName(A, A.Button.Size.X.Offset, false)
+					return r
+				end
 				local cap = H.find("Root.Commands.SpecialButton.Caption")
 				local glyph = H.find("Root.Commands.SpecialButton.Face.Glyph")
 				if T.check(cap ~= nil and shownIn(cap) and cap.Text == "WISH UPON THE STARS", tag .. "the Special face shows the name", cap and cap.Text or "nil") then
-					T.check(cap.TextWrapped == true and cap.TextScaled == true, tag .. "...wrapped and scaled")
-					local c = cap:FindFirstChildOfClass("UITextSizeConstraint")
-					T.check(c ~= nil and c.MinTextSize >= 11 and c.MaxTextSize <= 15, tag .. "...between 11 and 15 px", c and fmt("%s..%s", tostring(c.MinTextSize), tostring(c.MaxTextSize)) or "no constraint")
-					local r = rectOf(cap)
-					local w, h = r.x1 - r.x0, r.y1 - r.y0
+					local readScale = H.find("Root.ReadScale").Scale
+					T.check(cap.TextWrapped == true and cap.TextScaled == false and cap.TextSize * readScale >= 14 - 0.01, tag .. "...wrapped, not scaled, at 14 px or more",
+						fmt("%s %.1f px", tostring(cap.TextScaled), cap.TextSize * readScale))
 					for _, name in ipairs({ "WISH UPON THE STARS", "MARSHMALLOW POUNCE", "MARSHMALLOW STAMPEDE" }) do
-						local ok, lines, widest = H.fits(name, w, h, 11)
-						T.check(ok, tag .. "\"" .. name .. "\" fits the Special face in 2 lines at 11 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, w, h))
+						local r = tryName("Special", "SpecialButton", name)
+						local ok, lines, widest = H.fits(name, r.x1 - r.x0, r.y1 - r.y0, 14)
+						T.check(ok, tag .. "\"" .. name .. "\" fits the Special name tag in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
 					end
+					local r = rectOf(cap)
 					local br = rects.Special
-					T.check(br ~= nil and r.y0 >= (br.y0 + br.y1) / 2 and r.y1 <= br.y1 + 0.5, tag .. "...in the lower part of the face", rstr(r))
-					T.check(glyph ~= nil and glyph.Size.Y.Scale <= 0.56 and glyph.TextSize * 1 <= glyph.AbsoluteSize.Y / (H.find("Root.ReadScale").Scale), tag .. "...the star shrinks to the top of it", glyph and tostring(glyph.Size) or "nil")
+					T.check(br ~= nil and r.y0 >= br.y0 and r.y1 <= br.y1 + 0.5, tag .. "...on the face's bottom edge", rstr(r))
+					local gr = glyph and rectOf(glyph)
+					T.check(glyph ~= nil and glyph.Size.Y.Scale <= 0.56 and gr.y1 <= r.y0 + 1 and glyph.TextSize * 1 <= glyph.AbsoluteSize.Y / readScale, tag .. "...the star shrinks to the room above it", glyph and tostring(glyph.Size) or "nil")
 				end
 				local ecap = H.find("Root.Commands.ElementButton.Caption")
 				if T.check(ecap ~= nil and shownIn(ecap), tag .. "the Element face shows the name") then
-					local r = rectOf(ecap)
 					for _, name in ipairs({ "THUNDER LANCE", "BRAMBLE LASH", "WORLDROOT", "MAELSTROM" }) do
-						local ok, lines, widest = H.fits(name, r.x1 - r.x0, r.y1 - r.y0, 11)
-						T.check(ok, tag .. "\"" .. name .. "\" fits the Element face in 2 lines at 11 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
+						local r = tryName("Element", "ElementButton", name)
+						local ok, lines, widest = H.fits(name, r.x1 - r.x0, r.y1 - r.y0, 14)
+						T.check(ok, tag .. "\"" .. name .. "\" fits the Element name tag in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
 					end
 				end
 				-- TARGET: its caption shows on touch; ONE ENEMY takes the whole face while it shows
@@ -939,7 +953,7 @@ local function clientScenarios()
 				local tglyph = H.find("Root.Commands.TargetButton.Face.Glyph")
 				if T.check(tcap ~= nil and shownIn(tcap) and tcap.Text == "TARGET", tag .. "the TARGET face says TARGET", tcap and tcap.Text or "nil") then
 					local r = rectOf(tcap)
-					T.check((H.fits("TARGET", r.x1 - r.x0, r.y1 - r.y0, 11)), tag .. "...and it fits", rstr(r))
+					T.check((H.fits("TARGET", r.x1 - r.x0, r.y1 - r.y0, 14)), tag .. "...and it fits at 14 px", rstr(r))
 					d.noForward = true
 					for _, id in ipairs(d:byDistance()) do
 						if id ~= d:byDistance()[1] then
@@ -959,8 +973,8 @@ local function clientScenarios()
 					H.step(1, 1 / 30)
 					T.check(#H.commands(idx) == 0 and tcap.Text == "ONE ENEMY", tag .. "a tap with one enemy left says ONE ENEMY and sends nothing", tcap.Text)
 					r = rectOf(tcap)
-					local ok, lines, widest = H.fits("ONE ENEMY", r.x1 - r.x0, r.y1 - r.y0, 11)
-					T.check(ok and tglyph ~= nil and not shownIn(tglyph), tag .. "...over the whole face, in 2 lines at 11 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
+					local ok, lines, widest = H.fits("ONE ENEMY", r.x1 - r.x0, r.y1 - r.y0, 14)
+					T.check(ok and tglyph ~= nil and not shownIn(tglyph), tag .. "...over the whole face, in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
 					H.step(24, 1 / 30)
 					T.check(tcap.Text == "TARGET" and tglyph ~= nil and shownIn(tglyph), tag .. "...then TARGET and its glyph are back", tcap.Text)
 				end

@@ -96,6 +96,7 @@ local CloudUI = require(UI:WaitForChild("CloudUI"))
 local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token chip's coin; (U7b) the window's icons
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-5) the awning over the window
 local PetPicker = require(UI:WaitForChild("PetPicker"))
 local State = require(Client:WaitForChild("State"))
 
@@ -125,6 +126,8 @@ FusionController.Closed = Util.Signal()
 ----------------------------------------------------------------------
 local K = {
 	CHIP_COIN = 18, -- (kit-b U7a) the Cloud Token coin before the header chip's balance (a PixelIcon, px)
+	FRAME = 6, -- (kit-b U9-5) px of the wood frame round the stone body
+	ROOF_W = 360, -- (kit-b U9-5) the awning's fixed width (the Pets window's)
 	DISPLAY_ORDER = 22, -- above NimbusMenu (20) and the Pet Index (21); under the Training Place (23) and the sheet (24)
 	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1440, Y1 = 880 },
 	MARGIN = 12,
@@ -175,20 +178,28 @@ local MOVES = { BB = true, BS = true, SB = true, SS = true }
 local FLIP = { BB = "SS", SS = "BB", BS = "SB", SB = "BS" } -- the same moves after the swap (Body and Style trade places)
 
 local Colors = Theme.Colors
+-- (kit-b U9-5) the Signboard palette (the pitch's kit B; one colour by role): brown ink on stone cards with the rarity /
+-- finish on their lips, the navy header plank in its wood frame, gold = the selected tab and the lit move chip, FUSE! the
+-- one green action; red and amber text darkened until it reads on stone (4.5:1)
+local SIGN = Theme.Sign
 local C = {
 	White = Colors.White,
-	Ink = Colors.TextStroke or Colors.Ink,
-	Navy = Color3.fromRGB(11, 16, 48),
-	Well = Color3.fromRGB(20, 26, 64),
-	WellEdge = Color3.fromRGB(70, 84, 150),
-	Muted = Color3.fromRGB(170, 180, 214),
-	Gold = Color3.fromRGB(255, 211, 77),
-	GoldLabel = Color3.fromRGB(255, 243, 176),
-	Good = Colors.Good or Color3.fromRGB(120, 230, 120),
-	Bad = Color3.fromRGB(255, 110, 110),
-	Warn = Color3.fromRGB(255, 214, 110),
-	Violet = Color3.fromRGB(155, 107, 255), -- the machine's violet (header, the NEW HYBRID card)
-	Blue = Color3.fromRGB(74, 91, 184),
+	Ink = SIGN.Text,
+	Navy = SIGN.Navy,
+	Stone = SIGN.Stone,
+	Tile = SIGN.Tile,
+	Wood = SIGN.Wood,
+	Well = SIGN.Well,
+	WellEdge = SIGN.WellEdge,
+	Muted = SIGN.TextMuted,
+	Gold = SIGN.Gold,
+	GoldInk = SIGN.GoldLip, -- gold marks on stone (the sparks)
+	Good = Color3.fromRGB(46, 125, 50), -- #2E7D32: 5.1:1 on the stone tile
+	Bad = SIGN.RedLip,
+	Warn = Color3.fromRGB(160, 92, 0), -- amber text on stone (5.0:1)
+	Violet = SIGN.Violet, -- the machine's violet (the NEW HYBRID card's lip)
+	VioletInk = SIGN.VioletLip,
+	Blue = SIGN.Navy,
 	Tier = {
 		Normal = Color3.fromRGB(74, 80, 112),
 		Golden = Color3.fromRGB(255, 196, 64),
@@ -301,11 +312,20 @@ local function label(parent, name, role, size, props)
 	l.BackgroundTransparency = 1
 	l.BorderSizePixel = 0
 	l.TextTruncate = Enum.TextTruncate.AtEnd
+	l.TextColor3 = C.Ink -- (kit-b U9-5) brown ink on stone unless the caller says otherwise
 	for k, v in pairs(props or {}) do
 		l[k] = v
 	end
 	l.Parent = parent
 	return l
+end
+
+-- (kit-b U9-5) a square edge (a mitred border UIStroke, SignEdge unless named)
+local function edge(obj, color, px, name)
+	local s = Theme.Stroke(obj, color, px or 2, 0)
+	s.Name = name or "SignEdge"
+	s.LineJoinMode = Enum.LineJoinMode.Miter
+	return s
 end
 
 ----------------------------------------------------------------------
@@ -873,30 +893,34 @@ function H.ensureGui()
 	return true
 end
 
--- a tab: its fill is a sibling frame under the (transparent) button, so the fill's gradient never tints the text
+-- a tab: its fill is a sibling frame under the (transparent) button. (kit-b U9-5) a signboard tab: a stone block on the
+-- navy plank, gold when selected (H.paintHeader), a wood edge and a darker lip; no gradient
 function H.tabButton(name, text)
-	local fill = Util.Create("Frame", { Name = name .. "Fill", BorderSizePixel = 0, BackgroundColor3 = C.White, ZIndex = 5, Parent = U.Header })
-	Theme.Corner(fill, UDim.new(0, 12))
-	Util.Create("UIStroke", { Name = "TabStroke", ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Thickness = 2, Color = C.White, Parent = fill })
-	Util.Create("UIGradient", { Name = "TabFill", Rotation = 90, Parent = fill })
+	local fill = Util.Create("Frame", { Name = name .. "Fill", BorderSizePixel = 0, BackgroundColor3 = C.Tile, ZIndex = 5, Parent = U.Header })
+	edge(fill, C.Wood, 2, "TabStroke")
+	Util.Create("Frame", {
+		Name = "Lip", BorderSizePixel = 0, BackgroundColor3 = SIGN.StoneLip, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 4), ZIndex = 5, Parent = fill,
+	})
 	local b = Util.Create("TextButton", { Name = name, AutoButtonColor = false, BorderSizePixel = 0, BackgroundTransparency = 1, Text = text, ZIndex = 6, Parent = U.Header })
 	Theme.Style(b, "Button", { Size = 26 })
+	b.TextColor3 = C.Ink
 	return b
 end
 
--- a dark pill with a light edge (the balance chips)
+-- the balance chips: (kit-b U9-5) small stone tags with brown ink on the navy plank (were dark pills with a light edge)
 function H.chip(name, color)
 	local c = label(U.Header, name, "Display", 22, {
-		TextColor3 = color, BackgroundTransparency = 0.35, BackgroundColor3 = C.Ink, ZIndex = 5, TextTruncate = Enum.TextTruncate.None,
+		TextColor3 = C.Ink, BackgroundTransparency = 0, BackgroundColor3 = C.Tile, ZIndex = 5, TextTruncate = Enum.TextTruncate.None,
 	})
-	Theme.Corner(c, UDim.new(0.5, 0))
-	Theme.Stroke(c, C.White, 2, 0.75)
+	edge(c, C.Wood, 2)
 	return c
 end
 
--- a pet card: the label on top, the look, the name, a sub line, a placeholder glyph and a dim cover
+-- a pet card: the label on top, the look, the name, a sub line, a placeholder glyph and a dim cover. (kit-b U9-5) a stone
+-- card with the rarity / finish on its lip (NeonKit.Card Skin "Sign"); the pet stands in a light well
 function H.petCard(parent, name, class, z)
-	local card = NeonKit.Card({ Name = name, Class = class, Color = C.WellEdge, Corner = 18, Floor = true, ZIndex = z, Parent = parent })
+	local card = NeonKit.Card({ Name = name, Class = class, Skin = "Sign", Color = C.WellEdge, LipPx = 8, ZIndex = z, Parent = parent })
 	local body = card.Body
 	local item = { Card = card, Root = card.Root }
 	item.Label = label(body, "Label", "Heading", 26, { ZIndex = z + 3, TextTruncate = Enum.TextTruncate.None })
@@ -906,10 +930,9 @@ function H.petCard(parent, name, class, z)
 	item.PetName = label(body, "PetName", "Heading", 28, { ZIndex = z + 3 })
 	item.Sub = label(body, "Sub", "Body", 20, { ZIndex = z + 3, TextColor3 = C.Muted })
 	item.Dim = Util.Create("Frame", {
-		Name = "Dim", BackgroundColor3 = Color3.fromRGB(8, 10, 28), BackgroundTransparency = 0.45, BorderSizePixel = 0, Visible = false,
+		Name = "Dim", BackgroundColor3 = C.Well, BackgroundTransparency = 0.3, BorderSizePixel = 0, Visible = false,
 		Size = UDim2.fromScale(1, 1), ZIndex = z + 4, Parent = body,
 	})
-	Theme.Corner(item.Dim, UDim.new(0, 18))
 	item.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = card.Root })
 	item.View = { Art = item.Bob, Z = z + 1 }
 	return item
@@ -918,18 +941,17 @@ end
 -- (Task 12) a move chip: its text on the button (inside ChipPad), a border (ChipStroke: gold when lit) and the Check badge
 -- that straddles its top-right corner; side = "Body" | "Style", which = "Attack" | "Special"
 function H.moveChip(parent, side, which)
+	-- (kit-b U9-5) a stone block (square, wood edge); lit = the gold-tinted face with the ink edge (H.paintChip)
 	local b = Util.Create("TextButton", {
-		Name = which, AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = C.Well, Text = "", ZIndex = 6, Parent = parent,
+		Name = which, AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = C.Tile, Text = "", ZIndex = 6, Parent = parent,
 	})
 	Theme.Style(b, "Body", { Size = 18 })
 	b.TextXAlignment = Enum.TextXAlignment.Left
 	b.TextTruncate = Enum.TextTruncate.AtEnd
-	Theme.Corner(b, UDim.new(0, 12))
-	local stroke = Theme.Stroke(b, C.WellEdge, 2, 0)
-	stroke.Name = "ChipStroke"
+	local stroke = edge(b, C.Wood, 2, "ChipStroke")
 	local pad = Util.Create("UIPadding", { Name = "ChipPad", Parent = b })
 	local check = label(b, "Check", "Heading", 15, {
-		Text = "", BackgroundTransparency = 0, BackgroundColor3 = C.Gold, TextColor3 = C.Navy, ZIndex = 8, Visible = false,
+		Text = "", BackgroundTransparency = 0, BackgroundColor3 = C.Gold, TextColor3 = C.Ink, ZIndex = 8, Visible = false,
 		TextTruncate = Enum.TextTruncate.None, TextXAlignment = Enum.TextXAlignment.Center,
 	})
 	PixelIcon.Host(check, ICON.Check) -- (kit-b U7b) follows the badge's TextSize
@@ -939,9 +961,7 @@ function H.moveChip(parent, side, which)
 	icon.AnchorPoint = Vector2.new(0, 0.5)
 	icon.Position = UDim2.new(0, -(CHIP_ICON + 6), 0.5, 0)
 	icon.ZIndex = 7
-	Theme.Corner(check, UDim.new(0.5, 0))
-	Theme.Stroke(check, C.Navy, 2, 0)
-	pcall(NeonKit.AttachFx, b)
+	edge(check, C.Wood, 2) -- a square gold tick badge (no scale bounce on the chip: kit B)
 	b.Activated:Connect(function()
 		safe("chip", H.onChip, side, which)
 	end)
@@ -956,23 +976,30 @@ function H.build()
 	local holder = Util.Create("Frame", { Name = "Window_Fusion", BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Visible = false, ZIndex = 2, Parent = U.Gui })
 	U.Holder = holder
 	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
+	-- (kit-b U9-5) the window as a kit B sign: a wood frame (Panel) round a stone body, the navy header plank (the title's T1
+	-- band is the plank: RibbonBand = "Header"), on a PC screen the fixed-size pink awning (SignKit.Roof, never stretched)
 	local panel = Util.Create("Frame", {
-		Name = "Panel", BackgroundColor3 = C.Navy, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Name = "Panel", BackgroundColor3 = C.Wood, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = holder,
 	})
-	Theme.Corner(panel, UDim.new(0, 18))
-	Theme.Stroke(panel, C.Violet, 3, 0)
 	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel })
-	-- header: the violet strip, square at the bottom
-	local header = Util.Create("Frame", { Name = "Header", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = panel })
-	Theme.Corner(header, UDim.new(0, 18))
-	Theme.Gradient(header, Theme.Lighten(C.Violet, 0.12), Theme.Darken(C.Violet, 0.28), 90)
+	local stone = Util.Create("Frame", {
+		Name = "Stone", BackgroundColor3 = C.Stone, BorderSizePixel = 0, Position = UDim2.fromOffset(K.FRAME, K.FRAME),
+		Size = UDim2.new(1, -2 * K.FRAME, 1, -2 * K.FRAME), ZIndex = 1, Parent = panel,
+	})
+	Util.Create("Frame", {
+		Name = "Lip", BackgroundColor3 = SIGN.StoneLip, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, 6), ZIndex = 1, Parent = stone,
+	})
+	local header = Util.Create("Frame", { Name = "Header", BackgroundColor3 = C.Navy, BorderSizePixel = 0, ZIndex = 3, Parent = panel })
 	U.Header = header
-	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = header })
-	Theme.Gradient(U.HeaderFoot, Theme.Lighten(C.Violet, 0.12):Lerp(Theme.Darken(C.Violet, 0.28), 0.76), Theme.Darken(C.Violet, 0.28), 90)
-	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = "", TextTruncate = Enum.TextTruncate.None })
+	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = SIGN.NavyLip, BorderSizePixel = 0, ZIndex = 3, Parent = header })
+	U.Roof = SignKit.Roof(panel, { Width = K.ROOF_W, Y = -10, ZIndex = 4 })
+	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = "", TextColor3 = C.Gold, TextTruncate = Enum.TextTruncate.None })
 	PixelIcon.Host(U.Icon, ICON.Machine) -- (kit-b U7b)
-	U.Title = Theme.StyleTitle(label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Fusion Machine", TextXAlignment = Enum.TextXAlignment.Left }))
+	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Fusion Machine", TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
+	U.Title:SetAttribute("RibbonBand", "Header")
+	Theme.StyleTitle(U.Title)
 	U.TabUp = H.tabButton("Tab_Upgrade", "UPGRADE")
 	U.TabMix = H.tabButton("Tab_Mix", "MIX")
 	U.TabUp.Activated:Connect(function()
@@ -985,24 +1012,23 @@ function H.build()
 	PixelIcon.Lead(U.TokenChip, TOKEN_INFO.Icon or "token", { Px = K.CHIP_COIN }) -- (kit-b U7a) the coin before the balance
 	U.GemChip = H.chip("GemChip", GEM_INFO.Color or Colors.Gem or C.White)
 	-- lobby-shop Task 15 (spec 5.7): the gem balance is the drawn gem + the number (GemIcon.Amount), the chip sized to it
-	U.GemAmount = GemIcon.Amount(U.GemChip, 0, { TextSize = 22, Color = GEM_INFO.Color or Colors.Gem, ZIndex = 6 })
+	U.GemAmount = GemIcon.Amount(U.GemChip, 0, { TextSize = 22, Color = C.Ink, ZIndex = 6 }) -- (kit-b U9-5) brown on the stone tag
 	U.GemAmount.AnchorPoint = Vector2.new(0.5, 0.5)
 	U.GemAmount.Position = UDim2.fromScale(0.5, 0.5)
 	U.Close = CloudUI.Button({
-		Name = "CloseButton", Text = "", Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
+		Name = "CloseButton", Text = "", Style = "Red", Skin = "Sign", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
 		Callback = function()
 			FusionController.Close()
 		end,
 		Parent = header,
 	})
-	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
+	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = C.Ink }) -- slop audit 2026-11-12: a drawn X (no glyph)
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
 	U.Tip = label(body, "TipLine", "Body", 22, { ZIndex = 3, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None })
 	-- Upgrade: the fanned stack of copies (one button) and its count
 	U.Stack = Util.Create("TextButton", { Name = "Stack", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3, Parent = body })
-	pcall(NeonKit.AttachFx, U.Stack)
 	U.Stack.Activated:Connect(function()
 		safe("stack", H.tapSheet, "Upgrade")
 	end)
@@ -1015,14 +1041,13 @@ function H.build()
 	for _, slot in ipairs({ { "Body", "BODY" }, { "Style", "STYLE" } }) do
 		local item = H.petCard(body, "Slot_" .. slot[1], "TextButton", 4)
 		item.Label.Text = slot[2]
-		pcall(NeonKit.AttachFx, item.Root)
 		item.Root.Activated:Connect(function()
 			safe("slot", H.tapSheet, slot[1])
 		end)
 		U.Slots[slot[1]] = item
 	end
 	U.Plus = label(body, "Plus", "Title", 40, { ZIndex = 4, Text = G.Plus, TextTruncate = Enum.TextTruncate.None })
-	U.Swap = NeonKit.Button({ Name = "SwapButton", Text = "", Color = C.Blue, Size = UDim2.fromOffset(72, 72), TextSize = 34, ZIndex = 5, Parent = body })
+	U.Swap = CloudUI.Button({ Name = "SwapButton", Text = "", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(72, 72), TextSize = 34, ZIndex = 5, Parent = body })
 	PixelIcon.Host(U.Swap, ICON.Swap) -- (kit-b U7b)
 	local swapPad = U.Swap:FindFirstChildOfClass("UIPadding")
 	if swapPad then
@@ -1038,20 +1063,20 @@ function H.build()
 	end
 	-- the outcome: the phone's one line (the PC's two lines live in the result card, below)
 	U.Outcome = label(body, "Outcome", "Body", 15, {
-		ZIndex = 4, Visible = false, TextColor3 = C.GoldLabel, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 4, Visible = false, TextColor3 = C.VioletInk, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None,
 	})
-	U.Arrow = label(body, "Arrow", "Title", 60, { ZIndex = 4, Text = "", TextColor3 = C.Gold, TextScaled = true, TextTruncate = Enum.TextTruncate.None })
+	U.Arrow = label(body, "Arrow", "Title", 60, { ZIndex = 4, Text = "", TextColor3 = C.Wood, TextScaled = true, TextTruncate = Enum.TextTruncate.None })
 	PixelIcon.Host(U.Arrow, ICON.Arrow, 45) -- (kit-b U7b)
 	-- the result: big and glowing
 	U.Result = H.petCard(body, "Result", "Frame", 4)
 	U.Result.PetName.Name = "ResultName"
 	U.Result.Sub.Visible = false
 	for _, name in ipairs({ "OutcomeAttack", "OutcomeSpecial" }) do
-		U[name] = label(U.Result.Card.Body, name, "Body", 22, { ZIndex = 7, Visible = false, TextColor3 = C.GoldLabel })
+		U[name] = label(U.Result.Card.Body, name, "Body", 22, { ZIndex = 7, Visible = false, TextColor3 = C.VioletInk })
 	end
 	U.Sparks = {}
 	for i = 1, 4 do
-		U.Sparks[i] = label(U.Result.Card.Body, "Spark" .. i, "Title", 34, { ZIndex = 9, Text = "", TextColor3 = Color3.fromRGB(255, 248, 208), TextTruncate = Enum.TextTruncate.None, Visible = false })
+		U.Sparks[i] = label(U.Result.Card.Body, "Spark" .. i, "Title", 34, { ZIndex = 9, Text = "", TextColor3 = C.GoldInk, TextTruncate = Enum.TextTruncate.None, Visible = false })
 		PixelIcon.Host(U.Sparks[i], ICON.Spark, 27) -- (kit-b U7b) follows the spark's fade
 	end
 	U.Shimmer = Util.Create("UIGradient", {
@@ -1068,36 +1093,36 @@ function H.build()
 	U.Note = label(body, "Note", "Body", 22, { ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None })
 	U.Info = label(body, "Info", "Body", 22, { ZIndex = 4, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None })
 	-- the cost and FUSE!
-	local cost = NeonKit.Card({ Name = "CostBar", Color = C.Blue, Corner = 18, Floor = false, Glow = false, ZIndex = 3, Parent = body })
+	-- (kit-b U9-5) the cost on a stone tile (a navy lip); FUSE! is the window's one green action (no pulsing glow: kit B)
+	local cost = NeonKit.Card({ Name = "CostBar", Skin = "Sign", Color = C.Navy, LipPx = 6, ZIndex = 3, Parent = body })
 	U.CostBar = cost
 	U.CostLabel = label(cost.Body, "CostLabel", "Heading", 30, { ZIndex = 5, Text = "Cost", TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
 	U.CostIcon = Util.Create("Frame", { Name = "CostIcon", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = cost.Body })
-	U.Cost = label(cost.Body, "Cost", "Display", 44, { ZIndex = 5, TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
+	U.Cost = label(cost.Body, "Cost", "Display", 44, { ZIndex = 5, TextColor3 = C.Ink, TextXAlignment = Enum.TextXAlignment.Left })
 	U.Have = label(cost.Body, "Have", "Body", 22, { ZIndex = 5, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
-	U.Fuse = NeonKit.Button({ Name = "FuseButton", Text = "FUSE!", Color = "Green", Size = UDim2.fromOffset(320, 92), TextSize = 44, ZIndex = 5, Parent = body })
+	U.Fuse = CloudUI.Button({ Name = "FuseButton", Text = "FUSE!", Style = "Green", Skin = "Sign", Size = UDim2.fromOffset(320, 92), TextSize = 44, ZIndex = 5, Parent = body })
 	U.Fuse.Activated:Connect(function()
 		safe("fuse", H.onFuseTap)
 	end)
 	U.Hint = label(body, "HintLine", "Heading", 20, {
-		ZIndex = 30, Visible = false, BackgroundTransparency = 0.12, BackgroundColor3 = Color3.fromRGB(8, 10, 28), TextWrapped = true,
+		ZIndex = 30, Visible = false, BackgroundTransparency = 0, BackgroundColor3 = C.Navy, TextColor3 = C.Stone, TextWrapped = true,
 	})
-	Theme.Corner(U.Hint, UDim.new(0, 10))
+	edge(U.Hint, C.Wood, 3) -- (kit-b U9-5) a small navy sign
 	-- the fusion animation's flash and NEW! tag
 	U.Flash = Util.Create("Frame", { Name = "Flash", BackgroundTransparency = 1, BackgroundColor3 = C.White, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 25, Parent = body })
 	Theme.Corner(U.Flash, UDim.new(0.5, 0))
 	U.NewTag = label(body, "New", "Title", 26, {
-		ZIndex = 26, Visible = false, Text = "NEW!", BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(232, 84, 120), TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 26, Visible = false, Text = "NEW!", BackgroundTransparency = 0, BackgroundColor3 = SIGN.Roof, TextTruncate = Enum.TextTruncate.None,
 	})
-	Theme.Corner(U.NewTag, UDim.new(0, 10))
-	Theme.Stroke(U.NewTag, C.Navy, 3, 0)
-	-- the locked card (no Prestige / no machine yet): opaque, nothing of the window shows through
-	U.Locked = Util.Create("Frame", { Name = "Locked", BackgroundTransparency = 0, BackgroundColor3 = C.White, BorderSizePixel = 0, Visible = false, ZIndex = 20, Parent = body })
-	Theme.Corner(U.Locked, UDim.new(0, 18))
-	Theme.Gradient(U.Locked, Color3.fromRGB(58, 46, 120), Color3.fromRGB(18, 22, 56), 90)
-	U.LockedIcon = label(U.Locked, "Icon", "Title", 64, { ZIndex = 21, Text = "", TextTruncate = Enum.TextTruncate.None })
+	edge(U.NewTag, C.Wood, 3) -- (kit-b U9-5) a pink tag in a wood edge (brown ink)
+	-- the locked card (no Prestige / no machine yet): opaque, nothing of the window shows through. (kit-b U9-5) a sunk stone
+	-- well in a wood edge
+	U.Locked = Util.Create("Frame", { Name = "Locked", BackgroundTransparency = 0, BackgroundColor3 = C.Well, BorderSizePixel = 0, Visible = false, ZIndex = 20, Parent = body })
+	edge(U.Locked, C.Wood, 3)
+	U.LockedIcon = label(U.Locked, "Icon", "Title", 64, { ZIndex = 21, Text = "", TextColor3 = C.Wood, TextTruncate = Enum.TextTruncate.None })
 	PixelIcon.Host(U.LockedIcon, ICON.Machine, 54) -- (kit-b U7b)
 	U.LockedText = label(U.Locked, "Text", "Heading", 24, { ZIndex = 21, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
-	U.LockedSub = label(U.Locked, "Sub", "Body", 20, { ZIndex = 21, Text = TEXTS.LockedSub, TextWrapped = true, TextColor3 = Color3.fromRGB(196, 186, 240), TextTruncate = Enum.TextTruncate.None })
+	U.LockedSub = label(U.Locked, "Sub", "Body", 20, { ZIndex = 21, Text = TEXTS.LockedSub, TextWrapped = true, TextColor3 = C.Muted, TextTruncate = Enum.TextTruncate.None })
 	-- the cursor is free while the window is shown (client/MouseLock, as the docked windows)
 	local mouseLock = Client:FindFirstChild("MouseLock")
 	local okLock, lock = pcall(function()
@@ -1151,7 +1176,8 @@ function H.layoutHeader()
 	local M = (S.Mode == "Phone") and K.HEAD.PHONE or K.HEAD.PC
 	local W = S.W or 0
 	place(U.Header, 0, 0, W, M.Header)
-	place(U.HeaderFoot, 0, M.Header - 18, W, 18)
+	place(U.HeaderFoot, 0, M.Header - 5, W, 5) -- (kit-b U9-5) the plank's darker lip
+	U.Roof.Visible = S.Mode ~= "Phone" -- (kit-b U9-5) a phone window sits right under Roblox's top bar: no awning stub
 	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
 	U.Icon.TextSize = M.IconText
 	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close) -- (its drawn X scales with it)
@@ -1181,7 +1207,7 @@ function H.layoutHeader()
 		local room = titleRoom()
 		local t = H.fit(U.Title, titles, room, M.TitleText, M.TitleMin)
 		local tw = math.min(room, H.boxW(t, U.Title.TextSize, Theme.FontOf(U.Title)) + 4)
-		place(U.Title, titleX, 0, tw, M.Header)
+		place(U.Title, titleX, 6, tw, M.Header - 12) -- (kit-b U9-5) 6 px in top and bottom: the ribbon lifts its letters (Drop), their box stays on the plank
 		tabsX = titleX + tw + M.Gap
 	end
 	if tabsX + upW + M.TabGap + mixW + M.Gap > right - chipsW() then
@@ -1221,6 +1247,10 @@ end
 -- the inside of a pet card (a copy, a slot or the result): pc = the PC proportions at factor k, else the phone's;
 -- artMax (optional) caps the look's size (the shorter Mix slots keep their look clear of the name)
 function H.layoutCard(item, w, h, pc, k, isResult, artMax)
+	-- (kit-b U9-5) the texts sit in the card's body, above its rarity lip (Body is the card less the lip)
+	local fullH = h
+	local lip = item.Card.Lip
+	h = h - (lip and lip.Size.Y.Offset or 0)
 	if pc then
 		place(item.Label, 0, 12 * k, w, 32 * k)
 		item.Label.TextSize = math.max(18, math.floor(26 * k + 0.5))
@@ -1254,7 +1284,7 @@ function H.layoutCard(item, w, h, pc, k, isResult, artMax)
 		item.Sub.TextSize = 15
 		item.SubMax = 15
 	end
-	item.W, item.H, item.PC = w, h, pc
+	item.W, item.H, item.PC = w, fullH, pc
 end
 
 -- (Task 12) a slot's two move chips (Attack over Special) at x, y in the body, w wide; form = "pc" | "phone"
@@ -1683,22 +1713,16 @@ function H.paintHeader()
 	GemIcon.SetAmount(U.GemAmount, H.short(H.balance("Gems")))
 	for _, spec in ipairs({ { U.TabUp, "Upgrade" }, { U.TabMix, "Mix" } }) do
 		local b, on = spec[1], S.Tab == spec[2]
-		local selected = ColorSequence.new(Theme.Lighten(C.Violet, 0.55), Theme.Darken(C.Violet, 0.05))
-		-- kit B (no outline): the selected tab's ink is the one that reads on its pale violet face (brown)
-		b.TextColor3 = on and Theme.TextOn(selected) or Theme.Lighten(C.Muted, 0.4) -- (unselected: a pale muted ink, 4.5:1 on the header)
+		-- (kit-b U9-5) gold = the selected tab, stone the other; brown ink on both
+		b.TextColor3 = C.Ink
 		b:SetAttribute("Selected", on)
 		local fill = U.Header:FindFirstChild(b.Name .. "Fill")
 		if fill then
-			fill.BackgroundColor3 = on and C.White or C.Ink
-			fill.BackgroundTransparency = on and 0 or 0.55
-			local grad = fill:FindFirstChild("TabFill")
-			if grad then
-				grad.Color = on and selected or ColorSequence.new(C.White, C.White)
-			end
-			local st = fill:FindFirstChild("TabStroke")
-			if st then
-				st.Color = on and C.Ink or C.White
-				st.Transparency = on and 0 or 0.8
+			fill.BackgroundColor3 = on and C.Gold or C.Tile
+			fill.BackgroundTransparency = 0
+			local lip = fill:FindFirstChild("Lip")
+			if lip then
+				lip.BackgroundColor3 = on and SIGN.GoldLip or SIGN.StoneLip
 			end
 		end
 	end
@@ -1732,7 +1756,7 @@ end
 
 -- the name of a pet on a card: the whole name, else the last word
 function H.cardName(item, text, color)
-	item.PetName.TextColor3 = color or C.White
+	item.PetName.TextColor3 = color or C.Ink
 	local last = tostring(text):match("(%S+)%s*$") or tostring(text)
 	H.fit(item.PetName, { text, last }, item.PetName.Size.X.Offset, item.NameMax or 28, item.NameMin or 15)
 end
@@ -1790,7 +1814,7 @@ function H.paintStack(plan)
 	end
 	if def then
 		U.CopiesText.Text = "x" .. have .. " owned " .. G.Dot .. " uses " .. H.copies()
-		U.CopiesText.TextColor3 = (have >= H.copies()) and C.White or C.Warn
+		U.CopiesText.TextColor3 = (have >= H.copies()) and C.Ink or C.Warn
 	else
 		U.CopiesText.Text = "Tap to pick a pet"
 		U.CopiesText.TextColor3 = C.Muted
@@ -1806,11 +1830,11 @@ function H.paintResult(plan)
 	if mix then
 		color = C.Violet
 		H.fit(item.Label, { "NEW HYBRID", "NEW" }, item.Label.Size.X.Offset - 8, item.Label.TextSize, S.Mode == "Phone" and 15 or 18)
-		item.Label.TextColor3 = C.Gold
+		item.Label.TextColor3 = C.VioletInk
 	else
 		color = (tier and C.Tier[tier]) or C.WellEdge
 		item.Label.Text = tier and string.upper(tier) or "NEXT FINISH"
-		item.Label.TextColor3 = (tier == "Golden") and C.GoldLabel or C.White
+		item.Label.TextColor3 = C.Ink -- (kit-b U9-5) the finish's colour is on the card's lip
 	end
 	item.Card.SetColor(color)
 	U.Shimmer.Enabled = (not mix) and tier == "Rainbow"
@@ -1820,7 +1844,7 @@ function H.paintResult(plan)
 	item.Placeholder.Text = G.Question
 	item.Placeholder.Visible = plan.ResultDef == nil
 	if plan.ResultDef then
-		H.cardName(item, plan.ResultName or H.nameOf(plan.ResultDef), C.White)
+		H.cardName(item, plan.ResultName or H.nameOf(plan.ResultDef), C.Ink)
 	else
 		H.cardName(item, mix and "Pick two pets" or "Pick a pet", C.Muted)
 	end
@@ -1902,13 +1926,13 @@ function H.paintPills(plan)
 				local pill = U.PillList[it.P[1]]
 				if not pill then
 					pill = label(U.Pills, it.P[1], "Heading", 20, { ZIndex = 11, BackgroundTransparency = 0, TextTruncate = Enum.TextTruncate.None })
-					Theme.Corner(pill, UDim.new(0.5, 0))
-					Theme.Stroke(pill, C.Navy, 2, 0)
+					edge(pill, C.Wood, 2) -- (kit-b U9-5) a square tag in a wood edge
 					U.PillList[it.P[1]] = pill
 				end
 				pill.Text = it.P[2]
 				pill.TextSize = size
-				pill.BackgroundColor3 = it.P[3]
+				-- (kit-b U9-5) its colour, nudged until its ink reads (4.5:1: Theme.ReadableFace)
+				pill.BackgroundColor3, pill.TextColor3 = Theme.ReadableFace(it.P[3], 4.5)
 				place(pill, x - geo.X, y - geo.Y, it.W, geo.H)
 				used[it.P[1]] = true
 				x = x + it.W + geo.Gap
@@ -2009,11 +2033,14 @@ function H.paintCost(plan)
 		local ok, icon = pcall(NeonKit.Icon, U.CostIcon, currency, S.Geo.IconPx or 40)
 		if ok and icon then
 			icon.ZIndex = 6
+			if icon:IsA("TextLabel") then
+				icon.TextColor3 = C.Ink -- (kit-b U9-5) the drawn coin in brown on the stone tile (it was white on navy)
+			end
 		end
 	end
 	if cost then
 		U.Cost.Text = H.commas(cost.Amount)
-		U.Cost.TextColor3 = (plan.CanAfford == false) and C.Bad or (info.Color or C.Gold)
+		U.Cost.TextColor3 = (plan.CanAfford == false) and C.Bad or C.Ink
 	else
 		U.Cost.Text = "-"
 		U.Cost.TextColor3 = C.Muted
@@ -2073,11 +2100,12 @@ function H.paintChip(g, c, texts, lit, off)
 	b:SetAttribute("Lit", lit)
 	b:SetAttribute("Disabled", off)
 	b.Active = not off
-	b.BackgroundColor3 = lit and Color3.fromRGB(86, 64, 20) or C.Well
+	-- (kit-b U9-5) lit: the selected card's gold-tinted face and the ink edge; unlit: stone with the muted ink
+	b.BackgroundColor3 = lit and SIGN.Selected or C.Tile
 	b.BackgroundTransparency = off and 0.3 or 0
-	b.TextColor3 = lit and C.White or C.Muted
+	b.TextColor3 = lit and C.Ink or C.Muted
 	PixelIcon.Tint(c.Icon, b.TextColor3)
-	c.Stroke.Color = lit and C.Gold or C.WellEdge
+	c.Stroke.Color = lit and C.Ink or C.Wood
 	c.Stroke.Thickness = lit and 3 or 2
 	c.Stroke.Transparency = off and 0.35 or 0
 	c.Check.Visible = lit
@@ -2548,7 +2576,7 @@ function H.playFusion(resultKey, rarity)
 		local def = H.def(resultKey)
 		if def then
 			H.setView(U.Result.View, def, resultKey, H.stage(resultKey), "High")
-			H.cardName(U.Result, H.nameOf(def, resultKey), C.White)
+			H.cardName(U.Result, H.nameOf(def, resultKey), C.Ink)
 			U.Result.Placeholder.Visible = false
 		end
 		U.Result.Pop.Scale = 0.4

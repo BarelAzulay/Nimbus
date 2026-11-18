@@ -22,6 +22,7 @@
 --   * The gate tag: one pixel-sized BillboardGui RaidGateTag on the gate's crest (tag NC_RaidGateCrest, else the RaidGate part):
 --     "<Boss> - your tier: <Tier> (L<n> boss)", the reward line, "<Tier> boss back in N s" while my tier's fight is closed, else "Walk
 --     through to fight". Refreshed every second from the last ArenaState; hidden while the player fights.
+--   * (kit-b U9-7: the tag is a stone notice nailed up, the panel a Signboard window with stone tiers and red Dare blocks)
 --   * The dare panel: a NeonKit side panel (docked right on landscape screens, a bottom sheet on portrait phones) with one row per
 --     tier above mine, "<Tier> - boss L<n>, hits x<h>, rewards x<r>" and a Dare button. One side panel at a time; Esc / gamepad B / the
 --     red X / walking away from the pillar / my fight's Start close it. Dare with an empty team leads to the Pets window (TeamFaces.Ensure).
@@ -40,6 +41,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-7) the tag's nails
 
 local Client = script.Parent.Parent
 local UI = Client:WaitForChild("UI")
@@ -55,11 +57,12 @@ RaidGateController.Closed = Util.Signal()
 local K = {
 	DISPLAY_ORDER = 23,
 	PREF_W = 560, -- design px of the dare panel
-	PREF_H = 500,
+	PREF_H = 500, -- (U9-7 look) the most it takes: H.fitDock sizes the panel to its rows (a fixed 500 left a third blank)
 	INTRO_H = 30,
-	ROW_H = 72,
+	ROW_H = 78, -- (U9-7 look) two lines: the tier's steps and chip, then its facts
+	STEP = 8, -- (U9-7 look) a step of the tier's stair: 8 px wide, 6 px higher than the one before
 	GAP = 8,
-	BUTTON_W = 120,
+	BUTTON_W = 96, -- (U9-7 look) was 120: on a landscape phone the three fact tags ran under the Dare block
 	BUTTON_H = 56, -- >= 44 px under the 0.8 touch scale
 	TICK = 0.25, -- seconds between two looks at the state (the idle boss, the walk-away)
 	TAG_EVERY = 1, -- seconds between two tag refreshes
@@ -76,14 +79,14 @@ local K = {
 	BACK_ACTION = "NimbusRaidDareBack",
 }
 
-local Colors = Theme.Colors
-local WHITE = Colors.White
+-- (kit-b U9-7) the Signboard palette (the Arena's): brown ink on stone, the muted brown for the intro, raised stone tiles
+-- for the tiers; the gate's tag is a stone notice nailed up over the gate, its reward clock in the burnt orange that reads
+-- 4.5:1 on stone
+local SIGN = Theme.Sign
+local INK = SIGN.Text
 local C = {
-	Accent = Color3.fromRGB(214, 92, 96), -- the Arena panels' crimson
-	Gold = (Theme.Neon and Theme.Neon.Gold) or Color3.fromRGB(255, 196, 64),
-	Muted = Color3.fromRGB(176, 184, 214),
-	Row = Color3.fromRGB(30, 36, 78),
-	Plate = Color3.fromRGB(28, 36, 78),
+	Muted = SIGN.TextMuted,
+	Reward = Color3.fromRGB(148, 86, 10), -- #94560A
 }
 
 local LocalPlayer = nil
@@ -173,7 +176,7 @@ function H.text(parent, name, text, role, size, color, props)
 	label.BorderSizePixel = 0
 	label.Text = tostring(text or "")
 	-- kit-b U6: the window is a plate, so the text reads by contrast (no outline)
-	Theme.Style(label, role or "Body", { Size = size, Color = color or WHITE })
+	Theme.Style(label, role or "Body", { Size = size, Color = color or INK })
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	for k, v in pairs(props or {}) do
 		label[k] = v
@@ -370,17 +373,17 @@ function H.buildTag(adornee)
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.Adornee = adornee
+	-- (kit-b U9-7) a stone notice in its wood edge with the stone lip, nailed up at its top corners (was a navy rounded
+	-- plate with a gold rim)
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
-	plate.BackgroundColor3 = C.Plate
-	plate.BackgroundTransparency = 0.1
 	plate.BorderSizePixel = 0
 	plate.Size = UDim2.new(1, 0, 1, 0)
 	plate.Parent = gui
-	Util.Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = plate })
-	Util.Create("UIStroke", { Color = C.Gold, Thickness = 2, Transparency = 0.1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = plate })
+	CloudUI.SignBlock(plate, "Stone", { LipPx = 5 })
+	SignKit.Nails(plate, { Inset = 5 })
 	local lines = {}
-	for i, spec in ipairs({ { "Heading", 22, WHITE, 6, 56 }, { "Body", 18, C.Gold, 62, 26 }, { "Heading", 18, WHITE, 90, 26 } }) do
+	for i, spec in ipairs({ { "Heading", 22, INK, 6, 56 }, { "Body", 18, C.Reward, 62, 26 }, { "Heading", 18, INK, 88, 26 } }) do
 		lines[i] = H.text(plate, "Line" .. i, "", spec[1], spec[2], spec[3], {
 			Position = UDim2.fromOffset(8, spec[4]),
 			Size = UDim2.new(1, -16, 0, spec[5]),
@@ -443,7 +446,10 @@ function H.build()
 		Name = "DarePanel",
 		Title = "Dare a higher tier",
 		Closable = true,
-		Category = "Arena",
+		Skin = "Signboard", -- (kit-b U9-7) roof, navy header with the sword, wood frame, stone body
+		Icon = Config.Icons.Battle,
+		TitleSize = 30, -- (the prompt's words, "Dare a higher tier": at 34 px they ran 4 px past the header beside the icon on a phone;
+		-- U9-7 look: 30, the band inside the frame on the dock and 12 px more clear of the X)
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -452,13 +458,16 @@ function H.build()
 		end,
 		Parent = holder,
 	})
+	-- (U9-7 look) a docked window's band stays inside the frame, no tails (its right tail ran off the screen edge): the
+	-- header shape Index and the Food Machine wear on the same dock
+	SignKit.HeaderOverhang(panel.TitleBar, false)
 	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel.Root })
 	local list = Instance.new("Frame")
 	list.Name = "Rows"
 	list.BackgroundTransparency = 1
 	list.BorderSizePixel = 0
-	list.Position = UDim2.fromOffset(14, 8)
-	list.Size = UDim2.new(1, -28, 1, -16)
+	list.Position = UDim2.fromOffset(CloudUI.Metrics.SignPagePad, 8) -- (U9-7 look) the dock family's page inset
+	list.Size = UDim2.new(1, -2 * CloudUI.Metrics.SignPagePad, 1, -16)
 	list.Parent = panel.Content
 	Util.Create("UIListLayout", { Padding = UDim.new(0, K.GAP), SortOrder = Enum.SortOrder.LayoutOrder, Parent = list })
 	U.List = list
@@ -474,28 +483,92 @@ function H.dare(tierId)
 	end)
 end
 
+-- (U9-7 look) the tier's stair: `n` gold steps rising left to right (the header ribbon's step motif), each on its lip
+function H.steps(parent, n)
+	local holder = Instance.new("Frame")
+	holder.Name = "Steps"
+	holder.BackgroundTransparency = 1
+	holder.BorderSizePixel = 0
+	holder.Size = UDim2.fromOffset(3 * (K.STEP + 2), 24)
+	holder.LayoutOrder = 0
+	holder.Parent = parent
+	for j = 1, 3 do
+		local lit = j <= n
+		local step = Instance.new("Frame")
+		step.Name = "Step" .. j
+		step.BorderSizePixel = 0
+		step.BackgroundColor3 = lit and SIGN.Gold or SIGN.Well
+		step.AnchorPoint = Vector2.new(0, 1)
+		step.Position = UDim2.new(0, (j - 1) * (K.STEP + 2), 1, 0)
+		step.Size = UDim2.fromOffset(K.STEP, 6 * j + 4)
+		step.Parent = holder
+		local lip = Instance.new("Frame")
+		lip.Name = "Lip"
+		lip.BorderSizePixel = 0
+		lip.BackgroundColor3 = lit and SIGN.GoldLip or SIGN.WellEdge
+		lip.AnchorPoint = Vector2.new(0, 1)
+		lip.Position = UDim2.new(0, 0, 1, 0)
+		lip.Size = UDim2.new(1, 0, 0, 2)
+		lip.Parent = step
+	end
+	return holder
+end
+
 function H.row(tier, order)
+	-- (kit-b U9-7) a stone tile per tier; Dare is a red (risky) block, the window has no green. (U9-7 look) Two lines: the
+	-- tier's rising steps and its chip, then its facts as the Raid page's tags (crown L40, sword x0.8, coin x0.7; the
+	-- comma sentence wrapped on a phone)
 	local row = Instance.new("Frame")
 	row.Name = "Row_" .. tostring(tier.Id)
-	row.BackgroundColor3 = C.Row
 	row.BorderSizePixel = 0
 	row.Size = UDim2.new(1, 0, 0, K.ROW_H)
 	row.LayoutOrder = order
 	row.Parent = U.List
-	Util.Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = row })
-	H.text(row, "Text", tostring(tier.Id) .. " - boss L" .. tostring(tier.BossLevel) .. ", hits x" .. tostring(tier.Hit) .. ", rewards x" .. tostring(tier.Reward), "Body", 19, WHITE, {
-		Position = UDim2.fromOffset(12, 0),
-		Size = UDim2.new(1, -(K.BUTTON_W + 32), 1, 0),
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
+	CloudUI.SignBlock(row, "Stone", { EdgePx = 2, LipPx = 4 })
+	local arena = H.controller("ArenaController")
+	local rank = 0
+	local BC = H.catalog()
+	for i, id in ipairs(BC and BC.RaidTierOrder or {}) do
+		if id == tier.Id then
+			rank = i - 1
+		end
+	end
+	local function line(name, y)
+		local f = Instance.new("Frame")
+		f.Name = name
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel = 0
+		f.Position = UDim2.fromOffset(12, y)
+		f.Size = UDim2.new(1, -(K.BUTTON_W + 32), 0, 30)
+		f.Parent = row
+		Util.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Parent = f,
+		})
+		return f
+	end
+	local head = line("Head", 6)
+	H.steps(head, math.max(1, math.min(3, rank)))
+	local facts = line("Facts", 40)
+	if arena and type(arena.TierFacts) == "function" then
+		pcall(arena.TierFacts, facts, tier, head)
+	else
+		H.text(facts, "Text", tostring(tier.Id) .. "  L" .. tostring(tier.BossLevel) .. "  x" .. tostring(tier.Hit) .. "  x" .. tostring(tier.Reward), "Heading", 18, INK, {
+			Size = UDim2.new(1, 0, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Left,
+		})
+	end
 	CloudUI.Button({
 		Name = "Dare_" .. tostring(tier.Id),
 		Text = "Dare",
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -8, 0.5, 0),
+		Position = UDim2.new(1, -8, 0.5, -2),
 		Size = UDim2.fromOffset(K.BUTTON_W, K.BUTTON_H),
 		Style = "Red",
+		Skin = "Sign",
 		TextSize = 22,
 		Parent = row,
 		Callback = function()
@@ -525,6 +598,21 @@ function H.fillRows()
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 1,
 	})
+	H.fitDock(count)
+end
+
+-- (U9-7 look) the panel as tall as its rows: the frame round Panel.Content (82), the list's 8 px top and bottom, the intro
+-- and `count` rows (at least one), 14 px to spare; the dock is made again for a new height
+function H.fitDock(count)
+	local h = math.min(K.PREF_H, 82 + 8 + K.INTRO_H + math.max(1, count) * (K.ROW_H + K.GAP) + 8 + 14)
+	if U.DockH == h or not U.Holder then
+		return
+	end
+	U.DockH = h
+	if U.Dock and U.Dock.Disconnect then
+		U.Dock.Disconnect()
+	end
+	U.Dock = NeonKit.Dock(U.Holder, U.Fit, K.PREF_W, h)
 end
 
 function H.onBack(_name, inputState)
@@ -549,6 +637,20 @@ function H.syncBack()
 		pcall(function()
 			ContextActionService:UnbindAction(K.BACK_ACTION)
 		end)
+	end
+end
+
+-- (kit-b U9-7) on a touch screen Roblox's thumbstick and jump button go while the panel is open (the jump button sat on
+-- Dare_Max at 844x390) and come back as they were: MenuController keeps the one owner set, as the Arena and the Index do
+function H.syncTouch()
+	local want = S.Open == true and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	if want == (S.TouchOff == true) then
+		return
+	end
+	S.TouchOff = want
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		H.safe("touch", menu.SetTouchHidden, "Dare", want)
 	end
 end
 
@@ -580,6 +682,7 @@ function RaidGateController.OpenDare(prompt)
 	S.Open = true
 	S.Token = S.Token + 1
 	H.syncBack()
+	H.syncTouch()
 	if U.Dock and U.Dock.Refresh then
 		U.Dock.Refresh()
 	end
@@ -601,6 +704,7 @@ function RaidGateController.Close()
 	S.Token = S.Token + 1
 	local mine = S.Token
 	H.syncBack()
+	H.syncTouch()
 	if U.Pop then
 		Util.Tween(U.Pop, 0.12, { Scale = 0.92 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	end

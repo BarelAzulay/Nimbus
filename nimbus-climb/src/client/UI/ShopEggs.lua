@@ -534,7 +534,7 @@ end
 -- (kit-b U9-2) a card is a kit B block (NeonKit.Card Skin "Sign"): `face` (stone, or the hero's navy plank), the wood
 -- edge (`edge`: the hero's is the gold lip), the roulette's own colour on its lip
 function H.card(P, parent, id, color, face, size, edge)
-	local c = NeonKit.Card({ Name = "ShopCard_" .. id, Skin = "Sign", Face = face, Lip = color, Edge = edge, Size = size, Parent = parent })
+	local c = NeonKit.Card({ Name = "ShopCard_" .. id, Skin = "Sign", BodyOverLip = true, Face = face, Lip = color, Edge = edge, Size = size, Parent = parent })
 	local t = { Id = id, Root = c.Root, Card = c, Color = color, Edge = c.Stroke.Color, Thick = c.Stroke.Thickness, Rows = {} }
 	local r = H.roulette(id)
 	t.Name = (r and r.DisplayName) or (id .. " Roulette")

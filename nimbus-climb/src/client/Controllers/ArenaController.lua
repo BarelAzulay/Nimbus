@@ -35,7 +35,8 @@
 --   * Champion Ring window (Portal_Ring's prompt, OpenPanel = "Ring"): the record "Best: Round N" and the runs, the best
 --     of this server (Portal_Ring's RingBoard attribute, top 3), the start picker (round 1 or a boss round 10, 20 ...
 --     already beaten), the start round's champion, "Next win: +$X +Y XP", the TeamFaces row (the team the server will field;
---     pinned above the buttons, on a landscape phone in the right column) with Edit team (back here at the same start)
+--     pinned above the buttons, on a landscape phone in the right column; the champion's power against the team's rides
+--     in it, U9-7 look) with Edit team (back here at the same start)
 --     and START / CONTINUE -> BattleRequest("Ring", start), straight in; an empty team opens the Pets window instead. The
 --     server's refusal toasts also show in the footer. A side toast when the player crosses the arena's edge: "Battle
 --     Arena: pets can battle here" / "Safe zone: no pet battles here".
@@ -66,6 +67,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the trophies, swords and crowns
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-7) the nails, the timer's block row
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -107,6 +109,7 @@ local K = {
 	TALL = 760, -- windows narrower than this use the single-column layout (every docked window)
 	NARROW = 1000,
 	SHORT = 560, -- docked lower than this (landscape phones): the compact rows
+	DUELS_ONE_H = 700, -- (U9-7 look) a docked window lower than this (a portrait sheet, a landscape phone) shows Duels as one list
 	FACES_NARROW = 560, -- a window narrower than this (phones) shows the team's faces in the Compact row
 	LOW = 640, -- a Ring window lower than this (a portrait phone) keeps only a thin record under the detail
 	INSET_X = 24, -- the panel frame around Panel.Content (CloudUI.ContentInset)
@@ -122,37 +125,40 @@ local K = {
 	SIDE_BOTTOM_PORTRAIT = 340, -- portrait phones: above the HUD's raised bottom-left block (vitals + currency)
 	SIDE_MAX_CARDS = 3,
 	SIDE_MAX_CARDS_SHORT = 1,
+	SIDE_RIGHT_SHORT = 72, -- (kit-b U9-7) screen px from the right edge on a landscape phone: clear of the HUD's gift dock
+	TIMER_BLOCKS = 12, -- (kit-b U9-7) an invite card's draining timer: 12 gold blocks
 	ANNOUNCE = 120, -- seconds before Double Rewards when the countdown chip appears (BattleCatalog.Events.Schedule's AnnounceSeconds)
 	BACK_ACTION = "NimbusArenaBack",
 	TICK = 0.25, -- seconds between two refreshes of the live numbers
 	ATTR_IN_BATTLE = "InBattle", -- BattleService's attribute (the battle id while the player fights)
 }
 
+-- (kit-b U9-7) the Signboard palette (the pitch's kit B, one colour by role; the Index's U8 helpers): brown ink on stone, the
+-- muted brown for captions, sunk stone wells for the sections, raised stone tiles for the rows, square tags in a role's
+-- colour with the ink that reads on it; coloured text is darkened until it reads 4.5:1 on a well (#F3E6C8): green good,
+-- burnt orange a warning, the red lip bad, a deep blue practice, a deep violet Double Rewards
 local Colors = Theme.Colors
-local WHITE = Colors.White
-local NAVY = Colors.Navy or Colors.Ink
-local MUTED = Colors.Muted or Colors.CloudShade
-local GOLD = Colors.Gold or Colors.Token
-local GOOD = Colors.Good
-local BAD = Colors.Bad
-local BUTTONS = Theme.Buttons or {}
-local INSET = Color3.fromRGB(20, 30, 70)
+local SIGN = Theme.Sign
+local INK = SIGN.Text
+local MUTED = SIGN.TextMuted
 local C = {
-	Arena = Color3.fromRGB(214, 92, 96), -- the panels' accent (crimson)
-	Practice = Color3.fromRGB(120, 196, 255), -- a practice duel (no trophies, no rewards)
-	Power = Color3.fromRGB(255, 214, 110),
-	GoodText = Color3.fromRGB(150, 236, 170),
-	WarnText = Color3.fromRGB(255, 206, 120),
-	BadText = Color3.fromRGB(255, 150, 150),
-	Lock = Color3.fromRGB(255, 206, 120),
-	Boss = Color3.fromRGB(226, 90, 92),
-	Cleared = Color3.fromRGB(96, 196, 108),
-	Next = Color3.fromRGB(90, 158, 234),
-	Token = Colors.Token or GOLD,
-	Gem = Colors.Gem or Color3.fromRGB(84, 196, 246),
-	Double = Color3.fromRGB(150, 110, 232),
-	Me = Color3.fromRGB(70, 110, 190),
-	Medal = { Color3.fromRGB(246, 200, 70), Color3.fromRGB(200, 210, 226), Color3.fromRGB(214, 146, 92) },
+	Arena = SIGN.Red, -- the panels' accent (the invite side card's stripe)
+	Practice = Color3.fromRGB(31, 95, 150), -- #1F5F96, a practice duel (no trophies, no rewards): 5.4:1 on a well
+	PracticeTag = SIGN.Sky,
+	Power = INK, -- numbers read in ink, their icon says what they are
+	GoodText = Color3.fromRGB(37, 107, 41), -- #256B29: 5.3:1 on a well
+	WarnText = Color3.fromRGB(148, 86, 10), -- #94560A: 4.7:1 on a well
+	BadText = SIGN.RedLip, -- 4.6:1 on a well
+	Boss = SIGN.Red,
+	Next = SIGN.Sky,
+	Band = SIGN.Sky,
+	Double = Color3.fromRGB(94, 63, 174), -- #5E3FAE: 6.1:1 on a well
+	Waiting = SIGN.Gold,
+	Down = SIGN.Sky,
+	Sent = SIGN.Well,
+	Medal = { SIGN.Gold, Color3.fromRGB(200, 210, 226), Color3.fromRGB(214, 146, 92) }, -- gold, silver, bronze (brown ink on each)
+	-- (U9-7 look) a raid tier's chip, rising in heat (the Raid page's rows and the dare panel: ArenaController.TierColor)
+	Tier = { Starter = SIGN.Grass, Mid = SIGN.Sky, High = SIGN.Gold, Max = SIGN.Red },
 }
 
 -- typography as UTF-8 escapes (the source stays ASCII). kit-b U7b: the trophies, swords and crowns are PixelIcons
@@ -164,9 +170,54 @@ local G = {
 }
 local ICON = { Trophy = "trophy", Swords = "sword", Crown = "crown" }
 
+-- (kit-b U9-7) a label sized to its text (the U9-6 fitPill rule): at least its measured width with its padding (a lead
+-- icon's inset too) and 4 px to spare, refitted when its text changes; AutomaticSize X on top lets the engine, which knows
+-- the face's real widths, grow it further where the guess is short. (U9-7 review) FITS holds `true` only: Luau has no
+-- ephemerons, so a value that closed over its label would keep every destroyed label alive; the Text connection (the
+-- label's own, dropped on Destroy) holds the only closure, as Theme.keepCaps does
+local FITS = setmetatable({}, { __mode = "k" })
+-- a rough width of `text` at `size` px in the rounded face (capitals and digits 0.68 em, small letters 0.58, a space
+-- 0.3, a sign 0.4): the floor under the measured width, so a label built before the font's metrics are known is never short
+local function roughWidth(text, size)
+	local em = 0
+	for ch in tostring(text):gmatch(".") do
+		if ch:match("[%u%d]") then
+			em = em + 0.68
+		elseif ch:match("%l") then
+			em = em + 0.58
+		elseif ch == " " then
+			em = em + 0.3
+		else
+			em = em + 0.4
+		end
+	end
+	return em * size
+end
+local function fit(label)
+	local pad = label:FindFirstChildOfClass("UIPadding")
+	local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0
+	local role = label:GetAttribute("FontRole") or "Body"
+	local shown = Theme.CapsRoles[role] and Theme.Caps(label.Text) or label.Text
+	local ok, size = pcall(Theme.Measure, label.Text, role, label.TextSize)
+	local tw = math.max((ok and typeof(size) == "Vector2") and size.X or 0, roughWidth(shown, label.TextSize))
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.Size = UDim2.new(0, math.ceil(tw) + inset + 4, label.Size.Y.Scale, label.Size.Y.Offset)
+end
+local function fitWidth(label)
+	FITS[label] = true
+	fit(label)
+	label:GetPropertyChangedSignal("Text"):Connect(function()
+		fit(label)
+	end)
+	return label
+end
+
 -- (kit-b U7b) the PixelIcon `icon` in front of `label`'s text (set once: the text may change after); returns the label
 local function lead(label, icon)
 	PixelIcon.Lead(label, ICON[icon] or icon)
+	if FITS[label] then
+		fit(label) -- the icon's inset came after the fit
+	end
 	return label
 end
 
@@ -195,6 +246,7 @@ local S = {
 	ArenaBox = nil, -- { CFrame, Size } of workspace.BattleArena (static, measured once)
 }
 local Win = {} -- per-window widget tables: Win.Arena, Win.Ring
+local PAGE_PAD = CloudUI.Metrics.SignPagePad -- (U9-7 look) the dock family's one page inset
 
 local refreshOpen, refreshSide, screenFactor -- forward declarations
 
@@ -243,23 +295,23 @@ local function makeText(parent, name, text, role, size, color, props)
 	end
 	local label = Theme.Label(tostring(text), role, {
 		Size = size,
-		Color = color or WHITE,
+		Color = color or INK,
 		Props = p,
 	})
 	label.Parent = parent
 	return label
 end
 
-local function corner(parent, radius)
-	return Theme.Corner(parent, UDim.new(0, radius or 12))
-end
-
-local function round(parent)
-	return Theme.Corner(parent, UDim.new(0.5, 0))
-end
-
 local function stroke(parent, color, thickness, transparency)
-	return Theme.Stroke(parent, color or NAVY, thickness or 3, transparency or 0)
+	return Theme.Stroke(parent, color or SIGN.Wood, thickness or 3, transparency or 0)
+end
+
+-- (kit-b U9-7) a square edge with mitred corners (kit B has no rounded blocks; the Index's edge())
+local function edge(parent, color, thickness)
+	local s = stroke(parent, color, thickness, 0)
+	s.Name = "SignEdge"
+	s.LineJoinMode = Enum.LineJoinMode.Miter
+	return s
 end
 
 local function pad(parent, left, top, right, bottom)
@@ -291,29 +343,66 @@ local function scroller(parent, name, props)
 	p.CanvasSize = UDim2.new(0, 0, 0, 0)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
-	p.ScrollBarThickness = 10
-	p.ScrollBarImageColor3 = Colors.FrameTop or Colors.Cloud
-	p.ScrollBarImageTransparency = 0.1
 	p.Parent = parent
-	return Util.Create("ScrollingFrame", p)
+	return SignKit.ScrollBar(Util.Create("ScrollingFrame", p)) -- (U9-7 look) the kit's wood bar, square ends
 end
 
+-- (U9-7 look) the design px of a list's viewport that ends after its last WHOLE card: its top pad, the cards and the gaps
+-- between them, `edge` px for the last card's outer edge (a stroke draws outside its box); the whole content (its bottom
+-- pad too) when it all fits; `avail` when fewer than `minCards` (default 1) fit (that list scrolls). Measured from the
+-- cards' own heights (a list's viewport never changes them), `s` = the window's scale. -> design px, whole cards shown
+local function wholeCards(scroll, avail, padTop, padBottom, gap, edgePx, s, minCards)
+	local cards = {}
+	for _, c in ipairs(scroll:GetChildren()) do
+		if c:IsA("GuiObject") and c.Visible and c.AbsoluteSize.Y > 0 then
+			cards[#cards + 1] = c
+		end
+	end
+	table.sort(cards, function(a, b)
+		return a.LayoutOrder < b.LayoutOrder
+	end)
+	local y, last, n = padTop, nil, 0
+	for _, c in ipairs(cards) do
+		local bottom = y + c.AbsoluteSize.Y / s
+		if bottom + edgePx > avail then
+			break
+		end
+		last, n = bottom, n + 1
+		y = bottom + gap
+	end
+	if not last or n < (minCards or 1) then
+		return avail, n
+	end
+	if n == #cards then
+		return math.min(avail, math.ceil(math.max(last + edgePx, last + padBottom))), n
+	end
+	return math.ceil(last + edgePx), n
+end
+
+-- (kit-b U9-7) a sunk stone well (the pitch's .wl): flat, its own darker edge
 local function inset(parent, name, props)
 	local p = props or {}
-	p.BackgroundColor3 = INSET
-	p.BackgroundTransparency = 0.42
+	p.BackgroundColor3 = SIGN.Well
+	p.BackgroundTransparency = 0
 	local frame = makeFrame(parent, name, p)
-	corner(frame, 12)
-	stroke(frame, Colors.WellEdge or NAVY, 3, 0.15)
+	edge(frame, SIGN.WellEdge, 2)
+	return frame
+end
+
+-- (kit-b U9-7) a raised stone tile (a row or a card inside a well): the tile face, a wood edge, the stone lip along its
+-- bottom (lipPx; 0 for a tile whose children a UIListLayout places, where the lip frame would be laid out as a row)
+local function tile(parent, name, props, lipPx)
+	local frame = makeFrame(parent, name, props or {})
+	CloudUI.SignBlock(frame, "Stone", { EdgePx = 2, LipPx = lipPx or 4 })
 	return frame
 end
 
 local function autoText(parent, name, text, role, size, color, order)
-	return makeText(parent, name, text, role, size, color, {
+	return fitWidth(makeText(parent, name, text, role, size, color, {
 		Size = UDim2.fromOffset(0, size + 8),
 		AutomaticSize = Enum.AutomaticSize.X,
 		LayoutOrder = order or 0,
-	})
+	}))
 end
 
 local function wrapText(parent, name, text, role, size, color, order)
@@ -334,36 +423,67 @@ local function clearChildren(frame)
 	end
 end
 
+-- (kit-b U9-7) the colour a tag paints: a mid-tone that no ink reads 4.5:1 on is lightened until brown does
+local function readable(color)
+	for _ = 1, 6 do
+		if Theme.Contrast(Theme.TextOn(color), color) >= 4.6 then
+			break
+		end
+		color = Theme.Lighten(color, 0.08)
+	end
+	return color
+end
+
+-- (kit-b U9-7) a small square tag (the pitch's .chp, the Index's signPill): the colour, the ink that reads on it, a wood edge
 local function colorPill(parent, name, text, color, size, order)
-	local dark = Theme.Darken(color, 0.62)
+	color = readable(color)
 	local textSize = size or 18
 	local pill = Theme.Label(text, "Heading", {
 		Size = textSize,
-		Color = WHITE,
+		Color = Theme.TextOn(color),
 		Props = {
 			Name = name,
 			BackgroundTransparency = 0,
 			BackgroundColor3 = color,
 			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.fromOffset(0, textSize + 9),
+			Size = UDim2.fromOffset(0, textSize + 10),
 			LayoutOrder = order or 0,
 		},
 	})
-	round(pill)
-	stroke(pill, NAVY, 2, 0)
-	Theme.Gradient(pill, Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 206, 226), 90)
+	edge(pill, SIGN.Wood, 2)
 	pad(pill, 9, 0, 9, 1)
 	pill.Parent = parent
-	return pill
+	return fitWidth(pill)
+end
+
+-- repaints a colorPill in a new colour (the boss state's LIVE / CLEARED)
+local function paintPill(pill, color)
+	color = readable(color)
+	pill.BackgroundColor3 = color
+	pill.TextColor3 = Theme.TextOn(color)
 end
 
 local function elementColor(element)
 	local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[element]
-	return info and info.Color or Colors.PanelLight
+	return info and info.Color or SIGN.Stone
 end
 
+-- (kit-b U9-7) the element's square chip with its drawn icon and its name (CloudUI.ElementChip, as on the Pets cards and
+-- in the Index; was a rounded glossy pill)
 local function elementPill(parent, element, size, order)
-	return colorPill(parent, "Element_" .. tostring(element), tostring(element), elementColor(element), size, order)
+	local chip = CloudUI.ElementChip(parent, element, (size or 18) + 10, {
+		Label = element,
+		TextSize = size or 18,
+		Role = "Heading",
+		Name = "Element_" .. tostring(element),
+		LayoutOrder = order or 0,
+	})
+	if not chip then
+		chip = colorPill(parent, "Element_" .. tostring(element), tostring(element), elementColor(element), size, order)
+	elseif chip:FindFirstChild("Label") then
+		fitWidth(chip.Label)
+	end
+	return chip
 end
 
 local function commas(n)
@@ -574,7 +694,7 @@ local function toast(text, kind)
 	S.HintToken = (S.HintToken or 0) + 1
 	local mine = S.HintToken
 	U.HintLabel.Text = tostring(text)
-	U.HintFrame.BackgroundColor3 = (kind == "bad") and Color3.fromRGB(120, 40, 56) or Color3.fromRGB(28, 36, 78)
+	U.HintFrame.BackgroundColor3 = (kind == "bad") and SIGN.Red or SIGN.Tile -- (kit-b U9-7) a stone notice, red when refused
 	U.HintFrame.Visible = true
 	U.HintScale.Scale = screenFactor and screenFactor() or 1
 	task.delay(2.8, function()
@@ -633,12 +753,16 @@ local function newWindow(id, title)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Title = title,
 		Closable = true,
-		Category = (id == "Ring") and "Ring" or "Arena",
+		Skin = "Signboard", -- (kit-b U9-7) roof, navy header with the trophy / crown, wood frame, stone body
+		Icon = (id == "Ring") and Config.Icons.Ring or Config.Icons.Arena,
 		OnClose = function()
 			ArenaController.Close()
 		end,
 		Parent = win.Holder,
 	})
+	-- (U9-7 look) a docked window's band stays inside the frame, no tails (its right tail ran off the screen edge): the
+	-- header shape Index and the Food Machine wear on the same dock
+	SignKit.HeaderOverhang(win.Panel.TitleBar, false)
 	win.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = win.Panel.Root })
 	Win[id] = win
 	return win
@@ -680,6 +804,8 @@ local Ring = {
 	BattleAt = -100, -- os.clock() when the player last fought (no zone toast right after a battle's return teleport)
 	TILE_H = 66, -- design px of a start picker tile
 	BUTTON_H = 56, -- design px of START: >= 44 px under the 0.8 touch scale
+	VS_H = 56, -- (U9-7 look) the champion vs your team in the team row: caption over number (beside Edit team, a column's line)
+	VS_LINE_H = 30, -- ...caption and number on one line under the faces of a Compact row (a portrait phone)
 }
 
 -- where the Pets window comes back to when the team is edited from an open panel (spec s.2: the same tab and start round)
@@ -900,34 +1026,29 @@ end
 function Ring.startTile(ui, round, order)
 	local boss = round > 1
 	local tile = {}
-	tile.Button = Util.Create("TextButton", {
+	-- (kit-b U9-7) a stone block, gold when picked (Ring.refresh): its labels ride a PressFace, so a press sinks them onto
+	-- the lip with the face; a boss round carries the crown in the red lip's colour
+	tile.Button = CloudUI.Button({
 		Name = "Start" .. round,
-		AutoButtonColor = false,
-		BorderSizePixel = 0,
 		Text = "",
-		BackgroundColor3 = WHITE,
+		Style = "Gray",
+		Skin = "Sign",
 		LayoutOrder = order,
 		Parent = ui.Picker,
 	})
-	corner(tile.Button, 14)
-	tile.Stroke = stroke(tile.Button, NAVY, 3, 0)
-	local base = boss and C.Boss or C.Next
-	Util.Create("UIGradient", {
-		Rotation = 90,
-		Color = ColorSequence.new(Theme.Lighten(base, 0.22), Theme.Darken(base, 0.18)),
-		Parent = tile.Button,
-	})
-	local caption = makeText(tile.Button, "Caption", boss and "BOSS" or "ROUND", "Heading", 18, WHITE, {
+	local face = makeFrame(tile.Button, "PressFace", { Size = UDim2.new(1, 0, 1, -CloudUI.SignMetrics.Lip), ZIndex = 3 })
+	local caption = makeText(face, "Caption", boss and "BOSS" or "ROUND", "Heading", 18, boss and INK or MUTED, {
 		Position = UDim2.fromOffset(0, 4),
 		Size = UDim2.new(1, 0, 0, 22),
 		ZIndex = 3,
 	})
 	if boss then
-		lead(caption, "Crown")
+		PixelIcon.Lead(caption, ICON.Crown, { Colour = SIGN.RedLip })
 	end
-	makeText(tile.Button, "Number", tostring(round), "Display", 30, WHITE, {
+	tile.Caption = caption
+	makeText(face, "Number", tostring(round), "Display", 30, INK, {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -4),
+		Position = UDim2.new(0.5, 0, 1, -2),
 		Size = UDim2.new(1, 0, 0, 36),
 		ZIndex = 3,
 	})
@@ -944,6 +1065,70 @@ function Ring.startTile(ui, round, order)
 	end)
 	ui.Tiles[round] = tile
 	return tile
+end
+
+-- (U9-7 look) the champion against your team, pinned in the team row's slot (TeamFaces props.SlotH) so the reason to press
+-- START is never under the detail's fold: beside Edit team in a Card row, under it in a Column, under the faces in a
+-- Compact row. Ring.refresh writes the numbers (the team's in the verdict's colour)
+function Ring.buildVs(ui, slot)
+	ui.VsPairs = {}
+	for i, spec in ipairs({ { "Champ", "Champion (about)", C.Power }, { "Team", "Your team", INK } }) do
+		local caption = fitWidth(makeText(slot, spec[1] .. "Caption", spec[2], "Heading", 19, MUTED, { Size = UDim2.fromOffset(0, 24) }))
+		local value = lead(fitWidth(makeText(slot, spec[1] .. "Value", "", "Display", 26, spec[3], { Size = UDim2.fromOffset(0, 32) })), "Swords")
+		ui[spec[1] .. "Caption"] = caption
+		ui[spec[1] == "Champ" and "ChampPower" or "TeamPower"] = value
+		ui.VsPairs[i] = { Caption = caption, Value = value }
+	end
+end
+
+-- the champion's pair, then the team's: caption over number side by side (a Card row, beside Edit team), caption left and
+-- number right on a line each (a Column: the right column of a landscape phone), or on one line, the champion's at the
+-- left end and the team's at the right end (a Compact row). Placed from the fitted widths (Ring.refresh calls it again
+-- after the numbers change)
+function Ring.layoutVs(ui)
+	local mode = ui.Faces.Mode()
+	ui.ChampCaption.Text = (mode == "Card") and "Champion (about)" or "Champion"
+	for i, pair in ipairs(ui.VsPairs) do
+		local cap, val = pair.Caption, pair.Value
+		-- one line on a portrait phone: 18 / 20 px (14.4 / 16 on the screen) so both pairs fit with room between them
+		cap.TextSize = (mode == "Card") and 19 or 18
+		-- a number held at the right end is right-aligned in its box (the box is fitted from a generous measure, so a
+		-- left-aligned number would start short of the end, on its caption)
+		local atRight = mode == "Column" or (mode == "Compact" and i == 2)
+		local align = atRight and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+		cap.TextXAlignment = (mode == "Compact" and i == 2) and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+		local size = (mode == "Card") and 26 or 20
+		if val.TextSize ~= size or val.TextXAlignment ~= align then
+			val.TextSize = size
+			val.TextXAlignment = align
+			PixelIcon.Clear(val) -- the sword follows the number's size and side (Lead reads both once)
+			lead(val, "Swords")
+		end
+		fit(cap)
+		fit(val)
+		local capW, valW = cap.Size.X.Offset, val.Size.X.Offset
+		-- a right-aligned number's sword stands left of its box (Lead insets only a left-aligned text)
+		local px = PixelIcon.Snap(size * 0.9)
+		local swordW = atRight and (px + math.max(3, math.floor(px / 4))) or 0
+		local left, right = Vector2.new(0, 0), Vector2.new(1, 0)
+		if mode == "Compact" then
+			local h = Ring.VS_LINE_H
+			cap.Size, val.Size = UDim2.fromOffset(capW, h), UDim2.fromOffset(valW, h)
+			cap.AnchorPoint, val.AnchorPoint = (i == 1) and left or right, (i == 1) and left or right
+			cap.Position = (i == 1) and UDim2.fromOffset(0, 0) or UDim2.new(1, -(valW + swordW + 6), 0, 0)
+			val.Position = (i == 1) and UDim2.fromOffset(capW + 4, 0) or UDim2.new(1, 0, 0, 0)
+		elseif mode == "Column" then
+			local y = (i - 1) * 28
+			cap.Size, val.Size = UDim2.fromOffset(capW, 28), UDim2.fromOffset(valW, 28)
+			cap.AnchorPoint, val.AnchorPoint = left, right
+			cap.Position, val.Position = UDim2.fromOffset(0, y), UDim2.new(1, 0, 0, y)
+		else
+			local x = (i - 1) * 0.5
+			cap.Size, val.Size = UDim2.fromOffset(capW, 24), UDim2.fromOffset(valW, 32)
+			cap.AnchorPoint, val.AnchorPoint = left, left
+			cap.Position, val.Position = UDim2.new(x, 0, 0, 0), UDim2.new(x, 0, 0, 24)
+		end
+	end
 end
 
 function Ring.build()
@@ -970,12 +1155,12 @@ function Ring.build()
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 2,
 	})
-	ui.RunsLabel = wrapText(rec, "Runs", "", "Body", 19, WHITE, 3)
+	ui.RunsLabel = wrapText(rec, "Runs", "", "Body", 19, INK, 3)
 
 	local board = inset(ui.Side, "ServerBest", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	pad(board, 14, 8, 14, 10)
 	listLayout(board, Enum.FillDirection.Vertical, 4)
-	lead(makeText(board, "Caption", "Best in this server", "Heading", 20, WHITE, {
+	lead(makeText(board, "Caption", "Best in this server", "Heading", 20, INK, {
 		Size = UDim2.new(1, 0, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
@@ -983,12 +1168,12 @@ function Ring.build()
 	}), "Trophy")
 	for i = 1, 3 do
 		local row = makeFrame(board, "Row" .. i, { Size = UDim2.new(1, 0, 0, 28), LayoutOrder = 1 + i })
-		local name = makeText(row, "Name", "", "Body", 19, WHITE, {
+		local name = makeText(row, "Name", "", "Body", 19, INK, {
 			Size = UDim2.new(1, -96, 1, 0),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
-		local round = makeText(row, "Round", "", "Heading", 19, C.Medal[i], {
+		local round = makeText(row, "Round", "", "Heading", 19, INK, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, 0, 0, 0),
 			Size = UDim2.fromOffset(96, 28),
@@ -1005,7 +1190,7 @@ function Ring.build()
 	local tokens = math.floor(tonumber(Ring.cfg().BossTokens) or 100)
 	wrapText(how, "Text", "Beat the champion, meet a stronger one! Every " .. every .. "th round is a BOSS round (first win: +"
 		.. tokens .. " Tokens). A loss ends the run, but every win pays at once."
-		.. " Your pets keep their HP from round to round, and a fainted pet sits out the rest of the run.", "Body", 19, WHITE, 1)
+		.. " Your pets keep their HP from round to round, and a fainted pet sits out the rest of the run.", "Body", 19, INK, 1)
 	ui.CashNote = wrapText(how, "CashNote", "", "Body", 18, MUTED, 2)
 
 	-- detail: the start picker, the champion, the rewards, the fighters
@@ -1027,46 +1212,25 @@ function Ring.build()
 		Parent = ui.Picker,
 	})
 
-	local champ = inset(d, "Champion", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 })
+	local champ = tile(d, "Champion", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 }, 0)
 	pad(champ, 14, 8, 14, 10)
 	ui.Champ = champ
 	listLayout(champ, Enum.FillDirection.Vertical, 6)
 	-- the title row (wide windows also carry the tags in it; narrow ones show them on their own row)
 	ui.ChampHead = makeFrame(champ, "Head", { Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1 })
 	listLayout(ui.ChampHead, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.ChampTitle = Theme.StyleTitle(autoText(ui.ChampHead, "Title", "", "Title", 26, WHITE, 0), "Section") -- (T0) a section head
+	ui.ChampTitle = Theme.StyleTitle(autoText(ui.ChampHead, "Title", "", "Title", 26, INK, 0), "Section") -- (T0) a section head
 	ui.ChampTitle.TextXAlignment = Enum.TextXAlignment.Left
 	ui.ChampTags = makeFrame(champ, "Tags", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
 	listLayout(ui.ChampTags, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	local powers = makeFrame(champ, "Powers", { Size = UDim2.new(1, 0, 0, 62), LayoutOrder = 3 })
-	makeText(powers, "ChampCaption", "Champion (about)", "Heading", 19, MUTED, {
-		Size = UDim2.new(0.5, 0, 0, 24),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	ui.ChampPower = lead(makeText(powers, "ChampValue", "", "Display", 30, C.Power, {
-		Position = UDim2.fromOffset(0, 24),
-		Size = UDim2.new(0.5, 0, 0, 36),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	}), "Swords")
-	makeText(powers, "TeamCaption", "Your team", "Heading", 19, MUTED, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.new(0.5, 0, 0, 24),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	})
-	ui.TeamPower = lead(makeText(powers, "TeamValue", "", "Display", 30, WHITE, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 24),
-		Size = UDim2.new(0.5, 0, 0, 36),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	}), "Swords")
+	-- (U9-7 look) the two powers are pinned in the team row (Ring.buildVs): the card keeps the title, the tags and the verdict
 	ui.Verdict = wrapText(champ, "Verdict", "", "Body", 19, C.GoodText, 4)
 
-	local rewards = inset(d, "Rewards", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
+	local rewards = tile(d, "Rewards", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 }, 0)
 	pad(rewards, 14, 8, 14, 10)
 	ui.Rewards = rewards
 	listLayout(rewards, Enum.FillDirection.Vertical, 4)
-	ui.NextWin = wrapText(rewards, "NextWin", "", "Heading", 22, WHITE, 1)
+	ui.NextWin = wrapText(rewards, "NextWin", "", "Heading", 22, INK, 1)
 	ui.RecordLine = wrapText(rewards, "Record", "", "Body", 19, C.Power, 2)
 
 	-- a window too low for the side column keeps the record in the detail
@@ -1080,7 +1244,8 @@ function Ring.build()
 
 	-- the team, pinned outside the scroller so it is never cut off: above the footer, in the right column on a landscape phone
 	ui.FacesBox = makeFrame(ui.Detail, "FacesBox", {})
-	ui.Faces = TeamFaces.New(ui.FacesBox, { ReturnTo = panelReturn })
+	ui.Faces = TeamFaces.New(ui.FacesBox, { ReturnTo = panelReturn, SlotH = { Compact = Ring.VS_LINE_H, Column = Ring.VS_H } })
+	Ring.buildVs(ui, ui.Faces.Slot)
 
 	-- footer (always in view): why START is off, START
 	ui.Footer = makeFrame(ui.Detail, "Footer", {
@@ -1098,6 +1263,7 @@ function Ring.build()
 		Text = "START",
 		Size = UDim2.new(1, 0, 0, Ring.BUTTON_H),
 		Style = "Green",
+		Skin = "Sign", -- (kit-b U9-7) THE green action of the window
 		TextSize = 24,
 		Parent = actions,
 		Callback = function()
@@ -1124,19 +1290,22 @@ function Ring.build()
 			local detailH = h - K.INSET_Y - 20 - (short and 0 or (sideH + 10))
 			ui.Side.Visible = not short
 			ui.BestInline.Visible = short
-			ui.Detail.Position = UDim2.fromOffset(12, 10)
-			ui.Detail.Size = UDim2.new(1, -24, 0, detailH)
-			ui.Side.Position = UDim2.fromOffset(12, 10 + detailH + 10)
-			ui.Side.Size = UDim2.new(1, -24, 0, sideH)
-			detailW = cw - 24
+			ui.Detail.Position = UDim2.fromOffset(PAGE_PAD, 10)
+			ui.Detail.Size = UDim2.new(1, -2 * PAGE_PAD, 0, detailH)
+			ui.Side.Position = UDim2.fromOffset(PAGE_PAD, 10 + detailH + 10)
+			ui.Side.Size = UDim2.new(1, -2 * PAGE_PAD, 0, sideH)
+			-- (U9-7 look) Ring.live ends the detail after its last whole card and hands what it saves to the side
+			ui.Stack = (not short) and { DetailH = detailH, SideH = sideH } or nil
+			detailW = cw - 2 * PAGE_PAD
 		else
 			ui.Side.Visible = true
 			ui.BestInline.Visible = false
-			ui.Side.Position = UDim2.fromOffset(12, 10)
+			ui.Stack = nil
+			ui.Side.Position = UDim2.fromOffset(PAGE_PAD, 10)
 			ui.Side.Size = UDim2.new(0, sideW, 1, -20)
-			ui.Detail.Position = UDim2.fromOffset(12 + sideW + 12, 10)
-			ui.Detail.Size = UDim2.new(1, -(sideW + 36), 1, -20)
-			detailW = cw - sideW - 36
+			ui.Detail.Position = UDim2.fromOffset(PAGE_PAD + sideW + 12, 10)
+			ui.Detail.Size = UDim2.new(1, -(sideW + 12 + 2 * PAGE_PAD), 1, -20)
+			detailW = cw - sideW - 12 - 2 * PAGE_PAD
 		end
 		-- a landscape phone: two columns, the split on the window's middle (the panel's frame + the detail's margin = 24 px of its
 		-- left side): the scroller and START on the left, the team on the right, above Roblox's jump button
@@ -1152,6 +1321,7 @@ function Ring.build()
 		-- landscape phones: "Next win" comes right under the picker
 		ui.Rewards.LayoutOrder = short and 3 or 4
 		ui.Champ.LayoutOrder = short and 4 or 3
+		Ring.layoutVs(ui)
 		ui.FooterInset = ui.ColumnX and (detailW - ui.ColumnX + 20) or 28
 	end
 
@@ -1202,7 +1372,7 @@ function Ring.refresh(win, ui)
 		if entry then
 			local mine = LocalPlayer and entry.Name == LocalPlayer.Name
 			row.Name.Text = i .. ". " .. entry.Name .. (mine and " (you)" or "")
-			row.Name.TextColor3 = mine and C.GoodText or WHITE
+			row.Name.TextColor3 = mine and C.GoodText or INK
 			row.Round.Text = "Round " .. entry.Round
 		end
 	end
@@ -1219,8 +1389,8 @@ function Ring.refresh(win, ui)
 	end
 	for round, tile in pairs(ui.Tiles) do
 		local selected = round == start
-		tile.Stroke.Color = selected and GOLD or NAVY
-		tile.Stroke.Thickness = selected and 4.5 or 3
+		CloudUI.SetStyle(tile.Button, selected and "Gold" or "Gray") -- (kit-b U9-7) gold is the picked one
+		tile.Caption.TextColor3 = (selected or round > 1) and INK or MUTED
 	end
 	-- the champion of the start round
 	local p = Ring.preview(start, best)
@@ -1237,15 +1407,15 @@ function Ring.refresh(win, ui)
 		lead(colorPill(tagParent, "Boss", "BOSS", C.Boss, 18, 1), "Crown")
 	end
 	if p.Band ~= "" then
-		colorPill(tagParent, "Band", p.Band, Color3.fromRGB(90, 120, 190), 18, 2)
+		colorPill(tagParent, "Band", p.Band, C.Band, 18, 2)
 	end
-	-- the fighters
-	ui.Faces.Refresh()
+	-- the fighters (their row redrawn after Ring.live has sized its box: TeamFaces lays the faces out in whole px)
 	local mine = teamPower(Ring.fighters())
 	ui.ChampPower.Text = commas(p.Power)
 	ui.TeamPower.Text = commas(mine)
 	local ratio = p.Power > 0 and mine / p.Power or 1
 	ui.TeamPower.TextColor3 = ratio >= 1 and C.GoodText or (ratio >= 0.9 and C.WarnText or C.BadText)
+	Ring.layoutVs(ui) -- (U9-7 look) the pinned pairs placed from their new widths
 	local verdict, color = Ring.verdict(mine, p.Power)
 	ui.Verdict.Text = verdict
 	ui.Verdict.TextColor3 = color
@@ -1264,6 +1434,7 @@ function Ring.refresh(win, ui)
 	ui.CashNote.Text = Ring.income() > 0 and "Each win pays a few seconds of your garden's coins (more every round) and XP to every fighter."
 		or "Put pets in your Pet Garden: ring wins pay more when your garden makes coins!"
 	Ring.live(win, ui)
+	ui.Faces.Refresh()
 end
 
 -- the footer only (4 times a second while the window is open: the walk to the portal, the server's answer)
@@ -1284,16 +1455,36 @@ function Ring.live(_win, ui)
 	local footerH = why and (Ring.BUTTON_H + 4 + (ui.WhyH or 44)) or Ring.BUTTON_H
 	ui.Footer.Size = UDim2.new(1, -(ui.FooterInset or 28), 0, footerH)
 	local rowH = ui.Faces.Height()
+	-- (U9-7 look) the detail's viewport ends after its last WHOLE card (3 px for its outer edge), never inside one and never
+	-- taller than its cards (a portrait phone cut the champion card through its tags, 1280x720 the Next win card after its
+	-- first line, 1080p left a 40 px blank band above the team): the start picker at least stays whole. The team row and
+	-- START move up by what that saves and the side column under them gets it, with the same whole-card rule
+	local win = Win.Ring
+	local s = (win and win.Fit and win.Fit.Scale > 0) and win.Fit.Scale or 1
 	if ui.ColumnX then
 		ui.FacesBox.AnchorPoint = Vector2.new(0, 0)
 		ui.FacesBox.Position = UDim2.fromOffset(ui.ColumnX, 4)
 		ui.FacesBox.Size = UDim2.new(1, -(ui.ColumnX + 6), 0, rowH)
-		ui.DetailScroll.Size = UDim2.new(0, ui.ColumnX - 8, 1, -(footerH + 22))
+		local avail = (ui.Detail.Size.Y.Offset > 0 and ui.Detail.Size.Y.Offset or math.floor(ui.Detail.AbsoluteSize.Y / s)) - 8 - (footerH + 22)
+		local viewH = wholeCards(ui.DetailScroll, avail, 10, 12, 10, 3, s, 2)
+		ui.DetailScroll.Size = UDim2.new(0, ui.ColumnX - 8, 0, viewH)
 	else
 		ui.FacesBox.AnchorPoint = Vector2.new(0, 1)
 		ui.FacesBox.Position = UDim2.new(0, 10, 1, -(footerH + 16))
 		ui.FacesBox.Size = UDim2.new(1, -20, 0, rowH)
-		ui.DetailScroll.Size = UDim2.new(1, -8, 1, -(footerH + rowH + 26))
+		local cutH = footerH + rowH + 26
+		local stack = ui.Stack
+		if stack then
+			local avail = stack.DetailH - 8 - cutH
+			local viewH = wholeCards(ui.DetailScroll, avail, 10, 12, 10, 3, s, 2)
+			local saved = math.max(0, avail - viewH)
+			ui.DetailScroll.Size = UDim2.new(1, -8, 0, viewH)
+			ui.Detail.Size = UDim2.new(1, -2 * PAGE_PAD, 0, stack.DetailH - saved)
+			ui.Side.Position = UDim2.fromOffset(PAGE_PAD, 10 + stack.DetailH - saved + 10)
+			ui.Side.Size = UDim2.new(1, -2 * PAGE_PAD, 0, wholeCards(ui.Side, stack.SideH + saved, 4, 8, 10, 3, s))
+		else
+			ui.DetailScroll.Size = UDim2.new(1, -8, 1, -cutH)
+		end
 	end
 end
 
@@ -1366,12 +1557,12 @@ function Ring.leaderSection(parent, order)
 	local box = inset(parent, "RingBoard", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
 	pad(box, 14, 10, 14, 12)
 	listLayout(box, Enum.FillDirection.Vertical, 4)
-	lead(wrapText(box, "Title", "Champion Ring: best in this server", "Heading", 21, WHITE, 1), "Crown")
+	lead(wrapText(box, "Title", "Champion Ring: best in this server", "Heading", 21, INK, 1), "Crown")
 	local board = Ring.board()
 	for i, entry in ipairs(board) do
 		local mine = LocalPlayer and entry.Name == LocalPlayer.Name
 		wrapText(box, "Row" .. i, i .. ". " .. entry.Name .. (mine and " (you)" or "") .. ": Round " .. entry.Round,
-			"Body", 19, mine and C.GoodText or WHITE, 1 + i)
+			"Body", 19, mine and C.GoodText or INK, 1 + i)
 	end
 	if #board == 0 then
 		wrapText(box, "Empty", "No ring record in this server yet: be the first!", "Body", 19, MUTED, 2)
@@ -1483,6 +1674,47 @@ local function raidRewardLine()
 	return ""
 end
 
+-- (U9-7 look) a raid tier's chip colour (the Raid page and the dare panel); a stone tile for an unknown tier
+function ArenaController.TierColor(id)
+	return C.Tier[tostring(id)] or SIGN.Tile
+end
+
+-- (U9-7 look) a fact tag: a stone tag with its pixel icon before a short value ("crown L40", "sword x0.8", "coin x0.7")
+local function factTag(parent, name, icon, text, order)
+	return lead(colorPill(parent, name, text, SIGN.Tile, 18, order), icon)
+end
+
+-- (U9-7 look) a tier's facts in `parent` (a horizontal list): its chip (in chipParent when given: the caption's line),
+-- the boss's level, its hits and the rewards
+function ArenaController.TierFacts(parent, tier, chipParent)
+	colorPill(chipParent or parent, "Tier", tostring(tier.Id), ArenaController.TierColor(tier.Id), 18, 1)
+	factTag(parent, "BossLevel", "crown", "L" .. tostring(tier.BossLevel), 2)
+	factTag(parent, "Hits", "sword", "x" .. tostring(tier.Hit), 3)
+	factTag(parent, "Rewards", "coin", "x" .. tostring(tier.Reward), 4)
+end
+
+-- (U9-7 look) one live raid fight on the Raid page: a stone tile, its tier chip, the fighters and the floor tag on top, the
+-- boss's health under them as a block bar (10 red blocks on a 3 px lip) with the percent. The fight was one sentence
+function ArenaController.FightRow(parent, id, order)
+	local root = tile(parent, "Fight_" .. tostring(id), { Size = UDim2.new(1, 0, 0, 64), LayoutOrder = order })
+	local line = makeFrame(root, "Line", { Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 0, 28) })
+	listLayout(line, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	colorPill(line, "Tier", tostring(id), ArenaController.TierColor(id), 18, 1)
+	local players = autoText(line, "Players", "", "Heading", 18, INK, 2)
+	players.TextXAlignment = Enum.TextXAlignment.Left -- (before its icon: PixelIcon.Lead reads the alignment once)
+	lead(players, "people")
+	local floor = colorPill(line, "Floor", "Floor", SIGN.Well, 18, 3)
+	local bar = SignKit.BlockRow(root, { Count = 10, BlockW = 16, BlockH = 14, Gap = 3, LipPx = 3, Fill = SIGN.Red, FillLip = SIGN.RedLip })
+	bar.Name = "Health"
+	bar.Position = UDim2.fromOffset(10, 40)
+	local percent = makeText(root, "Percent", "", "Heading", 18, INK, {
+		Position = UDim2.fromOffset(10 + 10 * 16 + 9 * 3 + 10, 36),
+		Size = UDim2.fromOffset(90, 22),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	})
+	return { Root = root, Players = players, Floor = floor, Bar = bar, Percent = percent }
+end
+
 local function buildArena()
 	local win = newWindow("Arena", "Battle Arena")
 	local content = win.Panel.Content
@@ -1490,7 +1722,7 @@ local function buildArena()
 	win.Ui = ui
 
 	-- tab bar + trophies
-	ui.Bar = makeFrame(content, "TabBar", { Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 0, 50) })
+	ui.Bar = makeFrame(content, "TabBar", { Position = UDim2.fromOffset(PAGE_PAD, 10), Size = UDim2.new(1, -2 * PAGE_PAD, 0, 50) })
 	local tabRow = makeFrame(ui.Bar, "Tabs", { Size = UDim2.new(1, -180, 1, 0) })
 	listLayout(tabRow, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	for i, tab in ipairs(TABS) do
@@ -1499,6 +1731,7 @@ local function buildArena()
 			Text = tab.Label,
 			Size = UDim2.fromOffset(200, 46),
 			Style = "Gray",
+			Skin = "Sign", -- (kit-b U9-7) stone tabs, the open one gold (win.Refresh)
 			TextSize = 22,
 			LayoutOrder = i,
 			Parent = tabRow,
@@ -1509,20 +1742,6 @@ local function buildArena()
 		})
 	end
 	ui.TabRow = tabRow
-	local chip = makeFrame(ui.Bar, "Trophies", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = INSET,
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0),
-		Size = UDim2.fromOffset(0, 48),
-		AutomaticSize = Enum.AutomaticSize.X,
-	})
-	corner(chip, 12)
-	stroke(chip, NAVY, 3, 0)
-	pad(chip, 12, 0, 14, 0)
-	listLayout(chip, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.Trophies = lead(autoText(chip, "Value", "0", "Display", 28, WHITE, 1), "Trophy")
-	ui.Chip = chip
 
 	local function page(id)
 		local frame = makeFrame(content, "Page_" .. id, { Visible = false })
@@ -1539,19 +1758,38 @@ local function buildArena()
 	pad(quick, 14, 10, 14, 14)
 	listLayout(quick, Enum.FillDirection.Vertical, 8)
 	ui.DuelFaces = TeamFaces.New(quick, { LayoutOrder = 0, ReturnTo = panelReturn })
-	Theme.StyleTitle(makeText(quick, "Title", "Quick match", "Title", 26, WHITE, {
-		Size = UDim2.new(1, 0, 0, 32),
+	-- (U9-7 look) the section title with the trophies on its right (they set who you are paired with; the chip had a row
+	-- of its own under the tabs on every page), then the page's one green action, then the words: Find a match stays in
+	-- the first view at every size
+	ui.QuickHead = makeFrame(quick, "Head", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
+	Theme.StyleTitle(makeText(ui.QuickHead, "Title", "Quick match", "Title", 26, INK, {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(1, -170, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 1,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 	}), "Section")
-	wrapText(quick, "Text", "Get paired with a player near your trophies. Both of you stay in the arena: the duel runs on a free ring.", "Body", 19, MUTED, 2)
+	-- (kit-b U9-7) the trophies on a navy plate in gold (the header's colours: a counter, not a button)
+	local chip = makeFrame(ui.QuickHead, "Trophies", {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.fromOffset(0, 40),
+		AutomaticSize = Enum.AutomaticSize.X,
+	})
+	CloudUI.SignBlock(chip, "Navy", { EdgePx = 2, LipPx = 0 })
+	pad(chip, 10, 0, 12, 0)
+	listLayout(chip, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	ui.Trophies = lead(autoText(chip, "Value", "0", "Display", 24, SIGN.Gold, 1), "Trophy")
+	ui.Chip = chip
+	local queueRow = makeFrame(quick, "Buttons", { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 2 })
 	ui.QueueStatus = wrapText(quick, "Status", "", "Heading", 20, C.Power, 3)
-	local queueRow = makeFrame(quick, "Buttons", { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 4 })
+	ui.QuickText = wrapText(quick, "Text", "Get paired with a player near your trophies. Both of you stay in the arena: the duel runs on a free ring.", "Body", 19, MUTED, 4)
 	ui.QueueButton = CloudUI.Button({
 		Name = "Queue",
 		Text = "Find a match",
 		Size = UDim2.fromOffset(240, 56),
 		Style = "Green",
+		Skin = "Sign", -- (kit-b U9-7) THE green action of the Duels page
 		TextSize = 24,
 		Parent = queueRow,
 		Callback = function()
@@ -1570,25 +1808,31 @@ local function buildArena()
 			end
 		end,
 	})
-	local record = inset(ui.DuelLeft, "Record", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
+	local record = inset(ui.DuelLeft, "Record", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 })
 	pad(record, 14, 10, 14, 12)
 	listLayout(record, Enum.FillDirection.Vertical, 4)
-	makeText(record, "Title", "Your record", "Heading", 22, WHITE, {
+	makeText(record, "Title", "Your record", "Heading", 22, INK, {
 		Size = UDim2.new(1, 0, 0, 28),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 1,
 	})
-	ui.RecordText = wrapText(record, "Lines", "", "Body", 19, WHITE, 2)
+	ui.RecordText = wrapText(record, "Lines", "", "Body", 19, INK, 2)
 	wrapText(record, "Rules", "Win: +20 trophies   Loss: -10 trophies   Nobody ever loses a pet!", "Body", 18, MUTED, 3)
 	ui.RecordRules = record:FindFirstChild("Rules")
-	ui.InviteBox = inset(ui.DuelLeft, "Invites", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 })
+	ui.InviteBox = inset(ui.DuelLeft, "Invites", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
 	pad(ui.InviteBox, 14, 10, 14, 12)
 	listLayout(ui.InviteBox, Enum.FillDirection.Vertical, 8)
 
+	-- the players to challenge: their own pane under the left one (a tall window), or (U9-7 look) a card in the left list
+	-- itself on a short one (a portrait sheet, a landscape phone): one scroller, one bar, one fold (OnLayout picks)
 	ui.Challenge = inset(duels, "Challenge", {})
-	ui.ChallengeList = scroller(ui.Challenge, "List", { Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8) })
-	pad(ui.ChallengeList, 12, 8, 14, 10)
-	listLayout(ui.ChallengeList, Enum.FillDirection.Vertical, 8)
+	ui.ChallengePane = scroller(ui.Challenge, "List", { Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8) })
+	pad(ui.ChallengePane, 12, 8, 14, 10)
+	listLayout(ui.ChallengePane, Enum.FillDirection.Vertical, 8)
+	ui.ChallengeCard = inset(ui.DuelLeft, "ChallengeCard", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2, Visible = false })
+	pad(ui.ChallengeCard, 12, 8, 14, 10)
+	listLayout(ui.ChallengeCard, Enum.FillDirection.Vertical, 8)
+	ui.ChallengeList = ui.ChallengePane
 
 	------------------------------------------------------------ Boss Raid
 	local raid = page("Raid")
@@ -1600,19 +1844,49 @@ local function buildArena()
 	listLayout(ui.BossCard, Enum.FillDirection.Vertical, 8)
 	ui.RaidFaces = TeamFaces.New(ui.BossCard, { LayoutOrder = 0, ReturnTo = panelReturn })
 	local bossHead = makeFrame(ui.BossCard, "Head", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
-	listLayout(bossHead, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	listLayout(bossHead, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	ui.BossState = colorPill(bossHead, "State", "LIVE", C.Boss, 18, 1)
-	ui.BossName = autoText(bossHead, "Name", "", "Title", 30, WHITE, 2)
-	ui.BossElement = makeFrame(bossHead, "Element", { Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 3 })
+	ui.BossName = autoText(bossHead, "Name", "", "Title", 30, INK, 2)
+	ui.BossName.TextXAlignment = Enum.TextXAlignment.Left -- (U9-7 look) the name 8 px after the chip (centred, its fitted box left a hole)
+	-- (kit-b U9-7) the element chip on its own row under the name (beside it, a phone's docked window cut "Flame" off)
+	ui.BossElement = makeFrame(ui.BossCard, "Element", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
 	listLayout(ui.BossElement, Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.BossBlurb = wrapText(ui.BossCard, "Blurb", "", "Body", 19, MUTED, 2)
-	ui.TierLine = wrapText(ui.BossCard, "TierLine", "", "Heading", 20, WHITE, 3)
-	ui.RewardLine = wrapText(ui.BossCard, "RewardLine", "", "Heading", 20, C.Power, 4)
-	ui.BossLine = wrapText(ui.BossCard, "Line", "", "Body", 19, WHITE, 5)
-	ui.FightList = makeFrame(ui.BossCard, "Fights", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 6 })
-	listLayout(ui.FightList, Enum.FillDirection.Vertical, 4)
+	ui.BossBlurb = wrapText(ui.BossCard, "Blurb", "", "Body", 19, MUTED, 3)
+	-- (U9-7 look) my tier as a stone tile of facts: the tier's chip, the boss's level, its hits and the rewards, each a
+	-- pixel icon and a number (was one sentence)
+	ui.TierLine = tile(ui.BossCard, "TierLine", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 }, 0)
+	pad(ui.TierLine, 12, 8, 12, 10)
+	listLayout(ui.TierLine, Enum.FillDirection.Vertical, 6)
+	ui.TierHead = makeFrame(ui.TierLine, "Head", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 1 })
+	listLayout(ui.TierHead, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	local caption = autoText(ui.TierHead, "Caption", "Your tier", "Heading", 18, MUTED, 0)
+	caption.TextXAlignment = Enum.TextXAlignment.Left
+	ui.TierFacts = makeFrame(ui.TierLine, "Facts", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
+	listLayout(ui.TierFacts, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	ui.RewardLine = wrapText(ui.BossCard, "RewardLine", "", "Heading", 20, C.Power, 5)
+	ui.BossLine = wrapText(ui.BossCard, "Line", "", "Body", 19, INK, 6)
+	ui.FightList = makeFrame(ui.BossCard, "Fights", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 7 })
+	listLayout(ui.FightList, Enum.FillDirection.Vertical, 6)
 	ui.FightRows = {}
-	ui.NextBoss = wrapText(ui.BossCard, "NextBoss", "", "Body", 19, MUTED, 7)
+	-- (U9-7 look) the next boss on a navy timer plate, the time in gold (the side cards' x2 Rewards chip)
+	-- (U9-7 look) as wide as the card (sized to its words it ran 16 px out of a phone's Boss card, under the scroll bar):
+	-- the words fill the plate left of the clock and cut at their end, the clock right-aligned
+	ui.NextBoss = makeFrame(ui.BossCard, "NextBoss", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 8 })
+	CloudUI.SignBlock(ui.NextBoss, "Navy", { EdgePx = 2, LipPx = 0 })
+	pad(ui.NextBoss, 12, 0, 14, 0)
+	ui.NextBossClock = fitWidth(makeText(ui.NextBoss, "Clock", "", "Display", 22, SIGN.Gold, {
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.fromOffset(0, 30),
+		TextXAlignment = Enum.TextXAlignment.Right,
+	}))
+	ui.NextBossName = lead(makeText(ui.NextBoss, "Label", "", "Heading", 18, SIGN.Stone, {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(1, -90, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	}), "hourglass")
 
 	ui.NextCard = inset(ui.RaidScroll, "Next", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	pad(ui.NextCard, 16, 10, 16, 12)
@@ -1622,13 +1896,13 @@ local function buildArena()
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 1,
 	})
-	ui.NextName = wrapText(ui.NextCard, "Name", "", "Title", 24, WHITE, 2)
+	ui.NextName = wrapText(ui.NextCard, "Name", "", "Title", 24, INK, 2)
 	ui.NextClock = makeText(ui.NextCard, "Clock", "--:--", "Display", 36, C.Power, {
 		Size = UDim2.new(1, 0, 0, 42),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 3,
 	})
-	ui.DoubleLine = wrapText(ui.NextCard, "Double", "", "Heading", 20, Theme.Lighten(C.Double, 0.35), 4)
+	ui.DoubleLine = wrapText(ui.NextCard, "Double", "", "Heading", 20, C.Double, 4)
 
 	ui.Tips = inset(ui.RaidScroll, "Tips", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3 })
 	pad(ui.Tips, 16, 10, 16, 12)
@@ -1642,9 +1916,9 @@ local function buildArena()
 
 	win.OnLayout = function(w, h, narrow, short, tall)
 		local cw = w - K.INSET_X
-		-- (a landscape phone drops the trophy chip: the Record box has them, and the team's row stays whole on the page)
-		local barH = (tall and not short) and 118 or 60
-		ui.Bar.Size = UDim2.new(1, -28, 0, barH)
+		-- (U9-7 look) the tabs alone: the trophy chip moved into the Quick match title row
+		local barH = 60
+		ui.Bar.Size = UDim2.new(1, -2 * PAGE_PAD, 0, barH)
 		local tabW = tall and math.floor((cw - 28 - 16) / 3) or (narrow and 180 or 200)
 		for _, tab in ipairs(TABS) do
 			local button = ui.TabButtons[tab.Id]
@@ -1652,30 +1926,53 @@ local function buildArena()
 			button.TextSize = tall and 20 or 22
 			button.Text = tall and (tab.Short or tab.Label) or tab.Label
 		end
-		if tall then
-			ui.TabRow.Size = UDim2.new(1, 0, 0, 58)
-			ui.Chip.AnchorPoint = Vector2.new(0, 0)
-			ui.Chip.Position = UDim2.fromOffset(0, 68)
-			ui.Chip.Visible = not short
-		else
-			ui.TabRow.Size = UDim2.new(1, -180, 1, 0)
-			ui.Chip.AnchorPoint = Vector2.new(1, 0.5)
-			ui.Chip.Position = UDim2.new(1, 0, 0.5, 0)
-		end
+		ui.TabRow.Size = tall and UDim2.new(1, 0, 0, 58) or UDim2.new(1, 0, 1, 0)
 		local top = 10 + barH + 12
 		for _, frame in pairs(ui.Pages) do
-			frame.Position = UDim2.fromOffset(14, top)
-			frame.Size = UDim2.new(1, -28, 1, -(top + 10))
+			frame.Position = UDim2.fromOffset(PAGE_PAD, top)
+			frame.Size = UDim2.new(1, -2 * PAGE_PAD, 1, -(top + 10))
 		end
 		ui.RaidScroll.Size = UDim2.new(1, 0, 1, 0)
 		ui.LeaderScroll.Size = UDim2.new(1, 0, 1, 0)
+		local mode = w < K.FACES_NARROW and "Compact" or "Card"
+		ui.DuelFaces.SetMode(mode)
+		ui.RaidFaces.SetMode(mode)
+		-- (U9-7 look) a landscape phone keeps the team and Find a match: the title row (the Record box says the
+		-- trophies) and the blurb go
+		ui.QuickHead.Visible = not short
 		if tall then
+			-- (U9-7 look) a window under K.DUELS_ONE_H (a portrait sheet, a landscape phone) shows the Duels page as ONE list;
+			-- a taller one splits it in two panes from the cards' real heights (ui.FitDuels, after every refresh too)
+			local pageH = h - K.INSET_Y - (top + 10)
+			local one = h < K.DUELS_ONE_H
+			ui.DuelPageH = pageH
+			if ui.DuelOne ~= one then
+				ui.DuelOne = one
+				clearChildren(ui.ChallengeList)
+				ui.ChallengeList = one and ui.ChallengeCard or ui.ChallengePane
+				ui.ChallengeCard.Visible = one
+				ui.Challenge.Visible = not one
+			end
+			-- the blurb only in a split page where it shows whole (the fold cut it mid-line); never in the one list (it
+			-- pushed the players down)
+			local share = math.floor(pageH * 0.58) - 6
+			local need = 2 + 10 + ui.DuelFaces.Height() + 8 + 48 + 56 + 6 + 8 + 28
+			local lines = math.ceil(roughWidth(ui.QuickText.Text, 19) / math.max(1, cw - 28 - 28 - 16))
+			ui.QuickText.Visible = not one and share >= need + 8 + lines * 26 + 14
 			ui.DuelLeft.Position = UDim2.fromOffset(0, 0)
-			local share = short and 0.68 or 0.58
-			ui.DuelLeft.Size = UDim2.new(1, 0, share, -6)
-			ui.Challenge.Position = UDim2.new(0, 0, share, 6)
-			ui.Challenge.Size = UDim2.new(1, 0, 1 - share, -6)
+			ui.DuelLeft.Size = UDim2.new(1, 0, 1, 0)
+			ui.Challenge.Position = UDim2.fromOffset(0, 0)
+			if not one then
+				ui.FitDuels()
+			end
 		else
+			if ui.DuelOne then
+				ui.DuelOne = false
+				clearChildren(ui.ChallengeList)
+				ui.ChallengeList = ui.ChallengePane
+				ui.ChallengeCard.Visible = false
+				ui.Challenge.Visible = true
+			end
 			local leftW = math.floor((cw - 28) * 0.48)
 			ui.DuelLeft.Position = UDim2.fromOffset(0, 0)
 			ui.DuelLeft.Size = UDim2.new(0, leftW, 1, 0)
@@ -1683,23 +1980,67 @@ local function buildArena()
 			ui.Challenge.Size = UDim2.new(1, -(leftW + 12), 1, 0)
 		end
 		ui.BossName.TextSize = tall and 24 or 30
-		local mode = w < K.FACES_NARROW and "Compact" or "Card"
-		ui.DuelFaces.SetMode(mode)
-		ui.RaidFaces.SetMode(mode)
+	end
+
+	-- (U9-7 look) a tall window's two panes from the cards' real heights (the hand-summed need fell about 28 px short of the
+	-- Quick card: the fold cut its status line and the well's bottom edge). Each pane gets what its cards need when both
+	-- fit; else the players' pane keeps its title and two whole rows (or all of them, when fewer) and the left pane the
+	-- rest, ending after its last whole card (the Quick card at least)
+	function ui.FitDuels()
+		local win = Win.Arena
+		if ui.DuelOne ~= false or not win or not ui.DuelPageH then
+			return
+		end
+		local s = (win.Fit and win.Fit.Scale > 0) and win.Fit.Scale or 1
+		local pageH = ui.DuelPageH
+		-- the players' list: its 4 px inset each side, its pads 8 / 10, 8 px between rows
+		local _, nAll = wholeCards(ui.ChallengePane, math.huge, 8, 10, 8, 2, s)
+		local chAll = select(1, wholeCards(ui.ChallengePane, math.huge, 8, 10, 8, 2, s)) + 8
+		local chMin = chAll
+		do
+			local kids = {}
+			for _, c in ipairs(ui.ChallengePane:GetChildren()) do
+				if c:IsA("GuiObject") and c.Visible and c.AbsoluteSize.Y > 0 then
+					kids[#kids + 1] = c
+				end
+			end
+			table.sort(kids, function(a, b)
+				return a.LayoutOrder < b.LayoutOrder
+			end)
+			if #kids > 3 then
+				local y = 8
+				for i = 1, 3 do
+					y = y + kids[i].AbsoluteSize.Y / s + (i < 3 and 8 or 0)
+				end
+				chMin = math.ceil(y + 10) + 8
+			end
+		end
+		local leftAll = wholeCards(ui.DuelLeft, math.huge, 2, 6, 10, 2, s)
+		local leftH
+		if leftAll + 12 + chAll <= pageH or nAll == 0 then
+			leftH = math.min(leftAll, pageH - 12 - math.min(chAll, chMin))
+		else
+			leftH = wholeCards(ui.DuelLeft, pageH - 12 - chMin, 2, 6, 10, 2, s)
+		end
+		local quick = ui.DuelLeft:FindFirstChild("Quick")
+		local quickH = quick and math.ceil(2 + quick.AbsoluteSize.Y / s + 2) or 0
+		leftH = math.max(leftH, math.min(quickH, pageH - 12 - 44)) -- Find a match whole; the players' pane keeps its heading
+		if ui.DuelLeft.Size.Y.Offset ~= leftH or ui.DuelLeft.Size.Y.Scale ~= 0 then
+			ui.DuelLeft.Size = UDim2.new(1, 0, 0, leftH)
+			ui.Challenge.Position = UDim2.fromOffset(0, leftH + 12)
+			ui.Challenge.Size = UDim2.new(1, 0, 1, -(leftH + 12))
+		end
 	end
 
 	local function inviteRow(parent, invite, order)
-		local row = makeFrame(parent, "Invite" .. order, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Color3.fromRGB(60, 40, 90),
-			Size = UDim2.new(1, 0, 0, 120),
+		-- (kit-b U9-7) a stone tile in the well; the only green of the page stays Find a match, so Accept is a stone block
+		local row = tile(parent, "Invite" .. order, {
+			Size = UDim2.new(1, 0, 0, 124),
 			LayoutOrder = order,
 		})
-		corner(row, 12)
 		local practice = invite.Practice == true
-		stroke(row, practice and C.Practice or C.Arena, 3, 0)
 		row:SetAttribute("Practice", practice)
-		lead(makeText(row, "Name", tostring(invite.FromName or "Someone") .. (practice and " wants a practice duel" or " challenges you!"), "Heading", 20, WHITE, {
+		lead(makeText(row, "Name", tostring(invite.FromName or "Someone") .. (practice and " wants a practice duel" or " challenges you!"), "Heading", 20, INK, {
 			Position = UDim2.fromOffset(12, 6),
 			Size = UDim2.new(1, -24, 0, 28),
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -1707,7 +2048,7 @@ local function buildArena()
 		}), "Swords")
 		if practice then
 			-- Phase 5 (4.2): the two teams are far apart in power: the duel is practice (no trophies, no rewards)
-			row.Size = UDim2.new(1, 0, 0, 146)
+			row.Size = UDim2.new(1, 0, 0, 150)
 			makeText(row, "PracticeFlag", "Practice duel - no trophies or rewards", "Heading", 18, C.Practice, {
 				Position = UDim2.fromOffset(12, 116),
 				Size = UDim2.new(1, -24, 0, 24),
@@ -1715,20 +2056,29 @@ local function buildArena()
 				TextTruncate = Enum.TextTruncate.AtEnd,
 			})
 		end
-		-- (U7b review) the clock first and the end truncated: a narrow panel cuts the power, never the time left
-		makeText(row, "Info", clock(lobbySeconds(invite.ExpiresIn) or 0) .. " left  " .. G.Bullet .. "  " .. commas(invite.Trophies or 0) .. " trophies  "
-			.. G.Bullet .. "  " .. commas(invite.Power or 0) .. " power", "Body", 19, MUTED, {
+		-- (kit-b U9-7) the challenger's trophies and power as icon + value, the time left in its own right-hand label (the side
+		-- card's U7b fix: the line in words ran past a phone's row and cut its end)
+		local info = makeFrame(row, "Info", {
 			Position = UDim2.fromOffset(12, 34),
 			Size = UDim2.new(1, -24, 0, 24),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
+		local stats = makeFrame(info, "Stats", { Size = UDim2.new(1, -K.SIDE_CLOCK_W, 1, 0) })
+		listLayout(stats, Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+		lead(autoText(stats, "Trophies", commas(invite.Trophies or 0), "Heading", 18, INK, 1), "Trophy")
+		lead(autoText(stats, "Power", commas(invite.Power or 0), "Heading", 18, INK, 2), "Swords")
+		lead(makeText(info, "Clock", clock(lobbySeconds(invite.ExpiresIn) or 0), "Heading", 18, INK, {
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.new(0, K.SIDE_CLOCK_W, 1, 0),
+			TextXAlignment = Enum.TextXAlignment.Right,
+		}), "hourglass")
 		CloudUI.Button({
 			Name = "Accept",
 			Text = "Accept",
 			Position = UDim2.fromOffset(12, 60),
 			Size = UDim2.fromOffset(140, 56),
-			Style = "Green",
+			Style = "Gray",
+			Skin = "Sign",
 			TextSize = 20,
 			Parent = row,
 			Callback = function()
@@ -1743,6 +2093,7 @@ local function buildArena()
 			Position = UDim2.fromOffset(160, 60),
 			Size = UDim2.fromOffset(140, 56),
 			Style = "Gray",
+			Skin = "Sign",
 			TextSize = 20,
 			Parent = row,
 			Callback = function()
@@ -1753,15 +2104,11 @@ local function buildArena()
 	end
 
 	local function playerRow(player, order, sent)
-		local row = makeFrame(ui.ChallengeList, "Player_" .. player.UserId, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Color3.fromRGB(34, 50, 100),
-			Size = UDim2.new(1, 0, 0, 62),
+		local row = tile(ui.ChallengeList, "Player_" .. player.UserId, {
+			Size = UDim2.new(1, 0, 0, 66),
 			LayoutOrder = order,
 		})
-		corner(row, 12)
-		stroke(row, NAVY, 3, 0)
-		makeText(row, "Name", player.DisplayName ~= "" and player.DisplayName or player.Name, "Title", 22, WHITE, {
+		makeText(row, "Name", player.DisplayName ~= "" and player.DisplayName or player.Name, "Title", 22, INK, {
 			Position = UDim2.fromOffset(12, 4),
 			Size = UDim2.new(1, -190, 0, 30),
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -1774,7 +2121,7 @@ local function buildArena()
 			TextXAlignment = Enum.TextXAlignment.Left,
 		}), "Trophy")
 		if sent then
-			local pill = colorPill(row, "Sent", "Sent " .. clock(lobbySeconds(sent.ExpiresIn) or 0), Color3.fromRGB(110, 118, 146), 18, 0)
+			local pill = colorPill(row, "Sent", "Sent " .. clock(lobbySeconds(sent.ExpiresIn) or 0), C.Sent, 18, 0)
 			pill.AnchorPoint = Vector2.new(1, 0.5)
 			pill.Position = UDim2.new(1, -12, 0.5, 0)
 		else
@@ -1784,7 +2131,8 @@ local function buildArena()
 				AnchorPoint = Vector2.new(1, 0.5),
 				Position = UDim2.new(1, -10, 0.5, 0),
 				Size = UDim2.fromOffset(160, 56),
-				Style = "Red",
+				Style = "Gray",
+				Skin = "Sign", -- (kit-b U9-7) a stone block: a challenge is not danger, and Find a match is the page's one green
 				TextSize = 21,
 				Parent = row,
 				Callback = function()
@@ -1830,7 +2178,7 @@ local function buildArena()
 		local invites = type(lobby.Invites) == "table" and lobby.Invites or {}
 		ui.InviteBox.Visible = #invites > 0
 		if #invites > 0 then
-			makeText(ui.InviteBox, "Title", "Challenges for you", "Heading", 22, WHITE, {
+			makeText(ui.InviteBox, "Title", "Challenges for you", "Heading", 22, INK, {
 				Size = UDim2.new(1, 0, 0, 28),
 				TextXAlignment = Enum.TextXAlignment.Left,
 				LayoutOrder = 0,
@@ -1843,7 +2191,7 @@ local function buildArena()
 		end
 		-- players to challenge
 		clearChildren(ui.ChallengeList)
-		Theme.StyleTitle(makeText(ui.ChallengeList, "Title", "Challenge a player", "Title", 26, WHITE, {
+		Theme.StyleTitle(makeText(ui.ChallengeList, "Title", "Challenge a player", "Title", 26, INK, {
 			Size = UDim2.new(1, 0, 0, 32),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 0,
@@ -1864,6 +2212,7 @@ local function buildArena()
 		if #others == 0 then
 			wrapText(ui.ChallengeList, "Empty", "Nobody else is in this server yet. Invite a friend, or try the Dungeon meanwhile!", "Body", 19, MUTED, 1)
 		end
+		ui.FitDuels() -- (U9-7 look) the panes follow the cards
 	end
 
 	local function tierLine(parent, tier, order)
@@ -1873,14 +2222,14 @@ local function buildArena()
 			LayoutOrder = order,
 		})
 		listLayout(row, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
-		local colors = { Gold = C.Medal[1], Silver = Color3.fromRGB(150, 164, 190), Bronze = C.Medal[3], Helper = Color3.fromRGB(90, 120, 190) }
-		colorPill(row, "Name", tostring(tier.Id), colors[tier.Id] or Color3.fromRGB(90, 120, 190), 18, 1)
+		local colors = { Gold = C.Medal[1], Silver = C.Medal[2], Bronze = C.Medal[3], Helper = SIGN.Sky }
+		colorPill(row, "Name", tostring(tier.Id), colors[tier.Id] or SIGN.Sky, 18, 1)
 		local share = math.floor((tonumber(tier.MinShare) or 0) * 100 + 0.5)
 		local text = (share > 0 and (share .. "%+ damage: ") or "Any damage: ") .. commas(tier.Tokens or 0) .. " tokens"
 		if (tonumber(tier.Gems) or 0) > 0 then
 			text = text .. ", " .. math.floor((tonumber(tier.GemChance) or 0) * 100 + 0.5) .. "% for " .. commas(tier.Gems) .. " gems"
 		end
-		makeText(row, "Text", text, "Body", 19, WHITE, {
+		makeText(row, "Text", text, "Body", 19, INK, {
 			Size = UDim2.new(1, -96, 0, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
 			TextWrapped = true,
@@ -1897,6 +2246,7 @@ local function buildArena()
 		if ui.BossElementSig ~= tostring(element) then
 			ui.BossElementSig = tostring(element)
 			clearChildren(ui.BossElement)
+			ui.BossElement.Visible = element ~= nil
 			if element then
 				elementPill(ui.BossElement, element, 18, 1)
 			end
@@ -1909,14 +2259,28 @@ local function buildArena()
 		local mine = tier and type(fights[tier.Id]) == "table" and fights[tier.Id] or nil
 		if closed > 0 then
 			ui.BossState.Text = "DOWN"
-			ui.BossState.BackgroundColor3 = Color3.fromRGB(90, 120, 190)
+			paintPill(ui.BossState, C.Down)
 			ui.BossLine.Text = tostring(tier.Id) .. " boss back in " .. tostring(math.ceil(closed)) .. " s"
+			PixelIcon.Mark(ui.BossLine, "hourglass")
 		else
+			PixelIcon.Mark(ui.BossLine, nil)
 			ui.BossState.Text = mine and (mine.Enraged and "ENRAGED" or "LIVE") or "WAITING"
-			ui.BossState.BackgroundColor3 = mine and C.Boss or Color3.fromRGB(226, 160, 54)
+			paintPill(ui.BossState, mine and C.Boss or C.Waiting)
 			ui.BossLine.Text = "Walk through the iron boss gate beside the colosseum's main entrance to fight. Its pillar lets you dare a higher tier."
 		end
-		ui.TierLine.Text = tier and ("Your tier: " .. tostring(tier.Id) .. " - boss L" .. tostring(tier.BossLevel) .. ", hits x" .. tostring(tier.Hit) .. ", rewards x" .. tostring(tier.Reward)) or ""
+		ui.TierLine.Visible = tier ~= nil
+		local tierSig = tier and table.concat({ tostring(tier.Id), tostring(tier.BossLevel), tostring(tier.Hit), tostring(tier.Reward) }, "|") or ""
+		if ui.TierSig ~= tierSig then
+			ui.TierSig = tierSig
+			clearChildren(ui.TierFacts)
+			local oldChip = ui.TierHead:FindFirstChild("Tier")
+			if oldChip then
+				oldChip:Destroy()
+			end
+			if tier then
+				ArenaController.TierFacts(ui.TierFacts, tier, ui.TierHead)
+			end
+		end
 		ui.RewardLine.Text = raidRewardLine()
 		-- the fights running now, one row per tier
 		local anyFight = false
@@ -1927,15 +2291,18 @@ local function buildArena()
 			if type(fight) == "table" then
 				anyFight = true
 				if not row then
-					row = wrapText(ui.FightList, "Fight_" .. id, "", "Body", 19, WHITE, i)
+					row = ArenaController.FightRow(ui.FightList, id, i)
 					ui.FightRows[id] = row
 				end
 				local maxHp = tonumber(fight.MaxHp) or 0
-				local percent = maxHp > 0 and math.floor(Util.Clamp((tonumber(fight.Hp) or 0) / maxHp, 0, 1) * 100 + 0.5) or 0
-				row.Text = id .. " - " .. commas(fight.Players or 0) .. " fighting - HP " .. percent .. "%" .. (fight.Floor == true and " (floor)" or "")
-				row.Visible = true
+				local share = maxHp > 0 and Util.Clamp((tonumber(fight.Hp) or 0) / maxHp, 0, 1) or 0
+				row.Players.Text = commas(fight.Players or 0) .. " fighting"
+				row.Floor.Visible = fight.Floor == true
+				SignKit.FillBlocks(row.Bar, math.ceil(share * 10 - 0.001))
+				row.Percent.Text = "HP " .. math.floor(share * 100 + 0.5) .. "%"
+				row.Root.Visible = true
 			elseif row then
-				row.Visible = false
+				row.Root.Visible = false
 			end
 		end
 		ui.FightList.Visible = anyFight
@@ -1943,7 +2310,9 @@ local function buildArena()
 		local nextInfo = raid and bossInfo(raid.NextBoss)
 		ui.NextBoss.Visible = nextIn ~= nil
 		if nextIn then
-			ui.NextBoss.Text = "Next boss: " .. tostring(nextInfo and nextInfo.Name or "?") .. " in " .. clock(nextIn)
+			ui.NextBossName.Text = "Next boss " .. tostring(nextInfo and nextInfo.Name or "?") .. " in"
+			ui.NextBossClock.Text = clock(nextIn)
+			ui.NextBossName.Size = UDim2.new(1, -(ui.NextBossClock.Size.X.Offset + 10), 0, 26) -- (the clock's fitted width)
 		end
 		-- Double Rewards: on its way or running (the boss rotation is the line above, not an event)
 		local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next.Kind == "DoubleRewards" and S.Arena.Next or nil
@@ -1965,7 +2334,7 @@ local function buildArena()
 		if ui.TipsSig ~= sig then
 			ui.TipsSig = sig
 			clearChildren(ui.Tips)
-			makeText(ui.Tips, "Title", "How to win", "Heading", 22, WHITE, {
+			makeText(ui.Tips, "Title", "How to win", "Heading", 22, INK, {
 				Size = UDim2.new(1, 0, 0, 28),
 				TextXAlignment = Enum.TextXAlignment.Left,
 				LayoutOrder = 1,
@@ -1973,7 +2342,7 @@ local function buildArena()
 			if element then
 				local counters = countersOf(element)
 				if #counters > 0 then
-					wrapText(ui.Tips, "CountersText", "Bring these pets: they hit " .. tostring(element) .. " hard.", "Body", 19, WHITE, 2)
+					wrapText(ui.Tips, "CountersText", "Bring these pets: they hit " .. tostring(element) .. " hard.", "Body", 19, INK, 2)
 					local row = makeFrame(ui.Tips, "Counters", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
 					row.LayoutOrder = 3
 					listLayout(row, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
@@ -1986,11 +2355,7 @@ local function buildArena()
 			local BC = catalog()
 			local tiers = BC and BC.Raid and BC.Raid.Tiers
 			if type(tiers) == "table" then
-				makeText(ui.Tips, "TiersTitle", "Rewards by damage dealt" .. (tier and (" (" .. tostring(tier.Id) .. " tier)") or ""), "Heading", 20, WHITE, {
-					Size = UDim2.new(1, 0, 0, 26),
-					TextXAlignment = Enum.TextXAlignment.Left,
-					LayoutOrder = 5,
-				})
+				wrapText(ui.Tips, "TiersTitle", "Rewards by damage dealt" .. (tier and (" (" .. tostring(tier.Id) .. " tier)") or ""), "Heading", 20, INK, 5)
 				for i, medal in ipairs(tiers) do
 					-- the medal at my tier's numbers (the share that earns it: Helper has none of its own)
 					tierLine(ui.Tips, BC.RaidTier(math.max(tonumber(medal.MinShare) or 0, 0.001), true, tier and tier.Id) or medal, 5 + i)
@@ -2001,7 +2366,7 @@ local function buildArena()
 
 	local function refreshLeaders()
 		clearChildren(ui.LeaderScroll)
-		Theme.StyleTitle(makeText(ui.LeaderScroll, "Title", "Trophy leaders in this server", "Title", 26, WHITE, {
+		Theme.StyleTitle(makeText(ui.LeaderScroll, "Title", "Trophy leaders", "Title", 26, INK, {
 			Size = UDim2.new(1, 0, 0, 34),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 0,
@@ -2015,36 +2380,50 @@ local function buildArena()
 			if type(row) == "table" then
 				local me = LocalPlayer and row.UserId == LocalPlayer.UserId
 				meShown = meShown or me
+				-- (kit-b U9-7) a stone tile per rank, my own row gold (selected); the top three carry a gold / silver / bronze square
 				local frame = makeFrame(ui.LeaderScroll, "Rank" .. i, {
-					BackgroundTransparency = 0,
-					BackgroundColor3 = me and C.Me or Color3.fromRGB(34, 50, 100),
-					Size = UDim2.new(1, 0, 0, 54),
+					Size = UDim2.new(1, 0, 0, 58),
 					LayoutOrder = i,
 				})
-				corner(frame, 12)
-				stroke(frame, me and GOLD or NAVY, me and 3.5 or 3, 0)
+				CloudUI.SignBlock(frame, me and "Selected" or "Stone", { EdgePx = 2, LipPx = 4 })
 				local medal = makeFrame(frame, "Medal", {
 					BackgroundTransparency = 0,
-					BackgroundColor3 = C.Medal[i] or Color3.fromRGB(70, 90, 150),
+					BackgroundColor3 = C.Medal[i] or SIGN.Well,
 					AnchorPoint = Vector2.new(0, 0.5),
-					Position = UDim2.new(0, 10, 0.5, 0),
+					Position = UDim2.new(0, 10, 0.5, -2),
 					Size = UDim2.fromOffset(40, 40),
 				})
-				round(medal)
-				stroke(medal, NAVY, 2.5, 0)
-				makeText(medal, "Rank", tostring(i), "Display", 24, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
-				makeText(frame, "Name", tostring(row.Name or "?") .. (me and "  (you)" or ""), "Title", 23, me and Theme.Lighten(GOLD, 0.35) or WHITE, {
+				edge(medal, SIGN.Wood, 2)
+				makeText(medal, "Rank", tostring(i), "Display", 24, INK, { Size = UDim2.new(1, 0, 1, 0) })
+				-- (U9-7 look) the value sized to its digits and my own row's YOU chip before it (the trophies chip's navy and gold):
+				-- the name takes the rest whole ("SKYCLIMBER (Y..." cut its "(you)" suffix with 35 px free before the value)
+				-- (left-aligned in its fitted box, so the trophy sits inside it: a right-aligned number's icon stands outside)
+				local value = lead(fitWidth(makeText(frame, "Trophies", commas(row.Trophies or 0), "Display", 26, C.Power, {
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -14, 0, 0),
+					Size = UDim2.new(0, 0, 1, -4),
+					TextXAlignment = Enum.TextXAlignment.Left,
+				})), "Trophy")
+				local right = 14 + value.Size.X.Offset + 8
+				if me then
+					local you = makeFrame(frame, "You", {
+						AnchorPoint = Vector2.new(1, 0.5),
+						Position = UDim2.new(1, -right, 0.5, -2),
+						Size = UDim2.fromOffset(0, 30),
+						AutomaticSize = Enum.AutomaticSize.X,
+					})
+					CloudUI.SignBlock(you, "Navy", { EdgePx = 2, LipPx = 0 })
+					pad(you, 8, 0, 8, 0)
+					local word = autoText(you, "Word", "YOU", "Display", 18, SIGN.Gold, 1)
+					word.Size = UDim2.fromOffset(word.Size.X.Offset, 30)
+					right = right + 16 + word.Size.X.Offset + 8
+				end
+				makeText(frame, "Name", tostring(row.Name or "?"), "Title", 23, INK, {
 					Position = UDim2.fromOffset(62, 0),
-					Size = UDim2.new(1, -220, 1, 0),
+					Size = UDim2.new(1, -(62 + right), 1, -4),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTruncate = Enum.TextTruncate.AtEnd,
 				})
-				lead(makeText(frame, "Trophies", commas(row.Trophies or 0), "Display", 26, C.Power, {
-					AnchorPoint = Vector2.new(1, 0),
-					Position = UDim2.new(1, -14, 0, 0),
-					Size = UDim2.new(0, 160, 1, 0),
-					TextXAlignment = Enum.TextXAlignment.Right,
-				}), "Trophy")
 			end
 		end
 		if #list == 0 then
@@ -2059,7 +2438,7 @@ local function buildArena()
 		local note = inset(ui.LeaderScroll, "HowTo", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 30 })
 		pad(note, 14, 10, 14, 12)
 		listLayout(note, Enum.FillDirection.Vertical, 4)
-		wrapText(note, "Title", "How trophies work", "Heading", 20, WHITE, 1)
+		wrapText(note, "Title", "How trophies work", "Heading", 20, INK, 1)
 		wrapText(note, "Text", "Win a duel: +" .. commas(rules.Win or 20) .. " trophies   Lose one: " .. tostring(rules.Loss or -10) .. " trophies"
 			.. " (never below 0). Duel on the rings in front of the colosseum, or join the quick queue!", "Body", 19, MUTED, 2)
 	end
@@ -2074,7 +2453,7 @@ local function buildArena()
 			frame.Visible = id == tab
 		end
 		for id, button in pairs(ui.TabButtons) do
-			CloudUI.SetStyle(button, id == tab and "Red" or "Gray")
+			CloudUI.SetStyle(button, id == tab and "Gold" or "Gray") -- (kit-b U9-7) gold is the selected one
 		end
 		if tab == "Duels" then
 			ui.DuelFaces.Refresh()
@@ -2101,6 +2480,7 @@ local function buildArena()
 				local seconds = (tonumber(queue.Seconds) or 0) + (os.clock() - S.LobbyAt)
 				ui.QueueStatus.Text = "Searching... " .. clock(seconds) .. "   (" .. commas(queue.Waiting or 1) .. " in the queue)"
 			end
+			ui.FitDuels() -- (U9-7 look) again once the cards' automatic sizes have settled (a frame after a rebuild)
 		end
 	end
 	return win
@@ -2109,31 +2489,32 @@ end
 ----------------------------------------------------------------------
 -- Side cards (right edge): duel invites, the sent invite, the queue, the Double Rewards countdown
 ----------------------------------------------------------------------
+-- (kit-b U9-7) a hanging notice: a stone board with its wood edge and lip, nailed up at its top corners, a square stripe
+-- in the card's role colour down its left side (red a duel, sky a practice duel or the queue, the well's edge a sent
+-- invite). Returns the body (its list) and the card
 local function sideCard(name, accent, order)
 	local card = makeFrame(U.Side, name, {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(28, 36, 78),
 		Size = UDim2.fromOffset(K.SIDE_W, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = order,
 	})
-	corner(card, 14)
-	stroke(card, NAVY, 3.5, 0)
-	pad(card, 22, 8, 12, 10)
-	-- the accent stripe sits in the left padding (the body below holds the card's list)
-	local bar = makeFrame(card, "Accent", {
+	CloudUI.SignBlock(card, "Stone", { LipPx = 5 })
+	SignKit.Nails(card, { Inset = 5 })
+	local inner = makeFrame(card, "Inner", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	pad(inner, 22, 10, 12, 12)
+	-- the stripe sits in the left padding (the body beside it holds the card's list)
+	makeFrame(inner, "Accent", {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = accent,
 		Position = UDim2.new(0, -14, 0, 0),
 		Size = UDim2.new(0, 6, 1, 0),
 	})
-	round(bar)
-	local body = makeFrame(card, "Body", {
+	local body = makeFrame(inner, "Body", {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 	})
 	listLayout(body, Enum.FillDirection.Vertical, 4)
-	return body
+	return body, card
 end
 
 local function buildSide()
@@ -2162,7 +2543,20 @@ local function relayoutSide()
 	if area.X < area.Y then
 		bottom = K.SIDE_BOTTOM_PORTRAIT * factor
 	end
-	U.Side.Position = UDim2.new(1, -12, 1, -math.floor(bottom + 0.5))
+	-- (kit-b U9-7) a landscape phone: the stack steps left of the HUD's gift dock (under the currency strips at the right
+	-- edge, where an invite's Decline sat under it at 844x390); (U9-7 look) and left of the strips themselves: the HUD's
+	-- whole top-right block (TopRightLeft, gui px) reaches down beside a card on a screen this low
+	local right = 12
+	if area.Y < 500 and area.X > area.Y then
+		right = K.SIDE_RIGHT_SHORT
+		local hud = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		hud = hud and hud:FindFirstChild("NimbusHud")
+		local left = hud and hud:GetAttribute("CurrencyMode") == "TopRight" and tonumber(hud:GetAttribute("TopRightLeft"))
+		if left and left > 0 and left < area.X then
+			right = math.max(right, math.ceil(area.X - left + 8))
+		end
+	end
+	U.Side.Position = UDim2.new(1, -right, 1, -math.floor(bottom + 0.5))
 end
 
 -- true while a menu window, the Pet Index or the Fusion window covers the screen (the side cards step back)
@@ -2217,6 +2611,7 @@ function refreshSide()
 	if hidden then
 		return
 	end
+	relayoutSide() -- (U9-7 look) the HUD publishes its top-right block after it builds: follow it
 	local sig = sideSignature()
 	if sig ~= S.SideSig then
 		S.SideSig = sig
@@ -2231,9 +2626,9 @@ function refreshSide()
 			if type(invite) == "table" and count < maxCards then
 				count = count + 1
 				local practice = invite.Practice == true
-				local card = sideCard("Invite" .. i, practice and C.Practice or C.Arena, 10 + i)
-				card.Parent:SetAttribute("Practice", practice)
-				lead(makeText(card, "Title", practice and "Practice duel" or "Duel challenge!", "Heading", 21, practice and C.Practice or Theme.Lighten(C.Arena, 0.4), {
+				local card, board = sideCard("Invite" .. i, practice and C.PracticeTag or C.Arena, 10 + i)
+				board:SetAttribute("Practice", practice)
+				lead(makeText(card, "Title", practice and "Practice duel" or "Duel challenge!", "Heading", 21, practice and C.Practice or SIGN.RedLip, {
 					Size = UDim2.new(1, 0, 0, 28),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					LayoutOrder = 1,
@@ -2246,7 +2641,7 @@ function refreshSide()
 						LayoutOrder = 2,
 					})
 				end
-				makeText(card, "Name", tostring(invite.FromName or "Someone") .. " wants to battle", "Body", 19, WHITE, {
+				makeText(card, "Name", tostring(invite.FromName or "Someone") .. " wants to battle", "Body", 19, INK, {
 					Size = UDim2.new(1, 0, 0, 24),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					TextTruncate = Enum.TextTruncate.AtEnd,
@@ -2271,6 +2666,7 @@ function refreshSide()
 					Text = "Accept",
 					Size = UDim2.new(0.5, -4, 0, 44),
 					Style = "Green",
+					Skin = "Sign", -- (kit-b U9-7) the card's one green
 					TextSize = 21,
 					Parent = buttons,
 					Callback = function()
@@ -2286,26 +2682,24 @@ function refreshSide()
 					Position = UDim2.new(1, 0, 0, 0),
 					Size = UDim2.new(0.5, -4, 0, 44),
 					Style = "Gray",
+					Skin = "Sign",
 					TextSize = 21,
 					Parent = buttons,
 					Callback = function()
 						request("ChallengeReply", invite.FromUserId, false)
 					end,
 				})
-				local track = makeFrame(card, "Timer", {
-					BackgroundTransparency = 0,
-					BackgroundColor3 = Color3.fromRGB(14, 20, 48),
-					Size = UDim2.new(1, 0, 0, 6),
-					LayoutOrder = 5,
-				})
-				round(track)
-				local fill = makeFrame(track, "Fill", { BackgroundTransparency = 0, BackgroundColor3 = C.Arena, Size = UDim2.new(1, 0, 1, 0) })
-				round(fill)
+				-- (kit-b U9-7) the time left as a row of gold blocks that go out one by one (the bar's block language)
+				-- (U9-7 look) blocks 14 px high on a 3 px lip (10 px with the kit's 4 px lip were dark slabs: 2 px of gold),
+				-- the loading bar's proportions; 6 px clear of the card's lip below
+				local track = makeFrame(card, "TimerRow", { Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 5 })
+				local blocks = SignKit.BlockRow(track, { Count = K.TIMER_BLOCKS, BlockW = 22, BlockH = 14, Gap = 3, LipPx = 3 })
+				blocks.Name = "Timer"
 				local total = math.max(1, tonumber(invite.ExpiresIn) or 30)
 				table.insert(U.SideCards, function()
 					local left = lobbySeconds(invite.ExpiresIn) or 0
 					timeLeft.Text = clock(left)
-					fill.Size = UDim2.new(Util.Clamp(left / total, 0, 1), 0, 1, 0)
+					SignKit.FillBlocks(blocks, math.ceil(Util.Clamp(left / total, 0, 1) * K.TIMER_BLOCKS))
 				end)
 			end
 		end
@@ -2313,8 +2707,8 @@ function refreshSide()
 		if type(lobby.Sent) == "table" and count < maxCards then
 			count = count + 1
 			local sent = lobby.Sent
-			local card = sideCard("Sent", Color3.fromRGB(110, 118, 146), 20)
-			local text = makeText(card, "Text", "", "Body", 19, WHITE, {
+			local card = sideCard("Sent", SIGN.WellEdge, 20)
+			local text = makeText(card, "Text", "", "Body", 19, INK, {
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				TextWrapped = true,
@@ -2331,7 +2725,7 @@ function refreshSide()
 			local queue = lobby.Queue
 			local card = sideCard("Queue", C.Next, 30)
 			local row = makeFrame(card, "Row", { Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 1 })
-			local text = makeText(row, "Text", "", "Body", 20, WHITE, {
+			local text = makeText(row, "Text", "", "Body", 20, INK, {
 				Size = UDim2.new(1, -112, 1, 0),
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -2343,6 +2737,7 @@ function refreshSide()
 				Position = UDim2.new(1, 0, 0.5, 0),
 				Size = UDim2.fromOffset(104, 42),
 				Style = "Gray",
+				Skin = "Sign",
 				TextSize = 20,
 				Parent = row,
 				Callback = function()
@@ -2359,20 +2754,20 @@ function refreshSide()
 		local starts = nextEvent and arenaSeconds(nextEvent.StartsIn)
 		local double = S.Arena and type(S.Arena.Double) == "table" and S.Arena.Double
 		local showNext = starts and starts <= K.ANNOUNCE and starts > 0
-		if showNext or (double and double.Active) then
+		-- (U9-7 look) a short screen holds one item: a card under the chip pushed the stack's top into Roblox's band
+		local room = not (area.Y < 500 and count > 0)
+		if room and (showNext or (double and double.Active)) then
+			-- (kit-b U9-7) a navy plate with the time in gold (the trophy chip's colours: an event, not a button)
 			local chip = makeFrame(U.Side, "Countdown", {
-				BackgroundTransparency = 0,
-				BackgroundColor3 = Color3.fromRGB(28, 36, 78),
 				Size = UDim2.fromOffset(0, 46),
 				AutomaticSize = Enum.AutomaticSize.X,
 				LayoutOrder = 90,
 			})
-			corner(chip, 23)
-			stroke(chip, GOLD, 3, 0)
+			CloudUI.SignBlock(chip, "Navy", { EdgePx = 3, LipPx = 0 })
 			pad(chip, 14, 0, 16, 0)
 			listLayout(chip, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
-			local label = autoText(chip, "Text", "", "Heading", 20, WHITE, 1)
-			local clockLabel = autoText(chip, "Clock", "", "Display", 26, C.Power, 2)
+			local label = autoText(chip, "Text", "", "Heading", 20, SIGN.Stone, 1)
+			local clockLabel = autoText(chip, "Clock", "", "Display", 26, SIGN.Gold, 2)
 			table.insert(U.SideCards, function()
 				local s2 = nextEvent and arenaSeconds(nextEvent.StartsIn)
 				if s2 and s2 <= K.ANNOUNCE and s2 > 0 then
@@ -2419,6 +2814,21 @@ local function syncBackBinding()
 				end)
 			end
 		end)
+	end
+end
+
+-- (kit-b U9-7) on a touch screen Roblox's thumbstick and jump button go while a window is open (the jump button sat on
+-- START and Find a match at 844x390) and come back as they were: MenuController keeps the one owner set (required at open /
+-- close time, when both modules are loaded: no require cycle), as the Index, the Pets window and the Shop do
+local function syncTouch()
+	local want = S.Open ~= nil and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	if want == (S.TouchOff == true) then
+		return
+	end
+	S.TouchOff = want
+	local menu = otherController("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		safe("touch", menu.SetTouchHidden, "Arena", want)
 	end
 end
 
@@ -2478,6 +2888,7 @@ local function open(id)
 	S.Open = id
 	S.Token = S.Token + 1
 	syncBackBinding()
+	syncTouch()
 	win.W = nil -- re-run the layout for the current screen
 	layoutWindow(win)
 	win.Holder.Visible = true
@@ -2524,6 +2935,7 @@ function ArenaController.Close()
 	S.Token = S.Token + 1
 	local mine = S.Token
 	syncBackBinding()
+	syncTouch()
 	if win then
 		tween(win.Pop, 0.12, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		task.delay(0.13, function()
@@ -2651,8 +3063,6 @@ function ArenaController.Init()
 	-- the hint (right edge, a third down: clear of the toasts at the top and the side cards at the bottom)
 	U.HintGui = gui
 	U.HintFrame = makeFrame(gui, "Hint", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(28, 36, 78),
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -12, 0.36, 0),
 		Size = UDim2.fromOffset(0, 0),
@@ -2660,11 +3070,10 @@ function ArenaController.Init()
 		Visible = false,
 		ZIndex = 20,
 	})
-	corner(U.HintFrame, 12)
-	stroke(U.HintFrame, GOLD, 3, 0)
+	CloudUI.SignBlock(U.HintFrame, "Stone", { LipPx = 0 }) -- (kit-b U9-7) a stone notice in its wood edge (toast(): red when refused)
 	pad(U.HintFrame, 14, 8, 14, 8)
 	U.HintScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 1, Parent = U.HintFrame })
-	U.HintLabel = makeText(U.HintFrame, "Text", "", "Heading", 20, WHITE, {
+	U.HintLabel = makeText(U.HintFrame, "Text", "", "Heading", 20, INK, {
 		Size = UDim2.fromOffset(0, 28),
 		AutomaticSize = Enum.AutomaticSize.X,
 		ZIndex = 21,

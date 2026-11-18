@@ -207,6 +207,34 @@ function SmokeCommon.closeMarkIssues(button, opts)
 		out[#out + 1] = sfmt("mark %.1f,%.1f %.1fx%.1f not inside button %.1f,%.1f %.1fx%.1f", mp.X, mp.Y, ms.X, ms.Y, bp.X, bp.Y, bs.X, bs.Y)
 	end
 	local parts = {}
+	-- (kit-b U9-7) a kit B block (CloudUI's Sign skin, attribute Skin = "Sign") wears the windows' square X: brown bars over
+	-- the red lip's ink (NeonKit.CloseMark Square), where the neon buttons' X is white bars over a dark ink
+	local signSkin = button:GetAttribute("Skin") == "Sign"
+	if mark:GetAttribute("PixelX") then
+		-- (kit-b U9-7 look) NeonKit.CloseMark Square: the pitch's pixel x, PixelIcon "x" in the brown ink, no rotated part
+		local icon, cells = nil, 0
+		for _, d in ipairs(mark:GetDescendants()) do
+			if d:IsA("GuiObject") then
+				if d:GetAttribute("PixelIcon") == "x" then
+					icon = d
+				elseif d:IsA("Frame") then
+					cells = cells + 1
+					local c = d.BackgroundColor3
+					if not (shown(d) and d.BackgroundTransparency <= 0.2 and c.R < 0.35 and c.G < 0.3 and c.B < 0.3) then
+						out[#out + 1] = sfmt("cell %s is not a shown brown-ink cell (%s)", d.Name, tostring(c))
+						break
+					end
+				end
+				if d.Rotation ~= 0 then
+					out[#out + 1] = sfmt("%s is rotated %s", d.Name, tostring(d.Rotation))
+				end
+			end
+		end
+		if not icon or cells < 5 then
+			out[#out + 1] = sfmt("no pixel x icon in the mark (%d cells)", cells)
+		end
+		return out
+	end
 	for _, want in ipairs({ { "BarA", 45, true }, { "BarB", -45, true }, { "InkA", 45, false }, { "InkB", -45, false } }) do
 		local bar = mark:FindFirstChild(want[1])
 		parts[want[1]] = bar
@@ -227,9 +255,13 @@ function SmokeCommon.closeMarkIssues(button, opts)
 			if (c.R - opts.Ink.R) ^ 2 + (c.G - opts.Ink.G) ^ 2 + (c.B - opts.Ink.B) ^ 2 > 0.0004 then
 				out[#out + 1] = want[1] .. " is not the kit B lip " .. tostring(c)
 			end
-		elseif want[3] and not (c.R > 0.9 and c.G > 0.9 and c.B > 0.9) then
+		elseif signSkin and want[3] and not (c.R < 0.3 and c.G < 0.3 and c.B < 0.3) then
+			out[#out + 1] = want[1] .. " is not the brown ink " .. tostring(c)
+		elseif signSkin and not want[3] and not (c.R > 0.5 and c.R > c.G + 0.3 and c.R > c.B + 0.3) then
+			out[#out + 1] = want[1] .. " is not the red lip " .. tostring(c)
+		elseif not signSkin and want[3] and not (c.R > 0.9 and c.G > 0.9 and c.B > 0.9) then
 			out[#out + 1] = want[1] .. " is not white " .. tostring(c)
-		elseif not want[3] and not (c.R < 0.25 and c.G < 0.25 and c.B < 0.25) then
+		elseif not signSkin and not want[3] and not (c.R < 0.25 and c.G < 0.25 and c.B < 0.25) then
 			out[#out + 1] = want[1] .. " is not dark " .. tostring(c)
 
 		end

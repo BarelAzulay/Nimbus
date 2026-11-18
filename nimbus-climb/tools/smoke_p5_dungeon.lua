@@ -2676,7 +2676,16 @@ local function clientScenarios()
 			if g:IsA("ScreenGui") and g.Enabled then
 				for _, d in ipairs(g:GetDescendants()) do
 					if d:IsA("GuiObject") and C5.shown(d) and (d.BackgroundTransparency < 0.5 or d:IsA("ImageLabel") or d:IsA("ViewportFrame")) then
+						-- (U9-7 look) cut to the scrolling frames above it: rows scrolled out of a list cover nothing
 						local r = C5.rect(d)
+						local cur = d.Parent
+						while cur and cur:IsA("GuiObject") do
+							if cur:IsA("ScrollingFrame") or cur.ClipsDescendants then
+								local c = C5.rect(cur)
+								r = { x0 = math.max(r.x0, c.x0), y0 = math.max(r.y0, c.y0), x1 = math.min(r.x1, c.x1), y1 = math.min(r.y1, c.y1) }
+							end
+							cur = cur.Parent
+						end
 						for y = math.max(0, math.floor(r.y0 / 4)), math.min(rows, math.floor(r.y1 / 4)) - 1 do
 							for x = math.max(0, math.floor(r.x0 / 4)), math.min(cols, math.floor(r.x1 / 4)) - 1 do
 								local k = y * cols + x
@@ -2973,8 +2982,17 @@ local function clientScenarios()
 			KC.advance(0.3)
 		else
 			T.check(C5.find(card, "Text").Text:find("Room 2/4", 1, true), "p5dgn phone: the chip reads 'Room 2/4'", C5.find(card, "Text").Text)
+			-- (U9-7 review) in Roblox's top band while the span right of the top bar's pill holds it, else hanging under the
+			-- band: never under the pill (it draws above the chip: a tap on LEAVE there opened Settings), LEAVE on the screen
 			local r = C5.rect(card)
-			T.check(r.y1 <= 60, "p5dgn phone: the chip sits in Roblox's top band (bottom <= 60 px)", string.format("%.0f", r.y1))
+			local bar = C5.pg():FindFirstChild("NimbusTopBar")
+			local pill = bar and bar.Enabled and bar:FindFirstChild("Pill")
+			local pr = (pill and C5.shown(pill)) and C5.rect(pill) or nil
+			local lr = C5.rect(C5.find(card, "LeaveButton"))
+			local underPill = pr ~= nil and r.x0 < pr.x1 and pr.x0 < r.x1 and r.y0 < pr.y1 and pr.y0 < r.y1
+			T.check(not underPill and lr.x0 >= 0 and lr.x1 <= Mock.Viewport.X and lr.y0 >= 0,
+				"p5dgn phone: the chip keeps clear of the top bar's pill and its LEAVE is on the screen",
+				string.format("chip %.0f,%.0f..%.0f,%.0f, LEAVE %.0f..%.0f", r.x0, r.y0, r.x1, r.y1, lr.x0, lr.x1))
 		end
 		local r = C5.rect(card)
 		local W, H = Mock.Viewport.X, Mock.Viewport.Y

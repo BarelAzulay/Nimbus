@@ -295,11 +295,8 @@ local function scroller(parent, name, props)
 	p.CanvasSize = UDim2.new(0, 0, 0, 0)
 	p.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	p.ScrollingDirection = Enum.ScrollingDirection.Y
-	p.ScrollBarThickness = 10
-	p.ScrollBarImageColor3 = Colors.FrameTop or Colors.Cloud
-	p.ScrollBarImageTransparency = 0.1
 	p.Parent = parent
-	return Util.Create("ScrollingFrame", p)
+	return SignKit.ScrollBar(Util.Create("ScrollingFrame", p)) -- (U9-7 look) the kit's wood bar, square ends
 end
 
 local function tween(inst, seconds, goal, style, direction)

@@ -70,7 +70,7 @@ except Exception:  # pragma: no cover
 
 GRID_SIZES = [(1920, 1080), (1280, 720), (390, 844), (844, 390)]
 EGG_FILL = 0.9  # (egg-cards) HatchLook.Metrics.EGG_PIC.Fill: the egg's share of its card picture's height
-SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
+SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "match:dash", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
              "menu:Index", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # kit B U9-9: the lost match's card, the tutorial card the player opened (phones fold it), the "press L" plank
              "results:loss", "tutorial:5:open", "mousehint",
@@ -82,7 +82,7 @@ SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "coun
              "stats", "fusion", "fusion:mix", "neon", "neon:window", "neon:hud", "neon:party", "mainmenu", "loading", "settings", "updates",
              # Phase 5 (dungeonclient): the Battle Arena window and its tabs, the Dungeon window / run card views, the
              # Sky Obby picker, the one obby portal
-             "arena", "arena:duels", "arena:raid", "arena:leaders", "arena:practice", "arena:dungeon", "arena:dungeon:party",
+             "arena", "arena:duels", "arena:raid", "arena:leaders", "arena:practice", "arena:dare", "arena:dungeon", "arena:dungeon:party",
              "dungeon", "dungeon:lobby", "dungeon:party", "dungeon:leader", "dungeon:countdown", "dungeon:run", "dungeon:loot",
              "dungeon:treasure", "dungeon:end", "dungeon:wipe", "obby", "obby:party", "obby:toast", "portal:Obby",
              # gui-redo (Task 6): the shared pet picker sheet in its Train, Upgrade and Mix contexts; (Task 8) the
@@ -1130,7 +1130,9 @@ class GuiRenderer:
         if not tx.get("scaled") and aw >= 1 and ah >= 1:
             overflow = any(p[3] > aw + 1.0 for p in placed) or total > ah + 1.0
         clipped = False
-        if on_screen and vis is not None:
+        # (kit-b U9-6) a bar's split text copies (TextFill / TextTrail / TextTrack) are cut at the fill's edge on purpose
+        split = any(part in ("TextFill", "TextTrail", "TextTrack") for part in str(n.get("path", "")).split("."))
+        if on_screen and vis is not None and not split:
             clipped = (bx0 * s < vis[0] - s or bx1 * s > vis[2] + s or top * s < vis[1] - s
                        or (top + total) * s > vis[3] + s)
         self.texts.append({"size": size, "path": n.get("path", ""), "text": re.sub(r"<[^>]*>", "", raw).strip(),
@@ -1292,7 +1294,9 @@ class GuiRenderer:
         for bx0, by0, bx1, by1 in patch_layer:
             px0, py0 = int(bx0), int(by0)
             patch = Image.new("RGBA", (int(bx1 - px0) + 1, int(by1 - py0) + 1), (0, 0, 0, 0))
-            rr(ImageDraw.Draw(patch), bx0 - px0, by0 - py0, bx1 - px0, by1 - py0, bar * s / 2.0, col)
+            # round caps (Roblox's default images) unless the bar is squared (SignKit.ScrollBar, U9-7 look)
+            radius = 0 if sc.get("square") else bar * s / 2.0
+            rr(ImageDraw.Draw(patch), bx0 - px0, by0 - py0, bx1 - px0, by1 - py0, radius, col)
             self.composite(layer, patch, px0, py0, intersect(clip, (x0, y0, x1, y1)))
 
     def draw_global(self, gui, layer):
@@ -1383,7 +1387,8 @@ class GuiRenderer:
             for k in range(3):
                 cx = (x + 13 + k * 9) * s
                 d.ellipse([cx - 2 * s, (y + b / 2 - 2) * s, cx + 2 * s, (y + b / 2 + 2) * s], fill=(255, 255, 255, 170))
-        if self.dump.get("touch"):
+        ghosts = self.dump.get("touch") and self.dump.get("touchControls", True) is not False  # (U9-5) hidden by a window: none
+        if ghosts:
             small = min(self.W, self.H) <= 500
             j = 70.0 if small else 120.0
             jx0 = self.W - (j * 1.5 + 10)
@@ -1396,7 +1401,7 @@ class GuiRenderer:
                 d.ellipse(box, outline=(255, 255, 255, 150), width=max(1, int(3 * s)))
                 d.ellipse([box[0] + 6 * s, box[1] + 6 * s, box[2] - 6 * s, box[3] - 6 * s], fill=(255, 255, 255, 38))
         layer.img.alpha_composite(over.img)
-        if self.dump.get("touch"):
+        if ghosts:
             for (x0, y1, size, name) in ((jx0, jy1, j, "jump"), (tx0, ty1, stick, "thumbstick")):
                 self.label(layer, None, (x0 + size / 2.0) * s, (y1 - size / 2.0) * s, "Roblox " + name, 140 * s,
                            (240, 244, 252), (20, 26, 50, 120), size_px=10)

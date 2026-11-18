@@ -56,7 +56,9 @@ function NK.protoRect(W, H, touch, prefW, prefH)
 		end
 		local w = math.min(prefW, maxW / scale)
 		local h = math.min(prefH, maxH / scale)
-		return { x = W - m - w * scale, y = 58 + m + (maxH - h * scale) / 2, w = w * scale, h = h * scale, scale = scale }
+		-- (contract deviation, U9-7 look: the prototype centred the dock under the top bar, which put a short dock's roof
+		-- into the HUD's currency strips at 1080p; it sits on the bottom margin, the same box when it is full height)
+		return { x = W - m - w * scale, y = H - m - h * scale, w = w * scale, h = h * scale, scale = scale }
 	end
 	-- (contract deviation, neonkit W2: the prototype let the sheet's bottom margin push its top to 0.44 H - m; the
 	-- sheet is m shorter so the top 44% really stays clear, as the cover rule checks)
@@ -103,6 +105,20 @@ function NK.rect(obj)
 	local p, sz = obj.AbsolutePosition, obj.AbsoluteSize
 	return { x0 = p.X, y0 = p.Y + dy, x1 = p.X + sz.X, y1 = p.Y + dy + sz.Y }
 end
+-- (U9-7 look) an object's box cut to every scrolling frame (and ClipsDescendants frame) above it: a list's rows scrolled
+-- out of its window draw nothing, so they cover nothing (the Dungeon's floor list scrolled to the picked floor)
+function NK.clipped(obj)
+	local r = NK.rect(obj)
+	local cur = obj.Parent
+	while cur and cur:IsA("GuiObject") do
+		if cur:IsA("ScrollingFrame") or cur.ClipsDescendants then
+			local c = NK.rect(cur)
+			r = { x0 = math.max(r.x0, c.x0), y0 = math.max(r.y0, c.y0), x1 = math.min(r.x1, c.x1), y1 = math.min(r.y1, c.y1) }
+		end
+		cur = cur.Parent
+	end
+	return r
+end
 -- the coverage.py port: % of the screen under opaque GUI (BackgroundTransparency < 0.5, images, viewports) of every
 -- enabled ScreenGui, on a 4 px grid; also the smallest on-screen text and any visible "Backdrop"
 function NK.coverage()
@@ -119,7 +135,7 @@ function NK.coverage()
 					end
 					local opaque = d.BackgroundTransparency < 0.5 or d:IsA("ImageLabel") or d:IsA("ImageButton") or d:IsA("ViewportFrame")
 					if opaque then
-						local r = NK.rect(d)
+						local r = NK.clipped(d)
 						local x0, y0 = math.max(0, math.floor(r.x0 / 4)), math.max(0, math.floor(r.y0 / 4))
 						local x1, y1 = math.min(cols, math.floor(r.x1 / 4)), math.min(rows, math.floor(r.y1 / 4))
 						for y = y0, y1 - 1 do
@@ -666,30 +682,38 @@ S.client_p5stamina = guarded("client_p5stamina", function()
 	T.check(math.abs(runFor - 10.7) < 0.05, "p5stamina: a full bar runs ~10.7 s", string.format("%.2f s", runFor))
 	T.check(refill <= 3.5, "p5stamina: it refills in <= 3.5 s", string.format("%.2f s", refill))
 	T.eq(dashes, 4, "p5stamina: 4 dashes from full")
+	-- (kit-b U9-8, restated: was a tube with 4 thin dark ticks; U9-8 look, restated: was one block per dash and a narrow fifth
+	-- for the rest) the HUD's stamina bar is a row of kit B blocks, one per dash from full, all one width
 	local bar = NK.pg():FindFirstChild("NimbusHud") and NK.pg().NimbusHud:FindFirstChild("StaminaBar", true)
-	local inner = bar and bar:FindFirstChild("Inner")
-	local ticks = {}
-	if inner then
+	local blocks = {}
+	if bar then
 		for i = 1, 8 do
-			local t = inner:FindFirstChild("Tick" .. i)
-			if t then
-				ticks[#ticks + 1] = t
+			local b = bar:FindFirstChild("Block" .. i)
+			if b then
+				blocks[#blocks + 1] = b
 			end
 		end
 	end
-	T.eq(#ticks, 4, "p5stamina: the HUD stamina tube shows 4 thin dark ticks")
-	local placed = #ticks == 4
-	for i, t in ipairs(ticks) do
-		placed = placed and math.abs(t.Position.X.Scale - i * 35 / 150) < 1e-6 and t.Size.X.Offset <= 3
-		local r, fr = NK.rect(t), NK.rect(inner)
-		placed = placed and math.abs((r.x0 + r.x1) / 2 - (fr.x0 + (fr.x1 - fr.x0) * i * 35 / 150)) < 1.5
+	T.eq(#blocks, dashes, "p5stamina: the HUD stamina bar is one block per dash from full")
+	local placed = #blocks == dashes
+	for i = 2, #blocks do
+		placed = placed and math.abs(blocks[i].AbsoluteSize.X - blocks[1].AbsoluteSize.X) < 0.01 and NK.rect(blocks[i]).x0 > NK.rect(blocks[i - 1]).x1 + 1
 	end
-	T.check(placed, "p5stamina: ...at 35 / 70 / 105 / 140 of 150 (one per dash)")
+	T.check(placed, "p5stamina: ...all one width, apart")
 	local LocalPlayer = game:GetService("Players").LocalPlayer
 	LocalPlayer:SetAttribute(Config.Attr.Stamina, 75)
 	NK.advance(1)
-	local fill = inner and inner:FindFirstChild("Fill")
-	T.check(fill and math.abs(fill.Size.X.Scale - 0.5) < 0.03, "p5stamina: 75 of 150 fills half the tube", fill and string.format("%.2f", fill.Size.X.Scale) or "no fill")
+	local lit, all = 0, 0
+	for _, b in ipairs(blocks) do
+		local face = b:FindFirstChild("Face")
+		local l = face and face:FindFirstChild("Lit")
+		if face and face.AbsoluteSize.X > 0 then -- (each block's lit share of its face, weighted by the block's width)
+			all = all + b.AbsoluteSize.X
+			lit = lit + ((l and l.Visible) and b.AbsoluteSize.X * l.AbsoluteSize.X / face.AbsoluteSize.X or 0)
+		end
+	end
+	local share = all > 0 and lit / all or -1
+	T.check(math.abs(share - 0.5) < 0.04, "p5stamina: 75 of 150 lights half the blocks", string.format("%.2f", share))
 	LocalPlayer:SetAttribute(Config.Attr.Stamina, 150)
 	NK.advance(1)
 	NK.KC().flushErrors("client_p5stamina")

@@ -1246,4 +1246,7 @@ S.client_p5battle_landscape = guarded("client_p5battle_landscape", function()
 	end
 end)
 
+-- (kit-b U9-6) the battle driver for smoke_kitb_ui's battle family walks (the same client world)
+_G.P5BattleH = H
+
 return S

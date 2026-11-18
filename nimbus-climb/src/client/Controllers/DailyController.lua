@@ -1076,7 +1076,7 @@ end
 -- (kit-b U9-4) a day tile: a kit B block (NeonKit.Card Skin "Sign"; H.paintLook gives it its face and edge, the day's
 -- colour sits on its lip)
 function H.newCell(i, parent)
-	local c = NeonKit.Card({ Name = "Cell" .. i, Skin = "Sign", Lip = DAY_COLORS[i], Size = UDim2.fromOffset(92, 122), ZIndex = 4, Parent = parent })
+	local c = NeonKit.Card({ Name = "Cell" .. i, Skin = "Sign", BodyOverLip = true, Lip = DAY_COLORS[i], Size = UDim2.fromOffset(92, 122), ZIndex = 4, Parent = parent })
 	local pop = Instance.new("UIScale")
 	pop.Name = "Pop"
 	pop.Parent = c.Root
@@ -1098,7 +1098,7 @@ end
 -- a play-time gift box (card B): the minutes, the gift, the reward and one slot (Claim, the clock or the tick); (kit-b
 -- U9-4) a kit B block like a day tile, its Claim a stone plank (Claim all is the page's one green action)
 function H.newTier(i, parent)
-	local c = NeonKit.Card({ Name = "Tier" .. i, Skin = "Sign", Lip = TIER_COLORS[i], Size = UDim2.fromOffset(104, 204), ZIndex = 4, Parent = parent })
+	local c = NeonKit.Card({ Name = "Tier" .. i, Skin = "Sign", BodyOverLip = true, Lip = TIER_COLORS[i], Size = UDim2.fromOffset(104, 204), ZIndex = 4, Parent = parent })
 	local pop = Instance.new("UIScale")
 	pop.Name = "Pop"
 	pop.Parent = c.Root

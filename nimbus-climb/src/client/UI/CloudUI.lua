@@ -442,6 +442,8 @@ CloudUI.SignLooks = {
 	Off = { Face = SIGN.Well, Lip = SIGN.Well, Edge = SIGN.WellEdge, Text = SIGN.TextMuted },
 	Gift = { Face = SIGN.Roof, Lip = SIGN.RoofLip, Edge = SIGN.Wood, Text = SIGN.Text },
 	Navy = { Face = SIGN.Navy, Lip = SIGN.NavyLip, Edge = SIGN.GoldLip, Text = SIGN.Gold },
+	-- (U9-8 look) a small secondary action in a row (the Sky Obby picker's PICK): the sky face on its SkyLip lip
+	Sky = { Face = SIGN.Sky, Lip = SIGN.SkyLip, Edge = SIGN.Wood, Text = SIGN.Text },
 }
 -- a CloudUI.Button style -> its kit B role
 CloudUI.SignRole = { Green = "Primary", Gold = "Selected", Red = "Danger", Pink = "Danger", Blue = "Stone", Gray = "Stone" }
@@ -483,7 +485,8 @@ CloudUI.SyncLip = syncLip
 -- mitred corners) and the lip (Frame "Lip" along its bottom); any UICorner, UIGradient and border UIStroke it had go. A
 -- text object gets the look's ink and a bottom padding over the lip. Calling it again repaints (a state change).
 -- opts: Face, Lip / LipColor, Edge, Text (colour overrides), EdgePx (default 3), LipPx (default 5; 0 = none), Pad (false:
--- no padding). Returns edge, lip.
+-- no padding). Returns edge, lip. (U9-8 look) The edge and the lip are whole screen px under the scale above the block
+-- (SignKit.Whole: round(px x scale); a 2 px edge drew 1.6 px and a 4 px lip 3.2 px under a phone's 0.8)
 function CloudUI.SignBlock(obj, look, opts)
 	opts = opts or {}
 	local name = type(look) == "string" and look or nil
@@ -512,7 +515,6 @@ function CloudUI.SignBlock(obj, look, opts)
 			ZIndex = obj.ZIndex,
 		}, obj)
 	end
-	lip.Size = UDim2.new(1, 0, 0, lipPx)
 	lip.BackgroundColor3 = opts.LipColor or opts.Lip or look.Lip
 	lip.Visible = lipPx > 0
 	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
@@ -525,10 +527,19 @@ function CloudUI.SignBlock(obj, look, opts)
 			pad.PaddingBottom = UDim.new(0, lipPx)
 		end
 	end
+	-- (U9-4 look review; U9-7 look) a UIPadding lays out the block's children too: syncLip reaches the lip back out by the
+	-- block's padding (the LipPad, or a caller's own), so it stays flush on the wood edge, now and whenever the pad changes
+	lip.Size = UDim2.new(1, 0, 0, lipPx)
 	syncLip(obj)
 	if name then
 		obj:SetAttribute("SignLook", name)
 	end
+	-- (U9-8 look) the edge and the lip on whole screen px, now and whenever the block moves or its window's scale changes
+	local edgePx = opts.EdgePx or SM.Edge
+	SignKit.Whole(obj, function(sc)
+		edge.Thickness = SignKit.Px(edgePx, sc)
+		lip.Size = UDim2.new(1, lip.Size.X.Offset, 0, SignKit.Px(lipPx, sc)) -- the width syncLip gave it
+	end)
 	return edge, lip
 end
 
@@ -667,7 +678,8 @@ end
 ----------------------------------------------------------------------
 -- props: Text, Style ("Green"|"Pink"|"Red"|"Blue"|"Gold"|"Gray"), Size (default 160x50), Position,
 --        AnchorPoint, Callback (called as Callback(button)), Parent, TextSize (default 22), Name,
---        LayoutOrder, ZIndex, Skin ("Sign": a kit B block, see signButton)
+--        LayoutOrder, ZIndex, Skin ("Sign": a kit B block, see signButton; a child Frame "PressFace" holding the
+--        caller's own labels sinks onto the lip with the face, kit-b U9-7)
 local function signButton(props)
 	local state = { Style = isStyleName(props.Style) and titleCase(props.Style) or "Gray" }
 	local button = Util.Create("TextButton", {
@@ -705,6 +717,11 @@ local function signButton(props)
 		local pad = button:FindFirstChild("LipPad")
 		if pad then
 			pad.PaddingTop = UDim.new(0, pressing and (SM.Lip - SM.PressLip) or 0)
+		end
+		-- (kit-b U9-7) a block that carries its own labels keeps them in a Frame "PressFace": it sinks with the face too
+		local face = button:FindFirstChild("PressFace")
+		if face then
+			face.Position = UDim2.fromOffset(0, pressing and (SM.Lip - SM.PressLip) or 0)
 		end
 	end
 	fx = attachFx(button, { Hover = 1, Press = 1, OnState = paint })
@@ -863,6 +880,9 @@ end
 -- nothing on this skin (one look for every window).
 CloudUI.Metrics.SignRoofW = 360
 CloudUI.Metrics.SignFrame = 6
+-- (U9-7 look) a Signboard window's page inset: the design px between Panel.Content's edges and the window's pages, left and
+-- right (the dock family: the Arena and Ring pages, the Dungeon's rows, the dare list)
+CloudUI.Metrics.SignPagePad = 14
 
 local function signPanel(props)
 	local hasTitle = type(props.Title) == "string" and props.Title ~= ""
@@ -891,7 +911,7 @@ local function signPanel(props)
 		ZIndex = 2,
 	}, body)
 	stone:SetAttribute("SignKit", "Body")
-	frame("Lip", {
+	local stoneLip = frame("Lip", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, SignKit.Sizes.Lip),
@@ -899,6 +919,14 @@ local function signPanel(props)
 		BackgroundColor3 = SIGN.StoneLip,
 		ZIndex = 2,
 	}, stone)
+	-- (U9-8 look) the wood frame and the stone's lip whole screen px under the window's scale (the frame drew 4.8 px at 0.8;
+	-- the header's rim follows the same rule, so the two still match)
+	SignKit.Whole(stone, function(sc)
+		local e = SignKit.Px(edge, sc)
+		stone.Position = UDim2.fromOffset(e, e)
+		stone.Size = UDim2.new(1, -2 * e, 1, -2 * e)
+		stoneLip.Size = UDim2.new(1, 0, 0, SignKit.Px(SignKit.Sizes.Lip, sc))
+	end)
 	local content = frame("Content", {
 		Position = UDim2.new(0, PANEL_PAD, 0, topInset),
 		Size = UDim2.new(1, -2 * PANEL_PAD, 1, -(topInset + PANEL_PAD)),
@@ -927,8 +955,10 @@ local function signPanel(props)
 		if slot and props.Icon then
 			local icon = PixelIcon.New(slot, props.Icon, 27, SIGN.Text)
 			if icon then
-				icon.AnchorPoint = Vector2.new(0.5, 0.5)
-				icon.Position = UDim2.fromScale(0.5, 0.5)
+				-- (U9-7 look) by a whole-pixel offset: centred by AnchorPoint 0.5 the 27 px icon in the 42 px square sat on a
+				-- half pixel on every Signboard window
+				local inset = math.floor((slot.Size.X.Offset - 27) / 2)
+				icon.Position = UDim2.fromOffset(inset, inset)
 			end
 		end
 	end
@@ -2509,10 +2539,8 @@ function CloudUI.Grid(parent, cellSize, cellPadding)
 		CanvasSize = UDim2.new(0, 0, 0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 10,
-		ScrollBarImageColor3 = Theme.Lighten(NEON.Blue, 0.2),
-		ScrollBarImageTransparency = 0.1,
 	})
+	SignKit.ScrollBar(scroll) -- (U9-7 look) the kit's wood bar, square ends (was the old kit's 10 px neon blue)
 	padding(scroll, 10, 10, 10, 10)
 	Util.Create("UIGridLayout", {
 		Name = "Layout",

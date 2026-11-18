@@ -316,7 +316,7 @@ end
 -- (kit-b U9-2) a kit B block: `face` (stone, or the hero's navy plank), the pack's own colour on the lip
 local function card(name, parent, color, face)
 	local navy = face == SIGN.Navy
-	return NeonKit.Card({ Name = name, Skin = "Sign", Face = face or SIGN.Tile, Lip = color, Edge = navy and SIGN.GoldLip or nil, Size = UDim2.fromOffset(298, 380), Parent = parent })
+	return NeonKit.Card({ Name = name, Skin = "Sign", BodyOverLip = true, Face = face or SIGN.Tile, Lip = color, Edge = navy and SIGN.GoldLip or nil, Size = UDim2.fromOffset(298, 380), Parent = parent })
 end
 
 -- (kit-b U9-2) a square wood edge (mitred) on a kit B tag

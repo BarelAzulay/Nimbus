@@ -746,6 +746,8 @@ local function nodeOf(inst, ctx, path, order)
 			bar = (tonumber(inst.ScrollBarThickness) or 12) * s,
 			color = rgb(inst.ScrollBarImageColor3),
 			t = tonumber(inst.ScrollBarImageTransparency) or 0,
+			-- (U9-7 look) square ends when the top and bottom images are the middle piece (SignKit.ScrollBar)
+			square = get(inst, "TopImage") ~= nil and get(inst, "TopImage") == get(inst, "MidImage") and get(inst, "BottomImage") == get(inst, "MidImage"),
 			direction = enumName(get(inst, "ScrollingDirection")),
 			canvas = { cw, ch },
 			position = { cp.X, cp.Y },
@@ -760,6 +762,8 @@ local function walk()
 		viewport = { Mock.Viewport.X, Mock.Viewport.Y },
 		inset = Mock.TopInset or 0,
 		touch = UserInputService.TouchEnabled == true,
+		-- (U9-5) false while a window hid Roblox's thumbstick and jump button (MenuController.SetTouchHidden): no ghosts drawn
+		touchControls = game:GetService("GuiService").TouchControlsEnabled ~= false,
 		guis = {},
 		skipped3d = 0,
 		hidden = 0,
@@ -982,6 +986,21 @@ scenario("match", function(arg)
 		try("stamina drain", drainStamina, 1.4)
 		toClient("DamageTaken", 65, "Lightning")
 		advance(0.25)
+	elseif arg == "dash" then
+		-- (kit-b U9-8) the vitals' dash key and the touch DASH while the dash cools down: a dash, seen 0.45 s later
+		advance(2.2)
+		try("stamina drain", drainStamina, 1.4)
+		local h = hum()
+		if h then
+			h.MoveDirection = Vector3.new(0, 0, -1)
+		end
+		Mock.TriggerAction("NimbusDash", "Begin", Mock.NewInput("Q", "Keyboard", "Begin"))
+		advance(0.05)
+		Mock.TriggerAction("NimbusDash", "End", Mock.NewInput("Q", "Keyboard", "End"))
+		if h then
+			h.MoveDirection = Vector3.new(0, 0, 0)
+		end
+		advance(0.4)
 	else
 		advance(2.2)
 		try("stamina drain", drainStamina, 1.4) -- last, so the bar has no time to refill
@@ -3221,7 +3240,7 @@ end)
 -- [owner: dungeonclient] begin
 -- Phase 5 side panels of dungeonclient (W4): the Dungeon window + run card + End card (DungeonController), the obby
 -- level picker (ObbyController), the Champion Ring and Arena windows (ArenaController, docked; arena:trials is gone).
---   arena[:<view>]          team | team4 | newteam (MenuController, unchanged) | duels | raid | leaders | side | practice
+--   arena[:<view>]          team | team4 | newteam (MenuController, unchanged) | duels | raid | leaders | side | practice | dare
 --                           (a practice invite on the side card) | dungeon[:<dview>] (= dungeon:<dview>)
 --   dungeon[:<dview>]       lobby (default: the window, two open parties) | party (a member, READY not pressed) |
 --                           leader (the leader: KICK, START, the 30 s READY clock) | countdown (window closed: the side
@@ -3273,6 +3292,25 @@ end
 
 function DGC.dungeon(view)
 	view = tostring(view or "lobby"):lower()
+	-- (U9-7 look) the End card's reason row and the phone chip measure their text (DungeonController.Metrics.MEASURE): the
+	-- renderer's font metrics, wrapped as the drawing wraps (the mock's GetTextSize is a flat 0.5 em and never wraps)
+	local DCm = req("client/Controllers/DungeonController")
+	local ThemeM = req("shared/Theme")
+	if DCm and type(DCm.Metrics) == "table" then
+		local probe = Instance.new("TextLabel")
+		DCm.Metrics.MEASURE = function(label, text, width)
+			local role = label:GetAttribute("FontRole")
+			text = tostring(text or "")
+			if ThemeM and role and ThemeM.CapsRoles and ThemeM.CapsRoles[role] then
+				text = ThemeM.Caps(text)
+			end
+			probe.FontFace = label.FontFace
+			probe.TextSize = label.TextSize
+			probe.Text = text
+			local w, h = Mock.TextExtent(probe, width)
+			return Vector2.new(w, h)
+		end
+	end
 	DGC.profile()
 	local me, myName = DGC.me()
 	if type(Mock.AddPlayer) == "function" then
@@ -3357,6 +3395,18 @@ do
 			DGC.dungeon("lobby")
 			return
 		end
+		if view == "dare" then
+			-- (kit-b U9-7) the boss gate pillar's dare panel (RaidGateController.OpenDare) over the raid's state
+			if phase3Arena then
+				phase3Arena("raid", arg)
+			end
+			local RG = req("client/Controllers/RaidGateController", true)
+			if RG and type(RG.OpenDare) == "function" then
+				try("dare", RG.OpenDare)
+			end
+			advance(1.2)
+			return
+		end
 		if view == "practice" then
 			DGC.profile()
 			toClient("BattleState", "Lobby", {
@@ -3396,8 +3446,20 @@ scenario("obby", function(view)
 		return
 	end
 	if view == "toast" then
-		toClient("MatchResult", { Won = true, Reason = "Finished", Seconds = 380, MatchTokens = 40, Bonus = 35, DifficultyId = "Hard", DifficultyName = "Hard", Stars = 3, TotalTokens = 60, Members = {} })
-		advance(1.0)
+		-- (kit-b U9-8) a won Extreme match (the profile has beaten Hard: Saint opens) with its result card up; a screen with no
+		-- room beside the card shows the toast once the match is over and the card has gone (back in the lobby)
+		LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
+		toClient("MatchState", matchState({ DifficultyId = "Extreme", DifficultyName = "Extreme", Color = difficulty("Extreme").Color }))
+		advance(0.6)
+		toClient("MatchResult", { Won = true, Reason = "Finished", Seconds = 451, MatchTokens = 40, Bonus = 60, DifficultyId = "Extreme", DifficultyName = "Extreme", Stars = 4, TotalTokens = 60, Members = {} })
+		advance(1.2)
+		local tg = LocalPlayer.PlayerGui:FindFirstChild("NimbusObbyToast")
+		local card = tg and tg:FindFirstChild("UnlockToast", true)
+		if not (card and card.Visible) then
+			LocalPlayer:SetAttribute(Config.Attr.InMatch, false)
+			toClient("MatchState", nil)
+			advance(1.4)
+		end
 		return
 	end
 	toClient("OpenPanel", "Obby", {})

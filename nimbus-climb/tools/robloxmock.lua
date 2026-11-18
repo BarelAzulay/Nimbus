@@ -4784,7 +4784,10 @@ defclass("Frame", "GuiObject", { creatable = true, props = { Style = T.any(nil) 
 defclass("CanvasGroup", "GuiObject", { creatable = true, props = { GroupTransparency = T.num(0), GroupColor3 = T.rgb(255, 255, 255) } })
 defclass("ScrollingFrame", "GuiObject", {
 	creatable = true,
-	props = { CanvasSize = T.u2(0, 0, 2, 0), CanvasPosition = T.v2(0, 0), ScrollBarThickness = T.num(12), ScrollingEnabled = T.bool(true), AutomaticCanvasSize = T.enum("AutomaticSize", "None"), ScrollingDirection = T.enum("ScrollingDirection", "XY"), ScrollBarImageColor3 = T.rgb(0, 0, 0), ScrollBarImageTransparency = T.num(0) },
+	props = { CanvasSize = T.u2(0, 0, 2, 0), CanvasPosition = T.v2(0, 0), ScrollBarThickness = T.num(12), ScrollingEnabled = T.bool(true), AutomaticCanvasSize = T.enum("AutomaticSize", "None"), ScrollingDirection = T.enum("ScrollingDirection", "XY"), ScrollBarImageColor3 = T.rgb(0, 0, 0), ScrollBarImageTransparency = T.num(0),
+		-- (U9-7 look) the bar's three images, Roblox's defaults (round top / bottom caps; SignKit.ScrollBar squares them)
+		TopImage = T.str("rbxasset://textures/ui/Scroll/scroll-top.png"), MidImage = T.str("rbxasset://textures/ui/Scroll/scroll-middle.png"),
+		BottomImage = T.str("rbxasset://textures/ui/Scroll/scroll-bottom.png") },
 })
 defclass("ViewportFrame", "GuiObject", { creatable = true, props = { CurrentCamera = T.inst(), ImageColor3 = T.rgb(255, 255, 255), ImageTransparency = T.num(0), Ambient = T.rgb(200, 200, 200), LightColor = T.rgb(140, 140, 140), LightDirection = T.v3(-1, -1, -1) } })
 defclass("VideoFrame", "GuiObject", { creatable = true })

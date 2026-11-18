@@ -385,7 +385,9 @@ local function clientScenarios()
 		end
 		local f1, f2, f3 = row:FindFirstChild("Face1"), row:FindFirstChild("Face2"), row:FindFirstChild("Face3")
 		T.check(f1 and f1.Tag.Text == "FIGHTER" and f2 and f2.Tag.Text == "HELPER" and f2.Level.Text == "L" .. LEVELS[K2], label .. ": three faces: FIGHTER / HELPER, the level", f2 and f2.Level.Text)
-		T.check(f3 and H.shown(f3.Empty) and f3.Empty.Text == "Training" and H.shown(f3.Busy), label .. ": the training pet is not fielded: its face says Training", f3 and f3.Empty.Text)
+		-- (U9-7 look) a Compact face (a portrait phone) says the word alone, without the mark
+		local compact = f3 ~= nil and f3.Tag.Size.X.Scale == 1 -- (a Compact face's tag runs across the tile)
+		T.check(f3 and H.shown(f3.Empty) and f3.Empty.Text == "Training" and (H.shown(f3.Busy) ~= (compact == true)), label .. ": the training pet is not fielded: its face says Training", f3 and f3.Empty.Text)
 		T.check(not H.shown(f1:FindFirstChild("Empty")) and H.shown(f1.Picture), label .. ": a fielded pet shows its picture")
 		local power = TF and TF.Power() or -1
 		local tp = row:FindFirstChild("TeamPower", true)

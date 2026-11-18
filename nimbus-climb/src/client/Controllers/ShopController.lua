@@ -870,6 +870,7 @@ function H.buildCard(item, page, isHero)
 		Name = "Card_" .. item.Key,
 		Class = "TextButton",
 		Skin = "Sign",
+		BodyOverLip = true, -- the card's rows lie over its lip, as the Shop drew them
 		Size = UDim2.fromOffset(600, 108),
 		ClipsDescendants = isHero == true,
 		Parent = page,
@@ -912,7 +913,7 @@ function H.buildCard(item, page, isHero)
 	end
 	local status = label("Status", b, "", "Body", 15, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = GOLD })
 	-- the price: a gold tag in its wood edge (brown ink)
-	local pricePill = NeonKit.Card({ Name = "PricePill", Skin = "Sign", Face = SIGN.Gold, Lip = SIGN.GoldLip, Parent = b })
+	local pricePill = NeonKit.Card({ Name = "PricePill", Skin = "Sign", BodyOverLip = true, Face = SIGN.Gold, Lip = SIGN.GoldLip, Parent = b })
 	pricePill.Stroke.Thickness = 2
 	local price = label("Text", pricePill.Body, "...", "Display", 20, { Size = UDim2.fromScale(1, 1), TextColor3 = SIGN.Text })
 	local buyHolder = frame("BuyHolder", b)

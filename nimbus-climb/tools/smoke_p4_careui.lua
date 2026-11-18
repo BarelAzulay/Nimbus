@@ -408,7 +408,12 @@ S.client_p4careui_feed = guarded("client_p4careui_feed", function()
 	T.check(barText and barText.Text == Util.Commas(300) .. " / " .. Util.Commas(TC.XpToNext(12)) .. " XP", "careui feed: ...and the XP bar (300 / XpToNext(12))", barText and barText.Text or "")
 	-- Phase 5 (3.4): ONE Feed button with the berry price; no "Level up"
 	local cost1 = TC.FeedBerries(def1, 12)
-	local wantFeed = "Feed  " .. Util.Commas(cost1) .. " berries  (+" .. Util.Commas(TC.FeedXp(12, 2)) .. " XP)"
+	-- (kit-b U9-5 review) a basket short of the price (1,240 here) shows the price in Theme.Sign.RedLip
+	local price = Util.Commas(cost1) .. " berries"
+	if cost1 > 1240 then
+		price = '<font color="#b8364f">' .. price .. "</font>"
+	end
+	local wantFeed = "Feed  " .. price .. "  (+" .. Util.Commas(TC.FeedXp(12, 2)) .. " XP)"
 	local feedBtn = r1 and find(r1, "Feed")
 	T.eq(feedBtn and feedBtn.Text, wantFeed, "careui feed: ONE Feed button 'Feed  N berries  (+xp XP)' from TycoonCatalog.FeedBerries / FeedXp")
 	local upBtn = nil
@@ -432,6 +437,8 @@ S.client_p4careui_feed = guarded("client_p4careui_feed", function()
 	T.eq(#calls("PetCare", mark), cost1 > 1240 and 0 or 1, "careui feed: Feed with too few berries sends nothing (the hint says how many it needs)")
 	LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", cost1 + 500)
 	advance(0.6)
+	T.eq(feedBtn and feedBtn.Text, "Feed  " .. Util.Commas(cost1) .. " berries  (+" .. Util.Commas(TC.FeedXp(12, 2)) .. " XP)",
+		"careui feed: ...and with enough berries the price has no red")
 	mark = #Mock.RemoteLog
 	Mock.Click(feedBtn)
 	advance(0.4)

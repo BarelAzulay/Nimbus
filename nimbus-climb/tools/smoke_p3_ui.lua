@@ -804,14 +804,16 @@ local function clientScenarios()
 			local row = find(arenaWin, "Rank" .. i)
 			if row then
 				rows = rows + 1
-				local nm = row:FindFirstChild("Name")
-				if nm and nm.Text:lower():find("(you)", 1, true) then
+				-- (U9-7 look) the player's own row carries a YOU chip before the trophies (the "(you)" suffix got cut)
+				local you = row:FindFirstChild("You")
+				local word = you and you:FindFirstChild("Word")
+				if word and shown(you) and word.Text == "YOU" then
 					mine = i
 				end
 			end
 		end
 		T.eq(rows, 3, "p3ui arena: one leaderboard row per ArenaState.Leaderboard entry")
-		T.eq(mine, 2, "p3ui arena: the player's own row is marked (you)")
+		T.eq(mine, 2, "p3ui arena: the player's own row is marked with its YOU chip")
 		local small3 = smallTexts(arenaWin, 18)
 		T.check(#small3 == 0, "p3ui arena: every text of the leaders tab is >= 18 design px", table.concat(small3, ", "))
 		-- a duel pad prompt (RingIndex) opens the Duels tab
@@ -835,8 +837,11 @@ local function clientScenarios()
 			Fights = { Starter = { Tier = "Starter", Floor = true, Players = 2, Hp = 500, MaxHp = 1000, EndsIn = 200 } } } }))
 		advance(0.5)
 		T.check(find(arenaWin, "JoinRaid") == nil and find(arenaWin, "Why") == nil, "p3ui arena: the Raid tab has no JOIN RAID: walking through the gate is the whole step")
+		-- (U9-7 look) my tier is a tile of tags: its caption and the tier's chip
 		local tierLine = find(arenaWin, "TierLine")
-		T.check(tierLine and shown(tierLine) and tierLine.Text:find("Your tier: Starter", 1, true) ~= nil, "p3ui arena: ...it says my tier instead", tierLine and tierLine.Text)
+		local caption, chip = tierLine and find(tierLine, "Caption"), tierLine and find(tierLine, "Tier")
+		T.check(tierLine and shown(tierLine) and caption and caption.Text:upper() == "YOUR TIER" and chip and chip.Text:upper() == "STARTER", "p3ui arena: ...it says my tier instead",
+			chip and chip.Text)
 		local small5 = smallTexts(arenaWin, 18)
 		T.check(#small5 == 0, "p3ui arena: every text of the Raid tab is >= 18 design px", table.concat(small5, ", "))
 		AC.Close()
