@@ -7955,12 +7955,13 @@ local function clientScenarios()
 		return true
 	end
 	-- the UICorners and the UIGradients under `root` that are not kit B's (the art keeps its own, attribute Art up the tree;
-	-- a track's end "Fade" and the land's "Sweep" are flat colours fading out; a letter's hard "Bands")
+	-- the land's "Sweep" is a hard-edged flat band; a letter's hard "Bands"). (look review) the rail's ends are flat lines
+	-- now: a "Fade" gradient counts
 	function U92b.roundOrGloss(root)
 		local out = {}
 		for _, d in ipairs(root and root:GetDescendants() or {}) do
 			local p = d.Parent
-			if (d:IsA("UICorner") or (d:IsA("UIGradient") and d.Name ~= "Fade" and d.Name ~= "Sweep" and d.Name ~= "Bands")) and p and p:IsA("GuiObject") and U8.shown(p) and not designedLook(d) then
+			if (d:IsA("UICorner") or (d:IsA("UIGradient") and d.Name ~= "Sweep" and d.Name ~= "Bands")) and p and p:IsA("GuiObject") and U8.shown(p) and not designedLook(d) then
 				local cur, art = p, false
 				while cur and not cur:IsA("LayerCollector") do
 					art = art or cur:GetAttribute("Art") ~= nil or cur.Name == "PetViewport" or cur.Name == "GemIcon" or (cur:GetAttribute("Form") ~= nil and cur:GetAttribute("Rarity") ~= nil)
@@ -7969,6 +7970,31 @@ local function clientScenarios()
 				if not art then
 					out[#out + 1] = d.ClassName .. " on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
 				end
+			end
+		end
+		return out
+	end
+	-- (look review: whole px) the objects among `list` ({ name, GuiObject }) whose screen box is not on whole px: measured
+	-- from `ref`'s corner when given (the strips slide by fractions of a px once the rise starts: what is drawn inside them
+	-- keeps its place against the track)
+	function U92b.offGrid(list, ref)
+		local out = {}
+		local ox, oy = 0, 0
+		if ref then
+			ox, oy = ref.AbsolutePosition.X, ref.AbsolutePosition.Y
+		end
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) < 0.02
+		end
+		for _, it in ipairs(list) do
+			local o = it[2]
+			if o and U8.shown(o) then
+				local p, s = o.AbsolutePosition, o.AbsoluteSize
+				if not (whole(p.X - ox) and whole(p.Y - oy) and whole(s.X) and whole(s.Y)) then
+					out[#out + 1] = fmt("%s at %.2f,%.2f %.2fx%.2f", it[1], p.X - ox, p.Y - oy, s.X, s.Y)
+				end
+			elseif not o then
+				out[#out + 1] = it[1] .. " missing"
 			end
 		end
 		return out
@@ -8076,6 +8102,27 @@ local function clientScenarios()
 					end
 				end
 				T.check(#hits == 0, tag .. ": the title's words clear the x3 strips' wood frames and the window's notches", table.concat(hits, "; ", 1, math.min(#hits, 6)))
+				-- (look review) room round the shelf: sky between the title's line box and the first rail's wood frame (the
+				-- capitals' ink ends a descender band above that box's bottom: >= 4 px here is >= 8 px of sky under the
+				-- letters), and >= 12 px between the last rail's frame and the chips; the three rails share their beams (one
+				-- shelf: each rail's frame starts where the rail above ends)
+				local o1 = content.Strips:FindFirstChild("Strip1") and content.Strips.Strip1:FindFirstChild("Outer")
+				local o3 = content.Strips:FindFirstChild("Strip3") and content.Strips.Strip3:FindFirstChild("Outer")
+				local skipChip = content:FindFirstChild("BottomBar") and content.BottomBar:FindFirstChild("Skip")
+				local pill = skipChip and skipChip:FindFirstChild("Pill")
+				local gapTop = o1 and (U8.rect(o1).Y - drawn[1][2].B) or -1
+				local gapBot = (o3 and pill) and (U94.strokeBox(pill).Y - U8.rect(o3).B) or -1
+				T.check(gapTop >= 4 and gapBot >= 12, tag .. ": sky under the title (>= 4 px past its line box) and >= 12 px above the chips round the x3 shelf",
+					fmt("top %.1f px, bottom %.1f px", gapTop, gapBot))
+				local beams = {}
+				for j = 1, 2 do
+					local tr = content.Strips:FindFirstChild("Strip" .. j) and content.Strips["Strip" .. j]:FindFirstChild("Track")
+					local nxt = content.Strips:FindFirstChild("Strip" .. (j + 1)) and content.Strips["Strip" .. (j + 1)]:FindFirstChild("Outer")
+					if not (tr and nxt and math.abs(U8.rect(nxt).Y - U8.rect(tr).B) < 0.5) then
+						beams[#beams + 1] = fmt("Strip%d: %s", j + 1, (tr and nxt) and fmt("frame at %.1f, rail above ends %.1f", U8.rect(nxt).Y, U8.rect(tr).B) or "missing")
+					end
+				end
+				T.check(#beams == 0, tag .. ": the x3 rails share their beams (one shelf)", table.concat(beams, "; "))
 				U92b.close()
 			end)
 		end
@@ -8150,8 +8197,30 @@ local function clientScenarios()
 				T.check(#notches == 0, tag .. ": the window's notches are stepped pixel pointers (no turn, no corner, no stroke)", table.concat(notches, "; "))
 				local stripGloss = U92b.roundOrGloss(content and content:FindFirstChild("Strips"))
 				T.check(#stripGloss == 0, tag .. ": nothing round or glossy in the strip (the eggs are art)", table.concat(stripGloss, "; ", 1, math.min(#stripGloss, 6)))
-				-- the landed card: the selected face (the strip lands at Intro 0.35 + Strip 3.0 s; the rise starts 0.35 s on)
-				LKC.advance(1.9)
+				-- (look review) the rail's ends: a flat navy-lip line each over the cards, the rail's full height (no airbrushed
+				-- fade); the rail and its wood frame on whole px
+				local ends = {}
+				for _, name in ipairs({ "EndL", "EndR" }) do
+					local e = track and track:FindFirstChild(name)
+					if not (e and U8.shown(e) and sameColor(e.BackgroundColor3, Sign.NavyLip) and e.BackgroundTransparency == 0 and e:FindFirstChildOfClass("UIGradient") == nil
+						and math.abs(e.AbsoluteSize.Y - track.AbsoluteSize.Y) < 0.5 and e.AbsoluteSize.X >= 1 and e.AbsoluteSize.X <= 3) then
+						ends[#ends + 1] = name .. (e and fmt(" %s %.1fx%.1f", hex(e.BackgroundColor3), e.AbsoluteSize.X, e.AbsoluteSize.Y) or " missing")
+					end
+				end
+				T.check(#ends == 0 and track ~= nil and track:FindFirstChild("FadeL") == nil and track:FindFirstChild("FadeR") == nil,
+					tag .. ": the rail's ends are flat navy-lip lines over the cards (no airbrushed fade)", table.concat(ends, "; "))
+				local offRail = U92b.offGrid({ { "Track", track }, { "Outer", outer } })
+				T.check(#offRail == 0, tag .. ": the rail and its wood frame sit on whole px", table.concat(offRail, "; "))
+				-- (look review) the land at rest, on the frame the rise starts (the strip lands at Intro 0.35 + Strip 3.0 s, its
+				-- hop and spring done by Land's end): the landed card the selected face in the ink edge (the Pets grid's pick),
+				-- never scaled, its edge inside the window with navy round it and inside the rail (nothing clips it); the card,
+				-- the window and the notch rows on whole px against the track (the strips start sliding away that frame); the
+				-- notch's unit the kit's pixel (3 px on PC, 2 on a phone)
+				Mock.AdvanceUntil(function()
+					local SS = ES._S
+					return SS.Roll ~= nil and SS.Roll.HeroBuilt == true
+				end, 6, 1 / 120)
+				Mock.Advance(0.05, 1 / 120) -- (the window's bounce, started on the land's frame, ends a few frames after Land)
 				local landed = nil
 				for _, c in ipairs(track and track:GetChildren() or {}) do
 					if c.Name:match("^Cell%d+$") and c:GetAttribute("Index") == 34 and c.Visible then
@@ -8159,13 +8228,46 @@ local function clientScenarios()
 					end
 				end
 				T.check(landed ~= nil and sameColor(landed.BackgroundColor3, Sign.Selected), tag .. ": the landed card wears the selected face", landed and hex(landed.BackgroundColor3) or "no landed card")
+				if landed then
+					local edge = landed:FindFirstChild("SignEdge")
+					local scaled = nil
+					for _, c in ipairs(landed:GetChildren()) do
+						if c:IsA("UIScale") and math.abs(c.Scale - 1) > 1e-6 then
+							scaled = c.Name .. " " .. tostring(c.Scale)
+						end
+					end
+					T.check(edge ~= nil and sameColor(edge.Color, Sign.Text) and scaled == nil, tag .. ": the landed card's edge is the ink (the kit's selected mark) and it is never scaled",
+						fmt("edge %s, %s", edge and hex(edge.Color) or "-", scaled or "no scale"))
+					local winF = pointer and pointer:FindFirstChild("Window")
+					local cb, wb, tb = U94.strokeBox(landed), winF and U8.rect(winF), U8.rect(track)
+					local navy = wb and math.min(cb.X - wb.X, wb.R - cb.R, cb.Y - wb.Y, wb.B - cb.B) or -1
+					local inRail = math.min(cb.Y - tb.Y, tb.B - cb.B)
+					T.check(navy >= 2 and inRail >= 0, tag .. ": the landed card's edge lies inside the window with navy round it, and inside the rail (no clip)",
+						fmt("navy %.1f px, rail %.1f px", navy, inRail))
+					local list = { { "landed card", landed }, { "window", pointer } }
+					for _, name in ipairs({ "NotchTop", "NotchBottom" }) do
+						local n = pointer and pointer:FindFirstChild(name)
+						list[#list + 1] = { name, n }
+						for _, row in ipairs({ "Row2", "Row3" }) do
+							list[#list + 1] = { name .. "." .. row, n and n:FindFirstChild(row) }
+						end
+					end
+					local off = U92b.offGrid(list, track)
+					T.check(#off == 0, tag .. ": the landed card, the window and every notch row sit on whole px", table.concat(off, "; ", 1, math.min(#off, 6)))
+					local nt = pointer and pointer:FindFirstChild("NotchTop")
+					local unit = s[3] and 2 or 3
+					T.check(nt ~= nil and math.abs(nt.AbsoluteSize.Y - unit) < 0.01 and math.abs(nt.AbsoluteSize.X - 6 * unit) < 0.01,
+						tag .. ": the notch's pixel unit is the kit's (" .. unit .. " px: rows 6 / 4 / 2 units)", nt and fmt("%.2f x %.2f", nt.AbsoluteSize.X, nt.AbsoluteSize.Y) or "no notch")
+				end
 				U92b.close()
-				-- the x3 strip (PC: a phone's lite cards carry no word): each card's rarity word in capitals, as on the x1 plate
+				-- the x3 strip (PC: a phone's lite cards carry no word): each card's rarity word in capitals, as on the x1 plate;
+				-- (look review) on the x1's plate too: one card family (the plate its word + 12 px tall in the rarity's readable
+				-- colour, the word in the ink that reads on it)
 				if not s[3] then
 					local ES3 = U92b.show("x3")
 					LKC.advance(1.6)
 					local c3 = U92b.content()
-					local words, low = 0, {}
+					local words, low, loose = 0, {}, {}
 					for j = 1, 3 do
 						local st3 = c3 and c3:FindFirstChild("Strips") and c3.Strips:FindFirstChild("Strip" .. j)
 						local tr3 = st3 and st3:FindFirstChild("Track")
@@ -8176,11 +8278,20 @@ local function clientScenarios()
 								if w.Text ~= w.Text:upper() then
 									low[#low + 1] = w.Text
 								end
+								local plate = w.Parent
+								local rarity = w.Text:sub(1, 1) .. w.Text:sub(2):lower()
+								local face, ink = Theme.ReadableFace(HL.RarityColor(rarity), 4.5)
+								if not (plate and plate.Name == "Plate" and plate.Parent == c and math.abs(plate.AbsoluteSize.Y - (w.TextSize + 12) * U8.scaleOf(plate)) < 0.6
+									and sameColor(plate.BackgroundColor3, face) and sameColor(w.TextColor3, ink)) then
+									loose[#loose + 1] = fmt("%s.%s %q on %s", st3.Name, c.Name, w.Text, plate and plate.Name or "?")
+								end
 							end
 						end
 					end
 					T.check(ES3 ~= nil and words >= 4 and #low == 0, tag .. ": x3: every card's rarity word in capitals (as on the x1 plate)",
 						fmt("%d words; %s", words, table.concat(low, ", ", 1, math.min(#low, 4))))
+					T.check(#loose == 0, tag .. ": x3: every card's word sits on its plate (word + 12 px, the rarity's readable colour): the x1 card's family",
+						table.concat(loose, "; ", 1, math.min(#loose, 4)))
 					U92b.close()
 				end
 				-- the reveal
@@ -8192,7 +8303,8 @@ local function clientScenarios()
 					return
 				end
 				local blocks = {}
-				for _, b in ipairs({ { again, Sign.Gold, "Spin again" }, { done, Sign.Grass, "Done" } }) do
+				-- (look review) Spin again is the Shop's Spin plank: stone (gold means selected), Done the one green action
+				for _, b in ipairs({ { again, Sign.Tile, "Spin again" }, { done, Sign.Grass, "Done" } }) do
 					local p = HL.PillParts(b[1])
 					local body = p.Body
 					local edge = body and body:FindFirstChild("SignEdge")
@@ -8202,7 +8314,7 @@ local function clientScenarios()
 						blocks[#blocks + 1] = fmt("%s: %s %q", b[1].Name, body and hex(body.BackgroundColor3) or "no body", p.Label and p.Label.Text or "?")
 					end
 				end
-				T.check(#blocks == 0, tag .. ": Spin again the gold block, Done the green one, each in its wood edge on a darker lip, no shadow or shine, sentence case",
+				T.check(#blocks == 0, tag .. ": Spin again the stone plank, Done the green one, each in its wood edge on a darker lip, no shadow or shine, sentence case",
 					table.concat(blocks, "; "))
 				local greens = U92b.greens(bar)
 				T.check(#greens == 1 and greens[1] == "Done", tag .. ": Done is the stage's one green action", table.concat(greens, ", "))
@@ -8226,11 +8338,43 @@ local function clientScenarios()
 					table.sort(out)
 					return out
 				end
+				-- (look review) the Shop's Spin row: the coin in its deep gold (Sign.GoldLip), the price in the Button role in the
+				-- plank's brown, inline after the label (no tag box), the coin's cells on whole px
 				local ink = coinInk()
-				T.check(#ink == 1 and ink[1] == hex(Sign.Text), tag .. ": the token coin on the price tag is drawn in the tag's brown ink (it reads on the cream)", table.concat(ink, ", "))
-				T.check(tagFace ~= nil and U8.shown(tagFace) and sameColor(tagFace.BackgroundColor3, Sign.Tile) and tagFace:FindFirstChild("SignEdge") ~= nil and coin
-					and ap.Price and ap.Price.Text == "50" and sameColor(ap.Price.TextColor3, Sign.Text),
-					tag .. ": Spin again's price is a stone tag: the token coin + 50 in brown", tagFace and (hex(tagFace.BackgroundColor3) .. " " .. (ap.Price and ap.Price.Text or "?")) or "no tag")
+				T.check(#ink == 1 and ink[1] == hex(Sign.GoldLip), tag .. ": the token coin is drawn in the Shop's deep gold (Sign.GoldLip)", table.concat(ink, ", "))
+				local lr, cr = ap.Label and U8.rect(ap.Label), ap.Coin and U8.rect(ap.Coin)
+				local pr = ap.Price and U8.rect(ap.Price)
+				local br = ap.Body and U8.rect(ap.Body)
+				local inline = lr and cr and pr and br and cr.X >= lr.R - 1 and pr.X >= cr.R and cr.Y >= br.Y and cr.B <= br.B
+				T.check(tagFace ~= nil and U8.shown(tagFace) and tagFace.BackgroundTransparency == 1 and tagFace:FindFirstChild("SignEdge") == nil and tagFace:FindFirstChild("Lip") == nil and coin
+					and ap.Price and ap.Price.Text == "50" and sameColor(ap.Price.TextColor3, Sign.Text) and ap.Price:GetAttribute("FontRole") == "Button"
+					and ap.Price.TextSize == ap.Label.TextSize and inline,
+					tag .. ": Spin again's price sits inline like the Shop's Spin: the token coin + 50 in the Button role at the label's size, brown, no tag box",
+					fmt("tag %s, price %q role %s, inline %s", tagFace and tostring(tagFace.BackgroundTransparency) or "-", ap.Price and ap.Price.Text or "?",
+						ap.Price and tostring(ap.Price:GetAttribute("FontRole")) or "?", tostring(inline)))
+				local coinOff = U94.halfPixels(ap.Coin)
+				T.check(#coinOff == 0, tag .. ": the token coin's cells sit on whole px", table.concat(coinOff, "; ", 1, math.min(#coinOff, 4)))
+				-- (look review) the Fast hatch switch is the kit's one switch (the Shop's part: CloudUI.SignSwitch): the sunk
+				-- well slot in its well edge, the stone knob in its wood edge; on, the slot gold in its gold lip (never green
+				-- beside Done); the slot and the knob on whole px
+				local SL = CloudUI.SwitchLook or {}
+				local fastChip = bar:FindFirstChild("FastHatch")
+				local sw = fastChip and fastChip:FindFirstChild("Switch", true)
+				local knob = sw and sw:FindFirstChild("Knob")
+				local function swState()
+					local se, ke = sw and sw:FindFirstChild("SignEdge"), knob and knob:FindFirstChild("SignEdge")
+					return { face = sw and sw.BackgroundColor3, edge = se and se.Color, knob = knob and knob.BackgroundColor3, kedge = ke and ke.Color, x = knob and knob.AbsolutePosition.X or 0 }
+				end
+				local offS = swState()
+				HL.SetFast(fastChip, true)
+				local onS = swState()
+				HL.SetFast(fastChip, false)
+				T.check(sw ~= nil and knob ~= nil and sameColor(offS.face, SL.Slot) and sameColor(offS.edge, SL.SlotEdge) and sameColor(offS.knob, SL.Knob) and sameColor(offS.kedge, SL.KnobEdge)
+					and sameColor(onS.face, SL.On) and sameColor(onS.edge, SL.OnEdge) and onS.x > offS.x + 2 and sameColor(SL.On, Sign.Gold) and sameColor(SL.Slot, Sign.Well),
+					tag .. ": Fast hatch's switch is the kit's (the Shop's): a well slot, a stone knob in its wood edge, gold while on",
+					fmt("off %s/%s knob %s/%s; on %s/%s", hex(offS.face), hex(offS.edge), hex(offS.knob), hex(offS.kedge), hex(onS.face), hex(onS.edge)))
+				local offSw = U92b.offGrid({ { "Switch", sw }, { "Knob", knob } })
+				T.check(#offSw == 0, tag .. ": the switch's slot and knob sit on whole px", table.concat(offSw, "; "))
 				for _, name in ipairs({ "Skip", "FastHatch" }) do
 					local chip = bar:FindFirstChild(name)
 					local pill = chip and chip:FindFirstChild("Pill")
@@ -8246,6 +8390,10 @@ local function clientScenarios()
 						and o:FindFirstChildOfClass("UICorner") == nil and o:FindFirstChildOfClass("UIGradient") == nil and text ~= nil and text.Text == t[3],
 						tag .. ": " .. t[3] .. " is a flat kit B tag (no tilt, corner or gloss)", o and fmt("%s rot %s %q", hex(o.BackgroundColor3), tostring(o.Rotation), text and text.Text or "?") or "missing")
 				end
+				-- (look review: whole px) the tags' mitred edges, the name row and the note on whole px; the planks too
+				local offRev = U92b.offGrid({ { "New", new }, { "EvolvedRibbon", ribbon }, { "Name", col and col:FindFirstChild("Name") }, { "Note", col and col:FindFirstChild("Note") },
+					{ "SpinAgain", again }, { "Done", done }, { "SpinAgain.Body", ap.Body } })
+				T.check(#offRev == 0, tag .. ": NEW!, EVOLVED, the name, the note and the planks sit on whole px", table.concat(offRev, "; ", 1, math.min(#offRev, 6)))
 				local banner = col and col:FindFirstChild("Banner")
 				local glow, letters, flat = 0, 0, 0
 				for _, d in ipairs(banner and banner:GetDescendants() or {}) do

@@ -532,6 +532,50 @@ function CloudUI.SignBlock(obj, look, opts)
 	return edge, lip
 end
 
+-- (kit-b U9-2b look review) the kit's one switch, the Shop's Fast hatch and the egg stage's: a square slot (the sunk Well in
+-- a mitred WellEdge, Edge px) with a square stone knob (Tile in a mitred wood edge) that slides from side to side; on, the
+-- slot turns gold in its GoldLip edge (gold = selected). The knob sits Inset px inside the slot, as tall as the slot less
+-- 2 x Inset, so its own edge never touches the slot's.
+--   CloudUI.SignSwitch(parent, opts) -> the "Switch" Frame (child "Knob"); opts = { Name, ZIndex }. Size it, then
+--   CloudUI.SetSignSwitch(sw, on)      paints it and places the knob from its Size (call it again after a resize); attribute On
+CloudUI.SwitchLook = { Slot = SIGN.Well, SlotEdge = SIGN.WellEdge, Knob = SIGN.Tile, KnobEdge = SIGN.Wood, On = SIGN.Gold, OnEdge = SIGN.GoldLip, Edge = 2, Inset = 3 }
+
+function CloudUI.SignSwitch(parent, opts)
+	opts = opts or {}
+	local L = CloudUI.SwitchLook
+	local z = opts.ZIndex or 1
+	local sw = frame(opts.Name or "Switch", { BackgroundTransparency = 0, BackgroundColor3 = L.Slot, ZIndex = z }, parent)
+	local edge = stroke(sw, L.SlotEdge, L.Edge, 0)
+	edge.Name = "SignEdge"
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	local knob = frame("Knob", { BackgroundTransparency = 0, BackgroundColor3 = L.Knob, ZIndex = z + 1 }, sw)
+	local kedge = stroke(knob, L.KnobEdge, L.Edge, 0)
+	kedge.Name = "SignEdge"
+	kedge.LineJoinMode = Enum.LineJoinMode.Miter
+	CloudUI.SetSignSwitch(sw, false)
+	return sw
+end
+
+function CloudUI.SetSignSwitch(sw, on)
+	local L = CloudUI.SwitchLook
+	local knob = sw and sw:FindFirstChild("Knob")
+	if not knob then
+		return
+	end
+	on = on == true
+	local w, h = sw.Size.X.Offset, sw.Size.Y.Offset
+	local k = math.max(2, h - 2 * L.Inset)
+	sw.BackgroundColor3 = on and L.On or L.Slot
+	local edge = sw:FindFirstChild("SignEdge")
+	if edge then
+		edge.Color = on and L.OnEdge or L.SlotEdge
+	end
+	knob.AnchorPoint = Vector2.new(0, 0)
+	knob.Position = UDim2.fromOffset(on and math.max(L.Inset, w - k - L.Inset) or L.Inset, L.Inset)
+	knob.Size = UDim2.fromOffset(k, k)
+	sw:SetAttribute("On", on)
+end
+
 -- A small square chip in an element's colour holding its PixelIcon (Config.Elements.Info[element].Icon) in the ink that
 -- reads on it, with a wood edge (the pitch's .el). opts: Label (the element's name after the icon, on its own stone tag
 -- inside the chip's edge: brown on stone reads at any size, where no ink reads 4.5:1 on the mid-tone element colours),

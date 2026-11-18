@@ -720,8 +720,8 @@ function H.build()
 	U.DivGlyph = label("Glyph", U.Divider, robuxGlyph(), "Display", 24, { TextColor3 = SIGN.Text, TextTruncate = Enum.TextTruncate.None })
 	U.DivLabel = label("Label", U.Divider, "Robux items", "Body", 18, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.TextMuted })
 	U.DivLine = frame("Line", U.Divider, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.WellEdge })
-	-- the Fast hatch toggle (Eggs only): a stone block with its Label and a Switch (a sunk well, the square Knob slides;
-	-- gold while on); attribute On
+	-- the Fast hatch toggle (Eggs only): a stone block with its Label and the kit's switch (CloudUI.SignSwitch: a sunk
+	-- well, the square Knob slides; gold while on; the egg stage's Fast hatch chip draws the same part); attribute On
 	local fast = Instance.new("TextButton")
 	fast.Name = "FastHatch"
 	fast.Text = ""
@@ -730,10 +730,8 @@ function H.build()
 	fast.Visible = false
 	U.FastLabel = label("Label", fast, "Fast hatch", "Button", 20, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.Text })
 	CloudUI.SignBlock(fast, "Stone", { Pad = false })
-	U.FastSwitch = frame("Switch", fast, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Well })
-	H.edge(U.FastSwitch, 2, SIGN.WellEdge)
-	U.FastKnob = frame("Knob", U.FastSwitch, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile })
-	H.edge(U.FastKnob, 2)
+	U.FastSwitch = CloudUI.SignSwitch(fast, { ZIndex = fast.ZIndex })
+	U.FastKnob = U.FastSwitch:FindFirstChild("Knob")
 	fast.Parent = rail
 	fast.Activated:Connect(function()
 		safe("fast hatch", H.toggleFast)
@@ -1257,10 +1255,8 @@ function H.paintFast()
 	end)
 	U.Fast:SetAttribute("On", on)
 	U.Fast.Visible = U.FastAt ~= nil and S.Tab == "Eggs"
-	local F = K.FAST[S.Layout] or K.FAST.PC
-	local k = F.SwitchH - 6
-	place(U.FastKnob, on and (F.SwitchW - k - 3) or 3, 3, k, k)
-	U.FastSwitch.BackgroundColor3 = on and SIGN.Gold or SIGN.Well -- (kit-b U9-2) gold while on (selected), the sunk well off
+	-- (kit-b U9-2) gold while on (selected), the sunk well off; (U9-2b look review) the kit's one switch part
+	CloudUI.SetSignSwitch(U.FastSwitch, on)
 end
 
 function H.toggleFast()

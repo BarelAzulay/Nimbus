@@ -12,10 +12,11 @@
 --       Window, NotchTop, NotchBottom, no Glow, round the landed cell's box + 8 px, its stroke Metrics.GOLD at rest); B's
 --       colour tell (Rare and up: the window and the notches turn the rarity colour 0.7 s before the land; Common keeps its
 --       gold every frame); the overshoot (the
---       winner passes the window by 18 x S px at p = 1, springs back by the end of Land); the land pop (UIScale "Pop"
---       >= 1.14 within 0.12 s, rests at 1.09), one shine "Sweep" gone by Land + 0.4, the other cards sunk (the Well face),
---       the landed one the Selected face; a resize
---       during Land (the window refits, the pop rests at 1.09, the roll reaches the reveal); the budgets (x1 <= 450, x3
+--       winner passes the window by 18 x S px at p = 1, springs back by the end of Land); the land (kit-b U9-2b look
+--       review: a hop, never a scale: the card's NumberValue "Hop" >= 3 px within 0.12 s, back to 0, no UIScale on the
+--       card), one shine "Sweep" gone by Land + 0.4, the other cards sunk (the Well face), the landed one the Selected
+--       face; the track's two flat end lines EndL / EndR; a resize
+--       during Land (the window refits, the card at rest, the roll reaches the reveal); the budgets (x1 <= 450, x3
 --       <= 750 instances at every frame of the roll)
 --   client_roll_look_open  (client, 1920x1080; Task 2) the opening: the lit plinth in Pedestal1 (review round 2: every part a
 --       true ellipse of the built-in disc: Top 0.85 of the box with its Rim disc 3 px larger, Side + Wall + Edge, the inner
@@ -33,7 +34,7 @@
 --       gone once the hero shows; the crack word's hard bands (kit-b U9-2b: Shade(.45) / c / Shade(-.2)) and 5 px outline
 --       at 80; every image key
 --       wired (one ImageLabel ray fan, image sparks, one backlight image; the frames without ids); a Fast hatch pass (the
---       tell at Land - 0.25 / 0.1, the pop >= 1.14 in 0.06 and 1.09, one sweep gone by Land + 0.15, the tweak at the one
+--       tell at Land - 0.25 / 0.1, the hop >= 3 px in 0.06 s and back to 0, one sweep gone by Land + 0.15, the tweak at the one
 --       shake, the punch, the budgets)
 --   client_roll_look_reveal  (client, 1920x1080 and 1280x720; Task 3) the reveal: the rarity word as letters (Col1 > Banner >
 --       Word: a Frame with the attribute Text and L1..Ln, each with its UIGradient "Bands" (kit-b U9-2b: the title look's
@@ -705,7 +706,7 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 		end
 		T.eq(skinN, 2, "roll look budget: an x1 card's skin is 2 instances (the Plate and its Word; no Face, Shine or Shadow)")
 		local track2 = G.track(1)
-		T.check(track2 and track2:FindFirstChild("FadeL") and track2:FindFirstChild("FadeR"), "roll look track: the two end fades FadeL / FadeR")
+		T.check(track2 and track2:FindFirstChild("EndL") and track2:FindFirstChild("EndR") and not track2:FindFirstChild("FadeL"), "roll look track: the two flat end lines EndL / EndR (kit-b U9-2b look review: no fade)")
 		-- the overshoot: the winner passes the window by 18 x S px at p = 1 (the cells travel left), then springs back
 		local stripF = G.strip(1)
 		Mock.AdvanceUntil(function()
@@ -723,16 +724,19 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 			local s = ref.AbsoluteSize.X / 230
 			local over = G.centre(ptr) - G.centre(landed)
 			T.check(abs(over - 18 * s) <= 1.5, "roll look land: at p = 1 the winner sits 18 x S px past the window (to its left)", fmt("%.2f px (S %.2f)", over, s))
-			local pop = landed:FindFirstChild("Pop")
+			-- (kit-b U9-2b look review) the land is a hop (the card's NumberValue "Hop", px up), never a scale
+			local pop = landed:FindFirstChild("Hop")
 			local maxPop, sweeps, had, lateSweep, pop12 = 0, 0, false, false, nil
+			local scaled = landed:FindFirstChildOfClass("UIScale") ~= nil
 			while os.clock() - tLand < 0.45 do
 				Mock.Advance(FINE, FINE)
 				local dt = os.clock() - tLand
-				pop = pop or landed:FindFirstChild("Pop")
+				pop = pop or landed:FindFirstChild("Hop")
+				scaled = scaled or landed:FindFirstChildOfClass("UIScale") ~= nil
 				if pop then
-					maxPop = math.max(maxPop, pop.Scale)
+					maxPop = math.max(maxPop, pop.Value)
 					if dt <= 0.125 then
-						pop12 = math.max(pop12 or 0, pop.Scale)
+						pop12 = math.max(pop12 or 0, pop.Value)
 					end
 				end
 				local has = landed:FindFirstChild("Sweep") ~= nil
@@ -744,8 +748,8 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 				end
 				had = has
 			end
-			T.check(pop ~= nil and pop:IsA("UIScale") and (pop12 or 0) >= 1.14, "roll look land: the landed card's UIScale Pop reaches >= 1.14 within 0.12 s", tostring(pop12))
-			T.check(pop ~= nil and abs(pop.Scale - 1.09) <= 0.01, "roll look land: ...and rests at 1.09", pop and tostring(pop.Scale) or "nil")
+			T.check(pop ~= nil and pop:IsA("NumberValue") and (pop12 or 0) >= 3 and not scaled, "roll look land: the landed card hops >= 3 px within 0.12 s (no UIScale on the card)", tostring(pop12))
+			T.check(pop ~= nil and abs(pop.Value) <= 0.01, "roll look land: ...and rests on the rail (hop 0)", pop and tostring(pop.Value) or "nil")
 			T.check(sweeps == 1 and not lateSweep, "roll look land: one shine Sweep, gone by Land + 0.4", fmt("%d sweeps, late %s", sweeps, tostring(lateSweep)))
 			local back = G.centre(ptr) - G.centre(landed)
 			T.check(abs(back) <= 1, "roll look land: by the end of Land the winner is back under the window", fmt("%.2f px", back))
@@ -825,8 +829,8 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 				ref = c
 			end
 		end
-		local popR = landed and landed:FindFirstChild("Pop")
-		T.check(ES.Layout() == "Phone" and popR ~= nil and abs(popR.Scale - 1.09) <= 0.01, "roll look resize during Land: the landed card's pop rests at 1.09 on the new layout", popR and tostring(popR.Scale) or "no Pop")
+		local popR = landed and landed:FindFirstChild("Hop")
+		T.check(ES.Layout() == "Phone" and popR ~= nil and abs(popR.Value) <= 0.01 and landed:FindFirstChildOfClass("UIScale") == nil, "roll look resize during Land: the landed card rests (hop 0, no scale) on the new layout", popR and tostring(popR.Value) or "no Hop")
 		if ptr and ref then
 			local tr = G.track(1)
 			T.check(abs(ptr.AbsoluteSize.X - (ref.AbsoluteSize.X + 12)) <= 1.5 and abs(ptr.AbsoluteSize.Y - (ref.AbsoluteSize.Y + 12)) <= 1.5 and tr and abs(G.centre(ptr) - G.centre(tr)) <= 1,
@@ -861,7 +865,7 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 					-- (the landed card's land dressing, its UIScale Pop and the passing shine Sweep, is the land's: 16.15
 					-- counts a cell's budget on the moving strip)
 					if c:GetAttribute("Index") == K.WIN and G.strip(j) and G.strip(j):GetAttribute("Landed") == true then
-						out.landedN = G.count(c) - G.count(c:FindFirstChild("Pop")) - G.count(c:FindFirstChild("Sweep"))
+						out.landedN = G.count(c) - G.count(c:FindFirstChild("Hop")) - G.count(c:FindFirstChild("Sweep"))
 					else
 						out.most = math.max(out.most, G.count(c))
 					end
@@ -1422,9 +1426,9 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 			end
 			local landed = low.landT and G.cellAt(1, K.WIN)
 			if landed then
-				local pop = landed:FindFirstChild("Pop")
+				local pop = landed:FindFirstChild("Hop")
 				if pop and t - low.landT <= 0.125 then
-					low.popUp = math.max(low.popUp, pop.Scale)
+					low.popUp = math.max(low.popUp, pop.Value)
 				end
 				local has = landed:FindFirstChild("Sweep") ~= nil
 				if has and not low.had then
@@ -1447,7 +1451,7 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		T.check(low.push > 0 and low.push <= 1.0001, "roll look open: Low graphics: no push-in (the hero egg's Pop stays 1 through the Crack; CARDS.md A: 'push-in off on Low')", fmt("%.3f", low.push))
 		T.check(low.tell and low.tell.told and G.near(low.tell.color, legLC, 2), "roll look open: Low graphics: the colour tell stays (Legendary: Tell, its colour at Land - 0.4)",
 			low.tell and fmt("%s %s", tostring(low.tell.told), G.c3(low.tell.color)) or "not sampled")
-		T.check(low.popUp >= 1.14 and low.sweeps == 1, "roll look open: Low graphics: the land pop (>= 1.14) and its one shine sweep stay", fmt("%.3f, %d sweeps", low.popUp, low.sweeps))
+		T.check(low.popUp >= 3 and low.sweeps == 1, "roll look open: Low graphics: the land's hop (>= 3 px) and its one shine sweep stay", fmt("%.3f, %d sweeps", low.popUp, low.sweeps))
 		T.check(low.sil ~= nil and G.near(low.sil, Color3.new(0, 0, 0), 3), "roll look open: Low graphics: the Legendary silhouette stays (black at reveal + 0.1)", G.c3(low.sil))
 		T.check(low.letter >= 1.25, "roll look open: Low graphics: the letters still pop (past 1.25)", fmt("%.2f", low.letter))
 		ES.Close()
@@ -1578,13 +1582,13 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 			end
 			local landed = fr.landT and G.cellAt(1, K.WIN)
 			if landed then
-				local pop = landed:FindFirstChild("Pop")
+				local pop = landed:FindFirstChild("Hop")
 				-- (+ one 1/60 s frame and + 0.03 s: the mock applies a tween's goal on the frame it completes)
 				if pop and t - fr.landT <= 0.06 + FINE + 1e-6 then
-					fr.popUp = math.max(fr.popUp, pop.Scale)
+					fr.popUp = math.max(fr.popUp, pop.Value)
 				end
 				if pop and t >= fLand + TF.Land + 0.03 and not fr.popRest and t < fRise then
-					fr.popRest = pop.Scale
+					fr.popRest = pop.Value
 				end
 				local has = landed:FindFirstChild("Sweep") ~= nil
 				if has and not fr.had then
@@ -1611,7 +1615,7 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		T.eq(ES.Phase(), "Reveal", "roll look fast: (setup) the Fast hatch roll reaches its reveal")
 		T.check(fr.notGold == nil and fr.tell ~= nil and G.near(fr.tell, epicC, 2), "roll look fast: the window is gold until Land - 0.25 and the Epic colour by Land - 0.15 (tell 0.25 / 0.1 s)",
 			fmt("%s; %s", tostring(fr.notGold), G.c3(fr.tell)))
-		T.check(fr.popUp >= 1.14 and fr.popRest ~= nil and abs(fr.popRest - 1.09) <= 0.01, "roll look fast: the land pop reaches >= 1.14 within 0.06 s and rests at 1.09 by Land's end",
+		T.check(fr.popUp >= 3 and fr.popRest ~= nil and abs(fr.popRest) <= 0.01, "roll look fast: the land's hop reaches >= 3 px within 0.06 s and is back at 0 by Land's end",
 			fmt("%.3f, rest %s", fr.popUp, tostring(fr.popRest)))
 		T.check(fr.sweeps == 1 and not fr.late, "roll look fast: one shine Sweep, gone by Land + 0.15", fmt("%d, late %s", fr.sweeps, tostring(fr.late)))
 		T.check(fr.earlyTint == nil and fr.tint ~= nil and G.near(fr.tint, HL.Shade(epicC, 0.25)), "roll look fast: Gemini's tweak at the one shake (0.25 x Crack), nothing before it",
@@ -1895,10 +1899,10 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 		-- (kit-b U7a) the coin icon is the token PixelIcon: its Frame and one Frame per merged run
 		local PI = G.req("shared/PixelIcon")
 		local coin = 1 + (PI and #PI.Runs("token") or 0)
-		-- (kit-b U9-2b) a plank: the tap box, Face, Body + its SignEdge and Lip, Label (6); Spin again's price tag + its edge
-		-- and lip, Coin, the icon's host label, Price (6 more) and the pixel coin
-		T.eq((again and G.count(again) or 0) + (done and G.count(done) or 0), 18 + coin, "roll look budget: the two pills are " .. (18 + coin) .. " instances (Spin again 12 with its price tag and the coin's host + the pixel coin's " .. coin .. ", Done 6)")
-		T.eq((skip and G.count(skip) or 0) + (fast and G.count(fast) or 0), 13, "roll look budget: the two chips are 13 instances (Skip 5: box, Pill + its SignEdge and Lip, Label; Fast hatch 8: + Switch, SlotEdge, Knob)")
+		-- (kit-b U9-2b) a plank: the tap box, Face, Body + its SignEdge and Lip, Label (6); (look review) Spin again's inline
+		-- price row (Chip, no box), Coin, the icon's host label, Price (4 more) and the pixel coin
+		T.eq((again and G.count(again) or 0) + (done and G.count(done) or 0), 16 + coin, "roll look budget: the two pills are " .. (16 + coin) .. " instances (Spin again 10 with its inline price and the coin's host + the pixel coin's " .. coin .. ", Done 6)")
+		T.eq((skip and G.count(skip) or 0) + (fast and G.count(fast) or 0), 14, "roll look budget: the two chips are 14 instances (Skip 5: box, Pill + its SignEdge and Lip, Label; Fast hatch 9: + the kit's switch: Switch + its SignEdge, Knob + its SignEdge)")
 		-- (review round 2) SPIN AGAIN's refresh (every 8 heartbeats while the reveal shows) does nothing while nothing changed:
 		-- no PillParts lookups, no measuring and fitting, no writes
 		local spied, calls = { "PillParts", "FitPill", "SetPillChip" }, {}
@@ -2185,9 +2189,10 @@ S.client_roll_look_phone = guarded("client_roll_look_phone", function()
 			local ptr = G.pointer(1)
 			local ws = G.stroke(ptr and ptr:FindFirstChild("Window"))
 			local notch = ptr and ptr:FindFirstChild("NotchTop")
-			-- (kit-b U9-2b) a 10 px notch is a stepped pixel pointer: a unit of floor(10 / 4 + 0.5) = 3 px, its widest row 5 units
-			T.check(ws and ws.Thickness == 3 and notch and abs(notch.AbsoluteSize.X - 15) <= 0.5 and abs(notch.AbsoluteSize.Y - 3) <= 0.5,
-				label .. ": the window's stroke 3 px, its notches 10 px (a 3 px unit: the widest row 15 x 3)", fmt("%s / %s", tostring(ws and ws.Thickness), tostring(notch and notch.AbsoluteSize.X)))
+			-- (kit-b U9-2b) the notch is a stepped pixel pointer; (look review) its unit the phone's pixel (the kit's pair: 2 px),
+			-- its widest row 6 units (even: centred on a whole px)
+			T.check(ws and ws.Thickness == 3 and notch and abs(notch.AbsoluteSize.X - 12) <= 0.5 and abs(notch.AbsoluteSize.Y - 2) <= 0.5,
+				label .. ": the window's stroke 3 px, its notches on the phone's 2 px pixel unit (the widest row 12 x 2)", fmt("%s / %s", tostring(ws and ws.Thickness), tostring(notch and notch.AbsoluteSize.X)))
 			RedoGeom.check(G.content(), label .. " strip", { MinText = 15, NoOverlap = { "Skip", "FastHatch" }, Skip = SKIP })
 			ES.Close()
 			G.advance(0.4)

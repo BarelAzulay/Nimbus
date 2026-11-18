@@ -1372,11 +1372,16 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		EA.Halves = function()
 			error("injected phase error")
 		end
+		-- (kit-b U9-2b look review) a 2D hero egg splits its card picture when the cards draw pictures: the painted path
+		-- here (no picture ids), so the planted fault in the painted halves is reached
+		local HLe = G.req("client/UI/HatchLook")
+		HLe._Textures = {}
 		local he = #hints
 		local o0 = #Mock.Output
 		ES.Show(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
 		G.run(ES, 7)
 		EA.Halves = realHalves
+		HLe._Textures = false
 		-- (the planted fault's one warning belongs to this check: counted, then dropped, so client_final's warn audit sees
 		-- only real ones; the smoke_dev.lua pattern)
 		local planted = 0
