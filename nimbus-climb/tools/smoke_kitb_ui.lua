@@ -113,7 +113,8 @@
 --                             kitb_no_neon_glow and kitb_no_emoji_ui walk the family's views too
 --   look2_screens_pixels     (client, LOOK-ui2) the Care and battle families at the four grid sizes: whole-px icon cells,
 --                             edges and lips, block bars only, no corner or gradient; the result card clear of the menu
---                             column and the Gift block on the phones
+--                             column and the Gift block on the phones; round two: no frame turned off the grid, every lip
+--                             flush on its block's edge, none of the old off-kit colours, a header icon in its IconSlot
 --   U9-7 (the Arena, Ring, Dungeon and raid gate docks, TeamFaces inside them; U97.FAMILY):
 --   arena_family_fits         (client) at the four grid sizes every view: no text under the floor or TextScaled, outside a
 --                             scrolling list whole on the screen and uncut, one-line texts fitting at real widths, every
@@ -6411,7 +6412,30 @@ local function clientScenarios()
 	-- smooth bar (a "Fill" frame: every bar is a row of kit blocks, SignKit.FitBlocks / BlockRow); no round corner or gradient
 	-- (a cooldown Sweep veil is a flat sheet). And at 390x844 / 844x390 the battle's result card lies clear of the menu column
 	-- and the Gift block (it moved under the top-right stack; the menu column steps aside where the card needs its room)
-	local LOOK2 = {}
+	-- (LOOK-ui2, round two) and on the same views: no frame turned off the grid (the Fusion copies were fanned -7 / -1 / +5); every
+	-- block's lip flush on its bottom edge (a UIPadding laid them out 5 px up, or 22 px short of a side); none of the old
+	-- off-kit colours (the neon skill set, Feed's #78C8FF XP, the role pills' #60C46C / #E46860); a window header's icon in
+	-- its gold IconSlot square (SignKit.IconSlot / Header)
+	local LOOK2 = {
+		OFF_KIT = {
+			[Color3.fromRGB(63, 200, 255):ToHex()] = "old Speed #3FC8FF",
+			[Color3.fromRGB(255, 107, 129):ToHex()] = "old Physique #FF6B81",
+			[Color3.fromRGB(180, 124, 255):ToHex()] = "old Ability #B47CFF",
+			[Color3.fromRGB(255, 179, 71):ToHex()] = "old Defense #FFB347",
+			[Color3.fromRGB(120, 200, 255):ToHex()] = "Feed's XP #78C8FF",
+			[Color3.fromRGB(96, 196, 108):ToHex()] = "old Economy #60C46C",
+			[Color3.fromRGB(228, 104, 96):ToHex()] = "old Combat #E46860",
+		},
+	}
+	function LOOK2.hex(c)
+		local ok, h = pcall(function()
+			return c:ToHex()
+		end)
+		if ok then
+			return h
+		end
+		return string.format("%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+	end
 	function LOOK2.whole(v)
 		return math.abs(v - math.floor(v + 0.5)) < 0.02
 	end
@@ -6426,18 +6450,42 @@ local function clientScenarios()
 				on = false
 			elseif on and d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0) then
 				out[#out + 1] = "round corner on " .. p.Name
-			elseif on and d:IsA("UIGradient") and d.Enabled ~= false then
-				out[#out + 1] = "gradient on " .. p.Name
+			elseif on and d:IsA("UIGradient") and d.Enabled ~= false and not d:FindFirstAncestor("GemIcon") then
+				-- (GemIcon's drawn gem, its faces and the ShineBar sweep: the Shop's shared gem, left to its own lane)
+				out[#out + 1] = "gradient on " .. p:GetFullName():gsub("^.-%.([^.]+%.[^.]+%.[^.]+)$", "%1")
 			elseif on and d:IsA("UIStroke") and d.Enabled ~= false and d.Transparency < 1 and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then
 				local t = d.Thickness * U8.scaleOf(p)
 				if not whole(t) then
 					out[#out + 1] = fmt("%s edge %.2f px", p.Name, t)
 				end
-			elseif d:IsA("Frame") and U8.shown(d) and d.AbsoluteSize.X > 0 and not designedLook(d) then
+			end
+			if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 and not designedLook(d) then
+				-- (a quarter turn keeps the grid: the portrait arrow points down; GemIcon's gem is its own lane's diamond)
+				if d.Rotation % 90 ~= 0 and not d:FindFirstAncestor("GemIcon") then
+					out[#out + 1] = fmt("%s turned %.1f deg", d.Name, d.Rotation)
+				end
+				local bad = d.BackgroundTransparency < 1 and LOOK2.OFF_KIT[LOOK2.hex(d.BackgroundColor3)]
+				if bad then
+					out[#out + 1] = d.Name .. " in the " .. bad
+				end
+				if d.Name == "Icon" and p and p.Name == "Header" and d:GetAttribute("SlotIcon") == nil and d:IsA("TextLabel") then
+					out[#out + 1] = "header icon outside its gold IconSlot (" .. (d:GetFullName():match("[^.]+%.[^.]+%.[^.]+$") or d.Name) .. ")"
+				end
+			end
+			if d:IsA("Frame") and U8.shown(d) and d.AbsoluteSize.X > 0 and not designedLook(d) then
 				if d.Name == "Lip" and d.Size.Y.Scale == 0 and d.BackgroundTransparency < 1 then
 					local t = d.Size.Y.Offset * U8.scaleOf(d)
 					if not whole(t) then
 						out[#out + 1] = fmt("%s lip %.2f px", p and p.Name or "?", t)
+					end
+					-- (flush: its bottom on the block's bottom, its sides on the block's sides; a block's press may sink it)
+					if p and p:IsA("GuiObject") and p.AbsoluteSize.X > 0 and not p:GetAttribute("Pressed") then
+						local db, pb = d.AbsolutePosition.Y + d.AbsoluteSize.Y, p.AbsolutePosition.Y + p.AbsoluteSize.Y
+						local dl, pl = d.AbsolutePosition.X, p.AbsolutePosition.X
+						local dr, pr = dl + d.AbsoluteSize.X, pl + p.AbsoluteSize.X
+						if math.abs(db - pb) > 1 or math.abs(dl - pl) > 1 or math.abs(dr - pr) > 1 then
+							out[#out + 1] = fmt("%s lip off its edge (bottom %+.1f, left %+.1f, right %+.1f px)", p.Name, db - pb, dl - pl, dr - pr)
+						end
 					end
 				elseif d.Name == "Fill" and d.BackgroundTransparency < 1 then
 					out[#out + 1] = "smooth bar " .. (p and p.Name or "?") .. ".Fill"

@@ -350,18 +350,16 @@ local function clientScenarios()
 				T.check(H.text(H.find("Name", H.skill("Speed"))):upper() == "ATTACK SPEED", "train ui: Speed reads 'Attack Speed'")
 				-- the rank and the bar
 				T.eq(H.text(H.part("Physique", "Rank")), "Rank 3 / 10", "train ui: 'Rank 3 / 10'")
+				-- (LOOK-ui2) the rank row is ten kit blocks (SignKit.FitBlocks), three lit in Physique's red
 				local bar = H.part("Physique", "Bar")
-				local lit, segs = 0, 0
-				for i = 1, 10 do
-					local seg = bar and bar:FindFirstChild("Seg" .. i)
-					if seg then
-						segs = segs + 1
-						if seg:GetAttribute("Lit") == true then
-							lit = lit + 1
-						end
-					end
-				end
-				T.check(segs == 10 and lit == 3, "train ui: a 10-segment bar with 3 lit", segs .. " / " .. lit)
+				local row = bar and bar:FindFirstChild("Blocks")
+				local segs = row and row:GetAttribute("Count") or 0
+				local lit = row and row:GetAttribute("Filled") or 0
+				local b1 = row and row:FindFirstChild("Block1")
+				local f1 = b1 and b1:FindFirstChild("Face")
+				local Th = H.req("shared/Theme")
+				T.check(segs == 10 and lit == 3 and f1 and Th and f1.BackgroundColor3 == Th.Sign.Red,
+					"train ui: a 10-block rank row with 3 lit in the skill's colour", segs .. " / " .. lit)
 				-- Prev / Next walk the default Train order, wrapping, the sheet closed
 				local order = H.order(PP)
 				T.check(#order == #FIX and order[1] == TRAINING, "train ui: the default Train order starts with the pet in training", table.concat(order, ","))
@@ -983,7 +981,7 @@ local function clientScenarios()
 					T.check(H.mat(1):GetAttribute("Key") == TRAINING and H.mat(2):GetAttribute("Key") == "maple_fox" and H.mat(3):GetAttribute("Key") == "honey_bunny"
 						and H.mat(4):GetAttribute("Key") == nil, label .. ": ...each mat's Key")
 					T.check(H.mat(5):GetAttribute("LockBadge") == false and H.mat(1):GetAttribute("LockBadge") == false, label .. ": ...no lock badge")
-					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 2 / 3 in use" or "2 / 3 spots", label .. ": the chip counts both jobs")
+					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 2 / 3 in use" or "2/3", label .. ": the chip counts both jobs")
 					-- the mats' texts
 					local t1, t2, t4 = H.matText(1), H.matText(2), H.matText(4)
 					T.check(H.has(t1, "Tabby") and H.has(t1, " left"), label .. ": a job mat shows the pet and its time left", t1)
@@ -1041,7 +1039,7 @@ local function clientScenarios()
 					H.feed({ Job = false, Extra = fixture.Extra, House = 3 })
 					KC.advance(0.3)
 					T.eq(H.matStates(), "Pending,Add,Job,Locked,Locked", label .. ": a job ends: its mat frees up (the pending pet moves there)")
-					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 1 / 3 in use" or "1 / 3 spots", label .. ": ...the chip count drops")
+					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 1 / 3 in use" or "1/3", label .. ": ...the chip count drops")
 					-- the slots change while open (Review Focus 5)
 					H.feed({ Gym = 4, Extra = fixture.Extra, House = 3 })
 					KC.advance(0.3)
@@ -1058,7 +1056,7 @@ local function clientScenarios()
 					end
 					T.check(badgeShown, label .. ": ...the lock badge is drawn")
 					T.eq(H.matStates(), "Job,InUse,Job,Locked,Locked", label .. ": ...two jobs fill 2 spots: no pending mat, mat 2 'InUse' (no '+ Add a pet')")
-					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 2 / 2 in use" or "2 / 2 spots", label .. ": ...the chip reads 2 / 2")
+					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 2 / 2 in use" or "2/2", label .. ": ...the chip reads 2 / 2")
 					local t2u = H.matText(2)
 					T.check(H.has(t2u:lower(), "in use") and not H.has(t2u, "Add"), label .. ": ...the 'InUse' mat reads 'In use', never 'Add a pet'", t2u)
 					if pc then

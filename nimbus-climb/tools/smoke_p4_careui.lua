@@ -425,7 +425,12 @@ S.client_p4careui_feed = guarded("client_p4careui_feed", function()
 	T.check(upBtn == nil, "careui feed: no 'Level up' button (one feed per press)", upBtn and upBtn:GetFullName() or "")
 	local bar = win and find(win, "BerryBasket")
 	local barText = bar and find(bar, "Text")
-	T.check(barText and barText.Text == "Berry Basket 1,240 / 3,000" and shown(bar), "careui feed: the header is the Berry Basket bar (Berries / BerryCap)", barText and barText.Text or "none")
+	-- (LOOK-ui2) a row of kit blocks with the number beside it, never over a block: "Berry Basket 1,240 / 3,000", or the
+	-- numbers alone where the words would take more than half the bar (the berry icon names it)
+	local blocks = bar and find(bar, "Blocks")
+	local beside = barText and blocks and barText.AbsolutePosition.X >= blocks.AbsolutePosition.X + blocks.AbsoluteSize.X - 0.5
+	T.check(barText and (barText.Text == "Berry Basket 1,240 / 3,000" or barText.Text == "1,240 / 3,000") and shown(bar) and beside,
+		"careui feed: the header is the Berry Basket bar (Berries / BerryCap), the number beside its blocks", barText and barText.Text or "none")
 	local rate = win and find(win, "BasketRate")
 	T.check(rate and rate.Text == "+" .. Util.Commas(math.floor(38.5 * TC.Berries.Share * 60 + 0.5)) .. " a minute", "careui feed: ...and the berries a minute (income x Share x 60)", rate and rate.Text or "")
 	local how = win and find(win, "Leftovers")
@@ -455,10 +460,18 @@ S.client_p4careui_feed = guarded("client_p4careui_feed", function()
 	local confirm = careGui() and careGui():FindFirstChild("CareConfirm")
 	T.check(confirm and confirm.Visible and #calls("PetCare", mark) == 0 and find(confirm, "Title").Text:upper():find("EVOLVE", 1, true), -- (kit-b U6: titles read in capitals)
 		"careui feed: EVOLVE asks first (nothing is sent yet)")
+	-- (LOOK-ui2) the confirm on the PetPicker's shade, an 8 px stone lip and two nails on its box, as tall as its content
+	local shade = careGui():FindFirstChild("ConfirmShade")
+	local box = confirm and find(confirm, "Box")
+	local lip = box and box:FindFirstChild("Lip")
+	local text, buttons = box and find(box, "Text"), box and find(box, "Buttons")
+	local hole = (text and buttons) and (buttons.AbsolutePosition.Y - (text.AbsolutePosition.Y + text.AbsoluteSize.Y)) or 999
+	T.check(shade and shade.Visible and shade.Active and lip and lip.Size.Y.Offset == 8 and box:FindFirstChild("NailL", true) ~= nil and hole <= 40,
+		"careui feed: the Evolve confirm sits on a shade, with its stone lip and nails, no hole over its buttons", "gap " .. tostring(hole))
 	Mock.Click(find(confirm, "ConfirmYes"))
 	advance(0.3)
 	pc = calls("PetCare", mark)
-	T.check(#pc == 1 and pc[1].args[1] == "Evolve" and pc[1].args[2] == P.READY and not confirm.Visible, "careui feed: ...then sends PetCare('Evolve', key)")
+	T.check(#pc == 1 and pc[1].args[1] == "Evolve" and pc[1].args[2] == P.READY and not confirm.Visible and not shade.Visible, "careui feed: ...then sends PetCare('Evolve', key)")
 	-- the level-100 pet
 	local rMax = row(P.MAX)
 	T.check(rMax and flat(find(rMax, "Feed").Text) == "Max level" and disabled(find(rMax, "Feed"))
@@ -635,14 +648,10 @@ S.client_p4careui_train = guarded("client_p4careui_train", function()
 	T.eq(find(phys, "Cost").Text, "$" .. Util.Commas(TC.TrainCost(defF, 4)), "careui train: the next rank's cost (TrainCost)")
 	T.eq(find(phys, "Time").Text, floor(TC.TrainSeconds(4) / 60) .. " min", "careui train: ...and time (TrainSeconds; Rank 4 takes 4 minutes)")
 	T.check(find(phys, "Rank").Text == "Rank 3 / 10", "careui train: the rank shows the pet's rank")
-	local lit = 0
-	for i = 1, 10 do
-		local seg = find(find(phys, "Bar"), "Seg" .. i)
-		if seg and seg:GetAttribute("Lit") == true then
-			lit = lit + 1
-		end
-	end
-	T.eq(lit, 3, "careui train: three of the ten bar segments are lit")
+	-- (LOOK-ui2) the rank row is ten kit blocks (SignKit.FitBlocks: Count / Filled)
+	local blocks = find(find(phys, "Bar"), "Blocks")
+	T.check(blocks and blocks:GetAttribute("Count") == 10, "careui train: the rank row has ten blocks")
+	T.eq(blocks and blocks:GetAttribute("Filled") or 0, 3, "careui train: three of the ten bar segments are lit")
 	mark = #Mock.RemoteLog
 	Mock.Click(find(phys, "Action"))
 	advance(0.4)

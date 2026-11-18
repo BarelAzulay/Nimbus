@@ -96,6 +96,7 @@ local TITLE_H = 50
 local TITLE_GAP = 10
 local TITLE_TEXT = 34
 local CLOSE_SIZE = 40
+local SIGN_CLOSE = 44 -- (LOOK-ui) a Signboard window's red close block: one size with the Shop's, the Gifts' and the Pets sheet's
 local UNTITLED_TOP_CLOUDS = 20 -- v5: no cloud bumps any more; an untitled panel keeps this room for its corner X
 
 CloudUI.Metrics = {
@@ -864,7 +865,7 @@ local function signPanel(props)
 			Rim = edge,
 			IconSlot = props.Icon ~= nil,
 			Ribbon = true, -- (render gate) the T1 band the header's width, out over the frame with its tails (title_T1)
-			Reserve = props.Closable and (CLOSE_SIZE + 18) or 16,
+			Reserve = props.Closable and (SIGN_CLOSE + 18) or 16,
 			Name = "TitleBar",
 			ZIndex = 3,
 		})
@@ -907,14 +908,14 @@ local function signPanel(props)
 		root:Destroy()
 	end
 	if props.Closable then
-		local position = hasTitle and UDim2.new(1, -(PANEL_PAD + 4 + CLOSE_SIZE / 2), 0, TITLE_TOP + math.floor(TITLE_H / 2) - 2)
-			or UDim2.new(1, -12 - CLOSE_SIZE / 2, 0, 8 + CLOSE_SIZE / 2)
+		local position = hasTitle and UDim2.new(1, -(PANEL_PAD + 4 + SIGN_CLOSE / 2), 0, TITLE_TOP + math.floor(TITLE_H / 2) - 2)
+			or UDim2.new(1, -12 - SIGN_CLOSE / 2, 0, 8 + SIGN_CLOSE / 2)
 		local closeButton = CloudUI.Button({
 			Name = "Close",
 			Text = "",
 			Style = "Red",
 			Skin = "Sign",
-			Size = UDim2.fromOffset(CLOSE_SIZE, CLOSE_SIZE),
+			Size = UDim2.fromOffset(SIGN_CLOSE, SIGN_CLOSE),
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = position,
 			ZIndex = 8,
@@ -924,6 +925,7 @@ local function signPanel(props)
 			Parent = root,
 		})
 		NeonKit.CloseMark(closeButton, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- square bars in a Danger block's brown ink
+		NeonKit.CloseBlock(closeButton) -- (LOOK-ui) the kit's one close block (>= 44 screen px, 3 px cells)
 		panel.CloseButton = closeButton
 	end
 	root.Parent = props.Parent
@@ -1148,15 +1150,23 @@ local function signBar(props)
 	label.Parent = root
 	-- the label sizes itself to its drawn text (AutomaticSize; Theme.Measure runs short of FredokaOne), the row takes the
 	-- rest less 10 px; a first guess from the measure until the label has laid out
+	local fitCount -- (below: props.MinBlockW)
 	local function rowFor(w)
 		row.Size = UDim2.new(1, -(math.ceil(w) + 10), 1, 0)
+		if fitCount then
+			fitCount() -- (the row's room changed: its block count follows)
+		end
 	end
 	local function fitLabel()
 		if not right then
 			return
 		end
 		local ok, m = pcall(Theme.Measure, label.Text, "Heading", label.TextSize)
-		rowFor((ok and typeof(m) == "Vector2" and m.X > 0) and m.X * 1.15 + 2 or #label.Text * label.TextSize * 0.6)
+		local w = math.ceil((ok and typeof(m) == "Vector2" and m.X > 0) and m.X * 1.15 + 2 or #label.Text * label.TextSize * 0.6)
+		-- (LOOK-ui2: hugging its text, a lone "0" had no px to spare for its outline) the measure is the box's least width;
+		-- AutomaticSize still widens it to the drawn text
+		label.Size = UDim2.new(0, w + 2, 1, -2)
+		rowFor(w + 2)
 	end
 	if right then
 		label.AutomaticSize = Enum.AutomaticSize.X
@@ -1172,6 +1182,28 @@ local function signBar(props)
 	local function paint()
 		SignKit.FillBlocks(row, math.floor(fraction * count + 1e-6))
 	end
+	-- (LOOK-ui2) props.MinBlockW (design px, optional): a narrow row shows fewer blocks, down to 5 (each standing for a
+	-- bigger share), rather than slivers too narrow for their wood edge (FitBlocks draws those as edgeless pips)
+	local most, minW = count, tonumber(props.MinBlockW)
+	function fitCount()
+		local s = PixelIcon.RestScale(row)
+		local w = (s > 0) and row.AbsoluteSize.X / s or 0
+		if not minW or w <= 0 then
+			return
+		end
+		local gap = row:GetAttribute("Gap") or 2
+		local n = math.max(math.min(5, most), math.min(most, math.floor((w + gap) / (minW + gap))))
+		if n ~= count then
+			count = n
+			SignKit.SetBlockCount(row, count, color, Theme.SignLipOf(color))
+			root:SetAttribute("Blocks", count)
+			paint()
+		end
+	end
+	if minW then
+		row:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitCount)
+	end
+	bar.FitCount = fitCount -- (a caller that resized the bar's root calls it after its layout)
 	function bar.SetFraction(value)
 		fraction = Util.Clamp(tonumber(value) or 0, 0, 1)
 		root:SetAttribute("Fraction", fraction)

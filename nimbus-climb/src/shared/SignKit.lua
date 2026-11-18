@@ -214,6 +214,28 @@ end
 
 -- opts: Width, Height (fixed design px), Y, Shape ("Flat" | "Gable"), Color, Edge (border colour), Lip (lip colour),
 -- EdgePx, LipPx; gable: Slope, Fascia, Shade, Vent, VentEdge
+-- (LOOK-ui2: the Training Place, Fusion and the pet picker drew a bare gold icon on their hand-laid navy plank, Pets, My
+-- Home, Battle Arena and the Food Machine put it in the gold square) SignKit.Header's IconSlot on a label a window lays out
+-- itself: the gold square in a 2 px ink line, the pixel icon `name` in the ink at `px` (27 on a PC header, 18 on a phone's:
+-- the kit's two icon sizes). Call again for a new icon or size; a nil name keeps the one it shows
+function SignKit.IconSlot(host, name, px)
+	host.BackgroundTransparency = 0
+	host.BackgroundColor3 = Sign.Gold
+	host.BorderSizePixel = 0
+	host.Text = ""
+	if not host:FindFirstChild("SlotLine") then
+		line(host, Sign.Text, 2).Name = "SlotLine"
+	end
+	name = name or host:GetAttribute("SlotIcon")
+	px = px or host:GetAttribute("SlotPx") or 27
+	if name and (host:GetAttribute("SlotIcon") ~= name or host:GetAttribute("SlotPx") ~= px) then
+		host:SetAttribute("SlotIcon", name)
+		host:SetAttribute("SlotPx", px)
+		PixelIcon.Host(host, name, px, Sign.Text)
+	end
+	return host
+end
+
 function SignKit.Roof(parent, opts)
 	opts = opts or {}
 	local w = tonumber(opts.Width) or Z.RoofW

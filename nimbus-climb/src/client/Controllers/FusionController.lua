@@ -149,11 +149,11 @@ local K = {
 	EM = { GothamBlack = 0.68, GothamBold = 0.66, BuilderSansBold = 0.58, BuilderSans = 0.56, FredokaOne = 0.62 },
 	HEAD = {
 		PC = {
-			Header = 76, HeadPad = 24, Icon = 52, IconText = 36, TitleText = 34, TitleMin = 24, Close = 56, TabH = 56, TabText = 26,
+			Header = 76, HeadPad = 24, Icon = 42, IconPx = 27, IconText = 36, TitleText = 34, TitleMin = 24, Close = 56, TabH = 56, TabText = 26,
 			TabPad = 26, TabGap = 10, TabUpW = 220, TabMixW = 160, ChipH = 48, ChipText = 22, ChipPad = 16, ChipGap = 12, Gap = 16,
 		},
 		PHONE = {
-			Header = 50, HeadPad = 10, Icon = 30, IconText = 22, TitleText = 20, TitleMin = 16, Close = 44, TabH = 44, TabText = 17,
+			Header = 50, HeadPad = 10, Icon = 30, IconPx = 18, IconText = 22, TitleText = 20, TitleMin = 16, Close = 44, TabH = 44, TabText = 17,
 			TabPad = 14, TabGap = 6, TabUpW = 130, TabMixW = 84, ChipH = 38, ChipText = 15, ChipPad = 10, ChipGap = 8, Gap = 8,
 		},
 	},
@@ -194,7 +194,7 @@ local C = {
 	Muted = SIGN.TextMuted,
 	Gold = SIGN.Gold,
 	GoldInk = SIGN.GoldLip, -- gold marks on stone (the sparks)
-	Good = Color3.fromRGB(46, 125, 50), -- #2E7D32: 5.1:1 on the stone tile
+	Good = SIGN.Good, -- #2E7D32: 5.1:1 on the stone tile (LOOK-ui2: kit B's one good ink)
 	Bad = SIGN.RedLip,
 	Warn = Color3.fromRGB(160, 92, 0), -- amber text on stone (5.0:1)
 	Violet = SIGN.Violet, -- the machine's violet (the NEW HYBRID card's lip)
@@ -227,6 +227,24 @@ local ICON = {
 }
 local CHIP_ICON = 18 -- px: a move chip's icon, left of its text (inside ChipPad)
 local NEXT_TIER = { Normal = "Golden", Golden = "Rainbow" }
+-- (LOOK-ui2) a Rainbow finish's lip steps through these kit colours
+local RAINBOW = { SIGN.Red, SIGN.Gold, SIGN.Grass, SIGN.Sky, SIGN.Violet }
+-- (LOOK-ui2) a finish's tag on the result: stone, gold, the violet
+local TIER_TAG = { Normal = SIGN.Tile, Golden = SIGN.Gold, Rainbow = SIGN.Violet }
+
+-- (LOOK-ui2) the dock family's tag: the role's colour with the brown ink; a face too dark for it is lifted toward the stone
+-- tile, in steps, until the ink reads 4.5:1 (never darkened, never white text)
+local function tagFace(color)
+	local face = color
+	for step = 0, 10 do
+		face = color:Lerp(SIGN.Tile, step / 10)
+		local ok, ratio = pcall(Theme.Contrast, SIGN.Text, face)
+		if not ok or (tonumber(ratio) or 0) >= 4.5 then
+			break
+		end
+	end
+	return face, SIGN.Text
+end
 local TIER_RANK = { Normal = 1, Golden = 2, Rainbow = 3 }
 local TEXTS = {
 	TipUpgrade = "Pick a pet with %d copies. Golden gives x1.5 power, Rainbow x2.5.",
@@ -999,7 +1017,7 @@ function H.build()
 	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = SIGN.NavyLip, BorderSizePixel = 0, ZIndex = 3, Parent = header })
 	U.Roof = SignKit.Roof(panel, { Width = K.ROOF_W, Y = -10, ZIndex = 4 })
 	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = "", TextColor3 = C.Gold, TextTruncate = Enum.TextTruncate.None })
-	PixelIcon.Host(U.Icon, ICON.Machine) -- (kit-b U7b)
+	SignKit.IconSlot(U.Icon, ICON.Machine, 27) -- (LOOK-ui2) the header's gold icon square, as Pets and the Food Machine
 	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Fusion Machine", TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
 	U.Title:SetAttribute("RibbonBand", "Header")
 	Theme.StyleTitle(U.Title)
@@ -1026,6 +1044,7 @@ function H.build()
 		Parent = header,
 	})
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = C.Ink }) -- slop audit 2026-11-12: a drawn X (no glyph)
+	NeonKit.CloseBlock(U.Close) -- (LOOK-ui2) the kit's one close block: never under 44 screen px, its x in 3 px cells
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
@@ -1051,7 +1070,7 @@ function H.build()
 	end
 	U.Plus = label(body, "Plus", "Title", 40, { ZIndex = 4, Text = G.Plus, TextTruncate = Enum.TextTruncate.None })
 	U.Swap = CloudUI.Button({ Name = "SwapButton", Text = "", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(72, 72), TextSize = 34, ZIndex = 5, Parent = body })
-	PixelIcon.Host(U.Swap, ICON.Swap) -- (kit-b U7b)
+	PixelIcon.Host(U.Swap, ICON.Swap, 27) -- (kit-b U7b; LOOK-ui2: 27 px, the kit's big icon)
 	local swapPad = U.Swap:FindFirstChildOfClass("UIPadding")
 	if swapPad then
 		swapPad.PaddingLeft, swapPad.PaddingRight = UDim.new(0, 0), UDim.new(0, 0)
@@ -1069,7 +1088,7 @@ function H.build()
 		ZIndex = 4, Visible = false, TextColor3 = C.VioletInk, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None,
 	})
 	U.Arrow = label(body, "Arrow", "Title", 60, { ZIndex = 4, Text = "", TextColor3 = C.Wood, TextScaled = true, TextTruncate = Enum.TextTruncate.None })
-	PixelIcon.Host(U.Arrow, ICON.Arrow, 45) -- (kit-b U7b)
+	PixelIcon.Host(U.Arrow, ICON.Arrow, 27) -- (kit-b U7b; LOOK-ui2: one of the kit's two icon sizes, was 45)
 	-- the result: big and glowing
 	U.Result = H.petCard(body, "Result", "Frame", 4)
 	U.Result.PetName.Name = "ResultName"
@@ -1082,22 +1101,16 @@ function H.build()
 		U.Sparks[i] = label(U.Result.Card.Body, "Spark" .. i, "Title", 34, { ZIndex = 9, Text = "", TextColor3 = C.GoldInk, TextTruncate = Enum.TextTruncate.None, Visible = false })
 		PixelIcon.Host(U.Sparks[i], ICON.Spark, 27) -- (kit-b U7b) follows the spark's fade
 	end
-	U.Shimmer = Util.Create("UIGradient", {
-		Name = "Shimmer", Enabled = false, Rotation = 0, Parent = U.Result.Card.Stroke,
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 92, 120)),
-			ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 211, 77)),
-			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(72, 224, 120)),
-			ColorSequenceKeypoint.new(0.75, Color3.fromRGB(64, 170, 255)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(176, 104, 255)),
-		}),
-	})
+	-- (LOOK-ui2: was a smooth rainbow UIGradient turning on the result's edge, the window's one soft part) a Rainbow finish
+	-- steps its card's lip through five kit colours, one whole colour at a time (H.startFx); Enabled says it is on
+	U.Shimmer = { Enabled = false }
 	U.Pills = Util.Create("Frame", { Name = "Pills", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 10, Parent = body })
 	U.Note = label(body, "Note", "Body", 22, { ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None })
 	U.Info = label(body, "Info", "Body", 22, { ZIndex = 4, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None })
 	-- the cost and FUSE!
 	-- (kit-b U9-5) the cost on a stone tile (a navy lip); FUSE! is the window's one green action (no pulsing glow: kit B)
-	local cost = NeonKit.Card({ Name = "CostBar", Skin = "Sign", Color = C.Navy, LipPx = 6, ZIndex = 3, Parent = body })
+	-- (LOOK-ui2: a navy lip under a stone face) the stone tile's own lip, the pet cards' 8 px
+	local cost = NeonKit.Card({ Name = "CostBar", Skin = "Sign", Color = SIGN.StoneLip, LipPx = 8, ZIndex = 3, Parent = body })
 	U.CostBar = cost
 	U.CostLabel = label(cost.Body, "CostLabel", "Heading", 30, { ZIndex = 5, Text = "Cost", TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
 	U.CostIcon = Util.Create("Frame", { Name = "CostIcon", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = cost.Body })
@@ -1182,7 +1195,7 @@ function H.layoutHeader()
 	place(U.HeaderFoot, 0, M.Header - 5, W, 5) -- (kit-b U9-5) the plank's darker lip
 	U.Roof.Visible = S.Mode ~= "Phone" -- (kit-b U9-5) a phone window sits right under Roblox's top bar: no awning stub
 	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
-	U.Icon.TextSize = M.IconText
+	SignKit.IconSlot(U.Icon, nil, M.IconPx)
 	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close) -- (its drawn X scales with it)
 	local right = W - M.HeadPad - M.Close - M.Gap
 	local font = Theme.FontOf(U.TabUp)
@@ -1191,7 +1204,7 @@ function H.layoutHeader()
 	local tokW = H.boxW(U.TokenChip.Text, M.ChipText, Theme.FontOf(U.TokenChip)) + 2 * M.ChipPad + K.CHIP_COIN + 4 -- + the coin
 	GemIcon.SetAmount(U.GemAmount, nil, { TextSize = M.ChipText }) -- (re-measures: the gem + the number)
 	local gemW = U.GemAmount.Size.X.Offset + 2 * M.ChipPad
-	local titleX = M.HeadPad + M.Icon + 8
+	local titleX = M.HeadPad + M.Icon + 12
 	local titles = (S.Mode == "Phone") and { "Fusion" } or { "Fusion Machine", "Fusion" }
 	local showGem, showTok = S.Mode ~= "Phone", true
 	local function chipsW()
@@ -1203,6 +1216,15 @@ function H.layoutHeader()
 	local minTitle = H.boxW(titles[#titles], M.TitleMin, Theme.FontOf(U.Title))
 	if titleRoom() < minTitle and showGem then
 		showGem = false
+	end
+	-- (LOOK-ui2: at 390x844 the title went and the band showed the icon and the tabs alone) narrower tabs, then the token
+	-- chip (the cost bar's Have line shows the balance there), before the window's name goes
+	if titleRoom() < minTitle then
+		upW = H.boxW("UPGRADE", M.TabText, font) + M.TabPad
+		mixW = H.boxW("MIX", M.TabText, font) + M.TabPad
+	end
+	if titleRoom() < minTitle and S.Portrait then
+		showTok = false
 	end
 	local tabsX = titleX
 	U.Title.Visible = titleRoom() >= minTitle
@@ -1423,25 +1445,25 @@ function H.layoutPC(W, B)
 	U.Hint.TextSize = P.Hint
 end
 
--- the three fanned copies inside the Stack button
+-- the three copies inside the Stack button (LOOK-ui2: were turned -7, -1 and +5 degrees, soft diagonal edges and tilted
+-- text, the window's one off-grid shape) a straight stack stepped in whole px: each copy 12 px right of and 10 px above
+-- the one behind it (a phone: 6 and 5), the back two showing their wood edge and their rarity lip, the front one whole
 function H.layoutStack(w, h, pc, k)
-	local cw, ch, offs
+	local dx, dy = pc and math.floor(12 * k + 0.5) or 6, pc and math.floor(10 * k + 0.5) or 5
+	local cw, ch
 	if pc then
-		cw, ch = 240 * k, 320 * k
-		offs = { { 14 * k, 18 * k, -7 }, { 74 * k, 8 * k, -1 }, { 134 * k, 0, 5 } }
+		cw, ch = math.floor(240 * k), math.floor(320 * k)
 	else
-		cw = math.min(116 * k, w * 0.6)
-		ch = math.min(156, h - 8)
-		local step = math.max(0, (w - cw - 6) / 2)
-		offs = { { 2, 8, -7 }, { 2 + step, 4, -1 }, { 2 + 2 * step, 0, 5 } }
+		cw = math.floor(math.min(116 * k, w - 2 * dx - 4))
+		ch = math.floor(math.min(156, h - 8 - 2 * dy))
 	end
+	local x0 = math.floor(math.max(0, (w - cw - 2 * dx) / 2))
 	for i, item in ipairs(U.Copies) do
-		local o = offs[i]
-		local hh = (i == 3) and ch or (ch - (pc and 12 * k or 6))
-		place(item.Root, o[1], o[2], cw, hh)
-		item.Root.Rotation = o[3]
+		local back = 3 - i -- (copy 3 in front)
+		place(item.Root, x0 + (2 - back) * dx, back * dy, cw, ch)
+		item.Root.Rotation = 0
 		item.Sub.Visible = pc and i == 3
-		H.layoutCard(item, cw, hh, pc, k, false)
+		H.layoutCard(item, cw, ch, pc, k, false)
 		item.Label.Visible = i == 3
 		item.PetName.Visible = i == 3
 	end
@@ -1469,21 +1491,21 @@ function H.layoutCost(w, h, form)
 		local ix = pad + (full and 110 or 96)
 		local icon = full and 56 or 48
 		place(U.CostIcon, ix, rowY, icon, icon)
-		S.Geo.IconPx = full and 44 or 38
+		S.Geo.IconPx = 27 -- (LOOK-ui2: 44 / 38, a third and fourth cell size) the kit's two icon sizes
 		place(U.Cost, ix + icon + 10, rowY, math.max(40, w - ix - icon - 10 - pad), rowH)
 		U.Cost.TextSize = full and 44 or 40
 		place(U.Have, pad, full and 88 or 70, w - 2 * pad, full and 34 or 32)
 		S.Geo.Have = { w - 2 * pad, full and 34 or 32, full and 22 or 20, 18 }
 	elseif form == "portrait" then
 		place(U.CostIcon, 8, 3, 28, 28)
-		S.Geo.IconPx = 24
+		S.Geo.IconPx = 18
 		place(U.Cost, 40, 0, w - 48, 32)
 		U.Cost.TextSize = 22
 		place(U.Have, 8, 32, w - 16, 22)
 		S.Geo.Have = { w - 16, 22, 15, 14 }
 	else
 		place(U.CostIcon, 6, (h - 30) / 2, 30, 30)
-		S.Geo.IconPx = 26
+		S.Geo.IconPx = 18
 		place(U.Cost, 42, 0, w - 48, h)
 		U.Cost.TextSize = 24
 	end
@@ -1871,19 +1893,20 @@ end
 function H.paintPills(plan)
 	local list = {}
 	if plan.ResultDef then
+		-- (LOOK-ui2: five darkened hues with white text, another kit's chips) the role's own colour at full brightness
 		if plan.Rarity then
-			list[#list + 1] = { "Pill_Rarity", tostring(plan.Rarity), Theme.Darken(H.rarityColor(plan.Rarity), 0.35) }
+			list[#list + 1] = { "Pill_Rarity", tostring(plan.Rarity), H.rarityColor(plan.Rarity) }
 		end
 		if S.Tab == "Upgrade" and plan.Tier then
 			local mult = (PetKeys and PetKeys.TierMultiplier and PetKeys.TierMultiplier[plan.Tier]) or 1
-			list[#list + 1] = { "Pill_Power", H.tierWord(mult), Theme.Darken(C.Tier.Golden, 0.45) }
+			list[#list + 1] = { "Pill_Power", H.tierWord(mult), SIGN.Gold }
 		elseif S.Tab == "Mix" then
 			local elements = plan.Elements or {}
 			if #elements > 0 then
 				local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[elements[1]]
-				list[#list + 1] = { "Pill_Elements", table.concat(elements, " + "), Theme.Darken(info and info.Color or C.Warn, 0.4) }
+				list[#list + 1] = { "Pill_Elements", table.concat(elements, " + "), info and info.Color or SIGN.Sky }
 			end
-			list[#list + 1] = { "Pill_Tier", tostring(plan.Tier or "Normal"), Theme.Darken(C.Tier[plan.Tier or "Normal"] or C.Tier.Normal, 0.3) }
+			list[#list + 1] = { "Pill_Tier", tostring(plan.Tier or "Normal"), TIER_TAG[plan.Tier or "Normal"] or SIGN.Tile }
 		end
 	end
 	local geo = S.Geo.Pills
@@ -1934,8 +1957,8 @@ function H.paintPills(plan)
 				end
 				pill.Text = it.P[2]
 				pill.TextSize = size
-				-- (kit-b U9-5) its colour, nudged until its ink reads (4.5:1: Theme.ReadableFace)
-				pill.BackgroundColor3, pill.TextColor3 = Theme.ReadableFace(it.P[3], 4.5)
+				-- (LOOK-ui2) the role's colour and the brown ink (tagFace lifts a dark face until the ink reads 4.5:1)
+				pill.BackgroundColor3, pill.TextColor3 = tagFace(it.P[3])
 				place(pill, x - geo.X, y - geo.Y, it.W, geo.H)
 				used[it.P[1]] = true
 				x = x + it.W + geo.Gap
@@ -2229,9 +2252,20 @@ function H.startFx()
 	U.Result.Bob.Position = UDim2.fromOffset(0, -4)
 	S.Fx.Bob = TweenService:Create(U.Result.Bob, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Position = UDim2.fromOffset(0, 4) })
 	S.Fx.Bob:Play()
-	U.Shimmer.Rotation = 0
-	S.Fx.Shimmer = TweenService:Create(U.Shimmer, TweenInfo.new(2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), { Rotation = 360 })
-	S.Fx.Shimmer:Play()
+	local live = { On = true }
+	S.Fx.Shimmer = { Cancel = function()
+		live.On = false
+	end }
+	task.spawn(function()
+		local i = 0
+		while live.On do
+			if U.Shimmer.Enabled then
+				i = i % #RAINBOW + 1
+				U.Result.Card.SetColor(RAINBOW[i])
+			end
+			task.wait(0.4)
+		end
+	end)
 end
 
 function H.stopFx()

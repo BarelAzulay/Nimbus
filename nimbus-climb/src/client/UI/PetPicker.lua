@@ -88,15 +88,18 @@ local K = {
 	FRAME = 6, -- (kit-b U9-5) px of the wood frame round the stone body
 	ROOF_W = 360, -- (kit-b U9-5) the awning's fixed width (the Pets window's)
 	CARD_LIP = 6, -- (kit-b U9-5) px of a card's rarity lip
+	-- (LOOK-ui2: the first row had no top edge, the first column no left edge: the cards' outer wood stroke lay outside the
+	-- list's clip) the cards start this far in on every side: the selected card's 4 px stroke + 1
+	GRID_INSET = 5,
 	PHONE = {
-		Header = 50, Close = 44, CloseY = 3, HeadPad = 10, Icon = 36, IconText = 24, TitleText = 20, TitleMin = 16,
+		Header = 50, Close = 44, CloseY = 3, HeadPad = 10, Icon = 30, IconPx = 18, IconText = 24, TitleText = 20, TitleMin = 16,
 		Pad = 10, RowY = 4, Row = 44, RowGap = 8, Gap = 8, ChipH = 44, ChipGap = 6, ChipText = 15, SearchW = 220, SortW = 170,
-		SortText = 15, SortMin = 15, SearchText = 15, GridGap = 10, Scroll = 6, CardW = 124, CardH = 100, CardGap = 8,
+		SortText = 15, SortMin = 15, SearchText = 15, GridGap = 10, Scroll = 6, CardW = 122, CardH = 100, CardGap = 8, -- (LOOK-ui2: 124; the Grid's inset kept six a row)
 		Art = 56, ArtY = 6, Text = 15, ChipRowH = 22, NameH = 20, Corner = 12, Hint = 15, Empty = 18, ClearW = 160,
 		ClearH = 44, Block = 15,
 	},
 	PC = {
-		Header = 76, Close = 56, CloseY = 10, HeadPad = 24, Icon = 52, IconText = 36, TitleText = 34, TitleMin = 24,
+		Header = 76, Close = 56, CloseY = 10, HeadPad = 24, Icon = 42, IconPx = 27, IconText = 36, TitleText = 34, TitleMin = 24,
 		Pad = 30, RowY = 18, Row = 60, RowGap = 14, Gap = 16, ChipH = 50, ChipGap = 10, ChipText = 20, SearchW = 460,
 		SortW = 280, SortText = 22, SortMin = 18, SearchText = 22, Row2Y = 92, GridY1 = 100, GridY2 = 166, ChipEnd = 24,
 		Scroll = 10, CardW = 180, CardH = 226, CardGap = 14, Art = 120, ArtY = 12, Text = 18, NameText = 20, ChipRowH = 30,
@@ -498,6 +501,7 @@ function H.build()
 		Parent = header,
 	})
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = C.Ink }) -- slop audit 2026-11-12: a drawn X (no glyph)
+	NeonKit.CloseBlock(U.Close) -- (LOOK-ui2) the kit's one close block: never under 44 screen px, its x in 3 px cells
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
@@ -701,9 +705,9 @@ function H.layout()
 	place(U.HeaderFoot, 0, M.Header - 5, W, 5) -- (kit-b U9-5) the plank's darker lip
 	U.Roof.Visible = not phone -- (kit-b U9-5) a phone sheet sits right under Roblox's top bar: no awning stub
 	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
-	U.Icon.TextSize = M.IconText
+	SignKit.IconSlot(U.Icon, nil, M.IconPx)
 	place(U.Close, W - M.HeadPad - M.Close, M.CloseY, M.Close, M.Close) -- (its drawn X scales with it)
-	local titleX = M.HeadPad + M.Icon + 8
+	local titleX = M.HeadPad + M.Icon + 12
 	local titleW = W - titleX - M.Close - 2 * M.HeadPad
 	place(U.Title, titleX, 6, titleW, M.Header - 12) -- (kit-b U9-5) 6 px in top and bottom: the ribbon lifts its letters (Drop), their box stays on the plank
 	H.fit(U.Title, { U.Title.Text }, titleW - 4, M.TitleText, M.TitleMin) -- (kit-b U9-5) 2 px each side for its outline
@@ -793,22 +797,24 @@ end
 -- the inside of one card at its size
 function H.layoutCard(item, w, h, M)
 	local phone = S.Mode == "Phone"
-	local art = math.min(M.Art, w - 8)
-	place(item.Art, (w - art) / 2, M.ArtY, art, art)
 	local pad = phone and 4 or 8
 	local text = M.Text
+	local nameY, nameSize = h - M.NameH - (phone and 4 or 40), M.NameText or text
+	-- (LOOK-ui2: a small centred square with "Lv 22" half on it and half on the stone) the Pets grid card's light well:
+	-- 4 px inside the edge, the card's whole inner width, down to 4 px over the name; the tags 3 px inside its top corners
+	place(item.Art, 4, 4, w - 8, math.max(24, nameY - 8))
+	local tagIn = 4 + 3
 	item.Level.TextSize = text
 	local stars = tonumber(item.Level:GetAttribute("Stars")) or 0 -- (kit-b U7b) the stars drawn after the text
-	local lw = math.min(w - 2 * pad, H.width(item.Level.Text, text, Theme.FontOf(item.Level)) + (phone and 12 or 16) + (stars > 0 and (stars * LEVEL_STAR + 4) or 0))
-	place(item.Level, pad, pad, lw, M.ChipRowH)
+	local lw = math.min(w - 2 * tagIn, H.width(item.Level.Text, text, Theme.FontOf(item.Level)) + (phone and 12 or 16) + (stars > 0 and (stars * LEVEL_STAR + 4) or 0))
+	place(item.Level, tagIn, tagIn, lw, M.ChipRowH)
 	local bw = M.ChipRowH
 	local starBadge = item.Badge:GetAttribute("HostMark") ~= nil and item.Badge:GetAttribute("HostMark") ~= ""
 	if not starBadge then
 		bw = H.width(item.Badge.Text, text, Theme.FontOf(item.Badge)) + (phone and 12 or 16)
 	end
-	place(item.Badge, w - pad - bw, pad, bw, M.ChipRowH)
+	place(item.Badge, w - tagIn - bw, tagIn, bw, M.ChipRowH)
 	item.Badge.TextSize = starBadge and (phone and 18 or 24) or text
-	local nameY, nameSize = h - M.NameH - (phone and 4 or 40), M.NameText or text
 	place(item.Name, pad, nameY, w - 2 * pad, M.NameH)
 	H.fit(item.Name, item.Names or { "" }, w - 2 * pad - 4, nameSize, nameSize)
 	item.Rarity.Visible = not phone
@@ -822,7 +828,8 @@ end
 -- positions the shown cards in rows filling the grid's width; the canvas follows
 function H.layoutCards()
 	local M = H.metrics()
-	local gw = U.Grid.Size.X.Offset - M.Scroll - 2
+	local inset = K.GRID_INSET
+	local gw = U.Grid.Size.X.Offset - M.Scroll - 2 - 2 * inset
 	local gap = M.CardGap
 	local n = math.max(1, math.floor((gw + gap) / (M.CardW + gap)))
 	local cw = math.floor((gw - (n - 1) * gap) / n)
@@ -832,12 +839,12 @@ function H.layoutCards()
 		local item = U.Cards[key]
 		if item then
 			local row, col = math.floor((i - 1) / n), (i - 1) % n
-			place(item.Button, col * (cw + gap), row * (ch + gap), cw, ch)
+			place(item.Button, inset + col * (cw + gap), inset + row * (ch + gap), cw, ch)
 			H.layoutCard(item, cw, ch, M)
 		end
 	end
 	local rows = math.ceil(#S.Order / n)
-	U.Grid.CanvasSize = UDim2.fromOffset(0, math.max(0, rows * (ch + gap) - gap + 4))
+	U.Grid.CanvasSize = UDim2.fromOffset(0, math.max(0, rows * (ch + gap) - gap + 2 * inset))
 	S.ViewDirty = true
 end
 
@@ -1000,6 +1007,20 @@ function H.paintSort()
 	-- (kit-b U7b) the arrow is a PixelIcon after the text (18 px + its gap)
 	H.fit(U.Sort, { "Sort: " .. name, "Sort: " .. short, short }, M.SortW - 22 - 22, M.SortText, M.SortMin)
 	PixelIcon.Mark(U.Sort, ICON.Down, { After = true, Px = 18 })
+	H.lipFlush(U.Sort)
+end
+
+-- (LOOK-ui2: the Sort lip stopped 22 px short of the right edge) a UIPadding lays out the plank's Lip too: once a trailing
+-- icon widened PaddingRight the lip reaches back out by the padding, flush on the wood edge as CloudUI.SignBlock sets it
+function H.lipFlush(obj)
+	local lip = obj:FindFirstChild("Lip")
+	local pad = obj:FindFirstChildOfClass("UIPadding")
+	if not (lip and pad) then
+		return
+	end
+	local pl, pr, pb = pad.PaddingLeft.Offset, pad.PaddingRight.Offset, pad.PaddingBottom.Offset
+	lip.Position = UDim2.new(0, -pl, 1, pb)
+	lip.Size = UDim2.new(1, pl + pr, 0, lip.Size.Y.Offset)
 end
 
 function H.cycleSort()
@@ -1051,7 +1072,7 @@ function H.scrollToSelected()
 	local M = H.metrics()
 	for i, key in ipairs(S.Order) do
 		if key == S.Selected then
-			local top = math.floor((i - 1) / math.max(1, S.PerRow or 1)) * (M.CardH + M.CardGap)
+			local top = K.GRID_INSET + math.floor((i - 1) / math.max(1, S.PerRow or 1)) * (M.CardH + M.CardGap)
 			if top + M.CardH > U.Grid.Size.Y.Offset then
 				U.Grid.CanvasPosition = Vector2.new(0, top * S.Scale)
 			end
@@ -1180,7 +1201,8 @@ function PetPicker.Open(spec)
 	S.Silent = true
 	U.Search.Text = ""
 	S.Silent = false
-	PixelIcon.Set(U.Icon, ICON.Context[S.Context]) -- (kit-b U9-5) one navy plank for every context; the icon tells them apart
+	-- (kit-b U9-5) one navy plank for every context; the icon tells them apart (LOOK-ui2: in the header's gold square)
+	SignKit.IconSlot(U.Icon, ICON.Context[S.Context])
 	U.Title.Text = tostring(spec.Title or "Pick a pet")
 	S.Open = true
 	U.Holder.Visible = true

@@ -7491,10 +7491,12 @@ function Hud.ShowResult(B, payload)
 	for i, line in ipairs(lines) do
 		local icon = Hud.RewardIcon(line[1])
 		local t = label(list, line[1], "Heading", tagPx, { Name = "Reward" .. i, LayoutOrder = i, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile,
-			TextColor3 = (line[2] == COLORS.Weak) and KB.Muted or KB.Ink, TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
+			TextColor3 = (line[2] == COLORS.Weak) and KB.Muted or KB.Ink, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
 		signEdge(t, KB.Edge, 2)
 		make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, t)
 		local px = max(tagPx, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
+		-- (left-aligned: centred, the icon was placed from the text's centre and sat on its first letter, "Rounds won: 8"
+		-- with the castle on its R; the measure runs about 8% wide of FredokaOne, so 0.92 of it still holds the words)
 		local tw = math.ceil(textWidth(line[1], px) * 0.92) + 16 + 4
 		if icon then
 			PixelIcon.Lead(t, icon)

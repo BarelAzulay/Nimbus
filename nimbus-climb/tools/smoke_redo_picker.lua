@@ -576,6 +576,21 @@ local function clientScenarios()
 				end
 				if T.check(grid ~= nil and grid:IsA("ScrollingFrame"), "picker ui: Grid is a ScrollingFrame") then
 					viewCheck("top")
+					-- (LOOK-ui2) at scroll 0 every card in view shows its whole wood edge: the stroke inside the Grid's clip rect
+					local gp, gs = grid.AbsolutePosition, grid.AbsoluteSize
+					local cut = {}
+					for _, key in ipairs(PP.Shown()) do
+						local c = H.card(key)
+						local st = c and c:FindFirstChild("SignEdge")
+						if c and c.Visible and c.AbsolutePosition.Y < gp.Y + gs.Y then
+							local t = (st and st.Thickness or 0) * (gs.Y / math.max(1, grid.Size.Y.Offset))
+							local p, z = c.AbsolutePosition, c.AbsoluteSize
+							if p.X - t < gp.X - 0.01 or p.Y - t < gp.Y - 0.01 or p.X + z.X + t > gp.X + gs.X + 0.01 then
+								cut[#cut + 1] = key
+							end
+						end
+					end
+					T.check(#cut == 0, "picker ui: the first row and column show their whole wood edge (cards inset in the Grid)", table.concat(cut, ", "))
 					local scale = grid.AbsoluteSize.Y / math.max(1, grid.Size.Y.Offset)
 					local maxY = grid.CanvasSize.Y.Offset * scale - grid.AbsoluteSize.Y
 					grid.CanvasPosition = Vector2.new(0, math.max(0, maxY))

@@ -50,6 +50,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local Workspace = game:GetService("Workspace")
+local GuiService = game:GetService("GuiService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -105,7 +106,9 @@ local K = {
 	FOOT_H = 108,
 	FOOT_H_SHORT = 74,
 	CONFIRM_W = 560,
-	CONFIRM_H = 286,
+	CONFIRM_H = 286, -- (LOOK-ui2) the most it takes; the box is as tall as its content (H.relayoutConfirm)
+	CONFIRM_LIP = 8,
+	SHADE = 0.55, -- (LOOK-ui2) the PetPicker's shade under the confirm
 	BUILD_BUDGET = 0.004, -- seconds of pet viewport building per frame (at least one per frame)
 	FIRE_GAP = 0.3, -- client-side spacing between two sends of the same action
 	TICK = 0.5, -- seconds between two timer refreshes while a window is open
@@ -130,21 +133,22 @@ local BAD = Colors.Bad
 local WELL_EDGE = Colors.WellEdge or NAVY
 local INSET = Color3.fromRGB(20, 30, 70)
 local CASH = Colors.Cash or Color3.fromRGB(112, 204, 98)
-local XP = Color3.fromRGB(120, 200, 255)
+local XP = Theme.Sign.Sky -- (LOOK-ui2: was #78C8FF) XP's one role colour in every window: Pets, Feed, the loss card
 local PURPLE = Color3.fromRGB(168, 118, 236)
 local LOCK = Color3.fromRGB(255, 206, 120)
 local ACCENTS = {
 	Feed = Color3.fromRGB(240, 150, 80),
 	Garden = Color3.fromRGB(110, 190, 90),
 }
-local ROLE_COLORS = { Economy = Color3.fromRGB(96, 196, 108), Combat = Color3.fromRGB(228, 104, 96) }
+-- (LOOK-ui2: #60C46C / #E46860, off the kit) the role tags in the kit's own grass and red
+local ROLE_COLORS = { Economy = Theme.Sign.Grass, Combat = Theme.Sign.Red }
 -- (kit-b U9-5) the Signboard palette (the pitch's kit B; one colour by role): brown ink on stone rows in the window's stone
 -- body, sunk wells for the footer and the garden header, the rarity on a pet's well edge, gold for a pet ready to evolve;
 -- green / violet text darkened until it reads on stone (4.5:1)
 local SIGN = Theme.Sign
 local INK = SIGN.Text
 local SIGN_MUTED = SIGN.TextMuted
-local GOOD_INK = Color3.fromRGB(46, 125, 50) -- #2E7D32: 5.1:1 on the stone tile
+local GOOD_INK = SIGN.Good -- #2E7D32: 5.1:1 on the stone tile (LOOK-ui2: kit B's one good ink, Theme.Sign.Good)
 
 -- (kit-b U7b) the marks are PixelIcons, not emoji: a pet's evolution stars, where it is (training: the weight, the
 -- garden: the sprout, following: the star), the berry basket
@@ -928,6 +932,15 @@ end
 
 -- the confirm (Evolve): its own holder above the window, so it also works over the Pets panel
 function H.buildConfirm()
+	-- (LOOK-ui2: the confirm lay bare over the Pets window, half-words round it) the PetPicker's shade under it
+	U.ConfirmShade = H.frame(U.Gui, "ConfirmShade", {
+		BackgroundTransparency = K.SHADE,
+		BackgroundColor3 = SIGN.NavyLip,
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		Active = true,
+		ZIndex = 29,
+	})
 	local holder = H.frame(U.Gui, "CareConfirm", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -945,6 +958,16 @@ function H.buildConfirm()
 		ZIndex = 31,
 	})
 	U.ConfirmStroke = H.edge(box, SIGN.Wood, 6)
+	-- (LOOK-ui2) the card's 8 px stone lip and its two nails, as the kit's other cards
+	H.frame(box, "Lip", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.StoneLip,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, K.CONFIRM_LIP),
+		ZIndex = 31,
+	})
+	SignKit.Nails(box, { Inset = 5, ZIndex = 33 })
 	U.ConfirmTitle = Theme.StyleTitle(H.text(box, "Title", "", "Title", 30, INK, {
 		Position = UDim2.fromOffset(16, 12),
 		Size = UDim2.new(1, -32, 0, 40),
@@ -954,14 +977,14 @@ function H.buildConfirm()
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 22, Parent = U.ConfirmTitle })
 	U.ConfirmText = H.text(box, "Text", "", "Body", 20, INK, {
 		Position = UDim2.fromOffset(20, 60),
-		Size = UDim2.new(1, -40, 1, -146),
+		Size = UDim2.new(1, -40, 1, -(146 + K.CONFIRM_LIP)),
 		TextWrapped = true,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		ZIndex = 32,
 	})
 	local buttons = H.frame(box, "Buttons", {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -16),
+		Position = UDim2.new(0.5, 0, 1, -(16 + K.CONFIRM_LIP)),
 		Size = UDim2.new(1, -32, 0, 58),
 		ZIndex = 32,
 	})
@@ -1048,7 +1071,9 @@ function H.buildWindow()
 		Height = 32,
 		TextSize = 19,
 		Color = SIGN.Roof,
-		Skin = "Sign", -- (kit-b U9-5) a flat bar
+		Skin = "Sign", -- (LOOK-ui2) a row of kit blocks, the number beside it ("1,24|0" straddled the fill's edge)
+		LabelSide = "Right",
+		MinBlockW = 14, -- (a phone's narrow row: 5 to 10 blocks, never slivers)
 		Parent = U.Top,
 	})
 	U.BasketIcon = H.text(U.Top, "BasketIcon", "", "Title", 26, SIGN.RedLip, {
@@ -1134,7 +1159,9 @@ function H.newFeedRow(key, def)
 		Height = 28,
 		TextSize = 18,
 		Color = XP,
-		Skin = "Sign", -- (kit-b U9-5) a flat bar
+		Skin = "Sign", -- (LOOK-ui2) a row of kit blocks, "300 / 1,065 XP" beside it (it started on the fill's edge)
+		LabelSide = "Right",
+		MinBlockW = 14,
 		Parent = f,
 	})
 	local buttons = H.frame(f, "Buttons", {
@@ -1215,6 +1242,7 @@ function H.layoutFeedRow(row)
 		row.Feed.Size = UDim2.fromOffset(row.Ready and 300 or 430, 58)
 		row.Evolve.Size = UDim2.fromOffset(128, 58)
 	end
+	row.Bar.FitCount() -- (LOOK-ui2: the XP row's block count follows its new room, CloudUI.Bar MinBlockW)
 end
 
 function H.paintFeedRow(row, home, cash)
@@ -1293,7 +1321,10 @@ function H.newGardenRow(key, def)
 	row.RoleText = role .. (mult > 1.001 and (" x" .. tostring(math.floor(mult * 10 + 0.5) / 10)) or "")
 	row.RoleShort = role
 	row.Role = H.pill(info, "Role", row.RoleText, ROLE_COLORS[role] or Theme.Buttons.Blue, 18, 1)
-	row.Coins = H.pill(info, "Coins", "Coins $0/s", Theme.Darken(CASH, 0.2), 18, 2)
+	-- (LOOK-ui2: a darkened green pill) the coins as the stone fact tag with the cash icon
+	row.Coins = H.pill(info, "Coins", "Coins $0/s", SIGN.Tile, 18, 2)
+	row.Coins.TextXAlignment = Enum.TextXAlignment.Left -- (the tag hugs its text: the icon at its padded box's left edge)
+	PixelIcon.Lead(row.Coins, Config.Icons and Config.Icons.Cash or "note")
 	row.Put = H.button(f, "PutHere", "Put here", "Gray", UDim2.fromOffset(170, 56), 21, function()
 		if S.Slot then
 			H.fire("garden", "HomeAction", "GardenSet", { Slot = S.Slot, Key = key })
@@ -1310,8 +1341,11 @@ function H.layoutSimpleRow(row)
 	local view = short and K.VIEW_SHORT or K.VIEW
 	local stacked = S.Tall or S.Short
 	local h = short and K.ROW_H_SHORT or K.ROW_H
+	-- (LOOK-ui2: 34 px kept for a second chip line no row used, a dead band over "Put here") the button under the pills; the
+	-- pills' second line only when they wrap (H.chipsWrap)
+	local wraps = stacked and H.chipsWrap(row)
 	if stacked then
-		h = h + 52 + 34 -- the button under the pills, the pills on two lines
+		h = h + 52 + 5 + (wraps and 34 or 0) -- (+ the row's 5 px lip under the button)
 	end
 	row.Frame.Size = UDim2.new(1, 0, 0, h)
 	row.Disc.Size = UDim2.fromOffset(view, view)
@@ -1324,10 +1358,10 @@ function H.layoutSimpleRow(row)
 	row.Where.Position = UDim2.fromOffset(x + 144, short and 35 or 39)
 	row.Where.Size = UDim2.new(1, -(x + 154 + right), 0, 24)
 	row.Info.Position = UDim2.fromOffset(x, short and 64 or 70)
-	row.Info.Size = UDim2.new(1, -(x + right), 0, stacked and 66 or 30)
+	row.Info.Size = UDim2.new(1, -(x + right), 0, (stacked and wraps) and 66 or 30)
 	if stacked then
 		row.Put.AnchorPoint = Vector2.new(1, 1)
-		row.Put.Position = UDim2.new(1, -12, 1, -8)
+		row.Put.Position = UDim2.new(1, -12, 1, -(8 + 5)) -- (8 px above the row's 5 px lip, not on it)
 		row.Put.Size = UDim2.fromOffset(170, 48)
 	else
 		row.Put.AnchorPoint = Vector2.new(1, 0.5)
@@ -1336,11 +1370,37 @@ function H.layoutSimpleRow(row)
 	end
 end
 
+-- (LOOK-ui2) the role and coins tags need two lines in the row's info box (design px; their drawn widths, the padding, the
+-- edges and the coin icon)
+function H.chipsWrap(row)
+	local s = PixelIcon.RestScale(row.Frame)
+	local fw = (s > 0) and row.Frame.AbsoluteSize.X / s or 0
+	if fw <= 0 then
+		-- (not laid out yet: the dock's width less the body's and the list's insets)
+		local rect = U.Dock and U.Dock.Rect
+		fw = rect and (rect.designW - 24 - 16) or 0
+		if fw <= 0 then
+			return false
+		end
+	end
+	local view = S.Short and K.VIEW_SHORT or K.VIEW
+	local room = fw - (view + 22) - 10
+	local function w(lbl, extra)
+		local ok, m = pcall(Theme.MeasureLabel, lbl)
+		return ((ok and typeof(m) == "Vector2") and m.X or #lbl.Text * 18 * 0.6) * 1.1 + 22 + (extra or 0)
+	end
+	return w(row.Role) + 8 + w(row.Coins, 24) > room
+end
+
 function H.paintGardenRow(row, home)
 	local key, def = row.Key, row.Def
 	H.paintHead(row, key, def, home)
+	local role0, coins0 = row.Role.Text, row.Coins.Text
 	row.Role.Text = S.Tall and row.RoleShort or row.RoleText
 	row.Coins.Text = "Coins " .. H.rate(H.coinsPerSecond(key, def, home)) .. "/s"
+	if (S.Tall or S.Short) and (role0 ~= row.Role.Text or coins0 ~= row.Coins.Text) then
+		H.layoutSimpleRow(row) -- (the tags' widths decide the row's height)
+	end
 	local placed = #H.gardenSlots(home, key)
 	local here = S.Slot and type(home.Garden) == "table" and home.Garden[S.Slot] == key
 	local free = H.owned(key) - placed
@@ -1489,6 +1549,7 @@ function H.refreshFeed(home, cash)
 	U.Machine.Text = text
 	local canBuy = pad ~= nil and not pad.Locked and level < maxLevel
 	U.Upgrade.Visible = canBuy
+	H.fitFoot()
 	U.Upgrade.Text = level < 1 and "Build" or "Upgrade"
 	CloudUI.SetDisabled(U.Upgrade, not canBuy or cash < (tonumber(pad and pad.Price) or 0) or not H.hasHome() or H.inMatch())
 	-- the Berry Basket header: "1,240 / 3,000 berries" + "(+750 a minute)"
@@ -1608,7 +1669,8 @@ function H.refreshGarden(home)
 	elseif slot and slot > open then
 		S.GardenNowTexts = { "This place opens with a Prestige.", "Opens with a Prestige." }
 	else
-		S.GardenNowTexts = { "Pick a pet: it eats at the Food Bowl and poops Cloud Cash.", "Pick a pet: it poops Cloud Cash.", "Pick a pet to work here." }
+		-- (LOOK-ui2: the info line under it said the same sentence 30 px away) the place's line is the action
+		S.GardenNowTexts = slot and { "Pick a pet for place " .. slot .. ".", "Pick a pet for place " .. slot, "Pick a pet." } or { "Pick a pet to work here." }
 	end
 	U.GardenPlace.Text = S.GardenTexts[1]
 	U.GardenNow.Text = S.GardenNowTexts[1]
@@ -1694,6 +1756,47 @@ function H.fitGardenHead()
 	end
 	fit(U.GardenPlace, S.GardenTexts, 24, 18, false)
 	fit(U.GardenNow, S.GardenNowTexts, 18, 16, tall)
+	-- (LOOK-ui2: a 118 px box with its lower third empty on a phone) the box as tall as its lines and Take out
+	if tall then
+		local room = U.GardenNow.AbsoluteSize.X * k
+		local okM, m = pcall(Theme.MeasureLabel, U.GardenNow, U.GardenNow.Text, 18)
+		local lines = (room > 0 and okM and typeof(m) == "Vector2" and m.X * 1.1 > room) and 2 or 1
+		local nowH = lines * 24
+		U.GardenNow.Size = UDim2.new(1, -28, 0, nowH)
+		local headH = 38 + nowH + 8 + (U.TakeOut.Visible and (44 + 8) or 0)
+		U.GardenHead.Size = UDim2.new(1, 0, 0, headH)
+		U.GardenList.Position = UDim2.fromOffset(0, headH + 10)
+		U.GardenList.Size = UDim2.new(1, 0, 1, -(headH + 10))
+	end
+end
+
+-- (LOOK-ui2: the footer kept 150 design px on a phone, half of it room for an Upgrade that was hidden; the list showed 1.3
+-- cards) the Food Machine's footer as tall as what it shows: a PC its two lines (the Upgrade plank beside them); a phone
+-- the Machine line only, the plank under it (portrait) or beside it (landscape) only while it shows
+function H.fitFoot()
+	if not (U.Foot and U.Machine and U.Dock and U.Dock.Rect) then
+		return
+	end
+	local short, tall = S.Short == true, S.Tall == true
+	local up = U.Upgrade.Visible
+	local w = math.floor(U.Dock.Rect.designW + 0.5) - 24
+	local footH
+	if tall then
+		local room = math.max(40, w - 28)
+		local okM, m = pcall(Theme.MeasureLabel, U.Machine, U.Machine.Text, 19)
+		local tw = (okM and typeof(m) == "Vector2") and m.X * 1.1 or #U.Machine.Text * 19 * 0.55
+		local mh = math.max(1, math.ceil(tw / room)) * 25
+		U.Machine.Size = UDim2.new(1, -28, 0, mh)
+		footH = 8 + mh + 8 + (up and (46 + 8) or 0)
+	elseif short then
+		footH = up and 60 or 40
+		U.Machine.Size = UDim2.new(1, up and -170 or -28, 0, footH - 12)
+	else
+		footH = up and K.FOOT_H or 80
+		U.Machine.Size = UDim2.new(1, up and -220 or -28, 0, footH - 44)
+	end
+	U.Foot.Size = UDim2.new(1, 0, 0, footH)
+	U.FeedList.Size = UDim2.new(1, 0, 1, -(footH + 10))
 end
 
 -- (kit-b U9-5) "Berry Basket 1,240 / 3,000", or the numbers alone when the words do not fit the bar (a phone: the berry
@@ -1706,8 +1809,10 @@ function H.basketText(numbers)
 	if not (label and rect and rootW > 0) then
 		return full
 	end
-	local room = label.AbsoluteSize.X * rect.designW / rootW - 8
-	if room > 0 and Theme.MeasureLabel(label, full).X > room then
+	-- (LOOK-ui2: the number sits beside the blocks now) the words only while the label keeps under 55% of the bar
+	local bar = U.Basket.Root
+	local room = bar.AbsoluteSize.X * rect.designW / rootW * 0.55
+	if room > 0 and Theme.MeasureLabel(label, full).X * 1.15 > room then
 		return numbers
 	end
 	return full
@@ -1733,9 +1838,14 @@ function H.relayout()
 	-- (landscape phones keep the Berry Basket bar in the Food Machine, the other windows drop their info line)
 	local topH = short and ((S.Mode == "Feed") and 38 or 0) or K.TOP_H
 	U.Top.Visible = topH > 0
-	-- (kit-b U9-5) no roof on a phone: over the short window it covered the top bar
+	-- (LOOK-ui2: the dock never drew its roof: `tall` held for every 600 px dock) the fixed awning as on the other docked
+	-- windows, hidden only where the panel's top comes within 12 px of Roblox's top bar (its 10 px rise would lie on it)
 	if U.Panel.Roof then
-		U.Panel.Roof.Visible = not (short or tall)
+		local okI, topLeft = pcall(function()
+			return (GuiService:GetGuiInset())
+		end)
+		local inset = (okI and typeof(topLeft) == "Vector2") and topLeft.Y or 0
+		U.Panel.Roof.Visible = (rect.y - inset) >= math.max(12, 10 * (rect.scale or 1) + 2)
 	end
 	U.Top.Size = UDim2.new(1, -24, 0, topH)
 	U.Top.Position = UDim2.fromOffset(12, 8)
@@ -1743,33 +1853,26 @@ function H.relayout()
 	U.Info.Size = tall and UDim2.new(1, 0, 1, 0) or UDim2.new(1, -220, 1, 0)
 	U.Body.Position = UDim2.fromOffset(12, topH + (short and 8 or 16))
 	U.Body.Size = UDim2.new(1, -24, 1, -(topH + (short and 16 or 26)))
-	-- feed footer
-	local footH = short and K.FOOT_H_SHORT or K.FOOT_H
-	if tall then
-		footH = 150
-	end
-	U.Leftovers.Visible = not short
-	U.Foot.Size = UDim2.new(1, 0, 0, footH)
-	U.FeedList.Size = UDim2.new(1, 0, 1, -(footH + 10))
+	-- feed footer (LOOK-ui2: H.fitFoot sizes it to what it shows; a phone keeps the Machine line only)
+	U.Leftovers.Visible = not (short or tall)
+	H.fitFoot()
 	if tall then
 		U.Leftovers.Size = UDim2.new(1, -28, 0, 46)
 		U.Leftovers.TextWrapped = true
 		U.Leftovers.TextYAlignment = Enum.TextYAlignment.Top
-		U.Machine.Size = UDim2.new(1, -28, 0, 50)
-		U.Machine.Position = UDim2.fromOffset(14, 54)
+		U.Machine.Position = UDim2.fromOffset(14, 8)
 		U.Upgrade.AnchorPoint = Vector2.new(1, 1)
 		U.Upgrade.Position = UDim2.new(1, -12, 1, -8)
 		U.Upgrade.Size = UDim2.fromOffset(170, 46)
 	else
 		U.Leftovers.TextWrapped = false
 		U.Leftovers.Size = UDim2.new(1, -220, 0, 26)
-		U.Machine.Size = UDim2.new(1, short and -170 or -220, 0, short and (footH - 12) or (footH - 44))
 		U.Machine.Position = UDim2.fromOffset(14, short and 6 or 36)
 		U.Upgrade.AnchorPoint = Vector2.new(1, 0.5)
 		U.Upgrade.Position = UDim2.new(1, -12, 0.5, 0)
 		U.Upgrade.Size = UDim2.fromOffset(short and 150 or 190, short and 48 or 54)
 	end
-	-- the garden header
+	-- the garden header (a phone's: H.fitGardenHead, from its text)
 	U.GardenHead.Size = UDim2.new(1, 0, 0, tall and 118 or 72)
 	U.GardenList.Position = UDim2.fromOffset(0, tall and 128 or 82)
 	U.GardenList.Size = UDim2.new(1, 0, 1, -(tall and 128 or 82))
@@ -1796,6 +1899,7 @@ function H.relayout()
 			H.refreshSoon()
 		end
 	end
+	U.Basket.FitCount() -- (LOOK-ui2: the basket's block count follows the top row's room)
 	H.relayoutConfirm()
 end
 
@@ -1803,7 +1907,14 @@ function H.relayoutConfirm()
 	if not U.Confirm then
 		return
 	end
-	local w, h, scale, x, y = H.confirmFit(K.CONFIRM_W, K.CONFIRM_H, 440, 250)
+	-- (LOOK-ui2: a fixed 286 px left a 60 px hole between the text and the buttons) as tall as its content: the title, the
+	-- wrapped text, the buttons and the lip
+	local w0 = H.confirmFit(K.CONFIRM_W, K.CONFIRM_H, 440, 200)
+	local okM, m = pcall(Theme.MeasureLabel, U.ConfirmText, U.ConfirmText.Text, 20)
+	local tw = (okM and typeof(m) == "Vector2") and m.X * 1.1 or #U.ConfirmText.Text * 20 * 0.55
+	local textH = math.max(1, math.ceil(tw / math.max(40, w0 - 40))) * 26
+	local want = math.min(K.CONFIRM_H, 60 + textH + 16 + 58 + 16 + K.CONFIRM_LIP)
+	local w, h, scale, x, y = H.confirmFit(K.CONFIRM_W, want, 440, math.min(want, 200))
 	U.Confirm.Size = UDim2.fromOffset(w, h)
 	U.ConfirmFit.Scale = scale
 	U.Confirm.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
@@ -1856,6 +1967,7 @@ function H.showConfirm(spec)
 	U.ConfirmNo.Text = spec.NoText or "Not now"
 	H.relayoutConfirm()
 	U.Confirm.Visible = true
+	U.ConfirmShade.Visible = true
 	local pop = U.Confirm:FindFirstChild("Pop") or Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = U.Confirm:FindFirstChild("Box") })
 	pop.Scale = 0.9
 	H.tween(pop, 0.18, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -1866,6 +1978,7 @@ function H.closeConfirm()
 	S.Confirm = nil
 	if U.Confirm then
 		U.Confirm.Visible = false
+		U.ConfirmShade.Visible = false
 	end
 	H.syncBack()
 end
