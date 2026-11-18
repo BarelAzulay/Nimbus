@@ -4080,6 +4080,16 @@ local function clientScenarios()
 		{ "dungeon:run", "NimbusDungeonRun" }, { "dungeon:treasure", "NimbusDungeonRun" }, { "dungeon:end", "NimbusDungeonRun" },
 		{ "arena:side", "NimbusArenaSide" }, { "dare", "NimbusRaidGate" },
 	}
+	-- (U9-8) the Obby family: the Sky Obby picker at the gate (Easy, Medium and Hard beaten: Extreme open, Saint locked,
+	-- Hard picked), the same picker the party panel's CHANGE opens for the leader on the pad, the unlock toast after a won
+	-- Extreme match (beside the match's result card), and the HUD's vitals card at rest in the lobby and in a match with a
+	-- dash cooling (its stamina row: the bolt, the block bar, the dash key). U98.FAMILY: { view, its ScreenGui, the part a
+	-- view checks (nil: the whole gui) }; U98.open / close are defined after U97's (they use U8)
+	local U98 = {}
+	U98.FAMILY = {
+		{ "obby", "NimbusObby" }, { "obby:party", "NimbusObby" }, { "obby:toast", "NimbusObbyToast" },
+		{ "vitals", "NimbusHud", "Vitals" }, { "vitals:dash", "NimbusHud", "Vitals" },
+	}
 
 	-- (T0 review) every window title goes through Theme.StyleTitle, seen at run time: the walk opens the windows that build
 	-- late (Training with its confirm, Fusion, the pet picker, the Shop, the Home window with its hero cards and Prestige
@@ -4211,6 +4221,14 @@ local function clientScenarios()
 			walk()
 			U97.close()
 		end
+		-- (U9-8) the Sky Obby picker (it builds on its first open) and its unlock toast
+		for _, f in ipairs({ { "obby" }, { "obby:toast" } }) do
+			try("the obby view " .. f[1], function()
+				U98.open(f[1])
+			end)
+			walk()
+			U98.close()
+		end
 		-- the window titles this walk must have seen as "Ribbon" (a Lua pattern on the path inside PlayerGui each); (U9-5, the
 		-- owner's ruling 2026-11-14: the T1 ribbon is for window titles only) a third field names another look: the Care
 		-- family's dialogs wear the plain kit B "Section" title
@@ -4221,6 +4239,7 @@ local function clientScenarios()
 			{ "the Champion Ring window", "^NimbusArena%.Window_Ring%..-%.TitleBar%..-Title$" },
 			{ "the Dungeon window", "^NimbusDungeon%.Window_Dungeon%..-%.TitleBar%..-Title$" },
 			{ "the dare panel", "^NimbusRaidGate%.Dare%..-%.TitleBar%..-Title$" },
+			{ "the Sky Obby window", "^NimbusObby%.Window_Obby%..-%.TitleBar%..-Title$" }, -- (U9-8)
 			{ "the Arena's Quick match head", "^NimbusArena%.Window_Arena%..-%.Quick%.Head%.Title$", "Section" }, -- (U9-7 look) in its title row
 			{ "the Ring's champion head", "^NimbusArena%.Window_Ring%..-%.Champion%.Head%.Title$", "Section" },
 			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
@@ -4497,6 +4516,13 @@ local function clientScenarios()
 			end)
 			walk()
 			U97.close()
+		end
+		for _, f in ipairs(U98.FAMILY) do -- (U9-8) and every view of the Obby family (the picker, the toast, the vitals)
+			U7.try("the obby family " .. f[1], function()
+				U98.open(f[1])
+			end)
+			walk()
+			U98.close()
 		end
 		local list, n = {}, 0
 		for path, cps in pairs(hits) do
@@ -5158,6 +5184,117 @@ local function clientScenarios()
 	-- the view shows: its ScreenGui enabled with a shown part in it (U96's rule)
 	U97.showing = U96.showing
 
+	-- (U9-8) the Obby family's views (U98.FAMILY, declared above), defined here, after U8. U98.feed: U8.feed's profile with the
+	-- obby's best times (the render's DGC.profile: Easy 3:32, Medium 4:25, Hard 6:43)
+	U98.BEST = { Easy = 212.4, Medium = 265.1, Hard = 402.8 }
+	function U98.feed(best)
+		local pets, levels, discovered = {}, {}, {}
+		for i, key in ipairs(U8.KEYS) do
+			pets[key] = 1
+			levels[key] = { Level = 4 + 3 * i, Xp = 10 }
+			discovered[key] = true
+		end
+		local preset = { U8.KEYS[1], U8.KEYS[2] }
+		LKC.toClient("ProfileSync", {
+			Tokens = 1250, Pets = pets, Equipped = preset, Items = {},
+			Stats = { Matches = 30, Wins = 14, TokensEarned = 2400, Spins = 9, BestTimes = best or U98.BEST },
+			Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 },
+			Discovered = discovered, IndexClaimed = {},
+			Tutorial = { Step = 1000, Done = true, Gifted = true },
+			Cash = 48200, Gems = 320,
+			Home = { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = {}, Gym = {}, CollectorCash = 0 },
+			Food = {}, Tiers = {}, Hybrids = {}, PetLevels = levels,
+			Teams = { Presets = { preset, {}, {} }, Active = 1, Slots = 3, Busy = {} },
+			Battle = { Trophies = 120, TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} },
+			PetGrowth = {}, Ring = { Best = 0, Runs = 0 },
+		})
+		LKC.advance(0.3)
+	end
+	function U98.open(view)
+		local lp = game:GetService("Players").LocalPlayer
+		local Attr = LoadingH.shared("Config").Attr
+		local base, sub = tostring(view):match("^([^:]+):?(.*)$")
+		if base == "obby" then
+			U98.feed()
+			lp:SetAttribute(Attr.ObbyLevel or "ObbyLevel", "Hard")
+			LKC.advance(0.2)
+			if sub == "party" then
+				LKC.toClient("PartyState", { PortalId = "Obby", Level = "Hard", Stars = 3, LeaderUserId = lp.UserId, DifficultyName = "Hard",
+					Players = { { UserId = lp.UserId, Name = lp.Name }, { UserId = 77, Name = "Buddy" } }, Max = 4, Countdown = 12, Locked = true })
+				lp:SetAttribute("PortalLocked", "Obby")
+				LKC.advance(0.6)
+				U7.client("Controllers/HudController")._onChangeLevel()
+			elseif sub == "toast" then
+				-- a won Extreme match (Saint opens): the match's result card is up beside the toast
+				lp:SetAttribute(Attr.InMatch, true)
+				LKC.toClient("MatchState", LKC.matchState({ DifficultyId = "Extreme", DifficultyName = "Extreme" }))
+				LKC.advance(0.4)
+				LKC.toClient("MatchResult", { Won = true, Reason = "Finished", Seconds = 451, MatchTokens = 40, Bonus = 60, DifficultyId = "Extreme",
+					DifficultyName = "Extreme", Stars = 4, TotalTokens = 60, Members = {} })
+				LKC.advance(1.2)
+				local tg = U8.pg():FindFirstChild("NimbusObbyToast")
+				local card = tg and tg:FindFirstChild("UnlockToast", true)
+				if not (card and U8.shown(card)) then
+					-- a screen with no room beside the result card: the toast waits for the card to go (back in the lobby)
+					lp:SetAttribute(Attr.InMatch, false)
+					LKC.toClient("MatchState", nil)
+				end
+			else
+				LKC.toClient("OpenPanel", "Obby", {})
+			end
+			LKC.advance(1.2)
+			return
+		end
+		if sub == "dash" then
+			-- in a match (stamina is spent outside the lobby): a run, then a dash; looked at 0.5 s into its cooldown
+			lp:SetAttribute(Attr.InMatch, true)
+			LKC.toClient("MatchState", LKC.matchState({}))
+			LKC.advance(0.6)
+			local h = LKC.hum()
+			if h then
+				h.MoveDirection = Vector3.new(0, 0, -1)
+			end
+			Mock.KeysDown.LeftShift = true
+			Mock.TriggerAction("NimbusRun", "Begin", Mock.NewInput("LeftShift", "Keyboard", "Begin"))
+			LKC.advance(1.4)
+			Mock.KeysDown.LeftShift = false
+			Mock.TriggerAction("NimbusRun", "End", Mock.NewInput("LeftShift", "Keyboard", "End"))
+			Mock.TriggerAction("NimbusDash", "Begin", Mock.NewInput("Q", "Keyboard", "Begin"))
+			LKC.advance(0.05)
+			Mock.TriggerAction("NimbusDash", "End", Mock.NewInput("Q", "Keyboard", "End"))
+			if h then
+				h.MoveDirection = Vector3.new(0, 0, 0)
+			end
+			LKC.advance(0.45)
+			return
+		end
+		LKC.advance(0.4)
+	end
+	function U98.close()
+		local lp = game:GetService("Players").LocalPlayer
+		local Attr = LoadingH.shared("Config").Attr
+		pcall(U7.client("Controllers/ObbyController").Close)
+		lp:SetAttribute("PortalLocked", nil)
+		lp:SetAttribute(Attr.InMatch, false)
+		lp:SetAttribute(Attr.ObbyLevel or "ObbyLevel", nil)
+		LKC.toClient("MatchState", nil)
+		LKC.toClient("PartyState", nil)
+		LKC.advance(2.4) -- (the dash cools down and the stamina refills; a toast that waited for room shows)
+		local toast = U8.pg():FindFirstChild("NimbusObbyToast")
+		local card = toast and toast:FindFirstChild("UnlockToast", true)
+		if card then
+			card.Visible = false
+		end
+	end
+	-- the view shows: its ScreenGui enabled with a shown part in it (U96's rule), or its part shown
+	function U98.showing(gui, part)
+		if part then
+			local p = gui and gui:FindFirstChild(part, true)
+			return p ~= nil and U8.shown(p) and p.AbsoluteSize.X > 0
+		end
+		return U96.showing(gui)
+	end
+
 	-- (U8) the gift docks under the currency strips (the pitch's HUD stage: a small pink block right-aligned under them): its
 	-- right edge on the strips' right edge, its top a small gap under the last strip, never over a strip, and the HUD's
 	-- TopRightBottom (where the toasts start) under it; a kit B block (the pink awning colour, square, the pixel gift and
@@ -5769,6 +5906,44 @@ local function clientScenarios()
 				T.check(shown == #U97.FAMILY, fmt("%s: every dock family view opened (%d of %d)", tag, shown, #U97.FAMILY))
 				T.check(#dock == 0, fmt("%s: no glow, gradient, neon or rounded corner in the dock family (%d)", tag, #dock),
 					table.concat(dock, "; ", 1, math.min(#dock, 12)))
+				-- (U9-8) and the Obby family (U98.FAMILY: the Sky Obby picker, its unlock toast, the HUD's vitals card at rest and
+				-- with a dash cooling), as strict: no gradient but a designed look, no corner but a disc's. The vitals card's
+				-- health tube (HealthBar) is U8's and keeps its lip gradient: the walk leaves it out
+				local obby, seenObby = {}, 0
+				for _, f in ipairs(U98.FAMILY) do
+					U98.open(f[1])
+					local gui = pg:FindFirstChild(f[2])
+					local root = f[3] and gui and gui:FindFirstChild(f[3], true) or gui
+					if U98.showing(gui, f[3]) then
+						seenObby = seenObby + 1
+					end
+					local hp = root and root:FindFirstChild("HealthBar", true)
+					local function skip(d)
+						return hp ~= nil and (d == hp or d:IsDescendantOf(hp))
+					end
+					for _, d in ipairs(root and root:GetDescendants() or {}) do
+						local p = d.Parent
+						if p and p:IsA("GuiObject") and U8.shown(p) and not designedLook(d) and not skip(d) then
+							local where = f[1] .. ": " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+							if d:IsA("UIStroke") and d.Enabled ~= false and d.Transparency < 0.95 and (d.Name == "GlowStroke" or (p.Name == "Glow"
+								and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border)) then
+								obby[#obby + 1] = where .. " has a glow ring"
+							elseif d:IsA("UIStroke") and d.Enabled ~= false and d.Transparency < 0.95 and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and neonName(d.Color) then
+								obby[#obby + 1] = where .. " has a neon " .. neonName(d.Color) .. " border"
+							elseif d:IsA("GuiObject") and d.BackgroundTransparency < 0.5 and U8.shown(d) and neonName(d.BackgroundColor3) then
+								obby[#obby + 1] = where .. "." .. d.Name .. " has a neon " .. neonName(d.BackgroundColor3) .. " fill"
+							elseif d:IsA("UIGradient") and d.Enabled ~= false then
+								obby[#obby + 1] = where .. " has a gradient (" .. d.Name .. ")"
+							elseif d:IsA("UICorner") and not (d.CornerRadius.Scale >= 0.49 and p.AbsoluteSize.X > 0 and math.abs(p.AbsoluteSize.X - p.AbsoluteSize.Y) <= 1.5) then
+								obby[#obby + 1] = where .. " has a rounded corner"
+							end
+						end
+					end
+					U98.close()
+				end
+				T.check(seenObby == #U98.FAMILY, fmt("%s: every Obby family view opened (%d of %d)", tag, seenObby, #U98.FAMILY))
+				T.check(#obby == 0, fmt("%s: no glow, gradient, neon or rounded corner in the Obby family (%d)", tag, #obby),
+					table.concat(obby, "; ", 1, math.min(#obby, 12)))
 			end)
 		end
 		LKC.flushErrors("kitb_no_neon_glow")
@@ -6687,6 +6862,383 @@ local function clientScenarios()
 			end
 		end)
 		LKC.flushErrors("arena_family_one_green")
+	end)
+
+	-- (U9-8) the Obby family fits every screen: at the four grid sizes every view of U98.FAMILY shows (a view with a part checks
+	-- that part of its gui: the HUD's vitals card), no text is drawn under the readability floor or TextScaled, every text and
+	-- button outside a scrolling list is whole on the screen and never cut by a clipping frame above it, every one-line text
+	-- fits its box at FredokaOne's / LuckiestGuy's real widths with 2 px to spare, every lead / trail icon sits beside its
+	-- text, no part is rotated, the pixel icons sit on whole pixels (at 1920x1080) with whole-px cells (one cell size on a 0.8
+	-- screen), every list's bar is the kit's square bar, every sign block's lip is flush and every text reads on its fill. On
+	-- the phones nothing sits under Roblox's thumbstick or jump button: the picker hides them while it is open (as the
+	-- Dungeon), the toast and the vitals keep clear. The picker: no level row cut by its list's edges and the picked level
+	-- whole in view; docked beside the screen it keeps the vitals clear. The unlock toast: a kit B card (a flat face in a wood
+	-- edge on its lip, square, a pixel icon), under Roblox's band, clear of the result card, the currency strips, the match
+	-- panel, Notify's toasts, DASH / RUN and the vitals; at 1920x1080 it shows beside the result card (no wait)
+	S.obby_family_fits = guarded("obby_family_fits", function()
+		local Theme = LoadingH.shared("Theme")
+		local GuiService = game:GetService("GuiService")
+		local RealWidth = SmokeCommon.RealWidth
+		local function plain(o)
+			local text = o.Text
+			if o.RichText then
+				text = text:gsub("<[^>]->", "")
+			end
+			local role = o:GetAttribute("FontRole")
+			if role and Theme.CapsRoles[role] then
+				text = Theme.Caps(text)
+			end
+			return text
+		end
+		local function width(o)
+			local w = RealWidth(plain(o), o.TextSize, Theme.FontOf(o), true)
+			return (w or Theme.MeasureLabel(o).X) * U8.scaleOf(o)
+		end
+		local function inScroll(o)
+			return o:FindFirstAncestorWhichIsA("ScrollingFrame") ~= nil
+		end
+		local SPLIT = { TextFill = true, TextTrail = true, TextTrack = true }
+		local function clipper(o)
+			local cur = o.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur:IsA("GuiObject") and cur.ClipsDescendants and not SPLIT[cur.Name] then
+					return cur
+				end
+				cur = cur.Parent
+			end
+			return nil
+		end
+		local function inside(a, b)
+			return a.X >= b.X - 1 and a.R <= b.R + 1 and a.Y >= b.Y - 1 and a.B <= b.B + 1
+		end
+		local function texty(d)
+			return (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextTransparency < 1
+		end
+		local function textSpan(d)
+			local r, s = U8.rect(d), U8.scaleOf(d)
+			local pad = d:FindFirstChildOfClass("UIPadding")
+			local l = r.X + (pad and pad.PaddingLeft.Offset * s or 0)
+			local rr = r.R - (pad and pad.PaddingRight.Offset * s or 0)
+			local tw = math.max(0, math.min(d.TextBounds.X, rr - l))
+			local x0 = l
+			if d.TextXAlignment == Enum.TextXAlignment.Right then
+				x0 = rr - tw
+			elseif d.TextXAlignment == Enum.TextXAlignment.Center then
+				x0 = (l + rr - tw) / 2
+			end
+			return { X = x0, R = x0 + tw, Y = r.Y, B = r.B }
+		end
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) < 0.01
+		end
+		-- a part's rect in screen px (its ScreenGui's inset added back)
+		local function srect(o)
+			local r = U8.rect(o)
+			local g = o:FindFirstAncestorWhichIsA("LayerCollector")
+			local k = (g and not g.IgnoreGuiInset) and Mock.TopInset or 0
+			return { X = r.X, Y = r.Y + k, R = r.R, B = r.B + k }
+		end
+		local function part(gname, pname)
+			local g = U8.pg():FindFirstChild(gname)
+			local o = g and g:FindFirstChild(pname, true)
+			return (o and o:IsA("GuiObject") and U8.shown(o) and o.AbsoluteSize.X > 4 and o.AbsoluteSize.Y > 4) and o or nil
+		end
+		local restoreMeasure = U8.measureReal()
+		for _, s in ipairs(U8.SIZES) do
+			local W, Hh, touch = s[1], s[2], s[3]
+			local floorPx = (Hh >= 1000) and 15 or 14
+			for _, f in ipairs(U98.FAMILY) do
+				U8.at(W, Hh, touch, "obby family " .. f[1], function(tag)
+					U98.open(f[1])
+					local gui = U8.pg():FindFirstChild(f[2])
+					local root = f[3] and gui and gui:FindFirstChild(f[3], true) or gui
+					if not T.check(root ~= nil and U98.showing(gui, f[3]), tag .. ": the view shows (" .. f[2] .. (f[3] and ("." .. f[3]) or "") .. ")") then
+						U98.close()
+						return
+					end
+					local function short(d)
+						return (d:GetFullName():gsub("^.-" .. f[2] .. "%.", ""))
+					end
+					local dy = gui.IgnoreGuiInset and 0 or Mock.TopInset
+					local screen = { X = 0, Y = -dy, R = W, B = Hh - dy }
+					local zones = {}
+					if touch and GuiService.TouchControlsEnabled ~= false then
+						zones[1] = { X = 25, Y = Hh - 90 - dy, R = 95, B = Hh - 20 - dy, Name = "thumbstick" }
+						zones[2] = { X = W - 115, Y = Hh - 90 - dy, R = W - 45, B = Hh - 20 - dy, Name = "jump" }
+					end
+					local small, scaled, off, cut, tight, under, onText = {}, {}, {}, {}, {}, {}, {}
+					for _, d in ipairs(root:GetDescendants()) do
+						local tx = texty(d)
+						if (tx or d:IsA("GuiButton")) and U8.shown(d) and d.AbsoluteSize.X > 0 then
+							local name = short(d)
+							for _, kind in ipairs(tx and { "LeadIcon", "TrailIcon" } or {}) do
+								local icon = d:FindFirstChild(kind)
+								if icon and icon:IsA("GuiObject") and U8.shown(icon) and icon.AbsoluteSize.X > 0 then
+									local ir, span = U8.rect(icon), textSpan(d)
+									local clear = ir.X >= span.R - 0.5
+									if kind == "LeadIcon" then
+										clear = ir.R <= span.X + 0.5
+									end
+									if not clear then
+										onText[#onText + 1] = fmt("%s.%s %s on the text %.0f..%.0f", name, kind, U8.show(ir), span.X, span.R)
+									end
+								end
+							end
+							if tx then
+								local px = d.TextSize * U8.scaleOf(d)
+								if d.TextScaled then
+									scaled[#scaled + 1] = name
+								elseif px < floorPx - 0.01 then
+									small[#small + 1] = fmt("%s %q %.1f px", name, d.Text, px)
+								end
+							end
+							if not inScroll(d) then
+								local r = U8.rect(d)
+								if not inside(r, screen) then
+									off[#off + 1] = name .. " " .. U8.show(r)
+								end
+								local c = clipper(d)
+								if c and not inside(r, U8.rect(c)) then
+									cut[#cut + 1] = name .. " " .. U8.show(r) .. " in " .. c.Name .. " " .. U8.show(U8.rect(c))
+								end
+								for _, z in ipairs(zones) do
+									if U8.overlap(r, z) then
+										under[#under + 1] = name .. " under the " .. z.Name
+									end
+								end
+							end
+							if tx and not d.TextWrapped and not d.TextScaled then
+								local pad = d:FindFirstChildOfClass("UIPadding")
+								local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) * U8.scaleOf(d) or 0
+								local w = width(d)
+								if w + inset + 2 > d.AbsoluteSize.X + 0.01 then
+									tight[#tight + 1] = fmt("%s %q %.0f px in %.0f", name, d.Text, w + inset, d.AbsoluteSize.X)
+								end
+							end
+						end
+					end
+					T.check(#small == 0, fmt("%s: every text at %d px or more on the screen (%d)", tag, floorPx, #small), table.concat(small, "; ", 1, math.min(#small, 8)))
+					T.check(#scaled == 0, fmt("%s: no TextScaled text (%d)", tag, #scaled), table.concat(scaled, "; ", 1, math.min(#scaled, 8)))
+					T.check(#off == 0, fmt("%s: every text and button is on the screen (%d)", tag, #off), table.concat(off, "; ", 1, math.min(#off, 8)))
+					T.check(#cut == 0, fmt("%s: no text or button cut by a clipping frame (%d)", tag, #cut), table.concat(cut, "; ", 1, math.min(#cut, 8)))
+					T.check(#tight == 0, fmt("%s: every one-line text fits its box (%d)", tag, #tight), table.concat(tight, "; ", 1, math.min(#tight, 8)))
+					T.check(#onText == 0, fmt("%s: every lead / trail icon sits beside its text, not on it (%d)", tag, #onText), table.concat(onText, "; ", 1, math.min(#onText, 8)))
+					if touch then
+						T.check(#under == 0, fmt("%s: nothing under the thumbstick or the jump button (touch controls %s) (%d)", tag,
+							tostring(GuiService.TouchControlsEnabled), #under), table.concat(under, "; ", 1, math.min(#under, 8)))
+					end
+					-- the pixel rules: no rotated part; at 1920x1080 every pixel icon on whole px (a lead / trail icon from its
+					-- label's box); at every size a pixel icon's cells whole screen px, one cell size for the 18 / 27 px icons on
+					-- a 0.8 screen; every list's bar the kit's square bar; every sign block's lip flush on its bottom edge
+					local rotated, halves, softCells, cellSizes, nIcons, round, lips, nLips = {}, {}, {}, {}, 0, {}, {}, 0
+					for _, d in ipairs(root:GetDescendants()) do
+						if d:IsA("GuiObject") and U8.shown(d) then
+							if d.Rotation ~= 0 then
+								rotated[#rotated + 1] = short(d) .. " " .. tostring(d.Rotation)
+							end
+							local host = d:GetAttribute("PixelIcon") and d.Parent
+							if host and host:IsA("Frame") and host:GetAttribute("PixelIcon") then
+								host = host.Parent
+							end
+							local rel = host and (host:IsA("TextLabel") or host:IsA("TextButton")) and host or nil
+							if W == 1920 and d:GetAttribute("PixelIcon") and d.AbsoluteSize.X > 0 then
+								local p = d.AbsolutePosition
+								if rel then
+									p = p - rel.AbsolutePosition
+								end
+								if not (whole(p.X) and whole(p.Y)) then
+									halves[#halves + 1] = fmt("%s %.2f,%.2f", short(d), p.X, p.Y)
+								end
+							end
+							local px = d:IsA("Frame") and d:GetAttribute("PixelIcon") and d:FindFirstChild("R1") and d.Size.X.Offset
+							if px then
+								nIcons = nIcons + 1
+								local cpx = d:GetAttribute("CellPx")
+								if px == 18 or px == 27 then
+									cellSizes[tostring(cpx)] = true
+								end
+								for _, r in ipairs(d:GetChildren()) do
+									local a = r:IsA("Frame") and r.AbsoluteSize
+									if a and not (whole(a.X) and whole(a.Y) and cpx and whole(a.X / cpx) and whole(a.Y / cpx)) then
+										softCells[#softCells + 1] = fmt("%s.%s %.2fx%.2f (cell %s)", short(d), r.Name, a.X, a.Y, tostring(cpx))
+										break
+									end
+								end
+							end
+							if d:IsA("ScrollingFrame") and d.ScrollBarThickness > 0 then
+								if not (d.TopImage == d.MidImage and d.BottomImage == d.MidImage and d:GetAttribute("SignBar")) then
+									round[#round + 1] = short(d)
+								end
+							elseif d:IsA("Frame") and d.Name == "Lip" and d.Parent and d.Parent:FindFirstChild("SignEdge") and d.AbsoluteSize.Y > 0 then
+								nLips = nLips + 1
+								local lr, br = U8.rect(d), U8.rect(d.Parent)
+								if math.abs(lr.B - br.B) > 0.5 or math.abs(lr.X - br.X) > 0.5 or math.abs(lr.R - br.R) > 0.5 then
+									lips[#lips + 1] = fmt("%s lip %s on %s", short(d.Parent), U8.show(lr), U8.show(br))
+								end
+							end
+						end
+					end
+					T.check(#rotated == 0, fmt("%s: no rotated part (%d)", tag, #rotated), table.concat(rotated, "; ", 1, math.min(#rotated, 6)))
+					if W == 1920 then
+						T.check(#halves == 0, fmt("%s: every pixel icon on whole pixels (%d)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+					else
+						local sizes = {}
+						for k in pairs(cellSizes) do
+							sizes[#sizes + 1] = k
+						end
+						T.check(#sizes <= 1, fmt("%s: one pixel size for the 18 / 27 px icons on a 0.8 screen (%s)", tag, table.concat(sizes, ", ")))
+					end
+					T.check(#softCells == 0, fmt("%s: every pixel icon's cells whole screen px (%d icons, %d not)", tag, nIcons, #softCells),
+						table.concat(softCells, "; ", 1, math.min(#softCells, 6)))
+					T.check(#round == 0, fmt("%s: every list's bar is the kit's square bar (%d not)", tag, #round), table.concat(round, "; ", 1, math.min(#round, 6)))
+					T.check(#lips == 0, fmt("%s: every sign block's lip flush on its bottom edge (%d lips, %d not)", tag, nLips, #lips), table.concat(lips, "; ", 1, math.min(#lips, 6)))
+					local clash = {}
+					local function clear(a, aName, b, bName, gap)
+						if a and b then
+							local ra, rb = srect(a), srect(b)
+							gap = gap or 0
+							if U8.overlap({ X = ra.X - gap, Y = ra.Y - gap, R = ra.R + gap, B = ra.B + gap }, rb) then
+								clash[#clash + 1] = fmt("%s %s on %s %s", aName, U8.show(ra), bName, U8.show(rb))
+							end
+						end
+					end
+					if f[2] == "NimbusObby" then
+						if touch then
+							T.check(GuiService.TouchControlsEnabled == false, tag .. ": the picker hides Roblox's thumbstick and jump button on a touch screen")
+						end
+						local list = gui:FindFirstChild("Levels", true)
+						if T.check(list and list:IsA("ScrollingFrame") and U8.shown(list), tag .. ": the level list shows") then
+							local c, cutRows, picked = U8.rect(list), {}, nil
+							for _, row in ipairs(list:GetChildren()) do
+								if row:IsA("GuiButton") and U8.shown(row) then
+									local r = U8.rect(row)
+									if U8.overlap(r, c) and not inside(r, c) then
+										cutRows[#cutRows + 1] = row.Name .. " " .. U8.show(r) .. " in " .. U8.show(c)
+									end
+									if row:GetAttribute("Picked") == true then
+										picked = row
+									end
+								end
+							end
+							T.check(#cutRows == 0, fmt("%s: no level row cut by its list's edges (%d)", tag, #cutRows), table.concat(cutRows, "; "))
+							-- a row's name and its stars end before its tag (on a phone the 4 / 5 stars ran under PICK)
+							local onTag = {}
+							for _, row in ipairs(list:GetChildren()) do
+								local name, chip = row:FindFirstChild("LevelName"), row:FindFirstChild("Chip")
+								local stars = name and name:FindFirstChild("TrailIcon")
+								if row:IsA("GuiButton") and U8.shown(row) and name and chip and U8.shown(chip) then
+									local cr = U8.rect(chip)
+									for _, o in ipairs({ name, stars }) do
+										if o and U8.shown(o) and o.AbsoluteSize.X > 0 and U8.rect(o).R > cr.X - 2 then
+											onTag[#onTag + 1] = row.Name .. "." .. o.Name .. " " .. U8.show(U8.rect(o)) .. " to the tag " .. U8.show(cr)
+										end
+									end
+									T.check(not name.Text:find("...", 1, true) and (name.TextFits ~= false), tag .. ": " .. row.Name .. "'s name whole", name.Text)
+								end
+							end
+							T.check(#onTag == 0, fmt("%s: every level's name and stars end before its tag (%d)", tag, #onTag), table.concat(onTag, "; "))
+							T.check(picked ~= nil and inside(U8.rect(picked), c), tag .. ": the picked level whole in the list's view",
+								picked and (U8.show(U8.rect(picked)) .. " in " .. U8.show(c)) or "none picked")
+						end
+						for _, d in ipairs(gui:GetDescendants()) do
+							local mode = d:IsA("GuiObject") and d:GetAttribute("DockMode")
+							if mode and mode ~= "Sheet" and U8.shown(d) then
+								clear(d, "the docked picker", part("NimbusHud", "Vitals"), "the vitals")
+							end
+						end
+					elseif f[1] == "obby:toast" then
+						local card = part("NimbusObbyToast", "UnlockToast")
+						if T.check(card ~= nil, tag .. ": the unlock toast shows") then
+							local grads, icon = 0, false
+							for _, d in ipairs(card:GetDescendants()) do
+								grads = grads + ((d:IsA("UIGradient") and d.Enabled ~= false and not designedLook(d)) and 1 or 0)
+								icon = icon or (d:GetAttribute("PixelIcon") ~= nil and d:IsA("GuiObject") and U8.shown(d))
+							end
+							local lip = card:FindFirstChild("Lip")
+							T.check(card.BackgroundTransparency == 0 and card:FindFirstChild("SignEdge") ~= nil and lip ~= nil and lip:IsA("Frame")
+								and card:FindFirstChildOfClass("UICorner") == nil and grads == 0 and icon,
+								tag .. ": the toast is a kit B card (a flat face in a wood edge on its lip, square, no gradient, a pixel icon)",
+								fmt("fill %.2f, edge %s, lip %s, corner %s, gradients %d, icon %s", card.BackgroundTransparency, tostring(card:FindFirstChild("SignEdge") ~= nil),
+									tostring(lip ~= nil), tostring(card:FindFirstChildOfClass("UICorner") ~= nil), grads, tostring(icon)))
+							local sr = srect(card)
+							T.check(sr.Y >= Mock.TopInset - 0.5 and sr.X >= 0 and sr.R <= W + 0.5 and sr.B <= Hh, tag .. ": the toast on the screen, under Roblox's band", U8.show(sr))
+							local result = part("NimbusNotify", "ResultCard")
+							if W == 1920 then
+								T.check(result ~= nil, tag .. ": the toast shows beside the result card (it did not wait for room)")
+							end
+							clear(card, "the toast", result, "the result card", 4)
+							clear(card, "the toast", part("NimbusHud", "Currency"), "the currency strips", 4)
+							clear(card, "the toast", part("NimbusHud", "MatchPanel"), "the match panel", 4)
+							clear(card, "the toast", part("MobileControls", "DashButton"), "DASH", 4)
+							clear(card, "the toast", part("MobileControls", "RunButton"), "RUN", 4)
+							clear(card, "the toast", part("NimbusHud", "Vitals"), "the vitals", 4)
+							clear(card, "the toast", part("NimbusMenu", "MenuColumn"), "the menu column", 4)
+							clear(card, "the toast", part("NimbusDaily", "GiftsButton"), "the gift", 4)
+							local notify = U8.pg():FindFirstChild("NimbusNotify")
+							local stack = notify and notify:FindFirstChild("ToastStack", true)
+							for _, t in ipairs(stack and stack:GetChildren() or {}) do
+								if t:IsA("GuiObject") and U8.shown(t) and t.AbsoluteSize.X > 4 then
+									clear(card, "the toast", t, "Notify's toast " .. t.Name, 4)
+								end
+							end
+						end
+					end
+					T.check(#clash == 0, fmt("%s: the view keeps clear of the HUD, the result card, the toasts and the touch buttons (%d)", tag, #clash), table.concat(clash, "; "))
+					-- kit B's contrast rule on this view (3:1 from 18 px, 4.5:1 below)
+					local prefix = root:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					local all, low, read = SmokeCommon.Contrast.Walk(U8.pg()), {}, 0
+					for _, line in ipairs(all) do
+						if line:sub(1, #prefix + 1) == prefix .. "." then
+							low[#low + 1] = line
+						end
+					end
+					for _, d in ipairs(root:GetDescendants()) do
+						read = read + ((texty(d) and U8.shown(d)) and 1 or 0)
+					end
+					T.check(read > 0 and #low == 0, fmt("%s: every text reads on its fill (%d read, %d not)", tag, read, #low), table.concat(low, "; ", 1, math.min(#low, 6)))
+					U98.close()
+				end)
+			end
+		end
+		restoreMeasure()
+		LKC.flushErrors("obby_family_fits")
+	end)
+
+	-- (U9-8) one colour by role in the Obby family: no green action anywhere (a level is picked by tapping its row), the
+	-- picked level a pale gold block in an ink edge with a gold PICKED tag and its tick, an open level a stone block with a
+	-- sky PICK tag, a locked level the sunk Off block with a LOCKED well tag and the lock
+	S.obby_family_one_green = guarded("obby_family_one_green", function()
+		local Sign = LoadingH.shared("Theme").Sign
+		U8.at(1920, 1080, false, "obby family one green", function(tag)
+			for _, f in ipairs(U98.FAMILY) do
+				U98.open(f[1])
+				local gui = U8.pg():FindFirstChild(f[2])
+				local root = f[3] and gui and gui:FindFirstChild(f[3], true) or gui
+				local greens = U8.greenActions(root)
+				T.check(#greens == 0, fmt("%s: %s has no green action", tag, f[1]), table.concat(greens, ", "))
+				if f[1] == "obby" then
+					local want = { Easy = "PICK", Medium = "PICK", Hard = "PICKED", Extreme = "PICK", Saint = "LOCKED" }
+					local faceWant = { PICK = Sign.Sky, PICKED = Sign.Gold, LOCKED = Sign.Well }
+					local bad = {}
+					for id, word in pairs(want) do
+						local row = gui:FindFirstChild("Level_" .. id, true)
+						local chip = row and row:FindFirstChild("Chip")
+						local text = chip and chip:FindFirstChild("Text")
+						local face = row and U8.faceOf(row)
+						local rowWant = (word == "PICKED" and Sign.Selected) or (word == "LOCKED" and Sign.Well) or Sign.Tile -- (the Stone look's face)
+						local ok = row and chip and text and text.Text == word and sameColor(chip.BackgroundColor3, faceWant[word]) and face and sameColor(face, rowWant)
+							and (word ~= "PICKED" or text:FindFirstChild("LeadIcon") or text:FindFirstChild("TrailIcon"))
+						if not ok then
+							bad[#bad + 1] = fmt("%s: tag %s on %s, row %s", id, text and text.Text or "?", chip and hex(chip.BackgroundColor3) or "?", face and hex(face) or "?")
+						end
+					end
+					table.sort(bad)
+					T.check(#bad == 0, tag .. ": the picked level gold, the open ones stone with a sky PICK, the locked one sunk with LOCKED", table.concat(bad, "; "))
+				end
+				U98.close()
+			end
+		end)
+		LKC.flushErrors("obby_family_one_green")
 	end)
 
 	-- (U9-7 review) a fitted label lets go when it is destroyed. fitWidth's weak-key table must hold nothing that points back

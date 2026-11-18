@@ -3366,8 +3366,20 @@ scenario("obby", function(view)
 		return
 	end
 	if view == "toast" then
-		toClient("MatchResult", { Won = true, Reason = "Finished", Seconds = 380, MatchTokens = 40, Bonus = 35, DifficultyId = "Hard", DifficultyName = "Hard", Stars = 3, TotalTokens = 60, Members = {} })
-		advance(1.0)
+		-- (kit-b U9-8) a won Extreme match (the profile has beaten Hard: Saint opens) with its result card up; a screen with no
+		-- room beside the card shows the toast once the match is over and the card has gone (back in the lobby)
+		LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
+		toClient("MatchState", matchState({ DifficultyId = "Extreme", DifficultyName = "Extreme", Color = difficulty("Extreme").Color }))
+		advance(0.6)
+		toClient("MatchResult", { Won = true, Reason = "Finished", Seconds = 451, MatchTokens = 40, Bonus = 60, DifficultyId = "Extreme", DifficultyName = "Extreme", Stars = 4, TotalTokens = 60, Members = {} })
+		advance(1.2)
+		local tg = LocalPlayer.PlayerGui:FindFirstChild("NimbusObbyToast")
+		local card = tg and tg:FindFirstChild("UnlockToast", true)
+		if not (card and card.Visible) then
+			LocalPlayer:SetAttribute(Config.Attr.InMatch, false)
+			toClient("MatchState", nil)
+			advance(1.4)
+		end
 		return
 	end
 	toClient("OpenPanel", "Obby", {})
