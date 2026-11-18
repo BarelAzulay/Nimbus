@@ -8622,6 +8622,114 @@ local function clientScenarios()
 		LKC.flushErrors("hatch_fits_phone")
 	end)
 
+	-- (U9-2b look review 2, the owner's look bar of 2026-11-17: one pixel size, whole px, no smooth round shapes, no glow)
+	-- at 1920x1080, 1280x720, 844x390 and 390x844: the stage runs no fractional UIScale (Fit 1); the strip's nails, the
+	-- crack's slab, cloud puffs and stepped backlight, and the reveal's every kit block (a SignEdge: the planks, the chips,
+	-- the tags, the nameplate, the slab) sit on whole px with whole-px edges; the slab, the ring, the shock, the backlight,
+	-- the cracks and the leaks carry no UICorner, no UIGradient and no Rotation; the ring's motion a bob; the reveal's name
+	-- and note on their navy nameplate with no outline or stroke, its lip the rarity's colour
+	S.hatch_pixel_art = guarded("hatch_pixel_art", function()
+		local HL = U7.client("UI/HatchLook")
+		local function soft(root)
+			local out = {}
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:IsA("UICorner") or d:IsA("UIGradient") or (d:IsA("GuiObject") and d.Rotation ~= 0) then
+					out[#out + 1] = d.ClassName .. " " .. d:GetFullName():gsub("^.-%.Content%.", "")
+				end
+			end
+			if root and root:IsA("GuiObject") and root.Rotation ~= 0 then
+				out[#out + 1] = "Rotation " .. root.Name
+			end
+			return out
+		end
+		local function blocks(root, out)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:IsA("UIStroke") and d.Name == "SignEdge" and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
+					out[#out + 1] = { d.Parent:GetFullName():gsub("^.-%.Content%.", ""), d.Parent }
+					if math.abs(d.Thickness - math.floor(d.Thickness + 0.5)) > 1e-6 then
+						out[#out + 1] = { "edge " .. d.Thickness .. " of " .. d.Parent.Name, nil }
+					end
+				end
+			end
+			return out
+		end
+		for _, s in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }) do
+			U8.at(s[1], s[2], s[3], "hatch pixel art", function(tag)
+				local ES = U92b.show("x1")
+				if not T.check(ES ~= nil, tag .. ": (setup) the x1 roll shows") then
+					return
+				end
+				local content = U92b.content()
+				local fit = content and content:FindFirstChild("Fit")
+				T.check(fit ~= nil and fit.Scale == 1, tag .. ": the stage runs no fractional UIScale (Fit 1)", fit and tostring(fit.Scale) or "no Fit")
+				-- the strip landing (before the rise slides it away): the wood frame's nails
+				LKC.advance(3.45)
+				local outer = content and content:FindFirstChild("Strip1", true) and content:FindFirstChild("Strip1", true):FindFirstChild("Outer")
+				local nails = {}
+				for i = 1, 4 do
+					nails[#nails + 1] = { "Nail" .. i, outer and outer:FindFirstChild("Nail" .. i) }
+				end
+				local bad = U92b.offGrid(nails)
+				T.check(outer ~= nil and #bad == 0, tag .. ": the rail's four nail pixels sit on whole px in its wood frame's corners", table.concat(bad, "; "))
+				-- the crack: the slab, the puffs and the backlight on whole px; nothing soft, round or turned
+				LKC.advance(1.45)
+				local hero = content and content:FindFirstChild("Hero")
+				local ped, ring, back = hero and hero:FindFirstChild("Pedestal1"), hero and hero:FindFirstChild("CloudRing1"), hero and hero:FindFirstChild("Backlight1")
+				if T.check(ES.Phase() == "Crack" and ped and ring and back, tag .. ": (setup) the crack with its slab, ring and backlight", tostring(ES.Phase())) then
+					local list = { { "Slab", ped:FindFirstChild("Slab") }, { "Foot", ped:FindFirstChild("Foot") } }
+					for _, puff in ipairs(ring:GetChildren()) do
+						for _, row in ipairs(puff:GetChildren()) do
+							if row:IsA("Frame") then
+								list[#list + 1] = { puff.Name .. "." .. row.Name, row }
+							end
+						end
+					end
+					for _, p in ipairs(back:GetChildren()) do
+						list[#list + 1] = { "Backlight." .. p.Name, p }
+					end
+					bad = U92b.offGrid(list)
+					T.check(#bad == 0 and #list >= 20, tag .. ": the slab, the cloud puffs' rows and the stepped backlight sit on whole px", fmt("%d parts; %s", #list, table.concat(bad, "; ")))
+					local egg = hero:FindFirstChild("Egg1")
+					local softs = {}
+					for _, root in ipairs({ ped, ring, back, hero:FindFirstChild("Spot") or false, egg and egg:FindFirstChild("Cracks") or false, egg and egg:FindFirstChild("Leaks") or false }) do
+						if root then
+							for _, x in ipairs(soft(root)) do
+								softs[#softs + 1] = x
+							end
+						end
+					end
+					local burst = content:FindFirstChild("Burst")
+					for _, x in ipairs(soft(burst and burst:FindFirstChild("Shock"))) do
+						softs[#softs + 1] = x
+					end
+					T.check(#softs == 0 and hero:FindFirstChild("Spot") == nil and ring:FindFirstChild("Bob") ~= nil, tag .. ": no UICorner, gradient or turn in the slab, the ring (it bobs), the backlight, the shock, the cracks or the leaks; no spot cone",
+						table.concat(softs, "; "))
+				end
+				U92b.close()
+				-- the reveal: every kit block on whole px with a whole-px edge; the nameplate
+				ES = U92b.reveal("x1")
+				content = U92b.content()
+				local reveal, bar = content and content:FindFirstChild("Reveal"), content and content:FindFirstChild("BottomBar")
+				local list = blocks(reveal, {})
+				blocks(bar, list)
+				blocks(hero and content:FindFirstChild("Hero"), list)
+				bad = U92b.offGrid(list)
+				T.check(#list >= 6 and #bad == 0, tag .. ": every kit block of the reveal (planks, chips, tags, the nameplate, the slab) on whole px with a whole-px edge", fmt("%d blocks; %s", #list, table.concat(bad, "; ")))
+				local col = reveal and reveal:FindFirstChild("Col1")
+				local plate, name, note = col and col:FindFirstChild("Plate"), col and col:FindFirstChild("Name"), col and col:FindFirstChild("Note")
+				local function mid(o)
+					return o.AbsolutePosition.Y + o.AbsoluteSize.Y / 2
+				end
+				local inside = plate and name and note and mid(name) > plate.AbsolutePosition.Y and mid(note) < plate.AbsolutePosition.Y + plate.AbsoluteSize.Y
+				T.check(plate and U8.shown(plate) and inside and name:FindFirstChildOfClass("UIStroke") == nil and name.TextStrokeTransparency >= 0.99 and note:FindFirstChildOfClass("UIStroke") == nil
+					and plate:FindFirstChild("Lip") and hex(plate.Lip.BackgroundColor3) == hex(HL.RarityColor("Epic")),
+					tag .. ": the name and the note stand on their navy nameplate (no outline, no stroke), its lip the rarity's colour", plate and "" or "no Plate")
+				U92b.close()
+			end)
+		end
+		LKC.flushErrors("hatch_pixel_art")
+	end)
+
 	return S
 end
 

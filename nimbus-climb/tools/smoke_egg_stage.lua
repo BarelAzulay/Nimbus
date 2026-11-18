@@ -1607,12 +1607,15 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 						and petF.AbsolutePosition.X + petF.AbsoluteSize.X / 2 < 0.46 * w, label .. " x1: the phone Banner is 44 tall, in the right column beside the pet (side by side)",
 						banner and fmt("%.1f at %.1f,%.1f", banner.AbsoluteSize.Y, banner.AbsolutePosition.X, banner.AbsolutePosition.Y) or "none")
 				else
-					T.check(banner ~= nil and abs(banner.AbsoluteSize.Y - 44) <= 0.6 and abs(banner.AbsolutePosition.Y - 60) <= 0.6, label .. " x1: the phone Banner is 44 tall, its top 2 px under the 58 px inset",
-						banner and fmt("%.1f at %.1f", banner.AbsoluteSize.Y, banner.AbsolutePosition.Y) or "none")
+					-- (U9-2b look review 2) a portrait x1: the word right over the pet (PortraitGap), under the 58 px inset
+					local gapP = (banner and petF) and petF.AbsolutePosition.Y - (banner.AbsolutePosition.Y + banner.AbsoluteSize.Y) or 99
+					T.check(banner ~= nil and abs(banner.AbsoluteSize.Y - 44) <= 0.6 and banner.AbsolutePosition.Y >= 60 - 0.6 and abs(gapP - ES.Metrics.PHONE.R1.PortraitGap) <= 1,
+						label .. " x1: the phone Banner is 44 tall, under the 58 px inset, PortraitGap px over the pet (one centred group)",
+						banner and fmt("%.1f at %.1f, gap %.1f", banner.AbsoluteSize.Y, banner.AbsolutePosition.Y, gapP) or "none")
 				end
 				if petF and lip then
 					local pb, lb = G.box(petF), G.box(lip)
-					T.check(abs(lb.h - 12) <= 0.6 and abs((lb.y + lb.h) - (pb.y + pb.h - 8)) <= 0.6 and abs(lb.w - 0.7 * pb.w) <= 1.5, label .. " x1: the phone reveal pedestal is the thin lip (12 px, 0.7 x the pet, its bottom 8 px above the pet frame's)",
+					T.check(abs(lb.h - 12) <= 0.6 and abs(lb.y - (pb.y + math.floor(ES.Metrics.LOOK.PET_FOOT * pb.h))) <= 1 and abs(lb.w - 0.7 * pb.w) <= 1.5, label .. " x1: the phone reveal pedestal is the thin lip (12 px, 0.7 x the pet, its top on the pet's feet line: U9-2b look review 2)",
 						fmt("lip %.1fx%.1f ends %.1f, pet %.1f ends %.1f", lb.w, lb.h, lb.y + lb.h, pb.w, pb.y + pb.h))
 					T.check(pb.h >= 110 - 0.6, label .. " x1: the phone reveal pet is at least 110 px", fmt("%.1f", pb.h))
 				end
@@ -2498,6 +2501,17 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 		end
 		return false
 	end
+	-- (U9-2b look review 2) the cloud ring's motion is its 2-frame bob: an endless tween of its NumberValue "Bob" (never a
+	-- Rotation: the ring itself never turns)
+	local function bobbing(inst)
+		local bob = inst and inst:FindFirstChild("Bob")
+		for _, tw in ipairs(inst and G.tweenList(inst) or {}) do
+			if bob and tw.Instance == bob and tw.TweenInfo.RepeatCount == -1 and (Mock.TweenGoals(tw).Value or 0) >= 1 then
+				return inst.Rotation == 0
+			end
+		end
+		return false
+	end
 	-- the budgets at one moment (spec 16.4: x1 450 / x3 750 instances, 24 tweens + the Secret stars, 1 Heartbeat, 1 Lighting
 	-- effect + the "Hatch" preset); -> a failure text or nil
 	local function overBudget(cap, stars)
@@ -2616,12 +2630,12 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 			if ph == "Rise" or (ph == "Crack" and not seen.rise) then
 				if ph == "Crack" and not seen.rise then
 					seen.rise = true
-					T.check(G.shown(hero("Spot")) and G.shown(hero("Pedestal1")) and G.shown(hero("Backlight1")), "hatch cutscene: Rise: the Spot cone, Pedestal1 and the rarity Backlight1 are shown")
+					T.check(hero("Spot") == nil and G.shown(hero("Pedestal1")) and G.shown(hero("Backlight1")), "hatch cutscene: Rise: Pedestal1 and the rarity Backlight1 are shown; no soft Spot cone (U9-2b look review 2)")
 					T.check(egg ~= nil and egg:GetAttribute("Size") == 380 and egg:GetAttribute("Form") == "Full" and egg:GetAttribute("Vfx") == true,
 						"hatch cutscene: Rise: Egg1 is the 380 px Full egg with its VFX", egg and fmt("%s %s %s", tostring(egg:GetAttribute("Size")), tostring(egg:GetAttribute("Form")), tostring(egg:GetAttribute("Vfx"))) or "no egg")
 					local ring = hero("CloudRing1")
-					seen.ring = ring ~= nil and G.shown(ring) and ring:IsA("CanvasGroup") and spinning(ring)
-					T.check(seen.ring, "hatch cutscene: Rise: the rotating cloud ring (CloudRing1, one CanvasGroup) stands behind the pedestal (the owner's pick: Gemini's ring)")
+					seen.ring = ring ~= nil and G.shown(ring) and ring:IsA("CanvasGroup") and bobbing(ring)
+					T.check(seen.ring, "hatch cutscene: Rise: the bobbing cloud ring (CloudRing1, one CanvasGroup, never turned) stands behind the pedestal (the owner's pick: Gemini's ring)")
 					-- (roll-look, spec 16.15: rewritten from "an empty layout box") the box holds only the flat lit plinth: its
 					-- disc and side within the box's width and no taller than the box (a flat disc, never the old drum), no
 					-- puffs, no bars (owner 2026-11-08)
@@ -2633,15 +2647,18 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 						end
 					end
 					table.sort(parts)
-					local top, side = ped and ped:FindFirstChild("Top"), ped and ped:FindFirstChild("Side")
+					-- (U9-2b look review 2) the kit's navy slab on its foot: both inside the box, the slab's top the box's top (the
+					-- egg's foot), no drum, puffs, bars, ellipse or halo
+					local slab, foot = ped and ped:FindFirstChild("Slab"), ped and ped:FindFirstChild("Foot")
 					local flat = false
-					if top and side then
-						local p, a, b = G.box(ped), G.box(top), G.box(side)
-						flat = a.x >= p.x - 0.6 and a.x + a.w <= p.x + p.w + 0.6 and b.x >= p.x - 0.6 and b.x + b.w <= p.x + p.w + 0.6
-							and math.max(a.y + a.h, b.y + b.h) - math.min(a.y, b.y) <= p.h + 0.6
+					if slab and foot then
+						local p, a, b = G.box(ped), G.box(slab), G.box(foot)
+						local e = slab:FindFirstChild("SignEdge") and slab.SignEdge.Thickness or 0
+						flat = a.x - e >= p.x - 0.6 and a.x + a.w + e <= p.x + p.w + 0.6 and b.x >= a.x and b.x + b.w <= a.x + a.w
+							and abs(a.y - e - p.y) <= 0.6 and b.y + b.h <= p.y + p.h + 0.6
 					end
-					T.check(ped ~= nil and table.concat(parts, " ") == "Cover Edge Glow1 Glow2 Rim Ring Side Top Wall" and flat and ped.BackgroundTransparency == 1,
-						"hatch cutscene: Pedestal1 holds only the flat lit plinth (its ellipses: Top + Rim, Side + Wall + Edge, Ring + Cover, its halo; roll-look review round 2): no drum, puffs or bars under the pet (owner 2026-11-08)", table.concat(parts, " "))
+					T.check(ped ~= nil and table.concat(parts, " ") == "Foot Slab" and flat and ped.BackgroundTransparency == 1,
+						"hatch cutscene: Pedestal1 holds only the kit slab on its foot (U9-2b look review 2: no ellipse, halo or gradient; no drum, puffs or bars under the pet, owner 2026-11-08)", table.concat(parts, " "))
 				end
 			end
 			if ph == "Crack" and egg then
@@ -2680,23 +2697,25 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 				seen.live = ES.Stats().Sparks
 				seen.rays = G.shown(hero("Rays"))
 				local ring = hero("CloudRing1")
-				local swell = ring and ring:FindFirstChildOfClass("UIScale")
+				local swell = ring and ring:FindFirstChild("Swell")
 				seen.ringColor = ring and ring.GroupColor3
 				seen.swellGoal = 1
 				for _, tw in ipairs(ring and G.tweenList(ring) or {}) do
 					if tw.Instance == swell then
-						seen.swellGoal = Mock.TweenGoals(tw).Scale or 1
+						seen.swellGoal = Mock.TweenGoals(tw).Value or 1
 					end
 				end
 			end
 			if burstAt and not burstChecked and t >= burstAt + 0.15 then
 				burstChecked = true
 				-- (the mock's tweens jump to their goals when they end: the Size tween's goal is the ring it grows to)
+				-- (U9-2b look review 2: the square shock grows on whole px through its NumberValue "Grow")
 				local grow = shock and shock.AbsoluteSize.X or -1
+				local gv = shock and shock:FindFirstChild("Grow")
 				for _, tw in ipairs(shock and G.tweenList(shock) or {}) do
-					local goal = tw.Instance == shock and Mock.TweenGoals(tw).Size
+					local goal = tw.Instance == gv and Mock.TweenGoals(tw).Value
 					if goal then
-						grow = math.max(grow, goal.X.Offset)
+						grow = math.max(grow, goal)
 					end
 				end
 				seen.shock1 = grow
@@ -2789,7 +2808,7 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 					end
 				end
 				T.check(stars == 14 and FX.Stats().Tweens >= 14, "hatch cutscene: Secret: a starry backdrop of 14 twinkling stars", fmt("%d stars, %d tweens", stars, FX.Stats().Tweens))
-				T.check(G.colPart(1, "Aura") ~= nil and G.shown(G.colPart(1, "Aura")), "hatch cutscene: Secret: a violet aura behind the pet")
+				T.check(G.colPart(1, "Aura") == nil, "hatch cutscene: Secret: no soft violet aura behind the pet (U9-2b look review 2: the stars and the confetti stay)")
 			end
 			ES.Done()
 			afterDone("hatch cutscene after the " .. case[2] .. " DONE", b0, s0)
