@@ -682,8 +682,8 @@ S.client_p5stamina = guarded("client_p5stamina", function()
 	T.check(math.abs(runFor - 10.7) < 0.05, "p5stamina: a full bar runs ~10.7 s", string.format("%.2f s", runFor))
 	T.check(refill <= 3.5, "p5stamina: it refills in <= 3.5 s", string.format("%.2f s", refill))
 	T.eq(dashes, 4, "p5stamina: 4 dashes from full")
-	-- (kit-b U9-8, restated: was a tube with 4 thin dark ticks) the HUD's stamina bar is a row of kit B blocks, one per dash
-	-- and a narrow last one for the rest: the 4 gaps between them sit where the ticks were
+	-- (kit-b U9-8, restated: was a tube with 4 thin dark ticks; U9-8 look, restated: was one block per dash and a narrow fifth
+	-- for the rest) the HUD's stamina bar is a row of kit B blocks, one per dash from full, all one width
 	local bar = NK.pg():FindFirstChild("NimbusHud") and NK.pg().NimbusHud:FindFirstChild("StaminaBar", true)
 	local blocks = {}
 	if bar then
@@ -694,18 +694,12 @@ S.client_p5stamina = guarded("client_p5stamina", function()
 			end
 		end
 	end
-	T.eq(#blocks, 5, "p5stamina: the HUD stamina bar is 5 blocks (4 gaps, one after each dash)")
-	local placed = #blocks == 5
-	if placed then
-		local fr = NK.rect(bar)
-		local inner = (fr.x1 - fr.x0) - 4 * (NK.rect(blocks[2]).x0 - NK.rect(blocks[1]).x1)
-		for i = 1, 4 do
-			local gapMid = (NK.rect(blocks[i]).x1 + NK.rect(blocks[i + 1]).x0) / 2
-			local left = NK.rect(blocks[i]).x1 - fr.x0 - (i - 1) * (NK.rect(blocks[2]).x0 - NK.rect(blocks[1]).x1)
-			placed = placed and math.abs(left - inner * i * 35 / 150) < 1.5 and gapMid > fr.x0
-		end
+	T.eq(#blocks, dashes, "p5stamina: the HUD stamina bar is one block per dash from full")
+	local placed = #blocks == dashes
+	for i = 2, #blocks do
+		placed = placed and math.abs(blocks[i].AbsoluteSize.X - blocks[1].AbsoluteSize.X) < 0.01 and NK.rect(blocks[i]).x0 > NK.rect(blocks[i - 1]).x1 + 1
 	end
-	T.check(placed, "p5stamina: ...the gaps at 35 / 70 / 105 / 140 of 150 (one per dash)")
+	T.check(placed, "p5stamina: ...all one width, apart")
 	local LocalPlayer = game:GetService("Players").LocalPlayer
 	LocalPlayer:SetAttribute(Config.Attr.Stamina, 75)
 	NK.advance(1)

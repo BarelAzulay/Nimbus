@@ -558,10 +558,10 @@ end
 -- (On a narrow phone the hotbar slides a few px LEFT of centre to clear the jump button; our buttons are all
 -- right of it, so the centred footprint below still covers every spot they could touch.)
 -- bug batch 2 #1: the vitals card is bottom-CENTRE now, right above the hotbar (8 px), centred on it; the regular
--- card is 93 design px tall, the compact one (short touch screens, height <= 500) 80. The HUD itself then keeps the
--- card clear of RUN / DASH (it measures them), so this only steers RUN to a spot that leaves the card alone.
+-- card is 100 design px tall (U9-8 look: was 93), the compact one (short touch screens, height <= 500) 80. The HUD itself
+-- then keeps the card clear of RUN / DASH (it measures them), so this only steers RUN to a spot that leaves the card alone.
 local HOTBAR_W, HOTBAR_H, HOTBAR_BOTTOM = 280, 64, 16
-local VITALS_W, VITALS_H, VITALS_H_COMPACT, VITALS_GAP = 300, 93, 80, 8
+local VITALS_W, VITALS_H, VITALS_H_COMPACT, VITALS_GAP = 300, 100, 80, 8
 
 -- Rectangles are { left, bottom, right, top } in pixels from the screen's left / BOTTOM edge.
 local function rectsOverlap(a, b)

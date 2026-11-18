@@ -1,9 +1,9 @@
 -- smoke_polish_vitals.lua: the HP / stamina vitals card of client/Controllers/HudController.lua (playtest polish,
 -- key "vitals": "the HP and stamina UI looks kind of bad"). Client world only; tools/smoke.py runs:
 --   client_polish_vitals         (1920x1080, keyboard) one cohesive card: a glossy outlined plate holding the heart
---                                badge + a thick HP tube (outline, gradient fill, highlight strip, white damage trail,
---                                hit flash + card shake, low-health pulse, big "117 / 117" >= 24 px that reads by its
---                                colour: dark on the fill, white on the track, >= 3:1 where it stands; kit-b U6 review), the
+--                                badge + the HP bar (U9-8 look: kit B blocks in red on their lip, white damage trail,
+--                                hit flash + card shake, low-health pulse, big "117 / 117" >= 24 px right of the blocks that
+--                                reads by its colour on the card's stone; kit-b U6 review), the
 --                                lightning badge + a matching stamina tube (smooth drain / refill, dims when empty) and
 --                                the dash ring (the cooldown sweep follows MovementController, the face lights up when
 --                                a dash is ready); the DOWNED state; every part inside the card, readable, bottom-left,
@@ -111,19 +111,6 @@ local function sameColor(a, b, tol)
 	return a and b and close(a.R, b.R, tol or 0.02) and close(a.G, b.G, tol or 0.02) and close(a.B, b.B, tol or 0.02)
 end
 
--- the colour of a UIGradient at time t (linear between keypoints)
-local function gradientAt(g, t)
-	local kps = g.Color.Keypoints
-	for i = 1, #kps - 1 do
-		local a, b = kps[i], kps[i + 1]
-		if t >= a.Time and t <= b.Time then
-			local f = (b.Time > a.Time) and (t - a.Time) / (b.Time - a.Time) or 0
-			return a.Value:Lerp(b.Value, f)
-		end
-	end
-	return kps[#kps].Value
-end
-
 -- the contrast reading of a text where it stands now (SmokeCommon.Contrast: its colour against the fill painted under its
 -- glyph centre, the worst gradient stop): { ratio, need, backdrop, ... }, or nil when not read (outlined, hidden, clipped
 -- away, nothing opaque under it)
@@ -163,27 +150,39 @@ local function card()
 	-- (kit-b U9-8, restated: the stamina tube is a row of kit B blocks, the dash ring a keycap) Key = the dash key, KeyBlock
 	-- its face, KeyLip its lip, Charge the sky charge, KeyIcon the pixel dash
 	local key = path(body, "DashKey")
+	-- (U9-8 look, restated: the HP tube is a row of kit B blocks, its number right of them on the stone) HpFill = the first
+	-- block's lit part, Trail its white damage trail, Flash its white flash; HpText the number
 	local c = {
 		Hud = hud, Vitals = vitals, Body = body, Card = path(body, "Card"),
-		Hp = hp, HpFill = path(hp, "Inner.Fill"), Trail = path(hp, "Inner.DamageTrail"), Flash = path(hp, "Inner.Fill.Flash"),
-		HpText = path(hp, "Inner.TextFill.Text"), St = st, StLit1 = path(st, "Block1.Face.Lit"),
+		Hp = hp, HpFill = path(hp, "Block1.Face.Lit"), Trail = path(hp, "Block1.Face.Trail"), Flash = path(hp, "Block1.Face.Lit.Flash"),
+		HpText = path(body, "HealthNumber"), St = st, StLit1 = path(st, "Block1.Face.Lit"),
 		Key = key, KeyBlock = path(key, "Block"), KeyLip = path(key, "Block.Lip"), Charge = path(key, "Block.Charge"), KeyIcon = path(key, "Block.Icon"),
 		Heart = path(body, "Heart"), Bolt = path(body, "StaminaBadge"),
 		Notice = path(body, "DownedNotice"),
 	}
 	c.HeartIcon = path(c.Heart, "Icon")
 	c.BoltIcon = path(c.Bolt, "Icon")
-	c.HpCopies = {}
-	for _, name in ipairs({ "TextFill", "TextTrail", "TextTrack" }) do
-		c.HpCopies[#c.HpCopies + 1] = path(hp, "Inner." .. name .. ".Text")
-	end
+	c.HpCopies = { c.HpText } -- (U9-8 look: one number on the stone; was three copies cut at the fill's and the trail's edges)
 	c.HeartScale = c.Heart and c.Heart:FindFirstChildOfClass("UIScale")
 	c.CardStroke = c.Card and strokeOf(c.Card)
 	return c
 end
 
-local function fraction(fill)
-	return fill and fill.Size.X.Scale or -1
+-- (U9-8 look, restated: was the fill's Size.X.Scale) the share of the HP bar a part covers (Lit: the fill, Trail: the white
+-- damage trail): each block's part over its face, the blocks being equal shares
+local function hpShare(c, part)
+	local sum, n = 0, 0
+	for _, b in ipairs(c.Hp and c.Hp:GetChildren() or {}) do
+		local face = b:FindFirstChild("Face")
+		if face and face.AbsoluteSize.X > 0 then
+			n = n + 1
+			local p = face:FindFirstChild(part)
+			if p and p.Visible then
+				sum = sum + p.AbsoluteSize.X / face.AbsoluteSize.X
+			end
+		end
+	end
+	return n > 0 and sum / n or -1
 end
 
 -- (kit-b U9-8) the share of the stamina the blocks show: each block's lit share of its face, weighted by the block's width
@@ -376,18 +375,22 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 		"vitals: the card is a square stone plate with a thick wood edge and its lip")
 	T.check(sameColor(plateStroke.Color, Theme.Sign.Wood, 0.01), "vitals: full health: the edge is wood (kit-b U8; was the green neon border)", tostring(plateStroke.Color))
 	local k = scaleOf(c.Hp)
-	T.check(c.Hp.AbsoluteSize.Y / k >= 34 and strokeOf(c.Hp) ~= nil and strokeOf(c.Hp).Thickness >= 2 and sameColor(strokeOf(c.Hp).Color, Theme.Sign.Wood, 0.01) and c.Hp:FindFirstChildOfClass("UICorner") == nil,
-		"vitals: the HP tube is thick (>= 34 design px) with a square wood outline (kit-b U8; was a rounded dark 3 px one)",
+	-- (U9-8 look, restated: was a tube >= 34 design px in a 2 px wood outline) the HP bar is a row of chunky kit B blocks
+	local hpBlock1 = path(c.Hp, "Block1")
+	T.check(c.Hp.AbsoluteSize.Y / k >= 22 and hpBlock1 ~= nil and sameColor(hpBlock1.BackgroundColor3, Theme.Sign.Wood, 0.01) and path(hpBlock1, "Face") ~= nil
+		and c.Hp:FindFirstChildOfClass("UICorner") == nil,
+		"vitals: the HP bar is a row of chunky kit B blocks (>= 22 design px, a wood edge; U9-8 look, was a tube)",
 		fmt("%.0f design px", c.Hp.AbsoluteSize.Y / k))
 	-- (kit-b U9-8, restated: was a tube with a stroke) the stamina row is as chunky: kit B blocks in a wood edge
 	local block1 = path(c.St, "Block1")
 	T.check(c.St.AbsoluteSize.Y / k >= 18 and block1 ~= nil and sameColor(block1.BackgroundColor3, Theme.Sign.Wood, 0.01) and path(block1, "Face") ~= nil,
 		"vitals: the stamina blocks match it (>= 18 design px, a wood edge), not a thin afterthought", fmt("%.0f design px", c.St.AbsoluteSize.Y / k))
-	local fillGradient = c.HpFill and c.HpFill:FindFirstChildOfClass("UIGradient")
-	-- (kit-b U8, restated: was a soft gradient and a white Shine strip) a flat fill with its hard darker lip (a stepped
-	-- UIGradient named Lip, top to bottom, that also carries the health colour), no highlight strip
-	T.check(fillGradient ~= nil and fillGradient.Name == "Lip" and fillGradient.Rotation == 90 and #fillGradient.Color.Keypoints >= 3 and c.HpFill:FindFirstChild("Shine") == nil,
-		"vitals: the HP fill is flat with a hard lip, no highlight strip")
+	-- (kit-b U8, restated: was a soft gradient and a white Shine strip; U9-8 look, restated: the lip was a stepped UIGradient)
+	-- a flat lit face with its darker lip, a Frame, no highlight strip
+	local hpLip = c.HpFill and c.HpFill:FindFirstChild("Lip")
+	T.check(c.HpFill ~= nil and c.HpFill:FindFirstChildOfClass("UIGradient") == nil and hpLip ~= nil and hpLip:IsA("Frame") and sameColor(hpLip.BackgroundColor3, Theme.Sign.RedLip, 0.01)
+		and c.HpFill:FindFirstChild("Shine") == nil,
+		"vitals: the HP fill is flat on a hard RedLip lip Frame, no gradient, no highlight strip")
 	-- (kit-b U9-8, restated: was a heart of a turned square and two round lobes, a bolt of three turned parts) the badges
 	-- carry the pixel heart and the pixel bolt
 	local heartShape = c.HeartIcon
@@ -400,20 +403,20 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 		"vitals: badges and the dash key are chunky, the two badges one size",
 		fmt("heart %.0f, bolt %.0f, key %.0f design px", c.Heart.AbsoluteSize.X / k, c.Bolt.AbsoluteSize.X / k, c.Key.AbsoluteSize.X / k))
 
-	-- 2. the number: big, the Display font. Readability rule (kit-b U6 review): it sits on the HP tube with no outline, so
-	-- it must read by its colour: dark ink on the fill, at least 3:1 against every stop of the fill's gradient
-	-- (SmokeCommon.Contrast, the rule of the kitb_text_contrast walk)
-	T.check(c.HpText ~= nil and tostring(c.HpText.Text) == "117 / 117", "vitals: the HP tube reads '117 / 117'", c.HpText and tostring(c.HpText.Text))
+	-- 2. the number: big, the Display font. Readability rule (kit-b U6 review): no outline, so it must read by its colour
+	-- (SmokeCommon.Contrast, the rule of the kitb_text_contrast walk). (U9-8 look, restated: it sat on the tube) it sits
+	-- right of the blocks on the card's stone (the pitch's .vr: icon, bar, number)
+	T.check(c.HpText ~= nil and tostring(c.HpText.Text) == "117 / 117", "vitals: the HP number reads '117 / 117'", c.HpText and tostring(c.HpText.Text))
 	T.check(c.HpText.TextSize * scaleOf(c.HpText) >= 24 and c.HpText.Font == Theme.Fonts.Display,
 		"vitals: the HP number is big (>= 24 px at 1080p), Display font", fmt("%.1f px", c.HpText.TextSize * scaleOf(c.HpText)))
 	local reading = contrastOf(c.HpText)
-	T.check(reading ~= nil and reading.backdrop == c.HpFill and reading.ratio >= reading.need,
-		"vitals: full health: the HP number reads on the red fill (>= 3:1 at its worst gradient stop, no outline)",
+	T.check(reading ~= nil and reading.backdrop == c.Card and reading.ratio >= reading.need and rect(c.HpText).x0 >= rect(c.Hp).x1,
+		"vitals: full health: the HP number reads on the card's stone, right of the blocks (no outline)",
 		reading and fmt("%.2f:1 on %s (need %g)", reading.ratio, reading.backdrop.Name, reading.need) or "not read (outlined, hidden or no fill under it)")
 	local small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: every text of the card is >= 15 px at 1920x1080", table.concat(small, ", "))
 	-- (render gate, the pitch's .vit: colour by role) the HP fill is the sign red, the stamina fill the sign gold
-	T.check(fillGradient and sameColor(gradientAt(fillGradient, 0.4), Theme.Sign.Red, 0.03), "vitals: full health is red (the pitch's HP colour; was green)")
+	T.check(sameColor(c.HpFill.BackgroundColor3, Theme.Sign.Red, 0.03), "vitals: full health is red (the pitch's HP colour; was green)")
 	-- (kit-b U9-8, restated: the fill and the badge were stepped gradients) the lit blocks and the badge are flat gold
 	T.check(c.StLit1 ~= nil and sameColor(c.StLit1.BackgroundColor3, Theme.Sign.Gold, 0.03) and c.StLit1:FindFirstChildOfClass("UIGradient") == nil,
 		"vitals: the stamina blocks light gold (the pitch's segments; was blue)")
@@ -463,23 +466,23 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	setHealth(117, 47)
 	advance(0.06)
 	c = card()
-	T.check(c.Flash ~= nil and c.Flash.BackgroundTransparency < 0.6, "vitals: a hit flashes the HP fill white", c.Flash and fmt("%.2f", c.Flash.BackgroundTransparency))
+	T.check(c.Flash ~= nil and c.Flash.BackgroundTransparency < 0.6, "vitals: a hit flashes the lit blocks white", c.Flash and fmt("%.2f", c.Flash.BackgroundTransparency))
 	local off = c.Body.Position
 	T.check(math.abs(off.X.Offset) + math.abs(off.Y.Offset) > 0.2, "vitals: ...and gives the card a short shake", tostring(off))
 	T.check(c.HpText.Text == "47 / 117", "vitals: the number drops to '47 / 117' at once", tostring(c.HpText.Text))
 	advance(0.3)
-	local trailNow, fillNow = fraction(c.Trail), fraction(c.HpFill)
+	local trailNow, fillNow = hpShare(c, "Trail"), hpShare(c, "Lit")
 	T.check(trailNow > 100 / 117 - 0.03 and fillNow < 0.5, "vitals: the white damage trail waits where the bar was while the fill drops",
 		fmt("trail %.2f, fill %.2f", trailNow, fillNow))
 	local readsHit, notesHit = hpNumberReads(c)
-	T.check(readsHit, "vitals: ...and the number still reads where it crosses the fill, the white trail and the track (kit-b U6 review)", notesHit)
+	T.check(readsHit, "vitals: ...and the number still reads (on the stone, beside the blocks; kit-b U6 review)", notesHit)
 	T.check(c.Trail and c.Trail.BackgroundColor3.R > 0.95 and c.Trail.BackgroundColor3.B > 0.95 and c.Trail.BackgroundTransparency < 0.2, "vitals: the trail is white")
 	advance(0.5)
 	T.check(c.Flash.BackgroundTransparency > 0.99 and c.Body.Position.X.Offset == 0 and c.Body.Position.Y.Offset == 0, "vitals: the flash and the shake are over after a moment")
 	advance(2)
-	T.check(close(fraction(c.Trail), fraction(c.HpFill), 0.01) and close(fraction(c.HpFill), 47 / 117, 0.01), "vitals: the trail catches up with the fill",
-		fmt("trail %.2f, fill %.2f", fraction(c.Trail), fraction(c.HpFill)))
-	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Sign.Red, 0.03), "vitals: 40% health keeps the red fill (render gate: the role's colour; was amber)")
+	T.check(close(hpShare(c, "Trail"), hpShare(c, "Lit"), 0.01) and close(hpShare(c, "Lit"), 47 / 117, 0.01), "vitals: the trail catches up with the fill",
+		fmt("trail %.2f, fill %.2f", hpShare(c, "Trail"), hpShare(c, "Lit")))
+	T.check(sameColor(c.HpFill.BackgroundColor3, Theme.Sign.Red, 0.03), "vitals: 40% health keeps the red fill (render gate: the role's colour; was amber)")
 	T.check(sameColor(c.CardStroke.Color, Theme.Sign.Wood, 0.01), "vitals: ...and the card's edge stays wood (kit-b U8; was an amber neon border)")
 
 	-- 5. low health (< 30%): the heart beats, the outline glows red, the fill is red
@@ -498,9 +501,9 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	end
 	T.check(maxScale > 1.08 and minScale < 1.03, "vitals: below 30% the heart beats", fmt("scale %.2f..%.2f", minScale, maxScale))
 	T.check(maxRed > 0.25, "vitals: ...and the card's outline pulses red", fmt("+%.2f red", maxRed))
-	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Sign.Red, 0.03), "vitals: low health keeps the fill red (the red edge and the beat tell it)")
+	T.check(sameColor(c.HpFill.BackgroundColor3, Theme.Sign.Red, 0.03), "vitals: low health keeps the fill red (the red edge and the beat tell it)")
 	local readsLow, notesLow = hpNumberReads(c)
-	T.check(readsLow, "vitals: ...and the number reads on the dark track (white there; kit-b U6 review)", notesLow)
+	T.check(readsLow, "vitals: ...and the number still reads (kit-b U6 review)", notesLow)
 	setHealth(117, 117)
 	advance(1.5)
 	T.check(c.HeartScale.Scale == 1 and c.Heart.Rotation == 0 and sameColor(c.CardStroke.Color, healthy, 0.01), "vitals: healed: the pulse stops, the edge is wood again")

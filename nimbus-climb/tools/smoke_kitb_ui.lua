@@ -7244,39 +7244,37 @@ local function clientScenarios()
 
 	-- (U9-8; the owner's look bar: every bar in the BlockRow language) the HUD's stamina bar is a row of kit B blocks built
 	-- like SignKit.BlockRow (a wood block, its face inset by the edge, a darker lip along the face's bottom; square, no
-	-- gradient): one block per dash (35 of 150 stamina each) and a narrow last one for the rest (10), so the gaps between the
-	-- blocks are the old ticks at 35 / 70 / 105 / 140 and a full block is a dash you can pay for. A lit block is gold on its
-	-- GoldLip lip, a dark one the stone well with no lip; a partly lit block is lit from the left in whole px. Below one
-	-- dash's cost the gold dims toward the stone's tan (never a grey). The two badges are kit B squares (gold with the pixel
-	-- bolt, red with the pixel heart; no gradient, no rotated parts)
+	-- gradient). (U9-8 look, restated: was one block per dash and a narrow fifth one for the rest, which read as a clipped
+	-- block) one block per dash from full (MaxStamina / DashStaminaCost rounded down: 4), all one width, each an equal share
+	-- of MaxStamina. A lit block is gold on its GoldLip lip, a dark one the stone well with no lip; a partly lit block is lit
+	-- from the left in whole px. Below one dash's cost the gold dims toward the stone's tan (never a grey). The HP bar is the
+	-- same blocks (5, a fifth of the health each) in the sign red on a RedLip lip Frame (no gradient), its number right of
+	-- them on the stone. The two badges are kit B squares (gold with the pixel bolt, red with the pixel heart; no gradient,
+	-- no rotated parts). (U9-8 look) the pixel grid: at every grid size every block, face, lit part and lip of both bars, the
+	-- dash key's parts, the badges and the card sit on whole screen px (the card lives under the HUD's 0.8 UIScale on phones
+	-- and at 1280x720), and every wood edge (UIStroke) is a whole number of screen px
 	S.vitals_stamina_blocks = guarded("vitals_stamina_blocks", function()
 		local Theme = LoadingH.shared("Theme")
 		local Config = LoadingH.shared("Config")
 		local Sign = Theme.Sign
 		local lp = game:GetService("Players").LocalPlayer
 		local maxSt, cost = Config.Physics.MaxStamina, Config.Physics.DashStaminaCost
+		local n = math.floor(maxSt / cost)
 		local function whole(v)
 			return math.abs(v - math.floor(v + 0.5)) < 0.01
 		end
-		U8.at(1920, 1080, false, "stamina blocks", function(tag)
-			local hud = U8.pg():FindFirstChild("NimbusHud")
-			local bar = hud and hud:FindFirstChild("StaminaBar", true)
-			if not T.check(bar ~= nil and U8.shown(bar), tag .. ": the stamina bar shows") then
-				return
+		local function blocksOf(bar, most)
+			local out = {}
+			for i = 1, most do
+				out[#out + 1] = bar:FindFirstChild("Block" .. i)
 			end
-			local blocks = {}
-			for i = 1, 8 do
-				blocks[i] = bar:FindFirstChild("Block" .. i)
-			end
-			if not T.check(#blocks == 5, tag .. ": the bar is five blocks (four dashes and the rest)", tostring(#blocks)) then
-				return
-			end
-			local units = { cost, cost, cost, cost, maxSt - 4 * cost }
-			local widths, total, kit = {}, 0, {}
-			for i, b in ipairs(blocks) do
+			return out
+		end
+		local function kitBlocks(blocks)
+			local kit = {}
+			for _, b in ipairs(blocks) do
 				local face = b:FindFirstChild("Face")
 				local okKit = face ~= nil and sameColor(b.BackgroundColor3, Sign.Wood) and b.BackgroundTransparency == 0 and b:FindFirstChildOfClass("UICorner") == nil
-					and #b:GetDescendants() > 0
 				for _, d in ipairs(b:GetDescendants()) do
 					okKit = okKit and not d:IsA("UIGradient") and not d:IsA("UICorner") and not d:IsA("UIStroke")
 				end
@@ -7287,21 +7285,35 @@ local function clientScenarios()
 				if not okKit then
 					kit[#kit + 1] = b.Name
 				end
-				widths[i] = b.AbsoluteSize.X
-				total = total + b.AbsoluteSize.X
 			end
-			T.check(#kit == 0, tag .. ": every block a kit B block (wood, the face inset by the edge; no gradient, corner or stroke)", table.concat(kit, ", "))
-			local prop = {}
-			for i, w in ipairs(widths) do
-				if math.abs(w / total - units[i] / maxSt) * total > 2.5 then
-					prop[#prop + 1] = fmt("Block%d %.0f px of %.0f (want %.0f)", i, w, total, total * units[i] / maxSt)
+			return kit
+		end
+		local function equal(blocks)
+			local bad = {}
+			for i, b in ipairs(blocks) do
+				if math.abs(b.AbsoluteSize.X - blocks[1].AbsoluteSize.X) > 0.01 then
+					bad[#bad + 1] = fmt("%s %.2f px (Block1 %.2f)", b.Name, b.AbsoluteSize.X, blocks[1].AbsoluteSize.X)
 				end
-				if not whole(w) or not whole(blocks[i].AbsolutePosition.X) then
-					prop[#prop + 1] = fmt("Block%d on half px %.2f +%.2f", i, blocks[i].AbsolutePosition.X, w)
+				if i > 1 and blocks[i].AbsolutePosition.X < blocks[i - 1].AbsolutePosition.X + blocks[i - 1].AbsoluteSize.X + 1.5 then
+					bad[#bad + 1] = b.Name .. " touches the block before it"
 				end
 			end
-			T.check(#prop == 0, tag .. ": each block as wide as the stamina it holds (one per dash at 35 / 70 / 105 / 140), on whole px", table.concat(prop, "; "))
-			-- lit by the stamina: the first k blocks full at k dashes, a part block lit from the left, the rest dark
+			return bad
+		end
+		U8.at(1920, 1080, false, "stamina blocks", function(tag)
+			local hud = U8.pg():FindFirstChild("NimbusHud")
+			local bar = hud and hud:FindFirstChild("StaminaBar", true)
+			if not T.check(bar ~= nil and U8.shown(bar), tag .. ": the stamina bar shows") then
+				return
+			end
+			local blocks = blocksOf(bar, 8)
+			if not T.check(#blocks == n, fmt("%s: the bar is %d blocks, one per dash from full (no narrow block for the rest)", tag, n), tostring(#blocks)) then
+				return
+			end
+			T.check(#kitBlocks(blocks) == 0, tag .. ": every block a kit B block (wood, the face inset by the edge; no gradient, corner or stroke)", table.concat(kitBlocks(blocks), ", "))
+			local bad = equal(blocks)
+			T.check(#bad == 0, tag .. ": the blocks are one width, apart", table.concat(bad, "; "))
+			-- lit by the stamina: the first k blocks full at k shares, a part block lit from the left, the rest dark
 			local function lit(b)
 				local l = b:FindFirstChild("Lit", true)
 				local face = b:FindFirstChild("Face")
@@ -7320,14 +7332,18 @@ local function clientScenarios()
 					and l.Lip.AbsoluteSize.Y >= 3.5
 			end
 			T.check(full, tag .. ": a full bar lights every block gold on its GoldLip lip")
-			paint(2 * cost + 5) -- 75: two dashes and a seventh of the third
-			local f1, f2, f3, f4, f5 = lit(blocks[1]), lit(blocks[2]), lit(blocks[3]), lit(blocks[4]), lit(blocks[5])
-			T.check(f1 > 0.99 and f2 > 0.99 and f3 > 0.05 and f3 < 0.3 and f4 < 0.01 and f5 < 0.01, tag .. ": 75 of 150 lights two blocks and a seventh of the third",
-				fmt("%.2f %.2f %.2f %.2f %.2f", f1, f2, f3, f4, f5))
+			local share = maxSt / n
+			paint(2 * share + share / 7) -- two blocks and a seventh of the third
+			local f = {}
+			for i, b in ipairs(blocks) do
+				f[i] = lit(b)
+			end
+			T.check(f[1] > 0.99 and f[2] > 0.99 and f[3] > 0.05 and f[3] < 0.3 and f[4] < 0.01, tag .. ": two shares and a seventh light two blocks and a seventh of the third",
+				fmt("%.2f %.2f %.2f %.2f", f[1], f[2], f[3], f[4]))
 			local _, l3 = lit(blocks[3])
 			T.check(l3 and whole(l3.AbsoluteSize.X) and whole(l3.AbsolutePosition.X), tag .. ": the part block's lit width on whole px", l3 and fmt("%.2f +%.2f", l3.AbsolutePosition.X, l3.AbsoluteSize.X))
 			local face4 = blocks[4]:FindFirstChild("Face")
-			local lip4 = face4 and face4:FindFirstChild("Lip")
+			local lip4 = face4 and face4:FindFirstChild("Lip", true)
 			T.check(face4 and sameColor(face4.BackgroundColor3, Sign.Well) and (lip4 == nil or not U8.shown(lip4) or sameColor(lip4.BackgroundColor3, Sign.Well)),
 				tag .. ": a dark block is the stone well with no lip")
 			paint(cost - 15) -- 20: under one dash's cost
@@ -7336,6 +7352,22 @@ local function clientScenarios()
 			T.check(c and not sameColor(c, Sign.Gold) and c.R >= c.G and c.G >= c.B, tag .. ": under a dash's cost the gold dims toward the stone's tan (warm, not grey)",
 				c and hex(c) or "no lit part")
 			paint(maxSt)
+			-- (U9-8 look) the HP bar: the same blocks in red, its number beside them on the stone
+			local hp = hud:FindFirstChild("HealthBar", true)
+			local hpBlocks = hp and blocksOf(hp, 12) or {}
+			if T.check(#hpBlocks == 5, tag .. ": the HP bar is five kit B blocks (was a tube)", tostring(#hpBlocks)) then
+				T.check(#kitBlocks(hpBlocks) == 0 and #equal(hpBlocks) == 0, tag .. ": ...each a kit B block, one width, apart",
+					table.concat(kitBlocks(hpBlocks), ", ") .. " " .. table.concat(equal(hpBlocks), "; "))
+				local l = hpBlocks[1]:FindFirstChild("Lit", true)
+				local lip = l and l:FindFirstChild("Lip")
+				T.check(l and U8.shown(l) and sameColor(l.BackgroundColor3, Sign.Red) and lip and lip:IsA("Frame") and sameColor(lip.BackgroundColor3, Sign.RedLip)
+					and l:FindFirstChildOfClass("UIGradient") == nil, tag .. ": ...lit in the sign red on a RedLip lip Frame (no gradient)",
+					l and fmt("%s on %s", hex(l.BackgroundColor3), lip and hex(lip.BackgroundColor3) or "no lip") or "no lit part")
+				local num = hud:FindFirstChild("HealthNumber", true)
+				local hr = U8.rect(hp)
+				T.check(num and U8.shown(num) and U8.rect(num).X >= hr.R + 4 and num.TextSize * U8.scaleOf(num) >= 24, tag .. ": ...its number right of the blocks (the pitch's .vr: icon, bar, number), >= 24 px",
+					num and fmt("number from %.0f, blocks to %.0f", U8.rect(num).X, hr.R) or "no number")
+			end
 			-- the badges
 			local bolt = hud:FindFirstChild("StaminaBadge", true)
 			local heart = hud:FindFirstChild("Heart", true)
@@ -7355,6 +7387,43 @@ local function clientScenarios()
 					b and fmt("face %s, icon %s", hex(b.BackgroundColor3), tostring(icon ~= nil)) or "missing")
 			end
 		end)
+		-- (U9-8 look) the pixel grid at every grid size: the card's painted parts on whole screen px, every wood edge whole
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "vitals pixel grid", function(tag)
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				local vitals = hud and hud:FindFirstChild("Vitals", true)
+				if not T.check(vitals ~= nil and U8.shown(vitals), tag .. ": the vitals card shows") then
+					return
+				end
+				-- a part of the stamina half-lit, so a Lit and its Lip have a width to check
+				lp:SetAttribute(Config.Attr.Stamina, maxSt * 0.6)
+				LKC.advance(1)
+				local soft, edges, seen = {}, {}, 0
+				local PAINTED = { Card = true, Lip = true, Block = true, Face = true, Lit = true, Trail = true, DashKey = true, Charge = true, Heart = true, StaminaBadge = true }
+				for _, d in ipairs(vitals:GetDescendants()) do
+					-- (and every pixel icon's cells: the badges' and the key's icons are placed by the card's layout)
+					local cell = d.Name:match("^R%d+$") and d.Parent and d.Parent:GetAttribute("PixelIcon")
+					local kind = d:IsA("GuiObject") and (PAINTED[d.Name] and d.Name or (d.Name:match("^Block%d+$") and "Block") or (cell and "Cell"))
+					if kind and U8.shown(d) and d.AbsoluteSize.X > 0 and d.AbsoluteSize.Y > 0 then
+						seen = seen + 1
+						local p, z = d.AbsolutePosition, d.AbsoluteSize
+						if not (whole(p.X) and whole(p.Y) and whole(z.X) and whole(z.Y)) then
+							soft[#soft + 1] = fmt("%s.%s %.2f,%.2f %.2fx%.2f", d.Parent.Name, d.Name, p.X, p.Y, z.X, z.Y)
+						end
+					elseif d:IsA("UIStroke") and d.Enabled ~= false and d.Transparency < 1 and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
+						local t = d.Thickness * U8.scaleOf(d.Parent)
+						if not whole(t) or t < 0.99 then
+							edges[#edges + 1] = fmt("%s %.2f px", d.Parent.Name, t)
+						end
+					end
+				end
+				T.check(seen >= 20 and #soft == 0, fmt("%s: every block, face, lit part, lip, the key, the badges and the card on whole screen px (%d parts, %d not)", tag, seen, #soft),
+					table.concat(soft, "; ", 1, math.min(#soft, 8)))
+				T.check(#edges == 0, fmt("%s: every wood edge a whole number of screen px (%d not)", tag, #edges), table.concat(edges, "; ", 1, math.min(#edges, 8)))
+				lp:SetAttribute(Config.Attr.Stamina, maxSt)
+				LKC.advance(1)
+			end)
+		end
 		LKC.flushErrors("vitals_stamina_blocks")
 	end)
 
