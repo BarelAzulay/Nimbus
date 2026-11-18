@@ -17,6 +17,14 @@
 -- card (BottomCentreLeft / BottomCentreRight) or the hotbar under it, else near the bottom edge (desktops; touch
 -- keeps the HUD's line above the thumbstick), and right of the menu column when they would overlap, never centred. It shows the NPC's name tab, a portrait viewport of the pet, its title, the line in a dark text
 -- well with a typewriter reveal (numbers and key phrases highlighted), page dots, and Next / Close buttons.
+-- kit B U9-9 (finding 15; it was v3's rounded cloud card with puffs and gradients): the card is a Signboard block, a 6 px
+-- wood frame round the stone body with its stone lip, square, no shadow, glow or gradient. The name rides on a navy plank
+-- (its gold-lip edge, its navy lip, two brass rivets) in gold, a plain Section title (a dialog's title, not a window's
+-- ribbon); the portrait a sky well in a wood edge with the NPC's accent colour on its lip and a little pixel cloud; the title
+-- under it a stone tag; the line brown on a pale well in a wood edge, a stepped pixel tail pointing at the portrait, its
+-- highlights the accent / the numbers' gold moved until they read 4.5:1 there; the page dots square blocks (the line shown
+-- gold, the rest the sunk well); Next the green plank (the dialog's one action), Close a stone plank. Pixel icons and wood
+-- edges land on whole screen pixels at any card scale (client/UI/PixelCrisp).
 -- Lines cycle (Next on the last line starts over). Triggering the prompt again (E) also advances; clicking the
 -- text finishes the current line. The card closes when you walk away, die or enter a match.
 -- Sounds (audio wave 2, client/SoundFx; a missing id is silent): "DialogOpen" when the card opens (not when switching
@@ -45,7 +53,6 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
-local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the "more" mark
 local Util = require(Shared:WaitForChild("Util"))
 
 local function optionalShared(name)
@@ -73,6 +80,15 @@ do
 	end)
 	if ok and type(result) == "table" then
 		CloudUI = result
+	end
+end
+local PixelCrisp = nil -- (kit B U9-9) whole-pixel icons and edges under the card's scale
+do
+	local ok, result = pcall(function()
+		return require(Client:WaitForChild("UI"):WaitForChild("PixelCrisp"))
+	end)
+	if ok and type(result) == "table" then
+		PixelCrisp = result
 	end
 end
 
@@ -108,15 +124,23 @@ local K = {
 	READY_TIMEOUT = 12,
 	-- dialog card
 	W = 540, -- full card
-	H = 216,
+	-- (kit B U9-9) taller than the bubble's 216: the footer clears the stone lip and the line keeps its room. (U9-9 look 2)
+	-- the card's lengths are multiples of 10 design px where they can be (whole px at 0.7, 0.8 and 1.0; PixelCrisp snaps
+	-- the rest), and the line keeps its room over the page dots under the wider stone between the well and the footer
+	H = 230,
 	W_MIN = 420, -- compact card for narrow screens (taller, so long lines still fit)
-	H_COMPACT = 250,
+	H_COMPACT = 270,
 	TAB_ABOVE = 24, -- the name tab rides this far above the card
 	PAD = 14,
-	PORTRAIT = 128,
-	WELL_X = 158,
+	PORTRAIT = 130,
+	WELL_X = 160,
 	WELL_TOP = 30,
-	FOOTER_H = 42,
+	FOOTER_H = 40,
+	NEXT_W = 120,
+	CLOSE_W = 110,
+	BUTTON_GAP = 14, -- (U9-9 look 2) between Close and Next, the well and the footer, the title tag and Close: one rhythm
+	TAB_INSET = 22, -- (U9-9 look 2) the name's room starts this far in from each end of its plank (12 px clear of a rivet)
+	NAME_ROW = 20, -- (U9-9 look 2) a name too long for one row at the 20 px floor grows its plank by one row
 	TEXT = 20,
 	NAME = 28,
 	CAPTION = 20, -- the title under the portrait (wraps to two rows when needed)
@@ -138,18 +162,54 @@ local SETTINGS = (NpcDialog and NpcDialog.Settings) or {}
 local CLOSE_DISTANCE = tonumber(SETTINGS.CloseDistance) or 16
 local TOKEN_WORD = (Theme.Currency and Theme.Currency.Tokens and Theme.Currency.Tokens.Word) or "Tokens" -- (kit-b U7a) "50 Tokens"
 
+-- (kit B U9-9) the Signboard palette (Theme.Sign)
+local SIGN = Theme.Sign
 local C = {
 	White = Theme.Colors.White,
-	Navy = Theme.Colors.Navy or Theme.Colors.Ink,
-	FrameTop = Theme.Colors.FrameTop or Color3.fromRGB(176, 212, 244),
-	FrameBottom = Theme.Colors.FrameBottom or Color3.fromRGB(112, 158, 216),
-	WellTop = Theme.Colors.WellTop or Color3.fromRGB(60, 96, 164),
-	WellBottom = Theme.Colors.WellBottom or Color3.fromRGB(40, 68, 128),
-	WellEdge = Theme.Colors.WellEdge or Color3.fromRGB(22, 34, 82),
-	Gold = Theme.Colors.Gold or Color3.fromRGB(244, 196, 78),
-	Shadow = Color3.fromRGB(14, 20, 46),
-	DotOff = Color3.fromRGB(70, 96, 150),
+	Gold = SIGN.Gold,
+	Text = SIGN.Text,
+	Well = SIGN.Tile, -- the line's pale well
+	DotOff = SIGN.Well,
 }
+K.FRAME = 6 -- the card's wood frame
+K.EDGE_PX = 2 -- a block's wood edge (the well, the title tag, the dots)
+K.PORTRAIT_EDGE = 3 -- the portrait's wood edge
+K.PORTRAIT_LIP = 6 -- its lip in the NPC's accent colour
+K.TAG_LIP = 3
+K.NAME_LIP = 5 -- the name plank's navy lip
+-- (kit B U9-9) the card's rows (design px): Well = the well's room under it (the footer, its gaps and the stone lip),
+-- FootUp = the footer's offset from the card's bottom (its height and the room under it), Lip = the stone lip, Tab = the
+-- name plank's height and TabAbove how far it rides over the card (its edge included; it ends 24 px into the card).
+-- (U9-9 review) Short: a phone too short for the card even at MIN_SCALE (360 px tall: the top bar's pill drew over the
+-- name plank) takes the 12 px back from the footer's gaps and the lip (Cut: the old bubble's 216 / 250 again, the line
+-- keeps its room) and a plank 8 px lower, so the plank clears the pill. (U9-9 look 2) Well - FootUp is the stone between
+-- the well and the footer: BUTTON_GAP on the tall card (the one rhythm: 14 between the buttons, 14 over them), 12 on the
+-- short one (the 94 px line room allows no more), so their whole-px wood edges never meet (4 px of stone or more at 0.7;
+-- 10 drew 3 px)
+K.ROWS = {
+	Tall = { Cut = 0, Well = 36, FootUp = 22, Lip = 8, Tab = 46, TabAbove = K.TAB_ABOVE, TitleTag = 50 },
+	Short = { Cut = 12, Well = 26, FootUp = 14, Lip = 4, Tab = 38, TabAbove = K.TAB_ABOVE - 8, TitleTag = 46 },
+}
+K.DOT = 10
+K.DOT_GAP = 8
+-- (U9-9 look) a portrait phone's compact card is this much taller (there is free sky above it): its six-line speech kept 6
+-- px over the page dots at the 0.7 floor
+K.PORTRAIT_EXTRA = 30
+K.PILL_GAP = 4 -- the name plank stays this far under the top bar's pill (NimbusTopBar, display order 21: it draws over us)
+K.ICON = 18 -- the pixel icons (the cloud, the "more" chevron): 18 screen px everywhere (PixelCrisp), their slot 18 / k
+
+-- `color` moved towards the brown ink until it reads `need`:1 on the line's pale well (a highlight keeps its hue)
+local function inkOnWell(color, need)
+	need = need or 4.5
+	local out = color
+	for step = 1, 20 do
+		if Theme.Contrast(out, C.Well) >= need then
+			return out
+		end
+		out = color:Lerp(SIGN.Text, step * 0.05)
+	end
+	return SIGN.Text
+end
 
 ----------------------------------------------------------------------
 -- State
@@ -249,6 +309,7 @@ local dialog = {
 	SlideTween = nil,
 	PendingOpen = nil, -- an NPC model whose prompt was used before it finished replicating
 	Width = nil,
+	VitalsOff = false, -- (U9-9 look) the HUD's vitals card is stepped aside under the card (HudController.SetVitalsHidden)
 }
 
 ----------------------------------------------------------------------
@@ -265,17 +326,44 @@ local function make(className, props, parent)
 	return inst
 end
 
-local function corner(parent, px)
-	return make("UICorner", { CornerRadius = UDim.new(0, px) }, parent)
+-- (kit B U9-9) a block's wood edge: a mitred border stroke named SignEdge, kept on whole screen pixels
+local function edge(parent, color, px)
+	local s = make("UIStroke", {
+		Name = "SignEdge",
+		Color = color or SIGN.Wood,
+		Thickness = px,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter,
+	}, parent)
+	if PixelCrisp then
+		PixelCrisp.Edge(s, px)
+	end
+	return s
 end
 
-local function stroke(parent, color, thickness, transparency)
-	return make("UIStroke", {
-		Color = color,
-		Thickness = thickness,
-		Transparency = transparency or 0,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+-- a flat lip along the bottom of `parent` (px tall), (U9-9 look) whole screen px at any card scale
+local function lipOf(parent, color, px)
+	local lip = make("Frame", {
+		Name = "Lip",
+		BorderSizePixel = 0,
+		BackgroundColor3 = color,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, px),
+		ZIndex = parent.ZIndex,
 	}, parent)
+	if PixelCrisp then
+		PixelCrisp.Lip(lip, px)
+	end
+	return lip
+end
+
+-- (U9-9 look) a block's top-left on a whole screen px of the card (PixelCrisp.Box)
+local function crispBox(obj)
+	if PixelCrisp and obj then
+		PixelCrisp.Box(obj)
+	end
+	return obj
 end
 
 local function box(name, props, parent)
@@ -369,8 +457,9 @@ local function richLine(text, def, accent)
 		end
 		return true
 	end
-	local keyColor = hex(accent:Lerp(Color3.new(1, 1, 1), 0.55))
-	local numColor = hex(Color3.fromRGB(255, 214, 102))
+	-- (kit B U9-9) on the pale well: the accent and the numbers' gold moved until they read (4.5:1)
+	local keyColor = hex(inkOnWell(accent))
+	local numColor = hex(inkOnWell(SIGN.GoldDeep))
 	-- key phrases, longest first, whole words only
 	local keys = {}
 	if def and type(def.Keywords) == "table" then
@@ -398,11 +487,11 @@ local function richLine(text, def, accent)
 			init = e + 1
 		end
 	end
-	-- words painted in their own colour (element names), lightened to read on the dark well
+	-- words painted in their own colour (element names), moved until they read on the pale well
 	if def and type(def.ColorWords) == "table" then
 		for word, color in pairs(def.ColorWords) do
 			if type(word) == "string" and word ~= "" and typeof(color) == "Color3" then
-				local wordColor = hex(color:Lerp(Color3.new(1, 1, 1), 0.3))
+				local wordColor = hex(inkOnWell(color))
 				local from = 1
 				while true do
 					local s, e = string.find(text, word, from, true)
@@ -831,6 +920,7 @@ local function newButton(text, style, size, callback, parent)
 			Name = "Button_" .. text,
 			Text = text,
 			Style = style,
+			Skin = "Sign", -- (kit B U9-9) a plank with its lip: a press sinks it onto the lip
 			Size = size,
 			TextSize = K.BUTTON,
 			Callback = callback,
@@ -845,12 +935,11 @@ local function newButton(text, style, size, callback, parent)
 		Size = size,
 		AutoButtonColor = true,
 		BorderSizePixel = 0,
-		BackgroundColor3 = (Theme.Buttons and Theme.Buttons[style]) or Color3.fromRGB(96, 196, 108),
+		BackgroundColor3 = style == "Green" and SIGN.Grass or SIGN.Tile,
 		Text = text,
 	}, nil)
-	Theme.Style(button, "Button", { Size = K.BUTTON })
-	corner(button, 12)
-	stroke(button, C.Navy, 3)
+	Theme.Style(button, "Button", { Size = K.BUTTON, Color = style == "Green" and SIGN.OnGrass or SIGN.Text })
+	edge(button, SIGN.Wood, 3)
 	button.Activated:Connect(function()
 		callback(button)
 	end)
@@ -858,8 +947,9 @@ local function newButton(text, style, size, callback, parent)
 	return button
 end
 
--- cloud bumps on the top edge, right of the name tab: { x offset from the right edge, diameter, y offset }
-local PUFFS = { { -96, 34, 3 }, { -60, 46, -1 }, { -24, 30, 4 } }
+-- (kit B U9-9) the speech tail: a stepped pixel wedge (rows of 4 px, 4 / 8 / 12 / 8 / 4 wide) in the wood colour, its
+-- point at the portrait, its base on the well's left edge
+local TAIL_ROWS = { 4, 8, 12, 8, 4 }
 
 local function buildDialog()
 	local gui
@@ -882,8 +972,7 @@ local function buildDialog()
 	UI.Gui = gui
 
 	local root = box("NpcDialog", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, K.EDGE, 1, -220),
+		Position = UDim2.new(0, K.EDGE, 1, -220 - K.H), -- (U9-9 look) by its top-left corner (layoutDialog)
 		Size = UDim2.fromOffset(K.W, K.H),
 		Visible = false,
 	}, gui)
@@ -892,102 +981,78 @@ local function buildDialog()
 
 	local slide = box("Slide", { Size = UDim2.fromScale(1, 1) }, root)
 	UI.Slide = slide
-
-	local shadow = box("Shadow", {
-		BackgroundTransparency = 0.6,
-		BackgroundColor3 = C.Shadow,
-		Position = UDim2.fromOffset(0, 7),
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 1,
-	}, slide)
-	corner(shadow, 20)
-
-	-- cloud puffs along the top-right edge (navy rings behind, pale puffs in front of the card's outline)
-	local rings = box("PuffRings", { Size = UDim2.fromScale(1, 1), ZIndex = 2 }, slide)
-	local puffs = box("Puffs", { Size = UDim2.fromScale(1, 1), ZIndex = 4 }, slide)
-	for i, spec in ipairs(PUFFS) do
-		local d = spec[2]
-		local ring = box("Ring" .. i, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = C.Navy,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(1, spec[1], 0, spec[3]),
-			Size = UDim2.fromOffset(d + 8, d + 8),
-			ZIndex = 2,
-		}, rings)
-		corner(ring, 999)
-		local puff = box("Puff" .. i, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = C.FrameTop,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(1, spec[1], 0, spec[3]),
-			Size = UDim2.fromOffset(d, d),
-			ZIndex = 4,
-		}, puffs)
-		corner(puff, 999)
+	if PixelCrisp then
+		PixelCrisp.Root(slide) -- (U9-9 look) it slides in; the card's parts sit on whole px of it at rest
 	end
 
+	-- the card: the wood frame round the stone body, its stone lip along the bottom (the Signboard window's parts)
 	local card = box("Card", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = SIGN.Wood,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 3,
 		Active = true, -- clicks on the card never fall through to the world
 	}, slide)
-	corner(card, 20)
-	stroke(card, C.Navy, 4)
-	Theme.Gradient(card, C.FrameTop, C.FrameBottom, 90)
-	local rim = box("Rim", { Position = UDim2.fromOffset(3, 3), Size = UDim2.new(1, -6, 1, -6), ZIndex = 3 }, card)
-	corner(rim, 17)
-	stroke(rim, Theme.Lighten(C.FrameTop, 0.55), 2, 0.35)
-	UI.Card = card
+	card:SetAttribute("SignKit", "Frame")
+	local stone = box("Stone", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Stone,
+		Position = UDim2.fromOffset(K.FRAME, K.FRAME),
+		Size = UDim2.new(1, -2 * K.FRAME, 1, -2 * K.FRAME),
+		ZIndex = 3,
+	}, card)
+	stone:SetAttribute("SignKit", "Body")
+	UI.StoneLip = lipOf(stone, SIGN.StoneLip, K.ROWS.Tall.Lip)
+	-- (U9-9 look 2) the card and the stone in it on whole px on all four sides: the wood frame round the stone is whole
+	-- px wide on every side at any card scale (it drew 4.8 / 4.2 px, one side crisp and the other soft)
+	UI.Card = crispBox(card)
+	crispBox(stone)
 
-	-- portrait: accent tile with the pet's viewport and a couple of pixel glints
+	-- portrait: a sky well in a wood edge, the NPC's accent colour on its lip, a little pixel cloud in its corner
 	local portrait = box("Portrait", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = SIGN.Sky,
 		Position = UDim2.fromOffset(K.PAD, 16),
 		Size = UDim2.fromOffset(K.PORTRAIT, K.PORTRAIT),
 		ZIndex = 5,
 	}, card)
-	corner(portrait, 18)
-	stroke(portrait, C.Navy, 3)
-	UI.PortraitGradient = Theme.Gradient(portrait, C.FrameTop, C.FrameBottom, 90)
-	UI.Portrait = portrait
-	UI.PortraitHolder = box("Holder", { Size = UDim2.fromScale(1, 1), ZIndex = 6 }, portrait)
-	box("Glint", {
-		BackgroundTransparency = 0.25,
-		BackgroundColor3 = C.White,
-		Position = UDim2.fromOffset(10, 10),
-		Size = UDim2.fromOffset(8, 8),
-		ZIndex = 7,
-	}, portrait)
-	box("Glint2", {
-		BackgroundTransparency = 0.45,
-		BackgroundColor3 = C.White,
-		Position = UDim2.fromOffset(20, 10),
-		Size = UDim2.fromOffset(4, 4),
-		ZIndex = 7,
-	}, portrait)
+	edge(portrait, SIGN.Wood, K.PORTRAIT_EDGE)
+	UI.PortraitLip = lipOf(portrait, SIGN.SkyLip, K.PORTRAIT_LIP)
+	UI.PortraitLip.ZIndex = 8 -- over the pet's feet, like the ground it stands on
+	UI.Portrait = crispBox(portrait)
+	UI.PortraitHolder = box("Holder", { Size = UDim2.new(1, 0, 1, -K.PORTRAIT_LIP), ZIndex = 6 }, portrait)
+	if PixelCrisp then
+		-- (anchored at its top-left corner: at a 0.7 card its 18 screen px grow into the sky, away from the frame)
+		PixelCrisp.Icon(portrait, "cloud", K.ICON, SIGN.Stone, {
+			Name = "Cloud",
+			AnchorPoint = Vector2.new(0, 0),
+			Position = UDim2.fromOffset(6, 4),
+			ZIndex = 6,
+		})
+	end
 
-	-- title caption under the portrait
+	-- title caption under the portrait: a stone tag ((U9-9 look) 50 high on the tall card: its two rows of words clear
+	-- of its edge and lip). (U9-9 look 2) PORTRAIT + 2 wide: its 2 px edge lines up with the portrait's 3 px edge; its
+	-- bottom on the footer's bottom line (layoutDialog)
 	local titlePill = box("TitlePill", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.Navy,
+		BackgroundColor3 = SIGN.Tile,
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.fromOffset(K.PAD + K.PORTRAIT / 2, 16 + K.PORTRAIT + 8),
-		Size = UDim2.fromOffset(K.PORTRAIT + 8, 46),
+		Position = UDim2.fromOffset(K.PAD + K.PORTRAIT / 2, 16 + K.PORTRAIT + 12),
+		Size = UDim2.fromOffset(K.PORTRAIT + 2, K.ROWS.Tall.TitleTag),
 		ZIndex = 6,
 	}, card)
-	corner(titlePill, 12)
-	UI.TitleStroke = stroke(titlePill, C.Gold, 2)
+	UI.TitleStroke = edge(titlePill, SIGN.Wood, K.EDGE_PX)
+	lipOf(titlePill, SIGN.StoneLip, K.TAG_LIP)
+	UI.TitlePill = crispBox(titlePill)
 	UI.Title = Theme.Label("", "Label", {
 		Size = K.CAPTION,
+		Color = SIGN.Text,
 		Props = {
 			Name = "Title",
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(1, -10, 1, -4),
+			Position = UDim2.new(0.5, 0, 0.5, -1),
+			Size = UDim2.new(1, -10, 1, -(4 + K.TAG_LIP)),
 			TextWrapped = true,
 			LineHeight = 0.9,
 			ZIndex = 7,
@@ -995,58 +1060,80 @@ local function buildDialog()
 	})
 	UI.Title.Parent = titlePill
 
-	-- name tab riding on the top edge
+	-- the name on a navy plank riding on the top edge: gold, a plain Section title; a brass rivet at each end
 	local nameTab = box("NameTab", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = SIGN.Navy,
 		Position = UDim2.fromOffset(K.WELL_X, -22),
 		Size = UDim2.fromOffset(250, 46),
 		ZIndex = 8,
 	}, slide)
-	corner(nameTab, 14)
-	stroke(nameTab, C.Navy, 3)
-	UI.NameGradient = Theme.Gradient(nameTab, C.FrameTop, C.FrameBottom, 90)
-	UI.NameTab = nameTab
+	edge(nameTab, SIGN.GoldLip, 3)
+	lipOf(nameTab, SIGN.NavyLip, K.NAME_LIP)
+	for _, side in ipairs({ { "RivetL", 0, 6 }, { "RivetR", 1, -10 } }) do
+		local rivet = box(side[1], {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = SIGN.Brass,
+			Position = UDim2.new(side[2], side[3], 0.5, -4),
+			Size = UDim2.fromOffset(4, 4),
+			ZIndex = 9,
+		}, nameTab)
+		if PixelCrisp then
+			PixelCrisp.Adopt(rivet, 4) -- (U9-9 look) a whole-px square on a whole px
+		end
+	end
+	UI.NameTab = crispBox(nameTab)
 	UI.Name = Theme.Label("", "Title", {
 		Scaled = true,
+		Color = SIGN.Gold,
 		Props = {
 			Name = "Name",
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(1, -20, 1, -10),
+			Position = UDim2.new(0.5, 0, 0.5, -2),
+			-- (U9-9 look 2) TAB_INSET in from each end: the letters 12 px clear of the brass rivets
+			Size = UDim2.new(1, -2 * K.TAB_INSET, 1, -(10 + K.NAME_LIP)),
 			ZIndex = 9,
 		},
 	})
 	make("UITextSizeConstraint", { MaxTextSize = K.NAME, MinTextSize = 20 }, UI.Name)
+	Theme.StyleTitle(UI.Name, "Section")
 	UI.Name.Parent = nameTab
 
-	-- the text well (dark, high contrast) with a speech tail toward the portrait
+	-- the stepped pixel tail toward the portrait, then the text well (pale, high contrast)
 	local tail = box("Tail", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = C.WellTop,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(K.WELL_X, K.WELL_TOP + 34),
-		Size = UDim2.fromOffset(16, 16),
-		Rotation = 45,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromOffset(K.WELL_X - K.EDGE_PX, K.WELL_TOP + 24),
+		Size = UDim2.fromOffset(12, 4 * #TAIL_ROWS),
 		ZIndex = 5,
 	}, card)
-	stroke(tail, C.WellEdge, 2)
+	for i, w in ipairs(TAIL_ROWS) do
+		box("Step" .. i, {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = SIGN.Wood,
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, (i - 1) * 4),
+			Size = UDim2.fromOffset(w, 4),
+			ZIndex = 5,
+		}, tail)
+	end
+	if PixelCrisp then
+		PixelCrisp.Adopt(tail, 4) -- (U9-9 look) its steps whole px each (2.8 px drew uneven), from a whole px
+	end
 	local well = make("TextButton", {
 		Name = "Well",
 		AutoButtonColor = false,
 		Text = "",
-		BackgroundColor3 = C.White,
+		BackgroundColor3 = C.Well,
 		BorderSizePixel = 0,
 		Position = UDim2.fromOffset(K.WELL_X, K.WELL_TOP),
-		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 1, -(K.WELL_TOP + K.FOOTER_H + 18)),
+		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 1, -(K.WELL_TOP + K.FOOTER_H + K.ROWS.Tall.Well)),
 		ZIndex = 6,
 	}, card)
-	corner(well, 14)
-	stroke(well, C.WellEdge, 2)
-	Theme.Gradient(well, C.WellTop, C.WellBottom, 90)
-	UI.Well = well
+	edge(well, SIGN.Wood, K.EDGE_PX)
+	UI.Well = crispBox(well)
 	local line = Theme.Label("", "Body", {
 		Size = K.TEXT,
+		Color = SIGN.Text,
 		Props = {
 			Name = "Line",
 			RichText = true,
@@ -1054,34 +1141,33 @@ local function buildDialog()
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Top,
 			Position = UDim2.fromOffset(14, 10),
-			Size = UDim2.new(1, -28, 1, -36), -- the bottom row of the well holds the page dots
+			-- the bottom row of the well holds the page dots, (U9-9 look) the speech ends 9 design px (6 px at 0.7) over them
+			Size = UDim2.new(1, -28, 1, -37),
 			LineHeight = 1.05,
 			ZIndex = 7,
 		},
 	})
 	line.Parent = well
 	UI.Line = line
-	local more = Theme.Label("", "Label", { -- the PixelIcon down arrow: "there is more" (kit-b U7b; it was U+25BC)
-		Size = 20,
-		Color = C.Gold,
-		Props = {
-			Name = "More",
-			AnchorPoint = Vector2.new(1, 1),
-			Position = UDim2.new(1, -10, 1, -6),
-			Size = UDim2.fromOffset(20, 20),
-			Visible = false,
-			ZIndex = 8,
-		},
-	})
-	more.Parent = well
-	PixelIcon.Host(more, "down", 18)
-	UI.More = more
+	-- the pixel down arrow: "there is more" (kit-b U7b; it was U+25BC), brown, on whole screen pixels
+	local more = box("More", {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -10, 1, -6),
+		Size = UDim2.fromOffset(18, 18),
+		Visible = false,
+		ZIndex = 8,
+	}, well)
+	if PixelCrisp then
+		-- (U9-9 look) from the slot's top-left, the slot itself on a whole px as it bobs (crispBox)
+		PixelCrisp.Icon(more, "down", K.ICON, SIGN.Text, { ZIndex = 8, AnchorPoint = Vector2.new(0, 0), Position = UDim2.fromOffset(0, 0) })
+	end
+	UI.More = crispBox(more)
 
-	-- page dots in the bottom row of the well
+	-- page dots in the bottom row of the well: square blocks in a wood edge (the line shown gold, the rest the sunk well)
 	local dots = box("Dots", {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 12, 1, -6),
-		Size = UDim2.fromOffset(K.MAX_DOTS * 18, 16),
+		Position = UDim2.new(0, 12, 1, -8),
+		Size = UDim2.fromOffset(K.MAX_DOTS * (K.DOT + K.DOT_GAP), K.DOT),
 		ZIndex = 8,
 	}, well)
 	UI.Dots = {}
@@ -1089,36 +1175,53 @@ local function buildDialog()
 		local dot = box("Dot" .. i, {
 			BackgroundTransparency = 0,
 			BackgroundColor3 = C.DotOff,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset((i - 1) * 18 + 7, 8),
-			Size = UDim2.fromOffset(10, 10),
+			Position = UDim2.fromOffset((i - 1) * (K.DOT + K.DOT_GAP), 0),
+			Size = UDim2.fromOffset(K.DOT, K.DOT),
 			ZIndex = 9,
 			Visible = false,
 		}, dots)
-		corner(dot, 999)
-		stroke(dot, C.Navy, 2)
+		edge(dot, SIGN.Wood, K.EDGE_PX)
+		if PixelCrisp then
+			PixelCrisp.Adopt(dot, K.DOT) -- (U9-9 look) every dot the same whole px square, on a whole px
+		end
 		UI.Dots[i] = dot
 	end
 
-	-- footer: Close, Next (right-aligned under the well)
+	-- footer: Close (a stone plank), Next (the green plank: the dialog's one action), right-aligned under the well
 	local footer = box("Footer", {
-		Position = UDim2.new(0, K.WELL_X, 1, -(K.FOOTER_H + 12)),
+		Position = UDim2.new(0, K.WELL_X, 1, -(K.FOOTER_H + K.ROWS.Tall.FootUp)),
 		Size = UDim2.new(1, -(K.WELL_X + K.PAD), 0, K.FOOTER_H),
 		ZIndex = 6,
 	}, card)
+	UI.Footer = footer
 
-	UI.Next = newButton("Next", "Green", UDim2.fromOffset(118, K.FOOTER_H), function()
+	UI.Next = newButton("Next", "Green", UDim2.fromOffset(K.NEXT_W, K.FOOTER_H), function()
 		NpcController.Advance()
 	end, footer)
 	UI.Next.AnchorPoint = Vector2.new(1, 0.5)
 	UI.Next.Position = UDim2.new(1, 0, 0.5, 0)
 	UI.Next.ZIndex = 8
-	UI.Close = newButton("Close", "Pink", UDim2.fromOffset(110, K.FOOTER_H), function()
+	-- (U9-9 look 2) on the full card Close stands BUTTON_GAP left of Next; the compact card moves it into the left column
+	-- under the title tag and Next spans the well (placeButtons)
+	UI.Close = newButton("Close", "Gray", UDim2.fromOffset(K.CLOSE_W, K.FOOTER_H), function()
 		NpcController.Close()
 	end, footer)
 	UI.Close.AnchorPoint = Vector2.new(1, 0.5)
-	UI.Close.Position = UDim2.new(1, -128, 0.5, 0)
+	UI.Close.Position = UDim2.new(1, -(K.NEXT_W + K.BUTTON_GAP), 0.5, 0)
 	UI.Close.ZIndex = 8
+	-- (U9-9 look) the planks' wood edges and lips on whole px at the card's scale (2.1 px drew uneven), from whole px
+	if PixelCrisp then
+		for _, b in ipairs({ UI.Next, UI.Close }) do
+			for _, c in ipairs(b:GetChildren()) do
+				if c:IsA("UIStroke") then
+					PixelCrisp.Edge(c, c.Thickness)
+				elseif c.Name == "Lip" and c:IsA("GuiObject") then
+					PixelCrisp.Lip(c, c.Size.Y.Offset)
+				end
+			end
+			PixelCrisp.Box(b)
+		end
+	end
 
 	well.Activated:Connect(function()
 		if dialog.Typing then
@@ -1183,12 +1286,87 @@ local function hotbarRect()
 	return nil
 end
 
+-- (U9-9 look) the top bar's pill (NimbusTopBar, display order 21: it draws over the card) and its edge in our gui px,
+-- nil while it is hidden or unmeasured
+local function topBarPillRect()
+	local pg = playerGui()
+	local bar = pg and pg:FindFirstChild("NimbusTopBar")
+	if not (bar and bar:IsA("ScreenGui") and bar.Enabled) then
+		return nil
+	end
+	local pill = bar:FindFirstChild("Pill", true)
+	if not (pill and pill:IsA("GuiObject") and shownIn(pill, bar) and pill.AbsoluteSize.X > 0) then
+		return nil
+	end
+	local r = rectOf(pill, insetShift(bar))
+	local stroke = pill:FindFirstChildOfClass("UIStroke")
+	local e = stroke and stroke.Thickness or 0
+	r.x0, r.y0, r.x1, r.y1 = r.x0 - e, r.y0 - e, r.x1 + e, r.y1 + e
+	return r
+end
+
+-- (U9-9 look) the HUD's vitals card steps aside while the card lies over a part of it (the card stepped down under the
+-- top bar's pill), as the result card and the Trove window do; back when it closes
+local function setVitalsOff(off)
+	if off == (dialog.VitalsOff == true) then
+		return
+	end
+	local module = script.Parent:FindFirstChild("HudController")
+	local okHud, hud = false, nil
+	if module then
+		okHud, hud = pcall(require, module)
+	end
+	if okHud and type(hud) == "table" and type(hud.SetVitalsHidden) == "function" then
+		dialog.VitalsOff = off
+		pcall(hud.SetVitalsHidden, "NpcDialog", off)
+	end
+end
+
+local function syncVitals(card)
+	local off = false
+	local module = script.Parent:FindFirstChild("HudController")
+	local okHud, hud = false, nil
+	if module then
+		okHud, hud = pcall(require, module)
+	end
+	if card and okHud and type(hud) == "table" and type(hud.GetLayout) == "function" then
+		local okLayout, layout = pcall(hud.GetLayout)
+		local slot = okLayout and type(layout) == "table" and layout.VitalsSlot
+		if slot then -- (gui-area px of an IgnoreGuiInset = false gui, as ours)
+			local w = math.min(card.x1, slot.X + slot.W) - math.max(card.x0, slot.X)
+			local h = math.min(card.y1, slot.Y + slot.H) - math.max(card.y0, slot.Y)
+			off = w > 4 and h > 4
+		end
+	end
+	setVitalsOff(off)
+end
+
 -- Fits the card into the box left..rightLimit x topLimit..bottom (gui px): returns scale, design width, design
--- height. Narrow boxes get the compact card; the scale may come out below K.MIN_SCALE (= does not fit).
-local function fitCard(left, bottom, topLimit, rightLimit, f)
+-- height and its bottom rows (K.ROWS). Narrow boxes get the compact card, (U9-9 review) a box too short for it even at
+-- K.MIN_SCALE the short rows; the scale may come out below K.MIN_SCALE (= does not fit). (U9-9 look) On a portrait
+-- screen (`tall`) the compact card is K.PORTRAIT_EXTRA taller: its speech kept clear of the page dots.
+-- (U9-9 look 2) the name plank on a card of design width w: on the compact card it spans the well (flush with its right
+-- edge), on the full card it is at most 250 wide; its name gets one row, or a second NAME_ROW when the name at the 20 px floor is wider than its room (TAB_INSET in from
+-- each end): the plank grows up by that row instead of TextScaled wrapping two rows inside a one-row plank. -> width, extra
+local function tabFor(w)
+	local tabW = w - K.WELL_X - K.PAD
+	if w >= K.W - 60 then
+		tabW = math.min(250, tabW) -- (the full card's plank: the compact card's spans its whole well)
+	end
+	local text = UI.Name and UI.Name.Text or ""
+	if text ~= "" then
+		local ok, size = pcall(Theme.Measure, text, "Title", 20)
+		if ok and typeof(size) == "Vector2" and size.X > tabW - 2 * K.TAB_INSET then
+			return tabW, K.NAME_ROW
+		end
+	end
+	return tabW, 0
+end
+
+local function fitCard(left, bottom, topLimit, rightLimit, f, tall)
 	local availW, availH = rightLimit - left, bottom - topLimit
 	if availW <= 0 or availH <= 0 then
-		return 0, K.W_MIN, K.H_COMPACT
+		return 0, K.W_MIN, K.H_COMPACT - K.ROWS.Short.Cut, K.ROWS.Short
 	end
 	local scale = f
 	local w = K.W
@@ -1200,12 +1378,23 @@ local function fitCard(left, bottom, topLimit, rightLimit, f)
 	end
 	local h = K.H
 	if w < K.W - 60 then
-		h = K.H_COMPACT
+		h = K.H_COMPACT + (tall and K.PORTRAIT_EXTRA or 0)
 	end
-	if (h + K.TAB_ABOVE) * scale > availH then
-		scale = availH / (h + K.TAB_ABOVE)
+	local _, extra = tabFor(w)
+	local rows = K.ROWS.Tall
+	if (h + rows.TabAbove + extra) * K.MIN_SCALE > availH then
+		rows = K.ROWS.Short
+		h = h - rows.Cut
 	end
-	return scale, w, h
+	if (h + rows.TabAbove + extra) * scale > availH then
+		scale = availH / (h + rows.TabAbove + extra)
+	end
+	-- (U9-9 look 2) a fitted scale steps down to a tenth (0.724 -> 0.7): the card's lengths, multiples of 10, are whole px
+	-- there (at 0.724 none could be); never under MIN_SCALE (a scale under it still says "does not fit")
+	if scale < f and scale >= K.MIN_SCALE then
+		scale = math.max(K.MIN_SCALE, math.floor(scale * 10 + 1e-6) / 10)
+	end
+	return scale, w, h, rows
 end
 
 local function layoutDialog()
@@ -1221,6 +1410,7 @@ local function layoutDialog()
 	end
 	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 	local edge = touch and K.TOUCH_EDGE or K.EDGE
+	local tall = area.Y > area.X -- (U9-9 look) a portrait screen: the compact card takes some of its free sky
 	local f = Theme.ScreenFactor()
 	local rightLimit = area.X * K.MAX_WIDTH_FRACTION
 	if area.X < K.SMALL_SCREEN then
@@ -1269,10 +1459,10 @@ local function layoutDialog()
 				left = math.max(left, alt)
 			end
 		end
-		local s, cw, ch = fitCard(left, b, topLimit, rightLimit, f)
-		return s, cw, ch, left
+		local s, cw, ch, rows = fitCard(left, b, topLimit, rightLimit, f, tall)
+		return s, cw, ch, left, rows
 	end
-	local scale, w, h, left = placeAt(bottom)
+	local scale, w, h, left, rows = placeAt(bottom)
 	-- desktops: the vitals card is bottom-CENTRE now, so the dialog only has to stand above it when its x-span
 	-- actually meets the card (or the hotbar under it); otherwise it keeps its own default bottom near the edge.
 	-- (Touch keeps the HUD's line: Roblox's thumbstick owns the bottom-left corner there.)
@@ -1286,10 +1476,13 @@ local function layoutDialog()
 			end
 			return bar == nil or b <= bar.y0 - K.GAP or x1 + K.GAP <= bar.x0 or l >= bar.x1 + K.GAP
 		end
-		if low > bottom + 1 and clear(bottom, left, scale, w) then
-			local s2, w2, h2, l2 = placeAt(low)
+		-- (U9-9 look 2) the corner dock is tried whenever there is room under the HUD's line, not only when the lifted card
+		-- is already clear of the vitals: lifted, the menu rail pushed a 720p card right against the vitals card (it floated
+		-- mid-left, 2 px from the vitals' corner); docked low it starts at the edge, clear of both (as at 1080p)
+		if low > bottom + 1 then
+			local s2, w2, h2, l2, r2 = placeAt(low)
 			if clear(low, l2, s2, w2) then
-				bottom, scale, w, h, left = low, s2, w2, h2, l2
+				bottom, scale, w, h, left, rows = low, s2, w2, h2, l2, r2
 			end
 		end
 	end
@@ -1297,17 +1490,87 @@ local function layoutDialog()
 	if scale < K.MIN_SCALE and column and column.y0 > topLimit then
 		-- 2) narrow screens: above the menu column, from the left edge
 		local b2 = column.y0 - K.GAP
-		local s2, w2, h2 = fitCard(edge, b2, topLimit, area.X - edge, f)
+		local s2, w2, h2, r2 = fitCard(edge, b2, topLimit, area.X - edge, f, tall)
 		if s2 >= K.MIN_SCALE then
-			scale, w, h, x, y = s2, w2, h2, edge, b2
+			scale, w, h, x, y, rows = s2, w2, h2, edge, b2, r2
 		end
 	end
 	scale = math.max(K.MIN_SCALE, scale) -- never below readable text, even if the card then overlaps a little
+	-- (U9-9 look) the name plank never under the top bar's pill (it draws over the card: on a 640 x 360 window the pill
+	-- hid the plank's words): the card steps down until the plank's gold edge is K.PILL_GAP under the pill, and the
+	-- HUD's vitals card steps aside if the card then lies over it (syncVitals below)
+	-- (U9-9 look 2) the plank spans the well (it was 104 px short of it: "CAPTAIN PENGUIN" wrapped to two rows on its lip)
+	local tabW, extra = tabFor(w)
+	local tabH = rows.Tab + extra
+	local pill = topBarPillRect()
+	if pill then
+		local px0, px1 = x + (K.WELL_X - 3) * scale, x + (K.WELL_X + tabW + 3) * scale
+		local ptop = y - h * scale + (24 - tabH - 3) * scale
+		if px1 > pill.x0 and px0 < pill.x1 and ptop < pill.y1 + K.PILL_GAP then
+			y = math.min(area.Y, y + (pill.y1 + K.PILL_GAP - ptop))
+		end
+	end
 	root.Size = UDim2.fromOffset(w, h)
-	root.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	-- (U9-9 review) the bottom rows of the tall or the short card: the well's room under it, the footer, the stone lip
+	if UI.Well then
+		UI.Well.Size = UDim2.new(1, -(K.WELL_X + K.PAD), 1, -(K.WELL_TOP + K.FOOTER_H + rows.Well))
+	end
+	if UI.Footer then
+		UI.Footer.Position = UDim2.new(0, K.WELL_X, 1, -(K.FOOTER_H + rows.FootUp))
+	end
+	if UI.StoneLip then
+		UI.StoneLip.Size = UDim2.new(1, 0, 0, rows.Lip)
+	end
+	UI.Root:SetAttribute("Rows", rows == K.ROWS.Short and "Short" or "Tall")
+	-- (U9-9 look 2) the left column ends on the footer's bottom line, as the right one does: the full card's title tag
+	-- stands on that line under a square portrait; the compact card puts Close there (under the title tag, BUTTON_GAP
+	-- apart) and lets Next span the well, its one wide action, and the portrait takes the column's height above them
+	local compact = w < K.W - 60
+	local footTop = h - (K.FOOTER_H + rows.FootUp)
+	local tagTop = h - rows.FootUp - rows.TitleTag
+	if compact then
+		tagTop = footTop - K.BUTTON_GAP - rows.TitleTag
+	end
+	UI.Root:SetAttribute("Compact", compact)
+	if UI.TitlePill then
+		UI.TitlePill.Size = UDim2.fromOffset(K.PORTRAIT + 2, rows.TitleTag)
+		UI.TitlePill.Position = UDim2.fromOffset(K.PAD + K.PORTRAIT / 2, tagTop)
+	end
+	if UI.Portrait then
+		UI.Portrait.Size = UDim2.fromOffset(K.PORTRAIT, math.max(K.PORTRAIT - 30, tagTop - 12 - 16))
+	end
+	if UI.Close and UI.Next and UI.Footer and UI.Card then
+		if compact then
+			UI.Close.Parent = UI.Card
+			UI.Close.AnchorPoint = Vector2.new(0, 0)
+			UI.Close.Position = UDim2.fromOffset(K.PAD, footTop)
+			UI.Close.Size = UDim2.fromOffset(K.PORTRAIT, K.FOOTER_H)
+			UI.Next.Size = UDim2.new(1, 0, 0, K.FOOTER_H)
+		else
+			UI.Close.Parent = UI.Footer
+			UI.Close.AnchorPoint = Vector2.new(1, 0.5)
+			UI.Close.Position = UDim2.new(1, -(K.NEXT_W + K.BUTTON_GAP), 0.5, 0)
+			UI.Close.Size = UDim2.fromOffset(K.CLOSE_W, K.FOOTER_H)
+			UI.Next.Size = UDim2.fromOffset(K.NEXT_W, K.FOOTER_H)
+		end
+	end
+	if UI.More then
+		local slot = math.ceil(K.ICON / scale - 1e-6) -- (U9-9 look) the chevron's 18 screen px inside its slot
+		UI.More.Size = UDim2.fromOffset(slot, slot)
+	end
+	-- (U9-9 look) placed by its top-left corner on a whole px (the UIScale grows it from there): every part of the card
+	-- snaps to whole px of it; its bottom stays on the line it was fitted to
+	local top = math.floor(y - h * scale + 0.5)
+	root.Position = UDim2.fromOffset(math.floor(x + 0.5), top)
 	UI.Scale.Scale = scale
 	if UI.NameTab then
-		UI.NameTab.Size = UDim2.fromOffset(math.min(250, w - K.WELL_X - 104), 46)
+		UI.NameTab.Size = UDim2.fromOffset(tabW, tabH)
+		UI.NameTab.Position = UDim2.fromOffset(K.WELL_X, 24 - tabH) -- it ends 24 px into the card
+		UI.NameTab:SetAttribute("Rows", extra > 0 and 2 or 1)
+	end
+	syncVitals({ x0 = math.floor(x + 0.5), y0 = top, x1 = math.floor(x + 0.5) + w * scale, y1 = top + h * scale })
+	if PixelCrisp then
+		PixelCrisp.Refresh(root) -- (kit B U9-9) the icons and wood edges back on whole pixels at the new scale
 	end
 	dialog.Width = w
 end
@@ -1315,16 +1578,12 @@ end
 ----------------------------------------------------------------------
 -- Dialog flow
 ----------------------------------------------------------------------
+-- (kit B U9-9) the line shown gold, the rest the sunk well; every dot the same square (no size jump)
 local function setDots(count, index)
 	for i, dot in ipairs(UI.Dots or {}) do
 		dot.Visible = i <= count
-		if i == index then
-			dot.BackgroundColor3 = C.Gold
-			dot.Size = UDim2.fromOffset(13, 13)
-		else
-			dot.BackgroundColor3 = C.DotOff
-			dot.Size = UDim2.fromOffset(10, 10)
-		end
+		dot.BackgroundColor3 = i == index and C.Gold or C.DotOff
+		dot:SetAttribute("Current", i == index)
 	end
 end
 
@@ -1436,6 +1695,7 @@ local function setPortrait(rec)
 	local name = (rec.Def and rec.Def.Name) or rec.Id
 	local initial = Theme.Label(string.sub(tostring(name), 1, 1), "Title", {
 		Size = 64,
+		Color = SIGN.Text, -- brown on the sky well
 		Props = { Name = "Initial", Size = UDim2.fromScale(1, 1), ZIndex = 7 },
 	})
 	initial.Parent = holder
@@ -1502,11 +1762,10 @@ local function openRec(rec)
 	local accent = rec.Accent or C.Gold
 	UI.Name.Text = def.Name or rec.Model:GetAttribute("NpcName") or rec.Id
 	UI.Title.Text = def.Title or rec.Model:GetAttribute("Title") or ""
-	UI.TitleStroke.Color = accent
-	local nameTop = accent:Lerp(Color3.new(1, 1, 1), 0.25)
-	local nameBottom = accent:Lerp(Color3.fromRGB(26, 30, 52), 0.22)
-	UI.NameGradient.Color = ColorSequence.new(nameTop, nameBottom)
-	UI.PortraitGradient.Color = ColorSequence.new(accent:Lerp(Color3.new(1, 1, 1), 0.55), accent:Lerp(Color3.new(1, 1, 1), 0.12))
+	-- (kit B U9-9) the NPC's colour by role: on the portrait's lip (the ground it stands on), nothing glossy
+	if UI.PortraitLip then
+		UI.PortraitLip.BackgroundColor3 = accent
+	end
 	setPortrait(rec)
 	layoutDialog()
 	layoutTimer = 0
@@ -1551,6 +1810,7 @@ function NpcController.Close()
 		dialog.Viewport = nil
 	end
 	slideTo(false)
+	setVitalsOff(false)
 	refreshTargets()
 end
 
@@ -1662,7 +1922,7 @@ local function onFrame(dt)
 	if dialog.Open then
 		stepTypewriter(dt)
 		if UI.More and UI.More.Visible then
-			UI.More.Position = UDim2.new(1, -10, 1, -6 - math.abs(math.sin(clock * 5)) * 4)
+			UI.More.Position = UDim2.new(1, -10, 1, -6 - math.floor(math.abs(math.sin(clock * 5)) * 4 + 0.5)) -- (whole px steps)
 		end
 		checkTimer = checkTimer + dt
 		if checkTimer >= K.CHECK_EVERY then

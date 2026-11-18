@@ -1230,9 +1230,11 @@ local function paintTile(entry)
 		return
 	end
 	local color = entry.Disabled and "Grey" or entry.Color
-	if entry.Painted ~= tostring(color) .. tostring(entry.Active) then
-		entry.Painted = tostring(color) .. tostring(entry.Active)
-		tile.SetColor(entry.Active and "Gold" or color)
+	-- (U9-9 look 2) a tile the tutorial points at (SetPointed) wears the same gold face: the kit's Selected look
+	local gold = entry.Active or (entry.Pointed and not entry.Disabled)
+	if entry.Painted ~= tostring(color) .. tostring(gold) then
+		entry.Painted = tostring(color) .. tostring(gold)
+		tile.SetColor(gold and "Gold" or color)
 		tile.Card.SetGlow(entry.Active == true)
 		if tile.Label and tile.Skin ~= "Sign" then
 			tile.Label.TextColor3 = entry.Active and Theme.Lighten(GOLD, 0.45) or WHITE
@@ -3579,6 +3581,20 @@ function MenuController.GetButton(id)
 	end
 	local entry = Entries[id]
 	return entry and entry.Button or nil
+end
+
+-- (U9-9 look 2) the tutorial's pointer marks tile `id` with the kit's Selected look (the gold face and its lip, as an open
+-- window's tile) instead of a ring round it: the rail's tiles lie edge to edge, so a ring covered the next one. on = false
+-- gives the tile its own look back
+function MenuController.SetPointed(id, on)
+	if id == "Home" then
+		id = "Spot"
+	end
+	local entry = Entries[id]
+	if entry and (entry.Pointed == true) ~= (on == true) then
+		entry.Pointed = on == true
+		paintTile(entry)
+	end
 end
 
 -- Opens the Food Machine list (CareController) with that pet copy first (key; nil = the garden pets first).

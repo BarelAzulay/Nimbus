@@ -27,10 +27,6 @@ NimbusDungeon.Window_*.DungeonPanel.Content.Floors.Floor*.OrbHolder.Orb.Num  # "
 NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.StageBadge  # "EVO I" #FFFFFF on #A48645 3.46:1 < 4.5
 NimbusDungeon.Window_*.DungeonPanel.Content.Party.TeamFaces.Face*.Tag  # "HELPER" #FFFFFF on #368CD6 3.57:1 < 4.5
 NimbusFusion.Window_*.Panel.Body.Pills.Pill_*  # "Uncommon" #FFFFFF on #498665 4.30:1 < 4.5
-NimbusNotify.ToastHolder.ToastStack.ToastSlot.Toast.Icon.Glyph  # "☁" #FFFFFF on #93753B 4.33:1 < 4.5
-NimbusNpcDialog.NpcDialog.Slide.Card.Footer.Button_*  # "Next" #FFFFFF on #2F895B 4.31:1 < 4.5
-NimbusNpcDialog.NpcDialog.Slide.NameTab.Name  # "SPARKY FOX" #FFFFFF on #59B8BD 2.33:1 < 3
 NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Badge  # "x5" #FFFFFF on #1F8A3C 4.41:1 < 4.5
 NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Rarity  # "Secret" #6D6F7B on #161B34 3.40:1 < 4.5
 NimbusTrain.Window_*.Panel.Body.PetCard.Body.RarityChip  # "RARE" #FFFFFF on #467CBB 4.32:1 < 4.5
-NimbusTutorial.TutorialPanel.Slide.Main.Well.Footer.Next  # "Let's go!" #FFFFFF on #2F895B 4.31:1 < 4.5

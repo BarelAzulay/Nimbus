@@ -172,7 +172,7 @@ TutorialSteps.Steps = {
 		Text = "Aww, a new friend! Open Pets and put your buddy in your team so it follows right behind you. Pets give handy perks!",
 		Target = { Kind = "Menu", Id = "Pets" },
 		CompleteOn = "Equipped",
-		Hint = "Tap the glowing Pets button",
+		Hint = "Tap the Pets button",
 	},
 	{
 		Id = "index",
@@ -181,7 +181,7 @@ TutorialSteps.Steps = {
 		Text = "Every pet you find lands in the Pet Index. Take a peek! Collect a whole rarity group for a big reward.",
 		Target = { Kind = "Menu", Id = "Index" },
 		CompleteOn = "IndexOpened",
-		Hint = "Tap the glowing Index button",
+		Hint = "Tap the Index button",
 	},
 	{
 		Id = "portal",

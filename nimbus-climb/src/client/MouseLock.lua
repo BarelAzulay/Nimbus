@@ -3,7 +3,8 @@
 -- Roblox's shift-lock without holding a key. Keyboard + mouse devices only: touch / gamepad-only devices are untouched.
 -- Bug batch 2 #21: the setting defaults to ON (the game is played with E / F prompts); "Mouse lock (recommended)" in
 -- Settings, OFF stays possible (not recommended), and a saved OFF is kept. The first lock of a session that lasts
--- HINT_DELAY shows a "press L to free the cursor" pill low on the screen for HINT_SECONDS (NimbusMouseLockHint).
+-- HINT_DELAY shows a "press L to free the cursor" pill low on the screen for HINT_SECONDS (NimbusMouseLockHint; kit B
+-- U9-9: a stone plank with the pixel mouse, the TextLabel "Hint" still holding the whole line).
 --
 --   MouseLock.Start()           idempotent; reads ClientSettings "MouseLock" and follows its Changed signal
 --   MouseLock.SetEnabled(on)    turns the lock on / off on this client (not saved; the setting goes through ClientSettings)
@@ -104,6 +105,17 @@ local function hintTheme()
 	return (ok and type(theme) == "table") and theme or nil
 end
 
+-- (kit B U9-9) shared/PixelIcon (optional too): the pixel mouse before the words
+local function hintIcons()
+	local ok, icons = pcall(function()
+		local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+		local module = shared and shared:FindFirstChild("PixelIcon")
+		return module and require(module) or nil
+	end)
+	return (ok and type(icons) == "table") and icons or nil
+end
+local HINT_EDGE, HINT_LIP = 2, 4 -- the plank's wood edge and its stone lip (px)
+
 local function showHint()
 	if not St.Locked or St.HintGui then
 		if not St.Locked then
@@ -136,30 +148,107 @@ local function showHint()
 	label.TextSize = size
 	label.Size = UDim2.fromOffset(0, math.floor(size * 2 + 0.5))
 	label.AutomaticSize = Enum.AutomaticSize.X
-	label.BackgroundColor3 = Color3.fromRGB(18, 20, 40)
-	label.BackgroundTransparency = 0.25
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	-- (kit B U9-9) a stone plank (the Signboard kit): the pale tile in a mitred wood edge, its stone lip along the
+	-- bottom, brown words after the pixel mouse; square, no outline on its text
+	local sign = (theme and type(theme.Sign) == "table") and theme.Sign or {}
+	label.BorderSizePixel = 0
+	label.BackgroundColor3 = sign.Tile or Color3.fromRGB(255, 253, 246)
+	label.BackgroundTransparency = 0
+	label.TextColor3 = sign.Text or Color3.fromRGB(59, 36, 18)
 	label.Text = "Mouse lock is ON  \194\183  press " .. K.KEY_NAME .. " to free the cursor"
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = label
+	local edge = Instance.new("UIStroke")
+	edge.Name = "SignEdge"
+	edge.Color = sign.Wood or Color3.fromRGB(140, 90, 46)
+	edge.Thickness = HINT_EDGE
+	edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	edge.Parent = label
 	local pad = Instance.new("UIPadding")
 	pad.PaddingLeft = UDim.new(0, 18)
 	pad.PaddingRight = UDim.new(0, 18)
+	pad.PaddingBottom = UDim.new(0, HINT_LIP)
 	pad.Parent = label
-	-- (kit-b U6) the hint is its own dark pill: no outline on its text
+	local icons = hintIcons()
+	if icons then
+		pcall(function()
+			icons.Lead(label, "mouse", { Px = 18 }) -- the kit's 2 px icon cell
+		end)
+	end
+	-- the lip: a UIPadding pads a label's children too, so it reaches back out to the plank's sides and bottom
+	local lip = Instance.new("Frame")
+	lip.Name = "Lip"
+	lip.BorderSizePixel = 0
+	lip.BackgroundColor3 = sign.StoneLip or Color3.fromRGB(220, 201, 160)
+	lip.AnchorPoint = Vector2.new(0, 1)
+	lip.Position = UDim2.new(0, -pad.PaddingLeft.Offset, 1, pad.PaddingBottom.Offset)
+	lip.Size = UDim2.new(1, pad.PaddingLeft.Offset + pad.PaddingRight.Offset, 0, HINT_LIP)
+	lip.ZIndex = label.ZIndex
+	lip.Parent = label
 	label.Parent = gui
 	gui.Parent = pg
 	St.HintGui = gui
 	-- short desktop windows: 70 % down would reach the HUD's bottom-centre vitals card (bug batch 2 #1), so the pill
 	-- stands just above the card's top (NimbusHud attribute BottomCentreTop, same gui-area pixels: both keep the
-	-- inset), but never up into the middle of the screen (the v2 rule's band ends at 64.5 % of the height)
+	-- inset), but never up into the middle of the screen (the v2 rule's band ends at 64.5 % of the height). (U9-9 look 2)
+	-- Its wood edge counted, and when the card leaves no room above it under the band (a 960 x 540 window: the card covered
+	-- the plank's lower 9 px) the plank docks beside the card instead, its top on the card's top line, BAND_GAP right of
+	-- it (on two lines when one is too wide for the room there)
+	local BAND, BAND_GAP = 0.65, 8
 	local hud = pg:FindFirstChild("NimbusHud")
 	local top = hud and tonumber(hud:GetAttribute("BottomCentreTop"))
+	local cardR = hud and tonumber(hud:GetAttribute("BottomCentreRight"))
 	local areaH = gui.AbsoluteSize.Y
+	local dock = nil
 	if top and top > 0 and areaH > 0 then
-		local y = math.max(0.65 * areaH, math.min(0.7 * areaH, top - 8 - label.Size.Y.Offset))
-		label.Position = UDim2.new(0.5, 0, 0, math.floor(y))
+		local above = top - BAND_GAP - label.Size.Y.Offset - HINT_EDGE
+		if above >= BAND * areaH or not (cardR and cardR > 0) then
+			local y = math.max(BAND * areaH, math.min(0.7 * areaH, above))
+			label.Position = UDim2.new(0.5, 0, 0, math.floor(y))
+		else
+			dock = { X = math.ceil(cardR + BAND_GAP + HINT_EDGE), Y = math.floor(top) }
+			label.AnchorPoint = Vector2.new(0, 0)
+			label.Position = UDim2.fromOffset(dock.X, dock.Y)
+		end
+	end
+	gui:SetAttribute("Docked", dock ~= nil)
+	-- (U9-9 look) the plank on whole screen px: once its words have set its width, that width rounded up to an even
+	-- number of px and its left edge on a whole px of the centre (an odd or fractional width put it at x 714.38)
+	local settled, wrapped = false, false
+	local function settle()
+		local w = label.AbsoluteSize.X
+		local areaW = gui.AbsoluteSize.X
+		if settled or w <= 0 or areaW <= 0 or not label.Parent then
+			return
+		end
+		if dock and not wrapped and dock.X + w + HINT_EDGE > areaW - BAND_GAP then
+			-- too wide for the room beside the card: the same words on two lines (the plank grows down for the second)
+			wrapped = true
+			label.Text = "Mouse lock is ON\npress " .. K.KEY_NAME .. " to free the cursor"
+			label.AutomaticSize = Enum.AutomaticSize.XY
+			return
+		end
+		settled = true
+		local even = 2 * math.ceil(w / 2 - 1e-6)
+		local h = 2 * math.ceil(label.AbsoluteSize.Y / 2 - 1e-6)
+		local p = label.Position
+		label.AutomaticSize = Enum.AutomaticSize.None
+		label.Size = UDim2.new(0, even, 0, math.max(label.Size.Y.Offset, h))
+		label.AnchorPoint = Vector2.new(0, 0)
+		if dock then
+			label.Position = UDim2.fromOffset(dock.X, dock.Y)
+		else
+			label.Position = UDim2.fromOffset(math.floor((areaW - even) / 2), math.floor(p.Y.Scale * gui.AbsoluteSize.Y + p.Y.Offset))
+		end
+	end
+	settle()
+	if not settled then
+		local conn
+		conn = label:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			settle()
+			if settled and conn then
+				conn:Disconnect()
+			end
+		end)
 	end
 	task.delay(K.HINT_SECONDS, function()
 		if St.HintGui == gui then

@@ -1009,18 +1009,30 @@ scenario("party", function()
 	advance(1.2)
 end)
 
-scenario("results", function()
+-- results[:loss]: (kit B U9-9) loss = a lost match (out of time, the team half down): the stone DEFEAT banner
+scenario("results", function(outcome)
 	LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
 	toClient("MatchState", matchState())
 	advance(0.5)
-	toClient("MatchResult", {
-		Won = true, Reason = "victory", Seconds = 187, MatchTokens = 11, Bonus = 10, DifficultyId = "Easy", DifficultyName = "Easy",
-		Stars = 1, TotalTokens = 24,
-		Members = {
-			{ Name = LocalPlayer.Name, MatchTokens = 11, Finished = true, Downed = false },
-			{ Name = "Buddy", MatchTokens = 6, Finished = true, Downed = false },
-		},
-	})
+	if outcome == "loss" then
+		toClient("MatchResult", {
+			Won = false, Reason = "timeout", Seconds = 300, MatchTokens = 4, Bonus = 0, DifficultyId = "Medium", DifficultyName = "Medium",
+			Stars = 2, TotalTokens = 4,
+			Members = {
+				{ Name = LocalPlayer.Name, MatchTokens = 4, Finished = false, Downed = false },
+				{ Name = "Buddy", MatchTokens = 2, Finished = false, Downed = true },
+			},
+		})
+	else
+		toClient("MatchResult", {
+			Won = true, Reason = "victory", Seconds = 187, MatchTokens = 11, Bonus = 10, DifficultyId = "Easy", DifficultyName = "Easy",
+			Stars = 1, TotalTokens = 24,
+			Members = {
+				{ Name = LocalPlayer.Name, MatchTokens = 11, Finished = true, Downed = false },
+				{ Name = "Buddy", MatchTokens = 6, Finished = true, Downed = false },
+			},
+		})
+	end
 	advance(4)
 end)
 
@@ -1064,9 +1076,34 @@ scenario("menu", function(window, tab, action, key)
 	advance(2.5)
 end)
 
-scenario("tutorial", function(step)
+-- tutorial[:<step>[:open]]: open (kit B U9-9) taps the portrait when the screen folded the card into the bubble (a
+-- phone), so the card the player opens is drawn too
+scenario("tutorial", function(step, mode)
 	toClient("TutorialState", tutorialPayload(tonumber(step) or 1))
 	advance(5)
+	if mode == "open" then
+		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local gui = pg and pg:FindFirstChild("NimbusTutorial")
+		local main = gui and gui:FindFirstChild("Main", true)
+		local toggle = gui and gui:FindFirstChild("Toggle", true)
+		if main and not main.Visible and toggle then
+			Mock.Click(toggle)
+			advance(1)
+		end
+	end
+end)
+
+-- mousehint: (kit B U9-9) the once-per-session "Mouse lock is ON - press L" plank (client/MouseLock) on a desktop
+scenario("mousehint", function()
+	local UIS = game:GetService("UserInputService")
+	UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = false, true, true
+	local ML = req("client/MouseLock")
+	ML.Start()
+	ML.SetEnabled(true)
+	ML._St.Hinted = false
+	ML.Hold("dump:hint")
+	ML.Release("dump:hint")
+	advance(1)
 end)
 
 scenario("npc", function(which)
