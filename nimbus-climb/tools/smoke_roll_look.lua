@@ -626,9 +626,10 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 		local cells = G.cells(1)
 		local maxInst, worst = 0, ""
 		-- (kit-b U9-2b) the cards are kit B stone blocks: a flat Tile face, no gradient or shine, the rarity's plate along the
-		-- bottom with its upper-case word in TextOn of it, the cell's stroke the mitred wood edge, nothing beside the card
+		-- bottom with its upper-case word, the cell's stroke the mitred wood edge, nothing beside the card; (U9-2b review)
+		-- the plate is Theme.ReadableFace of the rarity's colour at 4.5:1 and the word its ink
 		local Sign = G.req("shared/Theme").Sign
-		local TextOn = G.req("shared/Theme").TextOn
+		local ReadableFace = G.req("shared/Theme").ReadableFace
 		local faceOk, shineOk, plateOk, shadowOk, rimOk, wordOk = true, true, true, true, true, true
 		local seen, rimBad, cellW, cellH = 0, "", nil, nil
 		local track = G.track(1)
@@ -654,8 +655,11 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 							rarity = r
 						end
 					end
-					local col = rarity and HL.RarityColor(rarity)
-					wordOk = wordOk and rarity ~= nil and G.near(word.TextColor3, TextOn(col)) and word.TextSize == 18 and G.near(c.Plate.BackgroundColor3, col)
+					local face, ink = nil, nil
+					if rarity then
+						face, ink = ReadableFace(HL.RarityColor(rarity), 4.5)
+					end
+					wordOk = wordOk and rarity ~= nil and G.near(word.TextColor3, ink) and word.TextSize == 18 and G.near(c.Plate.BackgroundColor3, face)
 					local stroke = G.stroke(c)
 					if rarity and stroke then
 						if not (stroke.Name == "SignEdge" and G.near(stroke.Color, Sign.Wood) and stroke.Transparency == 0 and stroke.Thickness == 3 and stroke.LineJoinMode == Enum.LineJoinMode.Miter) then
@@ -671,7 +675,7 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 			"roll look cards: the recycled cells: as many as can show at once (floor(W / Step) + 2, at most 12)", fmt("%d cells, %d shown, track %.0f", #cells, seen, tw))
 		T.check(maxInst <= 20, "roll look cards: an x1 cell is <= 20 instances (the card skin included)", fmt("%s: %d", worst, maxInst))
 		T.check(seen >= 5 and faceOk and shineOk, "roll look cards: every shown cell is a flat stone face (Sign.Tile; no gradient, no Shine)", fmt("%d shown", seen))
-		T.check(plateOk and wordOk, "roll look cards: the Plate in the rarity's colour holds the word: upper-case, TextOn of the plate, 18 px")
+		T.check(plateOk and wordOk, "roll look cards: the Plate in the rarity's readable colour holds the word: upper-case, its ink, 18 px")
 		T.check(shadowOk, "roll look cards: no Shadow<slot> beside a card (kit B blocks sit flat)")
 		T.check(rimOk, "roll look cards: the rim is the mitred wood SignEdge, opaque, 3 px", rimBad)
 		local ptr = G.pointer(1)
@@ -2444,6 +2448,56 @@ S.client_roll_look_phone = guarded("client_roll_look_phone", function()
 			T.check(#notes == 0, "roll look phone x3 640x360: a note too long for one line breaks at its dot (each line a whole phrase, no orphan word)", table.concat(notes, "; "))
 			ES.Done()
 			G.advance(0.4)
+			-- (kit-b U9-2b review) the chips' labels with the real widths on the strip and on the reveal, x3 at 640x360 and
+			-- 667x375: the Skip chip's chosen form fits its label box (a form chosen for the tap box's room, not the
+			-- block's, was cut with an ellipsis), and Fast hatch fits with the Nunito face's spare (Theme.MeasureSpare.Label:
+			-- the shown face runs wider than the Builder Sans it is measured in)
+			local Theme = G.req("shared/Theme")
+			local spare = (Theme.MeasureSpare or {}).Label or 1
+			-- a label's box in its own px (the UIScale chain out; the press and pop scales are motion)
+			local function boxW(o)
+				local s, cur = 1, o
+				while cur and cur:IsA("GuiObject") do
+					for _, c in ipairs(cur:GetChildren()) do
+						if c:IsA("UIScale") and c.Name ~= "FxScale" and c.Name ~= "Pop" then
+							s = s * c.Scale
+						end
+					end
+					cur = cur.Parent
+				end
+				return o.AbsoluteSize.X / math.max(0.01, s)
+			end
+			for _, size in ipairs({ { 640, 360 }, { 667, 375 } }) do
+				Mock.SetViewport(size[1], size[2])
+				G.advance(0.3)
+				for _, phase in ipairs({ "strip", "reveal" }) do
+					local label = fmt("roll look phone x3 %dx%d %s", size[1], size[2], phase)
+					if phase == "strip" then
+						local t1 = os.clock()
+						ES.Show(G.result(PC, "Storm", defs3))
+						G.until_(t1, 1.6)
+					else
+						G.toReveal(ES, G.result(PC, "Storm", defs3))
+						G.advance(1.2)
+					end
+					local chips = {}
+					for _, name in ipairs({ "Skip", "FastHatch" }) do
+						local l = G.bar(name) and G.bar(name):FindFirstChild("Label", true)
+						local okFit, dFit = RedoGeom.fits(l)
+						if l and name == "FastHatch" and okFit then
+							local w = RedoGeom.realWidth(l.Text, l.TextSize, Theme.FontOf(l)) * spare
+							okFit = w <= boxW(l) + 0.5
+							dFit = fmt("%s (x %.2f for the face: %.1f px)", tostring(dFit), spare, w)
+						end
+						if not (l and okFit) then
+							chips[#chips + 1] = name .. ": " .. tostring(dFit)
+						end
+					end
+					T.check(#chips == 0, label .. ": the Skip chip's words and Fast hatch fit their chips (real widths, never an ellipsis)", table.concat(chips, "; "))
+					ES.Close()
+					G.advance(0.4)
+				end
+			end
 		end)
 		if State then
 			State.PetStage = savedStage

@@ -4248,7 +4248,6 @@ local function clientScenarios()
 			{ "the Sky Trove", "^NimbusTrove%..-%.TitleText$" },
 			{ "the loss card", "^NimbusLoss%.LossCard%..-%.Title$" },
 			{ "the battle result card", "%.ResultCard%..-%.Title$" },
-			{ "the hatch stage", "^NimbusHatch%..-%.Title$" },
 			{ "the garden recall dialog", "%.GardenRecall%.Box%.Title$" },
 			{ "the party panel", "^NimbusHud%..-%.PartyPanel%..-%.Title$" },
 		}
@@ -4275,8 +4274,10 @@ local function clientScenarios()
 		table.sort(badList)
 		table.sort(seen)
 		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Ribbon", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
-		-- (U9-1; the owner's ruling 2026-11-14) a card heading and a dialog's title inside a window are plain Section headings
-		for _, e in ipairs({ { "the Go home hero card", "%.Hero%.GoHome%..-Title$" }, { "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" } }) do
+		-- (U9-1; the owner's ruling 2026-11-14) a card heading and a dialog's title inside a window are plain Section headings;
+		-- (U9-2b review) so is the hatch stage's floating title (a cutscene over the game, not a window)
+		for _, e in ipairs({ { "the Go home hero card", "%.Hero%.GoHome%..-Title$" }, { "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
+			{ "the hatch stage", "^NimbusHatch%..-%.Title$" } }) do
 			local look = nil
 			for path, l in pairs(found) do
 				if path:find(e[2]) then
@@ -7850,7 +7851,10 @@ local function clientScenarios()
 	-- vignette, the speed streaks, the Secret aura and stars, the pet's contact shadow); the chrome over it is kit B (U92b is
 	-- declared beside U93 / U94: kitb_no_neon_glow walks the stage too)
 	-- a roll on the stage: "x1" = a Cloud x1 Epic, new, its pet evolved (the EVOLVED tag); "x3" = a Storm x3 (Rare,
-	-- Legendary, Epic); the profile can pay Spin again (50,000 tokens, gem roulettes allowed), Fast hatch off
+	-- Legendary, Epic); (U9-2b review) "x3evo2" = the Storm x3 whose third pull is its longest-named pet with a stage 2,
+	-- new and at stage 2 (NEW! and EVOLVED II in one column), "x1epics" = the x1 with every other card of its strip the
+	-- Epic (an Epic plate in view mid-scroll); the profile can pay Spin again (50,000 tokens, gem roulettes allowed), Fast
+	-- hatch off
 	function U92b.show(kind)
 		local PC = LoadingH.shared("PetCatalog")
 		local Config = LoadingH.shared("Config")
@@ -7858,7 +7862,18 @@ local function clientScenarios()
 		local CS = U7.client("ClientSettings")
 		local lp = game:GetService("Players").LocalPlayer
 		local epic = PC.RarityPool("Cloud", "Epic")[1]
-		U8.feed(nil, nil, { [epic.Id] = { Evo = 1 } }, nil, { Tokens = 50000, Gems = 5000, PetLevels = { [epic.Id] = { Level = 60, Xp = 0 } } })
+		local evolved, evo = epic, 1
+		if kind == "x3evo2" then
+			-- (the Storm pet with a stage 2 and the longest name: on PC its name fills the row, so the tag goes to the
+			-- model's shoulder)
+			evolved, evo = epic, 2
+			for _, d in ipairs(PC.PossiblePets("Storm")) do
+				if PC.MaxEvolution(d) >= 2 and (evolved == epic or #d.Name > #evolved.Name) then
+					evolved = d
+				end
+			end
+		end
+		U8.feed(nil, nil, { [evolved.Id] = { Evo = evo } }, nil, { Tokens = 50000, Gems = 5000, PetLevels = { [evolved.Id] = { Level = 60, Xp = 0 } } })
 		lp:SetAttribute(Config.Attr.Tokens, 50000)
 		lp:SetAttribute(Config.Attr.Gems, 5000)
 		lp:SetAttribute("PaidRandomItemsRestricted", false)
@@ -7876,7 +7891,7 @@ local function clientScenarios()
 			end
 			local ids = {}
 			for i = 1, 40 do
-				ids[i] = all[((i * 7) % #all) + 1]
+				ids[i] = (kind == "x1epics" and i % 2 == 0) and winner or all[((i * 7) % #all) + 1]
 			end
 			ids[34] = winner
 			return ids
@@ -7886,12 +7901,12 @@ local function clientScenarios()
 				PoolSize = #PC.RarityPool(rid, def.Rarity), Strip = strip(rid, def.Id) }
 		end
 		local rid, pulls = "Cloud", nil
-		if kind == "x3" then
+		if kind == "x3" or kind == "x3evo2" then
 			rid = "Storm"
 			local function storm(r, fallback)
 				return PC.RarityPool("Storm", r)[1] or fallback
 			end
-			pulls = { pull(rid, storm("Rare", PC.RarityPool("Cloud", "Rare")[1])), pull(rid, storm("Legendary")), pull(rid, storm("Epic", epic), false) }
+			pulls = { pull(rid, storm("Rare", PC.RarityPool("Cloud", "Rare")[1])), pull(rid, storm("Legendary")), pull(rid, kind == "x3evo2" and evolved or storm("Epic", epic), kind == "x3evo2") }
 		else
 			pulls = { pull(rid, epic) }
 		end
@@ -7990,6 +8005,80 @@ local function clientScenarios()
 		if not T.check(HL and CloudUI, "hatch kit b: HatchLook and CloudUI load") then
 			return
 		end
+		-- (U9-2b review) the x1 strip's plate words read on their plates while the strip runs and after it lands, at the
+		-- sizes where a plate word is under 18 px (4.5:1 there): 1280x720 (14.4 px) and 844x390 (15 px), an Epic plate on
+		-- show (the violet plate the brown ink read worst on); and the stage's floating title ("STORM ROULETTE X3") is the
+		-- plain Section title (the owner's ruling 2026-11-14: the ribbon is for window titles only), its words clear of the
+		-- x3 strips' wood frames and the window's notches (the ribbon's band had covered the first strip's frame)
+		for _, s in ipairs({ { 1280, 720, false }, { 844, 390, true } }) do
+			U8.at(s[1], s[2], s[3], "hatch kit b plates", function(tag)
+				local ES = U92b.show("x1epics")
+				if not T.check(ES ~= nil, tag .. ": the x1 roll shows") then
+					return
+				end
+				for _, at in ipairs({ { "mid-scroll", 1.6 }, { "after the land", 1.9 } }) do
+					LKC.advance(at[2])
+					local content = U92b.content()
+					local strip = content and content:FindFirstChild("Strips") and content.Strips:FindFirstChild("Strip1")
+					local track = strip and strip:FindFirstChild("Track")
+					-- (setup) the walk reads an Epic plate's word (a card in view, not under the track's fading ends)
+					local list, read = SmokeCommon.Contrast.PaintList(U8.pg()), 0
+					for i, it in ipairs(list) do
+						if track and it.obj.Name == "Word" and it.obj.Text == "EPIC" and it.obj:IsDescendantOf(track) and SmokeCommon.Contrast.Read(list, i) ~= nil then
+							read = read + 1
+						end
+					end
+					T.check(read > 0, tag .. ": (setup) the contrast walk reads an Epic plate's word " .. at[1], tostring(read))
+					local bad = U94.contrast("NimbusHatch")
+					T.check(#bad == 0, fmt("%s: %s, every text of the strip reads on its fill (%d not)", tag, at[1], #bad), table.concat(bad, "; ", 1, math.min(#bad, 6)))
+				end
+				U92b.close()
+			end)
+			U8.at(s[1], s[2], s[3], "hatch kit b title", function(tag)
+				local ES = U92b.show("x3")
+				LKC.advance(1.6)
+				local content = U92b.content()
+				local title = content and content:FindFirstChild("Title")
+				if not T.check(ES ~= nil and title ~= nil and U8.shown(title), tag .. ": the x3 strip shows the stage's title") then
+					return
+				end
+				local pieces = {}
+				for _, d in ipairs(title:GetDescendants()) do
+					if d:IsA("GuiObject") then
+						pieces[#pieces + 1] = d
+					end
+				end
+				T.check(title:GetAttribute("TitleLook") == "Section" and #pieces == 0, tag .. ": the stage's title is the plain Section title (no ribbon: the stage is not a window)",
+					fmt("%s, %d ribbon pieces", tostring(title:GetAttribute("TitleLook")), #pieces))
+				-- the words' line box (the text centred in the label: a capital's ink and its outline sit inside it) and every
+				-- ribbon piece against each strip's wood frame and the windows' notches
+				local r, tb = U8.rect(title), title.TextBounds
+				local k = U8.scaleOf(title)
+				local cx, cy = (r.X + r.R) / 2, (r.Y + r.B) / 2
+				local drawn = { { "the words", { X = cx - tb.X * k / 2, R = cx + tb.X * k / 2, Y = cy - tb.Y * k / 2, B = cy + tb.Y * k / 2 } } }
+				for _, p in ipairs(pieces) do
+					if U8.shown(p) and p.BackgroundTransparency < 1 then
+						drawn[#drawn + 1] = { p.Name, U8.rect(p) }
+					end
+				end
+				local hits = {}
+				for j = 1, 3 do
+					local st = content.Strips:FindFirstChild("Strip" .. j)
+					local ptr = st and st:FindFirstChild("Pointer")
+					for _, o in ipairs({ st and st:FindFirstChild("Outer"), ptr and ptr:FindFirstChild("NotchTop") }) do
+						if o and U8.shown(o) then
+							for _, d in ipairs(drawn) do
+								if U8.overlap(d[2], U8.rect(o)) then
+									hits[#hits + 1] = fmt("%s %s meets Strip%d.%s %s", d[1], U8.show(d[2]), j, o.Name, U8.show(U8.rect(o)))
+								end
+							end
+						end
+					end
+				end
+				T.check(#hits == 0, tag .. ": the title's words clear the x3 strips' wood frames and the window's notches", table.concat(hits, "; ", 1, math.min(#hits, 6)))
+				U92b.close()
+			end)
+		end
 		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
 			U8.at(s[1], s[2], s[3], "hatch kit b", function(tag)
 				-- the strip, mid-scroll
@@ -8027,14 +8116,19 @@ local function clientScenarios()
 						if ok then
 							local word = plate:FindFirstChild("Word")
 							local rarity = word and word.Text ~= "" and (word.Text:sub(1, 1) .. word.Text:sub(2):lower()) or nil
-							ok = rarity ~= nil and word.Text == word.Text:upper() and sameColor(plate.BackgroundColor3, HL.RarityColor(rarity))
+							-- (U9-2b review) the rarity's colour moved the least it takes for its ink to read at 4.5:1
+							local face, ink = nil, nil
+							if rarity then
+								face, ink = Theme.ReadableFace(HL.RarityColor(rarity), 4.5)
+							end
+							ok = rarity ~= nil and word.Text == word.Text:upper() and sameColor(plate.BackgroundColor3, face) and sameColor(word.TextColor3, ink)
 						end
 						if not ok then
 							loose[#loose + 1] = fmt("%s %s edge %s", c.Name, hex(c.BackgroundColor3), edge and hex(edge.Color) or "-")
 						end
 					end
 				end
-				T.check(cards >= 4 and #loose == 0, tag .. ": every card a stone block in its mitred wood edge with its rarity word on a plate in the rarity's colour (no corner, gloss or shine)",
+				T.check(cards >= 4 and #loose == 0, tag .. ": every card a stone block in its mitred wood edge with its rarity word on a plate in the rarity's readable colour (no corner, gloss or shine)",
 					cards .. " cards; " .. table.concat(loose, "; ", 1, math.min(#loose, 4)))
 				T.check(shadows == 0, tag .. ": no drop shadow beside the cards (kit B blocks sit flat)", tostring(shadows))
 				local pointer = strip and strip:FindFirstChild("Pointer")
@@ -8239,11 +8333,60 @@ local function clientScenarios()
 	-- the hatch stage on a touch phone (844x390 and 390x844; x1 and x3 reveals): Roblox's touch controls go while the stage
 	-- shows and come back as they were after Done; the bar's items inside the screen, apart (their wood edges included),
 	-- each tap box >= 44 px; each plank's words and price tag inside its block; NEW! and EVOLVED's words inside their tags
-	-- and the two tags apart; every text of the bar and the reveal >= 15 px
+	-- and the two tags apart; every text of the bar and the reveal >= 15 px. (U9-2b review) the stage lays out with the
+	-- real font widths (RedoGeom.realWidth) and a tag's words are measured against its block (RedoGeom.fits: the words'
+	-- label fills the tag, so a box-in-box check could not fail); an x3 roll with a NEW stage-2 pet (NEW! and EVOLVED II in
+	-- one column) at 390x844, 844x390, 568x320 and 1280x720
 	S.hatch_fits_phone = guarded("hatch_fits_phone", function()
 		local GuiService = game:GetService("GuiService")
 		local function inside(r, o)
 			return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+		end
+		local ESM = U7.client("UI/EggStage")
+		local savedMeasure = ESM and ESM.Metrics.MEASURE
+		if not T.check(ESM ~= nil and RedoGeom ~= nil, "hatch phone: EggStage and RedoGeom load") then
+			return
+		end
+		ESM.Metrics.MEASURE = function(text, size, font)
+			return RedoGeom.realWidth(text, size, font)
+		end
+		-- a tag's words against its block with the real widths: { "Col3.EvolvedRibbon words: ..." } for each that does not fit
+		local function tagWords(col, out)
+			for _, t in ipairs({ col and col:FindFirstChild("New"), col and col:FindFirstChild("EvolvedRibbon") }) do
+				local text = t and t:FindFirstChild("Text")
+				if text and U8.shown(t) then
+					local okFit, dFit = RedoGeom.fits(text)
+					if not okFit then
+						out[#out + 1] = col.Name .. "." .. t.Name .. " words: " .. tostring(dFit)
+					end
+				end
+			end
+		end
+		for _, s in ipairs({ { 390, 844, true }, { 844, 390, true }, { 568, 320, true }, { 1280, 720, false } }) do
+			U8.at(s[1], s[2], s[3], "hatch evolved II x3", function(tag)
+				local ES = U92b.reveal("x3evo2")
+				local content = U92b.content()
+				local reveal = content and content:FindFirstChild("Reveal")
+				local col = reveal and reveal:FindFirstChild("Col3")
+				local new, rib = col and col:FindFirstChild("New"), col and col:FindFirstChild("EvolvedRibbon")
+				local words = rib and rib:FindFirstChild("Text")
+				if not T.check(ES ~= nil and new ~= nil and rib ~= nil and U8.shown(new) and U8.shown(rib) and words ~= nil and words.Text:find("II", 1, true) ~= nil,
+					tag .. ": (setup) the new stage-2 pull shows NEW! and its stage-II tag", words and words.Text or "no tag") then
+					return
+				end
+				local cramped = {}
+				tagWords(col, cramped)
+				if U8.overlap(U94.strokeBox(new), U94.strokeBox(rib)) then
+					cramped[#cramped + 1] = "NEW! meets " .. words.Text
+				end
+				local cr, rr = U8.rect(col), U94.strokeBox(rib)
+				if not inside(rr, cr) then
+					cramped[#cramped + 1] = fmt("%s %s leaves its column %s", words.Text, U8.show(rr), U8.show(cr))
+				end
+				T.check(#cramped == 0, tag .. ": NEW! and the stage-II tag hold their words (real widths), apart and inside the column", table.concat(cramped, "; "))
+				ES.Done()
+				LKC.advance(0.6)
+			end)
 		end
 		for _, s in ipairs({ { 844, 390 }, { 390, 844 } }) do
 			for _, kind in ipairs({ "x1", "x3" }) do
@@ -8306,12 +8449,7 @@ local function clientScenarios()
 					for j = 1, 3 do
 						local col = reveal and reveal:FindFirstChild("Col" .. j)
 						local new, rib = col and col:FindFirstChild("New"), col and col:FindFirstChild("EvolvedRibbon")
-						for _, t in ipairs({ new, rib }) do
-							local text = t and t:FindFirstChild("Text")
-							if text and U8.shown(t) and not inside(U8.rect(text), U8.rect(t)) then
-								cramped[#cramped + 1] = col.Name .. "." .. t.Name .. " words"
-							end
-						end
+						tagWords(col, cramped)
 						if new and rib and U8.shown(new) and U8.shown(rib) and U8.overlap(U94.strokeBox(new), U94.strokeBox(rib)) then
 							cramped[#cramped + 1] = col.Name .. ": NEW! meets EVOLVED"
 						end
@@ -8332,6 +8470,7 @@ local function clientScenarios()
 				T.eq(GuiService.TouchControlsEnabled, before, fmt("hatch phone %s %dx%d: the touch controls are as they were after Done", kind, s[1], s[2]))
 			end
 		end
+		ESM.Metrics.MEASURE = savedMeasure
 		LKC.flushErrors("hatch_fits_phone")
 	end)
 

@@ -3906,8 +3906,10 @@ end)
 --                       hidden game HUD, stepped to one moment of a roll (Fast hatch off): strip = a Cloud x1 Epic at 1.6 s
 --                       (mid-strip); strip3 = a Storm x3 (Rare, Legendary, Epic) at 1.6 s; crack = the x1 at 4.75 s (mid
 --                       Crack: the word, the egg, the plain pedestal); reveal = the x1 at 6.6 s; reveal3 = the x3 at 7.8 s
---                       (the Epic evolved: its ribbon); secret = a Secret Roulette x1 (Gems, the pity pull) at 6.6 s
-local HATCH = { At = { strip = 1.6, strip3 = 1.6, crack = 4.75, reveal = 6.6, reveal3 = 7.8, secret = 6.6 } }
+--                       (the Epic evolved: its ribbon); secret = a Secret Roulette x1 (Gems, the pity pull) at 6.6 s;
+--                       (kit-b U9-2b review) reveal3evo2 = the x3 with its third pull the longest-named Storm pet that
+--                       has a stage 2, new and at stage 2 (NEW! and the EVOLVED II tag in one column) at 7.8 s
+local HATCH = { At = { strip = 1.6, strip3 = 1.6, crack = 4.75, reveal = 6.6, reveal3 = 7.8, reveal3evo2 = 7.8, secret = 6.6 } }
 function HATCH.strip(PC, rid, winnerId)
 	local all = {}
 	for _, def in ipairs(PC.PossiblePets(rid)) do
@@ -4019,6 +4021,17 @@ function HATCH.scene(view, f1, f2)
 	snap.PetGrowth = snap.PetGrowth or {}
 	snap.PetLevels[epic.Id] = { Level = 60, Xp = 0 }
 	snap.PetGrowth[epic.Id] = { Evo = 1 }
+	local evo2 = nil
+	if view == "reveal3evo2" then
+		for _, d in ipairs(PC.PossiblePets("Storm")) do
+			if PC.MaxEvolution(d) >= 2 and (evo2 == nil or #d.Name > #evo2.Name) then
+				evo2 = d
+			end
+		end
+		evo2 = evo2 or epic
+		snap.PetLevels[evo2.Id] = { Level = 60, Xp = 0 }
+		snap.PetGrowth[evo2.Id] = { Evo = 2 }
+	end
 	toClient("ProfileSync", snap)
 	LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
 	LocalPlayer:SetAttribute(Config.Attr.Gems, 5000)
@@ -4047,12 +4060,13 @@ function HATCH.scene(view, f1, f2)
 			return
 		end
 		rid, currency, pulls = frid, fcur, fpulls
-	elseif view == "strip3" or view == "reveal3" then
+	elseif view == "strip3" or view == "reveal3" or view == "reveal3evo2" then
 		local storm = function(def)
 			return def and PC.RarityPool("Storm", def.Rarity)[1] or nil
 		end
 		rid = "Storm"
-		pulls = { HATCH.pull(PC, rid, storm(rare) or rare), HATCH.pull(PC, rid, leg), HATCH.pull(PC, rid, epic, { IsNew = false, Count = 2 }) }
+		local third = evo2 and HATCH.pull(PC, rid, evo2) or HATCH.pull(PC, rid, epic, { IsNew = false, Count = 2 })
+		pulls = { HATCH.pull(PC, rid, storm(rare) or rare), HATCH.pull(PC, rid, leg), third }
 	elseif view == "secret" then
 		local pool = PC.RarityPool("Secret", "Secret")
 		local def = pool[1] or PC.RarityPool("Secret", "Mythic")[1]

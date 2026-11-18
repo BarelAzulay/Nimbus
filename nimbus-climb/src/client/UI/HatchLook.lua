@@ -18,8 +18,9 @@
 --                                             the Plate and its Word to the cell (Lite: the Lip; the edge is the cell's own
 --                                             stroke, no shadow beside it): spec 16.15 "Budgets"
 --   HatchLook.SetCard(card, rarity|false, state)   state "Idle" | "Landed" | "Dim": the face Tile / the Selected cream /
---                                             the sunk Well; the plate (or lip) in RarityColor(r) (StoneLip without one), its
---                                             word in Theme.TextOn of it, 0.3 clear when Dim
+--                                             the sunk Well; the lip in RarityColor(r), the plate in Theme.ReadableFace(
+--                                             RarityColor(r), 4.5) with its word in the ink it returns (StoneLip without a
+--                                             rarity), 0.3 clear when Dim
 --   HatchLook.ShowCard(card, cx, cy) / HideCard(card)   places a card by its centre (AnchorPoint 0.5: its pop grows round
 --                                             the middle), or hides it
 --   HatchLook.DropCard(card)                  destroys the cell
@@ -162,6 +163,8 @@
 --                                             with a mitred "SlotEdge") and square stone "Knob", the "Label"
 --   HatchLook.SetFast(chip, on)               the switch grass / the navy slot, the knob's side, attribute On
 --   HatchLook.SizeChip(chip, textSize, phone) / HatchLook.SetChipText(chip, text)
+--   HatchLook.ChipRoom(w, fast, phone) -> px  the label's width in a chip w px wide (its block's edge, the pad or the
+--                                             switch taken out): the room a caller measures a chip's words against
 --   HatchLook.Tag(parent, name, text, look, opts) -> tag, words   a flat reveal tag (NEW!, EVOLVED): a SignBlock in the
 --                                             CloudUI.SignLooks `look` (edge 2, lip 3) with its "Text" (Theme "Tag") above
 --                                             the lip; square, never tilted. opts = { ZIndex, Visible, TextSize }
@@ -257,8 +260,9 @@ local K = {
 	},
 	-- (kit-b U9-2b) the strip's cards: stone blocks (Sign.Tile; the landed card Sign.Selected, the dimmed ones the sunk
 	-- Well) in a mitred wood edge Edge px thick, the rarity's colour on the plate along the bottom (a lite x3 card: a Lip
-	-- px lip), the word in the ink that reads on it; the window's pixel notches: three rows Unit px tall stepping in
-	CARD = { Edge = 3, EdgePhone = 2, Lip = 5, LipPhone = 4, DimText = 0.3 },
+	-- px lip), the word in the ink that reads on it (the plate moved to reach Need:1, Theme.ReadableFace); the window's
+	-- pixel notches: three rows Unit px tall stepping in
+	CARD = { Edge = 3, EdgePhone = 2, Lip = 5, LipPhone = 4, DimText = 0.3, Need = 4.5 },
 	-- (egg-cards, spec 16.18) the card eggs' pictures (blender/textures/build_egg_cards.py): the egg's projected box is Fill
 	-- of the square picture's height, centred; a cell draws the picture (egg px) / Fill square on the painted egg's box
 	EGG_PIC = { Fill = 0.9 },
@@ -394,8 +398,15 @@ function HatchLook.SetCard(card, rarity, state)
 	cell.BackgroundTransparency = 0
 	card.Plate.BackgroundColor3 = c or Sign.StoneLip
 	if card.PlateText then
+		-- (U9-2b review) the word's plate is the rarity's colour moved the least it takes for its ink to read at 4.5:1 (a
+		-- plate word is under 18 px on most screens): Epic's violet two steps lighter under the brown ink, the rest as is
+		local face, ink = Sign.StoneLip, Sign.Text
+		if c then
+			face, ink = Theme.ReadableFace(c, K.CARD.Need)
+		end
+		card.Plate.BackgroundColor3 = face
 		card.PlateText.Text = c and string.upper(rarity) or ""
-		card.PlateText.TextColor3 = c and Theme.TextOn(c) or Sign.Text
+		card.PlateText.TextColor3 = ink
 		card.PlateText.TextTransparency = dim and K.CARD.DimText or 0
 	end
 end
@@ -1377,6 +1388,18 @@ function HatchLook.FastChip(parent, opts)
 	return btn
 end
 
+-- a chip label's left inset in its block and the block's width it leaves out: Skip Pad each side; Fast hatch the switch
+-- and a 4 px gap on its left, the switch's inset on its right. (U9-2b review) the switch sits SwitchX px in from the tap
+-- box (the block's edge inside it), so the label keeps the room it had before the block moved inside the tap box
+local function chipInsets(fast, phone)
+	local C = K.CHIP
+	if not fast then
+		return C.Pad, 2 * C.Pad
+	end
+	local x, w = C.SwitchX - C.Edge, phone and C.SwitchWPhone or C.SwitchW
+	return x + w + 4, 2 * x + w + 4
+end
+
 -- a layout's chip: the block H / HPhone tall inside the tap box (its edge inside the box too), the words over the lip
 function HatchLook.SizeChip(btn, textSize, phone)
 	local C = K.CHIP
@@ -1385,19 +1408,24 @@ function HatchLook.SizeChip(btn, textSize, phone)
 	pill.Size = UDim2.new(1, -2 * C.Edge, 0, (phone and C.HPhone or C.H) - 2 * C.Edge)
 	label.TextSize = textSize
 	local sw = pill:FindFirstChild("Switch")
+	local left, out = chipInsets(sw ~= nil, phone)
 	if sw then
 		local w, h = phone and C.SwitchWPhone or C.SwitchW, phone and C.SwitchHPhone or C.SwitchH
-		sw.Position = UDim2.new(0, C.SwitchX, 0.5, -math.floor(C.Lip / 2))
+		sw.Position = UDim2.new(0, C.SwitchX - C.Edge, 0.5, -math.floor(C.Lip / 2))
 		sw.Size = UDim2.fromOffset(w, h)
 		sw:FindFirstChild("Knob").Size = UDim2.fromOffset(h - 4, h - 4)
-		-- the label centred in the room right of the switch
-		label.Position = UDim2.fromOffset(C.SwitchX + w + 4, 0)
-		label.Size = UDim2.new(1, -(C.SwitchX + w + 4 + C.SwitchX), 1, -C.Lip)
 		HatchLook.SetFast(btn, btn:GetAttribute("On") == true)
-	else
-		label.Position = UDim2.fromOffset(C.Pad, 0)
-		label.Size = UDim2.new(1, -2 * C.Pad, 1, -C.Lip)
 	end
+	-- (Fast hatch: the label centred in the room right of the switch)
+	label.Position = UDim2.fromOffset(left, 0)
+	label.Size = UDim2.new(1, -out, 1, -C.Lip)
+end
+
+-- (U9-2b review) the label's width in a chip w px wide (the tap box): what SizeChip leaves it, so a caller that picks the
+-- words for a chip (EggStage's Skip forms) measures against the real label box
+function HatchLook.ChipRoom(w, fast, phone)
+	local _, out = chipInsets(fast == true, phone)
+	return w - 2 * K.CHIP.Edge - out
 end
 
 -- (kit-b U9-2b) a flat tag of the reveal (NEW!, EVOLVED): a Frame named `name` painted as a kit B block in `look` (a

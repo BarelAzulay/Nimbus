@@ -285,6 +285,9 @@ K.LOOK = {
 	-- flash ends 0.1 s before its pet pops); rolls without a silhouette keep 16.4's 0.25 / 0.6
 	GOLD_OUT_SIL = 0.15,
 	CHEVRONS = "\226\128\186\226\128\186",
+	-- (kit-b U9-2b review) the evolved tag's words per stage: the full form, then the short one (TeamFaces' "EVO II") for
+	-- a tag held to a small pet frame's corner
+	EVOLVED = { { "EVOLVED", "EVO" }, { "EVOLVED II", "EVO II" } },
 }
 EggStage.Metrics = K
 
@@ -1138,7 +1141,7 @@ function B.roll(roll)
 	if roll.N > 1 then
 		title = title .. " x3"
 	end
-	roll.UI.Title = Theme.StyleTitle(H.label(c, "Title", title, "Title", P.TitleSize, { ZIndex = 5, TextXAlignment = Enum.TextXAlignment.Center }))
+	roll.UI.Title = Theme.StyleTitle(H.label(c, "Title", title, "Title", P.TitleSize, { ZIndex = 5, TextXAlignment = Enum.TextXAlignment.Center }), "Section") -- (kit-b prep) the hatch cutscene is not a window: no ribbon
 	roll.UI.Strips = H.frame(c, "Strips", { Size = UDim2.fromScale(1, 1), ZIndex = 1 })
 	-- (roll-look review round 1) the burst's punch scales the stage's world only: Hero (the eggs, plinths, rays, ring, the
 	-- crack word) carries the UIScale "Punch" and Burst (the shock, the sparks) follows it; both anchored at their centre
@@ -1426,8 +1429,10 @@ function B.cols(roll)
 		local newPop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = new })
 		local note = H.label(col, "Note", EggStage.NoteText(pull, pull.Rarity, brief), "Body", 15, { ZIndex = 5, TextWrapped = true, TextColor3 = Theme.Colors.Muted })
 		if stage >= 1 then
-			-- (kit-b U9-2b) the evolved stage's tag: navy with gold words (the kit's navy sign), square and untilted
-			HatchLook.Tag(col, "EvolvedRibbon", stage >= 2 and "EVOLVED II" or "EVOLVED", "Navy", { ZIndex = 6 })
+			-- (kit-b U9-2b) the evolved stage's tag: navy with gold words (the kit's navy sign), square and untilted; its
+			-- words follow the room (H.applyReveal: "EVOLVED II", or "EVO II" on a phone's small corner tag)
+			local tag = HatchLook.Tag(col, "EvolvedRibbon", K.LOOK.EVOLVED[stage >= 2 and 2 or 1][1], "Navy", { ZIndex = 6 })
+			tag:SetAttribute("Stage", stage >= 2 and 2 or 1)
 		end
 		-- the chain's fades: { object, property, its shown value } (the name and note: their text, classic stroke, outline)
 		local fade = {}
@@ -1705,15 +1710,29 @@ function H.applyReveal(roll, lay)
 			-- wherever NEW! sits in that row and the whole name still fits beside them (PC, a landscape phone's x1); else on
 			-- PC the model's shoulder (the frame's corner hung in the empty sky: the model fills only 1 / 1.2 of its frame)
 			-- and on a phone's x3 / portrait a small tag on the pet frame's top-right corner (its text's width, at most 0.75
-			-- of the frame), NEW! on the bottom-left one (never stacked over the pet's head)
+			-- of the frame), NEW! on the bottom-left one (never stacked over the pet's head). (kit-b U9-2b review) the tag is
+			-- never narrower than its words (the label fills the tag, nothing clips it): on PC it grows past 0.36 of the pet
+			-- (the shoulder has the sky beside it); a phone's tag keeps 4 px a side at the least, and a corner tag whose cap
+			-- cannot hold the words takes the short form ("EVO II")
 			local rw, ribW, inRow = 0, 0, false
 			if ribbon then
-				local tw = H.textW(ribbonText and ribbonText.Text or "EVOLVED", ribbonSize, "Tag") + (lay.PC and 28 or 14)
-				rw = lay.PC and math.min(150, math.max(tw, 0.36 * g.Pet.S)) or math.min(96, tw)
+				local forms = K.LOOK.EVOLVED[ribbon:GetAttribute("Stage") == 2 and 2 or 1]
+				local words = forms[1]
+				local ww = H.textW(words, ribbonSize, "Tag")
+				local tw = ww + (lay.PC and 28 or 14)
+				rw = lay.PC and math.max(tw, math.min(150, 0.36 * g.Pet.S)) or math.max(ww + 8, math.min(96, tw))
 				inRow = not corner and nameW + newW + rw + 8 <= nw
 				ribW = inRow and (rw + 8) or 0
-				if not inRow then
-					rw = math.min(rw, (lay.PC and 0.36 or 0.75) * g.Pet.S)
+				if not inRow and not lay.PC then
+					local cap = math.min(96, 0.75 * g.Pet.S)
+					if ww + 8 > cap then
+						words = forms[2]
+						ww = H.textW(words, ribbonSize, "Tag")
+					end
+					rw = math.max(ww + 8, math.min(cap, ww + 14))
+				end
+				if ribbonText and ribbonText.Text ~= words then
+					ribbonText.Text = words
 				end
 			end
 			local textW = math.min(nw - newW - ribW, nameW)
@@ -1744,8 +1763,9 @@ function H.applyReveal(roll, lay)
 				if inRow then
 					H.place(ribbon, rowX + textW + newW + 8, g.NameY + (g.NameH - rh) / 2, rw, rh)
 				elseif lay.PC then
-					-- the model's shoulder (it fills 1 / 1.2 of the frame, centred), not the frame's empty corner
-					H.place(ribbon, g.Pet.X + 0.62 * g.Pet.S, g.Pet.Y + 0.2 * g.Pet.S, rw, rh)
+					-- the model's shoulder (it fills 1 / 1.2 of the frame, centred), not the frame's empty corner; a tag wider
+					-- than the room right of it moves in to end inside the column
+					H.place(ribbon, math.min(g.Pet.X + 0.62 * g.Pet.S, g.W - rw), g.Pet.Y + 0.2 * g.Pet.S, rw, rh)
 				else
 					H.place(ribbon, g.Pet.X + g.Pet.S - rw, g.Pet.Y + 0.12 * g.Pet.S, rw, rh) -- inside the pet frame, clear of the banner
 				end
@@ -1772,7 +1792,8 @@ function H.applyBar(roll, lay)
 	-- packed narrower than its words takes the next shorter form ("Tap to close ››", then "Close ››"), never an ellipsis
 	local verb = roll.Revealed and "close" or "skip"
 	local skipIt = bar.Items.Skip
-	local room = skipIt and (skipIt.w - 2 * HatchLook.Metrics.CHIP.Pad) or math.huge
+	-- (kit-b U9-2b review) the label's own box (the block sits its edge inside the tap box): HatchLook.ChipRoom
+	local room = skipIt and HatchLook.ChipRoom(skipIt.w, false, phone) or math.huge
 	local forms = { "Tap to " .. verb .. " " .. K.LOOK.CHEVRONS, verb:sub(1, 1):upper() .. verb:sub(2) .. " " .. K.LOOK.CHEVRONS }
 	if lay.PC then
 		table.insert(forms, 1, "Tap anywhere to " .. verb .. " " .. K.LOOK.CHEVRONS)
