@@ -167,27 +167,31 @@ local K = {
 }
 
 -- VG: geometry of the vitals card in design px (1080p), width 236-300 (the bars stretch with it; the badges
--- and the dash ring keep their size). H = the layout slot, CARD_H = the card drawn in it (from the top).
+-- and the dash key keep their size). H = the layout slot, CARD_H = the card drawn in it (from the top).
 -- Left column: the heart badge over the lightning badge. (render gate, the pitch's .vit) both the same size, centred on
 -- one column INSIDE the card (they overhung its left edge, the bolt below its bottom), each on its bar's row; the bars
--- start on one line right of them. Regular (desktops): the dash ring ends the stamina row. Compact (short touch screens,
--- landscape phones): a flatter card that leaves a gap at the bottom of its slot, with a bigger dash ring at the right end
--- spanning both rows.
+-- start on one line right of them. Regular (desktops): the dash key ends the stamina row. Compact (short touch screens,
+-- landscape phones): a flatter card that leaves a gap at the bottom of its slot, with a bigger dash key at the right end
+-- spanning both rows. (kit-b U9-8) BADGE_ICON / KEY_ICON: the pixel icons on the badges and the key (18 / 27 px: whole
+-- 2 / 3 px cells); KEY_STEP: the key's charge rises in steps of the icon's cell
 local VG = {
 	Regular = {
 		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 0, CARD_CORNER = 0, -- (kit-b U8: square)
-		BADGE_X = 25, HEART = 32, HEART_Y = 26, HEART_TEXT = 22, BOLT = 32, BOLT_Y = 72,
+		BADGE_X = 25, HEART = 32, HEART_Y = 26, HEART_TEXT = 22, BOLT = 32, BOLT_Y = 72, BADGE_ICON = 18, BADGE_LIP = 4,
 		HP_X = 49, HP_Y = 8, HP_H = 36, HP_TEXT = 26, PAD_R = 10,
 		ST_X = 49, ST_Y = 61, ST_H = 22,
-		RING = 40, RING_Y = 71, RING_GAP = 8, RING_FACE = 22, RING_TEXT = 20, RING_SPAN = false,
+		KEY = 30, KEY_TOP = 57, KEY_GAP = 8, KEY_ICON = 18, KEY_STEP = 2, KEY_SPAN = false,
 	},
 	Compact = {
 		H = 80, CARD_H = 70, CARD_X = 0, CARD_CORNER = 0,
-		BADGE_X = 20, HEART = 24, HEART_Y = 22, HEART_TEXT = 18, BOLT = 24, BOLT_Y = 53,
+		BADGE_X = 20, HEART = 26, HEART_Y = 22, HEART_TEXT = 18, BOLT = 26, BOLT_Y = 52, BADGE_ICON = 18, BADGE_LIP = 3,
 		HP_X = 40, HP_Y = 7, HP_H = 30, HP_TEXT = 23, PAD_R = 9,
 		ST_X = 40, ST_Y = 45, ST_H = 18,
-		RING = 46, RING_Y = 35, RING_GAP = 8, RING_FACE = 30, RING_TEXT = 22, RING_SPAN = true,
+		KEY = 45, KEY_TOP = 12, KEY_GAP = 8, KEY_ICON = 27, KEY_STEP = 3, KEY_SPAN = true,
 	},
+	-- the stamina blocks: SignKit.BlockRow's edge, lip and gap (SignKit.Sizes BlockEdge / BlockLip / BlockGap)
+	BLOCK_EDGE = 2, BLOCK_LIP = 4, BLOCK_GAP = 4,
+	KEY_LIP = 4, KEY_SINK = 3, -- the key's lip at rest, and how far its face drops onto it while it cools down (the lip 4 -> 1)
 }
 
 local Colors = Theme.Colors
@@ -196,33 +200,26 @@ local NAVY = Colors.Navy or Colors.Ink
 local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Colors.Gold or Colors.Token
 local INK = Colors.TextStroke or Colors.Ink
-local HEART_RED = Color3.fromRGB(232, 84, 104)
 -- v5 (Phase 5, contract 6.6): the Neon kit's colours (dark navy cards, neon borders in their own colour)
 local NEON = Theme.Neon
--- VS: the vitals card's colours and the dash ring's sweep sequences
+-- VS: the vitals card's colours
 local VS = {
 	PanelTop = Colors.PanelTop or Colors.PanelLight, -- v5: the Neon card fill (top -> bottom) and its darkest ink
 	PanelBottom = Colors.PanelBottom or Colors.Panel,
 	PanelInk = Colors.PanelInk or Colors.Ink,
-	BoltBlue = Color3.fromRGB(70, 156, 236),
 	-- (render gate, the pitch's .vit) colour by role: the HP bar red, the stamina gold (bar, bolt badge, dash face)
 	Hp = Theme.Sign.Red,
 	HpDown = Theme.Sign.RedLip,
 	Stamina = Theme.Sign.Gold,
 	BoltInk = Theme.Sign.Text,
-	Edge = Theme.Darken(NAVY, 0.3), -- outline of the tubes and the dash ring
-	TrackTop = Color3.fromRGB(12, 16, 40), -- the dark inset track of the tubes and the ring
+	Edge = Theme.Darken(NAVY, 0.3), -- outline of the tubes
+	TrackTop = Color3.fromRGB(12, 16, 40), -- the dark inset track of the tubes
 	TrackBottom = Color3.fromRGB(40, 52, 104),
-	Grey = Color3.fromRGB(128, 140, 168), -- a drained badge / a dash you cannot afford
-	Arc = Color3.fromRGB(128, 214, 255), -- the bright cooldown sweep
-	-- a hard step in the middle of each half-disc's gradient (partial sweep), or no step at all (full ring)
-	Step = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0),
-		NumberSequenceKeypoint.new(0.499, 0),
-		NumberSequenceKeypoint.new(0.501, 1),
-		NumberSequenceKeypoint.new(1, 1),
-	}),
-	Solid = NumberSequence.new(0),
+	-- (kit-b U9-8) a stamina row you cannot dash on dims toward the stone's tan (no grey in kit B); the dash key's charge
+	-- is the sky (the dash's colour: the battle HUD's DASH, the touch DASH key)
+	Dim = Theme.Sign.StoneLip,
+	DimLip = Theme.Sign.WellEdge,
+	Charge = Theme.Sign.Sky,
 }
 local Vitals = {} -- builders and painters of the vitals card (one table keeps the chunk's locals down)
 
@@ -956,6 +953,8 @@ local function applyMargins(animate, force)
 	if UI.Vitals then
 		UI.Vitals.AnchorPoint = Vector2.new(0, 1)
 		UI.Vitals.Size = UDim2.fromOffset(vitalsW, vitalsH)
+		UI.VitalsW = vitalsW
+		Vitals.LayoutStamina()
 		UI.Vitals.Position = UDim2.new(0, math.floor(vitalsLeft + 0.5), 0, math.floor(vitalsBottom + 0.5))
 	end
 	vitalsRect = { X = math.floor(vitalsLeft + 0.5), Y = math.floor(vitalsBottom + 0.5) - vitalsH * k, W = vitalsW * k, H = vitalsH * k }
@@ -1300,94 +1299,109 @@ function Vitals.NewBar(parent, name, opts)
 	return bar
 end
 
--- A heart from a square turned 45 degrees and two round lobes, filling `fraction` of its square parent.
--- Everything is in scale units, so it follows the badge's size.
-function Vitals.HeartShape(parent, name, fraction, color, zIndex)
-	local box = newFrame(parent, name, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(fraction, fraction),
-		ZIndex = zIndex,
-	})
-	-- side a = 1 / (1 + sqrt(2) / 2) of the box width; lobes centred on the upper edges of the turned square
-	local a, cy, d = 0.5858, 0.5431, 0.2071
-	local tip = newFrame(box, "Tip", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, cy),
-		Size = UDim2.fromScale(a, a),
-		Rotation = 45,
-		BackgroundTransparency = 0,
-		BackgroundColor3 = color,
-		ZIndex = zIndex,
-	})
-	Theme.Corner(tip, "S")
-	for i, side in ipairs({ -1, 1 }) do
-		local lobe = newFrame(box, (i == 1) and "LobeL" or "LobeR", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5 + side * d, cy - d),
-			Size = UDim2.fromScale(a, a),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = color,
-			ZIndex = zIndex,
-		})
-		round(lobe)
-	end
-	return box
-end
-
--- A chunky lightning bolt (a zig-zag of three rounded bars) filling `fraction` of its square parent.
-function Vitals.BoltShape(parent, name, fraction, color, zIndex)
-	local box = newFrame(parent, name, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(fraction, fraction),
-		ZIndex = zIndex,
-	})
-	-- centre x, centre y, width, height (fractions of the box), rotation
-	local parts = {
-		{ 0.47, 0.27, 0.29, 0.62, 25 },
-		{ 0.5, 0.5, 0.62, 0.24, -12 },
-		{ 0.53, 0.73, 0.29, 0.62, 25 },
-	}
-	for i, p in ipairs(parts) do
-		local part = newFrame(box, "Part" .. i, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(p[1], p[2]),
-			Size = UDim2.fromScale(p[3], p[4]),
-			Rotation = p[5],
-			BackgroundTransparency = 0,
-			BackgroundColor3 = color,
-			ZIndex = zIndex,
-		})
-		Theme.Corner(part, "S")
-	end
-	return box
-end
-
--- v5 (3.9): thin dark ticks across the stamina tube, one per dash the full bar pays for
--- (floor(MaxStamina / DashStaminaCost) = 4 at 150 / 35), at every multiple of the dash cost.
-function Vitals.BuildTicks(bar)
+-- (kit-b U9-8; the owner's look bar: every bar in the BlockRow language) the stamina bar: a row of kit B blocks built like
+-- SignKit.BlockRow (a wood block, its face inset by the edge, the darker lip along the lit face's bottom), one per dash
+-- (DashStaminaCost each) and a narrow last one for what is left of MaxStamina, so a full block is a dash the player can
+-- pay for and the gaps sit where the four ticks were (35 / 70 / 105 / 140 of 150). A block lights from the left in whole
+-- px: gold on its GoldLip lip; dark it is the stone well, no lip (the pitch's .seg / .seg.off). bar.Layout(w, h) places
+-- the blocks in whole design px (Vitals.LayoutStamina), bar.SetFraction(f) lights them, bar.SetColor(face, lip) dims them
+function Vitals.NewBlocks(parent)
 	local physics = Config.Physics or {}
-	local maxSt = tonumber(physics.MaxStamina) or 150
-	local cost = tonumber(physics.DashStaminaCost) or 35
-	local count = (cost > 0) and math.floor(maxSt / cost) or 0
-	local ticks = {}
-	for i = 1, count do
-		local at = (i * cost) / maxSt
-		if at < 0.995 then
-			local tick = newFrame(bar.Inner, "Tick" .. i, {
-				AnchorPoint = Vector2.new(0.5, 0),
-				Position = UDim2.new(at, 0, 0, 0),
-				Size = UDim2.new(0, 2, 1, 0),
-				BackgroundTransparency = 0.25,
-				BackgroundColor3 = VS.PanelInk,
-				ZIndex = 5,
-			})
-			ticks[#ticks + 1] = tick
+	local maxSt = math.max(1, tonumber(physics.MaxStamina) or 150)
+	local cost = math.max(1, tonumber(physics.DashStaminaCost) or 35)
+	local e, lipPx = VG.BLOCK_EDGE, VG.BLOCK_LIP
+	local root = newFrame(parent, "StaminaBar", { ZIndex = 2 })
+	local bar = { Root = root, Blocks = {}, Max = maxSt, Shown = -1 }
+	local lo = 0
+	while lo < maxSt - 0.001 do
+		local hi = math.min(maxSt, lo + cost)
+		local i = #bar.Blocks + 1
+		local block = newFrame(root, "Block" .. i, { BackgroundTransparency = 0, BackgroundColor3 = Theme.Sign.Wood, ZIndex = 2 })
+		local face = newFrame(block, "Face", {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = Theme.Sign.Well,
+			Position = UDim2.fromOffset(e, e),
+			Size = UDim2.new(1, -2 * e, 1, -2 * e),
+			ZIndex = 2,
+		})
+		local lit = newFrame(face, "Lit", {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = VS.Stamina,
+			Size = UDim2.new(0, 0, 1, 0),
+			Visible = false,
+			ZIndex = 3,
+		})
+		local lip = newFrame(lit, "Lip", {
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 0, 1, 0),
+			Size = UDim2.new(1, 0, 0, lipPx),
+			BackgroundTransparency = 0,
+			BackgroundColor3 = Theme.Sign.GoldLip,
+			ZIndex = 3,
+		})
+		bar.Blocks[i] = { Block = block, Face = face, Lit = lit, Lip = lip, Lo = lo, Hi = hi, FaceW = 0 }
+		lo = hi
+	end
+	-- the blocks' widths by the stamina each holds: the cumulative edges rounded to whole px, so they add up to the bar
+	function bar.Layout(width, height)
+		width, height = math.floor(width), math.floor(height)
+		local n = #bar.Blocks
+		local inner = math.max(n, width - (n - 1) * VG.BLOCK_GAP)
+		local left = 0
+		for i, b in ipairs(bar.Blocks) do
+			local right = (i == n) and inner or math.floor(inner * b.Hi / maxSt + 0.5)
+			local w = math.max(1, right - left)
+			b.Block.Position = UDim2.fromOffset(left + (i - 1) * VG.BLOCK_GAP, 0)
+			b.Block.Size = UDim2.fromOffset(w, height)
+			b.FaceW = math.max(0, w - 2 * e)
+			left = right
+		end
+		bar.Shown = -1
+	end
+	function bar.SetFraction(value)
+		value = Util.Clamp(tonumber(value) or 0, 0, 1)
+		if value == bar.Shown then
+			return
+		end
+		bar.Shown = value
+		local st = value * maxSt
+		for _, b in ipairs(bar.Blocks) do
+			local f = Util.Clamp((st - b.Lo) / (b.Hi - b.Lo), 0, 1)
+			local px = math.floor(f * b.FaceW + 0.5)
+			b.Lit.Visible = px > 0
+			b.Lit.Size = UDim2.new(0, px, 1, 0)
 		end
 	end
-	bar.Ticks = ticks
-	return ticks
+	function bar.SetColor(face, lip)
+		for _, b in ipairs(bar.Blocks) do
+			b.Lit.BackgroundColor3 = face
+			b.Lip.BackgroundColor3 = lip
+		end
+	end
+	function bar.Invalidate()
+		bar.Shown = -1
+	end
+	return bar
+end
+
+-- (kit-b U9-8) the stamina blocks' width from the card's (whole design px): what the stamina row leaves left of the key
+function Vitals.LayoutStamina()
+	local g = UI.VitalsGeometry
+	if not g or not UI.StBar or not UI.Key then
+		return
+	end
+	local cardW = math.floor(UI.VitalsW or K.VITALS_W)
+	local sig = cardW .. ":" .. g.ST_X .. ":" .. g.ST_H .. ":" .. g.KEY
+	if UI.StaminaSig == sig then
+		return
+	end
+	UI.StaminaSig = sig
+	local w = cardW - (g.ST_X + g.PAD_R + g.KEY + g.KEY_GAP)
+	UI.StBar.Root.Position = UDim2.fromOffset(g.ST_X, g.ST_Y)
+	UI.StBar.Root.Size = UDim2.fromOffset(w, g.ST_H)
+	UI.StBar.Layout(w, g.ST_H)
+	UI.Key.Root.Position = UDim2.fromOffset(cardW - g.PAD_R - g.KEY, g.KEY_TOP)
+	UI.Key.Root.Size = UDim2.fromOffset(g.KEY, g.KEY)
 end
 
 -- the vitals card's edge (kit-b U8: the wood edge of kit B; the HP fill already shows green / amber / red): wood, the sign
@@ -1415,56 +1429,114 @@ function Vitals.SetShapeTransparency(box, transparency)
 	end
 end
 
--- The dash ring: a round face with the dash glyph inside a ring whose sweep fills clockwise from 12 o'clock
--- as the cooldown runs out. The sweep is two half-discs, each clipped to its half of the ring, with a
--- hard-step transparency gradient turned to the sweep angle (see setSweep). Sized by setVitalsGeometry.
-function Vitals.NewDashRing(parent)
-	-- (kit-b U8) a square stone well in a wood edge; the sweep's halves are square too (the stepped gradients still turn)
-	local root = newFrame(parent, "DashRing", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
+-- (kit-b U9-8) the dash key (was the sky sweep ring around a gold face): a kit B keycap with the pixel dash, the pitch's
+-- .key. Block (the tile face in its wood edge), its Lip along the bottom, the Charge (the sky rising from the bottom of the
+-- face while the dash cools down) and the Icon (drawn by setVitalsGeometry at the geometry's KEY_ICON). Vitals.PaintKey
+-- sets its state
+function Vitals.NewDashKey(parent)
+	local key = newFrame(parent, "DashKey", { ZIndex = 3 })
+	local block = newFrame(key, "Block", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Sign.Well,
+		BackgroundColor3 = Theme.Sign.Tile,
+		Size = UDim2.fromScale(1, 1),
 		ZIndex = 3,
 	})
-	local ringEdge = Theme.Stroke(root, Theme.Sign.Wood, 2, 0)
-	ringEdge.LineJoinMode = Enum.LineJoinMode.Miter
-	local sweep = newFrame(root, "Sweep", {
-		Position = UDim2.fromOffset(2, 2),
-		Size = UDim2.new(1, -4, 1, -4),
+	local edge = Theme.Stroke(block, Theme.Sign.Wood, 2, 0)
+	edge.Name = "SignEdge"
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	local lip = newFrame(block, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, VG.KEY_LIP),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.StoneLip,
+		ZIndex = 3,
 	})
-	local halves = {}
-	for i, side in ipairs({ "Right", "Left" }) do
-		local clip = newFrame(sweep, "Half" .. side, {
-			Position = UDim2.fromScale((side == "Right") and 0.5 or 0, 0),
-			Size = UDim2.fromScale(0.5, 1),
-			ClipsDescendants = true,
-		})
-		local disc = newFrame(clip, "Disc", {
-			Position = UDim2.fromScale((side == "Right") and -1 or 0, 0),
-			Size = UDim2.fromScale(2, 1),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = VS.Arc,
-		})
-		local g = Instance.new("UIGradient")
-		g.Name = "Sweep"
-		g.Transparency = VS.Solid
-		g.Parent = disc
-		halves[i] = { Disc = disc, Gradient = g }
+	local charge = newFrame(block, "Charge", {
+		AnchorPoint = Vector2.new(0, 1),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = VS.Charge,
+		Visible = false,
+		ZIndex = 3,
+	})
+	return { Root = key, Block = block, Lip = lip, Charge = charge, Icon = nil, IconPx = 0, State = nil }
+end
+
+-- the key's look: "ready" raised on its lip, the tile face, the brown icon; "cool" pressed onto its lip (the face drops
+-- VG.KEY_SINK px, the lip thins to what is left, the bottom stays), the well face, the sky charge `charge` (0..1) of the
+-- face high from its bottom in whole steps of the icon's cell, the icon muted; "off" (no dash to pay for) pressed, the
+-- Off block (well face and lip), the icon muted and faded, no charge
+function Vitals.PaintKey(state, charge)
+	local key, g = UI.Key, UI.VitalsGeometry
+	if not key or not g then
+		return
 	end
-	local face, faceGradient, faceStroke = newBadge(root, "Face", 20, VS.Stamina, Theme.Lighten(VS.Stamina, 0.45))
-	face.AnchorPoint = Vector2.new(0.5, 0.5)
-	face.Position = UDim2.fromScale(0.5, 0.5)
-	face.ZIndex = 2
-	faceStroke.Thickness = 2
-	local glyph = newText(face, "Glyph", "\194\187", "Display", 20, Theme.TextOn(faceGradient.Color), {
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Position = UDim2.fromOffset(1, -2),
-		ZIndex = 2,
+	local Sign = Theme.Sign
+	local sink = (state == "ready") and 0 or VG.KEY_SINK
+	local lipPx = VG.KEY_LIP - sink
+	key.Block.Position = UDim2.fromOffset(0, sink)
+	key.Block.Size = UDim2.new(1, 0, 1, -sink)
+	key.Lip.Size = UDim2.new(1, 0, 0, lipPx)
+	key.Block.BackgroundColor3 = (state == "ready") and Sign.Tile or Sign.Well
+	key.Lip.BackgroundColor3 = (state == "ready") and Sign.StoneLip or ((state == "off") and Sign.Well or Sign.WellEdge)
+	local faceH = g.KEY - sink - lipPx
+	local step = g.KEY_STEP
+	local px = (state == "cool") and math.floor(Util.Clamp(charge or 0, 0, 1) * faceH / step) * step or 0
+	key.Charge.Visible = px > 0
+	key.Charge.Position = UDim2.new(0, 0, 1, -lipPx)
+	key.Charge.Size = UDim2.new(1, 0, 0, px)
+	if key.Icon then
+		key.Icon.Position = UDim2.fromOffset(math.floor((g.KEY - key.IconPx) / 2), math.floor((faceH - key.IconPx) / 2))
+		local ink = (state == "ready") and Sign.Text or Sign.TextMuted
+		local fade = (state == "off") and 0.35 or 0
+		for _, cell in ipairs(key.Icon:GetChildren()) do
+			if cell:IsA("GuiObject") then
+				cell.BackgroundColor3 = ink
+				cell.BackgroundTransparency = fade
+			end
+		end
+	end
+	key.State = state
+end
+
+-- (kit-b U9-8) a vitals badge (was a glossy square with a rotated-part shape): a kit B square in its role's colour, its
+-- darker lip along the bottom, the pixel icon (attribute Icon, in attribute Ink) centred on the face above the lip
+function Vitals.NewBadge(parent, name, color, lipColor, icon)
+	local badge = Vitals.SignSquare(parent, name, VG.Regular.BOLT, color)
+	badge.AnchorPoint = Vector2.new(0.5, 0.5)
+	local lip = newFrame(badge, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = lipColor,
 	})
-	return {
-		Root = root, Halves = halves, Face = face, FaceGradient = faceGradient, Glyph = glyph,
-		GlyphOutline = glyph:FindFirstChild("TextOutline"), Scale = newScale(root, 1), Solid = true,
-	}
+	badge:SetAttribute("Icon", icon)
+	return badge, lip
+end
+
+-- sizes a badge's lip and (re)draws its icon for geometry g
+function Vitals.FitBadge(badge, g)
+	local lip = badge:FindFirstChild("Lip")
+	local size = badge.Size.X.Offset
+	if lip then
+		lip.Size = UDim2.new(1, 0, 0, g.BADGE_LIP)
+	end
+	local icon = badge:FindFirstChild("Icon")
+	if not icon or icon.Size.X.Offset ~= g.BADGE_ICON then
+		if icon then
+			icon:Destroy()
+		end
+		icon = PixelIcon.New(badge, badge:GetAttribute("Icon"), g.BADGE_ICON, badge:GetAttribute("Ink") or Theme.Sign.Text)
+		icon.ZIndex = badge.ZIndex
+	end
+	icon.Position = UDim2.fromOffset(math.floor((size - g.BADGE_ICON) / 2), math.floor((size - g.BADGE_LIP - g.BADGE_ICON) / 2))
+	icon.Visible = not (badge == UI.Heart and S.downed)
+	if badge == UI.Heart then
+		UI.HeartIcon = icon
+	elseif UI.Bolt and badge == UI.Bolt.Badge then
+		UI.Bolt.Icon = icon
+		St.DimDrawn = -1 -- (a redrawn bolt repaints its dim)
+	end
 end
 
 -- Places every part of the card for one geometry (VG.Regular or VG.Compact); a no-op when unchanged.
@@ -1479,27 +1551,32 @@ setVitalsGeometry = function(g)
 	UI.RimCorner.CornerRadius = UDim.new(0, math.max(0, g.CARD_CORNER - 2))
 	UI.GlowCorner.CornerRadius = UDim.new(0, g.CARD_CORNER + 3)
 
-	-- the ring ends the stamina row, or (RING_SPAN) both rows
-	local ringRoom = g.RING + g.RING_GAP
+	-- the dash key ends the stamina row, or (KEY_SPAN) both rows
+	local keyRoom = g.KEY + g.KEY_GAP
 	UI.HpBar.Root.Position = UDim2.fromOffset(g.HP_X, g.HP_Y)
-	UI.HpBar.Root.Size = UDim2.new(1, -(g.HP_X + g.PAD_R + (g.RING_SPAN and ringRoom or 0)), 0, g.HP_H)
+	UI.HpBar.Root.Size = UDim2.new(1, -(g.HP_X + g.PAD_R + (g.KEY_SPAN and keyRoom or 0)), 0, g.HP_H)
 	UI.HpBar.SetTextSize(g.HP_TEXT)
-	UI.StBar.Root.Position = UDim2.fromOffset(g.ST_X, g.ST_Y)
-	UI.StBar.Root.Size = UDim2.new(1, -(g.ST_X + g.PAD_R + ringRoom), 0, g.ST_H)
 	UI.HpBar.Invalidate()
-	UI.StBar.Invalidate()
-
-	local ring = UI.Ring
-	ring.Root.Position = UDim2.new(1, -(g.PAD_R + g.RING / 2), 0, g.RING_Y)
-	ring.Root.Size = UDim2.fromOffset(g.RING, g.RING)
-	ring.Face.Size = UDim2.fromOffset(g.RING_FACE, g.RING_FACE)
-	ring.Glyph.TextSize = g.RING_TEXT
+	Vitals.LayoutStamina()
+	local key = UI.Key
+	if key.IconPx ~= g.KEY_ICON then
+		if key.Icon then
+			key.Icon:Destroy()
+		end
+		key.Icon = PixelIcon.New(key.Block, "dash", g.KEY_ICON, Theme.Sign.Text)
+		key.Icon.ZIndex = 4
+		key.IconPx = g.KEY_ICON
+	end
+	Vitals.PaintKey(key.State or "ready", St.Charge)
 
 	UI.Heart.Position = UDim2.fromOffset(g.BADGE_X, g.HEART_Y)
 	UI.Heart.Size = UDim2.fromOffset(g.HEART, g.HEART)
 	UI.HeartGlyph.TextSize = g.HEART_TEXT
 	UI.Bolt.Badge.Position = UDim2.fromOffset(g.BADGE_X, g.BOLT_Y)
 	UI.Bolt.Badge.Size = UDim2.fromOffset(g.BOLT, g.BOLT)
+	for _, badge in ipairs({ UI.Heart, UI.Bolt.Badge }) do
+		Vitals.FitBadge(badge, g)
+	end
 
 	UI.DownedNotice.Position = UDim2.fromOffset(g.CARD_X + 12, g.ST_Y - 5)
 	UI.DownedNotice.Size = UDim2.new(1, -(g.CARD_X + 12 + g.PAD_R), 0, g.ST_H + 10)
@@ -1551,31 +1628,25 @@ local function buildVitals(holder)
 	})
 	UI.RimCorner = Theme.Corner(rim, "None")
 
-	-- health tube with the damage trail, then the thinner stamina tube (ends left of the dash ring)
+	-- health tube with the damage trail, then (kit-b U9-8) the stamina blocks, which end left of the dash key
 	UI.HpBar = Vitals.NewBar(body, "HealthBar", { Color = VS.Hp, Trail = true, Text = "100 / 100" })
-	UI.StBar = Vitals.NewBar(body, "StaminaBar", { Color = VS.Stamina })
-	Vitals.BuildTicks(UI.StBar)
-	UI.Ring = Vitals.NewDashRing(body)
+	UI.StBar = Vitals.NewBlocks(body)
+	UI.Key = Vitals.NewDashKey(body)
 
 	-- lightning badge (under the heart), then the heart badge on top (render gate: gold with a brown bolt, the stamina's
-	-- colour)
-	local bolt, boltGradient = newBadge(body, "StaminaBadge", 36, VS.Stamina, Theme.Lighten(VS.Stamina, 0.45))
-	bolt.AnchorPoint = Vector2.new(0.5, 0.5)
+	-- colour; kit-b U9-8: kit B squares with the pixel bolt and heart)
+	local bolt, boltLip = Vitals.NewBadge(body, "StaminaBadge", VS.Stamina, Theme.Sign.GoldLip, "bolt")
+	bolt:SetAttribute("Ink", VS.BoltInk)
 	bolt.ZIndex = 5
-	local boltShadow = Vitals.BoltShape(bolt, "BoltShadow", 0.68, Theme.Darken(VS.Stamina, 0.35), 2)
-	boltShadow.Position = UDim2.new(0.5, 0, 0.5, 2)
-	UI.Bolt = {
-		Badge = bolt, Gradient = boltGradient, Shadow = boltShadow,
-		Shape = Vitals.BoltShape(bolt, "Bolt", 0.68, VS.BoltInk, 3),
-	}
+	boltLip.ZIndex = 5
+	UI.Bolt = { Badge = bolt, Lip = boltLip }
 
-	local heart = newBadge(body, "Heart", 52, HEART_RED, Theme.Lighten(HEART_RED, 0.38))
-	heart.AnchorPoint = Vector2.new(0.5, 0.5)
+	local heart, heartLip = Vitals.NewBadge(body, "Heart", Theme.Sign.Red, Theme.Sign.RedLip, "heart")
+	heart:SetAttribute("Ink", WHITE)
 	heart.ZIndex = 6
-	UI.HeartShadow = Vitals.HeartShape(heart, "HeartShadow", 0.58, Theme.Darken(HEART_RED, 0.6), 2)
-	UI.HeartShadow.Position = UDim2.new(0.5, 0, 0.5, 3)
-	UI.HeartShape = Vitals.HeartShape(heart, "HeartShape", 0.58, WHITE, 3)
+	heartLip.ZIndex = 6
 	UI.HeartScale = newScale(heart, 1)
+	UI.HeartScale.Name = "Pulse" -- (a beat, not a layout scale: PixelIcon keeps the icon's cells as they are)
 	UI.Heart = heart
 	UI.HeartGlyph = newText(heart, "Glyph", "!", "Display", 34, WHITE, {
 		TextXAlignment = Enum.TextXAlignment.Center,
@@ -2116,19 +2187,20 @@ local function setDowned(downed)
 	if UI.DownedNotice then
 		UI.DownedNotice.Visible = downed
 	end
-	-- the stamina row (bar, badge, dash ring) makes room for the notice
+	-- the stamina row (blocks, badge, dash key) makes room for the notice
 	if UI.StBar then
 		UI.StBar.Root.Visible = not downed
 	end
-	if UI.Ring then
-		UI.Ring.Root.Visible = not downed
+	if UI.Key then
+		UI.Key.Root.Visible = not downed
 	end
 	if UI.Bolt then
 		UI.Bolt.Badge.Visible = not downed
 	end
-	if UI.HeartShape then
-		UI.HeartShape.Visible = not downed
-		UI.HeartShadow.Visible = not downed
+	if UI.HeartGlyph then
+		if UI.HeartIcon then
+			UI.HeartIcon.Visible = not downed
+		end
 		UI.HeartGlyph.Visible = downed
 	end
 	Vitals.PaintBorder()
@@ -2245,7 +2317,7 @@ local function bindCharacter(char)
 end
 
 ----------------------------------------------------------------------
--- Stamina + dash ring
+-- Stamina + dash key
 ----------------------------------------------------------------------
 local function dashCooldownFraction(now)
 	if not movementModule then
@@ -2276,57 +2348,22 @@ local function dashCooldownFraction(now)
 	return 0
 end
 
--- Turns the two half-disc gradients so the ring shows `charge` (0..1) clockwise from 12 o'clock. A gradient
--- at Rotation r hides the half-plane its direction points into, so the right half shows the arc for
--- r = 0..180 and the left half the rest for r = 180..360.
-function Vitals.SetSweep(charge)
-	local ring = UI.Ring
-	local solid = charge >= 0.999
-	if solid ~= ring.Solid then
-		ring.Solid = solid
-		local sequence = solid and VS.Solid or VS.Step
-		for _, half in ipairs(ring.Halves) do
-			half.Gradient.Transparency = sequence
-		end
-	end
-	if not solid then
-		local angle = Util.Clamp(charge, 0, 1) * 360
-		ring.Halves[1].Gradient.Rotation = math.min(angle, 180)
-		ring.Halves[2].Gradient.Rotation = math.max(angle, 180)
-	end
-end
-
--- Ready: a bright face inside a full bright ring; recharging: a dark face, the sweep filling; out of
--- stamina for a dash: the sweep turns grey.
-function Vitals.PaintRing(ready, afford)
-	local ring = UI.Ring
-	local sweepColor = afford and VS.Arc or VS.Grey
-	for _, half in ipairs(ring.Halves) do
-		half.Disc.BackgroundColor3 = sweepColor
-	end
-	if ready then
-		ring.FaceGradient.Color = badgeSequence(VS.Stamina, Theme.Lighten(VS.Stamina, 0.45))
-	else
-		ring.FaceGradient.Color = badgeSequence(Theme.Darken(VS.Stamina, 0.55), Theme.Darken(VS.Stamina, 0.35))
-	end
-	ring.Glyph.TextColor3 = Theme.TextOn(ring.FaceGradient.Color) -- kit B: brown on the bright face, white on the dark one
-	ring.Glyph.TextTransparency = ready and 0 or 0.35
-	if ring.GlyphOutline then
-		ring.GlyphOutline.Transparency = ready and 0 or 0.5 -- a glyph outline does not fade with its text
-	end
-end
-
--- dim 0 = bright .. 1 = empty: the tube greys out and the lightning badge fades
+-- dim 0 = bright .. 1 = empty (kit-b U9-8): the lit blocks and the bolt badge dim toward the stone's tan (no grey in
+-- kit B), the bolt fades
 function Vitals.PaintStaminaDim(dim)
-	local base = VS.Stamina:Lerp(VS.Grey, 0.85 * dim)
-	UI.Bolt.Gradient.Color = badgeSequence(base, Theme.Lighten(base, 0.45))
-	Vitals.SetShapeTransparency(UI.Bolt.Shape, 0.5 * dim)
-	Vitals.SetShapeTransparency(UI.Bolt.Shadow, 0.5 * dim)
-	UI.StBar.SetColor(VS.Stamina:Lerp(VS.Grey, 0.7 * dim))
+	local k = 0.8 * dim
+	local face = VS.Stamina:Lerp(VS.Dim, k)
+	local lip = Theme.Sign.GoldLip:Lerp(VS.DimLip, k)
+	UI.Bolt.Badge.BackgroundColor3 = face
+	UI.Bolt.Lip.BackgroundColor3 = lip
+	if UI.Bolt.Icon then
+		Vitals.SetShapeTransparency(UI.Bolt.Icon, 0.5 * dim)
+	end
+	UI.StBar.SetColor(face, lip)
 end
 
 local function updateStamina(dt, now)
-	if not UI.StBar or not UI.Ring then
+	if not UI.StBar or not UI.Key then
 		return
 	end
 	local physics = Config.Physics or {}
@@ -2365,23 +2402,18 @@ local function updateStamina(dt, now)
 		Vitals.PaintStaminaDim(St.Dim)
 	end
 
-	-- dash ring: the sweep follows the cooldown, the face lights up once a dash is possible
+	-- (kit-b U9-8) the dash key: pressed while the dash cools down, its sky charge rising as the cooldown runs out; the Off
+	-- key while there is no dash to pay for; raised again once a dash is possible (no pop: it rises back onto its lip)
 	local cd = dashCooldownFraction(now)
 	local charge = 1 - cd
-	if math.abs(charge - St.Charge) > 0.004 then
-		St.Charge = charge
-		Vitals.SetSweep(charge)
-	end
 	local afford = value >= cost
-	local ready = (cd <= 0.001) and afford
-	if ready ~= St.Ready or afford ~= St.Afford then
-		if ready and St.Ready == false then
-			pop(UI.Ring.Scale, 1.3, 0.3)
-		end
-		St.Ready = ready
-		St.Afford = afford
-		Vitals.PaintRing(ready, afford)
+	local state = (not afford) and "off" or ((cd > 0.001) and "cool" or "ready")
+	if state ~= UI.Key.State or (state == "cool" and math.abs(charge - St.Charge) > 0.004) then
+		St.Charge = charge
+		Vitals.PaintKey(state, charge)
 	end
+	St.Ready = state == "ready"
+	St.Afford = afford
 end
 
 ----------------------------------------------------------------------

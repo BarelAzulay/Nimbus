@@ -983,6 +983,21 @@ scenario("match", function(arg)
 		try("stamina drain", drainStamina, 1.4)
 		toClient("DamageTaken", 65, "Lightning")
 		advance(0.25)
+	elseif arg == "dash" then
+		-- (kit-b U9-8) the vitals' dash key and the touch DASH while the dash cools down: a dash, seen 0.45 s later
+		advance(2.2)
+		try("stamina drain", drainStamina, 1.4)
+		local h = hum()
+		if h then
+			h.MoveDirection = Vector3.new(0, 0, -1)
+		end
+		Mock.TriggerAction("NimbusDash", "Begin", Mock.NewInput("Q", "Keyboard", "Begin"))
+		advance(0.05)
+		Mock.TriggerAction("NimbusDash", "End", Mock.NewInput("Q", "Keyboard", "End"))
+		if h then
+			h.MoveDirection = Vector3.new(0, 0, 0)
+		end
+		advance(0.4)
 	else
 		advance(2.2)
 		try("stamina drain", drainStamina, 1.4) -- last, so the bar has no time to refill

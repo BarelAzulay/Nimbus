@@ -70,7 +70,7 @@ except Exception:  # pragma: no cover
 
 GRID_SIZES = [(1920, 1080), (1280, 720), (390, 844), (844, 390)]
 EGG_FILL = 0.9  # (egg-cards) HatchLook.Metrics.EGG_PIC.Fill: the egg's share of its card picture's height
-SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
+SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "match:dash", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
              "menu:Index", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # Phase 4 (careui): the Home window, the Food Machine list, the garden picker, the Training Place, the EVOLVE
              # confirm, the Champion Ring window and the floating pet cards

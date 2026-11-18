@@ -160,15 +160,19 @@ local function card()
 	local body = path(vitals, "Body")
 	local hp = path(body, "HealthBar")
 	local st = path(body, "StaminaBar")
-	local ring = path(body, "DashRing")
+	-- (kit-b U9-8, restated: the stamina tube is a row of kit B blocks, the dash ring a keycap) Key = the dash key, KeyBlock
+	-- its face, KeyLip its lip, Charge the sky charge, KeyIcon the pixel dash
+	local key = path(body, "DashKey")
 	local c = {
 		Hud = hud, Vitals = vitals, Body = body, Card = path(body, "Card"),
 		Hp = hp, HpFill = path(hp, "Inner.Fill"), Trail = path(hp, "Inner.DamageTrail"), Flash = path(hp, "Inner.Fill.Flash"),
-		HpText = path(hp, "Inner.TextFill.Text"), St = st, StFill = path(st, "Inner.Fill"),
-		Ring = ring, Right = path(ring, "Sweep.HalfRight.Disc"), Left = path(ring, "Sweep.HalfLeft.Disc"),
-		Glyph = path(ring, "Face.Glyph"), Heart = path(body, "Heart"), Bolt = path(body, "StaminaBadge"),
+		HpText = path(hp, "Inner.TextFill.Text"), St = st, StLit1 = path(st, "Block1.Face.Lit"),
+		Key = key, KeyBlock = path(key, "Block"), KeyLip = path(key, "Block.Lip"), Charge = path(key, "Block.Charge"), KeyIcon = path(key, "Block.Icon"),
+		Heart = path(body, "Heart"), Bolt = path(body, "StaminaBadge"),
 		Notice = path(body, "DownedNotice"),
 	}
+	c.HeartIcon = path(c.Heart, "Icon")
+	c.BoltIcon = path(c.Bolt, "Icon")
 	c.HpCopies = {}
 	for _, name in ipairs({ "TextFill", "TextTrail", "TextTrack" }) do
 		c.HpCopies[#c.HpCopies + 1] = path(hp, "Inner." .. name .. ".Text")
@@ -180,6 +184,45 @@ end
 
 local function fraction(fill)
 	return fill and fill.Size.X.Scale or -1
+end
+
+-- (kit-b U9-8) the share of the stamina the blocks show: each block's lit share of its face, weighted by the block's width
+-- (a block is as wide as the stamina it holds)
+local function stLit(c)
+	local lit, all = 0, 0
+	for _, b in ipairs(c.St and c.St:GetChildren() or {}) do
+		local face = b:FindFirstChild("Face")
+		local l = face and face:FindFirstChild("Lit")
+		if face and face.AbsoluteSize.X > 0 then
+			all = all + b.AbsoluteSize.X
+			if l and l.Visible then
+				lit = lit + b.AbsoluteSize.X * l.AbsoluteSize.X / face.AbsoluteSize.X
+			end
+		end
+	end
+	return all > 0 and lit / all or -1
+end
+
+-- (kit-b U9-8) the dash key's state as drawn: "ready" (raised, the tile face, no charge, the icon lit), "cool" (pressed,
+-- the well face, a charge, the icon muted), "off" (pressed, the well face and lip, no charge, the icon faded) or "other"
+local function keyState(c, Theme)
+	local Sign = Theme.Sign
+	local b, lip, charge = c.KeyBlock, c.KeyLip, c.Charge
+	local cell = c.KeyIcon and c.KeyIcon:FindFirstChildWhichIsA("Frame")
+	if not (b and lip and charge and cell) then
+		return "missing"
+	end
+	local pressed = b.Position.Y.Offset > 0
+	if not pressed and sameColor(b.BackgroundColor3, Sign.Tile, 0.01) and not shown(charge) and cell.BackgroundTransparency < 0.01 then
+		return "ready"
+	end
+	if pressed and sameColor(b.BackgroundColor3, Sign.Well, 0.01) and sameColor(lip.BackgroundColor3, Sign.Well, 0.01) and not shown(charge) and cell.BackgroundTransparency > 0.2 then
+		return "off"
+	end
+	if pressed and sameColor(b.BackgroundColor3, Sign.Well, 0.01) and shown(charge) and sameColor(cell.BackgroundColor3, Sign.TextMuted, 0.01) then
+		return "cool"
+	end
+	return "other"
 end
 
 local function setHealth(max, health)
@@ -230,33 +273,6 @@ local function resetState()
 	advance(0.8)
 	setHealth(117, 117)
 	advance(4) -- stamina back to full, the dash cooled down, the trail caught up
-end
-
--- the gradient sequence of a sweep half: "step" (hard step at 0.5) or "solid"
-local function sweepKind(disc)
-	local g = disc and disc:FindFirstChildOfClass("UIGradient")
-	if not g then
-		return "none"
-	end
-	local kps = g.Transparency.Keypoints
-	local allZero = true
-	for _, kp in ipairs(kps) do
-		if kp.Value > 0.001 then
-			allZero = false
-		end
-	end
-	if allZero then
-		return "solid"
-	end
-	if #kps == 4 and kps[2].Value < 0.01 and kps[3].Value > 0.99 and kps[2].Time > 0.45 and kps[3].Time < 0.55 then
-		return "step"
-	end
-	return "other"
-end
-
-local function rotationOf(disc)
-	local g = disc and disc:FindFirstChildOfClass("UIGradient")
-	return g and g.Rotation or -1
 end
 
 -- every shown text of the card is at least floorPx on screen; returns the list of offenders
@@ -344,8 +360,8 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	local MC = KC().M and KC().M.MovementController
 	resetState()
 	local c = card()
-	if not T.check(c.Vitals ~= nil and c.Card ~= nil and c.Hp ~= nil and c.St ~= nil and c.Ring ~= nil and c.Heart ~= nil and c.Bolt ~= nil,
-		"vitals: one card holds the heart badge, the HP tube, the lightning badge, the stamina tube and the dash ring") then
+	if not T.check(c.Vitals ~= nil and c.Card ~= nil and c.Hp ~= nil and c.St ~= nil and c.Key ~= nil and c.Heart ~= nil and c.Bolt ~= nil,
+		"vitals: one card holds the heart badge, the HP tube, the lightning badge, the stamina blocks and the dash key") then
 		return
 	end
 
@@ -363,24 +379,26 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(c.Hp.AbsoluteSize.Y / k >= 34 and strokeOf(c.Hp) ~= nil and strokeOf(c.Hp).Thickness >= 2 and sameColor(strokeOf(c.Hp).Color, Theme.Sign.Wood, 0.01) and c.Hp:FindFirstChildOfClass("UICorner") == nil,
 		"vitals: the HP tube is thick (>= 34 design px) with a square wood outline (kit-b U8; was a rounded dark 3 px one)",
 		fmt("%.0f design px", c.Hp.AbsoluteSize.Y / k))
-	T.check(c.St.AbsoluteSize.Y / k >= 18 and strokeOf(c.St) ~= nil, "vitals: the stamina tube matches it (>= 18 design px, same outline), not a thin afterthought",
-		fmt("%.0f design px", c.St.AbsoluteSize.Y / k))
+	-- (kit-b U9-8, restated: was a tube with a stroke) the stamina row is as chunky: kit B blocks in a wood edge
+	local block1 = path(c.St, "Block1")
+	T.check(c.St.AbsoluteSize.Y / k >= 18 and block1 ~= nil and sameColor(block1.BackgroundColor3, Theme.Sign.Wood, 0.01) and path(block1, "Face") ~= nil,
+		"vitals: the stamina blocks match it (>= 18 design px, a wood edge), not a thin afterthought", fmt("%.0f design px", c.St.AbsoluteSize.Y / k))
 	local fillGradient = c.HpFill and c.HpFill:FindFirstChildOfClass("UIGradient")
 	-- (kit-b U8, restated: was a soft gradient and a white Shine strip) a flat fill with its hard darker lip (a stepped
 	-- UIGradient named Lip, top to bottom, that also carries the health colour), no highlight strip
 	T.check(fillGradient ~= nil and fillGradient.Name == "Lip" and fillGradient.Rotation == 90 and #fillGradient.Color.Keypoints >= 3 and c.HpFill:FindFirstChild("Shine") == nil,
 		"vitals: the HP fill is flat with a hard lip, no highlight strip")
-	local heartShape = path(c.Heart, "HeartShape")
-	local tip = path(heartShape, "Tip")
-	T.check(heartShape ~= nil and tip ~= nil and close(tip.Rotation, 45, 0.1) and path(heartShape, "LobeL") ~= nil and path(heartShape, "LobeR") ~= nil,
-		"vitals: the heart badge draws a real heart (a turned square + two lobes)")
-	local boltShape = path(c.Bolt, "Bolt")
-	T.check(boltShape ~= nil and #boltShape:GetChildren() == 3, "vitals: the stamina badge draws a lightning bolt")
+	-- (kit-b U9-8, restated: was a heart of a turned square and two round lobes, a bolt of three turned parts) the badges
+	-- carry the pixel heart and the pixel bolt
+	local heartShape = c.HeartIcon
+	T.check(heartShape ~= nil and heartShape:GetAttribute("PixelIcon") == "heart", "vitals: the heart badge draws the pixel heart")
+	local boltShape = c.BoltIcon
+	T.check(boltShape ~= nil and boltShape:GetAttribute("PixelIcon") == "bolt", "vitals: the stamina badge draws the pixel bolt")
 	-- (render gate, GATE_KITB; the pitch's .vit) the heart and bolt badges the same size on one column (was a 52 px heart
-	-- and a 36 px bolt, overhanging the card)
-	T.check(c.Heart.AbsoluteSize.X / k >= 28 and close(c.Heart.AbsoluteSize.X, c.Bolt.AbsoluteSize.X, 0.5) and c.Ring.AbsoluteSize.X / k >= 34,
-		"vitals: badges and the dash ring are chunky, the two badges one size",
-		fmt("heart %.0f, bolt %.0f design px", c.Heart.AbsoluteSize.X / k, c.Bolt.AbsoluteSize.X / k))
+	-- and a 36 px bolt, overhanging the card); (kit-b U9-8) the dash key a keycap about their size (was a 40 px ring)
+	T.check(c.Heart.AbsoluteSize.X / k >= 28 and close(c.Heart.AbsoluteSize.X, c.Bolt.AbsoluteSize.X, 0.5) and c.Key.AbsoluteSize.X / k >= 28,
+		"vitals: badges and the dash key are chunky, the two badges one size",
+		fmt("heart %.0f, bolt %.0f, key %.0f design px", c.Heart.AbsoluteSize.X / k, c.Bolt.AbsoluteSize.X / k, c.Key.AbsoluteSize.X / k))
 
 	-- 2. the number: big, the Display font. Readability rule (kit-b U6 review): it sits on the HP tube with no outline, so
 	-- it must read by its colour: dark ink on the fill, at least 3:1 against every stop of the fill's gradient
@@ -396,10 +414,10 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(#small == 0, "vitals: every text of the card is >= 15 px at 1920x1080", table.concat(small, ", "))
 	-- (render gate, the pitch's .vit: colour by role) the HP fill is the sign red, the stamina fill the sign gold
 	T.check(fillGradient and sameColor(gradientAt(fillGradient, 0.4), Theme.Sign.Red, 0.03), "vitals: full health is red (the pitch's HP colour; was green)")
-	local stGradient = c.StFill and c.StFill:FindFirstChildOfClass("UIGradient")
-	T.check(stGradient and sameColor(gradientAt(stGradient, 0.4), Theme.Sign.Gold, 0.03), "vitals: the stamina fill is gold (the pitch's segments; was blue)")
-	local boltGradient = c.Bolt:FindFirstChildOfClass("UIGradient")
-	T.check(boltGradient and sameColor(gradientAt(boltGradient, 0.4), Theme.Sign.Gold, 0.03), "vitals: the lightning badge is gold too (was blue)")
+	-- (kit-b U9-8, restated: the fill and the badge were stepped gradients) the lit blocks and the badge are flat gold
+	T.check(c.StLit1 ~= nil and sameColor(c.StLit1.BackgroundColor3, Theme.Sign.Gold, 0.03) and c.StLit1:FindFirstChildOfClass("UIGradient") == nil,
+		"vitals: the stamina blocks light gold (the pitch's segments; was blue)")
+	T.check(sameColor(c.Bolt.BackgroundColor3, Theme.Sign.Gold, 0.03) and c.Bolt:FindFirstChildOfClass("UIGradient") == nil, "vitals: the lightning badge is gold too (was blue)")
 
 	-- 3. place (bug batch 2 #1, option A): bottom-centre right above the hotbar, inside its slot, clear of the hotbar,
 	-- the menu column and the currency stack
@@ -489,16 +507,16 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 
 	-- 6. stamina drains and refills smoothly, and dims when empty
 	advance(4)
-	local stBefore = fraction(c.StFill)
+	local stBefore = stLit(c)
 	startRun()
 	local maxStep, last = 0, stBefore
 	for _ = 1, 30 do
 		advance(1 / 30)
-		local f = fraction(c.StFill)
+		local f = stLit(c)
 		maxStep = math.max(maxStep, math.abs(f - last))
 		last = f
 	end
-	T.check(stBefore > 0.99 and last < stBefore - 0.08 and maxStep < 0.05, "vitals: running drains the stamina tube smoothly",
+	T.check(stBefore > 0.99 and last < stBefore - 0.08 and maxStep < 0.05, "vitals: running drains the stamina blocks smoothly",
 		fmt("%.2f -> %.2f, biggest frame step %.3f", stBefore, last, maxStep))
 	-- run dry (MovementController then stops the run until stamina is back to 15)
 	local stamina = LocalPlayer:GetAttribute(Config.Attr.Stamina)
@@ -511,49 +529,49 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	end
 	advance(0.15)
 	local boltPart = boltShape and boltShape:FindFirstChildWhichIsA("GuiObject")
-	T.check(type(stamina) == "number" and stamina <= 0 and fraction(c.StFill) < 0.05, "vitals: the stamina tube empties", fmt("%s, fill %.2f", tostring(stamina), fraction(c.StFill)))
+	T.check(type(stamina) == "number" and stamina <= 0 and stLit(c) < 0.05, "vitals: the stamina blocks empty", fmt("%s, lit %.2f", tostring(stamina), stLit(c)))
 	advance(0.3)
-	T.check(boltPart ~= nil and boltPart.BackgroundTransparency > 0.4 and sweepKind(c.Right) == "solid" and c.Right.BackgroundColor3.B < 0.8,
-		"vitals: ...the lightning badge dims and the dash ring greys out while drained",
-		boltPart and fmt("bolt transparency %.2f, stamina %.1f", boltPart.BackgroundTransparency, LocalPlayer:GetAttribute(Config.Attr.Stamina) or -1))
+	-- (kit-b U9-8, restated: the dash ring greyed out) the dash key is the sunk Off key while drained
+	T.check(boltPart ~= nil and boltPart.BackgroundTransparency > 0.4 and keyState(c, Theme) == "off",
+		"vitals: ...the lightning badge dims and the dash key sinks to its Off look while drained",
+		boltPart and fmt("bolt transparency %.2f, stamina %.1f, key %s", boltPart.BackgroundTransparency, LocalPlayer:GetAttribute(Config.Attr.Stamina) or -1, keyState(c, Theme)))
 	stopRun()
 	advance(6)
-	T.check(fraction(c.StFill) > 0.98 and boltPart.BackgroundTransparency < 0.01, "vitals: stamina refills and the badge lights up again",
-		fmt("%.2f / %.2f", fraction(c.StFill), boltPart.BackgroundTransparency))
+	T.check(stLit(c) > 0.98 and boltPart.BackgroundTransparency < 0.01, "vitals: stamina refills and the badge lights up again",
+		fmt("%.2f / %.2f", stLit(c), boltPart.BackgroundTransparency))
 
-	-- 7. the dash ring follows the cooldown
-	T.check(sweepKind(c.Right) == "solid" and sweepKind(c.Left) == "solid" and c.Glyph.TextTransparency < 0.01, "vitals: dash ready: a full ring and a lit face")
-	local before = fraction(c.StFill)
+	-- 7. the dash key follows the cooldown (kit-b U9-8, restated: was a sweep ring turning clockwise from 12 o'clock)
+	T.check(keyState(c, Theme) == "ready", "vitals: dash ready: the key raised on its lip, the icon lit", keyState(c, Theme))
+	local before = stLit(c)
 	dash()
 	advance(1 / 30)
 	local cost = (Config.Physics.DashStaminaCost or 35) / (Config.Physics.MaxStamina or 100)
-	-- Phase 5: with 150 stamina a dash is a 23% slice (was 35%); the tube eases at the same rate (HudController 18/s), so
-	-- ~80% of the slice has gone after the dash's frames and about a fifth is still easing: the margin is 0.03 of the tube
-	T.check(fraction(c.StFill) > before - cost + 0.03, "vitals: the dash cost eases out of the stamina tube (no jump)", fmt("%.2f", fraction(c.StFill)))
+	-- Phase 5: with 150 stamina a dash is a 23% slice (was 35%); the bar eases at the same rate (HudController 18/s), so
+	-- ~80% of the slice has gone after the dash's frames and about a fifth is still easing: the margin is 0.03 of the bar
+	T.check(stLit(c) > before - cost + 0.03, "vitals: the dash cost eases out of the stamina blocks (no jump)", fmt("%.2f", stLit(c)))
 	advance(0.4)
 	local cd = MC and MC.GetDashCooldownFraction and MC.GetDashCooldownFraction() or -1
-	local angle = (1 - cd) * 360
 	T.check(cd > 0.2 and cd < 0.95, "vitals: the dash is cooling down (precondition)", fmt("%.2f", cd))
-	T.check(sweepKind(c.Right) == "step" and sweepKind(c.Left) == "step", "vitals: while it cools down the ring is a partial sweep")
-	T.check(close(rotationOf(c.Right), math.min(angle, 180), 14) and close(rotationOf(c.Left), math.max(angle, 180), 14),
-		"vitals: the sweep angle follows MovementController's cooldown (clockwise from 12 o'clock)",
-		fmt("cooldown %.2f -> %.0f deg; right %.0f, left %.0f", cd, angle, rotationOf(c.Right), rotationOf(c.Left)))
-	T.check(c.Glyph.TextTransparency > 0.2, "vitals: the face is dim until the dash is back")
+	T.check(keyState(c, Theme) == "cool", "vitals: while it cools down the key is pressed onto its lip with a charge", keyState(c, Theme))
+	local faceH = c.KeyBlock.AbsoluteSize.Y - c.KeyLip.AbsoluteSize.Y
+	T.check(close(c.Charge.AbsoluteSize.Y, (1 - cd) * faceH, 3.5),
+		"vitals: the charge's height follows MovementController's cooldown (rising from the bottom)",
+		fmt("cooldown %.2f -> %.1f of %.1f px; charge %.1f", cd, (1 - cd) * faceH, faceH, c.Charge.AbsoluteSize.Y))
 	advance(2.2)
-	T.check(sweepKind(c.Right) == "solid" and c.Glyph.TextTransparency < 0.01 and close(fraction(c.StFill), 1, 0.3), "vitals: the ring closes and the face lights up when the dash is ready")
+	T.check(keyState(c, Theme) == "ready" and close(stLit(c), 1, 0.3), "vitals: the key rises back and its icon lights up when the dash is ready", keyState(c, Theme))
 
 	-- 8. downed: the notice takes the stamina row, the heart shows "!", the outline turns red
 	LocalPlayer:SetAttribute("Downed", true)
 	advance(0.6)
 	T.check(shown(c.Notice) and tostring(c.Notice.Text):lower():find("wait for a teammate", 1, true) ~= nil and c.HpText.Text == "DOWNED", "vitals: downed: 'DOWNED' + 'Wait for a teammate!'")
-	T.check(not shown(c.St) and not shown(c.Ring) and not shown(c.Bolt) and shown(path(c.Heart, "Glyph")) and not shown(heartShape),
+	T.check(not shown(c.St) and not shown(c.Key) and not shown(c.Bolt) and shown(path(c.Heart, "Glyph")) and not shown(heartShape),
 		"vitals: ...the stamina row makes room and the heart badge shows '!'")
 	T.check(sameColor(c.CardStroke.Color, Theme.Sign.Red, 0.01), "vitals: ...and the card's edge is red (kit-b U8: Sign red; was the neon red)")
 	small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: the downed texts are readable too", table.concat(small, ", "))
 	LocalPlayer:SetAttribute("Downed", false)
 	advance(0.6)
-	T.check(not shown(c.Notice) and shown(c.St) and shown(c.Ring) and shown(c.Bolt) and shown(heartShape) and sameColor(c.CardStroke.Color, healthy, 0.01),
+	T.check(not shown(c.Notice) and shown(c.St) and shown(c.Key) and shown(c.Bolt) and shown(heartShape) and sameColor(c.CardStroke.Color, healthy, 0.01),
 		"vitals: revived: the card is back to normal")
 
 	-- 9. in a match the card keeps its place (the match panel lives top-left)
@@ -619,7 +637,7 @@ S.client_polish_vitals_mobile = guarded("client_polish_vitals_mobile", function(
 				end
 				local compact = c.Card.AbsoluteSize.Y < c.Vitals.AbsoluteSize.Y - 2
 				if size[2] < 500 then
-					T.check(compact and c.Ring.AbsoluteSize.Y > 0.55 * c.Card.AbsoluteSize.Y, label .. ": a short screen gets the compact card (the dash ring spans both rows)")
+					T.check(compact and c.Key.AbsoluteSize.Y > 0.55 * c.Card.AbsoluteSize.Y, label .. ": a short screen gets the compact card (the dash key spans both rows)")
 				else
 					T.check(not compact, label .. ": a tall screen keeps the regular card")
 				end

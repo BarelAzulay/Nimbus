@@ -5934,7 +5934,8 @@ local function clientScenarios()
 								obby[#obby + 1] = where .. "." .. d.Name .. " has a neon " .. neonName(d.BackgroundColor3) .. " fill"
 							elseif d:IsA("UIGradient") and d.Enabled ~= false then
 								obby[#obby + 1] = where .. " has a gradient (" .. d.Name .. ")"
-							elseif d:IsA("UICorner") and not (d.CornerRadius.Scale >= 0.49 and p.AbsoluteSize.X > 0 and math.abs(p.AbsoluteSize.X - p.AbsoluteSize.Y) <= 1.5) then
+							elseif d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0) -- (a 0 px corner is square: the HUD's card keeps one it resizes)
+								and not (d.CornerRadius.Scale >= 0.49 and p.AbsoluteSize.X > 0 and math.abs(p.AbsoluteSize.X - p.AbsoluteSize.Y) <= 1.5) then
 								obby[#obby + 1] = where .. " has a rounded corner"
 							end
 						end
@@ -7239,6 +7240,390 @@ local function clientScenarios()
 			end
 		end)
 		LKC.flushErrors("obby_family_one_green")
+	end)
+
+	-- (U9-8; the owner's look bar: every bar in the BlockRow language) the HUD's stamina bar is a row of kit B blocks built
+	-- like SignKit.BlockRow (a wood block, its face inset by the edge, a darker lip along the face's bottom; square, no
+	-- gradient): one block per dash (35 of 150 stamina each) and a narrow last one for the rest (10), so the gaps between the
+	-- blocks are the old ticks at 35 / 70 / 105 / 140 and a full block is a dash you can pay for. A lit block is gold on its
+	-- GoldLip lip, a dark one the stone well with no lip; a partly lit block is lit from the left in whole px. Below one
+	-- dash's cost the gold dims toward the stone's tan (never a grey). The two badges are kit B squares (gold with the pixel
+	-- bolt, red with the pixel heart; no gradient, no rotated parts)
+	S.vitals_stamina_blocks = guarded("vitals_stamina_blocks", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		local lp = game:GetService("Players").LocalPlayer
+		local maxSt, cost = Config.Physics.MaxStamina, Config.Physics.DashStaminaCost
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) < 0.01
+		end
+		U8.at(1920, 1080, false, "stamina blocks", function(tag)
+			local hud = U8.pg():FindFirstChild("NimbusHud")
+			local bar = hud and hud:FindFirstChild("StaminaBar", true)
+			if not T.check(bar ~= nil and U8.shown(bar), tag .. ": the stamina bar shows") then
+				return
+			end
+			local blocks = {}
+			for i = 1, 8 do
+				blocks[i] = bar:FindFirstChild("Block" .. i)
+			end
+			if not T.check(#blocks == 5, tag .. ": the bar is five blocks (four dashes and the rest)", tostring(#blocks)) then
+				return
+			end
+			local units = { cost, cost, cost, cost, maxSt - 4 * cost }
+			local widths, total, kit = {}, 0, {}
+			for i, b in ipairs(blocks) do
+				local face = b:FindFirstChild("Face")
+				local okKit = face ~= nil and sameColor(b.BackgroundColor3, Sign.Wood) and b.BackgroundTransparency == 0 and b:FindFirstChildOfClass("UICorner") == nil
+					and #b:GetDescendants() > 0
+				for _, d in ipairs(b:GetDescendants()) do
+					okKit = okKit and not d:IsA("UIGradient") and not d:IsA("UICorner") and not d:IsA("UIStroke")
+				end
+				if face then
+					local fr, br = U8.rect(face), U8.rect(b)
+					okKit = okKit and fr.X - br.X >= 1.5 and br.R - fr.R >= 1.5 and fr.Y - br.Y >= 1.5 and br.B - fr.B >= 1.5 -- (the face inset by the wood edge)
+				end
+				if not okKit then
+					kit[#kit + 1] = b.Name
+				end
+				widths[i] = b.AbsoluteSize.X
+				total = total + b.AbsoluteSize.X
+			end
+			T.check(#kit == 0, tag .. ": every block a kit B block (wood, the face inset by the edge; no gradient, corner or stroke)", table.concat(kit, ", "))
+			local prop = {}
+			for i, w in ipairs(widths) do
+				if math.abs(w / total - units[i] / maxSt) * total > 2.5 then
+					prop[#prop + 1] = fmt("Block%d %.0f px of %.0f (want %.0f)", i, w, total, total * units[i] / maxSt)
+				end
+				if not whole(w) or not whole(blocks[i].AbsolutePosition.X) then
+					prop[#prop + 1] = fmt("Block%d on half px %.2f +%.2f", i, blocks[i].AbsolutePosition.X, w)
+				end
+			end
+			T.check(#prop == 0, tag .. ": each block as wide as the stamina it holds (one per dash at 35 / 70 / 105 / 140), on whole px", table.concat(prop, "; "))
+			-- lit by the stamina: the first k blocks full at k dashes, a part block lit from the left, the rest dark
+			local function lit(b)
+				local l = b:FindFirstChild("Lit", true)
+				local face = b:FindFirstChild("Face")
+				local w = (l and U8.shown(l)) and l.AbsoluteSize.X or 0
+				return w / math.max(1, face.AbsoluteSize.X), l
+			end
+			local function paint(v)
+				lp:SetAttribute(Config.Attr.Stamina, v)
+				LKC.advance(1)
+			end
+			paint(maxSt)
+			local full = true
+			for _, b in ipairs(blocks) do
+				local f, l = lit(b)
+				full = full and f > 0.99 and l and sameColor(l.BackgroundColor3, Sign.Gold) and l:FindFirstChild("Lip") and sameColor(l.Lip.BackgroundColor3, Sign.GoldLip)
+					and l.Lip.AbsoluteSize.Y >= 3.5
+			end
+			T.check(full, tag .. ": a full bar lights every block gold on its GoldLip lip")
+			paint(2 * cost + 5) -- 75: two dashes and a seventh of the third
+			local f1, f2, f3, f4, f5 = lit(blocks[1]), lit(blocks[2]), lit(blocks[3]), lit(blocks[4]), lit(blocks[5])
+			T.check(f1 > 0.99 and f2 > 0.99 and f3 > 0.05 and f3 < 0.3 and f4 < 0.01 and f5 < 0.01, tag .. ": 75 of 150 lights two blocks and a seventh of the third",
+				fmt("%.2f %.2f %.2f %.2f %.2f", f1, f2, f3, f4, f5))
+			local _, l3 = lit(blocks[3])
+			T.check(l3 and whole(l3.AbsoluteSize.X) and whole(l3.AbsolutePosition.X), tag .. ": the part block's lit width on whole px", l3 and fmt("%.2f +%.2f", l3.AbsolutePosition.X, l3.AbsoluteSize.X))
+			local face4 = blocks[4]:FindFirstChild("Face")
+			local lip4 = face4 and face4:FindFirstChild("Lip")
+			T.check(face4 and sameColor(face4.BackgroundColor3, Sign.Well) and (lip4 == nil or not U8.shown(lip4) or sameColor(lip4.BackgroundColor3, Sign.Well)),
+				tag .. ": a dark block is the stone well with no lip")
+			paint(cost - 15) -- 20: under one dash's cost
+			local _, l1 = lit(blocks[1])
+			local c = l1 and l1.BackgroundColor3
+			T.check(c and not sameColor(c, Sign.Gold) and c.R >= c.G and c.G >= c.B, tag .. ": under a dash's cost the gold dims toward the stone's tan (warm, not grey)",
+				c and hex(c) or "no lit part")
+			paint(maxSt)
+			-- the badges
+			local bolt = hud:FindFirstChild("StaminaBadge", true)
+			local heart = hud:FindFirstChild("Heart", true)
+			for _, spec in ipairs({ { bolt, "bolt", Sign.Gold, "the stamina badge" }, { heart, "heart", Sign.Red, "the heart badge" } }) do
+				local b = spec[1]
+				local icon = nil
+				local flat = b ~= nil and b:FindFirstChildOfClass("UIGradient") == nil and b:FindFirstChildOfClass("UICorner") == nil and b:FindFirstChild("SignEdge") ~= nil
+				for _, d in ipairs(b and b:GetDescendants() or {}) do
+					if d:GetAttribute("PixelIcon") == spec[2] and U8.shown(d) then
+						icon = d
+					end
+					if d:IsA("GuiObject") and U8.shown(d) and d.Rotation ~= 0 then
+						flat = false
+					end
+				end
+				T.check(flat and icon ~= nil and sameColor(b.BackgroundColor3, spec[3]), tag .. ": " .. spec[4] .. " is a kit B square with the pixel " .. spec[2],
+					b and fmt("face %s, icon %s", hex(b.BackgroundColor3), tostring(icon ~= nil)) or "missing")
+			end
+		end)
+		LKC.flushErrors("vitals_stamina_blocks")
+	end)
+
+	-- (U9-8) the dash key (was the sky sweep ring around a gold face): a kit B keycap at the end of the stamina row with the
+	-- pixel dash on it. Ready: raised on its lip, the stone tile face, the brown icon. Cooling down: pressed down onto its
+	-- lip (the face drops, the lip thins), the well face, a sky charge rising from the bottom in whole-px steps as the
+	-- cooldown runs out (MovementController.GetDashCooldownFraction), the icon muted; then it rises again. Out of stamina for a
+	-- dash: the sunk Off key (the well face, the muted icon). Square, flat, nothing rotated, no gradient
+	S.vitals_dash_key = guarded("vitals_dash_key", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		local lp = game:GetService("Players").LocalPlayer
+		local MC = U7.client("Controllers/MovementController")
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) < 0.01
+		end
+		U8.at(1920, 1080, false, "dash key", function(tag)
+			lp:SetAttribute(Config.Attr.InMatch, true)
+			LKC.toClient("MatchState", LKC.matchState({}))
+			LKC.advance(1)
+			local hud = U8.pg():FindFirstChild("NimbusHud")
+			local key = hud and hud:FindFirstChild("DashKey", true)
+			if not T.check(key ~= nil and U8.shown(key) and hud:FindFirstChild("DashRing", true) == nil, tag .. ": the dash key shows (the ring is gone)") then
+				return
+			end
+			local function parts()
+				local block = key:FindFirstChild("Block")
+				return block, block and block:FindFirstChild("Lip"), block and block:FindFirstChild("Charge"), block and block:FindFirstChild("Icon")
+			end
+			local function flat()
+				local bad = {}
+				for _, d in ipairs(key:GetDescendants()) do
+					if d:IsA("UIGradient") or d:IsA("UICorner") or (d:IsA("GuiObject") and d.Rotation ~= 0) then
+						bad[#bad + 1] = d.Name .. ":" .. d.ClassName
+					end
+				end
+				return #bad == 0, table.concat(bad, ", ")
+			end
+			local block, lip, charge, icon = parts()
+			if not T.check(block and lip and charge and icon and icon:GetAttribute("PixelIcon") == "dash", tag .. ": the key is a block with its lip, a charge and the pixel dash") then
+				return
+			end
+			local okFlat, why = flat()
+			T.check(okFlat, tag .. ": square and flat (no gradient, corner or rotation)", why)
+			local kr = U8.rect(key)
+			local restTop = U8.rect(block).Y
+			T.check(math.abs(restTop - kr.Y) < 0.5 and lip.AbsoluteSize.Y >= 3.5 and sameColor(block.BackgroundColor3, Sign.Tile) and not U8.shown(charge),
+				tag .. ": ready: raised on its lip, the stone tile face, no charge", fmt("top %+.1f, lip %.1f, face %s", restTop - kr.Y, lip.AbsoluteSize.Y, hex(block.BackgroundColor3)))
+			-- a dash: pressed, the charge rises as the cooldown runs out
+			local h = LKC.hum()
+			if h then
+				h.MoveDirection = Vector3.new(0, 0, -1)
+			end
+			Mock.TriggerAction("NimbusDash", "Begin", Mock.NewInput("Q", "Keyboard", "Begin"))
+			LKC.advance(0.05)
+			Mock.TriggerAction("NimbusDash", "End", Mock.NewInput("Q", "Keyboard", "End"))
+			if h then
+				h.MoveDirection = Vector3.new(0, 0, 0)
+			end
+			LKC.advance(0.4)
+			local cd = MC and MC.GetDashCooldownFraction and MC.GetDashCooldownFraction() or -1
+			T.check(cd > 0.2 and cd < 0.95, tag .. ": the dash is cooling down (precondition)", fmt("%.2f", cd))
+			local br = U8.rect(block)
+			T.check(br.Y - kr.Y >= 2 and lip.AbsoluteSize.Y <= 2 and math.abs(br.B - kr.B) < 0.5 and sameColor(block.BackgroundColor3, Sign.Well),
+				tag .. ": cooling: pressed onto its lip (the face down, the lip thin, the bottom kept), the well face",
+				fmt("top %+.1f, lip %.1f, bottom %+.1f, face %s", br.Y - kr.Y, lip.AbsoluteSize.Y, br.B - kr.B, hex(block.BackgroundColor3)))
+			local faceH = block.AbsoluteSize.Y - lip.AbsoluteSize.Y
+			local want = (1 - cd) * faceH
+			T.check(U8.shown(charge) and sameColor(charge.BackgroundColor3, Sign.Sky) and math.abs(charge.AbsoluteSize.Y - want) <= 3.5 and whole(charge.AbsoluteSize.Y)
+				and math.abs(U8.rect(charge).B - (br.B - lip.AbsoluteSize.Y)) < 0.5,
+				tag .. ": the sky charge rises from the bottom with the cooldown, in whole px", fmt("charge %.1f px, want %.1f of %.1f", charge.AbsoluteSize.Y, want, faceH))
+			local cells = icon:FindFirstChildWhichIsA("Frame")
+			T.check(cells and (cells.BackgroundTransparency > 0.2 or sameColor(cells.BackgroundColor3, Sign.TextMuted)), tag .. ": the icon is muted while it cools down")
+			local last, grows = charge.AbsoluteSize.Y, true
+			for _ = 1, 10 do
+				LKC.advance(0.08)
+				if charge.AbsoluteSize.Y < last - 0.5 then
+					grows = false
+				end
+				last = charge.AbsoluteSize.Y
+			end
+			T.check(grows, tag .. ": the charge only grows while it cools down")
+			okFlat, why = flat()
+			T.check(okFlat, tag .. ": still flat while it cools down", why)
+			LKC.advance(1.6)
+			br = U8.rect(block)
+			T.check(math.abs(br.Y - kr.Y) < 0.5 and lip.AbsoluteSize.Y >= 3.5 and sameColor(block.BackgroundColor3, Sign.Tile) and not U8.shown(charge),
+				tag .. ": ready again: it rises back onto its lip, the tile face")
+			-- run dry: no dash to pay for: the sunk Off key
+			if h then
+				h.MoveDirection = Vector3.new(0, 0, -1)
+			end
+			Mock.KeysDown.LeftShift = true
+			Mock.TriggerAction("NimbusRun", "Begin", Mock.NewInput("LeftShift", "Keyboard", "Begin"))
+			for _ = 1, 400 do
+				LKC.advance(1 / 30)
+				local v = lp:GetAttribute(Config.Attr.Stamina)
+				if type(v) == "number" and v <= 0 then
+					break
+				end
+			end
+			LKC.advance(0.2)
+			br = U8.rect(block)
+			T.check(br.Y - kr.Y >= 2 and sameColor(block.BackgroundColor3, Sign.Well) and cells and (cells.BackgroundTransparency > 0.2 or sameColor(cells.BackgroundColor3, Sign.TextMuted)),
+				tag .. ": out of stamina for a dash: the sunk Off key, the icon muted", fmt("stamina %s, top %+.1f, face %s", tostring(lp:GetAttribute(Config.Attr.Stamina)), br.Y - kr.Y, hex(block.BackgroundColor3)))
+			Mock.KeysDown.LeftShift = false
+			Mock.TriggerAction("NimbusRun", "End", Mock.NewInput("LeftShift", "Keyboard", "End"))
+			if h then
+				h.MoveDirection = Vector3.new(0, 0, 0)
+			end
+			lp:SetAttribute("Downed", true)
+			LKC.advance(0.6)
+			T.check(not U8.shown(key), tag .. ": downed: the key makes room for the notice")
+			lp:SetAttribute("Downed", false)
+			lp:SetAttribute(Config.Attr.InMatch, false)
+			LKC.toClient("MatchState", nil)
+			LKC.advance(4)
+		end)
+		LKC.flushErrors("vitals_dash_key")
+	end)
+
+	-- (U9-8; the owner's look bar) the touch RUN and DASH (were round see-through buttons with a dark cooldown overlay and a
+	-- rotating shake): square kit B keycaps in the layout's boxes. DASH: the sky face on its SkyLip lip, the pixel dash over
+	-- its caption; RUN: the stone tile with the pixel bolt, gold while running is on. A press sinks the face onto its lip;
+	-- while the dash cools down DASH stays sunk (the well face) with a sky charge rising from the bottom in whole px, its
+	-- caption still dark; with too little stamina it is the Off key. A refused press flashes the edge red and shakes the face
+	-- sideways in whole px (nothing rotates). The taps themselves are client_mobile's
+	S.obby_keys_mobile = guarded("obby_keys_mobile", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		local lp = game:GetService("Players").LocalPlayer
+		local MC = U7.client("Controllers/MovementController")
+		local mobile = U8.pg():FindFirstChild("MobileControls")
+		if not T.check(mobile ~= nil and mobile.Enabled, "keys (phone): the touch controls are on screen (precondition)") then
+			return
+		end
+		local dash, run = mobile:FindFirstChild("DashButton", true), mobile:FindFirstChild("RunButton", true)
+		if not T.check(dash ~= nil and run ~= nil, "keys (phone): DASH and RUN exist") then
+			return
+		end
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) < 0.01
+		end
+		local function parts(b)
+			local block = b:FindFirstChild("Block")
+			return block, block and block:FindFirstChild("Lip"), block and block:FindFirstChild("Charge"), block and block:FindFirstChild("Icon"),
+				block and block:FindFirstChild("Label"), block and block:FindFirstChild("SignEdge")
+		end
+		local function flat(b)
+			local bad = {}
+			for _, d in ipairs(b:GetDescendants()) do
+				if d:IsA("UIGradient") or (d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0)) or (d:IsA("GuiObject") and d.Rotation ~= 0) then
+					bad[#bad + 1] = d.Name .. ":" .. d.ClassName
+				end
+			end
+			if b:FindFirstChildOfClass("UICorner") or b.Rotation ~= 0 then
+				bad[#bad + 1] = b.Name
+			end
+			return #bad == 0, table.concat(bad, ", ")
+		end
+		local function hum()
+			return LKC.hum()
+		end
+		for _, size in ipairs({ { 844, 390 }, { 390, 844 } }) do
+			Mock.SetViewport(size[1], size[2])
+			LKC.advance(1)
+			local tag = fmt("keys %dx%d", size[1], size[2])
+			for _, spec in ipairs({ { dash, "DASH", "dash", Sign.Sky, Sign.SkyLip }, { run, "RUN", "bolt", Sign.Tile, Sign.StoneLip } }) do
+				local b = spec[1]
+				local block, lip, _, icon, label, edge = parts(b)
+				local okFlat, why = flat(b)
+				T.check(block ~= nil and lip ~= nil and icon ~= nil and label ~= nil and edge ~= nil and b.BackgroundTransparency >= 0.99 and okFlat,
+					tag .. ": " .. spec[2] .. " is a square kit B keycap (a face in a wood edge on its lip; no corner, gradient or rotation)", why)
+				if block and lip and icon and label and edge then
+					T.check(sameColor(block.BackgroundColor3, spec[4]) and block.BackgroundTransparency == 0 and sameColor(lip.BackgroundColor3, spec[5]) and lip.AbsoluteSize.Y >= 4.5
+						and block.Position.Y.Offset == 0 and sameColor(edge.Color, Sign.Wood),
+						tag .. ": " .. spec[2] .. " at rest: its role's face raised on its lip", fmt("face %s, lip %s %.0f px", hex(block.BackgroundColor3), hex(lip.BackgroundColor3), lip.AbsoluteSize.Y))
+					local ir, lr, br, pr = U8.rect(icon), U8.rect(label), U8.rect(block), U8.rect(lip)
+					T.check(icon:GetAttribute("PixelIcon") == spec[3] and U8.shown(icon) and tostring(label.Text) == spec[2] and Theme.FontOf(label) == Theme.Fonts.Heading
+						and ir.B <= lr.Y + 0.5 and ir.Y >= br.Y and lr.B <= pr.Y + 0.5 and ir.X >= br.X and ir.R <= br.R,
+						tag .. ": " .. spec[2] .. ": the pixel " .. spec[3] .. " over its caption (FredokaOne), both on the face above the lip")
+				end
+			end
+			-- a press sinks RUN onto its lip; let go, it rises gold (running is on); tap again: back to the tile
+			local block, lip = parts(run)
+			local dBlock0, dLip0, charge0, _, dLabel0 = parts(dash)
+			if not T.check(block ~= nil and lip ~= nil and dBlock0 ~= nil and dLip0 ~= nil and charge0 ~= nil and dLabel0 ~= nil, tag .. ": the keycaps' parts (for the press checks)") then
+				return
+			end
+			Mock.FireSignal(run, "InputBegan", Mock.NewInput("Unknown", "Touch", "Begin"), false)
+			LKC.advance(0.05)
+			T.check(block.Position.Y.Offset >= 2 and lip.AbsoluteSize.Y <= 3 and math.abs(U8.rect(block).B - U8.rect(run).B) < 0.5,
+				tag .. ": a press sinks RUN onto its lip (the bottom kept)", fmt("down %d, lip %.0f", block.Position.Y.Offset, lip.AbsoluteSize.Y))
+			Mock.FireSignal(run, "InputEnded", Mock.NewInput("Unknown", "Touch", "End"), false)
+			LKC.advance(0.3)
+			T.check(block.Position.Y.Offset == 0 and sameColor(block.BackgroundColor3, Sign.Gold) and sameColor(lip.BackgroundColor3, Sign.GoldLip),
+				tag .. ": let go, RUN rises gold: running is on", hex(block.BackgroundColor3))
+			Mock.Click(run)
+			LKC.advance(0.3)
+			T.check(sameColor(block.BackgroundColor3, Sign.Tile), tag .. ": tapped again, RUN is the tile again")
+			-- a dash: DASH stays sunk while it cools down, the sky charge rising in whole px, its caption still dark
+			local dBlock, dLip, charge, _, dLabel = parts(dash)
+			if hum() then
+				hum().MoveDirection = Vector3.new(0, 0, -1)
+			end
+			Mock.Click(dash)
+			LKC.advance(0.45)
+			if hum() then
+				hum().MoveDirection = Vector3.new(0, 0, 0)
+			end
+			local cd = MC and MC.GetDashCooldownFraction and MC.GetDashCooldownFraction() or -1
+			T.check(cd > 0.2 and cd < 0.95, tag .. ": the dash is cooling down (precondition)", fmt("%.2f", cd))
+			local faceH = dBlock.AbsoluteSize.Y - dLip.AbsoluteSize.Y
+			T.check(dBlock.Position.Y.Offset >= 2 and sameColor(dBlock.BackgroundColor3, Sign.Well) and U8.shown(charge) and sameColor(charge.BackgroundColor3, Sign.Sky)
+				and math.abs(charge.AbsoluteSize.Y - (1 - cd) * faceH) <= 4.5 and whole(charge.AbsoluteSize.Y) and math.abs(U8.rect(charge).B - (U8.rect(dBlock).B - dLip.AbsoluteSize.Y)) < 0.5,
+				tag .. ": cooling: DASH sunk, the well face, the sky charge rising from the bottom in whole px",
+				fmt("down %d, face %s, charge %.1f of %.1f (want %.1f)", dBlock.Position.Y.Offset, hex(dBlock.BackgroundColor3), charge.AbsoluteSize.Y, faceH, (1 - cd) * faceH))
+			T.check(sameColor(dLabel.TextColor3, Sign.Text) and dLabel.TextTransparency < 0.01, tag .. ": ...its caption still dark and solid (it reads on the charge)")
+			local okFlat, why = flat(dash)
+			T.check(okFlat, tag .. ": still flat while it cools down", why)
+			LKC.advance(2)
+			T.check(dBlock.Position.Y.Offset == 0 and sameColor(dBlock.BackgroundColor3, Sign.Sky) and not U8.shown(charge), tag .. ": ready again: DASH rises, the sky face")
+			-- run dry: DASH is the Off key; a RUN tap is refused: a red edge, a whole-px shake, nothing rotates
+			if size[1] == 844 then
+				Mock.Click(run)
+				if hum() then
+					hum().MoveDirection = Vector3.new(0, 0, -1)
+				end
+				for _ = 1, 420 do
+					LKC.advance(1 / 30)
+					local v = lp:GetAttribute(Config.Attr.Stamina)
+					if type(v) == "number" and v <= 0 then
+						break
+					end
+				end
+				LKC.advance(0.2)
+				T.check(dBlock.Position.Y.Offset >= 2 and sameColor(dBlock.BackgroundColor3, Sign.Well) and sameColor(dLip.BackgroundColor3, Sign.Well) and not U8.shown(charge)
+					and sameColor(dLabel.TextColor3, Sign.TextMuted),
+					tag .. ": out of stamina: DASH is the sunk Off key (the well face and lip, the muted caption)",
+					fmt("stamina %s, face %s", tostring(lp:GetAttribute(Config.Attr.Stamina)), hex(dBlock.BackgroundColor3)))
+				local edge = select(6, parts(run))
+				Mock.Click(run)
+				local moved, halfPx, turned, red = 0, 0, 0, false
+				for _ = 1, 12 do
+					LKC.advance(1 / 30)
+					moved = math.max(moved, math.abs(block.Position.X.Offset))
+					if not whole(block.Position.X.Offset) then
+						halfPx = halfPx + 1
+					end
+					if run.Rotation ~= 0 or block.Rotation ~= 0 then
+						turned = turned + 1
+					end
+					red = red or (edge.Color.R > edge.Color.G + 0.25)
+				end
+				T.check(red and moved >= 1 and halfPx == 0 and turned == 0, tag .. ": a refused RUN tap flashes the edge red and shakes the face in whole px (nothing rotates)",
+					fmt("red %s, moved %.1f, half px %d, turned %d", tostring(red), moved, halfPx, turned))
+				LKC.advance(0.8)
+				T.check(block.Position.X.Offset == 0 and sameColor(edge.Color, Sign.Wood), tag .. ": ...then it settles, the wood edge back")
+				if hum() then
+					hum().MoveDirection = Vector3.new(0, 0, 0)
+				end
+				LKC.advance(5)
+			end
+		end
+		Mock.SetViewport(390, 844)
+		LKC.advance(0.8)
+		LKC.flushErrors("obby_keys_mobile")
 	end)
 
 	-- (U9-7 review) a fitted label lets go when it is destroyed. fitWidth's weak-key table must hold nothing that points back

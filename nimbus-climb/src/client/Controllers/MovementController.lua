@@ -71,6 +71,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
+local PixelIcon = require(Shared.PixelIcon) -- (kit-b U9-8) the touch keys' icons
 local Remotes = require(Shared.Remotes)
 
 local MovementController = {}
@@ -109,8 +110,9 @@ local DEV_SPEED_HINT = "NC_DevSpeed" -- PlayerGui attribute set by DevService (o
 local DEV_SPEED_MULT = 2
 
 local LINE_COUNT = 18 -- screen speed lines
-local BUTTON_ALPHA = 0.2
-local BUTTON_ALPHA_LOCKED = 0.7
+-- (kit-b U9-8) the touch keys: the wood edge, the lip under the face, how far a press sinks the face onto it, the charge's
+-- step (px), and the icon's size from this key size up (27 px, else 18)
+local KEY_EDGE, KEY_LIP, KEY_SINK, KEY_STEP, KEY_BIG = 3, 5, 3, 2, 72
 
 local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
 
@@ -347,52 +349,78 @@ local function buildSpeedLines(playerGui)
 	return holder, lines
 end
 
--- Round button with a cooldown overlay (UIGradient with a hard edge, so it stays circular).
-local function makeCircleButton(parent, name, text, diameter, position, accent, onPress)
+-- (kit-b U9-8; was a round see-through button with a dark cooldown overlay and a squash) a square kit B keycap: the
+-- TextButton keeps the layout's box and the input, inside it the Block (the face in a wood edge) sits on its Lip, the pixel
+-- icon over the caption; Charge is the sky rising from the face's bottom while the dash cools down. look = { Face, Lip, Ink }
+-- at rest; paintKey draws the state ("ready", "on" = gold, "cool", "off"), a press sinks the face onto its lip
+local function makeKeyButton(parent, name, text, iconName, size, position, look, onPress)
+	local Sign = Theme.Sign
 	local button = Instance.new("TextButton")
 	button.Name = name
 	button.AnchorPoint = Vector2.new(1, 1)
-	button.Size = UDim2.fromOffset(diameter, diameter)
+	button.Size = UDim2.fromOffset(size, size)
 	button.Position = position
-	button.BackgroundColor3 = Theme.Colors.Panel
-	button.BackgroundTransparency = BUTTON_ALPHA
+	button.BackgroundTransparency = 1
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.Text = ""
 	button.Parent = parent
-	Theme.Corner(button, UDim.new(0.5, 0))
-	local stroke = Theme.Stroke(button, accent, 3, 0.1)
 
-	local scale = Instance.new("UIScale")
-	scale.Parent = button
+	local block = Instance.new("Frame")
+	block.Name = "Block"
+	block.BorderSizePixel = 0
+	block.BackgroundTransparency = 0
+	block.BackgroundColor3 = look.Face
+	block.Size = UDim2.fromScale(1, 1)
+	block.Parent = button
+	local edge = Theme.Stroke(block, Sign.Wood, KEY_EDGE, 0)
+	edge.Name = "SignEdge"
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
 
-	local overlay = Instance.new("Frame")
-	overlay.Name = "Cooldown"
-	overlay.Size = UDim2.fromScale(1, 1)
-	overlay.BackgroundColor3 = Theme.Colors.Ink
-	overlay.BorderSizePixel = 0
-	overlay.Visible = false
-	overlay.ZIndex = 2
-	overlay.Parent = button
-	Theme.Corner(overlay, UDim.new(0.5, 0))
-	local gradient = Instance.new("UIGradient")
-	gradient.Rotation = 90 -- top (0) -> bottom (1)
-	gradient.Parent = overlay
+	local lip = Instance.new("Frame")
+	lip.Name = "Lip"
+	lip.BorderSizePixel = 0
+	lip.BackgroundColor3 = look.Lip
+	lip.AnchorPoint = Vector2.new(0, 1)
+	lip.Position = UDim2.new(0, 0, 1, 0)
+	lip.Size = UDim2.new(1, 0, 0, KEY_LIP)
+	lip.ZIndex = 2
+	lip.Parent = block
+
+	local charge = Instance.new("Frame")
+	charge.Name = "Charge"
+	charge.BorderSizePixel = 0
+	charge.BackgroundColor3 = Sign.Sky
+	charge.AnchorPoint = Vector2.new(0, 1)
+	charge.Visible = false
+	charge.ZIndex = 2
+	charge.Parent = block
 
 	local label = Theme.Label(text, "Heading", {
-		Size = math.floor(diameter * 0.26),
-		Props = { Size = UDim2.fromScale(1, 1), ZIndex = 3 },
+		Size = math.floor(size * 0.26),
+		Color = look.Ink,
+		Props = { ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Center },
 	})
-	label.Parent = button
+	label.Name = "Label"
+	label.Parent = block
 
 	local handle = {
 		Button = button,
-		Stroke = stroke,
-		Accent = accent,
-		Overlay = overlay,
-		Gradient = gradient,
+		Block = block,
+		Lip = lip,
+		Edge = edge,
+		Charge = charge,
 		Label = label,
-		LastFrac = nil,
+		Look = look,
+		IconName = iconName,
+		Icon = nil,
+		IconPx = 0,
+		Size = 0,
+		State = "ready",
+		Fill = 0,
+		Pressed = false,
+		Shake = 0,
+		Drawn = nil,
 	}
 
 	local lastPress = 0
@@ -400,7 +428,8 @@ local function makeCircleButton(parent, name, text, diameter, position, accent, 
 		local kind = input.UserInputType
 		if kind == Enum.UserInputType.Touch or kind == Enum.UserInputType.MouseButton1 then
 			local now = os.clock()
-			tween(scale, 0.07, { Scale = 0.9 })
+			handle.Pressed = true
+			handle.Drawn = nil
 			if now - lastPress > 0.12 then -- guards against touch + emulated-mouse double events
 				lastPress = now
 				onPress()
@@ -410,46 +439,106 @@ local function makeCircleButton(parent, name, text, diameter, position, accent, 
 	button.InputEnded:Connect(function(input)
 		local kind = input.UserInputType
 		if kind == Enum.UserInputType.Touch or kind == Enum.UserInputType.MouseButton1 then
-			tween(scale, 0.18, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			handle.Pressed = false
+			handle.Drawn = nil
 		end
 	end)
 
 	return handle
 end
 
--- frac: 0 = hidden, 1 = fully dimmed, in between the dim area drains toward the bottom.
-local function setCooldownOverlay(handle, frac)
-	local q = math.floor(Util.Clamp(frac, 0, 1) * 40 + 0.5) / 40
-	if handle.LastFrac == q then
+-- draws a key for its state (a no-op when nothing changed): sunk while pressed, cooling down or off; the face, lip and ink by
+-- state; the icon over the caption, centred on the face above the lip; the charge (cool only) `Fill` of the face high
+-- from its bottom in whole steps
+local function paintKey(h)
+	local Sign = Theme.Sign
+	local sunk = h.Pressed or h.State == "cool" or h.State == "off"
+	local sink = sunk and KEY_SINK or 0
+	local lipPx = KEY_LIP - sink
+	local faceH = h.Size - sink - lipPx
+	local chargePx = 0
+	if h.State == "cool" then
+		chargePx = math.floor(Util.Clamp(h.Fill, 0, 1) * faceH / KEY_STEP) * KEY_STEP
+	end
+	local d = h.Drawn
+	if d and d.State == h.State and d.Sink == sink and d.Charge == chargePx and d.Size == h.Size and d.Shake == h.Shake then
 		return
 	end
-	handle.LastFrac = q
-	if q <= 0 then
-		handle.Overlay.Visible = false
-		return
+	h.Drawn = { State = h.State, Sink = sink, Charge = chargePx, Size = h.Size, Shake = h.Shake }
+	local face, lip, ink = h.Look.Face, h.Look.Lip, h.Look.Ink
+	if h.State == "on" then
+		face, lip = Sign.Gold, Sign.GoldLip
+	elseif h.State == "cool" then
+		face, lip = Sign.Well, Sign.WellEdge -- (the caption stays dark: it reads on the well and on the sky charge)
+	elseif h.State == "off" then
+		face, lip, ink = Sign.Well, Sign.Well, Sign.TextMuted
 	end
-	handle.Overlay.Visible = true
-	if q >= 1 then
-		handle.Gradient.Transparency = NumberSequence.new(0.45)
-		return
+	h.Block.Position = UDim2.fromOffset(h.Shake, sink)
+	h.Block.Size = UDim2.new(1, 0, 1, -sink)
+	h.Block.BackgroundColor3 = face
+	h.Lip.Size = UDim2.new(1, 0, 0, lipPx)
+	h.Lip.BackgroundColor3 = lip
+	h.Charge.Visible = chargePx > 0
+	h.Charge.Position = UDim2.new(0, 0, 1, -lipPx)
+	h.Charge.Size = UDim2.new(1, 0, 0, chargePx)
+	local textH = h.Label.TextSize
+	local top = math.floor((faceH - (h.IconPx + 2 + textH)) / 2)
+	if h.Icon then
+		h.Icon.Position = UDim2.fromOffset(math.floor((h.Size - h.IconPx) / 2), top)
+		PixelIcon.Tint(h.Icon, ink)
 	end
-	local edge = 1 - q -- strictly inside (0, 1) because q is a multiple of 1/40
-	handle.Gradient.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1),
-		NumberSequenceKeypoint.new(edge, 1),
-		NumberSequenceKeypoint.new(math.min(edge + 0.001, 0.9995), 0.45),
-		NumberSequenceKeypoint.new(1, 0.45),
-	})
+	h.Label.Position = UDim2.fromOffset(0, top + h.IconPx + 2)
+	h.Label.Size = UDim2.new(1, 0, 0, textH)
+	h.Label.TextColor3 = ink
 end
 
+-- the key's size (the layout's): the button's box, the caption's size and the icon (redrawn when its size changes)
+local function fitKey(h, size)
+	h.Button.Size = UDim2.fromOffset(size, size)
+	if h.Size == size then
+		return
+	end
+	h.Size = size
+	h.Label.TextSize = math.floor(size * 0.26)
+	local px = (size >= KEY_BIG) and 27 or 18
+	if h.IconPx ~= px then
+		if h.Icon then
+			h.Icon:Destroy()
+		end
+		h.Icon = PixelIcon.New(h.Block, h.IconName, px, h.Look.Ink)
+		h.Icon.ZIndex = 4
+		h.IconPx = px
+	end
+	h.Drawn = nil
+	paintKey(h)
+end
+
+local function setKeyState(h, state, fill)
+	h.State = state
+	h.Fill = fill or 0
+	paintKey(h)
+end
+
+-- (kit-b U9-8; was a rotating wobble) a refused tap: the wood edge flashes red and fades back, the face shakes sideways in
+-- whole px
 local function denyFeedback(handle)
 	if not handle then
 		return
 	end
-	handle.Button.Rotation = 9
-	tween(handle.Button, 0.35, { Rotation = 0 }, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
-	handle.Stroke.Color = Theme.Colors.Bad
-	tween(handle.Stroke, 0.4, { Color = handle.Accent })
+	handle.Edge.Color = Theme.Sign.Red
+	tween(handle.Edge, 0.4, { Color = Theme.Sign.Wood })
+	handle.ShakeToken = (handle.ShakeToken or 0) + 1
+	local token = handle.ShakeToken
+	task.spawn(function()
+		for _, dx in ipairs({ 3, -3, 2, -2, 1, -1, 0 }) do
+			if handle.ShakeToken ~= token then
+				return
+			end
+			handle.Shake = dx
+			paintKey(handle)
+			task.wait(0.04)
+		end
+	end)
 end
 
 local function toggleRun()
@@ -531,8 +620,7 @@ local function layoutMobileControls(m)
 	if dashKeys then
 		local runRight = math.max(14, jump + 10 - runSize * 0.5)
 		local runBottom = jumpTop + 10
-		m.run.Button.Size = UDim2.fromOffset(runSize, runSize)
-		m.run.Label.TextSize = math.floor(runSize * 0.26)
+		fitKey(m.run, runSize)
 		m.run.Button.Position = UDim2.new(1, -runRight, 1, -runBottom)
 		m.dash.Button.Visible = false
 		m.rects = {
@@ -562,11 +650,9 @@ local function layoutMobileControls(m)
 		end
 	end
 
-	m.dash.Button.Size = UDim2.fromOffset(dashSize, dashSize)
-	m.dash.Label.TextSize = math.floor(dashSize * 0.26)
+	fitKey(m.dash, dashSize)
 	m.dash.Button.Position = UDim2.new(1, -dashRight, 1, -dashBottom)
-	m.run.Button.Size = UDim2.fromOffset(runSize, runSize)
-	m.run.Label.TextSize = math.floor(runSize * 0.26)
+	fitKey(m.run, runSize)
 	m.run.Button.Position = UDim2.new(1, -runRight, 1, -runBottom)
 	m.rects = {
 		jump = { jumpRect[1] + 4, jumpRect[2] + 4, jumpRect[3] - 4, jumpRect[4] - 4 },
@@ -586,10 +672,13 @@ local function buildMobileControls(playerGui)
 
 	-- an arc above / left of the default jump button, within thumb reach; the exact offsets depend on the
 	-- size of Roblox's jump button and on the HUD, so layoutMobileControls places (and sizes) them below
-	local dashButton = makeCircleButton(gui, "DashButton", "DASH", 76, UDim2.new(1, -30, 1, -175), Theme.Colors.Stamina, function()
+	-- (kit-b U9-8) colour by role: DASH the sky (the dash's colour: the HUD's dash key, the battle DASH), RUN the stone tile
+	-- with the bolt of the stamina it spends (gold while it is on)
+	local Sign = Theme.Sign
+	local dashButton = makeKeyButton(gui, "DashButton", "DASH", "dash", 76, UDim2.new(1, -30, 1, -175), { Face = Sign.Sky, Lip = Sign.SkyLip, Ink = Sign.Text }, function()
 		tryDash()
 	end)
-	local runButton = makeCircleButton(gui, "RunButton", "RUN", 64, UDim2.new(1, -120, 1, -150), Theme.Colors.Good, function()
+	local runButton = makeKeyButton(gui, "RunButton", "RUN", "bolt", 64, UDim2.new(1, -120, 1, -150), { Face = Sign.Tile, Lip = Sign.StoneLip, Ink = Sign.Text }, function()
 		toggleRun()
 	end)
 
@@ -626,43 +715,31 @@ local function buildMobileControls(playerGui)
 	return controls
 end
 
--- Called every frame from the character step; only touches properties that changed.
+-- Called every frame from the character step; only touches properties that changed (paintKey skips an unchanged key).
+-- (kit-b U9-8) DASH: the Off key while locked or short of stamina, sunk with its charge while it cools down, else ready;
+-- RUN: the Off key while locked, gold while running is on
 local function updateMobileUi(locked)
 	local m = ui and ui.mobile
 	if not m then
 		return
 	end
-	setCooldownOverlay(m.dash, MovementController.GetDashCooldownFraction())
-
-	if m.locked ~= locked then
-		m.locked = locked
-		local alpha = BUTTON_ALPHA
-		if locked then
-			alpha = BUTTON_ALPHA_LOCKED
-		end
-		m.dash.Button.BackgroundTransparency = alpha
-		m.run.Button.BackgroundTransparency = alpha
-		m.runOn = nil -- force the run button to refresh its colours
-	end
-
-	if m.runOn ~= runToggled then
-		m.runOn = runToggled
-		if runToggled then
-			tween(m.run.Button, 0.15, { BackgroundColor3 = Theme.Colors.Good:Lerp(Theme.Colors.Panel, 0.5) })
-		else
-			tween(m.run.Button, 0.15, { BackgroundColor3 = Theme.Colors.Panel })
-		end
-	end
-
+	local cd = MovementController.GetDashCooldownFraction()
 	local lowStamina = (not freeDash) and stamina < P.DashStaminaCost
-	if m.lowStamina ~= lowStamina then
-		m.lowStamina = lowStamina
-		if lowStamina then
-			m.dash.Label.TextTransparency = 0.5
-		else
-			m.dash.Label.TextTransparency = 0
-		end
+	local dashState = "ready"
+	if locked or lowStamina then
+		dashState = "off"
+	elseif cd > 0.001 then
+		dashState = "cool"
 	end
+	setKeyState(m.dash, dashState, 1 - cd)
+	local runState = "ready"
+	if locked then
+		runState = "off"
+	elseif runToggled then
+		runState = "on"
+	end
+	setKeyState(m.run, runState)
+	m.locked, m.runOn, m.lowStamina = locked, runToggled, lowStamina
 end
 
 local function buildGui()

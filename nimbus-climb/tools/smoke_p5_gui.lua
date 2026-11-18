@@ -682,30 +682,44 @@ S.client_p5stamina = guarded("client_p5stamina", function()
 	T.check(math.abs(runFor - 10.7) < 0.05, "p5stamina: a full bar runs ~10.7 s", string.format("%.2f s", runFor))
 	T.check(refill <= 3.5, "p5stamina: it refills in <= 3.5 s", string.format("%.2f s", refill))
 	T.eq(dashes, 4, "p5stamina: 4 dashes from full")
+	-- (kit-b U9-8, restated: was a tube with 4 thin dark ticks) the HUD's stamina bar is a row of kit B blocks, one per dash
+	-- and a narrow last one for the rest: the 4 gaps between them sit where the ticks were
 	local bar = NK.pg():FindFirstChild("NimbusHud") and NK.pg().NimbusHud:FindFirstChild("StaminaBar", true)
-	local inner = bar and bar:FindFirstChild("Inner")
-	local ticks = {}
-	if inner then
+	local blocks = {}
+	if bar then
 		for i = 1, 8 do
-			local t = inner:FindFirstChild("Tick" .. i)
-			if t then
-				ticks[#ticks + 1] = t
+			local b = bar:FindFirstChild("Block" .. i)
+			if b then
+				blocks[#blocks + 1] = b
 			end
 		end
 	end
-	T.eq(#ticks, 4, "p5stamina: the HUD stamina tube shows 4 thin dark ticks")
-	local placed = #ticks == 4
-	for i, t in ipairs(ticks) do
-		placed = placed and math.abs(t.Position.X.Scale - i * 35 / 150) < 1e-6 and t.Size.X.Offset <= 3
-		local r, fr = NK.rect(t), NK.rect(inner)
-		placed = placed and math.abs((r.x0 + r.x1) / 2 - (fr.x0 + (fr.x1 - fr.x0) * i * 35 / 150)) < 1.5
+	T.eq(#blocks, 5, "p5stamina: the HUD stamina bar is 5 blocks (4 gaps, one after each dash)")
+	local placed = #blocks == 5
+	if placed then
+		local fr = NK.rect(bar)
+		local inner = (fr.x1 - fr.x0) - 4 * (NK.rect(blocks[2]).x0 - NK.rect(blocks[1]).x1)
+		for i = 1, 4 do
+			local gapMid = (NK.rect(blocks[i]).x1 + NK.rect(blocks[i + 1]).x0) / 2
+			local left = NK.rect(blocks[i]).x1 - fr.x0 - (i - 1) * (NK.rect(blocks[2]).x0 - NK.rect(blocks[1]).x1)
+			placed = placed and math.abs(left - inner * i * 35 / 150) < 1.5 and gapMid > fr.x0
+		end
 	end
-	T.check(placed, "p5stamina: ...at 35 / 70 / 105 / 140 of 150 (one per dash)")
+	T.check(placed, "p5stamina: ...the gaps at 35 / 70 / 105 / 140 of 150 (one per dash)")
 	local LocalPlayer = game:GetService("Players").LocalPlayer
 	LocalPlayer:SetAttribute(Config.Attr.Stamina, 75)
 	NK.advance(1)
-	local fill = inner and inner:FindFirstChild("Fill")
-	T.check(fill and math.abs(fill.Size.X.Scale - 0.5) < 0.03, "p5stamina: 75 of 150 fills half the tube", fill and string.format("%.2f", fill.Size.X.Scale) or "no fill")
+	local lit, all = 0, 0
+	for _, b in ipairs(blocks) do
+		local face = b:FindFirstChild("Face")
+		local l = face and face:FindFirstChild("Lit")
+		if face and face.AbsoluteSize.X > 0 then -- (each block's lit share of its face, weighted by the block's width)
+			all = all + b.AbsoluteSize.X
+			lit = lit + ((l and l.Visible) and b.AbsoluteSize.X * l.AbsoluteSize.X / face.AbsoluteSize.X or 0)
+		end
+	end
+	local share = all > 0 and lit / all or -1
+	T.check(math.abs(share - 0.5) < 0.04, "p5stamina: 75 of 150 lights half the blocks", string.format("%.2f", share))
 	LocalPlayer:SetAttribute(Config.Attr.Stamina, 150)
 	NK.advance(1)
 	NK.KC().flushErrors("client_p5stamina")
