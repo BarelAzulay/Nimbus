@@ -6608,8 +6608,34 @@ local function clientScenarios()
 		local function over4(a, b)
 			return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
 		end
+		-- (LOOK-ui, kitb-look1: the closes drew 35 to 47 px with 2 or 3 px cells by their window's Fit) the window's close is
+		-- the kit's one close block (NeonKit.CloseBlock): >= 44 screen px square, its x in 3 screen px cells
+		local function closeBlockOk(win, tag)
+			local close = nil
+			for _, d in ipairs(win:GetDescendants()) do
+				if d:IsA("GuiButton") and d:GetAttribute("CloseBlock") and U8.shown(d) then
+					close = d
+					break
+				end
+			end
+			if not T.check(close ~= nil, tag .. ": the window's close is the kit's close block (NeonKit.CloseBlock)") then
+				return
+			end
+			local r = U8.rect(close)
+			local mark = close:FindFirstChild("CloseMark")
+			local icon = mark and mark:FindFirstChild("Icon")
+			local cell = math.huge
+			for _, f in ipairs(icon and icon:GetChildren() or {}) do
+				if f:IsA("GuiObject") then
+					cell = math.min(cell, f.AbsoluteSize.X, f.AbsoluteSize.Y)
+				end
+			end
+			T.check(r.R - r.X >= 44 - 0.5 and r.B - r.Y >= 44 - 0.5 and math.abs(cell - 3) < 0.05,
+				tag .. ": the close block is >= 44 screen px with its x in 3 px cells", fmt("%.1f x %.1f, cell %.2f", r.R - r.X, r.B - r.Y, cell))
+		end
 		for _, s in ipairs(U8.SIZES) do
-			for _, name in ipairs({ "Index", "Home" }) do
+			local docked = {}
+			for _, name in ipairs({ "Index", "Home", "Stats" }) do
 				local strips, vitals = nil, nil
 				U8.at(s[1], s[2], s[3], "clear of hud " .. name, function(tag)
 					local pg = U8.pg()
@@ -6620,7 +6646,7 @@ local function clientScenarios()
 					LKC.advance(1)
 					local menu = pg:FindFirstChild("NimbusMenu")
 					local idx = pg:FindFirstChild("NimbusIndex")
-					local win = name == "Index" and idx and idx:FindFirstChild("Window_Index") or (menu and menu:FindFirstChild("Window_Home"))
+					local win = name == "Index" and idx and idx:FindFirstChild("Window_Index") or (menu and menu:FindFirstChild("Window_" .. name))
 					if not T.check(win ~= nil and U8.shown(win), tag .. ": the window opens") then
 						return
 					end
@@ -6641,6 +6667,18 @@ local function clientScenarios()
 						end
 					end
 					T.check(#over == 0, tag .. ": the window and its awning lie over no HUD part", table.concat(over, ", ", 1, math.min(#over, 8)) .. " | window " .. U8.show(boxes[1]))
+					-- (LOOK-ui, kitb-look1: the Stats window docked 3 px from the vitals card at 1280x720) a shown vitals card keeps
+					-- 12 px to the window (MenuController K.VITALS_MARGIN), or it steps aside
+					if vitals and U8.shown(vitals) then
+						local v, b = U8.rect(vitals), boxes[1]
+						local gapX = math.max(b.X - v.R, v.X - b.R)
+						local gapY = math.max(b.Y - v.B, v.Y - b.B)
+						T.check(math.max(gapX, gapY) >= 12 - 0.5, tag .. ": the shown vitals card keeps 12 px to the window",
+							fmt("gap %.1f x, %.1f y | card %s", gapX, gapY, U8.show(v)))
+					end
+					-- (LOOK-ui, kitb-look1) the docked windows share one box: Index, Home and Stats the same size and top
+					docked[name] = U8.rect(win)
+					closeBlockOk(win, tag)
 					if s[1] == 1920 then
 						T.check(strips ~= nil and U8.shown(strips), tag .. ": the strips stay (the window starts under them)")
 					end
@@ -6649,6 +6687,26 @@ local function clientScenarios()
 				end)
 				T.check(strips ~= nil and U8.shown(strips) and vitals ~= nil and U8.shown(vitals),
 					fmt("clear of hud %s %dx%d: the strips and the vitals card are back after Close", name, s[1], s[2]))
+			end
+			local a, b, c = docked.Index, docked.Home, docked.Stats
+			if a and b and c then
+				local same = math.abs(a.X - b.X) < 1 and math.abs(a.Y - b.Y) < 1 and math.abs(a.R - b.R) < 1 and math.abs(a.B - b.B) < 1
+					and math.abs(a.X - c.X) < 1 and math.abs(a.Y - c.Y) < 1 and math.abs(a.R - c.R) < 1 and math.abs(a.B - c.B) < 1
+				T.check(same, fmt("docked box %dx%d: Index, Home and Stats dock in one box", s[1], s[2]),
+					fmt("Index %s, Home %s, Stats %s", U8.show(a), U8.show(b), U8.show(c)))
+			end
+			-- the big windows' closes: the same block
+			for _, name in ipairs({ "Pets", "Shop" }) do
+				U8.at(s[1], s[2], s[3], "close block " .. name, function(tag)
+					Menu.Open(name)
+					LKC.advance(1)
+					local win = U8.pg():FindFirstChild(name == "Shop" and "ShopWindow" or "Window_" .. name, true)
+					if T.check(win ~= nil and U8.shown(win), tag .. ": the window opens") then
+						closeBlockOk(win, tag)
+					end
+					pcall(Menu.Close)
+					LKC.advance(0.6)
+				end)
 			end
 		end
 		LKC.flushErrors("kitb_windows_clear_of_hud")

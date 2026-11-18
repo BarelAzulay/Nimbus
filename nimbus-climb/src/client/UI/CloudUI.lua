@@ -989,6 +989,7 @@ local function signPanel(props)
 			Parent = root,
 		})
 		NeonKit.CloseMark(closeButton, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- square bars in a Danger block's brown ink
+		NeonKit.CloseBlock(closeButton) -- (LOOK-ui) the kit's one close block (>= 44 screen px, 3 px cells)
 		panel.CloseButton = closeButton
 	end
 	root.Parent = props.Parent

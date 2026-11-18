@@ -73,6 +73,11 @@ SignKit.Sizes = {
 	BlockLip = 4,
 	NoticeEdge = 4,
 	NoticeLip = 4,
+	-- (LOOK-ui, kitb-look1: the Pets, Index, Home, Stats and Shop closes drew 35 to 47 screen px with 2 or 3 px cells, by
+	-- their window's Fit) one close block: never under CloseMin screen px square, its x in CloseCell screen px cells
+	-- (NeonKit.CloseBlock)
+	CloseMin = 44,
+	CloseCell = 3,
 }
 local Z = SignKit.Sizes
 
@@ -617,11 +622,14 @@ local function layFit(row)
 	local pip = w - 2 * e < MIN_FACE
 	row:SetAttribute("Pips", pip)
 	row:SetAttribute("BlockPx", w)
+	-- each block is its share of the row plus the whole-px correction measured now: exact while the row keeps this size,
+	-- and still inside the row if it changes before the next layout (the share follows it; a resize may not be signalled)
+	local W, Hh = abs.X / s, abs.Y / s
 	for i = 1, n do
 		local b = row:FindFirstChild("Block" .. i)
 		if b then
-			b.Position = UDim2.fromOffset((i - 1) * (w + g) / s, 0)
-			b.Size = UDim2.fromOffset(w / s, h / s)
+			b.Position = UDim2.new((i - 1) / n, (i - 1) * (w + g) / s - (i - 1) / n * W, 0, 0)
+			b.Size = UDim2.new(1 / n, w / s - W / n, 1, h / s - Hh)
 			b.BackgroundTransparency = pip and 1 or 0
 			local face = b:FindFirstChild("Face")
 			if face then

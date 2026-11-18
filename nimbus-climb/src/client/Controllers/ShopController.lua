@@ -694,6 +694,7 @@ function H.build()
 		Parent = header,
 	})
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- the drawn X in a Danger block's brown ink
+	NeonKit.CloseBlock(U.Close) -- (LOOK-ui, kitb-look1) the windows' one close block: its x in 3 px cells (was 2 at the 0.8 Fit)
 	-- the awning: one fixed-size piece over the top rim (never stretched with the window: the sign rule)
 	U.Roof = SignKit.Roof(holder, { Width = K.ROOF_W, Y = -10, ZIndex = 3 })
 

@@ -980,7 +980,17 @@ local function clientScenarios()
 					local real2 = value.Text
 					for _, text in ipairs({ real2, row[2] }) do
 						value.Text = text
-						T.check(label.TextBounds.X + value.TextBounds.X + gapPx <= frame.AbsoluteSize.X, tag .. ": '" .. label.Text .. "' keeps a gap to its value " .. text, fmt("%.0f + %.0f in %.0f", label.TextBounds.X, value.TextBounds.X, frame.AbsoluteSize.X))
+						-- (LOOK-ui, kitb-look1) a two-line stat tile on PC (the name over its number): each line fits the tile on its own
+						-- and the number starts under the name; a one-line tile (a phone) keeps the gap on its line
+						local twoLine = value.AbsolutePosition.Y >= label.AbsolutePosition.Y + label.AbsoluteSize.Y - 1
+						if twoLine then
+							local right = frame.AbsolutePosition.X + frame.AbsoluteSize.X
+							T.check(label.AbsolutePosition.X + label.TextBounds.X <= right - 2 and value.AbsolutePosition.X + value.TextBounds.X <= right - 2,
+								tag .. ": '" .. label.Text .. "' and its value " .. text .. " each fit the two-line tile",
+								fmt("%.0f / %.0f from %.0f, %.0f in %.0f", label.TextBounds.X, value.TextBounds.X, label.AbsolutePosition.X - frame.AbsolutePosition.X, value.AbsolutePosition.X - frame.AbsolutePosition.X, frame.AbsoluteSize.X))
+						else
+							T.check(label.TextBounds.X + value.TextBounds.X + gapPx <= frame.AbsoluteSize.X, tag .. ": '" .. label.Text .. "' keeps a gap to its value " .. text, fmt("%.0f + %.0f in %.0f", label.TextBounds.X, value.TextBounds.X, frame.AbsoluteSize.X))
+						end
 					end
 					value.Text = real2
 					local dp, ds, fp, fs_ = detail.AbsolutePosition, detail.AbsoluteSize, frame.AbsolutePosition, frame.AbsoluteSize

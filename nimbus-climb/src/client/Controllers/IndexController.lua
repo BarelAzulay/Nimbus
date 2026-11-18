@@ -88,7 +88,8 @@ IndexController.Closed = Util.Signal()
 -- Tunables (design pixels of a 1080p screen)
 ----------------------------------------------------------------------
 local K = {
-	PREF_W = 860, -- Phase 5 (6.6): docked right / a bottom sheet (NeonKit.Dock), 860 x 900 design px
+	PREF_W = 820, -- Phase 5 (6.6): docked right / a bottom sheet (NeonKit.Dock), 820 x 900 design px (LOOK-ui: the docked
+	-- windows' one box, MenuController K.DOCK_BOX; was 860)
 	PREF_H = 900,
 	MIN_W = 800,
 	MIN_H = 380,

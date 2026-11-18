@@ -195,10 +195,14 @@ local K = {
 -- screens (NeonKit.SideRect, <= 0.44 W) and are a bottom sheet on portrait ones (the top 44% stays clear); no backdrop
 -- dims the game. (lobby-shop Task 22: the Cloud Shop, its odds popup and its roulette stage left for ShopController,
 -- client/UI/ShopEggs and client/UI/EggStage.)
+-- (LOOK-ui, kitb-look1: Stats docked 640 x 760, Index 860 x 900, Home 820 x 900, so three tops, widths and Fits) the
+-- docked windows share one box: 820 x 900 (IndexController.K.PREF_W / PREF_H the same)
+K.DOCK_BOX = { 820, 900 }
 K.WIN = {
-	Stats = { 640, 760 },
-	Home = { 820, 900 },
+	Stats = K.DOCK_BOX,
+	Home = K.DOCK_BOX,
 }
+K.VITALS_MARGIN = 12 -- (LOOK-ui) screen px a docked window keeps to the vitals card, or the card steps aside
 -- Portrait screens (a phone held upright): a window may get as narrow as TALL_MIN_W design px (and as tall as
 -- TALL_MAX_H) so its text keeps the readability scale instead of shrinking to fit 800 px; windows narrower than
 -- TALL switch to their single-column ("tall") layout.
@@ -852,9 +856,11 @@ function P5.vitalsFor(win, on)
 		if slot then
 			-- the dock's box is in screen px (top bar included), the HUD's in gui-area px
 			local y = rect.y - P5.inset()
-			local w = math.min(rect.x + rect.w, slot.X + slot.W) - math.max(rect.x, slot.X)
-			local h = math.min(y + rect.h, slot.Y + slot.H) - math.max(y, slot.Y)
-			over = w > 4 and h > 4
+			-- (LOOK-ui, kitb-look1: at 1280x720 the Stats window docked 3 px from the card) within K.VITALS_MARGIN px counts
+			local m = K.VITALS_MARGIN
+			local w = math.min(rect.x + rect.w, slot.X + slot.W + m) - math.max(rect.x, slot.X - m)
+			local h = math.min(y + rect.h, slot.Y + slot.H + m) - math.max(y, slot.Y - m)
+			over = w > 0 and h > 0
 		end
 	end
 	safe("vitals " .. win.Id, hud.SetVitalsHidden, win.Id, over)
@@ -3793,7 +3799,7 @@ function MenuController.Init()
 	-- touch controls go while it is open (HideTouch, as Home), and the HUD's currency strips step aside (HideCurrency);
 	-- (U9-3 review) on a phone, where it reaches over the vitals card, the card hides too (HideVitals)
 	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true, Skin = "Signboard", Icon = Config.Icons.Stats or "stats",
-		HideTouch = true, HideCurrency = true, HideVitals = true })
+		HideTouch = true, HideCurrency = "Over", HideVitals = true }) -- (LOOK-ui) Home's box now: the strips step aside as for Home
 	-- (LOOK-ui) Home steps the HUD aside as Stats does where it lies over it: the vitals card, the strips (only then)
 	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true, Skin = "Signboard", Icon = HOME_ICON.House, HideTouch = true,
 		HideCurrency = "Over", HideVitals = true })

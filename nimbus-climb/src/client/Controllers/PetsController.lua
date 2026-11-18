@@ -1014,6 +1014,7 @@ function H.buildDetail()
 		Parent = d.Frame,
 	})
 	NeonKit.CloseMark(d.Close, { Square = true, Ink = SIGN.RedLip, Color = INK }) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
+	NeonKit.CloseBlock(d.Close) -- (LOOK-ui, kitb-look1) the windows' one close block
 end
 
 function H.build()
