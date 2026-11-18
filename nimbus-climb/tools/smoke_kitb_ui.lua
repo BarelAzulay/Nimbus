@@ -7093,6 +7093,63 @@ local function clientScenarios()
 						table.concat(softCells, "; ", 1, math.min(#softCells, 6)))
 					T.check(#round == 0, fmt("%s: every list's bar is the kit's square bar (%d not)", tag, #round), table.concat(round, "; ", 1, math.min(#round, 6)))
 					T.check(#lips == 0, fmt("%s: every sign block's lip flush on its bottom edge (%d lips, %d not)", tag, nLips, #lips), table.concat(lips, "; ", 1, math.min(#lips, 6)))
+					-- (U9-8 look) the pixel grid under a 0.8 scale (the picker's dock and the toast are scaled; 1920x1080 is 1): every
+					-- wood edge (a block's border UIStroke) a whole number of screen px, every lip, nail head and roof whole px tall /
+					-- wide, the window's wood frame and the header's rim whole px wide (the kit's SignKit.Whole: round(px x scale)).
+					-- Was 235 soft parts in the picker at 390x844: the frame 4.8 px, a row's edge 1.6 and lip 3.2, the roof 14.4 px
+					if W ~= 1920 then
+						local soft, nGrid = {}, 0
+						local function wholePx(v)
+							return math.abs(v - math.floor(v + 0.5)) < 0.02 and v > 0.98
+						end
+						local function note(d, what, v)
+							soft[#soft + 1] = fmt("%s %s %.2f", short(d), what, v)
+						end
+						for _, d in ipairs(root:GetDescendants()) do
+							if d:IsA("UIStroke") and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and d.Enabled ~= false and d.Transparency < 1
+								and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) and d.Parent.AbsoluteSize.X > 0 then
+								nGrid = nGrid + 1
+								local t = d.Thickness * U8.scaleOf(d.Parent)
+								if not wholePx(t) then
+									note(d.Parent, "edge", t)
+								end
+							elseif d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 and d.AbsoluteSize.Y > 0 then
+								local kind = d:GetAttribute("SignKit")
+								if d.Name == "Lip" and d:IsA("Frame") then
+									nGrid = nGrid + 1
+									if not wholePx(d.AbsoluteSize.Y) then
+										note(d.Parent, "lip", d.AbsoluteSize.Y)
+									end
+								elseif kind == "Nail" or kind == "Roof" then
+									nGrid = nGrid + 1
+									if not (wholePx(d.AbsoluteSize.X) and wholePx(d.AbsoluteSize.Y)) then
+										note(d, kind:lower(), d.AbsoluteSize.Y)
+									end
+									local face = kind == "Roof" and d:FindFirstChild("Face")
+									if face and not wholePx(face.AbsolutePosition.Y - d.AbsolutePosition.Y) then
+										note(d, "roof border", face.AbsolutePosition.Y - d.AbsolutePosition.Y)
+									end
+								elseif kind == "Body" and d.Parent:IsA("GuiObject") then
+									nGrid = nGrid + 1
+									local inset = d.AbsolutePosition.X - d.Parent.AbsolutePosition.X
+									if not wholePx(inset) then
+										note(d, "frame", inset)
+									end
+								elseif kind == "Header" then
+									local plate = d:FindFirstChild("Plate")
+									if plate and U8.shown(plate) then
+										nGrid = nGrid + 1
+										local rim = plate.AbsolutePosition.Y - d.AbsolutePosition.Y
+										if not wholePx(rim) then
+											note(d, "rim", rim)
+										end
+									end
+								end
+							end
+						end
+						T.check(nGrid >= 4 and #soft == 0, fmt("%s: every wood edge, lip, nail, roof, frame and rim whole screen px (%d parts, %d not)", tag, nGrid, #soft),
+							table.concat(soft, "; ", 1, math.min(#soft, 8)))
+					end
 					local clash = {}
 					local function clear(a, aName, b, bName, gap)
 						if a and b then
@@ -7235,6 +7292,42 @@ local function clientScenarios()
 					end
 					table.sort(bad)
 					T.check(#bad == 0, tag .. ": the picked level gold, the open ones stone with a sky PICK, the locked one sunk with LOCKED", table.concat(bad, "; "))
+					-- (U9-8 look) PICK, the picker's one action, is a small sky plank: the sky face on its SkyLip lip (a Frame) in
+					-- the wood edge, where PICKED and LOCKED are flat states with no lip (PICK was drawn like them); a press on its
+					-- row drops the row's parts and thins its lip (the kit's press) and sinks the plank onto its own lip
+					local function lipOf(chip)
+						local lip = chip and chip:FindFirstChild("Lip")
+						return (lip and U8.shown(lip) and lip.AbsoluteSize.Y > 0) and lip or nil
+					end
+					local plankBad = {}
+					for id, word in pairs(want) do
+						local row = gui:FindFirstChild("Level_" .. id, true)
+						local chip = row and row:FindFirstChild("Chip")
+						local lip = lipOf(chip)
+						local ok = (word == "PICK" and lip ~= nil and sameColor(lip.BackgroundColor3, Sign.SkyLip) and chip:FindFirstChild("SignEdge") ~= nil)
+							or (word ~= "PICK" and lip == nil)
+						if not ok then
+							plankBad[#plankBad + 1] = id .. " " .. word .. (lip and " has a lip" or " no lip")
+						end
+					end
+					table.sort(plankBad)
+					T.check(#plankBad == 0, tag .. ": PICK is a sky plank on its SkyLip lip, PICKED and LOCKED flat states", table.concat(plankBad, "; "))
+					local row = gui:FindFirstChild("Level_Easy", true)
+					local chip = row and row:FindFirstChild("Chip")
+					local rowLip, name = row and row:FindFirstChild("Lip"), row and row:FindFirstChild("LevelName")
+					if T.check(row and chip and rowLip and name and lipOf(chip), tag .. ": (setup) the Easy row's parts") then
+						local y0, lip0, chipB0, chipT0, chipLip0 = name.AbsolutePosition.Y, rowLip.AbsoluteSize.Y, U8.rect(chip).B, U8.rect(chip).Y, lipOf(chip).AbsoluteSize.Y
+						Mock.FireSignal(row, "MouseButton1Down", 0, 0)
+						LKC.advance(0.05)
+						local dy, lip1, chipLip1 = name.AbsolutePosition.Y - y0, rowLip.AbsoluteSize.Y, lipOf(chip) and lipOf(chip).AbsoluteSize.Y or 0
+						T.check(dy >= 1.5 and lip1 < lip0 - 1 and math.abs(U8.rect(chip).B - chipB0 - dy) < 0.5 and U8.rect(chip).Y > chipT0 + dy + 1 and chipLip1 < chipLip0 - 1,
+							tag .. ": a press drops the row's parts, thins its lip and sinks PICK onto its lip (its bottom moves with the row's parts)",
+							fmt("parts %+.1f, row lip %.1f -> %.1f, PICK top %+.1f, its lip %.1f -> %.1f", dy, lip0, lip1, U8.rect(chip).Y - chipT0, chipLip0, chipLip1))
+						Mock.FireSignal(row, "MouseButton1Up", 0, 0)
+						LKC.advance(0.05)
+						T.check(math.abs(name.AbsolutePosition.Y - y0) < 0.5 and math.abs(rowLip.AbsoluteSize.Y - lip0) < 0.5 and math.abs(U8.rect(chip).Y - chipT0) < 0.5,
+							tag .. ": ...let go, it rises back")
+					end
 				end
 				U98.close()
 			end

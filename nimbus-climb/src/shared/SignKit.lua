@@ -74,6 +74,8 @@ SignKit.Styles = {
 	Red = { Face = Sign.Red, Lip = Sign.RedLip, Edge = Sign.Wood, Text = Color3.new(1, 1, 1) },
 	Navy = { Face = Sign.Navy, Lip = Sign.NavyLip, Edge = Sign.GoldLip, Text = Sign.Gold }, -- the pitch's sign edge (--signEdge)
 	Off = { Face = Sign.Well, Lip = Sign.Well, Edge = Sign.WellEdge, Text = Sign.TextMuted, Off = true },
+	-- (U9-8 look) a small secondary action in a row (the Sky Obby picker's PICK): the sky face on its SkyLip lip
+	Sky = { Face = Sign.Sky, Lip = Sign.SkyLip, Edge = Sign.Wood, Text = Sign.Text },
 }
 
 local function frame(name, props, parent)
@@ -109,6 +111,10 @@ local function line(parent, colour, thickness)
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	s.LineJoinMode = Enum.LineJoinMode.Miter
 	s.Parent = parent
+	-- (U9-8 look) whole screen px under the scale above it (SignKit.Whole, below)
+	SignKit.Whole(s, function(sc)
+		s.Thickness = SignKit.Px(thickness, sc)
+	end)
 	return s
 end
 
@@ -132,6 +138,89 @@ local function text(name, value, role, size, colour, props, parent)
 	end
 	l.Parent = parent
 	return l
+end
+
+----------------------------------------------------------------------
+-- whole screen pixels (U9-8 look)
+----------------------------------------------------------------------
+
+-- (U9-8 look; the owner's look bar: pixel edges on whole pixels at every screen size) a window or a HUD card lives under a
+-- layout UIScale (0.8 on phones and on a 1280x720 window), so a part sized in design px landed between pixels: a 2 px edge
+-- drew 1.6 px, a 4 px lip 3.2, a 6 px frame 4.8 (soft in a render, 1 or 2 px in Roblox by where it fell). The kit's sizes
+-- (an edge, a lip, the frame, the roof, a nail) now resolve to whole SCREEN px under the scale above them, PixelIcon's
+-- rule for its cells: round(px x scale), never under 1 px. A part whose two edges are a whole number of px apart draws
+-- that many px wherever it sits (Roblox rounds both edges the same way). The tweens on top (a press, a pop, a pulse) are
+-- not counted. SignKit.Px(px, s): the design px of round(px x s) screen px (0 stays 0). SignKit.LayoutScale(obj): the
+-- product of the layout UIScales on obj and above it. SignKit.Whole(obj, fit): calls fit(s) now and again whenever obj
+-- moves (it lands under a ScreenGui) or one of the layout UIScales above it changes (the latest fit given wins)
+local TWEEN_SCALES = { Pop = true, PopScale = true, FxScale = true, Punch = true, Pulse = true, Swell = true, Bounce = true }
+local wholeFits = setmetatable({}, { __mode = "k" }) -- [obj] = fit
+local wholeSets = setmetatable({}, { __mode = "k" }) -- [UIScale] = { [obj] = true }
+local wholeConns = setmetatable({}, { __mode = "k" })
+
+local function layoutScale(obj)
+	local s, scales = 1, {}
+	local cur = obj
+	while cur do
+		if cur:IsA("LayerCollector") then
+			break
+		end
+		if cur:IsA("GuiObject") then
+			local ui = cur:FindFirstChildOfClass("UIScale")
+			if ui and ui.Scale > 0 and not TWEEN_SCALES[ui.Name] then
+				s = s * ui.Scale
+				scales[#scales + 1] = ui
+			end
+		end
+		cur = cur.Parent
+	end
+	return s, scales
+end
+
+function SignKit.LayoutScale(obj)
+	return (layoutScale(obj))
+end
+
+function SignKit.Px(px, s)
+	px = tonumber(px) or 0
+	if px <= 0 then
+		return 0
+	end
+	s = (s and s > 0) and s or 1
+	return math.max(1, math.floor(px * s + 0.5)) / s
+end
+
+local function refitWhole(obj)
+	local fit = wholeFits[obj]
+	if not fit then
+		return
+	end
+	local s, scales = layoutScale(obj)
+	fit(s)
+	for _, scale in ipairs(scales) do
+		local set = wholeSets[scale]
+		if not set then
+			set = setmetatable({}, { __mode = "k" })
+			wholeSets[scale] = set
+			wholeConns[scale] = scale:GetPropertyChangedSignal("Scale"):Connect(function()
+				for o in pairs(set) do
+					refitWhole(o)
+				end
+			end)
+		end
+		set[obj] = true
+	end
+end
+
+function SignKit.Whole(obj, fit)
+	local first = wholeFits[obj] == nil
+	wholeFits[obj] = fit
+	if first then
+		obj.AncestryChanged:Connect(function()
+			refitWhole(obj)
+		end)
+	end
+	refitWhole(obj)
 end
 
 ----------------------------------------------------------------------
@@ -208,17 +297,26 @@ function SignKit.Roof(parent, opts)
 		gable(roof, opts, w, h)
 	else
 		local e = tonumber(opts.EdgePx) or Z.RoofEdge
+		local lipPx = tonumber(opts.LipPx) or Z.RoofLip
 		roof.BackgroundTransparency = 0
 		roof.BackgroundColor3 = opts.Edge or Sign.RoofEdge
 		local face = fill("Face", opts.Color or Sign.Roof, {
 			Position = UDim2.fromOffset(e, e),
 			Size = UDim2.new(1, -2 * e, 1, -2 * e),
 		}, roof)
-		fill("Lip", opts.Lip or Sign.RoofLip, {
+		local lip = fill("Lip", opts.Lip or Sign.RoofLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
-			Size = UDim2.new(1, 0, 0, tonumber(opts.LipPx) or Z.RoofLip),
+			Size = UDim2.new(1, 0, 0, lipPx),
 		}, face)
+		-- (U9-8 look) the sprite, its border and its lip whole screen px under the window's scale (was 14.4 px high at 0.8)
+		SignKit.Whole(roof, function(sc)
+			local ew = SignKit.Px(e, sc)
+			roof.Size = UDim2.fromOffset(SignKit.Px(w, sc), SignKit.Px(h, sc))
+			face.Position = UDim2.fromOffset(ew, ew)
+			face.Size = UDim2.new(1, -2 * ew, 1, -2 * ew)
+			lip.Size = UDim2.new(1, 0, 0, SignKit.Px(lipPx, sc))
+		end)
 	end
 	return place(roof, opts, "Roof")
 end
@@ -344,6 +442,11 @@ function SignKit.Header(parent, opts)
 		Theme.StyleTitle(title) -- (T0) the one title treatment; the Credits' Sign role keeps its approved look
 	end
 	place(head, opts, "Header")
+	-- (U9-8 look) the rim whole screen px under the window's scale (the same rule as the frame's, so the two still match)
+	SignKit.Whole(head, function(sc)
+		head:SetAttribute("Rim", SignKit.Px(rim, sc))
+		placePlate(head, head:GetAttribute("Overhang") == true)
+	end)
 	return head, plate
 end
 
@@ -370,13 +473,23 @@ function SignKit.Body(parentFrame, opts)
 		Size = UDim2.new(1, -2 * inset, 1, -2 * inset),
 	}, parentFrame)
 	local lip = tonumber(opts.Lip) or Z.Lip
+	local lipFrame = nil
 	if lip > 0 then
-		fill("Lip", opts.LipColor or Sign.StoneLip, {
+		lipFrame = fill("Lip", opts.LipColor or Sign.StoneLip, {
 			AnchorPoint = Vector2.new(0, 1),
 			Position = UDim2.new(0, 0, 1, 0),
 			Size = UDim2.new(1, 0, 0, lip),
 		}, body)
 	end
+	-- (U9-8 look) the wood frame round it and its lip whole screen px under the window's scale
+	SignKit.Whole(body, function(sc)
+		local i = SignKit.Px(inset, sc)
+		body.Position = UDim2.fromOffset(i, i)
+		body.Size = UDim2.new(1, -2 * i, 1, -2 * i)
+		if lipFrame then
+			lipFrame.Size = UDim2.new(1, 0, 0, SignKit.Px(lip, sc))
+		end
+	end)
 	if type(opts.Line) == "table" then
 		local li = tonumber(opts.Line.Inset) or 5
 		local ln = frame("Line", {
@@ -401,18 +514,25 @@ function SignKit.PlankState(plank, state)
 	if not face then
 		return
 	end
-	local e = plank:GetAttribute("EdgePx") or Z.Edge
-	local lip = plank:GetAttribute("LipPx") or Z.Lip
+	-- (U9-8 look) every size whole screen px under the window's scale
+	local sc = SignKit.LayoutScale(plank)
+	local e = SignKit.Px(plank:GetAttribute("EdgePx") or Z.Edge, sc)
+	local lip = SignKit.Px(plank:GetAttribute("LipPx") or Z.Lip, sc)
 	if plank:GetAttribute("Off") then
 		state = "Rest"
 	end
 	if state ~= "Hover" and state ~= "Press" then
 		state = "Rest"
 	end
-	local shown = state == "Press" and math.min(lip, Z.PressLip) or lip
-	block.Position = UDim2.fromOffset(0, (state == "Hover" and -Z.Hover) or (state == "Press" and Z.Sink) or 0)
+	local shown = state == "Press" and math.min(lip, SignKit.Px(Z.PressLip, sc)) or lip
+	block.Position = UDim2.fromOffset(0, (state == "Hover" and -SignKit.Px(Z.Hover, sc)) or (state == "Press" and SignKit.Px(Z.Sink, sc)) or 0)
 	face.Position = UDim2.fromOffset(e, e)
 	face.Size = UDim2.new(1, -2 * e, 1, -(2 * e + shown))
+	local under = block:FindFirstChild("Lip")
+	if under then
+		under.Position = UDim2.fromOffset(e, e)
+		under.Size = UDim2.new(1, -2 * e, 1, -2 * e)
+	end
 	plank:SetAttribute("PlankState", state)
 end
 
@@ -503,7 +623,10 @@ function SignKit.Plank(parent, opts)
 		plank.Activated:Connect(opts.Callback)
 	end
 	plank.Parent = parent
-	SignKit.PlankState(plank, "Rest")
+	-- (U9-8 look) drawn again in whole screen px whenever it moves or the window's scale changes
+	SignKit.Whole(plank, function()
+		SignKit.PlankState(plank, plank:GetAttribute("PlankState") or "Rest")
+	end)
 	return place(plank, opts, "Plank")
 end
 
@@ -554,6 +677,23 @@ function SignKit.BlockRow(parent, opts)
 			Size = UDim2.new(1, 0, 0, lipPx),
 		}, face)
 	end
+	-- (U9-8 look) each block's wood edge and lip whole screen px under the scale above the row (the blocks keep their
+	-- design widths, so no window's layout moves)
+	SignKit.Whole(row, function(sc)
+		local ew, lw = SignKit.Px(e, sc), SignKit.Px(lipPx, sc)
+		for i = 1, n do
+			local b = row:FindFirstChild("Block" .. i)
+			local face = b and b:FindFirstChild("Face")
+			if face then
+				face.Position = UDim2.fromOffset(ew, ew)
+				face.Size = UDim2.new(1, -2 * ew, 1, -2 * ew)
+				local lip = face:FindFirstChild("Lip")
+				if lip then
+					lip.Size = UDim2.new(1, 0, 0, lw)
+				end
+			end
+		end
+	end)
 	place(row, opts, "BlockRow")
 	SignKit.FillBlocks(row, 0)
 	return row
@@ -617,6 +757,16 @@ function SignKit.Notice(parent, opts)
 			ZIndex = 2,
 		}, face)
 	end
+	-- (U9-8 look) its wood edge and lip whole screen px under the scale above it
+	local noticeLip = face:FindFirstChild("Lip")
+	SignKit.Whole(notice, function(sc)
+		local ew = SignKit.Px(e, sc)
+		face.Position = UDim2.fromOffset(ew, ew)
+		face.Size = UDim2.new(1, -2 * ew, 1, -2 * ew)
+		if noticeLip then
+			noticeLip.Size = UDim2.new(1, 0, 0, SignKit.Px(Z.NoticeLip, sc))
+		end
+	end)
 	place(notice, opts, "Notice")
 	return notice, face
 end
@@ -639,6 +789,12 @@ function SignKit.Nails(board, opts)
 			ZIndex = z,
 		}, board)
 		nail:SetAttribute("SignKit", "Nail")
+		-- (U9-8 look) the nail head and its inset whole screen px under the scale above the board (3.2 px at 0.8 before)
+		SignKit.Whole(nail, function(sc)
+			local at = SignKit.Px(inset, sc)
+			nail.Position = UDim2.new(side, (side == 0) and at or -at, 0, at)
+			nail.Size = UDim2.fromOffset(SignKit.Px(s, sc), SignKit.Px(s, sc))
+		end)
 		out[i] = nail
 	end
 	return out[1], out[2]

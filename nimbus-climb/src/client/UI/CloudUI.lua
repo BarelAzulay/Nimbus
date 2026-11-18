@@ -442,6 +442,8 @@ CloudUI.SignLooks = {
 	Off = { Face = SIGN.Well, Lip = SIGN.Well, Edge = SIGN.WellEdge, Text = SIGN.TextMuted },
 	Gift = { Face = SIGN.Roof, Lip = SIGN.RoofLip, Edge = SIGN.Wood, Text = SIGN.Text },
 	Navy = { Face = SIGN.Navy, Lip = SIGN.NavyLip, Edge = SIGN.GoldLip, Text = SIGN.Gold },
+	-- (U9-8 look) a small secondary action in a row (the Sky Obby picker's PICK): the sky face on its SkyLip lip
+	Sky = { Face = SIGN.Sky, Lip = SIGN.SkyLip, Edge = SIGN.Wood, Text = SIGN.Text },
 }
 -- a CloudUI.Button style -> its kit B role
 CloudUI.SignRole = { Green = "Primary", Gold = "Selected", Red = "Danger", Pink = "Danger", Blue = "Stone", Gray = "Stone" }
@@ -459,7 +461,8 @@ end
 -- mitred corners) and the lip (Frame "Lip" along its bottom); any UICorner, UIGradient and border UIStroke it had go. A
 -- text object gets the look's ink and a bottom padding over the lip. Calling it again repaints (a state change).
 -- opts: Face, Lip / LipColor, Edge, Text (colour overrides), EdgePx (default 3), LipPx (default 5; 0 = none), Pad (false:
--- no padding). Returns edge, lip.
+-- no padding). Returns edge, lip. (U9-8 look) The edge and the lip are whole screen px under the scale above the block
+-- (SignKit.Whole: round(px x scale); a 2 px edge drew 1.6 px and a 4 px lip 3.2 px under a phone's 0.8)
 function CloudUI.SignBlock(obj, look, opts)
 	opts = opts or {}
 	local name = type(look) == "string" and look or nil
@@ -512,6 +515,12 @@ function CloudUI.SignBlock(obj, look, opts)
 	if name then
 		obj:SetAttribute("SignLook", name)
 	end
+	-- (U9-8 look) the edge and the lip on whole screen px, now and whenever the block moves or its window's scale changes
+	local edgePx = opts.EdgePx or SM.Edge
+	SignKit.Whole(obj, function(sc)
+		edge.Thickness = SignKit.Px(edgePx, sc)
+		lip.Size = UDim2.new(1, pl + pr, 0, SignKit.Px(lipPx, sc))
+	end)
 	return edge, lip
 end
 
@@ -839,7 +848,7 @@ local function signPanel(props)
 		ZIndex = 2,
 	}, body)
 	stone:SetAttribute("SignKit", "Body")
-	frame("Lip", {
+	local stoneLip = frame("Lip", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, SignKit.Sizes.Lip),
@@ -847,6 +856,14 @@ local function signPanel(props)
 		BackgroundColor3 = SIGN.StoneLip,
 		ZIndex = 2,
 	}, stone)
+	-- (U9-8 look) the wood frame and the stone's lip whole screen px under the window's scale (the frame drew 4.8 px at 0.8;
+	-- the header's rim follows the same rule, so the two still match)
+	SignKit.Whole(stone, function(sc)
+		local e = SignKit.Px(edge, sc)
+		stone.Position = UDim2.fromOffset(e, e)
+		stone.Size = UDim2.new(1, -2 * e, 1, -2 * e)
+		stoneLip.Size = UDim2.new(1, 0, 0, SignKit.Px(SignKit.Sizes.Lip, sc))
+	end)
 	local content = frame("Content", {
 		Position = UDim2.new(0, PANEL_PAD, 0, topInset),
 		Size = UDim2.new(1, -2 * PANEL_PAD, 1, -(topInset + PANEL_PAD)),

@@ -59,6 +59,9 @@ local K = {
 	PREF_H = 560, -- (kit-b U9-8) the five rows, the picked one open, with no empty stone under them (was 640)
 	SHORT = 520, -- docked lower than this: no blurb on the picked row (landscape phones, portrait sheets)
 	ROW_H = 66, -- (kit-b U9-8) a level row: name + stars, the info line, the lip
+	ROW_H_SHORT = 60, -- (U9-8 look) a short dock's row (name at 4, info at 30): four rows fit a landscape phone's sheet
+	PRESS = 2, -- (U9-8 look) a pressed row's face drops this far and its lip thins by as much (the kit's press)
+	CHIP_LIP = 4, -- (U9-8 look) the PICK plank's lip (it sinks onto it while its row is pressed)
 	BLURB_H = 46, -- the picked row's blurb (two lines) under its info line
 	ROW_GAP = 6, -- between the rows, and the list's pad at its top and bottom (whole rows at the list's edges)
 	CHIP_W = 122,
@@ -165,27 +168,43 @@ function H.text(parent, name, text, role, size, color, props)
 	return label
 end
 
--- (kit-b U9-8) a square edge with mitred corners (kit B has no rounded blocks)
+-- (kit-b U9-8) a square edge with mitred corners (kit B has no rounded blocks). (U9-8 look) whole screen px under the
+-- dock's scale (SignKit.Whole: a 2 px edge drew 1.6 px at 0.8)
 function H.edge(parent, color, thickness)
-	return Util.Create("UIStroke", {
+	local px = thickness or 2
+	local stroke = Util.Create("UIStroke", {
 		Name = "SignEdge",
 		Color = color,
-		Thickness = thickness or 2,
+		Thickness = px,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		LineJoinMode = Enum.LineJoinMode.Miter,
 		Parent = parent,
 	})
+	SignKit.Whole(stroke, function(sc)
+		stroke.Thickness = SignKit.Px(px, sc)
+	end)
+	return stroke
 end
 
--- a flat lip along the bottom of a square tile (the block's darker underside)
+-- a flat lip along the bottom of a square tile (the block's darker underside); (U9-8 look) whole screen px tall.
+-- H.setLip(lip, px) changes its height later
 function H.lip(parent, color, px)
-	return H.frame(parent, "Lip", {
+	local lip = H.frame(parent, "Lip", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, px or 4),
 		BackgroundTransparency = 0,
 		BackgroundColor3 = color,
 	})
+	H.setLip(lip, px or 4)
+	return lip
+end
+
+function H.setLip(lip, px)
+	lip.Visible = px > 0
+	SignKit.Whole(lip, function(sc)
+		lip.Size = UDim2.new(1, 0, 0, SignKit.Px(px, sc))
+	end)
 end
 
 function H.pad(parent, l, t, r, b)
@@ -209,18 +228,39 @@ function H.readable(color)
 	return color
 end
 
--- a square tag holding a centred label "Text" (a level's state); H.paintTag colours it
+-- a square tag holding a centred label "Text" (a level's state); H.paintTag colours it. (U9-8 look) with a Lip for when
+-- it is the PICK plank
 function H.tag(parent, name, props)
 	local tag = H.frame(parent, name, props)
 	tag.BackgroundTransparency = 0
 	H.edge(tag, SIGN.Wood, 2)
+	H.lip(tag, SIGN.SkyLip, 0)
 	H.text(tag, "Text", "", "Tag", 18, INK, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
 	return tag
 end
 
-function H.paintTag(tag, face, ink)
+-- (U9-8 look) a row's tag by its state. PICK, the picker's one action, is a small sky plank (CloudUI.SignLooks.Sky: the sky
+-- face on its SkyLip lip in the wood edge) that sinks onto its lip while its row is pressed (the face drops K.PRESS, the
+-- lip thins by as much, the bottom stays); PICKED (gold) and LOCKED (the well, muted ink) are states: flat tags, no lip.
+-- Was a flat sky rectangle drawn like the states. `w` the tag's width (design px)
+function H.paintTag(ui, state, w)
+	local tag = ui.Chip
+	local look = CloudUI.SignLooks.Sky
+	local plank = state == "PICK"
+	local face = (state == "PICKED" and SIGN.Gold) or (state == "LOCKED" and SIGN.Well) or look.Face
+	local sink = (plank and ui.Pressed) and K.PRESS or 0
+	local lipPx = plank and (K.CHIP_LIP - sink) or 0
 	tag.BackgroundColor3 = face
-	tag:FindFirstChild("Text").TextColor3 = ink or Theme.TextOn(face)
+	tag.Position = UDim2.new(1, -10, 0, ui.ChipY + sink)
+	tag.Size = UDim2.fromOffset(w, K.CHIP_H - sink)
+	local lip = tag:FindFirstChild("Lip")
+	lip.BackgroundColor3 = look.Lip
+	H.setLip(lip, lipPx)
+	for _, label in ipairs({ ui.ChipText, ui.Mark }) do
+		label.Size = UDim2.new(1, 0, 1, -lipPx)
+		label.TextColor3 = (state == "LOCKED") and MUTED or Theme.TextOn(face)
+	end
+	tag:SetAttribute("Plank", plank)
 end
 
 function H.viewport()
@@ -454,8 +494,12 @@ function H.card(i, id)
 	row.Size = UDim2.new(1, 0, 0, K.ROW_H)
 	row.LayoutOrder = i
 	row.Parent = U.List
+	-- (U9-8 look) the kit's press: the row's parts drop K.PRESS (a padding: the lip stays on the bottom edge) while its lip
+	-- thins by as much (H.refresh), so a tap shows before the server answers
+	local press = H.pad(row, 0, 0, 0, 0)
+	press.Name = "Press"
 	CloudUI.SignBlock(row, "Stone", { EdgePx = 2, LipPx = 4, Pad = false })
-	H.frame(row, "Stripe", { BackgroundTransparency = 0, BackgroundColor3 = color, Position = UDim2.fromOffset(4, 6), Size = UDim2.new(0, 6, 1, -16) })
+	local stripe = H.frame(row, "Stripe", { BackgroundTransparency = 0, BackgroundColor3 = color, Position = UDim2.fromOffset(4, 6), Size = UDim2.new(0, 6, 1, -16) })
 	local face = H.readable(color)
 	local badge = H.frame(row, "Badge", { BackgroundTransparency = 0, BackgroundColor3 = face, Position = UDim2.fromOffset(16, 8), Size = UDim2.fromOffset(42, 42) })
 	H.edge(badge, SIGN.Wood, 2)
@@ -488,9 +532,59 @@ function H.card(i, id)
 		H.safe("pick", ObbyController.Pick, id)
 	end)
 	local ui = { Id = id, Root = row, Name = name, Blurb = blurb, Info = info, Chip = chip, ChipText = chip:FindFirstChild("Text"), Mark = mark, Color = color,
-		StarCount = d.Stars }
+		StarCount = d.Stars, Stripe = stripe, Badge = badge, Press = press, Pressed = false, ChipY = 6 }
+	local function setPressed(on)
+		if ui.Pressed ~= on then
+			ui.Pressed = on
+			H.paintPress(ui)
+		end
+	end
+	row.MouseButton1Down:Connect(function()
+		setPressed(row:GetAttribute("Unlocked") ~= false)
+	end)
+	row.MouseButton1Up:Connect(function()
+		setPressed(false)
+	end)
+	row.MouseLeave:Connect(function()
+		setPressed(false)
+	end)
+	-- (a finger that lifts or slides into a scroll never produces MouseButton1Up)
+	row.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			setPressed(false)
+		end
+	end)
 	H.stars(ui, true)
 	return ui
+end
+
+-- (U9-8 look) a row's parts for its height: a short dock's 60 px row (name at 4, info at 30) or the 66 px one (name at 6,
+-- info at 34); the badge centred on the face above the lip, the tag beside the name
+function H.rowGeometry(ui, short)
+	local h = short and K.ROW_H_SHORT or K.ROW_H
+	local nameY, infoY = short and 4 or 6, short and 30 or 34
+	ui.Name.Position = UDim2.fromOffset(70, nameY)
+	ui.Info.Position = UDim2.fromOffset(70, infoY)
+	ui.Blurb.Position = UDim2.fromOffset(70, infoY + 26)
+	ui.Badge.Position = UDim2.fromOffset(16, math.floor((h - 4 - 42) / 2))
+	ui.Stripe.Position = UDim2.fromOffset(4, nameY)
+	ui.Stripe.Size = UDim2.new(0, 6, 1, -(2 * nameY + 4))
+	ui.ChipY = nameY
+	return h
+end
+
+-- (U9-8 look) the kit's press on a row: its parts drop K.PRESS, its lip thins by as much, and a PICK plank sinks onto
+-- its own lip (H.paintTag)
+function H.paintPress(ui)
+	local down = ui.Pressed and K.PRESS or 0
+	ui.Press.PaddingTop = UDim.new(0, down)
+	local lip = ui.Root:FindFirstChild("Lip")
+	if lip and lip.Visible then
+		lip.Size = UDim2.new(1, 0, 0, SignKit.Px(4 - down, SignKit.LayoutScale(lip)))
+	end
+	if ui.TagState then
+		H.paintTag(ui, ui.TagState, ui.Chip.Size.X.Offset)
+	end
 end
 
 -- (kit-b U9-8) a row's name and stars get all the room left of the tag, and the tags are the full word where every row's
@@ -519,7 +613,8 @@ end
 
 function H.fitName(ui, rowW, compact, state, face, ink)
 	local chipW = compact and K.CHIP_SMALL or K.CHIP_W
-	ui.Chip.Size = UDim2.fromOffset(chipW, K.CHIP_H)
+	ui.TagState = state
+	H.paintTag(ui, state, chipW)
 	ui.Name.Size = UDim2.new(0, math.max(40, rowW - 70 - chipW - 18), 0, 28)
 	ui.ChipText.Visible = not compact
 	ui.Mark.Visible = compact
@@ -530,7 +625,7 @@ end
 -- row that ends at the list's edge is followed by the gap (never 2 px of the next row's lip); the picked row is brought
 -- into view once after opening (CanvasPosition is screen px: the design px times the dock's scale)
 function H.layoutList(heights, picked)
-	local avail = math.max(K.ROW_H + 2 * K.ROW_GAP, U.Holder.Size.Y.Offset - 82 - K.TOP_H)
+	local avail = math.max((S.Short and K.ROW_H_SHORT or K.ROW_H) + 2 * K.ROW_GAP, U.Holder.Size.Y.Offset - 82 - K.TOP_H)
 	local tops, y = {}, K.ROW_GAP
 	for i, h in ipairs(heights) do
 		tops[i] = y
@@ -539,7 +634,9 @@ function H.layoutList(heights, picked)
 	local total = y
 	local listH = total
 	if total > avail then
-		-- the most rows from the top that fit, each with its gap under it
+		-- the most rows from the top that fit, each with its gap under it. (U9-8 look) the list then ends in the MIDDLE of
+		-- the last gap: a row's wood edge is drawn outside it, so a list ending at the next row's top showed that edge as a
+		-- brown line along the list's bottom (and, scrolled, the row above's along its top)
 		listH = K.ROW_GAP
 		for _, h in ipairs(heights) do
 			if listH + h + K.ROW_GAP > avail then
@@ -547,6 +644,7 @@ function H.layoutList(heights, picked)
 			end
 			listH = listH + h + K.ROW_GAP
 		end
+		listH = listH - K.ROW_GAP / 2
 	end
 	local pad = CloudUI.Metrics.SignPagePad
 	U.List.Size = UDim2.new(1, -2 * pad, 0, listH)
@@ -554,7 +652,7 @@ function H.layoutList(heights, picked)
 		S.ScrollTo = nil
 		local want = 0
 		if total > listH and picked and tops[picked] then
-			want = math.min(total - listH, tops[picked] - K.ROW_GAP)
+			want = math.min(total - listH, tops[picked] - K.ROW_GAP / 2) -- (U9-8 look: from the middle of the gap above it)
 		end
 		local scale = (U.Dock.Rect and tonumber(U.Dock.Rect.scale)) or 1
 		U.List.CanvasPosition = Vector2.new(0, math.max(0, want) * scale)
@@ -592,7 +690,7 @@ function H.refresh()
 		end
 		-- the picked row opens to show its blurb (two lines; a short screen keeps every row one height)
 		local withBlurb = isPicked and not short and ui.Blurb.Text ~= ""
-		heights[i] = K.ROW_H + (withBlurb and K.BLURB_H or 0)
+		heights[i] = H.rowGeometry(ui, short) + (withBlurb and K.BLURB_H or 0)
 		pickedIndex = isPicked and i or pickedIndex
 		ui.Root.Size = UDim2.new(1, 0, 0, heights[i])
 		ui.Blurb.Visible = withBlurb
@@ -604,7 +702,6 @@ function H.refresh()
 			ui.Info.TextColor3 = MUTED
 			ui.ChipText.Text = "LOCKED"
 			PixelIcon.Mark(ui.ChipText, nil)
-			H.paintTag(ui.Chip, SIGN.Well, MUTED)
 			H.fitName(ui, rowW, compact, "LOCKED", SIGN.Well, MUTED)
 		else
 			ui.Info.Text = (#parts > 0) and table.concat(parts, "  " .. G.Dot .. "  ") or "Not beaten yet"
@@ -612,7 +709,6 @@ function H.refresh()
 			ui.Info.TextColor3 = INK
 			ui.ChipText.Text = isPicked and "PICKED" or "PICK"
 			PixelIcon.Mark(ui.ChipText, isPicked and "check" or nil) -- (kit-b U7b)
-			H.paintTag(ui.Chip, isPicked and SIGN.Gold or SIGN.Sky)
 			H.fitName(ui, rowW, compact, ui.ChipText.Text, isPicked and SIGN.Gold or SIGN.Sky)
 		end
 		CloudUI.SignBlock(ui.Root, open and "Stone" or "Off", {
@@ -622,6 +718,10 @@ function H.refresh()
 			LipPx = 4,
 			Pad = false,
 		})
+		if not open then
+			ui.Pressed = false -- (a locked row has no press)
+		end
+		H.paintPress(ui)
 		ui.Name.TextColor3 = open and INK or MUTED
 		H.stars(ui, open)
 		ui.Root:SetAttribute("Unlocked", open)
@@ -650,9 +750,10 @@ function H.buildToast()
 	U.ToastGui = gui
 	local card = H.frame(gui, "UnlockToast", { Size = UDim2.fromOffset(K.TOAST_W, K.TOAST_H), Visible = false })
 	-- (a portrait phone: K.TOAST_NARROW_W wide, K.TOAST_NARROW_H high, so it fits right of the menu column: H.toastSize)
+	-- (U9-8 look) the read scale first, so the card's edge and lip (SignKit.Whole) follow it to whole screen px
+	U.ToastScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 1, Parent = card })
 	CloudUI.SignBlock(card, "Stone", { EdgePx = 3, LipPx = 5, Pad = false })
 	U.Toast = card
-	U.ToastScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 1, Parent = card })
 	-- the obby's mountain on a gold tile (the window's own icon), two nails holding the board up
 	local tile = H.frame(card, "IconTile", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, Position = UDim2.fromOffset(14, 11), Size = UDim2.fromOffset(45, 45) })
 	U.ToastTile = tile
