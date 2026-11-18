@@ -23,19 +23,24 @@
 --     clear in the middle; opts.Image, the hatch_rays id: one ImageLabel "Fan" in their box, tinted, instead):
 --     rays:Place(x, y, d), rays:Flash(alpha, seconds) (fade in, then rest at `alpha`), rays:Recolor(rarity),
 --     rays:Spin(on) (an endless Rotation tween, 12 s a turn; still on Low), rays:Hide(), rays:Destroy()
---   HatchFx.Shock(parent, rarity [, opts]) -> shock   a round Frame "Shock" with a 6 px UIStroke: shock:Play(x, y, d,
---     seconds, color) grows it 0 -> d while its stroke fades, then hides it; shock:Hide(), shock:Destroy()
---   HatchFx.Cracks(egg, rarity, step) -> Frame "Cracks" on the egg: 6 thin rotated glowing frames (Seg1..5 of the
---     zigzag, step 1, 3 or 5 of them shown, and a Branch at 5) in shares of the egg, so they follow its size, shakes and
---     scale
---   HatchFx.Leaks(egg, rarity, step) -> Frame "Leaks" on the egg: up to 5 tapered beams of light (Leak1..5) from the
---     crack's corners, as many and as long as the step
+--   (U9-2b look review 2, the owner's look bar of 2026-11-17: pixel shapes, no smooth round parts) the shock, the cracks,
+--   the leaks and the cloud ring are drawn in square pixels on whole px (opts.Unit: the screen's pixel, 3 px PC, 2 a
+--   phone / a 720p PC), never turned or blended:
+--   HatchFx.Shock(parent, rarity [, opts]) -> shock   a square Frame "Shock" in a mitred UIStroke 2 units thick:
+--     shock:Play(x, y, d, seconds, color) grows it 0 -> d on whole px (its NumberValue "Grow") while its stroke fades,
+--     then hides it; shock:Hide(), shock:Destroy()
+--   HatchFx.Cracks(egg, rarity, step) -> Frame "Cracks" on the egg: the zigzag as staircases of square pixels on the
+--     egg's crack grid (Seg1..5 holders of "Px<n>" squares, step 1, 3 or 5 of them shown, and a Branch at 5), in shares
+--     of the egg so they follow its size, shakes and push-in; flat light, no Rotation, no gradient
+--   HatchFx.Leaks(egg, rarity, step) -> Frame "Leaks" on the egg: up to 5 straight pixel beams (Leak1..5, each Part1..3
+--     a step more see-through) up or down from the crack's corners, as many and as long as the step
 --   HatchFx.CloudRing(parent, color [, opts]) -> ring   (the owner's pick: Gemini's cloud ring) a CanvasGroup
---     "CloudRing" of 10 round cloud puffs with a UIScale "Swell": ring:Place(x, y, d), ring:Show(seconds), ring:Spin(on)
---     (an endless Rotation tween, 24 s a turn; still on Low), ring:Pulse(color, seconds) (tinted the rarity colour at
---     once, swells sharply to 1.45 and fades: the burst), ring:Tint(color, seconds) (roll-look, spec 16.15: Gemini's shake
---     tweak, GroupColor3 tweened half way from its pale tint to `color`; 0 s at once; the burst's Pulse ends it),
---     ring:Hide(), ring:Destroy()
+--     "CloudRing" of 8 stepped pixel puffs (Puff<i> > Row1..3 + Shade: the loading screen's cloud) with NumberValues
+--     "Swell" and "Bob": ring:Place(x, y, d), ring:Show(seconds), ring:Spin(on) (a 2-frame bob: every other puff one
+--     unit up and back, RING_BOB s a frame; no Rotation; still on Low), ring:Pulse(color, seconds) (tinted the rarity
+--     colour at once, the puffs pushed out to 1.45 x the circle and faded: the burst), ring:Tint(color, seconds)
+--     (roll-look, spec 16.15: Gemini's shake tweak, GroupColor3 tweened half way from its pale tint to `color`; 0 s at
+--     once; the burst's Pulse ends it), ring:Hide(), ring:Destroy()
 --   HatchFx.Stars(parent, n) -> { Frame, Destroy }   a Frame "Stars" with n small stars, each twinkling (an endless,
 --     offset alpha tween); Destroy stops the tweens and removes the frame
 --   HatchFx.Dim(on [, seconds]) -> effects   High graphics only: on = the client-only Lighting.NimbusHatchBlur
@@ -49,6 +54,8 @@
 --     and the Lighting effects on (Dim)
 --   opts.Track (Rays / Shock / CloudRing): a weak-keyed table that also gets every tween the handle plays (the egg
 --     stage counts and cancels them with its own)
+--   (kit-b U9-2b) every effect's root (Sparks, Stars, Rays, Shock, CloudRing) carries the attribute Art = "Hatch": the
+--     stage's art keeps its own paint (soft rays, round puffs and sparks), the kit B walks read it as illustration
 --
 -- Positions: the holder's local px are the screen px divided by the UIScale(s) above it (UIScale shrinks the design
 -- canvas on a phone). Plain Lua 5.1-compatible syntax only.
@@ -87,11 +94,14 @@ local K = {
 	},
 	RAY_TURN = 12, -- s a turn
 	RING_TURN = 24,
-	RING_PUFFS = 10,
-	RING_R = 0.4, -- (roll-look) the puffs' circle, a share of the ring's size (inside the CanvasGroup: it clips); their
-	-- sizes (big, small) and transparencies
+	-- (U9-2b look review 2) 8 stepped pixel puffs (the finding's 6 to 8: the x3 budget), a 2-frame bob RING_BOB s a frame
+	-- (no turn); the burst's swell moves the puffs out and grows the canvas with them (never clipped)
+	RING_PUFFS = 8,
+	RING_BOB = 0.45,
+	RING_R = 0.4, -- (roll-look) the puffs' circle, a share of the ring's size; their widths (big, small) and transparencies
 	RING_PUFF = { 0.14, 0.095 },
 	RING_PUFF_A = { 0.55, 0.66 },
+	RING_SHADE = Color3.fromRGB(200, 212, 236), -- a puff's pale underside (the loading screen's cloud shade)
 	RING_REST = 0.2, -- the ring's transparency at rest
 	RING_TINT = Color3.fromRGB(226, 234, 255),
 	SWELL = 1.45,
@@ -101,7 +111,10 @@ local K = {
 	ZIG = { { 0.12, 0.58 }, { 0.24, 0.66 }, { 0.34, 0.55 }, { 0.45, 0.67 }, { 0.55, 0.56 }, { 0.66, 0.66 }, { 0.76, 0.55 }, { 0.88, 0.62 } },
 	SEGS = { [1] = { 4 }, [3] = { 3, 4, 5 }, [5] = { 2, 3, 4, 5, 6 } },
 	BRANCH = { 0.45, 0.67, 0.42, 0.8 },
-	CRACK_W = 0.028, -- a segment's thickness, a share of the egg's height
+	-- (U9-2b look review 2) the crack's pixel grid: a square cell CRACK_CELL of the egg's height a side (the voxel egg's
+	-- own block size); a leak's stepped parts' transparencies, from the crack outward
+	CRACK_CELL = 0.04,
+	LEAK_A = { 0.2, 0.45, 0.7 },
 }
 HatchFx.Metrics = K
 
@@ -545,6 +558,7 @@ function HatchFx.Pool(parent, n, z, opts)
 	holder.Size = UDim2.fromScale(1, 1)
 	holder.ZIndex = z or 20
 	holder.Parent = parent
+	holder:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
 	local pool = setmetatable({
 		Holder = holder,
 		N = math.max(1, math.floor(tonumber(n) or K.N)),
@@ -571,6 +585,7 @@ function HatchFx.Stars(parent, n)
 	holder.BorderSizePixel = 0
 	holder.Size = UDim2.fromScale(1, 1)
 	holder.Parent = parent
+	holder:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
 	local tweens = {}
 	n = math.max(0, math.floor(tonumber(n) or 0))
 	for i = 1, n do
@@ -686,6 +701,7 @@ function HatchFx.Rays(parent, rarity, opts)
 		Name = "Rays", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), GroupTransparency = 1,
 		Visible = false, ZIndex = opts.ZIndex or 1,
 	}, parent)
+	holder:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
 	local color = rayColor(rarity)
 	if type(opts.Image) == "string" then
 		-- (roll-look review round 1, spec 16.15 "Fallbacks") the hatch_rays fan: one ImageLabel in the wedges' box, tinted
@@ -732,13 +748,22 @@ function HatchFx.Rays(parent, rarity, opts)
 	return h
 end
 
+-- (U9-2b look review 2, the owner's look bar: no smooth round shapes) the shock is a square frame in a mitred stroke 2
+-- units thick (opts.Unit: the screen's pixel, 3 px PC / 2 a phone), growing 0 -> d on whole px (an even size centred on a
+-- whole px, driven by its NumberValue "Grow") while its stroke fades
 function HatchFx.Shock(parent, rarity, opts)
 	opts = type(opts) == "table" and opts or {}
 	local ring = new("Frame", {
 		Name = "Shock", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = opts.ZIndex or 3,
 	}, parent)
-	new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, ring)
-	local stroke = new("UIStroke", { Color = lighter(colorOf(rarity, 1), 0.1), Thickness = 6, Transparency = 0 }, ring)
+	ring:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
+	local unit = math.max(1, math.floor(tonumber(opts.Unit) or 3))
+	local stroke = new("UIStroke", { Color = lighter(colorOf(rarity, 1), 0.1), Thickness = 2 * unit, Transparency = 0, LineJoinMode = Enum.LineJoinMode.Miter }, ring)
+	local grow = new("NumberValue", { Name = "Grow", Value = 0 }, ring)
+	grow:GetPropertyChangedSignal("Value"):Connect(function()
+		local d = 2 * math.floor(grow.Value / 2)
+		ring.Size = UDim2.fromOffset(d, d)
+	end)
 	local h = handle(ring, 12, opts)
 	h.Stroke = stroke
 	h.Token = 0
@@ -750,12 +775,13 @@ function HatchFx.Shock(parent, rarity, opts)
 		self.Token = self.Token + 1
 		local mine = self.Token
 		seconds = math.max(0.05, seconds or 0.35)
-		placeAt(f, x, y, 0)
+		placeAt(f, math.floor(x), math.floor(y), 0)
+		grow.Value = 0
 		f.Visible = true
 		self.Stroke.Color = color or self.Stroke.Color
 		self.Stroke.Transparency = 0
 		local out = TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		self:_play("Grow", f, out, { Size = UDim2.fromOffset(d, d) })
+		self:_play("Grow", grow, out, { Value = d })
 		self:_play("Fade", self.Stroke, out, { Transparency = 1 })
 		task.delay(seconds, function()
 			if self.Token == mine and self.Frame and self.Frame.Parent then
@@ -766,40 +792,133 @@ function HatchFx.Shock(parent, rarity, opts)
 	return h
 end
 
+-- (U9-2b look review 2) one stepped pixel cloud (the kit's, the loading screen's puff): Row1..3 narrowing upward (each
+-- Inset units in on both sides from the one under it) on a pale Shade row, every size whole units u; n = its width in units
+local function puffParts(puff, alpha, z)
+	for r = 1, 3 do
+		new("Frame", { Name = "Row" .. r, BorderSizePixel = 0, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = alpha, ZIndex = z }, puff)
+	end
+	new("Frame", { Name = "Shade", BorderSizePixel = 0, BackgroundColor3 = K.RING_SHADE, BackgroundTransparency = alpha, ZIndex = z }, puff)
+end
+
+-- a puff's size for n units of u px: { W, H, Row, Inset, Shade (px), Rows (2 or 3) }: a flat cloud (about 3 : 1, the
+-- loading screen's), its top row dropped when it would be under 3 units wide (a small x3 ring's puff: 2 rows, not a cone)
+local function puffSize(n, u)
+	local row = math.max(2, math.floor(n * 0.11 + 0.5))
+	local inset = math.max(1, math.floor(n * 0.16 + 0.5))
+	local shade = math.max(1, math.floor(row * 0.4 + 0.5))
+	local rows = (n - 4 * inset >= 3) and 3 or 2
+	return { W = n * u, H = (rows * row + shade) * u, Row = row * u, Inset = inset * u, Shade = shade * u, Rows = rows }
+end
+
+local function layoutPuff(puff, sz)
+	puff.Size = UDim2.fromOffset(sz.W, sz.H)
+	for r = 1, 3 do
+		local row = puff:FindFirstChild("Row" .. r)
+		if row then
+			row.Visible = r <= sz.Rows
+			row.Position = UDim2.fromOffset((r - 1) * sz.Inset, (sz.Rows - r) * sz.Row)
+			row.Size = UDim2.fromOffset(math.max(0, sz.W - 2 * (r - 1) * sz.Inset), sz.Row)
+		end
+	end
+	local shade = puff:FindFirstChild("Shade")
+	if shade then
+		shade.Position = UDim2.fromOffset(0, sz.Rows * sz.Row)
+		shade.Size = UDim2.fromOffset(sz.W, sz.Shade)
+	end
+end
+
 function HatchFx.CloudRing(parent, color, opts)
 	opts = type(opts) == "table" and opts or {}
 	local ring = new("CanvasGroup", {
 		Name = "CloudRing", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), GroupTransparency = 1,
 		GroupColor3 = K.RING_TINT, Visible = false, ZIndex = opts.ZIndex or 1,
 	}, parent)
-	local swell = new("UIScale", { Name = "Swell", Scale = 1 }, ring)
+	ring:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) the stage's art
+	-- (U9-2b look review 2) the swell and the bob are NumberValues: the puffs move on whole px, the ring never scales or turns
+	local swell = new("NumberValue", { Name = "Swell", Value = 1 }, ring)
+	local bob = new("NumberValue", { Name = "Bob", Value = 0 }, ring)
 	-- the puffs: white (GroupColor3 tints them), on a circle RING_R of the ring's size out, big and small in turn and see-
-	-- through (roll-look, spec 16.15: the pitch mock's cloudRing, a halo of soft cloud bubbles round the egg rather than
-	-- big blobs behind it), a little uneven so it reads as cloud, not a gear
+	-- through (roll-look, spec 16.15: the pitch mock's cloudRing, a halo of cloud puffs round the egg rather than big blobs
+	-- behind it), a little uneven so it reads as cloud, not a gear; (U9-2b look review 2) each a stepped pixel cloud
 	for i = 1, K.RING_PUFFS do
-		local a = (i - 1) / K.RING_PUFFS * 2 * math.pi
 		local big = i % 2 == 1
-		local s = (big and K.RING_PUFF[1] or K.RING_PUFF[2]) * (1 + 0.12 * ((i * 0.618034) % 1))
-		local r = K.RING_R + 0.015 * (((i + 3) * 0.381966) % 1)
-		local puff = new("Frame", {
-			Name = "Puff" .. i, BorderSizePixel = 0, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = big and K.RING_PUFF_A[1] or K.RING_PUFF_A[2],
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5 + math.cos(a) * r, 0.5 + math.sin(a) * r), Size = UDim2.fromScale(s, s),
-			ZIndex = ring.ZIndex,
-		}, ring)
-		new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, puff)
+		local puff = new("Frame", { Name = "Puff" .. i, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = ring.ZIndex }, ring)
+		puff:SetAttribute("Big", big)
+		puffParts(puff, big and K.RING_PUFF_A[1] or K.RING_PUFF_A[2], ring.ZIndex)
 	end
 	local h = handle(ring, K.RING_TURN, opts)
-	h.Swell = swell
+	h.SwellV, h.BobV = swell, bob
 	h.Color = color
+	h.Unit = math.max(1, math.floor(tonumber(opts.Unit) or 3))
+	h.D, h.Frame2 = 0, false
+	-- the puffs at the ring's size d, its swell and the bob's frame: every puff's box on whole px of its CanvasGroup
+	function h:Layout()
+		local f = self.Frame
+		if not f or not f.Parent or self.D <= 0 then
+			return
+		end
+		local d, u = self.D, self.Unit
+		-- the canvas: the ring's size at rest (inside the screen, as before), grown with the swell (the old UIScale's reach)
+		local box = 2 * math.floor(d * math.max(1, swell.Value) / 2 + 0.5)
+		placeAt(f, self.X, self.Y, box)
+		for i = 1, K.RING_PUFFS do
+			local puff = f:FindFirstChild("Puff" .. i)
+			if puff then
+				local a = (i - 1) / K.RING_PUFFS * 2 * math.pi
+				local big = puff:GetAttribute("Big") == true
+				local share = (big and K.RING_PUFF[1] or K.RING_PUFF[2]) * (1 + 0.12 * ((i * 0.618034) % 1))
+				local n = math.max(6, 2 * math.floor(share * d / (2 * u) + 0.5))
+				local sz = puffSize(n, u)
+				local r = (K.RING_R + 0.015 * (((i + 3) * 0.381966) % 1)) * d * swell.Value
+				local lift = (self.Frame2 and (i % 2 == 0)) and u or 0
+				layoutPuff(puff, sz)
+				puff.Position = UDim2.fromOffset(math.floor(box / 2 + math.cos(a) * r - sz.W / 2), math.floor(box / 2 + math.sin(a) * r - sz.H / 2) - lift)
+			end
+		end
+	end
+	function h:Place(x, y, d)
+		local f = self.Frame
+		if not f or not f.Parent then
+			return
+		end
+		self.D = math.max(0, d)
+		self.X, self.Y = math.floor(x), math.floor(y) -- (its centre on a whole px; Layout keeps the size even)
+		self:Layout()
+	end
+	swell:GetPropertyChangedSignal("Value"):Connect(function()
+		h:Layout()
+	end)
+	bob:GetPropertyChangedSignal("Value"):Connect(function()
+		local two = bob.Value >= 0.5
+		if two ~= h.Frame2 then
+			h.Frame2 = two
+			h:Layout()
+		end
+	end)
 	function h:Show(seconds)
 		local f = self.Frame
 		if not f or not f.Parent then
 			return
 		end
 		f.Visible = true
-		self.Swell.Scale = 1
+		swell.Value = 1
 		f.GroupColor3 = K.RING_TINT:Lerp(self.Color or K.RING_TINT, 0.12)
 		self:_play("Fade", f, TweenInfo.new(math.max(0.01, seconds or 0.3), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { GroupTransparency = K.RING_REST })
+	end
+	-- (U9-2b look review 2) the ring's motion is a 2-frame bob (as SignKit.Spin flips its propellers): every other puff one
+	-- unit up for RING_BOB s, then back; never a Rotation (a turned frame goes soft). Still High only
+	function h:Spin(on)
+		if on and high() and self.Frame and self.Frame.Parent then
+			if not (self.Tw.Spin and self.Tw.Spin.PlaybackState == Enum.PlaybackState.Playing) then
+				bob.Value = 0
+				self:_play("Spin", bob, TweenInfo.new(2 * K.RING_BOB, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), { Value = 1 })
+			end
+		else
+			cancel(self.Tw.Spin)
+			self.Tw.Spin = nil
+			bob.Value = 0
+		end
 	end
 	function h:Pulse(c, seconds)
 		local f = self.Frame
@@ -812,7 +931,7 @@ function HatchFx.CloudRing(parent, color, opts)
 		f.Visible = true
 		f.GroupColor3 = c or self.Color or K.RING_TINT
 		f.GroupTransparency = 0
-		self:_play("Swell", self.Swell, TweenInfo.new(math.min(0.2, seconds), Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = K.SWELL })
+		self:_play("Swell", swell, TweenInfo.new(math.min(0.2, seconds), Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Value = K.SWELL })
 		self:_play("Fade", f, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { GroupTransparency = 1 })
 	end
 	-- (roll-look, spec 16.15) Gemini's shake tweak: the ring turns half way to the rarity colour
@@ -833,16 +952,32 @@ function HatchFx.CloudRing(parent, color, opts)
 	return h
 end
 
--- a thin glowing segment from (x1, y1) to (x2, y2), shares of the egg (the egg is 0.8 x as wide as it is tall)
-local function segment(parent, name, x1, y1, x2, y2, color, z, k)
-	local dx, dy = (x2 - x1), (y2 - y1) / 0.8 -- in egg widths
-	local len = math.sqrt(dx * dx + dy * dy)
-	local seg = new("Frame", {
-		Name = name, BorderSizePixel = 0, BackgroundColor3 = color, BackgroundTransparency = 0, AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale((x1 + x2) / 2, (y1 + y2) / 2), Size = UDim2.fromScale(len + (k or K.CRACK_W), k or K.CRACK_W),
-		Rotation = math.deg(math.atan2(dy, dx)), Visible = false, ZIndex = z,
-	}, parent)
-	return seg
+-- (U9-2b look review 2) a crack segment from (x1, y1) to (x2, y2) (shares of the egg; the egg is 0.8 x as wide as it is
+-- tall) as a staircase of square pixels on the egg's crack grid (CRACK_CELL of its height a side): a holder `name` with
+-- "Px1..n", one square per grid cell the line crosses (a cell another segment of the zigzag already has is skipped). No
+-- Rotation, no gradient: flat light through the shell
+local function segment(parent, name, x1, y1, x2, y2, color, z, taken)
+	local ch = K.CRACK_CELL
+	local cw = ch / 0.8
+	local holder = new("Frame", { Name = name, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = z }, parent)
+	local ax, ay = math.floor(x1 / cw + 0.5), math.floor(y1 / ch + 0.5)
+	local bx, by = math.floor(x2 / cw + 0.5), math.floor(y2 / ch + 0.5)
+	local steps = math.max(math.abs(bx - ax), math.abs(by - ay), 1)
+	local n = 0
+	for s = 0, steps do
+		local cx = math.floor(ax + (bx - ax) * s / steps + 0.5)
+		local cy = math.floor(ay + (by - ay) * s / steps + 0.5)
+		local key = cx .. ":" .. cy
+		if not taken[key] then
+			taken[key] = true
+			n = n + 1
+			new("Frame", {
+				Name = "Px" .. n, BorderSizePixel = 0, BackgroundColor3 = color, BackgroundTransparency = 0,
+				Position = UDim2.fromScale((cx - 0.5) * cw, (cy - 0.5) * ch), Size = UDim2.fromScale(cw, ch), ZIndex = z,
+			}, holder)
+		end
+	end
+	return holder
 end
 
 local function eggLayer(egg, name, z)
@@ -861,18 +996,15 @@ function HatchFx.Cracks(egg, rarity, step)
 	local holder = egg:FindFirstChild("Cracks")
 	if not holder then
 		holder = eggLayer(egg, "Cracks", z)
-		local glow = lighter(colorOf(rarity, 1), 0.35)
-		-- a white core with the rarity's light on both edges
-		local across = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 0.7) })
-		local core = ColorSequence.new({ ColorSequenceKeypoint.new(0, glow), ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(1, glow) })
+		-- (U9-2b look review 2) one flat light: white with a breath of the rarity's colour (no glow gradient)
+		local light = lighter(colorOf(rarity, 1), 0.7)
+		local taken = {}
 		for i = 1, 5 do
 			local a, b = K.ZIG[i + 1], K.ZIG[i + 2]
-			local seg = segment(holder, "Seg" .. i, a[1], a[2], b[1], b[2], Color3.new(1, 1, 1), z)
-			new("UIGradient", { Name = "Glow", Rotation = 90, Transparency = across, Color = core }, seg)
+			segment(holder, "Seg" .. i, a[1], a[2], b[1], b[2], light, z, taken)
 		end
 		local br = K.BRANCH
-		local seg = segment(holder, "Branch", br[1], br[2], br[3], br[4], Color3.new(1, 1, 1), z, K.CRACK_W * 0.8)
-		new("UIGradient", { Name = "Glow", Rotation = 90, Transparency = across, Color = core }, seg)
+		segment(holder, "Branch", br[1], br[2], br[3], br[4], light, z, taken)
 	end
 	step = math.max(0, math.floor(tonumber(step) or 0))
 	local show = {}
@@ -893,6 +1025,9 @@ function HatchFx.Cracks(egg, rarity, step)
 	return holder
 end
 
+-- (U9-2b look review 2) a leak is a pixel ray (no Rotation, no gradient): up to #LEAK_A single crack cells stepping out
+-- from a corner of the crack, up from a high corner (down from a low one), straight or one cell aside a step (the old
+-- fan), each a step more see-through (LEAK_A): 1 cell at step 1, 2 at 3, 3 at 5
 function HatchFx.Leaks(egg, rarity, step)
 	if typeof(egg) ~= "Instance" then
 		return nil
@@ -903,31 +1038,35 @@ function HatchFx.Leaks(egg, rarity, step)
 		holder = eggLayer(egg, "Leaks", z)
 		local glow = lighter(colorOf(rarity, 1), 0.45)
 		for i = 1, 5 do
-			local beam = new("Frame", {
-				Name = "Leak" .. i, BorderSizePixel = 0, BackgroundColor3 = glow, BackgroundTransparency = 0.15, AnchorPoint = Vector2.new(0.5, 0.5),
-				Visible = false, ZIndex = z,
-			}, holder)
-			new("UIGradient", { Name = "Taper", Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) }) }, beam)
+			local beam = new("Frame", { Name = "Leak" .. i, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = z }, holder)
+			for k = 1, #K.LEAK_A do
+				new("Frame", { Name = "Part" .. k, BorderSizePixel = 0, BackgroundColor3 = glow, BackgroundTransparency = K.LEAK_A[k], ZIndex = z }, beam)
+			end
 		end
 	end
 	step = math.max(0, math.floor(tonumber(step) or 0))
 	local n = math.min(5, step)
-	local len = 0.08 + 0.035 * step -- egg heights
+	local parts = step >= 5 and 3 or (step >= 3 and 2 or 1)
+	local ch = K.CRACK_CELL
+	local cw = ch / 0.8
 	for i = 1, 5 do
 		local beam = holder:FindFirstChild("Leak" .. i)
 		if beam then
 			local p = K.ZIG[i + 2]
 			beam.Visible = i <= n
 			if i <= n then
-				-- up from a high corner, down from a low one, fanned a little
 				local up = p[2] < 0.61
-				local ang = (up and -90 or 90) + ((i % 3) - 1) * 22
-				local rad = math.rad(ang)
-				-- the centre half-way out (x in egg widths: a height is 1 / 0.8 widths); local +X points outward, so the
-				-- taper (clear at X = 1) fades toward the tip
-				beam.Position = UDim2.fromScale(p[1] + math.cos(rad) * len / 0.8 / 2, p[2] + math.sin(rad) * len / 2)
-				beam.Size = UDim2.fromScale(len / 0.8, 0.05)
-				beam.Rotation = ang
+				local dx = (i % 3) - 1 -- left, straight or right a step
+				local cx = math.floor(p[1] / cw + 0.5)
+				local cy = math.floor(p[2] / ch + 0.5)
+				for k = 1, #K.LEAK_A do
+					local part = beam:FindFirstChild("Part" .. k)
+					if part then
+						part.Visible = k <= parts
+						part.Position = UDim2.fromScale((cx + dx * k - 0.5) * cw, (cy + (up and -k or k) - 0.5) * ch)
+						part.Size = UDim2.fromScale(cw, ch)
+					end
+				end
 			end
 		end
 	end

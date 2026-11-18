@@ -20,7 +20,7 @@
 --   signkit               (kit B, U2) no game UI: every shared/SignKit part (window, planks at rest / hover / pressed, notice,
 --                         block row, ropes, a hanging board, the Credits gable beside the flat awning) and every
 --                         shared/PixelIcon at 18, 27 and 36 px
---   lobby                 the idle lobby HUD
+--   lobby[:gift]          the idle lobby HUD (gift: U9-4 look review, the daily payload in, the Gifts block's PlayBar)
 --   title                 right after joining (the title card is still up)
 --   match[:hit]           in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
 --                         (":hit" = a quarter second after a hit, damage feedback included)
@@ -43,7 +43,10 @@
 --   garden[:<slot>]       the garden picker for place <slot> (default 3: an empty place)
 --   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop);
 --                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
---   daily[:locked|:play]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block)
+--   daily[:locked|:play|:week]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block); week (kit-b U9-4) =
+--                         a paid Day 7 claim caught mid-celebration (the banner and the kit confetti)
+--   trove[:done|:preview] (kit-b U9-4) the Sky Trove panel (TroveController) opened by the chest's prompt, its Group row
+--                         open (Join); done = claimed (Done), preview = the Studio preview (GroupId 0)
 --   gems[:store]          lobby-shop Task 15: the drawn cut gem at every size, piles, chips, the HUD coin; store = the Shop's
 --                         Gems tab with the gem pack piles ([lobby-shop] block)
 --   shop[:<tab>]          lobby-shop Tasks 21/22: the one Shop window (ShopController) on Eggs (default) / Gems / Packs /
@@ -2877,6 +2880,8 @@ end)
 -- Vault, House Villa, Yard Fence), 1,240 / 3,000 berries, two evolved pets (Epic stage 1, Legend stage 2) and a
 -- team of 3. These scenes replace the Phase 4 ones of the same name (registered later):
 --   home        the Home window: the flow strip, house + income, the 11 stations, prestige last
+--   home:claim  (kit-b U9-1) the Home window with no home: Claim a home and the three steps
+--   home:prestige (kit-b U9-1) a home ready to prestige with its Prestige button pressed: the confirm
 --   feed        the Food Machine window (berries, ONE Feed button per pet)
 --   garden      the garden picker;  train  the Training Place
 --   team        the Team window: FIGHTER + 2 HELPERS, "Set as fighter"
@@ -2928,10 +2933,33 @@ function CAREUI.profile()
 end
 CAREUI.ProfileFn = CAREUI.profile
 
-scenario("home", function()
-	CAREUI.profile()
+-- (kit-b U9-1) home:claim = no home yet (Claim a home and its three steps); home:prestige = a home ready to prestige
+-- (Home Level 41, the Sky Castle) with its Prestige button pressed: the confirm as ShowConfirm fills it
+scenario("home", function(variant)
+	local _, snap = CAREUI.profile()
+	if variant == "claim" then
+		LocalPlayer:SetAttribute(Config.Attr.SpotIndex, nil)
+		advance(0.2)
+	elseif variant == "prestige" then
+		snap.Home.Level = 41
+		snap.Home.Stations = { Press1 = 40, Garden = 8, Kitchen = 5, Gym = 5, Vault = 5, House = 4, FusionMachine = 3, ArenaGate = 1,
+			DecorFence = 3, DecorFountain = 3, DecorPodium = 3 }
+		CARE.plot({ IncomePerSecond = 38.5, GardenSlots = 4, HomeLevel = 41, Prestige = 1, BerryCap = 3000 })
+		toClient("ProfileSync", snap)
+		advance(0.5)
+	end
 	toClient("OpenPanel", "Home", {})
 	advance(2.5)
+	if variant == "prestige" then
+		local pgui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local menu = pgui and pgui:FindFirstChild("NimbusMenu")
+		local button = menu and menu:FindFirstChild("Window_Home") and menu.Window_Home:FindFirstChild("Prestige", true)
+		if not button then
+			fail("home:prestige: no Prestige button in the Home window")
+		end
+		Mock.Click(button)
+		advance(0.5)
+	end
 end)
 
 scenario("feed", function(key)
@@ -3474,6 +3502,53 @@ scenario("daily", function(view)
 	local DC = req("client/Controllers/DailyController")
 	DC.Open({ Tab = view == "play" and "Play" or "Daily" })
 	advance(1.5)
+	if view == "week" then
+		-- (kit-b U9-4) day 7 claimed on a paid week (Weeks 1 -> 2): the banner and the confetti, caught mid-fall (the
+		-- confetti plays on High graphics only)
+		local GQ = req("client/GraphicsQuality", true)
+		if GQ then
+			GQ.Effective = function()
+				return "High"
+			end
+		end
+		local p = dailyPayload("")
+		p.Cell, p.Streak, p.Paid, p.Weeks = 7, 14, 14, 2
+		for i, d in ipairs(p.Days) do
+			d.Claimed, d.Today = true, false
+		end
+		p.ReadyAt = p.ServerNow + 20 * 3600
+		toClient("DailyState", p)
+		advance(0.6)
+		-- the falling bits at their eased in-between places (the mock holds a tween's start value until it ends)
+		if type(Mock.SnapTweens) == "function" then
+			Mock.SnapTweens()
+		end
+	end
+end)
+-- lobby:gift  (U9-4 look review: the bar census) the lobby HUD with the daily payload in and the Gifts window closed: the
+--             Gifts block under the strips with its PlayBar in the lip (36 of 60 min: 2 of 4 blocks gold), so the bar is
+--             reviewed with the HUD
+do
+	local lobbyScene = SCENARIOS.lobby
+	SCENARIOS.lobby = function(arg)
+		if tostring(arg or ""):lower() == "gift" then
+			toClient("DailyState", dailyPayload(""))
+			advance(1.2)
+			return
+		end
+		return lobbyScene(arg)
+	end
+end
+-- trove[:done|:preview]  (kit-b U9-4) the Sky Trove panel as the chest's prompt opens it (OpenPanel("Trove") + TroveState):
+--                        the Group row open (Join), done = claimed (Done, disabled), preview = GroupId 0 under StorePreview
+scenario("trove", function(view)
+	view = tostring(view or ""):lower()
+	local state = (view == "done" and "Done") or (view == "preview" and "Preview") or "Open"
+	CAREUI.profile() -- (the HUD's balances as in play: the panel docks under them)
+	toClient("OpenPanel", "Trove")
+	toClient("TroveState", { GroupId = state == "Preview" and 0 or 777, Preview = state == "Preview",
+		Asks = { { Id = "Group", State = state, Reward = { Cash = 2000, Tokens = 200 } }, { Id = "Like" } } })
+	advance(1)
 end)
 -- fusion[:upgrade|:mix]  gui-redo Task 11: the Fusion Machine window (FusionController, card A) on the picker's collection
 --                       with 3 of the 5 Maple Fox copies on the team and 12,480 Cloud Tokens: upgrade (the default) = the stack of
@@ -3628,6 +3703,8 @@ end)
 --                       name -> plate and plate -> crown, which stay the same at every distance (pixel offsets). The
 --                       mirrored plate is re-fitted with the renderer's font metrics (the mock's GetTextSize is 0.5 em
 --                       per character). The renderer's FredokaOne stand-in (Arial Rounded) has no middle dot glyph.
+--                       (kit-b U9-3) a fourth dummy, an untitled VIP ("VipOnly"), shows the lobby crown's own
+--                       VipCrown billboard (2.4 studs over the head, lifted by its SizeOffset), mirrored the same way.
 local TT = { FOV_HALF_TAN = math.tan(math.rad(35)) }
 -- a front-view character sketch (studs, y up from the head's centre), like the mock's R15 rig
 function TT.figure(parent, cx, headY, pps)
@@ -3647,18 +3724,28 @@ scenario("titles", function(studs)
 	local d = max(4, tonumber(studs) or 14)
 	local TC = req("client/Controllers/TitleController", true)
 	NK.hideGame()
-	local who = { { "SkyRunner", 990001, "Top10", 3 }, { "CloudHopper", 990002, "Top100", 57 }, { "GameCreator", 990003, "Creator", 1, true } }
+	local who = { { "SkyRunner", 990001, "Top10", 3 }, { "CloudHopper", 990002, "Top100", 57 }, { "GameCreator", 990003, "Creator", 1, true },
+		{ "VipOnly", 990004, nil, nil, true } }
+	-- the lobby crown shows on High graphics only
+	local GQ = req("client/GraphicsQuality", true)
+	if GQ then
+		GQ.Effective = function()
+			return "High"
+		end
+	end
 	local players = {}
 	for i, w in ipairs(who) do
 		players[i] = Mock.AddPlayer(w[1], w[2])
 	end
 	advance(0.5)
 	for i, w in ipairs(who) do
-		players[i]:SetAttribute(Config.Attr.TitleRank, w[4])
 		if w[5] then
 			players[i]:SetAttribute(Config.Attr.OwnedPasses or "OwnedPasses", "VIP")
 		end
-		players[i]:SetAttribute(Config.Attr.Title, w[3])
+		if w[3] then
+			players[i]:SetAttribute(Config.Attr.TitleRank, w[4])
+			players[i]:SetAttribute(Config.Attr.Title, w[3])
+		end
 	end
 	advance(1.2)
 	local screen = make("ScreenGui", { Name = "WorldMirror", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
@@ -3670,10 +3757,24 @@ scenario("titles", function(studs)
 		TextXAlignment = Enum.TextXAlignment.Left, TextStrokeTransparency = 0.2, TextStrokeColor3 = NAVY,
 	})
 	for i, p in ipairs(players) do
-		local cx = floor(vp.X * i / 4)
+		local cx = floor(vp.X * i / (#players + 1))
 		TT.figure(screen, cx, headY, pps)
 		local tag = TC and TC.TagOf(p)
 		local anchorY = headY - (tag and tag.StudsOffset.Y or 2.0) * pps
+		-- (kit-b U9-3) an untitled VIP: its own VipCrown billboard, centred StudsOffset.Y over the head
+		local own = not tag and p.Character and p.Character:FindFirstChild("VipCrown", true)
+		if own then
+			local w, h = own.Size.X.Offset, own.Size.Y.Offset
+			local top = headY - own.StudsOffset.Y * pps - own.SizeOffset.Y * h - h / 2
+			local cell = make("Frame", { Name = "VipCrown", BackgroundTransparency = 1, Position = UDim2.fromOffset(cx - w / 2, top), Size = UDim2.fromOffset(w, h) }, screen)
+			for _, c in ipairs(own:GetChildren()) do
+				if c:IsA("GuiObject") then
+					c:Clone().Parent = cell
+				end
+			end
+			local nameTop = (headY - 2.0 * pps) - 10
+			note(fmt("%s: the VipCrown billboard %.1f studs over the head, its bottom %.1f px above the name stand-in", p.Name, own.StudsOffset.Y, nameTop - (top + h)))
+		end
 		label(screen, p.DisplayName, 18, {
 			Name = "NameStandIn", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(cx, anchorY), Size = UDim2.fromOffset(200, 20),
 			TextStrokeTransparency = 0.3, TextStrokeColor3 = NAVY,
@@ -3689,15 +3790,13 @@ scenario("titles", function(studs)
 			end
 			-- the mock's TextService:GetTextSize is a flat 0.5 em per character, Roblox's measures the font: the mirrored
 			-- plate is re-fitted with the renderer's metrics (Mock.TextExtent) by the controller's own rule (the text + 2 x
-			-- PAD, the Top10 Label twice the text, left-aligned)
+			-- PAD; kit-b U9-3: the Label spans the plate, its text centred)
 			local mPlate = cell:FindFirstChild("Plate")
 			local mLabel = mPlate and mPlate:FindFirstChild("Label")
 			if mLabel then
 				local tw = ceil((Mock.TextExtent(mLabel)))
 				local pw = min(w, tw + 2 * ((TC.K and TC.K.PAD) or 12))
 				mPlate.Size = UDim2.fromOffset(pw, mPlate.Size.Y.Offset)
-				mLabel.Position = UDim2.fromOffset(floor((pw - tw) / 2), 0)
-				mLabel.Size = UDim2.new(0, (who[i][3] == "Top10") and 2 * tw or tw, 1, 0)
 			end
 			local plate, crown = tag:FindFirstChild("Plate"), tag:FindFirstChild("Crown")
 			local plateTop = top + plate.AbsolutePosition.Y
@@ -3705,7 +3804,7 @@ scenario("titles", function(studs)
 			local gapCrown = crown and (plateTop - (top + crown.AbsolutePosition.Y + crown.AbsoluteSize.Y)) or nil
 			note(fmt("%s from %d studs: name -> plate %.1f px%s", tostring(tag:FindFirstChild("Label", true).Text), d, gapName,
 				gapCrown and fmt(", plate -> crown %.1f px", gapCrown) or ""))
-		else
+		elseif not own then
 			note("no TitleTag for " .. p.Name)
 		end
 	end
@@ -3807,8 +3906,10 @@ end)
 --                       hidden game HUD, stepped to one moment of a roll (Fast hatch off): strip = a Cloud x1 Epic at 1.6 s
 --                       (mid-strip); strip3 = a Storm x3 (Rare, Legendary, Epic) at 1.6 s; crack = the x1 at 4.75 s (mid
 --                       Crack: the word, the egg, the plain pedestal); reveal = the x1 at 6.6 s; reveal3 = the x3 at 7.8 s
---                       (the Epic evolved: its ribbon); secret = a Secret Roulette x1 (Gems, the pity pull) at 6.6 s
-local HATCH = { At = { strip = 1.6, strip3 = 1.6, crack = 4.75, reveal = 6.6, reveal3 = 7.8, secret = 6.6 } }
+--                       (the Epic evolved: its ribbon); secret = a Secret Roulette x1 (Gems, the pity pull) at 6.6 s;
+--                       (kit-b U9-2b review) reveal3evo2 = the x3 with its third pull the longest-named Storm pet that
+--                       has a stage 2, new and at stage 2 (NEW! and the EVOLVED II tag in one column) at 7.8 s
+local HATCH = { At = { strip = 1.6, strip3 = 1.6, crack = 4.75, reveal = 6.6, reveal3 = 7.8, reveal3evo2 = 7.8, secret = 6.6 } }
 function HATCH.strip(PC, rid, winnerId)
 	local all = {}
 	for _, def in ipairs(PC.PossiblePets(rid)) do
@@ -3920,6 +4021,17 @@ function HATCH.scene(view, f1, f2)
 	snap.PetGrowth = snap.PetGrowth or {}
 	snap.PetLevels[epic.Id] = { Level = 60, Xp = 0 }
 	snap.PetGrowth[epic.Id] = { Evo = 1 }
+	local evo2 = nil
+	if view == "reveal3evo2" then
+		for _, d in ipairs(PC.PossiblePets("Storm")) do
+			if PC.MaxEvolution(d) >= 2 and (evo2 == nil or #d.Name > #evo2.Name) then
+				evo2 = d
+			end
+		end
+		evo2 = evo2 or epic
+		snap.PetLevels[evo2.Id] = { Level = 60, Xp = 0 }
+		snap.PetGrowth[evo2.Id] = { Evo = 2 }
+	end
 	toClient("ProfileSync", snap)
 	LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
 	LocalPlayer:SetAttribute(Config.Attr.Gems, 5000)
@@ -3948,12 +4060,13 @@ function HATCH.scene(view, f1, f2)
 			return
 		end
 		rid, currency, pulls = frid, fcur, fpulls
-	elseif view == "strip3" or view == "reveal3" then
+	elseif view == "strip3" or view == "reveal3" or view == "reveal3evo2" then
 		local storm = function(def)
 			return def and PC.RarityPool("Storm", def.Rarity)[1] or nil
 		end
 		rid = "Storm"
-		pulls = { HATCH.pull(PC, rid, storm(rare) or rare), HATCH.pull(PC, rid, leg), HATCH.pull(PC, rid, epic, { IsNew = false, Count = 2 }) }
+		local third = evo2 and HATCH.pull(PC, rid, evo2) or HATCH.pull(PC, rid, epic, { IsNew = false, Count = 2 })
+		pulls = { HATCH.pull(PC, rid, storm(rare) or rare), HATCH.pull(PC, rid, leg), third }
 	elseif view == "secret" then
 		local pool = PC.RarityPool("Secret", "Secret")
 		local def = pool[1] or PC.RarityPool("Secret", "Mythic")[1]

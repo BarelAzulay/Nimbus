@@ -156,6 +156,18 @@ end
 function G.view(egg)
 	return egg and egg:FindFirstChild("Egg3D") or nil
 end
+-- (kit-b U9-2b look review) a 2D hero egg: no ViewportFrame; drawn as the strip card's picture when the cards draw the
+-- Blender egg pictures (wantPic: the "EggPic" ImageLabel shown, attribute EggPic, the paint hidden), else painted
+function G.flat2D(egg, wantPic)
+	if not egg or G.view(egg) ~= nil or egg:GetAttribute("Egg3D") ~= nil then
+		return false
+	end
+	if wantPic then
+		local pic = egg:FindFirstChild("EggPic")
+		return pic ~= nil and pic:IsA("ImageLabel") and pic.Visible and egg:GetAttribute("EggPic") ~= nil and egg:GetAttribute("Painted") == false
+	end
+	return egg:FindFirstChild("EggPic") == nil and egg:GetAttribute("Painted") ~= false and egg.BackgroundTransparency < 0.5
+end
 function G.modelY(frame, name)
 	local m = frame and frame:FindFirstChild(name)
 	if not m then
@@ -484,7 +496,7 @@ S.client_egg3d = guarded("client_egg3d", function()
 			end
 		end
 		table.sort(parts)
-		T.check(ped ~= nil and table.concat(parts, " ") == "Cover Edge Glow1 Glow2 Rim Ring Side Top Wall", "egg3d cutscene: the pedestal holds only the flat plinth (its ellipses: Top + Rim, Side + Wall + Edge, Ring + Cover, its halo; roll-look review round 2): no drum or bars come back", table.concat(parts, " "))
+		T.check(ped ~= nil and table.concat(parts, " ") == "Foot Slab", "egg3d cutscene: the pedestal holds only the kit slab on its foot (U9-2b look review 2): no drum or bars come back", table.concat(parts, " "))
 		T.eq(E3.Live(), 1, "egg3d cutscene: one ViewportFrame egg")
 		T.check(G.untilPhase(ES, "Crack", 3) ~= nil, "egg3d cutscene: the roll reaches Crack")
 		G.advance(0.45)
@@ -570,12 +582,16 @@ S.client_egg3d = guarded("client_egg3d", function()
 			G.untilPhase(ES, "Rise", 6)
 			G.advance(STEP * 2)
 			local e = G.hero("Egg1")
-			T.check(e ~= nil and G.view(e) == nil and e:GetAttribute("Egg3D") == nil and e:GetAttribute("Painted") ~= false and e.BackgroundTransparency < 0.5,
-				label .. ": today's 2D egg (no Egg3D, painted)")
+			-- (kit-b U9-2b look review) the strip cards draw the egg pictures (shared/TextureIds has the seven): the 2D hero egg
+			-- is the card's picture, never a painted egg of another style
+			local wantPic = env.HL ~= nil and env.HL.EggPictures() == true
+			T.check(G.flat2D(e, wantPic), label .. ": the 2D egg (no Egg3D): " .. (wantPic and "the strip card's picture (EggPic, the paint hidden)" or "painted"))
 			G.untilPhase(ES, "Crack", 3)
 			G.advance(STEP)
 			local hd = G.hero("Halves1")
-			T.check(hd and hd:FindFirstChild("HalfTop") ~= nil and hd:GetAttribute("Split3D") == false, label .. ": today's 2D halves at the crack")
+			local top = hd and hd:FindFirstChild("HalfTop")
+			T.check(top ~= nil and hd:GetAttribute("Split3D") == false and (top:FindFirstChild("EggPic") ~= nil) == wantPic,
+				label .. ": the 2D halves at the crack" .. (wantPic and " (the same picture split in two)" or " (painted)"))
 			T.eq(E3.Live(), 0, label .. ": no ViewportFrame egg")
 			ES.Close()
 			G.advance(0.5)
@@ -591,6 +607,12 @@ S.client_egg3d = guarded("client_egg3d", function()
 		twoD("egg3d failed Assemble", function()
 			E3._ML = G.stubML(G.allKeys(), { egg_epic = true })
 		end)
+		-- (kit-b U9-2b look review) without the card pictures' ids the 2D egg is painted, as before
+		twoD("egg3d id 0, no card pictures", function()
+			E3._ML = G.stubML({})
+			env.HL._Textures = {}
+		end)
+		env.HL._Textures = false
 		------------------------------------------------------------------ (egg-cards, spec 16.18) x3: three 3D hero eggs on High
 		T.eq(E3.Limit(false), 3, "egg3d x3: the PC / tablet limit is three ViewportFrame eggs (the x3's heroes; the Shop's hero is gone by then)")
 		E3._ML = G.stubML(G.allKeys())
@@ -643,10 +665,11 @@ S.client_egg3d = guarded("client_egg3d", function()
 			G.untilPhase(ES, "Crack", 7)
 			G.advance(STEP)
 			local any, painted, halves = false, 0, 0
+			local wantPic = env.HL ~= nil and env.HL.EggPictures() == true
 			for j = 1, 3 do
 				local ej = G.hero("Egg" .. j)
 				any = any or G.view(ej) ~= nil or (ej and ej:GetAttribute("Egg3D") ~= nil)
-				if ej and ej:GetAttribute("Painted") ~= false and ej.BackgroundTransparency < 0.5 then
+				if G.flat2D(ej, wantPic) then
 					painted = painted + 1
 				end
 				local hj = G.hero("Halves" .. j)
@@ -654,7 +677,7 @@ S.client_egg3d = guarded("client_egg3d", function()
 					halves = halves + 1
 				end
 			end
-			T.check(not any and E3.Live() == 0 and painted == 3, label .. ": all three hero eggs stay 2D, painted (never a mix), Live 0", fmt("3D %s, painted %d, live %d", tostring(any), painted, E3.Live()))
+			T.check(not any and E3.Live() == 0 and painted == 3, label .. ": all three hero eggs stay 2D, " .. (wantPic and "the card pictures" or "painted") .. " (never a mix), Live 0", fmt("3D %s, 2D %d, live %d", tostring(any), painted, E3.Live()))
 			T.check(halves >= 1, label .. ": today's 2D halves at the crack", tostring(halves))
 			ES.Close()
 			G.advance(0.5)
@@ -761,15 +784,17 @@ S.client_egg3d_phone = guarded("client_egg3d_phone", function()
 			G.untilPhase(ES, "Rise", 7)
 			G.advance(STEP * 2)
 			local any, painted = false, 0
+			local wantPic = env.HL ~= nil and env.HL.EggPictures() == true
 			for j = 1, 3 do
 				local ej = G.hero("Egg" .. j)
 				any = any or G.view(ej) ~= nil
-				if ej and ej:GetAttribute("Painted") ~= false then
+				if G.flat2D(ej, wantPic) then
 					painted = painted + 1
 				end
 			end
-			T.check(ES.Layout() ~= "PC" and not any and painted == 3 and E3.Live() == 0, label .. ": x3: the three hero eggs stay 2D (over the phone's one ViewportFrame)",
-				fmt("layout %s, 3D %s, painted %d, live %d", tostring(ES.Layout()), tostring(any), painted, E3.Live()))
+			T.check(ES.Layout() ~= "PC" and not any and painted == 3 and E3.Live() == 0, label .. ": x3: the three hero eggs stay 2D (over the phone's one ViewportFrame), "
+				.. (wantPic and "each its card's picture (kit-b U9-2b look review: one egg style)" or "painted"),
+				fmt("layout %s, 3D %s, 2D %d, live %d", tostring(ES.Layout()), tostring(any), painted, E3.Live()))
 			local most = 0
 			while ES.Phase() ~= "Reveal" and ES.IsShowing() do
 				most = math.max(most, ES.Stats().Instances or 0)

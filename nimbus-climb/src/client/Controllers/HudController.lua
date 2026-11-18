@@ -9,6 +9,9 @@
 --   HudController.SetVitalsHidden(who, on)   (gui-redo) a window that would cover only part of the vitals card hides it
 --                                  while open (the Gifts window, `who` = "Daily"; BattleController's fighter, `who` =
 --                                  "Battle"); back when the last one lets go
+--   HudController.SetCurrencyHidden(who, on)   (kit-b U9-2) a window that shows the balances itself steps the currency
+--                                  strips aside while open (the Shop, `who` = "Shop": its header has Gems and Tokens, and
+--                                  its X sat over the strips at 1280x720); back when the last one lets go
 --
 -- One ScreenGui "NimbusHud" (display order 10, IgnoreGuiInset = false, built by CloudUI.NewScreenGui).
 -- Nothing the game announces is ever drawn in the middle of the screen. The layout map:
@@ -265,6 +268,7 @@ local S = {
 	match = nil, party = nil, downed = false, currencyMode = "TopRight", panelW = K.PANEL_W,
 	yieldToResult = false, -- a narrow screen with the result card open: the match panel steps away
 	vitalsOwners = {}, -- [window name] = true while that window wants the vitals card hidden (SetVitalsHidden)
+	currencyOwners = {}, -- (kit-b U9-2) [window name] = true while that window wants the currency strips hidden (SetCurrencyHidden)
 }
 local H = { -- health
 	Char = nil, Humanoid = nil, Conns = {},
@@ -946,8 +950,9 @@ local function applyMargins(animate, force)
 		UI.Currency.AnchorPoint = Vector2.new(0, 0.5)
 		UI.Currency.Size = UDim2.fromOffset(n * bandW + (n - 1) * K.STRIP_GAP, K.STRIP_H)
 		UI.Currency.Position = UDim2.new(0, bandX, 0, -math.max(inset, K.BAND_INSET) / 2)
-		if not UI.Currency.Visible then
-			UI.Currency.Visible = true
+		local want = next(S.currencyOwners) == nil -- (kit-b U9-2: a window with its own balances steps them aside)
+		if UI.Currency.Visible ~= want then
+			UI.Currency.Visible = want
 		end
 	elseif UI.Currency then
 		local blockW, blockH = stripW, stackH
@@ -971,8 +976,9 @@ local function applyMargins(animate, force)
 		local strips = { x0 = topRightLeft, y0 = K.EDGE, x1 = area.X - side, y1 = topRightBottom }
 		local yield = cornerCard ~= nil and cornerCard.x0 < strips.x1 and strips.x0 < cornerCard.x1
 			and cornerCard.y0 < strips.y1 and strips.y0 < cornerCard.y1
-		if UI.Currency.Visible == yield then
-			UI.Currency.Visible = not yield
+		local want = not yield and next(S.currencyOwners) == nil
+		if UI.Currency.Visible ~= want then
+			UI.Currency.Visible = want
 		end
 		-- (kit-b U8) the gift's dock under the strips, in the lobby only (DailyController hides its button in a match or a
 		-- battle anyway): DailyController puts its button on this square (GiftLeft / GiftTop / GiftSize), and the toasts,
@@ -3059,6 +3065,16 @@ function HudController.SetVitalsHidden(who, on)
 	S.vitalsOwners[type(who) == "string" and who or "?"] = (on == true) or nil
 	if UI.Vitals then
 		UI.Vitals.Visible = next(S.vitalsOwners) == nil
+	end
+end
+
+-- (kit-b U9-2) a window that shows the balances itself (the Shop's Gems and Tokens tags) steps the currency strips aside
+-- while it is open: `who` names the window, `on` = true while it wants them gone; they come back when the last window
+-- lets go. The layout re-runs, so the gift's dock and the published edges follow (nothing else moves).
+function HudController.SetCurrencyHidden(who, on)
+	S.currencyOwners[type(who) == "string" and who or "?"] = (on == true) or nil
+	if UI.Currency then
+		relayout()
 	end
 end
 

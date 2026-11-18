@@ -217,16 +217,12 @@ K.CONFIRM_H = 356
 local Colors = Theme.Colors
 local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
-local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Colors.Gold or Colors.Token
 local INK = Colors.TextStroke or Colors.Ink
 local GOOD = Colors.Good
 local BAD = Colors.Bad
-local WELL_EDGE = Colors.WellEdge or NAVY
 local BUTTONS = Theme.Buttons or {}
 local KINDS = Theme.Kinds or {}
-local PURPLE = Color3.fromRGB(150, 122, 226)
-local INSET_COLOR = Color3.fromRGB(20, 30, 70)
 local CURRENCY = Theme.Currency or {}
 -- Phase 2 colours (one table: the main chunk stays under Lua's 200-local limit)
 local C2 = {
@@ -391,17 +387,6 @@ end
 
 local function tween(inst, seconds, goal, style, direction)
 	return Util.Tween(inst, seconds, goal, style, direction)
-end
-
--- The dark inset card used inside the windows.
-local function makeInset(parent, name, props)
-	local p = props or {}
-	p.BackgroundColor3 = INSET_COLOR
-	p.BackgroundTransparency = 0.42
-	local inset = makeFrame(parent, name, p)
-	corner(inset, "M")
-	stroke(inset, WELL_EDGE, 3, 0.15)
-	return inset
 end
 
 local function commas(n)
@@ -741,6 +726,9 @@ local function layoutWindow(win)
 	if changed and win.Built and win.OnLayout then
 		safe("layout " .. win.Id, win.OnLayout, w, h, w < K.NARROW, h < K.SHORT, w < K.TALL)
 	end
+	if win.Shown then
+		P5.vitalsFor(win, true) -- (U9-3 review) the docked box moved: over the vitals card or clear of it now
+	end
 end
 
 local function createWindow(spec)
@@ -761,6 +749,8 @@ local function createWindow(spec)
 		Closable = true,
 		Category = spec.Category,
 		Accent = spec.Accent,
+		Skin = spec.Skin, -- (kit-b U9-1) "Signboard": the Home window on the kit B sign
+		Icon = spec.Icon,
 		OnClose = function()
 			closeWindow(spec.Id)
 		end,
@@ -769,6 +759,73 @@ local function createWindow(spec)
 	win.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = win.Panel.Root })
 	windows[spec.Id] = win
 	return win
+end
+
+-- (kit-b U9-1) a window with HideTouch takes Roblox's thumbstick and jump button away on a touch-only screen while it is
+-- shown (its scrolling list runs through both bottom corners), as the Pets window and the Index do; they come back as they
+-- were when it closes (MenuController.SetTouchHidden keeps the one owner set)
+function P5.touchFor(win, on)
+	if not win.Spec.HideTouch then
+		return
+	end
+	local want = on == true and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	safe("touch " .. win.Id, MenuController.SetTouchHidden, win.Id, want and true or false)
+end
+
+-- (kit-b U9-3; the U9-3 renders, as the render gate found for the Shop) a window with HideCurrency steps the HUD's currency
+-- strips aside while it is shown (HudController.SetCurrencyHidden, keyed by the window's id): docked right on a 1280x720
+-- screen its awning and X lay over them. They come back when it closes
+-- the HudController module, or nil (looked up once)
+function P5.hud()
+	if P5.HudModule == nil then
+		P5.HudModule = false
+		local module = script.Parent:FindFirstChild("HudController")
+		local ok, mod = pcall(function()
+			return module and require(module)
+		end)
+		if ok and type(mod) == "table" then
+			P5.HudModule = mod
+		end
+	end
+	return P5.HudModule or nil
+end
+
+function P5.currencyFor(win, on)
+	if not win.Spec.HideCurrency then
+		return
+	end
+	local hud = P5.hud()
+	if hud and type(hud.SetCurrencyHidden) == "function" then
+		safe("currency " .. win.Id, hud.SetCurrencyHidden, win.Id, on == true)
+	end
+end
+
+-- (U9-3 review; the U9-3 renders: at 844x390 the docked Stats window cut the vitals card's bars) a window with HideVitals
+-- hides the HUD's vitals card while it is shown and its docked box lies over the card's slot by more than a shared edge
+-- (HudController.SetVitalsHidden, keyed by the window's id): on a phone it reaches over the card, on PC it clears it and
+-- the card stays. Checked again on every layout (the screen turned or resized); the card comes back when it closes
+function P5.vitalsFor(win, on)
+	if not win.Spec.HideVitals then
+		return
+	end
+	local hud = P5.hud()
+	if not (hud and type(hud.SetVitalsHidden) == "function") then
+		return
+	end
+	local over = false
+	local rect = on == true and win.Dock and win.Dock.Rect
+	if rect and type(hud.GetLayout) == "function" then
+		local ok, layout = pcall(hud.GetLayout)
+		local slot = ok and type(layout) == "table" and layout.VitalsSlot
+		if slot then
+			-- the dock's box is in screen px (top bar included), the HUD's in gui-area px
+			local y = rect.y - P5.inset()
+			local w = math.min(rect.x + rect.w, slot.X + slot.W) - math.max(rect.x, slot.X)
+			local h = math.min(y + rect.h, slot.Y + slot.H) - math.max(y, slot.Y)
+			over = w > 4 and h > 4
+		end
+	end
+	safe("vitals " .. win.Id, hud.SetVitalsHidden, win.Id, over)
 end
 
 local function ensureBuilt(win)
@@ -914,6 +971,9 @@ function openWindow(id, args)
 	syncBackBinding()
 	layoutWindow(win)
 	ensureBuilt(win)
+	P5.touchFor(win, true)
+	P5.currencyFor(win, true)
+	P5.vitalsFor(win, true) -- after the currency step: the HUD re-lays out then
 	win.Holder.Visible = true
 	if not wasShown then
 		win.Pop.Scale = 0.86
@@ -941,6 +1001,9 @@ function closeWindow(id, instant)
 		openId = nil
 	end
 	syncBackBinding()
+	P5.touchFor(win, false)
+	P5.currencyFor(win, false)
+	P5.vitalsFor(win, false)
 	if win.OnClose then
 		safe("close " .. id, win.OnClose)
 	end
@@ -1641,6 +1704,43 @@ end
 ----------------------------------------------------------------------
 -- Stats window
 ----------------------------------------------------------------------
+-- (kit-b U9-3, finding 15) the Stats window on the Signboard kit (the window's Skin "Signboard": the awning, the navy
+-- header with "Stats" as its ribbon, the wood frame round the stone body), as the Home window is. Each stat is a raised
+-- stone block in its wood edge (P5.signBlock) with a square chip in its group's colour holding the stat's PixelIcon and
+-- the number in brown (the pitch's pet stats: chip, caption, number); the groups: obby races sky, tokens gold, egg spins
+-- the awning's pink, pets violet. The perks, the battle record and the best times sit under plain Section headings (the
+-- owner's ruling 2026-11-14: the ribbon is for window titles only); each difficulty's row is a stone block whose lip and
+-- side bar carry the difficulty's colour. The dark wells, the coloured numbers, the round corners went.
+P5.STAT_TILES = {
+	{ "Matches", "Matches played", "mountain", Theme.Sign.Sky },
+	{ "Wins", "Victories", "trophy", Theme.Sign.Sky },
+	{ "WinRate", "Win rate", "target", Theme.Sign.Sky },
+	{ "Tokens", "Cloud tokens", "token", Theme.Sign.Gold }, -- the chip's coin is the token icon (U7a: no second coin)
+	{ "Earned", "Tokens earned", "token", Theme.Sign.Gold },
+	{ "Spins", "Roulette spins", "gumball", Theme.Sign.Roof },
+	{ "Found", "Pets discovered", "book", Theme.Sign.Violet },
+	{ "Owned", "Pets owned", "paw", Theme.Sign.Violet },
+}
+
+-- a stone card with a plain Section heading over a padded list (the perks, the battle record): the card is the block,
+-- its "Inner" frame holds the padding and the list (the block's lip is a child of the card and must stay out of a list)
+function P5.statCard(parent, name, title, order)
+	local card = P5.signBlock(parent, name, {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order,
+	})
+	local inner = makeFrame(card, "Inner", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	pad(inner, 14, 8, 14, 14)
+	listLayout(inner, Enum.FillDirection.Vertical, 4)
+	Theme.StyleTitle(makeText(inner, "Title", title, "Title", 24, P5.HS.Text, {
+		Size = UDim2.new(1, 0, 0, 30),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+	}), "Section")
+	return card, inner
+end
+
 local function buildStats(win)
 	local content = win.Panel.Content
 	local tiles = {} -- key -> value label
@@ -1651,6 +1751,7 @@ local function buildStats(win)
 		Position = UDim2.fromOffset(14, 14),
 		Size = UDim2.new(0.55, -21, 1, -28),
 	})
+	left.ScrollBarImageColor3 = P5.HS.Wood -- (kit-b U9-3)
 	pad(left, 2, 2, 12, 6)
 	listLayout(left, Enum.FillDirection.Vertical, 10)
 	local grid = makeFrame(left, "Tiles", {
@@ -1663,49 +1764,27 @@ local function buildStats(win)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = grid,
 	})
-	local TILES = {
-		{ "Matches", "Matches played", WHITE },
-		{ "Wins", "Victories", Theme.Lighten(GOOD, 0.25) },
-		{ "WinRate", "Win rate", WHITE },
-		{ "Tokens", "Cloud tokens", Colors.Token },
-		{ "Earned", "Tokens earned", Colors.Token },
-		{ "Spins", "Roulette spins", WHITE },
-		{ "Found", "Pets discovered", Theme.Lighten(PURPLE, 0.35) },
-		{ "Owned", "Pets owned", WHITE },
-	}
-	for index, spec in ipairs(TILES) do
-		local tile = makeInset(grid, "Tile_" .. spec[1], { LayoutOrder = index })
-		local value = makeText(tile, "Value", "0", "Display", 34, spec[3], {
-			Position = UDim2.fromOffset(14, 8),
-			Size = UDim2.new(1, -28, 0, 42),
+	for index, spec in ipairs(P5.STAT_TILES) do
+		local tile = P5.signBlock(grid, "Tile_" .. spec[1], { LayoutOrder = index })
+		local chip = P5.signChip(tile, "Chip", spec[4], spec[3], 30)
+		chip.Position = UDim2.fromOffset(12, 10)
+		local value = makeText(tile, "Value", "0", "Display", 34, P5.HS.Text, {
+			Position = UDim2.fromOffset(52, 5),
+			Size = UDim2.new(1, -60, 0, 40),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 18, Parent = value })
-		if spec[1] == "Tokens" or spec[1] == "Earned" then
-			PixelIcon.Lead(value, Theme.Currency.Tokens.Icon, { Px = 27 }) -- (kit-b U7a) the coin before the amount
-		end
-		makeText(tile, "Caption", spec[2], "Heading", 18, MUTED, {
-			Position = UDim2.fromOffset(14, 56),
-			Size = UDim2.new(1, -28, 0, 24),
+		makeText(tile, "Caption", spec[2], "Heading", 18, P5.HS.TextMuted, {
+			Position = UDim2.fromOffset(12, 52),
+			Size = UDim2.new(1, -20, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
 		tiles[spec[1]] = value
 	end
 
-	local perks = makeInset(left, "Perks", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 2,
-	})
-	pad(perks, 14, 10, 14, 12)
-	listLayout(perks, Enum.FillDirection.Vertical, 4)
-	makeText(perks, "Title", "Pet perks", "Heading", 22, WHITE, {
-		Size = UDim2.new(1, 0, 0, 28),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 1,
-	})
-	local perksLabel = makeText(perks, "Lines", "", "Body", 19, Theme.Lighten(GOOD, 0.25), {
+	local _, perks = P5.statCard(left, "Perks", "Pet perks", 2)
+	local perksLabel = makeText(perks, "Lines", "", "Body", 19, P5.GOOD, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextWrapped = true,
@@ -1714,19 +1793,8 @@ local function buildStats(win)
 	})
 
 	-- Phase 3: the battle record (trophies from PvP duels, the Trial ladder, raids)
-	local battle = makeInset(left, "Battle", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 3,
-	})
-	pad(battle, 14, 10, 14, 12)
-	listLayout(battle, Enum.FillDirection.Vertical, 4)
-	makeText(battle, "Title", "Pet battles", "Heading", 22, WHITE, {
-		Size = UDim2.new(1, 0, 0, 28),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = 1,
-	})
-	local battleLabel = makeText(battle, "Lines", "", "Body", 19, WHITE, {
+	local _, battle = P5.statCard(left, "Battle", "Pet battles", 3)
+	local battleLabel = makeText(battle, "Lines", "", "Body", 19, P5.HS.Text, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextWrapped = true,
@@ -1734,52 +1802,49 @@ local function buildStats(win)
 		LayoutOrder = 2,
 	})
 
-	-- right: best time per difficulty
-	local right = makeInset(content, "BestTimes", {
+	-- right: best time per difficulty (kit-b U9-3: on the stone body itself, as the Home window's station list)
+	local right = makeFrame(content, "BestTimes", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -14, 0, 14),
 		Size = UDim2.new(0.45, -21, 1, -28),
 	})
 	local list = scroller(right, "List", {
-		Position = UDim2.fromOffset(6, 6),
-		Size = UDim2.new(1, -12, 1, -12),
+		Size = UDim2.new(1, 0, 1, 0),
 	})
-	pad(list, 8, 4, 14, 8)
+	list.ScrollBarImageColor3 = P5.HS.Wood
+	pad(list, 2, 2, 14, 8)
 	listLayout(list, Enum.FillDirection.Vertical, 8)
-	Theme.StyleTitle(makeText(list, "Title", "Best times", "Title", 28, WHITE, {
-		Size = UDim2.new(1, 0, 0, 36),
+	Theme.StyleTitle(makeText(list, "Title", "Best times", "Title", 24, P5.HS.Text, {
+		Size = UDim2.new(1, 0, 0, 32),
+		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 0,
 	}), "Section")
 	for index, difficulty in ipairs(Config.Difficulties) do
-		local row = makeFrame(list, "Row_" .. difficulty.Id, {
-			Size = UDim2.new(1, 0, 0, 66),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Theme.Darken(difficulty.Color, 0.55),
+		local row = P5.signBlock(list, "Row_" .. difficulty.Id, {
+			Size = UDim2.new(1, 0, 0, 70),
 			LayoutOrder = index,
-		})
-		corner(row, "M")
-		stroke(row, NAVY, 3, 0)
-		local bar = makeFrame(row, "Bar", {
-			Position = UDim2.fromOffset(6, 8),
-			Size = UDim2.new(0, 7, 1, -16),
+		}, difficulty.Color)
+		-- the difficulty's colour down the left side, square, in the row's wood edge
+		makeFrame(row, "Bar", {
+			Position = UDim2.fromOffset(0, 0),
+			Size = UDim2.new(0, 8, 1, -5),
 			BackgroundTransparency = 0,
 			BackgroundColor3 = difficulty.Color,
 		})
-		round(bar)
-		makeText(row, "Name", difficulty.DisplayName, "Title", 24, Theme.Lighten(difficulty.Color, 0.45), {
-			Position = UDim2.fromOffset(22, 5),
-			Size = UDim2.new(0.55, -22, 0, 30),
+		makeText(row, "Name", difficulty.DisplayName, "Title", 24, P5.HS.Text, {
+			Position = UDim2.fromOffset(20, 5),
+			Size = UDim2.new(0.55, -20, 0, 30),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
-		starRating(makeText(row, "Stars", "", "Heading", 18, GOLD, {
-			Position = UDim2.fromOffset(22, 36),
-			Size = UDim2.new(0.55, -22, 0, 24),
+		starRating(makeText(row, "Stars", "", "Heading", 18, P5.HS.GoldDeep, {
+			Position = UDim2.fromOffset(20, 36),
+			Size = UDim2.new(0.55, -20, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		}), difficulty.Stars)
-		rows[difficulty.Id] = makeText(row, "Time", "--:--", "Display", 30, WHITE, {
+		rows[difficulty.Id] = makeText(row, "Time", "--:--", "Display", 30, P5.HS.Text, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -14, 0, 0),
-			Size = UDim2.new(0.45, 0, 1, 0),
+			Size = UDim2.new(0.45, 0, 1, -5),
 			TextXAlignment = Enum.TextXAlignment.Right,
 		})
 	end
@@ -1823,10 +1888,10 @@ local function buildStats(win)
 			local seconds = stats.BestTimes[id]
 			if type(seconds) == "number" and seconds > 0 then
 				label.Text = Util.FormatTime(seconds)
-				label.TextColor3 = WHITE
+				label.TextColor3 = P5.HS.Text
 			else
 				label.Text = "--:--"
-				label.TextColor3 = MUTED
+				label.TextColor3 = P5.HS.TextMuted
 			end
 		end
 
@@ -1849,10 +1914,10 @@ local function buildStats(win)
 		end
 		if #lines > 0 then
 			perksLabel.Text = table.concat(lines, "     ")
-			perksLabel.TextColor3 = Theme.Lighten(GOOD, 0.25)
+			perksLabel.TextColor3 = P5.GOOD
 		else
 			perksLabel.Text = "No perks yet. Put a pet in your team!"
-			perksLabel.TextColor3 = MUTED
+			perksLabel.TextColor3 = P5.HS.TextMuted
 		end
 	end
 end
@@ -1860,15 +1925,73 @@ end
 ----------------------------------------------------------------------
 -- Home window (Phase 2): the house, income, the Collector, prestige, and every station with its upgrade
 ----------------------------------------------------------------------
--- Phase 5 (3.4): the Home window's flow strip, the first item of its list: four neon tiles that tell the home loop
+-- (kit-b U9-1, finding 15) the Home window on the Signboard kit: brown ink on stone, wood edges, square blocks with a lip
+-- in their role colour, no glow, gloss, sweep or round corner. The helpers (fields of P5: the main chunk is close to Lua's
+-- 200-local limit):
+--   P5.signBlock(parent, name, props, lip)  a raised stone block in its wood edge (CloudUI.SignBlock) with a lip of `lip`
+--                                           (the stone's own lip when nil): a card, a station row, a strip tile, a step
+--   P5.signTag(parent, name, text, px, order, role)  a small gold tag (MAX, NEXT, x1.25): brown FredokaOne on gold, wood
+--                                           edge; role "Tag" (capitals) unless given ("Heading" keeps the x of x1.25)
+--   P5.signChip(parent, name, color, glyph, px)  a square chip in a role colour holding a PixelIcon (NeonKit.Icon, "Icon")
+--                                           in the ink that reads on it (Theme.TextOn): a station's or a strip tile's mark
+P5.HS = Theme.Sign
+-- the green of good news in text (cash, "ready", what you keep): the grass lip darkened until it reads 4.5:1 on stone at
+-- a phone's small sizes (the lip itself is 3.5:1)
+P5.GOOD = Theme.Darken(Theme.Sign.GrassLip, 0.25)
+function P5.signBlock(parent, name, props, lip)
+	local block = makeFrame(parent, name, props or {})
+	CloudUI.SignBlock(block, "Stone", { Face = P5.HS.Tile, LipColor = lip or P5.HS.StoneLip, Pad = false })
+	return block
+end
+
+function P5.signTag(parent, name, text, px, order, role)
+	px = px or 18
+	local tag = Theme.Label(text, role or "Tag", {
+		Size = px,
+		Color = P5.HS.Text,
+		Props = {
+			Name = name,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, px + 10),
+			LayoutOrder = order or 0,
+		},
+	})
+	CloudUI.SignBlock(tag, "Selected", { EdgePx = 2, LipPx = 3 })
+	local inset = tag:FindFirstChild("LipPad")
+	if inset then
+		inset.PaddingLeft = UDim.new(0, 9)
+		inset.PaddingRight = UDim.new(0, 9)
+	end
+	tag.Parent = parent
+	return tag
+end
+
+function P5.signChip(parent, name, color, glyph, px)
+	local chip = makeFrame(parent, name, {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = color,
+		Size = UDim2.fromOffset(px, px),
+	})
+	local edge = stroke(chip, P5.HS.Wood, 2, 0)
+	edge.Name = "SignEdge"
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	-- the icon at the largest multiple of 9 that leaves a 3 px margin (NeonKit.Icon hosts it at 0.9 x its size)
+	local iconPx = math.max(9, 9 * math.floor((px - 6) / 9))
+	local icon = P5.Kit.Icon(chip, glyph, math.floor(iconPx / 0.9 + 0.5))
+	icon.TextColor3 = Theme.TextOn(color)
+	return chip, icon
+end
+
+-- Phase 5 (3.4): the Home window's flow strip, the first item of its list: four tiles that tell the home loop
 -- "Berry Farm Lv 13" -> "Pets earn Cash $3,000/min" -> "Berry Basket 1,240 / 3,000" -> "Food Machine: Feed = XP".
 -- (kit-b U7b) each tile's Glyph is a PixelIcon name (NeonKit.Icon draws it); the second tile was "Pets eat & poop" with
--- the pile-of-poo emoji (rejects audit 5): it says what the player gets, the Cash note icon (Config.Icons.Cash)
+-- the pile-of-poo emoji (rejects audit 5): it says what the player gets, the Cash note icon (Config.Icons.Cash).
+-- (kit-b U9-1) each tile is a stone block whose lip and icon chip carry its colour (was a neon card in that colour)
 P5.STRIP = {
-	{ Id = "Farm", Title = "Berry Farm", Glyph = "berry", Color = "Pink" },
-	{ Id = "Earn", Title = "Pets earn Cash", Glyph = "note", Color = "Green" },
-	{ Id = "Basket", Title = "Berry Basket", Glyph = "basket", Color = "Purple" },
-	{ Id = "Machine", Title = "Food Machine", Glyph = "pot", Color = "Orange" },
+	{ Id = "Farm", Title = "Berry Farm", Glyph = "berry", Color = Theme.Sign.Roof },
+	{ Id = "Earn", Title = "Pets earn Cash", Glyph = "note", Color = Theme.Sign.Grass },
+	{ Id = "Basket", Title = "Berry Basket", Glyph = "basket", Color = Theme.Sign.Violet },
+	{ Id = "Machine", Title = "Food Machine", Glyph = "pot", Color = C2.Kind.FoodMachine },
 }
 function P5.buildStrip(H, _content)
 	local strip = makeFrame(H.List, "FlowStrip", { Size = UDim2.new(1, 0, 0, 84), LayoutOrder = -1000 })
@@ -1876,26 +1999,26 @@ function P5.buildStrip(H, _content)
 	H.StripTiles = {}
 	H.StripArrows = {}
 	for i, spec in ipairs(P5.STRIP) do
-		local card = P5.Kit.Card({ Name = "Flow_" .. spec.Id, Size = UDim2.fromOffset(180, 76), Color = spec.Color, Glow = false, Parent = strip })
-		local icon = P5.Kit.Icon(card.Body, spec.Glyph, 24)
-		icon.Position = UDim2.fromOffset(20, 21)
-		local title = makeText(card.Body, "Title", spec.Title, "Heading", 18, WHITE, {
-			Position = UDim2.fromOffset(36, 6),
-			Size = UDim2.new(1, -40, 0, 30),
+		local tile = P5.signBlock(strip, "Flow_" .. spec.Id, { Size = UDim2.fromOffset(180, 76) }, spec.Color)
+		local chip = P5.signChip(tile, "Chip", spec.Color, spec.Glyph, 26)
+		chip.Position = UDim2.fromOffset(7, 9)
+		local title = makeText(tile, "Title", spec.Title, "Heading", 18, P5.HS.Text, {
+			Position = UDim2.fromOffset(38, 7),
+			Size = UDim2.new(1, -42, 0, 30),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 18, MinTextSize = 18, Parent = title })
-		local value = makeText(card.Body, "Value", "", "Display", 22, Theme.Lighten(P5.Kit.ColorOf(spec.Color), 0.35), {
-			Position = UDim2.fromOffset(10, 40),
+		local value = makeText(tile, "Value", "", "Display", 22, P5.HS.Text, {
+			Position = UDim2.fromOffset(10, 39),
 			Size = UDim2.new(1, -16, 0, 30),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 18, Parent = value })
-		H.StripTiles[i] = { Card = card, Title = title, Value = value }
+		H.StripTiles[i] = { Root = tile, Title = title, Value = value }
 		if i < #P5.STRIP then
-			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "", "Title", 18, GOLD, { Size = UDim2.fromOffset(20, 76) })
+			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "", "Title", 18, P5.HS.Wood, { Size = UDim2.fromOffset(20, 76) })
 			PixelIcon.Host(H.StripArrows[i], HOME_ICON.Arrow, 9) -- (kit-b U7b; 9 px: the gap between two tiles' rims is ~14 px)
 		end
 	end
@@ -1916,8 +2039,8 @@ function P5.layoutStrip(H, w)
 	for i, tile in ipairs(H.StripTiles) do
 		local col = (i - 1) % cols
 		local row = math.floor((i - 1) / cols)
-		tile.Card.Root.Position = UDim2.fromOffset(col * (tileW + arrowW), row * (tileH + 8))
-		tile.Card.Root.Size = UDim2.fromOffset(tileW, tileH)
+		tile.Root.Position = UDim2.fromOffset(col * (tileW + arrowW), row * (tileH + 8))
+		tile.Root.Size = UDim2.fromOffset(tileW, tileH)
 		local arrow = H.StripArrows[i]
 		if arrow then
 			arrow.Visible = col < cols - 1
@@ -1951,25 +2074,37 @@ function P5.paintStrip(H, home, income, open)
 end
 
 -- Phase 6 (the player asked: no Home gate in the lobby, "improve the one in the inventory"): the Home window's hero.
--- A big golden button on top of the window, fixed above the scrolling list: a glossy orb with the house, "Go home" and
--- a short line, a round arrow badge on the right; hover 1.02 / press 0.97 (NeonKit.AttachFx) and a soft light sweep
--- across it when the window opens, on hover and every K.HERO_SHINE_EVERY seconds while it is shown. Without a home the
--- same spot shows "Claim a home" (Remotes.GoToSpot: the home portal toward a free gate, the server checks everything)
--- and the three steps of claiming one replace the list.
+-- A big button on top of the window, fixed above the scrolling list: the house, "Go home" and a short line, an arrow
+-- badge on the right. Without a home the same spot shows "Claim a home" (Remotes.GoToSpot: the home portal toward a free
+-- gate, the server checks everything) and the three steps of claiming one replace the list.
+-- (kit-b U9-1) the hero is the window's ONE green action: a kit B grass plank (CloudUI.Button Skin "Sign": hover lightens
+-- the face, a press sinks it onto its lip, no scale; in a match it is the sunk "Off" well), the house and the arrow on
+-- stone squares, "Go home" a plain Section heading (the owner's ruling 2026-11-14: the ribbon is for window titles only).
+-- The golden gloss card and its light sweep went (finding 15: no gloss, no glow)
 K.HERO_H = 96 -- the hero's height (design px)
 K.HERO_H_SHORT = 76 -- ... on short windows (landscape phones)
-K.HERO_SHINE = 0.75 -- seconds of one light sweep
-K.HERO_SHINE_EVERY = 5.5
 P5.HERO = {
-	-- (kit-b U7a) the orb and the badge draw PixelIcons
+	-- (kit-b U7a) the house and the badge draw PixelIcons
 	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "house", Badge = "arrow" },
 	ClaimHome = { Title = "Claim a home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "house", Badge = "sparkle" },
 }
+-- the Prestige confirm's fixed lines, and a long "You get" line (H.Layout sizes the lines to the widest of these); Short:
+-- (kit-b U9-1) the same said in fewer words for a short window (a landscape phone), so the three lines fit its box
+P5.PRESTIGE_TEXT = {
+	Reset = "Your Cash, the Cloud Cash on your lawn and your stations (not the Garden)",
+	Keep = "Pets, levels, evolutions, training, your teams, berries, the Garden and decor",
+	Gain = "Star 10: x9.31 coins, garden place 12 and 1,000 Gems",
+	Short = {
+		Reset = "Cash, lawn coins and stations (not the Garden)",
+		Keep = "Pets, teams, berries, the Garden and decor",
+		Gain = "Star 2: x1.56 coins, garden place 5 and 25 Gems",
+	},
+}
 -- what a home gives (the claim view's "Your home" tiles)
 P5.CLAIM_GETS = {
-	{ Glyph = "sprout", Title = "Pet Garden", Text = "Pets roam and play", Color = "Green" },
-	{ Glyph = "apple", Title = "Berry Farm", Text = "Berries feed pets", Color = "Pink" },
-	{ Glyph = "note", Title = "Cloud Cash", Text = "Pets earn for you", Color = "Cyan" },
+	{ Glyph = "sprout", Title = "Pet Garden", Text = "Pets roam and play", Color = Theme.Sign.Grass },
+	{ Glyph = "apple", Title = "Berry Farm", Text = "Berries feed pets", Color = Theme.Sign.Roof },
+	{ Glyph = "note", Title = "Cloud Cash", Text = "Pets earn for you", Color = Theme.Sign.Sky },
 }
 P5.CLAIM_STEPS = {
 	{ Glyph = "sparkle", Text = "Tap Claim a home: a magic portal opens" },
@@ -1977,62 +2112,46 @@ P5.CLAIM_STEPS = {
 	{ Glyph = "key", Text = "Press E at its gate. The home is yours!" },
 }
 
--- one hero card (a clickable NeonKit card) -> { Root, Title, Sub, Orb, Badge, Shine, Fx }
+-- a stone square in the grass plank's lip colour (the hero's house well and its arrow badge)
+function P5.heroSquare(parent, name, px, z)
+	local square = makeFrame(parent, name, {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = P5.HS.Tile,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.fromOffset(px, px),
+		ZIndex = z,
+	})
+	local edge = stroke(square, P5.HS.GrassLip, 3, 0)
+	edge.Name = "SignEdge"
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	return square
+end
+
+-- one hero button (a kit B grass plank) -> { Root, Title, Sub, Orb, Badge, Id }
 function P5.heroCard(parent, id, callback)
 	local spec = P5.HERO[id]
-	local gold = Theme.NeonColor("Yellow")
-	local card = P5.Kit.Card({
+	local root = CloudUI.Button({
 		Name = id,
-		Class = "TextButton",
-		Color = gold,
+		Text = "",
+		Style = "Green",
+		Skin = "Sign",
 		Size = UDim2.new(1, 0, 0, K.HERO_H),
-		Corner = 18,
-		Fill = { Theme.Darken(gold, 0.1), Theme.Darken(Theme.NeonColor("Orange"), 0.4) },
-		Floor = true,
 		ZIndex = 4,
+		Callback = function(button)
+			callback(button)
+		end,
 		Parent = parent,
 	})
-	local root = card.Root
-	local hero = { Root = root, Card = card, Id = id }
-	-- the light sweep, clipped to the rounded card (a CanvasGroup clips to its UICorner)
-	local clip = Util.Create("CanvasGroup", {
-		Name = "ShineClip",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = 4,
-		Parent = root,
-	})
-	corner(clip, "M")
-	local shine = makeFrame(clip, "Shine", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(-0.25, 0, 0.5, 0),
-		Size = UDim2.new(0, 70, 2.2, 0),
-		Rotation = 18,
-		ZIndex = 4,
-	})
-	Util.Create("UIGradient", {
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1),
-			NumberSequenceKeypoint.new(0.5, 0.62),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = shine,
-	})
-	hero.Shine = shine
-	card.Body.ZIndex = 5
-	-- the orb with the house
-	local orb = P5.Kit.Orb(card.Body, Color3.fromRGB(255, 244, 214), 64)
-	orb.AnchorPoint = Vector2.new(0, 0.5)
-	orb.Position = UDim2.new(0, 16, 0.5, 0)
-	orb.ZIndex = 5
-	local icon = P5.Kit.Icon(orb, spec.Glyph, 34)
+	local hero = { Root = root, Id = id }
+	-- the house on its stone square
+	local orb = P5.heroSquare(root, "Orb", 64, 5)
+	orb.Position = UDim2.new(0, 16, 0.5, -2)
+	local icon = P5.Kit.Icon(orb, spec.Glyph, 40) -- a 36 px PixelIcon
+	icon.TextColor3 = P5.HS.Text
 	icon.ZIndex = 6
 	hero.Orb = orb
-	hero.Title = Theme.StyleTitle(makeText(card.Body, "Title", spec.Title, "Title", 34, WHITE, {
-		Position = UDim2.new(0, 96, 0.5, -2),
+	hero.Title = Theme.StyleTitle(makeText(root, "Title", spec.Title, "Title", 34, P5.HS.OnGrass, {
+		Position = UDim2.new(0, 96, 0.5, -4),
 		AnchorPoint = Vector2.new(0, 1),
 		Size = UDim2.new(1, -176, 0, 40),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -2041,54 +2160,22 @@ function P5.heroCard(parent, id, callback)
 		ZIndex = 6,
 	}), "Section") -- (kit-b prep) a card's heading inside the Home window: the window's bar wears the ribbon
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 24, Parent = hero.Title })
-	hero.Sub = makeText(card.Body, "Sub", spec.Sub, "Body", 19, Color3.fromRGB(255, 247, 222), {
-		Position = UDim2.new(0, 96, 0.5, 2),
+	hero.Sub = makeText(root, "Sub", spec.Sub, "Body", 19, P5.HS.OnGrass, {
+		Position = UDim2.new(0, 96, 0.5, 0),
 		Size = UDim2.new(1, -176, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 6,
 	})
-	-- the round badge on the right (an arrow: "go")
-	local badge = makeFrame(card.Body, "Badge", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(255, 251, 238),
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -18, 0.5, 0),
-		Size = UDim2.fromOffset(52, 52),
-		ZIndex = 6,
-	})
-	round(badge)
-	stroke(badge, Theme.Darken(Theme.NeonColor("Orange"), 0.35), 3, 0)
-	Theme.Gradient(badge, WHITE, Color3.fromRGB(255, 226, 160), 90)
-	local badgeGlyph = makeText(badge, "Glyph", "", "Title", 28, Theme.NeonColor("Orange"), { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+	-- the arrow ("go") on a small stone square at the right
+	local badge = P5.heroSquare(root, "Badge", 52, 6)
+	badge.AnchorPoint = Vector2.new(1, 0.5)
+	badge.Position = UDim2.new(1, -18, 0.5, -2)
+	local badgeGlyph = makeText(badge, "Glyph", "", "Title", 28, P5.HS.Text, { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
 	PixelIcon.Host(badgeGlyph, spec.Badge, 27)
 	hero.Badge = badge
-	-- hover / press: a gentle grow and squash, a sweep on hover
-	hero.Fx = P5.Kit.AttachFx(root, function(hover, press)
-		if hover and not press then
-			P5.heroShine(hero)
-		end
-	end, 1.02, 0.97)
-	root.Activated:Connect(function()
-		if root:GetAttribute("Disabled") ~= true then
-			callback(root)
-		end
-	end)
 	return hero
-end
-
--- one soft light sweep across the hero (skipped while one is running)
-function P5.heroShine(hero)
-	if not hero or not hero.Shine or hero.Shining then
-		return
-	end
-	hero.Shining = true
-	hero.Shine.Position = UDim2.new(-0.25, 0, 0.5, 0)
-	tween(hero.Shine, K.HERO_SHINE, { Position = UDim2.new(1.25, 0, 0.5, 0) }, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-	task.delay(K.HERO_SHINE + 0.05, function()
-		hero.Shining = false
-	end)
 end
 
 -- the hero buttons + the claim steps of the Home window (H = win.HomeUi)
@@ -2110,37 +2197,37 @@ function P5.buildHomeHero(H, win, onGoHome, onClaim)
 		Size = UDim2.new(1, -24, 1, -(K.HERO_H + 36)),
 		Visible = false,
 	})
+	steps.ScrollBarImageColor3 = P5.HS.Wood
 	pad(steps, 2, 2, 14, 6)
 	H.ClaimList = listLayout(steps, Enum.FillDirection.Vertical, 12)
-	makeText(steps, "Caption", "How to get your home", "Heading", 21, MUTED, {
+	makeText(steps, "Caption", "How to get your home", "Heading", 21, P5.HS.TextMuted, {
 		Size = UDim2.new(1, 0, 0, 28),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 0,
 	})
 	for i, step in ipairs(P5.CLAIM_STEPS) do
-		local row = makeInset(steps, "Step" .. i, { Size = UDim2.new(1, 0, 0, 72), LayoutOrder = i })
+		local row = P5.signBlock(steps, "Step" .. i, { Size = UDim2.new(1, 0, 0, 72), LayoutOrder = i })
+		-- the step's number on a gold block (brown ink: 9:1)
 		local num = makeFrame(row, "Num", {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Theme.NeonColor("Yellow"),
 			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 12, 0.5, 0),
+			Position = UDim2.new(0, 12, 0.5, -2),
 			Size = UDim2.fromOffset(40, 40),
 		})
-		round(num)
-		Theme.Gradient(num, Theme.Lighten(Theme.NeonColor("Yellow"), 0.2), Theme.Darken(Theme.NeonColor("Yellow"), 0.25), 90)
-		makeText(num, "N", tostring(i), "Title", 24, WHITE, { Size = UDim2.fromScale(1, 1) })
-		local glyph = P5.Kit.Icon(row, step.Glyph, 28)
+		CloudUI.SignBlock(num, "Selected", { EdgePx = 2, LipPx = 4 })
+		makeText(num, "N", tostring(i), "Title", 24, P5.HS.Text, { Size = UDim2.new(1, 0, 1, -4) })
+		local glyph = P5.Kit.Icon(row, step.Glyph, 30) -- a 27 px PixelIcon
+		glyph.TextColor3 = P5.HS.Wood
 		glyph.AnchorPoint = Vector2.new(0, 0.5)
-		glyph.Position = UDim2.new(0, 62, 0.5, 0)
-		makeText(row, "Text", step.Text, "Body", 21, WHITE, {
+		glyph.Position = UDim2.new(0, 62, 0.5, -2)
+		makeText(row, "Text", step.Text, "Body", 21, P5.HS.Text, {
 			Position = UDim2.new(0, 104, 0, 0),
-			Size = UDim2.new(1, -114, 1, 0),
+			Size = UDim2.new(1, -114, 1, -5),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextWrapped = true,
 		})
 	end
-	-- what a home gives: three small neon tiles
-	makeText(steps, "GetsCaption", "Your home has", "Heading", 21, MUTED, {
+	-- what a home gives: three small stone tiles, each with its colour's chip and lip
+	makeText(steps, "GetsCaption", "Your home has", "Heading", 21, P5.HS.TextMuted, {
 		Size = UDim2.new(1, 0, 0, 28),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 10,
@@ -2153,16 +2240,16 @@ function P5.buildHomeHero(H, win, onGoHome, onClaim)
 		Parent = gets,
 	})
 	for i, item in ipairs(P5.CLAIM_GETS) do
-		local tile = P5.Kit.Card({ Name = "Get" .. i, Size = UDim2.fromOffset(160, 132), Color = item.Color, Glow = false, LayoutOrder = i, Parent = gets })
-		local orb = P5.Kit.Orb(tile.Body, item.Color, 52)
-		orb.Position = UDim2.new(0.5, 0, 0, 36)
-		P5.Kit.Icon(orb, item.Glyph, 28)
-		makeText(tile.Body, "Title", item.Title, "Heading", 20, WHITE, {
-			Position = UDim2.new(0, 6, 0, 68),
+		local tile = P5.signBlock(gets, "Get" .. i, { Size = UDim2.fromOffset(160, 132), LayoutOrder = i }, item.Color)
+		local chip = P5.signChip(tile, "Orb", item.Color, item.Glyph, 48)
+		chip.AnchorPoint = Vector2.new(0.5, 0)
+		chip.Position = UDim2.new(0.5, 0, 0, 10)
+		makeText(tile, "Title", item.Title, "Heading", 20, P5.HS.Text, {
+			Position = UDim2.new(0, 6, 0, 66),
 			Size = UDim2.new(1, -12, 0, 24),
 		})
-		makeText(tile.Body, "Text", item.Text, "Body", 18, Theme.Lighten(P5.Kit.ColorOf(item.Color), 0.45), {
-			Position = UDim2.new(0, 6, 0, 94),
+		makeText(tile, "Text", item.Text, "Body", 18, P5.HS.TextMuted, {
+			Position = UDim2.new(0, 6, 0, 92),
 			Size = UDim2.new(1, -12, 0, 24),
 		})
 	end
@@ -2170,7 +2257,8 @@ function P5.buildHomeHero(H, win, onGoHome, onClaim)
 	H.ClaimSteps = steps
 end
 
--- shows the hero of the current state (home or none), its disabled look in a match, and places the list under it
+-- shows the hero of the current state (home or none), its disabled look in a match (CloudUI's sunk "Off" well), and
+-- places the list under it
 function P5.paintHomeHero(H, hasHome, matchOn)
 	if not H.Hero then
 		return
@@ -2181,7 +2269,6 @@ function P5.paintHomeHero(H, hasHome, matchOn)
 	H.List.Visible = hasHome
 	for _, hero in ipairs({ H.GoHomeHero, H.ClaimHero }) do
 		hero.Root:SetAttribute("Disabled", matchOn and true or false)
-		hero.Card.SetColor(matchOn and Theme.Neon.Grey or Theme.NeonColor("Yellow"))
 		hero.Badge.Visible = not matchOn
 	end
 	H.HomeState = hasHome
@@ -2198,11 +2285,11 @@ function P5.layoutHomeHero(H, short, w)
 		hero.Root.Size = UDim2.new(1, 0, 0, h)
 		local orb = short and 52 or 64
 		hero.Orb.Size = UDim2.fromOffset(orb, orb)
-		hero.Orb.Position = UDim2.new(0, short and 12 or 16, 0.5, 0)
+		hero.Orb.Position = UDim2.new(0, short and 12 or 16, 0.5, -2)
 		local x = short and 76 or 96
-		hero.Title.Position = UDim2.new(0, x, 0.5, short and 0 or -2)
-		hero.Title.Size = UDim2.new(1, -(x + 76), 0, short and 34 or 40)
-		hero.Sub.Position = UDim2.new(0, x, 0.5, 2)
+		hero.Title.Position = UDim2.new(0, x, 0.5, short and -2 or -4)
+		hero.Title.Size = UDim2.new(1, -(x + 76), 0, short and 32 or 40)
+		hero.Sub.Position = UDim2.new(0, x, 0.5, 0)
 		hero.Sub.Size = UDim2.new(1, -(x + 76), 0, 26)
 		local spec = P5.HERO[hero.Id]
 		hero.Sub.Text = (short or (tonumber(w) or 999) < 640) and spec.Short or spec.Sub
@@ -2211,18 +2298,6 @@ function P5.layoutHomeHero(H, short, w)
 	H.ClaimSteps.Position = UDim2.fromOffset(12, h + 22)
 	H.ClaimSteps.Size = UDim2.new(1, -24, 1, -(h + 32))
 	return h
-end
-
--- the light sweep while the window is shown (one loop per opening; the token stops it)
-function P5.heroLoop(H, win)
-	H.ShineToken = (H.ShineToken or 0) + 1
-	local mine = H.ShineToken
-	task.delay(0.3, function()
-		while H.ShineToken == mine and win.Shown do
-			P5.heroShine(H.HomeState == false and H.ClaimHero or H.GoHomeHero)
-			task.wait(K.HERO_SHINE_EVERY)
-		end
-	end)
 end
 
 local buildHome -- (the window's helpers live in this do-block: Lua's 200-local limit of the main chunk)
@@ -2404,6 +2479,7 @@ do
 			Position = UDim2.fromOffset(12, 12),
 			Size = UDim2.new(0, K.HOME_LEFT_W, 1, -24),
 		})
+		left.ScrollBarImageColor3 = P5.HS.Wood -- (kit-b U9-1)
 		pad(left, 2, 2, 12, 6)
 		listLayout(left, Enum.FillDirection.Vertical, 10)
 		H.Left = left
@@ -2412,6 +2488,7 @@ do
 			Position = UDim2.new(1, -12, 0, 12),
 			Size = UDim2.new(1, -(K.HOME_LEFT_W + 36), 1, -24),
 		})
+		list.ScrollBarImageColor3 = P5.HS.Wood
 		pad(list, 2, 2, 14, 8)
 		listLayout(list, Enum.FillDirection.Vertical, 8)
 		H.List = list
@@ -2422,8 +2499,9 @@ do
 		------------------------------------------------------------------
 		-- summary cards
 		------------------------------------------------------------------
+		-- (kit-b U9-1) a raised stone block in its wood edge (was a dark inset well)
 		local function card(name, order, height)
-			local c = makeInset(left, name, {
+			local c = P5.signBlock(left, name, {
 				Size = UDim2.new(1, 0, 0, height),
 				LayoutOrder = order,
 			})
@@ -2433,36 +2511,35 @@ do
 
 		-- house: tier, Home Level, prestige stars (top-right), the next house
 		local house = card("HouseCard", 1, 116)
+		-- (kit-b U9-1) the house on a square well (the pitch's pet well, its edge), brown ink
 		local disc = makeFrame(house, "HouseDisc", {
 			Position = UDim2.fromOffset(12, 12),
 			Size = UDim2.fromOffset(64, 64),
 			BackgroundTransparency = 0,
-			BackgroundColor3 = WHITE,
+			BackgroundColor3 = P5.HS.PetWell,
 		})
-		round(disc)
-		stroke(disc, NAVY, 3, 0)
-		Theme.Gradient(disc, Theme.Lighten(C2.Kind.House, 0.35), Theme.Darken(C2.Kind.House, 0.2), 90)
-		H.HouseGlyph = makeText(disc, "Glyph", "", "Title", 36, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
+		stroke(disc, P5.HS.WellEdge, 2, 0).LineJoinMode = Enum.LineJoinMode.Miter
+		H.HouseGlyph = makeText(disc, "Glyph", "", "Title", 36, P5.HS.Text, { Size = UDim2.new(1, 0, 1, 0) })
 		PixelIcon.Set(H.HouseGlyph, HOME_ICON.House, 36) -- (kit-b U7b) the tier's PixelIcon (paintSummary)
-		H.HouseName = makeText(house, "Tier", "Cottage", "Title", 30, Theme.Lighten(C2.Kind.House, 0.4), {
+		H.HouseName = makeText(house, "Tier", "Cottage", "Title", 30, P5.HS.Text, {
 			Position = UDim2.fromOffset(88, 8),
 			Size = UDim2.new(1, -170, 0, 36),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 20, Parent = H.HouseName })
-		H.Stars = makeText(house, "Stars", "", "Title", 22, GOLD, {
+		H.Stars = makeText(house, "Stars", "", "Title", 22, P5.HS.Wood, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -12, 0, 12),
 			Size = UDim2.fromOffset(78, 28),
 			TextXAlignment = Enum.TextXAlignment.Right,
 		})
-		H.HomeLevel = makeText(house, "HomeLevel", "Home Level 0", "Heading", 21, WHITE, {
+		H.HomeLevel = makeText(house, "HomeLevel", "Home Level 0", "Heading", 21, P5.HS.Text, {
 			Position = UDim2.fromOffset(88, 46),
 			Size = UDim2.new(1, -100, 0, 26),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
-		H.NextHouse = makeText(house, "NextHouse", "", "Body", 18, MUTED, {
+		H.NextHouse = makeText(house, "NextHouse", "", "Body", 18, P5.HS.TextMuted, {
 			Position = UDim2.fromOffset(14, 84),
 			Size = UDim2.new(1, -28, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -2472,22 +2549,22 @@ do
 
 		-- income per second (the prestige multiplier as a gold tag beside it)
 		local income = card("IncomeCard", 2, 98)
-		makeText(income, "Caption", "Income", "Heading", 19, MUTED, {
+		makeText(income, "Caption", "Income", "Heading", 19, P5.HS.TextMuted, {
 			Position = UDim2.fromOffset(14, 8),
 			Size = UDim2.new(1, -28, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
-		H.Income = makeText(income, "PerSecond", G.Cash .. "0/s", "Display", 36, C2.Cash, {
+		H.Income = makeText(income, "PerSecond", G.Cash .. "0/s", "Display", 36, P5.GOOD, {
 			Position = UDim2.fromOffset(14, 30),
 			Size = UDim2.new(1, -110, 0, 40),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 36, MinTextSize = 22, Parent = H.Income })
-		H.Multiplier = colorPill(income, "Multiplier", "x1", GOLD, 19, 0)
+		H.Multiplier = P5.signTag(income, "Multiplier", "x1", 19, 0, "Heading")
 		H.Multiplier.AnchorPoint = Vector2.new(1, 0)
 		H.Multiplier.Position = UDim2.new(1, -14, 0, 38)
-		H.IncomeParts = makeText(income, "Parts", "", "Body", 18, MUTED, {
+		H.IncomeParts = makeText(income, "Parts", "", "Body", 18, P5.HS.TextMuted, {
 			Position = UDim2.fromOffset(14, 70),
 			Size = UDim2.new(1, -28, 0, 22),
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -2497,31 +2574,31 @@ do
 		-- the Pet Garden: coins waiting on the lawn, coins per minute, places, the legacy lines (no Collect: kids walk
 		-- over their coins)
 		local garden = card("GardenCard", 3, 168)
-		PixelIcon.Lead(makeText(garden, "Caption", "Pet Garden", "Heading", 19, MUTED, {
+		PixelIcon.Lead(makeText(garden, "Caption", "Pet Garden", "Heading", 19, P5.HS.TextMuted, {
 			Position = UDim2.fromOffset(14, 8),
 			Size = UDim2.new(0.6, -14, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		}), HOME_ICON.Seedling) -- (kit-b U7b)
-		H.Places = makeText(garden, "Places", "", "Heading", 18, Theme.Lighten(C2.Kind.Garden, 0.35), {
+		H.Places = makeText(garden, "Places", "", "Heading", 18, P5.GOOD, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -14, 0, 8),
 			Size = UDim2.new(0.45, 0, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Right,
 		})
-		H.CoinsWaiting = makeText(garden, "CoinsWaiting", "", "Display", 28, C2.Cash, {
+		H.CoinsWaiting = makeText(garden, "CoinsWaiting", "", "Display", 28, P5.GOOD, {
 			Position = UDim2.fromOffset(14, 34),
 			Size = UDim2.new(1, -28, 0, 34),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 28, MinTextSize = 20, Parent = H.CoinsWaiting })
-		H.CoinsPerMin = makeText(garden, "CoinsPerMinute", "", "Heading", 18, WHITE, {
+		H.CoinsPerMin = makeText(garden, "CoinsPerMinute", "", "Heading", 18, P5.HS.Text, {
 			Position = UDim2.fromOffset(14, 70),
 			Size = UDim2.new(1, -28, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
-		H.GardenTip = makeText(garden, "Tip", "", "Body", 18, MUTED, {
+		H.GardenTip = makeText(garden, "Tip", "", "Body", 18, P5.HS.TextMuted, {
 			Position = UDim2.fromOffset(14, 96),
 			Size = UDim2.new(1, -28, 0, 64),
 			TextWrapped = true,
@@ -2531,7 +2608,7 @@ do
 
 		-- prestige: stars, Home Level progress, the requirement, the reward, the button
 		local prestige = card("PrestigeCard", 4, 204)
-		H.PrestigeTitle = makeText(prestige, "Caption", "Prestige", "Heading", 19, MUTED, {
+		H.PrestigeTitle = makeText(prestige, "Caption", "Prestige", "Heading", 19, P5.HS.TextMuted, {
 			Position = UDim2.fromOffset(14, 8),
 			Size = UDim2.new(1, -28, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -2542,26 +2619,29 @@ do
 			Size = UDim2.new(1, -28, 0, 30),
 			Height = 30,
 			TextSize = 20,
-			Color = GOLD,
+			Color = P5.HS.Gold,
+			Skin = "Sign", -- (kit-b U9-1) a flat well track in a wood edge, the gold fill and its lip
 			Parent = prestige,
 		})
-		H.PrestigeNeed = makeText(prestige, "Need", "", "Heading", 18, C2.Lock, {
+		H.PrestigeNeed = makeText(prestige, "Need", "", "Heading", 18, P5.HS.TextMuted, {
 			Position = UDim2.fromOffset(14, 72),
 			Size = UDim2.new(1, -28, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
-		H.PrestigeReward = makeText(prestige, "Reward", "", "Body", 18, MUTED, {
+		H.PrestigeReward = makeText(prestige, "Reward", "", "Body", 18, P5.HS.TextMuted, {
 			Position = UDim2.fromOffset(14, 98),
 			Size = UDim2.new(1, -28, 0, 44),
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextYAlignment = Enum.TextYAlignment.Top,
 		})
+		-- (kit-b U9-1) a stone plank: Go home is the window's one green action
 		H.PrestigeButton = CloudUI.Button({
 			Name = "Prestige",
 			Text = "Prestige",
-			Style = "Gold",
+			Style = "Blue",
+			Skin = "Sign",
 			AnchorPoint = Vector2.new(0.5, 1),
 			Position = UDim2.new(0.5, 0, 1, -10),
 			Size = UDim2.new(1, -28, 0, 50),
@@ -2633,10 +2713,11 @@ do
 		local function buildRow(def, parent, order)
 			local color = C2.Kind[def.Kind] or BUTTONS.Blue
 			local row = { Id = def.Id, Def = def, Pips = {} }
-			local frame = makeInset(parent, "Station_" .. def.Id, {
+			-- (kit-b U9-1) a stone block whose lip and icon square carry the station's kind colour (colour by role)
+			local frame = P5.signBlock(parent, "Station_" .. def.Id, {
 				Size = UDim2.new(1, 0, 0, K.STATION_ROW_H),
 				LayoutOrder = order,
-			})
+			}, color)
 			row.Frame = frame
 			row.Disc = makeFrame(frame, "Icon", {
 				AnchorPoint = Vector2.new(0, 0.5),
@@ -2645,19 +2726,18 @@ do
 				BackgroundTransparency = 0,
 				BackgroundColor3 = color,
 			})
-			corner(row.Disc, "M")
-			stroke(row.Disc, NAVY, 3, 0)
-			Theme.Gradient(row.Disc, Theme.Lighten(color, 0.35), Theme.Darken(color, 0.2), 90)
-			-- (kit-b U7b) the station's PixelIcon (its TycoonCatalog Icon), the house for one that names none
-			PixelIcon.Host(makeText(row.Disc, "Glyph", "", "Title", 34, WHITE, { Size = UDim2.new(1, 0, 1, 0) }), PixelIcon.Bitmaps[def.Icon] and def.Icon or HOME_ICON.House, 36)
-			row.Name = makeText(frame, "Name", def.Name, "Title", 24, WHITE, {
+			stroke(row.Disc, P5.HS.Wood, 2, 0).LineJoinMode = Enum.LineJoinMode.Miter
+			-- (kit-b U7b) the station's PixelIcon (its TycoonCatalog Icon), the house for one that names none; U9-1: in the
+			-- ink that reads on the kind colour
+			PixelIcon.Host(makeText(row.Disc, "Glyph", "", "Title", 34, Theme.TextOn(color), { Size = UDim2.new(1, 0, 1, 0) }), PixelIcon.Bitmaps[def.Icon] and def.Icon or HOME_ICON.House, 36)
+			row.Name = makeText(frame, "Name", def.Name, "Title", 24, P5.HS.Text, {
 				Position = UDim2.fromOffset(88, 6),
 				Size = UDim2.new(1, -360, 0, 30),
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextScaled = true,
 			})
 			Util.Create("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 18, Parent = row.Name })
-			row.Level = makeText(frame, "Level", "Lv 0/" .. tostring(def.MaxLevel), "Heading", 19, MUTED, {
+			row.Level = makeText(frame, "Level", "Lv 0/" .. tostring(def.MaxLevel), "Heading", 19, P5.HS.TextMuted, {
 				Position = UDim2.fromOffset(88, 38),
 				Size = UDim2.fromOffset(96, 24),
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -2668,17 +2748,17 @@ do
 			})
 			listLayout(row.PipRow, Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 			for i = 1, math.min(def.MaxLevel or 1, 10) do
+				-- (kit-b U9-1) square pips: sunk wells in their edge, filled in the kind colour (paintRow)
 				local pip = makeFrame(row.PipRow, "Pip" .. i, {
 					Size = UDim2.fromOffset(13, 13),
 					BackgroundTransparency = 0,
-					BackgroundColor3 = Color3.fromRGB(14, 20, 52),
+					BackgroundColor3 = P5.HS.StoneLip,
 					LayoutOrder = i,
 				})
-				corner(pip, "S")
-				stroke(pip, NAVY, 1.5, 0)
+				stroke(pip, P5.HS.WellEdge, 1.5, 0).LineJoinMode = Enum.LineJoinMode.Miter
 				row.Pips[i] = pip
 			end
-			row.Info = makeText(frame, "Info", "", "Body", 18, MUTED, {
+			row.Info = makeText(frame, "Info", "", "Body", 18, P5.HS.TextMuted, {
 				Position = UDim2.fromOffset(88, 64),
 				Size = UDim2.new(1, -360, 0, 24),
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -2690,7 +2770,7 @@ do
 				Position = UDim2.new(1, -12, 0.5, 0),
 				Size = UDim2.fromOffset(330, 76),
 			})
-			row.Price = makeText(row.Right, "Price", "", "Display", 26, C2.Cash, {
+			row.Price = makeText(row.Right, "Price", "", "Display", 26, P5.HS.Text, {
 				AnchorPoint = Vector2.new(0, 0.5),
 				Position = UDim2.new(0, 0, 0.5, 0),
 				Size = UDim2.fromOffset(150, 32),
@@ -2698,10 +2778,13 @@ do
 				TextScaled = true,
 			})
 			Util.Create("UITextSizeConstraint", { MaxTextSize = 26, MinTextSize = 18, Parent = row.Price })
+			-- (kit-b U9-1) a stone plank (Build and Upgrade alike): Go home is the window's one green action; the gold NEXT
+			-- tag marks the pads worth building next
 			row.Button = CloudUI.Button({
 				Name = "Upgrade",
 				Text = "Upgrade",
-				Style = "Green",
+				Style = "Blue",
+				Skin = "Sign",
 				AnchorPoint = Vector2.new(1, 0.5),
 				Position = UDim2.new(1, 0, 0.5, 0),
 				Size = UDim2.fromOffset(164, 54),
@@ -2711,13 +2794,13 @@ do
 				end,
 				Parent = row.Right,
 			})
-			row.Lock = makeText(row.Right, "Locked", "", "Heading", 18, C2.Lock, {
+			row.Lock = makeText(row.Right, "Locked", "", "Heading", 18, P5.HS.TextMuted, {
 				Size = UDim2.new(1, 0, 1, 0),
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Right,
 				Visible = false,
 			})
-			row.Max = colorPill(row.Right, "Max", "MAX", GOLD, 20, 1)
+			row.Max = P5.signTag(row.Right, "Max", "MAX", 20, 1)
 			row.Max.AnchorPoint = Vector2.new(1, 0.5)
 			row.Max.Position = UDim2.new(1, 0, 0.5, 0)
 			row.Max.Visible = false
@@ -2733,7 +2816,7 @@ do
 				Size = UDim2.new(1, 0, 0, 34),
 				LayoutOrder = order,
 			})
-			Theme.StyleTitle(makeText(header, "Title", section.Title, "Title", 24, WHITE, {
+			Theme.StyleTitle(makeText(header, "Title", section.Title, "Title", 24, P5.HS.Text, {
 				Position = UDim2.fromOffset(6, 0),
 				Size = UDim2.new(1, -12, 1, 0),
 				TextXAlignment = Enum.TextXAlignment.Left,
@@ -2747,7 +2830,7 @@ do
 			end
 		end
 		if not TycoonCatalog then
-			H.Missing = makeText(list, "Missing", "Your home is getting ready. Try again in a moment!", "Body", 20, MUTED, {
+			H.Missing = makeText(list, "Missing", "Your home is getting ready. Try again in a moment!", "Body", 20, P5.HS.TextMuted, {
 				Size = UDim2.new(1, 0, 0, 60),
 				TextWrapped = true,
 				LayoutOrder = 1,
@@ -2757,47 +2840,49 @@ do
 		------------------------------------------------------------------
 		-- prestige confirmation (resets stations and Cash)
 		------------------------------------------------------------------
+		-- (kit-b U9-1) a small kit B sign over a navy shade: the stone body in a 6 px wood frame and its lip, a plain Section
+		-- title (the owner's ruling 2026-11-14: the ribbon is for window titles), the lines on raised stone, Prestige! the
+		-- dialog's one green plank and Not yet a stone one
 		local confirm = makeFrame(content, "PrestigeConfirm", {
 			Size = UDim2.new(1, 0, 1, 0),
 			BackgroundTransparency = 0.35,
-			BackgroundColor3 = Color3.fromRGB(8, 12, 32),
+			BackgroundColor3 = P5.HS.Navy,
 			Visible = false,
 			ZIndex = 30,
 		})
-		corner(confirm, "M")
 		local box = makeFrame(confirm, "Box", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.new(0.5, 0, 0.5, 0),
 			Size = UDim2.fromOffset(K.CONFIRM_W, K.CONFIRM_H),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = WHITE, -- the UIGradient below multiplies this colour
 			ZIndex = 31,
 		})
-		corner(box, "M")
-		stroke(box, GOLD, 4, 0)
-		Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
+		CloudUI.SignBlock(box, "Stone", { Face = P5.HS.Stone, Edge = P5.HS.Wood, EdgePx = 6, Pad = false })
 		H.ConfirmBox = box
-		Theme.StyleTitle(makeText(box, "Title", "Prestige now?", "Title", 32, GOLD, {
+		H.ConfirmTitle = Theme.StyleTitle(makeText(box, "Title", "Prestige now?", "Title", 32, P5.HS.Text, {
 			Position = UDim2.fromOffset(16, 12),
 			Size = UDim2.new(1, -32, 0, 40),
 			ZIndex = 32,
 		}), "Section") -- (kit-b prep) a dialog's title: the ribbon is for window titles only
 		-- three lines: what starts over, what stays, what the new star gives
-		local lines = makeFrame(box, "Lines", {
+		-- (kit-b U9-1) the lines scroll when a phone's window is too short for them (H.FitConfirm sizes them to their text)
+		local lines = scroller(box, "Lines", {
 			Position = UDim2.fromOffset(16, 62),
 			Size = UDim2.new(1, -32, 0, 3 * 62 + 2 * 8),
 			ZIndex = 32,
 		})
+		lines.ScrollBarImageColor3 = P5.HS.Wood
 		listLayout(lines, Enum.FillDirection.Vertical, 8)
 		H.ConfirmLines = {}
 		H.ConfirmRows = {}
 		H.ConfirmList = lines
 		for i, spec in ipairs({
-			{ "Reset", "Starts over", Theme.Lighten(BAD, 0.3) },
-			{ "Keep", "You keep", Theme.Lighten(GOOD, 0.35) },
-			{ "Gain", "You get", GOLD },
+			{ "Reset", "Starts over", P5.HS.RedLip },
+			{ "Keep", "You keep", P5.GOOD },
+			{ "Gain", "You get", P5.HS.Wood },
 		}) do
-			local line = makeInset(lines, "Line_" .. spec[1], { Size = UDim2.new(1, 0, 0, 62), LayoutOrder = i, ZIndex = 32 })
+			-- (kit-b U9-1 review) a line and its text are sized by H.FitConfirm from the text's real bounds, so the box and
+			-- its list know every line's height (an AutomaticSize line grew behind their backs and was cut by the list)
+			local line = P5.signBlock(lines, "Line_" .. spec[1], { Size = UDim2.new(1, 0, 0, 62), LayoutOrder = i, ZIndex = 32 })
 			H.ConfirmRows[#H.ConfirmRows + 1] = line
 			makeText(line, "Label", spec[2], "Heading", 19, spec[3], {
 				Position = UDim2.fromOffset(12, 0),
@@ -2805,9 +2890,9 @@ do
 				TextXAlignment = Enum.TextXAlignment.Left,
 				ZIndex = 33,
 			})
-			H.ConfirmLines[spec[1]] = makeText(line, "Text", "", "Body", 19, WHITE, {
+			H.ConfirmLines[spec[1]] = makeText(line, "Text", "", "Body", 19, P5.HS.Text, {
 				Position = UDim2.fromOffset(132, 0),
-				Size = UDim2.new(1, -144, 1, 0),
+				Size = UDim2.new(1, -144, 0, 56),
 				TextWrapped = true,
 				TextXAlignment = Enum.TextXAlignment.Left,
 				ZIndex = 33,
@@ -2820,13 +2905,16 @@ do
 			ZIndex = 32,
 		})
 		listLayout(buttons, Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
+		H.ConfirmButtons = buttons
 		local yes = CloudUI.Button({
 			Name = "ConfirmPrestige",
 			Text = "Prestige!",
-			Style = "Gold",
+			Style = "Green",
+			Skin = "Sign",
 			Size = UDim2.fromOffset(220, 56),
 			TextSize = 25,
 			LayoutOrder = 1,
+			ZIndex = 33,
 			Callback = function()
 				H.ShowConfirm(false)
 				if inMatch() then
@@ -2838,19 +2926,23 @@ do
 			Parent = buttons,
 		})
 		yes.ZIndex = 33
+		H.ConfirmYes = yes
 		local no = CloudUI.Button({
 			Name = "CancelPrestige",
 			Text = "Not yet",
 			Style = "Blue",
+			Skin = "Sign",
 			Size = UDim2.fromOffset(170, 56),
 			TextSize = 23,
 			LayoutOrder = 2,
+			ZIndex = 33,
 			Callback = function()
 				H.ShowConfirm(false)
 			end,
 			Parent = buttons,
 		})
 		no.ZIndex = 33
+		H.ConfirmNo = no
 
 		function H.ShowConfirm(on)
 			if on then
@@ -2864,8 +2956,9 @@ do
 				local P = TycoonCatalog and TycoonCatalog.Prestige or {}
 				local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0
 				local mult = P2.catalogCall("PrestigeMultiplier", stars + 1) or ((P.IncomeMultiplier or 1.25) ^ (stars + 1))
-				H.ConfirmLines.Reset.Text = "Your Cash, the Cloud Cash on your lawn and your stations (not the Garden)"
-				H.ConfirmLines.Keep.Text = "Pets, levels, evolutions, training, your teams, berries, the Garden and decor"
+				local words = H.ShortConfirm and P5.PRESTIGE_TEXT.Short or P5.PRESTIGE_TEXT
+				H.ConfirmLines.Reset.Text = words.Reset
+				H.ConfirmLines.Keep.Text = words.Keep
 				local places = math.min(tonumber(P.GardenSlotsMax) or 12, (tonumber(P.GardenSlotsBase) or 3) + (tonumber(P.GardenSlotsPerStar) or 1) * (stars + 1))
 				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " coins, garden place " .. places .. " and " .. commas(gems) .. " Gems"
 				if stars + 1 == (tonumber(P.FusionUnlock) or 1) then
@@ -2874,6 +2967,59 @@ do
 				H.ConfirmLines.Gain.Text = gain
 			end
 			confirm.Visible = on == true
+			if on then
+				H.FitConfirm()
+			end
+		end
+
+		-- (kit-b U9-1 review) each line as tall as the text it really shows (its TextBounds at the column's width: the first
+		-- star's "You get" names the Fusion Machine too, longer than any estimate from the sample words), the list as tall
+		-- as the three lines and the box as tall as that or the room H.Layout found; the list scrolls only past that room.
+		-- A text with no bounds yet (a hidden dialog, before its first layout) is estimated from its words.
+		function H.FitConfirm()
+			local fit = H.ConfirmFit
+			if not fit then
+				return
+			end
+			-- TextBounds is screen px; the sizes below are the box's own px (the window's UIScales sit above it)
+			local scale, cur = 1, box
+			while cur and not cur:IsA("LayerCollector") do
+				local ui = cur:IsA("GuiObject") and cur:FindFirstChildOfClass("UIScale")
+				if ui and ui.Scale > 0 then
+					scale = scale * ui.Scale
+				end
+				cur = cur.Parent
+			end
+			local words = fit.Short and P5.PRESTIGE_TEXT.Short or P5.PRESTIGE_TEXT
+			local content = 2 * 8
+			for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
+				local text = H.ConfirmLines[id]
+				local okB, bounds = pcall(function()
+					return text.TextBounds
+				end)
+				local textH
+				if text.Text ~= "" and okB and bounds and bounds.Y > 0 then
+					textH = math.ceil(bounds.Y / scale)
+				else
+					local said = text.Text ~= "" and text.Text or words[id]
+					textH = math.ceil(Theme.Measure(said, "Body", 19).X * 1.1 / fit.Column) * 23 -- (word wrap leaves a ragged edge)
+				end
+				local lineH = math.max(fit.Short and 50 or 62, textH + (fit.Short and 6 or 14))
+				text.Parent.Size = UDim2.new(1, -12, 0, lineH)
+				text.Size = UDim2.new(1, -144, 0, lineH - 6) -- the lip's room below
+				content = content + lineH
+			end
+			local boxH = math.min(fit.Top + content + fit.Foot, fit.Room)
+			H.ConfirmList.Size = UDim2.new(1, -32, 0, boxH - fit.Top - fit.Foot)
+			box.Size = UDim2.fromOffset(fit.BoxW, boxH)
+		end
+		-- a text whose bounds arrive or change after the fit (Roblox lays text out on its next frame) fits again
+		for _, text in pairs(H.ConfirmLines) do
+			text:GetPropertyChangedSignal("TextBounds"):Connect(function()
+				if confirm.Visible then
+					H.FitConfirm()
+				end
+			end)
 		end
 
 		------------------------------------------------------------------
@@ -2895,14 +3041,15 @@ do
 				row.Name.Text = "House: " .. ((tier and tier.Name) or "not built")
 			end
 			row.Level.Text = "Lv " .. level .. "/" .. maxLevel
-			row.Level.TextColor3 = level >= maxLevel and GOLD or MUTED
+			row.Level.TextColor3 = level >= maxLevel and P5.HS.Text or P5.HS.TextMuted
+			-- (kit-b U9-1) built = the kind colour, open now = a light well, behind the house's cap = the darker stone
 			for i, pip in ipairs(row.Pips) do
 				if i <= level then
-					pip.BackgroundColor3 = Theme.Lighten(color, 0.25)
+					pip.BackgroundColor3 = color
 				elseif i <= cap then
-					pip.BackgroundColor3 = Color3.fromRGB(36, 50, 100)
+					pip.BackgroundColor3 = P5.HS.Well
 				else
-					pip.BackgroundColor3 = Color3.fromRGB(14, 20, 52)
+					pip.BackgroundColor3 = P5.HS.StoneLip
 				end
 			end
 			-- what it does now -> next
@@ -2928,7 +3075,7 @@ do
 				info = now or (def.Blurb or "")
 			end
 			row.Info.Text = info
-			row.Info.TextColor3 = MUTED
+			row.Info.TextColor3 = P5.HS.TextMuted
 			-- right block
 			local lock = nil
 			if level >= maxLevel then
@@ -2958,10 +3105,9 @@ do
 			local price = tonumber(pad.Price) or 0
 			row.Price.Text = price > 0 and P2.formatCash(price) or "FREE"
 			local short = price > cash
-			row.Price.TextColor3 = short and Theme.Lighten(BAD, 0.35) or C2.Cash
+			row.Price.TextColor3 = short and P5.HS.RedLip or P5.HS.Text
 			local pending = row.PendingAt ~= nil
 			row.Button.Text = pending and "..." or (level < 1 and "Build" or "Upgrade")
-			CloudUI.SetStyle(row.Button, level < 1 and "Gold" or "Green")
 			CloudUI.SetDisabled(row.Button, short or pending or inMatch() or not P2.hasHome())
 		end
 
@@ -2985,17 +3131,17 @@ do
 			H.Stars.Text = stars <= 3 and "" or ("x" .. stars)
 			if stars > 0 then
 				local shown = stars <= 3 and stars or 1
-				PixelIcon.Mark(H.Stars, HOME_ICON.Star, { Count = shown, Of = shown })
+				PixelIcon.Mark(H.Stars, HOME_ICON.Star, { Count = shown, Of = shown, Colour = P5.HS.GoldDeep })
 			end
 			local nextTier = tiers[(houseLevel >= 1 and (tierIndex or 1) or 0) + 1]
-			H.NextHouse.TextColor3 = MUTED
+			H.NextHouse.TextColor3 = P5.HS.TextMuted
 			if houseLevel < 1 then
 				H.NextHouse.Text = "Build your Cottage on the House pad"
 			elseif type(nextTier) == "table" then
 				local at = tonumber(nextTier.HomeLevel) or 0
 				if homeLevel >= at then
 					H.NextHouse.Text = "Upgrade the House to a " .. tostring(nextTier.Name) .. "!"
-					H.NextHouse.TextColor3 = Theme.Lighten(GOOD, 0.35)
+					H.NextHouse.TextColor3 = P5.GOOD
 				else
 					H.NextHouse.Text = "Next: " .. tostring(nextTier.Name) .. " at Home Level " .. at
 				end
@@ -3013,11 +3159,11 @@ do
 			if ok then
 				H.PrestigeNeed.Text = "Ready to prestige!"
 				PixelIcon.Mark(H.PrestigeNeed, HOME_ICON.Check) -- (kit-b U7b)
-				H.PrestigeNeed.TextColor3 = Theme.Lighten(GOOD, 0.35)
+				H.PrestigeNeed.TextColor3 = P5.GOOD
 			else
 				H.PrestigeNeed.Text = tostring(reason or "Not ready yet")
 				PixelIcon.Mark(H.PrestigeNeed, HOME_ICON.Lock)
-				H.PrestigeNeed.TextColor3 = C2.Lock
+				H.PrestigeNeed.TextColor3 = P5.HS.TextMuted
 			end
 			local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0
 			local reward = "Reward: x" .. shortNumber(P.IncomeMultiplier or 1.25) .. " coins forever, +1 garden place, " .. commas(gems) .. " Gems"
@@ -3065,7 +3211,7 @@ do
 			local P = TycoonCatalog and TycoonCatalog.Prestige or {}
 			local maxPlaces = tonumber(P.GardenSlotsMax) or 12
 			H.CoinsWaiting.Text = P2.formatCash(waiting) .. " waiting"
-			H.CoinsWaiting.TextColor3 = waiting > 0 and C2.Cash or MUTED
+			H.CoinsWaiting.TextColor3 = waiting > 0 and P5.GOOD or P5.HS.TextMuted
 			H.CoinsPerMin.Text = "Coins " .. P2.formatCash(math.floor(income * 60 + 0.5)) .. "/min"
 			H.Places.Text = built and ("Places " .. math.floor(open) .. "/" .. maxPlaces) or "Not built"
 			local tips = {}
@@ -3105,7 +3251,7 @@ do
 				paintRow(row, home, cash)
 				local show = signed[row.Id] == true and row.Button.Visible
 				if show and not row.NextTag then
-					row.NextTag = colorPill(row.Frame, "NextTag", "Next", GOLD, 18, 0)
+					row.NextTag = P5.signTag(row.Frame, "NextTag", "Next", 18, 0)
 					row.NextTag.AnchorPoint = Vector2.new(1, 0)
 					row.NextTag.Position = UDim2.new(1, -10, 0, 6)
 					row.NextTag.ZIndex = 6
@@ -3187,14 +3333,33 @@ do
 					row.Price.Size = UDim2.new(1, -((narrow and 140 or 164) + 12), 0, 32)
 				end
 			end
-			-- short windows (landscape phones): slimmer lines so the box fits above the window's bottom edge
-			local lineH = short and 50 or 62
-			for _, line in ipairs(H.ConfirmRows) do
-				line.Size = UDim2.new(1, 0, 0, lineH)
-			end
-			H.ConfirmList.Position = UDim2.fromOffset(16, short and 56 or 62)
-			H.ConfirmList.Size = UDim2.new(1, -32, 0, 3 * lineH + 2 * 8)
-			box.Size = UDim2.fromOffset(math.min(K.CONFIRM_W, w - 40), short and 302 or K.CONFIRM_H)
+			-- (kit-b U9-1) the box as wide as the window allows; H.FitConfirm makes each line as tall as its text and the box
+			-- as tall as those lines or the window allows, its list scrolling past that
+			local boxW = math.min(K.CONFIRM_W, w - 40)
+			H.ShortConfirm = short == true
+			-- a short window gets a tighter title and buttons, so its list keeps the room for its three lines
+			local top = short and 50 or 62
+			local buttonH = short and 48 or 56
+			local foot = buttonH + (short and 22 or 30)
+			H.ConfirmTitle.Position = UDim2.fromOffset(16, short and 6 or 12)
+			H.ConfirmButtons.Size = UDim2.new(1, -32, 0, buttonH)
+			H.ConfirmButtons.Position = UDim2.new(0.5, 0, 1, short and -10 or -14)
+			-- (kit-b U9-1 review) the two buttons share their row (the box less its 16 px margins), so a phone's narrow box
+			-- never pushes them onto the wood frame; a wide one keeps 220 and 170
+			local rowW = boxW - 32
+			local yesW = math.min(220, math.floor((rowW - 14) * 0.56))
+			H.ConfirmYes.Size = UDim2.fromOffset(yesW, buttonH)
+			H.ConfirmNo.Size = UDim2.fromOffset(math.min(170, rowW - 14 - yesW), buttonH)
+			H.ConfirmFit = {
+				BoxW = boxW,
+				Column = math.max(80, boxW - 32 - 12 - 144),
+				Short = short == true,
+				Top = top,
+				Foot = foot,
+				Room = math.max(240, (tonumber(_h) or 900) - CloudUI.ContentInset(true) - 12 - 16),
+			}
+			H.ConfirmList.Position = UDim2.fromOffset(16, top)
+			H.FitConfirm()
 		end
 
 		win.Refresh = H.Refresh
@@ -3204,7 +3369,6 @@ do
 		win.OnOpen = function()
 			H.ShowConfirm(false)
 			P5.paintHomeHero(H, P2.hasHome(), inMatch())
-			P5.heroLoop(H, win)
 			Home.Folder = nil
 			for _, conn in ipairs(Home.Conns) do
 				conn:Disconnect()
@@ -3547,8 +3711,12 @@ function MenuController.Init()
 
 	buildHint()
 	buildColumn()
-	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true })
-	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true })
+	-- (kit-b U9-3) the Stats window on the Signboard kit too; its lists scroll through both bottom corners on a phone, so the
+	-- touch controls go while it is open (HideTouch, as Home), and the HUD's currency strips step aside (HideCurrency);
+	-- (U9-3 review) on a phone, where it reaches over the vitals card, the card hides too (HideVitals)
+	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true, Skin = "Signboard", Icon = Config.Icons.Stats or "stats",
+		HideTouch = true, HideCurrency = true, HideVitals = true })
+	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true, Skin = "Signboard", Icon = HOME_ICON.House, HideTouch = true })
 	relayoutMenu()
 	updateMenuActive()
 

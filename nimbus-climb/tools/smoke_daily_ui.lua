@@ -332,14 +332,19 @@ local function clientScenarios()
 		return KC.serverCalls("DailyRequest", mark)
 	end
 	-- slop-audit win 6: the problems of a close button's drawn X ({} = good): the shared check (smoke_common.lua
-	-- SmokeCommon.closeMarkIssues, review round 1), with a tap of at least 44 px
-	function H.closeMarkIssues(button)
-		return SmokeCommon.closeMarkIssues(button, { Shown = H.shown, MinTap = 44 })
+	-- SmokeCommon.closeMarkIssues, review round 1), with a tap of at least 44 px. (kit-b U9-4) the Gifts window's X is the kit
+	-- B close block's, as the Shop's: square bars in the Danger block's brown ink over its red lip
+	-- minTap: the tap floor the button itself must meet (44; false: none, U9-4 look review 2: a phone's 36 px block whose
+	-- 44 px touch box is the CloseTap beside it)
+	function H.closeMarkIssues(button, minTap)
+		local Sign = select(3, KC.env()).Sign
+		return SmokeCommon.closeMarkIssues(button, { Shown = H.shown, MinTap = minTap ~= false and 44 or nil, Bar = Sign.Text, Ink = Sign.RedLip })
 	end
-	-- win 5: the Gifts button, its ring and its pip as { button, ring, pip } shown flags
+	-- win 5: the Gifts button, its ring and its pip as { button, ring, pip } shown flags; (U9-4 look review) the ring is the
+	-- PlayBar in the block's lip now
 	function H.giftsParts()
 		local b = H.btn()
-		local ring = H.gui() and H.gui():FindFirstChild("Ring")
+		local ring = b and b:FindFirstChild("PlayBar", true)
 		return { H.shown(b), H.shown(ring), H.shown(H.find(b, "Pip")) }
 	end
 	function H.partsText(p)
@@ -408,7 +413,7 @@ local function clientScenarios()
 		-- the week banner and the toast keep the full name; smoke_fixr_daily_ui.lua client_fixr_daily_fit checks the fit)
 		T.check(H.find(H.cell(7), "PetViewport") ~= nil and H.cellText(7):find("Wisp", 1, true) ~= nil, "daily window: day 7 shows the Week Wisp (its viewport, named 'Wisp' in the cell)", H.cellText(7))
 		local claim = H.claimButton()
-		T.check(claim ~= nil and claim.Text == "CLAIM!" and claim.AbsoluteSize.X >= 260 and claim.AbsoluteSize.Y >= 56, "daily window: CLAIM! when ready",
+		T.check(claim ~= nil and claim.Text == "Claim!" and claim.AbsoluteSize.X >= 260 and claim.AbsoluteSize.Y >= 56, "daily window: Claim! when ready (kit-b U9-4: sentence case)",
 			claim and fmt("%s %dx%d", claim.Text, claim.AbsoluteSize.X, claim.AbsoluteSize.Y) or H.footer())
 		local mark = #Mock.RemoteLog
 		H.tap(claim)
@@ -784,25 +789,38 @@ local function clientScenarios()
 		T.eq(moves(0.4), true, "daily pip: a tier that becomes Ready shakes the button within 0.4 s")
 		KC.advance(0.3)
 		T.eq(btn.Position.X.Offset, settled, "daily pip: ...then it settles")
-		-- the ring: Play.Seconds / the next tier's seconds, dimmed while paused
+		-- the play bar: Play.Seconds / the next tier's seconds; (U9-4 look review) the kit's block bar in the block's lip:
+		-- whole blocks gold (47/60 of 4 = 3), the gold lip while paused, never alpha, no gradient
 		H.fire(H.base(now))
-		local ring = H.find(btn.Parent, "Ring")
+		local ring = H.find(btn, "PlayBar")
 		local fill = ring and ring:GetAttribute("Fill")
-		T.check(type(fill) == "number" and abs(fill - 47 / 60) <= 0.02, "daily pip: the ring fills 47/60 toward the 60 min tier", tostring(fill))
-		local strokeT = function()
-			local worst = 1
+		T.check(type(fill) == "number" and abs(fill - 47 / 60) <= 0.02, "daily pip: the play bar fills 47/60 toward the 60 min tier", tostring(fill))
+		local Sign = select(3, KC.env()).Sign
+		local function segs()
+			local gold, dim, rest, alpha, grad = 0, 0, 0, false, false
 			for _, d in ipairs(ring and ring:GetDescendants() or {}) do
-				if d:IsA("UIStroke") then
-					worst = math.min(worst, d.Transparency)
+				if d:IsA("Frame") and d.Name:match("^Seg%d$") then
+					alpha = alpha or d.BackgroundTransparency ~= 0
+					if d.BackgroundColor3 == Sign.Gold then
+						gold = gold + 1
+					elseif d.BackgroundColor3 == Sign.GoldLip then
+						dim = dim + 1
+					else
+						rest = rest + 1
+					end
 				end
+				grad = grad or d:IsA("UIGradient") or d:IsA("UIStroke")
 			end
-			return worst
+			return gold, dim, rest, alpha, grad
 		end
-		T.check(ring ~= nil and strokeT() < 0.4, "daily pip: the ring is bright while the clock counts", tostring(strokeT()))
+		local g, d, r, a, gr = segs()
+		T.check(ring ~= nil and g == 3 and d == 0 and r == 1 and not a and not gr, "daily pip: the play bar's blocks: 3 of 4 gold while the clock counts (no alpha, no gradient)",
+			fmt("gold %d, dim %d, rest %d, alpha %s, gradient %s", g, d, r, tostring(a), tostring(gr)))
 		local paused = H.base(now)
 		paused.Play.Active = false
 		H.fire(paused)
-		T.check(strokeT() >= 0.4, "daily pip: the ring dims to 40 % while Play.Active == false", tostring(strokeT()))
+		g, d, r, a = segs()
+		T.check(g == 0 and d == 3 and r == 1 and not a, "daily pip: paused, the filled blocks turn the gold lip (never faded)", fmt("gold %d, dim %d, rest %d, alpha %s", g, d, r, tostring(a)))
 		-- the strips hide in a match: the button too
 		LocalPlayer:SetAttribute("InMatch", true)
 		KC.advance(0.3)
@@ -1015,10 +1033,19 @@ local function clientScenarios()
 			and win.AbsolutePosition.Y >= 0 and win.AbsolutePosition.Y + win.AbsoluteSize.Y <= gui.AbsoluteSize.Y,
 			"daily mobile: centred at 12,59, inside the screen", win and fmt("%d,%d in %dx%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, gui.AbsoluteSize.X, gui.AbsoluteSize.Y) or "")
 		local cell = H.cell(1)
-		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 92) <= 1 and abs(cell.AbsoluteSize.Y - 122) <= 1, "daily mobile: tiles 92x122", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
-		-- (slop-audit win 6, Review Focus 5) the phone layout re-sizes the X (56 -> 44 px): the drawn mark follows it
-		local closeIssues = H.closeMarkIssues(H.find(win, "CloseButton"))
-		T.check(#closeIssues == 0, "daily mobile: the 44 px CloseButton keeps its drawn X centred", table.concat(closeIssues, "; "))
+		-- (U9-4 look review) a 10 px gap keeps 4 px of stone between two tiles' strokes: 90 wide (was 92 at an 8 px gap);
+		-- (look review 2) the tiles start 2 px lower (TilesY 50) so today's raised tile clears the chips: 120 tall (was 122)
+		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 90) <= 1 and abs(cell.AbsoluteSize.Y - 120) <= 1, "daily mobile: tiles 90x120", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
+		-- (slop-audit win 6, Review Focus 5) the phone layout re-sizes the X (56 -> 44 px): the drawn mark follows it.
+		-- (U9-4 look review 2) a phone draws a 36 px block in the band over its 44 px touch box (CloseTap, centred on it)
+		local closeBtn, closeTap = H.find(win, "CloseButton"), H.find(win, "CloseTap")
+		local closeIssues = H.closeMarkIssues(closeBtn, false)
+		local tapOk = closeBtn ~= nil and closeTap ~= nil and H.shown(closeTap) and closeTap.AbsoluteSize.X >= 44 - 0.5 and closeTap.AbsoluteSize.Y >= 44 - 0.5
+			and abs(closeBtn.AbsoluteSize.X - 36) <= 0.5
+			and abs(closeTap.AbsolutePosition.X + closeTap.AbsoluteSize.X / 2 - (closeBtn.AbsolutePosition.X + closeBtn.AbsoluteSize.X / 2)) <= 1
+			and abs(closeTap.AbsolutePosition.Y + closeTap.AbsoluteSize.Y / 2 - (closeBtn.AbsolutePosition.Y + closeBtn.AbsoluteSize.Y / 2)) <= 1
+		T.check(#closeIssues == 0 and tapOk, "daily mobile: the 36 px close block keeps its drawn X centred over its 44 px touch box",
+			table.concat(closeIssues, "; ") .. (closeBtn and closeTap and fmt(" | block %s tap %s", tostring(closeBtn.AbsoluteSize), tostring(closeTap.AbsoluteSize)) or " | no close / tap"))
 		local claim = H.claimButton()
 		T.check(claim ~= nil and abs(claim.AbsoluteSize.X - 230) <= 1 and abs(claim.AbsoluteSize.Y - 64) <= 1, "daily mobile: CLAIM! 230x64", claim and fmt("%dx%d", claim.AbsoluteSize.X, claim.AbsoluteSize.Y) or "")
 		local function smallest(root)

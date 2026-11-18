@@ -16,7 +16,9 @@
 --                                      (NamePlate, the machine 130 x 150 at y 76, Odds_* rows 40 tall from y 234, Spin
 --                                      64 at y 400, Spin3 / SpinGems at y 476 half width, the hint). A body under 826 px
 --                                      shrinks it (the hero 200 with a 160 machine, the cards 516 at y 236 with a 100
---                                      machine) and the page scrolls; Compact / shrunk second-row buttons are 56 tall
+--                                      machine) and the page scrolls; (kit-b U9-2) a body under 760 takes TIGHT (the hero
+--                                      180, the cards from y 208 to the body's bottom: every button row inside it at
+--                                      1280x720); Compact / shrunk second-row buttons are 56 tall
 --                                      (>= 44 px at the 0.8 scale)
 --                                    (shop-area: the hint on one line from w - 380 (8 px clear of the chips) to w - 10)
 --                                    "Phone": one sideways row: the Secret card 200 wide, then the four cards 166 wide at
@@ -41,8 +43,8 @@
 --                                    no slack: the server allows AltarRangeSlack more) whenever there is a root and the
 --                                    replicated AltarIslandAt; only without that live reading the Shop opened by the
 --                                    altar's prompt counts (SetFromAltar, until Close). Away from it the Secret card greys
---                                    under "Dim" (K.NAVY at K.DIM), the "AltarChip" ("Available at the Storm Altar";
---                                    phone / portrait "At the Storm Altar") takes the PityChip's box and a blue "Travel"
+--                                    under "Dim" (the navy lip at K.DIM), the "AltarChip" ("Available at the Storm Altar";
+--                                    phone / portrait "At the Storm Altar") takes the PityChip's box and a green "Travel"
 --                                    (the compass glyph + "TRAVEL") takes SPIN's: a tap sends QuickTravel("Altar") at most
 --                                    once per K.TRAVEL_GAP and closes the Shop (ctx.Close). A restricted account keeps the
 --                                    Locked card (no chip, no TRAVEL); the page repaints on the Shop's 1 s tick
@@ -65,7 +67,7 @@
 --                                    (ShopEggs.Fx(page).Egg3D = the view or nil)
 --   ShopEggs.Metrics                 the K table (sizes, texts; MEASURE: a text-width hook for the offline renderer)
 -- Buttons: Spin = EggStage.Request(id, "Tokens", 1), Spin3 = (id, "Tokens", 3), SpinGems = (id, "Gems", 1), the Secret
--- card's Spin = ("Secret", "Gems", 1). A spin button holds Word ("SPIN" / "x3", or the state: "Locked", "Loading..."),
+-- card's Spin = ("Secret", "Gems", 1). A spin button holds Word ("Spin" / "x3", or the state: "Locked", "Loading..."),
 -- the currency icon (TokenIcon: the Cloud Token glyph; GemIcon: the drawn gem) and Price ("3,000"; the phone's x3 total
 -- Theme.ShortNumber(n, 1000) = "3K"; any row wider than its button takes that short form too). The machines are frames placed
 -- by scale (the pitch's 200 x 230 drawing: base, panel, neck, the glass dome with seven EggArt eggs, the cap).
@@ -141,26 +143,31 @@ local K = {
 		-- the hero's hint follows its state: Locked keeps this rule line, Altar says what TRAVEL does, at the altar where
 		-- you are (ShopEggs.Refresh)
 		HeroHint = "Secret rolls happen at the Storm Altar",
-		HeroHintTravel = "TRAVEL flies you to the Storm Altar",
+		HeroHintTravel = "Travel flies you to the Storm Altar",
 		HeroHintHere = "You are at the Storm Altar",
 		-- TRAVEL works only from the lobby (the owner's call 2026-11-11; GateService "away"): elsewhere it greys out
 		HeroHintLobby = "Go to the lobby to travel to the Storm Altar",
 		HeroHintLobbyShort = "Travel from the lobby", -- phone / portrait (the long one runs past 296 px at 15)
 		AltarLock = "Available at the Storm Altar",
 		AltarLockShort = "At the Storm Altar",
-		Travel = "TRAVEL",
+		Travel = "Travel", -- (kit-b U9-2: buttons read in sentence case)
 		GemsOnly = "gems only",
 	},
 	-- shop-area (spec 16.17.3): the Altar state. TRAVEL fires QuickTravel("Altar") at most once per TRAVEL_GAP; the Dim
-	-- (K.NAVY at DIM) greys the hero over its art and the page's sparks (HatchFx.Pool's holder, ZIndex 20) and under the
+	-- (the navy lip at DIM) greys the hero over its art and the page's sparks (HatchFx.Pool's holder, ZIndex 20) and under the
 	-- chips, the spin holder and the hint (Z_OVER)
 	TRAVEL_GAP = 0.4,
 	DIM = 0.35,
 	Z_DIM = 21,
 	Z_OVER = 22,
 	-- the PC plans (REF while the body holds FIT_H, SHRUNK under it)
-	REF = { Ref = true, Hero = 240, HeroArt = 190, CardsY = 276, Card = 550, Art = 130, RowsY = 234, SpinY = 400, Row2Y = 476 },
-	SHRUNK = { Ref = false, Hero = 200, HeroArt = 160, CardsY = 236, Card = 516, Art = 100, RowsY = 198, SpinY = 362, Row2Y = 436 },
+	REF = { Ref = true, Hero = 240, HeroArt = 190, CardsY = 276, Card = 550, Art = 130, RowsY = 234, RowsH = 160, SpinY = 400, Row2Y = 476 },
+	SHRUNK = { Ref = false, Hero = 200, HeroArt = 160, CardsY = 236, Card = 516, Art = 100, RowsY = 198, RowsH = 160, SpinY = 362, Row2Y = 436 },
+	-- (kit-b U9-2; the render gate: the x3 / gem row ran under the window's bottom edge at 1280x720) a body under SHRUNK's
+	-- CardsY + Card + 8 takes TIGHT, sized from the body (L.plan): the hero 180 with a 150 machine, the cards from y 208
+	-- down to the body's bottom (MinCard at least, then the page scrolls), the machine 84, the odds rows share what is left
+	-- over the two button rows
+	TIGHT = { Hero = 180, HeroArt = 150, CardsY = 208, Art = 84, RowsY = 182, HintH = 20, MinCard = 440 },
 	-- the machine: the pitch's 200 x 230 drawing; its dome eggs (the pitch's lists) at the pitch's spots pulled 30% toward
 	-- the dome's centre (100, 76), so every egg stays inside the round glass (a plain Frame clips square)
 	BOX = { 0, 0, 200, 230 },
@@ -182,6 +189,11 @@ local K = {
 ShopEggs.Metrics = K
 local WHITE = Color3.new(1, 1, 1)
 local MUTED = Theme.Colors.Muted or rgb(176, 184, 206)
+-- (kit-b U9-2, finding 15) the Signboard palette: the machine cards are stone blocks (brown ink) with the roulette's own
+-- colour on the lip and the name plate; the Secret hero is the navy plank (white / gold ink); a short balance reads in
+-- SHORT, a dark red that holds 4.5:1 on stone, the sunk well and the green plank alike
+local SIGN = Theme.Sign
+local SHORT = rgb(140, 24, 48)
 local LEFT, RIGHT, CENTER = Enum.TextXAlignment.Left, Enum.TextXAlignment.Right, Enum.TextXAlignment.Center
 local PAGES = setmetatable({}, { __mode = "k" }) -- page -> its widgets
 local CUR = setmetatable({}, { __mode = "v" }) -- CUR.Page: the page built last (Focus without a page)
@@ -339,7 +351,16 @@ end
 ----------------------------------------------------------------------
 -- the machine (frames placed by scale in the pitch's 200 x 230 box)
 ----------------------------------------------------------------------
-function H.part(m, parent, box, name, x, y, w, h, color, radius, strokeW, props)
+-- (kit-b U9-2) a square wood edge (mitred) on a kit B tag
+function H.edge(obj, px)
+	return Util.Create("UIStroke", {
+		Name = "SignEdge", Color = SIGN.Wood, Thickness = px or 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter, Parent = obj,
+	})
+end
+
+function H.part(m, parent, box, name
+, x, y, w, h, color, radius, strokeW, props)
 	local f = frame(name, parent, {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = color,
@@ -362,6 +383,7 @@ end
 function H.machine(parent, id, color, secret)
 	local m = { Strokes = {} }
 	local root = frame("Machine", parent)
+	root:SetAttribute("Art", "Machine") -- (kit-b U9-2) an illustration: its round glass and sheen are the drawing, not a panel
 	m.Root = root
 	local B, D = K.BOX, K.DOME
 	H.part(m, root, B, "Base", 26, 146, 148, 76, Theme.Darken(color, 0.32), 0.18, 5)
@@ -418,11 +440,13 @@ end
 ----------------------------------------------------------------------
 -- a spin button: a CloudUI.Button with no text of its own holding Word, the currency icon and Price in one row
 function H.spinButton(P, parent, name, style, word, currency, id, spins)
-	local p = { Currency = currency, BaseWord = word or "" }
+	-- (kit-b U9-2) a kit B plank: green for the hero's SPIN (the page's one main action), stone for the machines' spins
+	local p = { Currency = currency, BaseWord = word or "", Ink = style == "Green" and SIGN.OnGrass or SIGN.Text }
 	p.Button = CloudUI.Button({
 		Name = name,
 		Text = "",
 		Style = style,
+		Skin = "Sign",
 		Size = UDim2.fromOffset(200, 60),
 		TextSize = 22,
 		Callback = function()
@@ -430,13 +454,13 @@ function H.spinButton(P, parent, name, style, word, currency, id, spins)
 		end,
 		Parent = parent,
 	})
-	p.Word = label("Word", p.Button, p.BaseWord, "Button", 22, { TextTruncate = Enum.TextTruncate.None })
+	p.Word = label("Word", p.Button, p.BaseWord, "Button", 22, { TextTruncate = Enum.TextTruncate.None, TextColor3 = p.Ink })
 	if currency == "Tokens" then
 		local cur = Theme.Currency.Tokens
-		p.Icon = label("TokenIcon", p.Button, "", "Display", 22, { TextColor3 = cur.Color, TextTruncate = Enum.TextTruncate.None })
-		PixelIcon.Host(p.Icon, cur.Icon) -- (kit-b U7a) the Cloud Token coin, sized with the label
+		p.Icon = label("TokenIcon", p.Button, "", "Display", 22, { TextColor3 = SIGN.GoldLip, TextTruncate = Enum.TextTruncate.None })
+		PixelIcon.Host(p.Icon, cur.Icon) -- (kit-b U7a) the Cloud Token coin, sized with the label (the deep gold reads on stone)
 	end
-	p.Price = label("Price", p.Button, "", "Button", 22, { TextTruncate = Enum.TextTruncate.None })
+	p.Price = label("Price", p.Button, "", "Button", 22, { TextTruncate = Enum.TextTruncate.None, TextColor3 = p.Ink })
 	return p
 end
 
@@ -507,54 +531,58 @@ function H.arrange(p, w, h, size, iconPx)
 	end
 end
 
-function H.card(P, parent, id, color, fill, size)
-	local c = NeonKit.Card({ Name = "ShopCard_" .. id, Color = color, Fill = fill, Floor = false, Size = size, Parent = parent })
-	local t = { Id = id, Root = c.Root, Card = c, Color = color, Thick = c.Stroke.Thickness, Rows = {} }
+-- (kit-b U9-2) a card is a kit B block (NeonKit.Card Skin "Sign"): `face` (stone, or the hero's navy plank), the wood
+-- edge (`edge`: the hero's is the gold lip), the roulette's own colour on its lip
+function H.card(P, parent, id, color, face, size, edge)
+	local c = NeonKit.Card({ Name = "ShopCard_" .. id, Skin = "Sign", Face = face, Lip = color, Edge = edge, Size = size, Parent = parent })
+	local t = { Id = id, Root = c.Root, Card = c, Color = color, Edge = c.Stroke.Color, Thick = c.Stroke.Thickness, Rows = {} }
 	local r = H.roulette(id)
 	t.Name = (r and r.DisplayName) or (id .. " Roulette")
 	return t, c.Body
 end
 
 function H.buildHero(P, parent)
-	local t, b = H.card(P, parent, K.SECRET, K.HERO, { rgb(52, 34, 112), rgb(16, 12, 40) }, UDim2.fromOffset(1240, 240))
+	local t, b = H.card(P, parent, K.SECRET, K.HERO, SIGN.Navy, UDim2.fromOffset(1240, 240), SIGN.GoldLip)
 	t.Hero = true
 	t.Root:SetAttribute("Hero", true)
 	t.Machine = H.machine(b, K.SECRET, K.HERO_MACHINE, true)
-	t.Title = Theme.StyleTitle(label("Title", b, t.Name, "Title", 46, { TextXAlignment = LEFT }), "Section") -- a card's heading: the Shop's header title wears the ribbon
+	t.Title = Theme.StyleTitle(label("Title", b, t.Name, "Title", 46, { TextXAlignment = LEFT, TextColor3 = SIGN.Gold }), "Section") -- a card's heading: the Shop's header title wears the ribbon
 	t.Odds = frame("OddsLine", b)
 	t.GemsOnly = label("GemsOnly", t.Odds, K.TEXT.GemsOnly, "Body", 24, { TextXAlignment = LEFT, TextColor3 = MUTED })
 	t.NoOdds = label("NoOdds", b, K.TEXT.NoOdds, "Body", 22, { Visible = false, TextColor3 = MUTED, TextXAlignment = LEFT })
-	t.Pity = label("PityChip", b, "", "Heading", 22, { BackgroundTransparency = 0, BackgroundColor3 = K.CHIP })
-	Theme.Corner(t.Pity, UDim.new(0, 12))
-	Theme.Stroke(t.Pity, K.HERO, 2, 0.2)
+	-- (kit-b U9-2) the pity promise: a gold tag in its wood edge (brown ink)
+	t.Pity = label("PityChip", b, "", "Heading", 22, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text })
+	H.edge(t.Pity)
 	t.Lock = label("Lock", b, "", "Body", 20, {
 		Visible = false, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextColor3 = K.LINE, TextXAlignment = LEFT,
 	})
 	t.Holder = frame("SpinHolder", b, { ZIndex = K.Z_OVER })
 	t.Pulse = Util.Create("UIScale", { Name = "Pulse", Scale = 1, Parent = t.Holder })
-	t.Spin = H.spinButton(P, t.Holder, "Spin", "Pink", "SPIN", "Gems", K.SECRET, 1)
+	t.Spin = H.spinButton(P, t.Holder, "Spin", "Green", "Spin", "Gems", K.SECRET, 1) -- (kit-b U9-2) the page's one green plank
 	t.Hint = label("Hint", b, K.TEXT.HeroHint, "Body", 18, { TextColor3 = K.LINE, ZIndex = K.Z_OVER })
 	-- (Task 26) the big Secret egg in front of the machine's right side, still until the page shows (ShopEggs.Fx)
 	t.Egg = EggArt.New(b, "Secret", K.HERO_EGG.Ref[1], { Name = "HeroEgg", Form = "Full", Still = true, ZIndex = 3 })
 	-- shop-area (spec 16.17.3): away from the Storm Altar the card greys under Dim (over the art, the egg and its sparks),
 	-- AltarChip takes the PityChip's box and TRAVEL takes SPIN's in the same holder (over the Dim with the hint)
-	t.Dim = frame("Dim", b, { BackgroundTransparency = K.DIM, BackgroundColor3 = K.NAVY, Size = UDim2.fromScale(1, 1), ZIndex = K.Z_DIM, Visible = false })
-	Theme.Corner(t.Dim, UDim.new(0, NeonKit.Metrics.Corner or 14))
-	t.AltarChip = label("AltarChip", b, K.TEXT.AltarLock, "Heading", 22, { BackgroundTransparency = 0, BackgroundColor3 = K.CHIP, ZIndex = K.Z_OVER, Visible = false })
-	Theme.Corner(t.AltarChip, UDim.new(0, 12))
-	Theme.Stroke(t.AltarChip, K.HERO, 2, 0.2)
+	t.Dim = frame("Dim", b, { BackgroundTransparency = K.DIM, BackgroundColor3 = SIGN.NavyLip, Size = UDim2.fromScale(1, 1), ZIndex = K.Z_DIM, Visible = false })
+	-- (kit-b U9-2) the altar note: a stone tag in its wood edge (brown ink)
+	t.AltarChip = label("AltarChip", b, K.TEXT.AltarLock, "Heading", 22, {
+		BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile, TextColor3 = SIGN.Text, ZIndex = K.Z_OVER, Visible = false,
+	})
+	H.edge(t.AltarChip)
 	t.Travel = H.travelButton(P, t.Holder)
 	return t
 end
 
--- the hero's TRAVEL: a blue CloudUI.Button (Style attribute "Blue") holding the compass glyph ("Icon") and "TRAVEL"
--- ("Word"); no price: the trip is free
+-- the hero's TRAVEL: a CloudUI.Button holding the compass glyph ("Icon") and "TRAVEL" ("Word"); no price: the trip is
+-- free. (kit-b U9-2) the green plank: away from the altar it is the page's one main action, in SPIN's place
 function H.travelButton(P, parent)
 	local tr = {}
 	tr.Button = CloudUI.Button({
 		Name = "Travel",
 		Text = "",
-		Style = "Blue",
+		Style = "Green",
+		Skin = "Sign",
 		Size = UDim2.fromOffset(290, 100),
 		TextSize = 22,
 		Callback = function()
@@ -562,11 +590,11 @@ function H.travelButton(P, parent)
 		end,
 		Parent = parent,
 	})
-	CloudUI.SetStyle(tr.Button, "Blue")
+	CloudUI.SetStyle(tr.Button, "Green")
 	tr.Button.Visible = false
-	tr.Icon = label("Icon", tr.Button, "", "Display", 44, { TextTruncate = Enum.TextTruncate.None })
+	tr.Icon = label("Icon", tr.Button, "", "Display", 44, { TextTruncate = Enum.TextTruncate.None, TextColor3 = SIGN.OnGrass })
 	PixelIcon.Host(tr.Icon, NeonKit.IconName("Travel")) -- (kit-b U7a) the arrow, sized with the label
-	tr.Word = label("Word", tr.Button, K.TEXT.Travel, "Button", 34, { TextTruncate = Enum.TextTruncate.None, TextXAlignment = LEFT })
+	tr.Word = label("Word", tr.Button, K.TEXT.Travel, "Button", 34, { TextTruncate = Enum.TextTruncate.None, TextXAlignment = LEFT, TextColor3 = SIGN.OnGrass })
 	return tr
 end
 
@@ -601,17 +629,20 @@ end
 function H.buildCard(P, parent, id)
 	local r = H.roulette(id)
 	local color = (r and typeof(r.Color) == "Color3") and r.Color or rgb(120, 190, 235)
-	local t, b = H.card(P, parent, id, color, { Theme.Darken(color, 0.45), Theme.Darken(color, 0.82) }, UDim2.fromOffset(298, 550))
-	t.Plate = label("NamePlate", b, t.Name, "Heading", 24, { BackgroundTransparency = 0, BackgroundColor3 = Theme.Darken(color, 0.3) })
-	Theme.Corner(t.Plate, UDim.new(0, 14))
-	Theme.Stroke(t.Plate, K.NAVY, 3, 0)
+	local t, b = H.card(P, parent, id, color, SIGN.Tile, UDim2.fromOffset(298, 550))
+	-- (kit-b U9-2) the name plate: a block in the roulette's own colour in its wood edge, the face nudged until its ink
+	-- reads 4.5:1 (Theme.ReadableFace; the phone's plate text is 17 px)
+	local plateFace, plateInk = Theme.ReadableFace(color, 4.5)
+	t.Plate = label("NamePlate", b, t.Name, "Heading", 24, { BackgroundTransparency = 0, BackgroundColor3 = plateFace, TextColor3 = plateInk })
+	H.edge(t.Plate)
 	t.Machine = H.machine(b, id, color, false)
 	t.Odds = frame("Odds", b)
-	t.NoOdds = label("NoOdds", b, K.TEXT.NoOdds, "Body", 20, { Visible = false, TextColor3 = MUTED, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
-	t.Spin = H.spinButton(P, b, "Spin", "Green", "SPIN", "Tokens", id, 1)
-	t.Spin3 = H.spinButton(P, b, "Spin3", "Gold", "x3", "Tokens", id, 3)
+	t.NoOdds = label("NoOdds", b, K.TEXT.NoOdds, "Body", 20, { Visible = false, TextColor3 = SIGN.TextMuted, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
+	-- (kit-b U9-2) one colour by role: the machines' spins are stone planks (the green plank is the hero's)
+	t.Spin = H.spinButton(P, b, "Spin", "Blue", "Spin", "Tokens", id, 1)
+	t.Spin3 = H.spinButton(P, b, "Spin3", "Blue", "x3", "Tokens", id, 3)
 	t.SpinGems = H.spinButton(P, b, "SpinGems", "Blue", nil, "Gems", id, 1)
-	t.Hint = label("Hint", b, K.TEXT.Hint, "Body", 18, { TextColor3 = K.LINE })
+	t.Hint = label("Hint", b, K.TEXT.Hint, "Body", 18, { TextColor3 = SIGN.TextMuted })
 	return t
 end
 
@@ -635,8 +666,9 @@ function H.syncRows(t)
 		local row = { Rarity = e.Rarity }
 		row.Root = frame("Odds_" .. tostring(e.Rarity), t.Odds, { LayoutOrder = i })
 		row.Egg = EggArt.New(row.Root, e.Rarity, 28, { Name = "Egg" })
-		row.Word = label("Word", row.Root, tostring(e.Rarity), "Heading", 20, { TextColor3 = H.rarityText(e.Rarity), TextXAlignment = LEFT })
-		row.Pct = label("Pct", row.Root, H.pct(e.Chance), "Heading", 22, { TextXAlignment = RIGHT })
+		-- (kit-b U9-2) on the navy hero the rarity's own light colour; on a stone card brown (the egg names the rarity)
+		row.Word = label("Word", row.Root, tostring(e.Rarity), "Heading", 20, { TextColor3 = t.Hero and H.rarityText(e.Rarity) or SIGN.Text, TextXAlignment = LEFT })
+		row.Pct = label("Pct", row.Root, H.pct(e.Chance), "Heading", 22, { TextXAlignment = RIGHT, TextColor3 = t.Hero and WHITE or SIGN.Text })
 		t.Rows[i] = row
 	end
 	t.HasOdds = #odds > 0
@@ -668,8 +700,9 @@ function ShopEggs.Build(page, ctx)
 	CUR.Page = page
 	P.Scroll = scroller("Scroll", page, Enum.ScrollingDirection.Y)
 	P.Scroll.Size = UDim2.fromScale(1, 1)
-	P.Fade = frame("Fade", page, { BackgroundTransparency = 0, BackgroundColor3 = Theme.Colors.PanelBottom or rgb(12, 15, 38), Visible = false, ZIndex = 6 })
+	P.Fade = frame("Fade", page, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Stone, Visible = false, ZIndex = 6 })
 	Util.Create("UIGradient", {
+		Name = "Fade", -- (kit-b U9-2) the stone body fading in at the row's edge (no gloss)
 		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.08) }),
 		Parent = P.Fade,
 	})
@@ -894,7 +927,7 @@ function L.heroPC(t, w, M)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
 	-- (shop-area) the longest hint, "Secret rolls happen at the Storm Altar", is ~322 px at 18 (a bolder face runs ~350;
-	-- "TRAVEL flies you to the Storm Altar" and "You are at the Storm Altar" are shorter): one line from
+	-- "Travel flies you to the Storm Altar" and "You are at the Storm Altar" are shorter): one line from
 	-- w - 380 to 10 px short of the card's edge, starting 8 px clear of the chips when they reach that far
 	local hintL = math.max(w - 380, x + chipW + 8)
 	place(t.Hint, hintL, ref and 172 or 152, w - 10 - hintL, 28)
@@ -908,9 +941,10 @@ function L.cardPC(t, w, M, tall)
 	local artH = math.floor(M.Art * 1.15 + 0.5)
 	place(t.Machine.Root, (w - M.Art) / 2, 76, M.Art, artH)
 	H.sizeMachine(t.Machine, M.Art)
-	place(t.Odds, 16, M.RowsY, w - 32, 160)
+	local rowsH = M.RowsH or 160
+	place(t.Odds, 16, M.RowsY, w - 32, rowsH)
 	local n = #t.Rows
-	local rh = n > 4 and math.floor(160 / n) or 40
+	local rh = n > 4 and math.floor(rowsH / n) or math.min(40, math.floor(rowsH / math.max(1, n)))
 	local iw = w - 32
 	for i, row in ipairs(t.Rows) do
 		place(row.Root, 0, (i - 1) * rh, iw, rh)
@@ -925,7 +959,7 @@ function L.cardPC(t, w, M, tall)
 		place(row.Pct, iw - 72, 0, 72, rh)
 	end
 	t.NoOdds.TextSize = 20
-	place(t.NoOdds, 16, M.RowsY, w - 32, 160)
+	place(t.NoOdds, 16, M.RowsY, w - 32, rowsH)
 	place(t.Spin.Button, 14, M.SpinY, w - 28, 64)
 	H.arrange(t.Spin, w - 28, 64, 23, 26)
 	local half = math.floor((w - 38) / 2)
@@ -939,8 +973,29 @@ function L.cardPC(t, w, M, tall)
 	place(t.Hint, 8, hy, w - 16, math.max(16, M.Card - hy))
 end
 
+-- the PC / Compact plan for a body Hh tall: REF, SHRUNK, or TIGHT worked out from Hh (the two button rows 64 + 56 and
+-- the hint at the card's foot, the odds rows above them)
+function L.plan(Hh)
+	if Hh >= K.FIT_H then
+		return K.REF
+	end
+	local S = K.SHRUNK
+	if Hh >= S.CardsY + S.Card + 8 then
+		return S
+	end
+	local T = K.TIGHT
+	local card = math.max(T.MinCard, Hh - T.CardsY - 8)
+	local row2Y = card - 8 - T.HintH - 56
+	local spinY = row2Y - 8 - 64
+	return {
+		Ref = false, Tight = true, Hero = T.Hero, HeroArt = T.HeroArt, CardsY = T.CardsY, Card = card, Art = T.Art, RowsY = T.RowsY,
+		RowsH = math.max(96, spinY - 6 - T.RowsY), SpinY = spinY, Row2Y = row2Y,
+	}
+end
+
 function L.pc(P, W, Hh)
-	local M = Hh >= K.FIT_H and K.REF or K.SHRUNK
+	local M = L.plan(Hh)
+
 	local tall = P.Mode == "Compact" or not M.Ref
 	local s = P.Scroll
 	s.ScrollingDirection = Enum.ScrollingDirection.Y
@@ -1285,7 +1340,7 @@ function H.paintButton(p, id, name, amount, short, compact)
 	p.PriceShort = Theme.ShortNumber(amount, 1000)
 	p.PriceFull = compact and p.PriceShort or Util.Commas(amount)
 	p.Price.Text = p.PriceFull
-	p.Price.TextColor3 = st == "Short" and K.RED or WHITE
+	p.Price.TextColor3 = st == "Short" and SHORT or p.Ink
 	local stateText = nil
 	if st == "Locked" then
 		stateText = K.TEXT.Locked
@@ -1389,7 +1444,7 @@ end
 ----------------------------------------------------------------------
 function H.setFocus(t, on)
 	t.Root:SetAttribute("Focused", on == true)
-	t.Card.Stroke.Color = on and K.GOLD or t.Color
+	t.Card.Stroke.Color = on and K.GOLD or t.Edge -- (kit-b U9-2: back to its wood / gold-lip edge)
 	t.Card.Stroke.Thickness = on and K.FOCUS_STROKE or t.Thick
 end
 

@@ -8,7 +8,13 @@
 --   SignKit.Header(parent, opts)  the navy sign plank in a wood rim, its title in FredokaOne gold (Title role, through
 --                                 Theme.StyleTitle); returns head, plate (the caller adds a close X to the plate).
 --                                 opts.Ribbon: the plate is the T1 band out over the frame with its tails
---                                 (SignKit.HeaderOverhang(head, on) pulls it in and drops the tails)
+--                                 (SignKit.HeaderOverhang(head, on) pulls it in and drops the tails).
+--                                 (U9-4 look review, the one header rule) every untabbed window and side panel
+--                                 (Pets, Index, Stats, My Home, Settings, What's New, the Sky Trove) uses this
+--                                 header with Ribbon. A TABBED window (the Shop, the Gifts window) keeps its navy
+--                                 band inside the frame instead: its tabs sit on the band, where the ribbon's piping
+--                                 and tails would run under them. Both share the icon square (Sizes.IconSlot, a 2 px
+--                                 ink edge), the gold ribbon title and the red close block
 --   SignKit.Frame(parent, opts)   the wood frame under the header
 --   SignKit.Body(frame, opts)     the stone body inside it, with the stone lip along its bottom
 --   SignKit.Plank(parent, opts)   a button with a real bottom lip: hover lifts the block 2 px, press sinks it 4 px and the
@@ -39,10 +45,17 @@ SignKit.Sizes = {
 	RoofH = 18,
 	RoofEdge = 4, -- the dark border round the awning
 	RoofLip = 5, -- its darker bottom lip
+	-- (U9-4 look review 2) a phone window's awning (the portrait Gifts window, the portrait Trove sheet): 240, so its right
+	-- end keeps clear of the close block on a 390 px screen (the 288 of the 0.8 windows lay over it)
+	RoofPhoneW = 240,
 	HeadH = 64,
 	Rim = 6, -- the header's wood rim (top, left, right; the frame below closes it): the frame's width, so the edge runs straight
 	TitleX = 18,
 	IconSlot = 42, -- the gold icon square in a header
+	-- (U9-4 look review 2: one pixel size per screen) a window's pixel icons draw at one of two sizes, one double the other:
+	-- Glyph (a header icon, a sparkle, a clock, a reward's coin) and Art (a reward's art on its chip, a tick, a row's
+	-- icon): 3 / 6 px cells on PC (27 / 54 at 1080p), 2 / 4 px on a phone (18 / 36). The Gifts window and the Trove read it
+	Pixel = { PC = { Glyph = 27, Art = 54 }, Phone = { Glyph = 18, Art = 36 } },
 	Frame = 6, -- the wood frame round a body
 	Edge = 5, -- a block's edge (planks, notices)
 	Lip = 8, -- a block's darker bottom lip

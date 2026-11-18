@@ -12,8 +12,8 @@
 --                        refused in a match
 --   client_store_states  Owned / Claimed / HaveIt (x2 Pet XP forever, a full potion bank) / Active ("58 m left") / Preview
 --                        (StorePreview: Id 0 renders, PREVIEW disabled, prompts nothing; without the flag it hides)
---   client_store_shine   High: the hero's HeroSpin gradient turns, the Starter card turns its pet in a viewport; Low:
---                        static, no viewport, no tween; no tween under NimbusShop after Close; sounds StorePop (Click)
+--   client_store_shine   High: no gloss on the hero (kit-b U9-2: no HeroSpin gradient, no sheen), its Buy pulse, the
+--                        Starter card turns its pet in a viewport; Low: no viewport, no tween; no tween under NimbusShop after Close; sounds StorePop (Click)
 --                        on a card tap, StoreBuy (Reward) on the "Thank you" toast
 --   client_store_bridge  OpenPanel("Store", { Tab = "Passes" }) opens once on Passes; a second pill tap, Esc and
 --                        MenuController.Close() close it; the top bar still answers; Store / Pets / menu windows never overlap
@@ -491,7 +491,7 @@ local function clientScenarios()
 		refresh()
 		c = SC.Cards()
 		local proBuy = H.buyButton(win, "Pro")
-		T.check(c.Pro ~= nil and c.Pro.State == "Preview" and proBuy ~= nil and proBuy.Text == "PREVIEW" and proBuy:GetAttribute("Disabled") == true and H.tabCount(win) == 5,
+		T.check(c.Pro ~= nil and c.Pro.State == "Preview" and proBuy ~= nil and proBuy.Text == "Preview" and proBuy:GetAttribute("Disabled") == true and H.tabCount(win) == 5,
 			"store states: under StorePreview every item renders, Id 0 included, PREVIEW disabled", H.tabCount(win) .. " tabs")
 		T.check(c.Gems2 ~= nil and c.Gems2.State == "Preview" and c.Tokens3 ~= nil and c.Cash1 == nil, "store states: the preview lists the gem packs too, never a disabled Cash pack")
 		local mark = #Mock.RemoteLog
@@ -528,14 +528,13 @@ local function clientScenarios()
 		KC.advance(0.5)
 		local win = H.win()
 		local hero = H.card(win, "Starter")
+		-- (kit-b U9-2, finding 15) the hero is a flat kit B block: no turning HeroSpin gradient, no sheen sweep
 		local grad = hero and hero:FindFirstChild("HeroSpin", true)
-		local r0 = grad and grad.Rotation
 		KC.advance(1)
-		T.check(grad ~= nil and grad:IsA("UIGradient") and grad.Rotation ~= r0, "store shine: High: the hero's gradient turns",
-			tostring(r0) .. " -> " .. tostring(grad and grad.Rotation))
+		T.check(hero ~= nil and grad == nil and hero:FindFirstChildWhichIsA("UIGradient", true) == nil, "store shine: High: no gloss on the hero (no HeroSpin, no gradient)")
 		T.check(hero ~= nil and hero:FindFirstChildWhichIsA("ViewportFrame", true) ~= nil, "store shine: High: the Starter card turns its pet in a viewport")
 		KC.advance(3)
-		T.check(hero ~= nil and hero:FindFirstChild("Sheen", true) ~= nil and hero:FindFirstChild("Pulse", true) ~= nil, "store shine: High: the sheen and the Buy pulse are there")
+		T.check(hero ~= nil and hero:FindFirstChild("Sheen", true) == nil and hero:FindFirstChild("Pulse", true) ~= nil, "store shine: High: the Buy pulse is there, no sheen sweep (kit B)")
 		SC.Close()
 		KC.advance(0.5)
 		T.eq(H.storeTweens(), 0, "store shine: no tween under NimbusShop after Close")
@@ -545,10 +544,9 @@ local function clientScenarios()
 		end
 		SC.Open()
 		KC.advance(0.6)
-		grad = hero:FindFirstChild("HeroSpin", true)
-		r0 = grad and grad.Rotation
 		KC.advance(1)
-		T.check(grad ~= nil and grad.Rotation == r0, "store shine: Low: a static gradient", tostring(r0) .. " -> " .. tostring(grad and grad.Rotation))
+		T.check(hero:FindFirstChild("HeroSpin", true) == nil, "store shine: Low: no gradient either (kit B)")
+
 		T.check(hero:FindFirstChildWhichIsA("ViewportFrame", true) == nil and H.storeTweens() == 0, "store shine: Low: no viewport, no tween", H.storeTweens() .. " tweens")
 		KC.advance(3)
 		T.eq(H.storeTweens(), 0, "store shine: Low: still no tween after the pulse time")

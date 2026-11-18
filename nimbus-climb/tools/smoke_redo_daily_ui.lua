@@ -300,8 +300,9 @@ local function clientScenarios()
 						T.check(H.near(y2 - y3, 8) and H.near(y3 + h3, y2 + h2), label .. ": today (Cell3) is raised 8 px over Cell2, the bottoms level",
 							RedoGeom.desc(c2) .. " / " .. RedoGeom.desc(c3))
 						local Theme = H.theme()
-						local stroke = c3:FindFirstChild("NeonStroke")
-						T.check(c3:GetAttribute("Today") == true and stroke ~= nil and stroke.Color == Theme.Neon.Gold, label .. ": today is gold")
+						-- (kit-b U9-4) today's tile is the gold block (its face), in the ink edge of the pitch's selected card
+						local stroke = c3:FindFirstChild("SignEdge")
+						T.check(c3:GetAttribute("Today") == true and c3.BackgroundColor3 == Theme.Sign.Gold and stroke ~= nil and stroke.Color == Theme.Sign.Text, label .. ": today is gold")
 						T.eq(H.text(H.find("Day", c3)), "TODAY", label .. ": today's tile reads TODAY")
 						T.eq(H.text(H.find("Day", c1)), "Day 1", label .. ": the others read their day")
 						local x1, _, w1 = H.box(c1)
@@ -319,7 +320,7 @@ local function clientScenarios()
 					T.eq(H.segs(), "Claimed,Claimed,Today,Open,Open,Open,Open", label .. ": the seven-segment bar")
 					-- CLAIM!
 					local claim = H.find("ClaimButton")
-					T.check(H.shown(claim) and claim.Text == "CLAIM!" and not H.disabled(claim) and not H.shown(H.find("Line1", claim)), label .. ": CLAIM! active",
+					T.check(H.shown(claim) and claim.Text == "Claim!" and not H.disabled(claim) and not H.shown(H.find("Line1", claim)), label .. ": Claim! active (kit-b U9-4: sentence case)",
 						claim and (claim.Text .. " disabled " .. tostring(H.disabled(claim))) or "no button")
 					local want = sz[4] == "PC" and { 360, 88 } or { 230, 64 }
 					T.check(claim ~= nil and H.near(claim.AbsoluteSize.X, want[1]) and H.near(claim.AbsoluteSize.Y, want[2]), label .. fmt(": CLAIM! is %dx%d", want[1], want[2]), RedoGeom.desc(claim))
@@ -389,7 +390,7 @@ local function clientScenarios()
 		local hold = view(H.locked(now, 360, true), now + 900)
 		T.check(hold.Mode == "Locked" and hold.Line2 == "1 min to go", "daily locked: never below '1 min to go' without a payload", fmt("%s / %s", tostring(hold.Mode), tostring(hold.Line2)))
 		T.eq(view(H.locked(now, 0, true)).Mode, "Claim", "daily locked: Left 0 -> Claim")
-		T.eq(view(H.locked(now, 0, true)).Line1, "CLAIM!", "daily locked: ...its text")
+		T.eq(view(H.locked(now, 0, true)).Line1, "Claim!", "daily locked: ...its text (kit-b U9-4: sentence case)")
 		local older = H.base(now)
 		older.Unlock = nil
 		T.eq(view(older).Mode, "Claim", "daily locked: a payload with no Unlock (an older server) is unlocked")
@@ -474,7 +475,7 @@ local function clientScenarios()
 					KC.advance(0.2)
 					H.fire(H.locked(H.now(), 0, true))
 					KC.advance(0.2)
-					T.check(DCx.IsOpen() and H.shown(claim) and claim.Text == "CLAIM!" and not H.disabled(claim) and not H.shown(l1), label .. ": a payload with Left 0 shows CLAIM! without reopening",
+					T.check(DCx.IsOpen() and H.shown(claim) and claim.Text == "Claim!" and not H.disabled(claim) and not H.shown(l1), label .. ": a payload with Left 0 shows CLAIM! without reopening",
 						claim.Text .. " disabled " .. tostring(H.disabled(claim)))
 					-- (owner 2026-11-13) the open window hides the pip with its button: it shows once the window closes
 					T.eq(DCx.PipShown(), false, label .. ": ...no pip while the window is open")
@@ -751,7 +752,7 @@ local function clientScenarios()
 					T.check(H.find("Icon", H.part(1, "Gift")) ~= nil and H.text(H.part(1, "Reward")) == "+$200", label .. ": the gift art and the resolved reward", H.text(H.part(1, "Reward")))
 					T.check(H.slot(1) == "Check" and H.shown(H.part(1, "Dim")) and H.tier(1):GetAttribute("State") == "Claimed", label .. ": a claimed box: the tick, dimmed", H.slot(1))
 					local claim3 = H.part(3, "Claim")
-					T.check(H.slot(3) == "Claim" and claim3.Text == "CLAIM" and H.tier(3):GetAttribute("State") == "Ready", label .. ": the ready box: CLAIM", H.slot(3))
+					T.check(H.slot(3) == "Claim" and claim3.Text == "Claim" and H.tier(3):GetAttribute("State") == "Ready", label .. ": the ready box: Claim (kit-b U9-4: sentence case)", H.slot(3))
 					T.check(H.tier(3):GetAttribute("Pulsing") == true and H.part(3, "Gift"):GetAttribute("Bobbing") == true
 						and H.tier(4):GetAttribute("Pulsing") ~= true and H.part(4, "Gift"):GetAttribute("Bobbing") ~= true, label .. ": ...its box pulses and its gift bobs (only that one)")
 					T.check(H.slot(4) == "Clock" and H.text(H.part(4, "Clock")) == "13:00" and H.tier(4):GetAttribute("State") == "Locked", label .. ": the next box: its clock '13:00'",
@@ -761,7 +762,7 @@ local function clientScenarios()
 					-- CLAIM ALL
 					local all = H.claimAll()
 					local size = sz[4] == "PC" and { 252, 60 } or { 166, 44 }
-					T.check(H.shown(all) and all.Text == "CLAIM ALL (1)" and not H.disabled(all), label .. ": CLAIM ALL (1)", all and all.Text or "missing")
+					T.check(H.shown(all) and all.Text == "Claim all (1)" and not H.disabled(all), label .. ": Claim all (1) (kit-b U9-4: sentence case)", all and all.Text or "missing")
 					T.check(all ~= nil and H.near(all.AbsoluteSize.X, size[1]) and H.near(all.AbsoluteSize.Y, size[2]), label .. fmt(": CLAIM ALL is %dx%d", size[1], size[2]), RedoGeom.desc(all))
 					-- the countdown on the window's tick
 					KC.advance(60)
@@ -774,7 +775,7 @@ local function clientScenarios()
 					H.fire(H.play(H.now(), false))
 					KC.advance(1.1)
 					T.eq(H.text(header), sz[3] and "Paused: close this and move around!" or "Paused: move around to keep counting!", label .. ": the paused header")
-					T.check(header ~= nil and header.TextColor3 == Theme.Neon.Gold, label .. ": ...in gold")
+					T.check(header ~= nil and header.TextColor3 == Theme.Sign.RedLip, label .. ": ...in the kit's red ink (kit-b U9-4: was gold on the dark panel)")
 					KC.advance(30)
 					T.eq(H.text(H.part(4, "Clock")), "13:00", label .. ": the clock holds while paused")
 					-- one second left, no payload: it holds at 0:01
@@ -783,16 +784,18 @@ local function clientScenarios()
 					H.fire(nearP)
 					KC.advance(5)
 					T.check(H.text(H.part(4, "Clock")) == "0:01" and H.slot(4) == "Clock", label .. ": it holds at '0:01' until a payload says Ready", H.slot(4) .. " '" .. H.text(H.part(4, "Clock")) .. "'")
-					-- the payload that marks it Ready: CLAIM, and its border bright at once (not only on the next pulse)
-					local stroke4 = H.tier(4):FindFirstChild("NeonStroke")
-					local dimBefore = stroke4 and stroke4.Transparency or -1
+					-- the payload that marks it Ready: CLAIM, and its border bright at once (not only on the next pulse); (U9-4
+					-- look review) a locked box keeps a solid wood edge (no fade), the ready one turns the ink edge at once
+					local stroke4 = H.tier(4):FindFirstChild("SignEdge") -- (kit-b U9-4: the kit B block's edge)
+					local woodBefore = stroke4 ~= nil and stroke4.Color == Theme.Sign.Wood and stroke4.Transparency == 0
 					local readyP = H.play(H.now())
 					readyP.Play.Seconds = 60 * 60 + 5
 					readyP.Play.Tiers[4].Ready = true
 					KC.toClient("DailyState", readyP)
 					KC.advance(0.02)
-					T.check(H.slot(4) == "Claim" and dimBefore > 0.3 and stroke4.Transparency < 0.05, label .. ": the Ready payload: CLAIM, the border bright at once",
-						fmt("%s, border %.2f -> %.2f", H.slot(4), dimBefore, stroke4 and stroke4.Transparency or -1))
+					T.check(H.slot(4) == "Claim" and woodBefore and stroke4.Color == Theme.Sign.Text and stroke4.Transparency == 0,
+						label .. ": the Ready payload: CLAIM, the edge solid wood -> the ink edge at once (never faded)",
+						fmt("%s, wood before %s, after %s @%.2f", H.slot(4), tostring(woodBefore), stroke4 and tostring(stroke4.Color) or "-", stroke4 and stroke4.Transparency or -1))
 					-- CLAIM ALL sends one request
 					H.fire(H.play(H.now()))
 					KC.advance(1.1)
@@ -815,7 +818,7 @@ local function clientScenarios()
 					three.Play.Seconds = 95 * 60
 					three.Play.Tiers[4].Ready, three.Play.Tiers[5].Ready = true, true
 					H.fire(three)
-					T.eq(all.Text, "CLAIM ALL (3)", label .. ": three ready -> CLAIM ALL (3)")
+					T.eq(all.Text, "Claim all (3)", label .. ": three ready -> CLAIM ALL (3)")
 					-- (review fix) a full Berry Basket (the server resolves the tier to Amount 0) pays nothing: its box says so
 					-- and CLAIM ALL leaves it for its own CLAIM
 					local full = H.play(H.now())
@@ -824,16 +827,16 @@ local function clientScenarios()
 					full.Play.Tiers[6].Ready, full.Play.Tiers[6].Amount = true, 0
 					H.fire(full)
 					local reward6 = H.text(H.part(6, "Reward"))
-					T.check(all.Text == "CLAIM ALL (1)" and H.slot(6) == "Claim", label .. ": a full Basket (Amount 0): CLAIM ALL (1) counts tier 3 only; the box keeps its CLAIM",
+					T.check(all.Text == "Claim all (1)" and H.slot(6) == "Claim", label .. ": a full Basket (Amount 0): CLAIM ALL (1) counts tier 3 only; the box keeps its CLAIM",
 						all.Text .. " / " .. H.slot(6))
 					T.check(reward6:find("full", 1, true) ~= nil and reward6:find("Full Berry", 1, true) == nil, label .. ": ...the box says the Basket is full", reward6)
 					full.Play.Tiers[3].Claimed, full.Play.Tiers[3].Ready = true, false
 					H.fire(full)
-					T.check(all.Text == "CLAIM ALL (0)" and H.disabled(all), label .. ": ...with only that box ready: CLAIM ALL (0), greyed out", all.Text)
+					T.check(all.Text == "Claim all (0)" and H.disabled(all), label .. ": ...with only that box ready: CLAIM ALL (0), greyed out", all.Text)
 					full.Play.Tiers[6].Amount = 12
 					H.fire(full)
 					reward6 = H.text(H.part(6, "Reward"))
-					T.check(all.Text == "CLAIM ALL (1)" and reward6:find("full", 1, true) == nil and reward6:find("Basket", 1, true) ~= nil,
+					T.check(all.Text == "Claim all (1)" and reward6:find("full", 1, true) == nil and reward6:find("Basket", 1, true) ~= nil,
 						label .. ": ...room in the Basket again: counted, and the box reads the Berry Basket", all.Text .. " / " .. reward6)
 					-- none ready: greyed out, the same place and size, sends nothing
 					KC.advance(1.1)
@@ -897,7 +900,9 @@ local function clientScenarios()
 						end
 						T.check(row, label .. ": seven boxes in one row", RedoGeom.desc(t[1]) .. " .. " .. RedoGeom.desc(t[7]))
 						if sz[1] == 844 then
-							T.check(H.near(t[1].AbsoluteSize.X, 104) and H.near(t[1].AbsoluteSize.Y, 204), label .. ": the boxes are 104 x 204", RedoGeom.desc(t[1]))
+							-- (U9-4 look review) 14 px sides and a 20 px bottom keep stone round the boxes: 102 x 202 (was 104 x 204);
+							-- (look review 2) CLAIM ALL sits 6 px lower so it keeps stone under the band, the rows with it: 102 x 196
+							T.check(H.near(t[1].AbsoluteSize.X, 102) and H.near(t[1].AbsoluteSize.Y, 196), label .. ": the boxes are 102 x 196", RedoGeom.desc(t[1]))
 						end
 					else
 						local function y(o)
@@ -915,12 +920,15 @@ local function clientScenarios()
 							T.check(H.near(t[1].AbsoluteSize.X, 260) and H.near(t[1].AbsoluteSize.Y, 250), label .. ": the boxes are 260 x 250 at 1080p", RedoGeom.desc(t[1]))
 						end
 					end
-					-- CLAIM ALL at the top right of the body, right of the header line
+					-- CLAIM ALL at the top right of the body, right of the header line; (U9-4 look review 2) its right edge on the
+					-- top row's last box (Tier7 in the phone's one row, Tier4 on PC), not the window's edge
 					local all, header, body = H.claimAll(), H.find("PlayHeader"), H.find("Body")
-					local rightGap = all and win and (win.AbsolutePosition.X + win.AbsoluteSize.X) - (all.AbsolutePosition.X + all.AbsoluteSize.X) or -1
+					local last = t[sz[4] == "Phone" and 7 or 4]
+					local rightGap = all and last and (last.AbsolutePosition.X + last.AbsoluteSize.X) - (all.AbsolutePosition.X + all.AbsoluteSize.X) or 99
 					T.check(all ~= nil and header ~= nil and body ~= nil and all.AbsolutePosition.X >= header.AbsolutePosition.X + header.AbsoluteSize.X - 1
-						and rightGap >= 0 and rightGap <= 40 and all.AbsolutePosition.Y - body.AbsolutePosition.Y <= 20,
-						label .. ": CLAIM ALL at the top right, right of the header", RedoGeom.desc(all) .. " / " .. RedoGeom.desc(header) .. fmt(" gap %.0f", rightGap))
+						and math.abs(rightGap) <= 1 and all.AbsolutePosition.Y - body.AbsolutePosition.Y <= 20,
+						label .. ": CLAIM ALL at the top right, right of the header, its right edge on the top row's last box",
+						RedoGeom.desc(all) .. " / " .. RedoGeom.desc(header) .. fmt(" gap %.0f", rightGap))
 				end)
 			end)
 		end

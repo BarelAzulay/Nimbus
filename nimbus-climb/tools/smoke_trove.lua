@@ -16,10 +16,14 @@
 --   trove_no_discord     (server world) no source under src/ says "discord"; State's two asks (Like has no Reward)
 --   trove_exploits       (server world, booted) from afar / in a match / in a battle: no panel; the 5 s cooldown; junk
 --                        TroveRequest; 20 Joined in a second = at most one call; GroupId 0 = Soon; StorePreview = Preview
---   client_trove         (client world) the panel at 1920x1080: docked right, the rows and the footer, JOIN -> PromptJoinAsync
---                        (Pending = the hint, Joined = one TroveRequest), DONE plays the lid and the coins (High) or the lid
---                        only (Low), Checked / Soon / Preview, nothing in the screen centre, the window rule
---   client_trove_mobile  (phone world) 844x390: 352 x 236 at scale 1, 12 px from the right, top = inset + 8, texts >= 15 px,
+--   client_trove         (client world) the panel at 1920x1080: docked right, the rows and the footer, Join -> PromptJoinAsync
+--                        (Pending = the hint, Joined = one TroveRequest), Done plays the lid and the coins (High) or the lid
+--                        only (Low), Checked / Soon / Preview, nothing in the screen centre, the window rule; (kit-b U9-4)
+--                        the buttons in sentence case, the tokens tag the token coin + "200", its top 8 x factor + the
+--                        awning's 10 px under the top bar
+--   client_trove_mobile  (phone world) 844x390: (kit-b U9-4) 420 wide at scale 1 (no subtitle: it clears the jump button),
+--                        (U9-4 review) its bottom 6 px over Roblox's jump button (228 tall under a 58 px top bar: the 226 px
+--                        box ended on the game's DASH button's stroke), 12 px from the right, top = inset + 8, texts >= 15 px,
 --                        the button >= 44 px, Roblox's touch controls stay
 -- White-box: the doubles are written straight onto the player / GroupService (props, never methods). Plain Lua 5.1 syntax only.
 
@@ -666,15 +670,26 @@ local function clientScenarios()
 		T.check(1920 - right >= 0 and 1920 - right <= 12 * f + 1, "client trove: docked right, 12 x factor from the edge", tostring(1920 - right))
 		T.check(panel.AbsoluteSize.X <= 0.44 * 1920, "client trove: width <= 0.44 W", tostring(panel.AbsoluteSize.X))
 		local guiTop = gui.IgnoreGuiInset and 0 or insetY() -- AbsolutePosition is in the gui's area (below the top bar unless IgnoreGuiInset)
-		T.check(math.abs(panel.AbsolutePosition.Y + guiTop - (insetY() + 8 * f)) <= 1, "client trove: top = inset + 8 x factor (screen space)", tostring(panel.AbsolutePosition.Y + guiTop))
+		-- (kit-b U9-4) the awning reaches 10 design px over the panel's top: the panel starts that much lower; (U9-4 look
+		-- review) docked under the HUD's strips and gift square (NimbusHud TopRightBottom), the awning's top 8 x factor under them
+		local ps = panel:FindFirstChildOfClass("UIScale")
+		local roofOver = 10 * (ps and ps.Scale or 1)
+		local hud = gui.Parent and gui.Parent:FindFirstChild("NimbusHud")
+		local hudBottom = hud and tonumber(hud:GetAttribute("TopRightBottom")) or 0
+		T.check(math.abs(panel.AbsolutePosition.Y + guiTop - (insetY() + hudBottom + 8 * f + roofOver)) <= 1,
+			"client trove: top = inset + the HUD's TopRightBottom + 8 x factor + the awning's 10 px (screen space)", string.format("%s (TopRightBottom %s)", tostring(panel.AbsolutePosition.Y + guiTop), tostring(hudBottom)))
 		local join = find(panel, "JoinButton")
-		T.check(join ~= nil and KC.isShown(join) and join.Text == "JOIN" and not disabled(join), "client trove: JOIN enabled", join and join.Text)
+		T.check(join ~= nil and KC.isShown(join) and join.Text == "Join" and not disabled(join), "client trove: Join enabled (kit-b U9-4: sentence case)", join and join.Text)
 		local like = find(panel, "Row_Like")
 		T.check(like ~= nil and #shownButtons(like) == 0 and find(like, "Label") ~= nil and find(like, "Label").Text == "Enjoying it? A thumbs up on our game page helps a lot!", "client trove: the Like row has its line and no button")
 		local footer = find(panel, "Footer")
 		T.check(footer ~= nil and footer.Text == FOOTER, "client trove: the footer line", footer and footer.Text)
 		local glabel = find(find(panel, "Row_Group"), "Label")
-		T.check(glabel ~= nil and glabel.Text == "Join the Nimbus Climb group" and KC.findText("$2,000", panel) ~= nil and KC.findText("200 Tokens", panel) ~= nil, "client trove: the Group row's label and reward chips")
+		-- (kit-b U9-4, the U7a rule) the tokens tag is the token coin + "200"
+		local tokenChip = find(panel, "TokenChip")
+		local coin = tokenChip and find(tokenChip, "Coin")
+		T.check(glabel ~= nil and glabel.Text == "Join the Nimbus Climb group" and KC.findText("$2,000", panel) ~= nil and KC.findText("200", tokenChip) ~= nil
+			and coin ~= nil and coin:GetAttribute("PixelIcon") == "token", "client trove: the Group row's label and reward tags (the token coin + 200)")
 		-- JOIN: the GroupService double
 		local GroupS = game:GetService("GroupService")
 		GroupS.PromptJoinAsync = function()
@@ -700,7 +715,7 @@ local function clientScenarios()
 		KC.toClient("TroveState", stateOf("Done"))
 		KC.advance(0.1)
 		join = find(panel, "JoinButton")
-		T.check(join ~= nil and join.Text == "DONE" and disabled(join), "client trove: Done = DONE, disabled", join and join.Text)
+		T.check(join ~= nil and join.Text == "Done" and disabled(join), "client trove: Done = Done, disabled", join and join.Text)
 		T.eq(coinCount(), 18, "client trove: 18 coin parts fly (High)")
 		KC.advance(0.4)
 		local moved = (lid.PrimaryPart.CFrame.LookVector - before.LookVector).Magnitude > 0.1
@@ -730,7 +745,7 @@ local function clientScenarios()
 		KC.toClient("TroveState", stateOf("Preview", 0))
 		KC.advance(0.1)
 		join = find(panel, "JoinButton")
-		T.check(join ~= nil and KC.isShown(join) and join.Text == "PREVIEW" and disabled(join), "client trove: Preview = PREVIEW, disabled", join and join.Text)
+		T.check(join ~= nil and KC.isShown(join) and join.Text == "Preview" and disabled(join), "client trove: Preview = Preview, disabled", join and join.Text)
 		-- nothing in the middle 30 % of the screen
 		local centred = {}
 		for _, d in ipairs(gui:GetDescendants()) do
@@ -799,7 +814,12 @@ local function clientScenarios()
 			return
 		end
 		local scale = panel:FindFirstChildOfClass("UIScale")
-		T.check(math.abs(panel.AbsoluteSize.X - 352) <= 1 and math.abs(panel.AbsoluteSize.Y - 236) <= 1 and (scale == nil or scale.Scale == 1), "trove mobile: 352 x 236 at scale 1", string.format("%.0fx%.0f", panel.AbsoluteSize.X, panel.AbsoluteSize.Y))
+		-- (kit-b U9-4) 420 wide, no subtitle, so the docked panel ends above Roblox's jump button on a 390 px tall phone;
+		-- (U9-4 review) it reaches down to 6 px over it (the jump button's top 90 px over the bottom edge), which covers the
+		-- game's DASH button and its stroke whole: 228 tall under a 58 px top bar
+		local wantH = math.max(226, gui.AbsoluteSize.Y - 90 - 6 - 8)
+		T.check(math.abs(panel.AbsoluteSize.X - 420) <= 1 and math.abs(panel.AbsoluteSize.Y - wantH) <= 1 and (scale == nil or scale.Scale == 1),
+			string.format("trove mobile: 420 x %d at scale 1 (its bottom 6 px over the jump button)", wantH), string.format("%.0fx%.0f", panel.AbsoluteSize.X, panel.AbsoluteSize.Y))
 		local right = 844 - (panel.AbsolutePosition.X + panel.AbsoluteSize.X)
 		T.check(math.abs(right - 12) <= 1, "trove mobile: 12 px from the right", tostring(right))
 		local guiTop = gui.IgnoreGuiInset and 0 or insetY()

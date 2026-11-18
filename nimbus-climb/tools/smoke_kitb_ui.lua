@@ -108,6 +108,64 @@
 --   kitb_templates_hold_no_listeners (server world; kit-b prep, the leak hunt) HomeBuilder's cached station templates
 --                             are built frozen: no Theme caps / PixelIcon follow listener stays on a template label
 --   arena_side_invite_fits    (client) the incoming-challenge side card: trophies, power and the clock inside the card
+--   U9-1 (finding 15; the "Inventory" family: OpenPanel("Inventory") is the Pets window, and the Home window beside it):
+--   home_signboard_skin       (client) the Inventory route opens the Signboard Pets window; the Home window wears the
+--                             Signboard skin ("My Home" its ribbon), Go home / Claim a home is its one green plank, the hero
+--                             and the Prestige confirm have plain Section titles, nothing round, every card and row a block
+--                             in its wood edge, every text reads on its fill (kitb_no_neon_glow walks it too)
+--   home_fits_phone           (client) 844x390 / 390x844: the window inside the screen, nothing under the thumbstick or
+--                             the jump button (the touch controls go while it is open), back as they were on Close
+--   home_prestige_fits        (client) 390x844 / 844x390, a home ready for its first star (the longest "You get"): the
+--                             Prestige button opens the confirm; every line's text inside its line, the buttons inside the
+--                             box's wood edge, the three lines in the list with no scroll on the portrait phone, every
+--                             text reads on its fill, Prestige! the dialog's one green plank
+--   U9-3 (finding 15; the "Stats + Titles + VIP tags" family; kitb_no_neon_glow and kitb_no_emoji_ui walk them too):
+--   stats_signboard_skin      (client) the Stats window wears the Signboard skin ("Stats" its ribbon, the stats icon in
+--                             the header), each stat a stone block with an icon chip and a brown number, plain Section
+--                             headings, best-time rows with their difficulty's lip, nothing round, every text readable
+--   stats_fits_phone          (client) 844x390 / 390x844: inside the screen, the touch controls gone while open and back
+--                             on Close, every stat's chip / number / caption inside its block, captions whole
+--   stats_clear_of_hud        (client) 1920x1080 / 1280x720 / 844x390 / 390x844: the window and its awning over no HUD
+--                             part (the currency strips step aside on PC, the vitals card on a phone, while it is open),
+--                             both back on Close
+--   titles_kitb_tags          (client) each title over a head a flat opaque kit B tag in its role's colour (Top10 gold,
+--                             Top100 stone, Creator navy), Nameplate text in the look's ink, no outline / gradient /
+--                             tween, the plate with its wood edge inside the (clipping) billboard and 26 px above the
+--                             anchor; the VIP crown gold on its wood lip, the lobby crown a pixel gap above its anchor
+--   U9-4 (finding 15, finding 26; the "Daily + Sky Trove" family; kitb_no_neon_glow and kitb_no_emoji_ui walk them too,
+--   kitb_casing_rule fails on NimbusDaily / NimbusTrove buttons in capitals):
+--   daily_signboard_skin      (client) the Gifts window: wood frame, stone body, navy header, the awning on PC only, tab
+--                             blocks (selected gold), the red close; day tiles and gift boxes kit B blocks (claimed the
+--                             well, today gold) with their day / tier colour on the lip, the gift the pink gift block, the
+--                             header a Section title, square chips and Wisp blocks; one green action per page (Claim! /
+--                             Claim all), sentence-case buttons, nothing round or glossy, every text readable (locked too)
+--   daily_fits_phone          (client) 844x390 / 390x844, both tabs: inside the screen, the touch controls gone while open
+--                             and back on Close, every tile / box part inside its tile / box and the window's body
+--   daily_week_kit_confetti   (client) a paid week: 24 flat confetti bits in the prize's gold and the gift's pink (and their
+--                             lips), no rainbow, no sweep band; the banner a gold block with brown words
+--   trove_signboard_skin      (client) the Sky Trove panel: stone body in its wood frame, the navy header band (chest square,
+--                             SKY TROVE the ribbon, red close, in that order), the awning on PC only, asks as stone blocks
+--                             with icon chips one under the other, gold reward tags ($2,000, the token coin + 200) with two
+--                             sparkles taking turns while the reward waits, Join the one green action, Done / Preview the
+--                             Off block, the pending hint in red ink, sentence case, nothing round, every text readable
+--   trove_fits_phone          (client) touch phones (844x390 / 852x393 / 932x430 keep the controls, 667x375 / 640x360 keep
+--                             them only where the panel clears the thumbstick and the jump button by 6 px, 390x844 hides
+--                             them): back on Close, the game's DASH button wholly under the panel or wholly clear (no
+--                             sliver), the vitals card steps aside under the panel, header / asks / footer in order, texts
+--                             inside and >= 15 px, Join / X >= 44 px
+--   U9-2b (finding 15; the egg hatch screen: EggStage, HatchLook, HatchFx; kitb_no_neon_glow walks its strip, crack and
+--   reveals, kitb_no_emoji_ui its reveal, kitb_casing_rule fails on NimbusHatch buttons in capitals; the stage's art,
+--   attribute Art, stays the owner's roll-look pick):
+--   hatch_signboard_skin      (client) the strip: the flat navy track in its wood frame, every card a stone block in its
+--                             mitred wood edge with its rarity word on a plate in the rarity's colour (no corner, gloss,
+--                             shine or drop shadow), the landed card the selected face, the window a square gold frame with
+--                             no glow and stepped pixel notches; the reveal: Spin again the gold block with its stone price
+--                             tag (token coin + 50), Done the one green action, sentence case, flush lips, the Off well when
+--                             disabled, a press sinking the face onto its lip; navy chips; NEW! / EVOLVED flat tags; the
+--                             rarity word's letters in hard bands with one outline and no glow (x1 and x3); every text reads
+--   hatch_fits_phone          (client) 844x390 / 390x844, x1 and x3: the touch controls gone while the stage shows and back
+--                             after Done, the bar's blocks inside the screen and apart, taps >= 44 px, words and price tags
+--                             inside their blocks, the tags apart, every text >= 15 px
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -2197,6 +2255,7 @@ end
 
 local function clientScenarios()
 	local S = {}
+	local U92b = {} -- (U9-2b) the hatch stage's helpers (filled in the U9-2b block at the end; kitb_casing_rule uses them)
 
 	S.kitb_text_stroke_or_panel = guarded("kitb_text_stroke_or_panel", function()
 		local Players = game:GetService("Players")
@@ -2238,37 +2297,52 @@ local function clientScenarios()
 	-- capitals fails in the ScreenGuis of the families U6 swept (CASING_SWEPT); elsewhere it is a warning with the count (U9 sweeps those windows; the SignKit planks of the main menu, Settings and the loading screen keep
 	-- the capitals of the owner's approved U2-U5 boards until the owner rules on it).
 	local CASING_SWEPT = { NimbusMenu = true, NimbusBattle = true, NimbusHud = true, NimbusIndex = true, NimbusNotify = true,
-		NimbusDungeon = true, NimbusDungeonRun = true }
+		NimbusDungeon = true, NimbusDungeonRun = true, NimbusDaily = true, NimbusTrove = true, -- (U9-4) the Gifts window and the Sky Trove
+		NimbusHatch = true } -- (U9-2b) the hatch stage
 	S.kitb_casing_rule = guarded("kitb_casing_rule", function()
 		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
 		if not T.check(pg ~= nil, "kitb casing: PlayerGui exists") then
 			return
 		end
 		local shouty, quiet, buttons, tags, later = {}, {}, 0, 0, {}
-		for _, d in ipairs(pg:GetDescendants()) do
-			if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-				local role = d:GetAttribute("FontRole")
-				local text = tostring(d.Text or ""):gsub("<[^>]->", "")
-				local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
-				local swept = CASING_SWEPT[path:match("^([^.]+)") or ""] == true
-				if role == "Button" and text:find("%a") then
-					buttons = buttons + 1
-					for word in text:gmatch("%a+") do
-						if #word >= 4 and word == word:upper() then
-							local into = swept and shouty or later
-							into[#into + 1] = path .. " \"" .. text .. "\""
-							break
+		local function scan(root)
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+					local role = d:GetAttribute("FontRole")
+					local text = tostring(d.Text or ""):gsub("<[^>]->", "")
+					local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					local swept = CASING_SWEPT[path:match("^([^.]+)") or ""] == true
+					if role == "Button" and text:find("%a") then
+						buttons = buttons + 1
+						for word in text:gmatch("%a+") do
+							if #word >= 4 and word == word:upper() then
+								local into = swept and shouty or later
+								into[#into + 1] = path .. " \"" .. text .. "\""
+								break
+							end
 						end
-					end
-				elseif (role == "Tag" or role == "Title" or role == "Sign" or role == "Accent") and text:find("%a") then
-					-- (Theme.SetRole keeps these in capitals, so a lower-case letter fails in every family)
-					tags = tags + 1
-					if text:find("%l") then
-						quiet[#quiet + 1] = path .. " \"" .. text .. "\" (" .. role .. ")"
+					elseif (role == "Tag" or role == "Title" or role == "Sign" or role == "Accent") and text:find("%a") then
+						-- (Theme.SetRole keeps these in capitals, so a lower-case letter fails in every family)
+						tags = tags + 1
+						if text:find("%l") then
+							quiet[#quiet + 1] = path .. " \"" .. text .. "\" (" .. role .. ")"
+						end
 					end
 				end
 			end
 		end
+		scan(pg)
+		-- (U9-2b) the hatch stage shows only during a roll: its x1 and x3 reveals (the planks, the chips, the tags)
+		local hatchScans = 0
+		for _, kind in ipairs({ "x1", "x3" }) do
+			local hatch = U92b.reveal(kind) and pg:FindFirstChild("NimbusHatch")
+			if hatch then
+				hatchScans = hatchScans + 1
+				scan(hatch)
+			end
+			U92b.close()
+		end
+		T.check(hatchScans == 2, "kitb casing: (setup) the hatch stage's x1 and x3 reveals were read", tostring(hatchScans))
 		table.sort(shouty)
 		table.sort(quiet)
 		T.info(fmt("*kitb casing: %d button texts, %d tag / title texts", buttons, tags))
@@ -4292,7 +4366,7 @@ local function clientScenarios()
 		pcall(client("UI/PetBits").closeRecall)
 		-- the window titles this walk must have seen as "Ribbon" (a Lua pattern on the path inside PlayerGui each)
 		local expected = {
-			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
+			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%..-Title$" }, -- (U9-1) the Signboard header: TitleBar.Plate.Title
 			{ "the Training window", "^NimbusTrain%..-Header%.Title$" },
 			{ "the pet picker", "^NimbusPetPicker%..-Header%.Title$" },
 			{ "the Fusion window", "^NimbusFusion%..-Header%.Title$" },
@@ -4303,12 +4377,12 @@ local function clientScenarios()
 		local expectedSection = {
 			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$" },
 			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$" },
-			{ "the Go home hero card", "%.Hero%.GoHome%..-%.Title$" },
+			{ "the Go home hero card", "%.Hero%.GoHome%..-Title$" }, -- (U9-1) the hero card's Title may sit straight under GoHome
 			{ "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
 			{ "the Training confirm", "^NimbusTrain%..-%.Box%.Title$" },
 			{ "the loss card", "^NimbusLoss%.LossCard%..-%.Title$" },
 			{ "the battle result card", "%.ResultCard%..-%.Title$" },
-			{ "the hatch stage", "^NimbusHatch%..-%.Title$" },
+			{ "the hatch stage", "^NimbusHatch%..-%.Title$" }, -- (U9-2b review) a cutscene over the game, not a window
 			{ "the garden recall dialog", "%.GardenRecall%.Box%.Title$" },
 			{ "the party panel", "^NimbusHud%..-%.PartyPanel%..-%.Title$" },
 		}
@@ -4359,6 +4433,18 @@ local function clientScenarios()
 		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Ribbon", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
 		T.check(#notPlain == 0, "kitb titles walk: every dialog / pop-up / card title is built and stamped the plain Section title", table.concat(notPlain, ", ") .. " | seen: " .. table.concat(seen, "; "))
 		T.check(#strays == 0, "kitb titles walk: the ribbon appears only on window titles", table.concat(strays, "; "))
+		-- (U9-1; the owner's ruling 2026-11-14) a card heading and a dialog's title inside a window are plain Section headings;
+		-- (U9-2b review) so is the hatch stage's floating title (a cutscene over the game, not a window)
+		for _, e in ipairs({ { "the Go home hero card", "%.Hero%.GoHome%..-Title$" }, { "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
+			{ "the hatch stage", "^NimbusHatch%..-%.Title$" } }) do
+			local look = nil
+			for path, l in pairs(found) do
+				if path:find(e[2]) then
+					look = l
+				end
+			end
+			T.check(look == "Section", "kitb titles walk: " .. e[1] .. " is a plain Section heading (the ribbon is for window titles)", tostring(look))
+		end
 		T.check(#badList == 0, "kitb titles walk: no Title-role title without the TitleLook stamp (Plain, or a Theme.TitleExempt kind)", table.concat(badList, "; "))
 		local inScroll, shopList = {}, {}
 		for path in pairs(scrolled) do
@@ -4486,11 +4572,65 @@ local function clientScenarios()
 		end
 	end
 
+	-- (U9-3) the titles over heads: runs fn(players) with four dummy players in the lobby on High graphics (the crown shows
+	-- on High only): Top10 #3, Top100 #57, the Creator wearing the VIP pass (the crown inside the tag) and an untitled VIP
+	-- (the VipCrown billboard of its own); they leave after and the graphics answer is put back
+	local U93 = {}
+	local U94 = {} -- (U9-4) the Gifts window and the Sky Trove helpers (filled in the U9-4 block below)
+	function U93.titled(fn)
+		local Config = LoadingH.shared("Config")
+		local GQ = U7.client("GraphicsQuality")
+		local real = GQ and GQ.Effective
+		if GQ then
+			GQ.Effective = function()
+				return "High"
+			end
+		end
+		local who = { { "U93TopTen", 986001, "Top10", 3 }, { "U93TopHundred", 986002, "Top100", 57 }, { "U93Creator", 986003, "Creator", 1, true },
+			{ "U93Vip", 986004, nil, nil, true } }
+		local players = {}
+		for i, w in ipairs(who) do
+			players[i] = Mock.AddPlayer(w[1], w[2])
+		end
+		LKC.advance(0.5)
+		for i, w in ipairs(who) do
+			if w[5] then
+				players[i]:SetAttribute("OwnedPasses", "VIP")
+			end
+			if w[3] then
+				players[i]:SetAttribute(Config.Attr.TitleRank, w[4])
+				players[i]:SetAttribute(Config.Attr.Title, w[3])
+			end
+		end
+		LKC.advance(1.2)
+		local ok, err = pcall(fn, players)
+		T.check(ok, "u9-3 titles: the check ran", tostring(err))
+		for _, p in ipairs(players) do
+			Mock.RemovePlayer(p)
+		end
+		if GQ then
+			GQ.Effective = real
+		end
+		LKC.advance(0.5)
+	end
+	-- the TitleTag and VipCrown billboards on these players' characters
+	function U93.boards(players)
+		local out = {}
+		for _, p in ipairs(players) do
+			for _, d in ipairs(p.Character and p.Character:GetDescendants() or {}) do
+				if d:IsA("BillboardGui") and (d.Name == "TitleTag" or d.Name == "VipCrown") then
+					out[#out + 1] = d
+				end
+			end
+		end
+		return out
+	end
+
 	-- the emoji rule over PlayerGui (tools/stroke_walk.py --emoji runs it over the dump of every render scenario): after the
 	-- client run and with each window U7a reworked open in turn (the menu's Pets / Index / Stats, the Shop on every tab,
 	-- the Gifts window, Fusion, a token toast, a match result, the hatch stage), no shown text carries an emoji or
 	-- pictographic symbol code point (SmokeCommon.Emoji). The texts in tools/fixtures/emoji_backlog.txt (U7b's glyph
-	-- tables) are counted, not failed; U7b empties that list.
+	-- tables) are counted, not failed; U7b empties that list. (U9-3) The titles and the VIP crown over heads too.
 	S.kitb_no_emoji_ui = guarded("kitb_no_emoji_ui", function()
 		local Emoji = SmokeCommon.Emoji
 		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -4507,6 +4647,40 @@ local function clientScenarios()
 		end
 		U7.openAll(walk)
 		U7.openU7b(walk) -- (U7b) and the windows of the glyph tables U7b redrew; the backlog is empty
+		local boards = 0
+		U93.titled(function(players) -- (U9-3) the titles and the VIP crown over heads
+			for _, bb in ipairs(U93.boards(players)) do
+				boards = boards + 1
+				walks = walks + 1
+				Emoji.Walk(bb, hits, owed)
+			end
+		end)
+		T.check(boards == 4, "kitb emoji walk: (setup) three titles and the untitled VIP's crown were walked", tostring(boards))
+		-- (U9-4) the Gifts window's Play page (openAll opens the Daily page) and the Sky Trove panel
+		local DCw = U7.client("Controllers/DailyController")
+		U7.try("the Gifts window's Play page", function()
+			LKC.toClient("DailyState", U94.payload("play"))
+			LKC.advance(0.2)
+			DCw.Open({ Tab = "Play" })
+		end)
+		walk()
+		pcall(DCw.Close)
+		U7.try("the Sky Trove", function()
+			U94.trove("Open")
+		end)
+		walk()
+		U94.closeTrove()
+		-- (U9-2b) the hatch stage's reveals (x1 and x3: the price tag's coin, the tags, the bar's words)
+		local hatchWalks = 0
+		for _, kind in ipairs({ "x1", "x3" }) do
+			local ES = U92b.reveal(kind)
+			if ES then
+				hatchWalks = hatchWalks + 1
+				walk()
+			end
+			U92b.close()
+		end
+		T.check(hatchWalks == 2, "kitb emoji walk: (setup) the hatch stage's x1 and x3 reveals were walked", tostring(hatchWalks))
 		local list, n = {}, 0
 		for path, cps in pairs(hits) do
 			list[#list + 1] = path .. " " .. cps
@@ -4790,7 +4964,8 @@ local function clientScenarios()
 		end
 		return cur ~= nil and cur.Enabled ~= false
 	end
-	function U8.feed(team, garden, growth) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth
+	-- (U9-3) extra: fields that replace the profile's own (a record of matches, best times and perks for the Stats window)
+	function U8.feed(team, garden, growth, home, extra) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth; home: the Home record (U9-1)
 		local pets, levels, discovered = {}, {}, {}
 		for i, key in ipairs(U8.KEYS) do
 			pets[key] = 1
@@ -4798,19 +4973,23 @@ local function clientScenarios()
 			discovered[key] = true
 		end
 		local preset = team or { U8.KEYS[1], U8.KEYS[2] }
-		LKC.toClient("ProfileSync", {
+		local snap = {
 			Tokens = 1250, Pets = pets, Equipped = preset, Items = {},
 			Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
 			Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 },
 			Discovered = discovered, IndexClaimed = {},
 			Tutorial = { Step = 1000, Done = true, Gifted = true },
 			Cash = 48200, Gems = 320,
-			Home = { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = garden or {}, Gym = {}, CollectorCash = 0 },
+			Home = home or { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = garden or {}, Gym = {}, CollectorCash = 0 },
 			Food = {}, Tiers = {}, Hybrids = {}, PetLevels = levels,
 			Teams = { Presets = { preset, {}, {} }, Active = 1, Slots = 3, Busy = {} },
 			Battle = { Trophies = 120, TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} },
 			PetGrowth = growth or {}, Ring = { Best = 0, Runs = 0 },
-		})
+		}
+		for k, v in pairs(extra or {}) do
+			snap[k] = v
+		end
+		LKC.toClient("ProfileSync", snap)
 		LKC.advance(0.2)
 	end
 	function U8.closeAll()
@@ -4876,6 +5055,22 @@ local function clientScenarios()
 		end
 		table.sort(out)
 		return out
+	end
+	-- (U9-3) the Stats window, inside U8.at's lobby: a record to show (U8.feed zeroes the stats): matches and wins, two best
+	-- times, two perks
+	U93.RECORD = {
+		Stats = { Matches = 12, Wins = 7, TokensEarned = 900, Spins = 5, BestTimes = { Easy = 123.4, Medium = 201.5 } },
+		Perks = { MaxHealth = 0.12, TokenBonus = 0.25, StaminaRegen = 0, CheckpointHeal = 0 },
+	}
+	function U93.win()
+		local menu = U8.pg():FindFirstChild("NimbusMenu")
+		return menu and menu:FindFirstChild("Window_Stats")
+	end
+	function U93.open()
+		U8.feed(nil, nil, nil, nil, U93.RECORD)
+		U7.client("Controllers/MenuController").Open("Stats")
+		LKC.advance(1)
+		return U93.win()
 	end
 
 	-- (U8) the gift docks under the currency strips (the pitch's HUD stage: a small pink block right-aligned under them): its
@@ -5355,10 +5550,26 @@ local function clientScenarios()
 			end
 			return false
 		end
+		-- (U9-2) the Shop's illustrations are art, not panels: the gumball machines (attribute Art) and the EggArt eggs
+		-- (attributes Form + Rarity) keep their glass sheen and egg tones; a scroll row's edge "Fade" is a flat colour fading
+		-- out (no gloss)
+		ALLOWED.Fade = true
+		local function inArt(d)
+			local cur = d.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur:GetAttribute("Art") ~= nil or (cur:GetAttribute("Form") ~= nil and cur:GetAttribute("Rarity") ~= nil) then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
 		local function walk(root, family, bad)
 			for _, d in ipairs(root and root:GetDescendants() or {}) do
 				local p = d.Parent
-				if d:IsA("UIStroke") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and d.Transparency < 0.95 then
+				if inArt(d) then
+					-- (U9-2) an illustration's own paint
+				elseif d:IsA("UIStroke") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and d.Transparency < 0.95 then
 					if d.Name == "GlowStroke" or (p.Name == "Glow" and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border) then
 						bad[#bad + 1] = family .. ": a glow ring on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
 					elseif d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and neonName(d.Color) then
@@ -5413,7 +5624,93 @@ local function clientScenarios()
 				Menu.Open("Index")
 				LKC.advance(1)
 				walk(pg:FindFirstChild("NimbusIndex"), "Index", bad)
-				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window and the Index (%d)", tag, #bad),
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				-- (U9-1) the Home window: with a home (the hero, the strip, the cards, the station rows, the Prestige confirm shown
+				-- over them) and without one (Claim a home and its three steps)
+				local Config = LoadingH.shared("Config")
+				local oldSpot = lp:GetAttribute(Config.Attr.SpotIndex)
+				for _, spot in ipairs({ 1, false }) do
+					lp:SetAttribute(Config.Attr.SpotIndex, spot or nil)
+					LKC.advance(0.2)
+					Menu.Open("Home")
+					LKC.advance(1)
+					local home = pg:FindFirstChild("NimbusMenu") and pg.NimbusMenu:FindFirstChild("Window_Home")
+					walk(home, spot and "Home" or "Home (no home)", bad)
+					local confirm = home and home:FindFirstChild("PrestigeConfirm", true)
+					if spot and confirm then
+						confirm.Visible = true
+						walk(confirm, "Home Prestige confirm", bad)
+						confirm.Visible = false
+					end
+					pcall(Menu.Close)
+					LKC.advance(0.4)
+				end
+				lp:SetAttribute(Config.Attr.SpotIndex, oldSpot)
+				LKC.advance(0.2)
+				-- (U9-2) the Shop on every tab (the Secret card at the altar and away from it on Eggs)
+				local Shop = U7.client("Controllers/ShopController")
+				local SE = U7.client("UI/ShopEggs")
+				local oldAltar = SE and SE._AtAltar
+				for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
+					Shop.Open({ Tab = tab })
+					LKC.advance(1)
+					walk(pg:FindFirstChild("NimbusShop"), "Shop " .. tab, bad)
+					if tab == "Eggs" and SE then
+						SE._AtAltar = false
+						Shop.Open({ Tab = tab })
+						LKC.advance(1.2)
+						walk(pg:FindFirstChild("NimbusShop"), "Shop Eggs (away)", bad)
+						SE._AtAltar = oldAltar
+					end
+				end
+				pcall(Shop.Close)
+				LKC.advance(0.4)
+				-- (U9-3) the Stats window, and the titles and the VIP crown over heads (BillboardGuis on the characters)
+				walk(U93.open(), "Stats", bad)
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				U93.titled(function(players)
+					for _, bb in ipairs(U93.boards(players)) do
+						walk(bb, bb.Name .. " " .. bb.Parent.Parent.Name, bad)
+					end
+				end)
+				-- (U9-4) the Gifts window on both tabs (a day due, the play gifts paused with one ready) and the Sky Trove panel
+				-- (Join open, then Done)
+				local DCw = U7.client("Controllers/DailyController")
+				for _, view in ipairs({ { "Daily", "" }, { "Play", "play" } }) do
+					LKC.toClient("DailyState", U94.payload(view[2]))
+					LKC.advance(0.2)
+					DCw.Open({ Tab = view[1] })
+					LKC.advance(1)
+					walk(U94.holder(), "Gifts " .. view[1], bad)
+				end
+				pcall(DCw.Close)
+				LKC.advance(0.4)
+				for _, state in ipairs({ "Open", "Done" }) do
+					walk(U94.trove(state), "Trove " .. state, bad)
+				end
+				U94.closeTrove()
+				-- (U9-2b) the hatch stage: the strip mid-scroll, the crack, the x1 reveal and the x3 reveal. Its art (attribute Art)
+				-- keeps its own paint; a letter's hard "Bands" are the title look's face
+				ALLOWED.Bands = true
+				local ESw = U92b.show("x1")
+				if ESw then
+					LKC.advance(1.6)
+					walk(U8.pg():FindFirstChild("NimbusHatch"), "Hatch strip", bad)
+					LKC.advance(3.1)
+					walk(U8.pg():FindFirstChild("NimbusHatch"), "Hatch crack", bad)
+					U92b.close()
+				else
+					bad[#bad + 1] = "the hatch stage did not show"
+				end
+				for _, kind in ipairs({ "x1", "x3" }) do
+					if U92b.reveal(kind) then
+						walk(U8.pg():FindFirstChild("NimbusHatch"), "Hatch reveal " .. kind, bad)
+					end
+					U92b.close()
+				end
+				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window, the Index, the Home window, the Shop, the Stats window, the tags over heads, the Gifts window, the Sky Trove and the hatch stage (%d)", tag, #bad),
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
@@ -5609,6 +5906,11 @@ local function clientScenarios()
 			end, function()
 				client("Controllers/TroveController").Close()
 			end },
+			{ "the Home window", function() -- (U9-1) its Signboard header
+				client("Controllers/MenuController").Open("Home")
+			end, function()
+				client("Controllers/MenuController").Close()
+			end },
 		}
 		for _, size in ipairs({ { 390, 844 }, { 844, 390 } }) do
 			Mock.SetViewport(size[1], size[2])
@@ -5627,6 +5929,2964 @@ local function clientScenarios()
 		Mock.SetViewport(old[1], old[2])
 		LKC.advance(0.2)
 		LKC.flushErrors("kitb_title_ribbon_clear")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-1 (finding 15; BUILD_PLAN "Coverage check", U9 family 1 "Inventory"): OpenPanel("Inventory") lands on the Pets
+	-- window (a Signboard since U8), and the menu window the old Inventory sat beside, the Home window (MenuController,
+	-- in no other U9 family), is a kit B sign too. U9.at runs fn(tag, win) with the Home window open (a claimed home unless
+	-- `noHome`) and puts the home attribute back after
+	local U9 = {}
+	function U9.home()
+		local menu = U8.pg():FindFirstChild("NimbusMenu")
+		return menu and menu:FindFirstChild("Window_Home")
+	end
+	-- the contrast walk's failures inside the Home window (SmokeCommon.Contrast reads the whole PlayerGui in paint order)
+	function U9.contrast()
+		local out = {}
+		for _, line in ipairs((SmokeCommon.Contrast.Walk(U8.pg()))) do
+			if line:find("Window_Home", 1, true) then
+				out[#out + 1] = line
+			end
+		end
+		return out
+	end
+	function U9.at(w, h, touch, label, noHome, fn)
+		local Config = LoadingH.shared("Config")
+		local lp = game:GetService("Players").LocalPlayer
+		U8.at(w, h, touch, label, function(tag)
+			local oldSpot = lp:GetAttribute(Config.Attr.SpotIndex)
+			lp:SetAttribute(Config.Attr.SpotIndex, (not noHome) and 1 or nil)
+			LKC.advance(0.2)
+			U7.client("Controllers/MenuController").Open("Home")
+			LKC.advance(1)
+			local win = U9.home()
+			local ok, err = pcall(function()
+				if T.check(win ~= nil and U8.shown(win), tag .. ": the Home window opens") then
+					fn(tag, win)
+				end
+			end)
+			T.check(ok, tag .. ": the Home check ran", tostring(err))
+			pcall(U7.client("Controllers/MenuController").Close)
+			LKC.advance(0.4)
+			lp:SetAttribute(Config.Attr.SpotIndex, oldSpot)
+			LKC.advance(0.2)
+		end)
+	end
+
+	-- the Home window on the Signboard kit at 1920x1080 and 844x390: CloudUI.Panel's Signboard skin with "My Home" as the
+	-- window's T1 ribbon; the Go home hero a green kit B plank (the window's ONE green action; Claim a home when there is no
+	-- home) whose title is a plain "Section" heading, as is the Prestige confirm's (the owner's ruling 2026-11-14: the ribbon
+	-- is for WINDOW titles only); every summary card and station row a square block in its wood edge; nothing round; every
+	-- text reads on its fill (SmokeCommon.Contrast, 3:1 from 18 px, 4.5:1 below)
+	S.home_signboard_skin = guarded("home_signboard_skin", function()
+		local pets = nil
+		U8.at(1920, 1080, false, "inventory route", function(tag)
+			LKC.toClient("OpenPanel", "Inventory", {})
+			LKC.advance(1)
+			pets = U8.pg():FindFirstChild("NimbusPets")
+			local panel = pets and pets:FindFirstChild("Window_Pets", true)
+			local skinned = false
+			for _, d in ipairs(pets and pets:GetDescendants() or {}) do
+				if d:GetAttribute("Skin") == "Signboard" and U8.shown(d) then
+					skinned = true
+				end
+			end
+			T.check(panel ~= nil and U8.shown(panel) and skinned, tag .. ": OpenPanel('Inventory') opens the Pets window on the Signboard skin")
+		end)
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U9.at(s[1], s[2], s[3], "home kit b", false, function(tag, win)
+				local panel = win:FindFirstChild("HomePanel")
+				T.check(panel ~= nil and panel:GetAttribute("Skin") == "Signboard", tag .. ": the Home window wears the Signboard skin")
+				local title = panel and panel:FindFirstChild("TitleBar", true) and panel:FindFirstChild("TitleBar", true):FindFirstChild("Title", true)
+				T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": 'My Home' is the window's ribbon title",
+					title and tostring(title:GetAttribute("TitleLook")) or "no title")
+				local hero = win:FindFirstChild("GoHome", true)
+				T.check(hero ~= nil and U8.shown(hero) and hero:GetAttribute("SignLook") == "Primary" and hero:FindFirstChildOfClass("UICorner") == nil,
+					tag .. ": Go home is a green kit B plank (square, its lip, its wood edge)", hero and tostring(hero:GetAttribute("SignLook")) or "none")
+				local heroTitle = hero and hero:FindFirstChild("Title", true)
+				T.check(heroTitle ~= nil and heroTitle:GetAttribute("TitleLook") == "Section", tag .. ": the hero's 'Go home' is a plain Section heading, no ribbon",
+					heroTitle and tostring(heroTitle:GetAttribute("TitleLook")) or "none")
+				local confirmTitle = win:FindFirstChild("PrestigeConfirm", true)
+				confirmTitle = confirmTitle and confirmTitle:FindFirstChild("Box") and confirmTitle.Box:FindFirstChild("Title")
+				T.check(confirmTitle ~= nil and confirmTitle:GetAttribute("TitleLook") == "Section", tag .. ": the Prestige confirm's title is a plain Section heading",
+					confirmTitle and tostring(confirmTitle:GetAttribute("TitleLook")) or "none")
+				local greens = U8.greenActions(win)
+				T.check(#greens == 1 and greens[1] == "GoHome", tag .. ": Go home is the window's one green action", table.concat(greens, ", "))
+				local round, blocks, rows = {}, {}, 0
+				for _, d in ipairs(win:GetDescendants()) do
+					if d:IsA("UICorner") and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
+						round[#round + 1] = d.Parent.Name
+					end
+					if d:IsA("GuiObject") and U8.shown(d) and (d.Name:match("^Station_") or d.Name == "HouseCard" or d.Name == "IncomeCard" or d.Name == "PrestigeCard") then
+						rows = rows + 1
+						local edge = d:FindFirstChild("SignEdge")
+						if d.BackgroundTransparency > 0 or not edge then
+							blocks[#blocks + 1] = d.Name
+						end
+					end
+				end
+				T.check(#round == 0, tag .. ": nothing in the Home window is round (kit B is square)", table.concat(round, ", ", 1, math.min(#round, 10)))
+				T.check(rows >= 6 and #blocks == 0, fmt("%s: every summary card and station row is a solid block in its wood edge (%d seen)", tag, rows), table.concat(blocks, ", "))
+				local bad = U9.contrast()
+				T.check(#bad == 0, fmt("%s: every text of the Home window reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+			end)
+		end
+		U9.at(1920, 1080, false, "home kit b, no home", true, function(tag, win)
+			local greens = U8.greenActions(win)
+			T.check(#greens == 1 and greens[1] == "ClaimHome", tag .. ": Claim a home is the window's one green action", table.concat(greens, ", "))
+			local bad = U9.contrast()
+			T.check(#bad == 0, fmt("%s: the claim steps read on their fills (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+		end)
+		LKC.flushErrors("home_signboard_skin")
+	end)
+
+	-- the Home window on a touch phone (844x390 and 390x844): the panel inside the screen, and nothing of it under Roblox's
+	-- thumbstick or jump button: the touch controls go while it is open, as the Pets window and the Index do (its station list
+	-- scrolls Upgrade buttons through both bottom corners); they come back as they were on Close. The hero's texts sit inside
+	-- the hero
+	S.home_fits_phone = guarded("home_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			local before = GuiService.TouchControlsEnabled
+			U9.at(s[1], s[2], s[3], "home phone", false, function(tag, win)
+				local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
+				local panel = win:FindFirstChild("HomePanel")
+				local screen = { X = 0, Y = 0, R = gui.AbsoluteSize.X, B = gui.AbsoluteSize.Y }
+				local p = panel and U8.rect(panel)
+				T.check(p ~= nil and p.X >= screen.X - 0.5 and p.R <= screen.R + 0.5 and p.Y >= screen.Y - 0.5 and p.B <= screen.B + 0.5,
+					tag .. ": the Home window sits inside the screen", p and (U8.show(p) .. " in " .. U8.show(screen)) or "no panel")
+				-- Roblox's touch controls in the window's own coordinates (HudController K: the jump button J = 70, from 1.5 J + 10 to
+				-- 0.5 J + 10 off the right edge, its bottom 20 px over the bottom edge; the thumbstick's ring in the bottom-left 150 px)
+				local J = 70
+				local inset = gui.IgnoreGuiInset and 0 or 58
+				local jump = { X = s[1] - (1.5 * J + 10), R = s[1] - (0.5 * J + 10), Y = s[2] - 20 - J - inset, B = s[2] - 20 - inset }
+				local stick = { X = 0, R = 150, Y = s[2] - 150 - inset, B = s[2] - inset }
+				local hidden = GuiService.TouchControlsEnabled == false
+				local under = {}
+				for _, b in ipairs(win:GetDescendants()) do
+					if b:IsA("GuiButton") and U8.shown(b) then
+						local r = U8.rect(b)
+						if U8.overlap(r, jump) or U8.overlap(r, stick) then
+							under[#under + 1] = b.Name .. " " .. U8.show(r)
+						end
+					end
+				end
+				-- the station list scrolls its Upgrade buttons through the bottom corners, so being clear right now is not enough:
+				-- the controls go while the window is open (the list then has the whole sheet)
+				T.check(hidden, tag .. ": Roblox's thumbstick and jump button go while the Home window is open (its list scrolls through their corners)",
+					fmt("touch controls %s; buttons under them now: %s", tostring(GuiService.TouchControlsEnabled), table.concat(under, ", ")))
+				local hero = win:FindFirstChild("GoHome", true)
+				local h = hero and U8.rect(hero)
+				local out = {}
+				for _, l in ipairs(hero and hero:GetDescendants() or {}) do
+					if l:IsA("TextLabel") and U8.shown(l) and l.Text ~= "" then
+						local r = U8.rect(l)
+						if r.X < h.X - 0.5 or r.R > h.R + 0.5 or r.Y < h.Y - 0.5 or r.B > h.B + 0.5 then
+							out[#out + 1] = l.Name .. " " .. U8.show(r)
+						end
+					end
+				end
+				T.check(hero ~= nil and #out == 0, tag .. ": the Go home hero's texts sit inside it", table.concat(out, ", ") .. (h and (" | hero " .. U8.show(h)) or ""))
+			end)
+			T.eq(GuiService.TouchControlsEnabled, before, fmt("home phone %dx%d: the touch controls are back as they were after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("home_fits_phone")
+	end)
+
+	-- the Prestige confirm on a touch phone (390x844 and 844x390), for a home ready for its FIRST star (Sky Castle, Home Level
+	-- 41: the "You get" line also names the Fusion Machine, the longest it gets), opened by its Prestige button as a player
+	-- does: each line's text inside its line, Prestige! and Not yet inside the box's 6 px wood edge, on the portrait phone the
+	-- three lines whole in the list (sized from the real text, not an estimate: no scroll while the window has room), the box
+	-- inside the screen, every text reads on its fill with the dialog up, and Prestige! the dialog's one green plank
+	S.home_prestige_fits = guarded("home_prestige_fits", function()
+		local ready = { Level = 41, Prestige = 0, Garden = {}, Gym = {}, CollectorCash = 0, Stations = { Press1 = 40, Garden = 8, Kitchen = 5, Gym = 5,
+			Vault = 5, House = 4, FusionMachine = 3, ArenaGate = 1, DecorFence = 3, DecorFountain = 3, DecorPodium = 3 } }
+		for _, s in ipairs({ { 390, 844, true }, { 844, 390, true } }) do
+			U9.at(s[1], s[2], s[3], "home prestige", false, function(tag, win)
+				U8.feed(nil, nil, nil, ready)
+				LKC.advance(0.5)
+				local button = win:FindFirstChild("Prestige", true)
+				T.check(button ~= nil and button:IsA("GuiButton"), tag .. ": (setup) the Home window has its Prestige button")
+				if button then
+					Mock.Click(button)
+					LKC.advance(0.5)
+				end
+				local confirm = win:FindFirstChild("PrestigeConfirm", true)
+				local box = confirm and confirm:FindFirstChild("Box")
+				local list = box and box:FindFirstChild("Lines")
+				if not T.check(box ~= nil and list ~= nil and U8.shown(box), tag .. ": the Prestige button opens the confirm") then
+					return
+				end
+				local gain = list:FindFirstChild("Line_Gain") and list.Line_Gain:FindFirstChild("Text")
+				T.check(gain ~= nil and gain.Text:find("Fusion Machine", 1, true) ~= nil, tag .. ": (setup) the first star's 'You get' names the Fusion Machine",
+					gain and gain.Text or "no Gain text")
+				local function inside(r, o)
+					return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+				end
+				local out, cut = {}, {}
+				local l = U8.rect(list)
+				for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
+					local line = list:FindFirstChild("Line_" .. id)
+					local text = line and line:FindFirstChild("Text")
+					if not line or not text then
+						out[#out + 1] = id .. " missing"
+					else
+						local r, lr = U8.rect(text), U8.rect(line)
+						-- the drawn text (TextBounds, screen px) fits the label's box, and the label sits in its line
+						if not inside(r, lr) or text.TextBounds.Y > text.AbsoluteSize.Y + 0.5 then
+							out[#out + 1] = fmt("%s text %s (%d px of text) in line %s", id, U8.show(r), text.TextBounds.Y, U8.show(lr))
+						end
+						if not inside(lr, l) then
+							cut[#cut + 1] = id .. " " .. U8.show(lr)
+						end
+					end
+				end
+				T.check(#out == 0, tag .. ": every line's text sits inside its line", table.concat(out, "; "))
+				if s[2] > s[1] then
+					T.check(#cut == 0, tag .. ": the three lines are whole in the list, no scroll (the window has the room)",
+						table.concat(cut, ", ") .. " | list " .. U8.show(l))
+				end
+				local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
+				local b = U8.rect(box)
+				T.check(inside(b, { X = 0, Y = 0, R = gui.AbsoluteSize.X, B = gui.AbsoluteSize.Y }), tag .. ": the confirm box sits inside the screen", U8.show(b))
+				-- the buttons' row is the box less its 16 px margins (the 6 px wood edge and a gap): a button wider than the row
+				-- runs past the margin onto the frame
+				local edge = 6 * U8.scaleOf(box)
+				local row = box:FindFirstChild("Buttons")
+				local inner = row and U8.rect(row) or { X = b.X + edge, Y = b.Y + edge, R = b.R - edge, B = b.B - edge }
+				local spill = {}
+				for _, name in ipairs({ "ConfirmPrestige", "CancelPrestige" }) do
+					local btn = box:FindFirstChild(name, true)
+					local r = btn and U8.rect(btn)
+					if not r or not inside(r, inner) or r.X < b.X + edge or r.R > b.R - edge then
+						spill[#spill + 1] = name .. " " .. (r and U8.show(r) or "missing")
+					end
+				end
+				T.check(#spill == 0, tag .. ": Prestige! and Not yet sit inside their row, clear of the box's wood edge", table.concat(spill, ", ") .. " | row " .. U8.show(inner) .. " | box " .. U8.show(b))
+				local bad = U9.contrast()
+				T.check(#bad == 0, fmt("%s: every text reads on its fill with the confirm up (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				local greens = U8.greenActions(confirm)
+				T.check(#greens == 1 and greens[1] == "ConfirmPrestige", tag .. ": Prestige! is the dialog's one green plank", table.concat(greens, ", "))
+			end)
+		end
+		LKC.flushErrors("home_prestige_fits")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-2 (finding 15; BUILD_PLAN "Coverage check", U9 family 2 "Shop + Gems + Robux Store"): the Shop window (ShopController
+	-- with its Eggs page ShopEggs and Gems page ShopGems) on the Signboard kit, and the render gate's three Shop findings:
+	-- the balances shown twice (the window's pills and the HUD strips), the X over the HUD strips at 1280x720, the x3 / gem
+	-- row cut by the window's bottom edge at 1280x720. U92.at runs fn(tag, win) with the Shop open on `tab`, on an account
+	-- that may spin (allowed, gems settled, at the altar unless `away`), and puts everything back after
+	local U92 = {}
+	function U92.win()
+		local gui = U8.pg():FindFirstChild("NimbusShop")
+		return gui and gui:FindFirstChild("ShopWindow")
+	end
+	-- the contrast walk's failures inside the Shop
+	function U92.contrast()
+		local out = {}
+		for _, line in ipairs((SmokeCommon.Contrast.Walk(U8.pg()))) do
+			if line:find("NimbusShop", 1, true) then
+				out[#out + 1] = line
+			end
+		end
+		return out
+	end
+	-- an illustration, not a panel: the gumball machine (attribute Art), an EggArt egg (attributes Form + Rarity), the
+	-- drawn cut gem (GemIcon), a pet viewport; their round shapes and tone gradients are the art
+	function U92.inArt(d)
+		local cur = d
+		while cur and not cur:IsA("LayerCollector") do
+			if cur:GetAttribute("Art") ~= nil or (cur:GetAttribute("Form") ~= nil and cur:GetAttribute("Rarity") ~= nil) or cur.Name == "GemIcon"
+				or cur.Name == "GemAmount" or cur:IsA("ViewportFrame") then
+				return true
+			end
+			cur = cur.Parent
+		end
+		return false
+	end
+	function U92.at(w, h, touch, label, tab, away, fn)
+		local Shop = U7.client("Controllers/ShopController")
+		local SE = U7.client("UI/ShopEggs")
+		local lp = game:GetService("Players").LocalPlayer
+		U8.at(w, h, touch, label, function(tag)
+			local old = { lp:GetAttribute("PaidRandomItemsRestricted"), lp:GetAttribute("GemsSettled"), lp:GetAttribute("SecretPityLeft"), SE._AtAltar,
+				lp:GetAttribute("StorePreview"), SE._InLobby }
+			SE._InLobby = true -- (in the lobby: TRAVEL can fly)
+			lp:SetAttribute("StorePreview", true) -- (the Packs / Passes / Boosts cards show as PREVIEW cards: no product is created here)
+			lp:SetAttribute("PaidRandomItemsRestricted", false)
+			lp:SetAttribute("GemsSettled", true)
+			lp:SetAttribute("SecretPityLeft", 5)
+			SE._AtAltar = not away
+			LKC.advance(0.2)
+			Shop.Open({ Tab = tab })
+			LKC.advance(1.2)
+			local win = U92.win()
+			local ok, err = pcall(function()
+				if T.check(win ~= nil and U8.shown(win), tag .. ": the Shop opens on " .. tab) then
+					fn(tag, win)
+				end
+			end)
+			T.check(ok, tag .. ": the Shop check ran", tostring(err))
+			pcall(Shop.Close)
+			LKC.advance(0.4)
+			lp:SetAttribute("PaidRandomItemsRestricted", old[1])
+			lp:SetAttribute("GemsSettled", old[2])
+			lp:SetAttribute("SecretPityLeft", old[3])
+			SE._AtAltar = old[4]
+			lp:SetAttribute("StorePreview", old[5])
+			SE._InLobby = old[6]
+			LKC.advance(0.2)
+		end)
+	end
+	U92.CARD = { "^ShopCard_", "^Card_", "^GemPack_", "^TokenPack_", "^GemHero$", "^GemPotion$", "^Tab_" }
+	function U92.isCard(name)
+		for _, p in ipairs(U92.CARD) do
+			if name:match(p) then
+				return true
+			end
+		end
+		return false
+	end
+	-- the one green action each tab may show (the page's hero action)
+	U92.GREEN = { Eggs = { Spin = true, Travel = true }, Gems = { Buy = true }, Packs = { Buy = true }, Passes = { Buy = true }, Boosts = { Buy = true } }
+
+	-- the Shop window on the Signboard kit, every tab, at 1920x1080 and 844x390: the wood frame round a stone body, the flat
+	-- awning (SignKit roof, fixed size), the navy header with "Shop" as the window's ribbon, the red close block with the drawn
+	-- X, the balances as kit B tags; every tab and card a square block in its wood edge (stone, gold when selected, a hero
+	-- card on the navy plank); card headings plain Section titles; nothing round but the art; at most one green action per
+	-- tab, its hero's (finding 15: one colour by role); every text reads on its fill (SmokeCommon.Contrast)
+	S.shop_signboard_skin = guarded("shop_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
+				U92.at(s[1], s[2], s[3], "shop kit b " .. tab, tab, false, function(tag, win)
+					local panel = win:FindFirstChild("Panel")
+					local stone = panel and panel:FindFirstChild("Stone")
+					T.check(panel ~= nil and sameColor(panel.BackgroundColor3, Sign.Wood) and panel.BackgroundTransparency < 0.05 and stone ~= nil
+						and sameColor(stone.BackgroundColor3, Sign.Stone), tag .. ": the window is the wood frame round a stone body",
+						panel and hex(panel.BackgroundColor3) or "no Panel")
+					local roof = win:FindFirstChild("Roof")
+					T.check(roof ~= nil and roof:GetAttribute("SignKit") == "Roof" and roof.Size.X.Scale == 0, tag .. ": the flat awning over the top (a SignKit roof of fixed size)")
+					-- (render gate, the Pets rule) no roof on a phone: over the short header it lay across the title and the pills
+					T.check(roof ~= nil and U8.shown(roof) == not s[3], tag .. (s[3] and ": no roof stub over a phone's header" or ": the roof shows on a PC"))
+					local header = win:FindFirstChild("Header")
+					local band = header and header:FindFirstChild("Band")
+					T.check(band ~= nil and sameColor(band.BackgroundColor3, Sign.Navy), tag .. ": the header is the navy sign plank", band and hex(band.BackgroundColor3) or "no Band")
+					local title = header and header:FindFirstChild("Title")
+					T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": 'Shop' is the window's ribbon title")
+					local close = header and header:FindFirstChild("CloseButton")
+					T.check(close ~= nil and close:GetAttribute("Skin") == "Sign" and U8.faceOf(close) and sameColor(U8.faceOf(close), Sign.Red) and close:FindFirstChild("CloseMark") ~= nil,
+						tag .. ": the X is the red close block with the drawn X")
+					for _, id in ipairs({ "Gems", "Tokens" }) do
+						local pill = header and header:FindFirstChild("Balance_" .. id)
+						T.check(pill ~= nil and pill:FindFirstChild("SignEdge") ~= nil and pill.BackgroundTransparency < 0.05 and pill:FindFirstChildOfClass("UICorner") == nil,
+							tag .. ": Balance_" .. id .. " is a kit B tag (a square block in its wood edge)")
+					end
+					local round, loose, cards = {}, {}, 0
+					for _, d in ipairs(win:GetDescendants()) do
+						if d:IsA("UICorner") and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) and not U92.inArt(d) then
+							round[#round + 1] = d.Parent.Name
+						end
+						if d:IsA("GuiObject") and U8.shown(d) and U92.isCard(d.Name) then
+							cards = cards + 1
+							if d.BackgroundTransparency > 0.05 or d:FindFirstChild("SignEdge") == nil then
+								loose[#loose + 1] = d.Name
+							end
+						end
+					end
+					T.check(#round == 0, tag .. ": nothing in the Shop is round but its art (kit B is square)", table.concat(round, ", ", 1, math.min(#round, 10)))
+					T.check(cards >= 6 and #loose == 0, fmt("%s: every tab and card is a solid block in its wood edge (%d seen)", tag, cards), table.concat(loose, ", ", 1, math.min(#loose, 10)))
+					local selected = header and win:FindFirstChild("Rail") and win.Rail:FindFirstChild("Tab_" .. tab)
+					T.check(selected ~= nil and sameColor(selected.BackgroundColor3, Sign.Gold), tag .. ": the selected tab is the gold block",
+						selected and hex(selected.BackgroundColor3) or "no tab")
+					-- card headings: plain Section titles (the ribbon is the window's name only)
+					local ribbons = {}
+					for _, d in ipairs(win:GetDescendants()) do
+						if d:IsA("TextLabel") and d:GetAttribute("TitleLook") == "Ribbon" and d ~= title then
+							ribbons[#ribbons + 1] = d:GetFullName():gsub("^.-ShopWindow%.", "")
+						end
+					end
+					T.check(#ribbons == 0, tag .. ": no ribbon inside the Shop but its header's (card headings are Section)", table.concat(ribbons, ", "))
+					-- kit B's casing rule (U6): a button reads in sentence case ("Spin", "Travel", "Preview"; the Shop is not open
+					-- during kitb_casing_rule's walk, so it is checked here)
+					local shouty = {}
+					for _, d in ipairs(win:GetDescendants()) do
+						if (d:IsA("TextLabel") or d:IsA("TextButton")) and d:GetAttribute("FontRole") == "Button" and U8.shown(d) then
+							for word in tostring(d.Text):gmatch("%a+") do
+								if #word >= 4 and word == word:upper() then
+									shouty[#shouty + 1] = d.Parent.Name .. "." .. d.Name .. " \"" .. d.Text .. "\""
+									break
+								end
+							end
+						end
+					end
+					T.check(#shouty == 0, tag .. ": the Shop's buttons read in sentence case", table.concat(shouty, ", ", 1, math.min(#shouty, 6)))
+					local greens = U8.greenActions(win)
+					local ok = #greens == 0 or (#greens == 1 and U92.GREEN[tab][greens[1]] == true)
+					T.check(ok, tag .. ": at most one green action, the page's hero action", table.concat(greens, ", "))
+					local bad = U92.contrast()
+					T.check(#bad == 0, fmt("%s: every text of the Shop reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				end)
+			end
+		end
+		-- the Eggs page's one green action is the Secret hero's: SPIN at the Storm Altar, TRAVEL away from it
+		U92.at(1920, 1080, false, "shop kit b hero", "Eggs", false, function(tag, win)
+			local greens = U8.greenActions(win)
+			local hero = win:FindFirstChild("ShopCard_Secret", true)
+			local spin = hero and hero:FindFirstChild("Spin", true)
+			T.check(#greens == 1 and greens[1] == "Spin" and spin ~= nil and U8.faceOf(spin) ~= nil and U8.green(U8.faceOf(spin)),
+				tag .. ": at the altar the Secret SPIN is the one green action", table.concat(greens, ", "))
+		end)
+		U92.at(1920, 1080, false, "shop kit b away", "Eggs", true, function(tag, win)
+			local greens = U8.greenActions(win)
+			T.check(#greens == 1 and greens[1] == "Travel", tag .. ": away from the altar TRAVEL is the one green action", table.concat(greens, ", "))
+		end)
+		LKC.flushErrors("shop_signboard_skin")
+	end)
+
+	-- (render gate) the balances show once: while the Shop is open the HUD's currency strips step aside (the window's own
+	-- Balance_Gems / Balance_Tokens sit beside the prices), so the X never sits over them (1280x720); they come back on Close
+	S.shop_currency_once = guarded("shop_currency_once", function()
+		for _, s in ipairs(U8.SIZES) do
+			local hudCur = nil
+			U92.at(s[1], s[2], s[3], "shop currency", "Eggs", false, function(tag, win)
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				hudCur = hud and hud:FindFirstChild("Currency", true)
+				T.check(hudCur ~= nil, tag .. ": (setup) the HUD has its currency strips")
+				T.check(hudCur == nil or not U8.shown(hudCur), tag .. ": the HUD's currency strips step aside while the Shop is open")
+				local header = win:FindFirstChild("Header")
+				for _, id in ipairs({ "Gems", "Tokens" }) do
+					local pill = header and header:FindFirstChild("Balance_" .. id)
+					T.check(pill ~= nil and U8.shown(pill), tag .. ": the window shows Balance_" .. id)
+				end
+				-- the X clear of every other shown HUD part
+				local close = header and header:FindFirstChild("CloseButton")
+				local c = close and U8.rect(close)
+				local over = {}
+				for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+					if c and d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 0.95 and U8.overlap(U8.rect(d), c) then
+						over[#over + 1] = d.Name
+					end
+				end
+				T.check(#over == 0, tag .. ": the X sits over no HUD part", table.concat(over, ", ", 1, math.min(#over, 6)))
+			end)
+			-- (U92.at closed the Shop; back in the lobby the strips show again)
+			T.check(hudCur ~= nil and U8.shown(hudCur), fmt("shop currency %dx%d: the strips are back after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("shop_currency_once")
+	end)
+
+	-- (render gate) the Shop fits every grid size: the window inside the screen; on PC (1920x1080, 1280x720) every Eggs
+	-- button (SPIN, x3, the gem spin, the hero's SPIN / TRAVEL) and every Gems buy lies whole inside the body, the page at
+	-- the top (the x3 / gem row was cut by the bottom edge at 1280x720); on a touch phone Roblox's thumbstick and jump
+	-- button go while it is open (the rows scroll through both corners) and come back on Close
+	S.shop_fits = guarded("shop_fits", function()
+		local GuiService = game:GetService("GuiService")
+		for _, s in ipairs(U8.SIZES) do
+			for _, tab in ipairs({ "Eggs", "Gems" }) do
+				local before = GuiService.TouchControlsEnabled
+				U92.at(s[1], s[2], s[3], "shop fits " .. tab, tab, false, function(tag, win)
+					local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
+					local wr = U8.rect(win)
+					T.check(wr.X >= -0.5 and wr.Y >= -0.5 and wr.R <= gui.AbsoluteSize.X + 0.5 and wr.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the window sits inside the screen", U8.show(wr))
+					if s[3] then
+						T.check(GuiService.TouchControlsEnabled == false, tag .. ": the thumbstick and jump button go while the Shop is open")
+						return
+					end
+					local body = win:FindFirstChild("Body")
+					local b = body and U8.rect(body)
+					local cut = {}
+					local names = tab == "Eggs" and { Spin = true, Spin3 = true, SpinGems = true, Travel = true } or { Buy = true }
+					for _, d in ipairs(win:GetDescendants()) do
+						-- (the Gems page scrolls on to the potion and the token packs: its first screen is the hero and the gem packs)
+						local first = tab == "Eggs" or d:FindFirstAncestor("GemHero") ~= nil or (d.Parent and d.Parent.Parent and d.Parent.Parent.Name:match("^GemPack_") ~= nil)
+						if d:IsA("GuiButton") and names[d.Name] and U8.shown(d) and first then
+							local r = U8.rect(d)
+							if r.X < b.X - 0.5 or r.R > b.R + 0.5 or r.Y < b.Y - 0.5 or r.B > b.B + 0.5 then
+								cut[#cut + 1] = d.Parent.Parent.Name .. "." .. d.Name .. " " .. U8.show(r)
+							end
+						end
+					end
+					T.check(#cut == 0, tag .. ": every buy button lies whole inside the body (no row cut by the edge)", table.concat(cut, ", ", 1, math.min(#cut, 6)) .. " | body " .. U8.show(b))
+				end)
+				T.eq(GuiService.TouchControlsEnabled, before, fmt("shop fits %s %dx%d: the touch controls are back as they were after Close", tab, s[1], s[2]))
+			end
+		end
+		LKC.flushErrors("shop_fits")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-3 (finding 15; BUILD_PLAN "Coverage check", U9 family 3 "Stats + Titles + VIP tags"): the Stats window
+	-- (MenuController's buildStats) on the Signboard kit; the rank / Creator titles over heads (TitleController) and the VIP
+	-- crown (VipController) as kit B sign tags. U93.at runs fn(tag, win) with the Stats window open on U93.RECORD
+	function U93.at(w, h, touch, label, fn)
+		U8.at(w, h, touch, label, function(tag)
+			local win = U93.open()
+			local ok, err = pcall(function()
+				if T.check(win ~= nil and U8.shown(win), tag .. ": the Stats window opens") then
+					fn(tag, win)
+				end
+			end)
+			T.check(ok, tag .. ": the Stats check ran", tostring(err))
+			pcall(U7.client("Controllers/MenuController").Close)
+			LKC.advance(0.4)
+		end)
+	end
+	-- the contrast walk's failures inside the Stats window
+	function U93.contrast()
+		local out = {}
+		for _, line in ipairs((SmokeCommon.Contrast.Walk(U8.pg()))) do
+			if line:find("Window_Stats", 1, true) then
+				out[#out + 1] = line
+			end
+		end
+		return out
+	end
+	U93.TILES = { "Matches", "Wins", "WinRate", "Tokens", "Earned", "Spins", "Found", "Owned" }
+
+	-- the Stats window on the Signboard kit at 1920x1080 and 844x390: CloudUI.Panel's Signboard skin with "Stats" as the
+	-- window's ribbon and the stats PixelIcon in its header; each stat a square stone block in its wood edge with a chip
+	-- (a PixelIcon in its group's colour) and its number in brown; the perks, the battle record and the best times under
+	-- plain Section headings (the owner's ruling 2026-11-14: the ribbon is for window titles only) on blocks; each best-time
+	-- row a block whose lip is its difficulty's colour; nothing round, no green action (the window has none), every text
+	-- reads on its fill
+	S.stats_signboard_skin = guarded("stats_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U93.at(s[1], s[2], s[3], "stats kit b", function(tag, win)
+				local panel = win:FindFirstChild("StatsPanel")
+				T.check(panel ~= nil and panel:GetAttribute("Skin") == "Signboard", tag .. ": the Stats window wears the Signboard skin")
+				local bar = panel and panel:FindFirstChild("TitleBar", true)
+				local title = bar and bar:FindFirstChild("Title", true)
+				T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": 'Stats' is the window's ribbon title",
+					title and tostring(title:GetAttribute("TitleLook")) or "no title")
+				local icon = false
+				for _, d in ipairs(bar and bar:GetDescendants() or {}) do
+					icon = icon or d:GetAttribute("PixelIcon") == "stats"
+				end
+				T.check(icon, tag .. ": the header carries the stats PixelIcon")
+				-- the section headings: plain Section titles in brown, and no other ribbon in the window
+				for _, id in ipairs({ "Perks", "Battle", "BestTimes" }) do
+					local box = win:FindFirstChild(id, true)
+					local head = box and box:FindFirstChild("Title", true)
+					T.check(head ~= nil and head:GetAttribute("TitleLook") == "Section" and sameColor(head.TextColor3, Sign.Text),
+						tag .. ": " .. id .. "'s heading is a plain Section title in brown", head and (tostring(head:GetAttribute("TitleLook")) .. " " .. hex(head.TextColor3)) or "no heading")
+				end
+				local ribbons = {}
+				for _, d in ipairs(win:GetDescendants()) do
+					if d:IsA("TextLabel") and d:GetAttribute("TitleLook") == "Ribbon" and d ~= title then
+						ribbons[#ribbons + 1] = d:GetFullName():gsub("^.-Window_Stats%.", "")
+					end
+				end
+				T.check(#ribbons == 0, tag .. ": no ribbon inside the window but its header's", table.concat(ribbons, ", "))
+				-- the stat blocks: stone, a wood edge, a chip with its PixelIcon, the number in brown
+				local loose = {}
+				for _, id in ipairs(U93.TILES) do
+					local tile = win:FindFirstChild("Tile_" .. id, true)
+					local chip = tile and tile:FindFirstChild("Chip")
+					local glyph = nil
+					for _, d in ipairs(chip and chip:GetDescendants() or {}) do
+						glyph = glyph or d:GetAttribute("PixelIcon")
+					end
+					local value = tile and tile:FindFirstChild("Value")
+					if not (tile and tile.BackgroundTransparency < 0.05 and sameColor(tile.BackgroundColor3, Sign.Tile) and tile:FindFirstChild("SignEdge")
+						and chip and chip.BackgroundTransparency < 0.05 and glyph and value and sameColor(value.TextColor3, Sign.Text)) then
+						loose[#loose + 1] = id
+					end
+				end
+				T.check(#loose == 0, tag .. ": every stat is a stone block in its wood edge with an icon chip and a brown number", table.concat(loose, ", "))
+				local tokens = win:FindFirstChild("Tile_Tokens", true)
+				local coin = nil
+				for _, d in ipairs(tokens and tokens:GetDescendants() or {}) do
+					coin = coin or (d:GetAttribute("PixelIcon") == "token" and d or nil)
+				end
+				T.check(coin ~= nil and coin:FindFirstAncestor("Chip") ~= nil, tag .. ": the tokens' coin is the chip's icon (no second coin before the number)")
+				-- the cards and the best-time rows
+				local blocks, rows = {}, 0
+				for _, id in ipairs({ "Perks", "Battle" }) do
+					local card = win:FindFirstChild(id, true)
+					if not (card and card.BackgroundTransparency < 0.05 and card:FindFirstChild("SignEdge")) then
+						blocks[#blocks + 1] = id
+					end
+				end
+				for _, d in ipairs(Config.Difficulties) do
+					local row = win:FindFirstChild("Row_" .. d.Id, true)
+					local lip = row and row:FindFirstChild("Lip")
+					rows = rows + (row and 1 or 0)
+					if not (row and row.BackgroundTransparency < 0.05 and row:FindFirstChild("SignEdge") and lip and sameColor(lip.BackgroundColor3, d.Color)) then
+						blocks[#blocks + 1] = "Row_" .. d.Id
+					end
+				end
+				T.check(rows == #Config.Difficulties and #blocks == 0, fmt("%s: the perks, the battle record and every best-time row are blocks in their wood edge, a row's lip its difficulty's colour (%d rows)", tag, rows),
+					table.concat(blocks, ", "))
+				local round = {}
+				for _, d in ipairs(win:GetDescendants()) do
+					if d:IsA("UICorner") and d.Parent and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
+						round[#round + 1] = d.Parent.Name
+					end
+				end
+				T.check(#round == 0, tag .. ": nothing in the Stats window is round (kit B is square)", table.concat(round, ", ", 1, math.min(#round, 10)))
+				local greens = U8.greenActions(win)
+				T.check(#greens == 0, tag .. ": no green action (the window only shows)", table.concat(greens, ", "))
+				local bad = U93.contrast()
+				T.check(#bad == 0, fmt("%s: every text of the Stats window reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+			end)
+		end
+		LKC.flushErrors("stats_signboard_skin")
+	end)
+
+	-- the Stats window on a touch phone (844x390 and 390x844): the panel inside the screen; Roblox's thumbstick and jump button
+	-- go while it is open (its lists scroll through both bottom corners: the best times under the jump button at 844x390 on
+	-- the neon window) and come back as they were on Close; every stat's number and caption inside its block, each caption
+	-- whole at its size (real FredokaOne widths), every best-time row's texts inside the row
+	S.stats_fits_phone = guarded("stats_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			local before = GuiService.TouchControlsEnabled
+			U93.at(s[1], s[2], s[3], "stats phone", function(tag, win)
+				local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
+				local panel = win:FindFirstChild("StatsPanel")
+				local p = panel and U8.rect(panel)
+				T.check(p ~= nil and p.X >= -0.5 and p.Y >= -0.5 and p.R <= gui.AbsoluteSize.X + 0.5 and p.B <= gui.AbsoluteSize.Y + 0.5,
+					tag .. ": the Stats window sits inside the screen", p and U8.show(p) or "no panel")
+				T.check(GuiService.TouchControlsEnabled == false, tag .. ": Roblox's thumbstick and jump button go while the Stats window is open")
+				local function inside(r, o)
+					return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+				end
+				local out, tight = {}, {}
+				for _, id in ipairs(U93.TILES) do
+					local tile = win:FindFirstChild("Tile_" .. id, true)
+					local t = tile and U8.rect(tile)
+					for _, name in ipairs({ "Value", "Caption", "Chip" }) do
+						local o = tile and tile:FindFirstChild(name)
+						if not o or not inside(U8.rect(o), t) then
+							out[#out + 1] = id .. "." .. name .. (o and (" " .. U8.show(U8.rect(o))) or " missing")
+						end
+					end
+					local cap = tile and tile:FindFirstChild("Caption")
+					if cap then
+						local w = SmokeCommon.RealWidth(cap.Text, cap.TextSize, cap.Font)
+						local room = cap.AbsoluteSize.X / U8.scaleOf(cap)
+						if w and w > room + 0.5 then
+							tight[#tight + 1] = fmt("%s %q %.1f px in %.1f", id, cap.Text, w, room)
+						end
+					end
+				end
+				for _, d in ipairs(LoadingH.shared("Config").Difficulties) do
+					local row = win:FindFirstChild("Row_" .. d.Id, true)
+					local r = row and U8.rect(row)
+					for _, name in ipairs({ "Name", "Time" }) do
+						local o = row and row:FindFirstChild(name)
+						if not o or not inside(U8.rect(o), r) then
+							out[#out + 1] = "Row_" .. d.Id .. "." .. name
+						end
+					end
+				end
+				T.check(#out == 0, tag .. ": every stat's chip, number and caption sit inside its block, every row's name and time inside the row", table.concat(out, ", ", 1, math.min(#out, 8)))
+				T.check(#tight == 0, tag .. ": every stat's caption fits its block at its size", table.concat(tight, "; "))
+			end)
+			T.eq(GuiService.TouchControlsEnabled, before, fmt("stats phone %dx%d: the touch controls are back as they were after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("stats_fits_phone")
+	end)
+
+	-- (U9-3 renders: at 1280x720 the HUD's currency strips peeked out over the Stats window's awning, its X over them, as the
+	-- render gate found for the Shop) on PC the Stats window, its awning included, lies over no shown part of the HUD: the
+	-- currency strips step aside while it is open and come back on Close
+	-- (U9-3 review: at 844x390 the docked window cut the vitals card's bars) and on a phone, landscape and portrait: a window
+	-- that would reach over part of the vitals card hides the card (HideVitals) and it comes back on Close
+	S.stats_clear_of_hud = guarded("stats_clear_of_hud", function()
+		for _, s in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }) do
+			local strips, vitals = nil, nil
+			U93.at(s[1], s[2], s[3], "stats hud", function(tag, win)
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				strips = hud and hud:FindFirstChild("Currency", true)
+				vitals = hud and hud:FindFirstChild("Vitals", true)
+				local boxes = { U8.rect(win) }
+				local roof = win:FindFirstChild("Roof", true)
+				if roof and U8.shown(roof) then
+					boxes[2] = U8.rect(roof) -- the awning is wider than the window
+				end
+				-- more than a shared edge: the vitals card's right edge meets the docked window's left edge within 2 px at
+				-- 1280x720 (the SideRect's rounding), which is a touch, not a part laid over
+				local function over4(a, b)
+					return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
+				end
+				local over = {}
+				for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+					if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 0.95 then
+						for _, b in ipairs(boxes) do
+							if over4(U8.rect(d), b) then
+								over[#over + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+								break
+							end
+						end
+					end
+				end
+				T.check(#over == 0, tag .. ": the Stats window and its awning lie over no HUD part", table.concat(over, ", ", 1, math.min(#over, 8)) .. " | window " .. U8.show(boxes[1]))
+			end)
+			if not s[3] then
+				T.check(strips ~= nil and U8.shown(strips), fmt("stats hud %dx%d: the currency strips are back after Close", s[1], s[2]))
+			end
+			T.check(vitals ~= nil and U8.shown(vitals), fmt("stats hud %dx%d: the vitals card is back after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("stats_clear_of_hud")
+	end)
+
+	-- the titles over heads as kit B sign tags (finding 15: no glow, no gloss, colour by role): each TitleTag's Plate a flat
+	-- opaque face in a wood edge with its darker lip, square (no corner), its role's colour (Top10 the gold block, Top100
+	-- the stone block, Creator the navy plank); the text FredokaOne (Nameplate) in the look's ink, readable on the face
+	-- (4.5:1), no outline and no classic stroke; no gradient and no tween anywhere in the tag (the Top10 rainbow went). The
+	-- VIP crown, in a titled tag and on its own billboard: the gold pixel crown with its wood lip one cell under it
+	S.titles_kitb_tags = guarded("titles_kitb_tags", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local TC = U7.client("Controllers/TitleController")
+		local FACE = { Top10 = { Sign.Gold, Sign.Text }, Top100 = { Sign.Tile, Sign.Text }, Creator = { Sign.Navy, Sign.Gold } }
+		local function tweened(root)
+			for tw in pairs(Mock.ActiveTweens) do
+				local ok, target = pcall(function()
+					return tw.Instance
+				end)
+				if ok and target and (target == root or target:IsDescendantOf(root)) and tw.PlaybackState.Name == "Playing" then
+					return true
+				end
+			end
+			return false
+		end
+		local function crownOk(holder, label)
+			local icon = holder and holder:FindFirstChild("Icon")
+			local lip = holder and holder:FindFirstChild("Lip")
+			T.check(icon ~= nil and icon:GetAttribute("PixelIcon") == "crown" and sameColor(icon.TextColor3, Sign.Gold), label .. ": the gold pixel crown",
+				icon and hex(icon.TextColor3) or "no Icon")
+			T.check(lip ~= nil and lip:GetAttribute("PixelIcon") == "crown" and sameColor(lip.TextColor3, Sign.Wood) and lip.AbsolutePosition.Y > icon.AbsolutePosition.Y
+				and lip.AbsolutePosition.X == icon.AbsolutePosition.X, label .. ": its wood lip, the same crown a cell lower behind it",
+				lip and fmt("lip %s at %d,%d; icon at %d,%d", hex(lip.TextColor3), lip.AbsolutePosition.X, lip.AbsolutePosition.Y, icon.AbsolutePosition.X, icon.AbsolutePosition.Y) or "no Lip")
+		end
+		U93.titled(function(players)
+			for i, kind in ipairs({ "Top10", "Top100", "Creator" }) do
+				local k = "titles kit b: " .. kind
+				local tag = TC and TC.TagOf(players[i])
+				local plate = tag and tag:FindFirstChild("Plate")
+				local label = plate and plate:FindFirstChild("Label")
+				if T.check(plate ~= nil and label ~= nil, k .. ": (setup) TitleTag > Plate > Label") then
+					local edge = plate:FindFirstChild("SignEdge")
+					local lip = plate:FindFirstChild("Lip")
+					T.check(plate.BackgroundTransparency == 0 and sameColor(plate.BackgroundColor3, FACE[kind][1]) and edge ~= nil and edge:IsA("UIStroke")
+						and edge.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and lip ~= nil and lip.Visible,
+						k .. ": the plate is an opaque kit B block in its role's colour, a wood edge and its lip", hex(plate.BackgroundColor3))
+					local gloss = {}
+					for _, d in ipairs(tag:GetDescendants()) do
+						if d:IsA("UICorner") or d:IsA("UIGradient") then
+							gloss[#gloss + 1] = d.ClassName .. " on " .. d.Parent.Name
+						end
+					end
+					T.check(#gloss == 0, k .. ": no round corner and no gradient in the tag", table.concat(gloss, ", "))
+					local outline = false
+					for _, c in ipairs(label:GetChildren()) do
+						outline = outline or (c:IsA("UIStroke") and c.Enabled ~= false)
+					end
+					T.check(not outline and (label.TextStrokeTransparency or 1) >= 0.99, k .. ": the text has no outline and no classic stroke (it sits on an opaque face)")
+					T.check(label:GetAttribute("FontRole") == "Nameplate" and sameColor(label.TextColor3, FACE[kind][2]), k .. ": the text is the Nameplate role in the look's ink",
+						tostring(label:GetAttribute("FontRole")) .. " " .. hex(label.TextColor3))
+					local ratio = SmokeCommon.Contrast.Ratio(label.TextColor3, plate.BackgroundColor3)
+					T.check(ratio >= 4.5, fmt("%s: the text reads on its face (%.1f:1 >= 4.5)", k, ratio))
+					T.check(not tweened(tag), k .. ": nothing in the tag tweens (no rainbow)")
+				end
+			end
+			local inTag = TC and TC.TagOf(players[3])
+			crownOk(inTag and inTag:FindFirstChild("Crown"), "titles kit b: the Creator's crown inside the tag")
+			-- (U9-3 review) a BillboardGui clips what lies outside its Size, and the plate's wood edge is a Border stroke drawn
+			-- outside the plate: the plate with its edge lies whole inside the billboard (a tag sitting flush on the gui's
+			-- bottom showed only its side edges), with the crown and without; the plate's face still 26 px above the anchor
+			for i, kind in ipairs({ "Top10", "Top100", "Creator" }) do
+				local k = "titles kit b: " .. kind .. (i == 3 and " (with the crown)" or "")
+				local tag = TC and TC.TagOf(players[i])
+				local plate = tag and tag:FindFirstChild("Plate")
+				local edge = plate and plate:FindFirstChild("SignEdge")
+				if T.check(plate ~= nil and edge ~= nil, k .. ": (setup) the plate and its edge") then
+					local W, H = tag.Size.X.Offset, tag.Size.Y.Offset
+					local ox, oy = 0, 0
+					pcall(function()
+						ox, oy = tag.AbsolutePosition.X, tag.AbsolutePosition.Y
+					end)
+					local e = edge.Thickness
+					local x, y = plate.AbsolutePosition.X - ox, plate.AbsolutePosition.Y - oy
+					local r, b = x + plate.AbsoluteSize.X, y + plate.AbsoluteSize.Y
+					T.check(x - e >= -0.5 and y - e >= -0.5 and r + e <= W + 0.5 and b + e <= H + 0.5,
+						fmt("%s: the plate and its %d px edge lie inside the %dx%d billboard (it clips)", k, e, W, H),
+						fmt("edge box %.1f,%.1f .. %.1f,%.1f", x - e, y - e, r + e, b + e))
+					local above = (tag.SizeOffset.Y - 0.5) * H + (H - b)
+					T.check(math.abs(above - 26) <= 0.5, fmt("%s: the plate's face sits 26 px above the anchor (%.1f)", k, above))
+				end
+			end
+			local own = nil
+			for _, bb in ipairs(U93.boards({ players[4] })) do
+				own = own or (bb.Name == "VipCrown" and bb or nil)
+			end
+			crownOk(own and own:FindFirstChild("Crown"), "titles kit b: an untitled VIP's crown billboard")
+			-- (U9-3 renders: the crown sat on Roblox's name, 0.4 stud above it, a gap that shrinks with distance) the crown's
+			-- bottom is a pixel gap above its 2.4-stud point, as the TitleTag's is: Roblox's name (about 20 px tall, centred
+			-- about 2.0 studs up) never meets it at any distance
+			local above = own and (own.SizeOffset.Y * own.Size.Y.Offset - own.Size.Y.Offset / 2) or 0
+			T.check(own ~= nil and own.SizeOffset.X == 0 and above >= 14, fmt("titles kit b: the lobby crown's bottom sits %.1f px (>= 14) above its anchor at any distance", above))
+		end)
+		LKC.flushErrors("titles_kitb_tags")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-4 (finding 15, finding 26; BUILD_PLAN "Coverage check", U9 family 4 "Daily + Sky Trove"): the Gifts window
+	-- (DailyController) and the Sky Trove panel (TroveController) on the Signboard kit, the week's confetti in the kit's
+	-- colours (no rainbow). U94.payload(view) is dump_gui's daily payload: a VIP on Week 2 Day 3 (Streak 9, days 1-2
+	-- claimed, today's $1,450 due), "locked" = held by the 10-minute rule, "play" = 47 min played and paused, tiers 1-2
+	-- claimed, the 30 min gift ready
+	function U94.payload(view)
+		local now = workspace:GetServerTimeNow()
+		local days = {
+			{ Kind = "Cash", Amount = 400, Claimed = true, Today = false },
+			{ Kind = "Tokens", Amount = 50, Claimed = true, Today = false },
+			{ Kind = "Cash", Amount = 1450, Claimed = false, Today = true },
+			{ Kind = "Cash", Amount = 1000, Claimed = false, Today = false },
+			{ Kind = "Tokens", Amount = 250, Claimed = false, Today = false },
+			{ Kind = "Gems", Amount = 25, Claimed = false, Today = false },
+			{ Kind = "Pet", PetId = "week_wisp", Claimed = false, Today = false },
+		}
+		local tiers = {
+			{ Min = 10, Kind = "Cash", Amount = 200, Claimed = true, Ready = false },
+			{ Min = 20, Kind = "Tokens", Amount = 40, Claimed = true, Ready = false },
+			{ Min = 30, Kind = "Cash", Amount = 600, Claimed = false, Ready = true },
+			{ Min = 60, Kind = "Gems", Amount = 10, Claimed = false, Ready = false },
+			{ Min = 90, Kind = "Tokens", Amount = 150, Claimed = false, Ready = false },
+			{ Min = 120, Kind = "Berries", Claimed = false, Ready = false },
+			{ Min = 180, Kind = "Gems", Amount = 25, Claimed = false, Ready = false },
+		}
+		return {
+			Loading = false, Streak = 9, Paid = 9, Weeks = 1, Pet = true, ReadyAt = now - 1, KeepUntil = now + 28 * 3600, StaleAt = 0,
+			Cell = 3, Repair = false, Vip = true, StepBack = 0, Days = days, ServerNow = now,
+			Unlock = { Need = 600, Left = view == "locked" and 330 or 0 },
+			Play = { Seconds = (view == "play" and 47 or 36) * 60, DayEnds = now + 5 * 3600 + 600, Active = view ~= "play", Tiers = tiers },
+		}
+	end
+	function U94.holder()
+		local gui = U8.pg():FindFirstChild("NimbusDaily")
+		return gui and gui:FindFirstChild("DailyHolder")
+	end
+	-- runs fn(tag, holder) inside U8.at's lobby with the Gifts window open on `tab` ("Daily" | "Play") over U94.payload(view)
+	function U94.at(w, h, touch, label, tab, view, fn)
+		U8.at(w, h, touch, label, function(tag)
+			local DC = U7.client("Controllers/DailyController")
+			LKC.toClient("DailyState", U94.payload(view))
+			LKC.advance(0.3)
+			DC.Open({ Tab = tab })
+			LKC.advance(1)
+			local holder = U94.holder()
+			local ok, err = pcall(function()
+				if T.check(holder ~= nil and U8.shown(holder), tag .. ": the Gifts window opens on " .. tab) then
+					fn(tag, holder)
+				end
+			end)
+			T.check(ok, tag .. ": the Gifts check ran", tostring(err))
+			pcall(DC.Close)
+			LKC.advance(0.4)
+		end)
+	end
+	-- the contrast walk's failures under one ScreenGui
+	function U94.contrast(guiName)
+		local out = {}
+		for _, line in ipairs((SmokeCommon.Contrast.Walk(U8.pg()))) do
+			if line:find("^" .. guiName .. "%.") then
+				out[#out + 1] = line
+			end
+		end
+		return out
+	end
+	-- the kit's casing rule on the shown buttons under `root`: sentence case (no word of 4+ letters in capitals)
+	function U94.shouty(root)
+		local out = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("TextButton") and U8.shown(d) and d:GetAttribute("FontRole") == "Button" then
+				for word in tostring(d.Text):gsub("<[^>]->", ""):gmatch("%a+") do
+					if #word >= 4 and word == word:upper() then
+						out[#out + 1] = d.Name .. " \"" .. d.Text .. "\""
+						break
+					end
+				end
+			end
+		end
+		return out
+	end
+	-- (U9-4 look review: one pixel size per screen) the cell sizes (screen px) of the shown PixelIcons under `root`, as a
+	-- sorted list of distinct values, and the icons whose cell is not one of `allowed`
+	function U94.pixelCells(root, allowed)
+		local seen, odd = {}, {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+				local c = d.AbsoluteSize.X / 9
+				local key = fmt("%.2f", c)
+				seen[key] = true
+				local ok = false
+				for _, a in ipairs(allowed) do
+					ok = ok or math.abs(c - a) < 0.01
+				end
+				if not ok then
+					odd[#odd + 1] = fmt("%s %s (%s px cells)", d.Parent and d.Parent.Name or "?", tostring(d:GetAttribute("PixelIcon")), key)
+				end
+			end
+		end
+		local list = {}
+		for k in pairs(seen) do
+			list[#list + 1] = k
+		end
+		table.sort(list)
+		return list, odd
+	end
+	-- (U9-4 look review: the floating lip) the shown kit B blocks under `root` (a SignEdge stroke and a Lip child) whose lip
+	-- is not flush: its bottom the block's bottom, its left and right the block's (a UIPadding on a text block used to pad
+	-- the lip up off the bottom and in from the sides)
+	function U94.floatingLips(root)
+		local out = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			local lip = d:IsA("GuiObject") and d:FindFirstChild("SignEdge") and d:FindFirstChild("Lip")
+			if lip and lip:IsA("GuiObject") and U8.shown(lip) and lip.AbsoluteSize.Y > 0 then
+				local b, l = U8.rect(d), U8.rect(lip)
+				if math.abs(l.B - b.B) > 0.5 or math.abs(l.X - b.X) > 0.5 or math.abs(l.R - b.R) > 0.5 then
+					out[#out + 1] = fmt("%s lip %s in %s", d.Name, U8.show(l), U8.show(b))
+				end
+			end
+		end
+		return out
+	end
+	-- (U9-4 look review: the cramped phone pages) the room round the Gifts window's shown day tiles / gift boxes (prefix
+	-- "Cell" | "Tier"): each one's outer box (its 3 px outside stroke included) keeps >= 3 px of stone to the wood frame and
+	-- to the stone lip, >= 4 px of stone to the next one's, and a box's shown Claim plank (its stroke included) ends >= 4 px
+	-- over the box's colour lip. Returns the problems
+	function U94.tileRoom(holder, prefix)
+		local out = {}
+		local win = holder:FindFirstChild("DailyWindow")
+		local stone = win and win:FindFirstChild("Stone")
+		local slip = stone and stone:FindFirstChild("Lip")
+		if not (stone and slip) then
+			return { "no stone body" }
+		end
+		local k = U8.scaleOf(stone)
+		local st, lp = U8.rect(stone), U8.rect(slip)
+		local room = { X = st.X + 3 * k, R = st.R - 3 * k, Y = st.Y, B = lp.Y - 3 * k }
+		local boxes = {}
+		for i = 1, 7 do
+			local c = holder:FindFirstChild(prefix .. i, true)
+			if c and U8.shown(c) then
+				local edge = c:FindFirstChild("SignEdge")
+				local e = (edge and edge.Thickness or 0) * k
+				local r = U8.rect(c)
+				local o = { X = r.X - e, R = r.R + e, Y = r.Y - e, B = r.B + e, Name = c.Name }
+				if o.X < room.X - 0.5 or o.R > room.R + 0.5 or o.B > room.B + 0.5 then
+					out[#out + 1] = fmt("%s %s too near the frame / the stone lip (room %s)", c.Name, U8.show(o), U8.show(room))
+				end
+				boxes[#boxes + 1] = o
+				local claim = c:FindFirstChild("Claim", true)
+				local lip = c:FindFirstChild("Lip")
+				if claim and U8.shown(claim) and lip then
+					local ce = claim:FindFirstChild("SignEdge")
+					local cb = U8.rect(claim).B + (ce and ce.Thickness or 0) * k
+					if cb > U8.rect(lip).Y - 4 * k + 0.5 then
+						out[#out + 1] = fmt("%s.Claim ends at %.1f, on the box's lip at %.1f", c.Name, cb, U8.rect(lip).Y)
+					end
+				end
+			end
+		end
+		for i = 1, #boxes do
+			for j = i + 1, #boxes do
+				local a, b = boxes[i], boxes[j]
+				local gx = math.max(b.X - a.R, a.X - b.R)
+				local gy = math.max(b.Y - a.B, a.Y - b.B)
+				if math.max(gx, gy) < 4 * k - 0.5 then
+					out[#out + 1] = fmt("%s and %s %.1f px apart", a.Name, b.Name, math.max(gx, gy))
+				end
+			end
+		end
+		return out
+	end
+	-- the shown UICorners and UIGradients under `root` (kit B is square and flat; GemIcon art, a pet's viewport, the HUD
+	-- ring's Step and the window title's T1 ribbon, the owner's designed look, are not panels)
+	function U94.roundOrGloss(root)
+		local out = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			local p = d.Parent
+			if (d:IsA("UICorner") or (d:IsA("UIGradient") and d.Name ~= "Step")) and p and p:IsA("GuiObject") and U8.shown(p) and not designedLook(d) then
+				local cur, art = p, false
+				while cur and not cur:IsA("LayerCollector") do
+					art = art or cur.Name == "GemIcon" or cur.Name == "PetViewport"
+					cur = cur.Parent
+				end
+				if not art then
+					out[#out + 1] = d.ClassName .. " on " .. p.Name
+				end
+			end
+		end
+		return out
+	end
+	-- (U9-4 look review 2: whole pixels) the shown pixel icons under `root` (a Frame with attribute PixelIcon, and each of
+	-- its cells) whose screen position or size is not a whole number of px (a half pixel draws the icon soft)
+	function U94.halfPixels(root)
+		local out = {}
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) < 0.01
+		end
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			local icon = d:IsA("Frame") and (d:GetAttribute("PixelIcon") ~= nil or (d.Parent and d.Parent:IsA("Frame") and d.Parent:GetAttribute("PixelIcon") ~= nil))
+			if icon and U8.shown(d) and d.AbsoluteSize.X > 0 then
+				local p, s = d.AbsolutePosition, d.AbsoluteSize
+				if not (whole(p.X) and whole(p.Y) and whole(s.X) and whole(s.Y)) then
+					out[#out + 1] = fmt("%s.%s at %.2f,%.2f %.2fx%.2f", d.Parent and d.Parent.Name or "?", d.Name, p.X, p.Y, s.X, s.Y)
+				end
+			end
+		end
+		return out
+	end
+	-- a block's box with its outside stroke (SignEdge) in screen px
+	function U94.strokeBox(o)
+		local e = o:FindFirstChild("SignEdge")
+		local t = (e and e.Thickness or 0) * U8.scaleOf(o)
+		local r = U8.rect(o)
+		return { X = r.X - t, R = r.R + t, Y = r.Y - t, B = r.B + t }
+	end
+	-- the px of space between two boxes (negative: they overlap)
+	function U94.apart(a, b)
+		return math.max(b.X - a.R, a.X - b.R, b.Y - a.B, a.Y - b.B)
+	end
+	-- (U9-4 look review 2) today's raised tile, whichever day today is (1..7), keeps >= 4 px of stone between its stroke and
+	-- the streak / VIP chips' strokes (the VIP chip sat on the raised TODAY tile on a portrait phone). Puts the `view`
+	-- payload back after. Returns the problems
+	function U94.todayClear(holder, view)
+		local out = {}
+		for today = 1, 7 do
+			local p = U94.payload(view or "")
+			p.Cell = today
+			for i, d in ipairs(p.Days) do
+				d.Claimed, d.Today = i < today, i == today
+			end
+			LKC.toClient("DailyState", p)
+			LKC.advance(0.2)
+			local c = holder:FindFirstChild("Cell" .. today, true)
+			if not (c and c:GetAttribute("Today") == true) then
+				out[#out + 1] = "Cell" .. today .. " is not today's raised tile"
+			else
+				local k = U8.scaleOf(c)
+				local tb = U94.strokeBox(c)
+				for _, name in ipairs({ "StreakChip", "VipChip" }) do
+					local chip = holder:FindFirstChild(name, true)
+					if chip and U8.shown(chip) then
+						local cb = U94.strokeBox(chip)
+						if U94.apart(tb, cb) < 4 * k - 0.5 then
+							out[#out + 1] = fmt("today %d: Cell%d %s and %s %s %.1f px apart", today, today, U8.show(tb), name, U8.show(cb), U94.apart(tb, cb))
+						end
+					end
+				end
+			end
+		end
+		LKC.toClient("DailyState", U94.payload(view or ""))
+		LKC.advance(0.2)
+		return out
+	end
+	-- (U9-4 look review 2) the Play page's Claim all: its stroke >= 4 px under the navy band and under the close block's
+	-- stroke, and (landscape) its right edge on the right edge of the first row's last box (Tier<lastInRow>)
+	function U94.claimAllRoom(holder, lastInRow)
+		local out = {}
+		local all = holder:FindFirstChild("ClaimAll", true)
+		local bar = holder:FindFirstChild("TitleBar", true)
+		local close = bar and bar:FindFirstChild("CloseButton")
+		if not (all and bar and close) then
+			return { "no ClaimAll / TitleBar / CloseButton" }
+		end
+		local k = U8.scaleOf(all)
+		local a = U94.strokeBox(all)
+		for _, b in ipairs({ { "the band", U8.rect(bar) }, { "the close block", U94.strokeBox(close) } }) do
+			if a.Y < b[2].B + 4 * k - 0.5 then
+				out[#out + 1] = fmt("ClaimAll's stroke top %.1f is %.1f px under %s (%.1f)", a.Y, a.Y - b[2].B, b[1], b[2].B)
+			end
+		end
+		local last = lastInRow and holder:FindFirstChild("Tier" .. lastInRow, true)
+		if last and math.abs(U8.rect(all).R - U8.rect(last).R) > 0.5 then
+			out[#out + 1] = fmt("ClaimAll ends at %.1f, the row's last box at %.1f", U8.rect(all).R, U8.rect(last).R)
+		end
+		return out
+	end
+	-- (U9-4 look review 2) a phone band's close: the 36 px red block inside the band (its stroke >= 1 px inside the band's
+	-- top, its right end 4 px in), over its centred >= 44 px touch box (CloseTap). `band` is the navy band / plate
+	function U94.phoneClose(close, tap, band)
+		if not (close and tap and band) then
+			return { "no close / CloseTap / band" }
+		end
+		local out = {}
+		local k = U8.scaleOf(close)
+		local c, t, b = U8.rect(close), U8.rect(tap), U8.rect(band)
+		local s = U94.strokeBox(close)
+		if math.abs((c.R - c.X) / k - 36) > 0.5 or math.abs((c.B - c.Y) / k - 36) > 0.5 then
+			out[#out + 1] = fmt("the block is %.1fx%.1f, not 36", (c.R - c.X) / k, (c.B - c.Y) / k)
+		end
+		if not (U8.shown(tap) and (t.R - t.X) >= 44 - 0.5 and (t.B - t.Y) >= 44 - 0.5) then
+			out[#out + 1] = "the touch box " .. U8.show(t) .. " is under 44 px or hidden"
+		end
+		if math.abs((t.X + t.R) / 2 - (c.X + c.R) / 2) > 1 or math.abs((t.Y + t.B) / 2 - (c.Y + c.B) / 2) > 1 then
+			out[#out + 1] = "the touch box " .. U8.show(t) .. " is not centred on the block " .. U8.show(c)
+		end
+		if s.Y < b.Y + 0.5 or math.abs(b.R - s.R - 4 * k) > 0.5 then
+			out[#out + 1] = fmt("the block's stroke %s is not inside the band %s (4 px from its right end)", U8.show(s), U8.show(b))
+		end
+		return out
+	end
+
+	-- the Gifts window on the Signboard kit (1920x1080 and 844x390, both tabs): the wood frame round a stone body, the navy
+	-- header plank, the fixed-size awning on PC only (none on a phone), the tabs stone blocks (the selected one gold), the
+	-- red close block; the day tiles kit B blocks (stone, today gold, a claimed day the sunk well) each with its own day
+	-- colour on its lip (the owner's colourful days, colour by role), the header a plain Section title, the streak / VIP
+	-- chips square tags, the Wisp bar flat blocks (claimed grass, today gold, open well); the Play page's gift boxes the same
+	-- blocks with their tier colour on the lip and the gift as the pink gift block (no glossy orb); one green action per
+	-- page (Claim! on Daily, Claim all on Play: a box's Claim is stone); nothing round or glossy, every text reads on its
+	-- fill (the locked claim too), every button in sentence case
+	S.daily_signboard_skin = guarded("daily_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local DCm = U7.client("Controllers/DailyController")
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			local pc = not s[3]
+			U94.at(s[1], s[2], s[3], "daily kit b", "Daily", "", function(tag, holder)
+				local win = holder:FindFirstChild("DailyWindow")
+				local stone = win and win:FindFirstChild("Stone")
+				local bar = win and win:FindFirstChild("TitleBar")
+				T.check(win ~= nil and win.BackgroundTransparency == 0 and sameColor(win.BackgroundColor3, Sign.Wood) and stone ~= nil and sameColor(stone.BackgroundColor3, Sign.Stone),
+					tag .. ": the window is the wood frame round a stone body", win and hex(win.BackgroundColor3) or "no window")
+				T.check(bar ~= nil and bar.BackgroundTransparency == 0 and sameColor(bar.BackgroundColor3, Sign.Navy), tag .. ": the header is the navy plank", bar and hex(bar.BackgroundColor3) or "no bar")
+				local roof = holder:FindFirstChild("Roof", true)
+				if pc then
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Scale == 0 and roof.Size.X.Offset == 360 and roof.Size.Y.Scale == 0,
+						tag .. ": the awning sits over the top at a fixed 360 px (never stretched with the window)", roof and tostring(roof.Size) or "no roof")
+				else
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on a phone (the window starts under Roblox's top bar)")
+				end
+				local dailyFill = bar and bar:FindFirstChild("Tab_DailyFill")
+				local playFill = bar and bar:FindFirstChild("Tab_PlayFill")
+				local dailyTab = bar and bar:FindFirstChild("Tab_Daily")
+				T.check(dailyFill and playFill and sameColor(dailyFill.BackgroundColor3, Sign.Gold) and sameColor(playFill.BackgroundColor3, Sign.Tile)
+					and dailyFill:FindFirstChild("SignEdge") and dailyTab and sameColor(dailyTab.TextColor3, Sign.Text),
+					tag .. ": the tabs are blocks, the selected one gold, the other stone, brown words", dailyFill and (hex(dailyFill.BackgroundColor3) .. " / " .. hex(playFill.BackgroundColor3)) or "no tabs")
+				local close = bar and bar:FindFirstChild("CloseButton")
+				T.check(close ~= nil and sameColor(close.BackgroundColor3, Sign.Red) and close:FindFirstChild("SignEdge") ~= nil and close:FindFirstChild("CloseMark") ~= nil,
+					tag .. ": the close is the red block with the drawn X", close and hex(close.BackgroundColor3) or "no close")
+				if not pc then
+					-- (U9-4 look review 2) a phone band's close: the 36 px block inside the band over its 44 px touch box (the 44 px
+					-- block filled the band and its stroke hung onto the stone)
+					local closeBad = U94.phoneClose(close, bar and bar:FindFirstChild("CloseTap"), bar)
+					T.check(#closeBad == 0, tag .. ": the close is a 36 px block inside the band, its stroke 4 px from the band's end, over a 44 px touch box",
+						table.concat(closeBad, "; "))
+				end
+				-- the header as the Shop's: the navy band inside the wood frame, the gift on its gold square, "Gifts" the window's
+				-- ribbon title, then the tabs and the X, in a row without overlap
+				local wr, br = win and U8.rect(win), bar and U8.rect(bar)
+				T.check(wr ~= nil and br ~= nil and br.Y >= wr.Y + 5.5 and br.X >= wr.X + 5.5 and br.R <= wr.R - 5.5,
+					tag .. ": the navy band sits inside the wood frame (the frame shows round its top)", br and (U8.show(br) .. " in " .. U8.show(wr)) or "no bar")
+				local icon = bar and bar:FindFirstChild("GiftsIcon")
+				local gift = false
+				for _, d in ipairs(icon and icon:GetDescendants() or {}) do
+					gift = gift or d:GetAttribute("PixelIcon") == "gift"
+				end
+				T.check(icon ~= nil and U8.shown(icon) and sameColor(icon.BackgroundColor3, Sign.Gold) and icon:FindFirstChild("SignEdge") ~= nil and gift,
+					tag .. ": the pixel gift on its gold square at the left of the header")
+				local title = bar and bar:FindFirstChild("WindowTitle")
+				T.check(title ~= nil and U8.shown(title) and title:GetAttribute("TitleLook") == "Ribbon" and title.Text:upper() == "GIFTS",
+					tag .. ": 'Gifts' is the window's ribbon title", title and (title.Text .. " " .. tostring(title:GetAttribute("TitleLook"))) or "no title")
+				local row, prev = { icon or false, title or false, dailyFill or false, playFill or false, close or false }, nil
+				local order = true
+				for i = 1, 5 do
+					local o = row[i]
+					local r = o and U8.rect(o)
+					if not r or (prev and r.X < prev.R - 0.5) then
+						order = false
+					end
+					prev = r or prev
+				end
+				T.check(order, tag .. ": the square, the title, the two tabs and the X in a row, none over another")
+				-- the day tiles
+				local lips, loose = {}, {}
+				for i = 1, 7 do
+					local c = holder:FindFirstChild("Cell" .. i, true)
+					local lip = c and c:FindFirstChild("Lip")
+					local face = (i <= 2 and Sign.Well) or (i == 3 and Sign.Gold) or Sign.Tile
+					if not (c and c:GetAttribute("Skin") == "Sign" and c:FindFirstChild("SignEdge") and sameColor(c.BackgroundColor3, face)
+						and lip and sameColor(lip.BackgroundColor3, DCm.DayColors[i])) then
+						loose[#loose + 1] = "Cell" .. i .. (c and (" " .. hex(c.BackgroundColor3)) or "")
+					end
+					if lip then
+						lips[hex(lip.BackgroundColor3)] = true
+					end
+					local day = c and c:FindFirstChild("Day", true)
+					if day and not sameColor(day.TextColor3, Sign.Text) then
+						loose[#loose + 1] = "Cell" .. i .. ".Day " .. hex(day.TextColor3)
+					end
+				end
+				local n = 0
+				for _ in pairs(lips) do
+					n = n + 1
+				end
+				T.check(#loose == 0 and n == 7, fmt("%s: every day a kit B block (claimed the well, today gold, the rest stone) with its own day colour on its lip (%d colours)", tag, n),
+					table.concat(loose, ", "))
+				local header = holder:FindFirstChild("Header", true)
+				T.check(header ~= nil and header:GetAttribute("TitleLook") == "Section" and sameColor(header.TextColor3, Sign.Text),
+					tag .. ": 'Day 3 of 7 . Week 2' is a plain Section heading in brown", header and tostring(header:GetAttribute("TitleLook")) or "no header")
+				for name, face in pairs({ StreakChip = Sign.Tile, VipChip = Sign.Gold }) do
+					local chip = holder:FindFirstChild(name, true)
+					T.check(chip ~= nil and chip.BackgroundTransparency == 0 and sameColor(chip.BackgroundColor3, face) and chip:FindFirstChild("SignEdge") ~= nil
+						and sameColor(chip.TextColor3, Sign.Text), tag .. ": the " .. name .. " is a square tag in its wood edge", chip and hex(chip.BackgroundColor3) or "no chip")
+				end
+				-- (the kit's block-bar language: a filled block has its darker lip, an open one is the sunk well with none)
+				local segFace = { Sign.Grass, Sign.Grass, Sign.Gold, Sign.Well, Sign.Well, Sign.Well, Sign.Well }
+				local segLip = { Sign.GrassLip, Sign.GrassLip, Sign.GoldLip }
+				local segBad = {}
+				for i = 1, 7 do
+					local seg = holder:FindFirstChild("Seg" .. i, true)
+					local lip = seg and seg:FindFirstChild("Lip")
+					local lipOk = lip ~= nil and ((segLip[i] and U8.shown(lip) and lip.AbsoluteSize.Y >= 3 and sameColor(lip.BackgroundColor3, segLip[i]))
+						or (not segLip[i] and not U8.shown(lip)))
+					if not (seg and sameColor(seg.BackgroundColor3, segFace[i]) and seg:FindFirstChild("SignEdge") and lipOk) then
+						segBad[#segBad + 1] = "Seg" .. i .. (seg and (" " .. hex(seg.BackgroundColor3)) or "") .. (lipOk and "" or " (lip)")
+					end
+				end
+				T.check(#segBad == 0, tag .. ": the Wisp bar's blocks: claimed grass, today gold (each on its darker lip), open the well (no lip)", table.concat(segBad, ", "))
+				-- the one claimable tile glints: two pixel sparkles on today's tile that take turns on the window's 1 s tick (a
+				-- handmade touch, no glow); no other tile has them
+				local function sparkles(c)
+					local box = c and c:FindFirstChild("Sparkles", true)
+					local icons, lit = 0, nil
+					for _, d in ipairs(box and box:GetChildren() or {}) do
+						if d:GetAttribute("PixelIcon") == "sparkle" then
+							icons = icons + 1
+							if U8.shown(d) then
+								lit = (lit and (lit .. "+") or "") .. d.Name
+							end
+						end
+					end
+					return box ~= nil and U8.shown(box), icons, lit
+				end
+				local on, icons, lit = sparkles(holder:FindFirstChild("Cell3", true))
+				local others = {}
+				for _, i in ipairs({ 1, 2, 4, 5, 6, 7 }) do
+					if (sparkles(holder:FindFirstChild("Cell" .. i, true))) then
+						others[#others + 1] = "Cell" .. i
+					end
+				end
+				T.check(on and icons == 2 and lit ~= nil and not lit:find("+", 1, true) and #others == 0,
+					tag .. ": today's claimable tile carries two pixel sparkles, one lit at a time; no other tile", fmt("%s %d %s | %s", tostring(on), icons, tostring(lit), table.concat(others, ",")))
+				LKC.advance(1.05)
+				local _, _, lit2 = sparkles(holder:FindFirstChild("Cell3", true))
+				T.check(lit2 ~= nil and lit2 ~= lit, tag .. ": ...and they take turns on the tick (a twinkle, two frames)", tostring(lit) .. " -> " .. tostring(lit2))
+				local greens = U8.greenActions(holder)
+				T.check(#greens == 1 and greens[1] == "ClaimButton", tag .. ": Claim! is the Daily page's one green action", table.concat(greens, ", "))
+				local claim = holder:FindFirstChild("ClaimButton", true)
+				T.check(claim ~= nil and claim.Text == "Claim!", tag .. ": the claim reads Claim! (sentence case)", claim and claim.Text or "no button")
+				local floating = U94.floatingLips(holder)
+				T.check(#floating == 0, tag .. ": every block's lip is flush (Claim!, the tabs, the tiles, the close: bottom and sides on the block's)",
+					table.concat(floating, "; ", 1, math.min(#floating, 6)))
+				-- (U9-4 look review) every tile's edge a solid kit token, never faded: the claimed days the Off edge, today
+				-- the ink edge (its pulse swaps it with the gold lip, two frames, no tween), the days to come wood
+				local function edges(prefix, want, pulsing)
+					local bad = {}
+					for i = 1, 7 do
+						local c = holder:FindFirstChild(prefix .. i, true)
+						local e = c and c:FindFirstChild("SignEdge")
+						local ok = e ~= nil and e.Transparency == 0 and (sameColor(e.Color, want[i]) or (i == pulsing and sameColor(e.Color, Sign.GoldLip)))
+						if not ok then
+							bad[#bad + 1] = prefix .. i .. (e and fmt(" %s @%.2f", hex(e.Color), e.Transparency) or " no edge")
+						end
+					end
+					return bad
+				end
+				local DAY_EDGE = { Sign.WellEdge, Sign.WellEdge, Sign.Text, Sign.Wood, Sign.Wood, Sign.Wood, Sign.Wood }
+				local edgeBad = edges("Cell", DAY_EDGE, 3)
+				local today = holder:FindFirstChild("Cell3", true)
+				local te = today and today:FindFirstChild("SignEdge")
+				local seen, tweened = {}, false
+				for _ = 1, 3 do
+					if te then
+						seen[hex(te.Color)] = true
+						for tw in pairs(Mock.ActiveTweens) do
+							local okI, target = pcall(function()
+								return tw.Instance
+							end)
+							tweened = tweened or (okI and target == te)
+						end
+					end
+					LKC.advance(1.02)
+				end
+				T.check(#edgeBad == 0 and seen[hex(Sign.Text)] and seen[hex(Sign.GoldLip)] and not tweened,
+					tag .. ": tile edges are solid tokens (claimed the Off edge, today ink pulsing ink <-> gold lip in two frames, the rest wood)",
+					table.concat(edgeBad, ", ") .. fmt(" | pulse ink %s gold %s tween %s", tostring(seen[hex(Sign.Text)]), tostring(seen[hex(Sign.GoldLip)]), tostring(tweened)))
+				local room = U94.tileRoom(holder, "Cell")
+				T.check(#room == 0, tag .. ": stone round every day tile (3 px to the frame, 4 px between)", table.concat(room, "; ", 1, math.min(#room, 6)))
+				-- (U9-4 look review) one pixel size per screen: every pixel icon in the window at the glyph or the art size,
+				-- one double the other (3 / 6 px cells on PC, 2 / 4 on a phone): the header gift, the sparkles, the ticks, the art
+				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 })
+				T.check(#odd == 0, tag .. ": every pixel icon at one of the screen's two pixel sizes (" .. (pc and "3 / 6" or "2 / 4") .. " px cells)",
+					table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
+				-- each day's reward on its role's chip, as the HUD's strips colour each currency: cash grass, tokens gold, gems navy;
+				-- (U9-4 look review 2) the art a pixel icon (the gem the pitch's pixel gem in sky, no cut gem in the window)
+				local ROLE = { [4] = { "Cash", Sign.Grass, "note" }, [5] = { "Tokens", Sign.Gold, "token" }, [6] = { "Gems", Sign.Navy, "gem" } }
+				local chipBad = {}
+				for i, want in pairs(ROLE) do
+					local c = holder:FindFirstChild("Cell" .. i, true)
+					local chip = c and c:FindFirstChild("Chip", true)
+					local art = nil
+					for _, d in ipairs(chip and chip:GetDescendants() or {}) do
+						art = art or d:GetAttribute("PixelIcon")
+					end
+					if not (chip and U8.shown(chip) and chip:GetAttribute("Role") == want[1] and sameColor(chip.BackgroundColor3, want[2]) and chip:FindFirstChild("SignEdge") and art == want[3]) then
+						chipBad[#chipBad + 1] = "Cell" .. i .. (chip and (" " .. tostring(chip:GetAttribute("Role")) .. " " .. hex(chip.BackgroundColor3) .. " " .. tostring(art)) or " no chip")
+					end
+				end
+				local cut = holder:FindFirstChild("GemIcon", true)
+				T.check(#chipBad == 0 and cut == nil, tag .. ": each day's reward sits on its role's chip (cash grass, tokens gold, gems navy) with its pixel art (no cut gem)",
+					table.concat(chipBad, ", ") .. (cut and " | a GemIcon in the window" or ""))
+				-- (U9-4 look review 2: whole pixels) every pixel icon and its cells on whole screen px (no AnchorPoint 0.5 half px)
+				local halves = U94.halfPixels(holder)
+				T.check(#halves == 0, fmt("%s: every pixel icon of the Daily page on whole px (%d not)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+				-- (U9-4 look review 2) whichever day is today, its raised tile keeps 4 px of stone to the streak / VIP chips
+				local crowd = U94.todayClear(holder, "")
+				T.check(#crowd == 0, tag .. ": today's raised tile keeps >= 4 px of stone to the streak and VIP chips on every day 1..7",
+					table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
+				local round = U94.roundOrGloss(holder)
+				T.check(#round == 0, tag .. ": nothing round or glossy in the Gifts window", table.concat(round, ", ", 1, math.min(#round, 10)))
+				local bad = U94.contrast("NimbusDaily")
+				T.check(#bad == 0, fmt("%s: every text of the Daily page reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				local loud = U94.shouty(holder)
+				T.check(#loud == 0, tag .. ": every button in sentence case", table.concat(loud, "; "))
+			end)
+			U94.at(s[1], s[2], s[3], "daily kit b play", "Play", "play", function(tag, holder)
+				local loose = {}
+				for i = 1, 7 do
+					local c = holder:FindFirstChild("Tier" .. i, true)
+					local lip = c and c:FindFirstChild("Lip")
+					local face = i <= 2 and Sign.Well or Sign.Tile
+					if not (c and c:GetAttribute("Skin") == "Sign" and c:FindFirstChild("SignEdge") and sameColor(c.BackgroundColor3, face)
+						and lip and sameColor(lip.BackgroundColor3, DCm.TierColors[i])) then
+						loose[#loose + 1] = "Tier" .. i .. (c and (" " .. hex(c.BackgroundColor3)) or "")
+					end
+					local gift = c and c:FindFirstChild("Gift", true)
+					local block = gift and gift:FindFirstChild("Block")
+					if i > 2 and not (block and sameColor(block.BackgroundColor3, Sign.Roof) and block:FindFirstChild("SignEdge") and block:FindFirstChild("Icon", true)) then
+						loose[#loose + 1] = "Tier" .. i .. ".Gift (not the pink gift block)"
+					end
+				end
+				T.check(#loose == 0, tag .. ": every gift box a kit B block (claimed the well, the rest stone) with its tier colour on its lip, the gift the pink gift block",
+					table.concat(loose, ", "))
+				-- the ready box glints as today's tile does (its two sparkles); a locked or claimed box does not
+				local glints = {}
+				for i = 1, 7 do
+					local box = holder:FindFirstChild("Tier" .. i, true)
+					local sp = box and box:FindFirstChild("Sparkles", true)
+					if sp and U8.shown(sp) then
+						glints[#glints + 1] = "Tier" .. i
+					end
+				end
+				T.check(#glints == 1 and glints[1] == "Tier3", tag .. ": only the ready box (30 min) carries the sparkles", table.concat(glints, ", "))
+				local greens = U8.greenActions(holder)
+				T.check(#greens == 1 and greens[1] == "ClaimAll", tag .. ": Claim all is the Play page's one green action (a box's Claim is stone)", table.concat(greens, ", "))
+				local all = holder:FindFirstChild("ClaimAll", true)
+				local box = holder:FindFirstChild("Tier3", true)
+				local claim3 = box and box:FindFirstChild("Claim", true)
+				T.check(all ~= nil and all.Text == "Claim all (1)" and claim3 ~= nil and U8.shown(claim3) and claim3.Text == "Claim" and sameColor(claim3.BackgroundColor3, Sign.Tile),
+					tag .. ": Claim all (1) and the ready box's stone Claim", (all and all.Text or "?") .. " / " .. (claim3 and (claim3.Text .. " " .. hex(claim3.BackgroundColor3)) or "?"))
+				local floating = U94.floatingLips(holder)
+				T.check(#floating == 0, tag .. ": every block's lip is flush (Claim all, the box's Claim with its side padding, the boxes)",
+					table.concat(floating, "; ", 1, math.min(#floating, 6)))
+				-- (U9-4 look review) every box's edge a solid token: claimed the Off edge, the ready box ink (or its pulse
+				-- frame, the gold lip), a locked box wood like a day to come (never faded)
+				local TIER_EDGE = { Sign.WellEdge, Sign.WellEdge, Sign.Text, Sign.Wood, Sign.Wood, Sign.Wood, Sign.Wood }
+				local tierBad = {}
+				for i = 1, 7 do
+					local c = holder:FindFirstChild("Tier" .. i, true)
+					local e = c and c:FindFirstChild("SignEdge")
+					if not (e and e.Transparency == 0 and (sameColor(e.Color, TIER_EDGE[i]) or (i == 3 and sameColor(e.Color, Sign.GoldLip)))) then
+						tierBad[#tierBad + 1] = "Tier" .. i .. (e and fmt(" %s @%.2f", hex(e.Color), e.Transparency) or " no edge")
+					end
+				end
+				T.check(#tierBad == 0, tag .. ": box edges are solid tokens (claimed the Off edge, ready ink, locked wood; none faded)", table.concat(tierBad, ", "))
+				local room = U94.tileRoom(holder, "Tier")
+				T.check(#room == 0, tag .. ": stone round every gift box, its Claim off its lip", table.concat(room, "; ", 1, math.min(#room, 6)))
+				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 })
+				T.check(#odd == 0, tag .. ": every pixel icon on the Play page at one of the screen's two pixel sizes", table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
+				-- the reward line in the Trove's tag language: the kind's pixel icon before the amount (no "Tokens" / "Gems" words);
+				-- (U9-4 look review 2) each currency on its role's tag (a kit B block in its wood edge: cash grass, tokens gold with
+				-- the coin, gems navy with the sky gem), the Berry Basket a plain line
+				local kindBad = {}
+				for i, want in pairs({ [2] = "token", [4] = "gem", [5] = "token", [7] = "gem" }) do
+					local r = holder:FindFirstChild("Tier" .. i, true)
+					r = r and r:FindFirstChild("Reward", true)
+					local mark = r and r:FindFirstChild("KindIcon")
+					if not (r and mark and mark:GetAttribute("PixelIcon") == want and not r.Text:find("%a")) then
+						kindBad[#kindBad + 1] = "Tier" .. i .. (r and (" '" .. r.Text .. "' " .. tostring(mark and mark:GetAttribute("PixelIcon"))) or "")
+					end
+				end
+				T.check(#kindBad == 0, tag .. ": tokens and gems read as their pixel icon + the amount (the Trove's tags)", table.concat(kindBad, ", "))
+				local TAG = { [1] = { "Cash", Sign.Grass }, [2] = { "Tokens", Sign.Gold }, [3] = { "Cash", Sign.Grass }, [4] = { "Gems", Sign.Navy },
+					[5] = { "Tokens", Sign.Gold }, [7] = { "Gems", Sign.Navy } }
+				local tagBad = {}
+				for i = 1, 7 do
+					local box = holder:FindFirstChild("Tier" .. i, true)
+					local r = box and box:FindFirstChild("Reward", true)
+					local want = TAG[i]
+					if want then
+						local mark = r and r:FindFirstChild("KindIcon")
+						local ink = mark and mark:FindFirstChild("R1")
+						if not (r and r:GetAttribute("Role") == want[1] and r.BackgroundTransparency == 0 and sameColor(r.BackgroundColor3, want[2])
+							and r:FindFirstChild("SignEdge") and (want[1] ~= "Gems" or (ink and sameColor(ink.BackgroundColor3, Sign.Sky)))
+							and U8.rect(r).X >= U8.rect(box).X and U8.rect(r).R <= U8.rect(box).R) then
+							tagBad[#tagBad + 1] = "Tier" .. i .. (r and (" " .. tostring(r:GetAttribute("Role")) .. " " .. hex(r.BackgroundColor3)) or " no reward")
+						end
+					elseif r and (r.BackgroundTransparency < 1 or r:FindFirstChild("SignEdge")) then
+						tagBad[#tagBad + 1] = "Tier" .. i .. " (the basket) is on a tag"
+					end
+				end
+				T.check(#tagBad == 0, tag .. ": each currency reward on its role's tag inside its box (cash grass, tokens gold, gems navy with the sky gem), the basket plain",
+					table.concat(tagBad, ", "))
+				-- (U9-4 look review 2) the gift is the box's hero: the Daily chip's block (72 / 48) holding the gift at the art size
+				local giftBad = {}
+				local chipPx, artPx = pc and 72 or 48, pc and 54 or 36
+				for i = 3, 7 do
+					local box = holder:FindFirstChild("Tier" .. i, true)
+					local block = box and box:FindFirstChild("Block", true)
+					local icon = block and block:FindFirstChild("Icon")
+					local k = box and U8.scaleOf(box) or 1
+					if not (block and icon and math.abs(block.AbsoluteSize.X / k - chipPx) <= 0.5 and math.abs(icon.AbsoluteSize.X / k - artPx) <= 0.5
+						and block:FindFirstChild("SignEdge") and block:FindFirstChild("SignEdge").Thickness == 2) then
+						giftBad[#giftBad + 1] = "Tier" .. i .. (block and fmt(" block %.1f icon %.1f", block.AbsoluteSize.X / k, icon and icon.AbsoluteSize.X / k or 0) or " no block")
+					end
+				end
+				T.check(#giftBad == 0, fmt("%s: each gift a %d px block in a 2 px edge holding the %d px gift (the Daily chip)", tag, chipPx, artPx), table.concat(giftBad, ", "))
+				local allBad = U94.claimAllRoom(holder, pc and 4 or 7)
+				T.check(#allBad == 0, tag .. ": Claim all keeps 4 px of stone under the band and the close, its right edge on the row's last box", table.concat(allBad, "; "))
+				local halves = U94.halfPixels(holder)
+				T.check(#halves == 0, fmt("%s: every pixel icon of the Play page on whole px (%d not)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+				-- the next gift to open (60 min, 47 min played, paused) shows the minutes toward it as the kit's block bar over
+				-- its countdown: 5 blocks, 3 filled (the gold lip while paused); no other box has one
+				local bars = {}
+				for i = 1, 7 do
+					local box = holder:FindFirstChild("Tier" .. i, true)
+					local bar = box and box:FindFirstChild("PlayBar", true)
+					if bar and U8.shown(bar) then
+						bars[#bars + 1] = "Tier" .. i
+					end
+				end
+				local bar4 = holder:FindFirstChild("Tier4", true)
+				bar4 = bar4 and bar4:FindFirstChild("PlayBar", true)
+				local clock4 = holder:FindFirstChild("Tier4", true)
+				clock4 = clock4 and clock4:FindFirstChild("Clock", true)
+				-- (U9-4 look review 2) in the Wisp bar's block language: a filled block keeps its gold lip under the face (the
+				-- deep gold face while paused), an empty block is the sunk well with no lip
+				local segBad = {}
+				for b = 1, 5 do
+					local face = bar4 and bar4:FindFirstChild("Block" .. b)
+					face = face and face:FindFirstChild("Face")
+					local lip = face and face:FindFirstChild("Lip")
+					local on = b <= 3
+					if not (face and lip and sameColor(face.BackgroundColor3, on and Sign.GoldDeep or Sign.Well)
+						and ((on and U8.shown(lip) and sameColor(lip.BackgroundColor3, Sign.GoldLip)) or (not on and not U8.shown(lip)))) then
+						segBad[#segBad + 1] = "Block" .. b .. (face and (" " .. hex(face.BackgroundColor3)) or "")
+					end
+				end
+				T.check(#bars == 1 and bars[1] == "Tier4" and bar4:GetAttribute("SignKit") == "BlockRow" and bar4:GetAttribute("Count") == 5 and bar4:GetAttribute("Filled") == 3
+					and #segBad == 0 and clock4 ~= nil and U8.shown(clock4) and U8.rect(clock4).Y >= U8.rect(bar4).B - 0.5,
+					tag .. ": the next gift's minutes are a 5-block bar (3 filled on their gold lip, the deep gold face while paused; empty the lipless well) over its countdown; no other box has one",
+					table.concat(bars, ", ") .. (bar4 and fmt(" filled %s ", tostring(bar4:GetAttribute("Filled"))) or "") .. table.concat(segBad, ", "))
+				local round = U94.roundOrGloss(holder)
+				T.check(#round == 0, tag .. ": nothing round or glossy on the Play page", table.concat(round, ", ", 1, math.min(#round, 10)))
+				local bad = U94.contrast("NimbusDaily")
+				T.check(#bad == 0, fmt("%s: every text of the Play page reads on its fill, the paused header too (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				local loud = U94.shouty(holder)
+				T.check(#loud == 0, tag .. ": every button in sentence case", table.concat(loud, "; "))
+			end)
+		end
+		-- the locked claim (the 10-minute rule): the Off block, its two lines readable
+		U94.at(1920, 1080, false, "daily kit b locked", "Daily", "locked", function(tag, holder)
+			local claim = holder:FindFirstChild("ClaimButton", true)
+			T.check(claim ~= nil and U8.shown(claim) and sameColor(claim.BackgroundColor3, Sign.Well), tag .. ": the locked claim is the sunk Off block", claim and hex(claim.BackgroundColor3) or "no button")
+			local sp = holder:FindFirstChild("Cell3", true)
+			sp = sp and sp:FindFirstChild("Sparkles", true)
+			T.check(not (sp and U8.shown(sp)), tag .. ": a held gift does not glint (nothing to claim yet)")
+			local bad = U94.contrast("NimbusDaily")
+			T.check(#bad == 0, fmt("%s: the locked claim's lines read on it (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+		end)
+		-- (U9-4 look review 2) the shortest PC window (the Compact rows: 1280x600) keeps today's raised tile off the chips too
+		U94.at(1280, 600, false, "daily kit b compact", "Daily", "", function(tag, holder)
+			T.check(DCm._S.Mode == "PC", tag .. ": 1280x600 lays the PC window out (its Compact rows)", tostring(DCm._S.Mode))
+			local crowd = U94.todayClear(holder, "")
+			T.check(#crowd == 0, tag .. ": today's raised tile keeps >= 4 px of stone to the streak and VIP chips on every day 1..7",
+				table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
+		end)
+		-- (U9-4 look review 2: whole pixels) the HUD's Gift block (the window closed): its pixel gift on whole px (it sat at
+		-- y .72 / .28, centred by scale)
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true }, { 390, 844, true } }) do
+			U8.at(s[1], s[2], s[3], "daily gift block", function(tag)
+				LKC.toClient("DailyState", U94.payload(""))
+				LKC.advance(0.5)
+				local gui = U8.pg():FindFirstChild("NimbusDaily")
+				local button = gui and gui:FindFirstChild("GiftsButton")
+				local halves = button and U94.halfPixels(button) or {}
+				T.check(button ~= nil and U8.shown(button) and #halves == 0, fmt("%s: the Gift block's pixel gift on whole px (%d not)", tag, #halves),
+					table.concat(halves, "; ", 1, math.min(#halves, 4)))
+			end)
+		end
+		LKC.flushErrors("daily_signboard_skin")
+	end)
+
+	-- the Gifts window on a touch phone (844x390 and 390x844, both tabs): the window inside the screen, Roblox's thumbstick
+	-- and jump button gone while it is open and back on Close; every day tile's day and amount inside the tile, every gift
+	-- box's time, reward and slot (Claim or the clock) inside the box, the claim, the Wisp line and the keep line inside
+	-- the window (nothing clipped)
+	S.daily_fits_phone = guarded("daily_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		local function inside(r, o)
+			return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+		end
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			local before = GuiService.TouchControlsEnabled
+			for _, tab in ipairs({ "Daily", "Play" }) do
+				U94.at(s[1], s[2], s[3], "daily phone", tab, tab == "Play" and "play" or "", function(tag, holder)
+					local gui = holder:FindFirstAncestorWhichIsA("LayerCollector")
+					local win = holder:FindFirstChild("DailyWindow")
+					local w = win and U8.rect(win)
+					T.check(w ~= nil and w.X >= -0.5 and w.Y >= -0.5 and w.R <= gui.AbsoluteSize.X + 0.5 and w.B <= gui.AbsoluteSize.Y + 0.5,
+						tag .. ": the Gifts window sits inside the screen", w and U8.show(w) or "no window")
+					T.check(GuiService.TouchControlsEnabled == false, tag .. ": Roblox's thumbstick and jump button go while the Gifts window is open")
+				-- the header's shown parts (the gift square and the title only where they fit) in a row inside the window, none over
+				-- another; (U9-4 look review) a portrait window's band holds the square, GIFTS and the X (it has a name, as every
+				-- kit window), the two tabs their own row under the band, each half the inside, >= 44 px touch boxes
+				local bar = win and win:FindFirstChild("TitleBar")
+				local portrait = s[2] > s[1]
+				local prev, row, rowOk = nil, {}, true
+				local bandRow = portrait and { "GiftsIcon", "WindowTitle", "CloseButton" } or { "GiftsIcon", "WindowTitle", "Tab_DailyFill", "Tab_PlayFill", "CloseButton" }
+				if portrait then
+					local title = bar and bar:FindFirstChild("WindowTitle")
+					T.check(title ~= nil and U8.shown(title) and title.Text:upper() == "GIFTS" and title:GetAttribute("TitleLook") == "Ribbon",
+						tag .. ": the portrait window keeps its GIFTS ribbon on the band")
+					local br = bar and U8.rect(bar)
+					local df, pf = bar and bar:FindFirstChild("Tab_DailyFill"), bar and bar:FindFirstChild("Tab_PlayFill")
+					local dt, pt = bar and bar:FindFirstChild("Tab_Daily"), bar and bar:FindFirstChild("Tab_Play")
+					local bodyR = U8.rect(holder:FindFirstChild("Body", true))
+					local ok = df and pf and dt and pt and U8.shown(df) and U8.shown(pf)
+					if ok then
+						local a, b = U8.rect(df), U8.rect(pf)
+						local inside = w.R - w.X - 2 * 6
+						ok = a.Y >= br.B and b.Y >= br.B and a.R <= b.X - 4 and math.abs((a.R - a.X) - (b.R - b.X)) <= 1
+							and (a.R - a.X) >= inside / 2 - 20 and a.B <= bodyR.Y + 0.5 and dt.AbsoluteSize.Y >= 44 and pt.AbsoluteSize.Y >= 44
+					end
+					T.check(ok, tag .. ": the two tabs have their own row under the band, each about half the inside, over the body, >= 44 px taps",
+						df and pf and (U8.show(U8.rect(df)) .. " / " .. U8.show(U8.rect(pf)) .. " band " .. U8.show(br)) or "no tabs")
+				end
+				-- (U9-4 look review) the awning: the portrait window has clear sky over it, so it wears the phones' awning
+				-- (look review 2: SignKit.Sizes.RoofPhoneW, 240) clear of the HUD's strips and >= 4 px clear of the close
+				-- block's stroke; the landscape window starts under Roblox's top bar and has none
+				local roof = win and win:FindFirstChild("Roof")
+				if portrait then
+					local hud = U8.pg():FindFirstChild("NimbusHud")
+					local strips = hud and hud:FindFirstChild("Currency", true)
+					local rr = roof and U8.rect(roof)
+					local x = bar and bar:FindFirstChild("CloseButton")
+					local gap = (rr and x) and U94.apart(rr, U94.strokeBox(x)) or -1
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Offset == 240 and (not (strips and U8.shown(strips)) or rr.Y >= U8.rect(strips).B + 6) and gap >= 4 - 0.5,
+						tag .. ": the portrait window wears the 240 px awning, clear of the HUD's strips and of the close block", (rr and U8.show(rr) or "no roof") .. fmt(" | %.1f px from the close", gap))
+				else
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on the landscape window (it starts under Roblox's top bar)")
+				end
+				for _, name in ipairs(bandRow) do
+					local o = bar and bar:FindFirstChild(name)
+					if o and U8.shown(o) then
+						local r = U8.rect(o)
+						row[#row + 1] = name
+						if (prev and r.X < prev.R - 0.5) or not (w and r.X >= w.X - 0.5 and r.R <= w.R + 0.5) then
+							rowOk = false
+						end
+						prev = r
+					end
+				end
+				T.check(rowOk and #row >= 3, tag .. ": the header's square / title / tabs / X in a row inside the window, none over another", table.concat(row, ", "))
+					local body = holder:FindFirstChild("Body", true)
+					local b = body and U8.rect(body)
+					local out = {}
+					local function need(o, box, what)
+						if o and U8.shown(o) and not inside(U8.rect(o), box) then
+							out[#out + 1] = what .. " " .. U8.show(U8.rect(o)) .. " in " .. U8.show(box)
+						end
+					end
+					if tab == "Daily" then
+						for i = 1, 7 do
+							local c = holder:FindFirstChild("Cell" .. i, true)
+							local r = c and U8.rect(c)
+							need(c and c:FindFirstChild("Day", true), r, "Cell" .. i .. ".Day")
+							need(c and c:FindFirstChild("Amount", true), r, "Cell" .. i .. ".Amount")
+							need(c, b, "Cell" .. i)
+						end
+						for _, name in ipairs({ "ClaimButton", "WispText", "WispBar", "Keep", "Header", "StreakChip", "VipChip" }) do
+							need(holder:FindFirstChild(name, true), b, name)
+						end
+					else
+						for i = 1, 7 do
+							local c = holder:FindFirstChild("Tier" .. i, true)
+							local r = c and U8.rect(c)
+							for _, name in ipairs({ "Time", "Reward", "Claim", "Clock" }) do
+								need(c and c:FindFirstChild(name, true), r, "Tier" .. i .. "." .. name)
+							end
+							need(c, b, "Tier" .. i)
+						end
+						for _, name in ipairs({ "ClaimAll", "PlayHeader" }) do
+							need(holder:FindFirstChild(name, true), b, name)
+						end
+					end
+					T.check(#out == 0, tag .. ": every part sits inside its tile / box and the window's body", table.concat(out, "; ", 1, math.min(#out, 8)))
+					-- (U9-4 look review) nothing cramped: stone round every tile / box, a box's Claim off its lip
+					local cramped = U94.tileRoom(holder, tab == "Daily" and "Cell" or "Tier")
+					T.check(#cramped == 0, tag .. ": every tile / box keeps 3 px of stone to the frame and the stone lip, 4 px to the next, its Claim 4 px over its lip",
+						table.concat(cramped, "; ", 1, math.min(#cramped, 6)))
+					-- (U9-4 look review 2) the close a 36 px block inside the band over its 44 px touch box; every pixel icon on whole
+					-- px; today's raised tile off the chips (Daily); Claim all off the band and the close (Play)
+					local closeBad = U94.phoneClose(bar and bar:FindFirstChild("CloseButton"), bar and bar:FindFirstChild("CloseTap"), bar)
+					T.check(#closeBad == 0, tag .. ": the close is a 36 px block inside the band over a 44 px touch box", table.concat(closeBad, "; "))
+					local halves = U94.halfPixels(holder)
+					T.check(#halves == 0, fmt("%s: every pixel icon on whole px (%d not)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+					if tab == "Daily" then
+						local crowd = U94.todayClear(holder, "")
+						T.check(#crowd == 0, tag .. ": today's raised tile keeps >= 4 px of stone to the streak and VIP chips on every day 1..7",
+							table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
+					else
+						local allBad = U94.claimAllRoom(holder, (not portrait) and 7 or nil)
+						T.check(#allBad == 0, tag .. ": Claim all keeps 4 px of stone under the band and the close (landscape: it ends with the row)", table.concat(allBad, "; "))
+					end
+				end)
+				T.eq(GuiService.TouchControlsEnabled, before, fmt("daily phone %dx%d %s: the touch controls are back as they were after Close", s[1], s[2], tab))
+			end
+		end
+		LKC.flushErrors("daily_fits_phone")
+	end)
+
+	-- (finding 26: the week reward's rainbow sweep and rainbow confetti) a paid week (Weeks 1 -> 2) on High: the banner a gold
+	-- block with brown words, 24 confetti bits inside the window, each a flat bit (no gradient, no corner) in the kit's
+	-- colours by role (the prize's gold, the gift's pink, each with its lip tone), none of Theme.Colors.Rainbow, and no
+	-- sweep band across the window
+	S.daily_week_kit_confetti = guarded("daily_week_kit_confetti", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local GQ = U7.client("GraphicsQuality")
+		local oldEffective = GQ and GQ.Effective
+		if GQ then
+			GQ.Effective = function()
+				return "High"
+			end
+		end
+		local KIT = { Sign.Gold, Sign.GoldLip, Sign.Roof, Sign.RoofLip }
+		U94.at(1920, 1080, false, "daily week", "Daily", "", function(tag, holder)
+			local p = U94.payload("")
+			p.Cell, p.Streak, p.Paid, p.Weeks = 7, 14, 14, 2
+			for _, d in ipairs(p.Days) do
+				d.Claimed, d.Today = true, false
+			end
+			p.ReadyAt = p.ServerNow + 20 * 3600
+			LKC.toClient("DailyState", p)
+			LKC.advance(0.1)
+			local fx = holder:FindFirstChild("Fx", true)
+			local bits, off, gloss, rainbow = 0, {}, {}, {}
+			for _, d in ipairs(fx and fx:GetDescendants() or {}) do
+				if d:IsA("UIGradient") or d:IsA("UICorner") then
+					gloss[#gloss + 1] = d.ClassName .. " on " .. d.Parent.Name
+				end
+				if d.Name == "Sweep" then
+					gloss[#gloss + 1] = "the sweep band"
+				end
+				if d:IsA("Frame") and d.Name == "Confetti" then
+					bits = bits + 1
+					local kit = false
+					for _, c in ipairs(KIT) do
+						kit = kit or sameColor(d.BackgroundColor3, c)
+					end
+					if not kit then
+						off[#off + 1] = hex(d.BackgroundColor3)
+					end
+					for _, c in ipairs(Theme.Colors.Rainbow or {}) do
+						if sameColor(d.BackgroundColor3, c) then
+							rainbow[#rainbow + 1] = hex(c)
+						end
+					end
+				end
+			end
+			T.check(bits == 24, tag .. ": a paid week drops 24 confetti bits inside the window (High)", tostring(bits))
+			T.check(#off == 0 and #rainbow == 0, tag .. ": every bit is the prize's gold or the gift's pink (with their lip tones), none of the rainbow",
+				table.concat(off, ", ") .. " | rainbow: " .. table.concat(rainbow, ", "))
+			T.check(#gloss == 0, tag .. ": no sweep band, gradient or round bit in the celebration", table.concat(gloss, ", "))
+			local banner = holder:FindFirstChild("WeekBanner", true)
+			T.check(banner ~= nil and U8.shown(banner) and banner.BackgroundTransparency == 0 and sameColor(banner.BackgroundColor3, Sign.Gold)
+				and sameColor(banner.TextColor3, Sign.Text), tag .. ": the week banner is a gold block with brown words", banner and hex(banner.BackgroundColor3) or "no banner")
+			LKC.advance(3)
+		end)
+		if GQ then
+			GQ.Effective = oldEffective
+		end
+		LKC.flushErrors("daily_week_kit_confetti")
+	end)
+
+	-- the Sky Trove panel, opened as the chest's prompt opens it (OpenPanel + TroveState)
+	function U94.trove(state)
+		LKC.toClient("OpenPanel", "Trove")
+		LKC.toClient("TroveState", { GroupId = state == "Preview" and 0 or 777, Preview = state == "Preview",
+			Asks = { { Id = "Group", State = state, Reward = { Cash = 2000, Tokens = 200 } }, { Id = "Like" } } })
+		LKC.advance(0.6)
+		local gui = U8.pg():FindFirstChild("NimbusTrove")
+		return gui and gui:FindFirstChild("TrovePanel")
+	end
+	function U94.closeTrove()
+		local TC = U7.client("Controllers/TroveController")
+		if TC then
+			pcall(TC.Close)
+		end
+		LKC.advance(0.3)
+	end
+
+	-- the Sky Trove panel on the Signboard kit (1920x1080 and 844x390): the wood frame round a stone body with its lip; (U9-4
+	-- look review) the header SignKit.Header as the Stats / My Home side panels (the navy plate the title's band, out over
+	-- the frame with its tails on PC) with the pixel chest on the gold icon square in its 2 px ink edge ("TroveIcon"), "SKY
+	-- TROVE" the window's ribbon after it and the red close block (its X in the Danger block's brown ink; 40 on PC, 44 on a
+	-- phone) at the right, in that order with no overlap; the fixed-size awning on PC only; each ask a stone block in its wood edge
+	-- with a square icon chip (a PixelIcon; no glossy orb), the rows one under the other between the header and the footer;
+	-- the rewards gold tags with brown words ($2,000 and the token coin + 200, the U7a rule); while the reward waits (Open)
+	-- two pixel sparkles by the tags take turns (the family's glint: Daily's today tile), none once claimed; Join the
+	-- panel's one green action (sentence case), Done and Preview the Off block; the pending hint in the kit's red ink;
+	-- nothing round or glossy, every text reads on its fill
+	S.trove_signboard_skin = guarded("trove_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			local pc = not s[3]
+			U8.at(s[1], s[2], s[3], "trove kit b", function(tag)
+				local panel = U94.trove("Open")
+				if not T.check(panel ~= nil and U8.shown(panel), tag .. ": the Trove panel opens") then
+					return
+				end
+				local stone = panel:FindFirstChild("Stone")
+				local lip = stone and stone:FindFirstChild("Lip")
+				T.check(panel.BackgroundTransparency == 0 and sameColor(panel.BackgroundColor3, Sign.Wood) and stone ~= nil and sameColor(stone.BackgroundColor3, Sign.Stone)
+					and lip ~= nil and sameColor(lip.BackgroundColor3, Sign.StoneLip), tag .. ": the panel is the wood frame round a stone body with its lip",
+					hex(panel.BackgroundColor3) .. (stone and (" / " .. hex(stone.BackgroundColor3)) or " / no stone"))
+				-- (U9-4 look review) the header is SignKit.Header as the Stats / My Home side panels build theirs: the wood rim,
+				-- the navy plate as the title's band, out over the frame with its tails on PC, inside the rim on a phone
+				local head = panel:FindFirstChild("Header")
+				local plate = head and head:FindFirstChild("Plate")
+				local pr, hr = U8.rect(panel), head and U8.rect(head)
+				local plr = plate and U8.rect(plate)
+				local k = U8.scaleOf(panel)
+				-- (U9-4 look review 2) the docked panel's band stays inside the rim with no tails at every size (the render gate's
+				-- dock rule, as the Index: on PC the right tail ran off the screen)
+				local tails = head and ((head:FindFirstChild("TailL") and U8.shown(head.TailL)) or (head:FindFirstChild("TailR") and U8.shown(head.TailR)))
+				local overOk = plr ~= nil and plr.X >= pr.X + 5.5 * k and plr.R <= pr.R - 5.5 * k and not tails
+				T.check(head ~= nil and U8.shown(head) and head:GetAttribute("SignKit") == "Header" and head:GetAttribute("Ribbon") == true and plate ~= nil
+					and sameColor(plate.BackgroundColor3, Sign.Navy) and plr.Y >= pr.Y + 5.5 * k and overOk,
+					tag .. ": the header is SignKit.Header, its navy plate inside the wood rim with no tails (the docked panel's rule)",
+					plr and (U8.show(plr) .. " in " .. U8.show(pr) .. " tails " .. tostring(tails)) or "no plate")
+				local icon = plate and plate:FindFirstChild("TroveIcon")
+				local chest = false
+				for _, d in ipairs(icon and icon:GetDescendants() or {}) do
+					chest = chest or d:GetAttribute("PixelIcon") == "chest"
+				end
+				local iconEdge = icon and icon:FindFirstChild("SignEdge")
+				local iconW = icon and icon.AbsoluteSize.X / k or 0
+				T.check(icon ~= nil and U8.shown(icon) and sameColor(icon.BackgroundColor3, Sign.Gold) and iconEdge ~= nil and sameColor(iconEdge.Color, Sign.Text)
+					and iconEdge.Thickness == 2 and chest and math.abs(iconW - (pc and 42 or 36)) <= 0.5,
+					tag .. ": the pixel chest on the gold icon square in its 2 px ink edge (the pitch's .hi; 42 on PC as Stats, 36 on a phone's plate)",
+					icon and fmt("%.1f px, edge %s %s", iconW, iconEdge and hex(iconEdge.Color) or "-", iconEdge and tostring(iconEdge.Thickness) or "-") or "no icon")
+				local title = plate and plate:FindFirstChild("TitleText")
+				local close = head and head:FindFirstChild("Close")
+				T.check(title ~= nil and U8.shown(title) and title:GetAttribute("TitleLook") == "Ribbon", tag .. ": SKY TROVE is the window's ribbon title")
+				if pc then
+					T.check(close ~= nil and math.abs(close.AbsoluteSize.X / k - 40) <= 0.5, tag .. ": the close is 40 px on PC (as Stats)", close and tostring(close.AbsoluteSize) or "no close")
+				else
+					-- (U9-4 look review 2) a phone: the 36 px block inside the plate over its 44 px touch box (the 44 px block was
+					-- as tall as the plate and its stroke hung onto the stone)
+					local closeBad = U94.phoneClose(close, head and head:FindFirstChild("CloseTap"), plate)
+					T.check(#closeBad == 0, tag .. ": the close is a 36 px block inside the plate over a 44 px touch box (the touch floor)", table.concat(closeBad, "; "))
+				end
+				if icon and title and close then
+					local ir, tr, cr = U8.rect(icon), U8.rect(title), U8.rect(close)
+					T.check(ir.R <= tr.X + 0.5 and tr.R <= cr.X - 4 and ir.X >= pr.X and cr.R <= pr.R, tag .. ": the header reads chest, title, close left to right with no overlap",
+						fmt("icon %s, title %s, close %s", U8.show(ir), U8.show(tr), U8.show(cr)))
+				end
+				local closeIssues = SmokeCommon.closeMarkIssues(close, { Shown = U8.shown, Bar = Sign.Text, Ink = Sign.RedLip })
+				T.check(close ~= nil and sameColor(close.BackgroundColor3, Sign.Red) and close:FindFirstChild("SignEdge") ~= nil and #closeIssues == 0,
+					tag .. ": the close is the red block with the drawn X in brown ink", (close and hex(close.BackgroundColor3) or "no close") .. " " .. table.concat(closeIssues, "; "))
+				local roof = panel:FindFirstChild("Roof")
+				if pc then
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Scale == 0 and roof.Size.X.Offset == 360 and roof.Size.Y.Scale == 0,
+						tag .. ": the awning sits over the top at a fixed 360 px (never stretched with the panel)", roof and tostring(roof.Size) or "no roof")
+				else
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on a phone (the panel starts under Roblox's top bar)")
+				end
+				local loose = {}
+				for _, id in ipairs({ "Group", "Like" }) do
+					local row = panel:FindFirstChild("Row_" .. id, true)
+					local chip = row and row:FindFirstChild("Chip")
+					local glyph = nil
+					for _, d in ipairs(chip and chip:GetDescendants() or {}) do
+						glyph = glyph or d:GetAttribute("PixelIcon")
+					end
+					if not (row and row.BackgroundTransparency == 0 and sameColor(row.BackgroundColor3, Sign.Tile) and row:FindFirstChild("SignEdge")
+						and chip and chip.BackgroundTransparency == 0 and chip:FindFirstChild("SignEdge") and glyph) then
+						loose[#loose + 1] = "Row_" .. id
+					end
+				end
+				for _, name in ipairs({ "CashChip", "TokenChip" }) do
+					local chip = panel:FindFirstChild(name, true)
+					local text = chip and chip:FindFirstChild("Text")
+					if not (chip and chip.BackgroundTransparency == 0 and sameColor(chip.BackgroundColor3, Sign.Gold) and chip:FindFirstChild("SignEdge") and text and sameColor(text.TextColor3, Sign.Text)) then
+						loose[#loose + 1] = name
+					end
+				end
+				T.check(#loose == 0, tag .. ": each ask a stone block with its icon chip, the rewards gold tags with brown words", table.concat(loose, ", "))
+				local group, like, footer = panel:FindFirstChild("Row_Group", true), panel:FindFirstChild("Row_Like", true), panel:FindFirstChild("Footer", true)
+				if head and group and like and footer then
+					local gr, lr, fr = U8.rect(group), U8.rect(like), U8.rect(footer)
+					T.check(hr.B <= gr.Y and gr.B <= lr.Y and lr.B <= fr.Y + 0.5 and fr.B <= pr.B and gr.X >= pr.X and gr.R <= pr.R,
+						tag .. ": the asks lie one under the other between the header and the footer", fmt("head %s, group %s, like %s, footer %s", U8.show(hr), U8.show(gr), U8.show(lr), U8.show(fr)))
+				end
+				local cash, tok = panel:FindFirstChild("CashChip", true), panel:FindFirstChild("TokenChip", true)
+				local coin = false
+				for _, d in ipairs(tok and tok:GetDescendants() or {}) do
+					coin = coin or (d:GetAttribute("PixelIcon") == "token" and U8.shown(d))
+				end
+				local cashText, tokText = cash and cash:FindFirstChild("Text"), tok and tok:FindFirstChild("Text")
+				T.check(cashText ~= nil and cashText.Text == "$2,000" and tokText ~= nil and tokText.Text == "200" and coin,
+					tag .. ": the rewards read $2,000 and the token coin + 200", (cashText and cashText.Text or "?") .. " / " .. (tokText and tokText.Text or "?") .. " coin " .. tostring(coin))
+				-- the reward that waits glints: two pixel sparkles by the tags, one lit at a time, taking turns
+				local sparkles = group and group:FindFirstChild("Sparkles")
+				local a, b = sparkles and sparkles:FindFirstChild("SparkleA"), sparkles and sparkles:FindFirstChild("SparkleB")
+				local seenA, seenB, both = false, false, false
+				if a and b and U8.shown(sparkles) then
+					for _ = 1, 10 do
+						seenA = seenA or (a.Visible and not b.Visible)
+						seenB = seenB or (b.Visible and not a.Visible)
+						both = both or (a.Visible == b.Visible)
+						LKC.advance(0.25)
+					end
+				end
+				T.check(a ~= nil and b ~= nil and a:GetAttribute("PixelIcon") == "sparkle" and seenA and seenB and not both,
+					tag .. ": two pixel sparkles by the waiting reward take turns", fmt("a %s, b %s, A lit %s, B lit %s, both/none %s", tostring(a ~= nil), tostring(b ~= nil), tostring(seenA), tostring(seenB), tostring(both)))
+				local greens = U8.greenActions(panel)
+				local join = panel:FindFirstChild("JoinButton", true)
+				T.check(#greens == 1 and greens[1] == "JoinButton" and join.Text == "Join", tag .. ": Join is the panel's one green action, in sentence case",
+					table.concat(greens, ", ") .. " / " .. (join and join.Text or "?"))
+				local floating = U94.floatingLips(panel)
+				T.check(#floating == 0, tag .. ": every block's lip is flush (Join, the close, the asks, the tags)", table.concat(floating, "; ", 1, math.min(#floating, 6)))
+				local round = U94.roundOrGloss(panel)
+				T.check(#round == 0, tag .. ": nothing round or glossy in the Trove panel", table.concat(round, ", ", 1, math.min(#round, 10)))
+				-- (U9-4 look review 2: one pixel size per screen) every pixel icon at the glyph or the art size, one double the
+				-- other (3 / 6 px cells on PC, 2 / 4 on a phone; there were three sizes, not doubles), on whole px
+				local cells, odd = U94.pixelCells(panel, pc and { 3, 6 } or { 2, 4 })
+				T.check(#odd == 0, tag .. ": every pixel icon of the Trove at one of the screen's two pixel sizes (" .. (pc and "3 / 6" or "2 / 4") .. " px cells)",
+					table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
+				local halves = U94.halfPixels(panel)
+				T.check(#halves == 0, fmt("%s: every pixel icon of the Trove on whole px (%d not)", tag, #halves), table.concat(halves, "; ", 1, math.min(#halves, 6)))
+				local bad = U94.contrast("NimbusTrove")
+				T.check(#bad == 0, fmt("%s: every text of the Trove panel reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				for state, word in pairs({ Done = "Done", Preview = "Preview" }) do
+					panel = U94.trove(state)
+					join = panel and panel:FindFirstChild("JoinButton", true)
+					T.check(join ~= nil and U8.shown(join) and join.Text == word and sameColor(join.BackgroundColor3, Sign.Well),
+						tag .. ": " .. state .. " shows " .. word .. " on the sunk Off block", join and (join.Text .. " " .. hex(join.BackgroundColor3)) or "no button")
+					local loud = U94.shouty(panel)
+					T.check(#loud == 0, tag .. ": " .. state .. ": every button in sentence case", table.concat(loud, "; "))
+					local worse = U94.contrast("NimbusTrove")
+					T.check(#worse == 0, fmt("%s: %s: every text reads on its fill (%d not)", tag, state, #worse), table.concat(worse, "; ", 1, math.min(#worse, 8)))
+					if state == "Done" then
+						local sp = panel and panel:FindFirstChild("Sparkles", true)
+						T.check(sp == nil or not U8.shown(sp), tag .. ": Done: no glint once the reward is claimed")
+					end
+				end
+				-- the hint that takes the footer's place (a pending join) reads on the stone in the kit's red ink
+				local TC = U7.client("Controllers/TroveController")
+				panel = U94.trove("Open")
+				local GroupS = game:GetService("GroupService")
+				GroupS.PromptJoinAsync = function()
+					return Enum.GroupMembershipStatus.JoinRequestPending
+				end
+				if TC and TC._Join then
+					TC._Join()
+				end
+				LKC.advance(0.3)
+				GroupS.PromptJoinAsync = nil
+				local hint = panel and panel:FindFirstChild("Hint", true)
+				T.check(hint ~= nil and U8.shown(hint) and sameColor(hint.TextColor3, Sign.RedLip), tag .. ": the pending hint shows in the kit's red ink", hint and hex(hint.TextColor3) or "no hint")
+				local hintBad = U94.contrast("NimbusTrove")
+				T.check(#hintBad == 0, fmt("%s: the hint reads on the stone (%d not)", tag, #hintBad), table.concat(hintBad, "; ", 1, math.min(#hintBad, 8)))
+				U94.closeTrove()
+			end)
+		end
+		LKC.flushErrors("trove_signboard_skin")
+	end)
+
+	-- the Sky Trove panel on a touch phone. The panel never lies on Roblox's touch controls (the owner's rule): docked right
+	-- in landscape it keeps them (the player can walk off) wherever the whole panel clears the thumbstick's zone and the jump
+	-- button by 6 px (HudController's rects: on a phone the stick 110 x 96 at the bottom left, 150 tall in portrait, the
+	-- jump button J = 70 from 1.5 J + 10 to 0.5 J + 10 off the right edge, its bottom 20 px over the bottom edge); where it
+	-- cannot (a short landscape phone) and on a portrait phone (the bottom sheet) the touch controls go while it is open and
+	-- come back on Close. 844x390 (the common phone), 852x393 and 932x430 keep them. The game's DASH button (MovementController:
+	-- 66 px centred over the jump button, its bottom 10 px over the jump button's top, a 3 px stroke round it) lies wholly
+	-- under the panel or wholly clear of it, never a sliver under the panel's edge (U9-4 review). The HUD's vitals card steps
+	-- aside while the panel lies over it. The header, the asks and the footer one under the other, every text inside the
+	-- panel and each ask's line inside its block, every text >= 15 px, the close and Join >= 44 px
+	S.trove_fits_phone = guarded("trove_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		local function inside(r, o)
+			return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+		end
+		local function over4(a, b)
+			return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
+		end
+		-- keep: true = the controls must stay, false = they must go, nil = either (kept only where the panel clears both)
+		for _, s in ipairs({ { 844, 390, true }, { 852, 393, true }, { 932, 430, true }, { 667, 375, nil }, { 640, 360, nil }, { 390, 844, false } }) do
+			local before = GuiService.TouchControlsEnabled
+			local keep = s[3]
+			U8.at(s[1], s[2], true, "trove phone", function(tag)
+				local panel = U94.trove("Open")
+				if not T.check(panel ~= nil and U8.shown(panel), tag .. ": the Trove panel opens") then
+					return
+				end
+				local gui = panel:FindFirstAncestorWhichIsA("LayerCollector")
+				local p = U8.rect(panel)
+				T.check(p.X >= -0.5 and p.Y >= -0.5 and p.R <= gui.AbsoluteSize.X + 0.5 and p.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the panel sits inside the screen", U8.show(p))
+				local J = 70
+				local area = gui.AbsoluteSize
+				local jump = { X = area.X - (1.5 * J + 10) - 6, R = area.X - (0.5 * J + 10) + 6, Y = area.Y - 20 - J - 6, B = area.Y - 20 + 6 }
+				local stick = { X = 0, R = 110 + 6, Y = area.Y - (s[2] > s[1] and 150 or 96) - 6, B = area.Y }
+				local kept = GuiService.TouchControlsEnabled == true
+				if keep == true then
+					T.check(kept, tag .. ": Roblox's touch controls stay (the player can walk off)")
+				elseif keep == false then
+					T.check(not kept, tag .. ": the panel would lie over the thumb zones, so the touch controls go while it is open")
+				end
+				if kept then
+					T.check(not U8.overlap(p, jump) and not U8.overlap(p, stick), tag .. ": with the controls kept the panel lies 6 px clear of the jump button and the thumbstick",
+						fmt("panel %s, jump %s, stick %s", U8.show(p), U8.show(jump), U8.show(stick)))
+				end
+				-- (U9-4 review) DASH with its stroke, as MovementController lays it out (its gui ignores the inset, but it is
+				-- placed from the bottom edge, so the gui's area places it the same)
+				local dash = { X = area.X - 47 - 66 - 3, R = area.X - 47 + 3, Y = area.Y - 100 - 66 - 3, B = area.Y - 100 + 3 }
+				T.check(inside(dash, p) or not U8.overlap(dash, p), tag .. ": the game's DASH button lies wholly under the panel or wholly clear of it (no sliver)",
+					fmt("panel %s, dash %s", U8.show(p), U8.show(dash)))
+				local head, group, like, footer = panel:FindFirstChild("Header", true), panel:FindFirstChild("Row_Group", true), panel:FindFirstChild("Row_Like", true), panel:FindFirstChild("Footer", true)
+				if T.check(head ~= nil and group ~= nil and like ~= nil and footer ~= nil, tag .. ": the header, both asks and the footer are there") then
+					local hr, gr, lr, fr = U8.rect(head), U8.rect(group), U8.rect(like), U8.rect(footer)
+					T.check(hr.B <= gr.Y and gr.B <= lr.Y and lr.B <= fr.Y + 0.5 and fr.B <= p.B, tag .. ": the header, the asks and the footer lie one under the other inside the panel",
+						fmt("head %s, group %s, like %s, footer %s, panel %s", U8.show(hr), U8.show(gr), U8.show(lr), U8.show(fr), U8.show(p)))
+				end
+				local hud = U7.client("Controllers/HudController")
+				local layout = hud and hud.GetLayout and hud.GetLayout()
+				local slot = layout and layout.VitalsSlot
+				if slot then
+					local over = over4(p, { X = slot.X, R = slot.X + slot.W, Y = slot.Y, B = slot.Y + slot.H })
+					T.check(not over or layout.Vitals == nil, tag .. ": the vitals card steps aside while the panel lies over it",
+						fmt("panel %s, vitals %d,%d %dx%d shown %s", U8.show(p), slot.X, slot.Y, slot.W, slot.H, tostring(layout.Vitals ~= nil)))
+				end
+				local out, small = {}, {}
+				for _, d in ipairs(panel:GetDescendants()) do
+					if (d:IsA("TextLabel") or d:IsA("TextButton")) and U8.shown(d) and d.Text ~= "" then
+						if not inside(U8.rect(d), p) then
+							out[#out + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+						end
+						if d.TextSize < 15 then
+							small[#small + 1] = d.Name .. " " .. d.TextSize
+						end
+					end
+				end
+				for _, id in ipairs({ "Group", "Like" }) do
+					local row = panel:FindFirstChild("Row_" .. id, true)
+					local label = row and row:FindFirstChild("Label")
+					if label and not inside(U8.rect(label), U8.rect(row)) then
+						out[#out + 1] = "Row_" .. id .. ".Label"
+					end
+				end
+				T.check(#out == 0, tag .. ": every text inside the panel and each ask's line inside its block", table.concat(out, "; "))
+				T.check(#small == 0, tag .. ": every text >= 15 px", table.concat(small, ", "))
+				-- (U9-4 look review) the portrait sheet sits under clear sky: it wears the phones' awning (look review 2: 240 px
+				-- so its right end keeps >= 4 px clear of the close's stroke; the 288 px one ran into it); the landscape panel
+				-- starts under Roblox's top bar and has none
+				local roof = panel:FindFirstChild("Roof")
+				local join, close, tap = panel:FindFirstChild("JoinButton", true), panel:FindFirstChild("Close", true), panel:FindFirstChild("CloseTap", true)
+				if s[2] > s[1] then
+					local gap = (roof and close) and U94.apart(U8.rect(roof), U94.strokeBox(close)) or -1
+					T.check(roof ~= nil and U8.shown(roof) and roof.Size.X.Offset == 240 and gap >= 4 - 0.5,
+						fmt("%s: the portrait sheet wears the 240 px awning, %.1f px clear of the close (>= 4)", tag, gap), roof and tostring(roof.Size) or "no roof")
+				else
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no awning on the landscape phone panel")
+				end
+				-- (look review 2) the close's touch box is the 44 px CloseTap under the 36 px block
+				T.check(join ~= nil and join.AbsoluteSize.Y >= 44 and tap ~= nil and U8.shown(tap) and tap.AbsoluteSize.X >= 44 and tap.AbsoluteSize.Y >= 44,
+					tag .. ": Join and the close's touch box are >= 44 px taps", fmt("join %s, close tap %s", join and tostring(join.AbsoluteSize) or "-", tap and tostring(tap.AbsoluteSize) or "-"))
+				U94.closeTrove()
+				local after = hud and hud.GetLayout and hud.GetLayout()
+				T.check(not (after and after.VitalsSlot) or after.Vitals ~= nil, tag .. ": the vitals card is back after Close")
+			end)
+			T.eq(GuiService.TouchControlsEnabled, before, fmt("trove phone %dx%d: the touch controls are as they were after Close", s[1], s[2]))
+		end
+		LKC.flushErrors("trove_fits_phone")
+	end)
+
+	-- (U9-4 look review, the blocker) the PC Trove panel docks UNDER the HUD's currency strips, as the Stats window does:
+	-- at 1920x1080 and 1280x720 its awning's top lies under NimbusHud's TopRightBottom (the strips and the gift's square),
+	-- no shown HUD part lies partly under the panel or its awning (the old top dock left a white sliver of the Cash strip
+	-- over the frame's top and the strips' wood edges along its right), the strips stay shown while it is open (the
+	-- $2,000 lands in balances the player can see), and the panel ends inside the screen
+	S.trove_clear_of_hud = guarded("trove_clear_of_hud", function()
+		local function over1(a, b)
+			return math.min(a.R, b.R) - math.max(a.X, b.X) > 0.5 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 0.5
+		end
+		for _, s in ipairs({ { 1920, 1080 }, { 1280, 720 } }) do
+			U8.at(s[1], s[2], false, "trove hud", function(tag)
+				local panel = U94.trove("Open")
+				if not T.check(panel ~= nil and U8.shown(panel) and panel:GetAttribute("TroveMode") == "PC", tag .. ": the PC Trove panel opens") then
+					return
+				end
+				local gui = panel:FindFirstAncestorWhichIsA("LayerCollector")
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				local strips = hud and hud:FindFirstChild("Currency", true)
+				local bottom = hud and tonumber(hud:GetAttribute("TopRightBottom")) or 0
+				local p = U8.rect(panel)
+				local boxes = { p }
+				local roof = panel:FindFirstChild("Roof")
+				if roof and U8.shown(roof) then
+					boxes[2] = U8.rect(roof)
+				end
+				local top = math.min(p.Y, boxes[2] and boxes[2].Y or p.Y)
+				T.check(bottom > 0 and top >= bottom + 0.5, tag .. ": the panel and its awning start under the HUD's strips and gift square (TopRightBottom)",
+					fmt("top %.1f, TopRightBottom %.1f", top, bottom))
+				T.check(p.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the docked panel ends inside the screen", U8.show(p))
+				local over = {}
+				for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+					if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 0.95 then
+						for _, b in ipairs(boxes) do
+							if over1(U8.rect(d), b) then
+								over[#over + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+								break
+							end
+						end
+					end
+				end
+				T.check(#over == 0, tag .. ": no shown HUD part lies under the panel or its awning (no sliver of a strip)", table.concat(over, ", ", 1, math.min(#over, 8)) .. " | panel " .. U8.show(p))
+				T.check(strips ~= nil and U8.shown(strips), tag .. ": the currency strips stay shown while the panel is open (the reward lands where the player sees it)")
+				-- (U9-4 look review 2) every shown part of the header and the awning inside the screen (the band's right tail ran
+				-- off the screen's edge; the docked panel's band has no tails)
+				local off = {}
+				local head = panel:FindFirstChild("Header", true)
+				local parts = head and head:GetDescendants() or {}
+				parts[#parts + 1] = head
+				parts[#parts + 1] = roof
+				for _, d in ipairs(parts) do
+					if d and d:IsA("GuiObject") and U8.shown(d) then
+						local r = U8.rect(d)
+						if r.X < -0.5 or r.Y < -0.5 or r.R > gui.AbsoluteSize.X + 0.5 or r.B > gui.AbsoluteSize.Y + 0.5 then
+							off[#off + 1] = d.Name .. " " .. U8.show(r)
+						end
+					end
+				end
+				T.check(head ~= nil and #off == 0, tag .. ": every shown part of the header and the awning lies inside the screen (no tail off its edge)", table.concat(off, ", ", 1, math.min(#off, 6)))
+				U94.closeTrove()
+			end)
+		end
+		LKC.flushErrors("trove_clear_of_hud")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U9-2b (finding 15; the egg hatch screen, split out of U9-2 by its review: client/UI/EggStage plays the roll, HatchLook
+	-- builds its pieces, HatchFx its effects). The stage's art stays the owner's roll-look pick (attribute Art: the plinth,
+	-- the rays, the spot, the backlight, the cloud ring, the eggs and halves, the shock ring, the sparks, the flash, the
+	-- vignette, the speed streaks, the Secret aura and stars, the pet's contact shadow); the chrome over it is kit B (U92b is
+	-- declared beside U93 / U94: kitb_no_neon_glow walks the stage too)
+	-- a roll on the stage: "x1" = a Cloud x1 Epic, new, its pet evolved (the EVOLVED tag); "x3" = a Storm x3 (Rare,
+	-- Legendary, Epic); (U9-2b review) "x3evo2" = the Storm x3 whose third pull is its longest-named pet with a stage 2,
+	-- new and at stage 2 (NEW! and EVOLVED II in one column), "x1epics" = the x1 with every other card of its strip the
+	-- Epic (an Epic plate in view mid-scroll); the profile can pay Spin again (50,000 tokens, gem roulettes allowed), Fast
+	-- hatch off
+	function U92b.show(kind)
+		local PC = LoadingH.shared("PetCatalog")
+		local Config = LoadingH.shared("Config")
+		local ES = U7.client("UI/EggStage")
+		local CS = U7.client("ClientSettings")
+		local lp = game:GetService("Players").LocalPlayer
+		local epic = PC.RarityPool("Cloud", "Epic")[1]
+		local evolved, evo = epic, 1
+		if kind == "x3evo2" then
+			-- (the Storm pet with a stage 2 and the longest name: on PC its name fills the row, so the tag goes to the
+			-- model's shoulder)
+			evolved, evo = epic, 2
+			for _, d in ipairs(PC.PossiblePets("Storm")) do
+				if PC.MaxEvolution(d) >= 2 and (evolved == epic or #d.Name > #evolved.Name) then
+					evolved = d
+				end
+			end
+		end
+		U8.feed(nil, nil, { [evolved.Id] = { Evo = evo } }, nil, { Tokens = 50000, Gems = 5000, PetLevels = { [evolved.Id] = { Level = 60, Xp = 0 } } })
+		lp:SetAttribute(Config.Attr.Tokens, 50000)
+		lp:SetAttribute(Config.Attr.Gems, 5000)
+		lp:SetAttribute("PaidRandomItemsRestricted", false)
+		if CS then
+			CS.Set("FastHatch", false)
+		end
+		if ES.IsShowing() then
+			ES.Close()
+			LKC.advance(0.3)
+		end
+		local function strip(rid, winner)
+			local all = {}
+			for _, d in ipairs(PC.PossiblePets(rid)) do
+				all[#all + 1] = d.Id
+			end
+			local ids = {}
+			for i = 1, 40 do
+				ids[i] = (kind == "x1epics" and i % 2 == 0) and winner or all[((i * 7) % #all) + 1]
+			end
+			ids[34] = winner
+			return ids
+		end
+		local function pull(rid, def, new)
+			return { PetId = def.Id, Key = def.Id, Rarity = def.Rarity, IsNew = new ~= false, NewDiscovery = new ~= false, Count = new == false and 2 or 1,
+				PoolSize = #PC.RarityPool(rid, def.Rarity), Strip = strip(rid, def.Id) }
+		end
+		local rid, pulls = "Cloud", nil
+		if kind == "x3" or kind == "x3evo2" then
+			rid = "Storm"
+			local function storm(r, fallback)
+				return PC.RarityPool("Storm", r)[1] or fallback
+			end
+			pulls = { pull(rid, storm("Rare", PC.RarityPool("Cloud", "Rare")[1])), pull(rid, storm("Legendary")), pull(rid, kind == "x3evo2" and evolved or storm("Epic", epic), kind == "x3evo2") }
+		else
+			pulls = { pull(rid, epic) }
+		end
+		local p1 = pulls[1]
+		local ok = ES.Show({ Ok = true, RouletteId = rid, Currency = "Tokens", Spins = #pulls, UnitPrice = 50, Price = 50 * #pulls, Pulls = pulls, Tokens = 50000,
+			Gems = 5000, PetId = p1.PetId, Key = p1.Key, IsNew = p1.IsNew, Count = p1.Count, Strip = p1.Strip })
+		return ok and ES or nil
+	end
+	-- the roll skipped to its reveal, the pills risen and armed
+	function U92b.reveal(kind)
+		local ES = U92b.show(kind)
+		if ES then
+			LKC.advance(0.5)
+			ES.Skip()
+			LKC.advance(2.6)
+		end
+		return ES
+	end
+	function U92b.close()
+		local ES = U7.client("UI/EggStage")
+		if ES and ES.IsShowing() then
+			ES.Close()
+		end
+		LKC.advance(0.4)
+	end
+	function U92b.content()
+		local gui = U8.pg():FindFirstChild("NimbusHatch")
+		local stage = gui and gui:FindFirstChild("Stage")
+		return stage and stage:FindFirstChild("Content"), gui
+	end
+	-- a hard-banded face (the title look's letters): every colour change happens between two keypoints at most 0.002 apart
+	function U92b.hardBands(g)
+		if not (g and g:IsA("UIGradient")) then
+			return false
+		end
+		local kps = g.Color.Keypoints
+		if #kps < 4 then
+			return false
+		end
+		for i = 2, #kps do
+			local a, b = kps[i - 1], kps[i]
+			if hex(a.Value) ~= hex(b.Value) and b.Time - a.Time > 0.002 then
+				return false
+			end
+		end
+		return true
+	end
+	-- the UICorners and the UIGradients under `root` that are not kit B's (the art keeps its own, attribute Art up the tree;
+	-- the land's "Sweep" is a hard-edged flat band; a letter's hard "Bands"). (look review) the rail's ends are flat lines
+	-- now: a "Fade" gradient counts
+	function U92b.roundOrGloss(root)
+		local out = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			local p = d.Parent
+			if (d:IsA("UICorner") or (d:IsA("UIGradient") and d.Name ~= "Sweep" and d.Name ~= "Bands")) and p and p:IsA("GuiObject") and U8.shown(p) and not designedLook(d) then
+				local cur, art = p, false
+				while cur and not cur:IsA("LayerCollector") do
+					art = art or cur:GetAttribute("Art") ~= nil or cur.Name == "PetViewport" or cur.Name == "GemIcon" or (cur:GetAttribute("Form") ~= nil and cur:GetAttribute("Rarity") ~= nil)
+					cur = cur.Parent
+				end
+				if not art then
+					out[#out + 1] = d.ClassName .. " on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+				end
+			end
+		end
+		return out
+	end
+	-- (look review: whole px) the objects among `list` ({ name, GuiObject }) whose screen box is not on whole px: measured
+	-- from `ref`'s corner when given (the strips slide by fractions of a px once the rise starts: what is drawn inside them
+	-- keeps its place against the track)
+	function U92b.offGrid(list, ref)
+		local out = {}
+		local ox, oy = 0, 0
+		if ref then
+			ox, oy = ref.AbsolutePosition.X, ref.AbsolutePosition.Y
+		end
+		local function whole(v)
+			return math.abs(v - math.floor(v + 0.5)) < 0.02
+		end
+		for _, it in ipairs(list) do
+			local o = it[2]
+			if o and U8.shown(o) then
+				local p, s = o.AbsolutePosition, o.AbsoluteSize
+				if not (whole(p.X - ox) and whole(p.Y - oy) and whole(s.X) and whole(s.Y)) then
+					out[#out + 1] = fmt("%s at %.2f,%.2f %.2fx%.2f", it[1], p.X - ox, p.Y - oy, s.X, s.Y)
+				end
+			elseif not o then
+				out[#out + 1] = it[1] .. " missing"
+			end
+		end
+		return out
+	end
+	-- the shown buttons of the bottom bar whose block is green (a plank's Body, a chip's Pill)
+	function U92b.greens(bar)
+		local out = {}
+		for _, b in ipairs(bar and bar:GetChildren() or {}) do
+			if b:IsA("GuiButton") and U8.shown(b) then
+				local block = b:FindFirstChild("Body", true) or b:FindFirstChild("Pill")
+				if block and block.BackgroundTransparency < 0.5 and U8.green(block.BackgroundColor3) then
+					out[#out + 1] = b.Name
+				end
+			end
+		end
+		table.sort(out)
+		return out
+	end
+
+	-- the hatch stage's chrome on the Signboard kit (1920x1080 and 844x390). The strip: the navy track flat and square in
+	-- its wood frame (Outer), every card a stone block in its wood edge (mitred) with no corner, gloss or drop shadow, an
+	-- x1 card's rarity word on its plate in the rarity's colour along the bottom, the landed card the selected face; the
+	-- winner's window a square gold frame with no soft glow, its two notches pixel pointers (no turn, no corner). The
+	-- reveal: Spin again the gold block holding the stone price tag (the token coin + 50), Done the stage's one green action,
+	-- both kit B blocks (wood edge, a darker lip flush along the bottom) in sentence case; disabled, the sunk Off well; a
+	-- press sinks the face onto its lip (the lip 2 px) and back. The chips (Skip, Fast hatch) navy blocks, Fast hatch's
+	-- switch square. NEW! a flat gold tag, EVOLVED a navy tag (capitals, no tilt, no corner); the rarity word's letters the
+	-- title look's hard bands with one outline and no glow; nothing round or glossy outside the art; every text reads
+	S.hatch_signboard_skin = guarded("hatch_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local HL = U7.client("UI/HatchLook")
+		local CloudUI = U7.client("UI/CloudUI")
+		if not T.check(HL and CloudUI, "hatch kit b: HatchLook and CloudUI load") then
+			return
+		end
+		-- (U9-2b review) the x1 strip's plate words read on their plates while the strip runs and after it lands, at the
+		-- sizes where a plate word is under 18 px (4.5:1 there): 1280x720 (14.4 px) and 844x390 (15 px), an Epic plate on
+		-- show (the violet plate the brown ink read worst on); and the stage's floating title ("STORM ROULETTE X3") is the
+		-- plain Section title (the owner's ruling 2026-11-14: the ribbon is for window titles only), its words clear of the
+		-- x3 strips' wood frames and the window's notches (the ribbon's band had covered the first strip's frame)
+		for _, s in ipairs({ { 1280, 720, false }, { 844, 390, true } }) do
+			U8.at(s[1], s[2], s[3], "hatch kit b plates", function(tag)
+				local ES = U92b.show("x1epics")
+				if not T.check(ES ~= nil, tag .. ": the x1 roll shows") then
+					return
+				end
+				for _, at in ipairs({ { "mid-scroll", 1.6 }, { "after the land", 1.9 } }) do
+					LKC.advance(at[2])
+					local content = U92b.content()
+					local strip = content and content:FindFirstChild("Strips") and content.Strips:FindFirstChild("Strip1")
+					local track = strip and strip:FindFirstChild("Track")
+					-- (setup) the walk reads an Epic plate's word (a card in view, not under the track's fading ends)
+					local list, read = SmokeCommon.Contrast.PaintList(U8.pg()), 0
+					for i, it in ipairs(list) do
+						if track and it.obj.Name == "Word" and it.obj.Text == "EPIC" and it.obj:IsDescendantOf(track) and SmokeCommon.Contrast.Read(list, i) ~= nil then
+							read = read + 1
+						end
+					end
+					T.check(read > 0, tag .. ": (setup) the contrast walk reads an Epic plate's word " .. at[1], tostring(read))
+					local bad = U94.contrast("NimbusHatch")
+					T.check(#bad == 0, fmt("%s: %s, every text of the strip reads on its fill (%d not)", tag, at[1], #bad), table.concat(bad, "; ", 1, math.min(#bad, 6)))
+				end
+				U92b.close()
+			end)
+			U8.at(s[1], s[2], s[3], "hatch kit b title", function(tag)
+				local ES = U92b.show("x3")
+				LKC.advance(1.6)
+				local content = U92b.content()
+				local title = content and content:FindFirstChild("Title")
+				if not T.check(ES ~= nil and title ~= nil and U8.shown(title), tag .. ": the x3 strip shows the stage's title") then
+					return
+				end
+				local pieces = {}
+				for _, d in ipairs(title:GetDescendants()) do
+					if d:IsA("GuiObject") then
+						pieces[#pieces + 1] = d
+					end
+				end
+				T.check(title:GetAttribute("TitleLook") == "Section" and #pieces == 0, tag .. ": the stage's title is the plain Section title (no ribbon: the stage is not a window)",
+					fmt("%s, %d ribbon pieces", tostring(title:GetAttribute("TitleLook")), #pieces))
+				-- the words' line box (the text centred in the label: a capital's ink and its outline sit inside it) and every
+				-- ribbon piece against each strip's wood frame and the windows' notches
+				local r, tb = U8.rect(title), title.TextBounds
+				local k = U8.scaleOf(title)
+				local cx, cy = (r.X + r.R) / 2, (r.Y + r.B) / 2
+				local drawn = { { "the words", { X = cx - tb.X * k / 2, R = cx + tb.X * k / 2, Y = cy - tb.Y * k / 2, B = cy + tb.Y * k / 2 } } }
+				for _, p in ipairs(pieces) do
+					if U8.shown(p) and p.BackgroundTransparency < 1 then
+						drawn[#drawn + 1] = { p.Name, U8.rect(p) }
+					end
+				end
+				local hits = {}
+				for j = 1, 3 do
+					local st = content.Strips:FindFirstChild("Strip" .. j)
+					local ptr = st and st:FindFirstChild("Pointer")
+					for _, o in ipairs({ st and st:FindFirstChild("Outer"), ptr and ptr:FindFirstChild("NotchTop") }) do
+						if o and U8.shown(o) then
+							for _, d in ipairs(drawn) do
+								if U8.overlap(d[2], U8.rect(o)) then
+									hits[#hits + 1] = fmt("%s %s meets Strip%d.%s %s", d[1], U8.show(d[2]), j, o.Name, U8.show(U8.rect(o)))
+								end
+							end
+						end
+					end
+				end
+				T.check(#hits == 0, tag .. ": the title's words clear the x3 strips' wood frames and the window's notches", table.concat(hits, "; ", 1, math.min(#hits, 6)))
+				-- (look review) room round the shelf: sky between the title's line box and the first rail's wood frame (the
+				-- capitals' ink ends a descender band above that box's bottom: >= 4 px here is >= 8 px of sky under the
+				-- letters), and >= 12 px between the last rail's frame and the chips; the three rails share their beams (one
+				-- shelf: each rail's frame starts where the rail above ends)
+				local o1 = content.Strips:FindFirstChild("Strip1") and content.Strips.Strip1:FindFirstChild("Outer")
+				local o3 = content.Strips:FindFirstChild("Strip3") and content.Strips.Strip3:FindFirstChild("Outer")
+				local skipChip = content:FindFirstChild("BottomBar") and content.BottomBar:FindFirstChild("Skip")
+				local pill = skipChip and skipChip:FindFirstChild("Pill")
+				local gapTop = o1 and (U8.rect(o1).Y - drawn[1][2].B) or -1
+				local gapBot = (o3 and pill) and (U94.strokeBox(pill).Y - U8.rect(o3).B) or -1
+				T.check(gapTop >= 4 and gapBot >= 12, tag .. ": sky under the title (>= 4 px past its line box) and >= 12 px above the chips round the x3 shelf",
+					fmt("top %.1f px, bottom %.1f px", gapTop, gapBot))
+				local beams = {}
+				for j = 1, 2 do
+					local tr = content.Strips:FindFirstChild("Strip" .. j) and content.Strips["Strip" .. j]:FindFirstChild("Track")
+					local nxt = content.Strips:FindFirstChild("Strip" .. (j + 1)) and content.Strips["Strip" .. (j + 1)]:FindFirstChild("Outer")
+					if not (tr and nxt and math.abs(U8.rect(nxt).Y - U8.rect(tr).B) < 0.5) then
+						beams[#beams + 1] = fmt("Strip%d: %s", j + 1, (tr and nxt) and fmt("frame at %.1f, rail above ends %.1f", U8.rect(nxt).Y, U8.rect(tr).B) or "missing")
+					end
+				end
+				T.check(#beams == 0, tag .. ": the x3 rails share their beams (one shelf)", table.concat(beams, "; "))
+				U92b.close()
+			end)
+		end
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U8.at(s[1], s[2], s[3], "hatch kit b", function(tag)
+				-- the strip, mid-scroll
+				local ES = U92b.show("x1")
+				if not T.check(ES ~= nil, tag .. ": the x1 roll shows") then
+					return
+				end
+				LKC.advance(1.6)
+				local content = U92b.content()
+				local strip = content and content:FindFirstChild("Strips") and content.Strips:FindFirstChild("Strip1")
+				local track = strip and strip:FindFirstChild("Track")
+				local outer = strip and strip:FindFirstChild("Outer")
+				if T.check(track ~= nil and outer ~= nil and U8.shown(track), tag .. ": the strip's track shows in its frame") then
+					local tr, orr = U8.rect(track), U8.rect(outer)
+					T.check(sameColor(track.BackgroundColor3, Sign.Navy) and track.BackgroundTransparency == 0 and track:FindFirstChildOfClass("UIGradient") == nil
+						and track:FindFirstChildOfClass("UICorner") == nil, tag .. ": the track is flat navy and square", hex(track.BackgroundColor3))
+					T.check(sameColor(outer.BackgroundColor3, Sign.Wood) and outer.BackgroundTransparency == 0 and outer:FindFirstChildOfClass("UICorner") == nil
+						and orr.X <= tr.X - 2 and orr.R >= tr.R + 2 and orr.Y <= tr.Y - 2 and orr.B >= tr.B + 2,
+						tag .. ": the wood frame (Outer) lies round the track, square", fmt("outer %s %s, track %s", hex(outer.BackgroundColor3), U8.show(orr), U8.show(tr)))
+				end
+				local loose, cards, shadows = {}, 0, 0
+				for _, c in ipairs(track and track:GetChildren() or {}) do
+					if c.Name:match("^Shadow%d*$") and U8.shown(c) then
+						shadows = shadows + 1
+					end
+					if c.Name:match("^Cell%d+$") and U8.shown(c) then
+						cards = cards + 1
+						local edge = c:FindFirstChild("SignEdge")
+						local plate = c:FindFirstChild("Plate")
+						local ok = c.BackgroundTransparency == 0 and (sameColor(c.BackgroundColor3, Sign.Tile) or sameColor(c.BackgroundColor3, Sign.Selected))
+							and c:FindFirstChildOfClass("UICorner") == nil and c:FindFirstChildOfClass("UIGradient") == nil and c:FindFirstChild("Shine") == nil
+							and edge ~= nil and edge:IsA("UIStroke") and sameColor(edge.Color, Sign.Wood) and edge.LineJoinMode == Enum.LineJoinMode.Miter
+							and plate ~= nil and U8.shown(plate) and plate.BackgroundTransparency == 0 and plate:FindFirstChildOfClass("UICorner") == nil
+							and plate:FindFirstChildOfClass("UIStroke") == nil
+						if ok then
+							local word = plate:FindFirstChild("Word")
+							local rarity = word and word.Text ~= "" and (word.Text:sub(1, 1) .. word.Text:sub(2):lower()) or nil
+							-- (U9-2b review) the rarity's colour moved the least it takes for its ink to read at 4.5:1
+							local face, ink = nil, nil
+							if rarity then
+								face, ink = Theme.ReadableFace(HL.RarityColor(rarity), 4.5)
+							end
+							ok = rarity ~= nil and word.Text == word.Text:upper() and sameColor(plate.BackgroundColor3, face) and sameColor(word.TextColor3, ink)
+						end
+						if not ok then
+							loose[#loose + 1] = fmt("%s %s edge %s", c.Name, hex(c.BackgroundColor3), edge and hex(edge.Color) or "-")
+						end
+					end
+				end
+				T.check(cards >= 4 and #loose == 0, tag .. ": every card a stone block in its mitred wood edge with its rarity word on a plate in the rarity's readable colour (no corner, gloss or shine)",
+					cards .. " cards; " .. table.concat(loose, "; ", 1, math.min(#loose, 4)))
+				T.check(shadows == 0, tag .. ": no drop shadow beside the cards (kit B blocks sit flat)", tostring(shadows))
+				local pointer = strip and strip:FindFirstChild("Pointer")
+				local win = pointer and pointer:FindFirstChild("Window")
+				local wstroke = win and win:FindFirstChildOfClass("UIStroke")
+				T.check(pointer ~= nil and pointer:FindFirstChild("Glow") == nil and win ~= nil and win:FindFirstChildOfClass("UICorner") == nil and wstroke ~= nil
+					and wstroke.LineJoinMode == Enum.LineJoinMode.Miter, tag .. ": the winner's window is a square gold frame with no soft glow")
+				local notches = {}
+				for _, name in ipairs({ "NotchTop", "NotchBottom" }) do
+					local n = pointer and pointer:FindFirstChild(name)
+					local round = false
+					for _, d in ipairs(n and n:GetDescendants() or {}) do
+						round = round or d:IsA("UICorner") or d:IsA("UIStroke")
+					end
+					if not (n and n.Rotation == 0 and not round and #n:GetChildren() >= 2) then
+						notches[#notches + 1] = name .. (n and fmt(" rotation %s", tostring(n.Rotation)) or " missing")
+					end
+				end
+				T.check(#notches == 0, tag .. ": the window's notches are stepped pixel pointers (no turn, no corner, no stroke)", table.concat(notches, "; "))
+				local stripGloss = U92b.roundOrGloss(content and content:FindFirstChild("Strips"))
+				T.check(#stripGloss == 0, tag .. ": nothing round or glossy in the strip (the eggs are art)", table.concat(stripGloss, "; ", 1, math.min(#stripGloss, 6)))
+				-- (look review) the rail's ends: a flat navy-lip line each over the cards, the rail's full height (no airbrushed
+				-- fade); the rail and its wood frame on whole px
+				local ends = {}
+				for _, name in ipairs({ "EndL", "EndR" }) do
+					local e = track and track:FindFirstChild(name)
+					if not (e and U8.shown(e) and sameColor(e.BackgroundColor3, Sign.NavyLip) and e.BackgroundTransparency == 0 and e:FindFirstChildOfClass("UIGradient") == nil
+						and math.abs(e.AbsoluteSize.Y - track.AbsoluteSize.Y) < 0.5 and e.AbsoluteSize.X >= 1 and e.AbsoluteSize.X <= 3) then
+						ends[#ends + 1] = name .. (e and fmt(" %s %.1fx%.1f", hex(e.BackgroundColor3), e.AbsoluteSize.X, e.AbsoluteSize.Y) or " missing")
+					end
+				end
+				T.check(#ends == 0 and track ~= nil and track:FindFirstChild("FadeL") == nil and track:FindFirstChild("FadeR") == nil,
+					tag .. ": the rail's ends are flat navy-lip lines over the cards (no airbrushed fade)", table.concat(ends, "; "))
+				local offRail = U92b.offGrid({ { "Track", track }, { "Outer", outer } })
+				T.check(#offRail == 0, tag .. ": the rail and its wood frame sit on whole px", table.concat(offRail, "; "))
+				-- (look review) the land at rest, on the frame the rise starts (the strip lands at Intro 0.35 + Strip 3.0 s, its
+				-- hop and spring done by Land's end): the landed card the selected face in the ink edge (the Pets grid's pick),
+				-- never scaled, its edge inside the window with navy round it and inside the rail (nothing clips it); the card,
+				-- the window and the notch rows on whole px against the track (the strips start sliding away that frame); the
+				-- notch's unit the kit's pixel (3 px on PC, 2 on a phone)
+				Mock.AdvanceUntil(function()
+					local SS = ES._S
+					return SS.Roll ~= nil and SS.Roll.HeroBuilt == true
+				end, 6, 1 / 120)
+				Mock.Advance(0.05, 1 / 120) -- (the window's bounce, started on the land's frame, ends a few frames after Land)
+				local landed = nil
+				for _, c in ipairs(track and track:GetChildren() or {}) do
+					if c.Name:match("^Cell%d+$") and c:GetAttribute("Index") == 34 and c.Visible then
+						landed = c
+					end
+				end
+				T.check(landed ~= nil and sameColor(landed.BackgroundColor3, Sign.Selected), tag .. ": the landed card wears the selected face", landed and hex(landed.BackgroundColor3) or "no landed card")
+				if landed then
+					local edge = landed:FindFirstChild("SignEdge")
+					local scaled = nil
+					for _, c in ipairs(landed:GetChildren()) do
+						if c:IsA("UIScale") and math.abs(c.Scale - 1) > 1e-6 then
+							scaled = c.Name .. " " .. tostring(c.Scale)
+						end
+					end
+					T.check(edge ~= nil and sameColor(edge.Color, Sign.Text) and scaled == nil, tag .. ": the landed card's edge is the ink (the kit's selected mark) and it is never scaled",
+						fmt("edge %s, %s", edge and hex(edge.Color) or "-", scaled or "no scale"))
+					local winF = pointer and pointer:FindFirstChild("Window")
+					local cb, wb, tb = U94.strokeBox(landed), winF and U8.rect(winF), U8.rect(track)
+					local navy = wb and math.min(cb.X - wb.X, wb.R - cb.R, cb.Y - wb.Y, wb.B - cb.B) or -1
+					local inRail = math.min(cb.Y - tb.Y, tb.B - cb.B)
+					T.check(navy >= 2 and inRail >= 0, tag .. ": the landed card's edge lies inside the window with navy round it, and inside the rail (no clip)",
+						fmt("navy %.1f px, rail %.1f px", navy, inRail))
+					local list = { { "landed card", landed }, { "window", pointer } }
+					for _, name in ipairs({ "NotchTop", "NotchBottom" }) do
+						local n = pointer and pointer:FindFirstChild(name)
+						list[#list + 1] = { name, n }
+						for _, row in ipairs({ "Row2", "Row3" }) do
+							list[#list + 1] = { name .. "." .. row, n and n:FindFirstChild(row) }
+						end
+					end
+					local off = U92b.offGrid(list, track)
+					T.check(#off == 0, tag .. ": the landed card, the window and every notch row sit on whole px", table.concat(off, "; ", 1, math.min(#off, 6)))
+					local nt = pointer and pointer:FindFirstChild("NotchTop")
+					local unit = s[3] and 2 or 3
+					T.check(nt ~= nil and math.abs(nt.AbsoluteSize.Y - unit) < 0.01 and math.abs(nt.AbsoluteSize.X - 6 * unit) < 0.01,
+						tag .. ": the notch's pixel unit is the kit's (" .. unit .. " px: rows 6 / 4 / 2 units)", nt and fmt("%.2f x %.2f", nt.AbsoluteSize.X, nt.AbsoluteSize.Y) or "no notch")
+				end
+				U92b.close()
+				-- the x3 strip (PC: a phone's lite cards carry no word): each card's rarity word in capitals, as on the x1 plate;
+				-- (look review) on the x1's plate too: one card family (the plate its word + 12 px tall in the rarity's readable
+				-- colour, the word in the ink that reads on it)
+				if not s[3] then
+					local ES3 = U92b.show("x3")
+					LKC.advance(1.6)
+					local c3 = U92b.content()
+					local words, low, loose = 0, {}, {}
+					for j = 1, 3 do
+						local st3 = c3 and c3:FindFirstChild("Strips") and c3.Strips:FindFirstChild("Strip" .. j)
+						local tr3 = st3 and st3:FindFirstChild("Track")
+						for _, c in ipairs(tr3 and tr3:GetChildren() or {}) do
+							local w = c.Name:match("^Cell%d+$") and U8.shown(c) and c:FindFirstChild("Word", true)
+							if w and w.Text ~= "" then
+								words = words + 1
+								if w.Text ~= w.Text:upper() then
+									low[#low + 1] = w.Text
+								end
+								local plate = w.Parent
+								local rarity = w.Text:sub(1, 1) .. w.Text:sub(2):lower()
+								local face, ink = Theme.ReadableFace(HL.RarityColor(rarity), 4.5)
+								if not (plate and plate.Name == "Plate" and plate.Parent == c and math.abs(plate.AbsoluteSize.Y - (w.TextSize + 12) * U8.scaleOf(plate)) < 0.6
+									and sameColor(plate.BackgroundColor3, face) and sameColor(w.TextColor3, ink)) then
+									loose[#loose + 1] = fmt("%s.%s %q on %s", st3.Name, c.Name, w.Text, plate and plate.Name or "?")
+								end
+							end
+						end
+					end
+					T.check(ES3 ~= nil and words >= 4 and #low == 0, tag .. ": x3: every card's rarity word in capitals (as on the x1 plate)",
+						fmt("%d words; %s", words, table.concat(low, ", ", 1, math.min(#low, 4))))
+					T.check(#loose == 0, tag .. ": x3: every card's word sits on its plate (word + 12 px, the rarity's readable colour): the x1 card's family",
+						table.concat(loose, "; ", 1, math.min(#loose, 4)))
+					U92b.close()
+				end
+				-- the reveal
+				ES = U92b.reveal("x1")
+				content = U92b.content()
+				local bar = content and content:FindFirstChild("BottomBar")
+				local again, done = bar and bar:FindFirstChild("SpinAgain"), bar and bar:FindFirstChild("Done")
+				if not T.check(again ~= nil and done ~= nil and U8.shown(again) and U8.shown(done), tag .. ": Spin again and Done show on the reveal") then
+					return
+				end
+				local blocks = {}
+				-- (look review) Spin again is the Shop's Spin plank: stone (gold means selected), Done the one green action
+				for _, b in ipairs({ { again, Sign.Tile, "Spin again" }, { done, Sign.Grass, "Done" } }) do
+					local p = HL.PillParts(b[1])
+					local body = p.Body
+					local edge = body and body:FindFirstChild("SignEdge")
+					local lip = body and body:FindFirstChild("Lip")
+					if not (body and sameColor(body.BackgroundColor3, b[2]) and body.BackgroundTransparency == 0 and edge and sameColor(edge.Color, Sign.Wood) and lip and U8.shown(lip)
+						and p.Shadow == nil and p.Shine == nil and p.Label and p.Label.Text == b[3]) then
+						blocks[#blocks + 1] = fmt("%s: %s %q", b[1].Name, body and hex(body.BackgroundColor3) or "no body", p.Label and p.Label.Text or "?")
+					end
+				end
+				T.check(#blocks == 0, tag .. ": Spin again the stone plank, Done the green one, each in its wood edge on a darker lip, no shadow or shine, sentence case",
+					table.concat(blocks, "; "))
+				local greens = U92b.greens(bar)
+				T.check(#greens == 1 and greens[1] == "Done", tag .. ": Done is the stage's one green action", table.concat(greens, ", "))
+				local ap = HL.PillParts(again)
+				local tagFace, coin = ap.Chip, false
+				for _, d in ipairs(ap.Coin and ap.Coin:GetDescendants() or {}) do
+					coin = coin or (d:GetAttribute("PixelIcon") == "token" and U8.shown(d))
+				end
+				-- the coin's drawn cells (the PixelIcon's frames) in the tag's brown ink, never white on the cream tag
+				local function coinInk()
+					local inks = {}
+					for _, d in ipairs(ap.Coin and ap.Coin:GetDescendants() or {}) do
+						if d:IsA("Frame") and d.BackgroundTransparency < 0.5 then
+							inks[hex(d.BackgroundColor3)] = true
+						end
+					end
+					local out = {}
+					for k in pairs(inks) do
+						out[#out + 1] = k
+					end
+					table.sort(out)
+					return out
+				end
+				-- (look review) the Shop's Spin row: the coin in its deep gold (Sign.GoldLip), the price in the Button role in the
+				-- plank's brown, inline after the label (no tag box), the coin's cells on whole px
+				local ink = coinInk()
+				T.check(#ink == 1 and ink[1] == hex(Sign.GoldLip), tag .. ": the token coin is drawn in the Shop's deep gold (Sign.GoldLip)", table.concat(ink, ", "))
+				local lr, cr = ap.Label and U8.rect(ap.Label), ap.Coin and U8.rect(ap.Coin)
+				local pr = ap.Price and U8.rect(ap.Price)
+				local br = ap.Body and U8.rect(ap.Body)
+				local inline = lr and cr and pr and br and cr.X >= lr.R - 1 and pr.X >= cr.R and cr.Y >= br.Y and cr.B <= br.B
+				T.check(tagFace ~= nil and U8.shown(tagFace) and tagFace.BackgroundTransparency == 1 and tagFace:FindFirstChild("SignEdge") == nil and tagFace:FindFirstChild("Lip") == nil and coin
+					and ap.Price and ap.Price.Text == "50" and sameColor(ap.Price.TextColor3, Sign.Text) and ap.Price:GetAttribute("FontRole") == "Button"
+					and ap.Price.TextSize == ap.Label.TextSize and inline,
+					tag .. ": Spin again's price sits inline like the Shop's Spin: the token coin + 50 in the Button role at the label's size, brown, no tag box",
+					fmt("tag %s, price %q role %s, inline %s", tagFace and tostring(tagFace.BackgroundTransparency) or "-", ap.Price and ap.Price.Text or "?",
+						ap.Price and tostring(ap.Price:GetAttribute("FontRole")) or "?", tostring(inline)))
+				local coinOff = U94.halfPixels(ap.Coin)
+				T.check(#coinOff == 0, tag .. ": the token coin's cells sit on whole px", table.concat(coinOff, "; ", 1, math.min(#coinOff, 4)))
+				-- (look review) the Fast hatch switch is the kit's one switch (the Shop's part: CloudUI.SignSwitch): the sunk
+				-- well slot in its well edge, the stone knob in its wood edge; on, the slot gold in its gold lip (never green
+				-- beside Done); the slot and the knob on whole px
+				local SL = CloudUI.SwitchLook or {}
+				local fastChip = bar:FindFirstChild("FastHatch")
+				local sw = fastChip and fastChip:FindFirstChild("Switch", true)
+				local knob = sw and sw:FindFirstChild("Knob")
+				local function swState()
+					local se, ke = sw and sw:FindFirstChild("SignEdge"), knob and knob:FindFirstChild("SignEdge")
+					return { face = sw and sw.BackgroundColor3, edge = se and se.Color, knob = knob and knob.BackgroundColor3, kedge = ke and ke.Color, x = knob and knob.AbsolutePosition.X or 0 }
+				end
+				local offS = swState()
+				HL.SetFast(fastChip, true)
+				local onS = swState()
+				HL.SetFast(fastChip, false)
+				T.check(sw ~= nil and knob ~= nil and sameColor(offS.face, SL.Slot) and sameColor(offS.edge, SL.SlotEdge) and sameColor(offS.knob, SL.Knob) and sameColor(offS.kedge, SL.KnobEdge)
+					and sameColor(onS.face, SL.On) and sameColor(onS.edge, SL.OnEdge) and onS.x > offS.x + 2 and sameColor(SL.On, Sign.Gold) and sameColor(SL.Slot, Sign.Well),
+					tag .. ": Fast hatch's switch is the kit's (the Shop's): a well slot, a stone knob in its wood edge, gold while on",
+					fmt("off %s/%s knob %s/%s; on %s/%s", hex(offS.face), hex(offS.edge), hex(offS.knob), hex(offS.kedge), hex(onS.face), hex(onS.edge)))
+				local offSw = U92b.offGrid({ { "Switch", sw }, { "Knob", knob } })
+				T.check(#offSw == 0, tag .. ": the switch's slot and knob sit on whole px", table.concat(offSw, "; "))
+				for _, name in ipairs({ "Skip", "FastHatch" }) do
+					local chip = bar:FindFirstChild(name)
+					local pill = chip and chip:FindFirstChild("Pill")
+					T.check(pill ~= nil and U8.shown(pill) and sameColor(pill.BackgroundColor3, Sign.Navy) and pill:FindFirstChild("SignEdge") ~= nil and pill:FindFirstChildOfClass("UICorner") == nil,
+						tag .. ": the " .. name .. " chip is a navy block in its edge, square", pill and hex(pill.BackgroundColor3) or "no pill")
+				end
+				local col = content:FindFirstChild("Reveal") and content.Reveal:FindFirstChild("Col1")
+				local new, ribbon = col and col:FindFirstChild("New"), col and col:FindFirstChild("EvolvedRibbon")
+				for _, t in ipairs({ { new, Sign.Gold, "NEW!" }, { ribbon, Sign.Navy, "EVOLVED" } }) do
+					local o = t[1]
+					local text = o and o:FindFirstChild("Text")
+					T.check(o ~= nil and U8.shown(o) and o.Rotation == 0 and sameColor(o.BackgroundColor3, t[2]) and o:FindFirstChild("SignEdge") ~= nil and o:FindFirstChild("Lip") ~= nil
+						and o:FindFirstChildOfClass("UICorner") == nil and o:FindFirstChildOfClass("UIGradient") == nil and text ~= nil and text.Text == t[3],
+						tag .. ": " .. t[3] .. " is a flat kit B tag (no tilt, corner or gloss)", o and fmt("%s rot %s %q", hex(o.BackgroundColor3), tostring(o.Rotation), text and text.Text or "?") or "missing")
+				end
+				-- (look review: whole px) the tags' mitred edges, the name row and the note on whole px; the planks too
+				local offRev = U92b.offGrid({ { "New", new }, { "EvolvedRibbon", ribbon }, { "Name", col and col:FindFirstChild("Name") }, { "Note", col and col:FindFirstChild("Note") },
+					{ "SpinAgain", again }, { "Done", done }, { "SpinAgain.Body", ap.Body } })
+				T.check(#offRev == 0, tag .. ": NEW!, EVOLVED, the name, the note and the planks sit on whole px", table.concat(offRev, "; ", 1, math.min(#offRev, 6)))
+				local banner = col and col:FindFirstChild("Banner")
+				local glow, letters, flat = 0, 0, 0
+				for _, d in ipairs(banner and banner:GetDescendants() or {}) do
+					if d.Name:match("^Glow%d*$") then
+						glow = glow + 1
+					end
+					if d:IsA("TextLabel") and d.Name:match("^L%d+$") then
+						letters = letters + 1
+						local strokes = 0
+						for _, c in ipairs(d:GetChildren()) do
+							if c:IsA("UIStroke") then
+								strokes = strokes + 1
+							end
+						end
+						if U92b.hardBands(d:FindFirstChild("Bands")) and strokes == 1 then
+							flat = flat + 1
+						end
+					end
+				end
+				T.check(letters >= 4 and flat == letters and glow == 0, tag .. ": the rarity word's letters wear the title look's hard bands with one outline, no glow",
+					fmt("%d letters, %d banded, %d glow parts", letters, flat, glow))
+				local floating = U94.floatingLips(bar)
+				for _, f in ipairs(U94.floatingLips(col)) do
+					floating[#floating + 1] = f
+				end
+				T.check(#floating == 0, tag .. ": every block's lip is flush (the planks, the chips, the tags)", table.concat(floating, "; ", 1, math.min(#floating, 6)))
+				local round = U92b.roundOrGloss(bar)
+				for _, r in ipairs(U92b.roundOrGloss(col)) do
+					round[#round + 1] = r
+				end
+				T.check(#round == 0, tag .. ": nothing round or glossy in the bar and the reveal's text (the pet's view and the art aside)", table.concat(round, "; ", 1, math.min(#round, 8)))
+				local bad = U94.contrast("NimbusHatch")
+				T.check(#bad == 0, fmt("%s: every text of the hatch stage reads on its fill (%d not)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				-- disabled: the sunk Off well, every text still reads; then the press: the face sinks onto its lip and back
+				CloudUI.SetDisabled(again, true)
+				LKC.advance(0.1)
+				local body = ap.Body
+				T.check(body ~= nil and sameColor(body.BackgroundColor3, Sign.Well) and ap.Label and sameColor(ap.Label.TextColor3, Sign.TextMuted),
+					tag .. ": a disabled Spin again is the sunk Off well with muted words", body and hex(body.BackgroundColor3) or "no body")
+				local offInk = coinInk()
+				T.check(#offInk == 1 and offInk[1] == hex(Sign.TextMuted), tag .. ": ...its coin muted with the price", table.concat(offInk, ", "))
+				local offBad = U94.contrast("NimbusHatch")
+				T.check(#offBad == 0, fmt("%s: disabled, every text still reads on its fill (%d not)", tag, #offBad), table.concat(offBad, "; ", 1, math.min(#offBad, 8)))
+				CloudUI.SetDisabled(again, false)
+				LKC.advance(0.1)
+				local lip = body and body:FindFirstChild("Lip")
+				local k = U8.scaleOf(body)
+				local rest = { lip and lip.AbsoluteSize.Y or 0, ap.Label and ap.Label.AbsolutePosition.Y or 0 }
+				HL.PillState(again, "Press")
+				local pressed = { lip and lip.AbsoluteSize.Y or 0, ap.Label and ap.Label.AbsolutePosition.Y or 0 }
+				HL.PillState(again, "Rest")
+				local back = { lip and lip.AbsoluteSize.Y or 0, ap.Label and ap.Label.AbsolutePosition.Y or 0 }
+				T.check(math.abs(pressed[1] - 2 * k) <= 0.6 and pressed[2] > rest[2] + 1 and math.abs(back[1] - rest[1]) <= 0.01 and math.abs(back[2] - rest[2]) <= 0.01,
+					tag .. ": a press sinks Spin again's face onto its lip (the lip 2 px, the words lower) and it comes back",
+					fmt("lip %.1f -> %.1f -> %.1f, label y %.1f -> %.1f -> %.1f", rest[1], pressed[1], back[1], rest[2], pressed[2], back[2]))
+				U92b.close()
+				-- x3: three banded words, no glow, Done still the one green action
+				ES = U92b.reveal("x3")
+				content = U92b.content()
+				local glow3, cols = 0, 0
+				for j = 1, 3 do
+					local c = content and content.Reveal:FindFirstChild("Col" .. j)
+					if c and U8.shown(c) then
+						cols = cols + 1
+						for _, d in ipairs(c:GetDescendants()) do
+							if d.Name:match("^Glow%d*$") and d:IsDescendantOf(c:FindFirstChild("Banner") or c) then
+								glow3 = glow3 + 1
+							end
+						end
+					end
+				end
+				T.check(cols == 3 and glow3 == 0, tag .. ": x3: three columns, no glow round their words", fmt("%d cols, %d glow parts", cols, glow3))
+				local g3 = U92b.greens(content and content:FindFirstChild("BottomBar"))
+				T.check(#g3 == 1 and g3[1] == "Done", tag .. ": x3: Done is the one green action", table.concat(g3, ", "))
+				local r3 = U92b.roundOrGloss(content and content:FindFirstChild("Reveal"))
+				T.check(#r3 == 0, tag .. ": x3: nothing round or glossy in the reveal outside the art", table.concat(r3, "; ", 1, math.min(#r3, 8)))
+				local bad3 = U94.contrast("NimbusHatch")
+				T.check(#bad3 == 0, fmt("%s: x3: every text reads on its fill (%d not)", tag, #bad3), table.concat(bad3, "; ", 1, math.min(#bad3, 8)))
+				U92b.close()
+			end)
+		end
+		LKC.flushErrors("hatch_signboard_skin")
+	end)
+
+	-- the hatch stage on a touch phone (844x390 and 390x844; x1 and x3 reveals): Roblox's touch controls go while the stage
+	-- shows and come back as they were after Done; the bar's items inside the screen, apart (their wood edges included),
+	-- each tap box >= 44 px; each plank's words and price tag inside its block; NEW! and EVOLVED's words inside their tags
+	-- and the two tags apart; every text of the bar and the reveal >= 15 px. (U9-2b review) the stage lays out with the
+	-- real font widths (RedoGeom.realWidth) and a tag's words are measured against its block (RedoGeom.fits: the words'
+	-- label fills the tag, so a box-in-box check could not fail); an x3 roll with a NEW stage-2 pet (NEW! and EVOLVED II in
+	-- one column) at 390x844, 844x390, 568x320 and 1280x720
+	S.hatch_fits_phone = guarded("hatch_fits_phone", function()
+		local GuiService = game:GetService("GuiService")
+		local function inside(r, o)
+			return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+		end
+		local ESM = U7.client("UI/EggStage")
+		local savedMeasure = ESM and ESM.Metrics.MEASURE
+		if not T.check(ESM ~= nil and RedoGeom ~= nil, "hatch phone: EggStage and RedoGeom load") then
+			return
+		end
+		ESM.Metrics.MEASURE = function(text, size, font)
+			return RedoGeom.realWidth(text, size, font)
+		end
+		-- a tag's words against its block with the real widths: { "Col3.EvolvedRibbon words: ..." } for each that does not fit
+		local function tagWords(col, out)
+			for _, t in ipairs({ col and col:FindFirstChild("New"), col and col:FindFirstChild("EvolvedRibbon") }) do
+				local text = t and t:FindFirstChild("Text")
+				if text and U8.shown(t) then
+					local okFit, dFit = RedoGeom.fits(text)
+					if not okFit then
+						out[#out + 1] = col.Name .. "." .. t.Name .. " words: " .. tostring(dFit)
+					end
+				end
+			end
+		end
+		for _, s in ipairs({ { 390, 844, true }, { 844, 390, true }, { 568, 320, true }, { 1280, 720, false } }) do
+			U8.at(s[1], s[2], s[3], "hatch evolved II x3", function(tag)
+				local ES = U92b.reveal("x3evo2")
+				local content = U92b.content()
+				local reveal = content and content:FindFirstChild("Reveal")
+				local col = reveal and reveal:FindFirstChild("Col3")
+				local new, rib = col and col:FindFirstChild("New"), col and col:FindFirstChild("EvolvedRibbon")
+				local words = rib and rib:FindFirstChild("Text")
+				if not T.check(ES ~= nil and new ~= nil and rib ~= nil and U8.shown(new) and U8.shown(rib) and words ~= nil and words.Text:find("II", 1, true) ~= nil,
+					tag .. ": (setup) the new stage-2 pull shows NEW! and its stage-II tag", words and words.Text or "no tag") then
+					return
+				end
+				local cramped = {}
+				tagWords(col, cramped)
+				if U8.overlap(U94.strokeBox(new), U94.strokeBox(rib)) then
+					cramped[#cramped + 1] = "NEW! meets " .. words.Text
+				end
+				local cr, rr = U8.rect(col), U94.strokeBox(rib)
+				if not inside(rr, cr) then
+					cramped[#cramped + 1] = fmt("%s %s leaves its column %s", words.Text, U8.show(rr), U8.show(cr))
+				end
+				T.check(#cramped == 0, tag .. ": NEW! and the stage-II tag hold their words (real widths), apart and inside the column", table.concat(cramped, "; "))
+				ES.Done()
+				LKC.advance(0.6)
+			end)
+		end
+		for _, s in ipairs({ { 844, 390 }, { 390, 844 } }) do
+			for _, kind in ipairs({ "x1", "x3" }) do
+				local before = GuiService.TouchControlsEnabled
+				U8.at(s[1], s[2], true, "hatch phone " .. kind, function(tag)
+					local ES = U92b.reveal(kind)
+					local content, gui = U92b.content()
+					local bar = content and content:FindFirstChild("BottomBar")
+					if not T.check(ES ~= nil and bar ~= nil and U8.shown(bar), tag .. ": the reveal's bar shows") then
+						return
+					end
+					T.check(GuiService.TouchControlsEnabled == false, tag .. ": Roblox's touch controls go while the stage shows")
+					local area = gui.AbsoluteSize
+					local screen = { X = 0, Y = 0, R = area.X, B = area.Y }
+					local boxes, out, small = {}, {}, {}
+					for _, b in ipairs(bar:GetChildren()) do
+						if b:IsA("GuiButton") and U8.shown(b) then
+							local r = U8.rect(b)
+							local block = b:FindFirstChild("Body", true) or b:FindFirstChild("Pill")
+							local box = block and U94.strokeBox(block) or r
+							box.Name = b.Name
+							boxes[#boxes + 1] = box
+							if not inside(box, screen) then
+								out[#out + 1] = b.Name .. " " .. U8.show(box)
+							end
+							if r.B - r.Y < 44 - 0.5 then
+								small[#small + 1] = fmt("%s %.1f px tall", b.Name, r.B - r.Y)
+							end
+						end
+					end
+					T.check(#boxes >= 3 and #out == 0, tag .. ": the bar's items lie inside the screen (their wood edges included)", table.concat(out, "; "))
+					T.check(#small == 0, tag .. ": every tap box of the bar is >= 44 px tall", table.concat(small, "; "))
+					local meets = {}
+					for i = 1, #boxes do
+						for j = i + 1, #boxes do
+							if U94.apart(boxes[i], boxes[j]) < 2 - 0.5 then
+								meets[#meets + 1] = boxes[i].Name .. " / " .. boxes[j].Name
+							end
+						end
+					end
+					T.check(#meets == 0, tag .. ": the bar's blocks keep >= 2 px apart", table.concat(meets, "; "))
+					local HL = U7.client("UI/HatchLook")
+					local cramped = {}
+					for _, name in ipairs({ "SpinAgain", "Done" }) do
+						local b = bar:FindFirstChild(name)
+						local p = b and HL.PillParts(b)
+						if p and p.Body and U8.shown(b) then
+							local br = U8.rect(p.Body)
+							for _, part in ipairs({ p.Label, p.Chip }) do
+								if part and U8.shown(part) and not inside(U8.rect(part), br) then
+									cramped[#cramped + 1] = name .. "." .. part.Name
+								end
+							end
+							if p.Chip and U8.shown(p.Chip) and p.Label and U8.overlap(U8.rect(p.Chip), { X = U8.rect(p.Label).X, Y = U8.rect(p.Label).Y, R = U8.rect(p.Label).X + p.Label.TextBounds.X, B = U8.rect(p.Label).B }) then
+								cramped[#cramped + 1] = name .. ": the words run under the price tag"
+							end
+						end
+					end
+					local reveal = content:FindFirstChild("Reveal")
+					for j = 1, 3 do
+						local col = reveal and reveal:FindFirstChild("Col" .. j)
+						local new, rib = col and col:FindFirstChild("New"), col and col:FindFirstChild("EvolvedRibbon")
+						tagWords(col, cramped)
+						if new and rib and U8.shown(new) and U8.shown(rib) and U8.overlap(U94.strokeBox(new), U94.strokeBox(rib)) then
+							cramped[#cramped + 1] = col.Name .. ": NEW! meets EVOLVED"
+						end
+					end
+					T.check(#cramped == 0, tag .. ": every plank's words and price tag inside its block, the tags' words inside them, the tags apart", table.concat(cramped, "; "))
+					local tiny = {}
+					for _, root in ipairs({ bar, reveal }) do
+						for _, d in ipairs(root and root:GetDescendants() or {}) do
+							if (d:IsA("TextLabel") or d:IsA("TextButton")) and U8.shown(d) and d.Text ~= "" and d.TextSize * U8.scaleOf(d) < 15 - 0.01 then
+								tiny[#tiny + 1] = fmt("%s %q %.1f", d.Name, d.Text, d.TextSize * U8.scaleOf(d))
+							end
+						end
+					end
+					T.check(#tiny == 0, tag .. ": every text of the bar and the reveal is >= 15 px", table.concat(tiny, "; ", 1, math.min(#tiny, 6)))
+					ES.Done()
+					LKC.advance(0.6)
+				end)
+				T.eq(GuiService.TouchControlsEnabled, before, fmt("hatch phone %s %dx%d: the touch controls are as they were after Done", kind, s[1], s[2]))
+			end
+		end
+		ESM.Metrics.MEASURE = savedMeasure
+		LKC.flushErrors("hatch_fits_phone")
+	end)
+
+	-- (U9-2b look review 2, the owner's look bar of 2026-11-17: one pixel size, whole px, no smooth round shapes, no glow)
+	-- at 1920x1080, 1280x720, 844x390 and 390x844: the stage runs no fractional UIScale (Fit 1); the strip's nails, the
+	-- crack's slab, cloud puffs and stepped backlight, and the reveal's every kit block (a SignEdge: the planks, the chips,
+	-- the tags, the nameplate, the slab) sit on whole px with whole-px edges; the slab, the ring, the shock, the backlight,
+	-- the cracks and the leaks carry no UICorner, no UIGradient and no Rotation; the ring's motion a bob; the reveal's name
+	-- and note on their navy nameplate with no outline or stroke, its lip the rarity's colour
+	S.hatch_pixel_art = guarded("hatch_pixel_art", function()
+		local HL = U7.client("UI/HatchLook")
+		local function soft(root)
+			local out = {}
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:IsA("UICorner") or d:IsA("UIGradient") or (d:IsA("GuiObject") and d.Rotation ~= 0) then
+					out[#out + 1] = d.ClassName .. " " .. d:GetFullName():gsub("^.-%.Content%.", "")
+				end
+			end
+			if root and root:IsA("GuiObject") and root.Rotation ~= 0 then
+				out[#out + 1] = "Rotation " .. root.Name
+			end
+			return out
+		end
+		local function blocks(root, out)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:IsA("UIStroke") and d.Name == "SignEdge" and d.Parent:IsA("GuiObject") and U8.shown(d.Parent) then
+					out[#out + 1] = { d.Parent:GetFullName():gsub("^.-%.Content%.", ""), d.Parent }
+					if math.abs(d.Thickness - math.floor(d.Thickness + 0.5)) > 1e-6 then
+						out[#out + 1] = { "edge " .. d.Thickness .. " of " .. d.Parent.Name, nil }
+					end
+				end
+			end
+			return out
+		end
+		for _, s in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }) do
+			U8.at(s[1], s[2], s[3], "hatch pixel art", function(tag)
+				local ES = U92b.show("x1")
+				if not T.check(ES ~= nil, tag .. ": (setup) the x1 roll shows") then
+					return
+				end
+				local content = U92b.content()
+				local fit = content and content:FindFirstChild("Fit")
+				T.check(fit ~= nil and fit.Scale == 1, tag .. ": the stage runs no fractional UIScale (Fit 1)", fit and tostring(fit.Scale) or "no Fit")
+				-- the strip landing (before the rise slides it away): the wood frame's nails
+				LKC.advance(3.45)
+				local outer = content and content:FindFirstChild("Strip1", true) and content:FindFirstChild("Strip1", true):FindFirstChild("Outer")
+				local nails = {}
+				for i = 1, 4 do
+					nails[#nails + 1] = { "Nail" .. i, outer and outer:FindFirstChild("Nail" .. i) }
+				end
+				local bad = U92b.offGrid(nails)
+				T.check(outer ~= nil and #bad == 0, tag .. ": the rail's four nail pixels sit on whole px in its wood frame's corners", table.concat(bad, "; "))
+				-- the crack: the slab, the puffs and the backlight on whole px; nothing soft, round or turned
+				LKC.advance(1.45)
+				local hero = content and content:FindFirstChild("Hero")
+				local ped, ring, back = hero and hero:FindFirstChild("Pedestal1"), hero and hero:FindFirstChild("CloudRing1"), hero and hero:FindFirstChild("Backlight1")
+				if T.check(ES.Phase() == "Crack" and ped and ring and back, tag .. ": (setup) the crack with its slab, ring and backlight", tostring(ES.Phase())) then
+					local list = { { "Slab", ped:FindFirstChild("Slab") }, { "Foot", ped:FindFirstChild("Foot") } }
+					for _, puff in ipairs(ring:GetChildren()) do
+						for _, row in ipairs(puff:GetChildren()) do
+							if row:IsA("Frame") then
+								list[#list + 1] = { puff.Name .. "." .. row.Name, row }
+							end
+						end
+					end
+					for _, p in ipairs(back:GetChildren()) do
+						list[#list + 1] = { "Backlight." .. p.Name, p }
+					end
+					bad = U92b.offGrid(list)
+					T.check(#bad == 0 and #list >= 20, tag .. ": the slab, the cloud puffs' rows and the stepped backlight sit on whole px", fmt("%d parts; %s", #list, table.concat(bad, "; ")))
+					local egg = hero:FindFirstChild("Egg1")
+					local softs = {}
+					for _, root in ipairs({ ped, ring, back, hero:FindFirstChild("Spot") or false, egg and egg:FindFirstChild("Cracks") or false, egg and egg:FindFirstChild("Leaks") or false }) do
+						if root then
+							for _, x in ipairs(soft(root)) do
+								softs[#softs + 1] = x
+							end
+						end
+					end
+					local burst = content:FindFirstChild("Burst")
+					for _, x in ipairs(soft(burst and burst:FindFirstChild("Shock"))) do
+						softs[#softs + 1] = x
+					end
+					T.check(#softs == 0 and hero:FindFirstChild("Spot") == nil and ring:FindFirstChild("Bob") ~= nil, tag .. ": no UICorner, gradient or turn in the slab, the ring (it bobs), the backlight, the shock, the cracks or the leaks; no spot cone",
+						table.concat(softs, "; "))
+				end
+				U92b.close()
+				-- the reveal: every kit block on whole px with a whole-px edge; the nameplate
+				ES = U92b.reveal("x1")
+				content = U92b.content()
+				local reveal, bar = content and content:FindFirstChild("Reveal"), content and content:FindFirstChild("BottomBar")
+				local list = blocks(reveal, {})
+				blocks(bar, list)
+				blocks(hero and content:FindFirstChild("Hero"), list)
+				bad = U92b.offGrid(list)
+				T.check(#list >= 6 and #bad == 0, tag .. ": every kit block of the reveal (planks, chips, tags, the nameplate, the slab) on whole px with a whole-px edge", fmt("%d blocks; %s", #list, table.concat(bad, "; ")))
+				local col = reveal and reveal:FindFirstChild("Col1")
+				local plate, name, note = col and col:FindFirstChild("Plate"), col and col:FindFirstChild("Name"), col and col:FindFirstChild("Note")
+				local function mid(o)
+					return o.AbsolutePosition.Y + o.AbsoluteSize.Y / 2
+				end
+				local inside = plate and name and note and mid(name) > plate.AbsolutePosition.Y and mid(note) < plate.AbsolutePosition.Y + plate.AbsoluteSize.Y
+				T.check(plate and U8.shown(plate) and inside and name:FindFirstChildOfClass("UIStroke") == nil and name.TextStrokeTransparency >= 0.99 and note:FindFirstChildOfClass("UIStroke") == nil
+					and plate:FindFirstChild("Lip") and hex(plate.Lip.BackgroundColor3) == hex(HL.RarityColor("Epic")),
+					tag .. ": the name and the note stand on their navy nameplate (no outline, no stroke), its lip the rarity's colour", plate and "" or "no Plate")
+				U92b.close()
+			end)
+		end
+		LKC.flushErrors("hatch_pixel_art")
 	end)
 
 	return S

@@ -31,8 +31,11 @@
 --                                    Unavailable), "Full" "Potion time is full" (XpBoostEnds plus the potion past
 --                                    Config.Store.Potion.CapSeconds), "Short" (gems under the price: the price, drawn red),
 --                                    "Ready" (the price). Only "Ready" may send StoreRequest("GemBuy", "XpPotionGems").
--- The tiles are NeonKit cards painted with each pack's own colours (ctx.Palette); gems are GemIcon piles, the tokens the
--- Cloud Token glyph. Every PC text >= 18 px, every phone text >= 15 px. Plain Lua 5.1-compatible syntax only.
+-- (kit-b U9-2, finding 15) The tiles are kit B blocks (NeonKit.Card Skin "Sign"): stone faces with each pack's own
+-- colour (ctx.Palette's Top) on the lip, brown ink; the hero (the Chest) on the navy plank with its Buy the page's one
+-- green plank, every other Buy a stone plank; the % ribbons red tags, BEST VALUE a gold tag; gems are GemIcon piles,
+-- the tokens the Cloud Token coin. Every PC text >= 18 px, every phone text >= 15 px. Plain Lua 5.1-compatible syntax
+-- only.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -80,6 +83,8 @@ local K = {
 	},
 }
 local WHITE = Color3.new(1, 1, 1)
+local SIGN = Theme.Sign -- (kit-b U9-2) the Signboard palette
+local SHORT = rgb(140, 24, 48) -- a short balance: a dark red that reads 4.5:1 on stone and on the sunk well
 local PAGES = setmetatable({}, { __mode = "k" }) -- page -> its widgets and ctx
 
 ----------------------------------------------------------------------
@@ -162,7 +167,7 @@ local function drawArt(host, px, count, tokens)
 	for i, spot in ipairs(K.SPOTS[count] or K.SPOTS[1]) do
 		local s = math.floor(spot[3] * px)
 		local g = label("Token" .. i, box, "", "Display", math.max(15, math.floor(s * 0.82)), {
-			TextColor3 = cur.Color, TextTruncate = Enum.TextTruncate.None,
+			TextColor3 = SIGN.GoldLip, TextTruncate = Enum.TextTruncate.None, -- (kit-b U9-2) the deep gold reads on stone
 		})
 		PixelIcon.Host(g, cur.Icon) -- (kit-b U7a) a Cloud Token coin of the pile
 		place(g, spot[1] * px - s / 2, spot[2] * px - s / 2, s, s)
@@ -292,11 +297,13 @@ local function call(P, name, ...)
 	return nil
 end
 
+-- (kit-b U9-2) a kit B plank: stone unless asked (the hero's is the page's one green plank)
 local function newButton(P, parent, onTap, style)
 	return CloudUI.Button({
 		Name = "Buy",
 		Text = "",
-		Style = style or "Green",
+		Style = style or "Blue",
+		Skin = "Sign",
 		Size = UDim2.fromOffset(200, 60),
 		TextSize = 24,
 		Callback = function()
@@ -306,27 +313,36 @@ local function newButton(P, parent, onTap, style)
 	})
 end
 
-local function card(name, parent, color, fill)
-	local c = NeonKit.Card({ Name = name, Color = color, Fill = fill, Floor = false, Size = UDim2.fromOffset(298, 380), Parent = parent })
-	return c
+-- (kit-b U9-2) a kit B block: `face` (stone, or the hero's navy plank), the pack's own colour on the lip
+local function card(name, parent, color, face)
+	local navy = face == SIGN.Navy
+	return NeonKit.Card({ Name = name, Skin = "Sign", Face = face or SIGN.Tile, Lip = color, Edge = navy and SIGN.GoldLip or nil, Size = UDim2.fromOffset(298, 380), Parent = parent })
+end
+
+-- (kit-b U9-2) a square wood edge (mitred) on a kit B tag
+local function edge(obj, px)
+	return Util.Create("UIStroke", {
+		Name = "SignEdge", Color = SIGN.Wood, Thickness = px or 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter, Parent = obj,
+	})
 end
 
 -- a pack tile (gems or tokens): Art, Amount, Name, Ribbon (gems only), Best, Note, Buy
 local function buildTile(P, kind, i)
 	local key = (kind == "Gem" and "Gems" or "Tokens") .. i
 	local pal = call(P, "Palette", key) or { Top = K.TEAL, Bottom = Theme.Darken(K.TEAL, 0.6), Edge = Theme.Lighten(K.TEAL, 0.3) }
-	local c = card((kind == "Gem" and "GemPack_" or "TokenPack_") .. i, P.Scroll, pal.Edge, { pal.Top, pal.Bottom })
+	local c = card((kind == "Gem" and "GemPack_" or "TokenPack_") .. i, P.Scroll, pal.Top, SIGN.Tile)
 	local b = c.Body
 	local t = { Kind = kind, Index = i, Key = key, Root = c.Root, Card = c }
 	t.Art = frame("Art", b)
-	t.Amount = label("Amount", b, "", "Display", 44)
-	t.Name = label("Name", b, "", "Body", 21)
-	t.Ribbon = label("Ribbon", b, "", "Body", 20, { BackgroundTransparency = 0, BackgroundColor3 = K.RIBBON, Visible = false })
-	Theme.Corner(t.Ribbon, UDim.new(0, 8))
-	t.Best = label("Best", b, "BEST VALUE", "Body", 18, { BackgroundTransparency = 0, BackgroundColor3 = Theme.Darken(K.GOLD, 0.25), Visible = false })
-	Theme.Corner(t.Best, UDim.new(0, 8))
-	Theme.Stroke(t.Best, K.GOLD, 2, 0)
-	t.Note = label("Note", b, "", "Body", 18, { TextColor3 = K.LINE, Visible = false, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
+	t.Amount = label("Amount", b, "", "Display", 44, { TextColor3 = SIGN.Text })
+	t.Name = label("Name", b, "", "Body", 21, { TextColor3 = SIGN.Text })
+	-- (kit-b U9-2) the gain: a red tag; BEST VALUE: a gold tag (brown ink in a wood edge, square)
+	t.Ribbon = label("Ribbon", b, "", "Body", 20, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Red, TextColor3 = SIGN.Text, Visible = false })
+	edge(t.Ribbon)
+	t.Best = label("Best", b, "BEST VALUE", "Body", 18, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text, Visible = false })
+	edge(t.Best)
+	t.Note = label("Note", b, "", "Body", 18, { TextColor3 = SIGN.TextMuted, Visible = false, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
 	t.Buy = newButton(P, b, function()
 		call(P, "Buy", key)
 	end)
@@ -334,34 +350,34 @@ local function buildTile(P, kind, i)
 end
 
 local function buildHero(P)
-	local c = card("GemHero", P.Scroll, K.TEAL, { Theme.Darken(K.TEAL, 0.35), Theme.Darken(K.TEAL, 0.75) })
+	local c = card("GemHero", P.Scroll, K.TEAL, SIGN.Navy)
 	local b = c.Body
 	local h = { Root = c.Root, Card = c, Key = "Gems" .. K.HERO_INDEX }
 	h.Pile = frame("Pile", b)
-	h.Title = Theme.StyleTitle(label("Title", b, "Gems", "Title", 46, { TextXAlignment = Enum.TextXAlignment.Left }), "Section") -- a card's heading: the Shop's header title wears the ribbon
-	h.Line1 = label("Line1", b, "Spin the Secret Roulette and every machine with gems.", "Body", 24, { TextXAlignment = Enum.TextXAlignment.Left })
+	h.Title = Theme.StyleTitle(label("Title", b, "Gems", "Title", 46, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.Gold }), "Section") -- a card's heading: the Shop's header title wears the ribbon
+	h.Line1 = label("Line1", b, "Spin the Secret Roulette and every machine with gems.", "Body", 24, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = WHITE })
 	h.Line2 = label("Line2", b, "", "Heading", 24, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = K.LINE })
 	h.Note = label("Note", b, "", "Body", 18, { TextColor3 = K.LINE, Visible = false })
 	h.Buy = newButton(P, b, function()
 		call(P, "Buy", h.Key)
-	end)
+	end, "Green")
 	return h
 end
 
 local function buildPotion(P)
-	local c = card("GemPotion", P.Scroll, K.POTION, { Theme.Darken(K.POTION, 0.35), Theme.Darken(K.POTION, 0.75) })
+	local c = card("GemPotion", P.Scroll, K.POTION, SIGN.Tile)
 	local b = c.Body
 	local p = { Root = c.Root, Card = c }
-	p.Icon = label("Icon", b, "", "Display", 64, { TextTruncate = Enum.TextTruncate.None })
+	p.Icon = label("Icon", b, "", "Display", 64, { TextTruncate = Enum.TextTruncate.None, TextColor3 = SIGN.VioletLip })
 	PixelIcon.Host(p.Icon, NeonKit.IconName("Boosts")) -- (kit-b U7a) the potion, sized with the label
-	p.Title = Theme.StyleTitle(label("Title", b,"XP Potion \194\183 30 minutes", "Title", 32, { TextXAlignment = Enum.TextXAlignment.Left }), "Section") -- a card's heading
+	p.Title = Theme.StyleTitle(label("Title", b,"XP Potion \194\183 30 minutes", "Title", 32, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.Text }), "Section") -- a card's heading
 	p.Text = label("Text", b, "Your team earns double pet XP. Not random, so every account can buy it.", "Body", 22,
-		{ TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextColor3 = Theme.Colors.Muted or WHITE })
+		{ TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextColor3 = SIGN.TextMuted })
 	p.Buy = newButton(P, b, function()
 		call(P, "GemBuy")
 	end, "Blue")
 	p.Buy.TextWrapped = true
-	p.Amount = GemIcon.Amount(p.Buy, "0", { TextSize = 30 })
+	p.Amount = GemIcon.Amount(p.Buy, "0", { TextSize = 30, Color = SIGN.Text })
 	p.Amount.AnchorPoint = Vector2.new(0.5, 0.5)
 	p.Amount.Position = UDim2.fromScale(0.5, 0.5)
 	return p
@@ -379,8 +395,9 @@ function ShopGems.Build(page, ctx)
 	scroll.Size = UDim2.fromScale(1, 1)
 	scroll.Parent = page
 	P.Scroll = scroll
-	local fade = frame("Fade", page, { BackgroundTransparency = 0, BackgroundColor3 = Theme.Colors.PanelBottom or rgb(12, 15, 38), Visible = false, ZIndex = 6 })
+	local fade = frame("Fade", page, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Stone, Visible = false, ZIndex = 6 })
 	Util.Create("UIGradient", {
+		Name = "Fade", -- (kit-b U9-2) the stone body fading in at the row's edge (no gloss)
 		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.08) }),
 		Parent = fade,
 	})
@@ -390,7 +407,7 @@ function ShopGems.Build(page, ctx)
 		P.Packs[i] = buildTile(P, "Gem", i)
 	end
 	P.Potion = buildPotion(P)
-	P.TokensTitle = label("TokensTitle", scroll, "Cloud Tokens", "Heading", 26, { TextXAlignment = Enum.TextXAlignment.Left })
+	P.TokensTitle = label("TokensTitle", scroll, "Cloud Tokens", "Heading", 26, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.Text })
 	for i = 1, 3 do
 		P.Tokens[i] = buildTile(P, "Token", i)
 	end
@@ -777,7 +794,8 @@ function ShopGems.Refresh(page)
 	p.Amount.Visible = priced
 	if priced then
 		p.Buy.Text = ""
-		GemIcon.SetAmount(p.Amount, text, { Color = state == "Short" and K.RED or WHITE })
+		GemIcon.SetAmount(p.Amount, text, { Color = state == "Short" and SHORT or SIGN.Text })
+
 	else
 		p.Buy.Text = text
 	end

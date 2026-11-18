@@ -34,6 +34,20 @@
 -- the disc's centre line, K.LOOK.PET_FOOT) on a soft contact shadow; the title fades over the rise; the crack word is
 -- dressed like the reveal word (one HatchLook.Word label); the three optional images (HatchLook.IMAGES) are wired to the
 -- rays, the sparks and every glow; SPIN AGAIN / DONE arm only once their rise is in place.
+-- (kit-b U9-2b, finding 15) the chrome is the Signboard kit's, the motion unchanged: the strip a flat navy rail in its
+-- wood frame (Outer), the cards stone blocks in mitred wood edges with the rarity's plate along the bottom (the landed
+-- card the selected cream, the others the sunk well), the window a square gold frame with stepped pixel notches and no
+-- glow; the rarity and crack words the title look's hard bands with one outline (no glow); Spin again the Shop's stone
+-- Spin plank (look review: the coin and price inline), Done the stage's one green action (sentence case), the chips navy
+-- blocks, NEW! / EVOLVED flat
+-- tags. The stage's art (vignette, flash, halves, the rays, HatchFx's effects) carries attribute Art = "Hatch" (the kit B
+-- walks skip it). (U9-2b look review 2, the owner's look bar of 2026-11-17) the art is pixel art too: the plinth the kit's
+-- navy slab with the rarity on its lip (HatchLook.Plinth), the backlight a flat stepped light, the cloud ring's puffs
+-- stepped pixel clouds that bob (no turn), the shock a square, the cracks and leaks square pixels; no spot cone, no
+-- Secret aura; the pet's contact shadow two flat stepped rows; the reveal's name and note on a navy nameplate (the
+-- pitch's "labels become signs", the rarity on its lip), a nail pixel in each corner of the rail's wood frame, a plus
+-- sparkle blinking on NEW! (Rare and up). The stage runs no fractional UIScale: a PC lays out K.PC times its screen factor
+-- (H.pcTier, Fit 1), every chrome block on whole px.
 --
 --   EggStage.Init()                        connects the RouletteResult listener (once)
 --   EggStage.Show(result) -> bool          plays a RouletteResult (new shape with Pulls, or the old top-level shape); a
@@ -71,19 +85,19 @@
 -- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage > Dim (the tap-anywhere button),
 -- Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title,
 -- Strips > Strip1..3 > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero (UIScale
--- "Punch") > Spot, Rays, CloudRing1..3, Backlight1..3, Pedestal1..3 (> Top, Rim, Side, Wall, Edge, Ring, Cover, Glow1..2
--- or Glow: the plinth's ellipses, HatchLook.Plinth),
--- Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord (a HatchLook.Word label: UIGradient + UIStroke); Burst (UIScale "Punch",
--- following Hero's) > Shock, Sparks (the pool of 64);
--- Reveal > TextIn (the rise's NumberValue), Col1..3 > Banner (Word: L1..Ln + Glow1..2, attribute Text; an x3 phone
--- column: one TextLabel), Aura (Secret), Pet (> Pop, Shadow, the PetViewport), Name, New (beside the name; an x3 phone /
+-- "Punch") > Rays, CloudRing1..3 (> Puff1..8 > Row1..3, Shade; Swell, Bob), Backlight1..3 (> Glow<level><Mid|L|R>),
+-- Pedestal1..3 (> Slab, Foot: HatchLook.Plinth),
+-- Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord (a HatchLook.Word label: UIGradient "Bands" + UIStroke); Burst
+-- (UIScale "Punch", following Hero's) > Shock, Sparks (the pool of 64);
+-- Reveal > TextIn (the rise's NumberValue), Col1..3 > Banner (Word: L1..Ln, attribute Text; an x3 phone
+-- column: one TextLabel), Plate (the nameplate), Pet (> Pop, Shadow > Row1..2, the PetViewport), Name, New (> Sparkle; beside the name; an x3 phone /
 -- portrait column puts it on the pet frame's bottom-left corner), Note (a long one broken at its dots: H.fitNote),
 -- EvolvedRibbon (review round 2: in the name row after NEW! when the name still fits, else PC the model's shoulder, a
 -- phone's x3 / portrait the pet frame's top-right corner); BottomBar > Skip,
 -- FastHatch (the chips), SpinAgain, Done (the pills), PillsIn; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
 -- between another frame's, and the rays belong behind the egg, the pedestal and the pet.) Strip cells are recycled (at
 -- most 12 per strip): a cell re-skins its egg with EggArt.SetRarity when it wraps (Task 26: lean Medium eggs, Rim = false
--- and Budget = 9; Rare and up wear a rarity ring on the cell's stroke; only the landed cell's egg gets its VFX).
+-- and Budget = 9; the cell's stroke is its wood edge; only the landed cell's egg gets its VFX).
 -- Attributes for tests: Strip<j>.Landed, Egg<j>.State (Rise / Crack / Burst / Open), Burst.Sparks (the last burst's count).
 --
 -- Never breaks the player (16.4): it writes nothing to the Camera or the Humanoid and plays on through a death or a
@@ -151,11 +165,8 @@ local K = {
 	DIM = 0.45, -- the navy dim's final transparency (0.55 strong)
 	VIGNETTE = 0.25, -- the vignette edges' final transparency
 	NAVY = Color3.fromRGB(8, 12, 32),
-	INK = Color3.fromRGB(11, 16, 48),
 	GOLD = Color3.fromRGB(242, 182, 68),
 	WHITE = Color3.new(1, 1, 1),
-	TRACK = Color3.fromRGB(14, 22, 58),
-	CELL = Color3.fromRGB(44, 70, 132),
 	SECRET_TEXT = Color3.fromRGB(180, 150, 255), -- Secret's own colour is near black: the readable violet on navy
 	SECRET_ID = (Config.Gems and Config.Gems.SecretRoulette and Config.Gems.SecretRoulette.Id) or "Secret",
 	RESTRICTED_ATTR = "PaidRandomItemsRestricted",
@@ -172,7 +183,7 @@ local K = {
 	POOL = 64,
 	PUSH = 1.06, -- the push-in: the hero egg's UIScale over the shakes (it grows on its foot, so it never meets the pedestal)
 	SQUASH = 0.05, -- a shake squashes the egg this much (wider and lower, never taller)
-	SHOCK = 900 / 380, -- the shock ring's last diameter, in egg heights (900 px over the 380 px PC egg)
+	SHOCK = 1.7, -- the shock square's last size, in egg heights (U9-2b look review 2: round the egg, not a frame round the scene)
 	RAYS = 2.4, -- the rays' diameter, in egg heights (on the reveal 2.2 pet sizes)
 	RING = 1.6, -- the cloud ring's diameter, in egg heights (roll-look: its puffs on a circle round the egg, the mock's ring)
 	SPOT = 520 / 380, -- the spot cone's width, in egg heights
@@ -207,9 +218,9 @@ local K = {
 K.PC = {
 	TitleY = 34, TitleH = 60, TitleSize = 52, Side = 40,
 	Strip1 = { H = 296, CellW = 230, CellH = 250, Step = 246, Egg = 160, Word = 18 },
-	Strip3 = { H = 230, Gap = 30, CellW = 190, CellH = 210, Step = 206, Egg = 130, Word = 20 },
+	Strip3 = { H = 230, CellW = 190, CellH = 210, Step = 206, Egg = 130, Word = 20 },
 	Crack1 = { Egg = 380, Word = 80 }, Crack3 = { Egg = 220, Word = 80 }, Col3 = 520,
-	R1 = { BannerY = 20, BannerH = 104, Word = 84, BannerMin = 320, BannerPad = 80, Gap = 8, Pet = 420, PetMin = 252, Ped = 90 / 420, NameGap = 16, NameH = 60, Name = 54, NoteGap = 4, NoteH = 32, Note = 24, NewW = 120, NewH = 44, New = 26 },
+	R1 = { BannerY = 20, BannerH = 104, Word = 84, BannerMin = 320, BannerPad = 80, Gap = 8, BarGap = 32, Pet = 420, PetMin = 252, Ped = 90 / 420, NameGap = 16, NameH = 60, Name = 54, NoteGap = 4, NoteH = 32, Note = 24, NewW = 120, NewH = 44, New = 26 },
 	R3 = { BannerH = 70, Word = 56, BannerMin = 200, BannerPad = 60, Gap = 12, Pet = 300, PetMin = 180, PedW = 0.8, PedH = 0.18, NameGap = 12, NameH = 44, Name = 36, NoteGap = 4, NoteH = 52, Note = 20, NewW = 96, NewH = 36, New = 22 },
 	-- (roll-look, spec 16.15 "Sizes") the glossy pills 56 tall (44.8 real px at the PC factor's floor of 0.8, 1280x720 /
 	-- 1366x768); the chips draw 36 px pills in tap boxes 56 tall for the same reason (the readability rule's 44 real px:
@@ -217,21 +228,30 @@ K.PC = {
 	Bar = { Gap = 16, Text = 22, ChipText = 18, Skip = { 260, 200, 56 }, SkipReveal = { 260, 200, 56 }, Fast = { 200, 170, 56 }, Again = { 380, 300, 56 }, Done = { 220, 180, 56 }, Coin = 30, FastText = 18 },
 }
 K.PHONE = {
+	-- (U9-2b look review 2) R3.RowPet 150 (was 110, under a 150 px RowMax row); R1.PetPortrait: a portrait x1's pet (at most
+	-- the screen less PortraitSide), the word PortraitGap above it, the four one centred group
 	TitleY = 6, TitleH = 28, TitleSize = 28, Side = 10,
 	Strip1 = { H = 170, CellW = 130, CellH = 160, Step = 138, Egg = 104, Word = 15 },
-	Strip3 = { H = 74, Gap = 6, CellW = 76, CellH = 66, Step = 80, Egg = 48 },
+	Strip3 = { H = 74, CellW = 76, CellH = 66, Step = 80, Egg = 48 },
 	Crack1 = { Egg = 200, Word = 40 }, Crack3 = { Egg = 96, Word = 40 }, Col3 = 260,
-	R1 = { BannerY = 2, BannerH = 44, Word = 40, BannerMin = 160, BannerPad = 40, Gap = 2, Pet = 170, PetMin = 110, Lip = true, NameGap = 2, NameH = 30, Name = 26, NoteGap = 2, NoteH = 20, NoteH2 = 36, Note = 15, NewW = 70, NewH = 26, New = 15 },
-	R3 = { BannerH = 28, Word = 22, BannerMin = 120, BannerPad = 24, Gap = 2, Pet = 130, PetMin = 78, Lip = true, NameGap = 2, NameH = 22, Name = 18, NoteGap = 2, NoteH = 36, Note = 15, NewW = 56, NewH = 22, New = 15, RowPet = 110, RowMax = 150 },
+	R1 = { BannerY = 2, BannerH = 44, Word = 40, BannerMin = 160, BannerPad = 40, Gap = 2, Pet = 170, PetMin = 110, Lip = true, NameGap = 2, NameH = 30, Name = 26, NoteGap = 2, NoteH = 20, NoteH2 = 36, Note = 15, NewW = 70, NewH = 26, New = 15, PetPortrait = 300, PortraitSide = 90, PortraitGap = 12 },
+	R3 = { BannerH = 28, Word = 22, BannerMin = 120, BannerPad = 24, Gap = 2, Pet = 130, PetMin = 78, Lip = true, NameGap = 2, NameH = 22, Name = 18, NoteGap = 2, NoteH = 36, Note = 15, NewW = 56, NewH = 22, New = 15, RowPet = 150 },
 	-- (roll-look) pills 46 tall, chips 44 px boxes drawing 32 px pills; Again3 = SPIN AGAIN x3 (its longer label beside the
 	-- price chip, measured with the real fonts)
 	Bar = { Gap = 8, Text = 16, ChipText = 15, Skip = { 150, 120, 44 }, SkipReveal = { 150, 120, 44 }, Fast = { 150, 135, 44 }, Again = { 208, 180, 46 }, Again3 = { 250, 226, 46 }, Done = { 118, 100, 46 }, Coin = 20, FastText = 15 },
 	-- (roll-look, spec 16.15 "Phone x1 landscape reveal", the pitch's phoneA) side by side: the pet in the left PetCol of
 	-- the width, the right column from the top: the word row (the 44 px band, letters at Word, Min WordMin), the name row
 	-- (+ NEW!), the note (two lines), the two pills; the chips stay on the bottom row
-	R1Side = { PetCol = 0.46, Pet = 170, PetMin = 110, WordRow = 48, BannerH = 44, BannerPad = 24, Word = 44, WordMin = 40, Gap = 8, NameH = 30, Name = 26, NoteGap = 4, NoteH = 36, Note = 15, PillGap = 12, NewW = 70, NewH = 26, New = 15 },
+	R1Side = { PetCol = 0.46, Pet = 170, PetMin = 110, WordRow = 48, BannerH = 44, BannerPad = 24, Word = 44, WordMin = 40, Gap = 14, NameH = 30, Name = 26, NoteGap = 4, NoteH = 36, Note = 15, PillGap = 20, NewW = 70, NewH = 26, New = 15 },
 }
-K.LIP = { W = 0.7, H = 12, Up = 8 }
+-- (U9-2b look review 2: whole px on every PC) the stage never runs a fractional UIScale: Fit stays 1 and a PC screen
+-- other than 1080 tall lays out K.PC times its screen factor f (Theme.ScreenFactor, 0.8 .. 1.25), every px number
+-- rounded (shares under 1.5 kept): the 0.8 stage of 1280x720 drawn in device px. The kit's pixel tier (lay.Kit) is the
+-- unit round(3 x f): 2 px below f 0.8333 ("Phone": edges 2, lips 4, the notch 2, the 20 px coin), else 3 ("PC")
+K.TIERS = {}
+-- a phone's reveal lip: W x the pet wide, H px tall, its top on the pet's feet line (H.feet; U9-2b look review 2: was a
+-- fixed 8 px up from the frame's bottom, under the feet only at a 200 px pet: a 300 px portrait pet floated 10 px over it)
+K.LIP = { W = 0.7, H = 12 }
 -- the crack's shakes as { from, to (shares of Crack), degrees }: two, one on Fast hatch
 K.SHAKE = { { 0.12, 0.4, 6 }, { 0.55, 0.88, 10 } }
 K.SHAKE_FAST = { { 0.25, 0.75, 10 } }
@@ -242,16 +262,18 @@ K.EGG3D = { Turn = -28, Spin = 9, Settle = 0.3, Dip = 0.06, Turns = { "Cracks", 
 -- (roll-look, spec 16.15 "Roll look A+B") the dressed strip (client/UI/HatchLook builds the pieces): B's colour tell (Rare
 -- and up: the window turns the coming colour Before s ahead of the land, in Tween s; Fast hatch in brackets), the
 -- overshoot (Px x the strip's scale past the winner at the end of the ease, then the Back Out spring over Land), the
--- track's colours, the card and window sizes per layout (design px at the 1080p strip; x3 and a shrunk strip scale them)
+-- track's colours, the card and window sizes per layout (design px at the 1080p strip; x3 and a shrunk strip scale them).
+-- (kit-b U9-2b) the track is the kit's navy rail (Rail) in its wood frame (Outer, Rim px), square; a card's Edge is its
+-- wood edge, its Plate the rarity band along its bottom. (look review) an x3's three rails share their beams (a shelf:
+-- Rim px of wood between two rails, PC and phone alike); the strips keep Clear px of sky under the title (Top) and above
+-- the chips (Bottom), the wood frame included; Notch is the window's notch pixel unit (the kit's pixel pair,
+-- SignKit.Sizes.Pixel Glyph / 9: 3 px on PC, 2 on a phone)
 K.LOOK = {
 	TELL = { Before = 0.7, Fast = 0.25, Tween = 0.25, TweenFast = 0.1 },
 	OVERSHOOT = { Px = 18, Fast = 8 },
-	TRACK = {
-		Top = Color3.fromRGB(20, 31, 82), Bottom = Color3.fromRGB(8, 13, 40), Outer = Color3.fromRGB(3, 5, 15), OuterA = 0.15, Rim = 4,
-		Edge = Color3.fromRGB(44, 63, 136), Fade = Color3.fromRGB(14, 22, 61), FadeW = 0.12,
-	},
-	PC = { Card = { Corner = 18, Shadow = 8, Shine = 3, Plate = 30, Notch = 16, Win = 4, WinGlow = 10, Pad = 8 } },
-	PHONE = { Card = { Corner = 12, Shadow = 5, Shine = 2, Plate = 22, Notch = 10, Win = 3, WinGlow = 6, Pad = 6 } },
+	TRACK = { Rail = Theme.Sign.Navy, Outer = Theme.Sign.Wood, Rim = 4, Clear = { PC = { Top = 12, Bottom = 20 }, Phone = { Top = 8, Bottom = 12 } } },
+	PC = { Card = { Edge = 3, Plate = 30, Notch = 3, Win = 4, Pad = 8 } },
+	PHONE = { Card = { Edge = 2, Plate = 22, Notch = 2, Win = 3, Pad = 6 } },
 	-- (Task 2) Gemini's shake tweak (Rare and up, at the first shake: the plinth, the cloud ring and the rays to the rarity
 	-- colour in Tween s, Fast hatch in Fast s; the rays rest at GroupTransparency Rays); the burst's punch (Stage's UIScale
 	-- to Scale in Up s, back in Down s; squeezed into a Fast hatch's shorter burst); the plinth's pop over the rise (From ->
@@ -273,7 +295,7 @@ K.LOOK = {
 	-- plinth's centre line (the box's top); a soft contact Shadow (W x H of the frame, black at A, faded at its ends) sits
 	-- on it inside the pet frame, so it pops with the pet
 	PET_FOOT = 0.9,
-	PET_SHADOW = { W = 0.5, H = 0.07, A = 0.55 },
+	PET_SHADOW = { W = 0.5, A = 0.45 },
 	-- (review round 1) the machine's title fades out over this share of the rise (the mock's title leaves as the egg rises:
 	-- no second headline over the crack word on a landscape phone)
 	TITLE_OUT = 0.6,
@@ -282,7 +304,9 @@ K.LOOK = {
 	-- flash ends 0.1 s before its pet pops); rolls without a silhouette keep 16.4's 0.25 / 0.6
 	GOLD_OUT_SIL = 0.15,
 	CHEVRONS = "\226\128\186\226\128\186",
-	NEW = { Edge = Color3.fromRGB(107, 66, 0), Ink = Color3.fromRGB(58, 34, 0), Tilt = -6 },
+	-- (kit-b U9-2b review) the evolved tag's words per stage: the full form, then the short one (TeamFaces' "EVO II") for
+	-- a tag held to a small pet frame's corner
+	EVOLVED = { { "EVOLVED", "EVO" }, { "EVOLVED II", "EVO II" } },
 }
 EggStage.Metrics = K
 
@@ -548,6 +572,12 @@ function H.place(o, x, y, w, h)
 			o.Size = UDim2.fromOffset(math.max(0, w), math.max(0, h))
 		end
 	end
+end
+
+-- (look review: whole px) a piece of the chrome (a kit block, a tag, a text row) on whole px: its corner floored, its
+-- size rounded up (a tag never gets narrower than its words). The art and anything tweened keep H.place
+function H.placeWhole(o, x, y, w, h)
+	H.place(o, math.floor(x + 1e-6), math.floor(y + 1e-6), w and math.ceil(w - 1e-6), h and math.ceil(h - 1e-6))
 end
 
 -- (Task 26) EggArt.Resize: the size, the outline and every painted stroke (ring dots, swirls, the VFX rings) follow
@@ -883,16 +913,69 @@ function L.rollBar(rev)
 	}
 end
 
+-- the pixel kit's tier at the screen factor f: "Phone" (2 px unit) while round(3 x f) is 2, else "PC" (3 px)
+function H.kitOf(f)
+	return (3 * f < 2.5 - 1e-6) and "Phone" or "PC"
+end
+
+-- (U9-2b look review 2) K.PC at the screen factor f, every px number rounded (cached per f); the coin keeps the kit's
+-- pixel coin (9 cells of the tier's unit: 30 / 20)
+function H.pcTier(f)
+	f = math.floor(f * 1000 + 0.5) / 1000
+	if math.abs(f - 1) < 1e-3 then
+		return K.PC
+	end
+	local key = tostring(f)
+	if K.TIERS[key] then
+		return K.TIERS[key]
+	end
+	local function scaled(t)
+		local out = {}
+		for k, v in pairs(t) do
+			if type(v) == "table" then
+				out[k] = scaled(v)
+			elseif type(v) == "number" and v >= 1.5 then
+				out[k] = math.floor(v * f + 0.5)
+			else
+				out[k] = v
+			end
+		end
+		return out
+	end
+	local P = scaled(K.PC)
+	P.Bar.Coin = H.kitOf(f) == "Phone" and K.PHONE.Bar.Coin or K.PC.Bar.Coin
+	-- the bar's tap boxes even (a chip's block is centred in its box: an odd box put it on a half px), never under 44
+	for k, v in pairs(P.Bar) do
+		if type(v) == "table" and v[3] then
+			v[3] = math.max(44, 2 * math.floor(K.PC.Bar[k][3] * f / 2 + 0.5))
+		end
+	end
+	K.TIERS[key] = P
+	return P
+end
+
+-- a PC number of the layout (design px at 1080p) at this screen's factor, rounded; a phone's stays
+function H.px(lay, v)
+	if lay and lay.PC and lay.F and math.abs(lay.F - 1) > 1e-3 then
+		return math.floor(v * lay.F + 0.5)
+	end
+	return v
+end
+
 function L.compute(n, roll)
 	local w, h = H.viewport()
 	local top, bottom = H.insets()
 	local mode = EggStage.Layout()
 	local pc = mode == "PC"
-	local P = pc and K.PC or K.PHONE
-	local scale = pc and Theme.ScreenFactor(h) or 1
+	-- (U9-2b look review 2) no fractional Fit: the PC tier at this screen's factor, Fit 1 (a phone's table never scaled)
+	local f = pc and Theme.ScreenFactor(h) or 1
+	local P = pc and H.pcTier(f) or K.PHONE
+	local scale = 1
 	local cw, ch = w / scale, math.max(1, (h - top) / scale)
 	local x3 = n > 1
-	local lay = { Mode = mode, PC = pc, P = P, Scale = scale, W = cw, H = ch, Top = top, N = n, X3 = x3, Portrait = mode == "Portrait" }
+	local lay = { Mode = mode, PC = pc, P = P, Scale = scale, F = f, Kit = pc and H.kitOf(f) or "Phone", W = cw, H = ch, Top = top, N = n, X3 = x3, Portrait = mode == "Portrait" }
+	lay.Rim = H.px(lay, K.LOOK.TRACK.Rim)
+	lay.Unit = lay.Kit == "Phone" and K.LOOK.PHONE.Card.Notch or K.LOOK.PC.Card.Notch
 	local bm = (12 + bottom) / scale -- 12 screen px above the bottom inset at every scale
 	local hasAgain = roll ~= nil and roll.Roulette ~= nil
 	lay.HasAgain = hasAgain
@@ -906,16 +989,31 @@ function L.compute(n, roll)
 	lay.Title = { Y = P.TitleY, H = P.TitleH, Size = P.TitleSize }
 	local midTop, midBot = P.TitleY + P.TitleH, lay.BarRoll.Y
 	local avail = midBot - midTop
-	-- strips
+	-- strips. (look review) the wood frame (Rim) counts as the strip's: Clear.Top px of sky under the title and
+	-- Clear.Bottom above the chips; an x3's rails share their beams (Rim px of wood between two rails: one shelf, PC and
+	-- phone alike); every size whole px, the rail, the cards and the track even (the landed card and its window centre
+	-- on a whole px)
+	local rim = lay.Rim
+	local clear = K.LOOK.TRACK.Clear[pc and "PC" or "Phone"]
+	local sTop = midTop + H.px(lay, clear.Top) + rim
+	local sAvail = (midBot - H.px(lay, clear.Bottom) - rim) - sTop
 	local spec = x3 and P.Strip3 or P.Strip1
-	local total = x3 and (3 * spec.H + 2 * spec.Gap) or spec.H
-	local s = Util.Clamp(avail / total, 0.6, 1)
-	local step = spec.Step * s
-	local trackW = math.min(cw - 2 * P.Side, 10 * step)
-	local y0 = midTop + (avail - total * s) / 2
-	lay.Strip = { S = s, Step = step, CellW = spec.CellW * s, CellH = spec.CellH * s, Egg = math.floor(spec.Egg * s + 0.5), Word = spec.Word, H = spec.H * s, W = trackW, X = (cw - trackW) / 2, Y = {} }
-	for j = 1, (x3 and 3 or 1) do
-		lay.Strip.Y[j] = y0 + (j - 1) * (spec.H + (spec.Gap or 0)) * s
+	local nStrips = x3 and 3 or 1
+	local s = Util.Clamp((sAvail - (nStrips - 1) * rim) / (nStrips * spec.H), 0.6, 1)
+	local function even(v)
+		return 2 * math.floor(v / 2 + 0.5)
+	end
+	local railH = even(spec.H * s)
+	local step = math.floor(spec.Step * s + 0.5)
+	local trackW = even(math.min(cw - 2 * P.Side, 10 * step))
+	local total = nStrips * railH + (nStrips - 1) * rim
+	local y0 = math.floor(sTop + math.max(0, (sAvail - total) / 2))
+	lay.Strip = {
+		S = s, Step = step, CellW = even(spec.CellW * s), CellH = even(spec.CellH * s), Egg = math.floor(spec.Egg * s + 0.5), Word = spec.Word,
+		H = railH, W = trackW, X = math.floor((cw - trackW) / 2), Y = {},
+	}
+	for j = 1, nStrips do
+		lay.Strip.Y[j] = y0 + (j - 1) * (railH + rim)
 	end
 	-- the crack: the word, the egg, its pedestal (1.1 x / 0.24 x the egg), centred in the middle. The gap above the egg
 	-- keeps the room of its outline (a Border stroke, size / 20 outside its box) and of the push-in (Task 27: the egg grows
@@ -930,10 +1028,11 @@ function L.compute(n, roll)
 	E = math.floor(E)
 	local gap = math.max(2, math.floor(E / 20 + 0.5)) + 4 + math.ceil((K.PUSH - 1) * E)
 	local stackH = crack.Word + gap + E * 1.24
-	local cTop = midTop + (avail - stackH) / 2
+	-- (U9-2b look review 2) the egg's foot, the slab and the columns' centres on whole px
+	local cTop = math.floor(midTop + (avail - stackH) / 2)
 	lay.Crack = { E = E, WordY = cTop, WordH = crack.Word, EggY = cTop + crack.Word + gap, PedW = 1.1 * E, PedH = 0.24 * E, Cx = {} }
 	for j = 1, (x3 and 3 or 1) do
-		lay.Crack.Cx[j] = x3 and (cw / 2 + (j - 2) * colW) or cw / 2
+		lay.Crack.Cx[j] = math.floor(x3 and (cw / 2 + (j - 2) * colW) or cw / 2)
 	end
 	-- the reveal
 	if x3 then
@@ -960,7 +1059,7 @@ function L.reveal1Side(lay, P)
 	local pet = math.floor(Util.Clamp(math.min(r.Pet, leftW - 24, avail - 20), r.PetMin, r.Pet))
 	local petY = midTop + math.max(0, (avail - pet) / 2)
 	col.Pet = { X = (leftW - pet) / 2, Y = petY, S = pet }
-	col.Ped = { X = col.Pet.X + (pet - K.LIP.W * pet) / 2, Y = petY + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
+	col.Ped = { X = col.Pet.X + (pet - K.LIP.W * pet) / 2, Y = petY + H.feet(pet), W = K.LIP.W * pet, H = K.LIP.H }
 	local rx = leftW + r.Gap
 	local rw = cw - rx - 12
 	local items = {}
@@ -1001,21 +1100,33 @@ function L.reveal1(lay, P)
 	local cw = lay.W
 	local col = { X = 0, Y = 0, W = cw, H = lay.H }
 	local midTop = r.BannerY + r.BannerH + r.Gap
-	local midBot = lay.BarReveal.Y - r.Gap
+	-- (look review) PC keeps BarGap design px between the note and the planks (16 real px at 1280x720: the pet gives the
+	-- room first, down to PetMin)
+	local midBot = lay.BarReveal.Y - math.max(r.Gap, r.BarGap or 0)
 	local noteH = (lay.Portrait and r.NoteH2) or r.NoteH
 	local fixed = r.NameGap + r.NameH + r.NoteGap + noteH
 	local pedK = r.Lip and 0 or r.Ped
 	local pet = math.floor(Util.Clamp((midBot - midTop - fixed) / (1 + pedK), r.PetMin, r.Pet))
 	local stack = pet * (1 + pedK) + fixed
 	local top = midTop + math.max(0, (midBot - midTop - stack) / 2)
-	col.Banner = { Y = r.BannerY, H = r.BannerH, Word = r.Word, Min = r.BannerMin, Pad = r.BannerPad }
+	local bannerY = r.BannerY
+	if lay.Portrait and r.PetPortrait then
+		-- (U9-2b look review 2) a portrait x1: the pet min(PetPortrait, width - PortraitSide) (170 px on a 786 px stage left
+		-- 195 px gaps above and below it), the word PortraitGap above it: word, pet, name and note one centred group
+		local room = midBot - r.BannerY - r.BannerH - r.PortraitGap - fixed
+		pet = math.floor(math.max(r.PetMin, math.min(r.PetPortrait, cw - r.PortraitSide, room)))
+		local groupH = r.BannerH + r.PortraitGap + pet + fixed
+		bannerY = math.floor(r.BannerY + math.max(0, (midBot - r.BannerY - groupH) / 2))
+		top = bannerY + r.BannerH + r.PortraitGap
+	end
+	col.Banner = { Y = bannerY, H = r.BannerH, Word = r.Word, Min = r.BannerMin, Pad = r.BannerPad }
 	col.Pet = { X = (cw - pet) / 2, Y = top, S = pet }
 	col.NameY = top + pet * (1 + pedK) + r.NameGap
 	col.NameH, col.NameSize = r.NameH, r.Name
 	col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + r.NoteGap, noteH, r.Note
 	col.New = { W = r.NewW, H = r.NewH, Size = r.New }
 	if r.Lip then
-		col.Ped = { X = (cw - K.LIP.W * pet) / 2, Y = top + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
+		col.Ped = { X = (cw - K.LIP.W * pet) / 2, Y = top + H.feet(pet), W = K.LIP.W * pet, H = K.LIP.H }
 	else
 		col.Ped = { X = (cw - pet) / 2, Y = top + pet, W = pet, H = pet * r.Ped }
 		L.standOnPlinth(col)
@@ -1026,7 +1137,7 @@ end
 -- (review round 1) no bowl (the pick's Baseline: "the pet stands on a platform, and the shell flies away at the
 -- burst"): on a plinth (PC) the pet frame comes down until its feet line (K.LOOK.PET_FOOT of the frame) is the plinth's
 -- centre line, the box's top where the disc's middle is. The rows under it keep their places (the frame only reaches
--- into the plinth's box). A phone's lip already sits at the feet line (K.LIP.Up)
+-- into the plinth's box). A phone's lip is placed on the feet line (H.feet)
 function L.standOnPlinth(col)
 	col.Pet.Y = col.Pet.Y + (1 - K.LOOK.PET_FOOT) * col.Pet.S
 end
@@ -1037,8 +1148,10 @@ function L.reveal3(lay, P, colW)
 	local cw = lay.W
 	local cols = {}
 	if lay.Portrait then
+		-- (U9-2b look review 2) the three rows share the whole height above the planks (no RowMax cap: 208 px of empty road
+		-- under them at 390x844), each pet RowPet
 		local barY = lay.BarReveal.Y
-		local rowH = math.min(r.RowMax, (barY - 2 - 2 * 8 - 2) / 3)
+		local rowH = math.floor((barY - 20) / 3)
 		local rowW = cw - 24
 		for j = 1, 3 do
 			local pet = math.min(r.RowPet, rowH - 8)
@@ -1051,15 +1164,18 @@ function L.reveal3(lay, P, colW)
 			col.NameX, col.NameW = rx, rowW - rx
 			col.NameY, col.NameH, col.NameSize = ty + r.BannerH + 4, r.NameH, r.Name
 			col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + 4, r.NoteH, r.Note
-			col.New = { W = r.NewW, H = r.NewH, Size = r.New, Corner = true }
-			col.Ped = { X = col.X + (pet - K.LIP.W * pet) / 2, Y = col.Y + col.Pet.Y + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
+			-- (U9-2b look review 2) NEW! after the name while the row holds both, else on the pet frame's corner (H.applyReveal
+			-- measures); the evolved tag on the word's line
+			col.New = { W = r.NewW, H = r.NewH, Size = r.New, Corner = "Fit" }
+			col.Ped = { X = col.X + (pet - K.LIP.W * pet) / 2, Y = col.Y + col.Pet.Y + H.feet(pet), W = K.LIP.W * pet, H = K.LIP.H }
 			cols[j] = col
 		end
 		lay.Cols = cols
 		return
 	end
-	local colY = lay.PC and 20 or 2
-	local colH = lay.BarReveal.Y - (lay.PC and 8 or 2) - colY
+	local colY = lay.PC and H.px(lay, 20) or 2
+	-- (look review) PC: the x1's BarGap between the notes and the planks
+	local colH = lay.BarReveal.Y - (lay.PC and P.R1.BarGap or 2) - colY
 	for j = 1, 3 do
 		local col = { X = cw / 2 - 1.5 * colW + (j - 1) * colW, Y = colY, W = colW, H = colH }
 		local midTop = r.BannerH + r.Gap
@@ -1074,9 +1190,9 @@ function L.reveal3(lay, P, colW)
 		col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + r.NoteGap, r.NoteH, r.Note
 		-- (review round 3) on a phone NEW! leaves the 18 px name's row for the pet frame's corner: beside it the name had
 		-- column - 24 - 64 px (117 at 640x360, 172 at 844x390) and Legendary to Secret names were cut. PC keeps the pitch's row
-		col.New = { W = r.NewW, H = r.NewH, Size = r.New, Corner = not lay.PC }
+		col.New = { W = r.NewW, H = r.NewH, Size = r.New, Corner = (not lay.PC) and "Fit" or false }
 		if r.Lip then
-			col.Ped = { X = col.X + (colW - K.LIP.W * pet) / 2, Y = colY + top + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
+			col.Ped = { X = col.X + (colW - K.LIP.W * pet) / 2, Y = colY + top + H.feet(pet), W = K.LIP.W * pet, H = K.LIP.H }
 		else
 			col.Ped = { X = col.X + (colW - r.PedW * pet) / 2, Y = colY + top + pet, W = r.PedW * pet, H = r.PedH * pet }
 			L.standOnPlinth(col)
@@ -1112,6 +1228,9 @@ function B.gui()
 		H.safe("tap", H.tap)
 	end)
 	local vig = H.frame(stage, "Vignette", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
+	-- (kit-b U9-2b) attribute Art = "Hatch": the stage's art (the vignette, the flash, the spot, the backlights, the
+	-- plinths, the halves, the FX), soft on purpose; the kit B walks check only the chrome around it
+	vig:SetAttribute("Art", "Hatch")
 	for _, e in ipairs({ { "Top", 0, 0, 1, 0.14, 90 }, { "Bottom", 0, 0.86, 1, 0.14, 270 }, { "Left", 0, 0, 0.1, 1, 0 }, { "Right", 0.9, 0, 0.1, 1, 180 } }) do
 		local edge = H.frame(vig, e[1], { Position = UDim2.fromScale(e[2], e[3]), Size = UDim2.fromScale(e[4], e[5]), BackgroundColor3 = K.NAVY, BackgroundTransparency = 1, ZIndex = 2 })
 		Util.Create("UIGradient", { Rotation = e[6], Transparency = NumberSequence.new(0, 1), Parent = edge })
@@ -1119,6 +1238,7 @@ function B.gui()
 	S.Content = H.frame(stage, "Content", { ZIndex = 3 })
 	S.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = S.Content })
 	S.Flash = H.frame(stage, "Flash", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = K.WHITE, BackgroundTransparency = 1, ZIndex = 4 })
+	S.Flash:SetAttribute("Art", "Hatch")
 	S.Gui, S.Stage, S.Vignette = gui, stage, vig
 	gui.Parent = pg
 	return true
@@ -1152,7 +1272,7 @@ function B.roll(roll)
 	-- tweens play on over the reveal's start. The pool is stepped by the phase runner (one Heartbeat in all). (review round
 	-- 1) the hatch_rays / hatch_sparkle images when they have ids (HatchLook.IMAGES), else the frame fallbacks
 	local best = roll.Pulls[roll.Best].Rarity
-	roll.Shock = HatchFx.Shock(burst, best, { ZIndex = 3, Track = S.Overlay })
+	roll.Shock = HatchFx.Shock(burst, best, { ZIndex = 3, Track = S.Overlay, Unit = S.Lay.Unit })
 	roll.Rays = HatchFx.Rays(roll.UI.Hero, best, { ZIndex = 2, Track = S.Overlay, Image = HatchLook.Image(HatchLook.IMAGES.Rays) })
 	roll.Pool = HatchFx.Pool(burst, K.POOL, 4, { Image = HatchLook.Image(HatchLook.IMAGES.Sparkle) })
 	roll.Pool:Drive()
@@ -1175,26 +1295,28 @@ function B.strip(roll, j)
 	local tk = K.LOOK.TRACK
 	local geo = H.cardGeo(S.Lay)
 	st.Frame = H.frame(roll.UI.Strips, "Strip" .. j, { ZIndex = 1 })
-	-- (roll-look) the track: navy glass (a vertical gradient) in a dark rim, a thin blue edge, its ends fading out
-	st.Outer = H.frame(st.Frame, "Outer", { BackgroundColor3 = tk.Outer, BackgroundTransparency = tk.OuterA, ZIndex = 0 })
-	st.OuterCorner = H.corner(st.Outer, geo.TrackCorner + tk.Rim)
+	-- (kit-b U9-2b) the track: the kit's navy rail, flat and square, in its wood frame (Outer, Rim px round it); (look
+	-- review) its ends a flat navy-lip line each (EndL / EndR, no fade): the cards slide into a slot
+	st.Outer = H.frame(st.Frame, "Outer", { BackgroundColor3 = tk.Outer, BackgroundTransparency = 0, ZIndex = 0 })
+	-- (U9-2b look review 2) a nail pixel (one unit of Sign.WoodDark) in each corner of the wood frame; an x3's lower rails
+	-- skip their top pair (the beam above is the rail above's bottom one: one nail per crossing). H.applyStrips places them
+	for i = 1, 4 do
+		if j == 1 or i > 2 then
+			H.frame(st.Outer, "Nail" .. i, { BackgroundColor3 = Theme.Sign.WoodDark, BackgroundTransparency = 0, ZIndex = 0 })
+		end
+	end
 	st.Track = Util.Create("ScrollingFrame", {
-		Name = "Track", BorderSizePixel = 0, BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ClipsDescendants = true, Active = false,
+		Name = "Track", BorderSizePixel = 0, BackgroundColor3 = tk.Rail, BackgroundTransparency = 0, ClipsDescendants = true, Active = false,
 		ScrollingEnabled = false, ScrollBarThickness = 0, CanvasSize = UDim2.new(0, 0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = st.Frame,
 	})
-	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(tk.Top, tk.Bottom), Parent = st.Track })
-	st.TrackCorner = H.corner(st.Track, geo.TrackCorner)
-	H.stroke(st.Track, tk.Edge, 2)
-	st.FadeL, st.FadeR = HatchLook.TrackFades(st.Track, tk.Fade, geo.Corner)
+	st.EndL, st.EndR = HatchLook.TrackEnds(st.Track)
 	-- the gold winner window (its root keeps the name Pointer) and the dims beside it
 	st.Pointer = H.frame(st.Frame, "Pointer", { ZIndex = 3 })
-	st.Win = HatchLook.Window(st.Frame, st.Pointer, {
-		Phone = not S.Lay.PC, Gold = K.GOLD, Stroke = geo.Win, Glow = geo.WinGlow, Notch = geo.Notch, Corner = geo.WinCorner, Track = S.Tweens,
-		NotchEdge = roll.N == 1, -- (x3: plain notches, the budget)
-	})
+	st.Win = HatchLook.Window(st.Frame, st.Pointer, { Phone = S.Lay.Kit == "Phone", Gold = K.GOLD, Stroke = geo.Win, Notch = geo.Notch, Track = S.Tweens })
 	if roll.Hi then
 		-- (Task 27) soft speed streaks over the glass at full speed (High only; placed each frame inside the track)
 		st.Streaks = H.frame(st.Frame, "Streaks", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
+		st.Streaks:SetAttribute("Art", "Hatch") -- (kit-b U9-2b) motion streaks: the stage's art
 		st.StreakBars = {}
 		local fade = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.25), NumberSequenceKeypoint.new(1, 1) })
 		for i = 1, 4 do
@@ -1225,14 +1347,13 @@ function B.cells(roll, j)
 	local pics = HatchLook.EggPictures()
 	local side = math.floor(g.Egg / HatchLook.Metrics.EGG_PIC.Fill + 0.5)
 	for slot = 1, st.Slots do
-		local f = H.frame(st.Track, "Cell" .. slot, { Size = UDim2.fromOffset(g.CellW, g.CellH), BackgroundColor3 = K.CELL, BackgroundTransparency = 0.15, Visible = false, ZIndex = 2 })
-		H.corner(f, 12)
-		local stroke = H.stroke(f, Theme.Colors.WellEdge, 3)
-		-- (roll-look, spec 16.15) the glossy card: a navy face with the rarity tint, the rim, a shine line; x1 adds the
-		-- rarity plate holding the word and a shadow beside the cell (x3: lite, <= 16 instances a cell)
+		local f = H.frame(st.Track, "Cell" .. slot, { Size = UDim2.fromOffset(g.CellW, g.CellH), BackgroundColor3 = Theme.Sign.Tile, BackgroundTransparency = 0, Visible = false, ZIndex = 2 })
+		local stroke = H.stroke(f, Theme.Sign.Wood, geo.Edge)
+		-- (kit-b U9-2b) the card: a stone block in its mitred wood edge; its plate along the bottom in the rarity's colour
+		-- holding the word; (look review) an x3 card on PC the same card (the plate, not a 5 px lip under a loose word: one
+		-- card family), a phone's x3 lite (the rarity on its lip, no word: <= 16 instances a cell)
 		local card = HatchLook.Card(f, {
-			W = g.CellW, H = g.CellH, Corner = geo.Corner, Shadow = geo.Shadow, Shine = geo.Shine, Plate = geo.Plate, Word = g.Word,
-			Lite = roll.N > 1, Phone = not S.Lay.PC,
+			W = g.CellW, H = g.CellH, Edge = geo.Edge, Plate = geo.Plate, Word = g.Word, Lite = roll.N > 1 and not S.Lay.PC, Phone = S.Lay.Kit == "Phone",
 		})
 		-- (Task 26) a lean egg: no rim light and <= 9 instances (spec 16.15: <= 20 per x1 cell, the card included)
 		local egg = nil
@@ -1243,20 +1364,12 @@ function B.cells(roll, j)
 		local word = card.PlateText
 		local eggTop
 		if word then
-			-- the egg stands in the room above the plate, a little low (its top keeps clear of the shine line)
+			-- the egg stands in the room above the plate, a little low (its top keeps clear of the shine line); whole px
 			local plateY = card.Plate.Position.Y.Offset
-			eggTop = math.max(g.CellH * 0.06, (plateY - g.Egg) * 0.55)
-		elseif g.Word then
-			-- (an x3 card's word: the text stroke only, no outline instance: the x3 budget)
-			eggTop = g.CellH * 0.08
-			word = Theme.Label("", "Heading", { Size = g.Word, Stroke = 0.2 })
-			word.Name = "Word"
-			word.ZIndex = 3
-			word.Position = UDim2.fromOffset(0, g.CellH * 0.08 + g.Egg + 2)
-			word.Size = UDim2.fromOffset(g.CellW, g.Word + 4)
-			word.Parent = f
+			eggTop = math.floor(math.max(g.CellH * 0.06, (plateY - g.Egg) * 0.55))
 		else
-			eggTop = (g.CellH - g.Egg) / 2
+			-- (a phone's lite x3 card: no word, the rarity's colour on its lip)
+			eggTop = math.floor((g.CellH - g.Egg) / 2)
 		end
 		if egg then
 			egg.Position = UDim2.fromOffset(g.CellW / 2, eggTop)
@@ -1276,21 +1389,29 @@ end
 
 -- (roll-look) the card and window sizes of this layout: the PC / phone table at the 1080p x1 strip, scaled with the cells
 -- when they are smaller (x3, a shrunk strip); the plate never gets shorter than its word; an x3 phone's strips sit 6 px
--- apart, so their windows go without notches
+-- apart, so their windows go without notches. (kit-b U9-2b) a card's wood edge stays 2 px at the least
 function H.cardGeo(lay)
-	local base = lay.PC and K.LOOK.PC.Card or K.LOOK.PHONE.Card
+	-- (U9-2b look review 2) the plate, pad and window of a PC at its screen factor; the edge and the notch the kit tier's
+	local pcBase, kit = K.LOOK.PC.Card, lay.Kit == "Phone" and K.LOOK.PHONE.Card or K.LOOK.PC.Card
+	local base = lay.PC and {
+		Edge = kit.Edge, Notch = kit.Notch, Plate = H.px(lay, pcBase.Plate), Win = H.px(lay, pcBase.Win), Pad = H.px(lay, pcBase.Pad),
+	} or K.LOOK.PHONE.Card
 	local g = lay.Strip
 	local k = math.min(1, g.CellH / lay.P.Strip1.CellH)
 	local function px(v)
 		return math.max(1, math.floor(v * k + 0.5))
 	end
+	-- (look review) an x3 card on PC holds the x1 card's plate (its word + 12 px, the rarity's readable colour); the
+	-- notch's pixel unit stays the screen's (one pixel size per screen: never scaled)
+	local plate = math.max(px(base.Plate), (g.Word or 0) + 6)
+	if lay.X3 and lay.PC then
+		plate = (g.Word or 0) + 12
+	end
 	local geo = {
-		Corner = px(base.Corner), Shadow = px(base.Shadow), Shine = px(base.Shine), Plate = math.max(px(base.Plate), (g.Word or 0) + 6), Pad = px(base.Pad),
-		Win = math.max(2, math.floor(base.Win * math.max(k, 0.6) + 0.5)), WinGlow = math.max(3, math.floor(base.WinGlow * math.max(k, 0.6) + 0.5)),
-		Notch = (lay.X3 and not lay.PC) and 0 or px(base.Notch),
+		Edge = math.max(2, px(base.Edge)), Plate = plate, Pad = px(base.Pad),
+		Win = math.max(2, math.floor(base.Win * math.max(k, 0.6) + 0.5)),
+		Notch = (lay.X3 and not lay.PC) and 0 or base.Notch,
 	}
-	geo.WinCorner = geo.Corner + math.floor(geo.Pad / 2 + 0.5)
-	geo.TrackCorner = math.min(geo.Corner + geo.Pad, math.floor(g.H / 2))
 	return geo
 end
 
@@ -1306,7 +1427,7 @@ end
 
 function B.bar(roll)
 	local P = S.Lay.P
-	local phone = not S.Lay.PC
+	local phone = S.Lay.Kit == "Phone" -- (U9-2b look review 2) the kit's pixel tier: a 720p PC's chips are the phone's
 	local bar = H.frame(S.Content, "BottomBar", { ZIndex = 6 })
 	roll.UI.Bar = bar
 	-- (roll-look, spec 16.15) the small chips (a 44 px tap box drawing a 36 / 32 px pill) and the glossy pills (HatchLook)
@@ -1315,12 +1436,13 @@ function B.bar(roll)
 		H.safe("tap", H.tap)
 	end)
 	-- (review round 2) DONE and SPIN AGAIN read Activated themselves: a tap on them while they are not armed still counts
-	-- as a tap and restarts the wait (H.press)
-	roll.UI.Done = HatchLook.Pill(bar, { Name = "Done", Kind = "Green", Text = "DONE", TextSize = P.Bar.Text, Phone = phone, ZIndex = 6 })
+	-- as a tap and restarts the wait (H.press). (kit-b U9-2b) kit B planks in sentence case: Done the stage's one green
+	-- action; (look review) Spin again the Shop's Spin plank: stone, the coin and the price inline (gold means selected)
+	roll.UI.Done = HatchLook.Pill(bar, { Name = "Done", Kind = "Green", Text = "Done", TextSize = P.Bar.Text, Phone = phone, ZIndex = 6 })
 	roll.UI.Done.Activated:Connect(function()
 		H.safe("done", H.doneTap)
 	end)
-	local again = HatchLook.Pill(bar, { Name = "SpinAgain", Kind = "Gold", Text = "SPIN AGAIN", TextSize = P.Bar.Text, Price = true, Coin = P.Bar.Coin, Phone = phone, ZIndex = 6 })
+	local again = HatchLook.Pill(bar, { Name = "SpinAgain", Kind = "Stone", Text = "Spin again", TextSize = P.Bar.Text, Price = true, Coin = P.Bar.Coin, Phone = phone, ZIndex = 6 })
 	again.Activated:Connect(function()
 		H.safe("again", H.againTap)
 	end)
@@ -1330,7 +1452,15 @@ function B.bar(roll)
 		local gem = GemIcon.New(parts.Coin, P.Bar.Coin, { ZIndex = z })
 		gem.Position = UDim2.fromOffset(0, 0)
 	else
-		NeonKit.Icon(parts.Coin, "Tokens", P.Bar.Coin).ZIndex = z
+		-- the token coin: a PixelIcon at 0.9 x the coin (27 px on a PC, 18 on a phone: the kit's Glyph size, whole cells)
+		-- in the Shop's deep gold (the plank's paint keeps it so, muted when disabled). (look review: whole px) its host is
+		-- the coin's own box at 0, 0 (not 1.25 x the coin centred by scale: a half px), PixelIcon.Host centres it by floor
+		local icon = NeonKit.Icon(parts.Coin, "Tokens", P.Bar.Coin)
+		icon.ZIndex = z
+		icon.AnchorPoint = Vector2.new(0, 0)
+		icon.Position = UDim2.fromOffset(0, 0)
+		icon.Size = UDim2.fromOffset(P.Bar.Coin, P.Bar.Coin) -- (HatchLook.SizePill keeps it the coin's box on a resize)
+		HatchLook.PillState(again, "Rest")
 	end
 	roll.UI.Again, roll.UI.AgainLabel, roll.UI.AgainCoin, roll.UI.AgainPrice = again, parts.Label, parts.Coin, parts.Price
 	-- the pills' rise (spec 16.15 "Pills"): one NumberValue tweened 0 -> 1 drives both (H.pillsIn)
@@ -1384,24 +1514,16 @@ function B.cols(roll)
 		local word = HatchLook.Word(banner, string.upper(pull.Rarity) .. "!", pull.Rarity, g and g.Banner.Word or 22, {
 			Letters = lay.PC or roll.N == 1, ZIndex = 6, Measure = H.titleW,
 		})
-		if pull.Rarity == "Secret" then
-			-- (Task 27) Secret's violet aura: a soft ring behind the pet, inside its frame
-			local aura = H.frame(col, "Aura", { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = K.AURA, BackgroundTransparency = 0.8, ZIndex = 4 })
-			H.corner(aura, 0.5)
-			Util.Create("UIStroke", { Color = K.AURA, Thickness = 3, Transparency = 0.6, Parent = aura })
-			Util.Create("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.5, 0.9), NumberSequenceKeypoint.new(1, 0.2) }), Rotation = 90, Parent = aura })
-		end
-		-- (review round 1) no Shell: the pet stands on the plinth (or the phone's lip) on a soft contact shadow, inside its
-		-- frame under the model (it pops with the pet)
+		-- (U9-2b look review 2, the owner's look bar: no soft round shapes) no violet aura behind a Secret pet: its starry
+		-- backdrop and confetti stay. (review round 1) no Shell: the pet stands on the slab (or the phone's lip) on a flat
+		-- contact shadow inside its frame under the model (it pops with the pet): two stepped rows (Row1 the wider, on the
+		-- feet line; Row2 two units in on each side above it) in Sign.NavyLip at PET_SHADOW.A, placed in px (H.placeShadow)
 		local pet = H.frame(col, "Pet", { ZIndex = 5 })
 		local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0, Parent = pet })
-		local ps = K.LOOK.PET_SHADOW
-		local shadow = H.frame(pet, "Shadow", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, K.LOOK.PET_FOOT), Size = UDim2.fromScale(ps.W, ps.H),
-			BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = ps.A, ZIndex = 4,
-		})
-		H.corner(shadow, 0.5)
-		Util.Create("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.25), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(0.7, 0.25), NumberSequenceKeypoint.new(1, 1) }), Parent = shadow })
+		local shadow = H.frame(pet, "Shadow", { ZIndex = 4 })
+		for r = 1, 2 do
+			H.frame(shadow, "Row" .. r, { BackgroundColor3 = Theme.Sign.NavyLip, BackgroundTransparency = K.LOOK.PET_SHADOW.A, ZIndex = 4 })
+		end
 		local stage = 0
 		local okStage, st = pcall(PetBits.stage, pull.Key)
 		if okStage and type(st) == "number" then
@@ -1415,28 +1537,35 @@ function B.cols(roll)
 		if vf and not vf:IsA("ViewportFrame") then
 			vf = vf:FindFirstChildWhichIsA("ViewportFrame", true)
 		end
-		-- (roll-look, the mock's sceneA) the name white in the round display face with the ink outline under the coloured word
-		local name = H.label(col, "Name", pull.Def.Name, "Display", 18, { ZIndex = 5, TextColor3 = K.WHITE, TextTruncate = Enum.TextTruncate.AtEnd })
+		-- (U9-2b look review 2, the pitch's kit B rule: labels stop floating and become signs) the nameplate: the name and the
+		-- note on one navy sign plank (the kit's navy sign: Sign.Navy, the GoldLip edge, the rarity on its lip), the name in
+		-- the kit's gold and the note in stone, no outline or stroke on the plank (H.applyReveal sizes it round them)
+		local plate = H.frame(col, "Plate", { BackgroundTransparency = 0, ZIndex = 4 })
+		CloudUI.SignBlock(plate, "Navy", { EdgePx = 2, LipPx = lay.Kit == "Phone" and K.LOOK.PLATE.LipPhone or K.LOOK.PLATE.Lip, LipColor = HatchLook.RarityColor(pull.Rarity), Pad = false })
+		local name = Theme.Label(pull.Def.Name, "Display", { Size = 18 })
+		name.Name, name.ZIndex, name.TextColor3, name.TextTruncate, name.Parent = "Name", 5, Theme.Sign.Gold, Enum.TextTruncate.AtEnd, col
 		-- (ZIndex 6 / 7 like the EvolvedRibbon: on a phone's x3 it sits on the pet frame's corner, over the pet's view)
-		-- (roll-look) NEW! is a small gold pill with ink text (the mock's newPill), popping in at the chain's SIL + 0.4
-		local new = H.frame(col, "New", { BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = 6, Visible = pull.IsNew })
-		H.corner(new, 0.5)
-		Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 224, 138), Color3.fromRGB(240, 166, 52)), Parent = new })
-		H.stroke(new, K.LOOK.NEW.Edge, 2)
-		local newText = Theme.Label("NEW!", "Button", { Size = 15, Stroke = 1 })
-		newText.Name, newText.Size, newText.ZIndex, newText.TextColor3, newText.Parent = "Text", UDim2.fromScale(1, 1), 7, K.LOOK.NEW.Ink, new
+		-- (roll-look) NEW! pops in at the chain's SIL + 0.4; (kit-b U9-2b) a flat gold kit B tag, square and untilted
+		local new = HatchLook.Tag(col, "New", "NEW!", "Selected", { ZIndex = 6, Visible = pull.IsNew })
 		local newPop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = new })
-		local note = H.label(col, "Note", EggStage.NoteText(pull, pull.Rarity, brief), "Body", 15, { ZIndex = 5, TextWrapped = true, TextColor3 = Theme.Colors.Muted })
+		if pull.IsNew and H.order(pull.Rarity) >= K.LOOK.SPARKLE.From then
+			-- (U9-2b look review 2) a plus-shaped pixel sparkle (five unit cells: the H and V bars) on NEW!'s top-right corner,
+			-- blinking twice after its pop (H.blink); hidden at rest
+			local sp = H.frame(new, "Sparkle", { Visible = false, ZIndex = 8 })
+			for _, nm in ipairs({ "H", "V" }) do
+				H.frame(sp, nm, { BackgroundColor3 = K.LOOK.SPARKLE.Color, BackgroundTransparency = 0, ZIndex = 8 })
+			end
+		end
+		local note = Theme.Label(EggStage.NoteText(pull, pull.Rarity, brief), "Body", { Size = 15 })
+		note.Name, note.ZIndex, note.TextWrapped, note.TextColor3, note.Parent = "Note", 5, true, Theme.Sign.Stone, col
 		if stage >= 1 then
-			local ribbon = H.frame(col, "EvolvedRibbon", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, Rotation = 8, ZIndex = 6 })
-			H.corner(ribbon, 10)
-			H.stroke(ribbon, K.INK, 2)
-			-- (kit-b U6) on its gold plate: dark text by contrast, no outline
-			local ribbonText = Theme.Label(stage >= 2 and "Evolved II" or "Evolved", "Button", { Size = 15, Color = Theme.TextOn(K.GOLD) })
-			ribbonText.Name, ribbonText.Size, ribbonText.ZIndex, ribbonText.Parent = "Text", UDim2.fromScale(1, 1), 7, ribbon
+			-- (kit-b U9-2b) the evolved stage's tag: navy with gold words (the kit's navy sign), square and untilted; its
+			-- words follow the room (H.applyReveal: "EVOLVED II", or "EVO II" on a phone's small corner tag)
+			local tag = HatchLook.Tag(col, "EvolvedRibbon", K.LOOK.EVOLVED[stage >= 2 and 2 or 1][1], "Navy", { ZIndex = 6 })
+			tag:SetAttribute("Stage", stage >= 2 and 2 or 1)
 		end
 		-- the chain's fades: { object, property, its shown value } (the name and note: their text, classic stroke, outline)
-		local fade = {}
+		local fade = { { plate, "BackgroundTransparency", 0 }, { plate.SignEdge, "Transparency", 0 }, { plate.Lip, "BackgroundTransparency", 0 } }
 		for _, l in ipairs({ name, note }) do
 			fade[#fade + 1] = { l, "TextTransparency", 0 }
 			fade[#fade + 1] = { l, "TextStrokeTransparency", l.TextStrokeTransparency }
@@ -1446,7 +1575,7 @@ function B.cols(roll)
 			end
 		end
 		roll.Cols[j] = {
-			Root = col, Pet = pet, Pop = pop, Banner = banner, Word = word, Name = name, New = new, NewPop = newPop, Note = note, NoteFull = note.Text, View = vf, Fade = fade, Rest = {},
+			Root = col, Pet = pet, Pop = pop, Banner = banner, Word = word, Name = name, New = new, NewPop = newPop, Note = note, NoteFull = note.Text, View = vf, Fade = fade, Rest = {}, Plate = plate,
 			Sil = H.order(pull.Rarity) >= K.LOOK.SIL.From,
 		}
 	end
@@ -1541,27 +1670,30 @@ end
 function H.applyStrips(roll, lay)
 	local g = lay.Strip
 	local geo = H.cardGeo(lay)
-	local rim = K.LOOK.TRACK.Rim
+	local rim = lay.Rim
 	local band = (g.H - g.CellH) / 2
-	local fw = math.floor(K.LOOK.TRACK.FadeW * g.W + 0.5)
+	local ew = HatchLook.TRACK_END.Px
 	for j, st in pairs(roll.Strips) do
 		H.place(st.Frame, g.X, g.Y[j], g.W, g.H)
 		if st.Outer then
 			H.place(st.Outer, -rim, -rim, g.W + 2 * rim, g.H + 2 * rim)
-			st.OuterCorner.CornerRadius = UDim.new(0, geo.TrackCorner + rim)
+			-- the nails: a unit square centred in the rim's width at each corner (whole px)
+			local u = math.min(lay.Unit, rim)
+			local off = math.floor((rim - u) / 2)
+			local ow, oh = g.W + 2 * rim, g.H + 2 * rim
+			local at = { { off, off }, { ow - u - off, off }, { off, oh - u - off }, { ow - u - off, oh - u - off } }
+			for i = 1, 4 do
+				H.place(st.Outer:FindFirstChild("Nail" .. i), at[i][1], at[i][2], u, u)
+			end
 		end
-		st.TrackCorner.CornerRadius = UDim.new(0, geo.TrackCorner)
-		-- the ends fade over the card band (the track's own gradient shows above and below it)
-		H.place(st.FadeL, 0, band, fw, g.CellH)
-		H.place(st.FadeR, g.W - fw, band, fw, g.CellH)
-		for _, fade in ipairs({ st.FadeL, st.FadeR }) do
-			fade:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, geo.Corner)
-		end
+		-- (look review) the ends: a flat navy-lip line each inside the frame, the rail's full height (no fade)
+		H.place(st.EndL, 0, 0, ew, g.H)
+		H.place(st.EndR, g.W - ew, 0, ew, g.H)
 		if st.Geo ~= g then
 			B.cells(roll, j)
 		end
 		-- the gold window round the landed cell's box + Pad a side, the dims beside it over the track
-		st.Win:Style({ Stroke = geo.Win, Glow = geo.WinGlow, Notch = geo.Notch, Corner = geo.WinCorner })
+		st.Win:Style({ Stroke = geo.Win, Notch = geo.Notch })
 		st.Win:Place(g.W / 2 - g.CellW / 2 - geo.Pad, band - geo.Pad, g.CellW + 2 * geo.Pad, g.CellH + 2 * geo.Pad, g.W, g.H)
 		R.cells(roll, j, st.C or K.START_CELL)
 	end
@@ -1593,8 +1725,7 @@ function H.applyHero(roll, lay)
 			e.Ring:Place(cx, eggY + cr.E / 2, math.min(K.RING * cr.E, 2 * math.min(cx, lay.W - cx)))
 		end
 		if e.Back then
-			local d = 0.96 * cr.E
-			H.place(e.Back, cx - d / 2, eggY + (cr.E - d) / 2, d, d)
+			H.placeBack(e.Back, cx, eggY + cr.E / 2, K.LOOK.BACK.Size * cr.E, lay.Unit)
 		end
 		if e.Holder and e.Holder.Parent then
 			if e.State == "Crack" and e.HolderSize ~= cr.E then
@@ -1606,21 +1737,15 @@ function H.applyHero(roll, lay)
 			end
 		end
 		if e.Ped then
-			-- (roll-look) the box is anchored at its top centre (the plinth pops round the egg's foot)
-			local pcx, pw
+			-- (roll-look) the box is anchored at its top centre (the egg's foot); (U9-2b look review 2) the slab on whole px:
+			-- its centre a whole px, its width even
 			if roll.Revealed and lay.Cols[j] then
 				local p = lay.Cols[j].Ped -- (in Content's space: Hero fills Content)
-				pcx, pw = p.X + p.W / 2, p.W
-				H.place(e.Ped, pcx, p.Y, p.W, p.H)
+				H.place(e.Ped, math.floor(p.X + p.W / 2), math.floor(p.Y), H.even(p.W), math.floor(p.H))
 				H.pedLook(e.Ped, p.H < 20)
 			else
-				pcx, pw = cx, cr.PedW
-				H.place(e.Ped, cx, eggY + cr.E, cr.PedW, cr.PedH)
+				H.place(e.Ped, math.floor(cx), math.floor(eggY + cr.E), H.even(cr.PedW), math.floor(cr.PedH))
 				H.pedLook(e.Ped, false)
-			end
-			if e.Plinth then
-				-- the halo never past the screen's edge (a portrait x3's outer columns)
-				e.Plinth:FitGlow(2 * math.min(pcx, lay.W - pcx) / math.max(1, pw))
 			end
 		end
 	end
@@ -1654,19 +1779,67 @@ function H.placeWord(roll, lay)
 	end
 end
 
--- the pedestal's look: the flat lit plinth (roll-look: the Top ellipse and its Rim, the Side, Wall and Edge, the inner
--- Ring under its Cover, the glow), or only its Top (with its Rim) as the thin lip a phone's reveal pet stands on
+-- the pedestal's look: the slab on its foot (U9-2b look review 2: HatchLook.Plinth), or the slab alone filling the box as
+-- the thin lip a phone's reveal pet stands on; laid out again at every call (the box's size changes at the reveal)
 function H.pedLook(ped, lip)
-	if ped:GetAttribute("Lip") == lip then
+	ped:SetAttribute("Lip", lip)
+	HatchLook.PlinthLip(ped, lip)
+end
+
+-- (U9-2b look review 2) the pet's flat contact shadow in its frame (s px): Row1 PET_SHADOW.W of the frame wide (even
+-- units), one unit tall, its bottom on the feet line (PET_FOOT); Row2 two units in on each side, on top of it
+function H.placeShadow(shadow, s, u)
+	if not shadow then
 		return
 	end
-	ped:SetAttribute("Lip", lip)
-	for _, c in ipairs(ped:GetChildren()) do
-		if c:IsA("GuiObject") and c.Name ~= "Top" and c.Name ~= "Rim" then
-			c.Visible = not lip
-		end
+	local w = math.max(6 * u, 2 * u * math.floor(K.LOOK.PET_SHADOW.W * s / (2 * u) + 0.5))
+	local foot = H.feet(s)
+	H.place(shadow, (s - w) / 2, foot - 2 * u, w, 2 * u)
+	H.place(shadow:FindFirstChild("Row1"), 0, u, w, u)
+	H.place(shadow:FindFirstChild("Row2"), 2 * u, 0, w - 4 * u, u)
+end
+
+-- the pet's feet line in its s px frame (K.LOOK.PET_FOOT, on a whole px: the contact shadow's bottom and a phone lip's top)
+function H.feet(s)
+	return math.floor(K.LOOK.PET_FOOT * s)
+end
+
+-- a px size made even (a box centred on a whole px keeps whole edges)
+function H.even(v)
+	return 2 * math.floor(v / 2 + 0.5)
+end
+
+-- (U9-2b look review 2) the nameplate round the name row (rowX, rowW: the name and the tags in it) and the note's lines
+-- (in a box nx, nw wide: centred, or left-aligned in a row layout): PLATE.Pad px of plank round the words a side, Top px
+-- over the name's glyphs, the lip under the note; whole px
+K.LOOK.PLATE = { Pad = 12, PadPhone = 8, Top = 2, Lip = 5, LipPhone = 4 }
+function H.placePlate(c, g, lay, rowX, rowW, nx, nw)
+	local plate = c.Plate
+	if not plate then
+		return
 	end
-	HatchLook.PlinthLip(ped, lip)
+	local pl = K.LOOK.PLATE
+	local phone = lay.Kit == "Phone"
+	local pad = phone and pl.PadPhone or H.px(lay, pl.Pad)
+	local lip = phone and pl.LipPhone or pl.Lip
+	local note = c.Note
+	local lines, noteW = 0, 0
+	for line in string.gmatch(note.Text .. "\n", "(.-)\n") do
+		lines = lines + 1
+		noteW = math.max(noteW, H.textW(line, g.NoteSize, "Body"))
+	end
+	noteW = math.min(nw, math.ceil(noteW))
+	local noteX = g.Row and nx or (nx + (nw - noteW) / 2)
+	local left = math.min(rowX, noteX) - pad
+	local right = math.max(rowX + rowW, noteX + noteW) + pad
+	-- the words' own rows: the name's glyphs in its box, the note's lines from the top of its box (Center: centred)
+	local nameTop = g.NameY + (g.NameH - g.NameSize) / 2
+	local noteH = math.min(g.NoteH, lines * g.NoteSize * 1.15)
+	local noteBottom = lines > 1 and (g.NoteY + g.NoteH) or (g.NoteY + (g.NoteH + noteH) / 2)
+	local top = nameTop - pad / 2 - pl.Top
+	local bottom = noteBottom + pad / 2 + lip
+	left, right = math.max(0, left), math.min(g.W, right)
+	H.placeWhole(plate, left + 2, top + 2, right - left - 4, bottom - top - 4) -- (its 2 px edge outside the frame)
 end
 
 function H.applyReveal(roll, lay)
@@ -1676,8 +1849,9 @@ function H.applyReveal(roll, lay)
 	for j, c in pairs(roll.Cols) do
 		local g = lay.Cols[j]
 		if g then
-			H.place(c.Root, g.X, g.Y, g.W, g.H)
+			H.placeWhole(c.Root, g.X, g.Y, g.W, g.H) -- (look review: the chrome inside it on whole px)
 			local banner, word = c.Banner, c.Word
+			local wordRight = nil -- (U9-2b look review 2) the word's right edge: a row layout's evolved tag sits after it
 			if word then
 				-- (roll-look) the word at its layout size (a landscape phone's right column: down to WordMin when it is long)
 				local maxW = g.Banner.MaxW or (g.W - 24)
@@ -1688,60 +1862,95 @@ function H.applyReveal(roll, lay)
 					word:SetSize(size)
 				end
 				local bw = math.min(math.max(g.Banner.Min, word:Width() + g.Banner.Pad), maxW)
+				if g.Banner.Left then
+					-- (U9-2b look review 2) a left-aligned row: the word's own width from Banner.X, so the word, the name and the
+					-- note share one left edge (centred in a 120 px box it gave three)
+					bw = math.min(math.ceil(word:Width()), maxW)
+				end
 				local bx = g.Banner.Left and g.Banner.X or (g.Banner.CX and (g.Banner.CX - bw / 2)) or (g.W - bw) / 2
-				H.place(banner, bx, g.Banner.Y, bw, g.Banner.H)
+				H.placeWhole(banner, bx, g.Banner.Y, bw, g.Banner.H)
+				wordRight = math.floor(bx) + math.ceil(bw)
 				-- (its glow stays on the screen: the room above the word's top and to the nearer side, in Content's px)
 				local top, cx = g.Y + g.Banner.Y + (g.Banner.H - size) / 2, g.X + bx + bw / 2
 				word:Place(bw / 2, (g.Banner.H - size) / 2, { Up = math.max(0, top - 1), Half = math.max(0, math.min(cx, lay.W - cx) - 1) })
 			end
-			H.place(c.Pet, g.Pet.X + g.Pet.S / 2, g.Pet.Y + g.Pet.S / 2, g.Pet.S, g.Pet.S)
+			-- (U9-2b look review 2) the pet frame centred on a whole px, its side even: its flat shadow's rows on whole px
+			local ps = H.even(g.Pet.S)
+			H.place(c.Pet, math.floor(g.Pet.X + g.Pet.S / 2), math.floor(g.Pet.Y + g.Pet.S / 2), ps, ps)
 			c.Pet.AnchorPoint = Vector2.new(0.5, 0.5)
-			local aura = c.Root:FindFirstChild("Aura")
-			if aura then
-				-- a soft halo just inside the pet's frame (its middle above the feet and the plinth under them)
-				H.place(aura, g.Pet.X + g.Pet.S / 2, g.Pet.Y + g.Pet.S * 0.47, g.Pet.S * 0.86, g.Pet.S * 0.86)
-			end
+			H.placeShadow(c.Pet:FindFirstChild("Shadow"), ps, lay.Unit)
 			-- the name (+ NEW!) row, then the note
 			local name, new, note = c.Root:FindFirstChild("Name"), c.Root:FindFirstChild("New"), c.Root:FindFirstChild("Note")
 			local ribbon = c.Root:FindFirstChild("EvolvedRibbon")
 			local ribbonText = ribbon and ribbon:FindFirstChild("Text")
-			local ribbonSize = lay.PC and 20 or 15
-			local rh = lay.PC and 36 or 24
+			local ribbonSize = lay.PC and H.px(lay, 20) or 15
+			local rh = lay.PC and H.px(lay, 36) or 24
 			local nx, nw = g.NameX or 12, g.NameW or (g.W - 24)
-			local corner = g.New.Corner == true
-			local newW = (new and new.Visible and not corner) and (g.New.W + 8) or 0
 			local nameW = H.textW(name.Text, g.NameSize, "Display") + 8
+			-- (U9-2b look review 2) Corner "Fit" (a phone's x3): NEW! after the name while the row holds both, else the pet
+			-- frame's corner
+			local corner = g.New.Corner == true
+			if g.New.Corner == "Fit" then
+				corner = new ~= nil and new.Visible and nameW + g.New.W + 8 > nw
+			end
+			local newW = (new and new.Visible and not corner) and (g.New.W + 8) or 0
 			-- (review round 2) the Evolved ribbon: a sticker in the name row after NEW! (name, NEW!, Evolved centred together)
 			-- wherever NEW! sits in that row and the whole name still fits beside them (PC, a landscape phone's x1); else on
 			-- PC the model's shoulder (the frame's corner hung in the empty sky: the model fills only 1 / 1.2 of its frame)
 			-- and on a phone's x3 / portrait a small tag on the pet frame's top-right corner (its text's width, at most 0.75
-			-- of the frame), NEW! on the bottom-left one (never stacked over the pet's head)
-			local rw, ribW, inRow = 0, 0, false
+			-- of the frame), NEW! on the bottom-left one (never stacked over the pet's head). (kit-b U9-2b review) the tag is
+			-- never narrower than its words (the label fills the tag, nothing clips it): on PC it grows past 0.36 of the pet
+			-- (the shoulder has the sky beside it); a phone's tag keeps 4 px a side at the least, and a corner tag whose cap
+			-- cannot hold the words takes the short form ("EVO II")
+			local rw, ribW, inRow, wordLine = 0, 0, false, false
 			if ribbon then
-				local tw = H.textW(ribbonText and ribbonText.Text or "Evolved", ribbonSize, "Button") + (lay.PC and 28 or 14)
-				rw = lay.PC and math.min(150, math.max(tw, 0.36 * g.Pet.S)) or math.min(96, tw)
-				inRow = not corner and nameW + newW + rw + 8 <= nw
+				local forms = K.LOOK.EVOLVED[ribbon:GetAttribute("Stage") == 2 and 2 or 1]
+				local words = forms[1]
+				local ww = H.textW(words, ribbonSize, "Tag")
+				local tw = ww + (lay.PC and H.px(lay, 28) or 14)
+				rw = lay.PC and math.max(tw, math.min(H.px(lay, 150), 0.36 * g.Pet.S)) or math.max(ww + 8, math.min(96, tw))
+				-- (U9-2b look review 2) a portrait row: on the word's line after the word when it fits there
+				wordLine = g.Row == true and wordRight ~= nil and wordRight + 8 + rw <= g.W
+				inRow = not wordLine and not corner and nameW + newW + rw + 8 <= nw
 				ribW = inRow and (rw + 8) or 0
-				if not inRow then
-					rw = math.min(rw, (lay.PC and 0.36 or 0.75) * g.Pet.S)
+				if not inRow and not wordLine and not lay.PC then
+					local cap = math.min(96, 0.75 * g.Pet.S)
+					if ww + 8 > cap then
+						words = forms[2]
+						ww = H.textW(words, ribbonSize, "Tag")
+					end
+					rw = math.max(ww + 8, math.min(cap, ww + 14))
+				end
+				if ribbonText and ribbonText.Text ~= words then
+					ribbonText.Text = words
 				end
 			end
 			local textW = math.min(nw - newW - ribW, nameW)
 			local rowX = g.Row and nx or (nx + (nw - textW - newW - ribW) / 2)
 			name.TextSize = g.NameSize
-			H.place(name, rowX, g.NameY, textW, g.NameH)
+			-- (look review: whole px) the row's start and every tag in it on whole px (the tags' mitred edges were on 0.18 px)
+			rowX = math.floor(rowX)
+			textW = math.ceil(textW)
+			H.placeWhole(name, rowX, g.NameY, textW, g.NameH)
 			if new then
 				if corner then
 					-- (review round 3) on the pet frame's corner, the name keeps its whole row; (review round 2) the bottom-left
 					-- corner, hanging up to 14 px off the frame into the column (clear of the ribbon on the top-right, and of
 					-- the pet's head: the two stacked over the head covered most of a 110 px pet)
 					local hang = math.min(14, g.Pet.X)
-					H.place(new, g.Pet.X - hang, g.Pet.Y + 0.62 * g.Pet.S, g.New.W, g.New.H)
-					new.Rotation = -8
+					H.placeWhole(new, g.Pet.X - hang, g.Pet.Y + 0.62 * g.Pet.S, g.New.W, g.New.H)
 				else
-					H.place(new, rowX + textW + 8, g.NameY + (g.NameH - g.New.H) / 2, g.New.W, g.New.H)
-					new.Rotation = K.LOOK.NEW.Tilt
+					H.placeWhole(new, rowX + textW + 8, g.NameY + (g.NameH - g.New.H) / 2, g.New.W, g.New.H)
 				end
+				new.Rotation = 0 -- (kit-b U9-2b) a kit B tag sits square (no sticker tilt)
+			local sp = new:FindFirstChild("Sparkle")
+			if sp then
+				-- its centre cell on the tag's top-right corner (whole units of the screen's pixel)
+				local u = lay.Unit
+				H.place(sp, math.ceil(g.New.W) - u, -2 * u, 3 * u, 3 * u)
+				H.place(sp:FindFirstChild("H"), 0, u, 3 * u, u)
+				H.place(sp:FindFirstChild("V"), u, 0, u, 3 * u)
+			end
 				local t = new:FindFirstChild("Text")
 				if t then
 					t.TextSize = g.New.Size
@@ -1750,15 +1959,19 @@ function H.applyReveal(roll, lay)
 			note.TextSize = g.NoteSize
 			note.TextXAlignment = g.Row and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
 			note.Text = H.fitNote(c.NoteFull or note.Text, g.NoteSize, nw)
-			H.place(note, nx, g.NoteY, nw, g.NoteH)
+			H.placeWhole(note, nx, g.NoteY, nw, g.NoteH)
+			H.placePlate(c, g, lay, rowX, textW + newW + (inRow and ribW or 0), nx, nw)
 			if ribbon then
-				if inRow then
-					H.place(ribbon, rowX + textW + newW + 8, g.NameY + (g.NameH - rh) / 2, rw, rh)
+				if wordLine then
+					H.placeWhole(ribbon, wordRight + 8, g.Banner.Y + (g.Banner.H - rh) / 2, rw, rh)
+				elseif inRow then
+					H.placeWhole(ribbon, rowX + textW + newW + 8, g.NameY + (g.NameH - rh) / 2, rw, rh)
 				elseif lay.PC then
-					-- the model's shoulder (it fills 1 / 1.2 of the frame, centred), not the frame's empty corner
-					H.place(ribbon, g.Pet.X + 0.62 * g.Pet.S, g.Pet.Y + 0.2 * g.Pet.S, rw, rh)
+					-- the model's shoulder (it fills 1 / 1.2 of the frame, centred), not the frame's empty corner; a tag wider
+					-- than the room right of it moves in to end inside the column
+					H.placeWhole(ribbon, math.min(g.Pet.X + 0.62 * g.Pet.S, g.W - math.ceil(rw)), g.Pet.Y + 0.2 * g.Pet.S, rw, rh)
 				else
-					H.place(ribbon, g.Pet.X + g.Pet.S - rw, g.Pet.Y + 0.12 * g.Pet.S, rw, rh) -- inside the pet frame, clear of the banner
+					H.placeWhole(ribbon, g.Pet.X + g.Pet.S - math.ceil(rw), g.Pet.Y + 0.12 * g.Pet.S, rw, rh) -- inside the pet frame, clear of the banner
 				end
 				if ribbonText then
 					ribbonText.TextSize = ribbonSize
@@ -1766,7 +1979,7 @@ function H.applyReveal(roll, lay)
 			end
 			c.Pop.Scale = roll.PopDone and 1 or c.Pop.Scale
 			-- (roll-look) the rest places the chain's rise ends at (H.textIn)
-			c.Rest.Name, c.Rest.New, c.Rest.Note = name.Position, new and new.Position or nil, note.Position
+			c.Rest.Name, c.Rest.New, c.Rest.Note, c.Rest.Plate = name.Position, new and new.Position or nil, note.Position, c.Plate and c.Plate.Position or nil
 		end
 	end
 	if roll.TextK and roll.TextK < 1 then
@@ -1776,14 +1989,15 @@ end
 
 function H.applyBar(roll, lay)
 	local bar = roll.Revealed and lay.BarReveal or lay.BarRoll
-	H.place(roll.UI.Bar, 0, bar.Y, lay.W, bar.H)
+	H.placeWhole(roll.UI.Bar, 0, bar.Y, lay.W, bar.H) -- (look review: the planks and chips on whole px)
 	local P = lay.P
-	local phone = not lay.PC
+	local phone = lay.Kit == "Phone"
 	-- (roll-look) the chips' text with the chevrons, the chips' and pills' sizes of this layout; (review round 2) a chip
 	-- packed narrower than its words takes the next shorter form ("Tap to close ››", then "Close ››"), never an ellipsis
 	local verb = roll.Revealed and "close" or "skip"
 	local skipIt = bar.Items.Skip
-	local room = skipIt and (skipIt.w - 2 * HatchLook.Metrics.CHIP.Pad) or math.huge
+	-- (kit-b U9-2b review) the label's own box (the block sits its edge inside the tap box): HatchLook.ChipRoom
+	local room = skipIt and HatchLook.ChipRoom(skipIt.w, false, phone) or math.huge
 	local forms = { "Tap to " .. verb .. " " .. K.LOOK.CHEVRONS, verb:sub(1, 1):upper() .. verb:sub(2) .. " " .. K.LOOK.CHEVRONS }
 	if lay.PC then
 		table.insert(forms, 1, "Tap anywhere to " .. verb .. " " .. K.LOOK.CHEVRONS)
@@ -1809,7 +2023,7 @@ function H.applyBar(roll, lay)
 		if o then
 			o.Visible = it ~= nil
 			if it then
-				H.place(o, it.x, it.y, it.w, it.h)
+				H.placeWhole(o, it.x, it.y, it.w, it.h)
 				-- the pills rise PillsRise px into place, less where the screen's bottom edge is nearer (never off it)
 				roll.UI.Rise[name] = math.max(0, math.min(K.LOOK.CHAIN.PillsRise, lay.H - (bar.Y + it.y + it.h) - 1))
 			end
@@ -1865,22 +2079,22 @@ function H.refreshAgain()
 	end
 	local parts = roll.UI.PillParts and roll.UI.PillParts[1] or nil
 	local lbl = roll.UI.AgainLabel
-	lbl.Text = reason or ((roll.N > 1) and "SPIN AGAIN x3" or "SPIN AGAIN")
+	lbl.Text = reason or ((roll.N > 1) and "Spin again x3" or "Spin again")
 	local priceText = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
-	local chipW = 0
+	local chipW, labelW = 0, 0
 	if reason == nil then
-		-- (review round 3) measured with the real fonts (TextService): a label that would not fit beside the price chip (its
-		-- content's width at the least) takes the short price ("3K"); (roll-look) the chip holds the coin and the price
-		local labelW = H.textW(lbl.Text, lbl.TextSize, "Button")
+		-- (review round 3) measured with the real fonts (TextService): a label that would not fit beside the price takes the
+		-- short price ("3K"); (look review) the coin and the price inline after the label, like the Shop's Spin (Button role)
+		labelW = H.textW(lbl.Text, lbl.TextSize, "Button")
 		local fits
-		chipW, fits = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display"), parts)
+		chipW, fits = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Button"), parts)
 		if not fits then
 			priceText = Theme.ShortNumber(price, 1000)
-			chipW = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display"), parts)
+			chipW = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Button"), parts)
 		end
 	end
 	roll.UI.AgainPrice.Text = priceText
-	HatchLook.SetPillChip(btn, chipW, parts) -- (a reason: no chip, the label takes the whole pill)
+	HatchLook.SetPillChip(btn, chipW, parts, labelW) -- (a reason: no price, the label takes the whole pill)
 	CloudUI.SetDisabled(btn, reason ~= nil or S.Pending or not armed)
 end
 
@@ -1950,13 +2164,11 @@ function R.cells(roll, j, c)
 							EggArt.SetRarity(egg, rarity)
 						end
 					end
-					-- (roll-look, spec 16.15) the card by rarity: the face tint, the rim (Rare and up opaque in Shade(c, .05),
-					-- below Shade(c, -.1) at 0.25), the plate's word; the landed card's rim is 5 thick and its egg gets its
-					-- VFX, the others dim to 0.6 once the strip has landed
+					-- (kit-b U9-2b) the card by rarity: the plate (or the lite card's lip) in the rarity's colour with its word;
+					-- the landed card the selected face (its egg gets its VFX), the others the sunk well once the strip has landed
 					HatchLook.SetCard(cell.Card, rarity or false, landed and "Landed" or (st.Landed and "Dim") or "Idle")
 					if cell.Word and not cell.OnPlate then
-						cell.Word.Text = rarity or ""
-						cell.Word.TextColor3 = H.color(rarity)
+						cell.Word.Text = rarity and string.upper(rarity) or "" -- (a rarity tag in capitals, as on the x1 plate)
 					end
 					-- (only a painted egg wears the landed VFX: a picture has none)
 					local vfx = landed and rarity ~= nil and rarity ~= false and image == nil
@@ -1997,7 +2209,11 @@ function R.land(roll, j)
 	end
 	local cell = H.landedCell(st)
 	if cell then
-		HatchLook.LandPop(cell.Card, roll.Fast, S.Tweens)
+		-- (look review) a hop, never a scale: at most the room above the card's wood edge inside the rail and the window's
+		-- navy pad (the rail clips nothing, the window's pad stays navy)
+		local geo = H.cardGeo(S.Lay)
+		local room = g and math.min((g.H - g.CellH) / 2, geo.Pad) - geo.Edge or 0
+		HatchLook.LandPop(cell.Card, roll.Fast, S.Tweens, room)
 	end
 end
 
@@ -2087,35 +2303,46 @@ end
 -- the egg's foot, its thin side, an inner ring and a soft halo; nothing stacked under it). It starts neutral.
 function B.pedestal(hero, j, rarity, e)
 	local box = H.frame(hero, "Pedestal" .. j, { ZIndex = 5 })
-	-- (x3: one halo disc under the smaller plinths, the 750-instance budget)
-	e.Plinth = HatchLook.Plinth(box, rarity, not S.Lay.PC, { Track = S.Tweens, Glows = S.Roll and S.Roll.N > 1 and 1 or 2 })
+	-- (U9-2b look review 2) the kit's navy slab in the screen's pixel unit (chrome now, not soft art: no Art attribute)
+	e.Plinth = HatchLook.Plinth(box, rarity, S.Lay.Kit == "Phone", { Track = S.Tweens, Unit = S.Lay.Unit })
 	return box
 end
 
--- the rarity backlight: four stacked round glows, as strong as the egg's glow (none for Common / Uncommon); (review round
--- 1, spec 16.15 "Fallbacks") with a hatch_glow id one soft ImageLabel in their box instead, its centre as strong as the
--- four discs' together. Each part's shown transparency is its attribute Alpha (H.glowAlpha fades it)
+-- (U9-2b look review 2, the owner's look bar: no round glow) the rarity backlight is a flat stepped pixel light behind the
+-- egg: K.LOOK.BACK.Levels nested stepped squares (each three blocks: the middle column and two wings Step of it shorter
+-- at both ends, so no part of one level lies on another), in the rarity's colour at flat alphas as strong as the egg's
+-- glow (none for Common / Uncommon), every block on whole px of the screen's unit (H.placeBack). Each part's shown
+-- transparency is its attribute Alpha (H.glowAlpha fades it)
+K.LOOK.BACK = { Levels = { { 1, 0.16 }, { 0.62, 0.24 } }, Step = 0.18, Size = 0.96 }
 function B.backlight(hero, j, rarity)
 	local glow = EggArt.Glow(rarity)
 	local back = H.frame(hero, "Backlight" .. j, { Visible = glow > 0, ZIndex = 4 })
-	local discs = {}
-	local image = HatchLook.Image(HatchLook.IMAGES.Glow)
-	if image then
-		local disc = Util.Create("ImageLabel", {
-			Name = "Glow", Image = image, ImageColor3 = H.color(rarity), ImageTransparency = 1, BackgroundTransparency = 1, BorderSizePixel = 0,
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = back,
-		})
-		disc:SetAttribute("Alpha", 1 - 0.9 * glow)
-		discs[1] = disc
-		return back, discs
+	local parts = {}
+	for i, lv in ipairs(K.LOOK.BACK.Levels) do
+		for _, side in ipairs({ "Mid", "L", "R" }) do
+			local p = H.frame(back, "Glow" .. i .. side, { BackgroundColor3 = H.color(rarity), BackgroundTransparency = 1, ZIndex = 4 })
+			p:SetAttribute("Alpha", 1 - glow * lv[2])
+			parts[#parts + 1] = p
+		end
 	end
-	for i, s in ipairs({ 1, 0.78, 0.58, 0.4 }) do
-		local disc = H.frame(back, "Glow" .. i, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(s, s), BackgroundColor3 = H.color(rarity), BackgroundTransparency = 1, ZIndex = 4 })
-		disc:SetAttribute("Alpha", 1 - glow * ({ 0.22, 0.32, 0.45, 0.62 })[i])
-		H.corner(disc, 0.5)
-		discs[i] = disc
+	return back, parts
+end
+
+-- the backlight's box (d px, centred on cx, cy) and its stepped levels, every size whole units u (even: centred on a px)
+function H.placeBack(back, cx, cy, d, u)
+	local function units(v)
+		return math.max(2 * u, 2 * u * math.floor(v / (2 * u) + 0.5))
 	end
-	return back, discs
+	d = units(d)
+	H.place(back, math.floor(cx) - d / 2, math.floor(cy) - d / 2, d, d)
+	for i, lv in ipairs(K.LOOK.BACK.Levels) do
+		local s = math.min(d, units(lv[1] * d))
+		local c = math.max(u, u * math.floor(K.LOOK.BACK.Step * s / u + 0.5))
+		local x0 = (d - s) / 2
+		H.place(back:FindFirstChild("Glow" .. i .. "Mid"), x0 + c, x0, s - 2 * c, s)
+		H.place(back:FindFirstChild("Glow" .. i .. "L"), x0, x0 + c, c, s - 2 * c)
+		H.place(back:FindFirstChild("Glow" .. i .. "R"), x0 + s - c, x0 + c, c, s - 2 * c)
+	end
 end
 
 -- a backlight part at u (0 = clear .. 1 = its attribute Alpha): a disc's background or the image's transparency
@@ -2159,23 +2386,21 @@ function R.rise(roll, quick)
 	roll.HeroBuilt = true
 	local cr = S.Lay.Crack
 	local hero = roll.UI.Hero
-	if not quick then
-		roll.Spot = H.frame(hero, "Spot", { BackgroundColor3 = K.SPOT_COLOR, BackgroundTransparency = 1, ZIndex = 1 })
-		H.corner(roll.Spot, 0.5)
-		-- (roll-look) fainter than 16.4's 0.84 / 0.6: its straight sides read as a pale box behind the plinth's halo
-		Util.Create("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.45, 0.92), NumberSequenceKeypoint.new(1, 0.76) }), Parent = roll.Spot })
-	end
-	-- (egg-cards, spec 16.18) the hero eggs are 3D all together or not at all (x1 as 16.14; x3 its three)
+	-- (U9-2b look review 2, the owner's look bar: no soft light shapes) no spot cone: the stepped backlight and the slab's
+	-- rarity lip carry the light
+	-- (egg-cards, spec 16.18) the hero eggs are 3D all together or not at all (x1 as 16.14; x3 its three); (look review)
+	-- when they are not (a phone's x3, Low graphics) and the strip cards draw the Blender egg pictures, each hero egg is its
+	-- card's picture (B.eggPic): the egg that rises is the egg the strip showed, never a painted egg of another style
 	local use3d = not quick and H.use3d(roll)
+	local pics = not quick and not use3d and HatchLook.EggPictures()
 	for j, pull in ipairs(roll.Pulls) do
 		local e = { State = "Rise" }
 		e.Back, e.Glows = B.backlight(hero, j, pull.Rarity)
 		e.Ped = B.pedestal(hero, j, pull.Rarity, e)
 		if not quick then
 			-- (roll-look) the plinth comes in with the rise: from K.LOOK.PLINTH_IN.From and clear (R.riseStep)
-			e.Plinth.Pop.Scale = K.LOOK.PLINTH_IN.From
-			e.Plinth:SetAlpha(0)
-			e.Ring = HatchFx.CloudRing(hero, H.color(pull.Rarity), { ZIndex = 3, Track = S.Tweens })
+			e.Plinth:SetAlpha(0) -- (U9-2b look review 2: it rises with the egg and fades in, never a scale)
+			e.Ring = HatchFx.CloudRing(hero, H.color(pull.Rarity), { ZIndex = 3, Track = S.Tweens, Unit = S.Lay.Unit })
 			e.Ring.Frame.Name = "CloudRing" .. j
 			-- the hero egg: Full with its rarity VFX (spec 16.5 "Where the VFX show"). (review round 2) No drifting sparkles
 			-- from the pool round it: the pick's clutter cap (ROLL_PICK.md "sparkles only at the burst"; 16.15 adds the shakes'
@@ -2186,12 +2411,24 @@ function R.rise(roll, quick)
 			e.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = e.Egg })
 			if use3d then
 				B.egg3d(roll, e, pull.Rarity)
+			elseif pics then
+				B.eggPic(e, pull.Rarity)
 			end
 		end
 		roll.Eggs[j] = e
 	end
 	if use3d then
 		B.unmix3d(roll)
+		-- (look review) an x3 whose 3D failed part-way went back to 2D: the pictures, when the cards draw them
+		local any3d = false
+		for _, e in pairs(roll.Eggs) do
+			any3d = any3d or e.V3 ~= nil
+		end
+		if not any3d and HatchLook.EggPictures() then
+			for j, e in pairs(roll.Eggs) do
+				B.eggPic(e, roll.Pulls[j].Rarity)
+			end
+		end
 	end
 	H.applyHero(roll, S.Lay)
 	if quick then
@@ -2241,9 +2478,9 @@ function R.rise(roll, quick)
 			st.Outer:Destroy()
 			st.Outer = nil
 		end
-		-- (Task 2) ...and its end fades and dims (the three plinths come in now: x3 stays inside 750 at the rise's start)
+		-- (Task 2) ...and its end lines and dims (the three plinths come in now: x3 stays inside 750 at the rise's start)
 		if roll.N > 1 then
-			for _, key in ipairs({ "FadeL", "FadeR" }) do
+			for _, key in ipairs({ "EndL", "EndR" }) do
 				if st[key] then
 					st[key]:Destroy()
 					st[key] = nil
@@ -2289,9 +2526,8 @@ function R.riseStep(roll, t)
 			e.Ped.Position = e.PedFrom:Lerp(e.PedTo, back)
 		end
 		if e.Plinth and e.PedTo then
-			-- (roll-look) the plinth pops in (Back Out, past 1 and back) and fades in over the whole rise
-			local from = K.LOOK.PLINTH_IN.From
-			e.Plinth.Pop.Scale = from + (1 - from) * back
+			-- (roll-look) the plinth rises into place (its box's Back Out above) and fades in over the whole rise; (U9-2b look
+			-- review 2) no scale pop: a kit block's pixel edges stay whole
 			e.Plinth:SetAlpha(u)
 		end
 		if e.Glows and e.Back.Visible then
@@ -2360,6 +2596,48 @@ function B.egg3d(roll, e, rarity)
 	end
 end
 
+-- (kit-b U9-2b look review) a 2D hero egg in the strip cards' picture style: the card's own Blender picture
+-- (HatchLook.EggImage) as an ImageLabel "EggPic" in the hero egg's frame (its square EGG_PIC.Fill of the egg's height
+-- tall, centred: the egg the same size as the painted one), the paint hidden as for a 3D egg; the frame keeps its place,
+-- rise, push-in, shakes, cracks and leaks. B.halves splits the same picture at the burst (H.picHalves). No picture id:
+-- nothing changes (today's painted egg)
+function B.eggPic(e, rarity)
+	local url = HatchLook.EggImage(rarity)
+	if not (e.Egg and url) then
+		return
+	end
+	EggArt.SetPaintShown(e.Egg, false)
+	local fill = HatchLook.Metrics.EGG_PIC.Fill
+	Util.Create("ImageLabel", {
+		Name = "EggPic", Image = url, BackgroundTransparency = 1, BorderSizePixel = 0, ScaleType = Enum.ScaleType.Fit,
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1 / (fill * EggArt.Metrics.WIDTH), 1 / fill),
+		ZIndex = e.Egg.ZIndex + 2, Parent = e.Egg,
+	})
+	e.Egg:SetAttribute("EggPic", rarity)
+	e.PicUrl = url
+end
+
+-- (look review) the burst's two halves of a picture egg: two CanvasGroups the egg's width x half its height (as
+-- EggArt.Halves: they clip their half, turning or not), each holding the whole picture placed where the egg stood
+function H.picHalves(holder, url, size)
+	local w = math.floor(EggArt.Metrics.WIDTH * size + 0.5)
+	local half = size / 2
+	local side = size / HatchLook.Metrics.EGG_PIC.Fill
+	local out = {}
+	for i, name in ipairs({ "HalfTop", "HalfBottom" }) do
+		local group = Util.Create("CanvasGroup", {
+			Name = name, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, (i - 1) * half), Size = UDim2.fromOffset(w, half),
+			ZIndex = holder.ZIndex, Parent = holder,
+		})
+		Util.Create("ImageLabel", {
+			Name = "EggPic", Image = url, BackgroundTransparency = 1, BorderSizePixel = 0, ScaleType = Enum.ScaleType.Fit,
+			Position = UDim2.fromOffset((w - side) / 2, (size - side) / 2 - (i - 1) * half), Size = UDim2.fromOffset(side, side), ZIndex = holder.ZIndex, Parent = group,
+		})
+		out[i] = group
+	end
+	return out[1], out[2]
+end
+
 -- (egg-cards, spec 16.18) whether this roll's hero eggs are 3D: decided once, for all of them (an x3 asks Egg3D for its
 -- three frames at once: Low graphics, an id 0 or a phone's one-frame limit keep every egg 2D, never a mix)
 function H.use3d(roll)
@@ -2396,6 +2674,7 @@ function B.halves(roll, j)
 	local cr = S.Lay.Crack
 	local w = math.floor(EggArt.Metrics.WIDTH * cr.E + 0.5)
 	local holder = H.frame(roll.UI.Hero, "Halves" .. j, { Visible = false, ZIndex = 6 })
+	holder:SetAttribute("Art", "Hatch")
 	H.place(holder, cr.Cx[j] - w / 2, cr.EggY, w, cr.E)
 	e.Holder, e.HolderSize = holder, cr.E
 	-- (egg-3d) a 3D egg whose two Blender halves are usable here splits into them at the burst (the ViewportFrame moves
@@ -2403,7 +2682,12 @@ function B.halves(roll, j)
 	e.Split3D = e.V3 ~= nil and e.V3:CanSplit() or false
 	holder:SetAttribute("Split3D", e.Split3D)
 	if not e.Split3D then
-		e.Top, e.Bottom = EggArt.Halves(holder, roll.Pulls[j].Rarity, cr.E)
+		-- (look review) a picture egg splits its own picture; else today's painted halves
+		if e.PicUrl then
+			e.Top, e.Bottom = H.picHalves(holder, e.PicUrl, cr.E)
+		else
+			e.Top, e.Bottom = EggArt.Halves(holder, roll.Pulls[j].Rarity, cr.E)
+		end
 	end
 end
 
@@ -2861,7 +3145,14 @@ function R.chain(roll, sil)
 				if up then
 					up.Completed:Connect(function(state)
 						if state == Enum.PlaybackState.Completed and pop.Parent then
-							H.tween(pop, C.NewOut, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+							local down = H.tween(pop, C.NewOut, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+							if down then
+								down.Completed:Connect(function(st)
+									if st == Enum.PlaybackState.Completed then
+										H.blink(c.New:FindFirstChild("Sparkle"))
+									end
+								end)
+							end
 						end
 					end)
 				end
@@ -2874,6 +3165,27 @@ function R.chain(roll, sil)
 	end)
 end
 
+-- (U9-2b look review 2) the NEW! sparkle blinks SPARKLE.Blinks times (on, off: SPARKLE.Beat s each), one tracked tween of
+-- a NumberValue on it; hidden at the end
+K.LOOK.SPARKLE = { From = 3, Blinks = 2, Beat = 0.12, Color = Theme.Sign.Stone }
+function H.blink(sp)
+	if not (sp and sp.Parent) then
+		return
+	end
+	local v = sp:FindFirstChild("Blink") or Util.Create("NumberValue", { Name = "Blink", Value = 0, Parent = sp })
+	if not sp:GetAttribute("BlinkWired") then
+		sp:SetAttribute("BlinkWired", true)
+		v:GetPropertyChangedSignal("Value"):Connect(function()
+			local n = 2 * K.LOOK.SPARKLE.Blinks
+			local beat = math.floor(v.Value * n)
+			sp.Visible = v.Value < 1 and beat % 2 == 0
+		end)
+	end
+	v.Value = 0
+	sp.Visible = true
+	H.tween(v, 2 * K.LOOK.SPARKLE.Blinks * K.LOOK.SPARKLE.Beat, { Value = 1 }, Enum.EasingStyle.Linear)
+end
+
 -- the chain at its end at once (a resize mid-chain: its tweens were cancelled), the beats still pending dropped
 function H.settleChain(roll)
 	roll.ChainToken = (roll.ChainToken or 0) + 1
@@ -2881,6 +3193,10 @@ function H.settleChain(roll)
 	for _, c in pairs(roll.Cols) do
 		c.Word:Settle()
 		c.NewPop.Scale = 1
+		local sp = c.New and c.New:FindFirstChild("Sparkle")
+		if sp then
+			sp.Visible = false
+		end
 		if c.View and c.View.Parent then
 			c.View.ImageColor3 = K.WHITE
 		end
@@ -3244,14 +3560,15 @@ function H.relayout()
 	if roll.Revealed then
 		H.settleChain(roll) -- (roll-look) every letter at 1, the silhouette filled, the text and the pills in place
 	end
-	-- (roll-look) the strips at rest: the window's bounce done and its tell colour snapped, a landed card's pop at 1.09
+	-- (roll-look) the strips at rest: the window's bounce done and its tell colour snapped; (look review) a landed card at
+	-- rest (its hop done: no scale)
 	for _, st in pairs(roll.Strips) do
 		if st.Win then
 			st.Win:Rest()
 		end
 		local cell = st.Landed and H.landedCell(st)
 		if cell then
-			HatchLook.SetPop(cell.Card, HatchLook.Metrics.POP.Rest)
+			HatchLook.SetPop(cell.Card)
 		end
 	end
 	-- the overlay at rest: the shock gone, the rays shown only where they stay (Legendary and up on the reveal) or while a
