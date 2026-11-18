@@ -1064,7 +1064,7 @@ function W.partyRow(box, p, i, short)
 	-- (kit-b U9-7) the leader with the crown (the list is headed "Open parties"; "'s party" ran past a phone's row)
 	local label = H.text(row, "Text", tostring(p.LeaderName or "Someone") .. " " .. G.Dot .. " " .. where .. " " .. G.Dot .. " " .. count, "Body", 18, INK, {
 		Position = UDim2.fromOffset(10, 0),
-		Size = UDim2.new(1, -120, 1, 0),
+		Size = UDim2.new(1, -114, 1, 0), -- (merge kitb-look1) -114 (was -120): the crown's 6 px gap; 2 px clear of Join
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
 	PixelIcon.Lead(label, "crown")
@@ -1122,7 +1122,8 @@ function W.partyMine(box, short, mine)
 			})
 			PixelIcon.Set(tick, ready and "check" or "hourglass", 18) -- (kit-b U7b)
 			tick:SetAttribute("Ready", ready)
-			local name = H.text(row, "Name", tostring(m.Name or "?"), "Body", 19, INK, { Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -190, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+			-- (merge kitb-look1) 4 px wider (-186, was -190): the leader's crown keeps a whole 6 screen px from the name now
+			local name = H.text(row, "Name", tostring(m.Name or "?"), "Body", 19, INK, { Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -186, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
 			if m.UserId == mine.Leader then
 				PixelIcon.Lead(name, "crown") -- (kit-b U7b) the party leader
 			end
@@ -1658,7 +1659,8 @@ function R.build()
 		LayoutOrder = 4,
 	})
 	H.edge(U.EndFirst, SIGN.Wood, 2)
-	H.pad(U.EndFirst, 10, 0, 30, 1)
+	-- (merge kitb-look1) 7 px before the star: the kit's lead icon keeps a whole 6 screen px from its text now (was 4)
+	H.pad(U.EndFirst, 7, 0, 30, 1)
 	for i, at in ipairs({ { 8, 3 }, { 17, 14 } }) do
 		local twinkle = PixelIcon.New(U.EndFirst, "sparkle", 9, SIGN.Stone)
 		twinkle.Name = "Twinkle" .. i
@@ -2458,7 +2460,8 @@ function R.refresh()
 			H.edge(chipF, SIGN.WellEdge, 2)
 			chipF:SetAttribute("Downed", m.Downed == true)
 			chipF:SetAttribute("Left", m.Left == true)
-			local chipText = H.text(chipF, "Text", (m.Left and (G.Gone .. " ") or "") .. tostring(m.Name or "?"), "Body", 18, color, { Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -8, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+			-- (merge kitb-look1) 4 px in, to the tag's right end (was 6 / -8): the mark keeps a whole 6 screen px from the name
+			local chipText = H.text(chipF, "Text", (m.Left and (G.Gone .. " ") or "") .. tostring(m.Name or "?"), "Body", 18, color, { Position = UDim2.fromOffset(4, 0), Size = UDim2.new(1, -4, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
 			if mark then
 				PixelIcon.Lead(chipText, mark)
 			end

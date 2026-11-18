@@ -1432,27 +1432,36 @@ S.client_mobile = guarded("client_mobile", function()
 	T.check(run ~= nil, "a RUN button exists")
 	-- (LOOK-ui, kitb-look1: the owner's look bar, one kit) RUN / DASH are kit B tiles (CloudUI.SignBlock), not the old neon
 	-- discs: square, opaque, no corner, the wood edge and a darker lip on whole px; DASH the sky tile with the pixel "dash",
-	-- RUN the stone tile (gold while running); their labels in the Button role
+	-- RUN the stone tile (gold while running); their labels in the Button role.
+	-- (merge kitb-look1 x U9-8) restated on U9-8's keycap, the vitals lane's own: the TextButton keeps the layout's box
+	-- and the input, the tile is its Block child (face, wood edge, Lip), the caption a Heading label under the pixel icon
+	-- (smoke_kitb_ui vitals_dash_key / obby_keys_mobile hold the keycap's look)
+	local function tileOf(b)
+		return b and (b:FindFirstChild("Block") or b)
+	end
 	if run and dash then
 		local Sign = Theme.Sign
 		local function same(a, b)
 			return a and b and math.abs(a.R - b.R) < 0.01 and math.abs(a.G - b.G) < 0.01 and math.abs(a.B - b.B) < 0.01
 		end
 		for name, b in pairs({ DASH = dash, RUN = run }) do
-			local edge, lip = b:FindFirstChild("SignEdge"), b:FindFirstChild("Lip")
+			local tile = tileOf(b)
+			local edge, lip = tile:FindFirstChild("SignEdge"), tile:FindFirstChild("Lip")
 			local label = b:FindFirstChild("Label", true)
-			T.check(b:FindFirstChildOfClass("UICorner") == nil and b.BackgroundTransparency == 0 and b.Size.X.Offset == b.Size.Y.Offset,
-				"client mobile: " .. name .. " is a square, opaque kit tile (no corner)", string.format("%dx%d @%.2f", b.Size.X.Offset, b.Size.Y.Offset, b.BackgroundTransparency))
+			T.check(b:FindFirstChildOfClass("UICorner") == nil and tile:FindFirstChildOfClass("UICorner") == nil and tile.BackgroundTransparency == 0 and b.Size.X.Offset == b.Size.Y.Offset,
+				"client mobile: " .. name .. " is a square, opaque kit tile (no corner)", string.format("%dx%d @%.2f", b.Size.X.Offset, b.Size.Y.Offset, tile.BackgroundTransparency))
 			T.check(edge and edge:IsA("UIStroke") and same(edge.Color, Sign.Wood) and edge.Thickness == math.floor(edge.Thickness) and lip and lip.Visible
 				and lip.Size.Y.Offset == math.floor(lip.Size.Y.Offset), "client mobile: " .. name .. " has the kit's wood edge and its lip on whole px")
-			T.check(label and label:GetAttribute("FontRole") == "Button", "client mobile: " .. name .. "'s label is in the Button role")
+			local role = label and label:GetAttribute("FontRole")
+			T.check(role == "Button" or role == "Heading", "client mobile: " .. name .. "'s label is in a kit text role (U9-8's keycap: Heading)", tostring(role))
 		end
 		local dashIcon = false
 		for _, d in ipairs(dash:GetDescendants()) do
 			dashIcon = dashIcon or d:GetAttribute("PixelIcon") == "dash"
 		end
-		T.check(same(dash.BackgroundColor3, Sign.Sky) and same(dash.Lip.BackgroundColor3, Sign.SkyLip) and dashIcon, "client mobile: DASH is the sky tile with the pixel dash")
-		T.check(same(run.BackgroundColor3, Sign.Tile) and same(run.Lip.BackgroundColor3, Sign.StoneLip), "client mobile: RUN is the stone tile at rest")
+		local dt, rt = tileOf(dash), tileOf(run)
+		T.check(same(dt.BackgroundColor3, Sign.Sky) and same(dt.Lip.BackgroundColor3, Sign.SkyLip) and dashIcon, "client mobile: DASH is the sky tile with the pixel dash")
+		T.check(same(rt.BackgroundColor3, Sign.Tile) and same(rt.Lip.BackgroundColor3, Sign.StoneLip), "client mobile: RUN is the stone tile at rest")
 	end
 	if T.check(dash ~= nil, "a DASH button exists") then
 		hum().MoveDirection = Vector3.new(0, 0, -1)
@@ -1467,7 +1476,8 @@ S.client_mobile = guarded("client_mobile", function()
 		advance(1.5)
 		T.check(hum().WalkSpeed > before + 5, "tapping RUN toggles running", before .. " -> " .. hum().WalkSpeed)
 		local gold = Theme.Sign.Gold
-		T.check(math.abs(run.BackgroundColor3.R - gold.R) < 0.01 and math.abs(run.BackgroundColor3.G - gold.G) < 0.01, "client mobile: RUN turns the gold tile while running")
+		local rt = tileOf(run)
+		T.check(math.abs(rt.BackgroundColor3.R - gold.R) < 0.01 and math.abs(rt.BackgroundColor3.G - gold.G) < 0.01, "client mobile: RUN turns the gold tile while running")
 		Mock.Click(run)
 		advance(1.5)
 		T.near(hum().WalkSpeed, Config.Physics.WalkSpeed, 1.5, "tapping RUN again stops running")

@@ -370,6 +370,9 @@ function PixelCrisp.Adopt(frame, cell)
 	frame:SetAttribute("CrispCell", cell)
 	watch(frame)
 	snapHolder(frame)
+	-- (merge kitb-look1 x U9-9) PixelIcon fits its icons and Lead boxes to the scales above them: once more with this
+	-- correction counted (a Lead box sized before it drew 2.5 px cells), and it watches the correction from now on
+	PixelIcon.Refit(frame)
 	return frame
 end
 

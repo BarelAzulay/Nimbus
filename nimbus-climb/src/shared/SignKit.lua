@@ -136,7 +136,11 @@ local function line(parent, colour, thickness)
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	s.LineJoinMode = Enum.LineJoinMode.Miter
 	s.Parent = parent
-	PixelIcon.WholeStroke(s, thickness) -- (LOOK-ui) a whole number of screen px under the window's scale
+	-- (U9-8 look; LOOK-ui) a whole number of screen px under the scale above it (SignKit.Whole, below: it counts every
+	-- layout UIScale, so the Credits board under its own scale keeps the approved tree)
+	SignKit.Whole(s, function(sc)
+		s.Thickness = SignKit.Px(thickness, sc)
+	end)
 	return s
 end
 

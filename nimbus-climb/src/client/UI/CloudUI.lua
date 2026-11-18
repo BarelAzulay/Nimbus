@@ -512,7 +512,9 @@ function CloudUI.SignBlock(obj, look, opts)
 	edge.Color = opts.Edge or look.Edge
 	-- (LOOK-ui) the edge and the lip a whole number of screen px under the window's scale (PixelIcon.Px): a 3 px edge at a
 	-- 0.8 Fit drew 2.4 px, its lip 4 px of a 5 px design
-	PixelIcon.WholeStroke(edge, tonumber(opts.EdgePx) or edge:GetAttribute("DesignPx") or SM.Edge)
+	-- (merge) one design px for both snaps below (WholeStroke and SignKit.Whole): a repaint without EdgePx keeps the last
+	local edgePx = tonumber(opts.EdgePx) or edge:GetAttribute("DesignPx") or SM.Edge
+	PixelIcon.WholeStroke(edge, edgePx)
 	local lipPx = tonumber(opts.LipPx) or SM.Lip
 	local lip = obj:FindFirstChild("Lip")
 	if not lip then
@@ -545,7 +547,6 @@ function CloudUI.SignBlock(obj, look, opts)
 		obj:SetAttribute("SignLook", name)
 	end
 	-- (U9-8 look) the edge and the lip on whole screen px, now and whenever the block moves or its window's scale changes
-	local edgePx = opts.EdgePx or SM.Edge
 	SignKit.Whole(obj, function(sc)
 		edge.Thickness = SignKit.Px(edgePx, sc)
 		lip.Size = UDim2.new(1, lip.Size.X.Offset, 0, SignKit.Px(lipPx, sc)) -- the width syncLip gave it
@@ -683,7 +684,9 @@ function CloudUI.ElementChip(parent, element, px, opts)
 		chip.Size = UDim2.fromOffset(side, side)
 		if label then
 			label.Position = UDim2.fromOffset(side, 0)
-			label.Size = UDim2.fromOffset(0, side)
+			-- (merge kitb-look1 x U9-7) the width a caller fitted (the Arena's fitWidth: its text and 4 px) kept; the
+			-- AutomaticSize still grows the tag past it
+			label.Size = UDim2.fromOffset(label.Size.X.Offset, side)
 		end
 	end)
 	chip:SetAttribute("Element", element)
@@ -767,15 +770,20 @@ local function signButton(props)
 		-- (LOOK-ui) attribute Ink (a Color3): the label's ink instead of the look's (a stone Remove plank in red ink)
 		local ink = button:GetAttribute("Ink")
 		ink = (not disabled and typeof(ink) == "Color3") and ink or nil
-		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, Text = ink, LipPx = pressing and SM.PressLip or SM.Lip })
+		-- (merge kitb-look1 x U9-4) attributes EdgePx / LipPx: a small block's own weight where the kit's 5 / 8 cannot fit
+		-- (a phone band's 36 px close block keeps U9-4's 3 / 5)
+		local edgePx = tonumber(button:GetAttribute("EdgePx")) or SM.Edge
+		local lipPx = tonumber(button:GetAttribute("LipPx")) or SM.Lip
+		local pressLip = math.min(lipPx, SM.PressLip)
+		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, Text = ink, EdgePx = edgePx, LipPx = pressing and pressLip or lipPx })
 		local pad = button:FindFirstChild("LipPad")
 		if pad then
-			pad.PaddingTop = UDim.new(0, pressing and (SM.Lip - SM.PressLip) or 0)
+			pad.PaddingTop = UDim.new(0, pressing and (lipPx - pressLip) or 0)
 		end
 		-- (kit-b U9-7) a block that carries its own labels keeps them in a Frame "PressFace": it sinks with the face too
 		local face = button:FindFirstChild("PressFace")
 		if face then
-			face.Position = UDim2.fromOffset(0, pressing and (SM.Lip - SM.PressLip) or 0)
+			face.Position = UDim2.fromOffset(0, pressing and (lipPx - pressLip) or 0)
 		end
 	end
 	fx = attachFx(button, { Hover = 1, Press = 1, OnState = paint })
@@ -783,6 +791,8 @@ local function signButton(props)
 	button:GetAttributeChangedSignal("Disabled"):Connect(paint)
 	button:GetAttributeChangedSignal("Outline"):Connect(paint)
 	button:GetAttributeChangedSignal("Ink"):Connect(paint)
+	button:GetAttributeChangedSignal("EdgePx"):Connect(paint)
+	button:GetAttributeChangedSignal("LipPx"):Connect(paint)
 	button:GetPropertyChangedSignal("Active"):Connect(paint)
 	button:GetAttributeChangedSignal("Style"):Connect(function()
 		local style = button:GetAttribute("Style")
@@ -925,7 +935,9 @@ end
 -- props: Name, Size, Position, AnchorPoint, Title, Closable, OnClose, Parent, Accent (Color3: the neon border, glow,
 --        title underline), Category (v5: a Theme.Category name, e.g. "Pets", when no Accent is given; default Blue),
 --        Glow (v5; kit-b U8: default false, NeonKit's glow is opt-in), Clouds (ignored since v5: no cloud bumps), LayoutOrder,
---        TitleSize (default 34), Skin ("Signboard": kit B, see signPanel), Icon (a PixelIcon name for a Signboard header)
+--        TitleSize (default 34), Skin ("Signboard": kit B, see signPanel), Icon (a PixelIcon name for a Signboard header),
+--        CloseBlock (Signboard; default true: NeonKit.CloseBlock, the windows' one close block; false: a card that lays
+--        its close out itself, the U9-9 result card's close inside its banner)
 -- (kit-b U8) Skin = "Signboard": the window as a kit B sign (the pitch's Pets stage): the flat pink awning (SignKit.Roof)
 -- at a FIXED size (Metrics.SignRoofW) centred over the top, never stretched with the window (Gemini's sign rule: the
 -- roof is one sprite, never 9-sliced); the navy header plank in its wood rim (SignKit.Header) with the title in gold
@@ -1056,7 +1068,9 @@ local function signPanel(props)
 			Parent = root,
 		})
 		NeonKit.CloseMark(closeButton, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- square bars in a Danger block's brown ink
-		NeonKit.CloseBlock(closeButton) -- (LOOK-ui) the kit's one close block (>= 44 screen px, 3 px cells)
+		if props.CloseBlock ~= false then
+			NeonKit.CloseBlock(closeButton) -- (LOOK-ui) the kit's one close block (>= 44 screen px, 3 px cells)
+		end
 		panel.CloseButton = closeButton
 	end
 	root.Parent = props.Parent

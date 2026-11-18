@@ -1192,7 +1192,7 @@ end
 function Vitals.IconAt(icon, w, h, k)
 	local px = icon.Size.X.Offset
 	local cell = math.floor(px / 9)
-	local screenCell = tonumber(icon:GetAttribute("CellPx")) or math.max(1, math.min(cell, 2), math.ceil(cell * k - 0.5))
+	local screenCell = tonumber(icon:GetAttribute("CellPx")) or math.max(1, math.min(cell, 2), math.floor(cell * k + 0.5))
 	local drawn = 9 * screenCell
 	local pad = math.floor((px * k - drawn) / 2)
 	return UDim2.fromOffset((math.floor((w - drawn) / 2) - pad) / k, (math.floor((h - drawn) / 2) - pad) / k)

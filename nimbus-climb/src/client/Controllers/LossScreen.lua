@@ -233,7 +233,9 @@ local function layout()
 	local lx, lineRows = 0, (#lines > 0) and 1 or 0
 	for _, label in ipairs(lines) do
 		local pad = label:FindFirstChildOfClass("UIPadding")
-		local tw = math.min(inner, drawnW(label.Text, "Heading", label.TextSize) + (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 20) + 4)
+		-- (merge kitb-look1 x U9-6) 6 px spare (was 4): under the card's 0.67 at 1280 x 720 the icon keeps its 2 px cells
+		-- (PixelIcon: never under 2) and 4 design px were 2.7 screen px, under the text's measured width
+		local tw = math.min(inner, drawnW(label.Text, "Heading", label.TextSize) + (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 20) + 6)
 		if lx > 0 and lx + tw > inner then
 			lx, lineRows = 0, lineRows + 1
 		end

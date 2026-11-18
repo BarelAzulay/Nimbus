@@ -4524,8 +4524,10 @@ local function clientScenarios()
 		local missing = seenAs(expected, "Ribbon")
 		local notPlain = seenAs(expectedSection, "Section")
 		-- a ribbon is a window's NAME: a CloudUI title bar, a header (SignKit's plate, the Training / Fusion / picker
-		-- header), the loading board's plate, the Sky Trove's title bar; anything else wearing it is a stray
-		local windowTitle = { "%.TitleBar%.Title$", "%.Header%.Title$", "%.Header%.Plate%.Title$", "%.Plate%.Title$", "^NimbusTrove%..-%.TitleText$" }
+		-- header), the loading board's plate, the Sky Trove's title bar, (merge: U9-4) the Gifts window's title in its tabbed
+		-- band (TitleBar.WindowTitle); anything else wearing it is a stray
+		local windowTitle = { "%.TitleBar%.Title$", "%.Header%.Title$", "%.Header%.Plate%.Title$", "%.Plate%.Title$", "^NimbusTrove%..-%.TitleText$",
+			"^NimbusDaily%..-%.TitleBar%.WindowTitle$" }
 		local strays = {}
 		for path in pairs(ribbons) do
 			local ok = false

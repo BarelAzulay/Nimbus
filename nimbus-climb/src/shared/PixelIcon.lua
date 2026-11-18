@@ -410,10 +410,11 @@ local function layoutScale(obj)
 	return s, scales, false
 end
 
--- the screen px of a cell of `cell` design px under scale s: the nearest whole px (a half rounds down), and never under
+-- the screen px of a cell of `cell` design px under scale s: the nearest whole px (a half rounds up, as PixelIcon.Px and
+-- PixelCrisp.Px: one rounding for every cell of a screen), and never under
 -- 2 for a cell of 2 or more, so an 18 px icon stays legible and every icon of a phone screen (0.7 - 0.8) draws 2 px cells
 local function screenCellOf(cell, s)
-	return math.max(1, math.min(cell, 2), math.ceil(cell * s - 0.5))
+	return math.max(1, math.min(cell, 2), math.floor(cell * s + 0.5))
 end
 
 -- design px an icon of px draws past each side of its box under scale s (0 when it draws inside it)
@@ -444,7 +445,9 @@ fitCells = function(icon)
 	if not rects then
 		return
 	end
-	local s, scales, rooted = layoutScale(icon.Parent)
+	-- (merge kitb-look1 x U9-9) from the icon itself: its own UIScale scales its cells too (PixelCrisp's "Crisp" on an
+	-- icon it adopted; counted from above only, the cells were fitted twice and drew 2.5 px)
+	local s, scales, rooted = layoutScale(icon)
 	if not rooted then
 		return
 	end
@@ -463,6 +466,26 @@ fitCells = function(icon)
 	icon:SetAttribute("CellPx", screenCell)
 	for _, scale in ipairs(scales) do
 		watchScale(scale)[icon] = true
+	end
+end
+
+-- (merge kitb-look1 x U9-9) fits `root` and everything under it again now: every whole-px part (Whole) and every icon
+-- (New). For a UIScale this module did not watch yet: client/UI/PixelCrisp's "Crisp" correction added on a Lead box
+-- after Lead sized it (the box then drew its 2 px cells 2.5 px wide). From then on the new scale is watched
+function PixelIcon.Refit(root)
+	if not root then
+		return
+	end
+	local list = root:GetDescendants()
+	table.insert(list, 1, root)
+	for _, d in ipairs(list) do
+		local entry = watched[d]
+		if entry and d.Parent then
+			applyWhole(d, entry, false)
+		end
+		if d:GetAttribute("PixelIcon") and d:GetAttribute("Cell") then
+			fitCells(d)
+		end
 	end
 end
 
@@ -751,8 +774,12 @@ function PixelIcon.Lead(label, name, opts)
 	local cell = math.floor(px / 9)
 	local count = math.max(0, math.floor(tonumber(opts.Count) or 1))
 	local of = math.max(count, math.floor(tonumber(opts.Of) or count), 1)
-	local w = of * px + (of - 1) * cell
-	local gap = tonumber(opts.Gap) or math.max(3, math.floor(px / 4)) -- (U7b) opts.Gap: px between the text and the icons
+	-- (LOOK-ui, kitb-look1: the box from the snapped icon, not the icon from the box) under a 0.8 Fit a 2 px cell draws 2
+	-- screen px (2.5 design), so an 18 px icon spans 22.5 design px: a box of 18 let it run into the label ("+Put in team",
+	-- 0 px apart). The box is 9 whole-px cells wide per icon and the gap a whole 6 screen px (opts.Gap: design px, snapped),
+	-- both again whenever the rest scale changes (metrics)
+	local w, iconW, dc = of * px + (of - 1) * cell, px, cell
+	local gap = tonumber(opts.Gap) or 6 -- (U7b) opts.Gap: px between the text and the icons
 	local pad = label:FindFirstChildOfClass("UIPadding")
 	if not pad then
 		pad = Instance.new("UIPadding")
@@ -778,6 +805,22 @@ function PixelIcon.Lead(label, name, opts)
 		icon.Position = UDim2.fromOffset((i - 1) * (px + cell), 0)
 		icons[i] = icon
 	end
+	local gapPx = gap
+	-- the box, the icons in it and the gap for rest scale s: each icon's cells from the box's left, a cell apart
+	local function metrics(s)
+		s = (s and s > 0) and s or 1
+		dc = screenCellOf(cell, s) / s -- (merge) the cell New draws (fitCells)
+		iconW = 9 * dc
+		w = of * iconW + (of - 1) * dc
+		gap = opts.Gap and PixelIcon.Px(gapPx, s) or (gapPx / s)
+		box.Size = UDim2.fromOffset(w, iconW)
+		-- New centres its cells in its px box (a negative inset when they overflow it): undone here
+		local inset = math.floor((px - 9 * dc) / 2 * s + 1e-6) / s
+		for i, icon in ipairs(icons) do
+			icon.Position = UDim2.fromOffset((i - 1) * (iconW + dc) - inset, -inset)
+		end
+	end
+	metrics(restScaleOf(label))
 	local function sync()
 		box.ZIndex = label.ZIndex
 		for i, icon in ipairs(icons) do
@@ -816,8 +859,13 @@ function PixelIcon.Lead(label, name, opts)
 		return pw, ph
 	end
 	local function vertical(ph)
-		if ph then
-			return 0, UDim.new(0, math.floor((ph - px) / 2))
+		-- (merge kitb-look1 x U9-9) a box PixelCrisp adopted (its own UIScale "Crisp" grows it round its AnchorPoint and
+		-- snaps its origin) stays centred: from its top it grew down onto the block's lip
+		if ph and not box:FindFirstChild("Crisp") then
+			-- (LOOK-ui) the snapped icon's height, its top on a whole screen px of the padded box
+			local s = restScaleOf(label)
+			s = s > 0 and s or 1
+			return 0, UDim.new(0, math.floor((ph - iconW) / 2 * s + 1e-6) / s)
 		end
 		return 0.5, UDim.new(0.5, 0)
 	end
@@ -827,23 +875,6 @@ function PixelIcon.Lead(label, name, opts)
 	-- bounds for a text that has letters (the server; a client before its first layout, which re-places on TextBounds):
 	-- measured (measuredWidth)
 	local function place()
-		-- (U9-7 look) under a UIScale an icon's whole-px cells can draw past its box (18 px at 0.8: 2 px cells, 18 px on
-		-- the screen in a 14.4 px box): the text's inset grows by what draws outside one side and the box steps out by the
-		-- same, so the gap to the text still shows (the drawn icon's outer side takes that much of the label's own inset)
-		local extra = math.ceil(overflowOf(px, (layoutScale(label))) - 0.01)
-		local g = gap + extra
-		-- (a rating's icons step apart by the same, so their drawn cells never touch)
-		local step = px + cell + 2 * extra
-		local w = (of - 1) * step + px
-		box.Size = UDim2.fromOffset(w, px)
-		for i, icon in ipairs(icons) do
-			icon.Position = UDim2.fromOffset((i - 1) * step, 0)
-		end
-		if not after and align ~= Enum.TextXAlignment.Right then
-			pad.PaddingLeft = UDim.new(pad.PaddingLeft.Scale, baseL + w + gap + extra)
-		elseif after and (align ~= Enum.TextXAlignment.Left or opts.Room == true) then
-			pad.PaddingRight = UDim.new(pad.PaddingRight.Scale, baseR + w + gap + extra)
-		end
 		local textW = label.TextBounds.X / scaleOf(label)
 		if textW <= 0 and label.Text ~= "" then
 			textW = measuredWidth(label)
@@ -857,12 +888,13 @@ function PixelIcon.Lead(label, name, opts)
 				textW = math.min(textW, boxW - pad.PaddingLeft.Offset - pad.PaddingRight.Offset)
 			end
 		end
+		local rawW = textW
 		textW = math.ceil(textW - 0.01) -- (U9-7 look) the icon a whole px from the text's measured end
 		local pw, ph = padded()
 		local ay, y = vertical(ph)
 		box.AnchorPoint = Vector2.new(after and 0 or 1, ay)
 		if align == Enum.TextXAlignment.Right then
-			box.Position = after and UDim2.new(1, g, y.Scale, y.Offset) or UDim2.new(1, -(textW + g), y.Scale, y.Offset)
+			box.Position = after and UDim2.new(1, gap, y.Scale, y.Offset) or UDim2.new(1, -(textW + gap), y.Scale, y.Offset)
 		elseif align == Enum.TextXAlignment.Center and label.Text == "" and not after then
 			-- (U7b) icons alone on an empty centred label (a rating badge): centred in the label (the left inset moved the
 			-- text area's centre right by half of w + gap)
@@ -873,19 +905,28 @@ function PixelIcon.Lead(label, name, opts)
 				box.Position = UDim2.new(0, math.floor(pw / 2 - (w + gap) / 2 - w / 2), y.Scale, y.Offset)
 			end
 		elseif align == Enum.TextXAlignment.Center then
-			box.Position = UDim2.new(0.5, math.floor(after and (textW / 2 + g) or -(textW / 2 + g)), y.Scale, y.Offset)
+			box.Position = UDim2.new(0.5, math.floor(after and (textW / 2 + gap) or -(textW / 2 + gap)), y.Scale, y.Offset)
 			if pw then
-				box.Position = UDim2.new(0, math.floor(pw / 2 + (after and (textW / 2 + g) or -(textW / 2 + g))), y.Scale, y.Offset)
+				-- (LOOK-ui) the text's end snapped outward to a whole screen px, then the whole-px gap: never closer than it.
+				-- (merge kitb-look1 x U9-7) whole px at REST: a window's entrance Pop (0.9 when it placed) left the icon
+				-- 7.78 px from its label once the pop ended
+				local s = restScaleOf(label)
+				s = s > 0 and s or 1
+				local edge = after and math.ceil((pw / 2 + rawW / 2) * s - 1e-6) / s or math.floor((pw / 2 - rawW / 2) * s + 1e-6) / s
+				box.Position = UDim2.new(0, after and edge + gap or edge - gap, y.Scale, y.Offset)
 			end
 		else
-			box.Position = after and UDim2.new(0, textW + g, y.Scale, y.Offset) or UDim2.new(0, -g, y.Scale, y.Offset)
+			box.Position = after and UDim2.new(0, textW + gap, y.Scale, y.Offset) or UDim2.new(0, -gap, y.Scale, y.Offset)
 		end
 	end
-	if not after and align ~= Enum.TextXAlignment.Right then
-		pad.PaddingLeft = UDim.new(pad.PaddingLeft.Scale, baseL + w + gap)
-	elseif after and (align ~= Enum.TextXAlignment.Left or opts.Room == true) then
-		pad.PaddingRight = UDim.new(pad.PaddingRight.Scale, baseR + w + gap)
+	local function inset()
+		if not after and align ~= Enum.TextXAlignment.Right then
+			pad.PaddingLeft = UDim.new(pad.PaddingLeft.Scale, baseL + w + gap)
+		elseif after and (align ~= Enum.TextXAlignment.Left or opts.Room == true) then
+			pad.PaddingRight = UDim.new(pad.PaddingRight.Scale, baseR + w + gap)
+		end
 	end
+	inset()
 	sync()
 	place()
 	box.Parent = label
@@ -893,6 +934,14 @@ function PixelIcon.Lead(label, name, opts)
 		leadConns[label][childName] = nil
 		return box
 	end
+	-- (LOOK-ui) a new rest scale (the window's Fit) sizes the box, the gap and the text's inset again
+	PixelIcon.Whole(box, function(s)
+		if box.Parent then
+			metrics(s)
+			inset()
+			place()
+		end
+	end)
 	leadConns[label][childName] = {
 		label:GetPropertyChangedSignal("TextColor3"):Connect(sync),
 		label:GetPropertyChangedSignal("TextTransparency"):Connect(sync),

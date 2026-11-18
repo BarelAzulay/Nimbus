@@ -410,6 +410,13 @@ local function build(mode)
 		end })
 	-- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box); kit B: square bars in brown ink
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text })
+	-- (merge kitb-look1 x U9-4) the pixel x at the screen's glyph size (one of the window's two pixel sizes), and on a phone
+	-- the 36 px block keeps U9-4's 3 px edge and 5 px lip (the kit's 5 / 8 would hang out of the plate)
+	NeonKit.CloseMarkPx(U.Close, (mode == "PC" and PX.PC or PX.Phone).Glyph)
+	if M.CloseBlock then
+		U.Close:SetAttribute("EdgePx", 3)
+		U.Close:SetAttribute("LipPx", 5)
+	end
 	-- (U9-4 look review 2) a phone's 44 px touch box under the 36 px block (a tap on the ring round the block closes too)
 	U.CloseTap = nil
 	if M.CloseBlock then

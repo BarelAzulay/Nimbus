@@ -5322,11 +5322,21 @@ local function signBlock(obj, face, lip, ink, lipPx, edgePx)
 		-- (LOOK-ui2: Swap's lip started 18 px in, the OK's floated 5 px up) a UIPadding lays out the Lip child too (PixelIcon.Lead's
 		-- left inset, a LipPad): the lip reaches back out by it, flush on the edge, as CloudUI.SignBlock's
 		local pad = obj:FindFirstChildOfClass("UIPadding")
-		local pl = pad and pad.PaddingLeft.Offset or 0
-		local pr = pad and pad.PaddingRight.Offset or 0
-		local pb = pad and pad.PaddingBottom.Offset or 0
-		l.Position = UDim2.new(0, -pl, 1, pb)
-		l.Size = UDim2.new(1, pl + pr, 0, lipPx)
+		local function sync()
+			local pl = pad and pad.PaddingLeft.Offset or 0
+			local pr = pad and pad.PaddingRight.Offset or 0
+			local pb = pad and pad.PaddingBottom.Offset or 0
+			l.Position = UDim2.new(0, -pl, 1, pb)
+			l.Size = UDim2.new(1, pl + pr, 0, l:GetAttribute("LipPx") or lipPx)
+		end
+		l:SetAttribute("LipPx", lipPx)
+		sync()
+		-- (merge kitb-look1 x U9-6) again whenever the padding changes: Lead's inset follows the window's rest scale since
+		-- kitb-look1 (read once, Swap's lip sat 6 px out at 1920 x 1080)
+		if pad and not pad:GetAttribute("LipWatch") then
+			pad:SetAttribute("LipWatch", true)
+			pad.Changed:Connect(sync)
+		end
 		l.BackgroundColor3 = lip or Theme.SignLipOf(face)
 		l.Visible = lipPx > 0
 	end

@@ -1522,6 +1522,13 @@ local function layoutDialog()
 		UI.StoneLip.Size = UDim2.new(1, 0, 0, rows.Lip)
 	end
 	UI.Root:SetAttribute("Rows", rows == K.ROWS.Short and "Short" or "Tall")
+	-- (merge kitb-look1 x U9-9) the short card's 12 px of stone over the footer holds the kit's 5 px plank edge with
+	-- 2 px to spare at 0.7: there the two planks keep U9-9's 3 px edge (CloudUI.Button's EdgePx attribute)
+	for _, b in ipairs({ UI.Next, UI.Close }) do
+		if b then
+			b:SetAttribute("EdgePx", rows == K.ROWS.Short and 3 or nil)
+		end
+	end
 	-- (U9-9 look 2) the left column ends on the footer's bottom line, as the right one does: the full card's title tag
 	-- stands on that line under a square portrait; the compact card puts Close there (under the title tag, BUTTON_GAP
 	-- apart) and lets Next span the well, its one wide action, and the portrait takes the column's height above them

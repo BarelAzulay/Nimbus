@@ -243,7 +243,8 @@ local K = {
 		KeepText = 15, Bottom = 8, ColGap = 16, BannerText = 15, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26,
 		RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
 		-- the Play page (card B on a 844 x 390 phone: body 820 x 280, seven boxes in one row)
-		PlaySide = 14, PlayY = 8, PlayH = 44, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 8, AllText = 15,
+		-- (merge kitb-look1) AllY 9: Claim all's 5 px edge (the kit's one plank weight) keeps its 4 px of stone under the band
+		PlaySide = 14, PlayY = 8, PlayH = 44, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 9, AllText = 15,
 		AllGap = 12, BoxSide = 14, BoxW = 104, BoxMaxH = 198, BoxCols = 7, BoxGap = 12, BoxRowsY = 64, BoxRowGap = 0,
 		BoxBottom = 20, BoxPadTop = 6, BoxPadBottom = 15, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
 		TierBtnText = 16, ClockText = 16, BoxMinGap = 4, TagH = 24, TagPad = 4,
@@ -1346,6 +1347,10 @@ function H.layoutHeader(M, W, winTop)
 	-- (U9-4 look review 2) a phone band: the CloseBlock px block centred in the band, its stroke 4 px inside the band's
 	-- right end, over its Close px touch box (the 44 px block filled the band and its stroke hung onto the stone)
 	local block = M.CloseBlock
+	-- (merge kitb-look1 x U9-4) the 36 px block keeps U9-4's 3 px edge and 5 px lip (the kit's 5 / 8 would hang out of
+	-- the 44 px band)
+	U.Close:SetAttribute("EdgePx", block and 3 or nil)
+	U.Close:SetAttribute("LipPx", block and 5 or nil)
 	if block then
 		closeX = bw - K.CLOSE_INSET - block
 		local by = math.floor((bh - block) / 2)

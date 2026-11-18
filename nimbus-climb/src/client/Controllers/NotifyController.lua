@@ -1258,6 +1258,7 @@ local function buildResults(data)
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = resultPosition(1.8, panelH, panelW),
 		Closable = true,
+		CloseBlock = false, -- (merge U9-9 x kitb-look1) the close sits in the banner's face, sized and drawn below
 		OnClose = function()
 			closeResults(false)
 		end,
