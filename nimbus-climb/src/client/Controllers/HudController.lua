@@ -1022,14 +1022,23 @@ local function applyMargins(animate, force)
 		UI.Currency.Parent = UI.TopRight
 		UI.Currency.AnchorPoint = Vector2.new(1, 0)
 		UI.Currency.Size = UDim2.fromOffset(blockW, blockH)
-		UI.Currency.Position = UDim2.new(1, -side, 0, K.EDGE)
-		topRightBottom = K.EDGE + blockH * k
 		topRightLeft = area.X - side - blockW * k
+		-- (kit-b gate U9 r4: on a portrait phone the strips lay over the match / party panel's Leave button) where the
+		-- strips would reach over the top-left panel: in the lobby (a party) they sit under it, right-aligned as before; in
+		-- a match they step aside while the panel shows (it counts the run's tokens itself; under it they pushed the
+		-- result card into the middle of the screen)
+		local stripTop = K.EDGE
+		local overPanel = hasPanel and topRightLeft < topLeft + panelW * k + K.STRIP_GAP * k
+		if overPanel and not inMatch then
+			stripTop = math.floor(K.EDGE + topH * k + K.GIFT_GAP * k + 0.5)
+		end
+		UI.Currency.Position = UDim2.new(1, -side, 0, stripTop)
+		topRightBottom = stripTop + blockH * k
 		-- a card that takes the corner for a moment (a dungeon run's result on a phone) hides the strips meanwhile
-		local strips = { x0 = topRightLeft, y0 = K.EDGE, x1 = area.X - side, y1 = topRightBottom }
+		local strips = { x0 = topRightLeft, y0 = stripTop, x1 = area.X - side, y1 = topRightBottom }
 		local yield = cornerCard ~= nil and cornerCard.x0 < strips.x1 and strips.x0 < cornerCard.x1
 			and cornerCard.y0 < strips.y1 and strips.y0 < cornerCard.y1
-		local want = not yield and next(S.currencyOwners) == nil
+		local want = not yield and not (overPanel and inMatch) and next(S.currencyOwners) == nil
 		if UI.Currency.Visible ~= want then
 			UI.Currency.Visible = want
 		end

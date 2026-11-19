@@ -8358,6 +8358,30 @@ local function clientScenarios()
 	-- no rotated parts). (U9-8 look) the pixel grid: at every grid size every block, face, lit part and lip of both bars, the
 	-- dash key's parts, the badges and the card sit on whole screen px (the card lives under the HUD's 0.8 UIScale on phones
 	-- and at 1280x720), and every wood edge (UIStroke) is a whole number of screen px
+	-- (kit-b gate U9 r4: on a portrait phone the currency strips lay over the match panel's Leave button) in a match, at
+	-- every size, the strips and the match panel do not overlap (the strips sit under the panel where they would)
+	S.hud_strips_clear_of_panel = guarded("hud_strips_clear_of_panel", function()
+		local Config = LoadingH.shared("Config")
+		local lp = game:GetService("Players").LocalPlayer
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "strips vs panel", function(tag)
+				lp:SetAttribute(Config.Attr.InMatch, true)
+				LKC.toClient("MatchState", LKC.matchState({}))
+				LKC.advance(1)
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				local panel = hud and hud:FindFirstChild("MatchPanel", true)
+				local strips = hud and hud:FindFirstChild("Currency", true)
+				if T.check(panel ~= nil and U8.shown(panel) and strips ~= nil, tag .. ": (setup) the match panel and the strips show") then
+					local a, b = U8.rect(panel), U8.rect(strips)
+					T.check(not (U8.shown(strips) and U8.overlap(a, b)), tag .. ": the currency strips are clear of the match panel", U8.show(a) .. " vs " .. U8.show(b))
+				end
+				lp:SetAttribute(Config.Attr.InMatch, nil)
+				LKC.advance(0.5)
+			end)
+		end
+		LKC.flushErrors("hud_strips_clear_of_panel")
+	end)
+
 	S.vitals_stamina_blocks = guarded("vitals_stamina_blocks", function()
 		local Theme = LoadingH.shared("Theme")
 		local Config = LoadingH.shared("Config")
