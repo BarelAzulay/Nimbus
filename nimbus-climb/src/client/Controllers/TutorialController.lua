@@ -111,6 +111,7 @@ local K = {
 	PROG_MIN = 10,
 	PROG_MAX = 14,
 	PROG_CHAPTER = 3,
+	PROG_BLOCKS = 8, -- (kit-b gate U9 r4) the most single-step blocks; more steps show as chapters
 	PROG_LIP = 2,
 	NAME_MIN = 20, -- narrow cards shrink the name (and the step title down to CAPTION_SIZE) before truncating
 	OUTLINE_ROOM = 6, -- the labels' glyph outline + stroke draw this much wider than TextService measures
@@ -921,7 +922,9 @@ local function layoutProgress(room)
 	local roomPx = math.max(0, math.floor(room * k))
 	local per, n = 1, total
 	local bw = n > 0 and math.floor((roomPx + K.PROG_GAP) / n) - K.PROG_GAP or 0
-	if bw < K.PROG_MIN then
+	-- (kit-b gate U9 r4: 21 thin blocks beside "Step 1/21" said the same thing twice, as noise) more than PROG_BLOCKS steps
+	-- show as chapters of PROG_CHAPTER (21 steps: 7 blocks); the counter keeps the exact step
+	if bw < K.PROG_MIN or n > K.PROG_BLOCKS then
 		per = K.PROG_CHAPTER
 		n = math.ceil(total / per)
 		bw = n > 0 and math.floor((roomPx + K.PROG_GAP) / n) - K.PROG_GAP or 0
@@ -1212,7 +1215,7 @@ local function layout()
 	end
 
 	local designH, bodyH, hintH = panelHeight(width)
-	local tagRoom = true
+	local tagRoom, tagBelow = true, false
 	if folded then
 		top = math.max(top, edge - K.PORTRAIT_Y * k) -- (the folded guide keeps the whole edge margin: no plank rides it)
 		local bubbleTop = top + K.PORTRAIT_Y * k
@@ -1246,8 +1249,14 @@ local function layout()
 		local tagRight = left + (K.PAD + K.PORTRAIT + K.TAP_GAP + K.TAP_W) * k
 		local portraitTop = top + K.PORTRAIT_Y * k
 		if hud.TopRightLeft > 0 and tagRight > hud.TopRightLeft and portraitTop < hud.TopRightBottom + K.GAP * k then
-			tagRoom = false
+			-- (kit-b gate U9 r4: a portrait phone showed a lone tile with a "!" and no word) no room beside the portrait:
+			-- the tag goes under it, left-aligned with it (the sky under the top bar is free there)
+			tagBelow = true
 		end
+	end
+	if UI.TapTag then
+		UI.TapTag.AnchorPoint = tagBelow and Vector2.new(0, 0) or Vector2.new(0, 0.5)
+		UI.TapTag.Position = tagBelow and UDim2.new(0, 0, 1, K.TAP_GAP) or UDim2.new(1, K.TAP_GAP, 0.5, 0)
 	end
 	applyGeometry(width, designH, bodyH, hintH)
 	local crisp = mod("PixelCrisp")

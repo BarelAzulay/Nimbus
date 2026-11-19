@@ -13055,9 +13055,19 @@ local function clientScenarios()
 					wrong[#wrong + 1] = "Block" .. i .. " off the pixel grid " .. U8.show(r)
 				end
 			end
-			T.check(row ~= nil and row:GetAttribute("SignKit") == "BlockRow" and per == 1 and #states > 5 and #wrong == 0,
-				tag .. ": the progress is one SignKit block row, a block per step (done grass, the current gold, the rest the sunk well), on whole px",
-				table.concat(wrong, ", ") .. " | per " .. tostring(per))
+			-- (kit-b gate U9 r4: 21 thin blocks beside "Step 1/21" repeated the counter as noise) more than 8 steps show as
+			-- chapters of 3 (21 steps: 7 blocks), each block 10 screen px or more
+			local steps = row and row:GetAttribute("Steps") or 0
+			local narrow = {}
+			for i = 1, #states do
+				local b = row:FindFirstChild("Block" .. i)
+				if b and b.AbsoluteSize.X < 10 then
+					narrow[#narrow + 1] = "Block" .. i .. " " .. b.AbsoluteSize.X
+				end
+			end
+			T.check(row ~= nil and row:GetAttribute("SignKit") == "BlockRow" and (steps <= 8 or per == 3) and #states == math.ceil(steps / per) and #states <= 8 and #wrong == 0 and #narrow == 0,
+				tag .. ": the progress is one SignKit block row, chapters of 3 over 8 steps (done grass, the current gold, the rest the sunk well), each 10 px or more, on whole px",
+				table.concat(wrong, ", ") .. table.concat(narrow, ", ") .. " | per " .. tostring(per) .. " of " .. tostring(steps))
 			local old = {}
 			for _, name in ipairs({ "Pips", "PipBar", "Pip1" }) do
 				if root:FindFirstChild(name, true) then
@@ -13162,6 +13172,13 @@ local function clientScenarios()
 								T.warn(what .. ": the opened card reaches into the thumbstick's zone (the 0.7 last resort)", hits[1] .. " | " .. U8.show(r))
 							else
 								T.check(#hits == 0, what .. ": over no thumb zone and no RUN / DASH", table.concat(hits, "; ") .. " | " .. U8.show(r))
+							end
+							if part ~= root and not open then
+								-- (kit-b gate U9 r4: a portrait phone showed a lone tile with a "!" and no word) the folded
+								-- guide always says Tap me! (beside the portrait, or under it where the top-right stack leaves
+								-- no room)
+								local tapTag = root:FindFirstChild("TapTag", true)
+								T.check(tapTag ~= nil and U8.shown(tapTag), what .. ": the folded guide says Tap me!")
 							end
 							if part ~= root then
 								local top = U99.overTopRight(gui, r)
