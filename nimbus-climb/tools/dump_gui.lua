@@ -1087,7 +1087,9 @@ scenario("lobby", function(arg)
 	advance(0.5)
 	if arg == "hint" or arg == "hintbad" then
 		-- (kit-b gate U9 round 3) lobby:hint / lobby:hintbad: the menu's side hint (MenuController.Hint), a locked state / a refusal
-		req("client/Controllers/MenuController").Hint(arg == "hint" and "Claim a home first: press E at a free gate." or "You need $1,250 more Cash.", arg == "hint" and "info" or "bad")
+		-- (kit-b gate U9 r4) the claim hint in this device's words, as CareController / MenuController send it
+		local words = req("client/UI/CloudUI").PromptWords()
+		req("client/Controllers/MenuController").Hint(arg == "hint" and ("Claim a home first: " .. words .. " at a free gate.") or "You need $1,250 more Cash.", arg == "hint" and "info" or "bad")
 		advance(0.3)
 	end
 end)

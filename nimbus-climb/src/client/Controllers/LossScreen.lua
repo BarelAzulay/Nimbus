@@ -28,6 +28,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -474,9 +475,16 @@ local function holdHud(on)
 	if menu and type(menu.SetColumnCovered) == "function" then
 		safe("hud hold", menu.SetColumnCovered, on and 0 or nil, "Loss")
 	end
+	-- (the render: Roblox's jump circle sat on the card's corner and the landscape strips peeked out from under its edge)
+	if menu and type(menu.SetTouchHidden) == "function" then
+		safe("hud hold", menu.SetTouchHidden, "Loss", on and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
+	end
 	local hud = controllers and optional(controllers, "HudController")
 	if hud and type(hud.SetVitalsHidden) == "function" then
 		safe("hud hold", hud.SetVitalsHidden, "Loss", on)
+	end
+	if hud and type(hud.SetCurrencyHidden) == "function" then
+		safe("hud hold", hud.SetCurrencyHidden, "Loss", on)
 	end
 end
 
