@@ -457,6 +457,29 @@ local function afterReturn(button, idleText, fn)
 	end)
 end
 
+-- (kit-b gate U9 r4: RUN, the DASH's "SH", the menu tiles and the vitals stayed drawn round the card, layered clutter on
+-- the run's last screen) while the card shows, the HUD's controls step aside (each through its owner's who-aware hold:
+-- MovementController.SetMobileHidden, MenuController.SetColumnCovered, HudController.SetVitalsHidden), back on hide
+local function holdHud(on)
+	if S.HudHeld == on then
+		return
+	end
+	S.HudHeld = on
+	local controllers = Client:FindFirstChild("Controllers")
+	local move = controllers and optional(controllers, "MovementController")
+	if move and type(move.SetMobileHidden) == "function" then
+		safe("hud hold", move.SetMobileHidden, "Loss", on)
+	end
+	local menu = controllers and optional(controllers, "MenuController")
+	if menu and type(menu.SetColumnCovered) == "function" then
+		safe("hud hold", menu.SetColumnCovered, on and 0 or nil, "Loss")
+	end
+	local hud = controllers and optional(controllers, "HudController")
+	if hud and type(hud.SetVitalsHidden) == "function" then
+		safe("hud hold", hud.SetVitalsHidden, "Loss", on)
+	end
+end
+
 local function hideCard()
 	S.Open = false
 	S.Token = S.Token + 1
@@ -465,6 +488,7 @@ local function hideCard()
 		U.Card.Root.Visible = false
 		U.Gui.Enabled = false
 	end
+	holdHud(false)
 end
 
 local function fightAgain()
@@ -609,6 +633,7 @@ local function present(payload)
 	layout()
 	U.Gui.Enabled = true
 	U.Card.Root.Visible = true
+	holdHud(true)
 end
 
 function LossScreen.Show(payload)

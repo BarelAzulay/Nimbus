@@ -976,6 +976,8 @@ local function clientScenarios()
 			local tag = fmt("tb loss phone %dx%d", w, h)
 			Mock.SetViewport(w, h)
 			KC.advance(0.1)
+			local mobile0 = game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("MobileControls")
+			H.loss_moveWas = mobile0 and mobile0.Enabled
 			LS.Show({ Mode = "Ring", Title = "RUN OVER", Sub = "Champion Ring: the champion won round 2", Pets = LONG,
 				Lines = { { "Rounds won: 1" }, { "+$40 Cash" }, { "+35 Pet XP" }, { "Best: round 1" } }, Start = 1, OnFightAgain = function() end })
 			KC.advance(1.2) -- (past the level-up pop)
@@ -1020,7 +1022,23 @@ local function clientScenarios()
 				end
 			end
 			T.check(#small == 0, tag .. ": every text >= 14 px", table.concat(small, ", "))
+			-- (kit-b gate U9 r4: RUN, the DASH's "SH" and the menu tiles stayed drawn round the card) the HUD's controls step
+			-- aside while the card shows and come back on Hide
+			local pg = game:GetService("Players").LocalPlayer.PlayerGui
+			local mobile = pg:FindFirstChild("MobileControls")
+			local moveWas = H.loss_moveWas
+			T.check(not (mobile and mobile.Enabled), tag .. ": the RUN / DASH buttons are gone while the card shows")
+			local menuGui = pg:FindFirstChild("NimbusMenu")
+			local shownTiles = {}
+			for _, d in ipairs(menuGui and menuGui:GetDescendants() or {}) do
+				if d:IsA("GuiObject") and d.Name:match("^Tile_") and KC.isShown(d) then
+					shownTiles[#shownTiles + 1] = d.Name
+				end
+			end
+			T.check(#shownTiles == 0, tag .. ": the menu tiles step aside while the card shows", table.concat(shownTiles, ", "))
 			LS.Hide()
+			KC.advance(0.1)
+			T.check(moveWas == nil or mobile == nil or mobile.Enabled == moveWas, tag .. ": the RUN / DASH buttons are back as they were after Hide")
 		end
 		Mock.SetViewport(old[1], old[2])
 		KC.advance(0.3)

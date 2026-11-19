@@ -266,7 +266,12 @@ end
 ----------------------------------------------------------------------
 -- GUI: screen speed lines + mobile buttons
 ----------------------------------------------------------------------
+-- (kit-b gate U9 r4) MobileHolds[who] = true while a modal card (the Loss card) wants the RUN / DASH buttons gone;
+-- MobileWanted = what the movement state last asked for, shown again when the last hold lets go
+local MobileHolds, MobileWanted = {}, true
 local function setMobileVisible(visible)
+	MobileWanted = visible
+	visible = visible and next(MobileHolds) == nil
 	if ui and ui.mobile then
 		-- (roll-look review round 1) HudKeepOff: the egg stage may already have this gui off (its HUD hide), where this
 		-- write changes nothing it can see; the attribute keeps the buttons off when the stage restores the HUD
@@ -1550,6 +1555,13 @@ end
 
 -- the touch buttons in screen px { left, bottom, right, top } (from the left / BOTTOM edge): jump (Roblox's), run,
 -- dash (nil in a battle); nil without the mobile controls
+-- (kit-b gate U9 r4) a modal card hides the RUN / DASH touch buttons while it shows: `who` names it, on = true holds them
+-- off; they come back as the movement state wants them when the last hold lets go
+function MovementController.SetMobileHidden(who, on)
+	MobileHolds[type(who) == "string" and who or "?"] = (on == true) or nil
+	setMobileVisible(MobileWanted)
+end
+
 function MovementController.MobileLayout()
 	local m = ui and ui.mobile
 	return m and m.rects or nil
