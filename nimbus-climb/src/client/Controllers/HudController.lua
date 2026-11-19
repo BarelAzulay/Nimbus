@@ -72,6 +72,7 @@ local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the coins' and the chips' icons
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b gate U9 r4) the vitals blocks' weight (Sizes.Bar)
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
@@ -199,8 +200,9 @@ local VG = {
 		KEY = 45, KEY_TOP = 13, KEY_GAP = 8, KEY_ICON = 27, KEY_STEP = 3, KEY_SPAN = true,
 	},
 	HP_BLOCKS = 5, -- (U9-8 look) the HP bar's blocks, a fifth of the health each
-	-- the blocks: SignKit.BlockRow's edge, lip and gap (SignKit.Sizes BlockEdge / BlockLip / BlockGap)
-	BLOCK_EDGE = 2, BLOCK_LIP = 4, BLOCK_GAP = 4,
+	-- (kit-b gate U9 r4: one bar language) the blocks: the kit's Bar weight (SignKit.Sizes.Bar: edge 2, lip 3, gap 3, as the
+	-- Loss, Train and battle bars; were lip 4 / gap 4)
+	BLOCK_EDGE = SignKit.Sizes.Bar.Edge, BLOCK_LIP = SignKit.Sizes.Bar.Lip, BLOCK_GAP = SignKit.Sizes.Bar.GapMax,
 	CARD_EDGE = 3, CARD_LIP = 5, BADGE_EDGE = 2, KEY_EDGE = 2, -- (U9-8 look) the card's, a badge's and the key's wood / lip
 	KEY_LIP = 4, KEY_SINK = 3, -- the key's lip at rest, and how far its face drops onto it while it cools down (the lip 4 -> 1)
 }
@@ -1352,7 +1354,10 @@ function Vitals.Layout(force)
 	end
 	local W = px(UI.VitalsW or K.VITALS_W)
 	local numW = math.ceil((Vitals.NumberW(g.HP_TEXT) + 4) * k)
-	local sig = g.Name .. ":" .. W .. ":" .. k .. ":" .. numW .. ":" .. tostring(S.downed)
+	-- (kit-b gate U9 r4) on a touch screen the dash key is gone: the touch DASH button is the dash there, and the '>>' key
+	-- at the stamina row's end read as a second button; the stamina blocks show the charges
+	local keyOn = not isTouchDevice()
+	local sig = g.Name .. ":" .. W .. ":" .. k .. ":" .. numW .. ":" .. tostring(S.downed) .. ":" .. tostring(keyOn)
 	if UI.LayoutSig == sig and not force then
 		return
 	end
@@ -1372,19 +1377,19 @@ function Vitals.Layout(force)
 	local lip = px(VG.KEY_LIP)
 	key.Px = { K = k, Size = keyS, Lip = lip, Sink = math.min(px(VG.KEY_SINK), lip - 1), Step = (key.Icon and tonumber(key.Icon:GetAttribute("CellPx"))) or px(g.KEY_STEP) }
 	-- the HP row: the blocks, then the number at its right end
-	local right = W - px(g.PAD_R) - (g.KEY_SPAN and (keyS + px(g.KEY_GAP)) or 0)
+	key.Root.Visible = keyOn and not S.downed
+	local right = W - px(g.PAD_R) - ((g.KEY_SPAN and keyOn) and (keyS + px(g.KEY_GAP)) or 0)
 	local hpX, hpY, hpH = at(g.HP_X), at(g.HP_Y), px(g.HP_H)
 	local numX = right - numW
 	local hpW = numX - px(g.NUM_GAP) - hpX
-	-- (kit-b gate U9 round 3) one grid for the two rows: the widest width up to hpW that both rows fill with whole-px
-	-- blocks and whole-px gaps, so the HP and the stamina blocks end on one column at every scale
+	-- (kit-b gate U9 r4: 5 HP blocks and 4 stamina blocks stretched over one width drew two block widths whose gaps never
+	-- met, a hand-placed look) one grid for the two rows: one block width and one gap, the columns of the longer row's
+	-- count across hpW; each row left-aligned on it (stamina block i under HP block i), its spare columns left empty
 	local gapPx, nH, nS = Vitals.Px(VG.BLOCK_GAP, k), #UI.HpBar.Blocks, #UI.StBar.Blocks
-	for t = hpW, math.max(1, hpW - nH * nS), -1 do
-		if (t - (nH - 1) * gapPx) % nH == 0 and (t - (nS - 1) * gapPx) % nS == 0 then
-			hpW = t
-			break
-		end
-	end
+	local cols = math.max(nH, nS)
+	local cellW = math.max(2 * Vitals.Px(VG.BLOCK_EDGE, k) + 1, math.floor((hpW - (cols - 1) * gapPx) / cols))
+	hpW = nH * cellW + (nH - 1) * gapPx
+	UI.VitalsCell = cellW
 	UI.HpBar.Root.Position = UDim2.fromOffset(hpX / k, hpY / k)
 	UI.HpBar.Root.Size = UDim2.fromOffset(hpW / k, hpH / k)
 	UI.HpBar.Layout(hpW, hpH, k)
@@ -1399,7 +1404,7 @@ function Vitals.Layout(force)
 	-- (kit-b gate U9 round 3: the stamina blocks ran 60-90 px past the HP blocks, two block languages on one plate) one
 	-- grid: the stamina row ends on the HP blocks' column; the number and the dash key share the column right of it
 	local stX, stY, stH = at(g.ST_X), at(g.ST_Y), px(g.ST_H)
-	local stW = math.min(keyX - px(g.KEY_GAP), hpX + hpW) - stX
+	local stW = math.min((keyOn and (keyX - px(g.KEY_GAP)) or right) - stX, nS * cellW + (nS - 1) * gapPx)
 	UI.StBar.Root.Position = UDim2.fromOffset(stX / k, stY / k)
 	UI.StBar.Root.Size = UDim2.fromOffset(stW / k, stH / k)
 	UI.StBar.Layout(stW, stH, k)
@@ -2203,7 +2208,7 @@ local function setDowned(downed)
 		UI.StBar.Root.Visible = not downed
 	end
 	if UI.Key then
-		UI.Key.Root.Visible = not downed
+		UI.Key.Root.Visible = not downed and not isTouchDevice() -- (kit-b gate U9 r4: a touch screen has the DASH button)
 	end
 	if UI.Bolt then
 		UI.Bolt.Badge.Visible = not downed

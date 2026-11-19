@@ -8362,8 +8362,9 @@ local function clientScenarios()
 			local full = true
 			for _, b in ipairs(blocks) do
 				local f, l = lit(b)
+				-- (kit-b gate U9 r4) the lip the kit's Bar weight: 3 px (was 4)
 				full = full and f > 0.99 and l and sameColor(l.BackgroundColor3, Sign.Gold) and l:FindFirstChild("Lip") and sameColor(l.Lip.BackgroundColor3, Sign.GoldLip)
-					and l.Lip.AbsoluteSize.Y >= 3.5
+					and l.Lip.AbsoluteSize.Y >= 2.5
 			end
 			T.check(full, tag .. ": a full bar lights every block gold on its GoldLip lip")
 			local share = maxSt / n
@@ -8470,7 +8471,19 @@ local function clientScenarios()
 					return
 				end
 				local a, b = U8.rect(hpLast), U8.rect(stLast)
-				T.check(math.abs(a.R - b.R) <= 1, fmt("%s: the HP and stamina blocks end on one column", tag), fmt("HP ends %.1f, stamina %.1f", a.R, b.R))
+				-- (kit-b gate U9 r4: 5 and 4 blocks stretched over one width drew two block widths) one grid: every stamina
+				-- block i has HP block i's left and right edges (one block width, one gap); the spare HP columns stay HP's
+				local off = {}
+				for i = 1, math.min(5, n) do
+					local hb, sb = hp:FindFirstChild("Block" .. i), st:FindFirstChild("Block" .. i)
+					local hr, sr = hb and U8.rect(hb), sb and U8.rect(sb)
+					if not (hr and sr and math.abs(hr.X - sr.X) <= 0.5 and math.abs(hr.R - sr.R) <= 0.5) then
+						off[#off + 1] = fmt("%d: HP %s, stamina %s", i, hr and U8.show(hr) or "-", sr and U8.show(sr) or "-")
+					end
+				end
+				T.check(#off == 0, fmt("%s: each stamina block sits under its HP block (one block width, one gap)", tag), table.concat(off, "; "))
+				local touch = s[3] == true
+				T.check(not (touch and key and U8.shown(key)), fmt("%s: no dash key on a touch screen (the touch DASH button is the dash)", tag))
 				local kr, nr = key and U8.rect(key), U8.rect(num)
 				if key and U8.shown(key) and kr.Y >= a.B then -- (a compact card's key spans both rows at the right end)
 					T.check(math.abs(kr.R - nr.R) <= 1 and kr.X >= b.R + 2, fmt("%s: the dash key sits in the number's column", tag), U8.show(kr) .. " vs " .. U8.show(nr))
