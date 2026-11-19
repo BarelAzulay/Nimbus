@@ -1895,7 +1895,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); SkyTransition (the sky faces preloaded before their swap);
              UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
-             panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); UI/TeamFaces
+             panels); UI/PixelCrisp (kit B: the side cards' pixel icons, edges and lips snapped to whole screen px at
+             every scale); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); UI/TeamFaces
              (the three faces + Edit team on every battle panel); UI/PetPicker (the one full-screen pet picker sheet
              of the Training Place and the Fusion Machine: search, sorts, filters, big cards); UI/GemIcon (the drawn
              cut gem every gem amount shows); UI/EggArt (the seven eggs drawn from frames, painted, with their rarity
