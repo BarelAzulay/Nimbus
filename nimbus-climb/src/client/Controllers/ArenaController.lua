@@ -2025,10 +2025,18 @@ local function buildArena()
 		local quick = ui.DuelLeft:FindFirstChild("Quick")
 		local quickH = quick and math.ceil(2 + quick.AbsoluteSize.Y / s + 2) or 0
 		leftH = math.max(leftH, math.min(quickH, pageH - 12 - 44)) -- Find a match whole; the players' pane keeps its heading
-		if ui.DuelLeft.Size.Y.Offset ~= leftH or ui.DuelLeft.Size.Y.Scale ~= 0 then
+		-- (kit-b) the players' pane ends after its last whole row too when not all of them fit (a full server: the row under
+		-- the rest of the page was cut by its fold); its well keeps the 4 px inset round the list
+		local chSize = UDim2.new(1, 0, 1, -(leftH + 12))
+		local chRoom = pageH - leftH - 12 - 8
+		local listH, nList = wholeCards(ui.ChallengePane, chRoom, 8, 10, 8, 2, s)
+		if nAll > 0 and nList < nAll and listH < chRoom then
+			chSize = UDim2.new(1, 0, 0, listH + 8)
+		end
+		if ui.DuelLeft.Size.Y.Offset ~= leftH or ui.DuelLeft.Size.Y.Scale ~= 0 or ui.Challenge.Size ~= chSize then
 			ui.DuelLeft.Size = UDim2.new(1, 0, 0, leftH)
 			ui.Challenge.Position = UDim2.fromOffset(0, leftH + 12)
-			ui.Challenge.Size = UDim2.new(1, 0, 1, -(leftH + 12))
+			ui.Challenge.Size = chSize
 		end
 	end
 
