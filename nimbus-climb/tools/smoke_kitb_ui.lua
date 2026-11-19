@@ -2542,7 +2542,9 @@ local function clientScenarios()
 		if not T.check(label ~= nil, "kitb fit: the side hint shows the text") then
 			return
 		end
-		local want = math.ceil(Theme.MeasureLabel(label).X) + 6
+		-- (kit-b gate U9 r3, 790c1a0: Theme.Measure ran about 13 % short of the drawn Nunito face in the gate's hint renders,
+		-- so a one-line hint wrapped) MenuController's showHint keeps a 15 % spare over the measure, then its 6 px
+		local want = math.ceil(Theme.MeasureLabel(label).X * 1.15) + 6
 		T.check(label:GetAttribute("FontRole") == "Toast" and label.Font == Enum.Font.Unknown, "kitb fit: the hint is a Toast (Nunito ExtraBold) label", tostring(label.Font))
 		T.check(label.Size.X.Offset == want and want < 300, "kitb fit: the hint pill is measured to its text (not the 300 px fallback)", fmt("%d px (want %d)", label.Size.X.Offset, want))
 		KC.flushErrors("kitb_fit_measures_face_label")
