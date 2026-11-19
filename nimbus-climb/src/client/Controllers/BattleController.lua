@@ -5370,11 +5370,12 @@ end
 -- (LOOK-ui2, the owner's look bar: "every bar in the same pixel block-bar language"; were flat fills in a 1 px edge) a bar
 -- of `count` kit blocks laid out in its box (SignKit.FitBlocks: whole-px blocks, a wood edge, the darker lip, the first
 -- ones lit in `fill` / `fillLip`, the rest stone): the fighter's HP and ENERGY, the enemies', the boss's, a helper's buff.
--- opts: Size, Position, Gap (3), EdgePx (2), LipPx (3), ZIndex. Returns { Root, count, lit }
+-- opts: Size, Position, Gap (3), ZIndex. (kit-b gate U9 r4) every battle bar the kit's one Bar weight (SignKit.Sizes.Bar:
+-- edge 2, lip 3; the HP's lip 4, the boss's 5 and the cooldown's 2 were three more weights). Returns { Root, count, lit }
 local function blockBar(parent, name, count, fill, fillLip, opts)
 	opts = opts or {}
 	local row = SignKit.FitBlocks(parent, { Name = name, Count = count, Size = opts.Size or UDim2.fromScale(1, 1), Position = opts.Position,
-		Gap = opts.Gap or 3, EdgePx = opts.EdgePx or 2, LipPx = opts.LipPx or 3, Fill = fill, FillLip = fillLip, ZIndex = opts.ZIndex })
+		Gap = opts.Gap or 3, Weight = "Bar", Fill = fill, FillLip = fillLip, ZIndex = opts.ZIndex })
 	return { Root = row, count = count, lit = -1 }
 end
 
@@ -5660,11 +5661,11 @@ function Hud.BuildFighter()
 	-- (LOOK-ui2: was a flat green fill with the number drawn across it) HP: ten kit blocks in the grass, the blocks a hit took
 	-- flash red for the loss trail's K.LOSS_TIME, then go stone (Hud.Update); the number beside the row in the ink
 	F.Hp = make("Frame", { Name = "Hp", BackgroundTransparency = 1 }, body)
-	F.HpBar = blockBar(F.Hp, "Blocks", K.HP_BLOCKS, KB.Hp, KB.HpLip, { Gap = 3, LipPx = 4 })
+	F.HpBar = blockBar(F.Hp, "Blocks", K.HP_BLOCKS, KB.Hp, KB.HpLip, { Gap = 3 })
 	F.HpText = label(body, "", "Heading", 16, { Name = "HpText", TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = KB.Ink })
 	-- ENERGY (the special meter): ten sky blocks, all of them gold at 100
 	F.Energy = make("Frame", { Name = "Energy", BackgroundTransparency = 1 }, body)
-	F.EnergyBar = blockBar(F.Energy, "Blocks", K.HP_BLOCKS, KB.Energy, SIGN.SkyLip, { Gap = 3, LipPx = 3 })
+	F.EnergyBar = blockBar(F.Energy, "Blocks", K.HP_BLOCKS, KB.Energy, SIGN.SkyLip, { Gap = 3 })
 	F.EnergyText = label(body, "ENERGY 0/100", "Label", 15, { Name = "EnergyText", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink })
 	F.Lives = make("Frame", { Name = "Lives", BackgroundTransparency = 1 }, body)
 	F.Hearts = {}
@@ -5714,7 +5715,7 @@ function Hud.BuildHelper(i)
 	-- (kit-b U9-6 review: a white number on the light well read 1.35:1) the buff countdown in stone on a navy veil over the
 	-- tile: it reads over the well and over any pet, and the dimmed pet says it is cooling down
 	H.Count = label(face, "", "Display", 24, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 7, Visible = false, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = SIGN.Stone, BackgroundTransparency = 0.25, BackgroundColor3 = SIGN.Navy })
-	H.Cd = blockBar(cell, "Cooldown", K.CD_BLOCKS, SIGN.Gold, SIGN.GoldLip, { Gap = 2, LipPx = 2 })
+	H.Cd = blockBar(cell, "Cooldown", K.CD_BLOCKS, SIGN.Gold, SIGN.GoldLip, { Gap = 2 })
 	H.Level = smallPill(cell, "Lv 1", SIGN.Navy, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None, ZIndex = 8 })
 	H.Level.TextSize = 16
 	-- (LOOK-ui2: was white text in a navy outline on the arena, a smear on the cloud band) the buff's name on a stone tag
@@ -5880,7 +5881,7 @@ function Hud.BuildTop()
 	Hud.bossName.TextXAlignment = Enum.TextXAlignment.Left
 	PixelIcon.Lead(Hud.bossName, ICON.Crown)
 	Hud.bossTrack = make("Frame", { Name = "Hp", BackgroundTransparency = 1 }, boss)
-	Hud.bossBar = blockBar(Hud.bossTrack, "Blocks", K.BOSS_BLOCKS, KB.Loss, SIGN.RedLip, { Gap = 3, LipPx = 5 })
+	Hud.bossBar = blockBar(Hud.bossTrack, "Blocks", K.BOSS_BLOCKS, KB.Loss, SIGN.RedLip, { Gap = 3 })
 	Hud.bossText = smallPill(boss, "", KB.Face, { Name = "Text", AutomaticSize = Enum.AutomaticSize.None, AnchorPoint = Vector2.new(1, 0) })
 	Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1 }, top)
 	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, Hud.pills)
@@ -5914,7 +5915,7 @@ local function rowFor(i)
 	row.Alert = label(row.Icon, "!", "Title", 24, { Name = "Alert", Size = UDim2.fromScale(1, 1), ZIndex = 4, Visible = false, TextColor3 = SIGN.Gold, BackgroundTransparency = 0, BackgroundColor3 = SIGN.RedLip })
 	row.Name = label(f, "", "Body", 18, { Name = "PetName", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2, TextColor3 = KB.Ink })
 	-- (LOOK-ui2: was a 9 px flat red line in a 1 px edge) ten small red kit blocks on their lip
-	row.Hp = blockBar(f, "Hp", K.HP_BLOCKS, KB.Loss, SIGN.RedLip, { Gap = 2, LipPx = 2, ZIndex = 2 })
+	row.Hp = blockBar(f, "Hp", K.HP_BLOCKS, KB.Loss, SIGN.RedLip, { Gap = 2, ZIndex = 2 })
 	row.Bracket = make("Frame", { Name = "Bracket", BackgroundTransparency = 1, Size = UDim2.new(1, 8, 1, 8), Position = UDim2.fromOffset(-4, -4), Visible = false, ZIndex = 1 }, f)
 	signEdge(row.Bracket, SIGN.Gold, 3)
 	row.Target = smallPill(f, "TARGET", SIGN.Gold, { Name = "Target", Visible = false, ZIndex = 5 })

@@ -81,6 +81,13 @@ SignKit.Sizes = {
 	BlockGap = 4,
 	BlockEdge = 2,
 	BlockLip = 4,
+	-- (kit-b gate U9 r4: one bar language, the owner's look bar "every bar in the same block-bar language") the only two
+	-- weights a bar (SignKit.FitBlocks, opts.Weight) may take: Bar for every bar on a screen (HP, XP, stamina, cooldown,
+	-- progress, timers) and Micro only for a world billboard (a pet's floating card) or a tiny team pip. Edge / Lip / Gap
+	-- design px (a Bar's gap 2 or 3: GapMax); MinEdge / MinLip SCREEN px, so a phone window's 0.5 Fit keeps a 2 px wood
+	-- edge like its planks (the Food Machine's rows drew 1 px hairline boxes)
+	Bar = { Edge = 2, Lip = 3, Gap = 2, GapMax = 3, MinEdge = 2, MinLip = 2 },
+	Micro = { Edge = 1, Lip = 1, Gap = 1, GapMax = 1, MinEdge = 1, MinLip = 1 },
 	NoticeEdge = 4,
 	NoticeLip = 4,
 	-- (LOOK-ui, kitb-look1: the Pets, Index, Home, Stats and Shop closes drew 35 to 47 screen px with 2 or 3 px cells, by
@@ -804,7 +811,10 @@ local function layFit(row)
 	local g = math.max(1, math.floor(gap * s + 0.5))
 	local w = math.max(1, math.floor((math.floor(abs.X + 1e-6) - (n - 1) * g) / n))
 	local h = math.max(1, math.floor(abs.Y + 1e-6))
-	local e = PixelIcon.Px(row:GetAttribute("EdgePx") or 2, s) * s
+	-- (kit-b gate U9 r4) the weight's edge and lip in whole screen px, never under its MinEdge / MinLip screen px; handed
+	-- to WholeInset / WholeHeight as the design px that draw exactly that many
+	local e = math.max(row:GetAttribute("MinEdge") or 1, math.max(1, math.floor((row:GetAttribute("EdgePx") or 2) * s + 0.5)))
+	local lipScreen = math.max(row:GetAttribute("MinLip") or 1, math.max(1, math.floor((row:GetAttribute("LipPx") or 3) * s + 0.5)))
 	local pip = w - 2 * e < MIN_FACE
 	row:SetAttribute("Pips", pip)
 	row:SetAttribute("BlockPx", w)
@@ -819,24 +829,31 @@ local function layFit(row)
 			b.BackgroundTransparency = pip and 1 or 0
 			local face = b:FindFirstChild("Face")
 			if face then
-				PixelIcon.WholeInset(face, pip and 0 or (row:GetAttribute("EdgePx") or 2))
+				PixelIcon.WholeInset(face, pip and 0 or e / s)
 				local lip = face:FindFirstChild("Lip")
 				if lip and pip then
 					PixelIcon.WholeHeight(lip, 2)
 				elseif lip then
-					PixelIcon.WholeHeight(lip, row:GetAttribute("LipPx") or 3)
+					PixelIcon.WholeHeight(lip, lipScreen / s)
 				end
 			end
 		end
 	end
 end
 
+-- (kit-b gate U9 r4) opts.Weight "Bar" (default) or "Micro" (Sizes.Bar / Sizes.Micro): the row's edge, lip and min screen
+-- px come from its weight only, its Gap is clamped into the weight's range (a caller's EdgePx / LipPx are not read)
 function SignKit.FitBlocks(parent, opts)
 	opts = opts or {}
+	local weight = opts.Weight == "Micro" and "Micro" or "Bar"
+	local wt = Z[weight]
 	local row = frame("BlockRow", { Size = opts.Size or UDim2.new(1, 0, 0, Z.BlockH) }, parent)
-	row:SetAttribute("Gap", tonumber(opts.Gap) or 2)
-	row:SetAttribute("EdgePx", tonumber(opts.EdgePx) or 2)
-	row:SetAttribute("LipPx", tonumber(opts.LipPx) or 3)
+	row:SetAttribute("Weight", weight)
+	row:SetAttribute("Gap", math.max(wt.Gap, math.min(wt.GapMax, tonumber(opts.Gap) or wt.Gap)))
+	row:SetAttribute("EdgePx", wt.Edge)
+	row:SetAttribute("LipPx", wt.Lip)
+	row:SetAttribute("MinEdge", wt.MinEdge)
+	row:SetAttribute("MinLip", wt.MinLip)
 	row:SetAttribute("Fit", true)
 	BLOCK_FILL[row] = { typeof(opts.Fill) == "Color3" and opts.Fill or Sign.Gold, typeof(opts.FillLip) == "Color3" and opts.FillLip or Sign.GoldLip }
 	place(row, opts, "BlockRow")

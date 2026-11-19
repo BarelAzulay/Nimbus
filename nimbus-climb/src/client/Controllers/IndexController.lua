@@ -1164,8 +1164,7 @@ local function buildGroupTile(group, index)
 		Size = UDim2.new(1, -80, 0, 12),
 		Count = H_blockCount(#(group.Pets or {})),
 		Gap = 2,
-		EdgePx = 2,
-		LipPx = 2,
+		Weight = "Bar",
 		Fill = accent,
 		FillLip = Theme.Darken(accent, 0.25),
 		ZIndex = 2,
@@ -2187,8 +2186,7 @@ local function buildCentre(centre)
 		Size = UDim2.new(1, -64, 0, 18),
 		Count = 6,
 		Gap = 3,
-		EdgePx = 2,
-		LipPx = 4,
+		Weight = "Bar",
 	})
 	U.HeaderCount = makeText(track, "Count", "0/0", "Display", 22, INK, {
 		AnchorPoint = Vector2.new(1, 0),
@@ -2392,8 +2390,7 @@ local function buildDetail(detail)
 			Size = UDim2.new(1, -150, 0, 14),
 			Count = 5,
 			Gap = 2,
-			EdgePx = 2,
-			LipPx = 3,
+			Weight = "Bar",
 			Fill = roleColor,
 			FillLip = Theme.Darken(roleColor, 0.25),
 		})
@@ -2556,8 +2553,7 @@ local function buildWindow()
 		Size = UDim2.new(1, -350, 0, 20),
 		Count = 10,
 		Gap = 3,
-		EdgePx = 2,
-		LipPx = 4,
+		Weight = "Bar",
 	})
 	U.FooterPercent = makeText(footer, "Percent", "0%", "Display", 24, INK, {
 		AnchorPoint = Vector2.new(1, 0),

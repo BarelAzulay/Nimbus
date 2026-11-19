@@ -370,7 +370,7 @@ local function petRow(i, entry)
 		spark.AnchorPoint = Vector2.new(1, 0)
 		spark.Position = UDim2.new(1, -6, 0, 6)
 	else
-		out.Bar = SignKit.FitBlocks(root, { Name = "XpBar", Count = K.XP_BLOCKS, Gap = 2, EdgePx = 2, LipPx = 3, Fill = XP_FILL, FillLip = XP_LIP,
+		out.Bar = SignKit.FitBlocks(root, { Name = "XpBar", Count = K.XP_BLOCKS, Gap = 2, Weight = "Bar", Fill = XP_FILL, FillLip = XP_LIP,
 			Position = UDim2.fromOffset(x, 76), Size = UDim2.new(1, -x - 10, 0, 14) })
 		SignKit.FillBlocks(out.Bar, math.floor(math.max(0, math.min(1, tonumber(entry.XpBefore) or 0)) * K.XP_BLOCKS + 1e-6))
 	end

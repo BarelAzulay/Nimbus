@@ -1273,8 +1273,7 @@ local function signBar(props)
 		Size = UDim2.fromScale(1, 1),
 		Fill = color,
 		FillLip = Theme.SignLipOf(color),
-		EdgePx = 2,
-		LipPx = 3,
+		Weight = "Bar",
 	})
 	local textSize = props.TextSize or Util.Clamp(math.floor(height * 0.66 + 0.5), 15, 26)
 	-- props.LabelSide "Right" (the pitch's XP line: the number beside its bar, no glyph across a block's edge): the label

@@ -909,7 +909,7 @@ function H.newSkill(skill)
 	item.Bar = Util.Create("Frame", { Name = "Bar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = body })
 	-- (LOOK-ui2: a private row of flat squares in a 1 px edge, no lip, gaps of 2 and 3 px) ten kit blocks (SignKit.FitBlocks:
 	-- whole px, the wood edge, the darker lip), lit in the skill's colour; the rank in training is the gold block
-	item.Blocks = SignKit.FitBlocks(item.Bar, { Name = "Blocks", Size = UDim2.fromScale(1, 1), Count = 10, Gap = 3, EdgePx = 2, LipPx = 3, Fill = color, FillLip = Theme.SignLipOf(color), ZIndex = 6 })
+	item.Blocks = SignKit.FitBlocks(item.Bar, { Name = "Blocks", Size = UDim2.fromScale(1, 1), Count = 10, Gap = 3, Weight = "Bar", Fill = color, FillLip = Theme.SignLipOf(color), ZIndex = 6 })
 	item.Now = label(body, "Now", "Body", 20, { ZIndex = 5, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Next = label(body, "Next", "Body", 20, { ZIndex = 5, TextColor3 = C.Good, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Cost = label(body, "Cost", "Display", 26, { ZIndex = 5, TextColor3 = C.Good, TextXAlignment = Enum.TextXAlignment.Left })
@@ -946,7 +946,7 @@ function H.newMat(i)
 	-- (LOOK-ui2: a smooth violet fill with "2:07 left" across its edge) the timer: five violet kit blocks lit as the job runs,
 	-- the time in the ink beside them (H.paintTimer)
 	m.Bar = Util.Create("Frame", { Name = "TimerBar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 6, Parent = body })
-	m.Blocks = SignKit.FitBlocks(m.Bar, { Name = "Blocks", Size = UDim2.fromScale(1, 1), Count = 5, Gap = 2, EdgePx = 2, LipPx = 3, Fill = SIGN.Violet, FillLip = SIGN.VioletLip, ZIndex = 7 })
+	m.Blocks = SignKit.FitBlocks(m.Bar, { Name = "Blocks", Size = UDim2.fromScale(1, 1), Count = 5, Gap = 2, Weight = "Bar", Fill = SIGN.Violet, FillLip = SIGN.VioletLip, ZIndex = 7 })
 	m.BarText = label(m.Bar, "Left", "Heading", 18, { ZIndex = 8, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1),
 		TextXAlignment = Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.None })
 	m.Badge = label(body, "LockBadge", "Heading", 18, {

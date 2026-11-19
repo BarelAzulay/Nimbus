@@ -1837,6 +1837,49 @@ local function serverScenarios()
 
 	-- corner radii are Theme.Radius tokens ("None", "S", "M", and "Round" for a pill or a disc) in every file U6 swept; the
 	-- list is check.mjs's RADIUS_SWEPT (its radius-literal rule holds the same files), so U7 / U9 add families in one place
+	-- (kit-b gate U9 r4: one bar language) a FitBlocks bar takes one of two weights (SignKit.Sizes.Bar: edge 2, lip 3, gap
+	-- 2..3, never under 2 screen px of edge / lip; Sizes.Micro: 1 / 1 / 1, a world billboard's) and nothing else: a
+	-- caller's EdgePx / LipPx are not read, its gap is clamped; no source passes EdgePx / LipPx to FitBlocks, and Micro is
+	-- used only by the floating pet card (a world billboard)
+	S.signkit_bar_weights = guarded("signkit_bar_weights", function()
+		local SK = shared("SignKit")
+		if not SK then
+			return
+		end
+		local Z = SK.Sizes
+		T.check(type(Z.Bar) == "table" and Z.Bar.Edge == 2 and Z.Bar.Lip == 3 and Z.Bar.Gap == 2 and Z.Bar.GapMax == 3 and Z.Bar.MinEdge == 2 and Z.Bar.MinLip == 2,
+			"bar weights: Sizes.Bar = edge 2, lip 3, gap 2..3, min 2 screen px")
+		T.check(type(Z.Micro) == "table" and Z.Micro.Edge == 1 and Z.Micro.Lip == 1 and Z.Micro.Gap == 1, "bar weights: Sizes.Micro = edge 1, lip 1, gap 1")
+		local row = SK.FitBlocks(holder(400, 40), { Count = 5, EdgePx = 1, LipPx = 1, Gap = 1 })
+		T.check(row:GetAttribute("Weight") == "Bar" and row:GetAttribute("EdgePx") == 2 and row:GetAttribute("LipPx") == 3 and row:GetAttribute("Gap") == 2,
+			"bar weights: a caller's own edge / lip / gap make no third weight (the row is a Bar)",
+			fmt("%s %s/%s/%s", tostring(row:GetAttribute("Weight")), tostring(row:GetAttribute("EdgePx")), tostring(row:GetAttribute("LipPx")), tostring(row:GetAttribute("Gap"))))
+		local micro = SK.FitBlocks(holder(400, 40), { Count = 5, Weight = "Micro", Gap = 3 })
+		T.check(micro:GetAttribute("EdgePx") == 1 and micro:GetAttribute("LipPx") == 1 and micro:GetAttribute("Gap") == 1, "bar weights: a Micro row is 1 / 1 / 1")
+		local bad, micros = {}, {}
+		for _, src in ipairs(gameSources()) do
+			local text = src.inst.Name == "SignKit" and "" or src.src -- (its own docs name the call)
+			local at = 1
+			while true do
+				local s, e = text:find("SignKit%.FitBlocks%(", at)
+				if not s then
+					break
+				end
+				local close = text:find("%}%)", e) or #text
+				local call = text:sub(e, close)
+				if call:find("EdgePx") or call:find("LipPx") then
+					bad[#bad + 1] = src.inst.Name
+				end
+				if call:find("\"Micro\"") then
+					micros[#micros + 1] = src.inst.Name
+				end
+				at = e + 1
+			end
+		end
+		T.check(#bad == 0, "bar weights: no FitBlocks call passes its own EdgePx / LipPx", table.concat(bad, ", "))
+		T.check(#micros == 1 and micros[1] == "PetCard", "bar weights: Micro only on the floating pet card (a world billboard)", table.concat(micros, ", "))
+	end)
+
 	S.kitb_radius_tokens = guarded("kitb_radius_tokens", function()
 		local Theme = theme()
 		if not Theme then

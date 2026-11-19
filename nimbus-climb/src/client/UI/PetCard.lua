@@ -170,7 +170,7 @@ local function newBar(parent, name, color, lip, count, ceil)
 		Visible = false,
 	}, parent)
 	back:SetAttribute("Frac", 0)
-	local row = SignKit.FitBlocks(back, { Count = count, Fill = color, FillLip = lip, EdgePx = 1, LipPx = 1, Gap = 1, Size = UDim2.fromScale(1, 1) })
+	local row = SignKit.FitBlocks(back, { Count = count, Fill = color, FillLip = lip, Weight = "Micro", Size = UDim2.fromScale(1, 1) })
 	return { Back = back, Row = row, Count = count, Ceil = ceil == true, Frac = 0 }
 end
 
