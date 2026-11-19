@@ -1665,6 +1665,54 @@ local function serverScenarios()
 		K.flushErrors("kitb_templates_hold_no_listeners")
 	end)
 
+	-- (kit-b gate U9 r4: the completeness gate could not fail on world UI; the W wave was one line with no test) every
+	-- SurfaceGui / BillboardGui the server built into the world, walked directly (not only the mirrored scenarios): a gui
+	-- with a rounded corner (a UICorner with a radius) or a gradient fails unless its name is in
+	-- tools/fixtures/world_round_backlog.txt, the W wave's list, which only shrinks (a listed name no longer hit is reported)
+	S.kitb_world_no_round = guarded("kitb_world_no_round", function()
+		local allowed, listed = {}, 0
+		local fh = io.open("tools/fixtures/world_round_backlog.txt", "r")
+		if fh then
+			for line in fh:lines() do
+				local name = line:gsub("#.*$", ""):match("^%s*(%S+)%s*$")
+				if name then
+					allowed[name] = true
+					listed = listed + 1
+				end
+			end
+			fh:close()
+		end
+		T.check(listed > 0, "world no round: (setup) tools/fixtures/world_round_backlog.txt lists the W wave's guis")
+		local hit, examples = {}, {}
+		for _, d in ipairs(game:GetService("Workspace"):GetDescendants()) do
+			local round = d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0)
+			if round or d:IsA("UIGradient") then
+				local gui = d:FindFirstAncestorWhichIsA("LayerCollector")
+				if gui then
+					hit[gui.Name] = true
+					examples[gui.Name] = examples[gui.Name] or d:GetFullName()
+				end
+			end
+		end
+		local new, gone = {}, {}
+		for name in pairs(hit) do
+			if not allowed[name] then
+				new[#new + 1] = name .. " (" .. examples[name] .. ")"
+			end
+		end
+		for name in pairs(allowed) do
+			if not hit[name] then
+				gone[#gone + 1] = name
+			end
+		end
+		table.sort(new)
+		table.sort(gone)
+		T.check(#new == 0, "world no round: no world gui outside the W wave's backlog has a rounded corner or a gradient", table.concat(new, ", "))
+		if #gone > 0 then
+			T.warn("world no round: backlog names no longer hit in this run (remove them once the full suite agrees)", table.concat(gone, ", "))
+		end
+	end)
+
 	-- (U7b review) each world sign U7b redrew holds its icon, by sign: the token coin before every machine tag's price and
 	-- every rarity-board price, the trophy after each arena board count, the gate card's stars (as many as its difficulty's
 	-- Stars), and on a private plot built here: the lock before a locked pad's reason, the station's icon on a pad's name

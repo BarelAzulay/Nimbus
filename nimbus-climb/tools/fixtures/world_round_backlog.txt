@@ -1,0 +1,22 @@
+# kit-b gate U9 r4: the W wave's backlog for the smoke walk kitb_world_no_round (server world). Every SurfaceGui /
+# BillboardGui the server builds into the world is walked directly; one with a rounded corner (a UICorner with a radius)
+# or a gradient fails unless its gui name is listed here. These are the world signs still on the old rounded / gradient
+# look (the W wave: PortalService, LeaderboardController's lobby board, ArenaBuilder, HomeBuilder, WorldStyle.buildTag,
+# StormAltar, LobbyBuilder, CourseBuilder). The list only shrinks: a name leaves when its builder moves to SignKit, and no
+# name is ever added. One gui name per line.
+BoardGui
+ClaimGui
+CountdownGui
+GateTag
+JoinBillboard
+LeaderGui
+NameTag
+Nameplate
+PadSign
+PadTag
+PosterGui
+PriceBillboard
+ShowcaseTag
+SignGui
+TitleTag
+TroveBillboard

@@ -51,8 +51,27 @@ NEON_BACKLOG = os.path.join(HERE, "fixtures", "neon_backlog.txt")
 # ScreenGuis the neon rule reports apart, not as windows (listed, never failed): the world GUIs the renderer mirrors flat
 # (portal boards, the lobby leaderboard: the world-text W wave checks each), the renderer's own gem gallery, and the hit
 # vignette (a screen-edge effect, no panel)
-NEON_NOT_WINDOWS = {"WorldMirror": "world GUIs (W wave)", "WorldGuis": "billboards / surface GUIs (W wave)", "GemGallery": "the renderer's gem gallery", "EggGallery": "the renderer's egg gallery",
+NEON_NOT_WINDOWS = {"GemGallery": "the renderer's gem gallery", "EggGallery": "the renderer's egg gallery",
                     "NimbusDamageFx": "the hit vignette (an effect)"}
+# (kit-b gate U9 r4: the world GUIs were counted, never failed, so every rounded or gradient world sign stayed green
+# forever) the world GUIs the renderer mirrors flat (portal boards, the lobby leaderboard, home pads, titles, ...) fail
+# the neon rule like a window unless their path is in tools/fixtures/world_backlog.txt, the W wave's list, which only
+# shrinks. There "**" = any run of characters (dots too), "*" = any run but a dot.
+WORLD_GUIS = {"WorldMirror": "world GUIs (W wave)", "WorldGuis": "billboards / surface GUIs (W wave)"}
+WORLD_BACKLOG = os.path.join(HERE, "fixtures", "world_backlog.txt")
+
+
+def world_backlog(path=WORLD_BACKLOG):
+    out = []
+    if not os.path.isfile(path):
+        return out
+    for line in open(path, encoding="utf-8"):
+        line = line.split("#", 1)[0].strip()
+        if line:
+            # "a.**" holds a itself and everything under it
+            rx = re.escape(line).replace(r"\.\*\*", "(?:\\..*)?").replace(r"\*\*", ".*").replace(r"\*", "[^.]*")
+            out.append((line, re.compile("^" + rx + "$")))
+    return out
 
 SKIP = {"gallery", "signkit", "neon", "neon:window", "neon:hud", "neon:party"}
 
@@ -128,6 +147,8 @@ def main():
         args.neon = True
     neon_backlog = RG.contrast_backlog(NEON_BACKLOG) if args.neon else []
     total_n, neon_owed, neon_used, neon_windows, neon_kept, neon_apart = 0, 0, set(), {}, {}, {}
+    w_backlog = world_backlog() if args.neon else []
+    total_w, world_owed, world_used, world_new = 0, 0, set(), {}
     for name in names:
         for (w, h) in sizes:
             try:
@@ -152,6 +173,15 @@ def main():
                 for gui in dump.get("guis", []):
                     for hit in (gui.get("neon") or []):
                         if not isinstance(hit, dict):
+                            continue
+                        if gui["name"] in WORLD_GUIS:
+                            wp = RG.in_backlog(w_backlog, hit.get("path", ""))
+                            if wp:
+                                world_owed += 1
+                                world_used.add(wp)
+                            else:
+                                total_w += 1
+                                world_new.setdefault(hit.get("path", ""), (hit.get("kind", ""), name))
                             continue
                         pattern = RG.in_backlog(neon_backlog, hit.get("path", ""))
                         if gui["name"] in NEON_NOT_WINDOWS:
@@ -229,6 +259,14 @@ def main():
             for pattern, _ in neon_backlog:
                 if pattern not in neon_used:
                     print("    neon backlog line no longer hit (remove it): " + pattern)
+        print("world rule: %d hit(s) on world GUIs outside the W wave's backlog (%d more in the backlog, %d of its %d lines seen)"
+              % (total_w, world_owed, len(world_used), len(w_backlog)))
+        for path in sorted(world_new):
+            print("    world  %-70s (%s, %s)" % (path, world_new[path][0], world_new[path][1]))
+        if not args.scenarios:
+            for pattern, _ in w_backlog:
+                if pattern not in world_used:
+                    print("    world backlog line no longer hit (remove it): " + pattern)
     if args.grid and not args.scenarios and not (args.only_neon or args.only_emoji):
         for pattern, _ in backlog:
             if pattern not in used:
@@ -245,7 +283,7 @@ def main():
         return 2
     if args.warn:
         return 0
-    return 1 if (total_d or total_p or total_c or total_e or total_n) else 0
+    return 1 if (total_d or total_p or total_c or total_e or total_n or total_w) else 0
 
 
 if __name__ == "__main__":
