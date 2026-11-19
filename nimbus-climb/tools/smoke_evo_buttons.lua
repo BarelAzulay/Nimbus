@@ -884,6 +884,11 @@ local function clientScenarios()
 					out[#out + 1] = { "Battle." .. block.Name, rectOf(block) }
 				end
 			end
+			-- (kit-b) the enemy list's "+n more" tag by its own box (on a portrait phone it may hang under the list's left end)
+			local more = H.find("Root.Enemies.More")
+			if more and shownIn(more) and more.AbsoluteSize.X > 0 then
+				out[#out + 1] = { "Battle.Enemies.More", rectOf(more) }
+			end
 			return out
 		end
 		local MIN_PX = { Special = 72, Target = 44, Element = 56, Dash = 44 }

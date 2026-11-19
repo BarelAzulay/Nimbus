@@ -5968,8 +5968,41 @@ function Hud.LayoutEnemies(B, m)
 	end
 	Hud.enemyKey = key
 	local maxRows = m.Compact and K.ROWS_COMPACT or K.ROWS_MAX
-	local n = min(#list, maxRows)
 	local w, h = m.Compact and K.ROW_W_COMPACT or K.ROW_W, m.Compact and K.ROW_H_COMPACT or K.ROW_H
+	-- (kit-b) a portrait phone's list ends above the action keys under it (Hud.listKeys, set by Hud.Rebuild): a player's
+	-- three strips (Cash, Gems, tokens) start it low enough on a 360 x 640 phone that its second row and "+n more" tag ran
+	-- under DASH and TARGET. Its rows stop above the keys under the list; the tag goes under the list's right end, or under
+	-- its left end where a key (DASH) stands under the right one. One row stays whatever the room
+	local keys = Hud.listKeys
+	local left, top = m.W - K.EDGE - w, Hud.listTop or K.EDGE
+	local function room(x0, x1) -- a list-local span -> its design px from the list's top to the first key under it
+		local out = math.huge
+		for _, k in ipairs(keys or {}) do
+			if k.X1 > left + x0 and k.X0 < left + x1 then
+				out = min(out, k.Y0 - top - 4)
+			end
+		end
+		return out
+	end
+	local morePx = max(16, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
+	local function tagSide(rows) -- nil: no tag; else 1 (right end) / 0 (left end), false when neither has room
+		local more = #list - min(#list, rows)
+		if more <= 0 then
+			return nil
+		end
+		local tagW = math.ceil(textWidth("+" .. more .. " more", morePx)) + 18
+		local bottom = rows * (h + K.ROW_GAP) + 22
+		if bottom <= room(w - tagW, w) then
+			return 1
+		end
+		return bottom <= room(0, tagW) and 0 or false
+	end
+	if keys then
+		while maxRows > 1 and (maxRows * (h + K.ROW_GAP) - K.ROW_GAP > room(0, w) or tagSide(maxRows) == false) do
+			maxRows = maxRows - 1
+		end
+	end
+	local n = min(#list, maxRows)
 	local y = 0
 	for i = 1, max(n, #Hud.rows) do
 		local row = (i <= n) and rowFor(i) or Hud.rows[i]
@@ -6032,10 +6065,12 @@ function Hud.LayoutEnemies(B, m)
 	Hud.more.Visible = more > 0
 	if more > 0 then
 		setText(Hud.more, "+" .. more .. " more")
-		local px = max(16, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
+		local px = morePx
 		Hud.more.TextSize = px
 		Hud.more:SetAttribute("BaseText", 16)
-		Hud.more.Position = UDim2.fromOffset(w, y)
+		local side = keys and tagSide(n) == 0 and 0 or 1
+		Hud.more.AnchorPoint = Vector2.new(side, 0)
+		Hud.more.Position = UDim2.fromOffset(side * w, y)
 		Hud.more.Size = UDim2.fromOffset(math.ceil(textWidth(Hud.more.Text, px)) + 18, 22)
 		y = y + 24
 	end
@@ -6266,6 +6301,19 @@ function Hud.Rebuild()
 	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and (curBottom + 6 + over) or (topY + over)
 	Hud.listTop = rightY
 	Hud.enemies.Visible = isFighting
+	-- (kit-b) a portrait phone: the action keys' boxes (their wood edge too) in our design px, for the list above them
+	-- (Hud.LayoutEnemies). The portrait cluster stands on Roblox's buttons and the vitals, never on the list
+	Hud.listKeys = nil
+	if isFighting and m.Compact and m.Touch and m.VY >= m.VX then
+		local keys = {}
+		for _, spec in pairs(Hud.ClusterLayout(m)) do
+			if type(spec) == "table" then
+				local r = spec[3] / 2 + K.KEY_EDGE
+				keys[#keys + 1] = { X0 = m.W + spec[1] - r, X1 = m.W + spec[1] + r, Y0 = m.H + spec[2] - r }
+			end
+		end
+		Hud.listKeys = keys
+	end
 	local listH = 0
 	if isFighting then
 		listH = Hud.LayoutEnemies(B, m)
