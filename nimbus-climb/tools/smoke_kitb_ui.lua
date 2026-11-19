@@ -9923,6 +9923,54 @@ local function clientScenarios()
 				T.eq(GuiService.TouchControlsEnabled, before, fmt("shop fits %s %dx%d: the touch controls are back as they were after Close", tab, s[1], s[2]))
 			end
 		end
+		-- (kit-b rail fix) a short PC / Compact window (the owner's Studio viewport ~995x453; 1024x600 and 1280x600 pick
+		-- Compact with 557 px of body; 1200x534 the shortest Compact body, 488): on the Eggs tab every rail tab lies whole
+		-- inside the rail and the window, no two overlap, and the Fast hatch toggle (when shown) sits inside the window, at
+		-- least 8 design px under the last tab (it covered Tab_Boosts: the tabs kept their tall 1080p metrics)
+		for _, s in ipairs({ { 995, 453 }, { 1024, 600 }, { 1280, 600 }, { 1100, 500 }, { 1200, 534 } }) do
+			U92.at(s[1], s[2], false, "shop rail short", "Eggs", false, function(tag, win)
+				local rail = win:FindFirstChild("Rail")
+				if not T.check(rail ~= nil and U8.shown(rail), tag .. ": (setup) the rail shows") then
+					return
+				end
+				local rr, wr, k = U8.rect(rail), U8.rect(win), U8.scaleOf(rail)
+				local function inside(r, box)
+					return r.X >= box.X - 0.5 and r.Y >= box.Y - 0.5 and r.R <= box.R + 0.5 and r.B <= box.B + 0.5
+				end
+				local tabs, bad = {}, {}
+				for _, name in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
+					local t = rail:FindFirstChild("Tab_" .. name)
+					if t and U8.shown(t) then
+						local r = U8.rect(t)
+						tabs[#tabs + 1] = { Name = t.Name, R = r }
+						if not (inside(r, rr) and inside(r, wr)) or r.B - r.Y < 44 - 0.5 then -- (a 44 px touch target on screen)
+							bad[#bad + 1] = t.Name .. " " .. U8.show(r)
+						end
+					else
+						bad[#bad + 1] = "Tab_" .. name .. " hidden"
+					end
+				end
+				for i = 2, #tabs do
+					if U8.overlap(tabs[i - 1].R, tabs[i].R) then
+						bad[#bad + 1] = tabs[i - 1].Name .. " over " .. tabs[i].Name
+					end
+				end
+				T.check(#bad == 0, tag .. ": every rail tab is whole, inside the rail and the window, none over another",
+					table.concat(bad, ", ") .. " | rail " .. U8.show(rr))
+				local fast = rail:FindFirstChild("FastHatch")
+				if fast and U8.shown(fast) then
+					local fr = U8.rect(fast)
+					T.check(inside(fr, wr) and inside(fr, rr), tag .. ": the Fast hatch toggle sits inside the window", U8.show(fr) .. " | window " .. U8.show(wr))
+					local hit = {}
+					for _, t in ipairs(tabs) do
+						if U8.overlap(t.R, fr) or (fr.Y >= t.R.Y and fr.Y - t.R.B < 8 * k - 0.5) then
+							hit[#hit + 1] = fmt("%s %s (gap %.1f)", t.Name, U8.show(t.R), (fr.Y - t.R.B) / k)
+						end
+					end
+					T.check(#hit == 0, tag .. ": the Fast hatch toggle is clear of every tab (8 px under the last)", table.concat(hit, ", ") .. " | toggle " .. U8.show(fr))
+				end
+			end)
+		end
 		LKC.flushErrors("shop_fits")
 	end)
 

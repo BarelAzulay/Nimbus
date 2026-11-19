@@ -132,6 +132,8 @@ local K = {
 	-- the rail's Fast hatch toggle (Eggs only): PC 224 x 52 ("Fast hatch" 20 px, the switch right), Compact 112 wide (the
 	-- switch over the label, >= 44 px at the 0.8 scale)
 	FAST = { PC = { W = 224, H = 52, Text = 20, SwitchW = 56, SwitchH = 30 }, Compact = { W = 112, H = 64, Text = 18, SwitchW = 48, SwitchH = 24 } },
+	FAST_FOOT = 16, -- the toggle's gap over the rail's bottom
+	FAST_GAP = 8, -- the least gap between the last tab and the toggle (a short window takes the rail's Short metrics)
 	HATCH_WAIT = ((EggStage.Metrics and EggStage.Metrics.WAIT_TIMEOUT) or 7) + 0.1, -- an unanswered spin gives up: repaint
 	PULSE_EVERY = 2.5,
 	PULSE_SCALE = 1.04,
@@ -152,9 +154,16 @@ local K = {
 	-- the window per layout (design px): header, rail, content box
 	WIN = {
 		PC = { Header = 76, Icon = 42, TitleText = 34, TitleW = 200, GemsW = 140, TokW = 190, PillH = 44, PillText = 22, Close = 56,
-			RailX = 18, RailW = 224, TabH = 80, TabY = 16, TabStep = 92, Split = 44, TabIcon = 40, TabLabel = 26, ContentX = 262, ContentR = 38 },
+			RailX = 18, RailW = 224, TabH = 80, TabY = 16, TabStep = 92, Split = 44, TabIcon = 40, TabLabel = 26, ContentX = 262, ContentR = 38,
+			-- (a body too short for the five tabs + the Fast toggle: shorter tabs, the 12 px gap kept; the divider's 40 still
+			-- fits; needs 504 of body)
+			ShortTabH = 64, ShortTabY = 8, ShortTabStep = 76, ShortSplit = 52, ShortTabIcon = 32 },
 		Compact = { Header = 76, Icon = 42, TitleText = 34, TitleW = 200, GemsW = 140, TokW = 190, PillH = 44, PillText = 22, Close = 56,
-			RailX = 8, RailW = 112, TabH = 80, TabY = 16, TabStep = 92, Split = 44, TabIcon = 32, TabLabel = 18, ContentX = 128, ContentR = 24 },
+			RailX = 8, RailW = 112, TabH = 80, TabY = 16, TabStep = 92, Split = 44, TabIcon = 32, TabLabel = 18, ContentX = 128, ContentR = 24,
+			-- (the owner's ~1024x600: 557 px of body, the full rail + toggle needs 596; Short needs 466, the shortest Compact
+			-- body is 484; the label keeps its 18 above the 8 px lip, the tab 62 = 50 px on screen at the 0.8 scale, the
+			-- 12 px gap between tabs kept so their wood edges do not meet)
+			ShortTabH = 62, ShortTabY = 6, ShortTabStep = 74, ShortSplit = 14, ShortTabIcon = 24 },
 		Phone = { Header = 50, Icon = 28, TitleText = 20, TitleW = 130, GemsW = 96, TokW = 128, PillH = 32, PillText = 15, Close = 44,
 			RailX = 8, RailW = 104, TabH = 48, TabY = 6, TabStep = 54, Split = 0, TabIcon = 24, TabLabel = 15, ContentX = 120, ContentR = 8,
 			ShortBody = 276, ShortTabH = 44, ShortTabY = 4, ShortTabStep = 49 },
@@ -1199,33 +1208,50 @@ function H.layoutRail(W, Hh, R)
 		return R.Header + 4 + R.TabH
 	end
 	local bodyH = Hh - R.Header
-	local tabH, tabY, step = R.TabH, R.TabY, R.TabStep
-	if layout == "Phone" and bodyH < R.ShortBody then
-		tabH, tabY, step = R.ShortTabH, R.ShortTabY, R.ShortTabStep
+	local tabH, tabY, step, split, icon = R.TabH, R.TabY, R.TabStep, R.Split, R.TabIcon
+	local short = false
+	if layout == "Phone" then
+		if bodyH < R.ShortBody then
+			tabH, tabY, step = R.ShortTabH, R.ShortTabY, R.ShortTabStep
+		end
+	elseif R.ShortTabH then
+		-- PC / Compact: the Fast toggle sits at the rail's bottom; a body too short for the five tabs over it takes the
+		-- Short metrics (the toggle covered Tab_Boosts at ~1024x600). Every tab keeps them, so the rail does not jump
+		local F = K.FAST[layout] or K.FAST.PC
+		local need = tabY + (#K.TABS - 1) * step + split + tabH + K.FAST_GAP + F.H + K.FAST_FOOT
+		if bodyH < need then
+			short = true
+			tabH, tabY, step, split, icon = R.ShortTabH, R.ShortTabY, R.ShortTabStep, R.ShortSplit, R.ShortTabIcon
+		end
 	end
 	place(U.Rail, 0, R.Header, R.RailX + R.RailW + 8, bodyH)
 	for i, tab in ipairs(K.TABS) do
 		local t = U.Tabs[tab]
-		local y = tabY + (i - 1) * step + (i >= 3 and R.Split or 0)
+		local y = tabY + (i - 1) * step + (i >= 3 and split or 0)
 		place(t.Button, R.RailX, y, R.RailW, tabH)
-		H.syncTabIcon(tab, R.TabIcon)
+		H.syncTabIcon(tab, icon)
 		t.Label.TextSize = R.TabLabel
 		if layout == "Compact" then
 			-- the icon over the label
-			place(t.Icon, 0, 6, R.RailW, R.TabIcon + 8)
-			place(t.Label, 2, R.TabIcon + 16, R.RailW - 4, tabH - R.TabIcon - 20)
+			local iy, ly, lh = 6, icon + 16, tabH - icon - 20
+			if short then -- (the label's box ends at the lip: the descenders clear it)
+				iy, ly = 4, icon + 12
+				lh = tabH - ly - SignKit.Sizes.Lip
+			end
+			place(t.Icon, 0, iy, R.RailW, icon + 8)
+			place(t.Label, 2, ly, R.RailW - 4, lh)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Center
 		else
 			local ix = layout == "PC" and 16 or 8
-			place(t.Icon, ix, (tabH - R.TabIcon - 4) / 2, R.TabIcon + 4, R.TabIcon + 4)
-			place(t.Label, ix + R.TabIcon + 10, 0, R.RailW - ix - R.TabIcon - 14, tabH)
+			place(t.Icon, ix, (tabH - icon - 4) / 2, icon + 4, icon + 4)
+			place(t.Label, ix + icon + 10, 0, R.RailW - ix - icon - 14, tabH)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Left
 		end
 	end
 	-- the divider between Gems and Packs: PC "Robux items", Compact / Phone a 2 px line in the gap
 	U.Divider.Visible = true
 	local gemsBottom = tabY + step + tabH
-	local packsTop = tabY + 2 * step + R.Split
+	local packsTop = tabY + 2 * step + split
 	if layout == "PC" then
 		place(U.Divider, R.RailX, gemsBottom + 12, R.RailW, 40)
 		place(U.DivGlyph, 8, 0, 30, 40)
@@ -1252,7 +1278,7 @@ function H.layoutFast(at)
 	end
 	local F = K.FAST[S.Layout] or K.FAST.PC
 	local R = at.R
-	place(U.Fast, R.RailX, at.BodyH - F.H - 16, F.W, F.H)
+	place(U.Fast, R.RailX, at.BodyH - F.H - K.FAST_FOOT, F.W, F.H)
 	U.FastLabel.TextSize = F.Text
 	if S.Layout == "Compact" then
 		place(U.FastSwitch, (F.W - F.SwitchW) / 2, 6, F.SwitchW, F.SwitchH)
