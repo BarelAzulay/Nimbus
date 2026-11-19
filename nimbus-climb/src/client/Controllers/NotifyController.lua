@@ -1034,7 +1034,10 @@ function flushWaiting()
 	if not entry or not UI.Stack then
 		return
 	end
-	if not columnFits(entry.Text) then
+	-- (kit-b) an empty column always takes it, as the held toasts' drain does (drainStep) and as a new toast is always
+	-- shown (trimToasts keeps the newest): a text taller than a short column (the strips stacked down a landscape phone)
+	-- waited for room it could never get and was never read
+	if #toasts > 0 and not columnFits(entry.Text) then
 		return -- still no room: tried again when the next toast leaves
 	end
 	table.remove(waiting, 1)
