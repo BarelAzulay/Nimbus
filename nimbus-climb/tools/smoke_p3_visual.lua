@@ -514,8 +514,10 @@ local function clientScenarios()
 						if lv and (lv:FindFirstChildOfClass("UIStroke") or lv.TextStrokeTransparency < 0.5) then
 							stroked = stroked + 1
 						end
-						local fill = plate and plate:FindFirstChild("Hp") and plate.Hp:FindFirstChild("Fill")
-						local fc = fill and fill.BackgroundColor3
+						-- (kit-b gate U9 round 3) the HP bar is a block row: its first (lit) block's face
+						local row = plate and plate:FindFirstChild("Hp") and plate.Hp:FindFirstChild("BlockRow")
+						local b1 = row and row:FindFirstChild("Block1")
+						local fc = b1 and b1:FindFirstChild("Face") and b1.Face.BackgroundColor3
 						if fc and u.side == 1 and fc.G > fc.R then
 							greens = greens + 1
 						elseif fc and u.side ~= 1 and fc.R > fc.G then

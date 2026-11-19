@@ -142,12 +142,13 @@ end
 local function barShown(gui, name)
 	local plate = gui and gui:FindFirstChild("Plate")
 	local bar = plate and plate:FindFirstChild(name)
-	return bar ~= nil and bar.Visible, bar and bar:FindFirstChild("Fill")
+	return bar ~= nil and bar.Visible, bar
 end
 
+-- (kit-b gate U9 round 3) a bar is a kit B block row; its holder keeps the exact fraction in its attribute Frac
 local function fillOf(gui, name)
-	local _, fill = barShown(gui, name)
-	return fill and fill.Size.X.Scale or nil
+	local _, bar = barShown(gui, name)
+	return bar and bar:GetAttribute("Frac") or nil
 end
 
 local function resetLocal()
@@ -188,11 +189,26 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 	T.check(plate and plate.BackgroundTransparency <= 0.25, "...on a solid plate")
 	T.check(barShown(gui, "Xp") and not barShown(gui, "Hp") and not barShown(gui, "Special") and not barShown(gui, "Timer"), "Follower mode: level + XP bar only")
 	local xpBar = plate:FindFirstChild("Xp")
-	T.eq(xpBar and xpBar.AbsoluteSize.Y, 6, "XP bar 6 px at 1080p")
+	T.eq(xpBar and xpBar.AbsoluteSize.Y, 8, "XP bar 8 px at 1080p (kit-b gate U9 round 3: a block row)")
+	-- (kit-b gate U9 round 3) every bar a kit B block row (no smooth fill), the plate the kit's square navy sign, no
+	-- rounded corner anywhere on the card
+	do
+		local rows, corners = 0, 0
+		for _, name in ipairs({ "Hp", "Special", "Xp", "Timer" }) do
+			local b = plate:FindFirstChild(name)
+			rows = rows + ((b and b:FindFirstChild("BlockRow") and b:FindFirstChild("Fill") == nil) and 1 or 0)
+		end
+		for _, d in ipairs(gui:GetDescendants()) do
+			corners = corners + (d:IsA("UICorner") and 1 or 0)
+		end
+		local edge = plate:FindFirstChild("SignEdge")
+		T.check(rows == 4 and corners == 0 and edge ~= nil and edge.LineJoinMode == Enum.LineJoinMode.Miter and plate:FindFirstChild("Lip") ~= nil,
+			"the card is kit B: four block-row bars, a square navy plate with its mitred edge and lip, no rounded corner",
+			fmt("%d block rows, %d corners, edge %s", rows, corners, tostring(edge)))
+	end
 	-- fills: written only when they moved by more than 0.004
-	local fill = xpBar.Fill
 	local writes = 0
-	local conn = fill:GetPropertyChangedSignal("Size"):Connect(function()
+	local conn = xpBar:GetAttributeChangedSignal("Frac"):Connect(function()
 		writes = writes + 1
 	end)
 	card:SetXp(0.5)
@@ -227,13 +243,13 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 	-- modes
 	card:SetMode("Unit")
 	T.check(barShown(gui, "Hp") and barShown(gui, "Special") and barShown(gui, "Xp") and gui.MaxDistance == 140, "Unit mode: level + HP + SPECIAL + XP, MaxDistance 140")
-	T.eq(plate:FindFirstChild("Hp").AbsoluteSize.Y, 9, "HP bar 9 px at 1080p")
+	T.eq(plate:FindFirstChild("Hp").AbsoluteSize.Y, 10, "HP bar 10 px at 1080p (a block row)")
 	card:SetHp(0.25)
 	card:SetSpecial(1, true)
 	T.check(abs(fillOf(gui, "Hp") - 0.25) < 1e-6 and abs(fillOf(gui, "Special") - 1) < 1e-6, "SetHp / SetSpecial fill their bars")
-	local own = plate.Hp.Fill.BackgroundColor3
+	local own = plate.Hp.BlockRow.Block1.Face.BackgroundColor3 -- (a lit block's face)
 	card:SetMode("Enemy")
-	local enemy = plate.Hp.Fill.BackgroundColor3
+	local enemy = plate.Hp.BlockRow.Block1.Face.BackgroundColor3
 	T.check(barShown(gui, "Hp") and not barShown(gui, "Special") and not barShown(gui, "Xp") and own.G > own.R and enemy.R > enemy.G, "Enemy mode: level + HP, red instead of green")
 	card:SetMode("Other")
 	T.check(not barShown(gui, "Hp") and not barShown(gui, "Xp") and gui.MaxDistance == 60, "Other mode: level only, MaxDistance 60")

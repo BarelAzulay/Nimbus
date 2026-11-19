@@ -382,8 +382,7 @@ end
 
 local function fillOf(gui, name)
 	local f = gui and gui:FindFirstChild("Plate") and gui.Plate:FindFirstChild(name)
-	local fill = f and f:FindFirstChild("Fill")
-	return fill and fill.Size.X.Scale or nil
+	return f and f:GetAttribute("Frac") or nil -- (kit-b gate U9 round 3: a PetCard bar is a block row, its fraction an attribute)
 end
 
 local function levelText(gui)

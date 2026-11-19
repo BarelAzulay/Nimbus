@@ -238,7 +238,10 @@ local function auditGui(gui, opts)
 		if d.TextTruncate ~= Enum.TextTruncate.None then
 			truncating[#truncating + 1] = "'" .. plain(d.Text):sub(1, 20) .. "'"
 		end
-		if not outlined(d) then
+		-- (kit-b gate U9 round 3, kit B U6's "no outline on a panel") a text that is itself an opaque kit B block (a plank
+		-- with its mitred SignEdge: the pet card's EVOLVE!) reads by its ink on its own face, not by an outline
+		local onBlock = d.BackgroundTransparency < 0.3 and d:FindFirstChild("SignEdge") ~= nil
+		if not outlined(d) and not onBlock then
 			noOutline[#noOutline + 1] = "'" .. plain(d.Text):sub(1, 20) .. "'"
 		end
 		if not isBoard then

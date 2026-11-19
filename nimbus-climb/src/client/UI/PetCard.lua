@@ -51,6 +51,9 @@ local TweenService = game:GetService("TweenService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Theme = require(Shared:WaitForChild("Theme"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the evolution stars
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b gate U9 round 3) the bars are the kit's block rows
+local CloudUI = require(script.Parent:WaitForChild("CloudUI")) -- ... and the plate, the badge and EVOLVE! kit B blocks
+local Sign = Theme.Sign
 
 local PetCard = {}
 PetCard.__index = PetCard
@@ -72,8 +75,9 @@ local K = {
 	LEVEL_PX = 22, -- "Lv 12"
 	STAR_PX = 18,
 	ROW_LEVEL = 24,
-	BAR = 6, -- XP / SPECIAL / timer
-	HP_BAR = 9,
+	BAR = 8, -- XP / SPECIAL / timer (kit-b gate U9 round 3: block rows, a 1 px wood edge and lip round a face)
+	HP_BAR = 10,
+	BLOCKS = { Hp = 8, Special = 8, Xp = 8, Timer = 4 }, -- one cell module: 8 across the plate (HP an eighth each), 4 in the timer's shorter row
 	GAP = 3,
 	TIMER_PX = 18,
 	TIMER_TEXT_W = 40,
@@ -86,23 +90,23 @@ local K = {
 	PIP_GAP = 3,
 }
 
+-- (kit-b gate U9 round 3: the old neon card, rounded with smooth bars) the kit's navy sign plate and its role colours: each
+-- bar's lit blocks in its role face and lip, EVOLVE! the gold plank, the pips square
 local C = {
-	Plate = Color3.fromRGB(24, 32, 70),
-	PlateEdge = Color3.fromRGB(12, 16, 40),
-	Track = Color3.fromRGB(10, 14, 34),
-	Xp = Color3.fromRGB(98, 172, 246),
-	Special = Color3.fromRGB(244, 196, 78),
-	SpecialReady = Color3.fromRGB(255, 226, 120),
-	HpOwn = Theme.Colors.Health or Color3.fromRGB(92, 206, 128),
-	HpEnemy = Color3.fromRGB(236, 88, 100),
-	Timer = Color3.fromRGB(176, 120, 240),
-	Star = Theme.Colors.Gold or Color3.fromRGB(244, 196, 78),
-	Pill = Theme.Buttons.Gold or Color3.fromRGB(244, 190, 70),
-	PillGlow = Color3.fromRGB(255, 232, 150),
+	Xp = Sign.Sky, XpLip = Sign.SkyLip,
+	Special = Sign.Gold, SpecialLip = Sign.GoldLip,
+	SpecialReady = Sign.GoldLight, SpecialReadyLip = Sign.GoldLip,
+	HpOwn = Sign.Grass, HpOwnLip = Sign.GrassLip,
+	HpEnemy = Sign.Red, HpEnemyLip = Sign.RedLip,
+	Timer = Sign.Violet, TimerLip = Sign.VioletLip,
+	Star = Sign.Gold,
+	Pill = Sign.Gold,
+	PillGlow = Sign.GoldLight, -- the pulse: the gold face to its light step and back (no glow ring)
 	Text = Theme.Colors.White,
 	Stroke = Theme.Colors.TextStroke or Color3.fromRGB(16, 22, 50),
-	Life = Color3.fromRGB(255, 86, 112), -- a lit lives pip
-	LifeLost = Color3.fromRGB(58, 64, 96),
+	Life = Sign.Red, -- a lit lives pip
+	LifeLost = Sign.NavyLip,
+	PipEdge = Sign.NavyLip,
 }
 
 local STAR_ICON = "star" -- (kit-b U7b) the evolution stars are PixelIcons (they were U+2605)
@@ -155,31 +159,40 @@ local function defaultParent(adornee)
 	return adornee
 end
 
-local function newBar(parent, name, color)
+-- (kit-b gate U9 round 3) a bar is the kit's block row (SignKit.FitBlocks: whole-px blocks in a 1 px wood edge with
+-- their lip, lit in the role's face and lip, the rest stone). The holder keeps the bar's name and the exact fraction in
+-- its attribute Frac; Ceil lights a block for any part of it (health: a pet that lives shows one)
+local function newBar(parent, name, color, lip, count, ceil)
 	local back = make("Frame", {
 		Name = name,
-		BackgroundColor3 = C.Track,
-		BackgroundTransparency = 0,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Visible = false,
 	}, parent)
-	Theme.Corner(back, UDim.new(0, 3))
-	local fill = make("Frame", {
-		Name = "Fill",
-		BackgroundColor3 = color,
-		BorderSizePixel = 0,
-		Size = UDim2.new(0, 0, 1, 0),
-	}, back)
-	Theme.Corner(fill, UDim.new(0, 3))
-	return { Back = back, Fill = fill, Frac = 0 }
+	back:SetAttribute("Frac", 0)
+	local row = SignKit.FitBlocks(back, { Count = count, Fill = color, FillLip = lip, EdgePx = 1, LipPx = 1, Gap = 1, Size = UDim2.fromScale(1, 1) })
+	return { Back = back, Row = row, Count = count, Ceil = ceil == true, Frac = 0 }
+end
+
+local function lightBar(bar)
+	local n, f = bar.Count, bar.Frac
+	local k = bar.Ceil and math.ceil(f * n - 1e-6) or math.floor(f * n + 1e-6)
+	SignKit.FillBlocks(bar.Row, k)
 end
 
 local function writeFill(bar, frac)
 	frac = clamp01(frac)
 	if math.abs(frac - bar.Frac) > K.FILL_EPS or (frac == 0 and bar.Frac ~= 0) or (frac == 1 and bar.Frac ~= 1) then
 		bar.Frac = frac
-		bar.Fill.Size = UDim2.new(frac, 0, 1, 0)
+		bar.Back:SetAttribute("Frac", frac)
+		lightBar(bar)
 	end
+end
+
+-- a bar's lit colours (the enemy's red health, SPECIAL ready)
+local function paintBar(bar, color, lip)
+	SignKit.SetBlockCount(bar.Row, bar.Count, color, lip)
+	lightBar(bar)
 end
 
 ----------------------------------------------------------------------
@@ -207,15 +220,12 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 		StudsOffset = Vector3.new(0, self.height, 0),
 	})
 	self.Gui = gui
+	-- (kit-b gate U9 round 3) the kit's navy sign: square, a mitred 2 px edge, its lip along the bottom
 	local plate = make("Frame", {
 		Name = "Plate",
-		BackgroundColor3 = C.Plate,
-		BackgroundTransparency = 0.08,
 		BorderSizePixel = 0,
 	}, gui)
-	Theme.Corner(plate, UDim.new(0, 8))
-	local edge = Theme.Stroke(plate, C.PlateEdge, 2, 0.1)
-	edge.Name = "Edge"
+	CloudUI.SignBlock(plate, "Navy", { EdgePx = 2, LipPx = 2, Pad = false })
 	self.plate = plate
 
 	local level = make("TextLabel", {
@@ -234,15 +244,11 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 	-- the evolution stars: a small badge straddling the plate's top-right corner (the level keeps the full width)
 	local badge = make("Frame", {
 		Name = "StarBadge",
-		BackgroundColor3 = C.Plate,
-		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
 		Visible = false,
 		ZIndex = 3,
 	}, gui)
-	Theme.Corner(badge, UDim.new(0.5, 0))
-	local badgeEdge = Theme.Stroke(badge, C.Star, 1.5, 0)
-	badgeEdge.Name = "Edge"
+	CloudUI.SignBlock(badge, "Navy", { EdgePx = 2, LipPx = 0, Pad = false }) -- (gate U9 round 3) a square tab, not a pill
 	local stars = make("TextLabel", {
 		Name = "Stars",
 		BackgroundTransparency = 1,
@@ -256,10 +262,10 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 	self.starsLabel, self.badge = stars, badge
 
 	self.bars = {
-		Hp = newBar(plate, "Hp", C.HpOwn),
-		Special = newBar(plate, "Special", C.Special),
-		Xp = newBar(plate, "Xp", C.Xp),
-		Timer = newBar(plate, "Timer", C.Timer),
+		Hp = newBar(plate, "Hp", C.HpOwn, C.HpOwnLip, K.BLOCKS.Hp, true),
+		Special = newBar(plate, "Special", C.Special, C.SpecialLip, K.BLOCKS.Special),
+		Xp = newBar(plate, "Xp", C.Xp, C.XpLip, K.BLOCKS.Xp),
+		Timer = newBar(plate, "Timer", C.Timer, C.TimerLip, K.BLOCKS.Timer),
 	}
 	local timerText = make("TextLabel", {
 		Name = "TimerText",
@@ -283,11 +289,9 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 		Visible = false,
 		Selectable = true,
 	}, gui)
-	Theme.Style(pill, "Button", { Color = C.Text, Outline = "World", OutlineThickness = 2, OutlineColor = C.Stroke }) -- over the world: ONE outline (kit-b U6)
-	Theme.Corner(pill, UDim.new(0.5, 0))
-	local glow = Theme.Stroke(pill, C.PillGlow, 3, 0.05)
-	glow.Name = "Glow"
-	self.pill, self.pillGlow = pill, glow
+	Theme.Style(pill, "Button", { Color = Sign.Text }) -- (gate U9 round 3) brown ink on the gold plank, as the kit's planks
+	CloudUI.SignBlock(pill, "Selected", { EdgePx = 2, LipPx = 3, Pad = false }) -- a square gold plank (no pill, no glow ring)
+	self.pill = pill
 	pill.Activated:Connect(function()
 		if self.destroyed or not self.ready then
 			return
@@ -338,9 +342,9 @@ function PetCard:_layout()
 			if i <= nPips then
 				if not p then
 					p = make("Frame", { Name = "Pip" .. i, BorderSizePixel = 0, BackgroundColor3 = C.Life }, self.pipsFrame)
-					Theme.Corner(p, UDim.new(0.5, 0))
-					local edge = Theme.Stroke(p, C.Stroke, 1.5, 0)
+					local edge = Theme.Stroke(p, C.PipEdge, 1, 0) -- (gate U9 round 3) a square pip in a 1 px edge
 					edge.Name = "Edge"
+					edge.LineJoinMode = Enum.LineJoinMode.Miter
 					self.pips[i] = p
 				end
 				p.Visible = true
@@ -363,10 +367,13 @@ function PetCard:_layout()
 			y = y + h + gap
 		end
 	end
-	place(bars.Hp, m.Hp == true, px(K.HP_BAR, 4))
-	bars.Hp.Fill.BackgroundColor3 = m.Enemy and C.HpEnemy or C.HpOwn
-	place(bars.Special, m.Special == true, px(K.BAR, 3))
-	place(bars.Xp, m.Xp == true, px(K.BAR, 3))
+	place(bars.Hp, m.Hp == true, px(K.HP_BAR, 6))
+	if bars.Hp.Enemy ~= (m.Enemy == true) then
+		bars.Hp.Enemy = m.Enemy == true
+		paintBar(bars.Hp, m.Enemy and C.HpEnemy or C.HpOwn, m.Enemy and C.HpEnemyLip or C.HpOwnLip)
+	end
+	place(bars.Special, m.Special == true, px(K.BAR, 5))
+	place(bars.Xp, m.Xp == true, px(K.BAR, 5))
 	-- training timer: the bar on the left, "2:10" on the right of the same row
 	local timerOn = m.Timer == true
 	bars.Timer.Back.Visible = timerOn
@@ -375,7 +382,7 @@ function PetCard:_layout()
 		local tpx = Theme.ScaledSize(K.TIMER_PX)
 		local textW = px(K.TIMER_TEXT_W, 30)
 		local th = tpx + 2
-		local barH = px(K.BAR, 3)
+		local barH = px(K.BAR, 5)
 		bars.Timer.Back.Position = UDim2.fromOffset(pad, y + math.floor((th - barH) / 2))
 		bars.Timer.Back.Size = UDim2.fromOffset(inner - textW - gap, barH)
 		self.timerLabel.TextSize = tpx
@@ -490,7 +497,7 @@ function PetCard:SetSpecial(frac, ready)
 	ready = ready == true
 	if ready ~= self.specialReady then
 		self.specialReady = ready
-		self.bars.Special.Fill.BackgroundColor3 = ready and C.SpecialReady or C.Special
+		paintBar(self.bars.Special, ready and C.SpecialReady or C.Special, ready and C.SpecialReadyLip or C.SpecialLip)
 	end
 end
 
