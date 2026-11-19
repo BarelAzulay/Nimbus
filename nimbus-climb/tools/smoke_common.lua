@@ -597,6 +597,11 @@ function Contrast.Read(list, index)
 	if not isText(o) or item.turned or outlined(o) or (tonumber(o.TextTransparency) or 0) > 0.5 then
 		return nil
 	end
+	-- (kit-b gate U9 round 3) SignKit.Header's TitleDrop is the title's drop line, a shadow copy drawn under the title (which
+	-- is read itself), not a text of its own
+	if o.Name == "TitleDrop" then
+		return nil
+	end
 	local text = tostring(o.Text or ""):gsub("<[^>]->", ""):gsub("%s", "")
 	if text == "" or colourEmoji(text) then
 		return nil
@@ -679,8 +684,8 @@ function Contrast.Backlog(file)
 	if not fh then
 		return out
 	end
-	for line in fh:lines() do
-		line = line:gsub("#.*$", ""):gsub("^%s+", ""):gsub("%s+$", "")
+	for raw in fh:lines() do
+		local line = raw:gsub("#.*$", ""):gsub("^%s+", ""):gsub("%s+$", "") -- (a for variable is const in Lua 5.5)
 		if line ~= "" then
 			out[#out + 1] = "^" .. line:gsub("[%^%$%(%)%%%.%[%]%+%-%?]", "%%%0"):gsub("%*", "[^.]*") .. "$"
 		end

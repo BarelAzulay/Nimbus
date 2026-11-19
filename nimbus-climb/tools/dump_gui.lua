@@ -1034,6 +1034,11 @@ scenario("lobby", function(arg)
 		LocalPlayer:SetAttribute("OwnedPasses", "Cash2x,PetXp2x")
 	end
 	advance(0.5)
+	if arg == "hint" or arg == "hintbad" then
+		-- (kit-b gate U9 round 3) lobby:hint / lobby:hintbad: the menu's side hint (MenuController.Hint), a locked state / a refusal
+		req("client/Controllers/MenuController").Hint(arg == "hint" and "Claim a home first: press E at a free gate." or "You need $1,250 more Cash.", arg == "hint" and "info" or "bad")
+		advance(0.3)
+	end
 end)
 
 scenario("title", function() end)
@@ -3111,11 +3116,22 @@ scenario("pets", function(view)
 		args.Pick = 2
 	elseif view == "sheet" then
 		args.Key = ids.Epic
-	elseif view and view ~= "" and view ~= "phone" then
+	elseif view and view ~= "" and view ~= "phone" and view ~= "recall" then
 		args.Key = view
 	end
 	toClient("OpenPanel", "Pets", args)
 	advance(3)
+	if view == "recall" then
+		-- (kit-b gate U9 round 3) pets:recall: the "This pet is gardening!" question over the Pets window (PetBits.askRecall)
+		local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+		local gui = pg and pg:FindFirstChild("NimbusPets")
+		if gui then
+			req("client/UI/PetBits").askRecall(gui, ids.Garden1, { To = "Team", Preset = 1, Keys = { ids.Garden1 } }, nil, nil, function()
+				return true
+			end)
+			advance(0.5)
+		end
+	end
 end)
 
 -- loss[:ring|:dungeon|:phone]: team balance Task 6: LossScreen with a level-up, two XP bars and the run's lines

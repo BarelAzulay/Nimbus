@@ -722,6 +722,22 @@ local function clientScenarios()
 		T.check(box and title and title.Text:upper():find("THIS PET IS GARDENING!", 1, true) and body and body.Text:find("Take it out of the garden", 1, true) and body.Text:find("put it in your team?", 1, true),
 			"p3ui recall: picking a gardening pet opens NimbusPets.GardenRecall ('This pet is gardening! Take it out of the garden and put it in your team?')", body and body.Text)
 		T.check(box and find(box, "RecallYes") and find(box, "RecallNo"), "p3ui recall: ...with Yes and No")
+		-- (kit-b gate U9 round 3) the question is a kit B notice: square (no corner, no gradient), a mitred wood edge and a
+		-- lip, Yes the one green Sign plank and No a stone one
+		do
+			local card = box and box:FindFirstChild("Box")
+			local round, grad = 0, 0
+			for _, d in ipairs(card and card:GetDescendants() or {}) do
+				round = round + (d:IsA("UICorner") and 1 or 0)
+				grad = grad + (d:IsA("UIGradient") and 1 or 0)
+			end
+			local edge = card and card:FindFirstChild("SignEdge")
+			local yes, no = box and find(box, "RecallYes"), box and find(box, "RecallNo")
+			T.check(card ~= nil and round == 0 and grad == 0 and edge ~= nil and edge.LineJoinMode == Enum.LineJoinMode.Miter and card:FindFirstChild("Lip") ~= nil,
+				"p3ui recall: ...a square kit B notice (wood SignEdge, lip, no corner, no gradient)", string.format("corners %d, gradients %d, edge %s", round, grad, tostring(edge)))
+			T.check(yes and no and yes:GetAttribute("Skin") == "Sign" and no:GetAttribute("Skin") == "Sign" and yes.BackgroundColor3.G > yes.BackgroundColor3.R + 0.1 and not (no.BackgroundColor3.G > no.BackgroundColor3.R + 0.1),
+				"p3ui recall: ...Yes the one green Sign plank, No a Sign plank too", yes and no and (tostring(yes:GetAttribute("Skin")) .. "/" .. tostring(no:GetAttribute("Skin")) .. " " .. tostring(yes.BackgroundColor3) .. "/" .. tostring(no.BackgroundColor3)) or "")
+		end
 		T.check(lastRequest(mark, "TeamSet") == nil and #homeActions(mark) == 0, "p3ui recall: ...and sends nothing yet")
 		local small6 = box and smallTexts(box, 18) or {}
 		T.check(#small6 == 0, "p3ui recall: every text of the question is >= 18 design px", table.concat(small6, ", "))

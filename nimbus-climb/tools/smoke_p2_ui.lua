@@ -720,6 +720,21 @@ local function clientScenarios()
 		local hint = menu and menu:FindFirstChild("MenuHint")
 		T.check(#calls("GoToSpot", mark) == 1 and hint and hint.Visible and tostring(find(hint, "Text") and find(hint, "Text").Text):find("Press E", 1, true) and not win.Visible,
 			"p2ui menu: Claim a home walks to a free gate (GoToSpot, the server's home portal) with a side hint 'Press E at the gate' and closes")
+		-- (kit-b gate U9 round 3) the side hint is a kit B block: square (no corner, no gradient), a mitred wood edge, a lip, ink text
+		do
+			local round, grad = 0, 0
+			for _, d in ipairs(hint and hint:GetDescendants() or {}) do
+				round = round + (d:IsA("UICorner") and 1 or 0)
+				grad = grad + (d:IsA("UIGradient") and 1 or 0)
+			end
+			local edge = hint and hint:FindFirstChild("SignEdge")
+			local text = hint and find(hint, "Text")
+			local Theme = require(game:GetService("ReplicatedStorage").Shared.Theme)
+			T.check(hint ~= nil and round == 0 and grad == 0 and edge ~= nil and edge.LineJoinMode == Enum.LineJoinMode.Miter and hint:FindFirstChild("Lip") ~= nil
+				and hint.BackgroundTransparency == 0 and text and text.TextColor3 == Theme.Sign.Text,
+				"p2ui menu: ...the side hint is a kit B stone block (wood SignEdge, lip, ink text, no corner, no gradient)",
+				string.format("corners %d, gradients %d, edge %s", round, grad, tostring(edge)))
+		end
 
 		-- the Home window
 		setHome("mid")

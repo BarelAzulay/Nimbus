@@ -1464,10 +1464,33 @@ function H.placeActions()
 	if d.ActEvolve.Visible then
 		list[4] = d.ActEvolve
 	end
+	for _, button in ipairs({ d.ActPut, d.ActFighter, d.ActRemove, d.ActFeed, d.ActTrain, d.ActGarden, d.ActEvolve }) do
+		button.TextSize = fs
+	end
+	-- (gate U9 round 3) a phone keeps one care row only while every label fits its cell on one line; otherwise (Evolve
+	-- showing at 390 px, 'Leave Garden') it takes the PC's two rows: Feed | Train over Garden | Evolve
+	local careTop = careY
 	if phone then
 		local cellW = math.floor((innerW - (#list - 1) * gap) / #list)
-		for i, button in ipairs(list) do
-			place(button, pad + (i - 1) * (cellW + gap), careY, cellW, d.ButtonH)
+		local fits = true
+		for _, button in ipairs(list) do
+			fits = fits and H.careNeed(button, fs) <= cellW
+		end
+		if fits then
+			for i, button in ipairs(list) do
+				place(button, pad + (i - 1) * (cellW + gap), careY, cellW, d.ButtonH)
+			end
+		else
+			local half = math.floor((innerW - gap) / 2)
+			careTop = careY - d.ButtonH - gap
+			place(d.ActFeed, pad, careTop, half, d.ButtonH)
+			place(d.ActTrain, pad + half + gap, careTop, half, d.ButtonH)
+			if d.ActEvolve.Visible then
+				place(d.ActGarden, pad, careY, half, d.ButtonH)
+				place(d.ActEvolve, pad + half + gap, careY, half, d.ButtonH)
+			else
+				place(d.ActGarden, pad, careY, innerW, d.ButtonH)
+			end
 		end
 	else
 		-- Feed | Train, Garden | Evolve (Garden takes the whole row while there is no Evolve)
@@ -1482,10 +1505,7 @@ function H.placeActions()
 			place(d.ActGarden, pad, y2, innerW, d.ButtonH)
 		end
 	end
-	for _, button in ipairs({ d.ActPut, d.ActFighter, d.ActRemove, d.ActFeed, d.ActTrain, d.ActGarden, d.ActEvolve }) do
-		button.TextSize = fs
-	end
-	local bottomText = (phone and d.CareY or teamY) - gap
+	local bottomText = (phone and careTop or teamY) - gap
 	local workH = d.Work.Text ~= "" and (phone and 20 or 24) * (d.WorkLines or 1) or 0
 	place(d.Work, pad, d.TextY, d.TextW, workH)
 	d.Work.Visible = workH > 0 and d.TextY + workH <= bottomText
@@ -2175,6 +2195,14 @@ end
 -- down early; the chips size themselves (AutomaticSize) and H.metaOverflow steps down once more if they still overrun
 local META_SPARE = 1.15
 local META_RANK = { Full = 1, Tight = 2, Hide = 3 }
+
+-- (gate U9 round 3) the room a care plank's label needs on one line: its text in the Button face with the measure's
+-- spare, its icon's padding (PixelIcon.Lead) and a 4 px margin, whole px
+function H.careNeed(button, size)
+	local p = button:FindFirstChildOfClass("UIPadding")
+	local inset = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) or 0
+	return math.ceil(H.metaTextW(button.Text, size) * META_SPARE) + inset + 4
+end
 
 function H.fitMetaRow()
 	local d = U.D

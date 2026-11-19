@@ -106,7 +106,18 @@ SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "matc
              "shop", "shop:restricted", "shop:Gems", "shop:Packs", "shop:Passes", "shop:Boosts",
              # (shop-area T3) the Secret card away from the Storm Altar (greyed, AltarChip, TRAVEL) and at it
              "shop_secret_locked", "shop_secret_altar",
-             "lobbyboard", "lobbyboard:2", "lobbyboard:3"]
+             "lobbyboard", "lobbyboard:2", "lobbyboard:3",
+             # (kit-b gate U9 round 3) every documented variant the U9 completeness gate missed (stroke_walk walks this
+             # list; smoke_gate_scenarios.py fails when a documented form of dump_gui.lua's header is not in it):
+             # the Sky Trove, the Credits / Settings / Updates over the HUD, the lobby gift / boost chips / side hint,
+             # the week's confetti, the world boards (homes, arena), the gardening question, the battle phases and the
+             # ring rounds, the arena's side card / Prestige team / new team, the ring with a record
+             "trove", "trove:done", "trove:preview", "mainmenu:credits", "settings:hud", "updates:hud",
+             "lobby:gift", "lobby:boosts", "lobby:hint", "lobby:hintbad", "daily:week", "homepads", "arenaboards",
+             "pets:recall",
+             "battle:trial:ready", "battle:trial:retreat", "battle:trial:result", "battle:trial:lost",
+             "battle:duel:overtime", "battle:ring:fight8", "battle:ring:next8", "battle:ring:result8", "battle:ring:record8",
+             "arena:side", "arena:team4", "arena:newteam", "ring:record", "battle", "hatch3"]
 
 # ---------------------------------------------------------------------------------------------------
 # Lua world (booted the way tools/smoke.py boots its client world)
@@ -1635,6 +1646,9 @@ def contrast_rule(dump):
     for idx, (n, clip, turned, gui) in enumerate(order):
         tx = n.get("text")
         if not tx or turned or gui == "WorldMirror":
+            continue
+        # (kit-b gate U9 round 3) SignKit.Header's TitleDrop: the title's drop line, a shadow copy under the title (read itself)
+        if str(n.get("path", "")).endswith(".TitleDrop"):
             continue
         text = re.sub(r"<[^>]*>", "", str(tx.get("text", ""))).strip()
         if not text or _colour_emoji(text) or float(tx.get("t", 0)) > 0.5 or float(tx.get("strokeT", 1)) < 0.95:

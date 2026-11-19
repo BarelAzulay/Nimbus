@@ -6009,6 +6009,39 @@ local function clientScenarios()
 						T.check(chip ~= nil and spill == nil, fmt("%s: the %s tile's icon square holds its whole icon", tag, id), spill or "")
 					end
 				end
+				-- (gate U9 round 3) the care row with Evolve showing on a phone: every care plank's label on one line inside its
+				-- plank (at 390x844 four across broke 'Garden' as 'Garde / n'), and for a pet in the garden ('Leave Garden')
+				if phone then
+					local lv = {}
+					for _, key in ipairs(U8.KEYS) do
+						lv[key] = { Level = 20, Xp = 120 }
+					end
+					U8.feed({ K1, K2, K3 }, { K2 }, nil, nil, { PetLevels = lv })
+					local restore = U8.measureReal()
+					for _, key in ipairs({ K3, K2 }) do
+						PC.Open({ Key = key })
+						LKC.advance(1)
+						local w2 = U8.pg():FindFirstChild("NimbusPets")
+						local evolve = w2 and w2:FindFirstChild("ActEvolve", true)
+						local garden = w2 and w2:FindFirstChild("ActGarden", true)
+						if T.check(evolve ~= nil and U8.shown(evolve) and garden ~= nil and U8.shown(garden), tag .. ": " .. key .. " at level 20 shows Evolve beside Garden") then
+							local bad = {}
+							for _, name in ipairs({ "ActFeed", "ActTrain", "ActGarden", "ActEvolve" }) do
+								local b = w2:FindFirstChild(name, true)
+								if b and U8.shown(b) then
+									local pad = b:FindFirstChildOfClass("UIPadding")
+									local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) * U8.scaleOf(b) or 0
+									local tw = (SmokeCommon.RealWidth(b.Text, b.TextSize, Th.FontOf(b), true) or Th.MeasureLabel(b).X) * U8.scaleOf(b)
+									if tw + inset + 2 > b.AbsoluteSize.X + 0.01 then
+										bad[#bad + 1] = fmt("%q %.0f px in %.0f", b.Text, tw + inset, b.AbsoluteSize.X)
+									end
+								end
+							end
+							T.check(#bad == 0, tag .. ": " .. key .. "'s care planks hold their labels on one line (" .. garden.Text .. ")", table.concat(bad, "; "))
+						end
+					end
+					restore()
+				end
 				PC.Close(true)
 			end)
 		end

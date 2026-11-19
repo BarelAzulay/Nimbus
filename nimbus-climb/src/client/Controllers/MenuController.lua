@@ -228,7 +228,6 @@ local INK = Colors.TextStroke or Colors.Ink
 local GOOD = Colors.Good
 local BAD = Colors.Bad
 local BUTTONS = Theme.Buttons or {}
-local KINDS = Theme.Kinds or {}
 local CURRENCY = Theme.Currency or {}
 -- Phase 2 colours (one table: the main chunk stays under Lua's 200-local limit)
 local C2 = {
@@ -660,21 +659,19 @@ local function buildHint()
 	local frame = makeFrame(gui, "MenuHint", {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 120, 0.5, 0),
-		Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.04,
+		Size = UDim2.fromOffset(0, 0), -- showHint sizes it to its text (the padding and the lip under the last line)
+		BackgroundColor3 = Theme.Sign.Tile,
+		BackgroundTransparency = 0,
 		Visible = false,
 		ZIndex = 9,
 	})
-	corner(frame, "M")
-	stroke(frame, NAVY, 3, 0)
-	Theme.Gradient(frame, Colors.PanelLight, Colors.Panel, 90)
-	pad(frame, 14, 8, 14, 8)
+	-- (kit-b gate U9 round 3: it was the old rounded navy gradient box) a kit B stone block as the toasts': tile face, a
+	-- mitred wood edge, its lip in the message's kind (HINT_LIP), ink text
+	pad(frame, 14, 8, 14, 8 + CloudUI.SignMetrics.Lip)
+	CloudUI.SignBlock(frame, "Stone", { EdgePx = 3 })
 	-- the width is set per message (one line when it fits, else wrapped at Hint.MaxW); the height follows the text
-	local label = makeText(frame, "Text", "", "Toast", 20, WHITE, {
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Size = UDim2.fromOffset(300, 0),
+	local label = makeText(frame, "Text", "", "Toast", 20, Theme.Sign.Text, {
+		Size = UDim2.fromOffset(300, 24),
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 10,
@@ -691,18 +688,47 @@ function showHint(text, kind)
 	end
 	Hint.Token = Hint.Token + 1
 	local mine = Hint.Token
-	local color = KINDS[kind or "info"] or KINDS.info or Colors.PanelLight
 	Hint.Label.Text = tostring(text)
-	Hint.Label.TextColor3 = Theme.Lighten(color, 0.55)
+	Hint.Label.TextColor3 = Theme.Sign.Text
+	local lip = Hint.Frame:FindFirstChild("Lip")
+	if lip then
+		local SIGN = Theme.Sign
+		local HINT_LIP = { good = SIGN.GrassLip, bad = SIGN.RedLip, token = SIGN.GoldLip }
+		lip.BackgroundColor3 = HINT_LIP[kind or "info"] or SIGN.StoneLip
+	end
 	local maxW = Hint.MaxW or 300
 	local width = maxW
 	local ok, bounds = pcall(function()
 		return Theme.MeasureLabel(Hint.Label, Hint.Label.Text, Hint.Label.TextSize, 4000)
 	end)
-	if ok and typeof(bounds) == "Vector2" and bounds.X + 6 < maxW then
-		width = math.ceil(bounds.X) + 6
+	-- (gate U9 round 3) Theme.Measure runs about 13 % short of the drawn face: a 15 % spare, or a one-line text wrapped
+	local SPARE = 1.15
+	if ok and typeof(bounds) == "Vector2" and bounds.X * SPARE + 6 < maxW then
+		width = math.ceil(bounds.X * SPARE) + 6
 	end
-	Hint.Label.Size = UDim2.fromOffset(width, 0)
+	-- (kit-b gate U9 round 3: a wrapped second line ran onto the block's lip) the text box as tall as its wrapped lines, so
+	-- the block's padding and lip sit under the last line whatever measures AutomaticSize
+	-- (the lines counted by a greedy word wrap at the measured widths with the spare: the wrapped measure ran a line short)
+	local lineH = Hint.Label.TextSize + 4
+	local function wordW(word)
+		local okW, v = pcall(function()
+			return Theme.MeasureLabel(Hint.Label, word, Hint.Label.TextSize, 4000)
+		end)
+		return (okW and typeof(v) == "Vector2") and v.X * SPARE or #word * Hint.Label.TextSize * 0.6
+	end
+	local space = math.max(0, wordW("a a") - wordW("aa"))
+	local lines, run = 1, 0
+	for word in string.gmatch(Hint.Label.Text, "%S+") do
+		local ww = wordW(word)
+		if run > 0 and run + space + ww > width then
+			lines, run = lines + 1, ww
+		else
+			run = run + (run > 0 and space or 0) + ww
+		end
+	end
+	local textH = lines * lineH
+	Hint.Label.Size = UDim2.fromOffset(width, textH)
+	Hint.Frame.Size = UDim2.fromOffset(width + 28, textH + 16 + CloudUI.SignMetrics.Lip)
 	Hint.Frame.Visible = true
 	task.delay(K.HINT_SECONDS, function()
 		if Hint.Token == mine and Hint.Frame then

@@ -13,26 +13,23 @@
 /CreditsSign/Head/Plate | Frame | abs 1153.0,597.0 750.0x59.0 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
 /CreditsSign/Head/Plate/TitleDrop | TextLabel | abs 1171.0,600.0 668.0x59.0 pos {0.0,18,0.0,3} size {1.0,-82,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREDITS" 34.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #0B1330 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Title | TextLabel | abs 1171.0,597.0 668.0x59.0 pos {0.0,18,0.0,0} size {1.0,-82,1.0,0} anchor 0.0,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00 | text "CREDITS" 34.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
-/CreditsSign/Head/Plate/Close | TextButton | abs 1849.0,604.5 44.0x44.0 pos {1.0,-10,0.5,0} size {0.0,44,0.0,44} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
-/CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
-/CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
-/CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
-/CreditsSign/Head/Plate/Close/Glow | Frame | abs 1845.0,600.5 52.0x52.0 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
-/CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
-/CreditsSign/Head/Plate/Close/Glow/UIStroke | UIStroke | #FF4C64 4.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.68
-/CreditsSign/Head/Plate/Close/Shine | Frame | abs 1861.0,607.5 20.0x2.6 pos {0.5,0,0.0,3} size {1.0,-24,0.1,0} anchor 0.5,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.80
-/CreditsSign/Head/Plate/Close/Shine/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close | TextButton | abs 1849.0,604.5 44.0x44.0 pos {1.0,-10,0.5,0} size {0.0,44,0.0,44} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #EE6A7F 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #3B2412 stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Close/FxScale | UIScale
-/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 1857.8,613.3 26.4x26.4 pos {0.5,0,0.5,0} size {0.6,0,0.6,0} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #A3A2A5 1.00
-/CreditsSign/Head/Plate/Close/CloseMark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 1.000
-/CreditsSign/Head/Plate/Close/CloseMark/InkA | Frame | abs 1855.8,622.3 30.4x8.5 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot 45.0 z 4 vis true bg #080A1C 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/InkA/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/InkB | Frame | abs 1855.8,622.3 30.4x8.5 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot -45.0 z 4 vis true bg #080A1C 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/InkB/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/BarA | Frame | abs 1857.8,624.3 26.4x4.5 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot 45.0 z 5 vis true bg #FFFFFF 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/BarA/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/BarB | Frame | abs 1857.8,624.3 26.4x4.5 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot -45.0 z 5 vis true bg #FFFFFF 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/BarB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/SignEdge | UIStroke | #3B2412 5.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Head/Plate/Close/Lip | Frame | abs 1849.0,640.5 44.0x8.0 pos {0.0,0,1.0,0} size {1.0,0,0.0,8} anchor 0.0,1.0 rot 0.0 z 3 vis true bg #B8364F 0.00
+/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 1858.0,613.5 27.0x27.0 pos {0.5,-13,0.5,-13} size {0.0,27,0.0,27} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon | Frame | abs 1858.0,613.5 27.0x27.0 pos {0.0,0,0.0,0} size {0.0,27,0.0,27} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R1 | Frame | abs 1861.0,616.5 6.0x3.0 pos {0.0,3,0.0,3} size {0.0,6,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R2 | Frame | abs 1876.0,616.5 6.0x3.0 pos {0.0,18,0.0,3} size {0.0,6,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R3 | Frame | abs 1861.0,619.5 9.0x3.0 pos {0.0,3,0.0,6} size {0.0,9,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R4 | Frame | abs 1873.0,619.5 9.0x3.0 pos {0.0,15,0.0,6} size {0.0,9,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R5 | Frame | abs 1864.0,622.5 15.0x3.0 pos {0.0,6,0.0,9} size {0.0,15,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R6 | Frame | abs 1867.0,625.5 9.0x3.0 pos {0.0,9,0.0,12} size {0.0,9,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R7 | Frame | abs 1864.0,628.5 15.0x3.0 pos {0.0,6,0.0,15} size {0.0,15,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R8 | Frame | abs 1861.0,631.5 9.0x3.0 pos {0.0,3,0.0,18} size {0.0,9,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R9 | Frame | abs 1873.0,631.5 9.0x3.0 pos {0.0,15,0.0,18} size {0.0,9,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R10 | Frame | abs 1861.0,634.5 6.0x3.0 pos {0.0,3,0.0,21} size {0.0,6,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R11 | Frame | abs 1876.0,634.5 6.0x3.0 pos {0.0,18,0.0,21} size {0.0,6,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
 /CreditsSign/Wood | Frame | abs 1148.0,656.0 760.0x404.0 pos {0.0,0,0.0,108} size {1.0,0,0.0,404} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #8A5A32 0.00
 /CreditsSign/Wood/Body | Frame | abs 1154.0,662.0 748.0x392.0 pos {0.0,6,0.0,6} size {1.0,-12,1.0,-12} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #F6ECD6 0.00
 /CreditsSign/Wood/Body/Line | Frame | abs 1159.0,667.0 738.0x382.0 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-10} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
@@ -84,26 +81,23 @@
 /CreditsSign/Head/Plate | Frame | abs 711.0,309.4 555.5x50.4 pos {0.0,4,0.0,4} size {1.0,-9,1.0,-4} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
 /CreditsSign/Head/Plate/TitleDrop | TextLabel | abs 726.5,311.9 485.6x50.4 pos {0.0,18,0.0,3} size {1.0,-82,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREDITS" 34.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #0B1330 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Title | TextLabel | abs 726.5,309.4 485.6x50.4 pos {0.0,18,0.0,0} size {1.0,-82,1.0,0} anchor 0.0,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00 | text "CREDITS" 34.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
-/CreditsSign/Head/Plate/Close | TextButton | abs 1220.6,315.9 37.4x37.4 pos {1.0,-10,0.5,0} size {0.0,44,0.0,44} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
-/CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
-/CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
-/CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
-/CreditsSign/Head/Plate/Close/Glow | Frame | abs 1217.2,312.5 44.2x44.2 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
-/CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
-/CreditsSign/Head/Plate/Close/Glow/UIStroke | UIStroke | #FF4C64 4.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.68
-/CreditsSign/Head/Plate/Close/Shine | Frame | abs 1230.8,318.4 17.0x2.2 pos {0.5,0,0.0,3} size {1.0,-24,0.1,0} anchor 0.5,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.80
-/CreditsSign/Head/Plate/Close/Shine/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close | TextButton | abs 1217.3,312.6 44.0x44.0 pos {1.0,-6,0.5,0} size {0.0,51,0.0,51} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #EE6A7F 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #3B2412 stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Close/FxScale | UIScale
-/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 1228.1,323.4 22.4x22.4 pos {0.5,0,0.5,0} size {0.6,0,0.6,0} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #A3A2A5 1.00
-/CreditsSign/Head/Plate/Close/CloseMark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 1.000
-/CreditsSign/Head/Plate/Close/CloseMark/InkA | Frame | abs 1226.4,331.0 25.8x7.2 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot 45.0 z 4 vis true bg #080A1C 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/InkA/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/InkB | Frame | abs 1226.4,331.0 25.8x7.2 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot -45.0 z 4 vis true bg #080A1C 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/InkB/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/BarA | Frame | abs 1228.1,332.7 22.4x3.8 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot 45.0 z 5 vis true bg #FFFFFF 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/BarA/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/BarB | Frame | abs 1228.1,332.7 22.4x3.8 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot -45.0 z 5 vis true bg #FFFFFF 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/BarB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/SignEdge | UIStroke | #3B2412 5.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Head/Plate/Close/Lip | Frame | abs 1217.3,349.6 44.0x7.0 pos {0.0,0,1.0,0} size {1.0,0,0.0,8} anchor 0.0,1.0 rot 0.0 z 3 vis true bg #B8364F 0.00
+/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 1224.0,319.3 30.6x30.6 pos {0.5,-18,0.5,-18} size {0.0,36,0.0,36} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon | Frame | abs 1224.0,319.3 30.6x30.6 pos {0.0,0,0.0,0} size {0.0,36,0.0,36} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R1 | Frame | abs 1228.0,323.3 6.0x3.0 pos {0.0,4,0.0,4} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R2 | Frame | abs 1243.0,323.3 6.0x3.0 pos {0.0,22,0.0,4} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R3 | Frame | abs 1228.0,326.3 9.0x3.0 pos {0.0,4,0.0,8} size {0.0,10,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R4 | Frame | abs 1240.0,326.3 9.0x3.0 pos {0.0,18,0.0,8} size {0.0,10,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R5 | Frame | abs 1231.0,329.3 15.0x3.0 pos {0.0,8,0.0,11} size {0.0,17,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R6 | Frame | abs 1234.0,332.3 9.0x3.0 pos {0.0,11,0.0,15} size {0.0,10,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R7 | Frame | abs 1231.0,335.3 15.0x3.0 pos {0.0,8,0.0,18} size {0.0,17,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R8 | Frame | abs 1228.0,338.3 9.0x3.0 pos {0.0,4,0.0,22} size {0.0,10,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R9 | Frame | abs 1240.0,338.3 9.0x3.0 pos {0.0,18,0.0,22} size {0.0,10,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R10 | Frame | abs 1228.0,341.3 6.0x3.0 pos {0.0,4,0.0,25} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R11 | Frame | abs 1243.0,341.3 6.0x3.0 pos {0.0,22,0.0,25} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
 /CreditsSign/Wood | Frame | abs 707.0,359.8 563.5x343.4 pos {0.0,0,0.0,108} size {1.0,0,0.0,404} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #8A5A32 0.00
 /CreditsSign/Wood/Body | Frame | abs 712.0,364.8 553.5x333.4 pos {0.0,5,0.0,5} size {1.0,-11,1.0,-11} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #F6ECD6 0.00
 /CreditsSign/Wood/Body/Line | Frame | abs 716.2,369.1 545.0x324.9 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-10} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
@@ -155,26 +149,23 @@
 /CreditsSign/Head/Plate | Frame | abs 467.0,107.2 363.2x37.6 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
 /CreditsSign/Head/Plate/TitleDrop | TextLabel | abs 481.4,109.6 302.4x37.6 pos {0.0,18,0.0,3} size {1.0,-76,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREDITS" 28.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #0B1330 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Title | TextLabel | abs 481.4,107.2 302.4x37.6 pos {0.0,18,0.0,0} size {1.0,-76,1.0,0} anchor 0.0,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00 | text "CREDITS" 28.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
-/CreditsSign/Head/Plate/Close | TextButton | abs 791.8,110.8 30.4x30.4 pos {1.0,-10,0.5,0} size {0.0,38,0.0,38} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
-/CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
-/CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
-/CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
-/CreditsSign/Head/Plate/Close/Glow | Frame | abs 788.6,107.6 36.8x36.8 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
-/CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
-/CreditsSign/Head/Plate/Close/Glow/UIStroke | UIStroke | #FF4C64 4.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.68
-/CreditsSign/Head/Plate/Close/Shine | Frame | abs 801.4,113.2 11.2x1.8 pos {0.5,0,0.0,3} size {1.0,-24,0.1,0} anchor 0.5,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.80
-/CreditsSign/Head/Plate/Close/Shine/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close | TextButton | abs 785.0,104.0 44.0x44.0 pos {1.0,-1,0.5,0} size {0.0,55,0.0,55} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #EE6A7F 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #3B2412 stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Close/FxScale | UIScale
-/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 797.9,116.9 18.2x18.2 pos {0.5,0,0.5,0} size {0.6,0,0.6,0} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #A3A2A5 1.00
-/CreditsSign/Head/Plate/Close/CloseMark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 1.000
-/CreditsSign/Head/Plate/Close/CloseMark/InkA | Frame | abs 796.3,122.8 21.4x6.3 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot 45.0 z 4 vis true bg #080A1C 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/InkA/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/InkB | Frame | abs 796.3,122.8 21.4x6.3 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot -45.0 z 4 vis true bg #080A1C 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/InkB/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/BarA | Frame | abs 797.9,124.4 18.2x3.1 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot 45.0 z 5 vis true bg #FFFFFF 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/BarA/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/BarB | Frame | abs 797.9,124.4 18.2x3.1 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot -45.0 z 5 vis true bg #FFFFFF 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/BarB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/SignEdge | UIStroke | #3B2412 5.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Head/Plate/Close/Lip | Frame | abs 785.0,142.0 44.0x6.0 pos {0.0,0,1.0,0} size {1.0,0,0.0,7} anchor 0.0,1.0 rot 0.0 z 3 vis true bg #B8364F 0.00
+/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 792.6,111.6 28.8x28.8 pos {0.5,-18,0.5,-18} size {0.0,36,0.0,36} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon | Frame | abs 792.6,111.6 28.8x28.8 pos {0.0,0,0.0,0} size {0.0,36,0.0,36} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R1 | Frame | abs 795.6,114.6 6.0x3.0 pos {0.0,3,0.0,3} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R2 | Frame | abs 810.6,114.6 6.0x3.0 pos {0.0,22,0.0,3} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R3 | Frame | abs 795.6,117.6 9.0x3.0 pos {0.0,3,0.0,7} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R4 | Frame | abs 807.6,117.6 9.0x3.0 pos {0.0,18,0.0,7} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R5 | Frame | abs 798.6,120.6 15.0x3.0 pos {0.0,7,0.0,11} size {0.0,18,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R6 | Frame | abs 801.6,123.6 9.0x3.0 pos {0.0,11,0.0,15} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R7 | Frame | abs 798.6,126.6 15.0x3.0 pos {0.0,7,0.0,18} size {0.0,18,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R8 | Frame | abs 795.6,129.6 9.0x3.0 pos {0.0,3,0.0,22} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R9 | Frame | abs 807.6,129.6 9.0x3.0 pos {0.0,18,0.0,22} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R10 | Frame | abs 795.6,132.6 6.0x3.0 pos {0.0,3,0.0,26} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R11 | Frame | abs 810.6,132.6 6.0x3.0 pos {0.0,22,0.0,26} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
 /CreditsSign/Wood | Frame | abs 463.0,144.8 371.2x229.6 pos {0.0,0,0.0,96} size {1.0,0,0.0,287} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #8A5A32 0.00
 /CreditsSign/Wood/Body | Frame | abs 468.0,149.8 361.2x219.6 pos {0.0,6,0.0,6} size {1.0,-12,1.0,-12} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #F6ECD6 0.00
 /CreditsSign/Wood/Body/Line | Frame | abs 472.0,153.8 353.2x211.6 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-10} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00
@@ -226,26 +217,23 @@
 /CreditsSign/Head/Plate | Frame | abs 14.0,441.2 363.2x37.6 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-5} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
 /CreditsSign/Head/Plate/TitleDrop | TextLabel | abs 28.4,443.6 302.4x37.6 pos {0.0,18,0.0,3} size {1.0,-76,1.0,0} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREDITS" 28.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #0B1330 stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Title | TextLabel | abs 28.4,441.2 302.4x37.6 pos {0.0,18,0.0,0} size {1.0,-76,1.0,0} anchor 0.0,0.0 rot 0.0 z 2 vis true bg #A3A2A5 1.00 | text "CREDITS" 28.0 Enum.Font.LuckiestGuy face LuckiestGuy/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Center wrap false
-/CreditsSign/Head/Plate/Close | TextButton | abs 338.8,444.8 30.4x30.4 pos {1.0,-10,0.5,0} size {0.0,38,0.0,38} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #9F3651 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #FFFFFF stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
-/CreditsSign/Head/Plate/Close/UICorner | UICorner | radius 0.0,12
-/CreditsSign/Head/Plate/Close/UIStroke | UIStroke | #FF4C64 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.00
-/CreditsSign/Head/Plate/Close/UIGradient | UIGradient | 0.0=#FFFFFF 0.6=#F0F2F8 1.0=#969CB8 rot 90.0
-/CreditsSign/Head/Plate/Close/Glow | Frame | abs 335.6,441.6 36.8x36.8 pos {0.0,-4,0.0,-4} size {1.0,8,1.0,8} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #A3A2A5 1.00
-/CreditsSign/Head/Plate/Close/Glow/UICorner | UICorner | radius 0.0,16
-/CreditsSign/Head/Plate/Close/Glow/UIStroke | UIStroke | #FF4C64 4.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Round 0.68
-/CreditsSign/Head/Plate/Close/Shine | Frame | abs 348.4,447.2 11.2x1.8 pos {0.5,0,0.0,3} size {1.0,-24,0.1,0} anchor 0.5,0.0 rot 0.0 z 3 vis true bg #FFFFFF 0.80
-/CreditsSign/Head/Plate/Close/Shine/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close | TextButton | abs 332.0,438.0 44.0x44.0 pos {1.0,-1,0.5,0} size {0.0,55,0.0,55} anchor 1.0,0.5 rot 0.0 z 3 vis true bg #EE6A7F 0.00 | text "" 24.0 Enum.Font.FredokaOne face FredokaOne/Regular/Normal col #3B2412 stroke 1.00 Enum.TextXAlignment.Center/Enum.TextYAlignment.Center wrap false
 /CreditsSign/Head/Plate/Close/FxScale | UIScale
-/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 344.9,450.9 18.2x18.2 pos {0.5,0,0.5,0} size {0.6,0,0.6,0} anchor 0.5,0.5 rot 0.0 z 4 vis true bg #A3A2A5 1.00
-/CreditsSign/Head/Plate/Close/CloseMark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 1.000
-/CreditsSign/Head/Plate/Close/CloseMark/InkA | Frame | abs 343.3,456.8 21.4x6.3 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot 45.0 z 4 vis true bg #080A1C 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/InkA/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/InkB | Frame | abs 343.3,456.8 21.4x6.3 pos {0.5,0,0.5,0} size {1.0,4,0.2,4} anchor 0.5,0.5 rot -45.0 z 4 vis true bg #080A1C 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/InkB/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/BarA | Frame | abs 344.9,458.4 18.2x3.1 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot 45.0 z 5 vis true bg #FFFFFF 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/BarA/UICorner | UICorner | radius 0.5,0
-/CreditsSign/Head/Plate/Close/CloseMark/BarB | Frame | abs 344.9,458.4 18.2x3.1 pos {0.5,0,0.5,0} size {1.0,0,0.2,0} anchor 0.5,0.5 rot -45.0 z 5 vis true bg #FFFFFF 0.00
-/CreditsSign/Head/Plate/Close/CloseMark/BarB/UICorner | UICorner | radius 0.5,0
+/CreditsSign/Head/Plate/Close/SignEdge | UIStroke | #3B2412 5.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
+/CreditsSign/Head/Plate/Close/Lip | Frame | abs 332.0,476.0 44.0x6.0 pos {0.0,0,1.0,0} size {1.0,0,0.0,7} anchor 0.0,1.0 rot 0.0 z 3 vis true bg #B8364F 0.00
+/CreditsSign/Head/Plate/Close/CloseMark | Frame | abs 339.6,445.6 28.8x28.8 pos {0.5,-18,0.5,-18} size {0.0,36,0.0,36} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon | Frame | abs 339.6,445.6 28.8x28.8 pos {0.0,0,0.0,0} size {0.0,36,0.0,36} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #A3A2A5 1.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R1 | Frame | abs 342.6,448.6 6.0x3.0 pos {0.0,3,0.0,3} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R2 | Frame | abs 357.6,448.6 6.0x3.0 pos {0.0,22,0.0,3} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R3 | Frame | abs 342.6,451.6 9.0x3.0 pos {0.0,3,0.0,7} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R4 | Frame | abs 354.6,451.6 9.0x3.0 pos {0.0,18,0.0,7} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R5 | Frame | abs 345.6,454.6 15.0x3.0 pos {0.0,7,0.0,11} size {0.0,18,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R6 | Frame | abs 348.6,457.6 9.0x3.0 pos {0.0,11,0.0,15} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R7 | Frame | abs 345.6,460.6 15.0x3.0 pos {0.0,7,0.0,18} size {0.0,18,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R8 | Frame | abs 342.6,463.6 9.0x3.0 pos {0.0,3,0.0,22} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R9 | Frame | abs 354.6,463.6 9.0x3.0 pos {0.0,18,0.0,22} size {0.0,11,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R10 | Frame | abs 342.6,466.6 6.0x3.0 pos {0.0,3,0.0,26} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
+/CreditsSign/Head/Plate/Close/CloseMark/Icon/R11 | Frame | abs 357.6,466.6 6.0x3.0 pos {0.0,22,0.0,26} size {0.0,7,0.0,3} anchor 0.0,0.0 rot 0.0 z 4 vis true bg #3B2412 0.00
 /CreditsSign/Wood | Frame | abs 10.0,478.8 371.2x348.8 pos {0.0,0,0.0,96} size {1.0,0,0.0,436} anchor 0.0,0.0 rot 0.0 z 3 vis true bg #8A5A32 0.00
 /CreditsSign/Wood/Body | Frame | abs 15.0,483.8 361.2x338.8 pos {0.0,6,0.0,6} size {1.0,-12,1.0,-12} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #F6ECD6 0.00
 /CreditsSign/Wood/Body/Line | Frame | abs 19.0,487.8 353.2x330.8 pos {0.0,5,0.0,5} size {1.0,-10,1.0,-10} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00

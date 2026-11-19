@@ -577,10 +577,14 @@ end
 -- answer was No (Esc / gamepad B answer through closeRecall and keep what was armed)
 function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 	PetBits.closeRecall()
+	-- (kit-b gate U9 round 3: it was the old rounded gradient box with a neon green ring and the old buttons) the kit B
+	-- question, as the Care confirm: the navy shade, a stone notice in a mitred wood edge with its stone lip and nails, the
+	-- plain Section title, ink text, Yes the one green Sign plank and No a stone one
+	local SIGN = Theme.Sign
 	local overlay = PetBits.frame(gui, "GardenRecall", {
 		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 0.35,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
+		BackgroundTransparency = 0.55,
+		BackgroundColor3 = SIGN.NavyLip,
 		Active = true,
 		ZIndex = 60,
 	})
@@ -588,23 +592,23 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 	local box = PetBits.frame(overlay, "Box", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(0.92, 0, 0, 210), -- phone: 92 % of the width, capped at 420 px
+		Size = UDim2.new(0.92, 0, 0, 218), -- phone: 92 % of the width, capped at 420 px
 		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
+		BackgroundColor3 = SIGN.Stone,
 		ZIndex = 61,
 	})
-	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(420, 210), Parent = box })
-	PetBits.corner(box, 16)
-	PetBits.stroke(box, GARDEN_COLOR, 4, 0)
-	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
-	Theme.StyleTitle(PetBits.text(box, "Title", "This pet is gardening!", "Title", 28, GARDEN_COLOR, { -- (kit-b U7b: no seedling emoji)
-		Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
+	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(420, 218), Parent = box })
+	CloudUI.SignBlock(box, "Stone", { Face = SIGN.Stone, EdgePx = 6, LipPx = 8 })
+	local SignKit = require(Shared:WaitForChild("SignKit"))
+	SignKit.Nails(box, { Inset = 5, ZIndex = 63 })
+	Theme.StyleTitle(PetBits.text(box, "Title", "This pet is gardening!", "Title", 28, SIGN.Text, { -- (kit-b U7b: no seedling emoji)
+		Position = UDim2.fromOffset(16, 14), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
 	}), "Section") -- (kit-b prep) a dialog's title: the ribbon is for window titles only
-	PetBits.text(box, "Body", "Take it out of the garden and put it in your team?", "Body", 20, WHITE, {
-		Position = UDim2.fromOffset(16, 54), Size = UDim2.new(1, -32, 0, 60), TextWrapped = true, ZIndex = 62,
+	PetBits.text(box, "Body", "Take it out of the garden and put it in your team?", "Body", 20, SIGN.Text, {
+		Position = UDim2.fromOffset(16, 56), Size = UDim2.new(1, -32, 0, 60), TextWrapped = true, ZIndex = 62,
 	})
 	local buttons = PetBits.frame(box, "Buttons", {
-		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -14), Size = UDim2.new(1, -32, 0, 56), ZIndex = 62,
+		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -22), Size = UDim2.new(1, -32, 0, 56), ZIndex = 62,
 	})
 	Util.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
@@ -615,7 +619,7 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 		Parent = buttons,
 	})
 	CloudUI.Button({
-		Name = "RecallYes", Text = "Yes", Style = "Green", Size = UDim2.fromOffset(150, 56), TextSize = 24, LayoutOrder = 1, ZIndex = 63,
+		Name = "RecallYes", Text = "Yes", Style = "Green", Skin = "Sign", Size = UDim2.fromOffset(150, 56), TextSize = 24, LayoutOrder = 1, ZIndex = 63,
 		Callback = function()
 			PetBits.closeRecall()
 			local arg = { Key = key, To = target.To, Preset = target.Preset, Keys = target.Keys }
@@ -626,7 +630,7 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 		Parent = buttons,
 	})
 	CloudUI.Button({
-		Name = "RecallNo", Text = "No", Style = "Pink", Size = UDim2.fromOffset(150, 56), TextSize = 24, LayoutOrder = 2, ZIndex = 63,
+		Name = "RecallNo", Text = "No", Style = "Gray", Skin = "Sign", Size = UDim2.fromOffset(150, 56), TextSize = 24, LayoutOrder = 2, ZIndex = 63,
 		Callback = function()
 			PetBits.closeRecall()
 			if onNo then

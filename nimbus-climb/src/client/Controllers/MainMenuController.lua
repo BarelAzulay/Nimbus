@@ -2366,10 +2366,12 @@ function Credits.head(parent, L)
 		Color = S.Navy,
 		ZIndex = 3,
 	})
+	-- (kit-b gate U9 round 3: it drew the old rounded neon red button) the kit's one close block, as every kit B window's
 	local close = CloudUI.Button({
 		Name = "Close",
 		Text = "",
 		Style = "Red",
+		Skin = "Sign",
 		TextSize = 24,
 		Size = UDim2.fromOffset(closeSize, closeSize),
 		AnchorPoint = Vector2.new(1, 0.5),
@@ -2381,7 +2383,8 @@ function Credits.head(parent, L)
 		end,
 		Parent = plate,
 	})
-	NeonKit.CloseMark(close)
+	NeonKit.CloseMark(close, { Square = true, Ink = Theme.Sign.RedLip, Color = Theme.Sign.Text })
+	NeonKit.CloseBlock(close)
 	return head
 end
 
@@ -2413,6 +2416,7 @@ function Credits.polaroid(body, L, texts)
 		Size = UDim2.fromOffset(L.Photo, L.Photo),
 	}, pol)
 	Util.Create("UIGradient", { Color = ColorSequence.new(S.SkyTop, S.SkyBottom), Rotation = 90, Parent = photo })
+	photo:SetAttribute("Art", "polaroid photo") -- (kit-b gate U9 round 3) the photo's sky is the picture's own paint, not a gloss
 	Credits.stroke(photo, S.PhotoEdge, 1)
 	local avatar = Instance.new("ImageLabel")
 	avatar.Name = "Avatar"
