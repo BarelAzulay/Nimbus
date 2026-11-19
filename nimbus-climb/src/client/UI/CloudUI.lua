@@ -485,6 +485,25 @@ local function syncLip(obj)
 end
 CloudUI.SyncLip = syncLip
 
+-- (kit-b gate U9 r4: a phone was told "press E") the words for using a world prompt on this device: "tap the button" on a
+-- touch-only screen, "press X" with a gamepad and no keyboard (the prompts' gamepad key), else "press E". cap = true
+-- starts them with a capital
+function CloudUI.PromptWords(cap)
+	local words = "press E"
+	pcall(function()
+		local uis = game:GetService("UserInputService")
+		if uis.TouchEnabled and not uis.KeyboardEnabled then
+			words = "tap the button"
+		elseif uis.GamepadEnabled and not uis.KeyboardEnabled then
+			words = "press X"
+		end
+	end)
+	if cap then
+		return words:sub(1, 1):upper() .. words:sub(2)
+	end
+	return words
+end
+
 -- Paints `obj` (a Frame / TextLabel / TextButton) as a kit B block, in place: its face, a wood edge (UIStroke "SignEdge",
 -- mitred corners) and the lip (Frame "Lip" along its bottom); any UICorner, UIGradient and border UIStroke it had go. A
 -- text object gets the look's ink and a bottom padding over the lip. Calling it again repaints (a state change).

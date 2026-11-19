@@ -296,7 +296,7 @@ local Badge = { LastPetTotal = nil }
 local Back = { Bound = false, Busy = false, Swallowed = false } -- gamepad B binding state (see syncBackBinding)
 local Index = { Module = nil, Tried = false } -- IndexController (loaded lazily, optional)
 local Entries = {} -- id -> menu tile widgets
-local Hint = { Frame = nil, Label = nil, Token = 0 }
+local Hint = { Frame = nil, Label = nil, Token = 0, CHIP = 30, CHIP_GAP = 10, GLYPH = 18 } -- (the toasts' chip, gap and glyph)
 -- Phase 2: the Home window's live plot watch, the Feed picker
 local Home = { Folder = nil, Conns = {}, LiveAt = 0, LivePending = false }
 
@@ -676,10 +676,63 @@ local function buildHint()
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 10,
 	})
+	-- (kit-b gate U9 r4: a bare box beside the toasts' icon tiles) the toasts' kind chip at the left: its face and lip by
+	-- the message's kind, a wood edge, the kind's pixel icon (NotifyController.KindChip: info bulb on sky, good check on
+	-- grass, bad x on red, token coin on gold), so a hint and a toast are one component
+	local chip = makeFrame(frame, "Icon", {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.fromOffset(Hint.CHIP, Hint.CHIP),
+		BackgroundColor3 = Theme.Sign.Sky,
+		BackgroundTransparency = 0,
+		ZIndex = 10,
+	})
+	CloudUI.SignBlock(chip, { Face = Theme.Sign.Sky, Lip = Theme.Sign.SkyLip, Edge = Theme.Sign.Wood, Text = Theme.Sign.Text }, { EdgePx = 2, LipPx = 3, Pad = false })
+	label.Position = UDim2.fromOffset(Hint.CHIP + Hint.CHIP_GAP, 0)
+	Hint.Chip = chip
 	Hint.MaxW = 300
 	Hint.Frame = frame
 	Hint.Label = label
 	Hint.Scale = Util.Create("UIScale", { Name = "ReadScale", Scale = 1, Parent = frame })
+end
+
+-- (kit-b gate U9 r4) the hint's chip in the kind's face / lip with the kind's pixel icon (NotifyController.KindChip)
+function P5.paintHintChip(kind)
+	local chip = Hint.Chip
+	if not chip then
+		return
+	end
+	local chips = nil
+	pcall(function()
+		local nc = require(script.Parent:FindFirstChild("NotifyController"))
+		chips = type(nc) == "table" and nc.KindChip or nil
+	end)
+	local SIGN = Theme.Sign
+	local look = (chips and (chips[kind or "info"] or chips.info)) or { Face = SIGN.Sky, Lip = SIGN.SkyLip, Icon = "bulb", Ink = SIGN.Text }
+	chip.BackgroundColor3 = look.Face
+	local lip = chip:FindFirstChild("Lip")
+	if lip then
+		lip.BackgroundColor3 = look.Lip
+	end
+	if chip:GetAttribute("Kind") ~= (kind or "info") then
+		chip:SetAttribute("Kind", kind or "info")
+		local old = chip:FindFirstChild("Glyph")
+		if old then
+			old:Destroy()
+		end
+		local icon = PixelIcon.New(chip, look.Icon, Hint.GLYPH, look.Ink)
+		if icon then
+			icon.Name = "Glyph"
+			icon.AnchorPoint = Vector2.new(0.5, 0.5)
+			icon.Position = UDim2.new(0.5, 0, 0.5, -1) -- (centred on the face above the lip, as the toasts')
+			icon.ZIndex = 11
+			for _, c in ipairs(icon:GetChildren()) do
+				if c:IsA("GuiObject") then
+					c.ZIndex = 11
+				end
+			end
+		end
+	end
 end
 
 function showHint(text, kind)
@@ -696,6 +749,7 @@ function showHint(text, kind)
 		local HINT_LIP = { good = SIGN.GrassLip, bad = SIGN.RedLip, token = SIGN.GoldLip }
 		lip.BackgroundColor3 = HINT_LIP[kind or "info"] or SIGN.StoneLip
 	end
+	P5.paintHintChip(kind)
 	local maxW = Hint.MaxW or 300
 	local width = maxW
 	local ok, bounds = pcall(function()
@@ -727,8 +781,10 @@ function showHint(text, kind)
 		end
 	end
 	local textH = lines * lineH
+	local rowH = math.max(textH, Hint.CHIP) -- (the chip's row: a one-line text is centred on it)
 	Hint.Label.Size = UDim2.fromOffset(width, textH)
-	Hint.Frame.Size = UDim2.fromOffset(width + 28, textH + 16 + CloudUI.SignMetrics.Lip)
+	Hint.Label.Position = UDim2.fromOffset(Hint.CHIP + Hint.CHIP_GAP, math.floor((rowH - textH) / 2))
+	Hint.Frame.Size = UDim2.fromOffset(width + 28 + Hint.CHIP + Hint.CHIP_GAP, rowH + 16 + CloudUI.SignMetrics.Lip)
 	Hint.Frame.Visible = true
 	task.delay(K.HINT_SECONDS, function()
 		if Hint.Token == mine and Hint.Frame then
@@ -2319,7 +2375,9 @@ function P5.buildHomeHero(H, win, onGoHome, onClaim)
 		glyph.TextColor3 = P5.HS.Wood
 		glyph.AnchorPoint = Vector2.new(0, 0.5)
 		glyph.Position = UDim2.new(0, 62, 0.5, -2)
-		makeText(row, "Text", step.Text, "Body", 21, P5.HS.Text, {
+		-- (kit-b gate U9 r4) "Press E" in the words of this device (CloudUI.PromptWords)
+		local stepText = step.Text:gsub("^Press E", CloudUI.PromptWords(true))
+		makeText(row, "Text", stepText, "Body", 21, P5.HS.Text, {
 			Position = UDim2.new(0, 104, 0, 0),
 			Size = UDim2.new(1, -114, 1, -5),
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -2772,7 +2830,7 @@ do
 			end
 			if fire("GoToSpot") then
 				closeWindow("Home")
-				showHint("Press E at the gate to claim your home!", "info")
+				showHint(CloudUI.PromptWords(true) .. " at the gate to claim your home!", "info")
 			end
 		end)
 
@@ -2786,7 +2844,7 @@ do
 				return
 			end
 			if not P2.hasHome() then
-				showHint("Claim a home first: press E at a free gate.", "info")
+				showHint("Claim a home first: " .. CloudUI.PromptWords() .. " at a free gate.", "info")
 				return
 			end
 			if not pad then

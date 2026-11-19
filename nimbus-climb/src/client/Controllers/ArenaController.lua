@@ -997,7 +997,7 @@ end
 -- leads to the Pets window (ArenaController.StartRing).
 function Ring.why()
 	if type(attr(Config.Attr.SpotIndex)) ~= "number" then
-		return "Claim your home first: press E at a free gate."
+		return "Claim your home first: " .. CloudUI.PromptWords() .. " at a free gate."
 	end
 	if #Ring.ownedKeys() == 0 then
 		return "You need a pet: spin a roulette in the Cloud Shop."
@@ -1569,7 +1569,7 @@ function Ring.leaderSection(parent, order)
 	end
 	local best = Ring.record()
 	wrapText(box, "Mine", best > 0 and ("Your best: Round " .. best .. ". Beat it for triple Cash!")
-		or "Press E at the Champion Ring portal on the plaza to set your record.", "Body", 19, C.Power, 9)
+		or (CloudUI.PromptWords(true) .. " at the Champion Ring portal on the plaza to set your record."), "Body", 19, C.Power, 9)
 	return box
 end
 

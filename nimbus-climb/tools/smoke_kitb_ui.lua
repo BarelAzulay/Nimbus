@@ -4327,6 +4327,47 @@ local function clientScenarios()
 		LKC.flushErrors("settings_hidden_under_credits")
 	end)
 
+	-- (kit-b gate U9 r4) the side hint is the toasts' component: the kind's chip (face by kind, its pixel icon) left of the
+	-- text, all inside the stone block; and a prompt's words follow the device (CloudUI.PromptWords: tap the button / press
+	-- X / press E): the "claim a home first" hint on a touch phone never says "press E"
+	S.hint_kit_and_words = guarded("hint_kit_and_words", function()
+		local UIS = game:GetService("UserInputService")
+		local CU = require(Mock.GetPath(ROOTS["client"] .. "/UI/CloudUI"))
+		local MC = require(Mock.GetPath(ROOTS["client"] .. "/Controllers/MenuController"))
+		local Sign = LoadingH.shared("Theme").Sign
+		local old = { UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.GamepadEnabled, UIS.MouseEnabled }
+		local ok, err = pcall(function()
+			local function input(touch, keyboard, pad)
+				UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.GamepadEnabled, UIS.MouseEnabled = touch, keyboard, pad, keyboard
+			end
+			input(true, false, false)
+			T.eq(CU.PromptWords(), "tap the button", "prompt words: a touch phone taps")
+			input(false, false, true)
+			T.eq(CU.PromptWords(true), "Press X", "prompt words: a gamepad presses X")
+			input(false, true, false)
+			T.eq(CU.PromptWords(), "press E", "prompt words: a keyboard presses E")
+			input(true, false, false)
+			MC.Hint("Claim a home first: " .. CU.PromptWords() .. " at a free gate.", "bad")
+			LKC.advance(0.1)
+			local pg = game:GetService("Players").LocalPlayer.PlayerGui
+			local hint = pg:FindFirstChild("MenuHint", true)
+			local chip = hint and hint:FindFirstChild("Icon")
+			local label = hint and hint:FindFirstChild("Text")
+			if not T.check(hint and hint.Visible and chip and label, "hint kit: (setup) the side hint shows with its chip") then
+				return
+			end
+			T.check(not label.Text:find("press E", 1, true), "hint kit: on a touch phone the hint does not say press E", label.Text)
+			T.check(sameColor(chip.BackgroundColor3, Sign.Red) and chip:FindFirstChild("Glyph") ~= nil, "hint kit: a refusal's chip is red with its pixel icon")
+			local h, c, l = hint.AbsolutePosition, chip.AbsolutePosition, label.AbsolutePosition
+			T.check(l.X >= c.X + chip.AbsoluteSize.X + 4, "hint kit: the text starts right of the chip")
+			T.check(c.X >= h.X and c.Y >= h.Y and l.X + label.AbsoluteSize.X <= h.X + hint.AbsoluteSize.X + 0.5
+				and c.Y + chip.AbsoluteSize.Y <= h.Y + hint.AbsoluteSize.Y + 0.5, "hint kit: the chip and the text sit inside the block")
+		end)
+		UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.GamepadEnabled, UIS.MouseEnabled = old[1], old[2], old[3], old[4]
+		T.check(ok, "hint kit: the scenario ran", tostring(err))
+		LKC.flushErrors("hint_kit_and_words")
+	end)
+
 	-- (kit-b gate U9 r4) the menu's windows on a touch phone: Roblox's thumbstick and jump button go while Settings, What's
 	-- New or Credits is open at 390x844 and 844x390 (their zones lay over the Camera shake ON / OFF chips and the list's
 	-- right end) and come back as they were on close; with a keyboard (1920x1080) they are left alone

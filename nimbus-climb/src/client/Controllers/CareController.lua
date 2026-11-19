@@ -1619,7 +1619,7 @@ function H.upgradeMachine()
 		return
 	end
 	if not H.hasHome() then
-		H.hint("Claim a home first: press E at a free gate.", "info")
+		H.hint("Claim a home first: " .. CloudUI.PromptWords() .. " at a free gate.", "info")
 		return
 	end
 	H.fire("upgrade", "HomeAction", "Upgrade", "Kitchen")
