@@ -4368,6 +4368,36 @@ local function clientScenarios()
 		LKC.flushErrors("hint_kit_and_words")
 	end)
 
+	-- (kit-b gate U9 r4: "THIS PET IS GARDENING!" ran past its box at 390x844) the garden recall's title fits its box on
+	-- the phones and at 1920x1080 (it steps down from 28 px, never under 18)
+	S.recall_title_fits = guarded("recall_title_fits", function()
+		local pg = game:GetService("Players").LocalPlayer.PlayerGui
+		local PB = require(Mock.GetPath(ROOTS["client"] .. "/UI/PetBits"))
+		local vp0 = Mock.Viewport
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 390, 844 }, { 844, 390 }, { 1920, 1080 } }) do
+				local tag = fmt("recall title %dx%d", s[1], s[2])
+				Mock.SetViewport(s[1], s[2])
+				LKC.advance(0.1)
+				PB.askRecall(pg:FindFirstChild("NimbusMenu") or pg, "kitb_pet", { To = "Team", Preset = 1, Keys = {} }, nil, nil, function() end)
+				LKC.advance(0.2)
+				local dialog = pg:FindFirstChild("GardenRecall", true)
+				local title = dialog and dialog:FindFirstChild("Title", true)
+				if T.check(title ~= nil, tag .. ": (setup) the dialog shows its title") then
+					local scale = LoadingH.shared("SignKit").LayoutScale(title)
+					local w = SmokeCommon.RealWidth(title.Text, title.TextSize, title.Font) or title.TextBounds.X / math.max(scale, 0.01)
+					local room = title.AbsoluteSize.X / math.max(scale, 0.01)
+					T.check(w <= room + 0.5 and title.TextSize >= 18, tag .. ": the title fits its box (18 px or more)", fmt("%q %.1f px in %.1f at %d", title.Text, w, room, title.TextSize))
+				end
+				pcall(PB.closeRecall)
+			end
+		end)
+		pcall(PB.closeRecall)
+		Mock.SetViewport(vp0.X, vp0.Y)
+		T.check(ok, "recall title: the scenario ran", tostring(err))
+		LKC.flushErrors("recall_title_fits")
+	end)
+
 	-- (kit-b gate U9 r4) the menu's windows on a touch phone: Roblox's thumbstick and jump button go while Settings, What's
 	-- New or Credits is open at 390x844 and 844x390 (their zones lay over the Camera shake ON / OFF chips and the list's
 	-- right end) and come back as they were on close; with a keyboard (1920x1080) they are left alone

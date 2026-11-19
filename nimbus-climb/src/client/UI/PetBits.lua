@@ -601,9 +601,30 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 	CloudUI.SignBlock(box, "Stone", { Face = SIGN.Stone, EdgePx = 6, LipPx = 8 })
 	local SignKit = require(Shared:WaitForChild("SignKit"))
 	SignKit.Nails(box, { Inset = 5, ZIndex = 63 })
-	Theme.StyleTitle(PetBits.text(box, "Title", "This pet is gardening!", "Title", 28, SIGN.Text, { -- (kit-b U7b: no seedling emoji)
+	local title = Theme.StyleTitle(PetBits.text(box, "Title", "This pet is gardening!", "Title", 28, SIGN.Text, { -- (kit-b U7b: no seedling emoji)
 		Position = UDim2.fromOffset(16, 14), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
 	}), "Section") -- (kit-b prep) a dialog's title: the ribbon is for window titles only
+	-- (kit-b gate U9 r4: "THIS PET IS GARDENING!" at 28 px ran past its box on a 390 px phone) the title steps down 2 px at
+	-- a time until it fits its box (never under 18 px), now and when the box is laid out again
+	local function fitTitle()
+		local scale = SignKit.LayoutScale(title)
+		local room = title.AbsoluteSize.X / math.max(scale, 0.01)
+		if room <= 0 then
+			return
+		end
+		local size = 28
+		while size > 18 do
+			-- (Theme.Measure runs short of the drawn face, as the side hint's: a 12 % spare)
+			local ok, m = pcall(Theme.MeasureLabel, title, title.Text, size)
+			if not ok or typeof(m) ~= "Vector2" or m.X * 1.12 <= room then
+				break
+			end
+			size = size - 2
+		end
+		title.TextSize = size
+	end
+	fitTitle()
+	title:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitTitle)
 	PetBits.text(box, "Body", "Take it out of the garden and put it in your team?", "Body", 20, SIGN.Text, {
 		Position = UDim2.fromOffset(16, 56), Size = UDim2.new(1, -32, 0, 60), TextWrapped = true, ZIndex = 62,
 	})
