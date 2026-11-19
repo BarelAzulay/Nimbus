@@ -1590,7 +1590,9 @@ local function serverScenarios()
 		if not T.check(Theme and PI and HB and TC and Mock, "kitb templates: Theme, PixelIcon, HomeBuilder and TycoonCatalog load") then
 			return
 		end
-		local NAMES = { "TextLabel.Changed:Text", "TextLabel.Changed:TextColor3", "TextLabel.Changed:TextTransparency", "TextLabel.Changed:ZIndex" }
+		-- (kit-b gate U9 r4) Frame.AncestryChanged: PixelIcon.New's own follow listener on the icon (the closed bed's star
+		-- left 21 of them on cached templates per final_checks)
+		local NAMES = { "TextLabel.Changed:Text", "TextLabel.Changed:TextColor3", "TextLabel.Changed:TextTransparency", "TextLabel.Changed:ZIndex", "Frame.AncestryChanged" }
 		local function counts()
 			collectgarbage("collect")
 			local c = Mock.Stats().connections

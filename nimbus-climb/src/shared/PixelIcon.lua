@@ -496,6 +496,9 @@ function PixelIcon.Fit(icon)
 	end
 end
 
+-- (kit-b prep, the leak hunt) while frozen (PixelIcon.SetFrozen, below), New, Host and Lead connect nothing
+local frozen = false
+
 -- draws icon `name` at px x px in `colour` into `parent`; nil for an unknown name
 function PixelIcon.New(parent, name, px, colour)
 	local rects = PixelIcon.Runs(name)
@@ -540,9 +543,13 @@ function PixelIcon.New(parent, name, px, colour)
 	lay(1)
 	-- (U9-7 look) whole screen pixels under the UIScales above it, now and whenever it lands under a ScreenGui
 	fitCells(icon)
-	icon.AncestryChanged:Connect(function()
-		fitCells(icon)
-	end)
+	-- (kit-b gate U9 r4, the leak) a frozen build (a cached template that is only ever cloned: SetFrozen below) gets no
+	-- follow listener here either; Host and Lead already skipped theirs, but this one sat on every template icon
+	if not frozen then
+		icon.AncestryChanged:Connect(function()
+			fitCells(icon)
+		end)
+	end
 	return icon
 end
 
@@ -643,7 +650,6 @@ end
 -- (kit-b prep, the leak hunt) while frozen, Host and Lead draw and place the icon once and connect nothing: for a tree
 -- that is only ever cloned (HomeBuilder's cached station templates; Clone copies no connections), where a follow
 -- listener would only sit on the template for the server's life. SetFrozen(on) -> the previous setting
-local frozen = false
 function PixelIcon.SetFrozen(on)
 	local was = frozen
 	frozen = on == true
