@@ -300,9 +300,13 @@ local function clientScenarios()
 						T.check(H.near(y2 - y3, 8) and H.near(y3 + h3, y2 + h2), label .. ": today (Cell3) is raised 8 px over Cell2, the bottoms level",
 							RedoGeom.desc(c2) .. " / " .. RedoGeom.desc(c3))
 						local Theme = H.theme()
-						-- (kit-b U9-4) today's tile is the gold block (its face), in the ink edge of the pitch's selected card
+						-- (kit-b U9-4) today's tile is the gold block (its face), in the ink edge of the pitch's selected card.
+						-- (U9-4 look review) that edge pulses: DailyController's 1 s tick swaps it between the ink and the gold
+						-- lip (H.pulseEdge), on a phase set by every earlier open window, so either frame of the pulse counts
 						local stroke = c3:FindFirstChild("SignEdge")
-						T.check(c3:GetAttribute("Today") == true and c3.BackgroundColor3 == Theme.Sign.Gold and stroke ~= nil and stroke.Color == Theme.Sign.Text, label .. ": today is gold")
+						local pulseFrame = stroke ~= nil and (stroke.Color == Theme.Sign.Text or stroke.Color == Theme.Sign.GoldLip)
+						T.check(c3:GetAttribute("Today") == true and c3:GetAttribute("Pulsing") == true and c3.BackgroundColor3 == Theme.Sign.Gold and pulseFrame, label .. ": today is gold",
+							fmt("Today %s, face %s, edge %s", tostring(c3:GetAttribute("Today")), tostring(c3.BackgroundColor3), tostring(stroke and stroke.Color)))
 						T.eq(H.text(H.find("Day", c3)), "TODAY", label .. ": today's tile reads TODAY")
 						T.eq(H.text(H.find("Day", c1)), "Day 1", label .. ": the others read their day")
 						local x1, _, w1 = H.box(c1)
