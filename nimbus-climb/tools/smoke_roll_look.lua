@@ -1286,7 +1286,8 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 				"roll look open: the slab fills the box's width from its top (the egg's foot), its edge one 3 px unit, every size whole units; the foot at least 2 units in, its top edge on the slab's bottom one",
 				fmt("unit %s, edge %s, slab %.1f x %.1f at %+.1f, %+.1f, foot in %.1f, below %.1f", tostring(u), tostring(r.e), r.slabW, r.slabH, r.slabX, r.slabY, r.footIn, r.footBelow))
 			T.check(abs(r.pop - 1) <= 0.01 and r.top <= 0.01, "roll look open: at the rise's end the plinth rests: Pop 1, the slab opaque", fmt("pop %.3f, top %.3f", r.pop, r.top))
-			T.eq(r.parts, 7, "roll look open: the plinth is 7 instances (Pop, Slab + SignEdge + Lip, Foot + SignEdge + Lip)")
+			-- (kit-b gate U9 r3, 7de43c3: the plinth is a wood display stand) the wood top's one light row (Shine) is the 8th
+			T.eq(r.parts, 8, "roll look open: the plinth is 8 instances (Pop, Slab + SignEdge + Lip + Shine, Foot + SignEdge + Lip)")
 			T.check(abs(r.boxW - 1.1 * r.eh) <= 1.5 and abs(r.boxH - 0.24 * r.eh) <= 1.5 and abs(r.foot) <= 0.6, "roll look open: the box is still 1.1 x / 0.24 x the egg, right under it",
 				fmt("egg %.1f, box %.1f x %.1f, gap %.1f", r.eh, r.boxW, r.boxH, r.foot))
 			T.check(G.near(r.lip, NEUTRAL) and r.rays == false, "roll look open: before the shakes the plinth is neutral (the navy sign's own lip) and no rays show",
