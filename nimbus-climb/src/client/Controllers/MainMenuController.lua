@@ -1643,6 +1643,7 @@ function Win.close()
 		M.Ui.Swing.Visible = true -- (U5) the title screen's board comes back (Win.open hid it behind a portrait sheet)
 	end
 	Win.bindBack(false)
+	Win.touch(false)
 end
 
 -- what lies behind a window that opens: the game's windows close on MenuController.WindowOpened (as they do for each
@@ -1675,7 +1676,24 @@ function Win.holder(name, prefW, prefH)
 	W.Name, W.Holder = name, holder
 	Win.clearBehind(name)
 	Win.bindBack(true)
+	Win.touch(true)
 	return holder
+end
+
+-- (kit-b gate U9 r4) on a touch-only device Roblox's thumbstick and jump button go while a menu window (Settings, What's
+-- New, Credits) is open: on 390x844 their zones lay over the Camera shake ON / OFF chips, on 844x390 the jump zone over
+-- the list's right end, as the game's windows do (MenuController.SetTouchHidden("MainMenuWin")); back on Win.close
+function Win.touch(on)
+	local uis = game:GetService("UserInputService")
+	local want = on == true and uis.TouchEnabled and not uis.KeyboardEnabled
+	if want == (M.Win.TouchOff == true) then
+		return
+	end
+	M.Win.TouchOff = want
+	local menu = H.mod("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		H.safe("touch controls", menu.SetTouchHidden, "MainMenuWin", want)
+	end
 end
 
 -- (kit B U5) a pixel icon in the middle of a plank's face (a plank with no text: Close, - and +); returns the icon

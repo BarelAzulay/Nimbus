@@ -4284,6 +4284,38 @@ local function clientScenarios()
 		LKC.flushErrors("settings_hidden_under_credits")
 	end)
 
+	-- (kit-b gate U9 r4) the menu's windows on a touch phone: Roblox's thumbstick and jump button go while Settings, What's
+	-- New or Credits is open at 390x844 and 844x390 (their zones lay over the Camera shake ON / OFF chips and the list's
+	-- right end) and come back as they were on close; with a keyboard (1920x1080) they are left alone
+	S.menu_windows_touch_hidden = guarded("menu_windows_touch_hidden", function()
+		local GuiService = game:GetService("GuiService")
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 390, 844, "Touch" }, { 844, 390, "Touch" }, { 1920, 1080, "Keyboard" } }) do
+				for _, which in ipairs({ "Settings", "Updates", "Credits" }) do
+					local tag = fmt("menu touch %s %dx%d", which, s[1], s[2])
+					local before = GuiService.TouchControlsEnabled
+					local _, MMC = WinH.open(which == "Credits" and "Settings" or which, { Size = { s[1], s[2] }, Input = s[3] })
+					if which == "Credits" then
+						MMC.OpenCredits()
+						LKC.advance(0.4)
+					end
+					local _, name = MMC.Window()
+					T.eq(name, which, tag .. ": (setup) the window is open")
+					if s[3] == "Touch" then
+						T.check(GuiService.TouchControlsEnabled == false, tag .. ": Roblox's thumbstick and jump button go while it is open", tostring(GuiService.TouchControlsEnabled))
+					else
+						T.eq(GuiService.TouchControlsEnabled, before, tag .. ": with a keyboard the touch controls are left alone")
+					end
+					WinH.close()
+					T.eq(GuiService.TouchControlsEnabled, before, tag .. ": the touch controls are back as they were on close")
+				end
+			end
+		end)
+		WinH.close()
+		T.check(ok, "menu touch: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_windows_touch_hidden")
+	end)
+
 	-- (g) the loading tip keeps its text clear of the pixel bulb at every size: the text starts >= 12 screen px right of
 	-- the bulb's gold square, the bulb sits inside its square
 	S.loading_tip_clear_of_bulb = guarded("loading_tip_clear_of_bulb", function()
