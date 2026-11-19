@@ -8546,6 +8546,7 @@ local function clientScenarios()
 		for _, s in ipairs({ { 1920, 1080, false }, { 390, 844, true }, { 844, 390, true } }) do
 			U8.at(s[1], s[2], s[3], "signboard panels", function(tag)
 				local wantW = (s[1] == 1920) and 540 or 372
+				local matchLeave = nil -- (kit-b U9-8 minors) the match Leave's size, for the party Leave to match
 				-- in a match: SAINT, four players with 20-character names, the last one fallen
 				local saint = Config.GetDifficulty("Saint")
 				local members = {}
@@ -8565,7 +8566,9 @@ local function clientScenarios()
 					T.check(panel.Size.X.Offset == wantW, mt .. ": the card is " .. wantW .. " design px wide", tostring(panel.Size.X.Offset))
 					badge(inner, mt, 5, k)
 					stars(inner:FindFirstChild("Difficulty"), mt, 5)
-					T.check(look(inner:FindFirstChild("LeaveMatch", true), "Danger"), mt .. ": Leave is a red plank")
+					local lm = inner:FindFirstChild("LeaveMatch", true)
+					T.check(look(lm, "Danger"), mt .. ": Leave is a red plank")
+					matchLeave = lm and { X = lm.AbsoluteSize.X, Y = lm.AbsoluteSize.Y, Text = lm.TextSize }
 					local tokens = inner:FindFirstChild("Tokens")
 					local lead = tokens and tokens:FindFirstChild("LeadIcon")
 					T.check(tokens and tokens.Text == "7 / 24" and edgeOf(tokens) and sameColor(tokens.BackgroundColor3, Sign.Tile) and lead and lead:GetAttribute("PixelIcon") == "token",
@@ -8604,8 +8607,16 @@ local function clientScenarios()
 					local icon = pin:FindFirstChild("Icon")
 					T.check(icon and sameColor(icon.BackgroundColor3, Sign.Gold) and edgeOf(icon) and icon:FindFirstChild("Icon", true) ~= nil,
 						pt .. ": the obby's gold icon square before the title")
-					T.check(look(pin:FindFirstChild("LeaveParty", true), "Danger"), pt .. ": Leave is a red plank")
-					T.check(look(pin:FindFirstChild("ChangeLevel", true), "Sky"), pt .. ": the leader's Change is a sky plank")
+					local pl, ch = pin:FindFirstChild("LeaveParty", true), pin:FindFirstChild("ChangeLevel", true)
+					T.check(look(pl, "Danger"), pt .. ": Leave is a red plank")
+					T.check(look(ch, "Sky"), pt .. ": the leader's Change is a sky plank")
+					-- (kit-b U9-8 minors) one Leave: the party's is the match panel's plank. (The HUD picks its touch numbers once,
+					-- when it is built, so here, in a PC-built HUD, this is the PC pair at three scales; the touch pair and the
+					-- touch-sized Change are client_polish_portals_mobile's, in a touch-built HUD)
+					T.check(pl and matchLeave and near(pl.AbsoluteSize.X, matchLeave.X, 0.5) and near(pl.AbsoluteSize.Y, matchLeave.Y, 0.5) and pl.TextSize == matchLeave.Text,
+						pt .. ": Leave is the match panel's Leave (the same size and text)",
+						fmt("party %s / %s, match %s", pl and tostring(pl.AbsoluteSize) or "-", pl and tostring(pl.TextSize) or "-",
+							matchLeave and fmt("%.1f, %.1f / %d", matchLeave.X, matchLeave.Y, matchLeave.Text) or "-"))
 					local count, status = pin:FindFirstChild("Count"), pin:FindFirstChild("Status")
 					local cl, sl = count and count:FindFirstChild("LeadIcon"), status and status:FindFirstChild("LeadIcon")
 					T.check(count and count.Text == "4 / 4" and cl and cl:GetAttribute("PixelIcon") == "people" and status and sl and sl:GetAttribute("PixelIcon") == "clock"

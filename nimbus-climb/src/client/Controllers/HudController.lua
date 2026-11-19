@@ -1108,8 +1108,9 @@ end
 -- .superpowers/slop-audit/round3/build/U9-8/pitch_match_party.py, its numbers) a stone card in the vitals card's tier (a
 -- 3 px wood edge, a 5 px lip), 10 px inside the edge, the rows 6 px apart and 8 px above the lip; the small blocks (the
 -- level badge, the chips, the tokens tile, Leave, Change) a 2 px wood edge on a 4 px lip. A block's size here is its whole
--- visible box, the wood included. Text is 18+ everywhere, so it stays >= 14 px on a phone; touch devices get a taller
--- Leave (a thumb target) and the party's big one (a locked portal's only way out; >= 44 px on a 0.8 phone)
+-- visible box, the wood included. Text is 18+ everywhere, so it stays >= 14 px on a phone. One Leave plank for both cards
+-- (kit-b U9-8 minors): on a PC the match card's 84x34; touch devices get a thumb target for Leave and for the leader's
+-- Change (56 tall: >= 44 px on screen at the 0.8 phone scale; the party's Leave is a locked portal's only way out)
 local function panelMetrics(touch)
 	local m = {
 		Edge = 3, Lip = 5, Pad = 10, Below = 8, -- the card
@@ -1128,13 +1129,15 @@ local function panelMetrics(touch)
 		-- clock, the head count after the people. The members. Row D: the level badge, its name and stars, the leader's
 		-- Change (a sky plank); an older portal's party: the lock hint
 		IconText = 18, TitleText = 24,
-		PartyLeaveW = 116, PartyLeaveH = 46, PartyLeaveText = 24,
+		PartyLeaveW = 84, PartyLeaveH = 34, PartyLeaveText = 18, -- (the match card's Leave)
 		StatusH = 26, StatusText = 20, CountW = 80, PartyChipH = 36,
 		LevelRowH = 34, HintText = 18, ChangeW = 96, ChangeH = 34, ChangeText = 18,
 	}
 	if touch then
-		m.LeaveW, m.LeaveH, m.LeaveText = 92, 40, 20 -- (>= 30 px tall on a 0.8 phone)
-		m.PartyLeaveH, m.PartyLeaveText = 56, 26 -- a fat thumb target (>= 44 px on screen at the 0.8 phone scale)
+		-- a thumb target (44.8 px tall on screen at the 0.8 phone scale), one plank for both cards
+		m.LeaveW, m.LeaveH, m.LeaveText = 100, 56, 24
+		m.PartyLeaveW, m.PartyLeaveH, m.PartyLeaveText = m.LeaveW, m.LeaveH, m.LeaveText
+		m.ChangeW, m.ChangeH, m.ChangeText = 100, 56, 22 -- the leader's Change (34 was 27 px on a phone)
 	end
 	-- (a CloudUI plank's size is its frame, the frame the tests measure; its wood edge draws outside it)
 	m.Inset = m.Edge + m.Pad -- the rows' frame inside the card ...

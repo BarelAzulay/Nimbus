@@ -704,7 +704,8 @@ S.client_polish_matchpanel_mobile = guarded("client_polish_matchpanel_mobile", f
 			local lb, cb, kb = rect(leave), rect(cp), rect(tokens)
 			T.check(not overlap(kb, lb) and not overlap(kb, cb) and not overlap(tt, lb), label .. ": the token line is clear of the Leave button and the checkpoint bar (and the timer of Leave)",
 				fmt("tokens y %.0f-%.0f, Leave y %.0f-%.0f, checkpoints from %.0f", kb.y0, kb.y1, lb.y0, lb.y1, cb.y0))
-			T.check(tokens.TextSize * scaleOf(tokens) >= 14 and timer.TextSize * scaleOf(timer) >= 14 and lb.y1 - lb.y0 >= 30,
+			-- (kit-b U9-8 minors: 44, the party Leave's thumb target, since both panels share one touch Leave; was 30)
+			T.check(tokens.TextSize * scaleOf(tokens) >= 14 and timer.TextSize * scaleOf(timer) >= 14 and lb.y1 - lb.y0 >= 44,
 				label .. ": readable (>= 14 px) with a thumb-sized Leave button", fmt("tokens %.1f px, Leave %.0f px tall", tokens.TextSize * scaleOf(tokens), lb.y1 - lb.y0))
 
 			-- the pre-match countdown: the numeral (popping in at 1.7x) and "Get ready!"

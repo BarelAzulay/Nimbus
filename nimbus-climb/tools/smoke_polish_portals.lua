@@ -23,7 +23,8 @@
 --                                  Phase 4: the Champion Ring portal's tag (ArenaBuilder's Portal_Ring) follows the
 --                                  same rule: one pixel-sized billboard, outlined Theme texts (title >= 22 px), a
 --                                  compact plate that holds the longest RingBoard pill, floating just above the crown
---   client_polish_portals          (client, 1920x1080) the party panel: big red Leave button beside the title, readable
+--   client_polish_portals          (client, 1920x1080) the party panel: a red Leave plank beside the title (on a PC the
+--                                  match panel's Leave, 84x34 design; the thumb-sized one is the touch list's), readable
 --                                  countdown / hint / count, nothing overlaps, one LeaveParty per press, clear of the
 --                                  screen middle and of the vitals
 --   client_polish_portals_mobile   (phone world, 390x844 + 844x390 + 1024x768, touch) the Leave button is a >= 44 px
@@ -846,8 +847,10 @@ local function clientScenarios()
 		}
 	end
 
-	-- one party-panel audit at the current viewport; floorPx = smallest allowed on-screen text
-	local function audit(label, floorPx, minButtonH, minButtonW)
+	-- one party-panel audit at the current viewport; floorPx = smallest allowed on-screen text; minText = the Leave's
+	-- smallest design text size (22 on touch, the thumb target's; 18 on a PC, the match panel's Leave)
+	local function audit(label, floorPx, minButtonH, minButtonW, minText)
+		minText = minText or 22
 		local hud = playerGui():FindFirstChild("NimbusHud")
 		local panel = named(hud, "PartyPanel")
 		local leaveBtn = named(panel, "LeaveParty")
@@ -858,7 +861,7 @@ local function clientScenarios()
 		local box = rect(leaveBtn)
 		T.check(tostring(leaveBtn.Text) == "Leave", label .. ": the button says 'Leave'", tostring(leaveBtn.Text))
 		T.check(box.y1 - box.y0 >= minButtonH and box.x1 - box.x0 >= minButtonW, label .. ": the Leave button is big (>= " .. minButtonW .. "x" .. minButtonH .. " px on screen)", string.format("%.0fx%.0f", box.x1 - box.x0, box.y1 - box.y0))
-		T.check(leaveBtn.TextSize >= 22 and leaveBtn.TextSize * k >= floorPx, label .. ": the Leave text is big (>= 22 design px, " .. floorPx .. "+ px on screen)", string.format("%d design px -> %.1f px", leaveBtn.TextSize, leaveBtn.TextSize * k))
+		T.check(leaveBtn.TextSize >= minText and leaveBtn.TextSize * k >= floorPx, label .. ": the Leave text is big (>= " .. minText .. " design px, " .. floorPx .. "+ px on screen)", string.format("%d design px -> %.1f px", leaveBtn.TextSize, leaveBtn.TextSize * k))
 		local panelBox = rect(panel)
 		T.check(box.x0 >= panelBox.x0 - 1 and box.x1 <= panelBox.x1 + 1 and box.y0 >= panelBox.y0 - 1 and box.y1 <= panelBox.y1 + 1, label .. ": the Leave button sits inside the party panel")
 		-- the texts of the panel: readable and not on top of each other / the button
@@ -923,7 +926,10 @@ local function clientScenarios()
 		reset()
 		KC.toClient("PartyState", partyState(2, 12))
 		advance(1.0)
-		local leaveBtn = audit("party panel 1920x1080", 15, 44, 108)
+		-- (kit-b U9-8 minors) a PC's Leave is the match panel's Leave (84x34 design, text 18): the old 108x44 / 22 here
+		-- (the v3 suite, 0afc1df) was the 44 px thumb-target number on a mouse screen; the thumb rule stays, on touch,
+		-- in client_polish_portals_mobile below (>= 44 px tall, text >= 22)
+		local leaveBtn = audit("party panel 1920x1080", 15, 34, 84, 18)
 		T.check(KC.findText("starting in 12s") ~= nil or KC.findText("starting in 11s") ~= nil, "the panel counts down ('Starting in 12s')", KC.allShownText())
 		T.check(KC.findText("locked until launch") ~= nil, "the panel explains the lock ('Locked until launch')")
 		T.check(KC.findText("2 / 4") ~= nil, "the panel shows the head count ('2 / 4')") -- (kit-b U9-8 A: "2 / 4")
@@ -942,11 +948,11 @@ local function clientScenarios()
 		KC.toClient("PartyState", partyState(4, 3))
 		advance(1.0)
 		T.check(KC.findText("full! starting in") ~= nil, "a full party reads 'Full! Starting in Ns'", KC.allShownText())
-		audit("full party 1920x1080", 15, 44, 108)
+		audit("full party 1920x1080", 15, 34, 84, 18)
 		for _, size in ipairs({ { 1280, 720 }, { 2560, 1440 } }) do
 			Mock.SetViewport(size[1], size[2])
 			advance(1.2)
-			audit("full party " .. size[1] .. "x" .. size[2], 14, 36, 90)
+			audit("full party " .. size[1] .. "x" .. size[2], 14, 27, 67, 18) -- (84x34 at the 0.8 scale of 1280x720)
 		end
 		Mock.SetViewport(1920, 1080)
 		advance(0.6)
@@ -977,8 +983,37 @@ local function clientScenarios()
 					advance(0.8)
 				end
 			end
+			-- (kit-b U9-8 minors) the obby party's leader: Change (the level picker) is a thumb target too (34 design px was
+			-- 27 px on a 0.8 phone), and the party's Leave is the match panel's Leave (one touch plank for both)
+			local hud = playerGui():FindFirstChild("NimbusHud")
+			KC.toClient("PartyState", { PortalId = "Obby", Level = "Hard", Stars = 3, LeaderUserId = LocalPlayer.UserId, DifficultyName = "Hard",
+				Color = Color3.fromRGB(240, 160, 70), Players = { { UserId = LocalPlayer.UserId, Name = LocalPlayer.Name }, { UserId = 7002, Name = "Buddy" } },
+				Max = 4, Countdown = 9, Locked = true })
+			advance(1.0)
+			local tag = "phone " .. size[1] .. "x" .. size[2] .. " (obby leader)"
+			local change, partyLeave = named(hud, "ChangeLevel"), named(hud, "LeaveParty")
+			if T.check(shown(change) and shown(partyLeave), tag .. ": the leader's party panel shows Change and Leave") then
+				local cb = rect(change)
+				T.check(cb.y1 - cb.y0 >= 44 and cb.x1 - cb.x0 >= 60, tag .. ": Change is a thumb target (>= 60x44 px on screen)", string.format("%.1fx%.1f", cb.x1 - cb.x0, cb.y1 - cb.y0))
+				T.check(change.TextSize * scaleOf(change) >= 14, tag .. ": the Change text is readable (>= 14 px)", string.format("%.1f px", change.TextSize * scaleOf(change)))
+				local panelBox = rect(named(hud, "PartyPanel"))
+				T.check(cb.x0 >= panelBox.x0 - 1 and cb.x1 <= panelBox.x1 + 1 and cb.y0 >= panelBox.y0 - 1 and cb.y1 <= panelBox.y1 + 1, tag .. ": Change sits inside the party panel")
+				local lb = rect(partyLeave)
+				T.check(not overlap(cb, lb), tag .. ": Change and Leave never overlap")
+			end
+			local partySize = partyLeave and partyLeave.AbsoluteSize
+			local partyText = partyLeave and partyLeave.TextSize
 			KC.toClient("PartyState", nil)
 			advance(0.8)
+			LocalPlayer:SetAttribute("InMatch", true)
+			KC.toClient("MatchState", KC.matchState({}))
+			advance(1.2)
+			local matchLeave = named(hud, "LeaveMatch")
+			T.check(shown(matchLeave) and partySize ~= nil and math.abs(matchLeave.AbsoluteSize.X - partySize.X) <= 0.5 and math.abs(matchLeave.AbsoluteSize.Y - partySize.Y) <= 0.5
+				and matchLeave.TextSize == partyText and matchLeave.AbsoluteSize.Y >= 44,
+				tag .. ": the match Leave is the party's Leave (the same touch plank, >= 44 px tall)",
+				string.format("match %s / %s, party %s / %s", matchLeave and tostring(matchLeave.AbsoluteSize) or "-", matchLeave and tostring(matchLeave.TextSize) or "-", tostring(partySize), tostring(partyText)))
+			reset()
 		end
 		Mock.SetViewport(390, 844)
 		advance(0.6)
