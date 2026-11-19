@@ -6,6 +6,17 @@
 # - the Dev panel: fonts only, not restyled (players never see it)
 # One GUI path per line, "*" = any run of characters but a dot.
 
+# (kit-b gate U9 round 3) the rule now also counts a rounded corner (UICorner with a radius) and a smooth fill bar: the
+# same two pitch-only panels carry them on their shell (Shadow, Body, Sheen, Content) and deeper rows, so their lines
+# cover the whole panel. No other window was added.
+NimbusHud.TopLeft.MatchPanel.*
+NimbusHud.TopLeft.MatchPanel.*.*
+NimbusHud.TopLeft.MatchPanel.Content.Inner.*.*.*.*
+NimbusHud.TopLeft.MatchPanel.Content.Inner.*.*.*.*.*
+NimbusHud.TopLeft.PartyPanel.*
+NimbusHud.TopLeft.PartyPanel.*.*
+NimbusHud.TopLeft.PartyPanel.Content.Inner.*.*.*
+NimbusHud.TopLeft.PartyPanel.Content.Inner.*.*.*.*.*
 NimbusHud.TopLeft.MatchPanel.Content.Inner.*
 NimbusHud.TopLeft.MatchPanel.Content.Inner.*.*
 NimbusHud.TopLeft.MatchPanel.Content.Inner.*.*.*

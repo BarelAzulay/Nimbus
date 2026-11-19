@@ -51,7 +51,7 @@ NEON_BACKLOG = os.path.join(HERE, "fixtures", "neon_backlog.txt")
 # ScreenGuis the neon rule reports apart, not as windows (listed, never failed): the world GUIs the renderer mirrors flat
 # (portal boards, the lobby leaderboard: the world-text W wave checks each), the renderer's own gem gallery, and the hit
 # vignette (a screen-edge effect, no panel)
-NEON_NOT_WINDOWS = {"WorldMirror": "world GUIs (W wave)", "GemGallery": "the renderer's gem gallery",
+NEON_NOT_WINDOWS = {"WorldMirror": "world GUIs (W wave)", "WorldGuis": "billboards / surface GUIs (W wave)", "GemGallery": "the renderer's gem gallery", "EggGallery": "the renderer's egg gallery",
                     "NimbusDamageFx": "the hit vignette (an effect)"}
 
 SKIP = {"gallery", "signkit", "neon", "neon:window", "neon:hud", "neon:party"}

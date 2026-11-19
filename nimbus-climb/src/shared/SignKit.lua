@@ -315,6 +315,7 @@ local function gable(roof, opts, w, h)
 		ZIndex = 3,
 	}, roof)
 	round(vent)
+	vent:SetAttribute("Art", "gable vent") -- (kit-b gate U9 round 3) the Credits gable's round vent: the drawn roof's own detail
 	line(vent, opts.VentEdge or Sign.Wood, 2)
 end
 

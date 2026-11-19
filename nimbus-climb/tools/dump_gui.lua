@@ -786,21 +786,52 @@ local function neonHits(g)
 		end
 		return nil
 	end
+	-- (kit-b gate U9 round 3) an illustration's exemption (Art, a gem, a ribbon, a logo) covers its paint, not a control or
+	-- a text set in it: a button or a label under an Art node is still checked. A "Lip" is exempt only as a kit block's lip
+	-- (its parent carries a SignEdge or is a SignKit part / face). Two more hit kinds: a rounded corner (a UICorner with a
+	-- radius) and a smooth fill bar (a Frame named Fill / *Fill sized by a share of its track, outside a SignKit block row)
+	local function control(o) -- (a title's designed look, TitleLook: the ribbon's own lettering, stays with its ribbon)
+		return (o:IsA("TextButton") or o:IsA("TextLabel") or o:IsA("ImageButton") or o:IsA("TextBox")) and o:GetAttribute("TitleLook") == nil
+	end
+	local function kitLip(c, parent)
+		return c.Name == "Lip" and (parent:FindFirstChild("SignEdge") ~= nil or parent:GetAttribute("SignKit") ~= nil or parent.Name == "Face")
+	end
+	local function inRow(o)
+		local cur = o.Parent
+		while cur and not cur:IsA("LayerCollector") do
+			if cur.Name == "BlockRow" or cur:GetAttribute("SignKit") ~= nil then
+				return true
+			end
+			cur = cur.Parent
+		end
+		return false
+	end
 	local function visit(inst, path, kept)
 		if inst:IsA("GuiObject") and inst.Visible == false then
 			return
 		end
-		local art = kept or inst.Name == "GemIcon" or inst:GetAttribute("Art") ~= nil
-			or (inst:GetAttribute("Form") ~= nil and inst:GetAttribute("Rarity") ~= nil)
-			or inst:GetAttribute("Ribbon") ~= nil or inst:GetAttribute("Logo") ~= nil
+		local function marked(o) -- an illustration's own mark (it covers the marked node, whatever it is)
+			return o.Name == "GemIcon" or o:GetAttribute("Art") ~= nil or (o:GetAttribute("Form") ~= nil and o:GetAttribute("Rarity") ~= nil)
+				or o:GetAttribute("Ribbon") ~= nil or o:GetAttribute("Logo") ~= nil
+		end
+		local art = kept or marked(inst)
+		local selfArt = marked(inst) or (kept and not control(inst))
 		for _, c in ipairs(inst:GetChildren()) do
 			local cpath = path .. "." .. c.Name
 			if c:IsA("GuiObject") then
-				if not art and c.Name ~= "Lip" and c.BackgroundTransparency < 0.5 and neonName(c.BackgroundColor3) then
+				local cArt = marked(c) or (art and not control(c))
+				if not cArt and not kitLip(c, inst) and c.BackgroundTransparency < 0.5 and neonName(c.BackgroundColor3) then
 					hits[#hits + 1] = { path = cpath, kind = "neon " .. neonName(c.BackgroundColor3) .. " fill" }
 				end
+				if not cArt and c:IsA("Frame") and c.Visible ~= false and c.Name:match("Fill$") and c.BackgroundTransparency < 0.5
+					and c.Size.X.Scale > 0 and math.abs(c.Size.X.Offset) < 0.5 and not inRow(c) then
+					hits[#hits + 1] = { path = cpath, kind = "smooth fill bar" }
+				end
 				visit(c, cpath, art)
-			elseif inst:IsA("GuiObject") and not art and c:GetAttribute("Art") == nil then
+			elseif inst:IsA("GuiObject") and not selfArt and c:IsA("UICorner") and c:GetAttribute("Art") == nil
+				and (c.CornerRadius.Scale > 0 or c.CornerRadius.Offset > 0.5) then
+				hits[#hits + 1] = { path = path, kind = "round corner" }
+			elseif inst:IsA("GuiObject") and not selfArt and c:GetAttribute("Art") == nil then
 				if c:IsA("UIStroke") and get(c, "Enabled") ~= false and (tonumber(c.Transparency) or 0) < 0.95 then
 					local border = c.ApplyStrokeMode == Enum.ApplyStrokeMode.Border
 					if c.Name == "GlowStroke" or (inst.Name == "Glow" and border) then
@@ -864,6 +895,26 @@ local function walk()
 		elseif g:IsA("LayerCollector") then
 			data.skipped3d = data.skipped3d + 1
 		end
+	end
+	-- (kit-b gate U9 round 3) the world GUIs the walk above does not draw (BillboardGuis / SurfaceGuis in the PlayerGui and in
+	-- workspace: pet cards, HP bars over units, name plates, damage numbers) go through the neon rule too, as one entry
+	-- "WorldGuis" with no nodes (stroke_walk reports them apart, as the W wave's: counted, not failed)
+	local world = {}
+	local function worldGui(g, root)
+		if (g:IsA("BillboardGui") or g:IsA("SurfaceGui")) and g.Enabled ~= false then
+			for _, hit in ipairs(neonHits(g)) do
+				world[#world + 1] = { path = root .. "." .. hit.path, kind = hit.kind }
+			end
+		end
+	end
+	for _, g in ipairs(pg:GetChildren()) do
+		worldGui(g, "PlayerGui")
+	end
+	for _, g in ipairs(workspace:GetDescendants()) do
+		worldGui(g, "World." .. tostring(g.Parent and g.Parent.Name or "?"))
+	end
+	if #world > 0 then
+		data.guis[#data.guis + 1] = { name = "WorldGuis", order = #data.guis + 1, displayOrder = -1, ignoreInset = true, zBehavior = "Sibling", enabled = false, nodes = {}, neon = world }
 	end
 	return data
 end

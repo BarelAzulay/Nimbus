@@ -50,9 +50,7 @@
 /CreditsSign/Wood/Body/Column/Plank | Frame | abs 1425.0,725.0 304.0x82.0 pos {0.0,0,0.0,0} size {0.0,304,0.0,82} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
 /CreditsSign/Wood/Body/Column/Plank/UIStroke | UIStroke | #5E3A1D 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
 /CreditsSign/Wood/Body/Column/Plank/NailL | Frame | abs 1429.0,763.5 5.0x5.0 pos {0.0,4,0.5,0} size {0.0,5,0.0,5} anchor 0.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
-/CreditsSign/Wood/Body/Column/Plank/NailL/UICorner | UICorner | radius 1.0,0
 /CreditsSign/Wood/Body/Column/Plank/NailR | Frame | abs 1720.0,763.5 5.0x5.0 pos {1.0,-4,0.5,0} size {0.0,5,0.0,5} anchor 1.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
-/CreditsSign/Wood/Body/Column/Plank/NailR/UICorner | UICorner | radius 1.0,0
 /CreditsSign/Wood/Body/Column/Plank/Wordmark | ImageLabel | abs 1439.0,735.0 276.0x62.0 pos {0.5,0,0.5,0} size {0.0,276,0.0,62} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #A3A2A5 1.00 | image "rbxassetid://105015128819853" Enum.ScaleType.Fit
 /CreditsSign/Wood/Body/Column/Plank/Wordmark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 4.452
 /CreditsSign/Wood/Body/Column/CreatedBy | TextLabel | abs 1427.0,821.0 457.0x26.0 pos {0.0,2,0.0,96} size {0.0,457,0.0,26} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREATED BY" 20.0 Enum.Font.Unknown face Nunito/Heavy/Normal col #7A6A4C stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Bottom wrap false
@@ -118,9 +116,7 @@
 /CreditsSign/Wood/Body/Column/Plank | Frame | abs 942.4,423.4 258.4x69.7 pos {0.0,0,0.0,0} size {0.0,304,0.0,82} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
 /CreditsSign/Wood/Body/Column/Plank/UIStroke | UIStroke | #5E3A1D 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
 /CreditsSign/Wood/Body/Column/Plank/NailL | Frame | abs 945.8,456.2 4.2x4.2 pos {0.0,4,0.5,0} size {0.0,5,0.0,5} anchor 0.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
-/CreditsSign/Wood/Body/Column/Plank/NailL/UICorner | UICorner | radius 1.0,0
 /CreditsSign/Wood/Body/Column/Plank/NailR | Frame | abs 1193.1,456.2 4.2x4.2 pos {1.0,-4,0.5,0} size {0.0,5,0.0,5} anchor 1.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
-/CreditsSign/Wood/Body/Column/Plank/NailR/UICorner | UICorner | radius 1.0,0
 /CreditsSign/Wood/Body/Column/Plank/Wordmark | ImageLabel | abs 954.2,432.0 234.6x52.7 pos {0.5,0,0.5,0} size {0.0,276,0.0,62} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #A3A2A5 1.00 | image "rbxassetid://105015128819853" Enum.ScaleType.Fit
 /CreditsSign/Wood/Body/Column/Plank/Wordmark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 4.452
 /CreditsSign/Wood/Body/Column/CreatedBy | TextLabel | abs 944.1,505.0 306.0x22.1 pos {0.0,2,0.0,96} size {0.0,360,0.0,26} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREATED BY" 20.0 Enum.Font.Unknown face Nunito/Heavy/Normal col #7A6A4C stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Bottom wrap false
@@ -186,9 +182,7 @@
 /CreditsSign/Wood/Body/Column/Plank | Frame | abs 620.0,172.2 172.0x48.0 pos {0.0,0,0.0,0} size {0.0,215,0.0,60} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
 /CreditsSign/Wood/Body/Column/Plank/UIStroke | UIStroke | #5E3A1D 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
 /CreditsSign/Wood/Body/Column/Plank/NailL | Frame | abs 623.2,194.2 4.0x4.0 pos {0.0,4,0.5,0} size {0.0,5,0.0,5} anchor 0.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
-/CreditsSign/Wood/Body/Column/Plank/NailL/UICorner | UICorner | radius 1.0,0
 /CreditsSign/Wood/Body/Column/Plank/NailR | Frame | abs 784.8,194.2 4.0x4.0 pos {1.0,-4,0.5,0} size {0.0,5,0.0,5} anchor 1.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
-/CreditsSign/Wood/Body/Column/Plank/NailR/UICorner | UICorner | radius 1.0,0
 /CreditsSign/Wood/Body/Column/Plank/Wordmark | ImageLabel | abs 628.0,178.7 156.0x35.0 pos {0.5,0,0.5,0} size {0.0,195,0.0,44} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #A3A2A5 1.00 | image "rbxassetid://105015128819853" Enum.ScaleType.Fit
 /CreditsSign/Wood/Body/Column/Plank/Wordmark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 4.452
 /CreditsSign/Wood/Body/Column/CreatedBy | TextLabel | abs 621.6,226.6 198.4x19.2 pos {0.0,2,0.0,68} size {0.0,248,0.0,24} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREATED BY" 18.0 Enum.Font.Unknown face Nunito/Heavy/Normal col #7A6A4C stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Bottom wrap false
@@ -254,9 +248,7 @@
 /CreditsSign/Wood/Body/Column/Plank | Frame | abs 27.8,651.0 172.0x48.0 pos {0.0,0,0.0,0} size {0.0,215,0.0,60} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #1D2B55 0.00
 /CreditsSign/Wood/Body/Column/Plank/UIStroke | UIStroke | #5E3A1D 3.0 Enum.ApplyStrokeMode.Border Enum.LineJoinMode.Miter 0.00
 /CreditsSign/Wood/Body/Column/Plank/NailL | Frame | abs 31.0,673.0 4.0x4.0 pos {0.0,4,0.5,0} size {0.0,5,0.0,5} anchor 0.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
-/CreditsSign/Wood/Body/Column/Plank/NailL/UICorner | UICorner | radius 1.0,0
 /CreditsSign/Wood/Body/Column/Plank/NailR | Frame | abs 192.6,673.0 4.0x4.0 pos {1.0,-4,0.5,0} size {0.0,5,0.0,5} anchor 1.0,0.5 rot 0.0 z 2 vis true bg #E3B341 0.00
-/CreditsSign/Wood/Body/Column/Plank/NailR/UICorner | UICorner | radius 1.0,0
 /CreditsSign/Wood/Body/Column/Plank/Wordmark | ImageLabel | abs 35.8,657.5 156.0x35.0 pos {0.5,0,0.5,0} size {0.0,195,0.0,44} anchor 0.5,0.5 rot 0.0 z 3 vis true bg #A3A2A5 1.00 | image "rbxassetid://105015128819853" Enum.ScaleType.Fit
 /CreditsSign/Wood/Body/Column/Plank/Wordmark/UIAspectRatioConstraint | UIAspectRatioConstraint | ratio 4.452
 /CreditsSign/Wood/Body/Column/CreatedBy | TextLabel | abs 29.4,705.4 334.4x19.2 pos {0.0,2,0.0,68} size {0.0,418,0.0,24} anchor 0.0,0.0 rot 0.0 z 1 vis true bg #A3A2A5 1.00 | text "CREATED BY" 18.0 Enum.Font.Unknown face Nunito/Heavy/Normal col #7A6A4C stroke 1.00 Enum.TextXAlignment.Left/Enum.TextYAlignment.Bottom wrap false

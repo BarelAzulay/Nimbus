@@ -2440,6 +2440,7 @@ function Credits.polaroid(body, L, texts)
 		ZIndex = 2,
 	}, pol)
 	H.corner(pin)
+	pin:SetAttribute("Art", "push pin") -- (gate U9 round 3) the polaroid's round push pin is a drawn prop
 	Credits.stroke(pin, S.PinDark, 1.5)
 	local shine = H.frame("PinShine", {
 		BackgroundTransparency = 0.15,
@@ -2476,7 +2477,7 @@ function Credits.column(body, L, texts)
 			Size = UDim2.fromOffset(5, 5),
 			ZIndex = 2,
 		}, plank)
-		H.corner(nail)
+		-- (kit-b gate U9 round 3) square nail heads, as every kit B board's (SignKit.Nails); they were round
 	end
 	local wordmark = Credits.image(C.WORDMARK)
 	if wordmark then
@@ -2515,13 +2516,14 @@ function Credits.column(body, L, texts)
 	}, col)
 	-- the swash: one round pen stroke under the name (a child of the name: it leans with it)
 	local swashW = math.min(L.SigW - 24, math.floor(L.SigSize * 3.1))
-	local swash = H.frame("Swash", {
+	local swash = H.frame("Swash", { -- (gate U9 round 3: Art, the signature's pen stroke)
 		BackgroundTransparency = 0,
 		BackgroundColor3 = S.Navy,
 		Position = UDim2.fromOffset(math.floor(L.SigSize * 0.12), L.SwashY - L.SigY),
 		Size = UDim2.fromOffset(swashW, L.Small and 4 or 5),
 	}, sig)
 	H.corner(swash)
+	swash:SetAttribute("Art", "signature swash")
 	Credits.text("Thanks", texts.Thanks, "Body", L.ThanksSize, S.Gold, {
 		Position = UDim2.fromOffset(2, L.ThanksY),
 		Size = UDim2.fromOffset(L.ThanksW - 2, L.ThanksH),
@@ -2545,6 +2547,7 @@ function Credits.sticker(body, L)
 		ZIndex = 4,
 	}, body)
 	H.corner(shadow)
+	shadow:SetAttribute("Art", "emblem sticker") -- (gate U9 round 3) the studio's round emblem sticker is a drawn prop
 	-- the gold ring is its own round disc behind the emblem: a UIStroke on the ImageLabel drew as a square in Studio
 	-- (2026-11-13), and a circle needs no tilt
 	local ring = H.frame("StickerRing", {
@@ -2556,6 +2559,7 @@ function Credits.sticker(body, L)
 		ZIndex = 4,
 	}, body)
 	H.corner(ring)
+	ring:SetAttribute("Art", "emblem sticker")
 	local emblem = Credits.image(C.EMBLEM)
 	local sticker = Instance.new("ImageLabel")
 	sticker.Name = "Sticker"
@@ -2570,6 +2574,7 @@ function Credits.sticker(body, L)
 	sticker.Rotation = C.STICKER_TILT
 	sticker.ZIndex = 5
 	H.corner(sticker)
+	sticker:SetAttribute("Art", "emblem sticker")
 	sticker.Parent = body
 	return sticker
 end
