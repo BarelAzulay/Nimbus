@@ -1348,10 +1348,23 @@ local function paintTile(tile)
 				child:Destroy()
 			end
 		end
-		-- (LOOK-ui, kitb-look1: "Nature" ran 5 px past a 91 px card into the next one) the Pets cards' icon-only corner chip:
-		-- one card, one look in both windows; the element's name is in the detail
+		-- (kit-b, owner's reskin rule: the tile names its element as before kit B) the element's name on its stone tag
+		-- after a stripe of its colour (CloudUI.ElementChip Icon = false). (LOOK-ui, kitb-look1: "Nature" ran 5 px past a
+		-- 91 px card with the icon square before it; the square and "Celestial" at 18 px never fit one card) the icon is in
+		-- the detail's chip
 		for i, element in ipairs(elements) do
-			CloudUI.ElementChip(tile.Elements, element, 26, { Name = "Element_" .. element, LayoutOrder = i, ZIndex = 4 })
+			local chip = CloudUI.ElementChip(tile.Elements, element, 26, {
+				Label = element,
+				TextSize = 18,
+				Role = "Heading",
+				Icon = false,
+				Name = "Element_" .. element,
+				LayoutOrder = i,
+				ZIndex = 4,
+			})
+			if not chip then
+				elementPill(tile.Elements, element, 18, i)
+			end
 		end
 	end
 	-- fused pets: a tier / hybrid chip (top-right) and the copy's level

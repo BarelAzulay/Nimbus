@@ -645,14 +645,18 @@ end
 -- A small square chip in an element's colour holding its PixelIcon (Config.Elements.Info[element].Icon) in the ink that
 -- reads on it, with a wood edge (the pitch's .el). opts: Label (the element's name after the icon, on its own stone tag
 -- inside the chip's edge: brown on stone reads at any size, where no ink reads 4.5:1 on the mid-tone element colours),
--- TextSize, Role (the label's Theme role, default Tag; the Index's narrow tiles use Heading), Name, ZIndex, LayoutOrder.
+-- TextSize, Role (the label's Theme role, default Tag; the Index's narrow tiles use Heading), Name, ZIndex, LayoutOrder,
+-- Icon (false: no icon square, the element's colour a 4 px stripe before the name's tag: the Pet Index tiles, where the
+-- square and "Celestial" at 18 px do not fit one 114 px card).
 -- Returns the chip (attribute Element), or nil for an unknown element.
+local CHIP_STRIPE = 4
 function CloudUI.ElementChip(parent, element, px, opts)
 	opts = opts or {}
 	local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[element]
 	if not info then
 		return nil
 	end
+	local stripe = opts.Icon == false and opts.Label ~= nil
 	px = tonumber(px) or 26
 	local ink = Theme.TextOn(info.Color)
 	local chip = Instance.new("Frame")
@@ -691,7 +695,7 @@ function CloudUI.ElementChip(parent, element, px, opts)
 	square.BackgroundTransparency = 1
 	square.BorderSizePixel = 0
 	square.Parent = chip
-	local icon = info.Icon and PixelIcon.Chip(square, info.Icon, iconPx, ink)
+	local icon = not stripe and info.Icon and PixelIcon.Chip(square, info.Icon, iconPx, ink)
 	if icon then
 		icon.ZIndex = chip.ZIndex
 		for _, f in ipairs(icon:GetChildren()) do
@@ -700,9 +704,11 @@ function CloudUI.ElementChip(parent, element, px, opts)
 	end
 	PixelIcon.Whole(chip, function(s)
 		local side = PixelIcon.BoxPx(iconPx, 2, s)
-		chip.Size = UDim2.fromOffset(side, side)
+		-- (kit-b, Icon = false) the stripe on whole screen px, as tall as an icon chip
+		local lead = stripe and math.max(2, math.floor(CHIP_STRIPE * s + 0.5)) / s or side
+		chip.Size = UDim2.fromOffset(lead, side)
 		if label then
-			label.Position = UDim2.fromOffset(side, 0)
+			label.Position = UDim2.fromOffset(lead, 0)
 			-- (merge kitb-look1 x U9-7) the width a caller fitted (the Arena's fitWidth: its text and 4 px) kept; the
 			-- AutomaticSize still grows the tag past it
 			label.Size = UDim2.fromOffset(label.Size.X.Offset, side)

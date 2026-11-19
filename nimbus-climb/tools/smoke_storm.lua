@@ -1403,8 +1403,14 @@ local function clientScenarios()
 				-- (kit-b U8, restated: the chip was a letter at >= 15 px) the chip is the element's drawn icon on its colour
 				-- (CloudUI.ElementChip, attribute Element), at least 15 px
 				local chipOk = chip ~= nil and ((chip:IsA("TextLabel") and chip.TextSize >= 15) or (chip:GetAttribute("Element") == element and chip.AbsoluteSize.X >= 15))
-				panel:case(chipOk and chip.BackgroundColor3 == Config.Elements.Info[element].Color and meta.Text:find(element, 1, true) ~= nil and findText(PC.Get(id).Name:lower(), detail) ~= nil,
-					id .. " (" .. tostring(element) .. "): " .. tostring(meta and meta.Text))
+				-- (LOOK-ui, kitb-look1: the level line keeps "Lv 1 / 100", the rarity and each element follow it as chips) the
+				-- detail names the element in its line or on the line's element chip (CloudUI.ElementChip "Element_<E>",
+				-- its Label shown), as smoke_client_v2's Pets check reads it
+				local echip = detail and named(detail, "Element_" .. element)
+				local elabel = echip and echip:FindFirstChild("Label")
+				local named_ = (meta and meta.Text:find(element, 1, true) ~= nil) or (elabel ~= nil and shown(elabel) and elabel.Text:find(element, 1, true) ~= nil)
+				panel:case(chipOk and chip.BackgroundColor3 == Config.Elements.Info[element].Color and named_ and findText(PC.Get(id).Name:lower(), detail) ~= nil,
+					id .. " (" .. tostring(element) .. "): " .. tostring(meta and meta.Text) .. " / chip " .. tostring(elabel and elabel.Text))
 			end
 		end
 		panel:report(table.concat(picks, ", "))
