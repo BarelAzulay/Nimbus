@@ -26,6 +26,12 @@ and fails too: a shown text with an emoji or pictographic symbol code point (ren
 as PixelIcons). The texts in tools/fixtures/emoji_backlog.txt are counted, not failed: U7b's glyph tables (battle, arena,
 dungeon, train, tycoon, world signs and the rest of the windows), and U7b empties the list.
     py -3.12 tools/stroke_walk.py --emoji --only-emoji   # the emoji rule alone over every render scenario
+The neon rule (kit-b U9 completeness gate, --neon; the smoke scenario kitb_no_neon_glow is its client walk over the swept
+families) runs over the same dumps and fails too: a glow ring, a Border stroke or an opaque fill in a Theme.Neon colour, or
+a gloss gradient (dump_gui.lua neonHits: art, the cut gem and the title's ribbon kept out). It lists every window
+(ScreenGui) still on the old skin. The paths in tools/fixtures/neon_backlog.txt are counted, not failed: only the
+unbuilt match / party panels (a pitch item first) and the Dev panel (players never see it) may stay there.
+    py -3.12 tools/stroke_walk.py --grid --neon --only-neon   # the completeness gate
 Exit status: 0 when no scenario has a stroke, contrast (or, with --emoji, emoji) hit (or --warn), 1 otherwise, 2 when a
 dump fails.
 """
@@ -41,6 +47,13 @@ sys.path.insert(0, HERE)
 import render_gui as RG  # noqa: E402
 
 # scenes with no game UI of their own (the renderer's widget galleries)
+NEON_BACKLOG = os.path.join(HERE, "fixtures", "neon_backlog.txt")
+# ScreenGuis the neon rule reports apart, not as windows (listed, never failed): the world GUIs the renderer mirrors flat
+# (portal boards, the lobby leaderboard: the world-text W wave checks each), the renderer's own gem gallery, and the hit
+# vignette (a screen-edge effect, no panel)
+NEON_NOT_WINDOWS = {"WorldMirror": "world GUIs (W wave)", "GemGallery": "the renderer's gem gallery",
+                    "NimbusDamageFx": "the hit vignette (an effect)"}
+
 SKIP = {"gallery", "signkit", "neon", "neon:window", "neon:hud", "neon:party"}
 
 
@@ -96,6 +109,8 @@ def main():
     ap.add_argument("--bare", action="store_true", help="also list texts with no outline and no backdrop (over the world)")
     ap.add_argument("--emoji", action="store_true", help="also the emoji rule (kit-b U7a): no emoji code point in a shown text")
     ap.add_argument("--only-emoji", action="store_true", help="the emoji rule alone (implies --emoji; no stroke / contrast)")
+    ap.add_argument("--neon", action="store_true", help="also the neon rule (kit-b U9 completeness gate): no window left on the old neon skin")
+    ap.add_argument("--only-neon", action="store_true", help="the neon rule alone (implies --neon; no stroke / contrast)")
     ap.add_argument("-v", "--verbose", action="store_true", help="list every hit, not the first 6 per scenario")
     args = ap.parse_args()
 
@@ -109,6 +124,10 @@ def main():
         args.emoji = True
     emoji_backlog = RG.contrast_backlog(RG.EMOJI_BACKLOG) if args.emoji else []
     total_e, emoji_owed, emoji_used = 0, 0, set()
+    if args.only_neon:
+        args.neon = True
+    neon_backlog = RG.contrast_backlog(NEON_BACKLOG) if args.neon else []
+    total_n, neon_owed, neon_used, neon_windows, neon_kept, neon_apart = 0, 0, set(), {}, {}, {}
     for name in names:
         for (w, h) in sizes:
             try:
@@ -128,7 +147,23 @@ def main():
                         emoji_used.add(pattern)
                     else:
                         emoji.append(hit)
-            if args.only_emoji:
+            neon = []
+            if args.neon:
+                for gui in dump.get("guis", []):
+                    for hit in (gui.get("neon") or []):
+                        if not isinstance(hit, dict):
+                            continue
+                        pattern = RG.in_backlog(neon_backlog, hit.get("path", ""))
+                        if gui["name"] in NEON_NOT_WINDOWS:
+                            neon_apart.setdefault(gui["name"], set()).add(name)
+                        elif pattern:
+                            neon_owed += 1
+                            neon_used.add(pattern)
+                            neon_kept.setdefault(gui["name"], set()).add(name)
+                        else:
+                            neon.append((hit.get("path", ""), hit.get("kind", "")))
+                            neon_windows.setdefault(gui["name"], set()).add(name)
+            if args.only_emoji or args.only_neon:
                 doubled, panelled, dim, read = [], [], [], 0
             total_read += read
             # the backlog (tools/fixtures/contrast_backlog.txt): reported in the totals, not failed
@@ -153,6 +188,9 @@ def main():
             total_p += len(panelled)
             total_c += len(dim)
             total_e += len(emoji)
+            total_n += len(neon)
+            for (p, kind) in (neon if args.verbose else neon[:6]):
+                print("%-22s %4dx%-4d neon   %s  (%s)" % (name, w, h, p, kind))
             for (p, text, cps) in (emoji if args.verbose else emoji[:6]):
                 shown = text[:24].replace("\n", " ").encode("ascii", "backslashreplace").decode("ascii")
                 print("%-22s %4dx%-4d emoji  %s \"%s\" %s" % (name, w, h, p, shown, cps))
@@ -178,7 +216,20 @@ def main():
             for pattern, _ in emoji_backlog:
                 if pattern not in emoji_used:
                     print("    emoji backlog line no longer hit (remove it): " + pattern)
-    if args.grid and not args.scenarios:
+    if args.neon:
+        print("neon rule: %d hit(s) in %d window(s) on the old skin (%d more in the backlog, %d of its %d lines seen)"
+              % (total_n, len(neon_windows), neon_owed, len(neon_used), len(neon_backlog)))
+        for gui in sorted(neon_windows):
+            print("    old skin   %-24s (%s)" % (gui, ", ".join(sorted(neon_windows[gui]))))
+        for gui in sorted(neon_kept):
+            print("    backlog    %-24s (%s)" % (gui, ", ".join(sorted(neon_kept[gui]))))
+        for gui in sorted(neon_apart):
+            print("    not a window %-22s %s (%s)" % (gui, NEON_NOT_WINDOWS[gui], ", ".join(sorted(neon_apart[gui]))))
+        if not args.scenarios:
+            for pattern, _ in neon_backlog:
+                if pattern not in neon_used:
+                    print("    neon backlog line no longer hit (remove it): " + pattern)
+    if args.grid and not args.scenarios and not (args.only_neon or args.only_emoji):
         for pattern, _ in backlog:
             if pattern not in used:
                 print("    backlog line no longer hit (remove it): " + pattern)
@@ -194,7 +245,7 @@ def main():
         return 2
     if args.warn:
         return 0
-    return 1 if (total_d or total_p or total_c or total_e) else 0
+    return 1 if (total_d or total_p or total_c or total_e or total_n) else 0
 
 
 if __name__ == "__main__":

@@ -2077,39 +2077,29 @@ end
 -- Build: title card (top-left, small)
 ----------------------------------------------------------------------
 local function buildTitleCard(holder)
+	-- (kit-b U9 completeness gate) a kit B stone block (flat face, wood edge, lip; square), not the old neon card (gold neon
+	-- ring, panel gradient, gloss strip). Its title is the plain Section title: the gold ribbon is for window titles only
 	local card = newFrame(holder, "TitleCard", {
 		Size = UDim2.fromOffset(K.TITLE_W, K.TITLE_H),
-		BackgroundTransparency = 0.06,
-		BackgroundColor3 = WHITE, -- the gradient below supplies the colour
 		Visible = false,
 	})
-	Theme.Corner(card, "M")
-	Theme.Stroke(card, NEON.Gold, 3, 0)
-	Theme.Gradient(card, VS.PanelTop, VS.PanelBottom, 90)
+	CloudUI.SignBlock(card, "Stone", { Pad = false })
 	addViewportScale(card)
 	UI.TitleCard = card
 	Items.Title = newItem(card, UDim2.new(-1.5, 0, 0, 0))
-
-	local gloss = newFrame(card, "Gloss", {
-		Position = UDim2.new(0, 10, 0, 5),
-		Size = UDim2.new(1, -20, 0, 9),
-		BackgroundTransparency = 0.84,
-		BackgroundColor3 = WHITE,
-	})
-	round(gloss)
 
 	-- a gold cloud coin at the left
 	local coin = newCoin(card, "Coin", 54, Colors.Token, Colors.TokenGlow, Theme.Currency.Tokens.Icon, 30)
 	coin.AnchorPoint = Vector2.new(0, 0.5)
 	coin.Position = UDim2.new(0, 11, 0.5, 0)
 
-	local title = Theme.StyleTitle(newText(card, "Title", string.upper(tostring(Config.GameName)), "Title", 32, WHITE, {
-		Position = UDim2.new(0, 74, 0, 6),
-		Size = UDim2.new(1, -84, 0, 38),
+	Theme.StyleTitle(newText(card, "Title", string.upper(tostring(Config.GameName)), "Title", 26, Theme.Sign.Text, {
+		-- (kit-b U9) 26 / 16 px: the name and the tagline whole in the card (32 / 19 cut both to "...")
+		Position = UDim2.new(0, 74, 0, 10),
+		Size = UDim2.new(1, -84, 0, 32),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	}), "OwnGradient")
-	Theme.Gradient(title, Colors.Cloud, Colors.TokenGlow, 90)
-	newText(card, "Tagline", tostring(Config.Tagline), "Script", 19, Colors.Muted or Colors.Cloud, {
+	}), "Section")
+	newText(card, "Tagline", tostring(Config.Tagline), "Script", 16, Theme.Sign.Text, {
 		Position = UDim2.new(0, 74, 0, 44),
 		Size = UDim2.new(1, -84, 0, 24),
 		TextTruncate = Enum.TextTruncate.AtEnd,

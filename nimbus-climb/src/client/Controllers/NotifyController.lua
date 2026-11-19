@@ -1378,7 +1378,9 @@ local function buildResults(data)
 	if not R.NoDiff then
 		local diffText = tostring(data.DifficultyName or data.DifficultyId or "")
 		local k = currentScale()
-		local ink = Theme.TextOn(diffColor)
+		-- (kit-b U9 merge check) the chip's word is 18 px under the screen's scale: the face moves the least it takes to read
+		-- 4.5:1 (Extreme's red read 3.86:1 with the brown ink); the lip keeps the difficulty's own colour
+		local face, ink = Theme.ReadableFace(diffColor, 4.5)
 		local stars = math.min(5, math.max(0, math.floor(starCount)))
 		local starsW = stars > 0 and (stars * 18 + (stars - 1) * 2 + RESULT_ICON_GAP) or 0
 		local chip = newFrame(inner, "DiffChip", {
@@ -1386,7 +1388,7 @@ local function buildResults(data)
 			Position = UDim2.new(0.5, 0, 0, diffY + 10),
 			Size = UDim2.fromOffset(200, 30),
 		})
-		local chipEdge, chipLip = CloudUI.SignBlock(chip, { Face = diffColor, Lip = Theme.Darken(diffColor, 0.35), Edge = SIGN.Wood, Text = ink }, {
+		local chipEdge, chipLip = CloudUI.SignBlock(chip, { Face = face, Lip = Theme.Darken(diffColor, 0.35), Edge = SIGN.Wood, Text = ink }, {
 			EdgePx = 2,
 			LipPx = RESULT_BANNER_LIP,
 		})

@@ -391,10 +391,6 @@ local function clientScenarios()
 		Mock.Advance(seconds)
 	end
 
-	local function isWhite(c)
-		return c and c.R > 0.93 and c.G > 0.93 and c.B > 0.93
-	end
-
 	-- a real raid BattleSim, sent the way BattleService sends it, until its first telegraph
 	local function raidDriver()
 		local Sim = moduleAt("shared", "BattleSim")
@@ -582,18 +578,30 @@ local function clientScenarios()
 		local petsGui = pg() and pg():FindFirstChild("NimbusPets")
 		local win = petsGui and petsGui:FindFirstChild("Window_Pets")
 		local grid = win and find(win, "Grid")
+		-- (kit-b U8) the cards are kit B stone tiles (SignBlock "Stone": the face is the button's own fill) and the names
+		-- are the kit's ink on them, no longer white on a rarity tint: each name reads on its face (4.5:1, its 18 px body)
+		local function lum(c)
+			local function ch(v)
+				return v <= 0.03928 and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4
+			end
+			return 0.2126 * ch(c.R) + 0.7152 * ch(c.G) + 0.0722 * ch(c.B)
+		end
+		local function ratio(a, b)
+			local la, lb = lum(a), lum(b)
+			return (math.max(la, lb) + 0.05) / (math.min(la, lb) + 0.05)
+		end
 		local tiles, white = 0, 0
 		for _, c in ipairs(grid and grid:GetChildren() or {}) do
 			local name = c:IsA("TextButton") and c:FindFirstChild("Name")
 			if name and name.Text ~= "" then
 				tiles = tiles + 1
-				if isWhite(name.TextColor3) then
+				if c.BackgroundTransparency < 0.5 and ratio(name.TextColor3, c.BackgroundColor3) >= 4.5 then
 					white = white + 1
 				end
 			end
 		end
 		if tiles > 0 then
-			T.check(white == tiles, "visual client: the Team picker writes pet names in white on the tinted tiles", white .. " of " .. tiles)
+			T.check(white == tiles, "visual client: the Team picker's pet names read on their stone tiles (4.5:1, kit B ink)", white .. " of " .. tiles)
 		else
 			T.info("visual client: no pets owned in this world, the Team picker tile names are checked by the phone run")
 		end

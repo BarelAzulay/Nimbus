@@ -823,7 +823,7 @@ function H.buildSlot(index)
 		ZIndex = 4,
 	})
 	-- pick mode's ring: a square gold frame round the slot (a selection mark, not a glow)
-	item.Glow = frame(button, "Glow", { Position = UDim2.fromOffset(-3, -3), Size = UDim2.new(1, 6, 1, 6), Visible = false, ZIndex = 7 })
+	item.Glow = frame(button, "PickRing", { Position = UDim2.fromOffset(-3, -3), Size = UDim2.new(1, 6, 1, 6), Visible = false, ZIndex = 7 })
 	stroke(item.Glow, GOLD, 4, 0).LineJoinMode = Enum.LineJoinMode.Miter
 	button.Activated:Connect(function()
 		safe("slot", H.tapSlot, index)
@@ -2245,11 +2245,13 @@ function H.metaChips(def)
 		end
 	end
 	local size = H.metaSize()
-	local color = CloudUI.RarityColor(def.Rarity)
+	-- (kit-b U9 merge check) the rarity word reads 4.5:1 on its chip at every size (Epic's violet read 4.25:1 with the
+	-- brown ink under 18 px): Theme.ReadableFace moves the face the least it takes
+	local color, chipInk = Theme.ReadableFace(CloudUI.RarityColor(def.Rarity), 4.5)
 	local chipH = H.metaChipH()
 	-- (LOOK-ui, kitb-look1: "Mythic" and "Legendary" filled their tags edge to edge) the chips size themselves to their
 	-- drawn text (AutomaticSize) with 8 px each side; the element chip's name 4 px after its square (CloudUI.ElementChip)
-	local tag = text(d.MetaRow, "RarityChip", tostring(def.Rarity), "Heading", size, Theme.TextOn(color), {
+	local tag = text(d.MetaRow, "RarityChip", tostring(def.Rarity), "Heading", size, chipInk, {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = color,
 		AutomaticSize = Enum.AutomaticSize.X,

@@ -188,6 +188,15 @@ local C = {
 		Defense = SIGN.Gold,
 	},
 }
+-- (kit-b U9 merge check) a mat's "Pick a skill" call in the good ink, darkened the least it takes to read 4.5:1 on the
+-- pending mat's gold-cream face too (SIGN.Selected: #2E7D32 read 4.27:1 there; the stone tile reads it at 5.1:1)
+C.MatGood = C.Good
+for step = 1, 25 do
+	if Theme.Contrast(C.MatGood, SIGN.Selected) >= 4.6 then -- (a margin: the screen rounds the colour to 8 bits)
+		break
+	end
+	C.MatGood = Theme.Darken(C.Good, step * 0.04)
+end
 
 -- typography as UTF-8 byte escapes (the source stays plain ASCII). kit-b U7b: the icons are PixelIcons (ICON), the
 -- emoji went; "->" is the plain arrow of a rank's next step
@@ -1705,7 +1714,7 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 			m.Big.Visible = true
 			PixelIcon.Set(m.Big, nil) -- (kit-b U7b) a lock / wait icon from before goes
 			Theme.SetRole(m.Big, "Body") -- U.Note's role (its .Font reads Unknown: a Nunito face)
-			m.Big.TextColor3 = C.Good
+			m.Big.TextColor3 = C.MatGood
 			m.Big.TextXAlignment = Enum.TextXAlignment.Left
 			place(m.Big, pad, barY, w - 2 * pad, mm.BarH)
 			H.fitMat(m.Big, { "Pick a skill below", "Pick a skill" }, w - 2 * pad - 2, mm.Line, mm.LineMin)
@@ -1767,7 +1776,7 @@ function H.paintMatPhone(m, st, spec, mm, w, h, name, lastWord, face, badgeW, le
 			place(m.Bar, fx, h - mm.BarH - 4, tw, mm.BarH)
 			H.paintTimer(m, frac, "")
 		else
-			m.Line2.TextColor3 = C.Good
+			m.Line2.TextColor3 = C.MatGood
 			H.fitMat(m.Line2, { "Pick a skill", "Pick" }, tw - 2, mm.Text, mm.Text)
 		end
 	else
@@ -1802,7 +1811,7 @@ function H.paintMatMini(m, st, spec, mm, w, h, face, left)
 			m.Line2.TextColor3 = C.PurpleInk
 			text = { H.clock(left) }
 		else
-			m.Line2.TextColor3 = C.Good
+			m.Line2.TextColor3 = C.MatGood
 			text = { "Pick a skill", "Pick" }
 		end
 	else

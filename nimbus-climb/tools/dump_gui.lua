@@ -756,6 +756,69 @@ local function nodeOf(inst, ctx, path, order)
 	return n
 end
 
+-- (kit-b U9 completeness gate) the old neon skin in one ScreenGui: the rule of the smoke walk kitb_no_neon_glow
+-- (tools/smoke_kitb_ui.lua), run here over the GUI of every render scenario (tools/stroke_walk.py --neon). A hit is a glow
+-- ring (a "GlowStroke", or a Border stroke on a "Glow"), a Border stroke in a Theme.Neon colour, a gloss gradient (any
+-- shown UIGradient but a Lip / Step / Sweep / Fill / Bands), or an opaque fill in a Theme.Neon colour. Kept out, as there:
+-- an illustration's own paint (attribute Art, or Form + Rarity: the Shop's machines and EggArt eggs), the drawn cut gem
+-- (GemIcon), a gradient that carries Art itself (the loading screen's day sky), the title's designed look (the T1 ribbon,
+-- its TitleHide, the logo), and a block's "Lip": kit B colours a lip by role (a Legendary card's rarity gold is
+-- Theme.Neon.Gold's value). [{ path, kind }]
+local NEON_ALLOWED = { Lip = true, Step = true, Sweep = true, Fill = true, Bands = true }
+local neonTheme = nil
+local function neonHits(g)
+	if neonTheme == nil then
+		local ok, Theme = pcall(req, "shared/Theme", true)
+		neonTheme = (ok and type(Theme) == "table" and Theme.Neon) or false
+	end
+	local hits = {}
+	if not neonTheme then
+		return hits
+	end
+	local function neonName(c)
+		if typeof(c) ~= "Color3" then
+			return nil
+		end
+		for name, n in pairs(neonTheme) do
+			if math.abs(c.R - n.R) < 0.002 and math.abs(c.G - n.G) < 0.002 and math.abs(c.B - n.B) < 0.002 then
+				return name
+			end
+		end
+		return nil
+	end
+	local function visit(inst, path, kept)
+		if inst:IsA("GuiObject") and inst.Visible == false then
+			return
+		end
+		local art = kept or inst.Name == "GemIcon" or inst:GetAttribute("Art") ~= nil
+			or (inst:GetAttribute("Form") ~= nil and inst:GetAttribute("Rarity") ~= nil)
+			or inst:GetAttribute("Ribbon") ~= nil or inst:GetAttribute("Logo") ~= nil
+		for _, c in ipairs(inst:GetChildren()) do
+			local cpath = path .. "." .. c.Name
+			if c:IsA("GuiObject") then
+				if not art and c.Name ~= "Lip" and c.BackgroundTransparency < 0.5 and neonName(c.BackgroundColor3) then
+					hits[#hits + 1] = { path = cpath, kind = "neon " .. neonName(c.BackgroundColor3) .. " fill" }
+				end
+				visit(c, cpath, art)
+			elseif inst:IsA("GuiObject") and not art and c:GetAttribute("Art") == nil then
+				if c:IsA("UIStroke") and get(c, "Enabled") ~= false and (tonumber(c.Transparency) or 0) < 0.95 then
+					local border = c.ApplyStrokeMode == Enum.ApplyStrokeMode.Border
+					if c.Name == "GlowStroke" or (inst.Name == "Glow" and border) then
+						hits[#hits + 1] = { path = path, kind = "glow ring" }
+					elseif border and neonName(c.Color) then
+						hits[#hits + 1] = { path = path, kind = "neon " .. neonName(c.Color) .. " border" }
+					end
+				elseif c:IsA("UIGradient") and get(c, "Enabled") ~= false and not NEON_ALLOWED[c.Name]
+					and not (c.Name == "TitleHide" and inst:GetAttribute("TitleLook") == "Ribbon") then
+					hits[#hits + 1] = { path = path, kind = "gloss gradient (" .. c.Name .. ")" }
+				end
+			end
+		end
+	end
+	visit(g, g.Name, false)
+	return hits
+end
+
 local function walk()
 	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
 	local data = {
@@ -795,6 +858,7 @@ local function walk()
 				end
 				data.nodes = ctx.count
 				data.hidden = data.hidden + ctx.hidden
+				entry.neon = neonHits(g)
 			end
 			data.guis[#data.guis + 1] = entry
 		elseif g:IsA("LayerCollector") then

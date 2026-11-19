@@ -631,7 +631,7 @@ local function clientScenarios()
 				local win = H.petsWin()
 				local banner = win and H.find(win, "PickBanner")
 				local slot1 = win and H.find(win, "Slot1")
-				T.check(PC.IsOpen() and banner and H.shown(banner) and slot1 and H.shown(H.find(slot1, "Glow")), label .. ": opens the Pets window in pick mode on slot 1")
+				T.check(PC.IsOpen() and banner and H.shown(banner) and slot1 and H.shown(H.find(slot1, "PickRing")), label .. ": opens the Pets window in pick mode on slot 1")
 				T.check(#KC.serverCalls("BattleRequest", mark) == 0 and #KC.serverCalls("DungeonRequest", mark) == 0, label .. ": ...and sends nothing")
 				T.check(H.pg():FindFirstChild("NimbusTeamPick") == nil, label .. ": ...no popup")
 			end

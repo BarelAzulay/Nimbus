@@ -195,7 +195,8 @@ local function buildSkeleton()
 		Size = UDim2.fromScale(1, 1),
 		Active = true, -- swallows clicks meant for the world behind
 	}, gui)
-	make("UIGradient", { Color = ColorSequence.new(L.SKY_TOP, L.SKY_BOTTOM), Rotation = 90 }, ui.Sky)
+	-- the day sky is the backdrop's paint, not a panel's gloss (attribute Art: the neon walks leave an illustration alone)
+	make("UIGradient", { Color = ColorSequence.new(L.SKY_TOP, L.SKY_BOTTOM), Rotation = 90 }, ui.Sky):SetAttribute("Art", "Sky")
 
 	-- the stepped puffs: each row a plain Frame 12 px narrower on each side than the one under it, a pale underside
 	ui.Clouds = make("Frame", { Name = "Clouds", BackgroundTransparency = 1, ZIndex = 2 }, ui.Sky)
