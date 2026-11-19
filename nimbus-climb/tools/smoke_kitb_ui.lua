@@ -8432,6 +8432,196 @@ local function clientScenarios()
 		LKC.flushErrors("hud_strips_clear_of_panel")
 	end)
 
+	-- (kit-b U9-8 A, the owner's pick "Stone signboard" of the U9-8 pitch: .superpowers/slop-audit/round3/build/U9-8/
+	-- pitch_match_party_*.png) the match and party panels are the vitals card's tier: a stone card (SignKit Frame + Body) in a
+	-- 3 px wood edge on a 5 px StoneLip lip, both whole screen px; brown ink; one level badge (the picker's numbered tile in
+	-- the level's colour, a 2 px wood edge, a lip) with the name and gold-lip stars in ink beside it; Leave a red plank,
+	-- Change a sky one; the checkpoints sky blocks (a SignKit BlockRow); every member a chip two to a row (6 px apart) with a
+	-- one-block health bar (a well in its wood edge, the red lit part on its RedLip lip), the player's own chip gold, a fallen
+	-- one faded (the well) with the pixel x; the party title the plain Section title (no ribbon). The card is 540 design px
+	-- wide where the screen has the room and 372 (the pitch's phone card) on a phone. No rounded corner, no gloss gradient
+	S.hud_panels_signboard = guarded("hud_panels_signboard", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		local lp = game:GetService("Players").LocalPlayer
+		local NAMES = { "SkyClimberSuper_2010", "BuddyBuilderMaster77", "MegaWolfWarrior_2009", "QuietFallenFriend_01" }
+		local function px(design, k)
+			return math.max(1, math.floor(design * k + 0.5))
+		end
+		local function near(a, b, tol)
+			return math.abs(a - b) <= (tol or 1)
+		end
+		local function edgeOf(o)
+			local e = o and o:FindFirstChild("SignEdge")
+			return (e and e:IsA("UIStroke")) and e or nil
+		end
+		-- the card: the wood frame, the stone body inset by the edge, its lip; no corner or gloss anywhere in the panel
+		local function card(panel, tag, k)
+			local wood = panel:FindFirstChild("Wood")
+			local body = wood and wood:FindFirstChild("Body")
+			local lip = body and body:FindFirstChild("Lip")
+			if T.check(wood and body and lip, tag .. ": a stone card (Wood > Body > Lip)") then
+				local inset = body.AbsolutePosition.X - wood.AbsolutePosition.X
+				T.check(sameColor(wood.BackgroundColor3, Sign.Wood) and sameColor(body.BackgroundColor3, Sign.Stone) and sameColor(lip.BackgroundColor3, Sign.StoneLip),
+					tag .. ": the card is stone in wood on its StoneLip lip", fmt("%s / %s / %s", hex(wood.BackgroundColor3), hex(body.BackgroundColor3), hex(lip.BackgroundColor3)))
+				T.check(near(inset, px(3, k), 0.05) and near(lip.AbsoluteSize.Y, px(5, k), 0.05),
+					tag .. ": the vitals card's tier (a 3 px wood edge, a 5 px lip, whole screen px)", fmt("edge %.2f px (want %d), lip %.2f px (want %d)", inset, px(3, k), lip.AbsoluteSize.Y, px(5, k)))
+			end
+			local bad = {}
+			for _, d in ipairs(panel:GetDescendants()) do
+				if d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0.5) then
+					bad[#bad + 1] = "a rounded corner on " .. d.Parent.Name
+				elseif d:IsA("UIGradient") and d.Enabled ~= false and not ({ Lip = true, Step = true })[d.Name] then
+					bad[#bad + 1] = "a gradient on " .. d.Parent.Name
+				elseif d:IsA("UIStroke") and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and d.Enabled ~= false and d.Transparency < 0.95
+					and not (sameColor(d.Color, Sign.Wood) or sameColor(d.Color, Sign.WellEdge)) then
+					bad[#bad + 1] = "a " .. hex(d.Color) .. " border on " .. d.Parent.Name
+				end
+			end
+			T.check(#bad == 0, tag .. ": no rounded corner, gradient or coloured border (wood edges only)", table.concat(bad, "; "))
+		end
+		local function badge(inner, tag, number, k)
+			local b = inner:FindFirstChild("Badge")
+			local num = b and b:FindFirstChild("Num")
+			local e = edgeOf(b)
+			-- (a stroke's Thickness is design px under the card's scale: on screen Thickness x k)
+			T.check(b and U8.shown(b) and num and num.Text == tostring(number) and e and sameColor(e.Color, Sign.Wood) and near(e.Thickness * k, px(2, k), 0.05)
+				and b:FindFirstChild("Lip") ~= nil and near(b.AbsoluteSize.X, b.AbsoluteSize.Y, 1),
+				tag .. ": the level badge (the picker's numbered square in a 2 px wood edge, a lip) reads " .. number,
+				fmt("num %s, edge %s px", num and num.Text or "-", e and fmt("%.2f", e.Thickness * k) or "-"))
+		end
+		local function stars(label, tag, n)
+			local trail = label and label:FindFirstChild("TrailIcon")
+			T.check(label and label:GetAttribute("FontRole") == "Heading" and sameColor(label.TextColor3, Sign.Text) and trail
+				and trail:GetAttribute("PixelIcon") == "star" and trail:GetAttribute("IconCount") == n,
+				tag .. ": the level's name in ink, its " .. n .. " stars after it", label and fmt("%s %s, stars %s", tostring(label:GetAttribute("FontRole")), hex(label.TextColor3), tostring(trail and trail:GetAttribute("IconCount"))) or "missing")
+		end
+		local function look(btn, want)
+			return btn ~= nil and btn:IsA("TextButton") and U8.shown(btn) and btn:GetAttribute("SignLook") == want
+		end
+		local function chips(holder, tag, count, k, withHealth)
+			local list = {}
+			for i = 1, count do
+				list[i] = holder and holder:FindFirstChild("Chip" .. i)
+			end
+			if not T.check(#list == count and U8.shown(list[count]), tag .. ": " .. count .. " member chips") then
+				return list
+			end
+			local a, b, c = U8.rect(list[1]), U8.rect(list[2]), U8.rect(list[3])
+			T.check(near(a.Y, b.Y) and b.X > a.R and c.Y > a.B and near(c.X, a.X), tag .. ": two chips a row", U8.show(a) .. " / " .. U8.show(b) .. " / " .. U8.show(c))
+			-- the visible boxes (their wood edges drawn outside each chip) 6 px apart, both ways
+			local e = edgeOf(list[1])
+			local ew = e and e.Thickness * k or 0
+			T.check(near(c.Y - a.B - 2 * ew, px(6, k), 1.5) and near(b.X - a.R - 2 * ew, px(6, k), 1.5), tag .. ": the chips 6 px apart",
+				fmt("rows %.1f, columns %.1f px apart (want %d)", c.Y - a.B - 2 * ew, b.X - a.R - 2 * ew, px(6, k)))
+			T.check(sameColor(list[1].BackgroundColor3, Sign.Gold), tag .. ": my own chip is gold", hex(list[1].BackgroundColor3))
+			local name = list[1]:FindFirstChild("Name")
+			T.check(name and name.TextTruncate == Enum.TextTruncate.AtEnd and sameColor(name.TextColor3, Sign.Text), tag .. ": a name in ink, cut with ... where it is long")
+			if withHealth then
+				local bad = {}
+				for i, chip in ipairs(list) do
+					local hp = chip:FindFirstChild("Health")
+					local block = hp and hp:FindFirstChild("Block1")
+					local face = block and block:FindFirstChild("Face")
+					local lit = face and face:FindFirstChild("Lit")
+					local lip = lit and lit:FindFirstChild("Lip")
+					if not (block and face and lit and lip and sameColor(block.BackgroundColor3, Sign.Wood) and sameColor(face.BackgroundColor3, Sign.Well)
+						and sameColor(lit.BackgroundColor3, Sign.Red) and sameColor(lip.BackgroundColor3, Sign.RedLip)) then
+						bad[#bad + 1] = "chip " .. i .. ": no well track with the red lit part on RedLip"
+					elseif (i == 4) == lit.Visible then
+						bad[#bad + 1] = "chip " .. i .. (i == 4 and ": a fallen member's bar is lit" or ": a living member's bar is dark")
+					end
+				end
+				T.check(#bad == 0, tag .. ": every chip's health is a one-block bar (a well in its wood edge, the red lit part on RedLip)", table.concat(bad, "; "))
+				local down = list[4]
+				local state = down:FindFirstChild("State")
+				local dn = down:FindFirstChild("Name")
+				T.check(sameColor(down.BackgroundColor3, Sign.Well) and dn and sameColor(dn.TextColor3, Sign.TextMuted) and state and state:GetAttribute("PixelIcon") == "x"
+					and state:FindFirstChild("Icon") ~= nil, tag .. ": a fallen member's chip is faded (the well, muted ink) with the pixel x",
+					fmt("face %s, ink %s, mark %s", hex(down.BackgroundColor3), dn and hex(dn.TextColor3) or "-", tostring(state and state:GetAttribute("PixelIcon"))))
+			end
+			return list
+		end
+		for _, s in ipairs({ { 1920, 1080, false }, { 390, 844, true }, { 844, 390, true } }) do
+			U8.at(s[1], s[2], s[3], "signboard panels", function(tag)
+				local wantW = (s[1] == 1920) and 540 or 372
+				-- in a match: SAINT, four players with 20-character names, the last one fallen
+				local saint = Config.GetDifficulty("Saint")
+				local members = {}
+				for i, n in ipairs(NAMES) do
+					members[i] = { UserId = (i == 1) and lp.UserId or (8800 + i), Name = n, Health = ({ 0.62, 0.85, 0.4, 0 })[i], Downed = i == 4, Finished = false, Tokens = 0 }
+				end
+				lp:SetAttribute(Config.Attr.InMatch, true)
+				LKC.toClient("MatchState", LKC.matchState({ DifficultyId = saint.Id, DifficultyName = saint.DisplayName, Color = saint.Color, Members = members }))
+				LKC.advance(1)
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				local panel = hud and hud:FindFirstChild("MatchPanel", true)
+				local inner = panel and panel:FindFirstChild("Content") and panel.Content:FindFirstChild("Inner")
+				if T.check(panel and inner and U8.shown(panel), tag .. ": (setup) the match panel shows") then
+					local k = U8.scaleOf(inner)
+					local mt = tag .. " match"
+					card(panel, mt, k)
+					T.check(panel.Size.X.Offset == wantW, mt .. ": the card is " .. wantW .. " design px wide", tostring(panel.Size.X.Offset))
+					badge(inner, mt, 5, k)
+					stars(inner:FindFirstChild("Difficulty"), mt, 5)
+					T.check(look(inner:FindFirstChild("LeaveMatch", true), "Danger"), mt .. ": Leave is a red plank")
+					local tokens = inner:FindFirstChild("Tokens")
+					local lead = tokens and tokens:FindFirstChild("LeadIcon")
+					T.check(tokens and tokens.Text == "7 / 24" and edgeOf(tokens) and sameColor(tokens.BackgroundColor3, Sign.Tile) and lead and lead:GetAttribute("PixelIcon") == "token",
+						mt .. ": the run's tokens on a stone tile ('7 / 24' after the coin)", tokens and tokens.Text or "missing")
+					local cp = inner:FindFirstChild("CheckpointBar")
+					local row = cp and cp:FindFirstChild("BlockRow")
+					local lit = row and row:FindFirstChild("Block1") and row.Block1:FindFirstChild("Face")
+					T.check(row and row:GetAttribute("Count") == 4 and row:GetAttribute("Filled") == 2 and lit and sameColor(lit.BackgroundColor3, Sign.Sky),
+						mt .. ": the checkpoints are sky blocks (2 of 4 lit)", row and fmt("%s of %s", tostring(row:GetAttribute("Filled")), tostring(row:GetAttribute("Count"))) or "no BlockRow")
+					chips(inner:FindFirstChild("Team"), mt, 4, k, true)
+					local r, vp = U8.rect(panel), Mock.Viewport
+					T.check(r.X >= 0 and r.R <= vp.X, mt .. ": the card is on the screen", U8.show(r))
+				end
+				lp:SetAttribute(Config.Attr.InMatch, nil)
+				LKC.toClient("MatchState", nil)
+				LKC.advance(0.6)
+				-- on the pad, the leader of a full party: EXTREME, four long names
+				local extreme = Config.GetDifficulty("Extreme")
+				local players = {}
+				for i, n in ipairs(NAMES) do
+					players[i] = { UserId = (i == 1) and lp.UserId or (8800 + i), Name = n }
+				end
+				LKC.toClient("PartyState", { PortalId = "Obby", Level = extreme.Id, Stars = extreme.Stars, LeaderUserId = lp.UserId, DifficultyName = extreme.DisplayName,
+					Color = extreme.Color, Players = players, Max = 4, Countdown = 11, Locked = true })
+				LKC.advance(1)
+				local party = hud and hud:FindFirstChild("PartyPanel", true)
+				local pin = party and party:FindFirstChild("Content") and party.Content:FindFirstChild("Inner")
+				if T.check(party and pin and U8.shown(party), tag .. ": (setup) the party panel shows") then
+					local k = U8.scaleOf(pin)
+					local pt = tag .. " party"
+					card(party, pt, k)
+					T.check(party.Size.X.Offset == wantW, pt .. ": the card is " .. wantW .. " design px wide", tostring(party.Size.X.Offset))
+					local title = pin:FindFirstChild("Title")
+					T.check(title and title:GetAttribute("TitleLook") == "Section" and title:GetAttribute("FontRole") == "Title" and sameColor(title.TextColor3, Sign.Text),
+						pt .. ": the title is the plain Section title in ink (no ribbon)", title and tostring(title:GetAttribute("TitleLook")) or "missing")
+					local icon = pin:FindFirstChild("Icon")
+					T.check(icon and sameColor(icon.BackgroundColor3, Sign.Gold) and edgeOf(icon) and icon:FindFirstChild("Icon", true) ~= nil,
+						pt .. ": the obby's gold icon square before the title")
+					T.check(look(pin:FindFirstChild("LeaveParty", true), "Danger"), pt .. ": Leave is a red plank")
+					T.check(look(pin:FindFirstChild("ChangeLevel", true), "Sky"), pt .. ": the leader's Change is a sky plank")
+					local count, status = pin:FindFirstChild("Count"), pin:FindFirstChild("Status")
+					local cl, sl = count and count:FindFirstChild("LeadIcon"), status and status:FindFirstChild("LeadIcon")
+					T.check(count and count.Text == "4 / 4" and cl and cl:GetAttribute("PixelIcon") == "people" and status and sl and sl:GetAttribute("PixelIcon") == "clock"
+						and tostring(status.Text):find("Starting in", 1, true) ~= nil,
+						pt .. ": the countdown after the clock, the head count '4 / 4' after the people", fmt("%s | %s", status and status.Text or "-", count and count.Text or "-"))
+					badge(pin, pt, 4, k)
+					stars(pin:FindFirstChild("Level"), pt, 4)
+					chips(pin:FindFirstChild("Players"), pt, 4, k, false)
+				end
+				LKC.toClient("PartyState", nil)
+				LKC.advance(0.6)
+			end)
+		end
+		LKC.flushErrors("hud_panels_signboard")
+	end)
+
 	S.vitals_stamina_blocks = guarded("vitals_stamina_blocks", function()
 		local Theme = LoadingH.shared("Theme")
 		local Config = LoadingH.shared("Config")

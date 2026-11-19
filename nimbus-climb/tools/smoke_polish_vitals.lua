@@ -696,7 +696,7 @@ S.client_polish_matchpanel_mobile = guarded("client_polish_matchpanel_mobile", f
 		local cp = path(inner, "CheckpointBar")
 		if T.check(inner ~= nil and shown(timer) and shown(tokens) and leave ~= nil and shown(cp), label .. ": the timer, the token line, Leave and the checkpoint bar are shown") then
 			local tt, kt = textRect(timer, SLACK), textRect(tokens, SLACK)
-			T.check(tostring(tokens.Text):find("7/24", 1, true) ~= nil and kt.x0 >= tt.x1 + 4,
+			T.check(tostring(tokens.Text):find("7 / 24", 1, true) ~= nil and kt.x0 >= tt.x1 + 4, -- (kit-b U9-8 A: "7 / 24")
 				label .. ": the token count and the timer text never overlap (" .. SLACK .. "x the measured width)",
 				fmt("'%s' ends at %.0f, '%s' starts at %.0f", timer.Text, tt.x1, tokens.Text, kt.x0))
 			local ib = rect(inner)

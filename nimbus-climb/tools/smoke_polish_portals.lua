@@ -926,7 +926,7 @@ local function clientScenarios()
 		local leaveBtn = audit("party panel 1920x1080", 15, 44, 108)
 		T.check(KC.findText("starting in 12s") ~= nil or KC.findText("starting in 11s") ~= nil, "the panel counts down ('Starting in 12s')", KC.allShownText())
 		T.check(KC.findText("locked until launch") ~= nil, "the panel explains the lock ('Locked until launch')")
-		T.check(KC.findText("2/4") ~= nil, "the panel shows the head count ('2/4')")
+		T.check(KC.findText("2 / 4") ~= nil, "the panel shows the head count ('2 / 4')") -- (kit-b U9-8 A: "2 / 4")
 		if leaveBtn then
 			local before = #KC.serverCalls("LeaveParty")
 			Mock.Click(leaveBtn)

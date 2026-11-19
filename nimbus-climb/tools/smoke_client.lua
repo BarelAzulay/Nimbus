@@ -818,13 +818,22 @@ S.client_hud = guarded("client_hud", function()
 	toClient("MatchState", matchState({ Phase = "Countdown", Seconds = 3, Checkpoint = 0, TokensCollected = 0 }))
 	advance(0.6)
 	local matchPanel = gui().NimbusHud.TopLeft.MatchPanel
-	T.check(findText("^3$", matchPanel, true) ~= nil, "the intro countdown shows the seconds inside the match panel (a '3')", allShownText())
+	-- (kit-b U9-8 A) the level badge's number ("1" for Easy) is not the countdown: the numeral is any other lone digit
+	local function numeral(pattern)
+		for _, d in ipairs(texts(matchPanel, true)) do
+			if tostring(d.Text):find(pattern) and not d:FindFirstAncestor("Badge") then
+				return d
+			end
+		end
+		return nil
+	end
+	T.check(numeral("^3$") ~= nil, "the intro countdown shows the seconds inside the match panel (a '3')", allShownText())
 	toClient("MatchState", matchState({ Phase = "Countdown", Seconds = 1, Checkpoint = 0, TokensCollected = 0 }))
 	advance(0.5)
-	T.check(findText("^1$", matchPanel, true) ~= nil and findText("^3$", matchPanel, true) == nil, "the intro countdown updates (3 -> 1)", allShownText())
+	T.check(numeral("^1$") ~= nil and numeral("^3$") == nil, "the intro countdown updates (3 -> 1)", allShownText())
 	toClient("MatchState", matchState())
 	advance(2.8)
-	T.check(findText("^%d$", matchPanel, true) == nil, "the countdown numeral is gone once play starts (the timer shows m:ss again)", allShownText())
+	T.check(numeral("^%d$") == nil, "the countdown numeral is gone once play starts (the timer shows m:ss again)", allShownText())
 	T.check(findText("easy") ~= nil, "the match panel shows the difficulty", allShownText())
 	local timerOk = false
 	for k = 0, 10 do
@@ -832,7 +841,8 @@ S.client_hud = guarded("client_hud", function()
 	end
 	T.check(timerOk, "the match panel shows the time left (~" .. Util.FormatTime(545) .. ", counting down)", allShownText())
 	T.check(findText("checkpoint 2/4") ~= nil, "the match panel shows 'Checkpoint 2/4'", allShownText())
-	T.check(findText("7/24") ~= nil, "the match panel shows the token progress ('7/24')", allShownText())
+	-- (kit-b U9-8 A) the counts read like the vitals card's "52 / 117": "7 / 24"
+	T.check(findText("7 / 24") ~= nil, "the match panel shows the token progress ('7 / 24')", allShownText())
 	T.check(findText("buddy") ~= nil and findText("fallen") ~= nil, "the team list shows the other members", allShownText())
 	-- (kit-b U7a) the mark is a PixelIcon x on the chip's empty State label, no longer a skull emoji
 	local skull = false
@@ -845,7 +855,7 @@ S.client_hud = guarded("client_hud", function()
 	-- the time keeps ticking down with each message
 	toClient("MatchState", matchState({ Seconds = 544, Checkpoint = 3, TokensCollected = 9 }))
 	advance(0.8)
-	T.check(findText("checkpoint 3/4") ~= nil and findText("9/24") ~= nil, "the match panel follows new MatchState messages", allShownText())
+	T.check(findText("checkpoint 3/4") ~= nil and findText("9 / 24") ~= nil, "the match panel follows new MatchState messages", allShownText())
 	-- leave match needs a confirmation (the compact Leave button inside the match panel, named LeaveMatch)
 	local leaveMatchCalls = #serverCalls("LeaveMatch")
 	local lm = namedButton("LeaveMatch")

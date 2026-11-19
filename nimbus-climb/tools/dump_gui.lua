@@ -22,10 +22,12 @@
 --                         shared/PixelIcon at 18, 27 and 36 px
 --   lobby[:gift]          the idle lobby HUD (gift: U9-4 look review, the daily payload in, the Gifts block's PlayBar)
 --   title                 right after joining (the title card is still up)
---   match[:hit]           in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
---                         (":hit" = a quarter second after a hit, damage feedback included)
+--   match[:hit|:full]     in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
+--                         (":hit" = a quarter second after a hit, damage feedback included; ":full" = the panel's worst
+--                         case: SAINT, four players with 20-character names, one fallen)
 --   countdown             the pre-match countdown inside the match panel
---   party                 the portal party panel with its countdown
+--   party[:leader]        the portal party panel with its countdown (":leader" = you lead a full party of four long
+--                         names, EXTREME picked)
 --   results               the victory results card
 --   menu:<Window>[:<Tab>[:<Action>[:<Key>]]] Index / Stats through the OpenPanel remote
 --                         (Tab = window tab, or the Index group, e.g. menu:Index:Mythic; Action / Key are passed along;
@@ -1096,10 +1098,31 @@ end)
 
 scenario("title", function() end)
 
+-- (kit-b U9-8 A) the match / party panels' worst case: four players with 20-character names, one of them fallen
+local LONG_NAMES = { "SkyClimberSuper_2010", "BuddyBuilderMaster77", "MegaWolfWarrior_2009", "QuietFallenFriend_01" }
+local function longMembers(withHealth)
+	local health = { 0.62, 0.85, 0.4, 0 }
+	local out = {}
+	for i, name in ipairs(LONG_NAMES) do
+		local m = { UserId = (i == 1) and LocalPlayer.UserId or (76 + i), Name = name }
+		if withHealth then
+			m.Health, m.Downed, m.Finished, m.Tokens = health[i], i == 4, false, 0
+		end
+		out[i] = m
+	end
+	return out
+end
+
+-- match[:hit|:dash|:full]: full (kit-b U9-8 A) SAINT, four players with long names, one fallen
 scenario("match", function(arg)
 	LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
 	LocalPlayer:SetAttribute(Config.Attr.MatchTokens, 7)
-	toClient("MatchState", matchState())
+	if arg == "full" then
+		local saint = difficulty("Saint")
+		toClient("MatchState", matchState({ DifficultyId = saint.Id, DifficultyName = saint.DisplayName, Color = saint.Color, Members = longMembers(true) }))
+	else
+		toClient("MatchState", matchState())
+	end
 	advance(2.5)
 	setHealth(117, 117)
 	advance(0.6)
@@ -1136,7 +1159,15 @@ scenario("countdown", function()
 	advance(0.6)
 end)
 
-scenario("party", function()
+-- party[:leader]: leader (kit-b U9-8 A) the leader on the pad with a full party (four long names), EXTREME
+scenario("party", function(view)
+	if view == "leader" then
+		local extreme = difficulty("Extreme")
+		toClient("PartyState", { PortalId = "Obby", Level = extreme.Id, Stars = extreme.Stars, LeaderUserId = LocalPlayer.UserId,
+			DifficultyName = extreme.DisplayName, Color = extreme.Color, Players = longMembers(false), Max = 4, Countdown = 12, Locked = true })
+		advance(1.2)
+		return
+	end
 	local medium = difficulty("Medium")
 	toClient("PartyState", {
 		PortalId = "Obby", -- Phase 5 (6.3): the one obby portal; the level travels separately
