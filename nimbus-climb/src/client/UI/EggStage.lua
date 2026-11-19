@@ -1559,9 +1559,10 @@ function B.cols(roll)
 		local note = Theme.Label(EggStage.NoteText(pull, pull.Rarity, brief), "Body", { Size = 15 })
 		note.Name, note.ZIndex, note.TextWrapped, note.TextColor3, note.Parent = "Note", 5, true, Theme.Sign.Stone, col
 		if stage >= 1 then
-			-- (kit-b U9-2b) the evolved stage's tag: navy with gold words (the kit's navy sign), square and untilted; its
-			-- words follow the room (H.applyReveal: "EVOLVED II", or "EVO II" on a phone's small corner tag)
-			local tag = HatchLook.Tag(col, "EvolvedRibbon", K.LOOK.EVOLVED[stage >= 2 and 2 or 1][1], "Navy", { ZIndex = 6 })
+			-- (kit-b U9-2b) the evolved stage's tag, square and untilted; its words follow the room (H.applyReveal:
+			-- "EVOLVED II", or "EVO II" on a phone's small corner tag). (kit-b gate U9 round 3: navy on the navy nameplate it
+			-- showed only its gold edge) the kit's pink block, apart from NEW!'s gold
+			local tag = HatchLook.Tag(col, "EvolvedRibbon", K.LOOK.EVOLVED[stage >= 2 and 2 or 1][1], "Gift", { ZIndex = 6 })
 			tag:SetAttribute("Stage", stage >= 2 and 2 or 1)
 		end
 		-- the chain's fades: { object, property, its shown value } (the name and note: their text, classic stroke, outline)

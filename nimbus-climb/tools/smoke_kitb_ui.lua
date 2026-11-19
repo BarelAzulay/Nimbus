@@ -8381,6 +8381,25 @@ local function clientScenarios()
 				LKC.advance(1)
 			end)
 		end
+		-- (kit-b gate U9 round 3: the HP blocks stopped short of the stamina blocks, two block languages on one plate) the two
+		-- rows end on one column, the number and the dash key share the column right of it (their right edges on one line)
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "vitals grid", function(tag)
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				local hp, st = hud and hud:FindFirstChild("HealthBar", true), hud and hud:FindFirstChild("StaminaBar", true)
+				local num, key = hud and hud:FindFirstChild("HealthNumber", true), hud and hud:FindFirstChild("DashKey", true)
+				local hpLast, stLast = hp and hp:FindFirstChild("Block" .. 5), st and st:FindFirstChild("Block" .. n)
+				if not T.check(hpLast ~= nil and stLast ~= nil and num ~= nil and U8.shown(hp) and U8.shown(st), tag .. ": the HP and stamina blocks show") then
+					return
+				end
+				local a, b = U8.rect(hpLast), U8.rect(stLast)
+				T.check(math.abs(a.R - b.R) <= 1, fmt("%s: the HP and stamina blocks end on one column", tag), fmt("HP ends %.1f, stamina %.1f", a.R, b.R))
+				local kr, nr = key and U8.rect(key), U8.rect(num)
+				if key and U8.shown(key) and kr.Y >= a.B then -- (a compact card's key spans both rows at the right end)
+					T.check(math.abs(kr.R - nr.R) <= 1 and kr.X >= b.R + 2, fmt("%s: the dash key sits in the number's column", tag), U8.show(kr) .. " vs " .. U8.show(nr))
+				end
+			end)
+		end
 		LKC.flushErrors("vitals_stamina_blocks")
 	end)
 
@@ -11710,7 +11729,8 @@ local function clientScenarios()
 				end
 				local col = content:FindFirstChild("Reveal") and content.Reveal:FindFirstChild("Col1")
 				local new, ribbon = col and col:FindFirstChild("New"), col and col:FindFirstChild("EvolvedRibbon")
-				for _, t in ipairs({ { new, Sign.Gold, "NEW!" }, { ribbon, Sign.Navy, "EVOLVED" } }) do
+				-- (kit-b gate U9 round 3: a navy EVOLVED on the navy nameplate showed only its gold edge) EVOLVED is the pink tag
+				for _, t in ipairs({ { new, Sign.Gold, "NEW!" }, { ribbon, Sign.Roof, "EVOLVED" } }) do
 					local o = t[1]
 					local text = o and o:FindFirstChild("Text")
 					T.check(o ~= nil and U8.shown(o) and o.Rotation == 0 and sameColor(o.BackgroundColor3, t[2]) and o:FindFirstChild("SignEdge") ~= nil and o:FindFirstChild("Lip") ~= nil
@@ -12016,6 +12036,15 @@ local function clientScenarios()
 					end
 					bad = U92b.offGrid(list)
 					T.check(#bad == 0 and #list >= 20, tag .. ": the slab, the cloud puffs' rows and the stepped backlight sit on whole px", fmt("%d parts; %s", #list, table.concat(bad, "; ")))
+					-- (kit-b gate U9 round 3: two navy slabs read as empty nameplates) a plinth: a wood top in its dark wood edge with
+					-- a light top row, on a stone base
+					local Sign = LoadingH.shared("Theme").Sign
+					local slab, foot = ped:FindFirstChild("Slab"), ped:FindFirstChild("Foot")
+					local shine = slab and slab:FindFirstChild("Shine")
+					T.check(slab and foot and sameColor(slab.BackgroundColor3, Sign.Wood) and sameColor(slab.SignEdge.Color, Sign.WoodDark)
+						and shine ~= nil and sameColor(shine.BackgroundColor3, Sign.WoodLight) and sameColor(foot.BackgroundColor3, Sign.Stone),
+						tag .. ": the plinth is a wood top (dark wood edge, light top row) on a stone base",
+						slab and foot and fmt("slab %s edge %s shine %s, foot %s", hex(slab.BackgroundColor3), hex(slab.SignEdge.Color), shine and hex(shine.BackgroundColor3) or "none", hex(foot.BackgroundColor3)) or "missing")
 					local egg = hero:FindFirstChild("Egg1")
 					local softs = {}
 					for _, root in ipairs({ ped, ring, back, hero:FindFirstChild("Spot") or false, egg and egg:FindFirstChild("Cracks") or false, egg and egg:FindFirstChild("Leaks") or false }) do

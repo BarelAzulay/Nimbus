@@ -194,7 +194,11 @@ local K = {
 	-- FootMin units), FootIn x the box in on each side. Neutral (the navy sign's own lip) until the rarity shows
 	PLINTH = {
 		SlabK = 0.1, SlabMin = 5, LipFrom = 8, FootK = 0.5, FootMin = 3, FootIn = 0.1,
-		Neutral = Sign.NavyLip, FootFace = Sign.NavyLip, FootLip = rgb(10, 14, 40),
+		-- (kit-b gate U9 round 3: two navy slabs read as empty nameplates) a shop's display stand: a wood top in its dark wood
+		-- edge with one light top row (Shine) and the rarity on its lip (Neutral, the wood's own dark lip, before it), on a
+		-- stone base in the same edge
+		Face = Sign.Wood, Edge = Sign.WoodDark, Shine = Sign.WoodLight,
+		Neutral = Sign.WoodDark, FootFace = Sign.Stone, FootLip = Sign.StoneLip,
 	},
 	INK = rgb(11, 16, 48),
 	-- (Task 3) the rarity word (spec 16.15: the gradient / outline shades of c, the letters' pop, the glow behind). The
@@ -778,6 +782,10 @@ function HatchLook.PlinthLip(box, lip)
 	slab.Size = UDim2.fromOffset(math.max(0, w - 2 * u), math.max(0, slabH - 2 * u))
 	slab.SignEdge.Thickness = u
 	slab.Lip.Size = UDim2.new(1, 0, 0, lipH)
+	local shine = slab:FindFirstChild("Shine")
+	if shine then
+		shine.Size = UDim2.new(1, 0, 0, u) -- one pixel unit of light wood along the top
+	end
 	foot.Visible = footH > 0
 	foot.Position = UDim2.fromOffset(footIn + u, slabH)
 	foot.Size = UDim2.fromOffset(math.max(0, w - 2 * footIn - 2 * u), math.max(0, footH - 2 * u))
@@ -796,12 +804,14 @@ function HatchLook.Plinth(box, rarity, phone, opts)
 	-- (kept at 1: the plinth rises and fades in with the egg, never a scale: its pixel edges stay whole)
 	self.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = box })
 	self.Foot = frame(box, "Foot", { BackgroundTransparency = 0, ZIndex = z })
-	CloudUI.SignBlock(self.Foot, "Navy", { Face = P.FootFace, LipColor = P.FootLip, EdgePx = 2, LipPx = 2, Pad = false })
+	CloudUI.SignBlock(self.Foot, "Stone", { Face = P.FootFace, LipColor = P.FootLip, Edge = P.Edge, EdgePx = 2, LipPx = 2, Pad = false })
 	self.Slab = frame(box, "Slab", { BackgroundTransparency = 0, ZIndex = z + 1 })
-	CloudUI.SignBlock(self.Slab, "Navy", { LipColor = P.Neutral, EdgePx = 2, LipPx = 2, Pad = false })
+	CloudUI.SignBlock(self.Slab, "Stone", { Face = P.Face, LipColor = P.Neutral, Edge = P.Edge, EdgePx = 2, LipPx = 2, Pad = false })
 	self.Slab.Lip.ZIndex = z + 2
+	local shine = frame(self.Slab, "Shine", { BackgroundTransparency = 0, BackgroundColor3 = P.Shine, ZIndex = z + 2 })
 	self.Parts = {
 		{ self.Slab, "BackgroundTransparency" }, { self.Slab.SignEdge, "Transparency" }, { self.Slab.Lip, "BackgroundTransparency" },
+		{ shine, "BackgroundTransparency" },
 		{ self.Foot, "BackgroundTransparency" }, { self.Foot.SignEdge, "Transparency" }, { self.Foot.Lip, "BackgroundTransparency" },
 	}
 	HatchLook.PlinthLip(box, false)

@@ -1376,6 +1376,15 @@ function Vitals.Layout(force)
 	local hpX, hpY, hpH = at(g.HP_X), at(g.HP_Y), px(g.HP_H)
 	local numX = right - numW
 	local hpW = numX - px(g.NUM_GAP) - hpX
+	-- (kit-b gate U9 round 3) one grid for the two rows: the widest width up to hpW that both rows fill with whole-px
+	-- blocks and whole-px gaps, so the HP and the stamina blocks end on one column at every scale
+	local gapPx, nH, nS = Vitals.Px(VG.BLOCK_GAP, k), #UI.HpBar.Blocks, #UI.StBar.Blocks
+	for t = hpW, math.max(1, hpW - nH * nS), -1 do
+		if (t - (nH - 1) * gapPx) % nH == 0 and (t - (nS - 1) * gapPx) % nS == 0 then
+			hpW = t
+			break
+		end
+	end
 	UI.HpBar.Root.Position = UDim2.fromOffset(hpX / k, hpY / k)
 	UI.HpBar.Root.Size = UDim2.fromOffset(hpW / k, hpH / k)
 	UI.HpBar.Layout(hpW, hpH, k)
@@ -1387,8 +1396,10 @@ function Vitals.Layout(force)
 	UI.HpNum.TextXAlignment = S.downed and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
 	UI.HpNum.TextSize = g.HP_TEXT
 	-- the stamina row
+	-- (kit-b gate U9 round 3: the stamina blocks ran 60-90 px past the HP blocks, two block languages on one plate) one
+	-- grid: the stamina row ends on the HP blocks' column; the number and the dash key share the column right of it
 	local stX, stY, stH = at(g.ST_X), at(g.ST_Y), px(g.ST_H)
-	local stW = keyX - px(g.KEY_GAP) - stX
+	local stW = math.min(keyX - px(g.KEY_GAP), hpX + hpW) - stX
 	UI.StBar.Root.Position = UDim2.fromOffset(stX / k, stY / k)
 	UI.StBar.Root.Size = UDim2.fromOffset(stW / k, stH / k)
 	UI.StBar.Layout(stW, stH, k)
