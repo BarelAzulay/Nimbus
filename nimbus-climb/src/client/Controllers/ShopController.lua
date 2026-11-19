@@ -801,7 +801,9 @@ function H.syncTabIcon(tab, px)
 		t.Icon:Destroy()
 	end
 	t.Icon = NeonKit.Icon(t.Button, tab, px)
-	t.Icon.TextColor3 = SIGN.Text -- (kit-b U9-2) brown on the stone / gold tab
+	if t.Icon:IsA("TextLabel") then -- an asset-id icon is an ImageLabel (no TextColor3: the write would throw)
+		t.Icon.TextColor3 = SIGN.Text -- (kit-b U9-2) brown on the stone / gold tab
+	end
 	t.IconImage = want
 	t.IconPx = px
 end
@@ -1427,7 +1429,7 @@ function H.selectTab(tab)
 		-- (kit-b U9-2) a stone tab block, the selected one gold (one colour by role); brown ink and icon on both
 		CloudUI.SignBlock(t.Button, on and "Selected" or "Stone", { Pad = false })
 		t.Label.TextColor3 = SIGN.Text
-		if t.Icon then
+		if t.Icon and t.Icon:IsA("TextLabel") then
 			t.Icon.TextColor3 = SIGN.Text
 		end
 	end
