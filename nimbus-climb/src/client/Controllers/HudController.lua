@@ -143,8 +143,12 @@ local K = {
 	CHIP_W = 76, -- ... the "+n" match chip on it ...
 	COIN_COMPACT = 42, -- ... and the coin of a compact pill
 
-	PANEL_W = 330, -- match + party panels
-	PANEL_MIN_W = 272, -- ... squeezed this far on short screens (keeps their text out of the screen middle)
+	-- (kit-b U9-8 A, the owner's pick "Stone signboard") the match + party cards: the pitch's 540 where the screen has the
+	-- room (20-character names whole, two to a row) ...
+	PANEL_W = 540,
+	-- ... squeezed this far on short screens (keeps their text out of the screen middle) and on a portrait screen: the
+	-- pitch's phone card, the narrowest where SAINT, its five stars and Leave share the top row (a name cuts to ~12 letters)
+	PANEL_MIN_W = 372,
 	CENTRE_TOL = 0.145, -- the screen middle: |dx| < 14.5% of the width and |dy| < 14.5% of the height
 	TITLE_W = 300,
 	TITLE_H = 78,
@@ -210,11 +214,7 @@ local VG = {
 local Colors = Theme.Colors
 local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
-local MUTED = Colors.Muted or Colors.CloudShade
-local GOLD = Colors.Gold or Colors.Token
 local INK = Colors.TextStroke or Colors.Ink
--- v5 (Phase 5, contract 6.6): the Neon kit's colours (dark navy cards, neon borders in their own colour)
-local NEON = Theme.Neon
 -- VS: the vitals card's colours
 local VS = {
 	PanelTop = Colors.PanelTop or Colors.PanelLight, -- v5: the Neon card fill (top -> bottom) and its darkest ink
@@ -917,6 +917,11 @@ local function applyMargins(animate, force)
 			panelW = math.floor(Util.Clamp((band.x0 - topLeft - 4) / k, K.PANEL_MIN_W, K.PANEL_W))
 		end
 	end
+	-- (kit-b U9-8 A) a portrait screen takes the narrow card (the pitch's phone card), and no card runs off the screen
+	if vp.X < vp.Y then
+		panelW = math.min(panelW, K.PANEL_MIN_W)
+	end
+	panelW = math.max(1, math.min(panelW, math.floor((area.X - topLeft - side) / k)))
 	if setPanelWidth then
 		setPanelWidth(panelW)
 	end
@@ -1099,39 +1104,47 @@ local function relayout()
 	applyMargins(false, true)
 end
 
--- Layout numbers of the match / party panels (design px, 1080p). Text is 18+ everywhere, so it stays
--- >= 14 px on a phone; touch devices get a taller Leave button (it then owns the top-right corner of the
--- match panel and the token line drops under it, at the full right edge: squeezed inset left of the button,
--- it ran into the timer / countdown numeral on landscape phones).
+-- Layout numbers of the match / party panels (design px, 1080p). (kit-b U9-8 A, the owner's pick "Stone signboard":
+-- .superpowers/slop-audit/round3/build/U9-8/pitch_match_party.py, its numbers) a stone card in the vitals card's tier (a
+-- 3 px wood edge, a 5 px lip), 10 px inside the edge, the rows 6 px apart and 8 px above the lip; the small blocks (the
+-- level badge, the chips, the tokens tile, Leave, Change) a 2 px wood edge on a 4 px lip. A block's size here is its whole
+-- visible box, the wood included. Text is 18+ everywhere, so it stays >= 14 px on a phone; touch devices get a taller
+-- Leave (a thumb target) and the party's big one (a locked portal's only way out; >= 44 px on a 0.8 phone)
 local function panelMetrics(touch)
 	local m = {
-		LeaveW = 88, LeaveH = 32, LeaveText = 20,
-		TitleH = 32, TitleText = 28,
-		TimerY = 52, TimerH = 38, TimerText = 34, CountText = 42,
-		TokensText = 22, TokensY = 52, TokensH = 38, -- the token line (centre y) shares the timer row
-		CpY = 76, CpH = 24, CpText = 18,
-		ChipH = 30, RowPitch = 34, NameText = 18, StateText = 18,
-		-- party panel (a locked portal: Leave is the only way out, so it is big and sits beside the title),
-		-- then the countdown row, the member chips and a "Locked until launch" line with the head count
-		PartyLeaveW = 116, PartyLeaveNarrowW = 100, PartyLeaveH = 46, PartyLeaveText = 24, -- narrow: squeezed panels
-		PartyStatusH = 30, PartyStatusText = 22, PartyHintH = 24, PartyHintText = 18, PartyCountW = 58,
-		-- v5 (6.3): the bottom row of an obby party is the level row "Hard ★★★" + the leader's CHANGE chip
-		PartyLevelText = 21, ChangeW = 96, ChangeH = 28, ChangeText = 18, -- the chip reaches 4 px into the gap above
+		Edge = 3, Lip = 5, Pad = 10, Below = 8, -- the card
+		BlockEdge = 2, BlockLip = 4, -- a small block
+		Badge = 34, BadgeText = 20, NameGap = 8, NameText = 22, -- the level badge, then the name and its stars in ink
+		RowGap = 6,
+		-- the match card. Row A: the badge, the level, Leave. Row B: the clock, (wide) the checkpoints, the tokens tile.
+		-- (narrow) row C: the checkpoints. Then the members, 8 px under the rows
+		LeaveW = 84, LeaveH = 34, LeaveText = 18,
+		TimerH = 34, TimerText = 32, CountText = 42,
+		TokensH = 34, TokensText = 20, TokensPad = 10,
+		CpX = 96, CpH = 22, CpText = 18, CpBlockW = 26, CpBlockGap = 4, CpBlockLip = 3,
+		TeamGap = 8, ChipH = 48, ChipGap = 6, ChipText = 18, StateText = 18, HpH = 10,
+		Wide = 480, -- a card this wide or wider puts the checkpoints in row B (the pitch's 1920 card)
+		-- the party card. Row A: the obby's gold icon square, the title, the big red Leave. Row B: the countdown after the
+		-- clock, the head count after the people. The members. Row D: the level badge, its name and stars, the leader's
+		-- Change (a sky plank); an older portal's party: the lock hint
+		IconText = 18, TitleText = 24,
+		PartyLeaveW = 116, PartyLeaveH = 46, PartyLeaveText = 24,
+		StatusH = 26, StatusText = 20, CountW = 80, PartyChipH = 36,
+		LevelRowH = 34, HintText = 18, ChangeW = 96, ChangeH = 34, ChangeText = 18,
 	}
 	if touch then
-		m.LeaveW, m.LeaveH = 92, 40
-		-- right under the Leave button (y 41-69): clear of it, of the checkpoint bar (76+) and of the timer text
-		m.TokensY, m.TokensH = m.LeaveH + 15, 28
+		m.LeaveW, m.LeaveH, m.LeaveText = 92, 40, 20 -- (>= 30 px tall on a 0.8 phone)
 		m.PartyLeaveH, m.PartyLeaveText = 56, 26 -- a fat thumb target (>= 44 px on screen at the 0.8 phone scale)
 	end
-	m.TeamY = m.CpY + m.CpH + 8
-	m.PartyTeamY = m.PartyLeaveH + 6 + m.PartyStatusH + 6
-	-- panel = content inset top (cloud bumps) + bottom pad + the inner frame's 6 px top / bottom margins
-	local insetTop, _, insetBottom = CloudUI.ContentInset(false, true)
-	m.Frame = insetTop + insetBottom + 12
-	m.MatchBaseH = m.Frame + m.TeamY - (m.RowPitch - m.ChipH) -- + RowPitch per chip row
-	m.PartyBaseH = m.Frame + m.PartyTeamY - (m.RowPitch - m.ChipH) + 6 + m.PartyHintH -- + RowPitch per chip row
-	m.TopReserve = math.max(m.MatchBaseH, m.PartyBaseH) + 2 * m.RowPitch -- the tallest top-left panel (4 players)
+	-- (a CloudUI plank's size is its frame, the frame the tests measure; its wood edge draws outside it)
+	m.Inset = m.Edge + m.Pad -- the rows' frame inside the card ...
+	m.Bottom = m.Below + m.Lip + m.Edge -- ... and what the card keeps under them
+	m.RowA = math.max(m.Badge, m.LeaveH + 2 * m.BlockEdge)
+	m.TimerY = m.RowA + m.RowGap
+	m.PartyRowA = math.max(m.Badge, m.PartyLeaveH + 2 * m.BlockEdge)
+	m.StatusY = m.PartyRowA + m.RowGap
+	m.PlayersY = m.StatusY + m.StatusH + m.RowGap
+	m.LevelRowH = math.max(m.LevelRowH, m.ChangeH + 2 * m.BlockEdge)
 	return m
 end
 
@@ -1855,62 +1868,302 @@ local function buildCurrency(holder)
 end
 
 ----------------------------------------------------------------------
--- Build: team / party chips (shared by the match and party panels)
+-- Build: the match / party cards' parts (kit-b U9-8 A, the owner's pick "Stone signboard")
 ----------------------------------------------------------------------
--- A small name plate: name, optional state glyph, optional mini health bar.
-local function newChip(parent, index, withHealth)
-	local frame = newFrame(parent, "Chip" .. tostring(index), {
-		BackgroundTransparency = 0.1,
-		BackgroundColor3 = VS.PanelInk,
-		Size = UDim2.fromOffset(120, M.ChipH),
-		LayoutOrder = index,
-		Visible = false,
-	})
-	Theme.Corner(frame, "M")
-	local stroke = Theme.Stroke(frame, Theme.Darken(NEON.Grey, 0.3), 2, 0.1)
-	local name = newText(frame, "Name", "", "Body", M.NameText, WHITE, {
-		Position = UDim2.new(0, 8, 0, withHealth and -2 or 0),
-		-- party chips (no health) never show a state glyph: their names get that room too
-		Size = UDim2.new(1, withHealth and -34 or -16, 1, withHealth and -4 or 0),
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	local state = newText(frame, "State", "", "Heading", M.StateText, WHITE, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -6, 0, withHealth and -2 or 0),
-		Size = UDim2.new(0, 24, 1, withHealth and -4 or 0),
-		TextXAlignment = Enum.TextXAlignment.Right,
-	})
-	local fill = nil
-	if withHealth then
-		local track_ = newFrame(frame, "HpTrack", {
-			Position = UDim2.new(0, 8, 1, -8),
-			Size = UDim2.new(1, -16, 0, 5),
-			BackgroundTransparency = 0.1,
-			BackgroundColor3 = Colors.Panel,
-		})
-		round(track_)
-		fill = newFrame(track_, "Fill", {
-			Size = UDim2.fromScale(1, 1),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Colors.Health,
-		})
-		round(fill)
-	end
-	return { Frame = frame, Stroke = stroke, Name = name, State = state, Fill = fill }
+-- PK: the cards' kit B parts and their layout (one table keeps the chunk's locals down). A small block is a Frame painted
+-- by CloudUI.SignBlock (face, a mitred wood edge drawn outside it, a lip along its bottom; whole screen px): PK.Place puts
+-- its visible box, the edge included, at x, y, w, h (the pitch's numbers)
+local PK = {}
+local SIGN = Theme.Sign
+
+function PK.Paint(f, face, lip, edge, ink)
+	CloudUI.SignBlock(f, { Face = face, Lip = lip, Edge = edge, Text = ink or SIGN.Text }, { EdgePx = M.BlockEdge, LipPx = M.BlockLip, Pad = false })
 end
 
--- Lays out `count` chips in a grid of two columns inside a holder `width` wide. Returns the row count.
-local function layoutChips(chips, count, width)
+function PK.Block(parent, name, face, lip, edge)
+	local f = newFrame(parent, name, { BackgroundTransparency = 0, BackgroundColor3 = face })
+	PK.Paint(f, face, lip, edge)
+	return f
+end
+
+-- (the edge as drawn: whole screen px under the card's scale)
+function PK.EdgeW()
+	return SignKit.Px(M.BlockEdge, currentScale())
+end
+
+function PK.Place(f, x, y, w, h)
+	local e = PK.EdgeW()
+	f.Position = UDim2.fromOffset(x + e, y + e)
+	f.Size = UDim2.fromOffset(math.max(1, w - 2 * e), math.max(1, h - 2 * e))
+end
+
+-- the card: the wood frame, the stone body inset by the edge with its StoneLip lip (SignKit Frame + Body: whole screen
+-- px), the rows' frame (Content.Inner) over it. Returns { Root, Content, Inner }. Its screen-factor UIScale comes first, so
+-- every edge and lip under it is fitted to whole px from the start
+function PK.Card(holder, name)
+	local root = newFrame(holder, name, { Size = UDim2.fromOffset(S.panelW, 200) })
+	addViewportScale(root)
+	local wood = SignKit.Frame(root, {})
+	wood.Active = false -- the HUD never swallows camera drags
+	SignKit.Body(wood, { Inset = M.Edge, Lip = M.Lip })
+	local content = newFrame(root, "Content", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
+	local inner = newFrame(content, "Inner", {
+		Position = UDim2.fromOffset(M.Inset, M.Inset),
+		Size = UDim2.new(1, -2 * M.Inset, 1, -(M.Inset + M.Bottom)),
+	})
+	return { Root = root, Content = content, Inner = inner }
+end
+
+-- a kit B plank (CloudUI's Sign skin: its .Text and its Callback stay the button's own) at the panels' 2 / 4 weight
+function PK.Plank(parent, name, text, style, w, h, size, callback)
+	local b = CloudUI.Button({
+		Name = name,
+		Text = text,
+		Style = style,
+		Skin = "Sign",
+		TextSize = size,
+		Size = UDim2.fromOffset(w, h),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Callback = callback,
+		Parent = parent,
+	})
+	b:SetAttribute("EdgePx", M.BlockEdge)
+	b:SetAttribute("LipPx", M.BlockLip)
+	return b
+end
+
+-- a level's colour as the picker paints its numbered tile: lightened until its ink reads 4.6:1 (ObbyController's H.readable)
+function PK.Readable(color)
+	for _ = 1, 6 do
+		if Theme.Contrast(Theme.TextOn(color), color) >= 4.6 then
+			break
+		end
+		color = Theme.Lighten(color, 0.08)
+	end
+	return color
+end
+
+-- a level's number: its place in the Sky Obby's list (the picker's tiles), else in Config.Difficulties
+function PK.LevelNumber(id)
+	local mod = Shared:FindFirstChild("ObbyLevels")
+	if mod then
+		local ok, OL = pcall(require, mod)
+		if ok and type(OL) == "table" and type(OL.IndexOf) == "function" then
+			local okI, i = pcall(OL.IndexOf, id)
+			if okI and type(i) == "number" then
+				return i
+			end
+		end
+	end
+	for i, d in ipairs(Config.Difficulties or {}) do
+		if d.Id == id then
+			return i
+		end
+	end
+	return nil
+end
+
+-- the one level badge (the picker's numbered square in the level's colour, a 2 px wood edge, its lip)
+function PK.Badge(parent)
+	local b = PK.Block(parent, "Badge", SIGN.Sky, SIGN.SkyLip, SIGN.Wood)
+	newText(b, "Num", "", "Title", M.BadgeText, SIGN.Text, {
+		Size = UDim2.new(1, 0, 1, -M.BlockLip),
+		TextXAlignment = Enum.TextXAlignment.Center,
+	})
+	return b
+end
+
+function PK.PaintBadge(b, number, color)
+	local face = PK.Readable(typeof(color) == "Color3" and color or SIGN.Sky)
+	local ink = Theme.TextOn(face)
+	PK.Paint(b, face, Theme.Darken(face, 0.22), SIGN.Wood, ink)
+	b.Num.Text = number and tostring(number) or "?"
+	b.Num.TextColor3 = ink
+end
+
+-- the level's name in ink with its gold-lip stars after it (PixelIcon.Lead, the room kept inside the label)
+function PK.Stars(label, n)
+	n = math.max(0, math.min(5, math.floor(tonumber(n) or 0)))
+	if label:GetAttribute("Stars") == n then
+		return
+	end
+	label:SetAttribute("Stars", n)
+	local old = label:FindFirstChild("TrailIcon")
+	if old then
+		old:Destroy()
+	end
+	if n > 0 then
+		PixelIcon.Lead(label, "star", { After = true, Count = n, Px = K.STAR_PX, Gap = M.NameGap, Room = true, Colour = SIGN.GoldLip })
+	end
+end
+
+-- the design px the stars take after a name's text: their drawn box (a phone's 0.8 keeps 2 px cells, so an 18 px star
+-- takes 22.5 design px there) and the gap
+function PK.StarsW(label)
+	local trail = label:FindFirstChild("TrailIcon")
+	return trail and (trail.Size.X.Offset + M.NameGap) or 0
+end
+
+-- the level's name at the largest of 22 / 20 / 18 px that fits beside its stars in `room` design px (it cuts with "..."
+-- below that)
+function PK.FitName(label, room)
+	-- (the engine's laid-out width over the measure at the current size: a face that runs wider than Theme.Measure says
+	-- is fitted by what it draws)
+	local m0 = PK.TextW(label.Text, "Heading", label.TextSize)
+	local factor = (m0 > 0) and math.max(1, PK.LabelW(label, "Heading") / m0) or 1
+	local size = M.NameText
+	for _, s in ipairs({ M.NameText, 20, 18 }) do
+		size = s
+		if PK.TextW(label.Text, "Heading", s) * factor + 4 <= room - PK.StarsW(label) then
+			break
+		end
+	end
+	if label.TextSize ~= size then
+		label.TextSize = size
+		-- the stars placed anew after the smaller name (not where the cut one ended)
+		local n = label:GetAttribute("Stars")
+		label:SetAttribute("Stars", nil)
+		PK.Stars(label, n or 0)
+	end
+end
+
+-- the match card's name room: between the badge and Leave (design px)
+function PK.MatchNameW()
+	return (S.panelW - 2 * M.Inset) - (M.Badge + M.NameGap + M.LeaveW + 2 * PK.EdgeW() + 8) -- (innerWidth is declared below)
+end
+
+-- the countdown's pop (1.12x from its left edge) stops short of the head count: the status box is that much narrower
+PK.STATUS_POP = 1.12
+function PK.StatusW()
+	return math.floor(((S.panelW - 2 * M.Inset) - (M.CountW + 8)) / PK.STATUS_POP)
+end
+
+-- the party card's level room: between the badge and Change (the leader's) or the card's edge
+function PK.LevelRoom()
+	return (S.panelW - 2 * M.Inset) - (M.Badge + M.NameGap) - (Pt.Leader and (M.ChangeW + 2 * PK.EdgeW() + 8) or 0)
+end
+
+-- a level name re-fits once the engine has laid it out (its TextBounds): the stars stay after the whole name
+function PK.RefitOnLayout(label, room)
+	local last = nil
+	track(label:GetPropertyChangedSignal("TextBounds"):Connect(function()
+		local w = label.TextBounds.X
+		if w ~= last then
+			last = w
+			guard("level name fit", function()
+				PK.FitName(label, room())
+			end)
+		end
+	end))
+end
+
+function PK.Wide()
+	return S.panelW >= M.Wide
+end
+
+function PK.TextW(text, role, size)
+	local ok, m = pcall(Theme.Measure, tostring(text or ""), role, size)
+	return (ok and typeof(m) == "Vector2") and math.ceil(m.X) or math.ceil(#tostring(text or "") * size * 0.6)
+end
+
+-- a label's text width in its own design px: the wider of Theme.Measure and what the engine laid out (TextBounds: screen
+-- px under every UIScale above it, a pop included), so a box sized from it never cuts the text
+function PK.LabelW(label, role)
+	local w = PK.TextW(label.Text, role, label.TextSize)
+	local s, cur = 1, label
+	while cur and not cur:IsA("LayerCollector") do
+		for _, c in ipairs(cur:GetChildren()) do
+			if c:IsA("UIScale") and c.Scale > 0 then
+				s = s * c.Scale
+			end
+		end
+		cur = cur.Parent
+	end
+	local b = label.TextBounds.X
+	if b > 0 and s > 0 then
+		w = math.max(w, math.ceil(b / s))
+	end
+	return w
+end
+
+----------------------------------------------------------------------
+-- Build: team / party chips (shared by the match and party panels)
+----------------------------------------------------------------------
+-- A member's chip (a small stone block, 2 px wood edge, 4 px lip): the name in ink, cut with "..." where it is long; in a
+-- match a state mark (a pixel tick when finished, a pixel x when fallen) and the health: a one-block bar (a well in its
+-- wood edge, the red lit part on its RedLip lip, whole px: Vitals.NewBlocks). PK.PaintChip gives it its look: my own chip
+-- gold, a fallen one faded (the well, muted ink)
+local function newChip(parent, index, withHealth)
+	local frame = PK.Block(parent, "Chip" .. tostring(index), SIGN.Tile, SIGN.StoneLip, SIGN.Wood)
+	frame.LayoutOrder = index
+	frame.Visible = false
+	local name = newText(frame, "Name", "", "Heading", M.ChipText, SIGN.Text, {
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	})
+	local state = newText(frame, "State", "", "Heading", M.StateText, SIGN.RedLip, {
+		AnchorPoint = Vector2.new(1, 0),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Visible = withHealth == true,
+	})
+	local hp = nil
+	if withHealth then
+		hp = Vitals.NewBlocks(frame, "Health", { Count = 1, Face = SIGN.Red, Lip = SIGN.RedLip })
+	end
+	return { Frame = frame, Name = name, State = state, Hp = hp, Health = withHealth == true, Frac = 1 }
+end
+
+function PK.PaintChip(chip, isMe, down)
+	local face, lip, edge = SIGN.Tile, SIGN.StoneLip, SIGN.Wood
+	if down then
+		face, lip, edge = SIGN.Well, SIGN.Well, SIGN.WellEdge
+	elseif isMe then
+		face, lip = SIGN.Gold, SIGN.GoldLip
+	end
+	local key = tostring(isMe) .. tostring(down)
+	if chip.Look ~= key then
+		chip.Look = key
+		PK.Paint(chip.Frame, face, lip, edge)
+	end
+	chip.Name.TextColor3 = down and SIGN.TextMuted or SIGN.Text
+end
+
+-- the parts inside a chip w x h design px (its visible box), on whole screen px under the panel's scale
+function PK.LayChip(chip, w, h)
+	local e, lip = PK.EdgeW(), M.BlockLip
+	local fw, fh = w - 2 * e, h - 2 * e -- the frame's own px (the wood is drawn outside it)
+	-- (the name gets the mark's room too while there is no mark)
+	local mark = (chip.Health and chip.State:GetAttribute("PixelIcon") ~= nil) and (M.StateText + 8) or 0
+	if chip.Health then
+		chip.Name.Position = UDim2.fromOffset(8, 0)
+		chip.Name.Size = UDim2.new(1, -(16 + mark), 0, 26)
+		chip.State.Position = UDim2.new(1, -6, 0, 0)
+		chip.State.Size = UDim2.fromOffset(M.StateText + 4, 26)
+		local k = currentScale()
+		local tw = fw - 12
+		chip.Hp.Root.Position = UDim2.fromOffset(6, 26)
+		chip.Hp.Root.Size = UDim2.fromOffset(tw, M.HpH)
+		chip.Hp.Layout(Vitals.Px(tw, k), Vitals.Px(M.HpH, k), k)
+		chip.Hp.SetFraction(chip.Frac or 0)
+	else
+		chip.Name.Position = UDim2.fromOffset(8, 0)
+		chip.Name.Size = UDim2.new(1, -16, 1, -lip)
+	end
+	chip.Frame.Size = UDim2.fromOffset(fw, fh)
+end
+
+-- Lays out `count` chips two to a row (one when alone) inside a holder `width` wide, `h` tall each, 6 px apart. Returns
+-- the row count.
+local function layoutChips(chips, count, width, h)
 	local cols = (count >= 2) and 2 or 1
-	local gap = 6
+	local gap = M.ChipGap
 	local cellW = math.floor((width - gap * (cols - 1)) / cols)
 	local rows = math.max(1, math.ceil(count / cols))
 	for i, chip in ipairs(chips) do
 		if i <= count then
 			local col = (i - 1) % cols
 			local row = math.floor((i - 1) / cols)
-			chip.Frame.Position = UDim2.fromOffset(col * (cellW + gap), row * M.RowPitch)
-			chip.Frame.Size = UDim2.fromOffset(cellW, M.ChipH)
+			PK.Place(chip.Frame, col * (cellW + gap), row * (h + gap), cellW, h)
+			PK.LayChip(chip, cellW, h)
 			chip.Frame.Visible = true
 		else
 			chip.Frame.Visible = false
@@ -1919,183 +2172,261 @@ local function layoutChips(chips, count, width)
 	return rows
 end
 
--- inner width of the match / party panels (panel - frame pads - inner margins)
+-- inner width of the match / party panels (the card less its edge and padding on both sides)
 local function innerWidth()
-	return S.panelW - 2 * CloudUI.Metrics.Pad - 20
+	return S.panelW - 2 * M.Inset
 end
 
 ----------------------------------------------------------------------
 -- Build: match panel (top-left)
 ----------------------------------------------------------------------
 local function buildMatch(holder)
-	local panel = CloudUI.Panel({
-		Name = "MatchPanel",
-		Size = UDim2.fromOffset(S.panelW, M.MatchBaseH + M.RowPitch),
-		Accent = Colors.Stamina,
-		Parent = holder,
-	})
-	panel.Body.Active = false -- the HUD never swallows camera drags
-	addViewportScale(panel.Root)
+	local panel = PK.Card(holder, "MatchPanel")
 	UI.Match = panel
 	Items.Match = newItem(panel.Root, UDim2.new(-1.5, 0, 0, 0))
-
-	local inner = newFrame(panel.Content, "Inner", {
-		Position = UDim2.new(0, 10, 0, 6),
-		Size = UDim2.new(1, -20, 1, -12),
-	})
+	local inner = panel.Inner
 	UI.MatchInner = inner
 
-	-- row A: difficulty (+ stars) and the Leave button
-	UI.MatchTitle = newText(inner, "Difficulty", "", "Title", M.TitleText, WHITE, {
-		Size = UDim2.new(1, -(M.LeaveW + 8), 0, M.TitleH),
-		RichText = true,
+	-- row A: the level badge, the level's name and stars, Leave
+	UI.MatchBadge = PK.Badge(inner)
+	UI.MatchTitle = newText(inner, "Difficulty", "", "Heading", M.NameText, SIGN.Text, {
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	UI.LeaveBtn = CloudUI.Button({
-		Name = "LeaveMatch",
-		Text = "Leave",
-		Style = "Pink",
-		TextSize = M.LeaveText,
-		Size = UDim2.fromOffset(M.LeaveW, M.LeaveH),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -M.LeaveW / 2, 0, M.LeaveH / 2),
-		Callback = function(button)
-			HudController._onLeaveMatch(button)
-		end,
-		Parent = inner,
-	})
+	PK.RefitOnLayout(UI.MatchTitle, PK.MatchNameW)
+	UI.LeaveBtn = PK.Plank(inner, "LeaveMatch", "Leave", "Pink", M.LeaveW, M.LeaveH, M.LeaveText, function(button)
+		HudController._onLeaveMatch(button)
+	end)
 
-	-- row B: timer / countdown numerals (left), token progress (right)
-	UI.Timer = newText(inner, "Timer", "0:00", "Display", M.TimerText, WHITE, {
+	-- row B: the clock / countdown numerals (left), the run's tokens on a stone tile (right)
+	UI.Timer = newText(inner, "Timer", "0:00", "Display", M.TimerText, SIGN.Text, {
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 0, 0, M.TimerY),
-		Size = UDim2.new(0.5, 0, 0, M.TimerH),
 	})
 	UI.TimerScale = newScale(UI.Timer, 1)
-	UI.MatchTokens = newText(inner, "Tokens", "", "Toast", M.TokensText, Colors.TokenGlow, {
+	UI.TimerScale.Name = "Pop" -- (a pop, not a layout scale)
+	UI.MatchTokens = newText(inner, "Tokens", "", "Display", M.TokensText, SIGN.Text, {
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0, M.TokensY),
-		Size = UDim2.new(0.55, 0, 0, M.TokensH),
-		TextXAlignment = Enum.TextXAlignment.Right,
 	})
-	UI.MatchTokensIcon = PixelIcon.Lead(UI.MatchTokens, Theme.Currency.Tokens.Icon) -- (kit-b U7a) the coin before the count
+	CloudUI.SignBlock(UI.MatchTokens, { Face = SIGN.Tile, Lip = SIGN.StoneLip, Edge = SIGN.Wood, Text = SIGN.Text }, { EdgePx = M.BlockEdge, LipPx = M.BlockLip })
+	local pad = UI.MatchTokens:FindFirstChild("LipPad")
+	if pad then
+		pad.PaddingLeft = UDim.new(0, M.TokensPad - M.BlockEdge)
+		pad.PaddingRight = UDim.new(0, M.TokensPad - M.BlockEdge)
+	end
 	UI.TokensScale = newScale(UI.MatchTokens, 1)
+	UI.TokensScale.Name = "Pop"
+	PixelIcon.Mark(UI.MatchTokens, Theme.Currency.Tokens.Icon, { Colour = SIGN.GoldLip }) -- (kit-b U7a) the coin before the count
 
-	-- checkpoint progress
-	UI.CpBar = CloudUI.Bar({
-		Name = "CheckpointBar",
-		Height = M.CpH,
-		TextSize = M.CpText,
-		Color = Colors.Stamina,
-		Label = "Checkpoint 0/0",
-		Position = UDim2.fromOffset(0, M.CpY),
-		Size = UDim2.new(1, 0, 0, M.CpH),
-		Parent = inner,
-	})
+	-- the checkpoints: "Checkpoint 2/4" and a row of sky blocks (row B on a wide card, row C on a narrow one)
+	UI.CpBar = newFrame(inner, "CheckpointBar", {})
+	UI.CpLabel = newText(UI.CpBar, "Label", "Checkpoint 0/0", "Heading", M.CpText, SIGN.TextMuted, {})
 
-	-- team chips
-	UI.Team = newFrame(inner, "Team", {
-		Position = UDim2.fromOffset(0, M.TeamY),
-		Size = UDim2.new(1, 0, 1, -M.TeamY),
-	})
+	-- the members
+	UI.Team = newFrame(inner, "Team", {})
+	-- a face that finishes loading lays its text out anew: the tile and the blocks follow it
+	local lastTile, lastCp = -1, -1
+	track(UI.MatchTokens:GetPropertyChangedSignal("TextBounds"):Connect(function()
+		local w = PK.LabelW(UI.MatchTokens, "Display")
+		if w ~= lastTile then
+			lastTile = w
+			guard("match layout", PK.LayoutMatch)
+		end
+	end))
+	track(UI.CpLabel:GetPropertyChangedSignal("TextBounds"):Connect(function()
+		local w = PK.LabelW(UI.CpLabel, "Heading")
+		if w ~= lastCp then
+			lastCp = w
+			guard("checkpoints", PK.LayCheckpoints)
+		end
+	end))
+end
+
+-- the checkpoints' blocks: `total` sky blocks, `cp` of them lit, the widest that fit `room` design px (26 at most)
+function PK.SetCheckpoints(cp, total)
+	UI.CpLabel.Text = string.format("Checkpoint %d/%d", cp, total)
+	Mt.Cp, Mt.CpTotal = cp, total
+	PK.LayCheckpoints()
+end
+
+function PK.LayCheckpoints()
+	local bar = UI.CpBar
+	local total = Mt.CpTotal or 4
+	local labelW = PK.LabelW(UI.CpLabel, "Heading") + 2
+	local room = bar.Size.X.Offset > 0 and bar.Size.X.Offset or (innerWidth() - labelW - 10)
+	local wide = PK.Wide()
+	local avail = math.max(10, (wide and (room - labelW - 10) or (room - labelW - 10)))
+	local bw = math.max(10, math.min(M.CpBlockW, math.floor((avail - (total - 1) * M.CpBlockGap) / total)))
+	local row = bar:FindFirstChild("BlockRow")
+	if not row or row:GetAttribute("Count") ~= total or row:GetAttribute("BlockW") ~= bw then
+		if row then
+			row:Destroy()
+		end
+		row = SignKit.BlockRow(bar, {
+			Count = total, BlockW = bw, BlockH = M.CpH, Gap = M.CpBlockGap, EdgePx = M.BlockEdge, LipPx = M.CpBlockLip,
+			Fill = SIGN.Sky, FillLip = SIGN.SkyLip,
+		})
+		row:SetAttribute("BlockW", bw)
+	end
+	UI.CpLabel.AnchorPoint = Vector2.new(0, 0.5)
+	UI.CpLabel.Position = UDim2.new(0, 0, 0.5, 0)
+	UI.CpLabel.Size = UDim2.new(0, labelW, 1, 0)
+	if wide then
+		row.AnchorPoint = Vector2.new(0, 0.5)
+		row.Position = UDim2.new(0, labelW + 10, 0.5, 0)
+	else
+		row.AnchorPoint = Vector2.new(1, 0.5)
+		row.Position = UDim2.new(1, 0, 0.5, 0)
+	end
+	SignKit.FillBlocks(row, Mt.Cp or 0)
+end
+
+-- the tokens tile as wide as its coin and text (the pitch: 10 px, the coin, 6 px, the count, 10 px)
+function PK.FitTokens()
+	local t = UI.MatchTokens
+	local pad = t:FindFirstChild("LipPad") or t:FindFirstChildOfClass("UIPadding")
+	local left = pad and pad.PaddingLeft.Offset or 0
+	local right = pad and pad.PaddingRight.Offset or 0
+	local w = math.ceil(left + PK.LabelW(t, "Display") + right)
+	local e = PK.EdgeW()
+	t.Size = UDim2.fromOffset(w, M.TokensH - 2 * e)
+	t.Position = UDim2.new(1, -e, 0, M.TimerY + M.TimerH / 2)
+	return w + 2 * e
+end
+
+-- the match card's rows for its width (wide: the checkpoints in row B) and member count; sizes the card
+function PK.LayoutMatch()
+	if not UI.Match then
+		return
+	end
+	local cw = innerWidth()
+	local wide = PK.Wide()
+	local e = PK.EdgeW()
+	-- row A
+	PK.Place(UI.MatchBadge, 0, math.floor((M.RowA - M.Badge) / 2), M.Badge, M.Badge)
+	local nameX = M.Badge + M.NameGap
+	UI.MatchTitle.Position = UDim2.fromOffset(nameX, 0)
+	UI.MatchTitle.Size = UDim2.new(1, -(nameX + M.LeaveW + 2 * e + 8), 0, M.RowA)
+	PK.FitName(UI.MatchTitle, PK.MatchNameW())
+	UI.LeaveBtn.Position = UDim2.new(1, -e, 0, M.RowA / 2)
+	-- row B
+	local tileW = PK.FitTokens()
+	UI.Timer.Position = UDim2.new(0, 0, 0, M.TimerY + M.TimerH / 2)
+	-- (centred on row B, as tall as the countdown's numeral: it overflowed the 34 px row's box)
+	UI.Timer.Size = UDim2.new(0, wide and (M.CpX - 8) or math.floor(cw / 2), 0, math.max(M.TimerH, M.CountText))
+	local teamY
+	if wide then
+		local x = math.max(M.CpX, Mt.TimerTextW and (Mt.TimerTextW + 12) or 0)
+		UI.CpBar.Position = UDim2.fromOffset(x, M.TimerY + math.floor((M.TimerH - M.CpH) / 2))
+		UI.CpBar.Size = UDim2.fromOffset(math.max(10, cw - tileW - 8 - x), M.CpH)
+		teamY = M.TimerY + M.TimerH + M.TeamGap
+	else
+		UI.CpBar.Position = UDim2.fromOffset(0, M.TimerY + M.TimerH + M.RowGap)
+		UI.CpBar.Size = UDim2.fromOffset(cw, M.CpH)
+		teamY = M.TimerY + M.TimerH + M.RowGap + M.CpH + M.TeamGap
+	end
+	PK.LayCheckpoints()
+	-- the members
+	local rows = layoutChips(Mt.Chips, Mt.Count, cw, M.ChipH)
+	Mt.Rows = rows
+	local teamH = rows * M.ChipH + (rows - 1) * M.ChipGap
+	UI.Team.Position = UDim2.fromOffset(0, teamY)
+	UI.Team.Size = UDim2.new(1, 0, 0, teamH)
+	UI.Match.Root.Size = UDim2.fromOffset(S.panelW, M.Inset + teamY + teamH + M.Bottom)
 end
 
 ----------------------------------------------------------------------
 -- Build: party panel (top-left, lobby only)
 ----------------------------------------------------------------------
 local function buildParty(holder)
-	local panel = CloudUI.Panel({
-		Name = "PartyPanel",
-		Size = UDim2.fromOffset(S.panelW, M.PartyBaseH + M.RowPitch),
-		Accent = Colors.Good,
-		Parent = holder,
-	})
-	panel.Body.Active = false
-	addViewportScale(panel.Root)
+	local panel = PK.Card(holder, "PartyPanel")
 	UI.Party = panel
 	Items.Party = newItem(panel.Root, UDim2.new(-1.5, 0, 0, 0))
-
-	local inner = newFrame(panel.Content, "Inner", {
-		Position = UDim2.new(0, 10, 0, 6),
-		Size = UDim2.new(1, -20, 1, -12),
-	})
+	local inner = panel.Inner
 	UI.PartyInner = inner
 
-	-- row A: the portal's name and the big red Leave button (the only way out of a locked portal)
-	UI.PartyTitle = Theme.StyleTitle(newText(inner, "Title", "Party", "Title", M.TitleText, WHITE, {
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 0, 0, M.PartyLeaveH / 2),
-		Size = UDim2.new(1, -(M.PartyLeaveW + 8), 0, M.TitleH),
-		RichText = true,
+	-- row A: the obby's gold icon square, the portal's name (the plain Section title: the ribbon is for window titles only)
+	-- and the big red Leave (the only way out of a locked portal)
+	UI.PartyIcon = PK.Block(inner, "Icon", SIGN.Gold, SIGN.GoldLip, SIGN.Wood)
+	UI.PartyIconArt = PixelIcon.New(UI.PartyIcon, "mountain", M.IconText, SIGN.Text)
+	UI.PartyTitle = Theme.StyleTitle(newText(inner, "Title", "Party", "Title", M.TitleText, SIGN.Text, {
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	}), "Section") -- (kit-b prep) a HUD panel, not a window: no ribbon
-	UI.PartyLeave = CloudUI.Button({
-		Name = "LeaveParty",
-		Text = "Leave",
-		Style = "Red",
-		TextSize = M.PartyLeaveText,
-		Size = UDim2.fromOffset(M.PartyLeaveW, M.PartyLeaveH),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -M.PartyLeaveW / 2, 0, M.PartyLeaveH / 2),
-		Callback = function()
-			-- one request per press (the server rate-limits too)
-			local now = os.clock()
-			if now >= Pt.LeaveLockUntil then
-				Pt.LeaveLockUntil = now + 0.8
-				fireRemote("LeaveParty")
-			end
-		end,
-		Parent = inner,
-	})
-	-- row B: the countdown, full width so "Full! Starting in 3s" fits on a phone too
-	UI.PartyStatus = newText(inner, "Status", "Waiting for players...", "Display", M.PartyStatusText, Colors.TokenGlow, {
-		Position = UDim2.fromOffset(0, M.PartyLeaveH + 6),
-		Size = UDim2.new(1, 0, 0, M.PartyStatusH),
+	UI.PartyLeave = PK.Plank(inner, "LeaveParty", "Leave", "Red", M.PartyLeaveW, M.PartyLeaveH, M.PartyLeaveText, function()
+		-- one request per press (the server rate-limits too)
+		local now = os.clock()
+		if now >= Pt.LeaveLockUntil then
+			Pt.LeaveLockUntil = now + 0.8
+			fireRemote("LeaveParty")
+		end
+	end)
+	-- row B: the countdown after the clock (so "Full! Starting in 3s" fits on a phone too), the head count after the people
+	UI.PartyStatus = newText(inner, "Status", "Waiting for players...", "Display", M.StatusText, SIGN.Text, {
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
 	UI.PartyStatusScale = newScale(UI.PartyStatus, 1)
-	-- row C: the members
-	UI.PartyTeam = newFrame(inner, "Players", {
-		Position = UDim2.fromOffset(0, M.PartyTeamY),
-		Size = UDim2.new(1, 0, 0, M.RowPitch),
-	})
-	-- row D: why the pad holds you (the walls) + the head count
-	UI.PartyHint = newText(inner, "Hint", "Locked until launch", "Label", M.PartyHintText, MUTED, {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, -(M.PartyCountW + 6), 0, M.PartyHintH),
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	UI.PartyCount = newText(inner, "Count", "0/4", "Heading", 21, WHITE, {
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, 0, 1, 0),
-		Size = UDim2.fromOffset(M.PartyCountW, M.PartyHintH),
+	UI.PartyStatusScale.Name = "Pop"
+	PixelIcon.Lead(UI.PartyStatus, "clock", { Px = K.STAR_PX, Gap = M.NameGap, Colour = SIGN.TextMuted })
+	UI.PartyCount = newText(inner, "Count", "0 / 4", "Display", M.StatusText, SIGN.Text, {
+		AnchorPoint = Vector2.new(1, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
-	-- row D of an obby party (v5, 6.3): the level and its stars in place of the hint; the party leader gets a
-	-- CHANGE chip in place of the head count (it opens the level picker)
-	UI.PartyLevel = newText(inner, "Level", "", "Heading", M.PartyLevelText, WHITE, {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, -(M.PartyCountW + 6), 0, M.PartyHintH),
-		RichText = true,
+	PixelIcon.Lead(UI.PartyCount, "people", { Px = K.STAR_PX, Gap = M.NameGap, Colour = SIGN.TextMuted })
+	-- the members
+	UI.PartyTeam = newFrame(inner, "Players", {})
+	-- row D: why the pad holds you (the walls) on an older portal's party ...
+	UI.PartyHint = newText(inner, "Hint", "Locked until launch", "Label", M.HintText, SIGN.TextMuted, {
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	})
+	-- ... and on the obby's (v5, 6.3): the level badge, the level and its stars; the party leader gets Change, a sky plank
+	-- (it opens the level picker)
+	UI.PartyBadge = PK.Badge(inner)
+	UI.PartyLevel = newText(inner, "Level", "", "Heading", M.NameText, SIGN.Text, {
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		Visible = false,
 	})
-	UI.PartyChange = CloudUI.Button({
-		Name = "ChangeLevel",
-		Text = "Change",
-		Style = "Blue",
-		TextSize = M.ChangeText,
-		Size = UDim2.fromOffset(M.ChangeW, M.ChangeH),
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, 0, 1, 0),
-		Callback = function()
-			HudController._onChangeLevel()
-		end,
-		Parent = inner,
-	})
+	UI.PartyChange = PK.Plank(inner, "ChangeLevel", "Change", "Sky", M.ChangeW, M.ChangeH, M.ChangeText, function()
+		HudController._onChangeLevel()
+	end)
 	UI.PartyChange.Visible = false
+	PK.RefitOnLayout(UI.PartyLevel, PK.LevelRoom)
+end
+
+-- the party card's rows for its width and member count; sizes the card
+function PK.LayoutParty()
+	if not UI.Party then
+		return
+	end
+	local cw = innerWidth()
+	local e = PK.EdgeW()
+	local k = currentScale()
+	-- row A
+	PK.Place(UI.PartyIcon, 0, math.floor((M.PartyRowA - M.Badge) / 2), M.Badge, M.Badge)
+	local face = M.Badge - 2 * e
+	UI.PartyIconArt.Position = Vitals.IconAt(UI.PartyIconArt, Vitals.Px(face, k), Vitals.Px(face - M.BlockLip, k), k)
+	local titleX = M.Badge + 10
+	UI.PartyTitle.Position = UDim2.fromOffset(titleX, 0)
+	UI.PartyTitle.Size = UDim2.new(1, -(titleX + M.PartyLeaveW + 2 * e + 8), 0, M.PartyRowA)
+	UI.PartyLeave.Position = UDim2.new(1, -e, 0, M.PartyRowA / 2)
+	-- row B
+	UI.PartyStatus.Position = UDim2.fromOffset(0, M.StatusY)
+	UI.PartyStatus.Size = UDim2.fromOffset(PK.StatusW(), M.StatusH)
+	UI.PartyCount.Position = UDim2.new(1, 0, 0, M.StatusY)
+	UI.PartyCount.Size = UDim2.fromOffset(M.CountW, M.StatusH)
+	-- the members
+	local rows = layoutChips(Pt.Chips, Pt.Count, cw, M.PartyChipH)
+	Pt.Rows = rows
+	local teamH = rows * M.PartyChipH + (rows - 1) * M.ChipGap
+	UI.PartyTeam.Position = UDim2.fromOffset(0, M.PlayersY)
+	UI.PartyTeam.Size = UDim2.new(1, 0, 0, teamH)
+	-- row D
+	local y = M.PlayersY + teamH + M.RowGap
+	PK.Place(UI.PartyBadge, 0, y + math.floor((M.LevelRowH - M.Badge) / 2), M.Badge, M.Badge)
+	local nameX = M.Badge + M.NameGap
+	UI.PartyLevel.Position = UDim2.fromOffset(nameX, y)
+	UI.PartyLevel.Size = UDim2.new(1, -(nameX + (Pt.Leader and (M.ChangeW + 2 * e + 8) or 0)), 0, M.LevelRowH)
+	UI.PartyChange.Position = UDim2.new(1, -e, 0, y + M.LevelRowH / 2)
+	UI.PartyHint.Position = UDim2.fromOffset(0, y)
+	UI.PartyHint.Size = UDim2.new(1, 0, 0, M.LevelRowH)
+	UI.Party.Root.Size = UDim2.fromOffset(S.panelW, M.Inset + y + M.LevelRowH + M.Bottom)
 end
 
 ----------------------------------------------------------------------
@@ -2620,47 +2951,42 @@ local function ensureChips(list, parent, count, withHealth)
 	end
 end
 
--- Short screens squeeze the match / party panels a little (applyMargins decides); the chips follow.
+-- Short screens squeeze the match / party panels (applyMargins decides); a new width or a new scale lays both cards out
+-- again (a wide card puts the checkpoints in its clock row; the chips' health bars sit on whole screen px)
 setPanelWidth = function(width)
-	if width == S.panelW then
+	local k = currentScale()
+	if width == S.panelW and k == S.panelK then
 		return
 	end
-	S.panelW = width
-	for _, panel in ipairs({ UI.Match, UI.Party }) do
-		if panel then
-			panel.Root.Size = UDim2.fromOffset(width, panel.Root.Size.Y.Offset)
-		end
-	end
-	layoutChips(Mt.Chips, Mt.Count, innerWidth())
-	layoutChips(Pt.Chips, Pt.Count, innerWidth())
+	S.panelW, S.panelK = width, k
+	PK.LayoutMatch()
+	PK.LayoutParty()
 end
 
-local function resizePanel(panel, base, rows)
-	local h = base + rows * M.RowPitch
-	panel.Root.Size = UDim2.fromOffset(S.panelW, h)
-	-- a taller panel may now reach the menu column (or a shorter one no longer does)
-	applyMargins(true)
+-- a card that grew or shrank (a row of chips more or less) may now reach the menu column (or no longer does)
+local function resizePanel(panel, layout)
+	local before = panel.Root.Size.Y.Offset
+	layout()
+	if panel.Root.Size.Y.Offset ~= before then
+		applyMargins(true)
+	end
 end
 
 local function updateTeam(members)
 	local count = math.min(#members, 4)
-	Mt.Count = count
 	ensureChips(Mt.Chips, UI.Team, count, true)
-	local rows = layoutChips(Mt.Chips, count, innerWidth())
-	if rows ~= Mt.Rows then
-		Mt.Rows = rows
-		resizePanel(UI.Match, M.MatchBaseH, rows)
-	end
 	local localId = player.UserId
 	for i = 1, count do
 		local m = type(members[i]) == "table" and members[i] or {}
 		local chip = Mt.Chips[i]
 		local isMe = (m.UserId == localId)
 		chip.Name.Text = tostring(m.Name or "?")
-		chip.Name.TextColor3 = isMe and Colors.TokenGlow or WHITE
-		local frac = Util.Clamp(tonumber(m.Health) or 0, 0, 1)
-		chip.Fill.Size = UDim2.fromScale(frac, 1)
-		chip.Fill.BackgroundColor3 = Theme.HealthColor(frac)
+		PK.PaintChip(chip, isMe, m.Downed == true)
+		chip.Frac = Util.Clamp(tonumber(m.Health) or 0, 0, 1)
+		if m.Downed then
+			chip.Frac = 0
+		end
+		chip.Hp.SetFraction(chip.Frac)
 		-- (kit-b U7a) the state is a PixelIcon on the empty State label: a tick when finished, an x when downed
 		local mark = m.Finished and "check" or (m.Downed and "x" or nil)
 		if chip.State:GetAttribute("PixelIcon") ~= mark then
@@ -2672,55 +2998,70 @@ local function updateTeam(members)
 			if mark then
 				PixelIcon.Host(chip.State, mark, chip.State.TextSize)
 			end
+			chip.Name.Size = UDim2.new(1, -(16 + (mark and (M.StateText + 8) or 0)), 0, 26) -- (PK.LayChip's rule)
 		end
 		chip.State.Text = ""
-		if m.Finished then
-			chip.State.TextColor3 = Colors.Good
-			chip.Stroke.Color = Colors.Good
-		elseif m.Downed then
-			chip.State.TextColor3 = Colors.Bad
-			chip.Stroke.Color = Colors.Bad
-		else
-			chip.Stroke.Color = isMe and NEON.Gold or Theme.Darken(NEON.Grey, 0.3)
-		end
+		chip.State.TextColor3 = m.Finished and SIGN.Good or SIGN.RedLip
+	end
+	if count ~= Mt.Count then
+		Mt.Count = count
+		resizePanel(UI.Match, PK.LayoutMatch)
+	end
+end
+
+-- (kit-b U9-8 A) "7 / 24" after the coin on the stone tile (the vitals card's "52 / 117"); "Get ready!" alone before the
+-- run, the coin taken off
+local function setTokensText(text, coin)
+	PixelIcon.Mark(UI.MatchTokens, coin and Theme.Currency.Tokens.Icon or nil, { Colour = SIGN.GoldLip })
+	if UI.MatchTokens.Text ~= text then
+		UI.MatchTokens.Text = text
+	end
+	local before = UI.MatchTokens.Size.X.Offset
+	PK.FitTokens()
+	if PK.Wide() and UI.MatchTokens.Size.X.Offset ~= before then
+		PK.LayoutMatch() -- (the checkpoints end left of the tile)
 	end
 end
 
 local function updateTokensLine(state)
-	local text = tostring(math.floor(tonumber(state.TokensCollected) or 0))
-		.. "/" .. tostring(math.floor(tonumber(state.TotalTokens) or 0))
-	UI.MatchTokensIcon.Visible = true -- (kit-b U7a) the coin leads the count ("Get ready!" hides it)
-	if UI.MatchTokens.Text ~= text then
-		local grew = Mt.TokensSeen ~= nil and (tonumber(state.TokensCollected) or 0) > Mt.TokensSeen
-		Mt.TokensSeen = tonumber(state.TokensCollected) or 0
-		UI.MatchTokens.Text = text
-		if grew then
-			pop(UI.TokensScale, 1.2, 0.3)
-		end
+	local collected = math.floor(tonumber(state.TokensCollected) or 0)
+	local text = tostring(collected) .. " / " .. tostring(math.floor(tonumber(state.TotalTokens) or 0))
+	local grew = UI.MatchTokens.Text ~= text and Mt.TokensSeen ~= nil and collected > Mt.TokensSeen
+	Mt.TokensSeen = collected
+	setTokensText(text, true)
+	if grew then
+		pop(UI.TokensScale, 1.2, 0.3)
 	end
 end
 
--- Timer / countdown numerals. Runs every frame for the interpolated clock.
+-- Timer / countdown numerals. Runs every frame for the interpolated clock. (kit-b U9-8 A) inks that read on the stone:
+-- 3 red, 2 wood, 1 sky, GO! the gain green, the clock brown (red from a minute left, pulsing from 30 s)
 local function numeralColor(n)
-	local rainbow = Colors.Rainbow
 	if n == 3 then
-		return rainbow[3]
+		return SIGN.RedLip
 	elseif n == 2 then
-		return rainbow[2]
+		return SIGN.Wood
 	elseif n == 1 then
-		return rainbow[1]
+		return SIGN.SkyLip
 	end
-	return rainbow[5]
+	return SIGN.Text
 end
 
 local function setTimerText(text, color, size)
-	if UI.Timer.Text ~= text then
+	if UI.Timer.Text ~= text or UI.Timer.TextSize ~= size then
 		UI.Timer.Text = text
+		UI.Timer.TextSize = size
+		-- a long line ("Match over") pushes a wide card's checkpoints right
+		local w = PK.TextW(text, "Display", size)
+		local over = (w > M.CpX - 8) and w or nil
+		if over ~= Mt.TimerTextW then
+			Mt.TimerTextW = over
+			if PK.Wide() then
+				PK.LayoutMatch()
+			end
+		end
 	end
 	UI.Timer.TextColor3 = color
-	if UI.Timer.TextSize ~= size then
-		UI.Timer.TextSize = size
-	end
 end
 
 local function updateMatchClock(now)
@@ -2734,25 +3075,24 @@ local function updateMatchClock(now)
 		local n = math.max(1, math.ceil(remaining - 0.05))
 		if n ~= Mt.Last then
 			Mt.Last = n
-			UI.MatchTokens.Text = "Get ready!"
-			UI.MatchTokensIcon.Visible = false
+			setTokensText("Get ready!", false)
 			pop(UI.TimerScale, 1.7, 0.5)
 		end
 		setTimerText(tostring(n), numeralColor(n), M.CountText)
 	elseif phase == "Playing" then
 		if now < Mt.GoUntil then
-			setTimerText("GO!", Colors.Good, M.CountText)
+			setTimerText("GO!", SIGN.Good, M.CountText)
 			return
 		end
-		local color = WHITE
+		local color = SIGN.Text
 		if remaining <= 30 then
-			color = Colors.Bad:Lerp(WHITE, 0.5 + 0.5 * math.sin(now * 6))
+			color = SIGN.RedLip:Lerp(SIGN.Red, 0.5 + 0.5 * math.sin(now * 6))
 		elseif remaining <= 60 then
-			color = Colors.HealthMid
+			color = SIGN.RedLip
 		end
 		setTimerText(Util.FormatTime(remaining), color, M.TimerText)
 	else
-		setTimerText("Match over", Colors.Muted or WHITE, 26)
+		setTimerText("Match over", SIGN.TextMuted, 26)
 	end
 end
 
@@ -2895,26 +3235,17 @@ local function applyMatchState(state)
 		color = Colors.Stamina
 	end
 	local diff = Config.GetDifficulty and Config.GetDifficulty(state.DifficultyId) or nil
-	-- (kit-b U7a) the difficulty's stars are gold PixelIcons after its name
+	-- (kit-b U9-8 A) the one level badge (the picker's numbered tile in the level's colour), then the level's name in ink
+	-- and its stars (kit-b U7a: PixelIcons, in the gold's lip on the stone)
+	PK.PaintBadge(UI.MatchBadge, PK.LevelNumber(state.DifficultyId), color)
 	UI.MatchTitle.Text = tostring(state.DifficultyName or state.DifficultyId or "Match")
-	local starCount = diff and math.max(0, math.min(5, math.floor(tonumber(diff.Stars) or 0))) or 0
-	if UI.MatchTitle:GetAttribute("Stars") ~= starCount then
-		UI.MatchTitle:SetAttribute("Stars", starCount)
-		local old = UI.MatchTitle:FindFirstChild("TrailIcon")
-		if old then
-			old:Destroy()
-		end
-		if starCount > 0 then
-			PixelIcon.Lead(UI.MatchTitle, "star", { After = true, Count = starCount, Px = K.STAR_PX, Colour = GOLD })
-		end
-	end
-	UI.MatchTitle.TextColor3 = Theme.Lighten(color, 0.25)
+	PK.Stars(UI.MatchTitle, diff and diff.Stars or 0)
+	PK.FitName(UI.MatchTitle, PK.MatchNameW())
 
+	-- the checkpoints: sky blocks (green stays the one main action's, gold the stars' and the tokens')
 	local total = math.max(1, math.floor(tonumber(state.TotalCheckpoints) or 1))
 	local cp = Util.Clamp(math.floor(tonumber(state.Checkpoint) or 0), 0, total)
-	UI.CpBar.SetColor(color)
-	UI.CpBar.SetFraction(cp / total, true)
-	UI.CpBar.SetText(string.format("Checkpoint %d/%d", cp, total))
+	PK.SetCheckpoints(cp, total)
 
 	if phase ~= "Countdown" then
 		updateTokensLine(state)
@@ -2976,32 +3307,30 @@ end
 local function fitPartyTexts()
 	local title, status = UI.PartyTitle.Text, UI.PartyStatus.Text
 	if Pt.FitW == S.panelW and Pt.FitTitle == title and Pt.FitStatus == status and Pt.FitHint == Pt.HintLong
-		and Pt.FitLevel == Pt.LevelPlain then
+		and Pt.FitLevel == Pt.LevelPlain and Pt.FitLeader == Pt.Leader then
 		return
 	end
-	Pt.FitW, Pt.FitTitle, Pt.FitStatus, Pt.FitHint, Pt.FitLevel = S.panelW, title, status, Pt.HintLong, Pt.LevelPlain
+	Pt.FitW, Pt.FitTitle, Pt.FitStatus, Pt.FitHint, Pt.FitLevel, Pt.FitLeader = S.panelW, title, status, Pt.HintLong, Pt.LevelPlain, Pt.Leader
 	local inner = innerWidth()
-	-- a squeezed panel gives the title a little of the Leave button's width (the button stays a big target)
-	local leaveW = (inner < 260) and M.PartyLeaveNarrowW or M.PartyLeaveW
-	if UI.PartyLeave.Size.X.Offset ~= leaveW then
-		UI.PartyLeave.Size = UDim2.fromOffset(leaveW, M.PartyLeaveH)
-		UI.PartyLeave.Position = UDim2.new(1, -leaveW / 2, 0, M.PartyLeaveH / 2)
-		UI.PartyTitle.Size = UDim2.new(1, -(leaveW + 8), 0, M.TitleH)
-	end
-	-- v5: the one obby portal is "Sky Obby", or just "Obby" where that does not fit beside Leave
-	if (title == "Sky Obby" or title == "Obby") and Pt.LevelPlain then
-		local wide = inner >= 260 and textFits("Sky Obby", Theme.FontOf(UI.PartyTitle), 24, inner - leaveW - 16)
+	local e = PK.EdgeW()
+	local titleRoom = inner - (M.Badge + 10) - (M.PartyLeaveW + 2 * e + 8)
+	-- v5: the one obby portal is "Sky Obby", or just "Obby" where that does not fit beside Leave (the Title role reads the
+	-- text in capitals)
+	local upper = string.upper(title)
+	if (upper == "SKY OBBY" or upper == "OBBY") and Pt.LevelPlain then
+		local wide = textFits("SKY OBBY", Theme.FontOf(UI.PartyTitle), M.TitleText - 4, titleRoom)
 		title = wide and "Sky Obby" or "Obby"
 		UI.PartyTitle.Text = title
-		Pt.FitTitle = title
+		Pt.FitTitle = UI.PartyTitle.Text
 	end
-	UI.PartyTitle.TextSize = fittingSize(title, Theme.FontOf(UI.PartyTitle), { M.TitleText, 26, 24, 22 }, inner - leaveW - 8)
+	UI.PartyTitle.TextSize = fittingSize(UI.PartyTitle.Text, Theme.FontOf(UI.PartyTitle), { M.TitleText, 22, 20 }, titleRoom)
 	if Pt.LevelPlain then
-		local room = inner - ((Pt.Leader and M.ChangeW or M.PartyCountW) + 6)
-		UI.PartyLevel.TextSize = fittingSize(Pt.LevelPlain, Theme.FontOf(UI.PartyLevel), { 20, 19, 18 }, room - (Pt.StarsW or 0))
+		PK.FitName(UI.PartyLevel, PK.LevelRoom())
 	end
-	UI.PartyStatus.TextSize = fittingSize(status, Theme.FontOf(UI.PartyStatus), { M.PartyStatusText, 20, 19 }, inner)
-	if textFits(Pt.HintLong, Theme.FontOf(UI.PartyHint), M.PartyHintText, inner - M.PartyCountW - 6) then
+	-- the countdown beside the head count, after the clock
+	local statusRoom = PK.StatusW() - (K.STAR_PX + M.NameGap)
+	UI.PartyStatus.TextSize = fittingSize(status, Theme.FontOf(UI.PartyStatus), { M.StatusText, 19, 18 }, statusRoom)
+	if textFits(Pt.HintLong, Theme.FontOf(UI.PartyHint), M.HintText, inner) then
 		UI.PartyHint.Text = Pt.HintLong
 	else
 		UI.PartyHint.Text = Pt.HintShort
@@ -3017,7 +3346,7 @@ local function updatePartyClock(now)
 		Pt.LastText = text
 		UI.PartyStatus.Text = text
 		if string.find(text, "Starting in", 1, true) then
-			pop(UI.PartyStatusScale, 1.12, 0.25)
+			pop(UI.PartyStatusScale, PK.STATUS_POP, 0.25)
 		end
 	end
 	fitPartyTexts()
@@ -3044,8 +3373,9 @@ local function applyPartyState(state)
 	if typeof(color) ~= "Color3" then
 		color = Colors.Good
 	end
-	-- v5 (6.3): one obby portal: the title names it, the level row shows the picked level + stars; the leader
-	-- may change the level (CHANGE). An older payload (one portal per level) keeps its level as the title.
+	-- v5 (6.3): one obby portal: the title names it, the level row shows the picked level's badge + name + stars; the
+	-- leader may change the level (Change). An older payload (one portal per level) keeps its level as the title and the
+	-- lock hint in the bottom row
 	local levelId = state.Level or state.PortalId
 	local diff = Config.GetDifficulty and Config.GetDifficulty(levelId) or nil
 	local levelName = tostring((diff and diff.DisplayName) or state.DifficultyName or levelId or "?")
@@ -3053,34 +3383,24 @@ local function applyPartyState(state)
 	local obby = state.Level ~= nil
 	if obby then
 		UI.PartyTitle.Text = "Sky Obby"
-		UI.PartyTitle.TextColor3 = WHITE
 	else
 		UI.PartyTitle.Text = tostring(state.DifficultyName or "?")
-		UI.PartyTitle.TextColor3 = Theme.Lighten(color, 0.25)
 	end
-	-- (kit-b U7a) the level's stars are gold PixelIcons after its name; fitting leaves them their room (Pt.StarsW)
+	UI.PartyTitle.TextColor3 = SIGN.Text
+	-- (kit-b U9-8 A) the level badge (the picker's numbered tile in the level's colour), the name in ink, its stars after it
 	starCount = math.max(0, math.min(5, math.floor(starCount)))
 	UI.PartyLevel.Text = levelName
-	if UI.PartyLevel:GetAttribute("Stars") ~= starCount then
-		UI.PartyLevel:SetAttribute("Stars", starCount)
-		local old = UI.PartyLevel:FindFirstChild("TrailIcon")
-		if old then
-			old:Destroy()
-		end
-		if starCount > 0 then
-			PixelIcon.Lead(UI.PartyLevel, "star", { After = true, Count = starCount, Px = K.STAR_PX, Colour = NEON.Gold })
-		end
-	end
-	Pt.StarsW = (starCount > 0) and (starCount * K.STAR_PX + (starCount - 1) * math.floor(K.STAR_PX / 9) + math.max(3, math.floor(K.STAR_PX / 4))) or 0
+	PK.Stars(UI.PartyLevel, starCount)
+	PK.PaintBadge(UI.PartyBadge, PK.LevelNumber(levelId), color)
 	Pt.LevelPlain = obby and levelName or nil
-	UI.PartyLevel.TextColor3 = Theme.Lighten(color, 0.3)
-	Pt.Leader = obby and state.LeaderUserId ~= nil and state.LeaderUserId == player.UserId
+	local leader = obby and state.LeaderUserId ~= nil and state.LeaderUserId == player.UserId
+	local leaderChanged = leader ~= (Pt.Leader == true)
+	Pt.Leader = leader
 	Pt.Level = levelId
 	UI.PartyLevel.Visible = obby
+	UI.PartyBadge.Visible = obby
 	UI.PartyHint.Visible = not obby
 	UI.PartyChange.Visible = Pt.Leader == true
-	UI.PartyCount.Visible = not Pt.Leader
-	UI.PartyLevel.Size = UDim2.new(1, -((Pt.Leader and M.ChangeW or M.PartyCountW) + 6), 0, M.PartyHintH)
 	-- members are held on the pad by the portal walls until launch (PortalService); Leave is the way out
 	if state.Locked == false then
 		Pt.HintLong, Pt.HintShort = "In the portal party", "In a party"
@@ -3092,23 +3412,18 @@ local function applyPartyState(state)
 
 	local list = type(state.Players) == "table" and state.Players or {}
 	local count = math.min(#list, 4)
-	Pt.Count = count
 	ensureChips(Pt.Chips, UI.PartyTeam, count, false)
-	local rows = layoutChips(Pt.Chips, count, innerWidth())
-	if rows ~= Pt.Rows then
-		Pt.Rows = rows
-		UI.PartyTeam.Size = UDim2.new(1, 0, 0, rows * M.RowPitch)
-		resizePanel(UI.Party, M.PartyBaseH, rows)
-	end
 	for i = 1, count do
 		local entry = type(list[i]) == "table" and list[i] or {}
 		local chip = Pt.Chips[i]
-		local isMe = (entry.UserId == player.UserId)
 		chip.Name.Text = tostring(entry.Name or "?")
-		chip.Name.TextColor3 = isMe and Colors.TokenGlow or WHITE
-		chip.Stroke.Color = isMe and NEON.Gold or Theme.Darken(NEON.Grey, 0.3)
+		PK.PaintChip(chip, entry.UserId == player.UserId, false)
 	end
-	UI.PartyCount.Text = string.format("%d/%d", #list, tonumber(state.Max) or Config.Match.MaxPlayers)
+	if count ~= Pt.Count or leaderChanged then
+		Pt.Count = count
+		resizePanel(UI.Party, PK.LayoutParty)
+	end
+	UI.PartyCount.Text = string.format("%d / %d", #list, tonumber(state.Max) or Config.Match.MaxPlayers)
 	Pt.LastText = nil
 	updatePartyClock(now)
 	refreshVisibility()

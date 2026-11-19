@@ -447,7 +447,8 @@ CloudUI.SignLooks = {
 	Sky = { Face = SIGN.Sky, Lip = SIGN.SkyLip, Edge = SIGN.Wood, Text = SIGN.Text },
 }
 -- a CloudUI.Button style -> its kit B role
-CloudUI.SignRole = { Green = "Primary", Gold = "Selected", Red = "Danger", Pink = "Danger", Blue = "Stone", Gray = "Stone" }
+CloudUI.SignRole = { Green = "Primary", Gold = "Selected", Red = "Danger", Pink = "Danger", Blue = "Stone", Gray = "Stone",
+	Sky = "Sky" } -- (kit-b U9-8 A) a Sign skin only: the small secondary action (the party panel's Change, the picker's PICK look)
 -- (LOOK-ui, kitb-look1: two plank weights in one kit) one token with SignKit's planks (the Settings window, the main
 -- menu, the loading board) and the pitch's .bk: a 5 px edge and an 8 px lip at 1080p, 4 + 6 at the 0.8 Fit (was 3 / 5:
 -- 2 + 4, half as heavy beside them). Chips, key caps and bar blocks under 30 px keep SignKit's BlockEdge / BlockLip
@@ -758,9 +759,14 @@ end
 -- props: Text, Style ("Green"|"Pink"|"Red"|"Blue"|"Gold"|"Gray"), Size (default 160x50), Position,
 --        AnchorPoint, Callback (called as Callback(button)), Parent, TextSize (default 22), Name,
 --        LayoutOrder, ZIndex, Skin ("Sign": a kit B block, see signButton; a child Frame "PressFace" holding the
---        caller's own labels sinks onto the lip with the face, kit-b U9-7)
+--        caller's own labels sinks onto the lip with the face, kit-b U9-7). (kit-b U9-8 A) the Sign skin also takes
+--        Style "Sky" (CloudUI.SignRole.Sky: the sky face on its SkyLip lip)
+local function signStyleName(style)
+	return isStyleName(style) or CloudUI.SignRole[titleCase(style)] ~= nil
+end
+
 local function signButton(props)
-	local state = { Style = isStyleName(props.Style) and titleCase(props.Style) or "Gray" }
+	local state = { Style = signStyleName(props.Style) and titleCase(props.Style) or "Gray" }
 	local button = Util.Create("TextButton", {
 		Name = props.Name or ("Button_" .. tostring(props.Text or "")),
 		AutoButtonColor = false,
@@ -821,7 +827,7 @@ local function signButton(props)
 	button:GetPropertyChangedSignal("Active"):Connect(paint)
 	button:GetAttributeChangedSignal("Style"):Connect(function()
 		local style = button:GetAttribute("Style")
-		if type(style) == "string" and isStyleName(style) then
+		if type(style) == "string" and signStyleName(style) then
 			state.Style = titleCase(style)
 			paint()
 		end
