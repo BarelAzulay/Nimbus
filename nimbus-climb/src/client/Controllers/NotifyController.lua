@@ -120,6 +120,7 @@ local HELD_PACE = 0.35 -- seconds between two released toasts (and between two r
 local EDGE = 12
 local TOUCH_EDGE = 20
 local HUD_GAP = 10 -- kept below the HUD pieces the stack has to clear
+local GIFT_GAP = 8 -- (kit-b) design px beside the gift's square on a portrait screen (HudController K.GIFT_GAP)
 
 -- result card
 local RESULT_W = 290
@@ -425,6 +426,14 @@ local function toastPlacement()
 	local rightBottom = hudValue("TopRightBottom")
 	if rightBottom > 0 then
 		top = rightBottom + HUD_GAP
+		-- (kit-b) on a portrait screen the gift's square under the strips (GiftLeft / GiftTop / GiftSize) would eat the
+		-- column's room as a stack of strips would (HudController lines those up in one row there): the column starts
+		-- level with the square, left of it, the square's own gap (HudController K.GIFT_GAP) away, so the cards' text
+		-- stays in the screen's right part
+		if vp.Y > vp.X and hudValue("GiftSize") > 0 and hudValue("GiftLeft") > 0 then
+			right = math.max(side, vp.X - hudValue("GiftLeft") + GIFT_GAP * k)
+			top = hudValue("GiftTop")
+		end
 		local left = vp.X - right - width
 		local room = (bottomLimitFor(left, vp.X - right) - top) / math.max(0.01, k)
 		local stackLeft = hudValue("TopRightLeft")
@@ -484,6 +493,17 @@ local function sizeToastText(toast)
 	end
 end
 
+-- (kit-b) a live toast's height in design px: its card as sizeToastText set it (padding, text row, lip: a set height
+-- since U9-9) and its wood edge outside it; the estimate only while the card has no height yet
+local function liveToastHeight(toast)
+	local card = toast.Card
+	local h = card and card.Size.Y.Scale == 0 and card.Size.Y.Offset or 0
+	if h > 0 then
+		return h + 2 * TOAST_EDGE
+	end
+	return estimateToastHeight(toast.Label.Text)
+end
+
 local dismissToast -- defined below
 
 -- Keeps the newest toasts that fit above the column's lowest allowed y (always at least the newest one).
@@ -499,7 +519,7 @@ local function trimToasts()
 	local drop = {}
 	for i = #toasts, 1, -1 do -- newest first
 		local toast = toasts[i]
-		local h = estimateToastHeight(toast.Label.Text)
+		local h = liveToastHeight(toast)
 		if kept > 0 then
 			h = h + TOAST_GAP
 		end
@@ -999,7 +1019,7 @@ local function columnFits(text)
 	local place = toastPlacement()
 	local used = 0
 	for _, live in ipairs(toasts) do
-		used = used + estimateToastHeight(live.Label.Text) + TOAST_GAP
+		used = used + liveToastHeight(live) + TOAST_GAP
 	end
 	return used + estimateToastHeight(text) <= (place.Bottom - place.Top) / math.max(0.01, k)
 end
