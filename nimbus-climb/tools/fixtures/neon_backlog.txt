@@ -1,28 +1,11 @@
 # kit-b U9 completeness gate: the neon rule's backlog (tools/stroke_walk.py --neon; the smoke walk kitb_no_neon_glow walks
 # the swept families). A shown glow ring, neon border, neon fill or gloss gradient on a path listed here is counted, not
 # failed; any other window on the old neon skin fails. Only these may stay, and the list only shrinks:
-# - the match and party panels in HudController: a PITCH only (U9-8, two options rendered under
-#   .superpowers/slop-audit/round3/build/U9-8/pitch_match_party_*.png), built after the owner picks one
 # - the Dev panel: fonts only, not restyled (players never see it)
+# (kit-b U9-8 A) the match and party panels in HudController are built on the owner's pick (the stone signboard) and
+# left this list: they are held to the rule like every other window.
 # One GUI path per line, "*" = any run of characters but a dot.
 
-# (kit-b gate U9 round 3) the rule now also counts a rounded corner (UICorner with a radius) and a smooth fill bar: the
-# same two pitch-only panels carry them on their shell (Shadow, Body, Sheen, Content) and deeper rows, so their lines
-# cover the whole panel. No other window was added.
-NimbusHud.TopLeft.MatchPanel.*
-NimbusHud.TopLeft.MatchPanel.*.*
-NimbusHud.TopLeft.MatchPanel.Content.Inner.*.*.*.*
-NimbusHud.TopLeft.MatchPanel.Content.Inner.*.*.*.*.*
-NimbusHud.TopLeft.PartyPanel.*
-NimbusHud.TopLeft.PartyPanel.*.*
-NimbusHud.TopLeft.PartyPanel.Content.Inner.*.*.*
-NimbusHud.TopLeft.PartyPanel.Content.Inner.*.*.*.*.*
-NimbusHud.TopLeft.MatchPanel.Content.Inner.*
-NimbusHud.TopLeft.MatchPanel.Content.Inner.*.*
-NimbusHud.TopLeft.MatchPanel.Content.Inner.*.*.*
-NimbusHud.TopLeft.PartyPanel.Content.Inner.*
-NimbusHud.TopLeft.PartyPanel.Content.Inner.*.*
-NimbusHud.TopLeft.PartyPanel.Content.Inner.*.*.*.*
 NimbusDev.DevPanel.*
 NimbusDev.DevPanel.*.*
 NimbusDev.DevPanel.*.*.*
