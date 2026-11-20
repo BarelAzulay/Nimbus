@@ -241,7 +241,31 @@ local function auditGui(gui, opts)
 		-- (kit-b gate U9 round 3, kit B U6's "no outline on a panel") a text that is itself an opaque kit B block (a plank
 		-- with its mitred SignEdge: the pet card's EVOLVE!) reads by its ink on its own face, not by an outline
 		local onBlock = d.BackgroundTransparency < 0.3 and d:FindFirstChild("SignEdge") ~= nil
-		if not outlined(d) and not onBlock then
+		-- (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags": the NPC card, the hanging STORM ALTAR board, THE GATES
+		-- face, the pet chip, the CREATOR tag, the prompt plank and the damage chip) the same rule one level up: a text
+		-- whose nearest opaque ancestor is a kit B block (its mitred SignEdge) reads by its ink on that face, as the HUD
+		-- cards do. The rule is not loosened for it: the ink must reach 4.5:1 against that face (SmokeCommon.Contrast,
+		-- WCAG AA), where an outline would have let any colour through
+		local inBlock = false
+		local ringed = outlined(d)
+		if not onBlock and not ringed then
+			local cur = d.Parent
+			while cur and cur ~= gui do
+				if cur:IsA("GuiObject") and cur.BackgroundTransparency < 0.3 then
+					if cur:FindFirstChild("SignEdge") ~= nil then
+						local ratio = SmokeCommon.Contrast.Ratio(d.TextColor3, cur.BackgroundColor3)
+						inBlock = ratio >= 4.5
+						if not inBlock then
+							noOutline[#noOutline + 1] = string.format("'%s' (%.1f:1 on its kit block %s, want 4.5:1)", plain(d.Text):sub(1, 20), ratio, cur.Name)
+							inBlock = true -- reported once, with its ratio
+						end
+					end
+					break
+				end
+				cur = cur.Parent
+			end
+		end
+		if not ringed and not onBlock and not inBlock then
 			noOutline[#noOutline + 1] = "'" .. plain(d.Text):sub(1, 20) .. "'"
 		end
 		if not isBoard then

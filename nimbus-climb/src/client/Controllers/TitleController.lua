@@ -19,7 +19,8 @@
 -- "Lean": its lit top band only), so a tag stays within 6 instances.
 --   Top10    "TOP 10 \194\183 #N": the gold block (CloudUI.SignLooks.Selected), brown letters.
 --   Top100   "TOP 100": the stone block (Stone), brown letters.
---   Creator  "CREATOR", 24 px: the navy plank with gold letters (Navy), the game's own sign voice.
+--   Creator  "CREATOR", 24 px: (Pitch 2 item 04 B) a stone tag on a gold lip, brown letters, the pixel crown ("CrownMark",
+--            18 px, the gold lip's colour) leading the word inside the tag.
 --   The crown (SetCrown on): VipController.Crown (the gold pixel crown on its wood lip) as "Crown", 34 x 34 px, centred,
 --   4 px above the Plate.
 -- Hidden while that player is InBattle (the battle scene); for the local player also while the camera is within 2 studs
@@ -33,6 +34,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Theme = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Theme"))
+local PixelIcon = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("PixelIcon")) -- (Pitch 2 item 04) the CREATOR crown
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
@@ -56,8 +58,14 @@ local K = {
 	CREATOR_TEXT = 24,
 	EDGE = 2, -- (kit-b U9-3) the plate's wood edge (px)
 	LIP = 4, -- ... and its darker lip along the bottom (px)
-	-- (kit-b U9-3) each title's kit B look (CloudUI.SignLooks): the gold block, the stone block, the navy plank
-	LOOK = { Top10 = "Selected", Top100 = "Stone", Creator = "Navy" },
+	-- (kit-b U9-3) each title's kit B look (CloudUI.SignLooks): the gold block, the stone block; (Pitch 2 item 04_world_ui,
+	-- the owner's pick B "Stone tags"; it was the navy plank with gold letters, a glow pill before that) CREATOR is a stone
+	-- tag on a gold lip in brown ink, led by the pixel crown (FACE: the colours over its look)
+	LOOK = { Top10 = "Selected", Top100 = "Stone", Creator = "Stone" },
+	FACE = { Creator = { Face = Theme.Sign.Stone, Lip = Theme.Sign.GoldLip, Text = Theme.Sign.Text } },
+	CREATOR_CROWN = 18, -- the crown's px (a multiple of 9: whole-px cells)
+	CREATOR_CROWN_PAD = 10, -- px from the face's left to the crown
+	CREATOR_CROWN_GAP = 8, -- px from the crown to the word
 	TICK = 0.25, -- the 4 Hz check
 	SWEEP = 4, -- ticks between two head sweeps (1 s)
 	NEAR = 2, -- studs: the camera this close to the local head = first person
@@ -148,7 +156,9 @@ local function build(player, head, kind, text, crown)
 
 	local size = (kind == "Creator") and K.CREATOR_TEXT or K.TEXT
 	local textW = math.ceil(Theme.Measure(text, "Nameplate", size, 4096).X)
-	local plateW = math.min(K.WIDTH - 2 * K.EDGE, textW + 2 * K.PAD)
+	-- (Pitch 2 item 04 B) the CREATOR tag leads with its pixel crown: CROWN_PAD, the icon, CROWN_TEXT_GAP, then the word
+	local lead = (kind == "Creator") and (K.CREATOR_CROWN_PAD + K.CREATOR_CROWN + K.CREATOR_CROWN_GAP - K.PAD) or 0
+	local plateW = math.min(K.WIDTH - 2 * K.EDGE, textW + 2 * K.PAD + lead)
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
@@ -159,20 +169,32 @@ local function build(player, head, kind, text, crown)
 	local look = CloudUI.SignLooks[K.LOOK[kind]]
 	-- (Pitch 2 fix round B) the finish pass's lean variant: the lit top band only. The full finish (bevel strips, the card
 	-- shadow) is 11 more instances on every titled head, over the tag's budget of 6 (Top10 15, crowned 46)
-	CloudUI.SignBlock(plate, K.LOOK[kind], { EdgePx = K.EDGE, LipPx = K.LIP, Pad = false, Finish = "Lean" })
+	local over = K.FACE[kind]
+	CloudUI.SignBlock(plate, K.LOOK[kind], {
+		EdgePx = K.EDGE, LipPx = K.LIP, Pad = false, Finish = "Lean",
+		Face = over and over.Face or nil, Lip = over and over.Lip or nil, Text = over and over.Text or nil,
+	})
 	plate.Parent = gui
 
 	local label = Theme.Label(text, "Nameplate", {
 		Size = size,
-		Color = look.Text,
+		Color = (over and over.Text) or look.Text,
 		Props = {
 			Name = "Label",
-			Size = UDim2.new(1, 0, 1, -K.LIP), -- centred over the lip
+			Position = UDim2.fromOffset(lead, 0),
+			Size = UDim2.new(1, -lead, 1, -K.LIP), -- centred over the lip (right of the crown)
 			TextXAlignment = Enum.TextXAlignment.Center,
 			TextYAlignment = Enum.TextYAlignment.Center,
 		},
 	})
 	label.Parent = plate
+	if kind == "Creator" then
+		local icon = PixelIcon.New(plate, "crown", K.CREATOR_CROWN, Theme.Sign.GoldLip)
+		if icon then
+			icon.Name = "CrownMark"
+			icon.Position = UDim2.fromOffset(K.CREATOR_CROWN_PAD, math.floor((K.PLATE_H - K.LIP - K.CREATOR_CROWN) / 2))
+		end
+	end
 
 	if crown then
 		local holder = VipController.Crown(gui, K.CROWN)

@@ -94,6 +94,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local WorldTag = require(Shared:WaitForChild("WorldTag")) -- (Pitch 2 item 04) the hanging header's stone board
 
 local function optional(name)
 	local module = Shared:FindFirstChild(name) or Shared:WaitForChild(name, 5)
@@ -1235,28 +1236,70 @@ local function panelGui(board)
 end
 
 -- Title tag above the altar (readable from the plaza and the street). World text rule: a PIXEL-sized billboard,
--- so "STORM ALTAR" (36 px) and "Secret pets" (22 px) keep their on-screen size at any distance.
-local TAG_W, TAG_H, TAG_TITLE, TAG_SUB = 300, 100, 36, 22
+-- so its lines keep their on-screen size at any distance.
+-- (Pitch 2 item 04_world_ui: the owner's pick B "Stone tags" with A's hanging board for the place headers; the navy glass
+-- card with the electric edge, the gloss and the gradient went) a wood beam (TAG.Beam px, its lit top and dark bottom
+-- lines) with two ropes down to the stone board (a TAG.Edge px wood edge, the stone lip, two nail heads), "STORM ALTAR"
+-- (Title, TAG_TITLE px) over "Secret pets" (Heading, TAG_SUB px, muted) in the kit's brown ink, and under the board on two
+-- thin ropes the violet "Secret Roulette" plank (the altar's role colour, TAG_PILL px). Every size is the mock-up's
+-- (pitch_04_world_ui.py header_board "A"); the board is as wide as the measured title plus its margins.
+local TAG_TITLE, TAG_SUB, TAG_PILL = 44, 22, 18
+local TAG = { Beam = 14, Drop = 16, Margin = 31, Edge = 5, Lip = 5, BoardH = 103, PillGap = 8, PillH = 30, PillEdge = 2, PillLip = 4, Rope = 6, PillRope = 3, Nail = 8 }
 local function titleTag(anchor)
+	local Sign = Theme.Sign
+	local titleW = Theme.Measure("STORM ALTAR", "Title", TAG_TITLE).X
+	local w = math.ceil(titleW + 2 * TAG.Margin) -- the board, its edges included
+	local pw = math.ceil(Theme.Measure("Secret Roulette", "Heading", TAG_PILL).X + 22)
+	local beamW = w + 44
+	local boardY = TAG.Beam + TAG.Drop
+	local pillY = boardY + TAG.BoardH + TAG.PillGap
+	local H = pillY + TAG.PillH
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "TitleTag"
-	gui.Size = UDim2.fromOffset(TAG_W, TAG_H)
+	gui.Size = UDim2.fromOffset(beamW, H)
 	gui.AlwaysOnTop = false
 	gui.LightInfluence = 0
 	gui.MaxDistance = 150
+	gui.ClipsDescendants = false
 	gui.Adornee = anchor
 
-	local card = frame(gui, "Card", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), C.White)
-	card.BackgroundTransparency = 0.06
-	corner(card, 0.3, true)
-	stroke(card, C.Electric, 4)
-	gradient(card, rgb(70, 60, 130), rgb(28, 36, 76))
-	local shine = frame(card, "Gloss", UDim2.new(0.03, 0, 0.06, 0), UDim2.new(0.94, 0, 0.4, 0), C.White)
-	shine.BackgroundTransparency = 0.86
-	shine.ZIndex = 2
-	corner(shine, 0.5, true)
-	label(card, "STORM ALTAR", "Title", { Name = "Title", Size = TAG_TITLE, Position = UDim2.fromScale(0.5, 0.36), Box = UDim2.fromScale(0.9, 0.56) }, 3)
-	label(card, "Secret pets", "Heading", { Name = "Subtitle", Size = TAG_SUB, Color = C.Cyan, Position = UDim2.fromScale(0.5, 0.78), Box = UDim2.fromScale(0.7, 0.3) }, 2)
+	local function box(parent, name, x, y, bw, bh, colour, z)
+		local f = frame(parent, name, UDim2.fromOffset(x, y), UDim2.fromOffset(bw, bh), colour)
+		f.BackgroundTransparency = 0
+		f.ZIndex = z or 1
+		return f
+	end
+	-- the beam
+	local beam = box(gui, "Beam", 0, 0, beamW, TAG.Beam, Sign.Wood, 2)
+	box(beam, "Lit", 0, 0, beamW, 2, Sign.WoodLight, 2)
+	box(beam, "Shade", 0, TAG.Beam - 3, beamW, 3, Sign.WoodDark, 2)
+	-- the ropes (behind the board)
+	local bx = math.floor((beamW - w) / 2)
+	for _, rx in ipairs({ bx + 22, bx + w - 22 - TAG.Rope }) do
+		box(gui, "Rope", rx, TAG.Beam, TAG.Rope, TAG.Drop + 8, Sign.Post, 1)
+	end
+	-- the stone board (the face inside its wood edge)
+	local board = box(gui, "Board", bx + TAG.Edge, boardY + TAG.Edge, w - 2 * TAG.Edge, TAG.BoardH - 2 * TAG.Edge, Sign.Stone, 3)
+	WorldTag.Block(board, Sign.Stone, Sign.StoneLip, Sign.Wood, TAG.Edge, TAG.Lip)
+	for _, nx in ipairs({ 4, w - 2 * TAG.Edge - 4 - TAG.Nail }) do
+		box(board, "Nail", nx, 4, TAG.Nail, TAG.Nail, Sign.WoodDark, 4)
+	end
+	WorldTag.Text(board, "Title", "STORM ALTAR", "Title", TAG_TITLE, Sign.Text, {
+		Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 46), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4,
+	})
+	WorldTag.Text(board, "Subtitle", "Secret pets", "Heading", TAG_SUB, Sign.TextMuted, {
+		Position = UDim2.fromOffset(0, 8 + 46), Size = UDim2.new(1, 0, 0, 26), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4,
+	})
+	-- the violet plank on two thin ropes
+	local px = bx + math.floor((w - pw) / 2)
+	for _, rx in ipairs({ px + 10, px + pw - 10 - TAG.PillRope }) do
+		box(gui, "Rope", rx, boardY + TAG.BoardH, TAG.PillRope, TAG.PillGap + 2, Sign.Post, 1)
+	end
+	local pill = box(gui, "Pill", px + TAG.PillEdge, pillY + TAG.PillEdge, pw - 2 * TAG.PillEdge, TAG.PillH - 2 * TAG.PillEdge, Sign.Violet, 3)
+	WorldTag.Block(pill, Sign.Violet, Sign.VioletLip, Sign.Wood, TAG.PillEdge, TAG.PillLip)
+	WorldTag.Text(pill, "Label", "Secret Roulette", "Heading", TAG_PILL, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -TAG.PillLip), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4,
+	})
 	gui.Parent = anchor
 	return gui
 end

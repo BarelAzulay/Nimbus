@@ -11739,7 +11739,10 @@ local function clientScenarios()
 		local Theme = LoadingH.shared("Theme")
 		local Sign = Theme.Sign
 		local TC = U7.client("Controllers/TitleController")
-		local FACE = { Top10 = { Sign.Gold, Sign.Text }, Top100 = { Sign.Tile, Sign.Text }, Creator = { Sign.Navy, Sign.Gold } }
+		-- (Pitch 2 item 04_world_ui, the owner's approved pick B "Stone tags": "gold for the CREATOR title with a pixel
+		-- crown") Creator moved from the navy plank with gold letters to a stone face (its gold lip) with brown letters; the
+		-- 4.5:1 rule below still holds it (13.6:1)
+		local FACE = { Top10 = { Sign.Gold, Sign.Text }, Top100 = { Sign.Tile, Sign.Text }, Creator = { Sign.Stone, Sign.Text } }
 		local function tweened(root)
 			for tw in pairs(Mock.ActiveTweens) do
 				local ok, target = pcall(function()

@@ -1343,6 +1343,9 @@ P5.TAB_GAP = 4 -- design px between the tiles and the arrow tab
 P5.TAB_W = 30 -- design width of the arrow tab (touch: TAB_W_TOUCH, wider for a thumb). (LOOK-ui) 30: its 27 px pixel
 -- arrow fits inside the wood edge
 P5.TAB_W_TOUCH = 30
+P5.BADGE = 18 -- (Pitch 2 item 04) the folded tab's red "!" block (its face; 22 with the 2 px wood edge) ...
+P5.BADGE_X = 6 -- ... its face's left / top in the tab (the edge keeps 4 px of the tab's face clear)
+P5.BADGE_DROP = 12 -- px the arrow steps down while it shows
 P5.MAX_COLS = 3 -- the tiles wrap into at most this many columns (the shortest landscape phones)
 P5.CENTRE_TOL = 0.145 -- the column never reaches into the screen middle (|dx| < 14.5% of the width: HudController's rule)
 P5.SLIDE = 0.25 -- seconds of the collapse / expand slide
@@ -1522,6 +1525,8 @@ function P5.paintTab()
 	end
 	if U.TabBadge.Visible ~= badge then
 		U.TabBadge.Visible = badge
+		-- (Pitch 2 item 04) the arrow steps down under the "!" block while it shows
+		U.TabArrow.Position = UDim2.fromOffset(0, badge and P5.BADGE_DROP or 0)
 	end
 	if U.Tab:GetAttribute("Collapsed") ~= (U.Collapsed == true) then
 		U.Tab:SetAttribute("Collapsed", U.Collapsed == true)
@@ -1629,16 +1634,38 @@ local function buildColumn()
 		Size = UDim2.new(1, 0, 1, -6),
 		ZIndex = 4,
 	})
+	-- (Pitch 2 item 04_world_ui, the owner's pick B: the 14 px pink dot straddled the tab's corner, half off the folded
+	-- tab at the screen's edge) the "!" is a red kit block INSIDE the tab's top (a 2 px mitred wood edge, a 3 px lip, the
+	-- pixel bang in stone); the arrow steps down under it while it shows (P5.paintTab)
 	U.TabBadge = makeFrame(tab, "Badge", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -2, 0, 4),
-		Size = UDim2.fromOffset(14, 14),
+		Position = UDim2.fromOffset(P5.BADGE_X, P5.BADGE_X),
+		Size = UDim2.fromOffset(P5.BADGE, P5.BADGE),
 		BackgroundTransparency = 0,
 		BackgroundColor3 = Theme.Sign.Red,
 		Visible = false,
 		ZIndex = 5,
 	})
-	stroke(U.TabBadge, Theme.Sign.Wood, 2, 0)
+	local badgeEdge = stroke(U.TabBadge, Theme.Sign.Wood, 2, 0)
+	badgeEdge.Name = "SignEdge"
+	badgeEdge.LineJoinMode = Enum.LineJoinMode.Miter
+	makeFrame(U.TabBadge, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 3),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.RedLip,
+		ZIndex = 5,
+	})
+	local bang = PixelIcon.New(U.TabBadge, "bang", 18, Theme.Sign.Stone)
+	if bang then
+		bang.Name = "Mark"
+		bang.AnchorPoint = Vector2.new(0.5, 0.5)
+		bang.Position = UDim2.new(0.5, 0, 0.5, -1)
+		bang.ZIndex = 6
+		for _, cell in ipairs(bang:GetChildren()) do
+			cell.ZIndex = 6
+		end
+	end
 	U.Tab = tab
 	tab.Activated:Connect(function()
 		safe("menu fold", P5.setCollapsed, not U.Collapsed, true)

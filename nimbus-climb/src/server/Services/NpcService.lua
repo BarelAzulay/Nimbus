@@ -16,8 +16,9 @@
 --   Pet          PetBuilder.Build(catalog pet, { Detail = "High", Scale = 2.2 }) hovering above the rug, facing the
 --                spot's LookVector (the walkway)
 --   Collider     one invisible collidable cylinder around plinth + pet (players bump into the NPC, never stand in it)
---   PromptPart   an invisible part at the pet's centre holding the BillboardGui "Nameplate" (name + title pills and
---                a gold "!" badge; Theme fonts, readable sizes), a soft light, a few rising sparkles and the Attachment
+--   PromptPart   an invisible part at the pet's centre holding the BillboardGui "Nameplate" (Pitch 2 item 04 B: one stone
+--                card, the name over the title, the gold "!" block on its corner; Theme fonts, readable sizes), a soft
+--                light, a few rising sparkles and the Attachment
 --                "PromptAnchor" (front of the cushion) with the ProximityPrompt "TalkPrompt" (ActionText "Talk",
 --                ObjectText = Name, HoldDuration 0, MaxActivationDistance 10, RequiresLineOfSight false, attribute NpcId)
 -- The server never moves an NPC after building it: client/Controllers/NpcController idles them and shows the
@@ -32,6 +33,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local WorldTag = require(Shared:WaitForChild("WorldTag")) -- (Pitch 2 item 04 B) the stone card of the nameplate
+local Sign = Theme.Sign
 
 local function optional(name)
 	local module = Shared:FindFirstChild(name) or Shared:WaitForChild(name, 5)
@@ -135,18 +138,6 @@ local function make(className, props, parent)
 		inst.Parent = parent
 	end
 	return inst
-end
-
-local function corner(parent, px)
-	return make("UICorner", { CornerRadius = UDim.new(0, px) }, parent)
-end
-
-local function stroke(parent, color, thickness)
-	return make("UIStroke", {
-		Color = color,
-		Thickness = thickness,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-	}, parent)
 end
 
 -- Lowest / highest point and horizontal reach of every part of `model`, relative to `origin`.
@@ -460,52 +451,31 @@ end
 -- Nameplate
 ----------------------------------------------------------------------
 -- World text rule (ARCHITECTURE_V3.md): a PIXEL-sized tag (constant on-screen size), the name >= 22 px and the
--- title >= 18 px at 1080p with FIXED text sizes (never TextScaled), outlined glyphs on compact solid pills that
--- size themselves to their text. The transparent Plate is the 1080p design box; NpcController scales the tag
--- and Plate (UIScale "ReadScale") with the screen-height factor (attributes BaseWidth / BaseHeight).
-local PLATE_W, PLATE_H = 300, 96
+-- title >= 18 px at 1080p with FIXED text sizes (never TextScaled). The transparent Plate is the 1080p design box;
+-- NpcController scales the tag and Plate (UIScale "ReadScale") with the screen-height factor (attributes BaseWidth /
+-- BaseHeight).
+-- (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags"; the navy rounded capsules with a gradient and a neon edge
+-- went) the sign is ONE stone card of the HUD's tier (shared/WorldTag): the Stone face, a 3 px mitred wood edge, a 5 px lip
+-- in the NPC's role colour (WorldTag.LipOf(Accent)); the name (Nameplate, 28 px) over the title (Heading, 19 px) in the
+-- kit's brown ink on the opaque face (no outline); the "!" a gold block pinned on the card's top-right corner, reaching
+-- WorldTag.Sizes.BangOut px past it. The card is sized from the measured texts (Theme.Measure, its spare factor) and never
+-- narrower than CARD_MIN; the gui holds the card, its edge and the "!" (a BillboardGui clips what lies outside it).
 local NAME_PX = 28
 local TITLE_PX = 19
-local INK = Theme.Colors.TextStroke or Theme.Colors.Ink
-
--- A rounded pill that the engine sizes to its (fixed-size, outlined) text, so no name is ever truncated whatever
--- the real glyph widths: the label carries the padding (its own UIPadding) and grows with AutomaticSize X from a
--- minimum width of minW (the text stays centred), and the pill wraps the label. No list layout, so the corner
--- badge can live on the pill; `extraRight` keeps room for it. Returns pill, label.
-local function textPill(parent, name, text, role, size, padX, height, minW, thickness, extraRight)
-	local frame = make("Frame", {
-		Name = name,
-		AnchorPoint = Vector2.new(0.5, 1),
-		Size = UDim2.fromOffset(0, height),
-		AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundColor3 = Theme.Colors.White,
-		BorderSizePixel = 0,
-	}, parent)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = thickness,
-		OutlineColor = INK,
-		Props = {
-			Name = (name == "NamePill") and "Name" or "Title",
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.fromOffset(minW, height),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			TextWrapped = false,
-		},
-	})
-	make("UIPadding", {
-		PaddingLeft = UDim.new(0, padX + thickness),
-		PaddingRight = UDim.new(0, padX + thickness + (extraRight or 0)),
-	}, label)
-	label.Parent = frame
-	return frame, label
-end
+local CARD_PAD = 14 -- px each side of the longer line, inside the face
+local CARD_MIN = 150 -- the card's least outer width (its edges included)
+local CARD_FACE_H = 72 -- the face: 6 px over the name, the 32 px name row, the 24 px title row, 5 px, the 5 px lip
 
 local function buildNameplate(parent, def, accent, offsetY)
+	local Z = WorldTag.Sizes
+	local name, titleText = def.Name or "Friend", def.Title or "Lobby Friend"
+	local textW = math.max(Theme.Measure(name, "Nameplate", NAME_PX).X, Theme.Measure(titleText, "Heading", TITLE_PX).X)
+	local faceW = math.ceil(math.max(CARD_MIN - 2 * Z.Edge, textW + 2 * CARD_PAD))
+	local plateW = faceW + 2 * (Z.Edge + Z.BangOut)
+	local plateH = Z.BangOut + Z.Edge + CARD_FACE_H + Z.Edge
 	local gui = make("BillboardGui", {
 		Name = "Nameplate",
-		Size = UDim2.fromOffset(PLATE_W, PLATE_H),
+		Size = UDim2.fromOffset(plateW, plateH),
 		SizeOffset = Vector2.new(0, 0.5), -- the bottom edge sits offsetY studs over the pet's head
 		StudsOffsetWorldSpace = Vector3.new(0, offsetY, 0),
 		AlwaysOnTop = false,
@@ -513,54 +483,43 @@ local function buildNameplate(parent, def, accent, offsetY)
 		LightInfluence = 0,
 		ClipsDescendants = false,
 	}, nil)
-	gui:SetAttribute("BaseWidth", PLATE_W)
-	gui:SetAttribute("BaseHeight", PLATE_H)
+	gui:SetAttribute("BaseWidth", plateW)
+	gui:SetAttribute("BaseHeight", plateH)
 
 	local plate = make("Frame", {
 		Name = "Plate",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.fromScale(0.5, 1),
-		Size = UDim2.fromOffset(PLATE_W, PLATE_H),
+		Size = UDim2.fromOffset(plateW, plateH),
 		BackgroundTransparency = 1,
 	}, gui)
 
-	-- title pill in the accent colour at the bottom; the name pill sits on it (4 px tucked behind)
-	local titleH = TITLE_PX + 10
-	local titlePill, title = textPill(plate, "TitlePill", def.Title or "Lobby Friend", "Label", TITLE_PX, 12, titleH, 110, 2)
-	titlePill.Position = UDim2.new(0.5, 0, 1, 0)
-	titlePill.BackgroundColor3 = darken(accent, 0.3)
-	titlePill.ZIndex = 2
-	title.ZIndex = 2
-	corner(titlePill, 12)
-	stroke(titlePill, Theme.Colors.Navy or Theme.Colors.Ink, 2.5)
-
-	-- name pill: dark navy card, accent outline, big outlined name
-	local namePill = textPill(plate, "NamePill", def.Name or "Friend", "Nameplate", NAME_PX, 16, NAME_PX + 18, 150, 2.5, 10) -- (kit-b U6) a name over a head
-	namePill.Position = UDim2.new(0.5, 0, 1, -(titleH - 4))
-	corner(namePill, 16)
-	stroke(namePill, accent, 3.5)
-	Theme.Gradient(namePill, Theme.Colors.PanelLight, Theme.Colors.Panel, 90)
-
-	-- "!" badge on the name pill's corner: new tips here (the client hides it once the player has talked to this NPC)
-	local badge = make("Frame", {
-		Name = "Badge",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -4, 0, 4),
-		Size = UDim2.fromOffset(32, 32),
-		BackgroundColor3 = Theme.Colors.Gold or STONE.Gold,
-		BorderSizePixel = 0,
+	local card = make("Frame", {
+		Name = "Card",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -Z.Edge),
+		Size = UDim2.fromOffset(faceW, CARD_FACE_H),
+		ZIndex = 2,
+	}, plate)
+	WorldTag.Block(card, Sign.Stone, WorldTag.LipOf(accent), Sign.Wood, Z.Edge, Z.Lip)
+	WorldTag.Text(card, "Name", name, "Nameplate", NAME_PX, Sign.Text, {
+		Position = UDim2.fromOffset(0, 6),
+		Size = UDim2.new(1, 0, 0, 32),
+		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 3,
-	}, namePill)
-	corner(badge, 16)
-	stroke(badge, Theme.Colors.Navy or Theme.Colors.Ink, 3)
-	local mark = Theme.Label("!", "Accent", {
-		Size = 26,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2,
-		OutlineColor = INK,
-		Props = { Name = "Mark", Size = UDim2.fromScale(1, 1), ZIndex = 4 },
 	})
-	mark.Parent = badge
+	WorldTag.Text(card, "Title", titleText, "Heading", TITLE_PX, Sign.TextMuted, {
+		Position = UDim2.fromOffset(0, 38),
+		Size = UDim2.new(1, 0, 0, 24),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 3,
+	})
+
+	-- the "!" (new tips here; the client hides it once the player has talked to this NPC): pinned on the corner, still
+	local badge = WorldTag.Bang(card, 4)
+	local inner = Z.Bang - 2 * Z.BangEdge
+	badge.Position = UDim2.new(1, Z.BangOut + Z.Edge - Z.Bang + Z.BangEdge, 0, -(Z.BangOut + Z.Edge) + Z.BangEdge)
+	badge.Size = UDim2.fromOffset(inner, inner)
 
 	gui.Parent = parent
 	return gui

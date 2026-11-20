@@ -344,6 +344,20 @@ local K = {
 	LETHAL_CALLOUT = 1.2, -- seconds a "DASH!" floats over a fighter standing in a lethal telegraph (then the next one)
 	CALLOUT_PX = 26,
 	NUMBER_DISTANCE = 170,
+	-- (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags"; the raw white '20628 / 18332 / 136205' stacked into a wall)
+	-- a hit pops '+20.6K' (Theme.Short) beside ONE running total per target on a stone chip (Fx.HitLook / Fx.Total)
+	HIT_PX = 22, -- a plain hit's pop (World text rule: >= 22)
+	HIT_CRIT_PX = 30, -- a crit's, in gold
+	HIT_ELEM_PX = 24, -- an element / special hit's, in its colour (Storm violet)
+	HIT_SIDE = 0.42, -- the pop's SizeOffset X: it rises beside the total's chip, not over it
+	TOTAL_PX = 24, -- the total's figure on its chip
+	TOTAL_PAD = 10, -- px each side of it
+	TOTAL_H = 34, -- the chip, its 3 px edge included
+	TOTAL_EDGE = 3,
+	TOTAL_LIP = 4,
+	TOTAL_HOLD = 2.5, -- seconds without a hit before the total clears (the next hit starts a new one)
+	TOTAL_DISTANCE = 150,
+	MAX_TOTALS = 16,
 	BAR_DISTANCE = 140,
 	END_LINGER = 3.5, -- seconds the floor stays drawn after the end
 	DUNGEON_LINGER = 1.0, -- wave 5 (bug #26): a cleared dungeon room's floor goes after this (= PetController.HANDOVER)
@@ -577,6 +591,8 @@ local St = {
 	effects = {}, -- live effects
 	numbers = {}, -- live numbers
 	numberPool = {},
+	totals = {}, -- (Pitch 2 item 04) the live running totals, one a target (Fx.Total)
+	totalPool = {},
 	flashes = {}, -- live flashes
 	flashPool = {},
 	lastCmd = {}, -- [action .. arg] = os.clock()
@@ -1145,6 +1161,9 @@ function Fx.ClearAll()
 		St.numberPool[#St.numberPool + 1] = n
 	end
 	St.numbers = {}
+	while #St.totals > 0 do
+		Fx.FreeTotal(St.totals[#St.totals])
+	end
 	for _, f in ipairs(St.flashes) do
 		f.hl.Enabled = false
 		f.hl.Adornee = nil
@@ -1207,6 +1226,7 @@ function Fx.Number(adornee, height, text, color, px, life)
 	n.base = height
 	n.jx = (math.random() - 0.5) * 1.4
 	n.gui.StudsOffset = Vector3.new(n.jx, height, 0)
+	n.gui.SizeOffset = Vector2.new(0, 0) -- (Pitch 2 item 04) a hit's pop moves beside its total (the hit handler)
 	n.gui.Enabled = true
 	St.numbers[#St.numbers + 1] = n
 	BattleController._wake()
@@ -1237,6 +1257,140 @@ function Fx.UpdateNumbers(now)
 			i = i + 1
 		end
 	end
+	-- (Pitch 2 item 04) a total clears after K.TOTAL_HOLD without a hit, or when its target went
+	local totals = St.totals
+	local j = #totals
+	while j >= 1 do
+		local t = totals[j]
+		if now >= t.untilT or not t.gui.Adornee or not t.gui.Adornee.Parent then
+			Fx.FreeTotal(t)
+		end
+		j = j - 1
+	end
+end
+
+-- the studs over a unit's centre its numbers start at (a boss's over its head)
+function Fx.NumberHeight(u)
+	if u.isBoss then
+		return (u.height or 20) * 0.5 + 2
+	end
+	return (u.height or 3) / 2 + 1.8
+end
+
+-- (Pitch 2 item 04_world_ui B) one hit's pop: '+' .. Theme.Short(dmg) ("+20.6K"; it was the raw "20628"), its colour and
+-- px: a plain hit in stone ink, a crit in gold (bigger), an element hit (ev.element: the attacker's element) or a strong
+-- one in that element's colour (Storm violet), a weak one muted, a burn tick in red (smaller). The words ("CRIT", "BURN",
+-- the "!") went: the colour and the size say it, so a pop never reads as a callout. -> text, colour, px
+Fx.ElementInk = { Storm = Theme.Sign.Violet } -- (an element's pop ink where its own colour is not the kit's)
+function Fx.HitLook(dmg, ev, element)
+	ev = type(ev) == "table" and ev or {}
+	local text = "+" .. Theme.Short(floor((tonumber(dmg) or 0) + 0.5))
+	local color, px = Theme.Sign.Stone, K.HIT_PX
+	local ink = (type(element) == "string" and element ~= "") and (Fx.ElementInk[element] or elementColor(element):Lerp(COLORS.White, 0.3)) or nil
+	if ev.crit then
+		color, px = Theme.Sign.Gold, K.HIT_CRIT_PX
+	elseif ev.burn then
+		color, px = Theme.Sign.Red, K.HIT_PX
+	elseif ev.element or (ev.elem and ev.elem > 1) then
+		color, px = ink or COLORS.Strong, K.HIT_ELEM_PX
+	elseif ev.elem and ev.elem < 1 then
+		color = COLORS.Weak
+	end
+	return text, color, px
+end
+
+function Fx.NewTotal()
+	local gui = make("BillboardGui", {
+		Name = "DamageTotal",
+		Size = UDim2.fromOffset(220, K.TOTAL_H + 8),
+		AlwaysOnTop = true,
+		LightInfluence = 0,
+		MaxDistance = K.TOTAL_DISTANCE,
+		ClipsDescendants = false,
+		Enabled = false,
+	})
+	local e = K.TOTAL_EDGE
+	local chip = make("Frame", {
+		Name = "Chip",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(60, K.TOTAL_H - 2 * e),
+		BorderSizePixel = 0,
+	}, gui)
+	-- the stone chip: a 3 px mitred wood edge, the red lip (damage)
+	local edge = make("UIStroke", { Name = "SignEdge", Color = Theme.Sign.Wood, Thickness = e, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Miter }, chip)
+	chip.BackgroundColor3 = Theme.Sign.Stone
+	chip.BackgroundTransparency = 0
+	make("Frame", { Name = "Lip", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, K.TOTAL_LIP), BackgroundColor3 = Theme.Sign.RedLip, BorderSizePixel = 0 }, chip)
+	local label = Theme.Label("", "Heading", { Size = K.TOTAL_PX, Color = Theme.Sign.Text })
+	label.Name = "Text"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, 0, 1, -K.TOTAL_LIP)
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.ZIndex = 2
+	label.Parent = chip
+	return { gui = gui, chip = chip, label = label, edge = edge, sum = 0, untilT = 0, owner = nil, shown = "" }
+end
+
+function Fx.FreeTotal(t)
+	for i = #St.totals, 1, -1 do
+		if St.totals[i] == t then
+			table.remove(St.totals, i)
+		end
+	end
+	if t.owner and t.owner.total == t then
+		t.owner.total = nil
+	end
+	t.owner = nil
+	t.sum = 0
+	t.gui.Enabled = false
+	t.gui.Adornee = nil
+	St.totalPool[#St.totalPool + 1] = t
+end
+
+-- adds `dmg` to unit `u`'s running total (u.root: the part it floats over) and shows it on its stone chip; a total that
+-- went quiet (K.TOTAL_HOLD) starts afresh. -> the total's record (u.total) or nil
+function Fx.Total(u, dmg)
+	dmg = floor((tonumber(dmg) or 0) + 0.5)
+	if type(u) ~= "table" or not u.root or not u.root.Parent or dmg <= 0 then
+		return nil
+	end
+	local t = u.total
+	if t and t.owner ~= u then
+		t = nil
+	end
+	if not t then
+		t = table.remove(St.totalPool)
+		if not t then
+			if #St.totals >= K.MAX_TOTALS then
+				Fx.FreeTotal(St.totals[1]) -- recycle the oldest
+				t = table.remove(St.totalPool)
+			else
+				t = Fx.NewTotal()
+			end
+		end
+		t.owner, t.sum = u, 0
+		u.total = t
+		St.totals[#St.totals + 1] = t
+	end
+	t.sum = t.sum + dmg
+	local text = Theme.Short(t.sum)
+	t.label.Text = text
+	if #text ~= #t.shown then
+		local tpx = Theme.ScaledSize(K.TOTAL_PX, 22)
+		t.label.TextSize = tpx
+		local w = math.ceil(Theme.Measure(text, "Heading", tpx).X) + 2 * K.TOTAL_PAD
+		t.chip.Size = UDim2.fromOffset(w, K.TOTAL_H - 2 * K.TOTAL_EDGE)
+	end
+	t.shown = text
+	t.gui.Parent = fxFolder()
+	t.gui.Adornee = u.root
+	t.gui.StudsOffset = Vector3.new(0, Fx.NumberHeight(u) - 0.6, 0)
+	t.gui.Enabled = true
+	t.untilT = os.clock() + K.TOTAL_HOLD
+	BattleController._wake()
+	return t
 end
 
 -- a short white (or tinted) flash on a model (a pooled Highlight)
@@ -4586,12 +4740,7 @@ local function specialColor(u, kind)
 	return COLORS.Gold
 end
 
-local function numberHeight(u)
-	if u.isBoss then
-		return (u.height or 20) * 0.5 + 2
-	end
-	return (u.height or 3) / 2 + 1.8
-end
+local numberHeight = Fx.NumberHeight -- (Pitch 2 item 04: moved up, Fx.Total needs it)
 
 ----------------------------------------------------------------------
 -- wave 6: the trainer's cheer (TrainerCheer): my avatar loops the cheer emote while the server holds me on the podium
@@ -4714,32 +4863,21 @@ Handlers[EV.Hit] = function(B, ev)
 	if not adornee or victim.parked then
 		return
 	end
-	local text, color, px = tostring(floor(dmg + 0.5)), COLORS.White, K.NUMBER_PX
-	if ev.crit then
-		text = "CRIT " .. text
-		color = COLORS.Gold
-		px = K.CRIT_PX
-	elseif ev.elem and ev.elem > 1 then
-		text = text .. "!"
-		color = COLORS.Strong
-		px = K.NUMBER_PX + 2
-	elseif ev.elem and ev.elem < 1 then
-		color = COLORS.Weak
+	-- (Pitch 2 item 04 B) the pop: '+' .. Theme.Short in the kit's colours (Fx.HitLook), beside the target's running total
+	local text, color, px = Fx.HitLook(dmg, ev, attacker and attacker.element or nil)
+	if victim.mine and color == Theme.Sign.Stone then
+		color = Color3.fromRGB(255, 196, 196) -- my unit's hurt (a plain hit)
 	end
-	if victim.mine then
-		color = (color == COLORS.White) and Color3.fromRGB(255, 196, 196) or color
-	end
-	if ev.special and attacker then
+	if ev.special and attacker and not ev.crit then
 		color = specialColor(attacker):Lerp(COLORS.White, 0.35)
-		px = max(px, K.NUMBER_PX + 2)
-	elseif ev.element and attacker then
-		color = elementColor(attacker.element):Lerp(COLORS.White, 0.3)
-		px = max(px, K.NUMBER_PX + 2)
-	elseif ev.burn then
-		text, color, px = "BURN " .. text, COLORS.Strong, K.NUMBER_PX - 4
+		px = max(px, K.HIT_ELEM_PX)
 	end
 	if dmg > 0 then
-		Fx.Number(adornee, numberHeight(victim), text, color, px)
+		local total = Fx.Total(victim, dmg)
+		local pop = Fx.Number(adornee, numberHeight(victim), text, color, px)
+		if pop and total then
+			pop.gui.SizeOffset = Vector2.new(K.HIT_SIDE, 0)
+		end
 		-- (audio wave 2) the attacker's element hit (+ Crit's sparkle on top); a burn / zone tick is silent (they come
 		-- in bursts), so is a hit with no attacker or element
 		if not ev.burn and not ev.zone and attacker and type(attacker.element) == "string" then
@@ -11936,7 +12074,7 @@ local function onFrame(dt)
 		perf.peak = ms
 	end
 	-- the loop sleeps when nothing is drawn
-	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result and not St.next and not St.shake
+	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.totals == 0 and #St.flashes == 0 and not St.result and not St.next and not St.shake
 		and not screenFx and not Atk.Pending() then
 		if St.loop then
 			St.loop:Disconnect()
