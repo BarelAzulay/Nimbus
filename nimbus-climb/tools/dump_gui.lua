@@ -4963,10 +4963,23 @@ function WU.gates(screen)
 	end
 	local fit = min(1, (vp.X - 48) / W, (vp.Y - 140) / H)
 	local x, y, rowH = 24, 104, 0
-	for _, view in ipairs({ { onScreenScale(face, 40), "from 40 studs (the plaza)" }, { onScreenScale(face, 20), "from 20 studs" }, { fit, fit < 1 and "the canvas fitted" or "the canvas 1:1" } }) do
+	for i, view in ipairs({ { onScreenScale(face, 40), "from 40 studs (the plaza)" }, { onScreenScale(face, 20), "from 20 studs" }, { fit, fit < 1 and "the canvas fitted" or "the canvas 1:1" } }) do
 		local s = view[1]
 		local w, h = W * s, H * s
-		if x > 24 and x + w > vp.X - 12 then
+		if i == 3 then
+			-- the canvas takes what is left of the screen, beside the two views or under them, whichever holds it larger
+			-- (it ran off a 720p and a landscape phone's frame)
+			local here = min((vp.X - 12 - x) / W, (vp.Y - 16 - y) / H)
+			local below = min((vp.X - 36) / W, (vp.Y - 16 - (y + rowH + 46)) / H)
+			if x > 24 and below > here then
+				x, y, rowH = 24, y + rowH + 46, 0
+				s = min(s, below)
+			else
+				s = min(s, here)
+			end
+			w, h = W * s, H * s
+			view[2] = s < 1 - 1e-3 and "the canvas fitted" or "the canvas 1:1"
+		elseif x > 24 and x + w > vp.X - 12 then
 			x, y, rowH = 24, y + rowH + 46, 0
 		end
 		rowH = max(rowH, h)
