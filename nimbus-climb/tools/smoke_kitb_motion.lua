@@ -1087,7 +1087,26 @@ local function clientScenarios()
 			-- Double) and 0.16 (the next bite) toward its biter, then knocking it back again) drawn as BattleController draws
 			-- it (a replaced pose lerps from the old over AttackFx.CROSSFADE): at the Double's hit (its old reaction still
 			-- flying back) the bear is not pulled toward its biter (<= 0.03), at the next bite's (its old reaction already on
-			-- its way home) by no more than the mock's own dip there (0.078: <= 0.08); never under the floor; home after
+			-- its way home) by no more than the mock's own dip there (0.078: <= 0.08); never under the floor; home after.
+			-- Measured over the crossfade (AttackFx.CROSSFADE from the hit) on the knock-back itself, like the mock's x: each
+			-- drawn pose's own move (PetPoses.Offset) lerped with BattleController's blend. The first red run read the
+			-- paw-line midpoint and then the root: both also swing with the rock about the paws (Down x sin(pitch): 1.9 x
+			-- sin 3 deg = 0.1 for an evolved bear rocking nose down onto its front paws), which the mock's drawing has too
+			local CROSS = tonumber(AF.CROSSFADE) or 0.12
+			local function knockOf(ps)
+				if type(ps) ~= "table" or type(ps.Name) ~= "string" then
+					return 0
+				end
+				local function own(q)
+					return PP.Offset(q.Name, q.P, q.Ranged, q.Amp, q.Reach, q.Feet).Z - (tonumber(q.Forward) or 0)
+				end
+				local k = own(ps)
+				local blend = tonumber(ps.Blend) or 1
+				if type(ps.Prev) == "table" and type(ps.Prev.Name) == "string" and blend < 1 then
+					k = own(ps.Prev) + (k - own(ps.Prev)) * max(0, blend)
+				end
+				return k
+			end
 			local function drawnOf(ps)
 				local b = bodyOf(PP, ps)
 				local blend = ps and tonumber(ps.Blend) or 1
@@ -1103,7 +1122,6 @@ local function clientScenarios()
 			local bear = petAt(PB, PC, "sunbeam_bear", true, holder, V3(300, G + 1.5, -14))
 			if T.check(me2 ~= nil and bear ~= nil, "bounce timing: (setup) re-hit: an evolved Aurora Fox and an evolved Sunbeam Bear build") then
 				local bf = AF.FeetOf(bear)
-				local restMid = (bf.Hind - bf.Front) / 2
 				local src2 = { Unit = 590, Model = me2, Pos = V3(300, G + 1.5, 0) }
 				local tgt2 = { Unit = 1590, Model = bear, Pos = V3(300, G + 1.5, -14) }
 				local h0 = clock + 0.2
@@ -1113,10 +1131,10 @@ local function clientScenarios()
 					while clock + DT <= to + 1e-9 do
 						clock = clock + DT
 						AF.Update(clock)
-						local b = drawnOf(AF.Pose(tgt2.Unit))
+						local ps = AF.Pose(tgt2.Unit)
+						local b = drawnOf(ps)
 						if b then
-							local h, f = paws(b, bf)
-							rows[#rows + 1] = { T = clock, Body = b, Knock = (h.Z + f.Z) / 2 - restMid }
+							rows[#rows + 1] = { T = clock, Body = b, Knock = knockOf(ps) }
 						else
 							rows[#rows + 1] = { T = clock, Body = nil, Knock = 0 }
 						end
@@ -1133,7 +1151,7 @@ local function clientScenarios()
 					for _, r in ipairs(rows) do
 						if r.T <= h + 1e-6 then
 							k0 = r.Knock
-						elseif r.T <= h + STOP + 0.15 then
+						elseif r.T <= h + CROSS + 1e-6 then
 							lo = min(lo, r.Knock)
 						end
 					end
