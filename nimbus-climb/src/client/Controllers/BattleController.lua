@@ -8847,6 +8847,14 @@ function Hud.ListFits(B, m, top, y)
 	if left < cardRight - 2 and top < cardBottom + 8 then
 		return false
 	end
+	-- (Pitch 2 item 1b: the three keys' team row leaves the block more room under the strip, so a 360 x 640 phone keeps the
+	-- helpers side by side there) the helpers side by side under the card reach further right than the card: clear of them too
+	if Hud.helpersRow and Hud.helperHolder then
+		local _, teamH = Hud.LayoutFighter(B, m)
+		if left < K.EDGE + Hud.helperHolder.Size.X.Offset - 2 and top < y + teamH + 8 then
+			return false
+		end
+	end
 	if m.Touch and m.VY >= m.VX then
 		for _, k in ipairs(Hud.KeyBoxes(m)) do
 			if k.X1 > left and k.X0 < right and top + need > k.Y0 - 4 then
