@@ -979,12 +979,20 @@ function L.heroPC(t, w, M)
 	H.arrangeTravel(t.Travel, 290, 100, 30, 44)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
+	t.Hint.TextWrapped = false -- (the phone card wraps its line; a turn back to the PC plan takes the one line again)
 	-- (shop-area) the long hints, "Secret rolls happen at the Storm Altar" and (Pitch 2 item 13 A) "A gold arrow leads you
 	-- to the Storm Altar", run ~322-350 px at 18 ("You are at the Storm Altar" is shorter; the shop tests measure them in
 	-- the real face): one line from
 	-- w - 380 to 10 px short of the card's edge, starting 8 px clear of the chips when they reach that far
 	local hintL = math.max(w - 380, x + chipW + 8)
-	place(t.Hint, hintL, ref and 172 or 152, w - 10 - hintL, 28)
+	-- (Pitch 2 look review r0, crop 06: on the tight 180 px hero the line sat 4 px over the card's foot) the box ends
+	-- CARD_FOOT over the card's bottom: 22 px tall under the button on a tight hero
+	local hy, hh = ref and 172 or 152, 28
+	if hy + hh > M.Hero - K.CARD_FOOT then
+		hh = 22
+		hy = M.Hero - K.CARD_FOOT - hh
+	end
+	place(t.Hint, hintL, hy, w - 10 - hintL, hh)
 end
 
 function L.cardPC(t, w, M, tall)
@@ -1132,6 +1140,13 @@ function L.heroPhone(t, w, th)
 	place(t.Spin.Button, 0, 0, w - 12, 44)
 	H.arrange(t.Spin, w - 12, 44, 16, 18)
 	H.arrangeTravel(t.Travel, w - 12, 44, 16, 18)
+	-- (Pitch 2 look review r0, minor 5: a landscape phone away from the lobby had no "Home first" line before the tap) the
+	-- short away / match line in the band between the machine and the altar chip, wrapped; only while that band holds
+	-- one 15 px row (H.paint shows it away from the lobby or held by a match, never in the plain lobby state)
+	t.Hint.TextSize = 15
+	t.Hint.TextWrapped = true
+	place(t.Hint, 6, 116, w - 12, chipY - 2 - 116)
+	t.PhoneHintRoom = (chipY - 2 - 116) >= 17
 	t.Hint.Visible = false
 end
 
@@ -1261,6 +1276,7 @@ function L.heroPortrait(t, w, h)
 	t.Lock.TextSize = 15
 	t.Hint.Visible = true
 	t.Hint.TextSize = 15
+	t.Hint.TextWrapped = false
 	place(t.Hint, 8, 122, w - 16, 20)
 	place(t.Holder, 8, h - 52, w - 16, 44)
 	place(t.Spin.Button, 0, 0, w - 16, 44)
@@ -1528,6 +1544,10 @@ function ShopEggs.Refresh(page, fromLayout)
 	local lobbyHint = brief and K.TEXT.HeroHintLobbyShort or K.TEXT.HeroHintLobby
 	h.Hint.Text = (locked and K.TEXT.HeroHint) or (held and K.TEXT.HeroHintLocked) or (away and lobbyHint)
 		or (altar and K.TEXT.HeroHintTravel) or K.TEXT.HeroHintHere
+	if P.Mode == "Phone" then
+		-- (Pitch 2 look review r0, minor 5) the phone card says why the button routes home / is greyed, before the tap
+		h.Hint.Visible = (away or held) and h.PhoneHintRoom == true
+	end
 	if altar then
 		h.Pulse.Scale = 1
 	end

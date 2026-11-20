@@ -361,6 +361,35 @@ local function clientScenarios()
 			end
 			card:Destroy()
 			part:Destroy()
+
+			-- (look review r0, crops 11 / 12) on a phone (the 0.8 factor) the stars were 9 px (1 px cells) beside an 18 px "Lv"
+			-- and sat 1-2 px from it; the mock's chip has full-height stars and a clear gap ("2 stars  Lv 100"): the stars are as
+			-- tall as the level's px (whole 2 px cells), 4-6 px of chip between them and the "Lv" ink (its 2 px outline included)
+			for _, size in ipairs({ { 844, 390 }, { 1920, 1080 } }) do
+				Mock.SetViewport(size[1], size[2])
+				KC.advance(0.1)
+				local p2 = Instance.new("Part")
+				p2.Anchored = true
+				p2.Parent = workspace
+				local c2 = PetCard.New(p2, "Follower", 3)
+				c2:SetLevel(100, 2, false)
+				KC.advance(0.1)
+				local tag = fmt("world signs: %dx%d pet tag", size[1], size[2])
+				local b2 = c2.Gui:FindFirstChild("StarBadge")
+				local lv2 = c2.Gui:FindFirstChild("Plate") and c2.Gui.Plate:FindFirstChild("Level")
+				if T.check(b2 ~= nil and b2.Visible and lv2 ~= nil, tag .. ": (setup) the stars and the level") then
+					-- (the stars snap to whole-px cells, a multiple of 9 px: at 1080p 18 px beside a 22 px "Lv", whose capitals are
+					-- about 0.7 em = 15.4 px; the bar is the cap height, the 9 px stars of 1 px cells under it fail it)
+					T.check(b2.AbsoluteSize.Y >= 0.7 * lv2.TextSize, tag .. ": the stars stand at least as tall as the 'Lv' capitals (not half of them)",
+						fmt("stars %.0f px, Lv %d px (caps ~%.1f)", b2.AbsoluteSize.Y, lv2.TextSize, 0.7 * lv2.TextSize))
+					local gap = lv2.AbsolutePosition.X - (b2.AbsolutePosition.X + b2.AbsoluteSize.X)
+					T.check(gap >= 4 - 0.5 and gap <= 7 + 0.5, tag .. ": 4-6 px of chip between the stars and the 'Lv' ink", fmt("%.1f px", gap))
+				end
+				c2:Destroy()
+				p2:Destroy()
+			end
+			Mock.SetViewport(1920, 1080)
+			KC.advance(0.1)
 		end
 
 		-- the CREATOR title: a stone tag, a gold lip, the pixel crown
@@ -381,6 +410,35 @@ local function clientScenarios()
 			if T.check(crown ~= nil and label ~= nil, "world signs: CREATOR wears the pixel crown inside its tag") then
 				T.check(rect(crown).R <= rect(label).X + 0.5 + (label.AbsoluteSize.X - label.TextBounds.X) / 2, "world signs: the crown leads the word",
 					show(rect(crown)) .. " label " .. show(rect(label)))
+				-- (look review r0, crops 09 / 10: the crown 1 px from the "C", the "R" 2 px from the edge) the tag has room: >= 12 px
+				-- from the crown to the word and >= 12 px after it (the mock: ~16 and ~10), measured by the controller's own rule
+				local tw = Theme.Measure(label.Text, "Nameplate", label.TextSize).X
+				local textL = label.AbsolutePosition.X + (label.AbsoluteSize.X - tw) / 2
+				local gapC, gapR = textL - rect(crown).R, rect(plate).R - (textL + tw)
+				T.check(gapC >= 12 - 0.5 and gapR >= 12 - 0.5, "world signs: CREATOR keeps >= 12 px from the crown to the word and >= 12 px after it",
+					fmt("crown gap %.1f, right %.1f", gapC, gapR))
+				-- the plate's width rule is the controller's own (the render scene re-fits the mirrored plate with it: it dropped the
+				-- crown's lead, which drew the cramped tag of crop 10)
+				T.check(type(TC.PlateWidth) == "function" and abs(TC.PlateWidth("Creator", tw) - plate.AbsoluteSize.X) < 0.5,
+					"world signs: TitleController.PlateWidth(kind, textW) is the tag's width rule", type(TC.PlateWidth) == "function" and tostring(TC.PlateWidth("Creator", tw)) or "missing")
+			end
+			-- (look review r0, crop 10: two gold crowns stacked) a VIP Creator wears ONE crown, the tag's own: no VIP crown over it
+			-- (VipController hands a titled VIP's crown to TitleController.SetCrown on High graphics)
+			local GQ = client("GraphicsQuality")
+			local realGQ = GQ and GQ.Effective
+			if GQ then
+				GQ.Effective = function()
+					return "High"
+				end
+			end
+			p:SetAttribute("OwnedPasses", "VIP")
+			KC.advance(1.2)
+			local vipTag = TC.TagOf(p)
+			T.check(vipTag ~= nil and vipTag:FindFirstChild("Crown") == nil and vipTag:FindFirstChild("CrownMark", true) ~= nil,
+				"world signs: a VIP Creator wears one crown (the tag's own; no VIP crown stacked over it)",
+				vipTag and (vipTag:FindFirstChild("Crown") and "a VIP Crown slot over the tag" or "no Crown slot") or "no tag")
+			if GQ then
+				GQ.Effective = realGQ
 			end
 			Mock.RemovePlayer(p)
 			KC.advance(0.3)
@@ -420,6 +478,39 @@ local function clientScenarios()
 			KC.advance(0.1)
 			local left = pg():FindFirstChild("PromptCard")
 			T.check(left == nil or not left.Enabled, "world signs: the plank goes with the prompt")
+
+			-- (look review r0, majors 2 / 3) on a phone the card is under the 0.8 factor: the plank's 50 design px drew a 40 px
+			-- tap target and the touch key word TAP (16) drew at 12.8 px. A tap target >= 44 x 44 screen px over the plank, the
+			-- key word >= Theme.Readability.MinPx on screen
+			for _, size in ipairs({ { 390, 844 }, { 844, 390 } }) do
+				Mock.SetViewport(size[1], size[2])
+				KC.advance(0.1)
+				Mock.ShowPrompt(prompt, Enum.ProximityPromptInputType.Touch)
+				KC.advance(0.1)
+				local tag = fmt("world signs: %dx%d prompt", size[1], size[2])
+				local pc = pg():FindFirstChild("PromptCard")
+				local pl = pc and pc:FindFirstChild("Plank", true)
+				local best = nil
+				for _, d in ipairs(pc and pc:GetDescendants() or {}) do
+					if d:IsA("GuiButton") and d.Visible and (best == nil or d.AbsoluteSize.Y > best.AbsoluteSize.Y) then
+						best = d
+					end
+				end
+				if T.check(pl ~= nil and best ~= nil, tag .. ": (setup) the plank and its buttons") then
+					local b, p = rect(best), rect(pl)
+					T.check(b.W >= 44 - 0.01 and b.H >= 44 - 0.01 and b.X <= p.X + 0.5 and b.R >= p.R - 0.5 and b.Y <= p.Y + 0.5 and b.B >= p.B - 0.5,
+						tag .. ": a tap target of >= 44 x 44 screen px covers the whole plank", show(b) .. " plank " .. show(p))
+				end
+				local kt = pc and pc:FindFirstChild("KeyText", true)
+				local rs = pc and pc:FindFirstChild("ReadScale", true)
+				local onScreen = (kt and rs) and kt.TextSize * rs.Scale or 0
+				T.check(kt ~= nil and kt.Text == "TAP" and onScreen >= Theme.Readability.MinPx - 0.01, tag .. ": the key word TAP reads >= 14 px on screen",
+					fmt("%s at %.1f px", kt and kt.Text or "-", onScreen))
+				Mock.HidePrompt(prompt)
+				KC.advance(0.1)
+			end
+			Mock.SetViewport(1920, 1080)
+			KC.advance(0.1)
 		end
 		promptPart:Destroy()
 
@@ -447,6 +538,59 @@ local function clientScenarios()
 				T.check(b.X >= t.X - 0.5 and b.R <= t.R + 0.5 and b.Y >= t.Y - 0.5 and b.B <= t.B + 0.5 and b.X >= 0, "world signs: the '!' lies inside the tab, wholly on screen",
 					show(b) .. " tab " .. show(t))
 				T.check(abs(t.X) <= 0.5, "world signs: the folded tab sits flush on the left edge", show(t))
+				-- (look review r0, minor 3) the 18 px bang filled the whole 18 px face and ran over its 3 px lip: the mark lies on
+				-- the face above the lip, inside the block's sides
+				local mark = badge:FindFirstChild("Mark", true)
+				local bLip = badge:FindFirstChild("Lip")
+				if T.check(mark ~= nil and bLip ~= nil, "world signs: (setup) the '!' block's mark and lip") then
+					local m, l = rect(mark), rect(bLip)
+					T.check(m.B <= l.Y + 0.5 and m.Y >= b.Y - 0.5 and m.X >= b.X - 0.5 and m.R <= b.R + 0.5,
+						"world signs: the tab's pixel '!' sits on the block's face, clear of its lip", show(m) .. " lip " .. show(l) .. " block " .. show(b))
+					-- (the new render path, lobby:fold, against the mock's tab: the "!" is the kit's brown ink on the red block, as the
+					-- NPC signs' "!" on gold; it was drawn in stone)
+					local ink = nil
+					for _, c in ipairs(mark:GetDescendants()) do
+						if c:IsA("Frame") and c.BackgroundTransparency < 0.5 then
+							ink = ink or c.BackgroundColor3
+						end
+					end
+					ink = ink or (mark:IsA("TextLabel") and mark.TextColor3) or nil
+					T.check(ink ~= nil and same(ink, Sign.Text), "world signs: the tab's '!' is in the kit's brown ink (the mock's)", hex(ink))
+				end
+				-- (look review r0, minor 3; the lobby:fold render) the bang's DRAWN cells, not its box: PixelIcon draws whole
+				-- screen-px cells (never under 2 px for an 18 px icon), so under the phone column's ~0.7 scale an 18 px bang drew
+				-- 18 screen px on a 16 px face, over its top edge and its lip. Every cell lies on the face above the lip at
+				-- each screen
+				local UIS = game:GetService("UserInputService")
+				local touchWas = UIS.TouchEnabled
+				for _, vp in ipairs({ { 1920, 1080, false }, { 2560, 1440, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }) do
+					UIS.TouchEnabled = vp[3]
+					Mock.SetViewport(vp[1], vp[2])
+					KC.advance(0.6)
+					local mk, lp = badge:FindFirstChild("Mark", true), badge:FindFirstChild("Lip")
+					local ink = nil
+					for _, c in ipairs(mk and mk:GetDescendants() or {}) do
+						if c:IsA("Frame") and c.BackgroundTransparency < 0.5 and c.AbsoluteSize.X > 0 then
+							local r = rect(c)
+							ink = ink and { X = math.min(ink.X, r.X), Y = math.min(ink.Y, r.Y), R = math.max(ink.R, r.R), B = math.max(ink.B, r.B) } or { X = r.X, Y = r.Y, R = r.R, B = r.B }
+						end
+					end
+					local bb, ll = rect(badge), lp and rect(lp)
+					T.check(ink ~= nil and ll ~= nil and ink.Y >= bb.Y - 0.5 and ink.B <= ll.Y + 0.5 and ink.X >= bb.X - 0.5 and ink.R <= bb.R + 0.5 and (ink.B - ink.Y) >= 8.5,
+						fmt("world signs: %dx%d the tab's '!' cells (>= 9 px) lie on the face above the lip", vp[1], vp[2]),
+						ink and ll and fmt("ink %.1f,%.1f .. %.1f,%.1f face %s lip top %.1f", ink.X, ink.Y, ink.R, ink.B, show(bb), ll.Y) or "no cells / lip")
+				end
+				-- (look review r0, minor 3: "the tab's touch target is 30 px wide") on a touch phone the folded tab's clear hit pad
+				-- (ToggleHit, Pitch 2 F0 A) gives the thumb 44 screen px each way; the tab's look stays the slim kit tab
+				UIS.TouchEnabled = true
+				Mock.SetViewport(390, 844)
+				KC.advance(0.6)
+				local hit = tab:FindFirstChild("ToggleHit")
+				T.check(hit ~= nil and hit.Visible and hit.AbsoluteSize.X >= 44 - 0.01 and hit.AbsoluteSize.Y >= 44 - 0.01 and tab.Visible,
+					"world signs: on a touch phone the folded tab's hit pad is >= 44 x 44 screen px", hit and fmt("%.0fx%.0f visible %s", hit.AbsoluteSize.X, hit.AbsoluteSize.Y, tostring(hit.Visible)) or "no ToggleHit")
+				UIS.TouchEnabled = touchWas
+				Mock.SetViewport(1920, 1080)
+				KC.advance(0.6)
 			end
 			MC.SetColumnCollapsed(false, false)
 			if tileBadge then
@@ -508,6 +652,34 @@ local function clientScenarios()
 			T.check(not gui.Enabled, "damage numbers: Fx.ClearAll hides the totals too")
 		end
 		part:Destroy()
+		-- (look review r0, minor 2) at 1440p and up the figure is 30 px (Theme.ScaledSize(24, 22) x 1.25) but the chip stayed
+		-- 34 px (a 24 px label box): the figure ran over the red lip and the edge. The chip grows with its figure, and a total
+		-- taken from the pool is sized afresh
+		for _, size in ipairs({ { 2560, 1440 }, { 1920, 1080 }, { 390, 844 } }) do
+			Mock.SetViewport(size[1], size[2])
+			KC.advance(0.05)
+			local p3 = Instance.new("Part")
+			p3.Anchored = true
+			p3.Parent = workspace
+			local u3 = { root = p3, height = 4, id = 993 }
+			Fx.Total(u3, 136205)
+			KC.advance(0.05)
+			local tag = fmt("damage numbers: %dx%d", size[1], size[2])
+			local g3 = u3.total and u3.total.gui
+			local chip3 = g3 and g3:FindFirstChild("Chip", true)
+			local l3 = chip3 and chip3:FindFirstChildWhichIsA("TextLabel", true)
+			local lip3 = chip3 and chip3:FindFirstChild("Lip")
+			if T.check(l3 ~= nil and lip3 ~= nil, tag .. ": (setup) the total's chip") then
+				local e = (chip3:FindFirstChild("SignEdge") and chip3.SignEdge.Thickness) or 0
+				T.check(l3.AbsoluteSize.Y >= l3.TextSize - 0.5 and rect(l3).B <= rect(lip3).Y + 0.5 and chip3.AbsoluteSize.Y + 2 * e <= g3.Size.Y.Offset + 0.5,
+					tag .. ": the total's figure fits its chip (above the red lip, inside the billboard)",
+					fmt("label %.0f px box for %d px text; chip %.0f + 2x%d edge in a %d px gui", l3.AbsoluteSize.Y, l3.TextSize, chip3.AbsoluteSize.Y, e, g3.Size.Y.Offset))
+			end
+			Fx.ClearAll()
+			p3:Destroy()
+		end
+		Mock.SetViewport(1920, 1080)
+		KC.advance(0.05)
 		-- the source: the hit handler pops through HitLook, no raw tostring(floor(dmg + 0.5)) number left
 		local fh = io.open("src/client/Controllers/BattleController.lua", "r")
 		local src = fh and fh:read("*a") or ""
@@ -597,6 +769,35 @@ local function clientScenarios()
 		local restrictedWas = player:GetAttribute("PaidRandomItemsRestricted")
 		player:SetAttribute("PaidRandomItemsRestricted", false)
 		local ok, err = pcall(function()
+			------------------------------------------------------------------ (look review r0, crop 06) the subline at 1280x720
+			-- the tight hero (180 px) drew "A gold arrow leads you to the Storm Altar" 4 px over the card's foot: its box clears
+			-- the card's CARD_FOOT
+			Mock.SetViewport(1280, 720)
+			KC.advance(0.3)
+			SE._AtAltar = false
+			SE._InLobby = nil
+			Shop.Open({ Tab = "Eggs" })
+			KC.advance(0.8)
+			local hint, hero = nil, nil
+			for _, d in ipairs(pg():GetDescendants()) do
+				if d.Name == "Hint" and d:IsA("TextLabel") and d.Visible and d.Text == SE.Metrics.TEXT.HeroHintTravel then
+					hint = d
+				end
+			end
+			local a = hint and hint.Parent
+			while a and not (a:IsA("GuiObject") and a:GetAttribute("Hero") == true) do
+				a = a.Parent
+			end
+			hero = a
+			if T.check(hint ~= nil and hero ~= nil, "travel: (setup) 1280x720 the Secret card's subline") then
+				local k = rect(hint).H / math.max(1, hint.Size.Y.Offset) -- (the foot is design px under the window's scale)
+				local gap = (rect(hero).B - (SE.Metrics.CARD_FOOT or 8) * k) - rect(hint).B
+				T.check(gap >= -0.5, "travel: 1280x720 the subline's box clears the hero card's foot", fmt("%.1f px (hint %s, card %s)", gap, show(rect(hint)), show(rect(hero))))
+			end
+			Shop.Close()
+			KC.advance(0.4)
+			Mock.SetViewport(1920, 1080)
+			KC.advance(0.3)
 			------------------------------------------------------------------ the Shop's button
 			SE._AtAltar = false
 			SE._InLobby = nil
@@ -793,6 +994,42 @@ local function clientScenarios()
 			T.check(Guide.Active() == nil, "travel: a greyed button starts nothing")
 			Shop.Close()
 			player:SetAttribute(Config.Attr.InBattle, nil)
+			KC.advance(0.3)
+
+			------------------------------------------------------------------ (look review r0, minor 5) a landscape phone away
+			-- from the lobby: the Secret card had no subline, so nothing said "Home first" before the tap; its short line shows
+			-- on the card, between the odds and the altar chip, inside the card
+			Mock.SetViewport(844, 390)
+			KC.advance(0.5)
+			Shop.Open({ Tab = "Eggs" })
+			KC.advance(1.2)
+			local away, chipAt, heroCard = nil, nil, nil
+			for _, d in ipairs(pg():GetDescendants()) do
+				if d.Name == "Hint" and d:IsA("TextLabel") and d.Visible and d.Text == SE.Metrics.TEXT.HeroHintLobbyShort then
+					away = d
+				end
+				if d.Name == "AltarChip" and d:IsA("GuiObject") and d.Visible then
+					chipAt = d
+				end
+			end
+			local a2 = away and away.Parent
+			while a2 and not (a2:IsA("GuiObject") and a2:GetAttribute("Hero") == true) do
+				a2 = a2.Parent
+			end
+			heroCard = a2
+			if T.check(away ~= nil, "travel: 844x390 away from the lobby the Secret card says '" .. tostring(SE.Metrics.TEXT.HeroHintLobbyShort) .. "'") then
+				local hr, cr = rect(away), heroCard and rect(heroCard)
+				local k = hr.W / math.max(1, away.Size.X.Offset) -- screen px per design px (the window's scale)
+				local px = away.TextSize * k
+				local need = SmokeCommon.RealWidth(away.Text, away.TextSize, Theme.FontOf and Theme.FontOf(away) or away.Font) * k
+				local rows = math.ceil(need / math.max(1, hr.W))
+				T.check(cr ~= nil and hr.X >= cr.X - 0.5 and hr.R <= cr.R + 0.5 and (chipAt == nil or not overlap(hr, rect(chipAt))) and rows * px <= hr.H + 2 and px >= 14 - 0.01,
+					"travel: 844x390 the away line fits inside the card (>= 14 px), clear of the altar chip",
+					fmt("line %s (%d rows of %.1f px) card %s chip %s", show(hr), rows, px, show(cr), chipAt and show(rect(chipAt)) or "-"))
+			end
+			Shop.Close()
+			Mock.SetViewport(1920, 1080)
+			KC.advance(0.5)
 		end)
 		pcall(Guide.Stop)
 		player:SetAttribute("PaidRandomItemsRestricted", restrictedWas)

@@ -22,7 +22,7 @@
 --   Creator  "CREATOR", 24 px: (Pitch 2 item 04 B) a stone tag on a gold lip, brown letters, the pixel crown ("CrownMark",
 --            18 px, the gold lip's colour) leading the word inside the tag.
 --   The crown (SetCrown on): VipController.Crown (the gold pixel crown on its wood lip) as "Crown", 34 x 34 px, centred,
---   4 px above the Plate.
+--   4 px above the Plate. Not over CREATOR (its tag carries its own crown: one crown, Pitch 2 item 04 B).
 -- Hidden while that player is InBattle (the battle scene); for the local player also while the camera is within 2 studs
 -- of the head (first person). One 4 Hz task does that check (local player only) and once a second rebuilds a titled
 -- player's tag whose head changed (a respawn the CharacterAdded wait missed, a character streamed out and back). No
@@ -65,7 +65,7 @@ local K = {
 	FACE = { Creator = { Face = Theme.Sign.Stone, Lip = Theme.Sign.GoldLip, Text = Theme.Sign.Text } },
 	CREATOR_CROWN = 18, -- the crown's px (a multiple of 9: whole-px cells)
 	CREATOR_CROWN_PAD = 10, -- px from the face's left to the crown
-	CREATOR_CROWN_GAP = 8, -- px from the crown to the word
+	CREATOR_CROWN_GAP = 14, -- px from the crown to the word (look review r0: 8 read cramped; the mock's gap is ~16)
 	TICK = 0.25, -- the 4 Hz check
 	SWEEP = 4, -- ticks between two head sweeps (1 s)
 	NEAR = 2, -- studs: the camera this close to the local head = first person
@@ -139,6 +139,18 @@ local function drop(player)
 	end
 end
 
+-- (Pitch 2 item 04 B) the CREATOR tag leads with its pixel crown: CROWN_PAD, the icon, CROWN_GAP, then the word. The
+-- label starts `lead` px into the plate and centres the word in the rest (PAD each side of it)
+function TitleController.Lead(kind)
+	return (kind == "Creator") and (K.CREATOR_CROWN_PAD + K.CREATOR_CROWN + K.CREATOR_CROWN_GAP - K.PAD) or 0
+end
+
+-- the plate's width for a `textW` px word: PAD each side, the crown's lead, at most the billboard less its edges
+-- (the render scene's mirrored plate is re-fitted with this rule and the renderer's font metrics)
+function TitleController.PlateWidth(kind, textW)
+	return math.min(K.WIDTH - 2 * K.EDGE, (tonumber(textW) or 0) + 2 * K.PAD + TitleController.Lead(kind))
+end
+
 local function build(player, head, kind, text, crown)
 	-- (U9-3 review) a BillboardGui clips its descendants and the wood edge is a Border stroke outside the plate: the gui
 	-- keeps K.EDGE px under the plate (and above it without the crown; the crown slot's gap holds the edge otherwise)
@@ -156,9 +168,8 @@ local function build(player, head, kind, text, crown)
 
 	local size = (kind == "Creator") and K.CREATOR_TEXT or K.TEXT
 	local textW = math.ceil(Theme.Measure(text, "Nameplate", size, 4096).X)
-	-- (Pitch 2 item 04 B) the CREATOR tag leads with its pixel crown: CROWN_PAD, the icon, CROWN_TEXT_GAP, then the word
-	local lead = (kind == "Creator") and (K.CREATOR_CROWN_PAD + K.CREATOR_CROWN + K.CREATOR_CROWN_GAP - K.PAD) or 0
-	local plateW = math.min(K.WIDTH - 2 * K.EDGE, textW + 2 * K.PAD + lead)
+	local lead = TitleController.Lead(kind)
+	local plateW = TitleController.PlateWidth(kind, textW)
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
@@ -223,7 +234,9 @@ local function refresh(player)
 		return
 	end
 	local text = textOf(kind, player)
-	local crown = S.Crown[player] == true
+	-- (Pitch 2 item 04 B, look review r0: two gold crowns stacked) the CREATOR tag carries its own pixel crown, so a VIP
+	-- Creator gets no VIP crown slot over it (one crown, as in the mock)
+	local crown = S.Crown[player] == true and kind ~= "Creator"
 	local key = kind .. "|" .. text .. "|" .. tostring(crown)
 	local t = S.Tags[player]
 	if not (t and t.Key == key and t.Head == head and t.Gui.Parent ~= nil) then

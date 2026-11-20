@@ -1344,6 +1344,7 @@ function Fx.FreeTotal(t)
 	end
 	t.owner = nil
 	t.sum = 0
+	t.shown = "" -- (look review r0) a total taken from the pool is sized afresh (the screen may have changed)
 	t.gui.Enabled = false
 	t.gui.Adornee = nil
 	St.totalPool[#St.totalPool + 1] = t
@@ -1381,7 +1382,11 @@ function Fx.Total(u, dmg)
 		local tpx = Theme.ScaledSize(K.TOTAL_PX, 22)
 		t.label.TextSize = tpx
 		local w = math.ceil(Theme.Measure(text, "Heading", tpx).X) + 2 * K.TOTAL_PAD
-		t.chip.Size = UDim2.fromOffset(w, K.TOTAL_H - 2 * K.TOTAL_EDGE)
+		-- (look review r0: at 1440p the 30 px figure ran over the red lip in the fixed 24 px box) the face holds the
+		-- figure's px above its lip, never less than the 1080p chip
+		local faceH = math.max(K.TOTAL_H - 2 * K.TOTAL_EDGE, tpx + K.TOTAL_LIP)
+		t.chip.Size = UDim2.fromOffset(w, faceH)
+		t.gui.Size = UDim2.fromOffset(math.max(220, w + 2 * K.TOTAL_EDGE + 8), faceH + 2 * K.TOTAL_EDGE + 8)
 	end
 	t.shown = text
 	t.gui.Parent = fxFolder()

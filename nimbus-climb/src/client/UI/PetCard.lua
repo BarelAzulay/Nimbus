@@ -79,7 +79,7 @@ local K = {
 	WIDTH = 96, -- the HP row's least width (the chip is centred over it)
 	LEVEL_PX = 22, -- "Lv 12"
 	STAR_PX = 18,
-	STAR_GAP = 4, -- px between the stars and "Lv"
+	STAR_GAP = 6, -- px between the stars and "Lv" (look review r0: 4 left 1-2 px of chip at 0.8; the mock's gap is ~7)
 	CHIP_H = 26, -- (Pitch 2 item 04 B) the chip's face (30 px with its 2 px edge)
 	CHIP_EDGE = 2,
 	CHIP_LIP = 3,
@@ -356,7 +356,9 @@ function PetCard:_layout()
 	local badge = self.badge
 	local bw, bh = 0, 0
 	if hasStars then
-		local snap = math.max(9, 9 * math.floor(starPx / 9))
+		-- (look review r0: at 0.8 starPx 14 snapped to 9 px stars of 1 px cells beside an 18 px "Lv") the stars snap to the
+		-- largest multiple of 9 within the chip's row and the level's px: 18 at 0.8 and 1080p, 27 at 1.25
+		local snap = math.max(9, 9 * math.floor(math.min(rowH, math.max(starPx, levelPx)) / 9))
 		local cell = math.floor(snap / 9)
 		bw = self.stage * snap + (self.stage - 1) * cell
 		bh = snap

@@ -7,6 +7,8 @@
 --          peeking over the plank's top-left; none when the prompt has no ObjectText
 --   Plank  the Tile plank (3 px wood edge, 5 px lip in the stone lip): a TextButton, so a tap or a click holds the prompt
 --          (prompt:InputHoldBegin / InputHoldEnd, as the default prompt's ClickablePrompt did)
+--   Hit    (look review r0: the plank is 50 design px, 40 screen px under a phone's 0.8) a clear TextButton over the whole
+--          plank, its edges included, at least K.TOUCH screen px tall (HitFor "Plank"): the thumb's target; same input
 --   Key    the navy key block (2 px wood edge, 3 px lip) with the key in stone ink: E (its KeyboardKeyCode), X on a pad,
 --          TAP on a touch screen
 --   Action the ActionText ("Secret Roll") at 26 px in the kit's brown ink
@@ -45,7 +47,8 @@ local K = {
 	KEY_EDGE = 2,
 	KEY_LIP = 3,
 	KEY_PX = 20,
-	TAP_PX = 16,
+	TAP_PX = 18, -- (look review r0) 16 drew 12.8 px under a phone's 0.8: 18 keeps TAP at 14.4 (Theme.Readability.MinPx 14)
+	TOUCH = 44, -- (look review r0) screen px: the clear Hit button over the plank is at least this tall at any scale
 	GAP = 12, -- the key to the action
 	RIGHT = 18, -- px after the action
 	ACTION_PX = 26,
@@ -233,6 +236,22 @@ local function build(prompt, inputType)
 		ZIndex = 5,
 	}, plank)
 
+	-- the thumb's target: the whole plank with its edges, never under K.TOUCH screen px tall (centred on the plank)
+	local hitH = math.max(K.PLANK_H, math.ceil(K.TOUCH / math.max(scale, 0.01)))
+	local hitBtn = make("TextButton", {
+		Name = "Hit",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, plankY + math.floor((K.PLANK_H - hitH) / 2)),
+		Size = UDim2.fromOffset(W, hitH),
+		ZIndex = 6,
+		Active = true,
+		Selectable = false,
+	}, root)
+	hitBtn:SetAttribute("HitFor", "Plank")
+
 	local rec = { gui = gui, conns = {}, prompt = prompt, input = inputType, holding = false }
 	local function holdBegin()
 		if rec.holding then
@@ -256,16 +275,18 @@ local function build(prompt, inputType)
 		local t = io.UserInputType
 		return t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1
 	end
-	rec.conns[#rec.conns + 1] = plank.InputBegan:Connect(function(io)
-		if onInput(io) and prompt.ClickablePrompt ~= false then
-			holdBegin()
-		end
-	end)
-	rec.conns[#rec.conns + 1] = plank.InputEnded:Connect(function(io)
-		if onInput(io) then
-			holdEnd()
-		end
-	end)
+	for _, button in ipairs({ plank, hitBtn }) do
+		rec.conns[#rec.conns + 1] = button.InputBegan:Connect(function(io)
+			if onInput(io) and prompt.ClickablePrompt ~= false then
+				holdBegin()
+			end
+		end)
+		rec.conns[#rec.conns + 1] = button.InputEnded:Connect(function(io)
+			if onInput(io) then
+				holdEnd()
+			end
+		end)
+	end
 	rec.conns[#rec.conns + 1] = prompt.PromptButtonHoldBegan:Connect(function()
 		local d = tonumber(prompt.HoldDuration) or 0
 		if d > 0 then
