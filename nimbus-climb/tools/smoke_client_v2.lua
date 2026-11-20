@@ -1314,7 +1314,10 @@ S.client_menu = guarded("client_menu", function()
 			cards[r.Id] = eggs and descendantNamed(eggs, "ShopCard_" .. r.Id)
 			T.check(cards[r.Id] ~= nil, "a card for the " .. r.DisplayName)
 			if cards[r.Id] then
-				T.check(findText(r.DisplayName:lower(), cards[r.Id]) ~= nil and hasNumber(cards[r.Id], r.Price), r.Id .. ": name and price (" .. r.Price .. ")")
+				-- (Pitch 2 F0, one number style) the price reads in Theme.Short ("1K" for 1000, "250" for 250), so the card
+				-- shows that form of the catalog price (was the full number with separators)
+				T.check(findText(r.DisplayName:lower(), cards[r.Id]) ~= nil and hasNumber(cards[r.Id], Theme.Short(r.Price)),
+					r.Id .. ": name and price (" .. r.Price .. " = " .. Theme.Short(r.Price) .. ")")
 			end
 		end
 		local order = true

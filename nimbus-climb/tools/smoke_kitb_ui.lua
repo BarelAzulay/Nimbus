@@ -7154,10 +7154,18 @@ local function clientScenarios()
 			return
 		end
 		U8.at(1920, 1080, false, "finish pass", function(tag)
-			local frames, bodies, blocks, bad = 0, 0, 0, {}
+			local frames, bodies, blocks, bad, numbers, comma = 0, 0, 0, {}, 0, {}
 			local function walk(root, family)
 				for _, d in ipairs(root and root:GetDescendants() or {}) do
 					if d:IsA("GuiObject") and U8.shown(d) then
+						-- (F0: one number style) the four windows' numbers read in Theme.Short ("13.2K", "$1.45K", "5K"),
+						-- never with a thousands separator ("13,213")
+						if (d:IsA("TextLabel") or d:IsA("TextButton")) and type(d.Text) == "string" and d.Text:find("%d") then
+							numbers = numbers + 1
+							if d.Text:find("%d,%d%d%d") then
+								comma[#comma + 1] = family .. ": " .. d.Name .. " '" .. d.Text .. "'"
+							end
+						end
 						local kind = d:GetAttribute("SignKit")
 						if kind == "Frame" then
 							frames = frames + 1
@@ -7205,6 +7213,8 @@ local function clientScenarios()
 			LKC.advance(0.4)
 			T.check(frames >= 4 and bodies >= 4 and blocks >= 10, tag .. ": the walk met the windows' frames, bodies and blocks", fmt("%d frames, %d bodies, %d blocks", frames, bodies, blocks))
 			T.check(#bad == 0, fmt("%s: every frame lit and shadowed, every body carved, every raised block shined (%d off)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 40)))
+			T.check(numbers >= 20 and #comma == 0, fmt("%s: the windows' numbers read short (Theme.Short), none with a thousands separator (%d of %d)", tag, #comma, numbers),
+				table.concat(comma, "; ", 1, math.min(#comma, 20)))
 		end)
 		LKC.flushErrors("finish_pass_kit")
 	end)

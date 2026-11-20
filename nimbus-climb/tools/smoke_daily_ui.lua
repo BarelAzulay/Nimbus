@@ -408,7 +408,9 @@ local function clientScenarios()
 		T.check(H.cellCount() == 7 and H.cellText(1):find("$", 1, true) ~= nil and H.cellDimmed(1) and H.cellDimmed(2) and not H.cellDimmed(3) and H.cellPulsing(3)
 			and not H.cellPulsing(4), "daily window: 7 cells, claimed dim, today pulsing",
 			fmt("%d cells, cell1 '%s', dim %s %s %s, pulse %s", H.cellCount(), H.cellText(1), tostring(H.cellDimmed(1)), tostring(H.cellDimmed(2)), tostring(H.cellDimmed(3)), tostring(H.cellPulsing(3))))
-		T.check(H.cellText(3):find("1,450", 1, true) ~= nil, "daily window: amounts are the resolved numbers (13b.3)", H.cellText(3))
+		-- (Pitch 2 F0, the owner's pick A: one number style, Theme.Short) the resolved 1,450 reads "$1.45K" (was "$1,450":
+		-- the cells mixed commas with the HUD's short numbers); still the resolved number, in the game's one style
+		T.check(H.cellText(3):find("1.45K", 1, true) ~= nil, "daily window: amounts are the resolved numbers (13b.3), short (Theme.Short)", H.cellText(3))
 		-- (re-review 1: "Week Wisp" is wider than the day cell on every layout, so the cell names the pet by its last word;
 		-- the week banner and the toast keep the full name; smoke_fixr_daily_ui.lua client_fixr_daily_fit checks the fit)
 		T.check(H.find(H.cell(7), "PetViewport") ~= nil and H.cellText(7):find("Wisp", 1, true) ~= nil, "daily window: day 7 shows the Week Wisp (its viewport, named 'Wisp' in the cell)", H.cellText(7))

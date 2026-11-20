@@ -195,8 +195,10 @@ local function safe(key, fn, ...)
 	return ok, a, b
 end
 
+-- (Pitch 2 F0, the owner's pick A: one number style) the window's numbers (power, team power, health, speed, XP) read
+-- in Theme.Short ("13.2K", "19.8K", "659"), as the HUD's balances do; the name is kept for its callers
 local function commas(n)
-	return Util.Commas(tonumber(n) or 0)
+	return Theme.Short(tonumber(n) or 0)
 end
 
 local function place(inst, x, y, w, h)

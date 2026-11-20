@@ -899,7 +899,10 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 			end
 			local r = roulettes[id]
 			local spin, s3, sg = G.eggBtn(id, "Spin"), G.eggBtn(id, "Spin3"), G.eggBtn(id, "SpinGems")
-			local want = { commas(r.Price), commas(3 * r.Price), tostring(gemPrices[id]) }
+			-- (Pitch 2 F0, one number style) the token prices read in Theme.Short ("1K" / "3K", "250" / "750"; were "1,000" /
+			-- "3,000"); the gem prices stay under 1,000, so they read whole either way
+			local Short = G.req("shared/Theme").Short
+			local want = { Short(r.Price), Short(3 * r.Price), tostring(gemPrices[id]) }
 			local got = { G.priceOf(spin), G.priceOf(s3), G.priceOf(sg) }
 			if got[1] ~= want[1] or got[2] ~= want[2] or got[3] ~= want[3] or not (spin and spin:FindFirstChild("TokenIcon", true)) or not (s3 and s3:FindFirstChild("TokenIcon", true))
 				or not (sg and sg:FindFirstChild("GemIcon", true)) then
@@ -983,7 +986,8 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 		local cel = G.eggBtn("Celestial", "Spin")
 		local celPrice = cel and cel:FindFirstChild("Price", true)
 		-- (kit-b U9-2) the short red is a dark red that reads on stone (rgb 140, 24, 48)
-		T.check(SE.CardState("Celestial") == "Short" and G.priceOf(cel) == "5,000" and celPrice and celPrice.TextColor3.R > 0.5 and celPrice.TextColor3.G < 0.2 and not G.disabled(cel),
+		-- (Pitch 2 F0, one number style) the price reads Theme.Short: "5K" (was "5,000")
+		T.check(SE.CardState("Celestial") == "Short" and G.priceOf(cel) == "5K" and celPrice and celPrice.TextColor3.R > 0.5 and celPrice.TextColor3.G < 0.2 and not G.disabled(cel),
 			"shop eggs: Short (4,000 tokens, Celestial 5,000): the price kept, drawn red, the button still taps", tostring(SE.CardState("Celestial")) .. " / " .. tostring(G.priceOf(cel)))
 		T.eq(SE.CardState("Cloud"), "Ready", "shop eggs: ...while Cloud (50) stays Ready")
 		local mS, hS = #Mock.RemoteLog, #hints

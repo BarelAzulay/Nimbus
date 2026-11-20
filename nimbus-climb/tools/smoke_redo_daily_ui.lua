@@ -317,7 +317,8 @@ local function clientScenarios()
 						T.check(H.find("PetViewport", c7) ~= nil and H.text(H.find("Amount", c7)):find("Wisp", 1, true) ~= nil, label .. ": Day 7 shows the Week Wisp", H.text(H.find("Amount", c7)))
 						T.check(H.shown(H.find("Check", c1)) and H.shown(H.find("Dim", c1)) and H.shown(H.find("Check", c2)) and not H.shown(H.find("Check", c3)),
 							label .. ": claimed tiles are dimmed with their tick")
-						T.check(H.text(H.find("Amount", c3)):find("1,450", 1, true) ~= nil, label .. ": today's amount", H.text(H.find("Amount", c3)))
+						-- (Pitch 2 F0, the owner's pick A: one number style) the resolved 1,450 in Theme.Short: "$1.45K" (was "$1,450")
+						T.check(H.text(H.find("Amount", c3)):find("1.45K", 1, true) ~= nil, label .. ": today's amount (Theme.Short)", H.text(H.find("Amount", c3)))
 					end
 					-- the Week Wisp line and bar
 					T.eq(H.text(H.find("WispText")), "Week Wisp in 4 more days", label .. ": the Wisp line")

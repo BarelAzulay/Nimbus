@@ -433,10 +433,6 @@ local function now()
 	return workspace:GetServerTimeNow()
 end
 
-local function commas(n)
-	return Util.Commas(math.floor(tonumber(n) or 0))
-end
-
 local function label(name, text, role, size, parent, props)
 	local l = Theme.Label(text or "", role, { Size = size })
 	l.Name = name
@@ -501,17 +497,18 @@ local function petNames(petId)
 	return { name, string.match(name, "(%S+)%s*$") or name }
 end
 
--- the short amount of a cell, the longest form first ("$1,450", "50", "Week Wisp" / "Wisp", "$1,234,567" / "$1.2M")
+-- the short amount of a cell, the longest form first ("$1.45K", "50", "Week Wisp" / "Wisp", "$1.23M"). (Pitch 2 F0, finish
+-- pass A: one number style, Theme.Short; the cells read "$1,450" beside the HUD's "48.2K")
 local function cellAmounts(entry)
 	local kind = entry.Kind
 	if kind == "Cash" then
-		return { "$" .. commas(entry.Amount), "$" .. short(entry.Amount) }
+		return { "$" .. short(entry.Amount) }
 	elseif kind == "Pet" then
 		return petNames(entry.PetId)
 	elseif kind == "Berries" then
 		return { "Berries" }
 	end
-	return { commas(entry.Amount), short(entry.Amount) }
+	return { short(entry.Amount) }
 end
 
 -- a play tier whose claim would pay nothing now: the server resolved it to Amount 0 (a full Berry Basket) or "None".
@@ -531,9 +528,9 @@ end
 local function tierRewards(tier)
 	local kind = tier.Kind
 	if kind == "Cash" then
-		return { "+$" .. commas(tier.Amount), "+$" .. short(tier.Amount) }
+		return { "+$" .. short(tier.Amount) } -- (Pitch 2 F0) one number style, Theme.Short
 	elseif kind == "Tokens" or kind == "Gems" then
-		return { "+" .. commas(tier.Amount), "+" .. short(tier.Amount) }
+		return { "+" .. short(tier.Amount) }
 	elseif kind == "Berries" and paysNothing(tier) then
 		return { "Basket is full", "Basket full" }
 	elseif kind == "Berries" then
@@ -541,7 +538,7 @@ local function tierRewards(tier)
 	elseif kind == "Pet" then
 		return petNames(tier.PetId)
 	end
-	return { "+" .. commas(tier.Amount), "+" .. short(tier.Amount) }
+	return { "+" .. short(tier.Amount) }
 end
 
 local function days(st)

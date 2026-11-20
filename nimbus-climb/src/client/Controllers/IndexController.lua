@@ -356,8 +356,9 @@ local function rarityAccent(rarityId)
 	return color
 end
 
+-- (Pitch 2 F0, one number style) the reward and the stat values read in Theme.Short ("50", "1.25K")
 local function commas(n)
-	return Util.Commas(tonumber(n) or 0)
+	return Theme.Short(tonumber(n) or 0)
 end
 
 -- (LOOK-ui, kitb-look1) a group's block bar: a block per pet up to 12, ten blocks (tenths) past that
