@@ -309,6 +309,7 @@ local S = {
 	yieldToResult = false, -- a narrow screen with the result card open: the match panel steps away
 	vitalsOwners = {}, -- [window name] = true while that window wants the vitals card hidden (SetVitalsHidden)
 	currencyOwners = {}, -- (kit-b U9-2) [window name] = true while that window wants the currency strips hidden (SetCurrencyHidden)
+	topReserve = {}, -- (P2 fix A) [owner] = gui-area px of the top band a card spans (SetTopReserve): the strips start under it
 }
 local H = { -- health
 	Char = nil, Humanoid = nil, Conns = {},
@@ -1054,6 +1055,15 @@ local function applyMargins(animate, force)
 		local overPanel = hasPanel and topRightLeft < topLeft + panelW * k + K.STRIP_GAP * k
 		if overPanel and not inMatch then
 			stripTop = math.floor(K.EDGE + topH * k + K.GIFT_GAP * k + 0.5)
+		end
+		-- (P2 fix A, item 06 A) a card spanning a portrait phone's top band (the battle's boss strip, SetTopReserve): the
+		-- strips start GIFT_GAP under it (the pitch's portrait: the strip under the boss card, beside the fighter card)
+		local reserve = 0
+		for _, px in pairs(S.topReserve) do
+			reserve = math.max(reserve, px)
+		end
+		if reserve > 0 then
+			stripTop = math.max(stripTop, math.floor(reserve + K.GIFT_GAP * k + 0.5))
 		end
 		UI.Currency.Position = UDim2.new(1, -side, 0, stripTop)
 		topRightBottom = stripTop + blockH * k
@@ -3717,6 +3727,21 @@ end
 -- lets go. The layout re-runs, so the gift's dock and the published edges follow (nothing else moves).
 function HudController.SetCurrencyHidden(who, on)
 	S.currencyOwners[type(who) == "string" and who or "?"] = (on == true) or nil
+	if UI.Currency then
+		relayout()
+	end
+end
+
+-- (P2 fix A, item 06 A) a card that spans the top band of a portrait phone (BattleController's boss strip) keeps the band
+-- down to `bottom` (gui-area px) for itself: the currency strips start under it. `who` names the card; nil / 0 lets go. The
+-- layout re-runs only when the reserve changes
+function HudController.SetTopReserve(who, bottom)
+	who = type(who) == "string" and who or "?"
+	local v = (type(bottom) == "number" and bottom > 0) and math.floor(bottom + 0.5) or nil
+	if S.topReserve[who] == v then
+		return
+	end
+	S.topReserve[who] = v
 	if UI.Currency then
 		relayout()
 	end

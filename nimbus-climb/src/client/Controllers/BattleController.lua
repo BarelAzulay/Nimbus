@@ -6344,6 +6344,7 @@ function Hud.Rebuild()
 		Hud.team.Visible = false
 		Hud.cmd.Visible = false
 		Hud.enemies.Visible = false
+		Hud.SetTopReserve(nil)
 		Hud.SetMenuHidden(false)
 		Hud.SetVitalsHidden(false)
 		Leave.Place(m, nil, false)
@@ -6357,6 +6358,24 @@ function Hud.Rebuild()
 	local between = B.Fighter and B.ended and B.ringNext ~= nil
 	local curBottom, curLeft, curRight = Hud.CurrencyTop(m)
 	local topY = K.EDGE
+	-- (P2 fix A, item 06 A: at 390 x 844 the boss card was a 196 px tower under the enemy list, its name cut, its track 50 px)
+	-- a portrait phone's boss fight: the pitch's strip spans the top first (Hud.BandMode), the HUD's strips start under it
+	-- (HudController.SetTopReserve) and the fighter card and the enemy list under the strip, as the pitch's portrait draws it
+	local band = (isFighting or between or not (B.Fighter or B.ended)) and Hud.BandMode(B, m)
+	Hud.bandOn = band == true -- (LayoutTop reads it: the strip only while the HUD's strips are held under it)
+	if band then
+		Hud.LayoutTop(B, m, 0, 0, K.EDGE, true)
+		local bandBottom = K.EDGE + (Hud.topH or 0)
+		Hud.SetTopReserve(bandBottom * m.F)
+		curBottom, curLeft, curRight = Hud.CurrencyTop(m)
+		local trb = Hud.HudAttr("TopRightBottom")
+		if curBottom > 0 and trb and trb > 0 then
+			curBottom = math.ceil(trb / max(0.05, m.F)) -- (the strips' new place, published as the HUD laid them out)
+		end
+		topY = bandBottom + 8
+	else
+		Hud.SetTopReserve(nil)
+	end
 	-- (a landscape phone's currency pills sit in the top band: stay below them where they reach down)
 	local cardW = m.Compact and K.FC_W_COMPACT or K.FC_W
 	Hud.fcW = nil
@@ -6365,7 +6384,7 @@ function Hud.Rebuild()
 		Hud.fcW = curLeft - K.EDGE - 8
 		cardW = Hud.fcW
 	end
-	local leftY = (curBottom > 0 and curLeft < K.EDGE + cardW + 8) and (curBottom + 6) or topY
+	local leftY = (curBottom > 0 and curLeft < K.EDGE + cardW + 8) and max(topY, curBottom + 6) or topY
 	-- fighter card + helpers (top left) ----------------------------------------------------------
 	Hud.team.Visible = isFighting or between
 	local teamW, teamH = 0, 0
@@ -6386,7 +6405,7 @@ function Hud.Rebuild()
 	-- tab over its top edge: the list starts that much lower under the strips
 	-- (U9-6 review) with no strip up there the tab still needs its band: under the top edge, not into Roblox's bar
 	local over = m.Compact and 0 or K.TARGET_OVER
-	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and (curBottom + 6 + over) or (topY + over)
+	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and max(topY, curBottom + 6) + over or (topY + over)
 	Hud.listTop = rightY
 	Hud.enemies.Visible = isFighting
 	-- (kit-b) a portrait phone: the action keys' boxes (their wood edge too) in our design px, for the list above them
@@ -7022,7 +7041,12 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local x, y, anchor = m.W / 2, K.EDGE, 0.5
 	local underList, leftTop = false, false
 	local curBottom, curLeft, curRight = Hud.CurrencyTop(m)
-	if m.Compact then
+	local band = Hud.bandOn == true and Hud.BandMode(B, m)
+	if band then
+		-- (P2 fix A, item 06 A) a portrait phone's boss strip: across the top, the pitch's 500 where it fits, else the screen
+		-- less its edges (Hud.Rebuild put the HUD's strips, the fighter card and the enemy list under it)
+		w = min(w, m.W - 2 * K.EDGE)
+	elseif m.Compact then
 		-- between the fighter card and the enemy list when there is room, else under the enemy list (right)
 		local free = m.W - (K.EDGE + teamW + 12) - (K.ROW_W_COMPACT + K.EDGE + 12)
 		if m.Landscape and free < w and free >= K.TOP_W_COMPACT then
@@ -7056,7 +7080,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	end
 	w = floor(w)
 	-- (a landscape phone's currency pills in the top band: stay under them where they overlap)
-	if curBottom > 0 and anchor == 0.5 and curRight > x - w / 2 and curLeft < x + w / 2 then
+	if not band and curBottom > 0 and anchor == 0.5 and curRight > x - w / 2 and curLeft < x + w / 2 then
 		y = max(y, curBottom + 4)
 	end
 	top.AnchorPoint = Vector2.new(anchor, 0)
@@ -7089,11 +7113,16 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	-- (a narrow card, a tall phone's right column: the clock icon gives its room to the name; the time reads without it.
 	-- Look review round 1: it stays where the boss's whole name still fits beside it at the name's floor size)
 	local showClock = hasTimer and w >= 400
-	if hasTimer and not showClock and bossUnit and B.Mode == "Raid" then
+	-- (P2 fix A: a portrait phone's 463 px strip cut a 20-character name beside the clock) any raid card: the clock only
+	-- where the boss's whole name fits beside it at the name's floor size, after the RAID tag where the tag shows
+	if hasTimer and bossUnit and B.Mode == "Raid" then
 		local name, npx = tostring(bossUnit.name or "?"), px(18)
 		local okN, mN = pcall(Theme.Measure, name, "Heading", npx)
 		local nameNeed = math.ceil(max((okN and typeof(mN) == "Vector2") and mN.X or 0, #name * npx * 0.56) * 1.04)
-		showClock = (right - timerW - 4 - 18 - 8) - x0 - 4 >= nameNeed
+		local withClock = right - timerW - 4 - 18 - 8
+		local tagW = math.ceil(4 * px(18) * 0.62) + 18 -- (the RAID tag's width below)
+		local tagRoom = (withClock - x0 - tagW - 10 >= 110) and (tagW + 10) or 0
+		showClock = withClock - x0 - tagRoom - 4 >= nameNeed
 	end
 	Hud.clock.Visible = showClock
 	Hud.clock.Position = UDim2.fromOffset(right - timerW - 4 - 18, P + (rowH - 18) / 2)
@@ -8170,6 +8199,7 @@ function Hud.ShowResult(B, payload)
 	Hud.SetResultTimer(1)
 	local h = built.H + K.PLANK_LIP
 	res.Size = UDim2.fromOffset(w, h)
+	Hud.SetTopReserve(nil) -- (P2 fix A) the boss strip goes with the fight: the HUD's strips back at the top first
 	local top = Hud.TopRightBottom(m)
 	local left, cardTop
 	if compact then
@@ -8378,6 +8408,7 @@ function Hud.SetVisible(on)
 		Hud.SetMenuHidden(false)
 		Hud.SetVitalsHidden(false)
 		Hud.SetVitalsHeld("Result", false)
+		Hud.SetTopReserve(nil) -- (P2 fix A) the HUD's strips back at the top
 	end
 	if not Hud.gui then
 		return
@@ -8426,6 +8457,36 @@ function Hud.SetVitalsHeld(owner, on)
 	if hc and type(hc.SetVitalsHidden) == "function" then
 		pcall(hc.SetVitalsHidden, owner, on == true)
 	end
+end
+
+-- (P2 fix A, item 06 A) a portrait phone's boss fight: the top card is the pitch's strip across the top (Hud.Rebuild lays
+-- it out first; the fighter card, the enemy list and the HUD's strips go under it)
+function Hud.BandMode(B, m)
+	return m.Compact == true and not m.Landscape and Hud.BossUnit(B) ~= nil
+end
+
+-- (P2 fix A, item 06 A) the band the boss strip spans at the top (gui-area px), nil = none: the HUD's strips start under it
+function Hud.SetTopReserve(bottom)
+	bottom = (type(bottom) == "number" and bottom > 0) and bottom or nil
+	if Hud.topReserve == bottom then
+		return
+	end
+	Hud.topReserve = bottom
+	if Mods.HudCtl == nil then
+		Mods.HudCtl = optional(script.Parent, "HudController") or false
+	end
+	local hc = Mods.HudCtl
+	if hc and type(hc.SetTopReserve) == "function" then
+		pcall(hc.SetTopReserve, "Battle", bottom)
+	end
+end
+
+-- a layout attribute the HUD publishes on NimbusHud (gui-area px), nil when absent
+function Hud.HudAttr(name)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local v = hud and hud:GetAttribute(name)
+	return type(v) == "number" and v or nil
 end
 
 function Hud.SetVitalsHidden(on)

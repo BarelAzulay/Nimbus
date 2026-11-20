@@ -14980,6 +14980,24 @@ local function clientScenarios()
 			T.check(#clash == 0, tag .. ": the pills inside the card, apart (wrapped where the card is narrow)", table.concat(clash, "; "))
 			local tight = P2.tight(top)
 			T.check(#tight == 0, tag .. ": every one-line text of the card fits its box", table.concat(tight, "; "))
+			if Hd.m.Compact and not Hd.m.Landscape then
+				-- (P2 fix A, look: at 390 x 844 the card was a 196 px tower under the enemy list, the name cut to 'Storm...', the
+				-- track 50 px) a portrait phone's boss card is the pitch's strip across the top (06_boss_bar_optA; the pitch's
+				-- portrait scene draws it 470 wide at y 62 with the fighter card and the strips under it): the screen's width
+				-- less its edges, the name whole, a track of 200 px or more, the fighter card and the HUD's strips under it
+				local sw = gui.AbsoluteSize.X
+				local edge = 12 * k
+				local name2 = top:FindFirstChild("BossName", true)
+				local hp2 = top:FindFirstChild("BossBar") and top.BossBar:FindFirstChild("Hp")
+				local fc = gui.Root:FindFirstChild("Team")
+				local fr = fc and U8.shown(fc) and U8.rect(fc)
+				local over = U99.overTopRight(gui, cr)
+				T.check(cr.R - cr.X >= sw - 2 * edge - 2 and cr.Y <= edge + 1 and name2 and name2.Text == B.boss.name and hp2 and U8.rect(hp2).R - U8.rect(hp2).X >= 200
+					and fr and fr.Y >= cr.B and #over == 0,
+					tag .. ": a portrait phone's boss card spans the top, the name whole, the fighter card and the strips under it",
+					fmt("card %s of %d | name '%s' | track %.0f | team %s | strips %s", U8.show(cr), sw, name2 and name2.Text or "-", hp2 and (U8.rect(hp2).R - U8.rect(hp2).X) or 0,
+						fr and U8.show(fr) or "-", table.concat(over, "; ")))
+			end
 		end
 		for _, s in ipairs(U8.SIZES) do
 			for _, worst in ipairs({ false, true }) do
@@ -15004,6 +15022,23 @@ local function clientScenarios()
 			T.check(type(key) == "string" and portrait and U8.shown(portrait) and img and img.Image == "rbxassetid://1234567" and img.ResampleMode == Enum.ResamplerMode.Pixelated
 				and math.abs(portrait.AbsoluteSize.X / U8.scaleOf(portrait) - 74) < 0.6 and hp and U8.rect(hp).X >= U8.rect(portrait).R,
 				tag .. ": the boss head is a 74 px pixelated portrait left of the track", img and img.Image or "no portrait")
+			Hd.Textures = nil
+			U96.close()
+		end)
+		-- (P2 fix A, look) the portrait phone with the head: the strip keeps the name whole and a track of 200 px or more
+		-- beside the 74 px head (the old right-column card cut it to a 50 px track)
+		U8.at(390, 844, true, "top card portrait", function(tag)
+			local Hd = BC._Hud
+			Hd.Textures = { [tostring(Config.BossHeads.storm_titan)] = 1234567 }
+			U96.open("battle:raid")
+			local B = BC._St.battle
+			local gui = U8.pg():FindFirstChild("NimbusBattle")
+			local top = gui and gui:FindFirstChild("TopCard", true)
+			local portrait = top and top:FindFirstChild("Portrait", true)
+			local name = top and top:FindFirstChild("BossName", true)
+			local hp = top and top:FindFirstChild("BossBar") and top.BossBar:FindFirstChild("Hp")
+			T.check(portrait and U8.shown(portrait) and name and B and B.boss and name.Text == B.boss.name and hp and U8.rect(hp).R - U8.rect(hp).X >= 200 and P2.inside(U8.rect(hp), U8.rect(top)),
+				tag .. ": with the head: the name whole, a track of 200 px or more", fmt("name '%s' | track %.0f", name and name.Text or "-", hp and (U8.rect(hp).R - U8.rect(hp).X) or 0))
 			Hd.Textures = nil
 			U96.close()
 		end)
