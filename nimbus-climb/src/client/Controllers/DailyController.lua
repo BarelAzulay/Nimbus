@@ -1946,21 +1946,21 @@ function H.paintArt(cell, entry)
 			return
 		end
 	end
-	-- (U9-4 look review) the reward on its role's chip (K.ART_CHIP: a kit B block, 2 px wood edge, its darker lip), the
-	-- pixel art centred on the face at the screen's art size; (look review 2) the chip at a whole-px offset in the art box,
-	-- the gem the pixel gem in sky on the navy chip
+	-- (U9-4 look review) the reward's art centred in the art box at the screen's art size; (look review 2) at a whole-px
+	-- offset. (Pitch 2 item 9 B + 09_daily_layout B: "no slot or tile behind the art") the art stands on the tile in its own
+	-- colours (the cash bills, the gold coin, the gem; the 18 x 18 art once the icon sheet is uploaded): "Chip" is a clear
+	-- holder that keeps the reward's Role (it was a grass / gold / navy kit block behind a one-ink icon)
 	local kind = tostring(entry.Kind or "")
-	local look = K.ART_CHIP[kind] or K.ART_CHIP.Other
 	local chip = Util.Create("Frame", {
-		Name = "Chip", BorderSizePixel = 0, Position = UDim2.fromOffset(math.floor((artW - chipPx) / 2), math.floor((artH - chipPx) / 2)),
+		Name = "Chip", BorderSizePixel = 0, BackgroundTransparency = 1, Position = UDim2.fromOffset(math.floor((artW - chipPx) / 2), math.floor((artH - chipPx) / 2)),
 		Size = UDim2.fromOffset(chipPx, chipPx), ZIndex = 5, Parent = cell.Art,
 	})
-	CloudUI.SignBlock(chip, { Face = look.Face, Lip = look.Lip, Edge = SIGN.Wood, Text = SIGN.Text }, { EdgePx = K.ART_EDGE, LipPx = K.ART_LIP })
 	chip:SetAttribute("Role", K.ART_CHIP[kind] and kind or "Other")
-	local x, y = math.floor((chipPx - px) / 2), math.floor((chipPx - K.ART_LIP - px) / 2)
+	local x, y = math.floor((chipPx - px) / 2), math.floor((chipPx - px) / 2)
 	local id = (kind == "Pet" and "Gifts") or (kind == "" and "Gifts") or (kind == "Gems" and "gem") or kind
 	local name = NeonKit.IconName(id) or NeonKit.IconName("Gifts") or "gift"
-	local icon = PixelIcon.New(chip, name, px, look.Ink)
+	-- a reward whose icon has no colours of its own (a one-ink glyph) draws in the brown ink of the tile's text
+	local icon = PixelIcon.New(chip, name, px, PixelIcon.Art[name] and PixelIcon.Own or SIGN.Text)
 	if icon then
 		icon.Name = "Icon"
 		icon.Position = UDim2.fromOffset(x, y)
