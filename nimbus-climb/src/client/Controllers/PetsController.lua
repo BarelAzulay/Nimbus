@@ -1653,8 +1653,9 @@ function H.layoutPhone(W, H0)
 		place(U.AutoFill, x0 + cell + 6, rowY, cell, chipH)
 		place(U.Clear, x0 + 2 * (cell + 6), rowY, cell, chipH)
 		place(U.Undo, x0 + 2 * (cell + 6), rowY, cell, chipH)
-		place(U.TeamPower, x0, rowY + chipH + 2, W - 2 * x0, 22)
-		local slotY = rowY + chipH + 26
+		-- (F0 review, minor: the line sat on the slots' top) 6 px under the chips' row, 6 px over the slots
+		place(U.TeamPower, x0, rowY + chipH + 6, W - 2 * x0, 20)
+		local slotY = rowY + chipH + 32
 		local slotW = cell
 		for i, item in ipairs(U.Slots) do
 			place(item.Button, x0 + (i - 1) * (slotW + 6), slotY, slotW, 92)
@@ -1688,7 +1689,9 @@ function H.layoutPhone(W, H0)
 		place(U.Clear, x, top, clearW, chipH)
 		place(U.Undo, x, top, clearW, chipH)
 		x = x + clearW + 4
-		local powerW = W - closeW - 8 - x
+		-- (F0 review, minor: the line ran into the close X) it ends 6 px before the close's box (the box is closeW + 6 from
+		-- the right edge, its stroke 3 px outside it)
+		local powerW = W - closeW - 12 - x
 		U.PhonePowerRoom = powerW >= 100
 		place(U.TeamPower, x, top, math.max(0, powerW), chipH)
 		local bannerX = x0 + 128 + 8

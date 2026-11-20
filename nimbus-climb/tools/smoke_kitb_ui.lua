@@ -7262,6 +7262,37 @@ local function clientScenarios()
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
+		-- (look review of finish pass A, minors: at 844x390 the Pets' "Team power" ran into the close X; at 390x844 it sat on
+		-- the team slots' top) the line keeps 6 px from the close's box (its 3 px stroke and a gap) and from the slots and the
+		-- chips' row
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			U8.at(s[1], s[2], s[3], "finish pets phone", function(tag)
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1.2)
+				local win = pg:FindFirstChild("NimbusPets")
+				local power = win and win:FindFirstChild("TeamPower", true)
+				local panel = win and win:FindFirstChild("PetsWindow", true)
+				local close = panel and panel:FindFirstChild("Close")
+				local fill = win and win:FindFirstChild("AutoFill", true)
+				local slotTop = math.huge
+				for _, d in ipairs(win and win:GetDescendants() or {}) do
+					if d.Name:match("^Slot%d$") and d:IsA("GuiObject") and U8.shown(d) then
+						slotTop = math.min(slotTop, U8.rect(d).Y)
+					end
+				end
+				if T.check(power and U8.shown(power) and close and fill, tag .. ": the team power line, the close and Auto-fill are shown") then
+					local p, c, f = U8.rect(power), U8.rect(close), U8.rect(fill)
+					if s[1] > s[2] then
+						T.check(p.R <= c.X - 6, tag .. ": the team power line ends 6 px before the close's box", fmt("power ends %.0f, close starts %.0f", p.R, c.X))
+					else
+						T.check(p.B <= slotTop - 6 and p.Y >= f.B + 4, tag .. ": the team power line sits clear of the chips' row and the slots",
+							fmt("power %.0f..%.0f, chips end %.0f, slots start %.0f", p.Y, p.B, f.B, slotTop))
+					end
+				end
+				PC.Close(true)
+				LKC.advance(0.4)
+			end)
+		end
 		-- (look review of finish pass A, minors: no dotted rule under the Gifts heading; a claimed day's "Day 1" and "$400"
 		-- greyed out under the sunk cover, where the mock keeps them brown) the Daily page: a dotted SignKit rule under the
 		-- heading line (the chips' row), over the tiles; a claimed day's name and amount drawn over its cover, in the muted ink
