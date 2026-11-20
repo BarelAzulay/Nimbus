@@ -158,12 +158,21 @@ local K = {
 	-- (Pitch 2 item 12_index_badge B) the column layout's Elements plank in the header: HEAD_PLANK_W x HEAD_PLANK_H (a
 	-- touch screen's HEAD_PLANK_TOUCH_H), its right end HEAD_PLANK_R px in from the window's right (10 px left of the X,
 	-- CloudUI's Signboard close: 44 px, 16 px in), its middle on the X's (HEAD_PLANK_Y)
+	-- (look review r0: at 40 tall on the 54 px band its edge and hard shadow hung ~5 px under the navy onto the body) 36,
+	-- its middle at 31: the plank, its 5 px edge and its 5 px shadow all on the band
 	HEAD_PLANK_W = 150,
-	HEAD_PLANK_H = 40,
+	HEAD_PLANK_H = 36,
 	HEAD_PLANK_TOUCH_H = 44,
 	HEAD_PLANK_R = 70,
-	HEAD_PLANK_Y = 33,
+	HEAD_PLANK_Y = 31,
 	SNAP_DELAY = 0.25, -- (12_index_badge B) seconds after the strip stops moving before it settles on whole tabs
+	-- (12_index_badge B, look review r0: the dots sat in the tabs' hard shadow, tan on cream, and read as a shadow line) the
+	-- strip's page dots DOT_W x DOT_H, DOT_GAP px of clear stone under the tabs' drawn foot (TAB_DRAWN: a tab's outer edge
+	-- and its hard shadow under its box) and over the centre, which steps down for them where it must
+	DOT_W = 16,
+	DOT_H = 3,
+	DOT_GAP = 4,
+	TAB_DRAWN = SignKit.Sizes.Edge + Theme.Finish.Card,
 	-- pet viewports are attached under a per-frame TIME budget: the first of a frame always, more only while the
 	-- frame has spent < TILE_BUDGET s and at most TILES_MAX (a first-time High sculpt of ~350 parts costs tens of
 	-- ms, a cached clone a few: a fixed count hitched on fresh clients)
@@ -1010,10 +1019,17 @@ local function H_paintDots()
 	for i = 1, pages do
 		local d = dots:FindFirstChild("Dot" .. i)
 		if d then
-			d.BackgroundColor3 = (i == now) and INK or SIGN.WellEdge
+			-- (look review r0) a dot not in view in the lit wood, so it reads on the stone (WellEdge was 2.1:1 there)
+			d.BackgroundColor3 = (i == now) and INK or SIGN.WoodLight
 		end
 	end
 	dots:SetAttribute("Page", now)
+end
+
+-- (look review r0) the dots' top in the strip: under the tabs' box (the strip less its foot), their edge and hard shadow,
+-- and DOT_GAP of clear stone
+local function H_dotsTop()
+	return (K.STRIP_H - (S.StripFoot or 12)) + K.TAB_DRAWN + K.DOT_GAP
 end
 
 local function H_layoutDots(viewW)
@@ -1027,13 +1043,13 @@ local function H_layoutDots(viewW)
 	end
 	local n = math.max(1, S.StripN or 1)
 	local pages = math.max(1, math.ceil(H_tabCount() / n))
-	-- (the strip's foot: under the tabs' 5 px hard shadows, on the strip's last DOT_H px)
-	local dw, gap, dh = 16, 6, 3
+	-- (look review r0) under the tabs' drawn foot (their box, edge and hard shadow) by DOT_GAP, on clear stone
+	local dw, gap, dh = K.DOT_W, 6, K.DOT_H
 	for i = 1, math.max(pages, dots:GetAttribute("Pages") or 0) do
 		local d = dots:FindFirstChild("Dot" .. i)
 		if i <= pages then
 			if not d then
-				d = makeFrame(dots, "Dot" .. i, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.WellEdge, ZIndex = dots.ZIndex })
+				d = makeFrame(dots, "Dot" .. i, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.WoodLight, ZIndex = dots.ZIndex })
 			end
 			d.Position = UDim2.fromOffset((i - 1) * (dw + gap), 0)
 			d.Size = UDim2.fromOffset(dw, dh)
@@ -1044,8 +1060,8 @@ local function H_layoutDots(viewW)
 	dots:SetAttribute("Pages", pages)
 	local total = pages * dw + (pages - 1) * gap
 	dots.Size = UDim2.fromOffset(total, dh)
-	dots.AnchorPoint = Vector2.new(0.5, 1)
-	dots.Position = UDim2.new(0, math.floor(K.STRIP_PAD_L + (viewW - K.STRIP_PAD_L) / 2), 1, 0)
+	dots.AnchorPoint = Vector2.new(0.5, 0)
+	dots.Position = UDim2.new(0, math.floor(K.STRIP_PAD_L + (viewW - K.STRIP_PAD_L) / 2), 0, H_dotsTop())
 	H_paintDots()
 end
 
@@ -1111,7 +1127,9 @@ local function relayout()
 		U.GroupPad.PaddingBottom = UDim.new(0, stripFoot)
 		U.GroupPad.PaddingLeft = UDim.new(0, K.STRIP_PAD_L)
 		U.GroupPad.PaddingRight = UDim.new(0, 0)
-		local centreTop = strip + 8
+		-- (look review r0) the centre keeps DOT_GAP of stone under the page dots (on touch the 56 px tabs leave them no
+		-- room in the strip's 8 px foot)
+		local centreTop = math.max(strip + 8, H_dotsTop() + K.DOT_H + K.DOT_GAP)
 		-- Phase 5: a docked sheet is shorter; the grid gets 2/3 of it, and a landscape-phone window (< 600 design px
 		-- tall) shows the grid only (the tiles carry name, rarity and element)
 		local frac = (h < 600) and 0 or 0.34
@@ -2264,6 +2282,16 @@ function showElements(on)
 			return
 		end
 		U.ElementsWin = EW.New(U.Gui, {
+			-- (look review r0: at 844x390 slivers of the menu tiles showed at the chart's left edge) the tiles step aside
+			-- while the chart reaches over them, as for the Gifts and Shop windows (MenuController, required here at open
+			-- time: no require cycle)
+			OnPlace = function(left)
+				local module = script.Parent:FindFirstChild("MenuController")
+				local ok, menu = pcall(require, module)
+				if ok and type(menu) == "table" and type(menu.SetColumnCovered) == "function" then
+					safe("cover", menu.SetColumnCovered, left, "Elements")
+				end
+			end,
 			OnClose = function()
 				S.ElementsShown = false
 				-- (the mock: the chart stands alone) the Index steps back in when it closes, if it is still open

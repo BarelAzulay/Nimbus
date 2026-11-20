@@ -1723,6 +1723,9 @@ function P5.watchSheets()
 			if U.Column and hide ~= (U.SheetHidden == true) then
 				U.SheetHidden = hide
 				U.Column.Visible = not hide
+				if not hide then
+					safe("menu covers", P5.applyCovers) -- (look review r0) a cover asked for while the column was away
+				end
 			end
 			-- a tutorial step that points at a tile brings a folded column back (the ring needs the tile on screen)
 			if U.Collapsed and P5.tutorialWantsMenu() then
@@ -3856,6 +3859,14 @@ end
 function MenuController.SetColumnCovered(windowLeft, who)
 	U.Covers = type(U.Covers) == "table" and U.Covers or {}
 	U.Covers[type(who) == "string" and who or "Pets"] = type(windowLeft) == "number" and windowLeft or nil
+	P5.applyCovers()
+end
+
+-- (Pitch 2 12_elements, look review r0) the tiles step aside while any window in U.Covers reaches over the column. Also
+-- run when the column comes back on a portrait phone (P5.watchSheets): a window that asked while a sheet hid the
+-- column (right = 0, so "not covered") lay over the tiles once the sheet went (the Elements window over the Index)
+function P5.applyCovers()
+	U.Covers = type(U.Covers) == "table" and U.Covers or {}
 	local right = columnRight()
 	local covered = false
 	for _, left in pairs(U.Covers) do

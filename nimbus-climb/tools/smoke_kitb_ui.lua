@@ -6485,7 +6485,98 @@ local function clientScenarios()
 			end
 			return nil
 		end
-		for _, s in ipairs(U8.SIZES) do
+		-- (look review r0) a rect in screen px (a ScreenGui under Roblox's top bar sits 58 px lower), the right end of a
+		-- part and its shown pieces (the ribbon's tails draw their notches outside their own box), the menu's shown tiles
+		local function screenRect(o)
+			local r = U8.rect(o)
+			local cur = o
+			while cur and not cur:IsA("LayerCollector") do
+				cur = cur.Parent
+			end
+			local dy = (cur and cur:IsA("ScreenGui") and not cur.IgnoreGuiInset) and 58 or 0
+			return { X = r.X, R = r.R, Y = r.Y + dy, B = r.B + dy }
+		end
+		local function farRight(o)
+			local right = U8.rect(o).R
+			for _, d in ipairs(o:GetDescendants()) do
+				if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+					right = math.max(right, U8.rect(d).R)
+				end
+			end
+			return right
+		end
+		-- the title ribbon's right end (its band and right tail with their pieces) and the X's left edge; ok = both tails shown
+		local function ribbonEnd(win)
+			local panel = win and win:FindFirstChild("ElementsPanel", true)
+			local title = panel and panel:FindFirstChild("Title", true)
+			local close = panel and panel:FindFirstChild("Close", true)
+			local band = title and title:FindFirstChild("RibbonBand")
+			local tailL, tailR = title and title:FindFirstChild("TailL"), title and title:FindFirstChild("TailR")
+			if not (band and tailL and tailR and close) then
+				return { ok = false, R = 0, X = 0 }
+			end
+			return { ok = U8.shown(band) and U8.shown(tailL) and U8.shown(tailR), R = math.max(farRight(band), farRight(tailR)), X = U8.rect(close).X }
+		end
+		local function menuTiles()
+			local menu = U8.pg():FindFirstChild("NimbusMenu")
+			local out = {}
+			for _, d in ipairs(menu and menu:GetDescendants() or {}) do
+				if d:IsA("GuiObject") and d.Name:match("^Entry_") and U8.shown(d) then
+					out[#out + 1] = d
+				end
+			end
+			return out
+		end
+		-- (look review r0) TextBounds with the faces' real widths, as Roblox and the renderer measure (the mock's flat 0.5 em
+		-- made "ELEMENTS" at 34 px 136 px wide, so the title's ribbon had room it does not have; FredokaOne draws it 184):
+		-- the mock's own wrap rule (on spaces, at the box's width) over real word widths
+		local Theme = LoadingH.shared("Theme")
+		local Mock = rawget(_G, "Mock")
+		local mockExtent = Mock and Mock.TextExtent
+		local function realExtent(inst, limit)
+			local text = tostring(inst.Text or "")
+			if inst.RichText then
+				text = text:gsub("<[^>]*>", "")
+			end
+			local size = tonumber(inst.TextSize) or 14
+			local font = (type(Theme.FontOf) == "function" and Theme.FontOf(inst)) or inst.Font
+			local function width(str)
+				return SmokeCommon.RealWidth(str, size, font) or (#str * size * 0.5)
+			end
+			local own = limit and limit / math.max(0.01, U8.scaleOf(inst)) or nil
+			local space = width(" ")
+			local maxW, lines = 0, 0
+			for raw in (text .. "\n"):gmatch("([^\n]*)\n") do
+				if own and own > 0 and width(raw) > own then
+					local cur, rows = 0, 1
+					for word in raw:gmatch("%S+") do
+						local wl = width(word)
+						if cur > 0 and cur + space + wl > own then
+							rows = rows + 1
+							maxW = math.max(maxW, cur)
+							cur = 0
+						end
+						cur = (cur > 0) and (cur + space + wl) or wl
+					end
+					maxW = math.max(maxW, cur)
+					lines = lines + rows
+				else
+					maxW = math.max(maxW, width(raw))
+					lines = lines + 1
+				end
+			end
+			return maxW, lines * size * (tonumber(inst.LineHeight) or 1)
+		end
+		if mockExtent then
+			Mock.TextExtent = realExtent
+		end
+		-- (look review r0) the portrait phone first: the window is built there from nothing, as on a phone that opens it
+		-- first (the renderer's flow; built first at 1920 and then rebuilt, the ribbon was re-fitted on the resize)
+		local sizes = {}
+		for i = #U8.SIZES, 1, -1 do
+			sizes[#sizes + 1] = U8.SIZES[i]
+		end
+		for _, s in ipairs(sizes) do
 			U8.at(s[1], s[2], s[3], "elements window", function(tag)
 				Menu.Open("Index")
 				LKC.advance(1)
@@ -6494,7 +6585,9 @@ local function clientScenarios()
 				if not T.check(plank ~= nil, tag .. ": the Index shows its Elements plank") then
 					return
 				end
+				local tilesBefore = #menuTiles()
 				Mock.Click(plank)
+				local ribAtOpen = ribbonEnd(gui:FindFirstChild("Window_Elements", true))
 				LKC.advance(0.8)
 				local win = gui:FindFirstChild("Window_Elements", true)
 				if not T.check(win ~= nil and U8.shown(win), tag .. ": the plank opens the Elements window (Window_Elements)") then
@@ -6513,6 +6606,48 @@ local function clientScenarios()
 				local close = panel and panel:FindFirstChild("Close", true)
 				T.check(close ~= nil and U8.shown(close) and close.AbsoluteSize.X >= 43.5 and close.AbsoluteSize.Y >= 43.5, tag .. ": its red X shows, 44 px or more",
 					close and U8.show(U8.rect(close)) or "none")
+				-- (look review r0, major: at 390x844 the ribbon ran under the X, its right tail hidden: the title's ribbon was
+				-- fitted while the label had no box yet, so it took the full pads its 220 px box has no room for) the gold ribbon,
+				-- band and both tails, ends 4 design px or more before the X: on the frame the window opens and once it settled
+				local k = U8.scaleOf(panel or win)
+				for _, at in ipairs({ { ribAtOpen, "as it opens" }, { ribbonEnd(win), "settled" } }) do
+					local rb = at[1]
+					T.check(rb.ok and rb.R <= rb.X - 4 * k + 0.5, tag .. ": the title's ribbon shows both tails and ends 4 px or more before the X (" .. at[2] .. ")",
+						fmt("ribbon ends %.1f, X at %.1f, both tails %s", rb.R, rb.X, tostring(rb.ok)))
+				end
+				-- (look review r0, major: at 844x390 slivers of the menu tiles showed at the window's left edge) no menu tile
+				-- shows under the window while it is open
+				local under = {}
+				local wr = screenRect(win:FindFirstChild("ElementsPanel", true) or win)
+				for _, t in ipairs(menuTiles()) do
+					if U8.overlap(screenRect(t), wr) then
+						under[#under + 1] = t.Name .. " " .. U8.show(screenRect(t))
+					end
+				end
+				T.check(#under == 0, tag .. ": no menu tile shows under the Elements window (the tiles step aside)",
+					table.concat(under, "; ") .. " | window " .. U8.show(wr))
+				-- (look review r0, minor: at 1920 the Nature block sat 2-3 px over the body's foot) on PC the ring is centred in
+				-- the body: its lowest block 12 design px or more over the stone's lip
+				local stone = panel and panel:FindFirstChild("Stone", true)
+				local lip = stone and stone:FindFirstChild("Lip")
+				if win:GetAttribute("Mode") == "PC" and lip then
+					local low = 0
+					for _, e in ipairs(Config.Elements.Order) do
+						local b = win:FindFirstChild("Ring", true) and win:FindFirstChild("Ring", true):FindFirstChild("Block_" .. e)
+						if b and U8.shown(b) then
+							low = math.max(low, U8.rect(b).B)
+						end
+					end
+					T.check(low > 0 and low <= U8.rect(lip).Y - 12 * k + 0.5, tag .. ": the ring's lowest block keeps 12 px or more of stone over the lip",
+						fmt("lowest block ends %.1f, lip at %.1f", low, U8.rect(lip).Y))
+				end
+				-- (look review r0, minor: at 844x390 "rivals: / x1.5 / both" wrapped to 3 cramped lines) the rivals' caption
+				-- takes 2 lines or fewer
+				local rc = win:FindFirstChild("RivalCaption", true)
+				if rc and U8.shown(rc) and rc.TextWrapped then
+					local lines = math.floor(rc.TextBounds.Y / math.max(1, rc.TextSize * U8.scaleOf(rc)) + 0.25)
+					T.check(lines <= 2, tag .. ": the rivals' caption takes 2 lines or fewer", fmt("'%s' %d lines (%s)", rc.Text, lines, U8.show(U8.rect(rc))))
+				end
 				-- all eight elements at once, whole and apart
 				local blocks, missing, outside, meet = {}, {}, {}, {}
 				for _, e in ipairs(Config.Elements.Order) do
@@ -6598,7 +6733,11 @@ local function clientScenarios()
 				end
 				T.check(not U8.shown(win) and IC.IsOpen(), tag .. ": the X closes it and returns to the Index",
 					fmt("elements %s, index %s", tostring(U8.shown(win)), tostring(IC.IsOpen())))
+				T.eq(#menuTiles(), tilesBefore, tag .. ": the menu tiles are back as they were with the Index alone")
 			end)
+		end
+		if mockExtent then
+			Mock.TextExtent = mockExtent
 		end
 		LKC.flushErrors("elements_window")
 	end)
@@ -6693,6 +6832,19 @@ local function clientScenarios()
 						and not (title and U8.overlap(pr, { X = U8.rect(title).X, R = U8.rect(title).X + title.TextBounds.X, Y = U8.rect(title).Y, B = U8.rect(title).B })),
 						tag .. ": the Elements plank sits in the header band, left of the X and clear of the title",
 						pr and fmt("plank %s, head %s", U8.show(pr), head and U8.show(U8.rect(head)) or "-") or "no plank")
+					-- (look review r0, minor: at 1920 the plank hung ~5 px under the navy band onto the body's edge) every drawn
+					-- part of the plank (its edge, its hard shadow) stays on the navy plate
+					local plate = head and head:FindFirstChild("Plate")
+					if plank and plate then
+						local low = pr.B -- (its hard shadow's pieces start under its outer edge, so they mark the drawn foot)
+						for _, d in ipairs(plank:GetDescendants()) do
+							if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 1 and d.AbsoluteSize.Y > 0 then
+								low = math.max(low, U8.rect(d).B)
+							end
+						end
+						T.check(low <= U8.rect(plate).B + 0.5, tag .. ": the Elements plank's edge and shadow stay on the navy band",
+							fmt("plank drawn to %.1f, band ends %.1f", low, U8.rect(plate).B))
+					end
 				else
 					-- the strip: a swipe that stops half way snaps back to whole tabs; the page dots say there is more
 					local view = U8.rect(list)
@@ -6717,6 +6869,37 @@ local function clientScenarios()
 						end
 					end
 					T.check(dots ~= nil and U8.shown(dots) and n >= 2, tag .. ": the strip's page dots show (" .. n .. ")")
+					-- (look review r0, major: the dots sat in the tabs' shadow against the Common tab, tan on cream, and read as a
+					-- shadow line) the dots keep 3 design px or more of stone under the tabs' drawn parts (their hard shadows) and
+					-- over the centre, and a dot not in view still reads on the stone (3:1)
+					if dots and n >= 2 then
+						local k = U8.scaleOf(dots)
+						local shadowB = 0
+						for _, tab in ipairs(list:GetChildren()) do
+							if tab:IsA("GuiObject") and U8.shown(tab) and U8.overlap(U8.rect(tab), view) then
+								shadowB = math.max(shadowB, U8.rect(tab).B)
+								for _, d in ipairs(tab:GetDescendants()) do
+									if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 1 and d.AbsoluteSize.Y > 0 then
+										shadowB = math.max(shadowB, U8.rect(d).B)
+									end
+								end
+							end
+						end
+						local dr = U8.rect(dots)
+						local centre = index:FindFirstChild("Centre", true)
+						local cy = centre and U8.shown(centre) and U8.rect(centre).Y or math.huge
+						T.check(dr.Y >= shadowB + 3 * k - 0.5 and dr.B <= cy - 3 * k + 0.5, tag .. ": the page dots sit on clear stone, 3 px or more under the tabs' shadows and over the centre",
+							fmt("dots %s, tabs drawn to %.1f, centre at %.1f", U8.show(dr), shadowB, cy))
+						local page = dots:GetAttribute("Page")
+						local weak = {}
+						for i = 1, n do
+							local d = dots:FindFirstChild("Dot" .. i)
+							if d and i ~= page and Theme.Contrast(d.BackgroundColor3, Theme.Sign.Stone) < 3 then
+								weak[#weak + 1] = fmt("Dot%d %.2f:1", i, Theme.Contrast(d.BackgroundColor3, Theme.Sign.Stone))
+							end
+						end
+						T.check(#weak == 0, tag .. ": a page dot not in view reads on the stone (3:1 or more)", table.concat(weak, ", "))
+					end
 				end
 			end)
 		end
@@ -11815,7 +11998,10 @@ local function clientScenarios()
 					end
 					local day = c and c:FindFirstChild("Day", true)
 					-- (Pitch 2 F0 A, look review of finish pass A: a claimed day's name in the muted ink over its cover, as the mock's)
-					if day and not sameColor(day.TextColor3, i <= 2 and Sign.TextMuted or Sign.Text) then
+					-- (Pitch 2 09 B, look review r0: the prize card's "DAY 7 PRIZE" is a caption in the muted ink, as the 09 B mock's;
+					-- still exact, not loosened: Day 7 is not due in this scene, so it must read TextMuted; a due Day 7 reads TODAY
+					-- in the full ink, DailyController's rule)
+					if day and not sameColor(day.TextColor3, (i <= 2 or i == 7) and Sign.TextMuted or Sign.Text) then
 						loose[#loose + 1] = "Cell" .. i .. ".Day " .. hex(day.TextColor3)
 					end
 				end
@@ -12300,6 +12486,13 @@ local function clientScenarios()
 					return o ~= nil and U8.shown(o) and U94.apart(U8.rect(o), hr) <= 0 and U8.rect(o).X >= hr.X - 0.5 and U8.rect(o).R <= hr.R + 0.5
 						and U8.rect(o).Y >= hr.Y - 0.5 and U8.rect(o).B <= hr.B + 0.5
 				end
+				-- (look review r0, minor) the card's label as the mock's: "DAY 7 PRIZE" in capitals, in the muted caption ink
+				local label = hero:FindFirstChild("Day", true)
+				if label and U8.shown(label) then
+					local Theme = LoadingH.shared("Theme")
+					T.check(label.Text == "DAY 7 PRIZE" and sameColor(label.TextColor3, Theme.Sign.TextMuted), tag .. ": the prize card's label reads DAY 7 PRIZE in the muted ink",
+						fmt("'%s'", label.Text))
+				end
 				local name = hero:FindFirstChild("Amount", true)
 				local wispText, wispBar = hero:FindFirstChild("WispText", true), hero:FindFirstChild("WispBar", true)
 				T.check(within(name) and name.Text == "Week Wisp" and within(wispText) and wispText.Text == "in 4 more days" and within(wispBar),
@@ -12337,6 +12530,22 @@ local function clientScenarios()
 				local keep = page:FindFirstChild("Keep", true)
 				T.check(keep ~= nil and U8.shown(keep) and keep.Text == "Claim today's gift to keep your streak!", tag .. ": the line by Claim says to claim today's gift",
 					keep and keep.Text or "no line")
+				-- (look review r0, major: at 390x844 the line touched the Claim's shadow and sat on the window's foot) portrait:
+				-- the line keeps 4 design px or more of stone under every drawn part of Claim (its edge, its hard shadow) and
+				-- 8 or more over the stone's lip
+				local winStone = win and win:FindFirstChild("Stone")
+				local winLip = winStone and winStone:FindFirstChild("Lip")
+				if portrait and claim and keep and winLip then
+					local foot = cr.B
+					for _, d in ipairs(claim:GetDescendants()) do
+						if d:IsA("GuiObject") and U8.shown(d) and d.BackgroundTransparency < 1 and d.AbsoluteSize.Y > 0 then
+							foot = math.max(foot, U8.rect(d).B)
+						end
+					end
+					local kr = U8.rect(keep)
+					T.check(kr.Y >= foot + 4 * k - 0.5 and kr.B <= U8.rect(winLip).Y - 8 * k + 0.5, tag .. ": the keep line sits on clear stone between Claim and the window's foot",
+						fmt("Claim drawn to %.1f, line %s, lip at %.1f", foot, U8.show(kr), U8.rect(winLip).Y))
+				end
 				-- no empty band: the day column's parts cover the body from its top to the stone's lip with gaps of 24 px or less
 				local stone = win and win:FindFirstChild("Stone")
 				local lip = stone and stone:FindFirstChild("Lip")

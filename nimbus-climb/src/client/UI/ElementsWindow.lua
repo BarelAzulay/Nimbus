@@ -3,7 +3,8 @@
 -- Pet Index. Before it, Elements was a scrolling section inside the Index (3 of the 8 elements in view, 18 px arrows, no
 -- title bar and no X: the owner's shot 12).
 --
---   ElementsWindow.New(gui, opts) -> win      gui: the Index's ScreenGui; opts.OnClose() runs after the window hid
+--   ElementsWindow.New(gui, opts) -> win      gui: the Index's ScreenGui; opts.OnClose() runs after the window hid;
+--                                             opts.OnPlace(left) gets its left edge (gui px) while open, nil on close
 --   win.Open() / win.Close() / win.IsOpen() / win.Relayout()   win.Holder (Frame "Window_Elements"), win.Mode
 --
 -- The window: CloudUI.Panel Skin "Signboard" ("ElementsPanel": navy header, the gold ribbon title ELEMENTS, the red X,
@@ -15,7 +16,7 @@
 -- arrow) and the rivals (the elements outside the loop, each strong against the other: Celestial <-> Shadow, x1.5 both
 -- ways as PetCatalog's singleMultiplier).
 -- Three layouts in design px, nothing scrolls in any:
---   PC        1060 x 720 at the screen factor (fitted to the screen): the tall hexagon left, the side column right
+--   PC        1060 x 760 at the screen factor (fitted to the screen): the tall hexagon left, the side column right
 --   Short     a landscape phone, 800 x 320 at scale 1 (fitted): a wide hexagon left, a compact column right, no awning
 --   Portrait  a phone held upright, 360 x 640 at scale 1 (fitted): the tall hexagon over the examples and the rivals; the
 --             window starts low enough for its awning to clear the HUD's currency strips
@@ -45,7 +46,9 @@ local ElementsWindow = {}
 -- Side: X (from the chart's left) and its own parts
 local L = {
 	PC = {
-		W = 1060, H = 720, Roof = true,
+		-- (look review r0: at 720 the ring filled the body and Nature sat 2-3 px over its foot) 760, so the centred ring keeps
+		-- about 20 px of stone over and under it, as the mock's
+		W = 1060, H = 760, Roof = true,
 		Ring = {
 			W = 600, H = 632, Block = { 124, 104 }, Glyph = 36, Name = 22, Diag = 54, Straight = 54,
 			Cols = { 68, 238, 408 }, Rows = { 8, 186, 360, 528 },
@@ -72,7 +75,8 @@ local L = {
 		Side = {
 			X = 500, W = 276, Head = 20, Cards = false,
 			Square = 36, SquareGlyph = 18, Arrow = 27, Tag = { 64, 32, 18 }, Caption = 15, RowH = 40, RowGap = 6,
-			Examples = { "strong", "weak" }, RivalBlock = { 84, 50, 18, 15 }, RivalArrow = 18, RivalCaption = 15,
+			-- (look review r0: "rivals: / x1.5 / both" wrapped to 3 lines in 60 px) 78 px blocks leave the caption 72, two lines
+			Examples = { "strong", "weak" }, RivalBlock = { 78, 50, 18, 15 }, RivalArrow = 18, RivalCaption = 15,
 			RivalText = "rivals: x1.5 both",
 		},
 	},
@@ -518,16 +522,33 @@ function ElementsWindow.New(gui, opts)
 		holder:SetAttribute("Mode", mode)
 	end
 
+	-- (look review r0) the window's left edge to the caller while it is open (nil once it closed): the Index steps the menu
+	-- tiles aside where the window reaches over them (844x390: slivers of the tiles showed at its left edge)
+	local function place(left)
+		if type(opts.OnPlace) == "function" then
+			pcall(opts.OnPlace, left)
+		end
+	end
+
 	function win.Relayout()
 		local r = ElementsWindow.Rect(gui)
-		if r.Mode ~= win.Mode or not panel then
-			build(r.Mode)
-		end
 		local spec = L[r.Mode]
+		-- (look review r0) the holder takes its size before the panel is built in it, and the title's ribbon is fitted again
+		-- once its label has that box: fitted while the label had no box yet, the ribbon took the full pads its 220 px box
+		-- on a 390 px phone has no room for, and its right tail ran under the X
 		holder.Position = UDim2.fromOffset(r.X, r.Y)
 		holder.Size = UDim2.fromOffset(spec.W, spec.H)
 		fit.Scale = r.Scale
+		if r.Mode ~= win.Mode or not panel then
+			build(r.Mode)
+		end
+		if panel and panel.TitleLabel then
+			Theme.StyleTitle(panel.TitleLabel)
+		end
 		win.Rect = r
+		if win.Open_ then
+			place(r.X)
+		end
 		return r
 	end
 
@@ -540,6 +561,7 @@ function ElementsWindow.New(gui, opts)
 		local was = win.Open_
 		win.Open_ = true
 		holder.Visible = true
+		place(win.Rect and win.Rect.X or 0)
 		if not was and panel then
 			SignKit.Rise(panel.Root) -- (Pitch 2 F0) the kit's open: it rises 12 px in 3 hard steps
 		end
@@ -551,6 +573,7 @@ function ElementsWindow.New(gui, opts)
 		end
 		win.Open_ = false
 		holder.Visible = false
+		place(nil)
 		if type(opts.OnClose) == "function" then
 			pcall(opts.OnClose)
 		end

@@ -279,12 +279,15 @@ local K = {
 		-- room), TopClearTight where WinMinRoom px are not left that way, Foot px over the screen's foot. HeroY 72: the
 		-- card's 3 px edge keeps 4 px of stone under the chips' 2 px edges when Day 7 is today. A short card (360 x 640)
 		-- drops its species line, then its label
+		-- (look review r0: the keep line touched Claim's shadow and sat on the window's foot) ClaimGap 14 (Claim's 5 px edge
+		-- and 5 px shadow, then 4 px of stone) and Bottom 22; the 12 px come off the prize card (HeroMaxH 124: its rows still
+		-- fit, the Wisp still over 60 % of it), not off the tiles, which were cut once already
 		TileGap = 10, TileW = 112, TileMaxH = 122, TileMinH = 60, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
 		AmountText = 15, ChipPx = 48, PetPx = 44,
-		RowGap = 10, AfterTiles = 12, ClaimH = 60, ClaimGap = 4, KeepH = 20, KeepText = 15, Bottom = 20, ClaimW = 230, RepairW = 300,
+		RowGap = 10, AfterTiles = 12, ClaimH = 60, ClaimGap = 14, KeepH = 20, KeepText = 15, Bottom = 22, ClaimW = 230, RepairW = 300,
 		ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
 		WinH = 676, WinMinRoom = 600, TopClear = 32, TopClearTight = 6, Foot = 12,
-		HeroY = 72, HeroGap = 10, HeroMinH = 80, HeroMaxH = 136, HeroShare = 0.38, HeroPad = 6, PetGap = 10, CardGap = 3,
+		HeroY = 72, HeroGap = 10, HeroMinH = 80, HeroMaxH = 124, HeroShare = 0.38, HeroPad = 6, PetGap = 10, CardGap = 3,
 		HeroDayText = 15, PlinthH = 6, PlankH = 26, PlankSide = 12, PlankText = 17, SpeciesText = 15, WispText = 15, BannerText = 15,
 		BarH = 14, SegGap = 4,
 		-- the Play page: the header on two lines, CLAIM ALL centred under it, four boxes a row
@@ -302,7 +305,7 @@ local TEXT = {
 	Getting = "Getting your gifts ready...",
 	Keep = "Come back tomorrow to keep your streak!",
 	KeepClaim = "Claim today's gift to keep your streak!", -- (Pitch 2 09 B) the line by a claim that is due
-	Prize = "Day 7 prize", -- (Pitch 2 09 B) the prize card's label (TODAY when it is due)
+	Prize = "DAY 7 PRIZE", -- (Pitch 2 09 B) the prize card's label (TODAY when it is due); look review r0: the mock's capitals
 	Week = "WEEK DONE! Week Wisp is yours!",
 	Unlock = "Unlocks after %d min of play",
 	Resets = "Day resets in %d min",
@@ -2225,7 +2228,9 @@ function H.renderDaily(st, M)
 		-- sit over it in the muted ink
 		cell.Day.ZIndex = claimed and cell.Dim.ZIndex + 1 or 5
 		cell.Amount.ZIndex = claimed and cell.Dim.ZIndex + 1 or 5
-		cell.Day.TextColor3 = claimed and SIGN.TextMuted or SIGN.Text
+		-- (look review r0) the prize card's label in the muted caption ink, as the mock's (TODAY keeps the full ink)
+		local prizeLabel = i == 7 and not (today and due)
+		cell.Day.TextColor3 = (claimed or prizeLabel) and SIGN.TextMuted or SIGN.Text
 		cell.Amount.TextColor3 = claimed and SIGN.TextMuted or SIGN.Text
 		if cell.Species then
 			-- (Pitch 2 09 B) the prize card: the plank keeps its cream words and its lip rides with it over the cover; the
