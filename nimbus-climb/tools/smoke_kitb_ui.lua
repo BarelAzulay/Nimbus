@@ -8273,6 +8273,27 @@ local function clientScenarios()
 				end
 				T.check(whole >= 1, tag .. ": the pet grid shows at least one whole tile with its name",
 					fmt("%d whole of %d, view %s", whole, seen, gridView and U8.show(U8.rect(gridView)) or "no PetGrid"))
+				-- (Pitch 2 fix round B r1, look review major: at 844x390 the tiles fitted to the well left a 52 px picture and the
+				-- Earth / Nature tag covered about half of it, over the face's centre) the tag sits above a clear portrait, as in
+				-- 12_index_badge_optB and F0_index_optA (the pet drawn 8 px down the well): it covers at most a third of the
+				-- portrait's height and the portrait's centre line is clear of it, at every grid size (the Pets window's rule)
+				local tags, covered = 0, {}
+				for _, c in ipairs(gridView and gridView:GetChildren() or {}) do
+					local chip = c:IsA("GuiObject") and U8.shown(c) and c:FindFirstChild("Elements")
+					local view = c:IsA("GuiObject") and c:FindFirstChild("PetViewport", true)
+					for _, e in ipairs(chip and chip:GetChildren() or {}) do
+						if e:IsA("GuiObject") and U8.shown(e) and e.Name:match("^Element_") and view then
+							tags = tags + 1
+							local er, vr = U8.rect(e), U8.rect(view)
+							local over = math.max(0, math.min(er.B, vr.B) - math.max(er.Y, vr.Y))
+							if over > (vr.B - vr.Y) / 3 + 0.5 or er.B > (vr.Y + vr.B) / 2 - 0.5 then
+								covered[#covered + 1] = fmt("%s: tag %s over portrait %s (%.0f of %.0f px)", c.Name, U8.show(er), U8.show(vr), over, vr.B - vr.Y)
+							end
+						end
+					end
+				end
+				T.check(tags >= 1 and #covered == 0, fmt("%s: every tile's element tag above a clear portrait (at most a third over it, %d tags)", tag, tags),
+					table.concat(covered, "; "))
 				pcall(Menu.Close)
 				LKC.advance(0.4)
 			end)

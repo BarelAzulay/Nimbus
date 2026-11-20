@@ -111,6 +111,11 @@ local K = {
 	TILE_H_NARROW = 142,
 	TILE_H_SHORT = 132,
 	TILE_H_LAND_MIN = 104, -- (fix round B) a landscape phone's tile, fitted to the grid's view, never under this
+	-- (fix round B r1) a tile's pet picture: the tile's height less this (the name band, the lip and the margins) ...
+	TILE_ART_FOOT = 52,
+	-- ... and the element tag's foot under the picture's top, design px at the touch scale 0.8 (a 22 screen px chip 3 px in):
+	-- the portrait inside the picture starts low enough that the tag covers at most a third of it
+	TAG_FOOT = 31,
 	TILE_GAP = 10,
 	HEADER_H = 58,
 	HEADER_H_SHORT = 48,
@@ -1119,6 +1124,26 @@ local function H_snapStrip()
 	end
 end
 
+-- (Pitch 2 fix round B r1, look review major: at 844x390 the fitted tile's 52 px picture lay half under the Earth / Nature
+-- tag, over the face's centre) the portrait starts this far down its picture, so the element tag covers at most a third
+-- of it and never its centre (12_index_badge_optB: the tag above a clear portrait); 0 on a tall tile. For a tile
+-- `cellH` design px tall; every built portrait moves with it (buildTileViewport reads S.PortraitTop)
+local function H_seatPortraits(cellH)
+	local art = cellH - K.TILE_ART_FOOT
+	local top = math.max(0, math.ceil((3 * K.TAG_FOOT - art) / 2), 2 * K.TAG_FOOT - art)
+	if S.PortraitTop == top then
+		return
+	end
+	S.PortraitTop = top
+	for _, tile in pairs(S.Tiles) do
+		local frame = tile.Viewport and tile.Viewport.Frame
+		if frame then
+			frame.Position = UDim2.fromOffset(0, top)
+			frame.Size = UDim2.new(1, 0, 1, -top)
+		end
+	end
+end
+
 -- (Pitch 2 fix round B, T1 look leftover 9) on a landscape phone the tiles are as tall as the grid's view allows (the
 -- well less its 4 px inset each side and the grid's 8 px pads), down to K.TILE_H_LAND_MIN, so a whole row of tiles with
 -- their names shows; anywhere else the layout's own height. Again whenever the well is resized
@@ -1139,6 +1164,7 @@ local function H_fitLandTiles()
 	if cell.Y.Offset ~= want then
 		layout.CellSize = UDim2.fromOffset(cell.X.Offset, want)
 	end
+	H_seatPortraits(want)
 end
 
 local function relayout()
@@ -1686,7 +1712,9 @@ local function buildTileViewport(tile)
 	local discovered = State.IsDiscovered(def.Id)
 	-- Phase 5 (3.7): the best stage over the owned copies of this pet (undiscovered: 0); evolved = Low
 	local stage = discovered and type(State.BestStage) == "function" and (tonumber(State.BestStage(def.Id)) or 0) or 0
-	local handle = CloudUI.PetViewport(tile.Art, def, UDim2.new(1, 0, 1, 0), {
+	local top = S.PortraitTop or 0 -- (fix round B r1) the portrait clear of the element tag (H_seatPortraits)
+	local handle = CloudUI.PetViewport(tile.Art, def, UDim2.new(1, 0, 1, -top), {
+		Position = UDim2.fromOffset(0, top),
 		Animate = false,
 		Spin = discovered and "sway" or "none",
 		Evolved = stage >= 1 and stage or nil,
@@ -1769,7 +1797,7 @@ local function buildTile(def, index)
 	tile.Art = makeFrame(button, "Art", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 4),
-		Size = UDim2.new(1, -8, 1, -52),
+		Size = UDim2.new(1, -8, 1, -K.TILE_ART_FOOT),
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.PetWell,
 		ZIndex = 2,
