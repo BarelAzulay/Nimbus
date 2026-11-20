@@ -462,6 +462,7 @@ local K = {
 	-- (look review r1: at 360 x 640 BACK stood 18 px over DASH, where a thumb reaching up pulls the team out mid-fight) the
 	-- team orders keep this many screen px off every right-thumb key (MOVE, DASH, RUN)
 	TEAM_OFF_KEYS_PX = 40,
+	SWAP_ICON_W = 30, -- (look review r1) a short landscape phone's SWAP, its arrows alone beside the Lv tag (design px, at least)
 	LOCK_ARM = 14, -- the LOCKED marker (Units.UpdateLock): a corner bracket's arm and bar (px), the tag's height
 	LOCK_BAR = 4,
 	LOCK_TAG_H = 24,
@@ -6318,6 +6319,13 @@ function Hud.TouchRects(m)
 	return rects
 end
 
+-- (Pitch 2 item 1b, look review r1) the top of Roblox's thumbstick ring (design px from the gui area's top): its ring as
+-- wide as the jump button (TouchRects' size), its foot 20 px over the area's bottom, as render_gui draws it
+function Hud.StickRingTop(m)
+	local j = (min(m.VX, m.VY) <= 500) and 70 or 120
+	return m.H - (20 + j) / max(0.05, m.F)
+end
+
 -- a caption's box under its button, two lines of the size FixText will give it (design px)
 function Hud.CaptionH(m)
 	local px = max(K.CAPTION_TEXT, math.ceil(K.MIN_TEXT_PX / max(0.05, m.F) - 1e-6))
@@ -6507,7 +6515,7 @@ function Hud.Rebuild()
 	Hud.team.Visible = isFighting or between
 	local teamW, teamH = 0, 0
 	if isFighting or between then
-		teamW, teamH = Hud.LayoutFighter(B, m)
+		teamW, teamH = Hud.LayoutFighter(B, m, leftY)
 		-- a wide screen keeps the menu tiles (left centre): the fighter block starts right of their column
 		local teamX = K.EDGE
 		if not m.Compact then
@@ -6926,7 +6934,8 @@ function Hud.PlaceBlockCount(A)
 end
 
 -- the fighter card + helper cells (sizes + positions; Team-local); returns the Team block's size
-function Hud.LayoutFighter(B, m)
+-- (top: the Team block's top, design px, where Hud.Rebuild is about to put it; else where it stands)
+function Hud.LayoutFighter(B, m, top)
 	local F = Hud.F
 	local compact = m.Compact
 	local w = compact and (Hud.fcW or K.FC_W_COMPACT) or K.FC_W
@@ -7035,6 +7044,26 @@ function Hud.LayoutFighter(B, m)
 		cellH = max(tile + 4 + L.CdH, L.H + 4 + 2 * math.ceil(lvPx * 1.2) + 4) + 4 + 30
 	else
 		cellH = max(tile + 4 + L.CdH, L.H + 4 + L.BuffH + 4 + 30)
+		if Hud.ThreeKeys(m) then
+			-- (Pitch 2 item 1b, look review r1: at 640 x 360, 667 x 375 and 740 x 360 the second helper's SWAP lay on Roblox's
+			-- stick ring; at 667 x 375 "STONE S...", "TIDE ME...") where the column of Lv / name / SWAP rows would reach the
+			-- stick's ring, the Lv tag and SWAP (its arrows alone) share the top row and the name goes under them, on two lines
+			-- where that column still ends above the ring (Hud.PlaceHelper)
+			local colTop = (tonumber(top) or (Hud.team and Hud.team.Position.Y.Offset) or K.EDGE) + cardH + 8
+			local ring = Hud.StickRingTop(m)
+			if colTop + 2 * cellH + 6 > ring then
+				local nameH2 = 2 * math.ceil(lvPx * 1.2) + 2
+				local two = max(tile + 4 + L.CdH, L.H + 2 + nameH2)
+				L.LvSwap = true
+				if colTop + 2 * two + 6 <= ring then
+					L.NameH = nameH2
+					cellH = two
+				else
+					L.NameH = L.BuffH
+					cellH = max(tile + 4 + L.CdH, L.H + 2 + L.BuffH)
+				end
+			end
+		end
 	end
 	L.CellH = cellH
 	Hud.helperLevel = L
@@ -7085,6 +7114,7 @@ function Hud.PlaceHelper(H)
 	if not L then
 		return
 	end
+	H.swapIcon = L.LvSwap == true -- (Pitch 2 item 1b, look review r1: SWAP's arrows alone, Hud.Update)
 	local tile, cdH = L.Tile, L.CdH
 	H.Level.AutomaticSize = Enum.AutomaticSize.None
 	H.Level.AnchorPoint = Vector2.new(0, 0)
@@ -7127,6 +7157,27 @@ function Hud.PlaceHelper(H)
 	H.Key.Position = UDim2.fromOffset(-4, -2)
 	local x = tile + 8
 	local room = L.CellW - x
+	if L.LvSwap then
+		-- (Pitch 2 item 1b, look review r1) a short landscape phone (Hud.LayoutFighter): the Lv tag, then SWAP as its arrows
+		-- alone to the cell's right edge, on the top row; the buff's name under them, on two lines where it is longer than
+		-- the room and the cell has them (L.NameH)
+		local sw = min(room, max(K.SWAP_ICON_W, room - lvW - 4))
+		local lw = max(10, room - sw - 4)
+		H.Level.Position = UDim2.fromOffset(x, 0)
+		H.Level.Size = UDim2.fromOffset(min(lvW, lw), L.H)
+		H.Swap.Position = UDim2.fromOffset(L.CellW - sw, 0)
+		H.Swap.Size = UDim2.fromOffset(sw, L.H)
+		local bh = L.BuffH
+		if buffW > room and (L.NameH or 0) > L.BuffH then
+			H.Buff.TextWrapped = true
+			bh = L.NameH
+		end
+		H.Buff.Position = UDim2.fromOffset(x, L.H + 2)
+		H.Buff.Size = UDim2.fromOffset(min(room, buffW), bh)
+		-- (its 44 px pad stays inside the cell's right edge: CHEER / BACK stand right of it)
+		Hud.PlaceSwapHit(H, L, sw, L.H, nil, true)
+		return
+	end
 	H.Level.Position = UDim2.fromOffset(x, 0)
 	H.Level.Size = UDim2.fromOffset(min(lvW, room), L.H)
 	local by, bw, bh = 0, buffW, L.BuffH
@@ -7161,8 +7212,8 @@ end
 
 -- (P2 fix A look review r1, major 6) SWAP's clear hit pad on a touch screen: 44 screen px each way over the w x h block,
 -- centred on it, or reaching at most `below` design px under it (helpers side by side: the enemy list starts 8 px under
--- the cells) and the rest above it
-function Hud.PlaceSwapHit(H, L, w, h, below)
+-- the cells) and the rest above it; right: the pad's right edge on the block's (the block ends at the cell's right edge)
+function Hud.PlaceSwapHit(H, L, w, h, below, right)
 	local pad = H.SwapHit
 	if not pad then
 		return
@@ -7180,7 +7231,7 @@ function Hud.PlaceSwapHit(H, L, w, h, below)
 	-- (the pad is the block's sibling in the cell, placed from the block's corner)
 	local at = H.Swap.Position
 	pad.AnchorPoint = Vector2.new(0, 0)
-	pad.Position = UDim2.fromOffset(at.X.Offset + floor((w - pw) / 2), at.Y.Offset + h + under - ph)
+	pad.Position = UDim2.fromOffset(at.X.Offset + (right and (w - pw) or floor((w - pw) / 2)), at.Y.Offset + h + under - ph)
 	pad.Size = UDim2.fromOffset(pw, ph)
 end
 
@@ -7981,7 +8032,11 @@ function Hud.Update(B, now, force)
 			if hold > 0 then
 				H.SwapFill.Size = UDim2.fromScale(hold, 1)
 			end
-			if swapLeft > 0.05 and not down then
+			if H.swapIcon then
+				-- (Pitch 2 item 1b, look review r1) a short landscape phone's SWAP beside the Lv tag: its arrows alone (sunk
+				-- into the well while it cannot swap)
+				setText(H.Swap, "")
+			elseif swapLeft > 0.05 and not down then
 				setText(H.Swap, tostring(math.ceil(swapLeft - 0.05)))
 			else
 				setText(H.Swap, "Swap")
