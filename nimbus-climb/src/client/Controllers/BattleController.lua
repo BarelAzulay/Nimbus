@@ -130,8 +130,14 @@
 --     11-15 px scaled), the tag wider than the face for a long word, with SPECIAL at least SPECIAL_TOUCH_PX and ELEMENT at
 --     least ELEMENT_TOUCH_PX on the screen.
 --   * Compact layout (touch, or a screen under 900 x 600 px): a smaller fighter card, the portraits in a column, the
---     enemy list 2 rows, the mode line under the list when the top is full, the cluster a 2 x 2 grid above the jump /
---     RUN buttons (portrait) or left of the jump button (landscape); the menu column hides while fighting.
+--     enemy list 2 rows, the mode line under the list when the top is full; the menu column hides while fighting.
+--   * The three keys (Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20; every touch screen): the right
+--     thumb has MOVE (the ELEMENT key: a tap = the element; its gold fill is the special's meter; a full meter turns it gold
+--     with the special's name and a HOLD tag, and a hold of MOVE_HOLD fires the special), DASH and MovementController's RUN,
+--     placed from Roblox's jump button alone so no state moves or hides them. No SPECIAL / TARGET key: TARGET is automatic,
+--     a tap on an enemy (or its row) locks it and the LOCKED marker stands over it (Units.UpdateLock). CHEER and BACK are
+--     team orders beside the helper portraits (wide) / in a row under them (tall) (CheerUp.TeamSpots). Desktop and gamepad
+--     keep the four keys.
 --   * LEAVE (Champion Ring and boss raids; two presses -> "Forfeit"; a raid's first press says "No reward! Tap again"), the ring's
 --     next-round side card, the result card (bottom right; top right on phones) with "Lives left" and the dungeon's lines.
 --   * AreaWarn (bug batch 6): a raid fighter out of the fight area sees "Back to the fight! 3" (+ "Or you leave the raid."), counting
@@ -437,6 +443,24 @@ local K = {
 	ELEMENT_TOUCH_PX = 68,
 	ELEMENT_TOUCH_MIN_PX = 56,
 	SMALL_TOUCH_PX = 48, -- TARGET, DASH
+	-- (Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20; repitch_01b.py layout_C) a touch screen's right
+	-- thumb: MOVE (the ELEMENT key, which also holds the SPECIAL) and DASH, screen px on a phone (x THREE_BIG on a bigger
+	-- touch screen); MOVE gives up size down to MOVE_MIN_PX where it would reach a wide screen's centre 40%. A full meter: a
+	-- hold of MOVE_HOLD s fires the special (a shorter tap is still the element). CHEER / BACK: TEAM_KEY_W_PX x TEAM_KEY_H_PX
+	-- blocks TEAM_KEY_GAP_PX beside the helper portraits (wide) / in a row under them (tall)
+	MOVE_PX = 80,
+	MOVE_MIN_PX = 56,
+	DASH_TOUCH_PX = 58,
+	THREE_BIG = 1.25,
+	MOVE_HOLD = 0.4,
+	HOLD_IN = 6, -- the HOLD tag reaches this far (design px) over MOVE's top edge
+	TEAM_KEY_W_PX = 52,
+	TEAM_KEY_MIN_W_PX = 44,
+	TEAM_KEY_H_PX = 46,
+	TEAM_KEY_GAP_PX = 6,
+	LOCK_ARM = 14, -- the LOCKED marker (Units.UpdateLock): a corner bracket's arm and bar (px), the tag's height
+	LOCK_BAR = 4,
+	LOCK_TAG_H = 24,
 	CAPTION_TEXT = 15, -- a caption under its button (design px; FixText keeps it >= the floor on the screen)
 	-- (LOOK-ui2: the battle's planks drew 1 to 3 px edges on 3 to 6.5 px lips) two weights: a plank (OK, LEAVE, Cheer up!,
 	-- Retreat, the area banner) on the kit's token (SignKit.Sizes.Edge / Lip = CloudUI.SignMetrics, 5 / 8), a small block
@@ -486,6 +510,9 @@ local K = {
 	STICK_SMALL_PHONE = 500, -- the smaller screen side at most this = the small controls
 	STICK_W_SMALL = 110,
 	STICK_W_LARGE = 190,
+	STICK_H_TALL = 150, -- (Pitch 2 item 1b) its height: a tall small phone, a wide one, a big screen
+	STICK_H_WIDE = 96,
+	STICK_H_LARGE = 210,
 }
 
 local STATES = (BattleSim and BattleSim.States) or { Idle = 0, Moving = 1, Attacking = 2, Benched = 3, Casting = 4, Down = 5, Stunned = 6, Dashing = 7 }
@@ -5850,6 +5877,13 @@ function Hud.BuildActions()
 		A.Caption = label(b, string.upper(kind), "Label", K.CAPTION_TEXT, { Name = "Caption", AnchorPoint = Vector2.new(0.5, 0), ZIndex = 8, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, TextWrapped = true, TextColor3 = KB.Ink })
 		A.Key = keyChip(b, "", { Name = "Key", AnchorPoint = Vector2.new(0.5, 0.5) })
 		Hud.SetKey(A.Key:FindFirstChild("Text"), Hud.KeyText(kind))
+		if kind == "Element" then
+			-- (Pitch 2 item 1b, the three keys' MOVE) the special's meter: GoldLight rising from the lip in whole KEY_STEP steps
+			-- under the glyph (Hud.PaintKey); a full meter's HOLD tag on the key's top edge (Hud.PlaceHoldTag)
+			A.Meter = make("Frame", { Name = "Meter", BackgroundColor3 = SIGN.GoldLight, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Visible = false, ZIndex = 4 }, face)
+			A.HoldTag = label(b, "HOLD", "Label", K.CAPTION_TEXT, { Name = "HoldTag", AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 9, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, TextColor3 = KB.Ink })
+			signBlock(A.HoldTag, KB.Face, SIGN.StoneLip, KB.Ink, 3, 2)
+		end
 		Hud.buttons[kind] = A
 		local action = kind
 		b.InputBegan:Connect(function(input)
@@ -5861,6 +5895,8 @@ function Hud.BuildActions()
 					-- a tap fires on release, a hold of 0.4 s clears the lock; the hold remembers its input + button so a slide
 					-- off the button (whose own InputEnded may never fire) cancels it instead of re-targeting
 					Input.HoldStart("targetButton", 0, os.clock(), "Target", input, b)
+				elseif A.three then
+					Input.MoveBegan(input, b)
 				else
 					Input.Press(action, true)
 				end
@@ -5874,6 +5910,8 @@ function Hud.BuildActions()
 			end
 			if action == "Target" and (t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1) then
 				Input.TargetButtonEnded(input)
+			elseif action == "Element" and (t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1) then
+				Input.MoveEnded(input)
 			end
 		end)
 	end
@@ -6283,8 +6321,8 @@ function Hud.CaptionH(m)
 end
 
 -- the action buttons' centres + diameters (design px, Commands-local; Commands is anchored at its bottom-right
--- corner = the gui area's bottom-right corner) and the cluster's size. Touch phones: around Roblox's jump button and
--- the RUN button (MovementController puts RUN straight above the jump button in a battle), clear of the centre 40%.
+-- corner = the gui area's bottom-right corner) and the cluster's size. Touch screens: the three keys (below), around
+-- Roblox's jump button and the RUN button (MovementController: above the jump button wide, left of it tall).
 function Hud.ClusterLayout(m)
 	local big, small = K.ATTACK_D, K.ACTION_D
 	local out = {}
@@ -6297,76 +6335,44 @@ function Hud.ClusterLayout(m)
 		out.w, out.h = 236, 270
 		return out
 	end
+	-- (Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20: .superpowers/slop-audit/round3/build/PITCH2/
+	-- A_battle_hud/repitch/01b_optC*.png, the spots of repitch_01b.py layout_C; it replaced the four-key phone cluster) the
+	-- right thumb has three named keys that never move or hide: MOVE (the ELEMENT key: a tap = the element; a full meter turns
+	-- it gold with a HOLD tag and a hold fires the SPECIAL, Input.MoveBegan), DASH and RUN (MovementController's, 48 px). No
+	-- SPECIAL and no TARGET key: TARGET is automatic (a tap on an enemy locks it, Units.UpdateLock's LOCKED marker). Every
+	-- spot comes from Roblox's jump button alone (never the names, the vitals or the list), so no state moves a key
 	local f = max(0.05, m.F)
-	local r = Hud.TouchRects(m)
-	local gap = 7 * f
-	-- (design px, at least the touch minimums on the screen)
-	big = max(big, K.SPECIAL_TOUCH_PX / f)
-	local element = max(small, K.ELEMENT_TOUCH_PX / f)
-	small = max(small, K.SMALL_TOUCH_PX / f)
-	local bigPx, elementPx, smallPx = big * f, element * f, small * f
+	local jump = Hud.TouchRects(m).jump -- screen px { left, bottom, right, top } from the left / BOTTOM edge
+	local s = (min(m.VX, m.VY) <= 500) and 1 or K.THREE_BIG
 	local vx = m.VX
-	-- screen px (x from the left, yb from the bottom) -> Commands-local design px
+	local move, dash = K.MOVE_PX * s, K.DASH_TOUCH_PX * s
+	-- screen px (x from the left, yb from the bottom, d) -> Commands-local design px
 	local function at(cx, cyb, d)
-		return { (cx - vx) / f, -cyb / f, d }
+		return { (cx - vx) / f, -cyb / f, d / f }
 	end
 	if m.VY >= m.VX then
-		-- portrait: up the right edge above the RUN button: SPECIAL, then ELEMENT, then [TARGET][DASH] (a small phone's
-		-- vitals card reaches under SPECIAL: above it then; TARGET beside ELEMENT would reach the middle of the screen)
-		local right = vx - 10 * f
-		local base = max(r.jump[4], r.run[4]) + gap + 2
-		local v, hidden = CheerUp.Layout()
-		if v and right - bigPx - 4 * f < v.X + v.W then
-			-- (P2 fix A: vitals C's name tab band, TabUp over the card, raised the keys 26 px onto the enemy list at 360 x
-			-- 640) with the card stepped aside for the fight its slot holds Cheer up! / Retreat from its foot (CheerUp.Place,
-			-- clear of the keys by SlotClear): the keys stand on the card's own top, not the empty tab band
-			local vy = v.Y + ((hidden and tonumber(v.TabUp)) or 0)
-			base = max(base, m.VY - m.Inset - vy + 2)
-		end
-		out.Special = at(right - bigPx / 2 - 4 * f, base + bigPx / 2, big)
-		local row2 = base + bigPx + gap
-		out.Element = at(right - elementPx / 2, row2 + elementPx / 2, element)
-		local row3 = row2 + elementPx + gap
-		out.Target = at(right - smallPx - gap - smallPx / 2, row3 + smallPx / 2, small)
-		-- (kit-b U9-6 review: TARGET's tag, kept out of the centre 40%, ran under DASH) DASH steps up just enough that its
-		-- square key (LOOK-ui2: its wood edge too) clears TARGET's tag by 4 px where the tag reaches under it (a tag spans the
-		-- lower part of its face; the row has no room to widen)
-		local tw, th = Hud.FaceTag("Target", "TARGET", small, false)
-		local tagX = right - smallPx - gap - smallPx / 2 + Hud.FaceTagShift(out.Target, tw, m) * f
-		local dashX = right - smallPx / 2
-		local reach = (tagX + tw * f / 2 + 2 * f) - (dashX - smallPx / 2 - K.KEY_EDGE * f)
-		local dashY = row3 + smallPx / 2
-		if reach > -4 * f then
-			dashY = max(dashY, row3 + (K.KEY_LIP + th + 2 + 4 + K.KEY_EDGE) * f + smallPx / 2)
-		end
-		out.Dash = at(dashX, dashY, small)
+		-- a tall phone: MOVE above the jump button (its right edge 32 px in, its foot 24 px over the jump button's top), DASH
+		-- left of MOVE (its foot 6 px over the jump button's top); RUN left of the jump button (MovementController)
+		local right = vx - 32 * s
+		out.Element = at(right - move / 2, jump[4] + 24 * s + move / 2, move)
+		local dashRight = right - move - 20 * s
+		out.Dash = at(dashRight - dash / 2, jump[4] + 6 * s + dash / 2, dash)
 	else
-		-- landscape: [TARGET][SPECIAL] left of the jump button (the bottom strip), ELEMENT then DASH above SPECIAL. A small
-		-- phone: the vitals card ends the strip and the enemy list (two rows + "+n more") the stack, so SPECIAL, ELEMENT and
-		-- DASH give up their extra size (and the strip sits a hair lower than the jump button: the card ends just above it)
-		local left = r.jump[1] - gap
-		local base = r.jump[2] - 4
-		local v = CheerUp.Layout()
-		-- (kit-b U9-6 review: TARGET's tag butted against SPECIAL's) the row spaces the buttons by their name tags where a tag
-		-- is wider than its face: SPECIAL's (its attack's name) and TARGET's
-		local names = Hud.CaptionTexts(St.battle)
-		local targetW = max(smallPx, Hud.FaceTag("Target", "TARGET", small, false) * f)
-		local specialOver = max(0, Hud.FaceTag("Special", names.Special, big, false) - big) * f / 2
-		bigPx = clamp(left - (v and (v.X + v.W) or 0) - 2 * gap - targetW - specialOver, K.SPECIAL_TOUCH_MIN_PX, bigPx)
-		big = bigPx / f
-		specialOver = max(0, Hud.FaceTag("Special", names.Special, big, false) - big) * f / 2
-		out.Special = at(left - bigPx / 2, base + bigPx / 2, big)
-		out.Target = at(left - bigPx - specialOver - gap - targetW / 2, base + smallPx / 2, small)
-		local row2 = base + bigPx + gap
-		local listBottom = ((Hud.listTop or K.EDGE) + K.ROWS_COMPACT * (K.ROW_H_COMPACT + K.ROW_GAP) + 24 - K.ROW_GAP) * f
-		local room = m.VY - m.Inset - listBottom - row2 - gap
-		elementPx = clamp(room - K.SMALL_TOUCH_PX, K.ELEMENT_TOUCH_MIN_PX, elementPx)
-		local dashPx = clamp(room - elementPx, K.SMALL_TOUCH_PX, smallPx)
-		out.Element = at(left - bigPx / 2, row2 + elementPx / 2, elementPx / f)
-		out.Dash = at(left - bigPx / 2, row2 + elementPx + gap + dashPx / 2, dashPx / f)
+		-- a wide phone: MOVE left of the jump button on its foot, DASH above MOVE (their right edges in line, 26 px between);
+		-- RUN above the jump button (MovementController). MOVE gives up size where it would reach the screen's centre 40%
+		local right = jump[1] - 16 * s
+		move = clamp(right - vx * 0.7 - 1, K.MOVE_MIN_PX * s, move)
+		out.Element = at(right - move / 2, jump[2] + move / 2, move)
+		out.Dash = at(right - dash / 2, jump[2] + move + 26 * s + dash / 2, dash)
 	end
 	out.w, out.h = 10, 10
 	return out
+end
+
+-- (Pitch 2 item 1b) the three keys' layout: a touch screen (the phone layout); a desktop / laptop / gamepad keeps its four
+function Hud.ThreeKeys(m)
+	m = m or Hud.m
+	return m ~= nil and m.Compact == true and m.Touch == true
 end
 
 ----------------------------------------------------------------------
@@ -6526,8 +6532,9 @@ function Hud.Rebuild()
 	Hud.enemies.Visible = isFighting
 	-- (kit-b) a portrait phone: the action keys' boxes (their wood edge too) in our design px, for the list above them
 	-- (Hud.LayoutEnemies). The portrait cluster stands on Roblox's buttons and the vitals, never on the list
+	-- (Pitch 2 item 1b) a wide phone's MOVE / DASH keep their spots too: the list stops above them there as well
 	Hud.listKeys = nil
-	if isFighting and m.Compact and m.Touch and m.VY >= m.VX then
+	if isFighting and Hud.ThreeKeys(m) then
 		Hud.listKeys = Hud.KeyBoxes(m)
 	end
 	-- (P2 fix A r1: at 360 x 640 the strips under the boss strip lay on DASH and TARGET) they step aside for the fight; once
@@ -6563,13 +6570,20 @@ function Hud.Rebuild()
 		for _, kind in ipairs(ACTIONS) do
 			local A = Hud.buttons[kind]
 			local spec = L[kind]
-			local d = spec[3]
-			A.Button.Size = UDim2.fromOffset(d, d)
-			A.Button.Position = UDim2.new(1, spec[1], 1, spec[2])
-			Hud.PlaceFace(A, d, m)
-			A.Key.Visible = not m.Touch
-			A.Key.Position = UDim2.new(0.15, 0, 0.15, 0)
+			-- (Pitch 2 item 1b) the three keys' layout has no SPECIAL and no TARGET key (MOVE holds the special; TARGET is
+			-- automatic): their buttons stay hidden there
+			A.Button.Visible = spec ~= nil
+			A.three = Hud.ThreeKeys(m) and kind == "Element"
+			if spec then
+				local d = spec[3]
+				A.Button.Size = UDim2.fromOffset(d, d)
+				A.Button.Position = UDim2.new(1, spec[1], 1, spec[2])
+				Hud.PlaceFace(A, d, m)
+				A.Key.Visible = not m.Touch
+				A.Key.Position = UDim2.new(0.15, 0, 0.15, 0)
+			end
 		end
+		Hud.PlaceHoldTag(m)
 		Hud.Captions(B)
 		Hud.Keys()
 	end
@@ -6606,7 +6620,8 @@ end
 -- a key's glyph, countdown and name for its width d. Wide screens: the name on its stone tag under the key, up to 2 lines.
 -- Touch: the name's tag lies on the lower part of the face (DASH keeps a plain face), the glyph and the countdown above it
 function Hud.PlaceFace(A, d, m)
-	local inFace = m.Touch and A.kind ~= "Dash"
+	-- (Pitch 2 item 1b: the three keys are named, DASH too, as the mock draws it)
+	local inFace = m.Touch and (A.kind ~= "Dash" or Hud.ThreeKeys(m))
 	A.size = d
 	-- (LOOK-ui2) the glyph in one of the kit's two icon sizes, 27 px on a big key, 18 on a small one (was 0.4 x the
 	-- diameter: 36 px cells on a touch SPECIAL)
@@ -6688,12 +6703,15 @@ function Hud.PaintKey(A, now)
 	local sink = (A.pressed or cooling) and K.KEY_SINK or 0
 	local lipPx = K.KEY_LIP - sink
 	local inner = d - sink - lipPx
-	local chargePx = cooling and (floor(clamp(A.fill or 0, 0, 1) * inner / K.KEY_STEP) * K.KEY_STEP) or 0
+	-- (Pitch 2 item 1b) the three keys' MOVE shows the special's meter (GoldLight from the lip), not the element's charge: a
+	-- cooling MOVE is the well with the meter and the seconds on it
+	local chargePx = (cooling and not A.three) and (floor(clamp(A.fill or 0, 0, 1) * inner / K.KEY_STEP) * K.KEY_STEP) or 0
+	local meterPx = (A.three and not A.full) and (floor(clamp(A.meter or 0, 0, 1) * inner / K.KEY_STEP) * K.KEY_STEP) or 0
 	local cue = A.cue == true and sin(now * 8) > 0
 	local deny = (A.Button:GetAttribute("DenyUntil") or 0) > now
 	local shake = deny and ((floor(now * 30) % 2 == 0) and 2 or -2) or 0
 	local color = A.faceColor or KB.Face
-	local key = table.concat({ sink, chargePx, cue and 1 or 0, deny and 1 or 0, shake, d, color.R, color.G, color.B }, ",")
+	local key = table.concat({ sink, chargePx, meterPx, cue and 1 or 0, deny and 1 or 0, shake, d, color.R, color.G, color.B }, ",")
 	if A.drawn == key then
 		return
 	end
@@ -6714,6 +6732,11 @@ function Hud.PaintKey(A, now)
 	A.Charge.BackgroundColor3 = color
 	A.Charge.Position = UDim2.new(0, 0, 1, -lipPx)
 	A.Charge.Size = UDim2.new(1, 0, 0, chargePx)
+	if A.Meter then
+		A.Meter.Visible = meterPx > 0
+		A.Meter.Position = UDim2.new(0, 0, 1, -lipPx)
+		A.Meter.Size = UDim2.new(1, 0, 0, meterPx)
+	end
 	-- the ink of the glyph and the countdown: brown on the well and the charge, else the ink that reads on the face
 	local ink = cooling and KB.Ink or Theme.TextOn(color)
 	A.Glyph.TextColor3 = ink
@@ -6781,14 +6804,20 @@ function Hud.PlaceFaceName(A, d, whole)
 	plate.Visible = not whole
 	plate.Position = cap.Position
 	plate.Size = cap.Size
-	-- the glyph and the countdown share what the tag leaves of the face
-	local room = whole and (d - K.KEY_LIP) or max(8, top - 2)
-	A.Glyph.Position = UDim2.new()
+	-- the glyph and the countdown share what the tag leaves of the face (Pitch 2 item 1b: and what MOVE's HOLD tag leaves of
+	-- its top while it shows)
+	local skip = (A.three and A.full and A.HoldTag) and K.HOLD_IN or 0
+	local room = whole and (d - K.KEY_LIP) or max(8, top - 2 - skip)
+	A.Glyph.Position = UDim2.fromOffset(0, skip)
 	A.Glyph.Size = UDim2.new(1, 0, 0, room)
 	A.Count.Position = A.Glyph.Position
 	A.Count.Size = A.Glyph.Size
 	if room < (A.iconPx or 18) + 4 and (A.iconPx or 18) > 18 then
 		A.iconPx = 18
+		PixelIcon.Set(A.Glyph, A.glyphName or ICON[A.kind], A.iconPx)
+	elseif A.three and d >= K.KEY_BIG and A.iconPx ~= 27 and room >= 27 + 4 then
+		-- (Pitch 2 item 1b) MOVE's HOLD tag gone again: its big glyph back
+		A.iconPx = 27
 		PixelIcon.Set(A.Glyph, A.glyphName or ICON[A.kind], A.iconPx)
 	end
 	A.Count.TextSize = max(math.ceil(K.MIN_TEXT_PX / f - 1e-6), min(floor(d * 0.3), room))
@@ -6878,7 +6907,12 @@ function Hud.LayoutFighter(B, m)
 	local cellW = compact and K.HELPER_W_COMPACT or K.HELPER_W
 	if compact then
 		-- (a phone: the column ends before the centre 40%; kit-b U9-6: a landscape phone has room for a longer buff name)
-		cellW = max(tile + 78, min(m.Landscape and K.HELPER_W_WIDE or cellW, floor(m.W * 0.3) - K.EDGE))
+		local room = floor(m.W * 0.3) - K.EDGE
+		if m.Landscape and Hud.ThreeKeys(m) then
+			-- (Pitch 2 item 1b) CHEER / BACK stand beside the column (CheerUp.TeamSpots): it ends that much sooner
+			room = room - math.ceil((K.TEAM_KEY_W_PX + K.TEAM_KEY_GAP_PX + 2) / max(0.05, m.F))
+		end
+		cellW = max(tile + 78, min(m.Landscape and K.HELPER_W_WIDE or cellW, room))
 	end
 	-- (kit-b U9-6, the render gate: "Lv 34" spilled out of its 48 px pill) the tags' text stays at the floor on the screen
 	local lvPx = max(16, minSize)
@@ -7151,17 +7185,44 @@ function Hud.Captions(B)
 		setVisible(T.Glyph, St.targetFlash == nil)
 	end
 	for kind, A in pairs(Hud.buttons) do
-		setText(A.Caption, caps[kind] or kind)
-		if Hud.m and Hud.m.Touch and kind ~= "Dash" then
+		-- (Pitch 2 item 1b) the three keys' MOVE: the element's name on a stone face with the meter rising; a full meter turns it
+		-- gold with the special's name and star (a hold fires it, the HOLD tag says so)
+		local full = A.three and A.full == true
+		setText(A.Caption, (full and caps.Special) or caps[kind] or kind)
+		if Hud.m and Hud.m.Touch and (kind ~= "Dash" or Hud.ThreeKeys()) and A.Button.Visible then
 			-- (kit-b U9-6) the name's tag follows its text (a swap changes the attack's name)
 			Hud.PlaceFaceName(A, A.Button.Size.X.Offset, kind == "Target" and St.targetFlash ~= nil)
 		end
 		if kind == "Element" and f then
-			A.glyphName = ELEMENT_ICON[f.element] or ICON.Special
+			A.glyphName = full and ICON.Special or (ELEMENT_ICON[f.element] or ICON.Special)
 			PixelIcon.Set(A.Glyph, A.glyphName, A.iconPx)
-			Hud.PaintFace(A, elementColor(f.element))
+			if A.three then
+				Hud.PaintFace(A, full and SIGN.Gold or KB.Face)
+			else
+				Hud.PaintFace(A, elementColor(f.element))
+			end
 		end
 	end
+	setVisible(Hud.buttons.Element and Hud.buttons.Element.HoldTag, Hud.buttons.Element and Hud.buttons.Element.three and Hud.buttons.Element.full == true)
+end
+
+-- (Pitch 2 item 1b) the HOLD tag on MOVE's top edge, centred, at the phone floor (the mock's teaching ribbon)
+function Hud.PlaceHoldTag(m)
+	local A = Hud.buttons and Hud.buttons.Element
+	local t = A and A.HoldTag
+	if not t then
+		return
+	end
+	local px = max(K.CAPTION_TEXT, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
+	t.TextSize = px
+	t:SetAttribute("BaseText", px)
+	local w = math.ceil(textWidth("HOLD", px)) + 14
+	local h = math.ceil(px * 1.2) + 4 + 3
+	t.Size = UDim2.fromOffset(min(w, A.Button.Size.X.Offset - 8), h)
+	-- (pinned on the edge: HOLD_IN of it over the face, the rest above, so the glyph keeps its room on a small MOVE)
+	t.AnchorPoint = Vector2.new(0.5, 1)
+	t.Position = UDim2.new(0.5, 0, 0, K.HOLD_IN)
+	setVisible(t, A.three == true and A.full == true)
 end
 
 -- the top of a tall phone's centre band in our design px (the gui area starts under the Roblox top bar: the band is 30% of
@@ -7723,6 +7784,20 @@ function Hud.Update(B, now, force)
 			frac = f and clamp(f.meter / METER_MAX, 0, 1) or 0
 		end
 		local ready = frac >= 1
+		if A.three then
+			-- (Pitch 2 item 1b) MOVE: the meter rises on it; a full meter (a fighter with a special) turns it gold, the HOLD
+			-- tag on, no countdown (a hold fires the special whatever the element's cooldown)
+			A.meter = f and clamp(f.meter / METER_MAX, 0, 1) or 0
+			local full = f ~= nil and f.special ~= nil and f.meter >= METER_MAX
+			if A.full ~= full then
+				A.full = full
+				A.drawn = nil
+				Hud.Captions(B)
+			end
+			if full then
+				ready, countText = true, ""
+			end
+		end
 		-- (LOOK-ui2) a key cooling down (a cooldown, the special's meter charging) sinks into the well, its colour rising
 		A.cooling = not ready
 		A.fill = frac
@@ -8724,6 +8799,15 @@ end
 -- (P2 fix A r1) the top (design px) of the vitals slot's Cheer up! / Retreat stack (stacked, the tallest it gets), the
 -- screen's foot without a vitals card
 function Hud.StackTop(B, m)
+	if Hud.ThreeKeys(m) then
+		-- (Pitch 2 item 1b) the three keys' layout: the team orders' row goes under the fighter's block (CheerUp.TeamSpots),
+		-- which ends above Roblox's stick
+		local f = max(0.05, m.F)
+		local small = min(m.VX, m.VY) <= K.STICK_SMALL_PHONE
+		local stickH = small and ((m.VY > m.VX) and K.STICK_H_TALL or K.STICK_H_WIDE) or K.STICK_H_LARGE
+		local row = (CheerUp.Allowed(B) or Retreat.Allowed(B)) and (K.TEAM_KEY_H_PX + 10) / f or 0
+		return m.H - (stickH + K.TEAM_KEY_GAP_PX) / f - row
+	end
 	local v = CheerUp.Layout()
 	if not v then
 		return math.huge
@@ -9022,7 +9106,9 @@ function Leave.Place(m, B, isFighting)
 		local topY = 0
 		for _, kind in ipairs(ACTIONS) do
 			local s = L[kind]
-			topY = min(topY, s[2] - s[3] / 2)
+			if s then -- (Pitch 2 item 1b: the three keys' layout has no SPECIAL / TARGET key)
+				topY = min(topY, s[2] - s[3] / 2)
+			end
 		end
 		b.Size = UDim2.fromOffset(K.LEAVE_W_COMPACT, K.LEAVE_H_COMPACT)
 		b.Position = UDim2.fromOffset(m.W - 8, m.H + topY - 10)
@@ -9149,14 +9235,92 @@ function CheerUp.Make(parent)
 	-- brown sheet; (LOOK-ui2: was a see-through gold frame blinking behind it) while the boost lasts its edge blinks deep gold
 	local b = make("TextButton", { Name = "Cheer", Text = "Cheer up!", AutoButtonColor = false, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
 	Theme.Style(b, "Button", { Size = 20 }) -- (kit-b U6: no outline)
+	-- (Pitch 2 item 1b) the three keys' CHEER keeps its word above the lip: a padding the lip follows (signBlock watches it)
+	make("UIPadding", { Name = "KeyPad" }, b)
 	signBlock(b, SIGN.Gold, SIGN.GoldLip, SIGN.Text, K.PLANK_LIP, K.PLANK_EDGE)
 	b:SetAttribute("BaseText", 20)
 	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = SIGN.Text, BackgroundTransparency = 0.45, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
+	local glyph = label(b, "", "Display", 18, { Name = "Glyph", Visible = false, AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(22, 20), Position = UDim2.new(0.5, 0, 0, 4), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center })
 	b.Activated:Connect(function()
 		BattleController.Cheer()
 	end)
-	Hud.cheer = { Button = b, Sweep = sweep, Edge = b:FindFirstChild("SignEdge") }
+	Hud.cheer = { Button = b, Sweep = sweep, Edge = b:FindFirstChild("SignEdge"), Glyph = glyph }
 	return b
+end
+
+-- (Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20) the team orders' look: on the three keys' layout a
+-- keycap block (the keys' edge and lip) with its pixel glyph over a one-word name (CHEER, BACK / FIGHT) at the phone floor;
+-- else the plank with its words ("Cheer up!", "Retreat" / "Engage"). b: the button, glyph: its Glyph label, word: the
+-- name, icon: the glyph's PixelIcon, face / lip: its colours
+function CheerUp.Look(m, b, glyph, word, icon, face, lip)
+	local three = Hud.ThreeKeys(m)
+	local f = max(0.05, m.F)
+	local lipPx = three and K.KEY_LIP or K.PLANK_LIP
+	signBlock(b, face, lip, SIGN.Text, lipPx, three and K.KEY_EDGE or K.PLANK_EDGE)
+	setText(b, word)
+	local pad = b:FindFirstChild("KeyPad")
+	if three then
+		local px = math.ceil(Hud.FloorPx() / f - 1e-6)
+		Theme.SetRole(b, "Label")
+		b.TextSize = px
+		b:SetAttribute("BaseText", px)
+		b.TextYAlignment = Enum.TextYAlignment.Bottom
+		if pad then
+			pad.PaddingBottom = UDim.new(0, lipPx + 2)
+		end
+		if glyph then
+			glyph.Visible = true
+			glyph.TextColor3 = SIGN.Text -- (the icon's ink: the block's word's)
+			PixelIcon.Set(glyph, icon, 18)
+		end
+	else
+		Theme.SetRole(b, "Button")
+		b.TextSize = 20
+		b:SetAttribute("BaseText", 20)
+		b.TextYAlignment = Enum.TextYAlignment.Center
+		if pad then
+			pad.PaddingBottom = UDim.new(0, 0)
+		end
+		if glyph then
+			glyph.Visible = false
+		end
+	end
+end
+
+-- (Pitch 2 item 1b) the team orders' spots on the three keys' layout (design px; the buttons' anchor is 0.5, 1): they are team
+-- orders, so they sit with the team. A wide screen: beside the helper portraits, CHEER by the first helper and BACK by the
+-- second (the helper column narrows for them in Hud.LayoutFighter); a tall one: a row under the portraits (under the enemy
+-- list where it lies under the fighter's block), ending before the screen's centre 40%. From the Team block alone: no fight
+-- state moves them. -> { { cx, bottom }, { cx, bottom } }, w, h
+function CheerUp.TeamSpots(m)
+	local f = max(0.05, m.F)
+	local w, h = K.TEAM_KEY_W_PX / f, K.TEAM_KEY_H_PX / f
+	local gap = K.TEAM_KEY_GAP_PX / f
+	local tx, ty = Hud.team.Position.X.Offset, Hud.team.Position.Y.Offset
+	local holder = Hud.helperHolder
+	local cells = 0
+	for _, H in ipairs(Hud.helpers or {}) do
+		if H.Cell and H.Cell.Visible then
+			cells = cells + 1
+		end
+	end
+	local hx, hy = tx + (holder and holder.Position.X.Offset or 0), ty + (holder and holder.Position.Y.Offset or 0)
+	local hw, hh = holder and holder.Size.X.Offset or 0, holder and holder.Size.Y.Offset or 0
+	if m.VX > m.VY and cells > 0 and Hud.helpersRow ~= true then
+		local cellH = (Hud.helperLevel and Hud.helperLevel.CellH) or (hh - 6) / 2
+		local spots = {}
+		for i = 1, 2 do
+			spots[i] = { hx + hw + gap + w / 2, hy + (i - 1) * (cellH + 6) + cellH / 2 + h / 2 }
+		end
+		return spots, w, h
+	end
+	local top = (cells > 0) and (hy + hh) or (ty + Hud.team.Size.Y.Offset)
+	if Hud.listX and Hud.enemies and Hud.enemies.Visible then
+		top = max(top, (Hud.listTop or 0) + Hud.enemies.Size.Y.Offset)
+	end
+	w = clamp((m.VX * 0.3 / f - tx - gap - 2 / f) / 2, K.TEAM_KEY_MIN_W_PX / f, w)
+	local bottom = top + 10 / f + h
+	return { { tx + w / 2, bottom }, { tx + w + gap + w / 2, bottom } }, w, h
 end
 
 function CheerUp.Place(m, B, isFighting)
@@ -9171,6 +9335,19 @@ function CheerUp.Place(m, B, isFighting)
 	CheerUp.inSlot = false
 	if not on then
 		CheerUp.placed = nil
+		return
+	end
+	local three = Hud.ThreeKeys(m)
+	if C.three ~= three then
+		C.three = three
+		CheerUp.Look(m, C.Button, C.Glyph, three and "CHEER" or "Cheer up!", "heart", SIGN.Gold, SIGN.GoldLip)
+	end
+	if three then
+		-- (Pitch 2 item 1b) with the team: CheerUp.TeamSpots' first spot
+		local spots, w, h = CheerUp.TeamSpots(m)
+		C.Button.Size = UDim2.fromOffset(w, h)
+		C.Button.Position = UDim2.fromOffset(spots[1][1], spots[1][2])
+		CheerUp.placed = "three"
 		return
 	end
 	local f = max(0.05, m.F)
@@ -9260,7 +9437,8 @@ function CheerUp.Update(B, now)
 		return
 	end
 	local v, hidden = CheerUp.Layout()
-	local key = CheerUp.Key(v, hidden, Retreat.Allowed(B))
+	-- (Pitch 2 item 1b) the three keys' CHEER / BACK stand with the team, whatever the vitals card does
+	local key = C.three and "three" or CheerUp.Key(v, hidden, Retreat.Allowed(B))
 	if key ~= CheerUp.placed and Hud.m then
 		CheerUp.Place(Hud.m, B, B.Fighter and not B.ended)
 		Retreat.Place(Hud.m, B, B.Fighter and not B.ended)
@@ -9299,17 +9477,30 @@ function Retreat.Make(parent)
 	local b = make("TextButton", { Name = "Retreat", Text = "Retreat", AutoButtonColor = false, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
 	-- kit B: no outline; a stone block (Engage: the red block; Retreat.Update repaints it), its wood edge the pulsing stroke
 	Theme.Style(b, "Button", { Size = 20 })
+	make("UIPadding", { Name = "KeyPad" }, b) -- (Pitch 2 item 1b: as Cheer up!'s, CheerUp.Look)
 	signBlock(b, KB.Face, SIGN.StoneLip, KB.Ink, K.PLANK_LIP, K.PLANK_EDGE)
 	local stroke = b:FindFirstChild("SignEdge")
 	b:SetAttribute("BaseText", 20)
 	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = SIGN.Text, BackgroundTransparency = 0.45, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
 	local key = label(b, "", "Label", 14, { Name = "Key", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6, TextColor3 = b.TextColor3 })
+	local glyph = label(b, "", "Display", 18, { Name = "Glyph", Visible = false, AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(22, 20), Position = UDim2.new(0.5, 0, 0, 4), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center })
 	b.Activated:Connect(function()
 		BattleController.Retreat()
 	end)
 	Hud.SetKey(key, Hud.KeyText("Retreat"))
-	Hud.retreat = { Button = b, Sweep = sweep, Stroke = stroke, Key = key }
+	Hud.retreat = { Button = b, Sweep = sweep, Stroke = stroke, Key = key, Glyph = glyph }
 	return b
+end
+
+-- (Pitch 2 item 1b) Retreat's words and look for its state: the three keys' BACK (down) / FIGHT (up), else Retreat / Engage
+function Retreat.Paint(m, back)
+	local R = Hud.retreat
+	local three = Hud.ThreeKeys(m)
+	local word = three and (back and "FIGHT" or "BACK") or (back and "Engage" or "Retreat")
+	CheerUp.Look(m, R.Button, R.Glyph, word, back and "up" or "down", back and SIGN.Red or KB.Face, back and SIGN.RedLip or SIGN.StoneLip)
+	R.Stroke.Thickness = three and K.KEY_EDGE or 3
+	R.Key.TextColor3 = R.Button.TextColor3
+	R.look = (three and "3" or "p") .. (back and "b" or "r")
 end
 
 -- Cheer up! has been placed (Hud.Rebuild, CheerUp.Update): the row is its row
@@ -9321,6 +9512,19 @@ function Retreat.Place(m, B, isFighting)
 	local on = B ~= nil and isFighting == true and Retreat.Allowed(B)
 	R.Button.Visible = on
 	if not on then
+		return
+	end
+	if Hud.ThreeKeys(m) then
+		-- (Pitch 2 item 1b) BACK with the team: CheerUp.TeamSpots' second spot (by the second helper / right of CHEER)
+		local back = B.retreated == true
+		if R.look ~= ("3" .. (back and "b" or "r")) then
+			Retreat.Paint(m, back)
+		end
+		local spots, w, h = CheerUp.TeamSpots(m)
+		R.Button.Size = UDim2.fromOffset(w, h)
+		R.Button.Position = UDim2.fromOffset(spots[2][1], spots[2][2])
+		Retreat.how = "team"
+		setVisible(R.Key, false)
 		return
 	end
 	local C = Hud.cheer.Button
@@ -9375,12 +9579,23 @@ function Retreat.Update(B, now)
 		return
 	end
 	local back = B.retreated == true
-	setText(R.Button, back and "Engage" or "Retreat")
-	local color = back and SIGN.Red or KB.Face
-	if R.Button.BackgroundColor3 ~= color then
-		signBlock(R.Button, color, back and SIGN.RedLip or SIGN.StoneLip, KB.Ink, K.PLANK_LIP, K.PLANK_EDGE)
-		R.Stroke.Thickness = 3
-		R.Key.TextColor3 = R.Button.TextColor3
+	local m = Hud.m
+	if m and Hud.ThreeKeys(m) then
+		-- (Pitch 2 item 1b) the three keys' BACK / FIGHT block
+		if R.look ~= ("3" .. (back and "b" or "r")) then
+			Retreat.Paint(m, back)
+		end
+	else
+		if m and R.look and R.look:sub(1, 1) == "3" then
+			Retreat.Paint(m, back) -- (back to the plank from the three keys' block)
+		end
+		setText(R.Button, back and "Engage" or "Retreat")
+		local color = back and SIGN.Red or KB.Face
+		if R.Button.BackgroundColor3 ~= color then
+			signBlock(R.Button, color, back and SIGN.RedLip or SIGN.StoneLip, KB.Ink, K.PLANK_LIP, K.PLANK_EDGE)
+			R.Stroke.Thickness = 3
+			R.Key.TextColor3 = R.Button.TextColor3
+		end
 	end
 	local left = cdLeft(B, "Retreat", nil, now)
 	setVisible(R.Sweep, left > 0.05)
@@ -10466,14 +10681,46 @@ function Input.Press(kind, down)
 	BattleController.Command(kind)
 end
 
--- per frame: a helper key / portrait held 0.5 s swaps; a TARGET key / button held 0.4 s clears the lock
+-- (Pitch 2 item 1b) the three keys' MOVE pressed: a meter that is not full (or no special) = the element at once, as the
+-- old ELEMENT key; a full meter = a hold (MOVE_HOLD): held that long it fires the special, released sooner it is the
+-- element (a slide off the key is nothing)
+function Input.MoveBegan(input, gui)
+	local B = St.battle
+	local f = B and B.fighterId and B.units[B.fighterId]
+	if f and f.special and f.meter >= METER_MAX then
+		Input.HoldStart("moveButton", 0, os.clock(), "Move", input, gui)
+	else
+		Input.Press("Element", true)
+	end
+end
+
+-- MOVE's touch / click ended, over the key or anywhere (as TargetButtonEnded): a release on the key before MOVE_HOLD = the
+-- element; a release off it, or after the special fired, sends nothing more
+function Input.MoveEnded(input)
+	local h = St.holds and St.holds.moveButton
+	if not h or (h.input ~= nil and input ~= nil and h.input ~= input and input.UserInputType ~= Enum.UserInputType.MouseButton1) then
+		return
+	end
+	St.holds.moveButton = nil
+	if not h.fired and Input.OnButton(input, h.gui) then
+		Input.Press("Element", true)
+	end
+end
+
+-- per frame: a helper key / portrait held 0.5 s swaps; a TARGET key / button held 0.4 s clears the lock; MOVE held 0.4 s
+-- on a full meter fires the special
 function Input.Tick(B, now)
 	if not B or not fighting() then
 		return
 	end
 	for key, h in pairs(St.holds or {}) do
-		if h.kind == "Target" and not h.fired and h.gui and h.input and not Input.OnButton(h.input, h.gui) then
-			St.holds[key] = nil -- the touch / cursor slid off the TARGET button: nothing the player asked for
+		if (h.kind == "Target" or h.kind == "Move") and not h.fired and h.gui and h.input and not Input.OnButton(h.input, h.gui) then
+			St.holds[key] = nil -- the touch / cursor slid off the TARGET / MOVE button: nothing the player asked for
+		elseif h.kind == "Move" then
+			if not h.fired and now - h.t >= K.MOVE_HOLD then
+				h.fired = true
+				Input.Press("Special", true)
+			end
 		elseif h.kind == "Target" then
 			if not h.fired and now - h.t >= K.TARGET_HOLD then
 				h.fired = true
@@ -10729,6 +10976,10 @@ function Input.OnEnded(input)
 	local ah = St.holds and St.holds.targetButton
 	if ah and ((t == Enum.UserInputType.MouseButton1 and (ah.input == nil or ah.input.UserInputType == t)) or (t == Enum.UserInputType.Touch and (ah.input == nil or ah.input == input))) then
 		Input.TargetButtonEnded(input)
+	end
+	-- (Pitch 2 item 1b) so does MOVE's hold
+	if St.holds and St.holds.moveButton and (t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch) then
+		Input.MoveEnded(input)
 	end
 	local tap = St.tap
 	if not tap or t ~= Enum.UserInputType.Touch then
@@ -11846,6 +12097,50 @@ function Units.FocusUnit(B)
 	return u, auto
 end
 
+-- (Pitch 2 item 1b, option C "Three buttons": TARGET is automatic on the three keys' layout) the enemy I locked (a tap on it in
+-- the world or on its row) wears the LOCKED marker of the mock (repitch_01b.py lock_demo): four gold corner brackets round it
+-- and the gold LOCKED tag under them, a billboard over the world on an anchor that follows the enemy's centre. The pet's own
+-- pick keeps the see-through arrow only. Built once a battle, moved only while shown (one CFrame write a frame)
+function Units.UpdateLock(B, u, auto)
+	local show = u ~= nil and not auto and not B.ended and Hud.ThreeKeys()
+	local gui = B.lockMark
+	if not show then
+		if gui and gui.Enabled then
+			gui.Enabled = false
+		end
+		return
+	end
+	if not gui or not gui.Parent then
+		local anchor = make("Part", { Name = "LockAnchor", Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false,
+			CastShadow = false, Transparency = 1, Size = Vector3.new(0.2, 0.2, 0.2) }, B.folder)
+		gui = make("BillboardGui", { Name = "LockMark", Adornee = anchor, AlwaysOnTop = true, LightInfluence = 0, MaxDistance = K.BAR_DISTANCE,
+			ResetOnSpawn = false, Enabled = false }, anchor)
+		local box = make("Frame", { Name = "Box", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -K.LOCK_TAG_H - 4) }, gui)
+		for i, c in ipairs({ { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } }) do
+			-- one corner: an arm along the edge and one down it, gold in a wood line
+			for j, size in ipairs({ { K.LOCK_ARM, K.LOCK_BAR }, { K.LOCK_BAR, K.LOCK_ARM } }) do
+				local bar = make("Frame", { Name = "Corner" .. i .. "_" .. j, BackgroundColor3 = SIGN.Gold, BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(c[1], c[2]), Position = UDim2.fromScale(c[1], c[2]), Size = UDim2.fromOffset(size[1], size[2]) }, box)
+				signEdge(bar, KB.Edge, 1)
+			end
+		end
+		local tag = label(gui, "LOCKED", "Label", 15, { Name = "Locked", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1),
+			Size = UDim2.fromOffset(math.ceil(textWidth("LOCKED", 15)) + 16, K.LOCK_TAG_H), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = KB.Ink })
+		signBlock(tag, SIGN.Gold, SIGN.GoldLip, KB.Ink, 3, 2)
+		B.lockMark, B.lockAnchor = gui, anchor
+	end
+	if B.lockId ~= u.id then
+		B.lockId = u.id
+		-- the brackets frame the enemy: a boss by its body, a pet by its height (studs), the tag in px under them
+		local side = u.isBoss and (u.height or 20) * 0.9 or max(2.5, (u.height or 3) * 1.3)
+		gui.Size = UDim2.new(side, 0, side, K.LOCK_TAG_H + 4)
+	end
+	B.lockAnchor.CFrame = CFrame.new(unitCenter(B, u))
+	if not gui.Enabled then
+		gui.Enabled = true
+	end
+end
+
 -- a bobbing voxel arrow over the enemy my pet attacks (solid = picked, see-through = the one it chose by itself)
 function Units.UpdateFocus(B, now)
 	local u, auto = Units.FocusUnit(B)
@@ -11854,8 +12149,10 @@ function Units.UpdateFocus(B, now)
 		if mark then
 			mark.Parent = nil
 		end
+		Units.UpdateLock(B, nil, true)
 		return
 	end
+	Units.UpdateLock(B, u, auto)
 	if not mark then
 		mark = make("Model", { Name = "FocusArrow" })
 		local spec = { { 0, 0, 0.9 }, { 0, 0.7, 0.6 }, { 0, 1.3, 0.35 } }

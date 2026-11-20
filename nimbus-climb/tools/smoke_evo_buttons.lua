@@ -12,8 +12,11 @@
 --                             TARGET flashes NEXT / AUTO; the Pets window names the form
 --   client_evo_keys           (client world) the key chips (keyboard and gamepad), Special the big button in Attack's old slot, Target the small
 --                             one in Special's old slot, the names under the buttons at 1080p and on a laptop, the help text
---   client_evo_buttons_mobile (phone world) 844x390, 740x360, 749x388, 667x375, 1024x768, 390x844, 360x640: Special >= 72 px, Target >= 44, Element >= 56, Dash >= 44; nothing overlaps the
---                             stick / jump / vitals / Cheer up! / another button; the longest names fit inside the faces in 2 lines at >= 11 px
+--   client_evo_buttons_mobile (phone world) 844x390, 740x360, 749x388, 667x375, 1024x768, 390x844, 360x640: (Pitch 2 item 1b, the three keys) MOVE (Element)
+--                             >= 56 px, Dash >= 44, no SPECIAL / TARGET key; nothing overlaps the stick / jump / vitals / Cheer up! / another button;
+--                             the longest names (the special's on MOVE with a full meter) fit inside the faces in 2 lines at >= 14 px
+--   keys_three_buttons        (phone world) Pitch 2 item 1b option C "Three buttons": MOVE / DASH / RUN only, steady across states, the HOLD special,
+--                             TARGET automatic + a tap locks with the LOCKED marker, CHEER / BACK with the helper portraits
 -- The mock has no real font metrics (TextFits is always true, TextBounds counts 0.5 em a character, TextScaled is not modelled), so a name's fit
 -- is judged here by a wrap at a generous 0.62 em a character (Builder Sans Bold capitals), against the label's real box.
 -- White-box: the sim's units and teams (same Lua state). Plain Lua 5.1 syntax only.
@@ -891,7 +894,11 @@ local function clientScenarios()
 			end
 			return out
 		end
-		local MIN_PX = { Special = 72, Target = 44, Element = 56, Dash = 44 }
+		-- (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20: the four-key phone cluster is gone. A touch
+		-- screen's right thumb has MOVE (the ELEMENT key, which also holds the special: its name shows on it with a full meter)
+		-- and DASH here, RUN in MobileControls; no SPECIAL and no TARGET key (TARGET is automatic). The sizes, the overlaps and
+		-- the names below hold for MOVE and DASH; keys_three_buttons checks the hold, the lock and the steadiness)
+		local MIN_PX = { Element = 56, Dash = 44 }
 		-- (P2 fix A) a real player's HUD: Cash, Gems and the tokens (three strips: the narrow stack in a battle, so the right
 		-- column starts low). Alone this list ran with the tokens strip only and passed; the whole suite (whose earlier lists
 		-- set Cash and Gems) found the enemy list on DASH at 360 x 640
@@ -915,9 +922,13 @@ local function clientScenarios()
 						T.check(r.x0 >= 0 and r.y0 >= 0 and r.x1 <= size[1] and r.y1 <= size[2] - (Mock.TopInset or 0), tag .. kind .. " is on the screen", rstr(r))
 					end
 				end
-				if rects.Special and rects.Target and rects.Element and rects.Dash then
-					T.check(rects.Special.x1 - rects.Special.x0 > rects.Element.x1 - rects.Element.x0, tag .. "Special is the biggest")
-					local kinds = { "Special", "Target", "Element", "Dash" }
+				for _, kind in ipairs({ "Special", "Target" }) do
+					local b = H.find("Root.Commands." .. kind .. "Button")
+					T.check(b == nil or not shownIn(b), tag .. "no " .. string.upper(kind) .. " key on touch (the three keys)")
+				end
+				if rects.Element and rects.Dash then
+					T.check(rects.Element.x1 - rects.Element.x0 > rects.Dash.x1 - rects.Dash.x0, tag .. "MOVE (the element + the special) is the biggest")
+					local kinds = { "Element", "Dash" }
 					local bad = {}
 					for i, a in ipairs(kinds) do
 						for j = i + 1, #kinds do
@@ -947,23 +958,34 @@ local function clientScenarios()
 					Hud.PlaceFaceName(A, A.Button.Size.X.Offset, false)
 					return r
 				end
-				local cap = H.find("Root.Commands.SpecialButton.Caption")
-				local glyph = H.find("Root.Commands.SpecialButton.Face.Glyph")
-				if T.check(cap ~= nil and shownIn(cap) and cap.Text == "WISH UPON THE STARS", tag .. "the Special face shows the name", cap and cap.Text or "nil") then
+				-- (Pitch 2 item 1b) the special's name shows on MOVE (the Element key) once the meter is full: the same fit there
+				d.sim.teams[1].fighter.meter = 100
+				d:run(0.4)
+				local cap = H.find("Root.Commands.ElementButton.Caption")
+				local glyph = H.find("Root.Commands.ElementButton.Face.Glyph")
+				if T.check(cap ~= nil and shownIn(cap) and cap.Text == "WISH UPON THE STARS", tag .. "a full meter: MOVE shows the special's name", cap and cap.Text or "nil") then
 					local readScale = H.find("Root.ReadScale").Scale
 					T.check(cap.TextWrapped == true and cap.TextScaled == false and cap.TextSize * readScale >= 14 - 0.01, tag .. "...wrapped, not scaled, at 14 px or more",
 						fmt("%s %.1f px", tostring(cap.TextScaled), cap.TextSize * readScale))
 					for _, name in ipairs({ "WISH UPON THE STARS", "MARSHMALLOW POUNCE", "MARSHMALLOW STAMPEDE" }) do
-						local r = tryName("Special", "SpecialButton", name)
+						local r = tryName("Element", "ElementButton", name)
 						local ok, lines, widest = H.fits(name, r.x1 - r.x0, r.y1 - r.y0, 14)
-						T.check(ok, tag .. "\"" .. name .. "\" fits the Special name tag in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
+						T.check(ok, tag .. "\"" .. name .. "\" fits MOVE's name tag in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
 					end
 					local r = rectOf(cap)
-					local br = rects.Special
+					local br = rects.Element
 					T.check(br ~= nil and r.y0 >= br.y0 and r.y1 <= br.y1 + 0.5, tag .. "...on the face's bottom edge", rstr(r))
+					-- (Pitch 2 item 1b: MOVE is smaller than the old SPECIAL key, so this reads the star as drawn, the PixelIcon at the
+					-- key's icon size (Hud.PlaceFaceName: 27 px, 18 where the room is short), where it read the host label's TextSize
+					-- (30), which draws nothing: the drawn star fits the room above the name)
 					local gr = glyph and rectOf(glyph)
-					T.check(glyph ~= nil and glyph.Size.Y.Scale <= 0.56 and gr.y1 <= r.y0 + 1 and glyph.TextSize * 1 <= glyph.AbsoluteSize.Y / readScale, tag .. "...the star shrinks to the room above it", glyph and tostring(glyph.Size) or "nil")
+					local icon = glyph and glyph:FindFirstChild("Icon")
+					local ir = icon and rectOf(icon)
+					T.check(glyph ~= nil and glyph.Size.Y.Scale <= 0.56 and gr.y1 <= r.y0 + 1 and ir ~= nil and ir.y1 - ir.y0 <= gr.y1 - gr.y0 + 0.5 and ir.y0 >= gr.y0 - 0.5 and ir.y1 <= r.y0 + 1,
+						tag .. "...the star shrinks to the room above it", fmt("%s glyph %s icon %s", glyph and tostring(glyph.Size) or "nil", gr and rstr(gr) or "-", ir and rstr(ir) or "-"))
 				end
+				d.sim.teams[1].fighter.meter = 0
+				d:run(0.4)
 				local ecap = H.find("Root.Commands.ElementButton.Caption")
 				if T.check(ecap ~= nil and shownIn(ecap), tag .. "the Element face shows the name") then
 					for _, name in ipairs({ "THUNDER LANCE", "BRAMBLE LASH", "WORLDROOT", "MAELSTROM" }) do
@@ -972,38 +994,13 @@ local function clientScenarios()
 						T.check(ok, tag .. "\"" .. name .. "\" fits the Element name tag in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
 					end
 				end
-				-- TARGET: its caption shows on touch; ONE ENEMY takes the whole face while it shows
-				local tcap = H.find("Root.Commands.TargetButton.Caption")
-				local tglyph = H.find("Root.Commands.TargetButton.Face.Glyph")
-				if T.check(tcap ~= nil and shownIn(tcap) and tcap.Text == "TARGET", tag .. "the TARGET face says TARGET", tcap and tcap.Text or "nil") then
-					local r = rectOf(tcap)
-					T.check((H.fits("TARGET", r.x1 - r.x0, r.y1 - r.y0, 14)), tag .. "...and it fits at 14 px", rstr(r))
-					d.noForward = true
-					for _, id in ipairs(d:byDistance()) do
-						if id ~= d:byDistance()[1] then
-							d:kill(id)
-						end
-					end
-					T.eq(#d:byDistance(), 1, tag .. "(setup) one enemy left")
-					local tb = H.find("Root.Commands.TargetButton")
-					local a, s = tb.AbsolutePosition, tb.AbsoluteSize
-					local inp = Mock.NewInput("Unknown", "Touch", "Begin", { Position = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0) })
-					local idx = #Mock.RemoteLog
-					Mock.FireSignal(tb, "InputBegan", inp, false)
-					H.step(3, 1 / 30)
-					inp.UserInputState = Enum.UserInputState.End
-					Mock.FireSignal(tb, "InputEnded", inp, false)
-					Mock.FireSignal(UserInputService, "InputEnded", inp, false)
-					H.step(1, 1 / 30)
-					T.check(#H.commands(idx) == 0 and tcap.Text == "ONE ENEMY", tag .. "a tap with one enemy left says ONE ENEMY and sends nothing", tcap.Text)
-					r = rectOf(tcap)
-					local ok, lines, widest = H.fits("ONE ENEMY", r.x1 - r.x0, r.y1 - r.y0, 14)
-					T.check(ok and tglyph ~= nil and not shownIn(tglyph), tag .. "...over the whole face, in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
-					H.step(24, 1 / 30)
-					T.check(tcap.Text == "TARGET" and tglyph ~= nil and shownIn(tglyph), tag .. "...then TARGET and its glyph are back", tcap.Text)
-				end
+				-- (Pitch 2 item 1b: the TARGET key's ONE ENEMY flash is a keyboard / gamepad matter now, client_evo_target; a touch
+				-- screen has no TARGET key) the three keys are named: DASH's name sits on its face too, at 14 px or more
 				local dcap = H.find("Root.Commands.DashButton.Caption")
-				T.check(dcap ~= nil and not shownIn(dcap), tag .. "DASH keeps its plain face on touch")
+				if T.check(dcap ~= nil and shownIn(dcap) and dcap.Text == "DASH", tag .. "DASH carries its name on touch (the three keys are named)", dcap and dcap.Text or "nil") then
+					local r = rectOf(dcap)
+					T.check((H.fits("DASH", r.x1 - r.x0, r.y1 - r.y0, 14)), tag .. "...and it fits at 14 px", rstr(r))
+				end
 				H.cleanup(BC, d)
 			end
 		end

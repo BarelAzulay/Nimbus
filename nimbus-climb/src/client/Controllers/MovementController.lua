@@ -505,7 +505,8 @@ local function fitKey(h, size)
 		return
 	end
 	h.Size = size
-	h.Label.TextSize = math.floor(size * 0.26)
+	-- (the battle's 48 px RUN, Pitch 2 item 1b: never under the 14 px phone floor)
+	h.Label.TextSize = math.max(14, math.floor(size * 0.26))
 	local px = (size >= KEY_BIG) and 27 or 18
 	if h.IconPx ~= px then
 		if h.Icon then
@@ -621,11 +622,20 @@ local function layoutMobileControls(m)
 	local dashRect = { w - dashRight - dashSize, dashBottom, w - dashRight, dashBottom + dashSize }
 
 	-- RUN: first candidate that touches nothing wins; in a battle (the battle cluster has its own DASH, so the
-	-- mobile DASH hides) RUN takes the DASH spot straight above the jump button and the cluster goes around it
+	-- mobile DASH hides) RUN is the right thumb's third key (Pitch 2 item 1b, option C "Three buttons", the owner's pick
+	-- 2026-11-20: .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/repitch/repitch_01b.py layout_C), 48 px (60 on a
+	-- big screen): straight above the jump button on a wide screen, left of it on a tall one; the battle's MOVE and DASH go
+	-- round it (BattleController Hud.ClusterLayout)
 	local runSize = small and 58 or 72
 	if dashKeys then
+		local s = small and 1 or 1.25
+		runSize = math.floor(48 * s + 0.5)
 		local runRight = math.max(14, jump + 10 - runSize * 0.5)
-		local runBottom = jumpTop + 10
+		local runBottom = jumpTop + math.floor(16 * s + 0.5)
+		if h > w then
+			runRight = jumpLeft + math.floor(20 * s + 0.5)
+			runBottom = jumpBottom + math.floor(4 * s + 0.5)
+		end
 		fitKey(m.run, runSize)
 		m.run.Button.Position = UDim2.new(1, -runRight, 1, -runBottom)
 		m.dash.Button.Visible = false
