@@ -333,6 +333,16 @@ local function clientScenarios()
 				shownRows = shownRows + ((r and r.Visible) and 1 or 0)
 			end
 			T.eq(shownRows, 0, "world signs: a follower's tag is the chip alone")
+			-- the EVOLVE! plank keeps its word inside on the narrowest tag (a follower, Lv 20, no stars: the chip alone is
+			-- narrower than the word; the gate render showed it running out of its plank), measured in the real face
+			card:SetLevel(20, 0, true)
+			KC.advance(0.1)
+			local pill = gui:FindFirstChild("Evolve")
+			if T.check(pill ~= nil and pill.Visible, "world signs: (setup) the EVOLVE! plank shows on a ready pet") then
+				local need = SmokeCommon.RealWidth(pill.Text, pill.TextSize, Theme.FontOf and Theme.FontOf(pill) or pill.Font)
+				T.check(pill.AbsoluteSize.X >= need + 8, "world signs: the EVOLVE! word fits its plank on the narrowest tag (4 px clear each side)",
+					fmt("%.0f px word in a %.0f px plank", need, pill.AbsoluteSize.X))
+			end
 			card:Destroy()
 			part:Destroy()
 		end

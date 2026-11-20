@@ -93,6 +93,7 @@ local K = {
 	TIMER_TEXT_W = 40,
 	PILL_H = 28,
 	PILL_PX = 20,
+	PILL_W = 108, -- (Pitch 2 item 04 B) the EVOLVE! plank's least width: the word in FredokaOne at PILL_PX (~89 px) + its room
 	PILL_GAP = 4,
 	FILL_EPS = 0.004,
 	PULSE = 0.55, -- seconds per half pulse of the EVOLVE! pill
@@ -409,6 +410,12 @@ function PetCard:_layout()
 	local w = outerW
 	if hpOn or timerOn then
 		w = math.max(outerW, px(K.WIDTH, 60))
+	end
+	-- (Pitch 2 item 04 B, the gate render) while EVOLVE! shows, the card is at least its word wide plus the plank's room
+	-- (the chip stays centred): a lone "Lv 20" chip is narrower than the word, which ran out of its plank
+	if self.ready then
+		local word = Theme.Measure(self.pill.Text, "Button", Theme.ScaledSize(K.PILL_PX)).X
+		w = math.max(w, math.ceil(word) + 2 * inset + 2 * edge, px(K.PILL_W, 80))
 	end
 	local chipX = math.floor((w - outerW) / 2) + edge -- the face's left in the billboard
 	bars.Special.Back.Visible = false
