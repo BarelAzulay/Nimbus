@@ -374,10 +374,41 @@ local function serverScenarios()
 		local rUp = pos(smp("DashReady", P.READY_BOUNCE / 2, nil, typical)).Y
 		T.check(rFloor and rUp > 0.05 and rUp < 0.1, fmt("melee bounce: DashReady hops %.3f studs, on the floor and level at every READY_BOUNCE", rUp))
 
+		-- (d2) (review minor: "evolved pets hop x0.78 heavier", the mock's heavy lanes: hk 0.78) an evolved pet's paw lines carry
+		-- Hop 0.78 (AttackFx.FeetOf): every hop of the melee motion peaks 0.78 x as high (DashIn's hop and hop-bite, DashBack's
+		-- two hops, a flurry's rebound and hop-bite, the Thorns hop away; PetPoses.Offset: the pose's own move); the ready
+		-- bounce keeps the mock's 0.07
+		do
+			local heavy = { Down = typical.Down, Front = typical.Front, Hind = typical.Hind, Hop = 0.78 }
+			local function peakY(name, a, b, r, feet)
+				local best = 0
+				for i = 0, 200 do
+					best = max(best, P.Offset(name, a + (b - a) * i / 200, false, 1, r, feet).Y)
+				end
+				return best
+			end
+			local hops = {
+				{ "DashIn", 0, 13 / 30 * R, reach }, { "DashIn", 17 / 30 * R, R, reach }, { "DashBack", 0, 0.16 / 0.56, reach },
+				{ "DashBack", 0.19 / 0.56, 0.35 / 0.56, reach }, { "DashBite", 0, 12 / 30 * R, 0 }, { "DashBite", 18 / 30 * R, R, 0 },
+				{ "DashThorns", 0.12 / P.THORN_DUR, 0.28 / P.THORN_DUR, nil },
+			}
+			local hOk, hSeen = true, {}
+			for _, hp in ipairs(hops) do
+				local b0, b1 = peakY(hp[1], hp[2], hp[3], hp[4], typical), peakY(hp[1], hp[2], hp[3], hp[4], heavy)
+				local ratio = b0 > 1e-3 and b1 / b0 or 0
+				hOk = hOk and abs(ratio - 0.78) < 0.01
+				hSeen[#hSeen + 1] = fmt("%s %.2f/%.2f", hp[1], b1, b0)
+			end
+			local rHeavy = pos(smp("DashReady", P.READY_BOUNCE / 2, nil, heavy)).Y
+			T.check(hOk and abs(rHeavy - rUp) < 1e-6,
+				fmt("melee bounce: an evolved pet (feet Hop 0.78) hops 0.78 x as high, the ready bounce unchanged (%s; ready %.3f)", table.concat(hSeen, ", "), rHeavy))
+		end
+
 		-- (e) no slide, no sink: every pose, five sets of paw lines, two gaps, Melee.Hop 0.5 and 0
 		local feetSets = {
 			{ nil, "default" }, { { Down = 1.0, Front = 0.55, Hind = 0.6 }, "typical" }, { { Down = 1.6, Front = 0.9, Hind = 1.0 }, "evolved-size" },
 			{ { Down = 0.6, Front = 0.2, Hind = 0.25 }, "small" }, { { Down = 1.2, Front = 1.4, Hind = 1.3 }, "long" },
+			{ { Down = 1.6, Front = 0.9, Hind = 1.0, Hop = 0.78 }, "evolved heavy" }, -- (review minor: the lower hops land as cleanly)
 		}
 		local worstSink, worstSlide, worstAt = 0, 0, ""
 		local hopTall = true
@@ -416,7 +447,7 @@ local function serverScenarios()
 			end
 		end
 		P.DashHop = keepHop
-		T.check(worstSink > -1e-5, fmt("melee bounce: no paw ever under the floor (every pose, 5 paw sets, gaps 9.7 / 2, Hop 0.5 / 0: lowest %.5f)", worstSink), worstAt)
+		T.check(worstSink > -1e-5, fmt("melee bounce: no paw ever under the floor (every pose, 6 paw sets, gaps 9.7 / 2, Hop 0.5 / 0: lowest %.5f)", worstSink), worstAt)
 		T.check(worstSlide < 1e-4, fmt("melee bounce: no slide: a paw on the floor never moves along it (worst %.5f studs a frame)", worstSlide), worstAt)
 		T.check(hopTall, "melee bounce: Melee.Hop 0 still hops (a hop never becomes a slide)")
 
@@ -562,6 +593,7 @@ local function clientScenarios()
 		local clock = 7000
 		local DT = 1 / 120
 		AF.Update(clock)
+		local hop1Peak = {} -- (review minor) the one-bite run's first hop peak per look
 		local ok, err = pcall(function()
 			for li, look in ipairs({ { "maple_fox", false, "base Maple Fox" }, { "aurora_fox", true, "evolved Aurora Fox" } }) do
 				local x = 40 * li
@@ -580,6 +612,11 @@ local function clientScenarios()
 				if not feet then
 					return
 				end
+				-- (review minor: "evolved pets hop x0.78 heavier", the mock's) FeetOf carries the model's hop weight: Hop =
+				-- AttackFx.EVO_HOP 0.78 for an evolved form (PB_Evolved >= 1), 1 for a base one
+				local wantHop = look[2] and 0.78 or 1
+				T.check(type(AF.EVO_HOP) == "number" and abs(AF.EVO_HOP - 0.78) < 1e-9 and type(feet.Hop) == "number" and abs(feet.Hop - wantHop) < 1e-9,
+					fmt("bounce timing: %s: FeetOf carries its hop weight (Hop %s, want %.2f; AttackFx.EVO_HOP %s)", look[3], tostring(feet.Hop), wantHop, tostring(AF.EVO_HOP)))
 				local unit = 500 + li
 				local src = { Unit = unit, Model = me, Pos = V3(x, G + 1.5, 0) }
 				local tgt = { Unit = unit + 1000, Model = foe, Pos = V3(x, G + 1.5, -14) }
@@ -670,6 +707,18 @@ local function clientScenarios()
 				end
 				local sink, slide, at = walkFeet(bodies, feet)
 				T.check(sink > -1e-4 and slide < 1e-3, fmt("bounce timing: %s: one bite, every frame: no paw under the floor (%.5f), no slide (%.5f)", look[3], sink, slide), at)
+				-- (review minor) the drawn run's first hop (DashIn's highest) peaks 0.78 x the base pet's for the evolved one
+				local hopPeak = 0
+				for _, f in ipairs(frames) do
+					if f.Name == "DashIn" and f.Body and f.T < land then
+						hopPeak = max(hopPeak, f.Body.Position.Y)
+					end
+				end
+				hop1Peak[li] = hopPeak
+				if li == 2 then
+					local ratio = (hop1Peak[1] or 0) > 1e-3 and hopPeak / hop1Peak[1] or 0
+					T.check(abs(ratio - 0.78) < 0.03, fmt("bounce timing: the evolved Aurora Fox's drawn hop peaks %.2f x the base Maple Fox's (%.3f vs %.3f pose studs; 0.78)", ratio, hopPeak, hop1Peak[1] or -1))
+				end
 				-- (gate review r0, major 1) the real wind-up (0.15 s to the run): one eased rock back and load at 60 fps, never
 				-- back down (no tremble at this length), no frame over 3 deg. (the owner, 2026-11-20: 0.25 s now, so at least 14
 				-- frames at 60 fps and no frame over 2.5 deg: the longer gather is gentler, never a flinch)
