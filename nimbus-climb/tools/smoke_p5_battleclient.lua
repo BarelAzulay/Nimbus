@@ -1415,6 +1415,51 @@ S.client_p5battle_short = guarded("client_p5battle_short", function()
 						end
 					end
 					T.check(#bad == 0, tag .. "no key on the HUD's cards, the cards clear of each other", table.concat(bad, "; "))
+					-- (P2 fix A look review r1, major 6: SWAP was 24 px tall) each helper's SWAP is a thumb's 44 screen px each
+					-- way, the block or its clear hit pad (HitFor = "Swap") over it; a pad reaches no other button (a portrait, an
+					-- enemy row, the other SWAP, a key)
+					local small, taps = {}, {}
+					for _, path in ipairs({ "Root.Team.Helpers.Helper1.Disc.Portrait", "Root.Team.Helpers.Helper2.Disc.Portrait", "Root.Commands.TargetButton",
+						"Root.Commands.ElementButton", "Root.Commands.SpecialButton", "Root.Commands.DashButton", "Root.Cheer", "Root.Retreat" }) do
+						local o = H.find(path)
+						if o and H.shown(o) then
+							taps[#taps + 1] = { path, H.rect(o) }
+						end
+					end
+					for _, row in ipairs(en and en:GetChildren() or {}) do
+						if row:IsA("GuiButton") and H.shown(row) then
+							taps[#taps + 1] = { "Root.Enemies." .. row.Name, H.rect(row) }
+						end
+					end
+					local pads = {}
+					for i = 1, 2 do
+						local swap = H.find("Root.Team.Helpers.Helper" .. i .. ".Swap")
+						if swap and H.shown(swap) then
+							local r = H.rect(swap)
+							local pad = swap.Parent:FindFirstChild("SwapHit") or swap:FindFirstChild("SwapHit")
+							local pr = pad and H.shown(pad) and pad:GetAttribute("HitFor") == "Swap" and H.rect(pad)
+							local big = function(q)
+								return q.x1 - q.x0 >= 43.5 and q.y1 - q.y0 >= 43.5
+							end
+							local area = big(r) and r or (pr and big(pr) and pr.x0 <= r.x0 + 0.5 and pr.x1 >= r.x1 - 0.5 and pr.y0 <= r.y0 + 0.5 and pr.y1 >= r.y1 - 0.5 and pr)
+							if not area then
+								small[#small + 1] = string.format("Swap%d %s%s", i, H.rectText(r), pr and (" pad " .. H.rectText(pr)) or " no pad")
+							else
+								for _, t in ipairs(taps) do
+									if H.overlap(area, t[2]) then
+										small[#small + 1] = string.format("Swap%d's 44 px %s on %s %s", i, H.rectText(area), t[1], H.rectText(t[2]))
+									end
+								end
+								for _, other in ipairs(pads) do
+									if H.overlap(area, other) then
+										small[#small + 1] = string.format("Swap%d's 44 px %s on the other's", i, H.rectText(area))
+									end
+								end
+								pads[#pads + 1] = area
+							end
+						end
+					end
+					T.check(#small == 0, tag .. "each SWAP a thumb's 44 px, clear of the other buttons", table.concat(small, "; "))
 					H.cleanup(BC, d)
 				end
 			end
@@ -1422,6 +1467,33 @@ S.client_p5battle_short = guarded("client_p5battle_short", function()
 	end
 	LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash)
 	LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems)
+	-- (P2 fix A look review r1, major 6: the top bar's pill buttons 30-33 px wide in renders at 360 / 390) on a phone that
+	-- reports Roblox's top bar band (TopbarInset: its left buttons to 112, its "..." from W - 72) every pill button is a
+	-- thumb's 44 px each way. (render_gui's mock reports none: the PC fallback, x 212, squeezes them to 30-33 px)
+	local TB = H.moduleAt("client", "Controllers/TopBarController")
+	if T.check(TB and TB.Refresh, "short: (setup) the top bar") then
+		for _, sz in ipairs({ { 360, 640 }, { 390, 844 } }) do
+			Mock.SetViewport(sz[1], sz[2])
+			Mock.TopbarInset = Rect.new(112, 0, sz[1] - 72, 58)
+			pcall(TB.Refresh)
+			H.step(2, 0.1)
+			local pg = LocalPlayer:FindFirstChild("PlayerGui")
+			local bar = pg and pg:FindFirstChild("NimbusTopBar")
+			local small, n = {}, 0
+			for _, d in ipairs(bar and bar:GetDescendants() or {}) do
+				if d:IsA("GuiButton") and d.Name:match("^PillButton_") and H.shown(d) then
+					n = n + 1
+					local r = H.rect(d)
+					if r.x1 - r.x0 < 43.5 or r.y1 - r.y0 < 43.5 then
+						small[#small + 1] = d.Name .. " " .. H.rectText(r)
+					end
+				end
+			end
+			T.check(n >= 2 and #small == 0, string.format("short %dx%d top bar: every pill button a thumb's 44 px (%d)", sz[1], sz[2], n), table.concat(small, "; "))
+		end
+		Mock.TopbarInset = nil
+		pcall(TB.Refresh)
+	end
 	Mock.SetViewport(390, 844)
 	H.step(3, 0.1)
 	T.check(H.warnings(out0) == nil and #Mock.Errors == err0, "short: no BattleController errors or warnings", tostring(H.warnings(out0)))

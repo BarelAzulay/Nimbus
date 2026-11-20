@@ -707,6 +707,18 @@ local function publishResultCard()
 	syncVitals()
 end
 
+-- (P2 fix A look review r1, major 6) the result card's close pad: 44 screen px each way at the card's scale k
+local function sizeCloseHit(k)
+	local pad = UI.ResultCloseHit
+	if not (pad and pad.Parent) then
+		UI.ResultCloseHit = nil
+		return
+	end
+	local hit = math.ceil(44 / math.max(0.05, k or 1))
+	local size = math.max(UI.ResultCloseSize or 0, hit)
+	pad.Size = UDim2.fromOffset(size, size)
+end
+
 local function relayout()
 	local k = currentScale()
 	for i = #scalers, 1, -1 do
@@ -717,6 +729,7 @@ local function relayout()
 			table.remove(scalers, i)
 		end
 	end
+	sizeCloseHit(k)
 	-- (U9-9 look) the column's scale rounded so its 250 px width is whole screen px (its cards' edges on whole px)
 	if UI.StackScale then
 		UI.StackScale.Scale = math.max(1, math.floor(TOAST_W * k + 0.5)) / TOAST_W
@@ -1391,6 +1404,27 @@ local function buildResults(data)
 			Position = UDim2.new(0.5, 0, 0.5, -math.floor(lipPx / 2)),
 			ZIndex = z + 1,
 		})
+		-- (P2 fix A look review r1, major 6: the close was 24 x 24 at 390x844) a thumb's 44 screen px on a touch screen: a
+		-- clear hit pad (HitFor) centred on the block, over it (relayout sizes it for the card's scale)
+		if UserInputService.TouchEnabled then
+			local pad = Instance.new("TextButton")
+			pad.Name = "CloseHit"
+			pad.Text = ""
+			pad.BackgroundTransparency = 1
+			pad.AutoButtonColor = false
+			pad.BorderSizePixel = 0
+			pad.AnchorPoint = Vector2.new(0.5, 0.5)
+			pad.Position = UDim2.fromScale(0.5, 0.5)
+			pad.ZIndex = z + 2
+			pad:SetAttribute("HitFor", "Close")
+			pad.Parent = close
+			pad.Activated:Connect(function()
+				closeResults(false)
+			end)
+			UI.ResultCloseHit = pad
+			UI.ResultCloseSize = R.Close
+			sizeCloseHit(currentScale())
+		end
 	end
 	-- (U9-9 look 2) the frame's parts on whole px on all four sides: the stone inside the wood (4.8 px), the awning and
 	-- its face (14.4 px high, a 3.2 px border)

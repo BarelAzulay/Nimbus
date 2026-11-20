@@ -14694,6 +14694,15 @@ local function clientScenarios()
 								end
 							end
 							T.check(mark and icon and icon:IsDescendantOf(mark) and #turned == 0, what .. ": the close mark is the pixel x, nothing turned", table.concat(turned, ", "))
+							if s[3] then
+								-- (P2 fix A look review r1, major 6: the close was 24 x 24 at 390x844) a thumb's 44 screen px each way: the
+								-- block itself or its clear hit pad (HitFor = "Close") over it
+								local pad = closeB:FindFirstChild("CloseHit")
+								local pr = pad and U8.shown(pad) and pad:GetAttribute("HitFor") == "Close" and U8.rect(pad)
+								local area = (cb.R - cb.X >= 43.5 and cb.B - cb.Y >= 43.5) and cb
+									or (pr and pr.R - pr.X >= 43.5 and pr.B - pr.Y >= 43.5 and pr.X <= cb.X + 0.5 and pr.R >= cb.R - 0.5 and pr.Y <= cb.Y + 0.5 and pr.B >= cb.B - 0.5 and pr)
+								T.check(area, what .. ": the close is a thumb's 44 px (the block or its hit pad)", U8.show(cb) .. (pr and (" pad " .. U8.show(pr)) or " no pad"))
+							end
 						end
 						-- (U9-9 look 2) the coins in the Shop's deep gold (one currency, one colour), not the brown ink
 						local Theme = LoadingH.shared("Theme")

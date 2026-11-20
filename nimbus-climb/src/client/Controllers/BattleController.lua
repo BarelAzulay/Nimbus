@@ -5758,6 +5758,14 @@ function Hud.BuildHelper(i)
 	H.Swap.Activated:Connect(function()
 		Input.Helper("Swap", index)
 	end)
+	-- (P2 fix A look review r1, major 6: SWAP was 24 px tall on a phone) a thumb's 44 screen px: a clear hit pad (HitFor)
+	-- over the block, sized and placed by Hud.PlaceHelper on a touch screen
+	H.SwapHit = make("TextButton", { Name = "SwapHit", Text = "", BackgroundTransparency = 1, AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 9,
+		Visible = false }, cell) -- (beside the block, not in it: the icon's lead pads the block's children)
+	H.SwapHit:SetAttribute("HitFor", "Swap")
+	H.SwapHit.Activated:Connect(function()
+		Input.Helper("Swap", index)
+	end)
 	return H
 end
 
@@ -6858,7 +6866,7 @@ function Hud.LayoutFighter(B, m)
 	-- (kit-b U9-6, the render gate: "Lv 34" spilled out of its 48 px pill) the tags' text stays at the floor on the screen
 	local lvPx = max(16, minSize)
 	local tall = compact and not m.Landscape
-	local L = { Px = lvPx, H = lvPx + 6, Tile = tile, CdH = 8, CellW = cellW, Compact = compact, Tall = tall, BuffH = lvPx + 6 }
+	local L = { Px = lvPx, H = lvPx + 6, Tile = tile, CdH = 8, CellW = cellW, Compact = compact, Tall = tall, BuffH = lvPx + 6, F = m.F, Touch = m.Touch }
 	-- one cell height whatever the texts (FillFighter places the tags again once it knows them): wide, a column of the tile,
 	-- its blocks, the Lv tag, the buff's tag and SWAP; a tall phone, the tags beside the tile (the buff's on two lines) and
 	-- SWAP the cell's width under them; a landscape phone, the tags and SWAP beside the tile
@@ -6951,6 +6959,7 @@ function Hud.PlaceHelper(H)
 		H.Swap.Position = UDim2.fromOffset(floor((L.CellW - 104) / 2), y)
 		H.Swap.Size = UDim2.fromOffset(104, 28)
 		H.Key.Position = UDim2.fromOffset(x0 - 6, -4)
+		Hud.PlaceSwapHit(H, L, 104, 28, nil)
 		return
 	end
 	H.Disc.Position = UDim2.fromOffset(0, 0)
@@ -6978,12 +6987,43 @@ function Hud.PlaceHelper(H)
 	H.Buff.Size = UDim2.fromOffset(bw, bh)
 	-- SWAP right under what it belongs to (the cell keeps its height: the room left goes under it, between the cells)
 	if L.Tall then
-		H.Swap.Position = UDim2.fromOffset(0, max(tile + 4 + cdH, by + bh) + 4)
+		-- (P2 fix A r1) helpers side by side (Hud.helpersRow): both SWAPs on the cells' bottom line, level with each other
+		local sy = Hud.helpersRow and (L.CellH - 30) or (max(tile + 4 + cdH, by + bh) + 4)
+		H.Swap.Position = UDim2.fromOffset(0, sy)
 		H.Swap.Size = UDim2.fromOffset(L.CellW, 30)
+		Hud.PlaceSwapHit(H, L, L.CellW, 30, Hud.helpersRow and 4 or nil)
 	else
 		H.Swap.Position = UDim2.fromOffset(x, by + bh + 4)
 		H.Swap.Size = UDim2.fromOffset(room, 30)
+		-- (a landscape phone: the second helper's SWAP sits just above the thumbstick's zone: its pad reaches up, over the
+		-- tags beside the tile, not down)
+		Hud.PlaceSwapHit(H, L, room, 30, 0)
 	end
+end
+
+-- (P2 fix A look review r1, major 6) SWAP's clear hit pad on a touch screen: 44 screen px each way over the w x h block,
+-- centred on it, or reaching at most `below` design px under it (helpers side by side: the enemy list starts 8 px under
+-- the cells) and the rest above it
+function Hud.PlaceSwapHit(H, L, w, h, below)
+	local pad = H.SwapHit
+	if not pad then
+		return
+	end
+	local hit = math.ceil(44 / max(0.05, L.F or 1))
+	pad.Visible = L.Touch == true and (w < hit or h < hit)
+	if not pad.Visible then
+		return
+	end
+	local pw, ph = max(w, hit), max(h, hit)
+	local under = floor((ph - h) / 2)
+	if below then
+		under = min(under, below)
+	end
+	-- (the pad is the block's sibling in the cell, placed from the block's corner)
+	local at = H.Swap.Position
+	pad.AnchorPoint = Vector2.new(0, 0)
+	pad.Position = UDim2.fromOffset(at.X.Offset + floor((w - pw) / 2), at.Y.Offset + h + under - ph)
+	pad.Size = UDim2.fromOffset(pw, ph)
 end
 
 -- (LOOK-ui2) the buff's tag again for a new name (a swap brings another helper)
