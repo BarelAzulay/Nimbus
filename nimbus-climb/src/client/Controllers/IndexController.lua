@@ -144,6 +144,9 @@ local K = {
 	-- (Pitch 2 F0 A, look review major 5) the group's name on one line: the room the header's progress keeps (its blocks
 	-- and the "2/6" count), and the name's sizes tried from the biggest
 	HEADER_PROGRESS_MIN = 120,
+	-- (look review of finish pass A, major 7: on a phone the 0.8 window drew the strip's tabs, Elements and Claim 42 px
+	-- tall) a touch screen's thumb target, design px: 44.8 screen px at the docked window's 0.8
+	TOUCH_H = 56,
 	HEADER_TITLE_SIZES = { 24, 22, 20, 18 },
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
@@ -973,7 +976,11 @@ local function relayout()
 		U.GroupList.AutomaticCanvasSize = Enum.AutomaticSize.X
 		U.GroupList.Size = UDim2.new(1, U.ElementsButton and -(K.ELEMENTS_STRIP_W + 8) or 0, 1, 0)
 		U.GroupPad.PaddingTop = UDim.new(0, 0)
-		U.GroupPad.PaddingBottom = UDim.new(0, 12)
+		-- (F0 review, major 7) the 12 px under the tabs held a scroll bar the strip no longer shows: on touch 8, so the tabs
+		-- are K.TOUCH_H tall in the same strip
+		local stripFoot = (UserInputService.TouchEnabled and K.STRIP_H - 8 >= K.TOUCH_H) and 8 or 12
+		S.StripFoot = stripFoot
+		U.GroupPad.PaddingBottom = UDim.new(0, stripFoot)
 		U.GroupPad.PaddingLeft = UDim.new(0, K.STRIP_PAD_L)
 		U.GroupPad.PaddingRight = UDim.new(0, 0)
 		local centreTop = strip + 8
@@ -1024,7 +1031,7 @@ local function relayout()
 		U.RewardAmount.AnchorPoint = Vector2.new(0, 0.5)
 		U.RewardAmount.Position = UDim2.new(0, narrow and 14 or 128, 0.5, 0)
 		U.RewardAmount.Size = UDim2.new(1, -(narrow and 180 or 294), 0, 34)
-		U.ClaimButton.Size = UDim2.fromOffset(150, 52)
+		U.ClaimButton.Size = UDim2.fromOffset(150, UserInputService.TouchEnabled and K.TOUCH_H or 52)
 	else
 		-- the reward box follows the centre's own width (a docked 1920x1080 window has a narrow centre between the
 		-- group column and the detail card, like a portrait phone): a narrow centre gets the smaller CLAIM button,
@@ -1034,6 +1041,9 @@ local function relayout()
 		local centreW = tall and mainW or (mainW - groupW - detailW - 2 * K.GAP)
 		local small = tall or centreW < K.REWARD_ROOMY_W
 		local buttonW, buttonH = small and 150 or 184, small and 52 or 60
+		if UserInputService.TouchEnabled then
+			buttonH = math.max(buttonH, K.TOUCH_H) -- (F0 review, major 7) a thumb's Claim
+		end
 		local textW = math.max(0, centreW - 16 - (buttonW + 14 + 10)) -- the room left of the button
 		if small and textW < K.REWARD_AMOUNT_W then
 			-- (LOOK-ui: at 1080p the docked window sits at a whole scale of 1, a few px narrower) a narrower CLAIM before the
@@ -1106,9 +1116,12 @@ local function relayout()
 		if tall then
 			U.ElementsButton.AnchorPoint = Vector2.new(1, 0)
 			U.ElementsButton.Position = UDim2.new(1, 0, 0, 0)
-			U.ElementsButton.Size = UDim2.new(0, K.ELEMENTS_STRIP_W, 1, -12)
+			U.ElementsButton.Size = UDim2.new(0, K.ELEMENTS_STRIP_W, 1, -(S.StripFoot or 12))
 		else
 			local buttonH = short and K.ELEMENTS_BTN_H_SHORT or K.ELEMENTS_BTN_H
+			if UserInputService.TouchEnabled then
+				buttonH = math.max(buttonH, K.TOUCH_H) -- (F0 review, major 7) a thumb's Elements
+			end
 			U.ElementsButton.AnchorPoint = Vector2.new(0.5, 1)
 			U.ElementsButton.Position = UDim2.new(0.5, 0, 1, 0)
 			U.ElementsButton.Size = UDim2.new(1, -10, 0, buttonH)

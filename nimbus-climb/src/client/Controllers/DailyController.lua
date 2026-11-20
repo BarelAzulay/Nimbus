@@ -1205,6 +1205,7 @@ function H.ensureWindow()
 		Name = "CloseTap", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Selectable = false,
 		Active = true, ZIndex = 6, Visible = false, Parent = bar,
 	})
+	U.CloseTap:SetAttribute("HitFor", "CloseButton") -- (F0 review, major 7) the close's 44 px thumb target
 	U.CloseTap.Activated:Connect(function()
 		DailyController.Close()
 	end)

@@ -134,6 +134,11 @@ local K = {
 		BLOCK_GAP = 4,
 		BLOCK_H = 32,
 		BULLET = 6, -- the square bullet of an update line
+		-- (Pitch 2 F0 A, look review of finish pass A, major 7: on a phone the 0.8 window drew the close 35 px, - / + and the
+		-- chips 42 px tall, the volume steps 20x26) a touch screen's thumb target, design px: 44 screen px at the docked
+		-- window's smallest touch scale (NeonKit's MinScaleTouch 0.8). Win.pad lays an invisible tap of this size under a
+		-- smaller plank; a volume step's tap is this tall and reaches its neighbours (the strip is one slider)
+		TOUCH = 56,
 	},
 	MOUSE_HOLD = "MainMenu",
 	TOAST_HOLD = "MainMenu", -- NotifyController.SetHeld owner key (quick wins, win 1)
@@ -1696,6 +1701,36 @@ function Win.touch(on)
 	end
 end
 
+-- (F0 review, major 7) on a touch screen an invisible tap under `plank` (its sibling, drawn first so the plank keeps its
+-- own press), at least K.WIN.TOUCH design px each way and centred on it; `fn` is the plank's action. Nothing on a mouse
+-- screen. Returns the pad
+function Win.pad(plank, fn)
+	local uis = game:GetService("UserInputService")
+	if not (plank and plank.Parent and uis.TouchEnabled) then
+		return nil
+	end
+	local T = K.WIN.TOUCH
+	local pw, ph = math.max(plank.Size.X.Offset, T), math.max(plank.Size.Y.Offset, T)
+	local ax, ay = plank.AnchorPoint.X, plank.AnchorPoint.Y
+	local pos = plank.Position
+	local pad = Instance.new("TextButton")
+	pad.Name = plank.Name .. "Tap"
+	pad.Text = ""
+	pad.AutoButtonColor = false
+	pad.BackgroundTransparency = 1
+	pad.BorderSizePixel = 0
+	pad.Selectable = false
+	pad.Size = UDim2.fromOffset(pw, ph)
+	-- the pad's centre on the plank's centre, whatever the plank's anchor
+	pad.AnchorPoint = Vector2.new(0.5, 0.5)
+	pad.Position = UDim2.new(pos.X.Scale, pos.X.Offset + (0.5 - ax) * plank.Size.X.Offset, pos.Y.Scale, pos.Y.Offset + (0.5 - ay) * plank.Size.Y.Offset)
+	pad.ZIndex = math.max(1, plank.ZIndex - 1)
+	pad:SetAttribute("HitFor", plank.Name)
+	pad.Activated:Connect(fn)
+	pad.Parent = plank.Parent
+	return pad
+end
+
 -- (kit B U5) a pixel icon in the middle of a plank's face (a plank with no text: Close, - and +); returns the icon
 function Win.mark(plank, name, colour, px)
 	local face = plank and plank:FindFirstChild("Face", true)
@@ -1797,6 +1832,10 @@ function Win.open(name, title, icon, prefH, reopen)
 		end,
 	})
 	Win.mark(close, "x", K.WHITE, 18)
+	Win.pad(close, function()
+		H.sound("Click")
+		Win.close()
+	end)
 	local wood = SignKit.Frame(sign, { Y = D.HEAD_Y + D.HEAD_H, ZIndex = 1 })
 	local body = SignKit.Body(wood)
 	W.Panel = body
@@ -1875,6 +1914,12 @@ function Win.sliderRow(parent, key, title, icon, order, width)
 		step(1)
 	end })
 	Win.mark(plus, "plus", Theme.Sign.Text)
+	Win.pad(minus, function()
+		step(-1)
+	end)
+	Win.pad(plus, function()
+		step(1)
+	end)
 	local trackW = width - 2 * (D.BTN + D.GAP)
 	local bw = math.max(10, math.floor((trackW - 9 * D.BLOCK_GAP) / 10))
 	local rowW = 10 * bw + 9 * D.BLOCK_GAP
@@ -1893,6 +1938,13 @@ function Win.sliderRow(parent, key, title, icon, order, width)
 		tap.BackgroundTransparency = 1
 		tap.BorderSizePixel = 0
 		tap.Size = UDim2.fromScale(1, 1)
+		if game:GetService("UserInputService").TouchEnabled then
+			-- (F0 review, major 7) a thumb's step: K.WIN.TOUCH tall, centred on the block, reaching half the gap to each
+			-- neighbour (the ten taps touch: the strip is one slider)
+			tap.AnchorPoint = Vector2.new(0.5, 0.5)
+			tap.Position = UDim2.fromScale(0.5, 0.5)
+			tap.Size = UDim2.new(1, D.BLOCK_GAP, 0, math.max(D.BLOCK_H, D.TOUCH))
+		end
 		tap.ZIndex = 3
 		tap.Activated:Connect(function()
 			H.sound("Click")
@@ -1947,6 +1999,16 @@ function Win.chipRow(parent, key, title, icon, options, order, width)
 					old:Destroy()
 				end
 				chips[i] = chip
+				-- (F0 review, major 7) the chip's thumb tap under it, made once (the chip is rebuilt on a change)
+				if not strip:FindFirstChild(chip.Name .. "Tap") then
+					local pad = Win.pad(chip, function()
+						H.sound("Click")
+						ClientSettings.Set(key, opt[2])
+					end)
+					if pad then
+						pad.Size = UDim2.fromOffset(chipW, pad.Size.Y.Offset) -- (side by side: no reach over a neighbour)
+					end
+				end
 			end
 		end
 	end

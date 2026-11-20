@@ -425,6 +425,7 @@ local function build(mode)
 			Name = "CloseTap", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Selectable = false,
 			Active = true, ZIndex = 2, Parent = head,
 		})
+		U.CloseTap:SetAttribute("HitFor", "Close") -- (F0 review, major 7) the close's 44 px thumb target
 		U.CloseTap.Activated:Connect(function()
 			TroveController.Close()
 		end)

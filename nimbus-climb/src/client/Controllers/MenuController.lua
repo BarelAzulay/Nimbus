@@ -1473,7 +1473,21 @@ function P5.placeTiles(cols)
 	if U.Tab then
 		U.Tab.Size = UDim2.fromOffset(w - tilesW - P5.TAB_GAP, P5.TILE)
 		U.Tab.Position = UDim2.fromOffset(U.TabX, h - P5.TILE)
+		P5.sizeTabHit()
 	end
+end
+
+-- the fold tab's hit pad (touch only): 44 screen px each way at the column's scale, from the tab's bottom-left corner
+function P5.sizeTabHit()
+	local hit, tab = U.TabHit, U.Tab
+	if not (hit and tab) then
+		return
+	end
+	local s = U.ColumnScale and U.ColumnScale.Scale or 1
+	s = s > 0 and s or 1
+	local need = math.ceil(44.5 / s)
+	hit.Size = UDim2.fromOffset(math.max(tab.Size.X.Offset, need), math.max(tab.Size.Y.Offset, need))
+	hit.Visible = U.StickShown == true or UserInputService.TouchEnabled == true
 end
 
 -- The tab's arrow points where a click sends the column ("<" fold away, ">" bring back); while folded, a red dot
@@ -1629,6 +1643,25 @@ local function buildColumn()
 	tab.Activated:Connect(function()
 		safe("menu fold", P5.setCollapsed, not U.Collapsed, true)
 	end)
+	-- (Pitch 2 F0 A, look review of finish pass A, major 7: the tab is 21 px wide on a phone) on touch an invisible hit pad
+	-- over the tab, reaching right into the free sky, gives the thumb 44 screen px each way (P5.sizeTabHit); the tab's
+	-- look stays the slim kit tab
+	U.TabHit = Util.Create("TextButton", {
+		Name = "ToggleHit",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Visible = false,
+		ZIndex = 6,
+		Parent = tab,
+	})
+	U.TabHit:SetAttribute("HitFor", "Toggle")
+	U.TabHit.Activated:Connect(function()
+		safe("menu fold", P5.setCollapsed, not U.Collapsed, true)
+	end)
 	CloudUI.Tooltip(tab, function()
 		return U.Collapsed and "Show menu" or "Hide menu"
 	end)
@@ -1764,6 +1797,7 @@ function relayoutMenu()
 	local scale = math.min(pref, avail / h, math.max(minScale * 0.9, (vpX * (0.5 - P5.CENTRE_TOL) - 2 - margin) / w))
 	local top = first + math.max(0, (avail - h * scale) / 2)
 	U.ColumnScale.Scale = scale
+	P5.sizeTabHit()
 	-- a squeezed column (short screens) grows its labels so they stay >= 14 screen px
 	local labelPx = math.min(26, math.max(18, math.ceil(14.5 / math.max(scale, 0.3))))
 	-- ... and so does the "!" of a tile's red badge (its dot grows around it)

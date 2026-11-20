@@ -30,6 +30,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GuiService = game:GetService("GuiService")
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -47,6 +48,9 @@ local TopBarController = {}
 local K = {
 	PILL_H = 40, -- the pill's height in the 58 px band ...
 	PILL_MIN_H = 32, -- ... never below this (a thumb)
+	-- (Pitch 2 F0 A, look review of finish pass A, major 7: the pills were 36 px tall on phones) on a touch screen the pill
+	-- is this tall, so its buttons (the pill less 4) are a 44 px thumb target, still inside Roblox's 58 px band
+	PILL_TOUCH_H = 48,
 	BTN_W = 44, -- one button's icon area
 	LABEL_W = 70, -- a label's width when it cannot be measured
 	LABEL_TEXT = 17,
@@ -208,7 +212,8 @@ local function relayout()
 	end
 	local vp = viewport()
 	local band = inset()
-	local h = math.floor(Util.Clamp(band - 10, K.PILL_MIN_H, K.PILL_H))
+	local touch = UserInputService.TouchEnabled == true
+	local h = math.floor(Util.Clamp(band - (touch and 6 or 10), K.PILL_MIN_H, touch and K.PILL_TOUCH_H or K.PILL_H))
 	local y = math.max(0, math.floor((band - h) / 2))
 	local left = leftEdge()
 	local right = rightLimit(vp)

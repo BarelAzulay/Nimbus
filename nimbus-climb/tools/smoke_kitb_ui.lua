@@ -7262,6 +7262,105 @@ local function clientScenarios()
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
+		-- (look review of finish pass A, major 7: thumb targets under 44 px on phones: the top bar's pills 31x36 / 44x36, the
+		-- Gifts and Sky Trove closes 36, the Settings close 35, its - / + 42 and volume steps 20x26, the Index's group tabs,
+		-- Elements and Claim 42 tall, the menu's fold tab 21x45) on a touch phone every button of the HUD's top bar and fold
+		-- tab, and of the Gifts, Sky Trove, Settings and Index windows, is at least 44 screen px each way. A volume strip's
+		-- steps are one slider: each 44 tall, side by side with no gap. A small button may hand its thumb to a hit pad (a
+		-- shown button with the attribute HitFor = its name, 44 px each way, over it)
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			U8.at(s[1], s[2], s[3], "finish touch", function(tag)
+				local vp = Mock.Viewport
+				-- a phone's real top bar: Roblox's buttons on the left, the free band to its right
+				Mock.TopbarInset = Rect.new(112, 0, vp.X - 72, 58)
+				local TB = U7.client("Controllers/TopBarController")
+				if TB and TB.Refresh then
+					TB.Refresh()
+				end
+				LKC.advance(0.6)
+				local bad, met = {}, 0
+				local function pads(root)
+					local p = {}
+					for _, d in ipairs(root and root:GetDescendants() or {}) do
+						if d:IsA("GuiButton") and d:GetAttribute("HitFor") and U8.shown(d) then
+							p[d.Parent] = p[d.Parent] or {}
+							p[d.Parent][d:GetAttribute("HitFor")] = U8.rect(d) -- (a pad sits beside its button or inside it)
+						end
+					end
+					return p
+				end
+				local function walk(root, family, only)
+					local hit = pads(root)
+					local steps = {}
+					for _, d in ipairs(root and root:GetDescendants() or {}) do
+						if d:IsA("GuiButton") and U8.shown(d) and not d:GetAttribute("HitFor") and (not only or d.Name:match(only)) then
+							local r = U8.rect(d)
+							local w, h = r.R - r.X, r.B - r.Y
+							if w > 0 and h > 0 then
+								met = met + 1
+								local pad = (hit[d.Parent] and hit[d.Parent][d.Name]) or (hit[d] and hit[d][d.Name])
+								local padOk = pad and pad.R - pad.X >= 43.5 and pad.B - pad.Y >= 43.5 and pad.X <= r.X + 0.5 and pad.R >= r.R - 0.5 and pad.Y <= r.Y + 0.5 and pad.B >= r.B - 0.5
+								if d.Name:match("^Step%d+$") then
+									steps[d.Parent.Parent] = steps[d.Parent.Parent] or {}
+									table.insert(steps[d.Parent.Parent], r)
+									if h < 43.5 and not padOk then
+										bad[#bad + 1] = fmt("%s %s %.0f tall", family, d.Name, h)
+									end
+								elseif (w < 43.5 or h < 43.5) and not padOk then
+									bad[#bad + 1] = fmt("%s %s %.1fx%.1f", family, d.Name, w, h)
+								end
+							end
+						end
+					end
+					for _, list in pairs(steps) do
+						table.sort(list, function(a, b)
+							return a.X < b.X
+						end)
+						for i = 2, #list do
+							if list[i].X - list[i - 1].R > 0.5 then
+								bad[#bad + 1] = fmt("%s volume steps %d and %d %.1f px apart", family, i - 1, i, list[i].X - list[i - 1].R)
+								break
+							end
+						end
+					end
+				end
+				walk(pg:FindFirstChild("NimbusTopBar"), "top bar", "^PillButton_")
+				walk(pg:FindFirstChild("NimbusMenu"), "menu", "^Toggle$")
+				pcall(Daily.Open)
+				LKC.advance(1)
+				walk(pg:FindFirstChild("NimbusDaily"), "Gifts")
+				pcall(Daily.Close)
+				LKC.advance(0.4)
+				local Trove = U7.client("Controllers/TroveController")
+				if Trove then
+					pcall(Trove.Open, {})
+					LKC.advance(1)
+					walk(pg:FindFirstChild("NimbusTrove"), "Sky Trove")
+					pcall(Trove.Close)
+					LKC.advance(0.4)
+				end
+				local MMC = MenuH.mmc()
+				if MMC then
+					MMC.CloseWindows()
+					MMC.OpenSettings()
+					LKC.advance(0.6)
+					walk(MMC.Window(), "Settings")
+					MMC.CloseWindows()
+					LKC.advance(0.3)
+				end
+				Menu.Open("Index")
+				LKC.advance(1)
+				walk(pg:FindFirstChild("NimbusIndex"), "Index")
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				Mock.TopbarInset = nil
+				if TB and TB.Refresh then
+					TB.Refresh()
+				end
+				T.check(met >= 20, fmt("%s: the walk met the phone's buttons (%d)", tag, met))
+				T.check(#bad == 0, fmt("%s: every button a thumb can reach is at least 44 px each way (%d under)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 30)))
+			end)
+		end
 		-- (look review of finish pass A, major 6) the Shop at 1920x1080 and 1280x720: every roulette card whole inside the
 		-- stone, over its lip (the card's bottom edge was clipped by the body), the "Gems: same odds" hint's letters above
 		-- the card's colour lip (they touched it); the rail's "ROBUX ITEMS" a captioned dotted rule, no dark glyph square
