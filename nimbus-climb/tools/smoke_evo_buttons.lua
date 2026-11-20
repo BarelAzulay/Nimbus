@@ -1104,13 +1104,18 @@ local function clientScenarios()
 				end
 			end
 		end
-		-- (look review r1, 667 x 375: "STONE S...", "TIDE ME...") each helper's buff name is whole: on one line where its tag
-		-- holds it, else wrapped on lines its tag holds. The mock has no font metrics: FredokaOne's capitals at 0.64 em, the
-		-- rest 0.52, a space 0.28 (render_gui's real metrics: "STONE SKIN" 6.2 em, "TIDE MEND" 5.7; render_gui is the pixel judge)
+		-- (look review r1, 667 x 375: "STONE S...", "TIDE ME..."; 360 x 640: "STON / E...") each helper's buff name is whole:
+		-- on one line where its tag holds it, else wrapped on lines its tag holds, no word broken. The mock has no font
+		-- metrics: FredokaOne's own advances (tools/fixtures/fonts, em) x 1.055, the heavier face render_gui draws ("STONE
+		-- SKIN" 89.3 px at 14.4 px there); anything else 0.75 em. render_gui is the pixel judge
+		local FREDOKA = { A = 0.765, B = 0.646, C = 0.679, D = 0.704, E = 0.638, F = 0.637, G = 0.714, H = 0.699, I = 0.257, J = 0.549,
+			K = 0.639, L = 0.587, M = 0.87, N = 0.72, O = 0.775, P = 0.632, Q = 0.83, R = 0.631, S = 0.583, T = 0.731, U = 0.726,
+			V = 0.783, W = 0.999, X = 0.741, Y = 0.686, Z = 0.643, ["0"] = 0.608, ["1"] = 0.407, ["2"] = 0.609, ["3"] = 0.608,
+			["4"] = 0.592, ["5"] = 0.53, ["6"] = 0.56, ["7"] = 0.561, ["8"] = 0.582, ["9"] = 0.56, [" "] = 0.253 }
 		local function emOf(s)
 			local e = 0
 			for ch in tostring(s):gmatch(".") do
-				e = e + ((ch == " ") and 0.28 or (ch:match("%u") and 0.64 or 0.52))
+				e = e + (FREDOKA[ch] or 0.75) * 1.055
 			end
 			return e
 		end
@@ -1131,10 +1136,11 @@ local function clientScenarios()
 						for word in lbl.Text:gmatch("%S+") do
 							local ww = emOf(word) * px
 							ok = ok and ww <= w + 0.5
-							if cur < 0 or cur + 0.28 * px + ww > w + 0.5 then
+							local sp = emOf(" ") * px
+							if cur < 0 or cur + sp + ww > w + 0.5 then
 								lines, cur = lines + 1, ww
 							else
-								cur = cur + 0.28 * px + ww
+								cur = cur + sp + ww
 							end
 						end
 						ok = ok and lines * px * 1.2 <= lbl.AbsoluteSize.Y + 1
