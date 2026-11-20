@@ -122,6 +122,81 @@ def hexc(c):
     return "%02X%02X%02X" % (c[0], c[1], c[2])
 
 
+# (P2 icons review r1, major 6: the own-colour glyphs cost 23 - 51 Frames, past the spec's cap of 40 for a code-only
+# multi-colour icon) a glyph is drawn as LAYERS, painter's order: the drop shadow first (its rects never overlap each
+# other, so the 30 % never doubles; they may run under the glyph, which hides them), then one colour at a time, each
+# colour's rects allowed over the cells of the colours drawn after it (they paint over them). The same picture, 704
+# Frames for the 31 in place of 951, at most 35 an icon
+def _cover(todo, allowed, H, W, overlap):
+    """rects (x, y, w, h) inside `allowed` covering every cell of `todo` (cells are (y, x)); greedy: the rect that covers
+    the most cells still to do, the smaller one on a tie; overlap False: no two rects share a cell"""
+    todo, out, used = set(todo), [], set()
+    while todo:
+        best = None
+        for y0 in range(H):
+            for x0 in range(W):
+                if (y0, x0) not in allowed or (not overlap and (y0, x0) in used):
+                    continue
+                maxx = W
+                for y1 in range(y0, H):
+                    w = 0
+                    while x0 + w < maxx and (y1, x0 + w) in allowed and (overlap or (y1, x0 + w) not in used):
+                        w += 1
+                    if w == 0:
+                        break
+                    maxx = x0 + w
+                    for x1 in range(x0 + 1, maxx + 1):
+                        gain = sum(1 for yy in range(y0, y1 + 1) for xx in range(x0, x1) if (yy, xx) in todo)
+                        key = (gain, -(x1 - x0) * (y1 - y0 + 1), -y0, -x0)
+                        if gain and (best is None or key > best[0]):
+                            best = (key, x0, y0, x1 - x0, y1 - y0 + 1)
+        _, x, y, w, h = best
+        out.append((x, y, w, h))
+        for yy in range(y, y + h):
+            for xx in range(x, x + w):
+                todo.discard((yy, xx))
+                used.add((yy, xx))
+    return out
+
+
+def layer_rects(rows):
+    """the draw list of a glyph's letter rows ("~" the drop shadow, "." empty): [(x, y, w, h, letter)] bottom first. The
+    colour order is the fewest rects of a greedy bottom-up pick and 40 seeded shuffles (deterministic)"""
+    import random
+    H, W = len(rows), max(len(r) for r in rows)
+    at = {(y, x): c for y, row in enumerate(rows) for x, c in enumerate(row) if c != "."}
+    out = [r + ("~",) for r in _cover([p for p, v in at.items() if v == "~"], set(at), H, W, False)]
+    cols = sorted(set(v for v in at.values() if v != "~"))
+
+    def by_order(order):
+        rects = []
+        for i, c in enumerate(order):
+            later = set(order[i:])
+            allowed = {p for p, v in at.items() if v in later}
+            rects += [r + (c,) for r in _cover([p for p, v in at.items() if v == c], allowed, H, W, True)]
+        return rects
+
+    rem, greedy = list(cols), []
+    while rem:
+        allowed = {p for p, v in at.items() if v in rem}
+        pick = min(rem, key=lambda c: (len(_cover([p for p, v in at.items() if v == c], allowed, H, W, True)), c))
+        greedy.append(pick)
+        rem.remove(pick)
+    best = by_order(greedy)
+    rnd = random.Random(7)
+    for _ in range(40):
+        o = cols[:]
+        rnd.shuffle(o)
+        rr = by_order(o)
+        if len(rr) < len(best):
+            best = rr
+    return out + best
+
+
+def b36(n):
+    return "0123456789abcdefghijklmnopqrstuvwxyz"[n]
+
+
 def lua_block():
     """the PixelIcon generated block (between its BEGIN / END lines, those lines included)"""
     letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -129,7 +204,8 @@ def lua_block():
         "-- BEGIN GENERATED icons_b (tools/build_upload_sheets.py; do not edit by hand: change tools/pixelart/icons_b.py and",
         "-- run the script). Pitch 2 item 9 B \"Carved soft\": every redrawn icon's 9 x 9 glyph in its own colours, 10 x 10",
         "-- rows (the glyph + its 1-cell drop shadow on the right and bottom); one letter a colour of P (\"~\": the drop",
-        "-- shadow, Text at 30 %), \".\" empty",
+        "-- shadow, Text at 30 %), \".\" empty. L: the Frames that draw it, bottom first, 5 characters each: x, y, w, h",
+        "-- (base 36, in cells) and the letter; the shadow first, then each colour over the ones drawn after it",
         "PixelIcon.Art = {",
     ]
     for name in drawing_names():
@@ -149,7 +225,8 @@ def lua_block():
                     s += pal[key]
             rows.append(s)
         ptxt = ", ".join("%s = \"%s\"" % (v, k) for k, v in pal.items())
-        lines.append("\t%s = { R = \"%s\", P = { %s } }, -- %s" % (I.GAME[name], "/".join(rows), ptxt, name))
+        ltxt = "".join(b36(x) + b36(y) + b36(w) + b36(h) + c for x, y, w, h, c in layer_rects(rows))
+        lines.append("\t%s = { R = \"%s\", P = { %s }, L = \"%s\" }, -- %s" % (I.GAME[name], "/".join(rows), ptxt, ltxt, name))
     lines.append("}")
     # the mono twins of the new names (a caller that asks for one ink colour, NeonKit.IconName, the Bitmaps walks)
     for name in drawing_names():

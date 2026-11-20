@@ -99,19 +99,22 @@ def emboss(g, shape_fn, f_hi=3, f_lo=1, only=None):
 
 
 def b_cash():
+    # (P2 icons review r1, minor: the front bill's lit-side left column sat in the cell's first column and read as
+    # clipped at the edge on cream) the pair of bills one cell in from the left (the back bill now ends in the last
+    # column; its drop shadow takes the 19th)
     g = Grid(18)
-    g.rect(3, 2, 16, 10, "h")                     # the back bill
-    g.rect(1, 5, 14, 14, "g")                     # the front bill
-    for x in range(3, 13):                        # its engraved inner frame
+    g.rect(4, 2, 17, 10, "h")                     # the back bill
+    g.rect(2, 5, 15, 14, "g")                     # the front bill
+    for x in range(4, 14):                        # its engraved inner frame
         g.tone(x, 7, 1)
         g.tone(x, 12, 1)
     for y in range(7, 13):
-        g.tone(3, y, 1)
-        g.tone(12, y, 1)
-    g.circle(7.9, 9.9, 2.1, tone=0)              # the seal
-    g.circle(7.9, 9.9, 1.1, tone=3)
-    g.tone(2, 6, 4)
-    g.tone(5, 9, 4)
+        g.tone(4, y, 1)
+        g.tone(13, y, 1)
+    g.circle(8.9, 9.9, 2.1, tone=0)              # the seal
+    g.circle(8.9, 9.9, 1.1, tone=3)
+    g.tone(3, 6, 4)
+    g.tone(6, 9, 4)
     return g, "hg"
 
 

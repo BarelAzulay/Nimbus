@@ -155,6 +155,9 @@ local K = {
 	WIN = {
 		PC = { Header = 76, Icon = 42, TitleText = 34, TitleW = 200, GemsW = 140, TokW = 190, PillH = 44, PillText = 22, Close = 56,
 			RailX = 18, RailW = 224, TabH = 80, TabY = 16, TabStep = 92, Split = 44, TabIcon = 40, TabLabel = 26, ContentX = 262, ContentR = 38,
+			-- (Pitch 2 item 9 B; P2 icons review r1, major 4) the tabs' icons at the 54 px art size (3 px cells, the header
+			-- glyph's), the label 12 px further right (TabArtX: the icon's inset)
+			TabArt = 54, TabArtX = 12,
 			-- (a body too short for the five tabs + the Fast toggle: shorter tabs, the 12 px gap kept; the divider's 40 still
 			-- fits; needs 504 of body)
 			ShortTabH = 64, ShortTabY = 8, ShortTabStep = 76, ShortSplit = 52, ShortTabIcon = 32 },
@@ -674,7 +677,9 @@ function H.build()
 	-- (LOOK-ui, kitb-look1: one style across screens) the Signboard header's icon slot: SignKit.Sizes.IconSlot square, a 2 px
 	-- brown ink line (was a 46 px square in a 3 px wood edge)
 	H.edge(U.Icon, 2, SIGN.Text)
-	PixelIcon.Host(U.Icon, NeonKit.IconName("Eggs")) -- (kit-b U7a) the egg, sized with the label
+	-- (Pitch 2 item 9 B; P2 icons review r1, major 5: the egg here read as the Eggs tab under it) the shop stall in its own
+	-- colours on the gold slot (the mock-up's header), sized with the label
+	PixelIcon.Host(U.Icon, NeonKit.IconName("Shop"))
 	U.Title = label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left })
 	U.Title:SetAttribute("RibbonBand", "NoTails") -- (render gate) the band ends square on the navy plank (its tails read as a glitchy block there)
 	Theme.StyleTitle(U.Title)
@@ -805,25 +810,32 @@ end
 
 -- the tab's icon through NeonKit.Icon (the only path that reads Config.Icons): rebuilt when Config.Icons[tab] or the size
 -- changed
-function H.syncTabIcon(tab, px)
+function H.syncTabIcon(tab, px, art)
 	local t = U.Tabs[tab]
 	local icons = Config.Icons
 	local want = type(icons) == "table" and icons[tab] or nil
 	if type(want) ~= "string" or want == "" then
 		want = false
 	end
-	if t.Icon and t.IconImage == want and t.IconPx == px then
+	if t.Icon and t.IconImage == want and t.IconPx == px and t.IconArt == art then
 		return
 	end
 	if t.Icon then
 		t.Icon:Destroy()
 	end
-	t.Icon = NeonKit.Icon(t.Button, tab, px)
+	-- (Pitch 2 item 9 B; P2 icons review r1) the Gems tab draws the B gem like the other four (the finer cut gem mixed two
+	-- pixel sizes in the column); `art`: the hosted icon drawn at that px (the PC rail's 54 px art size)
+	t.Icon = NeonKit.Icon(t.Button, tab == "Gems" and "gem" or tab, px)
+	local pixelName = art and t.Icon:GetAttribute("PixelIcon")
+	if pixelName then
+		PixelIcon.Host(t.Icon, pixelName, art)
+	end
 	if t.Icon:IsA("TextLabel") then -- an asset-id icon is an ImageLabel (no TextColor3: the write would throw)
 		t.Icon.TextColor3 = SIGN.Text -- (kit-b U9-2) brown on the stone / gold tab
 	end
 	t.IconImage = want
 	t.IconPx = px
+	t.IconArt = art
 end
 
 -- the pack's colours (a key without an entry: its tab's neon colour)
@@ -1239,7 +1251,9 @@ function H.layoutRail(W, Hh, R)
 		local t = U.Tabs[tab]
 		local y = tabY + (i - 1) * step + (i >= 3 and split or 0)
 		place(t.Button, R.RailX, y, R.RailW, tabH)
-		H.syncTabIcon(tab, icon)
+		-- (Pitch 2 item 9 B) the PC rail at full height: the 54 px art (a short body keeps its 27 px glyph: 3 px cells too)
+		local art = (layout == "PC" and not short and R.TabArt) or nil
+		H.syncTabIcon(tab, icon, art)
 		t.Label.TextSize = R.TabLabel
 		if layout == "Compact" then
 			-- the icon over the label
@@ -1254,11 +1268,16 @@ function H.layoutRail(W, Hh, R)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Center
 		else
 			local ix = layout == "PC" and 16 or 8
+			local lx = 10
+			if art then
+				-- the icon's box 2 px round the drawn art, the label 12 px clear of the art
+				ix, icon, lx = R.TabArtX - 2, art, 14
+			end
 			-- (F0 review, major 8) the icon and the label centred on the block's face, over its lip (the label's box ran
 			-- into the lip)
 			local face = tabH - SignKit.Sizes.Lip
 			place(t.Icon, ix, math.floor((face - icon - 4) / 2), icon + 4, icon + 4)
-			place(t.Label, ix + icon + 10, 0, R.RailW - ix - icon - 14, face)
+			place(t.Label, ix + icon + lx, 0, R.RailW - ix - icon - lx - 4, face)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Left
 		end
 	end
