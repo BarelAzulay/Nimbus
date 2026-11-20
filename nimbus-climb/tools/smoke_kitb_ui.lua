@@ -15767,8 +15767,19 @@ local function clientScenarios()
 					local vr = vitals and U8.shown(vitals) and U8.rect(vitals)
 					T.check(vr and math.abs(sr.X - vr.X) <= 1 and math.abs(sr.B - (vr.Y - 10)) <= 1, tag .. ": on the HUD stack, at the vitals card's left edge, 10 px over it",
 						U8.show(sr) .. " / vitals " .. (vr and U8.show(vr) or "-"))
-					T.check(math.abs(sr.X - 29) <= 2 and math.abs(sr.Y + inset - 534) <= 3 and math.abs(sr.B + inset - 596) <= 2 and math.abs((sr.R - sr.X) - 317) <= 4,
-						tag .. ": the spec's 29, 534-596, 317 x 62 (screen px)", U8.show(sr) .. fmt(" + %d inset", inset))
+					-- (P2 fix A: the test was stale, the dock is right) spec 03 B's rule: Vitals-wide from the card's left edge to the RUN /
+					-- DASH column's right edge, 62 tall, 10 px over the vitals card. Its numbers (29, 534-596, 317 x 62) were measured
+					-- over the pitch's base render, the vitals card before 08 C (29,606 240 x 80); 08 C (same wave) gave the card its
+					-- name tab (32 design px over its top) and moved it to x 20 at 390 x 844, so the same rule now lands at 20,513-574,
+					-- 322 x 61 (screen px). The rule is checked, not the old numbers
+					local mc = pg:FindFirstChild("MobileControls")
+					local run = mc and mc:FindFirstChild("RunButton", true)
+					local rr = run and U8.shown(run) and U8.rect(run)
+					local gi = game:GetService("GuiService"):GetGuiInset().Y
+					local rdy = (mc and mc.IgnoreGuiInset and -gi or 0) - (gui.IgnoreGuiInset and -gi or 0)
+					T.check(rr and math.abs(sr.R - rr.R) <= 1 and math.abs((sr.B - sr.Y) - 62) <= 2 and sr.B <= rr.Y + rdy - 8,
+						tag .. ": spec 03 B's dock: from the vitals card's left edge to RUN's right edge, 62 tall, above RUN",
+						U8.show(sr) .. fmt(" + %d inset", inset) .. " / RUN " .. (rr and U8.show(rr) or "-"))
 				else
 					-- (the card's edge margin under the top bar: 12 px, 20 on touch)
 					T.check(sr.Y >= -0.5 and sr.Y <= (s[3] and 20 or 12) + 1 and (cr == nil or not over4(sr, cr)) and (cr ~= nil or sr.X <= 12 * k + 1),
