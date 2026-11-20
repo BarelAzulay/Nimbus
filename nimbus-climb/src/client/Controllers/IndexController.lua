@@ -152,6 +152,9 @@ local K = {
 	-- tall) a touch screen's thumb target, design px: 44.8 screen px at the docked window's 0.8
 	TOUCH_H = 56,
 	HEADER_TITLE_SIZES = { 24, 22, 20, 18 },
+	HEADER_BLOCK = 18, -- (fix round B) the group meter's square boxes, design px ...
+	HEADER_BLOCK_MIN = 10, -- ... never under this (the Bar weight's 2 px edge leaves a 6 px face: still a box, not a pip)
+	HEADER_COUNT_W = 58, -- the "2/6" count's box at the meter's right end
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
 	ELEMENTS_BTN_H_SHORT = 44,
@@ -925,7 +928,8 @@ end
 
 -- (Pitch 2 F0 A: "one-line titles"; look review of finish pass A, major 5: COMMON PETS wrapped onto two lines at 1920) the
 -- group's name on ONE line beside its progress: the biggest of K.HEADER_TITLE_SIZES that leaves the progress
--- K.HEADER_PROGRESS_MIN px of the header (S.HeaderW, design px); the progress takes the rest
+-- K.HEADER_PROGRESS_MIN px of the header (S.HeaderW, design px), or the square meter's least room and its count when
+-- that is more (fix round B); the progress takes the rest
 local function fitHeader()
 	local title = U.GroupTitle
 	local track = U.Header and U.Header:FindFirstChild("Progress")
@@ -934,11 +938,25 @@ local function fitHeader()
 		return
 	end
 	local extra = S.GroupId == FUSIONS and 30 or 0 -- (the sparkle mark before "Fusions")
-	local room = w - 16 - 12 - 14 - K.HEADER_PROGRESS_MIN
-	local size, tw = K.HEADER_TITLE_SIZES[#K.HEADER_TITLE_SIZES], 0
 	title.TextScaled = false
 	title.TextWrapped = false
 	local sc = SignKit.LayoutScale(title)
+	-- (Pitch 2 fix round B, T1 look leftover 7) the count's room (the wider of its measure and the text it really draws,
+	-- 10 px clear of the boxes) and the least the square meter needs: the title steps down before the boxes turn to pips
+	local blocks, count = U.HeaderBlocks, U.HeaderCount
+	local n = blocks and blocks:GetAttribute("Count") or 1
+	local countW = K.HEADER_COUNT_W
+	if count then
+		local okC, mc = pcall(Theme.MeasureLabel, count, count.Text, count.TextSize)
+		local okB, cb = pcall(function()
+			return count.TextBounds.X / ((sc and sc > 0) and sc or 1)
+		end)
+		local textW = math.max(okC and mc and mc.X or 0, okB and cb or 0)
+		countW = math.max(28, math.min(K.HEADER_COUNT_W, math.ceil(textW > 0 and textW or K.HEADER_COUNT_W - 10) + 10))
+	end
+	local meterMin = n * K.HEADER_BLOCK_MIN + (n - 1) * 2 + countW
+	local room = w - 16 - 12 - 14 - math.max(K.HEADER_PROGRESS_MIN, meterMin)
+	local size, tw = K.HEADER_TITLE_SIZES[#K.HEADER_TITLE_SIZES], 0
 	for _, s in ipairs(K.HEADER_TITLE_SIZES) do
 		-- the wider of the measure and the text the label really draws (its TextBounds, in its own px)
 		title.TextSize = s
@@ -956,6 +974,26 @@ local function fitHeader()
 	local boxW = math.max(0, math.min(room, math.ceil(tw) + 4))
 	title.Size = UDim2.new(0, boxW, 1, 0)
 	track.Size = UDim2.new(1, -(16 + boxW + 12 + 14), 0, 30)
+	-- (Pitch 2 fix round B, T1 look leftover 7: on PC the blocks filled the track's width as thin pale pips, on a phone as
+	-- flat bars) the meter is outlined SQUARE boxes (the F0 A mock): K.HEADER_BLOCK design px, smaller down to
+	-- K.HEADER_BLOCK_MIN when the track is short, from the track's left; the count stays at its right end
+	if blocks then
+		local avail = (w - (16 + boxW + 12 + 14)) - countW
+		-- the kit's Bar gap, 3 px, or its least, 2, when that makes room for the boxes
+		local gap = 3
+		local side = math.floor((avail - (n - 1) * gap) / n)
+		if side < K.HEADER_BLOCK_MIN then
+			gap = 2
+			side = math.floor((avail - (n - 1) * gap) / n)
+		end
+		if side >= K.HEADER_BLOCK_MIN then
+			side = math.min(K.HEADER_BLOCK, side)
+			blocks:SetAttribute("Gap", gap)
+			blocks.Size = UDim2.fromOffset(n * side + (n - 1) * gap, side)
+		else
+			blocks.Size = UDim2.new(1, -K.HEADER_COUNT_W - 6, 0, 18) -- (no room for boxes: the old fill)
+		end
+	end
 end
 
 -- (Pitch 2 item 12_index_badge B) a tab's bar row: the blocks and, in the count's place, the count, the waiting

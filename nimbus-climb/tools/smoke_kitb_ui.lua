@@ -8103,12 +8103,27 @@ local function clientScenarios()
 				Menu.Open("Index")
 				LKC.advance(1)
 				local win = pg:FindFirstChild("NimbusIndex")
-				local bad = {}
+				local bad, meters = {}, {}
 				for _, id in ipairs({ "Common", "Uncommon", "Legendary", "Mythic" }) do
 					pcall(Index.Open, id)
 					LKC.advance(0.4)
 					local title = win and win:FindFirstChild("GroupTitle", true)
 					local track = title and title.Parent:FindFirstChild("Progress")
+					-- (Pitch 2 fix round B, T1 look leftover 7: on PC the meter drew thin pale pips) the group's meter is
+					-- outlined square boxes (the phones' and the F0 A mock's), at least 10 screen px, clear of its count
+					local row = track and track:FindFirstChild("BlockRow")
+					local count = track and track:FindFirstChild("Count")
+					if row and U8.shown(row) then
+						local b1 = row:FindFirstChild("Block1")
+						local bw, bh = b1 and b1.AbsoluteSize.X or 0, b1 and b1.AbsoluteSize.Y or 0
+						local cx = count and (U8.rect(count).R - count.TextBounds.X) or math.huge
+						if row:GetAttribute("Pips") == true or bw < 10 - 0.5 or math.abs(bw - bh) > 1.5 or U8.rect(row).R > cx - 2 + 0.5 then
+							meters[#meters + 1] = fmt("%s: block %.1f x %.1f%s, row to %.0f, count text from %.0f", id, bw, bh,
+								row:GetAttribute("Pips") == true and " (pips)" or "", U8.rect(row).R, cx)
+						end
+					else
+						meters[#meters + 1] = id .. ": no meter"
+					end
 					if not (title and U8.shown(title)) then
 						bad[#bad + 1] = id .. ": no title"
 					else
@@ -8124,6 +8139,7 @@ local function clientScenarios()
 					end
 				end
 				T.check(#bad == 0, fmt("%s: every group's name on one line, 17 px or more, beside its progress (%d off)", tag, #bad), table.concat(bad, "; "))
+				T.check(#meters == 0, tag .. ": every group's meter is outlined square boxes (>= 10 px), clear of its count", table.concat(meters, "; "))
 				pcall(Index.Open, "Common")
 				LKC.advance(0.4)
 				local amount = win and win:FindFirstChild("Amount", true)
