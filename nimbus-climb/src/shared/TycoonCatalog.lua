@@ -75,7 +75,6 @@
 
 local Shared = script.Parent
 local Config = require(Shared.Config)
-local Theme = require(Shared.Theme) -- (Pitch 2 F0) FormatCash: Theme.Short, the one number style (Theme requires nothing)
 
 local TycoonCatalog = {}
 
@@ -1589,15 +1588,33 @@ function TycoonCatalog.FusionCost(action, rarity, tier, fusionLevel)
 	return out
 end
 
+-- Theme, resolved lazily like PetCatalog: the pure tools (tools/sim_tycoon.py --check, the economy smoke's copy of the
+-- catalog) load TycoonCatalog with Config alone, and Theme needs the Roblox types; in the game it is always there
+local themeModule = nil
+local function getTheme()
+	if themeModule == nil then
+		themeModule = false
+		local module = Shared:FindFirstChild("Theme")
+		if module then
+			local ok, theme = pcall(require, module)
+			if ok and type(theme) == "table" and type(theme.Short) == "function" then
+				themeModule = theme
+			end
+		end
+	end
+	return themeModule or nil
+end
+
 -- "$950", "$3.65K", "$12.5K", "$3.2M": the $ before Theme.Short (Pitch 2 F0: the game's one short-number style; was its own
--- K / M / B with commas under 10,000)
+-- K / M / B with commas under 10,000). Without Theme (a pure tool, nothing on screen) the whole dollars
 function TycoonCatalog.FormatCash(n)
 	local v = tonumber(n) or 0
-	if v ~= v then
+	if v ~= v or v == huge or v == -huge then
 		v = 0
 	end
 	local sign = v < 0 and "-" or ""
-	return sign .. "$" .. Theme.Short(math.abs(v))
+	local theme = getTheme()
+	return sign .. "$" .. (theme and theme.Short(math.abs(v)) or tostring(floor(math.abs(v))))
 end
 
 ----------------------------------------------------------------------
