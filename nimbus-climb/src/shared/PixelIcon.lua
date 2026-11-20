@@ -120,6 +120,14 @@ PixelIcon.Bitmaps = {
 	-- (LOOK-ui, kitb-look1) a narrow pointer, three cells wide: at 18 px (2 px cells, the screen's own size) it fits the
 	-- ~14 px gap between two tiles that "play" (8 cells) at 9 px (1 px cells) filled
 	nub = "........./........./...#...../...##..../...###.../...##..../...#...../........./.........",
+	-- (Pitch 2 item 12_elements A, the wheel's links) the arrow turned to the other 90 degree ways, and the 45 degree ones on
+	-- even stairs (one cell a row: the mock's kitb_lib.draw_cell_arrow), never a rotated frame (a turned icon draws soft)
+	arrowdown = "...###.../...###.../...###.../...###.../.#######./..#####../...###.../....#..../.........",
+	arrowup = "........./....#..../...###.../..#####../.#######./...###.../...###.../...###.../...###...",
+	arrowse = "##......./###....../.###..##./..###.##./...#####./....####./..######./..######./.........",
+	arrowsw = ".......##/......###/.##..###./.##.###../.#####.../.####..../.######../.######../.........",
+	arrowne = "........./..######./..######./....####./...#####./..###.##./.###..##./###....../##.......",
+	arrownw = "........./.######../.######../.####..../.#####.../.##.###../.##..###./......###/.......##",
 }
 -- tick is the pitch's check (one drawing, two names)
 PixelIcon.Bitmaps.tick = PixelIcon.Bitmaps.check

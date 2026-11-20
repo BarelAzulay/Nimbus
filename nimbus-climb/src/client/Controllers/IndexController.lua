@@ -31,7 +31,11 @@
 -- Layout (cloud-styled through CloudUI, like the reference "Pet Index" window):
 --   title bar "Pet Index" + red X
 --   left    vertical group list: one rarity tab per rarity group with "3/6" progress,
---           a check when its reward is claimed and a red "!" when it can be claimed; an "Elements" card button
+--           (Pitch 2 item 12_index_badge B, no badge) a waiting reward's gold token chip "+800" or a claimed group's
+--           grass check in the count's place; the strip snaps to whole tabs under its page dots; an "Elements" button
+--           (in the header by the X in the column layout, fixed at the strip's end in the strip layout) that opens
+--           the element chart as its own centred window (client/UI/ElementsWindow, Pitch 2 item 12_elements A; Esc and
+--           its X return here; Open("Elements") opens the Index with the chart over it)
 --   centre  group header with an x/N progress bar, a grid of pet tiles (ViewportFrame of the pet; pets not
 --           discovered yet are black silhouettes via ViewportFrame.ImageColor3 = (0, 0, 0) with a "???"
 --           caption), and the rewards box ("Rewards:" + the token amount) with a CLAIM button (green when
@@ -151,6 +155,24 @@ local K = {
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
 	ELEMENTS_BTN_H_SHORT = 44,
+	-- (Pitch 2 item 12_index_badge B) the column layout's Elements plank in the header: HEAD_PLANK_W x HEAD_PLANK_H (a
+	-- touch screen's HEAD_PLANK_TOUCH_H), its right end HEAD_PLANK_R px in from the window's right (10 px left of the X,
+	-- CloudUI's Signboard close: 44 px, 16 px in), its middle on the X's (HEAD_PLANK_Y)
+	-- (look review r0: at 40 tall on the 54 px band its edge and hard shadow hung ~5 px under the navy onto the body) 36,
+	-- its middle at 31: the plank, its 5 px edge and its 5 px shadow all on the band
+	HEAD_PLANK_W = 150,
+	HEAD_PLANK_H = 36,
+	HEAD_PLANK_TOUCH_H = 44,
+	HEAD_PLANK_R = 70,
+	HEAD_PLANK_Y = 31,
+	SNAP_DELAY = 0.25, -- (12_index_badge B) seconds after the strip stops moving before it settles on whole tabs
+	-- (12_index_badge B, look review r0: the dots sat in the tabs' hard shadow, tan on cream, and read as a shadow line) the
+	-- strip's page dots DOT_W x DOT_H, DOT_GAP px of clear stone under the tabs' drawn foot (TAB_DRAWN: a tab's outer edge
+	-- and its hard shadow under its box) and over the centre, which steps down for them where it must
+	DOT_W = 16,
+	DOT_H = 3,
+	DOT_GAP = 4,
+	TAB_DRAWN = SignKit.Sizes.Edge + Theme.Finish.Card,
 	-- pet viewports are attached under a per-frame TIME budget: the first of a frame always, more only while the
 	-- frame has spent < TILE_BUDGET s and at most TILES_MAX (a first-time High sculpt of ~350 parts costs tens of
 	-- ms, a cached clone a few: a fixed count hitched on fresh clients)
@@ -936,6 +958,128 @@ local function fitHeader()
 	track.Size = UDim2.new(1, -(16 + boxW + 12 + 14), 0, 30)
 end
 
+-- (Pitch 2 item 12_index_badge B) a tab's bar row: the blocks and, in the count's place, the count, the waiting
+-- reward's gold token chip or the claimed check. The chip and the check stand under the name row (S.TabH the tab's
+-- height); the column's blocks give the chip its room, the strip's narrow tab drops them for it (the mock)
+local function H_placeRow(tile)
+	if not (tile and tile.Reward and tile.Claimed) then
+		return
+	end
+	local tall = S.Tall == true
+	local tabH = S.TabH or K.GROUP_TILE_H
+	-- the name's drawn text ends 2 px over its box's foot (its box is 4 px taller than the text, from y 2)
+	local nameBottom = 2 + 2 + (tall and 20 or 24)
+	local h = math.max(16, math.min(24, tabH - 6 - nameBottom - 1))
+	local size = math.max(16, math.min(19, h - 4))
+	tile.Reward.TextSize = size
+	local okM, m = pcall(function()
+		return K.MEASURE and K.MEASURE(tile.Reward.Text, size, tile.Reward.Font) or Theme.MeasureLabel(tile.Reward, tile.Reward.Text, size).X
+	end)
+	local w = math.ceil(okM and tonumber(m) or (#tile.Reward.Text * size * 0.6)) + 18 + 4 + 14 -- the text, the token, its gap, the sides
+	tile.Reward.Size = UDim2.fromOffset(w, h)
+	tile.Reward.AnchorPoint = tall and Vector2.new(0, 1) or Vector2.new(1, 1)
+	tile.Reward.Position = tall and UDim2.new(0, K.TAB_NAME_X, 1, -6) or UDim2.new(1, -8, 1, -6)
+	tile.Claimed.Size = UDim2.fromOffset(h, h)
+	local mark = tile.ClaimedMark
+	if mark then
+		mark.Position = UDim2.fromOffset(math.floor((h - 18) / 2), math.max(0, math.floor((h - 3 - 18) / 2)))
+	end
+	local track = tile.Blocks
+	if track then
+		local state = tile.State or "Count"
+		track.Visible = not (tall and state == "Reward")
+		local off = (state == "Reward" and (w + 28)) or (state == "Claimed" and (h + 28)) or 80
+		track.Size = UDim2.new(1, -off, 0, 12)
+	end
+end
+
+-- (12_index_badge B) the strip's page dots (a dot per strip-full of tabs, the one in view dark) and the snap: a swipe
+-- that stops between two tabs settles on whole tabs (the strip's edge never cuts one at rest)
+local function H_tabCount()
+	local n = 0
+	for _ in pairs(S.GroupTiles) do
+		n = n + 1
+	end
+	return n + (S.FusionTile and 1 or 0)
+end
+
+local function H_paintDots()
+	local dots = U.PageDots
+	if not (dots and S.Tall and S.StripN and S.StripTabW) then
+		return
+	end
+	local pitch = S.StripTabW + K.STRIP_GAP
+	local idx = math.floor((U.GroupList.CanvasPosition.X) / pitch + 0.5)
+	local pages = dots:GetAttribute("Pages") or 0
+	local now = math.min(pages, math.floor(idx / S.StripN + 0.5) + 1)
+	local last = math.max(0, H_tabCount() - S.StripN)
+	if idx >= last and pages > 0 then
+		now = pages
+	end
+	for i = 1, pages do
+		local d = dots:FindFirstChild("Dot" .. i)
+		if d then
+			-- (look review r0) a dot not in view in the lit wood, so it reads on the stone (WellEdge was 2.1:1 there)
+			d.BackgroundColor3 = (i == now) and INK or SIGN.WoodLight
+		end
+	end
+	dots:SetAttribute("Page", now)
+end
+
+-- (look review r0) the dots' top in the strip: under the tabs' box (the strip less its foot), their edge and hard shadow,
+-- and DOT_GAP of clear stone
+local function H_dotsTop()
+	return (K.STRIP_H - (S.StripFoot or 12)) + K.TAB_DRAWN + K.DOT_GAP
+end
+
+local function H_layoutDots(viewW)
+	local dots = U.PageDots
+	if not dots then
+		return
+	end
+	dots.Visible = S.Tall == true
+	if not S.Tall then
+		return
+	end
+	local n = math.max(1, S.StripN or 1)
+	local pages = math.max(1, math.ceil(H_tabCount() / n))
+	-- (look review r0) under the tabs' drawn foot (their box, edge and hard shadow) by DOT_GAP, on clear stone
+	local dw, gap, dh = K.DOT_W, 6, K.DOT_H
+	for i = 1, math.max(pages, dots:GetAttribute("Pages") or 0) do
+		local d = dots:FindFirstChild("Dot" .. i)
+		if i <= pages then
+			if not d then
+				d = makeFrame(dots, "Dot" .. i, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.WoodLight, ZIndex = dots.ZIndex })
+			end
+			d.Position = UDim2.fromOffset((i - 1) * (dw + gap), 0)
+			d.Size = UDim2.fromOffset(dw, dh)
+		elseif d then
+			d:Destroy()
+		end
+	end
+	dots:SetAttribute("Pages", pages)
+	local total = pages * dw + (pages - 1) * gap
+	dots.Size = UDim2.fromOffset(total, dh)
+	dots.AnchorPoint = Vector2.new(0.5, 0)
+	dots.Position = UDim2.new(0, math.floor(K.STRIP_PAD_L + (viewW - K.STRIP_PAD_L) / 2), 0, H_dotsTop())
+	H_paintDots()
+end
+
+local function H_snapStrip()
+	local list = U.GroupList
+	if not (list and S.Tall and S.StripTabW) then
+		return
+	end
+	local pitch = S.StripTabW + K.STRIP_GAP
+	local x = list.CanvasPosition.X
+	local last = math.max(0, H_tabCount() - (S.StripN or 1))
+	local idx = math.max(0, math.min(last, math.floor(x / pitch + 0.5)))
+	local want = idx * pitch
+	if math.abs(want - x) > 0.5 then
+		list.CanvasPosition = Vector2.new(want, list.CanvasPosition.Y)
+	end
+end
+
 local function relayout()
 	if not S.Built then
 		return
@@ -983,7 +1127,9 @@ local function relayout()
 		U.GroupPad.PaddingBottom = UDim.new(0, stripFoot)
 		U.GroupPad.PaddingLeft = UDim.new(0, K.STRIP_PAD_L)
 		U.GroupPad.PaddingRight = UDim.new(0, 0)
-		local centreTop = strip + 8
+		-- (look review r0) the centre keeps DOT_GAP of stone under the page dots (on touch the 56 px tabs leave them no
+		-- room in the strip's 8 px foot)
+		local centreTop = math.max(strip + 8, H_dotsTop() + K.DOT_H + K.DOT_GAP)
 		-- Phase 5: a docked sheet is shorter; the grid gets 2/3 of it, and a landscape-phone window (< 600 design px
 		-- tall) shows the grid only (the tiles carry name, rarity and element)
 		local frac = (h < 600) and 0 or 0.34
@@ -1066,21 +1212,21 @@ local function relayout()
 		S.RewardLabelOk = not narrow
 		S.RewardTextW = nil
 	end
-	if U.ElementsCard then
-		U.ElementsCard.Size = UDim2.new(1, 0, 1, -(rewardH + 8))
-	end
 	U.View.Size = UDim2.new(1, 0, 0, (short or tall) and K.VIEW_H_SHORT or K.VIEW_H)
 	local tileH = short and K.GROUP_TILE_H_SHORT or K.GROUP_TILE_H
 	-- (kit-b U8) the strip shows a whole number of tabs: as many as fit at STRIP_TILE_MIN_W share the strip's width, so
 	-- the strip's edge (and the Elements button beside it) never cuts one at rest (the owner's phone render: "UNCOMMON"
 	-- half under the Elements button)
 	local stripTabW = K.STRIP_TILE_W
+	local stripViewW = 0
 	if tall then
 		local viewW = (w - K.PANEL_INSET_W - 20) - (U.ElementsButton and (K.ELEMENTS_STRIP_W + 8) or 0)
 		local room = viewW - K.STRIP_PAD_L
 		local n = math.max(1, math.floor((room + K.STRIP_GAP) / (K.STRIP_TILE_MIN_W + K.STRIP_GAP)))
 		stripTabW = math.floor((room - (n - 1) * K.STRIP_GAP) / n)
+		S.StripN, S.StripTabW, stripViewW = n, stripTabW, viewW -- (12_index_badge B) the snap and the page dots
 	end
+	S.TabH = tall and (K.STRIP_H - (S.StripFoot or 12)) or tileH
 	local tileSize = tall and UDim2.new(0, stripTabW, 1, 0) or UDim2.new(1, -10, 0, tileH)
 	-- the names sit at a fixed size (never TextScaled: it shrank "Uncommon" in the strip): 20 px in the strip, 24 px in
 	-- the column, stepped down to NAME_MIN for a name that does not fit its row (U8 review: "Uncommon" and "Legendary" ran
@@ -1107,25 +1253,34 @@ local function relayout()
 	for _, tile in pairs(S.GroupTiles) do
 		tile.Button.Size = tileSize
 		placeName(tile.Name)
+		H_placeRow(tile)
 	end
 	if S.FusionTile then
 		S.FusionTile.Button.Size = tileSize
 		placeName(S.FusionTile.Name)
 	end
+	H_layoutDots(stripViewW)
 	if U.ElementsButton then
 		if tall then
+			-- (12_index_badge B) the strip's end: fixed there, so the chart's entry point never scrolls away
+			U.ElementsButton.Parent = U.Groups
+			U.ElementsButton.ZIndex = 1
 			U.ElementsButton.AnchorPoint = Vector2.new(1, 0)
 			U.ElementsButton.Position = UDim2.new(1, 0, 0, 0)
 			U.ElementsButton.Size = UDim2.new(0, K.ELEMENTS_STRIP_W, 1, -(S.StripFoot or 12))
 		else
-			local buttonH = short and K.ELEMENTS_BTN_H_SHORT or K.ELEMENTS_BTN_H
+			-- (Pitch 2 item 12_index_badge B) the column layout: the plank in the Index's header by the X (the column's foot
+			-- goes to the tabs). The X sits K.HEAD_CLOSE_R px from the right on the header's middle (CloudUI's Signboard)
+			local buttonH = K.HEAD_PLANK_H
 			if UserInputService.TouchEnabled then
-				buttonH = math.max(buttonH, K.TOUCH_H) -- (F0 review, major 7) a thumb's Elements
+				buttonH = math.max(buttonH, K.HEAD_PLANK_TOUCH_H)
 			end
-			U.ElementsButton.AnchorPoint = Vector2.new(0.5, 1)
-			U.ElementsButton.Position = UDim2.new(0.5, 0, 1, 0)
-			U.ElementsButton.Size = UDim2.new(1, -10, 0, buttonH)
-			U.GroupList.Size = UDim2.new(1, 0, 1, -(buttonH + 8))
+			U.ElementsButton.Parent = U.Panel.Root
+			U.ElementsButton.ZIndex = 8
+			U.ElementsButton.AnchorPoint = Vector2.new(1, 0.5)
+			U.ElementsButton.Position = UDim2.new(1, -K.HEAD_PLANK_R, 0, K.HEAD_PLANK_Y)
+			U.ElementsButton.Size = UDim2.fromOffset(K.HEAD_PLANK_W, buttonH)
+			U.GroupList.Size = UDim2.new(1, 0, 1, 0)
 		end
 		-- (Pitch 2 F0 A, look review major 5) the plank carries its swap icon, as the mock's: led here, once the plank has
 		-- its size and text (placed at build time it read the text before its size)
@@ -1146,7 +1301,11 @@ end
 ----------------------------------------------------------------------
 local function onBackAction(_name, inputState)
 	if inputState == Enum.UserInputState.Begin and S.Open then
-		IndexController.Close()
+		if U.ElementsWin and U.ElementsWin.IsOpen() then
+			U.ElementsWin.Close() -- (12_elements) back to the Index first
+		else
+			IndexController.Close()
+		end
 		return Enum.ContextActionResult.Sink
 	end
 	return Enum.ContextActionResult.Pass
@@ -1227,21 +1386,36 @@ local function buildGroupTile(group, index)
 		FillLip = Theme.Darken(accent, 0.25),
 		ZIndex = 2,
 	})
-	-- top-right corner: a check when claimed, a red "!" when the reward waits
-	tile.Badge = makeFrame(button, "Badge", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -8, 0, 8),
-		Size = UDim2.fromOffset(28, 28),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Red,
+	-- (Pitch 2 item 12_index_badge, the owner's pick B "Reward on the row") no badge on the title row (it poked over the
+	-- tab and the list clipped it): a waiting reward is a gold token chip "+800" in the count's place (gold: it is tokens),
+	-- a claimed group a grass check there. relayout sizes and places both; refreshGroupTiles shows one or the other
+	tile.Reward = makeText(button, "Reward", "", "Heading", 18, INK, {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -8, 1, -6),
+		Size = UDim2.fromOffset(84, 24),
 		Visible = false,
-		ZIndex = 4,
+		ZIndex = 3,
 	})
-	edge(tile.Badge, SIGN.Wood, 2)
-	tile.BadgeText = makeText(tile.Badge, "Mark", "!", "Button", 19, INK, {
-		Size = UDim2.new(1, 0, 1, 0),
-		ZIndex = 5,
+	CloudUI.SignBlock(tile.Reward, "Selected", { Face = GOLD, LipColor = SIGN.GoldLip, EdgePx = 2, LipPx = 3 })
+	PixelIcon.Lead(tile.Reward, "token", { Px = 18 })
+	tile.Claimed = makeFrame(button, "Claimed", {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -8, 1, -6),
+		Size = UDim2.fromOffset(24, 24),
+		Visible = false,
+		ZIndex = 3,
 	})
+	CloudUI.SignBlock(tile.Claimed, "Stone", { Face = SIGN.Grass, LipColor = SIGN.GrassLip, EdgePx = 2, LipPx = 3, Pad = false })
+	tile.ClaimedMark = PixelIcon.New(tile.Claimed, ICON.Check, 18, INK)
+	if tile.ClaimedMark then
+		tile.ClaimedMark.Position = UDim2.fromOffset(3, 1)
+		tile.ClaimedMark.ZIndex = 4
+		for _, c in ipairs(tile.ClaimedMark:GetChildren()) do
+			if c:IsA("GuiObject") then
+				c.ZIndex = 4
+			end
+		end
+	end
 	tile.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = button })
 	button.MouseEnter:Connect(function()
 		tween(tile.Pop, 0.12, { Scale = 1.03 })
@@ -1321,18 +1495,16 @@ local function refreshGroupTiles()
 			H_fillBlocks(tile.Blocks, found, total)
 			local selected = S.GroupId == group.Id
 			H_paintTab(tile, selected)
-			if claimable then
-				tile.Badge.Visible = true
-				tile.Badge.BackgroundColor3 = SIGN.Red
-				PixelIcon.Set(tile.BadgeText, nil)
-				tile.BadgeText.Text = "!"
-			elseif claimed then
-				tile.Badge.Visible = true
-				tile.Badge.BackgroundColor3 = SIGN.Grass
-				tile.BadgeText.Text = ""
-				PixelIcon.Set(tile.BadgeText, ICON.Check) -- (kit-b U7b)
-			else
-				tile.Badge.Visible = false
+			-- (12_index_badge B) the count, the waiting reward's chip or the claimed check: one of them on the bar row
+			local state = claimable and "Reward" or (claimed and "Claimed" or "Count")
+			tile.Reward.Text = "+" .. Theme.Short(rewardTokens(group))
+			tile.Reward.Visible = state == "Reward"
+			tile.Claimed.Visible = state == "Claimed"
+			tile.Progress.Visible = state == "Count"
+			tile.Button:SetAttribute("RowState", state)
+			if tile.State ~= state or tile.RewardText ~= tile.Reward.Text then
+				tile.State, tile.RewardText = state, tile.Reward.Text
+				H_placeRow(tile)
 			end
 			tile.Progress.TextColor3 = complete and INK or MUTED
 		end
@@ -2095,152 +2267,54 @@ local function requestClaim()
 end
 
 ----------------------------------------------------------------------
--- Elements help card (the element wheel, section 11)
+-- Elements: its own centred window over the Index (Pitch 2 item 12_elements, the owner's pick A "Wheel":
+-- client/UI/ElementsWindow, Window_Elements in this ScreenGui). Before it, a scrolling card inside the centre column
+-- showed 3 of the 8 elements with 18 px arrows and had no title bar and no X. Its X and Esc return to the Index
 ----------------------------------------------------------------------
-local function elementCycle()
-	local elements = Config.Elements
-	if type(elements) ~= "table" or type(elements.Order) ~= "table" or type(elements.Strong) ~= "table" then
-		return {}, {}
-	end
-	local cycle, inCycle = {}, {}
-	local current = elements.Order[1]
-	while current and not inCycle[current] and #cycle < #elements.Order do
-		inCycle[current] = true
-		table.insert(cycle, current)
-		local nextList = elements.Strong[current]
-		current = type(nextList) == "table" and nextList[1] or nil
-	end
-	if current ~= cycle[1] then
-		-- not a closed wheel: show everything as plain pairs instead
-		cycle, inCycle = {}, {}
-	end
-	local rest = {}
-	for _, e in ipairs(elements.Order) do
-		if not inCycle[e] then
-			table.insert(rest, e)
-		end
-	end
-	return cycle, rest
-end
-
-local function buildElementsCard()
-	local card = makeFrame(U.Centre, "ElementsCard", {
-		Size = UDim2.new(1, 0, 1, -(K.REWARD_H + 8)),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Stone,
-		Visible = false,
-		ZIndex = 20,
-	})
-	edge(card, SIGN.Wood, 3) -- (kit-b U8) a stone card in its wood edge
-	U.ElementsCard = card
-	local scroll = scroller(card, "Scroll", {
-		Position = UDim2.fromOffset(6, 6),
-		Size = UDim2.new(1, -12, 1, -12),
-		ZIndex = 21,
-	})
-	pad(scroll, 10, 8, 14, 10)
-	listLayout(scroll, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center)
-	Theme.StyleTitle(makeText(scroll, "Title", "Elements", "Title", 30, INK, {
-		Size = UDim2.new(1, 0, 0, 36),
-		LayoutOrder = 1,
-		ZIndex = 22,
-	}), "Section")
-	makeText(scroll, "Explain", "Every pet has an element. In battles an element deals x1.5 damage to the one its arrow points at, and only x0.75 back.", "Body", 19, MUTED, {
-		Size = UDim2.new(1, -10, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		TextWrapped = true,
-		LayoutOrder = 2,
-		ZIndex = 22,
-	})
-	local cycle, rest = elementCycle()
-	if #cycle >= 3 then
-		local wheel = makeFrame(scroll, "Wheel", {
-			Size = UDim2.new(1, 0, 0, 330),
-			LayoutOrder = 3,
-			ZIndex = 22,
-		})
-		Util.Create("UISizeConstraint", { MaxSize = Vector2.new(400, 330), Parent = wheel })
-		local n = #cycle
-		for i, element in ipairs(cycle) do
-			local angle = math.rad(-90 + (i - 1) * 360 / n)
-			local holder = makeFrame(wheel, "Slot_" .. element, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5 + math.cos(angle) * 0.35, 0, 0.5 + math.sin(angle) * 0.38, 0),
-				Size = UDim2.fromOffset(100, 34),
-				ZIndex = 22,
-			})
-			listLayout(holder, Enum.FillDirection.Horizontal, 0, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			elementPill(holder, element, 18, 1)
-			-- arrow half way to the next element, pointing clockwise (screen y grows downwards)
-			local mid = angle + math.rad(180 / n)
-			local arrow = makeText(wheel, "Arrow" .. i, "", "Title", 24, SIGN.Wood, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5 + math.cos(mid) * 0.41, 0, 0.5 + math.sin(mid) * 0.43, 0),
-				Size = UDim2.fromOffset(28, 28),
-				Rotation = math.deg(mid) + 90,
-				ZIndex = 23,
-			})
-			PixelIcon.Host(arrow, ICON.Arrow, 18) -- (kit-b U7b) the label's rotation turns it with the wheel
-		end
-		makeText(wheel, "Centre", "beats", "Script", 20, MUTED, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.5, 0),
-			Size = UDim2.fromOffset(120, 30),
-			ZIndex = 22,
-		})
-	end
-	-- the rest as mutual pairs (Celestial <-> Shadow)
-	local strongMap = Config.Elements and Config.Elements.Strong or {}
-	local done = {}
-	local order = 4
-	for _, element in ipairs(rest) do
-		if not done[element] then
-			done[element] = true
-			local partner = type(strongMap[element]) == "table" and strongMap[element][1] or nil
-			local row = makeFrame(scroll, "Pair_" .. element, {
-				Size = UDim2.new(1, 0, 0, 36),
-				LayoutOrder = order,
-				ZIndex = 22,
-			})
-			order = order + 1
-			listLayout(row, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			elementPill(row, element, 18, 1)
-			if partner and partner ~= element then
-				done[partner] = true
-				PixelIcon.Host(makeText(row, "Both", "", "Title", 24, SIGN.Wood, { Size = UDim2.fromOffset(34, 32), LayoutOrder = 2, ZIndex = 22 }), ICON.Swap, 18) -- (kit-b U7b)
-				elementPill(row, partner, 18, 3)
-			end
-		end
-	end
-	local back = CloudUI.Button({
-		Name = "CloseElements",
-		Text = "Back to pets",
-		Style = "Gray",
-		Skin = "Sign",
-		Size = UDim2.fromOffset(220, 52),
-		TextSize = 22,
-		LayoutOrder = 50,
-		ZIndex = 22,
-		Callback = function()
-			showElements(false)
-		end,
-		Parent = scroll,
-	})
-	back.ZIndex = 22
-end
-
 function showElements(on)
-	if not U.ElementsCard then
+	if not U.ElementsWin then
 		if not on then
 			return
 		end
-		buildElementsCard()
+		local ok, EW = pcall(require, Client:WaitForChild("UI"):WaitForChild("ElementsWindow"))
+		if not (ok and type(EW) == "table") then
+			warnOnce("elements window", EW)
+			return
+		end
+		U.ElementsWin = EW.New(U.Gui, {
+			-- (look review r0: at 844x390 slivers of the menu tiles showed at the chart's left edge) the tiles step aside
+			-- while the chart reaches over them, as for the Gifts and Shop windows (MenuController, required here at open
+			-- time: no require cycle)
+			OnPlace = function(left)
+				local module = script.Parent:FindFirstChild("MenuController")
+				local ok, menu = pcall(require, module)
+				if ok and type(menu) == "table" and type(menu.SetColumnCovered) == "function" then
+					safe("cover", menu.SetColumnCovered, left, "Elements")
+				end
+			end,
+			OnClose = function()
+				S.ElementsShown = false
+				-- (the mock: the chart stands alone) the Index steps back in when it closes, if it is still open
+				if U.Holder and S.Open then
+					U.Holder.Visible = true
+				end
+			end,
+		})
 	end
 	S.ElementsShown = on and true or false
-	U.ElementsCard.Visible = S.ElementsShown
-	if U.ElementsButton then
-		U.ElementsButton.Text = S.ElementsShown and "Pets" or "Elements"
+	if S.ElementsShown then
+		U.ElementsWin.Open()
+		if U.Holder then
+			U.Holder.Visible = false -- (the mock: the chart alone on the screen, not over a second awning)
+		end
+	else
+		U.ElementsWin.Close()
 	end
+end
+
+-- (12_elements) the Elements window is open over the Index (Esc and the back button close it first)
+local function elementsUp()
+	return U.ElementsWin ~= nil and U.ElementsWin.IsOpen()
 end
 
 ----------------------------------------------------------------------
@@ -2594,6 +2668,22 @@ local function buildWindow()
 		buildGroupTile(group, index)
 	end
 	buildFusionTile(#S.Groups + 1)
+	-- (12_index_badge B) the strip's page dots under its tabs, and the snap to whole tabs after a swipe
+	U.PageDots = makeFrame(U.Groups, "PageDots", { Visible = false, ZIndex = 3 })
+	S.SnapToken = 0
+	U.GroupList:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+		if not S.Tall then
+			return
+		end
+		H_paintDots()
+		S.SnapToken = S.SnapToken + 1
+		local mine = S.SnapToken
+		task.delay(K.SNAP_DELAY, function()
+			if S.SnapToken == mine then
+				safe("snap", H_snapStrip)
+			end
+		end)
+	end)
 	if hasElements then
 		U.ElementsButton = CloudUI.Button({
 			Name = "Elements",
@@ -2730,6 +2820,12 @@ function IndexController.Open(groupId)
 		return
 	end
 	local target = nil
+	-- (12_elements) Open("Elements"): the Index, then the Elements window over it (OpenPanel("Index", { GroupId =
+	-- "Elements" }), the renderer's menu:Index:Elements)
+	local wantElements = type(groupId) == "string" and groupId:lower() == "elements"
+	if wantElements then
+		groupId = nil
+	end
 	if type(groupId) == "string" then
 		if S.GroupById[groupId] then
 			target = groupId
@@ -2773,6 +2869,9 @@ function IndexController.Open(groupId)
 	if not wasOpen then
 		IndexController.Opened:Fire(target)
 	end
+	if wantElements and type(Config.Elements) == "table" then
+		safe("elements", showElements, true)
+	end
 end
 
 function IndexController.Close()
@@ -2782,6 +2881,9 @@ function IndexController.Close()
 	S.Open = false
 	S.Token = S.Token + 1
 	local mine = S.Token
+	if elementsUp() then
+		showElements(false) -- (12_elements) the chart goes with the Index
+	end
 	syncBackBinding()
 	syncTouch()
 	syncHud()
@@ -2846,7 +2948,11 @@ function IndexController.Init()
 	end
 	UserInputService.InputBegan:Connect(function(input)
 		if input.KeyCode == Enum.KeyCode.Escape and S.Open then
-			IndexController.Close()
+			if elementsUp() then
+				showElements(false) -- (12_elements) Esc closes the Elements window and leaves the Index open
+			else
+				IndexController.Close()
+			end
 		end
 	end)
 	task.spawn(getClaimRemote)

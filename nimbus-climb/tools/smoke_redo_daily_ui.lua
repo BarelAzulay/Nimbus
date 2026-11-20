@@ -259,9 +259,15 @@ local function clientScenarios()
 		if not T.check(win ~= nil and r ~= nil, label .. ": the window and its BigRect box") then
 			return
 		end
+		-- (Pitch 2 item 09_daily_layout B, the prize stand: on PC the Daily page's window is only as tall as the page needs,
+		-- Header + MaxBody design px, centred in its box; the box's 644 px body left ~160 px of empty stone at 1080p)
+		if r.mode == "PC" and DC.K.PC.MaxBody then
+			local h = math.min(r.h, (DC.K.PC.Header + DC.K.PC.MaxBody) * r.scale)
+			r = { x = r.x, y = math.floor(r.y + (r.h - h) / 2 + 0.5), w = r.w, h = h }
+		end
 		local x, y, w, h = H.box(win)
 		T.check(H.near(x, r.x) and H.near(y + 58, r.y) and H.near(w, r.w) and H.near(h, r.h),
-			label .. ": the window fills its BigRect box (centred under the top bar)", fmt("%s vs %d,%d %dx%d", RedoGeom.desc(win), r.x, r.y, r.w, r.h))
+			label .. ": the window fills its BigRect box (centred under the top bar; on PC as tall as the Daily page)", fmt("%s vs %d,%d %dx%d", RedoGeom.desc(win), r.x, r.y, r.w, r.h))
 		T.check(H.near(x + w / 2, Mock.Viewport.X / 2), label .. ": ...centred across the screen", RedoGeom.desc(win))
 	end
 
@@ -309,11 +315,14 @@ local function clientScenarios()
 							fmt("Today %s, face %s, edge %s", tostring(c3:GetAttribute("Today")), tostring(c3.BackgroundColor3), tostring(stroke and stroke.Color)))
 						T.eq(H.text(H.find("Day", c3)), "TODAY", label .. ": today's tile reads TODAY")
 						T.eq(H.text(H.find("Day", c1)), "Day 1", label .. ": the others read their day")
-						local x1, _, w1 = H.box(c1)
-						local x2 = c2.AbsolutePosition.X
-						local gap = x2 - (x1 + w1)
-						T.check(gap > 0 and H.near(c7.AbsoluteSize.X, 2 * w1 + gap), label .. ": Day 7 is twice a tile plus the gap",
-							fmt("tile %d, gap %d, day 7 %d", w1, gap, c7.AbsoluteSize.X))
+						-- (Pitch 2 item 09_daily_layout B, the prize stand: Day 7 is no longer the double tile at the row's end but
+						-- the prize card right of Day 6, wider than a tile and taller than the row, ending with the Claim)
+						local c6 = H.cell(6)
+						local claimB = H.find("ClaimButton")
+						local _, y7, w7, h7 = H.box(c7)
+						T.check(c6 ~= nil and claimB ~= nil and c7.AbsolutePosition.X >= c6.AbsolutePosition.X + c6.AbsoluteSize.X and w7 > c1.AbsoluteSize.X
+							and h7 > c1.AbsoluteSize.Y and H.near(y7 + h7, claimB.AbsolutePosition.Y + claimB.AbsoluteSize.Y),
+							label .. ": Day 7 is the prize card right of Day 6, down to the Claim's foot", RedoGeom.desc(c7))
 						T.check(H.find("PetViewport", c7) ~= nil and H.text(H.find("Amount", c7)):find("Wisp", 1, true) ~= nil, label .. ": Day 7 shows the Week Wisp", H.text(H.find("Amount", c7)))
 						T.check(H.shown(H.find("Check", c1)) and H.shown(H.find("Dim", c1)) and H.shown(H.find("Check", c2)) and not H.shown(H.find("Check", c3)),
 							label .. ": claimed tiles are dimmed with their tick")
@@ -321,15 +330,17 @@ local function clientScenarios()
 						T.check(H.text(H.find("Amount", c3)):find("1.45K", 1, true) ~= nil, label .. ": today's amount (Theme.Short)", H.text(H.find("Amount", c3)))
 					end
 					-- the Week Wisp line and bar
-					T.eq(H.text(H.find("WispText")), "Week Wisp in 4 more days", label .. ": the Wisp line")
+					-- (Pitch 2 09 B: the line sits in the prize card under its "Week Wisp" plank, so it no longer repeats the name)
+					T.eq(H.text(H.find("WispText")), "in 4 more days", label .. ": the Wisp line")
 					T.eq(H.segs(), "Claimed,Claimed,Today,Open,Open,Open,Open", label .. ": the seven-segment bar")
 					-- CLAIM!
 					local claim = H.find("ClaimButton")
 					T.check(H.shown(claim) and claim.Text == "Claim!" and not H.disabled(claim) and not H.shown(H.find("Line1", claim)), label .. ": Claim! active (kit-b U9-4: sentence case)",
 						claim and (claim.Text .. " disabled " .. tostring(H.disabled(claim))) or "no button")
-					local want = sz[4] == "PC" and { 360, 88 } or { 230, 64 }
+					local want = sz[4] == "PC" and { 400, 96 } or { 230, 64 } -- (Pitch 2 09 B, the mock: 400 x 96 on PC, was 360 x 88)
 					T.check(claim ~= nil and H.near(claim.AbsoluteSize.X, want[1]) and H.near(claim.AbsoluteSize.Y, want[2]), label .. fmt(": CLAIM! is %dx%d", want[1], want[2]), RedoGeom.desc(claim))
-					T.check(H.shown(H.find("Keep")) and H.text(H.find("Keep")) == "Come back tomorrow to keep your streak!", label .. ": the keep line under it")
+					-- (Pitch 2 09 B: beside the due Claim the line says to claim today's gift; "Come back tomorrow" is the wait's)
+					T.check(H.shown(H.find("Keep")) and H.text(H.find("Keep")) == "Claim today's gift to keep your streak!", label .. ": the keep line by it", H.text(H.find("Keep")))
 					local mark = #Mock.RemoteLog
 					H.click(claim)
 					local sent = H.sent(mark)
@@ -352,12 +363,12 @@ local function clientScenarios()
 						d7.Days[i].Claimed, d7.Days[i].Today = i < 7, i == 7
 					end
 					H.fire(d7)
-					T.eq(H.text(H.find("WispText")), "Week Wisp today!", label .. ": Day 7 today")
+					T.eq(H.text(H.find("WispText")), "Yours today!", label .. ": Day 7 today")
 					T.eq(H.segs(), "Claimed,Claimed,Claimed,Claimed,Claimed,Claimed,Today", label .. ": ...the bar")
 					local d6 = H.base(now)
 					d6.Cell = 6
 					H.fire(d6)
-					T.eq(H.text(H.find("WispText")), "Week Wisp in 1 more day", label .. ": one day left")
+					T.eq(H.text(H.find("WispText")), "in 1 more day", label .. ": one day left")
 				end)
 			end)
 		end
@@ -611,16 +622,19 @@ local function clientScenarios()
 						c[i] = H.cell(i)
 					end
 					if T.check(c[1] and c[4] and c[5] and c[7], label .. ": the tiles exist") then
-						-- (Cell3 is today, raised: compare the bottoms of row 1)
+						-- (Cell3 is today, raised: compare the bottoms of row 1). (Pitch 2 item 09_daily_layout B, the prize stand:
+						-- the days are a 3 x 2 grid, Day 4 starting row 2, under Day 7's prize card, which spans the grid's width;
+						-- it was four tiles a row with Day 7 the double tile at the end of row 2)
 						local function bottom(o)
 							return o.AbsolutePosition.Y + o.AbsoluteSize.Y
 						end
-						T.check(H.near(bottom(c[1]), bottom(c[4])) and H.near(bottom(c[1]), bottom(c[3])) and c[5].AbsolutePosition.Y > bottom(c[1]) - 1
-							and H.near(c[5].AbsolutePosition.X, c[1].AbsolutePosition.X), label .. ": four tiles per row, Day 5 starts row 2",
-							RedoGeom.desc(c[1]) .. " / " .. RedoGeom.desc(c[4]) .. " / " .. RedoGeom.desc(c[5]))
-						local gap = c[2].AbsolutePosition.X - (c[1].AbsolutePosition.X + c[1].AbsoluteSize.X)
-						T.check(H.near(c[7].AbsoluteSize.X, 2 * c[1].AbsoluteSize.X + gap) and H.near(c[7].AbsolutePosition.X + c[7].AbsoluteSize.X, c[4].AbsolutePosition.X + c[4].AbsoluteSize.X),
-							label .. ": Day 7 is the double tile at the end of row 2", RedoGeom.desc(c[7]))
+						T.check(H.near(bottom(c[1]), bottom(c[3])) and H.near(bottom(c[1]), bottom(c[2])) and c[4].AbsolutePosition.Y > bottom(c[1]) - 1
+							and H.near(c[4].AbsolutePosition.X, c[1].AbsolutePosition.X) and H.near(bottom(c[4]), bottom(c[6])), label .. ": three tiles per row, Day 4 starts row 2",
+							RedoGeom.desc(c[1]) .. " / " .. RedoGeom.desc(c[3]) .. " / " .. RedoGeom.desc(c[4]))
+						local c6 = H.cell(6)
+						T.check(c6 ~= nil and bottom(c[7]) <= c[1].AbsolutePosition.Y - 1 and H.near(c[7].AbsolutePosition.X, c[1].AbsolutePosition.X)
+							and H.near(c[7].AbsolutePosition.X + c[7].AbsoluteSize.X, c6.AbsolutePosition.X + c6.AbsoluteSize.X),
+							label .. ": Day 7 is the prize card over the grid, the grid's width", RedoGeom.desc(c[7]))
 					end
 				end)
 			end)

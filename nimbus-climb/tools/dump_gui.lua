@@ -1217,6 +1217,23 @@ scenario("menu", function(window, tab, action, key)
 	if lower == "shop" or lower == "store" then
 		fail("menu:Shop is gone (lobby-shop Task 22: the Shop left the menu): use shop[:<tab>] or shop:restricted")
 	end
+	if lower == "index" and action == "rewards" then
+		-- (Pitch 2 item 12_index_badge B) menu:Index:<Tab>:rewards: a waiting reward and a claimed group on the tabs (the
+		-- Common group complete, the Uncommon group complete and claimed)
+		local snap = snapshot()
+		local PetCatalog = req("shared/PetCatalog", true)
+		for _, g in ipairs(PetCatalog and PetCatalog.IndexGroups() or {}) do
+			if g.Id == "Common" or g.Id == "Uncommon" then
+				for _, def in ipairs(g.Pets) do
+					snap.Discovered[def.Id] = true
+				end
+			end
+		end
+		snap.IndexClaimed = { Uncommon = true }
+		toClient("ProfileSync", snap)
+		advance(0.5)
+		action = nil
+	end
 	local args = nil
 	if (tab and tab ~= "") or (action and action ~= "") or (key and key ~= "") then
 		args = {}
@@ -1248,12 +1265,22 @@ scenario("menu", function(window, tab, action, key)
 	advance(2.5)
 end)
 
--- tutorial[:<step>[:open]]: open (kit B U9-9) taps the portrait when the screen folded the card into the bubble (a
--- phone), so the card the player opens is drawn too
+-- tutorial[:<step>[:open|fold]]: open (kit B U9-9) taps the portrait when the screen folded the card into the bubble (a
+-- phone), so the card the player opens is drawn too; fold (Pitch 2 03_tutorial_dock B) presses the card's fold block
+-- where the card is open (PC), so the folded quest strip is drawn at every size
 scenario("tutorial", function(step, mode)
 	toClient("TutorialState", tutorialPayload(tonumber(step) or 1))
 	advance(5)
-	if mode == "open" then
+	if mode == "fold" then
+		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local gui = pg and pg:FindFirstChild("NimbusTutorial")
+		local main = gui and gui:FindFirstChild("Main", true)
+		local fold = gui and gui:FindFirstChild("Fold", true)
+		if main and main.Visible and fold then
+			Mock.Click(fold)
+			advance(1)
+		end
+	elseif mode == "open" then
 		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 		local gui = pg and pg:FindFirstChild("NimbusTutorial")
 		local main = gui and gui:FindFirstChild("Main", true)

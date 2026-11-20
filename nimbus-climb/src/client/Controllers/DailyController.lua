@@ -75,16 +75,19 @@
 --     tags (stone, VIP gold); Cells > Cell1..7 kit B blocks (NeonKit.Card Skin "Sign", the day's DAY_COLORS on its lip,
 --     CELL_LOOK: stone, today gold, claimed the sunk well; Day "Day n" or
 --     "TODAY" while today's gift is due, Art (glyph or the Week Wisp's PetViewport), Amount, Dim, Check: a big tick on a
---     claimed tile; attributes Claimed / Today / Pulsing). Day 7 is twice a tile plus the gap; today is raised 8 px (same
---     bottom), gold, its ink edge pulsing; a Repair payload's today tile reads "Repair" with the Repair glyph. WispText
---     "Week Wisp in N more days" (N = 7 - Cell; "in 1 more day"; Cell 7: "Week Wisp today!") over WispBar (Seg1..7,
---     attribute State = "Claimed" | "Today" | "Open": grass, gold, the well). ClaimButton (the page's one green plank, PC 360 x
---     88 centred, phone 230 x 64 at the right, portrait centred): "Claim!", or "Repair streak (no gift)" on the wider
+--     claimed tile; attributes Claimed / Today / Pulsing). (Pitch 2 item 09_daily_layout B, "Prize stand") Days 1-6 are
+--     one row; Day 7 is the prize card right of it (the Week Wisp on its Plinth, its name on the Amount wood plank, Species
+--     "Epic Owl . Storm", and the week's own countdown inside it); today is raised 8 px (same bottom; never the prize card),
+--     gold, its ink edge pulsing; a Repair payload's today tile reads "Repair" with the Repair glyph. WispText (in the
+--     card) "in N more days" (N = 7 - Cell; "in 1 more day"; Cell 7: "Yours today!") over WispBar (Seg1..7, attribute
+--     State = "Claimed" | "Today" | "Open": grass, gold, the well). ClaimButton (the page's one green plank under the day
+--     row: PC 400 x 96, phone 230 x 64; portrait the grid's width): "Claim!", or "Repair streak (no gift)" on the wider
 --     repair button; locked: the Off block, disabled,
 --     its Line1 / Line2 labels say why (ClaimView). Countdown takes its place while waiting ("Next gift in ...", "Getting
---     your gifts ready..."). Keep "Come back tomorrow to keep your streak!" under it (not while loading / stale).
---     WeekBanner "WEEK DONE! Week Wisp is yours!" (a gold block) takes the Wisp line's place for 4.5 s. Portrait: four tiles a row (Day 7
---     the double tile of row 2), the chips under the header, the claim and the keep line stacked.
+--     your gifts ready..."). Keep beside it ("Claim today's gift to keep your streak!" while the claim is due, "Come back
+--     tomorrow to keep your streak!" while waiting; not while loading / stale). WeekBanner "WEEK DONE! Week Wisp is yours!"
+--     (a gold block) covers the card's species and week lines for 4.5 s. Portrait: the prize card on top (the pet left),
+--     Days 1-6 a 3 x 2 grid under it, the Claim the grid's width and the keep line under it, the chips under the header.
 --   * PlayPage (card B, gui-redo Task 10, spec 5.4): PlayHeader "47 min played today . Resets in 5h" (phone / portrait "47
 --     min today . Resets in 5h"; the minutes are live: Play.Seconds + the time since ServerNow while Active), or in red ink
 --     "Paused: move around to keep counting!" while Play.Active == false (a touch-only device: "Paused: close this and
@@ -195,9 +198,9 @@ local K = {
 	FIT_SLACK = 2, -- px a text keeps free in its box (the outline)
 	WRAP_BELOW = 96, -- a gift box narrower inside than this gives its reward two lines
 	BOB = 5, -- px a ready box's gift bobs up
-	-- design px per layout. PC: card A at 1080p (body 1180 x 644) is the largest form; the vertical parts slide from Full
-	-- (a 644 body) to Compact (a 485 body, the shortest PC box) and the tiles take the rest. Phone: card A on a 844 x 390
-	-- phone (body 820 x 280). Portrait: one column, four tiles a row.
+	-- design px per layout. PC: the box at 1080p has a 1180 x 644 body; the Daily page's window keeps 485 of it (MaxBody,
+	-- Pitch 2 09 B) and the Play page's rows slide from PlayCompact (a 485 body, the shortest PC box) to PlayFull (644).
+	-- Phone: card A on a 844 x 390 phone (body 820 x 280). Portrait: one column, the days three a row.
 	-- (kit-b U9-4) the header as the Shop's: Icon = the gold square's icon px (the square is 4 px more: PC 42, SignKit's
 	-- IconSlot), TitleText /
 	-- TitleW the window's title ("Gifts", the ribbon) before the tabs; TabY / TabH the tab blocks inside the navy band, a
@@ -211,18 +214,28 @@ local K = {
 	-- strokes: TilesY - Raise - 3 >= ChipY + ChipH + 2 + 4 (PC Compact 82, the phone 50 with 26 px chips, the portrait 80);
 	-- the Play page's Claim all keeps 5 px of stone under the band (AllY 8 on a phone). A box's gift block is the Daily
 	-- chip (ChipPx: 72 / 48, its 2 px edge, GiftPx = ChipPx + 4) holding the gift at the art size
+	-- (Pitch 2 item 09_daily_layout, option B "Prize stand"; the owner's shot 09: the day row floated in the body's spare
+	-- height, ~75 px of nothing over the tiles and ~80 px under the Wisp bar, the Week Wisp ~50 px tall in its double tile)
+	-- the Daily page: Days 1-6 one row of TileGap-spaced tiles from Side, the Claim under the row (ClaimW x ClaimH, the
+	-- keep line beside it), Day 7 the prize card right of the row (HeroW, from HeroY down to the Claim's foot, ColGap
+	-- from the row): the Week Wisp on its plinth as big as the card allows (PetMax), its name on a wood plank, "Epic Owl ·
+	-- Storm", "in 4 more days" and its own 7-block bar. The streak / VIP chips end at the row's right end. The tiles take
+	-- the height the fixed parts leave (TilesY + AfterTiles + ClaimH + Bottom), so no band of empty stone is left; on PC
+	-- the window is only as tall as the page needs (MaxBody, the Play page's CompactBody: H.layout centres it in its
+	-- BigRect box). Card insides: HeroPad round them, CardGap between the rows, the plinth PlinthH tall and PlinthOut
+	-- wider than the pet each side, the plank PlankH tall and PlankSide in from the card's sides, the bar BarSide in
 	PC = {
 		Header = 76, HeadPad = 24, TabY = 12, TabH = 52, TabW = { 170, 200 }, TabGap = 10, TabText = 26, Close = 56, CloseY = 10,
 		Icon = 38, TitleText = 34, TitleW = 150, TitleGap = 22, TapH = 52,
 		Side = 28, HeaderY = 18, HeaderH = 44, HeaderText = 34, ChipY = 20, ChipH = 44, ChipText = 22, ChipPad = 18,
-		StreakW = 220, VipW = 150, ChipGap = 16, LongStreak = true,
-		TileSide = 22, TileGap = 16, TileW = 128, TileMaxH = 260, Raise = 8, PadTop = 12, PadBottom = 14, DayText = 22,
+		StreakW = 190, VipW = 120, ChipGap = 14, LongStreak = true,
+		TilesY = 82, TileGap = 14, TileW = 128, TileMaxH = 260, TileMinH = 120, Raise = 8, PadTop = 12, PadBottom = 14, DayText = 22,
 		AmountText = 30, ChipPx = 72, PetPx = 150,
-		WispW = 700, WispText = 24, BannerW = 900, BannerText = 28, SegGap = 6, ClaimW = 360, RepairW = 440, ClaimText = 40,
-		RepairText = 32, Line1 = 24, Line2 = 22, CountText = 28, KeepW = 800, KeepText = 22,
+		AfterTiles = 22, ClaimW = 400, RepairW = 440, ClaimH = 96, ClaimText = 40, RepairText = 32, Line1 = 24, Line2 = 22,
+		CountText = 28, KeepText = 22, Bottom = 30, MaxBody = 485,
+		HeroW = 320, HeroY = 14, ColGap = 24, HeroPad = 14, CardGap = 6, HeroDayText = 22, PetMax = 260, PlinthH = 10, PlinthOut = 14,
+		PlankH = 42, PlankSide = 24, PlankText = 28, SpeciesText = 20, WispText = 22, BannerText = 22, BarH = 22, BarSide = 20, SegGap = 6,
 		FullBody = 644, CompactBody = 485,
-		Full = { TilesY = 96, AfterTiles = 36, WispH = 32, WispGap = 6, BarH = 30, BarGap = 34, ClaimH = 88, ClaimGap = 16, KeepH = 32, Bottom = 14 },
-		Compact = { TilesY = 82, AfterTiles = 16, WispH = 30, WispGap = 4, BarH = 20, BarGap = 16, ClaimH = 72, ClaimGap = 8, KeepH = 30, Bottom = 10 },
 		-- the Play page (card B at 1080p: body 1180 x 644; the rows slide from PlayCompact to PlayFull like the Daily page)
 		PlaySide = 28, PlayY = 18, PlayH = 44, PlayText = 32, PausedText = 26, AllW = 252, AllH = 60, AllY = 12, AllText = 24,
 		AllGap = 16, BoxSide = 28, BoxW = 260, BoxMaxH = 250, BoxCols = 4, BoxGap = 28, BoxPadTop = 12, BoxPadBottom = 17,
@@ -237,11 +250,13 @@ local K = {
 		CloseY = 3, Icon = 32, TitleText = 20, TitleW = 92, TitleGap = 14, TapH = 44,
 		Side = 14, HeaderY = 6, HeaderH = 26, HeaderText = 18, ChipY = 6, ChipH = 26, ChipText = 15, ChipPad = 10,
 		StreakW = 118, VipW = 84, ChipGap = 8,
-		TileSide = 14, TileGap = 10, TileW = 92, TileMaxH = 122, TileMinH = 80, Raise = 8, PadTop = 6, PadBottom = 8, DayText = 15,
+		-- (Pitch 2 09 B) the prize stand as on PC: the row and the Claim left, the prize card right
+		TilesY = 50, TileGap = 10, TileW = 92, TileMaxH = 150, TileMinH = 80, Raise = 8, PadTop = 6, PadBottom = 8, DayText = 15,
 		AmountText = 17, ChipPx = 48, PetPx = 60,
-		TilesY = 50, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 16, BarGap = 8, SegGap = 4, KeepH = 40,
-		KeepText = 15, Bottom = 8, ColGap = 16, BannerText = 15, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26,
-		RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
+		AfterTiles = 8, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15,
+		CountText = 17, KeepText = 15, Bottom = 20,
+		HeroW = 196, HeroY = 6, ColGap = 12, HeroPad = 6, CardGap = 2, HeroDayText = 15, PetMax = 160, PlinthH = 6, PlinthOut = 8,
+		PlankH = 26, PlankSide = 12, PlankText = 17, SpeciesText = 15, WispText = 15, BannerText = 15, BarH = 14, BarSide = 10, SegGap = 4,
 		-- the Play page (card B on a 844 x 390 phone: body 820 x 280, seven boxes in one row)
 		-- (merge kitb-look1) AllY 9: Claim all's 5 px edge (the kit's one plank weight) keeps its 4 px of stone under the band
 		PlaySide = 14, PlayY = 8, PlayH = 44, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 9, AllText = 15,
@@ -257,11 +272,24 @@ local K = {
 		TabRow = 50, TabRowGap = 6, TabRowH = 40, TabRowSide = 15, TabRowMid = 10,
 		Side = 15, HeaderY = 4, HeaderH = 26, HeaderText = 18, ChipY = 34, ChipH = 28, ChipText = 15, ChipPad = 10,
 		StreakW = 104, VipW = 84, ChipGap = 8,
-		TileGap = 10, TileW = 92, TileMaxH = 122, TileMinH = 64, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
+		-- (Pitch 2 09 B) the prize card on top (HeroY, the grid's width; the pet left, its words right of it, PetGap
+		-- between), the days a 3 x 2 grid under it (HeroGap), the Claim the grid's width under the grid and the keep line
+		-- under the Claim. The card takes HeroShare of the room the fixed parts leave (HeroMinH..HeroMaxH), the tiles the
+		-- rest. The window is WinH tall where the screen has the room: its top TopClear under the HUD's strips (the awning's
+		-- room), TopClearTight where WinMinRoom px are not left that way, Foot px over the screen's foot. HeroY 72: the
+		-- card's 3 px edge keeps 4 px of stone under the chips' 2 px edges when Day 7 is today. A short card (360 x 640)
+		-- drops its species line, then its label
+		-- (look review r0: the keep line touched Claim's shadow and sat on the window's foot) ClaimGap 14 (Claim's 5 px edge
+		-- and 5 px shadow, then 4 px of stone) and Bottom 22; the 12 px come off the prize card (HeroMaxH 124: its rows still
+		-- fit, the Wisp still over 60 % of it), not off the tiles, which were cut once already
+		TileGap = 10, TileW = 112, TileMaxH = 122, TileMinH = 60, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
 		AmountText = 15, ChipPx = 48, PetPx = 44,
-		TilesY = 80, RowGap = 12, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 14, BarGap = 10, SegGap = 4,
-		ClaimH = 64, ClaimGap = 8, KeepH = 32, KeepText = 15, Bottom = 6, BannerText = 15, ClaimW = 230, RepairW = 300,
+		RowGap = 10, AfterTiles = 12, ClaimH = 60, ClaimGap = 14, KeepH = 20, KeepText = 15, Bottom = 22, ClaimW = 230, RepairW = 300,
 		ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
+		WinH = 676, WinMinRoom = 600, TopClear = 32, TopClearTight = 6, Foot = 12,
+		HeroY = 72, HeroGap = 10, HeroMinH = 80, HeroMaxH = 124, HeroShare = 0.38, HeroPad = 6, PetGap = 10, CardGap = 3,
+		HeroDayText = 15, PlinthH = 6, PlankH = 26, PlankSide = 12, PlankText = 17, SpeciesText = 15, WispText = 15, BannerText = 15,
+		BarH = 14, SegGap = 4,
 		-- the Play page: the header on two lines, CLAIM ALL centred under it, four boxes a row
 		PlaySide = 15, PlayY = 4, PlayH = 40, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 48, AllText = 15,
 		AllGap = 0, BoxSide = 15, BoxW = 104, BoxMaxH = 204, BoxCols = 4, BoxGap = 10, BoxRowsY = 100, BoxRowGap = 10,
@@ -276,6 +304,8 @@ local TEXT = {
 	Claim = "Claim!", -- (kit-b U9-4) buttons read in sentence case (the kit's casing rule)
 	Getting = "Getting your gifts ready...",
 	Keep = "Come back tomorrow to keep your streak!",
+	KeepClaim = "Claim today's gift to keep your streak!", -- (Pitch 2 09 B) the line by a claim that is due
+	Prize = "DAY 7 PRIZE", -- (Pitch 2 09 B) the prize card's label (TODAY when it is due); look review r0: the mock's capitals
 	Week = "WEEK DONE! Week Wisp is yours!",
 	Unlock = "Unlocks after %d min of play",
 	Resets = "Day resets in %d min",
@@ -348,6 +378,10 @@ K.ART_CHIP = {
 }
 K.ART_LIP = 4
 K.ART_EDGE = 2
+-- (Pitch 2 09 B) the prize card's name plank: the wood block (its dark lip and edge) with cream words (5.4:1); the plinth
+-- under the pet the sunk well slab in its edge colour
+K.PLANK = { Face = SIGN.Wood, Lip = SIGN.WoodDark, Edge = SIGN.WoodDark, Text = SIGN.Tile }
+K.PLANK_EDGE, K.PLANK_LIP = 2, 3
 -- (U9-4 look review 2) a play gift's reward on its role's tag, the Trove's tag part (a kit B block in a 2 px wood edge on
 -- a 3 px lip): cash the grass tag, tokens the gold tag with the coin, gems the navy tag with the gem, each icon at the
 -- glyph size before the amount; any other reward (the Berry Basket, a pet) stays a plain line. Text = the words' ink
@@ -1225,8 +1259,17 @@ function H.ensureWindow()
 	for i = 1, 7 do
 		H.newCell(i, U.CellsFrame)
 	end
-	U.WispText = label("WispText", "", "Heading", 15, daily, { TextWrapped = false, ZIndex = 5, TextColor3 = SIGN.Text })
-	U.WispBar = Util.Create("Frame", { Name = "WispBar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = daily })
+	-- (Pitch 2 09 B) Day 7 is the prize card: the pet on its plinth, the name on a wood plank, the species line, and the
+	-- week's countdown (the line, its 7-block bar, the week banner in their place) inside the card
+	local hero = U.Cells[7]
+	local card = hero.Card.Body
+	hero.Plinth = Util.Create("Frame", { Name = "Plinth", BorderSizePixel = 0, ZIndex = 5, Parent = card })
+	CloudUI.SignBlock(hero.Plinth, "Off", { EdgePx = 2, LipPx = 0, Pad = false })
+	CloudUI.SignBlock(hero.Amount, K.PLANK, { EdgePx = K.PLANK_EDGE, LipPx = K.PLANK_LIP })
+	hero.Amount:SetAttribute("Plank", true)
+	hero.Species = label("Species", "", "Label", 15, card, { TextWrapped = false, ZIndex = 5, TextColor3 = SIGN.TextMuted })
+	U.WispText = label("WispText", "", "Heading", 15, card, { TextWrapped = false, ZIndex = 5, TextColor3 = SIGN.Text })
+	U.WispBar = Util.Create("Frame", { Name = "WispBar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = card })
 	for i = 1, 7 do
 		local seg = Util.Create("Frame", { Name = "Seg" .. i, BorderSizePixel = 0, ZIndex = 6, Parent = U.WispBar })
 		paintSeg(seg, "Open")
@@ -1242,7 +1285,7 @@ function H.ensureWindow()
 	U.Countdown = label("Countdown", "", "Heading", 17, daily, { ZIndex = 5, TextColor3 = SIGN.Text })
 	U.Keep = label("Keep", TEXT.Keep, "Body", 15, daily, { TextColor3 = SIGN.TextMuted, ZIndex = 5, TextYAlignment = Enum.TextYAlignment.Top })
 	-- (kit-b U9-4) the week banner: a gold block with brown words in the Wisp line's place
-	U.Banner = label("WeekBanner", TEXT.Week, "Title", 15, daily, { Visible = false, ZIndex = 5 })
+	U.Banner = label("WeekBanner", TEXT.Week, "Title", 15, card, { Visible = false, ZIndex = 8 }) -- (over the card's cover)
 	Theme.StyleTitle(U.Banner, "Section")
 	CloudUI.SignBlock(U.Banner, "Selected", { LipPx = 0, EdgePx = 2 })
 
@@ -1291,7 +1334,41 @@ function H.inset()
 	return inset
 end
 
--- the box (NeonKit.BigRect) -> the holder at its place and scale, then every part in the design box
+-- (Pitch 2 09 B) the window's height follows the prize stand (screen px, in place): on PC the Daily page's window is
+-- no taller than the Header + MaxBody design px, centred in its BigRect box (the box's 644 px body left ~160 px of
+-- empty stone at 1080p); the Play page keeps the box's height (its two rows of gift boxes need it) under the same top,
+-- so the tabs stay where they are (raised only as far as the screen's foot needs). On a portrait phone the window is up
+-- to WinH tall from TopClear under the HUD's strips (TopClearTight where that leaves under WinMinRoom px), Foot px over
+-- the screen's foot, where that is taller than the box. A landscape phone keeps its box
+function H.fitRect(r, mode)
+	if mode == "PC" then
+		local full = r.h
+		local maxH = (K.PC.Header + K.PC.MaxBody) * r.scale
+		if full > maxH + 0.5 then
+			local top = math.floor(r.y + (full - maxH) / 2 + 0.5)
+			if S.Tab == "Play" then
+				r.y = math.max(r.y, math.min(top, math.floor(viewport().Y - K.MARGIN - full)))
+			else
+				r.y, r.h = top, maxH
+			end
+		end
+	elseif mode == "Portrait" then
+		local P = K.PORTRAIT
+		local inset = H.inset()
+		local area = viewport().Y - inset
+		local strips = H.stripsBottom()
+		local top = strips + P.TopClear
+		if area - P.Foot - top < P.WinMinRoom then
+			top = strips + P.TopClearTight
+		end
+		local want = math.min(P.WinH, area - P.Foot - top)
+		if want > r.h then
+			r.y, r.h = inset + top, want
+		end
+	end
+end
+
+-- the box (NeonKit.BigRect, H.fitRect) -> the holder at its place and scale, then every part in the design box
 function H.layout()
 	if not U.Holder then
 		return
@@ -1301,6 +1378,7 @@ function H.layout()
 	if mode == "Phone" and r.portrait then
 		mode = "Portrait"
 	end
+	H.fitRect(r, mode)
 	S.Rect, S.Mode, S.Scale = r, mode, r.scale
 	local W = math.floor(r.w / r.scale + 0.5)
 	local Hh = math.floor(r.h / r.scale + 0.5)
@@ -1418,92 +1496,82 @@ function H.layoutDaily(M, W, B)
 	U.WispText.TextSize, U.Banner.TextSize = M.WispText, M.BannerText
 	U.Countdown.TextSize, U.Keep.TextSize = M.CountText, M.KeepText
 	U.Line1.TextSize, U.Line2.TextSize = M.Line1, M.Line2
+	-- (Pitch 2 09 B) every spot in the page's px first; the Cells frame is the day tiles' box (the prize card sits outside
+	-- it, a child all the same, so a tile's lookup in "Cells" keeps finding Day 7)
 	local spots = {}
-	local tw, th, x0, gap, tilesY
+	local gap = M.TileGap
+	local tw, th, box, ruleTop, ruleW
 	if S.Mode == "Portrait" then
-		gap = M.TileGap
-		tw = math.min(M.TileW, math.floor((W - 2 * M.Side - 3 * gap) / 4))
-		local after = M.AfterTiles + M.WispH + M.WispGap + M.BarH + M.BarGap + M.ClaimH + M.ClaimGap + M.KeepH + M.Bottom
-		th = math.max(M.TileMinH, math.min(M.TileMaxH, math.floor((B - M.TilesY - M.RowGap - after) / 2)))
-		local extra = math.max(0, B - (M.TilesY + 2 * th + M.RowGap + after))
-		tilesY = M.TilesY + math.floor(extra / 2)
-		x0 = math.floor((W - (4 * tw + 3 * gap)) / 2)
-		for i = 1, 7 do
-			local row = i <= 4 and 0 or 1
-			local col = i <= 4 and (i - 1) or (i - 5)
-			spots[i] = { x = col * (tw + gap), y = M.Raise + row * (th + M.RowGap), w = i == 7 and (2 * tw + gap) or tw, h = th }
+		tw = math.min(M.TileW, math.floor((W - 2 * M.Side - 2 * gap) / 3))
+		local gridW = 3 * tw + 2 * gap
+		local x0 = math.floor((W - gridW) / 2)
+		local fixed = M.HeroY + M.HeroGap + M.Raise + M.RowGap + M.AfterTiles + M.ClaimH + M.ClaimGap + M.KeepH + M.Bottom
+		local room = B - fixed
+		local heroH = math.max(M.HeroMinH, math.min(M.HeroMaxH, math.floor(room * M.HeroShare)))
+		th = math.max(M.TileMinH, math.min(M.TileMaxH, math.floor((room - heroH) / 2)))
+		heroH = math.max(M.HeroMinH, math.min(M.HeroMaxH, room - 2 * th))
+		-- (what the card and the tiles both leave at their largest goes to the three gaps round the grid)
+		local spare = math.floor(math.max(0, room - heroH - 2 * th) / 3)
+		spots[7] = { x = x0, y = M.HeroY, w = gridW, h = heroH, hero = true }
+		local top = M.HeroY + heroH + M.HeroGap + spare -- (today's raised top)
+		for i = 1, 6 do
+			local col, row = (i - 1) % 3, math.floor((i - 1) / 3)
+			spots[i] = { x = x0 + col * (tw + gap), y = top + M.Raise + row * (th + M.RowGap), w = tw, h = th }
 		end
-		place(U.CellsFrame, x0, tilesY - M.Raise, 4 * tw + 3 * gap, 2 * th + M.RowGap + M.Raise)
-		G.Y0 = tilesY + 2 * th + M.RowGap + M.AfterTiles
-		G.ClaimY = G.Y0 + M.WispH + M.WispGap + M.BarH + M.BarGap
-		G.KeepY = G.ClaimY + M.ClaimH + M.ClaimGap
-		G.ClaimH, G.KeepH = M.ClaimH, M.KeepH
+		box = { x0, top, gridW, M.Raise + 2 * th + M.RowGap }
+		G.ClaimX, G.ClaimW = x0, gridW
+		G.ClaimY = top + M.Raise + 2 * th + M.RowGap + M.AfterTiles + spare
+		G.ClaimH = M.ClaimH
+		G.KeepX, G.KeepY, G.KeepW, G.KeepH = x0, G.ClaimY + M.ClaimH + M.ClaimGap, gridW, M.KeepH
+		ruleTop, ruleW = M.HeroY, W - 2 * M.Side
 	else
-		gap = M.TileGap
-		tw = math.min(M.TileW, math.floor((W - 2 * M.TileSide - 7 * gap) / 8))
-		local P = {}
-		if S.Mode == "PC" then
-			-- the vertical parts slide from Compact to Full with the body; the tiles take the rest
-			local k = math.max(0, math.min(1, (B - M.CompactBody) / (M.FullBody - M.CompactBody)))
-			for name, full in pairs(M.Full) do
-				P[name] = math.floor(M.Compact[name] + (full - M.Compact[name]) * k + 0.5)
-			end
-		else
-			for _, name in ipairs({ "TilesY", "AfterTiles", "WispH", "WispGap", "BarH", "BarGap", "ClaimH", "KeepH", "Bottom" }) do
-				P[name] = M[name]
-			end
-			P.ClaimGap = 0
+		local rowRoom = W - 2 * M.Side - M.HeroW - M.ColGap
+		tw = math.min(M.TileW, math.floor((rowRoom - 5 * gap) / 6))
+		local rowW = 6 * tw + 5 * gap
+		local x0 = M.Side
+		local fixed = M.TilesY + M.AfterTiles + M.ClaimH + M.Bottom
+		th = math.max(M.TileMinH, math.min(M.TileMaxH, B - fixed))
+		-- (what the tallest tile leaves goes over and under the row)
+		local spare = math.max(0, B - fixed - th)
+		local tilesY = M.TilesY + math.floor(spare / 2)
+		for i = 1, 6 do
+			spots[i] = { x = x0 + (i - 1) * (tw + gap), y = tilesY, w = tw, h = th }
 		end
-		local fixed
-		if S.Mode == "PC" then
-			fixed = P.TilesY + P.AfterTiles + P.WispH + P.WispGap + P.BarH + P.BarGap + P.ClaimH + P.ClaimGap + P.KeepH + P.Bottom
-		else
-			-- phone: the claim sits beside the Wisp line, the bar and the keep line
-			fixed = P.TilesY + P.AfterTiles + P.WispH + P.WispGap + P.BarH + P.BarGap + P.KeepH + P.Bottom
-		end
-		th = math.max(M.TileMinH or 0, math.min(M.TileMaxH, B - fixed))
-		local extra = math.max(0, B - fixed - th)
-		tilesY = P.TilesY + math.floor(extra / 2)
-		x0 = math.floor((W - (8 * tw + 7 * gap)) / 2)
-		for i = 1, 7 do
-			spots[i] = { x = (i - 1) * (tw + gap), y = M.Raise, w = i == 7 and (2 * tw + gap) or tw, h = th }
-		end
-		place(U.CellsFrame, x0, tilesY - M.Raise, 8 * tw + 7 * gap, th + M.Raise)
-		G.Y0 = tilesY + th + P.AfterTiles
-		G.WispH, G.WispGap, G.BarH, G.BarGap = P.WispH, P.WispGap, P.BarH, P.BarGap
-		G.ClaimH, G.KeepH = P.ClaimH, P.KeepH
-		G.ClaimY = G.Y0 + P.WispH + P.WispGap + P.BarH + P.BarGap
-		G.KeepY = G.ClaimY + P.ClaimH + P.ClaimGap
-		if S.Mode ~= "PC" then
-			-- (phone: the keep line under the bar; the claim slot beside the three, from the Wisp line's top)
-			G.KeepY = G.ClaimY
-			G.ClaimY = G.Y0 + 2
-			if B < G.KeepY + M.KeepH + 2 then
-				G.KeepH = math.max(M.KeepText + 6, B - G.KeepY - 2)
-			end
-		end
+		box = { x0, tilesY - M.Raise, rowW, th + M.Raise }
+		G.ClaimX, G.ClaimW = x0, nil
+		G.ClaimY = tilesY + th + M.AfterTiles + (spare - math.floor(spare / 2))
+		G.ClaimH = M.ClaimH
+		G.RowRight = x0 + rowW
+		G.ChipsRight = G.RowRight
+		-- the prize card: ColGap right of the row to the page's side, from HeroY to the Claim's foot
+		local heroX = G.RowRight + M.ColGap
+		spots[7] = { x = heroX, y = M.HeroY, w = W - M.Side - heroX, h = G.ClaimY + M.ClaimH - M.HeroY, hero = true }
+		ruleTop, ruleW = tilesY - M.Raise, rowW
 	end
-	G.WispH = G.WispH or M.WispH
-	G.WispGap = G.WispGap or M.WispGap
-	G.BarH = G.BarH or M.BarH
-	G.BarGap = G.BarGap or M.BarGap
-	G.TileW = tw
+	place(U.CellsFrame, box[1], box[2], box[3], box[4])
 	for i, cell in ipairs(U.Cells) do
-		cell.Spot = spots[i]
+		local s = spots[i]
+		cell.Spot = { x = s.x - box[1], y = s.y - box[2], w = s.w, h = s.h, hero = s.hero }
 		cell.PlaceKey = nil
 	end
-	-- (F0 review) the dotted rule halfway between the heading line (its chips) and the tiles (today's raised top)
+	G.TileW = tw
+	-- (F0 review) the dotted rule halfway between the heading line (its chips) and what comes under it (today's raised
+	-- tile; the prize card on a portrait phone), as wide as the day row
 	local headFoot = math.max(M.HeaderY + M.HeaderH, M.ChipY + M.ChipH)
-	local tilesTop = tilesY - M.Raise
-	SignKit.SetRule(U.HeadRule, W - 2 * M.Side)
-	U.HeadRule.Position = UDim2.fromOffset(M.Side, math.floor((headFoot + tilesTop) / 2) - 1)
-	U.HeadRule.Visible = tilesTop - headFoot >= 4
+	SignKit.SetRule(U.HeadRule, ruleW)
+	U.HeadRule.Position = UDim2.fromOffset(M.Side, math.floor((headFoot + ruleTop) / 2) - 1)
+	U.HeadRule.Visible = ruleTop - headFoot >= 4
 end
 
--- a tile at its spot (today: raised by M.Raise, the bottom kept), its insides fitted to its size
+-- a tile at its spot (today: raised by M.Raise, the bottom kept), its insides fitted to its size; the prize card
+-- (Pitch 2 09 B) is laid out by H.placeHero and never raised
 function H.placeTile(cell, M, today, wide)
 	local s = cell.Spot
 	if not s then
+		return
+	end
+	if s.hero then
+		H.placeHero(cell, M)
 		return
 	end
 	local y, h = s.y, s.h
@@ -1533,13 +1601,108 @@ function H.placeTile(cell, M, today, wide)
 	cell.Check.TextSize = check
 	place(cell.Check, (w - check - 8) / 2, (h - check - 8) / 2, check + 8, check + 8)
 	-- the reward's chip (ChipPx, or less where the tile is small) and the art on it at one of the screen's two pixel
-	-- sizes; the Week Wisp's viewport as big as the room allows
+	-- sizes
 	cell.PetPx = math.max(12, math.min(M.PetPx, artH, w - 8))
 	cell.ChipPx = math.max(12, math.min(M.ChipPx, artH, w - 8))
 	cell.ArtPx = H.fitPx(cell.ChipPx - 12)
 	-- (kit-b U9-4) the glint round the art (a cream sparkle reads on today's gold)
 	local a = wide and cell.PetPx or cell.ChipPx
 	H.placeSparkles(cell.Sparkles, (w - a) / 2, artY + (artH - a) / 2, a, a, sparklePx(), SIGN.Tile)
+end
+
+-- (Pitch 2 09 B) the prize card's insides. Landscape, top to bottom: its label, the Week Wisp standing on its plinth (the
+-- pet as big as the card's width and the room left allow, up to PetMax), the name plank, the species line, the week's
+-- line ("in 4 more days") and its 7-block bar, the week banner over the species and the line while it is up. Portrait: the pet on its plinth
+-- at the card's left, as tall as the card; the same rows in a column right of it, centred on the card's height
+function H.placeHero(cell, M)
+	local s = cell.Spot
+	local key = table.concat({ "hero", tostring(S.Mode), s.x, s.y, s.w, s.h }, ",")
+	if cell.PlaceKey == key then
+		return
+	end
+	cell.PlaceKey = key
+	place(cell.Root, s.x, s.y, s.w, s.h)
+	local w, h = s.w, s.h
+	local pad, g = M.HeroPad, M.CardGap
+	local dayH, plankH = M.HeroDayText + 4, M.PlankH
+	local speciesH, wispH = M.SpeciesText + 4, M.WispText + 4
+	cell.Day.TextSize, cell.Amount.TextSize = M.HeroDayText, M.PlankText
+	cell.Species.TextSize, U.WispText.TextSize = M.SpeciesText, M.WispText
+	local side, artX, artY, colX, colW, rowsY
+	if S.Mode == "Portrait" then
+		side = math.max(12, h - 2 * pad - M.PlinthH)
+		artX, artY = pad, pad
+		place(cell.Plinth, artX, artY + side, side, M.PlinthH)
+		colX = artX + side + M.PetGap
+		colW = math.max(20, w - colX - pad)
+		-- (a short card, 360 x 640: the species line goes first, then the card's label, so the rows stay inside it)
+		local inner = h - 2 * pad
+		local rows = plankH + wispH + M.BarH + 2 * g
+		cell.SpeciesRoom = rows + speciesH + g <= inner
+		rows = rows + (cell.SpeciesRoom and speciesH + g or 0)
+		local withDay = rows + dayH + g <= inner
+		rows = rows + (withDay and dayH + g or 0)
+		cell.Day.Visible = withDay
+		cell.Species.Visible = cell.SpeciesRoom and cell.Species.Text ~= ""
+		rowsY = math.floor((h - rows) / 2)
+		cell.Day.TextXAlignment = Enum.TextXAlignment.Left
+		cell.Species.TextXAlignment = Enum.TextXAlignment.Left
+		U.WispText.TextXAlignment = Enum.TextXAlignment.Left
+		local y = rowsY
+		if withDay then
+			place(cell.Day, colX, y, colW, dayH)
+			y = y + dayH + g
+		end
+		local nameW = math.min(colW, math.ceil(H.width(cell.Amount.Text ~= "" and cell.Amount.Text or "Week Wisp", M.PlankText, Theme.FontOf(cell.Amount))) + 2 * M.PlankSide)
+		place(cell.Amount, colX, y, nameW, plankH)
+		y = y + plankH + g
+		if cell.SpeciesRoom then
+			place(cell.Species, colX, y, colW, speciesH)
+			y = y + speciesH + g
+		end
+		place(U.WispText, colX, y, colW, wispH)
+		place(U.WispBar, colX, y + wispH + g, colW, M.BarH)
+		local over = cell.SpeciesRoom and speciesH + g or 0
+		place(U.Banner, colX, y - over, colW, over + wispH)
+	else
+		cell.SpeciesRoom = true
+		cell.Day.Visible = true
+		cell.Day.TextXAlignment = Enum.TextXAlignment.Center
+		cell.Species.TextXAlignment = Enum.TextXAlignment.Center
+		U.WispText.TextXAlignment = Enum.TextXAlignment.Center
+		place(cell.Day, 2, pad, w - 4, dayH)
+		-- from the foot up: the bar, the line, the species, the plank, the plinth; the pet fills what is left
+		local barY = h - pad - M.BarH
+		local wispY = barY - g - wispH
+		local speciesY = wispY - g - speciesH
+		local plankY = speciesY - g - plankH
+		local plinthY = plankY - g - M.PlinthH
+		local top = pad + dayH + g
+		side = math.max(12, math.min(M.PetMax, w - 2 * pad, plinthY - top))
+		artX, artY = math.floor((w - side) / 2), plinthY - side
+		local plinthW = math.min(w - 2 * pad, side + 2 * M.PlinthOut)
+		place(cell.Plinth, (w - plinthW) / 2, plinthY, plinthW, M.PlinthH)
+		place(cell.Amount, M.PlankSide, plankY, w - 2 * M.PlankSide, plankH)
+		place(cell.Species, 2, speciesY, w - 4, speciesH)
+		place(U.WispText, M.BarSide, wispY, w - 2 * M.BarSide, wispH)
+		place(U.WispBar, M.BarSide, barY, w - 2 * M.BarSide, M.BarH)
+		place(U.Banner, M.BarSide, speciesY, w - 2 * M.BarSide, speciesH + g + wispH)
+		colW = w - 2 * M.BarSide
+	end
+	place(cell.Art, artX, artY, side, side)
+	local sg = M.SegGap
+	local segW = (U.WispBar.Size.X.Offset - 6 * sg) / 7
+	for i, seg in ipairs(U.Segs) do
+		place(seg, (i - 1) * (segW + sg), 0, segW, M.BarH)
+	end
+	local tick = H.px("Art")
+	local check = hostSize(tick)
+	cell.Check.TextSize = check
+	place(cell.Check, artX + (side - check - 8) / 2, artY + (side - check - 8) / 2, check + 8, check + 8)
+	cell.PetPx = side
+	cell.ChipPx = math.max(12, math.min(M.ChipPx, side))
+	cell.ArtPx = H.fitPx(cell.ChipPx - 12)
+	H.placeSparkles(cell.Sparkles, artX, artY, side, side, sparklePx(), SIGN.Tile)
 end
 
 -- the streak / VIP chips and the header's width (they follow the payload)
@@ -1562,7 +1725,7 @@ function H.placeChips(M, showStreak, showVip)
 		place(U.VipChip, x, M.ChipY, vipW, M.ChipH)
 		return
 	end
-	local right = G.W - M.Side
+	local right = G.ChipsRight or (G.W - M.Side) -- (Pitch 2 09 B: they end where the day row ends, left of the prize card)
 	if showVip then
 		right = right - vipW
 		place(U.VipChip, right, M.ChipY, vipW, M.ChipH)
@@ -1576,8 +1739,9 @@ function H.placeChips(M, showStreak, showVip)
 	place(U.DailyHeader, M.Side, M.HeaderY, math.max(40, right - M.Side), M.HeaderH)
 end
 
--- the Wisp line, the bar, the claim slot (`slotW` wide: the repair and the waiting texts take the wider one) and the
--- keep line
+-- the claim slot (`slotW` wide: the repair and the waiting texts take the wider one; the grid's width on a portrait
+-- phone) and the keep line: (Pitch 2 09 B) beside the slot on PC and a landscape phone, under it on a portrait phone.
+-- The week's line, its bar and the banner sit in the prize card (H.placeHero)
 function H.placeBottom(M, slotW)
 	local G = S.G
 	local key = table.concat({ tostring(S.Mode), G.W, G.B, slotW }, ",")
@@ -1585,45 +1749,24 @@ function H.placeBottom(M, slotW)
 		return
 	end
 	S.BottomKey = key
-	local W = G.W
-	local wispX, wispW, claimX, keepX, keepW
-	if S.Mode == "PC" then
-		wispW = math.min(M.WispW, W - 2 * M.Side)
-		wispX = (W - wispW) / 2
-		claimX = (W - slotW) / 2
-		keepW = math.min(M.KeepW, W - 2 * M.Side)
-		keepX = (W - keepW) / 2
-		local bannerW = math.min(M.BannerW, W - 2 * M.Side)
-		place(U.Banner, (W - bannerW) / 2, G.Y0, bannerW, G.WispH)
-		U.WispText.TextXAlignment = Enum.TextXAlignment.Center
+	slotW = G.ClaimW or slotW
+	place(U.Claim, G.ClaimX, G.ClaimY, slotW, G.ClaimH)
+	place(U.Countdown, G.ClaimX, G.ClaimY, slotW, G.ClaimH)
+	if S.Mode == "Portrait" then
+		place(U.Keep, G.KeepX, G.KeepY, G.KeepW, G.KeepH)
 		U.Keep.TextXAlignment = Enum.TextXAlignment.Center
-	elseif S.Mode == "Portrait" then
-		slotW = math.min(slotW, W - 2 * M.Side)
-		wispX, wispW = M.Side, W - 2 * M.Side
-		claimX = (W - slotW) / 2
-		keepX, keepW = M.Side, W - 2 * M.Side
-		place(U.Banner, wispX, G.Y0, wispW, G.WispH)
-		U.WispText.TextXAlignment = Enum.TextXAlignment.Center
-		U.Keep.TextXAlignment = Enum.TextXAlignment.Center
+		U.Keep.TextYAlignment = Enum.TextYAlignment.Top
 	else
-		claimX = W - M.Side - slotW
-		wispX = M.Side
-		wispW = math.max(60, claimX - M.ColGap - M.Side)
-		keepX, keepW = wispX, wispW
-		place(U.Banner, wispX, G.Y0, wispW, G.WispH)
-		U.WispText.TextXAlignment = Enum.TextXAlignment.Left
+		local x = G.ClaimX + slotW + M.ColGap
+		local room = math.max(40, G.RowRight - x)
+		-- (two even lines where one does not fit: "Claim today's gift to / keep your streak!", no lone last word)
+		local font = Theme.FontOf(U.Keep)
+		local long = math.max(H.width(TEXT.KeepClaim, M.KeepText, font), H.width(TEXT.Keep, M.KeepText, font))
+		local w = long + K.FIT_SLACK <= room and room or math.min(room, math.ceil(long * 0.56))
+		place(U.Keep, x, G.ClaimY, w, G.ClaimH)
 		U.Keep.TextXAlignment = Enum.TextXAlignment.Left
+		U.Keep.TextYAlignment = Enum.TextYAlignment.Center
 	end
-	place(U.WispText, wispX, G.Y0, wispW, G.WispH)
-	place(U.WispBar, wispX, G.Y0 + G.WispH + G.WispGap, wispW, G.BarH)
-	local g = M.SegGap
-	local segW = (wispW - 6 * g) / 7
-	for i, seg in ipairs(U.Segs) do
-		place(seg, (i - 1) * (segW + g), 0, segW, G.BarH)
-	end
-	place(U.Claim, claimX, G.ClaimY, slotW, G.ClaimH)
-	place(U.Countdown, claimX, G.ClaimY, slotW, G.ClaimH)
-	place(U.Keep, keepX, G.KeepY, keepW, G.KeepH)
 	-- the locked lines inside the claim button (its UIPadding keeps them off the edges)
 	local block = (M.Line1 + 4) + (M.Line2 + 4)
 	local top = math.floor((G.ClaimH - block) / 2)
@@ -1765,6 +1908,10 @@ end
 
 function H.setTab(tab)
 	S.Tab = tab == "Play" and "Play" or "Daily"
+	-- (Pitch 2 09 B) on PC the two pages' windows differ in height (H.fitRect): the window is laid out again
+	if S.Open and U.Holder and S.Mode == "PC" then
+		H.layout()
+	end
 	H.render()
 end
 
@@ -2011,15 +2158,34 @@ function H.placeClock(cell, text)
 	end
 end
 
--- "Week Wisp in 4 more days" / "in 1 more day" / "Week Wisp today!"
+-- (Pitch 2 09 B: the line sits in the prize card, under the "Week Wisp" plank) "in 4 more days" / "in 1 more day" /
+-- "Yours today!"
 function H.wispText(cell)
 	local left = 7 - cell
 	if left <= 0 then
-		return "Week Wisp today!"
+		return "Yours today!"
 	elseif left == 1 then
-		return "Week Wisp in 1 more day"
+		return "in 1 more day"
 	end
-	return "Week Wisp in " .. left .. " more days"
+	return "in " .. left .. " more days"
+end
+
+-- (Pitch 2 09 B) the prize card's species line: "Epic Owl · Storm" (the catalog's rarity, the look's species, the
+-- element; "" for a pet the catalog does not know)
+function H.speciesLine(petId)
+	local ok, catalog = pcall(function()
+		return require(Shared:WaitForChild("PetCatalog", 5))
+	end)
+	local def = ok and type(catalog) == "table" and catalog.Get and catalog.Get(petId) or nil
+	if type(def) ~= "table" then
+		return ""
+	end
+	local look = type(def.Look) == "table" and def.Look.Species or nil
+	local head = table.concat({ tostring(def.Rarity or ""), look and tostring(look) or "" }, " "):gsub("^%s+", ""):gsub("%s+$", "")
+	if def.Element then
+		return head ~= "" and (head .. " " .. DOT .. " " .. tostring(def.Element)) or tostring(def.Element)
+	end
+	return head
 end
 
 function H.renderDaily(st, M)
@@ -2055,15 +2221,29 @@ function H.renderDaily(st, M)
 		cell.Root:SetAttribute("Claimed", claimed)
 		cell.Root:SetAttribute("Today", today)
 		cell.Root:SetAttribute("Pulsing", today)
-		cell.Day.Text = (today and due) and "TODAY" or ("Day " .. i)
+		cell.Day.Text = (today and due) and "TODAY" or (i == 7 and TEXT.Prize or ("Day " .. i))
 		cell.Dim.Visible = claimed
 		cell.Check.Visible = claimed
 		-- (F0 review, minor: the mock keeps a claimed day's name and amount brown) the cover dims the art only: the texts
 		-- sit over it in the muted ink
 		cell.Day.ZIndex = claimed and cell.Dim.ZIndex + 1 or 5
 		cell.Amount.ZIndex = claimed and cell.Dim.ZIndex + 1 or 5
-		cell.Day.TextColor3 = claimed and SIGN.TextMuted or SIGN.Text
+		-- (look review r0) the prize card's label in the muted caption ink, as the mock's (TODAY keeps the full ink)
+		local prizeLabel = i == 7 and not (today and due)
+		cell.Day.TextColor3 = (claimed or prizeLabel) and SIGN.TextMuted or SIGN.Text
 		cell.Amount.TextColor3 = claimed and SIGN.TextMuted or SIGN.Text
+		if cell.Species then
+			-- (Pitch 2 09 B) the prize card: the plank keeps its cream words and its lip rides with it over the cover; the
+			-- species line under it
+			cell.Amount.TextColor3 = K.PLANK.Text
+			local lip = cell.Amount:FindFirstChild("Lip")
+			if lip then
+				lip.ZIndex = cell.Amount.ZIndex
+			end
+			cell.Species.ZIndex = cell.Amount.ZIndex
+			cell.Species.Text = e.Kind == "Pet" and H.speciesLine(e.PetId) or ""
+			cell.Species.Visible = cell.Species.Text ~= "" and cell.SpeciesRoom ~= false
+		end
 		-- (kit-b U9-4) only a gift the claim takes now glints (a held one, Locked, waits)
 		cell.Sparkles.Visible = today and (view.Mode == "Claim" or view.Mode == "Repair")
 		H.paintLook(cell, DAY_COLORS[i], today and "Today" or (claimed and "Claimed" or "Open"))
@@ -2108,6 +2288,7 @@ function H.renderDaily(st, M)
 		U.Line1.Visible, U.Line2.Visible = false, false
 	end
 	U.Countdown.Text = due and "" or (view.Line1 or "")
+	U.Keep.Text = due and TEXT.KeepClaim or TEXT.Keep -- (Pitch 2 09 B: by a due claim it says to claim today's gift)
 	U.Keep.Visible = not waiting
 end
 
