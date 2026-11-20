@@ -20,7 +20,13 @@
 --   signkit               (kit B, U2) no game UI: every shared/SignKit part (window, planks at rest / hover / pressed, notice,
 --                         block row, ropes, a hanging board, the Credits gable beside the flat awning) and every
 --                         shared/PixelIcon at 18, 27 and 36 px
---   lobby[:gift]          the idle lobby HUD (gift: U9-4 look review, the daily payload in, the Gifts block's PlayBar)
+--   lobby[:gift|:fold]    the idle lobby HUD (gift: U9-4 look review, the daily payload in, the Gifts block's PlayBar; fold:
+--                         Pitch 2 item 04 B, the menu column folded with a tile's badge on: the tab's red "!" block)
+--   worldui[:npc|:prompt|:altar|:gates|:hits|:guide|:guideahead|:guidehere]  (Pitch 2 items 04 B / 13 A) the world parts built by
+--                         their real builders, mirrored into the ScreenGui WorldMirror at their on-screen pixel size: NPC
+--                         signs, prompt planks, the altar's hanging header, THE GATES face, the damage totals and pops,
+--                         the travel guide's arrow, dot trail and sign (sketched from the default camera); see the
+--                         [kitb-p2-world] block
 --   title                 right after joining (the title card is still up)
 --   match[:hit|:full]     in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
 --                         (":hit" = a quarter second after a hit, damage feedback included; ":full" = the panel's worst
@@ -55,8 +61,9 @@
 --                         Passes / Boosts, every item created, live prices answered; shop:restricted = the Eggs tab for an
 --                         account where paid random items are restricted; store[:<tab>] the same through the
 --                         StoreController forwarder ([lobby-shop] block)
---   titles[:<studs>]      lobby-shop Task 19: the three title tags (rainbow TOP 10, gold TOP 100, CREATOR with the VIP crown)
---                         over sketched characters seen from <studs> away (default 14), a name stand-in at the anchor
+--   titles[:<studs>]      lobby-shop Task 19: the three title tags (rainbow TOP 10, gold TOP 100 with a VIP's crown, CREATOR
+--                         with its own crown mark and no VIP crown) and a bare VIP crown over sketched characters seen from
+--                         <studs> away (default 14), a name stand-in at the anchor; a narrow screen stacks them two by two
 --                         ([lobby-shop] block)
 --   eggs[:simple]         lobby-shop Tasks 20 / 26: the seven painted GUI eggs (EggArt) at 30 / 64 / 104 px, 160 px Full
 --                         with their VFX and 380 px Full; eggs:simple = the small forms the Shop and the strip use (Simple
@@ -1126,6 +1133,20 @@ scenario("lobby", function(arg)
 		advance(0.3)
 		req("client/Controllers/TutorialController").Guide.Start("StormAltar")
 		advance(arg == "travelhere" and 0.6 or 1.2)
+	end
+	if arg == "fold" then
+		-- (Pitch 2 item 04 B, look review r0) the folded menu column with a tile asking for attention: the stone tab flush on
+		-- the left edge, its red "!" block inside it, the arrow stepped down under it
+		local menu = LocalPlayer.PlayerGui:FindFirstChild("NimbusMenu")
+		local col = menu and menu:FindFirstChild("MenuColumn", true)
+		for _, d in ipairs(col and col:GetDescendants() or {}) do
+			if d.Name == "Badge" and d:IsA("GuiObject") and d.Parent and d.Parent.Name ~= "Toggle" then
+				d.Visible = true
+				break
+			end
+		end
+		req("client/Controllers/MenuController").SetColumnCollapsed(true, false)
+		advance(0.6)
 	end
 end)
 
@@ -4031,8 +4052,9 @@ scenario("gems", function(view)
 end)
 
 -- titles[:<studs>]      lobby-shop Task 19 (spec 16.6): the rank / Creator titles above the head, no game HUD. Three dummy
---                       players ("TOP 10 \194\183 #3", TOP 100, and CREATOR wearing the VIP pass, so the crown sits inside the
---                       tag) get their TitleTags from the real TitleController; each tag is mirrored flat into the
+--                       players ("TOP 10 \194\183 #3", TOP 100 wearing the VIP pass, so the VIP crown sits inside its tag, and
+--                       CREATOR wearing it too: Pitch 2 item 04 B, its tag's own pixel crown is its one crown) get their
+--                       TitleTags from the real TitleController; each tag is mirrored flat into the
 --                       WorldMirror at its own pixel size, placed where it projects above a sketched character seen from
 --                       <studs> away (default 14; 70 degree vertical field of view, the camera level with the head), with
 --                       a 20 px name stand-in centred on the tag's anchor (StudsOffset 2.0 above the head: about where
@@ -4044,12 +4066,12 @@ end)
 --                       VipCrown billboard (2.4 studs over the head, lifted by its SizeOffset), mirrored the same way.
 local TT = { FOV_HALF_TAN = math.tan(math.rad(35)) }
 -- a front-view character sketch (studs, y up from the head's centre), like the mock's R15 rig
-function TT.figure(parent, cx, headY, pps)
+function TT.figure(parent, cx, headY, pps, noLegs)
 	local skin, shirt, dark = Color3.fromRGB(245, 205, 160), Color3.fromRGB(70, 120, 210), Color3.fromRGB(40, 50, 90)
 	for _, p in ipairs({
 		{ "Head", 1.2, 1.2, 0, 0, skin }, { "UpperTorso", 2, 1.6, 0, -1.4, shirt }, { "LowerTorso", 2, 0.4, 0, -2.5, dark },
 		{ "LeftArm", 1, 1.6, -1.5, -1.2, skin }, { "RightArm", 1, 1.6, 1.5, -1.2, skin },
-		{ "LeftLeg", 1, 1.9, -0.5, -3.95, dark }, { "RightLeg", 1, 1.9, 0.5, -3.95, dark },
+		not noLegs and { "LeftLeg", 1, 1.9, -0.5, -3.95, dark } or nil, not noLegs and { "RightLeg", 1, 1.9, 0.5, -3.95, dark } or nil,
 	}) do
 		make("Frame", {
 			Name = "Sketch" .. p[1], BackgroundColor3 = p[6], BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5),
@@ -4061,7 +4083,7 @@ scenario("titles", function(studs)
 	local d = max(4, tonumber(studs) or 14)
 	local TC = req("client/Controllers/TitleController", true)
 	NK.hideGame()
-	local who = { { "SkyRunner", 990001, "Top10", 3 }, { "CloudHopper", 990002, "Top100", 57 }, { "GameCreator", 990003, "Creator", 1, true },
+	local who = { { "SkyRunner", 990001, "Top10", 3 }, { "CloudHopper", 990002, "Top100", 57, true }, { "GameCreator", 990003, "Creator", 1, true },
 		{ "VipOnly", 990004, nil, nil, true } }
 	-- the lobby crown shows on High graphics only
 	local GQ = req("client/GraphicsQuality", true)
@@ -4093,9 +4115,20 @@ scenario("titles", function(studs)
 		Name = "Caption", Position = UDim2.fromOffset(24, 44), Size = UDim2.fromOffset(vp.X - 48, 24),
 		TextXAlignment = Enum.TextXAlignment.Left, TextStrokeTransparency = 0.2, TextStrokeColor3 = NAVY,
 	})
+	-- (Pitch 2 world lane, look review r0: at 390x844 four players 78 px apart drew their tags over each other, a scene
+	-- artifact) the players stand at least ~190 px apart: two rows of head-and-shoulders sketches on a narrow screen
+	local cols = max(1, min(#players, floor(vp.X / 190)))
+	local rows = ceil(#players / cols)
+	local rowStep = (vp.Y - 80) / rows
 	for i, p in ipairs(players) do
-		local cx = floor(vp.X * i / (#players + 1))
-		TT.figure(screen, cx, headY, pps)
+		local col, row = (i - 1) % cols, floor((i - 1) / cols)
+		local inRow = min(cols, #players - row * cols)
+		local cx = floor(vp.X * (col + 1) / (inRow + 1))
+		if rows > 1 then
+			cx = floor(vp.X * (col + 0.5) / inRow) -- (each player in the middle of its own half)
+			headY = floor(80 + row * rowStep + 2 * pps + 130)
+		end
+		TT.figure(screen, cx, headY, pps, rows > 1)
 		local tag = TC and TC.TagOf(p)
 		local anchorY = headY - (tag and tag.StudsOffset.Y or 2.0) * pps
 		-- (kit-b U9-3) an untitled VIP: its own VipCrown billboard, centred StudsOffset.Y over the head
@@ -4132,7 +4165,10 @@ scenario("titles", function(studs)
 			local mLabel = mPlate and mPlate:FindFirstChild("Label")
 			if mLabel then
 				local tw = ceil((Mock.TextExtent(mLabel)))
-				local pw = min(w, tw + 2 * ((TC.K and TC.K.PAD) or 12))
+				-- (Pitch 2 look review r0, crop 10: the re-fit dropped CREATOR's crown lead, so the word ran into the crown and
+				-- the edge) the controller's own width rule, the crown's lead included
+				local kind = p:GetAttribute(Config.Attr.Title)
+				local pw = (type(TC.PlateWidth) == "function") and TC.PlateWidth(kind, tw) or min(w, tw + 2 * ((TC.K and TC.K.PAD) or 12))
 				mPlate.Size = UDim2.fromOffset(pw, mPlate.Size.Y.Offset)
 			end
 			local plate, crown = tag:FindFirstChild("Plate"), tag:FindFirstChild("Crown")
@@ -4585,6 +4621,534 @@ scenario("lobbyboard", function(page)
 	note(fmt("lobbyboard:%s fit x%.2f, from 20 studs x%.2f (smallest text %.1f px)", stat, fit, far, 30 * far))
 end)
 -- [lobby-shop] end
+
+-- [kitb-p2-world] begin
+-- worldui[:<piece>]  Pitch 2 items 04_world_ui B "Stone tags" and 13_travel_guide A (look review r0, major 1: the world parts
+--   had no render path, so nobody had compared them with the approved mock). Each world GUI is built by its REAL builder and
+--   mirrored flat into the ScreenGui WorldMirror at the pixel size it has on this screen (a pixel billboard keeps its size at
+--   any distance; the scaled ones carry their own ReadScale). Theme.Measure is swapped for the renderer's font metrics for the
+--   scene, so every card is sized as Roblox's TextService sizes it (the mock's GetTextSize is a flat 0.5 em). Pieces:
+--     npc     NpcService.buildNameplate: three NPC signs (the stone card, the role-colour lip, the pinned gold "!")
+--     prompt  PromptController's plank on the real prompts: the Storm Altar's "Secret Roll" (StormAltar.Build), the Altar
+--             gate's "Enter" (GateService), Mayor Panda's "Talk" (NpcService); the key word this device shows (E / TAP)
+--     altar   StormAltar's place header: A's hanging board (beam, ropes, the stone board, the violet Secret Roulette plank)
+--     gates   LobbyBuilder's THE GATES face (550 x 400 canvas, the five names at 52 px with their icons) face-on from 40 and
+--             20 studs (70 degree field of view) and at 1:1
+--     hits    BattleController's damage over a target seen from 20 studs: one running total on its stone chip (Fx.Total)
+--             with "+20.6K" / a crit "+136K" / a Storm "+18.3K" popping beside it (Fx.HitLook + Fx.Number, as the hit
+--             handler places them), each billboard where it projects
+--     guide / guideahead / guidehere  TutorialController's travel guide in the real lobby (Guide.Start("StormAltar")): the
+--             voxel GuideArrow over the Altar gate, the flat gold dot trail and the GuideSign, seen from the default camera
+--             12.5 studs behind the player 40 studs out (each part's projected box, far to near, under the HUD and its chip):
+--             guide = the mock's framing (the camera 20 degrees off the gate), guideahead = the camera straight at the gate,
+--             guidehere = 7 studs from the gate ("You're here", the gate's "Enter" plank). The away state (the chip routing
+--             Home, the pointer on the Home tile) is lobby:travelaway.
+local WU = { TAN = math.tan(math.rad(35)) }
+
+-- Theme.Measure with the renderer's font metrics (the role's font, its MeasureSpare, a caps role in capitals); -> undo
+function WU.realMeasure(Theme)
+	if Theme._wuReal then
+		return function() end
+	end
+	local probe = Instance.new("TextLabel")
+	local orig = Theme.Measure
+	Theme.Measure = function(text, role, size, width)
+		local spare, font = 1, role
+		text = tostring(text or "")
+		if typeof(role) ~= "EnumItem" or role == Enum.Font.Unknown then
+			if not Theme.Fonts[role] then
+				role = "Body"
+			end
+			if Theme.CapsRoles and Theme.CapsRoles[role] then
+				text = Theme.Caps(text)
+			end
+			size = tonumber(size) or Theme.RoleSize(role)
+			spare = Theme.MeasureSpare[role] or 1
+			font = Theme.Fonts[role]
+		end
+		probe.Font = font
+		probe.Text = text
+		probe.TextSize = tonumber(size) or 14
+		local w, h = realExtent(probe, tonumber(width) and (tonumber(width) / spare) or nil)
+		return Vector2.new(math.ceil(w * spare), h)
+	end
+	Theme._wuReal = true
+	return function()
+		Theme.Measure = orig
+		Theme._wuReal = nil
+	end
+end
+
+-- the lobby, the Storm Altar and the gates' prompts, built by the server modules as the server builds them (once)
+function WU.serverWorld()
+	if WU.lobby then
+		return WU.lobby
+	end
+	local context = Mock.Context
+	Mock.Context = "server"
+	local ok, err = pcall(function()
+		WU.realMeasure(req("shared/Theme"))
+		local lobby = req("server/Services/LobbyBuilder").Build()
+		WU.lobby = type(lobby) == "table" and lobby or {}
+		local SA = req("server/Services/StormAltar", true)
+		if SA then
+			local okA, whyA = pcall(SA.Build, WU.lobby)
+			if not okA then
+				note("worldui: StormAltar.Build: " .. tostring(whyA))
+			end
+		end
+		local GS = req("server/Services/GateService", true)
+		if GS then
+			local okG, whyG = pcall(GS.Init, WU.lobby, { StormAltar = SA })
+			if not okG then
+				note("worldui: GateService.Init: " .. tostring(whyG))
+			end
+		end
+	end)
+	Mock.Context = context
+	if not ok then
+		note("worldui: the server world: " .. tostring(err))
+		WU.lobby = WU.lobby or {}
+	end
+	advance(0.6)
+	return WU.lobby
+end
+
+-- the NPCs (NpcService, as the npc scene builds them) around the plaza
+function WU.npcs()
+	if WU.npcList then
+		return WU.npcList
+	end
+	local ND = req("shared/NpcDialog")
+	local list = ND.Npcs or ND.List or {}
+	local origin = (Config.Lobby and Config.Lobby.Origin) or Vector3.new(0, 300, 0)
+	local spots = {}
+	for i = 1, max(1, #list) do
+		local a = (i - 1) * math.pi * 2 / max(1, #list)
+		local pos = origin + Vector3.new(math.cos(a) * 30, 0, math.sin(a) * 30)
+		spots[i] = CFrame.lookAt(pos, Vector3.new(origin.X, pos.Y, origin.Z))
+	end
+	req("server/Services/NpcService").Init({ NpcSpots = spots })
+	advance(1.5)
+	WU.npcList = list
+	return list
+end
+
+function WU.screen(order)
+	return make("ScreenGui", { Name = "WorldMirror", IgnoreGuiInset = true, ResetOnSpawn = false, DisplayOrder = order or 0, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+end
+
+-- a left-to-right flow of captioned cells under the top bar (rows wrap); -> place(w, h, caption) -> x, y
+function WU.flow(x0, y0)
+	local vp = Mock.Viewport
+	local x, y, rowH = x0, y0, 0
+	return function(w, h, caption)
+		local cw = max(w, utf8len(caption) * 9 + 12)
+		if x > x0 and x + cw > vp.X - 12 then
+			x, y, rowH = x0, y + rowH + 46, 0
+		end
+		local px, py = x, y
+		x = x + cw + 24
+		rowH = max(rowH, h)
+		return px, py
+	end
+end
+
+function WU.caption(screen, text, x, y)
+	label(screen, text, 16, {
+		Name = "Caption", Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(utf8len(text) * 9 + 12, 22),
+		TextXAlignment = Enum.TextXAlignment.Left, TextStrokeTransparency = 0.2, TextStrokeColor3 = NAVY,
+	})
+end
+
+-- a pixel billboard's content at its own size, top-left at (x, y)
+function WU.cell(screen, gui, x, y, name)
+	local w, h = canvasOf(gui)
+	local cell = make("Frame", { Name = name or gui.Name, BackgroundTransparency = 1, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h) }, screen)
+	for _, c in ipairs(gui:GetChildren()) do
+		if c:IsA("GuiObject") then
+			c:Clone().Parent = cell
+		end
+	end
+	return cell
+end
+
+-- a point in the world -> screen x, y, depth for camera CFrame `cam` (70 degree vertical field of view); nil behind it
+function WU.project(cam, p)
+	local lp = cam:PointToObjectSpace(p)
+	local z = -lp.Z
+	if z < 0.2 then
+		return nil
+	end
+	local vp = Mock.Viewport
+	local f = vp.Y / (2 * WU.TAN)
+	return vp.X / 2 + lp.X / z * f, vp.Y / 2 - lp.Y / z * f, z
+end
+
+-- the screen box of a part (its 8 corners projected) -> { x0, y0, x1, y1, z } or nil
+function WU.boxOf(cam, part)
+	local s, cf = part.Size, part.CFrame
+	local x0, y0, x1, y1, zs, n = math.huge, math.huge, -math.huge, -math.huge, 0, 0
+	for _, dx in ipairs({ -0.5, 0.5 }) do
+		for _, dy in ipairs({ -0.5, 0.5 }) do
+			for _, dz in ipairs({ -0.5, 0.5 }) do
+				local sx, sy, z = WU.project(cam, cf:PointToWorldSpace(Vector3.new(dx * s.X, dy * s.Y, dz * s.Z)))
+				if not sx then
+					return nil
+				end
+				x0, y0, x1, y1 = min(x0, sx), min(y0, sy), max(x1, sx), max(y1, sy)
+				zs, n = zs + z, n + 1
+			end
+		end
+	end
+	return { x0, y0, x1, y1, zs / n }
+end
+
+-- every part of `list` ({ part, colour? }) drawn as its projected box, far to near (a flat sketch of the 3D parts)
+function WU.sketch(screen, cam, list)
+	local boxes = {}
+	for _, item in ipairs(list) do
+		local b = WU.boxOf(cam, item[1])
+		if b and b[3] - b[1] < 4000 and b[4] - b[2] < 4000 then
+			b.colour, b.name = item[2] or item[1].Color, item[1].Name
+			boxes[#boxes + 1] = b
+		end
+	end
+	table.sort(boxes, function(a, b)
+		return a[5] > b[5]
+	end)
+	for i, b in ipairs(boxes) do
+		make("Frame", {
+			Name = "Sketch" .. b.name, BackgroundColor3 = b.colour, BorderSizePixel = 0, ZIndex = i,
+			Position = UDim2.fromOffset(floor(b[1] + 0.5), floor(b[2] + 0.5)), Size = UDim2.fromOffset(max(1, floor(b[3] - b[1] + 0.5)), max(1, floor(b[4] - b[2] + 0.5))),
+		}, screen)
+	end
+	return #boxes
+end
+
+-- a BillboardGui's screen rect for camera `cam`: its adornee's point + StudsOffset (camera space) + StudsOffsetWorldSpace,
+-- moved by SizeOffset (a fraction of its size; +Y is up) -> x, y (top-left), w, h or nil
+function WU.billboardRect(cam, gui)
+	local ad = gui.Adornee or gui.Parent
+	if not (ad and ad:IsA("BasePart")) then
+		return nil
+	end
+	local so = gui.StudsOffset or Vector3.new()
+	local sow = gui.StudsOffsetWorldSpace or Vector3.new()
+	local p = ad.Position + sow + cam.RightVector * so.X + cam.UpVector * so.Y - cam.LookVector * so.Z
+	local sx, sy = WU.project(cam, p)
+	if not sx then
+		return nil
+	end
+	local w, h = canvasOf(gui)
+	local off = gui.SizeOffset or Vector2.new()
+	return sx - w / 2 + off.X * w, sy - h / 2 - off.Y * h, w, h
+end
+
+-- a character sketch's colours (the mock's R15 boxes)
+WU.BODY = { Head = Color3.fromRGB(245, 205, 160), UpperTorso = Color3.fromRGB(214, 74, 150), LowerTorso = Color3.fromRGB(40, 50, 90),
+	LeftUpperArm = Color3.fromRGB(214, 74, 150), RightUpperArm = Color3.fromRGB(214, 74, 150), LeftHand = Color3.fromRGB(245, 205, 160),
+	RightHand = Color3.fromRGB(245, 205, 160), LeftUpperLeg = Color3.fromRGB(40, 50, 90), RightUpperLeg = Color3.fromRGB(40, 50, 90),
+	LeftFoot = Color3.fromRGB(30, 30, 40), RightFoot = Color3.fromRGB(30, 30, 40) }
+
+function WU.npc(screen)
+	NK.hideGame()
+	local list = WU.npcs()
+	local folder = workspace:FindFirstChild("NimbusNpcs")
+	local place = WU.flow(24, 96)
+	local shown = 0
+	for _, want in ipairs({ "Sparky Fox", "Mayor Panda", "Professor Axolotl" }) do
+		for _, d in ipairs(folder and folder:GetDescendants() or {}) do
+			if d:IsA("BillboardGui") and d.Name == "Nameplate" and d:FindFirstChild("Name", true) and d:FindFirstChild("Name", true).Text == want then
+				local w, h = canvasOf(d)
+				local cap = fmt("%s (%dx%d px)", want, w, h)
+				local x, y = place(w, h, cap)
+				WU.caption(screen, cap, x, y - 26)
+				WU.cell(screen, d, x, y)
+				shown = shown + 1
+			end
+		end
+	end
+	note(fmt("worldui:npc %d nameplates of %d NPCs", shown, #list))
+end
+
+function WU.prompt(screen)
+	NK.hideGame()
+	WU.serverWorld()
+	WU.npcs()
+	local touch = UserInputService.TouchEnabled == true and UserInputService.KeyboardEnabled ~= true
+	local input = touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard
+	local want = { { "Secret Roll", "Storm Altar" }, { "Enter", "Storm Altar" }, { "Talk", "Mayor Panda" } }
+	local place = WU.flow(24, 104)
+	local PC = req("client/Controllers/PromptController")
+	for _, wv in ipairs(want) do
+		local prompt = nil
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("ProximityPrompt") and d.ActionText == wv[1] and d.ObjectText == wv[2] then
+				prompt = d
+			end
+		end
+		if not prompt then
+			note("worldui:prompt no real prompt '" .. wv[2] .. " / " .. wv[1] .. "'")
+		else
+			PC.Custom(prompt)
+			Mock.ShowPrompt(prompt, input)
+			advance(0.1)
+			local card = PC.CardOf(prompt)
+			if card then
+				local w, h = canvasOf(card)
+				local hit = card:FindFirstChild("Hit", true)
+				local cap = fmt("%s / %s (%dx%d px)", wv[2], wv[1], w, h)
+				local x, y = place(w, h, cap)
+				WU.caption(screen, cap, x, y - 26)
+				WU.cell(screen, card, x, y)
+				note(fmt("worldui:prompt %s / %s: card %dx%d px, tap target %s", wv[2], wv[1], w, h,
+					hit and fmt("%.0fx%.0f px", hit.AbsoluteSize.X, hit.AbsoluteSize.Y) or "none"))
+				card.Enabled = false
+			else
+				note("worldui:prompt no card for " .. wv[1])
+			end
+		end
+	end
+end
+
+function WU.altar(screen)
+	NK.hideGame()
+	WU.serverWorld()
+	local header = nil
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("TextLabel") and d.Text == "STORM ALTAR" then
+			local bb = d:FindFirstAncestorWhichIsA("BillboardGui")
+			header = (bb and bb.Name == "TitleTag") and bb or header
+		end
+	end
+	if not header then
+		note("worldui:altar no TitleTag over the Storm Altar")
+		return
+	end
+	local w, h = canvasOf(header)
+	local vp = Mock.Viewport
+	local x = max(12, floor((vp.X - w) / 2))
+	local cap = fmt("Storm Altar header, pixel billboard 1:1 (%dx%d px)", w, h)
+	WU.caption(screen, cap, 24, 76)
+	WU.cell(screen, header, x, 110)
+end
+
+function WU.gates(screen)
+	NK.hideGame()
+	WU.serverWorld()
+	local face = nil
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("TextLabel") and d.Text == "THE GATES" then
+			face = d:FindFirstAncestorWhichIsA("SurfaceGui") or face
+		end
+	end
+	if not face then
+		note("worldui:gates no THE GATES face")
+		return
+	end
+	local vp = Mock.Viewport
+	-- (the mock leaves CanvasSize at its 800 x 600 default) a PixelsPerStud face's canvas is its part's face x the px per stud
+	local W, H = face.CanvasSize.X, face.CanvasSize.Y
+	local part = face.Adornee or face.Parent
+	if face.SizingMode == Enum.SurfaceGuiSizingMode.PixelsPerStud and part and part:IsA("BasePart") then
+		local n, s, pps = face.Face, part.Size, face.PixelsPerStud
+		local a, b = s.X, s.Y
+		if n == Enum.NormalId.Left or n == Enum.NormalId.Right then
+			a = s.Z
+		elseif n == Enum.NormalId.Top or n == Enum.NormalId.Bottom then
+			b = s.Z
+		end
+		W, H = floor(a * pps + 0.5), floor(b * pps + 0.5)
+	end
+	local fit = min(1, (vp.X - 48) / W, (vp.Y - 140) / H)
+	local x, y, rowH = 24, 104, 0
+	for _, view in ipairs({ { onScreenScale(face, 40), "from 40 studs (the plaza)" }, { onScreenScale(face, 20), "from 20 studs" }, { fit, fit < 1 and "the canvas fitted" or "the canvas 1:1" } }) do
+		local s = view[1]
+		local w, h = W * s, H * s
+		if x > 24 and x + w > vp.X - 12 then
+			x, y, rowH = 24, y + rowH + 46, 0
+		end
+		rowH = max(rowH, h)
+		local cap = fmt("%s (x%.2f, names %.1f px)", view[2], s, 52 * s)
+		WU.caption(screen, cap, x, y - 26)
+		local cell = make("Frame", { Name = "GatesFace", BackgroundTransparency = 1, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w, h) }, screen)
+		for _, c in ipairs(face:GetChildren()) do
+			if c:IsA("GuiObject") then
+				c:Clone().Parent = cell
+			end
+		end
+		if math.abs(s - 1) > 1e-3 then
+			deepScale(cell, s)
+		end
+		x = x + max(w, utf8len(cap) * 9 + 12) + 30
+	end
+end
+
+function WU.hits(screen)
+	NK.hideGame()
+	local BC = req("client/Controllers/BattleController")
+	local Fx = BC._Fx
+	local origin = (Config.Lobby and Config.Lobby.Origin) or Vector3.new(0, 300, 0)
+	local part = make("Part", { Name = "TargetSketch", Anchored = true, Size = Vector3.new(4, 4, 4), Color = Color3.fromRGB(150, 110, 200),
+		CFrame = CFrame.new(origin + Vector3.new(0, 4, -40)) }, workspace)
+	local u = { root = part, height = 4, id = 9001 }
+	local side = (type(BC._K) == "table" and BC._K.HIT_SIDE) or 0.42 -- BattleController K.HIT_SIDE (the hit handler's pop offset)
+	local hits = { { 20628, {} }, { 136205, { crit = true } }, { 18332, { element = true }, "Storm" } }
+	for _, hcase in ipairs(hits) do
+		local dmg = hcase[1]
+		local text, colour, px = Fx.HitLook(dmg, hcase[2], hcase[3])
+		Fx.Total(u, dmg)
+		local pop = Fx.Number(part, Fx.NumberHeight(u), text, colour, px)
+		if pop then
+			pop.gui.SizeOffset = Vector2.new(side, 0)
+		end
+		advance(0.3) -- three hits about a fast pet's tempo apart, the pops still rising
+	end
+	local head = part.Position + Vector3.new(0, 2, 0)
+	local cam = CFrame.lookAt(head + Vector3.new(0, 3, 20), head)
+	WU.sketch(screen, cam, { { part } })
+	local n, seen = 0, 0
+	for _, g in ipairs(workspace:GetDescendants()) do
+		seen = seen + ((g:IsA("BillboardGui") and (g.Name == "DamageTotal" or g.Name == "BattleNumber")) and 1 or 0)
+		if g:IsA("BillboardGui") and g.Enabled and (g.Name == "DamageTotal" or g.Name == "BattleNumber") and g.Adornee == part then
+			local x, y = WU.billboardRect(cam, g)
+			if x then
+				local cell = WU.cell(screen, g, x, y, g.Name)
+				cell.ZIndex = 50
+				n = n + 1
+			end
+		end
+	end
+	WU.caption(screen, "Damage over one target from 20 studs: one running total, the hits popping beside it", 24, 76)
+	note(fmt("worldui:hits %d billboards (total + pops) over the target (%d damage billboards in the world)", n, seen))
+end
+
+-- the lobby's Altar gate prompt part (GateService's AltarGatePrompt), from the built lobby
+function WU.gatePart()
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("ProximityPrompt") and d.Name == "AltarGatePrompt" and d.Parent and d.Parent:IsA("BasePart") then
+			return d.Parent
+		end
+	end
+	return nil
+end
+
+function WU.guide(screen, mode)
+	local here = mode == "here"
+	WU.serverWorld()
+	local gate = WU.gatePart()
+	if not gate then
+		note("worldui:guide no Altar gate prompt in the built lobby")
+		return
+	end
+	local spawn = (typeof(WU.lobby.SpawnCFrame) == "CFrame" and WU.lobby.SpawnCFrame.Position) or ((Config.Lobby and Config.Lobby.Origin or Vector3.new(0, 300, 0)) + Vector3.new(0, 3, 20))
+	local flat = Vector3.new(gate.Position.X - spawn.X, 0, gate.Position.Z - spawn.Z)
+	local dir = flat.Magnitude > 1 and flat.Unit or Vector3.new(0, 0, -1)
+	local standY = spawn.Y
+	local at = here and (gate.Position - dir * 7) or (gate.Position - dir * 40) -- (here: inside the 8-stud arrival)
+	at = Vector3.new(at.X, standY, at.Z)
+	Mock.Teleport(LocalPlayer, CFrame.lookAt(at, at + dir))
+	advance(0.4)
+	req("client/Controllers/TutorialController").Guide.Start("StormAltar")
+	advance(here and 0.6 or 1.6)
+	local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local rp = root and root.Position or at
+	local headP = rp + Vector3.new(0, 1.9, 0)
+	-- walk: the mock's framing (the camera turned 20 degrees off the gate, so the gate stands right of the middle and the
+	-- trail runs from the feet across to it); ahead / here: the camera straight at the gate
+	local view = dir
+	if mode == "walk" then
+		local a = math.rad(20)
+		view = Vector3.new(dir.X * math.cos(a) + dir.Z * math.sin(a), 0, -dir.X * math.sin(a) + dir.Z * math.cos(a))
+	end
+	local camAt = headP - view * 12.5 + Vector3.new(0, 4.5, 0)
+	local cam = CFrame.lookAt(camAt, headP + view * 14 + Vector3.new(0, 2, 0))
+	local list = {}
+	-- the Altar gate's own parts near its prompt (the arch, the pad, the swirl), the guide, the player
+	local gm = WU.lobby.Gates and WU.lobby.Gates.Altar and WU.lobby.Gates.Altar.Model
+	for _, d in ipairs(gm and gm:GetDescendants() or {}) do
+		if d:IsA("BasePart") and d.Transparency < 0.9 and max(d.Size.X, d.Size.Y, d.Size.Z) <= 16 then
+			list[#list + 1] = { d }
+		end
+	end
+	local fx = workspace:FindFirstChild("ClientFx")
+	local wg = fx and fx:FindFirstChild("TutorialGuide")
+	local dots, voxels = 0, 0
+	for _, d in ipairs(wg and wg:GetDescendants() or {}) do
+		if d:IsA("BasePart") and d.Transparency < 1 then
+			list[#list + 1] = { d }
+			if d.Parent and d.Parent.Name == "Dots" then
+				dots = dots + 1
+			else
+				voxels = voxels + 1
+			end
+		end
+	end
+	for _, d in ipairs(LocalPlayer.Character and LocalPlayer.Character:GetChildren() or {}) do
+		if d:IsA("BasePart") and WU.BODY[d.Name] then
+			list[#list + 1] = { d, WU.BODY[d.Name] }
+		end
+	end
+	local drawn = WU.sketch(screen, cam, list)
+	local sign = wg and wg:FindFirstChild("GuideSign", true)
+	if sign and sign.Enabled ~= false then
+		local x, y = WU.billboardRect(cam, sign)
+		if x then
+			WU.cell(screen, sign, x, y, "GuideSign").ZIndex = 5000
+		end
+	end
+	if here then
+		-- at the gate its prompt shows: PromptController's plank ("Storm Altar / Enter") where its billboard projects
+		local prompt = gate:FindFirstChild("AltarGatePrompt")
+		local PC = req("client/Controllers/PromptController")
+		if prompt then
+			PC.Custom(prompt)
+			local touch = UserInputService.TouchEnabled == true and UserInputService.KeyboardEnabled ~= true
+			Mock.ShowPrompt(prompt, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
+			advance(0.1)
+			local card = PC.CardOf(prompt)
+			local x, y = card and WU.billboardRect(cam, card)
+			if x then
+				WU.cell(screen, card, x, y, "PromptCard").ZIndex = 5001
+				card.Enabled = false
+			end
+		end
+	end
+	WU.caption(screen, here and "worldui:guidehere (parts sketched)" or ("worldui:" .. (mode == "walk" and "guide" or "guideahead") .. " (parts sketched)"), 24, 66)
+	note(fmt("worldui:guide %s %.0f studs from the gate: %d boxes drawn (%d arrow / sign parts, %d dots)", tostring(mode),
+		Vector3.new(gate.Position.X - rp.X, 0, gate.Position.Z - rp.Z).Magnitude, drawn, voxels, dots))
+end
+
+scenario("worldui", function(piece)
+	piece = tostring(piece or "")
+	if piece == "" then
+		piece = "npc"
+	end
+	local undo = WU.realMeasure(req("shared/Theme"))
+	local guide = { guide = "walk", guideahead = "ahead", guidehere = "here" }
+	local screen = WU.screen(guide[piece] and -1 or 0)
+	if piece == "npc" then
+		WU.npc(screen)
+	elseif piece == "prompt" then
+		WU.prompt(screen)
+	elseif piece == "altar" then
+		WU.altar(screen)
+	elseif piece == "gates" then
+		WU.gates(screen)
+	elseif piece == "hits" then
+		WU.hits(screen)
+	elseif guide[piece] then
+		WU.guide(screen, guide[piece])
+	else
+		undo()
+		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:guide|:guideahead|:guidehere]")
+	end
+	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	advance(0.1)
+	undo()
+end)
+-- [kitb-p2-world] end
 
 local function boot(width, height, touch, keepTitle)
 	Config = req("shared/Config")
