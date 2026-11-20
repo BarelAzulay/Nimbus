@@ -14600,7 +14600,10 @@ local function clientScenarios()
 						-- the compact and mini cards leave an empty win bonus out (the lost match has none)
 						local tier = card:GetAttribute("Rows")
 						-- (U9-9 look) the mini card shows a win bonus in the Tokens row ("11  +10", MergeBonus)
-						local want = (tier == "Mini" or (tier ~= "Full" and not won)) and 2 or 3
+						-- (P2 fix A) Micro: where even the mini card with its reason line is taller than its room (a lost match on a
+						-- 360 px tall landscape phone, under the strip once the F0 awning stands 20 px over the card), the Tokens row only
+						local small = tier == "Mini" or tier == "Micro"
+						local want = tier == "Micro" and 1 or ((tier == "Mini" or (tier ~= "Full" and not won)) and 2 or 3)
 						T.check(rows == want and plain, what .. ": the " .. want .. " stats are stone blocks in their wood edge", rows .. " rows (" .. tostring(tier) .. ")")
 						if tier == "Compact" and not won then
 							local m1, m3 = card:FindFirstChild("Member1", true), card:FindFirstChild("Member3", true)
@@ -14614,7 +14617,7 @@ local function clientScenarios()
 								mine = d
 							end
 						end
-						if tier == "Mini" then
+						if small then
 							-- (U9-9 review) the mini card: the result, the reason, the stats and the countdown only
 							T.check(mine == nil and card:FindFirstChild("Member1", true) == nil and card:FindFirstChild("Difficulty", true) == nil,
 								what .. ": the mini card shows no team and no difficulty line")
@@ -14641,7 +14644,7 @@ local function clientScenarios()
 						-- (U9-9 look) the difficulty a role chip (its colour on the face, a darker lip, a wood edge, the word and its
 						-- stars inside), centred under the banner with a gap; no loose colour bar
 						local chip, banner2 = card:FindFirstChild("DiffChip", true), card:FindFirstChild("Banner", true)
-						if tier ~= "Mini" then
+						if not small then
 							local inner = chip and chip.Parent
 							local ok = chip and U8.shown(chip) and chip:FindFirstChild("SignEdge") ~= nil and chip:FindFirstChild("Lip") ~= nil
 								and chip:FindFirstChild("Difficulty") ~= nil and card:FindFirstChild("DiffBar", true) == nil
@@ -14691,6 +14694,15 @@ local function clientScenarios()
 								end
 							end
 							T.check(mark and icon and icon:IsDescendantOf(mark) and #turned == 0, what .. ": the close mark is the pixel x, nothing turned", table.concat(turned, ", "))
+							if s[3] then
+								-- (P2 fix A look review r1, major 6: the close was 24 x 24 at 390x844) a thumb's 44 screen px each way: the
+								-- block itself or its clear hit pad (HitFor = "Close") over it
+								local pad = closeB:FindFirstChild("CloseHit")
+								local pr = pad and U8.shown(pad) and pad:GetAttribute("HitFor") == "Close" and U8.rect(pad)
+								local area = (cb.R - cb.X >= 43.5 and cb.B - cb.Y >= 43.5) and cb
+									or (pr and pr.R - pr.X >= 43.5 and pr.B - pr.Y >= 43.5 and pr.X <= cb.X + 0.5 and pr.R >= cb.R - 0.5 and pr.Y <= cb.Y + 0.5 and pr.B >= cb.B - 0.5 and pr)
+								T.check(area, what .. ": the close is a thumb's 44 px (the block or its hit pad)", U8.show(cb) .. (pr and (" pad " .. U8.show(pr)) or " no pad"))
+							end
 						end
 						-- (U9-9 look 2) the coins in the Shop's deep gold (one currency, one colour), not the brown ink
 						local Theme = LoadingH.shared("Theme")
@@ -14715,7 +14727,7 @@ local function clientScenarios()
 						end
 						-- (U9-9 look 2) the mini card's win bonus a gold chip (the Selected face and its lip) in the Tokens row's face,
 						-- left of the total with a clear gap; the total its own number
-						if tier == "Mini" and won then
+						if small and won then
 							local chip = card:FindFirstChild("BonusChip", true)
 							local row = card:FindFirstChild("RowTokens", true)
 							local value = row and row:FindFirstChild("Value")
@@ -14771,7 +14783,14 @@ local function clientScenarios()
 								table.concat(hits, "; ") .. " | " .. U8.show(U8.rect(card)))
 						end
 						if s[3] and s[1] > s[2] then
-							T.check(tier == "Compact" or tier == "Mini", what .. ": a landscape phone takes the compact rows or the mini card", tostring(tier))
+							T.check(tier == "Compact" or small, what .. ": a landscape phone takes the compact rows or the mini / micro card", tostring(tier))
+							-- (P2 fix A) the lost mini card (its reason line 25 design px) cannot stand between the strip and the jump
+							-- button on a 360 px tall phone: the micro card keeps the result, the reason, the tokens and the countdown
+							if s[2] <= 360 and not won then
+								local reasonL = card:FindFirstChild("Reason", true)
+								T.check(tier == "Micro" and reasonL and U8.shown(reasonL) and card:FindFirstChild("RowTime", true) == nil and card:FindFirstChild("RowTokens", true) ~= nil,
+									what .. ": a 360 px tall phone's lost card is the micro card (the reason and the tokens kept, no Time row)", tostring(tier))
+							end
 						elseif s[1] == 1920 then
 							T.check(tier == "Full", what .. ": the full rows on a PC", tostring(tier))
 						end
@@ -14970,6 +14989,24 @@ local function clientScenarios()
 			T.check(#clash == 0, tag .. ": the pills inside the card, apart (wrapped where the card is narrow)", table.concat(clash, "; "))
 			local tight = P2.tight(top)
 			T.check(#tight == 0, tag .. ": every one-line text of the card fits its box", table.concat(tight, "; "))
+			if Hd.m.Compact and not Hd.m.Landscape then
+				-- (P2 fix A, look: at 390 x 844 the card was a 196 px tower under the enemy list, the name cut to 'Storm...', the
+				-- track 50 px) a portrait phone's boss card is the pitch's strip across the top (06_boss_bar_optA; the pitch's
+				-- portrait scene draws it 470 wide at y 62 with the fighter card and the strips under it): the screen's width
+				-- less its edges, the name whole, a track of 200 px or more, the fighter card and the HUD's strips under it
+				local sw = gui.AbsoluteSize.X
+				local edge = 12 * k
+				local name2 = top:FindFirstChild("BossName", true)
+				local hp2 = top:FindFirstChild("BossBar") and top.BossBar:FindFirstChild("Hp")
+				local fc = gui.Root:FindFirstChild("Team")
+				local fr = fc and U8.shown(fc) and U8.rect(fc)
+				local over = U99.overTopRight(gui, cr)
+				T.check(cr.R - cr.X >= sw - 2 * edge - 2 and cr.Y <= edge + 1 and name2 and name2.Text == B.boss.name and hp2 and U8.rect(hp2).R - U8.rect(hp2).X >= 200
+					and fr and fr.Y >= cr.B and #over == 0,
+					tag .. ": a portrait phone's boss card spans the top, the name whole, the fighter card and the strips under it",
+					fmt("card %s of %d | name '%s' | track %.0f | team %s | strips %s", U8.show(cr), sw, name2 and name2.Text or "-", hp2 and (U8.rect(hp2).R - U8.rect(hp2).X) or 0,
+						fr and U8.show(fr) or "-", table.concat(over, "; ")))
+			end
 		end
 		for _, s in ipairs(U8.SIZES) do
 			for _, worst in ipairs({ false, true }) do
@@ -14994,6 +15031,23 @@ local function clientScenarios()
 			T.check(type(key) == "string" and portrait and U8.shown(portrait) and img and img.Image == "rbxassetid://1234567" and img.ResampleMode == Enum.ResamplerMode.Pixelated
 				and math.abs(portrait.AbsoluteSize.X / U8.scaleOf(portrait) - 74) < 0.6 and hp and U8.rect(hp).X >= U8.rect(portrait).R,
 				tag .. ": the boss head is a 74 px pixelated portrait left of the track", img and img.Image or "no portrait")
+			Hd.Textures = nil
+			U96.close()
+		end)
+		-- (P2 fix A, look) the portrait phone with the head: the strip keeps the name whole and a track of 200 px or more
+		-- beside the 74 px head (the old right-column card cut it to a 50 px track)
+		U8.at(390, 844, true, "top card portrait", function(tag)
+			local Hd = BC._Hud
+			Hd.Textures = { [tostring(Config.BossHeads.storm_titan)] = 1234567 }
+			U96.open("battle:raid")
+			local B = BC._St.battle
+			local gui = U8.pg():FindFirstChild("NimbusBattle")
+			local top = gui and gui:FindFirstChild("TopCard", true)
+			local portrait = top and top:FindFirstChild("Portrait", true)
+			local name = top and top:FindFirstChild("BossName", true)
+			local hp = top and top:FindFirstChild("BossBar") and top.BossBar:FindFirstChild("Hp")
+			T.check(portrait and U8.shown(portrait) and name and B and B.boss and name.Text == B.boss.name and hp and U8.rect(hp).R - U8.rect(hp).X >= 200 and P2.inside(U8.rect(hp), U8.rect(top)),
+				tag .. ": with the head: the name whole, a track of 200 px or more", fmt("name '%s' | track %.0f", name and name.Text or "-", hp and (U8.rect(hp).R - U8.rect(hp).X) or 0))
 			Hd.Textures = nil
 			U96.close()
 		end)
@@ -15068,6 +15122,7 @@ local function clientScenarios()
 				T.check(math.abs((cr.X + cr.R) / 2 - w / 2) <= w * 0.12, tag .. ": a landscape phone's card is the pitch's top middle", U8.show(cr))
 			end
 		end
+		local battleW = {} -- (P2 fix A) the battle result card's width per size ("WxH")
 		for _, s in ipairs(U8.SIZES) do
 			local at = s[3] and function(w, h, _, label, fn)
 				U99.atPhone(w, h, label, fn)
@@ -15100,6 +15155,7 @@ local function clientScenarios()
 					local body = card:FindFirstChild("Body")
 					local k = U8.scaleOf(card)
 					local cr = U8.rect(card)
+					battleW[s[1] .. "x" .. s[2]] = cr.R - cr.X -- (P2 fix A) the dungeon's End card below matches it on a portrait phone
 					-- the template's parts, the same in every variant
 					local head = body and body:FindFirstChild("Head")
 					local title = head and head:FindFirstChild("Title")
@@ -15127,6 +15183,27 @@ local function clientScenarios()
 						end
 					end
 					T.check(rows >= 2 and #badRow == 0, tag .. ": stat rows: label, the value right-aligned, a green tick each", fmt("%d rows; bad: %s", rows, table.concat(badRow, ", ")))
+					-- (P2 fix A look review r1, minor: the ring's 3 stats in 2 columns at 844x390 left an empty cell) every stat
+					-- line is filled across the stats' width: an odd last stat spans the line
+					if stats and U8.shown(stats) then
+						local sr, lines = U8.rect(stats), {}
+						for _, row in ipairs(stats:GetChildren()) do
+							if row.Name:match("^Stat_") and U8.shown(row) then
+								local r = U8.rect(row)
+								local key = math.floor(r.Y + 0.5)
+								lines[key] = lines[key] or { X = math.huge, R = -math.huge }
+								lines[key].X = math.min(lines[key].X, r.X)
+								lines[key].R = math.max(lines[key].R, r.R)
+							end
+						end
+						local holes = {}
+						for y, l in pairs(lines) do
+							if l.X > sr.X + 1 or l.R < sr.R - 1 then
+								holes[#holes + 1] = fmt("y %d: %.0f..%.0f of %.0f..%.0f", y, l.X, l.R, sr.X, sr.R)
+							end
+						end
+						T.check(#holes == 0, tag .. ": every stat line filled across the card (no empty cell)", table.concat(holes, "; "))
+					end
 					-- reward chips: equal widths, the number on each (the word under it on a wide screen)
 					local chips = body and body:FindFirstChild("Chips")
 					local widths, badChip = {}, {}
@@ -15235,6 +15312,35 @@ local function clientScenarios()
 						eq = eq and math.abs(w - widths[1]) <= 1
 					end
 					T.check(eq, tag .. ": the totals as equal reward chips", fmt("%d chips", #widths))
+					if s[3] and s[2] > s[1] then
+						-- (P2 fix A, look: at 390 x 844 the End card was 217.6 px wide beside the menu column, its third chip alone on a
+						-- second row, its lines wrapped) a portrait phone's End card is the battle result card's width (one template,
+						-- K.RESULT_W at the phone's 0.8: 352 px), its chips in one row, clear of the touch keys, the top-right stack and
+						-- the screen's sides, the menu tiles stepping aside where it covers them (as for the battle's card)
+						local rowsY, chipN = {}, 0
+						for _, c in ipairs(body and body:FindFirstChild("Chips") and body.Chips:GetChildren() or {}) do
+							if c.Name:match("^Chip_") and U8.shown(c) then
+								chipN = chipN + 1
+								rowsY[math.floor(U8.rect(c).Y + 0.5)] = true
+							end
+						end
+						local nRows = 0
+						for _ in pairs(rowsY) do
+							nRows = nRows + 1
+						end
+						local want = battleW[s[1] .. "x" .. s[2]]
+						T.check(want and math.abs((cr.R - cr.X) - want) <= 1 and chipN >= 3 and nRows == 1,
+							tag .. ": the battle result card's width, its chips in one row", fmt("%.1f px wide (battle %s), %d chips in %d rows", cr.R - cr.X, tostring(want), chipN, nRows))
+						phoneClear(tag, card, s[1], s[2])
+						local menuGui = U8.pg():FindFirstChild("NimbusMenu")
+						local under = {}
+						for _, t in ipairs(menuGui and menuGui:GetDescendants() or {}) do
+							if t:IsA("GuiButton") and U8.shown(t) and t.AbsoluteSize.X > 0 and U8.overlap(U8.rect(t), cr) then
+								under[#under + 1] = t.Name
+							end
+						end
+						T.check(#under == 0, tag .. ": the menu tiles step aside where the card covers them", table.concat(under, ", "))
+					end
 					local ok = body and body:FindFirstChild("OkButton")
 					local segs = 0
 					for _, c in ipairs(ok and ok:FindFirstChild("Lip") and ok.Lip:GetChildren() or {}) do
@@ -15757,8 +15863,19 @@ local function clientScenarios()
 					local vr = vitals and U8.shown(vitals) and U8.rect(vitals)
 					T.check(vr and math.abs(sr.X - vr.X) <= 1 and math.abs(sr.B - (vr.Y - 10)) <= 1, tag .. ": on the HUD stack, at the vitals card's left edge, 10 px over it",
 						U8.show(sr) .. " / vitals " .. (vr and U8.show(vr) or "-"))
-					T.check(math.abs(sr.X - 29) <= 2 and math.abs(sr.Y + inset - 534) <= 3 and math.abs(sr.B + inset - 596) <= 2 and math.abs((sr.R - sr.X) - 317) <= 4,
-						tag .. ": the spec's 29, 534-596, 317 x 62 (screen px)", U8.show(sr) .. fmt(" + %d inset", inset))
+					-- (P2 fix A: the test was stale, the dock is right) spec 03 B's rule: Vitals-wide from the card's left edge to the RUN /
+					-- DASH column's right edge, 62 tall, 10 px over the vitals card. Its numbers (29, 534-596, 317 x 62) were measured
+					-- over the pitch's base render, the vitals card before 08 C (29,606 240 x 80); 08 C (same wave) gave the card its
+					-- name tab (32 design px over its top) and moved it to x 20 at 390 x 844, so the same rule now lands at 20,513-574,
+					-- 322 x 61 (screen px). The rule is checked, not the old numbers
+					local mc = pg:FindFirstChild("MobileControls")
+					local run = mc and mc:FindFirstChild("RunButton", true)
+					local rr = run and U8.shown(run) and U8.rect(run)
+					local gi = game:GetService("GuiService"):GetGuiInset().Y
+					local rdy = (mc and mc.IgnoreGuiInset and -gi or 0) - (gui.IgnoreGuiInset and -gi or 0)
+					T.check(rr and math.abs(sr.R - rr.R) <= 1 and math.abs((sr.B - sr.Y) - 62) <= 2 and sr.B <= rr.Y + rdy - 8,
+						tag .. ": spec 03 B's dock: from the vitals card's left edge to RUN's right edge, 62 tall, above RUN",
+						U8.show(sr) .. fmt(" + %d inset", inset) .. " / RUN " .. (rr and U8.show(rr) or "-"))
 				else
 					-- (the card's edge margin under the top bar: 12 px, 20 on touch)
 					T.check(sr.Y >= -0.5 and sr.Y <= (s[3] and 20 or 12) + 1 and (cr == nil or not over4(sr, cr)) and (cr ~= nil or sr.X <= 12 * k + 1),
@@ -16196,12 +16313,17 @@ local function clientScenarios()
 				local hint, restore = U99.mouseHint()
 				local hud = U99.gui("NimbusHud")
 				local top, left, right = hud and hud:GetAttribute("BottomCentreTop"), hud and hud:GetAttribute("BottomCentreLeft"), hud and hud:GetAttribute("BottomCentreRight")
-				if T.check(hint ~= nil and U8.shown(hint) and type(top) == "number" and type(right) == "number", tag .. ": the hint and the vitals card show") then
+				-- (P2 fix A) since vitals C the slot's top (BottomCentreTop) is the name tab's top, TAB_UP over the card's own top
+				-- edge (BottomCentreCardTop): docked beside the card the plank stands on the card's top line, not the tab's (at
+				-- 960 x 540 the tab's top line, 310, lay 1 px into the middle band)
+				local cardTop = hud and hud:GetAttribute("BottomCentreCardTop")
+				if T.check(hint ~= nil and U8.shown(hint) and type(top) == "number" and type(right) == "number" and type(cardTop) == "number" and cardTop > top,
+					tag .. ": the hint and the vitals card show (the card's top under its name tab published)", tostring(cardTop)) then
 					local r, gr = U8.rect(hint), hint.Parent.AbsoluteSize
 					local e = 2 * U8.scaleOf(hint)
 					local p = { X = r.X - e, R = r.R + e, Y = r.Y - e, B = r.B + e }
 					local above = p.B + 8 <= top + 0.5
-					local beside = p.X >= right + 8 - 0.5 and math.abs(r.Y - top) <= 1
+					local beside = p.X >= right + 8 - 0.5 and math.abs(r.Y - cardTop) <= 1
 					local v = { X = left or 0, R = right, Y = top, B = gr.Y }
 					T.check((above or beside) and not U8.overlap(p, v), tag .. ": the plank 8 px or more above the vitals card, or beside it on its top line",
 						fmt("plank %.1f,%.1f..%.1f,%.1f | vitals top %.1f, %.1f..%.1f | docked %s", p.X, p.Y, p.R, p.B, top, left or -1, right, tostring(hint.Parent:GetAttribute("Docked"))))

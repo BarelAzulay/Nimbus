@@ -892,6 +892,13 @@ local function clientScenarios()
 			return out
 		end
 		local MIN_PX = { Special = 72, Target = 44, Element = 56, Dash = 44 }
+		-- (P2 fix A) a real player's HUD: Cash, Gems and the tokens (three strips: the narrow stack in a battle, so the right
+		-- column starts low). Alone this list ran with the tokens strip only and passed; the whole suite (whose earlier lists
+		-- set Cash and Gems) found the enemy list on DASH at 360 x 640
+		local Config = H.moduleAt("shared", "Config")
+		local oldCash, oldGems = LocalPlayer:GetAttribute(Config.Attr.Cash), LocalPlayer:GetAttribute(Config.Attr.Gems)
+		LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash or 48200)
+		LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems or 320)
 		for _, size in ipairs({ { 844, 390 }, { 740, 360 }, { 749, 388 }, { 667, 375 }, { 1024, 768 }, { 390, 844 }, { 360, 640 } }) do
 			Mock.SetViewport(size[1], size[2])
 			H.step(15, 1 / 30)
@@ -1002,6 +1009,8 @@ local function clientScenarios()
 		end
 		Mock.SetViewport(390, 844)
 		H.step(3, 0.1)
+		LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash)
+		LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems)
 		T.check(#Mock.Errors == err0, "evo phone: no script errors", tostring(Mock.Errors[#Mock.Errors]))
 		KC.flushErrors("client_evo_buttons_mobile")
 	end)

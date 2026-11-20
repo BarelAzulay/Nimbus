@@ -219,6 +219,7 @@ function Driver:startPayload()
 	p.T = self.sim:Time()
 	p.Ring = self.opts.Ring
 	p.Dungeon = self.opts.Dungeon
+	p.Raid = self.opts.Raid -- (a raid's tier and boss id, as BattleService's Start carries them)
 	if self.side ~= 0 then
 		local team = self.sim:TeamOf(self.me)
 		if team then
@@ -1111,13 +1112,25 @@ function H.phoneChecks(BC, label)
 	-- and every state pill in one card; the pitch's 844 x 390 card ends at 47% of the height. It may reach that deep, no
 	-- further: half the height on a landscape phone, 40% on a portrait one; the rest of the HUD keeps the centre clear)
 	local topCard = H.find("Root.TopCard")
+	-- (P2 fix A, the test was stale) a portrait phone's boss strip spans the top (item 06 A); the fighter card goes right
+	-- under it, as the pitch's portrait draws it (01_phone_buttons_opt*_390x844.png: the strip 62..205, the fighter card
+	-- 215..300, 35.5% of the height). That card is part of the top stack: it may reach the strip's depth (40%), no further
+	local fighter = nil
 	if topCard and H.shown(topCard) then
 		local tr = H.rect(topCard)
 		local deep = Hh * (W > Hh and 0.5 or 0.4)
 		T.check(tr.y1 <= deep + 0.5, label .. ": the top card ends above " .. (W > Hh and "half" or "40%") .. " of the height", H.rectText(tr))
+		local f = H.find("Root.Team.Fighter")
+		if W < Hh and tr.x1 - tr.x0 >= W * 0.9 and f and H.shown(f) then
+			fighter = f
+			local fr = H.rect(f)
+			T.check(fr.y0 >= tr.y1 and fr.y1 <= deep + 0.5, label .. ": under the boss strip the fighter card ends above 40% of the height",
+				H.rectText(fr) .. " | strip " .. H.rectText(tr))
+		end
 	end
 	for _, o in ipairs(root and root:GetDescendants() or {}) do
 		local stack = (cheer and (o == cheer or o:IsDescendantOf(cheer))) or o == cheerGlow or (topCard and (o == topCard or o:IsDescendantOf(topCard)))
+			or (fighter and (o == fighter or o:IsDescendantOf(fighter)))
 		if not stack and ((o:IsA("GuiObject") and H.shown(o) and o.BackgroundTransparency < 1) or (o:IsA("TextLabel") and H.shown(o) and o.Text ~= "")) then
 			local r = H.rect(o)
 			if r.x1 - r.x0 > 2 and H.overlap(r, box) then
@@ -1279,6 +1292,216 @@ S.client_p5battle_landscape = guarded("client_p5battle_landscape", function()
 	if BC then
 		H.phoneRun(BC, { { 740, 360 }, { 844, 390 } }, "client_p5battle_landscape")
 	end
+end)
+
+-- (P2 fix A, look review r1) a short portrait phone's boss fight (360 x 640; 390 x 844 kept): item 06 A's strip across
+-- the top pushed the enemy list under DASH / TARGET (a dungeon's mini-boss, the default one strip: Bubble Axolotl cut by
+-- DASH, TARGET on the "+n more" tag), and a raid fell back to its old 211 px card under DASH / TARGET / Leave ("Storm ...",
+-- "555K / 5"). For the one-strip and the three-strip (Cash + Gems) HUD, a dungeon's mini-boss and a raid with and without
+-- minions: the strip spans the top whole (the boss's name uncut), no action key on the strip, the fighter card, a helper,
+-- the enemy list (a row stays shown) or Cheer up! / Retreat, and those parts clear of each other
+S.client_p5battle_short = guarded("client_p5battle_short", function()
+	local BC = H.load()
+	if not BC then
+		return
+	end
+	H.bootPhone()
+	local Config = H.moduleAt("shared", "Config")
+	local oldCash, oldGems = LocalPlayer:GetAttribute(Config.Attr.Cash), LocalPlayer:GetAttribute(Config.Attr.Gems)
+	local out0, err0 = #Mock.Output, #Mock.Errors
+	local function parts()
+		local out = {}
+		for _, path in ipairs({ "Root.TopCard", "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2", "Root.Cheer", "Root.Retreat", "Root.Enemies.More" }) do
+			local o = H.find(path)
+			if o and H.shown(o) and o.AbsoluteSize.X > 2 then
+				out[#out + 1] = { path, H.rect(o) }
+			end
+		end
+		local en = H.find("Root.Enemies")
+		for _, row in ipairs(en and en:GetChildren() or {}) do
+			if row:IsA("GuiObject") and row.Name ~= "More" and H.shown(row) and row.AbsoluteSize.X > 2 then
+				out[#out + 1] = { "Root.Enemies." .. row.Name, H.rect(row) }
+			end
+		end
+		-- the HUD's currency strips (under the strip on a portrait phone: a raid's two pill rows put them on DASH)
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local cur = pg and pg:FindFirstChild("NimbusHud") and pg.NimbusHud:FindFirstChild("Currency", true)
+		if cur and H.shown(cur) and cur.AbsoluteSize.X > 2 then
+			out[#out + 1] = { "NimbusHud.Currency", H.rect(cur) }
+		end
+		return out
+	end
+	local cases = {
+		{ "dungeon", function()
+			return H.dungeon(4, true)
+		end },
+		{ "raid", function()
+			return H.driver({ Mode = "Raid", Boss = "storm_titan", Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = H.team(3, 0, 14) } } })
+		end },
+		{ "raid+minions", function()
+			local wave = H.team(4, 3, 10)
+			for _, p in ipairs(wave) do
+				p.Wild = true
+			end
+			return H.driver({ Mode = "Raid", Boss = "storm_titan", Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = H.team(3, 0, 14) } }, Wave = wave })
+		end },
+		-- (render_gui's battle:raid:full: the tier, the enrage and both minion waves, the strip's pills in two rows)
+		{ "raid full", function()
+			local d = H.driver({ Mode = "Raid", Boss = "storm_titan", Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = H.team(3, 0, 14) } },
+				Raid = { Tier = "Starter", BossId = "storm_titan" } })
+			if d and d.sim.boss then
+				d.sim.boss.hp = d.sim.boss.maxHp * 0.28 -- (the next step enrages it and sends both waves)
+			end
+			return d
+		end },
+	}
+	for _, strips in ipairs({ "one strip", "three strips" }) do
+		LocalPlayer:SetAttribute(Config.Attr.Cash, strips == "three strips" and 48200 or nil)
+		LocalPlayer:SetAttribute(Config.Attr.Gems, strips == "three strips" and 320 or nil)
+		for _, sz in ipairs({ { 360, 640 }, { 390, 844 } }) do
+			Mock.SetViewport(sz[1], sz[2])
+			H.step(3, 0.1)
+			for _, case in ipairs(cases) do
+				local tag = string.format("short %dx%d %s %s: ", sz[1], sz[2], case[1], strips)
+				local d = case[2]()
+				if T.check(d ~= nil, tag .. "(setup) the fight") then
+					H.begin(d)
+					d:run(0.8, 30)
+					H.step(3, 0.1)
+					local W = sz[1]
+					local top = H.find("Root.TopCard")
+					local tr = top and H.shown(top) and H.rect(top)
+					T.check(tr and tr.x1 - tr.x0 >= 0.9 * W, tag .. "the boss strip spans the top", tr and H.rectText(tr) or "hidden")
+					local name = H.find("Root.TopCard.BossBar.BossName")
+					if case[1] ~= "dungeon" then
+						T.check(name and H.shown(name) and not tostring(name.Text):find("...", 1, true), tag .. "the boss's name is whole", name and name.Text or "nil")
+					end
+					if case[1] == "raid full" then
+						-- (look review r1, the pitch's pills: Storm, Enraged, Wave 2 / 3, 3 players) the minion wave the raid is on, of
+						-- the boss's waves (Storm Titan: 2), in the phone's short words
+						local wave = H.find("Root.TopCard.Pills.Wave")
+						T.check(wave and H.shown(wave) and wave.Text == "Wave 2/2", tag .. "the strip's Wave pill says the minion wave", wave and (tostring(H.shown(wave)) .. " " .. wave.Text) or "nil")
+					end
+					local list = parts()
+					local en = H.find("Root.Enemies")
+					local rows = 0
+					for _, p in ipairs(list) do
+						if p[1]:find("^Root%.Enemies%.") and p[1] ~= "Root.Enemies.More" then
+							rows = rows + 1
+						end
+					end
+					if case[1] ~= "raid" then
+						T.check(rows >= 1, tag .. "the enemy list keeps a row", tostring(en and H.shown(en)))
+					end
+					local bad = {}
+					for _, kind in ipairs({ "Target", "Element", "Special", "Dash" }) do
+						local b = H.find("Root.Commands." .. kind .. "Button")
+						if b and H.shown(b) then
+							local r = H.rect(b)
+							for _, p in ipairs(list) do
+								if H.overlap(r, p[2]) then
+									bad[#bad + 1] = kind .. " " .. H.rectText(r) .. " on " .. p[1] .. " " .. H.rectText(p[2])
+								end
+							end
+						end
+					end
+					for i, a in ipairs(list) do
+						for j = i + 1, #list do
+							local b = list[j]
+							local nested = a[1]:find("^Root%.Enemies") and b[1]:find("^Root%.Enemies")
+							if not nested and H.overlap(a[2], b[2]) then
+								bad[#bad + 1] = a[1] .. " " .. H.rectText(a[2]) .. " on " .. b[1] .. " " .. H.rectText(b[2])
+							end
+						end
+					end
+					T.check(#bad == 0, tag .. "no key on the HUD's cards, the cards clear of each other", table.concat(bad, "; "))
+					-- (P2 fix A look review r1, major 6: SWAP was 24 px tall) each helper's SWAP is a thumb's 44 screen px each
+					-- way, the block or its clear hit pad (HitFor = "Swap") over it; a pad reaches no other button (a portrait, an
+					-- enemy row, the other SWAP, a key)
+					local small, taps = {}, {}
+					for _, path in ipairs({ "Root.Team.Helpers.Helper1.Disc.Portrait", "Root.Team.Helpers.Helper2.Disc.Portrait", "Root.Commands.TargetButton",
+						"Root.Commands.ElementButton", "Root.Commands.SpecialButton", "Root.Commands.DashButton", "Root.Cheer", "Root.Retreat" }) do
+						local o = H.find(path)
+						if o and H.shown(o) then
+							taps[#taps + 1] = { path, H.rect(o) }
+						end
+					end
+					for _, row in ipairs(en and en:GetChildren() or {}) do
+						if row:IsA("GuiButton") and H.shown(row) then
+							taps[#taps + 1] = { "Root.Enemies." .. row.Name, H.rect(row) }
+						end
+					end
+					local pads = {}
+					for i = 1, 2 do
+						local swap = H.find("Root.Team.Helpers.Helper" .. i .. ".Swap")
+						if swap and H.shown(swap) then
+							local r = H.rect(swap)
+							local pad = swap.Parent:FindFirstChild("SwapHit") or swap:FindFirstChild("SwapHit")
+							local pr = pad and H.shown(pad) and pad:GetAttribute("HitFor") == "Swap" and H.rect(pad)
+							local big = function(q)
+								return q.x1 - q.x0 >= 43.5 and q.y1 - q.y0 >= 43.5
+							end
+							local area = big(r) and r or (pr and big(pr) and pr.x0 <= r.x0 + 0.5 and pr.x1 >= r.x1 - 0.5 and pr.y0 <= r.y0 + 0.5 and pr.y1 >= r.y1 - 0.5 and pr)
+							if not area then
+								small[#small + 1] = string.format("Swap%d %s%s", i, H.rectText(r), pr and (" pad " .. H.rectText(pr)) or " no pad")
+							else
+								for _, t in ipairs(taps) do
+									if H.overlap(area, t[2]) then
+										small[#small + 1] = string.format("Swap%d's 44 px %s on %s %s", i, H.rectText(area), t[1], H.rectText(t[2]))
+									end
+								end
+								for _, other in ipairs(pads) do
+									if H.overlap(area, other) then
+										small[#small + 1] = string.format("Swap%d's 44 px %s on the other's", i, H.rectText(area))
+									end
+								end
+								pads[#pads + 1] = area
+							end
+						end
+					end
+					T.check(#small == 0, tag .. "each SWAP a thumb's 44 px, clear of the other buttons", table.concat(small, "; "))
+					H.cleanup(BC, d)
+				end
+			end
+		end
+	end
+	LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems)
+	-- (P2 fix A look review r1, major 6: the top bar's pill buttons 30-33 px wide in renders at 360 / 390) on a phone that
+	-- reports Roblox's top bar band (TopbarInset: its left buttons to 112, its "..." from W - 72) every pill button is a
+	-- thumb's 44 px each way. (render_gui's mock reports none: the PC fallback, x 212, squeezes them to 30-33 px)
+	local TB = H.moduleAt("client", "Controllers/TopBarController")
+	if T.check(TB and TB.Refresh, "short: (setup) the top bar") then
+		for _, sz in ipairs({ { 360, 640 }, { 390, 844 } }) do
+			Mock.SetViewport(sz[1], sz[2])
+			Mock.TopbarInset = Rect.new(112, 0, sz[1] - 72, 58)
+			pcall(TB.Refresh)
+			H.step(2, 0.1)
+			local pg = LocalPlayer:FindFirstChild("PlayerGui")
+			local bar = pg and pg:FindFirstChild("NimbusTopBar")
+			local small, n = {}, 0
+			for _, d in ipairs(bar and bar:GetDescendants() or {}) do
+				if d:IsA("GuiButton") and d.Name:match("^PillButton_") and H.shown(d) then
+					n = n + 1
+					local r = H.rect(d)
+					if r.x1 - r.x0 < 43.5 or r.y1 - r.y0 < 43.5 then
+						small[#small + 1] = d.Name .. " " .. H.rectText(r)
+					end
+				end
+			end
+			T.check(n >= 2 and #small == 0, string.format("short %dx%d top bar: every pill button a thumb's 44 px (%d)", sz[1], sz[2], n), table.concat(small, "; "))
+			-- (minor: the pill ran into Roblox's "..." at 360 in renders) the pill ends inside the band, left of the "..."
+			local pill = bar and bar:FindFirstChild("Pill", true)
+			local pr = pill and H.shown(pill) and H.rect(pill)
+			T.check(pr and pr.x1 <= sz[1] - 72 + 0.5, string.format("short %dx%d top bar: the pill ends left of Roblox's \"...\"", sz[1], sz[2]), pr and H.rectText(pr) or "no pill")
+		end
+		Mock.TopbarInset = nil
+		pcall(TB.Refresh)
+	end
+	Mock.SetViewport(390, 844)
+	H.step(3, 0.1)
+	T.check(H.warnings(out0) == nil and #Mock.Errors == err0, "short: no BattleController errors or warnings", tostring(H.warnings(out0)))
+	KC.flushErrors("client_p5battle_short")
 end)
 
 -- (kit-b U9-6) the battle driver for smoke_kitb_ui's battle family walks (the same client world)

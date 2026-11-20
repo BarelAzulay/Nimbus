@@ -309,6 +309,7 @@ local S = {
 	yieldToResult = false, -- a narrow screen with the result card open: the match panel steps away
 	vitalsOwners = {}, -- [window name] = true while that window wants the vitals card hidden (SetVitalsHidden)
 	currencyOwners = {}, -- (kit-b U9-2) [window name] = true while that window wants the currency strips hidden (SetCurrencyHidden)
+	topReserve = {}, -- (P2 fix A) [owner] = gui-area px of the top band a card spans (SetTopReserve): the strips start under it
 }
 local H = { -- health
 	Char = nil, Humanoid = nil, Conns = {},
@@ -1001,7 +1002,8 @@ local function applyMargins(animate, force)
 		Vitals.Layout()
 		UI.Vitals.Position = UDim2.new(0, math.floor(vitalsLeft + 0.5), 0, math.floor(vitalsBottom + 0.5))
 	end
-	vitalsRect = { X = math.floor(vitalsLeft + 0.5), Y = math.floor(vitalsBottom + 0.5) - vitalsH * k, W = vitalsW * k, H = vitalsH * k }
+	vitalsRect = { X = math.floor(vitalsLeft + 0.5), Y = math.floor(vitalsBottom + 0.5) - vitalsH * k, W = vitalsW * k, H = vitalsH * k,
+		TabUp = math.floor(geometry.TAB_UP * k + 0.5) } -- (P2 fix A) the name tab's band over the card's own top (Vitals.Layout's cardY)
 
 	-- currencies: thin strips stacked top-right, right-aligned (the token strip carries the "+n" chip in a match)
 	local n = math.max(1, #currencies)
@@ -1055,6 +1057,15 @@ local function applyMargins(animate, force)
 		if overPanel and not inMatch then
 			stripTop = math.floor(K.EDGE + topH * k + K.GIFT_GAP * k + 0.5)
 		end
+		-- (P2 fix A, item 06 A) a card spanning a portrait phone's top band (the battle's boss strip, SetTopReserve): the
+		-- strips start GIFT_GAP under it (the pitch's portrait: the strip under the boss card, beside the fighter card)
+		local reserve = 0
+		for _, px in pairs(S.topReserve) do
+			reserve = math.max(reserve, px)
+		end
+		if reserve > 0 then
+			stripTop = math.max(stripTop, math.floor(reserve + K.GIFT_GAP * k + 0.5))
+		end
 		UI.Currency.Position = UDim2.new(1, -side, 0, stripTop)
 		topRightBottom = stripTop + blockH * k
 		-- a card that takes the corner for a moment (a dungeon run's result on a phone) hides the strips meanwhile
@@ -1102,6 +1113,9 @@ local function applyMargins(animate, force)
 	publish("GiftSize", giftSize)
 	publish("BottomLeftTop", vitalsTop)
 	publish("BottomCentreTop", vitalsTop)
+	-- (P2 fix A) the card's own top edge under its name tab (Vitals.Layout's cardY): what docks beside the card lines up
+	-- with it (the mouse-lock plank), BottomCentreTop being the tab's top
+	publish("BottomCentreCardTop", vitalsTop + math.floor(geometry.TAB_UP * k + 0.5))
 	publish("BottomCentreLeft", vitalsLeft)
 	publish("BottomCentreRight", vitalsLeft + vitalsW * k)
 	if UI.Gui:GetAttribute("CurrencyMode") ~= mode then
@@ -3719,6 +3733,21 @@ function HudController.SetCurrencyHidden(who, on)
 	end
 end
 
+-- (P2 fix A, item 06 A) a card that spans the top band of a portrait phone (BattleController's boss strip) keeps the band
+-- down to `bottom` (gui-area px) for itself: the currency strips start under it. `who` names the card; nil / 0 lets go. The
+-- layout re-runs only when the reserve changes
+function HudController.SetTopReserve(who, bottom)
+	who = type(who) == "string" and who or "?"
+	local v = (type(bottom) == "number" and bottom > 0) and math.floor(bottom + 0.5) or nil
+	if S.topReserve[who] == v then
+		return
+	end
+	S.topReserve[who] = v
+	if UI.Currency then
+		relayout()
+	end
+end
+
 -- (LOOK-ui, kitb-look1: the Index and Home windows lay over the vitals card and the strips) which HUD parts a docked
 -- window lies over by more than a shared edge (4 px): `rect` its box in screen px (NeonKit.SideRect: x, y, w, h, the top
 -- bar included), `above` px of awning over its top. Returns vitals, strips (booleans). The strips' box is the one the
@@ -3756,10 +3785,10 @@ function HudController.GetLayout()
 		Scale = currentScale(),
 		CurrencyMode = S.currencyMode,
 		Vitals = (vitalsRect and UI.Vitals and UI.Vitals.Visible and UI.Gui and UI.Gui.Enabled)
-			and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H } or nil,
+			and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H, TabUp = vitalsRect.TabUp } or nil,
 		-- quick wins (win 4): the card's rect whether it is shown or hidden (nil only with no card): a fighter's pet battle
 		-- hides the card (SetVitalsHidden("Battle", true)) and BattleController puts Cheer up! / Retreat in its slot
-		VitalsSlot = (vitalsRect and UI.Vitals) and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H } or nil,
+		VitalsSlot = (vitalsRect and UI.Vitals) and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H, TabUp = vitalsRect.TabUp } or nil,
 	}
 end
 

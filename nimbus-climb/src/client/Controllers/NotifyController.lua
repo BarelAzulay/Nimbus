@@ -125,7 +125,10 @@ local GIFT_GAP = 8 -- (kit-b) design px beside the gift's square on a portrait s
 -- result card
 local RESULT_W = 290
 local RESULT_ROOF_OVER = 10 -- (kit B U9-9) the awning reaches this far past each side of the card ...
-local RESULT_ROOF_UP = 10 -- ... and this far above its top: the card is placed so the awning clears the HUD too
+-- ... and this far above its top: the card is placed so the awning clears the HUD too. (P2 fix A) Read from the kit: since
+-- the F0 finish pass seats the awning on the frame (SignKit.RoofSeat, 20 design px over the card) the old 10 put the awning
+-- of a card placed under the strip 8 px up into the token strip on a 360 px tall phone
+local RESULT_ROOF_UP = -require(Shared:WaitForChild("SignKit")).RoofSeat()
 -- (kit B U9-9) the card's rows (design px): the full card, and the compact one for a screen whose room for the card
 -- (resultRoom: under the HUD's top-right block and the awning, above the touch buttons, the lower quarter or the centre
 -- band) is less than the full card's height (a landscape phone): the stat blocks thinner, the banner and the gaps
@@ -151,6 +154,11 @@ local RESULT_ROWS = {
 	-- (U9-9 look 2) Mini: Slack 5 under the countdown (it stood on the outcome lip, its "y" in it), taken from the Gap
 	Mini = { Title = 40, Headline = 30, Diff = 0, Reason = 25, Gap = 5, Row = 40, RowGap = 10, Member = 30, Foot = 20, Value = 18, Trim = 10,
 		Slack = 5, Close = 30, SkipZeroBonus = true, MergeBonus = true, NoTeam = true, NoDiff = true, ShortReason = true, W = 250 },
+	-- (P2 fix A) Micro: where even the mini card is taller than its room (a lost match's mini card, its reason line 25 more,
+	-- on a 360 px tall landscape phone: 200 of 177.5 between the strip, the awning and the jump button): the mini card with
+	-- no Time row, so the result, the reason, the tokens and the countdown all show and the awning clears the strip
+	Micro = { Title = 40, Headline = 30, Diff = 0, Reason = 25, Gap = 5, Row = 40, RowGap = 10, Member = 30, Foot = 20, Value = 18, Trim = 10,
+		Slack = 5, Close = 30, SkipZeroBonus = true, MergeBonus = true, NoTeam = true, NoDiff = true, ShortReason = true, NoTime = true, W = 250 },
 }
 local RESULT_ROW_LIP = 5 -- a stat block's lip (4 px at 0.8)
 local RESULT_BANNER_LIP = 5
@@ -159,7 +167,7 @@ local RESULT_NAIL = 4 -- (U9-9 look) the stone body's two nails at its top corne
 local RESULT_NAIL_IN = 5 -- ... this far in from the corner
 local RESULT_CHIP_H = 20 -- (U9-9 look 2) the mini card's win bonus chip (the HUD's gold run chip): its height and lip
 local RESULT_CHIP_LIP = 3
-local RESULT_TIERS = { "Full", "Compact", "Mini" } -- the first whose card fits its room (the last when none does)
+local RESULT_TIERS = { "Full", "Compact", "Mini", "Micro" } -- the first whose card fits its room (the last when none does)
 NotifyController.ResultRows = RESULT_ROWS
 local RESULT_Y = 0.47 -- vertical position (fraction of the screen), right edge
 -- On narrow (portrait) screens the scaled card reaches into the middle of the screen. The game must never say
@@ -699,6 +707,18 @@ local function publishResultCard()
 	syncVitals()
 end
 
+-- (P2 fix A look review r1, major 6) the result card's close pad: 44 screen px each way at the card's scale k
+local function sizeCloseHit(k)
+	local pad = UI.ResultCloseHit
+	if not (pad and pad.Parent) then
+		UI.ResultCloseHit = nil
+		return
+	end
+	local hit = math.ceil(44 / math.max(0.05, k or 1))
+	local size = math.max(UI.ResultCloseSize or 0, hit)
+	pad.Size = UDim2.fromOffset(size, size)
+end
+
 local function relayout()
 	local k = currentScale()
 	for i = #scalers, 1, -1 do
@@ -709,6 +729,7 @@ local function relayout()
 			table.remove(scalers, i)
 		end
 	end
+	sizeCloseHit(k)
 	-- (U9-9 look) the column's scale rounded so its 250 px width is whole screen px (its cards' edges on whole px)
 	if UI.StackScale then
 		UI.StackScale.Scale = math.max(1, math.floor(TOAST_W * k + 0.5)) / TOAST_W
@@ -1224,6 +1245,9 @@ local function buildResults(data)
 	local function layoutWith(rows)
 		local out = { Rows = rows }
 		out.Stats = (rows.MergeBonus or (rows.SkipZeroBonus and not hasBonus)) and 2 or 3
+		if rows.NoTime then
+			out.Stats = out.Stats - 1 -- (P2 fix A) the micro card: no Time row
+		end
 		out.Cols = (rows.Columns and #members > 2) and rows.Columns or 1
 		out.Members = #members > 1 and not rows.NoTeam
 		local y = 0
@@ -1297,7 +1321,7 @@ local function buildResults(data)
 		Size = UDim2.new(1, -8, 1, -4 + R.Trim),
 	})
 	panel.Root:SetAttribute("Compact", R ~= RESULT_ROWS.Full)
-	panel.Root:SetAttribute("Rows", tier) -- (U9-9 review) Full / Compact / Mini
+	panel.Root:SetAttribute("Rows", tier) -- (U9-9 review) Full / Compact / Mini, (P2 fix A) Micro
 	-- (U9-9 look) the card is a crisp root: it slides in, and its blocks and icons sit on whole px of it at rest
 	PixelCrisp.Root(panel.Root)
 
@@ -1380,6 +1404,27 @@ local function buildResults(data)
 			Position = UDim2.new(0.5, 0, 0.5, -math.floor(lipPx / 2)),
 			ZIndex = z + 1,
 		})
+		-- (P2 fix A look review r1, major 6: the close was 24 x 24 at 390x844) a thumb's 44 screen px on a touch screen: a
+		-- clear hit pad (HitFor) centred on the block, over it (relayout sizes it for the card's scale)
+		if UserInputService.TouchEnabled then
+			local pad = Instance.new("TextButton")
+			pad.Name = "CloseHit"
+			pad.Text = ""
+			pad.BackgroundTransparency = 1
+			pad.AutoButtonColor = false
+			pad.BorderSizePixel = 0
+			pad.AnchorPoint = Vector2.new(0.5, 0.5)
+			pad.Position = UDim2.fromScale(0.5, 0.5)
+			pad.ZIndex = z + 2
+			pad:SetAttribute("HitFor", "Close")
+			pad.Parent = close
+			pad.Activated:Connect(function()
+				closeResults(false)
+			end)
+			UI.ResultCloseHit = pad
+			UI.ResultCloseSize = R.Close
+			sizeCloseHit(currentScale())
+		end
 	end
 	-- (U9-9 look 2) the frame's parts on whole px on all four sides: the stone inside the wood (4.8 px), the awning and
 	-- its face (14.4 px high, a 3.2 px border)
@@ -1488,9 +1533,14 @@ local function buildResults(data)
 	local bonus = math.max(0, math.floor(tonumber(data.Bonus) or 0))
 	local seconds = tonumber(data.Seconds) or 0
 
-	statRow(1, "Time", Util.FormatTime(seconds), SIGN.Text)
+	-- (P2 fix A) the micro card leaves the Time row out: the Tokens row is its first
+	local tokenIndex = 1
+	if not R.NoTime then
+		statRow(1, "Time", Util.FormatTime(seconds), SIGN.Text)
+		tokenIndex = 2
+	end
 	-- (kit-b U7a) the amounts end in the Cloud Token coin (a PixelIcon after the number)
-	local tokenValue = statRow(2, "Tokens", "0", SIGN.Text)
+	local tokenValue = statRow(tokenIndex, "Tokens", "0", SIGN.Text)
 	PixelCrisp.Adopt(PixelIcon.Lead(tokenValue, Theme.Currency.Tokens.Icon, coinOpts))
 	-- (kit B U9-9) the compact card leaves a missing bonus out (L.Stats 2); (U9-9 look) the mini card shows it in the
 	-- Tokens row. (U9-9 look 2) On a gold chip (the kit's Selected face and its lip, the HUD's run chip) left of the total,
