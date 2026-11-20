@@ -475,7 +475,7 @@ function PetBits.formatCash(n)
 			return text
 		end
 	end
-	return CASH .. Theme.ShortNumber(tonumber(n) or 0)
+	return CASH .. Theme.Short(tonumber(n) or 0)
 end
 
 -- cash per second: one decimal below 100 ("$7.5"), FormatCash above

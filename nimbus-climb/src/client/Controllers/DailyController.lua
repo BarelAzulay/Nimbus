@@ -492,7 +492,7 @@ local function petName(petId)
 end
 
 local function short(n)
-	return Theme.ShortNumber(math.floor(tonumber(n) or 0), 1000)
+	return Theme.Short(math.floor(tonumber(n) or 0))
 end
 
 -- a pet's name and its last word ("Week Wisp", "Wisp")

@@ -10,7 +10,9 @@
 --   * Theme.ScreenFactor()       the screen-height factor (1 on the server)
 --   * Theme.ScaledSize(basePx)   basePx (a 1080p size) for the current screen, never below 14
 --   * Theme.TextOutline(label)   a thick UIStroke around the glyphs (reads on light and busy backgrounds)
---   * Theme.Currency / Theme.ShortNumber(n)   currency glyphs + colours and "12.3K" style numbers
+--   * Theme.Currency / Theme.Short(n)   currency glyphs + colours and THE one "12.3K" number style
+--     (Theme.ShortNumber(n, fullBelow): its threshold form, commas under fullBelow)
+--   * Theme.Finish               the kit's finish (Pitch 2 F0 A): one light, bevels, sunk wells, hard shadows, the rise
 -- Two ways to follow the rule: put widgets designed in 1080p pixels under a UIScale of Theme.ScreenFactor()
 -- (CloudUI.AutoScale does that), or give a loose label TextSize = Theme.ScaledSize(base). Never both.
 -- v5 (Phase 5, the Neon kit of client/UI/NeonKit.lua, ARCHITECTURE_V3.md "Phase 5 build contract" 6.6): the neon accent
@@ -665,12 +667,13 @@ local function trimDecimals(text)
 	return text
 end
 
--- Big-number display: below `fullBelow` (default 10000) with thousands separators ("9,999"), above it
--- three significant digits plus a suffix ("12.3K", "456K", "1.23M", "7B"). Digits are truncated, never
--- rounded up, so the display never claims more than the player has.
-function Theme.ShortNumber(n, fullBelow)
+-- (Pitch 2 item F0, finish pass A: "short numbers (13.2K, $3.65K/s, 1.25K)") THE game's one short-number formatter: whole
+-- numbers under 1000 ("999"), from there three significant digits plus a suffix ("1.25K", "20.6K", "456K", "1.01M",
+-- "1.23B"). Digits are truncated, never rounded up, so the display never claims more than the player has. Every short
+-- number in the game (the HUD, the cards, the Shop, damage numbers, the pad signs) goes through it.
+function Theme.Short(n)
 	n = tonumber(n) or 0
-	if n ~= n then -- NaN
+	if n ~= n or n == math.huge or n == -math.huge then -- NaN / inf
 		n = 0
 	end
 	local sign = ""
@@ -679,27 +682,37 @@ function Theme.ShortNumber(n, fullBelow)
 		n = -n
 	end
 	n = math.floor(n)
-	if n < (tonumber(fullBelow) or 10000) then
-		return sign .. commas(n)
-	end
-	local value = n
-	local index = 0
-	while value >= 1000 and index < #SUFFIXES do
-		value = value / 1000
+	local index, unit = 0, 1
+	while n >= unit * 1000 and index < #SUFFIXES do
+		unit = unit * 1000
 		index = index + 1
 	end
 	if index == 0 then
-		return sign .. commas(n)
+		return sign .. tostring(n)
 	end
+	-- the digits by whole-number division (1150 / 10 = 115 exactly: no 1.15 x 100 = 114.99 that truncates to "1.14K")
+	local value = n / unit
 	local text
 	if value >= 100 then
-		text = tostring(math.floor(value))
+		text = tostring(math.floor(n / unit))
 	elseif value >= 10 then
-		text = trimDecimals(string.format("%.1f", math.floor(value * 10) / 10))
+		text = trimDecimals(string.format("%.1f", math.floor(n / (unit / 10)) / 10))
 	else
-		text = trimDecimals(string.format("%.2f", math.floor(value * 100) / 100))
+		text = trimDecimals(string.format("%.2f", math.floor(n / (unit / 100)) / 100))
 	end
 	return sign .. text .. SUFFIXES[index]
+end
+
+-- the threshold form of Theme.Short for a display that shows exact numbers up to a point (a ranked world board: commas
+-- under 1,000,000): under `fullBelow` the whole number with thousands separators ("9,999"), from there Theme.Short.
+-- Without a threshold it IS Theme.Short (a plain short number calls Theme.Short)
+function Theme.ShortNumber(n, fullBelow)
+	local limit = tonumber(fullBelow)
+	local v = tonumber(n) or 0
+	if limit and v == v and math.abs(v) < limit then
+		return (v < 0 and "-" or "") .. commas(math.floor(math.abs(v)))
+	end
+	return Theme.Short(n)
 end
 
 ----------------------------------------------------------------------

@@ -1434,8 +1434,8 @@ function H.paintCards()
 		local ok, v = pcall(fn)
 		return ok and tonumber(v) or 0
 	end
-	GemIcon.SetAmount(U.GemsAmount, Theme.ShortNumber(value("Gems"), 1e6))
-	U.TokText.Text = Theme.ShortNumber(value("Tokens"), 1e6)
+	GemIcon.SetAmount(U.GemsAmount, Theme.Short(value("Gems"))) -- (Pitch 2 F0) the one number style: 1.25K, 12.5K
+	U.TokText.Text = Theme.Short(value("Tokens"))
 	local starter = S.ByKey.Starter
 	U.Dot.Visible = starter ~= nil and (starter.Created or H.preview()) and H.boughtKnown() and not csvSet(H.attr("StoreBought")).Starter
 	safe("gems refresh", ShopGems.Refresh, U.GemsPage)

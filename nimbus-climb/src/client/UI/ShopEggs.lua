@@ -69,7 +69,7 @@
 -- Buttons: Spin = EggStage.Request(id, "Tokens", 1), Spin3 = (id, "Tokens", 3), SpinGems = (id, "Gems", 1), the Secret
 -- card's Spin = ("Secret", "Gems", 1). A spin button holds Word ("Spin" / "x3", or the state: "Locked", "Loading..."),
 -- the currency icon (TokenIcon: the Cloud Token glyph; GemIcon: the drawn gem) and Price ("3,000"; the phone's x3 total
--- Theme.ShortNumber(n, 1000) = "3K"; any row wider than its button takes that short form too). The machines are frames placed
+-- Theme.Short(n) = "3K"; any row wider than its button takes that short form too). The machines are frames placed
 -- by scale (the pitch's 200 x 230 drawing: base, panel, neck, the glass dome with seven EggArt eggs, the cap).
 -- Every PC text >= 18 px, every phone text >= 15 px. Plain Lua 5.1-compatible syntax only; no asset ids.
 
@@ -1343,7 +1343,7 @@ end
 function H.paintButton(p, id, name, amount, short, compact)
 	local st = ShopEggs.CardState(id, name)
 	amount = tonumber(amount) or 0
-	p.PriceShort = Theme.ShortNumber(amount, 1000)
+	p.PriceShort = Theme.Short(amount)
 	p.PriceFull = compact and p.PriceShort or Util.Commas(amount)
 	p.Price.Text = p.PriceFull
 	p.Price.TextColor3 = st == "Short" and SHORT or p.Ink

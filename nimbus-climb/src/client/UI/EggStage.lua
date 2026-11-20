@@ -2081,7 +2081,7 @@ function H.refreshAgain()
 	local parts = roll.UI.PillParts and roll.UI.PillParts[1] or nil
 	local lbl = roll.UI.AgainLabel
 	lbl.Text = reason or ((roll.N > 1) and "Spin again x3" or "Spin again")
-	local priceText = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
+	local priceText = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.Short(price)
 	local chipW, labelW = 0, 0
 	if reason == nil then
 		-- (review round 3) measured with the real fonts (TextService): a label that would not fit beside the price takes the
@@ -2090,7 +2090,7 @@ function H.refreshAgain()
 		local fits
 		chipW, fits = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Button"), parts)
 		if not fits then
-			priceText = Theme.ShortNumber(price, 1000)
+			priceText = Theme.Short(price)
 			chipW = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Button"), parts)
 		end
 	end

@@ -125,12 +125,9 @@ local function commas(n)
 	return (out:gsub("^,", ""))
 end
 
--- a Compact face's power: 2,144 -> 2.1K
+-- a Compact face's power: 2,144 -> 2.14K (Theme.Short, the game's one short-number style; Pitch 2 F0)
 local function shortPower(n)
-	if n >= 1000 then
-		return string.format("%.1fK", n / 1000)
-	end
-	return commas(n)
+	return Theme.Short(n)
 end
 
 local function openPets(args)

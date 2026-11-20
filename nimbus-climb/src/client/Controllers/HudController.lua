@@ -2812,7 +2812,7 @@ end
 
 -- The number shrinks to fit the room left beside the coin and the optional "+n" chip.
 local function setAmountText(c, n)
-	local text = Theme.ShortNumber(n)
+	local text = Theme.Short(n)
 	local strip = c.Compact == "Strip"
 	local coinSize = coinSizeOf(c)
 	local chip = c.ChipShown and ((strip and K.STRIP_CHIP_W or K.CHIP_W) + 6) or 0
@@ -2918,7 +2918,7 @@ local function refreshRunChip()
 	if count ~= Tk.RunSeen then
 		local grew = count > Tk.RunSeen
 		Tk.RunSeen = count
-		c.RunLabel.Text = "+" .. Theme.ShortNumber(count)
+		c.RunLabel.Text = "+" .. Theme.Short(count)
 		if grew then
 			pop(c.RunScale, 1.3, 0.35)
 		end

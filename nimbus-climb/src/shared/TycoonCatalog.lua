@@ -75,6 +75,7 @@
 
 local Shared = script.Parent
 local Config = require(Shared.Config)
+local Theme = require(Shared.Theme) -- (Pitch 2 F0) FormatCash: Theme.Short, the one number style (Theme requires nothing)
 
 local TycoonCatalog = {}
 
@@ -616,23 +617,6 @@ local function tierIndexOf(value)
 		return n
 	end
 	return nil
-end
-
-local function commas(n)
-	local s = tostring(floor(n))
-	local neg = s:sub(1, 1) == "-"
-	if neg then
-		s = s:sub(2)
-	end
-	local out = s
-	while true do
-		local k
-		out, k = out:gsub("^(%d+)(%d%d%d)", "%1,%2")
-		if k == 0 then
-			break
-		end
-	end
-	return (neg and "-" or "") .. out
 end
 
 -- lazily resolved PetCatalog (pet ids / keys, roles, evolution stages); TycoonCatalog works without it (the sim and
@@ -1605,32 +1589,15 @@ function TycoonCatalog.FusionCost(action, rarity, tier, fusionLevel)
 	return out
 end
 
--- "$950", "$12.5K", "$3.2M"
+-- "$950", "$3.65K", "$12.5K", "$3.2M": the $ before Theme.Short (Pitch 2 F0: the game's one short-number style; was its own
+-- K / M / B with commas under 10,000)
 function TycoonCatalog.FormatCash(n)
 	local v = tonumber(n) or 0
 	if v ~= v then
 		v = 0
 	end
-	local a = math.abs(v)
 	local sign = v < 0 and "-" or ""
-	if a < 10000 then
-		return sign .. "$" .. commas(a)
-	end
-	local units = { { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "K" } }
-	for _, u in ipairs(units) do
-		if a >= u[1] then
-			local x = a / u[1]
-			local s
-			if x >= 100 then
-				s = string.format("%d", floor(x))
-			else
-				s = string.format("%.1f", floor(x * 10) / 10)
-				s = s:gsub("%.0$", "")
-			end
-			return sign .. "$" .. s .. u[2]
-		end
-	end
-	return sign .. "$" .. commas(a)
+	return sign .. "$" .. Theme.Short(math.abs(v))
 end
 
 ----------------------------------------------------------------------

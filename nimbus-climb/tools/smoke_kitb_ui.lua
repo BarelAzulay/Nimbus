@@ -2411,6 +2411,87 @@ local function serverScenarios()
 		K.flushErrors("theme_title_ribbon_modes")
 	end)
 
+	-- (Pitch 2 item F0, finish pass A; plan Task 1) one number style: Theme.Short(n) is the game's one short-number formatter
+	-- (3 significant figures with K / M / B, whole numbers under 1000, never rounded up past what the player has: 20,628 is
+	-- 20.6K, 1,010,000 is 1.01M, 999 stays 999). Every short-number site goes through it: no other script keeps its own
+	-- K / M / B formatter, and no script calls Theme.ShortNumber for a plain short number (ShortNumber(n, fullBelow) is only
+	-- the threshold form: full numbers with commas under fullBelow, Theme.Short from there)
+	S.short_numbers = guarded("short_numbers", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		if not T.check(type(Theme.Short) == "function", "short numbers: Theme.Short exists") then
+			return
+		end
+		for _, case in ipairs({
+			{ 20628, "20.6K" }, { 1010000, "1.01M" }, { 999, "999" }, { 1234567890, "1.23B" }, -- the plan's four
+			{ 0, "0" }, { 1000, "1K" }, { 1250, "1.25K" }, { 3650, "3.65K" }, { 12500, "12.5K" }, { 13213, "13.2K" },
+			{ 48200, "48.2K" }, { 999999, "999K" }, { 100000, "100K" }, { 1e12, "1T" }, { -1500, "-1.5K" }, { 7.9, "7" },
+		}) do
+			T.eq(Theme.Short(case[1]), case[2], "short numbers: Theme.Short(" .. tostring(case[1]) .. ")")
+		end
+		T.eq(Theme.Short(nil), "0", "short numbers: Theme.Short(nil) = 0")
+		T.eq(Theme.Short(0 / 0), "0", "short numbers: Theme.Short(NaN) = 0")
+		T.eq(Theme.ShortNumber(48200), Theme.Short(48200), "short numbers: ShortNumber(n) is Theme.Short(n)")
+		T.eq(Theme.ShortNumber(3650), Theme.Short(3650), "short numbers: ShortNumber(n) has no 10,000 threshold of its own any more")
+		T.eq(Theme.ShortNumber(5000, 1e6), "5,000", "short numbers: ShortNumber(n, fullBelow) keeps commas under its threshold")
+		T.eq(Theme.ShortNumber(1234567, 1e6), Theme.Short(1234567), "short numbers: ...and is Theme.Short from there")
+		local TCI = K.moduleInstance("shared/TycoonCatalog")
+		local okTC, TC = false, nil
+		if TCI then
+			okTC, TC = pcall(require, TCI)
+		end
+		if T.check(okTC and type(TC) == "table" and type(TC.FormatCash) == "function", "short numbers: TycoonCatalog.FormatCash loads") then
+			T.eq(TC.FormatCash(3650), "$3.65K", "short numbers: FormatCash is $ + Theme.Short (the pad signs, a pet's coins)")
+			T.eq(TC.FormatCash(950), "$950", "short numbers: FormatCash under 1000 is the whole number")
+			T.eq(TC.FormatCash(-12500), "-$12.5K", "short numbers: FormatCash keeps the sign before the $")
+		end
+		-- the sources: one formatter
+		local own, plain, n = {}, {}, 0
+		for _, f in ipairs(gameSources()) do
+			if not (f.inst.Name == "Theme" and f.inst:IsA("ModuleScript")) then
+				n = n + 1
+				local src = f.src
+				if src:find("1e3%s*,%s*\"K\"") or src:find("%%%.%d+f[KMB]\"") or src:find("/%s*1000%s*%)%s*%.%.%s*\"K\"") then
+					own[#own + 1] = f.inst.Name
+				end
+				-- ShortNumber handed on as a value (pcall(Theme.ShortNumber, n)) is a plain short number too
+				if src:find("Theme%.ShortNumber%s*[,%)]") then
+					plain[#plain + 1] = f.inst.Name .. " (as a value)"
+				end
+				-- a call with one argument (no comma at its top level) is a plain short number: Theme.Short
+				local at = 1
+				while true do
+					local s, e = src:find("Theme%.ShortNumber%s*%(", at)
+					if not s then
+						break
+					end
+					local depth, i, comma = 1, e + 1, false
+					while i <= #src and depth > 0 do
+						local ch = src:sub(i, i)
+						if ch == "(" or ch == "{" or ch == "[" then
+							depth = depth + 1
+						elseif ch == ")" or ch == "}" or ch == "]" then
+							depth = depth - 1
+						elseif ch == "," and depth == 1 then
+							comma = true
+						end
+						i = i + 1
+					end
+					if not comma then
+						plain[#plain + 1] = f.inst.Name
+					end
+					at = i
+				end
+			end
+		end
+		T.check(n > 20, "short numbers: the game's scripts are mounted", tostring(n))
+		T.check(#own == 0, "short numbers: no script but Theme keeps its own K / M / B formatter", table.concat(own, ", "))
+		T.check(#plain == 0, "short numbers: every plain short number goes through Theme.Short (no one-argument Theme.ShortNumber)", table.concat(plain, ", "))
+		K.flushErrors("short_numbers")
+	end)
+
 	return S
 end
 

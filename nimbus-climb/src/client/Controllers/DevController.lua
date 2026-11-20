@@ -22,7 +22,7 @@
 --     room for its two newest toasts) is kept free too whenever the screen has room for that. Re-checked twice a
 --     second and on every screen size change.
 --   * DevPanel: a compact CloudUI panel docked to the right edge, never centred, titled "Developer tools":
---     "Give all pets", "+1M tokens" (Config.Dev.GrantTokens through Theme.ShortNumber), "Restart tutorial",
+--     "Give all pets", "+1M tokens" (Config.Dev.GrantTokens through Theme.Short), "Restart tutorial",
 --     "Skip tutorial", "Next raid boss" (DevCommand "raid"), the pet showcase ("Evolve every pet" =
 --     DevCommand("evolve", "all"), "Show all pets" / "Show evolved pets" / "Show Evolved II pets" =
 --     DevCommand("pets", "0" | "1" | "2"), "Clear pet show" = DevCommand("clearpets"); client/Controllers/DevPetShow.lua
@@ -256,8 +256,8 @@ end
 local function tokensLabel()
 	local amount = grantTokens()
 	local text = nil
-	if type(Theme.ShortNumber) == "function" then
-		local ok, short = pcall(Theme.ShortNumber, amount)
+	if type(Theme.Short) == "function" then
+		local ok, short = pcall(Theme.Short, amount)
 		if ok and type(short) == "string" then
 			text = short
 		end
@@ -276,8 +276,8 @@ end
 
 local function amountLabel(amount, word)
 	local text = nil
-	if type(Theme.ShortNumber) == "function" then
-		local ok, short = pcall(Theme.ShortNumber, amount)
+	if type(Theme.Short) == "function" then
+		local ok, short = pcall(Theme.Short, amount)
 		if ok and type(short) == "string" then
 			text = short
 		end

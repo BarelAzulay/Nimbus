@@ -6604,7 +6604,7 @@ function Hud.LayoutFighter(B, m)
 	local drawnPx = max(hpText, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
 	Hud.hpShort = compact
 	local fu = B.fighterId and B.units[B.fighterId]
-	local maxText = Theme.ShortNumber(floor((fu and fu.maxHp or 9999) + 0.5))
+	local maxText = Theme.Short(floor((fu and fu.maxHp or 9999) + 0.5))
 	local numText = compact and maxText or (maxText .. " / " .. maxText)
 	local okN, sizeN = pcall(Theme.Measure, numText, "Heading", drawnPx)
 	local numW = math.ceil(max((okN and typeof(sizeN) == "Vector2") and sizeN.X or 0, textWidth(numText, drawnPx) * 0.92)) + 4
@@ -6990,8 +6990,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		local inset = lead and (lead.PaddingLeft.Offset + lead.PaddingRight.Offset) or 16
 		Hud.bossName.Position = UDim2.fromOffset(0, 0)
 		Hud.bossName.Size = UDim2.fromOffset(min(w, math.ceil(textWidth(bossUnit.name, px)) + inset + 4), 22)
-		local fb = compact and 1000 or nil
-		local maxText = Theme.ShortNumber(bossUnit.maxHp, fb)
+		local maxText = Theme.Short(bossUnit.maxHp) -- (Pitch 2 F0) the one number style at every size
 		local numPx = max(16, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
 		Hud.bossText.TextSize = numPx
 		Hud.bossText:SetAttribute("BaseText", 16)
@@ -7103,9 +7102,8 @@ function Hud.Update(B, now, force)
 		if force or last.bossHp ~= bossUnit.hp or last.bossMax ~= bossUnit.maxHp then
 			last.bossHp, last.bossMax = bossUnit.hp, bossUnit.maxHp
 			setBlocks(Hud.bossBar, healthBlocks(clamp(bossUnit.hp / bossUnit.maxHp, 0, 1), K.BOSS_BLOCKS))
-			local fb = Hud.compactTop and 1000 or nil
-			local numbers = Theme.ShortNumber(clamp(bossUnit.hp, 0, bossUnit.maxHp), fb) .. " / " .. Theme.ShortNumber(bossUnit.maxHp, fb)
-			Hud.bossText.Text = Hud.compactTop and Theme.ShortNumber(clamp(bossUnit.hp, 0, bossUnit.maxHp), fb) or numbers
+			local hpText = Theme.Short(clamp(bossUnit.hp, 0, bossUnit.maxHp))
+			Hud.bossText.Text = Hud.compactTop and hpText or (hpText .. " / " .. Theme.Short(bossUnit.maxHp))
 		end
 	end
 	if Hud.pills.Visible then
@@ -7171,9 +7169,9 @@ function Hud.Update(B, now, force)
 			last.hp, last.maxHp, last.fid, last.hpFrac = hp, f.maxHp, f.id, frac
 			local lit = healthBlocks(frac, K.HP_BLOCKS)
 			-- (LOOK-ui2) the number beside the row (a phone's narrow card: the HP left only, the blocks say the rest)
-			local hpLine = Theme.ShortNumber(floor(hp + 0.5))
+			local hpLine = Theme.Short(floor(hp + 0.5))
 			if not Hud.hpShort then
-				hpLine = hpLine .. " / " .. Theme.ShortNumber(floor(f.maxHp + 0.5))
+				hpLine = hpLine .. " / " .. Theme.Short(floor(f.maxHp + 0.5))
 			end
 			setText(F.HpText, hpLine)
 			Hud.hpWrites = (Hud.hpWrites or 0) + 1
@@ -7648,15 +7646,15 @@ function Hud.RewardLines(B, rw)
 	local lines = {}
 	local tokens = num(rw.Tokens, 0)
 	if tokens > 0 then
-		lines[#lines + 1] = { "+" .. Theme.ShortNumber(tokens) .. " Tokens", Theme.Currency.Tokens.Color }
+		lines[#lines + 1] = { "+" .. Theme.Short(tokens) .. " Tokens", Theme.Currency.Tokens.Color }
 	end
 	local gems = num(rw.Gems, 0)
 	if gems > 0 then
-		lines[#lines + 1] = { "+" .. Theme.ShortNumber(gems) .. " Gems", Theme.Currency.Gems.Color }
+		lines[#lines + 1] = { "+" .. Theme.Short(gems) .. " Gems", Theme.Currency.Gems.Color }
 	end
 	local cash = num(rw.Cash, 0)
 	if cash > 0 then
-		lines[#lines + 1] = { "+$" .. Theme.ShortNumber(cash) .. " Cash", Theme.Currency.Cash and Theme.Currency.Cash.Color or COLORS.Mine }
+		lines[#lines + 1] = { "+$" .. Theme.Short(cash) .. " Cash", Theme.Currency.Cash and Theme.Currency.Cash.Color or COLORS.Mine }
 	end
 	if rw.Practice == true then
 		lines[#lines + 1] = { "Practice duel: no rewards", COLORS.Weak }
@@ -7667,7 +7665,7 @@ function Hud.RewardLines(B, rw)
 	end
 	local xp = num(rw.Xp, 0)
 	if xp > 0 then
-		lines[#lines + 1] = { "+" .. Theme.ShortNumber(xp) .. " Pet XP", COLORS.Ally }
+		lines[#lines + 1] = { "+" .. Theme.Short(xp) .. " Pet XP", COLORS.Ally }
 	end
 	if rw.FirstClear == true then
 		lines[#lines + 1] = { "First clear!", COLORS.Mine }
@@ -8683,7 +8681,7 @@ function Ring.IsNext(B, payload)
 end
 
 function Ring.Money(n)
-	return "$" .. Theme.ShortNumber(num(n, 0))
+	return "$" .. Theme.Short(num(n, 0))
 end
 
 function Ring.TitleText(B)
@@ -8813,7 +8811,7 @@ function Ring.LayoutInfo(B, topW, y)
 		local p = Ring.Preview(B)
 		-- (a compact top card drops the "Win:" so the pills fit its width)
 		local compact = Hud.m and Hud.m.Compact
-		setText(Hud.infoWin, (compact and "+" or "Win: +") .. Ring.Money(p.Cash) .. "  +" .. Theme.ShortNumber(p.Xp) .. " XP")
+		setText(Hud.infoWin, (compact and "+" or "Win: +") .. Ring.Money(p.Cash) .. "  +" .. Theme.Short(p.Xp) .. " XP")
 		Hud.infoRecord.Visible = p.Record and B.Round > 1
 		Hud.infoBoss.Visible = p.Boss
 	end
@@ -8883,13 +8881,13 @@ function Ring.PlaceNext(B)
 	end
 	local m = Hud.m or Hud.Metrics()
 	setText(Hud.nextTitle, "Round " .. nx.Round .. " won!")
-	setText(Hud.nextLine, "+" .. Ring.Money(nx.Cash) .. "   +" .. Theme.ShortNumber(nx.Xp) .. " XP")
+	setText(Hud.nextLine, "+" .. Ring.Money(nx.Cash) .. "   +" .. Theme.Short(nx.Xp) .. " XP")
 	local extra = {}
 	if nx.Record then
 		extra[#extra + 1] = "New record! Cash x3"
 	end
 	if nx.Tokens > 0 then
-		extra[#extra + 1] = "+" .. Theme.ShortNumber(nx.Tokens) .. " Tokens"
+		extra[#extra + 1] = "+" .. Theme.Short(nx.Tokens) .. " Tokens"
 	end
 	Hud.nextExtra.Visible = #extra > 0
 	setText(Hud.nextExtra, table.concat(extra, "  "))
@@ -9096,10 +9094,10 @@ function Ring.ResultLines(B, rw)
 	local wins = num(run.Wins, 0)
 	lines[#lines + 1] = { "Rounds won: " .. wins, COLORS.Gold }
 	lines[#lines + 1] = { "+" .. Ring.Money(run.Cash) .. " Cash", Theme.Currency.Cash.Color }
-	lines[#lines + 1] = { "+" .. Theme.ShortNumber(num(run.Xp, 0)) .. " Pet XP", COLORS.Ally }
+	lines[#lines + 1] = { "+" .. Theme.Short(num(run.Xp, 0)) .. " Pet XP", COLORS.Ally }
 	local tokens = num(run.Tokens, 0)
 	if tokens > 0 then
-		lines[#lines + 1] = { "+" .. Theme.ShortNumber(tokens) .. " Tokens", Theme.Currency.Tokens.Color }
+		lines[#lines + 1] = { "+" .. Theme.Short(tokens) .. " Tokens", Theme.Currency.Tokens.Color }
 	end
 	-- (level-ups are the server's toasts: the card stays short enough for a landscape phone)
 	if run.Record ~= nil then

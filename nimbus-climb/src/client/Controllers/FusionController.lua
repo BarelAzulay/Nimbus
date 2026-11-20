@@ -1730,7 +1730,7 @@ function H.short(n)
 	if n < 1000000 then
 		return H.commas(n)
 	end
-	return Theme.ShortNumber(n)
+	return Theme.Short(n)
 end
 
 function H.paintHeader()

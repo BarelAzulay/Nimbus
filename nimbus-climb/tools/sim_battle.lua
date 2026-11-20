@@ -73,7 +73,8 @@ if not Mock then
 	M.Configure({ options = { StrictMembers = false, Echo = false, Watchdog = false, StepSize = 1 / 30, SliceLimit = 3600 } })
 	M.Boot("server", { localName = "Sim", localUserId = 1 })
 	local shared = M.GetPath("ReplicatedStorage/Shared", "Folder")
-	for _, name in ipairs({ "MeshIds", "AudioIds", "Config", "Util", "PetCatalog", "PetKeys", "TycoonCatalog", "BattleCatalog", "BattleSim" }) do
+	-- (Pitch 2 F0) Theme: TycoonCatalog.FormatCash prints through Theme.Short
+	for _, name in ipairs({ "MeshIds", "AudioIds", "Config", "Util", "Theme", "PetCatalog", "PetKeys", "TycoonCatalog", "BattleCatalog", "BattleSim" }) do
 		local src = readFile(root .. "/src/shared/" .. name .. ".lua")
 		if src then
 			M.Mount(shared, { name = name, class = "ModuleScript", source = src, path = "src/shared/" .. name .. ".lua" })

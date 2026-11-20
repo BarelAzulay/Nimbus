@@ -69,6 +69,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
+local Theme = require(Shared.Theme) -- (Pitch 2 F0) compact: Theme.Short, the one number style
 
 local PetCareService = {}
 PetCareService.Fed = Util.Signal() -- Fire(player, key, "Berries", levelsGained)
@@ -255,28 +256,17 @@ local function plural(name, n)
 	return name .. "s"
 end
 
--- 1234 -> "1.2K" (stat numbers in toasts)
+-- 1234 -> "1.23K" (stat numbers in toasts): Theme.Short, the game's one short-number style (Pitch 2 F0; was its own
+-- K / M / B to one decimal); a whole number under 1000 rounds to the nearest as before
 local function compact(n)
 	n = tonumber(n) or 0
 	if not isFinite(n) then
 		return "0"
 	end
-	local a = math.abs(n)
-	local units = { { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "K" } }
-	for _, u in ipairs(units) do
-		if a >= u[1] then
-			local x = n / u[1]
-			local s
-			if math.abs(x) >= 100 then
-				s = string.format("%d", math.floor(x))
-			else
-				s = string.format("%.1f", math.floor(x * 10) / 10)
-				s = string.gsub(s, "%.0$", "")
-			end
-			return s .. u[2]
-		end
+	if math.abs(n) < 1000 then
+		return tostring(math.floor(n + 0.5))
 	end
-	return tostring(math.floor(n + 0.5))
+	return Theme.Short(n)
 end
 
 ----------------------------------------------------------------------
