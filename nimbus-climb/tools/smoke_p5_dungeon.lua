@@ -3115,7 +3115,8 @@ local function clientScenarios()
 		T.check(LS and LS.Top and LS.Top() ~= "Dungeon", "p5dgn " .. tag .. ": LightingStack.Pop('Dungeon') on End", LS and tostring(LS.Top()))
 		local er = C5.rect(endCard)
 		local ecx, ecy = (er.x0 + er.x1) / 2, (er.y0 + er.y1) / 2
-		T.check(not (ecx > W / 3 and ecx < 2 * W / 3 and ecy > H / 3 and ecy < 2 * H / 3), "p5dgn " .. tag .. ": the End card is not in the screen's centre third")
+		T.check(not (ecx > W / 3 and ecx < 2 * W / 3 and ecy > H / 3 and ecy < 2 * H / 3), "p5dgn " .. tag .. ": the End card is not in the screen's centre third",
+			string.format("%.0f,%.0f..%.0f,%.0f on %dx%d", er.x0, er.y0, er.x1, er.y1, W, H))
 		if phone then
 			-- (Pitch 2 item 02 B, look review round 1: the End card is the battle's ONE result template now, and the owner's
 			-- approved phone card, 02_result_card_optB_phone.png, is 400 x 238 on 844 x 390 = 29% of the screen; was <= 25% for
@@ -3153,6 +3154,107 @@ local function clientScenarios()
 		C5.run(DC, LP, true)
 		C5.screen(844, 390, true)
 		C5.run(DC, LP, true)
+		C5.screen(390, 844, true)
+	end)
+	-- (P2 fix A, look review r1) the End card on the small phones the run flow above does not visit. 360 x 640: the card
+	-- lay under the menu tile column (NimbusMenu draws above the run's gui: Pets / Index / Home / Stats over its reason
+	-- line) and the cleared floor's card reached RUN; 640 x 360: it ran 7 px past the screen's foot, under RUN, DASH and
+	-- Roblox's jump button, its third chip alone on a second row. Every size: the card on the screen, no shown menu tile or
+	-- RUN / DASH key over it, clear of the jump button, and (a landscape phone) the three chips on one row
+	S.client_p5dungeon_endfit = guarded("client_p5dungeon_endfit", function()
+		local DC, LP = C5.setup()
+		if not T.check(DC ~= nil, "p5dgn endfit: DungeonController loads") then
+			return
+		end
+		local MC = C5.req("client/Controllers/MovementController")
+		local ends = {
+			{ "wipe", { Floor = 5, Name = "Ember Forge", Cleared = false, Reason = "Wipe", Room = 3, Totals = { Cash = 520, Tokens = 52, Xp = 160, Gems = 0 } } },
+			{ "cleared", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4, Totals = { Cash = 1630, Tokens = 170, Xp = 360, Gems = 0 },
+				FirstClear = { Tokens = 900, Gems = 5 }, Unlocked = 4, NewBest = 3 } },
+			-- (a chest's gems: four chips, two rows on every card)
+			{ "gems", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4, Totals = { Cash = 1630, Tokens = 170, Xp = 360, Gems = 2 },
+				FirstClear = { Tokens = 900, Gems = 5 }, Unlocked = 4, NewBest = 3 } },
+		}
+		local function over(a, b)
+			return a.x0 < b.x1 - 0.5 and b.x0 < a.x1 - 0.5 and a.y0 < b.y1 - 0.5 and b.y0 < a.y1 - 0.5
+		end
+		local function rs(r)
+			return string.format("%.0f,%.0f..%.0f,%.0f", r.x0, r.y0, r.x1, r.y1)
+		end
+		for _, sz in ipairs({ { 360, 640 }, { 390, 844 }, { 640, 360 }, { 667, 375 }, { 844, 390 } }) do
+			local W, H = sz[1], sz[2]
+			C5.screen(W, H, true)
+			if MC and type(MC._TouchButtons) == "function" then
+				MC._TouchButtons(true) -- (the RUN / DASH touch keys, as a phone boot builds them)
+			end
+			KC.advance(0.6)
+			for _, e in ipairs(ends) do
+				local tag = string.format("p5dgn endfit %dx%d %s: ", W, H, e[1])
+				LP:SetAttribute("InBattle", nil)
+				KC.toClient("DungeonState", "End", e[2])
+				KC.advance(1.2) -- (a few 4 Hz refreshes: the card's place settles)
+				local rg = C5.pg():FindFirstChild("NimbusDungeonRun")
+				local card = rg and rg:FindFirstChild("EndCard")
+				if T.check(card and C5.shown(card), tag .. "the End card shows") then
+					local er = C5.rect(card)
+					T.check(er.x0 >= -0.5 and er.y0 >= -0.5 and er.x1 <= W + 0.5 and er.y1 <= H + 0.5, tag .. "the card is on the screen", rs(er))
+					local tiles = {}
+					local menu = C5.pg():FindFirstChild("NimbusMenu")
+					for _, o in ipairs(menu and menu:GetDescendants() or {}) do
+						if o:IsA("GuiButton") and C5.shown(o) and o.AbsoluteSize.X > 4 then
+							local r = C5.rect(o)
+							if over(r, er) then
+								tiles[#tiles + 1] = o.Name .. " " .. rs(r)
+							end
+						end
+					end
+					T.check(#tiles == 0, tag .. "no menu tile over the card", table.concat(tiles, "; ") .. " | card " .. rs(er))
+					local keys = {}
+					local mobile = C5.pg():FindFirstChild("MobileControls")
+					for _, name in ipairs({ "RunButton", "DashButton" }) do
+						local b = mobile and mobile:FindFirstChild(name, true)
+						if b and C5.shown(b) and over(C5.rect(b), er) then
+							keys[#keys + 1] = name .. " " .. rs(C5.rect(b))
+						end
+					end
+					T.check(#keys == 0, tag .. "no RUN / DASH key over the card", table.concat(keys, "; ") .. " | card " .. rs(er))
+					-- Roblox's jump button (a small screen's: 70 px, 20 px off the bottom, its right edge 45 px in), while it is on
+					-- (a card with no room beside it takes the corner and the stick and jump step aside, as a phone window's)
+					local j = math.min(W, H) <= 500 and 70 or 120
+					local jb = math.min(W, H) <= 500 and 20 or j * 0.75
+					local jump = { x0 = W - j * 1.5 - 10, y0 = H - jb - j, x1 = W - j * 0.5 - 10, y1 = H - jb }
+					local touchOn = game:GetService("GuiService").TouchControlsEnabled ~= false
+					T.check(not touchOn or not over(jump, er), tag .. "clear of Roblox's jump button", rs(er) .. " | jump " .. rs(jump))
+					if W > H and e[1] ~= "gems" then
+						local ys, n = {}, 0
+						local chips = C5.find(card, "Chips")
+						for _, c in ipairs(chips and chips:GetChildren() or {}) do
+							if c:IsA("GuiObject") and c.Name:find("^Chip_") and C5.shown(c) then
+								n = n + 1
+								ys[math.floor(C5.rect(c).y0 + 0.5)] = true
+							end
+						end
+						local rows = 0
+						for _ in pairs(ys) do
+							rows = rows + 1
+						end
+						T.check(n <= 3 and rows <= 1, tag .. "the chips on one row", n .. " chips, " .. rows .. " rows")
+					end
+					Mock.Click(C5.find(card, "OkButton"))
+					KC.advance(0.4)
+					-- whatever stepped aside for the card is back with its close
+					local back = game:GetService("GuiService").TouchControlsEnabled ~= false
+					for _, name in ipairs({ "RunButton", "DashButton" }) do
+						local b = mobile and mobile:FindFirstChild(name, true)
+						back = back and (b == nil or C5.shown(b))
+					end
+					T.check(back, tag .. "OK: the stick, jump, RUN and DASH are back")
+				end
+			end
+			if MC and type(MC._TouchButtons) == "function" then
+				MC._TouchButtons(false)
+			end
+		end
 		C5.screen(390, 844, true)
 	end)
 	return S

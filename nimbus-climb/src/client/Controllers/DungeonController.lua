@@ -151,6 +151,7 @@ local K = {
 	CHIP_GAP = 6, -- between a dropped chip and what it hangs under
 	END_W = 440, -- (Pitch 2 item 02 B, look review round 1) the battle result card's width (one template: BattleController K.RESULT_W)
 	END_MIN_W = 300, -- (U9-7 look) design px: a landscape phone's End card is never squeezed narrower for a spot
+	END_TWO_COL = 420, -- (P2 fix A) design px: the narrowest landscape End card whose rows go in 2 columns (R.fillEnd: inner >= 400)
 	CHIP_ROW = 30, -- (U9-7 look) design px of a reward chip (H.rewardChip) and of the End card's first-clear plate
 	ICON_TILE = 30, -- (U9-7 look) the pitch toast's icon tile on the loot plate and the phone chip (H.iconTile)
 	LEAVE_CONFIRM = 3, -- seconds the first LEAVE press stays armed
@@ -2010,6 +2011,8 @@ function R.place(view)
 	-- for the result (the HUD still hides them should the card ever reach them)
 	local strips = R.stripsBottom()
 	S.EndMenuLeft = nil
+	S.EndKeysOff = false
+	S.EndTouchOff = false
 	if phone and w < h then
 		-- portrait: under the currency strips (clear of the screen's centre). (P2 fix A, look: beside the menu column it was
 		-- 217.6 px wide at 390 x 844, its third chip alone on a second row) the battle result card's width (one template:
@@ -2023,7 +2026,16 @@ function R.place(view)
 		local left = math.floor(w - 8 - width * scale)
 		U.End.Root.Size = UDim2.fromOffset(width, endH)
 		-- (right under the strips, the battle card's row: at 18 % down the cleared floor's card reached over the centre)
-		U.End.Root.Position = UDim2.fromOffset(left, strips > 0 and strips or (math.floor(h * 0.18) - top))
+		local y = strips > 0 and strips or (math.floor(h * 0.18) - top)
+		-- (P2 fix A, look review r1: at 360 x 640 the cleared floor's card under the strips reached RUN) where it would reach
+		-- the RUN / DASH keys under it, the top-right corner (the strips step aside: HudController's corner card), as the
+		-- battle's card does (Hud.ResultSpot); still too tall there, the keys step aside while it shows (R.endKeys)
+		local keysTop = R.keysTop(left, left + width * scale)
+		if keysTop and top + y + endH * scale > keysTop - 8 then
+			y = 6
+			S.EndKeysOff = top + y + endH * scale > keysTop - 8
+		end
+		U.End.Root.Position = UDim2.fromOffset(left, y)
 		if R.menuRight(w) > left then
 			S.EndMenuLeft = left
 		end
@@ -2070,10 +2082,7 @@ function R.placeEndLandscape(w, h, top, endH, strips)
 	local fullH = S.EndCompact and (endH + reasonRow) or endH
 	local y0 = math.max(0, 52 - top) -- never above the gui area
 	local maxW = math.min(K.END_W, math.floor(w * 0.44 / scale))
-	local buttons = {}
-	for _, name in ipairs({ "DashButton", "RunButton" }) do
-		buttons[#buttons + 1] = R.shownRect(R.guiPart("MobileControls", name))
-	end
+	local buttons = R.keyRects()
 	local vitals = R.vitalsSlot(top)
 	local leftEdge = R.menuRight(w) + 8
 	-- one spot: the card's right edge (screen px), its top (gui px), its design height -> right, width or nil
@@ -2107,7 +2116,11 @@ function R.placeEndLandscape(w, h, top, endH, strips)
 	end
 	spots[#spots + 1] = { w - 12, y0 }
 	local right, width, y, compact = nil, nil, y0, false
-	for _, spot in ipairs(spots) do
+	-- (P2 fix A, look review r1) a short landscape phone's card (below) keeps that place while it shows: at its two-column
+	-- width it is shorter than the narrow card the spots above weigh, so weighing them again would flip it back and forth
+	local tightKey = string.format("%dx%d/%s", w, h, tostring(S.EndAt))
+	local tight = S.EndTight == tightKey
+	for _, spot in ipairs(tight and {} or spots) do
 		for _, drop in ipairs({ false, true }) do
 			if not right and (not drop or S.End ~= nil) then
 				right, width = try(spot[1], spot[2], drop and (fullH - reasonRow) or fullH)
@@ -2120,11 +2133,43 @@ function R.placeEndLandscape(w, h, top, endH, strips)
 		-- nowhere clear of the vitals: (Pitch 2 item 02 B, look review round 1: the End card is the battle's result template,
 		-- taller than the old notice) the same spots in the same order with the vitals card stepping aside meanwhile (the
 		-- spec: a phone's result card hides the vitals), so the strips stay in view; none: the corner without the reason line
-		for _, spot in ipairs(spots) do
+		for _, spot in ipairs(tight and {} or spots) do
 			for _, drop in ipairs({ false, true }) do
 				if not right and (not drop or S.End ~= nil) then
 					right, width = try(spot[1], spot[2], drop and (fullH - reasonRow) or fullH, true)
 					y, compact = spot[2], drop
+				end
+			end
+		end
+		-- (P2 fix A, look review r1: at 640 x 360 the last resort below ran 7 px past the screen's foot, under RUN, DASH and
+		-- the jump button, its third chip alone on a row) a phone too short for the card beside its controls: the card takes
+		-- the top-right corner at the template's two-column width (the rows in 2 columns, the 3 chips on one row: the pitch's
+		-- phone card), without the reason line, and while it shows the controls under it step aside as a phone window's do:
+		-- the vitals card, the RUN / DASH keys (R.endKeys: MovementController.SetMobileHidden, a modal card's hold) and
+		-- Roblox's stick and jump (R.endTouch: MenuController.SetTouchHidden). The template's full width (at the two columns'
+		-- narrowest, 420, "Rooms" was cut to "R..." beside "4 / 4" at 640 x 360); where it reaches the menu column, the
+		-- column's tiles step aside too (R.endMenu), as a portrait phone's do. (Ending left of the jump button instead put the
+		-- card's middle in the screen's centre third at 640 x 360 and 844 x 390.)
+		-- (only once the heights weighed above are this screen's narrow card's: R.fillEnd's last build was a landscape card at
+		-- maxW, not a portrait one carried over by a turn of the phone)
+		if not right and (tight or S.EndBuiltSig == ("true/" .. tostring(maxW))) then
+			local limit = w - 12
+			local wide = math.min(K.END_W, math.floor((limit - 8) / scale))
+			local left = math.floor(limit - wide * scale)
+			if wide >= K.END_TWO_COL then
+				S.EndTight = tightKey
+				right, width = limit, wide
+				y, compact = y0, S.End ~= nil
+				S.EndKeysOff = true
+				S.EndTouchOff = true
+				-- (weighed once for this card's place: with the tiles stepped aside the column's buttons read as gone)
+				if not tight or S.EndTightMenu == nil then
+					S.EndTightMenu = R.menuRight(w) > left
+				end
+				if S.EndTightMenu then
+					-- (0: the whole column, as LossScreen's; the card may reach only the fold tab's touch pad, past the column's
+					-- own edge, which MenuController's cover rule does not weigh)
+					S.EndMenuLeft = 0
 				end
 			end
 		end
@@ -2276,14 +2321,14 @@ function R.guiPart(guiName, partName)
 end
 
 -- a shown GuiObject's box in screen px { x0, y0, x1, y1 } (its ScreenGui's inset added back), nil while it is hidden,
--- empty or its ScreenGui is off
-function R.shownRect(obj)
+-- empty or its ScreenGui is off. evenHidden: its own Visible is not asked (a part this card holds off, R.keyRects)
+function R.shownRect(obj, evenHidden)
 	if not obj or not obj:IsA("GuiObject") then
 		return nil
 	end
 	local cur = obj
 	while cur and not cur:IsA("LayerCollector") do
-		if cur:IsA("GuiObject") and not cur.Visible then
+		if cur:IsA("GuiObject") and not cur.Visible and not (evenHidden and cur == obj) then
 			return nil
 		end
 		cur = cur.Parent
@@ -2321,9 +2366,77 @@ function R.battleParts()
 end
 
 -- the right edge of MenuController's tile column (screen px) while it shows on the left, else 0
+-- (P2 fix A, look review r1: at 360 x 640 the column's right edge, 127, is past 30 % of the width, so it read as "not on
+-- the left", the End card never asked the tiles to step aside and they drew over it) on the left = its LEFT edge there
+-- (and its buttons' touch pads, the fold toggle's 45 px hit box reaching past the column: they lie above our gui)
 function R.menuRight(w)
-	local r = R.shownRect(R.guiPart("NimbusMenu", "MenuColumn"))
-	return (r and r.x1 < w * 0.3) and math.ceil(r.x1) or 0
+	local column = R.guiPart("NimbusMenu", "MenuColumn")
+	local r = R.shownRect(column)
+	if not (r and r.x0 < w * 0.3) then
+		return 0
+	end
+	local right = r.x1
+	for _, d in ipairs(column:GetDescendants()) do
+		if d:IsA("GuiButton") then
+			local b = R.shownRect(d)
+			if b then
+				right = math.max(right, b.x1)
+			end
+		end
+	end
+	return math.ceil(right)
+end
+
+-- (P2 fix A, look review r1) the RUN / DASH touch keys' boxes (screen px) while their gui is up, shown or held off by a
+-- card (MovementController.SetMobileHidden): the End card's own hold (R.endKeys) never feeds back into its place
+function R.keyRects()
+	local out = {}
+	for _, name in ipairs({ "DashButton", "RunButton" }) do
+		local b = R.guiPart("MobileControls", name)
+		if b and b:IsA("GuiObject") then
+			out[#out + 1] = R.shownRect(b, S.EndKeysHid == true)
+		end
+	end
+	return out
+end
+
+-- the top (screen px) of the highest RUN / DASH key that reaches into the span x0..x1, nil = none
+function R.keysTop(x0, x1)
+	local out = nil
+	for _, r in ipairs(R.keyRects()) do
+		if r.x0 < x1 and r.x1 > x0 then
+			out = math.min(out or math.huge, r.y0)
+		end
+	end
+	return out
+end
+
+-- (P2 fix A, look review r1) the RUN / DASH keys step aside while the End card has no room clear of them (a modal card's
+-- hold: MovementController.SetMobileHidden "DungeonEnd")
+function R.endKeys(off)
+	off = off == true
+	if (S.EndKeysHid == true) == off then
+		return
+	end
+	S.EndKeysHid = off
+	local move = H.controller("MovementController")
+	if move and type(move.SetMobileHidden) == "function" then
+		H.safe("keys", move.SetMobileHidden, "DungeonEnd", off)
+	end
+end
+
+-- (P2 fix A, look review r1) Roblox's stick and jump step aside while a short phone's End card takes the corner over them
+-- (MenuController.SetTouchHidden "DungeonEnd", as a phone window's)
+function R.endTouch(off)
+	off = off == true
+	if (S.EndTouchHid == true) == off then
+		return
+	end
+	S.EndTouchHid = off
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		H.safe("touch", menu.SetTouchHidden, "DungeonEnd", off)
+	end
 end
 
 -- just below the HUD's currency strips when they sit in the top-right corner under the top bar (gui-area px, the
@@ -2365,6 +2478,8 @@ function R.refresh()
 		U.End.Root.Visible = false
 		R.endVitals(false)
 		R.endMenu(nil)
+		R.endKeys(false)
+		R.endTouch(false)
 		return
 	end
 	R.place(view)
@@ -2379,6 +2494,8 @@ function R.refresh()
 	U.End.Root.Visible = endShown
 	R.endVitals(endShown and S.EndVitalsOff == true)
 	R.endMenu(endShown and S.EndMenuLeft or nil)
+	R.endKeys(endShown and S.EndKeysOff == true)
+	R.endTouch(endShown and S.EndTouchOff == true)
 	if endShown then
 		R.fillEnd()
 	end
@@ -2662,7 +2779,7 @@ function R.fillEnd()
 			F = U.EndScale.Scale,
 			Compact = phone,
 			Landscape = landscape,
-			Cols = (landscape and inner >= 400) and 2 or 1,
+			Cols = (landscape and inner >= K.END_TWO_COL - 20) and 2 or 1,
 			NoReason = S.EndCompact == true,
 			OnOk = function()
 				S.End = nil
@@ -2675,6 +2792,7 @@ function R.fillEnd()
 		end
 		U.EndSig = sig
 		U.EndBuilt = built
+		S.EndBuiltSig = tostring(landscape) .. "/" .. tostring(width) -- (R.placeEndLandscape: which card its heights are)
 		U.EndTimer = { segs = built.Segs, count = 5, lit = -1 }
 		if not S.EndCompact then
 			S.EndReasonRow = built.ReasonRow
