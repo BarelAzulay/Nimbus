@@ -1033,11 +1033,14 @@ local function indexWindowChecks(PetCatalog)
 			return false
 		end
 		T.check(matchupOk and elementBadge(window, mascotElement, onCard) ~= nil, "Pet Index: the detail view shows the element badge with 'Strong vs " .. table.concat(strong, ", ") .. " / Weak vs " .. table.concat(weak, ", ") .. "'", joined ~= "" and joined or allShownText():sub(1, 300))
-		-- the Elements help card: every element of the chart (opened by its button when it is not shown already)
+		-- the Elements help card: every element of the chart (opened by its button when it is not shown already). (Pitch 2
+		-- item 12_elements A) the chart is its own centred window now, Window_Elements beside Window_Index in NimbusIndex:
+		-- the names are looked for in it too
 		local function missingElements()
 			local out = {}
+			local chart = indexGui and descendantNamed(indexGui, "Window_Elements")
 			for _, e in ipairs(Config.Elements.Order or {}) do
-				if not findText(e:lower(), window) then
+				if not findText(e:lower(), window) and not (chart and isShown(chart) and findText(e:lower(), chart)) then
 					out[#out + 1] = e
 				end
 			end
@@ -1058,9 +1061,12 @@ local function indexWindowChecks(PetCatalog)
 		end
 		local missing = missingElements()
 		T.check(#missing == 0, "Pet Index: an 'Elements' help card shows the chart with all " .. #(Config.Elements.Order or {}) .. " elements", "missing: " .. table.concat(missing, ", "))
-		if toggled and isShown(helpButton) then
-			Mock.Click(helpButton)
+		if toggled then
+			-- (Pitch 2 item 12_elements A) the chart's own window: Esc closes it and returns to the Index
+			press("Escape")
 			advance(0.4)
+			local chart = indexGui and descendantNamed(indexGui, "Window_Elements")
+			T.check(Index.IsOpen() and isShown(window) and not (chart and isShown(chart)), "Pet Index: Esc closes the Elements window and returns to the Index")
 		end
 	end
 	-- Esc closes; OpenPanel("Index") opens it again

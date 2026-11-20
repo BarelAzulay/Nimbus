@@ -6462,6 +6462,147 @@ local function clientScenarios()
 		LKC.flushErrors("index_claim_clear_of_jump")
 	end)
 
+	-- (Pitch 2 item 12_elements, option A "Wheel"; the owner's shot 12: Elements was a scrolling section inside the Index,
+	-- 3 of the 8 elements in view, 18 px arrows, no title bar and no X) at the four grid sizes the Index's Elements plank
+	-- opens a centred kit B window (Window_Elements in NimbusIndex) over the Index, which stays open: the Signboard panel
+	-- with its ELEMENTS title and its red X (44 screen px or more); all eight elements at once, each block whole inside the
+	-- window and on no other block; the ring's six links pixel arrows of 26 screen px or more (PixelIcon arrow*: the old
+	-- ones were 18), the texts x1.5 and x0.75 shown; nothing scrolls (no ScrollingFrame in it) and every shown part of the
+	-- chart inside the window, the window on the screen; Esc closes it and leaves the Index open, and so does the X
+	S.elements_window = guarded("elements_window", function()
+		local Menu = U7.client("Controllers/MenuController")
+		local IC = U7.client("Controllers/IndexController")
+		local Config = LoadingH.shared("Config")
+		local UIS = game:GetService("UserInputService")
+		local function press(key)
+			Mock.FireSignal(UIS, "InputBegan", Mock.NewInput(key, "Keyboard", "Begin"), false)
+		end
+		local function plankOf(gui)
+			for _, d in ipairs(gui and gui:GetDescendants() or {}) do
+				if d.Name == "Elements" and d:IsA("GuiButton") and U8.shown(d) then
+					return d
+				end
+			end
+			return nil
+		end
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "elements window", function(tag)
+				Menu.Open("Index")
+				LKC.advance(1)
+				local gui = U8.pg():FindFirstChild("NimbusIndex")
+				local plank = plankOf(gui)
+				if not T.check(plank ~= nil, tag .. ": the Index shows its Elements plank") then
+					return
+				end
+				Mock.Click(plank)
+				LKC.advance(0.8)
+				local win = gui:FindFirstChild("Window_Elements", true)
+				if not T.check(win ~= nil and U8.shown(win), tag .. ": the plank opens the Elements window (Window_Elements)") then
+					return
+				end
+				T.check(IC.IsOpen(), tag .. ": ...over the Index, which stays open")
+				local panel = win:FindFirstChild("ElementsPanel", true)
+				local body = panel and panel:FindFirstChild("Body")
+				local r = U8.rect(body or win)
+				local area = gui.AbsoluteSize
+				T.check(math.abs((r.X + r.R) / 2 - area.X / 2) <= 2 and r.X >= 0 and r.R <= area.X and r.Y >= 0 and r.B <= area.Y,
+					tag .. ": the window is centred across the screen and on it", U8.show(r) .. " in " .. area.X .. "x" .. area.Y)
+				T.check(panel ~= nil and panel:GetAttribute("Skin") == "Signboard", tag .. ": a kit B Signboard window")
+				local title = panel and panel:FindFirstChild("Title", true)
+				T.check(title ~= nil and U8.shown(title) and title.Text:lower() == "elements", tag .. ": its title reads ELEMENTS", title and title.Text or "none")
+				local close = panel and panel:FindFirstChild("Close", true)
+				T.check(close ~= nil and U8.shown(close) and close.AbsoluteSize.X >= 43.5 and close.AbsoluteSize.Y >= 43.5, tag .. ": its red X shows, 44 px or more",
+					close and U8.show(U8.rect(close)) or "none")
+				-- all eight elements at once, whole and apart
+				local blocks, missing, outside, meet = {}, {}, {}, {}
+				for _, e in ipairs(Config.Elements.Order) do
+					local b = win:FindFirstChild("Block_" .. e, true)
+					if b and U8.shown(b) then
+						local br = U8.rect(b)
+						blocks[#blocks + 1] = { e, br }
+						if br.X < r.X - 0.5 or br.R > r.R + 0.5 or br.Y < r.Y - 0.5 or br.B > r.B + 0.5 then
+							outside[#outside + 1] = e .. " " .. U8.show(br)
+						end
+					else
+						missing[#missing + 1] = e
+					end
+				end
+				for i = 1, #blocks do
+					for j = i + 1, #blocks do
+						if U8.overlap(blocks[i][2], blocks[j][2]) then
+							meet[#meet + 1] = blocks[i][1] .. "/" .. blocks[j][1]
+						end
+					end
+				end
+				T.check(#missing == 0, tag .. ": all " .. #Config.Elements.Order .. " elements show at once", table.concat(missing, ", "))
+				T.check(#outside == 0 and #meet == 0, tag .. ": every element block whole inside the window and on no other block",
+					table.concat(outside, "; ") .. " | " .. table.concat(meet, ", "))
+				-- the ring's links: big pixel arrows (never a rotated frame); the multipliers in words
+				local ring = win:FindFirstChild("Ring", true)
+				local arrows, small = 0, {}
+				for _, d in ipairs(ring and ring:GetDescendants() or {}) do
+					local name = d:GetAttribute("PixelIcon")
+					if type(name) == "string" and (name:match("^arrow") or name == "left") and U8.shown(d) then
+						arrows = arrows + 1
+						if d.AbsoluteSize.X < 25.5 or d.Rotation ~= 0 then
+							small[#small + 1] = name .. " " .. U8.show(U8.rect(d))
+						end
+					end
+				end
+				T.check(arrows >= 6 and #small == 0, tag .. ": the ring's six links are pixel arrows of 26 screen px or more, none turned",
+					arrows .. " arrows; " .. table.concat(small, "; "))
+				local texts, seen = {}, {}
+				for _, d in ipairs(win:GetDescendants()) do
+					if d:IsA("TextLabel") and U8.shown(d) then
+						seen[d.Text] = true
+					end
+				end
+				for _, want in ipairs({ "x1.5", "x0.75" }) do
+					if not seen[want] then
+						texts[#texts + 1] = want
+					end
+				end
+				T.check(#texts == 0, tag .. ": the multipliers read x1.5 and x0.75", "missing " .. table.concat(texts, ", "))
+				-- nothing scrolls: no scroll frame, every part of the chart inside the window
+				local scrolls, out = {}, {}
+				local content = panel and panel:FindFirstChild("Chart", true)
+				for _, d in ipairs(win:GetDescendants()) do
+					if d:IsA("ScrollingFrame") and U8.shown(d) then
+						scrolls[#scrolls + 1] = d.Name
+					end
+				end
+				for _, d in ipairs(content and content:GetDescendants() or {}) do
+					if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+						local dr = U8.rect(d)
+						if dr.X < r.X - 1 or dr.R > r.R + 1 or dr.Y < r.Y - 1 or dr.B > r.B + 1 then
+							out[#out + 1] = d.Name .. " " .. U8.show(dr)
+						end
+					end
+				end
+				T.check(content ~= nil and #scrolls == 0 and #out == 0, tag .. ": nothing scrolls: no scroll frame, every part of the chart inside the window",
+					table.concat(scrolls, ", ") .. " | " .. table.concat(out, "; ", 1, math.min(#out, 6)))
+				-- Esc, then the X: each closes the chart and leaves the Index open
+				press("Escape")
+				LKC.advance(0.5)
+				T.check(not U8.shown(win) and IC.IsOpen(), tag .. ": Esc closes the Elements window and leaves the Index open",
+					fmt("elements %s, index %s", tostring(U8.shown(win)), tostring(IC.IsOpen())))
+				plank = plankOf(gui)
+				if plank then
+					Mock.Click(plank)
+					LKC.advance(0.8)
+				end
+				T.check(U8.shown(win), tag .. ": the plank opens it again")
+				if close then
+					Mock.Click(close)
+					LKC.advance(0.5)
+				end
+				T.check(not U8.shown(win) and IC.IsOpen(), tag .. ": the X closes it and returns to the Index",
+					fmt("elements %s, index %s", tostring(U8.shown(win)), tostring(IC.IsOpen())))
+			end)
+		end
+		LKC.flushErrors("elements_window")
+	end)
+
 	-- (U8; finding 15) no neon glow in the U8 families: the lobby HUD (NimbusHud, the top-bar pill, the menu tiles, the gift, the
 	-- boost chips under it), the
 	-- Pets window and the Index. No glow ring (a NeonKit Glow frame or GlowStroke shown), no gloss gradient (a UIGradient on

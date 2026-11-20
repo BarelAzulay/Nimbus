@@ -31,7 +31,9 @@
 -- Layout (cloud-styled through CloudUI, like the reference "Pet Index" window):
 --   title bar "Pet Index" + red X
 --   left    vertical group list: one rarity tab per rarity group with "3/6" progress,
---           a check when its reward is claimed and a red "!" when it can be claimed; an "Elements" card button
+--           a check when its reward is claimed and a red "!" when it can be claimed; an "Elements" button that opens
+--           the element chart as its own centred window (client/UI/ElementsWindow, Pitch 2 item 12_elements A; Esc and
+--           its X return here; Open("Elements") opens the Index with the chart over it)
 --   centre  group header with an x/N progress bar, a grid of pet tiles (ViewportFrame of the pet; pets not
 --           discovered yet are black silhouettes via ViewportFrame.ImageColor3 = (0, 0, 0) with a "???"
 --           caption), and the rewards box ("Rewards:" + the token amount) with a CLAIM button (green when
@@ -1066,9 +1068,6 @@ local function relayout()
 		S.RewardLabelOk = not narrow
 		S.RewardTextW = nil
 	end
-	if U.ElementsCard then
-		U.ElementsCard.Size = UDim2.new(1, 0, 1, -(rewardH + 8))
-	end
 	U.View.Size = UDim2.new(1, 0, 0, (short or tall) and K.VIEW_H_SHORT or K.VIEW_H)
 	local tileH = short and K.GROUP_TILE_H_SHORT or K.GROUP_TILE_H
 	-- (kit-b U8) the strip shows a whole number of tabs: as many as fit at STRIP_TILE_MIN_W share the strip's width, so
@@ -1146,7 +1145,11 @@ end
 ----------------------------------------------------------------------
 local function onBackAction(_name, inputState)
 	if inputState == Enum.UserInputState.Begin and S.Open then
-		IndexController.Close()
+		if U.ElementsWin and U.ElementsWin.IsOpen() then
+			U.ElementsWin.Close() -- (12_elements) back to the Index first
+		else
+			IndexController.Close()
+		end
 		return Enum.ContextActionResult.Sink
 	end
 	return Enum.ContextActionResult.Pass
@@ -2095,152 +2098,44 @@ local function requestClaim()
 end
 
 ----------------------------------------------------------------------
--- Elements help card (the element wheel, section 11)
+-- Elements: its own centred window over the Index (Pitch 2 item 12_elements, the owner's pick A "Wheel":
+-- client/UI/ElementsWindow, Window_Elements in this ScreenGui). Before it, a scrolling card inside the centre column
+-- showed 3 of the 8 elements with 18 px arrows and had no title bar and no X. Its X and Esc return to the Index
 ----------------------------------------------------------------------
-local function elementCycle()
-	local elements = Config.Elements
-	if type(elements) ~= "table" or type(elements.Order) ~= "table" or type(elements.Strong) ~= "table" then
-		return {}, {}
-	end
-	local cycle, inCycle = {}, {}
-	local current = elements.Order[1]
-	while current and not inCycle[current] and #cycle < #elements.Order do
-		inCycle[current] = true
-		table.insert(cycle, current)
-		local nextList = elements.Strong[current]
-		current = type(nextList) == "table" and nextList[1] or nil
-	end
-	if current ~= cycle[1] then
-		-- not a closed wheel: show everything as plain pairs instead
-		cycle, inCycle = {}, {}
-	end
-	local rest = {}
-	for _, e in ipairs(elements.Order) do
-		if not inCycle[e] then
-			table.insert(rest, e)
-		end
-	end
-	return cycle, rest
-end
-
-local function buildElementsCard()
-	local card = makeFrame(U.Centre, "ElementsCard", {
-		Size = UDim2.new(1, 0, 1, -(K.REWARD_H + 8)),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Stone,
-		Visible = false,
-		ZIndex = 20,
-	})
-	edge(card, SIGN.Wood, 3) -- (kit-b U8) a stone card in its wood edge
-	U.ElementsCard = card
-	local scroll = scroller(card, "Scroll", {
-		Position = UDim2.fromOffset(6, 6),
-		Size = UDim2.new(1, -12, 1, -12),
-		ZIndex = 21,
-	})
-	pad(scroll, 10, 8, 14, 10)
-	listLayout(scroll, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center)
-	Theme.StyleTitle(makeText(scroll, "Title", "Elements", "Title", 30, INK, {
-		Size = UDim2.new(1, 0, 0, 36),
-		LayoutOrder = 1,
-		ZIndex = 22,
-	}), "Section")
-	makeText(scroll, "Explain", "Every pet has an element. In battles an element deals x1.5 damage to the one its arrow points at, and only x0.75 back.", "Body", 19, MUTED, {
-		Size = UDim2.new(1, -10, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		TextWrapped = true,
-		LayoutOrder = 2,
-		ZIndex = 22,
-	})
-	local cycle, rest = elementCycle()
-	if #cycle >= 3 then
-		local wheel = makeFrame(scroll, "Wheel", {
-			Size = UDim2.new(1, 0, 0, 330),
-			LayoutOrder = 3,
-			ZIndex = 22,
-		})
-		Util.Create("UISizeConstraint", { MaxSize = Vector2.new(400, 330), Parent = wheel })
-		local n = #cycle
-		for i, element in ipairs(cycle) do
-			local angle = math.rad(-90 + (i - 1) * 360 / n)
-			local holder = makeFrame(wheel, "Slot_" .. element, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5 + math.cos(angle) * 0.35, 0, 0.5 + math.sin(angle) * 0.38, 0),
-				Size = UDim2.fromOffset(100, 34),
-				ZIndex = 22,
-			})
-			listLayout(holder, Enum.FillDirection.Horizontal, 0, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			elementPill(holder, element, 18, 1)
-			-- arrow half way to the next element, pointing clockwise (screen y grows downwards)
-			local mid = angle + math.rad(180 / n)
-			local arrow = makeText(wheel, "Arrow" .. i, "", "Title", 24, SIGN.Wood, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5 + math.cos(mid) * 0.41, 0, 0.5 + math.sin(mid) * 0.43, 0),
-				Size = UDim2.fromOffset(28, 28),
-				Rotation = math.deg(mid) + 90,
-				ZIndex = 23,
-			})
-			PixelIcon.Host(arrow, ICON.Arrow, 18) -- (kit-b U7b) the label's rotation turns it with the wheel
-		end
-		makeText(wheel, "Centre", "beats", "Script", 20, MUTED, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.5, 0),
-			Size = UDim2.fromOffset(120, 30),
-			ZIndex = 22,
-		})
-	end
-	-- the rest as mutual pairs (Celestial <-> Shadow)
-	local strongMap = Config.Elements and Config.Elements.Strong or {}
-	local done = {}
-	local order = 4
-	for _, element in ipairs(rest) do
-		if not done[element] then
-			done[element] = true
-			local partner = type(strongMap[element]) == "table" and strongMap[element][1] or nil
-			local row = makeFrame(scroll, "Pair_" .. element, {
-				Size = UDim2.new(1, 0, 0, 36),
-				LayoutOrder = order,
-				ZIndex = 22,
-			})
-			order = order + 1
-			listLayout(row, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			elementPill(row, element, 18, 1)
-			if partner and partner ~= element then
-				done[partner] = true
-				PixelIcon.Host(makeText(row, "Both", "", "Title", 24, SIGN.Wood, { Size = UDim2.fromOffset(34, 32), LayoutOrder = 2, ZIndex = 22 }), ICON.Swap, 18) -- (kit-b U7b)
-				elementPill(row, partner, 18, 3)
-			end
-		end
-	end
-	local back = CloudUI.Button({
-		Name = "CloseElements",
-		Text = "Back to pets",
-		Style = "Gray",
-		Skin = "Sign",
-		Size = UDim2.fromOffset(220, 52),
-		TextSize = 22,
-		LayoutOrder = 50,
-		ZIndex = 22,
-		Callback = function()
-			showElements(false)
-		end,
-		Parent = scroll,
-	})
-	back.ZIndex = 22
-end
-
 function showElements(on)
-	if not U.ElementsCard then
+	if not U.ElementsWin then
 		if not on then
 			return
 		end
-		buildElementsCard()
+		local ok, EW = pcall(require, Client:WaitForChild("UI"):WaitForChild("ElementsWindow"))
+		if not (ok and type(EW) == "table") then
+			warnOnce("elements window", EW)
+			return
+		end
+		U.ElementsWin = EW.New(U.Gui, {
+			OnClose = function()
+				S.ElementsShown = false
+				-- (the mock: the chart stands alone) the Index steps back in when it closes, if it is still open
+				if U.Holder and S.Open then
+					U.Holder.Visible = true
+				end
+			end,
+		})
 	end
 	S.ElementsShown = on and true or false
-	U.ElementsCard.Visible = S.ElementsShown
-	if U.ElementsButton then
-		U.ElementsButton.Text = S.ElementsShown and "Pets" or "Elements"
+	if S.ElementsShown then
+		U.ElementsWin.Open()
+		if U.Holder then
+			U.Holder.Visible = false -- (the mock: the chart alone on the screen, not over a second awning)
+		end
+	else
+		U.ElementsWin.Close()
 	end
+end
+
+-- (12_elements) the Elements window is open over the Index (Esc and the back button close it first)
+local function elementsUp()
+	return U.ElementsWin ~= nil and U.ElementsWin.IsOpen()
 end
 
 ----------------------------------------------------------------------
@@ -2730,6 +2625,12 @@ function IndexController.Open(groupId)
 		return
 	end
 	local target = nil
+	-- (12_elements) Open("Elements"): the Index, then the Elements window over it (OpenPanel("Index", { GroupId =
+	-- "Elements" }), the renderer's menu:Index:Elements)
+	local wantElements = type(groupId) == "string" and groupId:lower() == "elements"
+	if wantElements then
+		groupId = nil
+	end
 	if type(groupId) == "string" then
 		if S.GroupById[groupId] then
 			target = groupId
@@ -2773,6 +2674,9 @@ function IndexController.Open(groupId)
 	if not wasOpen then
 		IndexController.Opened:Fire(target)
 	end
+	if wantElements and type(Config.Elements) == "table" then
+		safe("elements", showElements, true)
+	end
 end
 
 function IndexController.Close()
@@ -2782,6 +2686,9 @@ function IndexController.Close()
 	S.Open = false
 	S.Token = S.Token + 1
 	local mine = S.Token
+	if elementsUp() then
+		showElements(false) -- (12_elements) the chart goes with the Index
+	end
 	syncBackBinding()
 	syncTouch()
 	syncHud()
@@ -2846,7 +2753,11 @@ function IndexController.Init()
 	end
 	UserInputService.InputBegan:Connect(function(input)
 		if input.KeyCode == Enum.KeyCode.Escape and S.Open then
-			IndexController.Close()
+			if elementsUp() then
+				showElements(false) -- (12_elements) Esc closes the Elements window and leaves the Index open
+			else
+				IndexController.Close()
+			end
 		end
 	end)
 	task.spawn(getClaimRemote)
