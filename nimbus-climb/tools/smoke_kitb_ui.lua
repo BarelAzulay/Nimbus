@@ -14600,7 +14600,10 @@ local function clientScenarios()
 						-- the compact and mini cards leave an empty win bonus out (the lost match has none)
 						local tier = card:GetAttribute("Rows")
 						-- (U9-9 look) the mini card shows a win bonus in the Tokens row ("11  +10", MergeBonus)
-						local want = (tier == "Mini" or (tier ~= "Full" and not won)) and 2 or 3
+						-- (P2 fix A) Micro: where even the mini card with its reason line is taller than its room (a lost match on a
+						-- 360 px tall landscape phone, under the strip once the F0 awning stands 20 px over the card), the Tokens row only
+						local small = tier == "Mini" or tier == "Micro"
+						local want = tier == "Micro" and 1 or ((tier == "Mini" or (tier ~= "Full" and not won)) and 2 or 3)
 						T.check(rows == want and plain, what .. ": the " .. want .. " stats are stone blocks in their wood edge", rows .. " rows (" .. tostring(tier) .. ")")
 						if tier == "Compact" and not won then
 							local m1, m3 = card:FindFirstChild("Member1", true), card:FindFirstChild("Member3", true)
@@ -14614,7 +14617,7 @@ local function clientScenarios()
 								mine = d
 							end
 						end
-						if tier == "Mini" then
+						if small then
 							-- (U9-9 review) the mini card: the result, the reason, the stats and the countdown only
 							T.check(mine == nil and card:FindFirstChild("Member1", true) == nil and card:FindFirstChild("Difficulty", true) == nil,
 								what .. ": the mini card shows no team and no difficulty line")
@@ -14641,7 +14644,7 @@ local function clientScenarios()
 						-- (U9-9 look) the difficulty a role chip (its colour on the face, a darker lip, a wood edge, the word and its
 						-- stars inside), centred under the banner with a gap; no loose colour bar
 						local chip, banner2 = card:FindFirstChild("DiffChip", true), card:FindFirstChild("Banner", true)
-						if tier ~= "Mini" then
+						if not small then
 							local inner = chip and chip.Parent
 							local ok = chip and U8.shown(chip) and chip:FindFirstChild("SignEdge") ~= nil and chip:FindFirstChild("Lip") ~= nil
 								and chip:FindFirstChild("Difficulty") ~= nil and card:FindFirstChild("DiffBar", true) == nil
@@ -14715,7 +14718,7 @@ local function clientScenarios()
 						end
 						-- (U9-9 look 2) the mini card's win bonus a gold chip (the Selected face and its lip) in the Tokens row's face,
 						-- left of the total with a clear gap; the total its own number
-						if tier == "Mini" and won then
+						if small and won then
 							local chip = card:FindFirstChild("BonusChip", true)
 							local row = card:FindFirstChild("RowTokens", true)
 							local value = row and row:FindFirstChild("Value")
@@ -14771,7 +14774,14 @@ local function clientScenarios()
 								table.concat(hits, "; ") .. " | " .. U8.show(U8.rect(card)))
 						end
 						if s[3] and s[1] > s[2] then
-							T.check(tier == "Compact" or tier == "Mini", what .. ": a landscape phone takes the compact rows or the mini card", tostring(tier))
+							T.check(tier == "Compact" or small, what .. ": a landscape phone takes the compact rows or the mini / micro card", tostring(tier))
+							-- (P2 fix A) the lost mini card (its reason line 25 design px) cannot stand between the strip and the jump
+							-- button on a 360 px tall phone: the micro card keeps the result, the reason, the tokens and the countdown
+							if s[2] <= 360 and not won then
+								local reasonL = card:FindFirstChild("Reason", true)
+								T.check(tier == "Micro" and reasonL and U8.shown(reasonL) and card:FindFirstChild("RowTime", true) == nil and card:FindFirstChild("RowTokens", true) ~= nil,
+									what .. ": a 360 px tall phone's lost card is the micro card (the reason and the tokens kept, no Time row)", tostring(tier))
+							end
 						elseif s[1] == 1920 then
 							T.check(tier == "Full", what .. ": the full rows on a PC", tostring(tier))
 						end
