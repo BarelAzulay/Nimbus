@@ -7400,6 +7400,17 @@ function Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
 	if d and num(d.Waves, 0) > 0 and not waveInLine then
 		local wave, waves = clamp(max(num(d.Wave, 1), B.wave or 0), 1, num(d.Waves, 1)), num(d.Waves, 1)
 		waveText = compact and ("Wave " .. wave .. "/" .. waves) or ("Wave " .. wave .. " / " .. waves)
+	elseif B.Mode == "Raid" and bossUnit and num(B.wave, 0) >= 1 then
+		-- (P2 fix A, look review r1: the pitch's pills are Storm, Enraged, Wave 2 / 3 and the players) a raid's minion wave, from
+		-- the first one on, of the boss's waves (BattleCatalog.Bosses[id].Minions.Waves)
+		local id = bossUnit.bossId or B.BossId or (B.Raid and B.Raid.BossId) or ""
+		local def = BattleCatalog and type(BattleCatalog.Bosses) == "table" and BattleCatalog.Bosses[id] or nil
+		local list = def and type(def.Minions) == "table" and def.Minions.Waves
+		local waves = type(list) == "table" and #list or 0
+		if waves > 0 then
+			local wave = clamp(num(B.wave, 1), 1, waves)
+			waveText = compact and ("Wave " .. wave .. "/" .. waves) or ("Wave " .. wave .. " / " .. waves)
+		end
 	end
 	Hud.wavePill.Visible = waveText ~= ""
 	setText(Hud.wavePill, waveText)
@@ -7420,7 +7431,7 @@ function Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
 	end
 	Hud.bossElement.Visible = bossUnit ~= nil
 	local key = { size }
-	for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill, Hud.tierPill }) do
+	for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.wavePill, Hud.playersPill, Hud.tierPill }) do
 		if pill.TextSize ~= size then
 			pill.TextSize = size
 		end
@@ -7437,7 +7448,7 @@ function Hud.FlowPills(width)
 	-- drawn gap PILL_GAP, as the pitch's)
 	local e = 2
 	local x, row, rows = 0, 0, 0
-	for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill, Hud.tierPill }) do
+	for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.wavePill, Hud.playersPill, Hud.tierPill }) do
 		if pill.Visible then
 			fitPill(pill, K.PILL_H - 2 * e)
 			local pw = min(pill.Size.X.Offset + 4, width - 2 * e) -- (4 px more: a lead icon's pill reads tight at 0.8 scale)

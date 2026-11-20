@@ -1376,6 +1376,12 @@ S.client_p5battle_short = guarded("client_p5battle_short", function()
 					if case[1] ~= "dungeon" then
 						T.check(name and H.shown(name) and not tostring(name.Text):find("...", 1, true), tag .. "the boss's name is whole", name and name.Text or "nil")
 					end
+					if case[1] == "raid full" then
+						-- (look review r1, the pitch's pills: Storm, Enraged, Wave 2 / 3, 3 players) the minion wave the raid is on, of
+						-- the boss's waves (Storm Titan: 2), in the phone's short words
+						local wave = H.find("Root.TopCard.Pills.Wave")
+						T.check(wave and H.shown(wave) and wave.Text == "Wave 2/2", tag .. "the strip's Wave pill says the minion wave", wave and (tostring(H.shown(wave)) .. " " .. wave.Text) or "nil")
+					end
 					local list = parts()
 					local en = H.find("Root.Enemies")
 					local rows = 0
