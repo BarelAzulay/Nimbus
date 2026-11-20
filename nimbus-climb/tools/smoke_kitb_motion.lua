@@ -23,6 +23,10 @@
 --                            on its time, the second chomp's bite at DashTwist's time (land + 0.14), the Thorns hop away
 --                            and the ready bounce, home from the last bite + FlurryBelow, exactly on its spot; no slide and
 --                            no paw under the floor on the whole timeline, base and evolved
+--   client_feel_bounce_dust  the landing dust (the spec: "lands on its front paws with dust", "each landing with a rock and
+--                            dust"): a puff on the frame of each hop landing (the nod, the hops home, a flurry's rebounds,
+--                            the Thorns hop away), none on the bite's landing nor the ready bounces; on the floor under
+--                            the paws along the run; the kits pooled again after; none on Low
 --   client_feel_bounce_battle  BattleController + a real BattleSim: an NPC bear's 1st bite carries a Double strike, its 2nd a
 --                            Thorns hit (the server's event shapes): AttackFx.DashTwist runs for both, the DoubleHit sparks
 --                            are due on the second chomp, the Thorns bolt on the bite, the bear plays DashDouble and
@@ -608,6 +612,225 @@ local function clientScenarios()
 		AF.SetQuality(nil)
 		pcall(holder.Destroy, holder)
 		T.check(ok, "bounce timing: no error", tostring(err))
+	end)
+
+	----------------------------------------------------------------------------------------------
+	-- the landing dust (the spec's option text: "a nod as it lands on its front paws with dust", "two hops back, each
+	-- landing with a rock and dust"): a puff on the frame each hop lands, never on the bite's landing (the hit's impact
+	-- plays there) nor the little ready bounces; at the pet's paws on its floor; pooled kits; none on Low
+	S.client_feel_bounce_dust = guarded("client_feel_bounce_dust", function()
+		local AF = moduleAt(ROOTS.client .. "/Controllers/AttackFx")
+		local PP = moduleAt(ROOTS.shared .. "/PetPoses")
+		local PB = moduleAt(ROOTS.shared .. "/PetBuilder")
+		local PC = moduleAt(ROOTS.shared .. "/PetCatalog")
+		local TI = moduleAt(ROOTS.shared .. "/TextureIds")
+		if not T.check(AF ~= nil and PP ~= nil and PB ~= nil and PC ~= nil and type(TI) == "table" and type(AF.Dash) == "function",
+			"bounce dust: AttackFx, PetPoses, PetBuilder, PetCatalog, TextureIds load") then
+			return
+		end
+		local L = PP.Landings
+		T.check(type(L) == "table" and type(L.DashIn) == "table" and #L.DashIn == 1 and type(L.DashBack) == "table" and #L.DashBack == 2
+			and type(L.DashBite) == "table" and #L.DashBite == 1 and type(L.DashThorns) == "table" and #L.DashThorns == 1 and L.DashReady == nil,
+			"bounce dust: PetPoses.Landings: the p each hop lands (DashIn's nod 1, DashBack 2, DashBite's rebound 1, DashThorns 1; no ready bounce)")
+		if not (type(L) == "table" and type(L.DashIn) == "table" and type(L.DashBack) == "table") then
+			return
+		end
+		AF.ClearAll()
+		AF._Deps({ MeshLibrary = fakeMeshLibrary() })
+		AF.SetQuality("High")
+		local cb = workspace:FindFirstChild("ClientBattle")
+		if not cb then
+			cb = Instance.new("Folder")
+			cb.Name = "ClientBattle"
+			cb.Parent = workspace
+		end
+		local holder = Instance.new("Folder")
+		holder.Name = "SmokeBounceDust"
+		holder.Parent = cb
+		local clock = 9000
+		local DT = 1 / 120
+		AF.Update(clock)
+		local dustTex = "rbxassetid://" .. tostring(TI.fx_dust)
+		-- where every dust host is now (a pooled emitter kit with the fx_dust sheet)
+		local function dustHosts()
+			local folder = type(AF.Folder) == "function" and AF.Folder() or nil
+			local out = {}
+			if folder then
+				for _, d in ipairs(folder:GetChildren()) do
+					local em = d:IsA("BasePart") and d:FindFirstChildOfClass("ParticleEmitter") or nil
+					if em and em.Texture == dustTex then
+						out[#out + 1] = d.Position
+					end
+				end
+			end
+			return out
+		end
+		local function nearest(hosts, p)
+			local best = huge
+			for _, q in ipairs(hosts or {}) do
+				best = min(best, (q - p).Magnitude)
+			end
+			return best
+		end
+		local function kicks()
+			local s = AF.Stats()
+			return tonumber(s.DustKicks) or 0, tonumber(s.Dusts) or 0
+		end
+		local ok, err = pcall(function()
+			-- one run: an NPC's bites (hits at `hits`, Windup 0.45 s ahead), twists on their hits; -> every frame
+			local function run(id, evolved, x, hits, tempo, twists, opts)
+				local me = petAt(PB, PC, id, evolved, holder, V3(x, G + 1.5, 0))
+				local foe = petAt(PB, PC, "biscuit_bear", false, holder, V3(x, G + 1.5, -14))
+				local feet = me and AF.FeetOf(me)
+				if not (me and foe and feet) then
+					return nil
+				end
+				local sc = tonumber(me:GetAttribute("PB_Scale")) or 1
+				local unit = 700 + x
+				local src = { Unit = unit, Model = me, Pos = V3(x, G + 1.5, 0) }
+				local tgt = { Unit = unit + 1, Model = foe, Pos = V3(x, G + 1.5, -14) }
+				local t0 = clock
+				local frames = {}
+				local nextHit, twisted = 1, {}
+				local k0 = kicks()
+				local edge = nil
+				while clock < t0 + hits[#hits] + 1.6 do
+					clock = clock + DT
+					local t = clock - t0
+					local h = hits[nextHit]
+					if h and t >= h - 0.45 - 1e-9 then
+						local o = { Tempo = tempo }
+						for kk, vv in pairs(opts or {}) do
+							o[kk] = vv
+						end
+						AF.Dash(unit, src, tgt, t0 + h, clock, o)
+						nextHit = nextHit + 1
+						local _, d = AF.DashState(unit)
+						edge = edge or (type(d) == "table" and d.Reach) or nil
+					end
+					for i, hh in ipairs(hits) do
+						if not twisted[i] and t >= hh - 1e-9 then
+							twisted[i] = true
+							if twists and twists[i] then
+								AF.DashTwist(unit, twists[i], clock)
+							end
+						end
+					end
+					AF.Update(clock)
+					local ps = AF.Pose(unit)
+					local b = bodyOf(PP, ps)
+					local kNow = kicks()
+					local hgt = b and stand(b, feet) or 0
+					local prevK = (#frames > 0) and frames[#frames].Kick or 0
+					frames[#frames + 1] = { T = t, H = hgt, Name = ps and ps.Name, Kick = kNow - k0, Hosts = (kNow - k0 > prevK) and dustHosts() or nil }
+				end
+				return frames, feet, sc, edge, me
+			end
+			-- the hop landings of a walk: the frame the lower paw comes down after an airborne stretch that rose >= 0.15
+			-- pose studs (the ready bounces rise 0.07), less those within the hit stop of a hit (the bite lands on the face)
+			local function landings(frames, hits)
+				local out, peak, air = {}, 0, false
+				for i, f in ipairs(frames) do
+					if f.H > 1e-3 then
+						air, peak = true, max(peak, f.H)
+					elseif air then
+						air = false
+						local onHit = false
+						for _, h in ipairs(hits) do
+							if f.T >= h - 2 * DT and f.T <= h + STOP + 2 * DT then
+								onHit = true
+							end
+						end
+						if peak >= 0.15 and not onHit then
+							out[#out + 1] = i
+						end
+						peak = 0
+					end
+				end
+				return out
+			end
+			-- the frames where the dust count went up
+			local function kickFrames(frames)
+				local out, last = {}, 0
+				for i, f in ipairs(frames) do
+					if f.Kick > last then
+						for _ = 1, f.Kick - last do
+							out[#out + 1] = i
+						end
+						last = f.Kick
+					end
+				end
+				return out
+			end
+			local function sameFrames(a, b)
+				if #a ~= #b then
+					return false
+				end
+				for i = 1, #a do
+					if abs(a[i] - b[i]) > 1 then -- (within one 1/120 s frame)
+						return false
+					end
+				end
+				return true
+			end
+			local function list(frames, idx)
+				local t = {}
+				for _, i in ipairs(idx) do
+					t[#t + 1] = fmt("%.3f %s", frames[i].T, tostring(frames[i].Name))
+				end
+				return table.concat(t, ", ")
+			end
+
+			-- one bite, base Maple Fox: the nod, then two hops home -> 3 puffs, each where the paws came down
+			local frames, feet, sc, edge, me = run("maple_fox", false, 40, { 0.6 }, 2, nil, nil)
+			if not T.check(frames ~= nil and edge ~= nil, "bounce dust: (setup) a Maple Fox's bite runs") then
+				return
+			end
+			local lands, kf = landings(frames, { 0.6 }), kickFrames(frames)
+			T.check(#lands == 3, fmt("bounce dust: one bite: three hop landings off the hit (the nod, 2 hops home): %d", #lands), list(frames, lands))
+			T.check(sameFrames(lands, kf), "bounce dust: one bite: a puff on the frame of each hop landing, no other",
+				"landings " .. list(frames, lands) .. " | puffs " .. list(frames, kf))
+			-- where: on its floor under the paws, along the run (the nod at 48 % of the gap, the first hop home at 45 %, home)
+			local rest = V3(40, G + 1.5, 0)
+			local wantFwd = { 0.48 * edge, 0.45 * edge, 0 }
+			for i, fwd in ipairs(wantFwd) do
+				local p = rest + V3(0, -feet.Down * sc, -fwd * sc)
+				local d = kf[i] and nearest(frames[kf[i]].Hosts, p) or huge
+				T.check(d <= 0.05, fmt("bounce dust: one bite: puff %d on the floor under the paws, %.2f studs along the run (%.3f off)", i, fwd * sc, d))
+			end
+			local _, live = kicks()
+			T.check(live == 0, fmt("bounce dust: one bite: the dust kits are back in the pool afterwards (%d live)", live))
+
+			-- the fast tempo, evolved Aurora Fox (2nd bite a Double strike, 3rd on a Thorns shield): the nod, two rebound
+			-- hops, the Thorns hop away, two hops home -> 6 puffs; none on the ready bounces
+			local f2 = run("aurora_fox", true, 80, { 0.6, 1.1, 1.6 }, 0.5, { [2] = "Double", [3] = "Thorns" }, nil)
+			if f2 then
+				local l2, k2 = landings(f2, { 0.6, 1.1, 1.6 }), kickFrames(f2)
+				local names = {}
+				for _, i in ipairs(k2) do
+					names[#names + 1] = tostring(f2[i].Name)
+				end
+				T.check(#l2 == 6 and sameFrames(l2, k2), fmt("bounce dust: fast tempo: a puff on each of its 6 hop landings, no other (%d landings, %d puffs)", #l2, #k2),
+					"landings " .. list(f2, l2) .. " | puffs " .. list(f2, k2))
+				T.check(table.concat(names, " ") == "DashIn DashBite DashBite DashThorns DashBack DashBack",
+					"bounce dust: fast tempo: the nod, 2 rebounds, the Thorns hop away, 2 hops home", table.concat(names, " "))
+			else
+				T.check(false, "bounce dust: (setup) the Aurora Fox's fast tempo runs")
+			end
+
+			-- Low graphics (the battle's Low flag, or the quality): the motion runs, no dust
+			local before = kicks()
+			local f3 = run("maple_fox", false, 120, { 0.6 }, 2, nil, { Low = true })
+			AF.SetQuality("Low")
+			local f4 = run("maple_fox", false, 160, { 0.6 }, 2, nil, nil)
+			AF.SetQuality("High")
+			T.check(f3 ~= nil and f4 ~= nil and kicks() == before, fmt("bounce dust: Low: no puff (%d)", kicks() - before))
+		end)
+		AF.ClearAll()
+		AF._Deps({ MeshLibrary = false })
+		AF.SetQuality(nil)
+		pcall(holder.Destroy, holder)
+		T.check(ok, "bounce dust: no error", tostring(err))
 	end)
 
 	----------------------------------------------------------------------------------------------
