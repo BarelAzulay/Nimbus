@@ -3218,6 +3218,21 @@ local function clientScenarios()
 						end
 					end
 					T.check(#keys == 0, tag .. "no RUN / DASH key over the card", table.concat(keys, "; ") .. " | card " .. rs(er))
+					-- (P2 fix round C, the whole suite after fix B: at 360 x 640 the gems card took the corner and held RUN / DASH off,
+					-- then its next refresh no longer saw the keys it held off, sat back under the strips and let them show, and so on
+					-- at 4 Hz: which place the checks above read hung on the run order) the card keeps one place, and the keys one
+					-- state, over the next refreshes
+					local function state()
+						local run = mobile and mobile:FindFirstChild("RunButton", true)
+						return rs(C5.rect(card)) .. ((run and C5.shown(run)) and " keys on" or " keys off")
+					end
+					local first, seen = state(), {}
+					for _ = 1, 4 do
+						KC.advance(0.26)
+						seen[#seen + 1] = state()
+					end
+					T.check(table.concat(seen, "|") == string.rep(first, #seen, "|"), tag .. "the card holds its place over the next refreshes (no flip with the keys it holds off)",
+						first .. " then " .. table.concat(seen, "; "))
 					-- Roblox's jump button (a small screen's: 70 px, 20 px off the bottom, its right edge 45 px in), while it is on
 					-- (a card with no room beside it takes the corner and the stick and jump step aside, as a phone window's)
 					local j = math.min(W, H) <= 500 and 70 or 120

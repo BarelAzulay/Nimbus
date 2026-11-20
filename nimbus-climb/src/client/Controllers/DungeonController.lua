@@ -2321,7 +2321,10 @@ function R.guiPart(guiName, partName)
 end
 
 -- a shown GuiObject's box in screen px { x0, y0, x1, y1 } (its ScreenGui's inset added back), nil while it is hidden,
--- empty or its ScreenGui is off. evenHidden: its own Visible is not asked (a part this card holds off, R.keyRects)
+-- empty or its ScreenGui is off. evenHidden: its own Visible is not asked (a part this card holds off, R.keyRects), nor its
+-- ScreenGui's Enabled ((P2 fix round C) MovementController.SetMobileHidden holds RUN / DASH off by turning the whole
+-- MobileControls gui off, so the next refresh saw no keys, put the card back where it reaches them and let them show: a
+-- flip at 4 Hz)
 function R.shownRect(obj, evenHidden)
 	if not obj or not obj:IsA("GuiObject") then
 		return nil
@@ -2333,7 +2336,7 @@ function R.shownRect(obj, evenHidden)
 		end
 		cur = cur.Parent
 	end
-	if not cur or not cur:IsA("ScreenGui") or not cur.Enabled then
+	if not cur or not cur:IsA("ScreenGui") or not (cur.Enabled or evenHidden) then
 		return nil
 	end
 	local p, s = obj.AbsolutePosition, obj.AbsoluteSize
