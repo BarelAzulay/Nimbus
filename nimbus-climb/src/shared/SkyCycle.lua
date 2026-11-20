@@ -21,9 +21,11 @@
 --       clock (to may pass 24: Night { 18.9, 31 } runs through midnight to 7 h next morning), always forward; in the
 --       phase's blend window it crosses the gap to the next phase's start (the first from + 24k at or after to: only
 --       Sunset 17 -> Night 18.9; Dawn -> Day, Day -> Sunset and Night 31 -> Dawn 7 meet already). P2 F11 C, the quick
---       sunset: behind a haze bridge with Config.Sky.Cycle.GapWalk set it walks on GapWalk (0.2) h up to the bridge peak
---       and is the next phase's start from the peak (blend 0.5, the skybox swap under the cloud curtain), so the engine
---       sun is never on the horizon on screen (the old even walk 17 -> 18.4 h lit the island red through the air);
+--       sunset: behind a haze bridge with Config.Sky.Cycle.GapWalk set it walks on to GapWalk (0.2) h past the phase's
+--       end (17.2 h) by the step and is the next phase's start from the step, (Cycle.Refresh + Cycle.Tween) / 2 = 2 s
+--       before the bridge peak (blend 0.5, the skybox swap), so the client's 2 s tween of it lies in the peak +- 2 s
+--       under the cloud curtain and the engine sun is never on the horizon on screen (the old even walk 17 -> 18.4 h lit
+--       the island red through the air);
 --       GapWalk nil or no bridge = walked evenly across the blend. The returned ClockTime is that clock mod 24 ([0, 24)), so
 --       over a whole loop it only ever moves forward round the dial (SkyCycle.ClockDelta), wrapping 24 -> 0 once, in
 --       the Night. A raid switches it to its look's fixed Clock at its blend >= 0.5 (fromId's first, then eventId's).
@@ -54,9 +56,9 @@
 --       (23.9 -> 0.1 = +0.2: 24 h and 0 h are the same sun position)
 -- at.Phase / at.Next are checked against Config.Sky.Cycle.Order (a raid boss id is a Looks key, never a phase).
 -- The cycle's clock never jumps: every 2 s refresh step is a small forward step round the dial (Night, the fastest:
--- 12.1 h in 180 s = 0.13 h per 2 s), save the quick sunset's one step at the Sunset -> Night bridge peak (about
--- 17.1 -> 18.9 h), which stays inside the Sunset segment, so SkyController tweens it over one refresh behind the cloud
--- curtain (P2 F11 C). Client SkyController sets ClockTime at once only (a) when it passes midnight
+-- 12.1 h in 180 s = 0.13 h per 2 s), save the quick sunset's one step 2 s before the Sunset -> Night bridge peak
+-- (17.2 -> 18.9 h), which stays inside the Sunset segment, so SkyController tweens it over one refresh behind the cloud
+-- curtain, done by 2 s after the peak (P2 F11 C). Client SkyController sets ClockTime at once only (a) when it passes midnight
 -- (23.9 -> 0.1: a tween would run backwards through the day; the set is invisible, 24 h = 0 h, and only one refresh
 -- step long) and (b) at a raid sky's mid-blend (its fixed clock, a step of more than Config.Sky.ClockJump h).
 
@@ -325,6 +327,20 @@ local function bridgeOn(preset, k, tr, colors)
 	end
 end
 
+-- (P2 F11 C look review) the blend at which the quick sunset steps: (Cycle.Refresh + Cycle.Tween) / 2 s before the bridge
+-- peak (blend 0.5). SkyController sends the step at its first refresh from then and tweens it over Tween s, so on screen
+-- it starts and ends inside the peak +- (Refresh + Tween) / 2 s (2 + 2 s: the bridge's middle 4 s, k >= 0.94, Cover
+-- >= 0.92) whatever the client's refresh phase; stepping AT the peak let that tween end up to 4 s after it (k 0.81).
+-- The blend is At's smoothstep of the window's time
+local function stepBlend(cycle, phase)
+	local window = min(num(cycle.Blend, 0), num(type(cycle.Seconds) == "table" and cycle.Seconds[phase], 0))
+	if not (window > 0) then
+		return 0.5
+	end
+	local x = clamp(0.5 - (num(cycle.Refresh, 0) + num(cycle.Tween, 0)) / 2 / window, 0, 0.5)
+	return x * x * (3 - 2 * x)
+end
+
 function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 	local sky = cfg()
 	local order, looks = sky.Cycle.Order, sky.Looks
@@ -348,19 +364,21 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 	local range = looks[phase].Clock
 	if clock and blend > 0 and nextPhase ~= phase and type(range) == "table" then
 		-- the gap to the next phase's start (unwrapped: the first from + 24k at or after this phase's end); monotonic,
-		-- the clock only gains. Behind a haze bridge with Cycle.GapWalk set (P2 F11 C, the quick sunset) it walks on
-		-- GapWalk h by the bridge peak and is the next phase's start from the peak (blend 0.5, where the skybox swaps
-		-- under the cloud curtain), so the engine sun never crosses the horizon on screen; else it is walked evenly
-		-- across the blend
+		-- the clock only gains. Behind a haze bridge with Cycle.GapWalk set (P2 F11 C, the quick sunset) it walks on from
+		-- the phase's own walk to GapWalk h past the phase's end (the Sunset: 17 + 0.2 = 17.2 h) by the step, and is the
+		-- next phase's start from the step (stepBlend: 2 s before the bridge peak, so the client's 2 s tween of it is
+		-- over by 2 s after the peak, under the cloud curtain), so the engine sun never crosses the horizon on screen;
+		-- else it is walked evenly across the blend
 		local to, nextFrom = range[2], clockAt(looks[nextPhase], 0)
 		if finite(to) and finite(nextFrom) then
 			nextFrom = nextFrom + math.ceil((to - nextFrom - 1e-9) / DAY) * DAY
 			local gap, lead = nextFrom - to, sky.Cycle.GapWalk
 			if bridged and gap > 0 and finite(lead) and lead >= 0 then
-				if blend >= 0.5 then
+				local stepAt = stepBlend(sky.Cycle, phase)
+				if blend >= stepAt then
 					clock = nextFrom
 				else
-					clock = clock + min(lead, gap) * blend / 0.5
+					clock = clock + (max(clock, to + min(lead, gap)) - clock) * blend / stepAt
 				end
 			else
 				clock = clock + gap * blend

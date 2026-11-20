@@ -13,7 +13,9 @@
 --                             <= 0.36 at a phase change, <= 0.42 at a raid; was "Density 0.2 over both looks", the
 --                             owner's "heavy mist")
 --   skycycle_bridge_keeps_floor (server world, pure) every step of every bridge (phase changes, raids in from Day / Night,
---                             raid to raid): Brightness >= 1, OutdoorAmbient >= 70, Density <= 0.7, Cover <= 1
+--                             raid to raid): Brightness >= 1, OutdoorAmbient >= 70, Density <= 0.7, Cover <= 1 (0.7 is
+--                             S1's loose ceiling, not the limit: since P2 F11 C the air caps are sky_fade_clear's, Density
+--                             <= 0.36 / Haze <= 1.6 at a phase change and <= 0.42 / 2.2 at a raid)
 --   skycycle_bridge_same_for_all (server world, pure) a long-running client (2 s steps since the epoch) and one that just
 --                             joined compute the same bridged preset at each bridge peak (both see the cloud curtain)
 --   P2 F11 C (the day fade, docs/superpowers/specs/2026-11-20-pitch2-build-design.md item F11_day_fade, the owner's pick
@@ -25,11 +27,16 @@
 --                             at a phase change's peak: Density <= 0.42, Haze <= 2.2; at each bridge peak the cloud deck is
 --                             the curtain (Cover >= 0.95); the tint is the light's and the sky's, not the air's (the bridge
 --                             moves Atmosphere Color at most 40 / 255 per channel off the two looks' own mix; the light
---                             walks from one look to the other, the skybox swaps once); the quick
---                             sunset: Night.Clock starts at 18.9 h, across the Sunset -> Night fade the clock only moves
---                             forward, stays <= 17.2 h before the bridge peak and is 18.9 h from the peak to Night, so
---                             ClockTime is never in 17.4 - 18.8 h (the engine sun on the horizon, the red island) outside
---                             the bridge's middle 4 s, and its one step sits at the peak under the curtain
+--                             walks from one look to the other, the skybox swaps once); the quick sunset: Night.Clock
+--                             starts at 18.9 h, across the Sunset -> Night fade the clock only moves forward, stays
+--                             <= 17.2 h before the bridge's middle 4 s (peak +- 2 s) and is 18.9 h from the peak to Night;
+--                             its one step walks up to 17.2 h (the spec's "the Sunset walks 16 -> 17.2 h") and lands in
+--                             the middle 4 s's first half under the curtain (k >= 0.94, Cover >= 0.92); the DRAWN clock
+--                             (SkyController's Refresh s refreshes, each tweened linearly over Tween s, every refresh phase
+--                             0.1 s apart, sampled every 0.05 s) is never in 17.4 - 18.8 h (the engine sun on the horizon,
+--                             the red island) outside the middle 4 s, only moves forward, and the step's tween starts and
+--                             ends inside the middle 4 s with the curtain up at both ends. "*F11 C" info lines print the
+--                             mock-up's four frames (Density / Haze / ClockTime / Cover) and a 5 s trace of the fade
 --   sky_raid_in8_out6         (client) a raid sky blends in over Config.Sky.Transitions.Raid.In (8) s and out over Out (6) s
 --                             (Cycle.EventBlend is gone); the look swaps at the blend's midpoint
 --   skycontroller_raid_cadence (client) the loop refreshes every 2 s with 2 s tweens, every 0.5 s with 0.5 s tweens while a
@@ -104,9 +111,14 @@ local F11 = {
 	Curtain = 0.95, -- Clouds Cover at a bridge peak: the cloud deck, not the air over the island, hides the skybox swap
 	Tint = 40, -- / 255 per channel: the most the bridge colour moves the air off the two looks' own mix
 	LowSun = { 17.4, 18.8 }, -- ClockTime with the engine sun on or near the horizon (the red-orange island of the owner's shot)
-	SunsetPeak = 17.2, -- the Sunset clock never passes this before the bridge peak
+	SunsetPeak = 17.2, -- the Sunset clock never passes this before the step ("the Sunset walks 16 -> 17.2 h")
+	StepFrom = 17.2, -- ... and is there (within 0.01 h) when it steps (the mock-up's quick_sunset: 17.0 + 0.2 by the step)
 	NightFrom = 18.9, -- Night.Clock[1]: the sun is gone when the Night starts (was 18.4)
 	Middle = 2, -- s either side of the Sunset -> Night bridge peak: the only time the clock may sit in LowSun
+	StepK = 0.94, -- the bridge k at both ends of the step's tween (0.946 at peak - 2 s)
+	StepCover = 0.92, -- Clouds Cover at both ends of the step's tween (about 0.922 at peak +- 2 s)
+	-- the mock-up's four C frames (F11_dayfade_optC.png captions): s into the Sunset -> Night blend, Density, Haze, ClockTime
+	Frames = { { 0, 0.30, 1.2, 17.00 }, { 37.5, 0.36, 1.6, 18.90 }, { 60, 0.27, 0.9, 18.90 }, { 80, 0.27, 0.9, 19.24 } },
 }
 
 local function serverScenarios()
@@ -534,15 +546,20 @@ local function serverScenarios()
 		raid:report()
 		raidCurtain:report()
 
-		-- 4. the quick sunset (the low sun was the other half of the red-brown shot): the clock holds near the Sunset until
-		-- the bridge peak and is Night's 18.9 h from the peak on, so the engine sun never sits on the horizon on screen
+		-- 4. the quick sunset (the low sun was the other half of the red-brown shot): the clock walks on to 17.2 h, then is
+		-- Night's 18.9 h, so the engine sun never sits on the horizon on screen. P2 F11 C look review (major) changed this
+		-- on purpose: the target used to step AT the peak (blend 0.5), and SkyController sends a step at its first 2 s
+		-- refresh from then and tweens it over 2 s, so the clock ON SCREEN crossed 17.4 - 18.8 h up to peak + 4 s (k 0.81,
+		-- Cover 0.85), outside the spec's middle 4 s; these samples of the targets passed all the same. The step now lands
+		-- (Refresh + Tween) / 2 s before the peak, so "hold" waits for the middle 4 s (not the peak), the step's k / Cover
+		-- floors are the middle 4 s's own (0.94 / 0.92, were 0.98 / 0.94 at the peak), and 5. below models the drawn clock
 		local C = cfg.Cycle
 		local nightAt = C.Seconds.Dawn + C.Seconds.Day + C.Seconds.Sunset
 		local peakAt = nightAt - C.Blend / 2
 		T.check(type(cfg.Looks.Night.Clock) == "table" and close(cfg.Looks.Night.Clock[1], F11.NightFrom), fmt("Night.Clock starts at %.1f h (the sun is gone)", F11.NightFrom), tostring(cfg.Looks.Night.Clock and cfg.Looks.Night.Clock[1]))
 		local band = T.tally(fmt("the Sunset -> Night fade, every 0.05 s: ClockTime never in %.1f - %.1f h outside the bridge's middle %d s", F11.LowSun[1], F11.LowSun[2], 2 * F11.Middle))
 		local fwd = T.tally("the Sunset -> Night fade, every 0.05 s: the clock only moves forward")
-		local hold = T.tally(fmt("before the bridge peak the clock stays <= %.1f h; from the peak to the Night it is %.1f h", F11.SunsetPeak, F11.NightFrom))
+		local hold = T.tally(fmt("before the bridge's middle %d s the clock stays <= %.1f h; from the peak to the Night it is %.1f h", 2 * F11.Middle, F11.SunsetPeak, F11.NightFrom))
 		local steps = {}
 		local prev, prevT = nil, nil
 		local from = nightAt - C.Blend - 5
@@ -560,8 +577,8 @@ local function serverScenarios()
 					steps[#steps + 1] = { from = prevT, to = t, a = prev, b = c }
 				end
 			end
-			if t < peakAt - 0.01 and t >= nightAt - C.Blend then
-				hold:case(c <= F11.SunsetPeak + 1e-9, fmt("t %.2f (before the peak) ClockTime %.3f", t, c))
+			if t < peakAt - F11.Middle - 0.01 and t >= nightAt - C.Blend then
+				hold:case(c <= F11.SunsetPeak + 1e-9, fmt("t %.2f (before the middle %d s) ClockTime %.3f", t, 2 * F11.Middle, c))
 			elseif t > peakAt + 0.01 and t <= nightAt then
 				hold:case(close(c, F11.NightFrom, 1e-6), fmt("t %.2f (after the peak) ClockTime %.3f", t, c))
 			end
@@ -570,14 +587,100 @@ local function serverScenarios()
 		band:report()
 		fwd:report()
 		hold:report()
-		-- its one step (more than 0.5 h between two 0.05 s samples) sits at the bridge peak, under the curtain
+		-- its one step (more than 0.5 h between two 0.05 s samples) lands in the first half of the middle 4 s, under the
+		-- curtain, from the spec's 17.2 h onto the Night's start
 		local s = steps[1]
 		local kA = s and SC.Bridge(SC.At(s.from, 0, 1, 0).Blend, half) or 0
 		local kB = s and SC.Bridge(SC.At(s.to, 0, 1, 0).Blend, half) or 0
+		local pA = s and SC.Preset(SC.At(s.from, 0, 1, 0), nil, 0, faces)
 		local pk = s and SC.Preset(SC.At(s.to, 0, 1, 0), nil, 0, faces)
-		T.check(#steps == 1 and kA >= 0.98 and kB >= 0.98 and pk.Clouds.Cover >= F11.Curtain - 0.01 and s.b >= F11.NightFrom - 1e-6,
-			"the quick sunset: one clock step, at the bridge peak (k >= 0.98 on both sides), under the cloud curtain, onto the Night's start",
-			s and fmt("%d step(s), %.2f -> %.2f h at t %.2f, k %.3f / %.3f, Cover %.3f", #steps, s.a, s.b, s.to, kA, kB, pk.Clouds.Cover) or "no step (the clock still walks across the horizon)")
+		T.check(#steps == 1 and s.from >= peakAt - F11.Middle - 0.06 and s.to <= peakAt + 1e-6 and kA >= F11.StepK and kB >= F11.StepK and pA.Clouds.Cover >= F11.StepCover and pk.Clouds.Cover >= F11.StepCover and s.b >= F11.NightFrom - 1e-6,
+			fmt("the quick sunset: one clock step, in the first half of the bridge's middle %d s (k >= %.2f, Cover >= %.2f on both sides), onto the Night's start", 2 * F11.Middle, F11.StepK, F11.StepCover),
+			s and fmt("%d step(s), %.2f -> %.2f h at t %.2f (%.2f s from the peak), k %.3f / %.3f, Cover %.3f / %.3f", #steps, s.a, s.b, s.to, s.to - peakAt, kA, kB, pA.Clouds.Cover, pk.Clouds.Cover) or "no step (the clock still walks across the horizon)")
+		T.check(s ~= nil and abs(s.a - F11.StepFrom) <= 0.01,
+			fmt("the quick sunset: the Sunset clock has walked on to %.1f h when it steps (spec: \"the Sunset walks 16 -> 17.2 h\")", F11.StepFrom),
+			s and fmt("%.3f h at the step", s.a) or "no step")
+
+		-- 5. the DRAWN clock (P2 F11 C look review, major): SkyController sends SkyCycle's clock every Cycle.Refresh s and
+		-- LightingStack.SetBase tweens it linearly over Cycle.Tween s, so the clock on screen trails the target by up to
+		-- Refresh + Tween s and the refresh phase is each client's own. For every refresh phase (0.1 s apart) the clock on
+		-- screen is modelled from those refreshes (each tween from the value on screen to the new target) and sampled every
+		-- 0.05 s: never in 17.4 - 18.8 h outside the bridge's middle 4 s, only forward, and the step's tween starts and ends
+		-- inside the middle 4 s with the curtain up (k >= 0.94, Cover >= 0.92) at both ends
+		local R, D = C.Refresh, C.Tween
+		local drawnBand = T.tally(fmt("the clock ON SCREEN (every %.0f s refresh phase 0.1 s apart, %.0f s linear tweens, every 0.05 s): never in %.1f - %.1f h outside the bridge's middle %d s", R, D, F11.LowSun[1], F11.LowSun[2], 2 * F11.Middle))
+		local drawnFwd = T.tally("the clock ON SCREEN only moves forward across the Sunset -> Night fade (every refresh phase)")
+		local drawnStep = T.tally(fmt("the step's tween on screen starts and ends inside the bridge's middle %d s, one per fade, with the curtain up at both ends (k >= %.2f, Cover >= %.2f)", 2 * F11.Middle, F11.StepK, F11.StepCover))
+		local latest = nil
+		local function target(t)
+			return SC.Preset(SC.At(t, 0, 1, 0), nil, 0, faces)
+		end
+		for ph = 0, math.floor(R / 0.1 + 0.5) - 1 do
+			local offset = ph * 0.1
+			local t0 = nightAt - C.Blend - 5
+			local nextR = t0 + offset
+			local settled = target(nextR - R).Lighting.ClockTime
+			local tw = { at = nextR - R - D, from = settled, to = settled }
+			local function drawn(t)
+				if t >= tw.at + D then
+					return tw.to
+				end
+				return tw.from + (tw.to - tw.from) * (t - tw.at) / D
+			end
+			local big, prevC = {}, nil
+			for i = 0, math.floor((C.Blend + 10) / 0.05 + 0.5) do
+				local t = t0 + i * 0.05
+				while nextR <= t + 1e-9 do
+					local p = target(nextR)
+					local from = drawn(nextR)
+					if p.Lighting.ClockTime - from > 0.5 then
+						big[#big + 1] = { start = nextR, finish = nextR + D, a = from, b = p.Lighting.ClockTime }
+					end
+					tw = { at = nextR, from = from, to = p.Lighting.ClockTime }
+					nextR = nextR + R
+				end
+				local c = drawn(t)
+				if abs(t - peakAt) > F11.Middle then
+					drawnBand:case(not (c > F11.LowSun[1] and c < F11.LowSun[2]), fmt("refresh phase %.1f: t %.2f (%.2f s from the peak) on screen %.3f h", offset, t, t - peakAt, c))
+				end
+				if prevC then
+					drawnFwd:case(c >= prevC - 1e-9, fmt("refresh phase %.1f: t %.2f %.3f -> %.3f", offset, t, prevC, c))
+				end
+				prevC = c
+			end
+			local b = big[1]
+			local pS, pE = b and target(b.start), b and target(b.finish)
+			local kS = b and SC.Bridge(SC.At(b.start, 0, 1, 0).Blend, half) or 0
+			local kE = b and SC.Bridge(SC.At(b.finish, 0, 1, 0).Blend, half) or 0
+			drawnStep:case(#big == 1 and b.start >= peakAt - F11.Middle - 1e-6 and b.finish <= peakAt + F11.Middle + 1e-6 and kS >= F11.StepK and kE >= F11.StepK and pS.Clouds.Cover >= F11.StepCover and pE.Clouds.Cover >= F11.StepCover,
+				b and fmt("refresh phase %.1f: %d step(s), tween %.2f -> %.2f s from the peak, k %.3f / %.3f, Cover %.3f / %.3f", offset, #big, b.start - peakAt, b.finish - peakAt, kS, kE, pS.Clouds.Cover, pE.Clouds.Cover) or fmt("refresh phase %.1f: no step", offset))
+			if b and (latest == nil or b.finish > latest.finish) then
+				latest = { offset = offset, start = b.start, finish = b.finish, a = b.a, b = b.b, kS = kS, kE = kE, cS = pS.Clouds.Cover, cE = pE.Clouds.Cover }
+			end
+		end
+		drawnBand:report()
+		drawnFwd:report()
+		drawnStep:report()
+
+		-- the values per step, to read against the spec's table and the mock-up's captions (no GUI for this item: the look
+		-- itself is owed in Studio)
+		if latest then
+			T.info("*F11 C the step on screen, latest-ending refresh phase", fmt("phase %.1f s: %.2f -> %.2f h tweened from %.2f to %.2f s around the peak (k %.3f / %.3f, Cover %.3f / %.3f)",
+				latest.offset, latest.a, latest.b, latest.start - peakAt, latest.finish - peakAt, latest.kS, latest.kE, latest.cS, latest.cE))
+		end
+		local blendAt = nightAt - C.Blend
+		for _, f in ipairs(F11.Frames) do
+			local p = target(blendAt + f[1])
+			local at = SC.At(blendAt + f[1], 0, 1, 0)
+			T.info(fmt("*F11 C frame %.1f s into the Sunset -> Night fade", f[1]), fmt("build Density %.3f Haze %.2f ClockTime %.2f Cover %.3f k %.3f | mock-up Density %.2f Haze %.1f ClockTime %.2f",
+				p.Atmosphere.Density, p.Atmosphere.Haze, p.Lighting.ClockTime, p.Clouds.Cover, at.Phase == "Sunset" and SC.Bridge(at.Blend, half) or 0, f[2], f[3], f[4]))
+		end
+		local trace = {}
+		for sec = 0, C.Blend, 5 do
+			local p = target(blendAt + sec)
+			trace[#trace + 1] = fmt("%ds %.2f/%.2f/%.2fh/%.2f", sec, p.Atmosphere.Density, p.Atmosphere.Haze, p.Lighting.ClockTime, p.Clouds.Cover)
+		end
+		T.info("*F11 C Sunset -> Night every 5 s (Density / Haze / ClockTime / Cover)", table.concat(trace, "  "))
 	end)
 
 	-- S2 (sky audit F5): the painted skies have their stars painted in; 3000 engine pinpoints on top of them read as a

@@ -934,8 +934,13 @@ Config.Sky = {
 		Seconds = { Dawn = 120, Day = 360, Sunset = 540, Night = 180 }, -- a 1200 s (20 min) loop
 		Blend = 75, -- seconds at the end of each phase that blend into the next
 		-- (P2 F11 C, the quick sunset) hours the clock walks on into a phase change's clock gap (the Sunset's 17 h ->
-		-- the Night's 18.9 h, the only gap) up to the bridge peak; at the peak (blend 0.5, behind the cloud curtain) it is
-		-- the next phase's start, so the engine sun never sits on the horizon on screen. nil = the old even walk across
+		-- the Night's 18.9 h, the only gap): from the phase's own walk it reaches 17 + 0.2 = 17.2 h at the step, and from
+		-- the step it is the next phase's start, so the engine sun never sits on the horizon on screen. The step is
+		-- (Refresh + Tween) / 2 = 2 s before the bridge peak (P2 F11 C look review: stepping AT the peak let the client's
+		-- 2 s tween run up to 4 s after it, k 0.81), so on screen it lies in the peak +- 2 s behind the cloud curtain.
+		-- Against the mock-up (fade_frames.quick_sunset 17.0 -> 17.2 h, then 18.9): the build matches at the step
+		-- (17.2 h) and from it on; at the blend's start it is the Sunset's own walk, 16.86 h (Sunset.Clock { 16, 17 }
+		-- over its 540 s; the mock-up's 17.00 rounds that walk, as its "today" row does). nil = the old even walk across
 		-- the whole blend. Used only where the phase change has a haze bridge (the skybox changes)
 		GapWalk = 0.2,
 		Refresh = 2, -- the client re-applies the sky every Refresh s ...
@@ -951,7 +956,10 @@ Config.Sky = {
 	-- P2 F11 C (the owner: "the fade switching day time is making the world look like there's a heavy mist, it looks bad";
 	-- pick C "Clear air + a quick sunset behind the clouds"): the air stays clear (Cycle Density 0.65 -> 0.36, Haze
 	-- 3.4 -> 1.6; Raid 0.7 -> 0.42, 4.0 -> 2.2) and the cloud deck is the curtain (Cover 0.95, CloudDensity 0.75); the
-	-- tint is the light's and the sky's (the Bridge colours below lifted from brown to a light twilight)
+	-- tint is the light's and the sky's (the Bridge colours below lifted from brown to a light twilight). NOTE: with
+	-- Config.Preview.ThinClouds off (the default) CloudDensity does nothing (see above): the curtain is Cover 0.95 over
+	-- the looks' own deck Density, about 0.5 at the Sunset -> Night peak (Sunset 0.65 / Night 0.35). OWED in Studio: that
+	-- deck hides the skybox swap (if not, the lever is letting the cycle bridge lift Clouds Density with the switch off)
 	--   Cycle   a phase change. BridgeHalf 0.284 of the smoothstep Blend = the middle 30 s of the 75 s window
 	--   Raid    a raid sky in (In s from SkyEventAt; raid to raid too) and out (Out s); the client refreshes every Step s
 	--           with Step s tweens while one blends (else Cycle.Refresh / Tween); the bridge colour = the raid look's
@@ -1018,8 +1026,8 @@ Config.Sky = {
 	-- client/Controllers/SkyController (the client half; Refresh / Tween above):
 	ClockJump = 0.5, -- hours: a ClockTime step bigger than this at a phase / raid change (a raid sky's fixed clock at
 	-- mid-blend) is set at once, never tweened through the hours between. The cycle itself never needs it: the
-	-- Sunset 17 -> Night 18.9 gap is crossed inside the Sunset segment (P2 F11 C: a 0.2 h walk, then one step at the
-	-- bridge peak that SkyController tweens over one refresh, not a jump) and the Night runs on through midnight to
+	-- Sunset 17 -> Night 18.9 gap is crossed inside the Sunset segment (P2 F11 C: a walk on to 17.2 h, then one step 2 s
+	-- before the bridge peak that SkyController tweens over one refresh, not a jump) and the Night runs on through midnight to
 	-- Dawn's 7 h (SkyCycle.Preset); passing midnight (23.9 -> 0.1) is the one other instant set (24 h = 0 h: invisible)
 	-- the battle lift: while I am in an outdoor pet battle (Config.Attr.InBattle starts with Prefix: a duel, raid,
 	-- Champion Ring run or PvP; a dungeon run "D.." stays under the dungeon preset) and the look is one of Looks, the
