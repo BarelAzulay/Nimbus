@@ -12,6 +12,13 @@ Item 9 B ("Carved soft", spec docs/superpowers/specs/2026-11-20-pitch2-build-des
       PixelIcon.Art: the 9 x 9 glyphs (+ their drop shadow row and column: 10 x 10) in their own colours, every one of
       the 31 (the 16 + 7 rarity dots + 8 element badges); PixelIcon.SheetCells: each icon's cell in icons_b.png.
 
+Item 10 A ("Workshop machines"):
+  build/upload_sheets/machines_a.png + machines_a.json
+      the five roulette machines (52 x 60 cells, the Secret 60 x 68, each + its 1-cell drop shadow) at 1 px a cell in one
+      row; the game cuts one with ImageRectOffset / ImageRectSize, ResampleMode Pixelated (client/UI/ShopEggs, once
+      Config.MachineSheet.Id is set)
+  src/shared/Config.lua, Config.MachineSheet.Cells: each roulette's cell (written here, so the game and the sheet agree)
+
 Nothing is uploaded here: the sheets are handed to the owner's keyed cloud session (tools/upload_assets.py runs there).
 The drawings are tools/pixelart/ (ported from the approved mock-up scripts).
 """
@@ -162,6 +169,53 @@ def lua_block():
 BLOCK_RE = re.compile(r"-- BEGIN GENERATED icons_b.*?-- END GENERATED icons_b\n", re.S)
 
 
+# ------------------------------------------------------------------ item 10 A: the roulette machines
+MACHINE_ORDER = ["Cloud", "Storm", "Sky", "Celestial", "Secret"]
+MACHINE_DROP = K.S["Text"] + (70,)  # the mock-up's machine drop shadow (make_item10.py DROP)
+
+
+def machine_cols(name):
+    """the A drawing of roulette `name` shaded by the icon pick's rule (B), with its 1-cell drop shadow"""
+    import machines_a as M
+    g, z = M.A[name]()
+    return K.shade(g, "B", M.MPAL, z=z, lb=1, sb=2, drop=MACHINE_DROP)
+
+
+def machines_sheet():
+    """the machines_a.png image and its manifest: the five drawings at 1 px a cell in one row, 1 px apart"""
+    cols = {n: machine_cols(n) for n in MACHINE_ORDER}
+    w = sum(len(cols[n][0]) for n in MACHINE_ORDER) + len(MACHINE_ORDER) - 1
+    h = max(len(cols[n]) for n in MACHINE_ORDER)
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    cells, x = {}, 0
+    for n in MACHINE_ORDER:
+        c = cols[n]
+        cw, ch = len(c[0]), len(c)
+        for gy, row in enumerate(c):
+            for gx, px in enumerate(row):
+                if px is not None:
+                    im.putpixel((x + gx, gy), px if len(px) == 4 else px + (255,))
+        cells[n] = {"x": x, "y": 0, "w": cw, "h": ch, "cells": [cw - 1, ch - 1]}
+        x += cw + 1
+    manifest = {
+        "sheet": "machines_a.png",
+        "item": "Pitch 2 item 10 A (Workshop machines): one pixel capsule machine per roulette",
+        "size": [w, h],
+        "cells": cells,
+        "cell_note": "w x h = the drawing (52 x 60, the Secret 60 x 68) + its 1-cell drop shadow on the right and bottom",
+        "config_key": "Config.MachineSheet.Id",
+        "upload": "ONE Image asset (not a Decal id), from the owner's keyed cloud session; then set Config.MachineSheet.Id to "
+                  "its image id. Until then (Id = 0) every roulette keeps today's drawn machine (ShopEggs H.machine).",
+        "draw": "ImageLabel, Image rbxassetid://<id>, ImageRectOffset (x, y), ImageRectSize (w, h), ResampleMode Pixelated, "
+                "a whole number of screen px a cell (3 on PC for the hero's vault, 2 in a PC card, 2 or 1 on a phone)",
+    }
+    return im, manifest
+
+
+CONFIG = os.path.join(ROOT, "src", "shared", "Config.lua")
+CELLS_RE = re.compile(r"(Config\.MachineSheet = \{\n\tId = \d+,\n\tCells = \{)(.*?)(\n\t\},\n\})", re.S)
+
+
 def png_bytes(im):
     buf = io.BytesIO()
     im.save(buf, "PNG", optimize=True)
@@ -216,6 +270,21 @@ def build(check):
             raise SystemExit("PixelIcon.lua: no generated block and no '%s' line to put it before" % marker)
         new = src.replace(marker, block + marker, 1)
     write_text(PIXELICON, new, check, stale)
+    # item 10 A: the machines sheet, its manifest, and the cells Config.MachineSheet gives the game
+    im, man = machines_sheet()
+    png = os.path.join(OUT, "machines_a.png")
+    if not same_png(png, im):
+        if check:
+            stale.append(os.path.relpath(png, ROOT))
+        else:
+            write_or_check(png, png_bytes(im), False, stale)
+    write_text(os.path.join(OUT, "machines_a.json"), json.dumps(man, indent=2) + "\n", check, stale)
+    with open(CONFIG, "rb") as fh:
+        cfg = fh.read().decode("utf-8").replace("\r\n", "\n")
+    cells = "".join("\n\t\t%s = { %d, %d, %d, %d }," % (n, c["x"], c["y"], c["w"], c["h"]) for n, c in man["cells"].items())
+    if not CELLS_RE.search(cfg):
+        raise SystemExit("Config.lua: no Config.MachineSheet = { ... Cells = { ... } } table")
+    write_text(CONFIG, CELLS_RE.sub(lambda m: m.group(1) + cells + m.group(3), cfg, count=1), check, stale)
     return stale
 
 
@@ -237,7 +306,7 @@ def main():
         if stale:
             print("out of date:", ", ".join(stale))
             sys.exit(1)
-        print("upload sheets and the PixelIcon block are up to date")
+        print("the upload sheets, the PixelIcon block and Config.MachineSheet.Cells are up to date")
 
 
 if __name__ == "__main__":

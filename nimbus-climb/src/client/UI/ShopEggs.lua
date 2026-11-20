@@ -397,11 +397,122 @@ function H.part(m, parent, box, name
 	return f
 end
 
+-- (Pitch 2 item 10 A) the uploaded machines sheet: its image id and roulette `id`'s cell { x, y, w, h }, or nil while
+-- Config.MachineSheet.Id is 0 (nothing uploaded: today's drawn machine)
+function H.machineSheet(id)
+	local ms = Config.MachineSheet
+	local sheetId = type(ms) == "table" and tonumber(ms.Id) or 0
+	local cell = type(ms) == "table" and type(ms.Cells) == "table" and ms.Cells[id] or nil
+	if not (sheetId and sheetId > 0 and sheetId == math.floor(sheetId) and type(cell) == "table") then
+		return nil
+	end
+	return sheetId, cell
+end
+
+-- (Pitch 2 item 10 A "Workshop machines") roulette `id`'s own pixel machine, cut from the sheet (one ImageLabel "Art",
+-- ResampleMode Pixelated), standing on its "Stage": a Well sunk into the card in a pale wash of the roulette's colour
+-- (the hero: its navy) with a PetWell floor, its line and a stepped pixel ground shadow. Today's drawn machine stays
+-- under it in "Drawn" for a box too small for one screen px a cell (H.layoutSheetMachine shows one or the other: never
+-- a blurry shrink, never art over the card's rows)
+function H.addSheet(m, color, secret, sheetId, cell)
+	m.Sheet, m.Cell, m.Secret = true, cell, secret
+	local root = m.Root
+	root:SetAttribute("Sheet", true)
+	local face = secret and SIGN.Navy or color:Lerp(SIGN.Tile, 0.74)
+	m.Stage = frame("Stage", root, { BackgroundTransparency = 0, BackgroundColor3 = secret and SIGN.NavyLip or SIGN.WellEdge, Size = UDim2.fromScale(1, 1) })
+	m.Face = frame("Face", m.Stage, { BackgroundTransparency = 0, BackgroundColor3 = face })
+	m.Lid = frame("Lid", m.Face, { BackgroundTransparency = 0, BackgroundColor3 = face:Lerp(SIGN.WellEdge, 0.45), Visible = not secret })
+	m.Floor = frame("Floor", m.Face, { BackgroundTransparency = 0, BackgroundColor3 = secret and SIGN.NavyLip or SIGN.PetWell })
+	m.FloorLine = frame("FloorLine", m.Floor, { BackgroundTransparency = 0, BackgroundColor3 = secret and SIGN.NavyTop or SIGN.WellEdge })
+	local shade = secret and SIGN.Navy:Lerp(Color3.new(0, 0, 0), 0.35) or SIGN.PetWell:Lerp(SIGN.WellEdge, 0.55)
+	m.Shadow = {}
+	for i = 1, 3 do
+		m.Shadow[i] = frame("Shadow" .. i, m.Face, { BackgroundTransparency = 0, BackgroundColor3 = shade })
+	end
+	m.Art = Util.Create("ImageLabel", {
+		Name = "Art",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Image = "rbxassetid://" .. string.format("%d", sheetId),
+		ImageRectOffset = Vector2.new(cell[1], cell[2]),
+		ImageRectSize = Vector2.new(cell[3], cell[4]),
+		ResampleMode = Enum.ResamplerMode.Pixelated,
+		ScaleType = Enum.ScaleType.Stretch,
+		Parent = root,
+	})
+end
+
+-- the page's sheet machines (m.Group, ShopEggs.Build) show only when every one of them fits its box (m.Fits): a page never
+-- mixes the new machines with today's (a portrait phone's hero box is too small for the vault while its cards fit 1 px)
+function H.showSheets(m)
+	local all = m.Fits == true
+	for _, o in ipairs(m.Group or {}) do
+		all = all and o.Fits == true
+	end
+	for _, o in ipairs(m.Group or { m }) do
+		o.Drawn.Visible = not all
+		o.Stage.Visible = all
+		o.Art.Visible = all
+		o.Root:SetAttribute("SheetShown", all)
+	end
+end
+
+-- the sheet machine in its box at rest scale s: the largest whole number of screen px a cell that fits the drawing and a
+-- floor of 2 cells under its feet (2 px on a PC card and the hero's vault in today's boxes), centred, standing on the floor.
+-- A box too small for 1 px a cell (the phone layouts' 45 - 64 px machine boxes) can't: then the page shows today's drawn
+-- machines (H.showSheets)
+function H.layoutSheetMachine(m, s)
+	s = (s and s > 0) and s or 1
+	local W, Hh = m.Root.Size.X.Offset, m.Root.Size.Y.Offset
+	local cw, ch = m.Cell[3], m.Cell[4]
+	local edge = PixelIcon.Px(2, s)
+	local px = math.floor(math.min((W - 2 * edge) * s / cw, (Hh - 2 * edge) * s / (ch + 2)))
+	m.Fits = px >= 1
+	H.showSheets(m)
+	if not m.Fits then
+		m.Root:SetAttribute("CellPx", nil)
+		return
+	end
+	local dc = px / s
+	local aw, ah = cw * dc, ch * dc
+	local floorH = math.min(Hh - 2 * edge, 8 * dc)
+	-- across its stage: centred in a card, at the left in the hero (m.AlignX 0: clear of the big egg's glow)
+	local ax = edge + math.floor((W - 2 * edge - aw) * (m.AlignX or 0.5) * s) / s
+	local feet = Hh - edge - math.max(3 * dc, floorH - 4 * dc) -- the feet 4 cells into an 8-cell floor
+	local ay = math.max(edge, math.floor((feet - ah) * s) / s)
+	m.Art.Position = UDim2.fromOffset(ax, ay)
+	m.Art.Size = UDim2.fromOffset(aw, ah)
+	m.Face.Position = UDim2.fromOffset(edge, edge)
+	m.Face.Size = UDim2.fromOffset(W - 2 * edge, Hh - 2 * edge)
+	m.Lid.Size = UDim2.fromOffset(W - 2 * edge, PixelIcon.Px(3, s))
+	m.Floor.Position = UDim2.fromOffset(0, Hh - 2 * edge - floorH)
+	m.Floor.Size = UDim2.fromOffset(W - 2 * edge, floorH)
+	m.FloorLine.Size = UDim2.fromOffset(W - 2 * edge, edge)
+	-- the ground shadow: three stepped rows a cell tall under the feet, the middle one widest (no blur), centred under the
+	-- drawing (the rows sit in the Face, `edge` in from the root)
+	local mid = math.floor((feet - edge) * s) / s - dc
+	local rx = math.floor(aw * 0.42 / dc) * dc
+	for i, row in ipairs({ { -1, 0.6 }, { 0, 1 }, { 1, 0.6 } }) do
+		local w = math.floor(2 * rx * row[2] / dc) * dc
+		local f = m.Shadow[i]
+		f.Position = UDim2.fromOffset(math.floor((ax - edge + (aw - w) / 2) * s) / s, mid + row[1] * dc)
+		f.Size = UDim2.fromOffset(w, dc)
+	end
+	m.Root:SetAttribute("CellPx", px)
+end
+
 function H.machine(parent, id, color, secret)
 	local m = { Strokes = {} }
 	local root = frame("Machine", parent)
 	root:SetAttribute("Art", "Machine") -- (kit-b U9-2) an illustration: its round glass and sheen are the drawing, not a panel
 	m.Root = root
+	-- (Pitch 2 item 10 A) with the machines sheet uploaded, today's drawing goes into "Drawn" (the whole box: its parts are
+	-- placed by scale, so they draw the same) under the sheet's art (H.addSheet below)
+	local sheetId, cell = H.machineSheet(id)
+	if sheetId then
+		m.Drawn = frame("Drawn", root, { Size = UDim2.fromScale(1, 1) })
+		root = m.Drawn
+	end
 	local B, D = K.BOX, K.DOME
 	H.part(m, root, B, "Base", 26, 146, 148, 76, Theme.Darken(color, 0.32), 0.18, 5)
 	H.part(m, root, B, "BaseShine", 36, 152, 128, 16, Theme.Lighten(color, 0.2), 0.5, nil, { BackgroundTransparency = 0.55 })
@@ -438,11 +549,22 @@ function H.machine(parent, id, color, secret)
 	})
 	H.part(m, root, B, "Shine", 54, 28, 44, 9, WHITE, 0.5, nil, { BackgroundTransparency = 0.25, Rotation = -32 })
 	H.part(m, root, B, "Cap", 82, 2, 36, 18, Theme.Lighten(color, 0.2), 0.35, 4)
+	if sheetId then
+		H.addSheet(m, color, secret, sheetId, cell)
+	end
 	return m
 end
 
--- the machine `px` wide (its strokes follow the size)
+-- the machine `px` wide (its strokes follow the size; a sheet machine is laid out on whole screen px, again whenever the
+-- window's rest scale changes)
 function H.sizeMachine(m, px)
+	if m.Sheet then
+		-- today's drawing under the sheet keeps its `px`-wide box (the hero's vault stage is narrower than its machine)
+		m.Drawn.Size = UDim2.new(0, px, 1, 0)
+		PixelIcon.Whole(m.Art, function(s)
+			H.layoutSheetMachine(m, s)
+		end)
+	end
 	if m.Px == px then
 		return
 	end
@@ -731,6 +853,14 @@ function ShopEggs.Build(page, ctx)
 	for i, id in ipairs(K.MACHINES) do
 		P.Cards[i] = H.buildCard(P, P.Row, id)
 	end
+	-- (Pitch 2 item 10 A) the page's sheet machines show together or not at all (H.showSheets)
+	local group = {}
+	for _, t in ipairs(H.all(P)) do
+		if t.Machine.Sheet then
+			group[#group + 1] = t.Machine
+			t.Machine.Group = group
+		end
+	end
 	P.Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		ShopEggs._SyncFade(page)
 		H.queueSnap(P)
@@ -914,10 +1044,13 @@ function L.heroPC(t, w, M)
 	local ref = M.Ref
 	local art = M.HeroArt
 	local artH = math.floor(art * 1.15)
-	place(t.Machine.Root, 26, ref and 10 or 8, art, artH)
+	local ep = ref and K.HERO_EGG.Ref or K.HERO_EGG.Shrunk
+	-- (Pitch 2 item 10 A) the sheet's vault stands on its own stage left of the big egg (Task 26), not under it; today's
+	-- drawn machine keeps its whole box (the egg overlaps its edge, as before)
+	place(t.Machine.Root, 26, ref and 10 or 8, t.Machine.Sheet and math.min(art, ep[2] - 26 - 8) or art, artH)
+	t.Machine.AlignX = 0
 	H.sizeMachine(t.Machine, art)
 	-- (Task 26) the big egg between the machine and the texts, centred in the card's height
-	local ep = ref and K.HERO_EGG.Ref or K.HERO_EGG.Shrunk
 	local ew = math.floor(EggArt.Metrics.WIDTH * ep[1] + 0.5)
 	EggArt.Resize(t.Egg, ep[1])
 	place(t.Egg, ep[2], (M.Hero - ep[1]) / 2, ew, ep[1])

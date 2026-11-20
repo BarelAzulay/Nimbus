@@ -252,11 +252,14 @@ class LuaWorld:
                 out.append(str(lines[i]["text"]))
         return out
 
-    def dump(self, scenario, width, height, touch, out=None):
+    def dump(self, scenario, width, height, touch, out=None, sheets=False):
         g = self.rt.globals()
         spec = {"scenario": scenario, "width": width, "height": height, "touch": bool(touch)}
         if out:
             spec["out"] = out
+        if sheets:
+            # (Pitch 2 items 9 B / 10 A) preview the upload sheets: stub ids for this render only (tools/dump_gui.lua)
+            spec["sheets"] = True
         g.DUMP = self.rt.table_from(spec)
         # (Pitch 2 fix round B) a phone's real top bar on a touch render: Roblox's buttons on the left (112 px), the "..."
         # button on the right (72 px), a 58 px band (GuiService.TopbarInset). Unset (nil, a desktop render) the game takes
@@ -280,10 +283,10 @@ def is_touch(width, height, flag):
     return min(width, height) <= 500
 
 
-def dump_scenario(scenario, width, height, touch, fonts, json_out=None, engine=None, echo=False, verbose=False):
+def dump_scenario(scenario, width, height, touch, fonts, json_out=None, engine=None, echo=False, verbose=False, sheets=False):
     world = LuaWorld(touch, engine, echo, fonts.measure_em)
     try:
-        data = world.dump(scenario, width, height, touch, json_out)
+        data = world.dump(scenario, width, height, touch, json_out, sheets=sheets)
     except Exception as exc:  # a Lua error: its message plus the game's own errors
         msg = str(exc).split("\nstack traceback:")[0].replace("dump_gui: ", "")
         extra = world.script_errors()
@@ -1047,6 +1050,17 @@ class GuiRenderer:
         local = (self.dump.get("localImages") or {}).get(str(im.get("image", ""))) if kind == "Image" else None
         if local:
             png = self.local_png(local)
+            if png is not None and im.get("rect"):
+                # (Pitch 2 items 9 B / 10 A) a sprite sheet cell: ImageRectOffset / ImageRectSize cut out, stretched to
+                # the box (ScaleType Stretch), nearest-neighbour when ResampleMode is Pixelated
+                rx, ry, rw, rh = [int(v) for v in im["rect"]]
+                cut = png.crop((rx, ry, rx + rw, ry + rh))
+                pw, ph = max(1, int(round(x1 - x0))), max(1, int(round(y1 - y0)))
+                cut = cut.resize((pw, ph), Image.NEAREST if im.get("pixelated") else Image.LANCZOS)
+                arr = np.asarray(cut, dtype=np.float32)
+                out = np.dstack([np.clip(arr[..., :3] * tint, 0, 255), np.clip(arr[..., 3] * alpha, 0, 255)]).astype(np.uint8)
+                self.composite(layer, Image.fromarray(out, "RGBA"), int(round(x0)), int(round(y0)), clip)
+                return
             if png is not None:
                 # the stubbed id's own picture (what Roblox would draw once the id is real)
                 self.draw_fit(png, layer, clip, x0, y0, x1, y1, tint, alpha)
@@ -1913,6 +1927,8 @@ def main():
     ap.add_argument("--no-chrome", action="store_true", help="do not sketch Roblox's top bar / touch controls")
     ap.add_argument("--no-labels", action="store_true", help="no captions on image / viewport placeholders")
     ap.add_argument("--json", metavar="FILE", help="also write the GUI dump as JSON")
+    ap.add_argument("--sheets", action="store_true", help="preview the upload sheets (build/upload_sheets: icons_b, "
+                    "machines_a) as if uploaded: stub ids for this render only, Config stays 0")
     ap.add_argument("--list", action="store_true", help="list the scenarios and exit")
     ap.add_argument("--engine", help="lupa engine (default: luajit21)")
     ap.add_argument("--echo", action="store_true", help="print the game's print()/warn() output while it runs")
@@ -1949,7 +1965,7 @@ def main():
         for (w, h) in GRID_SIZES:
             touch = is_touch(w, h, args.touch)
             t1 = time.time()
-            dump = dump_scenario(scenario, w, h, touch, fonts, None, args.engine, args.echo, args.verbose)
+            dump = dump_scenario(scenario, w, h, touch, fonts, None, args.engine, args.echo, args.verbose, sheets=args.sheets)
             img, r = render_one(dump, fonts, args)
             label = "%dx%d%s" % (w, h, " touch" if touch else "")
             smallest = print_report(dump, r, "%s %s (%.1fs)" % (scenario, label, time.time() - t1), args.verbose)
@@ -1969,7 +1985,7 @@ def main():
         label = "%s (%dx%d)" % (scenario, w, h)
     else:
         touch = is_touch(w, h, args.touch)
-        dump = dump_scenario(scenario, w, h, touch, fonts, args.json, args.engine, args.echo, args.verbose)
+        dump = dump_scenario(scenario, w, h, touch, fonts, args.json, args.engine, args.echo, args.verbose, sheets=args.sheets)
         label = "%s at %dx%d%s" % (scenario, w, h, " (touch)" if touch else "")
         print("dumped %s in %.1fs (text metrics: %s)" % (label, time.time() - t0, dump.get("metrics", "?")))
     t1 = time.time()

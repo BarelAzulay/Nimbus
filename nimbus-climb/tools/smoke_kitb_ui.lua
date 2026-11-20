@@ -16983,6 +16983,217 @@ local function clientScenarios()
 		LKC.flushErrors("mouselock_hint_plank")
 	end)
 
+	----------------------------------------------------------------------
+	-- Pitch 2 item 10 A "Workshop machines" (spec docs/superpowers/specs/2026-11-20-pitch2-build-design.md, plan Task 7;
+	-- branch kitb-p2-icons): each roulette its own pixel capsule machine, cut from ONE uploaded sheet
+	-- (build/upload_sheets/machines_a.png) once Config.MachineSheet.Id is set; until then today's drawn machine
+	----------------------------------------------------------------------
+	local MACHINES = { "Cloud", "Storm", "Sky", "Celestial", "Secret" }
+	-- a fresh Eggs page (ShopEggs.Build) laid out at `mode` in a ScreenGui; fn(P) gets each roulette's Machine root
+	local function machinesPage(mode, box, fn)
+		local SE = U7.client("UI/ShopEggs")
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "SmokeMachines"
+		local page = Instance.new("Frame")
+		page.Name = "Page_Eggs"
+		page.Size = UDim2.fromOffset(box.W, box.H)
+		page.Parent = gui
+		gui.Parent = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local ok, err = pcall(function()
+			SE.Build(page, nil)
+			SE.Layout(page, box, mode)
+			SE.Refresh(page)
+			LKC.advance(0.1)
+			local roots = {}
+			for _, id in ipairs(MACHINES) do
+				local card = page:FindFirstChild("ShopCard_" .. id, true)
+				roots[id] = card and card:FindFirstChild("Machine", true)
+			end
+			fn(roots)
+		end)
+		gui:Destroy()
+		LKC.advance(0.1)
+		return ok, err
+	end
+
+	-- Review Focus 2 (missing upload ids): with Config.MachineSheet.Id 0 (shipping, nothing uploaded) every roulette keeps
+	-- today's drawn machine (ShopEggs H.machine: the base, the dome, the glass), no image, no stage, no error
+	S.machines_fallback = guarded("machines_fallback", function()
+		local Config = LoadingH.shared("Config")
+		local ms = Config and Config.MachineSheet
+		T.check(type(ms) == "table" and ms.Id == 0, "machines: Config.MachineSheet.Id ships 0 (nothing uploaded)", tostring(type(ms) == "table" and ms.Id))
+		T.check(type(ms) == "table" and type(ms.Cells) == "table", "machines: Config.MachineSheet.Cells gives each roulette's cell in the sheet")
+		for _, m in ipairs({ { "PC", { W = 1240, H = 834 } }, { "Phone", { W = 790, H = 300 } } }) do
+			local ok, err = machinesPage(m[1], m[2], function(roots)
+				local wrong = {}
+				for _, id in ipairs(MACHINES) do
+					local root = roots[id]
+					local imgs = 0
+					for _, d in ipairs(root and root:GetDescendants() or {}) do
+						if d:IsA("ImageLabel") then
+							imgs = imgs + 1
+						end
+					end
+					if not (root and root:FindFirstChild("Dome") and root:FindFirstChild("Glass") and root:FindFirstChild("Base") and imgs == 0
+						and root:FindFirstChild("Stage") == nil and root:GetAttribute("Sheet") == nil) then
+						wrong[#wrong + 1] = id
+					end
+				end
+				T.check(#wrong == 0, "machines (" .. m[1] .. "): with no sheet id every roulette keeps today's drawn machine (dome, glass, base), no image", table.concat(wrong, ", "))
+			end)
+			T.check(ok, "machines (" .. m[1] .. "): the page builds and lays out", tostring(err))
+		end
+		LKC.flushErrors("machines_fallback")
+	end)
+
+	-- with a sheet id (a fake one here) each roulette is ONE ImageLabel cut from the sheet: its own cell (the four 52 x 60
+	-- drawings, the Secret's 60 x 68; each + its 1-cell drop shadow), ResampleMode Pixelated, a whole number of screen px a
+	-- cell, inside its machine box, standing on its stage; today's frames are gone. The cells match the sheet's manifest
+	S.machines_sheet = guarded("machines_sheet", function()
+		local Config = LoadingH.shared("Config")
+		local ms = Config and Config.MachineSheet
+		if not T.check(type(ms) == "table" and type(ms.Cells) == "table", "machines: Config.MachineSheet exists") then
+			return
+		end
+		local fh = io.open("build/upload_sheets/machines_a.json", "r")
+		local json = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		local off = {}
+		for _, id in ipairs(MACHINES) do
+			local c = ms.Cells[id]
+			local block = json:match('"' .. id .. '": (%b{})')
+			local j = {}
+			for _, k in ipairs({ "x", "y", "w", "h" }) do
+				j[#j + 1] = block and tonumber(block:match('"' .. k .. '": (%d+)'))
+			end
+			if not (type(c) == "table" and c[1] == j[1] and c[2] == j[2] and c[3] == j[3] and c[4] == j[4]) then
+				off[#off + 1] = id
+			end
+		end
+		T.check(json ~= "" and #off == 0, "machines: every roulette's cell in Config is the one machines_a.json gives", table.concat(off, ", "))
+		local sec = ms.Cells.Secret
+		T.check(type(sec) == "table" and sec[3] == 61 and sec[4] == 69 and ms.Cells.Cloud and ms.Cells.Cloud[3] == 53 and ms.Cells.Cloud[4] == 61,
+			"machines: the Secret's cell is its 60 x 68 drawing (+ the drop shadow: 61 x 69), the others 52 x 60 (53 x 61)")
+		local png = io.open("build/upload_sheets/machines_a.png", "rb")
+		local head = png and png:read(24) or ""
+		if png then
+			png:close()
+		end
+		local function u32(s, i)
+			local a, b, c, d = s:byte(i, i + 3)
+			return ((a or 0) * 256 + (b or 0)) * 65536 + (c or 0) * 256 + (d or 0)
+		end
+		local jw, jh = json:match('"size": %[%s*(%d+),%s*(%d+)%s*%]')
+		T.check(head:sub(2, 4) == "PNG" and u32(head, 17) == tonumber(jw) and u32(head, 21) == tonumber(jh),
+			"machines: machines_a.png is there, the size its manifest gives", fmt("%s x %s", tostring(jw), tostring(jh)))
+		local saved = ms.Id
+		ms.Id = 5151515151
+		for _, m in ipairs({ { "PC", { W = 1240, H = 834 } }, { "Phone", { W = 790, H = 300 } }, { "Portrait", { W = 370, H = 640 } } }) do
+			local ok, err = machinesPage(m[1], m[2], function(roots)
+				local wrong, offsets = {}, {}
+				local shown, states, small = 0, {}, 0
+				for _, id in ipairs(MACHINES) do
+					local root = roots[id]
+					states[tostring(root and root:GetAttribute("SheetShown"))] = true
+					local c = ms.Cells[id]
+					if root and c and (root.Size.X.Offset < c[3] + 4 or root.Size.Y.Offset < c[4] + 6) then
+						small = small + 1
+					end
+				end
+				-- one look per page: never the new machines next to today's (a portrait phone's hero box can't hold the vault
+				-- while its cards fit 1 px cells)
+				local n = 0
+				for _ in pairs(states) do
+					n = n + 1
+				end
+				T.check(n == 1, "machines (" .. m[1] .. "): the page shows the sheet machines all together or none of them")
+				for _, id in ipairs(MACHINES) do
+					local root = roots[id]
+					local art = root and root:FindFirstChild("Art")
+					local drawn = root and root:FindFirstChild("Drawn")
+					local c = ms.Cells[id]
+					local why = ""
+					if root and art and drawn and root:GetAttribute("SheetShown") == false then
+						-- a box on the page too small for one screen px a cell (the phone layouts' machine boxes): today's
+						-- drawn machine, whole, and no art over the card's rows
+						if not (drawn.Visible and drawn:FindFirstChild("Dome") and not art.Visible and small > 0) then
+							why = "today's machine shown but no box on the page too small, or not today's machine"
+						end
+					elseif not (root and root:GetAttribute("Sheet") == true and root:GetAttribute("SheetShown") == true) then
+						why = "no sheet machine"
+					elseif not (art and art:IsA("ImageLabel") and art.Visible) then
+						why = "no ImageLabel"
+					elseif art.Image ~= "rbxassetid://5151515151" then
+						why = "image " .. tostring(art.Image)
+					elseif art.ImageRectOffset ~= Vector2.new(c[1], c[2]) or art.ImageRectSize ~= Vector2.new(c[3], c[4]) then
+						why = "rect " .. tostring(art.ImageRectOffset) .. " " .. tostring(art.ImageRectSize)
+					elseif art.ResampleMode ~= Enum.ResamplerMode.Pixelated then
+						why = "not Pixelated"
+					else
+						local cw = art.Size.X.Offset / c[3]
+						local rw, rh = root.Size.X.Offset, root.Size.Y.Offset
+						local ax, ay = art.Position.X.Offset, art.Position.Y.Offset
+						if cw < 1 or cw % 1 ~= 0 or math.abs(art.Size.Y.Offset - cw * c[4]) > 1e-6 then
+							why = fmt("cells %.2f px", cw)
+						elseif ax < 0 or ay < 0 or ax + art.Size.X.Offset > rw + 1e-6 or ay + art.Size.Y.Offset > rh + 1e-6 then
+							why = fmt("art %d,%d %dx%d outside its %dx%d box", ax, ay, art.Size.X.Offset, art.Size.Y.Offset, rw, rh)
+						elseif root:FindFirstChild("Dome") or not (drawn and not drawn.Visible) then
+							why = "today's drawn machine still shows"
+						elseif not (root:FindFirstChild("Stage") and root.Stage.Visible) then
+							why = "no stage"
+						else
+							shown = shown + 1
+						end
+					end
+					if why ~= "" then
+						wrong[#wrong + 1] = id .. ": " .. why
+					end
+					offsets[tostring(c and c[1]) .. "," .. tostring(c and c[2])] = true
+				end
+				if m[1] == "PC" then
+					T.check(shown == 5, "machines (PC): every roulette shows its sheet machine (each box fits whole px cells)", tostring(shown))
+				end
+				local n = 0
+				for _ in pairs(offsets) do
+					n = n + 1
+				end
+				T.check(#wrong == 0, "machines (" .. m[1] .. "): with an id each roulette is one Pixelated ImageLabel, its own sheet cell, whole px cells, inside its box on its stage",
+					table.concat(wrong, "; "))
+				T.check(n == 5, "machines (" .. m[1] .. "): five roulettes, five different cells (each its own machine)", tostring(n))
+				-- the spec's 3 px PC cell needs option A's taller stage (the odds as egg chips: a Shop card layout step, not in
+				-- this lane); in today's card and hero boxes the PC machines draw 2 px cells, never fewer
+				if m[1] == "PC" then
+					local small = {}
+					for _, id in ipairs(MACHINES) do
+						local art = roots[id] and roots[id]:FindFirstChild("Art")
+						if not (art and art.Size.X.Offset / ms.Cells[id][3] >= 2) then
+							small[#small + 1] = id
+						end
+					end
+					T.check(#small == 0, "machines (PC): every machine draws 2 px cells or more", table.concat(small, ", "))
+					-- the vault and its stage stand left of the hero's big egg (Task 26), never under it
+					local root = roots.Secret
+					local egg = root and root.Parent and root.Parent:FindFirstChild("HeroEgg")
+					T.check(root ~= nil and egg ~= nil and root.Position.X.Offset + root.Size.X.Offset <= egg.Position.X.Offset,
+						"machines (PC): the Secret's vault stage ends before the hero's big egg",
+						root and egg and fmt("stage to %d, egg from %d", root.Position.X.Offset + root.Size.X.Offset, egg.Position.X.Offset) or "no hero egg")
+					-- today's drawn machine under it (shown when a smaller window can't fit the sheet) keeps the hero's whole
+					-- machine box (art x art * 1.15), not squeezed to the narrower vault stage
+					local drawn = root and root:FindFirstChild("Drawn")
+					local full = root and math.floor(root.Size.Y.Offset / 1.15 + 0.5)
+					T.check(drawn ~= nil and math.abs(drawn.Size.X.Offset - full) <= 1 and drawn.Size.X.Scale == 0 and drawn.Size.Y.Scale == 1,
+						"machines (PC): the hero's fallback drawing keeps its whole box (not squeezed by the vault's stage)",
+						drawn and fmt("%s, want %d wide", tostring(drawn.Size), full) or "no Drawn")
+				end
+			end)
+			T.check(ok, "machines (" .. m[1] .. "): the page builds and lays out with a sheet id", tostring(err))
+		end
+		ms.Id = saved
+		LKC.flushErrors("machines_sheet")
+	end)
+
 	return S
 end
 

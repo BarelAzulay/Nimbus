@@ -1484,6 +1484,22 @@ Config.IconSheet = {
 	Id = 0,
 }
 
+-- (Pitch 2 item 10 A "Workshop machines") each roulette's own pixel capsule machine (52 x 60 cells, the Secret's vault
+-- 60 x 68) ships as ONE uploaded PNG sheet, build/upload_sheets/machines_a.png (+ machines_a.json; tools/
+-- build_upload_sheets.py writes the Cells below from it). The upload is the owner's call, from the owner's keyed cloud
+-- session. Id: that image's id. 0 (until then): every roulette keeps today's drawn machine (client/UI/ShopEggs H.machine).
+-- Cells: roulette id -> { x, y, w, h } in the sheet (the drawing + its 1-cell drop shadow)
+Config.MachineSheet = {
+	Id = 0,
+	Cells = {
+		Cloud = { 0, 0, 53, 61 },
+		Storm = { 54, 0, 53, 61 },
+		Sky = { 108, 0, 53, 61 },
+		Celestial = { 162, 0, 53, 61 },
+		Secret = { 216, 0, 61, 69 },
+	},
+}
+
 -- (Pitch 2 item 06 A) the battle top card's boss head portrait: boss id -> the shared/TextureIds key of its baked pixel
 -- head (a 3 px-cell crop of the boss's own front voxel render, shown with ResampleMode Pixelated). A key with no id in
 -- TextureIds (none uploaded yet) draws no portrait: the top card is whole without it
