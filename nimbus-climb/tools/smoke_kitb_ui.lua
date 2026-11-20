@@ -7782,6 +7782,48 @@ local function clientScenarios()
 					T.check(w.X - 5 >= b.R + 3 + 5 + 4 - 0.5, tag .. ": the Settings window docks clear of the title board",
 						fmt("board ends %.0f (+8 edge and shadow), window starts %.0f (-5 bevel)", b.R, w.X))
 				end
+				-- (Pitch 2 fix round B, T1 look leftover 8: at 1920x1080 the window cut the Mouse lock row at its foot with about
+				-- 400 px of sky above it; at 844x390 the list's view ended on the Graphics heading alone) at rest every row the
+				-- list's view shows is whole (its heading never without its strip); on a 1920 / 1280 desktop every row and the
+				-- note show whole, nothing to scroll
+				local list = win and win:FindFirstChild("List", true)
+				if T.check(list ~= nil, tag .. ": (setup) the Settings list") then
+					local view = U8.rect(list)
+					local cut, rows = {}, 0
+					-- (the mock wraps a text at its box's SCREEN width but measures it in its own px, robloxmock textBounds:
+					-- under a window scale below 1 (1280x720: 0.8) the note wraps one line more than in Roblox and the
+					-- renderer, where it fits (build/GATE_P2/fixB/settings_1280x720.png). There the note's first line must
+					-- show in view; at scale 1 (1920x1080) the whole note)
+					local sc = win:FindFirstChild("Fit") and win.Fit.Scale or 1
+					for _, c in ipairs(list:GetChildren()) do
+						if c:IsA("GuiObject") and U8.shown(c) and (c.Name:match("^Row_") or c.Name == "Note") then
+							rows = rows + 1
+							local r = U8.rect(c)
+							local inTop = r.Y < view.B - 0.5 and r.B > view.Y + 0.5
+							local whole = r.Y >= view.Y - 0.5 and r.B <= view.B + 0.5
+							if c.Name == "Note" and sc < 0.99 and s[3] == "Keyboard" then
+								whole = r.Y >= view.Y - 0.5 and r.Y + c.TextSize * sc <= view.B + 0.5
+								inTop = false
+							end
+							if inTop and not whole then
+								cut[#cut + 1] = fmt("%s %.0f..%.0f", c.Name, r.Y, r.B)
+							elseif s[3] == "Keyboard" and not whole then
+								cut[#cut + 1] = c.Name .. " out of view"
+							end
+						end
+					end
+					T.check(rows >= 4 and #cut == 0, fmt("%s: the Settings list shows whole rows only%s", tag, s[3] == "Keyboard" and ", every row in view" or ""),
+						fmt("view %.0f..%.0f; %s", view.Y, view.B, table.concat(cut, ", ")))
+				end
+				-- (fix round B) a window cut to whole rows leaves no half-covered CREDITS tag above it
+				local credits = menu and menu:FindFirstChild("CreditsTag", true)
+				if credits and U8.shown(credits) and win then
+					local w, c = U8.rect(win), U8.rect(credits)
+					local overlap = c.X < w.R and c.R > w.X and c.Y < w.B and c.B > w.Y
+					local inside = c.X >= w.X and c.R <= w.R and c.Y >= w.Y and c.B <= w.B
+					T.check(not overlap or inside, tag .. ": the CREDITS tag is not half under the Settings window",
+						fmt("tag %s, window %s", U8.show(c), U8.show(w)))
+				end
 			end)
 			T.check(ok, tag .. ": the check ran", tostring(err))
 			MenuH.close()
