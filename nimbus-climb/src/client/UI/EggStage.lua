@@ -1541,7 +1541,7 @@ function B.cols(roll)
 		-- note on one navy sign plank (the kit's navy sign: Sign.Navy, the GoldLip edge, the rarity on its lip), the name in
 		-- the kit's gold and the note in stone, no outline or stroke on the plank (H.applyReveal sizes it round them)
 		local plate = H.frame(col, "Plate", { BackgroundTransparency = 0, ZIndex = 4 })
-		CloudUI.SignBlock(plate, "Navy", { EdgePx = 2, LipPx = lay.Kit == "Phone" and K.LOOK.PLATE.LipPhone or K.LOOK.PLATE.Lip, LipColor = HatchLook.RarityColor(pull.Rarity), Pad = false })
+		CloudUI.SignBlock(plate, "Navy", { EdgePx = 2, LipPx = lay.Kit == "Phone" and K.LOOK.PLATE.LipPhone or K.LOOK.PLATE.Lip, LipColor = HatchLook.RarityColor(pull.Rarity), Pad = false, Finish = false })
 		local name = Theme.Label(pull.Def.Name, "Display", { Size = 18 })
 		name.Name, name.ZIndex, name.TextColor3, name.TextTruncate, name.Parent = "Name", 5, Theme.Sign.Gold, Enum.TextTruncate.AtEnd, col
 		-- (ZIndex 6 / 7 like the EvolvedRibbon: on a phone's x3 it sits on the pet frame's corner, over the pet's view)

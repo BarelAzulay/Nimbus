@@ -233,10 +233,39 @@ function SignKit.Px(px, s)
 	return math.max(1, math.floor(px * s + 0.5)) / s
 end
 
-local function refitWhole(obj)
+-- (Pitch 2 F0) a finish part also refits when a UIScale is ADDED above it after it was fitted (the match result card is
+-- built, then scaled to the viewport: NotifyController's ViewportScale): SignKit.Whole only hears the scales that were
+-- there at its fit. scaleWatch[obj] = true opts a part in; scaleAdds[ancestor] = { [obj] = true }
+local scaleWatch = setmetatable({}, { __mode = "k" })
+local scaleAdds = setmetatable({}, { __mode = "k" })
+local refitWhole
+local function hookScaleAdds(obj)
+	local cur = obj.Parent
+	while cur and not cur:IsA("LayerCollector") do
+		local set = scaleAdds[cur]
+		if not set then
+			set = setmetatable({}, { __mode = "k" })
+			scaleAdds[cur] = set
+			cur.ChildAdded:Connect(function(c)
+				if c:IsA("UIScale") then
+					for o in pairs(set) do
+						refitWhole(o)
+					end
+				end
+			end)
+		end
+		set[obj] = true
+		cur = cur.Parent
+	end
+end
+
+refitWhole = function(obj)
 	local fit = wholeFits[obj]
 	if not fit then
 		return
+	end
+	if scaleWatch[obj] then
+		hookScaleAdds(obj)
 	end
 	local s, scales = layoutScale(obj)
 	fit(s)
@@ -264,6 +293,378 @@ function SignKit.Whole(obj, fit)
 		end)
 	end
 	refitWhole(obj)
+end
+
+----------------------------------------------------------------------
+-- the finish (Pitch 2 item F0, the owner's pick A "Carved signboard", 2026-11-20)
+----------------------------------------------------------------------
+
+-- ONE light from the top left on every part (Theme.Finish; the mock-ups .superpowers/slop-audit/round3/build/PITCH2/
+-- F_overall_finish/F0_*_optA.png): a wood edge lit WoodLight on its top and left and shaded WoodDark on its bottom and
+-- right, the stone body sunk under its frame with a carved rim, a slot a sunk well, a raised card's two-step diagonal hard
+-- shadow (no blur). Every finish part is a holder Frame named Finish<Kind> (attribute Finish = <Kind>) of plain square
+-- Frames, ZIndex 0 (under its part's own children, over the part's face), laid over the part's box (or `out` px round it:
+-- a block whose wood edge is a UIStroke outside its box) in whole screen px (SignKit.Whole on the holder, so the part's
+-- own fit stays). It never moves or resizes the part, so no window's layout or fit changes. A UIPadding on the part (a
+-- text block's LipPad) would move its children: the holders reach back out by it, now and whenever it changes. Calling a
+-- finish again updates its one holder. A part built with opts.Finish = false (the approved Credits window) gets none.
+local FIN = Theme.Finish
+local WHITE = Color3.new(1, 1, 1)
+local FIN_PARTS = setmetatable({}, { __mode = "k" }) -- [part] = { [holder] = true }: refit when its padding or size changes
+
+local function padOf(obj)
+	local pad = obj:FindFirstChildOfClass("UIPadding")
+	if not pad then
+		return 0, 0, 0, 0
+	end
+	return pad.PaddingLeft.Offset, pad.PaddingTop.Offset, pad.PaddingRight.Offset, pad.PaddingBottom.Offset
+end
+
+-- the holder over obj's box, `out` px round it, whatever obj's padding
+local function cover(obj, h, out)
+	local l, t, r, b = padOf(obj)
+	h.Position = UDim2.fromOffset(-l - out, -t - out)
+	h.Size = UDim2.new(1, l + r + 2 * out, 1, t + b + 2 * out)
+end
+
+local function track(obj, h)
+	local set = FIN_PARTS[obj]
+	if not set then
+		set = setmetatable({}, { __mode = "k" })
+		FIN_PARTS[obj] = set
+		local function again()
+			for x in pairs(set) do
+				refitWhole(x)
+			end
+		end
+		local function hook(c)
+			if c:IsA("UIPadding") then
+				c.Changed:Connect(again)
+			end
+		end
+		for _, c in ipairs(obj:GetChildren()) do
+			hook(c)
+		end
+		obj.ChildAdded:Connect(function(c)
+			hook(c)
+			if c:IsA("UIPadding") or c.Name == "CloseMark" then
+				again()
+			end
+		end)
+		obj:GetPropertyChangedSignal("Size"):Connect(again)
+	end
+	set[h] = true
+end
+
+local function holderOf(obj, name, kind)
+	local h = obj:FindFirstChild(name)
+	if not h then
+		h = frame(name, { ZIndex = 0 }, obj)
+		h:SetAttribute("Finish", kind)
+	end
+	scaleWatch[h] = true
+	h:SetAttribute("FinishOff", nil)
+	h.Visible = true
+	track(obj, h)
+	return h
+end
+
+local function strip(h, name, colour, transparency)
+	local s = h:FindFirstChild(name)
+	if not s then
+		s = fill(name, colour, { ZIndex = 0 }, h)
+	end
+	s.BackgroundColor3 = colour
+	s.BackgroundTransparency = transparency or 0
+	return s
+end
+
+local function same(a, b)
+	return typeof(a) == "Color3" and typeof(b) == "Color3" and math.abs(a.R - b.R) < 0.004 and math.abs(a.G - b.G) < 0.004 and math.abs(a.B - b.B) < 0.004
+end
+
+-- hide a finish holder (it stays hidden until its finish is called again)
+local function hide(obj, name)
+	local h = obj and obj:FindFirstChild(name)
+	if h then
+		h:SetAttribute("FinishOff", true)
+		h.Visible = false
+	end
+end
+SignKit.HideFinish = hide
+
+-- the light on a wood edge. opts: Px (thick: Finish.Bevel on a window frame, Finish.Line on a block), Out (design px of
+-- the part's edge stroke outside its box, 0 = the edge is the part's own border), Sides ("TLBR"; a header's rim "TLR"),
+-- Light / Dark (WoodLight / WoodDark). Children LitT, LitL, DarkB, DarkR (the shaded ones drawn last: they win the corners)
+function SignKit.Bevel(obj, opts)
+	opts = opts or {}
+	local h = holderOf(obj, "FinishBevel", "Bevel")
+	local px, out = tonumber(opts.Px) or FIN.Line, tonumber(opts.Out) or 0
+	local sides = opts.Sides or "TLBR"
+	local parts = {}
+	for _, d in ipairs({ { "T", "LitT", opts.Light or Sign.WoodLight }, { "L", "LitL", opts.Light or Sign.WoodLight },
+		{ "B", "DarkB", opts.Dark or Sign.WoodDark }, { "R", "DarkR", opts.Dark or Sign.WoodDark } }) do
+		if sides:find(d[1], 1, true) then
+			parts[d[1]] = strip(h, d[2], d[3])
+		elseif h:FindFirstChild(d[2]) then
+			h[d[2]]:Destroy()
+		end
+	end
+	SignKit.Whole(h, function(sc)
+		local t = SignKit.Px(px, sc)
+		cover(obj, h, SignKit.Px(out, sc))
+		if parts.T then
+			parts.T.Position = UDim2.new(0, 0, 0, 0)
+			parts.T.Size = UDim2.new(1, 0, 0, t)
+		end
+		if parts.L then
+			parts.L.Position = UDim2.new(0, 0, 0, 0)
+			parts.L.Size = UDim2.new(0, t, 1, 0)
+		end
+		if parts.B then
+			parts.B.Position = UDim2.new(0, 0, 1, -t)
+			parts.B.Size = UDim2.new(1, 0, 0, t)
+		end
+		if parts.R then
+			parts.R.Position = UDim2.new(1, -t, 0, 0)
+			parts.R.Size = UDim2.new(0, t, 1, 0)
+		end
+	end)
+	return h
+end
+
+-- a block under Finish.SmallBlock design px tall (a chip, a key cap) casts no shadow; nor a close block or a part with
+-- attribute NoShadow
+local function noShadow(obj, sc)
+	if obj:GetAttribute("NoShadow") == true or obj:FindFirstChild("CloseMark") then
+		return true
+	end
+	local s = obj.Size
+	local tall = s.Y.Scale == 0 and s.Y.Offset or ((obj.AbsoluteSize.Y > 0 and sc > 0) and obj.AbsoluteSize.Y / sc or math.huge)
+	return tall < FIN.SmallBlock
+end
+
+-- the two-step diagonal hard shadow down and right of the part (no blur: a darker near band Px - Step wide, a lighter
+-- outer step to Px). opts: Px (Finish.Card, Finish.Window), Out (as Bevel's), Block (a block: none when it is small).
+-- Children FarR, FarB (drawn first), NearR, NearB, in the ink at Finish.Far / Finish.Near transparency
+function SignKit.Shadow(obj, opts)
+	opts = opts or {}
+	local h = holderOf(obj, "FinishShadow", "Shadow")
+	local off, out = tonumber(opts.Px) or FIN.Card, tonumber(opts.Out) or 0
+	local farR, farB = strip(h, "FarR", Sign.Text, FIN.Far), strip(h, "FarB", Sign.Text, FIN.Far)
+	local nearR, nearB = strip(h, "NearR", Sign.Text, FIN.Near), strip(h, "NearB", Sign.Text, FIN.Near)
+	local block = opts.Block == true
+	SignKit.Whole(h, function(sc)
+		local f = SignKit.Px(off, sc)
+		local n = SignKit.Px(math.max(1, off - FIN.Step), sc)
+		cover(obj, h, SignKit.Px(out, sc))
+		farR.Position, farR.Size = UDim2.new(1, 0, 0, f), UDim2.new(0, f, 1, 0)
+		farB.Position, farB.Size = UDim2.new(0, f, 1, 0), UDim2.new(1, -f, 0, f)
+		nearR.Position, nearR.Size = UDim2.new(1, 0, 0, n), UDim2.new(0, n, 1, 0)
+		nearB.Position, nearB.Size = UDim2.new(0, n, 1, 0), UDim2.new(1, -n, 0, n)
+		h.Visible = h:GetAttribute("FinishOff") ~= true and not (block and noShadow(obj, sc))
+	end)
+	return h
+end
+
+-- the stone body sunk under its frame: a StoneLip band Finish.Sink px along its top and left (SinkT, SinkL), the WellEdge
+-- hairline at its top (RimT, RimL), a lit Tile line Finish.RimLit px down its right edge (LitR), and the carved line where
+-- frame and body meet, Finish.Line px just outside it (LineT / LineL WoodDark, LineB / LineR WoodLight)
+function SignKit.Carve(body)
+	local h = holderOf(body, "FinishCarve", "Carve")
+	local p = {}
+	for _, d in ipairs({ { "LineT", Sign.WoodDark }, { "LineL", Sign.WoodDark }, { "LineB", Sign.WoodLight }, { "LineR", Sign.WoodLight },
+		{ "SinkT", Sign.StoneLip }, { "SinkL", Sign.StoneLip }, { "RimT", Sign.WellEdge }, { "RimL", Sign.WellEdge }, { "LitR", Sign.Tile } }) do
+		p[d[1]] = strip(h, d[1], d[2])
+	end
+	SignKit.Whole(h, function(sc)
+		local l, k, r = SignKit.Px(FIN.Line, sc), SignKit.Px(FIN.Sink, sc), SignKit.Px(FIN.RimLit, sc)
+		cover(body, h, l)
+		p.LineT.Position, p.LineT.Size = UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, l)
+		p.LineL.Position, p.LineL.Size = UDim2.new(0, 0, 0, 0), UDim2.new(0, l, 1, 0)
+		p.LineB.Position, p.LineB.Size = UDim2.new(0, 0, 1, -l), UDim2.new(1, 0, 0, l)
+		p.LineR.Position, p.LineR.Size = UDim2.new(1, -l, 0, 0), UDim2.new(0, l, 1, 0)
+		p.SinkT.Position, p.SinkT.Size = UDim2.fromOffset(l, l), UDim2.new(1, -2 * l, 0, k)
+		p.SinkL.Position, p.SinkL.Size = UDim2.fromOffset(l, l), UDim2.new(0, k, 1, -2 * l)
+		p.RimT.Position, p.RimT.Size = UDim2.fromOffset(l, l), UDim2.new(1, -2 * l, 0, l)
+		p.RimL.Position, p.RimL.Size = UDim2.fromOffset(l, l), UDim2.new(0, l, 1, -2 * l)
+		p.LitR.Position, p.LitR.Size = UDim2.new(1, -l - r, 0, l), UDim2.new(0, r, 1, -2 * l)
+	end)
+	return h
+end
+
+-- a raised face's lit top band: Finish.Shine px of the face (opts.Color; without it the face's own colour, followed as it
+-- changes) toward white by Finish.ShineMix; opts.Px, opts.Mix, opts.Name / opts.Kind (a navy plate's NavyTop line:
+-- SignKit.BandTop)
+local FOLLOW = setmetatable({}, { __mode = "k" }) -- [face] = true: its shine follows its colour
+function SignKit.Shine(face, opts)
+	opts = opts or {}
+	local name = opts.Name or "FinishShine"
+	local s = face:FindFirstChild(name)
+	if not s then
+		s = fill(name, WHITE, { ZIndex = 0 }, face)
+		s:SetAttribute("Finish", opts.Kind or "Shine")
+	end
+	local mix = tonumber(opts.Mix) or FIN.ShineMix
+	local follow = typeof(opts.Color) ~= "Color3"
+	s:SetAttribute("Follow", follow and mix or nil)
+	if follow and not FOLLOW[face] then
+		FOLLOW[face] = true
+		face:GetPropertyChangedSignal("BackgroundColor3"):Connect(function()
+			local x = face:FindFirstChild("FinishShine")
+			local k = x and x:GetAttribute("Follow")
+			if k then
+				x.BackgroundColor3 = Theme.Mix(face.BackgroundColor3, WHITE, k)
+			end
+		end)
+	end
+	local base = follow and face.BackgroundColor3 or opts.Color
+	s.BackgroundColor3 = Theme.Mix(base, WHITE, mix)
+	s:SetAttribute("FinishOff", nil)
+	s.Visible = true
+	track(face, s)
+	scaleWatch[s] = true
+	local px = tonumber(opts.Px) or FIN.Shine
+	SignKit.Whole(s, function(sc)
+		local l, t, r = padOf(face)
+		s.Position = UDim2.fromOffset(-l, -t)
+		s.Size = UDim2.new(1, l + r, 0, SignKit.Px(px, sc))
+	end)
+	return s
+end
+
+-- a navy plate's / band's lit top line (FinishTop: NavyTop, Finish.Shine px)
+function SignKit.BandTop(band)
+	return SignKit.Shine(band, { Name = "FinishTop", Kind = "Top", Color = Sign.NavyTop, Mix = 0 })
+end
+
+-- a sunk well (a slot, an Off block): the shaded top and left band (ShadeT, ShadeL: Finish.WellShade px, the face toward
+-- its edge by Finish.WellMix) and the lit bottom line (LitB: Finish.Line px). opts.Face / opts.Edge: the colours (default
+-- the part's own colour / WellEdge)
+function SignKit.Sunk(obj, opts)
+	opts = opts or {}
+	local h = holderOf(obj, "FinishSunk", "Sunk")
+	local face = typeof(opts.Face) == "Color3" and opts.Face or obj.BackgroundColor3
+	local edge = typeof(opts.Edge) == "Color3" and opts.Edge or Sign.WellEdge
+	local shade = Theme.Mix(face, edge, FIN.WellMix)
+	local t, l = strip(h, "ShadeT", shade), strip(h, "ShadeL", shade)
+	local b = strip(h, "LitB", Theme.Mix(face, WHITE, FIN.WellLitMix))
+	SignKit.Whole(h, function(sc)
+		local k, one = SignKit.Px(FIN.WellShade, sc), SignKit.Px(FIN.Line, sc)
+		cover(obj, h, 0)
+		t.Position, t.Size = UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0, k)
+		l.Position, l.Size = UDim2.new(0, 0, 0, 0), UDim2.new(0, k, 1, 0)
+		b.Position, b.Size = UDim2.new(0, 0, 1, -one), UDim2.new(1, 0, 0, one)
+	end)
+	return h
+end
+
+-- a raised kit block's whole finish in one call (CloudUI.SignBlock, SignKit.Plank, SignKit.Notice). opts: Face (the
+-- object whose top shines, default obj), FaceColor, Out (its edge stroke's design px outside the box), Wood (false: an
+-- ink / gold edge takes no wood light), Well (a sunk well instead: no light, no shine, no shadow), Shadow (false: none)
+function SignKit.FinishBlock(obj, opts)
+	opts = opts or {}
+	local face = opts.Face or obj
+	if opts.Well then
+		hide(obj, "FinishBevel")
+		hide(obj, "FinishShadow")
+		hide(face, "FinishShine")
+		SignKit.Sunk(face, { Face = opts.FaceColor, Edge = opts.EdgeColor })
+		return
+	end
+	hide(face, "FinishSunk")
+	if opts.Wood == false then
+		hide(obj, "FinishBevel")
+	else
+		SignKit.Bevel(obj, { Px = FIN.Line, Out = opts.Out })
+	end
+	SignKit.Shine(face, { Color = opts.FaceColor })
+	if opts.Shadow == false then
+		hide(obj, "FinishShadow")
+	else
+		SignKit.Shadow(obj, { Px = FIN.Card, Out = opts.Out, Block = true })
+	end
+end
+
+-- a window frame's whole finish (SignKit.Frame, CloudUI's Signboard panel and the windows that lay their own frame: the
+-- Shop, the Gifts window, ...): the Finish.Bevel light on the wood, the window's shadow, the carved rim of its body (the
+-- child stamped SignKit = "Body", or opts.Body)
+function SignKit.FinishFrame(wood, opts)
+	opts = opts or {}
+	SignKit.Bevel(wood, { Px = FIN.Bevel })
+	if opts.Shadow ~= false then
+		SignKit.Shadow(wood, { Px = FIN.Window })
+	end
+	local body = opts.Body
+	if not body then
+		for _, c in ipairs(wood:GetChildren()) do
+			if c:GetAttribute("SignKit") == "Body" then
+				body = c
+				break
+			end
+		end
+	end
+	if body then
+		SignKit.Carve(body)
+	end
+end
+
+-- (the open) the window rises Finish.Rise px to where it is now in Finish.RiseSteps hard steps, Finish.RiseStep s apart:
+-- no easing, no scale bounce. Called again mid-rise it starts over from the same rest; a layout that moves the window
+-- mid-rise wins (the rise stops where the layout put it)
+local RISE = setmetatable({}, { __mode = "k" })
+local function samePos(a, b)
+	return a.X.Scale == b.X.Scale and a.X.Offset == b.X.Offset and a.Y.Scale == b.Y.Scale and a.Y.Offset == b.Y.Offset
+end
+function SignKit.Rise(obj)
+	if not (obj and obj:IsA("GuiObject")) then
+		return
+	end
+	local run = RISE[obj]
+	local rest = (run and run.at and samePos(obj.Position, run.at)) and run.rest or obj.Position
+	local steps = math.max(1, math.floor(FIN.RiseSteps))
+	run = { rest = rest }
+	RISE[obj] = run
+	local function at(k)
+		local sc = SignKit.LayoutScale(obj)
+		local p = UDim2.new(rest.X.Scale, rest.X.Offset, rest.Y.Scale, rest.Y.Offset + SignKit.Px(FIN.Rise * k / steps, sc))
+		obj.Position = p
+		run.at = p
+	end
+	local function step(k)
+		if RISE[obj] ~= run then
+			return
+		end
+		if not samePos(obj.Position, run.at) then
+			RISE[obj] = nil
+			return
+		end
+		if k <= 0 then
+			obj.Position = rest
+			RISE[obj] = nil
+			return
+		end
+		at(k)
+		task.delay(FIN.RiseStep, step, k - 1)
+	end
+	at(steps)
+	task.delay(FIN.RiseStep, step, steps - 1)
+end
+
+-- the press's one darker frame: the face (Frame) shows Finish.PressDark darker for Finish.PressFrame s, then its colour
+-- again (unless something repainted it meanwhile)
+function SignKit.PressFrame(face)
+	if not (face and face:IsA("GuiObject")) then
+		return
+	end
+	local rest = face.BackgroundColor3
+	local dark = Theme.Darken(rest, FIN.PressDark)
+	face.BackgroundColor3 = dark
+	task.delay(FIN.PressFrame, function()
+		if same(face.BackgroundColor3, dark) then
+			face.BackgroundColor3 = rest
+		end
+	end)
 end
 
 ----------------------------------------------------------------------
@@ -381,8 +782,97 @@ function SignKit.Roof(parent, opts)
 		SignKit.Whole(roof, function(sc)
 			roof.Size = UDim2.fromOffset(SignKit.Px(w, sc), SignKit.Px(h, sc))
 		end)
+		if opts.Finish ~= false then
+			SignKit.Awning(roof, w, h, opts)
+		end
 	end
 	return place(roof, opts, "Roof")
+end
+
+-- (Pitch 2 F0, the owner's pick A: "a striped scalloped awning seated on the frame on two wood end brackets"; the flat
+-- awning floated half over the frame like a stray bar) the flat roof's trim, in its holder FinishTrim (attribute Finish =
+-- "Awning") over the roof's face: cream stripes every other AwningSizes.Band px, the pink's lit top line, a scalloped
+-- valance (one tab per band, its edge, face, shade and rounded tip) hanging AwningSizes.Hang px under the roof's box over
+-- the frame's top rim, and a wood bracket at each end holding it to the frame. The roof's box (its size, its place) is
+-- unchanged
+SignKit.AwningSizes = { Band = 24, Hang = 8, Bracket = 8 }
+local AWNING = setmetatable({}, { __mode = "k" }) -- [roof] = the "w x h" its trim was built for
+function SignKit.Awning(roof, w, h)
+	local A = SignKit.AwningSizes
+	-- a window that resizes its roof (the Gifts window's phone awning) gets the trim again at the new width (design px:
+	-- the size it set, or the whole-px size SignKit.Whole gave it)
+	if AWNING[roof] == nil then
+		roof:GetPropertyChangedSignal("Size"):Connect(function()
+			local sc = SignKit.LayoutScale(roof)
+			local nw = math.floor(roof.Size.X.Offset + 0.5)
+			local built = AWNING[roof]
+			if built and roof:FindFirstChild("FinishTrim") and math.abs(nw - built[1]) > math.max(1, 1 / sc) then
+				SignKit.Awning(roof, nw, built[2])
+			end
+		end)
+	end
+	AWNING[roof] = { w, h }
+	local t = roof:FindFirstChild("FinishTrim")
+	if t then
+		t:Destroy()
+	end
+	t = frame("FinishTrim", { ZIndex = 2, Size = UDim2.fromScale(1, 1) }, roof)
+	t:SetAttribute("Finish", "Awning")
+	local e = Z.RoofEdge
+	local bands = {}
+	local x = e
+	local n = 0
+	while x < w - e do
+		n = n + 1
+		bands[n] = { x, math.min(A.Band, w - e - x) }
+		x = x + A.Band
+	end
+	local function box(name, colour, x0, y0, bw, bh)
+		local f = fill(name, colour, { ZIndex = 2 }, t)
+		f:SetAttribute("At", Vector2.new(x0, y0))
+		f:SetAttribute("Box", Vector2.new(bw, bh))
+		return f
+	end
+	for i, b in ipairs(bands) do
+		if i % 2 == 0 then
+			box("Stripe" .. i, Sign.Stone, b[1], e, b[2], h - 2 * e)
+		end
+	end
+	box("TopLight", Theme.Mix(Sign.Roof, WHITE, 0.45), e, e, w - 2 * e, 2)
+	for i, b in ipairs(bands) do
+		local cream = i % 2 == 0
+		local faceC = cream and Sign.Stone or Sign.Roof
+		local shade = cream and Sign.StoneLip or Sign.RoofLip
+		local bx, bw = b[1], b[2]
+		box("Tab" .. i, Sign.RoofEdge, bx, h - 4, bw, 10)
+		box("TabFace" .. i, faceC, bx + 2, h - 4, math.max(1, bw - 4), 8)
+		box("TabShade" .. i, shade, bx + 2, h + 2, math.max(1, bw - 4), 2)
+		if bw > 8 then
+			box("TabTip" .. i, Sign.RoofEdge, bx + 4, h + 6, bw - 8, 2)
+		end
+		if bw > 12 then
+			box("TabTipShade" .. i, shade, bx + 6, h + 4, bw - 12, 2)
+		end
+	end
+	for _, side in ipairs({ { "BracketL", -A.Bracket }, { "BracketR", w } }) do
+		box(side[1], Sign.WoodDark, side[2], -2, A.Bracket, h + 2 + A.Hang)
+		box(side[1] .. "Wood", Sign.Wood, side[2] + 1, -1, A.Bracket - 2, h + A.Hang)
+		box(side[1] .. "Lit", Sign.WoodLight, side[2] + 1, -1, A.Bracket - 2, 2)
+	end
+	-- every piece on whole screen px under the window's scale: its two edges each snapped
+	scaleWatch[t] = true
+	SignKit.Whole(t, function(sc)
+		for _, f in ipairs(t:GetChildren()) do
+			local at, sz = f:GetAttribute("At"), f:GetAttribute("Box")
+			if at and sz then
+				local x0, y0 = SignKit.Px(math.abs(at.X), sc) * (at.X < 0 and -1 or 1), SignKit.Px(math.abs(at.Y), sc) * (at.Y < 0 and -1 or 1)
+				local x1, y1 = SignKit.Px(math.abs(at.X + sz.X), sc) * ((at.X + sz.X) < 0 and -1 or 1), SignKit.Px(at.Y + sz.Y, sc)
+				f.Position = UDim2.fromOffset(x0, y0)
+				f.Size = UDim2.fromOffset(math.max(SignKit.Px(1, sc), x1 - x0), math.max(SignKit.Px(1, sc), y1 - y0))
+			end
+		end
+	end)
+	return t
 end
 
 ----------------------------------------------------------------------
@@ -511,10 +1001,16 @@ function SignKit.Header(parent, opts)
 		head:SetAttribute("Rim", SignKit.Px(rim, sc))
 		placePlate(head, head:GetAttribute("Overhang") == true)
 	end)
+	if opts.Finish ~= false then
+		-- (Pitch 2 F0) the rim carries the frame's light (lit top and left, shaded right: the frame below closes it), the
+		-- navy plate its lit top line
+		SignKit.Bevel(head, { Px = FIN.Bevel, Sides = "TLR" })
+		SignKit.BandTop(plate)
+	end
 	return head, plate
 end
 
--- opts: Y, Height (nil = down to the parent's bottom), Color (wood)
+-- opts: Y, Height (nil = down to the parent's bottom), Color (wood), Finish (false: no finish, the approved Credits)
 function SignKit.Frame(parent, opts)
 	opts = opts or {}
 	local y = tonumber(opts.Y) or 0
@@ -524,7 +1020,13 @@ function SignKit.Frame(parent, opts)
 		Size = h and UDim2.new(1, 0, 0, h) or UDim2.new(1, 0, 1, -y),
 		Active = true,
 	}, parent)
-	return place(wood, opts, "Frame")
+	place(wood, opts, "Frame")
+	if opts.Finish ~= false then
+		-- (Pitch 2 F0) the frame's light and the window's shadow (its body, added next, carves itself)
+		SignKit.Bevel(wood, { Px = FIN.Bevel })
+		SignKit.Shadow(wood, { Px = FIN.Window })
+	end
+	return wood
 end
 
 -- opts: Inset (the frame's width), Color (stone), Lip (px; 0 = none), LipColor, Line = { Inset, Thickness, Color } (an
@@ -563,7 +1065,11 @@ function SignKit.Body(parentFrame, opts)
 		}, body)
 		line(ln, opts.Line.Color or Sign.StoneLip, tonumber(opts.Line.Thickness) or 3)
 	end
-	return place(body, opts, "Body")
+	place(body, opts, "Body")
+	if opts.Finish ~= false then
+		SignKit.Carve(body) -- (Pitch 2 F0) sunk under the frame, the carved rim
+	end
+	return body
 end
 
 ----------------------------------------------------------------------
@@ -587,6 +1093,9 @@ function SignKit.PlankState(plank, state)
 	end
 	if state ~= "Hover" and state ~= "Press" then
 		state = "Rest"
+	end
+	if state == "Press" and plank:GetAttribute("PlankState") ~= "Press" then
+		SignKit.PressFrame(face) -- (Pitch 2 F0) the press: one darker frame, then the sink
 	end
 	local shown = state == "Press" and math.min(lip, SignKit.Px(Z.PressLip, sc)) or lip
 	block.Position = UDim2.fromOffset(0, (state == "Hover" and -SignKit.Px(Z.Hover, sc)) or (state == "Press" and SignKit.Px(Z.Sink, sc)) or 0)
@@ -685,6 +1194,22 @@ function SignKit.Plank(parent, opts)
 	end)
 	if type(opts.Callback) == "function" and not look.Off then
 		plank.Activated:Connect(opts.Callback)
+	end
+	if opts.Finish ~= false then
+		-- (Pitch 2 F0) an Off plank is a sunk well; a raised one has the light on its wood edge, the face's lit top band and
+		-- the card shadow (none under an ink-edged close block)
+		local edge = opts.Edge or look.Edge
+		if look.Off then
+			SignKit.Sunk(face, { Face = opts.Face or look.Face, Edge = edge })
+		else
+			if same(edge, Sign.Wood) then
+				SignKit.Bevel(block, { Px = FIN.Line })
+			end
+			SignKit.Shine(face)
+			if not same(edge, Sign.Text) then
+				SignKit.Shadow(plank, { Px = FIN.Card, Block = true })
+			end
+		end
 	end
 	plank.Parent = parent
 	-- (U9-8 look) drawn again in whole screen px whenever it moves or the window's scale changes
@@ -965,6 +1490,12 @@ function SignKit.Notice(parent, opts)
 		end
 	end)
 	place(notice, opts, "Notice")
+	if opts.Finish ~= false then
+		-- (Pitch 2 F0) a floating card: the light on its wood edge, its face's lit top band, the card shadow
+		SignKit.Bevel(notice, { Px = FIN.Line })
+		SignKit.Shine(face)
+		SignKit.Shadow(notice, { Px = FIN.Card, Block = true })
+	end
 	return notice, face
 end
 
@@ -1126,6 +1657,21 @@ end
 function SignKit.Rig(parts, opts)
 	opts = opts or {}
 	local board, roof, head, wood = parts.Board, parts.Roof, parts.Head, parts.Frame
+	-- (Pitch 2 F0) the rig draws its own approved bevel, canopy and hem (the B2 pick): the kit's finish steps aside on the
+	-- parts it rigs
+	local function unfinish(obj, names)
+		for _, name in ipairs(names) do
+			local h = obj and obj:FindFirstChild(name)
+			if h then
+				h:Destroy()
+			end
+		end
+	end
+	unfinish(wood, { "FinishBevel", "FinishShadow" })
+	unfinish(wood and wood:FindFirstChild("Body"), { "FinishCarve" })
+	unfinish(head, { "FinishBevel" })
+	unfinish(head and head:FindFirstChild("Plate"), { "FinishTop" })
+	unfinish(roof, { "FinishTrim" })
 	local bw = tonumber(opts.Width) or (board and board.Size.X.Offset) or 440
 	local bh = board and board.Size.Y.Offset or 0
 	local k = math.min(math.max(bw / 250, 1), 2)

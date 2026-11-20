@@ -455,6 +455,10 @@ CloudUI.SignRole = { Green = "Primary", Gold = "Selected", Red = "Danger", Pink 
 CloudUI.SignMetrics = { Edge = SignKit.Sizes.Edge, Lip = SignKit.Sizes.Lip, PressLip = SignKit.Sizes.PressLip }
 local SM = CloudUI.SignMetrics
 
+local function sameColor(a, b)
+	return typeof(a) == "Color3" and typeof(b) == "Color3" and math.abs(a.R - b.R) < 0.004 and math.abs(a.G - b.G) < 0.004 and math.abs(a.B - b.B) < 0.004
+end
+
 local function signLook(look)
 	if type(look) == "table" then
 		return look
@@ -571,6 +575,15 @@ function CloudUI.SignBlock(obj, look, opts)
 		edge.Thickness = SignKit.Px(edgePx, sc)
 		lip.Size = UDim2.new(1, lip.Size.X.Offset, 0, SignKit.Px(lipPx, sc)) -- the width syncLip gave it
 	end)
+	-- (Pitch 2 F0, finish pass A) the finish: a raised block has the light on its wood edge (on the edge stroke, outside
+	-- the box), its face's lit top band and the card shadow (none under 30 px: a chip); an Off block (the Well face) is a
+	-- sunk well. opts.Finish = false: none. Repainting updates the same parts
+	if opts.Finish ~= false then
+		local faceColor = opts.Face or look.Face
+		local edgeColor = opts.Edge or look.Edge
+		local well = name == "Off" or sameColor(faceColor, SIGN.Well) or sameColor(faceColor, SIGN.PetWell)
+		SignKit.FinishBlock(obj, { Out = edgePx, Wood = sameColor(edgeColor, SIGN.Wood), Well = well, FaceColor = faceColor, EdgeColor = edgeColor })
+	end
 	return edge, lip
 end
 
@@ -594,6 +607,9 @@ function CloudUI.SignSwitch(parent, opts)
 	local kedge = stroke(knob, L.KnobEdge, L.Edge, 0)
 	kedge.Name = "SignEdge"
 	kedge.LineJoinMode = Enum.LineJoinMode.Miter
+	if opts.Finish == false then
+		sw:SetAttribute("NoFinish", true) -- (Pitch 2 F0) no sunk-well finish (the hatch stage's instance budget)
+	end
 	CloudUI.SetSignSwitch(sw, false)
 	return sw
 end
@@ -616,6 +632,10 @@ function CloudUI.SetSignSwitch(sw, on)
 	knob.Position = UDim2.fromOffset(on and math.max(L.Inset, w - k - L.Inset) or L.Inset, L.Inset)
 	knob.Size = UDim2.fromOffset(k, k)
 	sw:SetAttribute("On", on)
+	-- (Pitch 2 F0) the slot is a sunk well (its shade in the slot's colour of the moment)
+	if sw:GetAttribute("NoFinish") ~= true then
+		SignKit.Sunk(sw, { Face = sw.BackgroundColor3, Edge = edge and edge.Color or L.SlotEdge })
+	end
 end
 
 -- (LOOK-ui, kitb-look1: no gradient in a pixel screen) "more this way" at a sideways row's right edge: a small stone kit
@@ -787,14 +807,28 @@ local function signButton(props)
 		return button:GetAttribute("Disabled") == true or button.Active == false
 	end
 	-- no scale bounce (kit B): hover lightens the face a touch, a press sinks it onto its lip (the lip thins, the text drops)
-	local function paint()
+	-- (Pitch 2 F0) after one darker frame (Theme.Finish.PressDark for Theme.Finish.PressFrame s)
+	local paint
+	function paint()
 		local disabled = isDisabled()
 		local role = disabled and "Off" or (CloudUI.SignRole[state.Style] or "Stone")
 		local look = CloudUI.SignLooks[role]
 		local pressing = fx and fx.Pressing and not disabled
+		if pressing and not state.Pressed then
+			state.Dark = true
+			task.delay(Theme.Finish.PressFrame, function()
+				state.Dark = false
+				if button.Parent then
+					paint()
+				end
+			end)
+		end
+		state.Pressed = pressing
 		local face = look.Face
 		if fx and fx.Hovering and not disabled and not pressing then
 			face = Theme.Lighten(face, 0.06)
+		elseif pressing and state.Dark then
+			face = Theme.Darken(face, Theme.Finish.PressDark)
 		end
 		-- attribute Outline = true: the ink edge of the pitch's selected card (a shown-but-not-active team, say)
 		local edge = (not disabled and button:GetAttribute("Outline") == true) and SIGN.Text or nil
@@ -806,7 +840,7 @@ local function signButton(props)
 		local edgePx = tonumber(button:GetAttribute("EdgePx")) or SM.Edge
 		local lipPx = tonumber(button:GetAttribute("LipPx")) or SM.Lip
 		local pressLip = math.min(lipPx, SM.PressLip)
-		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, Text = ink, EdgePx = edgePx, LipPx = pressing and pressLip or lipPx })
+		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, Text = ink, EdgePx = edgePx, LipPx = pressing and pressLip or lipPx, Finish = props.Finish })
 		local pad = button:FindFirstChild("LipPad")
 		if pad then
 			pad.PaddingTop = UDim.new(0, pressing and (lipPx - pressLip) or 0)
@@ -1025,6 +1059,8 @@ local function signPanel(props)
 		stone.Size = UDim2.new(1, -2 * e, 1, -2 * e)
 		stoneLip.Size = UDim2.new(1, 0, 0, SignKit.Px(SignKit.Sizes.Lip, sc))
 	end)
+	-- (Pitch 2 F0, finish pass A) the frame's light, the window's shadow, the stone sunk under the frame with its carved rim
+	SignKit.FinishFrame(body, { Body = stone })
 	local content = frame("Content", {
 		Position = UDim2.new(0, PANEL_PAD, 0, topInset),
 		Size = UDim2.new(1, -2 * PANEL_PAD, 1, -(topInset + PANEL_PAD)),

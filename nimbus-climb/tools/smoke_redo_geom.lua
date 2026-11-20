@@ -184,7 +184,10 @@ function G.check(root, label, opts)
 		local cut = false
 		local cur = o
 		while cur and cur ~= root.Parent do
-			if skip[cur.Name] or skipped[cur] then
+			-- (Pitch 2 F0, finish pass A) the kit's hard drop shadow (a holder with attribute Finish = "Shadow", SignKit.Shadow)
+			-- is decoration down and right of its part: where a phone window fills the screen it runs off the edge and is
+			-- simply cut there, never content or a target, so the screen / text / target walk leaves it out
+			if skip[cur.Name] or skipped[cur] or cur:GetAttribute("Finish") == "Shadow" then
 				cut = true
 				break
 			end

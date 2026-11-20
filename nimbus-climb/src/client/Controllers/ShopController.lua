@@ -326,6 +326,9 @@ function H.edge(obj, px, color)
 		LineJoinMode = Enum.LineJoinMode.Miter,
 		Parent = obj,
 	})
+	-- (Pitch 2 F0, finish pass A) the kit's finish: the light on a wood edge and the face's lit top band (a tag on the
+	-- band or in a card casts no shadow: the mock-up's)
+	SignKit.FinishBlock(obj, { Out = px or 3, Wood = color == nil or color == SIGN.Wood, Shadow = false })
 	return s
 end
 
@@ -651,6 +654,7 @@ function H.build()
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, SignKit.Sizes.Lip),
 	})
+	SignKit.FinishFrame(panel, { Body = stone }) -- (Pitch 2 F0) the frame's light, the window's shadow, the carved body
 
 	-- the header: the navy plank, the egg on its gold square, "Shop", the two balances, the X
 	local header = frame("Header", holder)
@@ -663,6 +667,7 @@ function H.build()
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, 4),
 	})
+	SignKit.BandTop(U.Band) -- (Pitch 2 F0) the navy band's lit top line
 	U.Icon = label("Icon", header, "", "Display", 42, {
 		TextTruncate = Enum.TextTruncate.None, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text,
 	})
@@ -1869,6 +1874,7 @@ function ShopController.Open(args)
 		safe("focus", ShopEggs.Focus, U.EggsPage, focus)
 	end
 	if not wasOpen then
+		SignKit.Rise(U.Holder) -- (Pitch 2 F0, finish pass A) the kit's open: the window rises 12 px in 3 hard steps
 		H.shineOn()
 		local mine = S.Token
 		task.spawn(function()

@@ -2682,13 +2682,15 @@ function IndexController.Open(groupId)
 	relayout()
 	U.Holder.Visible = true
 	if not wasOpen then
-		U.Pop.Scale = 0.86
-		tween(U.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		U.Pop.Scale = 1
 	end
 	safe("select", selectGroup, target)
 	safe("refresh", refreshAll)
 	syncTouch()
 	syncHud()
+	if not wasOpen then
+		SignKit.Rise(U.Pop.Parent) -- (Pitch 2 F0) the kit's open: it rises 12 px in 3 hard steps (no scale bounce)
+	end
 	if not wasOpen then
 		IndexController.Opened:Fire(target)
 	end

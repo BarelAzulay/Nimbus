@@ -925,6 +925,7 @@ function H.buildDetail()
 		local edge = stroke(holder, SIGN.Wood, 2, 0)
 		edge.Name = "SignEdge"
 		edge.LineJoinMode = Enum.LineJoinMode.Miter
+		SignKit.FinishBlock(holder, { Out = 2, Shadow = false }) -- (Pitch 2 F0) the light on its edge, the lit top band
 		local chip = frame(holder, "Chip", { BackgroundTransparency = 0, BackgroundColor3 = look[2], ZIndex = 22 })
 		local icon = PixelIcon.Chip(chip, look[1], 18, Theme.TextOn(look[2]))
 		if icon then
@@ -946,6 +947,7 @@ function H.buildDetail()
 	local specialEdge = stroke(d.Special, SIGN.Wood, 2, 0)
 	specialEdge.Name = "SignEdge"
 	specialEdge.LineJoinMode = Enum.LineJoinMode.Miter
+	SignKit.FinishBlock(d.Special, { Out = 2, Shadow = false }) -- (Pitch 2 F0) the light on its edge, the lit top band
 	d.SpecialText = text(d.Special, "SpecialText", "", "Heading", 18, INK, {
 		Position = UDim2.fromOffset(8, 0),
 		Size = UDim2.new(1, -16, 1, 0),
@@ -2648,12 +2650,14 @@ function PetsController.Open(args)
 	end
 	U.Holder.Visible = true
 	if not wasOpen then
-		U.Pop.Scale = 0.86
-		Util.Tween(U.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		U.Pop.Scale = 1
 	end
 	H.syncBack()
 	H.settle()
 	H.refresh()
+	if not wasOpen then
+		SignKit.Rise(U.Pop.Parent) -- (Pitch 2 F0) the kit's open: it rises 12 px in 3 hard steps (no scale bounce)
+	end
 	if not wasOpen then
 		-- the training time ticks while the window is open
 		local mine = S.Token

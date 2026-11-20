@@ -450,6 +450,33 @@ function Theme.SignLipOf(face)
 	return Theme.Darken(face, 0.22)
 end
 
+-- (Pitch 2 item F0, the owner's pick A "Carved signboard", 2026-11-20) the kit's finish: ONE light from the top left on
+-- every part (Stardew Valley's menus: the whole UI reads as one carved object). Design px of a 1080p screen (SignKit puts
+-- them on whole screen px). SignKit.Bevel / Shadow / Carve / Shine / Sunk / Rise draw them; the finish never moves or
+-- resizes the part it finishes.
+Theme.Finish = {
+	Bevel = 3, -- a window frame's wood edge: WoodLight along its top and left, WoodDark along its bottom and right
+	Line = 1, -- a raised block's lit / shaded line on its wood edge; the carved line where a frame meets its body
+	Sink = 4, -- the stone body sunk under the frame: a StoneLip band along its top and left ...
+	RimLit = 2, -- ... and a lit Tile line down its right edge (its top edge's WellEdge hairline is Line px)
+	Shine = 2, -- a raised face's lit top band (a navy plate's NavyTop line) ...
+	ShineMix = 0.55, -- ... the face this far toward white
+	WellShade = 3, -- a sunk well (a slot, an Off block): its shaded top and left band ...
+	WellMix = 0.55, -- ... the face this far toward its edge
+	WellLitMix = 0.5, -- its lit bottom line (Line px): the face this far toward white
+	Card = 5, -- the diagonal hard shadow (no blur) under a raised card / block ...
+	Window = 8, -- ... and under a window
+	Step = 2, -- its lighter outer step, px; the darker near band is (offset - Step) px
+	Near = 0.569, -- the near band's ink transparency (the mock-up's two layers, 70 + 110 of 255, where they overlap)
+	Far = 0.725, -- the outer step's
+	SmallBlock = 30, -- a block under this many design px tall (a chip, a key cap) casts no shadow
+	Rise = 12, -- the open: the window rises this far ...
+	RiseSteps = 3, -- ... in this many hard steps ...
+	RiseStep = 0.05, -- ... this many seconds apart (no easing, no scale bounce)
+	PressDark = 0.12, -- a press: one frame this much darker ...
+	PressFrame = 0.05, -- ... for this long, then the face sinks onto its lip
+}
+
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
 -- largest token is small. U6 moved the literal radii of the files it swept to these (tools/check.mjs RADIUS_SWEPT,
 -- rule radius-literal); Theme.Corner(obj, "Round") is the pill / disc (half the short side).

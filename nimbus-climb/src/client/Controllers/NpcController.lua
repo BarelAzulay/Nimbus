@@ -1007,6 +1007,11 @@ local function buildDialog()
 	-- px wide on every side at any card scale (it drew 4.8 / 4.2 px, one side crisp and the other soft)
 	UI.Card = crispBox(card)
 	crispBox(stone)
+	-- (Pitch 2 F0, finish pass A) the frame's light, the card's shadow, the stone sunk under the frame with its carved rim
+	local SK = optionalShared("SignKit")
+	if SK and SK.FinishFrame then
+		SK.FinishFrame(card, { Body = stone })
+	end
 
 	-- portrait: a sky well in a wood edge, the NPC's accent colour on its lip, a little pixel cloud in its corner
 	local portrait = box("Portrait", {

@@ -2382,6 +2382,7 @@ function Credits.head(parent, L)
 		Rim = C.RIM,
 		RimColor = S.WoodDark,
 		Color = S.Navy,
+		Finish = false, -- (Pitch 2 F0) the approved Credits look keeps its own finish (tools/fixtures/credits_tree_u1.txt)
 		ZIndex = 3,
 	})
 	-- (kit-b gate U9 round 3: it drew the old rounded neon red button) the kit's one close block, as every kit B window's
@@ -2390,6 +2391,7 @@ function Credits.head(parent, L)
 		Text = "",
 		Style = "Red",
 		Skin = "Sign",
+		Finish = false, -- (Pitch 2 F0) the approved Credits window keeps its tree
 		TextSize = 24,
 		Size = UDim2.fromOffset(closeSize, closeSize),
 		AnchorPoint = Vector2.new(1, 0.5),
@@ -2613,13 +2615,14 @@ function Credits.build(holder, stacked)
 	}, sign)
 	Credits.roof(sign)
 	Credits.head(sign, L)
-	local wood = SignKit.Frame(sign, { Y = L.WoodY, Height = L.WoodH, Color = S.Wood, ZIndex = 3 })
-	-- the cream body has no stone lip (the approved look); its inner line instead
+	local wood = SignKit.Frame(sign, { Y = L.WoodY, Height = L.WoodH, Color = S.Wood, ZIndex = 3, Finish = false })
+	-- the cream body has no stone lip (the approved look); its inner line instead (no kit finish: Pitch 2 F0)
 	local body = SignKit.Body(wood, {
 		Inset = C.WOOD,
 		Color = S.Cream,
 		Lip = 0,
 		Line = { Inset = C.LINE, Thickness = C.LINE_T, Color = S.CreamLine },
+		Finish = false,
 	})
 	Credits.polaroid(body, L, texts)
 	Credits.column(body, L, texts)

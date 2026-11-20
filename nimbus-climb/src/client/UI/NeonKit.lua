@@ -231,6 +231,9 @@ end
 -- SetFill(face) / SetFace(face) repaint the face
 local SIGN = Theme.Sign
 local SIGN_CARD_LIP = 5
+local function sameSign(a, b)
+	return typeof(a) == "Color3" and typeof(b) == "Color3" and math.abs(a.R - b.R) < 0.004 and math.abs(a.G - b.G) < 0.004 and math.abs(a.B - b.B) < 0.004
+end
 local function signCard(props)
 	local class = (props.Class == "TextButton") and "TextButton" or "Frame"
 	local z = props.ZIndex or 1
@@ -281,9 +284,21 @@ local function signCard(props)
 	-- a whole-card body clips at the card (the Shop's hero card), as it always did
 	root.ClipsDescendants = clip and overLip
 	local card = { Root = root, Body = body, Stroke = edge, Glow = glow, GlowStroke = glowStroke, Lip = lip, Color = color, Skin = "Sign", Selected = false }
+	local edgePx = tonumber(props.Stroke) or 3
+	-- (Pitch 2 F0, finish pass A) the kit's finish on the card: the light on its wood edge, its face's lit top band and the
+	-- card shadow; a card in the Well face (a claimed day, a locked slot) is a sunk well. props.Finish = false: none
+	local function finish()
+		if props.Finish == false then
+			return
+		end
+		local now = root.BackgroundColor3
+		local well = sameSign(now, SIGN.Well) or sameSign(now, SIGN.PetWell)
+		SignKit.FinishBlock(root, { Out = edgePx, Wood = sameSign(edge.Color, SIGN.Wood), Well = well, FaceColor = now, EdgeColor = edge.Color })
+	end
 	local function paint()
 		root.BackgroundColor3 = card.Selected and SIGN.Selected or face
 		edge.Color = card.Selected and SIGN.Text or edgeColor
+		finish()
 	end
 	function card.SetColor(newColor)
 		card.Color = colorOf(newColor, card.Color)
@@ -298,6 +313,7 @@ local function signCard(props)
 		if typeof(newFace) == "Color3" then
 			face = newFace
 			root.BackgroundColor3 = card.Selected and SIGN.Selected or face
+			finish()
 		end
 	end
 	function card.SetFace(newFace)
@@ -661,6 +677,8 @@ local function signTile(props, s, hasLabel)
 		if label then
 			label.TextColor3 = ink
 		end
+		-- (Pitch 2 F0, finish pass A) the kit's finish: lit wood edge, lit top band, the card shadow; Grey is a sunk well
+		SignKit.FinishBlock(root, { Out = 3, Well = look == "Grey", FaceColor = face, EdgeColor = Sign.WellEdge })
 	end
 	function card.SetColor(c)
 		tile.SetColor(c)

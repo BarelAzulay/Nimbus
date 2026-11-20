@@ -1097,13 +1097,15 @@ function openWindow(id, args)
 	P5.vitalsFor(win, true) -- after the currency step: the HUD re-lays out then
 	win.Holder.Visible = true
 	if not wasShown then
-		win.Pop.Scale = 0.86
-		tween(win.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		win.Pop.Scale = 1
 	end
 	if win.OnOpen then
 		safe("open " .. id, win.OnOpen, args)
 	end
 	refreshWindow(win)
+	if not wasShown then
+		SignKit.Rise(win.Pop.Parent) -- (Pitch 2 F0) the kit's open: it rises 12 px in 3 hard steps (no scale bounce)
+	end
 	updateMenuActive()
 	if not wasShown then
 		MenuController.WindowOpened:Fire(id)

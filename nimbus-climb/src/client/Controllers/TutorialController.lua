@@ -1515,6 +1515,11 @@ local function buildPanel()
 	-- (U9-9 look 2) the card and the stone in it on whole px on all four sides: the wood frame a whole px wide everywhere
 	crispBox(card)
 	crispBox(stone)
+	-- (Pitch 2 F0, finish pass A) the frame's light, the card's shadow, the stone sunk under the frame with its carved rim
+	local SK = mod("SignKit")
+	if SK and SK.FinishFrame then
+		SK.FinishFrame(card, { Body = stone })
+	end
 
 	-- header: the name plank, step title, block row, counter tag, fold block (kit B U9-9: brown on the stone body)
 	local header = box("Header", { Size = UDim2.new(1, 0, 0, K.HEADER_H), ZIndex = 5 }, main)

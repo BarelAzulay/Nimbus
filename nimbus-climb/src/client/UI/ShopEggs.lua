@@ -354,10 +354,13 @@ end
 ----------------------------------------------------------------------
 -- (kit-b U9-2) a square wood edge (mitred) on a kit B tag
 function H.edge(obj, px)
-	return Util.Create("UIStroke", {
+	local s = Util.Create("UIStroke", {
 		Name = "SignEdge", Color = SIGN.Wood, Thickness = px or 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		LineJoinMode = Enum.LineJoinMode.Miter, Parent = obj,
 	})
+	-- (Pitch 2 F0, finish pass A) the light on the wood edge and the tag's lit top band (no shadow on a tag in a card)
+	SignKit.FinishBlock(obj, { Out = px or 3, Shadow = false })
+	return s
 end
 
 function H.part(m, parent, box, name

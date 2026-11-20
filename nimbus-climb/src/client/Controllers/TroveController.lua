@@ -365,6 +365,7 @@ local function build(mode)
 	stone:SetAttribute("SignKit", "Body")
 	lip(stone, SIGN.StoneLip, SignKit.Sizes.Lip)
 	place(stone, F, F, M.W - 2 * F, M.H - 2 * F)
+	SignKit.FinishFrame(panel, { Body = stone }) -- (Pitch 2 F0) the frame's light, the window's shadow, the carved body
 	-- (U9-4 look review) the header as the Stats / My Home side panels build theirs (SignKit.Header, Ribbon): the wood rim,
 	-- the navy plate as the title's band with its piping the whole header wide (inside the rim: the dock rule below), the
 	-- pixel chest on the gold icon square in its 2 px ink edge, SKY TROVE with its stair, the red close on the plate

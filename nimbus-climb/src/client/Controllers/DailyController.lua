@@ -1160,6 +1160,7 @@ function H.ensureWindow()
 		Name = "Lip", BackgroundColor3 = SIGN.StoneLip, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
 		Size = UDim2.new(1, 0, 0, SignKit.Sizes.Lip), ZIndex = 3, Parent = stone,
 	})
+	SignKit.FinishFrame(win, { Body = stone }) -- (Pitch 2 F0) the frame's light, the window's shadow, the carved body
 	-- the navy header plank with its darker lip inside the wood frame (the Shop's header): the gift on its gold square,
 	-- "Gifts" as the window's ribbon title, the tabs and the close sit on it
 	local bar = Util.Create("Frame", { Name = "TitleBar", BackgroundColor3 = SIGN.Navy, BorderSizePixel = 0, ZIndex = 5, Parent = win })
@@ -1167,6 +1168,7 @@ function H.ensureWindow()
 		Name = "Lip", BackgroundColor3 = SIGN.NavyLip, BorderSizePixel = 0, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1),
 		Size = UDim2.new(1, 0, 0, 4), ZIndex = 5, Parent = bar,
 	})
+	SignKit.BandTop(bar) -- (Pitch 2 F0) the navy band's lit top line
 	U.Bar = bar
 	U.GiftsIcon = label("GiftsIcon", "", "Display", 32, bar, {
 		TextTruncate = Enum.TextTruncate.None, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Gold, TextColor3 = SIGN.Text, ZIndex = 6,
@@ -2532,8 +2534,9 @@ function DailyController.Open(args)
 	end
 	H.syncBack()
 	if not wasOpen then
-		U.Pop.Scale = K.OPEN_FROM
-		Util.Tween(U.Pop, K.OPEN_TIME, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		-- (Pitch 2 F0, finish pass A) the kit's open: the window rises 12 px in 3 hard steps (no scale bounce)
+		U.Pop.Scale = 1
+		SignKit.Rise(U.Window)
 		local menu = controller("MenuController")
 		if menu and menu.WindowOpened then
 			menu.WindowOpened:Fire("Daily")

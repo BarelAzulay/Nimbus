@@ -804,9 +804,11 @@ function HatchLook.Plinth(box, rarity, phone, opts)
 	-- (kept at 1: the plinth rises and fades in with the egg, never a scale: its pixel edges stay whole)
 	self.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = box })
 	self.Foot = frame(box, "Foot", { BackgroundTransparency = 0, ZIndex = z })
-	CloudUI.SignBlock(self.Foot, "Stone", { Face = P.FootFace, LipColor = P.FootLip, Edge = P.Edge, EdgePx = 2, LipPx = 2, Pad = false })
+	-- (Pitch 2 F0) the hatch stage keeps its approved roll look and its instance budget (smoke_roll_look: the plinth is 8
+	-- instances, x3 <= 750 a frame): every kit block of the stage is painted with Finish = false (no finish pass parts)
+	CloudUI.SignBlock(self.Foot, "Stone", { Face = P.FootFace, LipColor = P.FootLip, Edge = P.Edge, EdgePx = 2, LipPx = 2, Pad = false, Finish = false })
 	self.Slab = frame(box, "Slab", { BackgroundTransparency = 0, ZIndex = z + 1 })
-	CloudUI.SignBlock(self.Slab, "Stone", { Face = P.Face, LipColor = P.Neutral, Edge = P.Edge, EdgePx = 2, LipPx = 2, Pad = false })
+	CloudUI.SignBlock(self.Slab, "Stone", { Face = P.Face, LipColor = P.Neutral, Edge = P.Edge, EdgePx = 2, LipPx = 2, Pad = false, Finish = false })
 	self.Slab.Lip.ZIndex = z + 2
 	local shine = frame(self.Slab, "Shine", { BackgroundTransparency = 0, BackgroundColor3 = P.Shine, ZIndex = z + 2 })
 	self.Parts = {
@@ -1119,7 +1121,7 @@ local function paintPill(btn)
 	local p = HatchLook.PillParts(btn)
 	local off = btn:GetAttribute("Disabled") == true
 	local role = off and "Off" or (P.Look[btn:GetAttribute("Kind")] or "Stone")
-	CloudUI.SignBlock(p.Body, role, { EdgePx = P.Edge, LipPx = pressed(btn) and P.PressLip or P.Lip, Pad = false })
+	CloudUI.SignBlock(p.Body, role, { EdgePx = P.Edge, LipPx = pressed(btn) and P.PressLip or P.Lip, Pad = false, Finish = false })
 	p.Label.TextColor3 = CloudUI.SignLooks[role].Text
 	if p.Price then
 		p.Price.TextColor3 = CloudUI.SignLooks[role].Text
@@ -1260,7 +1262,7 @@ function HatchLook.Chip(parent, opts)
 		Name = opts.Name or "Chip", Text = "", AutoButtonColor = false, Active = true, BorderSizePixel = 0, BackgroundTransparency = 1, ZIndex = z, Parent = parent,
 	})
 	local pill = frame(btn, "Pill", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 0, ZIndex = z })
-	CloudUI.SignBlock(pill, "Navy", { EdgePx = C.Edge, LipPx = C.Lip, Pad = false })
+	CloudUI.SignBlock(pill, "Navy", { EdgePx = C.Edge, LipPx = C.Lip, Pad = false, Finish = false })
 	local label = Theme.Label(opts.Text or "", "Label", { Size = opts.TextSize or 18, Stroke = 1 })
 	label.Name = "Label"
 	label.TextColor3 = C.Ink
@@ -1279,7 +1281,7 @@ function HatchLook.FastChip(parent, opts)
 	local z = opts.ZIndex or 1
 	local btn = HatchLook.Chip(parent, { Name = opts.Name or "FastHatch", Text = "Fast hatch", TextSize = opts.TextSize, Phone = opts.Phone, ZIndex = z })
 	local pill = btn:FindFirstChild("Pill")
-	CloudUI.SignSwitch(pill, { ZIndex = z + 1 })
+	CloudUI.SignSwitch(pill, { ZIndex = z + 1, Finish = false })
 	HatchLook.SizeChip(btn, opts.TextSize or 18, opts.Phone)
 	HatchLook.SetFast(btn, false)
 	return btn
@@ -1336,7 +1338,7 @@ function HatchLook.Tag(parent, name, text, look, opts)
 	local T = HatchLook.TAG
 	local z = opts.ZIndex or 6
 	local tag = frame(parent, name, { BackgroundTransparency = 0, ZIndex = z, Visible = opts.Visible ~= false })
-	CloudUI.SignBlock(tag, look, { EdgePx = T.Edge, LipPx = T.Lip, Pad = false })
+	CloudUI.SignBlock(tag, look, { EdgePx = T.Edge, LipPx = T.Lip, Pad = false, Finish = false })
 	local words = Theme.Label(text, "Tag", { Size = opts.TextSize or 15 })
 	words.Name = "Text"
 	words.Size = UDim2.new(1, 0, 1, -T.Lip)

@@ -6942,6 +6942,273 @@ local function clientScenarios()
 		LKC.flushErrors("kitb_whole_pixels")
 	end)
 
+	-- (Pitch 2 item F0, the owner's pick A "Carved signboard"; plan Task 1) the kit's finish: ONE light from the top left on
+	-- every part. A window's wood frame is lit WoodLight on its top and left and shaded WoodDark on its bottom and right
+	-- (Theme.Finish.Bevel px) and casts the window's two-step diagonal hard shadow (Finish.Window px: a darker near band, a
+	-- lighter outer step, no blur); its stone body sits sunk under it with a carved rim (a StoneLip band Finish.Sink px
+	-- along its top and left, the WellEdge hairline, a lit Tile line down its right edge, the carved line where frame and
+	-- body meet); a raised block's wood edge has a lit / shaded line (Finish.Line px), its face a lit top band (Finish.Shine
+	-- px) and it casts the card shadow (Finish.Card px); a slot / an Off block is a sunk well (no shadow); a press shows one
+	-- darker frame before it sinks; a window opens by rising Finish.Rise px in Finish.RiseSteps hard steps. The finish never
+	-- moves or resizes the part it finishes (the windows' layouts and fits stay). Then the walk: in the Shop, the Gifts
+	-- window, the Pets window and the Index at 1920x1080 every SignKit Frame wears the bevel and the shadow, every Body the
+	-- carved rim, every raised wood-edged kit block (30 px or taller) the shine
+	S.finish_pass_kit = guarded("finish_pass_kit", function()
+		local Theme, SK, CloudUI = LoadingH.shared("Theme"), LoadingH.shared("SignKit"), U7.client("UI/CloudUI")
+		if not T.check(Theme and SK and CloudUI and type(Theme.Finish) == "table" and type(SK.Rise) == "function",
+			"finish pass: Theme.Finish, SignKit (with SignKit.Rise) and CloudUI load") then
+			return
+		end
+		local F, Sg = Theme.Finish, Theme.Sign
+		T.check(F.Bevel == 3 and F.Line == 1 and F.Sink == 4 and F.Shine == 2 and F.Card == 5 and F.Window == 8 and F.Step == 2
+			and F.Rise == 12 and F.RiseSteps == 3, "finish pass: the tokens (bevel 3, line 1, sink 4, shine 2, card 5, window 8, step 2, rise 12 in 3)")
+		local pg = U8.pg()
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "FinishPassProbe"
+		gui.Parent = pg
+		local function px(o, axis)
+			return o and (axis == "X" and o.Size.X.Offset or o.Size.Y.Offset) or -1
+		end
+		local function shown(o)
+			return o ~= nil and o.Visible ~= false
+		end
+		-- the light lines of a bevel holder: lit (top / left) and dark (bottom / right) `t` px thick
+		local function bevelOk(holder, t, sides)
+			if not (holder and holder:GetAttribute("Finish") == "Bevel" and shown(holder)) then
+				return false, "no FinishBevel"
+			end
+			for _, s in ipairs(sides or { "LitT", "LitL", "DarkB", "DarkR" }) do
+				local l = holder:FindFirstChild(s)
+				local want = s:sub(1, 3) == "Lit" and Sg.WoodLight or Sg.WoodDark
+				local thick = (s == "LitT" or s == "DarkB") and px(l, "Y") or px(l, "X")
+				if not (l and sameColor(l.BackgroundColor3, want) and l.BackgroundTransparency == 0 and thick == t) then
+					return false, s .. " " .. (l and (hex(l.BackgroundColor3) .. " " .. tostring(thick)) or "missing")
+				end
+			end
+			return true, ""
+		end
+		local function shadowOk(holder, off)
+			if not (holder and holder:GetAttribute("Finish") == "Shadow" and shown(holder)) then
+				return false, "no FinishShadow"
+			end
+			local nr, nb, fr, fb = holder:FindFirstChild("NearR"), holder:FindFirstChild("NearB"), holder:FindFirstChild("FarR"), holder:FindFirstChild("FarB")
+			if not (nr and nb and fr and fb) then
+				return false, "a step is missing"
+			end
+			local near = off - F.Step
+			local ok = sameColor(nr.BackgroundColor3, Sg.Text) and sameColor(fr.BackgroundColor3, Sg.Text)
+				and nr.BackgroundTransparency < fr.BackgroundTransparency and fr.BackgroundTransparency < 1
+				and px(fr, "X") == off and px(fb, "Y") == off and px(nr, "X") == near and px(nb, "Y") == near
+				and fr.Position.X.Scale == 1 and fb.Position.Y.Scale == 1 and fr.Position.Y.Offset == off and nr.Position.Y.Offset == near
+			return ok, fmt("far %d x %d @%.2f, near %d @%.2f", px(fr, "X"), px(fb, "Y"), fr.BackgroundTransparency, px(nr, "X"), nr.BackgroundTransparency)
+		end
+
+		-- the window frame and its body (SignKit.Frame / SignKit.Body)
+		local win = Instance.new("Frame")
+		win.Size = UDim2.fromOffset(600, 400)
+		win.Parent = gui
+		local head, plate = SK.Header(win, { Title = "PETS", Height = 64 })
+		local wood = SK.Frame(win, { Y = 64, Height = 300 })
+		local body = SK.Body(wood)
+		local ok, why = bevelOk(wood:FindFirstChild("FinishBevel"), F.Bevel)
+		T.check(ok, "finish pass frame: the wood frame is lit WoodLight top / left and shaded WoodDark bottom / right, 3 px", why)
+		ok, why = shadowOk(wood:FindFirstChild("FinishShadow"), F.Window)
+		T.check(ok, "finish pass frame: the window's two-step diagonal hard shadow (8 px, the near band darker)", why)
+		T.check(wood.Size == UDim2.new(1, 0, 0, 300) and wood.Position == UDim2.fromOffset(0, 64) and body.Position == UDim2.fromOffset(SK.Sizes.Frame, SK.Sizes.Frame),
+			"finish pass frame: the finish moves and resizes nothing (frame and body where they were)", tostring(wood.Size) .. " " .. tostring(body.Position))
+		local carve = body:FindFirstChild("FinishCarve")
+		local sinkT, sinkL, rimT, litR = carve and carve:FindFirstChild("SinkT"), carve and carve:FindFirstChild("SinkL"), carve and carve:FindFirstChild("RimT"), carve and carve:FindFirstChild("LitR")
+		local lineT, lineB = carve and carve:FindFirstChild("LineT"), carve and carve:FindFirstChild("LineB")
+		T.check(carve and carve:GetAttribute("Finish") == "Carve" and sinkT and sinkL and sameColor(sinkT.BackgroundColor3, Sg.StoneLip) and px(sinkT, "Y") == F.Sink and px(sinkL, "X") == F.Sink,
+			"finish pass body: the stone sits sunk 4 px under the frame (a StoneLip band along its top and left)", carve and (tostring(px(sinkT, "Y")) .. " " .. tostring(px(sinkL, "X"))) or "no FinishCarve")
+		T.check(rimT and sameColor(rimT.BackgroundColor3, Sg.WellEdge) and px(rimT, "Y") == F.Line and litR and sameColor(litR.BackgroundColor3, Sg.Tile) and px(litR, "X") == F.RimLit,
+			"finish pass body: the carved rim (the WellEdge hairline, the lit Tile line down the right edge)")
+		T.check(lineT and lineB and sameColor(lineT.BackgroundColor3, Sg.WoodDark) and sameColor(lineB.BackgroundColor3, Sg.WoodLight) and px(lineT, "Y") == F.Line,
+			"finish pass body: the carved line where the frame meets the body (dark above and left, lit below and right)")
+		ok, why = bevelOk(head and head:FindFirstChild("FinishBevel"), F.Bevel, { "LitT", "LitL", "DarkR" })
+		T.check(ok and head.FinishBevel:FindFirstChild("DarkB") == nil, "finish pass header: the header's wood rim carries the frame's light (lit top / left, shaded right)", why)
+		local top = plate and plate:FindFirstChild("FinishTop")
+		T.check(top and sameColor(top.BackgroundColor3, Sg.NavyTop) and px(top, "Y") == F.Shine, "finish pass header: the navy plate's lit top line (NavyTop, 2 px)")
+		-- the awning: striped, a scalloped valance hanging over the frame's rim, a wood bracket at each end; its box unchanged
+		local roof = SK.Roof(win, { Width = 360, Y = -10 })
+		local trim = roof:FindFirstChild("FinishTrim")
+		local stripes, tabs = 0, 0
+		for _, c in ipairs(trim and trim:GetChildren() or {}) do
+			if c.Name:match("^Stripe%d+$") and sameColor(c.BackgroundColor3, Sg.Stone) then
+				stripes = stripes + 1
+			elseif c.Name:match("^Tab%d+$") then
+				tabs = tabs + 1
+			end
+		end
+		local tab1 = trim and trim:FindFirstChild("Tab1")
+		T.check(trim and trim:GetAttribute("Finish") == "Awning" and stripes >= 6 and tabs >= 14 and trim:FindFirstChild("BracketL") and trim:FindFirstChild("BracketR")
+			and tab1 and tab1.Position.Y.Offset + tab1.Size.Y.Offset > roof.Size.Y.Offset and roof.Size == UDim2.fromOffset(360, SK.Sizes.RoofH) and roof.Position == UDim2.new(0.5, 0, 0, -10),
+			"finish pass awning: cream stripes, a scalloped valance over the rim, two wood brackets; the roof's box unchanged", fmt("%d stripes, %d tabs", stripes, tabs))
+
+		-- a plank (SignKit.Plank): the raised block
+		local plank = SK.Plank(win, { Text = "Claim!", Style = "Grass", Width = 200, Height = 56 })
+		local block = plank:FindFirstChild("Block")
+		local face = block and block:FindFirstChild("Face")
+		ok, why = bevelOk(block and block:FindFirstChild("FinishBevel"), F.Line)
+		T.check(ok, "finish pass plank: its wood edge has the 1 px lit / shaded line", why)
+		local shine = face and face:FindFirstChild("FinishShine")
+		T.check(shine and px(shine, "Y") == F.Shine and sameColor(shine.BackgroundColor3, Theme.Mix(Sg.Grass, Color3.new(1, 1, 1), F.ShineMix)),
+			"finish pass plank: the face's lit top band (2 px, the face toward white)", shine and hex(shine.BackgroundColor3) or "none")
+		ok, why = shadowOk(plank:FindFirstChild("FinishShadow"), F.Card)
+		T.check(ok, "finish pass plank: the card shadow (5 px, two steps)", why)
+		local rest = face and face.BackgroundColor3
+		Mock.FireSignal(plank, "MouseButton1Down")
+		local pressed = face and face.BackgroundColor3
+		T.check(rest and pressed and not sameColor(pressed, rest) and (pressed.R + pressed.G + pressed.B) < (rest.R + rest.G + rest.B) and block.Position.Y.Offset == SK.Sizes.Sink,
+			"finish pass press: a press shows one darker frame and sinks the plank", (pressed and hex(pressed) or "?") .. " vs " .. (rest and hex(rest) or "?"))
+		LKC.advance(0.2)
+		T.check(face and sameColor(face.BackgroundColor3, rest) and block.Position.Y.Offset == SK.Sizes.Sink, "finish pass press: ...one frame only: the face is back while it stays sunk",
+			face and hex(face.BackgroundColor3) or "?")
+		Mock.FireSignal(plank, "MouseButton1Up")
+		local off = SK.Plank(win, { Text = "Locked", Style = "Off", Width = 200 })
+		local offFace = off:FindFirstChild("Block") and off.Block:FindFirstChild("Face")
+		local sunk = offFace and offFace:FindFirstChild("FinishSunk")
+		T.check(sunk and sunk:FindFirstChild("ShadeT") and px(sunk.ShadeT, "Y") == F.WellShade and not shown(off:FindFirstChild("FinishShadow")),
+			"finish pass well: an Off plank is a sunk well (the shaded top band) with no shadow")
+		local notice = SK.Notice(win, { Text = "A tip", Width = 300 })
+		T.check(shadowOk(notice:FindFirstChild("FinishShadow"), F.Card) and bevelOk(notice:FindFirstChild("FinishBevel"), F.Line), "finish pass notice: a notice card is lit and casts the card shadow")
+
+		-- CloudUI.SignBlock (the kit block every window paints in place): the light on its wood edge (outside the box, on the
+		-- edge stroke), the shine, the card shadow; once, however often it repaints
+		local card = Instance.new("TextButton")
+		card.Size = UDim2.fromOffset(160, 50)
+		card.Parent = win
+		CloudUI.SignBlock(card, "Stone")
+		CloudUI.SignBlock(card, "Stone")
+		local edge = card:FindFirstChild("SignEdge")
+		local bev = card:FindFirstChild("FinishBevel")
+		ok, why = bevelOk(bev, F.Line)
+		T.check(ok and edge and bev.Position.X.Offset == -edge.Thickness and bev.Size.X.Offset == 2 * edge.Thickness,
+			"finish pass block: a kit block's wood edge has the lit / shaded line on the edge stroke (outside the box)", why .. (bev and (" @" .. tostring(bev.Position)) or ""))
+		local nShadow = 0
+		for _, c in ipairs(card:GetChildren()) do
+			if c.Name == "FinishShadow" then
+				nShadow = nShadow + 1
+			end
+		end
+		ok, why = shadowOk(card:FindFirstChild("FinishShadow"), F.Card)
+		T.check(ok and nShadow == 1 and card:FindFirstChild("FinishShine"), "finish pass block: one shine and one card shadow, however often it repaints", why .. " x" .. nShadow)
+		local well = Instance.new("Frame")
+		well.Size = UDim2.fromOffset(160, 50)
+		well.Parent = win
+		CloudUI.SignBlock(well, "Stone")
+		CloudUI.SignBlock(well, "Off")
+		T.check(well:FindFirstChild("FinishSunk") and not shown(well:FindFirstChild("FinishShadow")) and not shown(well:FindFirstChild("FinishShine")),
+			"finish pass block: repainted Off it is a sunk well (no shadow, no shine)")
+		local chip = Instance.new("Frame")
+		chip.Size = UDim2.fromOffset(60, 22)
+		chip.Parent = win
+		CloudUI.SignBlock(chip, "Selected")
+		T.check(not shown(chip:FindFirstChild("FinishShadow")), "finish pass block: a chip under 30 px casts no shadow")
+		local inked = Instance.new("Frame")
+		inked.Size = UDim2.fromOffset(160, 50)
+		inked.Parent = win
+		CloudUI.SignBlock(inked, "Stone", { Edge = Sg.Text })
+		T.check(not shown(inked:FindFirstChild("FinishBevel")), "finish pass block: an ink edge takes no wood light")
+		-- a Sign button: one darker frame on the press
+		local claim = CloudUI.Button({ Text = "Claim!", Style = "Green", Skin = "Sign", Size = UDim2.fromOffset(200, 56), Parent = win })
+		local up = claim.BackgroundColor3
+		Mock.FireSignal(claim, "MouseButton1Down")
+		local down = claim.BackgroundColor3
+		T.check((down.R + down.G + down.B) < (up.R + up.G + up.B) - 0.02, "finish pass press: a Sign button shows one darker frame on the press", hex(down) .. " vs " .. hex(up))
+		LKC.advance(0.2)
+		T.check(sameColor(claim.BackgroundColor3, up), "finish pass press: ...then its face again (sunk on its lip)", hex(claim.BackgroundColor3))
+		Mock.FireSignal(claim, "MouseButton1Up")
+
+		-- a Signboard window (CloudUI.Panel): its frame and body
+		local panel = CloudUI.Panel({ Skin = "Signboard", Title = "Pets", Size = UDim2.fromOffset(700, 500), Parent = gui })
+		ok, why = bevelOk(panel.Body:FindFirstChild("FinishBevel"), F.Bevel)
+		local ok2, why2 = shadowOk(panel.Body:FindFirstChild("FinishShadow"), F.Window)
+		T.check(ok and ok2 and panel.Body:FindFirstChild("Stone") and panel.Body.Stone:FindFirstChild("FinishCarve"),
+			"finish pass panel: a Signboard window's frame is lit, casts the window shadow, its stone carved", why .. " / " .. why2)
+
+		-- the open: the window rises 12 px in 3 hard steps
+		local riser = Instance.new("Frame")
+		riser.Position = UDim2.new(0.5, 10, 0.5, 20)
+		riser.Parent = gui
+		SK.Rise(riser)
+		local seen, t = { riser.Position.Y.Offset }, 0
+		while t < 0.6 do -- every distinct place it shows, frame by frame
+			LKC.advance(0.01)
+			t = t + 0.01
+			if riser.Position.Y.Offset ~= seen[#seen] then
+				seen[#seen + 1] = riser.Position.Y.Offset
+			end
+		end
+		T.check(#seen == 4 and seen[1] == 32 and seen[2] == 28 and seen[3] == 24 and seen[4] == 20 and riser.Position == UDim2.new(0.5, 10, 0.5, 20),
+			"finish pass open: the window rises 12 px in 3 hard steps to where it was", table.concat(seen, " > "))
+		SK.Rise(riser)
+		riser.Position = UDim2.new(0.5, 10, 0.5, 50) -- a layout moves it mid-rise: the layout wins
+		LKC.advance(0.3)
+		T.check(riser.Position == UDim2.new(0.5, 10, 0.5, 50), "finish pass open: a layout that moves the window mid-rise wins", tostring(riser.Position))
+		gui:Destroy()
+
+		-- the walk: the four windows of the mock-ups
+		local Shop, Daily, PC, Menu = U7.client("Controllers/ShopController"), U7.client("Controllers/DailyController"), U7.client("Controllers/PetsController"), U7.client("Controllers/MenuController")
+		if not T.check(Shop and Daily and PC and Menu, "finish pass walk: the windows load") then
+			return
+		end
+		U8.at(1920, 1080, false, "finish pass", function(tag)
+			local frames, bodies, blocks, bad = 0, 0, 0, {}
+			local function walk(root, family)
+				for _, d in ipairs(root and root:GetDescendants() or {}) do
+					if d:IsA("GuiObject") and U8.shown(d) then
+						local kind = d:GetAttribute("SignKit")
+						if kind == "Frame" then
+							frames = frames + 1
+							local b1, w1 = bevelOk(d:FindFirstChild("FinishBevel"), F.Bevel)
+							local s1, w2 = shadowOk(d:FindFirstChild("FinishShadow"), F.Window)
+							if not (b1 and s1) then
+								bad[#bad + 1] = family .. ": " .. d.Name .. " (" .. w1 .. " / " .. w2 .. ")"
+							end
+						elseif kind == "Body" then
+							bodies = bodies + 1
+							if not d:FindFirstChild("FinishCarve") then
+								bad[#bad + 1] = family .. ": " .. d.Name .. " has no carved rim"
+							end
+						end
+						local e = d:FindFirstChild("SignEdge")
+						if e and e:IsA("UIStroke") and sameColor(e.Color, Sg.Wood) and d.BackgroundTransparency == 0 and d.Size.Y.Scale == 0 and d.Size.Y.Offset >= 30
+							and d:GetAttribute("SignLook") ~= "Off" and not sameColor(d.BackgroundColor3, Sg.Well) then
+							blocks = blocks + 1
+							if not shown(d:FindFirstChild("FinishShine")) then
+								bad[#bad + 1] = family .. ": " .. d.Name .. " has no shine"
+							end
+						end
+					end
+				end
+			end
+			Shop.Open({ Tab = "Eggs" })
+			LKC.advance(1)
+			walk(pg:FindFirstChild("NimbusShop"), "Shop")
+			pcall(Shop.Close)
+			LKC.advance(0.4)
+			pcall(Daily.Open)
+			LKC.advance(1)
+			walk(pg:FindFirstChild("NimbusDaily"), "Gifts")
+			pcall(Daily.Close)
+			LKC.advance(0.4)
+			PC.Open({ Key = U8.KEYS[4] })
+			LKC.advance(1)
+			walk(pg:FindFirstChild("NimbusPets"), "Pets")
+			PC.Close(true)
+			LKC.advance(0.4)
+			Menu.Open("Index")
+			LKC.advance(1)
+			walk(pg:FindFirstChild("NimbusIndex"), "Index")
+			pcall(Menu.Close)
+			LKC.advance(0.4)
+			T.check(frames >= 4 and bodies >= 4 and blocks >= 10, tag .. ": the walk met the windows' frames, bodies and blocks", fmt("%d frames, %d bodies, %d blocks", frames, bodies, blocks))
+			T.check(#bad == 0, fmt("%s: every frame lit and shadowed, every body carved, every raised block shined (%d off)", tag, #bad), table.concat(bad, "; ", 1, math.min(#bad, 40)))
+		end)
+		LKC.flushErrors("finish_pass_kit")
+	end)
+
 	-- (U9-5) the Care family fits a phone: at 844x390 and 390x844 (touch) every view of the family (U9.FAMILY) shows, and in
 	-- it every shown text and button is whole on the screen, never cut by a clipping frame above it (a ScrollingFrame's
 	-- rows scroll, so they are left out), every one-line text fits its box at FredokaOne's / LuckiestGuy's real widths
