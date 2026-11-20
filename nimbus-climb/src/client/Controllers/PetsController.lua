@@ -113,6 +113,11 @@ local K = {
 	PHONE_TITLE = { 140, 134, 42 }, -- a phone's title sign: portrait width, landscape width, height (LOOK-ui: room for the paw)
 	PHONE_SLOT = 30, -- (LOOK-ui) the paw's gold square on a phone's title sign (18 px paw)
 	CHIP = 26, -- px of a card's element / number / tier chips
+	-- (Pitch 2 fix round B r1) the F0 A mock's busy band (finish_windows.busy_band): its word on a PC card (the mock's 16, under
+	-- the card's 18), the lip along its foot, the gap between its mark and its word
+	BUSY_TEXT = 16,
+	BUSY_LIP = 3,
+	BUSY_GAP = 4,
 }
 
 -- (kit-b U8) the Signboard palette: brown ink on stone, the role tags on red / sky, the busy covers on violet / grass
@@ -818,6 +823,7 @@ function H.buildSlot(index)
 		Visible = false,
 		ZIndex = 6,
 	})
+	H.busyFinish(item.Busy)
 	item.Empty = text(button, "Empty", "Empty", "Heading", 20, MUTED, {
 		Size = UDim2.new(1, -8, 1, 0),
 		Position = UDim2.fromOffset(4, 0),
@@ -868,6 +874,7 @@ function H.buildCard(key)
 		Visible = false,
 		ZIndex = 7,
 	})
+	H.busyFinish(item.Busy)
 	button.Activated:Connect(function()
 		safe("card", H.tapCard, key)
 	end)
@@ -1238,8 +1245,12 @@ function H.layoutCard(item)
 	place(item.Stars, w / 2 - 18, 4, 36, 22)
 	place(item.Count, w - 44, phone and 60 or 72, 40, 22)
 	-- (Pitch 2 fix round B, the F0 A mock: the opaque cover hid the portrait) a slim activity strip across the picture just
-	-- under the chips row, its mark before the word: the pet stays visible round it, the level and the count below it
-	place(item.Busy, 2, 7 + K.CHIP + 3, w - 4, phone and 22 or 24)
+	-- under the chips row, its mark before the word: the pet stays visible round it, the level and the count below it.
+	-- (fix round B r1, look review major: "fitted, not finished", the word edge to edge and its mark 1 px out past the strip)
+	-- as the mock's band: across the card's whole face, the word its small tag (K.BUSY_TEXT on PC, the phone card's own size
+	-- there), its lit top and lip (H.busyFinish)
+	place(item.Busy, 0, 7 + K.CHIP + 3, w, phone and 24 or 28)
+	item.Busy.TextSize = phone and fs or K.BUSY_TEXT
 	H.padTop(item.Busy, 0)
 	item.Busy.TextWrapped = false
 end
@@ -1252,7 +1263,37 @@ function H.busyMark(item, name)
 	if corner then
 		corner:Destroy()
 	end
-	PixelIcon.Mark(busy, name)
+	PixelIcon.Mark(busy, name, { Gap = K.BUSY_GAP })
+end
+
+-- (Pitch 2 fix round B r1, look review major: the strip read "fitted, not finished" against F0_pets_optA) the mock's busy
+-- band finish (finish_windows.busy_band) on a slot's or a card's strip: its face lit along the top (SignKit.Shine follows
+-- the face), a lip of the face's own lip colour along its foot on whole screen px (the word and its mark sit above it),
+-- and the ink of the face: the grass ink on the Gardening band, the brown ink on the violet Training band
+function H.busyFinish(label)
+	local pad = label:FindFirstChildOfClass("UIPadding") or Util.Create("UIPadding", { Parent = label })
+	pad.PaddingBottom = UDim.new(0, K.BUSY_LIP)
+	local lip = Util.Create("Frame", {
+		Name = "Lip",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 1),
+		Size = UDim2.new(1, 0, 0, K.BUSY_LIP),
+		ZIndex = label.ZIndex,
+		Parent = label,
+	})
+	local function paint()
+		local face, grass = label.BackgroundColor3, SIGN.Grass
+		lip.BackgroundColor3 = Theme.SignLipOf(face)
+		local onGrass = math.abs(face.R - grass.R) < 0.004 and math.abs(face.G - grass.G) < 0.004 and math.abs(face.B - grass.B) < 0.004
+		label.TextColor3 = onGrass and SIGN.OnGrass or INK
+	end
+	paint()
+	label:GetPropertyChangedSignal("BackgroundColor3"):Connect(paint)
+	CloudUI.SyncLip(label) -- the lip reaches back out by the label's padding (the mark's inset), now and on every change
+	SignKit.Whole(lip, function(sc)
+		lip.Size = UDim2.new(1, lip.Size.X.Offset, 0, SignKit.Px(K.BUSY_LIP, sc))
+	end)
+	SignKit.Shine(label)
 end
 
 -- the slot's parts: a square on PC, a short wide card on a phone
@@ -1281,26 +1322,26 @@ function H.layoutSlot(item, w, h)
 	-- row, the pet's face stays in view under it; the level, the power (and the name on PC) stay clear. On a phone the
 	-- strip runs the slot's width ("Gardening" and its mark do not fit beside the face) and the face steps down under it
 	-- while the pet is busy (H.placeSlotFace)
+	-- (fix round B r1, look review major: "Gardening" ended on the strip's end on the 390x844 slots) the mock's band runs
+	-- the slot's whole face along its top (finish_windows.busy_band), down over the whole FIGHTER / HELPER tag it stands for
 	if phone then
-		place(item.Busy, 4, 4, w - 8, 22)
+		place(item.Busy, 0, 0, w, 26)
 	else
-		place(item.Busy, 6, 6, w - 12, 26)
+		place(item.Busy, 0, 0, w, 32)
 	end
 	item.SlotW, item.SlotH = w, h
 	H.placeSlotFace(item)
 end
 
--- the phone slot's face: top right, or under the busy strip while the pet works (refreshSlots sets item.BusyNow)
+-- the phone slot's face: under the tag row (top right). (fix round B r1, look review minor: on the 390x844 slot the FIGHTER
+-- tag lay over the portrait circle) the row always holds the FIGHTER / HELPER tag or the busy strip, so the face always
+-- steps down under it (refreshSlots still calls this on a busy change)
 function H.placeSlotFace(item)
 	if S.Mode ~= "Phone" or not item.SlotW then
 		return
 	end
 	local w, h = item.SlotW, item.SlotH
-	if item.BusyNow then
-		place(item.Face, w - 58, 28, 56, math.max(24, math.min(56, h - 28 - 26)))
-	else
-		place(item.Face, w - 58, 2, 56, math.min(56, h - 26))
-	end
+	place(item.Face, w - 58, 28, 56, math.max(24, math.min(56, h - 28 - 26)))
 end
 
 -- design px of a tap target: the PC layout runs under a UIScale, 0.8 on a small screen or a tablet
@@ -1926,7 +1967,7 @@ function H.refreshSlots(keys)
 		item.Busy.Visible = busy ~= nil
 		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
 		item.Busy.BackgroundColor3 = busy == "Training" and TRAIN_COLOR or GARDEN_COLOR
-		PixelIcon.Mark(item.Busy, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
+		PixelIcon.Mark(item.Busy, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil), { Gap = K.BUSY_GAP }) -- (kit-b U7b)
 		if item.BusyNow ~= (busy ~= nil) then
 			item.BusyNow = busy ~= nil
 			H.placeSlotFace(item)

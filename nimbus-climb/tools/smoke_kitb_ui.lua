@@ -5541,6 +5541,21 @@ local function clientScenarios()
 			Theme.Measure = mockMeasure
 		end
 	end
+	-- (Pitch 2 fix round B r1) a busy strip's room at each end, screen px: its lead mark, the gap and its word laid out as
+	-- PixelIcon.Lead does in Roblox (the word centred in the box right of the mark's inset, the mark a gap before it), the
+	-- word at its real width (SmokeCommon.RealWidth: the mock's flat 0.5 em measure is narrower). Returns left, right, a note
+	function U8.stripSpare(label)
+		local r, k = U8.rect(label), U8.scaleOf(label)
+		local pad = label:FindFirstChildOfClass("UIPadding")
+		if not (label:FindFirstChild("LeadIcon") and pad) then
+			return -math.huge, -math.huge, " (no mark or padding)"
+		end
+		local padL, padR = pad.PaddingLeft.Offset * k, pad.PaddingRight.Offset * k
+		local markGap = padL - (tonumber(label:GetAttribute("LeadInsetL")) or 0) * k -- the mark's box and the gap after it
+		local tw = SmokeCommon.RealWidth(label.Text, label.TextSize * k, label.Font, true) or label.TextBounds.X
+		local mid = (r.X + padL + r.R - padR) / 2
+		return (mid - tw / 2 - markGap) - r.X, r.R - (mid + tw / 2), fmt(" (strip %s, word %.1f, mark and gap %.1f)", U8.show(r), tw, markGap)
+	end
 	-- a fill counts as green: the grass plank of kit B, or any colour whose green leads red and blue clearly
 	function U8.green(c)
 		local Sign = LoadingH.shared("Theme").Sign
@@ -6200,6 +6215,17 @@ local function clientScenarios()
 					T.check(fr ~= nil and U8.shown(face) and under <= 0.25 * (fr.B - fr.Y),
 						tag .. ": ...a slim strip (the pet stays visible: at most a quarter of its face under the strip)",
 						fr and fmt("strip %s, face %s, %.0f px under", U8.show(br), U8.show(fr), under) or "no Face")
+					local spareL, spareR, why = U8.stripSpare(busy)
+					T.check(spareL >= 3 - 0.01 and spareR >= 3 - 0.01, tag .. ": ...its mark and word inside the strip, 3 px or more to spare at each end (F0 A)",
+						fmt("%.1f left, %.1f right%s", spareL, spareR, why or ""))
+				end
+				-- (Pitch 2 fix round B r1, look review minor: on the 390x844 team slot the FIGHTER chip lay over the portrait
+				-- circle) a phone slot's FIGHTER / HELPER tag clear of the pet's face
+				local lead = holder:FindFirstChild("Slot1", true)
+				local lt, lf = lead and lead:FindFirstChild("Tag"), lead and lead:FindFirstChild("Face")
+				if phone and lt and lf and U8.shown(lt) and U8.shown(lf) then
+					T.check(not U8.overlap(U8.rect(lt), U8.rect(lf)), tag .. ": the phone slot's FIGHTER tag clear of the pet's face",
+						U8.show(U8.rect(lt)) .. " vs " .. U8.show(U8.rect(lf)))
 				end
 				local card = holder:FindFirstChild("Card_" .. K2, true)
 				local cb = card and card:FindFirstChild("Busy")
@@ -6216,6 +6242,25 @@ local function clientScenarios()
 					T.check(pr ~= nil and (cr.B - cr.Y) <= (pr.B - pr.Y) / 3 and cr.Y >= pr.Y and cr.B <= pr.B and (nr == nil or cr.Y >= nr.B - 0.5),
 						tag .. ": ...a slim strip over the picture under the chips row (the pet stays visible)",
 						pr and fmt("strip %s, picture %s, chip %s", U8.show(cr), U8.show(pr), nr and U8.show(nr) or "-") or "no Picture")
+					-- (Pitch 2 fix round B r1, look review major: the strip read "fitted, not finished" against F0_pets_optA: the
+					-- word larger and bolder than the mock's small inset tag, edge to edge with no right padding, the mark 1 px out
+					-- past the strip's left end, "Gardenin" at --ss 1) the mock's busy band (finish_windows.busy_band): the word
+					-- smaller than the card's level (16 design px on PC, the mock's), in its face's ink (OnGrass on Grass), the mark
+					-- and the word inside the strip with 3 px or more to spare at each end, the face lit along its top and a lip of
+					-- the face's own lip colour along its foot
+					local Sign = LoadingH.shared("Theme").Sign
+					local spareL, spareR, why = U8.stripSpare(cb)
+					T.check(spareL >= 3 - 0.01 and spareR >= 3 - 0.01, tag .. ": ...the card strip's mark and word inside it, 3 px or more to spare at each end",
+						fmt("%.1f left, %.1f right%s", spareL, spareR, why or ""))
+					T.check(level and cb.TextSize <= level.TextSize and (phone or cb.TextSize <= 16) and sameColor(cb.TextColor3, Sign.OnGrass),
+						tag .. ": ...the strip's word the mock's small tag (under the level's size, 16 px on PC) in the grass ink",
+						fmt("%s px (level %s), ink %s", tostring(cb.TextSize), tostring(level and level.TextSize), tostring(cb.TextColor3)))
+					local lip, shine = cb:FindFirstChild("Lip"), cb:FindFirstChild("FinishShine")
+					local lr, sr = lip and U8.rect(lip), shine and U8.rect(shine)
+					T.check(lip and U8.shown(lip) and sameColor(lip.BackgroundColor3, Sign.GrassLip) and lr.R - lr.X >= cr.R - cr.X - 0.5 and math.abs(lr.B - cr.B) <= 0.5
+						and lr.B - lr.Y >= 2 - 0.01 and shine and U8.shown(shine) and math.abs(sr.Y - cr.Y) <= 0.5 and sr.R - sr.X >= cr.R - cr.X - 0.5,
+						tag .. ": ...the strip finished as the mock's band: a lit top line and its face's lip along its foot",
+						fmt("lip %s, shine %s, strip %s", lr and U8.show(lr) or "-", sr and U8.show(sr) or "-", U8.show(cr)))
 				end
 				-- the detail's stars (K1 is evolved twice) inside its line and its panel
 				local detail = holder:FindFirstChild("Detail", true) or holder:FindFirstChild("Sheet", true)
