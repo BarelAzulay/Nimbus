@@ -7262,6 +7262,41 @@ local function clientScenarios()
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
+		-- (look review of finish pass A, minors: no dotted rule under the Gifts heading; a claimed day's "Day 1" and "$400"
+		-- greyed out under the sunk cover, where the mock keeps them brown) the Daily page: a dotted SignKit rule under the
+		-- heading line (the chips' row), over the tiles; a claimed day's name and amount drawn over its cover, in the muted ink
+		for _, s in ipairs(U8.SIZES) do
+			U94.at(s[1], s[2], s[3], "finish gifts", "Daily", "due", function(tag, holder)
+				local rule = holder:FindFirstChild("HeadRule", true)
+				local head, cells = holder:FindFirstChild("Header", true), holder:FindFirstChild("Cells", true)
+				local dots = 0
+				for _, d in ipairs(rule and rule:GetChildren() or {}) do
+					dots = dots + (d:GetAttribute("Rule") == "Dot" and 1 or 0)
+				end
+				local topCell = math.huge
+				for _, c in ipairs(cells and cells:GetChildren() or {}) do
+					if c:IsA("GuiObject") and U8.shown(c) then
+						topCell = math.min(topCell, U8.rect(c).Y)
+					end
+				end
+				T.check(rule and U8.shown(rule) and dots >= 10 and head and U8.rect(rule).Y >= U8.rect(head).B - 0.5 and U8.rect(rule).B <= topCell + 0.5,
+					tag .. ": a dotted rule under the Gifts heading, over the tiles", rule and fmt("rule y %.0f, header foot %.0f, tiles %.0f, %d dots", U8.rect(rule).Y, head and U8.rect(head).B or -1, topCell, dots) or "missing")
+				local claimed, bad = 0, {}
+				for _, c in ipairs(cells and cells:GetDescendants() or {}) do
+					if c:GetAttribute("Claimed") == true and c:IsA("GuiObject") then
+						claimed = claimed + 1
+						local dim = c:FindFirstChild("Dim", true)
+						for _, n in ipairs({ "Day", "Amount" }) do
+							local l = c:FindFirstChild(n, true)
+							if not (l and dim and l.ZIndex > dim.ZIndex and sameColor(l.TextColor3, Theme.Sign.TextMuted) and l.TextTransparency == 0) then
+								bad[#bad + 1] = c.Name .. "." .. n
+							end
+						end
+					end
+				end
+				T.check(claimed >= 2 and #bad == 0, tag .. ": a claimed day keeps its name and amount over the cover in the muted ink", fmt("%d claimed; %s", claimed, table.concat(bad, ", ")))
+			end)
+		end
 		-- (look review of finish pass A, major 7: thumb targets under 44 px on phones: the top bar's pills 31x36 / 44x36, the
 		-- Gifts and Sky Trove closes 36, the Settings close 35, its - / + 42 and volume steps 20x26, the Index's group tabs,
 		-- Elements and Claim 42 tall, the menu's fold tab 21x45) on a touch phone every button of the HUD's top bar and fold
@@ -11395,7 +11430,8 @@ local function clientScenarios()
 						lips[hex(lip.BackgroundColor3)] = true
 					end
 					local day = c and c:FindFirstChild("Day", true)
-					if day and not sameColor(day.TextColor3, Sign.Text) then
+					-- (Pitch 2 F0 A, look review of finish pass A: a claimed day's name in the muted ink over its cover, as the mock's)
+					if day and not sameColor(day.TextColor3, i <= 2 and Sign.TextMuted or Sign.Text) then
 						loose[#loose + 1] = "Cell" .. i .. ".Day " .. hex(day.TextColor3)
 					end
 				end

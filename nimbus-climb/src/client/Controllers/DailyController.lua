@@ -1216,6 +1216,8 @@ function H.ensureWindow()
 	U.DailyPage = daily
 	U.DailyHeader = label("Header", "", "Title", 18, daily, { TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, ZIndex = 5, TextColor3 = SIGN.Text })
 	Theme.StyleTitle(U.DailyHeader, "Section") -- (the owner's ruling 2026-11-14: the ribbon is for window titles only)
+	-- (Pitch 2 F0 A: "dotted pixel rules"; look review of finish pass A, minor) the dotted rule under the heading line
+	U.HeadRule = SignKit.Rule(daily, { Name = "HeadRule", ZIndex = 5 })
 	U.StreakChip = H.chip("StreakChip", "Stone", daily)
 	U.VipChip = H.chip("VipChip", "Selected", daily)
 	U.VipChip.Text = "VIP x2"
@@ -1490,6 +1492,12 @@ function H.layoutDaily(M, W, B)
 		cell.Spot = spots[i]
 		cell.PlaceKey = nil
 	end
+	-- (F0 review) the dotted rule halfway between the heading line (its chips) and the tiles (today's raised top)
+	local headFoot = math.max(M.HeaderY + M.HeaderH, M.ChipY + M.ChipH)
+	local tilesTop = tilesY - M.Raise
+	SignKit.SetRule(U.HeadRule, W - 2 * M.Side)
+	U.HeadRule.Position = UDim2.fromOffset(M.Side, math.floor((headFoot + tilesTop) / 2) - 1)
+	U.HeadRule.Visible = tilesTop - headFoot >= 4
 end
 
 -- a tile at its spot (today: raised by M.Raise, the bottom kept), its insides fitted to its size
@@ -2050,6 +2058,12 @@ function H.renderDaily(st, M)
 		cell.Day.Text = (today and due) and "TODAY" or ("Day " .. i)
 		cell.Dim.Visible = claimed
 		cell.Check.Visible = claimed
+		-- (F0 review, minor: the mock keeps a claimed day's name and amount brown) the cover dims the art only: the texts
+		-- sit over it in the muted ink
+		cell.Day.ZIndex = claimed and cell.Dim.ZIndex + 1 or 5
+		cell.Amount.ZIndex = claimed and cell.Dim.ZIndex + 1 or 5
+		cell.Day.TextColor3 = claimed and SIGN.TextMuted or SIGN.Text
+		cell.Amount.TextColor3 = claimed and SIGN.TextMuted or SIGN.Text
 		-- (kit-b U9-4) only a gift the claim takes now glints (a held one, Locked, waits)
 		cell.Sparkles.Visible = today and (view.Mode == "Claim" or view.Mode == "Repair")
 		H.paintLook(cell, DAY_COLORS[i], today and "Today" or (claimed and "Claimed" or "Open"))
