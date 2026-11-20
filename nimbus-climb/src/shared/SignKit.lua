@@ -1495,6 +1495,47 @@ function SignKit.Notice(parent, opts)
 	return notice, face
 end
 
+-- (Pitch 2 F0 A: "dotted pixel rules", "'ROBUX ITEMS' as a captioned rule"; the mock's sep "dots") a dotted rule: Dot x Dot
+-- px dots every Pitch px in `opts.Color` (WellEdge) in a holder `opts.Width` design px wide and Dot tall (attribute SignKit
+-- = "Rule", each dot Rule = "Dot"). SignKit.SetRule(rule, w) lays it again at a new width (dots reused)
+SignKit.RuleSizes = { Dot = 2, Pitch = 6 }
+function SignKit.SetRule(rule, w)
+	local R = SignKit.RuleSizes
+	w = math.max(0, math.floor((tonumber(w) or 0) + 0.5))
+	local n = w >= R.Dot and math.floor((w - R.Dot) / R.Pitch) + 1 or 0
+	local dots = {}
+	for _, c in ipairs(rule:GetChildren()) do
+		if c:GetAttribute("Rule") == "Dot" then
+			dots[#dots + 1] = c
+		end
+	end
+	local colour = rule:GetAttribute("RuleColor") or Sign.WellEdge
+	for i = 1, math.max(n, #dots) do
+		local d = dots[i]
+		if i <= n then
+			if not d then
+				d = fill("Dot", colour, { ZIndex = rule.ZIndex }, rule)
+				d:SetAttribute("Rule", "Dot")
+			end
+			d.Position = UDim2.fromOffset((i - 1) * R.Pitch, 0)
+			d.Size = UDim2.fromOffset(R.Dot, R.Dot)
+		elseif d then
+			d:Destroy()
+		end
+	end
+	rule.Size = UDim2.fromOffset(w, R.Dot)
+	return rule
+end
+
+-- opts: Width, Color, Position, ZIndex, Name, Visible (the caller's placement, as every part's)
+function SignKit.Rule(parent, opts)
+	opts = opts or {}
+	local rule = frame(opts.Name or "Rule", { ZIndex = tonumber(opts.ZIndex) or 1 }, parent)
+	rule:SetAttribute("RuleColor", opts.Color or Sign.WellEdge)
+	place(rule, opts, "Rule")
+	return SignKit.SetRule(rule, opts.Width)
+end
+
 -- (kit-b U9-7, the owner's look bar 2026-11-17: small handmade touches that read as this game) two nail heads on a
 -- hanging board's top corners, so a card that hangs on the screen is nailed up, not floating: plain WoodDark squares
 -- (opts.Size design px, default 4) opts.Inset px in from the corner (default 6), above the board's face (opts.ZIndex,

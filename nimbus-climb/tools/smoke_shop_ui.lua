@@ -611,8 +611,9 @@ S.client_shop_window = guarded("client_shop_window", function()
 	local tg, tp = rail and rail:FindFirstChild("Tab_Gems"), rail and rail:FindFirstChild("Tab_Packs")
 	T.check(div ~= nil and G.shown(div) and tg and tp and G.box(div).y >= G.box(tg).y + G.box(tg).h - 0.5 and G.box(div).y + G.box(div).h <= G.box(tp).y + 0.5,
 		"shop window: the RobuxDivider sits between Gems and Packs", div and G.d(div) or "none")
-	T.check(div ~= nil and (div:FindFirstChild("Label", true) and tostring(div:FindFirstChild("Label", true).Text) == "Robux items"),
-		"shop window: PC: the divider reads 'Robux items'")
+	-- (Pitch 2 F0 A: "'ROBUX ITEMS' as a captioned rule", the look review's major 6) the caption in capitals between dots
+	T.check(div ~= nil and (div:FindFirstChild("Label", true) and tostring(div:FindFirstChild("Label", true).Text) == "ROBUX ITEMS"),
+		"shop window: PC: the divider reads 'ROBUX ITEMS' (the captioned dotted rule)")
 	-- the header
 	local header = win:FindFirstChild("Header")
 	local title = header and header:FindFirstChild("Title")
@@ -857,8 +858,10 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 		-- the Secret hero
 		local hero = G.eggCard("Secret")
 		local hb = hero and G.rel(hero, body)
-		T.check(hero ~= nil and G.shown(hero) and hero:GetAttribute("Hero") == true and G.near(hb.x, 0) and G.near(hb.y, 16) and G.near(hb.w, 1240) and G.near(hb.h, 240),
-			"shop eggs: ShopCard_Secret (attribute Hero) is 1240 x 240 at (0, 16) of the content box", hero and G.d(hero) or "missing")
+		-- (Pitch 2 F0 review, major 6) the hero and the cards sit in by their 3 px wood edge (left / top) and 3 + the 5 px
+		-- finish shadow (right / bottom): the clipping page and card row had cut their edges off
+		T.check(hero ~= nil and G.shown(hero) and hero:GetAttribute("Hero") == true and G.near(hb.x, 3) and G.near(hb.y, 16) and G.near(hb.w, 1229) and G.near(hb.h, 240),
+			"shop eggs: ShopCard_Secret (attribute Hero) is 1229 x 240 at (3, 16) of the content box (its edge and shadow inside)", hero and G.d(hero) or "missing")
 		T.eq(G.text(hero, "Title"), "SECRET ROULETTE", "shop eggs: the hero reads 'Secret Roulette'")
 		T.eq(G.gotRows(hero), G.wantRows(PC, "Secret"), "shop eggs: the hero's odds = PetCatalog.GetRarityOdds('Secret'), in order")
 		T.eq(G.gotRows(hero), "Mythic 60%, Secret 40%", "shop eggs: ...Mythic 60%, Secret 40%")
@@ -886,11 +889,13 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 		for i, id in ipairs(MACHINES) do
 			local card = G.eggCard(id)
 			local b = card and G.rel(card, body)
-			if not (card and G.shown(card) and G.near(b.x, (i - 1) * 314) and G.near(b.y, 276) and G.near(b.w, 298) and G.near(b.h, 550)) then
+			if not (card and G.shown(card) and G.near(b.x, 3 + (i - 1) * 311) and G.near(b.y, 276) and G.near(b.w, 295) and G.near(b.h, 540)) then
 				bad[#bad + 1] = id .. ": " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
 			end
 		end
-		T.check(#bad == 0, "shop eggs: the four cards at (i * 314, 276) of the content box, 298 x 550", table.concat(bad, "; "))
+		-- (Pitch 2 F0 review, major 6) 540 tall (was 550: their bottom edge ran under the frame and the stone's lip), 295
+		-- wide from x 3 (their edge and shadow inside the clipping row)
+		T.check(#bad == 0, "shop eggs: the four cards at (3 + i * 311, 276) of the content box, 295 x 540", table.concat(bad, "; "))
 		local rows, prices = {}, {}
 		for _, id in ipairs(MACHINES) do
 			local card = G.eggCard(id)
@@ -1566,12 +1571,14 @@ S.client_shop_sizes = guarded("client_shop_sizes", function()
 			local heroH, cardH = G.rel(hero, win).h, G.rel(cloud, win).h
 			local canvasH = eggScroll.CanvasSize.Y.Offset
 			if sz[5] == "PC" then
-				T.check(G.near(heroH, 240) and G.near(cardH, 550) and canvasH <= bodyH + 0.5 and G.near(G.rel(cloud, G.body()).y, 276),
-					label .. ": Eggs: the reference layout (hero 240, cards 550 at y 276), no vertical scroll", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
+				-- (Pitch 2 F0 review, major 6) cards 540 (was 550): the row ends ShopEggs BODY_FOOT (18) over the body's bottom
+				T.check(G.near(heroH, 240) and G.near(cardH, 540) and canvasH <= bodyH + 0.5 and G.near(G.rel(cloud, G.body()).y, 276),
+					label .. ": Eggs: the reference layout (hero 240, cards 540 at y 276), no vertical scroll", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
 			else
 				-- (kit-b U9-2; the render gate: the x3 / gem row ran under the bottom edge at 1280x720) a body under 760 takes the
 				-- tight plan: the hero 180, the cards from y 208 down to the body's bottom, no vertical scroll
-				T.check(G.near(heroH, 180) and G.near(cardH, bodyH - 216) and canvasH <= bodyH + 0.5 and G.near(G.rel(cloud, G.body()).y, 208),
+				-- (Pitch 2 F0 review, major 6) to BODY_FOOT (18) over the body's bottom (was 8: the cards' edge ran under its lip)
+				T.check(G.near(heroH, 180) and G.near(cardH, bodyH - 226) and canvasH <= bodyH + 0.5 and G.near(G.rel(cloud, G.body()).y, 208),
 					label .. ": Eggs: the tight layout (hero 180, the cards from y 208 to the body's bottom), no vertical scroll", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
 			end
 		end

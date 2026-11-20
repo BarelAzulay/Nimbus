@@ -127,7 +127,17 @@ local K = {
 	HERO_PHONE = 200,
 	FADE = 48,
 	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
-	FIT_H = 826, -- a PC / Compact body under this shrinks the page
+	FIT_H = 834, -- a PC / Compact body under this shrinks the page (REF's CardsY + Card + BODY_FOOT)
+	-- (Pitch 2 F0 review, major 6: the cards' bottom edge ran under the window's frame and the stone's lip, and the hint
+	-- touched the card's colour lip) the page keeps the card row BODY_FOOT px over the body's bottom (the frame 6 and the
+	-- stone's 8 px lip lie over it, the card's 3 px edge outside it), and a card's hint ends CARD_FOOT px over the card's
+	-- bottom (its 5 px colour lip and a gap)
+	BODY_FOOT = 18,
+	CARD_FOOT = 8,
+	-- (same review) a card's wood edge (NeonKit's 3 px SignEdge stroke) and its finish shadow (Theme.Finish.Card) lie
+	-- outside its box: the card row (a ScrollingFrame, it clips) and the page give them room, so the cards and the hero
+	-- show their edge on every side (it was cut off on the left, top and bottom)
+	CARD_EDGE = 3,
 	PORTRAIT_CARD = 250,
 	PORTRAIT_HERO = 200,
 	TEXT = {
@@ -162,8 +172,8 @@ local K = {
 	Z_DIM = 21,
 	Z_OVER = 22,
 	-- the PC plans (REF while the body holds FIT_H, SHRUNK under it)
-	REF = { Ref = true, Hero = 240, HeroArt = 190, CardsY = 276, Card = 550, Art = 130, RowsY = 234, RowsH = 160, SpinY = 400, Row2Y = 476 },
-	SHRUNK = { Ref = false, Hero = 200, HeroArt = 160, CardsY = 236, Card = 516, Art = 100, RowsY = 198, RowsH = 160, SpinY = 362, Row2Y = 436 },
+	REF = { Ref = true, Hero = 240, HeroArt = 190, CardsY = 276, Card = 540, Art = 130, RowsY = 232, RowsH = 152, SpinY = 388, Row2Y = 460 },
+	SHRUNK = { Ref = false, Hero = 200, HeroArt = 160, CardsY = 236, Card = 516, Art = 100, RowsY = 198, RowsH = 152, SpinY = 354, Row2Y = 426 },
 	-- (kit-b U9-2; the render gate: the x3 / gem row ran under the window's bottom edge at 1280x720) a body under SHRUNK's
 	-- CardsY + Card + 8 takes TIGHT, sized from the body (L.plan): the hero 180 with a 150 machine, the cards from y 208
 	-- down to the body's bottom (MinCard at least, then the page scrolls), the machine 84, the odds rows share what is left
@@ -977,7 +987,7 @@ function L.cardPC(t, w, M, tall)
 	local hy = M.Row2Y + row2H + 2
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
-	place(t.Hint, 8, hy, w - 16, math.max(16, M.Card - hy))
+	place(t.Hint, 8, hy, w - 16, math.max(16, M.Card - K.CARD_FOOT - hy))
 end
 
 -- the PC / Compact plan for a body Hh tall: REF, SHRUNK, or TIGHT worked out from Hh (the two button rows 64 + 56 and
@@ -987,12 +997,12 @@ function L.plan(Hh)
 		return K.REF
 	end
 	local S = K.SHRUNK
-	if Hh >= S.CardsY + S.Card + 8 then
+	if Hh >= S.CardsY + S.Card + K.BODY_FOOT then
 		return S
 	end
 	local T = K.TIGHT
-	local card = math.max(T.MinCard, Hh - T.CardsY - 8)
-	local row2Y = card - 8 - T.HintH - 56
+	local card = math.max(T.MinCard, Hh - T.CardsY - K.BODY_FOOT)
+	local row2Y = card - K.CARD_FOOT - T.HintH - 2 - 56
 	local spinY = row2Y - 8 - 64
 	return {
 		Ref = false, Tight = true, Hero = T.Hero, HeroArt = T.HeroArt, CardsY = T.CardsY, Card = card, Art = T.Art, RowsY = T.RowsY,
@@ -1007,14 +1017,15 @@ function L.pc(P, W, Hh)
 	local s = P.Scroll
 	s.ScrollingDirection = Enum.ScrollingDirection.Y
 	-- the card row: (w - 48) / 4 each; under 250 it scrolls sideways (with room for its bar)
+	local E, D = K.CARD_EDGE, (Theme.Finish and Theme.Finish.Card) or 5
 	local function plan(cw)
-		local cardW = math.floor((cw - 48) / 4)
+		local cardW = math.floor((cw - 48 - 2 * E - D) / 4)
 		local sideways = cardW < 250
 		if sideways then
 			cardW = 250
 		end
-		local rowH = M.Card + (sideways and (K.SCROLLBAR + 4) or 0)
-		return cardW, sideways, rowH, M.CardsY + rowH + 8
+		local bar = sideways and (K.SCROLLBAR + 4) or 0
+		return cardW, sideways, M.Card + 2 * E + D + bar, M.CardsY + M.Card + bar + K.BODY_FOOT
 	end
 	local cw = W
 	local cardW, sideways, rowH, contentH = plan(cw)
@@ -1025,14 +1036,14 @@ function L.pc(P, W, Hh)
 	end
 	s.CanvasSize = UDim2.fromOffset(0, contentH)
 	P.Hero.Title.TextXAlignment = LEFT
-	place(P.Hero.Root, 0, 16, cw, M.Hero)
-	L.heroPC(P.Hero, cw, M)
-	place(P.Row, 0, M.CardsY, cw, rowH)
+	place(P.Hero.Root, E, 16, cw - 2 * E - D, M.Hero)
+	L.heroPC(P.Hero, cw - 2 * E - D, M)
+	place(P.Row, 0, M.CardsY - E, cw, rowH)
 	P.Row.ScrollingDirection = Enum.ScrollingDirection.X
-	local rowW = #P.Cards * (cardW + 16) - 16
+	local rowW = #P.Cards * (cardW + 16) - 16 + 2 * E + D
 	P.Row.CanvasSize = UDim2.fromOffset(sideways and rowW or cw, 0)
 	for i, t in ipairs(P.Cards) do
-		place(t.Root, (i - 1) * (cardW + 16), 0, cardW, M.Card)
+		place(t.Root, E + (i - 1) * (cardW + 16), E, cardW, M.Card)
 		L.cardPC(t, cardW, M, tall)
 	end
 	P.CanvasW = 0

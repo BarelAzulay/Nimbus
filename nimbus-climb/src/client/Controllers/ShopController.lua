@@ -734,8 +734,12 @@ function H.build()
 	U.Dot = frame("Dot", U.Tabs.Packs.Button, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Red, Visible = false, ZIndex = 3 })
 	H.edge(U.Dot, 2)
 	U.Divider = frame("RobuxDivider", rail)
-	U.DivGlyph = label("Glyph", U.Divider, robuxGlyph(), "Display", 24, { TextColor3 = SIGN.Text, TextTruncate = Enum.TextTruncate.None })
-	U.DivLabel = label("Label", U.Divider, "Robux items", "Body", 18, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.TextMuted })
+	-- (Pitch 2 F0 A: "'ROBUX ITEMS' as a captioned rule"; look review major 6: the Robux glyph drew as a dark square next to
+	-- a loose label) the caption centred between two dotted rules (SignKit.Rule). The glyph stays built, hidden
+	U.DivGlyph = label("Glyph", U.Divider, robuxGlyph(), "Display", 24, { TextColor3 = SIGN.Text, TextTruncate = Enum.TextTruncate.None, Visible = false })
+	U.DivLabel = label("Label", U.Divider, "ROBUX ITEMS", "Body", 18, { TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = SIGN.TextMuted })
+	U.DivRuleL = SignKit.Rule(U.Divider, { Name = "RuleL" })
+	U.DivRuleR = SignKit.Rule(U.Divider, { Name = "RuleR" })
 	U.DivLine = frame("Line", U.Divider, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.WellEdge })
 	-- the Fast hatch toggle (Eggs only): a stone block with its Label and the kit's switch (CloudUI.SignSwitch: a sunk
 	-- well, the square Knob slides; gold while on; the egg stage's Fast hatch chip draws the same part); attribute On
@@ -1259,15 +1263,25 @@ function H.layoutRail(W, Hh, R)
 	local packsTop = tabY + 2 * step + split
 	if layout == "PC" then
 		place(U.Divider, R.RailX, gemsBottom + 12, R.RailW, 40)
-		place(U.DivGlyph, 8, 0, 30, 40)
-		U.DivGlyph.Text = robuxGlyph()
-		place(U.DivLabel, 44, 0, R.RailW - 48, 40)
-		U.DivGlyph.Visible, U.DivLabel.Visible, U.DivLine.Visible = true, true, false
+		place(U.DivLabel, 0, 0, R.RailW, 40)
+		local okW, m = pcall(Theme.MeasureLabel, U.DivLabel, U.DivLabel.Text, U.DivLabel.TextSize)
+		local tw = okW and m and m.X or 110
+		local side = math.max(0, math.floor((R.RailW - tw) / 2) - 10)
+		SignKit.SetRule(U.DivRuleL, side)
+		SignKit.SetRule(U.DivRuleR, side)
+		U.DivRuleL.Position = UDim2.fromOffset(0, 19)
+		U.DivRuleR.Position = UDim2.fromOffset(R.RailW - side, 19)
+		U.DivGlyph.Visible, U.DivLabel.Visible, U.DivLine.Visible = false, true, false
+		U.DivRuleL.Visible, U.DivRuleR.Visible = true, true
 	else
+		-- (Pitch 2 F0 review) a narrow rail: the kit's dotted rule alone in the gap (was a solid 2 px line)
 		local mid = math.floor((gemsBottom + packsTop) / 2)
 		place(U.Divider, R.RailX, mid - 1, R.RailW, 2)
-		place(U.DivLine, math.floor(R.RailW * 0.1), 0, math.floor(R.RailW * 0.8), 2)
-		U.DivGlyph.Visible, U.DivLabel.Visible, U.DivLine.Visible = false, false, true
+		local ruleW = math.floor(R.RailW * 0.8)
+		SignKit.SetRule(U.DivRuleL, ruleW)
+		U.DivRuleL.Position = UDim2.fromOffset(math.floor((R.RailW - U.DivRuleL.Size.X.Offset) / 2), 0)
+		U.DivGlyph.Visible, U.DivLabel.Visible, U.DivLine.Visible = false, false, false
+		U.DivRuleL.Visible, U.DivRuleR.Visible = true, false
 	end
 	place(U.Dot, R.RailW - 20, 6, 14, 14)
 	H.layoutFast(layout ~= "Phone" and { R = R, BodyH = bodyH } or nil)

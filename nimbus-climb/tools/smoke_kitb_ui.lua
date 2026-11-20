@@ -7262,6 +7262,85 @@ local function clientScenarios()
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
+		-- (look review of finish pass A, major 6) the Shop at 1920x1080 and 1280x720: every roulette card whole inside the
+		-- stone, over its lip (the card's bottom edge was clipped by the body), the "Gems: same odds" hint's letters above
+		-- the card's colour lip (they touched it); the rail's "ROBUX ITEMS" a captioned dotted rule, no dark glyph square
+		for _, s in ipairs({ { 1920, 1080 }, { 1280, 720 } }) do
+			U8.at(s[1], s[2], false, "finish shop", function(tag)
+				Shop.Open({ Tab = "Eggs" })
+				LKC.advance(1)
+				local win = pg:FindFirstChild("NimbusShop")
+				local panel = win and win:FindFirstChild("Panel", true)
+				local stoneLip = panel and panel:FindFirstChild("Stone") and panel.Stone:FindFirstChild("Lip")
+				local bad, cards = {}, 0
+				for _, card in ipairs(win and win:GetDescendants() or {}) do
+					if card.Name:match("^ShopCard_") and card.Name ~= "ShopCard_Secret" and U8.shown(card) then
+						cards = cards + 1
+						local r = U8.rect(card)
+						local e = 3 * (card.Size.X.Offset > 0 and (r.R - r.X) / card.Size.X.Offset or 1) -- the edge in screen px
+						local lip, hint = card:FindFirstChild("Lip"), card:FindFirstChild("Hint", true)
+						if not (stoneLip and r.B + e <= U8.rect(stoneLip).Y + 0.5) then
+							bad[#bad + 1] = fmt("%s ends at %.0f (+%.0f edge), the stone's lip at %s", card.Name, r.B, e, stoneLip and tostring(U8.rect(stoneLip).Y) or "?")
+						end
+						-- its 3 px wood edge (a stroke outside its box) inside every clipping ancestor (the card row scrolls)
+						local clip = card.Parent
+						while clip and clip ~= win do
+							if clip:IsA("GuiObject") and (clip.ClipsDescendants or clip:IsA("ScrollingFrame")) then
+								local c = U8.rect(clip)
+								if r.X - e < c.X - 0.5 or r.Y - e < c.Y - 0.5 or r.R + e > c.R + 0.5 or r.B + e > c.B + 0.5 then
+									bad[#bad + 1] = fmt("%s's edge is cut by %s (card %.0f,%.0f..%.0f,%.0f in %.0f,%.0f..%.0f,%.0f)", card.Name, clip.Name, r.X, r.Y, r.R, r.B, c.X, c.Y, c.R, c.B)
+									break
+								end
+							end
+							clip = clip.Parent
+						end
+						if hint and U8.shown(hint) and lip then
+							local q = U8.rect(hint)
+							local glyphB = (q.Y + q.B) / 2 + hint.TextBounds.Y / 2
+							if not (q.B <= U8.rect(lip).Y + 0.5 and glyphB <= U8.rect(lip).Y - 2 + 0.5) then
+								bad[#bad + 1] = fmt("%s: the hint (box to %.0f, letters to %.0f) reaches the lip at %.0f", card.Name, q.B, glyphB, U8.rect(lip).Y)
+							end
+						end
+					end
+				end
+				T.check(cards >= 4 and #bad == 0, fmt("%s: every roulette card whole over the stone's lip, its hint above its own lip (%d cards, %d off)", tag, cards, #bad),
+					table.concat(bad, "; ", 1, math.min(#bad, 8)))
+				local div = win and win:FindFirstChild("RobuxDivider", true)
+				local glyph, caption = div and div:FindFirstChild("Glyph"), div and div:FindFirstChild("Label")
+				local left, right, dots = 0, 0, 0
+				for _, d in ipairs(div and div:GetDescendants() or {}) do
+					if d:GetAttribute("Rule") == "Dot" and U8.shown(d) then
+						dots = dots + 1
+					end
+				end
+				if not (caption and U8.shown(caption)) then
+					-- a narrow rail (the Compact layout): no room for the caption, the divider is a dotted rule alone
+					local line = div and div:FindFirstChild("Line")
+					T.check(div and U8.shown(div) and not (glyph and U8.shown(glyph)) and not (line and U8.shown(line)) and dots >= 6,
+						tag .. ": a narrow rail's Robux divider is the kit's dotted rule (no glyph square, no solid line)", fmt("%d dots", dots))
+				else
+					local c = U8.rect(caption)
+					local mid = (c.X + c.R) / 2
+					local half = caption.TextBounds.X / 2
+					for _, d in ipairs(div:GetDescendants()) do
+						if d:GetAttribute("Rule") == "Dot" and U8.shown(d) then
+							local q = U8.rect(d)
+							if q.R <= mid - half - 4 then
+								left = left + 1
+							elseif q.X >= mid + half + 4 then
+								right = right + 1
+							end
+						end
+					end
+					T.check(div and U8.shown(div) and not (glyph and U8.shown(glyph)) and caption.Text == "ROBUX ITEMS" and caption.TextSize >= 17
+						and caption.TextXAlignment == Enum.TextXAlignment.Center and left >= 4 and right >= 4,
+						tag .. ": the rail's ROBUX ITEMS is a captioned dotted rule (no glyph square, the caption centred, dots either side)",
+						fmt("glyph %s, caption '%s', dots %d / %d", tostring(glyph and U8.shown(glyph)), caption.Text, left, right))
+				end
+				pcall(Shop.Close)
+				LKC.advance(0.4)
+			end)
+		end
 		LKC.flushErrors("finish_pass_kit")
 	end)
 
