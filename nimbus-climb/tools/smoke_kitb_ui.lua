@@ -2097,17 +2097,30 @@ local function serverScenarios()
 			l:Destroy()
 			return
 		end
-		local k = 34 / 20 -- the pitch drew T1 at a 20 px title
-		-- the band: navy, 1.5x the text size tall, overhanging the title's box on both sides
+		-- (Pitch 2 F0, the owner's pick A; look review of finish pass A, major 2: the T1 navy band with its stepped stair
+		-- tail was still on every window) the V-notched GOLD ribbon, at the pitch's sizes on a 34 px title
+		local R = Theme.TitleRibbon
+		T.check(R and R.Base == 34 and R.Band == 42 and R.Pad == 16 and R.TailW == 14 and R.Notch == 10 and R.TailTop == 6 and R.Top == 3 and R.Lip == 4,
+			"kitb title: Theme.TitleRibbon holds the pitch's F0 A sizes on a 34 px title (band 42, pad 16, tail 14, notch 10, top 6, lines 3 / 4)")
 		local band = rib:FindFirstChild("RibbonBand")
-		T.check(band ~= nil and sameColor(band.BackgroundColor3, Sg.Navy) and band.BackgroundTransparency == 0, "kitb title: a navy band", band and hex(band.BackgroundColor3) or "missing")
+		T.check(band ~= nil and sameColor(band.BackgroundColor3, Sg.Gold) and band.BackgroundTransparency == 0 and band.Visible,
+			"kitb title: a GOLD band (F0 A: the V-notched gold ribbon)", band and hex(band.BackgroundColor3) or "missing")
 		local tw34 = Theme.Measure("PETS", "Title", 34).X
-		T.check(band ~= nil and math.abs(band.Size.Y.Offset - math.floor(30 * k + 0.5)) <= 1 and band.Size.X.Scale == 0 and band.Position.X.Scale == 0
-			and band.Position.X.Offset > 0 and band.Size.X.Offset > tw34 and band.Position.X.Offset + band.Size.X.Offset < 420 / 2,
-			"kitb title: the band is 1.5x the text tall and wraps the text inside the title's box (not the box's whole width)",
+		T.check(band ~= nil and band.Size.Y.Offset == 42 and band.Size.X.Scale == 0 and band.Position.X.Scale == 0 and band.Position.X.Offset > 0
+			and math.abs(band.Size.X.Offset - (tw34 + 32)) <= 1 and band.Position.X.Offset + band.Size.X.Offset < 420 / 2,
+			"kitb title: the band is 42 px tall, 16 px past the text on each side, round the text inside the title's box",
 			band and tostring(band.Size) .. " at " .. tostring(band.Position) or "")
-		-- (sign/logo review, SIGN2 renders) no overhang on the left either: it covered the Shop's egg icon and poked out of
-		-- the Pets window's frame. The left tail's notch ends at the box's edge, and the letters move in onto the band
+		if band then
+			local hi, lip = band:FindFirstChild("Highlight"), band:FindFirstChild("Lip")
+			T.check(hi ~= nil and sameColor(hi.BackgroundColor3, Sg.GoldLight) and hi.Position.Y.Offset == 0 and hi.Size.Y.Offset == 3,
+				"kitb title: a 3 px GoldLight top line on the band", hi and hex(hi.BackgroundColor3) or "missing")
+			T.check(lip ~= nil and sameColor(lip.BackgroundColor3, Sg.GoldLip) and lip.AnchorPoint.Y == 1 and lip.Size.Y.Offset == 4,
+				"kitb title: a 4 px GoldLip lip along the band's bottom", lip and hex(lip.BackgroundColor3) or "missing")
+		end
+		T.check(#ofKind(rib, "Piping") == 0 and #ofKind(rib, "Step") == 0 and #ofKind(rib, "Underline") == 0 and rib:FindFirstChild("RibbonUnderline") == nil
+			and rib:FindFirstChild("TitleShadow") == nil,
+			"kitb title: no brass piping, no underline, no stepped stair, no shadow copy (F0 A replaces T1's stair tail)")
+		-- the whole ribbon stays inside the title's box: the left tail's notch starts at its left edge
 		local tailL = rib:FindFirstChild("TailL")
 		local leftmost = math.huge
 		if tailL then
@@ -2119,10 +2132,8 @@ local function serverScenarios()
 		T.check(tailL ~= nil and tailL.Position.X.Scale == 0 and leftmost == 0, "kitb title: a header title's ribbon starts at its box's left edge (the tail's notch too)",
 			fmt("left tail starts at %s px", tostring(leftmost)))
 		local faceIn = rib:FindFirstChild("TitleFace")
-		T.check(faceIn ~= nil and band ~= nil and faceIn.Position.X.Offset > band.Position.X.Offset and faceIn.Size.X.Offset == -faceIn.Position.X.Offset,
-			"kitb title: ...and its letters start on the band, their box narrowed to match", faceIn and (tostring(faceIn.Position) .. " " .. tostring(faceIn.Size)) or "")
-		-- (SIGN2 render, 390x844 Pets) a phone's header puts the A/B/C buttons right after the title's box: the ribbon (the
-		-- band and the right tail with its notch) ends inside the box on the right, never over the next control
+		T.check(faceIn ~= nil and band ~= nil and faceIn.Position.X.Offset == band.Position.X.Offset + 16 and faceIn.Size.X.Offset == -faceIn.Position.X.Offset,
+			"kitb title: ...and its letters start 16 px in on the band, their box narrowed to match", faceIn and (tostring(faceIn.Position) .. " " .. tostring(faceIn.Size)) or "")
 		local tailR = rib:FindFirstChild("TailR")
 		local reach = -math.huge
 		if tailR then
@@ -2135,78 +2146,76 @@ local function serverScenarios()
 		end
 		T.check(band ~= nil and tailR ~= nil and reach <= 0 and band.Position.X.Offset + band.Size.X.Offset <= 420,
 			"kitb title: a header title's ribbon ends inside its box on the right (the tail's notch too)", fmt("right tail reaches %s px past the box", tostring(reach)))
-		if band then
-			local hi, lip, pipes = band:FindFirstChild("Highlight"), band:FindFirstChild("Lip"), ofKind(band, "Piping")
-			T.check(hi ~= nil and sameColor(hi.BackgroundColor3, Sg.NavyTop) and hi.Position.Y.Offset == 0, "kitb title: a lighter top highlight on the band")
-			T.check(lip ~= nil and sameColor(lip.BackgroundColor3, Sg.NavyLip) and lip.AnchorPoint.Y == 1, "kitb title: a darker bottom lip on the band")
-			local brass = 0
-			for _, p in ipairs(pipes) do
-				if sameColor(p.BackgroundColor3, Sg.Brass) and p.Size.X.Scale == 1 then
-					brass = brass + 1
-				end
-			end
-			T.eq(brass, 2, "kitb title: two brass piping lines along the band")
-		end
-		-- the tails: two, darker, behind the band, sticking out past its ends, a stepped swallowtail notch on the outer end
+		-- the tails: two, GoldDeep, behind the band, 14 px past its ends, their tops 6 px under the band's and their bottoms on
+		-- its bottom; a V notch cut in the outer end (three columns, the cut deeper toward the end) and a GoldLip fold
 		local tails = ofKind(rib, "Tail")
 		T.eq(#tails, 2, "kitb title: a tail at each end of the band")
-		local leftOut, rightOut, notched = false, false, 0
 		local function at(u)
 			return u.Scale * 420 + u.Offset -- an x in the 420 px title's box
 		end
+		local vees, folds = 0, 0
 		for _, t in ipairs(tails) do
-			if band and t.Name == "TailL" and at(t.Position.X) < at(band.Position.X) then
-				leftOut = true
-			elseif band and t.Name == "TailR" and at(t.Position.X) + t.Size.X.Offset > at(band.Position.X) + at(band.Size.X) then
-				rightOut = true
+			local outer = t.Name == "TailL" and -1 or 1
+			local lo, hi = math.huge, -math.huge
+			local x0 = at(t.Position.X)
+			local cols = {}
+			for _, n in ipairs(t:GetChildren()) do
+				local nx = x0 + n.Position.X.Offset
+				lo, hi = math.min(lo, nx), math.max(hi, nx + n.Size.X.Offset)
+				if n.Name == "Notch" then
+					local c = cols[n.Position.X.Offset] or {}
+					cols[n.Position.X.Offset] = c
+					if n.Position.Y.Offset == 0 then
+						c.topEnd = n.Size.Y.Offset
+					else
+						c.lowStart = n.Position.Y.Offset
+					end
+					T.check(sameColor(n.BackgroundColor3, Sg.GoldDeep), "kitb title: " .. t.Name .. "'s notch columns are the tail's GoldDeep")
+				elseif n.Name == "Fold" then
+					folds = folds + 1
+					T.check(sameColor(n.BackgroundColor3, Sg.GoldLip) and n.Position.Y.Offset >= t.Size.Y.Offset - 1, "kitb title: " .. t.Name .. "'s fold is GoldLip under the band's end")
+				end
 			end
-			if #ofKind(t, "Notch") >= 2 then
-				notched = notched + 1
+			local list = {}
+			for x, c in pairs(cols) do
+				if c.topEnd and c.lowStart then
+					list[#list + 1] = { d = outer < 0 and -x or x, gap = c.lowStart - c.topEnd }
+				end
 			end
-			T.check(t.ZIndex < (band and band.ZIndex or 0), "kitb title: a tail sits behind the band")
-		end
-		T.check(leftOut and rightOut, "kitb title: the tails stick out past both ends of the band")
-		T.eq(notched, 2, "kitb title: each tail has a stepped swallowtail notch")
-		-- the letters: a navy shadow copy, then the gold face with one brown outline
-		local face, shadow = rib:FindFirstChild("TitleFace"), rib:FindFirstChild("TitleShadow")
-		if T.check(face ~= nil and shadow ~= nil and face:IsA("TextLabel") and shadow:IsA("TextLabel"), "kitb title: a Face and a Shadow copy of the text") then
-			T.check(face.Text == "PETS" and shadow.Text == "PETS" and face:GetAttribute("FontRole") == "Title" and face.Font == Enum.Font.FredokaOne and face.TextSize == 34,
-				"kitb title: the copies read the title (Title role, FredokaOne, its size)", face.Text .. " " .. tostring(face.Font) .. " " .. tostring(face.TextSize))
-			local g = face:FindFirstChildOfClass("UIGradient")
-			T.check(sameColor(face.TextColor3, Color3.new(1, 1, 1)) and g ~= nil and g.Rotation == 90, "kitb title: the face is white under a vertical gradient")
-			if g then
-				T.check(sameColor(colourAt(g.Color, 0.2), Sg.GoldLight) and sameColor(colourAt(g.Color, 0.6), Sg.Gold) and sameColor(colourAt(g.Color, 0.9), Sg.GoldDeep),
-					"kitb title: ...GOLD in three bands (light to 45 %, gold to 80 %, deep below)",
-					hex(colourAt(g.Color, 0.2)) .. " " .. hex(colourAt(g.Color, 0.6)) .. " " .. hex(colourAt(g.Color, 0.9)))
-				T.check(not sameColor(colourAt(g.Color, 0.44), colourAt(g.Color, 0.46)) and sameColor(colourAt(g.Color, 0.3), colourAt(g.Color, 0.44)),
-					"kitb title: ...hard bands (no smooth blend)")
-			end
-			local fs = textStrokes(face)
-			T.check(#fs == 1 and sameColor(fs[1].Color, Sg.Text) and fs[1].Thickness >= 2, "kitb title: ONE brown outline on the face (the U6 Title exception)",
-				#fs .. " outlines" .. (fs[1] and (" " .. hex(fs[1].Color) .. " " .. tostring(fs[1].Thickness)) or ""))
-			T.check(sameColor(shadow.TextColor3, Sg.NavyLip) and shadow.Position.Y.Offset >= 3 and shadow.ZIndex < face.ZIndex, "kitb title: a navy shadow copy below and behind the face",
-				hex(shadow.TextColor3) .. " +" .. tostring(shadow.Position.Y.Offset))
-			-- the underline and its stair: gold, under the text, three steps rising to the right after it
-			local under = rib:FindFirstChild("RibbonUnderline")
-			local steps = ofKind(rib, "Step")
-			local w = Theme.Measure("PETS", "Title", 34).X
-			T.check(under ~= nil and sameColor(under.BackgroundColor3, Sg.Gold) and math.abs(under.Size.X.Offset - w) <= 2 and under.ZIndex < shadow.ZIndex,
-				"kitb title: a gold underline as wide as the text, under the letters", under and tostring(under.Size) or "missing")
-			table.sort(steps, function(a, b)
-				return a.Position.X.Offset < b.Position.X.Offset
+			table.sort(list, function(a, b)
+				return a.d < b.d
 			end)
-			local rising = #steps == 3
-			for i = 2, #steps do
-				rising = rising and steps[i].Size.Y.Offset > steps[i - 1].Size.Y.Offset and steps[i].Position.X.Offset > steps[i - 1].Position.X.Offset
+			local opening = #list == 3
+			for i = 2, #list do
+				opening = opening and list[i].gap > list[i - 1].gap
 			end
-			T.check(rising and under ~= nil and steps[1].Position.X.Offset >= under.Position.X.Offset + under.Size.X.Offset - 1 and sameColor(steps[1].BackgroundColor3, Sg.Gold),
-				"kitb title: ...that ends in three gold steps rising to the right", tostring(#steps) .. " steps")
-			T.check(band ~= nil and tails[1] ~= nil and tails[1].ZIndex < band.ZIndex and band.ZIndex < under.ZIndex and under.ZIndex < shadow.ZIndex and shadow.ZIndex < face.ZIndex,
-				"kitb title: drawn back to front: tails, band, underline, shadow, face")
-			-- the copies follow the label
+			if opening then
+				vees = vees + 1
+			end
+			T.check(sameColor(t.BackgroundColor3, Sg.GoldDeep) and band ~= nil and t.ZIndex < band.ZIndex, "kitb title: " .. t.Name .. " is GoldDeep, behind the band")
+			if band then
+				local b0, b1 = at(band.Position.X), at(band.Position.X) + band.Size.X.Offset
+				local out = t.Name == "TailL" and (b0 - lo) or (hi - b1)
+				T.check(out == 14, "kitb title: " .. t.Name .. " sticks out 14 px past the band's end", tostring(out))
+				T.check(t.Position.Y.Offset == band.Position.Y.Offset + 6 and t.Size.Y.Offset == 36, "kitb title: " .. t.Name .. " runs from 6 px under the band's top to its bottom",
+					tostring(t.Position) .. " " .. tostring(t.Size))
+			end
+		end
+		T.eq(vees, 2, "kitb title: each tail has a V notch (three columns, the cut opening toward the outer end)")
+		T.eq(folds, 4, "kitb title: a two-step GoldLip fold under each end of the band")
+		-- the letters: one copy in the ink on the gold, no outline, no gradient
+		local face = rib:FindFirstChild("TitleFace")
+		if T.check(face ~= nil and face:IsA("TextLabel"), "kitb title: a Face copy of the text") then
+			T.check(face.Text == "PETS" and face:GetAttribute("FontRole") == "Title" and face.Font == Enum.Font.FredokaOne and face.TextSize == 34,
+				"kitb title: the copy reads the title (Title role, FredokaOne, its size)", face.Text .. " " .. tostring(face.Font) .. " " .. tostring(face.TextSize))
+			T.check(sameColor(face.TextColor3, Sg.Text) and face:FindFirstChildOfClass("UIGradient") == nil and #textStrokes(face) == 0,
+				"kitb title: the letters in the ink on the gold band (no outline, no gradient: the pitch)", hex(face.TextColor3) .. " " .. #textStrokes(face) .. " outlines")
+			T.check(band ~= nil and tails[1] ~= nil and tails[1].ZIndex < band.ZIndex and band.ZIndex < face.ZIndex, "kitb title: drawn back to front: tails, band, face")
+			-- the copy and the band follow the label
 			l.Text = "Shop"
-			T.check(face.Text == "SHOP" and shadow.Text == "SHOP", "kitb title: a new text on the title shows on its copies (in capitals)", face.Text .. " / " .. shadow.Text)
-			T.check(under ~= nil and math.abs(under.Size.X.Offset - Theme.Measure("SHOP", "Title", 34).X) <= 2, "kitb title: ...and the underline fits the new text", under and tostring(under.Size) or "")
+			T.check(face.Text == "SHOP", "kitb title: a new text on the title shows on its copy (in capitals)", face.Text)
+			T.check(band ~= nil and math.abs(band.Size.X.Offset - (Theme.Measure("SHOP", "Title", 34).X + 32)) <= 1, "kitb title: ...and the band fits the new text",
+				band and tostring(band.Size) or "")
 			-- the ribbon measures the text the label really draws (its TextBounds, once it has them): the renders' font
 			-- metrics, Roblox's own text layout
 			local savedExtent = Mock.TextExtent
@@ -2217,23 +2226,24 @@ local function serverScenarios()
 				return savedExtent(obj, limit)
 			end
 			l.Text = "Shop!"
-			local okTB = under ~= nil and math.abs(under.Size.X.Offset - 123) <= 1
+			local okTB = band ~= nil and math.abs(band.Size.X.Offset - (123 + 32)) <= 1
 			Mock.TextExtent = savedExtent
 			l.Text = "Shop"
-			T.check(okTB, "kitb title: the underline follows the label's TextBounds when it has them", under and tostring(under.Size) or "")
+			T.check(okTB, "kitb title: the band follows the label's TextBounds when it has them", band and tostring(band.Size) or "")
 			l.TextSize = 28
-			T.check(face.TextSize == 28 and shadow.TextSize == 28 and band ~= nil and math.abs(band.Size.Y.Offset - 42) <= 1, "kitb title: a new size resizes the copies and the band",
+			T.check(face.TextSize == 28 and band ~= nil and band.Size.Y.Offset == math.floor(42 * 28 / 34 + 0.5), "kitb title: a new size resizes the copy and the band",
 				tostring(face.TextSize) .. " band " .. (band and tostring(band.Size.Y.Offset) or ""))
 			l.TextTransparency = 0.5
-			T.check(face.TextTransparency == 0.5 and shadow.TextTransparency == 0.5 and fs[1] ~= nil and fs[1].Transparency == 0.5,
-				"kitb title: a fade on the title fades its copies and outline", tostring(face.TextTransparency))
+			T.check(face.TextTransparency == 0.5 and band ~= nil and band.BackgroundTransparency == 0.5 and tails[1] ~= nil and tails[1].BackgroundTransparency == 0.5,
+				"kitb title: a fade on the title fades its copy, band and tails", tostring(face.TextTransparency))
+			l.TextTransparency = 0
 			l.TextXAlignment = Enum.TextXAlignment.Center
-			T.check(under ~= nil and under.Position.X.Scale == 0.5 and face.TextXAlignment == Enum.TextXAlignment.Center, "kitb title: a centred title centres its copies and underline")
-			-- a centred title (a dialog, the hatch stage) hangs a banner round its text, not across its whole box: it stays
+			T.check(face.TextXAlignment == Enum.TextXAlignment.Center and face.Position.X.Offset == 0, "kitb title: a centred title centres its copy")
+			-- a centred title (a dialog, the hatch stage) hangs the ribbon round its text, not across its whole box: it stays
 			-- on the screen however wide the box is
 			local tw = Theme.Measure("SHOP", "Title", 28).X
-			T.check(band ~= nil and band.Size.X.Scale == 0 and band.Position.X.Scale == 0.5 and band.Size.X.Offset > tw and band.Size.X.Offset < tw + 6 * 28
-				and math.abs(band.Position.X.Offset + band.Size.X.Offset / 2) <= 1, "kitb title: a centred title's band fits round its text (with room for the steps)",
+			T.check(band ~= nil and band.Size.X.Scale == 0 and band.Position.X.Scale == 0.5 and band.Size.X.Offset > tw and band.Size.X.Offset <= tw + 2 * 13 + 1
+				and math.abs(band.Position.X.Offset + band.Size.X.Offset / 2) <= 1, "kitb title: a centred title's band fits round its text",
 				band and (tostring(band.Size) .. " at " .. tostring(band.Position)) or "")
 		end
 		l:Destroy()
@@ -2260,8 +2270,8 @@ local function serverScenarios()
 	-- (kit-b merge, U8 x T1) a header title's ribbon under a UIScale: Roblox's TextBounds and AbsoluteSize are screen px
 	-- (after every UIScale on and above the label) while the ribbon's offsets are the label's own px. The Pets window's
 	-- Signboard header sits under its Fit UIScale; at 390x844 the right tail's notch reached 16 px past the title's box,
-	-- onto the A button. At 0.8, 1, 1.25 and 1.7 the right tail (its notch too) ends inside the box and the underline is
-	-- as wide as the text in the label's own px
+	-- onto the A button. At 0.8, 1, 1.25 and 1.7 the right tail (its notch too) ends inside the box and the band wraps
+	-- the text in the label's own px (F0 A: the gold band, no underline)
 	S.theme_title_ribbon_uiscale = guarded("theme_title_ribbon_uiscale", function()
 		local Theme = theme()
 		local Mock = rawget(_G, "Mock")
@@ -2282,7 +2292,7 @@ local function serverScenarios()
 			l.TextXAlignment = Enum.TextXAlignment.Left
 			l.Parent = root
 			Theme.StyleTitle(l)
-			local tailR, under = l:FindFirstChild("TailR"), l:FindFirstChild("RibbonUnderline")
+			local tailR, band = l:FindFirstChild("TailR"), l:FindFirstChild("RibbonBand")
 			local reach = math.huge
 			if tailR then
 				reach = tailR.Position.X.Offset + tailR.Size.X.Offset
@@ -2293,26 +2303,28 @@ local function serverScenarios()
 			T.check(tailR ~= nil and tailR.Position.X.Scale == 0 and reach <= 110,
 				fmt("kitb title: UIScale %.2f, the right tail (its notch too) ends inside the 110 px box", sc), fmt("reaches %s", tostring(reach)))
 			local own = Mock.TextExtent(l)
-			T.check(under ~= nil and math.abs(under.Size.X.Offset - own) <= 2,
-				fmt("kitb title: UIScale %.2f, the underline is the text's width in the label's own px", sc),
-				fmt("underline %s, text %.1f", under and tostring(under.Size.X.Offset) or "missing", own))
+			-- (F0 A: the band wraps the text, its pad trimmed to fit a tight box) the band is the text's width in the label's
+			-- own px plus its two pads (at most the pitch's 16 at 34 px, scaled to the 24 px title)
+			local pad = math.floor(16 * 24 / 34 + 0.5)
+			T.check(band ~= nil and band.Size.X.Offset - own >= 2 and band.Size.X.Offset - own <= 2 * pad + 2,
+				fmt("kitb title: UIScale %.2f, the band is the text's width in the label's own px plus its pads", sc),
+				fmt("band %s, text %.1f", band and tostring(band.Size.X.Offset) or "missing", own))
 		end
 		gui:Destroy()
 		K.flushErrors("theme_title_ribbon_uiscale")
 	end)
 
-	-- (render gate, GATE_KITB finding 1; the pitch title_T1: "The band sizes to the header; the tails are fixed") a
-	-- SignKit.Header with Ribbon: its navy plate IS the band (the lit top, the lip, two brass pipings, the header's whole
-	-- width), reaching HeaderBand.Over past the frame on each side with a swallowtail tail behind each end; the title keeps
-	-- only its letters, underline and stair (its own band and tails hidden), the underline on the plate's low piping.
-	-- SignKit.HeaderOverhang(head, false) pulls the band inside the rim and drops the tails, the title staying put. A title
-	-- with RibbonBand = "NoTails" (on a navy header that is not the band) keeps its own band from its box's edge, no tails
+	-- (render gate, GATE_KITB finding 1; Pitch 2 F0 A, look review of finish pass A, majors 2 and 3: "header bands inside
+	-- the frame", the mock keeps the plate at x+6 .. x+w-6; the Pets plate ran past the window with dark notched tails) a
+	-- SignKit.Header with Ribbon keeps its navy plate INSIDE the rim with no tails of its own, whatever
+	-- SignKit.HeaderOverhang asks (the callers keep calling it); its title wears its own gold V-notched ribbon (the band
+	-- round the text, a tail at each end), as a title with RibbonBand = "NoTails" or with no mode does
 	S.theme_title_ribbon_modes = guarded("theme_title_ribbon_modes", function()
 		local Theme, SK = theme(), shared("SignKit")
 		if not (Theme and SK) then
 			return
 		end
-		if not T.check(type(SK.HeaderOverhang) == "function" and type(SK.HeaderBand) == "table", "ribbon modes: SignKit.HeaderOverhang and SignKit.HeaderBand exist") then
+		if not T.check(type(SK.HeaderOverhang) == "function", "ribbon modes: SignKit.HeaderOverhang exists (the callers keep calling it)") then
 			return
 		end
 		local Sg = Theme.Sign
@@ -2324,89 +2336,46 @@ local function serverScenarios()
 		win.Parent = gui
 		local head, plate = SK.Header(win, { Title = "Pets", TitleSize = 34, Height = 64, Rim = 6, IconSlot = true, Reserve = 70, Ribbon = true })
 		local title = plate:FindFirstChild("Title")
-		local over = SK.HeaderBand.Over
-		if not T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon" and title:GetAttribute("RibbonBand") == "Header",
-			"ribbon modes: a Ribbon header's title wears the ribbon with RibbonBand = Header") then
+		if not T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon", "ribbon modes: a Ribbon header's title wears the ribbon") then
 			gui:Destroy()
 			return
 		end
-		T.check(sameColor(plate.BackgroundColor3, Sg.Navy) and plate.Position.X.Offset == -over and plate.Size.X.Scale == 1 and plate.Size.X.Offset == 2 * over,
-			"ribbon modes: the plate is the band the header's width, out over the frame by HeaderBand.Over each side", tostring(plate.Position) .. " " .. tostring(plate.Size))
-		local lines = {}
-		for _, name in ipairs({ "BandTop", "BandLip", "BandPipeTop", "BandPipeLow" }) do
-			local f = plate:FindFirstChild(name)
-			lines[name] = f
-			T.check(f ~= nil and f.Size.X.Scale == 1 and f.Size.X.Offset == 0, "ribbon modes: the plate carries " .. name .. " along its whole width")
+		local function inside()
+			return plate.Position.X.Offset == 6 and plate.Size.X.Scale == 1 and plate.Size.X.Offset == -12 and head:FindFirstChild("TailL") == nil
+				and head:FindFirstChild("TailR") == nil
 		end
-		T.check(lines.BandTop and sameColor(lines.BandTop.BackgroundColor3, Sg.NavyTop) and lines.BandLip and sameColor(lines.BandLip.BackgroundColor3, Sg.NavyLip)
-			and lines.BandPipeTop and sameColor(lines.BandPipeTop.BackgroundColor3, Sg.Brass) and lines.BandPipeLow and sameColor(lines.BandPipeLow.BackgroundColor3, Sg.Brass),
-			"ribbon modes: ...the lit top, the darker lip and two brass pipings")
+		T.check(sameColor(plate.BackgroundColor3, Sg.Navy) and inside(), "ribbon modes: the navy plate sits inside the rim (x 6 .. w-6), no tails past the frame",
+			tostring(plate.Position) .. " " .. tostring(plate.Size))
+		T.check(plate:FindFirstChild("BandPipeLow") == nil and plate:FindFirstChild("BandPipeTop") == nil, "ribbon modes: no T1 brass pipings on the plate")
+		local band = title:FindFirstChild("RibbonBand")
+		T.check(band ~= nil and band.Visible and sameColor(band.BackgroundColor3, Sg.Gold) and title.TailL.Visible and title.TailR.Visible,
+			"ribbon modes: the title carries its own gold band and its two V tails on the plate")
 		local slot = plate:FindFirstChild("IconSlot")
-		T.check(slot ~= nil and lines.BandPipeTop ~= nil and slot.ZIndex > lines.BandPipeTop.ZIndex and title.ZIndex > lines.BandPipeTop.ZIndex,
-			"ribbon modes: the icon square and the title draw over the band's lines")
-		-- the tails: behind the plate, past the frame, notched
-		local plateX0 = plate.Position.X.Offset
-		local plateX1 = 900 + plate.Position.X.Offset + plate.Size.X.Offset
-		for _, side in ipairs({ "TailL", "TailR" }) do
-			local tail = head:FindFirstChild(side)
-			if T.check(tail ~= nil and tail.Visible and tail.ZIndex < plate.ZIndex and sameColor(tail.BackgroundColor3, Sg.NavyLip), "ribbon modes: " .. side .. " hangs behind the band") then
-				local x0 = tail.Position.X.Scale * 900 + tail.Position.X.Offset
-				local lo, hi = x0, x0 + tail.Size.X.Offset
-				local notches = 0
-				for _, n in ipairs(tail:GetChildren()) do
-					lo, hi = math.min(lo, x0 + n.Position.X.Offset), math.max(hi, x0 + n.Position.X.Offset + n.Size.X.Offset)
-					notches = notches + 1
-				end
-				if side == "TailL" then
-					T.check(lo < plateX0 and hi > plateX0 and lo < -over, "ribbon modes: the left tail sticks out past the band's left end, beyond the frame", fmt("tail %d..%d, band from %d", lo, hi, plateX0))
-				else
-					T.check(hi > plateX1 and lo < plateX1 and hi > 900 + over, "ribbon modes: the right tail sticks out past the band's right end, beyond the frame", fmt("tail %d..%d, band to %d", lo, hi, plateX1))
-				end
-				T.check(notches >= 2, "ribbon modes: " .. side .. " has its stepped swallowtail notch")
-			end
-		end
-		-- the title: no band or tails of its own; its underline sits on the plate's low piping
-		local band, under = title:FindFirstChild("RibbonBand"), title:FindFirstChild("RibbonUnderline")
-		T.check(band ~= nil and not band.Visible and not title:FindFirstChild("TailL").Visible and not title:FindFirstChild("TailR").Visible,
-			"ribbon modes: the title's own band and tails are hidden (the plate is its band)")
-		local pipeLow = lines.BandPipeLow
-		T.check(under ~= nil and pipeLow ~= nil and under.Position.Y.Scale == 1 and pipeLow.Position.Y.Scale == 1
-			and under.Position.Y.Offset + under.Size.Y.Offset == pipeLow.Position.Y.Offset and sameColor(under.BackgroundColor3, Sg.Gold),
-			"ribbon modes: the gold underline sits on the plate's low piping", under and pipeLow and (tostring(under.Position) .. " / " .. tostring(pipeLow.Position)) or "")
-		local steps = 0
-		for _, d in ipairs(title:GetChildren()) do
-			if d:GetAttribute("Ribbon") == "Step" and d.Visible then
-				steps = steps + 1
-			end
-		end
-		T.eq(steps, 3, "ribbon modes: ...and ends in its three steps (the box has room)")
-		-- pulled in: inside the rim, no tails, the title and the icon where they were on the screen
 		local function at(o)
 			return o.Position.X.Offset + plate.Position.X.Offset
 		end
 		local titleAt, slotAt = at(title), at(slot)
-		SK.HeaderOverhang(head, false)
-		T.check(plate.Position.X.Offset == 6 and plate.Size.X.Offset == -12 and not head.TailL.Visible and not head.TailR.Visible,
-			"ribbon modes: HeaderOverhang(false) keeps the band inside the rim and drops the tails", tostring(plate.Position) .. " " .. tostring(plate.Size))
-		T.check(at(title) == titleAt and at(slot) == slotAt, "ribbon modes: ...the title and the icon stay where they were", fmt("title %d -> %d", titleAt, at(title)))
 		SK.HeaderOverhang(head, true)
-		T.check(plate.Position.X.Offset == -over and head.TailL.Visible and head.TailR.Visible and at(title) == titleAt, "ribbon modes: HeaderOverhang(true) puts them back")
-		-- a header built without Ribbon keeps today's look: the plate inside the rim, the title's own ribbon
+		T.check(inside() and at(title) == titleAt and at(slot) == slotAt, "ribbon modes: HeaderOverhang(true) keeps the band inside the frame, the title and the icon put",
+			tostring(plate.Position) .. " " .. tostring(plate.Size))
+		SK.HeaderOverhang(head, false)
+		T.check(inside() and at(title) == titleAt, "ribbon modes: ...and so does HeaderOverhang(false)")
+		-- a header built without Ribbon: the same plate inside the rim, the title's own ribbon
 		local _, plain = SK.Header(win, { Title = "Credits", TitleSize = 34, Height = 64, Rim = 6 })
 		local pt = plain:FindFirstChild("Title")
-		T.check(plain.Position.X.Offset == 6 and plain:FindFirstChild("BandPipeLow") == nil and pt and pt:GetAttribute("RibbonBand") == nil and pt.RibbonBand.Visible,
-			"ribbon modes: a header without Ribbon keeps its plate inside the rim and the title's own band")
-		-- NoTails: the title's own band from its box's left edge, no tails
+		T.check(plain.Position.X.Offset == 6 and pt and pt.RibbonBand.Visible and sameColor(pt.RibbonBand.BackgroundColor3, Sg.Gold),
+			"ribbon modes: a header without Ribbon keeps its plate inside the rim and the title's own gold band")
+		-- NoTails (the T1 mode for a navy header that is not the band): the gold tails read on navy, so it keeps them now
 		local l = Theme.Label("Shop", "Title", { Size = 34 })
 		l.Size = UDim2.fromOffset(420, 58)
 		l.TextXAlignment = Enum.TextXAlignment.Left
 		l:SetAttribute("RibbonBand", "NoTails")
 		l.Parent = win
 		Theme.StyleTitle(l)
-		T.check(l.RibbonBand.Visible and l.RibbonBand.Position.X.Offset == 0 and not l.TailL.Visible and not l.TailR.Visible,
-			"ribbon modes: NoTails keeps the title's own band from its box's edge, without tails", tostring(l.RibbonBand.Position))
+		T.check(l.RibbonBand.Visible and l.RibbonBand.Position.X.Offset == 14 and l.TailL.Visible and l.TailR.Visible,
+			"ribbon modes: NoTails wears the same gold band and V tails (the band 14 px in, after the left tail)", tostring(l.RibbonBand.Position))
 		l:SetAttribute("RibbonBand", nil)
-		T.check(l.TailL.Visible and l.TailR.Visible and l.RibbonBand.Position.X.Offset > 0, "ribbon modes: ...and the tails come back when the attribute goes")
+		T.check(l.TailL.Visible and l.TailR.Visible and l.RibbonBand.Position.X.Offset == 14, "ribbon modes: ...and the same with no mode")
 		gui:Destroy()
 		K.flushErrors("theme_title_ribbon_modes")
 	end)
@@ -6185,21 +6154,12 @@ local function clientScenarios()
 						tag .. ": ...the paw and the title still inside the header, the title right of the paw",
 						slot and title and (U8.show(U8.rect(slot)) .. " / " .. U8.show(U8.rect(title))) or "")
 				else
-					T.check(head:GetAttribute("Overhang") == true and tails[1] and U8.shown(tails[1]) and tails[2] and U8.shown(tails[2]),
-						tag .. ": on PC the band reaches out over the frame with its tails (title_T1)")
-					for _, tail in ipairs(tails) do
-						local r = screen(tail)
-						for _, n in ipairs(tail:GetChildren()) do
-							local q = screen(n)
-							r = { X = math.min(r.X, q.X), Y = math.min(r.Y, q.Y), R = math.max(r.R, q.R), B = math.max(r.B, q.B) }
-						end
-						T.check(r.X >= 0 and r.R <= vp.X, tag .. ": " .. tail.Name .. " stays on the screen", U8.show(r))
-						local hit = nil
-						for _, st in ipairs(strips) do
-							hit = hit or (U8.overlap(r, st) and st or nil)
-						end
-						T.check(hit == nil, tag .. ": " .. tail.Name .. " stays clear of the HUD's currency strips", hit and (U8.show(r) .. " over " .. U8.show(hit)) or "")
-					end
+					-- (Pitch 2 F0 A, look review of finish pass A major 3: "header bands inside the frame"; the plate ran past the
+					-- window with dark notched tails at x 305 / 1615) on PC too the plate stays inside the rim, no tails
+					local plate = head:FindFirstChild("Plate")
+					local pr, wr = plate and screen(plate), screen(head)
+					T.check(not (tails[1] and U8.shown(tails[1])) and not (tails[2] and U8.shown(tails[2])) and pr ~= nil and pr.X >= wr.X + 5 and pr.R <= wr.R - 5,
+						tag .. ": on PC the band stays inside the frame too, no tails (F0 A)", pr and (U8.show(pr) .. " in " .. U8.show(wr)) or "no plate")
 				end
 				if vp.Y > vp.X then
 					local top = screen(holder).Y

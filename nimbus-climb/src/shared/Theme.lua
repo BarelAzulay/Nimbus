@@ -971,16 +971,14 @@ end
 -- T0 review: a Title-role heading that is NOT a window's name passes a kind from Theme.TitleExempt (each with its reason):
 -- StyleTitle(label, kind) stamps TitleLook = kind and never gives it the window title look, so a run-time walk
 -- (smoke_kitb_ui kitb_titles_stamped) tells a heading skipped on purpose from a window title someone forgot.
--- Sign/logo build (the owner's pick T1 "Ribbon title", 2026-11-13; FINAL_OPTIONS.md, drawn at a 20 px title, every size
--- here grows with the text): stamps TitleLook = "Ribbon" and hangs the ribbon's pieces under the label, back to front: two
--- swallowtail tails (#171C4F, a stepped notch in the outer end), the band (navy, 1.5x
--- the text tall, round the text and its stair, inside the label's box with the letters moved in onto it (a header
--- title), or centred round the text (a centred title); a lit top line, a darker lip, two brass
--- piping lines), the gold underline
--- under the text with its three rising steps, a navy shadow copy of the text, and the face: white text under a hard
--- three-band gold gradient with ONE brown outline (Theme.OutlineOnPlate). The label's own text is hidden by a see-through
--- UIGradient (TitleHide), so the caller's font, size, colour and text props stay as they were; the copies follow its
--- text, size, alignment and transparency.
+-- Sign/logo build (the owner's pick T1 "Ribbon title", 2026-11-13), reworked by Pitch 2 F0 (the owner's pick A
+-- "Carved signboard", 2026-11-20: "a V-notched gold ribbon"): stamps TitleLook = "Ribbon" and hangs the ribbon's pieces
+-- under the label, back to front: two GoldDeep tails (a V notch in the outer end, a GoldLip fold under the band's end),
+-- the gold band round the text (GoldLight top line, GoldLip lip), inside the label's box with the letters moved in onto
+-- it (a header title) or centred round the text (a centred title), and the face: the text in the ink (Sign.Text) on the
+-- gold, no outline. The label's own text is hidden by a see-through UIGradient (TitleHide), so the caller's font, size,
+-- colour and text props stay as they were; the copy follows its text, size, alignment and transparency. (T1's navy
+-- band, brass pipings, gold outlined letters and the stepped stair under them are gone.)
 Theme.TitleExempt = {
 	Section = "a section head, a card's heading or an empty-state line inside a window (Best times, Quick match, Elements, a Home "
 		.. "section, the Home hero cards, the Shop's SECRET ROULETTE / Gems / XP Potion cards), or a dialog / pop-up / HUD panel "
@@ -992,28 +990,24 @@ Theme.TitleExempt = {
 		.. "side); a ribbon round each letter would bury it",
 }
 
--- T1's sizes at a 20 px title (the pitch's ribbon): the band 30 tall, overhanging 12 each side and sitting 3 below the
--- text's centre (the letters ride high on it); the tails 14 x 24, their bottoms on the band's, 4 under it, a 6 px notch in
--- two steps (the pitch's 4 x 6 fold is left off: the hatch stage's instance budget); lines 2 (lit top), 3 (lip), 2 (piping, 3 in from the top and above the lip); the face's
--- outline 2, the shadow 3 below; the underline 3 thick on the low piping, steps 6 wide, each 3 taller than the last
+-- (Pitch 2 F0, the owner's pick A "Carved signboard": "a V-notched gold ribbon"; the look review of finish pass A: the T1
+-- navy band with its stepped stair tail was still on every window) the window title's ribbon, sized as the pitch drew it
+-- on a 34 px title (F0_*_optA.png, kit.py ribbon "notch"; every size here grows with the text): the band 42 tall, 16 past
+-- the text on each side, a 3 px GoldLight top line and a 4 px GoldLip lip; a GoldDeep tail behind each end, sticking out
+-- 14 px, its top 6 under the band's, its bottom on the band's, a V notch 10 deep cut in its outer end; a GoldLip fold
+-- 8 x 6 under each end. TailOver: the slack a walk allows past a window's frame (the ribbon stays in the title's box)
 Theme.TitleRibbon = {
-	Base = 20,
-	Band = 30,
-	Pad = 12,
-	Drop = 3,
+	Base = 34,
+	Band = 42,
+	Pad = 16,
 	TailW = 14,
-	TailH = 24,
+	Notch = 10,
+	TailTop = 6,
+	FoldW = 8,
+	FoldH = 6,
+	Top = 3,
+	Lip = 4,
 	TailOver = 4,
-	Notch = 6,
-	Top = 2,
-	Lip = 3,
-	Pipe = 2,
-	PipeIn = 3,
-	Stroke = 2,
-	Shadow = 3,
-	Under = 3,
-	StepW = 6,
-	StepH = 3,
 }
 
 -- the copies mirror these label props (and its FontFace)
@@ -1031,8 +1025,8 @@ local function ribbonFrame(name, colour, z, parent)
 	return f
 end
 
--- the face / shadow copy of the label's text (Title role: the U6 exception's one outline)
-local function ribbonCopy(label, name, colour, outline, z, parent)
+-- the face: the label's text in the ink on the gold band (no outline, no gradient: the pitch's letters)
+local function ribbonCopy(label, name, colour, z, parent)
 	local t = Instance.new("TextLabel")
 	t.Name = name
 	t.BackgroundTransparency = 1
@@ -1046,62 +1040,45 @@ local function ribbonCopy(label, name, colour, outline, z, parent)
 			c:Clone().Parent = t
 		end
 	end
-	local o = Instance.new("UIStroke")
-	o.Name = "TitleOutline"
-	o.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-	o.LineJoinMode = Enum.LineJoinMode.Round
-	o.Color = outline
-	o.Thickness = Theme.TitleRibbon.Stroke
-	o.Parent = t
 	t.Parent = parent
 	return t
 end
 
--- a tail: the frame is its body (w - notch wide); the outer end hangs off it in two columns that leave a stepped
--- swallowtail notch (a deeper cut at the very end). `outer` is the side the notch is cut in (-1 left, 1 right)
-local function ribbonTail(tail, w, h, notch, outer)
+-- a tail: the frame is its body (w - notch wide, h tall) against the band's end; its outer end hangs off it in three
+-- columns cut to a V notch (the apex `notch` px in, at the middle). `outer` is the side the notch is cut in (-1 left, 1
+-- right). fold = { w, h }: the darker fold under the band's end, a right triangle in two steps (its square corner out)
+local function ribbonTail(tail, w, h, notch, outer, fold)
 	for _, c in ipairs(tail:GetChildren()) do
 		c:Destroy()
 	end
-	local step = math.max(1, math.floor(notch / 2))
+	local colour = tail.BackgroundColor3
+	local body = math.max(1, w - notch)
+	tail.Size = UDim2.fromOffset(body, h)
 	local mid = h / 2
-	tail.Size = UDim2.fromOffset(w - notch, h)
-	-- two columns at the outer end: the inner one with a small gap, the outermost with a wider one
-	for i, gap in ipairs({ math.max(1, math.floor(h / 8)), math.max(2, math.floor(h / 4)) }) do
-		local colW = i == 1 and notch - step or step
-		local x = outer < 0 and (i == 1 and step - notch or -notch) or (i == 1 and w - notch or w - step)
-		for _, part in ipairs({ { 0, math.floor(mid - gap) }, { math.ceil(mid + gap), h - math.ceil(mid + gap) } }) do
-			local n = ribbonFrame("Notch", Theme.Sign.NavyLip, 1, tail)
-			n.Position = UDim2.fromOffset(x, part[1])
-			n.Size = UDim2.fromOffset(colW, part[2])
+	for i = 1, 3 do
+		local a, b = math.floor((i - 1) * notch / 3 + 0.5), math.floor(i * notch / 3 + 0.5)
+		local cut = math.floor(mid * ((a + b) / 2) / math.max(1, notch) + 0.5)
+		local x = outer < 0 and -b or body + a
+		for _, part in ipairs({ { 0, math.floor(mid - cut) }, { math.ceil(mid + cut), h - math.ceil(mid + cut) } }) do
+			if part[2] > 0 and b > a then
+				local n = ribbonFrame("Notch", colour, 1, tail)
+				n.Position = UDim2.fromOffset(x, part[1])
+				n.Size = UDim2.fromOffset(b - a, part[2])
+			end
+		end
+	end
+	if fold then
+		local fw, fh = fold[1], fold[2]
+		local half = math.max(1, math.floor(fh / 2))
+		for i, wide in ipairs({ math.max(1, math.floor(fw * 0.75 + 0.5)), math.max(1, math.floor(fw * 0.25 + 0.5)) }) do
+			local f = ribbonFrame("Fold", Theme.Sign.GoldLip, 1, tail)
+			f.Position = UDim2.fromOffset(outer < 0 and body - fw or fw - wide, h - 1 + (i - 1) * half)
+			f.Size = UDim2.fromOffset(wide, i == 1 and half or fh - half)
 		end
 	end
 end
 
-Theme.RibbonTail = ribbonTail -- (render gate) SignKit.Header's tails on a header-wide band
-
--- (render gate, GATE_KITB) a header title whose header IS the band (label attribute RibbonBand = "Header", set by
--- SignKit.Header's Ribbon opt; the pitch title_T1: "the band sizes to the header"): the label's parent, the header's navy
--- plate, gets the band's lines in the label's px (the lit top, the lip, two brass pipings along its whole width).
--- Returns the px from the plate's bottom to the top of the low piping (the underline sits on it)
-local PLATE_LINES = { { "BandTop", "NavyTop", "Top" }, { "BandLip", "NavyLip", "Lip" }, { "BandPipeTop", "Brass", "Pipe" }, { "BandPipeLow", "Brass", "Pipe" } }
-local function ribbonPlate(plate, px)
-	local R = Theme.TitleRibbon
-	for _, spec in ipairs(PLATE_LINES) do
-		local f = plate:FindFirstChild(spec[1])
-		if not f then
-			f = ribbonFrame(spec[1], Theme.Sign[spec[2]], 0, plate)
-			f:SetAttribute("Ribbon", "PlateLine")
-		end
-		f.Size = UDim2.new(1, 0, 0, px(R[spec[3]]))
-	end
-	local lip, pipe, pipeIn = px(R.Lip), px(R.Pipe), px(R.PipeIn)
-	plate.BandTop.Position = UDim2.fromOffset(0, 0)
-	plate.BandLip.Position = UDim2.new(0, 0, 1, -lip)
-	plate.BandPipeTop.Position = UDim2.fromOffset(0, pipeIn)
-	plate.BandPipeLow.Position = UDim2.new(0, 0, 1, -(lip + pipeIn + pipe))
-	return lip + pipeIn + pipe
-end
+Theme.RibbonTail = ribbonTail
 
 -- (kit-b merge) the product of the UIScales on `obj` and every GuiObject above it, up to its ScreenGui: TextBounds and
 -- AbsoluteSize are screen px (after all of them), the ribbon's offsets are the label's own px (PixelIcon's scaleOf)
@@ -1120,7 +1097,11 @@ local function uiScaleOf(obj)
 	return s
 end
 
--- sizes the band, tails, underline and steps for the label's text now, in the label's own px
+-- sizes the band and the tails for the label's text now, in the label's own px. Every header title keeps the whole
+-- ribbon INSIDE its box (the left tail's notch from the box's left edge, the right tail's before its right edge): a
+-- box with too little room first trims the band's padding, then draws the tails shorter. A centred title (a dialog,
+-- the hatch stage) hangs the ribbon round its text. RibbonBand ("Header" / "NoTails", the T1 modes) no longer changes
+-- the look: the gold band and its V tails read on the navy header plate either way (the pitch)
 local function ribbonLayout(label, rib)
 	local R = Theme.TitleRibbon
 	local size = tonumber(label.TextSize) or R.Base
@@ -1154,21 +1135,12 @@ local function ribbonLayout(label, rib)
 	elseif label.TextYAlignment == Enum.TextYAlignment.Bottom then
 		ya, yo = 1, -size * 0.6
 	end
-	local bandH, pad = px(R.Band), px(R.Pad)
-	local bandTop = math.floor(yo - bandH / 2 + px(R.Drop) + 0.5)
 	local band = rib.RibbonBand
-	-- (render gate) nil: the title's own band and tails; "Header": its header's plate is the band (SignKit.Header, Ribbon);
-	-- "NoTails": its own band without the tails (a title on a navy header that is not the band: tails inside a navy
-	-- bar read as a glitchy darker block)
-	local mode = label:GetAttribute("RibbonBand")
-	local onPlate = mode == "Header" and label.Parent ~= nil and label.Parent:IsA("GuiObject")
-	local tailsOn = mode == nil
-	band.Visible = not onPlate
-	rib.TailL.Visible = tailsOn
-	rib.TailR.Visible = tailsOn
+	local bandH, lip, top = px(R.Band), px(R.Lip, 2), px(R.Top, 2)
+	-- the letters ride 1 px over the band's middle above its lip (the pitch: y + (h - lip) / 2 + 1 is the text's centre)
+	local bandTop = math.floor(yo - (bandH - lip) / 2 - px(1) + 0.5)
 	local centred = label.TextXAlignment == Enum.TextXAlignment.Center
 	local inR = label.TextXAlignment == Enum.TextXAlignment.Right
-	local sw, sh = px(R.StepW, 2), px(R.StepH, 2)
 	-- the box's real width (0 = not laid out yet: no limit)
 	local boxW = 0
 	pcall(function()
@@ -1177,112 +1149,68 @@ local function ribbonLayout(label, rib)
 	if boxW <= 0 and label.Size.X.Scale == 0 then
 		boxW = label.Size.X.Offset
 	end
-	-- (sign/logo review) how far a header title's letters move in off the box's edge, onto the band, and whether the
-	-- stair after them still fits in the box
-	local inset, stairs = 0, true
-	if onPlate then
-		-- the plate is the band: the letters stay where the caller put them, the stair follows them while the box has room
-		stairs = boxW <= 0 or boxW - tw - 3 * sw >= 0
-	elseif centred then
-		-- a centred title (a dialog, the hatch stage) hangs a banner round its text, room for the steps on both sides
-		local half = math.floor(tw / 2 + 3 * sw + pad + 0.5)
-		band.Position = UDim2.new(0.5, -half, ya, bandTop)
-		band.Size = UDim2.new(0, 2 * half, 0, bandH)
-	else
-		-- a header title keeps its ribbon INSIDE its box (review: overhanging it covered the Shop's egg icon and poked out
-		-- of the Pets window's frame) and round its text (review: a band the box's whole width ran under the Pets
-		-- window's A/B/C buttons, laid over the box's right end on a phone): the left tail's notch starts at the box's
-		-- edge, the letters move in onto the band, the stair follows them, then a little band and the right tail, never
-		-- past the box. A box with too little room keeps the letters nearer its edge, then leaves the stair off (a box
-		-- fitted to its text, as Fusion's)
-		local lead = tailsOn and px(R.TailW) - px(R.TailOver) or 0
-		local gap = math.floor(pad / 2 + 0.5)
-		inset = lead + gap
-		if boxW > 0 then
-			local free = boxW - tw - 3 * sw - gap - lead
-			stairs = free >= 0
-			if not stairs then
-				free = boxW - tw - gap - lead
+	local tailW, notch, tailTop = px(R.TailW), px(R.Notch, 2), px(R.TailTop)
+	local pad = px(R.Pad)
+	local lead = tailW
+	if boxW > 0 and not centred then
+		local free = boxW - tw - 2 * (lead + pad)
+		if free < 0 then
+			pad = math.max(math.min(2, pad), pad + math.floor(free / 2))
+			free = boxW - tw - 2 * (lead + pad)
+			if free < 0 then
+				lead = math.max(0, lead + math.floor(free / 2))
 			end
-			inset = math.max(0, math.min(inset, math.floor(free)))
-		end
-		local stop = inset + tw + (stairs and 3 * sw or 0) + gap
-		if boxW > 0 then
-			stop = math.min(stop, boxW - lead)
-		end
-		band.Position = UDim2.new(0, lead, ya, bandTop)
-		if inR then
-			band.Size = UDim2.new(1, -2 * lead, 0, bandH) -- (no right-aligned title today) along the whole box
-		else
-			band.Size = UDim2.new(0, math.max(1, math.floor(stop - lead + 0.5)), 0, bandH)
 		end
 	end
-	-- the copies drawn in from the edge the text starts on (the label's own text, hidden, stays where it was)
-	for _, copy in ipairs({ rib.TitleFace, rib.TitleShadow }) do
-		copy.Size = UDim2.new(1, -inset, 1, 0)
-	end
-	local faceX = inR and 0 or inset
-	band.Highlight.Size = UDim2.new(1, 0, 0, px(R.Top))
-	band.Lip.Size = UDim2.new(1, 0, 0, px(R.Lip))
-	local pipe = px(R.Pipe)
-	local lowPipe = bandH - px(R.Lip) - px(R.PipeIn) - pipe
-	band.PipingTop.Position = UDim2.fromOffset(0, px(R.PipeIn))
-	band.PipingTop.Size = UDim2.new(1, 0, 0, pipe)
-	band.PipingLow.Position = UDim2.fromOffset(0, lowPipe)
-	band.PipingLow.Size = UDim2.new(1, 0, 0, pipe)
-	-- the tails: TailOver under the band's ends, the rest sticking out, their bottoms on the band's
-	local tw0, th, over, notch = px(R.TailW), px(R.TailH), px(R.TailOver), px(R.Notch, 2)
-	local bx, bs = band.Position.X, band.Size.X
-	rib.TailL.Position = UDim2.new(bx.Scale, bx.Offset - tw0 + over + notch, ya, bandTop + bandH - th)
-	rib.TailR.Position = UDim2.new(bx.Scale + bs.Scale, bx.Offset + bs.Offset - over, ya, bandTop + bandH - th)
-	if rib.TailL:GetAttribute("TailK") ~= k then
-		rib.TailL:SetAttribute("TailK", k)
-		for _, tail in ipairs({ rib.TailL, rib.TailR }) do
-			ribbonTail(tail, tw0, th, notch, tail == rib.TailL and -1 or 1)
-		end
-	end
-	-- on a header's plate the letters ride high on the band as they do on the title's own (its Drop)
-	local lift = onPlate and px(R.Drop) or 0
-	rib.TitleFace.Position = UDim2.fromOffset(faceX, -lift)
-	rib.TitleShadow.Position = UDim2.fromOffset(faceX, px(R.Shadow, 2) - lift)
-	rib.TitleFace.TitleOutline.Thickness = px(R.Stroke, 2)
-	rib.TitleShadow.TitleOutline.Thickness = px(R.Stroke, 2)
-	-- the underline on the low piping, under the letters; its three steps rising after it
-	local xs, xo = 0, inset
-	if label.TextXAlignment == Enum.TextXAlignment.Center then
-		xs, xo = 0.5, -tw / 2
+	local bandW = math.max(1, math.floor(tw + 2 * pad + 0.5))
+	local inset = lead + pad
+	if centred then
+		band.Position = UDim2.new(0.5, -math.floor(bandW / 2), ya, bandTop)
+		inset = 0
 	elseif inR then
-		xs, xo = 1, -tw - inset
+		band.Position = UDim2.new(1, -(lead + bandW), ya, bandTop)
+	else
+		band.Position = UDim2.new(0, lead, ya, bandTop)
 	end
-	local under = px(R.Under, 2)
-	local underY = bandTop + lowPipe - under
-	if onPlate then
-		ya, underY = 1, -ribbonPlate(label.Parent, px) - under -- on the plate's low piping (the label is the plate's height)
+	band.Size = UDim2.fromOffset(bandW, bandH)
+	band.Visible = true
+	band.Highlight.Size = UDim2.new(1, 0, 0, top)
+	band.Lip.Size = UDim2.new(1, 0, 0, lip)
+	-- the tails: as long as the box leaves room (a tail shorter than its notch's apex is left off)
+	local body = math.max(1, tailW - notch)
+	local tailOn = lead > body
+	local th = math.max(1, bandH - tailTop)
+	local bx = band.Position.X
+	rib.TailL.Visible = tailOn
+	rib.TailR.Visible = tailOn
+	rib.TailL.Position = UDim2.new(bx.Scale, bx.Offset - body, ya, bandTop + tailTop)
+	rib.TailR.Position = UDim2.new(bx.Scale, bx.Offset + bandW, ya, bandTop + tailTop)
+	local key = table.concat({ math.min(lead, tailW), th, notch, px(R.FoldW, 2), px(R.FoldH, 2) }, "x")
+	if tailOn and rib.TailL:GetAttribute("TailKey") ~= key then
+		rib.TailL:SetAttribute("TailKey", key)
+		local w = math.min(lead, tailW)
+		for _, tail in ipairs({ rib.TailL, rib.TailR }) do
+			ribbonTail(tail, w, th, math.max(0, w - body), tail == rib.TailL and -1 or 1, { px(R.FoldW, 2), px(R.FoldH, 2) })
+		end
 	end
-	rib.RibbonUnderline.Position = UDim2.new(xs, math.floor(xo + 0.5), ya, underY)
-	rib.RibbonUnderline.Size = UDim2.fromOffset(math.floor((boxW > 0 and not centred and math.min(tw, boxW - inset) or tw) + 0.5), under)
-	for i = 1, 3 do
-		local st = rib["RibbonStep" .. i]
-		st.Position = UDim2.new(xs, math.floor(xo + tw + 0.5) + (i - 1) * sw, ya, underY + under - (i + 1) * sh)
-		st.Size = UDim2.fromOffset(sw, (i + 1) * sh)
-		st.Visible = stairs
-	end
+	-- the letters drawn in from the edge the text starts on (the label's own text, hidden, stays where it was)
+	local face = rib.TitleFace
+	face.Size = UDim2.new(1, -inset, 1, 0)
+	face.Position = UDim2.fromOffset(inR and 0 or inset, 0)
 end
 
--- the copies and the ribbon follow the label (a fade on the title fades the whole ribbon)
+-- the copy and the ribbon follow the label (a fade on the title fades the whole ribbon)
 local function ribbonSync(label, rib)
 	local fade = label.TextTransparency
-	for _, copy in ipairs({ rib.TitleFace, rib.TitleShadow }) do
-		for _, prop in ipairs(RIBBON_MIRROR) do
-			pcall(function()
-				copy[prop] = label[prop]
-			end)
-		end
+	local face = rib.TitleFace
+	for _, prop in ipairs(RIBBON_MIRROR) do
 		pcall(function()
-			copy.FontFace = label.FontFace
+			face[prop] = label[prop]
 		end)
-		copy.TitleOutline.Transparency = fade
 	end
+	pcall(function()
+		face.FontFace = label.FontFace
+	end)
 	for _, piece in ipairs(rib:GetChildren()) do
 		if piece:IsA("Frame") and piece:GetAttribute("Ribbon") ~= nil then
 			piece.BackgroundTransparency = fade
@@ -1304,38 +1232,19 @@ local function ribbon(label)
 	-- Ribbon attribute
 	local rib = label
 	if not label:FindFirstChild("RibbonBand") then
-		-- back to front (Sibling ZIndex under the label): tails 1, band 2, underline + steps 3, shadow 4, face 5
+		-- back to front (Sibling ZIndex under the label): tails (with their folds) 1, band 2, face 5
 		for _, side in ipairs({ "TailL", "TailR" }) do
-			ribbonFrame(side, Sign.NavyLip, 1, rib):SetAttribute("Ribbon", "Tail")
+			ribbonFrame(side, Sign.GoldDeep, 1, rib):SetAttribute("Ribbon", "Tail")
 		end
-		local band = ribbonFrame("RibbonBand", Sign.Navy, 2, rib)
+		local band = ribbonFrame("RibbonBand", Sign.Gold, 2, rib)
 		band:SetAttribute("Ribbon", "Band")
-		ribbonFrame("Highlight", Sign.NavyTop, 2, band)
-		local lip = ribbonFrame("Lip", Sign.NavyLip, 2, band)
+		ribbonFrame("Highlight", Sign.GoldLight, 2, band)
+		local lip = ribbonFrame("Lip", Sign.GoldLip, 2, band)
 		lip.AnchorPoint = Vector2.new(0, 1)
 		lip.Position = UDim2.fromScale(0, 1)
-		ribbonFrame("PipingTop", Sign.Brass, 2, band):SetAttribute("Ribbon", "Piping")
-		ribbonFrame("PipingLow", Sign.Brass, 2, band):SetAttribute("Ribbon", "Piping")
-		ribbonFrame("RibbonUnderline", Sign.Gold, 3, rib):SetAttribute("Ribbon", "Underline")
-		for i = 1, 3 do
-			ribbonFrame("RibbonStep" .. i, Sign.Gold, 3, rib):SetAttribute("Ribbon", "Step")
-		end
-		ribbonCopy(label, "TitleShadow", Sign.NavyLip, Sign.NavyLip, 4, rib):SetAttribute("Ribbon", "Shadow")
-		local face = ribbonCopy(label, "TitleFace", Color3.new(1, 1, 1), Sign.Text, 5, rib)
-		face:SetAttribute("Ribbon", "Face")
-		local bands = Instance.new("UIGradient")
-		bands.Rotation = 90
-		bands.Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Sign.GoldLight),
-			ColorSequenceKeypoint.new(0.45, Sign.GoldLight),
-			ColorSequenceKeypoint.new(0.4501, Sign.Gold),
-			ColorSequenceKeypoint.new(0.8, Sign.Gold),
-			ColorSequenceKeypoint.new(0.8001, Sign.GoldDeep),
-			ColorSequenceKeypoint.new(1, Sign.GoldDeep),
-		})
-		bands.Parent = face
+		ribbonCopy(label, "TitleFace", Sign.Text, 5, rib):SetAttribute("Ribbon", "Face")
 	end
-	-- the label's own text (and any outline of its own) hidden: its copies draw it
+	-- the label's own text (and any outline of its own) hidden: its copy draws it
 	if not label:FindFirstChild("TitleHide") then
 		local hide = Instance.new("UIGradient")
 		hide.Name = "TitleHide"
@@ -1358,7 +1267,7 @@ local function ribbon(label)
 		for _, prop in ipairs(RIBBON_MIRROR) do
 			label:GetPropertyChangedSignal(prop):Connect(again)
 		end
-		-- (review) the box's width too: the letters' inset and the stair fit the box the caller places
+		-- (review) the box's width too: the letters' inset and the tails fit the box the caller places
 		for _, prop in ipairs({ "FontFace", "TextBounds", "Size", "AbsoluteSize" }) do
 			pcall(function()
 				label:GetPropertyChangedSignal(prop):Connect(again)

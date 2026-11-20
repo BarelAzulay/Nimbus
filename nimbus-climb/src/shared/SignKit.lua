@@ -7,8 +7,8 @@
 --                                 opts.Shape = "Gable": the Credits window's gable (two slopes, fascia, vent)
 --   SignKit.Header(parent, opts)  the navy sign plank in a wood rim, its title in FredokaOne gold (Title role, through
 --                                 Theme.StyleTitle); returns head, plate (the caller adds a close X to the plate).
---                                 opts.Ribbon: the plate is the T1 band out over the frame with its tails
---                                 (SignKit.HeaderOverhang(head, on) pulls it in and drops the tails).
+--                                 opts.Ribbon: the untabbed window's header (Pitch 2 F0 A: its plate inside the
+--                                 rim, no tails; the title wears the gold V-notched ribbon on it).
 --                                 (U9-4 look review, the one header rule) every untabbed window and side panel
 --                                 (Pets, Index, Stats, My Home, Settings, What's New, the Sky Trove) uses this
 --                                 header with Ribbon. A TABBED window (the Shop, the Gifts window) keeps its navy
@@ -879,15 +879,17 @@ end
 -- header, frame, body
 ----------------------------------------------------------------------
 
--- (render gate, GATE_KITB; the pitch title_T1: "The band sizes to the header; the tails are fixed") the band over a
--- Ribbon header: the plate reaches this far past the frame on each side, a swallowtail tail hangs off each end
-SignKit.HeaderBand = { Over = 10 }
+-- (render gate, GATE_KITB; Pitch 2 F0 A, look review of finish pass A major 3) how far a Ribbon header's plate reaches
+-- past the frame: 0. The finish's shared rule is "header bands inside the frame" (the mock keeps the plate at
+-- x+6 .. x+w-6); the T1 band out over the frame with its dark notched tails is gone
+SignKit.HeaderBand = { Over = 0 }
 
--- the plate inside the rim, or (a Ribbon header) the band out over the frame with its tails; SignKit.HeaderOverhang
+-- the plate inside the rim (every header: the F0 rule); SignKit.HeaderOverhang
 local function placePlate(head, on)
 	local plate = head:FindFirstChild("Plate")
 	local rim = head:GetAttribute("Rim") or Z.Rim
-	local over = on and SignKit.HeaderBand.Over or 0
+	on = false -- (F0 A) never out over the frame
+	local over = 0
 	if not plate then
 		return
 	end
@@ -915,8 +917,8 @@ local function placePlate(head, on)
 	head:SetAttribute("Overhang", on)
 end
 
--- (render gate) a Ribbon header's band out over the frame with its tails (on), or kept inside the rim with no tails (off:
--- a phone's short title sign, whose tails would land on the controls beside it). The title does not move
+-- (render gate) a Ribbon header's band out over the frame (on) or inside the rim (off). (Pitch 2 F0 A) both keep it inside
+-- the rim with no tails now ("header bands inside the frame"); the callers keep calling it. The title does not move
 function SignKit.HeaderOverhang(head, on)
 	if head and head:GetAttribute("Ribbon") then
 		placePlate(head, on == true)
@@ -925,15 +927,14 @@ end
 
 -- opts: Title, TitleRole ("Title"), TitleSize, TitleColor (gold), Drop (a Color3: a drop line 3 px under the title),
 -- TitleX, Reserve (px kept free on the right, e.g. for a close X), Y, Height, Rim, RimColor (wood), Color (navy),
--- IconSlot (a gold square left of the title for a PixelIcon), Ribbon (render gate: the plate is the T1 band the whole
--- header wide, out over the frame by HeaderBand.Over with a tail at each end; the title's ribbon keeps only its
--- letters, underline and stair, Theme's RibbonBand = "Header")
+-- IconSlot (a gold square left of the title for a PixelIcon), Ribbon (the untabbed window's header: the plate stays
+-- inside the rim, Pitch 2 F0 A; the title wears its own gold V-notched ribbon, RibbonBand = "Header")
 function SignKit.Header(parent, opts)
 	opts = opts or {}
 	local rim = tonumber(opts.Rim) or Z.Rim
 	local role = opts.TitleRole or "Title"
 	local ribbon = opts.Ribbon == true and role == "Title"
-	local shift = ribbon and SignKit.HeaderBand.Over or 0 -- the plate starts this far left of the head: its children move in
+	local shift = 0 -- (F0 A) the plate starts at the rim: nothing moves in
 	local head = fill("Head", opts.RimColor or Sign.Wood, {
 		Position = UDim2.fromOffset(0, tonumber(opts.Y) or 0),
 		Size = UDim2.new(1, 0, 0, tonumber(opts.Height) or Z.HeadH),
@@ -946,22 +947,9 @@ function SignKit.Header(parent, opts)
 	}, head)
 	local size = tonumber(opts.TitleSize) or Theme.RoleSize(role)
 	if ribbon then
-		-- the tails behind the band's ends (ZIndex under the plate), their bottoms a little under the band's (the pitch)
-		local R = Theme.TitleRibbon
-		local k = size / R.Base
-		local function px(v, least)
-			return math.max(least or 1, math.floor(v * k + 0.5))
-		end
-		local tw, th, over, notch = px(R.TailW), px(R.TailH), px(R.TailOver), px(R.Notch, 2)
-		for _, side in ipairs({ { "TailL", -1 }, { "TailR", 1 } }) do
-			local tail = fill(side[1], Sign.NavyLip, { ZIndex = 0 }, head)
-			tail:SetAttribute("Ribbon", "Tail")
-			Theme.RibbonTail(tail, tw, th, notch, side[2])
-			tail.Position = side[2] < 0 and UDim2.new(0, -shift - (tw - notch) + over, 1, -th + px(R.TailOver))
-				or UDim2.new(1, shift - over, 1, -th + px(R.TailOver))
-		end
+		-- (Pitch 2 F0 A) no tails on the head: the plate stays inside the rim, the title's own ribbon carries the V tails
 		head:SetAttribute("Ribbon", true)
-		placePlate(head, true)
+		placePlate(head, false)
 	end
 	local x = (tonumber(opts.TitleX) or Z.TitleX) + shift
 	if opts.IconSlot then
