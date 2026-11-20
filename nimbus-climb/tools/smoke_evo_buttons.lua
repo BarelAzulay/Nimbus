@@ -19,7 +19,9 @@
 --                             TARGET automatic + a tap locks with the LOCKED marker, CHEER / BACK with the helper portraits; (look review r0)
 --                             each key one block (glyph over name inside the face, the glyph kept beside a cooldown's seconds), the HOLD tag
 --                             pinned across MOVE's top edge, 8 px off Roblox's rings, CHEER / BACK 52 px, the top card off the keys, and the
---                             360 x 640 raid full (top card in its tall column): CHEER / BACK with the team, off the stick and the foot
+--                             360 x 640 raid full (top card in its tall column): CHEER / BACK with the team, off the stick and the foot;
+--                             (look review r1) CHEER / BACK 40 px off DASH / MOVE / RUN, each helper's Swap (and its hit pad) and cell
+--                             off Roblox's stick ring, the helpers' buff names whole, at 360x640, 640x360, 667x375, 390x844 and 844x390
 -- The mock has no real font metrics (TextFits is always true, TextBounds counts 0.5 em a character, TextScaled is not modelled), so a name's fit
 -- is judged here by a wrap at a generous 0.62 em a character (Builder Sans Bold capitals), against the label's real box.
 -- White-box: the sim's units and teams (same Lua state). Plain Lua 5.1 syntax only.
@@ -1074,6 +1076,74 @@ local function clientScenarios()
 		local function inside(a, b) -- box a within box b (half a px of rounding)
 			return a.x0 >= b.x0 - 0.5 and a.x1 <= b.x1 + 0.5 and a.y0 >= b.y0 - 0.5 and a.y1 <= b.y1 + 0.5
 		end
+		-- (look review r1, render_gui battle:raid:full at 360 x 640: the team row stood in the right thumb's cluster, BACK
+		-- 18 px above DASH, where a thumb reaching up for DASH pulls the team out mid-fight) the team orders keep this many
+		-- screen px off every right-thumb key
+		local TEAM_OFF_KEYS = 40
+		local function offKeys(tag, word, r, keys)
+			for n, k in pairs(keys) do
+				T.check(apart(r, k) >= TEAM_OFF_KEYS - 0.5, tag .. word .. " keeps 40 px clear of " .. n .. " (a thumb reaching for a key never hits a team order)",
+					fmt("%s vs %s: %.1f px", rstr(r), rstr(k), apart(r, k)))
+			end
+		end
+		-- (look review r1: at 360 x 640 the second helper's Swap lay on Roblox's stick ring; on a short landscape phone the
+		-- helper column's second Swap reached it too) each helper's cell, its Swap and the Swap's clear 44 px hit pad keep off
+		-- Roblox's stick ring: the stick takes every touch there, and a pad over it would take the stick's
+		local function helpersOffStick(tag, size)
+			local _, sr = rings(size)
+			for i = 1, 2 do
+				local cell = H.find("Root.Team.Helpers.Helper" .. i)
+				if cell and shownIn(cell) then
+					for _, part in ipairs({ { "cell", cell }, { "Swap", cell:FindFirstChild("Swap") }, { "Swap's hit pad", cell:FindFirstChild("SwapHit") } }) do
+						local o = part[2]
+						if o and shownIn(o) and o.AbsoluteSize.X > 1 then
+							local r = rectOf(o)
+							T.check(offRing(r, sr) >= 0, tag .. "helper " .. i .. "'s " .. part[1] .. " keeps off Roblox's stick ring", fmt("%s ring %.1f", rstr(r), offRing(r, sr)))
+						end
+					end
+				end
+			end
+		end
+		-- (look review r1, 667 x 375: "STONE S...", "TIDE ME...") each helper's buff name is whole: on one line where its tag
+		-- holds it, else wrapped on lines its tag holds. The mock has no font metrics: FredokaOne's capitals at 0.64 em, the
+		-- rest 0.52, a space 0.28 (render_gui's real metrics: "STONE SKIN" 6.2 em, "TIDE MEND" 5.7; render_gui is the pixel judge)
+		local function emOf(s)
+			local e = 0
+			for ch in tostring(s):gmatch(".") do
+				e = e + ((ch == " ") and 0.28 or (ch:match("%u") and 0.64 or 0.52))
+			end
+			return e
+		end
+		local function namesWhole(tag)
+			local scale = H.find("Root.ReadScale")
+			local sc = scale and scale.Scale or 1
+			for i = 1, 2 do
+				local lbl = H.find("Root.Team.Helpers.Helper" .. i .. ".Buff")
+				if lbl and shownIn(lbl) and lbl.Text ~= "" then
+					local pad = lbl:FindFirstChildOfClass("UIPadding")
+					local px = lbl.TextSize * sc
+					local w = lbl.AbsoluteSize.X - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) * sc or 0)
+					local ok = emOf(lbl.Text) * px <= w + 0.5
+					local lines = 1
+					if not ok and lbl.TextWrapped then
+						ok, lines = true, 0
+						local cur = -1
+						for word in lbl.Text:gmatch("%S+") do
+							local ww = emOf(word) * px
+							ok = ok and ww <= w + 0.5
+							if cur < 0 or cur + 0.28 * px + ww > w + 0.5 then
+								lines, cur = lines + 1, ww
+							else
+								cur = cur + 0.28 * px + ww
+							end
+						end
+						ok = ok and lines * px * 1.2 <= lbl.AbsoluteSize.Y + 1
+					end
+					T.check(ok, tag .. "helper " .. i .. "'s buff name is whole ('" .. lbl.Text .. "')",
+						fmt("%.1f px of text in %.1f x %.1f, %s, %d line(s)", emOf(lbl.Text) * px, w, lbl.AbsoluteSize.Y, lbl.TextWrapped and "wrapped" or "one line", lines))
+				end
+			end
+		end
 		-- every shown button of the right thumb: the battle's Commands and MovementController's MobileControls
 		local function thumb()
 			local out, names = {}, {}
@@ -1117,6 +1187,7 @@ local function clientScenarios()
 		end
 		local WANT = { "Commands.DashButton", "Commands.ElementButton", "MobileControls.RunButton" }
 		local PETS = { { PetId = "ember_phoenix" }, { PetId = "starlight_unicorn", Evo = 2 }, { PetId = "puddle_frog" } }
+		-- (look review r1: 640 x 360's team orders, helpers and names are checked in the full raid below)
 		for _, size in ipairs({ { 844, 390 }, { 740, 360 }, { 667, 375 }, { 390, 844 }, { 360, 640 }, { 1024, 768 } }) do
 			Mock.SetViewport(size[1], size[2])
 			H.step(15, 1 / 30)
@@ -1199,7 +1270,9 @@ local function clientScenarios()
 						for n, r in pairs(first) do
 							T.check(apart(p[2], r) >= 4, tag .. p[1] .. " keeps clear of " .. n, rstr(p[2]) .. " vs " .. rstr(r))
 						end
+						offKeys(tag, p[1], p[2], first)
 					end
+					helpersOffStick(tag, size)
 					if wide then
 						local cy, by = (cr.y0 + cr.y1) / 2, (br.y0 + br.y1) / 2
 						T.check(cr.x0 >= hr.x1 - 0.5 and cr.x0 - hr.x1 <= 16 and br.x0 >= hr.x1 - 0.5 and br.x0 - hr.x1 <= 16
@@ -1212,6 +1285,7 @@ local function clientScenarios()
 					return cr, br
 				end
 				local cr0, br0 = team()
+				namesWhole(tag)
 				-- the middle of a wide screen stays clear (the HUD's centre 40% of the width, client_p5battle_landscape's box)
 				if wide then
 					local box = { x0 = size[1] * 0.3, x1 = size[1] * 0.7, y0 = size[2] * 0.35, y1 = size[2] * 0.75 }
@@ -1352,32 +1426,39 @@ local function clientScenarios()
 		-- card, the helper portraits under it reached Roblox's stick, and the CHEER / BACK row under them landed on the stick, 2 px
 		-- from the screen's foot) the full raid: its tier, three players, the boss enraged with its minion waves. The team orders
 		-- stay with the team (beside the portraits, or a row under them) and off the stick, the keys and the foot
-		do
-			local size = { 360, 640 }
-			Mock.SetViewport(size[1], size[2])
-			H.step(15, 1 / 30)
-			local tag = "keys 360x640 raid full: "
-			-- render_gui's teams (dump_gui battleTeam / BCDUMP.team): the catalog's combat pets with a special of their own kind,
-			-- `skip` of them passed over, levels from `level` up by 2
-			local Catalog = H.moduleAt("shared", "PetCatalog")
-			local function renderTeam(skip, level)
-				local out, kinds = {}, {}
-				for _, def in ipairs(Catalog and Catalog.Pets or {}) do
-					local sp = type(def.Special) == "table" and def.Special.Kind or nil
-					if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
-						if skip > 0 then
-							skip = skip - 1
-						else
-							kinds[sp] = true
-							out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = level + (#out + 1) * 2, Tier = "Normal", Slot = #out + 1 }
-							if #out >= 3 then
-								break
-							end
+		-- (look review r1) the same full raid at every phone size the review names: 360 x 640 in the render's no-strip layout,
+		-- 640 x 360, 667 x 375, 390 x 844 and 844 x 390 as they lay out
+		-- render_gui's teams (dump_gui battleTeam / BCDUMP.team): the catalog's combat pets with a special of their own kind,
+		-- `skip` of them passed over, levels from `level` up by 2
+		local Catalog = H.moduleAt("shared", "PetCatalog")
+		local function renderTeam(skip, level)
+			local out, kinds = {}, {}
+			for _, def in ipairs(Catalog and Catalog.Pets or {}) do
+				local sp = type(def.Special) == "table" and def.Special.Kind or nil
+				if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
+					if skip > 0 then
+						skip = skip - 1
+					else
+						kinds[sp] = true
+						out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = level + (#out + 1) * 2, Tier = "Normal", Slot = #out + 1 }
+						if #out >= 3 then
+							break
 						end
 					end
 				end
-				return out
 			end
+			return out
+		end
+		-- (render_gui's HUD: the tokens strip alone; an earlier list of the whole suite may have left Cash / Gems set)
+		local Config = H.moduleAt("shared", "Config")
+		local oldCash, oldGems = LocalPlayer:GetAttribute(Config.Attr.Cash), LocalPlayer:GetAttribute(Config.Attr.Gems)
+		LocalPlayer:SetAttribute(Config.Attr.Cash, nil)
+		LocalPlayer:SetAttribute(Config.Attr.Gems, nil)
+		for _, size in ipairs({ { 360, 640 }, { 640, 360 }, { 667, 375 }, { 390, 844 }, { 844, 390 } }) do
+			Mock.SetViewport(size[1], size[2])
+			H.step(15, 1 / 30)
+			local tag = fmt("keys %dx%d raid full: ", size[1], size[2])
+			local wide = size[1] > size[2]
 			local mine = renderTeam(0, 30)
 			if mine[2] then
 				mine[2].Evo = 1
@@ -1385,30 +1466,33 @@ local function clientScenarios()
 				-- two-line buff names in the column)
 				mine[1], mine[2] = mine[2], mine[1]
 			end
-			-- (render_gui's HUD: the tokens strip alone; an earlier list of the whole suite may have left Cash / Gems set)
-			local Config = H.moduleAt("shared", "Config")
-			local oldCash, oldGems = LocalPlayer:GetAttribute(Config.Attr.Cash), LocalPlayer:GetAttribute(Config.Attr.Gems)
-			LocalPlayer:SetAttribute(Config.Attr.Cash, nil)
-			LocalPlayer:SetAttribute(Config.Attr.Gems, nil)
 			local d = H.fight({ Mode = "Raid", Pets = mine, Allies = { renderTeam(2, 26), renderTeam(4, 28) }, Raid = { Tier = "Starter", BossId = "storm_titan" } })
 			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) a full boss raid") then
 				if d.sim.boss then
 					d.sim.boss.hp = d.sim.boss.maxHp * 0.28 -- (the next step enrages it and sends its minion waves)
 				end
 				d:run(1.5)
-				-- (white-box) after the render's 9 s of fighting the boss strip's block runs a few px past the room above the stick:
-				-- the no-strip layout, the top card in its tall column under the fighter card (Hud.LayoutTop's leftTop). This short
-				-- fight fits the strip with 3.5 design px to spare, so the strip is turned down here to reach the render's layout
 				local Hd = BC._Hud
 				local bandMode = Hd.BandMode
-				Hd.BandMode = function()
-					return false
+				local noStrip = size[1] == 360 and size[2] == 640
+				if noStrip then
+					-- (white-box) after the render's 9 s of fighting the boss strip's block runs a few px past the room above the
+					-- stick: the no-strip layout. This short fight fits the strip with 3.5 design px to spare, so the strip is
+					-- turned down here to reach the render's layout
+					Hd.BandMode = function()
+						return false
+					end
 				end
 				Hd.Rebuild()
 				d:run(0.3)
 				local top = H.find("Root.TopCard")
 				local tr = top and shownIn(top) and rectOf(top)
-				T.check(tr and (tr.y1 - tr.y0) > (tr.x1 - tr.x0), tag .. "(setup) the top card stacks into its tall column", tr and rstr(tr) or "hidden")
+				if noStrip then
+					-- (look review r1: was "the top card stacks into its tall column" under the fighter card, which pushed the
+					-- helpers onto Roblox's stick and the team row into the keys; the no-strip card now goes under the enemy list,
+					-- so the left column holds the team as the mock's) the render's layout: no strip across the top
+					T.check(tr and (tr.x1 - tr.x0) < 0.9 * size[1], tag .. "(setup) the no-strip layout (the top card is not the strip)", tr and rstr(tr) or "hidden")
+				end
 				local areaY = size[2] - (Mock.TopInset or 0)
 				local jump, stick = roblox(size)
 				local jr, sr = rings(size)
@@ -1416,7 +1500,7 @@ local function clientScenarios()
 				local helpers, cheer, back = H.find("Root.Team.Helpers"), H.find("Root.Cheer"), H.find("Root.Retreat")
 				if T.check(helpers ~= nil and shownIn(helpers) and cheer ~= nil and shownIn(cheer) and back ~= nil and shownIn(back), tag .. "the helper portraits, CHEER and BACK are shown") then
 					local hr = rectOf(helpers)
-					local others = { TopCard = tr, Fighter = H.find("Root.Team.Fighter") and rectOf(H.find("Root.Team.Fighter")), Helpers = hr }
+					local others = { TopCard = tr or nil, Fighter = H.find("Root.Team.Fighter") and rectOf(H.find("Root.Team.Fighter")), Helpers = hr }
 					local en = H.find("Root.Enemies")
 					if en and shownIn(en) then
 						others.Enemies = rectOf(en)
@@ -1428,30 +1512,39 @@ local function clientScenarios()
 							tag .. p[1] .. " is touch-sized and whole on the screen, off its foot", rstr(r) .. fmt(" (area foot %.0f)", areaY))
 						T.check(apart(r, stick) >= 4 and apart(r, jump) >= 4 and offRing(r, sr) >= 8 and offRing(r, jr) >= 8,
 							tag .. p[1] .. " keeps clear of Roblox's stick and jump (8 px off their rings)", fmt("%s stick %.0f ring %.1f", rstr(r), apart(r, stick), offRing(r, sr)))
-						for n, k in pairs(keys) do
-							T.check(apart(r, k) >= 8, tag .. p[1] .. " keeps 8 px clear of " .. n, rstr(r) .. " vs " .. rstr(k))
-						end
+						-- (look review r1: was 8 px, BACK stood 18 px over DASH) 40 px off every key
+						offKeys(tag, p[1], r, keys)
 						for n, o in pairs(others) do
 							T.check(not overlaps(r, o), tag .. p[1] .. " covers nothing of the " .. n, rstr(r) .. " vs " .. rstr(o))
 						end
 					end
 					T.check(apart(cr, br) >= 4, tag .. "CHEER and BACK stand apart", rstr(cr) .. " / " .. rstr(br))
-					-- with the team: beside the helper portraits, or a row under them (under the enemy list where it lies under the
-					-- fighter's block)
+					-- with the team, as the mock: beside the helper portraits (a wide phone), a row under them (a tall one; under the
+					-- enemy list where it lies under the fighter's block)
 					local foot = hr.y1
 					if others.Enemies and others.Enemies.x0 < hr.x1 and others.Enemies.y0 >= hr.y1 - 1 then
 						foot = max(foot, others.Enemies.y1)
 					end
-					local beside = cr.x0 >= hr.x1 - 0.5 and cr.x0 - hr.x1 <= 16 and cr.y0 < hr.y1 and cr.y1 > hr.y0
-					local under = cr.y0 >= foot - 0.5 and cr.y0 - foot <= 20 and cr.x0 >= hr.x0 - 1
-					T.check(beside or under, tag .. "CHEER and BACK stay with the team (beside the helper portraits or under them)", rstr(cr) .. " / " .. rstr(br) .. " | helpers " .. rstr(hr))
+					local beside = cr.x0 >= hr.x1 - 0.5 and cr.x0 - hr.x1 <= 16 and cr.y0 < hr.y1 and cr.y1 > hr.y0 and br.x0 >= hr.x1 - 0.5 and br.y0 < hr.y1 and br.y1 > hr.y0
+					local under = cr.y0 >= foot - 0.5 and cr.y0 - foot <= 20 and cr.x0 >= hr.x0 - 1 and abs(br.y0 - cr.y0) < 1 and br.x0 >= cr.x1
+					T.check(wide and beside or (not wide and under), tag .. "CHEER and BACK stay with the team (" .. (wide and "beside the helper portraits" or "a row under them") .. ")",
+						rstr(cr) .. " / " .. rstr(br) .. " | helpers " .. rstr(hr))
+				end
+				helpersOffStick(tag, size)
+				if size[1] == 640 and size[2] == 360 then
+					-- (look review r1) at 640 x 360 Roblox's stick ring leaves the two helpers 114 px under the fighter card: one
+					-- line of name each beside [Lv][Swap]; a name longer than the cell's room is cut there (two lines would put the
+					-- second helper's name on the stick)
+					T.check(true, tag .. "(640 x 360: one line of name each, see the note)")
+				else
+					namesWhole(tag)
 				end
 				Hd.BandMode = bandMode
 				H.cleanup(BC, d)
 			end
-			LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash)
-			LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems)
 		end
+		LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash)
+		LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems)
 		Mock.SetViewport(390, 844)
 		H.step(3, 0.1)
 		T.check(#Mock.Errors == err0, "keys: no script errors", tostring(Mock.Errors[#Mock.Errors]))
