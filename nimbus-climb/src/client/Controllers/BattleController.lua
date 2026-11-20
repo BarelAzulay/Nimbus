@@ -453,9 +453,10 @@ local K = {
 	DASH_TOUCH_PX = 58,
 	THREE_BIG = 1.25,
 	MOVE_HOLD = 0.4,
-	HOLD_IN = 6, -- the HOLD tag reaches this far (design px) over MOVE's top edge
+	-- (look review r0: 6 px of an 18 px tall tag over the face hung it 8 px under DASH's name, where it read as DASH's) the HOLD
+	-- tag is pinned across MOVE's top edge, half of it over the face (Hud.PlaceHoldTag), as the mock pins it. (Look review r0:
+	-- a tall row narrowed CHEER / BACK to 45 px, where CHEER ran onto its edges) the team orders are always the mock's 52 px
 	TEAM_KEY_W_PX = 52,
-	TEAM_KEY_MIN_W_PX = 44,
 	TEAM_KEY_H_PX = 46,
 	TEAM_KEY_GAP_PX = 6,
 	LOCK_ARM = 14, -- the LOCKED marker (Units.UpdateLock): a corner bracket's arm and bar (px), the tag's height
@@ -6574,6 +6575,8 @@ function Hud.Rebuild()
 			-- automatic): their buttons stay hidden there
 			A.Button.Visible = spec ~= nil
 			A.three = Hud.ThreeKeys(m) and kind == "Element"
+			-- (look review r0) the three keys' MOVE and DASH are one block each, as RUN: glyph over name inside the face
+			A.block = Hud.ThreeKeys(m) and (kind == "Element" or kind == "Dash")
 			if spec then
 				local d = spec[3]
 				A.Button.Size = UDim2.fromOffset(d, d)
@@ -6623,6 +6626,7 @@ function Hud.PlaceFace(A, d, m)
 	-- (Pitch 2 item 1b: the three keys are named, DASH too, as the mock draws it)
 	local inFace = m.Touch and (A.kind ~= "Dash" or Hud.ThreeKeys(m))
 	A.size = d
+	A.blockRow = nil -- (a block key's glyph row: Hud.PlaceBlockFace sets it again)
 	-- (LOOK-ui2) the glyph in one of the kit's two icon sizes, 27 px on a big key, 18 on a small one (was 0.4 x the
 	-- diameter: 36 px cells on a touch SPECIAL)
 	A.iconPx = (d >= K.KEY_BIG) and 27 or 18
@@ -6789,6 +6793,9 @@ end
 -- bottom on the lip (LOOK-ui2: a keycap's label strip; it lay on a round face with the ring's arc under it); the glyph and
 -- the countdown keep the face above it. `whole`: TARGET's flash (NEXT / AUTO / ONE ENEMY) takes the whole face, no tag
 function Hud.PlaceFaceName(A, d, whole)
+	if A.block and not whole and Hud.PlaceBlockFace(A, d) then
+		return
+	end
 	local f = max(0.05, Hud.m and Hud.m.F or 1)
 	local cap, plate = A.Caption, A.NamePlate
 	local w, h, px = Hud.FaceTag(A.kind, cap.Text, d, whole)
@@ -6806,8 +6813,11 @@ function Hud.PlaceFaceName(A, d, whole)
 	plate.Size = cap.Size
 	-- the glyph and the countdown share what the tag leaves of the face (Pitch 2 item 1b: and what MOVE's HOLD tag leaves of
 	-- its top while it shows)
-	local skip = (A.three and A.full and A.HoldTag) and K.HOLD_IN or 0
+	local skip = (A.three and A.full and A.HoldTag) and Hud.HoldTagIn() or 0
+	-- (a long special's 2-line tag on a 68 px MOVE: the small star keeps its 18 px, its top under the HOLD tag's foot)
+	skip = min(skip, max(0, top - 2 - 18))
 	local room = whole and (d - K.KEY_LIP) or max(8, top - 2 - skip)
+	A.blockRow = nil
 	A.Glyph.Position = UDim2.fromOffset(0, skip)
 	A.Glyph.Size = UDim2.new(1, 0, 0, room)
 	A.Count.Position = A.Glyph.Position
@@ -6822,6 +6832,94 @@ function Hud.PlaceFaceName(A, d, whole)
 	end
 	A.Count.TextSize = max(math.ceil(K.MIN_TEXT_PX / f - 1e-6), min(floor(d * 0.3), room))
 	A.Count:SetAttribute("BaseText", A.Count.TextSize)
+end
+
+-- (Pitch 2 item 1b, look review r0: MOVE and DASH kept kit-b's touch tag, a stone plate wider than the face over its lower
+-- part, so only RUN was one block, and a cooling MOVE showed its seconds without its glyph) the three keys' MOVE / DASH as
+-- the mock draws them and MovementController's RUN is: ONE block, the glyph over the name, centred on the face above its lip
+-- (and under the part of MOVE's HOLD tag over its top edge), the name at the phone floor in at most 2 lines inside the face.
+-- Cooling, the seconds stand beside the glyph in its row (Hud.PlaceBlockCount). -> false where the name cannot sit inside the
+-- face at the 14 px floor (a word wider than the face, or 3 lines: an 80 px MOVE holds about 8 capitals a line; 11 of the 53
+-- evolved specials, THUNDERHEAD BREATH, WISH UPON THE STARS...): that one keeps kit-b's tag (Hud.PlaceFaceName), the floor
+-- holding
+function Hud.PlaceBlockFace(A, d)
+	local m = Hud.m
+	local f = max(0.05, m and m.F or 1)
+	local cap = A.Caption
+	local px = math.ceil(Hud.FloorPx() / f - 1e-6)
+	local iw = d - 4 -- (the face's width less 2 px a side, as the mock's; the wood edge is drawn outside it)
+	for word in string.gmatch(tostring(cap.Text), "%S+") do
+		if textWidth(word, px) > iw then
+			return false
+		end
+	end
+	local lines = wrapLines(cap.Text, iw, px)
+	if lines > 2 then
+		return false -- (WISH UPON THE STARS: three lines and the glyph do not fit the face at the floor)
+	end
+	local capH = lines * math.ceil(px * 1.2)
+	local skip = (A.three and A.full and A.HoldTag) and Hud.HoldTagIn() or 0
+	local faceH = d - K.KEY_LIP
+	local iconPx = (d >= K.KEY_BIG) and 27 or 18
+	if iconPx > 18 and iconPx + 2 + capH > faceH - skip - 4 then
+		iconPx = 18
+	end
+	if A.iconPx ~= iconPx then
+		A.iconPx = iconPx
+		PixelIcon.Set(A.Glyph, A.glyphName or ICON[A.kind], iconPx)
+	end
+	local top = skip + max(0, floor((faceH - skip - (iconPx + 2 + capH)) / 2))
+	A.blockRow = { top = top, icon = iconPx, d = d }
+	cap.TextSize = px
+	cap:SetAttribute("BaseText", px)
+	cap.TextTruncate = Enum.TextTruncate.None
+	cap.TextYAlignment = Enum.TextYAlignment.Center
+	cap.TextColor3 = KB.Ink
+	cap.Position = UDim2.new(0.5, 0, 0, top + iconPx + 2)
+	cap.Size = UDim2.fromOffset(iw, capH)
+	A.capTop, A.capShift = top + iconPx + 2, 0
+	A.NamePlate.Visible = false
+	-- the seconds: the glyph's height at most, the floor at least
+	A.Count.TextSize = max(px, iconPx)
+	A.Count:SetAttribute("BaseText", A.Count.TextSize)
+	A.countPlaced = nil
+	Hud.PlaceBlockCount(A)
+	return true
+end
+
+-- (look review r0) a block key's glyph row: the glyph alone, centred; cooling, the glyph and the seconds side by side,
+-- centred together (the seconds keep the glyph's ink and stay off its pixels). A no-op while the text is the one placed
+function Hud.PlaceBlockCount(A)
+	local row = A.blockRow
+	if not row then
+		return
+	end
+	local text = (A.Count.Visible and A.Count.Text) or ""
+	if A.countPlaced == text then
+		return
+	end
+	A.countPlaced = text
+	if text == "" then
+		A.Glyph.Position = UDim2.fromOffset(0, row.top)
+		A.Glyph.Size = UDim2.new(1, 0, 0, row.icon)
+		A.Count.Position = A.Glyph.Position
+		A.Count.Size = A.Glyph.Size
+		return
+	end
+	local gap = 4
+	local cw = math.ceil(textWidth(text, A.Count.TextSize)) + 2
+	local room = row.d - 4
+	if row.icon + gap + cw > room then
+		-- (a long count on a small key: the seconds at the floor)
+		A.Count.TextSize = math.ceil(Hud.FloorPx() / max(0.05, Hud.m and Hud.m.F or 1) - 1e-6)
+		A.Count:SetAttribute("BaseText", A.Count.TextSize)
+		cw = math.ceil(textWidth(text, A.Count.TextSize)) + 2
+	end
+	local x0 = floor((row.d - (row.icon + gap + cw)) / 2)
+	A.Glyph.Position = UDim2.fromOffset(x0, row.top)
+	A.Glyph.Size = UDim2.fromOffset(row.icon, row.icon)
+	A.Count.Position = UDim2.fromOffset(x0 + row.icon + gap, row.top)
+	A.Count.Size = UDim2.fromOffset(cw, row.icon)
 end
 
 -- the fighter card + helper cells (sizes + positions; Team-local); returns the Team block's size
@@ -7213,16 +7311,28 @@ function Hud.PlaceHoldTag(m)
 	if not t then
 		return
 	end
-	local px = max(K.CAPTION_TEXT, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
+	local w, h, px = Hud.HoldTagSize(m)
 	t.TextSize = px
 	t:SetAttribute("BaseText", px)
-	local w = math.ceil(textWidth("HOLD", px)) + 14
-	local h = math.ceil(px * 1.2) + 4 + 3
 	t.Size = UDim2.fromOffset(min(w, A.Button.Size.X.Offset - 8), h)
-	-- (pinned on the edge: HOLD_IN of it over the face, the rest above, so the glyph keeps its room on a small MOVE)
+	-- (look review r0: 6 px over the face and the rest above, it hung under DASH's name and read as DASH's) pinned across the
+	-- edge, half of it over the face, as the mock pins it (Hud.PlaceBlockFace keeps the glyph under that half)
 	t.AnchorPoint = Vector2.new(0.5, 1)
-	t.Position = UDim2.new(0.5, 0, 0, K.HOLD_IN)
+	t.Position = UDim2.new(0.5, 0, 0, Hud.HoldTagIn(m))
 	setVisible(t, A.three == true and A.full == true)
+end
+
+-- the HOLD tag's size for the screen (design px): w, h, its text size (the phone floor)
+function Hud.HoldTagSize(m)
+	m = m or Hud.m
+	local px = max(K.CAPTION_TEXT, math.ceil(Hud.FloorPx() / max(0.05, m and m.F or 1) - 1e-6))
+	return math.ceil(textWidth("HOLD", px)) + 14, math.ceil(px * 1.2) + 4 + 3, px
+end
+
+-- how far (design px) the HOLD tag reaches over MOVE's face: half its height
+function Hud.HoldTagIn(m)
+	local _, h = Hud.HoldTagSize(m)
+	return floor(h / 2)
 end
 
 -- the top of a tall phone's centre band in our design px (the gui area starts under the Roblox top bar: the band is 30% of
@@ -7268,6 +7378,13 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	elseif m.Compact then
 		-- between the fighter card and the enemy list when there is room, else under the enemy list (right)
 		local free = m.W - (K.EDGE + teamW + 12) - (K.ROW_W_COMPACT + K.EDGE + 12)
+		local dash = m.Landscape and Hud.ThreeKeys(m) and Hud.ClusterLayout(m).Dash
+		if dash then
+			-- (Pitch 2 item 1b, look review r0: at 667 x 375 DASH's face lay 8 px over the card's bottom-right corner) a wide
+			-- phone's card also ends 8 px left of DASH, the right thumb's upper key (its spot comes from the jump button alone)
+			local dashX0 = m.W + dash[1] - dash[3] / 2 - K.KEY_EDGE
+			free = min(free, dashX0 - 8 / max(0.05, m.F) - (K.EDGE + teamW + 12))
+		end
 		if m.Landscape and free < w and free >= K.TOP_W_COMPACT then
 			w = floor(free) -- (a landscape phone: the card takes the gap; its pills wrap, LEAVE is inside it)
 		end
@@ -7803,8 +7920,12 @@ function Hud.Update(B, now, force)
 		A.fill = frac
 		setText(A.Count, countText)
 		setVisible(A.Count, countText ~= "")
-		-- (kit-b U9-6 review: the countdown over the faded glyph's ink pixels read 2.8:1) the countdown takes the glyph's place
-		A.Glyph.TextTransparency = (countText ~= "") and 1 or 0
+		-- (kit-b U9-6 review: the countdown over the faded glyph's ink pixels read 2.8:1) the countdown takes the glyph's place;
+		-- (Pitch 2 item 1b, look review r0) a block key's seconds stand beside its glyph instead, both kept
+		A.Glyph.TextTransparency = (countText ~= "" and not A.blockRow) and 1 or 0
+		if A.blockRow then
+			Hud.PlaceBlockCount(A)
+		end
 		A.cue = (kind == "Dash" and B.cue == "Dash") or (kind == "Special" and ready and f ~= nil and f.special ~= nil)
 		Hud.PaintKey(A, now)
 		setDisabled(A.Button, kind == "Special" and not ready)
@@ -9295,11 +9416,49 @@ function CheerUp.Look(m, b, glyph, word, icon, face, lip)
 	end
 end
 
+-- (look review r0) whether team orders at `spots` (CheerUp.TeamSpots' form; w x h design px) stand clear: whole on the gui
+-- area 4 px in from its edges, 8 px off Roblox's stick zone (StackTop's) and jump button, MovementController's RUN and the
+-- three keys (Hud.KeyBoxes), and off the top card and the enemy list (Root children, offset-placed)
+function CheerUp.SpotsClear(m, spots, w, h)
+	local f = max(0.05, m.F)
+	local edge, keep = 4 / f, 8 / f
+	local small = min(m.VX, m.VY) <= K.STICK_SMALL_PHONE
+	local stickW = small and K.STICK_W_SMALL or K.STICK_W_LARGE
+	local stickH = small and ((m.VY > m.VX) and K.STICK_H_TALL or K.STICK_H_WIDE) or K.STICK_H_LARGE
+	local avoid = { { X0 = 0, X1 = stickW / f, Y0 = m.H - stickH / f, Y1 = m.H, gap = keep } }
+	local r = Hud.TouchRects(m)
+	for _, t in ipairs({ r.jump, r.run }) do
+		avoid[#avoid + 1] = { X0 = t[1] / f, X1 = t[3] / f, Y0 = m.H - t[4] / f, Y1 = m.H - t[2] / f, gap = keep }
+	end
+	for _, k in ipairs(Hud.KeyBoxes(m)) do
+		avoid[#avoid + 1] = { X0 = k.X0, X1 = k.X1, Y0 = k.Y0, Y1 = k.Y1, gap = keep }
+	end
+	for _, obj in ipairs({ Hud.top, Hud.enemies }) do
+		if obj and obj.Visible then
+			local p, s, a = obj.Position, obj.Size, obj.AnchorPoint
+			local x, y = p.X.Offset - a.X * s.X.Offset, p.Y.Offset - a.Y * s.Y.Offset
+			avoid[#avoid + 1] = { X0 = x, X1 = x + s.X.Offset, Y0 = y, Y1 = y + s.Y.Offset, gap = 2 / f }
+		end
+	end
+	for _, s in ipairs(spots) do
+		local x0, x1, y0, y1 = s[1] - w / 2, s[1] + w / 2, s[2] - h, s[2]
+		if x0 < edge or x1 > m.W - edge or y0 < edge or y1 > m.H - edge then
+			return false
+		end
+		for _, b in ipairs(avoid) do
+			if max(b.X0 - x1, x0 - b.X1, b.Y0 - y1, y0 - b.Y1) < b.gap then
+				return false
+			end
+		end
+	end
+	return true
+end
+
 -- (Pitch 2 item 1b) the team orders' spots on the three keys' layout (design px; the buttons' anchor is 0.5, 1): they are team
 -- orders, so they sit with the team. A wide screen: beside the helper portraits, CHEER by the first helper and BACK by the
 -- second (the helper column narrows for them in Hud.LayoutFighter); a tall one: a row under the portraits (under the enemy
--- list where it lies under the fighter's block), ending before the screen's centre 40%. From the Team block alone: no fight
--- state moves them. -> { { cx, bottom }, { cx, bottom } }, w, h
+-- list where it lies under the fighter's block), as the mock. From the Team block alone: no fight state moves them.
+-- -> { { cx, bottom }, { cx, bottom } }, w, h
 function CheerUp.TeamSpots(m)
 	local f = max(0.05, m.F)
 	local w, h = K.TEAM_KEY_W_PX / f, K.TEAM_KEY_H_PX / f
@@ -9326,9 +9485,31 @@ function CheerUp.TeamSpots(m)
 	if Hud.listX and Hud.enemies and Hud.enemies.Visible then
 		top = max(top, (Hud.listTop or 0) + Hud.enemies.Size.Y.Offset)
 	end
-	w = clamp((m.VX * 0.3 / f - tx - gap - 2 / f) / 2, K.TEAM_KEY_MIN_W_PX / f, w)
+	-- (look review r0: the row narrowed them to 45-50 px to end before the screen's centre 40%, and CHEER at the 14 px floor
+	-- ran onto its edges; the mock's row is 52 px blocks and crosses that line too) the mock's 52 px
 	local bottom = top + 10 / f + h
-	return { { tx + w / 2, bottom }, { tx + w + gap + w / 2, bottom } }, w, h
+	local under = { { tx + w / 2, bottom }, { tx + w + gap + w / 2, bottom } }
+	if cells == 0 or CheerUp.SpotsClear(m, under, w, h) then
+		return under, w, h
+	end
+	-- (look review r0, render_gui battle:raid:full at 360 x 640: the top card stacked into its tall column under the fighter
+	-- card pushed the portraits down to Roblox's stick, and the row under them landed on it, 2 px off the screen's foot) where
+	-- the row under them has no room, the orders go beside the portraits, as on a wide phone: one by each helper, else (DASH
+	-- left of MOVE stands by the second helper) a row by the first; nothing clear (never seen): the row under them
+	local cellH = Hud.helpersRow and hh or ((Hud.helperLevel and Hud.helperLevel.CellH) or (hh - 6) / 2)
+	local x = hx + hw + gap + w / 2
+	if not Hud.helpersRow then
+		local beside = { { x, hy + cellH / 2 + h / 2 }, { x, hy + cellH + 6 + cellH / 2 + h / 2 } }
+		if CheerUp.SpotsClear(m, beside, w, h) then
+			return beside, w, h
+		end
+	end
+	local by = hy + cellH / 2 + h / 2
+	local row = { { x, by }, { x + w + gap, by } }
+	if CheerUp.SpotsClear(m, row, w, h) then
+		return row, w, h
+	end
+	return under, w, h
 end
 
 function CheerUp.Place(m, B, isFighting)
