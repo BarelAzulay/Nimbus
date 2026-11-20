@@ -15,7 +15,8 @@
 --       the title cleared on a VIP -> the VipCrown back at 2.4 studs; an untitled VIP -> the VipCrown, no TitleTag
 --     respawn (Review Focus 5): one tag on the new head, the old one destroyed; the attribute cleared -> the tag removed;
 --       ten Top10 players -> no tween and no per-frame connection added (Heartbeat / RenderStepped / Stepped / PreRender /
---       Pre- and PostSimulation counts unchanged); a tag holds at most 6 instances (the crown's two pixel crowns on top);
+--       Pre- and PostSimulation counts unchanged); a tag holds at most 6 instances (the crown's two pixel crowns on top;
+--       the plate wears the finish pass's lean variant: the lit top band only, Pitch 2 fix round B);
 --       every tag gone once the dummies leave
 -- Deterministic: mock clock only. The graphics answer (GraphicsQuality.Effective is stubbed, as smoke_gem_icon does),
 -- the camera, the viewport and the local player's attributes are put back; the dummy players leave. Plain Lua 5.1 syntax.
@@ -214,6 +215,12 @@ S.client_titles = guarded("client_titles", function()
 				T.check(label:FindFirstChildWhichIsA("UIStroke") == nil, k .. ": no outline on the text (it sits on an opaque face)")
 				T.check(G.same(plate.BackgroundColor3, face) and plate.BackgroundTransparency == 0 and plate:FindFirstChildWhichIsA("UICorner") == nil
 					and plate:FindFirstChild("SignEdge") ~= nil and plate:FindFirstChild("Lip") ~= nil, k .. ": an opaque square plate in its role's colour, a wood edge and its lip")
+				-- (Pitch 2 fix round B) the finish pass's lean variant on a world tag: the lit top band only (FinishShine, one
+				-- instance), no bevel strips, card shadow or well (11 more instances a tag, 15 a Top10 plate, over the budget above)
+				local shine = plate:FindFirstChild("FinishShine")
+				T.check(shine ~= nil and shine.Visible and plate:FindFirstChild("FinishBevel") == nil and plate:FindFirstChild("FinishShadow") == nil
+					and plate:FindFirstChild("FinishSunk") == nil, k .. ": the lean finish: the lit top band, no bevel, shadow or well parts",
+					fmt("shine %s, bevel %s, shadow %s", tostring(shine ~= nil), tostring(plate:FindFirstChild("FinishBevel") ~= nil), tostring(plate:FindFirstChild("FinishShadow") ~= nil)))
 				local gradients = 0
 				for _, d in ipairs(tag:GetDescendants()) do
 					gradients = gradients + (d:IsA("UIGradient") and 1 or 0)
