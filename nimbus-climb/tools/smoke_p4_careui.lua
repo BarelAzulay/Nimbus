@@ -259,7 +259,12 @@ local function closeAll()
 end
 
 -- texts under `root` smaller than `floorPx` design px (TextScaled ones by their UITextSizeConstraint minimum)
-local function smallTexts(root, floorPx)
+-- (P2 fix round C, the reasoned exception smoke_p2_ui carries since fix round B r1, e31f10c) a Pets grid card's busy band
+-- word ("Gardening" / "Training") is the approved F0 A mock's small band tag, 16 design px on PC (finish_windows.busy_band
+-- small=True), as the look review asked: at 18 the word and its mark fill the band edge to edge (0 px to spare at 1280x720,
+-- 2.1 at 1920x1080; pets_gate_fixes wants 3 at each end). bandsOk: it is held at 16, never under (checked), and leaves the
+-- design-px floor; every other text keeps it. (Open for the owner: F0 A's rule says labels never under 17 px.)
+local function smallTexts(root, floorPx, bandsOk)
 	local out = {}
 	for _, d in ipairs(root and root:GetDescendants() or {}) do
 		if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and shown(d) then
@@ -273,7 +278,9 @@ local function smallTexts(root, floorPx)
 					size = (box and box.scale and box.scale > 0) and (box.h / box.scale) or 0
 				end
 			end
-			if size < floorPx - 0.01 then
+			if bandsOk and d.Name == "Busy" and d.Parent and d.Parent.Name:match("^Card_") and not d.TextScaled then
+				T.check(size >= 16 - 0.01, "careui: a card's busy band word is the F0 A mock's 16 px tag, never smaller", d.Parent.Name .. " " .. tostring(size))
+			elseif size < floorPx - 0.01 then
 				out[#out + 1] = d.Name .. "=" .. tostring(size)
 			end
 		end
@@ -926,7 +933,7 @@ S.client_p4careui_sizes = guarded("client_p4careui_sizes", function()
 		Mock.SetViewport(size[1], size[2])
 		advance(0.4)
 		eachWindow(function(label, root)
-			local small = smallTexts(root, 18)
+			local small = smallTexts(root, 18, true) -- (a Pets card's busy band: the reason at smallTexts)
 			T.check(root ~= nil and #small == 0, string.format("careui %dx%d: every text of %s is >= 18 design px", size[1], size[2], label), table.concat(small, ", "))
 		end)
 	end

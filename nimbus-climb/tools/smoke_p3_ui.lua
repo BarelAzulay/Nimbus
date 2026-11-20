@@ -473,7 +473,15 @@ local function clientScenarios()
 		return button == nil or button:GetAttribute("Disabled") == true or button.Active == false
 	end
 
-	local function smallTexts(root, floorPx)
+	-- (P2 fix round C, the reasoned exception smoke_p2_ui carries since fix round B r1, e31f10c) a Pets grid card's busy band
+	-- word ("Gardening" / "Training") is the approved F0 A mock's small band tag, 16 design px on PC (finish_windows.busy_band
+	-- small=True), as the look review asked: at 18 the word and its mark fill the band edge to edge (0 px to spare at
+	-- 1280x720, 2.1 at 1920x1080; pets_gate_fixes wants 3 at each end). It is held at 16, never under (checked where it is
+	-- skipped); every other text keeps the floor. (Open for the owner: F0 A's rule says labels never under 17 px.)
+	local function cardBand(d)
+		return d.Name == "Busy" and d.Parent ~= nil and d.Parent.Name:match("^Card_") ~= nil and not d.TextScaled
+	end
+	local function smallTexts(root, floorPx, bandsOk)
 		local out = {}
 		for _, d in ipairs(root and root:GetDescendants() or {}) do
 			if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and shown(d) then
@@ -482,7 +490,9 @@ local function clientScenarios()
 					local c = d:FindFirstChildOfClass("UITextSizeConstraint")
 					size = c and c.MinTextSize or size
 				end
-				if size < floorPx - 0.01 then
+				if bandsOk and cardBand(d) then
+					T.check(size >= 16 - 0.01, "p3ui: a card's busy band word is the F0 A mock's 16 px tag, never smaller", d.Parent.Name .. " " .. tostring(size))
+				elseif size < floorPx - 0.01 then
 					out[#out + 1] = d.Name .. "=" .. tostring(size)
 				end
 			end
@@ -628,7 +638,7 @@ local function clientScenarios()
 		T.check(busy and shown(busy:FindFirstChild("Busy")) and busy:FindFirstChild("Busy").Text:find("Training", 1, true), "p3ui team: a pet in training says 'Training'")
 		local inTeam = picks["Card_" .. TEAM[2]]
 		T.check(inTeam and shown(inTeam:FindFirstChild("Number")) and inTeam:FindFirstChild("Number").Text == "2", "p3ui team: team pets carry their slot number on their cards")
-		local small = smallTexts(win, 18)
+		local small = smallTexts(win, 18, true) -- (a card's busy band: cardBand above)
 		T.check(#small == 0, "p3ui team: every text of the window is >= 18 design px", table.concat(small, ", "))
 
 		-- editing: a tap on a card only selects; a slot then a pet = TeamSet; remove keeps the others; busy refuses
@@ -764,8 +774,9 @@ local function clientScenarios()
 		MC.Open("Pets", { Key = "bubble_axolotl", Preset = 3 })
 		advance(0.6)
 		-- its card carries the seedling "Gardening" label; a pet that is not gardening has none
+		-- (P2 fix round C: the label is the card's busy band, the F0 A mock's 16 px tag on PC, cardBand above; was >= 18)
 		local axoText = axo:FindFirstChild("Busy")
-		T.check(axoText and shown(axoText) and axoText.Text:find("Gardening", 1, true) and SmokeCommon.IconOn(axoText) == "sprout" and axoText.TextSize >= 18,
+		T.check(axoText and shown(axoText) and axoText.Text:find("Gardening", 1, true) and SmokeCommon.IconOn(axoText) == "sprout" and axoText.TextSize >= 16 - 0.01,
 			"p3ui recall: a gardening pet's card has the sprout 'Gardening' label (bug batch 2 #18; kit-b U7b: a PixelIcon)", axoText and axoText.Text)
 		local pupCard = find(win, "Card_pebble_pup")
 		T.check(pupCard ~= nil and not shown(pupCard:FindFirstChild("Busy")), "p3ui recall: ...a pet that is not gardening has no label")
