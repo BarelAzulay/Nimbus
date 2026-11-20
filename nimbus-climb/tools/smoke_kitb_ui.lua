@@ -3769,6 +3769,19 @@ local function clientScenarios()
 				end
 				T.check(#hits == 0, "menu dock: no button or text in a thumb zone or under the top bar at " .. tag, table.concat(hits, ", "))
 				T.check(#offs == 0, "menu dock: everything on screen at " .. tag, table.concat(offs, ", "))
+				-- (Pitch 2 fix round B, T1 look leftover 6: at 844x390 SETTINGS / UPDATES drew 41.6 px and CREDITS 35.2 px
+				-- tall) on a touch screen every title-board button is at least 44 screen px each way
+				if touch then
+					local small = {}
+					for _, name in ipairs({ "PlayButton", "SettingsButton", "UpdatesButton", "CreditsButton" }) do
+						local btn = MenuH.find(menu, name)
+						local r = btn and MenuH.rect(btn)
+						if not (r and r.R - r.X >= 44 - 0.5 and r.B - r.Y >= 44 - 0.5) then
+							small[#small + 1] = name .. " " .. (r and fmt("%.1f x %.1f", r.R - r.X, r.B - r.Y) or "missing")
+						end
+					end
+					T.check(#small == 0, "menu dock: every title-board button at least 44 screen px each way at " .. tag, table.concat(small, ", "))
+				end
 				local credits = MenuH.find(menu, "CreditsButton")
 				if credits then
 					local swing = MenuH.find(menu, "Swing")
@@ -5528,6 +5541,21 @@ local function clientScenarios()
 			Theme.Measure = mockMeasure
 		end
 	end
+	-- (Pitch 2 fix round B r1) a busy strip's room at each end, screen px: its lead mark, the gap and its word laid out as
+	-- PixelIcon.Lead does in Roblox (the word centred in the box right of the mark's inset, the mark a gap before it), the
+	-- word at its real width (SmokeCommon.RealWidth: the mock's flat 0.5 em measure is narrower). Returns left, right, a note
+	function U8.stripSpare(label)
+		local r, k = U8.rect(label), U8.scaleOf(label)
+		local pad = label:FindFirstChildOfClass("UIPadding")
+		if not (label:FindFirstChild("LeadIcon") and pad) then
+			return -math.huge, -math.huge, " (no mark or padding)"
+		end
+		local padL, padR = pad.PaddingLeft.Offset * k, pad.PaddingRight.Offset * k
+		local markGap = padL - (tonumber(label:GetAttribute("LeadInsetL")) or 0) * k -- the mark's box and the gap after it
+		local tw = SmokeCommon.RealWidth(label.Text, label.TextSize * k, label.Font, true) or label.TextBounds.X
+		local mid = (r.X + padL + r.R - padR) / 2
+		return (mid - tw / 2 - markGap) - r.X, r.R - (mid + tw / 2), fmt(" (strip %s, word %.1f, mark and gap %.1f)", U8.show(r), tw, markGap)
+	end
 	-- a fill counts as green: the grass plank of kit B, or any colour whose green leads red and blue clearly
 	function U8.green(c)
 		local Sign = LoadingH.shared("Theme").Sign
@@ -6179,6 +6207,25 @@ local function clientScenarios()
 					local power = slot:FindFirstChild("Power")
 					T.check(power and U8.shown(power) and U8.rect(power).Y >= U8.rect(busy).B - 0.5, tag .. ": ...and the slot's power reads below it",
 						power and (U8.show(U8.rect(power)) .. " vs " .. U8.show(U8.rect(busy))) or "no Power")
+					-- (Pitch 2 fix round B, T1 look leftover 4: the cover hid the portrait) the F0 A mock's slim activity strip on
+					-- the tag's row over a VISIBLE pet: at most a quarter of the face under it
+					local face = slot:FindFirstChild("Face")
+					local fr, br = face and U8.rect(face), U8.rect(busy)
+					local under = fr and math.max(0, math.min(fr.B, br.B) - math.max(fr.Y, br.Y)) or math.huge
+					T.check(fr ~= nil and U8.shown(face) and under <= 0.25 * (fr.B - fr.Y),
+						tag .. ": ...a slim strip (the pet stays visible: at most a quarter of its face under the strip)",
+						fr and fmt("strip %s, face %s, %.0f px under", U8.show(br), U8.show(fr), under) or "no Face")
+					local spareL, spareR, why = U8.stripSpare(busy)
+					T.check(spareL >= 3 - 0.01 and spareR >= 3 - 0.01, tag .. ": ...its mark and word inside the strip, 3 px or more to spare at each end (F0 A)",
+						fmt("%.1f left, %.1f right%s", spareL, spareR, why or ""))
+				end
+				-- (Pitch 2 fix round B r1, look review minor: on the 390x844 team slot the FIGHTER chip lay over the portrait
+				-- circle) a phone slot's FIGHTER / HELPER tag clear of the pet's face
+				local lead = holder:FindFirstChild("Slot1", true)
+				local lt, lf = lead and lead:FindFirstChild("Tag"), lead and lead:FindFirstChild("Face")
+				if phone and lt and lf and U8.shown(lt) and U8.shown(lf) then
+					T.check(not U8.overlap(U8.rect(lt), U8.rect(lf)), tag .. ": the phone slot's FIGHTER tag clear of the pet's face",
+						U8.show(U8.rect(lt)) .. " vs " .. U8.show(U8.rect(lf)))
 				end
 				local card = holder:FindFirstChild("Card_" .. K2, true)
 				local cb = card and card:FindFirstChild("Busy")
@@ -6187,6 +6234,33 @@ local function clientScenarios()
 					T.check(cb.BackgroundTransparency == 0 and level and U8.rect(level).Y >= U8.rect(cb).B - 0.5,
 						tag .. ": ...opaque, the card's level clear below it", level and (U8.show(U8.rect(level)) .. " vs " .. U8.show(U8.rect(cb))) or "no Level")
 					T.check(number and U8.shown(number) and number.ZIndex > cb.ZIndex, tag .. ": ...the team number chip drawn over it")
+					-- (Pitch 2 fix round B, T1 look leftover 4) a slim strip under the chips row over a VISIBLE pet (the F0 A
+					-- mock): at most a third of the picture's height, clear of the chips row
+					local pic = card:FindFirstChild("Picture")
+					local pr, cr = pic and U8.rect(pic), U8.rect(cb)
+					local nr = number and U8.rect(number)
+					T.check(pr ~= nil and (cr.B - cr.Y) <= (pr.B - pr.Y) / 3 and cr.Y >= pr.Y and cr.B <= pr.B and (nr == nil or cr.Y >= nr.B - 0.5),
+						tag .. ": ...a slim strip over the picture under the chips row (the pet stays visible)",
+						pr and fmt("strip %s, picture %s, chip %s", U8.show(cr), U8.show(pr), nr and U8.show(nr) or "-") or "no Picture")
+					-- (Pitch 2 fix round B r1, look review major: the strip read "fitted, not finished" against F0_pets_optA: the
+					-- word larger and bolder than the mock's small inset tag, edge to edge with no right padding, the mark 1 px out
+					-- past the strip's left end, "Gardenin" at --ss 1) the mock's busy band (finish_windows.busy_band): the word
+					-- smaller than the card's level (16 design px on PC, the mock's), in its face's ink (OnGrass on Grass), the mark
+					-- and the word inside the strip with 3 px or more to spare at each end, the face lit along its top and a lip of
+					-- the face's own lip colour along its foot
+					local Sign = LoadingH.shared("Theme").Sign
+					local spareL, spareR, why = U8.stripSpare(cb)
+					T.check(spareL >= 3 - 0.01 and spareR >= 3 - 0.01, tag .. ": ...the card strip's mark and word inside it, 3 px or more to spare at each end",
+						fmt("%.1f left, %.1f right%s", spareL, spareR, why or ""))
+					T.check(level and cb.TextSize <= level.TextSize and (phone or cb.TextSize <= 16) and sameColor(cb.TextColor3, Sign.OnGrass),
+						tag .. ": ...the strip's word the mock's small tag (under the level's size, 16 px on PC) in the grass ink",
+						fmt("%s px (level %s), ink %s", tostring(cb.TextSize), tostring(level and level.TextSize), tostring(cb.TextColor3)))
+					local lip, shine = cb:FindFirstChild("Lip"), cb:FindFirstChild("FinishShine")
+					local lr, sr = lip and U8.rect(lip), shine and U8.rect(shine)
+					T.check(lip and U8.shown(lip) and sameColor(lip.BackgroundColor3, Sign.GrassLip) and lr.R - lr.X >= cr.R - cr.X - 0.5 and math.abs(lr.B - cr.B) <= 0.5
+						and lr.B - lr.Y >= 2 - 0.01 and shine and U8.shown(shine) and math.abs(sr.Y - cr.Y) <= 0.5 and sr.R - sr.X >= cr.R - cr.X - 0.5,
+						tag .. ": ...the strip finished as the mock's band: a lit top line and its face's lip along its foot",
+						fmt("lip %s, shine %s, strip %s", lr and U8.show(lr) or "-", sr and U8.show(sr) or "-", U8.show(cr)))
 				end
 				-- the detail's stars (K1 is evolved twice) inside its line and its panel
 				local detail = holder:FindFirstChild("Detail", true) or holder:FindFirstChild("Sheet", true)
@@ -7753,6 +7827,48 @@ local function clientScenarios()
 					T.check(w.X - 5 >= b.R + 3 + 5 + 4 - 0.5, tag .. ": the Settings window docks clear of the title board",
 						fmt("board ends %.0f (+8 edge and shadow), window starts %.0f (-5 bevel)", b.R, w.X))
 				end
+				-- (Pitch 2 fix round B, T1 look leftover 8: at 1920x1080 the window cut the Mouse lock row at its foot with about
+				-- 400 px of sky above it; at 844x390 the list's view ended on the Graphics heading alone) at rest every row the
+				-- list's view shows is whole (its heading never without its strip); on a 1920 / 1280 desktop every row and the
+				-- note show whole, nothing to scroll
+				local list = win and win:FindFirstChild("List", true)
+				if T.check(list ~= nil, tag .. ": (setup) the Settings list") then
+					local view = U8.rect(list)
+					local cut, rows = {}, 0
+					-- (the mock wraps a text at its box's SCREEN width but measures it in its own px, robloxmock textBounds:
+					-- under a window scale below 1 (1280x720: 0.8) the note wraps one line more than in Roblox and the
+					-- renderer, where it fits (build/GATE_P2/fixB/settings_1280x720.png). There the note's first line must
+					-- show in view; at scale 1 (1920x1080) the whole note)
+					local sc = win:FindFirstChild("Fit") and win.Fit.Scale or 1
+					for _, c in ipairs(list:GetChildren()) do
+						if c:IsA("GuiObject") and U8.shown(c) and (c.Name:match("^Row_") or c.Name == "Note") then
+							rows = rows + 1
+							local r = U8.rect(c)
+							local inTop = r.Y < view.B - 0.5 and r.B > view.Y + 0.5
+							local whole = r.Y >= view.Y - 0.5 and r.B <= view.B + 0.5
+							if c.Name == "Note" and sc < 0.99 and s[3] == "Keyboard" then
+								whole = r.Y >= view.Y - 0.5 and r.Y + c.TextSize * sc <= view.B + 0.5
+								inTop = false
+							end
+							if inTop and not whole then
+								cut[#cut + 1] = fmt("%s %.0f..%.0f", c.Name, r.Y, r.B)
+							elseif s[3] == "Keyboard" and not whole then
+								cut[#cut + 1] = c.Name .. " out of view"
+							end
+						end
+					end
+					T.check(rows >= 4 and #cut == 0, fmt("%s: the Settings list shows whole rows only%s", tag, s[3] == "Keyboard" and ", every row in view" or ""),
+						fmt("view %.0f..%.0f; %s", view.Y, view.B, table.concat(cut, ", ")))
+				end
+				-- (fix round B) a window cut to whole rows leaves no half-covered CREDITS tag above it
+				local credits = menu and menu:FindFirstChild("CreditsTag", true)
+				if credits and U8.shown(credits) and win then
+					local w, c = U8.rect(win), U8.rect(credits)
+					local overlap = c.X < w.R and c.R > w.X and c.Y < w.B and c.B > w.Y
+					local inside = c.X >= w.X and c.R <= w.R and c.Y >= w.Y and c.B <= w.B
+					T.check(not overlap or inside, tag .. ": the CREDITS tag is not half under the Settings window",
+						fmt("tag %s, window %s", U8.show(c), U8.show(w)))
+				end
 			end)
 			T.check(ok, tag .. ": the check ran", tostring(err))
 			MenuH.close()
@@ -8074,13 +8190,42 @@ local function clientScenarios()
 				Menu.Open("Index")
 				LKC.advance(1)
 				local win = pg:FindFirstChild("NimbusIndex")
-				local bad = {}
+				local bad, meters = {}, {}
+				-- (Pitch 2 fix round B, T1 look leftover 9) a landscape phone gives the group header's row to the pet grid (its
+				-- well was 68.8 px, no whole tile): there the header's title and meter are hidden on purpose and the selected
+				-- tab right above the grid carries the group's name and blocks, so the tab is checked instead of the header
+				local land = s[3] and s[1] > s[2]
 				for _, id in ipairs({ "Common", "Uncommon", "Legendary", "Mythic" }) do
 					pcall(Index.Open, id)
 					LKC.advance(0.4)
 					local title = win and win:FindFirstChild("GroupTitle", true)
 					local track = title and title.Parent:FindFirstChild("Progress")
-					if not (title and U8.shown(title)) then
+					-- (Pitch 2 fix round B, T1 look leftover 7: on PC the meter drew thin pale pips) the group's meter is
+					-- outlined square boxes (the phones' and the F0 A mock's), at least 10 screen px, clear of its count
+					local row = track and track:FindFirstChild("BlockRow")
+					local count = track and track:FindFirstChild("Count")
+					if land then
+						local tab = win and win:FindFirstChild("Group_" .. id, true)
+						local name = tab and tab:FindFirstChild("GroupName")
+						local blocks = tab and tab:FindFirstChild("Track")
+						if not (title and not U8.shown(title) and name and name.Text ~= "" and blocks and U8.shown(tab)) then
+							bad[#bad + 1] = id .. ": the header should give way to the grid, the tab name the group"
+								.. fmt(" (header %s, tab %s)", tostring(title and U8.shown(title)), tostring(tab ~= nil))
+						end
+					elseif row and U8.shown(row) then
+						local b1 = row:FindFirstChild("Block1")
+						local bw, bh = b1 and b1.AbsoluteSize.X or 0, b1 and b1.AbsoluteSize.Y or 0
+						local cx = count and (U8.rect(count).R - count.TextBounds.X) or math.huge
+						if row:GetAttribute("Pips") == true or bw < 10 - 0.5 or math.abs(bw - bh) > 1.5 or U8.rect(row).R > cx - 2 + 0.5 then
+							meters[#meters + 1] = fmt("%s: block %.1f x %.1f%s, row to %.0f, count text from %.0f", id, bw, bh,
+								row:GetAttribute("Pips") == true and " (pips)" or "", U8.rect(row).R, cx)
+						end
+					else
+						meters[#meters + 1] = id .. ": no meter"
+					end
+					if land then
+						-- (checked on the tab above)
+					elseif not (title and U8.shown(title)) then
 						bad[#bad + 1] = id .. ": no title"
 					else
 						local r = U8.rect(title)
@@ -8095,6 +8240,7 @@ local function clientScenarios()
 					end
 				end
 				T.check(#bad == 0, fmt("%s: every group's name on one line, 17 px or more, beside its progress (%d off)", tag, #bad), table.concat(bad, "; "))
+				T.check(#meters == 0, tag .. ": every group's meter is outlined square boxes (>= 10 px), clear of its count", table.concat(meters, "; "))
 				pcall(Index.Open, "Common")
 				LKC.advance(0.4)
 				local amount = win and win:FindFirstChild("Amount", true)
@@ -8109,6 +8255,45 @@ local function clientScenarios()
 				local el = win and win:FindFirstChild("Elements", true)
 				local icon = el and el:FindFirstChild("LeadIcon", true)
 				T.check(el and (not U8.shown(el) or (icon and U8.shown(icon))), tag .. ": the Elements plank carries its swap icon")
+				-- (Pitch 2 fix round B, T1 look leftover 9: at 844x390 the pet grid's well was 68.8 px and no whole tile showed in
+				-- it) the grid shows at least one whole tile, its name band included, inside the grid's view (12_index_badge B)
+				local gridView = win and win:FindFirstChild("PetGrid", true)
+				local whole, seen = 0, 0
+				if gridView then
+					local gv = U8.rect(gridView)
+					for _, c in ipairs(gridView:GetChildren()) do
+						if c:IsA("GuiObject") and U8.shown(c) and c:FindFirstChild("Caption", true) then
+							seen = seen + 1
+							local r = U8.rect(c)
+							if r.Y >= gv.Y - 0.5 and r.B <= gv.B + 0.5 and r.X >= gv.X - 0.5 and r.R <= gv.R + 0.5 then
+								whole = whole + 1
+							end
+						end
+					end
+				end
+				T.check(whole >= 1, tag .. ": the pet grid shows at least one whole tile with its name",
+					fmt("%d whole of %d, view %s", whole, seen, gridView and U8.show(U8.rect(gridView)) or "no PetGrid"))
+				-- (Pitch 2 fix round B r1, look review major: at 844x390 the tiles fitted to the well left a 52 px picture and the
+				-- Earth / Nature tag covered about half of it, over the face's centre) the tag sits above a clear portrait, as in
+				-- 12_index_badge_optB and F0_index_optA (the pet drawn 8 px down the well): it covers at most a third of the
+				-- portrait's height and the portrait's centre line is clear of it, at every grid size (the Pets window's rule)
+				local tags, covered = 0, {}
+				for _, c in ipairs(gridView and gridView:GetChildren() or {}) do
+					local chip = c:IsA("GuiObject") and U8.shown(c) and c:FindFirstChild("Elements")
+					local view = c:IsA("GuiObject") and c:FindFirstChild("PetViewport", true)
+					for _, e in ipairs(chip and chip:GetChildren() or {}) do
+						if e:IsA("GuiObject") and U8.shown(e) and e.Name:match("^Element_") and view then
+							tags = tags + 1
+							local er, vr = U8.rect(e), U8.rect(view)
+							local over = math.max(0, math.min(er.B, vr.B) - math.max(er.Y, vr.Y))
+							if over > (vr.B - vr.Y) / 3 + 0.5 or er.B > (vr.Y + vr.B) / 2 - 0.5 then
+								covered[#covered + 1] = fmt("%s: tag %s over portrait %s (%.0f of %.0f px)", c.Name, U8.show(er), U8.show(vr), over, vr.B - vr.Y)
+							end
+						end
+					end
+				end
+				T.check(tags >= 1 and #covered == 0, fmt("%s: every tile's element tag above a clear portrait (at most a third over it, %d tags)", tag, tags),
+					table.concat(covered, "; "))
 				pcall(Menu.Close)
 				LKC.advance(0.4)
 			end)
@@ -11235,6 +11420,22 @@ local function clientScenarios()
 					local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
 					local wr = U8.rect(win)
 					T.check(wr.X >= -0.5 and wr.Y >= -0.5 and wr.R <= gui.AbsoluteSize.X + 0.5 and wr.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the window sits inside the screen", U8.show(wr))
+					-- (Pitch 2 fix round B r1, look review minor: at 844x390 the red notice square on the Packs tab lay over the
+					-- 's' of "Packs") the Starter dot's place (shown or not: the store decides) is clear of the label's letters, at
+					-- their real width (SmokeCommon.RealWidth)
+					local packs = win:FindFirstChild("Tab_Packs", true)
+					local dot, lab = packs and packs:FindFirstChild("Dot"), packs and packs:FindFirstChild("Label")
+					if T.check(dot ~= nil and lab ~= nil and U8.shown(lab), tag .. ": (setup) the Packs tab, its label and its dot") then
+						local d, l, k = U8.rect(dot), U8.rect(lab), U8.scaleOf(lab)
+						local ring = dot:FindFirstChildOfClass("UIStroke") -- (its wood edge draws outside its box)
+						local e = ring and ring.Thickness or 0
+						d = { X = d.X - e, Y = d.Y - e, R = d.R + e, B = d.B + e }
+						local tw = SmokeCommon.RealWidth(lab.Text, lab.TextSize * k, lab.Font, true) or lab.TextBounds.X
+						local x0 = (lab.TextXAlignment == Enum.TextXAlignment.Left and l.X) or (lab.TextXAlignment == Enum.TextXAlignment.Right and l.R - tw) or (l.X + l.R - tw) / 2
+						local y0 = (l.Y + l.B - lab.TextSize * k) / 2
+						local letters = { X = x0, R = x0 + tw, Y = y0, B = y0 + lab.TextSize * k }
+						T.check(not U8.overlap(d, letters), tag .. ": the Packs tab's Starter dot clear of its label's letters", U8.show(d) .. " vs letters " .. U8.show(letters))
+					end
 					if s[3] then
 						T.check(GuiService.TouchControlsEnabled == false, tag .. ": the thumbstick and jump button go while the Shop is open")
 						return

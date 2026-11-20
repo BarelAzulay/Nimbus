@@ -110,6 +110,12 @@ local K = {
 	TILE_W_NARROW = 114,
 	TILE_H_NARROW = 142,
 	TILE_H_SHORT = 132,
+	TILE_H_LAND_MIN = 104, -- (fix round B) a landscape phone's tile, fitted to the grid's view, never under this
+	-- (fix round B r1) a tile's pet picture: the tile's height less this (the name band, the lip and the margins) ...
+	TILE_ART_FOOT = 52,
+	-- ... and the element tag's foot under the picture's top, design px at the touch scale 0.8 (a 22 screen px chip 3 px in):
+	-- the portrait inside the picture starts low enough that the tag covers at most a third of it
+	TAG_FOOT = 31,
 	TILE_GAP = 10,
 	HEADER_H = 58,
 	HEADER_H_SHORT = 48,
@@ -152,6 +158,9 @@ local K = {
 	-- tall) a touch screen's thumb target, design px: 44.8 screen px at the docked window's 0.8
 	TOUCH_H = 56,
 	HEADER_TITLE_SIZES = { 24, 22, 20, 18 },
+	HEADER_BLOCK = 18, -- (fix round B) the group meter's square boxes, design px ...
+	HEADER_BLOCK_MIN = 10, -- ... never under this (the Bar weight's 2 px edge leaves a 6 px face: still a box, not a pip)
+	HEADER_COUNT_W = 58, -- the "2/6" count's box at the meter's right end
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
 	ELEMENTS_BTN_H_SHORT = 44,
@@ -925,7 +934,8 @@ end
 
 -- (Pitch 2 F0 A: "one-line titles"; look review of finish pass A, major 5: COMMON PETS wrapped onto two lines at 1920) the
 -- group's name on ONE line beside its progress: the biggest of K.HEADER_TITLE_SIZES that leaves the progress
--- K.HEADER_PROGRESS_MIN px of the header (S.HeaderW, design px); the progress takes the rest
+-- K.HEADER_PROGRESS_MIN px of the header (S.HeaderW, design px), or the square meter's least room and its count when
+-- that is more (fix round B); the progress takes the rest
 local function fitHeader()
 	local title = U.GroupTitle
 	local track = U.Header and U.Header:FindFirstChild("Progress")
@@ -934,11 +944,25 @@ local function fitHeader()
 		return
 	end
 	local extra = S.GroupId == FUSIONS and 30 or 0 -- (the sparkle mark before "Fusions")
-	local room = w - 16 - 12 - 14 - K.HEADER_PROGRESS_MIN
-	local size, tw = K.HEADER_TITLE_SIZES[#K.HEADER_TITLE_SIZES], 0
 	title.TextScaled = false
 	title.TextWrapped = false
 	local sc = SignKit.LayoutScale(title)
+	-- (Pitch 2 fix round B, T1 look leftover 7) the count's room (the wider of its measure and the text it really draws,
+	-- 10 px clear of the boxes) and the least the square meter needs: the title steps down before the boxes turn to pips
+	local blocks, count = U.HeaderBlocks, U.HeaderCount
+	local n = blocks and blocks:GetAttribute("Count") or 1
+	local countW = K.HEADER_COUNT_W
+	if count then
+		local okC, mc = pcall(Theme.MeasureLabel, count, count.Text, count.TextSize)
+		local okB, cb = pcall(function()
+			return count.TextBounds.X / ((sc and sc > 0) and sc or 1)
+		end)
+		local textW = math.max(okC and mc and mc.X or 0, okB and cb or 0)
+		countW = math.max(28, math.min(K.HEADER_COUNT_W, math.ceil(textW > 0 and textW or K.HEADER_COUNT_W - 10) + 10))
+	end
+	local meterMin = n * K.HEADER_BLOCK_MIN + (n - 1) * 2 + countW
+	local room = w - 16 - 12 - 14 - math.max(K.HEADER_PROGRESS_MIN, meterMin)
+	local size, tw = K.HEADER_TITLE_SIZES[#K.HEADER_TITLE_SIZES], 0
 	for _, s in ipairs(K.HEADER_TITLE_SIZES) do
 		-- the wider of the measure and the text the label really draws (its TextBounds, in its own px)
 		title.TextSize = s
@@ -956,6 +980,26 @@ local function fitHeader()
 	local boxW = math.max(0, math.min(room, math.ceil(tw) + 4))
 	title.Size = UDim2.new(0, boxW, 1, 0)
 	track.Size = UDim2.new(1, -(16 + boxW + 12 + 14), 0, 30)
+	-- (Pitch 2 fix round B, T1 look leftover 7: on PC the blocks filled the track's width as thin pale pips, on a phone as
+	-- flat bars) the meter is outlined SQUARE boxes (the F0 A mock): K.HEADER_BLOCK design px, smaller down to
+	-- K.HEADER_BLOCK_MIN when the track is short, from the track's left; the count stays at its right end
+	if blocks then
+		local avail = (w - (16 + boxW + 12 + 14)) - countW
+		-- the kit's Bar gap, 3 px, or its least, 2, when that makes room for the boxes
+		local gap = 3
+		local side = math.floor((avail - (n - 1) * gap) / n)
+		if side < K.HEADER_BLOCK_MIN then
+			gap = 2
+			side = math.floor((avail - (n - 1) * gap) / n)
+		end
+		if side >= K.HEADER_BLOCK_MIN then
+			side = math.min(K.HEADER_BLOCK, side)
+			blocks:SetAttribute("Gap", gap)
+			blocks.Size = UDim2.fromOffset(n * side + (n - 1) * gap, side)
+		else
+			blocks.Size = UDim2.new(1, -K.HEADER_COUNT_W - 6, 0, 18) -- (no room for boxes: the old fill)
+		end
+	end
 end
 
 -- (Pitch 2 item 12_index_badge B) a tab's bar row: the blocks and, in the count's place, the count, the waiting
@@ -1080,6 +1124,49 @@ local function H_snapStrip()
 	end
 end
 
+-- (Pitch 2 fix round B r1, look review major: at 844x390 the fitted tile's 52 px picture lay half under the Earth / Nature
+-- tag, over the face's centre) the portrait starts this far down its picture, so the element tag covers at most a third
+-- of it and never its centre (12_index_badge_optB: the tag above a clear portrait); 0 on a tall tile. For a tile
+-- `cellH` design px tall; every built portrait moves with it (buildTileViewport reads S.PortraitTop)
+local function H_seatPortraits(cellH)
+	local art = cellH - K.TILE_ART_FOOT
+	local top = math.max(0, math.ceil((3 * K.TAG_FOOT - art) / 2), 2 * K.TAG_FOOT - art)
+	if S.PortraitTop == top then
+		return
+	end
+	S.PortraitTop = top
+	for _, tile in pairs(S.Tiles) do
+		local frame = tile.Viewport and tile.Viewport.Frame
+		if frame then
+			frame.Position = UDim2.fromOffset(0, top)
+			frame.Size = UDim2.new(1, 0, 1, -top)
+		end
+	end
+end
+
+-- (Pitch 2 fix round B, T1 look leftover 9) on a landscape phone the tiles are as tall as the grid's view allows (the
+-- well less its 4 px inset each side and the grid's 8 px pads), down to K.TILE_H_LAND_MIN, so a whole row of tiles with
+-- their names shows; anywhere else the layout's own height. Again whenever the well is resized
+local function H_fitLandTiles()
+	local layout, well = U.GridLayout, U.GridWell
+	if not (layout and well and S.PetH) then
+		return
+	end
+	local want = S.PetH
+	if S.Land then
+		local sc = SignKit.LayoutScale(well)
+		local wellH = well.AbsoluteSize.Y / ((sc and sc > 0) and sc or 1)
+		if wellH > 0 then
+			want = math.max(K.TILE_H_LAND_MIN, math.min(S.PetH, math.floor(wellH - 8 - 16)))
+		end
+	end
+	local cell = layout.CellSize
+	if cell.Y.Offset ~= want then
+		layout.CellSize = UDim2.fromOffset(cell.X.Offset, want)
+	end
+	H_seatPortraits(want)
+end
+
 local function relayout()
 	if not S.Built then
 		return
@@ -1158,9 +1245,16 @@ local function relayout()
 		U.Centre.Position = UDim2.new(0, groupW + K.GAP, 0, 0)
 		U.Centre.Size = UDim2.new(1, -(groupW + detailW + 2 * K.GAP), 1, 0)
 	end
+	-- (Pitch 2 fix round B, T1 look leftover 9: at 844x390 the grid's well was 68.8 px and no whole tile showed) a landscape
+	-- phone (the stacked layout on a short window) gives the group header's row to the grid: the selected tab right above
+	-- it carries the group's name, its blocks and its count (12_index_badge B); its tiles fit the well (H_fitLandTiles)
+	local land = tall and short
+	S.Land = land
+	local headerRow = land and 0 or (headerH + 8)
+	U.Header.Visible = not land
 	U.Header.Size = UDim2.new(1, 0, 0, headerH)
-	U.GridWell.Position = UDim2.fromOffset(0, headerH + 8)
-	U.GridWell.Size = UDim2.new(1, 0, 1, -(headerH + 8 + rewardH + 8))
+	U.GridWell.Position = UDim2.fromOffset(0, headerRow)
+	U.GridWell.Size = UDim2.new(1, 0, 1, -(headerRow + rewardH + 8))
 	U.Rewards.Size = UDim2.new(1, 0, 0, rewardH)
 	U.RewardSub.Visible = not short
 	U.RewardLabel.Visible = not (short and narrow)
@@ -1292,6 +1386,8 @@ local function relayout()
 		petH = math.min(petH, K.TILE_H_SHORT)
 	end
 	U.GridLayout.CellSize = UDim2.fromOffset(petW, petH)
+	S.PetH = petH
+	H_fitLandTiles()
 	fitHeader()
 	renderFooter()
 end
@@ -1616,7 +1712,9 @@ local function buildTileViewport(tile)
 	local discovered = State.IsDiscovered(def.Id)
 	-- Phase 5 (3.7): the best stage over the owned copies of this pet (undiscovered: 0); evolved = Low
 	local stage = discovered and type(State.BestStage) == "function" and (tonumber(State.BestStage(def.Id)) or 0) or 0
-	local handle = CloudUI.PetViewport(tile.Art, def, UDim2.new(1, 0, 1, 0), {
+	local top = S.PortraitTop or 0 -- (fix round B r1) the portrait clear of the element tag (H_seatPortraits)
+	local handle = CloudUI.PetViewport(tile.Art, def, UDim2.new(1, 0, 1, -top), {
+		Position = UDim2.fromOffset(0, top),
 		Animate = false,
 		Spin = discovered and "sway" or "none",
 		Evolved = stage >= 1 and stage or nil,
@@ -1699,7 +1797,7 @@ local function buildTile(def, index)
 	tile.Art = makeFrame(button, "Art", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 4),
-		Size = UDim2.new(1, -8, 1, -52),
+		Size = UDim2.new(1, -8, 1, -K.TILE_ART_FOOT),
 		BackgroundTransparency = 0,
 		BackgroundColor3 = SIGN.PetWell,
 		ZIndex = 2,
@@ -2360,6 +2458,9 @@ local function buildCentre(centre)
 		Size = UDim2.new(1, 0, 1, -(K.HEADER_H + 8 + K.REWARD_H + 8)),
 	})
 	U.GridWell = well
+	well:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		safe("landTiles", H_fitLandTiles) -- (fix round B) a landscape phone's tiles follow the well's height
+	end)
 	U.Grid = scroller(well, "PetGrid", {
 		Position = UDim2.fromOffset(4, 4),
 		Size = UDim2.new(1, -8, 1, -8),

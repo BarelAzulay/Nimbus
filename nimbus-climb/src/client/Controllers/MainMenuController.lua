@@ -134,6 +134,8 @@ local K = {
 		BLOCK_GAP = 4,
 		BLOCK_H = 32,
 		BULLET = 6, -- the square bullet of an update line
+		LIST_GAP = 12, -- between the list's rows
+		SLACK = 2, -- (fix round B) Win.fitHeight's room for the frame and lip on whole screen px
 		-- (Pitch 2 F0 A, look review of finish pass A, major 7: on a phone the 0.8 window drew the close 35 px, - / + and the
 		-- chips 42 px tall, the volume steps 20x26) a touch screen's thumb target, design px: 44 screen px at the docked
 		-- window's smallest touch scale (NeonKit's MinScaleTouch 0.8). Win.pad lays an invisible tap of this size under a
@@ -162,6 +164,7 @@ local K = {
 		GAP = 12, -- between SETTINGS and UPDATES
 		TAG_W = 140, -- the CREDITS tag
 		TAG_H = 44,
+		TOUCH = 44, -- (fix round B) screen px: the least a title-board button is tall on a touch screen
 		ROPE_UP = 48, -- (sign build) the ropes start this far above the screen top: no rope end shows through a bounce
 		BOTTOM = 16, -- (sign build) screen px kept free under the swinging board (shorter ropes on a short screen)
 		RELAYOUT = 0.15, -- (sign build) a viewport change lays the screen out again this long after the last one
@@ -943,6 +946,11 @@ function Menu.build(enter)
 		end
 	end
 
+	-- (Pitch 2 fix round B, T1 look leftover 6: at 844x390 SETTINGS / UPDATES drew 41.6 px and CREDITS 35.2 px under the
+	-- 0.8 read scale) on a touch screen the pair and the CREDITS plank are at least B.TOUCH screen px tall
+	local tapH = touch and math.ceil(B.TOUCH / f) or 0
+	local btnH, creditsH = math.max(B.BTN_H, tapH), math.max(B.TAG_H, tapH)
+
 	-- the board's size: header, then the body rows top-down (the tag line drops out on a short screen)
 	local boardW = portrait and math.floor(math.min(dw - 2 * B.GUTTER / f, B.W_MAX)) or B.W
 	local inner = boardW - 2 * Z.Frame
@@ -960,7 +968,7 @@ function Menu.build(enter)
 	rows.Play = y
 	y = y + B.PLAY_H + 10
 	rows.Pair = y
-	y = y + B.BTN_H + 8
+	y = y + btnH + 8
 	rows.Version = y
 	y = y + 24 + 2
 	rows.Hint = y
@@ -981,7 +989,7 @@ function Menu.build(enter)
 	local boardX, topY
 	if portrait then
 		boardX = math.floor((dw - boardW) / 2)
-		local below = math.max(zoneH, math.ceil((ropeH + B.TAG_H) * f) + 8)
+		local below = math.max(zoneH, math.ceil((ropeH + creditsH) * f) + 8)
 		topY = math.max(minTop, math.floor(dh - (below + B.DOCK) / f - boardH))
 	else
 		boardX = math.max(B.X, touch and math.ceil((zoneW + 8) / f) or 0)
@@ -1078,7 +1086,7 @@ function Menu.build(enter)
 		Name = "SettingsButton",
 		Text = "SETTINGS",
 		Width = halfW,
-		Height = B.BTN_H,
+		Height = btnH,
 		TextSize = 22,
 		Position = UDim2.fromOffset(pad, rows.Pair),
 		ZIndex = 2,
@@ -1091,7 +1099,7 @@ function Menu.build(enter)
 		Name = "UpdatesButton",
 		Text = "UPDATES",
 		Width = halfW,
-		Height = B.BTN_H,
+		Height = btnH,
 		TextSize = 22,
 		Position = UDim2.fromOffset(pad + playW - halfW, rows.Pair),
 		ZIndex = 2,
@@ -1153,7 +1161,7 @@ function Menu.build(enter)
 	-- zones, and drops, swings and leaves with the board (it is in the Swing). (kit-b prep, gate GATE_KITB) Under the board
 	-- one centred post would land on the rig's brass version plate, and between a phone's thumb zones there is no room to
 	-- slide the tag past it, so there it hangs on two short ropes that straddle the plate
-	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(tagW, ropeH + B.TAG_H), ZIndex = 3 }, portrait and swing or content)
+	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(tagW, ropeH + creditsH), ZIndex = 3 }, portrait and swing or content)
 	local posts = { math.floor(tagW / 2) }
 	if portrait then
 		tag.Position = UDim2.fromOffset(side + math.floor((boardW - tagW) / 2), half + topY + boardH)
@@ -1176,7 +1184,7 @@ function Menu.build(enter)
 		Name = "CreditsButton",
 		Text = "CREDITS",
 		Width = tagW,
-		Height = B.TAG_H,
+		Height = creditsH,
 		TextSize = 18,
 		Face = Sign.Wood,
 		Lip = K.SIGN.WoodDark,
@@ -1190,6 +1198,7 @@ function Menu.build(enter)
 	})
 
 	M.Ui.Swing, M.Ui.Board, M.Ui.Tag = swing, board, tag
+	M.Ui.TagTop = touch and not portrait -- (the tag at the top right, in the docked windows' column: Win.holder)
 	M.Ui.Rest, M.Ui.Lift = swing.Position, half + 40
 	-- (sign build) the screen it was laid out for, and where the dust puffs rise at the snap (beside the awning's ends)
 	M.Ui.Vp, M.Ui.Content, M.Ui.Tw = vp, content, {}
@@ -1647,6 +1656,9 @@ function Win.close()
 	if M.Ui.Swing then
 		M.Ui.Swing.Visible = true -- (U5) the title screen's board comes back (Win.open hid it behind a portrait sheet)
 	end
+	if M.Ui.Tag then
+		M.Ui.Tag.Visible = true -- (fix round B) and the CREDITS tag (Win.holder hid it on a landscape touch screen)
+	end
 	Win.bindBack(false)
 	Win.touch(false)
 end
@@ -1695,14 +1707,56 @@ function Win.clearOfBoard(prefW, prefH)
 	return narrower
 end
 
--- a window's root, docked by the window rule (prefW x prefH design px); nil without a gui
-function Win.holder(name, prefW, prefH)
+-- (Pitch 2 fix round B, T1 look leftover 8: at 1920x1080 the 640 px Settings window cut the Mouse lock row at its foot
+-- with about 400 px of sky above it; at 844x390 its list's view ended on the Graphics heading, the chips under the fold)
+-- a window's height from its list: `fit(contentW)` returns { Content, Rows, Pitch, Gap } (the list's design height at
+-- that content width, its row count and pitch, and the gap between rows). The window is as tall as its list; where the
+-- screen caps it, it ends on a whole row (never a heading without its strip) and the rest scrolls. Returns the design
+-- height to dock, nil when it cannot tell
+function Win.fitHeight(prefW, fit)
+	local D, Z = K.WIN, SignKit.Sizes
+	local ok, r0 = pcall(NeonKit.SideRect, prefW, K.WIN_H)
+	if not (ok and type(r0) == "table" and r0.designW) then
+		return nil
+	end
+	local okFit, spec = pcall(fit, math.floor(r0.designW + 0.5) - 2 * Z.Frame - 2 * D.PAD - D.BAR)
+	if not (okFit and type(spec) == "table" and tonumber(spec.Content)) then
+		return nil
+	end
+	-- the header, the wood frame round the stone body, the list's margin and the body's lip; SLACK covers the frame and
+	-- lip drawn on whole screen px (SignKit.Px) under a phone's scale
+	local chrome = D.HEAD_Y + D.HEAD_H + 2 * Z.Frame + 2 * D.PAD + Z.Lip + D.SLACK
+	local want = math.ceil(chrome + spec.Content)
+	local okR, r = pcall(NeonKit.SideRect, prefW, want)
+	if not (okR and type(r) == "table" and r.designH) or r.designH >= want - 0.5 then
+		return want
+	end
+	local pitch, gap = tonumber(spec.Pitch) or 0, tonumber(spec.Gap) or 0
+	if pitch <= 0 then
+		return nil
+	end
+	local rows = math.max(1, math.min(tonumber(spec.Rows) or 1, math.floor((r.designH - chrome + gap) / pitch)))
+	return math.min(math.floor(r.designH), chrome + rows * pitch - gap)
+end
+
+-- a window's root, docked by the window rule (prefW x prefH design px); nil without a gui. `fit` (optional, see
+-- Win.fitHeight) sizes its height to its list instead of prefH
+function Win.holder(name, prefW, prefH, fit)
 	Win.close()
 	local gui = Menu.gui()
 	if not gui then
 		return nil
 	end
 	prefW = Win.clearOfBoard(prefW, prefH)
+	if type(fit) == "function" then
+		prefH = Win.fitHeight(prefW, fit) or prefH
+	end
+	-- (fix round B) on a landscape touch screen the CREDITS tag hangs at the top right, in the docked window's column: a
+	-- window cut to its whole rows no longer reaches over it, so the tag waits hidden (half a tag behind the awning) and
+	-- comes back on Win.close
+	if M.Ui.Tag and M.Ui.TagTop then
+		M.Ui.Tag.Visible = false
+	end
 	local W = M.Win
 	local holder = H.frame("Window_" .. name, { Size = UDim2.fromOffset(prefW, prefH), ZIndex = 10 }, gui)
 	local fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
@@ -1793,7 +1847,7 @@ function Win.list(body)
 	Util.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Vertical,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 12),
+		Padding = UDim.new(0, D.LIST_GAP),
 		Parent = list,
 	})
 	return list
@@ -1804,8 +1858,8 @@ end
 -- the red Close plank with the pixel x, the wood frame and the stone body holding the scrolling list. It is built at the
 -- docked design size and rebuilt by `reopen(true)` when the screen changes size (as Credits is). Returns the list and its
 -- content width (design px)
-function Win.open(name, title, icon, prefH, reopen)
-	local holder = Win.holder(name, K.WIN_W, prefH)
+function Win.open(name, title, icon, prefH, reopen, fit)
+	local holder = Win.holder(name, K.WIN_W, prefH, fit)
 	if not holder then
 		return nil
 	end
@@ -2050,7 +2104,26 @@ end
 
 -- quiet: a rebuild after a screen resize (no click, the window was already open)
 function MainMenuController.OpenSettings(quiet)
-	local list, width = Win.open("Settings", "SETTINGS", "gear", K.WIN_H, MainMenuController.OpenSettings)
+	local desktop = H.isDesktop()
+	local note = "Low graphics hides small decorations and glow. Saved to your account."
+	if desktop then
+		local ml = H.mod("MouseLock")
+		local free = (ml and ml.KEY_NAME) and (" (press " .. ml.KEY_NAME .. " to free it)") or ""
+		note = "Mouse lock: the mouse turns the camera" .. free .. ". Low graphics hides small decorations and glow. Saved to your account."
+	end
+	-- (Pitch 2 fix round B, T1 look leftover 8) the window as tall as its rows and note (Win.fitHeight); a short screen
+	-- ends it on a whole row
+	local D = K.WIN
+	local rows = desktop and 5 or 4
+	local function fit(contentW)
+		-- the note's lines from its one-line width (a tenth spare for the words that break early): TextService wraps a
+		-- measure only in Roblox, not in the test mock
+		local okM, m = pcall(Theme.Measure, note, "Label", 18)
+		local lines = (okM and m and contentW > 0) and math.max(1, math.ceil(m.X / (contentW * 0.9))) or 3
+		local noteH = math.max(24, lines * math.ceil((okM and m and m.Y > 0) and m.Y or 24))
+		return { Content = rows * (D.ROW_H + D.LIST_GAP) + noteH, Rows = rows, Pitch = D.ROW_H + D.LIST_GAP, Gap = D.LIST_GAP }
+	end
+	local list, width = Win.open("Settings", "SETTINGS", "gear", K.WIN_H, MainMenuController.OpenSettings, fit)
 	if not list then
 		return
 	end
@@ -2062,16 +2135,9 @@ function MainMenuController.OpenSettings(quiet)
 	Win.sliderRow(list, "Sfx", "Sound", "speaker", 2, width)
 	Win.chipRow(list, "Gfx", "Graphics", "monitor", { { "AUTO", "Auto" }, { "LOW", "Low" }, { "HIGH", "High" } }, 3, width)
 	Win.chipRow(list, "Shake", "Camera shake", "shake", { { "ON", true }, { "OFF", false } }, 4, width)
-	local desktop = H.isDesktop()
 	if desktop then
 		-- (bug batch 2 #21: on by default; the key that frees it is in the note below)
 		Win.chipRow(list, "MouseLock", "Mouse lock (recommended)", "mouse", { { "ON", true }, { "OFF", false } }, 5, width)
-	end
-	local note = "Low graphics hides small decorations and glow. Saved to your account."
-	if desktop then
-		local ml = H.mod("MouseLock")
-		local free = (ml and ml.KEY_NAME) and (" (press " .. ml.KEY_NAME .. " to free it)") or ""
-		note = "Mouse lock: the mouse turns the camera" .. free .. ". Low graphics hides small decorations and glow. Saved to your account."
 	end
 	local label = Theme.Label(note, "Label", { Size = 18, Color = Theme.Sign.TextMuted })
 	label.Name = "Note"

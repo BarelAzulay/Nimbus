@@ -1288,7 +1288,14 @@ function H.layoutRail(W, Hh, R)
 		U.DivGlyph.Visible, U.DivLabel.Visible, U.DivLine.Visible = false, false, false
 		U.DivRuleL.Visible, U.DivRuleR.Visible = true, false
 	end
-	place(U.Dot, R.RailW - 20, 6, 14, 14)
+	if layout == "Phone" then
+		-- (Pitch 2 fix round B r1, look review minor: at 844x390 the red square lay over the 's' of "Packs", the label's
+		-- words reaching the tab's right end) on a phone's rail the dot sits on the tab's top right corner, a notice badge
+		-- clear of the word
+		place(U.Dot, R.RailW - 9, -5, 14, 14)
+	else
+		place(U.Dot, R.RailW - 20, 6, 14, 14)
+	end
 	H.layoutFast(layout ~= "Phone" and { R = R, BodyH = bodyH } or nil)
 	return R.Header
 end

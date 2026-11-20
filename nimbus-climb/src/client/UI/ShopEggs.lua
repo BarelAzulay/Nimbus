@@ -126,6 +126,9 @@ local K = {
 	TILE_MAX = 266,
 	HERO_PHONE = 200,
 	FADE = 48,
+	TILE_WIDE = 240, -- (fix round B) the widest a phone card grows to fill its viewport with whole cards
+	MORE_GUTTER = 40, -- (fix round B) the More arrow's column right of the phone row's viewport (its block is 30 wide, 4 in)
+	SNAP_DELAY = 0.25, -- (fix round B) s a drag rests before the phone row snaps to a whole card
 	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
 	FIT_H = 834, -- a PC / Compact body under this shrinks the page (REF's CardsY + Card + BODY_FOOT)
 	-- (Pitch 2 F0 review, major 6: the cards' bottom edge ran under the window's frame and the stone's lip, and the hint
@@ -580,7 +583,9 @@ function H.buildHero(P, parent)
 	-- AltarChip takes the PityChip's box and TRAVEL takes SPIN's in the same holder (over the Dim with the hint)
 	-- (LOOK-ui, kitb-look1: the veil over the whole card greyed the title and the odds below the contrast rule) the Dim
 	-- veils the art column only (the layouts place it); the texts stay whole and the chip's padlock says why
-	t.Dim = frame("Dim", b, { BackgroundTransparency = K.DIM, BackgroundColor3 = SIGN.NavyLip, Size = UDim2.fromScale(1, 1), ZIndex = K.Z_DIM, Visible = false })
+	-- (Pitch 2 fix round B r1, look review minor: at 844x390 the veil read as "a visible darker navy rectangle, an unblended
+	-- picture box") the veil is the card's own navy face (H.card above): the art fades into the card, no box edge shows
+	t.Dim = frame("Dim", b, { BackgroundTransparency = K.DIM, BackgroundColor3 = SIGN.Navy, Size = UDim2.fromScale(1, 1), ZIndex = K.Z_DIM, Visible = false })
 	-- (kit-b U9-2) the altar note: a stone tag in its wood edge (brown ink)
 	t.AltarChip = label("AltarChip", b, K.TEXT.AltarLock, "Heading", 22, {
 		BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile, TextColor3 = SIGN.Text, ZIndex = K.Z_OVER, Visible = false,
@@ -728,6 +733,7 @@ function ShopEggs.Build(page, ctx)
 	end
 	P.Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		ShopEggs._SyncFade(page)
+		H.queueSnap(P)
 	end)
 	-- (Task 26) the page-owned spark pool in the hero card: the big egg's orbiting star sparks, stopped while hidden
 	P.Pool = HatchFx.Pool(P.Hero.Card.Body, K.HERO_EGG.Sparks)
@@ -1121,22 +1127,68 @@ function L.cardPhone(t, w, th)
 	t.Hint.Visible = false
 end
 
+-- (Pitch 2 fix round B, T1 look leftover 5: at 844x390 the More arrow sat on the Sky card's odds and the next card's gem
+-- price '60' read '6') the Secret card and the four cards share one width (at least K.TILE), sized so the row's viewport
+-- holds n WHOLE cards; the viewport ends there and the More arrow sits in the gutter right of it (K.MORE_GUTTER at least),
+-- on no card. A drag that stops between two cards snaps to the nearest whole card (H.queueSnap)
 function L.phone(P, W, Hh)
 	local s = P.Scroll
 	s.ScrollingDirection = Enum.ScrollingDirection.X
 	local th = math.min(K.TILE_MAX, Hh - 12)
 	local y = math.floor((Hh - th) / 2)
-	place(P.Hero.Root, 0, y, K.HERO_PHONE, th)
-	L.heroPhone(P.Hero, K.HERO_PHONE, th)
-	local rowW = #P.Cards * K.STEP - (K.STEP - K.TILE)
-	place(P.Row, K.HERO_PHONE + 8, y, rowW, th)
+	local gap = K.STEP - K.TILE
+	local items = 1 + #P.Cards
+	local n = math.max(1, math.min(items, math.floor((W - K.MORE_GUTTER + gap) / K.STEP)))
+	local room = n < items and (W - K.MORE_GUTTER) or W
+	local tile = math.min(K.TILE_WIDE, math.max(K.TILE, math.floor((room - (n - 1) * gap) / n)))
+	local pitch = tile + gap
+	local viewW = math.min(W, n * pitch - gap)
+	place(s, 0, 0, viewW, Hh)
+	place(P.Fade, viewW, 0, W - viewW, Hh)
+	place(P.Hero.Root, 0, y, tile, th)
+	L.heroPhone(P.Hero, tile, th)
+	local rowW = #P.Cards * pitch - gap
+	place(P.Row, pitch, y, rowW, th)
 	P.Row.CanvasSize = UDim2.fromOffset(rowW, 0) -- (no scroll of its own: the page's row scrolls)
 	for i, t in ipairs(P.Cards) do
-		place(t.Root, (i - 1) * K.STEP, 0, K.TILE, th)
-		L.cardPhone(t, K.TILE, th)
+		place(t.Root, (i - 1) * pitch, 0, tile, th)
+		L.cardPhone(t, tile, th)
 	end
-	P.CanvasW = K.HERO_PHONE + 8 + rowW
+	P.CanvasW = pitch + rowW
+	P.ViewW, P.Pitch = viewW, pitch
 	s.CanvasSize = UDim2.fromOffset(P.CanvasW, 0)
+end
+
+-- (fix round B) the phone row snaps to a whole card once a drag or its glide has rested K.SNAP_DELAY s
+function H.snap(P)
+	local s = P.Scroll
+	if P.Mode ~= "Phone" or not (P.Pitch and P.ViewW) or not s then
+		return
+	end
+	local k = s.AbsoluteSize.X / math.max(1, P.ViewW) -- screen px per layout px
+	local pitch = P.Pitch * k
+	if pitch <= 0 then
+		return
+	end
+	local maxX = math.max(0, P.CanvasW * k - s.AbsoluteSize.X)
+	local x = s.CanvasPosition.X
+	local want = math.min(maxX, math.floor(x / pitch + 0.5) * pitch)
+	if math.abs(want - x) > 0.5 then
+		s.CanvasPosition = Vector2.new(want, s.CanvasPosition.Y)
+	end
+end
+
+function H.queueSnap(P)
+	if P.Mode ~= "Phone" or not P.Pitch then
+		return
+	end
+	P.SnapToken = (P.SnapToken or 0) + 1
+	local mine = P.SnapToken
+	task.delay(K.SNAP_DELAY, function()
+		if P.SnapToken == mine then
+			pcall(H.snap, P)
+		end
+	end)
 end
 
 -- a portrait odds grid (spec 16.3): two columns, each cell the egg 30 and the percent 15 beside it (no rarity word: at
@@ -1233,7 +1285,7 @@ function ShopEggs._SyncFade(page)
 		local s = P.Scroll
 		local k = 1
 		pcall(function()
-			k = s.AbsoluteSize.X / math.max(1, P.Box.W)
+			k = s.AbsoluteSize.X / math.max(1, P.ViewW or P.Box.W) -- (fix round B) the viewport ends before the More gutter
 		end)
 		local canvas = (P.CanvasW or 0) * k
 		on = canvas > s.AbsoluteSize.X + 1 and s.CanvasPosition.X < canvas - s.AbsoluteSize.X - 1
@@ -1260,6 +1312,7 @@ function ShopEggs.Layout(page, box, mode)
 	local W, Hh = P.Box.W, P.Box.H
 	place(P.Scroll, 0, 0, W, Hh)
 	place(P.Fade, W - K.FADE, 0, K.FADE, Hh)
+	P.ViewW, P.Pitch = nil, nil -- (fix round B) L.phone sets them
 	if P.Mode == "Phone" then
 		L.phone(P, W, Hh)
 	elseif P.Mode == "Portrait" then

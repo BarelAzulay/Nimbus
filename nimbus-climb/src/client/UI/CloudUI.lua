@@ -577,8 +577,14 @@ function CloudUI.SignBlock(obj, look, opts)
 	end)
 	-- (Pitch 2 F0, finish pass A) the finish: a raised block has the light on its wood edge (on the edge stroke, outside
 	-- the box), its face's lit top band and the card shadow (none under 30 px: a chip); an Off block (the Well face) is a
-	-- sunk well. opts.Finish = false: none. Repainting updates the same parts
-	if opts.Finish ~= false then
+	-- sunk well. opts.Finish = false: none. opts.Finish = "Lean" (a small world tag over a head: its instance budget): the
+	-- lit top band only, one part (no bevel strips, no shadow, no well). Repainting updates the same parts
+	if opts.Finish == "Lean" then
+		SignKit.HideFinish(obj, "FinishBevel")
+		SignKit.HideFinish(obj, "FinishShadow")
+		SignKit.HideFinish(obj, "FinishSunk")
+		SignKit.Shine(obj, { Color = opts.Face or look.Face })
+	elseif opts.Finish ~= false then
 		local faceColor = opts.Face or look.Face
 		local edgeColor = opts.Edge or look.Edge
 		local well = name == "Off" or sameColor(faceColor, SIGN.Well) or sameColor(faceColor, SIGN.PetWell)

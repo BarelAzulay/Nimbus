@@ -1623,7 +1623,7 @@ server checks the permission again on every single command, so other players can
 | **Give all pets** | One copy of every pet you do not own yet (Secret pets too); every pet counts as discovered, so the Pet Index fills up and its rewards can be claimed. |
 | **+1M tokens** | Adds `Config.Dev.GrantTokens` Cloud Tokens (1,000,000). |
 | **+1M Cash** | Adds `Config.Dev.GrantCash` Cash (1,000,000), to try the home stations quickly. |
-| **+1,000 Gems** | Adds `Config.Dev.GrantGems` Gems (1,000), to try the gem roulettes and Fusion Mixes. |
+| **+1K Gems** | Adds `Config.Dev.GrantGems` Gems (1,000), to try the gem roulettes and Fusion Mixes. |
 | **Restart tutorial** | Plays the tutorial again from step 1. Its rewards are not paid a second time. |
 | **Skip tutorial** | Ends the tutorial (without its finish reward). |
 | **Next raid boss** | Brings the next boss of the rotation (`/raid`), so you can test every boss without waiting 20 minutes: at once, or when the running fights end. |
@@ -1907,7 +1907,9 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              DONE pills and the Skip / Fast hatch chips, the optional hatch_* images with their frame fallbacks); UI/EggStage (the egg stage:
              the one roulette request path and the egg-opening cutscene); UI/ShopEggs (the Shop's Eggs tab: the Secret
              Roulette hero and the four machine cards, odds on every card); UI/ShopGems (the Shop's Gems tab: gem packs
-             with honest ribbons, the gem XP Potion, token packs); Controllers:
+             with honest ribbons, the gem XP Potion, token packs); UI/ElementsWindow (the element chart as its own
+             centred kit B window over the Pet Index: the six-element wheel with x1.5 / x0.75 arrows and the rivals,
+             nothing scrolls); Controllers:
              Movement, MainMenu (main menu + settings), Hud, DamageFx, Notify, Menu, Pets (the Pets window), Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
              AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,

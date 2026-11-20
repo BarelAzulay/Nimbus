@@ -15,7 +15,8 @@
 -- (kit-b U9-3, finding 15) the tag is a kit B sign tag, one colour by role, no glow, gloss or animation: the Plate a flat
 -- opaque face with its darker lip along the bottom and a 2 px wood edge, square (CloudUI.SignBlock); the Label FredokaOne
 -- (Nameplate) in the ink that reads on that face, centred above the lip, no outline (the face is opaque). The rainbow, the
--- gradients and the navy glass plate went.
+-- gradients and the navy glass plate went. (Pitch 2 F0) the plate wears the finish pass's lean variant (SignBlock Finish
+-- "Lean": its lit top band only), so a tag stays within 6 instances.
 --   Top10    "TOP 10 \194\183 #N": the gold block (CloudUI.SignLooks.Selected), brown letters.
 --   Top100   "TOP 100": the stone block (Stone), brown letters.
 --   Creator  "CREATOR", 24 px: the navy plank with gold letters (Navy), the game's own sign voice.
@@ -156,7 +157,9 @@ local function build(player, head, kind, text, crown)
 	plate.BorderSizePixel = 0
 	-- (kit-b U9-3) the flat block: its face, the wood edge, the lip
 	local look = CloudUI.SignLooks[K.LOOK[kind]]
-	CloudUI.SignBlock(plate, K.LOOK[kind], { EdgePx = K.EDGE, LipPx = K.LIP, Pad = false })
+	-- (Pitch 2 fix round B) the finish pass's lean variant: the lit top band only. The full finish (bevel strips, the card
+	-- shadow) is 11 more instances on every titled head, over the tag's budget of 6 (Top10 15, crowned 46)
+	CloudUI.SignBlock(plate, K.LOOK[kind], { EdgePx = K.EDGE, LipPx = K.LIP, Pad = false, Finish = "Lean" })
 	plate.Parent = gui
 
 	local label = Theme.Label(text, "Nameplate", {

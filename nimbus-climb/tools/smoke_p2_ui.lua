@@ -953,6 +953,27 @@ local function clientScenarios()
 		MC.Open("Pets", { Key = "pebble_pup@Golden" })
 		advance(0.3)
 		local small = smallTexts(inv, 18)
+		-- (Pitch 2 fix round B r1, a reasoned exception) a grid card's busy band word ("Gardening" / "Training") is the
+		-- approved F0 A mock's small band tag, 16 px (finish_windows.busy_band small=True): the look review asked for the
+		-- mock's size (18 px left no room for its mark at the 0.8 scale: edge to edge, the mark 1 px out). Held at 16, never
+		-- under; every other text keeps the 18 px floor
+		local bands = 0
+		for _, d in ipairs(inv:GetDescendants()) do
+			if d.Name == "Busy" and d.Parent and d.Parent.Name:match("^Card_") and d:IsA("TextLabel") and d.Text ~= "" and shown(d) and d.TextSize < 18 - 0.01 then
+				T.check(d.TextSize >= 16 - 0.01, "p2ui pets: a card's busy band word is the mock's 16 px tag, never smaller", tostring(d.TextSize))
+				bands = bands + 1
+			end
+		end
+		local rest = {}
+		for _, s in ipairs(small) do
+			-- (the card bands counted above leave the list; any other Busy under 18, a team slot's, stays in it)
+			if bands > 0 and s == "Busy=16" then
+				bands = bands - 1
+			else
+				rest[#rest + 1] = s
+			end
+		end
+		small = rest
 		T.check(#small == 0, "p2ui pets: every text of the Pets window is >= 18 design px", table.concat(small, ", "))
 
 		-- Shop: the gem spins (lobby-shop Task 22: the Secret Roulette is the Eggs tab's hero ShopCard_Secret and every machine

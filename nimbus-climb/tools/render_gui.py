@@ -16,7 +16,8 @@ settings, updates (kit B U5: the WHAT'S NEW window), or a .json dump written ear
 
 How it works: tools/dump_gui.lua runs inside a lupa Lua world booted like tools/smoke.py boots its client world
 (tools/robloxmock.lua, src/ mounted per default.project.json, the viewport set to --size, a touch device when the
-smaller screen side is <= 500 px unless --touch / --no-touch), boots Main.client.lua, feeds it the fake server
+smaller screen side is <= 500 px unless --touch / --no-touch; a touch device gets a phone's GuiService.TopbarInset,
+Rect(112, 0, W - 72, 58), so the top bar's pill lays out at its real size), boots Main.client.lua, feeds it the fake server
 events the smoke tests use, then dumps every visible GuiObject with its absolute geometry (the mock resolves
 UDim2 / AnchorPoint / AutomaticSize / UIListLayout / UIGridLayout / UIPadding / UIScale / UIAspectRatio /
 UISizeConstraint). This file passes the mock real font metrics (so AutomaticSize and TextBounds measure text like
@@ -257,6 +258,11 @@ class LuaWorld:
         if out:
             spec["out"] = out
         g.DUMP = self.rt.table_from(spec)
+        # (Pitch 2 fix round B) a phone's real top bar on a touch render: Roblox's buttons on the left (112 px), the "..."
+        # button on the right (72 px), a 58 px band (GuiService.TopbarInset). Unset (nil, a desktop render) the game takes
+        # its PC fallback, which squeezed a portrait phone's top-bar buttons to 31 px (tools/test_render_topbar.py)
+        set_inset = self.rt.eval("function(w) if w then Mock.TopbarInset = Rect.new(112, 0, w - 72, 58) else Mock.TopbarInset = nil end end")
+        set_inset(width if touch else None)
         g.DUMP_SRC = open(os.path.join(HERE, "dump_gui.lua"), encoding="utf-8").read()
         runner = self.rt.eval(
             "function() local load_ = loadstring or load; local f, e = load_(DUMP_SRC, '=tools/dump_gui.lua'); "
