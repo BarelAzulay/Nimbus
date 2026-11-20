@@ -2009,14 +2009,24 @@ function R.place(view)
 	-- bug batch 2 #1: phones start the End card below the HUD's top-right currency strips, so they stay in view
 	-- for the result (the HUD still hides them should the card ever reach them)
 	local strips = R.stripsBottom()
+	S.EndMenuLeft = nil
 	if phone and w < h then
-		-- portrait: right of the menu tile column, under the currency strips (clear of the screen's centre)
+		-- portrait: under the currency strips (clear of the screen's centre). (P2 fix A, look: beside the menu column it was
+		-- 217.6 px wide at 390 x 844, its third chip alone on a second row) the battle result card's width (one template:
+		-- K.END_W at 0.8, 352 px), 8 px from the right edge as the battle's card (Hud.ResultSpot); the menu tiles step aside
+		-- where it covers them (R.endMenu), as they do for the battle's card
 		S.EndCompact = false
 		S.EndVitalsOff = false
 		local scale = 0.8
 		U.EndScale.Scale = scale
-		U.End.Root.Size = UDim2.fromOffset(math.floor((w - 172) / scale), endH)
-		U.End.Root.Position = UDim2.fromOffset(160, math.max(math.floor(h * 0.18) - top, strips))
+		local width = math.min(K.END_W, math.floor((w - 16) / scale))
+		local left = math.floor(w - 8 - width * scale)
+		U.End.Root.Size = UDim2.fromOffset(width, endH)
+		-- (right under the strips, the battle card's row: at 18 % down the cleared floor's card reached over the centre)
+		U.End.Root.Position = UDim2.fromOffset(left, strips > 0 and strips or (math.floor(h * 0.18) - top))
+		if R.menuRight(w) > left then
+			S.EndMenuLeft = left
+		end
 	elseif phone then
 		R.placeEndLandscape(w, h, top, endH, strips)
 	else
@@ -2155,6 +2165,20 @@ function R.stripsLeft()
 	end
 	local left = tonumber(hud:GetAttribute("TopRightLeft"))
 	return (left and left > 0) and math.floor(left) or nil
+end
+
+-- (P2 fix A) the menu tiles step aside while a portrait phone's End card covers them (MenuController.SetColumnCovered
+-- "DungeonEnd": the column frame keeps its place, so R.menuRight does not move); left: the card's left x, nil = let go
+function R.endMenu(left)
+	left = type(left) == "number" and left or nil
+	if S.EndMenuSet == left then
+		return
+	end
+	S.EndMenuSet = left
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetColumnCovered) == "function" then
+		H.safe("menu", menu.SetColumnCovered, left, "DungeonEnd")
+	end
 end
 
 -- (U9-7 look) the vitals card steps aside while the End card has nowhere else (HudController.SetVitalsHidden "DungeonEnd")
@@ -2340,6 +2364,7 @@ function R.refresh()
 		U.Chip.Root.Visible = false
 		U.End.Root.Visible = false
 		R.endVitals(false)
+		R.endMenu(nil)
 		return
 	end
 	R.place(view)
@@ -2353,6 +2378,7 @@ function R.refresh()
 	local endShown = S.End ~= nil and now - S.EndAt < K.END_SECONDS and not H.inMatch()
 	U.End.Root.Visible = endShown
 	R.endVitals(endShown and S.EndVitalsOff == true)
+	R.endMenu(endShown and S.EndMenuLeft or nil)
 	if endShown then
 		R.fillEnd()
 	end

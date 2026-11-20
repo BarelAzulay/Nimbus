@@ -15078,6 +15078,7 @@ local function clientScenarios()
 				T.check(math.abs((cr.X + cr.R) / 2 - w / 2) <= w * 0.12, tag .. ": a landscape phone's card is the pitch's top middle", U8.show(cr))
 			end
 		end
+		local battleW = {} -- (P2 fix A) the battle result card's width per size ("WxH")
 		for _, s in ipairs(U8.SIZES) do
 			local at = s[3] and function(w, h, _, label, fn)
 				U99.atPhone(w, h, label, fn)
@@ -15110,6 +15111,7 @@ local function clientScenarios()
 					local body = card:FindFirstChild("Body")
 					local k = U8.scaleOf(card)
 					local cr = U8.rect(card)
+					battleW[s[1] .. "x" .. s[2]] = cr.R - cr.X -- (P2 fix A) the dungeon's End card below matches it on a portrait phone
 					-- the template's parts, the same in every variant
 					local head = body and body:FindFirstChild("Head")
 					local title = head and head:FindFirstChild("Title")
@@ -15245,6 +15247,35 @@ local function clientScenarios()
 						eq = eq and math.abs(w - widths[1]) <= 1
 					end
 					T.check(eq, tag .. ": the totals as equal reward chips", fmt("%d chips", #widths))
+					if s[3] and s[2] > s[1] then
+						-- (P2 fix A, look: at 390 x 844 the End card was 217.6 px wide beside the menu column, its third chip alone on a
+						-- second row, its lines wrapped) a portrait phone's End card is the battle result card's width (one template,
+						-- K.RESULT_W at the phone's 0.8: 352 px), its chips in one row, clear of the touch keys, the top-right stack and
+						-- the screen's sides, the menu tiles stepping aside where it covers them (as for the battle's card)
+						local rowsY, chipN = {}, 0
+						for _, c in ipairs(body and body:FindFirstChild("Chips") and body.Chips:GetChildren() or {}) do
+							if c.Name:match("^Chip_") and U8.shown(c) then
+								chipN = chipN + 1
+								rowsY[math.floor(U8.rect(c).Y + 0.5)] = true
+							end
+						end
+						local nRows = 0
+						for _ in pairs(rowsY) do
+							nRows = nRows + 1
+						end
+						local want = battleW[s[1] .. "x" .. s[2]]
+						T.check(want and math.abs((cr.R - cr.X) - want) <= 1 and chipN >= 3 and nRows == 1,
+							tag .. ": the battle result card's width, its chips in one row", fmt("%.1f px wide (battle %s), %d chips in %d rows", cr.R - cr.X, tostring(want), chipN, nRows))
+						phoneClear(tag, card, s[1], s[2])
+						local menuGui = U8.pg():FindFirstChild("NimbusMenu")
+						local under = {}
+						for _, t in ipairs(menuGui and menuGui:GetDescendants() or {}) do
+							if t:IsA("GuiButton") and U8.shown(t) and t.AbsoluteSize.X > 0 and U8.overlap(U8.rect(t), cr) then
+								under[#under + 1] = t.Name
+							end
+						end
+						T.check(#under == 0, tag .. ": the menu tiles step aside where the card covers them", table.concat(under, ", "))
+					end
 					local ok = body and body:FindFirstChild("OkButton")
 					local segs = 0
 					for _, c in ipairs(ok and ok:FindFirstChild("Lip") and ok.Lip:GetChildren() or {}) do
