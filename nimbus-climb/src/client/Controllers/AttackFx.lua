@@ -3272,6 +3272,20 @@ local function setPoses(unit, segs, now)
 	if old and old.Prio > prio and poseActive(old, segs[1].T0) then
 		return -- a higher pose still plays then (a KO'd pet never strikes; an attack is not cut by a flinch)
 	end
+	-- (Pitch 2 item 5, the approved mock's fast lane: "a Double strike adds a second jolt") a Hurt over a running Hurt (a
+	-- re-hit) starts from the knock-back the pet is still at when it lands (PetPoses.HurtCarry -> its Reach), so the
+	-- crossfade never pulls it back toward its biter
+	local s1 = segs[1]
+	if old and s1.Name == "Hurt" and s1.Reach == nil then
+		local n0, p0, _, _, r0 = poseSample(old, s1.T0)
+		local PP = n0 == "Hurt" and dep("PetPoses") or nil
+		if PP and type(PP.HurtCarry) == "function" then
+			local okC, c = pcall(PP.HurtCarry, p0, r0)
+			if okC and finite(c) then
+				s1.Reach = clamp01(c)
+			end
+		end
+	end
 	local entry = { Segs = segs, Prio = prio }
 	if old and poseActive(old, now) then
 		entry.Prev = old -- crossfade from the old timeline, still animating

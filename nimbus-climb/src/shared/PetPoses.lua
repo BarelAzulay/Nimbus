@@ -27,6 +27,7 @@
 --   PetPoses.Offset(name, p, ranged, amp, reach, feet) -> Vector3   the pose's own move without its turn (where a
 --                                            paw-pivoted pose's paw lines are: its Body position also carries the turn about
 --                                            them)
+--   PetPoses.HurtCarry(p, carry) -> 0..1     how far knocked back the Hurt is at p (AttackFx carries it into a re-hit)
 --   PetPoses.DashHop = nil                   Config Melee.Hop in studs (0..3; nil = 0.5), set by AttackFx.Dash: every Bounce in
 --                                            hop height x max(0.25, DashHop) / 0.5 (DashIn's first hop peaks at 1.1 x it;
 --                                            0 still hops 0.275: a flatter hop lands like a slide)
@@ -80,8 +81,9 @@
 --              0.3 turned about the middle) one rigid body pivoted on its paw lines (`feet`): knocked back 0.38 in a 0.10
 --              jolt off the floor (0.12 s), the head snapped back (~7 deg nose up), a springy rock (~4 deg nose down onto
 --              the front paws, back) dying away, a little hop home (0.06) from 0.28 s; nothing under the floor, nothing
---              slides; an evolved body (feet Hop) x its Hop; beats in seconds at AttackFx's 0.5 s. Wings clamp down, tail
---              tucks, halo knocked askew, lids shut (p 0.04 .. 0.58).
+--              slides; an evolved body (feet Hop) x its Hop; beats in seconds at AttackFx's 0.5 s. `reach` = a re-hit's
+--              carried knock-back (0..1, nil = 0: PetPoses.HurtCarry): it starts that far back, never pulled toward its
+--              biter. Wings clamp down, tail tucks, halo knocked askew, lids shut (p 0.04 .. 0.58).
 --   Ko         knocked back 0.6 + a little hop, tumbles 90 deg onto its side (overshoot ~95, settle), drops 0.35,
 --              wings fold back limp along the body, tail limp (Still -> 1), halo slides askew, eyes shut. Holds at p = 1.
 --   Victory    a quick crouch, hop 1.2 studs with a full 360 deg spin (fastest mid-air), chin up, wings open, tail up,
@@ -440,17 +442,28 @@ POSES.Cast = function(f, p)
 	f.still = 0.6 * r * held
 end
 
+-- (Pitch 2 item 5) how far knocked back a Hurt is at p (0..1 of its knock-back): from `carry` (a re-hit's, nil = 0) out
+-- to 1 while in the air, then home
+function PetPoses.HurtCarry(p, carry)
+	local c = tonumber(carry) or 0
+	c = (c == c) and clamp01(c) or 0
+	local t = clamp01(tonumber(p) or 0) * HURT_SECS
+	return (c + (1 - c) * outCubic(seg(t, 0, 0.12))) * (1 - smooth(seg(t, 0.28, HURT_SECS)))
+end
+
 -- (Pitch 2 item 5 "Bounce in" A: the bitten pet of the approved mock; the old Hurt turned about the body's middle, dipped
 -- 0.1 into the floor and rolled a side paw under it) one rigid body like the melee motion, pivoted on its paw lines:
 -- knocked back KNOCK in the air (a JOLT off the floor over the first 0.12 s: nothing slides), the head snapped back (nose
 -- up), a springy rock (nose down onto the front paws, up again) dying away, a little hop home (HURT_HOME: nothing slides);
--- an evolved body (feet Hop 0.78) moves x its Hop. Its beats run in seconds at AttackFx's K.HURT 0.5
-POSES.Hurt = function(f, p, _, _, _, feet)
+-- an evolved body (feet Hop 0.78) moves x its Hop. Its beats run in seconds at AttackFx's K.HURT 0.5. `carry` (Sample's
+-- reach, 0..1, nil = 0: a re-hit, the approved mock's Double strike) = the knock-back it is still at (AttackFx: the
+-- running Hurt's PetPoses.HurtCarry): it starts there, so a re-hit never pulls it back toward its biter
+POSES.Hurt = function(f, p, _, _, carry, feet)
 	local w = heavyOf(feet)
 	local t = p * HURT_SECS
 	local knocked = seg(t, 0, 0.12) -- knocked back, in the air
 	local home = seg(t, 0.28, HURT_SECS) -- the little hop home
-	f.z = KNOCK * w * outCubic(knocked) * (1 - smooth(home))
+	f.z = KNOCK * w * PetPoses.HurtCarry(p, carry)
 	f.y = w * (JOLT * sin(PI * knocked) + HURT_HOME * sin(PI * home))
 	f.pitch = HURT_ROCK * w * outCubic(seg(t, 0, 0.06)) * math.exp(-t / 0.13) * cos(TAU * t / 0.3) * (1 - smooth(seg(t, 0.36, HURT_SECS)))
 	f.paw = true
