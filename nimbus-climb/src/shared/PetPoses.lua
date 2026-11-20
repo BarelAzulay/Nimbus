@@ -17,6 +17,8 @@
 --                                            from the bite's nose-down landing, as the chomp they replace)
 --   PetPoses.DASH_RUN = 5 / 7                DashIn's / DashBite's hops land the bite at this p (AttackFx times it on the hit)
 --   PetPoses.WINDUP_LOAD = 0.82              the melee Windup is fully loaded here (a dash's wind-up ends on it)
+--   PetPoses.TREMBLE_HZ = 12.5, TREMBLE_MIN = 0.3   the melee Windup's tremble (real seconds) and the shortest wind-up
+--                                            (to its load) that trembles
 --   PetPoses.BACK_POSE = 1.4, BACK_HOME = 0.625   DashBack lasts Melee.Back x BACK_POSE; it is home at p BACK_HOME
 --   PetPoses.DOUBLE_DUR = 0.15, DOUBLE_BITE = 0.6, THORN_DUR = 0.34, THORN_BACK = 1.3, REBOUND = 0.7, READY_BOUNCE = 0.17
 --   PetPoses.FEET = { Down, Front, Hind }    a typical pet's paw lines (pose studs) when Sample gets no `feet`
@@ -51,10 +53,13 @@
 --
 -- The shapes (spec + plan values; the extra motion is the "feel": anticipation, overshoot, settle):
 --   Windup     melee (Pitch 2 item 5, the owner: "the wind-up looked wrong": the old crouch sank the paws 0.25 studs
---              into the floor): it rocks back onto its hind paws (9 deg by p 0.27, pitched about the paw line: nothing
---              sinks), trembles (p 0.27 .. 0.70), loads deeper (15 deg at WINDUP_LOAD 0.82: a dash's wind-up ends there,
---              DashIn starts from it), then springs back to rest (the push-off into Strike); wings swept back 25 deg and
---              folded tight, tail up and lashing. Ranged rears back (crouch 0.25, weight back, chin up), unchanged.
+--              into the floor): it rocks back onto its hind paws (9 deg in 0.12 s, pitched about the paw line: nothing
+--              sinks), trembles (TREMBLE_HZ 12.5, +-1.4 deg), loads deeper (15 deg in its last 0.07 s, at WINDUP_LOAD 0.82:
+--              a dash's wind-up ends there, DashIn starts from it), then springs back to rest (the push-off into Strike);
+--              wings swept back 25 deg and folded tight, tail up and lashing. Its beats are in real seconds (gate review r0):
+--              `reach` = the pose's length in seconds (nil = WINDUP_SECS, the strip's 0.45 s to the load); a wind-up under
+--              TREMBLE_MIN 0.3 s to its load (the real NPC one, 0.15 s; a fighter's 0.10) rocks and loads in one eased move
+--              (60 % / 40 %), no tremble. Ranged rears back (crouch 0.25, weight back, chin up), unchanged.
 --   Strike     melee (player note (a), fix round 3): a LEAP at the target: a hop arc 0.8 studs high (x amp) that carries
 --              the body 1.5 studs (x amp) along the LookVector (with `reach`: exactly `reach` studs, the hop
 --              min(LEAP_H_MAX, (0.8 + 0.12 x reach) x amp) high: Task 9), chin up on take-off, nose down coming in, landing at
@@ -87,7 +92,8 @@
 --              at BACK_HOME 0.625, then a rocking settle on the spot (0.21 s); exactly at rest at p 1.
 --   DashBite   (item 5) a flurry's bite (bites closer than Melee.FlurryBelow: no trip home): `reach` = studs behind the face it
 --              starts (0 at the face); a rebound hop back to REBOUND 0.7 behind the face (in place when it already stands that
---              far back), a rock as it lands, a hop-bite onto the face landing at DASH_RUN on the hit, the chomp; held there.
+--              far back; 12 / 30 of the run), a rock as it lands (the strip's 0.06 s: 12 / 30 .. 18 / 30), a hop-bite onto
+--              the face landing at DASH_RUN on the hit, the chomp; held there.
 --   DashDouble (item 5) a Double strike's second chomp at the face (0.15 s): the second bite lands at DOUBLE_BITE 0.6.
 --   DashThorns (item 5) a bite on a Thorns shield: the prick snaps the head back (rocked onto the hind paws, eyes shut), a hop
 --              away `reach` studs (nil = THORN_BACK 1.3), a rock as it lands; held there (Holds), upright.
@@ -137,6 +143,12 @@ local GLANCE_TIME = 1.1
 -- (battle-feel T2; Pitch 2 item 5 "Bounce in" A) the dash: Melee.In 0.30 s of hops, then the 0.12 s chomp
 PetPoses.DASH_RUN = 5 / 7 -- DashIn's / DashBite's hops end (the bite lands) at this p
 PetPoses.WINDUP_LOAD = 0.82 -- the melee Windup's deepest load (a dash's wind-up ends here; DashIn starts from it)
+-- (gate review r0, major 1) the melee Windup in real seconds (Sample's `reach` = its length; AttackFx passes the Dur)
+PetPoses.TREMBLE_HZ = 12.5 -- the tremble while the telegraph is up (the strip's 13 Hz)
+PetPoses.TREMBLE_MIN = 0.3 -- s to the load: a shorter wind-up (the real NPC one, 0.15 s) does not tremble
+local WINDUP_SECS = 0.45 / 0.82 -- the length when none is given (the strip's 0.45 s to the load: BattleController's hold)
+local ROCK_T, DEEP_T = 0.12, 0.07 -- s: the rock back to 9 deg, the load to 15 deg before the run (at most 60 % / 40 % of it)
+local TREMBLE = 1.4 -- deg
 PetPoses.BACK_POSE = 1.4 -- DashBack's Dur = Melee.Back x this (0.40 -> 0.56 s)
 PetPoses.BACK_HOME = 0.625 -- DashBack's second hop lands home at this p (0.35 of 0.56 s); the settle after it
 PetPoses.DOUBLE_DUR = 0.15 -- s: DashDouble (the Double strike's second chomp) ...
@@ -153,7 +165,7 @@ PetPoses.FEET = { Down = 1.3, Front = 0.5, Hind = 0.5 } -- (the Maple Fox, measu
 PetPoses.Landings = {
 	DashIn = { 13 / 30 * PetPoses.DASH_RUN },
 	DashBack = { 0.16 / 0.56, 0.35 / 0.56 },
-	DashBite = { 14 / 30 * PetPoses.DASH_RUN },
+	DashBite = { 12 / 30 * PetPoses.DASH_RUN },
 	DashThorns = { 0.28 / PetPoses.THORN_DUR },
 }
 local BLEND_H = 0.25 -- studs: a hop's pivot moves from the paw line to the middle over its first BLEND_H of height
@@ -278,10 +290,11 @@ end
 --   lids, still
 local POSES = {}
 
-POSES.Windup = function(f, p, ranged)
+POSES.Windup = function(f, p, ranged, _, secsIn)
 	local load = PetPoses.WINDUP_LOAD
 	local r = seg(p, load, 1) -- spring up (accelerating: the push-off)
 	local a
+	local lashes = 2
 	if ranged then
 		a = smooth(seg(p, 0, 0.5)) * (1 - r * r) -- gather into the crouch
 		f.y = -CROUCH * a
@@ -289,18 +302,32 @@ POSES.Windup = function(f, p, ranged)
 		f.pitch = 8 * a
 	else
 		-- (Pitch 2 item 5) rocked back onto the hind paws (pitched about the paw line: nothing sinks, nothing slides), a
-		-- tremble while the telegraph is up (0 at both its ends), loaded deeper at WINDUP_LOAD, then back to rest
-		a = outCubic(seg(p, 0, 0.27)) * (1 - r * r)
-		local deep = smooth(seg(p, 0.70, load))
-		local trem = 1.4 * sin(TAU * 3 * seg(p, 0.27, 0.70)) * smooth(seg(p, 0.27, 0.33))
-		f.pitch = (9 * outCubic(seg(p, 0, 0.27)) + 6 * deep + trem) * (1 - r * r)
+		-- tremble while the telegraph is up (0 at both its ends), loaded deeper at WINDUP_LOAD, then back to rest.
+		-- (gate review r0, major 1) its beats run in real seconds: `secsIn` = the pose's length (nil = WINDUP_SECS), so the
+		-- tremble is TREMBLE_HZ however long the wind-up is, and a wind-up under TREMBLE_MIN to its load (the real NPC one:
+		-- 0.15 s) is one eased rock back and load with no tremble (at ~40 Hz it was a jitter)
+		local L = (secsIn and secsIn > 0) and secsIn or WINDUP_SECS
+		local W = load * L -- seconds to the load
+		local t = math.min(p, load) * L
+		local long = W >= PetPoses.TREMBLE_MIN
+		local rockT, deepT = math.min(ROCK_T, 0.6 * W), math.min(DEEP_T, 0.4 * W)
+		local rk = long and outCubic(seg(t, 0, rockT)) or smooth(seg(t, 0, rockT)) -- (a short one eases in: no snap)
+		local deep = smooth(seg(t, W - deepT, W))
+		local trem = 0
+		if long then
+			local a0, a1 = rockT, W - deepT -- held between the rock and the load
+			trem = TREMBLE * sin(TAU * PetPoses.TREMBLE_HZ * (t - a0)) * smooth(seg(t, a0, a0 + 0.05)) * (1 - smooth(seg(t, a1 - 0.06, a1)))
+		end
+		a = rk * (1 - r * r)
+		f.pitch = (9 * rk + 6 * deep + trem) * (1 - r * r)
 		f.paw = true
+		lashes = math.max(1, floor(W / 0.2 + 0.5)) -- (about 4.4 a second: a short wind-up lashes once, not at 13 Hz)
 	end
 	f.back = WINDUP_BACK * a
 	f.raise = -10 * a
 	f.lift = 30 * a
-	-- the tail lashes before the pounce (melee: twice by the load, level there, so DashIn takes over without a pop)
-	f.sway = 12 * sin(TAU * 2 * (ranged and p or math.min(1, p / load))) * a
+	-- the tail lashes before the pounce (melee: whole lashes by the load, level there, so DashIn takes over without a pop)
+	f.sway = 12 * sin(TAU * lashes * (ranged and p or math.min(1, p / load))) * a
 	f.haloY = 0.05 * a -- the halo lags as the body drops
 	f.still = 0.35 * a
 end
@@ -526,14 +553,16 @@ POSES.DashBite = function(f, p, _, _, offIn)
 	local R = PetPoses.DASH_RUN
 	local k = hopK()
 	local rb = math.max(0, PetPoses.REBOUND - off) -- (in place when it already stands that far back)
-	local u = seg(p, 0, R) -- through the run: rebound 0.14 s, rock 0.03, hop-bite 0.13
+	-- through the run: rebound 0.12 s, rock 0.06, hop-bite 0.12 (gate review r0: the rock was 0.03 s, an 8.8 deg snap in
+	-- one 60 fps frame; the strip's rock is 0.06 s: 7 -> 10 deg in 0.02, back to level in 0.04)
+	local u = seg(p, 0, R)
 	if p < R then
-		if not hop(f, u, 0, 14 / 30, 0, rb, BH.Rebound * k, 0, 7) then
-			if u < 17 / 30 then
+		if not hop(f, u, 0, 12 / 30, 0, rb, BH.Rebound * k, 0, 7) then
+			if u < 18 / 30 then
 				f.z = rb
-				f.pitch = keys(u, { 14 / 30, 7, 15.5 / 30, 10, 17 / 30, 0 })
+				f.pitch = keys(u, { 12 / 30, 7, 14 / 30, 10, 18 / 30, 0 })
 			else
-				hop(f, u, 17 / 30, 1, rb, -off, BH.Bite * k, 0, -15)
+				hop(f, u, 18 / 30, 1, rb, -off, BH.Bite * k, 0, -15)
 			end
 		end
 	else

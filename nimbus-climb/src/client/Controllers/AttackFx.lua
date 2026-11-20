@@ -266,6 +266,11 @@ local K = {
 	CHOMP = 0.12, -- the chomp after a bite (DashIn / DashBite p DASH_RUN .. 1)
 	BITE_MIN = 0.12, -- a flurry bite's rebound + hop-bite get at least this long (a quicker tempo squeezes them)
 	WINDUP_MIN = 0.03, -- an NPC's wind-up shorter than this before its dash is skipped (the dash starts from rest)
+	-- (gate review r0, major 2) a dash called Melee.In or less before its hit (a player's fighter) rocks back this long
+	-- first, the run in the rest (at least RUN_MIN: a later call gets less wind-up, never a shorter run)
+	FIGHTER_WIND = 0.10,
+	RUN_MIN = 0.15,
+	BITE_IN = 0.25, -- (gate review r0 minor) world studs the deepest bite may reach into the target's box (the strip's aim)
 	WINDUP_LOAD = 0.82, -- PetPoses.WINDUP_LOAD (its own value wins when it loads)
 	BACK_POSE = 1.4, -- PetPoses.BACK_POSE: DashBack lasts Melee.Back x this (the settle on the spot after the hops)
 	DOUBLE_DUR = 0.15, -- PetPoses.DOUBLE_DUR / DOUBLE_BITE: the Double strike's second chomp ...
@@ -3330,7 +3335,8 @@ local function schedulePoses(eff, now)
 		-- is this bite's body motion: no Windup / Strike / Cast segment here; the victims' Hurt below stays
 	elseif A == "Melee" or A == "Ranged" or (A == "Element" and eff.Area ~= "Circle") or (A == "Special" and r.Kind == "Pounce") then
 		if T.Release > 0.04 then
-			segs[#segs + 1] = { Name = "Windup", T0 = st, Dur = T.Release, Ranged = ranged }
+			-- (gate review r0) the melee Windup's Reach = its length in seconds (its tremble in real time)
+			segs[#segs + 1] = { Name = "Windup", T0 = st, Dur = T.Release, Ranged = ranged, Reach = (not ranged) and T.Release or nil }
 		end
 		if ranged then
 			-- a shot, never the melee lunge (player note 1): rear back (the ranged Windup), then Shoot = the head snaps
@@ -3963,8 +3969,12 @@ local function feetOf(model)
 		s = 1
 	end
 	local bottoms, z0s, z1s = {}, {}, {}
+	local allCf, allSz = {}, {} -- (every visible part, the wings / tail / halo too: the bite's Lean below)
 	local lo = huge
 	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and d.Transparency < 1 then
+			allCf[#allCf + 1], allSz[#allSz + 1] = pv:ToObjectSpace(d.CFrame), d.Size
+		end
 		if d:IsA("BasePart") and d.Transparency < 1 and d:GetAttribute("PB_G") == nil then
 			local cf = pv:ToObjectSpace(d.CFrame)
 			local sz = d.Size
@@ -3988,7 +3998,34 @@ local function feetOf(model)
 			zmin, zmax = min(zmin, z0s[i]), max(zmax, z1s[i])
 		end
 	end
-	local feet = { Down = max(0, -lo / s), Front = max(0, -zmin / s), Hind = max(0, zmax / s) }
+	local feet = { Down = max(0, -lo / s), Front = max(0, -zmin / s), Hind = max(0, zmax / s), Lean = 0 }
+	-- (gate review r0 minor: the evolved hop-bite sank its snout 1.5 studs into the bear) Lean: how much farther forward the
+	-- front-most point reaches at the deepest bite on the face (DashIn's hit, DashDouble's second bite: nose down about the
+	-- front paws) than standing, pose studs. A head that sticks out past the paws dips that far into the target: the dash
+	-- stops short by what goes past BITE_IN (AttackFx.Dash)
+	local PP = dep("PetPoses")
+	if PP and type(PP.Sample) == "function" then
+		local function frontAt(body)
+			local bw = CFrame.new(body.Position * s) * CFrame.new(-body.Position) * body -- (the drawing scales the offset)
+			local best = -huge
+			for i, cf in ipairs(allCf) do
+				local c = bw * cf
+				local sz = allSz[i]
+				local hz = 0.5 * (abs(c.RightVector.Z) * sz.X + abs(c.UpVector.Z) * sz.Y + abs(c.LookVector.Z) * sz.Z)
+				best = max(best, -c.Position.Z + hz)
+			end
+			return best
+		end
+		local rest, deep = frontAt(CFrame.new()), -huge
+		for _, at in ipairs({ { "DashIn", finite(PP.DASH_RUN) and PP.DASH_RUN or K.DASH_RUN }, { "DashDouble", finite(PP.DOUBLE_BITE) and PP.DOUBLE_BITE or K.DOUBLE_BITE } }) do
+			local okS, smp = pcall(PP.Sample, at[1], at[2], false, 1, 0, feet)
+			if okS and type(smp) == "table" and typeof(smp.Body) == "CFrame" then
+				deep = max(deep, frontAt(smp.Body))
+			end
+		end
+		local lean = (deep - rest) / s
+		feet.Lean = (finite(lean) and lean > 0) and lean or 0
+	end
 	feetCache[model] = feet
 	return feet
 end
@@ -4249,6 +4286,8 @@ end
 -- the unit's drawn spot before any pose, its rest spot); landAt = when the hit lands (the run ends there); opts =
 -- { Mine, Low, Tempo = the seconds since the unit's last attack }. false (the caller plays today's Strike): Melee.Dash
 -- off, no gap of Melee.MinGap studs, a higher pose playing (a KO, a cast)
+AttackFx.FIGHTER_WIND = K.FIGHTER_WIND -- (read by the checks)
+
 local function dash(unit, src, tgt, landAt, now, opts)
 	local M = feelOf("Melee")
 	if unit == nil or not (M and M.Dash == true) or type(src) ~= "table" or type(tgt) ~= "table" or not finite(landAt) then
@@ -4299,6 +4338,12 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	local s = { Model = (typeof(src.Model) == "Instance") and src.Model or nil, Pos = (typeof(src.Pos) == "Vector3") and src.Pos or nil }
 	local edge, fwd = nil, 0
 	local t0 = max(now, land - inS)
+	if state ~= "back" then
+		-- (gate review r0, major 2: a player's fighter has no Windup event, its Hit dashes it Melee.In before the landing, so
+		-- it hopped in from a standstill) a dash called that late still rocks back and loads for FIGHTER_WIND first; the run
+		-- takes the rest of Melee.In (at least RUN_MIN). The landing is unchanged (the server's bite time)
+		t0 = max(t0, min(now + K.FIGHTER_WIND, land - K.RUN_MIN))
+	end
 	local origin, dir, scl = nil, nil, 1 -- (Pitch 2 item 5) the rest spot, the run's way and PB_Scale: the landing dust's place
 	if state == "back" then
 		origin, dir, scl = d.Origin, d.Dir, d.Scale or 1
@@ -4331,6 +4376,13 @@ local function dash(unit, src, tgt, landAt, now, opts)
 			return false
 		end
 		edge = min(K.DASH_MAX, world) / scale
+		-- (gate review r0 minor) a head that dips forward past the paws at the bite (FeetOf's Lean) stops BITE_IN into the
+		-- target's box (the strip's ~0.25), not through it: the run is short by the rest (gapOf aims LEAP_MARGIN short)
+		local ft = feetOf(s.Model)
+		local over = ((ft and finite(ft.Lean)) and ft.Lean or 0) * scale - K.LEAP_MARGIN - K.BITE_IN
+		if over > 0 then
+			edge = max(0, edge - over / scale)
+		end
 		local way = flat(t.Last - s.Last)
 		origin, dir, scl = s.Last, (way.Magnitude > 1e-6) and way.Unit or nil, scale
 	end
@@ -4341,9 +4393,11 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	local segBack = { Name = "DashBack", T0 = bk, Dur = backDur * B.BackPose, Reach = edge, Feet = feet }
 	local segs = { segIn, segBack }
 	if state ~= "back" and t0 - now >= K.WINDUP_MIN then
-		-- (Pitch 2 item 5) an NPC's wind-up (its Windup came Melee.In + this before the hit): it rocks back on its hind paws,
-		-- trembles and loads deepest exactly when the run starts
-		table.insert(segs, 1, { Name = "Windup", T0 = now, Dur = (t0 - now) / B.Load, Ranged = false, Feet = feet })
+		-- (Pitch 2 item 5) an NPC's wind-up (its Windup came Melee.In + this before the hit; a fighter's FIGHTER_WIND): it
+		-- rocks back on its hind paws, trembles (a long one) and loads deepest exactly when the run starts. (gate review r0)
+		-- Reach = its length in seconds: PetPoses runs its beats in real time
+		local wDur = (t0 - now) / B.Load
+		table.insert(segs, 1, { Name = "Windup", T0 = now, Dur = wDur, Reach = wDur, Ranged = false, Feet = feet })
 	end
 	setPoses(unit, segs, now)
 	local e2 = St.poses[unit]

@@ -315,6 +315,7 @@ local K = {
 	-- (battle-feel T2) a melee Hit this soon after the unit's Windup dashed it is that dash's bite (an NPC's: no new dash,
 	-- no hold); a melee Hit with no Windup before it (a player's fighter) dashes now, its impact held Melee.In (fxLate)
 	DASH_SEEN = 0.6,
+	PRICK_LATE_MIN = 0.02, -- (Pitch 2 item 5) a Thorns prick this much after its Hit holds the Hit to it (a fighter's bite)
 	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
 	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
 	-- (evolved forms) a Rally's bigger pet by stage (a look only: hit radius, range and hitboxes never hear of it)
@@ -3582,7 +3583,10 @@ function Atk.HitTwist(B, ev, dueAt, v, a)
 		return "none"
 	end
 	a.thornAt = dueAt
-	dueAt = Atk.DashTwist(v, "Thorns", dueAt)
+	local prick = Atk.DashTwist(v, "Thorns", dueAt)
+	-- (gate review r0 minor) a fighter's bite lands Melee.In after its Hit: the prick's flash and number wait for it (hitPlay)
+	ev.fxPrick = prick - dueAt
+	dueAt = prick
 	return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Shield", Twist = "Thorns", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, a) }))
 end
 
@@ -3592,7 +3596,16 @@ local function hitPlay(B, ev, dueAt, v, a)
 		return "none", 0
 	end
 	if ev.double or ev.thorns then
-		return Atk.HitTwist(B, ev, dueAt, v, a), 0
+		local played = Atk.HitTwist(B, ev, dueAt, v, a)
+		-- (Pitch 2 item 5, gate review r0 minor: "On Thorns it flashes") a Thorns hit on a dashing biter lands on its prick
+		-- (AttackFx.DashTwist): a player's fighter bites Melee.In after its Hit, so the Hit (the biter's flash, the number)
+		-- and the biter's next events wait that long, as the bite's own do (an NPC's prick is on the event: no wait)
+		local late = ev.thorns and num(ev.fxPrick, 0) or 0
+		if late > K.PRICK_LATE_MIN then
+			ev.fxLate = min(late, K.FX_LATE_MAX)
+			return played, ev.fxLate
+		end
+		return played, 0
 	end
 	if ev.tele or (a and a.isBoss) then
 		if ev.miss or v.isBoss or not v.mine or not Atk.Drawable(v) then
