@@ -218,6 +218,30 @@ local function serverScenarios()
 		end
 		T.check(hzOk and P.TREMBLE_HZ ~= nil and P.TREMBLE_MIN ~= nil,
 			fmt("melee bounce: a long wind-up trembles at TREMBLE_HZ in real seconds whatever its length (%s)", table.concat(hzSeen, ", ")))
+		-- (a3) (the owner, 2026-11-20: the wind-up gets 0.25 s, client only: the NPC's run gives FIGHTER_WIND 0.10 of Melee.In
+		-- to it, "a rock back about the hind paws that reads as a load-up, not a flinch") a 0.25 s wind-up to its load (under
+		-- TREMBLE_MIN: no tremble) is one gather: 60 % rocking back, 40 % loading deeper, no held stretch between them (every
+		-- 60 fps frame moves >= 0.1 deg; the fixed 0.12 s rock left a 0.06 s freeze at 9 deg), a gentle start (a flinch snaps
+		-- back first: under 30 % of the load at a fifth of it), never back down, at most 2.5 deg a 60 fps frame, 15 deg loaded
+		do
+			local L25 = 0.25 / LOAD
+			local lp, lSeq = {}, {}
+			for i = 0, 15 do
+				lp[#lp + 1] = pitchOf(smp("Windup", (i / 60) / L25, L25, typical))
+				lSeq[#lSeq + 1] = fmt("%.1f", lp[#lp])
+			end
+			local lRise, lStep, lStill = true, 0, huge
+			for i = 2, #lp do
+				lRise = lRise and lp[i] >= lp[i - 1] - 1e-6
+				lStep = max(lStep, abs(lp[i] - lp[i - 1]))
+				lStill = min(lStill, abs(lp[i] - lp[i - 1]))
+			end
+			local fifth = pitchOf(smp("Windup", 0.05 / L25, L25, typical))
+			local _, _, h25 = paws(smp("Windup", 0.6 * LOAD, L25, typical).Body, typical)
+			T.check(lRise and lStep <= 2.5 and lStill >= 0.1 and fifth < 4.5 and abs(lp[#lp] - 15) < 0.2 and abs(h25) < 1e-6,
+				fmt("melee bounce: the NPC's 0.25 s wind-up is one load-up gather on the hind paws: never back down %s, steps %.2f .. %.2f deg a 60 fps frame (0.1 .. 2.5), %.1f deg at a fifth (< 4.5), %.1f loaded (%s)",
+					tostring(lRise), lStill, lStep, fifth, lp[#lp], table.concat(lSeq, " ")))
+		end
 
 		-- (b) DashIn's beats: u = the share of Melee.In 0.30 (hop 0.13, nod 0.04, hop-bite 0.13), then the chomp 0.12
 		local function dIn(u)
@@ -475,6 +499,18 @@ local function clientScenarios()
 		return math.deg(math.asin(math.max(-1, math.min(1, b.LookVector.Y))))
 	end
 
+	-- (review minor: "the fighter's chomp stays 0.12 s, no frozen 0.07 s": a 0.20 s run squeezed DashIn's chomp to 0.08 s
+	-- and froze the pet upright until the way home) how long after the hit stop the bite's pose (`name`) reaches its
+	-- upright hold (p 1): the chomp's length
+	local function chompOf(frames, landT, name)
+		for _, f in ipairs(frames) do
+			if f.T > landT + STOP + 1e-6 and f.Name == name and type(f.P) == "number" and f.P >= 1 - 1e-6 then
+				return f.T - (landT + STOP)
+			end
+		end
+		return nil
+	end
+
 	-- (gate review r0 minor) how far the posed model's front-most point is into the target's box along `dir` (world studs, +
 	-- = in): the body in pose studs scaled by PB_Scale (the drawing), each part's box (the wings / tail / halo groups at rest)
 	local function biteDepth(model, body, sc, foe, dir)
@@ -580,11 +616,24 @@ local function clientScenarios()
 				T.check(first ~= nil and first.Name == "Windup" and type(first.Feet) == "table",
 					fmt("bounce timing: %s: from the Windup the pose is the melee Windup, with the model's Feet (%s)", look[3], tostring(first and first.Name)))
 				step(land + BITE + HOLD + BACK * 1.4 + 0.1)
-				local runAt = land - IN
+				-- (the owner, 2026-11-20: the wind-up gets 0.25 s, client only; was: the run started Melee.In before the hit and
+				-- left the NPC 0.15 s) its run gives FIGHTER_WIND 0.10 of Melee.In to the wind-up, as a fighter's does: the run
+				-- starts Melee.In - FIGHTER_WIND (0.20 s) before the hit, the wind-up lasts 0.25 s, the hit still on its time
+				local fw = tonumber(AF.FIGHTER_WIND) or 0
+				local runAt = land - (IN - fw)
 				local preRun, atRun = frameAt(runAt - DT), frameAt(runAt + DT)
 				T.check(preRun and preRun.Name == "Windup" and abs(preRun.P - PP.WINDUP_LOAD) < 0.06 and atRun and atRun.Name == "DashIn",
-					fmt("bounce timing: %s: the wind-up loads until the run starts Melee.In before the hit (%s p %.2f, then %s)", look[3],
+					fmt("bounce timing: %s: the wind-up loads until the run starts Melee.In - FIGHTER_WIND before the hit (%s p %.2f, then %s)", look[3],
 						tostring(preRun and preRun.Name), preRun and preRun.P or -1, tostring(atRun and atRun.Name)))
+				local firstIn = nil
+				for _, f in ipairs(frames) do
+					if not firstIn and f.Name == "DashIn" then
+						firstIn = f.T
+					end
+				end
+				T.check(fw >= 0.08 and firstIn ~= nil and firstIn - (land - 0.45) >= 0.25 - DT - 1e-6 and abs(firstIn - runAt) <= DT + 1e-6,
+					fmt("bounce timing: %s: the NPC's wind-up lasts 0.25 s on the client (%.3f s from its Windup to the run, the run %.3f s before the hit)", look[3],
+						firstIn and firstIn - (land - 0.45) or -1, firstIn and land - firstIn or -1))
 				-- the hit frame: the face is reached exactly on the hit's time, held through the hit stop
 				local reachAt = nil
 				for _, f in ipairs(frames) do
@@ -599,6 +648,9 @@ local function clientScenarios()
 				local hold1, back1 = frameAt(bk - 0.01), frameAt(bk + 0.02)
 				T.check(hold1 and hold1.Name == "DashIn" and back1 and back1.Name == "DashBack",
 					fmt("bounce timing: %s: the way home starts at the hit + Bite + Hold (%s then %s)", look[3], tostring(hold1 and hold1.Name), tostring(back1 and back1.Name)))
+				local nChomp = chompOf(frames, land, "DashIn")
+				T.check(nChomp ~= nil and abs(nChomp - 0.12) <= DT + 1e-6,
+					fmt("bounce timing: %s: the NPC's chomp lasts 0.12 s after the hit stop whatever its run (%s s)", look[3], nChomp and fmt("%.3f", nChomp) or "never upright"))
 				local homeF = frameAt(bk + 0.35 + 0.01)
 				T.check(homeF and homeF.Name == "DashBack" and abs(homeF.Fwd) < 0.12,
 					fmt("bounce timing: %s: two hops home by bk + 0.35 (forward %.3f)", look[3], homeF and homeF.Fwd or -1))
@@ -619,7 +671,8 @@ local function clientScenarios()
 				local sink, slide, at = walkFeet(bodies, feet)
 				T.check(sink > -1e-4 and slide < 1e-3, fmt("bounce timing: %s: one bite, every frame: no paw under the floor (%.5f), no slide (%.5f)", look[3], sink, slide), at)
 				-- (gate review r0, major 1) the real wind-up (0.15 s to the run): one eased rock back and load at 60 fps, never
-				-- back down (no tremble at this length), no frame over 3 deg
+				-- back down (no tremble at this length), no frame over 3 deg. (the owner, 2026-11-20: 0.25 s now, so at least 14
+				-- frames at 60 fps and no frame over 2.5 deg: the longer gather is gentler, never a flinch)
 				local wp, wRise, wStep = {}, true, 0
 				for fi = 2, #frames, 2 do
 					local f = frames[fi]
@@ -631,8 +684,8 @@ local function clientScenarios()
 					wRise = wRise and wp[i] >= wp[i - 1] - 1e-6
 					wStep = max(wStep, abs(wp[i] - wp[i - 1]))
 				end
-				T.check(#wp >= 8 and wRise and wStep <= 3,
-					fmt("bounce timing: %s: the NPC's 0.15 s wind-up rocks back smoothly at 60 fps (%d frames, never back down %s, largest step %.1f deg)", look[3], #wp, tostring(wRise), wStep))
+				T.check(#wp >= 14 and wRise and wStep <= 2.5,
+					fmt("bounce timing: %s: the NPC's 0.25 s wind-up rocks back smoothly at 60 fps (%d frames, never back down %s, largest step %.1f deg)", look[3], #wp, tostring(wRise), wStep))
 				-- (gate review r0 minor: the evolved hop-bite sank 1.5 studs into the bear, its head reaching past its paws) the
 				-- front-most point bites a little into the target's box at the hit (the strip aims about 0.25 in), not through it
 				local sc0 = tonumber(me:GetAttribute("PB_Scale")) or 1
@@ -684,6 +737,10 @@ local function clientScenarios()
 				end
 				T.check(fReach ~= nil and abs(fReach - fLand) <= DT + 1e-6 and AF.Pose(unit) == nil and fLast and fLast.Body.Position.Magnitude < 0.02,
 					fmt("bounce timing: %s: the fighter's hop-bite still lands on its hit (%.4f s off) and it ends on its spot", look[3], fReach and (fReach - fLand) or 99))
+				local fChomp = chompOf(frames, fLand, "DashIn")
+				T.check(fChomp ~= nil and abs(fChomp - 0.12) <= DT + 1e-6,
+					fmt("bounce timing: %s: the fighter's chomp stays 0.12 s after the hit stop (%s s; its run is 0.20 s), no frozen hold before the way home", look[3],
+						fChomp and fmt("%.3f", fChomp) or "never upright"))
 				bodies = {}
 				for _, f in ipairs(frames) do
 					if f.Body then
@@ -733,6 +790,26 @@ local function clientScenarios()
 					end
 				end
 				T.check(edge ~= nil and nearestIn > edge - PP.REBOUND - 0.05, fmt("bounce timing: %s: no trip home between bites (closest to home %.2f of %.2f: the 0.7 rebound)", look[3], nearestIn, edge or -1))
+				-- (review minor: "fast-tempo bite 1 rebounds at hit + 0.15", the approved mock's; it left at hit + 0.20, Melee.In
+				-- before the next hit) the next bite's rebound leaves the face as soon as the mouth is done: bite 1's chomp
+				-- (squeezed to 0.10 s after the hit stop: hit + 0.15), bite 2's Double strike second chomp (0.15 s: hit + 0.20);
+				-- the chomp ends level where the rebound starts (no pop: under 2 deg between the two frames)
+				local function rebound(after)
+					for i, f in ipairs(frames) do
+						if i > 1 and f.T > after + 1e-6 and f.Name == "DashBite" and frames[i - 1].Name ~= "DashBite" then
+							local a, b = frames[i - 1].Body, f.Body
+							return f.T, (a and b) and abs(pitchOfBody(b) - pitchOfBody(a)) or 99
+						end
+					end
+					return nil, 99
+				end
+				local rb2, pop2 = rebound(L[1])
+				local rb3, pop3 = rebound(L[2])
+				T.check(rb2 ~= nil and abs(rb2 - (L[1] + 0.15)) <= DT + 1e-6 and pop2 < 2,
+					fmt("bounce timing: %s: fast tempo: bite 2's rebound leaves at hit 1 + 0.15 (%s, a %.1f deg step)", look[3], rb2 and fmt("+%.3f", rb2 - L[1]) or "none", pop2))
+				T.check(rb3 ~= nil and abs(rb3 - (L[2] + STOP + PP.DOUBLE_DUR)) <= DT + 1e-6 and pop3 < 2,
+					fmt("bounce timing: %s: fast tempo: after the Double strike's second chomp, bite 3's rebound leaves at hit 2 + 0.20 (%s, a %.1f deg step)", look[3],
+						rb3 and fmt("+%.3f", rb3 - L[2]) or "none", pop3))
 				-- the second chomp's bite at DashTwist's time
 				local dLo, dT = huge, nil
 				for _, f in ipairs(frames) do
