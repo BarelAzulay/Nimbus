@@ -114,6 +114,17 @@ local function hasText(root, pattern)
 	return false
 end
 
+-- (kit-b Pitch 2 item 02 B, the approved result template) a fact is a stat row (its Label, its Value apart), a reward a chip
+-- (its Number over its word)
+local function statSays(card, key, value)
+	local r = card and card:FindFirstChild("Stat_" .. key, true)
+	return r ~= nil and shown(r) and r:FindFirstChild("Value") ~= nil and r.Value.Text == value
+end
+local function chipSays(card, key, number)
+	local c = card and card:FindFirstChild("Chip_" .. key, true)
+	return c ~= nil and shown(c) and c:FindFirstChild("Number") ~= nil and c.Number.Text == number
+end
+
 local function commandsSince(index)
 	local out = {}
 	for _, e in ipairs(KC.serverCalls("BattleCommand", index)) do
@@ -687,7 +698,8 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 		resultTexts[#resultTexts + 1] = tostring(t.Text)
 	end
 	T.check(shown(result) and hasText(result, "KNOCKED OUT") and hasText(result, "Floor 2"), "result card: KNOCKED OUT with the floor / room", table.concat(resultTexts, " | "))
-	T.check(result and result.AnchorPoint.X == 1 and result.AnchorPoint.Y == 1, "result card: bottom right on a wide screen (never centred)")
+	-- (kit-b Pitch 2 item 02 B: the approved card sits at the right edge, its middle; was the bottom right)
+	T.check(result and result.AnchorPoint.X == 1, "result card: the right edge on a wide screen (never centred)")
 	T.check(not shown(find("Root.Commands")), "result card: the controls are gone at the end")
 	T.check(Mock.BoundActions.NimbusBattleSpecial == nil and Mock.BoundActions.NimbusBattleAttack == nil, "BattleController: the battle keys are released at the end")
 	LocalPlayer:SetAttribute("InBattle", nil)
@@ -799,7 +811,10 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	local grows = #fills >= 3 and peak > fills[1] + 0.5
 	T.check(grows, "raid: a telegraph fills up before the hit", #fills > 0 and (fmt(fills[1]) .. " -> " .. fmt(peak) .. " studs") or "no samples")
 	T.check(teleGone, "raid: a telegraph vanishes after its hit")
-	T.check(hasText(find("Root.TopCard"), "Storm Titan") and hasText(find("Root.TopCard"), "BOSS RAID %- High"), "raid HUD: the top card names the boss and the fight's tier")
+	-- (kit-b Pitch 2 item 06 A, the approved "One strip": row 1 is the wood RAID tag, the boss's name and its tier in the
+	-- muted ink, no "BOSS RAID - High" line; a narrow card's tier moves to a pill)
+	T.check(hasText(find("Root.TopCard"), "Storm Titan") and hasText(find("Root.TopCard"), "^RAID$") and hasText(find("Root.TopCard"), "^High$"),
+		"raid HUD: the top card names the boss and the fight's tier (RAID tag, name, tier)")
 	T.check(shown(find("Root.TopCard.BossBar")) and shown(find("Root.TopCard.BossBar.Hp.Blocks")), "raid HUD: the boss bar at the top centre")
 	T.check(shown(find("Root.Team.Fighter")) and shown(find("Root.Team.Helpers.Helper1")) and shown(find("Root.Team.Helpers.Helper2")), "raid HUD: my fighter card + two helper portraits")
 	-- a minion wave + enrage + a leaving team
@@ -834,7 +849,8 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	T.info("BattleController raid frame cost (mock)", fmt(stats.AvgMs) .. " ms avg / " .. fmt(stats.PeakMs) .. " ms peak, " .. stats.Units .. " units, " .. stats.Models .. " models")
 	d:finish({ Mode = "Raid", Outcome = "Win", Won = true, Spectator = false, Reason = "BossDown", Rewards = { Tokens = 420, Gems = 5, Xp = 180, Trophies = 0, LevelUps = 2, Tier = "Gold", Share = 0.4, Damage = 5000 } })
 	step(2)
-	T.check(hasText(find("Root.ResultCard"), "BOSS DEFEATED") and hasText(find("Root.ResultCard"), "Gold tier"), "raid: BOSS DEFEATED card with the damage tier")
+	-- (kit-b Pitch 2 item 02 B: the tier is a stat row, "Tier" and its value apart; was the "Gold tier" tag)
+	T.check(hasText(find("Root.ResultCard"), "BOSS DEFEATED") and statSays(find("Root.ResultCard"), "Tier", "Gold"), "raid: BOSS DEFEATED card with the damage tier")
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(14)
 	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "raid: freed after the end; the result card closes by itself")
@@ -1020,15 +1036,17 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	step(2)
 	local res = find("Root.ResultCard")
 	T.check(shown(res) and hasText(res, "KNOCKED OUT") and res.AnchorPoint.Y == 0, "phone: the KNOCKED OUT card sits at the top (not centred)")
-	-- turned sideways (844x390): the short screen puts the card top right, clear of the screen centre
+	-- turned sideways (844x390): (Pitch 2 item 02 B, look review round 1) the card goes to the pitch's top middle
+	-- (02_result_card_optB_phone.png: 222..622 of 844, from y 62). It used to go top right "off the screen centre", which put
+	-- it on the touch DASH and RUN; the fight is over when it shows, so it may cover the centre point now
 	Mock.SetViewport(844, 390)
 	step(2)
 	res = find("Root.ResultCard")
 	if res and shown(res) then
 		local r = screenRect(res)
-		local cx, cy = 844 / 2, 390 / 2
-		local covers = r.x0 <= cx and cx <= r.x1 and r.y0 <= cy and cy <= r.y1
-		T.check(res.AnchorPoint.X == 1 and not covers, "phone landscape: the result card moves top right, off the screen centre", fmt(r.x0) .. "," .. fmt(r.y0) .. " - " .. fmt(r.x1) .. "," .. fmt(r.y1))
+		local mid = (r.x0 + r.x1) / 2
+		T.check(math.abs(mid - 844 / 2) <= 844 * 0.12 and r.y0 < 390 * 0.3 and r.x0 >= 8 - 0.5 and r.x1 <= 844 - 8 + 0.5 and r.y1 <= 390,
+			"phone landscape: the result card moves to the top middle (the pitch's phone spot), on screen", fmt(r.x0) .. "," .. fmt(r.y0) .. " - " .. fmt(r.x1) .. "," .. fmt(r.y1))
 	else
 		T.fail("phone landscape: the result card disappeared on rotation")
 	end
@@ -1384,9 +1402,10 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	d2:finish(finalEnd(2, { Wins = 1, Cash = 22, Xp = 35, Tokens = 0, Round = 2, Start = 1, Best = 12 }))
 	step(2)
 	local rc = find("Root.ResultCard")
-	T.check(shown(rc) and hasText(rc, "RUN OVER") and hasText(rc, "Rounds won: 1") and hasText(rc, "%+%$22 Cash") and hasText(rc, "%+35 Pet XP") and hasText(rc, "Best: round 12") and not hasText(rc, "VICTORY"),
+	-- (kit-b Pitch 2 item 02 B: rounds and the best are stat rows, Cash and XP reward chips; were "Rounds won: 1" style tags)
+	T.check(shown(rc) and hasText(rc, "RUN OVER") and statSays(rc, "Rounds", "1") and chipSays(rc, "Cash", "+$22") and chipSays(rc, "Xp", "+35") and statSays(rc, "Best", "12") and not hasText(rc, "VICTORY"),
 		"ring: the run's result card: RUN OVER, Rounds won, Cash, XP, the record")
-	T.check(rc and rc.AnchorPoint.X == 1 and rc.AnchorPoint.Y == 1, "ring: the result card sits bottom right (never centred)")
+	T.check(rc and rc.AnchorPoint.X == 1, "ring: the result card sits at the right edge (never centred; Pitch 2 item 02 B: its middle)")
 	LocalPlayer:SetAttribute("InBattle", nil)
 	KC.advance(4)
 	T.check(BC.GetBattle() == nil, "ring: the battle is freed after the run")
@@ -1407,7 +1426,7 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	KC.toClient("BattleState", "End", finalEnd(13, { Wins = 4, Cash = 900, Xp = 400, Tokens = 0, Round = 13, Start = 10, Record = 13, Best = 13 }, { BattleId = d3.id, Outcome = "Left", Reason = "Forfeit", Round = 13 }), d3.id)
 	step(2)
 	rc = find("Root.ResultCard")
-	T.check(shown(rc) and hasText(rc, "NEW RECORD!") and hasText(rc, "Best: round 13!") and hasText(rc, "Rounds won: 4") and hasText(rc, "%+%$900 Cash") and hasText(rc, "left after round 13"),
+	T.check(shown(rc) and hasText(rc, "NEW RECORD!") and statSays(rc, "Best", "13") and statSays(rc, "Rounds", "4") and chipSays(rc, "Cash", "+$900") and hasText(rc, "left after round 13"),
 		"ring: a run that ends between rounds gets its card (NEW RECORD!, the record line)")
 	T.check(not shown(find("Root.NextRoundCard")), "ring: the result card replaces the side card")
 	LocalPlayer:SetAttribute("InBattle", nil)
@@ -1515,7 +1534,16 @@ S.client_p3battle_ring_mobile = guarded("client_p3battle_ring_mobile", function(
 		KC.toClient("BattleState", "End", finalEnd(4, { Wins = 1, Cash = 28, Xp = 44, Tokens = 0, Round = 4, Start = 1, Best = 12 }, { BattleId = d.id, Outcome = "Left", Reason = "Forfeit" }), d.id)
 		step(2)
 		local rc = find("Root.ResultCard")
-		T.check(shown(rc) and centreFree(rc, size[1], size[2]) and hasText(rc, "Rounds won: 1"), "phone " .. tagName .. ": the run's card is off the screen centre")
+		if size[1] > size[2] then
+			-- (Pitch 2 item 02 B, look review round 1) a landscape phone's result card is the pitch's top middle
+			-- (02_result_card_optB_phone.png: 222..622 of 844 from y 62, over the centre point: the fight is over); the old
+			-- off-centre spot at the right edge lay on the touch DASH and RUN
+			local r = shown(rc) and screenRect(rc)
+			T.check(r and math.abs((r.x0 + r.x1) / 2 - size[1] / 2) <= size[1] * 0.12 and r.y0 < size[2] * 0.3 and statSays(rc, "Rounds", "1"),
+				"phone " .. tagName .. ": the run's card is the pitch's top middle", r and (fmt(r.x0) .. "," .. fmt(r.y0) .. " - " .. fmt(r.x1) .. "," .. fmt(r.y1)) or "not shown")
+		else
+			T.check(shown(rc) and centreFree(rc, size[1], size[2]) and statSays(rc, "Rounds", "1"), "phone " .. tagName .. ": the run's card is off the screen centre")
+		end
 		LocalPlayer:SetAttribute("InBattle", nil)
 		KC.advance(4)
 		local ok = find("Root.ResultCard.Body.OkButton")

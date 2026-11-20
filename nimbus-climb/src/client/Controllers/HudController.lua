@@ -94,8 +94,8 @@ local K = {
 	TOUCH_EDGE = 20, -- larger side margin on touch devices (notches, rounded corners)
 	SMALL_PHONE = 500, -- Roblox's own touch controls shrink when the smaller screen side is at most this
 
-	VITALS_W = 300, -- bug batch 2 #1: a compact card, about the old hotbar's width
-	VITALS_H = 100, -- the vitals card (see VG below for its inside; U9-8 look: was 93, the bolt badge and the key sat on its lip)
+	VITALS_W = 430, -- (Pitch 2 item 08 C: the pitch's 430; was 300, bug batch 2 #1's compact card)
+	VITALS_H = 128, -- the vitals slot: the name tab's 32 above the card + the 96 card (see VG; U9-8 look's card was 100)
 	VITALS_MIN_W = 236, -- narrowest the vitals get squeezed on a small phone
 	HOTBAR_GAP = 8, -- screen px between the old hotbar's top and the vitals card
 	HOTBAR_FALLBACK = 78, -- gui px the old item hotbar reached above the bottom edge (14 + 64): the card keeps that spot
@@ -187,22 +187,40 @@ local K = {
 -- badge and the key above the lip (at 93 they sat on it). The compact card (landscape phones, always the 0.8 scale) is
 -- 76 tall in its 80 slot and draws the heart and the bolt as bare pixel icons in their role's lip colour, as the pitch
 -- does (BARE): at 0.8 an 18 px icon draws 18 screen px, which filled a 26 px tile edge to edge and fused the two tiles.
--- Every size here is design px; Vitals.Layout puts them on whole screen px under the card's scale
+-- Every size here is design px; Vitals.Layout puts them on whole screen px under the card's scale.
+-- (Pitch 2 item 08, option C "Name tab + stamp": .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/08_vitals_optC.png,
+-- pitch_battle_hud.py vitals_C) the slot is the tab's TAB_UP above the card + the card. The wood tab (TAB_X in, TAB_H tall,
+-- its foot behind the card's top edge) carries the stamp (STAMP square), the name (NAME_TEXT) and the trophies tag
+-- (TROPHY_H, TROPHY_TEXT). The card: the bare heart (HEART_X) left of the HP track (TRACK_X .. W - PAD_R, HP_Y / HP_H from
+-- the card's top: the blocks, a 2 px divider and the number at HP_TEXT in ONE sunk track) and under it the stamina group
+-- (ST_Y / ST_H: the bare bolt, the stamina blocks ST_BLOCK wide, the dash state, the dash key KEY square at its right end
+-- in ONE sunk well). Both geometries draw the badges bare; the compact card (landscape phones, always the 0.8 scale) is the
+-- same card (its dash key is gone on a touch screen anyway)
 local VG = {
 	Regular = {
-		Name = "Regular", H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 0, CARD_CORNER = 0, -- (kit-b U8: square)
-		BADGE_X = 25, HEART = 32, HEART_Y = 26, HEART_TEXT = 22, BOLT = 32, BOLT_Y = 72, BADGE_ICON = 18, BADGE_LIP = 4, BARE = false,
-		HP_X = 49, HP_Y = 13, HP_H = 26, HP_TEXT = 24, NUM_GAP = 8, PAD_R = 10,
-		ST_X = 49, ST_Y = 61, ST_H = 22,
-		KEY = 30, KEY_TOP = 57, KEY_GAP = 8, KEY_ICON = 18, KEY_STEP = 2, KEY_SPAN = false,
+		Name = "Regular", H = K.VITALS_H, TAB_UP = 32, CARD_H = 96, CARD_X = 0, CARD_CORNER = 0, -- (kit-b U8: square)
+		TAB_X = 14, TAB_H = 44, STAMP = 30, STAMP_TEXT = 26, NAME_TEXT = 20, NAME_MIN = 16, TROPHY_H = 26, TROPHY_TEXT = 18,
+		HEART_X = 13, HEART = 24, HEART_TEXT = 22, BOLT = 24, BADGE_ICON = 18, BADGE_LIP = 0, BARE = true,
+		TRACK_X = 39, HP_Y = 12, HP_H = 30, HP_TEXT = 18, PAD_R = 13,
+		ST_Y = 48, ST_H = 30, ST_BLOCK = 28, ST_TEXT = 18,
+		KEY = 26, KEY_ICON = 18, KEY_STEP = 2,
 	},
 	Compact = {
-		Name = "Compact", H = 80, CARD_H = 76, CARD_X = 0, CARD_CORNER = 0,
-		BADGE_X = 19, HEART = 24, HEART_Y = 21, HEART_TEXT = 18, BOLT = 24, BOLT_Y = 52, BADGE_ICON = 18, BADGE_LIP = 0, BARE = true,
-		HP_X = 38, HP_Y = 10, HP_H = 22, HP_TEXT = 23, NUM_GAP = 8, PAD_R = 9,
-		ST_X = 38, ST_Y = 43, ST_H = 18,
-		KEY = 45, KEY_TOP = 13, KEY_GAP = 8, KEY_ICON = 27, KEY_STEP = 3, KEY_SPAN = true,
+		Name = "Compact", H = K.VITALS_H, TAB_UP = 32, CARD_H = 96, CARD_X = 0, CARD_CORNER = 0,
+		TAB_X = 14, TAB_H = 44, STAMP = 30, STAMP_TEXT = 26, NAME_TEXT = 20, NAME_MIN = 18, TROPHY_H = 26, TROPHY_TEXT = 18,
+		HEART_X = 13, HEART = 24, HEART_TEXT = 22, BOLT = 24, BADGE_ICON = 18, BADGE_LIP = 0, BARE = true,
+		TRACK_X = 39, HP_Y = 12, HP_H = 30, HP_TEXT = 18, PAD_R = 13,
+		ST_Y = 48, ST_H = 30, ST_BLOCK = 28, ST_TEXT = 18,
+		KEY = 26, KEY_ICON = 18, KEY_STEP = 2,
 	},
+	TRACK_EDGE = 2, TRACK_PAD = 3, DIVIDER = 2, -- the sunk track's / well's edge, its inside padding, the HP number's divider
+	-- the dash's state in the stamina group (each state's longest form that fits whole: Vitals.Layout)
+	DASH_WORDS = { ready = "Dash ready", cool = "Recharging", off = "Out of stamina" },
+	-- (look review round 1: a phone's well kept its right half empty) the sets for a well too short for "Out of stamina"
+	DASH_WORDS_SHORT = { ready = "Dash ready", cool = "Charging", off = "No stamina" },
+	DASH_WORDS_TINY = { ready = "Ready", cool = "Wait", off = "Empty" },
+	-- the stamp's five kit colours (UserId % 5 + 1) and their lips
+	STAMPS = { { "Sky", "SkyLip" }, { "Grass", "GrassLip" }, { "Gold", "GoldLip" }, { "Red", "RedLip" }, { "Violet", "VioletLip" } },
 	HP_BLOCKS = 5, -- (U9-8 look) the HP bar's blocks, a fifth of the health each
 	-- (kit-b gate U9 r4: one bar language) the blocks: the kit's Bar weight (SignKit.Sizes.Bar: edge 2, lip 3, gap 3, as the
 	-- Loss, Train and battle bars; were lip 4 / gap 4)
@@ -1348,13 +1366,125 @@ end
 
 -- (U9-8 look) a badge on whole screen px: `size` design px square, centred on (BADGE_X, cy); its edge, lip and icon by
 -- Vitals.FitBadge
-function Vitals.PlaceBadge(badge, size, cy, g, k)
+-- (Pitch 2 item 08 C) cx / cy: the badge's centre in SCREEN px of its parent
+function Vitals.PlaceBadge(badge, size, cx, cy, g, k)
 	local s = Vitals.Px(size, k)
-	local x = math.floor(g.BADGE_X * k - s / 2 + 0.5)
-	local y = math.floor(cy * k - s / 2 + 0.5)
+	local x = math.floor(cx - s / 2 + 0.5)
+	local y = math.floor(cy - s / 2 + 0.5)
 	badge.Position = UDim2.fromOffset((x + s / 2) / k, (y + s / 2) / k) -- (anchored at its centre: the heart beats there)
 	badge.Size = UDim2.fromOffset(s / k, s / k)
 	Vitals.FitBadge(badge, g, s, k)
+end
+
+-- (Pitch 2 item 08 C) the player's first letter (one UTF-8 character, capital) and the stamp's kit colour (UserId % 5)
+function Vitals.StampOf()
+	local name = (player and (player.DisplayName ~= "" and player.DisplayName or player.Name)) or "?"
+	local letter = string.match(tostring(name), "^[%z\1-\127\194-\244][\128-\191]*") or "?"
+	local pick = VG.STAMPS[((player and tonumber(player.UserId) or 0) % 5) + 1]
+	return letter:upper(), Theme.Sign[pick[1]], Theme.Sign[pick[2]]
+end
+
+-- (Pitch 2 item 08 C) the trophies the tag shows: Theme.Short of Battle.Trophies (State), "0" before the first sync
+function Vitals.TrophyText()
+	local n = 0
+	if State and type(State.Battle) == "function" then
+		local ok, b = pcall(State.Battle)
+		if ok and type(b) == "table" then
+			n = tonumber(b.Trophies) or 0
+		end
+	end
+	return Theme.Short(math.max(0, math.floor(n)))
+end
+
+-- (Pitch 2 item 08 C) a text's width in screen px at `size` design px under the scale k
+local function measureAt(text, role, size, k)
+	local ok, m = pcall(Theme.Measure, text, role, size)
+	-- (never under FredokaOne's ~0.56 em a letter: a flat measure runs short of the drawn face; then 4% to spare, the
+	-- render's overflow report)
+	local w = math.max((ok and m and m.X > 0) and m.X or 0, #tostring(text) * size * 0.56)
+	return math.ceil(w * 1.04 * k)
+end
+
+-- (Pitch 2 item 08 C) the wood name tab over the card's top edge: the stamp, the name (its design size steps down to the
+-- floor, then the name is cut with "..." so it always fits whole), the trophies tag at the tab's right end; the tab as wide
+-- as its contents, never wider than the card less TAB_X on each side. W: the slot's width in screen px
+function Vitals.LayoutTab(g, k, W)
+	local T = UI.Tab
+	if not T then
+		return
+	end
+	local function px(n)
+		return Vitals.Px(n, k)
+	end
+	local letter, face, lip = Vitals.StampOf()
+	T.Letter.Text = letter
+	T.Stamp.BackgroundColor3 = face
+	T.StampLip.BackgroundColor3 = lip
+	T.Letter.TextColor3 = select(2, Theme.ReadableFace(face, 4.5))
+	local tabX, tabH = px(g.TAB_X), px(g.TAB_H)
+	local up = px(g.TAB_UP)
+	local stampS = px(g.STAMP)
+	local edge2 = px(2)
+	-- the trophies tag: [8][icon 18][5][number][9]
+	T.Value.Text = Vitals.TrophyText()
+	T.Value.TextSize = g.TROPHY_TEXT
+	local numW = measureAt(T.Value.Text, "Display", g.TROPHY_TEXT, k)
+	local iconS = px(18)
+	local trW = px(8) + iconS + px(5) + numW + px(9)
+	local trH = px(g.TROPHY_H)
+	-- the name: as wide as it needs, in the room the tab leaves
+	local maxTab = W - 2 * tabX
+	local fixed = px(5) + stampS + px(8) + px(10) + trW + px(6)
+	local room = maxTab - fixed
+	local full = (player and (player.DisplayName ~= "" and player.DisplayName or player.Name)) or ""
+	local minSize = math.max(g.NAME_MIN, math.ceil(14 / k - 1e-6))
+	local size, text = g.NAME_TEXT, full
+	while size > minSize and measureAt(text, "Heading", size, k) > room do
+		size = size - 2
+	end
+	size = math.max(size, minSize)
+	if measureAt(text, "Heading", size, k) > room then
+		local cut = full
+		while #cut > 1 and measureAt(cut .. "...", "Heading", size, k) > room do
+			cut = cut:sub(1, -2)
+			-- (never end on half a UTF-8 character)
+			while #cut > 1 and string.byte(cut, #cut) >= 128 and string.byte(cut, #cut) < 192 do
+				cut = cut:sub(1, -2)
+			end
+		end
+		text = cut .. "..."
+	end
+	T.Name.Text = text
+	T.Name.TextSize = size
+	local nameW = math.min(room, measureAt(text, "Heading", size, k) + px(2))
+	local tabW = math.min(maxTab, fixed + nameW)
+	T.Root.Position = UDim2.fromOffset(tabX / k, 0)
+	T.Root.Size = UDim2.fromOffset(tabW / k, tabH / k)
+	T.Edge.Thickness = edge2 / k
+	T.Light.Position = UDim2.fromOffset(0, 0)
+	T.Light.Size = UDim2.new(1, 0, 0, 1 / k)
+	-- the stamp: 5 in, 4 down; its lip 3, its edge 2
+	T.Stamp.Position = UDim2.fromOffset(px(5) / k, px(4) / k)
+	T.Stamp.Size = UDim2.fromOffset(stampS / k, stampS / k)
+	T.StampEdge.Thickness = edge2 / k
+	T.StampLip.Size = UDim2.new(1, 0, 0, px(3) / k)
+	T.Letter.Size = UDim2.new(1, 0, 1, -px(3) / k)
+	T.Letter.TextSize = g.STAMP_TEXT
+	-- the name, centred on the tab's shown height (above the card's top)
+	local nameX = px(5) + stampS + px(8)
+	T.Name.Position = UDim2.fromOffset(nameX / k, 0)
+	T.Name.Size = UDim2.fromOffset(nameW / k, (up - px(2)) / k)
+	-- the trophies tag at the tab's right end, 6 down
+	local trX = tabW - px(6) - trW
+	T.Trophies.Position = UDim2.fromOffset(trX / k, px(6) / k)
+	T.Trophies.Size = UDim2.fromOffset(trW / k, trH / k)
+	T.TrophyEdge.Thickness = edge2 / k
+	T.TrophyLip.Size = UDim2.new(1, 0, 0, px(3) / k)
+	local ip = Vitals.IconAt(T.Icon, iconS, trH - px(3), k)
+	T.Icon.Position = UDim2.fromOffset(ip.X.Offset + px(8) / k, ip.Y.Offset)
+	T.Value.Position = UDim2.fromOffset((px(8) + iconS + px(5)) / k, 0)
+	T.Value.Size = UDim2.fromOffset((numW + px(4)) / k, (trH - px(3)) / k)
+	UI.TabSig = text .. "|" .. T.Value.Text .. "|" .. letter
 end
 
 -- (kit-b U9-8; U9-8 look) places every part of the vitals card on whole screen px for its geometry (UI.VitalsGeometry),
@@ -1364,7 +1494,7 @@ end
 -- before the dash key, the key, the two badges
 function Vitals.Layout(force)
 	local g = UI.VitalsGeometry
-	if not g or not UI.HpBar or not UI.StBar or not UI.Key or not UI.Card then
+	if not g or not UI.HpBar or not UI.StBar or not UI.Key or not UI.Card or not UI.HpTrack then
 		return
 	end
 	local k = (UI.VitalsScale and UI.VitalsScale.Scale) or 1
@@ -1378,64 +1508,107 @@ function Vitals.Layout(force)
 		return math.floor(v * k + 0.5)
 	end
 	local W = px(UI.VitalsW or K.VITALS_W)
-	local numW = math.ceil((Vitals.NumberW(g.HP_TEXT) + 4) * k)
+	-- (the number's box: its widest for this max health, centred behind the divider, the pitch's 16 px of air)
+	-- (the pitch's 18 px, never under 18 screen px: 23 design px under a 0.8 scale, the phone's readability rule)
+	local hpText = math.max(g.HP_TEXT, math.ceil(18 / k - 1e-6))
+	local numW = math.ceil((Vitals.NumberW(hpText) + 16) * k)
 	-- (kit-b gate U9 r4) on a touch screen the dash key is gone: the touch DASH button is the dash there, and the '>>' key
 	-- at the stamina row's end read as a second button; the stamina blocks show the charges
 	local keyOn = not isTouchDevice()
-	local sig = g.Name .. ":" .. W .. ":" .. k .. ":" .. numW .. ":" .. tostring(S.downed) .. ":" .. tostring(keyOn)
+	local tabSig = (player and player.DisplayName or "") .. "|" .. Vitals.TrophyText()
+	local sig = g.Name .. ":" .. W .. ":" .. k .. ":" .. numW .. ":" .. tostring(S.downed) .. ":" .. tostring(keyOn) .. ":" .. tabSig
 	if UI.LayoutSig == sig and not force then
 		return
 	end
 	UI.LayoutSig = sig
-	-- the card: its height, its wood edge and its lip
-	UI.Card.Position = UDim2.fromOffset(0, 0)
+	-- (Pitch 2 item 08 C) the tab over the card's top edge, then the card under it: its height, its wood edge and its lip
+	local cardY = at(g.TAB_UP)
+	Vitals.LayoutTab(g, k, W)
+	UI.Card.Position = UDim2.fromOffset(0, cardY / k)
 	UI.Card.Size = UDim2.new(1, 0, 0, px(g.CARD_H) / k)
 	UI.CardStroke.Thickness = px(VG.CARD_EDGE) / k
 	UI.CardLip.Size = UDim2.new(1, 0, 0, px(VG.CARD_LIP) / k)
-	-- the dash key ends the stamina row (or, KEY_SPAN, both rows)
+	local e, pad, gapPx = px(VG.TRACK_EDGE), px(VG.TRACK_PAD), Vitals.Px(VG.BLOCK_GAP, k)
+	local trackX = at(g.TRACK_X)
+	local trackW = W - px(g.PAD_R) - trackX
+	-- the HP track: one sunk well in its wood edge; the blocks, the 2 px divider and the number on the same face
+	local hpY, hpH = cardY + at(g.HP_Y), px(g.HP_H)
+	UI.HpTrack.Position = UDim2.fromOffset(trackX / k, hpY / k)
+	UI.HpTrack.Size = UDim2.fromOffset(trackW / k, hpH / k)
+	UI.HpFace.Position = UDim2.fromOffset(e / k, e / k)
+	UI.HpFace.Size = UDim2.fromOffset((trackW - 2 * e) / k, (hpH - 2 * e) / k)
+	local innerL, innerR = e + pad, trackW - e - pad
+	local numX = innerR - numW
+	local divX = numX - pad - px(VG.DIVIDER)
+	UI.HpDivider.Position = UDim2.fromOffset(divX / k, e / k)
+	UI.HpDivider.Size = UDim2.fromOffset(px(VG.DIVIDER) / k, (hpH - 2 * e) / k)
+	UI.HpDivider.Visible = not S.downed
+	local nH = #UI.HpBar.Blocks
+	local bh = hpH - 2 * (e + pad)
+	local cellW = math.max(2 * Vitals.Px(VG.BLOCK_EDGE, k) + 1, math.floor((divX - pad - innerL - (nH - 1) * gapPx) / nH))
+	local hpW = nH * cellW + (nH - 1) * gapPx
+	UI.VitalsCell = cellW
+	UI.HpBar.Root.Position = UDim2.fromOffset(innerL / k, (e + pad) / k)
+	UI.HpBar.Root.Size = UDim2.fromOffset(hpW / k, bh / k)
+	UI.HpBar.Layout(hpW, bh, k)
+	UI.HpBar.Root.Visible = not S.downed
+	-- (downed: DOWNED takes the whole track, beside the heart's "!")
+	local numL = S.downed and innerL or numX
+	UI.HpNum.Position = UDim2.fromOffset(numL / k, e / k)
+	UI.HpNum.Size = UDim2.fromOffset((innerR - numL) / k, (hpH - 2 * e) / k)
+	UI.HpNum.TextXAlignment = S.downed and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+	UI.HpNum.TextSize = hpText
+	-- the stamina group: one sunk well (the well edge) with the bolt, the blocks, the dash state and the dash key
+	local stY, stH = cardY + at(g.ST_Y), px(g.ST_H)
+	UI.StGroup.Position = UDim2.fromOffset(trackX / k, stY / k)
+	UI.StGroup.Size = UDim2.fromOffset(trackW / k, stH / k)
+	UI.StFace.Position = UDim2.fromOffset(e / k, e / k)
+	UI.StFace.Size = UDim2.fromOffset((trackW - 2 * e) / k, (stH - 2 * e) / k)
 	local key = UI.Key
-	local keyS = px(g.KEY)
-	local keyX = W - px(g.PAD_R) - keyS
-	key.Root.Position = UDim2.fromOffset(keyX / k, at(g.KEY_TOP) / k)
+	local keyS = math.min(px(g.KEY), stH - 2 * e)
+	local keyX = trackW - e - keyS
+	key.Root.Position = UDim2.fromOffset(keyX / k, e / k)
 	key.Root.Size = UDim2.fromOffset(keyS / k, keyS / k)
 	key.Edge.Thickness = px(VG.KEY_EDGE) / k
 	local lip = px(VG.KEY_LIP)
 	key.Px = { K = k, Size = keyS, Lip = lip, Sink = math.min(px(VG.KEY_SINK), lip - 1), Step = (key.Icon and tonumber(key.Icon:GetAttribute("CellPx"))) or px(g.KEY_STEP) }
-	-- the HP row: the blocks, then the number at its right end
 	key.Root.Visible = keyOn and not S.downed
-	local right = W - px(g.PAD_R) - ((g.KEY_SPAN and keyOn) and (keyS + px(g.KEY_GAP)) or 0)
-	local hpX, hpY, hpH = at(g.HP_X), at(g.HP_Y), px(g.HP_H)
-	local numX = right - numW
-	local hpW = numX - px(g.NUM_GAP) - hpX
-	-- (kit-b gate U9 r4: 5 HP blocks and 4 stamina blocks stretched over one width drew two block widths whose gaps never
-	-- met, a hand-placed look) one grid for the two rows: one block width and one gap, the columns of the longer row's
-	-- count across hpW; each row left-aligned on it (stamina block i under HP block i), its spare columns left empty
-	local gapPx, nH, nS = Vitals.Px(VG.BLOCK_GAP, k), #UI.HpBar.Blocks, #UI.StBar.Blocks
-	local cols = math.max(nH, nS)
-	local cellW = math.max(2 * Vitals.Px(VG.BLOCK_EDGE, k) + 1, math.floor((hpW - (cols - 1) * gapPx) / cols))
-	hpW = nH * cellW + (nH - 1) * gapPx
-	UI.VitalsCell = cellW
-	UI.HpBar.Root.Position = UDim2.fromOffset(hpX / k, hpY / k)
-	UI.HpBar.Root.Size = UDim2.fromOffset(hpW / k, hpH / k)
-	UI.HpBar.Layout(hpW, hpH, k)
-	UI.HpBar.Root.Visible = not S.downed
-	-- (downed: DOWNED takes the row, beside the heart's "!")
-	local numL = S.downed and hpX or numX
-	UI.HpNum.Position = UDim2.fromOffset(numL / k, hpY / k)
-	UI.HpNum.Size = UDim2.fromOffset((right - numL) / k, hpH / k)
-	UI.HpNum.TextXAlignment = S.downed and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
-	UI.HpNum.TextSize = g.HP_TEXT
-	-- the stamina row
-	-- (kit-b gate U9 round 3: the stamina blocks ran 60-90 px past the HP blocks, two block languages on one plate) one
-	-- grid: the stamina row ends on the HP blocks' column; the number and the dash key share the column right of it
-	local stX, stY, stH = at(g.ST_X), at(g.ST_Y), px(g.ST_H)
-	local stW = math.min((keyOn and (keyX - px(g.KEY_GAP)) or right) - stX, nS * cellW + (nS - 1) * gapPx)
-	UI.StBar.Root.Position = UDim2.fromOffset(stX / k, stY / k)
-	UI.StBar.Root.Size = UDim2.fromOffset(stW / k, stH / k)
-	UI.StBar.Layout(stW, stH, k)
-	-- the badges, then the key's look again (its sizes are new)
-	Vitals.PlaceBadge(UI.Heart, g.HEART, g.HEART_Y, g, k)
-	Vitals.PlaceBadge(UI.Bolt.Badge, g.BOLT, g.BOLT_Y, g, k)
+	local nS = #UI.StBar.Blocks
+	local stX = innerL + px(g.BADGE_ICON) + px(6)
+	local sh = stH - 2 * (e + pad)
+	local right = keyOn and (keyX - px(4)) or (trackW - e - pad)
+	local stCell = math.max(2 * Vitals.Px(VG.BLOCK_EDGE, k) + 1, px(g.ST_BLOCK))
+	local stW = math.min(right - stX, nS * stCell + (nS - 1) * gapPx)
+	UI.StBar.Root.Position = UDim2.fromOffset(stX / k, (e + pad) / k)
+	UI.StBar.Root.Size = UDim2.fromOffset(stW / k, sh / k)
+	UI.StBar.Layout(stW, sh, k)
+	-- the dash's state after the blocks, where it fits whole
+	local lx = stX + stW + px(8)
+	-- (each state's longest word that fits whole: the full set, then the short, then the tiny one; the label is left-aligned
+	-- after the blocks, so a shorter word moves nothing. None fits even the tiny set: no words)
+	local words = {}
+	for _, state in ipairs({ "ready", "cool", "off" }) do
+		for _, set in ipairs({ VG.DASH_WORDS, VG.DASH_WORDS_SHORT, VG.DASH_WORDS_TINY }) do
+			if not words[state] and right - lx >= measureAt(set[state], "Heading", g.ST_TEXT, k) + px(2) then
+				words[state] = set[state]
+			end
+		end
+	end
+	if not (words.ready and words.cool and words.off) then
+		words = nil
+	end
+	UI.DashWords = words or VG.DASH_WORDS
+	UI.DashText.TextSize = g.ST_TEXT
+	UI.DashText.Position = UDim2.fromOffset(lx / k, e / k)
+	UI.DashText.Size = UDim2.fromOffset(math.max(0, right - lx) / k, (stH - 2 * e) / k)
+	UI.DashText.Visible = not S.downed and words ~= nil
+	local shownWord = UI.DashWords[UI.Key.State or "ready"]
+	if shownWord and UI.DashText.Text ~= shownWord then
+		UI.DashText.Text = shownWord
+	end
+	-- the badges: the bare heart left of the HP track, the bare bolt at the group's left end; then the key's look again
+	Vitals.PlaceBadge(UI.Heart, g.HEART, at(g.HEART_X) + px(g.BADGE_ICON) / 2, hpY + hpH / 2, g, k)
+	Vitals.PlaceBadge(UI.Bolt.Badge, g.BOLT, innerL + px(g.BADGE_ICON) / 2, stH / 2, g, k)
 	Vitals.PaintKey(key.State or "ready", St.Charge)
 	St.DimDrawn = -1
 end
@@ -1616,9 +1789,48 @@ setVitalsGeometry = function(g)
 		key.IconPx = g.KEY_ICON
 	end
 	UI.HeartGlyph.TextSize = g.HEART_TEXT
-	UI.DownedNotice.Position = UDim2.fromOffset(g.CARD_X + 12, g.ST_Y - 5)
-	UI.DownedNotice.Size = UDim2.new(1, -(g.CARD_X + 12 + g.PAD_R), 0, g.ST_H + 10)
+	-- (Pitch 2 item 08 C) the notice takes the stamina group's place
+	UI.DownedNotice.Position = UDim2.fromOffset(g.TRACK_X, g.TAB_UP + g.ST_Y)
+	UI.DownedNotice.Size = UDim2.new(1, -(g.TRACK_X + g.PAD_R), 0, g.ST_H)
 	Vitals.Layout(true)
+end
+
+-- (Pitch 2 item 08 C) a kit B block (Frame) with its 2 px edge and its lip along the bottom: { Root, Edge, Lip }
+local function tabBlock(parent, name, face, lip, edge, zindex)
+	local root = newFrame(parent, name, { BackgroundTransparency = 0, BackgroundColor3 = face, ZIndex = zindex })
+	local stroke = Theme.Stroke(root, edge, 2, 0)
+	stroke.Name = "SignEdge"
+	stroke.LineJoinMode = Enum.LineJoinMode.Miter
+	local l = newFrame(root, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 3),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = lip,
+		ZIndex = zindex,
+	})
+	return root, stroke, l
+end
+
+-- (Pitch 2 item 08 C) the wood name tab (drawn behind the card: ZIndex 0 under the card's 1): its lit top line, the stamp
+-- (the letter on its kit-colour block), the name in the stone colour, the trophies tag (the pixel trophy, the number)
+local function buildNameTab(body)
+	local T = {}
+	local tab = newFrame(body, "NameTab", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Sign.Wood, ZIndex = 0 })
+	T.Root = tab
+	T.Edge = Theme.Stroke(tab, Theme.Sign.WoodDark, 2, 0)
+	T.Edge.Name = "SignEdge"
+	T.Edge.LineJoinMode = Enum.LineJoinMode.Miter
+	T.Light = newFrame(tab, "Light", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Sign.WoodLight, ZIndex = 0 })
+	T.Stamp, T.StampEdge, T.StampLip = tabBlock(tab, "Stamp", Theme.Sign.Sky, Theme.Sign.SkyLip, Theme.Sign.WoodDark, 0)
+	T.Letter = newText(T.Stamp, "Letter", "?", "Display", 26, Theme.Sign.Text, { TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 0 })
+	T.Name = newText(tab, "PlayerName", "", "Heading", 20, Theme.Sign.Stone, { ZIndex = 0 })
+	T.Trophies, T.TrophyEdge, T.TrophyLip = tabBlock(tab, "Trophies", Theme.Sign.Tile, Theme.Sign.StoneLip, Theme.Sign.WoodDark, 0)
+	T.Icon = PixelIcon.New(T.Trophies, "trophy", 18, Theme.Sign.GoldLip)
+	T.Icon.ZIndex = 0
+	T.Value = newText(T.Trophies, "Value", "0", "Display", 18, Theme.Sign.Text, { ZIndex = 0 })
+	UI.Tab = T
+	return T
 end
 
 local function buildVitals(holder)
@@ -1669,20 +1881,31 @@ local function buildVitals(holder)
 	-- drawn three times over it), the white damage trail and the hit flash on the blocks; the number right of them on the
 	-- stone. Then (kit-b U9-8) the stamina blocks, one per dash from full (MaxStamina / DashStaminaCost, rounded down; each
 	-- an equal share of MaxStamina: U9-8 look, the narrow fifth block for the rest is gone), ending left of the dash key
-	UI.HpBar = Vitals.NewBlocks(body, "HealthBar", { Count = VG.HP_BLOCKS, Face = VS.Hp, Lip = Theme.Sign.RedLip, Trail = true, Flash = true })
-	UI.HpNum = newText(body, "HealthNumber", "100 / 100", "Display", VG.Regular.HP_TEXT, Theme.TextOn("Stone"), {
-		TextXAlignment = Enum.TextXAlignment.Right,
+	-- (Pitch 2 item 08 C) the name tab behind the card's top edge; the HP track (a wood-edged sunk well: the blocks, the
+	-- divider and the number on one face) and the stamina group (a sunk well in the well edge: the bolt, the blocks, the
+	-- dash's state and the dash key)
+	buildNameTab(body)
+	UI.HpTrack = newFrame(body, "HpTrack", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Sign.Wood, ZIndex = 2 })
+	UI.HpFace = newFrame(UI.HpTrack, "Face", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Sign.Well, ZIndex = 2 })
+	UI.HpDivider = newFrame(UI.HpTrack, "Divider", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Sign.WellEdge, ZIndex = 3 })
+	UI.StGroup = newFrame(body, "StaminaGroup", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Sign.WellEdge, ZIndex = 2 })
+	UI.StFace = newFrame(UI.StGroup, "Face", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Sign.Well, ZIndex = 2 })
+	UI.HpBar = Vitals.NewBlocks(UI.HpTrack, "HealthBar", { Count = VG.HP_BLOCKS, Face = VS.Hp, Lip = Theme.Sign.RedLip, Trail = true, Flash = true })
+	UI.HpBar.Root.ZIndex = 3
+	UI.HpNum = newText(UI.HpTrack, "HealthNumber", "100 / 100", "Display", VG.Regular.HP_TEXT, Theme.TextOn("Stone"), {
+		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 3,
 	})
 	local physics = Config.Physics or {}
 	local dashes = math.floor((tonumber(physics.MaxStamina) or 150) / math.max(1, tonumber(physics.DashStaminaCost) or 35))
-	UI.StBar = Vitals.NewBlocks(body, "StaminaBar", { Count = math.max(1, dashes), Face = VS.Stamina, Lip = Theme.Sign.GoldLip })
-	UI.Key = Vitals.NewDashKey(body)
+	UI.StBar = Vitals.NewBlocks(UI.StGroup, "StaminaBar", { Count = math.max(1, dashes), Face = VS.Stamina, Lip = Theme.Sign.GoldLip })
+	UI.StBar.Root.ZIndex = 3
+	UI.Key = Vitals.NewDashKey(UI.StGroup)
+	UI.DashText = newText(UI.StGroup, "DashState", "Dash ready", "Heading", 18, Theme.Sign.TextMuted, { ZIndex = 3 })
 
-	-- lightning badge (under the heart), then the heart badge on top (render gate: gold with a brown bolt, the stamina's
-	-- colour; kit-b U9-8: kit B squares with the pixel bolt and heart; U9-8 look: bare on the compact card, in the role's
-	-- lip colour, as the gold face itself and the red one read too pale on the stone)
-	local bolt, boltLip = Vitals.NewBadge(body, "StaminaBadge", VS.Stamina, Theme.Sign.GoldLip, "bolt", Theme.Sign.GoldLip)
+	-- lightning badge (in the stamina group), then the heart badge (left of the HP track); (Pitch 2 item 08 C) both bare
+	-- pixel icons in their role's lip colour, as the pitch draws them
+	local bolt, boltLip = Vitals.NewBadge(UI.StGroup, "StaminaBadge", VS.Stamina, Theme.Sign.GoldLip, "bolt", Theme.Sign.GoldLip)
 	bolt:SetAttribute("Ink", VS.BoltInk)
 	bolt.ZIndex = 5
 	boltLip.ZIndex = 5
@@ -2778,6 +3001,11 @@ local function updateStamina(dt, now)
 		St.Charge = charge
 		Vitals.PaintKey(state, charge)
 	end
+	-- (Pitch 2 item 08 C) the dash's state in words beside the blocks (the stamina group)
+	local words = (UI.DashWords or VG.DASH_WORDS)[state]
+	if UI.DashText and words and UI.DashText.Text ~= words then
+		UI.DashText.Text = words
+	end
 	St.Ready = state == "ready"
 	St.Afford = afford
 end
@@ -3626,6 +3854,19 @@ local function hookCurrencies()
 			end))
 		end)
 	end
+	-- (Pitch 2 item 08 C) the vitals tab's trophies (a sync) and name (a display name change) follow (a no-op unless one moved)
+	if State and State.Changed then
+		pcall(function()
+			track(State.Changed:Connect(function()
+				guard("vitals tab", Vitals.Layout)
+			end))
+		end)
+	end
+	pcall(function()
+		track(player:GetPropertyChangedSignal("DisplayName"):Connect(function()
+			guard("vitals tab", Vitals.Layout)
+		end))
+	end)
 	-- snap every counter to its current value (or 0)
 	for _, entry in ipairs(CURRENCY_ORDER) do
 		local c = Cur[entry.Id]

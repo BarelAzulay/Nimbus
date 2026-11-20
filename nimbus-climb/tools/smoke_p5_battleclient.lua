@@ -1057,8 +1057,13 @@ S.client_p5result = guarded("client_p5result", function()
 		dd:finish({ Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "KO", Rewards = { Tokens = 60, Trophies = 25, Xp = 50 } })
 		H.step(4, 0.05)
 		res = H.find("Root.ResultCard")
-		T.check(H.shown(res) and H.hasText(res, "VICTORY") and H.hasText(res, "+60 Tokens") and H.hasText(res, "Lives left: 3"), "p5 result: VICTORY with the rewards and Lives left: 3")
-		T.check(res and res.AnchorPoint.X == 1 and res.AnchorPoint.Y == 1, "p5 result: bottom right on a wide screen (never centred)")
+		T.check(H.shown(res) and H.hasText(res, "VICTORY") and (function()
+		-- (kit-b Pitch 2 item 02 B: the reward is a chip, its number over its word; the lives a stat row, its value apart)
+		local chip, row = res and res:FindFirstChild("Chip_Tokens", true), res and res:FindFirstChild("Stat_Lives", true)
+		return chip and chip.Number.Text == "+60" and chip:FindFirstChild("Label") and chip.Label.Text == "Tokens" and row and row.Label.Text == "Lives left" and row.Value.Text == "3"
+	end)(), "p5 result: VICTORY with the rewards and Lives left: 3")
+		-- (kit-b Pitch 2 item 02 B: the approved card sits at the right edge, its middle; was the bottom right)
+	T.check(res and res.AnchorPoint.X == 1, "p5 result: the right edge on a wide screen (never centred)")
 		H.cleanup(BC, dd)
 	end
 	T.check(not BC.IsHudVisible() and BC.GetBattle() == nil, "p5 result: everything freed afterwards")
@@ -1102,8 +1107,17 @@ function H.phoneChecks(BC, label)
 	-- (wave 6: Cheer up! is part of the vitals card's bottom stack, right above the HP bar as the approved design puts it,
 	-- like the card itself; client_w6_cheer_mobile keeps it out of the screen middle and clear of every control)
 	local cheer, cheerGlow = H.find("Root.Cheer"), H.find("Root.CheerGlow")
+	-- (kit-b Pitch 2 item 06 A: a boss fight's top card is the approved "One strip", the mode, timer, LEAVE, the HP track
+	-- and every state pill in one card; the pitch's 844 x 390 card ends at 47% of the height. It may reach that deep, no
+	-- further: half the height on a landscape phone, 40% on a portrait one; the rest of the HUD keeps the centre clear)
+	local topCard = H.find("Root.TopCard")
+	if topCard and H.shown(topCard) then
+		local tr = H.rect(topCard)
+		local deep = Hh * (W > Hh and 0.5 or 0.4)
+		T.check(tr.y1 <= deep + 0.5, label .. ": the top card ends above " .. (W > Hh and "half" or "40%") .. " of the height", H.rectText(tr))
+	end
 	for _, o in ipairs(root and root:GetDescendants() or {}) do
-		local stack = (cheer and (o == cheer or o:IsDescendantOf(cheer))) or o == cheerGlow
+		local stack = (cheer and (o == cheer or o:IsDescendantOf(cheer))) or o == cheerGlow or (topCard and (o == topCard or o:IsDescendantOf(topCard)))
 		if not stack and ((o:IsA("GuiObject") and H.shown(o) and o.BackgroundTransparency < 1) or (o:IsA("TextLabel") and H.shown(o) and o.Text ~= "")) then
 			local r = H.rect(o)
 			if r.x1 - r.x0 > 2 and H.overlap(r, box) then

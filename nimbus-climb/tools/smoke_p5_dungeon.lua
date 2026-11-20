@@ -3117,7 +3117,11 @@ local function clientScenarios()
 		local ecx, ecy = (er.x0 + er.x1) / 2, (er.y0 + er.y1) / 2
 		T.check(not (ecx > W / 3 and ecx < 2 * W / 3 and ecy > H / 3 and ecy < 2 * H / 3), "p5dgn " .. tag .. ": the End card is not in the screen's centre third")
 		if phone then
-			T.check((er.x1 - er.x0) * (er.y1 - er.y0) <= 0.25 * W * H, "p5dgn phone: the End card covers <= 25% of the screen")
+			-- (Pitch 2 item 02 B, look review round 1: the End card is the battle's ONE result template now, and the owner's
+			-- approved phone card, 02_result_card_optB_phone.png, is 400 x 238 on 844 x 390 = 29% of the screen; was <= 25% for
+			-- the old, smaller notice)
+			T.check((er.x1 - er.x0) * (er.y1 - er.y0) <= 0.30 * W * H, "p5dgn phone: the End card covers <= 30% of the screen (the pitch's phone card)",
+				string.format("%.0fx%.0f on %dx%d = %.1f%%", er.x1 - er.x0, er.y1 - er.y0, W, H, 100 * (er.x1 - er.x0) * (er.y1 - er.y0) / (W * H)))
 		end
 		Mock.Click(C5.find(endCard, "OkButton"))
 		KC.advance(0.4)

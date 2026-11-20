@@ -1750,12 +1750,10 @@ local function clientScenarios()
 			end
 			T.check(found, "evo retreat client: the result card says the player sat out and gets no pet this time")
 			T.check(not raw, "evo retreat client: ...in words, never the raw flag")
-			local gold = false
-			for _, o in ipairs(card and card:GetDescendants() or {}) do
-				if (o:IsA("TextLabel") or o:IsA("TextButton")) and shownIn(o) and tostring(o.Text):find("Gold tier", 1, true) then
-					gold = true
-				end
-			end
+			-- (kit-b Pitch 2 item 02 B, the approved result template: the medal is the Tier stat row, "Tier" and "Gold" apart;
+			-- was the "Gold tier" tag)
+			local tierRow = card and card:FindFirstChild("Stat_Tier", true)
+			local gold = tierRow ~= nil and shownIn(tierRow) and tierRow:FindFirstChild("Value") ~= nil and tierRow.Value.Text == "Gold"
 			T.check(gold, "evo retreat client: ...and the medal's line is still there (the win was paid)")
 			H.cleanup(BC, d)
 		end

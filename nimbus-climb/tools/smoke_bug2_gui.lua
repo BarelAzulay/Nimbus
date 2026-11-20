@@ -204,7 +204,9 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 		local spot = Hh - 78 * k - 8
 		T.check(v.y1 <= spot + 1 and spot - v.y1 <= 24 and math.abs((v.x0 + v.x1) / 2 - W / 2) < 4,
 			label .. ": the vitals sit bottom-centre in the old hotbar's spot, centred", H.fmt(v) .. " / spot " .. string.format("%.0f", spot))
-		T.check(v.x1 - v.x0 <= 320 * k, label .. ": ...compact (<= 320 design px wide)", string.format("%.0f px", v.x1 - v.x0))
+		-- (kit-b Pitch 2 item 08 C, the approved "Name tab + stamp" card: 430 design px, its HP and stamina tracks one row each;
+		-- was 320)
+		T.check(v.x1 - v.x0 <= 430 * k + 0.5, label .. ": ...compact (<= 430 design px wide)", string.format("%.0f px", v.x1 - v.x0))
 		-- 5. what the HUD tells its neighbours (gui-area px)
 		local hud = p.Hud
 		local blt, bct, trb = hud:GetAttribute("BottomLeftTop"), hud:GetAttribute("BottomCentreTop"), hud:GetAttribute("TopRightBottom")

@@ -8715,15 +8715,18 @@ local function clientScenarios()
 						end
 						T.check(rows > 0 and #under == 0, fmt("%s: every tier's fact tags end before its Dare block (%d rows, %d under)", tag, rows, #under), table.concat(under, "; "))
 					end
-					-- (U9-7 look) the End card's totals are reward chips, each with its pixel icon, apart and inside the card
+					-- (U9-7 look) the End card's totals are reward chips, each with its pixel icon, apart and inside the card.
+					-- (Pitch 2 item 02 B, look review round 1) the End card is the battle's result template now: the chips are the
+					-- template's Chips (Chip_<key>, a well block with its 18 px pixel Icon and its Number), was a Totals row of
+					-- labels each with a LeadIcon
 					if f[1] == "dungeon:end" then
 						local card = gui:FindFirstChild("EndCard")
-						local totals = card and card:FindFirstChild("Totals", true)
+						local totals = card and card:FindFirstChild("Chips", true)
 						local chips, bad = {}, {}
 						for _, c in ipairs(totals and totals:GetChildren() or {}) do
-							if c:IsA("TextLabel") and U8.shown(c) then
+							if c.Name:match("^Chip_") and U8.shown(c) then
 								chips[#chips + 1] = c
-								if not (c:FindFirstChild("LeadIcon") and inside(U8.rect(c), U8.rect(card))) then
+								if not (c:FindFirstChild("Icon") and c:FindFirstChild("Number") and inside(U8.rect(c), U8.rect(card))) then
 									bad[#bad + 1] = c.Name .. " " .. U8.show(U8.rect(c))
 								end
 							end
@@ -8765,8 +8768,10 @@ local function clientScenarios()
 	-- member's Ready, the leader's Start, the side card's Accept; the Raid and Leaders pages, the run card, the End card and
 	-- the dare panel none (Leave and Dare are red, the End card's OK stone). The selected Arena tab is gold
 	S.arena_family_one_green = guarded("arena_family_one_green", function()
+		-- (Pitch 2 item 02 B, look review round 1) the dungeon's End card is the battle's result template: its OK, the full-width
+		-- green plank with the 5-part timer lip, is the card's one green action (it was a grey OK)
 		local WANT = { ["arena:duels"] = "Queue", ring = "Start", ["dungeon:lobby"] = "SoloButton", ["dungeon:party"] = "ReadyButton",
-			["dungeon:leader"] = "StartButton", ["arena:side"] = "Accept" }
+			["dungeon:leader"] = "StartButton", ["arena:side"] = "Accept", ["dungeon:end"] = "OkButton" }
 		local Sign = LoadingH.shared("Theme").Sign
 		U8.at(1920, 1080, false, "dock family one green", function(tag)
 			for _, f in ipairs(U97.FAMILY) do
@@ -9612,7 +9617,9 @@ local function clientScenarios()
 					l and fmt("%s on %s", hex(l.BackgroundColor3), lip and hex(lip.BackgroundColor3) or "no lip") or "no lit part")
 				local num = hud:FindFirstChild("HealthNumber", true)
 				local hr = U8.rect(hp)
-				T.check(num and U8.shown(num) and U8.rect(num).X >= hr.R + 4 and num.TextSize * U8.scaleOf(num) >= 24, tag .. ": ...its number right of the blocks (the pitch's .vr: icon, bar, number), >= 24 px",
+				-- (Pitch 2 item 08 C, restated: was >= 24 px on the stone) the number in the HP track behind its divider at the
+				-- pitch's 18 px (vitals_name_tab holds the track)
+				T.check(num and U8.shown(num) and U8.rect(num).X >= hr.R + 4 and num.TextSize * U8.scaleOf(num) >= 18, tag .. ": ...its number right of the blocks (the pitch's .vr: icon, bar, number), >= 18 px",
 					num and fmt("number from %.0f, blocks to %.0f", U8.rect(num).X, hr.R) or "no number")
 			end
 			-- the badges
@@ -9684,22 +9691,34 @@ local function clientScenarios()
 				end
 				local a, b = U8.rect(hpLast), U8.rect(stLast)
 				-- (kit-b gate U9 r4: 5 and 4 blocks stretched over one width drew two block widths) one grid: every stamina
-				-- block i has HP block i's left and right edges (one block width, one gap); the spare HP columns stay HP's
+				-- block i has HP block i's left and right edges (one block width, one gap); the spare HP columns stay HP's.
+				-- (Pitch 2 item 08 C, restated: the owner's approved pitch draws the HP blocks across the HP track and the
+				-- stamina blocks after the bolt in their own group, as vitals_C does) each row one block width and one gap of
+				-- its own, inside its own sunk well, and the two wells start and end on one line
 				local off = {}
-				for i = 1, math.min(5, n) do
-					local hb, sb = hp:FindFirstChild("Block" .. i), st:FindFirstChild("Block" .. i)
-					local hr, sr = hb and U8.rect(hb), sb and U8.rect(sb)
-					if not (hr and sr and math.abs(hr.X - sr.X) <= 0.5 and math.abs(hr.R - sr.R) <= 0.5) then
-						off[#off + 1] = fmt("%d: HP %s, stamina %s", i, hr and U8.show(hr) or "-", sr and U8.show(sr) or "-")
+				for _, row in ipairs({ { hp, 5 }, { st, n } }) do
+					local first = row[1]:FindFirstChild("Block1")
+					for i = 2, row[2] do
+						local prev, cur = row[1]:FindFirstChild("Block" .. (i - 1)), row[1]:FindFirstChild("Block" .. i)
+						local gap0 = U8.rect(row[1]:FindFirstChild("Block2")).X - U8.rect(first).R
+						if not (cur and math.abs(cur.AbsoluteSize.X - first.AbsoluteSize.X) <= 0.5 and math.abs(U8.rect(cur).X - U8.rect(prev).R - gap0) <= 0.5) then
+							off[#off + 1] = fmt("%s %d", row[1].Name, i)
+						end
 					end
 				end
-				T.check(#off == 0, fmt("%s: each stamina block sits under its HP block (one block width, one gap)", tag), table.concat(off, "; "))
+				local track, group = hud:FindFirstChild("HpTrack", true), hud:FindFirstChild("StaminaGroup", true)
+				local tr, gr = track and U8.rect(track), group and U8.rect(group)
+				T.check(#off == 0 and tr and gr and math.abs(tr.X - gr.X) <= 0.5 and math.abs(tr.R - gr.R) <= 0.5,
+					fmt("%s: each row one block width and one gap, the HP track and the stamina group on one line", tag),
+					table.concat(off, "; ") .. (tr and gr and (" | " .. U8.show(tr) .. " / " .. U8.show(gr)) or " | no wells"))
 				local touch = s[3] == true
 				T.check(not (touch and key and U8.shown(key)), fmt("%s: no dash key on a touch screen (the touch DASH button is the dash)", tag))
-				local kr, nr = key and U8.rect(key), U8.rect(num)
-				if key and U8.shown(key) and kr.Y >= a.B then -- (a compact card's key spans both rows at the right end)
-					T.check(math.abs(kr.R - nr.R) <= 1 and kr.X >= b.R + 2, fmt("%s: the dash key sits in the number's column", tag), U8.show(kr) .. " vs " .. U8.show(nr))
+				local kr = key and U8.rect(key)
+				if key and U8.shown(key) and gr then
+					-- (Pitch 2 item 08 C, restated: was the number's column) the key ends the stamina group, right of its blocks
+					T.check(kr.R <= gr.R + 0.5 and gr.R - kr.R <= 3 * U8.scaleOf(key) + 0.5 and kr.X >= b.R + 2, fmt("%s: the dash key ends the stamina group", tag), U8.show(kr) .. " in " .. U8.show(gr))
 				end
+				local _ = a
 			end)
 		end
 		LKC.flushErrors("vitals_stamina_blocks")
@@ -14180,6 +14199,618 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("results_card_kitb")
+	end)
+
+	-- (Pitch 2 battle lane) a one-line text's drawn width (screen px) at the face's real width, its padding included
+	local P2 = {}
+	function P2.textW(o)
+		local Theme = LoadingH.shared("Theme")
+		local text = tostring(o.Text):gsub("<[^>]->", "")
+		local role = o:GetAttribute("FontRole")
+		if role and Theme.CapsRoles[role] then
+			text = Theme.Caps(text)
+		end
+		local w = SmokeCommon.RealWidth(text, o.TextSize, Theme.FontOf(o), true) or Theme.MeasureLabel(o).X
+		local pad = o:FindFirstChildOfClass("UIPadding")
+		return (w + (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0)) * U8.scaleOf(o)
+	end
+	-- r inside box (1 px slack)
+	function P2.inside(r, box)
+		return r.X >= box.X - 1 and r.R <= box.R + 1 and r.Y >= box.Y - 1 and r.B <= box.B + 1
+	end
+	-- every shown one-line text under root that its box cuts: "name 'text' w in W"
+	function P2.tight(root)
+		local out = {}
+		for _, d in ipairs(root:GetDescendants()) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and U8.shown(d) and not d.TextWrapped and not d.TextScaled and d.AbsoluteSize.X > 0 then
+				local w = P2.textW(d)
+				if w + 1 > d.AbsoluteSize.X + 0.01 then
+					out[#out + 1] = fmt("%s %q %.0f in %.0f", d.Name, d.Text, w, d.AbsoluteSize.X)
+				end
+			end
+		end
+		return out
+	end
+
+	-- (Pitch 2 item 06, option A "One strip", .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/06_boss_bar_optA.png)
+	-- a boss raid's top card at the four grid sizes is ONE stone card: row 1 the RAID tag, the boss's name, the timer and
+	-- (a fighter) Leave inside the card; under it the HP as kit blocks (20; 14 on a phone) with the number "27.6K / 50K"
+	-- in the SAME sunk track behind a 2 px divider (no box of its own), and the state pills inside the card on every size
+	-- (the phone too, none dropped; a narrow card wraps them into rows). The boss head portrait reads its image id from
+	-- Config.BossHeads (a TextureIds key): with no id (today) no portrait and the track starts at the card's inner left;
+	-- with one, a 74 px pixelated portrait two rows tall left of the track. Worst case: a 20-character name and 1.01B
+	-- fit, every one-line text whole
+	S.battle_topcard_one_card = guarded("battle_topcard_one_card", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		if not T.check(_G.P5BattleH ~= nil and Config.BossHeads ~= nil, "top card: (setup) the battle driver is loaded and Config.BossHeads exists") then
+			return
+		end
+		local BC = U7.client("Controllers/BattleController")
+		local restore = U8.measureReal()
+		local function view(tag, worst)
+			local gui = U8.pg():FindFirstChild("NimbusBattle")
+			local Hd, B = BC._Hud, BC._St.battle
+			local top = gui and gui:FindFirstChild("TopCard", true)
+			local card = top and top:FindFirstChild("ModeCard")
+			if not T.check(B and B.boss and card and U8.shown(card), tag .. ": the raid's top card shows") then
+				return
+			end
+			if worst then
+				B.boss.name = "Twentycharacterboss1"
+				B.boss.maxHp, B.boss.hp = 1.01e9, 1.009e9
+				Hd.Rebuild()
+				LKC.advance(0.3)
+			end
+			local k = U8.scaleOf(card)
+			local cr = U8.rect(card)
+			T.check(sameColor(card.BackgroundColor3, Sign.Stone) and card:FindFirstChild("SignEdge") ~= nil and card:FindFirstChild("Lip") ~= nil,
+				tag .. ": one stone card in its wood edge with its lip", hex(card.BackgroundColor3))
+			-- one card: every shown part of the top card lies inside it (the card's own finish, F0's bevel lines on its edge
+			-- and its hard shadow, sits on and past the edge by design)
+			local function finish(d)
+				local cur = d
+				while cur and cur ~= top do
+					if cur.Name:match("^Finish") then
+						return true
+					end
+					cur = cur.Parent
+				end
+				return false
+			end
+			local out = {}
+			for _, d in ipairs(top:GetDescendants()) do
+				if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 and not finish(d) and (d.BackgroundTransparency < 1 or ((d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "")) then
+					if not P2.inside(U8.rect(d), cr) then
+						out[#out + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+					end
+				end
+			end
+			T.check(#out == 0, tag .. ": every part of the top card inside the one card", table.concat(out, "; ", 1, math.min(#out, 6)) .. " | card " .. U8.show(cr))
+			-- row 1: the RAID tag, the boss's name, the timer and Leave, all inside the card's top row
+			local rowB = cr.Y + 60 * k
+			local tagL = card:FindFirstChild("ModeTag", true)
+			local name = top:FindFirstChild("BossName", true)
+			local leave = gui.Root:FindFirstChild("LeaveButton")
+			-- (a card under 400 design px, a tall phone's right column, which the pitch did not draw: the tag steps aside so
+			-- the boss's name keeps its room)
+			local narrow = card.AbsoluteSize.X / k < 400
+			-- (look review round 1, minor: the 390x844 card dropped RAID altogether) a narrow card says RAID too: the first pill
+			local raidPill = top:FindFirstChild("RaidPill", true)
+			T.check(tagL and ((U8.shown(tagL) and tagL.Text == "RAID" and U8.rect(tagL).B <= rowB)
+				or (narrow and not U8.shown(tagL) and raidPill and U8.shown(raidPill) and raidPill.Text == "RAID" and P2.inside(U8.rect(raidPill), cr))),
+				tag .. ": the RAID tag in row 1 (a narrow card: the RAID pill)", tagL and tagL.Text or "missing")
+			T.check(name and U8.shown(name) and (name.Text == B.boss.name or (name.Text:sub(-3) == "..." and B.boss.name:find(name.Text:sub(1, -4), 1, true) == 1)) and U8.rect(name).B <= rowB,
+				tag .. ": the boss's name in row 1", name and name.Text or "missing")
+			T.check(Hd.timer and U8.shown(Hd.timer) and P2.inside(U8.rect(Hd.timer), cr) and U8.rect(Hd.timer).B <= rowB, tag .. ": the timer in row 1, inside the card")
+			T.check(leave and U8.shown(leave) and P2.inside(U8.rect(leave), cr) and U8.rect(leave).B <= rowB,
+				tag .. ": Leave inside the card's row 1 (was a plank of its own at the bottom right)", leave and U8.show(U8.rect(leave)) or "missing")
+			if Hd.m.Touch and leave then
+				-- a thumb's 44 px: the plank itself or its clear hit pad (HitFor) over it
+				local lr = U8.rect(leave)
+				local hit = leave:FindFirstChild("LeaveHit")
+				local hr = hit and U8.shown(hit) and hit:GetAttribute("HitFor") == "LeaveButton" and U8.rect(hit)
+				T.check((lr.R - lr.X >= 43.5 and lr.B - lr.Y >= 43.5) or (hr and hr.R - hr.X >= 43.5 and hr.B - hr.Y >= 43.5 and hr.X <= lr.X + 0.5 and hr.R >= lr.R - 0.5 and hr.Y <= lr.Y + 0.5 and hr.B >= lr.B - 0.5),
+					tag .. ": Leave is a 44 px thumb target on a touch screen (its hit pad)", hr and U8.show(hr) or U8.show(lr))
+			end
+			-- the HP: kit blocks and the number in ONE sunk track behind a 2 px divider
+			local hp = top:FindFirstChild("BossBar") and top.BossBar:FindFirstChild("Hp")
+			local blocks = hp and hp:FindFirstChild("Blocks")
+			local num = hp and hp:FindFirstChild("Text")
+			local div = hp and hp:FindFirstChild("Divider")
+			if T.check(hp and blocks and num and div and U8.shown(num), tag .. ": the HP track holds the blocks, the divider and the number") then
+				local hr, br, nr, dr = U8.rect(hp), U8.rect(blocks), U8.rect(num), U8.rect(div)
+				T.check(P2.inside(br, hr) and P2.inside(nr, hr) and br.R <= dr.X + 0.5 and dr.R <= nr.X + 0.5 and math.abs(dr.R - dr.X - 2 * k) < 0.6,
+					tag .. ": the number in the track behind the 2 px divider, right of the blocks", fmt("blocks %s | div %s | num %s in %s", U8.show(br), U8.show(dr), U8.show(nr), U8.show(hr)))
+				T.check(num.Text:match("^%d[%d%.]*[KMB]? / %d[%d%.]*[KMB]?$") ~= nil and (not worst or num.Text:match(" / 1%.01B$") ~= nil), tag .. ": the number reads 'HP / max' (short numbers)", num.Text)
+				-- 20 blocks (14 on a phone, the pitch's); a narrower track (a tall phone's right column, not drawn in the pitch)
+				-- fewer, never thin slivers: each block at least 12 design px wide
+				local n, thin = 0, 0
+				for _, c in ipairs(blocks:GetChildren()) do
+					if c.Name:match("^Block%d+$") then
+						n = n + 1
+						thin = thin + ((c.AbsoluteSize.X / k < 11.5) and 1 or 0)
+					end
+				end
+				local want = Hd.m.Compact and 14 or 20
+				T.check((n == want or (n < want and n >= 6 and card.AbsoluteSize.X / k < 400)) and thin == 0,
+					tag .. ": the HP is " .. want .. " chunky blocks (a narrow card fewer, each >= 12 px)", fmt("%d blocks, %d thin", n, thin))
+				-- no image id today: no portrait, the track starts at the card's inner left
+				local portrait = top:FindFirstChild("Portrait", true)
+				T.check((portrait == nil or not U8.shown(portrait)) and hr.X - cr.X <= 14 * k, tag .. ": no boss head id: no portrait, the card still whole (the track at its left)",
+					fmt("track from %.0f, card %.0f", hr.X, cr.X))
+			end
+			-- the pills: the element and the players on every size, each inside the card, none on another
+			local pills = top:FindFirstChild("Pills")
+			local shownPills = {}
+			for _, p in ipairs(pills and pills:GetChildren() or {}) do
+				if p:IsA("GuiObject") and U8.shown(p) then
+					shownPills[#shownPills + 1] = p
+				end
+			end
+			local names = {}
+			for _, p in ipairs(shownPills) do
+				names[p.Name] = true
+			end
+			T.check(names.Element and names.Players, tag .. ": the element and the players pills show (the phone too)", (function()
+				local t = {}
+				for nm in pairs(names) do
+					t[#t + 1] = nm
+				end
+				return table.concat(t, ", ")
+			end)())
+			local clash = {}
+			for i, p in ipairs(shownPills) do
+				if not P2.inside(U8.rect(p), cr) then
+					clash[#clash + 1] = p.Name .. " outside"
+				end
+				for j = i + 1, #shownPills do
+					if U8.overlap(U8.rect(p), U8.rect(shownPills[j])) then
+						clash[#clash + 1] = p.Name .. " on " .. shownPills[j].Name
+					end
+				end
+			end
+			T.check(#clash == 0, tag .. ": the pills inside the card, apart (wrapped where the card is narrow)", table.concat(clash, "; "))
+			local tight = P2.tight(top)
+			T.check(#tight == 0, tag .. ": every one-line text of the card fits its box", table.concat(tight, "; "))
+		end
+		for _, s in ipairs(U8.SIZES) do
+			for _, worst in ipairs({ false, true }) do
+				U8.at(s[1], s[2], s[3], "top card raid" .. (worst and " (20-char name, 1.01B)" or ""), function(tag)
+					U96.open("battle:raid")
+					view(tag, worst)
+					U96.close()
+				end)
+			end
+		end
+		-- with an uploaded head (an id in TextureIds): the 74 px pixelated portrait, two rows tall, left of the track
+		U8.at(1920, 1080, false, "top card portrait", function(tag)
+			local Hd = BC._Hud
+			local key = Config.BossHeads.storm_titan
+			Hd.Textures = { [tostring(key)] = 1234567 }
+			U96.open("battle:raid")
+			local gui = U8.pg():FindFirstChild("NimbusBattle")
+			local top = gui and gui:FindFirstChild("TopCard", true)
+			local portrait = top and top:FindFirstChild("Portrait", true)
+			local img = portrait and portrait:FindFirstChildWhichIsA("ImageLabel", true)
+			local hp = top and top:FindFirstChild("BossBar") and top.BossBar:FindFirstChild("Hp")
+			T.check(type(key) == "string" and portrait and U8.shown(portrait) and img and img.Image == "rbxassetid://1234567" and img.ResampleMode == Enum.ResamplerMode.Pixelated
+				and math.abs(portrait.AbsoluteSize.X / U8.scaleOf(portrait) - 74) < 0.6 and hp and U8.rect(hp).X >= U8.rect(portrait).R,
+				tag .. ": the boss head is a 74 px pixelated portrait left of the track", img and img.Image or "no portrait")
+			Hd.Textures = nil
+			U96.close()
+		end)
+		restore()
+		LKC.flushErrors("battle_topcard_one_card")
+	end)
+
+	-- (Pitch 2 item 02, option B "Count-up list", the owner's pick, .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/
+	-- 02_result_card_optB.png) every battle end is ONE template: a head band in the result's colour (VICTORY green, THE
+	-- BOSS WON red, RUN OVER / a dungeon violet) with its pixel icon and word; the mode - reason line (Body.Reason); stat rows,
+	-- each a label, its value right-aligned and a green tick block; equal reward chips (the number big, its icon 18 px, the
+	-- word under it on a wide screen); OK the card's whole width (Body.OkButton), its lip in 5 parts = the auto-close
+	-- timer. At the four grid sizes, a raid won / lost, a ring run, a dungeon knock-out and the worst case (a 20-character
+	-- boss name, 1.01B tokens and XP) all lay out with nothing out of the card, every one-line text whole, off the centre
+	S.result_card_template_b = guarded("result_card_template_b", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		if not T.check(_G.P5BattleH ~= nil, "result card B: (setup) the battle driver is loaded") then
+			return
+		end
+		local BC = U7.client("Controllers/BattleController")
+		local restore = U8.measureReal()
+		local VARIANTS = {
+			{ "raid won", "battle:raid", { Mode = "Raid", Outcome = "Win", Won = true, Reason = "BossDown",
+				Rewards = { Tokens = 640, Xp = 180, LevelUps = 3, Tier = "Gold", Share = 0.41 } }, "BOSS DEFEATED!", Sign.Grass },
+			{ "raid lost", "battle:raid", { Mode = "Raid", Outcome = "Loss", Won = false, Reason = "Timeout",
+				Rewards = { Tokens = 420, Xp = 180, LevelUps = 2, Tier = "Bronze", Share = 0.34 } }, "THE BOSS WON", Sign.Red },
+			{ "ring run", "battle:ring", { Mode = "Ring", Outcome = "Left", Won = false, Reason = "Forfeit", Round = 8,
+				Rewards = { Won = false, Final = true, Round = 8, Cash = 0, Xp = 0, LevelUps = 2, Run = { Wins = 8, Cash = 2571, Xp = 806, Tokens = 0, Round = 8, Start = 1, Best = 12 } } },
+				"RUN OVER", Sign.Violet },
+			{ "dungeon", "battle:dungeon", { Mode = "Dungeon", Outcome = "Loss", Won = false, Reason = "Wipe",
+				Rewards = { Dungeon = true, Tokens = 260, Xp = 120, Extra = { Floor = 3, Room = 2 } } }, "KNOCKED OUT", Sign.Violet },
+			{ "worst", "battle:raid", { Mode = "Raid", Outcome = "Win", Won = true, Reason = "BossDown",
+				Rewards = { Tokens = 1.01e9, Xp = 1.01e9, LevelUps = 12, Tier = "Helper", Share = 1 } }, "BOSS DEFEATED!", Sign.Grass, true },
+		}
+		local function finish(d)
+			local cur = d
+			while cur do
+				if cur.Name:match("^Finish") then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		local seenParts = {}
+		-- (look review round 1) a phone's OK is a thumb's 44 screen px tall: the plank itself or its clear hit pad (HitFor)
+		local function okTouch(ok)
+			local hTall = ok and ok.AbsoluteSize.Y or 0
+			for _, c in ipairs(ok and ok:GetChildren() or {}) do
+				if c:IsA("GuiButton") and c:GetAttribute("HitFor") == "OkButton" and U8.shown(c) then
+					hTall = math.max(hTall, c.AbsoluteSize.Y)
+				end
+			end
+			return hTall
+		end
+		-- (look review round 1, majors) a phone's card keeps off the game's DASH and RUN (wholly: DASH was hidden under the
+		-- card at 844x390), Roblox's jump button and thumbstick and the top-right stack; a landscape phone's card is the
+		-- pitch's top middle (02_result_card_optB_phone.png: 222..622 of 844, so over the screen's centre point: the fight
+		-- is over, and the old "off the centre" right-edge spot is what put it on DASH / RUN) with 8 px or more to the edge
+		local function phoneClear(tag, card, w, h)
+			local gui = card:FindFirstAncestorWhichIsA("ScreenGui")
+			local cr = U8.rect(card)
+			local portrait = h > w
+			local hits = U99.overTouch(gui, cr, portrait, nil)
+			T.check(#hits == 0, tag .. ": the card keeps off DASH, RUN, the jump button and the thumbstick", table.concat(hits, "; ") .. " | card " .. U8.show(cr))
+			local tr = U99.overTopRight(gui, cr)
+			T.check(#tr == 0, tag .. ": the card keeps off the top-right stack", table.concat(tr, "; "))
+			local scr = U8.srect and U8.srect(card) or cr
+			T.check(scr.X >= 8 - 0.5 and scr.R <= w - 8 + 0.5, tag .. ": 8 px or more from the screen's sides", U8.show(scr))
+			if not portrait then
+				T.check(math.abs((cr.X + cr.R) / 2 - w / 2) <= w * 0.12, tag .. ": a landscape phone's card is the pitch's top middle", U8.show(cr))
+			end
+		end
+		for _, s in ipairs(U8.SIZES) do
+			local at = s[3] and function(w, h, _, label, fn)
+				U99.atPhone(w, h, label, fn)
+			end or U8.at
+			for _, v in ipairs(VARIANTS) do
+				at(s[1], s[2], s[3], "result card B " .. v[1], function(tag)
+					U96.open(v[2])
+					local d = U96.d
+					local B = BC._St.battle
+					if not T.check(d and B, tag .. ": (setup) the fight is up") then
+						U96.close()
+						return
+					end
+					if v[6] and B.boss then
+						B.boss.name = "Twentycharacterboss1"
+					end
+					local payload = {}
+					for k2, x in pairs(v[3]) do
+						payload[k2] = x
+					end
+					payload.BattleId, payload.Spectator = d.id, false
+					LKC.toClient("BattleState", "End", payload, d.id)
+					LKC.advance(0.9)
+					local gui = U8.pg():FindFirstChild("NimbusBattle")
+					local card = gui and gui.Root:FindFirstChild("ResultCard")
+					if not T.check(card and U8.shown(card), tag .. ": the result card shows") then
+						U96.close()
+						return
+					end
+					local body = card:FindFirstChild("Body")
+					local k = U8.scaleOf(card)
+					local cr = U8.rect(card)
+					-- the template's parts, the same in every variant
+					local head = body and body:FindFirstChild("Head")
+					local title = head and head:FindFirstChild("Title")
+					local parts = {}
+					for _, n in ipairs({ "Head", "Reason", "Stats", "Chips", "OkButton" }) do
+						local p = body and body:FindFirstChild(n)
+						parts[#parts + 1] = (p and U8.shown(p)) and n or ("-" .. n)
+					end
+					local key = table.concat(parts, ",")
+					seenParts[key] = true
+					T.check(key == "Head,Reason,Stats,Chips,OkButton", tag .. ": one template: the head, the reason, the stats, the chips, OK", key)
+					T.check(head and sameColor(head.BackgroundColor3, v[5]) and title and title.Text == v[4] and head:FindFirstChild("Icon") ~= nil and U8.shown(head.Icon),
+						tag .. ": the head band in the result's colour with its icon and word", head and (hex(head.BackgroundColor3) .. " " .. (title and title.Text or "?")) or "no head")
+					-- stat rows: label, value right-aligned before a green tick block with its check
+					local stats = body and body:FindFirstChild("Stats")
+					local rows, badRow = 0, {}
+					for _, row in ipairs(stats and stats:GetChildren() or {}) do
+						if row.Name:match("^Stat_") and U8.shown(row) then
+							rows = rows + 1
+							local lab, val, tick = row:FindFirstChild("Label"), row:FindFirstChild("Value"), row:FindFirstChild("Tick")
+							if not (lab and val and tick and U8.shown(tick) and sameColor(tick.BackgroundColor3, Sign.Grass) and tick:FindFirstChild("Check")
+								and val.TextXAlignment == Enum.TextXAlignment.Right and U8.rect(val).R <= U8.rect(tick).X + 0.5 and U8.rect(lab).R <= U8.rect(val).X + 1) then
+								badRow[#badRow + 1] = row.Name
+							end
+						end
+					end
+					T.check(rows >= 2 and #badRow == 0, tag .. ": stat rows: label, the value right-aligned, a green tick each", fmt("%d rows; bad: %s", rows, table.concat(badRow, ", ")))
+					-- reward chips: equal widths, the number on each (the word under it on a wide screen)
+					local chips = body and body:FindFirstChild("Chips")
+					local widths, badChip = {}, {}
+					for _, c in ipairs(chips and chips:GetChildren() or {}) do
+						if c.Name:match("^Chip_") and U8.shown(c) then
+							widths[#widths + 1] = c.AbsoluteSize.X
+							local num = c:FindFirstChild("Number")
+							if not (num and U8.shown(num) and num.Text:match("^[%+%-]?%$?%d") and P2.inside(U8.rect(num), U8.rect(c))) then
+								badChip[#badChip + 1] = c.Name
+							end
+						end
+					end
+					local eq = #widths >= 1
+					for _, w in ipairs(widths) do
+						eq = eq and math.abs(w - widths[1]) <= 1
+					end
+					T.check(eq and #badChip == 0, tag .. ": equal reward chips, the number on each", fmt("%d chips; bad: %s", #widths, table.concat(badChip, ", ")))
+					-- OK: the card's whole inside width, green, its lip in 5 parts (the timer)
+					local ok = body and body:FindFirstChild("OkButton")
+					local lip = ok and ok:FindFirstChild("Lip")
+					local segs = 0
+					for _, c in ipairs(lip and lip:GetChildren() or {}) do
+						segs = segs + (c.Name:match("^Seg%d$") and 1 or 0)
+					end
+					T.check(ok and sameColor(ok.BackgroundColor3, Sign.Grass) and ok.AbsoluteSize.X >= cr.R - cr.X - 2 * 14 * k and segs == 5,
+						tag .. ": OK spans the card, green, its lip the 5-part timer", ok and fmt("%.0f of %.0f, %d parts", ok.AbsoluteSize.X, cr.R - cr.X, segs) or "no OK")
+					-- nothing out of the card; every one-line text whole; off the screen centre
+					local out = {}
+					for _, dd in ipairs(card:GetDescendants()) do
+						if dd:IsA("GuiObject") and U8.shown(dd) and dd.AbsoluteSize.X > 0 and not finish(dd) and (dd.BackgroundTransparency < 1 or ((dd:IsA("TextLabel") or dd:IsA("TextButton")) and dd.Text ~= "")) then
+							if not P2.inside(U8.rect(dd), cr) then
+								out[#out + 1] = dd.Name .. " " .. U8.show(U8.rect(dd))
+							end
+						end
+					end
+					T.check(#out == 0, tag .. ": nothing sticks out of the card", table.concat(out, "; ", 1, math.min(#out, 6)) .. " | card " .. U8.show(cr))
+					local tight = P2.tight(card)
+					T.check(#tight == 0, tag .. ": every one-line text of the card fits its box", table.concat(tight, "; "))
+					local cx, cy = s[1] / 2, s[2] / 2
+					if s[3] then
+						T.check(okTouch(ok) >= 44 - 0.5, tag .. ": OK is a thumb's 44 px tall (the plank or its hit pad)", fmt("%.1f px", okTouch(ok)))
+						T.check(cr.X >= -0.5 and cr.R <= s[1] + 0.5 and cr.B <= s[2] + 0.5, tag .. ": on the screen", U8.show(cr))
+						phoneClear(tag, card, s[1], s[2])
+					else
+						T.check(not (cr.X <= cx and cx <= cr.R and cr.Y <= cy and cy <= cr.B) and cr.X >= -0.5 and cr.R <= s[1] + 0.5 and cr.B <= s[2] + 0.5,
+							tag .. ": on the screen, off its centre", U8.show(cr))
+					end
+					U96.close()
+				end)
+			end
+			-- (look review round 1, major) the dungeon's End card (DungeonController, NimbusDungeonRun.EndCard) is the SAME
+			-- template (the pitch draws "RUN OVER (dungeon)" on it): the head band (a cleared floor green, a lost run violet), the
+			-- reason line (a landscape phone may drop it for room), stat rows with ticks, equal chips, the notes (the first clear,
+			-- the unlock) and the full-width green OK with its 5-part timer lip
+			local DUNGEON = {
+				{ "dungeon cleared", { Floor = 3, Name = "Flooded Vaults", Cleared = true, Reason = "Cleared", Room = 4,
+					Totals = { Cash = 1630, Tokens = 170, Xp = 360, Gems = 0 }, FirstClear = { Tokens = 900, Gems = 5 }, Unlocked = 4, NewBest = 3 }, "FLOOR 3 CLEARED!", Sign.Grass },
+				{ "dungeon run over", { Floor = 5, Name = "Ember Forge", Cleared = false, Reason = "Wipe", Room = 3,
+					Totals = { Cash = 520, Tokens = 52, Xp = 160, Gems = 0 } }, "RUN OVER", Sign.Violet },
+			}
+			for _, dv in ipairs(DUNGEON) do
+				at(s[1], s[2], s[3], "result card B " .. dv[1], function(tag)
+					LKC.toClient("DungeonState", "End", dv[2])
+					LKC.advance(0.8)
+					local rg = U8.pg():FindFirstChild("NimbusDungeonRun")
+					local card = rg and rg:FindFirstChild("EndCard")
+					if not T.check(card and U8.shown(card), tag .. ": the End card shows") then
+						return
+					end
+					local body = card:FindFirstChild("Body")
+					local cr = U8.rect(card)
+					local k = U8.scaleOf(card)
+					local head = body and body:FindFirstChild("Head")
+					local title = head and head:FindFirstChild("Title")
+					local parts = {}
+					for _, n in ipairs({ "Head", "Reason", "Stats", "Chips", "OkButton" }) do
+						local p = body and body:FindFirstChild(n)
+						if (p and U8.shown(p)) or not (n == "Reason" and s[3] and s[1] > s[2]) then
+							parts[#parts + 1] = (p and U8.shown(p)) and n or ("-" .. n)
+						end
+					end
+					local key = table.concat(parts, ",")
+					T.check(key == "Head,Reason,Stats,Chips,OkButton" or (s[3] and s[1] > s[2] and key == "Head,Stats,Chips,OkButton"),
+						tag .. ": the battle's template: the head, the reason, the stats, the chips, OK", key)
+					T.check(head and sameColor(head.BackgroundColor3, dv[4]) and title and title.Text == dv[3] and head:FindFirstChild("Icon") ~= nil,
+						tag .. ": the head band in the result's colour with its icon and word", head and (hex(head.BackgroundColor3) .. " " .. (title and title.Text or "?")) or "no head")
+					local rows, badRow = 0, {}
+					for _, row in ipairs(body and body:FindFirstChild("Stats") and body.Stats:GetChildren() or {}) do
+						if row.Name:match("^Stat_") and U8.shown(row) then
+							rows = rows + 1
+							local tick = row:FindFirstChild("Tick")
+							if not (tick and U8.shown(tick) and sameColor(tick.BackgroundColor3, Sign.Grass)) then
+								badRow[#badRow + 1] = row.Name
+							end
+						end
+					end
+					T.check(rows >= 2 and #badRow == 0, tag .. ": stat rows, a green tick each", fmt("%d rows; bad: %s", rows, table.concat(badRow, ", ")))
+					local widths = {}
+					for _, c in ipairs(body and body:FindFirstChild("Chips") and body.Chips:GetChildren() or {}) do
+						if c.Name:match("^Chip_") and U8.shown(c) then
+							widths[#widths + 1] = c.AbsoluteSize.X
+						end
+					end
+					local eq = #widths >= 3
+					for _, w in ipairs(widths) do
+						eq = eq and math.abs(w - widths[1]) <= 1
+					end
+					T.check(eq, tag .. ": the totals as equal reward chips", fmt("%d chips", #widths))
+					local ok = body and body:FindFirstChild("OkButton")
+					local segs = 0
+					for _, c in ipairs(ok and ok:FindFirstChild("Lip") and ok.Lip:GetChildren() or {}) do
+						segs = segs + (c.Name:match("^Seg%d$") and 1 or 0)
+					end
+					T.check(ok and sameColor(ok.BackgroundColor3, Sign.Grass) and ok.AbsoluteSize.X >= cr.R - cr.X - 2 * 14 * k and segs == 5,
+						tag .. ": OK spans the card, green, its lip the 5-part timer", ok and fmt("%.0f of %.0f, %d parts", ok.AbsoluteSize.X, cr.R - cr.X, segs) or "no OK")
+					if dv[2].FirstClear then
+						local fc, un = body:FindFirstChild("FirstClear"), body:FindFirstChild("Unlocked")
+						T.check(fc and U8.shown(fc) and fc.Text:find("+900", 1, true) and un and U8.shown(un) and un.Text:find("Floor 4 unlocked", 1, true),
+							tag .. ": the first clear and the unlock as notes", (fc and fc.Text or "no FirstClear") .. " | " .. (un and un.Text or "no Unlocked"))
+					end
+					local out = {}
+					for _, dd in ipairs(card:GetDescendants()) do
+						if dd:IsA("GuiObject") and U8.shown(dd) and dd.AbsoluteSize.X > 0 and not finish(dd) and (dd.BackgroundTransparency < 1 or ((dd:IsA("TextLabel") or dd:IsA("TextButton")) and dd.Text ~= "")) then
+							if not P2.inside(U8.rect(dd), cr) then
+								out[#out + 1] = dd.Name .. " " .. U8.show(U8.rect(dd))
+							end
+						end
+					end
+					T.check(#out == 0, tag .. ": nothing sticks out of the card", table.concat(out, "; ", 1, math.min(#out, 6)) .. " | card " .. U8.show(cr))
+					local tight = P2.tight(card)
+					T.check(#tight == 0, tag .. ": every one-line text of the card fits its box", table.concat(tight, "; "))
+					if s[3] then
+						T.check(okTouch(ok) >= 44 - 0.5, tag .. ": OK is a thumb's 44 px tall (the plank or its hit pad)", fmt("%.1f px", okTouch(ok)))
+					end
+					if ok then
+						Mock.Click(ok)
+						LKC.advance(0.4)
+					end
+					T.check(not U8.shown(card), tag .. ": OK closes the End card")
+				end)
+			end
+		end
+		-- (look review round 1, minor) a duel that moved no trophies says so in a muted note, not a "+0" chip on a VICTORY, and
+		-- a duel's card shows the trophy total as a stat row (Rewards.TrophiesTotal, sent by BattleService)
+		do
+			local Hd = BC._Hud
+			local model = Hd and Hd.ResultModel({ Mode = "Duel", Fighter = true, lives = 3, renderT = 64, list = {} },
+				{ Mode = "Duel", Outcome = "Win", Won = true, Reason = "KO", Rewards = { Tokens = 60, Xp = 50, Trophies = 0, TrophiesTotal = 240 } })
+			local chipKeys, statKeys, noteText = {}, {}, {}
+			for _, c in ipairs(model and model.chips or {}) do
+				chipKeys[c[1]] = c[3]
+			end
+			for _, st in ipairs(model and model.stats or {}) do
+				statKeys[st[1]] = st[4]
+			end
+			for _, n in ipairs(model and model.notes or {}) do
+				noteText[#noteText + 1] = n[1] .. (n[2] and " (muted)" or "")
+			end
+			T.check(model and chipKeys.Trophies == nil and table.concat(noteText, "|"):find("[Tt]roph.-%(muted%)") ~= nil,
+				"result card B duel: no '+0 Trophies' chip on a VICTORY; a muted note says no trophies moved", table.concat(noteText, " | "))
+			T.check(model and statKeys.Trophies == "240", "result card B duel: the trophy total as a stat row", tostring(statKeys.Trophies))
+		end
+		restore()
+		LKC.flushErrors("result_card_template_b")
+	end)
+
+	-- (Pitch 2 item 08, option C "Name tab + stamp", .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/08_vitals_optC.png)
+	-- at the four grid sizes the vitals card keeps its bottom-centre spot and gains a wood tab tucked behind its top edge (the
+	-- tab above the card, its foot under the card's top, drawn behind it) with the player's stamp (the display name's first
+	-- letter on a 30 px block in one of the 5 kit colours by UserId % 5), the display name and the trophies tag (the pixel
+	-- trophy, Theme.Short of Battle.Trophies); the body is the HP track (its blocks and the number inside ONE sunk track, a
+	-- divider between them) and the stamina group (the bolt, the stamina blocks and, on a desktop, the dash key inside one
+	-- sunk well); no level anywhere on the card. Worst case: a 20-character name and 1.23M trophies fit the tab, the tab fits
+	-- the card, every one-line text fits its box
+	S.vitals_name_tab = guarded("vitals_name_tab", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local lp = game:GetService("Players").LocalPlayer
+		local STAMPS = { Sign.Sky, Sign.Grass, Sign.Gold, Sign.Red, Sign.Violet }
+		local restore = U8.measureReal()
+		local oldName = lp.DisplayName
+		for _, s in ipairs(U8.SIZES) do
+			for _, case in ipairs({ { "SkyClimber", 240, "240" }, { "AVeryLongClimberName", 1234567, "1.23M" } }) do
+				U8.at(s[1], s[2], s[3], "vitals name tab (" .. case[1] .. ")", function(tag)
+					lp.DisplayName = case[1]
+					U8.feed(nil, nil, nil, nil, { Battle = { Trophies = case[2], TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} } })
+					LKC.advance(1)
+					local hud = U8.pg():FindFirstChild("NimbusHud")
+					local vitals = hud and hud:FindFirstChild("Vitals", true)
+					if not T.check(vitals ~= nil and U8.shown(vitals), tag .. ": the vitals card shows") then
+						return
+					end
+					local card = vitals:FindFirstChild("Card", true)
+					local tab = vitals:FindFirstChild("NameTab", true)
+					if not T.check(card ~= nil and tab ~= nil and U8.shown(tab), tag .. ": the card has its name tab") then
+						return
+					end
+					local cr, tr, vr = U8.rect(card), U8.rect(tab), U8.rect(vitals)
+					T.check(tr.Y < cr.Y - 8 and tr.B > cr.Y and tab.ZIndex < card.ZIndex and sameColor(tab.BackgroundColor3, Sign.Wood),
+						tag .. ": a wood tab above the card, its foot tucked behind the card's top edge", U8.show(tr) .. " / card " .. U8.show(cr))
+					T.check(P2.inside(tr, vr) and P2.inside(cr, vr) and tr.X >= cr.X and tr.R <= cr.R, tag .. ": the tab and the card inside the vitals slot, the tab within the card's width",
+						U8.show(tr) .. " / " .. U8.show(cr) .. " in " .. U8.show(vr))
+					local stamp = tab:FindFirstChild("Stamp", true)
+					local letter = stamp and stamp:FindFirstChild("Letter")
+					local want = STAMPS[(lp.UserId % 5) + 1]
+					T.check(stamp and letter and letter.Text == case[1]:sub(1, 1):upper() and sameColor(stamp.BackgroundColor3, want)
+						and math.abs(stamp.AbsoluteSize.X / U8.scaleOf(stamp) - 30) < 0.6,
+						tag .. ": the stamp is the name's first letter on a 30 px block in the kit colour of UserId % 5",
+						stamp and fmt("%s on %s (%d)", letter and letter.Text or "-", hex(stamp.BackgroundColor3), lp.UserId % 5) or "no stamp")
+					local name = tab:FindFirstChild("PlayerName", true)
+					T.check(name and U8.shown(name) and (name.Text == case[1] or (name.Text:sub(-3) == "..." and case[1]:find(name.Text:sub(1, -4), 1, true) == 1)),
+						tag .. ": the tab names the player (DisplayName)", name and name.Text or "missing")
+					local trophies = tab:FindFirstChild("Trophies", true)
+					local tv = trophies and trophies:FindFirstChild("Value")
+					local icon = nil
+					for _, d in ipairs(trophies and trophies:GetDescendants() or {}) do
+						if d:GetAttribute("PixelIcon") == "trophy" then
+							icon = d
+						end
+					end
+					T.check(tv and tv.Text == case[3] and icon ~= nil and U8.shown(icon), tag .. ": the trophies tag: the pixel trophy and Theme.Short(Battle.Trophies)",
+						tv and tv.Text or "missing")
+					local parts = {}
+					for _, p in ipairs({ stamp, name, trophies }) do
+						if p and not P2.inside(U8.rect(p), tr) then
+							parts[#parts + 1] = p.Name .. " " .. U8.show(U8.rect(p))
+						end
+					end
+					T.check(#parts == 0, tag .. ": the stamp, the name and the trophies inside the tab", table.concat(parts, "; ") .. " | tab " .. U8.show(tr))
+					-- the HP track: the blocks and the number in one sunk track, a divider between them
+					local track = vitals:FindFirstChild("HpTrack", true)
+					local blocks, num = vitals:FindFirstChild("HealthBar", true), vitals:FindFirstChild("HealthNumber", true)
+					local divider = track and track:FindFirstChild("Divider", true)
+					if T.check(track and blocks and num and divider and U8.shown(track), tag .. ": the HP track with its blocks, divider and number") then
+						local kr, br, nr, dr = U8.rect(track), U8.rect(blocks), U8.rect(num), U8.rect(divider)
+						T.check(P2.inside(br, kr) and P2.inside(nr, kr) and br.R <= dr.X + 0.5 and dr.R <= nr.X + 0.5 and P2.inside(kr, cr),
+							tag .. ": the number in the HP track behind the divider, right of the blocks (the track inside the card)",
+							fmt("blocks %s | divider %s | number %s in %s", U8.show(br), U8.show(dr), U8.show(nr), U8.show(kr)))
+						T.check(num.Text:match("^%d") ~= nil, tag .. ": the number shows the HP", num.Text)
+					end
+					-- the stamina group: the bolt, the blocks and (desktop) the dash key in one sunk well
+					local group = vitals:FindFirstChild("StaminaGroup", true)
+					local st, key = vitals:FindFirstChild("StaminaBar", true), vitals:FindFirstChild("DashKey", true)
+					if T.check(group and st and U8.shown(group), tag .. ": the stamina group shows") then
+						local gr = U8.rect(group)
+						local bolt = nil
+						for _, d in ipairs(group:GetDescendants()) do
+							if d:GetAttribute("PixelIcon") == "bolt" and U8.shown(d) then
+								bolt = d
+							end
+						end
+						T.check(P2.inside(U8.rect(st), gr) and bolt ~= nil and P2.inside(U8.rect(bolt), gr) and P2.inside(gr, cr),
+							tag .. ": the bolt and the stamina blocks inside the group (inside the card)", U8.show(U8.rect(st)) .. " in " .. U8.show(gr))
+						if not s[3] then
+							T.check(key and U8.shown(key) and P2.inside(U8.rect(key), gr) and U8.rect(key).X >= U8.rect(st).R, tag .. ": the dash key ends the stamina group",
+								key and U8.show(U8.rect(key)) or "no key")
+						end
+						-- (look review round 1, minor: the right half of a phone's well was empty) the dash's state in words after
+						-- the blocks on every size (the phone mock-up's "Dash ready"; the shorter set where the longest will not fit)
+						local words = group:FindFirstChild("DashState")
+						T.check(words and U8.shown(words) and words.Text ~= "" and P2.inside(U8.rect(words), gr) and U8.rect(words).X >= U8.rect(st).R,
+							tag .. ": the dash's state in words after the stamina blocks", words and (words.Text .. " " .. U8.show(U8.rect(words)) .. " in " .. U8.show(gr) .. ", blocks " .. U8.show(U8.rect(st))) or "no DashState")
+					end
+					-- no level on the card (the game has no player level; Battle.Trophies is the tag)
+					local level = {}
+					for _, d in ipairs(vitals:GetDescendants()) do
+						if (d:IsA("TextLabel") or d:IsA("TextButton")) and U8.shown(d) and (d.Text:match("^Lv") or d.Text:lower():find("level", 1, true)) then
+							level[#level + 1] = d.Name .. " " .. d.Text
+						end
+					end
+					T.check(#level == 0, tag .. ": no level shown on the card", table.concat(level, ", "))
+					local tight = P2.tight(vitals)
+					T.check(#tight == 0, tag .. ": every one-line text fits its box", table.concat(tight, "; "))
+				end)
+			end
+		end
+		lp.DisplayName = oldName
+		U8.feed()
+		restore()
+		LKC.flushErrors("vitals_name_tab")
 	end)
 
 	-- the tutorial card on the Signboard kit (1920x1080, step 5 of a menu target): the wood frame round the stone body and its
