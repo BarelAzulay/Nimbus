@@ -786,7 +786,13 @@ local function indexWindowChecks(PetCatalog)
 			end
 		end
 		local want = found .. "/" .. #group.Pets
-		if not tile or findText(want, tile) == nil then
+		-- (Pitch 2 item 12_index_badge B "Reward on the row") a complete group's count gives way to its waiting reward's
+		-- gold chip ("+5K") or, once claimed, the grass check
+		local complete = found >= #group.Pets
+		local chip = tile and tile:FindFirstChild("Reward", true)
+		local check = tile and tile:FindFirstChild("Claimed", true)
+		local rowOk = complete and ((chip and isShown(chip) and tostring(chip.Text):sub(1, 1) == "+") or (check and isShown(check)))
+		if not tile or (findText(want, tile) == nil and not rowOk) then
 			tilesOk = false
 			missing[#missing + 1] = group.Id .. " (" .. want .. ")"
 		end

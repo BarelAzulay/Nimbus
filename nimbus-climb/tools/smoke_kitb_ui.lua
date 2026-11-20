@@ -6603,6 +6603,126 @@ local function clientScenarios()
 		LKC.flushErrors("elements_window")
 	end)
 
+	-- (Pitch 2 item 12_index_badge, option B "Reward on the row"; the owner's shot 12: the red "!" / green check badge sat
+	-- on the tab's title row and poked 6 px over the tab, and a strip tab at the strip's end showed cut, "0 fu...") at the
+	-- four grid sizes, with one group's reward waiting (the first group complete) and one claimed (the second): no tab
+	-- shows a badge; the waiting tab's count gives way to a gold token chip "+<reward>" (Reward, the token icon on it) and
+	-- the claimed tab's to a grass check (Claimed), each whole inside its tab and clear of its name; the strip's tabs show
+	-- whole at rest, also after a swipe that stopped half way (the strip snaps to whole tabs) and its page dots show; in
+	-- the column layout the Elements plank sits in the header band, left of the X and clear of the title
+	S.index_badge_clear = guarded("index_badge_clear", function()
+		local Menu = U7.client("Controllers/MenuController")
+		local PetCatalog = LoadingH.shared("PetCatalog")
+		local Config = LoadingH.shared("Config")
+		local Theme = LoadingH.shared("Theme")
+		local groups = (PetCatalog and type(PetCatalog.IndexGroups) == "function") and PetCatalog.IndexGroups() or {}
+		local g1, g2 = groups[1], groups[2]
+		if not T.check(g1 ~= nil and g2 ~= nil, "index badge: the catalog has two Index groups") then
+			return
+		end
+		local disc = {}
+		for _, key in ipairs(U8.KEYS) do
+			disc[key] = true
+		end
+		for _, g in ipairs({ g1, g2 }) do
+			for _, def in ipairs(g.Pets) do
+				disc[def.Id] = true
+			end
+		end
+		local reward = g1.Reward and g1.Reward.Tokens or (Config.Index and Config.Index.Rewards and Config.Index.Rewards[g1.Id] and Config.Index.Rewards[g1.Id].Tokens) or 0
+		local wantChip = "+" .. Theme.Short(reward)
+		local function inside(a, b)
+			return a.X >= b.X - 0.5 and a.R <= b.R + 0.5 and a.Y >= b.Y - 0.5 and a.B <= b.B + 0.5
+		end
+		-- a name's drawn text: its box's width, one TextSize tall in the middle of the box (the box is 4 px taller)
+		local function drawn(label)
+			if not label then
+				return { X = 0, R = 0, Y = 0, B = 0 }
+			end
+			local r = U8.rect(label)
+			local half = label.TextSize * U8.scaleOf(label) / 2
+			local cy = (r.Y + r.B) / 2
+			return { X = r.X, R = r.R, Y = cy - half, B = cy + half }
+		end
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "index badge", function(tag)
+				U8.feed(nil, nil, nil, nil, { Discovered = disc, IndexClaimed = { [g2.Id] = true } })
+				Menu.Open("Index")
+				LKC.advance(1)
+				local index = U8.pg():FindFirstChild("NimbusIndex")
+				local list = index and index:FindFirstChild("GroupList", true)
+				if not T.check(list ~= nil, tag .. ": the tab strip (GroupList) exists") then
+					return
+				end
+				local badges = {}
+				for _, d in ipairs(list:GetDescendants()) do
+					if d.Name == "Badge" and d:IsA("GuiObject") and U8.shown(d) then
+						badges[#badges + 1] = d.Parent.Name
+					end
+				end
+				T.check(#badges == 0, tag .. ": no tab shows a badge (the reward sits on the row)", table.concat(badges, ", "))
+				local function partOf(group, name)
+					local tab = list:FindFirstChild("Group_" .. group.Id, true)
+					return tab, tab and tab:FindFirstChild(name, true)
+				end
+				-- the waiting reward: the gold chip in the count's place
+				local t1, chip = partOf(g1, "Reward")
+				local name1 = t1 and t1:FindFirstChild("GroupName", true)
+				local count1 = t1 and t1:FindFirstChild("Progress")
+				local okChip = chip and U8.shown(chip) and chip.Text == wantChip and chip:FindFirstChild("LeadIcon", true) ~= nil
+				T.check(okChip and inside(U8.rect(chip), U8.rect(t1)) and not U8.overlap(U8.rect(chip), drawn(name1))
+					and not (count1 and U8.shown(count1)), tag .. ": the waiting reward reads " .. wantChip .. " on a gold token chip, whole in its tab, clear of the name, the count gone",
+					chip and fmt("'%s' %s in %s, count %s", chip.Text, U8.show(U8.rect(chip)), U8.show(U8.rect(t1)), tostring(count1 and U8.shown(count1))) or "no chip")
+				-- the claimed group: a grass check in the count's place
+				local t2, done = partOf(g2, "Claimed")
+				local name2 = t2 and t2:FindFirstChild("GroupName", true)
+				local count2 = t2 and t2:FindFirstChild("Progress")
+				T.check(done ~= nil and U8.shown(done) and inside(U8.rect(done), U8.rect(t2)) and not U8.overlap(U8.rect(done), drawn(name2))
+					and not (count2 and U8.shown(count2)), tag .. ": the claimed group shows a grass check, whole in its tab, clear of the name, the count gone",
+					done and fmt("%s in %s", U8.show(U8.rect(done)), U8.show(U8.rect(t2))) or "no check")
+				local column = list.ScrollingDirection == Enum.ScrollingDirection.Y
+				if column then
+					-- the column layout: the Elements plank in the header, by the X
+					local panel = index:FindFirstChild("IndexPanel", true)
+					local head = panel and panel:FindFirstChild("TitleBar", true)
+					local plank = index:FindFirstChild("Elements", true)
+					local close = panel and panel:FindFirstChild("Close", true)
+					local title = head and head:FindFirstChild("Title", true)
+					local pr = plank and U8.rect(plank)
+					T.check(plank ~= nil and head ~= nil and U8.shown(plank) and inside(pr, U8.rect(head)) and close ~= nil and pr.R <= U8.rect(close).X + 0.5
+						and not (title and U8.overlap(pr, { X = U8.rect(title).X, R = U8.rect(title).X + title.TextBounds.X, Y = U8.rect(title).Y, B = U8.rect(title).B })),
+						tag .. ": the Elements plank sits in the header band, left of the X and clear of the title",
+						pr and fmt("plank %s, head %s", U8.show(pr), head and U8.show(U8.rect(head)) or "-") or "no plank")
+				else
+					-- the strip: a swipe that stops half way snaps back to whole tabs; the page dots say there is more
+					local view = U8.rect(list)
+					list.CanvasPosition = Vector2.new(37, 0)
+					LKC.advance(0.8)
+					local cut = {}
+					for _, tab in ipairs(list:GetChildren()) do
+						if tab.Name:match("^Group_") and tab:IsA("GuiButton") and U8.shown(tab) then
+							local r = U8.rect(tab)
+							if U8.overlap(r, view) and not inside(r, view) then
+								cut[#cut + 1] = tab.Name .. " " .. U8.show(r)
+							end
+						end
+					end
+					T.check(#cut == 0, tag .. ": after a swipe that stopped half way every tab in view shows whole (the strip snaps)",
+						table.concat(cut, "; ") .. " | view " .. U8.show(view) .. ", canvas " .. tostring(list.CanvasPosition.X))
+					local dots = index:FindFirstChild("PageDots", true)
+					local n = 0
+					for _, d in ipairs(dots and dots:GetChildren() or {}) do
+						if d:IsA("GuiObject") and U8.shown(d) then
+							n = n + 1
+						end
+					end
+					T.check(dots ~= nil and U8.shown(dots) and n >= 2, tag .. ": the strip's page dots show (" .. n .. ")")
+				end
+			end)
+		end
+		LKC.flushErrors("index_badge_clear")
+	end)
+
 	-- (U8; finding 15) no neon glow in the U8 families: the lobby HUD (NimbusHud, the top-bar pill, the menu tiles, the gift, the
 	-- boost chips under it), the
 	-- Pets window and the Index. No glow ring (a NeonKit Glow frame or GlowStroke shown), no gloss gradient (a UIGradient on

@@ -1217,6 +1217,23 @@ scenario("menu", function(window, tab, action, key)
 	if lower == "shop" or lower == "store" then
 		fail("menu:Shop is gone (lobby-shop Task 22: the Shop left the menu): use shop[:<tab>] or shop:restricted")
 	end
+	if lower == "index" and action == "rewards" then
+		-- (Pitch 2 item 12_index_badge B) menu:Index:<Tab>:rewards: a waiting reward and a claimed group on the tabs (the
+		-- Common group complete, the Uncommon group complete and claimed)
+		local snap = snapshot()
+		local PetCatalog = req("shared/PetCatalog", true)
+		for _, g in ipairs(PetCatalog and PetCatalog.IndexGroups() or {}) do
+			if g.Id == "Common" or g.Id == "Uncommon" then
+				for _, def in ipairs(g.Pets) do
+					snap.Discovered[def.Id] = true
+				end
+			end
+		end
+		snap.IndexClaimed = { Uncommon = true }
+		toClient("ProfileSync", snap)
+		advance(0.5)
+		action = nil
+	end
 	local args = nil
 	if (tab and tab ~= "") or (action and action ~= "") or (key and key ~= "") then
 		args = {}
