@@ -1015,6 +1015,262 @@ local function clientScenarios()
 		KC.flushErrors("client_evo_buttons_mobile")
 	end)
 
+	------------------------------------------------------------------------------------------------
+	-- keys_three_buttons (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20; the approved mock
+	-- .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/repitch/01b_optC*.png, its positions in repitch_01b.py layout_C):
+	-- on touch the right thumb has exactly three named buttons, MOVE (the element on a tap; a full meter turns it gold with a
+	-- HOLD tag and a hold fires the special), DASH and RUN, each >= 44 px, clear of Roblox's jump button and stick, none moves
+	-- or hides from one fight state to the next; TARGET is automatic (no button; a tap on an enemy locks it, a LOCKED marker
+	-- over it); CHEER and BACK sit beside the helper portraits (a wide phone) / in a row under them (a tall one); the middle
+	-- of a wide screen stays clear
+	------------------------------------------------------------------------------------------------
+	S.keys_three_buttons = guarded("keys_three_buttons", function()
+		local BC = H.moduleAt("client", "Controllers/BattleController")
+		local Theme = H.moduleAt("shared", "Theme")
+		if not T.check(BC ~= nil and Theme ~= nil and BC._Hud ~= nil and BC._St ~= nil, "keys: BattleController loads") then
+			return
+		end
+		local err0 = #Mock.Errors
+		local GuiService = game:GetService("GuiService")
+		local function inset()
+			local ok, a = pcall(function()
+				return GuiService:GetGuiInset()
+			end)
+			return (ok and typeof(a) == "Vector2") and a.Y or (Mock.TopInset or 0)
+		end
+		-- Roblox's own jump button and stick (gui-area px, Hud.TouchRects' numbers, as client_evo_buttons_mobile)
+		local function roblox(size)
+			local areaY = size[2] - (Mock.TopInset or 0)
+			local small = min(size[1], size[2]) <= 500
+			local j = small and 70 or 120
+			local jb = small and 20 or j * 0.75
+			local stickW = small and 110 or 190
+			local stickH = small and ((size[2] > size[1]) and 150 or 96) or 210
+			return { x0 = size[1] - j * 1.5 - 10, y0 = areaY - jb - j, x1 = size[1] - j * 0.5 - 10, y1 = areaY - jb },
+				{ x0 = 0, y0 = areaY - stickH, x1 = stickW, y1 = areaY }
+		end
+		local function apart(a, b) -- the clear px between two boxes (negative: they overlap)
+			return max(b.x0 - a.x1, a.x0 - b.x1, b.y0 - a.y1, a.y0 - b.y1)
+		end
+		-- every shown button of the right thumb: the battle's Commands and MovementController's MobileControls
+		local function thumb()
+			local out, names = {}, {}
+			local cmd = H.find("Root.Commands")
+			for _, b in ipairs(cmd and cmd:GetChildren() or {}) do
+				if b:IsA("GuiButton") and shownIn(b) then
+					out["Commands." .. b.Name] = rectOf(b)
+					names[#names + 1] = "Commands." .. b.Name
+				end
+			end
+			local pg = LocalPlayer:FindFirstChild("PlayerGui")
+			local mc = pg and pg:FindFirstChild("MobileControls")
+			for _, name in ipairs({ "RunButton", "DashButton" }) do
+				local b = mc and mc:FindFirstChild(name, true)
+				if b and b:IsA("GuiButton") and shownIn(b) and b.AbsoluteSize.X > 4 then
+					out["MobileControls." .. name] = rectOf(b)
+					names[#names + 1] = "MobileControls." .. name
+				end
+			end
+			table.sort(names)
+			return out, names
+		end
+		local function lockMark()
+			for _, o in ipairs(workspace:GetDescendants()) do
+				if o:IsA("BillboardGui") and o.Name == "LockMark" then
+					return o
+				end
+			end
+			return nil
+		end
+		local function press(b, seconds)
+			local a, s = b.AbsolutePosition, b.AbsoluteSize
+			local inp = Mock.NewInput("Unknown", "Touch", "Begin", { Position = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0) })
+			Mock.FireSignal(b, "InputBegan", inp, false)
+			Mock.FireSignal(UserInputService, "InputBegan", inp, true)
+			H.step(max(1, floor(seconds * 30 + 0.5)), 1 / 30)
+			inp.UserInputState = Enum.UserInputState.End
+			Mock.FireSignal(b, "InputEnded", inp, false)
+			Mock.FireSignal(UserInputService, "InputEnded", inp, true)
+			H.step(2, 1 / 30)
+		end
+		local WANT = { "Commands.DashButton", "Commands.ElementButton", "MobileControls.RunButton" }
+		local PETS = { { PetId = "ember_phoenix" }, { PetId = "starlight_unicorn", Evo = 2 }, { PetId = "puddle_frog" } }
+		for _, size in ipairs({ { 844, 390 }, { 740, 360 }, { 667, 375 }, { 390, 844 }, { 360, 640 }, { 1024, 768 } }) do
+			Mock.SetViewport(size[1], size[2])
+			H.step(15, 1 / 30)
+			local tag = "keys " .. size[1] .. "x" .. size[2] .. ": "
+			local wide = size[1] > size[2]
+			local d = H.fight({ Mode = "Raid", Pets = PETS })
+			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) a boss raid with two helpers") then
+				local jump, stick = roblox(size)
+				local first, names = thumb()
+				T.check(table.concat(names, ",") == table.concat(WANT, ","), tag .. "exactly three right-thumb buttons: MOVE, DASH, RUN (no SPECIAL, no TARGET, no second DASH)", table.concat(names, ","))
+				for _, n in ipairs(WANT) do
+					local r = first[n]
+					if r then
+						T.check(r.x1 - r.x0 >= 44 - 0.01 and r.y1 - r.y0 >= 44 - 0.01, tag .. n .. " is at least 44 px on the screen", fmt("%.1fx%.1f", r.x1 - r.x0, r.y1 - r.y0))
+						T.check(apart(r, jump) >= 4 and apart(r, stick) >= 4, tag .. n .. " keeps clear of Roblox's jump button and stick", fmt("%s jump %.0f stick %.0f", rstr(r), apart(r, jump), apart(r, stick)))
+					end
+				end
+				-- MOVE: the element on a tap
+				local Hud = BC._Hud
+				local move = H.find("Root.Commands.ElementButton")
+				local caps = Hud.CaptionTexts(BC._St.battle)
+				local holdTag = H.find("Root.Commands.ElementButton.HoldTag")
+				T.check(move ~= nil and H.text("Element") == caps.Element and not (holdTag and shownIn(holdTag)), tag .. "MOVE says the element's attack, no HOLD tag while the meter fills", H.text("Element"))
+				-- CHEER and BACK with the team: beside the helper portraits (wide) / a row under them (tall)
+				local helpers = H.find("Root.Team.Helpers")
+				local cheer, back = H.find("Root.Cheer"), H.find("Root.Retreat")
+				local function team()
+					if not T.check(helpers ~= nil and shownIn(helpers) and cheer ~= nil and shownIn(cheer) and back ~= nil and shownIn(back), tag .. "the helper portraits, CHEER and BACK are shown") then
+						return
+					end
+					local hr, cr, br = rectOf(helpers), rectOf(cheer), rectOf(back)
+					T.check(cheer.Text == "CHEER" and (back.Text == "BACK" or back.Text == "FIGHT"), tag .. "the team orders read CHEER and BACK", cheer.Text .. " / " .. back.Text)
+					for _, p in ipairs({ { "CHEER", cr }, { "BACK", br } }) do
+						T.check(p[2].x1 - p[2].x0 >= 44 - 0.01 and p[2].y1 - p[2].y0 >= 44 - 0.01, tag .. p[1] .. " is at least 44 px on the screen", rstr(p[2]))
+						T.check(apart(p[2], jump) >= 4 and apart(p[2], stick) >= 4, tag .. p[1] .. " keeps clear of Roblox's jump button and stick", rstr(p[2]))
+						for n, r in pairs(first) do
+							T.check(apart(p[2], r) >= 4, tag .. p[1] .. " keeps clear of " .. n, rstr(p[2]) .. " vs " .. rstr(r))
+						end
+					end
+					if wide then
+						local cy, by = (cr.y0 + cr.y1) / 2, (br.y0 + br.y1) / 2
+						T.check(cr.x0 >= hr.x1 - 0.5 and cr.x0 - hr.x1 <= 16 and br.x0 >= hr.x1 - 0.5 and br.x0 - hr.x1 <= 16
+							and cy >= hr.y0 and cy <= hr.y1 and by >= hr.y0 and by <= hr.y1 and br.y0 >= cr.y1,
+							tag .. "CHEER and BACK stand beside the helper portraits, one per helper", rstr(cr) .. " / " .. rstr(br) .. " | helpers " .. rstr(hr))
+					else
+						T.check(cr.y0 >= hr.y1 - 0.5 and cr.y0 - hr.y1 <= 20 and abs(br.y0 - cr.y0) < 1 and br.x0 >= cr.x1 and cr.x0 >= hr.x0 - 1,
+							tag .. "CHEER and BACK are a row under the helper portraits", rstr(cr) .. " / " .. rstr(br) .. " | helpers " .. rstr(hr))
+					end
+					return cr, br
+				end
+				local cr0, br0 = team()
+				-- the middle of a wide screen stays clear (the HUD's centre 40% of the width, client_p5battle_landscape's box)
+				if wide then
+					local box = { x0 = size[1] * 0.3, x1 = size[1] * 0.7, y0 = size[2] * 0.35, y1 = size[2] * 0.75 }
+					for n, r in pairs(first) do
+						T.check(not overlaps(r, box), tag .. n .. " stays out of the middle of the screen", rstr(r))
+					end
+					for _, p in ipairs({ { "CHEER", cr0 }, { "BACK", br0 } }) do
+						if p[2] then
+							T.check(not overlaps(p[2], box), tag .. p[1] .. " stays out of the middle of the screen", rstr(p[2]))
+						end
+					end
+				end
+				-- none moves or hides: the same three buttons in the same boxes, and CHEER / BACK in theirs, in every state
+				local function steady(state)
+					local now = thumb()
+					local bad = {}
+					for _, n in ipairs(WANT) do
+						local a, b = first[n], now[n]
+						if not (a and b) or abs(a.x0 - b.x0) > 0.5 or abs(a.y0 - b.y0) > 0.5 or abs(a.x1 - b.x1) > 0.5 or abs(a.y1 - b.y1) > 0.5 then
+							bad[#bad + 1] = n .. " " .. (a and rstr(a) or "-") .. " -> " .. (b and rstr(b) or "hidden")
+						end
+					end
+					for n in pairs(now) do
+						if not first[n] then
+							bad[#bad + 1] = n .. " appeared"
+						end
+					end
+					for _, p in ipairs({ { "CHEER", cheer, cr0 }, { "BACK", back, br0 } }) do
+						local r = p[2] and shownIn(p[2]) and rectOf(p[2])
+						if p[3] and not (r and abs(r.x0 - p[3].x0) <= 0.5 and abs(r.y0 - p[3].y0) <= 0.5) then
+							bad[#bad + 1] = p[1] .. " " .. rstr(p[3]) .. " -> " .. (r and rstr(r) or "hidden")
+						end
+					end
+					T.check(#bad == 0, tag .. "nothing moves or hides: " .. state, table.concat(bad, "; "))
+				end
+				-- TARGET is automatic: no lock, no marker; a tap on an enemy in the world locks it, a LOCKED marker over it
+				T.check(BC.GetBattle().Lock == nil and not (lockMark() and lockMark().Enabled), tag .. "TARGET starts automatic: no lock, no LOCKED marker")
+				local idx = #Mock.RemoteLog
+				local vp = Mock.Viewport
+				local centre = Vector3.new(vp.X / 2, vp.Y / 2 - inset(), 0) -- (the mock camera projects every unit to the screen's centre)
+				local touch = Mock.NewInput("Unknown", "Touch", "Begin", { Position = centre })
+				Mock.FireSignal(UserInputService, "InputBegan", touch, false)
+				H.step(3, 1 / 30)
+				touch.UserInputState = Enum.UserInputState.End
+				Mock.FireSignal(UserInputService, "InputEnded", touch, false)
+				H.step(3, 1 / 30)
+				local sent = H.commands(idx)
+				T.check(#sent == 1 and sent[1].action == "Target" and d.sim.units[sent[1].arg] ~= nil, tag .. "a tap on an enemy sends ONE Target(its id)", #sent .. " sent")
+				d:run(0.4)
+				local mark = lockMark()
+				local word = mark and mark:FindFirstChild("Locked", true)
+				local scale = H.find("Root.ReadScale")
+				T.check(BC.GetBattle().Lock ~= nil and mark ~= nil and mark.Enabled and mark.Adornee ~= nil and word ~= nil and word.Text == "LOCKED" and word.TextSize >= 14,
+					tag .. "...the echo locks it and a LOCKED marker stands over it", fmt("lock %s mark %s", tostring(BC.GetBattle().Lock), tostring(mark and mark.Enabled)))
+				steady("an enemy locked")
+				-- the HOLD special: a full meter turns MOVE gold with a HOLD tag; a tap is still the element, a hold fires the special
+				d.sim.teams[1].fighter.meter = 100
+				d:run(0.4)
+				d.noForward = true
+				local face = H.find("Root.Commands.ElementButton.Face")
+				T.check(holdTag ~= nil and shownIn(holdTag) and holdTag.Text == "HOLD" and face ~= nil and face.BackgroundColor3 == Theme.Sign.Gold and H.text("Element") == caps.Special,
+					tag .. "a full meter: MOVE turns gold, says the special's name, a HOLD tag on top", fmt("%s / %s", H.text("Element"), tostring(holdTag and shownIn(holdTag))))
+				if holdTag and shownIn(holdTag) then
+					local hr, mr = rectOf(holdTag), rectOf(move)
+					T.check(holdTag.TextSize * (scale and scale.Scale or 1) >= 14 - 0.01 and hr.y0 < mr.y0 and hr.y1 > mr.y0 and hr.x0 >= mr.x0 - 1 and hr.x1 <= mr.x1 + 1,
+						tag .. "...the HOLD tag sits on MOVE's top edge at 14 px or more", rstr(hr) .. " on " .. rstr(mr))
+				end
+				steady("the meter full")
+				idx = #Mock.RemoteLog
+				press(move, 0.15)
+				T.check(H.count(idx, "Element") == 1 and H.count(idx, "Special") == 0, tag .. "...a tap on the gold MOVE is the element (ONE Element, no Special)", fmt("%d Element, %d Special", H.count(idx, "Element"), H.count(idx, "Special")))
+				H.step(12, 1 / 30)
+				idx = #Mock.RemoteLog
+				local a, s = move.AbsolutePosition, move.AbsoluteSize
+				local inp = Mock.NewInput("Unknown", "Touch", "Begin", { Position = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0) })
+				Mock.FireSignal(move, "InputBegan", inp, false)
+				H.step(18, 1 / 30)
+				T.check(H.count(idx, "Special") == 1 and H.count(idx, "Element") == 0, tag .. "...a hold of MOVE fires the special while it is held (ONE Special)", fmt("%d Special, %d Element", H.count(idx, "Special"), H.count(idx, "Element")))
+				inp.UserInputState = Enum.UserInputState.End
+				Mock.FireSignal(move, "InputEnded", inp, false)
+				Mock.FireSignal(UserInputService, "InputEnded", inp, true)
+				H.step(3, 1 / 30)
+				T.check(H.count(idx, "Special") == 1 and H.count(idx, "Element") == 0, tag .. "...and nothing more on the release", fmt("%d Special, %d Element", H.count(idx, "Special"), H.count(idx, "Element")))
+				steady("the special held")
+				d.noForward = false
+				d.sim.teams[1].fighter.meter = 0
+				d:run(1)
+				-- a meter that is not full: a press is the element at once (the unforwarded tap's prediction timed out: no cooldown)
+				for _ = 1, 90 do
+					if BC.GetBattle().Cooldowns.Element <= 0.05 then
+						break
+					end
+					d:run(0.1)
+				end
+				idx = #Mock.RemoteLog
+				local inp2 = Mock.NewInput("Unknown", "Touch", "Begin", { Position = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0) })
+				Mock.FireSignal(move, "InputBegan", inp2, false)
+				H.step(1, 1 / 30)
+				T.check(H.count(idx, "Element") == 1 and H.count(idx, "Special") == 0, tag .. "a meter that is not full: a press of MOVE is the element at once", H.count(idx, "Element") .. " sent")
+				inp2.UserInputState = Enum.UserInputState.End
+				Mock.FireSignal(move, "InputEnded", inp2, false)
+				Mock.FireSignal(UserInputService, "InputEnded", inp2, true)
+				d:run(0.3)
+				steady("the element cooling down")
+				local dash = H.find("Root.Commands.DashButton")
+				if dash then
+					press(dash, 0.1)
+					d:run(0.3)
+				end
+				steady("the dash cooling down")
+				Mock.Click(back)
+				d:run(0.5)
+				T.check(BC.GetBattle().Retreated == true, tag .. "(setup) BACK pulls the team back")
+				steady("the team pulled back")
+				Mock.Click(back)
+				d:run(0.5)
+				H.cleanup(BC, d)
+			end
+		end
+		Mock.SetViewport(390, 844)
+		H.step(3, 0.1)
+		T.check(#Mock.Errors == err0, "keys: no script errors", tostring(Mock.Errors[#Mock.Errors]))
+		KC.flushErrors("keys_three_buttons")
+	end)
+
 	return S
 end
 
