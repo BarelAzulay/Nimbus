@@ -648,7 +648,7 @@ local function render()
 	local cashText = U.CashChip:FindFirstChild("Text")
 	local tokenText = U.TokenChip:FindFirstChild("Text")
 	if cashText then
-		cashText.Text = "$" .. commas(reward.Cash or 2000)
+		cashText.Text = "$" .. Theme.Short(reward.Cash or 2000) -- (Pitch 2 F0 A: one short-number style, as the Gifts' "$1K")
 	end
 	if tokenText then
 		tokenText.Text = commas(reward.Tokens or 200) -- (kit-b U9-4, the U7a rule) the token coin before the amount

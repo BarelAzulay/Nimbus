@@ -686,10 +686,11 @@ local function clientScenarios()
 		local footer = find(panel, "Footer")
 		T.check(footer ~= nil and footer.Text == FOOTER, "client trove: the footer line", footer and footer.Text)
 		local glabel = find(find(panel, "Row_Group"), "Label")
-		-- (kit-b U9-4, the U7a rule) the tokens tag is the token coin + "200"
+		-- (kit-b U9-4, the U7a rule) the tokens tag is the token coin + "200"; (Pitch 2 F0 A: short numbers, Theme.Short) the
+		-- cash tag "$2K"
 		local tokenChip = find(panel, "TokenChip")
 		local coin = tokenChip and find(tokenChip, "Coin")
-		T.check(glabel ~= nil and glabel.Text == "Join the Nimbus Climb group" and KC.findText("$2,000", panel) ~= nil and KC.findText("200", tokenChip) ~= nil
+		T.check(glabel ~= nil and glabel.Text == "Join the Nimbus Climb group" and KC.findText("$2K", panel) ~= nil and KC.findText("200", tokenChip) ~= nil
 			and coin ~= nil and coin:GetAttribute("PixelIcon") == "token", "client trove: the Group row's label and reward tags (the token coin + 200)")
 		-- JOIN: the GroupService double
 		local GroupS = game:GetService("GroupService")

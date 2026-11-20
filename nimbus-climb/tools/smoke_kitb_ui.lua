@@ -12068,8 +12068,9 @@ local function clientScenarios()
 					coin = coin or (d:GetAttribute("PixelIcon") == "token" and U8.shown(d))
 				end
 				local cashText, tokText = cash and cash:FindFirstChild("Text"), tok and tok:FindFirstChild("Text")
-				T.check(cashText ~= nil and cashText.Text == "$2,000" and tokText ~= nil and tokText.Text == "200" and coin,
-					tag .. ": the rewards read $2,000 and the token coin + 200", (cashText and cashText.Text or "?") .. " / " .. (tokText and tokText.Text or "?") .. " coin " .. tostring(coin))
+				-- (Pitch 2 F0 A: short numbers, Theme.Short, as the Gifts' "$1K")
+				T.check(cashText ~= nil and cashText.Text == "$2K" and tokText ~= nil and tokText.Text == "200" and coin,
+					tag .. ": the rewards read $2K and the token coin + 200", (cashText and cashText.Text or "?") .. " / " .. (tokText and tokText.Text or "?") .. " coin " .. tostring(coin))
 				-- the reward that waits glints: two pixel sparkles by the tags, one lit at a time, taking turns
 				local sparkles = group and group:FindFirstChild("Sparkles")
 				local a, b = sparkles and sparkles:FindFirstChild("SparkleA"), sparkles and sparkles:FindFirstChild("SparkleB")
