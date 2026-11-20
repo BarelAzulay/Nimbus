@@ -14397,6 +14397,150 @@ local function clientScenarios()
 		LKC.flushErrors("battle_topcard_one_card")
 	end)
 
+	-- (Pitch 2 item 02, option B "Count-up list", the owner's pick, .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/
+	-- 02_result_card_optB.png) every battle end is ONE template: a head band in the result's colour (VICTORY green, THE
+	-- BOSS WON red, RUN OVER / a dungeon violet) with its pixel icon and word; the mode - reason line (Body.Reason); stat rows,
+	-- each a label, its value right-aligned and a green tick block; equal reward chips (the number big, its icon 18 px, the
+	-- word under it on a wide screen); OK the card's whole width (Body.OkButton), its lip in 5 parts = the auto-close
+	-- timer. At the four grid sizes, a raid won / lost, a ring run, a dungeon knock-out and the worst case (a 20-character
+	-- boss name, 1.01B tokens and XP) all lay out with nothing out of the card, every one-line text whole, off the centre
+	S.result_card_template_b = guarded("result_card_template_b", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		if not T.check(_G.P5BattleH ~= nil, "result card B: (setup) the battle driver is loaded") then
+			return
+		end
+		local BC = U7.client("Controllers/BattleController")
+		local restore = U8.measureReal()
+		local VARIANTS = {
+			{ "raid won", "battle:raid", { Mode = "Raid", Outcome = "Win", Won = true, Reason = "BossDown",
+				Rewards = { Tokens = 640, Xp = 180, LevelUps = 3, Tier = "Gold", Share = 0.41 } }, "BOSS DEFEATED!", Sign.Grass },
+			{ "raid lost", "battle:raid", { Mode = "Raid", Outcome = "Loss", Won = false, Reason = "Timeout",
+				Rewards = { Tokens = 420, Xp = 180, LevelUps = 2, Tier = "Bronze", Share = 0.34 } }, "THE BOSS WON", Sign.Red },
+			{ "ring run", "battle:ring", { Mode = "Ring", Outcome = "Left", Won = false, Reason = "Forfeit", Round = 8,
+				Rewards = { Won = false, Final = true, Round = 8, Cash = 0, Xp = 0, LevelUps = 2, Run = { Wins = 8, Cash = 2571, Xp = 806, Tokens = 0, Round = 8, Start = 1, Best = 12 } } },
+				"RUN OVER", Sign.Violet },
+			{ "dungeon", "battle:dungeon", { Mode = "Dungeon", Outcome = "Loss", Won = false, Reason = "Wipe",
+				Rewards = { Dungeon = true, Tokens = 260, Xp = 120, Extra = { Floor = 3, Room = 2 } } }, "KNOCKED OUT", Sign.Violet },
+			{ "worst", "battle:raid", { Mode = "Raid", Outcome = "Win", Won = true, Reason = "BossDown",
+				Rewards = { Tokens = 1.01e9, Xp = 1.01e9, LevelUps = 12, Tier = "Helper", Share = 1 } }, "BOSS DEFEATED!", Sign.Grass, true },
+		}
+		local function finish(d)
+			local cur = d
+			while cur do
+				if cur.Name:match("^Finish") then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		local seenParts = {}
+		for _, s in ipairs(U8.SIZES) do
+			for _, v in ipairs(VARIANTS) do
+				U8.at(s[1], s[2], s[3], "result card B " .. v[1], function(tag)
+					U96.open(v[2])
+					local d = U96.d
+					local B = BC._St.battle
+					if not T.check(d and B, tag .. ": (setup) the fight is up") then
+						U96.close()
+						return
+					end
+					if v[6] and B.boss then
+						B.boss.name = "Twentycharacterboss1"
+					end
+					local payload = {}
+					for k2, x in pairs(v[3]) do
+						payload[k2] = x
+					end
+					payload.BattleId, payload.Spectator = d.id, false
+					LKC.toClient("BattleState", "End", payload, d.id)
+					LKC.advance(0.9)
+					local gui = U8.pg():FindFirstChild("NimbusBattle")
+					local card = gui and gui.Root:FindFirstChild("ResultCard")
+					if not T.check(card and U8.shown(card), tag .. ": the result card shows") then
+						U96.close()
+						return
+					end
+					local body = card:FindFirstChild("Body")
+					local k = U8.scaleOf(card)
+					local cr = U8.rect(card)
+					-- the template's parts, the same in every variant
+					local head = body and body:FindFirstChild("Head")
+					local title = head and head:FindFirstChild("Title")
+					local parts = {}
+					for _, n in ipairs({ "Head", "Reason", "Stats", "Chips", "OkButton" }) do
+						local p = body and body:FindFirstChild(n)
+						parts[#parts + 1] = (p and U8.shown(p)) and n or ("-" .. n)
+					end
+					local key = table.concat(parts, ",")
+					seenParts[key] = true
+					T.check(key == "Head,Reason,Stats,Chips,OkButton", tag .. ": one template: the head, the reason, the stats, the chips, OK", key)
+					T.check(head and sameColor(head.BackgroundColor3, v[5]) and title and title.Text == v[4] and head:FindFirstChild("Icon") ~= nil and U8.shown(head.Icon),
+						tag .. ": the head band in the result's colour with its icon and word", head and (hex(head.BackgroundColor3) .. " " .. (title and title.Text or "?")) or "no head")
+					-- stat rows: label, value right-aligned before a green tick block with its check
+					local stats = body and body:FindFirstChild("Stats")
+					local rows, badRow = 0, {}
+					for _, row in ipairs(stats and stats:GetChildren() or {}) do
+						if row.Name:match("^Stat_") and U8.shown(row) then
+							rows = rows + 1
+							local lab, val, tick = row:FindFirstChild("Label"), row:FindFirstChild("Value"), row:FindFirstChild("Tick")
+							if not (lab and val and tick and U8.shown(tick) and sameColor(tick.BackgroundColor3, Sign.Grass) and tick:FindFirstChild("Check")
+								and val.TextXAlignment == Enum.TextXAlignment.Right and U8.rect(val).R <= U8.rect(tick).X + 0.5 and U8.rect(lab).R <= U8.rect(val).X + 1) then
+								badRow[#badRow + 1] = row.Name
+							end
+						end
+					end
+					T.check(rows >= 2 and #badRow == 0, tag .. ": stat rows: label, the value right-aligned, a green tick each", fmt("%d rows; bad: %s", rows, table.concat(badRow, ", ")))
+					-- reward chips: equal widths, the number on each (the word under it on a wide screen)
+					local chips = body and body:FindFirstChild("Chips")
+					local widths, badChip = {}, {}
+					for _, c in ipairs(chips and chips:GetChildren() or {}) do
+						if c.Name:match("^Chip_") and U8.shown(c) then
+							widths[#widths + 1] = c.AbsoluteSize.X
+							local num = c:FindFirstChild("Number")
+							if not (num and U8.shown(num) and num.Text:match("^[%+%-]?%$?%d") and P2.inside(U8.rect(num), U8.rect(c))) then
+								badChip[#badChip + 1] = c.Name
+							end
+						end
+					end
+					local eq = #widths >= 1
+					for _, w in ipairs(widths) do
+						eq = eq and math.abs(w - widths[1]) <= 1
+					end
+					T.check(eq and #badChip == 0, tag .. ": equal reward chips, the number on each", fmt("%d chips; bad: %s", #widths, table.concat(badChip, ", ")))
+					-- OK: the card's whole inside width, green, its lip in 5 parts (the timer)
+					local ok = body and body:FindFirstChild("OkButton")
+					local lip = ok and ok:FindFirstChild("Lip")
+					local segs = 0
+					for _, c in ipairs(lip and lip:GetChildren() or {}) do
+						segs = segs + (c.Name:match("^Seg%d$") and 1 or 0)
+					end
+					T.check(ok and sameColor(ok.BackgroundColor3, Sign.Grass) and ok.AbsoluteSize.X >= cr.R - cr.X - 2 * 14 * k and segs == 5,
+						tag .. ": OK spans the card, green, its lip the 5-part timer", ok and fmt("%.0f of %.0f, %d parts", ok.AbsoluteSize.X, cr.R - cr.X, segs) or "no OK")
+					-- nothing out of the card; every one-line text whole; off the screen centre
+					local out = {}
+					for _, dd in ipairs(card:GetDescendants()) do
+						if dd:IsA("GuiObject") and U8.shown(dd) and dd.AbsoluteSize.X > 0 and not finish(dd) and (dd.BackgroundTransparency < 1 or ((dd:IsA("TextLabel") or dd:IsA("TextButton")) and dd.Text ~= "")) then
+							if not P2.inside(U8.rect(dd), cr) then
+								out[#out + 1] = dd.Name .. " " .. U8.show(U8.rect(dd))
+							end
+						end
+					end
+					T.check(#out == 0, tag .. ": nothing sticks out of the card", table.concat(out, "; ", 1, math.min(#out, 6)) .. " | card " .. U8.show(cr))
+					local tight = P2.tight(card)
+					T.check(#tight == 0, tag .. ": every one-line text of the card fits its box", table.concat(tight, "; "))
+					local cx, cy = s[1] / 2, s[2] / 2
+					T.check(not (cr.X <= cx and cx <= cr.R and cr.Y <= cy and cy <= cr.B) and cr.X >= -0.5 and cr.R <= s[1] + 0.5 and cr.B <= s[2] + 0.5,
+						tag .. ": on the screen, off its centre", U8.show(cr))
+					U96.close()
+				end)
+			end
+		end
+		restore()
+		LKC.flushErrors("result_card_template_b")
+	end)
+
 	-- (Pitch 2 item 08, option C "Name tab + stamp", .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/08_vitals_optC.png)
 	-- at the four grid sizes the vitals card keeps its bottom-centre spot and gains a wood tab tucked behind its top edge (the
 	-- tab above the card, its foot under the card's top, drawn behind it) with the player's stamp (the display name's first

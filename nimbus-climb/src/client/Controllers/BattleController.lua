@@ -5596,7 +5596,7 @@ function Hud.Ensure()
 	Hud.cmd = make("Frame", { Name = "Commands", BackgroundTransparency = 1, Visible = false, AnchorPoint = Vector2.new(1, 1) }, root)
 	Hud.resultCard = neonCard(root, "ResultCard", SIGN.Gold, { Visible = false, Size = UDim2.fromOffset(K.RESULT_W, 200), LipPx = K.PLANK_LIP })
 	Hud.result = Hud.resultCard.Root
-	SignKit.Nails(Hud.result, { Inset = 5, ZIndex = 3 }) -- (LOOK-ui2) nailed up like its sibling, the Dungeon End card
+	-- (Pitch 2 item 02 B: the head band in the result's colour carries the card's top; no nails on it, as the pitch draws it)
 	Hud.rows = {}
 	Hud.helpers = {}
 	Hud.buttons = {}
@@ -7002,6 +7002,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		return
 	end
 	local bossUnit = Hud.BossUnit(B)
+	if bossUnit and bossUnit.name then
+		Hud.lastBoss = bossUnit.name -- (the result card's "<boss> is down" after the boss is gone)
+	end
 	local compact = m.Compact
 	-- (Pitch 2 item 06 A) one card: a boss's is the pitch's 640 (500 on a phone), the mode line's keeps its width
 	local w
@@ -7685,33 +7688,30 @@ end
 ----------------------------------------------------------------------
 -- the result card (bottom right; compact: top right; never centred)
 ----------------------------------------------------------------------
-function Hud.ShowResult(B, payload)
-	if not Hud.Ensure() then
-		return
-	end
-	local m = Hud.Metrics()
-	local res = Hud.result
-	local body = res:FindFirstChild("Body") or res
-	for _, c in ipairs(body:GetChildren()) do
-		if c:GetAttribute("ResultPart") then
-			c:Destroy()
-		end
-	end
+-- (Pitch 2 item 02, option B "Count-up list", the owner's pick: .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/
+-- 02_result_card_optB.png) every battle end is one template, Hud.ResultModel's parts in one layout: the head band in the
+-- result's colour (its pixel icon and word), the mode - reason line, the stat rows (a label, its value right-aligned and a
+-- green tick block each), the reward chips (equal widths: the number big, its icon 18 px, the word under it on a wide
+-- screen), the notes (a line that pays nothing: "First clear!", "No hits on the boss: no reward"), and OK the card's whole
+-- width, its lip in five parts = the auto-close timer
+function Hud.ResultModel(B, payload)
 	local outcome = payload.Outcome
 	if outcome == nil then
 		outcome = payload.Won and "Win" or "Loss"
 	end
 	local raid = B.Mode == "Raid"
-	-- (kit-b U9-6) `color` is the card's lip (one colour by role); the title is the plain kit B title in brown
-	local titleText, color = "DEFEAT", SIGN.Red
+	local rw = type(payload.Rewards) == "table" and payload.Rewards or {}
+	local M = { stats = {}, chips = {}, notes = {} }
+	-- the head: its word, colour and icon (the word stays the game's own; the colour by result)
+	M.title, M.color, M.icon = "DEFEAT", SIGN.Red, "skull"
 	if outcome == "Win" then
-		titleText, color = raid and "BOSS DEFEATED!" or "VICTORY!", SIGN.Gold
+		M.title, M.color, M.icon = raid and "BOSS DEFEATED!" or "VICTORY!", SIGN.Grass, "trophy"
 	elseif outcome == "Draw" then
-		titleText, color = "DRAW", SIGN.Sky
+		M.title, M.color, M.icon = "DRAW", SIGN.Sky, "sword"
 	elseif outcome == "Left" then
-		titleText, color = "YOU LEFT", SIGN.WellEdge
+		M.title, M.color, M.icon = "YOU LEFT", SIGN.Well, "clock"
 	elseif raid then
-		titleText = "THE BOSS WON"
+		M.title = "THE BOSS WON"
 	end
 	local reasons = {
 		BossDown = "The boss is down!",
@@ -7732,151 +7732,334 @@ function Hud.ShowResult(B, payload)
 		-- (bug batch 6) a raid left by LEAVE, or by staying out of the fight area for the 3-2-1
 		reasons.Left = "You left the raid: no reward."
 		reasons.Area = "You left the fight area: no reward."
+		local boss = (B.boss and B.boss.name) or Hud.lastBoss
+		if boss then
+			reasons.BossDown = tostring(boss) .. " is down"
+		end
 	end
-	local sub = reasons[tostring(payload.Reason)] or ""
+	local why = reasons[tostring(payload.Reason)] or ""
+	local mode = ({ Raid = "Boss raid", Dungeon = "Dungeon", Duel = "Duel" })[B.Mode]
+	local extra = type(rw.Extra) == "table" and rw.Extra or {}
+	local dg = B.Dungeon or {}
 	if B.Mode == "Ring" then
-		titleText, color, sub = Ring.ResultTitle(B, payload, sub)
-	elseif B.Mode == "Dungeon" and outcome ~= "Win" then
-		titleText, color = "KNOCKED OUT", SIGN.Violet
+		local ringWhy
+		M.title, M.color, ringWhy = Ring.ResultTitle(B, payload, why)
+		M.icon = M.title == "NEW RECORD!" and "star" or "crown"
+		M.color = M.title == "NEW RECORD!" and SIGN.Gold or SIGN.Violet
+		mode, why = "Champion Ring", tostring(ringWhy):gsub("^Champion Ring: ", "")
+	elseif B.Mode == "Dungeon" then
+		if outcome ~= "Win" then
+			M.title, M.color, M.icon = "KNOCKED OUT", SIGN.Violet, "castle"
+		end
+		why = "Floor " .. tostring(num(extra.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(extra.Room, num(dg.Room, 1)))
 	end
+	why = tostring(why):gsub("[%.!]$", "")
+	if mode and why ~= "" and not why:find("^Floor ") and not why:find("^%u%l+ is down$") then
+		why = why:sub(1, 1):lower() .. why:sub(2)
+	end
+	M.sub = mode and (why ~= "" and (mode .. " - " .. why) or mode) or why
+	-- the stat rows (key, icon, label, value)
+	local function stat(key, icon, text, value)
+		M.stats[#M.stats + 1] = { key, icon, text, tostring(value) }
+	end
+	local run = B.Mode == "Ring" and type(rw.Run) == "table" and rw.Run or nil
+	if run then
+		stat("Rounds", "crown", "Rounds won", num(run.Wins, 0))
+		stat("Round", "sword", "Last round", num(run.Round, num(rw.Round, B.Round)))
+		if run.Record ~= nil then
+			stat("Best", "star", "Best round", tostring(run.Record))
+		elseif num(run.Best, 0) > 0 then
+			stat("Best", "star", "Best round", num(run.Best, 0))
+		end
+	end
+	local realTier = rw.Tier and rw.Tier ~= "None" and rw.Tier ~= "Cooldown"
+	if raid and realTier then
+		stat("Damage", "sword", "Damage", tostring(floor(num(rw.Share, 0) * 100 + 0.5)) .. "%")
+		stat("Tier", "crown", "Tier", tostring(rw.Tier))
+	end
+	if B.Fighter and B.Mode ~= "Ring" then
+		stat("Lives", "heart", "Lives left", B.lives or 0)
+	end
+	if B.Mode ~= "Ring" and num(B.renderT, 0) > 0 then
+		stat("Time", "clock", "Fight time", fmtTime(B.renderT))
+	end
+	-- the reward chips (key, icon, number, word)
+	local function chip(key, icon, number, word)
+		M.chips[#M.chips + 1] = { key, icon, number, word }
+	end
+	if run then
+		chip("Cash", Config.Icons.Cash, "+" .. Ring.Money(run.Cash), "Cash")
+		chip("Xp", "up", "+" .. Theme.Short(num(run.Xp, 0)), "Pet XP")
+		if num(run.Tokens, 0) > 0 then
+			chip("Tokens", Config.Icons.Tokens, "+" .. Theme.Short(num(run.Tokens, 0)), "Tokens")
+		end
+	else
+		local tokens, gems, cash = num(rw.Tokens, 0), num(rw.Gems, 0), num(rw.Cash, 0)
+		if tokens > 0 then
+			chip("Tokens", Config.Icons.Tokens, "+" .. Theme.Short(tokens), "Tokens")
+		end
+		if cash > 0 then
+			chip("Cash", Config.Icons.Cash, "+$" .. Theme.Short(cash), "Cash")
+		end
+		if gems > 0 then
+			chip("Gems", "gem", "+" .. Theme.Short(gems), "Gems")
+		end
+		local trophies = num(rw.Trophies, 0)
+		if trophies ~= 0 or (B.Mode == "Duel" and rw.Practice ~= true and rw.Void ~= true) then
+			chip("Trophies", "trophy", (trophies >= 0 and "+" or "") .. Theme.Short(trophies), "Trophies")
+		end
+		local xp = num(rw.Xp, 0)
+		if xp > 0 then
+			chip("Xp", "up", "+" .. Theme.Short(xp), "Pet XP")
+		end
+		local ups = num(rw.LevelUps, 0)
+		if ups > 0 then
+			chip("Ups", "star", Theme.Short(ups), ups == 1 and "Level up" or "Level ups")
+		end
+	end
+	-- the notes: what pays nothing or is no number
+	local function note(text, weak)
+		M.notes[#M.notes + 1] = { text, weak == true }
+	end
+	if rw.Practice == true then
+		note("Practice duel: no rewards", true)
+	end
+	if rw.FirstClear == true then
+		note("First clear!")
+	end
+	if rw.Tier == "None" then
+		note("No hits on the boss: no reward", true)
+	elseif rw.Tier == "Cooldown" then
+		local wait = num(rw.AgainIn, 0)
+		note(string.format("Rewards again in %d:%02d", floor(wait / 60), wait % 60), true)
+	end
+	if rw.SatOut == true then
+		note("Sat out over half the fight: no pet this time", true)
+	end
+	if rw.EventPet then
+		local name = tostring(rw.EventPet)
+		if PetCatalog and PetCatalog.Get then
+			local ok, d = pcall(PetCatalog.Get, rw.EventPet)
+			if ok and type(d) == "table" and d.Name then
+				name = d.Name
+			end
+		end
+		note("New pet: " .. name)
+	end
+	if rw.Double == true then
+		note("Double rewards")
+	end
+	if B.Mode == "Dungeon" and (extra.Name or dg.Name) then
+		note(tostring(extra.Name or dg.Name))
+	end
+	return M
+end
+
+-- a text's width in design px at `size` in `role` (never under the face's ~0.56 em a letter, 4% to spare)
+local function measureW(text, role, size)
+	local ok, m = pcall(Theme.Measure, text, role, size)
+	return math.ceil(max((ok and typeof(m) == "Vector2") and m.X or 0, #tostring(text) * size * 0.56) * 1.04)
+end
+
+function Hud.ShowResult(B, payload)
+	if not Hud.Ensure() then
+		return
+	end
+	local m = Hud.Metrics()
+	local res = Hud.result
+	local body = res:FindFirstChild("Body") or res
+	for _, c in ipairs(body:GetChildren()) do
+		if c:GetAttribute("ResultPart") then
+			c:Destroy()
+		end
+	end
+	local M = Hud.ResultModel(B, payload)
 	local card = Hud.resultCard
 	if card and card.SetColor then
-		pcall(card.SetColor, color)
+		pcall(card.SetColor, SIGN.StoneLip) -- (the head carries the result's colour; the card's lip is the stone one)
 	end
-	local w = m.Compact and min(K.RESULT_W, m.W - 16) or K.RESULT_W
-	if m.Compact and m.Landscape then
-		w = max(300, min(w, floor(m.W * 0.36)))
+	local compact = m.Compact
+	local landscape = compact and m.Landscape
+	local w = K.RESULT_W
+	if landscape then
+		w = min(500, floor(m.W / 2 - 16)) -- (right of the screen centre, as wide as the pitch's phone card where it fits)
+	elseif compact then
+		w = min(K.RESULT_W, m.W - 16)
 	end
-	local y = K.PAD + 4
+	w = floor(w)
+	local P = K.PAD
+	local inner = w - 2 * P
+	local fpx = math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6)
+	local function px(n)
+		return max(n, fpx)
+	end
 	local function part(inst)
 		inst:SetAttribute("ResultPart", true)
 		return inst
 	end
-	local short = m.Compact and m.Landscape
-	-- (a short landscape screen: the OK button shares the title's line, long titles step down a size)
-	local titleW = w - 2 * K.PAD - 8 - (short and 100 or 0)
-	local titleSize = short and (#titleText > 9 and 25 or 30) or 34
-	-- (the owner's ruling 2026-11-14: the gold T1 ribbon is for window titles; a pop-up card's title is the plain "Section" one)
-	part(Theme.StyleTitle(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink, TextTruncate = Enum.TextTruncate.AtEnd }), "Section"))
-	y = y + 42
-	local plain = { Wipe = true, KO = true, Cleared = true, BossDown = true }
-	local floorLine = false
-	if short and plain[tostring(payload.Reason)] then
-		sub = "" -- (the title says it; a short screen keeps the card clear of the buttons under it)
-		if B.Mode == "Dungeon" then
-			local ex, dg = type(payload.Rewards) == "table" and type(payload.Rewards.Extra) == "table" and payload.Rewards.Extra or {}, B.Dungeon or {}
-			sub = "Floor " .. tostring(num(ex.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(ex.Room, num(dg.Room, 1)))
-			floorLine = true -- (a full-width line instead of a truncated pill)
+	-- the head band: the result's colour on its 4 px lip, the icon and the word centred together
+	local headH = landscape and 44 or 52 -- (a landscape phone: a lower head, rows, chips and OK, the card ends above RUN)
+	local ink = (M.color == SIGN.Grass) and SIGN.OnGrass or KB.Ink
+	local head = part(make("Frame", { Name = "Head", BackgroundColor3 = M.color, BorderSizePixel = 0, Size = UDim2.fromOffset(w, headH), ZIndex = 2 }, body))
+	make("Frame", { Name = "Lip", BackgroundColor3 = Theme.SignLipOf and Theme.SignLipOf(M.color) or KB.Edge, BorderSizePixel = 0, Position = UDim2.fromOffset(0, headH - 4), Size = UDim2.fromOffset(w, 4), ZIndex = 2 }, head)
+	local title = Theme.StyleTitle(label(head, "", "Title", 30, { Name = "Title", TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 }), "Section")
+	title.TextColor3 = ink
+	local iconPx = 27
+	local tw = Hud.FitLine(title, M.title, px(compact and 26 or 30), px(20), inner - iconPx - 8)
+	local gx = floor((w - (iconPx + 8 + tw)) / 2)
+	local icon = PixelIcon.New(head, M.icon, iconPx, ink)
+	icon.Name = "Icon"
+	icon.ZIndex = 3
+	icon.Position = UDim2.fromOffset(gx, floor((headH - 4 - iconPx) / 2))
+	title.Position = UDim2.fromOffset(gx + iconPx + 8, 0)
+	title.Size = UDim2.fromOffset(tw + 4, headH - 4)
+	local y = headH + 8
+	-- the mode - reason line (Body.Reason), centred, muted; two lines where it is long
+	if M.sub ~= "" then
+		local rpx = px(18)
+		local lines = (measureW(M.sub, "Heading", rpx) > inner) and 2 or 1
+		local rh = lines * (rpx + 4) + 2
+		part(label(body, M.sub, "Heading", rpx, { Name = "Reason", Position = UDim2.fromOffset(P, y), Size = UDim2.fromOffset(inner, rh), TextXAlignment = Enum.TextXAlignment.Center,
+			TextWrapped = lines > 1, TextColor3 = KB.Muted }))
+		y = y + rh + 6
+	end
+	-- the stat rows: one column (two on a wide phone card), 34 px each over a 2 px stone rule
+	local cols = (compact and inner >= 440) and 2 or 1
+	local colGap = 14
+	local colw = floor((inner - (cols - 1) * colGap) / cols)
+	local rowH, ruleH = landscape and 30 or 34, 2
+	local stats = part(make("Frame", { Name = "Stats", BackgroundTransparency = 1, Position = UDim2.fromOffset(P, y), Size = UDim2.fromOffset(inner, 1) }, body))
+	local nRows = math.ceil(#M.stats / cols)
+	for i, s in ipairs(M.stats) do
+		local c, r = (i - 1) % cols, floor((i - 1) / cols)
+		local row = make("Frame", { Name = "Stat_" .. s[1], BackgroundTransparency = 1, Position = UDim2.fromOffset(c * (colw + colGap), r * (rowH + ruleH)), Size = UDim2.fromOffset(colw, rowH + ruleH) }, stats)
+		make("Frame", { Name = "Rule", BackgroundColor3 = SIGN.StoneLip, BorderSizePixel = 0, Position = UDim2.fromOffset(0, rowH), Size = UDim2.fromOffset(colw, ruleH) }, row)
+		local ic = PixelIcon.New(row, s[2], 18, KB.Ink)
+		ic.Name = "Icon"
+		ic.Position = UDim2.fromOffset(0, floor((rowH - 18) / 2))
+		-- the tick: a green kit block (26 drawn: 22 + its 2 px edge) with the check
+		local tick = make("Frame", { Name = "Tick", BackgroundColor3 = SIGN.Grass, BorderSizePixel = 0, Position = UDim2.fromOffset(colw - 24, floor((rowH - 22) / 2)), Size = UDim2.fromOffset(22, 22) }, row)
+		signEdge(tick, SIGN.GrassLip, 2)
+		local ck = PixelIcon.New(tick, "check", 18, SIGN.OnGrass)
+		ck.Name = "Check"
+		ck.Position = UDim2.fromOffset(2, 2)
+		local vpx = px(22)
+		local val = label(row, "", "Display", vpx, { Name = "Value", TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = KB.Ink })
+		local valueRoom = colw - 24 - 30 - 8 - 60
+		local vw = Hud.FitLine(val, s[4], vpx, px(18), valueRoom) + 4 -- (4 px to spare: a one-digit value reads tight)
+		val.Position = UDim2.fromOffset(colw - 30 - 6 - vw, 0)
+		val.Size = UDim2.fromOffset(vw, rowH)
+		local lab = label(row, "", "Heading", px(18), { Name = "Label", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Muted })
+		local lw = Hud.FitLine(lab, s[3], px(18), px(16), colw - 24 - 30 - 6 - vw - 12) + 4
+		lab.Position = UDim2.fromOffset(24, 0)
+		lab.Size = UDim2.fromOffset(lw, rowH)
+	end
+	stats.Size = UDim2.fromOffset(inner, max(1, nRows * (rowH + ruleH)))
+	stats.Visible = #M.stats > 0
+	if #M.stats > 0 then
+		y = y + nRows * (rowH + ruleH) + 8
+	end
+	-- the reward chips: equal widths, three a row; the number big with its 18 px icon, the word under it (a phone: none)
+	local perRow = min(3, max(1, #M.chips))
+	local chipGap = 8
+	local cw = floor((inner - (perRow - 1) * chipGap) / perRow)
+	local chipH = compact and (landscape and 40 or 44) or 74
+	local chips = part(make("Frame", { Name = "Chips", BackgroundTransparency = 1, Position = UDim2.fromOffset(P, y), Size = UDim2.fromOffset(inner, 1) }, body))
+	local chipRows = math.ceil(#M.chips / perRow)
+	for i, c in ipairs(M.chips) do
+		local col, r = (i - 1) % perRow, floor((i - 1) / perRow)
+		local f = make("Frame", { Name = "Chip_" .. c[1], BackgroundColor3 = SIGN.Well, BorderSizePixel = 0, Position = UDim2.fromOffset(col * (cw + chipGap) + 2, r * (chipH + chipGap) + 2), Size = UDim2.fromOffset(cw - 4, chipH - 4) }, chips)
+		signEdge(f, SIGN.WellEdge, 2)
+		local fw = cw - 4
+		local npx = px(compact and 22 or 26)
+		local numL = label(f, "", "Display", npx, { Name = "Number", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink })
+		local nw = Hud.FitLine(numL, c[3], npx, px(18), fw - 16 - 24) + 4
+		local lineH = compact and (chipH - 4) or 34
+		local nx = floor((fw - (18 + 6 + nw)) / 2)
+		local ic = PixelIcon.New(f, c[2], 18, KB.Ink)
+		ic.Name = "Icon"
+		ic.Position = UDim2.fromOffset(nx, floor((lineH - 18) / 2) + (compact and 0 or 4))
+		numL.Position = UDim2.fromOffset(nx + 24, compact and 0 or 4)
+		numL.Size = UDim2.fromOffset(nw + 2, lineH)
+		if not compact then
+			local word = label(f, "", "Heading", px(18), { Name = "Label", TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = KB.Muted })
+			local ww = min(fw - 4, Hud.FitLine(word, c[4], px(18), px(16), fw - 12) + 8) -- (8 px to spare: a short word reads tight at 0.8)
+			word.Position = UDim2.fromOffset(floor((fw - ww) / 2), 38)
+			word.Size = UDim2.fromOffset(ww, 26)
 		end
-	elseif short and B.Mode == "Ring" then
-		sub = (sub:gsub("^Champion Ring: (%l)", string.upper)) -- "You left after round 8": one line
 	end
-	if sub ~= "" then
-		part(label(body, sub, "Body", 18, { Name = "Reason", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(w - 2 * K.PAD - 8, 24), TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextColor3 = KB.Muted }))
-		y = y + 28
+	chips.Size = UDim2.fromOffset(inner, max(1, chipRows * chipH + max(0, chipRows - 1) * chipGap))
+	chips.Visible = #M.chips > 0
+	if #M.chips > 0 then
+		y = y + chipRows * chipH + max(0, chipRows - 1) * chipGap + 8
 	end
-	local list = part(make("Frame", { Name = "Rewards", BackgroundTransparency = 1, Position = UDim2.fromOffset(K.PAD, y), Size = UDim2.fromOffset(w - 2 * K.PAD, 10) }, body))
-	local rw = type(payload.Rewards) == "table" and payload.Rewards or {}
-	local lines = (B.Mode == "Ring") and Ring.ResultLines(B, rw) or Hud.RewardLines(B, rw)
-	-- Phase 5: the lives left, the dungeon's lines
-	if B.Fighter and B.Mode ~= "Ring" then
-		local lives = B.lives or 0
-		lines[#lines + 1] = { "Lives left: " .. lives, lives > 0 and COLORS.Life or COLORS.Weak }
-	end
-	if B.Mode == "Dungeon" then
-		-- End.Rewards.Extra first, Start.Dungeon for what it leaves out
-		local extra = type(rw.Extra) == "table" and rw.Extra or {}
-		local dg = B.Dungeon or {}
-		if not floorLine then
-			lines[#lines + 1] = { "Floor " .. tostring(num(extra.Floor, num(dg.Floor, 1))) .. " - Room " .. tostring(num(extra.Room, num(dg.Room, 1))), SIGN.Violet }
+	-- the notes: a line each, its pixel icon before it (a line that pays nothing in the muted ink, no icon)
+	for i, n in ipairs(M.notes) do
+		local npx = px(18)
+		local lines = (measureW(n[1], "Body", npx) + 28 > inner) and 2 or 1
+		local nh = lines * (npx + 4) + 2
+		local l = part(label(body, n[1], "Body", npx, { Name = "Note" .. i, Position = UDim2.fromOffset(P, y), Size = UDim2.fromOffset(inner, nh), TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = lines > 1, TextColor3 = n[2] and KB.Muted or KB.Ink }))
+		local ic = not n[2] and Hud.RewardIcon(n[1])
+		if ic then
+			PixelIcon.Lead(l, ic)
 		end
-		local name = extra.Name or dg.Name
-		if name then
-			lines[#lines + 1] = { tostring(name), SIGN.Violet }
+		y = y + nh + 4
+	end
+	-- OK: the card's one green action across its whole inside width; its lip in five parts is the auto-close timer
+	local okH = compact and (landscape and 40 or 44) or 50
+	local ok = make("TextButton", { Name = "OkButton", Text = "OK", Position = UDim2.fromOffset(P, y), Size = UDim2.fromOffset(inner, okH), AutoButtonColor = false }, body)
+	Theme.Style(ok, "Button", { Size = 22 })
+	make("UIPadding", { Name = "LipPad", PaddingBottom = UDim.new(0, K.PLANK_LIP) }, ok)
+	signBlock(ok, SIGN.Grass, SIGN.Grass, SIGN.OnGrass, K.PLANK_LIP, 2)
+	ok.Activated:Connect(function()
+		Hud.HideResult()
+	end)
+	part(ok)
+	local lip = ok:FindFirstChild("Lip")
+	local segs = {}
+	if lip then
+		local gap = 2
+		local segW = floor((inner - 4 * gap) / 5)
+		for i = 1, 5 do
+			local sx = (i - 1) * (segW + gap)
+			local sw = (i == 5) and (inner - sx) or segW
+			segs[i] = make("Frame", { Name = "Seg" .. i, BackgroundColor3 = SIGN.GrassLip, BorderSizePixel = 0, Position = UDim2.fromOffset(sx, 0), Size = UDim2.new(0, sw, 1, 0), ZIndex = lip.ZIndex }, lip)
 		end
 	end
-	-- (LOOK-ui2: flat colour pills with no icons in five off-token hues) the dock family's fact tag each (the Dungeon End card's
-	-- reward chips): stone in a 2 px wood edge, the pixel icon before the words in the ink (a "no reward" line in the muted
-	-- ink, no icon), as wide as its text, in rows across the card
-	local tagH = short and 26 or 30
-	local tagPx = short and 15 or 17
-	local x, rowY = 0, 0
-	for i, line in ipairs(lines) do
-		local icon = Hud.RewardIcon(line[1])
-		local t = label(list, line[1], "Heading", tagPx, { Name = "Reward" .. i, LayoutOrder = i, BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile,
-			TextColor3 = (line[2] == COLORS.Weak) and KB.Muted or KB.Ink, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd })
-		signEdge(t, KB.Edge, 2)
-		make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }, t)
-		local px = max(tagPx, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
-		-- (left-aligned: centred, the icon was placed from the text's centre and sat on its first letter, "Rounds won: 8"
-		-- with the castle on its R; the measure runs about 8% wide of FredokaOne, so 0.92 of it still holds the words)
-		local tw = math.ceil(textWidth(line[1], px) * 0.92) + 16 + 4
-		if icon then
-			PixelIcon.Lead(t, icon)
-			local pad = t:FindFirstChildOfClass("UIPadding")
-			tw = math.ceil(textWidth(line[1], px) * 0.92) + (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 40) + 4
+	Hud.resultTimer = { segs = segs, count = 5, lit = -1 }
+	Hud.SetResultTimer(1)
+	y = y + okH + P
+	if y % 2 == 1 then
+		y = y + 1 -- (an even height: the wide screen's card is centred on its middle, on whole px)
+	end
+	local h = y + K.PLANK_LIP
+	res.Size = UDim2.fromOffset(w, h)
+	local top = Hud.TopRightBottom(m)
+	if compact then
+		-- a phone: top right, under the top-right stack (the wallet, the boost chips), never over the screen centre
+		-- (DailyController hides its Gift block while this card is up: BattleController.IsOpen)
+		local ty = max(6, top > 0 and (top + 8) or 6)
+		if ty + h > m.H - 8 then
+			ty = max(6, floor(m.H - 8 - h))
 		end
-		tw = min(tw, w - 2 * K.PAD)
-		if x > 0 and x + tw > w - 2 * K.PAD then
-			x, rowY = 0, rowY + tagH + 6
-		end
-		t.Position = UDim2.fromOffset(x, rowY)
-		t.Size = UDim2.fromOffset(tw, tagH)
-		x = x + tw + 6
-	end
-	local listH = (#lines > 0) and (rowY + tagH) or 0
-	list.Size = UDim2.fromOffset(w - 2 * K.PAD, listH)
-	y = y + listH + ((#lines > 0) and 10 or 0)
-	-- (kit-b U9-6) OK: the card's one green action, a grass plank in its wood edge with its lip (LOOK-ui2: the plank's weight,
-	-- the lip flush on the edge under its LipPad)
-	local function okButton(size)
-		local b = make("TextButton", { Name = "OkButton", Text = "OK", Size = size, AutoButtonColor = false }, body)
-		Theme.Style(b, "Button", { Size = 22 })
-		make("UIPadding", { Name = "LipPad", PaddingBottom = UDim.new(0, K.PLANK_LIP) }, b)
-		signBlock(b, SIGN.Grass, SIGN.GrassLip, SIGN.OnGrass, K.PLANK_LIP, K.PLANK_EDGE)
-		b.Activated:Connect(function()
-			Hud.HideResult()
-		end)
-		return part(b)
-	end
-	-- (LOOK-ui2: the auto-close timer was a 6-8 px flat sky line) five gold kit blocks, one goes out per fifth of the time
-	if short then
-		local ok = okButton(UDim2.fromOffset(88, 46))
-		ok.Position = UDim2.new(1, -K.PAD - 88, 0, K.PAD + 6) -- (6 px down: the card's top-right nail stays clear of its edge)
-		Hud.resultTimer = timerBlocks(body, "Timer")
-		Hud.resultTimer.Root.Position = UDim2.fromOffset(K.PAD + 4, y)
-		part(Hud.resultTimer.Root)
-		y = y + 14 + K.PAD
-	else
-		local ok = okButton(UDim2.fromOffset(120, 50))
-		ok.Position = UDim2.new(1, -K.PAD - 120, 0, y)
-		Hud.resultTimer = timerBlocks(body, "Timer")
-		Hud.resultTimer.Root.Position = UDim2.fromOffset(K.PAD + 4, y + 18)
-		part(Hud.resultTimer.Root)
-		y = y + 50 + K.PAD
-	end
-	setTimer(Hud.resultTimer, 1)
-	res.Size = UDim2.fromOffset(w, y + 4)
-	if m.Compact then
-		-- a phone: top right, under the enemy list's place, never over the screen centre; (LOOK-ui2: the Gift block came back
-		-- over the card's OK as soon as InBattle cleared) under every block of the top-right stack: the wallet, the boost
-		-- chips (DailyController hides its Gift block while this card is up: BattleController.IsOpen)
-		local top = Hud.TopRightBottom(m)
 		res.AnchorPoint = Vector2.new(1, 0)
-		res.Position = UDim2.new(1, -8, 0, max(6, top > 0 and (top + 8) or 6))
+		res.Position = UDim2.new(1, -8, 0, ty)
 	else
-		res.AnchorPoint = Vector2.new(1, 1)
-		res.Position = UDim2.new(1, -K.EDGE, 1, -K.EDGE)
+		-- a wide screen: the right edge, its middle (the pitch's place), under the top-right stack
+		local cy = max(floor(m.H / 2), (top > 0 and top + 8 or K.EDGE) + h / 2)
+		cy = min(cy, m.H - K.EDGE - h / 2)
+		res.AnchorPoint = Vector2.new(1, 0.5)
+		res.Position = UDim2.new(1, -K.EDGE, 0, floor(cy))
 	end
 	-- (LOOK-ui2: at 390x844 the Pets, Index and Home tiles covered the card's left 37 px) where the card would lie on the menu
 	-- column, the column steps aside while it is up (Hud.HideResult brings it back); where the card clears it, it stays
-	-- (the column's frame keeps its place while its tiles step aside, so its box is read either way)
 	local col = Hud.MenuBox(m)
 	local covers = false
-	if col and m.Compact then
-		local top = res.Position.Y.Offset
+	if col and compact then
+		local cardTop = res.Position.Y.Offset
 		local left = m.W - 8 - w
-		covers = col.Right + 8 > left and col.Bottom > top and col.Top < top + y + 4
+		covers = col.Right + 8 > left and col.Bottom > cardTop and col.Top < cardTop + h
 	end
 	res.Visible = true
 	Hud.FixText(res, m.F)
@@ -7888,6 +8071,20 @@ function Hud.ShowResult(B, payload)
 	Hud.teamPlace = nil
 	Hud.SetMenuHidden(covers)
 	Hud.SetVitalsHidden(false)
+	-- (Pitch 2 item 02 B) a phone's card where it would lie on the vitals card (a landscape phone: the pitch's card and the
+	-- vitals card cannot both fit): the vitals card steps aside while the result is up (owner "Result"), back the moment
+	-- the card closes (Hud.HideResult); anywhere else it is back with the card
+	local onVitals = false
+	if compact then
+		local v = CheerUp.Layout()
+		if v then
+			local f = m.F
+			local x0, y0 = (m.W - 8 - w) * f, res.Position.Y.Offset * f
+			local x1, y1 = (m.W - 8) * f, (res.Position.Y.Offset + h) * f
+			onVitals = x0 < v.X + v.W and v.X < x1 and y0 < v.Y + v.H and v.Y < y1
+		end
+	end
+	Hud.SetVitalsHeld("Result", onVitals)
 	Leave.Place(m, nil, false)
 	CheerUp.Place(m, nil, false)
 	Retreat.Place(m, nil, false)
@@ -7896,6 +8093,22 @@ function Hud.ShowResult(B, payload)
 	St.result = { t0 = keep or os.clock(), dur = K.RESULT_SECONDS, battle = B, payload = payload }
 	Me.MouseHold("BattleResult", true) -- the cursor is free for the card's OK
 	BattleController._wake()
+end
+
+-- (Pitch 2 item 02 B) OK's lip: the first k of its five parts lit (the dark grass), the rest gone into the face
+function Hud.SetResultTimer(frac)
+	local t = Hud.resultTimer
+	if not t or not t.segs then
+		return
+	end
+	local k = math.ceil(clamp(frac, 0, 1) * t.count - 1e-6)
+	if k == t.lit then
+		return
+	end
+	t.lit = k
+	for i, s in ipairs(t.segs) do
+		s.BackgroundColor3 = (i <= k) and SIGN.GrassLip or SIGN.Grass
+	end
 end
 
 function Hud.RewardLines(B, rw)
@@ -7964,6 +8177,7 @@ end
 
 function Hud.HideResult()
 	St.result = nil
+	Hud.SetVitalsHeld("Result", false) -- (Pitch 2 item 02 B) the vitals card back with the card's close
 	Me.MouseHold("BattleResult", false)
 	if Hud.result then
 		Hud.result.Visible = false
@@ -8030,9 +8244,7 @@ function Hud.UpdateResult(now)
 		Hud.HideResult()
 		return
 	end
-	if Hud.resultTimer then
-		setTimer(Hud.resultTimer, 1 - p)
-	end
+	Hud.SetResultTimer(1 - p)
 end
 
 function Hud.SetVisible(on)
@@ -8041,6 +8253,7 @@ function Hud.SetVisible(on)
 		-- a path that ever clears Hud.gui early can never leave the menu column or the player's HP card hidden
 		Hud.SetMenuHidden(false)
 		Hud.SetVitalsHidden(false)
+		Hud.SetVitalsHeld("Result", false)
 	end
 	if not Hud.gui then
 		return
@@ -8080,6 +8293,17 @@ end
 -- quick wins (win 4): a fighter's own HP / stamina card (HudController) steps aside for the fight on every screen; Cheer up! and
 -- Retreat take its slot (CheerUp.Layout). Our owner key is "Battle": another owner's hide (the Gifts window, "Daily") is never
 -- released here, and HudController shows the card when the last owner lets go
+-- (Pitch 2 item 02 B) a hide of the vitals card under another owner key ("Result": the phone's result card lies on it)
+function Hud.SetVitalsHeld(owner, on)
+	if Mods.HudCtl == nil then
+		Mods.HudCtl = optional(script.Parent, "HudController") or false
+	end
+	local hc = Mods.HudCtl
+	if hc and type(hc.SetVitalsHidden) == "function" then
+		pcall(hc.SetVitalsHidden, owner, on == true)
+	end
+end
+
 function Hud.SetVitalsHidden(on)
 	if Mods.HudCtl == nil then
 		Mods.HudCtl = optional(script.Parent, "HudController") or false
@@ -8436,10 +8660,19 @@ function CheerUp.Place(m, B, isFighting)
 		-- where none is clear, the places around a shown card below are kept, measured against the slot
 		local sx, sb = (v.X + v.W / 2) / f, (v.Y + v.H) / f
 		local rowFits = withRetreat and 2 * w + gap <= v.W / f + 2 * gap
-		local half = rowFits and (w + gap / 2) or (w / 2)
-		for _, gc in ipairs({ sx, v.X / f + half, (v.X + v.W) / f - half }) do
+		-- (Pitch 2 item 08 C: the slot is the wider name-tab card's; a small landscape phone's row then reaches the action
+		-- cluster) where no row is clear, the stacked form (Retreat above Cheer up!) is tried at the same three places
+		local tries = {}
+		for _, asRow in ipairs(rowFits and { true, false } or { false }) do
+			local half = asRow and (w + gap / 2) or (w / 2)
+			for _, gc in ipairs({ sx, v.X / f + half, (v.X + v.W) / f - half }) do
+				tries[#tries + 1] = { gc, asRow }
+			end
+		end
+		for _, try in ipairs(tries) do
+			local gc, asRow = try[1], try[2]
 			local boxes = { { gc, sb } }
-			if rowFits then
+			if asRow then
 				boxes = { { gc + (w + gap) / 2, sb }, { gc - (w + gap) / 2, sb } }
 			elseif withRetreat then
 				boxes[2] = { gc, sb - h - gap }
@@ -8447,7 +8680,7 @@ function CheerUp.Place(m, B, isFighting)
 			if not CheerUp.inSlot and CheerUp.SlotClear(m, boxes, w, h) then
 				CheerUp.inSlot = true
 				cx, bottom = boxes[1][1], sb
-				if rowFits then
+				if asRow then
 					rowLeft = boxes[2][1]
 					CheerUp.row = true
 				end

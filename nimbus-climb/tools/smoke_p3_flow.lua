@@ -139,6 +139,16 @@ if CONTEXT ~= "server" then
 			end
 			return false
 		end
+		-- (kit-b Pitch 2 item 02 B, the approved result template) a reward is a chip (its Number over its word), a fact a stat
+		-- row (its Label, its Value apart): "+120 Tokens" / "Gold tier" are no longer one text
+		local function chipSays(card, key, number)
+			local c = card and card:FindFirstChild("Chip_" .. key, true)
+			return c ~= nil and shown(c) and c:FindFirstChild("Number") ~= nil and c.Number.Text == number
+		end
+		local function statSays(card, key, value)
+			local r = card and card:FindFirstChild("Stat_" .. key, true)
+			return r ~= nil and shown(r) and r:FindFirstChild("Value") ~= nil and r.Value.Text == value
+		end
 		local function battleGui()
 			return pg and pg:FindFirstChild("NimbusBattle")
 		end
@@ -254,7 +264,7 @@ if CONTEXT ~= "server" then
 					local card = at(battleGui(), "Root.ResultCard")
 					local rw = payload.Rewards or {}
 					seen.trialEnd = {
-						ok = shown(card) and (hasText(card, "VICTORY") or hasText(card, "DEFEAT")) and hasText(card, "+" .. Theme.ShortNumber(rw.Tokens or 0) .. " Tokens"),
+						ok = shown(card) and (hasText(card, "VICTORY") or hasText(card, "DEFEAT")) and chipSays(card, "Tokens", "+" .. Theme.ShortNumber(rw.Tokens or 0)),
 						tokens = rw.Tokens,
 					}
 				elseif kind == "Lobby" and type(payload.Sent) == "table" and not seen.sent then
@@ -274,8 +284,8 @@ if CONTEXT ~= "server" then
 					advance(1.2)
 					local card = at(battleGui(), "Root.ResultCard")
 					local rw = payload.Rewards
-					seen.raidEnd = shown(card) and hasText(card, "BOSS DEFEATED") and hasText(card, tostring(rw.Tier) .. " tier")
-						and hasText(card, "+" .. Theme.ShortNumber(rw.Tokens or 0) .. " Tokens") and (rw.EventPet == nil or hasText(card, "New pet:"))
+					seen.raidEnd = shown(card) and hasText(card, "BOSS DEFEATED") and statSays(card, "Tier", tostring(rw.Tier))
+						and chipSays(card, "Tokens", "+" .. Theme.ShortNumber(rw.Tokens or 0)) and (rw.EventPet == nil or hasText(card, "New pet:"))
 						and (rw.Double ~= true or hasText(card, "Double rewards"))
 				end
 			elseif e.remote == "ArenaState" and not seen.countdown then

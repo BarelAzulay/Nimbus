@@ -2355,7 +2355,22 @@ local function clientScenarios()
 		if T.check(d ~= nil and vitalsHiddenProblem() == nil, tag .. ": (setup) a dungeon fighter, the card hidden", tostring(vitalsHiddenProblem())) then
 			KC.toClient("BattleState", "End", { BattleId = d.id, Mode = d.mode, Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, d.id)
 			Mock.Step(0.1)
-			T.check(vitalsShownProblem() == nil, tag .. ": a leave (End \"Left\") brings the card back", tostring(vitalsShownProblem()))
+			-- (kit-b Pitch 2 item 02 B: a landscape phone's result card lies on the vitals card's slot: the card waits under it
+			-- and is back the moment the result card closes)
+			local rc = H.find("Root.ResultCard")
+			local _, L0 = vitalsState()
+			local onSlot0 = false
+			if rc and shownIn(rc) and isRect(L0.VitalsSlot) then
+				local p, s, v = rc.AbsolutePosition, rc.AbsoluteSize, L0.VitalsSlot
+				onSlot0 = p.X < v.X + v.W and v.X < p.X + s.X and p.Y < v.Y + v.H and v.Y < p.Y + s.Y
+			end
+			T.check(vitalsShownProblem() == nil or (onSlot0 and vitalsHiddenProblem() == nil), tag .. ": a leave (End \"Left\") brings the card back (a result card on its slot: after it closes)", tostring(vitalsShownProblem()))
+			local ok0 = H.find("Root.ResultCard.Body.OkButton")
+			if ok0 and onSlot0 then
+				Mock.Click(ok0)
+				Mock.Step(0.1)
+				T.check(vitalsShownProblem() == nil, tag .. ": ...OK closes the result card: the vitals card is back", tostring(vitalsShownProblem()))
+			end
 			H.cleanup(BC, d)
 			T.check(vitalsShownProblem() == nil, tag .. ": ...and it stays after the cleanup", tostring(vitalsShownProblem()))
 		end
@@ -2364,8 +2379,24 @@ local function clientScenarios()
 			KC.toClient("BattleState", "End", { BattleId = dr.id, Mode = "Raid", Outcome = "Lose", Won = false, Spectator = false, Reason = "Wipe" }, dr.id)
 			Mock.Step(0.1)
 			local card = H.find("Root.ResultCard")
-			T.check(card ~= nil and shownIn(card) and vitalsShownProblem() == nil, tag .. ": the result card brings the card back", tostring(vitalsShownProblem()))
+			-- (kit-b Pitch 2 item 02 B: the approved result card is too big for a landscape phone beside the vitals card; where
+			-- it would lie on the card's slot, the vitals card waits under it for the result and is back the moment it closes)
+			local _, L = vitalsState()
+			local onSlot = false
+			if card and shownIn(card) and isRect(L.VitalsSlot) then
+				local p, s, v = card.AbsolutePosition, card.AbsoluteSize, L.VitalsSlot
+				onSlot = p.X < v.X + v.W and v.X < p.X + s.X and p.Y < v.Y + v.H and v.Y < p.Y + s.Y
+			end
+			T.check(card ~= nil and shownIn(card) and (vitalsShownProblem() == nil or (onSlot and vitalsHiddenProblem() == nil)),
+				tag .. ": the result card brings the card back (a card on its slot: after it closes)", tostring(vitalsShownProblem()))
+			local ok = H.find("Root.ResultCard.Body.OkButton")
+			if ok and onSlot then
+				Mock.Click(ok)
+				Mock.Step(0.1)
+				T.check(vitalsShownProblem() == nil, tag .. ": ...OK closes the result card: the vitals card is back", tostring(vitalsShownProblem()))
+			end
 			H.cleanup(BC, dr)
+			T.check(vitalsShownProblem() == nil, tag .. ": ...and it stays after the raid's cleanup", tostring(vitalsShownProblem()))
 		end
 		local ds = H.driver("Raid")
 		if T.check(ds ~= nil, tag .. ": (setup) a raid to watch") then

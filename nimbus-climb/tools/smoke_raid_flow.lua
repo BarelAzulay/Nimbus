@@ -621,7 +621,12 @@ local function clientScenarios()
 		KC.advance(14)
 		startRaid("smoke_raidflow_2")
 		endRaid("smoke_raidflow_2", { Tier = "Gold", Tokens = 200, Xp = 160, Share = 1, Damage = 1000 }, true)
-		T.check(battleText("Gold tier") and not battleText("Rewards again"), "raid flow client: a paid win shows its medal, no limit line")
+		-- (kit-b Pitch 2 item 02 B, the approved result template: the medal is the Tier stat row, "Tier" and "Gold" apart; was
+		-- the "Gold tier" tag)
+		local gui = LocalPlayer:FindFirstChildOfClass("PlayerGui"):FindFirstChild("NimbusBattle")
+		local tierRow = gui and gui:FindFirstChild("Stat_Tier", true)
+		local medal = tierRow ~= nil and KC.isShown(tierRow) and tierRow:FindFirstChild("Value") ~= nil and tierRow.Value.Text == "Gold"
+		T.check(medal and not battleText("Rewards again"), "raid flow client: a paid win shows its medal, no limit line")
 		KC.advance(14)
 		-- a shutdown pays like a loss (payRaid): the card says so
 		startRaid("smoke_raidflow_3")
