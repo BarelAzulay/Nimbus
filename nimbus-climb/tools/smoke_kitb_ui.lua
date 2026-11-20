@@ -6179,6 +6179,14 @@ local function clientScenarios()
 					local power = slot:FindFirstChild("Power")
 					T.check(power and U8.shown(power) and U8.rect(power).Y >= U8.rect(busy).B - 0.5, tag .. ": ...and the slot's power reads below it",
 						power and (U8.show(U8.rect(power)) .. " vs " .. U8.show(U8.rect(busy))) or "no Power")
+					-- (Pitch 2 fix round B, T1 look leftover 4: the cover hid the portrait) the F0 A mock's slim activity strip on
+					-- the tag's row over a VISIBLE pet: at most a quarter of the face under it
+					local face = slot:FindFirstChild("Face")
+					local fr, br = face and U8.rect(face), U8.rect(busy)
+					local under = fr and math.max(0, math.min(fr.B, br.B) - math.max(fr.Y, br.Y)) or math.huge
+					T.check(fr ~= nil and U8.shown(face) and under <= 0.25 * (fr.B - fr.Y),
+						tag .. ": ...a slim strip (the pet stays visible: at most a quarter of its face under the strip)",
+						fr and fmt("strip %s, face %s, %.0f px under", U8.show(br), U8.show(fr), under) or "no Face")
 				end
 				local card = holder:FindFirstChild("Card_" .. K2, true)
 				local cb = card and card:FindFirstChild("Busy")
@@ -6187,6 +6195,14 @@ local function clientScenarios()
 					T.check(cb.BackgroundTransparency == 0 and level and U8.rect(level).Y >= U8.rect(cb).B - 0.5,
 						tag .. ": ...opaque, the card's level clear below it", level and (U8.show(U8.rect(level)) .. " vs " .. U8.show(U8.rect(cb))) or "no Level")
 					T.check(number and U8.shown(number) and number.ZIndex > cb.ZIndex, tag .. ": ...the team number chip drawn over it")
+					-- (Pitch 2 fix round B, T1 look leftover 4) a slim strip under the chips row over a VISIBLE pet (the F0 A
+					-- mock): at most a third of the picture's height, clear of the chips row
+					local pic = card:FindFirstChild("Picture")
+					local pr, cr = pic and U8.rect(pic), U8.rect(cb)
+					local nr = number and U8.rect(number)
+					T.check(pr ~= nil and (cr.B - cr.Y) <= (pr.B - pr.Y) / 3 and cr.Y >= pr.Y and cr.B <= pr.B and (nr == nil or cr.Y >= nr.B - 0.5),
+						tag .. ": ...a slim strip over the picture under the chips row (the pet stays visible)",
+						pr and fmt("strip %s, picture %s, chip %s", U8.show(cr), U8.show(pr), nr and U8.show(nr) or "-") or "no Picture")
 				end
 				-- the detail's stars (K1 is evolved twice) inside its line and its panel
 				local detail = holder:FindFirstChild("Detail", true) or holder:FindFirstChild("Sheet", true)
