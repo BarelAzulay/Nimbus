@@ -9,11 +9,27 @@
 --   skycycle_bridge_peak_swaps_faces (server world, pure) across every phase change, every raid in (Day and Night) and a
 --                             raid to raid change: the theme, the Skybox faces, StarCount and the raid's fixed clock change
 --                             only between two samples where the bridge is at its peak (k >= 0.98), once; at the peak the
---                             air is thick (Density and cloud Cover well above both looks)
+--                             cloud deck is the curtain (Cover >= 0.95, above both looks) over CLEAR air (P2 F11 C: Density
+--                             <= 0.36 at a phase change, <= 0.42 at a raid; was "Density 0.2 over both looks", the
+--                             owner's "heavy mist")
 --   skycycle_bridge_keeps_floor (server world, pure) every step of every bridge (phase changes, raids in from Day / Night,
 --                             raid to raid): Brightness >= 1, OutdoorAmbient >= 70, Density <= 0.7, Cover <= 1
 --   skycycle_bridge_same_for_all (server world, pure) a long-running client (2 s steps since the epoch) and one that just
---                             joined compute the same bridged preset at each bridge peak
+--                             joined compute the same bridged preset at each bridge peak (both see the cloud curtain)
+--   P2 F11 C (the day fade, docs/superpowers/specs/2026-11-20-pitch2-build-design.md item F11_day_fade, the owner's pick
+--   C "Clear air + a quick sunset behind the clouds"; the owner: "the fade switching day time is making the world look like
+--   there's a heavy mist, it looks bad"):
+--   sky_fade_clear            (server world, pure) the approved resting air per phase (Density / Haze: Dawn 0.29 / 1.1, Day
+--                             0.26 / 0.8, Sunset 0.30 / 1.2, Night 0.27 / 0.9); every phase change sampled every 0.25 s:
+--                             Density <= 0.36, Haze <= 1.6; every raid in / out (Day, Sunset, Night), raid to raid and a raid
+--                             at a phase change's peak: Density <= 0.42, Haze <= 2.2; at each bridge peak the cloud deck is
+--                             the curtain (Cover >= 0.95); the tint is the light's and the sky's, not the air's (the bridge
+--                             moves Atmosphere Color at most 40 / 255 per channel off the two looks' own mix; the light
+--                             walks from one look to the other, the skybox swaps once); the quick
+--                             sunset: Night.Clock starts at 18.9 h, across the Sunset -> Night fade the clock only moves
+--                             forward, stays <= 17.2 h before the bridge peak and is 18.9 h from the peak to Night, so
+--                             ClockTime is never in 17.4 - 18.8 h (the engine sun on the horizon, the red island) outside
+--                             the bridge's middle 4 s, and its one step sits at the peak under the curtain
 --   sky_raid_in8_out6         (client) a raid sky blends in over Config.Sky.Transitions.Raid.In (8) s and out over Out (6) s
 --                             (Cycle.EventBlend is gone); the look swaps at the blend's midpoint
 --   skycontroller_raid_cadence (client) the loop refreshes every 2 s with 2 s tweens, every 0.5 s with 0.5 s tweens while a
@@ -32,8 +48,9 @@
 --   lightingservice_boot_uses_painted_day (server world, booted) empty (or half-pasted) Config.Sky.Faces boots the
 --                             painted skybox of the loop's first phase (S2 review; the Day's when that one is not
 --                             uploaded), StarCount 0, CelestialBodiesShown false, Glare 0, its own SunRays at 0 ("Painted"):
---                             faces / stars / sun / glare / rays = SkyCycle.Preset at that phase; the stock sky only when
---                             neither theme is uploaded; six owner faces win
+--                             faces / stars / sun / glare / rays = SkyCycle.Preset at that phase; its air = the Day look's
+--                             resting air (P2 F11 C: Density 0.26, Haze 0.8); the stock sky only when neither theme is
+--                             uploaded; six owner faces win
 --   lightingservice_owns_one_sky (server world, booted; sky review) a Baseplate's stock Sky next to the project's: Init
 --                             keeps exactly one Sky (NimbusSky, else the first), destroys the rest, the kept one carries
 --                             the look's faces and StarCount; Init twice keeps the same Sky
@@ -76,6 +93,21 @@ local fmt = string.format
 local function isColor(v)
 	return typeof(v) == "Color3"
 end
+
+-- P2 F11 C, the owner's approved day fade (spec docs/superpowers/specs/2026-11-20-pitch2-build-design.md, item
+-- F11_day_fade; mock-up .superpowers/slop-audit/round3/build/PITCH2/F_overall_finish/F11_dayfade_optC.png). Written out
+-- here, not read from Config, so a Config drift back toward the mist fails a check
+local F11 = {
+	Rest = { Dawn = { 0.29, 1.1 }, Day = { 0.26, 0.8 }, Sunset = { 0.30, 1.2 }, Night = { 0.27, 0.9 } }, -- { Density, Haze } at rest
+	Cycle = { Density = 0.36, Haze = 1.6 }, -- a phase change's bridge peak (was 0.65 / 3.4: the "heavy mist")
+	Raid = { Density = 0.42, Haze = 2.2 }, -- a raid sky's bridge peak (was 0.7 / 4.0, the heaviest air in the game)
+	Curtain = 0.95, -- Clouds Cover at a bridge peak: the cloud deck, not the air over the island, hides the skybox swap
+	Tint = 40, -- / 255 per channel: the most the bridge colour moves the air off the two looks' own mix
+	LowSun = { 17.4, 18.8 }, -- ClockTime with the engine sun on or near the horizon (the red-orange island of the owner's shot)
+	SunsetPeak = 17.2, -- the Sunset clock never passes this before the bridge peak
+	NightFrom = 18.9, -- Night.Clock[1]: the sun is gone when the Night starts (was 18.4)
+	Middle = 2, -- s either side of the Sunset -> Night bridge peak: the only time the clock may sit in LowSun
+}
 
 local function serverScenarios()
 	local S = {}
@@ -202,12 +234,16 @@ local function serverScenarios()
 			tally:report()
 			T.check(themes == wantSwaps, fmt("%s: the skybox swaps %d time(s)", label, wantSwaps), fmt("%d swaps", themes))
 		end
-		-- the peak is thick air: Density and Cover well above both looks (the bridge is applied, not only computed)
-		local function thickAtPeak(label, peak, lookA, lookB)
+		-- the peak is the cloud curtain over clear air (the bridge is applied, not only computed). P2 F11 C changed this
+		-- check on purpose: it asked for Density 0.2 over both looks (0.65 / 0.7 at the peak), which is the "heavy mist"
+		-- the owner rejected (spec item F11_day_fade); the swap now hides behind the cloud deck (Cover >= F11.Curtain, above
+		-- both looks) while Density stays at or under the approved cap (cap = F11.Cycle / F11.Raid)
+		local function thickAtPeak(label, peak, lookA, lookB, cap)
 			local dA, dB = lookA.Atmosphere.Density, lookB.Atmosphere.Density
 			local cA, cB = lookA.Clouds.Cover, lookB.Clouds.Cover
 			local d, c = peak.Atmosphere.Density, peak.Clouds.Cover
-			T.check(d >= max(dA, dB) + 0.2 and c >= min(1, max(cA, cB) + 0.05) - 1e-9, fmt("%s: the peak is thick air (Density %.2f over %.2f / %.2f, Cover %.2f over %.2f / %.2f)", label, d, dA, dB, c, cA, cB))
+			T.check(c >= F11.Curtain - 1e-6 and c >= min(1, max(cA, cB) + 0.05) - 1e-9 and d >= max(dA, dB) - 1e-9 and d <= cap.Density + 1e-9,
+				fmt("%s: the peak is the cloud curtain over clear air (Cover %.2f over %.2f / %.2f, Density %.2f from %.2f / %.2f, cap %.2f)", label, c, cA, cB, d, dA, dB, cap.Density))
 		end
 		-- every phase change, sampled every 0.05 s across its blend window
 		local half = tr.Cycle.BridgeHalf
@@ -226,7 +262,7 @@ local function serverScenarios()
 			local swaps = cfg.Themes[w.Phase] ~= cfg.Themes[w.Next] and 1 or 0
 			swapsAtPeak(label, samples, swaps)
 			if swaps == 1 then
-				thickAtPeak(label, peak, cfg.Looks[w.Phase], cfg.Looks[w.Next])
+				thickAtPeak(label, peak, cfg.Looks[w.Phase], cfg.Looks[w.Next], F11.Cycle)
 			end
 		end
 		-- every raid sky blending in (and out: the same blend backwards) in the Day and at Night
@@ -242,7 +278,7 @@ local function serverScenarios()
 				end
 				local label = fmt("%s at t %d", bossId, t)
 				swapsAtPeak(label, samples, 1)
-				thickAtPeak(label, SC.Preset(at, bossId, 0.5, faces), cfg.Looks[at.Phase], cfg.Looks[bossId])
+				thickAtPeak(label, SC.Preset(at, bossId, 0.5, faces), cfg.Looks[at.Phase], cfg.Looks[bossId], F11.Raid)
 			end
 		end
 		-- raid to raid (back-to-back: storm up, lava spawns)
@@ -254,7 +290,7 @@ local function serverScenarios()
 			samples[#samples + 1] = { k = SC.Bridge(b, rhalf), theme = theme, preset = p, clockJump = true }
 		end
 		swapsAtPeak("storm -> lava", samples, 1)
-		thickAtPeak("storm -> lava", SC.Preset(at, "lava_golem", 0.5, faces, "storm_titan", 1), cfg.Looks.storm_titan, cfg.Looks.lava_golem)
+		thickAtPeak("storm -> lava", SC.Preset(at, "lava_golem", 0.5, faces, "storm_titan", 1), cfg.Looks.storm_titan, cfg.Looks.lava_golem, F11.Raid)
 		-- off the peak window the bridge adds nothing: blend 0 / 1 are exactly the looks (no haze left over)
 		local plain = SC.Preset(at, "storm_titan", 1, faces)
 		T.near(plain.Atmosphere.Density, cfg.Looks.storm_titan.Atmosphere.Density, 1e-9, "a raid at blend 1: the raid look's Density (no bridge left)")
@@ -361,13 +397,187 @@ local function serverScenarios()
 			local fresh, theme = SC.Preset(SC.At(epoch + pk.t, epoch, speed, offset), nil, 0, faces)
 			local ok, why = same(walked[i][1], fresh, "preset")
 			T.check(ok and walked[i][2] == theme, label .. " peak: a client that just joined = a long-running one", why)
-			local look = math.max(cfg.Looks[pk.w.Phase].Atmosphere.Density, cfg.Looks[pk.w.Next].Atmosphere.Density)
-			T.check(fresh.Atmosphere.Density > look + 0.2, fmt("%s peak: both see the bridge (Density %.2f over the looks' %.2f)", label, fresh.Atmosphere.Density, look))
+			-- P2 F11 C changed this on purpose: it read "Density 0.2 over the looks" (the rejected heavy mist); the bridge both
+			-- clients see is now the cloud curtain (Cover >= F11.Curtain, well over both looks' decks)
+			local look = math.max(cfg.Looks[pk.w.Phase].Clouds.Cover, cfg.Looks[pk.w.Next].Clouds.Cover)
+			T.check(fresh.Clouds.Cover >= F11.Curtain - 1e-6 and fresh.Clouds.Cover > look + 0.2, fmt("%s peak: both see the bridge (cloud Cover %.2f over the looks' %.2f)", label, fresh.Clouds.Cover, look))
 			local rFresh = SC.Preset(SC.At(epoch + pk.t, epoch, speed, offset), "storm_titan", 0.5, faces)
 			local okR, whyR = same(walked[i].raid[1], rFresh, "raid")
 			T.check(okR, label .. " peak + a raid at its peak: the same for both", whyR)
 		end
 		local _ = tr
+	end)
+
+	-- P2 F11 C: the day / dusk / night fade keeps the world clear (see F11 above and the header)
+	S.sky_fade_clear = guarded("sky_fade_clear", function()
+		local SC, cfg, tr = sky()
+		if not SC then
+			return
+		end
+		local function close(a, b, eps)
+			return type(a) == "number" and type(b) == "number" and abs(a - b) <= (eps or 1e-9)
+		end
+		-- 1. the approved resting air and bridge peaks in Config.Sky
+		local rest = T.tally("F11 C: each phase's resting air = the approved Density / Haze")
+		for _, phase in ipairs(cfg.Cycle.Order) do
+			local want = F11.Rest[phase]
+			local atm = cfg.Looks[phase] and cfg.Looks[phase].Atmosphere or {}
+			rest:case(want ~= nil and close(atm.Density, want[1]) and close(atm.Haze, want[2]), fmt("%s Density %s Haze %s (want %s)", phase, tostring(atm.Density), tostring(atm.Haze), want and fmt("%.2f / %.1f", want[1], want[2]) or "?"))
+		end
+		rest:report()
+		T.check(tr.Cycle.Density <= F11.Cycle.Density + 1e-9 and tr.Cycle.Haze <= F11.Cycle.Haze + 1e-9 and tr.Cycle.Cover >= F11.Curtain - 1e-9,
+			fmt("Transitions.Cycle: Density <= %.2f, Haze <= %.1f, Cover >= %.2f (the curtain)", F11.Cycle.Density, F11.Cycle.Haze, F11.Curtain), fmt("%s / %s / %s", tostring(tr.Cycle.Density), tostring(tr.Cycle.Haze), tostring(tr.Cycle.Cover)))
+		T.check(tr.Raid.Density <= F11.Raid.Density + 1e-9 and tr.Raid.Haze <= F11.Raid.Haze + 1e-9 and tr.Raid.Cover >= F11.Curtain - 1e-9,
+			fmt("Transitions.Raid: Density <= %.2f, Haze <= %.1f, Cover >= %.2f", F11.Raid.Density, F11.Raid.Haze, F11.Curtain), fmt("%s / %s / %s", tostring(tr.Raid.Density), tostring(tr.Raid.Haze), tostring(tr.Raid.Cover)))
+
+		-- 2. every phase change, sampled every 0.25 s from 1 s before its blend to 1 s after
+		local caps = T.tally(fmt("every phase change, every 0.25 s: Density <= %.2f and Haze <= %.1f (clear air through the whole blend)", F11.Cycle.Density, F11.Cycle.Haze))
+		local tint = T.tally(fmt("the air takes no tint of its own: Atmosphere Color within %d / 255 per channel of the two looks' mix (the brown bridge was 75 off)", F11.Tint))
+		local curtain = T.tally(fmt("each phase change's bridge peak: the cloud deck is the curtain (Cover >= %.2f)", F11.Curtain))
+		local light = T.tally("the light carries the change: OutdoorAmbient / ColorShift_Top walk from one look to the other, the skybox swaps once")
+		local half = tr.Cycle.BridgeHalf
+		for _, w in ipairs(windows(cfg)) do
+			local label = w.Phase .. " -> " .. w.Next
+			local A, B = cfg.Looks[w.Phase].Atmosphere, cfg.Looks[w.Next].Atmosphere
+			local best, bestCover, swaps, lastTheme, prevL = -1, nil, 0, nil, nil
+			local walkBad = nil
+			local first, last = nil, nil
+			local n = math.floor((w.To - w.From + 2) / 0.25 + 0.5)
+			for i = 0, n do
+				local t = w.From - 1 + i * 0.25
+				local at = SC.At(t, 0, 1, 0)
+				local p, theme = SC.Preset(at, nil, 0, faces)
+				local atm, L = p.Atmosphere, p.Lighting
+				caps:case(atm.Density <= F11.Cycle.Density + 1e-9 and atm.Haze <= F11.Cycle.Haze + 1e-9, fmt("%s t %.2f Density %.3f Haze %.2f", label, t, atm.Density, atm.Haze))
+				if at.Phase == w.Phase then
+					local plain = A.Color:Lerp(B.Color, at.Blend)
+					local c = atm.Color
+					local off = max(abs(c.R - plain.R), abs(c.G - plain.G), abs(c.B - plain.B)) * 255
+					tint:case(off <= F11.Tint + 1e-6, fmt("%s t %.2f air %d,%d,%d is %.1f off the mix %d,%d,%d", label, t,
+						math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5), off, math.floor(plain.R * 255 + 0.5), math.floor(plain.G * 255 + 0.5), math.floor(plain.B * 255 + 0.5)))
+					local k = SC.Bridge(at.Blend, half)
+					if k > best then
+						best, bestCover = k, p.Clouds.Cover
+					end
+				end
+				if lastTheme ~= nil and theme ~= lastTheme then
+					swaps = swaps + 1
+				end
+				lastTheme = theme
+				-- the light: every channel of OutdoorAmbient and ColorShift_Top moves one way only across the window
+				local cur = { L.OutdoorAmbient, L.ColorShift_Top }
+				first = first or cur
+				if prevL then
+					for j = 1, 2 do
+						local prop = j == 1 and "OutdoorAmbient" or "ColorShift_Top"
+						for _, ch in ipairs({ "R", "G", "B" }) do
+							local moved = cur[j][ch] - prevL[j][ch]
+							local dir = cfg.Looks[w.Next].Lighting[prop][ch] - cfg.Looks[w.Phase].Lighting[prop][ch]
+							if moved * dir < -1e-9 then
+								walkBad = walkBad or fmt("t %.2f %s.%s moved against the walk", t, prop, ch)
+							end
+						end
+					end
+				end
+				prevL, last = cur, cur
+			end
+			curtain:case(bestCover ~= nil and bestCover >= F11.Curtain - 1e-6, fmt("%s peak (k %.3f) Cover %s", label, best, tostring(bestCover)))
+			local moved = false
+			for j = 1, 2 do
+				if abs(last[j].R - first[j].R) + abs(last[j].G - first[j].G) + abs(last[j].B - first[j].B) > 0.02 then
+					moved = true
+				end
+			end
+			local wantSwaps = cfg.Themes[w.Phase] ~= cfg.Themes[w.Next] and 1 or 0
+			light:case(walkBad == nil and moved and swaps == wantSwaps, fmt("%s: %s, light moved %s, %d swap(s) (want %d)", label, tostring(walkBad), tostring(moved), swaps, wantSwaps))
+		end
+		caps:report()
+		tint:report()
+		curtain:report()
+		light:report()
+
+		-- 3. the raid skies: in / out over the Day, the Sunset and the Night, raid to raid, a raid at a phase change's peak
+		local raid = T.tally(fmt("every raid sky blend: Density <= %.2f and Haze <= %.1f", F11.Raid.Density, F11.Raid.Haze))
+		local raidCurtain = T.tally(fmt("every raid sky's bridge peak: Cover >= %.2f (the curtain)", F11.Curtain))
+		local function raidCase(p, label)
+			local atm = p.Atmosphere
+			raid:case(atm.Density <= F11.Raid.Density + 1e-9 and atm.Haze <= F11.Raid.Haze + 1e-9, fmt("%s Density %.3f Haze %.2f", label, atm.Density, atm.Haze))
+		end
+		local bosses = {}
+		for bossId in pairs(cfg.RaidThemes) do
+			bosses[#bosses + 1] = bossId
+		end
+		table.sort(bosses)
+		for _, bossId in ipairs(bosses) do
+			for _, t in ipairs({ 300, 900, 1100 }) do
+				local at = SC.At(t, 0, 1, 0)
+				for i = 0, 50 do
+					raidCase(SC.Preset(at, bossId, i / 50, faces), fmt("%s t %d blend %.2f", bossId, t, i / 50))
+				end
+				local peak = SC.Preset(at, bossId, 0.5, faces)
+				raidCurtain:case(peak.Clouds.Cover >= F11.Curtain - 1e-6, fmt("%s t %d Cover %.3f", bossId, t, peak.Clouds.Cover))
+			end
+			for _, other in ipairs(bosses) do
+				if other ~= bossId then
+					for i = 0, 20 do
+						raidCase(SC.Preset(SC.At(1100, 0, 1, 0), bossId, i / 20, faces, other, 1), fmt("%s -> %s blend %.2f", other, bossId, i / 20))
+					end
+				end
+			end
+			for _, w in ipairs(windows(cfg)) do
+				local at = SC.At((w.From + w.To) / 2, 0, 1, 0)
+				for i = 0, 20 do
+					raidCase(SC.Preset(at, bossId, i / 20, faces), fmt("%s at the %s -> %s peak, blend %.2f", bossId, w.Phase, w.Next, i / 20))
+				end
+			end
+		end
+		raid:report()
+		raidCurtain:report()
+
+		-- 4. the quick sunset (the low sun was the other half of the red-brown shot): the clock holds near the Sunset until
+		-- the bridge peak and is Night's 18.9 h from the peak on, so the engine sun never sits on the horizon on screen
+		local C = cfg.Cycle
+		local nightAt = C.Seconds.Dawn + C.Seconds.Day + C.Seconds.Sunset
+		local peakAt = nightAt - C.Blend / 2
+		T.check(type(cfg.Looks.Night.Clock) == "table" and close(cfg.Looks.Night.Clock[1], F11.NightFrom), fmt("Night.Clock starts at %.1f h (the sun is gone)", F11.NightFrom), tostring(cfg.Looks.Night.Clock and cfg.Looks.Night.Clock[1]))
+		local band = T.tally(fmt("the Sunset -> Night fade, every 0.05 s: ClockTime never in %.1f - %.1f h outside the bridge's middle %d s", F11.LowSun[1], F11.LowSun[2], 2 * F11.Middle))
+		local fwd = T.tally("the Sunset -> Night fade, every 0.05 s: the clock only moves forward")
+		local hold = T.tally(fmt("before the bridge peak the clock stays <= %.1f h; from the peak to the Night it is %.1f h", F11.SunsetPeak, F11.NightFrom))
+		local steps = {}
+		local prev, prevT = nil, nil
+		local from = nightAt - C.Blend - 5
+		for i = 0, math.floor((C.Blend + 15) / 0.05 + 0.5) do
+			local t = from + i * 0.05
+			local p = SC.Preset(SC.At(t, 0, 1, 0), nil, 0, faces)
+			local c = p.Lighting.ClockTime
+			if abs(t - peakAt) > F11.Middle then
+				band:case(not (c > F11.LowSun[1] and c < F11.LowSun[2]), fmt("t %.2f (%.2f s from the peak) ClockTime %.3f", t, t - peakAt, c))
+			end
+			if prev then
+				local d = SC.ClockDelta(prev, c)
+				fwd:case(d >= -1e-9, fmt("t %.2f %.3f -> %.3f", t, prev, c))
+				if d > 0.5 then
+					steps[#steps + 1] = { from = prevT, to = t, a = prev, b = c }
+				end
+			end
+			if t < peakAt - 0.01 and t >= nightAt - C.Blend then
+				hold:case(c <= F11.SunsetPeak + 1e-9, fmt("t %.2f (before the peak) ClockTime %.3f", t, c))
+			elseif t > peakAt + 0.01 and t <= nightAt then
+				hold:case(close(c, F11.NightFrom, 1e-6), fmt("t %.2f (after the peak) ClockTime %.3f", t, c))
+			end
+			prev, prevT = c, t
+		end
+		band:report()
+		fwd:report()
+		hold:report()
+		-- its one step (more than 0.5 h between two 0.05 s samples) sits at the bridge peak, under the curtain
+		local s = steps[1]
+		local kA = s and SC.Bridge(SC.At(s.from, 0, 1, 0).Blend, half) or 0
+		local kB = s and SC.Bridge(SC.At(s.to, 0, 1, 0).Blend, half) or 0
+		local pk = s and SC.Preset(SC.At(s.to, 0, 1, 0), nil, 0, faces)
+		T.check(#steps == 1 and kA >= 0.98 and kB >= 0.98 and pk.Clouds.Cover >= F11.Curtain - 0.01 and s.b >= F11.NightFrom - 1e-6,
+			"the quick sunset: one clock step, at the bridge peak (k >= 0.98 on both sides), under the cloud curtain, onto the Night's start",
+			s and fmt("%d step(s), %.2f -> %.2f h at t %.2f, k %.3f / %.3f, Cover %.3f", #steps, s.a, s.b, s.to, kA, kB, pk.Clouds.Cover) or "no step (the clock still walks across the horizon)")
 	end)
 
 	-- S2 (sky audit F5): the painted skies have their stars painted in; 3000 engine pinpoints on top of them read as a
@@ -722,6 +932,10 @@ local function serverScenarios()
 			faces:report()
 			T.check(s.StarCount == 0 and s.CelestialBodiesShown == false, label .. ": no engine stars, no engine sun / moon", fmt("StarCount %s, CelestialBodiesShown %s", tostring(s.StarCount), tostring(s.CelestialBodiesShown)))
 			T.check(atm.Glare == 0, label .. ": Atmosphere Glare 0", tostring(atm.Glare))
+			-- P2 F11 C: the boot air is the Day look's clear resting air (the same numbers SkyCycle rests on), not the old 0.28 / 1.0
+			local day = Config.Sky.Looks.Day.Atmosphere
+			T.check(atm.Density == day.Density and atm.Haze == day.Haze and abs(day.Density - F11.Rest.Day[1]) < 1e-9 and abs(day.Haze - F11.Rest.Day[2]) < 1e-9,
+				fmt("%s: the boot air = the Day look's resting air (Density %.2f, Haze %.1f)", label, F11.Rest.Day[1], F11.Rest.Day[2]), fmt("%s / %s (Day look %s / %s)", tostring(atm.Density), tostring(atm.Haze), tostring(day.Density), tostring(day.Haze)))
 			-- S2 review: what SkyController's first apply at that phase writes (SkyCycle.Preset with faces): the sun rays,
 			-- glare, engine sun and stars do not move when the living sky takes over
 			if phase then

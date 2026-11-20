@@ -13,7 +13,9 @@
 --   * a refresh is skipped while LightingStack.Busy() (a Dungeon / AttackFxDim fade runs: never restarted); the next
 --     refresh after it applies
 --   * the clock: it tweens forward in the 2 s steps (SkyCycle's cycle clock only moves forward round the dial, the
---     Sunset -> Night and Night -> Dawn changes included). Set at once (LightingStack.SetBase's instant set) only
+--     Sunset -> Night and Night -> Dawn changes included). P2 F11 C's quick sunset (about 17.1 -> 18.9 h at the
+--     Sunset -> Night bridge peak) stays inside the Sunset segment, so it is tweened too, over the one refresh that
+--     meets the peak, behind the cloud curtain (never set at once). Set at once (LightingStack.SetBase's instant set) only
 --     (a) when it passes midnight (23.9 -> 0.1: a tween would run back through the day; 24 h = 0 h, so invisible) and
 --     (b) on a segment change (a raid sky's mid-blend, in or out) by more than Config.Sky.ClockJump h
 --   * the raid sky: SkyEvent (a boss id with a RaidThemes sky) blends in over Transitions.Raid.In (8) s from SkyEventAt

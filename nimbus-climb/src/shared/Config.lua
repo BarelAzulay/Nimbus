@@ -933,6 +933,11 @@ Config.Sky = {
 		Order = { "Dawn", "Day", "Sunset", "Night" },
 		Seconds = { Dawn = 120, Day = 360, Sunset = 540, Night = 180 }, -- a 1200 s (20 min) loop
 		Blend = 75, -- seconds at the end of each phase that blend into the next
+		-- (P2 F11 C, the quick sunset) hours the clock walks on into a phase change's clock gap (the Sunset's 17 h ->
+		-- the Night's 18.9 h, the only gap) up to the bridge peak; at the peak (blend 0.5, behind the cloud curtain) it is
+		-- the next phase's start, so the engine sun never sits on the horizon on screen. nil = the old even walk across
+		-- the whole blend. Used only where the phase change has a haze bridge (the skybox changes)
+		GapWalk = 0.2,
 		Refresh = 2, -- the client re-applies the sky every Refresh s ...
 		Tween = 2, -- ... with a tween this long (no per-frame work); Transitions.Raid.Step while a raid sky blends
 	},
@@ -943,6 +948,10 @@ Config.Sky = {
 	-- CloudDensity = the Clouds Density peak, used only while Config.Preview.ThinClouds is on (S4 review: the thin deck
 	-- rests at 0.3, and Atmosphere Density does not veil the skybox itself; the looks' own decks sit near these).
 	-- Tune in Studio: the faces about 85% hidden at the peak, the next obby platform (60 studs) still clearly visible.
+	-- P2 F11 C (the owner: "the fade switching day time is making the world look like there's a heavy mist, it looks bad";
+	-- pick C "Clear air + a quick sunset behind the clouds"): the air stays clear (Cycle Density 0.65 -> 0.36, Haze
+	-- 3.4 -> 1.6; Raid 0.7 -> 0.42, 4.0 -> 2.2) and the cloud deck is the curtain (Cover 0.95, CloudDensity 0.75); the
+	-- tint is the light's and the sky's (the Bridge colours below lifted from brown to a light twilight)
 	--   Cycle   a phase change. BridgeHalf 0.284 of the smoothstep Blend = the middle 30 s of the 75 s window
 	--   Raid    a raid sky in (In s from SkyEventAt; raid to raid too) and out (Out s); the client refreshes every Step s
 	--           with Step s tweens while one blends (else Cycle.Refresh / Tween); the bridge colour = the raid look's
@@ -956,20 +965,22 @@ Config.Sky = {
 	--   Preload (S2 review) RaidDelay = seconds after PLAY before the four raid skies preload, one at a time (the lobby's
 	--           own assets load first)
 	Transitions = {
-		Cycle = { BridgeHalf = 0.284, Density = 0.65, Haze = 3.4, Cover = 0.85, CloudDensity = 0.6 },
-		Raid = { In = 8, Out = 6, Step = 0.5, BridgeHalf = 0.3, Density = 0.7, Haze = 4.0, Cover = 0.9, CloudDensity = 0.7 },
+		Cycle = { BridgeHalf = 0.284, Density = 0.36, Haze = 1.6, Cover = 0.95, CloudDensity = 0.75 },
+		Raid = { In = 8, Out = 6, Step = 0.5, BridgeHalf = 0.3, Density = 0.42, Haze = 2.2, Cover = 0.95, CloudDensity = 0.7 },
 		Zone = { In = 1.5, Late = 2.5, Out = 2 },
 		Screen = { Out = 0.35, Lift = 0.3 },
 		Preload = { RaidDelay = 4 },
 	},
 	-- the cycle's bridge colour per skybox pair (Themes[phase] .. ">" .. Themes[next]): Color = the average of the two
 	-- painted skies' horizon band (the 15% above the horizon of Ft / Bk / Lf / Rt, .superpowers/sky-final), Decay = the
-	-- average of their lower band. A pair with no entry keeps the looks' own lerp
+	-- average of their lower band. A pair with no entry keeps the looks' own lerp. P2 F11 C lifted both pairs to a light
+	-- twilight (dusk <> night was the brown 122,90,69 / 117,94,90 of the owner's red-brown "mist"; day <> dusk was
+	-- 199,167,149 / 212,198,189), so the air keeps near the two looks' own mix and the light and the sky carry the colour
 	Bridge = {
-		["dusk_amber>day_vivid"] = { Color = skyRgb(199, 167, 149), Decay = skyRgb(212, 198, 189) },
-		["day_vivid>dusk_amber"] = { Color = skyRgb(199, 167, 149), Decay = skyRgb(212, 198, 189) },
-		["dusk_amber>night_aurora"] = { Color = skyRgb(122, 90, 69), Decay = skyRgb(117, 94, 90) },
-		["night_aurora>dusk_amber"] = { Color = skyRgb(122, 90, 69), Decay = skyRgb(117, 94, 90) },
+		["dusk_amber>day_vivid"] = { Color = skyRgb(206, 190, 186), Decay = skyRgb(220, 210, 206) },
+		["day_vivid>dusk_amber"] = { Color = skyRgb(206, 190, 186), Decay = skyRgb(220, 210, 206) },
+		["dusk_amber>night_aurora"] = { Color = skyRgb(132, 126, 160), Decay = skyRgb(138, 128, 164) },
+		["night_aurora>dusk_amber"] = { Color = skyRgb(132, 126, 160), Decay = skyRgb(138, 128, 164) },
 	},
 	-- (kit-b S4, sky audit F6, PICK: read only with Config.Preview.SkyAir) each phase's air taken from its painted sky, so
 	-- the haze band and the far islands carry the sky's own hue (the looks' air was tuned for the old pink sky: violet
@@ -1007,8 +1018,9 @@ Config.Sky = {
 	-- client/Controllers/SkyController (the client half; Refresh / Tween above):
 	ClockJump = 0.5, -- hours: a ClockTime step bigger than this at a phase / raid change (a raid sky's fixed clock at
 	-- mid-blend) is set at once, never tweened through the hours between. The cycle itself never needs it: the
-	-- Sunset 17 -> Night 18.4 gap is walked across the Sunset blend and the Night runs on through midnight to Dawn's
-	-- 7 h (SkyCycle.Preset); passing midnight (23.9 -> 0.1) is the one other instant set (24 h = 0 h: invisible)
+	-- Sunset 17 -> Night 18.9 gap is crossed inside the Sunset segment (P2 F11 C: a 0.2 h walk, then one step at the
+	-- bridge peak that SkyController tweens over one refresh, not a jump) and the Night runs on through midnight to
+	-- Dawn's 7 h (SkyCycle.Preset); passing midnight (23.9 -> 0.1) is the one other instant set (24 h = 0 h: invisible)
 	-- the battle lift: while I am in an outdoor pet battle (Config.Attr.InBattle starts with Prefix: a duel, raid,
 	-- Champion Ring run or PvP; a dungeon run "D.." stays under the dungeon preset) and the look is one of Looks, the
 	-- LightingStack preset Id lifts my night toward twilight over Seconds and settles back after the fight (me only)
@@ -1072,7 +1084,7 @@ Config.Sky = {
 				EnvironmentDiffuseScale = 0.6,
 				EnvironmentSpecularScale = 0.3,
 			},
-			Atmosphere = { Density = 0.32, Offset = 0.2, Color = skyRgb(236, 206, 214), Decay = skyRgb(246, 190, 150), Glare = 0.35, Haze = 1.4 },
+			Atmosphere = { Density = 0.29, Offset = 0.2, Color = skyRgb(236, 206, 214), Decay = skyRgb(246, 190, 150), Glare = 0.35, Haze = 1.1 }, -- P2 F11 C clear air (was 0.32 / 1.4)
 			Clouds = { Cover = 0.55, Density = 0.6, Color = skyRgb(255, 228, 220) },
 			ColorCorrection = { Brightness = 0.02, Contrast = 0.06, Saturation = 0.1, TintColor = skyRgb(255, 250, 248) },
 			Sky = { StarCount = 0 },
@@ -1090,7 +1102,7 @@ Config.Sky = {
 				EnvironmentDiffuseScale = 0.6,
 				EnvironmentSpecularScale = 0.35,
 			},
-			Atmosphere = { Density = 0.28, Offset = 0.25, Color = skyRgb(178, 198, 228), Decay = skyRgb(238, 200, 170), Glare = 0.25, Haze = 1.0 },
+			Atmosphere = { Density = 0.26, Offset = 0.25, Color = skyRgb(178, 198, 228), Decay = skyRgb(238, 200, 170), Glare = 0.25, Haze = 0.8 }, -- P2 F11 C clear air (was 0.28 / 1.0)
 			Clouds = { Cover = 0.5, Density = 0.6, Color = skyRgb(240, 244, 252) },
 			ColorCorrection = { Brightness = 0, Contrast = 0.1, Saturation = 0.14, TintColor = skyRgb(255, 251, 247) },
 			Sky = { StarCount = 0 },
@@ -1109,7 +1121,7 @@ Config.Sky = {
 				EnvironmentDiffuseScale = 0.55,
 				EnvironmentSpecularScale = 0.4,
 			},
-			Atmosphere = { Density = 0.34, Offset = 0.18, Color = skyRgb(230, 170, 128), Decay = skyRgb(226, 120, 64), Glare = 0.5, Haze = 1.8 },
+			Atmosphere = { Density = 0.30, Offset = 0.18, Color = skyRgb(230, 170, 128), Decay = skyRgb(226, 120, 64), Glare = 0.5, Haze = 1.2 }, -- P2 F11 C clear air (was 0.34 / 1.8)
 			Clouds = { Cover = 0.6, Density = 0.65, Color = skyRgb(255, 206, 170) },
 			ColorCorrection = { Brightness = 0, Contrast = 0.12, Saturation = 0.12, TintColor = skyRgb(255, 250, 247) },
 			Sky = { StarCount = 0 },
@@ -1118,7 +1130,9 @@ Config.Sky = {
 		-- violet clouds; no engine stars (kit-b S2, sky audit F5: the stars are painted in the skybox, 3000 engine
 		-- pinpoints popped on over them at the mid-blend)
 		Night = {
-			Clock = { 18.4, 31.0 }, -- through midnight to Dawn's 7 h (= 31 unwrapped): no backward wrap at Dawn
+			-- through midnight to Dawn's 7 h (= 31 unwrapped): no backward wrap at Dawn. Starts at 18.9 h (P2 F11 C, was 18.4):
+			-- the sun is gone, so it never sits on the horizon on screen (the Sunset steps here at its bridge peak)
+			Clock = { 18.9, 31.0 },
 			Lighting = {
 				Brightness = 1.1,
 				ExposureCompensation = 0.1,
@@ -1129,7 +1143,7 @@ Config.Sky = {
 				EnvironmentDiffuseScale = 0.45,
 				EnvironmentSpecularScale = 0.3,
 			},
-			Atmosphere = { Density = 0.3, Offset = 0.15, Color = skyRgb(96, 92, 160), Decay = skyRgb(130, 92, 170), Glare = 0, Haze = 1.2 },
+			Atmosphere = { Density = 0.27, Offset = 0.15, Color = skyRgb(96, 92, 160), Decay = skyRgb(130, 92, 170), Glare = 0, Haze = 0.9 }, -- P2 F11 C clear air (was 0.30 / 1.2)
 			Clouds = { Cover = 0.3, Density = 0.35, Color = skyRgb(150, 128, 200) },
 			ColorCorrection = { Brightness = 0.03, Contrast = 0.08, Saturation = 0.06, TintColor = skyRgb(249, 250, 255) },
 			Sky = { StarCount = 0 },
