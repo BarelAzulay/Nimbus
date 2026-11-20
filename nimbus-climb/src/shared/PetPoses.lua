@@ -76,8 +76,12 @@
 --   Recoil     rear back: 0.5 studs back (ranged 0.35), up and nose high, wings flare forward to brace, tail down.
 --   Cast       rise 0.6 studs, wings spread 50 deg and held, tail up, eyes shut gathering power, a hover bob, then the
 --              release: a forward thrust + nod and a wing downbeat; soft landing.
---   Hurt       squash dip + flinch back 0.3 studs, head snaps back, a decaying wobble, wings clamp down, tail tucks,
---              halo knocked askew, lids shut (p 0.04 .. 0.58).
+--   Hurt       (Pitch 2 item 5 "Bounce in" A, the approved mock's bitten pet; it was a squash dip into the floor + a flinch
+--              0.3 turned about the middle) one rigid body pivoted on its paw lines (`feet`): knocked back 0.38 in a 0.10
+--              jolt off the floor (0.12 s), the head snapped back (~7 deg nose up), a springy rock (~4 deg nose down onto
+--              the front paws, back) dying away, a little hop home (0.06) from 0.28 s; nothing under the floor, nothing
+--              slides; an evolved body (feet Hop) x its Hop; beats in seconds at AttackFx's 0.5 s. Wings clamp down, tail
+--              tucks, halo knocked askew, lids shut (p 0.04 .. 0.58).
 --   Ko         knocked back 0.6 + a little hop, tumbles 90 deg onto its side (overshoot ~95, settle), drops 0.35,
 --              wings fold back limp along the body, tail limp (Still -> 1), halo slides askew, eyes shut. Holds at p = 1.
 --   Victory    a quick crouch, hop 1.2 studs with a full 360 deg spin (fastest mid-air), chin up, wings open, tail up,
@@ -137,7 +141,12 @@ local WINDUP_BACK = 25
 local SNAP_OPEN = 35
 local CAST_RISE = 0.6
 local CAST_SPREAD = 50
-local FLINCH = 0.3
+-- (Pitch 2 item 5 "Bounce in" A) the bitten pet of the approved mock (Hurt): its beats in seconds at AttackFx's K.HURT
+local HURT_SECS = 0.5
+local KNOCK = 0.38 -- studs: knocked back
+local JOLT = 0.10 -- studs: the small jolt off the floor the knock-back flies in
+local HURT_ROCK = 13 -- deg: the springy rock's first swing (the head snapped back)
+local HURT_HOME = 0.06 -- studs: the little hop home
 local KO_ROLL = 90
 local HOP = 1.2
 local BREATH = 0.05
@@ -431,12 +440,21 @@ POSES.Cast = function(f, p)
 	f.still = 0.6 * r * held
 end
 
-POSES.Hurt = function(f, p)
+-- (Pitch 2 item 5 "Bounce in" A: the bitten pet of the approved mock; the old Hurt turned about the body's middle, dipped
+-- 0.1 into the floor and rolled a side paw under it) one rigid body like the melee motion, pivoted on its paw lines:
+-- knocked back KNOCK in the air (a JOLT off the floor over the first 0.12 s: nothing slides), the head snapped back (nose
+-- up), a springy rock (nose down onto the front paws, up again) dying away, a little hop home (HURT_HOME: nothing slides);
+-- an evolved body (feet Hop 0.78) moves x its Hop. Its beats run in seconds at AttackFx's K.HURT 0.5
+POSES.Hurt = function(f, p, _, _, _, feet)
+	local w = heavyOf(feet)
+	local t = p * HURT_SECS
+	local knocked = seg(t, 0, 0.12) -- knocked back, in the air
+	local home = seg(t, 0.28, HURT_SECS) -- the little hop home
+	f.z = KNOCK * w * outCubic(knocked) * (1 - smooth(home))
+	f.y = w * (JOLT * sin(PI * knocked) + HURT_HOME * sin(PI * home))
+	f.pitch = HURT_ROCK * w * outCubic(seg(t, 0, 0.06)) * math.exp(-t / 0.13) * cos(TAU * t / 0.3) * (1 - smooth(seg(t, 0.36, HURT_SECS)))
+	f.paw = true
 	local env = outCubic(seg(p, 0, 0.12)) * settle(seg(p, 0.22, 1), 0.14)
-	f.z = FLINCH * env
-	f.y = -0.1 * env -- the squash: a quick dip
-	f.pitch = 12 * env -- the head snaps back
-	f.roll = 6 * sin(TAU * 3 * p) * env -- a decaying wobble
 	f.raise = -22 * env -- wings clamp down
 	f.back = 10 * env
 	f.lift = -30 * env -- tail tucks
@@ -710,7 +728,7 @@ end
 
 -- Sample(name, p, ranged, amp, reach, feet): `feet` (Pitch 2 item 5, optional) = { Down, Front, Hind } pose studs from
 -- the root to the floor / the front paw line (forward) / the hind paw line (back), and Hop (the body's weight: its hops
--- x Hop, an evolved form's 0.78); only the melee motion reads it
+-- x Hop, an evolved form's 0.78); only the melee motion and the Hurt read it
 function PetPoses.Sample(name, p, ranged, amp, reach, feet)
 	local f = frameOf(name, p, ranged, amp, reach, feet)
 	local raise, back = rad(f.raise), rad(f.back)

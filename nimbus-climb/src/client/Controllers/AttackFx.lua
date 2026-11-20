@@ -184,7 +184,7 @@ local K = {
 	ABOVE = 5,
 	BEHIND = 2.6,
 	DROP = 1.6, -- default height of a unit's centre over the floor
-	HURT = 0.5,
+	HURT = 0.5, -- (PetPoses' Hurt runs its beats in seconds at this length: HURT_SECS)
 	KO = 0.9,
 	VICTORY = 1.2,
 	SHOOT = 0.6, -- the ranged Shoot pose (PetPoses): the head snaps forward, the body kicks back, settles
@@ -3415,7 +3415,8 @@ local function schedulePoses(eff, now)
 			seg.Until = max(seg.T0 + seg.Dur, seg.StopAt) + seg.StopDur
 		end
 	elseif A == "Hurt" then
-		segs[1] = { Name = "Hurt", T0 = st, Dur = K.HURT }
+		-- (Pitch 2 item 5) the reaction rocks about the pet's own paw lines (nothing goes under the floor)
+		segs[1] = { Name = "Hurt", T0 = st, Dur = K.HURT, Feet = eff.Src and AttackFx.FeetOf(eff.Src.Model) or nil }
 	elseif A == "Ko" then
 		segs[1] = { Name = "Ko", T0 = st, Dur = K.KO, Hold = true }
 	elseif A == "Victory" then
@@ -3427,11 +3428,18 @@ local function schedulePoses(eff, now)
 	if offensive and not eff.Miss and (A == "Melee" or A == "Ranged" or A == "Element" or A == "Special") then
 		-- (battle-feel T3) a special's victims flinch frozen for SPECIAL_HIT_STOP at the impact, like its caster
 		local stop = (A == "Special" and not r.Twist) and specialStop() or 0
+		-- (Pitch 2 item 5, the approved mock's bitten pet) a bite's victim holds still through the hit stop with its biter
+		-- (its hit flash plays), then is knocked back
+		if stop <= 0 and A == "Melee" then
+			stop = AttackFx.HIT_STOP
+		end
 		for _, side in ipairs(eff.Targets) do
 			if side.Unit ~= nil and side.Unit ~= eff.Unit then
-				local seg = { Name = "Hurt", T0 = st + T.Impact, Dur = K.HURT }
+				-- (Pitch 2 item 5) Feet: the victim's own paw lines (its Hurt rocks about them: nothing goes under the floor)
+				local seg = { Name = "Hurt", T0 = st + T.Impact, Dur = K.HURT, Feet = AttackFx.FeetOf(side.Model) }
 				if stop > 0 then
-					seg.StopAt, seg.StopDur = st + T.Impact, stop
+					-- (the whole reaction plays after the freeze: it lasts Dur + the freeze from the impact)
+					seg.StopAt, seg.StopDur, seg.Until = st + T.Impact, stop, st + T.Impact + K.HURT + stop
 				end
 				setPoses(side.Unit, { seg }, now)
 			end
