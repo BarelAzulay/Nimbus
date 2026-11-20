@@ -459,6 +459,9 @@ local K = {
 	TEAM_KEY_W_PX = 52,
 	TEAM_KEY_H_PX = 46,
 	TEAM_KEY_GAP_PX = 6,
+	-- (look review r1: at 360 x 640 BACK stood 18 px over DASH, where a thumb reaching up pulls the team out mid-fight) the
+	-- team orders keep this many screen px off every right-thumb key (MOVE, DASH, RUN)
+	TEAM_OFF_KEYS_PX = 40,
 	LOCK_ARM = 14, -- the LOCKED marker (Units.UpdateLock): a corner bracket's arm and bar (px), the tag's height
 	LOCK_BAR = 4,
 	LOCK_TAG_H = 24,
@@ -7011,6 +7014,11 @@ function Hud.LayoutFighter(B, m)
 			room = room - math.ceil((K.TEAM_KEY_W_PX + K.TEAM_KEY_GAP_PX + 2) / max(0.05, m.F))
 		end
 		cellW = max(tile + 78, min(m.Landscape and K.HELPER_W_WIDE or cellW, room))
+		if not m.Landscape and Hud.ThreeKeys(m) then
+			-- (Pitch 2 item 1b, look review r1: at 360 x 640 "STONE SKIN" broke as "STON / E...") a tall phone's column is as
+			-- wide as the CHEER / BACK row under it, as the mock's 390 x 844: a word of the buff's name fits beside the tile
+			cellW = max(cellW, math.ceil((2 * K.TEAM_KEY_W_PX + K.TEAM_KEY_GAP_PX) / max(0.05, m.F)))
+		end
 	end
 	-- (kit-b U9-6, the render gate: "Lv 34" spilled out of its 48 px pill) the tags' text stays at the floor on the screen
 	local lvPx = max(16, minSize)
@@ -7399,7 +7407,21 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			y = rightY + listH + 10
 			underList = listH > 0
 			local guess = 57 + (bossUnit and 110 or 0) + ((B.Mode == "Dungeon" and not bossUnit) and 34 or 0) + ((B.Mode == "Ring") and 30 or 0)
-			if underList and not m.Landscape and Hud.team.Visible and Hud.fighterCard and y + guess > Hud.BandTop(m) then
+			-- (Pitch 2 item 1b, look review r1: at 360 x 640 a raid's card in its tall column under the fighter card pushed the
+			-- helper portraits onto Roblox's stick and their CHEER / BACK row into the right thumb's keys, BACK 18 px over DASH)
+			-- on the three keys' layout the fighter's column keeps the team, as the mock: the card, the helpers and the team
+			-- orders' row under them. Where the top card's tall column would push the helpers past the room above that row and
+			-- the stick (Hud.StackTop), the card stays here, under the enemy list, right of the helpers and their row
+			local keepTeam = false
+			if underList and not m.Landscape and Hud.ThreeKeys(m) and Hud.team.Visible and Hud.fighterCard and (CheerUp.Allowed(B) or Retreat.Allowed(B)) then
+				local column = Hud.fighterCard.Root.Size.Y.Offset + 8 + guess + 8 + Hud.helperHolder.Size.Y.Offset
+				keepTeam = Hud.team.Position.Y.Offset + column > Hud.StackTop(B, m)
+			end
+			if keepTeam then
+				local row = (2 * K.TEAM_KEY_W_PX + K.TEAM_KEY_GAP_PX) / max(0.05, m.F)
+				w = min(w, m.W - K.EDGE - max(Hud.helperHolder.Size.X.Offset, row) - 24)
+				underList = false -- (never swapped above the list: the fighter card, wider than the helpers, lies there)
+			elseif underList and not m.Landscape and Hud.team.Visible and Hud.fighterCard and y + guess > Hud.BandTop(m) then
 				-- (the right column starts low - currency pills up there - and would reach the centre band: the top
 				-- card goes under the fighter card instead, the helper column moves down under it)
 				leftTop = true
@@ -9417,21 +9439,22 @@ function CheerUp.Look(m, b, glyph, word, icon, face, lip)
 end
 
 -- (look review r0) whether team orders at `spots` (CheerUp.TeamSpots' form; w x h design px) stand clear: whole on the gui
--- area 4 px in from its edges, 8 px off Roblox's stick zone (StackTop's) and jump button, MovementController's RUN and the
--- three keys (Hud.KeyBoxes), and off the top card and the enemy list (Root children, offset-placed)
+-- area 4 px in from its edges, 8 px off Roblox's stick zone (StackTop's) and jump button, (look review r1) 40 px off
+-- MovementController's RUN and the three keys (Hud.KeyBoxes; K.TEAM_OFF_KEYS_PX), and off the top card and the enemy list
+-- (Root children, offset-placed)
 function CheerUp.SpotsClear(m, spots, w, h)
 	local f = max(0.05, m.F)
-	local edge, keep = 4 / f, 8 / f
+	local edge, keep, keys = 4 / f, 8 / f, K.TEAM_OFF_KEYS_PX / f
 	local small = min(m.VX, m.VY) <= K.STICK_SMALL_PHONE
 	local stickW = small and K.STICK_W_SMALL or K.STICK_W_LARGE
 	local stickH = small and ((m.VY > m.VX) and K.STICK_H_TALL or K.STICK_H_WIDE) or K.STICK_H_LARGE
 	local avoid = { { X0 = 0, X1 = stickW / f, Y0 = m.H - stickH / f, Y1 = m.H, gap = keep } }
 	local r = Hud.TouchRects(m)
 	for _, t in ipairs({ r.jump, r.run }) do
-		avoid[#avoid + 1] = { X0 = t[1] / f, X1 = t[3] / f, Y0 = m.H - t[4] / f, Y1 = m.H - t[2] / f, gap = keep }
+		avoid[#avoid + 1] = { X0 = t[1] / f, X1 = t[3] / f, Y0 = m.H - t[4] / f, Y1 = m.H - t[2] / f, gap = (t == r.run) and keys or keep }
 	end
 	for _, k in ipairs(Hud.KeyBoxes(m)) do
-		avoid[#avoid + 1] = { X0 = k.X0, X1 = k.X1, Y0 = k.Y0, Y1 = k.Y1, gap = keep }
+		avoid[#avoid + 1] = { X0 = k.X0, X1 = k.X1, Y0 = k.Y0, Y1 = k.Y1, gap = keys }
 	end
 	for _, obj in ipairs({ Hud.top, Hud.enemies }) do
 		if obj and obj.Visible then
