@@ -1094,6 +1094,39 @@ scenario("lobby", function(arg)
 		req("client/Controllers/MenuController").Hint(arg == "hint" and ("Claim a home first: " .. words .. " at a free gate.") or "You need $1,250 more Cash.", arg == "hint" and "info" or "bad")
 		advance(0.3)
 	end
+	if arg == "travel" or arg == "travelaway" or arg == "travelhere" then
+		-- (Pitch 2 item 13 A) the travel guide's chip: walking in the plaza ("Guiding to Storm Altar"), away from the lobby
+		-- ("Home first, then follow the arrow", the pointer on the Home tile) or at the gate ("You're here: press E"). The
+		-- client world has no server lobby: a stand-in Altar gate prompt part as the lobby replicates it
+		local origin = (Config.Lobby and Config.Lobby.Origin) or Vector3.new(0, 300, 0)
+		local lobby = workspace:FindFirstChild("NimbusLobby")
+		if not lobby then
+			lobby = Instance.new("Model")
+			lobby.Name = "NimbusLobby"
+			lobby.Parent = workspace
+		end
+		local part = Instance.new("Part")
+		part.Name = "AltarGatePromptPart"
+		part.Anchored = true
+		part.Size = Vector3.new(4, 4, 4)
+		part.CFrame = CFrame.new(origin + Vector3.new(60, 4, 100))
+		part.Parent = lobby
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "AltarGatePrompt"
+		prompt.ActionText = "Enter"
+		prompt.ObjectText = "Storm Altar"
+		prompt.Parent = part
+		local at = origin + Vector3.new(0, 3, 20)
+		if arg == "travelaway" then
+			at = ((Config.Match and Config.Match.ArenaOrigin) or Vector3.new(4000, 800, 0)) + Vector3.new(0, 4, 0)
+		elseif arg == "travelhere" then
+			at = part.Position + Vector3.new(0, 0, 4)
+		end
+		Mock.Teleport(LocalPlayer, CFrame.new(at))
+		advance(0.3)
+		req("client/Controllers/TutorialController").Guide.Start("StormAltar")
+		advance(arg == "travelhere" and 0.6 or 1.2)
+	end
 end)
 
 scenario("title", function() end)
@@ -4470,7 +4503,13 @@ local function secretShopScene(at)
 	shopScene("Eggs", "ShopController")
 	note(fmt("shop_secret: AtAltar %s, Secret card %s", tostring(SE and SE.AtAltar()), tostring(SE and SE.CardState("Secret"))))
 end
-scenario("shop_secret_locked", function()
+-- shop_secret_locked:lobby (Pitch 2 item 13 A) the same read in the lobby (ShopEggs._InLobby = true): "A gold arrow
+--                       leads you to the Storm Altar" under "Show the way" (without it the dump's character reads away)
+scenario("shop_secret_locked", function(where)
+	local SE = req("client/UI/ShopEggs")
+	if SE and where == "lobby" then
+		SE._InLobby = true
+	end
 	secretShopScene(false)
 end)
 scenario("shop_secret_altar", function()

@@ -22,8 +22,10 @@
 --                         the "Guiding to Storm Altar" chip's X stops it and leaves nothing behind; a second start replaces
 --                         the first; at the gate the chip says "You're here: press E" and the guide ends by itself; started
 --                         away from the lobby it routes home first (the chip "Home first, then follow the arrow" and the
---                         pointer on the Home tile), then picks up in the lobby; a match / battle ends it; the lobby gates'
---                         prompt says "Enter"; while a match locks the way home the button greys with "Finish the match first"
+--                         pointer on the Home tile), then picks up in the lobby; a match / battle ends it (and no guide starts
+--                         in one); on a 390x844 phone the chip sits over the vitals card, inside the screen, its X 44 px;
+--                         the lobby gates' prompt says "Enter"; while a match locks the way home the button greys with
+--                         "Finish the match first"
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -240,6 +242,20 @@ local function serverScenarios()
 		end
 
 		K.flushErrors("world_signs_kit")
+	end)
+
+	-- travel_gate_enter (Pitch 2 item 13 A, the server half of travel_shows_way): the Shop's button no longer travels, so
+	-- the lobby gates' prompts say 'Enter' (they said 'Travel'); the gates still take you there (GateService.Use)
+	S.travel_gate_enter = guarded("travel_gate_enter", function()
+		local gates = {}
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("ProximityPrompt") and (d.Name == "AltarGatePrompt" or d.Name == "PlazaGatePrompt") then
+				gates[#gates + 1] = d.Name .. " '" .. d.ActionText .. "'"
+				T.eq(d.ActionText, "Enter", "travel: " .. d.Name .. " says 'Enter' (was 'Travel')")
+			end
+		end
+		T.check(#gates >= 2, "travel: (setup) both lobby gates' prompts (the Altar gate and the altar's way back)", table.concat(gates, ", "))
+		K.flushErrors("travel_gate_enter")
 	end)
 
 	return S
@@ -501,6 +517,296 @@ local function clientScenarios()
 		T.check(src ~= "" and not src:find("tostring%(floor%(dmg %+ 0%.5%)%)") and src:find("Fx.HitLook(dmg", 1, true) ~= nil,
 			"damage numbers: the hit handler uses Fx.HitLook (Theme.Short), no raw damage number")
 		KC.flushErrors("damage_numbers_short")
+	end)
+
+	----------------------------------------------------------------------------------------------------------------
+	-- travel_shows_way
+	----------------------------------------------------------------------------------------------------------------
+	S.travel_shows_way = guarded("travel_shows_way", function()
+		local Theme = shared("Theme")
+		local Config = shared("Config")
+		local Sign = Theme and Theme.Sign
+		local Shop = client("Controllers/ShopController")
+		local SE = client("UI/ShopEggs")
+		local TC = client("Controllers/TutorialController")
+		local Guide = TC and TC.Guide
+		if not T.check(Shop ~= nil and SE ~= nil and type(Guide) == "table" and type(Guide.Start) == "function" and type(Guide.Stop) == "function",
+			"travel: (setup) the Shop and TutorialController.Guide.Start / Stop") then
+			return
+		end
+		local player = game:GetService("Players").LocalPlayer
+		local root = KC.root()
+		local L = Config.Lobby
+		-- (the client world has no server lobby) the Altar gate as the lobby replicates it: NimbusLobby > the gate's prompt
+		-- part on the gate arc (LobbyInfo.Gates.Altar.PromptPart) > ProximityPrompt "AltarGatePrompt" (its 'Enter' is the
+		-- server half's world_signs_kit)
+		local lobby = workspace:FindFirstChild("NimbusLobby")
+		local madeLobby = lobby == nil
+		if madeLobby then
+			lobby = Instance.new("Model")
+			lobby.Name = "NimbusLobby"
+			lobby.Parent = workspace
+		end
+		local gatePart = Instance.new("Part")
+		gatePart.Name = "AltarGatePromptPart"
+		gatePart.Anchored = true
+		gatePart.Size = Vector3.new(4, 4, 4)
+		gatePart.CFrame = CFrame.new(L.Origin + Vector3.new(60, 4, 100))
+		gatePart.Parent = lobby
+		local gatePrompt = Instance.new("ProximityPrompt")
+		gatePrompt.Name = "AltarGatePrompt"
+		gatePrompt.ActionText = "Enter"
+		gatePrompt.ObjectText = "Storm Altar"
+		gatePrompt.Parent = gatePart
+		if not T.check(root ~= nil, "travel: (setup) my root") then
+			return
+		end
+		local plaza = CFrame.new(L.Origin + Vector3.new(0, 3, 20))
+		local function chip()
+			local g = pg():FindFirstChild("NimbusGuide")
+			local c = g and g.Enabled and g:FindFirstChild("Chip", true)
+			return (c and c.Visible) and c or nil
+		end
+		local function chipText()
+			local c = chip()
+			local l = c and c:FindFirstChild("Text", true)
+			return l and l.Text or nil
+		end
+		local function worldGuide()
+			local fx = workspace:FindFirstChild("ClientFx")
+			return fx and fx:FindFirstChild("TutorialGuide")
+		end
+		local function guides()
+			local n = 0
+			local fx = workspace:FindFirstChild("ClientFx")
+			for _, d in ipairs(fx and fx:GetChildren() or {}) do
+				n = n + (d.Name == "TutorialGuide" and 1 or 0)
+			end
+			local g = pg():FindFirstChild("NimbusGuide")
+			local chips = 0
+			for _, d in ipairs(g and g:GetDescendants() or {}) do
+				chips = chips + ((d.Name == "Chip" and d:IsA("GuiObject")) and 1 or 0)
+			end
+			return n, chips
+		end
+		Mock.SetViewport(1920, 1080)
+		Mock.Teleport(player, plaza)
+		KC.advance(0.5)
+		-- (setup) gem roulettes on for this account (the server's PaidRandomItemsRestricted = false): a restricted account
+		-- keeps the Locked card, no button
+		local restrictedWas = player:GetAttribute("PaidRandomItemsRestricted")
+		player:SetAttribute("PaidRandomItemsRestricted", false)
+		local ok, err = pcall(function()
+			------------------------------------------------------------------ the Shop's button
+			SE._AtAltar = false
+			SE._InLobby = nil
+			Shop.Open({ Tab = "Eggs" })
+			KC.advance(0.8)
+			local K = SE.Metrics
+			T.check(K.TEXT.Travel == "Show the way" and K.TEXT.HeroHintTravel == "A gold arrow leads you to the Storm Altar",
+				"travel: the button says 'Show the way', the hint 'A gold arrow leads you to the Storm Altar'", tostring(K.TEXT.Travel) .. " / " .. tostring(K.TEXT.HeroHintTravel))
+			local btn = nil
+			for _, d in ipairs(pg():GetDescendants()) do
+				if d.Name == "Travel" and d:IsA("GuiButton") and d.Visible then
+					btn = d
+				end
+			end
+			if not T.check(btn ~= nil, "travel: (setup) the Secret card's button shows away from the altar") then
+				return
+			end
+			local word = btn:FindFirstChild("Word")
+			T.eq(word and word.Text, "Show the way", "travel: the plank reads 'Show the way'")
+			local mark = #Mock.RemoteLog
+			Mock.Click(btn)
+			KC.advance(0.6)
+			T.eq(#KC.serverCalls("QuickTravel", mark), 0, "travel: no teleport (no QuickTravel sent)")
+			T.check(not Shop.IsOpen(), "travel: 'Show the way' closes the Shop")
+			T.eq(Guide.Active and Guide.Active(), "StormAltar", "travel: the guide runs to the Storm Altar")
+			T.eq(chipText(), "Guiding to Storm Altar", "travel: the chip reads 'Guiding to Storm Altar'")
+			local wg = worldGuide()
+			if T.check(wg ~= nil, "travel: the world guide is out (workspace.ClientFx.TutorialGuide)") then
+				local dots, neon, lights = 0, 0, 0
+				for _, d in ipairs(wg:GetDescendants()) do
+					if d:IsA("BasePart") and d.Parent and d.Parent.Name == "Dots" and d.Transparency < 1 then
+						dots = dots + 1
+					end
+					if d:IsA("BasePart") and d.Material == Enum.Material.Neon then
+						neon = neon + 1
+					end
+					if d:IsA("Light") then
+						lights = lights + 1
+					end
+				end
+				T.check(dots >= 3 and neon == 0 and lights == 0, "travel: flat gold dot blocks lead the way; no Neon part, no light",
+					fmt("%d dots, %d neon, %d lights", dots, neon, lights))
+				local arrow = wg:FindFirstChild("GuideArrow", true)
+				T.check(arrow ~= nil, "travel: the voxel arrow is over the gate")
+				local sign = wg:FindFirstChild("GuideSign", true)
+				local signCard = sign and sign:FindFirstChild("Card", true)
+				local okS, whyS = block(signCard, Sign.Stone)
+				local name = signCard and signCard:FindFirstChild("Name", true)
+				T.check(okS and name ~= nil and name.Text == "Storm Altar", "travel: the GuideSign is a stone tag naming the Storm Altar", whyS)
+				T.check(sign ~= nil and sign.SizeOffset.X > 0, "travel: the GuideSign sits beside the arrow's shaft", sign and tostring(sign.SizeOffset) or "no sign")
+				-- the dots start just ahead of the feet: none behind me, none within 1.5 studs
+				local here = KC.root().Position
+				local goal = gatePrompt.Parent.Position
+				local dir = Vector3.new(goal.X - here.X, 0, goal.Z - here.Z).Unit
+				local behind = 0
+				for _, d in ipairs(wg:GetDescendants()) do
+					if d:IsA("BasePart") and d.Parent and d.Parent.Name == "Dots" and d.Transparency < 1 then
+						local v = Vector3.new(d.Position.X - here.X, 0, d.Position.Z - here.Z)
+						if v:Dot(dir) < 1.5 then
+							behind = behind + 1
+						end
+					end
+				end
+				T.eq(behind, 0, "travel: the dots start just ahead of my feet (never over my back)")
+			end
+			local c = chip()
+			local close = c and c:FindFirstChild("Close", true)
+			T.check(close ~= nil and close:IsA("GuiButton") and close.AbsoluteSize.X >= 44 and close.AbsoluteSize.Y >= 44, "travel: the chip's X is a 44 px target",
+				close and fmt("%dx%d", close.AbsoluteSize.X, close.AbsoluteSize.Y) or "no Close")
+
+			------------------------------------------------------------------ a second start replaces the first
+			T.check(Guide.Start("StormAltar") == true, "travel: a second Start is taken")
+			KC.advance(0.5)
+			local n, chips = guides()
+			T.check(n == 1 and chips == 1, "travel: a second start replaces the first (one world guide, one chip)", n .. " guides, " .. chips .. " chips")
+
+			------------------------------------------------------------------ the X stops it; nothing is left behind
+			-- (the X of the chip that shows now: the one the second start left)
+			local c2 = chip()
+			close = (c2 and c2:FindFirstChild("Close", true)) or close
+			if close then
+				Mock.Click(close)
+			end
+			KC.advance(0.6)
+			n, chips = guides()
+			T.check(Guide.Active() == nil and chip() == nil and worldGuide() == nil, "travel: the X stops the guide: no chip, no arrow, no dots left",
+				fmt("active %s, guides %d", tostring(Guide.Active()), n))
+
+			------------------------------------------------------------------ it ends on arrival at the gate
+			Guide.Start("StormAltar")
+			KC.advance(0.5)
+			local gp = gatePrompt.Parent.Position
+			Mock.Teleport(player, CFrame.new(gp + Vector3.new(0, 0, 4)))
+			KC.advance(0.6)
+			T.eq(chipText(), "You're here: press E", "travel: at the gate the chip says 'You're here: press E'")
+			KC.advance(4.5)
+			T.check(Guide.Active() == nil and chip() == nil and worldGuide() == nil, "travel: the guide ends by itself after arriving",
+				fmt("active %s, chip %s", tostring(Guide.Active()), tostring(chipText())))
+
+			------------------------------------------------------------------ away from the lobby: Home first, then the trail
+			Mock.Teleport(player, CFrame.new(Config.Match.ArenaOrigin + Vector3.new(0, 4, 0)))
+			KC.advance(0.5)
+			T.check(Guide.Start("StormAltar") == true, "travel: Start away from the lobby is taken")
+			KC.advance(0.6)
+			T.eq(chipText(), "Home first, then follow the arrow", "travel: away from the lobby the chip says 'Home first, then follow the arrow'")
+			local pointer = pg():FindFirstChild("NimbusTutorialPointer")
+			local arrow = pointer and pointer:FindFirstChild("Arrow", true)
+			T.check(arrow ~= nil and arrow.Visible, "travel: the pointer points at the Home tile")
+			T.check(worldGuide() == nil, "travel: no world trail away from the lobby")
+			Mock.Teleport(player, plaza)
+			KC.advance(1.0)
+			T.check(chipText() == "Guiding to Storm Altar" and worldGuide() ~= nil, "travel: back in the lobby the trail picks up by itself", tostring(chipText()))
+
+			------------------------------------------------------------------ a battle / match ends it cleanly
+			player:SetAttribute(Config.Attr.InBattle, "B9")
+			KC.advance(0.6)
+			T.check(Guide.Active() == nil and chip() == nil and worldGuide() == nil, "travel: a battle ends the guide, nothing left")
+			player:SetAttribute(Config.Attr.InBattle, nil)
+			KC.advance(0.3)
+
+			------------------------------------------------------------------ a match (a portal walked into) ends it too
+			Mock.Teleport(player, plaza)
+			KC.advance(0.3)
+			T.check(Guide.Start("StormAltar") == true, "travel: (setup) a guide runs in the plaza")
+			KC.advance(0.3)
+			player:SetAttribute(Config.Attr.InMatch, true)
+			KC.advance(0.6)
+			T.check(Guide.Active() == nil and chip() == nil and worldGuide() == nil, "travel: a match (a portal walked into) ends the guide, nothing left")
+			T.check(Guide.Start("StormAltar") == false and chip() == nil, "travel: ...and no guide starts during the match")
+			player:SetAttribute(Config.Attr.InMatch, false)
+			KC.advance(0.3)
+
+			------------------------------------------------------------------ a portrait phone: the chip over the vitals card
+			-- (the pitch's phone shot: the top band holds the wallet strip, so the chip sits over the vitals card, inside the
+			-- screen, its X still a 44 px target; away from the lobby the line fits too)
+			local function screenY(obj)
+				local owner = obj:FindFirstAncestorOfClass("ScreenGui")
+				return obj.AbsolutePosition.Y + ((owner and owner.IgnoreGuiInset) and 0 or (Mock.TopInset or 0))
+			end
+			Mock.SetViewport(390, 844)
+			KC.advance(0.8)
+			for _, spot in ipairs({ { "plaza", plaza }, { "away", CFrame.new(Config.Match.ArenaOrigin + Vector3.new(0, 4, 0)) } }) do
+				Mock.Teleport(player, spot[2])
+				KC.advance(0.5)
+				Guide.Start("StormAltar")
+				KC.advance(1.2)
+				local c3 = chip()
+				local hud = pg():FindFirstChild("NimbusHud")
+				local vitals = hud and hud:FindFirstChild("Vitals", true)
+				local x3 = c3 and c3:FindFirstChild("Close", true)
+				if T.check(c3 ~= nil and vitals ~= nil and vitals.Visible, "travel 390x844 " .. spot[1] .. ": (setup) the chip and the vitals card show") then
+					local bottom = screenY(c3) + c3.AbsoluteSize.Y
+					T.check(bottom <= screenY(vitals) and screenY(c3) > 390, "travel 390x844 " .. spot[1] .. ": the chip sits over the vitals card (low on the screen, clear of the top band)",
+						fmt("chip %d..%d, vitals top %d", screenY(c3), bottom, screenY(vitals)))
+					T.check(c3.AbsolutePosition.X >= 12 and c3.AbsolutePosition.X + c3.AbsoluteSize.X <= 390 - 12, "travel 390x844 " .. spot[1] .. ": the chip fits the screen (12 px clear each side)",
+						fmt("%d..%d of 390 (%s)", c3.AbsolutePosition.X, c3.AbsolutePosition.X + c3.AbsoluteSize.X, tostring(chipText())))
+					T.check(x3 ~= nil and x3.AbsoluteSize.X >= 44 and x3.AbsoluteSize.Y >= 44, "travel 390x844 " .. spot[1] .. ": the X is a 44 px target",
+						x3 and fmt("%dx%d", x3.AbsoluteSize.X, x3.AbsoluteSize.Y) or "no Close")
+				end
+				Guide.Stop()
+				KC.advance(0.3)
+			end
+			Mock.SetViewport(1920, 1080)
+			KC.advance(0.8)
+
+			------------------------------------------------------------------ locked away from the lobby: greyed, 'Finish the match first'
+			Mock.Teleport(player, CFrame.new(Config.Match.ArenaOrigin + Vector3.new(0, 4, 0)))
+			SE._InLobby = false
+			player:SetAttribute(Config.Attr.InBattle, "B10")
+			Shop.Open({ Tab = "Eggs" })
+			KC.advance(1.2)
+			local hint = nil
+			for _, d in ipairs(pg():GetDescendants()) do
+				if d.Name == "Travel" and d:IsA("GuiButton") and d.Visible then
+					btn = d
+				end
+				if d.Name == "Hint" and d:IsA("TextLabel") and d.Visible and d:FindFirstAncestor("Secret") then
+					hint = d
+				end
+			end
+			T.check(btn ~= nil and btn:GetAttribute("Disabled") == true, "travel: while a match / run locks the way home the button greys")
+			local hints = {}
+			for _, d in ipairs(pg():GetDescendants()) do
+				if d:IsA("TextLabel") and d.Text == "Finish the match first" then
+					hints[#hints + 1] = d
+				end
+			end
+			T.check(#hints >= 1, "travel: ...with 'Finish the match first'")
+			mark = #Mock.RemoteLog
+			if btn then
+				Mock.Click(btn)
+			end
+			KC.advance(0.4)
+			T.check(Guide.Active() == nil, "travel: a greyed button starts nothing")
+			Shop.Close()
+			player:SetAttribute(Config.Attr.InBattle, nil)
+		end)
+		pcall(Guide.Stop)
+		player:SetAttribute("PaidRandomItemsRestricted", restrictedWas)
+		SE._AtAltar = nil
+		SE._InLobby = nil
+		pcall(Shop.Close)
+		Mock.Teleport(player, plaza)
+		KC.advance(0.5)
+		gatePart:Destroy()
+		if madeLobby then
+			lobby:Destroy()
+		end
+		T.check(ok, "travel: the scenario ran", tostring(err))
+		KC.flushErrors("travel_shows_way")
 	end)
 
 	return S

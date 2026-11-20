@@ -1098,7 +1098,8 @@ local function serverScenarios()
 			T.eq(ap.MaxActivationDistance, 12, "AltarGatePrompt: MaxActivationDistance 12")
 			T.eq(ap.HoldDuration, 0, "AltarGatePrompt: HoldDuration 0")
 		end
-		T.check(ap and ap.ActionText == "Travel" and ap.ObjectText == "Storm Altar", "AltarGatePrompt: 'Travel' / 'Storm Altar'")
+		-- (Pitch 2 item 13 A: the gates' prompts say 'Enter', was 'Travel': "Travel" left the game's words with the teleport)
+		T.check(ap and ap.ActionText == "Enter" and ap.ObjectText == "Storm Altar", "AltarGatePrompt: 'Enter' / 'Storm Altar'")
 		-- lobby shop (Task 12, spec 5.11 a): both lobby gates stand behind a pad now (the Altar's was a 10 x 0.3 x 6 step):
 		-- a walkable 14 x 0.6 x 14 Pad 14 studs in front with a Neon inlay and two lanterns; no prompt on the pad itself
 		for _, id in ipairs({ "Obby", "Altar" }) do

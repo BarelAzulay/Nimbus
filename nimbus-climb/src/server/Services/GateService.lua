@@ -24,9 +24,9 @@
 --                                      Teleported(player, "Plaza") -> moved
 --
 -- Prompts (created here on LobbyInfo.Gates.<Id>.PromptPart, MaxActivationDistance 12, HoldDuration 0):
---   AltarGatePrompt  "Travel" / "Storm Altar"   -> StormAltar.GetLanding(): the island deck at the bridge end
+--   AltarGatePrompt  "Enter" / "Storm Altar"    -> StormAltar.GetLanding(): the island deck at the bridge end
 -- bug batch 2 #4: and on StormAltar.GetReturnPad() (the small return portal beside the landing, MaxActivationDistance 8):
---   PlazaGatePrompt  "Travel" / "Plaza"         -> LobbyInfo.Gates.Altar.ReturnCFrame: the plaza 18 studs in front of
+--   PlazaGatePrompt  "Enter" / "Plaza"          -> LobbyInfo.Gates.Altar.ReturnCFrame: the plaza 18 studs in front of
 --                                                  the Altar gate (fallback: 15 studs in front of its prompt part)
 --                    Teleported fires (player, "Plaza"); the pad is looked up again when the altar was rebuilt.
 -- The Obby gate's prompt is PortalService's, the Dungeon gate's DungeonService's, Ring / Arena are ArenaBuilder's.
@@ -53,9 +53,11 @@ local COOLDOWN = 1.5
 local ATTR_IN_BATTLE = (Config.Attr and Config.Attr.InBattle) or "InBattle"
 local ATTR_IN_MATCH = (Config.Attr and Config.Attr.InMatch) or "InMatch"
 
+-- (Pitch 2 item 13 A) the gates say "Enter": "Travel" is gone from the game's words (the Shop's button became "Show the
+-- way", a walking guide), so a gate you walk up to is a door you go through
 local PROMPTS = {
-	Altar = { Name = "AltarGatePrompt", Action = "Travel", Object = "Storm Altar" },
-	Plaza = { Name = "PlazaGatePrompt", Action = "Travel", Object = "Plaza", Range = 8 }, -- bug batch 2 #4
+	Altar = { Name = "AltarGatePrompt", Action = "Enter", Object = "Storm Altar" },
+	Plaza = { Name = "PlazaGatePrompt", Action = "Enter", Object = "Plaza", Range = 8 }, -- bug batch 2 #4
 }
 local ORDER = { "Altar" } -- Phase 6: no Home gate (the Home window's Go home is the way home)
 

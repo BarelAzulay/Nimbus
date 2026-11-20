@@ -710,21 +710,28 @@ local function tutorialClientChecks()
 	advance(2.5)
 	local fx = workspace:FindFirstChild("ClientFx")
 	local guide = fx and fx:FindFirstChild("TutorialGuide")
-	local beam = guide and guide:FindFirstChildWhichIsA("Beam", true)
-	local solid = 0
+	-- (Pitch 2 item 13_travel_guide A, the owner's pick: the trail is flat gold dot blocks on the ground, no Beam of a
+	-- sparkle strip, no glow; was: a dotted Beam "GuideTrail" wearing FxSprites Strip "Dots") the trail must still be seen:
+	-- the "Dots" folder holds laid (opaque) blocks, and like every guide part they are visual only
+	local dots, solid = 0, 0
 	for _, d in ipairs(guide and guide:GetDescendants() or {}) do
 		if d:IsA("BasePart") and (d.CanCollide or d.CanTouch or d.CanQuery or not d.Anchored) then
 			solid = solid + 1
 		end
+		if d:IsA("BasePart") and d.Parent and d.Parent.Name == "Dots" and d.Transparency < 1 then
+			dots = dots + 1
+		end
 	end
-	T.check(guide ~= nil and beam ~= nil and solid == 0, "Tutorial panel: a world target gets the guide arrow and a dotted Beam in workspace.ClientFx (visual only)", tostring(guide) .. " beam " .. tostring(beam) .. ", " .. solid .. " solid parts")
-	-- kit B X1 review: the trail must be seen: the dot strip (FxSprites Strip "Dots": its own upload or the old stock
-	-- sparkle), never "" and never the hairline fx_speedlines (Dash) strip
-	local FxSprites = require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
-	local trail = guide and guide:FindFirstChild("GuideTrail", true)
-	local trailTex = trail and tostring(trail.Texture) or "(no GuideTrail)"
-	T.check(trailTex ~= "" and trailTex == FxSprites.Strip("Dots") and trailTex ~= FxSprites.Strip("Dash"),
-		"Tutorial panel: the GuideTrail wears the dot strip (FxSprites Strip \"Dots\"), not the speed lines", trailTex .. " vs " .. FxSprites.Strip("Dots"))
+	T.check(guide ~= nil and dots >= 3 and solid == 0, "Tutorial panel: a world target gets the guide arrow and a trail of dot blocks in workspace.ClientFx (visual only)", tostring(guide) .. " " .. dots .. " dots, " .. solid .. " solid parts")
+	-- kit B X1 review (kept in its kit B form): the trail must be seen and must not glow: no Beam, no Neon, no light
+	local beams, neon, lights = 0, 0, 0
+	for _, d in ipairs(guide and guide:GetDescendants() or {}) do
+		beams = beams + (d:IsA("Beam") and 1 or 0)
+		neon = neon + ((d:IsA("BasePart") and d.Material == Enum.Material.Neon) and 1 or 0)
+		lights = lights + (d:IsA("Light") and 1 or 0)
+	end
+	T.check(beams == 0 and neon == 0 and lights == 0,
+		"Tutorial panel: the guide trail is flat dot blocks, not a glowing Beam (no Beam, no Neon part, no light)", beams .. " beams, " .. neon .. " neon, " .. lights .. " lights")
 	-- in a match only the 'finish' step stays on screen
 	LocalPlayer:SetAttribute("InMatch", true)
 	advance(1.5)

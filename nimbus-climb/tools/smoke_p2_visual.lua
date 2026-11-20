@@ -716,9 +716,11 @@ local function clientScenarios()
 			-- the altar) "You are at the Storm Altar", Locked the rule line "Secret rolls happen at the Storm Altar"
 			local SEm = moduleAt("client", "UI/ShopEggs")
 			local state = SEm and type(SEm.CardState) == "function" and SEm.CardState("Secret") or "?"
-			-- (owner Q7, 2026-11-11) away from the lobby the Altar hint says where TRAVEL works
+			-- (owner Q7, 2026-11-11) away from the lobby the Altar hint says where TRAVEL works. (Pitch 2 item 13 A, the owner's
+			-- pick: the button became "Show the way", a walking guide, so the hints say what it does: was "Travel flies you to
+			-- the Storm Altar" / "Go to the lobby to travel to the Storm Altar")
 			local inLobby = not (SEm and type(SEm.InLobby) == "function") or SEm.InLobby()
-			local altarHint = inLobby and "Travel flies you to the Storm Altar" or "Go to the lobby to travel to the Storm Altar" -- (kit-b U9-2: sentence case)
+			local altarHint = inLobby and "A gold arrow leads you to the Storm Altar" or "From here: Home first, then the arrow" -- (kit-b U9-2: sentence case)
 			local wantHint = (state == "Locked" and "Secret rolls happen at the Storm Altar") or (state == "Altar" and altarHint)
 				or (state ~= "?" and "You are at the Storm Altar") or nil
 			T.check(card ~= nil and card.Visible and hint ~= nil and wantHint ~= nil and hint.Text == wantHint and hint.TextWrapped ~= true and fits,

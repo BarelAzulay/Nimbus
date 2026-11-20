@@ -45,8 +45,11 @@
 --                                    altar's prompt counts (SetFromAltar, until Close). Away from it the Secret card greys
 --                                    under "Dim" (the navy lip at K.DIM), the "AltarChip" ("Available at the Storm Altar";
 --                                    phone / portrait "At the Storm Altar") takes the PityChip's box and a green "Travel"
---                                    (the compass glyph + "TRAVEL") takes SPIN's: a tap sends QuickTravel("Altar") at most
---                                    once per K.TRAVEL_GAP and closes the Shop (ctx.Close). A restricted account keeps the
+--                                    (the arrow glyph + "Show the way") takes SPIN's: (Pitch 2 item 13 A; it teleported) a
+--                                    tap starts TutorialController.Guide.Start("StormAltar") at most once per K.TRAVEL_GAP
+--                                    (no QuickTravel) and closes the Shop (ctx.Close); away from the lobby the guide routes
+--                                    home first; greyed only while a match / battle / run holds the player ("Finish the
+--                                    match first"). A restricted account keeps the
 --                                    Locked card (no chip, no TRAVEL); the page repaints on the Shop's 1 s tick
 --   ShopEggs.SetFromAltar(on)        ShopController.Open's FromAltar (the altar prompt), cleared by Close; read by AtAltar()
 --                                    only while there is no live reading
@@ -157,17 +160,22 @@ local K = {
 		-- the hero's hint follows its state: Locked keeps this rule line, Altar says what TRAVEL does, at the altar where
 		-- you are (ShopEggs.Refresh)
 		HeroHint = "Secret rolls happen at the Storm Altar",
-		HeroHintTravel = "Travel flies you to the Storm Altar",
+		-- (Pitch 2 item 13_travel_guide A, the owner's pick: no teleport) the button starts a walking guide; it was "Travel
+		-- flies you to the Storm Altar"
+		HeroHintTravel = "A gold arrow leads you to the Storm Altar",
 		HeroHintHere = "You are at the Storm Altar",
-		-- TRAVEL works only from the lobby (the owner's call 2026-11-11; GateService "away"): elsewhere it greys out
-		HeroHintLobby = "Go to the lobby to travel to the Storm Altar",
-		HeroHintLobbyShort = "Travel from the lobby", -- phone / portrait (the long one runs past 296 px at 15)
+		-- away from the lobby the guide routes home first (it greyed out: "Go to the lobby to travel to the Storm Altar")
+		HeroHintLobby = "From here: Home first, then the arrow",
+		HeroHintLobbyShort = "Home first, then the arrow", -- phone / portrait
+		-- a match / battle / dungeon run holds the player: the one state that greys the button
+		HeroHintLocked = "Finish the match first",
 		AltarLock = "Available at the Storm Altar",
 		AltarLockShort = "At the Storm Altar",
-		Travel = "Travel", -- (kit-b U9-2: buttons read in sentence case)
+		Travel = "Show the way", -- (kit-b U9-2: buttons read in sentence case; Pitch 2 item 13 A: was "Travel")
 		GemsOnly = "gems only",
 	},
-	-- shop-area (spec 16.17.3): the Altar state. TRAVEL fires QuickTravel("Altar") at most once per TRAVEL_GAP; the Dim
+	-- shop-area (spec 16.17.3): the Altar state. "Show the way" starts the guide (Pitch 2 item 13 A; it fired
+	-- QuickTravel("Altar")) at most once per TRAVEL_GAP; the Dim
 	-- (the navy lip at DIM) greys the hero over its art and the page's sparks (HatchFx.Pool's holder, ZIndex 20) and under the
 	-- chips, the spin holder and the hint (Z_OVER)
 	TRAVEL_GAP = 0.4,
@@ -214,7 +222,7 @@ local CUR = setmetatable({}, { __mode = "v" }) -- CUR.Page: the page built last 
 local H = {} -- helpers
 local L = {} -- layouts
 -- shop-area (spec 16.17.3): From = the Shop was opened by the Storm Altar's prompt (ShopController.Open's FromAltar, cleared
--- on Close); LastTravel = os.clock() of the last QuickTravel("Altar") sent
+-- on Close); LastTravel = os.clock() of the last "Show the way" tap taken (Pitch 2 item 13 A)
 local ALTAR = { From = false, LastTravel = -math.huge }
 ShopEggs._AtAltar = nil -- tests: true / false overrides ShopEggs.AtAltar(); nil = the real reading
 
@@ -634,18 +642,39 @@ function H.arrangeTravel(tr, w, h, size, iconPx)
 	place(tr.Word, wx, 0, math.max(0, w - 4 - wx), h)
 end
 
--- a TRAVEL tap: only while the page shows, at most once per K.TRAVEL_GAP; QuickTravel("Altar") (the server checks the
--- trip: GateService.Travel), then the Shop closes
+-- (Pitch 2 item 13 A) a match, a battle, a dungeon run or the Ring holds the player: the guide cannot start
+function H.tripLocked()
+	return attr("InMatch") == true or attr("InBattle") ~= nil
+end
+
+-- the travel guide (TutorialController.Guide), looked up when first needed (the Shop loads before the controllers)
+function H.guide()
+	local ok, guide = pcall(function()
+		local folder = UI.Parent:FindFirstChild("Controllers")
+		local mod = folder and folder:FindFirstChild("TutorialController")
+		local TC = mod and require(mod)
+		return type(TC) == "table" and TC.Guide or nil
+	end)
+	return ok and type(guide) == "table" and type(guide.Start) == "function" and guide or nil
+end
+
+-- a "Show the way" tap (Pitch 2 item 13 A: it sent QuickTravel("Altar"), a teleport): only while the page shows and no
+-- match / run holds the player, at most once per K.TRAVEL_GAP; the walking guide starts (routing home first when away
+-- from the lobby), then the Shop closes. No remote: nothing moves the player.
 function H.travel(P)
-	if not H.shown(P.Page) or not ShopEggs.InLobby() or os.clock() - ALTAR.LastTravel < K.TRAVEL_GAP then
+	if not H.shown(P.Page) or H.tripLocked() or os.clock() - ALTAR.LastTravel < K.TRAVEL_GAP then
+		return
+	end
+	local guide = H.guide()
+	if not guide then
 		return
 	end
 	ALTAR.LastTravel = os.clock()
 	H.call(P, "Tap")
-	pcall(function()
-		Remotes.Get("QuickTravel"):FireServer("Altar")
-	end)
-	H.call(P, "Close")
+	local ok, started = pcall(guide.Start, "StormAltar")
+	if ok and started == true then
+		H.call(P, "Close")
+	end
 end
 
 function H.buildCard(P, parent, id)
@@ -946,11 +975,13 @@ function L.heroPC(t, w, M)
 	place(t.Holder, w - 320, ref and 66 or 46, 290, 100)
 	place(t.Spin.Button, 0, 0, 290, 100)
 	H.arrange(t.Spin, 290, 100, 34, 44)
-	H.arrangeTravel(t.Travel, 290, 100, 34, 44)
+	-- (Pitch 2 item 13 A) "Show the way" is twice "Travel"'s length: 30 px keeps it inside the 290 px plank in FredokaOne
+	H.arrangeTravel(t.Travel, 290, 100, 30, 44)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
-	-- (shop-area) the longest hint, "Secret rolls happen at the Storm Altar", is ~322 px at 18 (a bolder face runs ~350;
-	-- "Travel flies you to the Storm Altar" and "You are at the Storm Altar" are shorter): one line from
+	-- (shop-area) the long hints, "Secret rolls happen at the Storm Altar" and (Pitch 2 item 13 A) "A gold arrow leads you
+	-- to the Storm Altar", run ~322-350 px at 18 ("You are at the Storm Altar" is shorter; the shop tests measure them in
+	-- the real face): one line from
 	-- w - 380 to 10 px short of the card's edge, starting 8 px clear of the chips when they reach that far
 	local hintL = math.max(w - 380, x + chipW + 8)
 	place(t.Hint, hintL, ref and 172 or 152, w - 10 - hintL, 28)
@@ -1487,13 +1518,16 @@ function ShopEggs.Refresh(page, fromLayout)
 	h.AltarChip.Text = brief and K.TEXT.AltarLockShort or K.TEXT.AltarLock
 	h.Travel.Button.Visible = altar
 	h.Spin.Button.Visible = not altar
-	-- away from the lobby TRAVEL greys out and the hint says where it works (the server refuses "away" anyway)
-	local away = altar and not ShopEggs.InLobby()
-	if (h.Travel.Button:GetAttribute("Disabled") == true) ~= away then
-		CloudUI.SetDisabled(h.Travel.Button, away)
+	-- (Pitch 2 item 13 A) away from the lobby the guide routes home first, so the button stays live and the hint says so;
+	-- it greys only while a match / battle / run holds the player (it greyed whenever away: the teleport needed the lobby)
+	local held = altar and H.tripLocked()
+	local away = altar and not held and not ShopEggs.InLobby()
+	if (h.Travel.Button:GetAttribute("Disabled") == true) ~= held then
+		CloudUI.SetDisabled(h.Travel.Button, held)
 	end
 	local lobbyHint = brief and K.TEXT.HeroHintLobbyShort or K.TEXT.HeroHintLobby
-	h.Hint.Text = (locked and K.TEXT.HeroHint) or (away and lobbyHint) or (altar and K.TEXT.HeroHintTravel) or K.TEXT.HeroHintHere
+	h.Hint.Text = (locked and K.TEXT.HeroHint) or (held and K.TEXT.HeroHintLocked) or (away and lobbyHint)
+		or (altar and K.TEXT.HeroHintTravel) or K.TEXT.HeroHintHere
 	if altar then
 		h.Pulse.Scale = 1
 	end

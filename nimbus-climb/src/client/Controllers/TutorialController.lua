@@ -27,9 +27,12 @@
 --     Theme.ScreenFactor() (readability rule: body 20, captions 18, buttons 22, title 30 -> >= 14.4 px on phones).
 --     Step completion: a voxel confetti burst from the portrait; the end of the tutorial: a bigger one.
 --   * Guide arrow for world targets (Spot / Shop / Roulette / Portal, found by name under workspace.NimbusLobby,
---     the server's Target.Position as a fallback): a bouncing, spinning golden voxel arrow sculpted with
---     shared/Voxel.lua, a ring of floating voxel sparkles on the ground, a floating name + distance sign and a
---     dotted sparkle Beam from the HumanoidRootPart toward the target (workspace.ClientFx.TutorialGuide).
+--     the server's Target.Position as a fallback): a golden voxel arrow sculpted with shared/Voxel.lua that hops in two
+--     hard steps (Pitch 2 item 13 A: no spin, no tween, no light), a stone name + distance tag beside its shaft and a
+--     trail of flat gold dot blocks on the ground from just ahead of the feet toward the target (it was a Beam of a
+--     sparkle strip and a ring of Neon sparkles) (workspace.ClientFx.TutorialGuide).
+--   * TutorialController.Guide (Pitch 2 item 13 A): the travel guide the Shop's "Show the way" starts (see the section
+--     "Travel guide" below): the same world guide to the Storm Altar gate, a "Guiding to Storm Altar" chip with its X.
 --   * Menu targets: a pulsing gold ring around MenuButton_<Id> and a small pixel-art arrow pointing at it ("Home" rings
 --     the Home tile, MenuButton_Spot)
 --     (ScreenGui "NimbusTutorialPointer", display order 21, above the menu), on the first side of the button
@@ -145,17 +148,51 @@ local K = {
 	-- world guide (studs)
 	VOXEL = 0.36,
 	ARROW_LIFT = 5, -- arrow centre above the target top (the arrow is ~7.6 studs tall: its tip clears the top)
-	BOB = 0.7,
-	SPIN = 1.5,
+	-- (Pitch 2 item 13 A) the arrow hops BOB studs every BOB_STEP s, two hard steps (it bobbed on a sine and spun)
+	BOB = 0.6,
+	BOB_STEP = 0.45,
 	TRAIL_MAX = 90,
 	TRAIL_HIDE = 10,
-	-- floating guide sign (1080p design px, scaled by the screen factor)
+	-- (Pitch 2 item 13 A) the dot trail: DOT_SIZE-stud flat gold blocks every DOT_STEP studs from DOT_START studs ahead
+	-- of the feet (at most DOT_MAX, out to TRAIL_MAX), laid again every DOT_EVERY s
+	DOT_START = 2.5,
+	DOT_STEP = 3,
+	DOT_SIZE = 0.8,
+	DOT_MAX = 30,
+	DOT_EVERY = 0.25,
+	-- floating guide sign (1080p design px, scaled by the screen factor): a stone tag (SIGN_EDGE wood edge, SIGN_LIP gold
+	-- lip, SIGN_PAD in) SIGN_STUDS right of the arrow's axis (beside the shaft), SIGN_LIFT studs over the arrow's centre
 	SIGN_W = 340,
 	SIGN_H = 96,
 	SIGN_NAME = 24,
 	SIGN_INFO = 19,
-	SPARKLES = 10,
+	SIGN_EDGE = 3,
+	SIGN_LIP = 4,
+	SIGN_PAD = 14,
+	SIGN_STUDS = 1.6,
+	SIGN_LIFT = 1.5,
 	RESOLVE_RETRY = 2,
+	-- (Pitch 2 item 13 A) the travel guide's chip (1080p design px under the screen factor): a stone block (3 px wood
+	-- edge, GUIDE_LIP lip) GUIDE_FACE tall over its lip, GUIDE_PAD in; the GUIDE_MARK gold block with its GUIDE_ICON icon,
+	-- GUIDE_GAP to the GUIDE_TEXT px line, GUIDE_GAP_R to the red X block (GUIDE_CLOSE_FACE) in a GUIDE_CLOSE screen px
+	-- touch target; GUIDE_TOP under the top bar (a portrait phone: GUIDE_DOCK_GAP over the vitals card). It arrives within
+	-- GUIDE_ARRIVE studs of the gate, says so for GUIDE_HERE s and slides out in two steps over the last GUIDE_SLIDE s
+	GUIDE_ORDER = 13,
+	GUIDE_TOP = 10,
+	GUIDE_PAD = 6,
+	GUIDE_MARK = 34,
+	GUIDE_ICON = 18,
+	GUIDE_GAP = 12,
+	GUIDE_GAP_R = 14,
+	GUIDE_TEXT = 22,
+	GUIDE_FACE = 40,
+	GUIDE_LIP = 5,
+	GUIDE_CLOSE_FACE = 34,
+	GUIDE_CLOSE = 44,
+	GUIDE_DOCK_GAP = 10,
+	GUIDE_ARRIVE = 8,
+	GUIDE_HERE = 3,
+	GUIDE_SLIDE = 0.4,
 	-- confetti (gui px at factor 1)
 	CONFETTI_SMALL = 26,
 	CONFETTI_BIG = 64,
@@ -196,7 +233,6 @@ local K = {
 	STRIP_DOCK_GAP = 10,
 }
 
-local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the guide trail's dot strip (kit B X1)
 local BULLET = "\194\187 " -- >>
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the portrait's fallback cloud
 
@@ -206,16 +242,16 @@ end
 
 local TC = Theme.Colors
 local SIGN = Theme.Sign -- (kit B U9-9) the Signboard palette
--- (the world guide below keeps its own colours until the world sign wave)
+-- (Pitch 2 item 13 A) the world guide's arrow wears the kit's gold: the face, its light and its lip (no own yellows)
 local C = {
 	Navy = TC.Navy or TC.Ink,
 	Stroke = TC.TextStroke or TC.Ink,
 	White = TC.White,
 	Gold = TC.Gold or TC.Token,
-	ArrowLight = rgb(255, 226, 128),
-	Arrow = rgb(246, 190, 64),
-	ArrowDark = rgb(198, 132, 38),
-	ArrowShine = rgb(255, 248, 222),
+	ArrowLight = SIGN.GoldLight or SIGN.Gold,
+	Arrow = SIGN.Gold,
+	ArrowDark = SIGN.GoldLip,
+	ArrowShine = SIGN.Stone,
 	-- (kit B U9-9) the kit's confetti: the reward's gold and the gift's pink, each with its lip (no rainbow)
 	Confetti = { SIGN.Gold, SIGN.Roof, SIGN.GoldLip, SIGN.RoofLip },
 }
@@ -245,6 +281,7 @@ local S = { clock = 0, layoutTimer = 0, hintTimer = 0, typing = false } -- panel
 local P = { yaw = 0.38, side = -1, dist = 6, height = 3, accum = 0, excitedUntil = 0 } -- portrait
 local M = { findTimer = 0 } -- menu pointer
 local W = { built = false, active = false, resolveTimer = 0, labelTimer = 0 } -- world guide
+local G = { active = false } -- (Pitch 2 item 13 A) the travel guide (TutorialController.Guide)
 local R = { last = {}, hooked = {} } -- remotes + hooks
 local Fx = { pool = {}, live = 0 } -- confetti
 local Mods = {} -- optional modules: name -> table | false
@@ -2526,19 +2563,24 @@ local function updateMenuPointer(dt, t)
 	-- hidden while a window / the Index / the roulette covers the menu (S.windowOpen): it would draw on top of it
 	local want = st and not st.Done and not S.finale and st.Target and st.Target.Kind == "Menu" and S.shown and not inMatch()
 		and not S.windowOpen
+	local targetId = want and st.Target.Id or nil
+	-- (Pitch 2 item 13 A) the travel guide away from the lobby points at the Home tile (its Go home opens the home portal)
+	if G.active and G.phase == "Home" and not S.windowOpen and not inMatch() then
+		want, targetId = true, "Home"
+	end
 	M.findTimer = M.findTimer - dt
 	if M.findTimer <= 0 then
 		M.findTimer = 1
 		safe("menu hook", refreshClickHook)
 		if want then
-			local valid = M.button and M.button.Parent and M.buttonId == st.Target.Id
+			local valid = M.button and M.button.Parent and M.buttonId == targetId
 			if valid then
 				local owner = M.button:FindFirstAncestorOfClass("ScreenGui")
 				valid = owner ~= nil and shownIn(M.button, owner)
 			end
 			if not valid then
-				M.button = findMenuButton(st.Target.Id)
-				M.buttonId = st.Target.Id
+				M.button = findMenuButton(targetId)
+				M.buttonId = targetId
 				M.side = nil
 			end
 		end
@@ -2557,7 +2599,7 @@ local function updateMenuPointer(dt, t)
 	local k = Theme.ScreenFactor()
 	local pk = UI.PointerScale and UI.PointerScale.Scale or k -- the arrow's snapped scale (layout)
 	-- (U9-9 look 2) the tile itself turns gold (the kit's Selected look); no ring over its neighbours
-	setPointed(st.Target.Id)
+	setPointed(targetId)
 	-- the side is re-chosen after every layout pass (M.side = nil there, twice a second at most)
 	if not M.side then
 		local okSide, side, rotation = pcall(choosePointerSide, r, pk, guiArea(), M.button)
@@ -2632,9 +2674,9 @@ local function buildArrowModel()
 					Gold = C.Arrow,
 					Gold_Light = C.ArrowLight,
 					Gold_Dark = C.ArrowDark,
-					Rim = rgb(255, 232, 150),
-					Rim_Light = rgb(255, 244, 196),
-					Rim_Dark = rgb(222, 170, 70),
+					Rim = C.ArrowLight,
+					Rim_Light = C.ArrowShine,
+					Rim_Dark = C.Arrow,
 					Shine = C.ArrowShine,
 				},
 				Center = true,
@@ -2676,10 +2718,7 @@ local function buildArrowModel()
 			table.insert(offsets, d.CFrame)
 		end
 	end
-	local glowPart = parts[1]
-	if glowPart then
-		make("PointLight", "Glow", { Color = C.ArrowLight, Brightness = 1.4, Range = 12, Shadows = false }, glowPart)
-	end
+	-- (Pitch 2 item 13 A, kit B: nothing glows) the PointLight "Glow" on the first part went
 	return model, parts, offsets
 end
 
@@ -2690,54 +2729,30 @@ local function buildWorldGuide()
 	local model, parts, offsets = buildArrowModel()
 	model.Parent = folder
 	W.arrowParts, W.arrowOffsets = parts, offsets
+	W.arrowTop = nil
 
-	W.sparkles = {}
-	for i = 1, K.SPARKLES do
-		local bit = make("Part", "Sparkle" .. i, {
-			Size = Vector3.new(0.6, 0.6, 0.6),
-			Color = (i % 2 == 0) and C.ArrowLight or C.ArrowShine,
-			Material = Enum.Material.Neon,
-			Transparency = 0.1,
-		}, folder)
-		finishArrowPart(bit)
-		W.sparkles[i] = bit
-	end
+	-- (Pitch 2 item 13_travel_guide A, the owner's pick "Gold arrow + dot trail"; it was a glowing Beam of a sparkle strip
+	-- from the hip and a ring of Neon sparkles) the trail is flat gold dot blocks on the ground (Dots: a pool of
+	-- SmoothPlastic squares, laid every K.DOT_EVERY s from K.DOT_START studs ahead of the feet toward the target, every
+	-- K.DOT_STEP studs, at most K.TRAIL_MAX studs out); no Neon, no light
+	W.dotFolder = make("Folder", "Dots", nil, folder)
+	W.dots = {}
+	W.dotTimer = 0
 
-	-- the dotted trail: Beam from the player's root to an anchor near the target
-	local trailEnd = make("Part", "TrailEnd", { Size = Vector3.new(0.2, 0.2, 0.2), Transparency = 1 }, folder)
-	finishArrowPart(trailEnd)
-	W.trailEnd = trailEnd
-	W.a1 = make("Attachment", "A1", nil, trailEnd)
-	local beam = make("Beam", "GuideTrail", {
-		Attachment1 = W.a1,
-		Texture = FxSprites.Strip("Dots"), -- bright dots running to the target (the stock sparkle until fx_dots is uploaded)
-		TextureMode = Enum.TextureMode.Wrap,
-		TextureLength = 2.6,
-		TextureSpeed = 1.1,
-		Width0 = 1.5,
-		Width1 = 1.5,
-		FaceCamera = true,
-		LightEmission = 0.8,
-		LightInfluence = 0,
-		Segments = 10,
-		Color = ColorSequence.new(C.ArrowLight, C.ArrowShine),
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.05),
-			NumberSequenceKeypoint.new(0.7, 0.25),
-			NumberSequenceKeypoint.new(1, 0.85),
-		}),
-	}, trailEnd)
-	W.beam = beam
-
-	-- floating sign with the target's name and the distance (World text rule: pixel-sized, the name 24 px and the
-	-- distance 19 px at 1080p on a compact plate sized to its text; a UIScale follows the screen-height factor).
+	-- floating sign beside the arrow's shaft (World text rule: pixel-sized, the name 24 px and the distance 19 px at 1080p
+	-- on a compact plate sized to its text; a UIScale follows the screen-height factor). (Pitch 2 item 04 / 13: the navy
+	-- rounded card with the gold stroke went) a stone tag: the Stone face, a 3 px wood edge, the gold lip, brown ink.
 	-- AlwaysOnTop with a long MaxDistance on purpose: it is the way-finder, seen from anywhere in the lobby.
 	local anchor = make("Part", "SignAnchor", { Size = Vector3.new(0.2, 0.2, 0.2), Transparency = 1 }, folder)
 	finishArrowPart(anchor)
 	W.labelAnchor = anchor
 	local k = Theme.ScreenFactor()
+	-- beside the shaft, not over the arrow's head: the billboard's left edge on the axis (SizeOffset 0.5), moved
+	-- SIGN_STUDS right of it on the screen (StudsOffset), the card on its left edge
 	local signGui = make("BillboardGui", "GuideSign", {
 		Size = UDim2.fromOffset(math.floor(K.SIGN_W * k), math.floor(K.SIGN_H * k)),
+		SizeOffset = Vector2.new(0.5, 0),
+		StudsOffset = Vector3.new(K.SIGN_STUDS, 0, 0),
 		AlwaysOnTop = true,
 		LightInfluence = 0,
 		MaxDistance = 4000,
@@ -2745,45 +2760,49 @@ local function buildWorldGuide()
 	}, anchor)
 	W.labelGui = signGui
 	local card = box("Card", {
-		BackgroundTransparency = 0.04,
-		BackgroundColor3 = C.Navy,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(150, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Stone,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, K.SIGN_EDGE, 0.5, 0),
+		Size = UDim2.fromOffset(150, K.SIGN_NAME + K.SIGN_INFO + 22),
 	}, signGui)
-	corner(card, 14)
-	stroke(card, C.Gold, 3, 0)
-	make("UIPadding", "Pad", {
-		PaddingTop = UDim.new(0, 5),
-		PaddingBottom = UDim.new(0, 7),
-		PaddingLeft = UDim.new(0, 16),
-		PaddingRight = UDim.new(0, 16),
-	}, card)
-	make("UIListLayout", "List", {
-		FillDirection = Enum.FillDirection.Vertical,
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 1),
-	}, card)
+	-- (the UIScale grows the card round its anchor, the left edge: it stays beside the shaft at any screen size)
+	edge(card, SIGN.Wood, K.SIGN_EDGE)
+	lipOf(card, SIGN.GoldLip, K.SIGN_LIP)
+	W.signCard = card
 	W.signScale = make("UIScale", "ReadScale", { Scale = k }, card)
-	W.signName = label(card, "Name", "", "Heading", K.SIGN_NAME, C.Gold, {
-		AutomaticSize = Enum.AutomaticSize.XY,
-		Size = UDim2.fromOffset(0, K.SIGN_NAME + 4),
+	W.signName = label(card, "Name", "", "Heading", K.SIGN_NAME, SIGN.Text, {
+		Position = UDim2.fromOffset(K.SIGN_PAD, 5),
+		Size = UDim2.fromOffset(100, K.SIGN_NAME + 4),
 		TextScaled = false,
 		TextWrapped = false,
-		LayoutOrder = 1,
+		TextTruncate = Enum.TextTruncate.None,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 2,
 	})
-	W.signDistance = label(card, "Distance", "", "Label", K.SIGN_INFO, C.White, {
-		AutomaticSize = Enum.AutomaticSize.XY,
-		Size = UDim2.fromOffset(0, K.SIGN_INFO + 4),
+	W.signDistance = label(card, "Distance", "", "Label", K.SIGN_INFO, SIGN.TextMuted, {
+		Position = UDim2.fromOffset(K.SIGN_PAD, 5 + K.SIGN_NAME + 5),
+		Size = UDim2.fromOffset(100, K.SIGN_INFO + 4),
 		TextScaled = false,
 		TextWrapped = false,
-		LayoutOrder = 2,
+		TextTruncate = Enum.TextTruncate.None,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 2,
 	})
-	-- world text: the World text rule (smoke_polish_worldtext) keeps its 2 px outline until the world sign wave
-	Theme.TextOutline(W.signName, 2, C.Stroke, 0)
-	Theme.TextOutline(W.signDistance, 2, C.Stroke, 0)
+end
+
+-- the sign's card hugs its two lines (measured; no AutomaticSize: the lip is a child outside any list)
+local function layoutSign()
+	local card = W.signCard
+	if not card then
+		return
+	end
+	local nameW = Theme.Measure(W.signName.Text, "Heading", K.SIGN_NAME).X
+	local infoW = Theme.Measure(W.signDistance.Text, "Label", K.SIGN_INFO).X
+	local inner = math.ceil(math.max(nameW, infoW, 60)) + 4
+	W.signName.Size = UDim2.fromOffset(inner, K.SIGN_NAME + 4)
+	W.signDistance.Size = UDim2.fromOffset(inner, K.SIGN_INFO + 4)
+	card.Size = UDim2.fromOffset(inner + 2 * K.SIGN_PAD, 5 + K.SIGN_NAME + 5 + K.SIGN_INFO + 4 + 4 + K.SIGN_LIP)
 end
 
 local function setWorldActive(on)
@@ -2796,23 +2815,10 @@ local function setWorldActive(on)
 	W.active = on
 	if on then
 		W.folder.Parent = clientFx()
+		W.dotTimer = 0 -- the trail is laid again from where the player stands now
 	else
 		W.folder.Parent = nil
 		W.distance = nil
-	end
-end
-
-local function ensureTrailAttachment()
-	local root = rootPart()
-	if not root or not W.beam then
-		return
-	end
-	local a0 = root:FindFirstChild("TutorialTrail")
-	if not (a0 and a0:IsA("Attachment")) then
-		a0 = make("Attachment", "TutorialTrail", { Position = Vector3.new(0, -2.2, 0) }, root)
-	end
-	if W.beam.Attachment0 ~= a0 then
-		W.beam.Attachment0 = a0
 	end
 end
 
@@ -2906,6 +2912,25 @@ local function resolveTarget(target)
 		if ground then
 			arrowAt = ground + Vector3.new(0, 6, 0)
 		end
+	elseif kind == "Gate" then
+		-- (Pitch 2 item 13 A, the travel guide) a lobby gate by its ProximityPrompt (target.Prompt, e.g. AltarGatePrompt):
+		-- the ground under its prompt part, the arrow over its gate model (the part itself when it has none)
+		radius = 6
+		name = name or "Gate"
+		local prompt = lobby and type(target.Prompt) == "string" and lobby:FindFirstChild(target.Prompt, true)
+		local part = prompt and prompt.Parent
+		if part and part:IsA("BasePart") then
+			local p, half = part.Position, part.Size.Y * 0.5
+			ground = Vector3.new(p.X, p.Y - half, p.Z)
+			arrowAt = Vector3.new(p.X, p.Y + half + 3, p.Z)
+			local gate = part:FindFirstAncestorOfClass("Model")
+			if gate and gate ~= lobby then
+				local cf, size = boundsOf(gate)
+				if cf and size.Y < 60 then
+					arrowAt = Vector3.new(p.X, cf.Position.Y + size.Y * 0.5, p.Z)
+				end
+			end
+		end
 	else
 		local id = target.Id
 		if kind == "Portal" then
@@ -2953,10 +2978,79 @@ local function targetKey(target)
 	}, "|")
 end
 
+-- (Pitch 2 item 13 A) the ground under a trail point: a ray down from a little over the straight line from the feet to
+-- the target (the character and the guide are skipped; every guide part is CanQuery off), else that line
+local function groundY(x, z, line)
+	local hit = nil
+	pcall(function()
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { LocalPlayer.Character, W.folder }
+		local result = Workspace:Raycast(Vector3.new(x, line + 4, z), Vector3.new(0, -12, 0), params)
+		if result then
+			hit = result.Position.Y
+		end
+	end)
+	return hit or line
+end
+
+-- the trail's i-th dot block (a pool: made once, hidden by Transparency 1 when not laid)
+local function dotAt(i)
+	local d = W.dots[i]
+	if not d then
+		d = make("Part", "Dot" .. i, {
+			Size = Vector3.new(K.DOT_SIZE, 0.16, K.DOT_SIZE),
+			Color = SIGN.Gold,
+			Material = Enum.Material.SmoothPlastic,
+			Transparency = 1,
+		}, W.dotFolder)
+		finishArrowPart(d)
+		W.dots[i] = d
+	end
+	return d
+end
+
+-- lays the dot trail from K.DOT_START studs ahead of `from` (the root) toward `goal` (the target's ground), every
+-- K.DOT_STEP studs, out to K.TRAIL_MAX; none within K.TRAIL_HIDE of the goal. -> the flat distance to the goal
+local function layDots(from, goal)
+	local flat = Vector3.new(goal.X - from.X, 0, goal.Z - from.Z)
+	local dist = flat.Magnitude
+	local n = 0
+	if dist > K.TRAIL_HIDE then
+		local dir = flat.Unit
+		local yaw = math.atan2(-dir.X, -dir.Z)
+		local reach = math.min(dist - 2, K.TRAIL_MAX)
+		local footY = from.Y - 3
+		local s = K.DOT_START
+		while s <= reach and n < K.DOT_MAX do
+			n = n + 1
+			local x, z = from.X + dir.X * s, from.Z + dir.Z * s
+			local line = footY + (goal.Y - footY) * (s / dist)
+			local part = dotAt(n)
+			part.CFrame = CFrame.new(x, groundY(x, z, line) + 0.1, z) * CFrame.Angles(0, yaw, 0)
+			if part.Transparency ~= 0 then
+				part.Transparency = 0
+			end
+			s = s + K.DOT_STEP
+		end
+	end
+	for i = n + 1, #W.dots do
+		if W.dots[i].Transparency ~= 1 then
+			W.dots[i].Transparency = 1
+		end
+	end
+	return dist
+end
+
 local function updateWorldGuide(dt, t)
 	local st = S.state
 	local target = st and st.Target
 	local want = st and not st.Done and not S.finale and S.shown and target and WORLD_KINDS[target.Kind] and not inMatch()
+	-- (Pitch 2 item 13 A) the travel guide the player asked for takes the world guide while it walks the lobby (one guide
+	-- at a time; the tutorial's comes back when it ends)
+	if G.active and G.target and (G.phase == "Walk" or G.phase == "Here") then
+		target, want = G.target, true
+	end
 	if not want then
 		setWorldActive(false)
 		return
@@ -2976,6 +3070,9 @@ local function updateWorldGuide(dt, t)
 		W.resolved = ok and resolved or nil
 		if W.resolved then
 			W.signName.Text = W.resolved.Name
+			W.arrowTop = nil
+			W.labelTimer = 0
+			W.dotTimer = 0
 		end
 	end
 	local goal = W.resolved
@@ -2985,50 +3082,41 @@ local function updateWorldGuide(dt, t)
 	end
 	setWorldActive(true)
 
-	-- arrow: bob + spin above the target
-	local bob = math.sin(t * 3.1) * K.BOB
-	local top = goal.ArrowAt + Vector3.new(0, K.ARROW_LIFT + bob, 0)
-	local cf = CFrame.new(top) * CFrame.Angles(0, t * K.SPIN, 0)
-	local parts, offsets = W.arrowParts, W.arrowOffsets
-	for i = 1, #parts do
-		parts[i].CFrame = cf * offsets[i]
-	end
-	W.labelAnchor.CFrame = CFrame.new(top + Vector3.new(0, 6.2, 0))
-
-	-- sparkle ring on the ground
-	local n = #W.sparkles
-	for i = 1, n do
-		local a = t * 0.7 + i * (6.2832 / n)
-		local y = 0.9 + math.sin(t * 3 + i) * 0.35
-		local p = goal.Ground + Vector3.new(math.cos(a) * goal.Radius, y, math.sin(a) * goal.Radius)
-		W.sparkles[i].CFrame = CFrame.new(p) * CFrame.Angles(t * 1.3 + i, t * 0.9, 0)
+	-- (Pitch 2 item 13 A) the arrow hops between two heights in hard steps (it bobbed on a sine and spun), its parts
+	-- written only when it hops
+	local hop = (math.floor(t / K.BOB_STEP) % 2 == 0) and 0 or K.BOB
+	local top = goal.ArrowAt + Vector3.new(0, K.ARROW_LIFT + hop, 0)
+	if W.arrowTop ~= top then
+		W.arrowTop = top
+		local cf = CFrame.new(top)
+		local parts, offsets = W.arrowParts, W.arrowOffsets
+		for i = 1, #parts do
+			parts[i].CFrame = cf * offsets[i]
+		end
+		W.labelAnchor.CFrame = CFrame.new(goal.ArrowAt + Vector3.new(0, K.ARROW_LIFT + K.SIGN_LIFT, 0))
 	end
 
-	-- dotted trail from the player toward the target (capped, fading out)
+	-- the dot trail from just ahead of the feet toward the target (capped), the distance on the sign
 	local root = rootPart()
 	W.labelTimer = W.labelTimer - dt
+	W.dotTimer = W.dotTimer - dt
 	if root then
 		local from = root.Position
-		local flat = Vector3.new(goal.Ground.X - from.X, 0, goal.Ground.Z - from.Z)
-		local dist = flat.Magnitude
-		W.distance = dist
-		local endPos = goal.Ground + Vector3.new(0, 1, 0)
-		if dist > K.TRAIL_MAX then
-			endPos = Vector3.new(from.X, from.Y - 2, from.Z) + flat.Unit * K.TRAIL_MAX
+		if W.dotTimer <= 0 then
+			W.dotTimer = K.DOT_EVERY
+			W.distance = layDots(from, goal.Ground)
 		end
-		W.trailEnd.CFrame = CFrame.new(endPos)
-		W.beam.Enabled = dist > K.TRAIL_HIDE
+		local dist = W.distance or Vector3.new(goal.Ground.X - from.X, 0, goal.Ground.Z - from.Z).Magnitude
 		if W.labelTimer <= 0 then
 			W.labelTimer = 0.25
-			ensureTrailAttachment()
-			if dist <= K.TRAIL_HIDE then
-				W.signDistance.Text = "You're here!"
-			else
-				W.signDistance.Text = math.floor(dist + 0.5) .. " studs away"
+			local text = (dist <= K.TRAIL_HIDE) and "You're here!" or (math.floor(dist + 0.5) .. " studs away")
+			if W.signDistance.Text ~= text or W.signLaid ~= W.signName.Text then
+				W.signDistance.Text = text
+				W.signLaid = W.signName.Text
+				layoutSign()
 			end
 		end
 	else
-		W.beam.Enabled = false
 		W.distance = nil
 	end
 end
@@ -3100,6 +3188,353 @@ local function ensureLoop()
 	R.loop = RunService.RenderStepped:Connect(function(dt)
 		TutorialController.Step(dt)
 	end)
+end
+
+----------------------------------------------------------------------
+-- Travel guide (Pitch 2 item 13_travel_guide A, the owner's pick "Gold arrow + dot trail"): the Shop's "Show the way"
+-- (it teleported) starts it. In the lobby world it is the world guide above, pointed at the target's gate (the dot
+-- trail from the feet, the arrow over the gate, the stone tag beside it), and a chip at the top centre under the top bar
+-- (a portrait phone: over the vitals card, and over the quest strip when that docks there): a stone block with the
+-- gold arrow mark, "Guiding to Storm Altar" and the red X (a 44 px target) that ends it. Away from the lobby world (an
+-- arena, a dungeon) it routes home first: the house mark, "Home first, then follow the arrow", the menu pointer on the
+-- Home tile (its Go home opens the home portal) and no trail; back in the lobby the trail picks up by itself. Within
+-- K.GUIDE_ARRIVE studs of the gate the chip turns grass ("You're here: press E", CloudUI.PromptWords) for K.GUIDE_HERE s,
+-- slides up in two hard steps and the guide ends. A match or a battle / run / the Ring (a portal walked into), standing
+-- at the altar, the X or Stop end it at once; a second Start replaces the first. Nothing is left behind: the chip's
+-- ScreenGui goes, the world guide hides (or goes back to the tutorial's target), the pointer clears.
+--   TutorialController.Guide.Start(id) -> boolean   id: a key of GUIDE_TARGETS ("StormAltar"); false in a match / battle
+--   TutorialController.Guide.Stop()
+--   TutorialController.Guide.Active() -> id | nil
+--   TutorialController.Guide.Phase() -> "Walk" | "Home" | "Here" | nil
+----------------------------------------------------------------------
+local GUIDE_TARGETS = {
+	StormAltar = { Kind = "Gate", Id = "Altar", Prompt = "AltarGatePrompt", Label = "Storm Altar" },
+}
+local Guide = {}
+TutorialController.Guide = Guide
+
+-- the chip per phase: its mark's face and icon, the chip's lip, the line, whether the X shows
+local GUIDE_LOOK = {
+	Walk = { Face = "Gold", Icon = "arrow", Lip = "StoneLip", Close = true, Text = function(spec)
+		return "Guiding to " .. spec.Label
+	end },
+	Home = { Face = "Gold", Icon = "house", Lip = "StoneLip", Close = true, Text = function()
+		return "Home first, then follow the arrow"
+	end, Short = function() -- a narrow phone (the long line would run past the screen's gutters)
+		return "Home first, then the arrow"
+	end },
+	Here = { Face = "Grass", Icon = "check", Lip = "GrassLip", Close = false, Text = function()
+		local CloudUI = mod("CloudUI")
+		local ok, words = false, nil
+		if CloudUI and type(CloudUI.PromptWords) == "function" then
+			ok, words = pcall(CloudUI.PromptWords, false)
+		end
+		return "You're here: " .. ((ok and type(words) == "string") and words or "press E")
+	end },
+}
+
+local function guideBlocked()
+	return inMatch() or LocalPlayer:GetAttribute(Config.Attr.InBattle or "InBattle") ~= nil
+end
+
+-- the lobby world the trail can walk: the plaza, its islands, the ring street and the home plots on it, at lobby height
+local function inLobbyWorld(pos)
+	local L = Config.Lobby
+	if typeof(pos) ~= "Vector3" or type(L) ~= "table" or typeof(L.Origin) ~= "Vector3" then
+		return false
+	end
+	local dx, dz = pos.X - L.Origin.X, pos.Z - L.Origin.Z
+	local reach = (L.SpotRingRadius or 340) + (L.PlotSize or 72)
+	return dx * dx + dz * dz <= reach * reach and math.abs(pos.Y - L.Origin.Y) <= (L.ZoneBand or 80)
+end
+
+-- the target's prompt part in the lobby (looked up again while missing: the lobby may stream in)
+local function guidePart()
+	if G.part and G.part.Parent then
+		return G.part
+	end
+	local lobby = Workspace:FindFirstChild("NimbusLobby")
+	local prompt = lobby and G.spec and lobby:FindFirstChild(G.spec.Prompt, true)
+	local part = prompt and prompt.Parent
+	G.part = (part and part:IsA("BasePart")) and part or nil
+	return G.part
+end
+
+-- the chip's place: top centre under the top bar; a portrait phone: K.GUIDE_DOCK_GAP over the vitals card (and over the
+-- quest strip when it docks there). G.slide (0 / 0.5) lifts it by that much of its height; 1 hides it
+local function placeChip()
+	local chip = G.chip
+	if not chip then
+		return
+	end
+	local k = G.scale and G.scale.Scale or 1
+	local area = guiArea()
+	local h = (K.GUIDE_FACE + K.GUIDE_LIP) * k
+	local y = K.GUIDE_TOP * k
+	if area.Y > area.X then
+		local v = vitalsRect()
+		local bottom = v and (v.y0 - K.GUIDE_DOCK_GAP * k) or nil
+		local strip = UI.Strip
+		if bottom and strip and strip.Visible and strip.AbsoluteSize.Y > 0 then
+			local sy = strip.AbsolutePosition.Y
+			if sy < bottom and sy > bottom - 200 * k then
+				bottom = sy - K.GUIDE_DOCK_GAP * k
+			end
+		end
+		if bottom then
+			y = bottom - h - K.GUIDE_LIP * k
+		end
+	end
+	local slide = G.slide or 0
+	chip.Visible = slide < 1
+	chip.Position = UDim2.new(0.5, 0, 0, math.floor(y - slide * h + 0.5))
+end
+
+-- paints the chip for `phase` and sizes it to its line
+local function paintChip(phase)
+	local chip, look = G.chip, GUIDE_LOOK[phase]
+	if not chip or not look then
+		return
+	end
+	local ok, k = pcall(Theme.ScreenFactor)
+	k = (ok and type(k) == "number" and k > 0) and k or 1
+	G.scale.Scale = k
+	G.areaX = guiArea().X
+	local text = look.Text(G.spec)
+	G.text.Text = text
+	local face = SIGN[look.Face] or SIGN.Gold
+	G.mark.BackgroundColor3 = face
+	local markLip = G.mark:FindFirstChild("Lip")
+	if markLip then
+		markLip.BackgroundColor3 = Theme.SignLipOf(face)
+	end
+	local chipLip = chip:FindFirstChild("Lip")
+	if chipLip then
+		chipLip.BackgroundColor3 = SIGN[look.Lip] or SIGN.StoneLip
+	end
+	if G.icon then
+		G.icon:Destroy()
+	end
+	G.icon = crispIcon(G.mark, look.Icon, K.GUIDE_ICON, (look.Face == "Grass") and SIGN.OnGrass or SIGN.Text, {
+		Name = "Icon",
+		ZIndex = 5,
+		Position = UDim2.new(0.5, 0, 0.5, -1),
+	})
+	-- the X: a red GUIDE_CLOSE_FACE block in a transparent button that stays GUIDE_CLOSE screen px at any scale
+	local hit = math.ceil(K.GUIDE_CLOSE / k)
+	local tail = look.Close and (K.GUIDE_GAP_R + K.GUIDE_CLOSE_FACE + K.GUIDE_PAD) or K.GUIDE_GAP_R
+	local function widthOf(line)
+		local tw = math.ceil(Theme.Measure(line, "Heading", K.GUIDE_TEXT).X) + 4
+		return K.GUIDE_PAD + K.GUIDE_MARK + K.GUIDE_GAP + tw + tail, tw
+	end
+	local w, textW = widthOf(text)
+	-- (the chip keeps K.EDGE screen px clear of each side) a narrow phone takes the short line when the long one runs past
+	if look.Short and w * k > guiArea().X - 2 * K.EDGE then
+		text = look.Short(G.spec)
+		G.text.Text = text
+		w, textW = widthOf(text)
+	end
+	chip.Size = UDim2.fromOffset(w, K.GUIDE_FACE + K.GUIDE_LIP)
+	local markY = math.floor((K.GUIDE_FACE - K.GUIDE_MARK) / 2)
+	G.mark.Position = UDim2.fromOffset(K.GUIDE_PAD, markY)
+	G.text.Position = UDim2.fromOffset(K.GUIDE_PAD + K.GUIDE_MARK + K.GUIDE_GAP, 0)
+	G.text.Size = UDim2.fromOffset(textW, K.GUIDE_FACE)
+	G.close.Visible = look.Close
+	G.close.Size = UDim2.fromOffset(hit, hit)
+	G.close.Position = UDim2.fromOffset(w - K.GUIDE_PAD - K.GUIDE_CLOSE_FACE / 2, K.GUIDE_FACE / 2)
+	local crisp = mod("PixelCrisp")
+	if crisp and type(crisp.Refresh) == "function" then
+		pcall(crisp.Refresh, chip)
+	end
+	placeChip()
+end
+
+local function buildChip()
+	local pg = playerGui()
+	if not pg then
+		return false
+	end
+	local gui = make("ScreenGui", "NimbusGuide", {
+		ResetOnSpawn = false,
+		IgnoreGuiInset = false,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = K.GUIDE_ORDER,
+	}, nil)
+	local chip = box("Chip", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Stone,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, K.GUIDE_TOP),
+		Size = UDim2.fromOffset(300, K.GUIDE_FACE + K.GUIDE_LIP),
+		ZIndex = 2,
+	}, gui)
+	edge(chip, SIGN.Wood, 3)
+	lipOf(chip, SIGN.StoneLip, K.GUIDE_LIP)
+	G.scale = make("UIScale", "ReadScale", { Scale = 1 }, chip)
+	local mark = box("Mark", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Gold,
+		Size = UDim2.fromOffset(K.GUIDE_MARK, K.GUIDE_MARK),
+		ZIndex = 3,
+	}, chip)
+	edge(mark, SIGN.Wood, 2)
+	lipOf(mark, SIGN.GoldLip, 3)
+	G.mark = mark
+	G.text = label(chip, "Text", "", "Heading", K.GUIDE_TEXT, SIGN.Text, {
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextScaled = false,
+		TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 3,
+	})
+	local close = make("TextButton", "Close", {
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		ZIndex = 4,
+	}, chip)
+	local closeFace = box("Face", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Red,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(K.GUIDE_CLOSE_FACE, K.GUIDE_CLOSE_FACE),
+		ZIndex = 4,
+		Active = false,
+	}, close)
+	edge(closeFace, SIGN.Wood, 2)
+	lipOf(closeFace, SIGN.RedLip, 3)
+	crispIcon(closeFace, "x", K.GUIDE_ICON, SIGN.Text, { Name = "Icon", ZIndex = 5, Position = UDim2.new(0.5, 0, 0.5, -1) })
+	close.Activated:Connect(function()
+		Guide.Stop()
+	end)
+	G.gui, G.chip, G.close = gui, chip, close
+	gui.Parent = pg
+	return true
+end
+
+function Guide.Stop()
+	local was = G.active
+	G.active = false
+	G.phase, G.id, G.spec, G.target, G.part = nil, nil, nil, nil, nil
+	G.slide, G.hereUntil, G.icon = nil, nil, nil
+	if G.gui then
+		G.gui:Destroy()
+	end
+	G.gui, G.chip, G.mark, G.text, G.close, G.scale = nil, nil, nil, nil, nil, nil
+	if was then
+		-- the world guide and the pointer go with it (the tutorial's own target, if any, comes back on its next frame)
+		setWorldActive(false)
+		W.key = nil
+		hidePointer()
+		M.findTimer = 0
+	end
+end
+
+local function setPhase(phase)
+	if G.phase == phase then
+		return
+	end
+	G.phase = phase
+	W.key = nil
+	M.findTimer = 0
+	safe("guide chip", paintChip, phase)
+end
+
+-- one frame of the travel guide (TutorialController.Step, before the pointer and the world guide)
+local function updateTravel(dt)
+	if not G.active then
+		return
+	end
+	if guideBlocked() then
+		Guide.Stop()
+		return
+	end
+	if G.phase == "Here" then
+		local left = (G.hereUntil or 0) - S.clock
+		local slide = 0
+		if left <= K.GUIDE_SLIDE / 2 then
+			slide = 1
+		elseif left <= K.GUIDE_SLIDE then
+			slide = 0.5
+		end
+		if slide ~= (G.slide or 0) then
+			G.slide = slide
+			placeChip()
+		end
+		if left <= 0 then
+			Guide.Stop()
+		end
+		return
+	end
+	local root = rootPart()
+	local pos = root and root.Position
+	if pos and G.id == "StormAltar" and type(Config.AtAltar) == "function" and Config.AtAltar(pos) == true then
+		Guide.Stop() -- already through the gate: the altar's own prompts take over
+		return
+	end
+	if pos and inLobbyWorld(pos) then
+		local part = guidePart()
+		local d = part and Vector3.new(part.Position.X - pos.X, 0, part.Position.Z - pos.Z).Magnitude
+		if d and d <= K.GUIDE_ARRIVE then
+			G.hereUntil = S.clock + K.GUIDE_HERE
+			G.slide = 0
+			setPhase("Here")
+			return
+		end
+		setPhase("Walk")
+	elseif pos then
+		setPhase("Home")
+	end
+	G.placeTimer = (G.placeTimer or 0) - dt
+	if G.placeTimer <= 0 then
+		G.placeTimer = K.LAYOUT_EVERY
+		-- a new screen size (a turned phone) repaints the chip at its new scale; else it only follows the HUD
+		local okK, k = pcall(Theme.ScreenFactor)
+		if okK and G.scale and (k ~= G.scale.Scale or guiArea().X ~= G.areaX) then
+			safe("guide chip", paintChip, G.phase)
+		else
+			placeChip()
+		end
+	end
+end
+
+function Guide.Start(id)
+	local spec = GUIDE_TARGETS[id]
+	if not spec or guideBlocked() then
+		return false
+	end
+	-- a second start replaces the first: the running guide's chip is kept (repainted, no second chip) and its state reset
+	local keep = G.active and G.gui ~= nil and G.gui.Parent ~= nil
+	if not keep then
+		Guide.Stop()
+	end
+	G.active, G.id, G.spec = true, id, spec
+	G.target = { Kind = spec.Kind, Id = spec.Id, Label = spec.Label, Prompt = spec.Prompt }
+	G.phase, G.part, G.slide, G.hereUntil = nil, nil, nil, nil
+	W.key = nil
+	if not keep then
+		local ok, built = pcall(buildChip)
+		if not (ok and built) then
+			Guide.Stop()
+			return false
+		end
+	end
+	local root = rootPart()
+	setPhase((root and inLobbyWorld(root.Position)) and "Walk" or "Home")
+	updateTravel(0)
+	ensureLoop()
+	return G.active == true
+end
+
+function Guide.Active()
+	return G.active and G.id or nil
+end
+
+function Guide.Phase()
+	return G.active and G.phase or nil
 end
 
 local function applyState(payload)
@@ -3209,13 +3644,14 @@ function TutorialController.Step(dt)
 			end
 		end
 	end
+	safe("travel guide", updateTravel, dt)
 	safe("menu pointer", updateMenuPointer, dt, t)
 	safe("world guide", updateWorldGuide, dt, t)
 	safe("confetti", updateConfetti, dt)
 
-	-- nothing left to show: stop the loop until the next state
+	-- nothing left to show: stop the loop until the next state (or the next travel guide)
 	local st = S.state
-	if st and st.Done and not S.shown and Fx.live <= 0 and not W.active and R.loop then
+	if st and st.Done and not S.shown and Fx.live <= 0 and not W.active and not G.active and R.loop then
 		R.loop:Disconnect()
 		R.loop = nil
 		hidePointer()
