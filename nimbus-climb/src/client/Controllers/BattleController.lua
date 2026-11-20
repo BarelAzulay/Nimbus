@@ -8127,6 +8127,8 @@ function Hud.BuildResult(body, M, opts)
 	local nRows = math.ceil(#M.stats / cols)
 	for i, s in ipairs(M.stats) do
 		local c, r = (i - 1) % cols, floor((i - 1) / cols)
+		-- (P2 fix A look review r1: the ring's 3 stats in 2 columns left an empty cell) an odd last stat spans the line
+		local colw = (cols > 1 and c == 0 and i == #M.stats) and inner or colw
 		local row = make("Frame", { Name = "Stat_" .. s[1], BackgroundTransparency = 1, Position = UDim2.fromOffset(c * (colw + colGap), r * (rowH + ruleH)), Size = UDim2.fromOffset(colw, rowH + ruleH) }, stats)
 		make("Frame", { Name = "Rule", BackgroundColor3 = SIGN.StoneLip, BorderSizePixel = 0, Position = UDim2.fromOffset(0, rowH), Size = UDim2.fromOffset(colw, ruleH) }, row)
 		local ic = PixelIcon.New(row, s[2], 18, KB.Ink)

@@ -15183,6 +15183,27 @@ local function clientScenarios()
 						end
 					end
 					T.check(rows >= 2 and #badRow == 0, tag .. ": stat rows: label, the value right-aligned, a green tick each", fmt("%d rows; bad: %s", rows, table.concat(badRow, ", ")))
+					-- (P2 fix A look review r1, minor: the ring's 3 stats in 2 columns at 844x390 left an empty cell) every stat
+					-- line is filled across the stats' width: an odd last stat spans the line
+					if stats and U8.shown(stats) then
+						local sr, lines = U8.rect(stats), {}
+						for _, row in ipairs(stats:GetChildren()) do
+							if row.Name:match("^Stat_") and U8.shown(row) then
+								local r = U8.rect(row)
+								local key = math.floor(r.Y + 0.5)
+								lines[key] = lines[key] or { X = math.huge, R = -math.huge }
+								lines[key].X = math.min(lines[key].X, r.X)
+								lines[key].R = math.max(lines[key].R, r.R)
+							end
+						end
+						local holes = {}
+						for y, l in pairs(lines) do
+							if l.X > sr.X + 1 or l.R < sr.R - 1 then
+								holes[#holes + 1] = fmt("y %d: %.0f..%.0f of %.0f..%.0f", y, l.X, l.R, sr.X, sr.R)
+							end
+						end
+						T.check(#holes == 0, tag .. ": every stat line filled across the card (no empty cell)", table.concat(holes, "; "))
+					end
 					-- reward chips: equal widths, the number on each (the word under it on a wide screen)
 					local chips = body and body:FindFirstChild("Chips")
 					local widths, badChip = {}, {}

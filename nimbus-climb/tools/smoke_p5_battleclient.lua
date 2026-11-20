@@ -1490,6 +1490,10 @@ S.client_p5battle_short = guarded("client_p5battle_short", function()
 				end
 			end
 			T.check(n >= 2 and #small == 0, string.format("short %dx%d top bar: every pill button a thumb's 44 px (%d)", sz[1], sz[2], n), table.concat(small, "; "))
+			-- (minor: the pill ran into Roblox's "..." at 360 in renders) the pill ends inside the band, left of the "..."
+			local pill = bar and bar:FindFirstChild("Pill", true)
+			local pr = pill and H.shown(pill) and H.rect(pill)
+			T.check(pr and pr.x1 <= sz[1] - 72 + 0.5, string.format("short %dx%d top bar: the pill ends left of Roblox's \"...\"", sz[1], sz[2]), pr and H.rectText(pr) or "no pill")
 		end
 		Mock.TopbarInset = nil
 		pcall(TB.Refresh)
