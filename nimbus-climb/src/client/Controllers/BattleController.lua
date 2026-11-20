@@ -7014,9 +7014,10 @@ function Hud.LayoutFighter(B, m)
 			room = room - math.ceil((K.TEAM_KEY_W_PX + K.TEAM_KEY_GAP_PX + 2) / max(0.05, m.F))
 		end
 		cellW = max(tile + 78, min(m.Landscape and K.HELPER_W_WIDE or cellW, room))
-		if not m.Landscape and Hud.ThreeKeys(m) then
-			-- (Pitch 2 item 1b, look review r1: at 360 x 640 "STONE SKIN" broke as "STON / E...") a tall phone's column is as
-			-- wide as the CHEER / BACK row under it, as the mock's 390 x 844: a word of the buff's name fits beside the tile
+		if not m.Landscape and Hud.ThreeKeys(m) and room < tile + 78 then
+			-- (Pitch 2 item 1b, look review r1: at 360 x 640 "STONE SKIN" broke as "STON / E...") a small tall phone, whose
+			-- column's least width already passes the centre 40%: the column is as wide as the CHEER / BACK row under it, so a
+			-- word of the buff's name fits beside the tile (390 x 844 keeps its column, which holds the word, inside the 30%)
 			cellW = max(cellW, math.ceil((2 * K.TEAM_KEY_W_PX + K.TEAM_KEY_GAP_PX) / max(0.05, m.F)))
 		end
 	end
