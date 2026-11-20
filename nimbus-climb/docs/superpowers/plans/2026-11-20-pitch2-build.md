@@ -147,6 +147,7 @@
 - [ ] Run `petbuilder`, `evolved`, `p3evo_pets`, `client_p6pets`, `--mesh`: all green.
 - [ ] Render the 9 pets from the sheet and compare with `07_evolved_eyes_optA`. Merge.
 - [ ] Owner's call, not done from a PC: all 98 evolved body keys (`evo1_*` / `evo2_*`, High and `_low`) have MeshIds, so the arena shows the baked mesh with the old eyes until they are re-baked (export build) and uploaded in the keyed cloud session. Hand-off: `build/upload_sheets/evo_eyes_rebake.json` + `evo_eyes_rebake_preview.png`.
+- [x] Owner's call 2026-11-20, re-bake: the 98 keys were export-built in Blender (bpy 5.2.2) on the PC and checked: the renders against sheet column A, the FBX itself, the eye sizes, and the uploader dry run (98 new-asset). The build was NOT uploaded, and no manifest, `meshes.json` or id is committed from the PC (`check.mjs` `mesh-ids-stale` + OWNER_UPLOAD 8e: manifest and id land in one commit). Upload hand-over for the keyed cloud session: `build/upload_sheets/evo_eyes_UPLOAD.md`.
 
 ### Task 13: Wave 3 gate + Studio check
 - [ ] Run the whole suite and the mesh suite: 0 failed.

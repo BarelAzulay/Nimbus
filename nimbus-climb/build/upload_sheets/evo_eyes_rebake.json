@@ -1,6 +1,7 @@
 {
  "item": "Pitch 2 item 7 (07_evolved_eyes, option A Trim), plan Task 12, branch kitb-p2-eyes",
  "status": "WAITING FOR THE OWNER: export re-bake + upload in the keyed cloud session. Nothing was uploaded and no committed manifest, meshes.json entry or MeshIds id was changed from the PC.",
+ "handOver": "2026-11-20, after the owner's RE-BAKE decision: the export re-bake was built and checked on the PC (98 FBX, bpy 5.2.2), still NOT uploaded and still no committed manifest / meshes.json / MeshIds change. The upload steps, the 98 FBX (path, size, sha256) and the renders are in build/upload_sheets/evo_eyes_UPLOAD.md + build/upload_sheets/evo_eyes/; follow that file (it replaces the steps below).",
  "why": "Every evolved body key (evo1_* / evo2_*, High and _low) has a MeshIds id, so in the arena and as a follower the pet is drawn from the baked mesh, whose eyes are baked into the body MeshParts. The trimmed EYE_MASKS.Evo / EvoFierce reach only the Part build (fallback while a mesh loads, or when it fails) until these keys are re-baked from this source and uploaded.",
  "keys": 98,
  "keysWithMeshId": 98,
