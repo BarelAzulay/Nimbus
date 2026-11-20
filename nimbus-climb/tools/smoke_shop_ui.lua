@@ -1663,7 +1663,12 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 			local row = {}
 			local hero = G.eggCard("Secret")
 			local hb = hero and G.rel(hero, body)
-			if not (hb and G.near(hb.x, 0) and G.near(hb.w, 200) and G.near(hb.h, th)) then
+			-- (Pitch 2 fix round B, T1 look leftover 5: at 844x390 the More arrow sat on the Sky card's odds and the next
+			-- card's gem price '60' read '6') the Secret card and the four cards now share ONE width, at least 166, sized so
+			-- the row's viewport holds whole cards only; the step is that width + 8. Was: the Secret card 200 wide, the cards
+			-- 166 at x = 208 + i * 174 (the third card cut at the screen's edge under the arrow)
+			local tw = hb and hb.w or 0
+			if not (hb and G.near(hb.x, 0) and tw >= 166 - 0.5 and G.near(hb.h, th)) then
 				row[#row + 1] = "Secret " .. (hb and fmt("%.0f,%.0f %.0fx%.0f", hb.x, hb.y, hb.w, hb.h) or "missing")
 			end
 			local y0 = hb and hb.y
@@ -1674,7 +1679,7 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 			for i, id in ipairs(MACHINES) do
 				local card = G.eggCard(id)
 				local b = card and G.rel(card, body)
-				if not (b and G.near(b.x, 208 + (i - 1) * 174) and G.near(b.w, 166) and G.near(b.h, th) and (y0 == nil or G.near(b.y, y0))) then
+				if not (b and G.near(b.x, i * (tw + 8)) and G.near(b.w, tw) and G.near(b.h, th) and (y0 == nil or G.near(b.y, y0))) then
 					row[#row + 1] = id .. " " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
 				end
 				local s3 = G.eggBtn(id, "Spin3")
@@ -1691,7 +1696,55 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 					end
 				end
 			end
-			T.check(#row == 0, fmt("%s: Eggs: the Secret card 200 wide, then four cards 166 wide at x = 208 + i * 174, all %d tall", label, th), table.concat(row, "; "))
+			T.check(#row == 0, fmt("%s: Eggs: the Secret card and four cards one width (%.0f >= 166) at x = i * (w + 8), all %d tall", label, tw, th), table.concat(row, "; "))
+			-- (fix round B) no card is cut at the viewport's edge, at rest and after a drag (the row snaps to a whole card),
+			-- and the More arrow sits right of the viewport, on no card
+			local page = G.find(body, "Page_Eggs")
+			local scroll = page and page:FindFirstChild("Scroll")
+			local function cutCards()
+				local out = {}
+				if not scroll then
+					return { "no Scroll" }
+				end
+				local sv = G.box(scroll)
+				for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+					local c = G.eggCard(id)
+					local cb = c and G.box(c)
+					local seen = cb and (math.min(cb.x + cb.w, sv.x + sv.w) - math.max(cb.x, sv.x)) or 0
+					if cb and seen > 0.5 and seen < cb.w - 0.5 then
+						out[#out + 1] = fmt("%s %.0f of %.0f px", id, seen, cb.w)
+					end
+				end
+				return out
+			end
+			local cut0 = cutCards()
+			T.check(#cut0 == 0, label .. ": Eggs: at rest no card is cut at the row's edge (whole cards only)", table.concat(cut0, "; "))
+			local fade = page and page:FindFirstChild("Fade")
+			local more = fade and fade:FindFirstChild("More")
+			if T.check(more ~= nil and G.shown(more), label .. ": Eggs: the More arrow shows while more of the row is to the right") then
+				local mb, sv, onCard = G.box(more), G.box(scroll), {}
+				for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+					local c = G.eggCard(id)
+					local cb = c and G.box(c)
+					-- a card's part inside the viewport (the scroll clips the rest)
+					local x0, x1 = cb and math.max(cb.x, sv.x), cb and math.min(cb.x + cb.w, sv.x + sv.w)
+					if cb and x1 > x0 and mb.x < x1 - 0.5 and x0 < mb.x + mb.w - 0.5 and mb.y < cb.y + cb.h - 0.5 and cb.y < mb.y + mb.h - 0.5 then
+						onCard[#onCard + 1] = id
+					end
+				end
+				T.check(#onCard == 0 and mb.x >= sv.x + sv.w - 0.5, label .. ": Eggs: the More arrow sits right of the row's viewport, on no card",
+					fmt("arrow %s, viewport right %.0f, on %s", G.d(more), sv.x + sv.w, table.concat(onCard, ", ")))
+			end
+			if scroll and scroll.CanvasSize.X.Offset > 0 then
+				local pitch = (tw + 8) * G.scale()
+				scroll.CanvasPosition = Vector2.new(0.6 * pitch, 0) -- a drag that stops between two cards
+				G.advance(0.6)
+				local cut1 = cutCards()
+				T.check(#cut1 == 0 and G.near(scroll.CanvasPosition.X, pitch), label .. ": Eggs: a drag that stops between cards snaps to the next whole card",
+					fmt("x %.0f; %s", scroll.CanvasPosition.X, table.concat(cut1, "; ")))
+				scroll.CanvasPosition = Vector2.new(0, 0)
+				G.advance(0.6)
+			end
 			T.check(#shortTotals == 0, label .. ": Eggs: Spin3 reads 'x3' + token icon + Theme.ShortNumber(3 * price, 1000) (150, 750, 3K, 15K)", table.concat(shortTotals, "; "))
 			G.spinRowsCheck(label)
 			T.check(#smallEggs == 0, label .. ": Eggs: every odds egg is at least 30 px", table.concat(smallEggs, "; "))
