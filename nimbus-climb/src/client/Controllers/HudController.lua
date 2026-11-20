@@ -1002,7 +1002,8 @@ local function applyMargins(animate, force)
 		Vitals.Layout()
 		UI.Vitals.Position = UDim2.new(0, math.floor(vitalsLeft + 0.5), 0, math.floor(vitalsBottom + 0.5))
 	end
-	vitalsRect = { X = math.floor(vitalsLeft + 0.5), Y = math.floor(vitalsBottom + 0.5) - vitalsH * k, W = vitalsW * k, H = vitalsH * k }
+	vitalsRect = { X = math.floor(vitalsLeft + 0.5), Y = math.floor(vitalsBottom + 0.5) - vitalsH * k, W = vitalsW * k, H = vitalsH * k,
+		TabUp = math.floor(geometry.TAB_UP * k + 0.5) } -- (P2 fix A) the name tab's band over the card's own top (Vitals.Layout's cardY)
 
 	-- currencies: thin strips stacked top-right, right-aligned (the token strip carries the "+n" chip in a match)
 	local n = math.max(1, #currencies)
@@ -3784,10 +3785,10 @@ function HudController.GetLayout()
 		Scale = currentScale(),
 		CurrencyMode = S.currencyMode,
 		Vitals = (vitalsRect and UI.Vitals and UI.Vitals.Visible and UI.Gui and UI.Gui.Enabled)
-			and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H } or nil,
+			and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H, TabUp = vitalsRect.TabUp } or nil,
 		-- quick wins (win 4): the card's rect whether it is shown or hidden (nil only with no card): a fighter's pet battle
 		-- hides the card (SetVitalsHidden("Battle", true)) and BattleController puts Cheer up! / Retreat in its slot
-		VitalsSlot = (vitalsRect and UI.Vitals) and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H } or nil,
+		VitalsSlot = (vitalsRect and UI.Vitals) and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H, TabUp = vitalsRect.TabUp } or nil,
 	}
 end
 

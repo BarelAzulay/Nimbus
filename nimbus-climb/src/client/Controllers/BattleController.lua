@@ -6277,9 +6277,13 @@ function Hud.ClusterLayout(m)
 		-- vitals card reaches under SPECIAL: above it then; TARGET beside ELEMENT would reach the middle of the screen)
 		local right = vx - 10 * f
 		local base = max(r.jump[4], r.run[4]) + gap + 2
-		local v = CheerUp.Layout()
+		local v, hidden = CheerUp.Layout()
 		if v and right - bigPx - 4 * f < v.X + v.W then
-			base = max(base, m.VY - m.Inset - v.Y + 2)
+			-- (P2 fix A: vitals C's name tab band, TabUp over the card, raised the keys 26 px onto the enemy list at 360 x
+			-- 640) with the card stepped aside for the fight its slot holds Cheer up! / Retreat from its foot (CheerUp.Place,
+			-- clear of the keys by SlotClear): the keys stand on the card's own top, not the empty tab band
+			local vy = v.Y + ((hidden and tonumber(v.TabUp)) or 0)
+			base = max(base, m.VY - m.Inset - vy + 2)
 		end
 		out.Special = at(right - bigPx / 2 - 4 * f, base + bigPx / 2, big)
 		local row2 = base + bigPx + gap
