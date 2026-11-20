@@ -141,6 +141,10 @@ local K = {
 	REWARD_LABEL_W = 112, -- "Rewards:" (Heading 22) and its gap
 	REWARD_AMOUNT_W = 148, -- the widest amount (the Secret group's "<coin> 10,000" in Display 30; LOOK-ui: measured 144)
 	REWARD_SUB_MIN_W = 150, -- narrower than this, the line under the amount is left out (no 4-line wrap)
+	-- (Pitch 2 F0 A, look review major 5) the group's name on one line: the room the header's progress keeps (its blocks
+	-- and the "2/6" count), and the name's sizes tried from the biggest
+	HEADER_PROGRESS_MIN = 120,
+	HEADER_TITLE_SIZES = { 24, 22, 20, 18 },
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
 	ELEMENTS_BTN_H_SHORT = 44,
@@ -894,6 +898,41 @@ local function fitWindow()
 	return math.floor(r.designW + 0.5), math.floor(r.designH + 0.5)
 end
 
+-- (Pitch 2 F0 A: "one-line titles"; look review of finish pass A, major 5: COMMON PETS wrapped onto two lines at 1920) the
+-- group's name on ONE line beside its progress: the biggest of K.HEADER_TITLE_SIZES that leaves the progress
+-- K.HEADER_PROGRESS_MIN px of the header (S.HeaderW, design px); the progress takes the rest
+local function fitHeader()
+	local title = U.GroupTitle
+	local track = U.Header and U.Header:FindFirstChild("Progress")
+	local w = S.HeaderW
+	if not (title and track and w and w > 0) then
+		return
+	end
+	local extra = S.GroupId == FUSIONS and 30 or 0 -- (the sparkle mark before "Fusions")
+	local room = w - 16 - 12 - 14 - K.HEADER_PROGRESS_MIN
+	local size, tw = K.HEADER_TITLE_SIZES[#K.HEADER_TITLE_SIZES], 0
+	title.TextScaled = false
+	title.TextWrapped = false
+	local sc = SignKit.LayoutScale(title)
+	for _, s in ipairs(K.HEADER_TITLE_SIZES) do
+		-- the wider of the measure and the text the label really draws (its TextBounds, in its own px)
+		title.TextSize = s
+		local ok, m = pcall(Theme.MeasureLabel, title, title.Text, s)
+		local okB, tb = pcall(function()
+			return title.TextBounds.X / ((sc and sc > 0) and sc or 1)
+		end)
+		tw = math.max(ok and m and m.X or 0, okB and tb or 0) + extra
+		size = s
+		if tw <= room then
+			break
+		end
+	end
+	title.TextSize = size
+	local boxW = math.max(0, math.min(room, math.ceil(tw) + 4))
+	title.Size = UDim2.new(0, boxW, 1, 0)
+	track.Size = UDim2.new(1, -(16 + boxW + 12 + 14), 0, 30)
+end
+
 local function relayout()
 	if not S.Built then
 		return
@@ -911,6 +950,7 @@ local function relayout()
 	local headerH = short and K.HEADER_H_SHORT or K.HEADER_H
 	local rewardH = short and K.REWARD_H_SHORT or K.REWARD_H
 	local footerH = short and 0 or K.FOOTER_H
+	S.HeaderW = (w - K.PANEL_INSET_W - 20) - (tall and 0 or (groupW + detailW + 2 * K.GAP)) -- the centre's width (fitHeader)
 	U.Main.Size = UDim2.new(1, -20, 1, -(20 + footerH))
 	U.Footer.Visible = not short
 	-- (LOOK-ui) the footer's block bar: tenths where it has room, fifths on a narrow window (ten blocks were slivers)
@@ -1074,6 +1114,9 @@ local function relayout()
 			U.ElementsButton.Size = UDim2.new(1, -10, 0, buttonH)
 			U.GroupList.Size = UDim2.new(1, 0, 1, -(buttonH + 8))
 		end
+		-- (Pitch 2 F0 A, look review major 5) the plank carries its swap icon, as the mock's: led here, once the plank has
+		-- its size and text (placed at build time it read the text before its size)
+		PixelIcon.Lead(U.ElementsButton, ICON.Swap, { Px = 18 })
 	end
 	local petW = narrow and K.TILE_W_NARROW or K.TILE_W
 	local petH = narrow and K.TILE_H_NARROW or K.TILE_H
@@ -1081,6 +1124,7 @@ local function relayout()
 		petH = math.min(petH, K.TILE_H_SHORT)
 	end
 	U.GridLayout.CellSize = UDim2.fromOffset(petW, petH)
+	fitHeader()
 	renderFooter()
 end
 
@@ -1557,6 +1601,7 @@ local function renderHeader()
 		SignKit.SetBlockCount(U.HeaderBlocks, 1, FUSION_COLOR, Theme.Darken(FUSION_COLOR, 0.25))
 		SignKit.FillBlocks(U.HeaderBlocks, n > 0 and 1 or 0)
 		U.HeaderCount.Text = n == 1 and "1 fused pet" or (n .. " fused pets")
+		fitHeader()
 		return
 	end
 	local group = S.GroupById[S.GroupId]
@@ -1572,6 +1617,7 @@ local function renderHeader()
 	SignKit.SetBlockCount(U.HeaderBlocks, H_blockCount(total), lit, complete and SIGN.GrassLip or Theme.Darken(lit, 0.25))
 	H_fillBlocks(U.HeaderBlocks, found, total)
 	U.HeaderCount.Text = string.format("%d/%d", found, total)
+	fitHeader()
 end
 
 local function renderRewards()
@@ -1583,6 +1629,7 @@ local function renderRewards()
 		local stars = tonumber(home.Prestige) or 0
 		U.RewardLabel.Visible = false
 		U.RewardAmount.Visible = false
+		U.AmountCaption.Visible = false
 		U.RewardSub.Visible = true
 		local compact = S.Short or S.Tall
 		U.RewardSub.Position = UDim2.fromOffset(16, compact and 4 or 8)
@@ -1619,6 +1666,16 @@ local function renderRewards()
 	U.RewardSub.Size = UDim2.new(0, subW or 0, 0, 44)
 	local found, total, complete, claimed, claimable = groupStatus(group)
 	U.RewardAmount.Text = commas(rewardTokens(group))
+	-- the short caption under the amount where the long line has no room (not on a short window's one-row box)
+	local capOn = not U.RewardSub.Visible and not S.Short and not claimed and not claimable
+	U.AmountCaption.Visible = capOn
+	if capOn then
+		U.AmountCaption.Text = string.format("at %d / %d", total, total)
+		local pad = U.RewardAmount:FindFirstChildOfClass("UIPadding")
+		local ax = U.RewardAmount.Position.X.Offset + (pad and pad.PaddingLeft.Offset or 0)
+		U.AmountCaption.Position = UDim2.fromOffset(ax, U.RewardAmount.Position.Y.Offset + 36)
+		U.AmountCaption.Size = UDim2.fromOffset(math.max(60, (S.RewardTextW or 160) - (ax - 16)), 22)
+	end
 	local button = U.ClaimButton
 	local pending = S.ClaimPending == group.Id and not claimed
 	if claimed then
@@ -2268,6 +2325,14 @@ local function buildCentre(centre)
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
 	PixelIcon.Lead(U.RewardAmount, Theme.Currency.Tokens.Icon) -- (kit-b U7a) the coin before the amount
+	-- (Pitch 2 F0 A, look review of finish pass A, major 5) the amount's short caption ("at 6 / 6": the reward comes with
+	-- the group's last pet) under it, where the long line below (RewardSub) has no room
+	U.AmountCaption = makeText(rewards, "AmountCaption", "", "Body", 17, MUTED, {
+		Position = UDim2.fromOffset(16, 40),
+		Size = UDim2.fromOffset(160, 22),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Visible = false,
+	})
 	U.RewardSub = makeText(rewards, "Sub", "", "Body", 18, MUTED, {
 		Position = UDim2.fromOffset(16, 44),
 		Size = UDim2.new(1, -230, 0, 44),

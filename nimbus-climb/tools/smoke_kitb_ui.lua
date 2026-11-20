@@ -7341,6 +7341,55 @@ local function clientScenarios()
 				LKC.advance(0.4)
 			end)
 		end
+		-- (look review of finish pass A, major 5) the Index: every group's name ("COMMON PETS" .. "LEGENDARY PETS") on ONE
+		-- line at 17 px or more beside its progress (it wrapped at 1920), at every grid size; a waiting reward's amount has
+		-- its short caption under it ("at 6 / 6": the reward comes with the group's last pet) where the long line has no
+		-- room; the Elements plank carries its swap icon
+		local Index = U7.client("Controllers/IndexController")
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "finish index", function(tag)
+				Menu.Open("Index")
+				LKC.advance(1)
+				local win = pg:FindFirstChild("NimbusIndex")
+				local bad = {}
+				for _, id in ipairs({ "Common", "Uncommon", "Legendary", "Mythic" }) do
+					pcall(Index.Open, id)
+					LKC.advance(0.4)
+					local title = win and win:FindFirstChild("GroupTitle", true)
+					local track = title and title.Parent:FindFirstChild("Progress")
+					if not (title and U8.shown(title)) then
+						bad[#bad + 1] = id .. ": no title"
+					else
+						local r = U8.rect(title)
+						local tb = title.TextBounds
+						local oneLine = tb.Y <= title.TextSize * 1.35 + 0.5
+						local fits = tb.X <= (r.R - r.X) + 0.5
+						local clear = not (track and U8.shown(track)) or U8.rect(track).X >= r.X + tb.X - 0.5
+						if not (oneLine and fits and clear and title.TextSize >= 17) then
+							bad[#bad + 1] = fmt("%s: '%s' %d px, %s, %.0f wide in %.0f%s", id, title.Text, title.TextSize, oneLine and "one line" or "WRAPS",
+								tb.X, r.R - r.X, clear and "" or ", over the progress")
+						end
+					end
+				end
+				T.check(#bad == 0, fmt("%s: every group's name on one line, 17 px or more, beside its progress (%d off)", tag, #bad), table.concat(bad, "; "))
+				pcall(Index.Open, "Common")
+				LKC.advance(0.4)
+				local amount = win and win:FindFirstChild("Amount", true)
+				local sub, cap = win and win:FindFirstChild("Sub", true), win and win:FindFirstChild("AmountCaption", true)
+				local subShown = sub and U8.shown(sub) and sub.Text ~= ""
+				local capShown = cap and U8.shown(cap) and cap.Text ~= ""
+				-- (a landscape phone's short window keeps its one-row reward box: amount and Claim side by side, no line under)
+				local oneRow = s[3] and s[1] > s[2]
+				T.check(amount and U8.shown(amount) and (oneRow or subShown or (capShown and cap.Text:match("^at %d+ / %d+$") and cap.TextSize >= 17
+					and U8.rect(cap).Y >= U8.rect(amount).Y + amount.TextBounds.Y / 2)),
+					tag .. ": the reward's amount has its line or its short caption under it", fmt("sub %s, caption %s '%s'", tostring(subShown), tostring(capShown), cap and cap.Text or "-"))
+				local el = win and win:FindFirstChild("Elements", true)
+				local icon = el and el:FindFirstChild("LeadIcon", true)
+				T.check(el and (not U8.shown(el) or (icon and U8.shown(icon))), tag .. ": the Elements plank carries its swap icon")
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+			end)
+		end
 		LKC.flushErrors("finish_pass_kit")
 	end)
 
