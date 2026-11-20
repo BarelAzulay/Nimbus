@@ -2206,6 +2206,17 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		T.check(G.shown(k.Dim) and G.near(db.x, 0) and G.near(db.y, 0) and G.near(db.w, 352) and G.near(db.h, hb.h) and abs(k.Dim.BackgroundTransparency - 0.35) < 1e-6
 			and k.Dim.BackgroundTransparency < 1 and k.Dim.Parent == k.Chip.Parent and titleAt.x >= db.x + db.w and cb.x >= db.x + db.w,
 			"secret lock: Dim (K.NAVY at 0.35) veils the art column only (0..352), the title and the chip clear of it", fmt("%.0f,%.0f %.0fx%.0f t %.2f, title x %.0f", db.x, db.y, db.w, db.h, k.Dim.BackgroundTransparency, titleAt.x))
+		-- (Pitch 2 fix round B r1, look review minor: at 844x390 the machine sat on "a visible darker navy rectangle, an
+		-- unblended picture box that looks like a placeholder") the veil is the card's own face colour: the art fades into the
+		-- card, no darker box shows round it
+		local face, up = nil, k.Dim.Parent
+		while up and up:IsA("GuiObject") and not face do
+			face = up.BackgroundTransparency < 1 and up.BackgroundColor3 or nil
+			up = up.Parent
+		end
+		local dc = k.Dim.BackgroundColor3
+		T.check(face ~= nil and abs(dc.R - face.R) < 0.004 and abs(dc.G - face.G) < 0.004 and abs(dc.B - face.B) < 0.004,
+			"secret lock: ...the veil in the card's own face colour (no darker box round the machine)", fmt("veil %s, card %s", tostring(dc), tostring(face)))
 		local lead = k.Chip:FindFirstChild("LeadIcon")
 		T.check(lead ~= nil and lead:GetAttribute("PixelIcon") == "lock" and G.shown(lead), "secret lock: the AltarChip leads with the pixel padlock", lead and tostring(lead:GetAttribute("PixelIcon")) or "no LeadIcon")
 		T.check(k.Dim.ZIndex > (egg and egg.ZIndex or 0) and k.Dim.ZIndex > (sparks and sparks.ZIndex or 0) and k.Dim.ZIndex < k.Chip.ZIndex and holder and k.Dim.ZIndex < holder.ZIndex and k.Dim.ZIndex < k.Hint.ZIndex,

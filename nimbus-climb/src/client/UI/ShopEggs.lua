@@ -583,7 +583,9 @@ function H.buildHero(P, parent)
 	-- AltarChip takes the PityChip's box and TRAVEL takes SPIN's in the same holder (over the Dim with the hint)
 	-- (LOOK-ui, kitb-look1: the veil over the whole card greyed the title and the odds below the contrast rule) the Dim
 	-- veils the art column only (the layouts place it); the texts stay whole and the chip's padlock says why
-	t.Dim = frame("Dim", b, { BackgroundTransparency = K.DIM, BackgroundColor3 = SIGN.NavyLip, Size = UDim2.fromScale(1, 1), ZIndex = K.Z_DIM, Visible = false })
+	-- (Pitch 2 fix round B r1, look review minor: at 844x390 the veil read as "a visible darker navy rectangle, an unblended
+	-- picture box") the veil is the card's own navy face (H.card above): the art fades into the card, no box edge shows
+	t.Dim = frame("Dim", b, { BackgroundTransparency = K.DIM, BackgroundColor3 = SIGN.Navy, Size = UDim2.fromScale(1, 1), ZIndex = K.Z_DIM, Visible = false })
 	-- (kit-b U9-2) the altar note: a stone tag in its wood edge (brown ink)
 	t.AltarChip = label("AltarChip", b, K.TEXT.AltarLock, "Heading", 22, {
 		BackgroundTransparency = 0, BackgroundColor3 = SIGN.Tile, TextColor3 = SIGN.Text, ZIndex = K.Z_OVER, Visible = false,

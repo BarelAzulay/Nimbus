@@ -11420,6 +11420,22 @@ local function clientScenarios()
 					local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
 					local wr = U8.rect(win)
 					T.check(wr.X >= -0.5 and wr.Y >= -0.5 and wr.R <= gui.AbsoluteSize.X + 0.5 and wr.B <= gui.AbsoluteSize.Y + 0.5, tag .. ": the window sits inside the screen", U8.show(wr))
+					-- (Pitch 2 fix round B r1, look review minor: at 844x390 the red notice square on the Packs tab lay over the
+					-- 's' of "Packs") the Starter dot's place (shown or not: the store decides) is clear of the label's letters, at
+					-- their real width (SmokeCommon.RealWidth)
+					local packs = win:FindFirstChild("Tab_Packs", true)
+					local dot, lab = packs and packs:FindFirstChild("Dot"), packs and packs:FindFirstChild("Label")
+					if T.check(dot ~= nil and lab ~= nil and U8.shown(lab), tag .. ": (setup) the Packs tab, its label and its dot") then
+						local d, l, k = U8.rect(dot), U8.rect(lab), U8.scaleOf(lab)
+						local ring = dot:FindFirstChildOfClass("UIStroke") -- (its wood edge draws outside its box)
+						local e = ring and ring.Thickness or 0
+						d = { X = d.X - e, Y = d.Y - e, R = d.R + e, B = d.B + e }
+						local tw = SmokeCommon.RealWidth(lab.Text, lab.TextSize * k, lab.Font, true) or lab.TextBounds.X
+						local x0 = (lab.TextXAlignment == Enum.TextXAlignment.Left and l.X) or (lab.TextXAlignment == Enum.TextXAlignment.Right and l.R - tw) or (l.X + l.R - tw) / 2
+						local y0 = (l.Y + l.B - lab.TextSize * k) / 2
+						local letters = { X = x0, R = x0 + tw, Y = y0, B = y0 + lab.TextSize * k }
+						T.check(not U8.overlap(d, letters), tag .. ": the Packs tab's Starter dot clear of its label's letters", U8.show(d) .. " vs letters " .. U8.show(letters))
+					end
 					if s[3] then
 						T.check(GuiService.TouchControlsEnabled == false, tag .. ": the thumbstick and jump button go while the Shop is open")
 						return
