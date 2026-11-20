@@ -14,7 +14,9 @@
 --                            hit), DashDouble (second bite at DOUBLE_BITE), DashThorns (head back, hop away), DashReady (on
 --                            the floor and level every READY_BOUNCE). Every pose, on five sets of paw lines and two gaps:
 --                            no paw ever under the floor and no paw on the floor ever moves along it (no slide); Melee.Hop 0
---                            still hops; the ranged Windup is unchanged
+--                            still hops; the ranged Windup is unchanged. (gate review r0) the Windup in real seconds: the
+--                            real NPC wind-up (0.15 s to the load) one eased rock and load, no tremble, <= 3 deg a 60 fps
+--                            frame; a long one trembles at TREMBLE_HZ whatever its length; the rebound rock lasts 0.06 s
 -- Client world (AttackFx on a fake clock, real PetBuilder pets: base Maple Fox, evolved Aurora Fox):
 --   client_feel_bounce_timing  AttackFx.FeetOf measures each model's paw lines; an NPC's bite (Windup 0.45 s before the hit):
 --                            the wind-up to the run, the hit frame on the hit's time, the hit stop, the way home from
@@ -22,7 +24,10 @@
 --                            2nd a Double strike, the 3rd on a Thorns shield): no trip home between bites, every hit frame
 --                            on its time, the second chomp's bite at DashTwist's time (land + 0.14), the Thorns hop away
 --                            and the ready bounce, home from the last bite + FlurryBelow, exactly on its spot; no slide and
---                            no paw under the floor on the whole timeline, base and evolved
+--                            no paw under the floor on the whole timeline, base and evolved. (gate review r0) the NPC's
+--                            0.15 s wind-up smooth at 60 fps; the front-most point bites only a little into the target
+--                            (evolved: its head past its paws); a fighter's dash (its Hit Melee.In before the landing)
+--                            rocks back for FIGHTER_WIND first, the hit still on its time, home on its spot
 --   client_feel_bounce_dust  the landing dust (the spec: "lands on its front paws with dust", "each landing with a rock and
 --                            dust"): a puff on the frame of each hop landing (the nod, the hops home, a flurry's rebounds,
 --                            the Thorns hop away), none on the bite's landing nor the ready bounces; on the floor under
@@ -30,7 +35,8 @@
 --   client_feel_bounce_battle  BattleController + a real BattleSim: an NPC bear's 1st bite carries a Double strike, its 2nd a
 --                            Thorns hit (the server's event shapes): AttackFx.DashTwist runs for both, the DoubleHit sparks
 --                            are due on the second chomp, the Thorns bolt on the bite, the bear plays DashDouble and
---                            DashThorns, its drawn pose carries its model's Feet into PoseBody
+--                            DashThorns, its drawn pose carries its model's Feet into PoseBody; (gate review r0) the biter
+--                            flashes on the Thorns prick: the NPC bear on its event, my fighter with its bite (held Melee.In)
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -162,6 +168,56 @@ local function serverScenarios()
 			"melee bounce: the melee Windup is exactly at rest at p 0 and p 1 (the Strike path's push-off)")
 		T.check(same(smp("DashIn", 0, reach, typical).Body, w.Body, 1e-5),
 			"melee bounce: DashIn starts from exactly the Windup's loaded body (no pop when the run starts)")
+		-- (a2) (gate review r0, major 1: the strip's 0.45 s wind-up ran in the real 0.15 s, the NPC's Windup comes 0.45 s
+		-- before the hit and Melee.In 0.30 of it is the run; its 3 tremble cycles shook at ~40 Hz, a jitter at 60 fps, and the
+		-- 9 deg rock was a 0.05 s snap) the melee Windup reads its length in seconds (Sample's `reach` = the pose's Dur): a
+		-- wind-up of 0.15 s to its load is one eased rock back and load (no tremble: under TREMBLE_MIN), never back down, no
+		-- 60 fps frame over 3 deg, 15 deg at the load
+		local function windPitches(toLoad, fps)
+			local L = toLoad / LOAD
+			local out = {}
+			for i = 0, floor(toLoad * fps + 1e-6) do
+				out[#out + 1] = pitchOf(smp("Windup", i / fps / L, L, typical))
+			end
+			out[#out + 1] = pitchOf(smp("Windup", LOAD, L, typical))
+			return out
+		end
+		local sp = windPitches(0.15, 60)
+		local rises, bigStep, seq = true, 0, {}
+		for i = 2, #sp do
+			rises = rises and sp[i] >= sp[i - 1] - 1e-6
+			bigStep = max(bigStep, abs(sp[i] - sp[i - 1]))
+		end
+		for i = 1, #sp do
+			seq[i] = fmt("%.1f", sp[i])
+		end
+		T.check(rises and bigStep <= 3 and abs(sp[#sp] - 15) < 0.2,
+			fmt("melee bounce: the real NPC wind-up (0.15 s to the load) rocks back in one eased move, never back down, steps <= 3 deg a 60 fps frame (%s)", table.concat(seq, " ")))
+		-- a wind-up as long as the strip's (0.45 s to the load) or longer (0.6 s) trembles at TREMBLE_HZ in real seconds
+		-- (about 12.5 Hz, the strip's 13), +-1.4 deg about the 9 deg rock between the rock (0.12 s) and the load (its last 0.07 s)
+		local hzOk, hzSeen = true, {}
+		for _, toLoad in ipairs({ 0.45, 0.6 }) do
+			local L = toLoad / LOAD
+			local crosses, amp, pt, pv, ps = {}, 0, nil, nil, 0
+			local n = 2000
+			for i = 0, n do
+				local t = 0.125 + (toLoad - 0.075 - 0.125) * i / n
+				local v = pitchOf(smp("Windup", t / L, L, typical)) - 9
+				amp = max(amp, abs(v))
+				local sg = (v > 1e-6 and 1) or (v < -1e-6 and -1) or 0
+				if sg ~= 0 then
+					if ps ~= 0 and sg ~= ps then
+						crosses[#crosses + 1] = pt + (t - pt) * pv / (pv - v)
+					end
+					pt, pv, ps = t, v, sg
+				end
+			end
+			local hz = #crosses >= 3 and (#crosses - 1) / (2 * (crosses[#crosses] - crosses[1])) or 0
+			hzSeen[#hzSeen + 1] = fmt("%.2f s: %.1f Hz +-%.2f (%d crossings)", toLoad, hz, amp, #crosses)
+			hzOk = hzOk and hz > 11.5 and hz < 13.5 and amp > 1.2 and amp < 1.6
+		end
+		T.check(hzOk and P.TREMBLE_HZ ~= nil and P.TREMBLE_MIN ~= nil,
+			fmt("melee bounce: a long wind-up trembles at TREMBLE_HZ in real seconds whatever its length (%s)", table.concat(hzSeen, ", ")))
 
 		-- (b) DashIn's beats: u = the share of Melee.In 0.30 (hop 0.13, nod 0.04, hop-bite 0.13), then the chomp 0.12
 		local function dIn(u)
@@ -247,12 +303,30 @@ local function serverScenarios()
 			fmt("melee bounce: the settle (0.35 .. 0.56 s) rocks on the spot (%.1f .. %.1f deg, the hind paws on their spot) and ends exactly at rest", sMin, sMax))
 
 		-- (d) the flurry's pieces
-		local reb = -fwd(smp("DashBite", 14 / 30 * R, 0, typical))
+		-- (gate review r0 minor: the rebound rock is the strip's 0.06 s, so the rebound hop lands at 12 / 30 of the run, was 14 / 30)
+		local reb = -fwd(smp("DashBite", 12 / 30 * R, 0, typical))
 		local bHit = smp("DashBite", R, 0, typical)
 		T.check(abs(reb - P.REBOUND) < 1e-3 and abs(fwd(bHit)) < 1e-3 and same(smp("DashBite", 1, 0, typical).Body, CFrame.new()),
 			fmt("melee bounce: DashBite from the face: a rebound hop 0.7 back (%.2f), the hop-bite on the face at DASH_RUN, held there", reb))
 		local bFar = smp("DashBite", 1, P.THORN_BACK, typical)
 		T.check(same(bFar.Body, CFrame.new(0, 0, -P.THORN_BACK)), "melee bounce: DashBite from 1.3 behind the face (after a Thorns hop) ends on the face")
+		-- (gate review r0 minor: the rebound's rock lasted 0.03 s, an 8.8 deg snap and a root jump inside one 60 fps frame) on
+		-- a 0.30 s run the rock lasts the strip's 0.06 s on the floor, no 60 fps frame turns it over 6.5 deg
+		local runS = IN
+		local rockS, rockStep = 0, 0
+		local nR = 1800
+		for i = 0, nR do
+			local tt = runS * i / nR
+			local s = smp("DashBite", tt / runS * R, 0, typical)
+			if tt < 0.8 * runS and up(s) < 1e-4 and pitchOf(s) > 0.5 then
+				rockS = rockS + runS / nR
+			end
+			if tt + 1 / 60 <= runS and tt > 0.09 and tt < 0.2 then
+				rockStep = max(rockStep, abs(pitchOf(smp("DashBite", (tt + 1 / 60) / runS * R, 0, typical)) - pitchOf(s)))
+			end
+		end
+		T.check(rockS >= 0.05 and rockStep <= 6.5,
+			fmt("melee bounce: DashBite's rebound rock lasts %.3f s on the floor (the strip's 0.06), at most %.1f deg a 60 fps frame (<= 6.5)", rockS, rockStep))
 		local dLo, dAt = huge, 0
 		for i = 0, 60 do
 			local pc = pitchOf(smp("DashDouble", i / 60, nil, typical))
@@ -397,6 +471,30 @@ local function clientScenarios()
 		return CFrame.new(0, 0, -(tonumber(ps.Forward) or 0)) * s.Body
 	end
 
+	local function pitchOfBody(b)
+		return math.deg(math.asin(math.max(-1, math.min(1, b.LookVector.Y))))
+	end
+
+	-- (gate review r0 minor) how far the posed model's front-most point is into the target's box along `dir` (world studs, +
+	-- = in): the body in pose studs scaled by PB_Scale (the drawing), each part's box (the wings / tail / halo groups at rest)
+	local function biteDepth(model, body, sc, foe, dir)
+		local pv = model:GetPivot()
+		local bw = CFrame.new(body.Position * sc) * CFrame.new(-body.Position) * body
+		local m = pv * bw * pv:Inverse()
+		local front = -huge
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") and d.Transparency < 1 then
+				local cf = m * d.CFrame
+				local sz = d.Size
+				local half = 0.5 * (abs(dir:Dot(cf.RightVector)) * sz.X + abs(dir:Dot(cf.UpVector)) * sz.Y + abs(dir:Dot(cf.LookVector)) * sz.Z)
+				front = max(front, (cf.Position - pv.Position):Dot(dir) + half)
+			end
+		end
+		local tcf, tsz = foe:GetBoundingBox()
+		local th = 0.5 * (abs(dir:Dot(tcf.RightVector)) * tsz.X + abs(dir:Dot(tcf.UpVector)) * tsz.Y + abs(dir:Dot(tcf.LookVector)) * tsz.Z)
+		return front - ((tcf.Position - pv.Position):Dot(dir) - th)
+	end
+
 	S.client_feel_bounce_timing = guarded("client_feel_bounce_timing", function()
 		local AF = moduleAt(ROOTS.client .. "/Controllers/AttackFx")
 		local PP = moduleAt(ROOTS.shared .. "/PetPoses")
@@ -520,6 +618,80 @@ local function clientScenarios()
 				end
 				local sink, slide, at = walkFeet(bodies, feet)
 				T.check(sink > -1e-4 and slide < 1e-3, fmt("bounce timing: %s: one bite, every frame: no paw under the floor (%.5f), no slide (%.5f)", look[3], sink, slide), at)
+				-- (gate review r0, major 1) the real wind-up (0.15 s to the run): one eased rock back and load at 60 fps, never
+				-- back down (no tremble at this length), no frame over 3 deg
+				local wp, wRise, wStep = {}, true, 0
+				for fi = 2, #frames, 2 do
+					local f = frames[fi]
+					if f.Body and f.T <= runAt + 1e-6 and (f.Name == "Windup" or #wp > 0) then
+						wp[#wp + 1] = pitchOfBody(f.Body)
+					end
+				end
+				for i = 2, #wp do
+					wRise = wRise and wp[i] >= wp[i - 1] - 1e-6
+					wStep = max(wStep, abs(wp[i] - wp[i - 1]))
+				end
+				T.check(#wp >= 8 and wRise and wStep <= 3,
+					fmt("bounce timing: %s: the NPC's 0.15 s wind-up rocks back smoothly at 60 fps (%d frames, never back down %s, largest step %.1f deg)", look[3], #wp, tostring(wRise), wStep))
+				-- (gate review r0 minor: the evolved hop-bite sank 1.5 studs into the bear, its head reaching past its paws) the
+				-- front-most point bites a little into the target's box at the hit (the strip aims about 0.25 in), not through it
+				local sc0 = tonumber(me:GetAttribute("PB_Scale")) or 1
+				local hitF, holdF = frameAt(land + 0.005), frameAt(bk - 0.01)
+				local dHit = hitF and hitF.Body and biteDepth(me, hitF.Body, sc0, foe, V3(0, 0, -1)) or 99
+				local dHold = holdF and holdF.Body and biteDepth(me, holdF.Body, sc0, foe, V3(0, 0, -1)) or 99
+				T.check(dHit > -0.15 and dHit < 0.5 and dHold < 0.3,
+					fmt("bounce timing: %s: the hop-bite's front reaches %.2f studs into the bear at the hit (-0.15 .. 0.5), %.2f at the upright hold (< 0.3)", look[3], dHit, dHold))
+
+				------------------------------------------------------------------ a fighter's bite (its Hit Melee.In before the landing)
+				-- (gate review r0, major 2: a player's fighter has no Windup event, so it hopped in from a standstill) the dash
+				-- leaves it a FIGHTER_WIND rock back and load first, the run in the rest of Melee.In, the hit still on its time
+				frames = {}
+				clock = clock + 0.5
+				AF.Update(clock)
+				local fLand = clock + IN
+				T.check(AF.Dash(unit, src, tgt, fLand, clock, { Tempo = 2, Mine = true }) == true, fmt("bounce timing: %s: a fighter's dash is taken", look[3]))
+				local fFirst = AF.Pose(unit)
+				fFirst = fFirst and { Name = fFirst.Name } -- (AF.Pose's table is reused: read at once)
+				local fWind = AF.FIGHTER_WIND
+				step(fLand + BITE + HOLD + BACK * 1.4 + 0.1)
+				local fRun = type(fWind) == "number" and frameAt(fLand - IN + fWind + DT) or nil
+				local fp, fRise, fStep = {}, true, 0
+				for fi = 2, #frames, 2 do
+					local f = frames[fi]
+					if f.Body and f.Name == "Windup" then
+						fp[#fp + 1] = pitchOfBody(f.Body)
+					end
+				end
+				for i = 2, #fp do
+					fRise = fRise and fp[i] >= fp[i - 1] - 1e-6
+					fStep = max(fStep, abs(fp[i] - fp[i - 1]))
+				end
+				T.check(type(fWind) == "number" and fWind >= 0.08 and fWind <= 0.12 and fFirst ~= nil and fFirst.Name == "Windup" and #fp >= 4 and fRise
+					and fStep <= 4.5 and fp[#fp] > 12 and fRun ~= nil and fRun.Name == "DashIn",
+					fmt("bounce timing: %s: a fighter rocks back first (FIGHTER_WIND %s s: %s, %d frames, peak %.1f deg, largest step %.1f), then hops (%s)", look[3],
+						tostring(fWind), tostring(fFirst and fFirst.Name), #fp, fp[#fp] or -1, fStep, tostring(fRun and fRun.Name)))
+				local fReach = nil
+				for _, f in ipairs(frames) do
+					if not fReach and edge and f.Name == "DashIn" and f.Fwd >= edge - 0.01 then
+						fReach = f.T
+					end
+				end
+				local fLast = nil
+				for _, f in ipairs(frames) do
+					if f.Body then
+						fLast = f
+					end
+				end
+				T.check(fReach ~= nil and abs(fReach - fLand) <= DT + 1e-6 and AF.Pose(unit) == nil and fLast and fLast.Body.Position.Magnitude < 0.02,
+					fmt("bounce timing: %s: the fighter's hop-bite still lands on its hit (%.4f s off) and it ends on its spot", look[3], fReach and (fReach - fLand) or 99))
+				bodies = {}
+				for _, f in ipairs(frames) do
+					if f.Body then
+						bodies[#bodies + 1] = { Body = f.Body, T = fmt("%.3f", f.T - fLand), Tag = f.Name }
+					end
+				end
+				sink, slide, at = walkFeet(bodies, feet)
+				T.check(sink > -1e-4 and slide < 1e-3, fmt("bounce timing: %s: the fighter's bite, every frame: no paw under the floor (%.5f), no slide (%.5f)", look[3], sink, slide), at)
 
 				------------------------------------------------------------------ the fast tempo: 3 bites 0.5 s apart
 				frames = {}
@@ -888,6 +1060,16 @@ local function clientScenarios()
 		local last = {}
 		local twists, plays, feetSeen, posesSeen = {}, {}, false, {}
 		local realTwist, realPlay = AF.DashTwist, AF.Play
+		-- (gate review r0 minor: "On Thorns it flashes") BattleController's hit flash on the Thorns hit's victim, the biter
+		local Fx = BC._Fx
+		local realFlash = Fx and Fx.Flash
+		local flashes = {}
+		if Fx and realFlash then
+			Fx.Flash = function(u, color, dur)
+				flashes[#flashes + 1] = { Id = type(u) == "table" and u.id or nil, At = os.clock() }
+				return realFlash(u, color, dur)
+			end
+		end
 		AF.DashTwist = function(unit, kind, now)
 			local r = realTwist(unit, kind, now)
 			twists[#twists + 1] = { Unit = unit, Kind = kind, Result = r, At = os.clock() }
@@ -949,10 +1131,99 @@ local function clientScenarios()
 		LocalPlayer:SetAttribute("InBattle", nil)
 		KC.advance(15)
 		Mock.Step(0.1)
-		BCat.Damage.Standoff = keepSo
 		if not T.check(ok, "bounce battle: no error", tostring(err)) then
+			if Fx and realFlash then
+				Fx.Flash = realFlash
+			end
+			BCat.Damage.Standoff = keepSo
 			return
 		end
+
+		-- my fighter's bite on a Thorns shield (gate review r0 minor): its Hit dashes it Melee.In before the landing, so the
+		-- Thorns hit back (same batch) must wait for the prick: the biter's flash and the number land with the bite, not 0.3 s early
+		local fFlash, fLand = nil, nil
+		local npcFlashes = flashes
+		local okF, errF = pcall(function()
+			local id2 = "bounce_f_" .. tostring(math.random(100000, 999999))
+			local sim2 = BS.new({ Mode = "Duel", Seed = 13, Id = id2, Zone = { X = 60, Z = 60 }, TimeLimit = 120,
+				Teams = { { Owner = me, Side = 1, Pets = { { Key = "storm_tabby", PetId = "storm_tabby", Level = 20, Tier = "Normal", Slot = 1 } }, Auto = false },
+					{ Owner = "npc", Side = 2, Npc = true, Specials = false, Pets = { { Key = "biscuit_bear", Level = 18, NoSpecial = true, Slot = 1 } } } } })
+			local tm2 = sim2.teams[1]
+			local f2 = tm2.fighter
+			f2.x, f2.z, f2.px, f2.pz = 0, -8, 0, -8
+			f2.maxHp, f2.hp = 1e9, 1e9
+			tm2.wantX, tm2.wantZ = 0, -8
+			tm2.elementReadyAt = huge
+			local foe2 = nil
+			for _, u in ipairs(sim2.units) do
+				if u.side == 2 then
+					foe2 = u
+					u.x, u.z, u.px, u.pz = 0, 14, 0, 14
+					u.maxHp, u.hp = 1e9, 1e9
+				end
+			end
+			local p2 = sim2:Describe()
+			p2.BattleId = id2
+			p2.Zone = { CFrame = CFrame.new(0, 200, 0), Size = V3(p2.Zone.X, 30, p2.Zone.Z), X = p2.Zone.X, Z = p2.Zone.Z }
+			p2.Names = { [tostring(me)] = LocalPlayer.Name }
+			p2.Side, p2.Spectator, p2.T = 1, false, sim2:Time()
+			local team2 = sim2:TeamOf(me)
+			if team2 then
+				p2.Team = { Fighter = team2.Fighter, Bench = team2.Bench, Lives = team2.Lives, Speed = team2.Speed,
+					Cooldowns = { Element = team2.Cooldowns.Element, Dash = team2.Cooldowns.Dash, Swap = team2.Cooldowns.Swap, Buff = {} } }
+			end
+			LocalPlayer:SetAttribute("InBattle", id2)
+			KC.toClient("BattleState", "Start", p2, id2)
+			local last2, pricked, injAt = {}, false, nil
+			flashes = {}
+			for _ = 1, 120 do
+				foe2.nextAttack = huge
+				f2.meter = 0
+				local evs = sim2:Step(0.1)
+				for i = #evs, 1, -1 do
+					local ev = evs[i]
+					if not pricked and ev.type == "Hit" and ev.from == f2.id and ev.to == foe2.id and not ev.double and not ev.thorns then
+						table.insert(evs, i + 1, { type = "Hit", from = foe2.id, to = f2.id, amount = 1, dmg = 1, thorns = true })
+						pricked = true
+						break
+					end
+				end
+				if #evs > 0 then
+					KC.toClient("BattleState", "Events", evs, id2)
+				end
+				if pricked and not injAt then
+					injAt = os.clock()
+					local _, info = AF.DashState(f2.id)
+					fLand = type(info) == "table" and info.LandAt or nil
+				end
+				local snap = sim2:SnapshotDelta(last2)
+				snap.BattleId = id2
+				KC.toClient("BattleState", "Snapshot", snap, id2)
+				for _ = 1, 3 do
+					Mock.Step(0.1 / 3)
+				end
+				if pricked and os.clock() > injAt + 1 then
+					break
+				end
+			end
+			for _, fl in ipairs(flashes) do
+				if fl.Id == f2.id and injAt and fl.At >= injAt - 1e-6 and not fFlash then
+					fFlash = fl.At
+				end
+			end
+			KC.toClient("BattleState", "End", { BattleId = id2, Mode = "Duel", Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, id2)
+			LocalPlayer:SetAttribute("InBattle", nil)
+			KC.advance(15)
+			Mock.Step(0.1)
+		end)
+		if Fx and realFlash then
+			Fx.Flash = realFlash
+		end
+		BCat.Damage.Standoff = keepSo
+		T.check(okF, "bounce battle: (fighter on Thorns) no error", tostring(errF))
+		T.check(fLand ~= nil and fFlash ~= nil and abs(fFlash - fLand) <= 0.06,
+			fmt("bounce battle: my fighter's bite on a Thorns shield flashes it on the prick, with its bite (flash %s vs bite %s: %s s off)",
+				tostring(fFlash), tostring(fLand), (fFlash and fLand) and fmt("%.3f", fFlash - fLand) or "?"))
 		T.check(injected, "bounce battle: (setup) the bear bit my frog twice: a Double strike with the 1st bite, a Thorns hit with the 2nd")
 		local dbl, thr = nil, nil
 		for _, t in ipairs(twists) do
@@ -977,6 +1248,14 @@ local function clientScenarios()
 		T.check(tPlay ~= nil and thr ~= nil and type(thr.Result) == "number" and abs(tPlay.DueAt - thr.Result) < 1e-6,
 			fmt("bounce battle: the Thorns bolt is due on the bite (due %s vs %s)", tostring(tPlay and tPlay.DueAt), tostring(thr and thr.Result)))
 		T.check(posesSeen.DashDouble == true and posesSeen.DashThorns == true, "bounce battle: the bear plays DashDouble and DashThorns")
+		local bFlash = nil
+		for _, fl in ipairs(npcFlashes) do
+			if fl.Id == foe.id and thr and type(thr.Result) == "number" and (not bFlash or abs(fl.At - thr.Result) < abs(bFlash - thr.Result)) then
+				bFlash = fl.At
+			end
+		end
+		T.check(bFlash ~= nil and abs(bFlash - thr.Result) <= 0.06,
+			fmt("bounce battle: the NPC bear flashes on its Thorns prick (the hit flash on the Thorns victim, %s s off the prick)", bFlash and fmt("%.3f", bFlash - thr.Result) or "none"))
 		T.check(feetSeen, "bounce battle: the bear's drawn pose carries its model's Feet (PoseBody pivots about its paws)")
 	end)
 
