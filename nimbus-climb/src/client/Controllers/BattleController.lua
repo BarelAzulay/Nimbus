@@ -8143,6 +8143,7 @@ function Hud.ResultSpot(m, w, h, landscape)
 	local gap = 8
 	local stackBottom, stackLeft = Hud.TopRightBottom(m)
 	local x, y
+	local corner = false
 	if landscape then
 		local menuRight = Hud.MenuRight(m)
 		local lo = (menuRight > 0) and (menuRight + gap) or gap
@@ -8168,11 +8169,38 @@ function Hud.ResultSpot(m, w, h, landscape)
 	else
 		x = floor(m.W - math.ceil(8 / max(0.05, m.F)) - w) -- (8 screen px from the right edge)
 		y = max(6, stackBottom > 0 and (stackBottom + 8) or 6)
+		-- (P2 fix A: a battle's narrow stack of three strips started the card at 131, its foot over the screen's centre at
+		-- 390 x 844) where under the stack the card would reach the centre, it takes the corner and the strips step aside
+		-- while it is up (HudController.SetCurrencyHidden "BattleResult", as a phone's dungeon End card does; Hud.ShowResult)
+		-- (weighed with the strips' bottom as the HUD laid them out, shown or stepped aside, so their step aside never
+		-- turns the choice round on the next relayout)
+		local held = Hud.HudAttr("TopRightBottom")
+		local under = max(stackBottom, held and held / max(0.05, m.F) or 0)
+		if (max(y, under + 8) + h) * m.F + m.Inset > m.VY / 2 then
+			y = 6
+			corner = true
+		end
 	end
 	if y + h > m.H - 8 then
 		y = max(6, floor(m.H - 8 - h))
 	end
-	return x, y
+	return x, y, corner
+end
+
+-- (P2 fix A) the HUD's currency strips step aside while a portrait phone's result card takes the corner (Hud.ResultSpot)
+function Hud.SetStripsAside(on)
+	on = on == true
+	if (Hud.stripsAside == true) == on then
+		return
+	end
+	Hud.stripsAside = on
+	if Mods.HudCtl == nil then
+		Mods.HudCtl = optional(script.Parent, "HudController") or false
+	end
+	local hc = Mods.HudCtl
+	if hc and type(hc.SetCurrencyHidden) == "function" then
+		pcall(hc.SetCurrencyHidden, "BattleResult", on)
+	end
 end
 
 function Hud.ShowResult(B, payload)
@@ -8209,11 +8237,14 @@ function Hud.ShowResult(B, payload)
 	if compact then
 		-- a phone: the pitch's top middle on a landscape phone, the top right on a portrait one (Hud.ResultSpot)
 		-- (DailyController hides its Gift block while this card is up: BattleController.IsOpen)
-		left, cardTop = Hud.ResultSpot(m, w, h, landscape)
+		local corner
+		left, cardTop, corner = Hud.ResultSpot(m, w, h, landscape)
+		Hud.SetStripsAside(corner)
 		res.AnchorPoint = Vector2.new(0, 0)
 		res.Position = UDim2.fromOffset(left, cardTop)
 	else
 		-- a wide screen: the right edge, its middle (the pitch's place), under the top-right stack
+		Hud.SetStripsAside(false)
 		local cy = max(floor(m.H / 2), (top > 0 and top + 8 or K.EDGE) + h / 2)
 		cy = min(cy, m.H - K.EDGE - h / 2)
 		res.AnchorPoint = Vector2.new(1, 0.5)
@@ -8333,6 +8364,7 @@ end
 function Hud.HideResult()
 	St.result = nil
 	Hud.SetVitalsHeld("Result", false) -- (Pitch 2 item 02 B) the vitals card back with the card's close
+	Hud.SetStripsAside(false) -- (P2 fix A) the strips back with it
 	Me.MouseHold("BattleResult", false)
 	if Hud.result then
 		Hud.result.Visible = false
@@ -8413,6 +8445,7 @@ function Hud.SetVisible(on)
 		Hud.SetVitalsHidden(false)
 		Hud.SetVitalsHeld("Result", false)
 		Hud.SetTopReserve(nil) -- (P2 fix A) the HUD's strips back at the top
+		Hud.SetStripsAside(false)
 	end
 	if not Hud.gui then
 		return

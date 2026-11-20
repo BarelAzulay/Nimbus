@@ -1488,6 +1488,12 @@ S.client_p3battle_ring_mobile = guarded("client_p3battle_ring_mobile", function(
 	end
 	bootPhone()
 	local outBefore, errBefore = #Mock.Output, #Mock.Errors
+	-- (P2 fix A) a real player's HUD: Cash, Gems and the tokens (three strips). Alone this list ran with the tokens strip
+	-- only and passed; the whole suite (whose earlier lists set Cash and Gems) found the run's card over the screen centre
+	local Config = moduleAt("shared", "Config")
+	local oldCash, oldGems = LocalPlayer:GetAttribute(Config.Attr.Cash), LocalPlayer:GetAttribute(Config.Attr.Gems)
+	LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash or 48200)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems or 320)
 	for _, size in ipairs({ { 390, 844 }, { 844, 390 } }) do
 		Mock.SetViewport(size[1], size[2])
 		step(2)
@@ -1554,6 +1560,8 @@ S.client_p3battle_ring_mobile = guarded("client_p3battle_ring_mobile", function(
 	end
 	Mock.SetViewport(390, 844)
 	step(2)
+	LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems)
 	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "phone: the ring frees everything afterwards", tostring(BC.GetBattle() ~= nil) .. " / team " .. tostring(shown(find("Root.Team"))) .. " cmd " .. tostring(shown(find("Root.Commands"))) .. " result " .. tostring(shown(find("Root.ResultCard"))))
 	T.check(battleWarnings(outBefore) == nil and #Mock.Errors == errBefore, "BattleController: no errors or warnings (phone ring)", tostring(battleWarnings(outBefore)))
 	KC.flushErrors("client_p3battle_ring_mobile")
