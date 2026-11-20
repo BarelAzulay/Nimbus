@@ -1102,6 +1102,9 @@ local function applyMargins(animate, force)
 	publish("GiftSize", giftSize)
 	publish("BottomLeftTop", vitalsTop)
 	publish("BottomCentreTop", vitalsTop)
+	-- (P2 fix A) the card's own top edge under its name tab (Vitals.Layout's cardY): what docks beside the card lines up
+	-- with it (the mouse-lock plank), BottomCentreTop being the tab's top
+	publish("BottomCentreCardTop", vitalsTop + math.floor(geometry.TAB_UP * k + 0.5))
 	publish("BottomCentreLeft", vitalsLeft)
 	publish("BottomCentreRight", vitalsLeft + vitalsW * k)
 	if UI.Gui:GetAttribute("CurrencyMode") ~= mode then

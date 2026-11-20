@@ -197,6 +197,9 @@ local function showHint()
 	local hud = pg:FindFirstChild("NimbusHud")
 	local top = hud and tonumber(hud:GetAttribute("BottomCentreTop"))
 	local cardR = hud and tonumber(hud:GetAttribute("BottomCentreRight"))
+	-- (P2 fix A) docked beside the card the plank lines up with the card's own top edge, under its name tab (vitals C): the
+	-- tab's top line lay 1 px into the middle band at 960 x 540
+	local cardTop = hud and tonumber(hud:GetAttribute("BottomCentreCardTop"))
 	local areaH = gui.AbsoluteSize.Y
 	local dock = nil
 	if top and top > 0 and areaH > 0 then
@@ -205,7 +208,7 @@ local function showHint()
 			local y = math.max(BAND * areaH, math.min(0.7 * areaH, above))
 			label.Position = UDim2.new(0.5, 0, 0, math.floor(y))
 		else
-			dock = { X = math.ceil(cardR + BAND_GAP + HINT_EDGE), Y = math.floor(top) }
+			dock = { X = math.ceil(cardR + BAND_GAP + HINT_EDGE), Y = math.floor((cardTop and cardTop > top) and cardTop or top) }
 			label.AnchorPoint = Vector2.new(0, 0)
 			label.Position = UDim2.fromOffset(dock.X, dock.Y)
 		end

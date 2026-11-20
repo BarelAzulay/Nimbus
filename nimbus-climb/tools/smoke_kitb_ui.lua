@@ -16206,12 +16206,17 @@ local function clientScenarios()
 				local hint, restore = U99.mouseHint()
 				local hud = U99.gui("NimbusHud")
 				local top, left, right = hud and hud:GetAttribute("BottomCentreTop"), hud and hud:GetAttribute("BottomCentreLeft"), hud and hud:GetAttribute("BottomCentreRight")
-				if T.check(hint ~= nil and U8.shown(hint) and type(top) == "number" and type(right) == "number", tag .. ": the hint and the vitals card show") then
+				-- (P2 fix A) since vitals C the slot's top (BottomCentreTop) is the name tab's top, TAB_UP over the card's own top
+				-- edge (BottomCentreCardTop): docked beside the card the plank stands on the card's top line, not the tab's (at
+				-- 960 x 540 the tab's top line, 310, lay 1 px into the middle band)
+				local cardTop = hud and hud:GetAttribute("BottomCentreCardTop")
+				if T.check(hint ~= nil and U8.shown(hint) and type(top) == "number" and type(right) == "number" and type(cardTop) == "number" and cardTop > top,
+					tag .. ": the hint and the vitals card show (the card's top under its name tab published)", tostring(cardTop)) then
 					local r, gr = U8.rect(hint), hint.Parent.AbsoluteSize
 					local e = 2 * U8.scaleOf(hint)
 					local p = { X = r.X - e, R = r.R + e, Y = r.Y - e, B = r.B + e }
 					local above = p.B + 8 <= top + 0.5
-					local beside = p.X >= right + 8 - 0.5 and math.abs(r.Y - top) <= 1
+					local beside = p.X >= right + 8 - 0.5 and math.abs(r.Y - cardTop) <= 1
 					local v = { X = left or 0, R = right, Y = top, B = gr.Y }
 					T.check((above or beside) and not U8.overlap(p, v), tag .. ": the plank 8 px or more above the vitals card, or beside it on its top line",
 						fmt("plank %.1f,%.1f..%.1f,%.1f | vitals top %.1f, %.1f..%.1f | docked %s", p.X, p.Y, p.R, p.B, top, left or -1, right, tostring(hint.Parent:GetAttribute("Docked"))))
