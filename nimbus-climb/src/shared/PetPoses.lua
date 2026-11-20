@@ -58,8 +58,9 @@
 --              a dash's wind-up ends there, DashIn starts from it), then springs back to rest (the push-off into Strike);
 --              wings swept back 25 deg and folded tight, tail up and lashing. Its beats are in real seconds (gate review r0):
 --              `reach` = the pose's length in seconds (nil = WINDUP_SECS, the strip's 0.45 s to the load); a wind-up under
---              TREMBLE_MIN 0.3 s to its load (the real NPC one, 0.15 s; a fighter's 0.10) rocks and loads in one eased move
---              (60 % / 40 %), no tremble. Ranged rears back (crouch 0.25, weight back, chin up), unchanged.
+--              TREMBLE_MIN 0.3 s to its load (the real NPC one, 0.25 s on the client since 2026-11-20; a fighter's 0.10)
+--              rocks and loads in one eased gather (exactly 60 % / 40 %, nothing held between), no tremble. Ranged rears
+--              back (crouch 0.25, weight back, chin up), unchanged.
 --   Strike     melee (player note (a), fix round 3): a LEAP at the target: a hop arc 0.8 studs high (x amp) that carries
 --              the body 1.5 studs (x amp) along the LookVector (with `reach`: exactly `reach` studs, the hop
 --              min(LEAP_H_MAX, (0.8 + 0.12 x reach) x amp) high: Task 9), chin up on take-off, nose down coming in, landing at
@@ -145,7 +146,7 @@ PetPoses.DASH_RUN = 5 / 7 -- DashIn's / DashBite's hops end (the bite lands) at 
 PetPoses.WINDUP_LOAD = 0.82 -- the melee Windup's deepest load (a dash's wind-up ends here; DashIn starts from it)
 -- (gate review r0, major 1) the melee Windup in real seconds (Sample's `reach` = its length; AttackFx passes the Dur)
 PetPoses.TREMBLE_HZ = 12.5 -- the tremble while the telegraph is up (the strip's 13 Hz)
-PetPoses.TREMBLE_MIN = 0.3 -- s to the load: a shorter wind-up (the real NPC one, 0.15 s) does not tremble
+PetPoses.TREMBLE_MIN = 0.3 -- s to the load: a shorter wind-up (the real NPC one, 0.25 s on the client) does not tremble
 local WINDUP_SECS = 0.45 / 0.82 -- the length when none is given (the strip's 0.45 s to the load: BattleController's hold)
 local ROCK_T, DEEP_T = 0.12, 0.07 -- s: the rock back to 9 deg, the load to 15 deg before the run (at most 60 % / 40 % of it)
 local TREMBLE = 1.4 -- deg
@@ -305,12 +306,17 @@ POSES.Windup = function(f, p, ranged, _, secsIn)
 		-- tremble while the telegraph is up (0 at both its ends), loaded deeper at WINDUP_LOAD, then back to rest.
 		-- (gate review r0, major 1) its beats run in real seconds: `secsIn` = the pose's length (nil = WINDUP_SECS), so the
 		-- tremble is TREMBLE_HZ however long the wind-up is, and a wind-up under TREMBLE_MIN to its load (the real NPC one:
-		-- 0.15 s) is one eased rock back and load with no tremble (at ~40 Hz it was a jitter)
+		-- 0.25 s on the client) is one eased rock back and load with no tremble (at ~40 Hz it was a jitter)
 		local L = (secsIn and secsIn > 0) and secsIn or WINDUP_SECS
 		local W = load * L -- seconds to the load
 		local t = math.min(p, load) * L
 		local long = W >= PetPoses.TREMBLE_MIN
-		local rockT, deepT = math.min(ROCK_T, 0.6 * W), math.min(DEEP_T, 0.4 * W)
+		-- (the owner, 2026-11-20: the NPC's wind-up is 0.25 s on the client) a short one is exactly 60 % rock and 40 % load,
+		-- one gather with no frozen stretch between (the fixed 0.12 s rock held 9 deg for 0.06 s of a 0.25 s wind-up)
+		local rockT, deepT = 0.6 * W, 0.4 * W
+		if long then
+			rockT, deepT = math.min(ROCK_T, rockT), math.min(DEEP_T, deepT)
+		end
 		local rk = long and outCubic(seg(t, 0, rockT)) or smooth(seg(t, 0, rockT)) -- (a short one eases in: no snap)
 		local deep = smooth(seg(t, W - deepT, W))
 		local trem = 0

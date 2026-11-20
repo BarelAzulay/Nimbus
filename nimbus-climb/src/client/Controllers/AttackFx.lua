@@ -263,11 +263,20 @@ local K = {
 	LUNGE_DUR = 0.45, -- (no dash: the non-dash melee Strike's leap lands at p LEAP_LAND)
 	LEAP_LAND = 0.26,
 	-- (Pitch 2 item 5) the Bounce in's other beats (seconds at the shipped Melee knobs; PetPoses holds the shapes)
-	CHOMP = 0.12, -- the chomp after a bite (DashIn / DashBite p DASH_RUN .. 1)
+	-- the chomp after a bite (DashIn / DashBite p DASH_RUN .. 1), this long whatever the run (review minor: a segment's
+	-- Knee times its run apart from its chomp; a 0.20 s run squeezed it to 0.08 s, then the pet froze upright 0.07 s)
+	CHOMP = 0.12,
 	BITE_MIN = 0.12, -- a flurry bite's rebound + hop-bite get at least this long (a quicker tempo squeezes them)
+	-- (review minor: "fast-tempo bite 1 rebounds at hit + 0.15", the approved mock's) a flurry's next run leaves as soon as
+	-- the mouth is done: the chomp squeezed to FLURRY_CHOMP (ending level), a Double strike's second chomp, a Thorns hop
+	-- away; at most FLURRY_RUN before its hit (the mock's 0.35 s at the 0.5 s tempo: rebound 0.14, rock 0.06, hop-bite 0.15)
+	FLURRY_CHOMP = 0.10,
+	FLURRY_RUN = 0.35,
 	WINDUP_MIN = 0.03, -- an NPC's wind-up shorter than this before its dash is skipped (the dash starts from rest)
 	-- (gate review r0, major 2) a dash called Melee.In or less before its hit (a player's fighter) rocks back this long
-	-- first, the run in the rest (at least RUN_MIN: a later call gets less wind-up, never a shorter run)
+	-- first, the run in the rest (at least RUN_MIN: a later call gets less wind-up, never a shorter run). (the owner,
+	-- 2026-11-20: the wind-up gets 0.25 s, client only) an NPC's run gives the same 0.10 of Melee.In to its wind-up: its
+	-- Windup comes Melee.In + 0.15 before the hit, so it rocks back 0.25 s and hops in 0.20 (the server's time unchanged)
 	FIGHTER_WIND = 0.10,
 	RUN_MIN = 0.15,
 	BITE_IN = 0.25, -- (gate review r0 minor) world studs the deepest bite may reach into the target's box (the strip's aim)
@@ -3184,6 +3193,32 @@ end
 -- from there to its landing spot, so a base the server slides to the target does not carry the pet past it (Task 10)
 -- (battle-feel T2) a segment's Until holds its end pose until then (DashIn at the edge until its DashBack); its Forward
 -- (pose studs) is an offset along the LookVector the pose does not carry itself (a flurry's bite from the edge)
+-- (Pitch 2 item 5, review minor: the chomp lasts K.CHOMP whatever the run) a segment's p at `el` seconds of its own time
+-- (the hit stop left out): linear over Dur, or with a Knee (a dash bite: Knee = its run's seconds, KneeP = DASH_RUN)
+-- 0 .. KneeP over the run and KneeP .. 1 over the rest (the chomp)
+local function segP(s, el)
+	local kn, kp = s.Knee, s.KneeP
+	if kn and kp and kn > 0 and s.Dur > kn then
+		if el <= kn then
+			return kp * clamp01(el / kn)
+		end
+		return kp + (1 - kp) * clamp01((el - kn) / (s.Dur - kn))
+	end
+	return clamp01(el / s.Dur)
+end
+
+-- ... and the inverse: the seconds of its own time at which a segment reaches p (the landing dust's beats)
+local function segTime(s, p)
+	local kn, kp = s.Knee, s.KneeP
+	if kn and kp and kn > 0 and s.Dur > kn then
+		if p <= kp then
+			return p / kp * kn
+		end
+		return kn + (p - kp) / (1 - kp) * (s.Dur - kn)
+	end
+	return p * s.Dur
+end
+
 -- the segment that plays at `at`: the last one started and not over (a Hold holds, Until holds it to then)
 local function segAt(entry, at)
 	local best = nil
@@ -3210,7 +3245,7 @@ local function poseSample(entry, now, base)
 		reach = max(0, min(K.LEAP_MAX, finite(left) and left or 0)) / best.Scale
 	end
 	-- (Pitch 2 item 5) a looping segment (DashReady) samples its time in seconds; Feet = the model's paw lines
-	return best.Name, best.Loop and max(0, el) or clamp01(el / best.Dur), best.Ranged == true, best.Amp, reach, best.Forward, best.Feet
+	return best.Name, best.Loop and max(0, el) or segP(best, el), best.Ranged == true, best.Amp, reach, best.Forward, best.Feet
 end
 
 local function poseActive(entry, at)
@@ -4211,7 +4246,7 @@ local function stepDust(now)
 				local qs = lands[sg.Name]
 				if qs and sg.T0 <= now then
 					for _, q in ipairs(qs) do
-						local at = sg.T0 + q * sg.Dur
+						local at = sg.T0 + segTime(sg, q)
 						if sg.StopAt and at > sg.StopAt then
 							at = at + (sg.StopDur or 0)
 						end
@@ -4320,17 +4355,28 @@ local function dash(unit, src, tgt, landAt, now, opts)
 				table.remove(segs, i) -- (a long flurry keeps no spent bites)
 			end
 		end
-		-- the run: Melee.In before the hit, after the last bite's chomp, at least BITE_MIN (a quick tempo squeezes it)
-		local t0 = min(max(now, land - inS, d.LandAt + AttackFx.HIT_STOP + K.CHOMP), land - K.BITE_MIN)
+		-- the run: as soon as the last bite's mouth is done (its chomp squeezed to FLURRY_CHOMP, a Double strike's second
+		-- chomp, a Thorns hop away: d.FreeAt), at most FLURRY_RUN before the hit, at least BITE_MIN (a quick tempo squeezes
+		-- it). (review minor: "fast-tempo bite 1 rebounds at hit + 0.15", the mock's; Melee.In before the hit left at + 0.20)
+		local free = d.FreeAt or (d.LandAt + AttackFx.HIT_STOP + K.FLURRY_CHOMP)
+		local t0 = min(max(now, free, land - K.FLURRY_RUN), land - K.BITE_MIN)
 		t0 = max(now, t0)
+		-- the last bite's chomp ends level when the rebound leaves (squeezed, never cut mid-bite: no pop)
+		local prev = d.Bite
+		if prev and prev.Knee and prev.StopAt then
+			local c = t0 - (prev.StopAt + (prev.StopDur or 0))
+			if c > 0 and c < prev.Dur - prev.Knee then
+				prev.Dur = prev.Knee + c
+			end
+		end
 		local run = max(0.05, land - t0)
 		local off = d.Off or 0
-		local bite = { Name = "DashBite", T0 = t0, Dur = run / B.Run, Reach = off, Forward = d.Reach - off, StopAt = land, StopDur = AttackFx.HIT_STOP,
-			Extra = true, Feet = d.Feet }
+		local bite = { Name = "DashBite", T0 = t0, Dur = run + K.CHOMP, Knee = run, KneeP = B.Run, Reach = off, Forward = d.Reach - off, StopAt = land,
+			StopDur = AttackFx.HIT_STOP, Extra = true, Feet = d.Feet }
 		bk = max(bk, t0 + bite.Dur + AttackFx.HIT_STOP)
 		bite.Until = bk
 		segs[#segs + 1] = bite
-		d.Off, d.Bite = 0, bite
+		d.Off, d.Bite, d.FreeAt = 0, bite, land + AttackFx.HIT_STOP + K.FLURRY_CHOMP
 		d.In.Until, d.Back.T0, d.BackAt, d.LandAt, d.Back.Reach = bk, bk, bk, land, d.Reach
 		readyAt(d, segs, land + AttackFx.HIT_STOP + K.CHOMP, t0)
 		return true
@@ -4341,8 +4387,11 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	if state ~= "back" then
 		-- (gate review r0, major 2: a player's fighter has no Windup event, its Hit dashes it Melee.In before the landing, so
 		-- it hopped in from a standstill) a dash called that late still rocks back and loads for FIGHTER_WIND first; the run
-		-- takes the rest of Melee.In (at least RUN_MIN). The landing is unchanged (the server's bite time)
-		t0 = max(t0, min(now + K.FIGHTER_WIND, land - K.RUN_MIN))
+		-- takes the rest of Melee.In (at least RUN_MIN). The landing is unchanged (the server's bite time).
+		-- (the owner, 2026-11-20: the wind-up gets 0.25 s, client only) every run gives FIGHTER_WIND of Melee.In to its
+		-- wind-up: an NPC's (its Windup Melee.In + 0.15 before the hit) rocks back 0.25 s and hops in 0.20, a fighter's
+		-- 0.10 and 0.20; a later call keeps at least RUN_MIN for the run
+		t0 = min(t0 + K.FIGHTER_WIND, max(t0, land - K.RUN_MIN))
 	end
 	local origin, dir, scl = nil, nil, 1 -- (Pitch 2 item 5) the rest spot, the run's way and PB_Scale: the landing dust's place
 	if state == "back" then
@@ -4388,7 +4437,9 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	end
 	local feet = (state == "back" and d and d.Feet) or feetOf(s.Model)
 	local run = max(0.05, land - t0)
-	local segIn = { Name = "DashIn", T0 = t0, Dur = run / B.Run, Reach = edge - fwd, Forward = fwd, Until = bk, StopAt = land, StopDur = AttackFx.HIT_STOP, Feet = feet }
+	-- (review minor) its run (Knee) to DASH_RUN, then the chomp K.CHOMP whatever the run (a 0.20 s run squeezed it to 0.08 s)
+	local segIn = { Name = "DashIn", T0 = t0, Dur = run + K.CHOMP, Knee = run, KneeP = B.Run, Reach = edge - fwd, Forward = fwd, Until = bk, StopAt = land,
+		StopDur = AttackFx.HIT_STOP, Feet = feet }
 	-- (Pitch 2 item 5) the way home lasts Melee.Back x BACK_POSE: two hops home by Melee.Back, then the settle on the spot
 	local segBack = { Name = "DashBack", T0 = bk, Dur = backDur * B.BackPose, Reach = edge, Feet = feet }
 	local segs = { segIn, segBack }
@@ -4405,7 +4456,8 @@ local function dash(unit, src, tgt, landAt, now, opts)
 		return false -- (a higher pose plays: a KO'd pet never dashes, a cast is not cut)
 	end
 	e2.Dash = { Reach = edge, LandAt = land, BackAt = bk, BackDur = backDur, In = segIn, Back = segBack, Mine = opts.Mine == true,
-		Feet = feet, Off = 0, Bite = segIn, Origin = origin, Dir = dir, Scale = scl, Low = opts.Low == true }
+		Feet = feet, Off = 0, Bite = segIn, Origin = origin, Dir = dir, Scale = scl, Low = opts.Low == true,
+		FreeAt = land + AttackFx.HIT_STOP + K.FLURRY_CHOMP } -- (the mouth done: a flurry's next run may leave, the chomp squeezed)
 	e2.Dash.Streak = (opts.Low ~= true) and streakFor(unit, s.Model, t0, land + 0.05, opts.Mine == true) or false
 	readyAt(e2.Dash, segs, land + AttackFx.HIT_STOP + K.CHOMP) -- (a flurry's first bite: bk is FlurryBelow on)
 	return true
@@ -4437,6 +4489,7 @@ local function dashTwist(unit, kind, now)
 		at = d.LandAt
 	end
 	local fin = t0 + seg.Dur
+	d.FreeAt = fin -- (a flurry's next run leaves when the second chomp / the hop away is done)
 	if d.BackAt < fin then
 		d.BackAt, d.In.Until, d.Back.T0 = fin, fin, fin
 		d.Bite.Until = fin
