@@ -1136,7 +1136,14 @@ local function ribbonLayout(label, rib)
 		ya, yo = 1, -size * 0.6
 	end
 	local band = rib.RibbonBand
-	local bandH, lip, top = px(R.Band), px(R.Lip, 2), px(R.Top, 2)
+	-- (Pitch 2 fix round B: the obby window's ribbon lip drew 3.2 px under its 0.8 UIScale) the band's height, its top line,
+	-- its lip and the tails' drop land on whole screen px under the UIScales above the label (SignKit.Px's rule: round(px x
+	-- scale) / scale, at least `least` screen px); at scale 1 they are px()'s numbers
+	local function vpx(v, least)
+		local s = scale > 0 and scale or 1
+		return math.max(least or 1, math.floor(v * k * s + 0.5)) / s
+	end
+	local bandH, lip, top = vpx(R.Band), vpx(R.Lip, 2), vpx(R.Top, 2)
 	-- the letters ride 1 px over the band's middle above its lip (the pitch: y + (h - lip) / 2 + 1 is the text's centre)
 	local bandTop = math.floor(yo - (bandH - lip) / 2 - px(1) + 0.5)
 	local centred = label.TextXAlignment == Enum.TextXAlignment.Center
@@ -1149,7 +1156,7 @@ local function ribbonLayout(label, rib)
 	if boxW <= 0 and label.Size.X.Scale == 0 then
 		boxW = label.Size.X.Offset
 	end
-	local tailW, notch, tailTop = px(R.TailW), px(R.Notch, 2), px(R.TailTop)
+	local tailW, notch, tailTop = px(R.TailW), px(R.Notch, 2), vpx(R.TailTop)
 	local pad = px(R.Pad)
 	local lead = tailW
 	if boxW > 0 and not centred then
