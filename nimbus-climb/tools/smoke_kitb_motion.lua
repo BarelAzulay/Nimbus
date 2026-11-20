@@ -16,7 +16,12 @@
 --                            no paw ever under the floor and no paw on the floor ever moves along it (no slide); Melee.Hop 0
 --                            still hops; the ranged Windup is unchanged. (gate review r0) the Windup in real seconds: the
 --                            real NPC wind-up (0.15 s to the load) one eased rock and load, no tremble, <= 3 deg a 60 fps
---                            frame; a long one trembles at TREMBLE_HZ whatever its length; the rebound rock lasts 0.06 s
+--                            frame; a long one trembles at TREMBLE_HZ whatever its length; the rebound rock lasts 0.06 s.
+--                            (r1, the owner 2026-11-20) the NPC's 0.25 s wind-up is one load-up gather (60 / 40, nothing
+--                            held, a gentle start); (review minor) an evolved pet (feet Hop 0.78) hops 0.78 x as high
+--   hurt_never_under_floor   (r1) the bitten pet of the approved mock: the Hurt is one rigid body pivoted on the paw lines
+--                            (no paw under the floor on six paw sets, nothing slides), knocked back ~0.38 with a small
+--                            jolt, the head snapped back, a springy rock, settled; an evolved body moves 0.78 x as far
 -- Client world (AttackFx on a fake clock, real PetBuilder pets: base Maple Fox, evolved Aurora Fox):
 --   client_feel_bounce_timing  AttackFx.FeetOf measures each model's paw lines; an NPC's bite (Windup 0.45 s before the hit):
 --                            the wind-up to the run, the hit frame on the hit's time, the hit stop, the way home from
@@ -27,7 +32,12 @@
 --                            no paw under the floor on the whole timeline, base and evolved. (gate review r0) the NPC's
 --                            0.15 s wind-up smooth at 60 fps; the front-most point bites only a little into the target
 --                            (evolved: its head past its paws); a fighter's dash (its Hit Melee.In before the landing)
---                            rocks back for FIGHTER_WIND first, the hit still on its time, home on its spot
+--                            rocks back for FIGHTER_WIND first, the hit still on its time, home on its spot. (r1) the NPC's
+--                            run starts Melee.In - FIGHTER_WIND before the hit (its wind-up 0.25 s); the chomp lasts 0.12 s
+--                            for the NPC and the fighter; at the fast tempo bite 2's rebound leaves at hit 1 + 0.15, bite 3's
+--                            after the Double strike's second chomp; FeetOf's Hop (evolved 0.78) and the lower drawn hop;
+--                            the bite's Hit flinches the bear with its own paw lines, held through the hit stop, knocked
+--                            back, never under the floor, back on its spot
 --   client_feel_bounce_dust  the landing dust (the spec: "lands on its front paws with dust", "each landing with a rock and
 --                            dust"): a puff on the frame of each hop landing (the nod, the hops home, a flurry's rebounds,
 --                            the Thorns hop away), none on the bite's landing nor the ready bounces; on the floor under
@@ -457,6 +467,94 @@ local function serverScenarios()
 			fmt("melee bounce: the ranged Windup is unchanged (crouch %.3f, back %.3f, chin %.1f)", rw.Body.Position.Y, rw.Body.Position.Z, pitchOf(rw)))
 	end)
 
+	-- (Pitch 2 item 5 "Bounce in" A: the bitten pet of the approved mock, spec item 05 option A: "a Sunbeam / Biscuit Bear
+	-- that flashes, is knocked back and rocks"; the old Hurt pivoted on the body's middle and dipped 0.1 into the floor) the
+	-- Hurt is one rigid body like the melee motion: knocked back ~0.38 with a small jolt off the floor (the knock-back in the
+	-- air: nothing slides), the head snapped back (nose up, on the hind paws), a springy rock (nose down onto the front paws,
+	-- back) that dies away, home by p 1 (a little hop: nothing slides); pivoted on the paw lines, so no paw ever goes under
+	-- the floor on any paw set; an evolved body (feet Hop 0.78) is knocked about less
+	S.hurt_never_under_floor = guarded("hurt_never_under_floor", function()
+		local P = shared("PetPoses")
+		if not T.check(P ~= nil and type(P.Sample) == "function" and type(P.Offset) == "function", "hurt: shared/PetPoses loads (Sample, Offset)") then
+			return
+		end
+		local function pitchOf(s)
+			local lv = s.Body.LookVector -- the pet faces -Z: + = nose up
+			return math.deg(math.asin(math.max(-1, math.min(1, lv.Y))))
+		end
+		local function rest(cf)
+			local _, ang = cf:ToAxisAngle()
+			return cf.Position.Magnitude < 1e-5 and abs(ang) < 1e-4
+		end
+		local typical = P.FEET
+		local feetSets = {
+			{ nil, "default" }, { { Down = 1.0, Front = 0.55, Hind = 0.6 }, "typical" }, { { Down = 1.6, Front = 0.9, Hind = 1.0 }, "evolved-size" },
+			{ { Down = 0.6, Front = 0.2, Hind = 0.25 }, "small" }, { { Down = 1.2, Front = 1.4, Hind = 1.3 }, "long" },
+			{ { Down = 1.6, Front = 0.9, Hind = 1.0, Hop = 0.78 }, "evolved heavy" },
+		}
+		local N = 720
+		-- (a) every paw set: never under the floor, never sliding, at rest at both ends
+		local worstSink, worstSlide, worstAt, restOk = 0, 0, "", true
+		for _, fs in ipairs(feetSets) do
+			local feet = fs[1] or typical
+			local bodies = {}
+			for i = 0, N do
+				bodies[#bodies + 1] = { Body = P.Sample("Hurt", i / N, false, 1, nil, fs[1]).Body, T = fmt("%.4f", i / N), Tag = "Hurt " .. fs[2] }
+			end
+			local sk, sl, at = walkFeet(bodies, feet)
+			if sk < worstSink then
+				worstSink, worstAt = sk, at
+			end
+			if sl > worstSlide then
+				worstSlide, worstAt = sl, at
+			end
+			restOk = restOk and rest(bodies[1].Body) and rest(bodies[#bodies].Body)
+		end
+		T.check(worstSink > -1e-5, fmt("hurt: no paw ever under the floor (6 paw sets, p 0 .. 1: lowest %.5f)", worstSink), worstAt)
+		T.check(worstSlide < 1e-4, fmt("hurt: nothing slides: the knock-back is in the air, the way home a hop (worst %.5f studs a frame)", worstSlide), worstAt)
+		T.check(restOk, "hurt: exactly at rest at p 0 and p 1 on every paw set")
+		-- (b) the shape on the typical paws (the pose's own move: Offset; its turn: the Body)
+		local knock, jolt, joltAt, lowest, up, down, late, pivotOk, pivotN = 0, 0, 0, 0, -huge, huge, 0, true, 0
+		for i = 0, N do
+			local p = i / N
+			local o = P.Offset("Hurt", p, false, 1, nil, typical)
+			local s = P.Sample("Hurt", p, false, 1, nil, typical)
+			local pc = pitchOf(s)
+			knock, lowest = max(knock, o.Z), min(lowest, o.Y)
+			if o.Y > jolt then
+				jolt, joltAt = o.Y, p
+			end
+			if p <= 0.2 then
+				up = max(up, pc)
+			end
+			down = min(down, pc)
+			if p >= 0.8 then
+				late = max(late, abs(pc))
+			end
+			-- on the floor the rock turns about the paw line it rocks onto: nose up -> the hind paws stay down, nose down -> the front
+			if o.Y < 1e-6 and abs(pc) > 0.5 then
+				local _, _, hh, fh = paws(s.Body, typical)
+				pivotN = pivotN + 1
+				pivotOk = pivotOk and ((pc > 0 and abs(hh) < 1e-5 and fh > 0) or (pc < 0 and abs(fh) < 1e-5 and hh > 0))
+			end
+		end
+		T.check(knock > 0.36 and knock < 0.40, fmt("hurt: knocked back ~0.38 studs (%.3f)", knock))
+		T.check(jolt > 0.08 and jolt < 0.12 and joltAt < 0.24 and lowest > -1e-6,
+			fmt("hurt: a small jolt off the floor (%.3f up at p %.2f, in its first 0.12 s), the root never below rest (%.4f)", jolt, joltAt, lowest))
+		T.check(up > 6 and up < 14 and down < -2 and late < 0.5,
+			fmt("hurt: the head snaps back (%.1f deg nose up), a springy rock (%.1f nose down), settled by p 0.8 (%.2f)", up, down, late))
+		T.check(pivotOk and pivotN > 20, fmt("hurt: on the floor it rocks about its paws: nose up on the hind paws, nose down on the front ones (%d frames)", pivotN))
+		-- (c) an evolved body (feet Hop 0.78) is knocked back and jolted 0.78 x as far
+		local hk, hj = 0, 0
+		local heavy = { Down = typical.Down, Front = typical.Front, Hind = typical.Hind, Hop = 0.78 }
+		for i = 0, N do
+			local o = P.Offset("Hurt", i / N, false, 1, nil, heavy)
+			hk, hj = max(hk, o.Z), max(hj, o.Y)
+		end
+		T.check(knock > 0 and jolt > 0 and abs(hk / knock - 0.78) < 0.01 and abs(hj / jolt - 0.78) < 0.01,
+			fmt("hurt: an evolved body (Hop 0.78) moves 0.78 x as far (back %.3f / %.3f, jolt %.3f / %.3f)", hk, knock, hj, jolt))
+	end)
+
 	return S
 end
 
@@ -628,7 +726,12 @@ local function clientScenarios()
 						local ps = AF.Pose(unit)
 						local b = bodyOf(PP, ps)
 						-- Fwd: how far its standing paws are forward of their rest place (pose studs)
-						frames[#frames + 1] = { T = clock, Name = ps and ps.Name or nil, P = ps and ps.P or nil, Body = b, Fwd = b and select(2, stand(b, feet)) or 0, Feet = ps and ps.Feet or nil }
+						local fr = { T = clock, Name = ps and ps.Name or nil, P = ps and ps.P or nil, Body = b, Fwd = b and select(2, stand(b, feet)) or 0, Feet = ps and ps.Feet or nil }
+						-- (the bitten pet) the bear's own pose too
+						local fps = AF.Pose(tgt.Unit)
+						fr.FoeName, fr.FoeP, fr.FoeFeet = fps and fps.Name or nil, fps and fps.P or nil, fps and fps.Feet or nil
+						fr.FoeBody = bodyOf(PP, fps)
+						frames[#frames + 1] = fr
 						if each then
 							each(clock)
 						end
@@ -652,6 +755,10 @@ local function clientScenarios()
 				local first = AF.Pose(unit)
 				T.check(first ~= nil and first.Name == "Windup" and type(first.Feet) == "table",
 					fmt("bounce timing: %s: from the Windup the pose is the melee Windup, with the model's Feet (%s)", look[3], tostring(first and first.Name)))
+				-- the bite's Hit plays on its time, Dashed (BattleController hitPlay: the dash is the attack): the bear flinches
+				step(land)
+				local hitPlayed = AF.Play({ Attack = "Melee", Element = "Flame", Rarity = "Common", Stage = 0, Mine = false, From = src, To = tgt,
+					Ground = G, Now = clock, DueAt = land, Dashed = true })
 				step(land + BITE + HOLD + BACK * 1.4 + 0.1)
 				-- (the owner, 2026-11-20: the wind-up gets 0.25 s, client only; was: the run started Melee.In before the hit and
 				-- left the NPC 0.15 s) its run gives FIGHTER_WIND 0.10 of Melee.In to the wind-up, as a fighter's does: the run
@@ -743,6 +850,38 @@ local function clientScenarios()
 				local dHold = holdF and holdF.Body and biteDepth(me, holdF.Body, sc0, foe, V3(0, 0, -1)) or 99
 				T.check(dHit > -0.15 and dHit < 0.5 and dHold < 0.3,
 					fmt("bounce timing: %s: the hop-bite's front reaches %.2f studs into the bear at the hit (-0.15 .. 0.5), %.2f at the upright hold (< 0.3)", look[3], dHit, dHold))
+				-- (the approved mock's bitten pet, spec item 05 A: "flashes, is knocked back and rocks") the bear's Hurt pivots on
+				-- ITS paw lines (AttackFx.FeetOf of the bear: the old Hurt turned about the middle and dipped into the floor), holds
+				-- still through the hit stop with its biter, is knocked back ~0.38, never under the floor, never sliding, and is
+				-- back on its spot when the Hurt ends
+				local foeFeet = AF.FeetOf(foe)
+				local hurt1, heldStop, hurtBodies, deepest, lastHurt = nil, true, {}, 0, nil
+				for _, f in ipairs(frames) do
+					if f.FoeName == "Hurt" and f.FoeBody then
+						hurt1 = hurt1 or f
+						if f.T < land + STOP - 2e-3 and (f.FoeP or 1) > 1e-6 then
+							heldStop = false
+						end
+						hurtBodies[#hurtBodies + 1] = { Body = f.FoeBody, T = fmt("%.3f", f.T - land), Tag = "bear Hurt" }
+						if foeFeet then
+							deepest = max(deepest, -select(2, stand(f.FoeBody, foeFeet)))
+						end
+						lastHurt = f
+					end
+				end
+				T.check(hitPlayed == true and hurt1 ~= nil and type(foeFeet) == "table" and hurt1.FoeFeet == foeFeet and abs(hurt1.T - land) <= 2 * DT,
+					fmt("bounce timing: %s: the bite's Hit flinches the bear on the hit (Hurt from %s s), with the bear's own paw lines (%s)", look[3],
+						hurt1 and fmt("%+.3f", hurt1.T - land) or "never", tostring(hurt1 and hurt1.FoeFeet ~= nil)))
+				local hSink, hSlide, hAt = 0, 0, ""
+				if foeFeet and #hurtBodies > 1 then
+					hSink, hSlide, hAt = walkFeet(hurtBodies, foeFeet)
+				end
+				T.check(heldStop and #hurtBodies > 20 and hSink > -1e-4 and hSlide < 1e-3 and deepest > 0.3 and deepest < 0.46,
+					fmt("bounce timing: %s: the bear holds through the hit stop (%s), is knocked back %.2f, never under the floor (%.5f), never sliding (%.5f)", look[3],
+						tostring(heldStop), deepest, hSink, hSlide), hAt)
+				T.check(lastHurt ~= nil and lastHurt.FoeBody.Position.Magnitude < 0.02 and lastHurt.T <= land + STOP + 0.5 + 2 * DT,
+					fmt("bounce timing: %s: the bear is back on its spot when its Hurt ends (%.4f off at %s s)", look[3],
+						lastHurt and lastHurt.FoeBody.Position.Magnitude or -1, lastHurt and fmt("%+.3f", lastHurt.T - land) or "?"))
 
 				------------------------------------------------------------------ a fighter's bite (its Hit Melee.In before the landing)
 				-- (gate review r0, major 2: a player's fighter has no Windup event, so it hopped in from a standstill) the dash

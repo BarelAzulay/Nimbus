@@ -1740,8 +1740,16 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 
 	local hurt = P.Sample("Hurt", 0.3)
 	T.check(hurt.Lids >= 0.8, "p7vfx poses: Hurt shuts the lids (Lids >= 0.8 at p = 0.3)", fmt("%.2f", hurt.Lids))
-	local flinch, dip = extreme(P, "Hurt", false, fwd, false), extreme(P, "Hurt", false, height, false)
-	T.check(flinch < -0.27 and flinch > -0.33 and dip < -0.06, "p7vfx poses: Hurt flinches back 0.3 studs with a squash dip", fmt("back %.3f, dip %.3f", flinch, dip))
+	-- (Pitch 2 item 5 "Bounce in" A, kitb-p2-motion: the approved mock's bitten pet replaced the flinch 0.3 + squash dip,
+	-- which sank the paws 0.1 into the floor and turned about the body's middle) Hurt is knocked back ~0.38 (its own move:
+	-- PetPoses.Offset; the Body also carries the rock about the paws) with no dip: the root never below its rest (the paws
+	-- never under the floor: smoke_kitb_motion.lua hurt_never_under_floor)
+	local knock, lowest = 0, 0
+	for i = 0, 200 do
+		local o = P.Offset("Hurt", i / 200)
+		knock, lowest = math.max(knock, o.Z), math.min(lowest, o.Y)
+	end
+	T.check(knock > 0.36 and knock < 0.40 and lowest > -1e-6, "p7vfx poses: Hurt is knocked back ~0.38 studs, no squash dip (Pitch 2 item 5)", fmt("back %.3f, lowest %.3f", knock, lowest))
 
 	local ko = P.Sample("Ko", 1)
 	local tilt = deg(math.acos(math.max(-1, math.min(1, ko.Body:VectorToWorldSpace(Vector3.new(0, 1, 0)).Y))))
