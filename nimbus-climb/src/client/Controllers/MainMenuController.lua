@@ -1831,7 +1831,9 @@ function Win.open(name, title, icon, prefH, reopen)
 			Win.close()
 		end,
 	})
-	Win.mark(close, "x", K.WHITE, 18)
+	-- (look review of finish pass A, minor: the closes differed, this one a small white x) the kit's close mark: the 27 px
+	-- pixel x in the brown ink on the red block, as the Gifts, Pets and Index windows' (NeonKit.CloseMark Square)
+	Win.mark(close, "x", Theme.Sign.Text, 27)
 	Win.pad(close, function()
 		H.sound("Click")
 		Win.close()

@@ -7262,6 +7262,41 @@ local function clientScenarios()
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
+		-- (look review of finish pass A, minor: the closes differ, the Settings window's a small pink-white x) the Settings and
+		-- What's New close carries the kit's close mark: the 27 px pixel x in the brown ink, as the Gifts, Pets and Index
+		-- windows' (NeonKit.CloseMark Square)
+		U8.at(1920, 1080, false, "finish settings close", function(tag)
+			local MMC = MenuH.mmc()
+			if not T.check(MMC ~= nil, tag .. ": the title screen's controller loads") then
+				return
+			end
+			MMC.CloseWindows()
+			MMC.OpenSettings()
+			LKC.advance(0.6)
+			local win = MMC.Window()
+			local close
+			for _, d in ipairs(win and win:GetDescendants() or {}) do
+				if d.Name == "Close" and d:IsA("GuiButton") then
+					close = d
+				end
+			end
+			local icon
+			for _, d in ipairs(close and close:GetDescendants() or {}) do
+				if d:GetAttribute("PixelIcon") == "x" then
+					icon = d
+				end
+			end
+			local ink = 0
+			for _, c in ipairs(icon and icon:GetChildren() or {}) do
+				if c:IsA("Frame") and sameColor(c.BackgroundColor3, Theme.Sign.Text) then
+					ink = ink + 1
+				end
+			end
+			T.check(icon ~= nil and icon.Size.X.Offset == 27 and ink >= 5, tag .. ": the Settings close's x is the kit's 27 px pixel x in the brown ink",
+				icon and fmt("%d px, %d ink cells", icon.Size.X.Offset, ink) or "no pixel x")
+			MMC.CloseWindows()
+			LKC.advance(0.3)
+		end)
 		-- (look review of finish pass A, minors: at 844x390 the Pets' "Team power" ran into the close X; at 390x844 it sat on
 		-- the team slots' top) the line keeps 6 px from the close's box (its 3 px stroke and a gap) and from the slots and the
 		-- chips' row
