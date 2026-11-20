@@ -1102,8 +1102,17 @@ function H.phoneChecks(BC, label)
 	-- (wave 6: Cheer up! is part of the vitals card's bottom stack, right above the HP bar as the approved design puts it,
 	-- like the card itself; client_w6_cheer_mobile keeps it out of the screen middle and clear of every control)
 	local cheer, cheerGlow = H.find("Root.Cheer"), H.find("Root.CheerGlow")
+	-- (kit-b Pitch 2 item 06 A: a boss fight's top card is the approved "One strip", the mode, timer, LEAVE, the HP track
+	-- and every state pill in one card; the pitch's 844 x 390 card ends at 47% of the height. It may reach that deep, no
+	-- further: half the height on a landscape phone, 40% on a portrait one; the rest of the HUD keeps the centre clear)
+	local topCard = H.find("Root.TopCard")
+	if topCard and H.shown(topCard) then
+		local tr = H.rect(topCard)
+		local deep = Hh * (W > Hh and 0.5 or 0.4)
+		T.check(tr.y1 <= deep + 0.5, label .. ": the top card ends above " .. (W > Hh and "half" or "40%") .. " of the height", H.rectText(tr))
+	end
 	for _, o in ipairs(root and root:GetDescendants() or {}) do
-		local stack = (cheer and (o == cheer or o:IsDescendantOf(cheer))) or o == cheerGlow
+		local stack = (cheer and (o == cheer or o:IsDescendantOf(cheer))) or o == cheerGlow or (topCard and (o == topCard or o:IsDescendantOf(topCard)))
 		if not stack and ((o:IsA("GuiObject") and H.shown(o) and o.BackgroundTransparency < 1) or (o:IsA("TextLabel") and H.shown(o) and o.Text ~= "")) then
 			local r = H.rect(o)
 			if r.x1 - r.x0 > 2 and H.overlap(r, box) then

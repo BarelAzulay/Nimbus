@@ -14227,6 +14227,176 @@ local function clientScenarios()
 		return out
 	end
 
+	-- (Pitch 2 item 06, option A "One strip", .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/06_boss_bar_optA.png)
+	-- a boss raid's top card at the four grid sizes is ONE stone card: row 1 the RAID tag, the boss's name, the timer and
+	-- (a fighter) Leave inside the card; under it the HP as kit blocks (20; 14 on a phone) with the number "27.6K / 50K"
+	-- in the SAME sunk track behind a 2 px divider (no box of its own), and the state pills inside the card on every size
+	-- (the phone too, none dropped; a narrow card wraps them into rows). The boss head portrait reads its image id from
+	-- Config.BossHeads (a TextureIds key): with no id (today) no portrait and the track starts at the card's inner left;
+	-- with one, a 74 px pixelated portrait two rows tall left of the track. Worst case: a 20-character name and 1.01B
+	-- fit, every one-line text whole
+	S.battle_topcard_one_card = guarded("battle_topcard_one_card", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		if not T.check(_G.P5BattleH ~= nil and Config.BossHeads ~= nil, "top card: (setup) the battle driver is loaded and Config.BossHeads exists") then
+			return
+		end
+		local BC = U7.client("Controllers/BattleController")
+		local restore = U8.measureReal()
+		local function view(tag, worst)
+			local gui = U8.pg():FindFirstChild("NimbusBattle")
+			local Hd, B = BC._Hud, BC._St.battle
+			local top = gui and gui:FindFirstChild("TopCard", true)
+			local card = top and top:FindFirstChild("ModeCard")
+			if not T.check(B and B.boss and card and U8.shown(card), tag .. ": the raid's top card shows") then
+				return
+			end
+			if worst then
+				B.boss.name = "Twentycharacterboss1"
+				B.boss.maxHp, B.boss.hp = 1.01e9, 1.009e9
+				Hd.Rebuild()
+				LKC.advance(0.3)
+			end
+			local k = U8.scaleOf(card)
+			local cr = U8.rect(card)
+			T.check(sameColor(card.BackgroundColor3, Sign.Stone) and card:FindFirstChild("SignEdge") ~= nil and card:FindFirstChild("Lip") ~= nil,
+				tag .. ": one stone card in its wood edge with its lip", hex(card.BackgroundColor3))
+			-- one card: every shown part of the top card lies inside it (the card's own finish, F0's bevel lines on its edge
+			-- and its hard shadow, sits on and past the edge by design)
+			local function finish(d)
+				local cur = d
+				while cur and cur ~= top do
+					if cur.Name:match("^Finish") then
+						return true
+					end
+					cur = cur.Parent
+				end
+				return false
+			end
+			local out = {}
+			for _, d in ipairs(top:GetDescendants()) do
+				if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 and not finish(d) and (d.BackgroundTransparency < 1 or ((d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "")) then
+					if not P2.inside(U8.rect(d), cr) then
+						out[#out + 1] = d.Name .. " " .. U8.show(U8.rect(d))
+					end
+				end
+			end
+			T.check(#out == 0, tag .. ": every part of the top card inside the one card", table.concat(out, "; ", 1, math.min(#out, 6)) .. " | card " .. U8.show(cr))
+			-- row 1: the RAID tag, the boss's name, the timer and Leave, all inside the card's top row
+			local rowB = cr.Y + 60 * k
+			local tagL = card:FindFirstChild("ModeTag", true)
+			local name = top:FindFirstChild("BossName", true)
+			local leave = gui.Root:FindFirstChild("LeaveButton")
+			-- (a card under 400 design px, a tall phone's right column, which the pitch did not draw: the tag steps aside so
+			-- the boss's name keeps its room)
+			local narrow = card.AbsoluteSize.X / k < 400
+			T.check(tagL and ((U8.shown(tagL) and tagL.Text == "RAID" and U8.rect(tagL).B <= rowB) or (narrow and not U8.shown(tagL))),
+				tag .. ": the RAID tag in row 1 (a narrow card: none)", tagL and tagL.Text or "missing")
+			T.check(name and U8.shown(name) and (name.Text == B.boss.name or (name.Text:sub(-3) == "..." and B.boss.name:find(name.Text:sub(1, -4), 1, true) == 1)) and U8.rect(name).B <= rowB,
+				tag .. ": the boss's name in row 1", name and name.Text or "missing")
+			T.check(Hd.timer and U8.shown(Hd.timer) and P2.inside(U8.rect(Hd.timer), cr) and U8.rect(Hd.timer).B <= rowB, tag .. ": the timer in row 1, inside the card")
+			T.check(leave and U8.shown(leave) and P2.inside(U8.rect(leave), cr) and U8.rect(leave).B <= rowB,
+				tag .. ": Leave inside the card's row 1 (was a plank of its own at the bottom right)", leave and U8.show(U8.rect(leave)) or "missing")
+			if Hd.m.Touch and leave then
+				-- a thumb's 44 px: the plank itself or its clear hit pad (HitFor) over it
+				local lr = U8.rect(leave)
+				local hit = leave:FindFirstChild("LeaveHit")
+				local hr = hit and U8.shown(hit) and hit:GetAttribute("HitFor") == "LeaveButton" and U8.rect(hit)
+				T.check((lr.R - lr.X >= 43.5 and lr.B - lr.Y >= 43.5) or (hr and hr.R - hr.X >= 43.5 and hr.B - hr.Y >= 43.5 and hr.X <= lr.X + 0.5 and hr.R >= lr.R - 0.5 and hr.Y <= lr.Y + 0.5 and hr.B >= lr.B - 0.5),
+					tag .. ": Leave is a 44 px thumb target on a touch screen (its hit pad)", hr and U8.show(hr) or U8.show(lr))
+			end
+			-- the HP: kit blocks and the number in ONE sunk track behind a 2 px divider
+			local hp = top:FindFirstChild("BossBar") and top.BossBar:FindFirstChild("Hp")
+			local blocks = hp and hp:FindFirstChild("Blocks")
+			local num = hp and hp:FindFirstChild("Text")
+			local div = hp and hp:FindFirstChild("Divider")
+			if T.check(hp and blocks and num and div and U8.shown(num), tag .. ": the HP track holds the blocks, the divider and the number") then
+				local hr, br, nr, dr = U8.rect(hp), U8.rect(blocks), U8.rect(num), U8.rect(div)
+				T.check(P2.inside(br, hr) and P2.inside(nr, hr) and br.R <= dr.X + 0.5 and dr.R <= nr.X + 0.5 and math.abs(dr.R - dr.X - 2 * k) < 0.6,
+					tag .. ": the number in the track behind the 2 px divider, right of the blocks", fmt("blocks %s | div %s | num %s in %s", U8.show(br), U8.show(dr), U8.show(nr), U8.show(hr)))
+				T.check(num.Text:match("^%d[%d%.]*[KMB]? / %d[%d%.]*[KMB]?$") ~= nil and (not worst or num.Text:match(" / 1%.01B$") ~= nil), tag .. ": the number reads 'HP / max' (short numbers)", num.Text)
+				-- 20 blocks (14 on a phone, the pitch's); a narrower track (a tall phone's right column, not drawn in the pitch)
+				-- fewer, never thin slivers: each block at least 12 design px wide
+				local n, thin = 0, 0
+				for _, c in ipairs(blocks:GetChildren()) do
+					if c.Name:match("^Block%d+$") then
+						n = n + 1
+						thin = thin + ((c.AbsoluteSize.X / k < 11.5) and 1 or 0)
+					end
+				end
+				local want = Hd.m.Compact and 14 or 20
+				T.check((n == want or (n < want and n >= 6 and card.AbsoluteSize.X / k < 400)) and thin == 0,
+					tag .. ": the HP is " .. want .. " chunky blocks (a narrow card fewer, each >= 12 px)", fmt("%d blocks, %d thin", n, thin))
+				-- no image id today: no portrait, the track starts at the card's inner left
+				local portrait = top:FindFirstChild("Portrait", true)
+				T.check((portrait == nil or not U8.shown(portrait)) and hr.X - cr.X <= 14 * k, tag .. ": no boss head id: no portrait, the card still whole (the track at its left)",
+					fmt("track from %.0f, card %.0f", hr.X, cr.X))
+			end
+			-- the pills: the element and the players on every size, each inside the card, none on another
+			local pills = top:FindFirstChild("Pills")
+			local shownPills = {}
+			for _, p in ipairs(pills and pills:GetChildren() or {}) do
+				if p:IsA("GuiObject") and U8.shown(p) then
+					shownPills[#shownPills + 1] = p
+				end
+			end
+			local names = {}
+			for _, p in ipairs(shownPills) do
+				names[p.Name] = true
+			end
+			T.check(names.Element and names.Players, tag .. ": the element and the players pills show (the phone too)", (function()
+				local t = {}
+				for nm in pairs(names) do
+					t[#t + 1] = nm
+				end
+				return table.concat(t, ", ")
+			end)())
+			local clash = {}
+			for i, p in ipairs(shownPills) do
+				if not P2.inside(U8.rect(p), cr) then
+					clash[#clash + 1] = p.Name .. " outside"
+				end
+				for j = i + 1, #shownPills do
+					if U8.overlap(U8.rect(p), U8.rect(shownPills[j])) then
+						clash[#clash + 1] = p.Name .. " on " .. shownPills[j].Name
+					end
+				end
+			end
+			T.check(#clash == 0, tag .. ": the pills inside the card, apart (wrapped where the card is narrow)", table.concat(clash, "; "))
+			local tight = P2.tight(top)
+			T.check(#tight == 0, tag .. ": every one-line text of the card fits its box", table.concat(tight, "; "))
+		end
+		for _, s in ipairs(U8.SIZES) do
+			for _, worst in ipairs({ false, true }) do
+				U8.at(s[1], s[2], s[3], "top card raid" .. (worst and " (20-char name, 1.01B)" or ""), function(tag)
+					U96.open("battle:raid")
+					view(tag, worst)
+					U96.close()
+				end)
+			end
+		end
+		-- with an uploaded head (an id in TextureIds): the 74 px pixelated portrait, two rows tall, left of the track
+		U8.at(1920, 1080, false, "top card portrait", function(tag)
+			local Hd = BC._Hud
+			local key = Config.BossHeads.storm_titan
+			Hd.Textures = { [tostring(key)] = 1234567 }
+			U96.open("battle:raid")
+			local gui = U8.pg():FindFirstChild("NimbusBattle")
+			local top = gui and gui:FindFirstChild("TopCard", true)
+			local portrait = top and top:FindFirstChild("Portrait", true)
+			local img = portrait and portrait:FindFirstChildWhichIsA("ImageLabel", true)
+			local hp = top and top:FindFirstChild("BossBar") and top.BossBar:FindFirstChild("Hp")
+			T.check(type(key) == "string" and portrait and U8.shown(portrait) and img and img.Image == "rbxassetid://1234567" and img.ResampleMode == Enum.ResamplerMode.Pixelated
+				and math.abs(portrait.AbsoluteSize.X / U8.scaleOf(portrait) - 74) < 0.6 and hp and U8.rect(hp).X >= U8.rect(portrait).R,
+				tag .. ": the boss head is a 74 px pixelated portrait left of the track", img and img.Image or "no portrait")
+			Hd.Textures = nil
+			U96.close()
+		end)
+		restore()
+		LKC.flushErrors("battle_topcard_one_card")
+	end)
+
 	-- (Pitch 2 item 08, option C "Name tab + stamp", .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/08_vitals_optC.png)
 	-- at the four grid sizes the vitals card keeps its bottom-centre spot and gains a wood tab tucked behind its top edge (the
 	-- tab above the card, its foot under the card's top, drawn behind it) with the player's stamp (the display name's first

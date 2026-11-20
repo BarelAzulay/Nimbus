@@ -415,6 +415,20 @@ local K = {
 	TOP_W = 470,
 	TOP_W_COMPACT = 300,
 	MODE_H = 40,
+	-- (Pitch 2 item 06 A) the boss card: 640 wide (500 on a phone), its inside PAD in from the edge; row 1 TOP_ROW_H tall
+	-- (the RAID tag, the name, the clock + timer, LEAVE LEAVE_W_CARD wide); the head PORTRAIT square, two rows tall; the
+	-- track BOSS_TRACK_H tall with BOSS_BLOCKS (BOSS_BLOCKS_COMPACT on a phone); the pills PILL_H tall, PILL_GAP apart
+	TOP_W_BOSS = 640,
+	TOP_W_BOSS_COMPACT = 500,
+	TOP_PAD = 10,
+	TOP_ROW_H = 34,
+	LEAVE_W_CARD = 84,
+	LEAVE_W_CARD_COMPACT = 72,
+	PORTRAIT = 74,
+	BOSS_TRACK_H = 40,
+	BOSS_BLOCKS_COMPACT = 14,
+	PILL_H = 26,
+	PILL_GAP = 6,
 	ATTACK_D = 88,
 	ACTION_D = 64,
 	-- a touch screen: the buttons are at least this big on the screen (the names sit inside SPECIAL's and ELEMENT's faces)
@@ -5866,31 +5880,102 @@ end
 ----------------------------------------------------------------------
 function Hud.BuildTop()
 	local top = Hud.top
-	-- (kit-b U9-6) the mode line is a navy plank (the HUD's top bar's look) in its wood edge, its lip in the mode's colour
-	-- (Hud.LayoutTop); the line in cream, the timer in gold
-	local mode = neonCard(top, "ModeCard", KB.Mode.Duel, { Size = UDim2.fromOffset(K.TOP_W, K.MODE_H), Face = SIGN.Navy, LipPx = 5 })
+	-- (Pitch 2 item 06 A "One strip", .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/06_boss_bar_optA.png;
+	-- kit-b U9-6 had four loose navy pieces) ONE stone card in its 3 px wood edge on a 5 px lip, as tall as everything in
+	-- it (Hud.LayoutTop): row 1 the mode (a raid: the wood RAID tag, the boss's name, its tier) and the clock + timer, with
+	-- LEAVE laid over the row's right end (Leave.Place; it stays Root.LeaveButton); a boss under it: the baked pixel head
+	-- (Config.BossHeads, when its image is uploaded) and ONE sunk track holding the HP blocks and the number behind a 2 px
+	-- divider; then the state pills, wrapped into rows where the card is narrow; the ring's pay pills last
+	local mode = neonCard(top, "ModeCard", SIGN.StoneLip, { Size = UDim2.fromOffset(K.TOP_W, K.MODE_H), Face = SIGN.Stone, LipPx = 5 })
 	Hud.modeCard = mode
-	Hud.mode = label(mode.Body, "", "Heading", 20, { Name = "Mode", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = SIGN.Stone })
-	Hud.timer = label(mode.Body, "", "Display", 24, { Name = "Timer", TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = SIGN.Gold })
-	local boss = make("Frame", { Name = "BossBar", BackgroundTransparency = 1, Visible = false }, top)
+	Hud.modeTag = label(mode.Body, "RAID", "Heading", 18, { Name = "ModeTag", Visible = false, TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = SIGN.Stone, ZIndex = 2 })
+	make("UIPadding", { Name = "LipPad", PaddingBottom = UDim.new(0, 4) }, Hud.modeTag)
+	signBlock(Hud.modeTag, SIGN.Wood, SIGN.WoodDark, SIGN.Stone, 4, 2)
+	signEdge(Hud.modeTag, SIGN.WoodDark, 2)
+	Hud.mode = label(mode.Body, "", "Heading", 20, { Name = "Mode", TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, TextColor3 = KB.Ink, ZIndex = 2 })
+	Hud.timer = label(mode.Body, "", "Display", 24, { Name = "Timer", TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = KB.Ink, ZIndex = 2 })
+	Hud.clock = PixelIcon.New(mode.Body, "clock", 18, KB.Muted)
+	Hud.clock.Name = "Clock"
+	Hud.clock.ZIndex = 2
+	local boss = make("Frame", { Name = "BossBar", BackgroundTransparency = 1, Visible = false, ZIndex = 2 }, top)
 	Hud.boss = boss
-	-- (LOOK-ui2: the name floated on the arena in an outline, the bar was a flat red fill with the number across it) the name on
-	-- a navy tag in gold with the crown before it, the HP as twenty red kit blocks, the number on a stone tag beside the row
-	Hud.bossName = smallPill(boss, "", SIGN.Navy, { Name = "BossName", AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
-	Hud.bossName.TextColor3 = SIGN.Gold
-	Hud.bossName.TextXAlignment = Enum.TextXAlignment.Left
-	PixelIcon.Lead(Hud.bossName, ICON.Crown)
-	Hud.bossTrack = make("Frame", { Name = "Hp", BackgroundTransparency = 1 }, boss)
-	Hud.bossBar = blockBar(Hud.bossTrack, "Blocks", K.BOSS_BLOCKS, KB.Loss, SIGN.RedLip, { Gap = 3 })
-	Hud.bossText = smallPill(boss, "", KB.Face, { Name = "Text", AutomaticSize = Enum.AutomaticSize.None, AnchorPoint = Vector2.new(1, 0) })
-	Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1 }, top)
-	make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center }, Hud.pills)
-	Hud.bossElement = smallPill(Hud.pills, "", KB.Loss, { Name = "Element", LayoutOrder = 1 })
-	Hud.enragePill = smallPill(Hud.pills, "ENRAGED", KB.Loss, { Name = "Enraged", LayoutOrder = 2, Visible = false })
-	Hud.minionPill = smallPill(Hud.pills, "", SIGN.Violet, { Name = "Minions", LayoutOrder = 3, Visible = false })
-	Hud.playersPill = smallPill(Hud.pills, "", SIGN.Sky, { Name = "Players", LayoutOrder = 4, Visible = false })
-	Hud.wavePill = smallPill(Hud.pills, "", SIGN.Violet, { Name = "Wave", LayoutOrder = 5, Visible = false })
+	-- row 1's boss name (a raid) in the ink at the Heading size, its tier in the muted ink after it
+	Hud.bossName = label(boss, "", "Heading", 24, { Name = "BossName", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Ink, ZIndex = 2 })
+	Hud.bossTier = label(boss, "", "Heading", 18, { Name = "Tier", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Muted, ZIndex = 2 })
+	-- the boss's head: a sunk navy well in its wood edge, the baked pixel image inside (pixelated, never a blurry shrink)
+	Hud.portrait = make("Frame", { Name = "Portrait", BackgroundColor3 = SIGN.NavyLip, BorderSizePixel = 0, Visible = false, ZIndex = 2 }, boss)
+	signEdge(Hud.portrait, KB.Edge, 2)
+	Hud.portraitImage = make("ImageLabel", { Name = "Head", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3,
+		ResampleMode = Enum.ResamplerMode.Pixelated, ScaleType = Enum.ScaleType.Fit }, Hud.portrait)
+	-- the track: wood (its 2 px edge) round the sunk well face; the blocks, the divider and the number on that face
+	Hud.bossTrack = make("Frame", { Name = "Hp", BackgroundColor3 = KB.Edge, BorderSizePixel = 0, ZIndex = 2 }, boss)
+	Hud.bossFace = make("Frame", { Name = "Face", BackgroundColor3 = SIGN.Well, BorderSizePixel = 0, ZIndex = 2 }, Hud.bossTrack)
+	Hud.bossBar = blockBar(Hud.bossTrack, "Blocks", K.BOSS_BLOCKS, KB.Loss, SIGN.RedLip, { Gap = 3, ZIndex = 3 })
+	Hud.bossDivider = make("Frame", { Name = "Divider", BackgroundColor3 = SIGN.WellEdge, BorderSizePixel = 0, ZIndex = 3 }, Hud.bossTrack)
+	Hud.bossText = label(Hud.bossTrack, "", "Display", 20, { Name = "Text", TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = KB.Ink, ZIndex = 3 })
+	Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1, ZIndex = 2 }, top)
+	Hud.bossElement = smallPill(Hud.pills, "", KB.Loss, { Name = "Element", LayoutOrder = 1, ZIndex = 2 })
+	Hud.enragePill = smallPill(Hud.pills, "ENRAGED", SIGN.Red, { Name = "Enraged", LayoutOrder = 2, Visible = false, ZIndex = 2 })
+	PixelIcon.Lead(Hud.enragePill, "skull")
+	Hud.minionPill = smallPill(Hud.pills, "", SIGN.Violet, { Name = "Minions", LayoutOrder = 3, Visible = false, ZIndex = 2 })
+	Hud.playersPill = smallPill(Hud.pills, "", SIGN.Sky, { Name = "Players", LayoutOrder = 4, Visible = false, ZIndex = 2 })
+	PixelIcon.Lead(Hud.playersPill, "people")
+	Hud.wavePill = smallPill(Hud.pills, "", SIGN.Tile, { Name = "Wave", LayoutOrder = 5, Visible = false, ZIndex = 2 })
+	-- (the tier as a pill where row 1 has no room for it, as the pitch's rule)
+	Hud.tierPill = smallPill(Hud.pills, "", SIGN.Tile, { Name = "TierPill", LayoutOrder = 6, Visible = false, ZIndex = 2 })
 	Ring.BuildInfo(top)
+	Hud.info.ZIndex = 2
+end
+
+-- (Pitch 2 item 06 A) the boss head's image: Config.BossHeads[bossId] is a shared/TextureIds key; its id when uploaded
+-- ("rbxassetid://<id>"), else nil (no portrait: the card is whole without it). Hud.Textures: a test's key -> id table
+function Hud.BossHead(bossId)
+	local key = bossId and Config.BossHeads and Config.BossHeads[bossId]
+	if not key then
+		return nil
+	end
+	local ids = Hud.Textures
+	if ids == nil then
+		if Mods.TextureIds == nil then
+			Mods.TextureIds = false
+			local module = Shared:FindFirstChild("TextureIds")
+			if module then
+				local ok, t = pcall(require, module)
+				if ok and type(t) == "table" then
+					Mods.TextureIds = t
+				end
+			end
+		end
+		ids = Mods.TextureIds or {}
+	end
+	local id = tonumber(ids[key])
+	return (id and id > 0) and ("rbxassetid://" .. string.format("%d", id)) or nil
+end
+
+-- (Pitch 2 item 06 A) a label's text that fits `room` design px on one line: its design size steps down from `size` to
+-- `floor`, then the text is cut with "..." (never drawn past its box). Returns the width it takes (design px)
+function Hud.FitLine(l, text, size, floor, room)
+	local function width(t, s)
+		local ok, m = pcall(Theme.Measure, t, l:GetAttribute("FontRole") or "Heading", s)
+		-- (never under the face's ~0.56 em a letter, 4% to spare: a flat measure runs short of the drawn face)
+		return max((ok and typeof(m) == "Vector2") and m.X or 0, #t * s * 0.56) * 1.04
+	end
+	local s = size
+	while s > floor and width(text, s) > room do
+		s = s - 2
+	end
+	s = max(s, floor)
+	if width(text, s) > room then
+		local cut = text
+		while #cut > 1 and width(cut .. "...", s) > room do
+			cut = cut:sub(1, -2)
+		end
+		text = cut .. "..."
+	end
+	l.TextSize = s
+	l:SetAttribute("BaseText", s)
+	setText(l, text)
+	return math.ceil(width(text, s))
 end
 
 ----------------------------------------------------------------------
@@ -6908,25 +6993,37 @@ end
 
 -- the top card: the mode line + timer (+ the boss bar in raids / boss rooms, the ring pills); returns nothing
 function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
+	Hud.topArgs = { B, m, teamW, listH, rightY, show }
 	local top = Hud.top
 	local spectator = not B.Fighter
 	top.Visible = show or spectator
 	if not top.Visible then
+		Hud.leaveSlot = nil
 		return
 	end
 	local bossUnit = Hud.BossUnit(B)
-	local w = m.Compact and K.TOP_W_COMPACT or K.TOP_W
+	local compact = m.Compact
+	-- (Pitch 2 item 06 A) one card: a boss's is the pitch's 640 (500 on a phone), the mode line's keeps its width
+	local w
+	if bossUnit then
+		w = compact and K.TOP_W_BOSS_COMPACT or K.TOP_W_BOSS
+	else
+		w = compact and K.TOP_W_COMPACT or K.TOP_W
+		if not compact and Leave.Allowed(B) and not B.ended then
+			w = w + K.LEAVE_W_CARD + 10 -- (a wide screen: LEAVE's room on top, the mode line keeps its whole width)
+		end
+	end
 	local x, y, anchor = m.W / 2, K.EDGE, 0.5
 	local underList, leftTop = false, false
 	local curBottom, curLeft, curRight = Hud.CurrencyTop(m)
 	if m.Compact then
 		-- between the fighter card and the enemy list when there is room, else under the enemy list (right)
 		local free = m.W - (K.EDGE + teamW + 12) - (K.ROW_W_COMPACT + K.EDGE + 12)
+		if m.Landscape and free < w and free >= K.TOP_W_COMPACT then
+			w = floor(free) -- (a landscape phone: the card takes the gap; its pills wrap, LEAVE is inside it)
+		end
 		if free >= w then
 			x = K.EDGE + teamW + 12 + free / 2
-			if m.Landscape and Leave.Allowed(B) and free >= w + 8 + Leave.TopW(B) then
-				x = K.EDGE + teamW + 12 + (free - 8 - Leave.TopW(B)) / 2 -- room for LEAVE on its right
-			end
 		elseif spectator then
 			w = min(w, m.W - 2 * K.EDGE)
 		else
@@ -6935,7 +7032,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			x, anchor = m.W - K.EDGE, 1
 			y = rightY + listH + 10
 			underList = listH > 0
-			local guess = K.MODE_H + 6 + (bossUnit and 32 or 0) + ((B.Mode == "Ring") and 30 or 0)
+			local guess = 57 + (bossUnit and 110 or 0) + ((B.Mode == "Dungeon" and not bossUnit) and 34 or 0) + ((B.Mode == "Ring") and 30 or 0)
 			if underList and not m.Landscape and Hud.team.Visible and Hud.fighterCard and y + guess > Hud.BandTop(m) then
 				-- (the right column starts low - currency pills up there - and would reach the centre band: the top
 				-- card goes under the fighter card instead, the helper column moves down under it)
@@ -6951,6 +7048,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			end
 		end
 	end
+	w = floor(w)
 	-- (a landscape phone's currency pills in the top band: stay under them where they overlap)
 	if curBottom > 0 and anchor == 0.5 and curRight > x - w / 2 and curLeft < x + w / 2 then
 		y = max(y, curBottom + 4)
@@ -6959,71 +7057,256 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	top.Position = UDim2.fromOffset(x, y)
 	local _, modeColor = Hud.ModeText(B)
 	Hud.modeColor = modeColor
-	if Hud.modeCard.SetColor then
-		pcall(Hud.modeCard.SetColor, modeColor)
-	end
-	local mh = K.MODE_H
-	Hud.modeCard.Root.Size = UDim2.fromOffset(w, mh)
-	Hud.mode.Position = UDim2.fromOffset(14, 0)
-	Hud.mode.Size = UDim2.fromOffset(w - 14 - 76, mh)
-	Hud.mode.TextColor3 = SIGN.Stone
-	Hud.timer.Position = UDim2.new(1, -78, 0, 0)
-	Hud.timer.Size = UDim2.fromOffset(66, mh)
-	local yy = mh + 6
-	local compact = m.Compact
-	Hud.boss.Visible = bossUnit ~= nil
-	-- (a phone keeps the top card short: the boss's name goes into its bar, only the wave / ENRAGED pills stay)
-	Hud.pills.Visible = not compact and (bossUnit ~= nil or B.Mode == "Dungeon")
 	Hud.compactTop = compact
-	local nameH = compact and 0 or 26
-	if bossUnit then
-		Hud.boss.Position = UDim2.fromOffset(0, yy)
-		Hud.boss.Size = UDim2.fromOffset(w, nameH + 28)
-		-- (LOOK-ui2) wide: the name's navy tag flush left over the row; the number's stone tag beside the row on its right
-		-- (a phone: the HP alone, the name stays off the short card as before)
-		Hud.bossName.Visible = not compact
-		setText(Hud.bossName, bossUnit.name)
-		local px = max(18, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
-		Hud.bossName.TextSize = px
-		Hud.bossName:SetAttribute("BaseText", 18)
-		local lead = Hud.bossName:FindFirstChildOfClass("UIPadding")
-		local inset = lead and (lead.PaddingLeft.Offset + lead.PaddingRight.Offset) or 16
-		Hud.bossName.Position = UDim2.fromOffset(0, 0)
-		Hud.bossName.Size = UDim2.fromOffset(min(w, math.ceil(textWidth(bossUnit.name, px)) + inset + 4), 22)
-		local maxText = Theme.Short(bossUnit.maxHp) -- (Pitch 2 F0) the one number style at every size
-		local numPx = max(16, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
-		Hud.bossText.TextSize = numPx
-		Hud.bossText:SetAttribute("BaseText", 16)
-		local numW = math.ceil(textWidth(compact and maxText or (maxText .. " / " .. maxText), numPx) * 0.92) + 20
-		Hud.bossText.Position = UDim2.new(1, 0, 0, nameH + 2)
-		Hud.bossText.Size = UDim2.fromOffset(numW, 22)
-		Hud.bossTrack.Position = UDim2.fromOffset(0, nameH)
-		Hud.bossTrack.Size = UDim2.fromOffset(w - numW - 8, 26)
-		setText(Hud.bossElement, tostring(bossUnit.element or "?"))
-		paintPill(Hud.bossElement, elementColor(bossUnit.element))
-		yy = yy + nameH + 32
+	local P, rowH = K.TOP_PAD, K.TOP_ROW_H
+	local x0, x1 = P, w - P
+	local fpx = math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6) -- the readability floor in design px
+	local function px(n)
+		return max(n, fpx)
 	end
+	-- row 1, right: LEAVE's room (Leave.Place lays Root.LeaveButton over it), then the clock and the timer
+	local leaveOn = Leave.Allowed(B) and not B.ended
+	local leaveW = leaveOn and (compact and K.LEAVE_W_CARD_COMPACT or K.LEAVE_W_CARD) or 0
+	Hud.leaveSlot = leaveOn and { w - P - leaveW, P, leaveW, rowH } or nil
+	-- (a narrow card under 300, a tall phone's: tighter gaps, the mode line keeps the room its shortest form needs)
+	local gapL, gapT = (w < 300) and 6 or 10, (w < 300) and 4 or 8
+	local right = x1 - (leaveOn and (leaveW + gapL) or 0)
+	local hasTimer = B.TimeLimit > 0
+	local timerPx = px(compact and 22 or 24)
+	-- (as wide as the longest time this fight shows: the clock sits right before it, as the pitch's "clock 4:57")
+	local timerW = hasTimer and math.ceil(max(4, #fmtTime(B.TimeLimit)) * timerPx * 0.56) + 4 or 0
+	Hud.timer.Visible = hasTimer
+	Hud.timer.TextSize = timerPx
+	Hud.timer:SetAttribute("BaseText", timerPx)
+	Hud.timer.Position = UDim2.fromOffset(right - timerW, P)
+	Hud.timer.Size = UDim2.fromOffset(timerW, rowH)
+	-- (a narrow card, a tall phone's right column: the clock icon gives its room to the name; the time reads without it)
+	local showClock = hasTimer and w >= 400
+	Hud.clock.Visible = showClock
+	Hud.clock.Position = UDim2.fromOffset(right - timerW - 4 - 18, P + (rowH - 18) / 2)
+	local leftEnd = showClock and (right - timerW - 4 - 18 - 8) or (hasTimer and (right - timerW - gapT) or right)
+	-- row 1, left: a raid's RAID tag, the boss's name and its tier (as a pill where it has no room); else the mode line
+	local raidBoss = B.Mode == "Raid" and bossUnit ~= nil
+	local tierPill = nil
+	Hud.boss.Visible = bossUnit ~= nil
+	Hud.boss.Position = UDim2.fromOffset(0, 0)
+	if raidBoss then
+		Hud.mode.Visible = false
+		local tagPx = px(18)
+		local tagW = math.ceil(4 * tagPx * 0.62) + 18
+		local showTag = leftEnd - x0 - tagW - 10 >= 110
+		Hud.modeTag.Visible = showTag
+		local lx = x0
+		if showTag then
+			Hud.modeTag.Text = "RAID"
+			Hud.modeTag.TextSize = tagPx
+			Hud.modeTag:SetAttribute("BaseText", tagPx)
+			Hud.modeTag.Position = UDim2.fromOffset(x0, P)
+			Hud.modeTag.Size = UDim2.fromOffset(tagW, rowH)
+			lx = x0 + tagW + 10
+		end
+		Hud.bossName.Visible = true
+		local nameW = Hud.FitLine(Hud.bossName, tostring(bossUnit.name or "?"), px(compact and 22 or 24), px(18), leftEnd - lx - 4)
+		Hud.bossName.Position = UDim2.fromOffset(lx, P)
+		Hud.bossName.Size = UDim2.fromOffset(nameW + 4, rowH)
+		local tier = (B.Raid and B.Raid.Tier) and tostring(B.Raid.Tier) or ""
+		local tierPx = px(18)
+		local tierW = math.ceil(#tier * tierPx * 0.6) + 4
+		local tx = lx + nameW + 4 + 8
+		local inRow = tier ~= "" and tx + tierW <= leftEnd
+		Hud.bossTier.Visible = inRow
+		if inRow then
+			setText(Hud.bossTier, tier)
+			Hud.bossTier.TextSize = tierPx
+			Hud.bossTier:SetAttribute("BaseText", tierPx)
+			Hud.bossTier.Position = UDim2.fromOffset(tx, P + 2)
+			Hud.bossTier.Size = UDim2.fromOffset(tierW, rowH)
+		elseif tier ~= "" then
+			tierPill = tier
+		end
+	else
+		Hud.modeTag.Visible = false
+		Hud.mode.Visible = true
+		Hud.bossName.Visible = false
+		Hud.bossTier.Visible = false
+		Hud.mode.TextColor3 = KB.Ink
+		Hud.mode.Position = UDim2.fromOffset(x0, P)
+		Hud.mode.Size = UDim2.fromOffset(max(10, leftEnd - x0), rowH)
+		if bossUnit then
+			tierPill = tostring(bossUnit.name or "") -- (a dungeon's boss: its name on the pill row; the mode line says the room)
+		end
+	end
+	-- under row 1: a boss's head and its track, then the pills; a dungeon's pills; the ring's pay pills
+	local yy = P + rowH + 8
+	local pillX, pillW = x0, x1 - x0
+	local bodyMin = 0
+	if bossUnit then
+		local head = Hud.BossHead(bossUnit.bossId or B.BossId or (B.Raid and B.Raid.BossId))
+		Hud.portrait.Visible = head ~= nil
+		local bx = x0
+		if head then
+			Hud.portraitImage.Image = head
+			Hud.portrait.Position = UDim2.fromOffset(x0, yy)
+			Hud.portrait.Size = UDim2.fromOffset(K.PORTRAIT, K.PORTRAIT)
+			bx = x0 + K.PORTRAIT + 10
+			bodyMin = K.PORTRAIT
+		end
+		local tw, th = x1 - bx, K.BOSS_TRACK_H
+		Hud.bossTrack.Position = UDim2.fromOffset(bx, yy)
+		Hud.bossTrack.Size = UDim2.fromOffset(tw, th)
+		local e, pad = 2, 3
+		Hud.bossFace.Position = UDim2.fromOffset(e, e)
+		Hud.bossFace.Size = UDim2.fromOffset(tw - 2 * e, th - 2 * e)
+		-- the number's box: as wide as "max / max" (the widest it gets), centred behind the divider
+		local numPx = px(20)
+		local maxText = Theme.Short(bossUnit.maxHp)
+		local ok, ms = pcall(Theme.Measure, maxText .. " / " .. maxText, "Display", numPx)
+		local nw = math.ceil(max((ok and typeof(ms) == "Vector2") and ms.X or 0, #(maxText .. " / " .. maxText) * numPx * 0.56) * 1.04) + 16
+		local numX = tw - e - pad - nw
+		local divX = numX - pad - 2
+		Hud.bossDivider.Position = UDim2.fromOffset(divX, e)
+		Hud.bossDivider.Size = UDim2.fromOffset(2, th - 2 * e)
+		Hud.bossText.Position = UDim2.fromOffset(numX, e)
+		Hud.bossText.Size = UDim2.fromOffset(nw, th - 2 * e)
+		Hud.bossText.TextSize = numPx
+		Hud.bossText:SetAttribute("BaseText", numPx)
+		-- 20 blocks (14 on a phone); a narrow track (a tall phone's right column) fewer, each still a chunky >= 12 px block
+		local n = compact and K.BOSS_BLOCKS_COMPACT or K.BOSS_BLOCKS
+		local room = divX - pad - (e + pad)
+		n = clamp(floor((room + 3) / (12 + 3)), 6, n)
+		if Hud.bossBar.count ~= n then
+			SignKit.SetBlockCount(Hud.bossBar.Root, n, KB.Loss, SIGN.RedLip)
+			Hud.bossBar.count = n
+			Hud.bossBar.lit = -1
+		end
+		Hud.bossBar.Root.Position = UDim2.fromOffset(e + pad, e + pad)
+		Hud.bossBar.Root.Size = UDim2.fromOffset(max(10, divX - pad - (e + pad)), th - 2 * (e + pad))
+		pillX, pillW = bx, x1 - bx
+		yy = yy + th + 8
+	else
+		Hud.portrait.Visible = false
+	end
+	-- the pills (a boss, a dungeon run): every one shown, wrapped into rows inside the card
+	Hud.pills.Visible = bossUnit ~= nil or B.Mode == "Dungeon"
+	Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
+	local pillsH = 0
 	if Hud.pills.Visible then
-		Hud.pills.Position = UDim2.fromOffset(0, yy)
-		Hud.pills.Size = UDim2.fromOffset(w, 24)
-		Hud.bossElement.Visible = bossUnit ~= nil and not compact
-		yy = yy + 28
+		pillsH = Hud.FlowPills(pillW)
+		Hud.pills.Position = UDim2.fromOffset(pillX, yy)
+		Hud.pills.Size = UDim2.fromOffset(pillW, max(1, pillsH))
+		Hud.bossElement.Visible = bossUnit ~= nil
+		if pillsH > 0 then
+			yy = yy + pillsH + 8
+		end
+	end
+	if bossUnit and bodyMin > 0 then
+		yy = max(yy, P + rowH + 8 + bodyMin + 8)
+	end
+	if not bossUnit and not (Hud.pills.Visible and pillsH > 0) then
+		yy = P + rowH + 8
 	end
 	yy = Ring.LayoutInfo(B, w, yy)
-	top.Size = UDim2.fromOffset(w, yy)
+	local h = yy + 5 -- (the card's lip)
+	Hud.modeCard.Root.Size = UDim2.fromOffset(w, h)
+	Hud.boss.Size = UDim2.fromOffset(w, h)
+	top.Size = UDim2.fromOffset(w, h)
 	if leftTop then
 		local fcH = Hud.fighterCard.Root.Size.Y.Offset
-		Hud.helperHolder.Position = UDim2.fromOffset(0, fcH + 8 + yy + 8)
+		Hud.helperHolder.Position = UDim2.fromOffset(0, fcH + 8 + h + 8)
 	end
-	if underList and y + yy > Hud.BandTop(m) then
+	if underList and y + h > Hud.BandTop(m) then
 		-- (a tall phone whose right column starts low: the top card first, the enemy list under it, both above
 		-- the centre band)
 		y = rightY
 		top.Position = UDim2.fromOffset(x, y)
-		Hud.enemies.Position = UDim2.fromOffset(m.W - K.EDGE, y + yy + 8)
+		Hud.enemies.Position = UDim2.fromOffset(m.W - K.EDGE, y + h + 8)
 	end
-	Hud.topH = yy
-	Hud.topRect = { x - anchor * w, y, x - anchor * w + w, y + yy }
+	Hud.topH = h
+	Hud.topRect = { x - anchor * w, y, x - anchor * w + w, y + h }
+end
+
+-- (Pitch 2 item 06 A) the pills' texts, icons and sizes for this battle (a phone's shorter words: "Wave 2/3", the people icon
+-- and the count). Returns a key that changes when a pill's text or visibility does
+function Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
+	local size = max(18, fpx or 0)
+	local lethal = B.lethalPending == true
+	Hud.enragePill.Visible = B.enraged == true
+	setText(Hud.enragePill, lethal and "ENRAGED - DASH!" or "ENRAGED")
+	local minions, players = 0, {}
+	for _, u in ipairs(B.list) do
+		if u.kind == "Minion" and u.hp > 0 and u.state ~= S_DOWN then
+			minions = minions + 1
+		elseif u.side == 1 and u.owner ~= nil and u.kind ~= "Minion" then
+			players[u.owner] = true
+		end
+	end
+	local pc = 0
+	for _ in pairs(players) do
+		pc = pc + 1
+	end
+	Hud.minionPill.Visible = minions > 0
+	setText(Hud.minionPill, "Minions x" .. minions)
+	Hud.playersPill.Visible = (B.Mode == "Raid" or (B.Mode == "Dungeon" and pc > 1)) and pc > 0
+	setText(Hud.playersPill, compact and tostring(pc) or (pc == 1 and "1 player" or (pc .. " players")))
+	local d = B.Dungeon
+	local waveText = ""
+	-- (a phone's dungeon line already says "Room 1 - Wave 2/3" (Hud.ModeText): no second wave pill there)
+	local waveInLine = compact and B.Mode == "Dungeon" and num(d and d.Waves, 0) > 1
+	if d and num(d.Waves, 0) > 0 and not waveInLine then
+		local wave, waves = clamp(max(num(d.Wave, 1), B.wave or 0), 1, num(d.Waves, 1)), num(d.Waves, 1)
+		waveText = compact and ("Wave " .. wave .. "/" .. waves) or ("Wave " .. wave .. " / " .. waves)
+	end
+	Hud.wavePill.Visible = waveText ~= ""
+	setText(Hud.wavePill, waveText)
+	Hud.tierPill.Visible = tierPill ~= nil and tierPill ~= ""
+	setText(Hud.tierPill, tierPill or "")
+	if bossUnit then
+		setText(Hud.bossElement, tostring(bossUnit.element or "?"))
+		paintPill(Hud.bossElement, elementColor(bossUnit.element))
+		local icon = ELEMENT_ICON[bossUnit.element]
+		if icon and Hud.bossElement:GetAttribute("LeadName") ~= icon then
+			local old = Hud.bossElement:FindFirstChild("LeadIcon")
+			if old then
+				old:Destroy()
+			end
+			PixelIcon.Lead(Hud.bossElement, icon)
+			Hud.bossElement:SetAttribute("LeadName", icon)
+		end
+	end
+	Hud.bossElement.Visible = bossUnit ~= nil
+	local key = { size }
+	for _, pill in ipairs({ Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill, Hud.tierPill }) do
+		if pill.TextSize ~= size then
+			pill.TextSize = size
+		end
+		pill:SetAttribute("BaseText", size)
+		key[#key + 1] = (pill.Visible and "1" or "0") .. pill.Text
+	end
+	return table.concat(key, "|")
+end
+
+-- (Pitch 2 item 06 A) lays the shown pills left to right in `width` design px, a new row where one would run past it (the
+-- pitch's rule: one row at the HUD size, else rows, never cut). Returns the rows' height
+function Hud.FlowPills(width)
+	-- (each pill's 2 px wood edge is drawn outside its box: the box sits 2 px in, so the drawn pill is PILL_H tall and the
+	-- drawn gap PILL_GAP, as the pitch's)
+	local e = 2
+	local x, row, rows = 0, 0, 0
+	for _, pill in ipairs({ Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill, Hud.tierPill }) do
+		if pill.Visible then
+			fitPill(pill, K.PILL_H - 2 * e)
+			local pw = min(pill.Size.X.Offset + 4, width - 2 * e) -- (4 px more: a lead icon's pill reads tight at 0.8 scale)
+			if x > 0 and x + pw + 2 * e > width then
+				x, row = 0, row + 1
+			end
+			pill.AutomaticSize = Enum.AutomaticSize.None
+			pill.Position = UDim2.fromOffset(x + e, row * (K.PILL_H + K.PILL_GAP) + e)
+			pill.Size = UDim2.fromOffset(pw, K.PILL_H - 2 * e)
+			x = x + pw + 2 * e + K.PILL_GAP
+			rows = row + 1
+		end
+	end
+	return rows > 0 and (rows * K.PILL_H + (rows - 1) * K.PILL_GAP) or 0
 end
 
 -- the boss the top card shows: the raid boss, else a dungeon / wave mini-boss that is still up
@@ -7095,63 +7378,36 @@ function Hud.Update(B, now, force)
 	if last.timer ~= timerText then
 		last.timer = timerText
 		Hud.timer.Text = timerText
-		Hud.timer.TextColor3 = (left < 15 and B.TimeLimit > 0) and SIGN.Red or SIGN.Gold -- (kit-b U9-6: on the navy plank)
+		Hud.timer.TextColor3 = (left < 15 and B.TimeLimit > 0) and SIGN.RedLip or KB.Ink -- (Pitch 2 item 06 A: on the stone card)
 	end
 	local bossUnit = Hud.boss.Visible and Hud.BossUnit(B) or nil
 	if bossUnit then
 		if force or last.bossHp ~= bossUnit.hp or last.bossMax ~= bossUnit.maxHp then
 			last.bossHp, last.bossMax = bossUnit.hp, bossUnit.maxHp
-			setBlocks(Hud.bossBar, healthBlocks(clamp(bossUnit.hp / bossUnit.maxHp, 0, 1), K.BOSS_BLOCKS))
+			-- (Pitch 2 item 06 A: the drain GIF's rule) the number changes on the same frame the blocks fall; "HP / max" on
+			-- every screen, in the track behind its divider
+			setBlocks(Hud.bossBar, healthBlocks(clamp(bossUnit.hp / bossUnit.maxHp, 0, 1), Hud.bossBar.count))
 			local hpText = Theme.Short(clamp(bossUnit.hp, 0, bossUnit.maxHp))
-			Hud.bossText.Text = Hud.compactTop and hpText or (hpText .. " / " .. Theme.Short(bossUnit.maxHp))
+			setText(Hud.bossText, hpText .. " / " .. Theme.Short(bossUnit.maxHp))
 		end
 	end
-	if Hud.pills.Visible then
-		local lethal = B.lethalPending == true
-		if last.enraged ~= B.enraged or last.lethal ~= lethal then
-			last.enraged, last.lethal = B.enraged, lethal
-			Hud.enragePill.Visible = B.enraged == true
-			Hud.enragePill.Text = lethal and "ENRAGED - DASH!" or "ENRAGED"
-		end
-		local minions, players = 0, {}
-		for _, u in ipairs(B.list) do
-			if u.kind == "Minion" and u.hp > 0 and u.state ~= S_DOWN then
-				minions = minions + 1
-			elseif u.side == 1 and u.owner ~= nil and u.kind ~= "Minion" then
-				players[u.owner] = true
-			end
-		end
-		local pc = 0
-		for _ in pairs(players) do
-			pc = pc + 1
-		end
-		if last.minions ~= minions then
-			last.minions = minions
-			Hud.minionPill.Visible = minions > 0 and not Hud.compactTop
-			Hud.minionPill.Text = "Minions x" .. minions
-		end
-		local showPlayers = (B.Mode == "Raid" or (B.Mode == "Dungeon" and pc > 1)) and not Hud.compactTop
-		if last.players ~= pc then
-			last.players = pc
-			Hud.playersPill.Visible = showPlayers and pc > 0
-			Hud.playersPill.Text = pc == 1 and "1 player" or (pc .. " players")
-		end
-		local d = B.Dungeon
-		local waveText = ""
-		if d and num(d.Waves, 0) > 0 then
-			waveText = "Wave " .. clamp(max(num(d.Wave, 1), B.wave or 0), 1, num(d.Waves, 1)) .. "/" .. num(d.Waves, 1)
-		end
-		if last.wave ~= waveText then
-			last.wave = waveText
-			Hud.wavePill.Visible = waveText ~= ""
-			Hud.wavePill.Text = waveText
-		end
-		-- (kit-b U9-6) each pill as wide as its text
-		local key = Hud.bossElement.Text .. "|" .. Hud.enragePill.Text .. "|" .. Hud.minionPill.Text .. "|" .. Hud.playersPill.Text .. "|" .. waveText .. "|" .. Hud.bossElement.TextSize
+	if Hud.pills.Visible and Hud.topArgs then
+		-- (Pitch 2 item 06 A) a pill that comes, goes or changes its words flows the rows again (the card grows by a row
+		-- where they wrap anew)
+		local m = Hud.m or Hud.Metrics()
+		local fpx = math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6)
+		local key = Hud.SetPills(B, Hud.BossUnit(B), Hud.tierPill.Visible and Hud.tierPill.Text or nil, m.Compact, fpx)
 		if last.pillKey ~= key then
+			local first = last.pillKey == nil
 			last.pillKey = key
-			for _, pill in ipairs({ Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill }) do
-				fitPill(pill)
+			if not first then
+				local h = Hud.topH
+				local a = Hud.topArgs
+				Hud.LayoutTop(a[1], a[2], a[3], a[4], a[5], a[6])
+				if Hud.topH ~= h then
+					Leave.Place(m, B, B.Fighter and not B.ended)
+					AreaWarn.Place(m, B)
+				end
 			end
 		end
 	end
@@ -7902,10 +8158,23 @@ function Leave.Paint()
 		if b.Parent then
 			live[#live + 1] = b
 			setText(b, text)
-			if b:GetAttribute("LeaveStyle") ~= style then
+			local slotW = b:GetAttribute("InCard")
+			if slotW then
+				-- (Pitch 2 item 06 A) the top card's plank: its slot's width, wider to the left while the text needs it
+				local ok, ms = pcall(Theme.Measure, text, "Button", b.TextSize)
+				local tw = max((ok and typeof(ms) == "Vector2") and ms.X or 0, #text * b.TextSize * 0.56) * 1.04 + 16
+				local want = max(slotW, math.ceil(tw))
+				if b.Size.X.Offset ~= want then
+					b.Size = UDim2.fromOffset(want, b.Size.Y.Offset)
+				end
+			end
+			-- (Pitch 2 item 06 A) the top card's plank is the pitch's small one: a 2 px edge and a 4 px lip
+			local weight = slotW and "Card" or "Plank"
+			if b:GetAttribute("LeaveStyle") ~= style or b:GetAttribute("LeaveWeight") ~= weight then
 				b:SetAttribute("LeaveStyle", style)
+				b:SetAttribute("LeaveWeight", weight)
 				local look = Leave.LOOK[style] or Leave.LOOK.Pink
-				signBlock(b, look[1], look[2], look[3], K.PLANK_LIP, K.PLANK_EDGE)
+				signBlock(b, look[1], look[2], look[3], slotW and 4 or K.PLANK_LIP, slotW and 2 or K.PLANK_EDGE)
 			end
 		end
 	end
@@ -7955,6 +8224,38 @@ function Leave.Place(m, B, isFighting)
 		return
 	end
 	b.AnchorPoint = Vector2.new(1, 1)
+	b:SetAttribute("InCard", nil)
+	local pad = b:FindFirstChild("LeaveHit")
+	if pad then
+		pad.Visible = false
+	end
+	if Hud.leaveSlot and Hud.topRect and Hud.top.Visible then
+		-- (Pitch 2 item 06 A) inside the top card's row 1, its right end (Hud.LayoutTop keeps the room): one card with the
+		-- mode, the timer and the boss. It grows to the left over the row while it says "No reward! Tap again"
+		local s = Hud.leaveSlot
+		b.AnchorPoint = Vector2.new(1, 0)
+		b.Position = UDim2.fromOffset(Hud.topRect[1] + s[1] + s[3], Hud.topRect[2] + s[2])
+		b.Size = UDim2.fromOffset(s[3], s[4])
+		b:SetAttribute("InCard", s[3])
+		b.TextSize = 18
+		b:SetAttribute("BaseText", 18)
+		do
+			-- a thumb's (a pointer's) 44 screen px: a clear hit pad (HitFor) centred on the plank, over it
+			if not pad then
+				pad = make("TextButton", { Name = "LeaveHit", Text = "", BackgroundTransparency = 1, AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 5,
+					AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) }, b)
+				pad:SetAttribute("HitFor", "LeaveButton")
+				pad.Activated:Connect(function()
+					Leave.Press()
+				end)
+			end
+			local hit = math.ceil(44 / max(0.05, m.F))
+			pad.Size = UDim2.fromOffset(max(s[3], hit), max(s[4], hit))
+			pad.Visible = true
+		end
+		Leave.Paint()
+		return
+	end
 	if not m.Compact then
 		b.Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H)
 		b.Position = UDim2.fromOffset(m.W - K.EDGE - 300, m.H - K.EDGE - 8)

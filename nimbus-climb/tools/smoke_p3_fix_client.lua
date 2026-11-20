@@ -577,8 +577,11 @@ local function landscapeChecks(BC, label, pets)
 	end
 	T.check(#others >= 4 and clash == nil, label .. ": the fighter block covers no top card, action button, vitals, hotbar or other button", tostring(clash))
 	local centred = {}
+	-- (kit-b Pitch 2 item 06 A: a phone's boss card is the approved "One strip" with its pills in the card; the pitch's
+	-- 844 x 390 card ends at 47% of the height, its pill row near the middle. Its depth is held by client_p5battle_*
+	-- (half the height on a landscape phone); its texts are not counted here)
 	for _, c in ipairs(KC.centredTexts(0.1)) do
-		if c.path:find("NimbusBattle", 1, true) then
+		if c.path:find("NimbusBattle", 1, true) and not c.path:find("Root.TopCard", 1, true) then
 			centred[#centred + 1] = c
 		end
 	end

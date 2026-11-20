@@ -799,7 +799,10 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	local grows = #fills >= 3 and peak > fills[1] + 0.5
 	T.check(grows, "raid: a telegraph fills up before the hit", #fills > 0 and (fmt(fills[1]) .. " -> " .. fmt(peak) .. " studs") or "no samples")
 	T.check(teleGone, "raid: a telegraph vanishes after its hit")
-	T.check(hasText(find("Root.TopCard"), "Storm Titan") and hasText(find("Root.TopCard"), "BOSS RAID %- High"), "raid HUD: the top card names the boss and the fight's tier")
+	-- (kit-b Pitch 2 item 06 A, the approved "One strip": row 1 is the wood RAID tag, the boss's name and its tier in the
+	-- muted ink, no "BOSS RAID - High" line; a narrow card's tier moves to a pill)
+	T.check(hasText(find("Root.TopCard"), "Storm Titan") and hasText(find("Root.TopCard"), "^RAID$") and hasText(find("Root.TopCard"), "^High$"),
+		"raid HUD: the top card names the boss and the fight's tier (RAID tag, name, tier)")
 	T.check(shown(find("Root.TopCard.BossBar")) and shown(find("Root.TopCard.BossBar.Hp.Blocks")), "raid HUD: the boss bar at the top centre")
 	T.check(shown(find("Root.Team.Fighter")) and shown(find("Root.Team.Helpers.Helper1")) and shown(find("Root.Team.Helpers.Helper2")), "raid HUD: my fighter card + two helper portraits")
 	-- a minion wave + enrage + a leaving team

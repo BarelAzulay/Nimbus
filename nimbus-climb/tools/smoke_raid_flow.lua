@@ -612,7 +612,9 @@ local function clientScenarios()
 
 	S.client_raid_flow = guarded("client_raid_flow", function()
 		startRaid("smoke_raidflow_1")
-		T.check(battleText("BOSS RAID %- Starter"), "raid flow client: the mode line names the tier")
+		-- (kit-b Pitch 2 item 06 A, the approved "One strip": the RAID tag, the boss's name and the tier on its own, no
+		-- "BOSS RAID - Starter" line)
+		T.check(battleText("^RAID$") and battleText("^Starter$"), "raid flow client: the top card names the tier (RAID tag + tier)")
 		endRaid("smoke_raidflow_1", { Tier = "Cooldown", AgainIn = 600, Tokens = 0, Xp = 0, Share = 1, Damage = 1000 }, true)
 		T.check(battleText("Rewards again in 10:00"), "raid flow client: a win inside the limit: the card says when rewards come again")
 		T.check(not battleText("Cooldown tier"), "raid flow client: ...and shows no medal called Cooldown")

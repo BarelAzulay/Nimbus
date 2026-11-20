@@ -353,6 +353,11 @@ local function hits(a, b)
 	return a.x0 < b.x1 - 1 and b.x0 < a.x1 - 1 and a.y0 < b.y1 - 1 and b.y0 < a.y1 - 1
 end
 
+-- a contains b (1 px slack)
+local function covers(a, b)
+	return a.x0 <= b.x0 + 1 and a.y0 <= b.y0 + 1 and a.x1 >= b.x1 - 1 and a.y1 >= b.y1 - 1
+end
+
 local function forfeits(from)
 	local n = 0
 	for _, e in ipairs(_G.KC.serverCalls("BattleCommand", from)) do
@@ -481,7 +486,12 @@ local function leaveProblem(b, w, h, others)
 	if b.Font ~= Theme.Fonts.Button then
 		return "font " .. tostring(b.Font) .. " is not Theme's Button role"
 	end
-	if r.x1 - r.x0 < 40 or r.y1 - r.y0 < 30 then
+	-- (kit-b Pitch 2 item 06 A: LEAVE is the boss card's row-1 plank, 84 x 34 design px as the approved pitch draws it; a
+	-- small plank hands its thumb to the kit's clear hit pad, HitFor = its name, >= 44 px each way over it)
+	local pad = b:FindFirstChild("LeaveHit")
+	local pr = pad and shown(pad) and pad:GetAttribute("HitFor") == b.Name and rect(pad)
+	local padOk = pr and pr.x1 - pr.x0 >= 43.5 and pr.y1 - pr.y0 >= 43.5 and covers(pr, r)
+	if (r.x1 - r.x0 < 40 or r.y1 - r.y0 < 30) and not padOk then
 		return string.format("too small to tap (%.0fx%.0f px)", r.x1 - r.x0, r.y1 - r.y0)
 	end
 	if r.x0 < -1 or r.y0 < -1 or r.x1 > w + 1 or r.y1 > h + 1 then
@@ -496,7 +506,20 @@ local function leaveProblem(b, w, h, others)
 		return "its text sits in the middle of the screen"
 	end
 	for _, o in ipairs(others) do
-		if hits(r, o[2]) then
+		-- (Pitch 2 item 06 A) inside the top card is LEAVE's own slot (row 1's right end): fine while it covers none of
+		-- the card's shown texts
+		local inCard = false
+		local tcard = at("Root.TopCard")
+		if o[1]:find("^Root%.TopCard") and tcard and covers(rect(tcard), r) then
+			inCard = true
+			for _, d in ipairs(at("Root.TopCard"):GetDescendants()) do
+				if d:IsA("TextLabel") and shown(d) and d.Text ~= "" and hits(r, rect(d)) then
+					inCard = false
+					break
+				end
+			end
+		end
+		if hits(r, o[2]) and not inCard then
 			return string.format("covers %s (LEAVE %.0f,%.0f-%.0f,%.0f; it %.0f,%.0f-%.0f,%.0f)", o[1], r.x0, r.y0, r.x1, r.y1, o[2].x0, o[2].y0, o[2].x1, o[2].y1)
 		end
 	end
@@ -843,11 +866,6 @@ local function areaMsg(d, payload, battleId)
 	Mock.Step(1 / 30)
 end
 
--- a contains b (1 px slack)
-local function covers(a, b)
-	return a.x0 <= b.x0 + 1 and a.y0 <= b.y0 + 1 and a.x1 >= b.x1 - 1 and a.y1 >= b.y1 - 1
-end
-
 -- the banner's problems at this viewport (nil = fine): readable, its text fits, in the top band, clear of the HUD's other parts; it
 -- may lie over the top card (the boss bar) only when it covers it whole (a phone: it takes the card's place for those seconds)
 local function bannerProblem(w, h)
@@ -878,7 +896,12 @@ local function bannerProblem(w, h)
 		if r.x0 < -1 or r.x1 > w + 1 or r.y0 < -1 then
 			return lb.Name .. " off the screen"
 		end
-		if r.y1 > h * 0.35 then
+		-- (kit-b Pitch 2 item 06 A: a phone's boss card is the approved "One strip", deeper than the old 35% band (the pitch's
+		-- 844x390 card ends at 47%); a banner that takes the card's place may go as deep as the card it covers, 6 px more)
+		local topCard = at("Root.TopCard")
+		local tc = topCard and shown(topCard) and rect(topCard)
+		local coverDepth = tc and covers(whole, tc) and (tc.y1 + 6) or 0
+		if r.y1 > math.max(h * 0.35, coverDepth) then
 			return string.format("%s reaches %.0f px down (the top band ends at %.0f)", lb.Name, r.y1, h * 0.35)
 		end
 		if not covers(whole, r) then
@@ -896,8 +919,13 @@ local function bannerProblem(w, h)
 			return "Sub: " .. how
 		end
 	end
+	-- (kit-b Pitch 2 item 06 A) LEAVE lives in the top card's row 1 now: a banner that takes the whole card's place
+	-- covers it with the card (a label sinks no tap: the plank under it still takes one)
+	local tcard = at("Root.TopCard")
+	local tcr = tcard and shown(tcard) and rect(tcard)
 	for _, o in ipairs(others) do
-		if hits(whole, o[2]) and not (o[1]:find("^Root%.TopCard") and covers(whole, o[2])) then
+		local partOfCard = o[1]:find("^Root%.TopCard") or (o[1] == "Root.LeaveButton" and tcr and covers(tcr, o[2]) and covers(whole, tcr))
+		if hits(whole, o[2]) and not (partOfCard and covers(whole, o[2])) then
 			return "the banner covers part of " .. o[1]
 		end
 	end

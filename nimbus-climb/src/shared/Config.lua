@@ -1476,6 +1476,16 @@ Config.Icons = {
 	Like = "heart",
 }
 
+-- (Pitch 2 item 06 A) the battle top card's boss head portrait: boss id -> the shared/TextureIds key of its baked pixel
+-- head (a 3 px-cell crop of the boss's own front voxel render, shown with ResampleMode Pixelated). A key with no id in
+-- TextureIds (none uploaded yet) draws no portrait: the top card is whole without it
+Config.BossHeads = {
+	storm_titan = "boss_head_storm_titan",
+	lava_golem = "boss_head_lava_golem",
+	frost_wyrm = "boss_head_frost_wyrm",
+	shadow_hydra = "boss_head_shadow_hydra",
+}
+
 -- Phase 6: the Blender models. Mesh key -> Roblox Model asset id, written only by tools/upload_assets.py into
 -- shared/MeshIds.lua. Empty = every model uses its Part build. See README "Phase 6" and ARCHITECTURE_V3.md "## Phase 6".
 Config.MeshAssets = require(script.Parent.MeshIds)
