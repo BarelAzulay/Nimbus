@@ -3559,17 +3559,30 @@ end
 
 -- (evolved forms) a hit that is no swing of its own: a Double strike's extra hit flashes on the victim; a Shield's Thorns (from the wearer, to its attacker) is a thin bolt back,
 -- one per RIPPLE_TICK_GAP (a boss's flurry would be a strobe). In the attacker's look: a Haste / Shield pet's flavour
+-- (Pitch 2 item 5 "Bounce in" A) on a dashing biter (AttackFx.DashTwist): a Double strike is a second chomp about 0.1 s
+-- after the bite, its gold sparks moved onto it; a Thorns prick snaps its head back and hops it away, the bolt on the bite
+function Atk.DashTwist(biter, kind, dueAt)
+	local AF = Atk.Mod()
+	if not (biter and AF and type(AF.DashTwist) == "function") then
+		return dueAt
+	end
+	local ok, at = pcall(AF.DashTwist, biter.id, kind, os.clock())
+	return (ok and type(at) == "number" and at == at) and at or dueAt
+end
+
 function Atk.HitTwist(B, ev, dueAt, v, a)
 	if not a or not Atk.Drawable(v) then
 		return "none"
 	end
 	if ev.double then
+		dueAt = Atk.DashTwist(a, "Double", dueAt)
 		return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Haste", Twist = "DoubleHit", From = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
 	end
 	if not Atk.Drawable(a) or (a.thornAt and dueAt - a.thornAt < K.RIPPLE_TICK_GAP) then
 		return "none"
 	end
 	a.thornAt = dueAt
+	dueAt = Atk.DashTwist(v, "Thorns", dueAt)
 	return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Shield", Twist = "Thorns", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, a) }))
 end
 
@@ -4178,7 +4191,8 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 	if ok and type(ps) == "table" and type(ps.Name) == "string" then
 		local cur = u.poseCur or {}
 		u.poseCur = cur
-		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach
+		-- (Pitch 2 item 5) Feet: the model's paw lines (the melee motion pivots about them: nothing sinks or slides)
+		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach, cur.Feet = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach, ps.Feet
 		pose, body, src = cur, poseBody(cur), "fx"
 		-- (battle-feel T2) a flurry's bite from the dash's edge: the held Forward (pose studs, scaled with the body below)
 		local fwd = num(ps.Forward, 0)
@@ -4205,6 +4219,8 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 			src = "ko"
 		elseif u.windup and not down and Atk.Drives(u) then
 			hold.Name, hold.P, hold.Ranged = "Windup", min(K.WINDUP_HOLD, max(0, now - (u.windAt or now)) / K.WINDUP_IN * 0.5), u.ranged == true
+			-- (Pitch 2 item 5) the melee wind-up rocks back about the hind paws (AttackFx.FeetOf: read once per model)
+			hold.Feet = (not u.ranged and type(AF.FeetOf) == "function") and AF.FeetOf(u.model) or nil
 			src = "hold"
 		elseif Atk.Idles(u, down, busy) then
 			hold.Name, hold.P, hold.Ranged = "IdleBattle", now + u.phase * K.IDLE_PHASE, false

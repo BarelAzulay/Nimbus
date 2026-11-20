@@ -16,11 +16,11 @@
 --                            "out" by landAt + 0.60; a dash with no hit after it returns all the same
 --   client_feel_dash_mine    my melee fighter's Hit (no Windup): dashed, its impact and its number 0.30 later (fxLate); Melee.Dash =
 --                            false: no dash, today's Strike, the number at the event
---   client_feel_dash_flurry  attacks 0.64 s apart stay in and bite in place (Strike Reach = Lunge on Forward = the edge), DashBack
+--   client_feel_dash_flurry  attacks 0.64 s apart stay in and bite from the edge (Pitch 2 item 5: a DashBite on Forward = the edge), DashBack
 --                            0.75 s after the last landing; attacks 1.1 s apart make a full round trip each time
 --   client_feel_dash_off     a gap under MinGap (1.5): no dash (false); Melee.Dash = false: false; Low graphics: the dash runs, no streak
 --   client_feel_dash_rejoin  (review fix) a dash caught on the hop back with its run starting later: the DashIn starts where the hop is AT t0
---   client_feel_dash_hop     (gate fix) Melee.Hop reaches PetPoses' DashIn: the hop peaks at the knob's studs (0.5 / 1.2 / 0; 9 clamps to 3)
+--   client_feel_dash_hop     (gate fix) Melee.Hop reaches PetPoses' DashIn: the first hop peaks at 1.1 x the knob (Pitch 2 item 5: 0.55 / 1.32 / 0 hops as 0.25 / 9 clamps to 3)
 --   client_feel_dash_gap     (review fix) at the shipped Standoff 0 a melee pet at the server's rest spot dashes at every raid boss with
 --                            room in its box (the Shadow Hydra's box reaches past it: today's Strike) and at a pet
 --   client_feel_dash_budget  eight melee pets dash at a boss in one frame: 4 streaks at most (mine kept), no new Instance between two
@@ -1236,9 +1236,15 @@ local function clientScenarios()
 	end
 
 	-- a pose's whole forward offset (pose studs): the PetPoses body's -Z plus the held edge (Forward)
+	-- (Pitch 2 item 5, kitb-p2-motion: the melee Bounce in turns the body about its paw lines, so the Body's position also
+	-- carries that turn (up to ~0.35 studs at a 15 deg nod); the pose's own move is PetPoses.Offset, where its paws stand.
+	-- For every pose that turns about its root, Offset is exactly the Body's position, as before)
 	local function fwdOf(PP, pose)
 		if type(pose) ~= "table" or type(pose.Name) ~= "string" then
 			return 0
+		end
+		if type(PP.Offset) == "function" then
+			return -PP.Offset(pose.Name, pose.P, pose.Ranged, pose.Amp, pose.Reach).Z + (tonumber(pose.Forward) or 0)
 		end
 		local s = PP.Sample(pose.Name, pose.P, pose.Ranged, pose.Amp, pose.Reach)
 		return -s.Body.Position.Z + (tonumber(pose.Forward) or 0)
@@ -1346,8 +1352,10 @@ local function clientScenarios()
 			local land3 = starts[3] + 0.45
 			env.runTo(land3)
 			local pose = AF.Pose(1)
-			T.check(pose ~= nil and pose.Name == "Strike" and pose.Reach ~= nil and abs(pose.Reach - M.Lunge) < 1e-6 and abs((pose.Forward or 0) - edge) < 0.05,
-				fmt("feel dash flurry: the flurry bites in place: a Strike lunge of Lunge 0.6 on Forward = the edge (%s, reach %s, forward %s)",
+			-- (Pitch 2 item 5 "Bounce in" A, the owner's pick: a flurry's bite is no longer the in-place Strike lunge but a
+			-- DashBite: a rebound hop back + a hop-bite onto the face, from the face (Reach 0 = 0 studs behind it))
+			T.check(pose ~= nil and pose.Name == "DashBite" and pose.Reach ~= nil and abs(pose.Reach) < 1e-6 and abs((pose.Forward or 0) - edge) < 0.05,
+				fmt("feel dash flurry: the flurry bites from the edge: a DashBite (rebound + hop-bite) on Forward = the edge (%s, reach %s, forward %s)",
 					tostring(pose and pose.Name), tostring(pose and pose.Reach), tostring(pose and pose.Forward)))
 			local backAt = land3 + M.FlurryBelow
 			env.runTo(backAt - 0.05)
@@ -1355,7 +1363,11 @@ local function clientScenarios()
 			env.runTo(backAt + 0.1)
 			T.check(AF.DashState(1) == "back" and AF.Pose(1) ~= nil and AF.Pose(1).Name == "DashBack", fmt("feel dash flurry: ... then the hop back (%s)", AF.DashState(1)))
 			env.runTo(backAt + M.Back + 0.05)
-			T.check(AF.DashState(1) == "out" and AF.Pose(1) == nil, fmt("feel dash flurry: ... and back at the rest spot (%s)", AF.DashState(1)))
+			T.check(AF.DashState(1) == "out", fmt("feel dash flurry: ... and back at the rest spot by Melee.Back (%s)", AF.DashState(1)))
+			-- (Pitch 2 item 5: the way home's pose is two hops by Melee.Back, then a rocking settle on the spot: it lasts
+			-- Melee.Back x PetPoses.BACK_POSE 1.4)
+			env.runTo(backAt + M.Back * (env.PP.BACK_POSE or 1) + 0.05)
+			T.check(AF.Pose(1) == nil, "feel dash flurry: ... its settle over by Melee.Back x BACK_POSE")
 			-- attacks 1.1 s apart: a full round trip each time
 			local trips, sawBack = 0, 0
 			local nextAt = env.clock + 0.05
@@ -1409,15 +1421,21 @@ local function clientScenarios()
 				sawIn = sawIn or (p ~= nil and p.Name == "DashIn")
 			end)
 			env.runTo(land + M.Bite + M.Hold + M.Back + 0.02)
-			T.check(sawIn and AF.DashState(3) == "out" and AF.Pose(3) == nil and AF.Stats().Errors == errors0,
+			T.check(sawIn and AF.DashState(3) == "out" and AF.Stats().Errors == errors0,
 				fmt("feel dash off: no hit: DashIn, then out by landAt + 0.60, no error (%s)", AF.DashState(3)))
+			-- (Pitch 2 item 5: the way home's settle on the spot runs to Melee.Back x PetPoses.BACK_POSE after bk)
+			env.runTo(land + M.Bite + M.Hold + M.Back * (env.PP.BACK_POSE or 1) + 0.05) -- (+ 0.05: runTo stops up to one 1/30 s frame short)
+			local left = AF.Pose(3)
+			T.check(left == nil, fmt("feel dash off: no hit: ... the pose over after the settle (landAt + 0.76; %s %s)", tostring(left and left.Name), tostring(left and left.P)))
 			T.check(AF.Stats().Streaks == 0, "feel dash off: ... and its streak is back in the pool")
 			-- Low graphics: the dash runs, no streak
 			AF.SetQuality("Low")
 			AF.Update(env.clock)
 			local land2 = env.clock + 0.45
 			T.check(AF.Dash(3, src, tgt, land2, env.clock, { Low = true }) == true and AF.Stats().Streaks == 0, "feel dash off: Low graphics: the dash runs, no Trail kit taken")
-			env.runTo(land2)
+			-- (Pitch 2 item 5: the hop-bite comes in moving, not eased in, so one 1/30 s frame short of the landing it is still
+			-- ~0.4 studs out; inside the hit stop (land .. land + 0.05) it stands on the edge)
+			env.runTo(land2 + 0.02)
 			T.check(AF.DashState(3) == "in" and abs(env.fwd(3) - 9.7) < 0.1, fmt("feel dash off: Low: at the edge at the landing (%.2f)", env.fwd(3)))
 			AF.SetQuality("High")
 			env.run(1)
@@ -1452,9 +1470,11 @@ local function clientScenarios()
 			local land2 = now + 0.45
 			local t0 = land2 - M.In
 			T.check(AF.Dash(unit, src, tgt, land2, now, { Tempo = 0.9 }) == true, "feel dash rejoin: the dash caught on the hop back is taken")
-			local p0 = math.max(0, math.min(1, (t0 - backAt) / backDur))
-			local smp = PP.Sample("DashBack", p0, false, 1, edge)
-			local want = -smp.Body.Position.Z
+			-- (Pitch 2 item 5: the way home's pose lasts Melee.Back x BACK_POSE (its segment's Dur), and its paw lines are its
+			-- Offset (the Body also carries the turn about them))
+			local poseDur = (type(d1.Back) == "table" and d1.Back.Dur) or backDur
+			local p0 = math.max(0, math.min(1, (t0 - backAt) / poseDur))
+			local want = type(PP.Offset) == "function" and -PP.Offset("DashBack", p0, false, 1, edge).Z or -PP.Sample("DashBack", p0, false, 1, edge).Body.Position.Z
 			local prevFwd, first = env.fwd(unit), nil
 			env.runTo(t0 + 0.2, function()
 				local pose = AF.Pose(unit)
@@ -1496,7 +1516,10 @@ local function clientScenarios()
 				return best
 			end
 			T.check(env.saved.Hop == 0.5, fmt("feel dash hop: (setup) the shipped Melee.Hop is 0.5 (%s)", tostring(env.saved.Hop)))
-			for i, case in ipairs({ { 0.5, 0.5 }, { 1.2, 1.2 }, { 0, 0 }, { 9, 3 } }) do
+			-- (Pitch 2 item 5 "Bounce in" A: the knob scales every Bounce-in hop; DashIn's first hop peaks at 1.1 x it (0.55 at
+			-- the shipped 0.5, the approved mock's); under 0.25 it hops as 0.25 (0.275 studs): a flatter hop lands like a
+			-- slide, the owner's complaint; the 3-stud clamp stays)
+			for i, case in ipairs({ { 0.5, 0.55 }, { 1.2, 1.32 }, { 0, 0.275 }, { 9, 3.3 } }) do
 				M.Hop = case[1]
 				local unit = 20 + 2 * i
 				local src, tgt = pair(env, 60 + 20 * i, unit)

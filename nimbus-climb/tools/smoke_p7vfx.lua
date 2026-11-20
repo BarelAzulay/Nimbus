@@ -1449,7 +1449,10 @@ end)
 -- p7vfx_poses: shared/PetPoses (Task 5) and the PetBuilder.Animate rig hook (opts.Pose, PetBuilder.PoseBody)
 ----------------------------------------------------------------------
 -- (battle-feel T2) + DashIn / DashBack: the melee dash in (holds at the edge) and the hop back to the rest spot
-local POSE_NAMES = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle", "DashIn", "DashBack" }
+-- (Pitch 2 item 5 "Bounce in" A, kitb-p2-motion) + DashBite / DashDouble / DashThorns / DashReady: a flurry's bite, a Double
+-- strike's second chomp, the Thorns hop away, the ready bounce (their beats: smoke_kitb_motion.lua melee_bounce_timing)
+local POSE_NAMES = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle", "DashIn", "DashBack",
+	"DashBite", "DashDouble", "DashThorns", "DashReady" }
 
 local function cfFinite(cf)
 	if typeof(cf) ~= "CFrame" then
@@ -1522,7 +1525,7 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 	for i, n in ipairs(POSE_NAMES) do
 		namesOk = namesOk and P.Names[i] == n
 	end
-	T.check(namesOk, "p7vfx poses: PetPoses.Names = Windup, Strike, Shoot, Recoil, Cast, Hurt, Ko, Victory, IdleBattle, DashIn, DashBack (in order)")
+	T.check(namesOk, "p7vfx poses: PetPoses.Names = Windup, Strike, Shoot, Recoil, Cast, Hurt, Ko, Victory, IdleBattle, DashIn, DashBack, DashBite, DashDouble, DashThorns, DashReady (in order)")
 	local loops = P.Loops or {}
 	local holds = P.Holds or {}
 	T.check(loops.IdleBattle == true and holds.Ko == true and holds.DashIn == true, "p7vfx poses: IdleBattle loops (p = time), Ko holds its downed end pose, DashIn holds at the edge")
@@ -1549,7 +1552,10 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 			for _, ranged in ipairs({ false, true }) do
 				for _, p in ipairs({ 0, 1 }) do
 					-- (battle-feel T2) DashBack starts at the edge DashIn holds (checked below)
-					if not (p == 1 and holds[name]) and not (p == 0 and name == "DashBack") then
+					-- (Pitch 2 item 5) DashIn starts from the melee Windup's loaded body, DashDouble / DashThorns from the bite's
+					-- nose-down landing (the chomp they replace): smoke_kitb_motion.lua melee_bounce_timing checks both joins
+					local joins = name == "DashBack" or name == "DashIn" or name == "DashDouble" or name == "DashThorns"
+					if not (p == 1 and holds[name]) and not (p == 0 and joins) then
 						local s = P.Sample(name, p, ranged)
 						local ok = isIdentity(s.Body) and s.Lids == 0 and (s.Still or 0) == 0
 						for _, g in pairs(s.Groups) do
@@ -1565,6 +1571,9 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 
 	-- (battle-feel T2) the dash pair: DashIn holds at the edge (p 1: body.Z == -reach, nothing else moved), its low hop
 	-- peaks in the last quarter of the run (p 0.585 .. 0.78); DashBack starts exactly there and lands at rest; both finite
+	-- (Pitch 2 item 5 "Bounce in" A: the glide + low hop became a hop / nod / hop-bite: the first hop is the high one, over
+	-- the first 0.13 of Melee.In's 0.30 s (p 0 .. 13/30 x DASH_RUN); the run reaches the edge at DASH_RUN 5/7, read at the
+	-- pose's own move PetPoses.Offset since the body also carries the nose-down turn about the front paws there)
 	do
 		local reach = 9.7
 		local edge = P.Sample("DashIn", 1, false, 1, reach)
@@ -1580,14 +1589,14 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 			local p = i / 200
 			local s = P.Sample("DashIn", p, false, 1, reach)
 			finiteAll = finiteAll and sampleOk(s) and sampleOk(P.Sample("DashBack", p, false, 1, reach))
-			if p <= 0.78 + 1e-9 and s.Body.Position.Y > peakY then
+			if p <= P.DASH_RUN + 1e-9 and s.Body.Position.Y > peakY then
 				peakY, peakP = s.Body.Position.Y, p
 			end
 		end
 		T.check(finiteAll, "p7vfx poses: DashIn / DashBack finite at every p (reach 9.7)")
-		T.check(peakP >= 0.585 - 1e-9 and peakP <= 0.78 + 1e-9 and peakY > 0.3, fmt("p7vfx poses: DashIn's low hop peaks in the last quarter of the run (p %.3f, %.2f studs)", peakP, peakY))
-		local run = P.Sample("DashIn", 0.78, false, 1, reach)
-		T.check(math.abs(run.Body.Position.Z + reach) < 1e-3, fmt("p7vfx poses: DashIn's run reaches the edge at p 0.78 (DASH_RUN %s)", tostring(P.DASH_RUN)))
+		T.check(peakP >= 0 and peakP <= 13 / 30 * P.DASH_RUN + 1e-9 and peakY > 0.3, fmt("p7vfx poses: DashIn's first hop is its high one, over the first 0.13 s of the run (p %.3f, %.2f studs)", peakP, peakY))
+		local run = P.Offset("DashIn", P.DASH_RUN, false, 1, reach)
+		T.check(math.abs(P.DASH_RUN - 5 / 7) < 1e-9 and math.abs(run.Z + reach) < 1e-3, fmt("p7vfx poses: DashIn's run reaches the edge at p DASH_RUN 5/7 (%s)", tostring(P.DASH_RUN)))
 	end
 
 	-- no pops: neighbouring samples (dp = 0.005; the loop: dt = 0.005 s over 12 s) stay close
@@ -1707,8 +1716,16 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 	end
 	T.check(highest <= 12, "p7vfx poses: no pose raises the wings more than 12 deg (evolved wings rest near upright)", fmt("%.1f deg (%s)", highest, highestAt))
 
+	-- (Pitch 2 item 5 "Bounce in" A, the owner: "the wind-up looked wrong": the melee crouch sank the paws 0.25 studs into
+	-- the floor. Now it rocks back about its hind paws: the root never drops, the nose rises 15 deg by WINDUP_LOAD; the
+	-- ranged wind-up keeps its 0.25 crouch (its rear back is not item 5's))
 	local crouch = extreme(P, "Windup", false, height, false)
-	T.check(crouch < -0.235 and crouch > -0.27, "p7vfx poses: Windup crouches 0.25 studs", fmt("%.3f", crouch))
+	local rock = extreme(P, "Windup", false, function(s)
+		return deg(math.asin(math.max(-1, math.min(1, s.Body.LookVector.Y))))
+	end, true)
+	T.check(crouch > -1e-6 and rock > 14.5 and rock < 16, "p7vfx poses: the melee Windup rocks back 15 deg, never crouching (Pitch 2 item 5)", fmt("lowest %.3f, nose %.1f deg", crouch, rock))
+	local rCrouch = extreme(P, "Windup", true, height, false)
+	T.check(rCrouch < -0.235 and rCrouch > -0.27, "p7vfx poses: the ranged Windup crouches 0.25 studs", fmt("%.3f", rCrouch))
 	local back = extreme(P, "Windup", false, sweepOf, true)
 	T.check(back > 22 and back < 28, "p7vfx poses: Windup sweeps the wings back 25 deg", fmt("%.1f deg", back))
 	local tailUp = extreme(P, "Windup", false, function(s)
