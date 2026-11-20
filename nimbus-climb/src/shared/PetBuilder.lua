@@ -3091,28 +3091,31 @@ end
 local EVO = { Species = {}, Wings = {}, Pets = {}, Ground = -18 }
 local ASC = { Pets = {} } -- the second evolution (Epic and up), see "Second evolution" below
 
--- the evolved eye (High, sculpted at 1.6x): 10 x 11 voxels, lash line on top, a big highlight top left, a small one
--- lower right, the pupil in a coloured iris that lightens towards the bottom
+-- the evolved eye (High): a 6 x 7 eye (Pitch 2 item 7 A "Trim", about 25 % smaller than the old 8 x 9 one, which
+-- the owner found too big in the arena): lash line on top, a 2 x 2 highlight top left, a small one lower right, the
+-- pupil in a coloured iris band with a lower glint. The "." border keeps the shipped 8 x 9 grid, so the eye stays
+-- centred on the spot EVO.Face gives it (addEyes anchors the outer column and the top row; "." carves nothing).
 EYE_MASKS.Evo = {
+	". . . . . . . .",
 	". . L L L L . .",
-	". L P P P P L .",
-	"L S S P P P P L",
-	"P S S S P P P P",
-	"P S S P P P P I",
-	"I P P P P I S I",
-	"I I P P I I S I",
-	". I G G G G I .",
+	". L S S P P L .",
+	". P S S P P P .",
+	". P S P P P I .",
+	". I P P I S I .",
 	". . I G G I . .",
+	". . . I I . . .",
+	". . . . . . . .",
 }
--- the fierce evolved eye (dragons, Stormfang): the upper edge slants down towards the nose
+-- the fierce evolved eye (dragons, Stormfang): 6 x 5 in the shipped 8 x 7 grid, the upper edge slants down towards
+-- the nose
 EYE_MASKS.EvoFierce = {
-	"L L L . . . . .",
-	"L L L L L . . .",
-	"P S S L L L L .",
-	"P S S P P P L L",
-	"P S P P P P P I",
-	"I P P P P I S I",
-	". I G G G I I .",
+	". . . . . . . .",
+	". L L L . . . .",
+	". P S L L L . .",
+	". P S P P L L .",
+	". I P P P S I .",
+	". . I G G I . .",
+	". . . . . . . .",
 }
 EYE_MASKS.EvoFierceLow = {
 	"L L . .",
