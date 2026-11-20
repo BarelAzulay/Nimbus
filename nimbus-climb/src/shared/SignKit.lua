@@ -796,6 +796,14 @@ end
 -- the frame's top rim, and a wood bracket at each end holding it to the frame. The roof's box (its size, its place) is
 -- unchanged
 SignKit.AwningSizes = { Band = 24, Hang = 8, Bracket = 8 }
+
+-- (look review of finish pass A, major 1: the awning hung into the header band, its scallops over the Gifts window's Play
+-- time tab, the Index's title and the phone's GIFTS) where a window's awning goes: the Y (design px) that puts its box
+-- over the window's top edge `frameTop` (default 0) so that only its valance hangs over the frame, ending on the wood
+-- rim (Sizes.Rim): the awning sits ON the frame (the mock: F0_*_optA.png), never over the header's tabs, title or close
+function SignKit.RoofSeat(frameTop)
+	return (tonumber(frameTop) or 0) - (Z.RoofH + SignKit.AwningSizes.Hang - Z.Rim)
+end
 local AWNING = setmetatable({}, { __mode = "k" }) -- [roof] = the "w x h" its trim was built for
 function SignKit.Awning(roof, w, h)
 	local A = SignKit.AwningSizes

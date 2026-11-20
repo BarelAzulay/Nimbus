@@ -1153,12 +1153,16 @@ local function ribbonLayout(label, rib)
 	local pad = px(R.Pad)
 	local lead = tailW
 	if boxW > 0 and not centred then
-		local free = boxW - tw - 2 * (lead + pad)
-		if free < 0 then
-			pad = math.max(math.min(2, pad), pad + math.floor(free / 2))
-			free = boxW - tw - 2 * (lead + pad)
-			if free < 0 then
-				lead = math.max(0, lead + math.floor(free / 2))
+		-- the room beside the text: the pad gives way first (to 2 px), then the tails, then the last of the pad (a box
+		-- fitted to its text, as Fusion's, draws the band flush round it)
+		local room = math.max(0, boxW - tw)
+		if room < 2 * (lead + pad) then
+			pad = math.min(pad, math.max(2, math.floor(room / 2) - lead))
+			if room < 2 * (lead + pad) then
+				lead = math.max(0, math.floor(room / 2) - pad)
+			end
+			if room < 2 * (lead + pad) then
+				pad = math.floor(room / 2)
 			end
 		end
 	end
@@ -1193,10 +1197,12 @@ local function ribbonLayout(label, rib)
 			ribbonTail(tail, w, th, math.max(0, w - body), tail == rib.TailL and -1 or 1, { px(R.FoldW, 2), px(R.FoldH, 2) })
 		end
 	end
-	-- the letters drawn in from the edge the text starts on (the label's own text, hidden, stays where it was)
+	-- the letters drawn in from the edge the text starts on (the label's own text, hidden, stays where it was). The copy's
+	-- box keeps the label's width (moved by the inset, never narrowed): the inset is at most half the room beside the
+	-- text, so the glyphs stay inside the label's box, and a box fitted to its text still fits its copy's letters
 	local face = rib.TitleFace
-	face.Size = UDim2.new(1, -inset, 1, 0)
-	face.Position = UDim2.fromOffset(inR and 0 or inset, 0)
+	face.Size = UDim2.fromScale(1, 1)
+	face.Position = UDim2.fromOffset(inR and -inset or inset, 0)
 end
 
 -- the copy and the ribbon follow the label (a fade on the title fades the whole ribbon)

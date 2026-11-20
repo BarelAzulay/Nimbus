@@ -488,7 +488,7 @@ function H.build()
 	local header = Util.Create("Frame", { Name = "Header", BackgroundColor3 = C.Navy, BorderSizePixel = 0, ZIndex = 3, Parent = panel })
 	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = SIGN.NavyLip, BorderSizePixel = 0, ZIndex = 3, Parent = header })
 	U.Header = header
-	U.Roof = SignKit.Roof(panel, { Width = K.ROOF_W, Y = -10, ZIndex = 4 })
+	U.Roof = SignKit.Roof(panel, { Width = K.ROOF_W, Y = SignKit.RoofSeat(), ZIndex = 4 }) -- (F0 review) seated on the frame
 	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, TextColor3 = C.Gold, TextTruncate = Enum.TextTruncate.None })
 	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
 	U.Title:SetAttribute("RibbonBand", "Header")

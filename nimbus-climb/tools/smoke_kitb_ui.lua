@@ -2132,8 +2132,9 @@ local function serverScenarios()
 		T.check(tailL ~= nil and tailL.Position.X.Scale == 0 and leftmost == 0, "kitb title: a header title's ribbon starts at its box's left edge (the tail's notch too)",
 			fmt("left tail starts at %s px", tostring(leftmost)))
 		local faceIn = rib:FindFirstChild("TitleFace")
-		T.check(faceIn ~= nil and band ~= nil and faceIn.Position.X.Offset == band.Position.X.Offset + 16 and faceIn.Size.X.Offset == -faceIn.Position.X.Offset,
-			"kitb title: ...and its letters start 16 px in on the band, their box narrowed to match", faceIn and (tostring(faceIn.Position) .. " " .. tostring(faceIn.Size)) or "")
+		T.check(faceIn ~= nil and band ~= nil and faceIn.Position.X.Offset == band.Position.X.Offset + 16 and faceIn.Size == UDim2.fromScale(1, 1),
+			"kitb title: ...and its letters start 16 px in on the band (the copy's box the label's width, moved in: a box fitted to its text still fits them)",
+			faceIn and (tostring(faceIn.Position) .. " " .. tostring(faceIn.Size)) or "")
 		local tailR = rib:FindFirstChild("TailR")
 		local reach = -math.huge
 		if tailR then
@@ -7176,6 +7177,91 @@ local function clientScenarios()
 			T.check(numbers >= 20 and #comma == 0, fmt("%s: the windows' numbers read short (Theme.Short), none with a thousands separator (%d of %d)", tag, #comma, numbers),
 				table.concat(comma, "; ", 1, math.min(#comma, 20)))
 		end)
+		-- (look review of finish pass A, major 1: the awning hung into the header band, its scallops over the Daily's Play
+		-- time tab, the Index's PET INDEX and the phone's GIFTS; the Settings window wore a full-width one off the screen)
+		-- the awning SITS on the frame, as the mock's: its valance (AwningSizes.Hang under the roof's box) reaches no text,
+		-- title ribbon or control of the window, it is the kit's one short centred awning (at most 360 px), and with its
+		-- brackets it stays over the window and on the screen. In the Shop, Gifts, Pets, Index, Sky Trove and Settings at
+		-- every grid size it shows at
+		local Trove = U7.client("Controllers/TroveController")
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "finish awning", function(tag)
+				local vp = Mock.Viewport
+				local seen, bad = 0, {}
+				local function check(root, family)
+					for _, roof in ipairs(root and root:GetDescendants() or {}) do
+						if roof:GetAttribute("SignKit") == "Roof" and U8.shown(roof) and roof:FindFirstChild("FinishTrim") then
+							seen = seen + 1
+							local r = U8.rect(roof)
+							local sc = r.B > r.Y and (r.B - r.Y) / math.max(1, roof.Size.Y.Offset) or 1
+							local hang, br = r.B + SK.AwningSizes.Hang * sc, SK.AwningSizes.Bracket * sc
+							local wr = U8.rect(roof.Parent)
+							if roof.Size.X.Offset > 360 then
+								bad[#bad + 1] = fmt("%s: the awning is %d px wide (the kit's short awning is at most 360)", family, roof.Size.X.Offset)
+							end
+							if r.X - br < wr.X - 0.5 or r.R + br > wr.R + 0.5 or r.X - br < -0.5 or r.R + br > vp.X + 0.5 then
+								bad[#bad + 1] = fmt("%s: the awning %d..%d runs past its window %d..%d or the screen", family, r.X - br, r.R + br, wr.X, wr.R)
+							end
+							for _, d in ipairs(roof.Parent:GetDescendants()) do
+								local isText = (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and d.TextTransparency < 1
+								local isPart = d:IsA("GuiButton") or d:GetAttribute("Ribbon") == "Band" or d:GetAttribute("Ribbon") == "Tail"
+								if (isText or isPart) and U8.shown(d) and not d:IsDescendantOf(roof) and d:GetAttribute("TitleLook") ~= "Ribbon" then
+									local q = U8.rect(d)
+									if isText and not isPart then
+										-- a label's glyphs, not its box (a header title's box is the plate's height)
+										local tb = d.TextBounds
+										local mid = (q.Y + q.B) / 2
+										q = { X = q.X, R = q.R, Y = mid - tb.Y / 2, B = mid + tb.Y / 2 }
+									end
+									if q.R > r.X + 0.5 and q.X < r.R - 0.5 and q.Y < hang - 0.5 and q.B > r.Y + 0.5 then
+										bad[#bad + 1] = fmt("%s: the valance (to y %.0f) reaches %s (y %.0f..%.0f)", family, hang, d.Name, q.Y, q.B)
+									end
+								end
+							end
+						end
+					end
+				end
+				Shop.Open({ Tab = "Eggs" })
+				LKC.advance(1)
+				check(pg:FindFirstChild("NimbusShop"), "Shop")
+				pcall(Shop.Close)
+				LKC.advance(0.4)
+				pcall(Daily.Open)
+				LKC.advance(1)
+				check(pg:FindFirstChild("NimbusDaily"), "Gifts")
+				pcall(Daily.Close)
+				LKC.advance(0.4)
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1)
+				check(pg:FindFirstChild("NimbusPets"), "Pets")
+				PC.Close(true)
+				LKC.advance(0.4)
+				Menu.Open("Index")
+				LKC.advance(1)
+				check(pg:FindFirstChild("NimbusIndex"), "Index")
+				pcall(Menu.Close)
+				LKC.advance(0.4)
+				if Trove then
+					pcall(Trove.Open, {})
+					LKC.advance(1)
+					check(pg, "Sky Trove")
+					pcall(Trove.Close)
+					LKC.advance(0.4)
+				end
+				local MMC = MenuH.mmc()
+				if MMC then
+					MMC.CloseWindows()
+					MMC.OpenSettings()
+					LKC.advance(0.6)
+					check(MMC.Window(), "Settings")
+					MMC.CloseWindows()
+					LKC.advance(0.3)
+				end
+				T.check(seen >= (s[3] and 1 or 5), fmt("%s: the walk met the windows' awnings (%d)", tag, seen))
+				T.check(#bad == 0, fmt("%s: every awning sits on its frame, short and centred, clear of the header (%d off)", tag, #bad),
+					table.concat(bad, "; ", 1, math.min(#bad, 12)))
+			end)
+		end
 		LKC.flushErrors("finish_pass_kit")
 	end)
 

@@ -1098,7 +1098,7 @@ local function signPanel(props)
 	end
 	-- the awning: one fixed-size piece over the header's top rim (its lower part overlaps the rim, so it reads as the roof
 	-- of the sign and stays inside a window that sits right under Roblox's top bar)
-	local roof = SignKit.Roof(root, { Width = CloudUI.Metrics.SignRoofW, Y = -10, ZIndex = 3 })
+	local roof = SignKit.Roof(root, { Width = CloudUI.Metrics.SignRoofW, Y = SignKit.RoofSeat(), ZIndex = 3 }) -- (F0 review) seated on the frame
 
 	local panel = { Root = root, Body = body, Content = content, TitleBar = titleBar, TitleLabel = titleLabel, Roof = roof, Card = nil, Skin = "Signboard" }
 	function panel.Close()

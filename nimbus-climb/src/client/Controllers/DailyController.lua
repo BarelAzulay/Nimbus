@@ -177,7 +177,7 @@ local K = {
 	-- (U9-4 look review) the portrait window's awning (SignKit.Sizes.RoofPhoneW: look review 2, 240, its right end clear of
 	-- the close block), wherever ROOF_CLEAR px of clear screen lie over the window's top (never at 844x390, where the
 	-- window starts under Roblox's top bar)
-	ROOF_PHONE_W = SignKit.Sizes.RoofPhoneW, ROOF_CLEAR = 16,
+	ROOF_PHONE_W = SignKit.Sizes.RoofPhoneW, ROOF_CLEAR = 26, -- (F0 review) the seated awning: its box 20 + bracket 2 over the top, 4 clear
 	-- (U9-4 look review 2) a phone band's close: a CloseBlock px red block in the layout's Close px touch box (CloseTap
 	-- under it), its 3 px stroke CLOSE_INSET - 3 px inside the band's right end
 	CLOSE_INSET = 7,
@@ -1184,7 +1184,7 @@ function H.ensureWindow()
 	U.Title:SetAttribute("RibbonBand", "NoTails") -- (as the Shop's: the band ends square on the navy plank)
 	Theme.StyleTitle(U.Title)
 	-- the awning: one fixed-size piece over the top rim (never stretched with the window: the sign rule); PC only
-	U.Roof = SignKit.Roof(win, { Width = K.ROOF_W, Y = -10, ZIndex = 7 })
+	U.Roof = SignKit.Roof(win, { Width = K.ROOF_W, Y = SignKit.RoofSeat(), ZIndex = 7 }) -- (F0 review) seated on the frame
 	U.TabDaily = H.tabButton("Tab_Daily", "Daily")
 	U.TabPlay = H.tabButton("Tab_Play", "Play time")
 	U.TabDaily.Activated:Connect(function()

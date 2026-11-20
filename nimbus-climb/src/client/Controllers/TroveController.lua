@@ -88,11 +88,11 @@ local K = {
 	PREF_W = 520, PREF_H = 380, MIN_W = 420, MIN_H = 226,
 	MARGIN = 12, TOP_GAP = 8,
 	FRAME = 6, -- the wood frame round the stone body
-	ROOF_W = 360, ROOF_OVER = 10, -- the awning: a fixed 360 px, its top 10 design px over the panel's
+	ROOF_W = 360, ROOF_OVER = -SignKit.RoofSeat(), -- the awning: a fixed 360 px, its top 20 design px over the panel's (seated, F0 review)
 	-- (U9-4 look review) the portrait sheet's awning (SignKit.Sizes.RoofPhoneW: look review 2, 240, its right end clear of
 	-- the close block), wherever ROOF_CLEAR px of clear screen lie over the sheet's top (never on the landscape panel,
 	-- which starts under Roblox's top bar)
-	ROOF_PHONE_W = SignKit.Sizes.RoofPhoneW, ROOF_CLEAR = 16,
+	ROOF_PHONE_W = SignKit.Sizes.RoofPhoneW, ROOF_CLEAR = 26, -- (F0 review) the seated awning: its box 20 + bracket 2 over the top, 4 clear
 	-- (U9-4 look review 2) a phone plate's close: a CloseBlock px red block centred on the plate, its 3 px stroke
 	-- CLOSE_INSET - 3 px inside the plate's right end, over its Close px touch box ("CloseTap", under it): the Gifts window's
 	CLOSE_INSET = 7,
@@ -431,7 +431,7 @@ local function build(mode)
 	end
 	-- the awning: one fixed-size piece over the top rim (never stretched with the panel: the sign rule); PC 360, the
 	-- portrait sheet ROOF_PHONE_W where the sky over it is clear (layout), never the landscape phone panel
-	U.Roof = SignKit.Roof(panel, { Width = mode == "PC" and K.ROOF_W or K.ROOF_PHONE_W, Y = -K.ROOF_OVER, ZIndex = 7 })
+	U.Roof = SignKit.Roof(panel, { Width = mode == "PC" and K.ROOF_W or K.ROOF_PHONE_W, Y = SignKit.RoofSeat(), ZIndex = 7 }) -- (F0 review) seated on the frame
 	U.Roof.Visible = mode == "PC"
 	U.Subtitle = label(panel, "Subtitle", TEXT.Sub, "Body", math.max(15, M.Sub), {
 		TextColor3 = SIGN.Text, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,

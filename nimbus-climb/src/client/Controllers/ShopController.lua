@@ -710,7 +710,7 @@ function H.build()
 	NeonKit.CloseMark(U.Close, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- the drawn X in a Danger block's brown ink
 	NeonKit.CloseBlock(U.Close) -- (LOOK-ui, kitb-look1) the windows' one close block: its x in 3 px cells (was 2 at the 0.8 Fit)
 	-- the awning: one fixed-size piece over the top rim (never stretched with the window: the sign rule)
-	U.Roof = SignKit.Roof(holder, { Width = K.ROOF_W, Y = -10, ZIndex = 3 })
+	U.Roof = SignKit.Roof(holder, { Width = K.ROOF_W, Y = SignKit.RoofSeat(), ZIndex = 3 }) -- (F0 review) seated on the frame
 
 	-- the rail: stone tab blocks, the selected one gold (H.selectTab paints them)
 	local rail = frame("Rail", holder)
@@ -1367,7 +1367,7 @@ function H.layout()
 	U.Fit.Scale = r.scale
 	-- (kit-b U9-2) the awning reaches 10 px over the top on PC; no roof on a phone (the Pets rule: a phone window starts
 	-- right under Roblox's top bar, and inside the short header the roof lay across the title and the pills)
-	U.Roof.Position = UDim2.new(0.5, 0, 0, -10)
+	U.Roof.Position = UDim2.new(0.5, 0, 0, SignKit.RoofSeat())
 	U.Roof.Visible = r.mode ~= "Phone"
 
 	H.layoutHeader(W, R)

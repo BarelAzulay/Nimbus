@@ -1753,7 +1753,9 @@ function Win.open(name, title, icon, prefH, reopen)
 		M.Ui.Swing.Visible = false
 	end
 	local sign = H.frame(name .. "Sign", { Size = UDim2.fromScale(1, 1) }, holder)
-	SignKit.Roof(sign, { Width = w + 20, ZIndex = 3 })
+	-- (look review of finish pass A, major 1: a full-width awning ran past the window and off the screen) the kit's one
+	-- short awning, centred and seated on the header's rim as every window's (SignKit.RoofSeat)
+	SignKit.Roof(sign, { Width = w >= 400 and 360 or SignKit.Sizes.RoofPhoneW, Y = SignKit.RoofSeat(D.HEAD_Y), ZIndex = 3 })
 	local room = w - 2 * Z.Rim - (12 + Z.IconSlot + 12) - (D.CLOSE + 20)
 	local size = Theme.RoleSize("Title")
 	while size > 22 do
