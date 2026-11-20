@@ -7390,6 +7390,67 @@ local function clientScenarios()
 				LKC.advance(0.4)
 			end)
 		end
+		-- (look review of finish pass A, major 4) the Pets window on PC: the grid never leaves an empty band under the cards
+		-- (it was about 220 px tall at 1920): the rows fill with sunk wells marked +, whole rows, the last row reaching the
+		-- view's foot; the sort row carries the pet count on its right and the Strongest chevron; the team's busy helpers
+		-- read "2 helpers in the garden" under a dotted rule, below the breakdown
+		for _, s in ipairs({ { 1920, 1080 }, { 1280, 720 } }) do
+			U8.at(s[1], s[2], false, "finish pets", function(tag)
+				-- the mock's team: a fighter and two helpers, both helpers in the Pet Garden
+				U8.feed({ U8.KEYS[1], U8.KEYS[2], U8.KEYS[3] }, { U8.KEYS[2], U8.KEYS[3] }, nil, nil, nil, { Garden = 3 })
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1.2)
+				local win = pg:FindFirstChild("NimbusPets")
+				local grid = win and win:FindFirstChild("Grid", true)
+				local cells, empties, plus = {}, 0, 0
+				for _, c in ipairs(grid and grid:GetChildren() or {}) do
+					if c:IsA("GuiObject") and U8.shown(c) and (c.Name:match("^Card_") or c:GetAttribute("Slot") == "Empty") then
+						cells[#cells + 1] = U8.rect(c)
+						if c:GetAttribute("Slot") == "Empty" then
+							empties = empties + 1
+							for _, d in ipairs(c:GetDescendants()) do
+								if d:GetAttribute("PixelIcon") == "plus" then
+									plus = plus + 1
+									break
+								end
+							end
+						end
+					end
+				end
+				local xs, lowest, cellH = {}, -math.huge, 0
+				for _, r in ipairs(cells) do
+					xs[math.floor(r.X + 0.5)] = true
+					lowest = math.max(lowest, r.B)
+					cellH = math.max(cellH, r.B - r.Y)
+				end
+				local cols = 0
+				for _ in pairs(xs) do
+					cols = cols + 1
+				end
+				local view = grid and U8.rect(grid)
+				local band = view and (view.B - lowest) or math.huge
+				T.check(empties > 0 and plus == empties and cols > 0 and #cells % cols == 0 and band < cellH,
+					tag .. ": the pet grid fills whole rows with sunk + wells, no empty band under the cards",
+					fmt("%d cells (%d wells, %d with +) in %d columns, %.0f px under the last row (a cell is %.0f)", #cells, empties, plus, cols, band, cellH))
+				local count = win and win:FindFirstChild("PetCount", true)
+				T.check(count and U8.shown(count) and tostring(count.Text):match("^%d+ pets$"), tag .. ": the sort row shows the pet count on its right",
+					count and count.Text or "missing")
+				local sort = win and win:FindFirstChild("SortButton", true)
+				local chev = sort and sort:FindFirstChild("LeadIcon")
+				T.check(chev and chev:GetAttribute("PixelIcon") == "down" and U8.shown(chev), tag .. ": the sort plank leads with its chevron")
+				local busy, rule, crumbs = win and win:FindFirstChild("TeamBusy", true), win and win:FindFirstChild("TeamRule", true), win and win:FindFirstChild("TeamBreakdown", true)
+				local dots = 0
+				for _, d in ipairs(rule and rule:GetChildren() or {}) do
+					dots = dots + (d:GetAttribute("Rule") == "Dot" and 1 or 0)
+				end
+				T.check(busy and U8.shown(busy) and busy.Text == "2 helpers in the garden" and rule and U8.shown(rule) and dots >= 10 and crumbs
+					and U8.rect(rule).Y >= U8.rect(crumbs).Y and U8.rect(busy).Y >= U8.rect(rule).B,
+					tag .. ": the team's busy helpers under a dotted rule ('2 helpers in the garden')",
+					fmt("'%s' shown %s, rule %s with %d dots", busy and busy.Text or "missing", tostring(busy and U8.shown(busy)), tostring(rule and U8.shown(rule)), dots))
+				PC.Close(true)
+				LKC.advance(0.4)
+			end)
+		end
 		LKC.flushErrors("finish_pass_kit")
 	end)
 

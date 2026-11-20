@@ -1084,6 +1084,12 @@ function H.build()
 			end
 		end
 	end)
+	-- (Pitch 2 F0 A, look review of finish pass A, major 4) the sort row's pet count on its right, the team's busy helpers
+	-- ("2 helpers in the garden") under a dotted rule below the breakdown, and the grid's empty slots (H.fillEmpty)
+	U.PetCount = text(U.Content, "PetCount", "", "Heading", 20, MUTED, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Visible = false })
+	U.TeamRule = SignKit.Rule(U.Content, { Name = "TeamRule", ZIndex = 2, Visible = false })
+	U.TeamBusy = text(U.Content, "TeamBusy", "", "Body", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2, Visible = false })
+	U.Empties = {}
 	-- pick mode's banner: a small navy sign with the gold words
 	U.Banner = text(U.Content, "PickBanner", "", "Heading", 20, GOLD, {
 		BackgroundTransparency = 0,
@@ -1562,6 +1568,7 @@ function H.layoutPC(W, H0)
 	end
 	U.Breakdown.Visible = true
 	U.AutoFill.TextSize, U.Clear.TextSize, U.Undo.TextSize = 22, 20, 22
+	S.BusyRoom = false
 	if stacked then
 		local barY = top + slot - 60
 		local clearW = K.STACK_CLEAR_W
@@ -1582,7 +1589,12 @@ function H.layoutPC(W, H0)
 		-- render's font metrics), so at 257 px it ran into Auto-fill best
 		U.TeamPower.TextSize = powerW >= K.POWER_28_W and 28 or 24
 		place(U.TeamPower, powerX, top + 8, powerW, 36)
-		place(U.Breakdown, powerX, top + 50, powerW, slot - 54)
+		-- (F0 review) the breakdown's two lines, the dotted rule, the busy helpers' line (the mock's team column)
+		place(U.Breakdown, powerX, top + 46, powerW, 48)
+		SignKit.SetRule(U.TeamRule, math.min(powerW, 300))
+		U.TeamRule.Position = UDim2.fromOffset(powerX, top + 100)
+		place(U.TeamBusy, powerX, top + 108, powerW, 26)
+		S.BusyRoom = true
 		place(U.AutoFill, buttonX, top + 8, buttonW, 60)
 		place(U.Clear, buttonX, top + 80, buttonW, 60)
 		for i, button in ipairs(U.Presets) do
@@ -1602,6 +1614,8 @@ function H.layoutPC(W, H0)
 	local cancelW = math.max(46, tap)
 	place(U.Sort, x0 + 14, bodyY + 10, 150, tap)
 	U.Sort.TextSize = 20
+	place(U.PetCount, x0 + wellW - 14 - 220, bodyY + 10, 220, tap)
+	S.CountRoom = true
 	place(U.Banner, x0 + 172, bodyY + 10, wellW - 172 - cancelW - 20, tap)
 	U.Banner.TextSize = 20
 	place(U.PickCancel, x0 + wellW - 14 - cancelW, bodyY + 10, cancelW, tap)
@@ -1614,6 +1628,7 @@ function H.layoutPC(W, H0)
 	U.GridLayout.CellPadding = UDim2.fromOffset(K.PC_CARD[3], K.PC_CARD[3])
 	H.gridPad(6)
 	SignKit.Scroll(U.Grid) -- (LOOK-ui) the kit's one bar
+	H.fillEmpty()
 end
 
 function H.layoutPhone(W, H0)
@@ -1685,6 +1700,7 @@ function H.layoutPhone(W, H0)
 	end
 	U.TeamPower.TextSize = 15
 	U.Breakdown.Visible = false
+	S.BusyRoom, S.CountRoom = false, false
 	for _, button in ipairs(U.Presets) do
 		button.TextSize = 18
 	end
@@ -1700,6 +1716,7 @@ function H.layoutPhone(W, H0)
 	U.GridLayout.CellPadding = UDim2.fromOffset(K.PHONE_CARD[3], K.PHONE_CARD[3])
 	H.gridPad(2)
 	SignKit.Scroll(U.Grid, SignKit.Sizes.ScrollBarPhone)
+	H.fillEmpty()
 	place(U.D.Frame, sheetX, sheetY, sheetW, sheetH)
 	U.D.Frame.Name = "Sheet"
 	H.layoutDetail(sheetW, sheetH)
@@ -1817,6 +1834,9 @@ function H.layout()
 	else
 		H.layoutPC(W, H0)
 	end
+	-- (F0 review) the sort plank leads with its chevron (led once it has its size and text)
+	PixelIcon.Lead(U.Sort, "down", { Px = phone and 12 or 18 })
+	H.showTeamExtras()
 	if modeChanged then
 		for _, item in pairs(U.Cards) do
 			H.layoutCard(item)
@@ -1982,6 +2002,7 @@ function H.refreshTop()
 	end
 	U.Banner.Visible = picking
 	U.PickCancel.Visible = picking
+	H.showTeamExtras() -- (F0 review) the pet count gives the banner its row while picking
 	if picking then
 		U.Banner.Text = S.Pick == 1 and "Pick your fighter" or ("Pick a helper for slot " .. S.Pick)
 	end
@@ -2023,6 +2044,61 @@ end
 
 -- Card viewports attach under a per-frame time budget, so a big collection never builds ~30 models in the frame the window
 -- opens; until then a card is its rarity tile.
+-- (Pitch 2 F0 A: "empty slots drawn as sunk wells with a +"; look review of finish pass A, major 4: the grid left an empty
+-- band about 220 px tall under the 12 cards at 1920) after the cards the grid's rows fill with sunk wells marked +: up to
+-- the view's last whole row, else to the end of the last card's row. None while there are no pets (the Empty card shows)
+function H.fillEmpty()
+	local grid, layout = U.Grid, U.GridLayout
+	if not (grid and layout and U.Empties) then
+		return
+	end
+	local n = #(S.Order or {})
+	local cs, cp = layout.CellSize, layout.CellPadding
+	local cw, ch, gx, gy = cs.X.Offset, cs.Y.Offset, cp.X.Offset, cp.Y.Offset
+	local pad = U.GridPad
+	local w = grid.Size.X.Offset - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0)
+	local h = grid.Size.Y.Offset - (pad and (pad.PaddingTop.Offset + pad.PaddingBottom.Offset) or 0)
+	local cols = math.max(1, math.floor((w + gx) / math.max(1, cw + gx)))
+	local rows = math.max(0, math.floor((h + gy) / math.max(1, ch + gy)))
+	local want = n > 0 and (math.max(rows, math.ceil(n / cols)) * cols - n) or 0
+	local tint = Theme.Mix(SIGN.Well, SIGN.WellEdge, 0.7)
+	for i = 1, math.max(want, #U.Empties) do
+		local well = U.Empties[i]
+		if i <= want then
+			if not well then
+				well = Instance.new("Frame")
+				well.Name = "EmptySlot_" .. i
+				well.BorderSizePixel = 0
+				well.ZIndex = 3
+				well:SetAttribute("Slot", "Empty")
+				CloudUI.SignBlock(well, "Off")
+				local icon = PixelIcon.New(well, "plus", 18, tint)
+				icon.AnchorPoint = Vector2.new(0.5, 0.5)
+				icon.Position = UDim2.fromScale(0.5, 0.5)
+				icon:SetAttribute("PixelIcon", "plus")
+				well.Parent = grid
+				U.Empties[i] = well
+			end
+			well.LayoutOrder = n + i
+			well.Visible = true
+		elseif well then
+			well.Visible = false
+		end
+	end
+end
+
+-- the pet count and the busy helpers' line where the layout gave them room (not while picking: the banner and Cancel
+-- take the sort row)
+function H.showTeamExtras()
+	if not U.PetCount then
+		return
+	end
+	U.PetCount.Visible = S.CountRoom == true and S.Pick == nil and U.PetCount.Text ~= ""
+	local busy = S.BusyRoom == true and U.TeamBusy.Text ~= ""
+	U.TeamBusy.Visible = busy
+	U.TeamRule.Visible = busy
+end
+
 function H.fillCards()
 	if S.Filling then
 		return
@@ -2535,6 +2611,27 @@ function H.refresh()
 	H.refreshSlots(keys)
 	H.refreshTop()
 	H.refreshDetail(keys, order)
+	-- (F0 review) the pet count, the busy helpers' line and the grid's empty wells follow the pets
+	U.PetCount.Text = #order == 1 and "1 pet" or (#order .. " pets")
+	local garden, training = 0, 0
+	for _, key in ipairs(keys) do
+		local busy = Bits.busyOf(key)
+		if busy == "Training" then
+			training = training + 1
+		elseif busy then
+			garden = garden + 1
+		end
+	end
+	local lines = {}
+	if garden > 0 then
+		lines[#lines + 1] = string.format("%d %s in the garden", garden, garden == 1 and "helper" or "helpers")
+	end
+	if training > 0 then
+		lines[#lines + 1] = string.format("%d in training", training)
+	end
+	U.TeamBusy.Text = table.concat(lines, ", ")
+	H.fillEmpty()
+	H.showTeamExtras()
 end
 
 ----------------------------------------------------------------------
