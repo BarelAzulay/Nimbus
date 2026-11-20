@@ -1111,13 +1111,25 @@ function H.phoneChecks(BC, label)
 	-- and every state pill in one card; the pitch's 844 x 390 card ends at 47% of the height. It may reach that deep, no
 	-- further: half the height on a landscape phone, 40% on a portrait one; the rest of the HUD keeps the centre clear)
 	local topCard = H.find("Root.TopCard")
+	-- (P2 fix A, the test was stale) a portrait phone's boss strip spans the top (item 06 A); the fighter card goes right
+	-- under it, as the pitch's portrait draws it (01_phone_buttons_opt*_390x844.png: the strip 62..205, the fighter card
+	-- 215..300, 35.5% of the height). That card is part of the top stack: it may reach the strip's depth (40%), no further
+	local fighter = nil
 	if topCard and H.shown(topCard) then
 		local tr = H.rect(topCard)
 		local deep = Hh * (W > Hh and 0.5 or 0.4)
 		T.check(tr.y1 <= deep + 0.5, label .. ": the top card ends above " .. (W > Hh and "half" or "40%") .. " of the height", H.rectText(tr))
+		local f = H.find("Root.Team.Fighter")
+		if W < Hh and tr.x1 - tr.x0 >= W * 0.9 and f and H.shown(f) then
+			fighter = f
+			local fr = H.rect(f)
+			T.check(fr.y0 >= tr.y1 and fr.y1 <= deep + 0.5, label .. ": under the boss strip the fighter card ends above 40% of the height",
+				H.rectText(fr) .. " | strip " .. H.rectText(tr))
+		end
 	end
 	for _, o in ipairs(root and root:GetDescendants() or {}) do
 		local stack = (cheer and (o == cheer or o:IsDescendantOf(cheer))) or o == cheerGlow or (topCard and (o == topCard or o:IsDescendantOf(topCard)))
+			or (fighter and (o == fighter or o:IsDescendantOf(fighter)))
 		if not stack and ((o:IsA("GuiObject") and H.shown(o) and o.BackgroundTransparency < 1) or (o:IsA("TextLabel") and H.shown(o) and o.Text ~= "")) then
 			local r = H.rect(o)
 			if r.x1 - r.x0 > 2 and H.overlap(r, box) then

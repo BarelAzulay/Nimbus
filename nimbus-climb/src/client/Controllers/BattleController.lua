@@ -6062,8 +6062,11 @@ function Hud.LayoutEnemies(B, m)
 	-- its left end where a key (DASH) stands under the right one. One row stays whatever the room
 	local keys = Hud.listKeys
 	local left, top = m.W - K.EDGE - w, Hud.listTop or K.EDGE
+	-- (P2 fix A: under a portrait phone's boss strip the list starts under the HUD's strips, and its second row reached the
+	-- screen's centre band at 390 x 844) there its rows stop above the band (Hud.BandTop), as the top card's do
+	local bandRoom = (Hud.bandOn == true and Hud.BandMode(B, m)) and (Hud.BandTop(m) - top) or nil
 	local function room(x0, x1) -- a list-local span -> its design px from the list's top to the first key under it
-		local out = math.huge
+		local out = bandRoom or math.huge
 		for _, k in ipairs(keys or {}) do
 			if k.X1 > left + x0 and k.X0 < left + x1 then
 				out = min(out, k.Y0 - top - 4)
@@ -6084,7 +6087,7 @@ function Hud.LayoutEnemies(B, m)
 		end
 		return bottom <= room(0, tagW) and 0 or false
 	end
-	if keys then
+	if keys or bandRoom then
 		while maxRows > 1 and (maxRows * (h + K.ROW_GAP) - K.ROW_GAP > room(0, w) or tagSide(maxRows) == false) do
 			maxRows = maxRows - 1
 		end
@@ -6369,6 +6372,15 @@ function Hud.Rebuild()
 	Hud.bandOn = band == true -- (LayoutTop reads it: the strip only while the HUD's strips are held under it)
 	if band then
 		Hud.LayoutTop(B, m, 0, 0, K.EDGE, true)
+		-- (P2 fix A: at 360 x 640 the fighter card and its helpers under the strip reached the vitals slot, where Cheer up!
+		-- and Retreat stack) a short portrait phone keeps the right column's card where the fighter's block under the strip
+		-- would reach that stack (Hud.BandRoom)
+		if (isFighting or between) and not Hud.BandRoom(B, m, K.EDGE + (Hud.topH or 0) + 8) then
+			band = false
+			Hud.bandOn = false
+		end
+	end
+	if band then
 		local bandBottom = K.EDGE + (Hud.topH or 0)
 		Hud.SetTopReserve(bandBottom * m.F)
 		curBottom, curLeft, curRight = Hud.CurrencyTop(m)
@@ -8500,6 +8512,24 @@ end
 -- it out first; the fighter card, the enemy list and the HUD's strips go under it)
 function Hud.BandMode(B, m)
 	return m.Compact == true and not m.Landscape and Hud.BossUnit(B) ~= nil
+end
+
+-- (P2 fix A) whether the fighter's block (the card and its helpers), its top at y (design px) under the boss strip, ends
+-- above the vitals slot's Cheer up! / Retreat stack (CheerUp.Place stands them on the slot's bottom edge, Retreat above)
+function Hud.BandRoom(B, m, y)
+	local v = CheerUp.Layout()
+	if not v then
+		return true
+	end
+	local f = max(0.05, m.F)
+	local _, teamH = Hud.LayoutFighter(B, m)
+	local h = K.CHEER_H
+	if m.Touch then
+		h = max(h, K.CHEER_TOUCH_PX / f)
+	end
+	local gap = K.CHEER_GAP_PX / f
+	local stack = (CheerUp.Allowed(B) and (h + gap) or 0) + (Retreat.Allowed(B) and (h + gap) or 0)
+	return y + (tonumber(teamH) or 0) <= (v.Y + v.H) / f - stack
 end
 
 -- (P2 fix A, item 06 A) the band the boss strip spans at the top (gui-area px), nil = none: the HUD's strips start under it
