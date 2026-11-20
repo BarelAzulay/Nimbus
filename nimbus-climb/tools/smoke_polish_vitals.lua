@@ -145,19 +145,22 @@ local function card()
 	local hud = playerGui() and playerGui():FindFirstChild("NimbusHud")
 	local vitals = path(hud, "BottomLeft.Vitals")
 	local body = path(vitals, "Body")
-	local hp = path(body, "HealthBar")
-	local st = path(body, "StaminaBar")
+	-- (Pitch 2 item 08 C, restated: the HP blocks and their number sit in ONE sunk track, HpTrack; the bolt, the stamina blocks
+	-- and the dash key in ONE sunk well, StaminaGroup)
+	local track, group = path(body, "HpTrack"), path(body, "StaminaGroup")
+	local hp = path(track, "HealthBar")
+	local st = path(group, "StaminaBar")
 	-- (kit-b U9-8, restated: the stamina tube is a row of kit B blocks, the dash ring a keycap) Key = the dash key, KeyBlock
 	-- its face, KeyLip its lip, Charge the sky charge, KeyIcon the pixel dash
-	local key = path(body, "DashKey")
+	local key = path(group, "DashKey")
 	-- (U9-8 look, restated: the HP tube is a row of kit B blocks, its number right of them on the stone) HpFill = the first
 	-- block's lit part, Trail its white damage trail, Flash its white flash; HpText the number
 	local c = {
 		Hud = hud, Vitals = vitals, Body = body, Card = path(body, "Card"),
 		Hp = hp, HpFill = path(hp, "Block1.Face.Lit"), Trail = path(hp, "Block1.Face.Trail"), Flash = path(hp, "Block1.Face.Lit.Flash"),
-		HpText = path(body, "HealthNumber"), St = st, StLit1 = path(st, "Block1.Face.Lit"),
+		HpText = path(track, "HealthNumber"), St = st, StLit1 = path(st, "Block1.Face.Lit"),
 		Key = key, KeyBlock = path(key, "Block"), KeyLip = path(key, "Block.Lip"), Charge = path(key, "Block.Charge"), KeyIcon = path(key, "Block.Icon"),
-		Heart = path(body, "Heart"), Bolt = path(body, "StaminaBadge"),
+		Heart = path(body, "Heart"), Bolt = path(group, "StaminaBadge"), Track = track, Group = group,
 		Notice = path(body, "DownedNotice"),
 	}
 	c.HeartIcon = path(c.Heart, "Icon")
@@ -375,12 +378,14 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 		"vitals: the card is a square stone plate with a thick wood edge and its lip")
 	T.check(sameColor(plateStroke.Color, Theme.Sign.Wood, 0.01), "vitals: full health: the edge is wood (kit-b U8; was the green neon border)", tostring(plateStroke.Color))
 	local k = scaleOf(c.Hp)
-	-- (U9-8 look, restated: was a tube >= 34 design px in a 2 px wood outline) the HP bar is a row of chunky kit B blocks
+	-- (U9-8 look, restated: was a tube >= 34 design px in a 2 px wood outline) the HP bar is a row of chunky kit B blocks.
+	-- (Pitch 2 item 08 C, restated: was blocks >= 22 design px on the stone) the bar is now the sunk HP track (30 design px,
+	-- the pitch's hp_track_v), its blocks inside it at >= 18 design px with the number on the same face
 	local hpBlock1 = path(c.Hp, "Block1")
-	T.check(c.Hp.AbsoluteSize.Y / k >= 22 and hpBlock1 ~= nil and sameColor(hpBlock1.BackgroundColor3, Theme.Sign.Wood, 0.01) and path(hpBlock1, "Face") ~= nil
-		and c.Hp:FindFirstChildOfClass("UICorner") == nil,
-		"vitals: the HP bar is a row of chunky kit B blocks (>= 22 design px, a wood edge; U9-8 look, was a tube)",
-		fmt("%.0f design px", c.Hp.AbsoluteSize.Y / k))
+	T.check(c.Track ~= nil and c.Track.AbsoluteSize.Y / k >= 29.5 and c.Hp.AbsoluteSize.Y / k >= 18 and hpBlock1 ~= nil and sameColor(hpBlock1.BackgroundColor3, Theme.Sign.Wood, 0.01)
+		and path(hpBlock1, "Face") ~= nil and c.Hp:FindFirstChildOfClass("UICorner") == nil,
+		"vitals: the HP bar is a row of chunky kit B blocks (>= 18 design px, a wood edge) in its 30 px sunk track (Pitch 2 item 08 C)",
+		fmt("track %.0f, blocks %.0f design px", c.Track and c.Track.AbsoluteSize.Y / k or -1, c.Hp.AbsoluteSize.Y / k))
 	-- (kit-b U9-8, restated: was a tube with a stroke) the stamina row is as chunky: kit B blocks in a wood edge
 	local block1 = path(c.St, "Block1")
 	T.check(c.St.AbsoluteSize.Y / k >= 18 and block1 ~= nil and sameColor(block1.BackgroundColor3, Theme.Sign.Wood, 0.01) and path(block1, "Face") ~= nil,
@@ -399,19 +404,25 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(boltShape ~= nil and boltShape:GetAttribute("PixelIcon") == "bolt", "vitals: the stamina badge draws the pixel bolt")
 	-- (render gate, GATE_KITB; the pitch's .vit) the heart and bolt badges the same size on one column (was a 52 px heart
 	-- and a 36 px bolt, overhanging the card); (kit-b U9-8) the dash key a keycap about their size (was a 40 px ring)
-	T.check(c.Heart.AbsoluteSize.X / k >= 28 and close(c.Heart.AbsoluteSize.X, c.Bolt.AbsoluteSize.X, 0.5) and c.Key.AbsoluteSize.X / k >= 28,
-		"vitals: badges and the dash key are chunky, the two badges one size",
+	-- (Pitch 2 item 08 C, restated: were 28+ design px kit B squares) the heart and the bolt are bare 18 px pixel icons in
+	-- their role's lip colour, as the pitch draws them, one size; the dash key a keycap that fills the stamina group's well
+	-- (26 design px)
+	T.check(close(c.Heart.AbsoluteSize.X, c.Bolt.AbsoluteSize.X, 0.5) and c.Heart.BackgroundTransparency == 1 and c.Bolt.BackgroundTransparency == 1
+		and c.HeartIcon ~= nil and c.HeartIcon.AbsoluteSize.X / k >= 17.5 and c.Key.AbsoluteSize.X / k >= 25.5,
+		"vitals: the two badges bare pixel icons of one size (>= 18 design px), the dash key a 26 px keycap (Pitch 2 item 08 C)",
 		fmt("heart %.0f, bolt %.0f, key %.0f design px", c.Heart.AbsoluteSize.X / k, c.Bolt.AbsoluteSize.X / k, c.Key.AbsoluteSize.X / k))
 
 	-- 2. the number: big, the Display font. Readability rule (kit-b U6 review): no outline, so it must read by its colour
 	-- (SmokeCommon.Contrast, the rule of the kitb_text_contrast walk). (U9-8 look, restated: it sat on the tube) it sits
-	-- right of the blocks on the card's stone (the pitch's .vr: icon, bar, number)
+	-- right of the blocks on the card's stone (the pitch's .vr: icon, bar, number). (Pitch 2 item 08 C, restated: was >= 24
+	-- px on the stone) it sits in the HP track behind its divider at the pitch's 18 px, on the track's sunk well face
 	T.check(c.HpText ~= nil and tostring(c.HpText.Text) == "117 / 117", "vitals: the HP number reads '117 / 117'", c.HpText and tostring(c.HpText.Text))
-	T.check(c.HpText.TextSize * scaleOf(c.HpText) >= 24 and c.HpText.Font == Theme.Fonts.Display,
-		"vitals: the HP number is big (>= 24 px at 1080p), Display font", fmt("%.1f px", c.HpText.TextSize * scaleOf(c.HpText)))
+	T.check(c.HpText.TextSize * scaleOf(c.HpText) >= 18 and c.HpText.Font == Theme.Fonts.Display,
+		"vitals: the HP number is the pitch's 18 px at 1080p (>= 18), Display font", fmt("%.1f px", c.HpText.TextSize * scaleOf(c.HpText)))
 	local reading = contrastOf(c.HpText)
-	T.check(reading ~= nil and reading.backdrop == c.Card and reading.ratio >= reading.need and rect(c.HpText).x0 >= rect(c.Hp).x1,
-		"vitals: full health: the HP number reads on the card's stone, right of the blocks (no outline)",
+	local trackFace = c.Track and c.Track:FindFirstChild("Face")
+	T.check(reading ~= nil and reading.backdrop == trackFace and reading.ratio >= reading.need and rect(c.HpText).x0 >= rect(c.Hp).x1,
+		"vitals: full health: the HP number reads on the HP track's well, right of the blocks (no outline)",
 		reading and fmt("%.2f:1 on %s (need %g)", reading.ratio, reading.backdrop.Name, reading.need) or "not read (outlined, hidden or no fill under it)")
 	local small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: every text of the card is >= 15 px at 1920x1080", table.concat(small, ", "))
@@ -433,7 +444,8 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	local spot = vp.Y - (Mock.TopInset or 0) - 78 * k - 8 -- (gui-area px: the card's rect does not count the top bar)
 	T.check(box.y1 <= spot + 1 and spot - box.y1 <= 24 and math.abs((box.x0 + box.x1) / 2 - vp.X / 2) < 4,
 		"vitals: ...in the old hotbar's spot, centred", fmt("card %.0f-%.0f, spot %.0f", box.y0, box.y1, spot))
-	T.check(box.x1 - box.x0 <= 320 * k, "vitals: the card is compact (<= 320 design px wide)", fmt("%.0f px", box.x1 - box.x0))
+	-- (Pitch 2 item 08 C, restated: was <= 320) the pitch's card is 430 design px wide
+	T.check(box.x1 - box.x0 <= 430 * k + 0.5, "vitals: the card is the pitch's width (<= 430 design px wide)", fmt("%.0f px", box.x1 - box.x0))
 	local outside = partsInside(c, 4 * k)
 	T.check(#outside == 0, "vitals: every part of the card stays inside its layout slot", table.concat(outside, ", "))
 	local cardBox = rect(c.Card)
@@ -446,8 +458,12 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	end
 	T.check(inside, "vitals: the heart and bolt badges sit inside the card", fmt("card %.0f,%.0f-%.0f,%.0f heart %.0f,%.0f-%.0f,%.0f bolt %.0f,%.0f-%.0f,%.0f",
 		cardBox.x0, cardBox.y0, cardBox.x1, cardBox.y1, hb.x0, hb.y0, hb.x1, hb.y1, bb.x0, bb.y0, bb.x1, bb.y1))
-	T.check(close(hb.x0, bb.x0, 1) and close(hb.x1, bb.x1, 1) and hb.x1 <= hpb.x0 and bb.x1 <= stb.x0 and close(hpb.x0, stb.x0, 1),
-		"vitals: ...on one column, the two tubes starting on one line right of them")
+	-- (Pitch 2 item 08 C, restated: the bolt was in the heart's column, the two rows of blocks on one line) the heart left of
+	-- the HP track; the bolt inside the stamina group at its left end, before its blocks; the track and the group start on one
+	-- line
+	local tb, gb = c.Track and rect(c.Track), c.Group and rect(c.Group)
+	T.check(tb ~= nil and gb ~= nil and hb.x1 <= tb.x0 + 0.5 and bb.x0 >= gb.x0 - 0.5 and bb.x1 <= stb.x0 + 0.5 and close(tb.x0, gb.x0, 1),
+		"vitals: ...the heart left of the HP track, the bolt at the stamina group's left end, the track and the group on one line")
 	T.check(math.abs((hb.y0 + hb.y1) / 2 - (hpb.y0 + hpb.y1) / 2) <= 2 and math.abs((bb.y0 + bb.y1) / 2 - (stb.y0 + stb.y1) / 2) <= 3,
 		"vitals: ...each badge on its own tube's row")
 	for _, other in ipairs({ { "NimbusMenu.MenuColumn", "the menu column" }, { "NimbusHud.TopRight.Currency", "the currency stack" } }) do
@@ -638,12 +654,11 @@ S.client_polish_vitals_mobile = guarded("client_polish_vitals_mobile", function(
 				if players == 0 then
 					slotChecks(c, label)
 				end
-				local compact = c.Card.AbsoluteSize.Y < c.Vitals.AbsoluteSize.Y - 2
-				if size[2] < 500 then
-					T.check(compact and c.Key.AbsoluteSize.Y > 0.55 * c.Card.AbsoluteSize.Y, label .. ": a short screen gets the compact card (the dash key spans both rows)")
-				else
-					T.check(not compact, label .. ": a tall screen keeps the regular card")
-				end
+				-- (Pitch 2 item 08 C, restated: a short screen took a flatter card with the dash key over both rows) one card on
+				-- every screen: the card under its name tab fills the slot's bottom, and a touch screen has no dash key (DASH)
+				local tabBox = c.Vitals:FindFirstChild("NameTab", true)
+				local under = tabBox ~= nil and math.abs(rect(c.Card).y1 - box.y1) <= 1 and rect(tabBox).y0 < rect(c.Card).y0
+				T.check(under and not shown(c.Key), label .. ": the card under its name tab fills the slot, no dash key on a touch screen")
 			end
 			if players > 0 then
 				KC().toClient("PartyState", nil)
