@@ -3120,7 +3120,14 @@ local function clientScenarios()
 			-- (Pitch 2 item 02 B, look review round 1: the End card is the battle's ONE result template now, and the owner's
 			-- approved phone card, 02_result_card_optB_phone.png, is 400 x 238 on 844 x 390 = 29% of the screen; was <= 25% for
 			-- the old, smaller notice)
-			T.check((er.x1 - er.x0) * (er.y1 - er.y0) <= 0.30 * W * H, "p5dgn phone: the End card covers <= 30% of the screen (the pitch's phone card)",
+			-- (P2 fix A, item 7: the 30% came from the landscape card, 400 x 238 on 844 x 390, two stat columns) a portrait phone's
+			-- End card is the battle card's width (352 on 390, one stat column, three chips a row: result_card_template_b), so this
+			-- floor's 3 stats, 4 chips (two rows) and 2 notes make it 352 x 341 = 36%. It may cover 40% on a portrait phone (its
+			-- centre stays out of the centre third, above); 30% elsewhere
+			local portrait = H > W
+			local share = portrait and 0.40 or 0.30
+			T.check((er.x1 - er.x0) * (er.y1 - er.y0) <= share * W * H,
+				"p5dgn phone: the End card covers <= " .. (portrait and "40% (portrait)" or "30%") .. " of the screen (the pitch's phone card)",
 				string.format("%.0fx%.0f on %dx%d = %.1f%%", er.x1 - er.x0, er.y1 - er.y0, W, H, 100 * (er.x1 - er.x0) * (er.y1 - er.y0) / (W * H)))
 		end
 		Mock.Click(C5.find(endCard, "OkButton"))
