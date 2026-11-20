@@ -264,10 +264,17 @@ local function clientScenarios()
 		end
 		return table.concat(out, " | ")
 	end
-	-- the window's BigRect box (NimbusDaily keeps the gui inset: AbsolutePosition.Y + 58 = the box's screen y)
+	-- the window's BigRect box (NimbusDaily keeps the gui inset: AbsolutePosition.Y + 58 = the box's screen y). (Pitch 2
+	-- item 09_daily_layout B, the prize stand: on PC the Daily page's window is only as tall as the page needs, Header +
+	-- MaxBody design px, centred in the box, since the box's 644 px body left ~160 px of empty stone; a landscape phone's
+	-- window is still the box)
 	function H.inBox(win, DC)
 		local NK = H.moduleAt("client", "UI/NeonKit")
 		local r = NK and DC and DC.K and NK.BigRect(DC.K)
+		if r and r.mode == "PC" and DC.K.PC.MaxBody then
+			local h = math.min(r.h, (DC.K.PC.Header + DC.K.PC.MaxBody) * r.scale)
+			r = { x = r.x, y = math.floor(r.y + (r.h - h) / 2 + 0.5), w = r.w, h = h }
+		end
 		return win ~= nil and r ~= nil and abs(win.AbsolutePosition.X - r.x) <= 1 and abs(win.AbsolutePosition.Y + 58 - r.y) <= 1
 			and abs(win.AbsoluteSize.X - r.w) <= 1 and abs(win.AbsoluteSize.Y - r.h) <= 1
 			and abs(win.AbsolutePosition.X + win.AbsoluteSize.X / 2 - Mock.Viewport.X / 2) <= 1
@@ -394,8 +401,9 @@ local function clientScenarios()
 		T.check(DC.IsOpen() and w.opened[#w.opened] == "Daily" and H.activeTab() == "Daily", "daily window: opens on Daily and fires WindowOpened",
 			fmt("open %s, opened %s, tab %s", tostring(DC.IsOpen()), table.concat(w.opened, ","), tostring(H.activeTab())))
 		local win = H.win()
-		-- (gui-redo Task 9: the big centred window replaced the 760x420 drop-down under the button)
-		T.check(win ~= nil and abs(win.AbsoluteSize.X - 1180) <= 1 and abs(win.AbsoluteSize.Y - 720) <= 1 and DC.Layout() == "PC", "daily window: 1180x720 at 1080p (PC)",
+		-- (gui-redo Task 9: the big centred window replaced the 760x420 drop-down under the button. Pitch 2 item
+		-- 09_daily_layout B: the Daily page's window is the box's 1180 wide and only as tall as its prize stand, 76 + 485)
+		T.check(win ~= nil and abs(win.AbsoluteSize.X - 1180) <= 1 and abs(win.AbsoluteSize.Y - 561) <= 1 and DC.Layout() == "PC", "daily window: 1180x561 at 1080p (PC)",
 			win and fmt("%dx%d %s", win.AbsoluteSize.X, win.AbsoluteSize.Y, tostring(DC.Layout())) or "no window")
 		T.check(H.inBox(win, DC) and abs(btn.AbsolutePosition.X - gl) <= 1 and abs(btn.AbsolutePosition.Y - gt) <= 1, -- (kit-b U8: the dock under the strips)
 			"daily window: centred in its BigRect box, the Gifts button laid out where it was",
@@ -1036,8 +1044,10 @@ local function clientScenarios()
 			"daily mobile: centred at 12,59, inside the screen", win and fmt("%d,%d in %dx%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, gui.AbsoluteSize.X, gui.AbsoluteSize.Y) or "")
 		local cell = H.cell(1)
 		-- (U9-4 look review) a 10 px gap keeps 4 px of stone between two tiles' strokes: 90 wide (was 92 at an 8 px gap);
-		-- (look review 2) the tiles start 2 px lower (TilesY 50) so today's raised tile clears the chips: 120 tall (was 122)
-		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 90) <= 1 and abs(cell.AbsoluteSize.Y - 120) <= 1, "daily mobile: tiles 90x120", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
+		-- (look review 2) the tiles start 2 px lower (TilesY 50) so today's raised tile clears the chips: 120 tall (was 122).
+		-- (Pitch 2 item 09_daily_layout B, the prize stand: six tiles share the row with the 196 px prize card, 89 wide, and
+		-- take the height the Claim row under them leaves, 138 tall)
+		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 89) <= 1 and abs(cell.AbsoluteSize.Y - 138) <= 1, "daily mobile: tiles 89x138", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
 		-- (slop-audit win 6, Review Focus 5) the phone layout re-sizes the X (56 -> 44 px): the drawn mark follows it.
 		-- (U9-4 look review 2) a phone draws a 36 px block in the band over its 44 px touch box (CloseTap, centred on it)
 		local closeBtn, closeTap = H.find(win, "CloseButton"), H.find(win, "CloseTap")

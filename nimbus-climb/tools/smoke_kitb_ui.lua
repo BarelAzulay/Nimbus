@@ -7651,14 +7651,20 @@ local function clientScenarios()
 				for _, d in ipairs(rule and rule:GetChildren() or {}) do
 					dots = dots + (d:GetAttribute("Rule") == "Dot" and 1 or 0)
 				end
+				-- (Pitch 2 item 09_daily_layout B, the prize stand: on PC and a landscape phone Day 7's prize card stands beside the
+				-- heading line, from its top to the Claim's foot, so the rule runs over the day row only and stops short of the
+				-- card; on a portrait phone the card is under the rule with the days)
+				local beside = s[1] > s[2]
+				local card = cells and cells:FindFirstChild("Cell7")
 				local topCell = math.huge
 				for _, c in ipairs(cells and cells:GetChildren() or {}) do
-					if c:IsA("GuiObject") and U8.shown(c) then
+					if c:IsA("GuiObject") and U8.shown(c) and not (beside and c == card) then
 						topCell = math.min(topCell, U8.rect(c).Y)
 					end
 				end
-				T.check(rule and U8.shown(rule) and dots >= 10 and head and U8.rect(rule).Y >= U8.rect(head).B - 0.5 and U8.rect(rule).B <= topCell + 0.5,
-					tag .. ": a dotted rule under the Gifts heading, over the tiles", rule and fmt("rule y %.0f, header foot %.0f, tiles %.0f, %d dots", U8.rect(rule).Y, head and U8.rect(head).B or -1, topCell, dots) or "missing")
+				local clearOfCard = not beside or (rule ~= nil and card ~= nil and U8.rect(rule).R <= U8.rect(card).X + 0.5)
+				T.check(rule and U8.shown(rule) and dots >= 10 and head and U8.rect(rule).Y >= U8.rect(head).B - 0.5 and U8.rect(rule).B <= topCell + 0.5 and clearOfCard,
+					tag .. ": a dotted rule under the Gifts heading, over the tiles (beside the prize card, short of it)", rule and fmt("rule y %.0f, header foot %.0f, tiles %.0f, %d dots, rule right %.0f, card x %.0f", U8.rect(rule).Y, head and U8.rect(head).B or -1, topCell, dots, U8.rect(rule).R, card and U8.rect(card).X or -1) or "missing")
 				local claimed, bad = 0, {}
 				for _, c in ipairs(cells and cells:GetDescendants() or {}) do
 					if c:GetAttribute("Claimed") == true and c:IsA("GuiObject") then
@@ -12253,6 +12259,126 @@ local function clientScenarios()
 			end
 		end
 		LKC.flushErrors("daily_fits_phone")
+	end)
+
+	-- (Pitch 2 item 09_daily_layout, option B "Prize stand"; the owner's shot 09: the day row floated in the body's spare
+	-- height, about 75 px of nothing over the tiles and 80 px under the streak bar, the Week Wisp about 50 px tall in its
+	-- double tile) at the four grid sizes the Daily page: Day 7 is the prize stand (Cell7: the Week Wisp's viewport, the
+	-- pet's side at least 60 % of the card's smaller side, "Week Wisp" in it, its own 7-block countdown "in 4 more days"
+	-- inside it); Days 1-6 one row with the stand right of Day 6 and Claim under the row (PC, landscape phone), or a 3 x 2
+	-- grid under the stand with Claim the grid's full width (portrait); the day column has no empty band over 24 design
+	-- px from the body's top to the stone's lip (nor between the stand and the body's edges); the active Claim's line reads
+	-- "Claim today's gift to keep your streak!"
+	S.daily_layout_b = guarded("daily_layout_b", function()
+		local function union(spans)
+			table.sort(spans, function(a, b)
+				return a[1] < b[1]
+			end)
+			return spans
+		end
+		for _, s in ipairs(U8.SIZES) do
+			U94.at(s[1], s[2], s[3], "daily layout", "Daily", "", function(tag, holder)
+				local win = holder:FindFirstChild("DailyWindow")
+				local page = holder:FindFirstChild("DailyPage", true)
+				local k = U8.scaleOf(page)
+				local cells = {}
+				for i = 1, 7 do
+					cells[i] = page and page:FindFirstChild("Cell" .. i, true)
+				end
+				local hero = cells[7]
+				if not T.check(hero ~= nil and U8.shown(hero), tag .. ": Day 7's card shows") then
+					return
+				end
+				local hr = U8.rect(hero)
+				-- the prize stand: the Wisp big, its name, its own countdown inside the card
+				local vp = hero:FindFirstChild("PetViewport", true)
+				local side = vp and math.min(vp.AbsoluteSize.X, vp.AbsoluteSize.Y) or 0
+				local need = 0.6 * math.min(hr.R - hr.X, hr.B - hr.Y)
+				T.check(vp ~= nil and U8.shown(vp) and side >= need - 0.5, tag .. ": the Week Wisp fills at least 60 % of its card",
+					fmt("pet %.0f px, card %s, needs %.0f", side, U8.show(hr), need))
+				local function within(o)
+					return o ~= nil and U8.shown(o) and U94.apart(U8.rect(o), hr) <= 0 and U8.rect(o).X >= hr.X - 0.5 and U8.rect(o).R <= hr.R + 0.5
+						and U8.rect(o).Y >= hr.Y - 0.5 and U8.rect(o).B <= hr.B + 0.5
+				end
+				local name = hero:FindFirstChild("Amount", true)
+				local wispText, wispBar = hero:FindFirstChild("WispText", true), hero:FindFirstChild("WispBar", true)
+				T.check(within(name) and name.Text == "Week Wisp" and within(wispText) and wispText.Text == "in 4 more days" and within(wispBar),
+					tag .. ": the card holds the name and its own countdown (in 4 more days, the 7-block bar)",
+					fmt("name '%s', line '%s' %s, bar %s in %s", name and name.Text or "-", wispText and wispText.Text or "-", wispText and U8.show(U8.rect(wispText)) or "-",
+						wispBar and U8.show(U8.rect(wispBar)) or "-", U8.show(hr)))
+				-- the days: one row (the stand right of Day 6) or the 3 x 2 grid under the stand; Claim under the days
+				local portrait = s[2] > s[1]
+				local claim = page:FindFirstChild("ClaimButton", true)
+				local cr = claim and U8.rect(claim)
+				local r = {}
+				for i = 1, 6 do
+					r[i] = cells[i] and U8.rect(cells[i])
+				end
+				local daysB, daysT = 0, math.huge
+				for i = 1, 6 do
+					if r[i] then
+						daysB, daysT = math.max(daysB, r[i].B), math.min(daysT, r[i].Y)
+					end
+				end
+				if portrait then
+					local rows = r[1] and r[3] and r[4] and r[6] and math.abs(r[1].B - r[3].B) <= 1 and math.abs(r[4].B - r[6].B) <= 1 and r[4].Y > r[1].B - 1
+						and math.abs(r[4].X - r[1].X) <= 1
+					T.check(rows and hr.B <= daysT + 0.5, tag .. ": Days 1-6 a 3 x 2 grid under the prize card", fmt("card %s, day 1 %s, day 4 %s", U8.show(hr), r[1] and U8.show(r[1]) or "-", r[4] and U8.show(r[4]) or "-"))
+					T.check(cr ~= nil and U8.shown(claim) and cr.Y >= daysB - 0.5 and (cr.R - cr.X) >= (r[3].R - r[1].X) - 2, tag .. ": Claim runs the grid's full width under it",
+						cr and U8.show(cr) or "no claim")
+				else
+					local row = true
+					for i = 2, 6 do
+						row = row and r[i] and r[i - 1] and math.abs(r[i].B - r[1].B) <= 1 and r[i].X >= r[i - 1].R - 0.5
+					end
+					T.check(row and hr.X >= r[6].R - 0.5, tag .. ": Days 1-6 one row, the prize card right of Day 6", fmt("day 6 %s, card %s", r[6] and U8.show(r[6]) or "-", U8.show(hr)))
+					T.check(cr ~= nil and U8.shown(claim) and cr.Y >= daysB - 0.5 and cr.R <= hr.X + 0.5, tag .. ": Claim under the day row, left of the card", cr and U8.show(cr) or "no claim")
+				end
+				local keep = page:FindFirstChild("Keep", true)
+				T.check(keep ~= nil and U8.shown(keep) and keep.Text == "Claim today's gift to keep your streak!", tag .. ": the line by Claim says to claim today's gift",
+					keep and keep.Text or "no line")
+				-- no empty band: the day column's parts cover the body from its top to the stone's lip with gaps of 24 px or less
+				local stone = win and win:FindFirstChild("Stone")
+				local lip = stone and stone:FindFirstChild("Lip")
+				local top = U8.rect(page).Y
+				local bottom = (lip and U8.rect(lip).Y) or (stone and U8.rect(stone).B) or U8.rect(page).B
+				local spans = {}
+				local function add(o)
+					if o and U8.shown(o) and o.AbsoluteSize.Y > 0 then
+						local q = U8.rect(o)
+						spans[#spans + 1] = { q.Y, q.B, o.Name }
+					end
+				end
+				for _, n in ipairs({ "Header", "StreakChip", "VipChip", "ClaimButton", "Countdown", "Keep" }) do
+					add(page:FindFirstChild(n, true))
+				end
+				for i = 1, 6 do
+					add(cells[i])
+				end
+				if portrait then
+					add(hero)
+				end
+				local worst, at, y = 0, "", top
+				for _, sp in ipairs(union(spans)) do
+					if sp[1] - y > worst then
+						worst, at = sp[1] - y, "over " .. sp[3]
+					end
+					y = math.max(y, sp[2])
+				end
+				if bottom - y > worst then
+					worst, at = bottom - y, "under the column"
+				end
+				if not portrait then
+					for _, gap in ipairs({ { hr.Y - top, "over the card" }, { bottom - hr.B, "under the card" } }) do
+						if gap[1] > worst then
+							worst, at = gap[1], gap[2]
+						end
+					end
+				end
+				T.check(worst <= 24 * k + 1, tag .. ": no empty band over 24 px in the page", fmt("%.0f px (%.0f design) %s", worst, worst / k, at))
+			end)
+		end
+		LKC.flushErrors("daily_layout_b")
 	end)
 
 	-- (finding 26: the week reward's rainbow sweep and rainbow confetti) a paid week (Weeks 1 -> 2) on High: the banner a gold
