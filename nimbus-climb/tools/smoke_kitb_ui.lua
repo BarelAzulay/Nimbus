@@ -7262,6 +7262,36 @@ local function clientScenarios()
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
+		-- (look review of finish pass A, minor: motion not checked; the Shop, Gifts, Pets, Index and the game menu's windows
+		-- rise on open, the Sky Trove and the title screen's windows did not) they open with the kit's rise: 12 px under
+		-- their place on the first frame, then up in hard steps to it
+		U8.at(1920, 1080, false, "finish rise", function(tag)
+			local Trove = U7.client("Controllers/TroveController")
+			if Trove then
+				pcall(Trove.Close)
+				LKC.advance(0.4)
+				pcall(Trove.Open, {})
+				local panel = pg:FindFirstChild("NimbusTrove") and pg.NimbusTrove:FindFirstChild("TrovePanel", true)
+				local y0 = panel and panel.AbsolutePosition.Y
+				LKC.advance(0.6)
+				local y1 = panel and panel.AbsolutePosition.Y
+				T.check(y0 and y1 and y0 - y1 >= 11.5 and y0 - y1 <= 12.5, tag .. ": the Sky Trove rises 12 px on open", fmt("%s -> %s", tostring(y0), tostring(y1)))
+				pcall(Trove.Close)
+				LKC.advance(0.4)
+			end
+			local MMC = MenuH.mmc()
+			if MMC then
+				MMC.CloseWindows()
+				MMC.OpenSettings()
+				local win = MMC.Window()
+				local y0 = win and win.AbsolutePosition.Y
+				LKC.advance(0.6)
+				local y1 = win and win.AbsolutePosition.Y
+				T.check(y0 and y1 and y0 - y1 >= 11.5 and y0 - y1 <= 12.5, tag .. ": the Settings window rises 12 px on open", fmt("%s -> %s", tostring(y0), tostring(y1)))
+				MMC.CloseWindows()
+				LKC.advance(0.3)
+			end
+		end)
 		-- (look review of finish pass A, minor: at 844x390 the Settings window covered the NIMBUS CLIMB board's right edge)
 		-- on a landscape screen a title-screen window (Settings, What's New) docks clear of the board: its bevel 4 px right
 		-- of the board's edge stroke and shadow

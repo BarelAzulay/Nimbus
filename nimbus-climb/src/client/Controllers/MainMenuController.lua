@@ -2056,6 +2056,7 @@ function MainMenuController.OpenSettings(quiet)
 	end
 	if quiet ~= true then
 		H.sound("Click")
+		SignKit.Rise(M.Win.Holder) -- (Pitch 2 F0, look review of finish pass A) the kit's open: 12 px in 3 hard steps
 	end
 	Win.sliderRow(list, "Music", "Music", "music", 1, width)
 	Win.sliderRow(list, "Sfx", "Sound", "speaker", 2, width)
@@ -2153,6 +2154,7 @@ function MainMenuController.OpenUpdates(quiet)
 	end
 	if quiet ~= true then
 		H.sound("Click")
+		SignKit.Rise(M.Win.Holder) -- (Pitch 2 F0, look review of finish pass A) the kit's open: 12 px in 3 hard steps
 	end
 	local notes = H.notes()
 	local order = 0

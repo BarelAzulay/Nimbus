@@ -1072,10 +1072,14 @@ function TroveController.Open(state)
 	if type(state) == "table" then
 		S.State = state
 	end
+	local was = S.Open == true
 	S.Open = true
 	layout()
 	render()
 	U.Panel.Visible = true
+	if not was then
+		SignKit.Rise(U.Panel) -- (Pitch 2 F0, look review of finish pass A) the kit's open: it rises 12 px in 3 hard steps
+	end
 	local menu = controller("MenuController")
 	if menu and type(menu.WindowOpened) == "table" and type(menu.WindowOpened.Fire) == "function" then
 		safe("WindowOpened", function()
