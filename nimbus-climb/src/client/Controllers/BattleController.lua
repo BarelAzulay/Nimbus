@@ -6388,6 +6388,7 @@ function Hud.Rebuild()
 		Hud.enemies.Visible = false
 		Hud.SetTopReserve(nil)
 		Hud.HoldStrips("BattleKeys", false)
+		Hud.HoldStrips("BattleList", false)
 		Hud.SetMenuHidden(false)
 		Hud.SetVitalsHidden(false)
 		Leave.Place(m, nil, false)
@@ -6409,6 +6410,7 @@ function Hud.Rebuild()
 	Hud.helpersRow = false
 	Hud.listLeft = false
 	local bandY = K.EDGE
+	local listAside = false -- (P2 fix round C) the strips step aside for the enemy list under the boss strip (below)
 	if band then
 		Hud.LayoutTop(B, m, 0, 0, K.EDGE, true)
 		bandY = K.EDGE + (Hud.topH or 0) + 8
@@ -6435,6 +6437,19 @@ function Hud.Rebuild()
 			curBottom = math.ceil(trb / max(0.05, m.F)) -- (the strips' new place, published as the HUD laid them out)
 		end
 		topY = bandBottom + 8
+		-- (P2 fix round C: at 390 x 844 a player's three strips under the boss strip ended at 271, the list's first row under
+		-- them lay in the screen's centre band, and Hud.LayoutEnemies keeps one row whatever the room) where the strips push
+		-- the list's first row into the band and right under the boss strip it would end above it, the strips step aside for
+		-- the fight, as they do where they lie on the keys (BattleKeys below); once aside they stay aside for this fight on this
+		-- screen (weighed from the HUD's laid-out edges, shown or aside, so they never flip)
+		local listKey = isFighting and string.format("%s/%dx%d", tostring(B), m.VX, m.VY) or nil
+		if listKey and Hud.stripsListAt ~= listKey and Hud.StripsPushList(B, m, topY) then
+			Hud.stripsListAt = listKey
+		end
+		listAside = listKey ~= nil and Hud.stripsListAt == listKey
+		if listAside then
+			curBottom, curLeft, curRight = 0, 0, 0
+		end
 		-- (P2 fix A, look review r1: at 360 x 640 the list under the strips stood under DASH and TARGET, beside the fighter
 		-- card) where the right column has no room for the list's first row (and its "+n more" tag) above the keys and
 		-- clear of the fighter card, the list goes under the fighter's block on the left, above Cheer up! / Retreat; the
@@ -6461,6 +6476,7 @@ function Hud.Rebuild()
 				Hud.bandOn = false
 				Hud.helpersRow = false
 				Hud.SetTopReserve(nil)
+				listAside = false
 				curBottom, curLeft, curRight = Hud.CurrencyTop(m)
 				topY = K.EDGE
 			end
@@ -6522,6 +6538,7 @@ function Hud.Rebuild()
 		Hud.stripsKeysAt = stripsKey
 	end
 	Hud.HoldStrips("BattleKeys", stripsKey ~= nil and Hud.stripsKeysAt == stripsKey)
+	Hud.HoldStrips("BattleList", listAside)
 	local listH = 0
 	if isFighting then
 		listH = Hud.LayoutEnemies(B, m)
@@ -8343,7 +8360,8 @@ function Hud.SetStripsAside(on)
 end
 
 -- (P2 fix A r1) the HUD's currency strips held aside by `owner` (HudController.SetCurrencyHidden): "BattleResult" (the
--- result card's corner), "BattleKeys" (a short portrait phone's fight: under the boss strip they lay on DASH / TARGET)
+-- result card's corner), "BattleKeys" (a short portrait phone's fight: under the boss strip they lay on DASH / TARGET),
+-- "BattleList" (P2 fix round C: under the boss strip they pushed the enemy list into the centre band, Hud.StripsPushList)
 function Hud.HoldStrips(owner, on)
 	on = on == true
 	Hud.stripHolds = Hud.stripHolds or {}
@@ -8376,6 +8394,22 @@ function Hud.StripsOnKeys(m)
 		end
 	end
 	return false
+end
+
+-- (P2 fix round C) whether the HUD's currency strips, as the HUD laid them out (shown or held aside), push the enemy list's
+-- first row into the centre band under the boss strip (Hud.BandTop: 390 x 844 with a player's three strips), while from
+-- topY (right under the boss strip) it would end above the band
+function Hud.StripsPushList(B, m, topY)
+	if #Hud.EnemyList(B) == 0 then
+		return false
+	end
+	local left, bottom = Hud.HudAttr("TopRightLeft"), Hud.HudAttr("TopRightBottom")
+	if not (left and bottom and left > 0 and bottom > 0) then
+		return false
+	end
+	local rowH = m.Compact and K.ROW_H_COMPACT or K.ROW_H
+	local band = Hud.BandTop(m)
+	return math.ceil(bottom / max(0.05, m.F)) + 6 + rowH > band and topY + rowH <= band
 end
 
 function Hud.ShowResult(B, payload)
@@ -8622,6 +8656,7 @@ function Hud.SetVisible(on)
 		Hud.SetTopReserve(nil) -- (P2 fix A) the HUD's strips back at the top
 		Hud.SetStripsAside(false)
 		Hud.HoldStrips("BattleKeys", false)
+		Hud.HoldStrips("BattleList", false)
 	end
 	if not Hud.gui then
 		return

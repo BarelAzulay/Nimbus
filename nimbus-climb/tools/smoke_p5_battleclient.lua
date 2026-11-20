@@ -1206,7 +1206,7 @@ function H.phoneChecks(BC, label)
 	T.check(clash == nil, label .. ": the battle HUD covers no other button (RUN / DASH, menu, hotbar)", tostring(clash))
 end
 
-function H.phoneRun(BC, sizes, scenario)
+function H.phoneRun(BC, sizes, scenario, suffix)
 	H.bootPhone()
 	local out0, err0 = #Mock.Output, #Mock.Errors
 	for _, sz in ipairs(sizes) do
@@ -1218,7 +1218,7 @@ function H.phoneRun(BC, sizes, scenario)
 		end
 		H.begin(d)
 		d:run(0.8, 30)
-		H.phoneChecks(BC, sz[1] .. "x" .. sz[2])
+		H.phoneChecks(BC, sz[1] .. "x" .. sz[2] .. (suffix or ""))
 		H.cleanup(BC, d)
 	end
 	Mock.SetViewport(390, 844)
@@ -1283,6 +1283,23 @@ S.client_p5battle_mobile = guarded("client_p5battle_mobile", function()
 	local BC = H.load()
 	if BC then
 		H.phoneRun(BC, { { 390, 844 } }, "client_p5battle_mobile")
+		-- (P2 fix round C, the whole suite after fix A: with a player's Cash and Gems strips over the tokens one, under item
+		-- 06 A's portrait boss strip, the enemy list started under the three strips and its first row lay in the centre band;
+		-- alone this list ran with the tokens strip only, so it passed) the same checks with all three strips
+		local Config = H.moduleAt("shared", "Config")
+		local attrs = Config and Config.Attr or {}
+		local old = {}
+		for name, v in pairs({ Cash = 48250, Gems = 320, Tokens = 1250 }) do
+			if attrs[name] then
+				old[attrs[name]] = LocalPlayer:GetAttribute(attrs[name])
+				LocalPlayer:SetAttribute(attrs[name], v)
+			end
+		end
+		H.phoneRun(BC, { { 390, 844 } }, "client_p5battle_mobile (three strips)", " (three strips)")
+		for attr, v in pairs(old) do
+			LocalPlayer:SetAttribute(attr, v)
+		end
+		H.step(3, 0.1)
 		H.narrowCardChecks(BC, "client_p5battle_mobile")
 	end
 end)
