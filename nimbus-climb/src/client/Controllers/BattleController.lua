@@ -6065,6 +6065,11 @@ function Hud.LayoutEnemies(B, m)
 	-- (P2 fix A: under a portrait phone's boss strip the list starts under the HUD's strips, and its second row reached the
 	-- screen's centre band at 390 x 844) there its rows stop above the band (Hud.BandTop), as the top card's do
 	local bandRoom = (Hud.bandOn == true and Hud.BandMode(B, m)) and (Hud.BandTop(m) - top) or nil
+	if Hud.listX then
+		-- (P2 fix A r1) the list under the fighter's block (Hud.Rebuild): its rows stop above Cheer up! / Retreat
+		left = Hud.listX
+		bandRoom = Hud.listRoom or bandRoom
+	end
 	local function room(x0, x1) -- a list-local span -> its design px from the list's top to the first key under it
 		local out = bandRoom or math.huge
 		for _, k in ipairs(keys or {}) do
@@ -6085,7 +6090,15 @@ function Hud.LayoutEnemies(B, m)
 		if bottom <= room(w - tagW, w) then
 			return 1
 		end
-		return bottom <= room(0, tagW) and 0 or false
+		if bottom <= room(0, tagW) then
+			return 0
+		end
+		-- (P2 fix A r1) the list under the fighter's block: beside its last row, right of it, where no key stands there
+		local beside = Hud.listX and Hud.TagBeside(m, left, top + (rows - 1) * (h + K.ROW_GAP), h, more, keys)
+		if beside then
+			return 2, beside
+		end
+		return false
 	end
 	if keys or bandRoom then
 		while maxRows > 1 and (maxRows * (h + K.ROW_GAP) - K.ROW_GAP > room(0, w) or tagSide(maxRows) == false) do
@@ -6158,11 +6171,25 @@ function Hud.LayoutEnemies(B, m)
 		local px = morePx
 		Hud.more.TextSize = px
 		Hud.more:SetAttribute("BaseText", 16)
-		local side = keys and tagSide(n) == 0 and 0 or 1
-		Hud.more.AnchorPoint = Vector2.new(side, 0)
-		Hud.more.Position = UDim2.fromOffset(side * w, y)
+		local at, besideText = 1, nil
+		if keys or Hud.listX then
+			at, besideText = tagSide(n)
+			at = at or 1
+		end
+		if besideText then
+			setText(Hud.more, besideText) -- (Hud.TagBeside: "+n" where "+n more" has no room beside the row)
+		end
 		Hud.more.Size = UDim2.fromOffset(math.ceil(textWidth(Hud.more.Text, px)) + 18, 22)
-		y = y + 24
+		if at == 2 then
+			-- (P2 fix A r1) beside the last row (Hud.TagBeside): the list keeps its rows' height
+			Hud.more.AnchorPoint = Vector2.new(0, 0)
+			Hud.more.Position = UDim2.fromOffset(w + 6, y - K.ROW_GAP - h + floor((h - 22) / 2))
+		else
+			local side = at == 0 and 0 or 1
+			Hud.more.AnchorPoint = Vector2.new(side, 0)
+			Hud.more.Position = UDim2.fromOffset(side * w, y)
+			y = y + 24
+		end
 	end
 	Hud.enemies.Size = UDim2.fromOffset(w, max(0, y - K.ROW_GAP))
 	return y
@@ -6352,6 +6379,7 @@ function Hud.Rebuild()
 		Hud.cmd.Visible = false
 		Hud.enemies.Visible = false
 		Hud.SetTopReserve(nil)
+		Hud.HoldStrips("BattleKeys", false)
 		Hud.SetMenuHidden(false)
 		Hud.SetVitalsHidden(false)
 		Leave.Place(m, nil, false)
@@ -6370,14 +6398,24 @@ function Hud.Rebuild()
 	-- (HudController.SetTopReserve) and the fighter card and the enemy list under the strip, as the pitch's portrait draws it
 	local band = (isFighting or between or not (B.Fighter or B.ended)) and Hud.BandMode(B, m)
 	Hud.bandOn = band == true -- (LayoutTop reads it: the strip only while the HUD's strips are held under it)
+	Hud.helpersRow = false
+	Hud.listLeft = false
+	local bandY = K.EDGE
 	if band then
 		Hud.LayoutTop(B, m, 0, 0, K.EDGE, true)
+		bandY = K.EDGE + (Hud.topH or 0) + 8
 		-- (P2 fix A: at 360 x 640 the fighter card and its helpers under the strip reached the vitals slot, where Cheer up!
 		-- and Retreat stack) a short portrait phone keeps the right column's card where the fighter's block under the strip
-		-- would reach that stack (Hud.BandRoom)
-		if (isFighting or between) and not Hud.BandRoom(B, m, K.EDGE + (Hud.topH or 0) + 8) then
-			band = false
-			Hud.bandOn = false
+		-- would reach that stack (Hud.BandRoom). (Look review r1: that card was the old 211 px one under DASH / TARGET /
+		-- Leave, "Storm ..."; the pitch's portrait is the strip.) First the two helpers side by side under the fighter card, as
+		-- a wide screen's: the block is one helper shorter
+		if (isFighting or between) and not Hud.BandRoom(B, m, bandY) then
+			Hud.helpersRow = true
+			if not Hud.BandRoom(B, m, bandY) then
+				band = false
+				Hud.bandOn = false
+				Hud.helpersRow = false
+			end
 		end
 	end
 	if band then
@@ -6389,6 +6427,36 @@ function Hud.Rebuild()
 			curBottom = math.ceil(trb / max(0.05, m.F)) -- (the strips' new place, published as the HUD laid them out)
 		end
 		topY = bandBottom + 8
+		-- (P2 fix A, look review r1: at 360 x 640 the list under the strips stood under DASH and TARGET, beside the fighter
+		-- card) where the right column has no room for the list's first row (and its "+n more" tag) above the keys and
+		-- clear of the fighter card, the list goes under the fighter's block on the left, above Cheer up! / Retreat; the
+		-- helpers go side by side for it where needed. No room there either: no strip (the old card, as before)
+		if isFighting and not Hud.ListFits(B, m, max(topY, curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F and (curBottom + 6) or 0), bandY) then
+			local need = Hud.ListMinH(B, m) + 8
+			local ok = Hud.BandRoom(B, m, bandY, need)
+			if not ok and not Hud.helpersRow then
+				Hud.helpersRow = true
+				ok = Hud.BandRoom(B, m, bandY, need)
+			end
+			local n = #Hud.EnemyList(B)
+			if not ok and n > 1 then
+				-- (a raid's full strip, its pills in two rows) one row with its "+n more" tag beside it (Hud.TagBeside)
+				local rowH = m.Compact and K.ROW_H_COMPACT or K.ROW_H
+				local _, teamH = Hud.LayoutFighter(B, m)
+				ok = Hud.TagBeside(m, K.EDGE, bandY + teamH + 8, rowH, n - 1, m.Touch and Hud.KeyBoxes(m) or nil) ~= nil
+					and Hud.BandRoom(B, m, bandY, rowH + 8)
+			end
+			if ok then
+				Hud.listLeft = true
+			else
+				band = false
+				Hud.bandOn = false
+				Hud.helpersRow = false
+				Hud.SetTopReserve(nil)
+				curBottom, curLeft, curRight = Hud.CurrencyTop(m)
+				topY = K.EDGE
+			end
+		end
 	else
 		Hud.SetTopReserve(nil)
 	end
@@ -6423,25 +6491,39 @@ function Hud.Rebuild()
 	local over = m.Compact and 0 or K.TARGET_OVER
 	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and max(topY, curBottom + 6) + over or (topY + over)
 	Hud.listTop = rightY
+	Hud.listX = nil
+	if Hud.listLeft then
+		-- (P2 fix A r1) under the fighter's block on the left (Hud.ListFits said the right column has no room), its rows down to
+		-- Cheer up! / Retreat (Hud.LayoutEnemies)
+		Hud.listTop = leftY + teamH + 8
+		Hud.listX = Hud.team.Position.X.Offset
+		Hud.listRoom = Hud.StackTop(B, m) - Hud.listTop - 4
+	end
 	Hud.enemies.Visible = isFighting
 	-- (kit-b) a portrait phone: the action keys' boxes (their wood edge too) in our design px, for the list above them
 	-- (Hud.LayoutEnemies). The portrait cluster stands on Roblox's buttons and the vitals, never on the list
 	Hud.listKeys = nil
 	if isFighting and m.Compact and m.Touch and m.VY >= m.VX then
-		local keys = {}
-		for _, spec in pairs(Hud.ClusterLayout(m)) do
-			if type(spec) == "table" then
-				local r = spec[3] / 2 + K.KEY_EDGE
-				keys[#keys + 1] = { X0 = m.W + spec[1] - r, X1 = m.W + spec[1] + r, Y0 = m.H + spec[2] - r }
-			end
-		end
-		Hud.listKeys = keys
+		Hud.listKeys = Hud.KeyBoxes(m)
 	end
+	-- (P2 fix A r1: at 360 x 640 the strips under the boss strip lay on DASH and TARGET) they step aside for the fight; once
+	-- aside they stay aside for this fight on this screen (the keys' place follows the vitals card's, which the HUD's own
+	-- relayout of the strips moves for a frame: weighed again it flipped them on and off)
+	local stripsKey = (band and isFighting and m.Touch) and string.format("%s/%dx%d", tostring(B), m.VX, m.VY) or nil
+	if stripsKey and Hud.stripsKeysAt ~= stripsKey and Hud.StripsOnKeys(m) then
+		Hud.stripsKeysAt = stripsKey
+	end
+	Hud.HoldStrips("BattleKeys", stripsKey ~= nil and Hud.stripsKeysAt == stripsKey)
 	local listH = 0
 	if isFighting then
 		listH = Hud.LayoutEnemies(B, m)
-		Hud.enemies.AnchorPoint = Vector2.new(1, 0)
-		Hud.enemies.Position = UDim2.fromOffset(m.W - K.EDGE, rightY)
+		if Hud.listX then
+			Hud.enemies.AnchorPoint = Vector2.new(0, 0)
+			Hud.enemies.Position = UDim2.fromOffset(Hud.listX, Hud.listTop)
+		else
+			Hud.enemies.AnchorPoint = Vector2.new(1, 0)
+			Hud.enemies.Position = UDim2.fromOffset(m.W - K.EDGE, rightY)
+		end
 	end
 	-- top card (mode line / boss bar) -------------------------------------------------------------
 	Hud.LayoutTop(B, m, teamW, listH, rightY, isFighting or between)
@@ -6793,10 +6875,12 @@ function Hud.LayoutFighter(B, m)
 	Hud.helperCellW = cellW
 	local hy = cardH + (compact and 8 or 10)
 	Hud.helperHolder.Position = UDim2.fromOffset(0, hy)
+	-- (P2 fix A r1) a short portrait phone under the boss strip: the two helpers side by side (Hud.Rebuild's Hud.helpersRow)
+	local column = compact and Hud.helpersRow ~= true
 	for i, H in ipairs(Hud.helpers) do
 		local cell = H.Cell
 		cell.Size = UDim2.fromOffset(cellW, cellH)
-		cell.Position = compact and UDim2.fromOffset(0, (i - 1) * (cellH + 6)) or UDim2.fromOffset((i - 1) * (cellW + 12), 0)
+		cell.Position = column and UDim2.fromOffset(0, (i - 1) * (cellH + 6)) or UDim2.fromOffset((i - 1) * (cellW + (compact and 6 or 12)), 0)
 		Theme.SetRole(H.Buff, compact and "Label" or "Heading")
 		H.Level.TextSize = lvPx
 		H.Level:SetAttribute("BaseText", lvPx)
@@ -6807,9 +6891,10 @@ function Hud.LayoutFighter(B, m)
 		H.Key.Visible = not m.Touch
 		Hud.PlaceHelper(H)
 	end
-	local helpersH = compact and (2 * cellH + 6) or cellH
-	Hud.helperHolder.Size = UDim2.fromOffset(compact and cellW or (2 * cellW + 12), helpersH)
-	return max(w, compact and cellW or (2 * cellW + 12)), hy + helpersH
+	local helpersH = column and (2 * cellH + 6) or cellH
+	local helpersW = column and cellW or (2 * cellW + (compact and 6 or 12))
+	Hud.helperHolder.Size = UDim2.fromOffset(helpersW, helpersH)
+	return max(w, helpersW), hy + helpersH
 end
 
 -- (LOOK-ui2) a tag's width for its text at `px` (Theme's measure or 0.55 em a character, whichever is wider) and its padding
@@ -8201,18 +8286,43 @@ end
 
 -- (P2 fix A) the HUD's currency strips step aside while a portrait phone's result card takes the corner (Hud.ResultSpot)
 function Hud.SetStripsAside(on)
+	Hud.HoldStrips("BattleResult", on)
+end
+
+-- (P2 fix A r1) the HUD's currency strips held aside by `owner` (HudController.SetCurrencyHidden): "BattleResult" (the
+-- result card's corner), "BattleKeys" (a short portrait phone's fight: under the boss strip they lay on DASH / TARGET)
+function Hud.HoldStrips(owner, on)
 	on = on == true
-	if (Hud.stripsAside == true) == on then
+	Hud.stripHolds = Hud.stripHolds or {}
+	if (Hud.stripHolds[owner] == true) == on then
 		return
 	end
-	Hud.stripsAside = on
+	Hud.stripHolds[owner] = on or nil
+	Hud.stripsAside = Hud.stripHolds.BattleResult == true
 	if Mods.HudCtl == nil then
 		Mods.HudCtl = optional(script.Parent, "HudController") or false
 	end
 	local hc = Mods.HudCtl
 	if hc and type(hc.SetCurrencyHidden) == "function" then
-		pcall(hc.SetCurrencyHidden, "BattleResult", on)
+		pcall(hc.SetCurrencyHidden, owner, on)
 	end
+end
+
+-- (P2 fix A r1) whether the HUD's currency strips, as the HUD laid them out (shown or held aside: TopRightLeft /
+-- TopRightBottom), reach an action key on a portrait phone (360 x 640 under the boss strip: DASH, TARGET)
+function Hud.StripsOnKeys(m)
+	local left, bottom = Hud.HudAttr("TopRightLeft"), Hud.HudAttr("TopRightBottom")
+	if not (left and bottom and left > 0 and bottom > 0) then
+		return false
+	end
+	local f = max(0.05, m.F)
+	local x0, y1 = left / f, bottom / f
+	for _, k in ipairs(Hud.KeyBoxes(m)) do
+		if k.X1 > x0 and k.Y0 < y1 + 4 then
+			return true
+		end
+	end
+	return false
 end
 
 function Hud.ShowResult(B, payload)
@@ -8458,6 +8568,7 @@ function Hud.SetVisible(on)
 		Hud.SetVitalsHeld("Result", false)
 		Hud.SetTopReserve(nil) -- (P2 fix A) the HUD's strips back at the top
 		Hud.SetStripsAside(false)
+		Hud.HoldStrips("BattleKeys", false)
 	end
 	if not Hud.gui then
 		return
@@ -8515,21 +8626,98 @@ function Hud.BandMode(B, m)
 end
 
 -- (P2 fix A) whether the fighter's block (the card and its helpers), its top at y (design px) under the boss strip, ends
--- above the vitals slot's Cheer up! / Retreat stack (CheerUp.Place stands them on the slot's bottom edge, Retreat above)
-function Hud.BandRoom(B, m, y)
+-- above the vitals slot's Cheer up! / Retreat stack (CheerUp.Place stands them on the slot's bottom edge, Retreat above).
+-- extra: design px more under the block (look review r1: the enemy list's first row there, Hud.ListMinH)
+function Hud.BandRoom(B, m, y, extra)
+	local _, teamH = Hud.LayoutFighter(B, m)
+	return y + (tonumber(teamH) or 0) + (tonumber(extra) or 0) <= Hud.StackTop(B, m)
+end
+
+-- (P2 fix A r1) the top (design px) of the vitals slot's Cheer up! / Retreat stack (stacked, the tallest it gets), the
+-- screen's foot without a vitals card
+function Hud.StackTop(B, m)
 	local v = CheerUp.Layout()
 	if not v then
-		return true
+		return math.huge
 	end
 	local f = max(0.05, m.F)
-	local _, teamH = Hud.LayoutFighter(B, m)
 	local h = K.CHEER_H
 	if m.Touch then
 		h = max(h, K.CHEER_TOUCH_PX / f)
 	end
 	local gap = K.CHEER_GAP_PX / f
 	local stack = (CheerUp.Allowed(B) and (h + gap) or 0) + (Retreat.Allowed(B) and (h + gap) or 0)
-	return y + (tonumber(teamH) or 0) <= (v.Y + v.H) / f - stack
+	return (v.Y + v.H) / f - stack
+end
+
+-- (P2 fix A r1) the enemy list's first row and its "+n more" tag (design px), 0 without enemies
+function Hud.ListMinH(B, m)
+	local n = #Hud.EnemyList(B)
+	if n == 0 then
+		return 0
+	end
+	return (m.Compact and K.ROW_H_COMPACT or K.ROW_H) + ((n > 1) and 24 or 0)
+end
+
+-- (P2 fix A r1) whether the right column holds the enemy list's first row (and its "+n more" tag) from `top` (design px):
+-- above the action keys under it (Hud.ClusterLayout, as Hud.LayoutEnemies weighs them) and clear of the fighter card,
+-- whose block starts at y (at 360 x 640 the card reaches past the list's left edge)
+function Hud.ListFits(B, m, top, y)
+	local need = Hud.ListMinH(B, m)
+	if need <= 0 then
+		return true
+	end
+	local w = m.Compact and K.ROW_W_COMPACT or K.ROW_W
+	local left, right = m.W - K.EDGE - w, m.W - K.EDGE
+	local cardRight = K.EDGE + (Hud.fighterCard and Hud.fighterCard.Root.Size.X.Offset or (m.Compact and K.FC_W_COMPACT or K.FC_W))
+	local cardBottom = y + (Hud.fighterCard and Hud.fighterCard.Root.Size.Y.Offset or 0)
+	-- (390 x 844 keeps its look: the list's left edge on the card's right edge, 0.6 px apart)
+	if left < cardRight - 2 and top < cardBottom + 8 then
+		return false
+	end
+	if m.Touch and m.VY >= m.VX then
+		for _, k in ipairs(Hud.KeyBoxes(m)) do
+			if k.X1 > left and k.X0 < right and top + need > k.Y0 - 4 then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- the portrait action keys' boxes (their wood edge too) in our design px { X0, X1, Y0, Y1 } (Hud.ClusterLayout)
+function Hud.KeyBoxes(m)
+	local keys = {}
+	for _, spec in pairs(Hud.ClusterLayout(m)) do
+		if type(spec) == "table" then
+			local r = spec[3] / 2 + K.KEY_EDGE
+			keys[#keys + 1] = { X0 = m.W + spec[1] - r, X1 = m.W + spec[1] + r, Y0 = m.H + spec[2] - r, Y1 = m.H + spec[2] + r }
+		end
+	end
+	return keys
+end
+
+-- (P2 fix A r1) the list's "+n more" tag beside a row at rowTop (h tall) of the list whose left edge is `left`: right of
+-- the row, on the screen, clear of every key. Returns its text ("+n more", else the short "+n" beside the row) or nil
+function Hud.TagBeside(m, left, rowTop, h, more, keys)
+	local px = max(16, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
+	local w = m.Compact and K.ROW_W_COMPACT or K.ROW_W
+	local y0 = rowTop + floor((h - 22) / 2)
+	local y1 = y0 + 22
+	for _, text in ipairs({ "+" .. more .. " more", "+" .. more }) do
+		local x0 = left + w + 6
+		local x1 = x0 + math.ceil(textWidth(text, px)) + 18
+		local clear = x1 <= m.W - K.EDGE
+		for _, k in ipairs(keys or {}) do
+			if clear and k.X1 > x0 - 4 and k.X0 < x1 + 4 and k.Y0 < y1 + 4 and (k.Y1 or math.huge) > y0 - 4 then
+				clear = false
+			end
+		end
+		if clear then
+			return text
+		end
+	end
+	return nil
 end
 
 -- (P2 fix A, item 06 A) the band the boss strip spans at the top (gui-area px), nil = none: the HUD's strips start under it
@@ -8843,6 +9031,11 @@ function CheerUp.SlotClear(m, boxes, w, h)
 	if Hud.team and Hud.team.Visible then
 		local tx, ty = Hud.team.Position.X.Offset, Hud.team.Position.Y.Offset
 		keep[#keep + 1] = { tx, ty, tx + Hud.team.Size.X.Offset, ty + Hud.team.Size.Y.Offset }
+	end
+	if Hud.listX and Hud.enemies and Hud.enemies.Visible then
+		-- (P2 fix A r1) the enemy list under the fighter's block
+		local ex, ey = Hud.listX, Hud.listTop or 0
+		keep[#keep + 1] = { ex, ey, ex + Hud.enemies.Size.X.Offset, ey + Hud.enemies.Size.Y.Offset }
 	end
 	for _, b in ipairs(boxes) do
 		local x0, y0, x1, y1 = b[1] - w / 2, b[2] - h, b[1] + w / 2, b[2]
@@ -9713,7 +9906,8 @@ function Ring.PlaceNext(B)
 				local teamRight = Hud.team.Position.X.Offset + Hud.team.Size.X.Offset
 				local teamBottom = Hud.team.Position.Y.Offset + Hud.team.Size.Y.Offset
 				if Hud.fighterCard and portraitTop >= Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset then
-					teamRight = Hud.team.Position.X.Offset + (Hud.helperCellW or 0) -- (only the helper column reaches down here)
+					-- (only the helpers reach down here: their column, or P2 fix A r1's row of two)
+					teamRight = Hud.team.Position.X.Offset + (Hud.helperHolder and Hud.helperHolder.Size.X.Offset or Hud.helperCellW or 0)
 				end
 				if teamBottom > portraitTop then
 					w = min(w, m.W - 8 - teamRight - 8)
