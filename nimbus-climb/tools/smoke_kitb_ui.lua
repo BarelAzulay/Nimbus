@@ -7262,6 +7262,27 @@ local function clientScenarios()
 					table.concat(bad, "; ", 1, math.min(#bad, 12)))
 			end)
 		end
+		-- (look review of finish pass A, minor: at 844x390 the Settings window covered the NIMBUS CLIMB board's right edge)
+		-- on a landscape screen a title-screen window (Settings, What's New) docks clear of the board: its bevel 4 px right
+		-- of the board's edge stroke and shadow
+		-- (a 667 px phone has no room for both: there the window keeps covering the board, as before)
+		for _, s in ipairs({ { 844, 390, "Touch" }, { 1280, 720, "Keyboard" }, { 1920, 1080, "Keyboard" } }) do
+			local tag = fmt("finish settings dock %dx%d", s[1], s[2])
+			local menu, MMC = MenuH.open({ Size = { s[1], s[2] }, Input = s[3] })
+			local ok, err = pcall(function()
+				MMC.OpenSettings()
+				LKC.advance(0.6)
+				local win = MMC.Window()
+				local board = menu and menu:FindFirstChild("Board", true)
+				if T.check(win ~= nil and board ~= nil and U8.shown(board), tag .. ": the Settings window over the title screen, its board shown") then
+					local w, b = U8.rect(win), U8.rect(board)
+					T.check(w.X - 5 >= b.R + 3 + 5 + 4 - 0.5, tag .. ": the Settings window docks clear of the title board",
+						fmt("board ends %.0f (+8 edge and shadow), window starts %.0f (-5 bevel)", b.R, w.X))
+				end
+			end)
+			T.check(ok, tag .. ": the check ran", tostring(err))
+			MenuH.close()
+		end
 		-- (look review of finish pass A, minor: the closes differ, the Settings window's a small pink-white x) the Settings and
 		-- What's New close carries the kit's close mark: the 27 px pixel x in the brown ink, as the Gifts, Pets and Index
 		-- windows' (NeonKit.CloseMark Square)

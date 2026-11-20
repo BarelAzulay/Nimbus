@@ -1667,6 +1667,34 @@ function Win.clearBehind(name)
 	end
 end
 
+-- (look review of finish pass A, minor: at 844x390 the Settings window covered the title board's right edge) on a
+-- landscape screen the window rule docks a window right at 44% of the width, and the board reaches 55% of an 844 px
+-- screen: a window that would meet the board's edge (its stroke, shadow and a 4 px gap, and the window's 5 px bevel)
+-- gives up those few design px of width. Where it would lose more than a tenth (a 667 px phone) it keeps its size and
+-- covers the board as before. Returns the design width to dock
+function Win.clearOfBoard(prefW, prefH)
+	local vp = H.viewport()
+	local board = M.Ui and M.Ui.Board
+	if vp.Y > vp.X or not (board and board.Parent and board.Visible and M.Ui.Swing and M.Ui.Swing.Visible ~= false) then
+		return prefW
+	end
+	local ok, r = pcall(NeonKit.SideRect, prefW, prefH)
+	if not (ok and type(r) == "table" and r.scale and r.scale > 0) then
+		return prefW
+	end
+	local right = board.AbsolutePosition.X + board.AbsoluteSize.X + 3 + 5 + 4 + 5
+	local over = right - r.x
+	if over <= 0 then
+		return prefW
+	end
+	local width = r.w / r.scale
+	local narrower = math.floor((r.w - over) / r.scale)
+	if narrower < width * 0.9 then
+		return prefW
+	end
+	return narrower
+end
+
 -- a window's root, docked by the window rule (prefW x prefH design px); nil without a gui
 function Win.holder(name, prefW, prefH)
 	Win.close()
@@ -1674,6 +1702,7 @@ function Win.holder(name, prefW, prefH)
 	if not gui then
 		return nil
 	end
+	prefW = Win.clearOfBoard(prefW, prefH)
 	local W = M.Win
 	local holder = H.frame("Window_" .. name, { Size = UDim2.fromOffset(prefW, prefH), ZIndex = 10 }, gui)
 	local fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
