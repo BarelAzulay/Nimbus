@@ -8104,6 +8104,10 @@ local function clientScenarios()
 				LKC.advance(1)
 				local win = pg:FindFirstChild("NimbusIndex")
 				local bad, meters = {}, {}
+				-- (Pitch 2 fix round B, T1 look leftover 9) a landscape phone gives the group header's row to the pet grid (its
+				-- well was 68.8 px, no whole tile): there the header's title and meter are hidden on purpose and the selected
+				-- tab right above the grid carries the group's name and blocks, so the tab is checked instead of the header
+				local land = s[3] and s[1] > s[2]
 				for _, id in ipairs({ "Common", "Uncommon", "Legendary", "Mythic" }) do
 					pcall(Index.Open, id)
 					LKC.advance(0.4)
@@ -8113,7 +8117,15 @@ local function clientScenarios()
 					-- outlined square boxes (the phones' and the F0 A mock's), at least 10 screen px, clear of its count
 					local row = track and track:FindFirstChild("BlockRow")
 					local count = track and track:FindFirstChild("Count")
-					if row and U8.shown(row) then
+					if land then
+						local tab = win and win:FindFirstChild("Group_" .. id, true)
+						local name = tab and tab:FindFirstChild("GroupName")
+						local blocks = tab and tab:FindFirstChild("Track")
+						if not (title and not U8.shown(title) and name and name.Text ~= "" and blocks and U8.shown(tab)) then
+							bad[#bad + 1] = id .. ": the header should give way to the grid, the tab name the group"
+								.. fmt(" (header %s, tab %s)", tostring(title and U8.shown(title)), tostring(tab ~= nil))
+						end
+					elseif row and U8.shown(row) then
 						local b1 = row:FindFirstChild("Block1")
 						local bw, bh = b1 and b1.AbsoluteSize.X or 0, b1 and b1.AbsoluteSize.Y or 0
 						local cx = count and (U8.rect(count).R - count.TextBounds.X) or math.huge
@@ -8124,7 +8136,9 @@ local function clientScenarios()
 					else
 						meters[#meters + 1] = id .. ": no meter"
 					end
-					if not (title and U8.shown(title)) then
+					if land then
+						-- (checked on the tab above)
+					elseif not (title and U8.shown(title)) then
 						bad[#bad + 1] = id .. ": no title"
 					else
 						local r = U8.rect(title)
@@ -8154,6 +8168,24 @@ local function clientScenarios()
 				local el = win and win:FindFirstChild("Elements", true)
 				local icon = el and el:FindFirstChild("LeadIcon", true)
 				T.check(el and (not U8.shown(el) or (icon and U8.shown(icon))), tag .. ": the Elements plank carries its swap icon")
+				-- (Pitch 2 fix round B, T1 look leftover 9: at 844x390 the pet grid's well was 68.8 px and no whole tile showed in
+				-- it) the grid shows at least one whole tile, its name band included, inside the grid's view (12_index_badge B)
+				local gridView = win and win:FindFirstChild("PetGrid", true)
+				local whole, seen = 0, 0
+				if gridView then
+					local gv = U8.rect(gridView)
+					for _, c in ipairs(gridView:GetChildren()) do
+						if c:IsA("GuiObject") and U8.shown(c) and c:FindFirstChild("Caption", true) then
+							seen = seen + 1
+							local r = U8.rect(c)
+							if r.Y >= gv.Y - 0.5 and r.B <= gv.B + 0.5 and r.X >= gv.X - 0.5 and r.R <= gv.R + 0.5 then
+								whole = whole + 1
+							end
+						end
+					end
+				end
+				T.check(whole >= 1, tag .. ": the pet grid shows at least one whole tile with its name",
+					fmt("%d whole of %d, view %s", whole, seen, gridView and U8.show(U8.rect(gridView)) or "no PetGrid"))
 				pcall(Menu.Close)
 				LKC.advance(0.4)
 			end)

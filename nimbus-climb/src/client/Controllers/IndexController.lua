@@ -110,6 +110,7 @@ local K = {
 	TILE_W_NARROW = 114,
 	TILE_H_NARROW = 142,
 	TILE_H_SHORT = 132,
+	TILE_H_LAND_MIN = 104, -- (fix round B) a landscape phone's tile, fitted to the grid's view, never under this
 	TILE_GAP = 10,
 	HEADER_H = 58,
 	HEADER_H_SHORT = 48,
@@ -1118,6 +1119,28 @@ local function H_snapStrip()
 	end
 end
 
+-- (Pitch 2 fix round B, T1 look leftover 9) on a landscape phone the tiles are as tall as the grid's view allows (the
+-- well less its 4 px inset each side and the grid's 8 px pads), down to K.TILE_H_LAND_MIN, so a whole row of tiles with
+-- their names shows; anywhere else the layout's own height. Again whenever the well is resized
+local function H_fitLandTiles()
+	local layout, well = U.GridLayout, U.GridWell
+	if not (layout and well and S.PetH) then
+		return
+	end
+	local want = S.PetH
+	if S.Land then
+		local sc = SignKit.LayoutScale(well)
+		local wellH = well.AbsoluteSize.Y / ((sc and sc > 0) and sc or 1)
+		if wellH > 0 then
+			want = math.max(K.TILE_H_LAND_MIN, math.min(S.PetH, math.floor(wellH - 8 - 16)))
+		end
+	end
+	local cell = layout.CellSize
+	if cell.Y.Offset ~= want then
+		layout.CellSize = UDim2.fromOffset(cell.X.Offset, want)
+	end
+end
+
 local function relayout()
 	if not S.Built then
 		return
@@ -1196,9 +1219,16 @@ local function relayout()
 		U.Centre.Position = UDim2.new(0, groupW + K.GAP, 0, 0)
 		U.Centre.Size = UDim2.new(1, -(groupW + detailW + 2 * K.GAP), 1, 0)
 	end
+	-- (Pitch 2 fix round B, T1 look leftover 9: at 844x390 the grid's well was 68.8 px and no whole tile showed) a landscape
+	-- phone (the stacked layout on a short window) gives the group header's row to the grid: the selected tab right above
+	-- it carries the group's name, its blocks and its count (12_index_badge B); its tiles fit the well (H_fitLandTiles)
+	local land = tall and short
+	S.Land = land
+	local headerRow = land and 0 or (headerH + 8)
+	U.Header.Visible = not land
 	U.Header.Size = UDim2.new(1, 0, 0, headerH)
-	U.GridWell.Position = UDim2.fromOffset(0, headerH + 8)
-	U.GridWell.Size = UDim2.new(1, 0, 1, -(headerH + 8 + rewardH + 8))
+	U.GridWell.Position = UDim2.fromOffset(0, headerRow)
+	U.GridWell.Size = UDim2.new(1, 0, 1, -(headerRow + rewardH + 8))
 	U.Rewards.Size = UDim2.new(1, 0, 0, rewardH)
 	U.RewardSub.Visible = not short
 	U.RewardLabel.Visible = not (short and narrow)
@@ -1330,6 +1360,8 @@ local function relayout()
 		petH = math.min(petH, K.TILE_H_SHORT)
 	end
 	U.GridLayout.CellSize = UDim2.fromOffset(petW, petH)
+	S.PetH = petH
+	H_fitLandTiles()
 	fitHeader()
 	renderFooter()
 end
@@ -2398,6 +2430,9 @@ local function buildCentre(centre)
 		Size = UDim2.new(1, 0, 1, -(K.HEADER_H + 8 + K.REWARD_H + 8)),
 	})
 	U.GridWell = well
+	well:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		safe("landTiles", H_fitLandTiles) -- (fix round B) a landscape phone's tiles follow the well's height
+	end)
 	U.Grid = scroller(well, "PetGrid", {
 		Position = UDim2.fromOffset(4, 4),
 		Size = UDim2.new(1, -8, 1, -8),
