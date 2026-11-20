@@ -3769,6 +3769,19 @@ local function clientScenarios()
 				end
 				T.check(#hits == 0, "menu dock: no button or text in a thumb zone or under the top bar at " .. tag, table.concat(hits, ", "))
 				T.check(#offs == 0, "menu dock: everything on screen at " .. tag, table.concat(offs, ", "))
+				-- (Pitch 2 fix round B, T1 look leftover 6: at 844x390 SETTINGS / UPDATES drew 41.6 px and CREDITS 35.2 px
+				-- tall) on a touch screen every title-board button is at least 44 screen px each way
+				if touch then
+					local small = {}
+					for _, name in ipairs({ "PlayButton", "SettingsButton", "UpdatesButton", "CreditsButton" }) do
+						local btn = MenuH.find(menu, name)
+						local r = btn and MenuH.rect(btn)
+						if not (r and r.R - r.X >= 44 - 0.5 and r.B - r.Y >= 44 - 0.5) then
+							small[#small + 1] = name .. " " .. (r and fmt("%.1f x %.1f", r.R - r.X, r.B - r.Y) or "missing")
+						end
+					end
+					T.check(#small == 0, "menu dock: every title-board button at least 44 screen px each way at " .. tag, table.concat(small, ", "))
+				end
 				local credits = MenuH.find(menu, "CreditsButton")
 				if credits then
 					local swing = MenuH.find(menu, "Swing")

@@ -162,6 +162,7 @@ local K = {
 		GAP = 12, -- between SETTINGS and UPDATES
 		TAG_W = 140, -- the CREDITS tag
 		TAG_H = 44,
+		TOUCH = 44, -- (fix round B) screen px: the least a title-board button is tall on a touch screen
 		ROPE_UP = 48, -- (sign build) the ropes start this far above the screen top: no rope end shows through a bounce
 		BOTTOM = 16, -- (sign build) screen px kept free under the swinging board (shorter ropes on a short screen)
 		RELAYOUT = 0.15, -- (sign build) a viewport change lays the screen out again this long after the last one
@@ -943,6 +944,11 @@ function Menu.build(enter)
 		end
 	end
 
+	-- (Pitch 2 fix round B, T1 look leftover 6: at 844x390 SETTINGS / UPDATES drew 41.6 px and CREDITS 35.2 px under the
+	-- 0.8 read scale) on a touch screen the pair and the CREDITS plank are at least B.TOUCH screen px tall
+	local tapH = touch and math.ceil(B.TOUCH / f) or 0
+	local btnH, creditsH = math.max(B.BTN_H, tapH), math.max(B.TAG_H, tapH)
+
 	-- the board's size: header, then the body rows top-down (the tag line drops out on a short screen)
 	local boardW = portrait and math.floor(math.min(dw - 2 * B.GUTTER / f, B.W_MAX)) or B.W
 	local inner = boardW - 2 * Z.Frame
@@ -960,7 +966,7 @@ function Menu.build(enter)
 	rows.Play = y
 	y = y + B.PLAY_H + 10
 	rows.Pair = y
-	y = y + B.BTN_H + 8
+	y = y + btnH + 8
 	rows.Version = y
 	y = y + 24 + 2
 	rows.Hint = y
@@ -981,7 +987,7 @@ function Menu.build(enter)
 	local boardX, topY
 	if portrait then
 		boardX = math.floor((dw - boardW) / 2)
-		local below = math.max(zoneH, math.ceil((ropeH + B.TAG_H) * f) + 8)
+		local below = math.max(zoneH, math.ceil((ropeH + creditsH) * f) + 8)
 		topY = math.max(minTop, math.floor(dh - (below + B.DOCK) / f - boardH))
 	else
 		boardX = math.max(B.X, touch and math.ceil((zoneW + 8) / f) or 0)
@@ -1078,7 +1084,7 @@ function Menu.build(enter)
 		Name = "SettingsButton",
 		Text = "SETTINGS",
 		Width = halfW,
-		Height = B.BTN_H,
+		Height = btnH,
 		TextSize = 22,
 		Position = UDim2.fromOffset(pad, rows.Pair),
 		ZIndex = 2,
@@ -1091,7 +1097,7 @@ function Menu.build(enter)
 		Name = "UpdatesButton",
 		Text = "UPDATES",
 		Width = halfW,
-		Height = B.BTN_H,
+		Height = btnH,
 		TextSize = 22,
 		Position = UDim2.fromOffset(pad + playW - halfW, rows.Pair),
 		ZIndex = 2,
@@ -1153,7 +1159,7 @@ function Menu.build(enter)
 	-- zones, and drops, swings and leaves with the board (it is in the Swing). (kit-b prep, gate GATE_KITB) Under the board
 	-- one centred post would land on the rig's brass version plate, and between a phone's thumb zones there is no room to
 	-- slide the tag past it, so there it hangs on two short ropes that straddle the plate
-	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(tagW, ropeH + B.TAG_H), ZIndex = 3 }, portrait and swing or content)
+	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(tagW, ropeH + creditsH), ZIndex = 3 }, portrait and swing or content)
 	local posts = { math.floor(tagW / 2) }
 	if portrait then
 		tag.Position = UDim2.fromOffset(side + math.floor((boardW - tagW) / 2), half + topY + boardH)
@@ -1176,7 +1182,7 @@ function Menu.build(enter)
 		Name = "CreditsButton",
 		Text = "CREDITS",
 		Width = tagW,
-		Height = B.TAG_H,
+		Height = creditsH,
 		TextSize = 18,
 		Face = Sign.Wood,
 		Lip = K.SIGN.WoodDark,
