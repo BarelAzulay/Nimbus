@@ -20,6 +20,7 @@
 --   PetPoses.BACK_POSE = 1.4, BACK_HOME = 0.625   DashBack lasts Melee.Back x BACK_POSE; it is home at p BACK_HOME
 --   PetPoses.DOUBLE_DUR = 0.15, DOUBLE_BITE = 0.6, THORN_DUR = 0.34, THORN_BACK = 1.3, REBOUND = 0.7, READY_BOUNCE = 0.17
 --   PetPoses.FEET = { Down, Front, Hind }    a typical pet's paw lines (pose studs) when Sample gets no `feet`
+--   PetPoses.Landings[name] = { p, ... }     where the melee motion's hops come down (the landing dust's beats)
 --   PetPoses.Offset(name, p, ranged, amp, reach) -> Vector3   the pose's own move without its turn (where a paw-pivoted
 --                                            pose's paw lines are: its Body position also carries the turn about them)
 --   PetPoses.DashHop = nil                   Config Melee.Hop in studs (0..3; nil = 0.5), set by AttackFx.Dash: every Bounce in
@@ -146,6 +147,15 @@ PetPoses.REBOUND = 0.7 -- studs: a flurry bite's rebound hop back from the face
 PetPoses.READY_BOUNCE = 0.17 -- s: one DashReady bounce
 -- a typical pet's paw lines (pose studs from the root: AttackFx.FeetOf measures each model; this when none is given)
 PetPoses.FEET = { Down = 1.3, Front = 0.5, Hind = 0.5 } -- (the Maple Fox, measured)
+-- the p at which each hop comes down with a rock (AttackFx kicks the landing dust there): DashIn's nod on the front
+-- paws, DashBack's two hops home, DashBite's rebound, DashThorns' hop away. Not the bite's own landing (the hit's
+-- impact plays there) nor DashReady's little bounces
+PetPoses.Landings = {
+	DashIn = { 13 / 30 * PetPoses.DASH_RUN },
+	DashBack = { 0.16 / 0.56, 0.35 / 0.56 },
+	DashBite = { 14 / 30 * PetPoses.DASH_RUN },
+	DashThorns = { 0.28 / PetPoses.THORN_DUR },
+}
 local BLEND_H = 0.25 -- studs: a hop's pivot moves from the paw line to the middle over its first BLEND_H of height
 local HOP_MIN = 0.25 -- Melee.Hop under this hops as this (half the shipped hops: a flatter hop lands like a slide)
 -- the Bounce in's hop heights (studs at Melee.Hop 0.5; each x max(HOP_MIN, Hop) / 0.5)

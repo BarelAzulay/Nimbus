@@ -277,6 +277,10 @@ local K = {
 	STREAK_LIFE = 0.12, -- the speed streak's Trail Lifetime (a short smear, never a tether)
 	STREAK_HALF = 0.4, -- studs: the streak's half-width
 	STREAK_TRANS = { Mine = 0.3, Other = 0.6 }, -- its transparency: my pet's reads first
+	-- (Pitch 2 item 5 "Bounce in" A: "a nod as it lands on its front paws with dust", "each landing with a rock and dust")
+	DUST_COUNT = { Mine = 6, Other = 4 }, -- fx_dust puffs per hop landing (High only, like the streak)
+	DUST_MAX = 6, -- landing-dust kits live at once (mine first: at the cap it takes the oldest other pet's)
+	DUST_LIFE = 0.5, -- s: a landing's kit goes back to the pool after this (its puffs live 0.3 .. 0.45)
 }
 -- (battle-feel T1) the ray's floor is believed only within this of ctx.Ground (a rail or a pit is not the arena floor)
 AttackFx.FLOOR_RAY_MAX = 6
@@ -441,6 +445,9 @@ local St = {
 	cueSeq = 0, -- (Task 11b) the last inhale token handed to Hooks.Inhale
 	lastBasicKick = nil, -- (attack effects, 2026-11-01) when a basic hit last kicked the camera (Kick.BasicGap)
 	streaks = {}, -- (battle-feel T2) the live dash streaks: { Kit, Unit, Model, T0, T1, Mine } (<= Melee.StreakMax)
+	dusts = {}, -- (Pitch 2 item 5) the live landing-dust kits: { Kit, Until, Mine } (<= DUST_MAX)
+	dustFrom = nil, -- the clock of the Update before: a hop landing in (dustFrom, now] kicks its dust
+	dustKicks = 0, -- landings that kicked dust since the load (Stats().DustKicks)
 }
 
 local function warnOnce(key, msg)
@@ -3172,13 +3179,19 @@ end
 -- from there to its landing spot, so a base the server slides to the target does not carry the pet past it (Task 10)
 -- (battle-feel T2) a segment's Until holds its end pose until then (DashIn at the edge until its DashBack); its Forward
 -- (pose studs) is an offset along the LookVector the pose does not carry itself (a flurry's bite from the edge)
-local function poseSample(entry, now, base)
+-- the segment that plays at `at`: the last one started and not over (a Hold holds, Until holds it to then)
+local function segAt(entry, at)
 	local best = nil
 	for _, s in ipairs(entry.Segs) do
-		if now >= s.T0 and (now < s.T0 + s.Dur or s.Hold or (s.Until and now < s.Until)) then
+		if at >= s.T0 and (at < s.T0 + s.Dur or s.Hold or (s.Until and at < s.Until)) then
 			best = s
 		end
 	end
+	return best
+end
+
+local function poseSample(entry, now, base)
+	local best = segAt(entry, now)
 	if not best then
 		return nil
 	end
@@ -4067,6 +4080,117 @@ local function stepStreaks(now)
 	end
 end
 
+----------------------------------------------------------------------
+-- (Pitch 2 item 5 "Bounce in" A) the landing dust: a puff of the fx_dust sheet where a hop comes down with a rock
+-- (PetPoses.Landings), on the pet's floor under its paws; pooled Emitter kits, High only, DUST_MAX live (mine first)
+local function dustOff(i)
+	local dk = St.dusts[i]
+	table.remove(St.dusts, i)
+	if dk then
+		give(dk.Kit)
+	end
+end
+
+-- d = the dash record (Origin = the rest spot, Dir = the run's way, Scale = PB_Scale, Feet), fwd = pose studs along the
+-- run where the paws came down -> kicked?
+local function kickDust(d, fwd, mine, now)
+	if #St.dusts >= K.DUST_MAX then
+		local other = nil
+		for i, dk in ipairs(St.dusts) do
+			if not dk.Mine then
+				other = i
+				break
+			end
+		end
+		if not mine or not other then
+			return false
+		end
+		dustOff(other)
+	end
+	local ids = dep("TextureIds")
+	local id = type(ids) == "table" and ids.fx_dust or nil
+	if type(id) ~= "number" or id <= 0 then
+		return false
+	end
+	local kit = take("Emitter")
+	if not kit then
+		return false
+	end
+	local em, host = kit.Em, kit.Root
+	resetEmitter(em)
+	local s = finite(d.Scale) and d.Scale > 0 and d.Scale or 1
+	local feet = type(d.Feet) == "table" and d.Feet or {}
+	local down = finite(feet.Down) and feet.Down or 1
+	local len = max(0.4, ((finite(feet.Front) and feet.Front or 0.5) + (finite(feet.Hind) and feet.Hind or 0.5)) * s) -- its footprint
+	host.Size = V3(len, 0.1, len)
+	host.CFrame = CFrame.new(d.Origin + d.Dir * (fwd * s) - UP * (down * s))
+	em.Texture = "rbxassetid://" .. tostring(id)
+	local sheet = SHEETS.fx_dust
+	em.FlipbookLayout = Enum.ParticleFlipbookLayout.Grid4x4
+	em.FlipbookMode = Enum.ParticleFlipbookMode[sheet[1]]
+	em.FlipbookFramerate = NumberRange.new(sheet[2])
+	em.FlipbookStartRandom = false
+	em.LightEmission = sheet[3]
+	em.LightInfluence = 0.6
+	em.Color = ColorSequence.new(WHITE, Color3.fromRGB(214, 204, 186))
+	local sz = max(0.6, min(1.8, 0.6 * len)) -- (a bigger body kicks a bigger puff)
+	em.Size = NumberSequence.new({ kp(0, 0.55 * sz), kp(1, 1.5 * sz) })
+	em.Transparency = NumberSequence.new({ kp(0, 0.3), kp(0.6, 0.6), kp(1, 1) })
+	em.Lifetime = NumberRange.new(0.3, 0.45)
+	em.Speed = NumberRange.new(2.5, 4.5)
+	em.SpreadAngle = Vector2.new(80, 80) -- (out along the floor more than up)
+	em.Drag = 6
+	em.Acceleration = V3(0, 2, 0)
+	em.RotSpeed = NumberRange.new(-40, 40)
+	em.ZOffset = 0.3
+	em:Emit(mine and K.DUST_COUNT.Mine or K.DUST_COUNT.Other)
+	St.dusts[#St.dusts + 1] = { Kit = kit, Until = now + K.DUST_LIFE, Mine = mine == true }
+	St.dustKicks = St.dustKicks + 1
+	return true
+end
+
+-- once a frame: settled kits go back to the pool; each dashing pet's hop that came down since the Update before kicks
+-- its dust (only while that segment is the one playing then: a cut or replaced segment kicks none)
+local function stepDust(now)
+	for i = #St.dusts, 1, -1 do
+		if now >= St.dusts[i].Until then
+			dustOff(i)
+		end
+	end
+	local from = St.dustFrom
+	St.dustFrom = now
+	if not from or now <= from or effectiveQuality() == "Low" then
+		return
+	end
+	local PP = dep("PetPoses")
+	local lands = PP and PP.Landings
+	if type(lands) ~= "table" or type(PP.Offset) ~= "function" then
+		return
+	end
+	for _, entry in pairs(St.poses) do
+		local d = entry.Dash
+		if d and not d.Low and typeof(d.Origin) == "Vector3" and typeof(d.Dir) == "Vector3" then
+			for _, sg in ipairs(entry.Segs) do
+				local qs = lands[sg.Name]
+				if qs and sg.T0 <= now then
+					for _, q in ipairs(qs) do
+						local at = sg.T0 + q * sg.Dur
+						if sg.StopAt and at > sg.StopAt then
+							at = at + (sg.StopDur or 0)
+						end
+						if at > from and at <= now and segAt(entry, at) == sg then
+							local ok, off = pcall(PP.Offset, sg.Name, q, false, 1, sg.Reach)
+							if ok and typeof(off) == "Vector3" then
+								pcall(kickDust, d, (tonumber(sg.Forward) or 0) - off.Z, d.Mine, now)
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
 -- "in" from the run's start until its DashBack, "back" while it hops home, else "out"
 local function dashState(entry, now)
 	local d = entry and entry.Dash
@@ -4175,7 +4299,9 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	local s = { Model = (typeof(src.Model) == "Instance") and src.Model or nil, Pos = (typeof(src.Pos) == "Vector3") and src.Pos or nil }
 	local edge, fwd = nil, 0
 	local t0 = max(now, land - inS)
+	local origin, dir, scl = nil, nil, 1 -- (Pitch 2 item 5) the rest spot, the run's way and PB_Scale: the landing dust's place
 	if state == "back" then
+		origin, dir, scl = d.Origin, d.Dir, d.Scale or 1
 		-- caught on the way home: the run starts from where the hop back has got to when the run starts (t0; the old
 		-- DashBack plays on until then: review fix, sampled at `now` the DashIn snapped forward by the hop's last 0.15 s)
 		edge = d.Reach
@@ -4205,6 +4331,8 @@ local function dash(unit, src, tgt, landAt, now, opts)
 			return false
 		end
 		edge = min(K.DASH_MAX, world) / scale
+		local way = flat(t.Last - s.Last)
+		origin, dir, scl = s.Last, (way.Magnitude > 1e-6) and way.Unit or nil, scale
 	end
 	local feet = (state == "back" and d and d.Feet) or feetOf(s.Model)
 	local run = max(0.05, land - t0)
@@ -4223,7 +4351,7 @@ local function dash(unit, src, tgt, landAt, now, opts)
 		return false -- (a higher pose plays: a KO'd pet never dashes, a cast is not cut)
 	end
 	e2.Dash = { Reach = edge, LandAt = land, BackAt = bk, BackDur = backDur, In = segIn, Back = segBack, Mine = opts.Mine == true,
-		Feet = feet, Off = 0, Bite = segIn }
+		Feet = feet, Off = 0, Bite = segIn, Origin = origin, Dir = dir, Scale = scl, Low = opts.Low == true }
 	e2.Dash.Streak = (opts.Low ~= true) and streakFor(unit, s.Model, t0, land + 0.05, opts.Mine == true) or false
 	readyAt(e2.Dash, segs, land + AttackFx.HIT_STOP + K.CHOMP) -- (a flurry's first bite: bk is FlurryBelow on)
 	return true
@@ -4668,6 +4796,7 @@ function AttackFx.Update(now)
 	end
 	trimTails()
 	stepStreaks(now)
+	stepDust(now)
 	for unit, entry in pairs(St.poses) do
 		local pending = entry.Prev and entry.SwitchAt and now < entry.SwitchAt + AttackFx.CROSSFADE
 		if not pending then
@@ -4773,6 +4902,10 @@ function AttackFx.ClearAll()
 	for i = #St.streaks, 1, -1 do
 		streakOff(i)
 	end
+	for i = #St.dusts, 1, -1 do
+		dustOff(i)
+	end
+	St.dustFrom = nil
 	St.lastBasicKick = nil
 end
 
@@ -4786,7 +4919,9 @@ end
 
 function AttackFx.Stats()
 	-- (battle-feel T2) Streaks = the dash streaks live (their Trail kits count in Trails too)
-	local s = { Live = 0, Stepped = 0, Tails = 0, Emitters = 0, Beams = 0, Trails = #St.streaks, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors, Streaks = #St.streaks }
+	-- (Pitch 2 item 5) Dusts = the landing-dust kits live (they count in Emitters too), DustKicks = landings that kicked dust
+	local s = { Live = 0, Stepped = 0, Tails = 0, Emitters = #St.dusts, Beams = 0, Trails = #St.streaks, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors, Streaks = #St.streaks,
+		Dusts = #St.dusts, DustKicks = St.dustKicks }
 	for _, eff in ipairs(St.live) do
 		if eff.Tail then
 			s.Tails = s.Tails + 1

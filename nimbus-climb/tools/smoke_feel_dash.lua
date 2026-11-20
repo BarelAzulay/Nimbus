@@ -1633,11 +1633,13 @@ local function clientScenarios()
 			env.run(env.DT)
 			local n2 = #workspace:GetDescendants()
 			T.check(n1 == n2, fmt("feel dash budget: no new Instance between two Updates mid-dash (%d vs %d)", n1, n2))
-			env.runTo(land + 1)
+			-- (Pitch 2 item 5: the landing dust of the last hop home (bk + 0.35 = land + 0.55) holds its pooled kit for
+			-- DUST_LIFE 0.5 s from the Update that kicked it (up to one 1/30 s frame late), so every kit is pooled by land + 1.09)
+			env.runTo(land + 1.15)
 			local s2 = AF.Stats()
 			local folder = AF.Folder()
 			T.check(s2.Streaks == 0 and s2.Trails == 0 and s2.Pooled <= AF.POOL_KEEP_TOTAL and s2.PoolInstances == #folder:GetDescendants(),
-				fmt("feel dash budget: after: no streak live, every kit pooled within the keep (%d pooled / %d, %d instances vs folder %d)", s2.Pooled, AF.POOL_KEEP_TOTAL, s2.PoolInstances, #folder:GetDescendants()))
+				fmt("feel dash budget: after: no streak live, every kit pooled within the keep (%d pooled / %d, %d instances vs folder %d; %s dust kits live, %s emitters)", s2.Pooled, AF.POOL_KEEP_TOTAL, s2.PoolInstances, #folder:GetDescendants(), tostring(s2.Dusts), tostring(s2.Emitters)))
 			local allOut = true
 			for i = 1, 8 do
 				allOut = allOut and AF.DashState(i) == "out"
