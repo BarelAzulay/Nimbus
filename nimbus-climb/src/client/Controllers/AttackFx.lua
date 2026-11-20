@@ -288,6 +288,9 @@ local K = {
 	THORN_BACK = 1.3,
 	READY_BOUNCE = 0.17, -- PetPoses.READY_BOUNCE: the ready bounce between a flurry's bites (whole bounces only)
 	FOOT_BAND = 0.25, -- studs (x PB_Scale): a part whose bottom is this close to the lowest stands on the floor (> one Low voxel 0.2)
+	-- (review minor: "evolved pets hop x0.78 heavier", the mock's heavy lanes) FeetOf's Hop for an evolved form (PB_Evolved
+	-- >= 1): PetPoses weighs its hops by it
+	EVO_HOP = 0.78,
 	STREAK_LIFE = 0.12, -- the speed streak's Trail Lifetime (a short smear, never a tether)
 	STREAK_HALF = 0.4, -- studs: the streak's half-width
 	STREAK_TRANS = { Mine = 0.3, Other = 0.6 }, -- its transparency: my pet's reads first
@@ -4033,7 +4036,9 @@ local function feetOf(model)
 			zmin, zmax = min(zmin, z0s[i]), max(zmax, z1s[i])
 		end
 	end
-	local feet = { Down = max(0, -lo / s), Front = max(0, -zmin / s), Hind = max(0, zmax / s), Lean = 0 }
+	-- (review minor) Hop: the body's weight, EVO_HOP for an evolved form (its hops x 0.78, the mock's heavy lanes), else 1
+	local evo = tonumber(model:GetAttribute("PB_Evolved")) or 0
+	local feet = { Down = max(0, -lo / s), Front = max(0, -zmin / s), Hind = max(0, zmax / s), Lean = 0, Hop = (evo >= 1) and K.EVO_HOP or 1 }
 	-- (gate review r0 minor: the evolved hop-bite sank its snout 1.5 studs into the bear) Lean: how much farther forward the
 	-- front-most point reaches at the deepest bite on the face (DashIn's hit, DashDouble's second bite: nose down about the
 	-- front paws) than standing, pose studs. A head that sticks out past the paws dips that far into the target: the dash
@@ -4322,6 +4327,7 @@ end
 -- { Mine, Low, Tempo = the seconds since the unit's last attack }. false (the caller plays today's Strike): Melee.Dash
 -- off, no gap of Melee.MinGap studs, a higher pose playing (a KO, a cast)
 AttackFx.FIGHTER_WIND = K.FIGHTER_WIND -- (read by the checks)
+AttackFx.EVO_HOP = K.EVO_HOP -- (read by the checks)
 
 local function dash(unit, src, tgt, landAt, now, opts)
 	local M = feelOf("Melee")

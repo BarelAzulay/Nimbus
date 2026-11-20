@@ -1024,12 +1024,17 @@ local function clientScenarios()
 				end
 				return frames, feet, sc, edge, me
 			end
-			-- the hop landings of a walk: the frame the lower paw comes down after an airborne stretch that rose >= 0.15
-			-- pose studs (the ready bounces rise 0.07), less those within the hit stop of a hit (the bite lands on the face)
+			-- the hop landings of a walk: the frame the lower paw comes down after an airborne stretch that rose >= 0.1 pose
+			-- studs and was no ready bounce (DashReady: 0.07), less those within the hit stop of a hit (the bite lands on the
+			-- face). (review minor: an evolved pet hops x0.78, so its Thorns hop away lifts the lower paw ~0.14: the old 0.15
+			-- floor missed that landing while its puff was right; the ready bounces are now told apart by name as well)
 			local function landings(frames, hits)
-				local out, peak, air = {}, 0, false
+				local out, peak, air, peakName = {}, 0, false, nil
 				for i, f in ipairs(frames) do
 					if f.H > 1e-3 then
+						if not air or f.H > peak then
+							peakName = f.Name
+						end
 						air, peak = true, max(peak, f.H)
 					elseif air then
 						air = false
@@ -1039,7 +1044,7 @@ local function clientScenarios()
 								onHit = true
 							end
 						end
-						if peak >= 0.15 and not onHit then
+						if peak >= 0.1 and peakName ~= "DashReady" and not onHit then
 							out[#out + 1] = i
 						end
 						peak = 0

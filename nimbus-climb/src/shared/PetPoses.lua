@@ -21,10 +21,12 @@
 --                                            (to its load) that trembles
 --   PetPoses.BACK_POSE = 1.4, BACK_HOME = 0.625   DashBack lasts Melee.Back x BACK_POSE; it is home at p BACK_HOME
 --   PetPoses.DOUBLE_DUR = 0.15, DOUBLE_BITE = 0.6, THORN_DUR = 0.34, THORN_BACK = 1.3, REBOUND = 0.7, READY_BOUNCE = 0.17
---   PetPoses.FEET = { Down, Front, Hind }    a typical pet's paw lines (pose studs) when Sample gets no `feet`
+--   PetPoses.FEET = { Down, Front, Hind }    a typical pet's paw lines (pose studs) when Sample gets no `feet` (a `feet`
+--                                            Hop weighs the hops: an evolved form's 0.78, the mock's heavy lanes)
 --   PetPoses.Landings[name] = { p, ... }     where the melee motion's hops come down (the landing dust's beats)
---   PetPoses.Offset(name, p, ranged, amp, reach) -> Vector3   the pose's own move without its turn (where a paw-pivoted
---                                            pose's paw lines are: its Body position also carries the turn about them)
+--   PetPoses.Offset(name, p, ranged, amp, reach, feet) -> Vector3   the pose's own move without its turn (where a
+--                                            paw-pivoted pose's paw lines are: its Body position also carries the turn about
+--                                            them)
 --   PetPoses.DashHop = nil                   Config Melee.Hop in studs (0..3; nil = 0.5), set by AttackFx.Dash: every Bounce in
 --                                            hop height x max(0.25, DashHop) / 0.5 (DashIn's first hop peaks at 1.1 x it;
 --                                            0 still hops 0.275: a flatter hop lands like a slide)
@@ -186,6 +188,15 @@ end
 -- the Bounce in's hop height scale (Melee.Hop / 0.5, at least HOP_MIN / 0.5)
 local function hopK()
 	return math.max(HOP_MIN, dashHop()) / DASH_HOP
+end
+-- (review minor: "evolved pets hop x0.78 heavier", the mock's heavy lanes) the body's weight from Sample's `feet`: its
+-- Hop (AttackFx.FeetOf: EVO_HOP 0.78 for an evolved form), 1 when none is given (finite, 0.25 .. 1.5)
+local function heavyOf(feet)
+	local v = type(feet) == "table" and tonumber(feet.Hop) or nil
+	if v == nil or v ~= v or v < 0.25 or v > 1.5 then
+		return 1
+	end
+	return v
 end
 
 ----------------------------------------------------------------------
@@ -499,10 +510,10 @@ end
 
 -- (battle-feel T2; Pitch 2 item 5 "Bounce in" A) the melee dash in: from the Windup's load, hop, nod on the front paws,
 -- hop-bite onto the target on the hit (DASH_RUN), the chomp, held at the edge (p 1 = exactly (0, 0, -reach), upright)
-POSES.DashIn = function(f, p, _, amp, reachIn)
+POSES.DashIn = function(f, p, _, amp, reachIn, feet)
 	local reach = reachIn or LUNGE * (amp or 1)
 	local R = PetPoses.DASH_RUN
-	local k = hopK()
+	local k = hopK() * heavyOf(feet)
 	local u = seg(p, 0, R) -- through Melee.In: hop 0.13 s, nod 0.04, hop-bite 0.13
 	local mid = -0.48 * reach
 	if p < R then
@@ -531,9 +542,9 @@ end
 
 -- (battle-feel T2; Pitch 2 item 5) the way home: hop back, a rock on the hind paws as it lands, hop home (at BACK_HOME),
 -- a rocking settle on the spot; from (0, 0, -reach) at p 0 to rest at p 1
-POSES.DashBack = function(f, p, _, amp, reachIn)
+POSES.DashBack = function(f, p, _, amp, reachIn, feet)
 	local reach = reachIn or LUNGE * (amp or 1)
-	local k = hopK()
+	local k = hopK() * heavyOf(feet)
 	local t = p * 0.56 -- the beats in seconds at Melee.Back 0.40 (Dur 0.56)
 	local mid = -0.45 * reach
 	if not hop(f, t, 0, 0.16, -reach, mid, BH.Back1 * k, 0, 9) then
@@ -554,10 +565,10 @@ end
 
 -- (Pitch 2 item 5) a flurry's bite (no trip home): a rebound hop back, a rock, a hop-bite onto the face on the hit, the
 -- chomp; `offIn` = studs behind the face it starts (0 at the face); held at the face (p 1 = (0, 0, -off), upright)
-POSES.DashBite = function(f, p, _, _, offIn)
+POSES.DashBite = function(f, p, _, _, offIn, feet)
 	local off = math.max(0, offIn or 0)
 	local R = PetPoses.DASH_RUN
-	local k = hopK()
+	local k = hopK() * heavyOf(feet)
 	local rb = math.max(0, PetPoses.REBOUND - off) -- (in place when it already stands that far back)
 	-- through the run: rebound 0.12 s, rock 0.06, hop-bite 0.12 (gate review r0: the rock was 0.03 s, an 8.8 deg snap in
 	-- one 60 fps frame; the strip's rock is 0.06 s: 7 -> 10 deg in 0.02, back to level in 0.04)
@@ -591,12 +602,12 @@ end
 
 -- (Pitch 2 item 5) a bite on a Thorns shield: the prick snaps the head back (rocked onto the hind paws, eyes shut), a hop
 -- away `back` studs (nil = THORN_BACK), a rock as it lands; held there (p 1 = (0, 0, +back), upright)
-POSES.DashThorns = function(f, p, _, _, backIn)
+POSES.DashThorns = function(f, p, _, _, backIn, feet)
 	local back = math.max(0, backIn or PetPoses.THORN_BACK)
 	local t = p * PetPoses.THORN_DUR
 	if t < 0.12 then
 		f.pitch = keys(t, { 0, -15, 0.05, 14, 0.12, 8 })
-	elseif not hop(f, t, 0.12, 0.28, 0, back, BH.Thorn * hopK(), 8, 6) then
+	elseif not hop(f, t, 0.12, 0.28, 0, back, BH.Thorn * hopK() * heavyOf(feet), 8, 6) then
 		f.z = back
 		f.pitch = keys(t, { 0.28, 6, 0.31, 9, 0.34, 0 })
 	end
@@ -662,8 +673,8 @@ local function pawBody(f, rot, feet)
 	return body
 end
 
--- the frame of plain numbers of `name` at p (Sample's arguments checked)
-local function frameOf(name, p, ranged, amp, reach)
+-- the frame of plain numbers of `name` at p (Sample's arguments checked; `feet` handed on: the melee motion's weight)
+local function frameOf(name, p, ranged, amp, reach, feet)
 	local fn = POSES[name]
 	local f = newFrame()
 	p = tonumber(p) or 0
@@ -684,23 +695,24 @@ local function frameOf(name, p, ranged, amp, reach)
 		elseif reach ~= nil then
 			reach = math.max(0, math.min(PetPoses.LEAP_REACH_MAX, reach))
 		end
-		fn(f, p, ranged == true, math.max(1, math.min(PetPoses.LEAP_AMP_MAX, amp)), reach)
+		fn(f, p, ranged == true, math.max(1, math.min(PetPoses.LEAP_AMP_MAX, amp)), reach, feet)
 	end
 	return f
 end
 
--- (Pitch 2 item 5) PetPoses.Offset(name, p, ranged, amp, reach) -> Vector3: the pose's own move (studs, the pet's frame)
--- without its turn: where a paw-pivoted pose's paw lines have got to (the Body's position also carries the turn about
--- them). AttackFx starts a run caught on the way home from it
-function PetPoses.Offset(name, p, ranged, amp, reach)
-	local f = frameOf(name, p, ranged, amp, reach)
+-- (Pitch 2 item 5) PetPoses.Offset(name, p, ranged, amp, reach, feet) -> Vector3: the pose's own move (studs, the pet's
+-- frame) without its turn: where a paw-pivoted pose's paw lines have got to (the Body's position also carries the turn
+-- about them). AttackFx starts a run caught on the way home from it. `feet` (optional): its Hop weighs the hops
+function PetPoses.Offset(name, p, ranged, amp, reach, feet)
+	local f = frameOf(name, p, ranged, amp, reach, feet)
 	return Vector3.new(f.x, f.y, f.z)
 end
 
 -- Sample(name, p, ranged, amp, reach, feet): `feet` (Pitch 2 item 5, optional) = { Down, Front, Hind } pose studs from
--- the root to the floor / the front paw line (forward) / the hind paw line (back); only the melee motion reads it
+-- the root to the floor / the front paw line (forward) / the hind paw line (back), and Hop (the body's weight: its hops
+-- x Hop, an evolved form's 0.78); only the melee motion reads it
 function PetPoses.Sample(name, p, ranged, amp, reach, feet)
-	local f = frameOf(name, p, ranged, amp, reach)
+	local f = frameOf(name, p, ranged, amp, reach, feet)
 	local raise, back = rad(f.raise), rad(f.back)
 	local rot = CFrame.fromEulerAnglesYXZ(rad(f.pitch), rad(f.yaw), rad(f.roll))
 	return {
