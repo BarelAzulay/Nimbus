@@ -1207,7 +1207,8 @@ function H.layoutRail(W, Hh, R)
 			place(t.Button, pad + (i - 1) * (R.TabW + gap), 0, R.TabW, R.TabH)
 			H.syncTabIcon(tab, R.TabIcon)
 			place(t.Icon, 0, 3, R.TabW, R.TabIcon + 4)
-			place(t.Label, 2, R.TabIcon + 8, R.TabW - 4, R.TabH - R.TabIcon - 10)
+			-- (look review of finish pass A, major 8: "Eggs" lost its descenders under the lip) the label's box ends at the lip
+			place(t.Label, 2, R.TabIcon + 6, R.TabW - 4, R.TabH - R.TabIcon - 6 - SignKit.Sizes.Lip)
 			t.Label.TextSize = R.TabLabel
 			t.Label.TextXAlignment = Enum.TextXAlignment.Center
 		end
@@ -1242,18 +1243,22 @@ function H.layoutRail(W, Hh, R)
 		t.Label.TextSize = R.TabLabel
 		if layout == "Compact" then
 			-- the icon over the label
-			local iy, ly, lh = 6, icon + 16, tabH - icon - 20
-			if short then -- (the label's box ends at the lip: the descenders clear it)
+			-- (the label's box ends at the lip: the descenders clear it; F0 review, major 8: in every Compact rail)
+			local iy, ly = 6, icon + 16
+			if short then
 				iy, ly = 4, icon + 12
-				lh = tabH - ly - SignKit.Sizes.Lip
 			end
+			local lh = tabH - ly - SignKit.Sizes.Lip
 			place(t.Icon, 0, iy, R.RailW, icon + 8)
 			place(t.Label, 2, ly, R.RailW - 4, lh)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Center
 		else
 			local ix = layout == "PC" and 16 or 8
-			place(t.Icon, ix, (tabH - icon - 4) / 2, icon + 4, icon + 4)
-			place(t.Label, ix + icon + 10, 0, R.RailW - ix - icon - 14, tabH)
+			-- (F0 review, major 8) the icon and the label centred on the block's face, over its lip (the label's box ran
+			-- into the lip)
+			local face = tabH - SignKit.Sizes.Lip
+			place(t.Icon, ix, math.floor((face - icon - 4) / 2), icon + 4, icon + 4)
+			place(t.Label, ix + icon + 10, 0, R.RailW - ix - icon - 14, face)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Left
 		end
 	end

@@ -7265,6 +7265,28 @@ local function clientScenarios()
 		-- (look review of finish pass A, major 6) the Shop at 1920x1080 and 1280x720: every roulette card whole inside the
 		-- stone, over its lip (the card's bottom edge was clipped by the body), the "Gems: same odds" hint's letters above
 		-- the card's colour lip (they touched it); the rail's "ROBUX ITEMS" a captioned dotted rule, no dark glyph square
+		-- (look review of finish pass A, major 8: the phone rail's "Eggs" lost its descenders under the tab's lip) at every
+		-- size each rail tab's label box ends at its lip's top: the letters' tails clear it
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "finish shop rail", function(tag)
+				Shop.Open({ Tab = "Eggs" })
+				LKC.advance(1)
+				local rail = pg:FindFirstChild("NimbusShop") and pg.NimbusShop:FindFirstChild("Rail", true)
+				local bad, n = {}, 0
+				for _, b in ipairs(rail and rail:GetChildren() or {}) do
+					local lab, lip = b:FindFirstChild("Label"), b:FindFirstChild("Lip")
+					if b.Name:match("^Tab_") and U8.shown(b) and lab and lip and U8.shown(lab) then
+						n = n + 1
+						if U8.rect(lab).B > U8.rect(lip).Y + 0.5 then
+							bad[#bad + 1] = fmt("%s %.0f > %.0f", b.Name, U8.rect(lab).B, U8.rect(lip).Y)
+						end
+					end
+				end
+				T.check(n == 5 and #bad == 0, tag .. ": every rail tab's label ends above its lip (the descenders show)", fmt("%d tabs; %s", n, table.concat(bad, ", ")))
+				Shop.Close()
+				LKC.advance(0.4)
+			end)
+		end
 		for _, s in ipairs({ { 1920, 1080 }, { 1280, 720 } }) do
 			U8.at(s[1], s[2], false, "finish shop", function(tag)
 				Shop.Open({ Tab = "Eggs" })
