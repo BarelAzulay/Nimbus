@@ -1698,7 +1698,51 @@ S.evolved = guarded("evolved", function()
 		clamp = T.tally("Evolved = 2 on a pet below Epic builds its first evolution"),
 		flags = T.tally("every evolved part is Anchored, CanCollide / CanTouch / CanQuery = false, Massless"),
 		animate = T.tally("Animate runs on second evolutions for 60 frames without errors or NaN and flaps the second wing pair"),
+		eyes = T.tally("evo_eye_size (Pitch 2 item 7 A 'Trim'): every evolved form (High) has exactly 2 eyes, each a 6 x 7 eye (fierce 6 x 5) centred on the old 8 x 9 / 8 x 7 spot, every eye cell carved into the head, the two eyes apart"),
 	}
+	-- evo_eye_size: the eyes of the High evolved blueprint at the game's own evolved k (1.25, buildBlueprint). The masks
+	-- keep the shipped 8 x 9 / 8 x 7 grid ("." padding), so the LIT box is what shrinks; its centre stays where the old
+	-- full eye's centre was (mask column 4.5, row 5 / fierce row 4), so EVO.Face's placement is unchanged.
+	local function eyeBox(mask)
+		local x0, x1, y0, y1, lit = 99, 0, 99, 0, 0
+		for r, cols in ipairs(mask) do
+			for c, ch in ipairs(cols) do
+				if ch ~= "." then
+					lit = lit + 1
+					x0, x1, y0, y1 = min(x0, c), max(x1, c), min(y0, r), max(y1, r)
+				end
+			end
+		end
+		return x1 - x0 + 1, y1 - y0 + 1, (x0 + x1) / 2, (y0 + y1) / 2, lit, #mask
+	end
+	local function checkEyes(def, stage)
+		local label = def.Id .. " stage " .. stage
+		local okb, bp = pcall(PB._Blueprint, { Id = def.Id, Look = def.Look, Rarity = def.Rarity, Evolved = stage }, "High", 1.25)
+		local eyes = okb and type(bp) == "table" and bp.Anchors and bp.Anchors.Eyes
+		if not eyes then
+			tally.eyes:case(false, label .. ": no blueprint eyes (" .. tostring(okb and "no Anchors.Eyes" or bp) .. ")")
+			return
+		end
+		local good, why = #eyes == 2, { #eyes .. " eyes" }
+		local cells = {}
+		for i, eye in ipairs(eyes) do
+			local w, h, cx, cy, lit, rows = eyeBox(eye.Mask)
+			local fierce = rows == 7
+			local wantH, wantCy = fierce and 5 or 7, fierce and 4 or 5
+			local carved = #((bp.Anchors.LidCells or {})[i] or {})
+			good = good and w == 6 and h == wantH and cx == 4.5 and cy == wantCy and carved == lit
+			why[#why + 1] = string.format("eye %d %dx%d at (%s, %s) %d/%d carved", i, w, h, tostring(cx), tostring(cy), carved, lit)
+			for _, cell in ipairs((bp.Anchors.LidCells or {})[i] or {}) do
+				local key = cell[1] .. "," .. cell[2]
+				if cells[key] and cells[key] ~= i then
+					good = false
+					why[#why + 1] = "eyes overlap at " .. key
+				end
+				cells[key] = i
+			end
+		end
+		tally.eyes:case(good, label .. ": " .. table.concat(why, ", "))
+	end
 	for _, def in ipairs(PC.Pets) do
 		local who = def.Id
 		local top = PB.MaxEvolution(def)
@@ -1711,6 +1755,7 @@ S.evolved = guarded("evolved", function()
 		end
 		local stageParts = {}
 		for stage = 1, top do
+			checkEyes(def, stage)
 			for _, level in ipairs({ "High", "Low" }) do
 				local label = who .. " stage " .. stage .. " " .. level
 				local ok, m = pcall(PB.Build, def, { Evolved = stage, Detail = level })
@@ -1770,7 +1815,7 @@ S.evolved = guarded("evolved", function()
 			end
 		end
 	end
-	for _, key in ipairs({ "max", "build", "caps", "wings", "bigger", "clamp", "flags", "animate" }) do
+	for _, key in ipairs({ "max", "build", "caps", "wings", "bigger", "clamp", "flags", "animate", "eyes" }) do
 		tally[key]:report()
 	end
 	holder:Destroy()
