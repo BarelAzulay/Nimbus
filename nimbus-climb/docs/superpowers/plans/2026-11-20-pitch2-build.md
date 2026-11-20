@@ -141,11 +141,12 @@
 - [ ] Render a GIF with render_model and compare it with `05_melee_motion_optA`. Review, merge.
 
 ### Task 12: Eyes lane: evolved eyes A, Trim -25 % (branch kitb-p2-eyes)
-**Files:** `src/shared/PetBuilder.lua` `EYE_MASKS.Evo` / `EvoFierce` (6x7) and `EVO.Face` offsets.
+**Files:** `src/shared/PetBuilder.lua` `EYE_MASKS.Evo` / `EvoFierce` (6x7, fierce 6x5). `EVO.Face` offsets stay as they are on purpose: the new masks are padded to the shipped 8x9 / 8x7 grids (spec item 7 build notes), so the eye stays centred on today's spot with no offset change. `EvoLow` / `EvoFierceLow` (4x4) are unchanged too.
 - [ ] Add the failing check `evo_eye_size`: the evolved eye masks are 6x7 and every evolved pet still has 2 eyes inside the head.
 - [ ] Run it and confirm it fails, then implement.
 - [ ] Run `petbuilder`, `evolved`, `p3evo_pets`, `client_p6pets`, `--mesh`: all green.
 - [ ] Render the 9 pets from the sheet and compare with `07_evolved_eyes_optA`. Merge.
+- [ ] Owner's call, not done from a PC: all 98 evolved body keys (`evo1_*` / `evo2_*`, High and `_low`) have MeshIds, so the arena shows the baked mesh with the old eyes until they are re-baked (export build) and uploaded in the keyed cloud session. Hand-off: `build/upload_sheets/evo_eyes_rebake.json` + `evo_eyes_rebake_preview.png`.
 
 ### Task 13: Wave 3 gate + Studio check
 - [ ] Run the whole suite and the mesh suite: 0 failed.
