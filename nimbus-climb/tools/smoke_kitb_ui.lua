@@ -14698,41 +14698,30 @@ local function clientScenarios()
 			U99.tutorial(1, true)
 			nextB = root:FindFirstChild("Next", true)
 			T.check(nextB and U8.shown(nextB) and nextB:GetAttribute("Skin") == "Sign" and U8.green(U8.faceOf(nextB)), tag .. ": step 1's Next is the green plank")
-			-- folded: the bubble's "!" badge is a gold block
+			-- folded: (Pitch 2 item 03_tutorial_dock B: the bubble's "!" badge and its whole-px hop gave way to the quest strip,
+			-- tutorial_dock_b) the strip is a stone block in its wood edge with its lip, its "+" a stone tag in its edge and
+			-- lip, its step cells the row's kit faces (grass, gold, the well), and nothing round on it
 			local foldB = root:FindFirstChild("Fold", true)
 			if foldB then
 				Mock.Click(foldB)
 				LKC.advance(1)
 			end
-			local badge = root:FindFirstChild("Badge", true)
-			T.check(badge and U8.shown(badge) and sameColor(badge.BackgroundColor3, Sign.Gold) and badge:FindFirstChild("SignEdge") ~= nil and badge:FindFirstChild("Lip") ~= nil,
-				tag .. ": folded, the '!' badge is a gold block in its wood edge")
-			T.check(#U94.roundOrGloss(root) == 0, tag .. ": the bubble is square too", table.concat(U94.roundOrGloss(root), ", "))
-			-- (U9-9 look 2) the badge hops in whole px (two frames, 2 px apart), never turns: a turned block goes soft (the
-			-- kit's rule: never a Rotation)
-			if badge then
-				local turned, soft, ys = {}, {}, {}
-				for i = 1, 6 do
-					LKC.advance(0.23)
-					local r = U8.rect(badge)
-					ys[fmt("%.0f", r.Y)] = true
-					if badge.Rotation ~= 0 then
-						turned[#turned + 1] = fmt("%.1f deg", badge.Rotation)
-					end
-					local f = function(v)
-						return math.abs(v - math.floor(v + 0.5)) > 0.02
-					end
-					if f(r.X) or f(r.Y) or f(r.R) or f(r.B) then
-						soft[#soft + 1] = U8.show(r)
+			local strip = root:FindFirstChild("QuestStrip", true)
+			local plus = strip and strip:FindFirstChild("QuestOpen")
+			T.check(strip and U8.shown(strip) and sameColor(strip.BackgroundColor3, Sign.Stone) and strip:FindFirstChild("SignEdge") ~= nil and strip:FindFirstChild("Lip") ~= nil
+				and plus ~= nil and sameColor(plus.BackgroundColor3, Sign.Tile) and plus:FindFirstChild("SignEdge") ~= nil and plus:FindFirstChild("Lip") ~= nil,
+				tag .. ": folded, the quest strip is a stone block in its wood edge, its + a stone tag")
+			local faces, odd = 0, {}
+			for _, d in ipairs(strip and strip:GetDescendants() or {}) do
+				if d:GetAttribute("Step") then
+					faces = faces + 1
+					if not (sameColor(d.BackgroundColor3, Sign.Grass) or sameColor(d.BackgroundColor3, Sign.Gold) or sameColor(d.BackgroundColor3, Sign.Well)) then
+						odd[#odd + 1] = d:GetFullName()
 					end
 				end
-				local frames = 0
-				for _ in pairs(ys) do
-					frames = frames + 1
-				end
-				T.check(#turned == 0 and #soft == 0 and frames == 2, tag .. ": the folded '!' badge hops between two whole-px frames, Rotation 0",
-					table.concat(turned, ", ") .. " | " .. table.concat(soft, "; ") .. " | " .. frames .. " frames")
 			end
+			T.check(faces > 0 and #odd == 0, tag .. ": the strip's step cells wear the row's kit faces", table.concat(odd, ", "))
+			T.check(#U94.roundOrGloss(root) == 0, tag .. ": the strip is square too", table.concat(U94.roundOrGloss(root), ", "))
 			U99.tutorialOff()
 		end)
 		LKC.flushErrors("tutorial_signboard_skin")
@@ -14749,7 +14738,11 @@ local function clientScenarios()
 						local gui, root = U99.tutorial(step, open)
 						if T.check(root ~= nil and U8.shown(root), what .. ": the tutorial shows") then
 							local main = root:FindFirstChild("Main", true)
-							local part = (main and U8.shown(main)) and root or root:FindFirstChild("Portrait", true)
+							-- (Pitch 2 item 03_tutorial_dock B: folded, the guide is the quest strip; the portrait chip alone where
+							-- the strip has no room)
+							local strip = root:FindFirstChild("QuestStrip", true)
+							local folded = (strip and U8.shown(strip)) and strip or root:FindFirstChild("Portrait", true)
+							local part = (main and U8.shown(main)) and root or folded
 							local r = U8.rect(part)
 							if part == root then
 								-- (U9-9 look 2) the opened card with the portrait and the name plank riding its top edge
@@ -14762,7 +14755,7 @@ local function clientScenarios()
 									end
 								end
 							else
-								-- the folded guide: the portrait with its "!" badge and "Tap me!" tag, which hang off its corner and side
+								-- the folded guide: the quest strip with the portrait chip on it (or the chip alone)
 								for _, d in ipairs(part:GetDescendants()) do
 									if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 then
 										local dr = U8.rect(d)
@@ -14782,18 +14775,26 @@ local function clientScenarios()
 								T.check(#hits == 0, what .. ": over no thumb zone and no RUN / DASH", table.concat(hits, "; ") .. " | " .. U8.show(r))
 							end
 							if part ~= root and not open then
-								-- (kit-b gate U9 r4: a portrait phone showed a lone tile with a "!" and no word) the folded
-								-- guide always says Tap me! (beside the portrait, or under it where the top-right stack leaves
-								-- no room)
-								local tapTag = root:FindFirstChild("TapTag", true)
-								T.check(tapTag ~= nil and U8.shown(tapTag), what .. ": the folded guide says Tap me!")
+								-- (kit-b gate U9 r4: a portrait phone showed a lone tile with a "!" and no word; Pitch 2 03 B: the
+								-- "Tap me!" tag gave way to the quest strip) the folded guide shows the step's title and a + block
+								-- (>= 44 px) that opens the card, or the portrait chip alone (>= 44 px) where the strip has no room
+								local plus = strip and strip:FindFirstChild("QuestOpen")
+								local qt = strip and strip:FindFirstChild("QuestTitle")
+								local ok = (part == strip and qt ~= nil and U8.shown(qt) and qt.Text ~= "" and plus ~= nil and U8.shown(plus) and plus.AbsoluteSize.X >= 44 - 0.5
+									and plus.AbsoluteSize.Y >= 44 - 0.5) or (part ~= strip and part.AbsoluteSize.X >= 44 - 0.5 and part.AbsoluteSize.Y >= 44 - 0.5)
+								T.check(ok, what .. ": the folded guide shows its step and a + to open it (or the portrait chip alone)", part and part.Name or "-")
 							end
 							if part ~= root then
 								local top = U99.overTopRight(gui, r)
 								T.check(#top == 0, what .. ": the folded guide and its badge clear of the top-right token pill and gift", table.concat(top, "; ") .. " | " .. U8.show(r))
 								-- (U9-9 look 2) the folded guide every phone player sees on whole px: the portrait's frame, sky and
-								-- ground, the "!" badge and the "Tap me!" plank, all four edges
+								-- ground, (Pitch 2 03 B) the quest strip, its + block and its step cells, all four edges
 								local grid = U99.offGrid(part, {})
+								if part == strip then
+									for _, g in ipairs(U99.offGrid(root:FindFirstChild("Portrait", true), {})) do
+										grid[#grid + 1] = g
+									end
+								end
 								T.check(#grid == 0, what .. ": the folded guide's blocks on whole screen px (all four edges)", table.concat(grid, "; "))
 							end
 							local out, small = U99.texts(part, r)
@@ -14833,6 +14834,155 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("tutorial_fits_phone")
+	end)
+
+	-- (Pitch 2 item 03_tutorial_dock, option B "Quest strip"; the owner's shot 03: folded, the guide was a lone sky tile with
+	-- a "!" and a navy "Tap me!" tag, no step and no title) at the four grid sizes, step 3 folded: one stone strip holds
+	-- Nimbus' portrait chip, the step's title (23 px on PC, >= 18 on a phone), "3/21", the steps as chapter blocks of 3
+	-- cells (2 done, 1 current, the rest open) and a "+" block >= 44 screen px that opens the card. PC and a landscape
+	-- phone: top-left under the top bar, clear of the menu column; a portrait phone: on the HUD stack, at the vitals card's
+	-- left edge, 10 px over it (the spec's 29, 534-596, 317 x 62 at 390 x 844). Clear of the menu column, the wallet, the
+	-- gift, the thumb zones and RUN / DASH. Meeting the arena's side stack, the strip folds to the portrait chip (>= 44 px)
+	S.tutorial_dock_b = guarded("tutorial_dock_b", function()
+		local function inside(a, b)
+			return a.X >= b.X - 0.5 and a.R <= b.R + 0.5 and a.Y >= b.Y - 0.5 and a.B <= b.B + 0.5
+		end
+		local function over4(a, b)
+			return math.min(a.R, b.R) - math.max(a.X, b.X) > 4 and math.min(a.B, b.B) - math.max(a.Y, b.Y) > 4
+		end
+		local payload = U99.tutorialPayload(3)
+		local total = payload.Total
+		for _, s in ipairs(U8.SIZES) do
+			local run = s[3] and U99.atPhone or function(w, h, label, fn)
+				U8.at(w, h, false, label, fn)
+			end
+			run(s[1], s[2], "tutorial dock", function(tag)
+				local gui, root = U99.tutorial(3, false)
+				local main = root and root:FindFirstChild("Main", true)
+				local fold = root and root:FindFirstChild("Fold", true)
+				if main and U8.shown(main) and fold then
+					Mock.Click(fold)
+					LKC.advance(1)
+				end
+				local strip = root and root:FindFirstChild("QuestStrip", true)
+				if not T.check(strip ~= nil and U8.shown(strip) and not U8.shown(main), tag .. ": folded, the guide is the quest strip") then
+					U99.tutorialOff()
+					return
+				end
+				local sr = U8.rect(strip)
+				local k = U8.scaleOf(strip)
+				for _, gone in ipairs({ "Badge", "TapTag" }) do
+					local o = root:FindFirstChild(gone, true)
+					T.check(o == nil or not U8.shown(o), tag .. ": no " .. gone .. " on the folded guide")
+				end
+				-- its parts: the portrait chip at the left end, the title and its count, the steps, the "+" block
+				local portrait = root:FindFirstChild("Portrait", true)
+				local title, count = strip:FindFirstChild("QuestTitle"), strip:FindFirstChild("QuestCount")
+				local steps, open = strip:FindFirstChild("QuestSteps"), strip:FindFirstChild("QuestOpen")
+				local pr = portrait and U8.rect(portrait)
+				T.check(pr ~= nil and U8.shown(portrait) and inside(pr, sr) and pr.X - sr.X <= 12 * k + 1, tag .. ": Nimbus' portrait chip at the strip's left end",
+					(pr and U8.show(pr) or "-") .. " in " .. U8.show(sr))
+				local titlePx = title and title.TextSize * U8.scaleOf(title) or 0
+				local want = s[3] and 18 or (s[2] >= 1080 and 23 or 18)
+				T.check(title ~= nil and U8.shown(title) and title.Text == payload.Title and inside(U8.rect(title), sr) and titlePx >= want - 0.5,
+					tag .. ": the step's title in the strip, >= " .. want .. " px", fmt("'%s' %.1f px", title and title.Text or "-", titlePx))
+				T.check(count ~= nil and U8.shown(count) and count.Text == "3/" .. total and inside(U8.rect(count), sr) and not U8.overlap(U8.rect(count), U8.rect(title)),
+					tag .. ": its count 3/" .. total .. " beside the title", count and count.Text or "-")
+				local cells, chapters, states = 0, 0, { Done = 0, Current = 0, Open = 0 }
+				for _, d in ipairs(steps and steps:GetDescendants() or {}) do
+					if d:GetAttribute("Step") and U8.shown(d) then
+						cells = cells + 1
+						local st = d:GetAttribute("State")
+						states[st] = (states[st] or 0) + 1
+					elseif d.Name:match("^Chapter%d+$") then
+						chapters = chapters + 1
+					end
+				end
+				T.check(steps ~= nil and inside(U8.rect(steps), sr) and cells == total and chapters == math.ceil(total / 3) and states.Done == 2 and states.Current == 1
+					and states.Open == total - 3, tag .. ": the steps: one cell a step in chapter blocks of 3, 2 done, 1 current",
+					fmt("%d cells, %d chapters, %d done %d current %d open", cells, chapters, states.Done, states.Current, states.Open))
+				local orr = open and U8.rect(open)
+				T.check(orr ~= nil and U8.shown(open) and inside(orr, sr) and orr.R - orr.X >= 44 - 0.5 and orr.B - orr.Y >= 44 - 0.5 and not U8.overlap(orr, U8.rect(count))
+					and not U8.overlap(orr, U8.rect(steps)), tag .. ": the + block, >= 44 screen px, at the strip's right end", orr and U8.show(orr) or "-")
+				-- where spec 03 B puts it
+				local pg = U8.pg()
+				local hud = pg:FindFirstChild("NimbusHud")
+				-- (the strip's rects are in its gui's area, under Roblox's top bar; the spec measures the screen)
+				local inset = gui.IgnoreGuiInset and 0 or game:GetService("GuiService"):GetGuiInset().Y
+				local menuGui = pg:FindFirstChild("NimbusMenu")
+				local column = menuGui and menuGui:FindFirstChild("MenuColumn", true)
+				local cr = column and U8.shown(column) and U8.rect(column)
+				if s[2] > s[1] then
+					local vitals = hud and hud:FindFirstChild("BottomLeft") and hud.BottomLeft:FindFirstChild("Vitals")
+					local vr = vitals and U8.shown(vitals) and U8.rect(vitals)
+					T.check(vr and math.abs(sr.X - vr.X) <= 1 and math.abs(sr.B - (vr.Y - 10)) <= 1, tag .. ": on the HUD stack, at the vitals card's left edge, 10 px over it",
+						U8.show(sr) .. " / vitals " .. (vr and U8.show(vr) or "-"))
+					T.check(math.abs(sr.X - 29) <= 2 and math.abs(sr.Y + inset - 534) <= 3 and math.abs(sr.B + inset - 596) <= 2 and math.abs((sr.R - sr.X) - 317) <= 4,
+						tag .. ": the spec's 29, 534-596, 317 x 62 (screen px)", U8.show(sr) .. fmt(" + %d inset", inset))
+				else
+					-- (the card's edge margin under the top bar: 12 px, 20 on touch)
+					T.check(sr.Y >= -0.5 and sr.Y <= (s[3] and 20 or 12) + 1 and (cr == nil or not over4(sr, cr)) and (cr ~= nil or sr.X <= 12 * k + 1),
+						tag .. ": top-left under the top bar, clear of the menu column", U8.show(sr) .. " / column " .. (cr and U8.show(cr) or "-"))
+				end
+				-- clear of the HUD round it
+				local hits = {}
+				if cr and over4(sr, cr) then
+					hits[#hits + 1] = "menu column " .. U8.show(cr)
+				end
+				for _, h in ipairs(U99.overTopRight(gui, sr)) do
+					hits[#hits + 1] = h
+				end
+				local strips = hud and hud:FindFirstChild("Currency", true)
+				if strips and U8.shown(strips) and over4(sr, U8.rect(strips)) then
+					hits[#hits + 1] = "wallet " .. U8.show(U8.rect(strips))
+				end
+				if s[3] then
+					for _, h in ipairs(U99.overTouch(gui, sr, s[2] > s[1])) do
+						hits[#hits + 1] = h
+					end
+				end
+				T.check(#hits == 0, tag .. ": clear of the menu column, the wallet, the gift, the thumb zones and RUN / DASH", table.concat(hits, "; ") .. " | " .. U8.show(sr))
+				-- the + opens the card; folded again after
+				Mock.Click(open)
+				LKC.advance(1)
+				T.check(main ~= nil and U8.shown(main) and not U8.shown(strip), tag .. ": the + block opens the card")
+				if fold and U8.shown(main) then
+					Mock.Click(fold)
+					LKC.advance(1)
+				end
+				-- (the spec's caveat) the arena's side stack meeting the strip folds it to the portrait chip
+				if s[2] > s[1] then
+					-- (ArenaController's own NimbusArenaSide.SideStack where it lives, bottom-right 12 px in, grown upward by its
+					-- cards: the mock does not run AutomaticSize, so it is given the height of a tall stack; then put back)
+					local sideGui = pg:FindFirstChild("NimbusArenaSide")
+					local stack = sideGui and sideGui:FindFirstChild("SideStack")
+					if T.check(stack ~= nil, tag .. ": ArenaController's side stack exists") then
+						local was = { stack.Size, stack.Visible, sideGui.Enabled }
+						sideGui.Enabled = true
+						stack.Visible = true
+						stack.Size = UDim2.fromOffset(stack.Size.X.Offset, 400)
+						local card = Instance.new("Frame")
+						card.Name = "SmokeInvite"
+						card.Visible = true
+						card.Size = UDim2.new(1, 0, 0, 400)
+						card.Parent = stack
+						LKC.advance(1.2)
+						local chip = root:FindFirstChild("Portrait", true)
+						local chr = chip and U8.rect(chip)
+						local str = U8.rect(stack)
+						T.check(not U8.shown(strip) and chip ~= nil and U8.shown(chip) and chr.R - chr.X >= 44 - 0.5 and chr.B - chr.Y >= 44 - 0.5 and not U8.overlap(chr, str),
+							tag .. ": meeting the arena's side stack, the strip folds to the portrait chip (>= 44 px, clear of the stack)",
+							(chr and U8.show(chr) or "-") .. " / stack " .. U8.show(str) .. fmt(" | strip shown %s", tostring(U8.shown(strip))))
+						card:Destroy()
+						stack.Size, stack.Visible, sideGui.Enabled = was[1], was[2], was[3]
+						LKC.advance(1.2)
+					end
+					T.check(U8.shown(strip), tag .. ": the strip is back when the side stack goes")
+				end
+				U99.tutorialOff()
+			end)
+		end
+		LKC.flushErrors("tutorial_dock_b")
 	end)
 
 	-- the menu pointer (step 5, a menu target) on a PC and the phones: (U9-9 look 2) the pointed tile wears the kit's Selected

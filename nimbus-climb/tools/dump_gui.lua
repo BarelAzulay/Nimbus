@@ -1265,12 +1265,22 @@ scenario("menu", function(window, tab, action, key)
 	advance(2.5)
 end)
 
--- tutorial[:<step>[:open]]: open (kit B U9-9) taps the portrait when the screen folded the card into the bubble (a
--- phone), so the card the player opens is drawn too
+-- tutorial[:<step>[:open|fold]]: open (kit B U9-9) taps the portrait when the screen folded the card into the bubble (a
+-- phone), so the card the player opens is drawn too; fold (Pitch 2 03_tutorial_dock B) presses the card's fold block
+-- where the card is open (PC), so the folded quest strip is drawn at every size
 scenario("tutorial", function(step, mode)
 	toClient("TutorialState", tutorialPayload(tonumber(step) or 1))
 	advance(5)
-	if mode == "open" then
+	if mode == "fold" then
+		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local gui = pg and pg:FindFirstChild("NimbusTutorial")
+		local main = gui and gui:FindFirstChild("Main", true)
+		local fold = gui and gui:FindFirstChild("Fold", true)
+		if main and main.Visible and fold then
+			Mock.Click(fold)
+			advance(1)
+		end
+	elseif mode == "open" then
 		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
 		local gui = pg and pg:FindFirstChild("NimbusTutorial")
 		local main = gui and gui:FindFirstChild("Main", true)

@@ -10,7 +10,10 @@
 --     Cloudy Dragon in a ViewportFrame, gently flapping, livelier while talking), the step title, "Step 3/9",
 --     progress pips, the typewriter text, a hint line with the live distance, a Next button (CompleteOn = "Next",
 --     or AlsoNext) and a small "Skip tutorial" link that asks to confirm. Tapping the portrait folds the card into a
---     bubble (the portrait keeps flapping in it, at half the frame rate);
+--     bubble (the portrait keeps flapping in it, at half the frame rate; Pitch 2 item 03_tutorial_dock B: the "bubble"
+--     is the quest strip, QuestStrip: the portrait chip, the step's title, "3/21", the steps in chapter blocks and a
+--     "+" block that opens the card; PC / a landscape phone top-left under the top bar, a portrait phone on the HUD
+--     stack over the vitals card; too narrow or meeting the arena's side stack: the portrait chip alone);
 --     screens too small for the card get the bubble automatically. The HUD's bottom-left block (HP / stamina card)
 --     is a hard limit: a bubble that has no room under the top-left panel (party / match panel on a landscape
 --     phone) sits beside that panel instead. A card the player opens in the plain lobby may cover the idle vitals
@@ -44,8 +47,8 @@
 -- frame (a little pixel cloud in its corner, the ground lip over Nimbus' feet), the name a plain Section title in brown,
 -- the counter a stone tag, the fold a stone block with the pixel minus, the pips kit B blocks (a done step grass, the
 -- current one gold, the rest the sunk well, each in a wood edge), the text well a pale tile in a wood edge, the hint line
--- in navy ink, Next the one green plank (gold on the last step), the skip confirm a red and a stone plank, the "!" badge
--- a gold block and "Tap me!" a navy plank. Confetti in the kit's gold and pink, flat squares that flip (no rotation) on
+-- in navy ink, Next the one green plank (gold on the last step), the skip confirm a red and a stone plank (Pitch 2 03 B:
+-- the folded bubble's "!" badge and "Tap me!" plank gave way to the quest strip). Confetti in the kit's gold and pink, flat squares that flip (no rotation) on
 -- whole pixels. The menu pointer's ring is a square gold frame in wood lines that breathes in whole pixels (no glow, no
 -- fade); the pixel arrow is gold with a brown outline, its scale snapped so each 4 px cell is twice the screen's icon pixel. Icons and
 -- edges under the card's scale stay on whole screen px (client/UI/PixelCrisp). The world guide sign is the world-text
@@ -166,12 +169,31 @@ local K = {
 	PORTRAIT_FRAME = 3, -- the portrait's wood frame
 	PORTRAIT_LIP = 6, -- its ground lip
 	NAME_LIP = 5, -- (U9-9 look 2) the name plank's navy lip (the NPC's)
-	BADGE = 30, -- the folded guide's "!" block, its centre BADGE_IN in from the portrait's top-right corner
-	BADGE_IN = 10,
-	TAP_W = 105, -- the "Tap me!" plank, TAP_GAP right of the portrait
-	TAP_H = 35,
-	TAP_GAP = 10,
-	BADGE_HOP = 0.4, -- (U9-9 look 2) seconds between the badge's two frames (up 2 px / down): a pixel hop, never a Rotation
+	-- (Pitch 2 item 03_tutorial_dock, option B "Quest strip"; the owner's shot 03: folded, the guide was a lone sky tile with
+	-- a "!" and a navy "Tap me!" tag, no step, no title) folded, the guide is one stone strip (STRIP_W x STRIP_H, a
+	-- STRIP_EDGE wood edge, its STRIP_LIP lip): Nimbus' portrait chip (STRIP_CHIP square, STRIP_PAD in), the step's title
+	-- (STRIP_TITLE: 23 px on PC, 18 on a phone's 0.8) with "3/21" right of it, under them the steps (STRIP_CELL_H tall: a
+	-- chapter block of PROG_CHAPTER cells each, STRIP_CHAPTER_GAP screen px apart, 1 px of wood between two cells), and the
+	-- STRIP_OPEN px "+" block that opens the card (>= 44 screen px at 0.8). PC and a landscape phone: top-left under the top
+	-- bar (right of the menu column); a portrait phone: on the HUD stack, from the vitals card's left edge to the RUN / DASH
+	-- column's right edge, STRIP_DOCK_GAP screen px over the vitals card. Narrower than STRIP_MIN_W, or meeting the arena's
+	-- side stack: the portrait chip alone (its tap opens the card)
+	STRIP_W = 440,
+	STRIP_MIN_W = 300,
+	STRIP_H = 76,
+	STRIP_PAD = 8,
+	STRIP_EDGE = 3,
+	STRIP_LIP = 4,
+	STRIP_CHIP = 56,
+	STRIP_TITLE = 23,
+	STRIP_TITLE_MIN = 18,
+	STRIP_COUNT = 20,
+	STRIP_OPEN = 56,
+	STRIP_PLUS = 27,
+	STRIP_COL_GAP = 10,
+	STRIP_CELL_H = 14,
+	STRIP_CHAPTER_GAP = 3,
+	STRIP_DOCK_GAP = 10,
 }
 
 local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the guide trail's dot strip (kit B X1)
@@ -865,11 +887,31 @@ local PROG_LOOK = {
 	Open = { Face = SIGN.Well },
 }
 
+-- (Pitch 2 03 B) the quest strip's steps for S.progStep / S.progDone: a done step's cell grass, the current one gold,
+-- the rest the sunk well (the card's row looks, one cell a step)
+local function paintStripSteps()
+	local row = UI.StripRow
+	if not row then
+		return
+	end
+	local step, done = S.progStep or 0, S.progDone == true
+	for _, cell in ipairs(row:GetDescendants()) do
+		local s = cell:GetAttribute("Step")
+		if s then
+			local state = (done or s < step) and "Done" or (s == step and "Current" or "Open")
+			cell.BackgroundColor3 = PROG_LOOK[state].Face
+			cell:SetAttribute("State", state)
+		end
+	end
+	row:SetAttribute("Current", done and 0 or step)
+end
+
 -- paints the row for `current` (the step shown; 0 with allDone for the finale); no arguments: the last ones again
 local function paintProgress(current, allDone)
 	if current ~= nil then
 		S.progStep, S.progDone = current, allDone == true
 	end
+	paintStripSteps()
 	local row = UI.ProgressRow
 	if not row then
 		return
@@ -960,6 +1002,135 @@ local function layoutProgress(room)
 		end
 	end
 	paintProgress()
+end
+
+-- (Pitch 2 03 B) sizes the quest strip's steps to `room` design px at the strip's scale: one chapter block of
+-- K.PROG_CHAPTER cells per chapter (21 steps: 7 blocks of 3, so the row and "3/21" agree), each block a wood frame
+-- (2 screen px) round its cells with 1 px of wood between two; rebuilt only when the blocks change
+local function layoutStripSteps(room)
+	local holder = UI.StripSteps
+	if not holder then
+		return
+	end
+	local crisp = mod("PixelCrisp")
+	local k = math.max(0.1, crisp and crisp.ScaleAbove(holder) or UI.Scale.Scale)
+	local total = S.progTotal or 0
+	local per = K.PROG_CHAPTER
+	local n = math.ceil(total / per)
+	local roomPx = math.max(0, math.floor(room * k))
+	local hPx = math.max(8, math.floor(K.STRIP_CELL_H * k + 0.5))
+	local gap, e = K.STRIP_CHAPTER_GAP, 2
+	local bw = n > 0 and math.floor((roomPx + gap) / n) - gap or 0
+	local unscale = holder:FindFirstChild("Unscale")
+	if unscale and unscale.Scale ~= 1 / k then
+		unscale.Scale = 1 / k
+	end
+	holder.Size = UDim2.fromOffset(roomPx, hPx)
+	local key = n .. "|" .. bw .. "|" .. hPx .. "|" .. total
+	if S.stripKey ~= key or not (UI.StripRow and UI.StripRow.Parent) then
+		S.stripKey = key
+		if UI.StripRow then
+			UI.StripRow:Destroy()
+			UI.StripRow = nil
+		end
+		if n > 0 and bw > 2 * e + per then
+			local row = box("Row", { Size = UDim2.fromOffset(n * (bw + gap) - gap, hPx), ZIndex = 2 }, holder)
+			row:SetAttribute("Steps", total)
+			row:SetAttribute("PerBlock", per)
+			for i = 1, n do
+				local block = box("Chapter" .. i, {
+					BackgroundTransparency = 0,
+					BackgroundColor3 = SIGN.Wood,
+					Position = UDim2.fromOffset((i - 1) * (bw + gap), 0),
+					Size = UDim2.fromOffset(bw, hPx),
+					ZIndex = 2,
+				}, row)
+				local c = math.min(per, total - (i - 1) * per)
+				local inner = bw - 2 * e
+				local cw = math.floor((inner - (c - 1)) / c)
+				local x = e
+				for j = 1, c do
+					local w = (j == c) and (bw - e - x) or cw
+					local cell = box("Cell" .. j, {
+						BackgroundTransparency = 0,
+						BackgroundColor3 = SIGN.Well,
+						Position = UDim2.fromOffset(x, e),
+						Size = UDim2.fromOffset(w, hPx - 2 * e),
+						ZIndex = 2,
+					}, block)
+					cell:SetAttribute("Step", (i - 1) * per + j)
+					x = x + cw + 1
+				end
+			end
+			UI.StripRow = row
+		end
+	end
+	paintStripSteps()
+end
+
+-- (Pitch 2 03 B) the HUD's vitals card (NimbusHud.BottomLeft.Vitals) in our gui px, nil when it is not shown
+local function vitalsRect()
+	local pg = playerGui()
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local block = hud and hud:FindFirstChild("BottomLeft")
+	local vitals = block and block:FindFirstChild("Vitals")
+	if vitals and vitals:IsA("GuiObject") and vitals.AbsoluteSize.X > 0 and shownIn(vitals, hud) then
+		return rectOf(vitals, insetShift(hud))
+	end
+	return nil
+end
+
+-- (Pitch 2 03 B, the spec's caveat) the arena's side stack (ArenaController: NimbusArenaSide.SideStack, anchored at the
+-- bottom right and growing upward) in our gui px while it holds a shown card, nil otherwise
+local function arenaSideRect()
+	local pg = playerGui()
+	local gui = pg and pg:FindFirstChild("NimbusArenaSide")
+	local side = gui and gui:FindFirstChild("SideStack")
+	if not (side and side:IsA("GuiObject") and side.AbsoluteSize.X > 0 and shownIn(side, gui)) then
+		return nil
+	end
+	for _, c in ipairs(side:GetChildren()) do
+		if c:IsA("GuiObject") and c.Visible and c.AbsoluteSize.Y > 0 then
+			return rectOf(side, insetShift(gui))
+		end
+	end
+	return nil
+end
+
+-- (Pitch 2 03 B) lays the folded guide out as the quest strip at `x, y` (gui px), `w` design px wide, or as the portrait
+-- chip alone (`chip`): the strip's parts, the portrait on its left end, the "+" only while the card can open
+local function placeStrip(w, chip)
+	local pad, c = K.STRIP_PAD, K.STRIP_CHIP
+	UI.Strip.Visible = not chip
+	if chip then
+		UI.Portrait.Position = UDim2.fromOffset(0, 0)
+		UI.Portrait.Size = UDim2.fromOffset(c, c)
+		return
+	end
+	UI.Strip.Position = UDim2.fromOffset(0, 0)
+	UI.Strip.Size = UDim2.fromOffset(w, K.STRIP_H)
+	UI.Portrait.Position = UDim2.fromOffset(pad, pad)
+	UI.Portrait.Size = UDim2.fromOffset(c, c)
+	local canOpen = S.canOpen ~= false and not S.windowOpen
+	UI.StripOpen.Visible = canOpen
+	local openX = w - pad - K.STRIP_OPEN
+	UI.StripOpen.Position = UDim2.fromOffset(openX, pad)
+	UI.StripOpen.Size = UDim2.fromOffset(K.STRIP_OPEN, c)
+	local x0 = pad + c + K.STRIP_COL_GAP
+	local x1 = canOpen and (openX - K.STRIP_COL_GAP) or (w - pad - K.STRIP_COL_GAP)
+	local colW = math.max(20, x1 - x0)
+	local titleH = K.STRIP_TITLE + 6
+	local count = UI.StripCount.Text
+	local countW = math.ceil(textWidth(count, K.STRIP_COUNT, "Heading")) + K.OUTLINE_ROOM
+	UI.StripCount.Position = UDim2.fromOffset(x1 - countW, pad)
+	UI.StripCount.Size = UDim2.fromOffset(countW, titleH)
+	local titleW = math.max(20, colW - countW - 8)
+	UI.StripTitle.TextSize = fitTextSize(UI.StripTitle.Text, K.STRIP_TITLE, K.STRIP_TITLE_MIN, "Heading", titleW)
+	UI.StripTitle.Position = UDim2.fromOffset(x0, pad)
+	UI.StripTitle.Size = UDim2.fromOffset(titleW, titleH)
+	local stepsY = pad + titleH + 4
+	UI.StripSteps.Position = UDim2.fromOffset(x0, stepsY)
+	layoutStripSteps(colW)
 end
 
 -- (U9-9 look) the HUD's vitals card steps aside while the opened card lies over a part of it (the plain lobby's card
@@ -1215,57 +1386,68 @@ local function layout()
 	end
 
 	local designH, bodyH, hintH = panelHeight(width)
-	local tagRoom, tagBelow = true, false
+	-- (Pitch 2 item 03_tutorial_dock B) folded, the guide is the quest strip (K.STRIP_*): on a portrait phone on the HUD
+	-- stack over the vitals card (from its left edge to the RUN / DASH column's right edge, STRIP_DOCK_GAP over it); on
+	-- PC and a landscape phone top-left under the top bar (under a top-left panel, else beside it at the top edge), right
+	-- of the menu column and short of the top-right stack. Too narrow, with no room, or meeting the arena's side stack: the
+	-- portrait chip alone
+	local stripW, stripChip = K.STRIP_W, false
 	if folded then
-		top = math.max(top, edge - K.PORTRAIT_Y * k) -- (the folded guide keeps the whole edge margin: no plank rides it)
-		local bubbleTop = top + K.PORTRAIT_Y * k
-		local bubbleH = K.PORTRAIT * k
-		if bubbleTop + bubbleH <= bottomLimit then
-			left = leftFor(top, (K.PORTRAIT + K.PORTRAIT_Y) * k)
-		elseif hud.TopLeftRight > 0 then
-			-- no room between the top-left panel (party / match panel on a short screen) and the vitals card:
-			-- beside that panel, at the top edge
-			top = edge - K.PORTRAIT_Y * k
-			left = math.max(hud.TopLeftRight + K.GAP * k, leftFor(top, bubbleH))
-		else
-			top = math.max(edge, bottomLimit - bubbleH) - K.PORTRAIT_Y * k
-			left = leftFor(top, (K.PORTRAIT + K.PORTRAIT_Y) * k)
-		end
-		-- (kit B U9-9) the portrait and its "!" badge (30 px round x -10 / y 10 of its top-right corner, its 2 px edge) stay
-		-- clear of the top-right stack (token pill, gift): on a portrait phone the pixel arrow's whole-pixel scale leaves
-		-- the bubble less room beside the menu, so when the two meet the bubble drops just below that stack
-		if hud.TopRightLeft > 0 then
-			local reachR = left + (K.PAD + K.PORTRAIT - K.BADGE_IN + K.BADGE / 2 + K.EDGE_PX) * k
-			local reachTop = top + (K.PORTRAIT_Y - 7) * k
-			if reachR > hud.TopRightLeft - K.GAP * k and reachTop < hud.TopRightBottom + K.GAP * k then
-				local below = hud.TopRightBottom + K.GAP * k - (K.PORTRAIT_Y - 7) * k
-				if below + (K.PORTRAIT_Y + K.PORTRAIT) * k <= bottomLimit then
-					top = below
-					left = leftFor(top, (K.PORTRAIT + K.PORTRAIT_Y) * k)
+		local h2 = K.STRIP_H * k
+		local chipH = K.STRIP_CHIP * k
+		local v = area.Y > area.X and vitalsRect() or nil
+		if v then
+			local right = v.x1
+			for _, r in ipairs(touchButtonRects()) do
+				if r.x0 >= v.x1 - 4 and r.y0 < v.y1 and r.y1 > v.y0 - K.STRIP_DOCK_GAP - h2 then
+					right = math.max(right, r.x1)
 				end
 			end
+			left, top = v.x0, v.y0 - K.STRIP_DOCK_GAP - h2
+			stripW = math.min(K.STRIP_W, math.floor((math.min(right, area.X - edge) - left) / k))
+		else
+			top = hud.TopLeftBottom > 0 and (hud.TopLeftBottom + K.GAP * k) or edge
+			left = leftFor(top, h2)
+			if top + h2 > bottomLimit and hud.TopLeftRight > 0 then
+				top = edge
+				left = math.max(hud.TopLeftRight + K.GAP * k, leftFor(top, h2))
+			end
+			local rightLimit = area.X - edge
+			if hud.TopRightLeft > 0 and top < hud.TopRightBottom + K.GAP * k then
+				rightLimit = math.min(rightLimit, hud.TopRightLeft - K.GAP * k)
+			end
+			stripW = math.min(K.STRIP_W, math.floor((rightLimit - left) / k))
 		end
-		-- the "Tap me!" tag right of the portrait must not run into the top-right stack (token pill)
-		local tagRight = left + (K.PAD + K.PORTRAIT + K.TAP_GAP + K.TAP_W) * k
-		local portraitTop = top + K.PORTRAIT_Y * k
-		if hud.TopRightLeft > 0 and tagRight > hud.TopRightLeft and portraitTop < hud.TopRightBottom + K.GAP * k then
-			-- (kit-b gate U9 r4: a portrait phone showed a lone tile with a "!" and no word) no room beside the portrait:
-			-- the tag goes under it, left-aligned with it (the sky under the top bar is free there)
-			tagBelow = true
+		local side = arenaSideRect()
+		local x1, y1 = left + stripW * k, top + h2
+		local g = K.GAP * k
+		local meets = side ~= nil and left < side.x1 + g and x1 > side.x0 - g and top < side.y1 + g and y1 > side.y0 - g
+		stripChip = stripW < K.STRIP_MIN_W or meets or (v == nil and y1 > bottomLimit)
+		if stripChip then
+			if v then
+				top = v.y0 - K.STRIP_DOCK_GAP - chipH -- (on the stack still, its foot where the strip's was)
+			elseif top + chipH > bottomLimit then
+				top = math.max(edge, bottomLimit - chipH)
+				left = leftFor(top, chipH)
+			end
 		end
 	end
-	if UI.TapTag then
-		UI.TapTag.AnchorPoint = tagBelow and Vector2.new(0, 0) or Vector2.new(0, 0.5)
-		UI.TapTag.Position = tagBelow and UDim2.new(0, 0, 1, K.TAP_GAP) or UDim2.new(1, K.TAP_GAP, 0.5, 0)
-	end
+	S.stripChip = folded and stripChip
 	applyGeometry(width, designH, bodyH, hintH)
+	if folded then
+		placeStrip(stripW, stripChip)
+		UI.Root.Size = stripChip and UDim2.fromOffset(K.STRIP_CHIP, K.STRIP_CHIP) or UDim2.fromOffset(stripW, K.STRIP_H)
+	else
+		UI.Strip.Visible = false
+		UI.Portrait.Position = UDim2.fromOffset(K.PAD, K.PORTRAIT_Y)
+		UI.Portrait.Size = UDim2.fromOffset(K.PORTRAIT, K.PORTRAIT)
+	end
+	S.portraitBase = UI.Portrait.Position
 	local crisp = mod("PixelCrisp")
 	if crisp then
 		crisp.Refresh(UI.Root) -- (kit B U9-9) icons and edges back on whole screen px at the card's scale
 	end
 	UI.Main.Visible = not folded
-	UI.Badge.Visible = folded
-	UI.TapTag.Visible = folded and S.manual == nil and S.canOpen and not S.windowOpen and tagRoom
 
 	local goal = UDim2.fromOffset(math.floor(left + 0.5), math.floor(top + 0.5))
 	if folded or not S.shown then
@@ -1353,36 +1535,56 @@ local function buildPortrait(parent)
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 2,
 	}, holder)
-	-- "!" badge, shown while the card is folded away: a gold block in its wood edge; (U9-9 look 2) it hops 2 px in whole px
-	-- (the step loop), never turns
-	local badge = box("Badge", {
+	-- (Pitch 2 item 03_tutorial_dock B: the folded guide is the quest strip, buildStrip; the "!" badge and the "Tap me!"
+	-- tag of the lone bubble are gone)
+	UI.Portrait, UI.View, UI.Toggle = holder, view, toggle
+end
+
+-- (Pitch 2 item 03_tutorial_dock B) the folded guide: the quest strip (K.STRIP_*), a stone strip in its wood edge and lip
+-- holding the step's title, "3/21", the steps row (layoutStripSteps) and the "+" block; Nimbus' portrait sits on its left
+-- end as the chip (layout moves it there while the card is folded)
+local function buildStrip(parent)
+	local strip = box("QuestStrip", {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Gold,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -K.BADGE_IN, 0, K.BADGE_IN),
-		Size = UDim2.fromOffset(K.BADGE, K.BADGE),
+		BackgroundColor3 = SIGN.Stone,
+		Size = UDim2.fromOffset(K.STRIP_W, K.STRIP_H),
 		Visible = false,
-		ZIndex = 3,
-	}, holder)
-	edge(badge, SIGN.Wood, K.EDGE_PX)
-	lipOf(badge, SIGN.GoldLip, K.TAG_LIP)
-	label(badge, "Mark", "!", "Title", 22, SIGN.Text, { Size = UDim2.new(1, 0, 1, -K.TAG_LIP), ZIndex = 3 })
-	crispBox(badge)
-	-- "Tap me!" tag beside the bubble when the screen is too small for the card: a navy plank, gold words
-	local tag = box("TapTag", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Navy,
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(1, K.TAP_GAP, 0.5, 0),
-		Size = UDim2.fromOffset(K.TAP_W, K.TAP_H),
-		Visible = false,
-		ZIndex = 3,
-	}, holder)
-	edge(tag, SIGN.GoldLip, K.EDGE_PX)
-	lipOf(tag, SIGN.NavyLip, K.TAG_LIP)
-	label(tag, "Text", "Tap me!", "Heading", K.CAPTION_SIZE, SIGN.Gold, { Size = UDim2.new(1, 0, 1, -K.TAG_LIP), ZIndex = 3 })
-	crispBox(tag)
-	UI.Portrait, UI.View, UI.Toggle, UI.Badge, UI.TapTag = holder, view, toggle, badge, tag
+		Active = true, -- (a tap on the strip never falls through to the world)
+		ZIndex = 1,
+	}, parent)
+	edge(strip, SIGN.Wood, K.STRIP_EDGE)
+	lipOf(strip, SIGN.StoneLip, K.STRIP_LIP)
+	crispBox(strip)
+	UI.Strip = strip
+	UI.StripTitle = label(strip, "QuestTitle", "", "Heading", K.STRIP_TITLE, SIGN.Text, {
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		TextWrapped = false,
+		ZIndex = 2,
+	})
+	UI.StripCount = label(strip, "QuestCount", "", "Heading", K.STRIP_COUNT, SIGN.Text, {
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextWrapped = false,
+		ZIndex = 2,
+	})
+	-- the steps: a holder undoing the strip's scale (Unscale), so its chapter blocks and cells are whole screen px
+	UI.StripSteps = box("QuestSteps", { Size = UDim2.fromOffset(200, K.STRIP_CELL_H), ZIndex = 2 }, strip)
+	make("UIScale", "Unscale", { Scale = 1 }, UI.StripSteps)
+	crispBox(UI.StripSteps)
+	-- the "+" block: a stone tag in its wood edge with the pixel plus; it opens the card
+	local open = make("TextButton", "QuestOpen", {
+		BackgroundColor3 = SIGN.Tile,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
+		Size = UDim2.fromOffset(K.STRIP_OPEN, K.STRIP_OPEN),
+		ZIndex = 2,
+	}, strip)
+	edge(open, SIGN.Wood, K.EDGE_PX)
+	lipOf(open, SIGN.StoneLip, K.TAG_LIP)
+	crispIcon(open, "plus", K.STRIP_PLUS, SIGN.Text, { Name = "Plus", Position = UDim2.new(0.5, 0, 0.5, -1), ZIndex = 2 })
+	crispBox(open)
+	UI.StripOpen = open
 end
 
 local function buildPixelArrow(parent)
@@ -1734,6 +1936,7 @@ local function buildPanel()
 	end
 
 	buildPortrait(slide)
+	buildStrip(slide)
 
 	-- confetti layer (gui pixels, no UIScale)
 	UI.Fx = box("Confetti", { Size = UDim2.fromScale(1, 1), ZIndex = 50, Active = false }, gui)
@@ -1760,6 +1963,14 @@ local function buildPanel()
 	end)
 	fold.Activated:Connect(function()
 		S.manual = "collapsed"
+		safe("layout", layout)
+	end)
+	-- (Pitch 2 03 B) the quest strip's "+" opens the card, as a tap on the portrait chip does
+	UI.StripOpen.Activated:Connect(function()
+		if not collapsed() or S.canOpen == false or S.windowOpen then
+			return
+		end
+		S.manual = "expanded"
 		safe("layout", layout)
 	end)
 
@@ -1976,10 +2187,10 @@ local function celebrate(big)
 		safe("burst", burst, big)
 	end
 	if UI.Portrait then
-		-- a happy hop of the portrait
-		local base = UDim2.fromOffset(K.PAD, K.PORTRAIT_Y)
+		-- a happy hop of the portrait (from where layout put it: over the card, or on the quest strip's end)
+		local base = S.portraitBase or UDim2.fromOffset(K.PAD, K.PORTRAIT_Y)
 		UI.Portrait.Position = base
-		local up = tween(UI.Portrait, 0.14, { Position = UDim2.fromOffset(K.PAD, K.PORTRAIT_Y - 10) })
+		local up = tween(UI.Portrait, 0.14, { Position = base + UDim2.fromOffset(0, -10) })
 		up.Completed:Connect(function()
 			tween(UI.Portrait, 0.32, { Position = base }, Enum.EasingStyle.Bounce)
 		end)
@@ -2058,6 +2269,8 @@ local function renderStep()
 	end
 	UI.StepTitle.Text = st.Title ~= "" and st.Title or "Nimbus says"
 	UI.Counter.Text = "Step " .. st.Step .. "/" .. st.Total
+	UI.StripTitle.Text = UI.StepTitle.Text -- (Pitch 2 03 B) the folded quest strip's title and count
+	UI.StripCount.Text = st.Step .. "/" .. st.Total
 	S.progTotal = st.Total -- (layout builds the row for it)
 	paintProgress(st.Step, false)
 	UI.Hint.Text = hintText()
@@ -2079,6 +2292,8 @@ local function renderFinale(reward)
 	S.typing = false
 	UI.StepTitle.Text = "All done!"
 	UI.Counter.Text = "Complete!"
+	UI.StripTitle.Text = "All done!"
+	UI.StripCount.Text = "Done!"
 	paintProgress(0, true)
 	local text = "You know the basics now. Happy climbing, see you in the clouds!"
 	if type(reward) == "number" and reward > 0 then
@@ -2253,7 +2468,7 @@ end
 local function pointerObstacles(button)
 	local list = menuButtonRects(button)
 	if UI.Root and UI.Root.Visible then
-		local part = collapsed() and UI.Portrait or UI.Root
+		local part = (collapsed() and S.stripChip) and UI.Portrait or UI.Root -- (Pitch 2 03 B: folded, the root is the strip)
 		if part and part.AbsoluteSize.X > 0 then
 			list[#list + 1] = rectOf(part, 0)
 		end
@@ -2991,18 +3206,6 @@ function TutorialController.Step(dt)
 			local face = st and not S.finale and currentProgressFace()
 			if face then
 				face.BackgroundTransparency = (math.sin(t * 6) + 1) * 0.2
-			end
-		end
-		if UI.Badge.Visible then
-			-- (U9-9 look 2) a 2-frame pixel hop (SignKit.Spin's way): up 2 screen px, then back, every BADGE_HOP s; a
-			-- turned block went soft (the kit's rule: never a Rotation). PixelCrisp.Box keeps it on whole px
-			local up = math.floor(t / K.BADGE_HOP) % 2 == 1
-			local k = math.max(0.1, UI.Scale.Scale)
-			local lift = up and math.max(1, math.floor(2 / k + 0.5)) or 0
-			local want = UDim2.new(1, -K.BADGE_IN, 0, K.BADGE_IN - lift)
-			if S.badgeAt ~= want then
-				S.badgeAt = want
-				UI.Badge.Position = want
 			end
 		end
 	end
