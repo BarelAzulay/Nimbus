@@ -3270,6 +3270,41 @@ local function clientScenarios()
 				MC._TouchButtons(false)
 			end
 		end
+		-- (P2 fix round C, the whole suite after fix B: bug2gui's short End card on 844 x 390 took the top-right corner over the
+		-- strips after client_p5dungeon_mobile's taller one) a new End's first place weighed the LAST card's height (the card
+		-- is resized only by its fill), found no spot for it, and the short phone's corner latch then held that corner for the
+		-- whole new End. A tall card, OK, then a short one: the short one stands left of the strips or under them
+		C5.screen(844, 390, true)
+		if MC and type(MC._TouchButtons) == "function" then
+			MC._TouchButtons(true)
+		end
+		KC.advance(0.6)
+		local rg = C5.pg():FindFirstChild("NimbusDungeonRun")
+		LP:SetAttribute("InBattle", nil)
+		KC.toClient("DungeonState", "End", ends[3][2])
+		KC.advance(1.2)
+		local card = rg and rg:FindFirstChild("EndCard")
+		if card and C5.shown(card) then
+			Mock.Click(C5.find(card, "OkButton"))
+			KC.advance(0.4)
+		end
+		KC.toClient("DungeonState", "End", { Floor = 1, Name = "Mossy Cellar", Cleared = true, Reason = "Cleared", Room = 4,
+			Totals = { Cash = 100, Tokens = 10, Xp = 20, Gems = 0 } })
+		KC.advance(1.2)
+		local hud = C5.pg():FindFirstChild("NimbusHud")
+		local top = hud and hud:FindFirstChild("TopRight")
+		local strips = top and top:FindFirstChild("Currency")
+		if T.check(card and C5.shown(card) and strips ~= nil, "p5dgn endfit 844x390 short after tall: (setup) the End card and the strips") then
+			local cr, sr = C5.rect(card), C5.rect(strips)
+			T.check(C5.shown(strips) and (cr.y0 >= sr.y1 - 0.5 or cr.x1 <= sr.x0 + 0.5),
+				"p5dgn endfit 844x390 short after tall: the short card starts below the strips or stands left of them (weighed at its own height)",
+				string.format("%.0f,%.0f..%.0f,%.0f vs strips %.0f,%.0f..%.0f,%.0f (shown %s)", cr.x0, cr.y0, cr.x1, cr.y1, sr.x0, sr.y0, sr.x1, sr.y1, tostring(C5.shown(strips))))
+			Mock.Click(C5.find(card, "OkButton"))
+			KC.advance(0.4)
+		end
+		if MC and type(MC._TouchButtons) == "function" then
+			MC._TouchButtons(false)
+		end
 		C5.screen(390, 844, true)
 	end)
 	return S

@@ -2152,7 +2152,9 @@ function R.placeEndLandscape(w, h, top, endH, strips)
 		-- card's middle in the screen's centre third at 640 x 360 and 844 x 390.)
 		-- (only once the heights weighed above are this screen's narrow card's: R.fillEnd's last build was a landscape card at
 		-- maxW, not a portrait one carried over by a turn of the phone)
-		if not right and (tight or S.EndBuiltSig == ("true/" .. tostring(maxW))) then
+		-- (P2 fix round C: and this End's own card, R.fillEnd's S.EndBuiltAt. A new End's first place weighs the last card's
+		-- height until its fill: after a tall card a short one found no spot and latched the corner over the strips)
+		if not right and (tight or (S.EndBuiltSig == ("true/" .. tostring(maxW)) and S.EndBuiltAt == S.EndAt)) then
 			local limit = w - 12
 			local wide = math.min(K.END_W, math.floor((limit - 8) / scale))
 			local left = math.floor(limit - wide * scale)
@@ -2802,6 +2804,7 @@ function R.fillEnd()
 		end
 	end
 	U.EndOk = U.EndBuilt.Ok
+	S.EndBuiltAt = S.EndAt -- (R.placeEndLandscape: the card now holds this End's model, built now or unchanged)
 	if type(BC.PaintResultTimer) == "function" then
 		BC.PaintResultTimer(U.EndTimer, 1 - (os.clock() - S.EndAt) / K.END_SECONDS)
 	end
