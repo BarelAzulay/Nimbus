@@ -553,6 +553,44 @@ local function serverScenarios()
 		end
 		T.check(knock > 0 and jolt > 0 and abs(hk / knock - 0.78) < 0.01 and abs(hj / jolt - 0.78) < 0.01,
 			fmt("hurt: an evolved body (Hop 0.78) moves 0.78 x as far (back %.3f / %.3f, jolt %.3f / %.3f)", hk, knock, hj, jolt))
+		-- (d) (the approved mock's fast lane: "a Double strike adds a second jolt", its 2nd hit 0.14 s after the 1st; the r2
+		-- look sheet: a fresh Hurt from the spot pulled the knocked-back bear 0.12 .. 0.16 toward its biter at a re-hit) a
+		-- re-hit while still knocked back: Sample's `reach` = the knock-back carried (0..1 of the knock; AttackFx: the
+		-- running Hurt's own then). The new reaction starts there, still and on the floor, and is never nearer its biter
+		-- before its way home; on its paws and home at p 1 like any Hurt
+		local carry = 0.8
+		local o0 = P.Offset("Hurt", 0, false, 1, carry, typical)
+		local s0 = P.Sample("Hurt", 0, false, 1, carry, typical)
+		local minZ, peakZ = huge, 0
+		for i = 0, N do
+			local p = i / N
+			local o = P.Offset("Hurt", p, false, 1, carry, typical)
+			if p <= 0.56 then -- (its way home starts 0.28 s in: p 0.56)
+				minZ = min(minZ, o.Z)
+			end
+			peakZ = max(peakZ, o.Z)
+		end
+		T.check(abs(o0.Z - carry * 0.38) < 1e-3 and abs(o0.Y) < 1e-6 and abs(pitchOf(s0)) < 1e-3 and minZ > carry * 0.38 - 1e-4 and peakZ < 0.40,
+			fmt("hurt: a re-hit carries the knock-back (reach %.1f): it starts %.3f back, on the floor, level (%.2f deg); never nearer its biter before the way home (%.3f); peaks %.3f",
+				carry, o0.Z, pitchOf(s0), minZ, peakZ))
+		local cSink, cSlide, cAt, cRest = 0, 0, "", true
+		for _, fs in ipairs(feetSets) do
+			local feet = fs[1] or typical
+			local bodies = {}
+			for i = 0, N do
+				bodies[#bodies + 1] = { Body = P.Sample("Hurt", i / N, false, 1, carry, fs[1]).Body, T = fmt("%.4f", i / N), Tag = "re-hit Hurt " .. fs[2] }
+			end
+			local sk, sl, at = walkFeet(bodies, feet)
+			if sk < cSink then
+				cSink, cAt = sk, at
+			end
+			if sl > cSlide then
+				cSlide, cAt = sl, at
+			end
+			cRest = cRest and rest(bodies[#bodies].Body)
+		end
+		T.check(cSink > -1e-5 and cSlide < 1e-4 and cRest,
+			fmt("hurt: a re-hit's reaction never puts a paw under the floor (%.5f), never slides (%.5f), home at p 1 (%s), 6 paw sets", cSink, cSlide, tostring(cRest)), cAt)
 	end)
 
 	return S
@@ -1042,6 +1080,81 @@ local function clientScenarios()
 				T.check(sink > -1e-4 and slide < 1e-3, fmt("bounce timing: %s: fast tempo, every frame: no paw under the floor (%.5f), no slide (%.5f)", look[3], sink, slide), at)
 				clock = clock + 1
 				AF.Update(clock)
+			end
+			-------------------------------------------------------------------------- the bitten pet re-hit (fast tempo)
+			-- (the approved mock's fast lane: bites 0.5 s apart, the Double strike's 2nd hit 0.14 s after the 1st; the r2 look
+			-- sheet: each new Hurt crossfaded from the knocked-back bear to a fresh one on its spot, pulling it 0.12 (the
+			-- Double) and 0.16 (the next bite) toward its biter, then knocking it back again) drawn as BattleController draws
+			-- it (a replaced pose lerps from the old over AttackFx.CROSSFADE): at the Double's hit (its old reaction still
+			-- flying back) the bear is not pulled toward its biter (<= 0.03), at the next bite's (its old reaction already on
+			-- its way home) by no more than the mock's own dip there (0.078: <= 0.08); never under the floor; home after
+			local function drawnOf(ps)
+				local b = bodyOf(PP, ps)
+				local blend = ps and tonumber(ps.Blend) or 1
+				if b and type(ps.Prev) == "table" and blend < 1 then
+					local pb = bodyOf(PP, ps.Prev)
+					if pb then
+						b = pb:Lerp(b, max(0, blend))
+					end
+				end
+				return b
+			end
+			local me2 = petAt(PB, PC, "aurora_fox", true, holder, V3(300, G + 1.5, 0))
+			local bear = petAt(PB, PC, "sunbeam_bear", true, holder, V3(300, G + 1.5, -14))
+			if T.check(me2 ~= nil and bear ~= nil, "bounce timing: (setup) re-hit: an evolved Aurora Fox and an evolved Sunbeam Bear build") then
+				local bf = AF.FeetOf(bear)
+				local restMid = (bf.Hind - bf.Front) / 2
+				local src2 = { Unit = 590, Model = me2, Pos = V3(300, G + 1.5, 0) }
+				local tgt2 = { Unit = 1590, Model = bear, Pos = V3(300, G + 1.5, -14) }
+				local h0 = clock + 0.2
+				local hits = { h0, h0 + 0.14, h0 + 0.5 }
+				local rows = {}
+				local function stepTo(to)
+					while clock + DT <= to + 1e-9 do
+						clock = clock + DT
+						AF.Update(clock)
+						local b = drawnOf(AF.Pose(tgt2.Unit))
+						if b then
+							local h, f = paws(b, bf)
+							rows[#rows + 1] = { T = clock, Body = b, Knock = (h.Z + f.Z) / 2 - restMid }
+						else
+							rows[#rows + 1] = { T = clock, Body = nil, Knock = 0 }
+						end
+					end
+				end
+				for _, h in ipairs(hits) do
+					stepTo(h)
+					AF.Play({ Attack = "Melee", Element = "Flame", Rarity = "Common", Stage = 0, Mine = false, From = src2, To = tgt2,
+						Ground = G, Now = clock, DueAt = h, Dashed = true })
+				end
+				stepTo(hits[3] + 0.9)
+				local function dropAt(h)
+					local k0, lo = nil, huge
+					for _, r in ipairs(rows) do
+						if r.T <= h + 1e-6 then
+							k0 = r.Knock
+						elseif r.T <= h + STOP + 0.15 then
+							lo = min(lo, r.Knock)
+						end
+					end
+					return k0 or 0, (k0 or 0) - lo
+				end
+				local kD, dD = dropAt(hits[2])
+				local kB, dB = dropAt(hits[3])
+				T.check(kD > 0.2 and dD <= 0.03 and kB > 0.2 and dB <= 0.08,
+					fmt("bounce timing: re-hit: the knocked-back bear is not pulled toward its biter: the Double's hit (%.3f back) %.3f (<= 0.03), the next bite's (%.3f back) %.3f (<= 0.08, the mock's own 0.078)",
+						kD, dD, kB, dB))
+				local bodies = {}
+				for _, r in ipairs(rows) do
+					if r.Body then
+						bodies[#bodies + 1] = { Body = r.Body, T = fmt("%.3f", r.T - h0), Tag = "re-hit Hurt" }
+					end
+				end
+				local rs, rsl, rat = walkFeet(bodies, bf)
+				local last = rows[#rows]
+				T.check(#bodies > 60 and rs > -2e-3 and rsl < 1e-3 and (last.Body == nil or last.Body.Position.Magnitude < 1e-3),
+					fmt("bounce timing: re-hit: no paw under the floor (%.5f; the 0.12 s crossfade lerps two paw-pivoted poses: within 0.002), no slide (%.5f), home on its spot after",
+						rs, rsl), rat)
 			end
 		end)
 		AF.ClearAll()
