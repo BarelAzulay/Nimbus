@@ -1036,15 +1036,17 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	step(2)
 	local res = find("Root.ResultCard")
 	T.check(shown(res) and hasText(res, "KNOCKED OUT") and res.AnchorPoint.Y == 0, "phone: the KNOCKED OUT card sits at the top (not centred)")
-	-- turned sideways (844x390): the short screen puts the card top right, clear of the screen centre
+	-- turned sideways (844x390): (Pitch 2 item 02 B, look review round 1) the card goes to the pitch's top middle
+	-- (02_result_card_optB_phone.png: 222..622 of 844, from y 62). It used to go top right "off the screen centre", which put
+	-- it on the touch DASH and RUN; the fight is over when it shows, so it may cover the centre point now
 	Mock.SetViewport(844, 390)
 	step(2)
 	res = find("Root.ResultCard")
 	if res and shown(res) then
 		local r = screenRect(res)
-		local cx, cy = 844 / 2, 390 / 2
-		local covers = r.x0 <= cx and cx <= r.x1 and r.y0 <= cy and cy <= r.y1
-		T.check(res.AnchorPoint.X == 1 and not covers, "phone landscape: the result card moves top right, off the screen centre", fmt(r.x0) .. "," .. fmt(r.y0) .. " - " .. fmt(r.x1) .. "," .. fmt(r.y1))
+		local mid = (r.x0 + r.x1) / 2
+		T.check(math.abs(mid - 844 / 2) <= 844 * 0.12 and r.y0 < 390 * 0.3 and r.x0 >= 8 - 0.5 and r.x1 <= 844 - 8 + 0.5 and r.y1 <= 390,
+			"phone landscape: the result card moves to the top middle (the pitch's phone spot), on screen", fmt(r.x0) .. "," .. fmt(r.y0) .. " - " .. fmt(r.x1) .. "," .. fmt(r.y1))
 	else
 		T.fail("phone landscape: the result card disappeared on rotation")
 	end
@@ -1532,7 +1534,16 @@ S.client_p3battle_ring_mobile = guarded("client_p3battle_ring_mobile", function(
 		KC.toClient("BattleState", "End", finalEnd(4, { Wins = 1, Cash = 28, Xp = 44, Tokens = 0, Round = 4, Start = 1, Best = 12 }, { BattleId = d.id, Outcome = "Left", Reason = "Forfeit" }), d.id)
 		step(2)
 		local rc = find("Root.ResultCard")
-		T.check(shown(rc) and centreFree(rc, size[1], size[2]) and statSays(rc, "Rounds", "1"), "phone " .. tagName .. ": the run's card is off the screen centre")
+		if size[1] > size[2] then
+			-- (Pitch 2 item 02 B, look review round 1) a landscape phone's result card is the pitch's top middle
+			-- (02_result_card_optB_phone.png: 222..622 of 844 from y 62, over the centre point: the fight is over); the old
+			-- off-centre spot at the right edge lay on the touch DASH and RUN
+			local r = shown(rc) and screenRect(rc)
+			T.check(r and math.abs((r.x0 + r.x1) / 2 - size[1] / 2) <= size[1] * 0.12 and r.y0 < size[2] * 0.3 and statSays(rc, "Rounds", "1"),
+				"phone " .. tagName .. ": the run's card is the pitch's top middle", r and (fmt(r.x0) .. "," .. fmt(r.y0) .. " - " .. fmt(r.x1) .. "," .. fmt(r.y1)) or "not shown")
+		else
+			T.check(shown(rc) and centreFree(rc, size[1], size[2]) and statSays(rc, "Rounds", "1"), "phone " .. tagName .. ": the run's card is off the screen centre")
+		end
 		LocalPlayer:SetAttribute("InBattle", nil)
 		KC.advance(4)
 		local ok = find("Root.ResultCard.Body.OkButton")

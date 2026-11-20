@@ -214,8 +214,11 @@ local VG = {
 		KEY = 26, KEY_ICON = 18, KEY_STEP = 2,
 	},
 	TRACK_EDGE = 2, TRACK_PAD = 3, DIVIDER = 2, -- the sunk track's / well's edge, its inside padding, the HP number's divider
-	-- the dash's state in the stamina group (shown where the widest fits whole)
+	-- the dash's state in the stamina group (each state's longest form that fits whole: Vitals.Layout)
 	DASH_WORDS = { ready = "Dash ready", cool = "Recharging", off = "Out of stamina" },
+	-- (look review round 1: a phone's well kept its right half empty) the sets for a well too short for "Out of stamina"
+	DASH_WORDS_SHORT = { ready = "Dash ready", cool = "Charging", off = "No stamina" },
+	DASH_WORDS_TINY = { ready = "Ready", cool = "Wait", off = "Empty" },
 	-- the stamp's five kit colours (UserId % 5 + 1) and their lips
 	STAMPS = { { "Sky", "SkyLip" }, { "Grass", "GrassLip" }, { "Gold", "GoldLip" }, { "Red", "RedLip" }, { "Violet", "VioletLip" } },
 	HP_BLOCKS = 5, -- (U9-8 look) the HP bar's blocks, a fifth of the health each
@@ -1581,11 +1584,28 @@ function Vitals.Layout(force)
 	UI.StBar.Layout(stW, sh, k)
 	-- the dash's state after the blocks, where it fits whole
 	local lx = stX + stW + px(8)
-	local tw = measureAt(VG.DASH_WORDS.off, "Heading", g.ST_TEXT, k) -- (the widest of the three)
+	-- (each state's longest word that fits whole: the full set, then the short, then the tiny one; the label is left-aligned
+	-- after the blocks, so a shorter word moves nothing. None fits even the tiny set: no words)
+	local words = {}
+	for _, state in ipairs({ "ready", "cool", "off" }) do
+		for _, set in ipairs({ VG.DASH_WORDS, VG.DASH_WORDS_SHORT, VG.DASH_WORDS_TINY }) do
+			if not words[state] and right - lx >= measureAt(set[state], "Heading", g.ST_TEXT, k) + px(2) then
+				words[state] = set[state]
+			end
+		end
+	end
+	if not (words.ready and words.cool and words.off) then
+		words = nil
+	end
+	UI.DashWords = words or VG.DASH_WORDS
 	UI.DashText.TextSize = g.ST_TEXT
 	UI.DashText.Position = UDim2.fromOffset(lx / k, e / k)
 	UI.DashText.Size = UDim2.fromOffset(math.max(0, right - lx) / k, (stH - 2 * e) / k)
-	UI.DashText.Visible = not S.downed and right - lx >= tw + px(2)
+	UI.DashText.Visible = not S.downed and words ~= nil
+	local shownWord = UI.DashWords[UI.Key.State or "ready"]
+	if shownWord and UI.DashText.Text ~= shownWord then
+		UI.DashText.Text = shownWord
+	end
 	-- the badges: the bare heart left of the HP track, the bare bolt at the group's left end; then the key's look again
 	Vitals.PlaceBadge(UI.Heart, g.HEART, at(g.HEART_X) + px(g.BADGE_ICON) / 2, hpY + hpH / 2, g, k)
 	Vitals.PlaceBadge(UI.Bolt.Badge, g.BOLT, innerL + px(g.BADGE_ICON) / 2, stH / 2, g, k)
@@ -2982,7 +3002,7 @@ local function updateStamina(dt, now)
 		Vitals.PaintKey(state, charge)
 	end
 	-- (Pitch 2 item 08 C) the dash's state in words beside the blocks (the stamina group)
-	local words = VG.DASH_WORDS[state]
+	local words = (UI.DashWords or VG.DASH_WORDS)[state]
 	if UI.DashText and words and UI.DashText.Text ~= words then
 		UI.DashText.Text = words
 	end

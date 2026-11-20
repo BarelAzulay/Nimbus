@@ -2903,6 +2903,10 @@ end)
 --     ring               the Phase 4 ring phases: fight<n> | next<n> | result<n> | record<n>
 --   phases: fight (default) | ready (a full energy bar, a buff cooling, a swap cooling) | result | lost | cleared
 --           (dungeon: the room cleared, no result card) | next<n> / result<n> / record<n> (ring)
+--           | full (raid: the top card with every pill: the boss at 28 % so the sim enrages it and sends the minion
+--           waves, 3 players, a reward tier; Pitch 2 item 06 A, look review round 1)
+--   (look review round 1) "result" on a duel / raid / dungeon is its won card ("won"): it used to send the ring's End
+--   (ring Cash on a duel's VICTORY)
 local BCDUMP = {}
 
 function BCDUMP.team(count, skip, level)
@@ -2969,6 +2973,10 @@ scenario("battle", function(mode, phase)
 	local ringRound = tonumber(phase:match("(%d+)$")) or 8
 	phase = phase:gsub("%d+$", "")
 	local spectate = mode == "spectate"
+	if phase == "result" and (mode == "duel" or mode == "raid" or mode == "dungeon" or spectate) then
+		phase = "won"
+	end
+	local fullRaid = mode == "raid" and phase == "full"
 	local myPets = BCDUMP.team(3, 0, 30)
 	myPets[2].Evo = 1
 	local mine = { Owner = me, Side = 1, Pets = myPets, Auto = not spectate }
@@ -2979,6 +2987,9 @@ scenario("battle", function(mode, phase)
 		setup.Mode = "Raid"
 		setup.Boss = "storm_titan"
 		setup.Teams = { mine, { Owner = 77, Side = 1, Pets = BCDUMP.team(3, 2, 26), Auto = true }, { Owner = 78, Side = 1, Pets = BCDUMP.team(3, 4, 28), Auto = true } }
+		if fullRaid then
+			extra.Raid = { Tier = "Starter", BossId = "storm_titan" }
+		end
 	elseif mode == "dungeon" then
 		setup.Mode = "Dungeon"
 		setup.Zone = { X = 44, Z = 44 }
@@ -3028,6 +3039,9 @@ scenario("battle", function(mode, phase)
 	toClient("BattleState", "Start", d, id)
 	local seconds = (mode == "raid") and 9 or 5
 	BCDUMP.run(sim, id, seconds, function(i)
+		if fullRaid and i == 2 and sim.boss then
+			sim.boss.hp = sim.boss.maxHp * 0.28 -- (after the joins' max HP: the next step enrages it and sends both waves)
+		end
 		if i == 8 and not spectate then
 			local enemies = {}
 			for _, u in ipairs(sim.units or {}) do
@@ -3071,7 +3085,7 @@ scenario("battle", function(mode, phase)
 		elseif mode == "dungeon" then
 			rewards = { Dungeon = true, Extra = extra.Dungeon }
 		else
-			rewards = { Tokens = won and 60 or 20, Gems = 0, Xp = 50, Trophies = won and 25 or -15, LevelUps = 0 }
+			rewards = { Tokens = won and 60 or 20, Gems = 0, Xp = 50, Trophies = won and 25 or -15, TrophiesTotal = won and 265 or 225, LevelUps = 0 }
 		end
 		LocalPlayer:SetAttribute("InBattle", nil)
 		toClient("BattleState", "End", {

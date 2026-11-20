@@ -5914,6 +5914,8 @@ function Hud.BuildTop()
 	Hud.bossDivider = make("Frame", { Name = "Divider", BackgroundColor3 = SIGN.WellEdge, BorderSizePixel = 0, ZIndex = 3 }, Hud.bossTrack)
 	Hud.bossText = label(Hud.bossTrack, "", "Display", 20, { Name = "Text", TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = KB.Ink, ZIndex = 3 })
 	Hud.pills = make("Frame", { Name = "Pills", BackgroundTransparency = 1, ZIndex = 2 }, top)
+	-- (look review round 1: a narrow card, a tall phone's, dropped RAID) the RAID tag as the first pill where row 1 has no room
+	Hud.raidPill = smallPill(Hud.pills, "RAID", SIGN.Wood, { Name = "RaidPill", LayoutOrder = 0, Visible = false, ZIndex = 2 })
 	Hud.bossElement = smallPill(Hud.pills, "", KB.Loss, { Name = "Element", LayoutOrder = 1, ZIndex = 2 })
 	Hud.enragePill = smallPill(Hud.pills, "ENRAGED", SIGN.Red, { Name = "Enraged", LayoutOrder = 2, Visible = false, ZIndex = 2 })
 	PixelIcon.Lead(Hud.enragePill, "skull")
@@ -6224,6 +6226,7 @@ function Hud.TouchRects(m)
 		local ok, l = pcall(mc.MobileLayout)
 		if ok and type(l) == "table" and type(l.run) == "table" then
 			rects.run = l.run
+			rects.dash = type(l.dash) == "table" and l.dash or nil -- (Pitch 2 item 02 B, look review: the result card keeps off it)
 		end
 	end
 	if not rects.run then
@@ -7083,8 +7086,15 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	Hud.timer:SetAttribute("BaseText", timerPx)
 	Hud.timer.Position = UDim2.fromOffset(right - timerW, P)
 	Hud.timer.Size = UDim2.fromOffset(timerW, rowH)
-	-- (a narrow card, a tall phone's right column: the clock icon gives its room to the name; the time reads without it)
+	-- (a narrow card, a tall phone's right column: the clock icon gives its room to the name; the time reads without it.
+	-- Look review round 1: it stays where the boss's whole name still fits beside it at the name's floor size)
 	local showClock = hasTimer and w >= 400
+	if hasTimer and not showClock and bossUnit and B.Mode == "Raid" then
+		local name, npx = tostring(bossUnit.name or "?"), px(18)
+		local okN, mN = pcall(Theme.Measure, name, "Heading", npx)
+		local nameNeed = math.ceil(max((okN and typeof(mN) == "Vector2") and mN.X or 0, #name * npx * 0.56) * 1.04)
+		showClock = (right - timerW - 4 - 18 - 8) - x0 - 4 >= nameNeed
+	end
 	Hud.clock.Visible = showClock
 	Hud.clock.Position = UDim2.fromOffset(right - timerW - 4 - 18, P + (rowH - 18) / 2)
 	local leftEnd = showClock and (right - timerW - 4 - 18 - 8) or (hasTimer and (right - timerW - gapT) or right)
@@ -7099,6 +7109,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		local tagW = math.ceil(4 * tagPx * 0.62) + 18
 		local showTag = leftEnd - x0 - tagW - 10 >= 110
 		Hud.modeTag.Visible = showTag
+		Hud.raidPill.Visible = not showTag
 		local lx = x0
 		if showTag then
 			Hud.modeTag.Text = "RAID"
@@ -7129,6 +7140,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		end
 	else
 		Hud.modeTag.Visible = false
+		Hud.raidPill.Visible = false
 		Hud.mode.Visible = true
 		Hud.bossName.Visible = false
 		Hud.bossTier.Visible = false
@@ -7278,7 +7290,7 @@ function Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
 	end
 	Hud.bossElement.Visible = bossUnit ~= nil
 	local key = { size }
-	for _, pill in ipairs({ Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill, Hud.tierPill }) do
+	for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill, Hud.tierPill }) do
 		if pill.TextSize ~= size then
 			pill.TextSize = size
 		end
@@ -7295,7 +7307,7 @@ function Hud.FlowPills(width)
 	-- drawn gap PILL_GAP, as the pitch's)
 	local e = 2
 	local x, row, rows = 0, 0, 0
-	for _, pill in ipairs({ Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill, Hud.tierPill }) do
+	for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.playersPill, Hud.wavePill, Hud.tierPill }) do
 		if pill.Visible then
 			fitPill(pill, K.PILL_H - 2 * e)
 			local pw = min(pill.Size.X.Offset + 4, width - 2 * e) -- (4 px more: a lead icon's pill reads tight at 0.8 scale)
@@ -7783,6 +7795,10 @@ function Hud.ResultModel(B, payload)
 	if B.Mode ~= "Ring" and num(B.renderT, 0) > 0 then
 		stat("Time", "clock", "Fight time", fmtTime(B.renderT))
 	end
+	-- (look review round 1) a duel's trophy total after the fight (BattleService sends Rewards.TrophiesTotal)
+	if B.Mode == "Duel" and rw.Practice ~= true and rw.Void ~= true and tonumber(rw.TrophiesTotal) then
+		stat("Trophies", "trophy", "Trophies", Theme.Short(max(0, num(rw.TrophiesTotal, 0))))
+	end
 	-- the reward chips (key, icon, number, word)
 	local function chip(key, icon, number, word)
 		M.chips[#M.chips + 1] = { key, icon, number, word }
@@ -7805,7 +7821,7 @@ function Hud.ResultModel(B, payload)
 			chip("Gems", "gem", "+" .. Theme.Short(gems), "Gems")
 		end
 		local trophies = num(rw.Trophies, 0)
-		if trophies ~= 0 or (B.Mode == "Duel" and rw.Practice ~= true and rw.Void ~= true) then
+		if trophies ~= 0 then
 			chip("Trophies", "trophy", (trophies >= 0 and "+" or "") .. Theme.Short(trophies), "Trophies")
 		end
 		local xp = num(rw.Xp, 0)
@@ -7823,6 +7839,9 @@ function Hud.ResultModel(B, payload)
 	end
 	if rw.Practice == true then
 		note("Practice duel: no rewards", true)
+	elseif B.Mode == "Duel" and rw.Void ~= true and num(rw.Trophies, 0) == 0 then
+		-- (look review round 1: a "+0" chip on a VICTORY read as broken) a ranked duel that moved no trophies says so
+		note("No trophies won or lost", true)
 	end
 	if rw.FirstClear == true then
 		note("First clear!")
@@ -7861,35 +7880,26 @@ local function measureW(text, role, size)
 	return math.ceil(max((ok and typeof(m) == "Vector2") and m.X or 0, #tostring(text) * size * 0.56) * 1.04)
 end
 
-function Hud.ShowResult(B, payload)
-	if not Hud.Ensure() then
-		return
-	end
-	local m = Hud.Metrics()
-	local res = Hud.result
-	local body = res:FindFirstChild("Body") or res
+-- (Pitch 2 item 02 B) THE result template, the one body of every end card: the head band in M.color with its icon and word
+-- (Head), the mode - reason line (Reason), the stat rows (Stats: a label, the value right-aligned, a green tick each), the
+-- equal reward chips (Chips), the notes (what pays nothing in the muted ink), OK across the whole inside width (OkButton)
+-- with its lip in five parts (the auto-close timer). Built into `body` at the card's width; every part is tagged
+-- ResultPart and the last build's parts go first. DungeonController's End card is built by it too
+-- (BattleController.ResultTemplate). opts: W (design px), F (the card's scale on the screen: the readability floor and the
+-- 44 px touch pad), Compact (a phone), Landscape, Cols (stat columns; default: two on a phone card 440 wide inside),
+-- NoReason (no reason line: a landscape phone's End card where it has no room), OnOk.
+-- -> { H = the content's height (the caller adds its lip), Ok, Segs = OK's five lip parts, ReasonRow = the reason line + gap }
+function Hud.BuildResult(body, M, opts)
 	for _, c in ipairs(body:GetChildren()) do
 		if c:GetAttribute("ResultPart") then
 			c:Destroy()
 		end
 	end
-	local M = Hud.ResultModel(B, payload)
-	local card = Hud.resultCard
-	if card and card.SetColor then
-		pcall(card.SetColor, SIGN.StoneLip) -- (the head carries the result's colour; the card's lip is the stone one)
-	end
-	local compact = m.Compact
-	local landscape = compact and m.Landscape
-	local w = K.RESULT_W
-	if landscape then
-		w = min(500, floor(m.W / 2 - 16)) -- (right of the screen centre, as wide as the pitch's phone card where it fits)
-	elseif compact then
-		w = min(K.RESULT_W, m.W - 16)
-	end
-	w = floor(w)
+	local w = floor(opts.W)
+	local compact, landscape = opts.Compact == true, opts.Landscape == true
 	local P = K.PAD
 	local inner = w - 2 * P
-	local fpx = math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6)
+	local fpx = math.ceil(Hud.FloorPx() / max(0.05, opts.F or 1) - 1e-6)
 	local function px(n)
 		return max(n, fpx)
 	end
@@ -7912,19 +7922,23 @@ function Hud.ShowResult(B, payload)
 	icon.ZIndex = 3
 	icon.Position = UDim2.fromOffset(gx, floor((headH - 4 - iconPx) / 2))
 	title.Position = UDim2.fromOffset(gx + iconPx + 8, 0)
-	title.Size = UDim2.fromOffset(tw + 4, headH - 4)
+	-- (look review: the word's box was its measured width, and the drawn face ran 7% past it) the box runs to the card's
+	-- inner right edge; the word, left-aligned, sits where it was measured
+	title.Size = UDim2.fromOffset(max(tw + 4, w - P - (gx + iconPx + 8)), headH - 4)
 	local y = headH + 8
-	-- the mode - reason line (Body.Reason), centred, muted; two lines where it is long
-	if M.sub ~= "" then
+	-- the mode - reason line (Body.Reason), centred, muted; as many lines (up to 3) as its width needs, 8% to spare
+	local reasonRow = 0
+	if M.sub ~= "" and opts.NoReason ~= true then
 		local rpx = px(18)
-		local lines = (measureW(M.sub, "Heading", rpx) > inner) and 2 or 1
+		local lines = clamp(math.ceil(measureW(M.sub, "Heading", rpx) * 1.08 / max(1, inner)), 1, 3)
 		local rh = lines * (rpx + 4) + 2
 		part(label(body, M.sub, "Heading", rpx, { Name = "Reason", Position = UDim2.fromOffset(P, y), Size = UDim2.fromOffset(inner, rh), TextXAlignment = Enum.TextXAlignment.Center,
 			TextWrapped = lines > 1, TextColor3 = KB.Muted }))
-		y = y + rh + 6
+		reasonRow = rh + 6
+		y = y + reasonRow
 	end
 	-- the stat rows: one column (two on a wide phone card), 34 px each over a 2 px stone rule
-	local cols = (compact and inner >= 440) and 2 or 1
+	local cols = opts.Cols or ((compact and inner >= 440) and 2 or 1)
 	local colGap = 14
 	local colw = floor((inner - (cols - 1) * colGap) / cols)
 	local rowH, ruleH = landscape and 30 or 34, 2
@@ -7947,20 +7961,25 @@ function Hud.ShowResult(B, payload)
 		local val = label(row, "", "Display", vpx, { Name = "Value", TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = KB.Ink })
 		local valueRoom = colw - 24 - 30 - 8 - 60
 		local vw = Hud.FitLine(val, s[4], vpx, px(18), valueRoom) + 4 -- (4 px to spare: a one-digit value reads tight)
-		val.Position = UDim2.fromOffset(colw - 30 - 6 - vw, 0)
-		val.Size = UDim2.fromOffset(vw, rowH)
 		local lab = label(row, "", "Heading", px(18), { Name = "Label", TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = KB.Muted })
 		local lw = Hud.FitLine(lab, s[3], px(18), px(16), colw - 24 - 30 - 6 - vw - 12) + 4
+		-- (look review: "Damage" and "34%" ran past their measured boxes) the free run between the label's end and the
+		-- value's start is split in the middle: each box takes its half, the texts stay where they were measured
+		local valueR = colw - 30 - 6
+		local mid = floor(((24 + lw) + (valueR - vw)) / 2)
 		lab.Position = UDim2.fromOffset(24, 0)
-		lab.Size = UDim2.fromOffset(lw, rowH)
+		lab.Size = UDim2.fromOffset(max(lw, mid - 2 - 24), rowH)
+		val.Position = UDim2.fromOffset(min(valueR - vw, mid + 2), 0)
+		val.Size = UDim2.fromOffset(valueR - min(valueR - vw, mid + 2), rowH)
 	end
 	stats.Size = UDim2.fromOffset(inner, max(1, nRows * (rowH + ruleH)))
 	stats.Visible = #M.stats > 0
 	if #M.stats > 0 then
 		y = y + nRows * (rowH + ruleH) + 8
 	end
-	-- the reward chips: equal widths, three a row; the number big with its 18 px icon, the word under it (a phone: none)
-	local perRow = min(3, max(1, #M.chips))
+	-- the reward chips: equal widths, three a row (two on a card under 360 inside); the number big with its 18 px icon, the
+	-- word under it (a phone: none)
+	local perRow = min(inner < 360 and 2 or 3, max(1, #M.chips))
 	local chipGap = 8
 	local cw = floor((inner - (perRow - 1) * chipGap) / perRow)
 	local chipH = compact and (landscape and 40 or 44) or 74
@@ -7980,7 +7999,7 @@ function Hud.ShowResult(B, payload)
 		ic.Name = "Icon"
 		ic.Position = UDim2.fromOffset(nx, floor((lineH - 18) / 2) + (compact and 0 or 4))
 		numL.Position = UDim2.fromOffset(nx + 24, compact and 0 or 4)
-		numL.Size = UDim2.fromOffset(nw + 2, lineH)
+		numL.Size = UDim2.fromOffset(max(nw + 2, fw - 4 - (nx + 24)), lineH) -- (to the chip's inner right: room for the drawn face)
 		if not compact then
 			local word = label(f, "", "Heading", px(18), { Name = "Label", TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = KB.Muted })
 			local ww = min(fw - 4, Hud.FitLine(word, c[4], px(18), px(16), fw - 12) + 8) -- (8 px to spare: a short word reads tight at 0.8)
@@ -7993,14 +8012,15 @@ function Hud.ShowResult(B, payload)
 	if #M.chips > 0 then
 		y = y + chipRows * chipH + max(0, chipRows - 1) * chipGap + 8
 	end
-	-- the notes: a line each, its pixel icon before it (a line that pays nothing in the muted ink, no icon)
+	-- the notes: a line each, its pixel icon before it (a line that pays nothing in the muted ink, no icon); a note may carry
+	-- its own name (the dungeon's FirstClear / Unlocked)
 	for i, n in ipairs(M.notes) do
 		local npx = px(18)
-		local lines = (measureW(n[1], "Body", npx) + 28 > inner) and 2 or 1
+		local lines = ((measureW(n[1], "Body", npx) + 28) * 1.08 > inner) and 2 or 1
 		local nh = lines * (npx + 4) + 2
-		local l = part(label(body, n[1], "Body", npx, { Name = "Note" .. i, Position = UDim2.fromOffset(P, y), Size = UDim2.fromOffset(inner, nh), TextXAlignment = Enum.TextXAlignment.Left,
+		local l = part(label(body, n[1], "Body", npx, { Name = n[3] or ("Note" .. i), Position = UDim2.fromOffset(P, y), Size = UDim2.fromOffset(inner, nh), TextXAlignment = Enum.TextXAlignment.Left,
 			TextWrapped = lines > 1, TextColor3 = n[2] and KB.Muted or KB.Ink }))
-		local ic = not n[2] and Hud.RewardIcon(n[1])
+		local ic = not n[2] and (n[4] or Hud.RewardIcon(n[1]))
 		if ic then
 			PixelIcon.Lead(l, ic)
 		end
@@ -8012,10 +8032,22 @@ function Hud.ShowResult(B, payload)
 	Theme.Style(ok, "Button", { Size = 22 })
 	make("UIPadding", { Name = "LipPad", PaddingBottom = UDim.new(0, K.PLANK_LIP) }, ok)
 	signBlock(ok, SIGN.Grass, SIGN.Grass, SIGN.OnGrass, K.PLANK_LIP, 2)
-	ok.Activated:Connect(function()
-		Hud.HideResult()
-	end)
+	local function press()
+		if type(opts.OnOk) == "function" then
+			opts.OnOk()
+		end
+	end
+	ok.Activated:Connect(press)
 	part(ok)
+	-- (look review: OK was 32 px tall on a landscape phone) a thumb's 44 screen px: a clear hit pad (HitFor) centred on OK,
+	-- over it, as LEAVE's; the plank keeps the pitch's height
+	local hit = math.ceil(44 / max(0.05, opts.F or 1) - 1e-6)
+	if okH < hit then
+		local pad = make("TextButton", { Name = "OkHit", Text = "", BackgroundTransparency = 1, AutoButtonColor = false, BorderSizePixel = 0, ZIndex = ok.ZIndex + 1,
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, floor(K.PLANK_LIP / 2)), Size = UDim2.new(1, 0, 0, hit) }, ok)
+		pad:SetAttribute("HitFor", "OkButton")
+		pad.Activated:Connect(press)
+	end
 	local lip = ok:FindFirstChild("Lip")
 	local segs = {}
 	if lip then
@@ -8027,39 +8059,139 @@ function Hud.ShowResult(B, payload)
 			segs[i] = make("Frame", { Name = "Seg" .. i, BackgroundColor3 = SIGN.GrassLip, BorderSizePixel = 0, Position = UDim2.fromOffset(sx, 0), Size = UDim2.new(0, sw, 1, 0), ZIndex = lip.ZIndex }, lip)
 		end
 	end
-	Hud.resultTimer = { segs = segs, count = 5, lit = -1 }
-	Hud.SetResultTimer(1)
 	y = y + okH + P
 	if y % 2 == 1 then
 		y = y + 1 -- (an even height: the wide screen's card is centred on its middle, on whole px)
 	end
-	local h = y + K.PLANK_LIP
+	Hud.FixText(body, opts.F or 1)
+	return { H = y, Ok = ok, Segs = segs, ReasonRow = reasonRow }
+end
+
+-- (Pitch 2 item 02 B) the five lip parts of a template's OK lit for `frac` of the time left (the first k lit, the dark
+-- grass; the rest gone into the face); `t` = { segs, count, lit } (the last lit count, so a repaint only on a change)
+function Hud.PaintTimer(t, frac)
+	if not t or not t.segs then
+		return
+	end
+	local k = math.ceil(clamp(frac, 0, 1) * t.count - 1e-6)
+	if k == t.lit then
+		return
+	end
+	t.lit = k
+	for i, s in ipairs(t.segs) do
+		s.BackgroundColor3 = (i <= k) and SIGN.GrassLip or SIGN.Grass
+	end
+end
+
+-- (Pitch 2 item 02 B, look review round 1) the touch buttons a phone's result card keeps off, as design px boxes { X, Y, R, B }
+-- in our gui: the game's RUN and DASH (MovementController.MobileLayout, screen px from the bottom) and Roblox's jump
+-- button; none without touch
+function Hud.TouchBoxes(m)
+	local out = {}
+	if not m.Touch then
+		return out
+	end
+	local f = max(0.05, m.F)
+	local rects = Hud.TouchRects(m)
+	for _, key in ipairs({ "dash", "run", "jump" }) do
+		local r = rects[key]
+		if type(r) == "table" and tonumber(r[1]) and tonumber(r[4]) then
+			out[#out + 1] = { Name = key, X = r[1] / f, R = r[3] / f, Y = (m.VY - r[4] - m.Inset) / f, B = (m.VY - r[2] - m.Inset) / f }
+		end
+	end
+	return out
+end
+
+-- (Pitch 2 item 02 B, look review round 1) a phone's place for the result card -> left, top (design px). A landscape phone:
+-- the pitch's top middle (844x390: x 222, y 62), under the top-right stack only where the card reaches it (else left of it),
+-- then slid left of / ended above a touch button it would lie on (the right edge put the card on DASH and RUN's top). A
+-- portrait phone: the top right, under the top-right stack (the menu column steps aside where the card covers it)
+function Hud.ResultSpot(m, w, h, landscape)
+	local gap = 8
+	local stackBottom, stackLeft = Hud.TopRightBottom(m)
+	local x, y
+	if landscape then
+		local menuRight = Hud.MenuRight(m)
+		local lo = (menuRight > 0) and (menuRight + gap) or gap
+		x = max(lo, floor((m.W - w) / 2))
+		y = 6
+		if stackBottom > 0 and (stackLeft == nil or x + w + gap > stackLeft) then
+			if stackLeft and floor(stackLeft - gap - w) >= lo then
+				x = floor(stackLeft - gap - w)
+			else
+				y = stackBottom + gap
+			end
+		end
+		for _, r in ipairs(Hud.TouchBoxes(m)) do
+			if x < r.R + gap and r.X < x + w + gap and y < r.B + gap and r.Y < y + h + gap then
+				local lx = floor(r.X - gap - w)
+				if lx >= lo then
+					x = lx
+				else
+					y = max(6, floor(r.Y - gap - h))
+				end
+			end
+		end
+	else
+		x = floor(m.W - math.ceil(8 / max(0.05, m.F)) - w) -- (8 screen px from the right edge)
+		y = max(6, stackBottom > 0 and (stackBottom + 8) or 6)
+	end
+	if y + h > m.H - 8 then
+		y = max(6, floor(m.H - 8 - h))
+	end
+	return x, y
+end
+
+function Hud.ShowResult(B, payload)
+	if not Hud.Ensure() then
+		return
+	end
+	local m = Hud.Metrics()
+	local res = Hud.result
+	local body = res:FindFirstChild("Body") or res
+	local M = Hud.ResultModel(B, payload)
+	local card = Hud.resultCard
+	if card and card.SetColor then
+		pcall(card.SetColor, SIGN.StoneLip) -- (the head carries the result's colour; the card's lip is the stone one)
+	end
+	local compact = m.Compact
+	local landscape = compact and m.Landscape
+	local w = K.RESULT_W
+	if landscape then
+		w = min(500, floor(m.W / 2 - 16)) -- (the pitch's phone card, 500 wide where it fits)
+	elseif compact then
+		w = min(K.RESULT_W, m.W - 16)
+	end
+	w = floor(w)
+	local built = Hud.BuildResult(body, M, { W = w, F = m.F, Compact = compact, Landscape = landscape, OnOk = function()
+		Hud.HideResult()
+	end })
+	Hud.resultTimer = { segs = built.Segs, count = 5, lit = -1 }
+	Hud.SetResultTimer(1)
+	local h = built.H + K.PLANK_LIP
 	res.Size = UDim2.fromOffset(w, h)
 	local top = Hud.TopRightBottom(m)
+	local left, cardTop
 	if compact then
-		-- a phone: top right, under the top-right stack (the wallet, the boost chips), never over the screen centre
+		-- a phone: the pitch's top middle on a landscape phone, the top right on a portrait one (Hud.ResultSpot)
 		-- (DailyController hides its Gift block while this card is up: BattleController.IsOpen)
-		local ty = max(6, top > 0 and (top + 8) or 6)
-		if ty + h > m.H - 8 then
-			ty = max(6, floor(m.H - 8 - h))
-		end
-		res.AnchorPoint = Vector2.new(1, 0)
-		res.Position = UDim2.new(1, -8, 0, ty)
+		left, cardTop = Hud.ResultSpot(m, w, h, landscape)
+		res.AnchorPoint = Vector2.new(0, 0)
+		res.Position = UDim2.fromOffset(left, cardTop)
 	else
 		-- a wide screen: the right edge, its middle (the pitch's place), under the top-right stack
 		local cy = max(floor(m.H / 2), (top > 0 and top + 8 or K.EDGE) + h / 2)
 		cy = min(cy, m.H - K.EDGE - h / 2)
 		res.AnchorPoint = Vector2.new(1, 0.5)
 		res.Position = UDim2.new(1, -K.EDGE, 0, floor(cy))
+		left, cardTop = m.W - K.EDGE - w, floor(cy) - h / 2
 	end
 	-- (LOOK-ui2: at 390x844 the Pets, Index and Home tiles covered the card's left 37 px) where the card would lie on the menu
 	-- column, the column steps aside while it is up (Hud.HideResult brings it back); where the card clears it, it stays
 	local col = Hud.MenuBox(m)
 	local covers = false
 	if col and compact then
-		local cardTop = res.Position.Y.Offset
-		local left = m.W - 8 - w
-		covers = col.Right + 8 > left and col.Bottom > cardTop and col.Top < cardTop + h
+		covers = col.Right + 8 > left and col.Left < left + w + 8 and col.Bottom > cardTop and col.Top < cardTop + h
 	end
 	res.Visible = true
 	Hud.FixText(res, m.F)
@@ -8079,8 +8211,8 @@ function Hud.ShowResult(B, payload)
 		local v = CheerUp.Layout()
 		if v then
 			local f = m.F
-			local x0, y0 = (m.W - 8 - w) * f, res.Position.Y.Offset * f
-			local x1, y1 = (m.W - 8) * f, (res.Position.Y.Offset + h) * f
+			local x0, y0 = left * f, cardTop * f
+			local x1, y1 = (left + w) * f, (cardTop + h) * f
 			onVitals = x0 < v.X + v.W and v.X < x1 and y0 < v.Y + v.H and v.Y < y1
 		end
 	end
@@ -8097,18 +8229,7 @@ end
 
 -- (Pitch 2 item 02 B) OK's lip: the first k of its five parts lit (the dark grass), the rest gone into the face
 function Hud.SetResultTimer(frac)
-	local t = Hud.resultTimer
-	if not t or not t.segs then
-		return
-	end
-	local k = math.ceil(clamp(frac, 0, 1) * t.count - 1e-6)
-	if k == t.lit then
-		return
-	end
-	t.lit = k
-	for i, s in ipairs(t.segs) do
-		s.BackgroundColor3 = (i <= k) and SIGN.GrassLip or SIGN.Grass
-	end
+	Hud.PaintTimer(Hud.resultTimer, frac)
 end
 
 function Hud.RewardLines(B, rw)
@@ -8212,14 +8333,16 @@ function Hud.RewardIcon(text)
 end
 
 -- (LOOK-ui2) the lowest bottom edge of the HUD's top-right stack in our design px (the wallet's strips, the boost chips):
--- 0 when none sits in the top band's right half
+-- 0 when none sits in the top band's right half. (Pitch 2 item 02 B, look review) second: the stack's left edge (design
+-- px), nil when there is none
 function Hud.TopRightBottom(m)
 	local pg = LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui")
 	if not pg then
-		return 0
+		return 0, nil
 	end
 	local f = max(0.05, m.F)
-	local bottom = Hud.CurrencyTop(m)
+	local bottom, curLeft = Hud.CurrencyTop(m)
+	local left = (bottom > 0 and curLeft and curLeft > 0) and curLeft or nil
 	for _, spec in ipairs({ { "NimbusBoosts", "Chip_Cash" }, { "NimbusBoosts", "Chip_Xp" } }) do
 		local g = pg:FindFirstChild(spec[1])
 		local o = g and g:IsA("ScreenGui") and g.Enabled and g:FindFirstChild(spec[2], true)
@@ -8228,10 +8351,11 @@ function Hud.TopRightBottom(m)
 			local dy = g.IgnoreGuiInset and -m.Inset or 0
 			if p.Y + dy < m.VY * 0.3 and p.X > m.VX * 0.5 then
 				bottom = max(bottom, math.ceil((p.Y + dy + sz.Y) / f))
+				left = min(left or math.huge, floor(p.X / f))
 			end
 		end
 	end
-	return bottom
+	return bottom, left
 end
 
 function Hud.UpdateResult(now)
@@ -11649,6 +11773,17 @@ end
 
 function BattleController.HideResult()
 	Hud.HideResult()
+end
+
+-- (Pitch 2 item 02 B, look review round 1) the one result template for another end card (DungeonController's End card):
+-- builds model M (Hud.ResultModel's shape: title, color, icon, sub, stats, chips, notes) into `body`; opts as
+-- Hud.BuildResult. -> { H, Ok, Segs, ReasonRow }. PaintResultTimer(t, frac) lights OK's lip parts, t = { segs, count, lit }
+function BattleController.ResultTemplate(body, M, opts)
+	return Hud.BuildResult(body, M, opts or {})
+end
+
+function BattleController.PaintResultTimer(t, frac)
+	Hud.PaintTimer(t, frac)
 end
 
 function BattleController.IsHudVisible()

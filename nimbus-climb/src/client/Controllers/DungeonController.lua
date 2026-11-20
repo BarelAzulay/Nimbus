@@ -149,7 +149,7 @@ local K = {
 	CHIP_RIGHT = 60, -- the band's right end kept free: Roblox's "..." button (44 px, 12 px off the edge) and 4 px
 	CHIP_EDGE = 20, -- a dropped chip's right margin (the HUD's touch margin: the strips' right edge)
 	CHIP_GAP = 6, -- between a dropped chip and what it hangs under
-	END_W = 400,
+	END_W = 440, -- (Pitch 2 item 02 B, look review round 1) the battle result card's width (one template: BattleController K.RESULT_W)
 	END_MIN_W = 300, -- (U9-7 look) design px: a landscape phone's End card is never squeezed narrower for a spot
 	CHIP_ROW = 30, -- (U9-7 look) design px of a reward chip (H.rewardChip) and of the End card's first-clear plate
 	ICON_TILE = 30, -- (U9-7 look) the pitch toast's icon tile on the loot plate and the phone chip (H.iconTile)
@@ -1635,44 +1635,15 @@ function R.build()
 	U.ChipCount.AnchorPoint = Vector2.new(1, 0.5)
 	U.ChipCount.Visible = false
 	-- the End card
-	-- (kit-b U9-7) the End card: a stone notice nailed up, its lip green for a cleared floor, red for a lost run (R.fillEnd)
-	local endCard = NeonKit.Card({ Name = "EndCard", Skin = "Sign", Size = UDim2.fromOffset(K.END_W, 200), Color = C.Accent, LipPx = K.CARD_LIP, Parent = gui })
-	SignKit.Nails(endCard.Root, { Inset = 5, ZIndex = 3 })
+	-- (Pitch 2 item 02 B, look review round 1: "two result-card styles side by side") the battle's ONE result template
+	-- (BattleController.ResultTemplate): the head band in the result's colour (a cleared floor green, a lost run violet) with
+	-- its icon and word, the mode - reason line, stat rows with ticks, equal reward chips, the notes (the first clear, the
+	-- unlock) and OK across the card, its lip in five parts the 14 s auto-close; no nails, the stone lip (the pitch's card).
+	-- R.fillEnd builds the body (again only when the width or a value changes)
+	local endCard = NeonKit.Card({ Name = "EndCard", Skin = "Sign", Size = UDim2.fromOffset(K.END_W, 200), Color = SIGN.StoneLip, LipPx = K.CARD_LIP, Parent = gui })
 	endCard.Root.Visible = false
 	U.End = endCard
 	U.EndScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 1, Parent = endCard.Root })
-	local eb = H.frame(endCard.Body, "List", { Size = UDim2.new(1, 0, 1, 0) })
-	H.pad(eb, 16, 12, 16, 14)
-	H.list(eb, Enum.FillDirection.Vertical, 6)
-	-- (kit-b U9-7, the owner's ruling: the gold ribbon is for window titles only) a pop-up card's title is a Section head
-	U.EndTitle = Theme.StyleTitle(H.text(eb, "Title", "", "Title", 28, INK, { Size = UDim2.new(1, 0, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 }), "Section")
-	U.EndReason = H.text(eb, "Reason", "", "Body", 19, C.Muted, { Size = UDim2.new(1, 0, 0, 50), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2 })
-	-- (U9-7 look) the totals a row of reward chips (R.fillEnd lays them out, two rows on a narrow card); the first clear a
-	-- gold plate (the loot plate's) with the star and two pixel twinkles; the unlock in ink with the key: one ink, the
-	-- title's green and the plate's gold (the card had five text colours)
-	U.EndTotals = H.frame(eb, "Totals", { Size = UDim2.new(1, 0, 0, K.CHIP_ROW), LayoutOrder = 3 })
-	U.EndFirst = H.text(eb, "FirstClear", "", "Heading", 19, Theme.TextOn(SIGN.Gold), {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = SIGN.Gold,
-		Size = UDim2.new(1, 0, 0, K.CHIP_ROW),
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		LayoutOrder = 4,
-	})
-	H.edge(U.EndFirst, SIGN.Wood, 2)
-	-- (merge kitb-look1) 7 px before the star: the kit's lead icon keeps a whole 6 screen px from its text now (was 4)
-	H.pad(U.EndFirst, 7, 0, 30, 1)
-	for i, at in ipairs({ { 8, 3 }, { 17, 14 } }) do
-		local twinkle = PixelIcon.New(U.EndFirst, "sparkle", 9, SIGN.Stone)
-		twinkle.Name = "Twinkle" .. i
-		twinkle.Position = UDim2.new(1, at[1], 0, at[2]) -- (in the plate's right padding)
-	end
-	U.EndUnlock = H.text(eb, "Unlocked", "", "Heading", 19, INK, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 5 })
-	PixelIcon.Lead(U.EndUnlock, Config.Icons.Dungeon or "key")
-	local ok = W.button(eb, "OkButton", "OK", "Gray", UDim2.new(1, 0, 0, 46), 6, function()
-		S.End = nil
-		R.refresh()
-	end)
-	U.EndOk = ok
 end
 
 function R.ready()
@@ -2078,13 +2049,14 @@ end
 -- its own, reward text under the 14 px floor, and it still sat on the HUD's vitals). The first spot that holds it whole,
 -- 8 px clear of the vitals, of DASH / RUN and above Roblox's jump band: the column LEFT of the HUD's currency strips at the
 -- top of the gui area (the strips stay in view), under the strips, then the top-right corner (the strips step aside:
--- HudController's corner card); each with the reason line, then without it (the title says the floor). None: the corner
--- without it, the vitals card hidden while it shows (S.EndVitalsOff -> R.endVitals). Weighed on every refresh (R.fillEnd,
+-- HudController's corner card); each with the reason line, then without it (the title says the floor). None: the same spots
+-- again with the vitals card hidden while it shows (S.EndVitalsOff -> R.endVitals), last the corner without the reason
+-- line. Weighed on every refresh (R.fillEnd,
 -- right after, reads S.EndCompact); the inputs are the HUD's laid-out slots, so hiding the strips or the vitals does not
 -- feed back. strips: R.stripsBottom()
 function R.placeEndLandscape(w, h, top, endH, strips)
 	local scale = 0.8
-	local reasonRow = U.EndReason.Size.Y.Offset + 6
+	local reasonRow = S.EndReasonRow or 0 -- (the template's reason line with its gap: R.fillEnd's last build with it)
 	local fullH = S.EndCompact and (endH + reasonRow) or endH
 	local y0 = math.max(0, 52 - top) -- never above the gui area
 	local maxW = math.min(K.END_W, math.floor(w * 0.44 / scale))
@@ -2135,10 +2107,22 @@ function R.placeEndLandscape(w, h, top, endH, strips)
 	end
 	S.EndVitalsOff = false
 	if not right then
-		-- nowhere clear of the vitals: the corner without the reason line, and the vitals card steps aside meanwhile
-		y, compact = y0, S.End ~= nil
-		right, width = try(w - 12, y0, compact and (fullH - reasonRow) or fullH, true)
-		right, width = right or (w - 12), width or maxW
+		-- nowhere clear of the vitals: (Pitch 2 item 02 B, look review round 1: the End card is the battle's result template,
+		-- taller than the old notice) the same spots in the same order with the vitals card stepping aside meanwhile (the
+		-- spec: a phone's result card hides the vitals), so the strips stay in view; none: the corner without the reason line
+		for _, spot in ipairs(spots) do
+			for _, drop in ipairs({ false, true }) do
+				if not right and (not drop or S.End ~= nil) then
+					right, width = try(spot[1], spot[2], drop and (fullH - reasonRow) or fullH, true)
+					y, compact = spot[2], drop
+				end
+			end
+		end
+		if not right then
+			y, compact = y0, S.End ~= nil
+			right, width = try(w - 12, y0, compact and (fullH - reasonRow) or fullH, true)
+			right, width = right or (w - 12), width or maxW
+		end
 		S.EndVitalsOff = vitals ~= nil
 	end
 	S.EndCompact = compact
@@ -2551,108 +2535,130 @@ function R.measure(label, text, width)
 	return (ok and typeof(size) == "Vector2") and size or nil
 end
 
--- the design px a wrapped label needs for `text` at `width`: its rows at the label's size (a row is TextSize tall in Roblox)
--- and 7 px under them (one row: the 26 px row it had). A measure that did not wrap (wider than the width) counts its rows
-function R.textHeight(label, text, width)
-	local size = label.TextSize
-	local m = R.measure(label, text, width)
-	local rows = 1
-	if m and m.X <= width + 1 then
-		rows = math.max(1, math.floor(m.Y / size + 0.5))
-	elseif m then
-		rows = math.max(1, math.ceil(m.X / math.max(1, width)))
-	end
-	return rows * size + 7
-end
-
-function R.fillEnd()
-	local e = S.End
+-- (Pitch 2 item 02 B, look review round 1) the End card's model in the result template's shape (BattleController
+-- Hud.ResultModel): the head (a cleared floor green "FLOOR 3 CLEARED!", else violet "RUN OVER"), the mode - reason line, the
+-- stat rows (the floor, the rooms cleared, a new best), the totals as reward chips (what is above 0; nothing at all: a muted
+-- note), the first clear and the unlock as notes (FirstClear / Unlocked)
+function R.endModel(e)
 	local cleared = e.Cleared == true
 	local f = math.floor(tonumber(e.Floor) or 1)
-	local info = H.floorInfo(f)
-	local name = tostring(e.Name or info.Name)
-	U.End.SetColor(cleared and SIGN.GrassLip or SIGN.RedLip)
-	U.EndTitle.Text = cleared and ("Floor " .. f .. " cleared!") or "Run over"
-	U.EndTitle.TextColor3 = cleared and C.Good or INK
-	PixelIcon.Mark(U.EndTitle, cleared and "sparkle" or nil, { Colour = SIGN.GoldLip }) -- (kit-b U9-7) a pixel sparkle on a win
+	local name = tostring(e.Name or H.floorInfo(f).Name)
 	local reason = tostring(e.Reason or "")
-	local text
+	local room = math.max(1, math.floor(tonumber(e.Room) or 1))
+	local M = { stats = {}, chips = {}, notes = {} }
 	if cleared then
-		text = "You beat the " .. name .. "!"
-	elseif reason == "Wipe" or reason == "Timeout" then
-		text = "Floor " .. f .. ": the " .. name .. " got you in room " .. tostring(e.Room or 1) .. ". Train your team and try again!"
-	elseif reason == "Quit" or reason == "Left" then
-		text = "You left the dungeon. Your loot is kept."
-	elseif reason == "Shutdown" then
-		text = "The server is restarting. Your loot is kept."
+		M.title, M.color, M.icon = "FLOOR " .. f .. " CLEARED!", SIGN.Grass, "trophy"
 	else
-		text = "The run ended. Your loot is kept."
+		M.title, M.color, M.icon = "RUN OVER", SIGN.Violet, "castle"
 	end
-	U.EndReason.Text = text
+	local why
+	if cleared then
+		why = "you beat the " .. name
+	elseif reason == "Timeout" then
+		why = "time ran out in room " .. room
+	elseif reason == "Wipe" then
+		why = "the " .. name .. " got you in room " .. room
+	elseif reason == "Quit" or reason == "Left" then
+		why = "you left: your loot is kept"
+	elseif reason == "Shutdown" then
+		why = "the server is restarting: your loot is kept"
+	else
+		why = "the run ended: your loot is kept"
+	end
+	M.sub = "Dungeon - " .. why
+	local count = math.floor(tonumber(e.RoomCount) or tonumber(S.EndRooms) or 0)
+	local done = cleared and room or (room - 1)
+	if count > 0 then
+		done = math.min(done, count)
+	end
+	M.stats[#M.stats + 1] = { "Floor", "castle", "Floor", tostring(f) }
+	M.stats[#M.stats + 1] = { "Rooms", "key", "Rooms", (count > 0) and (done .. " / " .. count) or tostring(done) }
+	if e.NewBest then
+		local best = (type(e.NewBest) == "number") and math.floor(e.NewBest) or f
+		M.stats[#M.stats + 1] = { "Best", "star", "New best", tostring(best) }
+	end
 	local t = type(e.Totals) == "table" and e.Totals or S.Totals
-	-- (U9-7 look) a reward chip each, laid out in rows across the card's inner width (a narrow card wraps to a second row)
-	local items = {
-		{ Config.Icons.Cash, "$" .. H.commas(t.Cash) },
-		{ Config.Icons.Tokens, H.commas(t.Tokens) },
-		{ "up", "+" .. H.commas(t.Xp) .. " XP" },
-	}
-	if (tonumber(t.Gems) or 0) > 0 then
-		items[#items + 1] = { "gem", H.commas(t.Gems) }
+	local function chip(key, icon, number, word)
+		M.chips[#M.chips + 1] = { key, icon, number, word }
 	end
-	local avail = U.End.Root.Size.X.Offset - 32
-	local sig = avail .. "|" .. items[#items][2] .. "|" .. items[1][2] .. "|" .. items[2][2] .. "|" .. items[3][2]
-	if U.EndTotals:GetAttribute("Sig") ~= sig then
-		-- (built again only when an amount or the card's width changes: the End card refreshes 4 times a second)
-		U.EndTotals:SetAttribute("Sig", sig)
-		H.clear(U.EndTotals)
-		local x, y = 0, 0
-		for i, item in ipairs(items) do
-			local chip = H.rewardChip(U.EndTotals, "Reward" .. i, item[1], item[2])
-			local cw = chip.Size.X.Offset
-			if x > 0 and x + cw > avail then
-				x, y = 0, y + K.CHIP_ROW + 6
-			end
-			chip.Position = UDim2.fromOffset(x, y)
-			x = x + cw + 6
-		end
-		U.EndTotals.Size = UDim2.new(1, 0, 0, y + K.CHIP_ROW)
+	local tokens, cash, xp, gems = tonumber(t.Tokens) or 0, tonumber(t.Cash) or 0, tonumber(t.Xp) or 0, tonumber(t.Gems) or 0
+	if tokens > 0 then
+		chip("Tokens", Config.Icons.Tokens, "+" .. Theme.Short(tokens), "Tokens")
 	end
-	local totalsH = U.EndTotals.Size.Y.Offset
+	if cash > 0 then
+		chip("Cash", Config.Icons.Cash, "+$" .. Theme.Short(cash), "Cash")
+	end
+	if xp > 0 then
+		chip("Xp", "up", "+" .. Theme.Short(xp), "Pet XP")
+	end
+	if gems > 0 then
+		chip("Gems", "gem", "+" .. Theme.Short(gems), "Gems")
+	end
+	if #M.chips == 0 then
+		M.notes[#M.notes + 1] = { "No loot this run", true }
+	end
 	local first = type(e.FirstClear) == "table" and e.FirstClear or nil
-	U.EndFirst.Visible = first ~= nil
 	if first then
-		U.EndFirst.Text = "First clear! +" .. H.commas(first.Tokens or 0) .. " tokens  +" .. H.commas(first.Gems or 0) .. " gems"
-		PixelIcon.Mark(U.EndFirst, "star") -- (kit-b U7b)
+		M.notes[#M.notes + 1] = { "First clear! +" .. H.commas(first.Tokens or 0) .. " tokens  +" .. H.commas(first.Gems or 0) .. " gems", false, "FirstClear", "star" }
 	end
-	local lines = {}
 	if tonumber(e.Unlocked) then
-		lines[#lines + 1] = "Floor " .. math.floor(e.Unlocked) .. " unlocked!"
+		M.notes[#M.notes + 1] = { "Floor " .. math.floor(e.Unlocked) .. " unlocked!", false, "Unlocked", Config.Icons.Dungeon or "key" }
 	end
-	if e.NewBest and #lines == 0 then
-		lines[#lines + 1] = "New best: floor " .. tostring(tonumber(e.NewBest) or f)
+	return M
+end
+
+-- the End card's body: the template (BattleController.ResultTemplate) at the card's width, built again only when the width,
+-- the reason line's drop (S.EndCompact), the scale or a value changes (the End card refreshes 4 times a second); OK's lip
+-- counts down the K.END_SECONDS. The card is exactly as tall as what it shows
+function R.fillEnd()
+	local e = S.End
+	local BC = H.controller("BattleController")
+	if not (BC and type(BC.ResultTemplate) == "function") then
+		H.warnOnce("result template", "BattleController.ResultTemplate missing")
+		return
 	end
-	U.EndUnlock.Visible = #lines > 0
-	U.EndUnlock.Text = table.concat(lines, "  " .. G.Dot .. "  ")
-	-- fixed rows (no AutomaticSize): the card is exactly as tall as what it shows; a narrow card (portrait phone)
-	-- gives every row two lines
-	local narrow = U.End.Root.Size.X.Offset < 340
-	U.EndTitle.TextSize = narrow and 20 or 28 -- (kit-b U9-7) "FLOOR 3 CLEARED!" and its sparkle on a portrait phone
-	local row = narrow and 46 or 26
-	-- (U9-7 look) the reason row as tall as its wrapped text (a fixed two-line row cut a portrait phone's four-line wipe
-	-- through its third line, under the reward chips, and lost the fourth)
-	local reasonH = R.textHeight(U.EndReason, text, U.End.Root.Size.X.Offset - 32)
-	U.EndReason.Size = UDim2.new(1, 0, 0, reasonH)
-	U.EndReason.Visible = not S.EndCompact
-	local reasonRow = S.EndCompact and 0 or (reasonH + 6)
-	local firstH = narrow and 46 or K.CHIP_ROW
-	for _, pair in ipairs({ { U.EndFirst, firstH }, { U.EndUnlock, row } }) do
-		local label = pair[1]
-		label.Size = UDim2.new(1, 0, 0, pair[2])
-		label.TextWrapped = narrow
-		label.TextTruncate = narrow and Enum.TextTruncate.None or Enum.TextTruncate.AtEnd
+	local M = R.endModel(e)
+	local width = U.End.Root.Size.X.Offset
+	local vp = H.viewport()
+	local phone = H.isPhone()
+	local landscape = phone and vp.X > vp.Y
+	local parts = { width, tostring(S.EndCompact), M.title, M.sub, U.EndScale.Scale }
+	for _, list in ipairs({ M.stats, M.chips, M.notes }) do
+		for _, item in ipairs(list) do
+			parts[#parts + 1] = tostring(item[1]) .. "/" .. tostring(item[3]) .. "/" .. tostring(item[4])
+		end
 	end
-	local h = 12 + 36 + 6 + reasonRow + totalsH + 6 + (first and (firstH + 6) or 0) + (#lines > 0 and (row + 6) or 0) + 46 + 14 + K.CARD_LIP
-	U.End.Root.Size = UDim2.fromOffset(U.End.Root.Size.X.Offset, h)
+	local sig = table.concat(parts, "|")
+	if U.EndSig ~= sig or not U.EndBuilt then
+		local inner = width - 20
+		local okB, built = pcall(BC.ResultTemplate, U.End.Body, M, {
+			W = width,
+			F = U.EndScale.Scale,
+			Compact = phone,
+			Landscape = landscape,
+			Cols = (landscape and inner >= 400) and 2 or 1,
+			NoReason = S.EndCompact == true,
+			OnOk = function()
+				S.End = nil
+				R.refresh()
+			end,
+		})
+		if not okB or type(built) ~= "table" then
+			H.warnOnce("result template", built)
+			return
+		end
+		U.EndSig = sig
+		U.EndBuilt = built
+		U.EndTimer = { segs = built.Segs, count = 5, lit = -1 }
+		if not S.EndCompact then
+			S.EndReasonRow = built.ReasonRow
+		end
+	end
+	U.EndOk = U.EndBuilt.Ok
+	if type(BC.PaintResultTimer) == "function" then
+		BC.PaintResultTimer(U.EndTimer, 1 - (os.clock() - S.EndAt) / K.END_SECONDS)
+	end
+	U.End.Root.Size = UDim2.fromOffset(width, U.EndBuilt.H + K.CARD_LIP)
 end
 
 ----------------------------------------------------------------------
@@ -4076,6 +4082,7 @@ function R.onState(kind, payload)
 			R.fade(payload)
 		end
 	elseif kind == "End" then
+		S.EndRooms = S.Run and tonumber(S.Run.RoomCount) or S.EndRooms -- (the End card's "Rooms cleared 2 / 4")
 		S.End = (not R.showLoss(payload)) and payload or nil
 		S.EndAt = os.clock()
 		S.EndCompact = false -- (U9-7 look) a new result shows its reason line again until it must drop it (R.place)
