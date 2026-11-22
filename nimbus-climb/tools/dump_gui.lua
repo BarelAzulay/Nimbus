@@ -5095,6 +5095,7 @@ function WU.guide(screen, mode)
 	local camAt = headP - view * 12.5 + Vector3.new(0, 4.5, 0)
 	-- (tilt: the camera pitched ~15 degrees further up, the arrow and the sign in the frame)
 	local cam = CFrame.lookAt(camAt, headP + view * 14 + Vector3.new(0, (mode == "tilt") and 9 or 2, 0))
+	WU.guideCam = cam
 	-- (look review r1, M1 / M2) the client sees this camera: the mock's WorldToViewportPoint (the screen centre for every
 	-- point) becomes WU.project for the scene, so the chip's dodge and the GuideSign's side run as they do in the game
 	local camObj = workspace.CurrentCamera
@@ -5133,8 +5134,13 @@ function WU.guide(screen, mode)
 		Mock.ShowPrompt(gatePrompt, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
 	end
 	hold(here and 0.6 or 1.6)
+	-- (look review pol0) the client keeps this camera through the scene's last frame (worldui's advance before the dump):
+	-- with the mock's own projection back, every world point stood at the screen's middle for that frame, and the travel
+	-- guide's chip, which now hides to cross a piece, was dumped hidden
 	if methods then
-		methods.WorldToViewportPoint, methods.WorldToScreenPoint = saved[1], saved[2]
+		WU.afterDump = function()
+			methods.WorldToViewportPoint, methods.WorldToScreenPoint = saved[1], saved[2]
+		end
 	end
 	local list = {}
 	-- the Altar gate's own parts near its prompt (the arch, the pad, the swirl), the guide, the player
@@ -5372,7 +5378,14 @@ scenario("worldui", function(piece)
 		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:places2|:poster|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]")
 	end
 	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	if guide[piece] and workspace.CurrentCamera then
+		workspace.CurrentCamera.CFrame = WU.guideCam or workspace.CurrentCamera.CFrame
+	end
 	advance(0.1)
+	if WU.afterDump then
+		WU.afterDump()
+		WU.afterDump = nil
+	end
 	undo()
 end)
 -- [kitb-p2-world] end

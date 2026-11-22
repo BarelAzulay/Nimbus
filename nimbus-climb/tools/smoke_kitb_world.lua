@@ -1660,10 +1660,24 @@ local function clientScenarios()
 		local function grow(r, by)
 			return r and { X = r.X - by, Y = r.Y - by, R = r.R + by, B = r.B + by } or nil
 		end
-		-- the HUD that would cover a world card: every shown, opaque piece of the HUD, the menu, the hotbar and the touch buttons
+		-- the HUD that would cover a world card: every shown, opaque piece of the HUD, the menu, the hotbar and the touch buttons;
+		-- (look review fin1, MJ-B) the top bar's pill and Roblox's own buttons in the top band too (this list missed them,
+		-- so the GuideSign under the pill and '...' on 390x844 passed)
 		local function hudPieces()
 			local out = {}
-			for _, name in ipairs({ "NimbusHud", "NimbusMenu", "NimbusHotbar", "MobileControls", "NimbusDaily" }) do
+			local top = Mock.TopInset or 0
+			if top > 0 then
+				local minX, maxX = 112, Mock.Viewport.X - 72
+				local okT, tb = pcall(function()
+					return game:GetService("GuiService").TopbarInset
+				end)
+				if okT and typeof(tb) == "Rect" and tb.Max.X > tb.Min.X then
+					minX, maxX = tb.Min.X, tb.Max.X
+				end
+				out[#out + 1] = { name = "Roblox's buttons (left)", rect = { X = 0, Y = 0, R = minX, B = top - 4, W = minX, H = top - 4 } }
+				out[#out + 1] = { name = "Roblox's buttons (right)", rect = { X = maxX, Y = 0, R = Mock.Viewport.X, B = top - 4, W = Mock.Viewport.X - maxX, H = top - 4 } }
+			end
+			for _, name in ipairs({ "NimbusHud", "NimbusMenu", "NimbusHotbar", "MobileControls", "NimbusDaily", "NimbusTopBar" }) do
 				local g = pg():FindFirstChild(name)
 				if g and g:IsA("ScreenGui") and g.Enabled then
 					for _, d in ipairs(g:GetDescendants()) do
@@ -1766,7 +1780,16 @@ local function clientScenarios()
 							T.check(hit, tag .. ": the chip leaves the top centre only for a guide piece on the screen",
 								"chip " .. show(c) .. " pushed " .. fmt("%.0f", (c.X + c.R) / 2 - vp.X / 2) .. " px, " .. #onScreen .. " piece(s) on the screen")
 						end
-						if mode ~= "here" then
+						local fx0 = workspace:FindFirstChild("ClientFx")
+						local wg0 = fx0 and fx0:FindFirstChild("TutorialGuide")
+						if mode ~= "here" and not (wg0 and wg0:FindFirstChild("GuideArrow", true)) then
+							-- (look review pol0, MAJOR 1) the arrow is a world part over the gate: it shows all the way and may
+							-- pass behind the HUD or out of the screen's top. fin1 hid it (its sign with it) within 3 px of any
+							-- HUD piece or the top, and this check held that hide; the reason it changed: phones lost the arrow
+							-- for the whole walk and every size lost it in one frame at 32-34 studs
+							T.check(false, tag .. ": the arrow shows (a world part: it never hides for the HUD or the screen's top)")
+							homeCheck()
+						elseif mode ~= "here" then
 							local fx = workspace:FindFirstChild("ClientFx")
 							local wg = fx and fx:FindFirstChild("TutorialGuide")
 							local arrow = wg and wg:FindFirstChild("GuideArrow", true)
@@ -1793,17 +1816,22 @@ local function clientScenarios()
 							if T.check(ar ~= nil, tag .. ": (setup) the guide's arrow box") then
 								local top = Mock.TopInset or 0
 								local a = { X = ar.x0, Y = ar.y0 + top, R = ar.x1, B = ar.y1 + top }
-								-- (fin0 MJ1) graze, 26 studs out: on a landscape screen the arrow's tip reaches up to ~40 px into the
-								-- chip's spot from above. By no more than the chip's own height (45 px at 1080p) it steps down that
-								-- far, still centred, and hangs GUIDE_CLEAR under the tip (it jumped 250 px across the top)
+								-- (fin0 MJ1) graze, 26 studs out: on a landscape screen the arrow's tip reaches into the chip's spot from
+								-- above. fin0 stepped the chip down under the tip, still centred (it had jumped 250 px across the top);
+								-- (look review fin1, MJ-A) that step down was a fourth place on the walk at the gate (left, right,
+								-- centre-low, home) and on a landscape phone it sat on the gate's crest. Now the chip takes ONE clear
+								-- step aside on its own row and glides there (travel_guide_walk holds the walk): a tip reaching into
+								-- its spot never sends it down onto the gate. (An arrow that reaches the chip's row from above stands
+								-- past the screen's top at these sizes, so it hides, and this check is idle; it stays for any size
+								-- where it shows)
 								if mode == "graze" and vp.X > vp.Y then
 									local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
 									local homeTop = top + 10 * k - 3 * k -- (GUIDE_TOP under the top band, its wood edge)
 									local w = c.R - c.X
 									local into = a.B + 10 * k - homeTop
-									if into > 0 and a.X < vp.X / 2 + w / 2 and a.R > vp.X / 2 - w / 2 and into <= 45 * k - 1 then
-										T.check(math.abs((c.X + c.R) / 2 - vp.X / 2) <= 1.5 and c.Y >= a.B + 10 * k - 1,
-											tag .. ": a tip reaching into the chip's spot moves it down under the tip, not across the top",
+									if into > 0 and a.X < vp.X / 2 + w / 2 and a.R > vp.X / 2 - w / 2 then
+										T.check(math.abs(c.Y - homeTop) <= 1.5 and not overlap(c, a),
+											tag .. ": a tip reaching into the chip's spot moves it aside on its own row, never down onto the gate",
 											fmt("tip %.0f px into its spot; chip %s, arrow %s", into, show(c), show(a)))
 									end
 								end
@@ -1815,7 +1843,20 @@ local function clientScenarios()
 									tag .. ": the arrow box the chip dodges is the arrow's own outline",
 									"guide " .. show(a) .. " parts " .. show(box) .. fmt(" (hop %.1f px)", hopPx))
 							end
-							if T.check(box ~= nil and s ~= nil, tag .. ": (setup) the arrow and its sign are in view") then
+							-- (look review pol0, MAJOR 1) the keep-clear rule is the GuideSign's alone: with no room beside the
+							-- arrow clear of the HUD and the chip it takes the name alone or hides while the arrow stays (390x844
+							-- walk and near, 844x390 near: the arrow out of the top or against the wallet strip). On the
+							-- desktop sizes, the mock's framings, it shows
+							T.check(box ~= nil, tag .. ": (setup) the arrow is in view")
+							if s == nil and vp.X >= 1280 then
+								T.check(false, tag .. ": (setup) the arrow and its sign are in view")
+							end
+							if box and not s then
+								T.check(not overlap(c, box), tag .. ": the chip never covers the arrow", "chip " .. show(c) .. " arrow " .. show(box))
+								seen(box)
+								homeCheck()
+							end
+							if box and s then
 								T.check(not overlap(c, box), tag .. ": the chip never covers the arrow", "chip " .. show(c) .. " arrow " .. show(box))
 								T.check(not overlap(c, s), tag .. ": the chip never covers the GuideSign", "chip " .. show(c) .. " sign " .. show(s))
 								-- (fin0 minor: at 844x390 the sign hid the arrow's right 3 px)
@@ -1885,6 +1926,505 @@ local function clientScenarios()
 		end
 		T.check(ok, "guide clear: the scenario ran", tostring(err))
 		KC.flushErrors("travel_guide_clear")
+	end)
+
+	----------------------------------------------------------------------------------------------------------------
+	-- travel_guide_walk (look review fin1, MJ-A / MJ-B; pol0, MAJOR 1 - 3): the camera moves at the REAL lobby's Altar
+	-- gate (LobbyBuilder, StormAltar and GateService built in the client world as dump_gui's worldui scenes build it; pol0:
+	-- the mock gate and its fixed turns missed what the real lobby showed) under the stock camera (12.5 studs behind the
+	-- head, 4.5 up, looking 14 ahead and `tilt` up) at 360x640, 640x360, 667x375, 390x844, 844x390, 1280x720 and
+	-- 1920x1080, with the touch buttons on the phones (pol0 MAJOR 3: without MobileControls the chip over RUN at 360x640
+	-- passed). Runs, one 1/30 s frame a step:
+	--   walk     50 -> 12 studs at Config.WalkSpeed, the camera turned 0 / 12 / 16 / 20 / -15 degrees off the trail
+	--            (28 / 32 at 1280x720 and 1920x1080: there the sign's edge touched the arrow's widest voxels)
+	--   pan      standing 45 studs out, the camera swept -35 -> 35 -> -35 degrees at 23, 60 and 120 degrees a second;
+	--            70 studs out at 23
+	--   look up  standing 20 and 12 studs out, the camera tilted 2 -> 14 -> 2 (the arrow comes in from the screen's top)
+	-- Every frame:
+	--   free     the chip and, while it shows, the GuideSign lie wholly on the screen and under no HUD piece
+	--   clear    the chip never covers the arrow or the sign, the sign never the arrow
+	--   arrow    the arrow is a world part: it shows all the way and may pass behind the HUD or out of the screen's top
+	--            (pol0 MAJOR 1: it hid within 3 px of any HUD piece or the top, and phones lost it for the whole walk)
+	--   steps    the chip moves in the kit's hard steps: from one frame to the next by at most a quarter of its width
+	--            (a move shows as held steps), or across a hide (it hides, then shows at its new place: how it crosses
+	--            a piece, pol0 MAJOR 2 a); it hides at most 0.2 s at a time on a walk, 0.5 s on a pan or a look up
+	--   row      on a landscape screen the chip stays on its home row (pol0 MAJOR 2 d: it dropped onto the gate), and
+	--            never further than its own width off the top centre (MAJOR 2 b: pushed 750 px into the corner)
+	-- A walk also keeps one place off home, out and back: no side flip, no creep (a rest more than 6 px off its spot;
+	-- pol0 minor 1), home at the end; at 50 studs on 1920x1080, 1280x720 and 390x844 the arrow and its sign show. On a
+	-- landscape walk (and the far walk, 120 -> 50 studs at 844x390, 1280x720, 1920x1080) the chip rests off the top centre
+	-- only while the arrow is near its home: the sign gives way to the chip (pol0 minor 3).
+	-- (fin1's rule "never more than 40 px in one frame" became the steps rule. Reason: pol0 minor 2 asks for the kit's
+	-- hard steps in place of the eased glide, and MAJOR 2 a for a hard step or a hide where the chip crosses a piece.
+	-- The 500 px jump fin1 caught still fails it: a jump is more than a quarter of the chip's width with no hide between)
+	----------------------------------------------------------------------------------------------------------------
+	S.travel_guide_walk = guarded("travel_guide_walk", function()
+		local Config = shared("Config")
+		local TC = client("Controllers/TutorialController")
+		local MC = client("Controllers/MovementController")
+		local Guide = TC and TC.Guide
+		local methods = Mock.Classes and Mock.Classes.Camera and Mock.Classes.Camera.methods
+		if not T.check(type(Guide) == "table" and methods ~= nil and workspace.CurrentCamera ~= nil and MC ~= nil and type(MC._TouchButtons) == "function",
+			"guide walk: (setup) TutorialController.Guide, MovementController._TouchButtons, the mock camera") then
+			return
+		end
+		local player = game:GetService("Players").LocalPlayer
+		local UIS = game:GetService("UserInputService")
+		local GS = game:GetService("GuiService")
+		local L = Config.Lobby
+		local camObj = workspace.CurrentCamera
+		local saved = { methods.WorldToViewportPoint, methods.WorldToScreenPoint }
+		local function project(self, pos)
+			local rel = self.CFrame:PointToObjectSpace(pos)
+			local vp = Mock.Viewport
+			local d = -rel.Z
+			local f = (vp.Y / 2) / math.tan(math.rad(self.FieldOfView / 2))
+			local dd = (abs(d) < 1e-6) and 1e-6 or d
+			local x, y = vp.X / 2 + rel.X / dd * f, vp.Y / 2 - rel.Y / dd * f
+			return Vector3.new(x, y, d), d > 0 and x >= 0 and x <= vp.X and y >= 0 and y <= vp.Y
+		end
+		-- the real lobby, built here every run (the client world has no server; a lobby another check left, a mock gate,
+		-- is set aside and put back); what the build adds goes at the end
+		local aside = workspace:FindFirstChild("NimbusLobby")
+		if aside then
+			aside.Parent = nil
+		end
+		local before, built = {}, {}
+		for _, c in ipairs(workspace:GetChildren()) do
+			before[c] = true
+		end
+		local info = nil
+		local context = Mock.Context
+		Mock.Context = "server"
+		local okB, whyB = pcall(function()
+			local LB = req(ROOTS.server .. "/Services/LobbyBuilder")
+			info = LB and LB.Build()
+			info = type(info) == "table" and info or {}
+			local SA = req(ROOTS.server .. "/Services/StormAltar")
+			if SA then
+				pcall(SA.Build, info)
+			end
+			local GSv = req(ROOTS.server .. "/Services/GateService")
+			if GSv then
+				pcall(GSv.Init, info, { StormAltar = SA })
+			end
+		end)
+		Mock.Context = context
+		for _, c in ipairs(workspace:GetChildren()) do
+			if not before[c] and not c:IsA("Camera") and not c:IsA("Terrain") then
+				built[#built + 1] = c
+			end
+		end
+		T.check(okB, "guide walk: (setup) LobbyBuilder, StormAltar and GateService build the lobby", tostring(whyB))
+		KC.advance(0.6)
+		local gatePrompt = nil
+		for _, c in ipairs(built) do
+			for _, d in ipairs(c:GetDescendants()) do
+				if not gatePrompt and d:IsA("ProximityPrompt") and d.Name == "AltarGatePrompt" and d.Parent and d.Parent:IsA("BasePart") then
+					gatePrompt = d
+				end
+			end
+		end
+		local function putBack()
+			for _, c in ipairs(built) do
+				c:Destroy()
+			end
+			if aside then
+				aside.Parent = workspace
+			end
+		end
+		if not T.check(gatePrompt ~= nil, "guide walk: (setup) the built lobby's Altar gate prompt") then
+			putBack()
+			return
+		end
+		local gate = gatePrompt.Parent
+		T.info(fmt("*guide walk: the built lobby's Altar gate prompt %s at %.0f, %.0f, %.0f", gate:GetFullName(), gate.Position.X, gate.Position.Y, gate.Position.Z))
+		local spawn = (info and typeof(info.SpawnCFrame) == "CFrame" and info.SpawnCFrame.Position) or (L.Origin + Vector3.new(0, 3, 20))
+		local flat = Vector3.new(gate.Position.X - spawn.X, 0, gate.Position.Z - spawn.Z)
+		local dir = flat.Magnitude > 1 and flat.Unit or Vector3.new(0, 0, -1)
+		local standY = spawn.Y
+		-- screen px (the top band included)
+		local function screenRect(obj)
+			local owner = obj:FindFirstAncestorOfClass("ScreenGui")
+			local dy = (owner and owner.IgnoreGuiInset) and 0 or (Mock.TopInset or 0)
+			local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+			return { X = p.X, Y = p.Y + dy, R = p.X + s.X, B = p.Y + s.Y + dy }
+		end
+		local function grow(r, by)
+			return { X = r.X - by, Y = r.Y - by, R = r.R + by, B = r.B + by }
+		end
+		local function boxOf(part)
+			local r = nil
+			for _, dx in ipairs({ -0.5, 0.5 }) do
+				for _, dy in ipairs({ -0.5, 0.5 }) do
+					for _, dz in ipairs({ -0.5, 0.5 }) do
+						local v = project(camObj, part.CFrame:PointToWorldSpace(Vector3.new(dx * part.Size.X, dy * part.Size.Y, dz * part.Size.Z)))
+						if v.Z <= 0 then
+							return nil
+						end
+						if r then
+							r.X, r.Y, r.R, r.B = math.min(r.X, v.X), math.min(r.Y, v.Y), math.max(r.R, v.X), math.max(r.B, v.Y)
+						else
+							r = { X = v.X, Y = v.Y, R = v.X, B = v.Y }
+						end
+					end
+				end
+			end
+			return r
+		end
+		local function billboard(gui)
+			local ad = gui.Adornee or gui.Parent
+			local cf = camObj.CFrame
+			local so = gui.StudsOffset
+			local p = ad.Position + gui.StudsOffsetWorldSpace + cf.RightVector * so.X + cf.UpVector * so.Y - cf.LookVector * so.Z
+			local v = project(camObj, p)
+			if v.Z <= 0 then
+				return nil
+			end
+			local w, h = gui.Size.X.Offset, gui.Size.Y.Offset
+			local x0 = v.X - w / 2 + gui.SizeOffset.X * w
+			local y0 = v.Y - h / 2 - gui.SizeOffset.Y * h
+			return { X = x0, Y = y0, R = x0 + w, B = y0 + h }
+		end
+		-- every shown, painted HUD piece (the top bar's pill and the touch buttons included) and Roblox's own buttons in
+		-- the top band, left / right of the TopbarInset (TutorialController's fallback when it is unset)
+		local function hudPieces()
+			local vp = Mock.Viewport
+			local out = {}
+			for _, name in ipairs({ "NimbusHud", "NimbusMenu", "NimbusHotbar", "MobileControls", "NimbusDaily", "NimbusTopBar", "NimbusTutorial" }) do
+				local g = pg():FindFirstChild(name)
+				if g and g:IsA("ScreenGui") and g.Enabled then
+					for _, d in ipairs(g:GetDescendants()) do
+						if d:IsA("GuiObject") and d.AbsoluteSize.X > 0 and d.AbsoluteSize.Y > 0 and d.BackgroundTransparency < 0.5 then
+							local shown = true
+							local a = d
+							while a and a ~= g do
+								if a:IsA("GuiObject") and not a.Visible then
+									shown = false
+									break
+								end
+								a = a.Parent
+							end
+							local r = shown and screenRect(d)
+							if r and (r.R - r.X) < vp.X * 0.6 and (r.B - r.Y) < vp.Y * 0.6 then
+								out[#out + 1] = { name = g.Name .. "." .. d.Name, rect = r }
+							end
+						end
+					end
+				end
+			end
+			local top = Mock.TopInset or 0
+			if top > 0 then
+				local minX, maxX = 112, vp.X - 72
+				local okT, tb = pcall(function()
+					return GS.TopbarInset
+				end)
+				if okT and typeof(tb) == "Rect" and tb.Max.X > tb.Min.X then
+					minX, maxX = tb.Min.X, tb.Max.X
+				end
+				out[#out + 1] = { name = "Roblox's buttons (left)", rect = { X = 0, Y = 0, R = minX, B = top - 4 } }
+				out[#out + 1] = { name = "Roblox's buttons (right)", rect = { X = maxX, Y = 0, R = vp.X, B = top - 4 } }
+			end
+			return out
+		end
+		-- the stock camera `turn` degrees off the trail, `tilt` studs up at its look point, the player `dist` studs out
+		local function place(dist, turn, tilt)
+			local at = gate.Position - dir * dist
+			at = Vector3.new(at.X, standY, at.Z)
+			Mock.Teleport(player, CFrame.lookAt(at, at + dir))
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			local head = (root and root.Position or at) + Vector3.new(0, 1.9, 0)
+			local a = math.rad(turn)
+			local view = Vector3.new(dir.X * math.cos(a) + dir.Z * math.sin(a), 0, -dir.X * math.sin(a) + dir.Z * math.cos(a))
+			camObj.CFrame = CFrame.lookAt(head - view * 12.5 + Vector3.new(0, 4.5, 0), head + view * 14 + Vector3.new(0, tilt, 0))
+		end
+		local speed = tonumber(Config.WalkSpeed) or 16
+		-- frames from (d0, t0, l0) to (d1, t1, l1): walking at WalkSpeed (secs nil) or over `secs`
+		local function seg(list, d0, d1, t0, t1, l0, l1, secs)
+			local n = secs and math.max(1, math.floor(secs * 30 + 0.5)) or math.max(1, math.ceil(abs(d1 - d0) / (speed / 30) - 1e-6))
+			for i = 1, n do
+				local f = i / n
+				local d = d0 + (d1 - d0) * f
+				if not secs then
+					d = d0 + (d1 - d0) * math.min(1, i * (speed / 30) / math.max(abs(d1 - d0), 1e-6))
+				end
+				list[#list + 1] = { d, t0 + (t1 - t0) * f, l0 + (l1 - l0) * f }
+			end
+		end
+		local function hold(list, d, t, l, n)
+			for _ = 1, n do
+				list[#list + 1] = { d, t, l }
+			end
+		end
+		local SIZES = { { 360, 640 }, { 640, 360 }, { 667, 375 }, { 390, 844 }, { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }
+		local runs = {}
+		local function add(kind, name, size, frames)
+			runs[#runs + 1] = { kind = kind, name = name, w = size[1], h = size[2], frames = frames }
+		end
+		for _, turn in ipairs({ 0, 12, 16, 20, -15, 28, 32 }) do
+			for _, size in ipairs(SIZES) do
+				if abs(turn) < 25 or size[1] >= 1280 then
+					local f = { { 50, turn, 2 } }
+					seg(f, 50, 12, turn, turn, 2, 2)
+					add("walk", turn ~= 0 and fmt("walk turned %d", turn) or "walk", size, f)
+				end
+			end
+		end
+		-- (pol0 minor 3: from far off only the sign reached the chip's home at 844x390, which sent it 168 px aside from 120
+		-- studs in) the far walk, 120 -> 50 studs
+		for _, size in ipairs({ { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }) do
+			local f = { { 120, 0, 2 } }
+			seg(f, 120, 50, 0, 0, 2, 2)
+			add("far", "far walk", size, f)
+		end
+		for _, p in ipairs({ { 45, 23 }, { 45, 60 }, { 45, 120 }, { 70, 23 } }) do
+			for _, size in ipairs(SIZES) do
+				local f = {}
+				hold(f, p[1], -35, 2, 10)
+				seg(f, p[1], p[1], -35, 35, 2, 2, 70 / p[2])
+				seg(f, p[1], p[1], 35, -35, 2, 2, 70 / p[2])
+				hold(f, p[1], -35, 2, 10)
+				add("pan", fmt("pan %d deg/s at %d studs", p[2], p[1]), size, f)
+			end
+		end
+		for _, d in ipairs({ 20, 12 }) do
+			for _, size in ipairs(SIZES) do
+				local f = {}
+				hold(f, d, 0, 2, 10)
+				seg(f, d, d, 0, 0, 2, 14, 2)
+				seg(f, d, d, 0, 0, 14, 2, 2)
+				add("look", fmt("look up at %d studs", d), size, f)
+			end
+		end
+		local touchWas = UIS.TouchEnabled
+		local ok, err = pcall(function()
+			methods.WorldToViewportPoint, methods.WorldToScreenPoint = project, project
+			for _, run in ipairs(runs) do
+				local tag = fmt("guide %s %dx%d", run.name, run.w, run.h)
+				local touch = math.min(run.w, run.h) <= 500
+				UIS.TouchEnabled = touch
+				Mock.SetViewport(run.w, run.h)
+				pcall(MC._TouchButtons, touch)
+				KC.advance(0.4)
+				local vp = Mock.Viewport
+				local top = Mock.TopInset or 0
+				local f1 = run.frames[1]
+				place(f1[1], f1[2], f1[3])
+				KC.advance(0.1)
+				T.check(Guide.Start("StormAltar") == true, tag .. ": (setup) the guide starts")
+				for _ = 1, 15 do
+					place(f1[1], f1[2], f1[3])
+					KC.advance(1 / 30)
+				end
+				local hud = hudPieces()
+				local fails, counts = {}, {}
+				local function fail(rule, msg)
+					counts[rule] = (counts[rule] or 0) + 1
+					fails[rule] = fails[rule] or msg
+				end
+				local function under(r)
+					for _, piece in ipairs(hud) do
+						if overlap(r, piece.rect) then
+							return piece.name
+						end
+					end
+					return nil
+				end
+				local function onScreen(r)
+					return r.X >= -0.5 and r.Y >= -0.5 and r.R <= vp.X + 0.5 and r.B <= vp.Y + 0.5
+				end
+				local prev, still, places, sides = nil, 0, {}, {}
+				local hidden, maxHidden, hiddenFrames = 0, 0, 0
+				local seenArrow, seenSign, signFrames = nil, nil, 0
+				local fullW, arrowNear = nil, nil
+				for i, fr in ipairs(run.frames) do
+					if i > 1 then
+						place(fr[1], fr[2], fr[3])
+						KC.advance(1 / 30)
+					end
+					local at = fmt("%.1f studs, turn %.0f, tilt %.1f", fr[1], fr[2], fr[3])
+					local fx = workspace:FindFirstChild("ClientFx")
+					local wg = fx and fx:FindFirstChild("TutorialGuide")
+					local gui = pg():FindFirstChild("NimbusGuide")
+					local chip = gui and gui:FindFirstChild("Chip", true)
+					local c = nil
+					if not (chip and chip.Visible and gui.Enabled) then
+						hidden = hidden + 1
+						hiddenFrames = hiddenFrames + 1
+						maxHidden = math.max(maxHidden, hidden)
+						if hidden == 1 and prev then
+							prev.hid = true
+						end
+					else
+						hidden = 0
+						local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
+						c = grow(screenRect(chip), 3 * k) -- its wood edge
+						local cw = c.R - c.X
+						local cx = (c.X + c.R) / 2
+						if prev then
+							local moved = math.max(abs(cx - prev.x), abs(c.Y - prev.y))
+							if moved > cw / 4 + 2 and not prev.hid then
+								fail("steps", fmt("%s: the chip moved %.0f px in one frame with no hide (%.0f,%.0f -> %.0f,%.0f; a step is at most %.0f)",
+									at, moved, prev.x, prev.y, cx, c.Y, cw / 4 + 2))
+							end
+							still = (moved < 0.5 and not prev.hid) and (still + 1) or 0
+						end
+						prev = { x = cx, y = c.Y }
+						-- a rest (3 frames still) more than 6 px from the last place is a new place
+						if still == 3 or #places == 0 then
+							local last = places[#places]
+							if not last or math.max(abs(cx - last.x), abs(c.Y - last.y)) > 6 then
+								places[#places + 1] = { x = cx, y = c.Y, at = at }
+								local off = cx - vp.X / 2
+								sides[#sides + 1] = (off > 2 and "R") or (off < -2 and "L") or "C"
+							end
+						end
+						if not onScreen(c) then
+							fail("chip free", fmt("%s: the chip %s is off the screen", at, show(c)))
+						end
+						local hn = under(c)
+						if hn then
+							fail("chip free", fmt("%s: the chip %s is under %s", at, show(c), hn))
+						end
+						if vp.X > vp.Y then
+							local homeTop = top + 10 * k - 3 * k -- (GUIDE_TOP under the top band, its wood edge)
+							if abs(c.Y - homeTop) > 1.5 then
+								fail("row", fmt("%s: the chip %s left its home row (top %.0f) on a landscape screen", at, show(c), homeTop))
+							end
+						end
+						if abs(cx - vp.X / 2) > cw + 2 then
+							fail("row", fmt("%s: the chip %s is pushed %.0f px off the top centre (its width %.0f)", at, show(c), cx - vp.X / 2, cw))
+						end
+					end
+					-- the arrow (its model in the world guide's folder while it shows)
+					local arrow = wg and wg.Parent and wg:FindFirstChild("GuideArrow", true)
+					if not arrow then
+						fail("arrow", at .. ": the arrow is hidden")
+					end
+					local box = nil
+					for _, d in ipairs(arrow and arrow:GetDescendants() or {}) do
+						if d:IsA("BasePart") then
+							local b = boxOf(d)
+							if b then
+								box = box and { X = math.min(box.X, b.X), Y = math.min(box.Y, b.Y), R = math.max(box.R, b.R), B = math.max(box.B, b.B) } or b
+							end
+						end
+					end
+					if box then
+						seenArrow = seenArrow or at
+						if c and overlap(c, box) then
+							fail("clear", fmt("%s: the chip %s covers the arrow %s", at, show(c), show(box)))
+						end
+					end
+					-- (pol0 minor 3) on a landscape walk the chip rests off the top centre only for the arrow: it came within 40 px
+					-- (1080p: its 10 px berth and its 0.3 s lead on a walk) of the chip's home in the last 20 frames (its 0.3 s
+					-- hold and its steps home); the GuideSign gives way to the chip
+					if c then
+						local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
+						fullW = math.max(fullW or 0, c.R - c.X)
+						local home = { X = vp.X / 2 - fullW / 2, Y = top + 7 * k, R = vp.X / 2 + fullW / 2, B = top + 7 * k + (c.B - c.Y) }
+						if box and overlap(grow(home, 40 * k), box) then
+							arrowNear = i
+						end
+						if (run.kind == "walk" or run.kind == "far") and vp.X > vp.Y and still >= 3 and abs((c.X + c.R) / 2 - vp.X / 2) > 2
+							and not (arrowNear and i - arrowNear <= 20) then
+							fail("home", fmt("%s: the chip %s rests off the top centre with the arrow %s far from it", at, show(c), show(box)))
+						end
+					end
+					-- the GuideSign while it shows
+					local sign = wg and wg.Parent and wg:FindFirstChild("GuideSign", true)
+					local card = sign and sign.Enabled and sign:FindFirstChild("Card")
+					local bb = card and billboard(sign)
+					if bb then
+						local sk = (card:FindFirstChild("ReadScale") and card.ReadScale.Scale) or 1
+						local w, h = card.Size.X.Offset * sk, card.Size.Y.Offset * sk
+						local x0 = bb.X + card.Position.X.Offset + card.Position.X.Scale * (bb.R - bb.X) - card.AnchorPoint.X * w
+						local cy = (bb.Y + bb.B) / 2 + card.Position.Y.Offset
+						local s = grow({ X = x0, Y = cy - h / 2, R = x0 + w, B = cy + h / 2 }, 3 * sk)
+						seenSign = seenSign or at
+						signFrames = signFrames + 1
+						if not onScreen(s) then
+							fail("sign free", fmt("%s: the GuideSign %s is cut by the screen's edge", at, show(s)))
+						end
+						local hn = under(s)
+						if hn then
+							fail("sign free", fmt("%s: the GuideSign %s is under %s", at, show(s), hn))
+						end
+						if c and overlap(c, s) then
+							fail("clear", fmt("%s: the chip %s covers the GuideSign %s", at, show(c), show(s)))
+						end
+						if box and overlap(s, box) then
+							fail("clear", fmt("%s: the GuideSign %s covers the arrow %s", at, show(s), show(box)))
+						end
+					end
+					if i == 1 and run.name == "walk" and (run.w == 1920 or run.w == 1280 or run.w == 390) then
+						T.check(box ~= nil and bb ~= nil, tag .. ": at 50 studs the arrow and its sign show (the mock's framing)",
+							fmt("arrow %s, sign %s", tostring(box ~= nil), tostring(bb ~= nil)))
+					end
+				end
+				local hideCap = (run.kind == "walk" or run.kind == "far") and 6 or 15
+				T.check(maxHidden <= hideCap, tag .. fmt(": the chip hides at most %.1f s at a time", hideCap / 30),
+					fmt("hidden %d frames in a row (%d in all)", maxHidden, hiddenFrames))
+				T.check(fails.steps == nil, tag .. ": the chip moves in hard steps of at most a quarter of its width, or across a hide",
+					fails.steps and (fails.steps .. fmt(" (%d frames)", counts.steps)))
+				T.check(fails.row == nil, tag .. ": the chip keeps its home row on a landscape screen and stays within its width of the top centre",
+					fails.row and (fails.row .. fmt(" (%d frames)", counts.row)))
+				if (run.kind == "walk" or run.kind == "far") and run.w > run.h then
+					T.check(fails.home == nil, tag .. ": the chip rests off the top centre only while the arrow is near it (the sign gives way)",
+						fails.home and (fails.home .. fmt(" (%d frames)", counts.home)))
+				end
+				local seq = {}
+				for i, p in ipairs(places) do
+					seq[#seq + 1] = sides[i] .. fmt("@%s(%.0f,%.0f)", p.at, p.x, p.y)
+				end
+				if run.kind == "walk" then
+					-- (pick a side and keep it) its rests in order: home "C" (the home itself may move with the HUD, e.g. a
+					-- quest strip docking over the vitals card), or away "L" / "R" of the middle; never both sides, one away
+					-- stretch at most and one spot in it (every rest there within 6 px of its first), home at the end (by
+					-- 12 studs the arrow, shown all the way now, has risen past the chip's row on every screen)
+					local stretches, spot, creep = {}, nil, nil
+					local hasL, hasR = false, false
+					for i, p in ipairs(places) do
+						local sd = sides[i]
+						hasL, hasR = hasL or sd == "L", hasR or sd == "R"
+						if stretches[#stretches] ~= sd then
+							stretches[#stretches + 1] = sd
+							spot = (sd ~= "C") and p or nil
+						elseif spot and math.max(abs(p.x - spot.x), abs(p.y - spot.y)) > 6 then
+							creep = creep or p.at
+						end
+					end
+					local away = 0
+					for _, sd in ipairs(stretches) do
+						away = away + ((sd ~= "C") and 1 or 0)
+					end
+					T.check(not (hasL and hasR) and away <= 1 and creep == nil and sides[#sides] == "C",
+						tag .. ": the chip keeps one place off home, out and back (no side flip, no creep, home at the end)",
+						table.concat(seq, " -> ") .. (creep and (" (a second spot at " .. creep .. ")") or ""))
+				end
+				T.check(fails["chip free"] == nil, tag .. ": the chip is wholly on the screen, under no HUD piece", fails["chip free"])
+				T.check(fails["sign free"] == nil, tag .. ": the GuideSign, while it shows, is wholly on the screen, under no HUD piece",
+					fails["sign free"] and (fails["sign free"] .. fmt(" (%d frames)", counts["sign free"])))
+				T.check(fails.arrow == nil, tag .. ": the arrow shows all the way (a world part: it may pass behind the HUD or out of the top)",
+					fails.arrow and (fails.arrow .. fmt(" (%d frames)", counts.arrow)))
+				T.check(fails.clear == nil, tag .. ": the chip never covers the arrow or the sign, the sign never the arrow",
+					fails.clear and (fails.clear .. fmt(" (%d frames)", counts.clear)))
+				T.info(fmt("%s: places %s; hidden %d frames; sign %d of %d frames; arrow first seen %s, sign %s", tag, table.concat(seq, " -> "),
+					hiddenFrames, signFrames, #run.frames, tostring(seenArrow), tostring(seenSign)))
+				Guide.Stop()
+				KC.advance(0.2)
+			end
+		end)
+		methods.WorldToViewportPoint, methods.WorldToScreenPoint = saved[1], saved[2]
+		pcall(MC._TouchButtons, false)
+		UIS.TouchEnabled = touchWas
+		pcall(Guide.Stop)
+		Mock.SetViewport(1920, 1080)
+		Mock.Teleport(player, CFrame.new(L.Origin + Vector3.new(0, 3, 20)))
+		KC.advance(0.5)
+		putBack()
+		T.check(ok, "guide walk: the scenario ran", tostring(err))
+		KC.flushErrors("travel_guide_walk")
 	end)
 
 	return S
