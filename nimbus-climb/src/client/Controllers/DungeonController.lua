@@ -1870,9 +1870,12 @@ end
 
 -- (U9-7 look) a desktop card pushed down under a long enemy list (R.place) still ends 8 px above the battle HUD's ability
 -- buttons: the Wave line goes first (the HUD's mode card says the wave in a fight), then the status line, then the loot
--- line (the room's loot still flashes on the card's toast), then the party's chips and the room line (the mode card says
--- the room too); a card that still reaches them (the loot plate under four enemy rows) takes the chip form meanwhile.
--- R.refresh shows every line again on its next pass
+-- line (the room's loot still flashes on the card's toast), then the room line (the mode card says the room too:
+-- "DUNGEON - Floor 3 - Room 2"), then the party's chips; a card that still reaches them (the loot plate under four enemy
+-- rows) takes the chip form meanwhile. (fix6, keys look pol1 #2: ab11837's 12 px taller enemy list left 1280 x 720's card
+-- 19 px over the keys where the party row needs 30, and the party went before the room line: the card kept "Room 2 / 4",
+-- which the mode card says, and lost who is alive, which no other part shows.) R.refresh shows every line again on its
+-- next pass
 function R.fitCard()
 	if S.CardMode ~= "Card" then
 		return
@@ -1888,7 +1891,7 @@ function R.fitCard()
 	if cmd.x0 >= x0 + K.CARD_W * f or cmd.x1 <= x0 then
 		return
 	end
-	for _, line in ipairs({ U.CardWave, U.CardStatus, U.CardLoot, U.CardMembers, U.CardRoom }) do
+	for _, line in ipairs({ U.CardWave, U.CardStatus, U.CardLoot, U.CardRoom, U.CardMembers }) do
 		if y0 + root.Size.Y.Offset * f <= cmd.y0 - 8 then
 			return
 		end
