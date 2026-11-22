@@ -6566,6 +6566,12 @@ function Hud.Rebuild()
 	if m.Compact and curBottom > 0 and curLeft >= K.EDGE + 208 and curLeft < K.EDGE + cardW + 8 then
 		-- (a phone with the currency pills at the top right: a narrower fighter card fits beside them)
 		Hud.fcW = curLeft - K.EDGE - 8
+		-- (keys look r3: at 360 x 640 the card's hard shadow filled those 8 px, 0.4 px from the strips) its shadow and 6 px
+		-- clear, where the card keeps the 208 it needs
+		local keep = math.ceil((K.SHADOW_PX + 6) / max(0.05, m.F))
+		if curLeft - K.EDGE - keep >= 208 then
+			Hud.fcW = curLeft - K.EDGE - keep
+		end
 		cardW = Hud.fcW
 	end
 	if m.Compact and not m.Landscape and isFighting and not Hud.listLeft and #Hud.EnemyList(B) > 0 then

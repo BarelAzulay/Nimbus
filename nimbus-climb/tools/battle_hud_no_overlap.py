@@ -283,6 +283,12 @@ class Checker:
         # top 0.4 px under the top card's shadow; the selected row's outline merged with both. The mock-up keeps 14-23 px)
         # on a phone the enemy list keeps 8 px off the fighter card and the top card, their shadows counted
         if touch:
+            # (keys look r3: at 360 x 640 the currency strips stood 0.4 px off the fighter card's hard shadow) the strips beside
+            # the fighter card keep 4 px clear of it, its shadow counted
+            for cp, cr in groups.get("CURRENCY", []):
+                for op, orr in groups.get("FIGHTER", []):
+                    d = gap(cr, orr)
+                    self.check(d >= 4 - 0.5, tag + "%s keeps 4 px off %s" % (cp, op), "%s vs %s: %.1f px" % (fmt(cr), fmt(orr), d))
             for ep, er in groups.get("ENEMIES", []):
                 for g in ("FIGHTER", "TOP"):
                     for op, orr in groups.get(g, []):
