@@ -17545,6 +17545,13 @@ local function clientScenarios()
 		local ms = Config and Config.MachineSheet
 		T.check(type(ms) == "table" and ms.Id == 0, "machines: Config.MachineSheet.Id ships 0 (nothing uploaded)", tostring(type(ms) == "table" and ms.Id))
 		T.check(type(ms) == "table" and type(ms.Cells) == "table", "machines: Config.MachineSheet.Cells gives each roulette's cell in the sheet")
+		-- (P2 icons look fin1, tools/check.mjs asset-id) the sheets' image URLs are made in Config.Art (no asset literal in
+		-- ShopEggs / PixelIcon): an uploaded id gives its URL, 0 / junk gives none (the fallback stays)
+		local img = Config and Config.Art and Config.Art.Image
+		T.check(type(img) == "function" and img(5151515151) == "rbxassetid://5151515151" and img(0) == nil and img(-3) == nil
+			and img(1.5) == nil and img("x") == nil and img(nil) == nil,
+			"machines: Config.Art.Image(id) is a sheet's asset URL for a whole id above 0, nil for 0 or junk",
+			type(img) == "function" and tostring(img(5151515151)) or tostring(img))
 		for _, m in ipairs({ { "PC", { W = 1240, H = 834 } }, { "Phone", { W = 790, H = 300 } } }) do
 			local ok, err = machinesPage(m[1], m[2], function(roots)
 				local wrong = {}

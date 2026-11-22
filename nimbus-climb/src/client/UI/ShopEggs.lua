@@ -514,7 +514,7 @@ function H.addSheet(m, color, secret, sheetId, cell)
 		Name = "Art",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Image = "rbxassetid://" .. string.format("%d", sheetId),
+		Image = Config.Art.Image(sheetId) or "", -- (P2 icons look fin1) the URL from Config.Art
 		ImageRectOffset = Vector2.new(cell[1], cell[2]),
 		ImageRectSize = Vector2.new(cell[3], cell[4]),
 		ResampleMode = Enum.ResamplerMode.Pixelated,

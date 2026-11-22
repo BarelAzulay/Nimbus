@@ -463,6 +463,14 @@ local function sheetId()
 	return 0
 end
 
+-- (P2 icons look fin1, tools/check.mjs asset-id) an uploaded sheet's image URL: Config.Art.Image, the one place asset
+-- URLs are made ("" while Config is not there; the sheet paths run only with an id from it)
+local function sheetImage(id)
+	sheetId() -- (requires Config once)
+	local art = configMod and configMod.Art
+	return type(art) == "table" and type(art.Image) == "function" and art.Image(id) or ""
+end
+
 -- the sheet cell an Own icon of px draws from: art sizes only (2+ px cells on the 18 grid), a name the sheet holds, an id
 local function sheetCellFor(name, px)
 	local c = PixelIcon.SheetCells[name]
@@ -867,7 +875,7 @@ function PixelIcon.New(parent, name, px, colour, key)
 		art.Name = "Art"
 		art.BackgroundTransparency = 1
 		art.BorderSizePixel = 0
-		art.Image = "rbxassetid://" .. string.format("%d", sheetId())
+		art.Image = sheetImage(sheetId())
 		art.ImageRectOffset = Vector2.new(sheetCell[1], sheetCell[2])
 		art.ImageRectSize = Vector2.new(PixelIcon.SheetCells.Art or 19, PixelIcon.SheetCells.Art or 19)
 		art.ResampleMode = Enum.ResamplerMode.Pixelated
@@ -959,7 +967,7 @@ function PixelIcon.FromSheet(parent, name, px, image, rect)
 	art.Name = "Art"
 	art.BackgroundTransparency = 1
 	art.BorderSizePixel = 0
-	art.Image = "rbxassetid://" .. string.format("%d", image)
+	art.Image = sheetImage(image)
 	art.ImageRectOffset = Vector2.new(rect[1], rect[2])
 	art.ImageRectSize = Vector2.new(rect[3], rect[4])
 	art.ResampleMode = Enum.ResamplerMode.Pixelated
