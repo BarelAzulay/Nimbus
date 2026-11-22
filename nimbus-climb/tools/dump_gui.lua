@@ -711,6 +711,13 @@ local function nodeOf(inst, ctx, path, order)
 	end
 	if inst:IsA("ImageLabel") or inst:IsA("ImageButton") then
 		n.image = { kind = "Image", image = tostring(inst.Image or ""), color = rgb(inst.ImageColor3), t = tonumber(inst.ImageTransparency) or 0 }
+		-- (Pitch 2 items 9 B / 10 A) a sprite sheet cell: the ImageRect cut and whether it draws nearest-neighbour
+		local rs = inst.ImageRectSize
+		if typeof(rs) == "Vector2" and rs.X > 0 and rs.Y > 0 then
+			local ro = inst.ImageRectOffset
+			n.image.rect = { ro.X, ro.Y, rs.X, rs.Y }
+			n.image.pixelated = inst.ResampleMode == Enum.ResamplerMode.Pixelated
+		end
 	elseif inst:IsA("ViewportFrame") then
 		n.image = { kind = "Viewport", label = modelLabel(inst), color = rgb(inst.ImageColor3), t = tonumber(inst.ImageTransparency) or 0 }
 		-- (egg-cards) an Egg3D egg (attribute Key) whose card picture the scene mapped: drawn as a stand-in of the whole egg
@@ -5441,6 +5448,18 @@ else
 	local name = (fields[1] or ""):lower()
 	local width = tonumber(ARGS.width) or 1920
 	local height = tonumber(ARGS.height) or 1080
+	if ARGS.sheets then
+		-- (Pitch 2 items 9 B / 10 A, render_gui.py --sheets) preview the upload sheets as if uploaded: a stub id each for
+		-- this render only (the files' Config keeps 0), drawn from the local PNG (each ImageLabel's rect cut, see `rect`)
+		local cfg = req("shared/Config")
+		for _, s in ipairs({ { cfg.IconSheet, 9000000001, "build/upload_sheets/icons_b.png" }, { cfg.MachineSheet, 9000000002, "build/upload_sheets/machines_a.png" } }) do
+			if type(s[1]) == "table" then
+				s[1].Id = s[2]
+				LOCAL_IMAGES["rbxassetid://" .. fmt("%.0f", s[2])] = s[3]
+			end
+		end
+		note("sheets: the upload sheets drawn from build/upload_sheets (stub ids; nothing uploaded)")
+	end
 	if name == "gallery" then
 		-- the widget gallery alone (no game UI)
 		local okMetrics, why = installMetrics()

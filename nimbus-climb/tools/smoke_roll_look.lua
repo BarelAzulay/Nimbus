@@ -1862,9 +1862,12 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 		-- (review round 2) the budget bookkeeping (spec 16.15 "Budgets"): each dressed piece's instances, counted here so the
 		-- spec's numbers stay the ones the next budget change is planned from
 		T.eq(word and G.count(word) or -1, 21, "roll look budget: a 5-letter word is 21 instances (its Frame, 5 letters x [TextLabel, UIGradient Bands, UIStroke, UIScale]; kit-b U9-2b: no glow capsules)")
-		-- (kit-b U7a) the coin icon is the token PixelIcon: its Frame and one Frame per merged run
+		-- (kit-b U7a) the coin icon is the token PixelIcon: its Frame and one Frame per merged run. (Pitch 2 item 9 B "Carved
+		-- soft", mock-up PITCH2/C_icons_machines/09_optB_shop.png) the coin is now the Shop's Spin coin, the redrawn token in
+		-- its own colours: one Frame per entry of its draw list (PixelIcon.ArtRuns, 21 for the token) where the replaced
+		-- one-ink coin had 11 runs (PixelIcon.Runs). Still the exact count, read from the icon's own data
 		local PI = G.req("shared/PixelIcon")
-		local coin = 1 + (PI and #PI.Runs("token") or 0)
+		local coin = 1 + (PI and #(PI.ArtRuns("token") or PI.Runs("token") or {}) or 0)
 		-- (kit-b U9-2b) a plank: the tap box, Face, Body + its SignEdge and Lip, Label (6); (look review) Spin again's inline
 		-- price row (Chip, no box), Coin, the icon's host label, Price (4 more) and the pixel coin
 		T.eq((again and G.count(again) or 0) + (done and G.count(done) or 0), 16 + coin, "roll look budget: the two pills are " .. (16 + coin) .. " instances (Spin again 10 with its inline price and the coin's host + the pixel coin's " .. coin .. ", Done 6)")

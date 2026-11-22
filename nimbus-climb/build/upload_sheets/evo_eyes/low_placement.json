@@ -1,0 +1,6530 @@
+{
+ "what": "where the eyes sit per evolved pet (the High key and its _low key), measured on the final Body voxels of the build (the eye pixels on the front, x > 0 eye, studs from the centre line): before = the 5cb4b2e hand-over build, now = this build; shiftLowVoxels / rowShiftLowVoxels = Low eye centre minus High eye centre across / up, in Low voxels; outside = surface voxels of this build whose colour (not only its shade) differs from the pre-trim build c733fe0, not an eye pixel of either build, by distance from the visible eye pixels of either build",
+ "before": {
+  "evo1_aurora_fox": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.222,
+    "outer": 0.756,
+    "rows": [
+     7,
+     13
+    ],
+    "bottom": 0.578,
+    "top": 1.2,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.427,
+    "top": 1.111,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -0.36,
+   "rowShiftLowVoxels": -0.7,
+   "gapStuds": {
+    "high": 0.444,
+    "low": 0.17
+   }
+  },
+  "evo1_bamboo_panda": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.427,
+    "top": 1.111,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -1.01,
+   "rowShiftLowVoxels": -1.12,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.17
+   }
+  },
+  "evo1_biscuit_bear": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -1.4,
+   "rowShiftLowVoxels": -0.74,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.154
+   }
+  },
+  "evo1_blossom_bunny": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.28,
+    "outer": 0.76,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.6,
+    "top": 1.16,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "GoldDeep",
+     "Muzzle"
+    ]
+   },
+   "shiftLowVoxels": -0.88,
+   "rowShiftLowVoxels": -0.22,
+   "gapStuds": {
+    "high": 0.56,
+    "low": 0.154
+   }
+  },
+  "evo1_bubble_axolotl": {
+   "high": {
+    "cols": [
+     6,
+     11
+    ],
+    "inner": 0.44,
+    "outer": 0.92,
+    "rows": [
+     4,
+     10
+    ],
+    "bottom": 0.28,
+    "top": 0.84,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.085,
+    "top": 0.769,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.48,
+   "rowShiftLowVoxels": -0.78,
+   "gapStuds": {
+    "high": 0.88,
+    "low": 0.512
+   }
+  },
+  "evo1_candy_unicorn": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     15,
+     21
+    ],
+    "bottom": 1.16,
+    "top": 1.72,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.94,
+    "top": 1.624,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -1.01,
+   "rowShiftLowVoxels": -0.92,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.17
+   }
+  },
+  "evo1_cherry_panda": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.427,
+    "top": 1.111,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -1.01,
+   "rowShiftLowVoxels": -1.12,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.17
+   }
+  },
+  "evo1_cloudy_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.311,
+    "outer": 0.844,
+    "rows": [
+     12,
+     16
+    ],
+    "bottom": 1.022,
+    "top": 1.467,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.94,
+    "top": 1.624,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "Gem",
+     "Gold"
+    ]
+   },
+   "shiftLowVoxels": -0.88,
+   "rowShiftLowVoxels": 0.22,
+   "gapStuds": {
+    "high": 0.622,
+    "low": 0.17
+   }
+  },
+  "evo1_eclipse_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.311,
+    "outer": 0.844,
+    "rows": [
+     12,
+     16
+    ],
+    "bottom": 1.022,
+    "top": 1.467,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.855,
+    "top": 1.614,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.46,
+   "rowShiftLowVoxels": -0.05,
+   "gapStuds": {
+    "high": 0.622,
+    "low": 0.57
+   }
+  },
+  "evo1_ember_phoenix": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.2,
+    "outer": 0.68,
+    "rows": [
+     13,
+     19
+    ],
+    "bottom": 1.0,
+    "top": 1.56,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.846,
+    "top": 1.462,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Beak",
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.36,
+   "rowShiftLowVoxels": -0.82,
+   "gapStuds": {
+    "high": 0.4,
+    "low": 0.154
+   }
+  },
+  "evo1_frostling_penguin": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     13,
+     19
+    ],
+    "bottom": 1.0,
+    "top": 1.56,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.846,
+    "top": 1.462,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Beak",
+     "Belly"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.82,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_honey_bunny": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.28,
+    "outer": 0.76,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.6,
+    "top": 1.16,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "GoldDeep",
+     "Muzzle"
+    ]
+   },
+   "shiftLowVoxels": -0.88,
+   "rowShiftLowVoxels": -0.22,
+   "gapStuds": {
+    "high": 0.56,
+    "low": 0.154
+   }
+  },
+  "evo1_hydralotl": {
+   "high": {
+    "cols": [
+     6,
+     11
+    ],
+    "inner": 0.44,
+    "outer": 0.92,
+    "rows": [
+     4,
+     10
+    ],
+    "bottom": 0.28,
+    "top": 0.84,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.095,
+    "top": 0.855,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.08,
+   "rowShiftLowVoxels": -0.45,
+   "gapStuds": {
+    "high": 0.88,
+    "low": 0.57
+   }
+  },
+  "evo1_magma_cub": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.427,
+    "top": 1.111,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -1.01,
+   "rowShiftLowVoxels": -1.12,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.17
+   }
+  },
+  "evo1_mallow_kitten": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -1.4,
+   "rowShiftLowVoxels": -0.74,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.154
+   }
+  },
+  "evo1_maple_fox": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.222,
+    "outer": 0.756,
+    "rows": [
+     7,
+     13
+    ],
+    "bottom": 0.578,
+    "top": 1.2,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.427,
+    "top": 1.111,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -0.36,
+   "rowShiftLowVoxels": -0.7,
+   "gapStuds": {
+    "high": 0.444,
+    "low": 0.17
+   }
+  },
+  "evo1_mochi_slime": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.28,
+    "outer": 0.76,
+    "rows": [
+     -8,
+     -2
+    ],
+    "bottom": -0.68,
+    "top": -0.12,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     -5,
+     -2
+    ],
+    "bottom": -0.846,
+    "top": -0.231,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.88,
+   "rowShiftLowVoxels": -0.9,
+   "gapStuds": {
+    "high": 0.56,
+    "low": 0.154
+   }
+  },
+  "evo1_moonlit_owl": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     14,
+     20
+    ],
+    "bottom": 1.08,
+    "top": 1.64,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     7,
+     10
+    ],
+    "bottom": 1.0,
+    "top": 1.615,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Belly",
+     "EyeRing"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.34,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_nebula_axolotl": {
+   "high": {
+    "cols": [
+     6,
+     11
+    ],
+    "inner": 0.44,
+    "outer": 0.92,
+    "rows": [
+     4,
+     10
+    ],
+    "bottom": 0.28,
+    "top": 0.84,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     2,
+     5
+    ],
+    "bottom": 0.231,
+    "top": 0.846,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.92,
+   "rowShiftLowVoxels": -0.14,
+   "gapStuds": {
+    "high": 0.88,
+    "low": 0.462
+   }
+  },
+  "evo1_obsidian_phoenix": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.2,
+    "outer": 0.68,
+    "rows": [
+     13,
+     19
+    ],
+    "bottom": 1.0,
+    "top": 1.56,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.769,
+    "top": 1.453,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Beak",
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.08,
+   "rowShiftLowVoxels": -0.99,
+   "gapStuds": {
+    "high": 0.4,
+    "low": 0.17
+   }
+  },
+  "evo1_pebble_pup": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.6,
+    "top": 1.16,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Muzzle",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -1.4,
+   "rowShiftLowVoxels": -0.22,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.154
+   }
+  },
+  "evo1_phantom_kitsune": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.247,
+    "outer": 0.84,
+    "rows": [
+     6,
+     12
+    ],
+    "bottom": 0.543,
+    "top": 1.235,
+    "vox": 0.0988
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.095,
+    "outer": 0.855,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.475,
+    "top": 1.235,
+    "vox": 0.1899,
+    "gapCols": 1,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.36,
+   "rowShiftLowVoxels": -0.18,
+   "gapStuds": {
+    "high": 0.494,
+    "low": 0.19
+   }
+  },
+  "evo1_pip_penguin": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     13,
+     19
+    ],
+    "bottom": 1.0,
+    "top": 1.56,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.846,
+    "top": 1.462,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Beak",
+     "Belly"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.82,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_puddle_frog": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     3,
+     9
+    ],
+    "bottom": 0.2,
+    "top": 0.76,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.077,
+    "top": 0.692,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.62,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_rime_wyrmling": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.311,
+    "outer": 0.844,
+    "rows": [
+     12,
+     16
+    ],
+    "bottom": 1.022,
+    "top": 1.467,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.855,
+    "top": 1.614,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.46,
+   "rowShiftLowVoxels": -0.05,
+   "gapStuds": {
+    "high": 0.622,
+    "low": 0.57
+   }
+  },
+  "evo1_shroomie_frog": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     3,
+     9
+    ],
+    "bottom": 0.2,
+    "top": 0.76,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.077,
+    "top": 0.692,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.62,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_sleepy_owl": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     14,
+     20
+    ],
+    "bottom": 1.08,
+    "top": 1.64,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     7,
+     10
+    ],
+    "bottom": 1.0,
+    "top": 1.615,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Belly",
+     "EyeRing"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.34,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_starlight_unicorn": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     15,
+     21
+    ],
+    "bottom": 1.16,
+    "top": 1.72,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.94,
+    "top": 1.624,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -1.01,
+   "rowShiftLowVoxels": -0.92,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.17
+   }
+  },
+  "evo1_storm_tabby": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -1.4,
+   "rowShiftLowVoxels": -0.74,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.154
+   }
+  },
+  "evo1_stormfang": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.222,
+    "outer": 0.756,
+    "rows": [
+     6,
+     12
+    ],
+    "bottom": 0.489,
+    "top": 1.111,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.427,
+    "top": 1.111,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Nose",
+     "Plate"
+    ]
+   },
+   "shiftLowVoxels": -0.36,
+   "rowShiftLowVoxels": -0.18,
+   "gapStuds": {
+    "high": 0.444,
+    "low": 0.17
+   }
+  },
+  "evo1_sunbeam_bear": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.077,
+    "outer": 0.692,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 1,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -1.4,
+   "rowShiftLowVoxels": -0.74,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.154
+   }
+  },
+  "evo1_twilight_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.311,
+    "outer": 0.844,
+    "rows": [
+     12,
+     16
+    ],
+    "bottom": 1.022,
+    "top": 1.467,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.855,
+    "top": 1.614,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.46,
+   "rowShiftLowVoxels": -0.05,
+   "gapStuds": {
+    "high": 0.622,
+    "low": 0.57
+   }
+  },
+  "evo1_waffle_corgi": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     6,
+     12
+    ],
+    "bottom": 0.44,
+    "top": 1.0,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     2,
+     5
+    ],
+    "bottom": 0.256,
+    "top": 0.94,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Muzzle",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -1.01,
+   "rowShiftLowVoxels": -0.71,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.17
+   }
+  },
+  "evo2_aurora_fox": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.8,
+    "top": 1.547,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.545,
+    "top": 1.418,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": -0.88,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_candy_unicorn": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     14,
+     20
+    ],
+    "bottom": 1.44,
+    "top": 2.187,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "GemB",
+     "Gold",
+     "GoldDeep",
+     "GoldLight"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": -0.81,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_cloudy_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     13,
+     17
+    ],
+    "bottom": 1.333,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_eclipse_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     13,
+     17
+    ],
+    "bottom": 1.333,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold",
+     "Horn",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_ember_phoenix": {
+   "high": {
+    "cols": [
+     2,
+     7
+    ],
+    "inner": 0.16,
+    "outer": 0.8,
+    "rows": [
+     11,
+     17
+    ],
+    "bottom": 1.12,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.109,
+    "outer": 0.982,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.982,
+    "top": 1.855,
+    "vox": 0.2182,
+    "gapCols": 1,
+    "between": [
+     "Beak",
+     "GoldDeep",
+     "GoldLight"
+    ]
+   },
+   "shiftLowVoxels": 0.3,
+   "rowShiftLowVoxels": -0.34,
+   "gapStuds": {
+    "high": 0.32,
+    "low": 0.218
+   }
+  },
+  "evo2_hydralotl": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.48,
+    "outer": 1.12,
+    "rows": [
+     3,
+     9
+    ],
+    "bottom": 0.267,
+    "top": 1.013,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.109,
+    "top": 0.982,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.17,
+   "rowShiftLowVoxels": -0.43,
+   "gapStuds": {
+    "high": 0.96,
+    "low": 0.654
+   }
+  },
+  "evo2_magma_cub": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.8,
+    "top": 1.547,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.545,
+    "top": 1.418,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": -0.88,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_moonlit_owl": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     12,
+     18
+    ],
+    "bottom": 1.227,
+    "top": 1.973,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.982,
+    "top": 1.855,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Beak",
+     "Belly",
+     "EyeRing",
+     "Gold",
+     "GoldLight"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": -0.83,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_nebula_axolotl": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.48,
+    "outer": 1.12,
+    "rows": [
+     3,
+     9
+    ],
+    "bottom": 0.267,
+    "top": 1.013,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.109,
+    "top": 0.982,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.17,
+   "rowShiftLowVoxels": -0.43,
+   "gapStuds": {
+    "high": 0.96,
+    "low": 0.654
+   }
+  },
+  "evo2_obsidian_phoenix": {
+   "high": {
+    "cols": [
+     2,
+     7
+    ],
+    "inner": 0.16,
+    "outer": 0.8,
+    "rows": [
+     11,
+     17
+    ],
+    "bottom": 1.12,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.109,
+    "outer": 0.982,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.982,
+    "top": 1.855,
+    "vox": 0.2182,
+    "gapCols": 1,
+    "between": [
+     "Beak",
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": 0.3,
+   "rowShiftLowVoxels": -0.34,
+   "gapStuds": {
+    "high": 0.32,
+    "low": 0.218
+   }
+  },
+  "evo2_phantom_kitsune": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.8,
+    "top": 1.547,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.545,
+    "top": 1.418,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": -0.88,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_rime_wyrmling": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     13,
+     17
+    ],
+    "bottom": 1.333,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold",
+     "Horn",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_starlight_unicorn": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     14,
+     20
+    ],
+    "bottom": 1.44,
+    "top": 2.187,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": -0.81,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_stormfang": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     7,
+     13
+    ],
+    "bottom": 0.693,
+    "top": 1.44,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.109,
+    "outer": 0.982,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.545,
+    "top": 1.418,
+    "vox": 0.2182,
+    "gapCols": 1,
+    "between": [
+     "Nose",
+     "Plate"
+    ]
+   },
+   "shiftLowVoxels": -0.19,
+   "rowShiftLowVoxels": -0.39,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.218
+   }
+  },
+  "evo2_sunbeam_bear": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.8,
+    "top": 1.547,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.545,
+    "top": 1.418,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": -0.88,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_twilight_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     13,
+     17
+    ],
+    "bottom": 1.333,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold",
+     "Horn",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  }
+ },
+ "now": {
+  "evo1_aurora_fox": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.222,
+    "outer": 0.756,
+    "rows": [
+     7,
+     13
+    ],
+    "bottom": 0.578,
+    "top": 1.2,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.598,
+    "top": 1.282,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "GoldDeep",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.64,
+   "rowShiftLowVoxels": 0.3,
+   "gapStuds": {
+    "high": 0.444,
+    "low": 0.512
+   }
+  },
+  "evo1_bamboo_panda": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.598,
+    "top": 1.282,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose",
+     "Patch"
+    ]
+   },
+   "shiftLowVoxels": -0.01,
+   "rowShiftLowVoxels": -0.12,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.512
+   }
+  },
+  "evo1_biscuit_bear": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.692,
+    "top": 1.308,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": 0.26,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_blossom_bunny": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.28,
+    "outer": 0.76,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.6,
+    "top": 1.16,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "GoldDeep",
+     "Muzzle"
+    ]
+   },
+   "shiftLowVoxels": 0.12,
+   "rowShiftLowVoxels": -0.22,
+   "gapStuds": {
+    "high": 0.56,
+    "low": 0.462
+   }
+  },
+  "evo1_bubble_axolotl": {
+   "high": {
+    "cols": [
+     6,
+     11
+    ],
+    "inner": 0.44,
+    "outer": 0.92,
+    "rows": [
+     4,
+     10
+    ],
+    "bottom": 0.28,
+    "top": 0.84,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     2,
+     5
+    ],
+    "bottom": 0.256,
+    "top": 0.94,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Gold"
+    ]
+   },
+   "shiftLowVoxels": -0.48,
+   "rowShiftLowVoxels": 0.22,
+   "gapStuds": {
+    "high": 0.88,
+    "low": 0.512
+   }
+  },
+  "evo1_candy_unicorn": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     15,
+     21
+    ],
+    "bottom": 1.16,
+    "top": 1.72,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.94,
+    "top": 1.624,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Mane"
+    ]
+   },
+   "shiftLowVoxels": -0.01,
+   "rowShiftLowVoxels": -0.92,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.512
+   }
+  },
+  "evo1_cherry_panda": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.598,
+    "top": 1.282,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose",
+     "Patch"
+    ]
+   },
+   "shiftLowVoxels": -0.01,
+   "rowShiftLowVoxels": -0.12,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.512
+   }
+  },
+  "evo1_cloudy_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.311,
+    "outer": 0.844,
+    "rows": [
+     12,
+     16
+    ],
+    "bottom": 1.022,
+    "top": 1.467,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.94,
+    "top": 1.624,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold"
+    ]
+   },
+   "shiftLowVoxels": 0.12,
+   "rowShiftLowVoxels": 0.22,
+   "gapStuds": {
+    "high": 0.622,
+    "low": 0.512
+   }
+  },
+  "evo1_eclipse_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.311,
+    "outer": 0.844,
+    "rows": [
+     12,
+     16
+    ],
+    "bottom": 1.022,
+    "top": 1.467,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.855,
+    "top": 1.614,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.46,
+   "rowShiftLowVoxels": -0.05,
+   "gapStuds": {
+    "high": 0.622,
+    "low": 0.57
+   }
+  },
+  "evo1_ember_phoenix": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.2,
+    "outer": 0.68,
+    "rows": [
+     13,
+     19
+    ],
+    "bottom": 1.0,
+    "top": 1.56,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     7,
+     10
+    ],
+    "bottom": 1.0,
+    "top": 1.615,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Beak",
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": 0.64,
+   "rowShiftLowVoxels": 0.18,
+   "gapStuds": {
+    "high": 0.4,
+    "low": 0.462
+   }
+  },
+  "evo1_frostling_penguin": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     13,
+     19
+    ],
+    "bottom": 1.0,
+    "top": 1.56,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     7,
+     10
+    ],
+    "bottom": 1.0,
+    "top": 1.615,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Beak",
+     "Belly",
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": 0.18,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_honey_bunny": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.28,
+    "outer": 0.76,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.6,
+    "top": 1.16,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "GoldDeep",
+     "Muzzle"
+    ]
+   },
+   "shiftLowVoxels": 0.12,
+   "rowShiftLowVoxels": -0.22,
+   "gapStuds": {
+    "high": 0.56,
+    "low": 0.462
+   }
+  },
+  "evo1_hydralotl": {
+   "high": {
+    "cols": [
+     6,
+     11
+    ],
+    "inner": 0.44,
+    "outer": 0.92,
+    "rows": [
+     4,
+     10
+    ],
+    "bottom": 0.28,
+    "top": 0.84,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.095,
+    "top": 0.855,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.08,
+   "rowShiftLowVoxels": -0.45,
+   "gapStuds": {
+    "high": 0.88,
+    "low": 0.57
+   }
+  },
+  "evo1_magma_cub": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.598,
+    "top": 1.282,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Muzzle",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -0.01,
+   "rowShiftLowVoxels": -0.12,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.512
+   }
+  },
+  "evo1_mallow_kitten": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.692,
+    "top": 1.308,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Gold"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": 0.26,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_maple_fox": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.222,
+    "outer": 0.756,
+    "rows": [
+     7,
+     13
+    ],
+    "bottom": 0.578,
+    "top": 1.2,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.598,
+    "top": 1.282,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "GoldDeep",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.64,
+   "rowShiftLowVoxels": 0.3,
+   "gapStuds": {
+    "high": 0.444,
+    "low": 0.512
+   }
+  },
+  "evo1_mochi_slime": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.28,
+    "outer": 0.76,
+    "rows": [
+     -8,
+     -2
+    ],
+    "bottom": -0.68,
+    "top": -0.12,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     -4,
+     -1
+    ],
+    "bottom": -0.692,
+    "top": -0.077,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": 0.12,
+   "rowShiftLowVoxels": 0.1,
+   "gapStuds": {
+    "high": 0.56,
+    "low": 0.462
+   }
+  },
+  "evo1_moonlit_owl": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     14,
+     20
+    ],
+    "bottom": 1.08,
+    "top": 1.64,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     7,
+     10
+    ],
+    "bottom": 1.0,
+    "top": 1.615,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Belly",
+     "EyeRing"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.34,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_nebula_axolotl": {
+   "high": {
+    "cols": [
+     6,
+     11
+    ],
+    "inner": 0.44,
+    "outer": 0.92,
+    "rows": [
+     4,
+     10
+    ],
+    "bottom": 0.28,
+    "top": 0.84,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     3,
+     6
+    ],
+    "inner": 0.385,
+    "outer": 1.0,
+    "rows": [
+     2,
+     5
+    ],
+    "bottom": 0.231,
+    "top": 0.846,
+    "vox": 0.1538,
+    "gapCols": 5,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": 0.08,
+   "rowShiftLowVoxels": -0.14,
+   "gapStuds": {
+    "high": 0.88,
+    "low": 0.77
+   }
+  },
+  "evo1_obsidian_phoenix": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.2,
+    "outer": 0.68,
+    "rows": [
+     13,
+     19
+    ],
+    "bottom": 1.0,
+    "top": 1.56,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.085,
+    "outer": 0.769,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.94,
+    "top": 1.624,
+    "vox": 0.1709,
+    "gapCols": 1,
+    "between": [
+     "Beak",
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.08,
+   "rowShiftLowVoxels": 0.01,
+   "gapStuds": {
+    "high": 0.4,
+    "low": 0.17
+   }
+  },
+  "evo1_pebble_pup": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.6,
+    "top": 1.16,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.538,
+    "top": 1.154,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Muzzle",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.22,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_phantom_kitsune": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.247,
+    "outer": 0.84,
+    "rows": [
+     6,
+     12
+    ],
+    "bottom": 0.543,
+    "top": 1.235,
+    "vox": 0.0988
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.475,
+    "top": 1.235,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": 0.64,
+   "rowShiftLowVoxels": -0.18,
+   "gapStuds": {
+    "high": 0.494,
+    "low": 0.57
+   }
+  },
+  "evo1_pip_penguin": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     13,
+     19
+    ],
+    "bottom": 1.0,
+    "top": 1.56,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     7,
+     10
+    ],
+    "bottom": 1.0,
+    "top": 1.615,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Beak",
+     "Belly",
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": 0.18,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_puddle_frog": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     3,
+     9
+    ],
+    "bottom": 0.2,
+    "top": 0.76,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     2,
+     5
+    ],
+    "bottom": 0.231,
+    "top": 0.846,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Leaf"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": 0.38,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_rime_wyrmling": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.311,
+    "outer": 0.844,
+    "rows": [
+     12,
+     16
+    ],
+    "bottom": 1.022,
+    "top": 1.467,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.855,
+    "top": 1.614,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.46,
+   "rowShiftLowVoxels": -0.05,
+   "gapStuds": {
+    "high": 0.622,
+    "low": 0.57
+   }
+  },
+  "evo1_shroomie_frog": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     3,
+     9
+    ],
+    "bottom": 0.2,
+    "top": 0.76,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     2,
+     5
+    ],
+    "bottom": 0.231,
+    "top": 0.846,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": 0.38,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_sleepy_owl": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     14,
+     20
+    ],
+    "bottom": 1.08,
+    "top": 1.64,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     7,
+     10
+    ],
+    "bottom": 1.0,
+    "top": 1.615,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Belly",
+     "EyeRing"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": -0.34,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_starlight_unicorn": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     15,
+     21
+    ],
+    "bottom": 1.16,
+    "top": 1.72,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 0.94,
+    "top": 1.624,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Mane"
+    ]
+   },
+   "shiftLowVoxels": -0.01,
+   "rowShiftLowVoxels": -0.92,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.512
+   }
+  },
+  "evo1_storm_tabby": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.692,
+    "top": 1.308,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": 0.26,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_stormfang": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.222,
+    "outer": 0.756,
+    "rows": [
+     6,
+     12
+    ],
+    "bottom": 0.489,
+    "top": 1.111,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.427,
+    "top": 1.111,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose",
+     "Plate"
+    ]
+   },
+   "shiftLowVoxels": 0.64,
+   "rowShiftLowVoxels": -0.18,
+   "gapStuds": {
+    "high": 0.444,
+    "low": 0.512
+   }
+  },
+  "evo1_sunbeam_bear": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     9,
+     15
+    ],
+    "bottom": 0.68,
+    "top": 1.24,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.231,
+    "outer": 0.846,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.692,
+    "top": 1.308,
+    "vox": 0.1538,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -0.4,
+   "rowShiftLowVoxels": 0.26,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.462
+   }
+  },
+  "evo1_twilight_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.311,
+    "outer": 0.844,
+    "rows": [
+     12,
+     16
+    ],
+    "bottom": 1.022,
+    "top": 1.467,
+    "vox": 0.0889
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.285,
+    "outer": 1.045,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.855,
+    "top": 1.614,
+    "vox": 0.1899,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.46,
+   "rowShiftLowVoxels": -0.05,
+   "gapStuds": {
+    "high": 0.622,
+    "low": 0.57
+   }
+  },
+  "evo1_waffle_corgi": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.36,
+    "outer": 0.84,
+    "rows": [
+     6,
+     12
+    ],
+    "bottom": 0.44,
+    "top": 1.0,
+    "vox": 0.08
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.256,
+    "outer": 0.94,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.427,
+    "top": 1.111,
+    "vox": 0.1709,
+    "gapCols": 3,
+    "between": [
+     "Muzzle",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": -0.01,
+   "rowShiftLowVoxels": 0.29,
+   "gapStuds": {
+    "high": 0.72,
+    "low": 0.512
+   }
+  },
+  "evo2_aurora_fox": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.8,
+    "top": 1.547,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.764,
+    "top": 1.636,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Gold",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": 0.12,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_candy_unicorn": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     14,
+     20
+    ],
+    "bottom": 1.44,
+    "top": 2.187,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     7,
+     10
+    ],
+    "bottom": 1.418,
+    "top": 2.291,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "GemB",
+     "Gold",
+     "GoldDeep",
+     "Spark"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.19,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_cloudy_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     13,
+     17
+    ],
+    "bottom": 1.333,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_eclipse_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     13,
+     17
+    ],
+    "bottom": 1.333,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold",
+     "Horn",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_ember_phoenix": {
+   "high": {
+    "cols": [
+     2,
+     7
+    ],
+    "inner": 0.16,
+    "outer": 0.8,
+    "rows": [
+     11,
+     17
+    ],
+    "bottom": 1.12,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.109,
+    "outer": 0.982,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.982,
+    "top": 1.855,
+    "vox": 0.2182,
+    "gapCols": 1,
+    "between": [
+     "Beak",
+     "GoldDeep",
+     "GoldLight"
+    ]
+   },
+   "shiftLowVoxels": 0.3,
+   "rowShiftLowVoxels": -0.34,
+   "gapStuds": {
+    "high": 0.32,
+    "low": 0.218
+   }
+  },
+  "evo2_hydralotl": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.48,
+    "outer": 1.12,
+    "rows": [
+     3,
+     9
+    ],
+    "bottom": 0.267,
+    "top": 1.013,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.109,
+    "top": 0.982,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.17,
+   "rowShiftLowVoxels": -0.43,
+   "gapStuds": {
+    "high": 0.96,
+    "low": 0.654
+   }
+  },
+  "evo2_magma_cub": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.8,
+    "top": 1.547,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.764,
+    "top": 1.636,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": 0.12,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_moonlit_owl": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     12,
+     18
+    ],
+    "bottom": 1.227,
+    "top": 1.973,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Beak",
+     "Belly",
+     "EyeRing",
+     "Gold"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_nebula_axolotl": {
+   "high": {
+    "cols": [
+     5,
+     10
+    ],
+    "inner": 0.48,
+    "outer": 1.12,
+    "rows": [
+     3,
+     9
+    ],
+    "bottom": 0.267,
+    "top": 1.013,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     1,
+     4
+    ],
+    "bottom": 0.109,
+    "top": 0.982,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": -0.17,
+   "rowShiftLowVoxels": -0.43,
+   "gapStuds": {
+    "high": 0.96,
+    "low": 0.654
+   }
+  },
+  "evo2_obsidian_phoenix": {
+   "high": {
+    "cols": [
+     2,
+     7
+    ],
+    "inner": 0.16,
+    "outer": 0.8,
+    "rows": [
+     11,
+     17
+    ],
+    "bottom": 1.12,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     1,
+     4
+    ],
+    "inner": 0.109,
+    "outer": 0.982,
+    "rows": [
+     5,
+     8
+    ],
+    "bottom": 0.982,
+    "top": 1.855,
+    "vox": 0.2182,
+    "gapCols": 1,
+    "between": [
+     "Beak",
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": 0.3,
+   "rowShiftLowVoxels": -0.34,
+   "gapStuds": {
+    "high": 0.32,
+    "low": 0.218
+   }
+  },
+  "evo2_phantom_kitsune": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.8,
+    "top": 1.547,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.764,
+    "top": 1.636,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "GlowB",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": 0.12,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_rime_wyrmling": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     13,
+     17
+    ],
+    "bottom": 1.333,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold",
+     "Horn",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_starlight_unicorn": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     14,
+     20
+    ],
+    "bottom": 1.44,
+    "top": 2.187,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": -0.81,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  },
+  "evo2_stormfang": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     7,
+     13
+    ],
+    "bottom": 0.693,
+    "top": 1.44,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     3,
+     6
+    ],
+    "bottom": 0.545,
+    "top": 1.418,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Nose",
+     "Plate"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": -0.39,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_sunbeam_bear": {
+   "high": {
+    "cols": [
+     3,
+     8
+    ],
+    "inner": 0.267,
+    "outer": 0.907,
+    "rows": [
+     8,
+     14
+    ],
+    "bottom": 0.8,
+    "top": 1.547,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     4,
+     7
+    ],
+    "bottom": 0.764,
+    "top": 1.636,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Fur",
+     "Nose"
+    ]
+   },
+   "shiftLowVoxels": 0.81,
+   "rowShiftLowVoxels": 0.12,
+   "gapStuds": {
+    "high": 0.534,
+    "low": 0.654
+   }
+  },
+  "evo2_twilight_dragon": {
+   "high": {
+    "cols": [
+     4,
+     9
+    ],
+    "inner": 0.373,
+    "outer": 1.013,
+    "rows": [
+     13,
+     17
+    ],
+    "bottom": 1.333,
+    "top": 1.867,
+    "vox": 0.1067
+   },
+   "low": {
+    "cols": [
+     2,
+     5
+    ],
+    "inner": 0.327,
+    "outer": 1.2,
+    "rows": [
+     6,
+     9
+    ],
+    "bottom": 1.2,
+    "top": 2.073,
+    "vox": 0.2182,
+    "gapCols": 3,
+    "between": [
+     "Brow",
+     "Fur",
+     "Gem",
+     "Gold",
+     "Horn",
+     "Nostril"
+    ]
+   },
+   "shiftLowVoxels": 0.32,
+   "rowShiftLowVoxels": 0.17,
+   "gapStuds": {
+    "high": 0.746,
+    "low": 0.654
+   }
+  }
+ },
+ "outsideSummary": {
+  "1": {
+   "keys": 42,
+   "voxels": 158,
+   "list": {}
+  },
+  "2-4": {
+   "keys": 20,
+   "voxels": 59,
+   "list": {
+    "evo1_aurora_fox_low": [
+     "Belly>Fur_Dark",
+     "Belly>Gold"
+    ],
+    "evo1_bubble_axolotl_low": [
+     "Gem>Fur_Dark",
+     "Gem>Gold",
+     "GemB>Fur_Dark",
+     "GemB>Gold",
+     "Gold>None"
+    ],
+    "evo1_candy_unicorn_low": [
+     "Mouth>Muzzle",
+     "Muzzle>Fur_Dark"
+    ],
+    "evo1_frostling_penguin_low": [
+     "Gem>Gold",
+     "Gold>ScarfStripe"
+    ],
+    "evo1_hydralotl_low": [
+     "GemGlint>Gem"
+    ],
+    "evo1_magma_cub_low": [
+     "Fur>Magma"
+    ],
+    "evo1_maple_fox_low": [
+     "Belly>Fur_Dark",
+     "Belly>Gold"
+    ],
+    "evo1_moonlit_owl_low": [
+     "Gold>Belly",
+     "GoldLight>None"
+    ],
+    "evo1_obsidian_phoenix_low": [
+     "Gem>Gold",
+     "GemB>Gold"
+    ],
+    "evo1_sleepy_owl_low": [
+     "Gold>Belly",
+     "GoldLight>None"
+    ],
+    "evo1_starlight_unicorn_low": [
+     "Mouth>Muzzle",
+     "Muzzle>Fur_Dark"
+    ],
+    "evo1_stormfang_low": [
+     "Plate>GoldLight"
+    ],
+    "evo2_aurora_fox_low": [
+     "Belly>None"
+    ],
+    "evo2_candy_unicorn_low": [
+     "Muzzle>Fur_Dark"
+    ],
+    "evo2_hydralotl_low": [
+     "Gem>None",
+     "GemB>None",
+     "Gold>HydraJaw"
+    ],
+    "evo2_moonlit_owl_low": [
+     "Gem>Belly",
+     "GemB>Belly"
+    ],
+    "evo2_nebula_axolotl_low": [
+     "Gold>None"
+    ],
+    "evo2_phantom_kitsune_low": [
+     "Belly>None"
+    ],
+    "evo2_starlight_unicorn_low": [
+     "Muzzle>Fur_Dark"
+    ],
+    "evo2_sunbeam_bear_low": [
+     "GemB>Gold"
+    ]
+   }
+  },
+  "5+": {
+   "keys": 0,
+   "voxels": 0,
+   "list": {}
+  }
+ },
+ "outside": {
+  "evo1_aurora_fox_low": {
+   "1": [
+    [
+     [
+      -1,
+      3,
+      -14
+     ],
+     "GoldLight",
+     "Fur"
+    ],
+    [
+     [
+      -5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      -1,
+      3,
+      -13
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Belly"
+    ],
+    [
+     [
+      0,
+      3,
+      -15
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      -5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Belly"
+    ],
+    [
+     [
+      1,
+      3,
+      -15
+     ],
+     "GoldLight",
+     "Fur"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -3,
+      -1,
+      -7
+     ],
+     "Belly",
+     "Gold"
+    ],
+    [
+     [
+      3,
+      -1,
+      -7
+     ],
+     "Belly",
+     "Gold"
+    ],
+    [
+     [
+      3,
+      0,
+      -6
+     ],
+     "Belly",
+     "Fur_Dark"
+    ],
+    [
+     [
+      -3,
+      0,
+      -6
+     ],
+     "Belly",
+     "Fur_Dark"
+    ]
+   ]
+  },
+  "evo1_bamboo_panda_low": {
+   "1": [
+    [
+     [
+      -1,
+      3,
+      -14
+     ],
+     "Patch",
+     "Fur"
+    ],
+    [
+     [
+      -5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      1,
+      3,
+      -14
+     ],
+     "Fur",
+     "Patch"
+    ],
+    [
+     [
+      -1,
+      3,
+      -13
+     ],
+     "Fur",
+     "Patch"
+    ]
+   ]
+  },
+  "evo1_biscuit_bear_low": {
+   "1": [
+    [
+     [
+      0,
+      5,
+      -16
+     ],
+     null,
+     "Nose"
+    ],
+    [
+     [
+      0,
+      7,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      4,
+      -16
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      6,
+      -14
+     ],
+     null,
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_blossom_bunny_low": {
+   "1": [
+    [
+     [
+      0,
+      6,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      -3,
+      9,
+      -12
+     ],
+     "GemGlint",
+     "GemB"
+    ],
+    [
+     [
+      3,
+      9,
+      -12
+     ],
+     "GemGlint",
+     "GemB"
+    ],
+    [
+     [
+      -1,
+      8,
+      -12
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      0,
+      7,
+      -13
+     ],
+     null,
+     "GoldDeep"
+    ],
+    [
+     [
+      0,
+      5,
+      -13
+     ],
+     null,
+     "Muzzle"
+    ],
+    [
+     [
+      0,
+      4,
+      -14
+     ],
+     null,
+     "GoldDeep"
+    ],
+    [
+     [
+      1,
+      8,
+      -12
+     ],
+     "Gold",
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_bubble_axolotl_low": {
+   "1": [
+    [
+     [
+      1,
+      1,
+      -11
+     ],
+     "Gold",
+     "Fur"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -5,
+      -2,
+      -5
+     ],
+     "Gold",
+     null
+    ],
+    [
+     [
+      5,
+      -2,
+      -5
+     ],
+     "Gold",
+     null
+    ],
+    [
+     [
+      -1,
+      -3,
+      -8
+     ],
+     "Gem",
+     "Gold"
+    ],
+    [
+     [
+      -3,
+      -3,
+      -7
+     ],
+     "GemB",
+     "Fur_Dark"
+    ],
+    [
+     [
+      3,
+      -3,
+      -7
+     ],
+     "Gem",
+     "Fur_Dark"
+    ],
+    [
+     [
+      1,
+      -3,
+      -8
+     ],
+     "GemB",
+     "Gold"
+    ]
+   ]
+  },
+  "evo1_candy_unicorn_low": {
+   "1": [
+    [
+     [
+      -1,
+      6,
+      -11
+     ],
+     "Mane2",
+     "Fur"
+    ],
+    [
+     [
+      0,
+      6,
+      -12
+     ],
+     "Mane",
+     "Fur"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      1,
+      2,
+      -11
+     ],
+     "Mouth",
+     "Muzzle"
+    ],
+    [
+     [
+      -1,
+      2,
+      -11
+     ],
+     "Mouth",
+     "Muzzle"
+    ],
+    [
+     [
+      -2,
+      2,
+      -10
+     ],
+     "Muzzle",
+     "Fur_Dark"
+    ],
+    [
+     [
+      2,
+      2,
+      -10
+     ],
+     "Muzzle",
+     "Fur_Dark"
+    ]
+   ]
+  },
+  "evo1_cherry_panda_low": {
+   "1": [
+    [
+     [
+      -1,
+      3,
+      -14
+     ],
+     "Patch",
+     "Fur"
+    ],
+    [
+     [
+      -5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      1,
+      3,
+      -14
+     ],
+     "Fur",
+     "Patch"
+    ],
+    [
+     [
+      -1,
+      3,
+      -13
+     ],
+     "Fur",
+     "Patch"
+    ]
+   ]
+  },
+  "evo1_ember_phoenix_low": {
+   "1": [
+    [
+     [
+      0,
+      9,
+      -11
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      7,
+      -13
+     ],
+     null,
+     "Beak"
+    ],
+    [
+     [
+      0,
+      8,
+      -12
+     ],
+     null,
+     "Beak"
+    ],
+    [
+     [
+      0,
+      6,
+      -14
+     ],
+     null,
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_frostling_penguin_low": {
+   "1": [
+    [
+     [
+      0,
+      6,
+      -9
+     ],
+     "Belly",
+     "Beak"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -1,
+      3,
+      -8
+     ],
+     "Gem",
+     "Gold"
+    ],
+    [
+     [
+      -1,
+      2,
+      -7
+     ],
+     "Gold",
+     "ScarfStripe"
+    ],
+    [
+     [
+      1,
+      2,
+      -7
+     ],
+     "Gold",
+     "ScarfStripe"
+    ]
+   ]
+  },
+  "evo1_honey_bunny_low": {
+   "1": [
+    [
+     [
+      0,
+      6,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      -3,
+      9,
+      -12
+     ],
+     "GemGlint",
+     "GemB"
+    ],
+    [
+     [
+      3,
+      9,
+      -12
+     ],
+     "GemGlint",
+     "GemB"
+    ],
+    [
+     [
+      -1,
+      8,
+      -12
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      0,
+      7,
+      -13
+     ],
+     null,
+     "GoldDeep"
+    ],
+    [
+     [
+      0,
+      5,
+      -13
+     ],
+     null,
+     "Muzzle"
+    ],
+    [
+     [
+      0,
+      4,
+      -14
+     ],
+     null,
+     "GoldDeep"
+    ],
+    [
+     [
+      1,
+      8,
+      -12
+     ],
+     "Gold",
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_hydralotl_low": {
+   "2-4": [
+    [
+     [
+      2,
+      -3,
+      -7
+     ],
+     "GemGlint",
+     "Gem"
+    ],
+    [
+     [
+      -1,
+      -3,
+      -8
+     ],
+     "GemGlint",
+     "Gem"
+    ]
+   ]
+  },
+  "evo1_magma_cub_low": {
+   "1": [
+    [
+     [
+      -1,
+      3,
+      -14
+     ],
+     "Fur",
+     "Muzzle"
+    ],
+    [
+     [
+      -5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -3,
+      0,
+      -7
+     ],
+     "Fur",
+     "Magma"
+    ],
+    [
+     [
+      3,
+      0,
+      -7
+     ],
+     "Fur",
+     "Magma"
+    ]
+   ]
+  },
+  "evo1_mallow_kitten_low": {
+   "1": [
+    [
+     [
+      0,
+      6,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      4,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      -1,
+      8,
+      -12
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      0,
+      7,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      5,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      1,
+      8,
+      -12
+     ],
+     "Gold",
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_maple_fox_low": {
+   "1": [
+    [
+     [
+      -1,
+      3,
+      -14
+     ],
+     "GoldDeep",
+     "Fur"
+    ],
+    [
+     [
+      -5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      -1,
+      3,
+      -13
+     ],
+     "GoldDeep",
+     "Fur"
+    ],
+    [
+     [
+      5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Belly"
+    ],
+    [
+     [
+      0,
+      3,
+      -15
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      -5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Belly"
+    ],
+    [
+     [
+      1,
+      3,
+      -15
+     ],
+     "GoldDeep",
+     "Fur"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -3,
+      -1,
+      -7
+     ],
+     "Belly",
+     "Gold"
+    ],
+    [
+     [
+      3,
+      -1,
+      -7
+     ],
+     "Belly",
+     "Gold"
+    ],
+    [
+     [
+      3,
+      0,
+      -6
+     ],
+     "Belly",
+     "Fur_Dark"
+    ],
+    [
+     [
+      -3,
+      0,
+      -6
+     ],
+     "Belly",
+     "Fur_Dark"
+    ]
+   ]
+  },
+  "evo1_mochi_slime_low": {
+   "1": [
+    [
+     [
+      0,
+      -5,
+      -9
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      -2,
+      -8
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      -4,
+      -8
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      -3,
+      -8
+     ],
+     null,
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_moonlit_owl_low": {
+   "1": [
+    [
+     [
+      -2,
+      11,
+      -5
+     ],
+     "EyeRing",
+     "Belly"
+    ],
+    [
+     [
+      2,
+      11,
+      -5
+     ],
+     "EyeRing",
+     "Belly"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -2,
+      3,
+      -5
+     ],
+     "Gold",
+     "Belly"
+    ],
+    [
+     [
+      2,
+      3,
+      -5
+     ],
+     "Gold",
+     "Belly"
+    ],
+    [
+     [
+      -3,
+      3,
+      -5
+     ],
+     "GoldLight",
+     null
+    ],
+    [
+     [
+      3,
+      3,
+      -5
+     ],
+     "GoldLight",
+     null
+    ]
+   ]
+  },
+  "evo1_obsidian_phoenix_low": {
+   "1": [
+    [
+     [
+      0,
+      7,
+      -11
+     ],
+     null,
+     "Beak"
+    ],
+    [
+     [
+      0,
+      6,
+      -12
+     ],
+     null,
+     "Beak"
+    ],
+    [
+     [
+      0,
+      8,
+      -10
+     ],
+     null,
+     "Fur"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      2,
+      1,
+      -6
+     ],
+     "Gem",
+     "Gold"
+    ],
+    [
+     [
+      -2,
+      1,
+      -6
+     ],
+     "GemB",
+     "Gold"
+    ]
+   ]
+  },
+  "evo1_pebble_pup_low": {
+   "1": [
+    [
+     [
+      0,
+      5,
+      -16
+     ],
+     null,
+     "Nose"
+    ],
+    [
+     [
+      0,
+      6,
+      -13
+     ],
+     null,
+     "Muzzle"
+    ],
+    [
+     [
+      0,
+      7,
+      -13
+     ],
+     null,
+     "Muzzle"
+    ],
+    [
+     [
+      0,
+      4,
+      -16
+     ],
+     null,
+     "Muzzle"
+    ]
+   ]
+  },
+  "evo1_phantom_kitsune_low": {
+   "1": [
+    [
+     [
+      0,
+      5,
+      -11
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      4,
+      -12
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      6,
+      -10
+     ],
+     null,
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_pip_penguin_low": {
+   "1": [
+    [
+     [
+      -6,
+      5,
+      0
+     ],
+     "Fur",
+     null
+    ],
+    [
+     [
+      0,
+      6,
+      -9
+     ],
+     "Belly",
+     "Beak"
+    ],
+    [
+     [
+      6,
+      5,
+      0
+     ],
+     "Fur",
+     null
+    ]
+   ]
+  },
+  "evo1_puddle_frog_low": {
+   "1": [
+    [
+     [
+      -6,
+      -1,
+      -5
+     ],
+     "Blush",
+     "Fur"
+    ],
+    [
+     [
+      6,
+      -1,
+      -5
+     ],
+     "Blush",
+     "Fur"
+    ],
+    [
+     [
+      1,
+      5,
+      -4
+     ],
+     "Fur",
+     null
+    ]
+   ]
+  },
+  "evo1_shroomie_frog_low": {
+   "1": [
+    [
+     [
+      2,
+      5,
+      -5
+     ],
+     "Fur",
+     null
+    ],
+    [
+     [
+      -6,
+      -1,
+      -5
+     ],
+     "Blush",
+     "Fur"
+    ],
+    [
+     [
+      6,
+      -1,
+      -5
+     ],
+     "Blush",
+     "Fur"
+    ],
+    [
+     [
+      -2,
+      5,
+      -5
+     ],
+     "Fur",
+     null
+    ]
+   ]
+  },
+  "evo1_sleepy_owl_low": {
+   "1": [
+    [
+     [
+      -2,
+      11,
+      -5
+     ],
+     "EyeRing",
+     "Belly"
+    ],
+    [
+     [
+      2,
+      11,
+      -5
+     ],
+     "EyeRing",
+     "Belly"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -2,
+      3,
+      -5
+     ],
+     "Gold",
+     "Belly"
+    ],
+    [
+     [
+      2,
+      3,
+      -5
+     ],
+     "Gold",
+     "Belly"
+    ],
+    [
+     [
+      -3,
+      3,
+      -5
+     ],
+     "GoldLight",
+     null
+    ],
+    [
+     [
+      3,
+      3,
+      -5
+     ],
+     "GoldLight",
+     null
+    ]
+   ]
+  },
+  "evo1_starlight_unicorn_low": {
+   "1": [
+    [
+     [
+      -1,
+      6,
+      -11
+     ],
+     "Mane2",
+     "Fur"
+    ],
+    [
+     [
+      0,
+      6,
+      -12
+     ],
+     "Mane",
+     "Fur"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      1,
+      2,
+      -11
+     ],
+     "Mouth",
+     "Muzzle"
+    ],
+    [
+     [
+      -1,
+      2,
+      -11
+     ],
+     "Mouth",
+     "Muzzle"
+    ],
+    [
+     [
+      -2,
+      2,
+      -10
+     ],
+     "Muzzle",
+     "Fur_Dark"
+    ],
+    [
+     [
+      2,
+      2,
+      -10
+     ],
+     "Muzzle",
+     "Fur_Dark"
+    ]
+   ]
+  },
+  "evo1_storm_tabby_low": {
+   "1": [
+    [
+     [
+      0,
+      6,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      4,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      7,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      5,
+      -13
+     ],
+     null,
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_stormfang_low": {
+   "1": [
+    [
+     [
+      -5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Plate"
+    ],
+    [
+     [
+      5,
+      3,
+      -11
+     ],
+     "Fur",
+     "Plate"
+    ],
+    [
+     [
+      -1,
+      3,
+      -15
+     ],
+     "Fur",
+     "Plate"
+    ],
+    [
+     [
+      5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Plate"
+    ],
+    [
+     [
+      0,
+      3,
+      -15
+     ],
+     "Fur",
+     "Plate"
+    ],
+    [
+     [
+      -5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Plate"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -4,
+      0,
+      -4
+     ],
+     "Plate",
+     "GoldLight"
+    ],
+    [
+     [
+      4,
+      0,
+      -4
+     ],
+     "Plate",
+     "GoldLight"
+    ]
+   ]
+  },
+  "evo1_sunbeam_bear_low": {
+   "1": [
+    [
+     [
+      0,
+      5,
+      -16
+     ],
+     null,
+     "Nose"
+    ],
+    [
+     [
+      0,
+      7,
+      -13
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      4,
+      -16
+     ],
+     null,
+     "Fur"
+    ],
+    [
+     [
+      0,
+      6,
+      -14
+     ],
+     null,
+     "Fur"
+    ]
+   ]
+  },
+  "evo1_waffle_corgi_low": {
+   "1": [
+    [
+     [
+      -1,
+      2,
+      -14
+     ],
+     "Muzzle",
+     "Nose"
+    ],
+    [
+     [
+      -5,
+      2,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ],
+    [
+     [
+      5,
+      2,
+      -11
+     ],
+     "Fur",
+     "Blush"
+    ]
+   ]
+  },
+  "evo2_aurora_fox_low": {
+   "1": [
+    [
+     [
+      1,
+      7,
+      -10
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      1,
+      3,
+      -13
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      -1,
+      7,
+      -10
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      -1,
+      3,
+      -11
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      -1,
+      3,
+      -12
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      0,
+      3,
+      -14
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Belly"
+    ],
+    [
+     [
+      -5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Belly"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      4,
+      1,
+      -7
+     ],
+     "Belly",
+     null
+    ],
+    [
+     [
+      -4,
+      1,
+      -7
+     ],
+     "Belly",
+     null
+    ]
+   ]
+  },
+  "evo2_candy_unicorn_low": {
+   "1": [
+    [
+     [
+      -1,
+      6,
+      -12
+     ],
+     "GoldLight",
+     "Fur"
+    ],
+    [
+     [
+      -1,
+      10,
+      -10
+     ],
+     "GemB",
+     "Gold"
+    ],
+    [
+     [
+      -1,
+      6,
+      -11
+     ],
+     "GemB",
+     "GoldLight"
+    ],
+    [
+     [
+      1,
+      6,
+      -12
+     ],
+     "GemB",
+     "GoldLight"
+    ],
+    [
+     [
+      -1,
+      6,
+      -10
+     ],
+     "GemB",
+     "Gold"
+    ],
+    [
+     [
+      1,
+      10,
+      -10
+     ],
+     "GemB",
+     "Gold"
+    ],
+    [
+     [
+      0,
+      6,
+      -12
+     ],
+     "Spark",
+     "GemB"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      1,
+      2,
+      -9
+     ],
+     "Muzzle",
+     "Fur_Dark"
+    ],
+    [
+     [
+      -1,
+      2,
+      -9
+     ],
+     "Muzzle",
+     "Fur_Dark"
+    ]
+   ]
+  },
+  "evo2_cloudy_dragon_low": {
+   "1": [
+    [
+     [
+      -1,
+      8,
+      -11
+     ],
+     "Brow",
+     null
+    ],
+    [
+     [
+      1,
+      8,
+      -11
+     ],
+     "Brow",
+     null
+    ]
+   ]
+  },
+  "evo2_eclipse_dragon_low": {
+   "1": [
+    [
+     [
+      -1,
+      8,
+      -11
+     ],
+     "Brow",
+     null
+    ],
+    [
+     [
+      1,
+      8,
+      -11
+     ],
+     "Brow",
+     null
+    ]
+   ]
+  },
+  "evo2_ember_phoenix_low": {
+   "1": [
+    [
+     [
+      0,
+      6,
+      -11
+     ],
+     null,
+     "Beak"
+    ],
+    [
+     [
+      0,
+      5,
+      -12
+     ],
+     "Gem",
+     "GoldLight"
+    ],
+    [
+     [
+      0,
+      7,
+      -10
+     ],
+     null,
+     "Beak"
+    ],
+    [
+     [
+      0,
+      8,
+      -10
+     ],
+     null,
+     "GoldDeep"
+    ]
+   ]
+  },
+  "evo2_hydralotl_low": {
+   "2-4": [
+    [
+     [
+      -3,
+      -3,
+      -7
+     ],
+     "GemB",
+     null
+    ],
+    [
+     [
+      3,
+      -3,
+      -7
+     ],
+     "Gem",
+     null
+    ],
+    [
+     [
+      -5,
+      -1,
+      -4
+     ],
+     "Gold",
+     "HydraJaw"
+    ],
+    [
+     [
+      5,
+      -1,
+      -4
+     ],
+     "Gold",
+     "HydraJaw"
+    ]
+   ]
+  },
+  "evo2_magma_cub_low": {
+   "1": [
+    [
+     [
+      -1,
+      3,
+      -13
+     ],
+     "Fur",
+     "Nose"
+    ]
+   ]
+  },
+  "evo2_moonlit_owl_low": {
+   "1": [
+    [
+     [
+      1,
+      5,
+      -5
+     ],
+     "Gold",
+     "EyeRing"
+    ],
+    [
+     [
+      0,
+      5,
+      -7
+     ],
+     "Belly",
+     "GoldLight"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      3,
+      1,
+      -4
+     ],
+     "GemB",
+     "Belly"
+    ],
+    [
+     [
+      -3,
+      1,
+      -4
+     ],
+     "Gem",
+     "Belly"
+    ]
+   ]
+  },
+  "evo2_nebula_axolotl_low": {
+   "1": [
+    [
+     [
+      1,
+      1,
+      -11
+     ],
+     "GoldDeep",
+     "Fur"
+    ],
+    [
+     [
+      0,
+      1,
+      -11
+     ],
+     "Gold",
+     "Fur"
+    ],
+    [
+     [
+      -1,
+      1,
+      -10
+     ],
+     "GoldDeep",
+     "Fur"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -3,
+      -3,
+      -7
+     ],
+     "Gold",
+     null
+    ],
+    [
+     [
+      3,
+      -3,
+      -7
+     ],
+     "Gold",
+     null
+    ]
+   ]
+  },
+  "evo2_obsidian_phoenix_low": {
+   "1": [
+    [
+     [
+      0,
+      6,
+      -11
+     ],
+     null,
+     "Beak"
+    ],
+    [
+     [
+      0,
+      7,
+      -10
+     ],
+     null,
+     "Beak"
+    ],
+    [
+     [
+      0,
+      8,
+      -9
+     ],
+     null,
+     "Fur"
+    ]
+   ]
+  },
+  "evo2_phantom_kitsune_low": {
+   "1": [
+    [
+     [
+      0,
+      3,
+      -14
+     ],
+     "GlowB",
+     "Fur"
+    ],
+    [
+     [
+      5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Belly"
+    ],
+    [
+     [
+      -5,
+      3,
+      -10
+     ],
+     "Fur",
+     "Belly"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      4,
+      1,
+      -7
+     ],
+     "Belly",
+     null
+    ],
+    [
+     [
+      -4,
+      1,
+      -7
+     ],
+     "Belly",
+     null
+    ]
+   ]
+  },
+  "evo2_rime_wyrmling_low": {
+   "1": [
+    [
+     [
+      -1,
+      8,
+      -11
+     ],
+     "Brow",
+     null
+    ],
+    [
+     [
+      1,
+      8,
+      -11
+     ],
+     "Brow",
+     null
+    ]
+   ]
+  },
+  "evo2_starlight_unicorn_low": {
+   "1": [
+    [
+     [
+      -1,
+      6,
+      -11
+     ],
+     "Mane2",
+     "Fur"
+    ],
+    [
+     [
+      1,
+      6,
+      -12
+     ],
+     "Mane2",
+     "Fur"
+    ],
+    [
+     [
+      -1,
+      6,
+      -10
+     ],
+     "Mane2",
+     "Fur"
+    ],
+    [
+     [
+      0,
+      6,
+      -12
+     ],
+     "Mane",
+     "Fur"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      1,
+      2,
+      -9
+     ],
+     "Muzzle",
+     "Fur_Dark"
+    ],
+    [
+     [
+      -1,
+      2,
+      -9
+     ],
+     "Muzzle",
+     "Fur_Dark"
+    ]
+   ]
+  },
+  "evo2_stormfang_low": {
+   "1": [
+    [
+     [
+      0,
+      6,
+      -11
+     ],
+     null,
+     "Plate"
+    ],
+    [
+     [
+      0,
+      3,
+      -14
+     ],
+     "Fur",
+     "Plate"
+    ],
+    [
+     [
+      0,
+      4,
+      -14
+     ],
+     null,
+     "Nose"
+    ],
+    [
+     [
+      0,
+      5,
+      -12
+     ],
+     null,
+     "Plate"
+    ]
+   ]
+  },
+  "evo2_sunbeam_bear_low": {
+   "1": [
+    [
+     [
+      -1,
+      3,
+      -13
+     ],
+     "Fur",
+     "Nose"
+    ]
+   ],
+   "2-4": [
+    [
+     [
+      -3,
+      -1,
+      -7
+     ],
+     "GemB",
+     "Gold"
+    ],
+    [
+     [
+      3,
+      -1,
+      -7
+     ],
+     "GemB",
+     "Gold"
+    ]
+   ]
+  },
+  "evo2_twilight_dragon_low": {
+   "1": [
+    [
+     [
+      -1,
+      8,
+      -11
+     ],
+     "Brow",
+     null
+    ],
+    [
+     [
+      1,
+      8,
+      -11
+     ],
+     "Brow",
+     null
+    ]
+   ]
+  }
+ }
+}

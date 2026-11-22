@@ -11,7 +11,9 @@
 --   evo_retreat_flow          (server world, booted) solo, a pocket fight, a group of three, end to end
 --   client_evo_retreat        (client world) the button and the R key: only in a raid, Retreat / Engage, one remote a press, the 10 s sweep, a refusal's
 --                             shake, a late joiner's Start, Graphics Low, the result card's line
---   client_evo_retreat_mobile (phone world) the button on phones: >= 44 px, in the Cheer up! row, stacked above it or under the vitals card (where
+--   client_evo_retreat_mobile (phone world; kit-b Pitch 2 item 1b: BACK stands with the team beside / under the helper portraits, so here only
+--                             >= 44 px, on screen, clear of everything, out of the middle, BACK / FIGHT fitting; the old rule below is the
+--                             desktop's) the button on phones: >= 44 px, in the Cheer up! row, stacked above it or under the vitals card (where
 --                             the stack would cover the fighter's cards or the screen's middle: every landscape phone, a portrait phone), clear of
 --                             everything, out of the screen's middle
 --                             (quick wins, win 4: a fighter's vitals card steps aside for the fight, so both scenarios read GetLayout().VitalsSlot:
@@ -1814,26 +1816,61 @@ local function clientScenarios()
 			local tag = "evo retreat phone " .. size[1] .. "x" .. size[2] .. ": "
 			local d = H.fight({ Mode = "Raid" })
 			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) a raid") then
-				local why, r, how = placeProblem(true)
-				T.check(why == nil, tag .. "the pair: >= 44 px, in the vitals card's slot (a centred row, or Cheer up! centred with Retreat above) or the stacked fallback, on the screen, clear of everything and of each other, out of the middle",
-					tostring(why) .. (r and (" " .. rstr(r)) or ""))
-				local v = H.moduleAt("client", "Controllers/HudController").GetLayout().VitalsSlot
-				local c = H.find("Root.Cheer")
-				if v and c then
-					local rc = rectOf(c)
-					T.info(fmt("%sslot %.0f,%.0f %.0fx%.0f; Cheer up! %s; Retreat %s (%s)", tag, v.X, v.Y, v.W, v.H, rstr(rc), r and rstr(r) or "-", tostring(how)))
-					-- Cheer up! beside the card's slot -> Retreat stacks above it, or sits under the slot where the stack would cover the fighter's cards
-					if rc.x1 <= v.X + 1 and rc.y1 > v.Y then
-						T.check(how == "stack" or how == "under", tag .. "Cheer up! sits beside the slot: Retreat stacks above it or sits under the slot", tostring(how))
+				-- (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20: on a touch screen BACK and CHEER are
+				-- team orders that stand with the team, beside / under the helper portraits, no longer in the vitals card's slot;
+				-- keys_three_buttons checks their spots. Here the pair's own rules: >= 44 px, on the screen, clear of each other and
+				-- of everything (the Team block by its parts: they stand in its box beside the helper column), out of the middle)
+				local b, c = H.find("Root.Retreat"), H.find("Root.Cheer")
+				local why = {}
+				local r = b and shownIn(b) and rectOf(b)
+				local rc = c and shownIn(c) and rectOf(c)
+				if not (r and rc) then
+					why[#why + 1] = "BACK or CHEER not shown"
+				else
+					local vp = Mock.Viewport
+					local areaY = vp.Y - (Mock.TopInset or 0)
+					local list = {}
+					for _, o in ipairs(obstacles(true)) do
+						if o[1] ~= "Battle.Team" and o[1] ~= "Battle.Cheer" then
+							list[#list + 1] = o
+						end
+					end
+					for _, path in ipairs({ "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2" }) do
+						local o = H.find(path)
+						if o and shownIn(o) and o.AbsoluteSize.X > 0 then
+							list[#list + 1] = { "Battle." .. path:sub(6), rectOf(o) }
+						end
+					end
+					for _, p in ipairs({ { "BACK", r }, { "CHEER", rc } }) do
+						local q = p[2]
+						if q.x1 - q.x0 < 44 or q.y1 - q.y0 < 44 then
+							why[#why + 1] = fmt("%s %.0fx%.0f < 44x44", p[1], q.x1 - q.x0, q.y1 - q.y0)
+						end
+						if q.x0 < 0 or q.y0 < 0 or q.x1 > vp.X or q.y1 > areaY then
+							why[#why + 1] = p[1] .. " off the screen " .. rstr(q)
+						end
+						for _, o in ipairs(list) do
+							if overlaps(q, o[2]) then
+								why[#why + 1] = fmt("%s %s covers %s %s", p[1], rstr(q), o[1], rstr(o[2]))
+							end
+						end
+						local cx, cy = vp.X / 2, vp.Y / 2 - (Mock.TopInset or 0)
+						if q.x0 < cx + vp.X * 0.145 and q.x1 > cx - vp.X * 0.145 and q.y0 < cy + vp.Y * 0.145 and q.y1 > cy - vp.Y * 0.145 then
+							why[#why + 1] = p[1] .. " in the middle of the screen " .. rstr(q)
+						end
+					end
+					if overlaps(r, rc) then
+						why[#why + 1] = "BACK on CHEER"
 					end
 				end
-				local b = H.find("Root.Retreat")
+				T.check(#why == 0, tag .. "the pair (BACK, CHEER): >= 44 px, on the screen, clear of everything and of each other, out of the middle",
+					table.concat(why, "; ") .. (r and (" " .. rstr(r)) or ""))
 				local chip = b and b:FindFirstChild("Key", true)
 				T.check(chip == nil or not shownIn(chip), tag .. "no key chip on touch")
-				-- the labels fit: Engage and Retreat at the button's size
+				-- the labels fit: BACK and FIGHT (the three keys' one-word names, at the phone floor) at the button's size
 				if b then
 					local w = b.AbsoluteSize.X
-					T.check(w >= #"Retreat" * 14 * 0.62, tag .. "Retreat fits the button at 14 px", fmt("%.0f px", w))
+					T.check(b.Text == "BACK" and w >= #"FIGHT" * 14 * 0.62, tag .. "BACK / FIGHT fit the button at 14 px", fmt("%s %.0f px", b.Text, w))
 				end
 				H.cleanup(BC, d)
 			end

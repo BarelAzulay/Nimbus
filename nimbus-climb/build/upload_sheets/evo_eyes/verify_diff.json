@@ -1,0 +1,3370 @@
+{
+ "what": "every evo1_/evo2_ key of the final re-bake vs the pre-trim build (c733fe0, no-export, same 98 keys): voxel grid (K, voxelStuds), the manifest part lists (non-eye parts: set, boxes, tris), every Body voxel. eye area = the (x, y) columns either build carved for an eye (the kit's lids + PetBuilder's own carve); shade = the same colour family, only its _Light / _Dark / Deep / Light shading variant changed (the kit shades a voxel from its neighbours)",
+ "summary": {
+  "keys": 98,
+  "sameGrid": 98,
+  "otherManifestFieldsChanged": [],
+  "nonEyePartSetChanged": {
+   "evo1_aurora_fox_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "evo1_bamboo_panda_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "evo1_biscuit_bear_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Nose"
+    ]
+   },
+   "evo1_cherry_panda_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "evo1_maple_fox_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "evo1_nebula_axolotl_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "evo1_obsidian_phoenix_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Beak"
+    ]
+   },
+   "evo1_pebble_pup_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Nose"
+    ]
+   },
+   "evo1_sunbeam_bear_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Nose"
+    ]
+   },
+   "evo2_hydralotl": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "evo2_magma_cub_low": {
+    "onlyPre": [
+     "Blush"
+    ],
+    "onlyNew": []
+   },
+   "evo2_nebula_axolotl": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "evo2_stormfang_low": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Nose"
+    ]
+   },
+   "evo2_sunbeam_bear_low": {
+    "onlyPre": [
+     "Blush"
+    ],
+    "onlyNew": []
+   }
+  },
+  "voxelChangesInEyeArea": 12842,
+  "shadeOnlyOutsideEyeArea": 343,
+  "maxShadeDistance": 3,
+  "colourChangesOutsideEyeArea": {
+   "evo1_blossom_bunny_low": [
+    [
+     [
+      -3,
+      9,
+      -12
+     ],
+     "GemGlint",
+     "GemB",
+     1
+    ],
+    [
+     [
+      3,
+      9,
+      -12
+     ],
+     "GemGlint",
+     "GemB",
+     1
+    ]
+   ],
+   "evo1_honey_bunny_low": [
+    [
+     [
+      -3,
+      9,
+      -12
+     ],
+     "GemGlint",
+     "GemB",
+     1
+    ],
+    [
+     [
+      3,
+      9,
+      -12
+     ],
+     "GemGlint",
+     "GemB",
+     1
+    ]
+   ]
+  }
+ },
+ "keys": {
+  "evo1_aurora_fox": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.088889,
+    0.088889
+   ],
+   "sameGrid": true,
+   "tris": [
+    10760,
+    10464
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "GemB"
+   ],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Blush",
+    "Fur",
+    "FurLight",
+    "GemGlint",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_aurora_fox_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3694,
+    3592
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Fixed",
+    "Gold"
+   ],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fur",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 131,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_bamboo_panda": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    9986,
+    9812
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "FurLight",
+    "Patch"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_bamboo_panda_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3090,
+    2998
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Nose"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "Patch"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 150,
+    "shadeOnlyOutside": 9,
+    "colourOutside": 0,
+    "maxShadeDistance": 3,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_biscuit_bear": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    9136,
+    8900
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_biscuit_bear_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3490,
+    3250
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Nose"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Blush",
+    "Fur"
+   ],
+   "nonEyeTrisOnly": [
+    "Mouth",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 154,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_blossom_bunny": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10222,
+    9978
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "GemB",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_blossom_bunny_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3594,
+    3478
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Fur",
+    "GemB",
+    "GemGlint",
+    "GoldDeep",
+    "Mouth",
+    "Muzzle"
+   ],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fixed",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 160,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 2,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": [
+     [
+      [
+       -3,
+       9,
+       -12
+      ],
+      "GemGlint",
+      "GemB",
+      1
+     ],
+     [
+      [
+       3,
+       9,
+       -12
+      ],
+      "GemGlint",
+      "GemB",
+      1
+     ]
+    ]
+   }
+  },
+  "evo1_bubble_axolotl": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10258,
+    10102
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_bubble_axolotl_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3128,
+    2994
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Gem",
+    "GemB"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 116,
+    "shadeOnlyOutside": 3,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_candy_unicorn": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10294,
+    10058
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "FurLight",
+    "Mane",
+    "Mane2",
+    "PetalDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 126,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_candy_unicorn_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3300,
+    3184
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Mane2",
+    "Mouth",
+    "PetalDeep"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "Mane",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 139,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_cherry_panda": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10096,
+    9922
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "FurLight",
+    "Patch"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_cherry_panda_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3138,
+    3062
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Nose"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "Patch"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 150,
+    "shadeOnlyOutside": 10,
+    "colourOutside": 0,
+    "maxShadeDistance": 2,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_cloudy_dragon": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.088889,
+    0.088889
+   ],
+   "sameGrid": true,
+   "tris": [
+    10250,
+    10080
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "FurLight",
+    "WingTip"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 102,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_cloudy_dragon_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3664,
+    3546
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 82,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_eclipse_dragon": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.088889,
+    0.088889
+   ],
+   "sameGrid": true,
+   "tris": [
+    10508,
+    10338
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "FurLight",
+    "WingTip"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 102,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_eclipse_dragon_low": {
+   "K": [
+    0.5265,
+    0.5265
+   ],
+   "voxelStuds": [
+    0.189934,
+    0.189934
+   ],
+   "sameGrid": true,
+   "tris": [
+    3306,
+    3238
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 78,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_ember_phoenix": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    8372,
+    8134
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Beak",
+    "Belly",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_ember_phoenix_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3244,
+    3018
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Beak",
+    "Belly",
+    "Fur"
+   ],
+   "nonEyeTrisOnly": [],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 122,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 2,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_frostling_penguin": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    9832,
+    9590
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_frostling_penguin_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3406,
+    3086
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Beak",
+    "Belly"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "Scarf",
+    "ScarfStripe"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 130,
+    "shadeOnlyOutside": 1,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_honey_bunny": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10092,
+    9848
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "GemB",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_honey_bunny_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3532,
+    3416
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Fur",
+    "GemB",
+    "GemGlint",
+    "GoldDeep",
+    "Mouth",
+    "Muzzle"
+   ],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fixed",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 160,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 2,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": [
+     [
+      [
+       -3,
+       9,
+       -12
+      ],
+      "GemGlint",
+      "GemB",
+      1
+     ],
+     [
+      [
+       3,
+       9,
+       -12
+      ],
+      "GemGlint",
+      "GemB",
+      1
+     ]
+    ]
+   }
+  },
+  "evo1_hydralotl": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    11324,
+    11166
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_hydralotl_low": {
+   "K": [
+    0.5265,
+    0.5265
+   ],
+   "voxelStuds": [
+    0.189934,
+    0.189934
+   ],
+   "sameGrid": true,
+   "tris": [
+    2822,
+    2708
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Gem",
+    "GemGlint"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 116,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_magma_cub": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10668,
+    10432
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_magma_cub_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3116,
+    2976
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush",
+    "Nose"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "Magma",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 149,
+    "shadeOnlyOutside": 7,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_mallow_kitten": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    11152,
+    11058
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "FurLight",
+    "GemB",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 12,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_mallow_kitten_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3694,
+    3576
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Fur",
+    "Mouth",
+    "Muzzle"
+   ],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 160,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_maple_fox": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.088889,
+    0.088889
+   ],
+   "sameGrid": true,
+   "tris": [
+    10358,
+    10074
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Blush",
+    "Fur",
+    "FurLight",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 6,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_maple_fox_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3536,
+    3448
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Gold",
+    "GoldDeep"
+   ],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 131,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_mochi_slime": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    7670,
+    7402
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_mochi_slime_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    2650,
+    2598
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Fur"
+   ],
+   "nonEyeTrisOnly": [
+    "Blush"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_moonlit_owl": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    9254,
+    8972
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fur",
+    "FurLight"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_moonlit_owl_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3084,
+    3044
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fixed",
+    "Fur",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 144,
+    "shadeOnlyOutside": 5,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_nebula_axolotl": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    9816,
+    9658
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_nebula_axolotl_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3450,
+    3370
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Mouth"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 147,
+    "shadeOnlyOutside": 6,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_obsidian_phoenix": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    9692,
+    9454
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Beak",
+    "Belly",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_obsidian_phoenix_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    2954,
+    2826
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Beak"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Belly",
+    "Gem"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "GemB",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 131,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_pebble_pup": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10722,
+    10286
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_pebble_pup_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3548,
+    3418
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Nose"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Fur",
+    "Mouth",
+    "Muzzle"
+   ],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fixed"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 158,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_phantom_kitsune": {
+   "K": [
+    1.0125,
+    1.0125
+   ],
+   "voxelStuds": [
+    0.098765,
+    0.098765
+   ],
+   "sameGrid": true,
+   "tris": [
+    9902,
+    9626
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Belly",
+    "Blush",
+    "Fur"
+   ],
+   "nonEyeTrisOnly": [
+    "FurLight"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 6,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_phantom_kitsune_low": {
+   "K": [
+    0.5265,
+    0.5265
+   ],
+   "voxelStuds": [
+    0.189934,
+    0.189934
+   ],
+   "sameGrid": true,
+   "tris": [
+    3224,
+    3106
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Belly"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 150,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_pip_penguin": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    9068,
+    8826
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_pip_penguin_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3154,
+    2874
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Beak",
+    "Belly"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 127,
+    "shadeOnlyOutside": 3,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_puddle_frog": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10516,
+    10238
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "FurLight"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_puddle_frog_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3582,
+    3354
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fixed",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 127,
+    "shadeOnlyOutside": 3,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_rime_wyrmling": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.088889,
+    0.088889
+   ],
+   "sameGrid": true,
+   "tris": [
+    11296,
+    11126
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "FurLight",
+    "WingTip"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 102,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_rime_wyrmling_low": {
+   "K": [
+    0.5265,
+    0.5265
+   ],
+   "voxelStuds": [
+    0.189934,
+    0.189934
+   ],
+   "sameGrid": true,
+   "tris": [
+    3504,
+    3444
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 80,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_shroomie_frog": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    9778,
+    9500
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "FurLight"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 20,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_shroomie_frog_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3450,
+    3196
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fixed",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 130,
+    "shadeOnlyOutside": 3,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_sleepy_owl": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    8950,
+    8676
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_sleepy_owl_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3042,
+    3006
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fixed",
+    "Fur",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 144,
+    "shadeOnlyOutside": 5,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_starlight_unicorn": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10774,
+    10542
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "FurLight",
+    "Mane",
+    "Mane2"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 126,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_starlight_unicorn_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3452,
+    3340
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Mane2",
+    "Mouth"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "Mane",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 139,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_storm_tabby": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10222,
+    10116
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "FurLight"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 6,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_storm_tabby_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3438,
+    3326
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Mouth",
+    "Muzzle"
+   ],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 157,
+    "shadeOnlyOutside": 5,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_stormfang": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.088889,
+    0.088889
+   ],
+   "sameGrid": true,
+   "tris": [
+    9888,
+    9614
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Plate"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Nose",
+    "PlateLight"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 144,
+    "shadeOnlyOutside": 14,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_stormfang_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3360,
+    3234
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Plate"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 139,
+    "shadeOnlyOutside": 7,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_sunbeam_bear": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    10410,
+    10174
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_sunbeam_bear_low": {
+   "K": [
+    0.65,
+    0.65
+   ],
+   "voxelStuds": [
+    0.153846,
+    0.153846
+   ],
+   "sameGrid": true,
+   "tris": [
+    3662,
+    3426
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Nose"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Blush",
+    "Fur"
+   ],
+   "nonEyeTrisOnly": [
+    "GoldDeep",
+    "Mouth",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 160,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_twilight_dragon": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.088889,
+    0.088889
+   ],
+   "sameGrid": true,
+   "tris": [
+    10162,
+    9992
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "FurLight",
+    "WingTip"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 102,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_twilight_dragon_low": {
+   "K": [
+    0.5265,
+    0.5265
+   ],
+   "voxelStuds": [
+    0.189934,
+    0.189934
+   ],
+   "sameGrid": true,
+   "tris": [
+    3242,
+    3174
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 78,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_waffle_corgi": {
+   "K": [
+    1.25,
+    1.25
+   ],
+   "voxelStuds": [
+    0.08,
+    0.08
+   ],
+   "sameGrid": true,
+   "tris": [
+    11044,
+    10612
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo1_waffle_corgi_low": {
+   "K": [
+    0.585,
+    0.585
+   ],
+   "voxelStuds": [
+    0.17094,
+    0.17094
+   ],
+   "sameGrid": true,
+   "tris": [
+    3336,
+    3178
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Blush",
+    "Fur",
+    "Nose"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Mouth",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 140,
+    "shadeOnlyOutside": 1,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_aurora_fox": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    14250,
+    13974
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "GemB"
+   ],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Blush",
+    "Fur",
+    "FurLight",
+    "GemGlint",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_aurora_fox_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3786,
+    3652
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Fur",
+    "Gold"
+   ],
+   "nonEyeTrisOnly": [
+    "Belly"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 116,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_candy_unicorn": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    12586,
+    12192
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Fixed"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "FurLight",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 144,
+    "shadeOnlyOutside": 3,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_candy_unicorn_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3746,
+    3576
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Mouth",
+    "Muzzle",
+    "Spark"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "GemB",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 129,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_cloudy_dragon": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    13934,
+    13748
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "FurLight",
+    "WingTip"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 104,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_cloudy_dragon_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    4188,
+    4162
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 78,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_eclipse_dragon": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    14246,
+    14068
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "FurLight",
+    "WingTip"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 104,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_eclipse_dragon_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    4160,
+    4148
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 77,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_ember_phoenix": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    11644,
+    11282
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Belly",
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Beak",
+    "Fixed",
+    "Fur",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_ember_phoenix_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3268,
+    3160
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Beak",
+    "Fixed",
+    "Fur",
+    "Gem"
+   ],
+   "nonEyeTrisOnly": [
+    "GemGlint",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 129,
+    "shadeOnlyOutside": 5,
+    "colourOutside": 0,
+    "maxShadeDistance": 2,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_hydralotl": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    13304,
+    13126
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "Mouth"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_hydralotl_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3858,
+    3778
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Gem",
+    "HydraJaw"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "GemB",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 114,
+    "shadeOnlyOutside": 5,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_magma_cub": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    12888,
+    12496
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "Muzzle",
+    "Nose"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_magma_cub_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3498,
+    3312
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [
+     "Blush"
+    ],
+    "onlyNew": []
+   },
+   "nonEyeBoxChanged": [
+    "Nose"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "Gold",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 129,
+    "shadeOnlyOutside": 3,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_moonlit_owl": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    9692,
+    9478
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Fixed",
+    "Fur",
+    "FurLight",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_moonlit_owl_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    2680,
+    2714
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Belly",
+    "Fixed"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 128,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_nebula_axolotl": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    11906,
+    11716
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Blush"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Mouth"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "GemB",
+    "Star"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 6,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_nebula_axolotl_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3344,
+    3260
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "GemB",
+    "Gold",
+    "GoldDeep",
+    "Star"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 123,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_obsidian_phoenix": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    11370,
+    11030
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Belly",
+    "Blush"
+   ],
+   "nonEyeTrisOnly": [
+    "Beak",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_obsidian_phoenix_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3138,
+    3080
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Beak"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur",
+    "Gold",
+    "GoldDeep"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 128,
+    "shadeOnlyOutside": 5,
+    "colourOutside": 0,
+    "maxShadeDistance": 2,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_phantom_kitsune": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    14474,
+    14222
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Belly",
+    "Blush",
+    "Fur",
+    "FurLight"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_phantom_kitsune_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3974,
+    3834
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Fur",
+    "GlowB"
+   ],
+   "nonEyeTrisOnly": [
+    "Belly"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 107,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_rime_wyrmling": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    14426,
+    14248
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "FurLight",
+    "WingTip"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 104,
+    "shadeOnlyOutside": 16,
+    "colourOutside": 0,
+    "maxShadeDistance": 2,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_rime_wyrmling_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    4088,
+    4076
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 77,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_starlight_unicorn": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    12138,
+    11876
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Star"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 126,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_starlight_unicorn_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3856,
+    3782
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Fixed",
+    "Mouth",
+    "Muzzle"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 120,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_stormfang": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    12492,
+    12182
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Plate"
+   ],
+   "nonEyeTrisOnly": [
+    "Fixed",
+    "Nose"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 8,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_stormfang_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3618,
+    3500
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [],
+    "onlyNew": [
+     "Nose"
+    ]
+   },
+   "nonEyeBoxChanged": [
+    "Fixed",
+    "Plate"
+   ],
+   "nonEyeTrisOnly": [],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 168,
+    "shadeOnlyOutside": 6,
+    "colourOutside": 0,
+    "maxShadeDistance": 2,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_sunbeam_bear": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    13164,
+    12770
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Blush",
+    "Fur",
+    "Muzzle",
+    "Nose"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 142,
+    "shadeOnlyOutside": 0,
+    "colourOutside": 0,
+    "maxShadeDistance": 0,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_sunbeam_bear_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    3550,
+    3348
+   ],
+   "nonEyePartSet": {
+    "onlyPre": [
+     "Blush"
+    ],
+    "onlyNew": []
+   },
+   "nonEyeBoxChanged": [
+    "Nose"
+   ],
+   "nonEyeTrisOnly": [
+    "Fur",
+    "GemB",
+    "Gold",
+    "Muzzle"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 119,
+    "shadeOnlyOutside": 2,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_twilight_dragon": {
+   "K": [
+    1.125,
+    1.125
+   ],
+   "voxelStuds": [
+    0.106667,
+    0.106667
+   ],
+   "sameGrid": true,
+   "tris": [
+    14016,
+    13838
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "FurLight",
+    "WingTip"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 104,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  },
+  "evo2_twilight_dragon_low": {
+   "K": [
+    0.55,
+    0.55
+   ],
+   "voxelStuds": [
+    0.218182,
+    0.218182
+   ],
+   "sameGrid": true,
+   "tris": [
+    4012,
+    4000
+   ],
+   "nonEyePartSet": null,
+   "nonEyeBoxChanged": [
+    "Nostril"
+   ],
+   "nonEyeTrisOnly": [
+    "Brow",
+    "Fur",
+    "Gold"
+   ],
+   "otherFieldsChanged": [],
+   "voxels": {
+    "eyeArea": 77,
+    "shadeOnlyOutside": 4,
+    "colourOutside": 0,
+    "maxShadeDistance": 1,
+    "colourOutsideCells": []
+   }
+  }
+ }
+}

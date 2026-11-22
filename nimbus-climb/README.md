@@ -1879,7 +1879,8 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              here)  PixelIcon (the kit B icon set: 9 x 9 one-colour bitmaps drawn as merged Frames)  SignKit (the
              Signboard parts every window and the loading screen build from: roof, header, frame, body, planks)
              Logo (the game's logo on the menu and loading boards: the L1 picture once its TextureIds key has an id,
-             else the L2 drawn letters)
+             else the L2 drawn letters)  WorldTag (the kit B stone tags in the world: NPC nameplates, the altar
+             board, pet tags, the CREATOR tag, shared by the server's signs and the client's tags)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
@@ -1934,7 +1935,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              TOP 100 / CREATOR title above the head; a titled VIP's crown sits inside it), Leaderboard (the lobby
              board's face: the global top 10 on three tappable pages, the You row), LobbyFx (one heartbeat turns the
              world gem, the altar's glow ring and the egg row's shelf eggs, bobs the Join sign, and hides that sign once
-             you claimed the group reward), Trove (the Sky Trove panel, the lid and coins)
+             you claimed the group reward), Trove (the Sky Trove panel, the lid and coins), Prompt (every world
+             ProximityPrompt set to Style Custom and drawn as the kit plank: the object tab, the key block, the hold)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

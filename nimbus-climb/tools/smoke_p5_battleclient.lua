@@ -22,8 +22,9 @@
 --   client_p5result        the result card: Lives left, the dungeon's Floor / Room lines on a wipe, no card for a
 --                          cleared room (DungeonController shows the loot), bottom right on a wide screen
 --   client_p5battle_mobile / client_p5battle_landscape (phone world, 390x844 / 740x360 / 844x390): nothing of the HUD in
---                          the centre 40% of the width (below the top strip, above the bottom strip), action buttons >=
---                          60 design px, the menu column hidden, every text >= 14 px, no HUD over another GUI's button
+--                          the centre 40% of the width (below the top strip, above the bottom strip), action buttons (Pitch
+--                          2 item 1b: MOVE and DASH, no SPECIAL / TARGET key) >= 60 design px, the menu column hidden,
+--                          every text >= 14 px, no HUD over another GUI's button
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -1153,9 +1154,11 @@ function H.phoneChecks(BC, label)
 		end
 	end
 	T.check(bad == nil, label .. ": nothing of the HUD in the centre 40% of the width", tostring(bad) .. where)
-	-- the action buttons: >= 60 design px, on the screen
+	-- the action buttons: >= 60 design px, on the screen. (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick
+	-- 2026-11-20: the four-key phone cluster is gone; a touch screen has MOVE (the ELEMENT key, which also holds the special)
+	-- and DASH here, RUN in MobileControls, no SPECIAL / TARGET key: keys_three_buttons checks the rest)
 	local small = nil
-	for _, kind in ipairs({ "Target", "Element", "Special", "Dash" }) do
+	for _, kind in ipairs({ "Element", "Dash" }) do
 		local btn = H.find("Root.Commands." .. kind .. "Button")
 		if not (btn and H.shown(btn)) then
 			small = kind .. " missing"
@@ -1166,7 +1169,13 @@ function H.phoneChecks(BC, label)
 			end
 		end
 	end
-	T.check(small == nil, label .. ": SPECIAL / TARGET / ELEMENT / DASH >= 60 design px and on the screen", tostring(small))
+	for _, kind in ipairs({ "Target", "Special" }) do
+		local btn = H.find("Root.Commands." .. kind .. "Button")
+		if btn and H.shown(btn) then
+			small = kind .. " shown on touch"
+		end
+	end
+	T.check(small == nil, label .. ": MOVE (ELEMENT) / DASH >= 60 design px and on the screen, no SPECIAL / TARGET key", tostring(small))
 	-- every text >= 14 px on the screen
 	local scale = H.find("Root.ReadScale")
 	local f = scale and scale.Scale or 1

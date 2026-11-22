@@ -149,6 +149,11 @@ local K = {
 	CHIP_RIGHT = 60, -- the band's right end kept free: Roblox's "..." button (44 px, 12 px off the edge) and 4 px
 	CHIP_EDGE = 20, -- a dropped chip's right margin (the HUD's touch margin: the strips' right edge)
 	CHIP_GAP = 6, -- between a dropped chip and what it hangs under
+	-- (keys look r3) a chip dropped under the battle HUD's enemy list in a fight: its hard shadow's reach and the team orders'
+	-- 40 px it keeps off the thumbs' keys (MOVE / DASH / RUN), screen px (R.placeChip -> BattleController.ReserveUnderList)
+	CHIP_SHADOW = 6,
+	CHIP_KEYS_GAP = 40,
+	CHIP_HIT = 44, -- (keys look r3) screen px: a phone chip's Leave takes a thumb (its clear LeaveHit pad)
 	END_W = 440, -- (Pitch 2 item 02 B, look review round 1) the battle result card's width (one template: BattleController K.RESULT_W)
 	END_MIN_W = 300, -- (U9-7 look) design px: a landscape phone's End card is never squeezed narrower for a spot
 	END_TWO_COL = 420, -- (P2 fix A) design px: the narrowest landscape End card whose rows go in 2 columns (R.fillEnd: inner >= 400)
@@ -1619,15 +1624,24 @@ function R.build()
 	U.ChipText = H.text(chip.Body, "Text", "", "Heading", 19, INK, { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -112, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
 	-- (U9-7 look) a toast on the chip (a phone's loot / chest flash) wears the plate's icon tile before its words
 	U.ChipIcon = H.iconTile(chip.Body, "IconTile", { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0) })
-	U.ChipButton = W.button(chip.Body, "LeaveButton", "Leave", "Red", UDim2.fromOffset(92, K.CHIP_H - 12), 1, function()
+	local function chipPress()
 		if S.Run then
 			R.leave()
 		elseif S.Lobby and S.Lobby.Mine and LocalPlayer and S.Lobby.Mine.Leader ~= LocalPlayer.UserId and not W.myReady(S.Lobby.Mine) then
 			R.ready()
 		end
-	end)
+	end
+	U.ChipButton = W.button(chip.Body, "LeaveButton", "Leave", "Red", UDim2.fromOffset(92, K.CHIP_H - 12), 1, chipPress)
 	U.ChipButton.AnchorPoint = Vector2.new(1, 0.5)
 	U.ChipButton.Position = UDim2.new(1, -5, 0.5, 0)
+	-- (keys look r3: the chip's Leave was a 74 x 30 px touch target on a phone; the battle card's Leave has its 44 px pad) a
+	-- clear pad over the button, a thumb's K.CHIP_HIT screen px tall (the chip's 0.8 scale undone), centred on it
+	local hit = Util.Create("TextButton", { Name = "LeaveHit", Text = "", BackgroundTransparency = 1, AutoButtonColor = false, BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = U.ChipButton.ZIndex + 2, Parent = U.ChipButton })
+	hit:SetAttribute("HitFor", "LeaveButton")
+	hit.Activated:Connect(chipPress)
+	U.ChipHit = hit
+	R.placeHit()
 	-- (U9-7 look) the bars' one language on the phone chip too: the countdown's five gold blocks (the desktop card's row)
 	-- and a run's room blocks, at the chip's right end before its button (R.fitChip places them and fits the chip round
 	-- its words and blocks: it was a wide plank with only words, about 60 % blank)
@@ -1645,6 +1659,22 @@ function R.build()
 	endCard.Root.Visible = false
 	U.End = endCard
 	U.EndScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 1, Parent = endCard.Root })
+end
+
+-- (keys look r3) the chip's Leave pad centred on the whole button: the button's UIPadding (its lip's room) moves its
+-- children's box, so the pad undoes it; again after a restyle (CloudUI.SetStyle may pad the button anew)
+function R.placeHit()
+	local hit, b = U.ChipHit, U.ChipButton
+	if not hit or not b then
+		return
+	end
+	local p = b:FindFirstChildOfClass("UIPadding")
+	local pl, pr, pt, pb = 0, 0, 0, 0
+	if p then
+		pl, pr, pt, pb = p.PaddingLeft.Offset, p.PaddingRight.Offset, p.PaddingTop.Offset, p.PaddingBottom.Offset
+	end
+	hit.Position = UDim2.new(0.5, (pr - pl) / 2, 0.5, (pb - pt) / 2)
+	hit.Size = UDim2.new(1, pl + pr, 0, math.max(b.Size.Y.Offset, math.ceil(K.CHIP_HIT / K.CHIP_SCALE)))
 end
 
 function R.ready()
@@ -2019,7 +2049,9 @@ function R.place(view)
 		-- K.END_W at 0.8, 352 px), 8 px from the right edge as the battle's card (Hud.ResultSpot); the menu tiles step aside
 		-- where it covers them (R.endMenu), as they do for the battle's card
 		S.EndCompact = false
-		S.EndVitalsOff = false
+		-- (keys lane, look review fixA r1: at 360 x 640 the vitals card lay on RUN and DASH under the card) spec 02 B: on a
+		-- phone the vitals card hides while any result card is up, portrait too (R.endVitals: HudController.SetVitalsHidden)
+		S.EndVitalsOff = true
 		local scale = 0.8
 		U.EndScale.Scale = scale
 		local width = math.min(K.END_W, math.floor((w - 16) / scale))
@@ -2041,6 +2073,7 @@ function R.place(view)
 		end
 	elseif phone then
 		R.placeEndLandscape(w, h, top, endH, strips)
+		S.EndVitalsOff = true -- (spec 02 B: a phone's vitals card hides while a result card is up, wherever the card sits)
 	else
 		S.EndCompact = false
 		S.EndVitalsOff = false
@@ -2256,6 +2289,7 @@ function R.placeChip(w, h, top, view)
 	S.ChipCompact = false
 	S.ChipRight = nil -- (U9-7 look) R.fitChip: a chip in the band keeps its left edge
 	if x1 - x0 >= K.CHIP_BAND_MIN then
+		R.listReserve(0)
 		U.Chip.Root.Size = UDim2.fromOffset(math.min(K.CHIP_MAX_W, math.floor((x1 - x0) / scale)), K.CHIP_H)
 		U.Chip.Root.Position = UDim2.fromOffset(x0, 4 - top)
 		S.ChipMaxW = U.Chip.Root.Size.X.Offset
@@ -2263,12 +2297,25 @@ function R.placeChip(w, h, top, view)
 	end
 	local battle = R.battleParts()
 	S.ChipCompact = view == "Run" and battle.TopCard ~= nil and S.Run ~= nil and S.Run.State ~= "Ending"
+	-- (keys look r3: at 640 x 360 the dropped chip's red Leave stood 10 px above RUN, a held key, between the list's "+2
+	-- more" and the keys, its shadow on RUN) in a fight the battle HUD's enemy list keeps the chip, its shadow, the gap
+	-- and the team orders' 40 px off the thumbs' keys free under it (it shows fewer rows): the chip drops into that room
+	R.listReserve(S.ChipCompact and (K.CHIP_H * scale + K.CHIP_GAP + K.CHIP_SHADOW + K.CHIP_KEYS_GAP) or 0)
+	if S.ChipCompact then
+		battle = R.battleParts() -- (the list as it now lies)
+	end
 	local right = w - K.CHIP_EDGE
 	local width = K.CHIP_LEAVE_W
 	if not S.ChipCompact then
 		width = math.min(K.CHIP_DROP_W, math.floor((right - R.menuRight(w) - 8) / scale))
 	end
 	local left = right - width * scale
+	local list = battle.Enemies
+	if S.ChipCompact and list and math.abs(list.x1 - right) <= 24 and list.x1 <= w - 4 then
+		-- (keys look r3) flush with the enemy list's right edge from the start: the list's "+n more" tag at its left end
+		-- (the reserve) stays beside the chip, the chip under the list's last row
+		left, right = left + (list.x1 - right), list.x1
+	end
 	-- what hangs at the top: the pill, the strips, the HUD's whole top-right block (in the lobby the gift docks under the
 	-- strips: HudController's TopRightLeft / TopRightBottom, gui px), the boost chips under it, the battle HUD's parts
 	local below = {}
@@ -2313,6 +2360,19 @@ function R.placeChip(w, h, top, view)
 	U.Chip.Root.Position = UDim2.fromOffset(math.floor(left + 0.5), y - top)
 	S.ChipRight = right -- (U9-7 look) R.fitChip: a dropped chip keeps its right edge
 	S.ChipMaxW = width
+end
+
+-- (keys look r3) the room (screen px) the battle HUD's enemy list keeps free under it for the dropped chip, 0 = none
+function R.listReserve(px)
+	px = tonumber(px) or 0
+	if S.ListReserve == px then
+		return
+	end
+	S.ListReserve = px
+	local battle = H.controller("BattleController")
+	if battle and type(battle.ReserveUnderList) == "function" then
+		H.safe("listReserve", battle.ReserveUnderList, px)
+	end
 end
 
 -- a gui part by its ScreenGui's name and its own (searched below it), or nil
@@ -2361,9 +2421,29 @@ function R.battleParts()
 	for _, child in ipairs(root:GetChildren()) do
 		local r = R.shownRect(child)
 		if r then
-			out.Parts[#out.Parts + 1] = r
+			local parts = nil
+			if child.Name == "Enemies" then
+				-- (keys look r3) the enemy list by its rows and its "+n more" tag: under the reserve the list keeps for the chip
+				-- (BattleController.ReserveUnderList) the tag goes to the left end and the chip hangs under the right one
+				parts = {}
+				for _, row in ipairs(child:GetChildren()) do
+					local rr = R.shownRect(row)
+					if rr then
+						parts[#parts + 1] = rr
+					end
+				end
+			end
+			if parts and #parts > 0 then
+				for _, rr in ipairs(parts) do
+					out.Parts[#out.Parts + 1] = rr
+				end
+			else
+				out.Parts[#out.Parts + 1] = r
+			end
 			if child.Name == "TopCard" then
 				out.TopCard = r
+			elseif child.Name == "Enemies" then
+				out.Enemies = r
 			end
 		end
 	end
@@ -2485,9 +2565,13 @@ function R.refresh()
 		R.endMenu(nil)
 		R.endKeys(false)
 		R.endTouch(false)
+		R.listReserve(0)
 		return
 	end
 	R.place(view)
+	if view == nil or S.CardMode ~= "Chip" then
+		R.listReserve(0) -- (keys look r3: no chip hangs under the battle HUD's list)
+	end
 	local toast = S.Toast and now < S.Toast.Until and S.Toast or nil
 	local chip = S.CardMode == "Chip"
 	U.Card.Root.Visible = view ~= nil and not chip
@@ -2535,6 +2619,7 @@ function R.refresh()
 		R.pips(U.ChipText, nil) -- (no room blocks before a run)
 		U.ChipButton.Text = "Ready"
 		CloudUI.SetStyle(U.ChipButton, "Green") -- (kit-b U9-7) READY is the chip's one green; in a run it is Leave (red)
+		R.placeHit()
 		U.ChipButton.Visible = needReady
 		H.setIconTile(U.ChipIcon, nil)
 		R.cardHeight()
@@ -2622,6 +2707,7 @@ function R.refresh()
 	-- (bug batch 2 #14: the chip's button is LEAVE in the alcove too; chests open only at the chest)
 	U.ChipButton.Text = armed and "Sure?" or "Leave"
 	CloudUI.SetStyle(U.ChipButton, "Red")
+	R.placeHit()
 end
 
 -- team balance (spec 2026-10-31 s.7): a lost floor (Wipe / Timeout, End.Pets from the server): the loss screen in place of the

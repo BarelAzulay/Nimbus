@@ -12,6 +12,10 @@ Checks
               translucent closure rule of build_all.check_geometry, the hybrid ear variants (hyb_dog_ears /
               hyb_bear_ears) are picked by PetBuilder for earless bodies (a LEAD REQUEST check until runtime-pets
               adds it)
+  evo eyes    (Pitch 2 item 7) every evolved Low body shows the game's whole Low eye in both eyes, mirrored, with
+              lash / highlight / pupil / iris / glint (the owls in their EyeRing disc), the face under the game's
+              carved eye comes back outside it, and the Low eye sits on the High mesh's eye (nearest its centre in
+              studs, keeping at least half the High eyes' spacing)
   prop hooks  every catalog prop entry names a builder registered by kit/props/*.py ("<class>: hook <name> missing")
   vfx         the pet attack VFX cores (catalog vfx): one white Neon part Core per key, args.size, manifest up to date
   obby        the obby cloud set (catalog obby): one baked part per key, built twice = the committed manifest, each
@@ -212,6 +216,159 @@ def test_wave25():
           "(PetBuilder.lua MESH.makePlan ~:6991, see the fix-kit wave 2.5 report)", ears)
 
 
+EYE_PARTS = ("Lash", "EyeShine", "EyePupil", "EyeIris", "EyeGlint")
+
+
+def evo_low_k(entry):
+    """the K an evolved key's budget loop starts at (catalog k, times 0.9 per "kStep", multiplied as build_all does)"""
+    import build_all
+    k = float(entry["k"])
+    for _ in range(min(int(entry.get("kStep", 0) or 0), build_all.K_STEPS)):
+        k *= build_all.K_STEP
+    return k
+
+
+def test_evo_eyes(br):
+    """Pitch 2 item 7 (evolved eyes A Trim) on the evolved Low LOD keys.  Every Low body carves the game's own Low eye
+    (PetBuilder EvoLow / EvoFierceLow, 4 x 4, unchanged by the trim) whole in both eyes, the eyes mirror each other and
+    every eye feature is there (lash, highlight, pupil, iris, glint; the owls' too, carved into their gold EyeRing
+    disc).  Scaling the trimmed 6 x 7 High eye down to the Low grid lost them (review: the owls' pupil 13 x 4 -> 1 x 1,
+    glint and lash gone, Stormfang's eye a grey / white jumble).  And the face the game's eye carve covered comes back
+    as it was outside the Low eye (the owls' EyeRing disc too)."""
+    import math
+    from collections import Counter
+    import build_all
+    import petkit
+    from detail import faces
+    cat = build_all.load_catalogs()["evolved"]
+    lows = [e for e in cat["keys"] if e["type"] == "pet" and e.get("lod") == "Low"]
+    by_key = {e["key"]: e for e in cat["keys"] if e["type"] == "pet"}
+    check(lows and all(e.get("face", {}).get("eyes") == "low" for e in lows),
+          "evo eyes: every evolved Low body draws the game's Low eye (face eyes 'low')",
+          sorted(e["key"] for e in lows if e.get("face", {}).get("eyes") != "low")[:6])
+    bad, lost_face, placed = [], [], []
+    for e in lows:
+        bp = petkit.pet_blueprint(br, e, evo_low_k(e))
+        want = [sum(1 for ch in "".join(ey.get("LowMask") or []) if ch in faces.EYE_KEYS) for ey in bp.eyes]
+        cells = petkit._cells_of(bp.group("Body"))
+        lids = petkit.face_pass(bp, cells, e)
+        fm = faces.front_map(cells)
+        rows = set()  # the eye's rows (+ 1 around): the evolved pandas carry a Lash-keyed voxel by the paws
+        for s in faces.eye_specs(bp):
+            rows.update(range(int(math.floor((s[1] - s[3]) * bp.K)) - 1, int(math.ceil((s[1] + s[3]) * bp.K)) + 2))
+        eyes = {1: {}, -1: {}}
+        for (x, y, z), key in cells.items():
+            b = faces._base(key)
+            if b in EYE_PARTS and x != 0 and fm[(x, y)] == z and y in rows:
+                eyes[1 if x > 0 else -1][(abs(x), y)] = b
+        probs = []
+        if len(want) != 2 or min(want) < 12:
+            probs.append("Low masks %s" % want)
+        for s, eye in eyes.items():
+            if len(eye) != (want[0] if want else -1):
+                probs.append("eye %+d shows %d of %s pixels" % (s, len(eye), want[:1]))
+            miss = [p for p in EYE_PARTS if p not in eye.values()]
+            if miss:
+                probs.append("eye %+d misses %s" % (s, miss))
+        if set(eyes[1]) != set(eyes[-1]):
+            probs.append("the eyes do not mirror")
+        if probs:
+            bad.append((e["key"], probs))
+        # where the Low eye sits (look review of 5cb4b2e: 16 keys pinched 0.9-1.4 Low voxels inside the High eye,
+        # cross-eyed, the nose in one gap column touching both eyes; 4 evo2 keys 0.8 outside): the High eye of the
+        # same pet, as its own High mesh carves it (the High key's blueprint at its K, PetBuilder's Lua eye), in studs.
+        # The Low eye (4 wide) is wider than the High one (6 voxels of a finer grid), so it cannot match both edges:
+        # it keeps at least half the High eyes' spacing (unless one column out would hang off the head: the evo1
+        # obsidian phoenix's head is 9 voxels wide at Low), and no other column keeping that spacing is nearer the
+        # High eye's centre
+        hi = by_key[e["key"][: -len("_low")]]
+        bph = petkit.pet_blueprint(br, hi, evo_low_k(hi))
+        vsh, vsl = 0.1 * bph.grow / bph.K, 0.1 * bp.grow / bp.K
+        eh = bph.eyes[0]
+        hx = [eh["XLeft"] - c for c in range(max(len(r) for r in eh["Mask"]))
+              if any(c < len(r) and r[c] in faces.EYE_KEYS for r in eh["Mask"])]
+        h_in, h_out = (min(hx) - 0.5) * vsh, (max(hx) + 0.5) * vsh
+        lx = sorted({x for (x, y) in eyes[1]})
+        if lx:
+            l_in, l_out = (lx[0] - 0.5) * vsl, (lx[-1] + 0.5) * vsl
+            shift = ((l_in + l_out) - (h_in + h_out)) / 2.0
+            keep = lambda inner: 2 * inner >= h_in - 1e-6  # the Low gap >= half the High gap
+            why = None
+            out_fits = all((x + 1, y) in fm for (x, y) in eyes[1])
+            if not keep(l_in) and out_fits:
+                why = "gap %.2f studs < half the High eyes' gap %.2f" % (2 * l_in, 2 * h_in)
+            elif (shift < -0.5 * vsl - 1e-6 and out_fits) or (shift > 0.5 * vsl + 1e-6 and keep(l_in - vsl)):
+                why = "centre %+.2f Low voxels off the High eye (%.2f-%.2f studs; Low %.2f-%.2f)" % (
+                    shift / vsl, h_in, h_out, l_in, l_out)
+            if why:
+                placed.append((e["key"], why))
+        # the same on the other axis (the same cause: eye_specs reads the 9-tall High mask as design units, so 26 Low
+        # eyes sat 0.6-1.1 Low voxels below the High eye): the row nearest the High eye's centre, unless the row
+        # toward it would put an eye pixel off the face
+        hr = [r for r, line in enumerate(eh["Mask"]) if any(ch in faces.EYE_KEYS for ch in line)]
+        h_c = (eh["Y"] - (min(hr) + max(hr)) / 2.0) * vsh
+        ly = sorted({y for (x, y) in eyes[1]})
+        if ly:
+            vshift = ((ly[0] + ly[-1]) / 2.0 * vsl - h_c) / vsl
+            step = 1 if vshift < 0 else -1
+            toward = all((x, y + step) in fm for (x, y) in eyes[1])
+            if abs(vshift) > 0.5 + 1e-6 and toward:
+                placed.append((e["key"], "row centre %+.2f Low voxels off the High eye" % vshift))
+        # the face colour PetBuilder's carve recorded (bp.lid_cells) is back wherever the kit's Low eye is not;
+        # records of an eye key (two High eyes overlapping on the coarse grid) are not face colour.  Compared by
+        # colour family: the evolved passes shade a voxel from its neighbours after the restore (Gold -> GoldLight /
+        # GoldDeep, Fur -> Fur_Dark), which is not a lost face
+        def fam(k):
+            k = faces._base(k) if k else k
+            for sfx in ("Light", "Deep", "Dark"):
+                if k and k.endswith(sfx) and len(k) > len(sfx):
+                    k = k[: -len(sfx)]
+            return k
+        kit_cols = {(x, y) for g in lids for (x, y, z) in g}
+        lost = Counter()
+        for eye in bp.lid_cells:
+            for (x, y, z, k0) in eye:
+                b0 = fam(k0)
+                if k0 in ("LidLine", "Lid") or b0 in EYE_PARTS or (x, y) in kit_cols:
+                    continue
+                zf = fm.get((x, y))
+                now = fam(cells[(x, y, zf)]) if zf is not None else None
+                if now != b0:
+                    lost["%s>%s" % (b0, now)] += 1
+        if lost:
+            lost_face.append((e["key"], dict(lost)))
+    check(not bad, "evo eyes: %d Low bodies show the whole Low eye in both eyes (lash, highlight, pupil, iris, glint)"
+          % len(lows), bad[:4])
+    check(not lost_face, "evo eyes: the face under the game's carved eye comes back outside the Low eye (the owls' "
+          "EyeRing disc too)", lost_face[:4])
+    check(not placed, "evo eyes: every Low eye sits on its High eye (nearest centre in studs, keeping at least half "
+          "the High eyes' spacing): %d off" % len(placed), placed[:30])
+    # the trim must not re-voxelize a body: the smaller eyes cut the triangle count, so build_all's budget loop stopped
+    # one K step earlier on 11 keys (review: evo1_stormfang 0.0889 -> 0.080 studs a voxel).  Every evolved body's
+    # catalog start step ("kStep") is the step of its committed (uploaded) mesh.  evo1_hydralotl: its uploaded mesh
+    # predates today's design, which already fits at the catalog k before the trim (the pre-trim build is unstepped),
+    # so it is not pinned; once its re-bake is uploaded its committed mesh is unstepped and the exception is moot.
+    drift = {"evo1_hydralotl"}
+    stepped, pins = [], 0
+    for e in cat["keys"]:
+        if e["type"] != "pet" or e["key"] in drift:
+            continue
+        f = os.path.join(REPO, "src/shared/MeshManifests/%s.lua" % e["key"])
+        lua = open(f, encoding="utf-8").read() if os.path.exists(f) else ""
+        vs = re.search(r"VoxelStuds = ([0-9.]+)", lua)
+        grow = re.search(r"grow = ([0-9.]+)", lua)
+        if not (vs and grow):
+            stepped.append((e["key"], "no committed manifest"))
+            continue
+        k_mesh = 0.1 * float(grow.group(1)) / float(vs.group(1))
+        k_cat = evo_low_k(e)
+        pins += 1 if e.get("kStep") else 0
+        if abs(math.log(k_mesh / k_cat)) > 2e-3:
+            stepped.append((e["key"], "mesh K %.4f" % k_mesh, "catalog start K %.4f" % k_cat))
+    check(not stepped, "evo eyes: every evolved body starts its budget loop on its committed mesh's K step (%d kStep "
+          "pins)" % pins, stepped[:6])
+
+
 def test_prop_hooks():
     """every prop entry of every catalog names a builder that kit/props/*.py registers"""
     import build_all
@@ -356,14 +513,16 @@ def test_obby(br):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", help="comma list of checks: hooks, recipes, determinism, wave25, props, vfx, obby, manifests")
+    ap.add_argument("--only", help="comma list of checks: hooks, recipes, determinism, wave25, evoeyes, props, vfx, "
+                                   "obby, manifests")
     a = ap.parse_args()
     only = set(a.only.split(",")) if a.only else None
     t0 = time.time()
     from bridge import Bridge
     br = Bridge()
     for name, fn in (("hooks", test_hooks), ("recipes", test_recipes), ("determinism", test_determinism),
-                     ("wave25", lambda _: test_wave25()), ("props", lambda _: test_prop_hooks()), ("vfx", test_vfx),
+                     ("wave25", lambda _: test_wave25()), ("evoeyes", test_evo_eyes),
+                     ("props", lambda _: test_prop_hooks()), ("vfx", test_vfx),
                      ("obby", test_obby), ("manifests", test_manifests)):
         if only is None or name in only:
             fn(br)

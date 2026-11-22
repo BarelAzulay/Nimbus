@@ -71,7 +71,7 @@
 --   ShopEggs.Metrics                 the K table (sizes, texts; MEASURE: a text-width hook for the offline renderer)
 -- Buttons: Spin = EggStage.Request(id, "Tokens", 1), Spin3 = (id, "Tokens", 3), SpinGems = (id, "Gems", 1), the Secret
 -- card's Spin = ("Secret", "Gems", 1). A spin button holds Word ("Spin" / "x3", or the state: "Locked", "Loading..."),
--- the currency icon (TokenIcon: the Cloud Token glyph; GemIcon: the drawn gem) and Price (Theme.Short(n): "3K", "250";
+-- the currency icon (TokenIcon: the Cloud Token glyph; GemPixel: item 9 B's pixel gem) and Price (Theme.Short(n): "3K", "250";
 -- Pitch 2 F0, one number style). The machines are frames placed
 -- by scale (the pitch's 200 x 230 drawing: base, panel, neck, the glass dome with seven EggArt eggs, the cap).
 -- Every PC text >= 18 px, every phone text >= 15 px. Plain Lua 5.1-compatible syntax only; no asset ids.
@@ -89,8 +89,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
-local GemIcon = require(UI:WaitForChild("GemIcon"))
-local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token coin, TRAVEL's arrow
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token coin, the gem, TRAVEL's arrow
 local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui) the kit's one scroll bar
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local EggArt = require(UI:WaitForChild("EggArt"))
@@ -146,6 +145,11 @@ local K = {
 	CARD_EDGE = 3,
 	PORTRAIT_CARD = 250,
 	PORTRAIT_HERO = 200,
+	-- (Pitch 2 item 10 A; P2 icons review r1) with the machines sheet: the portrait cards grow for the 2 px machines
+	-- (128 x 136 stages), and a PC card's Spin rows and hint sit LIFT px higher (the hint clears the card's colour lip)
+	PORTRAIT_CARD_SHEET = 292,
+	PORTRAIT_HERO_SHEET = 248,
+	LIFT = 12,
 	TEXT = {
 		Lock = "Gem roulettes are not available on this account right now.",
 		Checking = "Checking your account...",
@@ -363,6 +367,48 @@ function H.sizeEgg(egg, px)
 	return w
 end
 
+-- (P2 icons review r1, major 1: under the 3 px pixel machines the odds chips drew this module's smooth vector EggArt) an
+-- odds chip's hand-pixelled egg, "PixelEgg" (the mock-up's, 10_optA): cut from the machines sheet's egg row
+-- (Config.MachineSheet.Eggs) while that sheet has an id, else the same drawing as the 9 x 9 PixelIcon glyph
+-- "egg_<rarity>" in Frames. Drawn again only when px changes; nil for a rarity with neither (the vector egg stays)
+local function eggSheet(rarity)
+	local ms = Config.MachineSheet
+	local id = type(ms) == "table" and tonumber(ms.Id) or 0
+	local cell = type(ms) == "table" and type(ms.Eggs) == "table" and ms.Eggs[rarity] or nil
+	return (id and id > 0 and cell) and id or nil, cell
+end
+
+-- whether a chip of rarity row.Rarity has a pixel egg to draw (its sheet cell or its glyph)
+function H.canPixelEgg(row)
+	return eggSheet(row.Rarity) ~= nil or PixelIcon.Art["egg_" .. string.lower(tostring(row.Rarity))] ~= nil
+end
+
+function H.pixelEgg(row, px)
+	local old = row.PixelEgg
+	if old and old.Parent and old:GetAttribute("Px") == px then
+		return old
+	end
+	if old then
+		old:Destroy()
+	end
+	local name = "egg_" .. string.lower(tostring(row.Rarity))
+	local id, cell = eggSheet(row.Rarity)
+	local icon = (id and PixelIcon.FromSheet(row.Root, name, px, id, cell)) or PixelIcon.New(row.Root, name, px, PixelIcon.Own)
+	if icon then
+		icon.Name = "PixelEgg"
+		icon:SetAttribute("Px", px)
+		local z = row.Pct.ZIndex
+		icon.ZIndex = z
+		for _, d in ipairs(icon:GetChildren()) do
+			if d:IsA("GuiObject") then
+				d.ZIndex = z
+			end
+		end
+	end
+	row.PixelEgg = icon
+	return icon
+end
+
 function H.call(P, name, ...)
 	local fn = P.Ctx[name]
 	if type(fn) == "function" then
@@ -405,11 +451,145 @@ function H.part(m, parent, box, name
 	return f
 end
 
+-- (Pitch 2 item 10 A) the uploaded machines sheet: its image id and roulette `id`'s cell { x, y, w, h }, or nil while
+-- Config.MachineSheet.Id is 0 (nothing uploaded: today's drawn machine)
+function H.machineSheet(id)
+	local ms = Config.MachineSheet
+	local sheetId = type(ms) == "table" and tonumber(ms.Id) or 0
+	local cell = type(ms) == "table" and type(ms.Cells) == "table" and ms.Cells[id] or nil
+	if not (sheetId and sheetId > 0 and sheetId == math.floor(sheetId) and type(cell) == "table") then
+		return nil
+	end
+	return sheetId, cell
+end
+
+-- (Pitch 2 item 10 A "Workshop machines") roulette `id`'s own pixel machine, cut from the sheet (one ImageLabel "Art",
+-- ResampleMode Pixelated), standing on its "Stage": a Well sunk into the card in a pale wash of the roulette's colour with
+-- a PetWell floor, its line and a stepped pixel ground shadow. (P2 icons review r1, major 3: the vault sat in a visible dark
+-- box, dimmed, next to the big egg) the hero's vault has no box: it stands on the card's own navy, on a NavyLip slab with
+-- its NavyTop line (the mock-up's), no ground shadow. Today's drawn machine stays under it in "Drawn" for a box too small
+-- for one screen px a cell (H.layoutSheetMachine shows one or the other: never a blurry shrink, never art over the card's
+-- rows)
+function H.addSheet(m, color, secret, sheetId, cell)
+	m.Sheet, m.Cell, m.Secret = true, cell, secret
+	local root = m.Root
+	root:SetAttribute("Sheet", true)
+	local face = secret and SIGN.Navy or color:Lerp(SIGN.Tile, 0.74)
+	m.Stage = frame("Stage", root, { BackgroundTransparency = secret and 1 or 0, BackgroundColor3 = secret and SIGN.NavyLip or SIGN.WellEdge, Size = UDim2.fromScale(1, 1) })
+	m.Face = frame("Face", m.Stage, { BackgroundTransparency = secret and 1 or 0, BackgroundColor3 = face })
+	m.Lid = frame("Lid", m.Face, { BackgroundTransparency = 0, BackgroundColor3 = face:Lerp(SIGN.WellEdge, 0.45), Visible = not secret })
+	m.Floor = frame("Floor", m.Face, { BackgroundTransparency = 0, BackgroundColor3 = secret and SIGN.NavyLip or SIGN.PetWell })
+	m.FloorLine = frame("FloorLine", m.Floor, { BackgroundTransparency = 0, BackgroundColor3 = secret and SIGN.NavyTop or SIGN.WellEdge })
+	local shade = SIGN.PetWell:Lerp(SIGN.WellEdge, 0.55)
+	m.Shadow = {}
+	for i = 1, 3 do
+		m.Shadow[i] = frame("Shadow" .. i, m.Face, { BackgroundTransparency = 0, BackgroundColor3 = shade, Visible = not secret })
+	end
+	m.Art = Util.Create("ImageLabel", {
+		Name = "Art",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Image = "rbxassetid://" .. string.format("%d", sheetId),
+		ImageRectOffset = Vector2.new(cell[1], cell[2]),
+		ImageRectSize = Vector2.new(cell[3], cell[4]),
+		ResampleMode = Enum.ResamplerMode.Pixelated,
+		ScaleType = Enum.ScaleType.Stretch,
+		Parent = root,
+	})
+end
+
+-- the page's sheet machines (m.Group, ShopEggs.Build) show only when every one of them fits its box (m.Fits): a page never
+-- mixes the new machines with today's. (P2 icons review r1, major 1) every layout's boxes are sized for whole px cells
+-- (L.*Sheet below), so the phones show them too. The hero's Dim (away from the altar) veils today's drawn machine only:
+-- the vault stays bright (the mock-up's; the altar chip's padlock says why)
+function H.showSheets(m)
+	local all = m.Fits == true
+	for _, o in ipairs(m.Group or {}) do
+		all = all and o.Fits == true
+	end
+	for _, o in ipairs(m.Group or { m }) do
+		o.Drawn.Visible = not all
+		o.Stage.Visible = all
+		o.Art.Visible = all
+		o.Root:SetAttribute("SheetShown", all)
+		if o.HeroCard then
+			o.HeroCard.Dim.Visible = o.HeroCard.Away == true and not all
+		end
+	end
+end
+
+-- whether the page shows the sheet machines (the hero's look follows it: no big egg, no Dim)
+function H.sheetShown(t)
+	return t.Machine.Sheet == true and t.Machine.Root:GetAttribute("SheetShown") == true
+end
+
+-- the sheet machine in its box at rest scale s: the largest whole number of screen px a cell that fits, centred (m.AlignX),
+-- on whole screen px. A card's machine stands 4 cells into an 8-cell floor (the drawing and 2 cells of it must fit, inside
+-- the well's 2 px rim); the hero's vault stands on the box's foot over its 3-cell slab (no rim: the drawing must fit). A
+-- box too small for 1 px a cell can't: then the page shows today's drawn machines (H.showSheets)
+function H.layoutSheetMachine(m, s)
+	s = (s and s > 0) and s or 1
+	local W, Hh = m.Root.Size.X.Offset, m.Root.Size.Y.Offset
+	local cw, ch = m.Cell[3], m.Cell[4]
+	local edge = m.Secret and 0 or PixelIcon.Px(2, s)
+	local px = math.floor(math.min((W - 2 * edge) * s / cw, (Hh - 2 * edge) * s / (ch + (m.Secret and 0 or 2))))
+	m.Fits = px >= 1
+	H.showSheets(m)
+	if not m.Fits then
+		m.Root:SetAttribute("CellPx", nil)
+		return
+	end
+	local dc = px / s
+	local aw, ah = cw * dc, ch * dc
+	local ax = edge + math.floor((W - 2 * edge - aw) * (m.AlignX or 0.5) * s) / s
+	m.Face.Position = UDim2.fromOffset(edge, edge)
+	m.Face.Size = UDim2.fromOffset(W - 2 * edge, Hh - 2 * edge)
+	if m.Secret then
+		-- the vault's foot on the box's foot; the slab 3 cells tall under its last cells, 2 cells in from its sides
+		local ay = math.floor((Hh - ah) * s) / s
+		m.Art.Position = UDim2.fromOffset(ax, ay)
+		m.Art.Size = UDim2.fromOffset(aw, ah)
+		local slab = 3 * dc
+		m.Floor.Position = UDim2.fromOffset(ax + 2 * dc, Hh - slab)
+		m.Floor.Size = UDim2.fromOffset(math.max(0, aw - 4 * dc), slab)
+		m.FloorLine.Size = UDim2.fromOffset(math.max(0, aw - 4 * dc), PixelIcon.Px(2, s))
+		m.Root:SetAttribute("CellPx", px)
+		return
+	end
+	local floorH = math.min(Hh - 2 * edge, 8 * dc)
+	local feet = Hh - edge - math.max(3 * dc, floorH - 4 * dc) -- the feet 4 cells into an 8-cell floor
+	local ay = math.max(edge, math.floor((feet - ah) * s) / s)
+	m.Art.Position = UDim2.fromOffset(ax, ay)
+	m.Art.Size = UDim2.fromOffset(aw, ah)
+	m.Lid.Size = UDim2.fromOffset(W - 2 * edge, PixelIcon.Px(3, s))
+	m.Floor.Position = UDim2.fromOffset(0, Hh - 2 * edge - floorH)
+	m.Floor.Size = UDim2.fromOffset(W - 2 * edge, floorH)
+	m.FloorLine.Size = UDim2.fromOffset(W - 2 * edge, edge)
+	-- the ground shadow: three stepped rows a cell tall under the feet, the middle one widest (no blur), centred under the
+	-- drawing (the rows sit in the Face, `edge` in from the root)
+	local mid = math.floor((feet - edge) * s) / s - dc
+	local rx = math.floor(aw * 0.42 / dc) * dc
+	for i, row in ipairs({ { -1, 0.6 }, { 0, 1 }, { 1, 0.6 } }) do
+		local w = math.floor(2 * rx * row[2] / dc) * dc
+		local f = m.Shadow[i]
+		f.Position = UDim2.fromOffset(math.floor((ax - edge + (aw - w) / 2) * s) / s, mid + row[1] * dc)
+		f.Size = UDim2.fromOffset(w, dc)
+	end
+	m.Root:SetAttribute("CellPx", px)
+end
+
 function H.machine(parent, id, color, secret)
 	local m = { Strokes = {} }
 	local root = frame("Machine", parent)
 	root:SetAttribute("Art", "Machine") -- (kit-b U9-2) an illustration: its round glass and sheen are the drawing, not a panel
 	m.Root = root
+	-- (Pitch 2 item 10 A) with the machines sheet uploaded, today's drawing goes into "Drawn" (the whole box: its parts are
+	-- placed by scale, so they draw the same) under the sheet's art (H.addSheet below)
+	local sheetId, cell = H.machineSheet(id)
+	if sheetId then
+		m.Drawn = frame("Drawn", root, { Size = UDim2.fromScale(1, 1) })
+		root = m.Drawn
+	end
 	local B, D = K.BOX, K.DOME
 	H.part(m, root, B, "Base", 26, 146, 148, 76, Theme.Darken(color, 0.32), 0.18, 5)
 	H.part(m, root, B, "BaseShine", 36, 152, 128, 16, Theme.Lighten(color, 0.2), 0.5, nil, { BackgroundTransparency = 0.55 })
@@ -446,11 +626,25 @@ function H.machine(parent, id, color, secret)
 	})
 	H.part(m, root, B, "Shine", 54, 28, 44, 9, WHITE, 0.5, nil, { BackgroundTransparency = 0.25, Rotation = -32 })
 	H.part(m, root, B, "Cap", 82, 2, 36, 18, Theme.Lighten(color, 0.2), 0.35, 4)
+	if sheetId then
+		H.addSheet(m, color, secret, sheetId, cell)
+	end
 	return m
 end
 
--- the machine `px` wide (its strokes follow the size)
+-- the machine `px` wide (its strokes follow the size; a sheet machine is laid out on whole screen px, again whenever the
+-- window's rest scale changes)
 function H.sizeMachine(m, px)
+	if m.Sheet then
+		-- today's drawing under the sheet keeps its own 200 x 230 shape at `px` wide, at the foot of the (wider, taller)
+		-- stage, centred: never stretched to the stage (P2 icons review r1: the stages follow the mock-up's card)
+		m.Drawn.AnchorPoint = Vector2.new(0.5, 1)
+		m.Drawn.Position = UDim2.fromScale(0.5, 1)
+		m.Drawn.Size = UDim2.fromOffset(px, math.floor(px * 1.15 + 0.5))
+		PixelIcon.Whole(m.Art, function(s)
+			H.layoutSheetMachine(m, s)
+		end)
+	end
 	if m.Px == px then
 		return
 	end
@@ -484,6 +678,11 @@ function H.spinButton(P, parent, name, style, word, currency, id, spins)
 		local cur = Theme.Currency.Tokens
 		p.Icon = label("TokenIcon", p.Button, "", "Display", 22, { TextColor3 = SIGN.GoldLip, TextTruncate = Enum.TextTruncate.None })
 		PixelIcon.Host(p.Icon, cur.Icon) -- (kit-b U7a) the Cloud Token coin, sized with the label (the deep gold reads on stone)
+	else
+		-- (P2 icons look fin0, major 2: the cut GemIcon, a smooth square turned 45 degrees, sat beside the pixel coins) item
+		-- 9 B's pixel gem in its own colours, sized with the label as the coin (10_optA's gem planks)
+		p.Icon = label("GemPixel", p.Button, "", "Display", 22, { TextColor3 = SIGN.Text, TextTruncate = Enum.TextTruncate.None })
+		PixelIcon.Host(p.Icon, "gem")
 	end
 	p.Price = label("Price", p.Button, "", "Button", 22, { TextTruncate = Enum.TextTruncate.None, TextColor3 = p.Ink })
 	return p
@@ -498,15 +697,7 @@ function H.arrange(p, w, h, size, iconPx)
 		return
 	end
 	w, h, size, iconPx = p.W, p.H, p.Size, p.IconPx
-	if p.Currency == "Gems" and p.GemPx ~= iconPx then
-		if p.Icon then
-			p.Icon:Destroy()
-		end
-		p.Icon = GemIcon.New(p.Button, iconPx, { Name = "GemIcon" })
-		p.GemPx = iconPx
-	elseif p.Currency ~= "Gems" then
-		p.Icon.TextSize = iconPx
-	end
+	p.Icon.TextSize = iconPx
 	p.Word.TextSize = size
 	p.Price.TextSize = size
 	if p.PriceFull then
@@ -571,6 +762,7 @@ function H.buildHero(P, parent)
 	t.Hero = true
 	t.Root:SetAttribute("Hero", true)
 	t.Machine = H.machine(b, K.SECRET, K.HERO_MACHINE, true)
+	t.Machine.HeroCard = t -- (P2 icons review r1) H.showSheets keeps the Dim off the vault
 	t.Title = Theme.StyleTitle(label("Title", b, t.Name, "Title", 46, { TextXAlignment = LEFT, TextColor3 = SIGN.Gold }), "Section") -- a card's heading: the Shop's header title wears the ribbon
 	t.Odds = frame("OddsLine", b)
 	t.GemsOnly = label("GemsOnly", t.Odds, K.TEXT.GemsOnly, "Body", 24, { TextXAlignment = LEFT, TextColor3 = MUTED })
@@ -720,6 +912,19 @@ function H.syncRows(t)
 		-- (kit-b U9-2) on the navy hero the rarity's own light colour; on a stone card brown (the egg names the rarity)
 		row.Word = label("Word", row.Root, tostring(e.Rarity), "Heading", 20, { TextColor3 = t.Hero and H.rarityText(e.Rarity) or SIGN.Text, TextXAlignment = LEFT })
 		row.Pct = label("Pct", row.Root, H.pct(e.Chance), "Heading", 22, { TextXAlignment = RIGHT, TextColor3 = t.Hero and WHITE or SIGN.Text })
+		if t.Machine.Sheet and not t.Hero then
+			-- (Pitch 2 item 10 A: "the odds become egg chips"; P2 icons review r1, major 2) with the sheet machines each odds
+			-- row is a chip: a stone block in its wood edge with a StoneLip foot, the egg and its percent (no rarity word:
+			-- the egg's colour names it, as on the phone). The layouts place the egg and the percent
+			row.Root.BackgroundTransparency = 0
+			row.Root.BackgroundColor3 = SIGN.Tile
+			H.edge(row.Root, 2)
+			frame("Lip", row.Root, {
+				BackgroundTransparency = 0, BackgroundColor3 = SIGN.StoneLip or SIGN.WellEdge, AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 3),
+			})
+			row.Chip = true
+		end
 		t.Rows[i] = row
 	end
 	t.HasOdds = #odds > 0
@@ -759,6 +964,14 @@ function ShopEggs.Build(page, ctx)
 	P.Row = scroller("Cards", P.Scroll, Enum.ScrollingDirection.X)
 	for i, id in ipairs(K.MACHINES) do
 		P.Cards[i] = H.buildCard(P, P.Row, id)
+	end
+	-- (Pitch 2 item 10 A) the page's sheet machines show together or not at all (H.showSheets)
+	local group = {}
+	for _, t in ipairs(H.all(P)) do
+		if t.Machine.Sheet then
+			group[#group + 1] = t.Machine
+			t.Machine.Group = group
+		end
 	end
 	P.Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		ShopEggs._SyncFade(page)
@@ -943,14 +1156,24 @@ function L.heroPC(t, w, M)
 	local ref = M.Ref
 	local art = M.HeroArt
 	local artH = math.floor(art * 1.15)
-	place(t.Machine.Root, 26, ref and 10 or 8, art, artH)
-	H.sizeMachine(t.Machine, art)
-	-- (Task 26) the big egg between the machine and the texts, centred in the card's height
 	local ep = ref and K.HERO_EGG.Ref or K.HERO_EGG.Shrunk
-	local ew = math.floor(EggArt.Metrics.WIDTH * ep[1] + 0.5)
-	EggArt.Resize(t.Egg, ep[1])
-	place(t.Egg, ep[2], (M.Hero - ep[1]) / 2, ew, ep[1])
-	t.Egg.Visible = true
+	-- (Pitch 2 item 10 A) the sheet's vault stands on its own stage left of the big egg (Task 26), not under it; today's
+	-- drawn machine keeps its whole box (the egg overlaps its edge, as before)
+	if t.Machine.Sheet then
+		-- (P2 icons review r1, major 3) the vault alone, as tall as the card allows (3 px cells at 1920), centred in the art
+		-- column left of the texts: the big egg goes (two hero objects fought there)
+		-- (its foot 14 px over the card's foot on REF, clear of the colour lip; 4 px on the shorter plans, so 1280 keeps 2 px)
+		L.heroSheetArt(t, 4, 2, ep[3] - 12, M.Hero - (M.Ref and 16 or 6))
+	else
+		place(t.Machine.Root, 26, ref and 10 or 8, art, artH)
+		t.Machine.AlignX = 0
+		H.sizeMachine(t.Machine, art)
+		-- (Task 26) the big egg between the machine and the texts, centred in the card's height
+		local ew = math.floor(EggArt.Metrics.WIDTH * ep[1] + 0.5)
+		EggArt.Resize(t.Egg, ep[1])
+		place(t.Egg, ep[2], (M.Hero - ep[1]) / 2, ew, ep[1])
+		t.Egg.Visible = true
+	end
 	local x = ep[3]
 	local tw = w - x - 340
 	t.Title.Text = t.Name
@@ -975,8 +1198,11 @@ function L.heroPC(t, w, M)
 	place(t.Holder, w - 320, ref and 66 or 46, 290, 100)
 	place(t.Spin.Button, 0, 0, 290, 100)
 	H.arrange(t.Spin, 290, 100, 34, 44)
+	-- (P2 icons look fin0, minor) the signpost 27 px, 3 px cells (the screen's glyph cell, the mock-up's): 44 drew it 36
+	-- px, the sheet's art at 2 px cells (4 px as the glyph)
 	-- (Pitch 2 item 13 A) "Show the way" is twice "Travel"'s length: 30 px keeps it inside the 290 px plank in FredokaOne
-	H.arrangeTravel(t.Travel, 290, 100, 30, 44)
+	-- (kit-b merge, icons 9 B x world 13 A) both kept: the world lane's 30 px word, the icons lane's 30 px signpost box
+	H.arrangeTravel(t.Travel, 290, 100, 30, 30)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
 	t.Hint.TextWrapped = false -- (the phone card wraps its line; a turn back to the PC plan takes the one line again)
@@ -996,6 +1222,9 @@ function L.heroPC(t, w, M)
 end
 
 function L.cardPC(t, w, M, tall)
+	if t.Machine.Sheet then
+		return L.cardSheetPC(t, w, M, tall)
+	end
 	local row2H = tall and 56 or 48
 	t.Plate.Text = t.Name
 	t.Plate.TextSize = 24
@@ -1117,19 +1346,225 @@ function L.phoneOdds(t, x, y, w)
 	place(t.NoOdds, x, y, w, 50)
 end
 
+----------------------------------------------------------------------
+-- (Pitch 2 item 10 A "Workshop machines": the mock-ups 10_optA.png / 10_optA_phone.png; P2 icons review r1, majors 1 - 3)
+-- the layouts once the machines sheet has an id (t.Machine.Sheet). Each box is sized so its machine draws whole px cells:
+-- 3 at 1920, 2 at 1280 (the window's 0.8) and on a phone. Without an id every layout above stays today's
+----------------------------------------------------------------------
+-- (P2 icons review r1, major 1 + the 1280 minor: the vector egg sat 1.6 px from the wood, "60%" 0.4 px from it) a chip's
+-- pixel egg and its percent, laid out again whenever the rest scale above changes: the egg at eggPx (a multiple of 9: 3
+-- screen px cells at 1920, 2 under the 1280 window's 0.8 and on a phone) over the percent when the face holds both, else
+-- beside it; where neither fits, one cell size down (18 px). What is fitted is the egg as drawn: its 9 cells on whole
+-- screen px and its 1-cell drop shadow (PixelIcon.BoxPx), the percent's text 2 px or more clear of the chip's sides
+function L.chipEgg(row, cw, face, eggPx, size)
+	PixelIcon.Whole(row.Root, function(s)
+		local tw = H.textW(row.Pct.Text, size, Theme.FontOf(row.Pct)) + 2
+		local px = math.max(9, 9 * math.floor(eggPx / 9))
+		-- (P2 icons look fin0, major 1) the egg a screen px under the chip's top, the percent's box its text's height: the
+		-- 1280 chip holds the 18 px percent (14.4 screen px, the readability floor) over its egg again
+		local lid = 1 / s
+		local side, drawn, over
+		while true do
+			side = PixelIcon.BoxPx(px, 0, s) -- the 9 cells, whole screen px, in design px
+			drawn = side * 10 / 9 -- + the drop shadow's cell
+			over = face >= lid + drawn + 1 + size and cw >= math.max(drawn, tw) + 4
+			if over or (face >= drawn and cw >= drawn + 4 + tw + 4) or px <= 18 then
+				break
+			end
+			px = math.max(18, px - 9)
+		end
+		local icon = H.pixelEgg(row, px)
+		if not icon then
+			return
+		end
+		-- New / FromSheet centre the cells in the px box (pad, on a whole screen px): undo it so the cells start at ex, ey
+		local sc = side * s / 9
+		local pad = math.floor((px * s - 9 * sc) / 2) / s
+		local function at(ex, ey)
+			icon.Position = UDim2.fromOffset(math.floor(ex * s) / s - pad, math.floor(ey * s) / s - pad)
+		end
+		if over then
+			-- the room left split over and under, in whole screen px (a floor in design px left the 1280 egg on the wood)
+			local top = math.max(lid, math.floor((face - (drawn + 1 + size)) * s / 2 + 0.5) / s)
+			at((cw - side) / 2, top)
+			row.Pct.TextXAlignment = CENTER
+			place(row.Pct, 0, top + drawn + 1, cw, size)
+		else
+			local x0 = math.max(2, math.floor((cw - (drawn + 4 + tw)) / 2))
+			at(x0, math.max(0, (face - drawn) / 2))
+			row.Pct.TextXAlignment = LEFT
+			place(row.Pct, x0 + drawn + 4, 0, math.max(0, cw - x0 - drawn - 4), face)
+		end
+	end)
+end
+
+-- the odds rows as egg chips (H.syncRows gave them their stone block) in a grid of `cols` columns in x, y, w x h: the egg
+-- over its percent when the chip is tall enough, else beside it
+function L.chips(t, x, y, w, h, cols, eggPx, size, gap)
+	place(t.Odds, x, y, w, h)
+	t.NoOdds.TextSize = size
+	place(t.NoOdds, x, y, w, h)
+	local n = math.max(1, #t.Rows)
+	cols = math.max(1, math.min(cols, n))
+	local rows = math.ceil(n / cols)
+	local cw = math.floor((w - gap * (cols - 1)) / cols)
+	local chH = math.floor((h - gap * (rows - 1)) / rows)
+	local face = chH - 3 -- over the chip's 3 px lip
+	for i, row in ipairs(t.Rows) do
+		local col, line = (i - 1) % cols, math.floor((i - 1) / cols)
+		place(row.Root, col * (cw + gap), line * (chH + gap), cw, chH)
+		row.Word.Visible = false
+		row.Pct.TextSize = size
+		if row.Chip and H.canPixelEgg(row) then
+			-- (P2 icons review r1, major 1) a card's chip: the hand-pixelled egg, not the vector one
+			row.Egg.Visible = false
+			L.chipEgg(row, cw, face, eggPx, size)
+		elseif face >= eggPx + size + 8 then
+			local ew = H.sizeEgg(row.Egg, eggPx)
+			local top = math.floor((face - eggPx - size - 2) / 2)
+			place(row.Egg, math.floor((cw - ew) / 2), top, ew, eggPx)
+			row.Pct.TextXAlignment = CENTER
+			place(row.Pct, 0, top + eggPx + 1, cw, size + 2)
+		else
+			local px = math.min(eggPx, face - 4)
+			local ew = H.sizeEgg(row.Egg, px)
+			local tw = H.textW(row.Pct.Text, size, Theme.FontOf(row.Pct)) + 2
+			local x0 = math.max(2, math.floor((cw - (ew + 4 + tw)) / 2))
+			place(row.Egg, x0, math.floor((face - px) / 2), ew, px)
+			row.Pct.TextXAlignment = LEFT
+			place(row.Pct, x0 + ew + 4, 0, math.max(0, cw - x0 - ew - 4), face)
+		end
+	end
+end
+
+-- a PC card: the name plate, the machine on a stage as wide as the plate, one row of egg chips, Spin, x3 + gems, and the
+-- hint; the Spin rows and the hint K.LIFT px higher than before (the line clears the card's colour lip). TIGHT (1280 x 720)
+-- takes a shorter plate and chips so the stage still holds 2 screen px cells
+function L.cardSheetPC(t, w, M, tall)
+	local tight = M.Tight == true
+	local row2H = tall and 56 or 48
+	local plateH = tight and 44 or 54
+	t.Plate.Text = t.Name
+	t.Plate.TextSize = 24
+	place(t.Plate, 12, 12, w - 24, plateH)
+	local hintY = M.Card - K.CARD_FOOT - K.LIFT - 20
+	-- the hint clear of the x3 / gem planks' 5 px drop shadow (TIGHT: 6, so its 2 px stage keeps its height)
+	local row2Y = hintY - (tight and 6 or 8) - row2H
+	-- (P2 icons review r1, major 1 + the 1280 minor) TIGHT: the pixel egg (2 screen px cells: 22.5 design px under the
+	-- 0.8 Fit, + its drop shadow) over an 18 px percent (14.4 screen px: P2 icons look fin0, major 1), a screen px under
+	-- the chip's top, fits a 49 px chip; the 10 px come off the Spin plank (56: 44.8 screen px, still a 44 px touch target)
+	local spinH = tight and 56 or 64
+	local spinY = row2Y - 8 - spinH
+	local chipH = tight and 49 or (M.Ref and 60 or 56)
+	-- (P2 icons look fin0, minor: the chips sat fused to the Spin plank) the chips' wood edge 6 px over the plank's at
+	-- 1920 (the mock-up's gap: 13 less the two edges, 2 + 5), 3.2 screen px at 1280 (11 under the 0.8 Fit); TIGHT takes
+	-- the 5 px from the chip (50 -> 49) and the stage's two gaps (8 -> 6): the stage keeps its 163 (2 px cells need 162.5)
+	local chipsY = spinY - (tight and 11 or 13) - chipH
+	local stageY = 12 + plateH + (tight and 6 or 8)
+	place(t.Machine.Root, 12, stageY, w - 24, math.max(40, chipsY - (tight and 6 or 8) - stageY))
+	t.Machine.AlignX = 0.5
+	H.sizeMachine(t.Machine, M.Art)
+	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, 18, 6)
+	place(t.Spin.Button, 14, spinY, w - 28, spinH)
+	H.arrange(t.Spin, w - 28, spinH, 23, 26)
+	local half = math.floor((w - 38) / 2)
+	place(t.Spin3.Button, 14, row2Y, half, row2H)
+	H.arrange(t.Spin3, half, row2H, 18, 20)
+	place(t.SpinGems.Button, w - 14 - half, row2Y, half, row2H)
+	H.arrange(t.SpinGems, half, row2H, 18, 22)
+	t.Hint.Visible = true
+	t.Hint.TextSize = 18
+	place(t.Hint, 8, hintY, w - 16, 20)
+end
+
+-- the hero's vault alone in the art column left of the texts (x0 .. textX - 8), as tall as the card allows; no big egg
+function L.heroSheetArt(t, x0, y0, w, h)
+	place(t.Machine.Root, x0, y0, w, h)
+	t.Machine.AlignX = 0.5
+	H.sizeMachine(t.Machine, K.REF.HeroArt)
+	t.Egg.Visible = false
+end
+
+-- a landscape phone card: the machine's stage on the left (2 px cells from a 212 px tile), the plate and a column of egg
+-- chips right of it, Spin and x3 + gems full width under them (as today)
+function L.cardSheetPhone(t, w, th)
+	local pad = phonePad(th)
+	local row2Y = th - pad - 44
+	local spinY = row2Y - 50
+	local sw = math.max(60, math.min(116, w - 6 - 6 - 6 - 80))
+	local rx = 6 + sw + 6
+	local rw = w - rx - 6
+	-- (P2 icons look fin0, minor: the chips' edge lay 1 px under the Spin plank's) the stage and the chips end 12 px over
+	-- the plank: the chips' wood edge 5 px clear of its edge
+	place(t.Machine.Root, 6, 6, sw, spinY - 18)
+	t.Machine.AlignX = 0.5
+	H.sizeMachine(t.Machine, 45)
+	t.Plate.Text = t.Id
+	t.Plate.TextSize = rw < 90 and 15 or 17
+	place(t.Plate, rx, 6, rw, 30)
+	-- (P2 icons review r1, major 1) two columns of tall chips, the pixel egg (2 px cells) over its percent as on PC: in one
+	-- column the chips were 20 px faces, the egg and its drop shadow flush on the wood
+	L.chips(t, rx, 40, rw, spinY - 12 - 40, 2, 20, 15, 4)
+	place(t.Spin.Button, 6, spinY, w - 12, 44)
+	H.arrange(t.Spin, w - 12, 44, 16, 18)
+	local half = math.floor((w - 18) / 2)
+	place(t.Spin3.Button, 6, row2Y, half, 44)
+	H.arrange(t.Spin3, half, 44, 15, 15)
+	place(t.SpinGems.Button, w - 6 - half, row2Y, half, 44)
+	H.arrange(t.SpinGems, half, 44, 15, 16)
+	t.Hint.Visible = false
+end
+
+-- a portrait card (the phone mock-up): the plate, the stage on the left (2 px cells), a 2 x 2 grid of egg chips and the
+-- hint right of it, Spin and x3 + gems full width under them
+function L.cardSheetPortrait(t, w, h)
+	t.Plate.Text = t.Name
+	t.Plate.TextSize = 20
+	place(t.Plate, 8, 8, w - 16, 34)
+	place(t.Machine.Root, 8, 48, 128, h - 104 - 8 - 48)
+	t.Machine.AlignX = 0.5
+	H.sizeMachine(t.Machine, 64)
+	local rx = 144
+	local rw = w - rx - 8
+	L.chips(t, rx, 52, rw, 82, 2, 22, 15, 6)
+	t.Hint.Visible = true
+	t.Hint.TextSize = 15
+	place(t.Hint, rx, 140, rw, 20)
+	place(t.Spin.Button, 8, h - 104, w - 16, 46)
+	H.arrange(t.Spin, w - 16, 46, 18, 20)
+	local half = math.floor((w - 24) / 2)
+	place(t.Spin3.Button, 8, h - 52, half, 44)
+	H.arrange(t.Spin3, half, 44, 15, 16)
+	place(t.SpinGems.Button, w - 8 - half, h - 52, half, 44)
+	H.arrange(t.SpinGems, half, 44, 15, 16)
+end
+
 function L.heroPhone(t, w, th)
 	local pad = phonePad(th)
+	local chipY = th - pad - 94
 	t.Title.Text = "Secret"
 	t.Title.TextSize = 17
 	t.Title.TextXAlignment = CENTER
-	place(t.Title, 6, 6, w - 12, 30)
-	place(t.Machine.Root, 8, 40, 64, 74)
-	H.sizeMachine(t.Machine, 64)
-	place(t.Dim, 0, 36, 76, 82) -- the machine only
-	t.Egg.Visible = false -- (Task 26: no room on the phone card)
 	t.GemsOnly.Visible = false
-	L.phoneOdds(t, 80, 40, w - 88)
-	local chipY = th - pad - 94
+	if t.Machine.Sheet then
+		-- (P2 icons review r1, major 1) the vault at 2 px cells on the left over the chip, the title and the odds right of it
+		local vw = math.max(64, math.min(122, w - 6 - 6 - 6 - 72))
+		local rx = 6 + vw + 6
+		local rw = w - rx - 6
+		L.heroSheetArt(t, 6, 6, vw, chipY - 12)
+		place(t.Dim, 0, 0, rx - 3, chipY - 3)
+		t.Title.TextSize = rw < 80 and 15 or 17
+		place(t.Title, rx, 6, rw, 30)
+		-- the two odds one over the other (the egg beside its percent), as on the portrait phone
+		L.chips(t, rx, 40, rw, 72, 1, 26, 15, 4)
+	else
+		place(t.Title, 6, 6, w - 12, 30)
+		place(t.Machine.Root, 8, 40, 64, 74)
+		H.sizeMachine(t.Machine, 64)
+		place(t.Dim, 0, 36, 76, 82) -- the machine only
+		t.Egg.Visible = false -- (Task 26: no room on the phone card)
+		L.phoneOdds(t, 80, 40, w - 88)
+	end
 	place(t.Pity, 6, chipY, w - 12, 44)
 	t.Pity.TextSize = 15
 	place(t.AltarChip, 6, chipY, w - 12, 44)
@@ -1145,12 +1580,28 @@ function L.heroPhone(t, w, th)
 	-- one 15 px row (H.paint shows it away from the lobby or held by a match, never in the plain lobby state)
 	t.Hint.TextSize = 15
 	t.Hint.TextWrapped = true
-	place(t.Hint, 6, 116, w - 12, chipY - 2 - 116)
-	t.PhoneHintRoom = (chipY - 2 - 116) >= 17
+	-- (kit-b wave-2 merge, icons item 10 A x world item 13 A) with the vault drawn (P2 icons r1) the left column down to the
+	-- chip is the vault's, so the line takes the odds column beside it (under the odds' 112 px foot); today's drawn
+	-- machine ends at 114, so there the line keeps the full width. It shows only where its wrapped rows fit (H.paint)
+	local hx, hw = 6, w - 12
+	if t.Machine.Sheet then
+		hx = 6 + math.max(64, math.min(122, w - 6 - 6 - 6 - 72)) + 6
+		hw = w - hx - 6
+	end
+	local hh = chipY - 2 - 116
+	place(t.Hint, hx, 116, hw, hh)
+	local rows = 1
+	for _, s in ipairs({ K.TEXT.HeroHintLobbyShort, K.TEXT.HeroHintLocked }) do
+		rows = math.max(rows, math.ceil((H.textW(s, 15, Theme.FontOf(t.Hint)) + 2) / math.max(1, hw)))
+	end
+	t.PhoneHintRoom = hh >= rows * 15 + 2
 	t.Hint.Visible = false
 end
 
 function L.cardPhone(t, w, th)
+	if t.Machine.Sheet then
+		return L.cardSheetPhone(t, w, th)
+	end
 	local pad = phonePad(th)
 	t.Plate.Text = t.Id
 	t.Plate.TextSize = 17
@@ -1262,11 +1713,53 @@ function L.heroPortrait(t, w, h)
 	t.Title.TextSize = 20
 	t.Title.TextXAlignment = LEFT
 	place(t.Title, 8, 8, w - 16, 30)
+	t.GemsOnly.Visible = false
+	if t.Machine.Sheet then
+		-- (P2 icons review r1, major 1; the phone mock-up) the vault at 2 px cells on the left, the odds, the chip and the
+		-- hint right of it, the button full width under them
+		L.heroSheetArt(t, 8, 42, 128, h - 52 - 8 - 42)
+		place(t.Dim, 0, 38, 140, h - 52 - 38)
+		local rx, rw = 144, w - 152
+		-- (P2 icons review r1, minor: a band of about 30 px of empty navy under the hint, beside the vault) the mock-up's
+		-- column: the two odds one over the other (egg 30 beside its percent), the altar chip, the hint, down the vault's
+		-- height. More than two odds keep the two-column grid
+		local cy = 86
+		if #t.Rows == 2 then
+			place(t.Odds, rx, 46, rw, 68)
+			for i, row in ipairs(t.Rows) do
+				place(row.Root, 0, (i - 1) * 36, rw, 32)
+				local ew = H.sizeEgg(row.Egg, 30)
+				place(row.Egg, 2, 1, ew, 30)
+				row.Word.Visible = false
+				row.Pct.TextSize = 15
+				row.Pct.TextXAlignment = LEFT
+				place(row.Pct, ew + 8, 0, math.max(0, rw - ew - 10), 32)
+			end
+			t.NoOdds.TextSize = 15
+			place(t.NoOdds, rx, 46, rw, 68)
+			cy = 120
+		else
+			L.portraitOdds(t, rx, 46, rw)
+		end
+		place(t.Pity, rx, cy, rw, 36)
+		t.Pity.TextSize = 15
+		place(t.AltarChip, rx, cy, rw, 36)
+		t.AltarChip.TextSize = 15
+		place(t.Lock, rx, cy - 4, rw, 44)
+		t.Lock.TextSize = 15
+		t.Hint.Visible = true
+		t.Hint.TextSize = 15
+		place(t.Hint, rx, cy + 42, rw, 20)
+		place(t.Holder, 8, h - 52, w - 16, 44)
+		place(t.Spin.Button, 0, 0, w - 16, 44)
+		H.arrange(t.Spin, w - 16, 44, 18, 20)
+		H.arrangeTravel(t.Travel, w - 16, 44, 18, 20)
+		return
+	end
 	place(t.Machine.Root, 8, 44, 64, 74)
 	H.sizeMachine(t.Machine, 64)
 	place(t.Dim, 0, 40, 76, 82) -- the machine only
 	t.Egg.Visible = false -- (Task 26: no room on the portrait card)
-	t.GemsOnly.Visible = false
 	L.portraitOdds(t, 80, 46, w - 88)
 	place(t.Pity, 80, 84, w - 88, 32)
 	t.Pity.TextSize = 15
@@ -1285,6 +1778,9 @@ function L.heroPortrait(t, w, h)
 end
 
 function L.cardPortrait(t, w, h)
+	if t.Machine.Sheet then
+		return L.cardSheetPortrait(t, w, h)
+	end
 	t.Plate.Text = t.Name
 	t.Plate.TextSize = 20
 	place(t.Plate, 8, 8, w - 16, 34)
@@ -1307,18 +1803,21 @@ function L.portrait(P, W, Hh)
 	local s = P.Scroll
 	s.ScrollingDirection = Enum.ScrollingDirection.Y
 	local w = W - K.SCROLLBAR - 2
-	place(P.Hero.Root, 0, 0, w, K.PORTRAIT_HERO)
-	L.heroPortrait(P.Hero, w, K.PORTRAIT_HERO)
-	local step = K.PORTRAIT_CARD + 8
+	local sheet = P.Hero.Machine.Sheet == true
+	local heroH = sheet and K.PORTRAIT_HERO_SHEET or K.PORTRAIT_HERO
+	local cardH = sheet and K.PORTRAIT_CARD_SHEET or K.PORTRAIT_CARD
+	place(P.Hero.Root, 0, 0, w, heroH)
+	L.heroPortrait(P.Hero, w, heroH)
+	local step = cardH + 8
 	local rowH = #P.Cards * step - 8
-	place(P.Row, 0, K.PORTRAIT_HERO + 8, w, rowH)
+	place(P.Row, 0, heroH + 8, w, rowH)
 	P.Row.CanvasSize = UDim2.fromOffset(0, rowH) -- (no scroll of its own: the page scrolls)
 	for i, t in ipairs(P.Cards) do
-		place(t.Root, 0, (i - 1) * step, w, K.PORTRAIT_CARD)
-		L.cardPortrait(t, w, K.PORTRAIT_CARD)
+		place(t.Root, 0, (i - 1) * step, w, cardH)
+		L.cardPortrait(t, w, cardH)
 	end
 	P.CanvasW = 0
-	s.CanvasSize = UDim2.fromOffset(0, K.PORTRAIT_HERO + 8 + rowH + 8)
+	s.CanvasSize = UDim2.fromOffset(0, heroH + 8 + rowH + 8)
 end
 
 -- the phone's right fade: shown while more of the sideways row is to the right
@@ -1529,7 +2028,10 @@ function ShopEggs.Refresh(page, fromLayout)
 	local altar = not locked and not ShopEggs.AtAltar()
 	h.Lock.Visible = locked
 	h.Pity.Visible = not locked and not altar
-	h.Dim.Visible = altar
+	-- (P2 icons review r1, major 3) the vault stays bright (the altar chip's padlock says why): the Dim veils today's drawn
+	-- machine only (H.showSheets keeps it so when the page's look changes)
+	h.Away = altar
+	h.Dim.Visible = altar and not H.sheetShown(h)
 	h.AltarChip.Visible = altar
 	h.AltarChip.Text = brief and K.TEXT.AltarLockShort or K.TEXT.AltarLock
 	h.Travel.Button.Visible = altar

@@ -824,7 +824,9 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	d:run(1.5, 30)
 	b = BC.GetBattle()
 	T.check(b.Units > unitsBefore, "raid: a minion wave adds units", unitsBefore .. " -> " .. b.Units)
-	T.check(hasText(find("Root.TopCard"), "Minions"), "raid HUD: the minion pill")
+	-- (kit-b Pitch 2 item 06 A, keys lane look fixA r1: "Minions x4", not one of the approved strip's four pills, pushed
+	-- "3 players" onto a row of its own) a raid's minion wave is its "Wave n/N" pill, the minions themselves on the enemy list
+	T.check(hasText(find("Root.TopCard"), "^Wave %d+ ?/ ?%d+$") and not hasText(find("Root.TopCard"), "Minions"), "raid HUD: the minion wave's pill (Wave n/N)")
 	KC.toClient("BattleState", "Events", { { type = "Enrage", unit = d.sim.boss.id } }, d.id)
 	d:run(0.5, 30)
 	T.check(shown(find("Root.TopCard.Pills.Enraged")), "raid HUD: ENRAGED pill after the Enrage event")
@@ -968,15 +970,23 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	d:run(1.5, 30)
 	local b = BC.GetBattle()
 	T.check(b and b.Layout == "Compact", "phone: the compact battle HUD", b and b.Layout or "nil")
+	-- (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20: a touch screen has MOVE (the ELEMENT key,
+	-- which also holds the special) and DASH here, RUN in MobileControls; no SPECIAL / TARGET key, TARGET is automatic)
 	local tiny = nil
-	for _, k in ipairs({ "Target", "Element", "Special", "Dash" }) do
+	for _, k in ipairs({ "Element", "Dash" }) do
 		local btn = find("Root.Commands." .. k .. "Button")
 		local r = btn and shown(btn) and screenRect(btn)
 		if not r or (r.x1 - r.x0) < 48 or (r.y1 - r.y0) < 48 then
 			tiny = k .. " " .. (r and (fmt(r.x1 - r.x0, 0) .. "x" .. fmt(r.y1 - r.y0, 0)) or "missing")
 		end
 	end
-	T.check(tiny == nil, "phone: SPECIAL / TARGET / ELEMENT / DASH are touch-sized (>= 48 px on the screen)", tostring(tiny))
+	for _, k in ipairs({ "Target", "Special" }) do
+		local btn = find("Root.Commands." .. k .. "Button")
+		if btn and shown(btn) then
+			tiny = k .. " shown on touch"
+		end
+	end
+	T.check(tiny == nil, "phone: MOVE (ELEMENT) / DASH are touch-sized (>= 48 px on the screen), no SPECIAL / TARGET key", tostring(tiny))
 	-- every battle text >= 14 px on the screen
 	local scale = find("Root.ReadScale")
 	local f = scale and scale.Scale or 1
