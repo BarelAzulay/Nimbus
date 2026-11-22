@@ -71,6 +71,12 @@
 -- a sheen sweeps it every 6-9 s, its Buy pulses (1 -> 1.04) every 2.5 s, pet cards show a turning CloudUI.PetViewport.
 -- Sounds: StorePop on a card tap (Click until AudioIds has it), StoreBuy on a purchase toast (Reward).
 -- Art: the store_* render of spec 9 (TextureIds[ART_KEYS key], an ImageLabel "Image") when it has an id, else the glyph.
+-- The Store switch (release step 1; Config.Store.Enabled through StoreCatalog.Enabled / ShownTabs, read on every refresh):
+-- while it is off the rail shows Tab_Eggs only (plus Tab_Gems while a gem pack has an Id > 0), in the first slots of the
+-- five-tab rail; the other tab buttons and RobuxDivider are hidden; no Card_<key> is built, StorePreview is ignored (no
+-- PREVIEW), "The Shop opens soon!" and the Starter dot never show, no price is asked for a Store item, the gem potion
+-- sends nothing, and a tab that is not on the rail (asked by name, or the session's last) opens Eggs. The Gems page shows
+-- the created gem packs only (ShopGems). On = everything above, unchanged.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles; no asset ids (TextureIds numbers only).
 
 local Players = game:GetService("Players")
@@ -217,7 +223,8 @@ local S = {
 	Scale = 1,
 	Rect = nil,
 	Items = {}, -- the card items shown (Packs / Passes / Boosts), in catalog order
-	GemItems = {}, -- the Gems tab's items (always shown)
+	GemItems = {}, -- the Gems tab's items (always shown; the Store switch off: only the created gem packs)
+	Tabs = { "Eggs", "Gems", "Packs", "Passes", "Boosts" }, -- the rail tabs shown (StoreCatalog.ShownTabs, re-read by refresh)
 	ByKey = {},
 	Signature = nil,
 	States = {}, -- key -> { State, Status }
@@ -403,21 +410,44 @@ end
 ----------------------------------------------------------------------
 -- What is shown
 ----------------------------------------------------------------------
-function H.preview()
-	return H.attr("StorePreview") == true
+-- the Store switch (release step 1): Config.Store.Enabled through StoreCatalog, read on every call
+function H.storeOn()
+	return StoreCatalog.Enabled()
 end
 
--- the card items shown (created, or every one under StorePreview) and the Gems tab's items (always); the Eggs tab has none
+function H.preview()
+	return H.storeOn() and H.attr("StorePreview") == true
+end
+
+-- is this tab on the rail now (S.Tabs = StoreCatalog.ShownTabs)
+function H.tabShown(tab)
+	for _, name in ipairs(S.Tabs) do
+		if name == tab then
+			return true
+		end
+	end
+	return false
+end
+
+-- the card items shown (created, or every one under StorePreview) and the Gems tab's items (always); the Eggs tab has none.
+-- The Store switch off: no card item at all, and of the Gems tab only the CREATED gem packs (what the live game already
+-- sold): nothing else is listed, priced, stated or sent.
 function H.collect()
+	local on = H.storeOn()
 	local preview = H.preview()
-	local items, gems, byKey, sig = {}, {}, {}, { preview and "P" or "-" }
+	local items, gems, byKey, sig = {}, {}, {}, { on and (preview and "P" or "-") or "off" }
 	for _, item in ipairs(StoreCatalog.List()) do
-		byKey[item.Key] = item
-		if item.Tab == "Gems" then
+		if on then
+			byKey[item.Key] = item
+			if item.Tab == "Gems" then
+				gems[#gems + 1] = item
+			elseif item.Tab ~= "Eggs" and (item.Created or preview) then
+				items[#items + 1] = item
+				sig[#sig + 1] = item.Key .. ":" .. tostring(item.Id)
+			end
+		elseif item.Gem and item.Created then
+			byKey[item.Key] = item
 			gems[#gems + 1] = item
-		elseif item.Tab ~= "Eggs" and (item.Created or preview) then
-			items[#items + 1] = item
-			sig[#sig + 1] = item.Key .. ":" .. tostring(item.Id)
 		end
 	end
 	return items, gems, byKey, table.concat(sig, "|")
@@ -1121,7 +1151,11 @@ function H.layoutRail(W, Hh, R)
 		local pad = R.Pad
 		local gap = math.max(0, (W - 2 * pad - #K.TABS * R.TabW) / (#K.TABS - 1))
 		place(U.Rail, 0, R.Header + 4, W, R.TabH)
-		for i, tab in ipairs(K.TABS) do
+		-- (the Store switch: only S.Tabs show; they keep the first slots of the five-tab row, so nothing jumps)
+		for _, tab in ipairs(K.TABS) do
+			U.Tabs[tab].Button.Visible = H.tabShown(tab)
+		end
+		for i, tab in ipairs(S.Tabs) do
 			local t = U.Tabs[tab]
 			place(t.Button, pad + (i - 1) * (R.TabW + gap), 0, R.TabW, R.TabH)
 			H.syncTabIcon(tab, R.TabIcon)
@@ -1141,7 +1175,10 @@ function H.layoutRail(W, Hh, R)
 		tabH, tabY, step = R.ShortTabH, R.ShortTabY, R.ShortTabStep
 	end
 	place(U.Rail, 0, R.Header, R.RailX + R.RailW + 8, bodyH)
-	for i, tab in ipairs(K.TABS) do
+	for _, tab in ipairs(K.TABS) do
+		U.Tabs[tab].Button.Visible = H.tabShown(tab)
+	end
+	for i, tab in ipairs(S.Tabs) do
 		local t = U.Tabs[tab]
 		local y = tabY + (i - 1) * step + (i >= 3 and R.Split or 0)
 		place(t.Button, R.RailX, y, R.RailW, tabH)
@@ -1159,8 +1196,9 @@ function H.layoutRail(W, Hh, R)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Left
 		end
 	end
-	-- the divider between Gems and Packs: PC "Robux items", Compact / Phone a 2 px line in the gap
-	U.Divider.Visible = true
+	-- the divider between Gems and Packs: PC "Robux items", Compact / Phone a 2 px line in the gap (none while the Store
+	-- switch is off: no Robux card tab is on the rail)
+	U.Divider.Visible = #S.Tabs > 2
 	local gemsBottom = tabY + step + tabH
 	local packsTop = tabY + 2 * step + R.Split
 	if layout == "PC" then
@@ -1342,7 +1380,7 @@ function H.paintCards()
 	GemIcon.SetAmount(U.GemsAmount, Theme.ShortNumber(value("Gems"), 1e6))
 	U.TokText.Text = Theme.ShortNumber(value("Tokens"), 1e6)
 	local starter = S.ByKey.Starter
-	U.Dot.Visible = starter ~= nil and (starter.Created or H.preview()) and H.boughtKnown() and not csvSet(H.attr("StoreBought")).Starter
+	U.Dot.Visible = H.storeOn() and starter ~= nil and (starter.Created or H.preview()) and H.boughtKnown() and not csvSet(H.attr("StoreBought")).Starter
 	safe("gems refresh", ShopGems.Refresh, U.GemsPage)
 	safe("eggs refresh", ShopEggs.Refresh, U.EggsPage)
 	H.paintFast()
@@ -1352,6 +1390,9 @@ function H.selectTab(tab)
 	tab = ShopController.NormalizeTab(tab)
 	if tab == nil then
 		tab = S.Tab or "Eggs"
+	end
+	if not H.tabShown(tab) then
+		tab = "Eggs" -- the Store switch: a tab that is not on the rail (asked by name, or the session's last) is the Eggs tab
 	end
 	S.Tab = tab
 	for name, t in pairs(U.Tabs) do
@@ -1366,7 +1407,7 @@ function H.selectTab(tab)
 	end
 	U.GemsPage.Visible = tab == "Gems"
 	U.EggsPage.Visible = tab == "Eggs"
-	U.Soon.Visible = tab ~= "Gems" and tab ~= "Eggs" and #H.tabItems(tab) == 0
+	U.Soon.Visible = H.storeOn() and tab ~= "Gems" and tab ~= "Eggs" and #H.tabItems(tab) == 0
 	H.paintFast()
 end
 
@@ -1377,6 +1418,7 @@ function H.refresh()
 	end
 	local items, gems, byKey, sig = H.collect()
 	S.Items, S.GemItems, S.ByKey = items, gems, byKey
+	S.Tabs = StoreCatalog.ShownTabs()
 	H.computeStates()
 	local heroes = H.heroSignature()
 	if sig ~= S.Signature or heroes ~= S.Heroes then
@@ -1435,6 +1477,9 @@ function H.gemBuy()
 		H.hint(K.MATCH_HINT)
 		ShopController.Close()
 		return
+	end
+	if not H.storeOn() then
+		return -- the Store switch: the gem potion is not shown, so nothing is sent
 	end
 	local state = ShopGems.PotionState()
 	if state == "Short" then

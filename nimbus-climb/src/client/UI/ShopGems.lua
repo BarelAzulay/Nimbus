@@ -31,6 +31,10 @@
 --                                    Unavailable), "Full" "Potion time is full" (XpBoostEnds plus the potion past
 --                                    Config.Store.Potion.CapSeconds), "Short" (gems under the price: the price, drawn red),
 --                                    "Ready" (the price). Only "Ready" may send StoreRequest("GemBuy", "XpPotionGems").
+-- The Store switch (release step 1; StoreCatalog.Enabled, read on every Layout / Refresh): while it is off the page holds
+-- only the CREATED gem packs (Config.Gems.Products with an Id > 0: what the live game already sold) and the hero only
+-- with a created Chest; GemPotion, TokensTitle, TokenPack_1..3 and every uncreated pack are hidden, and the canvas ends
+-- under the last pack. On = everything above, unchanged.
 -- The tiles are NeonKit cards painted with each pack's own colours (ctx.Palette); gems are GemIcon piles, the tokens the
 -- Cloud Token glyph. Every PC text >= 18 px, every phone text >= 15 px. Plain Lua 5.1-compatible syntax only.
 
@@ -588,6 +592,83 @@ function ShopGems._SyncFade(page)
 	P.Fade.Visible = on
 end
 
+-- The Store switch (release step 1, StoreCatalog.Enabled): which tiles show. On: the potion always, the packs as
+-- Refresh's paintTile left them (unchanged). Off: only a CREATED gem pack (what the live game already sold); the token
+-- packs and the gem potion never.
+local function syncShown(P)
+	P.On = StoreCatalog.Enabled()
+	if P.On then
+		P.Potion.Root.Visible = true
+		return
+	end
+	local items = itemsByKey()
+	for _, t in ipairs(P.Packs) do
+		local item = items[t.Key]
+		t.Root.Visible = item ~= nil and item.Created == true
+	end
+	for _, t in ipairs(P.Tokens) do
+		t.Root.Visible = false
+	end
+	P.Potion.Root.Visible = false
+end
+
+-- The page while the Store switch is off: the hero only with a created Chest, the created gem packs side by side from
+-- the first place (PC / Compact), in the phone's row or the portrait list, and the canvas ends under the last pack (no
+-- empty scroll where the potion and the token packs were).
+local function layoutOff(P, W, Hh)
+	local s, hero = P.Scroll, P.Hero
+	local chest = P.Packs[K.HERO_INDEX]
+	P.TokensTitle.Visible = false
+	if P.Mode == "Phone" then
+		s.ScrollingDirection = Enum.ScrollingDirection.X
+		hero.Root.Visible = false
+		local th = math.min(K.TILE_MAX, Hh - 12)
+		local y = math.floor((Hh - th) / 2)
+		local x = 0
+		for _, t in ipairs(P.Packs) do
+			if t.Root.Visible then
+				place(t.Root, x, y, K.TILE, th)
+				layoutTilePhone(t, K.TILE, th)
+				x = x + K.STEP
+			end
+		end
+		P.CanvasW = math.max(0, x - (K.STEP - K.TILE))
+		s.CanvasSize = UDim2.fromOffset(P.CanvasW, 0)
+		return
+	end
+	s.ScrollingDirection = Enum.ScrollingDirection.Y
+	hero.Root.Visible = chest ~= nil and chest.Root.Visible
+	P.CanvasW = 0
+	local w = W - K.SCROLLBAR - 2
+	if P.Mode == "Portrait" then
+		local y = hero.Root.Visible and (layoutHero(hero, w, "Portrait") + 8) or 0
+		for _, t in ipairs(P.Packs) do
+			if t.Root.Visible then
+				place(t.Root, 0, y, w, 124)
+				layoutTilePortrait(t, w, 124)
+				y = y + 132
+			end
+		end
+		s.CanvasSize = UDim2.fromOffset(0, y)
+		return
+	end
+	local y = 16
+	if hero.Root.Visible then
+		layoutHero(hero, w, P.Mode)
+		y = 276
+	end
+	local pw = math.floor((w - 48) / 4)
+	local k = 0
+	for _, t in ipairs(P.Packs) do
+		if t.Root.Visible then
+			place(t.Root, k * (pw + 16), y, pw, 380)
+			layoutTilePC(t, pw, 380)
+			k = k + 1
+		end
+	end
+	s.CanvasSize = UDim2.fromOffset(0, y + 380 + 16)
+end
+
 function ShopGems.Layout(page, box, mode)
 	local P = PAGES[page]
 	if not P then
@@ -601,7 +682,10 @@ function ShopGems.Layout(page, box, mode)
 	place(s, 0, 0, W, Hh)
 	place(P.Fade, W - K.FADE, 0, K.FADE, Hh)
 	local hero = P.Hero
-	if P.Mode == "Phone" then
+	syncShown(P)
+	if not P.On then
+		layoutOff(P, W, Hh)
+	elseif P.Mode == "Phone" then
 		s.ScrollingDirection = Enum.ScrollingDirection.X
 		hero.Root.Visible = false
 		P.TokensTitle.Visible = false
@@ -730,6 +814,16 @@ function ShopGems.Refresh(page)
 		return
 	end
 	local items = itemsByKey()
+	-- the Store switch off (StoreCatalog.Enabled): a pack that is not a CREATED gem pack is not an item here, so its tile
+	-- hides (paintTile) instead of showing a dead "Coming soon" button; the token packs are never items
+	local on = StoreCatalog.Enabled()
+	if not on then
+		for key, item in pairs(items) do
+			if not (item.Gem and item.Created) then
+				items[key] = nil
+			end
+		end
+	end
 	-- the gem packs: the shown prices -> the ribbons and BEST VALUE
 	local shown = {}
 	for i = 1, #P.Packs do
@@ -767,8 +861,9 @@ function ShopGems.Refresh(page)
 			CloudUI.SetDisabled(hero.Buy, off)
 		end
 	end
-	-- the potion
+	-- the potion (hidden while the Store switch is off)
 	local p = P.Potion
+	p.Root.Visible = on
 	local state, text = ShopGems.PotionState()
 	local priced = state == "Ready" or state == "Short"
 	p.Amount.Visible = priced

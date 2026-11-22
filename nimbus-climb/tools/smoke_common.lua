@@ -246,3 +246,28 @@ do
 		end
 	end
 end
+
+-- Release step 1, gate 1 (the Store off switch): the SHIPPED Config.Store.Enabled is false (the Robux Store's tabs,
+-- buttons and prompts are hidden and refused in the live game until the owner turns it on). Every smoke list that pins
+-- the Store's own behaviour (smoke_store*.lua, smoke_shop_ui.lua, smoke_fixr_store*.lua, the gem potion, ...) was
+-- written for the Store ON, so the common boot turns it ON here, like MainMenu above: those lists keep testing exactly
+-- what they tested before the switch existed ("on = unchanged"). The shipped value is kept in SmokeCommon.StoreShipped;
+-- smoke_store_switch.lua pins it (exactly false) and tests the OFF state itself. NC_STORE_SHIPPED=1 keeps the shipped
+-- value for a whole run (a hand check of other lists with the Store off; Store lists fail by design then).
+do
+	local okRs, rs = pcall(function()
+		return game:GetService("ReplicatedStorage")
+	end)
+	local shared = okRs and rs and rs:FindFirstChild("Shared")
+	local inst = shared and shared:FindFirstChild("Config")
+	if inst then
+		local ok, Config = pcall(require, inst)
+		if ok and type(Config) == "table" and type(Config.Store) == "table" then
+			SmokeCommon.StoreShipped = Config.Store.Enabled
+			local keep = type(os) == "table" and type(os.getenv) == "function" and os.getenv("NC_STORE_SHIPPED") == "1"
+			if not keep then
+				Config.Store.Enabled = true
+			end
+		end
+	end
+end

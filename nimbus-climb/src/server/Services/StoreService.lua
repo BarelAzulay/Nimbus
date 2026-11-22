@@ -38,6 +38,11 @@
 --   refusal toasts (bad). Restricted accounts may buy (a potion is not random). No receipt, no purchase id.
 -- * XpPassState: the player attribute = PassState(player, "PetXp2x"), written at the join and on every Changed when it
 --   differs from the last written value (the shop's potion label reads it; never read back).
+-- * The Store switch (release step 1; Config.Store.Enabled through StoreCatalog.Enabled / OnSale, read on every call):
+--   while it is off, PromptPurchase answers false ("That item is not on sale yet", no toast, no prompt) for every item
+--   but a gem pack (Config.Gems.Products: what the live game already sold), BuyWithGems answers false before any check
+--   (no charge, no toast) and StorePreview is false for everyone. ApplyGrant, Thank, the pass lookups and
+--   PromptGamePassPurchaseFinished never read the switch: a paid receipt and an owned pass are always honoured.
 -- * StorePreview: written once at the join, true in Studio (RunService:IsStudio()) or for DevService.IsAllowed(player)
 --   (may yield once: a task.spawn), never on a timer.
 --
@@ -558,6 +563,9 @@ function StoreService.PromptPurchase(player, key)
 	if not item then
 		return false, TEXT.Unknown
 	end
+	if not StoreCatalog.OnSale(item) then
+		return false, TEXT.NotYet -- the Store switch is off (Config.Store.Enabled): only a gem pack is prompted, like Id 0 no toast
+	end
 	if not item.Created then
 		return false, TEXT.NotYet -- Id 0: hidden, preview or not (Z12)
 	end
@@ -642,6 +650,9 @@ function StoreService.BuyWithGems(player, key)
 	if not isPlayer(player) then
 		return false, "Player unavailable"
 	end
+	if not StoreCatalog.Enabled() then
+		return false, TEXT.NotYet -- the Store switch is off: a gem item is not shown, so no charge and no toast
+	end
 	local item = StoreCatalog.GemItem(key)
 	local boost = item and type(item.Grants) == "table" and type(item.Grants.Boost) == "table" and item.Grants.Boost or nil
 	local seconds = boost and wholeNumber(boost[GEM_POTION.Id]) or nil
@@ -692,8 +703,10 @@ end
 -- Players
 ----------------------------------------------------------------------
 local function setPreview(player)
-	local preview = RunService:IsStudio()
-	if not preview and S.Dev and type(S.Dev.IsAllowed) == "function" then
+	-- the Store switch off: no preview either (no PREVIEW card or row for a dev while the Store is hidden)
+	local on = StoreCatalog.Enabled()
+	local preview = on and RunService:IsStudio()
+	if on and not preview and S.Dev and type(S.Dev.IsAllowed) == "function" then
 		local ok, allowed = pcall(S.Dev.IsAllowed, player) -- may yield once (a group-owned game)
 		preview = ok and allowed == true
 	end
@@ -755,6 +768,10 @@ local function checkConfig()
 				onSale = onSale + 1
 			end
 		end
+	end
+	if not StoreCatalog.Enabled() then
+		print("[StoreService] the Store is OFF (Config.Store.Enabled = false): its tabs and prompts are hidden and refused; receipts and owned passes are still granted")
+		return
 	end
 	print(string.format("[StoreService] %d of %d Store items on sale%s", onSale, total,
 		onSale < total and " (Id 0 = not created yet: paste the product / pass ids into Config.Store.Items)" or ""))

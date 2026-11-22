@@ -659,6 +659,12 @@ Config.Gems = {
 -- creates each product / pass there and pastes its id. Robux = the suggested Creator Hub price (for the owner and the
 -- sims; never shown in the game).
 Config.Store = {
+	-- THE STORE SWITCH (release step 1). false = the Robux Store quick-wins added is OFF: the Packs / Passes / Boosts
+	-- tabs, the token packs, the gem XP Potion, every PREVIEW badge and every purchase prompt of those are hidden on the
+	-- client and refused on the server. What the live game already had keeps working: the Eggs tab, gem spins, and a gem
+	-- pack whose Config.Gems.Products Id is > 0. Paid receipts and owned passes are ALWAYS honoured, on or off.
+	-- Turn the Store on by changing this ONE line to true (StoreCatalog.Enabled reads it; only an explicit true is on).
+	Enabled = false,
 	PriceRetrySeconds = 10, -- the client reads GetProductInfo once per session in the background; one retry this long after a failure
 	TrustLedgerAfter = 0, -- seconds of UserOwnsGamePassAsync failures after which a session trusts the saved Store.Passes; 0 = never
 	Potion = {
