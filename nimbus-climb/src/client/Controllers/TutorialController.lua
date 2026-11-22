@@ -148,6 +148,7 @@ local K = {
 	-- world guide (studs)
 	VOXEL = 0.36,
 	ARROW_LIFT = 5, -- arrow centre above the target top (the arrow is ~7.6 studs tall: its tip clears the top)
+	ARROW_BANDS = 8, -- (look review fin0, MJ1) the arrow's screen box is built from this many slices up its height
 	-- (Pitch 2 item 13 A) the arrow hops BOB studs every BOB_STEP s, two hard steps (it bobbed on a sine and spun)
 	BOB = 0.6,
 	BOB_STEP = 0.45,
@@ -2737,15 +2738,40 @@ local function buildWorldGuide()
 	model.Parent = folder
 	W.arrowParts, W.arrowOffsets = parts, offsets
 	W.arrowTop = nil
-	-- (look review r1, M1) the arrow's half extents round its centre (studs), for its box on the screen
-	local hx, hy, hz = 0.5, 0.5, 0.5
+	-- (look review r1, M1) the arrow's half height round its centre (studs), for its box on the screen
+	local hy = 0.5
+	for i, p in ipairs(parts) do
+		hy = math.max(hy, math.abs(offsets[i].Position.Y) + p.Size.Y / 2)
+	end
+	-- (look review fin0, MJ1) its shape in K.ARROW_BANDS slices up that height: each slice's own height span and half
+	-- width, so the narrow tip is not drawn a head's width wide on the screen
+	local bands = {}
+	local step = 2 * hy / K.ARROW_BANDS
 	for i, p in ipairs(parts) do
 		local o, s = offsets[i].Position, p.Size
-		hx = math.max(hx, math.abs(o.X) + s.X / 2)
-		hy = math.max(hy, math.abs(o.Y) + s.Y / 2)
-		hz = math.max(hz, math.abs(o.Z) + s.Z / 2)
+		local lo, hi = o.Y - s.Y / 2, o.Y + s.Y / 2
+		local px, pz = math.abs(o.X) + s.X / 2, math.abs(o.Z) + s.Z / 2
+		for j = 1, K.ARROW_BANDS do
+			local blo = -hy + (j - 1) * step
+			local bhi = blo + step
+			if lo < bhi and hi > blo then
+				local b = bands[j]
+				if not b then
+					b = { lo = math.huge, hi = -math.huge, hx = 0, hz = 0 }
+					bands[j] = b
+				end
+				b.lo, b.hi = math.min(b.lo, math.max(lo, blo)), math.max(b.hi, math.min(hi, bhi))
+				b.hx, b.hz = math.max(b.hx, px), math.max(b.hz, pz)
+			end
+		end
 	end
-	W.arrowHalf = Vector3.new(hx, hy, hz)
+	local list = {}
+	for j = 1, K.ARROW_BANDS do
+		if bands[j] then
+			list[#list + 1] = bands[j]
+		end
+	end
+	W.arrowBands = list
 
 	-- (Pitch 2 item 13_travel_guide A, the owner's pick "Gold arrow + dot trail"; it was a glowing Beam of a sparkle strip
 	-- from the hip and a ring of Neon sparkles) the trail is flat gold dot blocks on the ground (Dots: a pool of
@@ -2821,9 +2847,35 @@ local function layoutSign()
 	card.Size = UDim2.fromOffset(inner + 2 * K.SIGN_PAD, 5 + K.SIGN_NAME + 5 + K.SIGN_INFO + 4 + 4 + K.SIGN_LIP)
 end
 
+-- (look review fin0, MJ2) the board of the gate the world guide stands over is off while the guide shows: the arrow
+-- (ARROW_LIFT over the gate's top) and the GuideSign hang exactly where the board hangs (27 studs up, growing upwards, a
+-- pixel billboard, so no studs lift clears it at every distance), and the GuideSign already names the place (the
+-- approved mock 13 A shows the target gate with the sign alone). Its own Enabled comes back when the guide moves on or
+-- ends; a board switched on by someone else meanwhile is switched off again on the next frame. holdBoard(nil) lets go.
+local function holdBoard(board)
+	local held = W.board
+	if held and held ~= board then
+		if held.Parent then
+			held.Enabled = W.boardWas ~= false
+		end
+		W.board, W.boardWas = nil, nil
+	end
+	if board and board.Parent then
+		if W.board ~= board then
+			W.board, W.boardWas = board, board.Enabled
+		end
+		if board.Enabled then
+			board.Enabled = false
+		end
+	end
+end
+
 local function setWorldActive(on)
 	if not W.built then
 		return
+	end
+	if not on then
+		holdBoard(nil)
 	end
 	if on == W.active then
 		return
@@ -2945,6 +2997,7 @@ local function resolveTarget(target)
 				if cf and size.Y < 60 then
 					arrowAt = Vector3.new(p.X, cf.Position.Y + size.Y * 0.5, p.Z)
 				end
+				model = gate
 			end
 		end
 	else
@@ -2981,7 +3034,13 @@ local function resolveTarget(target)
 	if not ground or not arrowAt then
 		return nil
 	end
-	return { Ground = ground, ArrowAt = arrowAt, Radius = radius, Name = name or "" }
+	-- (look review fin0, MJ2) a gate's hanging board (WorldStyle.BuildTag "GateTag", or a builder's stand-in of that name)
+	local board = nil
+	if model and (kind == "Gate" or kind == "Portal") then
+		local b = model:FindFirstChild("GateTag", true)
+		board = (b and b:IsA("BillboardGui")) and b or nil
+	end
+	return { Ground = ground, ArrowAt = arrowAt, Radius = radius, Name = name or "", Board = board }
 end
 
 local function targetKey(target)
@@ -3097,6 +3156,7 @@ local function updateWorldGuide(dt, t)
 		return
 	end
 	setWorldActive(true)
+	holdBoard(goal.Board)
 
 	-- (Pitch 2 item 13 A) the arrow hops between two heights in hard steps (it bobbed on a sine and spun), its parts
 	-- written only when it hops
@@ -3320,27 +3380,29 @@ local function billboardRect(gui)
 	return { x0 = x0, y0 = y0, x1 = x0 + w, y1 = y0 + h }
 end
 
--- the voxel arrow's box (both hop heights) -> rect or nil
+-- the voxel arrow on the screen (both hop heights) -> rect or nil. (look review fin0, MJ1) band by band (W.arrowBands),
+-- not one box round it all: the whole box's far bottom corners stand a head's width out from the narrow tip and, seen
+-- from below, projected ~40 px under the real arrow, so the chip dodged an arrow that ended above it
 local function arrowRect()
 	local cam = Workspace.CurrentCamera
-	local base, half = W.arrowBase, W.arrowHalf
-	if not (cam and base and half and W.active) then
+	local base, bands = W.arrowBase, W.arrowBands
+	if not (cam and base and bands and W.active) then
 		return nil
 	end
 	local r = nil
-	local hy = half.Y + K.BOB / 2
-	local c = base + Vector3.new(0, K.BOB / 2, 0)
-	for _, dx in ipairs({ -1, 1 }) do
-		for _, dy in ipairs({ -1, 1 }) do
-			for _, dz in ipairs({ -1, 1 }) do
-				local x, y = screenPoint(cam, c + Vector3.new(dx * half.X, dy * hy, dz * half.Z))
-				if not x then
-					return nil
-				end
-				if r then
-					r.x0, r.y0, r.x1, r.y1 = math.min(r.x0, x), math.min(r.y0, y), math.max(r.x1, x), math.max(r.y1, y)
-				else
-					r = { x0 = x, y0 = y, x1 = x, y1 = y }
+	for _, b in ipairs(bands) do
+		for _, dx in ipairs({ -1, 1 }) do
+			for _, y in ipairs({ b.lo, b.hi + K.BOB }) do
+				for _, dz in ipairs({ -1, 1 }) do
+					local x, sy = screenPoint(cam, base + Vector3.new(dx * b.hx, y, dz * b.hz))
+					if not x then
+						return nil
+					end
+					if r then
+						r.x0, r.y0, r.x1, r.y1 = math.min(r.x0, x), math.min(r.y0, sy), math.max(r.x1, x), math.max(r.y1, sy)
+					else
+						r = { x0 = x, y0 = sy, x1 = x, y1 = sy }
+					end
 				end
 			end
 		end
@@ -3512,12 +3574,18 @@ local function placeChip()
 	local cx = area.X / 2
 	local spot = { x0 = cx - w / 2, y0 = y }
 	local clearPx = K.GUIDE_CLEAR * k
+	-- (look review fin0, MJ1) only as far as they are on the screen (the top band included): a piece above the screen's
+	-- top edge moves nothing
+	local inset = topInset()
 	local okO, obstacles = pcall(function()
 		local list = {}
 		for _, fn in ipairs({ arrowRect, signRect, promptRect }) do
 			local r = fn()
 			if r then
-				list[#list + 1] = r
+				r = { x0 = math.max(r.x0, 0), y0 = math.max(r.y0, -inset), x1 = math.min(r.x1, area.X), y1 = math.min(r.y1, area.Y) }
+				if r.x1 > r.x0 and r.y1 > r.y0 then
+					list[#list + 1] = r
+				end
 			end
 		end
 		return list

@@ -1440,6 +1440,13 @@ local function clientScenarios()
 	--                 not under the HUD (on a portrait phone it was behind the coin strip and the Gift button)
 	--   here          7 studs out ("You're here"): the gate's "Enter" plank is on the screen under the top band, clear of
 	--                 the chip, the vitals card, the menu column and the touch buttons (crops 04 / 05)
+	-- (look review fin0, MJ1 / MJ2) the mock gate carries its hanging board (WorldStyle.BuildTag "GateTag", 27 studs up as
+	-- BuildGate hangs it) and a 'near' state 22 studs out, the board inside its MaxDistance:
+	--   near / every  the gate's board, while it shows, never meets the arrow, the GuideSign or the chip (the arrow and the
+	--                 sign stood on it, the chip sat on its corner: crops 01 - 04; checked on the whole plane, so a camera
+	--                 tilted up a little cannot bring it back); once the guide ends the board shows again
+	--   every         the chip leaves the top centre only for a guide piece ON the screen (it was pushed 267 px aside by an
+	--                 arrow above the screen's top edge)
 	----------------------------------------------------------------------------------------------------------------
 	S.travel_guide_clear = guarded("travel_guide_clear", function()
 		local Config = shared("Config")
@@ -1506,6 +1513,16 @@ local function clientScenarios()
 			prompt:SetAttribute("CardLift", lift)
 		end
 		prompt.Parent = anchor
+		-- the gate's hanging board as BuildGate hangs it: on the GlowCore 11.5 up, lifted to 27 studs over the ground
+		local core = Instance.new("Part")
+		core.Name = "GlowCore"
+		core.Anchored = true
+		core.Transparency = 1
+		core.Size = Vector3.new(1, 1, 1)
+		core.CFrame = CFrame.new(site + Vector3.new(0, 11.5, 0))
+		core.Parent = gate
+		local WS = shared("WorldStyle")
+		local board = WS.BuildTag(core, 27 - 11.5, { Title = "Storm Altar", Info = "Secret pets", Pill = "Secret Roulette" }, Color3.fromRGB(80, 200, 220))
 		gate.Parent = lobby
 		local function screenRect(obj)
 			local owner = obj:FindFirstAncestorOfClass("ScreenGui")
@@ -1592,9 +1609,9 @@ local function clientScenarios()
 			for _, size in ipairs({ { 1920, 1080 }, { 1280, 720 }, { 390, 844 }, { 844, 390 } }) do
 				Mock.SetViewport(size[1], size[2])
 				KC.advance(0.4)
-				for _, mode in ipairs({ "ahead", "walk", "here" }) do
+				for _, mode in ipairs({ "ahead", "walk", "near", "here" }) do
 					local tag = fmt("guide clear %dx%d %s", size[1], size[2], mode)
-					local dist = (mode == "here") and 7 or 40
+					local dist = (mode == "here") and 7 or ((mode == "near") and 22 or 40)
 					local at = anchor.Position - dir * dist
 					at = Vector3.new(at.X, L.Origin.Y + 3, at.Z)
 					Mock.Teleport(player, CFrame.lookAt(at, at + dir))
@@ -1625,6 +1642,46 @@ local function clientScenarios()
 						local c = grow(screenRect(chip), 3 * k) -- its wood edge
 						local vp = Mock.Viewport
 						T.check(c.X >= 0 and c.R <= vp.X and c.Y >= 0 and c.B <= vp.Y, tag .. ": the chip is on the screen", show(c))
+						-- (fin0 MJ2) the gate's board while it shows (Enabled, inside its MaxDistance of the camera)
+						local brd = nil
+						if board.Enabled then
+							local anchorAt = core.Position + board.StudsOffsetWorldSpace
+							if (camObj.CFrame.Position - anchorAt).Magnitude <= board.MaxDistance then
+								brd = billboard(board)
+							end
+						end
+						if mode == "near" then
+							T.check((camObj.CFrame.Position - (core.Position + board.StudsOffsetWorldSpace)).Magnitude <= board.MaxDistance,
+								tag .. ": (setup) the gate's board is inside its MaxDistance")
+						end
+						if brd then
+							T.check(not overlap(c, brd), tag .. ": the chip never covers the gate's board", "chip " .. show(c) .. " board " .. show(brd))
+						end
+						-- (fin0 MJ1) the guide pieces as far as they are ON the screen (the top band included)
+						local onScreen = {}
+						local function seen(r)
+							if not r then
+								return
+							end
+							local v = { X = math.max(r.X, 0), Y = math.max(r.Y, 0), R = math.min(r.R, vp.X), B = math.min(r.B, vp.Y) }
+							if v.R > v.X and v.B > v.Y then
+								onScreen[#onScreen + 1] = v
+							end
+						end
+						local function homeCheck()
+							local w = c.R - c.X
+							if math.abs((c.X + c.R) / 2 - vp.X / 2) <= 1.5 then
+								return
+							end
+							local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
+							local home = grow({ X = vp.X / 2 - w / 2, Y = c.Y, R = vp.X / 2 + w / 2, B = c.B }, 20 * k)
+							local hit = false
+							for _, v in ipairs(onScreen) do
+								hit = hit or overlap(home, v)
+							end
+							T.check(hit, tag .. ": the chip leaves the top centre only for a guide piece on the screen",
+								"chip " .. show(c) .. " pushed " .. fmt("%.0f", (c.X + c.R) / 2 - vp.X / 2) .. " px, " .. #onScreen .. " piece(s) on the screen")
+						end
 						if mode ~= "here" then
 							local fx = workspace:FindFirstChild("ClientFx")
 							local wg = fx and fx:FindFirstChild("TutorialGuide")
@@ -1649,6 +1706,13 @@ local function clientScenarios()
 							if T.check(box ~= nil and s ~= nil, tag .. ": (setup) the arrow and its sign are in view") then
 								T.check(not overlap(c, box), tag .. ": the chip never covers the arrow", "chip " .. show(c) .. " arrow " .. show(box))
 								T.check(not overlap(c, s), tag .. ": the chip never covers the GuideSign", "chip " .. show(c) .. " sign " .. show(s))
+								if brd then
+									T.check(not overlap(brd, box), tag .. ": the arrow never stands on the gate's board", "board " .. show(brd) .. " arrow " .. show(box))
+									T.check(not overlap(brd, s), tag .. ": the GuideSign never covers the gate's board", "board " .. show(brd) .. " sign " .. show(s))
+								end
+								seen(box)
+								seen(s)
+								homeCheck()
 								local under = {}
 								for _, piece in ipairs(hudPieces()) do
 									if overlap(s, piece.rect) then
@@ -1665,6 +1729,11 @@ local function clientScenarios()
 								T.check(r.Y >= top and r.B <= vp.Y and r.X >= 0 and r.R <= vp.X, tag .. ": the plank is on the screen, under the top band",
 									show(r) .. fmt(" (top band %d)", top))
 								T.check(not overlap(r, c), tag .. ": the chip keeps off the plank", "plank " .. show(r) .. " chip " .. show(c))
+								if brd then
+									T.check(not overlap(brd, r), tag .. ": the plank keeps off the gate's board", "board " .. show(brd) .. " plank " .. show(r))
+								end
+								seen(r)
+								homeCheck()
 								local under = {}
 								for _, piece in ipairs(hudPieces()) do
 									if overlap(r, piece.rect) then
@@ -1680,6 +1749,7 @@ local function clientScenarios()
 						Mock.HidePrompt(prompt)
 					end)
 					KC.advance(0.2)
+					T.check(board.Enabled == true, tag .. ": the gate's board shows again once the guide ends")
 				end
 			end
 		end)
