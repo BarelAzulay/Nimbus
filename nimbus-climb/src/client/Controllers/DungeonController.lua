@@ -2381,6 +2381,13 @@ function R.placeChip(w, h, top, view)
 		left, right = left + (under.x1 - right), under.x1
 		y = drop(left, right)
 	end
+	if S.ChipCompact and right > w - 4 - (K.CHIP_BTN_OUT + K.CHIP_BTN_SHADOW) then
+		-- (keys look r4: the Leave button alone, flush with the list, put its bevel and shadow 1.4 px from the screen's right
+		-- edge at 640 x 360) its ink keeps 4 px off the edge, as the list's target bracket does
+		local most = w - 4 - (K.CHIP_BTN_OUT + K.CHIP_BTN_SHADOW)
+		left, right = left - (right - most), most
+		y = drop(left, right)
+	end
 	-- (the card's 4 px lip band stays under the body, empty: the button fills the body from the chip's top edge)
 	U.Chip.Root.Size = UDim2.fromOffset(width, S.ChipCompact and (K.CHIP_LEAVE_H + 4) or K.CHIP_H)
 	U.Chip.Root.Position = UDim2.fromOffset(math.floor(left + 0.5), y - top)
