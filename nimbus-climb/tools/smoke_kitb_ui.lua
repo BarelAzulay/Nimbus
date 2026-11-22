@@ -16055,10 +16055,23 @@ local function clientScenarios()
 				local want = Hd.m.Compact and 14 or 20
 				T.check((n == want or (n < want and n >= 6 and card.AbsoluteSize.X / k < 400)) and thin == 0,
 					tag .. ": the HP is " .. want .. " chunky blocks (a narrow card fewer, each >= 12 px)", fmt("%d blocks, %d thin", n, thin))
-				-- no image id today: no portrait, the track starts at the card's inner left
+				-- no image id today. (keys lane, look review fixA r1: the PC strip with no portrait "reads as a generic bar"; the
+				-- lane's brief: keep the reserved slot / its fallback) a PC keeps the head's 74 px slot, the sunk well with the
+				-- gold pixel crown and no image, the track right of it; a phone keeps the spec's no-portrait fallback, the track
+				-- at the card's inner left (its narrower strip needs the room)
 				local portrait = top:FindFirstChild("Portrait", true)
-				T.check((portrait == nil or not U8.shown(portrait)) and hr.X - cr.X <= 14 * k, tag .. ": no boss head id: no portrait, the card still whole (the track at its left)",
-					fmt("track from %.0f, card %.0f", hr.X, cr.X))
+				if Hd.m.Compact then
+					T.check((portrait == nil or not U8.shown(portrait)) and hr.X - cr.X <= 14 * k, tag .. ": no boss head id on a phone: no portrait, the card still whole (the track at its left)",
+						fmt("track from %.0f, card %.0f", hr.X, cr.X))
+				else
+					local crown = portrait and portrait:FindFirstChild("Crown")
+					local img = portrait and portrait:FindFirstChild("Head")
+					local pr = portrait and U8.rect(portrait)
+					T.check(portrait and U8.shown(portrait) and crown and U8.shown(crown) and crown:GetAttribute("PixelIcon") == "crown" and not (img and U8.shown(img))
+						and math.abs(portrait.AbsoluteSize.X / k - 74) < 0.6 and P2.inside(pr, cr) and hr.X >= pr.R,
+						tag .. ": no boss head id on a PC: the head's 74 px slot keeps its place with the gold crown, the track right of it",
+						pr and fmt("slot %s, track from %.0f", U8.show(pr), hr.X) or "no slot")
+				end
 			end
 			-- the pills: the element and the players on every size, each inside the card, none on another
 			local pills = top:FindFirstChild("Pills")
