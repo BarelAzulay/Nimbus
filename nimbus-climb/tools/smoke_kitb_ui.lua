@@ -13712,6 +13712,51 @@ local function clientScenarios()
 					fmt("%d ticks | ", ticks) .. table.concat(off, "; "))
 			end)
 		end
+		-- (P2 icons look pol0, major: at 360 x 640 the tiles are 60 px tall, an 11 px art row between the day and the amount,
+		-- and the claimed tick, the screen's fixed 36 px art size, covered "Day 1" / "Day 2" and "$400" / "50" half) every
+		-- shown claimed tick, its drawn cells, clear of its tile's day line and amount line (each line its TextSize tall,
+		-- centred in its box) and inside the tile, on every screen (the 360 x 640 phone too)
+		local function tickClear(s, id)
+			Config.IconSheet.Id = id
+			U94.at(s[1], s[2], s[3], "daily tick" .. (id > 0 and "" or " (no sheet)"), "Daily", "", function(tag, holder)
+				local over, ticks = {}, 0
+				local function line(t)
+					local r = U8.rect(t)
+					local k = t.AbsoluteSize.Y / math.max(1, t.Size.Y.Offset)
+					local h = t.TextSize * k
+					local y = r.Y + (r.B - r.Y - h) / 2
+					return { X = r.X, Y = y, R = r.R, B = y + h }
+				end
+				for i = 1, 6 do
+					local cell = holder:FindFirstChild("Cell" .. i, true)
+					local host = cell and cell:FindFirstChild("Check", true)
+					local tick = host and host:FindFirstChild("Icon")
+					if host and U8.shown(host) and tick then
+						ticks = ticks + 1
+						local a = { X = math.huge, Y = math.huge, R = -math.huge, B = -math.huge }
+						for _, d in ipairs(tick:GetDescendants()) do
+							if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 and (d.BackgroundTransparency < 0.99 or d:IsA("ImageLabel")) then
+								local q = U8.rect(d)
+								a = { X = math.min(a.X, q.X), Y = math.min(a.Y, q.Y), R = math.max(a.R, q.R), B = math.max(a.B, q.B) }
+							end
+						end
+						local root = U8.rect(cell)
+						local bad = a.X < root.X - 0.5 or a.R > root.R + 0.5 or a.Y < root.Y - 0.5 or a.B > root.B + 0.5
+						for _, name in ipairs({ "Day", "Amount" }) do
+							local t = cell:FindFirstChild(name, true)
+							if t and U8.shown(t) and t.Text ~= "" and U8.overlap(a, line(t)) then
+								bad = true
+							end
+						end
+						if bad then
+							over[#over + 1] = fmt("Cell%d tick %s", i, U8.show(a))
+						end
+					end
+				end
+				T.check(ticks >= 1 and #over == 0, tag .. ": each claimed day's tick clear of its day line and its amount, inside its tile",
+					fmt("%d ticks | ", ticks) .. table.concat(over, "; ", 1, math.min(#over, 4)))
+			end)
+		end
 		local ok, err = pcall(function()
 			check({ 1920, 1080, false }, 4242424242, 72, 4, true)
 			check({ 1280, 720, false }, 4242424242, 72, 3, true)
@@ -13719,6 +13764,10 @@ local function clientScenarios()
 			check({ 390, 844, true }, 4242424242, 54, 3, true)
 			check({ 1920, 1080, false }, 0, 72, 8, false)
 			check({ 390, 844, true }, 0, 54, 6, false)
+			for _, s in ipairs({ { 360, 640, true }, { 390, 844, true }, { 640, 360, true }, { 1280, 720, false } }) do
+				tickClear(s, 4242424242)
+				tickClear(s, 0)
+			end
 		end)
 		Config.IconSheet.Id = saved
 		T.check(ok, "daily reward art: the checks ran", tostring(err))
@@ -17641,8 +17690,12 @@ local function clientScenarios()
 		local function meets(a, b2)
 			return a[1] < b2[1] + b2[3] - 0.5 and b2[1] < a[1] + a[3] - 0.5 and a[2] < b2[2] + b2[4] - 0.5 and b2[2] < a[2] + a[4] - 0.5
 		end
+		-- (P2 icons look pol0, major: at 640 x 360 and 667 x 375 the vault drew 61 x 69 and the Cloud machine 53 x 61, 1 px
+		-- cells, in a mostly empty stage: the stages were 5 - 12 px too short for 2 px cells; these sizes were never walked)
+		-- the shorter landscape phones' real Eggs pages too (render_gui: 488 x 250 at 640 x 360, 515 x 265 at 667 x 375)
 		for _, m in ipairs({ { "PC", { W = 1240, H = 834 }, nil, 3, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, 2, "PC" },
-			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
+			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Phone 667", { W = 515, H = 265 }, nil, 2, "Phone" },
+			{ "Phone 640", { W = 488, H = 250 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
 			local scale, want = m[3] or 1, m[4]
 			local ok, err = machinesPage(m[5], m[2], function(roots)
 				local wrong, offsets, shown = {}, {}, 0
@@ -17710,7 +17763,7 @@ local function clientScenarios()
 				-- so here it HIDES rather than overlap the vault or clip (an open layout call for the owner, logged in the merge
 				-- report). The check: when it shows, it is inside the card, over the chip, its rows fit; it never shows clipped.
 				-- Today's drawn machine (MachineSheet.Id 0, what ships) keeps the full-width line: travel_shows_way checks it.
-				if m[1] == "Phone" then
+				if m[5] == "Phone" then
 					local hc = roots.Secret and roots.Secret.Parent
 					local hint = hc and hc:FindFirstChild("Hint")
 					local TX = U7.client("UI/ShopEggs").Metrics.TEXT
@@ -17897,7 +17950,8 @@ local function clientScenarios()
 			{ "at the altar", TX.HeroHintHere, false, true, true, false },
 		}
 		local SCREENS = { { "PC", { W = 1240, H = 834 }, nil, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, "PC" },
-			{ "Phone", { W = 692, H = 280 }, nil, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, "Portrait" },
+			{ "Phone", { W = 692, H = 280 }, nil, "Phone" }, { "Phone 667", { W = 515, H = 265 }, nil, "Phone" },
+			{ "Phone 640", { W = 488, H = 250 }, nil, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, "Portrait" },
 			{ "Portrait 360", { W = 320, H = 552 }, nil, "Portrait" } }
 		local saved = ms.Id
 		for _, sheetId in ipairs({ 5151515151, 0 }) do
@@ -17912,7 +17966,7 @@ local function clientScenarios()
 						return
 					end
 					local old = { lp:GetAttribute("PaidRandomItemsRestricted"), lp:GetAttribute("InMatch"), SE._AtAltar, SE._InLobby }
-					local wrong = {}
+					local wrong, chipCut = {}, {}
 					for _, st in ipairs(STATES) do
 						lp:SetAttribute("PaidRandomItemsRestricted", st[3])
 						lp:SetAttribute("InMatch", st[6] or nil)
@@ -17965,7 +18019,25 @@ local function clientScenarios()
 						if why ~= "" then
 							wrong[#wrong + 1] = st[1] .. ": " .. why
 						end
+						-- (P2 icons look pol0, major: on the 360-wide portrait hero with the sheets the altar chip read "At the
+						-- Storm Al." and its padlock sat on the chip's left wood edge: a 158 px chip less the padlock's 26 px left
+						-- 132 for a 137 px line; this check read the hint against the chip's box, never the chip's own text) the
+						-- altar chip's line whole in its padded room (2 px spare), the padlock inside the chip
+						local ach = hero:FindFirstChild("AltarChip")
+						if ach and shown(ach, page) then
+							local pad = ach:FindFirstChildOfClass("UIPadding")
+							local room = ach.Size.X.Offset - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0)
+							local tw = RealWidth(ach.Text, ach.TextSize, Theme.FontOf(ach), true) or Theme.MeasureLabel(ach, ach.Text, ach.TextSize).X
+							local lead = ach:FindFirstChild("LeadIcon")
+							if tw + 2 > room then
+								chipCut[#chipCut + 1] = fmt("%s: '%s' %.1f px in %.0f", st[1], ach.Text, tw, room)
+							elseif lead and lead.AbsolutePosition.X < ach.AbsolutePosition.X + 1 then
+								chipCut[#chipCut + 1] = fmt("%s: the padlock at %.0f, the chip at %.0f", st[1], lead.AbsolutePosition.X, ach.AbsolutePosition.X)
+							end
+						end
 					end
+					T.check(#chipCut == 0, "hero hints (" .. m[1] .. ", " .. look .. "): the altar chip's line reads whole in its chip, the padlock inside it",
+						table.concat(chipCut, "; "))
 					lp:SetAttribute("PaidRandomItemsRestricted", old[1])
 					lp:SetAttribute("InMatch", old[2])
 					SE._AtAltar, SE._InLobby = old[3], old[4]
@@ -18047,8 +18119,12 @@ local function clientScenarios()
 				end
 			end
 		end
+		-- (P2 icons look pol0, major: at 640 x 360 every odds chip read "..." for its percent, the chips 41 x 37 after the
+		-- fin1 spacing fix; this check walked 844 x 390 only) the shorter landscape phones' pages too (render_gui's 488 x 250
+		-- at 640 x 360, 515 x 265 at 667 x 375)
 		for _, m in ipairs({ { "PC", { W = 1240, H = 834 }, nil, 3, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, 2, "PC" },
-			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
+			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Phone 667", { W = 515, H = 265 }, nil, 2, "Phone" },
+			{ "Phone 640", { W = 488, H = 250 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
 			local want = m[4]
 			local ok, err = machinesPage(m[5], m[2], function(roots)
 				local wrong, cramped, n = {}, {}, 0
@@ -18145,7 +18221,7 @@ local function clientScenarios()
 				-- wood edges (both UIStrokes counted, screen px): 3 or more on the landscape phone (the phone mock-up has
 				-- about 7), and the name plate's edge 3 or more over the grid there; elsewhere never fused (1 or more:
 				-- 2 at 1920 and 390, ~1 at 1280, the chips' gap left as it is)
-				local apartNeed = m[1] == "Phone" and 3 or 1
+				local apartNeed = m[5] == "Phone" and 3 or 1
 				local tight = {}
 				local function edgeGap(a, b2)
 					local ta, tb = strokeOf(a) * scale, strokeOf(b2) * scale
@@ -18173,7 +18249,7 @@ local function clientScenarios()
 						end
 					end
 					local plate = body and body:FindFirstChild("NamePlate")
-					if m[1] == "Phone" and plate and plate.Visible then
+					if m[5] == "Phone" and plate and plate.Visible then
 						for _, row in ipairs(rows) do
 							local g = edgeGap(plate, row)
 							if g < apartNeed - 0.01 then
@@ -18183,7 +18259,7 @@ local function clientScenarios()
 					end
 				end
 				T.check(#tight == 0, "egg chips (" .. m[1] .. "): " .. apartNeed .. " screen px or more of cream between neighbouring chips' wood edges"
-					.. (m[1] == "Phone" and " and under the name plate's" or ""), table.concat(tight, "; ", 1, math.min(#tight, 6)))
+					.. (m[5] == "Phone" and " and under the name plate's" or ""), table.concat(tight, "; ", 1, math.min(#tight, 6)))
 			end, m[3], true)
 			T.check(ok, "egg chips (" .. m[1] .. "): the page builds and lays out", tostring(err))
 		end

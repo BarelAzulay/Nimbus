@@ -1621,8 +1621,11 @@ function H.placeTile(cell, M, today, wide)
 	cell.ArtPx = H.rewardPx(cell.ChipPx, M)
 	-- (U9-4 look review) the tick at the screen's art size (6 px cells on PC, 4 on a phone); (P2 icons look fin0, minor:
 	-- it kept the tile's centre when the art grew, 11 px low and 4 px right of it) centred on the reward's chip, as
-	-- H.paintArt places it (centred with the art's drop shadow in the art box)
-	local tick = H.px("Art")
+	-- H.paintArt places it (centred with the art's drop shadow in the art box). (P2 icons look pol0, major: on the 360 x 640
+	-- phone the tiles are 60 px tall, an 11 px art row, and the 36 px tick covered half of "Day 1" and "$400") the largest
+	-- of the screen's two pixel sizes that fits the room from the day line's foot to the amount line's top (each line its
+	-- TextSize tall, centred in its box: the art row + 2 + 1 over it, + 1 + 3 under it)
+	local tick = H.fitPx(artH + 7)
 	local check = hostSize(tick)
 	cell.Check.TextSize = check
 	local drop = math.ceil(cell.ArtPx / 9)
