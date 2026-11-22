@@ -14755,10 +14755,32 @@ local function clientScenarios()
 					table.sort(out)
 					return out
 				end
-				-- (look review) the Shop's Spin row: the coin in its deep gold (Sign.GoldLip), the price in the Button role in the
-				-- plank's brown, inline after the label (no tag box), the coin's cells on whole px
-				local ink = coinInk()
-				T.check(#ink == 1 and ink[1] == hex(Sign.GoldLip), tag .. ": the token coin is drawn in the Shop's deep gold (Sign.GoldLip)", table.concat(ink, ", "))
+				-- (Pitch 2 item 9 B "Carved soft", the owner's pick; mock-up PITCH2/C_icons_machines/09_optB_shop.png) the Shop's
+				-- Spin coin is the redrawn Cloud Token in its own colours (PixelIcon.Art.token), so the coin that matches it is too:
+				-- the colours a PixelIcon.Own "token" draws, armed (grey false) or greyed (PixelIcon.Grey, the disabled state)
+				local PI = LoadingH.shared("PixelIcon")
+				local function tokenInk(grey)
+					local ref = PI and PI.New(nil, "token", 27, PI.Own)
+					local out, seen = {}, {}
+					if ref then
+						PI.Grey(ref, grey)
+						for _, d in ipairs(ref:GetChildren()) do
+							local h = d:IsA("Frame") and d.BackgroundTransparency < 0.5 and hex(d.BackgroundColor3)
+							if h and not seen[h] then
+								seen[h], out[#out + 1] = true, h
+							end
+						end
+						ref:Destroy()
+					end
+					table.sort(out)
+					return out
+				end
+				-- (look review) the Shop's Spin row: the coin as the Shop draws it, the price in the Button role in the plank's
+				-- brown, inline after the label (no tag box), the coin's cells on whole px. Was "one ink, the deep gold
+				-- Sign.GoldLip": the one-ink coin item 9 B replaced (not weaker: the exact colour set is still pinned)
+				local ink, wantInk = coinInk(), tokenInk(false)
+				T.check(#wantInk >= 2 and table.concat(ink, ", ") == table.concat(wantInk, ", "), tag .. ": the token coin is the Shop's Spin coin: item 9 B's carved token in its own colours",
+					table.concat(ink, ", ") .. " / want " .. table.concat(wantInk, ", "))
 				local lr, cr = ap.Label and U8.rect(ap.Label), ap.Coin and U8.rect(ap.Coin)
 				local pr = ap.Price and U8.rect(ap.Price)
 				local br = ap.Body and U8.rect(ap.Body)
@@ -14851,12 +14873,25 @@ local function clientScenarios()
 				local body = ap.Body
 				T.check(body ~= nil and sameColor(body.BackgroundColor3, Sign.Well) and ap.Label and sameColor(ap.Label.TextColor3, Sign.TextMuted),
 					tag .. ": a disabled Spin again is the sunk Off well with muted words", body and hex(body.BackgroundColor3) or "no body")
-				local offInk = coinInk()
-				T.check(#offInk == 1 and offInk[1] == hex(Sign.TextMuted), tag .. ": ...its coin muted with the price", table.concat(offInk, ", "))
+				-- (Pitch 2 item 9 B) the carved coin mutes as an own-colour icon does: every colour its grey twin (PixelIcon.Grey,
+				-- the sheet's greyed-row rule); was one ink, Sign.TextMuted, which only the replaced one-ink coin could take
+				local offInk, greyInk = coinInk(), tokenInk(true)
+				T.check(#greyInk >= 2 and table.concat(offInk, ", ") == table.concat(greyInk, ", ") and table.concat(greyInk, ", ") ~= table.concat(wantInk, ", "),
+					tag .. ": ...its coin muted with the price (greyed: PixelIcon.Grey)", table.concat(offInk, ", ") .. " / want " .. table.concat(greyInk, ", "))
 				local offBad = U94.contrast("NimbusHatch")
 				T.check(#offBad == 0, fmt("%s: disabled, every text still reads on its fill (%d not)", tag, #offBad), table.concat(offBad, "; ", 1, math.min(#offBad, 8)))
+				-- (Pitch 2 item 9 B) a layout that resizes the coin while disabled (PixelIcon.Host draws a new icon) lands it greyed
+				local c0, ts0, ph0 = ap.Coin and ap.Coin.Size.X.Offset or 30, ap.Label and ap.Label.TextSize or 22, again:GetAttribute("Phone") == true
+				HL.SizePill(again, ts0, ph0, c0 + 10)
+				LKC.advance(0.1)
+				local resizedInk = coinInk()
+				HL.SizePill(again, ts0, ph0, c0)
+				LKC.advance(0.1)
+				T.check(table.concat(resizedInk, ", ") == table.concat(greyInk, ", ") and table.concat(coinInk(), ", ") == table.concat(greyInk, ", "),
+					tag .. ": ...and a coin redrawn by a resize while disabled lands greyed", table.concat(resizedInk, ", "))
 				CloudUI.SetDisabled(again, false)
 				LKC.advance(0.1)
+				T.check(table.concat(coinInk(), ", ") == table.concat(wantInk, ", "), tag .. ": ...and armed again, the coin's own colours come back", table.concat(coinInk(), ", "))
 				local lip = body and body:FindFirstChild("Lip")
 				local k = U8.scaleOf(body)
 				local rest = { lip and lip.AbsoluteSize.Y or 0, ap.Label and ap.Label.AbsolutePosition.Y or 0 }
