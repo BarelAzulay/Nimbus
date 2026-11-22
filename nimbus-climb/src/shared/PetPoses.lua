@@ -167,6 +167,9 @@ local GLANCE_CELL = 3 -- one glance per cell, starting 0..1 s into it: 2-4 s bet
 local GLANCE_TIME = 1.1
 -- (battle-feel T2; Pitch 2 item 5 "Bounce in" A) the dash: Melee.In 0.30 s of hops, then the 0.12 s chomp
 PetPoses.DASH_RUN = 5 / 7 -- DashIn's / DashBite's hops end (the bite lands) at this p
+-- DashIn's nod on the front paws: this share of the run's hops (AttackFx gives it at least 0.04 s of a short run: look
+-- review r2 minor, the owner's 0.25 s wind-up leaves a 0.20 s run)
+PetPoses.DASH_NOD = { 13 / 30, 17 / 30 }
 PetPoses.WINDUP_LOAD = 0.82 -- the melee Windup's deepest load (a dash's wind-up ends here; DashIn starts from it)
 -- (gate review r0, major 1) the melee Windup in real seconds (Sample's `reach` = its length; AttackFx passes the Dur)
 PetPoses.TREMBLE_HZ = 12.5 -- the tremble while the telegraph is up (the strip's 13 Hz)
@@ -601,13 +604,14 @@ POSES.DashIn = function(f, p, _, amp, reachIn, feet)
 	local k = hopK() * heavyOf(feet)
 	local u = seg(p, 0, R) -- through Melee.In: hop 0.13 s, nod 0.04, hop-bite 0.13
 	local mid = -0.48 * reach
+	local na, nb = PetPoses.DASH_NOD[1], PetPoses.DASH_NOD[2]
 	if p < R then
-		if not hop(f, u, 0, 13 / 30, 0, mid, BH.In1 * k, 15, -6) then
-			if u < 17 / 30 then -- the nod: landed on the front paws, the nose dips and comes up (dust)
+		if not hop(f, u, 0, na, 0, mid, BH.In1 * k, 15, -6) then
+			if u < nb then -- the nod: landed on the front paws, the nose dips and comes up (dust)
 				f.z = mid
-				f.pitch = keys(u, { 13 / 30, -6, 15 / 30, -10, 17 / 30, -2 })
+				f.pitch = keys(u, { na, -6, 0.5 * (na + nb), -10, nb, -2 })
 			else
-				hop(f, u, 17 / 30, 1, mid, -reach, BH.In2 * k, -2, -15)
+				hop(f, u, nb, 1, mid, -reach, BH.In2 * k, -2, -15)
 			end
 		end
 	else

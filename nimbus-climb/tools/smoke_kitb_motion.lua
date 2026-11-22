@@ -712,11 +712,21 @@ local function clientScenarios()
 
 	-- (review minor: "the fighter's chomp stays 0.12 s, no frozen 0.07 s": a 0.20 s run squeezed DashIn's chomp to 0.08 s
 	-- and froze the pet upright until the way home) how long after the hit stop the bite's pose (`name`) reaches its
-	-- upright hold (p 1): the chomp's length
+	-- upright hold (p 1): the chomp's length. (look review r2 minor: the chomp now goes straight into the hop back, so the
+	-- bite's pose may never be drawn upright: the chomp is also over on the first DashBack frame, when the bite's pose was
+	-- within a frame of its end, p >= 0.97, not cut mid-bite)
 	local function chompOf(frames, landT, name)
+		local lastP = nil
 		for _, f in ipairs(frames) do
-			if f.T > landT + STOP + 1e-6 and f.Name == name and type(f.P) == "number" and f.P >= 1 - 1e-6 then
-				return f.T - (landT + STOP)
+			if f.T > landT + STOP + 1e-6 then
+				if f.Name == name and type(f.P) == "number" and f.P >= 1 - 1e-6 then
+					return f.T - (landT + STOP)
+				elseif f.Name == "DashBack" and lastP and lastP >= 0.97 then
+					return f.T - (landT + STOP)
+				end
+			end
+			if f.Name == name then
+				lastP = f.P
 			end
 		end
 		return nil
@@ -891,7 +901,8 @@ local function clientScenarios()
 						backAt = f.T
 					end
 				end
-				T.check(upAt ~= nil and backAt ~= nil and backAt - upAt <= DT + 1e-6,
+				-- (never drawn upright = no hold at all, the chomp whole: nChomp above)
+				T.check(nChomp ~= nil and backAt ~= nil and (upAt == nil or backAt - upAt <= DT + 1e-6),
 					fmt("bounce timing: %s: no level hold after the chomp: upright at %s, the hop back at %s (<= 1 frame at 120 Hz)", look[3],
 						upAt and fmt("%+.3f", upAt - land) or "never", backAt and fmt("%+.3f", backAt - land) or "never"))
 				-- (look review r2 minor: "the nod on the front paws lasts 0.027 s, under 2 frames at 60 fps, so hop, nod, hop-bite
@@ -1064,7 +1075,7 @@ local function clientScenarios()
 					end
 				end
 				local fNodA, fNodB = crossAt("DashIn", 13 / 30 * PP.DASH_RUN), crossAt("DashIn", 17 / 30 * PP.DASH_RUN)
-				T.check(fUp ~= nil and fBack ~= nil and fBack - fUp <= DT + 1e-6 and fNodA ~= nil and fNodB ~= nil and fNodB - fNodA >= 2 / 60 - 1e-4,
+				T.check(fChomp ~= nil and fBack ~= nil and (fUp == nil or fBack - fUp <= DT + 1e-6) and fNodA ~= nil and fNodB ~= nil and fNodB - fNodA >= 2 / 60 - 1e-4,
 					fmt("bounce timing: %s: the fighter's nod lasts %s s (>= 2 frames at 60 fps), no level hold after its chomp (upright %s, back %s)", look[3],
 						(fNodA and fNodB) and fmt("%.4f", fNodB - fNodA) or "?", fUp and fmt("%+.3f", fUp - fLand) or "never", fBack and fmt("%+.3f", fBack - fLand) or "never"))
 				bodies = {}

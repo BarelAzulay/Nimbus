@@ -268,6 +268,14 @@ local K = {
 	-- the chomp after a bite (DashIn / DashBite p DASH_RUN .. 1), this long whatever the run (review minor: a segment's
 	-- Knee times its run apart from its chomp; a 0.20 s run squeezed it to 0.08 s, then the pet froze upright 0.07 s)
 	CHOMP = 0.12,
+	-- (look review r2 minor: "after the chomp the biter holds level at the face 2 frames before DashBack; in the mock the
+	-- chomp goes straight into the hop back") a way home due less than this after the chomp ends leaves when it ends (the
+	-- mock's hit + 0.17; Bite + Hold 0.20 left a 0.03 s level hold); a longer Bite + Hold still holds at the face
+	HOLD_SNAP = 0.05,
+	-- (look review r2 minor) a DashIn's nod on the front paws lasts at least this (the mock's 0.04 s: 2 frames at 60 fps)
+	-- however short its run; the two hops take the rest
+	NOD_MIN = 0.04,
+	NOD = { 13 / 30, 17 / 30 }, -- PetPoses.DASH_NOD (its own value wins when it loads)
 	BITE_MIN = 0.12, -- a flurry bite's rebound + hop-bite get at least this long (a quicker tempo squeezes them)
 	-- (review minor: "fast-tempo bite 1 rebounds at hit + 0.15", the approved mock's) a flurry's next run leaves as soon as
 	-- the mouth is done: the chomp squeezed to FLURRY_CHOMP (ending level), a Double strike's second chomp, a Thorns hop
@@ -3201,11 +3209,47 @@ end
 -- (Pitch 2 item 5, review minor: the chomp lasts K.CHOMP whatever the run) a segment's p at `el` seconds of its own time
 -- (the hit stop left out): linear over Dur, or with a Knee (a dash bite: Knee = its run's seconds, KneeP = DASH_RUN)
 -- 0 .. KneeP over the run and KneeP .. 1 over the rest (the chomp)
+-- (look review r2 minor: "the nod on the front paws lasts 0.027 s, under 2 frames at 60 fps" in the 0.20 s run the
+-- owner's 0.25 s wind-up leaves) a DashIn's run (s.Nod = PetPoses.DASH_NOD: its nod's share of the run's hops) gives the
+-- nod at least K.NOD_MIN seconds; the two hops share the rest in their own proportion. run = the knee's seconds, u = the
+-- run's time fraction -> the pose's fraction of the run (identity when the nod already lasts that long)
+local function nodSplit(s, run)
+	local a, b = s.Nod[1], s.Nod[2]
+	local n = min(0.5 * run, max((b - a) * run, K.NOD_MIN))
+	local rest = run - n
+	return a, b, n, rest * a / (1 - (b - a)), rest * (1 - b) / (1 - (b - a))
+end
+
+local function nodWarp(s, run, u)
+	local a, b, n, h1, h2 = nodSplit(s, run)
+	local t = u * run
+	if t < h1 then
+		return a * t / h1
+	elseif t < h1 + n then
+		return a + (b - a) * (t - h1) / n
+	end
+	return b + (1 - b) * clamp01((t - h1 - n) / max(1e-9, h2))
+end
+
+local function nodTime(s, run, v)
+	local a, b, n, h1, h2 = nodSplit(s, run)
+	if v <= a then
+		return v / a * h1
+	elseif v <= b then
+		return h1 + (v - a) / (b - a) * n
+	end
+	return h1 + n + (v - b) / (1 - b) * h2
+end
+
 local function segP(s, el)
 	local kn, kp = s.Knee, s.KneeP
 	if kn and kp and kn > 0 and s.Dur > kn then
 		if el <= kn then
-			return kp * clamp01(el / kn)
+			local u = clamp01(el / kn)
+			if s.Nod then
+				u = nodWarp(s, kn, u)
+			end
+			return kp * u
 		end
 		return kp + (1 - kp) * clamp01((el - kn) / (s.Dur - kn))
 	end
@@ -3217,6 +3261,9 @@ local function segTime(s, p)
 	local kn, kp = s.Knee, s.KneeP
 	if kn and kp and kn > 0 and s.Dur > kn then
 		if p <= kp then
+			if s.Nod then
+				return nodTime(s, kn, p / kp)
+			end
 			return p / kp * kn
 		end
 		return kn + (p - kp) / (1 - kp) * (s.Dur - kn)
@@ -4361,8 +4408,12 @@ local function beats()
 		local x = PP and PP[key]
 		return finite(x) and x > 0 and x or K[key]
 	end
+	local nod = PP and PP.DASH_NOD
+	if not (type(nod) == "table" and finite(nod[1]) and finite(nod[2]) and nod[1] > 0 and nod[2] > nod[1] and nod[2] < 1) then
+		nod = K.NOD
+	end
 	return { Run = v("DASH_RUN"), Load = v("WINDUP_LOAD"), BackPose = v("BACK_POSE"), DoubleDur = v("DOUBLE_DUR"), DoubleBite = v("DOUBLE_BITE"),
-		ThornDur = v("THORN_DUR"), ThornBack = v("THORN_BACK"), Bounce = v("READY_BOUNCE") }
+		ThornDur = v("THORN_DUR"), ThornBack = v("THORN_BACK"), Bounce = v("READY_BOUNCE"), Nod = nod }
 end
 
 -- (Pitch 2 item 5) the flurry's ready bounce on the spot from `from` until the way home, whole bounces only (it ends
@@ -4415,6 +4466,14 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	local inS = feelNum(M.In, 0.3)
 	local land = landAt
 	local bk = flurry and (land + below) or (land + feelNum(M.Bite, 0.08) + feelNum(M.Hold, 0.12))
+	if not flurry then
+		-- (look review r2 minor) the chomp goes straight into the hop back (the mock's hit + 0.17): no level hold of under
+		-- HOLD_SNAP (drawing only: the server's strike window is unchanged)
+		local up = land + AttackFx.HIT_STOP + K.CHOMP
+		if bk > up and bk - up <= K.HOLD_SNAP then
+			bk = up
+		end
+	end
 	local entry = St.poses[unit]
 	local d = entry and entry.Dash
 	local state = dashState(entry, now)
@@ -4512,8 +4571,9 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	local feet = (state == "back" and d and d.Feet) or feetOf(s.Model)
 	local run = max(0.05, land - t0)
 	-- (review minor) its run (Knee) to DASH_RUN, then the chomp K.CHOMP whatever the run (a 0.20 s run squeezed it to 0.08 s)
+	-- (look review r2 minor) Nod: its nod lasts at least NOD_MIN however short the run (segP)
 	local segIn = { Name = "DashIn", T0 = t0, Dur = run + K.CHOMP, Knee = run, KneeP = B.Run, Reach = edge - fwd, Forward = fwd, Until = bk, StopAt = land,
-		StopDur = AttackFx.HIT_STOP, Feet = feet }
+		StopDur = AttackFx.HIT_STOP, Feet = feet, Nod = B.Nod }
 	-- (Pitch 2 item 5) the way home lasts Melee.Back x BACK_POSE: two hops home by Melee.Back, then the settle on the spot
 	local segBack = { Name = "DashBack", T0 = bk, Dur = backDur * B.BackPose, Reach = edge, Feet = feet }
 	local segs = { segIn, segBack }
