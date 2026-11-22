@@ -871,13 +871,45 @@ local function clientScenarios()
 				local stopA, stopB = frameAt(land + 0.005), frameAt(land + STOP - 0.005)
 				T.check(edge ~= nil and reachAt ~= nil and abs(reachAt - land) <= DT + 1e-6 and stopA and stopB and abs(stopA.P - stopB.P) < 1e-6,
 					fmt("bounce timing: %s: the hop-bite lands on the face on the server's hit time (%.4f s off), the pose held over the hit stop", look[3], reachAt and (reachAt - land) or 99))
-				local bk = land + BITE + HOLD
+				-- (look review r2 minor: "after the chomp the biter holds level at the face 1.175 .. 1.208, 2 frames at 60 fps,
+				-- before DashBack; in the mock the chomp goes straight into the hop back") the way home leaves when the chomp
+				-- ends (the hit + STOP + 0.12: the mock's 1.17), not at the hit + Bite + Hold (0.20) 0.03 s later: no level
+				-- hold. (Was: "the way home starts at the hit + Bite + Hold".) A Bite + Hold that leaves the face longer still holds
+				local bk = land + STOP + 0.12
 				local hold1, back1 = frameAt(bk - 0.01), frameAt(bk + 0.02)
 				T.check(hold1 and hold1.Name == "DashIn" and back1 and back1.Name == "DashBack",
-					fmt("bounce timing: %s: the way home starts at the hit + Bite + Hold (%s then %s)", look[3], tostring(hold1 and hold1.Name), tostring(back1 and back1.Name)))
+					fmt("bounce timing: %s: the way home starts when the chomp ends, the hit + STOP + 0.12 (%s then %s)", look[3], tostring(hold1 and hold1.Name), tostring(back1 and back1.Name)))
 				local nChomp = chompOf(frames, land, "DashIn")
 				T.check(nChomp ~= nil and abs(nChomp - 0.12) <= DT + 1e-6,
 					fmt("bounce timing: %s: the NPC's chomp lasts 0.12 s after the hit stop whatever its run (%s s)", look[3], nChomp and fmt("%.3f", nChomp) or "never upright"))
+				local upAt, backAt = nil, nil
+				for _, f in ipairs(frames) do
+					if not upAt and f.T > land + STOP and f.Name == "DashIn" and (f.P or 0) >= 1 - 1e-6 then
+						upAt = f.T
+					end
+					if not backAt and f.Name == "DashBack" then
+						backAt = f.T
+					end
+				end
+				T.check(upAt ~= nil and backAt ~= nil and backAt - upAt <= DT + 1e-6,
+					fmt("bounce timing: %s: no level hold after the chomp: upright at %s, the hop back at %s (<= 1 frame at 120 Hz)", look[3],
+						upAt and fmt("%+.3f", upAt - land) or "never", backAt and fmt("%+.3f", backAt - land) or "never"))
+				-- (look review r2 minor: "the nod on the front paws lasts 0.027 s, under 2 frames at 60 fps, so hop, nod, hop-bite
+				-- plays as one blurred double hop"; the owner's 0.25 s wind-up stays, so the run is 0.20 s) the nod (DashIn's
+				-- 13/30 .. 17/30 of the run's hops) lasts at least 2 frames at 60 fps; the two hops share the rest
+				local function crossAt(name, pv)
+					for i = 2, #frames do
+						local a, b = frames[i - 1], frames[i]
+						if a.Name == name and b.Name == name and (a.P or 0) < pv and (b.P or 0) >= pv then
+							return a.T + (b.T - a.T) * (pv - a.P) / max(1e-9, b.P - a.P)
+						end
+					end
+					return nil
+				end
+				local nodA, nodB = crossAt("DashIn", 13 / 30 * PP.DASH_RUN), crossAt("DashIn", 17 / 30 * PP.DASH_RUN)
+				T.check(nodA ~= nil and nodB ~= nil and nodB - nodA >= 2 / 60 - 1e-4 and nodB < land,
+					fmt("bounce timing: %s: the nod on the front paws lasts %s s (>= 2 frames at 60 fps) inside the 0.20 s run", look[3],
+						(nodA and nodB) and fmt("%.4f", nodB - nodA) or "?"))
 				local homeF = frameAt(bk + 0.35 + 0.01)
 				T.check(homeF and homeF.Name == "DashBack" and abs(homeF.Fwd) < 0.12,
 					fmt("bounce timing: %s: two hops home by bk + 0.35 (forward %.3f)", look[3], homeF and homeF.Fwd or -1))
@@ -1021,6 +1053,20 @@ local function clientScenarios()
 				T.check(fChomp ~= nil and abs(fChomp - 0.12) <= DT + 1e-6,
 					fmt("bounce timing: %s: the fighter's chomp stays 0.12 s after the hit stop (%s s; its run is 0.20 s), no frozen hold before the way home", look[3],
 						fChomp and fmt("%.3f", fChomp) or "never upright"))
+				-- (look review r2 minors, as for the NPC above) the fighter's nod lasts 2 frames at 60 fps; no level hold
+				local fUp, fBack = nil, nil
+				for _, f in ipairs(frames) do
+					if not fUp and f.T > fLand + STOP and f.Name == "DashIn" and (f.P or 0) >= 1 - 1e-6 then
+						fUp = f.T
+					end
+					if not fBack and f.Name == "DashBack" then
+						fBack = f.T
+					end
+				end
+				local fNodA, fNodB = crossAt("DashIn", 13 / 30 * PP.DASH_RUN), crossAt("DashIn", 17 / 30 * PP.DASH_RUN)
+				T.check(fUp ~= nil and fBack ~= nil and fBack - fUp <= DT + 1e-6 and fNodA ~= nil and fNodB ~= nil and fNodB - fNodA >= 2 / 60 - 1e-4,
+					fmt("bounce timing: %s: the fighter's nod lasts %s s (>= 2 frames at 60 fps), no level hold after its chomp (upright %s, back %s)", look[3],
+						(fNodA and fNodB) and fmt("%.4f", fNodB - fNodA) or "?", fUp and fmt("%+.3f", fUp - fLand) or "never", fBack and fmt("%+.3f", fBack - fLand) or "never"))
 				bodies = {}
 				for _, f in ipairs(frames) do
 					if f.Body then
