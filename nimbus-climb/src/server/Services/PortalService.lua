@@ -1082,7 +1082,9 @@ local function refreshLabels(party)
 			party.LastInfoStars = stars
 			pcall(function()
 				if stars > 0 then
-					PixelIcon.Lead(info.InfoLabel, "star", { Count = stars, Of = stars, Colour = GOLD })
+					-- (look review fin0, minor) on the board's cream stone the kit's dark gold (Sign.GoldLip, as the HUD's
+					-- stars on its stone cards): the light gold read at ~1.5:1 there
+					PixelIcon.Lead(info.InfoLabel, "star", { Count = stars, Of = stars, Colour = Theme.Sign.GoldLip })
 				else
 					PixelIcon.Clear(info.InfoLabel)
 				end

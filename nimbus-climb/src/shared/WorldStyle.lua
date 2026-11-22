@@ -380,14 +380,18 @@ end
 -- tags" with A's hanging header for the place boards: the navy plate with the round corner, the neon border and the
 -- outlined white text went) a hanging board like the Storm Altar's header: a wood beam (lit top, dark foot) over two
 -- ropes, the stone board (a 3 px mitred wood edge, a 5 px lip in the gate's colour, two nail heads) holding the title
--- (Heading 28 px, brown ink), the info line (Body 20 px, muted ink) and the status pill (a kit block tinted from the gate's
--- colour, its lip in that colour, Label 18 px in brown ink). Readers keep their names: GateTag > Plate (the board) > Title,
+-- (Heading 28 px, brown ink), the info line (Heading 20 px, muted ink) and the status pill (a kit block tinted from the
+-- gate's colour, its lip in that colour, Heading 18 px in brown ink). Readers keep their names: GateTag > Plate (the board) > Title,
 -- Info, Pill > Label (PortalService writes the party state into them, DungeonService the floors board, ArenaBuilder the
 -- Ring board): the board is measured again whenever a line or its shown state changes. The client fits it to each screen
 -- (WorldTag.MarkFit on the Plate).
 --   WorldStyle.BuildTag(adornee, lift, spec, color) -> BillboardGui "GateTag"   spec: Title, Info, Pill, TagRange
 ----------------------------------------------------------------------
 local TAG_TITLE, TAG_INFO, TAG_PILL = 28, 20, 18
+-- (look review fin0, minor) the info line and the pill in the Storm Altar header's type (Heading), as the approved mock
+-- 04 B sets its 'Secret pets' / 'Secret Roulette': they were Body / Label, so the Altar's two boards set the same words in
+-- two fonts
+local TAG_ROLE = "Heading"
 local HB = {
 	Beam = 12, -- the beam's height
 	Over = 16, -- px the beam runs past the board's edge each side
@@ -457,7 +461,7 @@ function WorldStyle.BuildTag(adornee, lift, spec, color)
 	local title = WorldTag.Text(plate, "Title", spec.Title or spec.Id or "", "Heading", TAG_TITLE, Sign.Text, {
 		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4,
 	})
-	local info = WorldTag.Text(plate, "Info", spec.Info or "", "Body", TAG_INFO, Sign.TextMuted, {
+	local info = WorldTag.Text(plate, "Info", spec.Info or "", TAG_ROLE, TAG_INFO, Sign.TextMuted, {
 		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4,
 	})
 	info.Visible = (spec.Info or "") ~= ""
@@ -465,7 +469,7 @@ function WorldStyle.BuildTag(adornee, lift, spec, color)
 	local pill = frame(plate, "Pill", color, 4)
 	pill.AnchorPoint = Vector2.new(0.5, 0)
 	WorldTag.Block(pill, color, color, Sign.Wood, HB.PillEdge, HB.PillLip)
-	local label = WorldTag.Text(pill, "Label", spec.Pill or "", "Label", TAG_PILL, Sign.Text, {
+	local label = WorldTag.Text(pill, "Label", spec.Pill or "", TAG_ROLE, TAG_PILL, Sign.Text, {
 		Size = UDim2.new(1, 0, 1, -HB.PillLip), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
 	})
 	WorldTag.Tint(pill, color)
@@ -514,6 +518,46 @@ function WorldStyle.BuildTag(adornee, lift, spec, color)
 				lo = mid + 1
 			end
 		end
+		-- (look review fin0, minor) the greedy wrap at `at` breaks beside a " - " join (a name and its number:
+		-- 'Floors cleared here: Maximilianus99 -' / '12, Alexandrovich_X - 9')
+		local function parts(at)
+			local cur, prev = nil, nil
+			for _, word in ipairs(words) do
+				local try = cur and (cur .. " " .. word) or word
+				if cur == nil or m(try) <= at then
+					cur = try
+				else
+					if prev == "-" or word == "-" then
+						return true
+					end
+					cur = word
+				end
+				prev = word
+			end
+			return false
+		end
+		if parts(hi) then
+			-- the box that breaks clear of every join in the fewest lines (then the narrowest), from the widths of the
+			-- line's word runs that fit the limit (a greedy wrap's lines change only at those); none: the balanced box stays
+			local best, bestN = nil, math.huge
+			for i = 1, #words do
+				local acc = nil
+				for j = i, #words do
+					acc = acc and (acc .. " " .. words[j]) or words[j]
+					local at = m(acc)
+					if at > limit then
+						break
+					end
+					local n = wrap(at)
+					if (n < bestN or (n == bestN and at < best)) and not parts(at) then
+						best, bestN = at, n
+					end
+				end
+			end
+			if best then
+				hi, lines = best, bestN
+			end
+		end
 		local _, widest = wrap(hi)
 		return math.max(widest, hi) + padW, lines * lineH + 4, true
 	end
@@ -534,11 +578,11 @@ function WorldStyle.BuildTag(adornee, lift, spec, color)
 		local tW, tH, tWrap = lineBox(title, "Heading", TAG_TITLE, HB.MaxText)
 		local iW, iH, iWrap = 0, 0, false
 		if info.Visible then
-			iW, iH, iWrap = lineBox(info, "Body", TAG_INFO, HB.MaxText)
+			iW, iH, iWrap = lineBox(info, TAG_ROLE, TAG_INFO, HB.MaxText)
 		end
 		local lW, lH, lWrap, pillW = 0, 0, false, 0
 		if pill.Visible then
-			lW, lH, lWrap = lineBox(label, "Label", TAG_PILL, pillTextMax)
+			lW, lH, lWrap = lineBox(label, TAG_ROLE, TAG_PILL, pillTextMax)
 			pillW = lW + 2 * HB.PillPad + 2 * HB.PillEdge
 		end
 		local inner = math.max(tW, iW, pillW)

@@ -171,6 +171,8 @@ local K = {
 	SIGN_LIP = 4,
 	SIGN_PAD = 14,
 	SIGN_STUDS = 1.6,
+	SIGN_GAP = 0.5, -- (look review fin0) studs between the arrow's widest part and the sign (its offset: W.signStuds)
+	SIGN_DROP = 8, -- (look review fin0) px (1080p) between the arrow's tip and a sign hung under it (placeSign)
 	SIGN_LIFT = 1.5,
 	RESOLVE_RETRY = 2,
 	-- (Pitch 2 item 13 A) the travel guide's chip (1080p design px under the screen factor): a stone block (3 px wood
@@ -2766,12 +2768,17 @@ local function buildWorldGuide()
 		end
 	end
 	local list = {}
+	local wide = 0
 	for j = 1, K.ARROW_BANDS do
 		if bands[j] then
 			list[#list + 1] = bands[j]
+			wide = math.max(wide, bands[j].hx, bands[j].hz)
 		end
 	end
 	W.arrowBands = list
+	-- (look review fin0, minor) the GuideSign's edge stands K.SIGN_GAP studs past the arrow's widest part (SIGN_STUDS
+	-- 1.6 sat inside its ~2.4-stud head: the card hid the arrow's side, 3 px at 844x390, 12 at 1920)
+	W.signStuds = math.max(K.SIGN_STUDS, wide + K.SIGN_GAP)
 
 	-- (Pitch 2 item 13_travel_guide A, the owner's pick "Gold arrow + dot trail"; it was a glowing Beam of a sparkle strip
 	-- from the hip and a ring of Neon sparkles) the trail is flat gold dot blocks on the ground (Dots: a pool of
@@ -2790,11 +2797,11 @@ local function buildWorldGuide()
 	W.labelAnchor = anchor
 	local k = Theme.ScreenFactor()
 	-- beside the shaft, not over the arrow's head: the billboard's left edge on the axis (SizeOffset 0.5), moved
-	-- SIGN_STUDS right of it on the screen (StudsOffset), the card on its left edge
+	-- W.signStuds right of it on the screen (StudsOffset: past the arrow's widest part), the card on its left edge
 	local signGui = make("BillboardGui", "GuideSign", {
 		Size = UDim2.fromOffset(math.floor(K.SIGN_W * k), math.floor(K.SIGN_H * k)),
 		SizeOffset = Vector2.new(0.5, 0),
-		StudsOffset = Vector3.new(K.SIGN_STUDS, 0, 0),
+		StudsOffset = Vector3.new(W.signStuds or K.SIGN_STUDS, 0, 0),
 		AlwaysOnTop = true,
 		LightInfluence = 0,
 		MaxDistance = 4000,
@@ -3423,7 +3430,7 @@ local function signRect()
 	local k = W.signScale and W.signScale.Scale or 1
 	local w, h = card.Size.X.Offset * k, card.Size.Y.Offset * k
 	local e = K.SIGN_EDGE * k
-	local cy = (bb.y0 + bb.y1) / 2
+	local cy = (bb.y0 + bb.y1) / 2 + card.Position.Y.Offset -- (a sign hung under its arrow: its drop)
 	local x0 = bb.x0 + card.Position.X.Offset + card.Position.X.Scale * (bb.x1 - bb.x0) - card.AnchorPoint.X * w
 	return { x0 = x0 - e, y0 = cy - h / 2 - e, x1 = x0 + w + e, y1 = cy + h / 2 + e }
 end
@@ -3488,21 +3495,48 @@ local function grown(r, by)
 	return { x0 = r.x0 - by, y0 = r.y0 - by, x1 = r.x1 + by, y1 = r.y1 + by }
 end
 
--- the GuideSign right of the arrow's shaft (its left edge on the axis) or left of it (its right edge on the axis)
-local function setSignSide(left)
+-- the GuideSign right of the arrow's shaft (its left edge on the axis) or left of it (its right edge on the axis);
+-- `drop` (screen px, optional) moves the card from there (the sign hung under the arrow's tip)
+local function setSignSide(left, drop)
 	local gui, card = W.labelGui, W.signCard
 	if not (gui and card) then
 		return
 	end
-	W.signLeft = left
+	W.signLeft, W.signDrop = left, drop
 	gui.SizeOffset = Vector2.new(left and -0.5 or 0.5, 0)
-	gui.StudsOffset = Vector3.new(left and -K.SIGN_STUDS or K.SIGN_STUDS, 0, 0)
+	local studs = W.signStuds or K.SIGN_STUDS
+	gui.StudsOffset = Vector3.new(left and -studs or studs, 0, 0)
 	card.AnchorPoint = Vector2.new(left and 1 or 0, 0.5)
-	card.Position = left and UDim2.new(1, -K.SIGN_EDGE, 0.5, 0) or UDim2.new(0, K.SIGN_EDGE, 0.5, 0)
+	local dx, dy = drop and math.floor(drop.X + 0.5) or 0, drop and math.floor(drop.Y + 0.5) or 0
+	card.Position = left and UDim2.new(1, -K.SIGN_EDGE + dx, 0.5, dy) or UDim2.new(0, K.SIGN_EDGE + dx, 0.5, dy)
+end
+
+-- (look review fin0, minor) where neither side of the arrow is clear (390x844, the camera 20 degrees off: the arrow at
+-- the screen's right edge, the coin strip and the Gift button left of it, so the sign was wholly off the screen) the
+-- card hangs K.SIGN_DROP px (1080p) under the arrow's tip, centred on it and slid onto the screen -> drop or nil
+local function signDrop(area)
+	local a = arrowRect()
+	if not a then
+		return nil
+	end
+	local ax, ay = (a.x0 + a.x1) / 2, (a.y0 + a.y1) / 2
+	if ax < 0 or ax > area.X or ay < -topInset() or ay > area.Y then
+		return nil -- (the arrow itself off the screen: the sign stays beside it)
+	end
+	setSignSide(false)
+	local r = signRect()
+	if not r then
+		return nil
+	end
+	local k = W.signScale and W.signScale.Scale or 1
+	local w = r.x1 - r.x0
+	-- (1 px inside the gutters: setSignSide rounds the drop to whole px)
+	local x0 = math.max(K.EDGE + 1, math.min(ax - w / 2, area.X - K.EDGE - w - 1))
+	return Vector2.new(x0 - r.x0, a.y1 + K.SIGN_DROP * k - r.y0)
 end
 
 -- the GuideSign beside the arrow: right of its shaft, or (its right side off the screen or under the HUD while the left is
--- clear) left of it
+-- clear) left of it, or (neither side clear) under the arrow's tip (signDrop)
 local function placeSign()
 	local gui, card = W.labelGui, W.signCard
 	if not (gui and card and W.active) then
@@ -3526,19 +3560,24 @@ local function placeSign()
 		return false
 	end
 	local setSide = setSignSide
-	local was = W.signLeft == true
-	if blocked(signRect()) then
-		setSide(not was)
-		if blocked(signRect()) then
-			setSide(was) -- neither side is clear: it stays where it was
-		end
-	elseif was then
-		-- back to the right once the right side is clear
-		setSide(false)
-		if blocked(signRect()) then
-			setSide(true)
+	local was, wasDrop = W.signLeft == true, W.signDrop
+	-- right first (back to the right once it is clear), then left, then hung under the arrow
+	setSide(false)
+	if not blocked(signRect()) then
+		return
+	end
+	setSide(true)
+	if not blocked(signRect()) then
+		return
+	end
+	local drop = signDrop(area)
+	if drop then
+		setSide(false, drop)
+		if not blocked(signRect()) then
+			return
 		end
 	end
+	setSide(was, wasDrop) -- nowhere clear: it stays where it was
 end
 
 -- the chip's place: top centre under the top bar; a portrait phone: K.GUIDE_DOCK_GAP over the vitals card (and over the
@@ -3794,7 +3833,7 @@ function Guide.Stop()
 		G.gui:Destroy()
 	end
 	G.gui, G.chip, G.mark, G.text, G.close, G.scale = nil, nil, nil, nil, nil, nil
-	if W.signLeft then
+	if W.signLeft or W.signDrop then
 		setSignSide(false) -- (the tutorial's own guide keeps the sign on the right)
 	end
 	if was then

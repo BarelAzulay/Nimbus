@@ -172,6 +172,17 @@ local function serverScenarios()
 						local cx, cy = (b.X + b.R) / 2, (b.Y + b.B) / 2
 						T.check(abs(cx - c.R) <= 20 and abs(cy - c.Y) <= 20 and b.Y < c.Y and b.R > c.R,
 							k .. ": the '!' block is pinned on the card's top-right corner", show(b) .. " card " .. show(c))
+						-- (look review fin0, minor) the name's last letter keeps 6 px off the '!' block where the two share rows
+						-- ('Professor Axolotl': its 'l' ended 1-2 px from the block's corner)
+						if name then
+							local n = rect(name)
+							local tw = Theme.Measure(name.Text, "Nameplate", name.TextSize).X
+							local textR = (n.X + n.R) / 2 + tw / 2
+							if b.B > n.Y and b.Y < n.B then
+								T.check(b.X - textR >= 6, k .. ": the name keeps 6 px off the '!' block",
+									fmt("'%s' ends at %.1f, the block starts at %.1f", name.Text, textR, b.X))
+							end
+						end
 					end
 				end
 			end
@@ -266,22 +277,29 @@ local function serverScenarios()
 		local WTf = shared("WorldTag")
 		local function boardFits(tag, k)
 			local plate = tag:FindFirstChild("Plate")
-			local over = {}
-			local roles = { Title = "Heading", Info = "Body", Label = "Label" }
+			local over, parted = {}, {}
+			-- (fin0 minor: the info line and the pill moved to the header's Heading type with WorldStyle's TAG_ROLE)
+			local roles = { Title = "Heading", Info = "Heading", Label = "Heading" }
 			for _, l in ipairs({ plate and plate:FindFirstChild("Title"), plate and plate:FindFirstChild("Info"), plate and plate:FindFirstChild("Pill") and plate.Pill:FindFirstChild("Label") }) do
 				if l and l.Visible and l.Text ~= "" and (l.Name ~= "Label" or l.Parent.Visible) then
 					local box = (l.Name == "Label") and l.Parent or plate
 					local w = Theme.Measure(l.Text, roles[l.Name], l.TextSize).X
 					if l.TextWrapped then
 						-- greedy word wrap at the label's own width, as the engine wraps
-						local lines, cur, widest = 0, nil, 0
+						local lines, cur, widest, prev = 0, nil, 0, nil
 						for word in l.Text:gmatch("%S+") do
 							local try = cur and (cur .. " " .. word) or word
 							if cur == nil or Theme.Measure(try, roles[l.Name], l.TextSize).X <= l.Size.X.Offset then
 								cur = try
 							else
 								lines, widest, cur = lines + 1, math.max(widest, Theme.Measure(cur, roles[l.Name], l.TextSize).X), word
+								-- (look review fin0, minor) a break beside a " - " join parts a name from its number
+								-- ('Floors cleared here: Maximilianus99 -' / '12, Alexandrovich_X - 9')
+								if prev == "-" or word == "-" then
+									parted[#parted + 1] = fmt("%s: '... %s' / '%s ...'", l.Name, prev, word)
+								end
 							end
+							prev = word
 						end
 						lines, widest = lines + 1, math.max(widest, cur and Theme.Measure(cur, roles[l.Name], l.TextSize).X or 0)
 						local hNeed = lines * l.TextSize
@@ -295,12 +313,14 @@ local function serverScenarios()
 				end
 			end
 			T.check(#over == 0, k .. ": its lines fit the board", table.concat(over, ", "))
+			T.check(#parted == 0, k .. ": a wrapped line never parts a name from its number", table.concat(parted, ", "))
 			local bw = tonumber(tag:GetAttribute("BaseWidth"))
 			local f = bw and WTf and WTf.FitScale(bw, 390, Theme.ScreenFactor(844)) or 0
 			T.check(bw ~= nil and bw * f <= 390 - 24 + 0.5 and 18 * f >= Theme.Readability.MinPx - 0.01,
 				fmt("%s: it fits a 390 px phone with its 18 px lines >= %d px (%s px wide, x%.2f)", k, Theme.Readability.MinPx, tostring(bw), f))
 		end
 		local gateTags = {}
+		local starBoards = 0
 		local lobbyModel = workspace:FindFirstChild("NimbusLobby")
 		for _, d in ipairs(lobbyModel and lobbyModel:GetDescendants() or {}) do
 			if d:IsA("BillboardGui") and d.Name == "GateTag" then
@@ -328,6 +348,50 @@ local function serverScenarios()
 				T.check(tonumber(tag:GetAttribute("BaseWidth")) ~= nil and tag:GetAttribute("FitRoot") == "Plate",
 					k .. ": it is marked for the screen fit (BaseWidth, FitRoot Plate)")
 				boardFits(tag, k)
+				-- (look review fin0, minor) a party gate's difficulty stars on the cream stone: the kit's dark gold (the HUD's
+				-- stars on its stone cards), not the light gold that read at ~1.5:1 there
+				local lead = plate and plate:FindFirstChild("Info") and plate.Info:FindFirstChild("LeadIcon")
+				if lead and lead:GetAttribute("PixelIcon") == "star" then
+					starBoards = starBoards + 1
+					local worst = 99
+					for _, d in ipairs(lead:GetDescendants()) do
+						if d:IsA("Frame") and d.BackgroundTransparency < 0.5 then
+							worst = math.min(worst, Contrast.Ratio(d.BackgroundColor3, Sign.Stone))
+						end
+					end
+					T.check(worst >= 2, k .. ": its difficulty stars stand out on the stone (>= 2:1)", fmt("%.2f:1", worst))
+				end
+			end
+		end
+		T.info(fmt("*world signs: %d gate board(s) lead their info with difficulty stars", starBoards))
+		-- (look review fin0, minor) one type treatment in the board family: a gate board's info line and pill in the Storm
+		-- Altar header's type, as the approved mock 04 B sets 'Secret pets' / 'Secret Roulette' (they were in two fonts on the
+		-- Altar's two boards)
+		local function fontOf(l)
+			if not l then
+				return "none"
+			end
+			local ok, f = pcall(function()
+				return l.FontFace
+			end)
+			if ok and typeof(f) == "Font" then
+				return tostring(f.Family) .. "/" .. tostring(f.Weight)
+			end
+			return tostring(l.Font)
+		end
+		if header then
+			local hb = header:FindFirstChild("Board", true)
+			local hSub = hb and hb:FindFirstChild("Subtitle", true)
+			local hPill = header:FindFirstChild("Pill", true)
+			local hLab = hPill and hPill:FindFirstChildWhichIsA("TextLabel", true)
+			for _, tag in ipairs(gateTags) do
+				local plate = tag:FindFirstChild("Plate")
+				local title = plate and plate:FindFirstChild("Title")
+				local info = plate and plate:FindFirstChild("Info")
+				local lab = plate and plate:FindFirstChild("Pill") and plate.Pill:FindFirstChild("Label")
+				T.check(hSub ~= nil and hLab ~= nil and fontOf(info) == fontOf(hSub) and fontOf(lab) == fontOf(hLab),
+					"world signs: gate board " .. tostring(title and title.Text) .. ": its info line and pill in the altar header's type",
+					fmt("info %s / header %s, pill %s / header %s", fontOf(info), fontOf(hSub), fontOf(lab), fontOf(hLab)))
 			end
 		end
 		-- (M5) the longest lines the gate boards carry (ArenaBuilder's Ring board with a 12-letter name and a 3-digit round,
@@ -1700,12 +1764,21 @@ local function clientScenarios()
 								local sk = (card:FindFirstChild("ReadScale") and card.ReadScale.Scale) or 1
 								local w, h = card.Size.X.Offset * sk, card.Size.Y.Offset * sk
 								local x0 = bb.X + card.Position.X.Offset + card.Position.X.Scale * (bb.R - bb.X) - card.AnchorPoint.X * w
-								local cy = (bb.Y + bb.B) / 2
+								local cy = (bb.Y + bb.B) / 2 + card.Position.Y.Offset -- (a sign hung under its arrow: its drop)
 								s = grow({ X = x0, Y = cy - h / 2, R = x0 + w, B = cy + h / 2 }, 3 * sk)
 							end
 							if T.check(box ~= nil and s ~= nil, tag .. ": (setup) the arrow and its sign are in view") then
 								T.check(not overlap(c, box), tag .. ": the chip never covers the arrow", "chip " .. show(c) .. " arrow " .. show(box))
 								T.check(not overlap(c, s), tag .. ": the chip never covers the GuideSign", "chip " .. show(c) .. " sign " .. show(s))
+								-- (fin0 minor: at 844x390 the sign hid the arrow's right 3 px)
+								T.check(not overlap(s, box), tag .. ": the GuideSign keeps off the arrow", "sign " .. show(s) .. " arrow " .. show(box))
+								-- (fin0 minor: 390x844 walk, the arrow at the right edge under the HUD, the sign was wholly off the
+								-- screen) while the arrow's middle is on the screen, so is the whole sign
+								local ax, ay = (box.X + box.R) / 2, (box.Y + box.B) / 2
+								if ax >= 0 and ax <= vp.X and ay >= 0 and ay <= vp.Y then
+									T.check(s.X >= 0 and s.R <= vp.X and s.Y >= 0 and s.B <= vp.Y, tag .. ": the GuideSign is on the screen beside its arrow",
+										"sign " .. show(s) .. " arrow " .. show(box))
+								end
 								if brd then
 									T.check(not overlap(brd, box), tag .. ": the arrow never stands on the gate's board", "board " .. show(brd) .. " arrow " .. show(box))
 									T.check(not overlap(brd, s), tag .. ": the GuideSign never covers the gate's board", "board " .. show(brd) .. " sign " .. show(s))

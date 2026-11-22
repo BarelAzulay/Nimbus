@@ -465,12 +465,17 @@ local TITLE_PX = 19
 local CARD_PAD = 14 -- px each side of the longer line, inside the face
 local CARD_MIN = 150 -- the card's least outer width (its edges included)
 local CARD_FACE_H = 72 -- the face: 6 px over the name, the 32 px name row, the 24 px title row, 5 px, the 5 px lip
+local BANG_GAP = 6 -- (look review fin0, minor) px between the name's last letter and the "!" block over its row
 
 local function buildNameplate(parent, def, accent, offsetY)
 	local Z = WorldTag.Sizes
 	local name, titleText = def.Name or "Friend", def.Title or "Lobby Friend"
-	local textW = math.max(Theme.Measure(name, "Nameplate", NAME_PX).X, Theme.Measure(titleText, "Heading", TITLE_PX).X)
-	local faceW = math.ceil(math.max(CARD_MIN - 2 * Z.Edge, textW + 2 * CARD_PAD))
+	-- the name row shares its top with the "!" block, which reaches (Bang - BangOut - Edge) px into the face: the centred
+	-- name keeps that much plus BANG_GAP clear each side ('Professor Axolotl' ended 1-2 px from the block)
+	local bangIn = Z.Bang - Z.BangOut - Z.Edge
+	local nameW = Theme.Measure(name, "Nameplate", NAME_PX).X + 2 * (bangIn + BANG_GAP)
+	local titleW = Theme.Measure(titleText, "Heading", TITLE_PX).X + 2 * CARD_PAD
+	local faceW = math.ceil(math.max(CARD_MIN - 2 * Z.Edge, nameW, titleW))
 	local plateW = faceW + 2 * (Z.Edge + Z.BangOut)
 	local plateH = Z.BangOut + Z.Edge + CARD_FACE_H + Z.Edge
 	local gui = make("BillboardGui", {
