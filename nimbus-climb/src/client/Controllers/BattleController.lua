@@ -351,7 +351,11 @@ local K = {
 	HIT_ELEM_PX = 24, -- an element / special hit's, in its colour (Storm violet)
 	HIT_SIDE = 0.42, -- the pop's SizeOffset X: it rises beside the total's chip, not over it
 	HIT_STEP = 34, -- (look review r1, M3) px between two pops of one target (Fx.Pop's stack: a crit's line and its birth pop)
-	HIT_MAX = 4, -- live pops per target; a fifth ends the oldest (the total holds the sum)
+	-- (look review fin0, minor) the stack rose in a column ~220 px over the total at 1920 (four pops a step apart, each
+	-- rising the full NUMBER_RISE): three live pops, rising HIT_RISE of it (the steps keep them apart), cluster beside the
+	-- chip as the approved mock 04 B draws them
+	HIT_MAX = 3, -- live pops per target; a fourth ends the oldest (the total holds the sum)
+	HIT_RISE = 0.5, -- a stacked pop's rise, a share of NUMBER_RISE
 	TOTAL_PX = 24, -- the total's figure on its chip
 	TOTAL_PAD = 10, -- px each side of it
 	TOTAL_H = 34, -- the chip, its 3 px edge included
@@ -1226,6 +1230,7 @@ function Fx.Number(adornee, height, text, color, px, life)
 	n.t0 = os.clock()
 	n.life = life or K.NUMBER_TIME
 	n.base = height
+	n.riseK = 1 -- (Fx.Pop: a stacked pop rises K.HIT_RISE of it)
 	n.jx = (math.random() - 0.5) * 1.4
 	n.gui.StudsOffset = Vector3.new(n.jx, height, 0)
 	n.gui.SizeOffset = Vector2.new(0, 0) -- (Pitch 2 item 04) a hit's pop moves beside its total (the hit handler)
@@ -1248,7 +1253,7 @@ function Fx.UpdateNumbers(now)
 			St.numberPool[#St.numberPool + 1] = n
 		else
 			local rise = 1 - (1 - p) * (1 - p)
-			n.gui.StudsOffset = Vector3.new(n.jx, n.base + rise * K.NUMBER_RISE, 0)
+			n.gui.StudsOffset = Vector3.new(n.jx, n.base + rise * K.NUMBER_RISE * (n.riseK or 1), 0)
 			n.scale.Scale = 1 + 0.45 * max(0, 1 - p * 6)
 			local fade = clamp((p - 0.6) / 0.4, 0, 1)
 			n.label.TextTransparency = fade
@@ -1414,6 +1419,7 @@ function Fx.Pop(u, adornee, height, text, color, px, dmg)
 	end
 	if total then
 		pop.gui.SizeOffset = Vector2.new(K.HIT_SIDE, 0)
+		pop.riseK = K.HIT_RISE -- (every pop of the stack the same share: an older one has still risen at least as far)
 	end
 	if type(u) ~= "table" then
 		return pop, total

@@ -1066,9 +1066,20 @@ local function clientScenarios()
 		local head = part.Position + Vector3.new(0, 2, 0)
 		local camCF = CFrame.lookAt(head + Vector3.new(0, 3, 20), head)
 		local worst = nil
+		-- (look review fin0, minor) the pops' column over the total chip: px from the chip's centre up to the highest pop's
+		-- text centre (they rose ~220 px over it at 1920; the mock clusters them beside it)
+		local column = 0
 		local function measure(tag)
 			camObj.CFrame = camCF
 			local list = {}
+			local totalY = nil
+			for _, g in ipairs(workspace:GetDescendants()) do
+				if g:IsA("BillboardGui") and g.Name == "DamageTotal" and g.Enabled and g.Adornee == part then
+					local so = g.StudsOffset
+					local cf = camObj.CFrame
+					totalY = project(camObj, part.Position + g.StudsOffsetWorldSpace + cf.RightVector * so.X + cf.UpVector * so.Y).Y - g.SizeOffset.Y * g.Size.Y.Offset
+				end
+			end
 			for _, g in ipairs(workspace:GetDescendants()) do
 				if g:IsA("BillboardGui") and g.Name == "BattleNumber" and g.Enabled and g.Adornee == part then
 					local label = g:FindFirstChildWhichIsA("TextLabel")
@@ -1078,6 +1089,9 @@ local function clientScenarios()
 						local cf = camObj.CFrame
 						local v = project(camObj, part.Position + g.StudsOffsetWorldSpace + cf.RightVector * so.X + cf.UpVector * so.Y)
 						list[#list + 1] = { y = v.Y - g.SizeOffset.Y * g.Size.Y.Offset, h = label.TextSize * (sc and sc.Scale or 1), text = label.Text }
+						if totalY then
+							column = math.max(column, totalY - list[#list].y)
+						end
 					end
 				end
 			end
@@ -1098,6 +1112,7 @@ local function clientScenarios()
 			for _, size in ipairs({ { 1920, 1080 }, { 844, 390 }, { 390, 844 } }) do
 				Mock.SetViewport(size[1], size[2])
 				KC.advance(0.2)
+				column = 0
 				for _, run in ipairs({ { "scene", 0.3, { { 20628, {} }, { 136205, { crit = true } }, { 18332, { element = true }, "Storm" } } },
 					{ "fast", 0.1, { { 20628, {} }, { 136205, { crit = true } }, { 18332, { element = true }, "Storm" }, { 9120, {} }, { 151000, { crit = true } } } } }) do
 					local worstBefore = worst
@@ -1124,6 +1139,11 @@ local function clientScenarios()
 					Fx.ClearAll()
 					KC.advance(0.1)
 				end
+				-- the mock's cluster reaches ~110 px over the chip at 1080p; 150 (under the screen factor) leaves the birth
+				-- pop's place over the chip
+				local cap = 150 * shared("Theme").ScreenFactor(size[2])
+				T.check(column > 0 and column <= cap, fmt("damage pops %dx%d: the pops cluster beside the total (<= %.0f px over it)", size[1], size[2], cap),
+					fmt("%.0f px", column))
 			end
 		end)
 		methods.WorldToViewportPoint, methods.WorldToScreenPoint = saved[1], saved[2]

@@ -22,7 +22,7 @@
 --                         shared/PixelIcon at 18, 27 and 36 px
 --   lobby[:gift|:fold]    the idle lobby HUD (gift: U9-4 look review, the daily payload in, the Gifts block's PlayBar; fold:
 --                         Pitch 2 item 04 B, the menu column folded with a tile's badge on: the tab's red "!" block)
---   worldui[:npc|:prompt|:altar|:gates|:hits|:places|:poster|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]  (Pitch 2 items 04 B /
+--   worldui[:npc|:prompt|:altar|:gates|:hits|:places|:places2|:poster|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]  (Pitch 2 items 04 B /
 --                         13 A) the
 --                         world parts
 --                         built by their real builders, mirrored into the ScreenGui WorldMirror at their on-screen pixel size: NPC
@@ -5213,8 +5213,10 @@ end
 -- (look review r1, M5) the place boards the guide leads to: every lobby gate's hanging board (WorldStyle.BuildTag:
 -- GateTag) at its fitted on-screen size, three more built by it with the longest lines the Ring, the Dungeon and a party
 -- gate carry (wrapped at the board's widest line), and the return ring's 'To the Plaza' tag (the Part fallback, forced:
--- portal_ring reads "missing" for this scene). The Altar poster has its own scene (worldui:poster)
-function WU.places(screen)
+-- portal_ring reads "missing" for this scene). The Altar poster has its own scene (worldui:poster). (look review fin0:
+-- on a phone the lobby boards fill the screen and the rest flowed off it) worldui:places2 = the three long-line boards and
+-- the 'To the Plaza' tag alone, so a phone shows them too
+function WU.places(screen, extrasOnly)
 	NK.hideGame()
 	local ML = req("shared/MeshLibrary", true)
 	local status = ML and ML.Status
@@ -5235,7 +5237,7 @@ function WU.places(screen)
 	local place = WU.flow(24, 96)
 	local lobby = workspace:FindFirstChild("NimbusLobby")
 	local shown = 0
-	for _, d in ipairs(lobby and lobby:GetDescendants() or {}) do
+	for _, d in ipairs((lobby and not extrasOnly) and lobby:GetDescendants() or {}) do
 		if d:IsA("BillboardGui") and d.Name == "GateTag" then
 			local w, h = canvasOf(d)
 			local plate = d:FindFirstChild("Plate")
@@ -5260,7 +5262,7 @@ function WU.places(screen)
 		made[#made + 1] = WS.BuildTag(extra, 0, { Title = "Champion Ring", Info = "Beat the champion, meet a stronger one", Pill = "Best in this server: Alexandrovic - Round 123" }, Sign.Gold)
 		made[#made + 1] = WS.BuildTag(extra, 0, { Title = "The Dungeon", Info = "Rooms, waves and a boss. Solo or up to 3 friends", Pill = "Floors cleared here: Maximilianus99 - 12, Alexandrovich_X - 9" }, Sign.Violet)
 		local party = WS.BuildTag(extra, 0, { Title = "Sky Obby", Info = "Hard - 2/4 players", Pill = "Step in to play" }, Sign.Sky)
-		PI.Lead(party.Plate.Info, "star", { Count = 3, Of = 3, Colour = req("shared/Theme").Colors.Gold }) -- (PortalService: Count = Of = stars, GOLD)
+		PI.Lead(party.Plate.Info, "star", { Count = 3, Of = 3, Colour = Sign.GoldLip }) -- (PortalService: Count = Of = stars, Sign.GoldLip since fin0)
 		WT.Tint(party.Plate.Pill, Sign.Gold)
 		party.Plate.Pill.Label.Text = "Starting in 5"
 		made[#made + 1] = party
@@ -5352,15 +5354,15 @@ scenario("worldui", function(piece)
 		WU.gates(screen)
 	elseif piece == "hits" then
 		WU.hits(screen)
-	elseif piece == "places" then
-		WU.places(screen)
+	elseif piece == "places" or piece == "places2" then
+		WU.places(screen, piece == "places2")
 	elseif piece == "poster" then
 		WU.poster(screen)
 	elseif guide[piece] then
 		WU.guide(screen, guide[piece])
 	else
 		undo()
-		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:poster|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]")
+		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:places2|:poster|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]")
 	end
 	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	advance(0.1)
