@@ -269,6 +269,15 @@ the layout box; `tools/test_battle_hud_no_overlap.py` tests that measure offline
 mid-word-broken name (laid out with render_gui's own text layout); on the full raid's pill rules (spec 06 A); on the
 vitals card showing beside a phone's result card (spec 02 B); and on a portrait phone's top card not spanning the top.
 
+`look_pins.py` (kit-b Pitch 2 fix6) pins every major the look reviews found as a check, at the eleven gate sizes (360x640,
+640x360, 667x375, 720x405, 800x450, 844x390, 960x540, 390x844, 1024x768, 1280x720, 1920x1080) plus the sizes a review
+named: K1 the raid boss name whole, K2 the dungeon run card's party row, I1 the roulette machines at 2 px cells or more (and
+the x3 plank's coin off its words), I2 the Secret hero's texts whole and clear of its button, H1 the hero's hint whole on a
+phone, C1 / C2 / C5 battle_hud_no_overlap's fighter-part, run-chip and card gap rules. `--list` says what each pin checks,
+`--pin K1,I2` runs a few. The world guide's pins (MJ-A / MJ-B fin1, W1 / W2 pol1: the walk, the stop at 20 studs, the slow
+pans, the walk with a turning camera) are the smoke list `guide_pins` (`smoke_kitb_world.lua`, travel_guide_walk's runner;
+`NC_GUIDE_PINS_SIZES=640x360,1920x1080` walks a few sizes while working).
+
 `stroke_walk.py` (kit-b U6) dumps the render scenarios one at a time (default: all but the widget galleries, at 1920x1080;
 `--grid` adds the other three sizes) and fails on any text with a classic stroke under an outline, or an outline on an
 opaque panel (kit B "stroke or panel, never both"; the world signs mirrored into WorldMirror keep their one outline on

@@ -1957,8 +1957,24 @@ local function clientScenarios()
 	-- (fin1's rule "never more than 40 px in one frame" became the steps rule. Reason: pol0 minor 2 asks for the kit's
 	-- hard steps in place of the eased glide, and MAJOR 2 a for a hard step or a hide where the chip crosses a piece.
 	-- The 500 px jump fin1 caught still fails it: a jump is more than a quarter of the chip's width with no hide between)
+	--
+	-- guide_pins (fix6: every look major of the world lane pinned, at the eleven gate sizes 360x640, 640x360, 667x375,
+	-- 720x405, 800x450, 844x390, 960x540, 390x844, 1024x768, 1280x720, 1920x1080; the same walk, its runs and its rules
+	-- only as the reviews worded them; a pin's name says its review):
+	--   pin MJ-A (fin1)  a straight walk (turned 0 / 12 / -15 / 6 / -8 / 24 / -25): the chip keeps one place off home,
+	--                    out and back, and moves in hard steps or across a hide (the 500 px jump, four places in 1.7 s)
+	--   pin MJ-B (fin1)  the same walks: the GuideSign, while it shows, wholly on the screen and under no HUD piece (390x844:
+	--                    jammed under the wallet strip, the top bar's pill and the "..." button from 35 to 26 studs)
+	--   pin W1 (pol1 A)  the same walks and a walk that stops at 20 studs: the GuideSign does not flash (each show, hide,
+	--                    line change or new spot holds 0.5 s, unless the run ends first), takes at most two spots a walk,
+	--                    and never stacks on the chip (sharing columns, at least twice the sign's 8 px clearance apart,
+	--                    under the screen factor: 7-10 px read as one block, 'Storm Altar' over 'Guiding to Storm Altar')
+	--   pin W2 (pol1 B)  standing 45 studs out, the camera panned -35 -> 35 -> -35 at 23 and 60 degrees a second, and two
+	--                    walks with the camera turning (0 -> 40 and 40 -> 0 degrees, 50 -> 20 studs): in each pass the chip
+	--                    leaves home at most once, for one spot (it stepped into the arrow's path, then hid and came back
+	--                    483 px away on the other side: three moves a pass)
 	----------------------------------------------------------------------------------------------------------------
-	S.travel_guide_walk = guarded("travel_guide_walk", function()
+	local function guideWalk(scen, pins)
 		local Config = shared("Config")
 		local TC = client("Controllers/TutorialController")
 		local MC = client("Controllers/MovementController")
@@ -2157,11 +2173,70 @@ local function clientScenarios()
 			end
 		end
 		local SIZES = { { 360, 640 }, { 640, 360 }, { 667, 375 }, { 390, 844 }, { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }
+		if pins then
+			SIZES = { { 360, 640 }, { 640, 360 }, { 667, 375 }, { 720, 405 }, { 800, 450 }, { 844, 390 }, { 960, 540 }, { 390, 844 },
+				{ 1024, 768 }, { 1280, 720 }, { 1920, 1080 } }
+			-- (while working: NC_GUIDE_PINS_SIZES="640x360,1920x1080" walks those alone; the gate runs all eleven)
+			local only = os and os.getenv and os.getenv("NC_GUIDE_PINS_SIZES")
+			if only and only ~= "" then
+				local keep = {}
+				for _, sz in ipairs(SIZES) do
+					if (("," .. only .. ","):find("," .. sz[1] .. "x" .. sz[2] .. ",", 1, true)) then
+						keep[#keep + 1] = sz
+					end
+				end
+				SIZES = keep
+				T.info("*guide pins: NC_GUIDE_PINS_SIZES=" .. only .. " (not the gate run)")
+			end
+		end
 		local runs = {}
 		local function add(kind, name, size, frames)
 			runs[#runs + 1] = { kind = kind, name = name, w = size[1], h = size[2], frames = frames }
 		end
-		for _, turn in ipairs({ 0, 12, 16, 20, -15, 28, 32 }) do
+		-- (guide_pins) a pass's frames carry its number (fr[4]): W2 counts the chip's trips off home in each
+		local function mark(list, from, pass)
+			for i = from, #list do
+				list[i][4] = pass
+			end
+		end
+		if pins then
+			for _, turn in ipairs({ 0, 12, -15, 6, -8, 24, -25 }) do
+				for _, size in ipairs(SIZES) do
+					local f = { { 50, turn, 2 } }
+					seg(f, 50, 12, turn, turn, 2, 2)
+					add("walk", turn ~= 0 and fmt("walk turned %d", turn) or "walk", size, f)
+				end
+			end
+			for _, size in ipairs(SIZES) do
+				local f = { { 50, 0, 2 } }
+				seg(f, 50, 20, 0, 0, 2, 2)
+				hold(f, 20, 0, 2, 60)
+				add("stop", "walk, stop at 20 studs", size, f)
+			end
+			for _, deg in ipairs({ 23, 60 }) do
+				for _, size in ipairs(SIZES) do
+					local f = {}
+					hold(f, 45, -35, 2, 10)
+					local p1 = #f + 1
+					seg(f, 45, 45, -35, 35, 2, 2, 70 / deg)
+					mark(f, p1, 1)
+					local p2 = #f + 1
+					seg(f, 45, 45, 35, -35, 2, 2, 70 / deg)
+					mark(f, p2, 2)
+					hold(f, 45, -35, 2, 10)
+					add("pan", fmt("pan %d deg/s at 45 studs", deg), size, f)
+				end
+			end
+			for _, tt in ipairs({ { 0, 40 }, { 40, 0 } }) do
+				for _, size in ipairs(SIZES) do
+					local f = { { 50, tt[1], 2 } }
+					seg(f, 50, 20, tt[1], tt[2], 2, 2)
+					mark(f, 1, 1)
+					add("turnwalk", fmt("walk turning %d -> %d", tt[1], tt[2]), size, f)
+				end
+			end
+		end
+		for _, turn in ipairs(pins and {} or { 0, 12, 16, 20, -15, 28, 32 }) do
 			for _, size in ipairs(SIZES) do
 				if abs(turn) < 25 or size[1] >= 1280 then
 					local f = { { 50, turn, 2 } }
@@ -2172,12 +2247,12 @@ local function clientScenarios()
 		end
 		-- (pol0 minor 3: from far off only the sign reached the chip's home at 844x390, which sent it 168 px aside from 120
 		-- studs in) the far walk, 120 -> 50 studs
-		for _, size in ipairs({ { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }) do
+		for _, size in ipairs(pins and {} or { { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }) do
 			local f = { { 120, 0, 2 } }
 			seg(f, 120, 50, 0, 0, 2, 2)
 			add("far", "far walk", size, f)
 		end
-		for _, p in ipairs({ { 45, 23 }, { 45, 60 }, { 45, 120 }, { 70, 23 } }) do
+		for _, p in ipairs(pins and {} or { { 45, 23 }, { 45, 60 }, { 45, 120 }, { 70, 23 } }) do
 			for _, size in ipairs(SIZES) do
 				local f = {}
 				hold(f, p[1], -35, 2, 10)
@@ -2187,7 +2262,7 @@ local function clientScenarios()
 				add("pan", fmt("pan %d deg/s at %d studs", p[2], p[1]), size, f)
 			end
 		end
-		for _, d in ipairs({ 20, 12 }) do
+		for _, d in ipairs(pins and {} or { 20, 12 }) do
 			for _, size in ipairs(SIZES) do
 				local f = {}
 				hold(f, d, 0, 2, 10)
@@ -2237,6 +2312,9 @@ local function clientScenarios()
 				local hidden, maxHidden, hiddenFrames = 0, 0, 0
 				local seenArrow, seenSign, signFrames = nil, nil, 0
 				local fullW, arrowNear = nil, nil
+				-- (guide_pins) the GuideSign's state each frame ("off", or its spot: right / left / under the tip, "/name"
+				-- with the name alone) and the first frame it stacked on the chip
+				local signStates, stack = {}, nil
 				for i, fr in ipairs(run.frames) do
 					if i > 1 then
 						place(fr[1], fr[2], fr[3])
@@ -2274,7 +2352,7 @@ local function clientScenarios()
 						if still == 3 or #places == 0 then
 							local last = places[#places]
 							if not last or math.max(abs(cx - last.x), abs(c.Y - last.y)) > 6 then
-								places[#places + 1] = { x = cx, y = c.Y, at = at }
+								places[#places + 1] = { x = cx, y = c.Y, at = at, i = i, pass = fr[4] }
 								local off = cx - vp.X / 2
 								sides[#sides + 1] = (off > 2 and "R") or (off < -2 and "L") or "C"
 							end
@@ -2356,36 +2434,41 @@ local function clientScenarios()
 						if box and overlap(s, box) then
 							fail("clear", fmt("%s: the GuideSign %s covers the arrow %s", at, show(s), show(box)))
 						end
+						-- (guide_pins) its spot as drawn: hung under the arrow's tip (its top at or below the tip), else the
+						-- side of the arrow's axis its middle is on
+						local spot = "right"
+						if box and s.Y >= box.B - 2 then
+							spot = "under"
+						elseif box and (s.X + s.R) / 2 < (box.X + box.R) / 2 then
+							spot = "left"
+						end
+						local dl = card:FindFirstChild("Distance")
+						signStates[i] = spot .. ((dl and dl:IsA("GuiObject") and not dl.Visible) and "/name" or "")
+						-- stacked on the chip: sharing columns and closer than twice the sign's own clearance (TutorialController
+						-- K.SIGN_CLEAR, 8 px at 1080p under the screen factor; pol1 A's pair stood 7-10 px apart at 640x360,
+						-- the clearance itself, and read as one block). The factor from the chip: 51 px tall at 1080p
+						if c and not stack and math.min(c.R, s.R) > math.max(c.X, s.X) then
+							local gy = (s.Y >= c.B) and (s.Y - c.B) or ((c.Y >= s.B) and (c.Y - s.B) or -1)
+							local need = 16 * (c.B - c.Y) / 51
+							if gy < need then
+								stack = fmt("%s: the GuideSign %s %s the chip %s (%.0f px apart, %.0f wanted)", at, show(s),
+									gy < 0 and "on" or "stacked on", show(c), gy, need)
+							end
+						end
 					end
+					signStates[i] = signStates[i] or "off"
 					if i == 1 and run.name == "walk" and (run.w == 1920 or run.w == 1280 or run.w == 390) then
 						T.check(box ~= nil and bb ~= nil, tag .. ": at 50 studs the arrow and its sign show (the mock's framing)",
 							fmt("arrow %s, sign %s", tostring(box ~= nil), tostring(bb ~= nil)))
 					end
 				end
-				local hideCap = (run.kind == "walk" or run.kind == "far") and 6 or 15
-				T.check(maxHidden <= hideCap, tag .. fmt(": the chip hides at most %.1f s at a time", hideCap / 30),
-					fmt("hidden %d frames in a row (%d in all)", maxHidden, hiddenFrames))
-				T.check(fails.steps == nil, tag .. ": the chip moves in hard steps of at most a quarter of its width, or across a hide",
-					fails.steps and (fails.steps .. fmt(" (%d frames)", counts.steps)))
-				T.check(fails.row == nil, tag .. ": the chip keeps its home row on a landscape screen and stays within its width of the top centre",
-					fails.row and (fails.row .. fmt(" (%d frames)", counts.row)))
-				if (run.kind == "walk" or run.kind == "far") and run.w > run.h then
-					T.check(fails.home == nil, tag .. ": the chip rests off the top centre only while the arrow is near it (the sign gives way)",
-						fails.home and (fails.home .. fmt(" (%d frames)", counts.home)))
-				end
-				local seq = {}
-				for i, p in ipairs(places) do
-					seq[#seq + 1] = sides[i] .. fmt("@%s(%.0f,%.0f)", p.at, p.x, p.y)
-				end
-				if run.kind == "walk" then
-					-- (pick a side and keep it) its rests in order: home "C" (the home itself may move with the HUD, e.g. a
-					-- quest strip docking over the vitals card), or away "L" / "R" of the middle; never both sides, one away
-					-- stretch at most and one spot in it (every rest there within 6 px of its first), home at the end (by
-					-- 12 studs the arrow, shown all the way now, has risen past the chip's row on every screen)
+				-- the chip's rests in order, as stretches: home "C" or away "L" / "R"; away trips, both sides, a second spot in
+				-- one trip (`list`: the places to read, `sides` theirs)
+				local function trips(list, sds)
 					local stretches, spot, creep = {}, nil, nil
 					local hasL, hasR = false, false
-					for i, p in ipairs(places) do
-						local sd = sides[i]
+					for k, p in ipairs(list) do
+						local sd = sds[k]
 						hasL, hasR = hasL or sd == "L", hasR or sd == "R"
 						if stretches[#stretches] ~= sd then
 							stretches[#stretches + 1] = sd
@@ -2398,6 +2481,82 @@ local function clientScenarios()
 					for _, sd in ipairs(stretches) do
 						away = away + ((sd ~= "C") and 1 or 0)
 					end
+					return away, hasL, hasR, creep
+				end
+				local seq = {}
+				for k, p in ipairs(places) do
+					seq[#seq + 1] = sides[k] .. fmt("@%s(%.0f,%.0f)", p.at, p.x, p.y)
+				end
+				if pins then
+					if run.kind == "walk" then
+						local away, hasL, hasR, creep = trips(places, sides)
+						T.check(not (hasL and hasR) and away <= 1 and creep == nil and sides[#sides] == "C" and fails.steps == nil,
+							"pin MJ-A (fin1) " .. tag .. ": the chip keeps one place off home, out and back, in hard steps or across a hide",
+							table.concat(seq, " -> ") .. (creep and (" (a second spot at " .. creep .. ")") or "") .. (fails.steps and (" | " .. fails.steps) or ""))
+						T.check(fails["sign free"] == nil, "pin MJ-B (fin1) " .. tag .. ": the GuideSign, while it shows, is wholly on the screen, under no HUD piece",
+							fails["sign free"] and (fails["sign free"] .. fmt(" (%d frames)", counts["sign free"])))
+					end
+					if run.kind == "walk" or run.kind == "stop" then
+						-- the sign's stretches: a state (shown at a spot, the name alone, hidden) held under 0.5 s that the run
+						-- does not end in is a flash; its spots in order (hidden frames skipped)
+						local flashes, spots, n = {}, {}, #run.frames
+						local k = 1
+						while k <= n do
+							local j = k
+							while j < n and signStates[j + 1] == signStates[k] do
+								j = j + 1
+							end
+							-- (the first stretch began in the run's 0.5 s pre-roll, before frame 1: not a flash)
+						if k > 1 and j < n and j - k + 1 < 15 then
+								flashes[#flashes + 1] = fmt("%s %d frames at %.1f studs", signStates[k], j - k + 1, run.frames[k][1])
+							end
+							local sp = signStates[k]:gsub("/name", "")
+							if sp ~= "off" and spots[#spots] ~= sp then
+								spots[#spots + 1] = sp
+							end
+							k = j + 1
+						end
+						T.check(#flashes == 0, "pin W1 (pol1 A) " .. tag .. ": the GuideSign does not flash (each show, hide, line or spot holds 0.5 s)",
+							table.concat(flashes, "; "))
+						T.check(#spots <= 2, "pin W1 (pol1 A) " .. tag .. ": the GuideSign takes at most two spots a walk", table.concat(spots, " -> "))
+						T.check(stack == nil, "pin W1 (pol1 A) " .. tag .. ": the GuideSign never stacks on the chip", stack)
+					end
+					if run.kind == "pan" or run.kind == "turnwalk" then
+						local bad = {}
+						for pass = 1, 2 do
+							local list, sds = {}, {}
+							for k, p in ipairs(places) do
+								if p.pass == pass then
+									list[#list + 1], sds[#sds + 1] = p, sides[k]
+								end
+							end
+							local away, _, _, creep = trips(list, sds)
+							if away > 1 or creep then
+								bad[#bad + 1] = fmt("pass %d: %d trips off home%s", pass, away, creep and (", a second spot at " .. creep) or "")
+							end
+						end
+						T.check(#bad == 0, "pin W2 (pol1 B) " .. tag .. ": in each pass the chip leaves home at most once, for one spot",
+							table.concat(bad, "; ") .. " | " .. table.concat(seq, " -> "))
+					end
+				end
+				local hideCap = (run.kind == "walk" or run.kind == "far") and 6 or 15
+				if not pins then
+				T.check(maxHidden <= hideCap, tag .. fmt(": the chip hides at most %.1f s at a time", hideCap / 30),
+					fmt("hidden %d frames in a row (%d in all)", maxHidden, hiddenFrames))
+				T.check(fails.steps == nil, tag .. ": the chip moves in hard steps of at most a quarter of its width, or across a hide",
+					fails.steps and (fails.steps .. fmt(" (%d frames)", counts.steps)))
+				T.check(fails.row == nil, tag .. ": the chip keeps its home row on a landscape screen and stays within its width of the top centre",
+					fails.row and (fails.row .. fmt(" (%d frames)", counts.row)))
+				if (run.kind == "walk" or run.kind == "far") and run.w > run.h then
+					T.check(fails.home == nil, tag .. ": the chip rests off the top centre only while the arrow is near it (the sign gives way)",
+						fails.home and (fails.home .. fmt(" (%d frames)", counts.home)))
+				end
+				if run.kind == "walk" then
+					-- (pick a side and keep it) its rests in order: home "C" (the home itself may move with the HUD, e.g. a
+					-- quest strip docking over the vitals card), or away "L" / "R" of the middle; never both sides, one away
+					-- stretch at most and one spot in it (every rest there within 6 px of its first), home at the end (by
+					-- 12 studs the arrow, shown all the way now, has risen past the chip's row on every screen)
+					local away, hasL, hasR, creep = trips(places, sides)
 					T.check(not (hasL and hasR) and away <= 1 and creep == nil and sides[#sides] == "C",
 						tag .. ": the chip keeps one place off home, out and back (no side flip, no creep, home at the end)",
 						table.concat(seq, " -> ") .. (creep and (" (a second spot at " .. creep .. ")") or ""))
@@ -2409,6 +2568,7 @@ local function clientScenarios()
 					fails.arrow and (fails.arrow .. fmt(" (%d frames)", counts.arrow)))
 				T.check(fails.clear == nil, tag .. ": the chip never covers the arrow or the sign, the sign never the arrow",
 					fails.clear and (fails.clear .. fmt(" (%d frames)", counts.clear)))
+				end
 				T.info(fmt("%s: places %s; hidden %d frames; sign %d of %d frames; arrow first seen %s, sign %s", tag, table.concat(seq, " -> "),
 					hiddenFrames, signFrames, #run.frames, tostring(seenArrow), tostring(seenSign)))
 				Guide.Stop()
@@ -2424,7 +2584,13 @@ local function clientScenarios()
 		KC.advance(0.5)
 		putBack()
 		T.check(ok, "guide walk: the scenario ran", tostring(err))
-		KC.flushErrors("travel_guide_walk")
+		KC.flushErrors(scen)
+	end
+	S.travel_guide_walk = guarded("travel_guide_walk", function()
+		guideWalk("travel_guide_walk", false)
+	end)
+	S.guide_pins = guarded("guide_pins", function()
+		guideWalk("guide_pins", true)
 	end)
 
 	return S
