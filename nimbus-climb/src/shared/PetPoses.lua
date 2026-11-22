@@ -27,7 +27,8 @@
 --   PetPoses.Offset(name, p, ranged, amp, reach, feet) -> Vector3   the pose's own move without its turn (where a
 --                                            paw-pivoted pose's paw lines are: its Body position also carries the turn about
 --                                            them)
---   PetPoses.HurtCarry(p, carry) -> 0..1     how far knocked back the Hurt is at p (AttackFx carries it into a re-hit)
+--   PetPoses.HURT_SECS = 0.62                a hit's reaction (Hurt) in seconds after its hit stop (AttackFx's K.HURT);
+--                                            a re-hit's Sample reach lists every hit it plays (see Hurt below)
 --   PetPoses.DashHop = nil                   Config Melee.Hop in studs (0..3; nil = 0.5), set by AttackFx.Dash: every Bounce in
 --                                            hop height x max(0.25, DashHop) / 0.5 (DashIn's first hop peaks at 1.1 x it;
 --                                            0 still hops 0.275: a flatter hop lands like a slide)
@@ -80,10 +81,12 @@
 --   Hurt       (Pitch 2 item 5 "Bounce in" A, the approved mock's bitten pet; it was a squash dip into the floor + a flinch
 --              0.3 turned about the middle) one rigid body pivoted on its paw lines (`feet`): knocked back 0.38 in a 0.10
 --              jolt off the floor (0.12 s), the head snapped back (~7 deg nose up), a springy rock (~4 deg nose down onto
---              the front paws, back) dying away, a little hop home (0.06) from 0.28 s; nothing under the floor, nothing
---              slides; an evolved body (feet Hop) x its Hop; beats in seconds at AttackFx's 0.5 s. `reach` = a re-hit's
---              carried knock-back (0..1, nil = 0: PetPoses.HurtCarry): it starts that far back, never pulled toward its
---              biter. Wings clamp down, tail tucks, halo knocked askew, lids shut (p 0.04 .. 0.58).
+--              the front paws, back) dying away, home over the mock's 0.30 .. 0.62 s with a low lift (0.025); nothing
+--              under the floor, nothing slides; an evolved body (feet Hop) x its Hop; beats in seconds (p 1 = HURT_SECS
+--              0.62, AttackFx's K.HURT). `amp` = the hit's power (nil = 1). `reach` = a re-hit's hits: { Secs, { Age,
+--              Power }, ... }: each reacts on its own time and the reactions add (the mock's), so a re-hit starts where the
+--              pet is, never pulled toward its biter, and stacks on top. Wings clamp down, tail tucks, halo knocked askew,
+--              lids shut (0.02 .. 0.29 s).
 --   Ko         knocked back 0.6 + a little hop, tumbles 90 deg onto its side (overshoot ~95, settle), drops 0.35,
 --              wings fold back limp along the body, tail limp (Still -> 1), halo slides askew, eyes shut. Holds at p = 1.
 --   Victory    a quick crouch, hop 1.2 studs with a full 360 deg spin (fastest mid-air), chin up, wings open, tail up,
@@ -143,12 +146,20 @@ local WINDUP_BACK = 25
 local SNAP_OPEN = 35
 local CAST_RISE = 0.6
 local CAST_SPREAD = 50
--- (Pitch 2 item 5 "Bounce in" A) the bitten pet of the approved mock (Hurt): its beats in seconds at AttackFx's K.HURT
-local HURT_SECS = 0.5
+-- (Pitch 2 item 5 "Bounce in" A) the bitten pet of the approved mock (Hurt, motion_pitch.enemy_new): one hit's reaction
+-- in seconds of its own time (after the hit stop): AttackFx's K.HURT. (look review r2, major 2) home at 0.62 like the
+-- mock (the hit + 0.67), not 0.50: at the fast tempo the bear stays knocked back and the bites stack
+local HURT_SECS = 0.62
+PetPoses.HURT_SECS = HURT_SECS
 local KNOCK = 0.38 -- studs: knocked back
 local JOLT = 0.10 -- studs: the small jolt off the floor the knock-back flies in
+local HURT_OUT = 0.12 -- s: knocked back in that jolt (in the air: nothing slides)
 local HURT_ROCK = 13 -- deg: the springy rock's first swing (the head snapped back)
-local HURT_HOME = 0.06 -- studs: the little hop home
+local HURT_HOME0 = 0.30 -- s: the way home starts (the mock's), home at HURT_SECS
+-- studs: (look review r2, minor 1: the 0.06 hop at 0.28 .. 0.50 read as a second bounce) the way home is one low, slow
+-- lift over the mock's whole way home (nothing slides)
+local HURT_HOME = 0.025
+local HURT_WINGS = 0.5 -- s: the wings / tail / halo / lids keep their beats at the old length
 local KO_ROLL = 90
 local HOP = 1.2
 local BREATH = 0.05
@@ -442,38 +453,81 @@ POSES.Cast = function(f, p)
 	f.still = 0.6 * r * held
 end
 
--- (Pitch 2 item 5) how far knocked back a Hurt is at p (0..1 of its knock-back): from `carry` (a re-hit's, nil = 0) out
--- to 1 while in the air, then home
-function PetPoses.HurtCarry(p, carry)
-	local c = tonumber(carry) or 0
-	c = (c == c) and clamp01(c) or 0
-	local t = clamp01(tonumber(p) or 0) * HURT_SECS
-	return (c + (1 - c) * outCubic(seg(t, 0, 0.12))) * (1 - smooth(seg(t, 0.28, HURT_SECS)))
+-- (Pitch 2 item 5) one hit's reaction at t seconds of its own time (t <= 0: still to land; >= HURT_SECS: home) ->
+-- knock-back 0..1 of KNOCK, lift (studs), pitch (deg), the wings' envelope 0..1, lids 0..1. The mock's
+-- motion_pitch.enemy_new: knocked back in a jolt over HURT_OUT, the head snapped back, a springy rock dying away (faded
+-- out by HURT_SECS), home over HURT_HOME0 .. HURT_SECS with a low lift (HURT_HOME: nothing slides)
+local function hurtHit(t)
+	if not (t > 0 and t < HURT_SECS) then
+		return 0, 0, 0, 0, 0
+	end
+	local out = seg(t, 0, HURT_OUT)
+	local home = seg(t, HURT_HOME0, HURT_SECS)
+	local knock = outCubic(out) * (1 - smooth(home))
+	local lift = JOLT * sin(PI * out) + HURT_HOME * sin(PI * home)
+	local pitch = HURT_ROCK * outCubic(seg(t, 0, 0.06)) * math.exp(-t / 0.13) * cos(TAU * t / 0.3) * (1 - smooth(seg(t, 0.36, HURT_SECS)))
+	local q = t / HURT_WINGS
+	local env = outCubic(seg(q, 0, 0.12)) * settle(seg(q, 0.22, 1), 0.14)
+	local lids = clamp01(q / 0.04) * (1 - seg(q, 0.58, 0.64))
+	return knock, lift, pitch, env, lids
+end
+
+-- a hit's power (nil = 1; 0 .. 2)
+local function hurtPower(v)
+	v = tonumber(v)
+	if v == nil or v ~= v then
+		return 1
+	end
+	return math.max(0, math.min(2, v))
 end
 
 -- (Pitch 2 item 5 "Bounce in" A: the bitten pet of the approved mock; the old Hurt turned about the body's middle, dipped
 -- 0.1 into the floor and rolled a side paw under it) one rigid body like the melee motion, pivoted on its paw lines:
--- knocked back KNOCK in the air (a JOLT off the floor over the first 0.12 s: nothing slides), the head snapped back (nose
--- up), a springy rock (nose down onto the front paws, up again) dying away, a little hop home (HURT_HOME: nothing slides);
--- an evolved body (feet Hop 0.78) moves x its Hop. Its beats run in seconds at AttackFx's K.HURT 0.5. `carry` (Sample's
--- reach, 0..1, nil = 0: a re-hit, the approved mock's Double strike) = the knock-back it is still at (AttackFx: the
--- running Hurt's PetPoses.HurtCarry): it starts there, so a re-hit never pulls it back toward its biter
-POSES.Hurt = function(f, p, _, _, carry, feet)
+-- knocked back KNOCK in the air (a JOLT off the floor over HURT_OUT: nothing slides), the head snapped back (nose up), a
+-- springy rock (nose down onto the front paws, up again) dying away, home over the mock's way home with a low lift
+-- (HURT_HOME: nothing slides); an evolved body (feet Hop 0.78) moves x its Hop. Its beats run in seconds: p 1 =
+-- HURT_SECS (AttackFx's K.HURT). `amp` = the hit's power (nil = 1; a Double strike's re-hit 0.5). `hits` (Sample's reach;
+-- look review r2, major 2: the mock ADDS each hit's reaction) = a re-hit's list of every hit it plays, its own included:
+-- { Secs = its length in seconds (p 1), { Age = the hit's own reaction time at p 0 (an earlier hit > 0; its own, landing
+-- after its hit stop, < 0), Power }, ... }; amp is then unused. Each hit reacts on its own time and the reactions add,
+-- so a re-hit starts exactly where the pet is (never pulled toward its biter) and stacks on top
+POSES.Hurt = function(f, p, _, amp, hits, feet)
 	local w = heavyOf(feet)
-	local t = p * HURT_SECS
-	local knocked = seg(t, 0, 0.12) -- knocked back, in the air
-	local home = seg(t, 0.28, HURT_SECS) -- the little hop home
-	f.z = KNOCK * w * PetPoses.HurtCarry(p, carry)
-	f.y = w * (JOLT * sin(PI * knocked) + HURT_HOME * sin(PI * home))
-	f.pitch = HURT_ROCK * w * outCubic(seg(t, 0, 0.06)) * math.exp(-t / 0.13) * cos(TAU * t / 0.3) * (1 - smooth(seg(t, 0.36, HURT_SECS)))
+	local list = type(hits) == "table" and hits or nil
+	local secs = list and tonumber(list.Secs) or HURT_SECS
+	if not (secs and secs == secs and secs > 0 and secs < 10) then
+		secs = HURT_SECS
+	end
+	local t = p * secs
+	local z, y, pitch, env, lids = 0, 0, 0, 0, 0
+	local function add(at, power)
+		if power <= 0 then
+			return
+		end
+		local k, l, r, e, s = hurtHit(at)
+		z, y, pitch = z + power * k, y + power * l, pitch + power * r
+		env, lids = math.max(env, e), math.max(lids, s)
+	end
+	if list then
+		for _, h in ipairs(list) do
+			if type(h) == "table" then
+				local age = tonumber(h.Age) or 0
+				add(t + ((age == age) and age or 0), hurtPower(h.Power))
+			end
+		end
+	else
+		add(t, hurtPower(amp))
+	end
+	f.z = KNOCK * w * z
+	f.y = w * y
+	f.pitch = w * pitch
 	f.paw = true
-	local env = outCubic(seg(p, 0, 0.12)) * settle(seg(p, 0.22, 1), 0.14)
 	f.raise = -22 * env -- wings clamp down
 	f.back = 10 * env
 	f.lift = -30 * env -- tail tucks
 	f.haloY = 0.08 * env
 	f.haloTilt = 18 * env -- knocked askew
-	f.lids = clamp01(p / 0.04) * (1 - seg(p, 0.58, 0.64))
+	f.lids = lids
 	f.still = 0.7 * env
 end
 
@@ -715,6 +769,12 @@ local function frameOf(name, p, ranged, amp, reach, feet)
 	if fn then
 		if not PetPoses.Loops[name] then
 			p = clamp01(p)
+		end
+		if name == "Hurt" then
+			-- (Pitch 2 item 5, look review r2) the Hurt reads its own power (amp, under 1 for a Double strike's re-hit) and
+			-- its re-hit's hits (reach: a table); it checks both itself
+			fn(f, p, ranged == true, amp, reach, feet)
+			return f
 		end
 		amp = tonumber(amp) or 1
 		if amp ~= amp then

@@ -184,7 +184,9 @@ local K = {
 	ABOVE = 5,
 	BEHIND = 2.6,
 	DROP = 1.6, -- default height of a unit's centre over the floor
-	HURT = 0.5, -- (PetPoses' Hurt runs its beats in seconds at this length: HURT_SECS)
+	-- (PetPoses' Hurt runs its beats in seconds at this length: HURT_SECS; look review r2, major 2: 0.62 after the hit
+	-- stop, home at the mock's hit + 0.67, so the fast tempo's bites stack)
+	HURT = 0.62,
 	KO = 0.9,
 	VICTORY = 1.2,
 	SHOOT = 0.6, -- the ranged Shoot pose (PetPoses): the head snaps forward, the body kicks back, settles
@@ -3260,6 +3262,37 @@ local function poseActive(entry, at)
 	return false
 end
 
+-- (Pitch 2 item 5, look review r2, major 2) the hits a pose entry's Hurt still plays at `at`: { { Age = that hit's own
+-- reaction time then, Power }, ... } (PetPoses Hurt), nil when it plays no Hurt or every hit is home. Its own time leaves
+-- the hit stop out; a hit still to land counts its stop ahead (a negative Age)
+local function hurtHitsAt(entry, at)
+	local s = nil
+	for _, x in ipairs(entry.Segs) do
+		if x.Name == "Hurt" then
+			s = x
+		end
+	end
+	if not s then
+		return nil
+	end
+	local el = at - s.T0
+	if s.StopAt then
+		el = el - ((at >= s.StopAt) and min(at - s.StopAt, s.StopDur or 0) or (s.StopDur or 0))
+	end
+	local out = {}
+	if type(s.Reach) == "table" then
+		for _, h in ipairs(s.Reach) do
+			local age, pw = el + (tonumber(h.Age) or 0), tonumber(h.Power) or 1
+			if finite(age) and age < K.HURT and pw > 0 then
+				out[#out + 1] = { Age = age, Power = pw }
+			end
+		end
+	elseif finite(el) and el < K.HURT then
+		out[1] = { Age = el, Power = tonumber(s.Amp) or 1 }
+	end
+	return (#out > 0) and out or nil
+end
+
 local function setPoses(unit, segs, now)
 	if unit == nil or #segs == 0 then
 		return
@@ -3272,24 +3305,29 @@ local function setPoses(unit, segs, now)
 	if old and old.Prio > prio and poseActive(old, segs[1].T0) then
 		return -- a higher pose still plays then (a KO'd pet never strikes; an attack is not cut by a flinch)
 	end
-	-- (Pitch 2 item 5, the approved mock's fast lane: "a Double strike adds a second jolt") a Hurt over a running Hurt (a
-	-- re-hit) starts from the knock-back the pet is still at when it lands (PetPoses.HurtCarry -> its Reach), so the
-	-- crossfade never pulls it back toward its biter
+	-- (Pitch 2 item 5, the approved mock's fast lane: "a Double strike adds a second jolt"; look review r2, major 2: the
+	-- mock ADDS each hit's reaction, motion_pitch.enemy_new) a Hurt over a running Hurt (a re-hit) plays the earlier hits
+	-- on, each on its own time, and its own on top (PetPoses Hurt: Reach = the hits): it starts exactly where the pet is
+	-- (never pulled back toward its biter), and its hit stop holds only its own hit back (the earlier ones play on through
+	-- it, as the mock's do), so there is nothing to crossfade (Cut)
 	local s1 = segs[1]
+	local cut = nil
 	if old and s1.Name == "Hurt" and s1.Reach == nil then
-		local n0, p0, _, _, r0 = poseSample(old, s1.T0)
-		local PP = n0 == "Hurt" and dep("PetPoses") or nil
-		if PP and type(PP.HurtCarry) == "function" then
-			local okC, c = pcall(PP.HurtCarry, p0, r0)
-			if okC and finite(c) then
-				s1.Reach = clamp01(c)
-			end
+		local hits = hurtHitsAt(old, s1.T0)
+		if hits then
+			local delay = s1.StopAt and (s1.StopDur or 0) or 0
+			hits[#hits + 1] = { Age = -delay, Power = s1.Amp or 1 }
+			s1.Dur = K.HURT + delay
+			hits.Secs = s1.Dur
+			s1.Reach, s1.StopAt, s1.StopDur, s1.Until = hits, nil, nil, nil
+			cut = true
 		end
 	end
 	local entry = { Segs = segs, Prio = prio }
 	if old and poseActive(old, now) then
 		entry.Prev = old -- crossfade from the old timeline, still animating
 		entry.SwitchAt = max(now, segs[1].T0)
+		entry.Cut = cut
 	end
 	St.poses[unit] = entry
 end
@@ -4959,19 +4997,27 @@ function AttackFx.Pose(unit, base)
 	end
 	out.Blend, out.Prev = 1, nil
 	if not name then
-		if prev and entry.SwitchAt and now < entry.SwitchAt then -- the new pose has not started: the old one plays on
-			local n2, p2, r2, a2, x2, f2, ft2 = poseSample(prev, now, base)
+		-- the new pose has not started: the old one plays on (Pitch 2 item 5, look review r2: or the one before it, when the
+		-- old one has not started either: a bite's Hurt and its Double strike's later re-hit are set in one frame)
+		local pe, sw = prev, entry.SwitchAt
+		for _ = 1, 3 do
+			if not (pe and sw and now < sw) then
+				break
+			end
+			local n2, p2, r2, a2, x2, f2, ft2 = poseSample(pe, now, base)
 			if n2 then
 				out.Name, out.P, out.Ranged, out.Amp, out.Reach, out.Forward, out.Feet = n2, p2, r2, a2, x2, f2 or 0, ft2
 				return out
 			end
+			pe, sw = pe.Prev, pe.SwitchAt
 		end
 		return nil
 	end
 	-- (battle-feel T2) out.Forward: pose studs along the LookVector on top of the pose (a flurry's bite from the edge)
 	-- (Pitch 2 item 5) out.Feet: the model's paw lines (PetPoses.Sample's feet: the melee motion pivots about them)
 	out.Name, out.P, out.Ranged, out.Amp, out.Reach, out.Forward, out.Feet = name, p, ranged, amp, reach, fwd or 0, feet
-	if prev and entry.SwitchAt then
+	-- (Pitch 2 item 5, look review r2) a re-hit's Hurt (Cut) starts exactly on the old pose: no crossfade
+	if prev and entry.SwitchAt and not entry.Cut then
 		local w = (now - entry.SwitchAt) / AttackFx.CROSSFADE
 		if w < 1 then
 			local n2, p2, r2, a2, x2, f2, ft2 = poseSample(prev, now, base)

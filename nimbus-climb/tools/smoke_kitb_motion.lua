@@ -21,7 +21,9 @@
 --                            held, a gentle start); (review minor) an evolved pet (feet Hop 0.78) hops 0.78 x as high
 --   hurt_never_under_floor   (r1) the bitten pet of the approved mock: the Hurt is one rigid body pivoted on the paw lines
 --                            (no paw under the floor on six paw sets, nothing slides), knocked back ~0.38 with a small
---                            jolt, the head snapped back, a springy rock, settled; an evolved body moves 0.78 x as far
+--                            jolt, the head snapped back, a springy rock, settled; an evolved body moves 0.78 x as far;
+--                            (look review r2) home on the mock's way home (0.30 .. 0.62 s after the stop) with a low late
+--                            lift, and a re-hit's hits add like the mock's (the Double strike's half hit: a second jolt)
 -- Client world (AttackFx on a fake clock, real PetBuilder pets: base Maple Fox, evolved Aurora Fox):
 --   client_feel_bounce_timing  AttackFx.FeetOf measures each model's paw lines; an NPC's bite (Windup 0.45 s before the hit):
 --                            the wind-up to the run, the hit frame on the hit's time, the hit stop, the way home from
@@ -1213,10 +1215,35 @@ local function clientScenarios()
 				local kB, dB = dropAt(hits[3])
 				-- (look review r2, major 1: the Double strike's own re-hit is no full bite: it is BattleController.HitTwist's
 				-- half-power DoubleHit, checked through the real BattleController in client_feel_bounce_battle; this one is a
-				-- second full bite 0.14 s on, e.g. a second biter)
-				T.check(kD > 0.2 and dD <= 0.03 and kB > 0.2 and dB <= 0.08,
-					fmt("bounce timing: re-hit: the knocked-back bear is not pulled toward its biter: a 2nd bite 0.14 s on (%.3f back) %.3f (<= 0.03), the next bite's (%.3f back) %.3f (<= 0.08, the mock's own 0.078)",
-						kD, dD, kB, dB))
+				-- second full bite 0.14 s on, e.g. a second biter.) (look review r2, major 2: the hits now ADD like the mock's,
+				-- motion_pitch.enemy_new, and the earlier ones go on home through a new hit's stop; the old bound "<= 0.08, the
+				-- mock's own 0.078" was the mock's dip for ITS fast lane, not for these three hits) the knock-back and the dip
+				-- over the crossfade window at each re-hit are the mock's own for these same hits (its x at the build's
+				-- evolved weight 0.78), within 0.015
+				local function mockX(t)
+					local s = 0
+					for _, h in ipairs(hits) do
+						local v = t - h - STOP
+						if v > 0 and v < 0.62 then
+							local o = 1 - math.min(1, v / 0.14)
+							local hm = math.max(0, math.min(1, (v - 0.30) / 0.32))
+							s = s + 0.38 * 0.78 * (1 - o * o * o) * (1 - hm * hm * (3 - 2 * hm))
+						end
+					end
+					return s
+				end
+				local function mockDip(h)
+					local lo = huge
+					for i = 1, 144 do
+						lo = min(lo, mockX(h + i / 1200))
+					end
+					return mockX(h), mockX(h) - lo
+				end
+				local mkD, mdD = mockDip(hits[2])
+				local mkB, mdB = mockDip(hits[3])
+				T.check(abs(kD - mkD) < 0.03 and dD <= mdD + 0.015 and abs(kB - mkB) < 0.03 and dB <= mdB + 0.015,
+					fmt("bounce timing: re-hit: the knocked-back bear is not pulled toward its biter: a 2nd bite 0.14 s on (%.3f back, the mock's %.3f) dips %.3f (the mock's %.3f), the next bite's (%.3f back, the mock's %.3f) %.3f (the mock's %.3f; +0.015)",
+						kD, mkD, dD, mdD, kB, mkB, dB, mdB))
 				local bodies = {}
 				for _, r in ipairs(rows) do
 					if r.Body then
