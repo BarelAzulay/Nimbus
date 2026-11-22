@@ -1,144 +1,11 @@
 {
  "item": "Pitch 2 item 7 (07_evolved_eyes, option A Trim): evolved eyes re-bake, branch kitb-p2-eyes",
- "builtFrom": "kitb-p2-eyes @ 3708fbc (PetBuilder EYE_MASKS.Evo 6x7 / EvoFierce 6x5 from c116b44)",
- "builtWith": "Windows PC, %USERPROFILE%\\.bpyenv (Python 3.13, bpy 5.2.2): blender/build_all.py --key <each of keys.txt> (export build, 3 re-import checks per FBX), 98 built, 0 failed, 4 min 10 s",
- "crossPlatform": "evowing_pebble_pup_1_L (unchanged) rebuilt on this PC gave fbxSha256 d615511a...58ea, byte-equal to the committed meshes.json value made in the Linux cloud session: same bpy 5.2.2 -> same FBX bytes, so the upload session's rebuild must reproduce every sha256 below",
+ "builtFrom": "branch kitb-p2-eyes @ 3a9eb85 (eye masks c116b44; Low eyes 4071cbd; K-step pins 3a9eb85)",
+ "builtWith": "Windows PC, %USERPROFILE%\\.bpyenv (Python 3.13, bpy 5.2.2): blender/build_all.py --key <each of keys.txt> (export build, 3 re-import checks per FBX), 98 built, 0 failed, 4 min 1 s",
  "keys": 98,
- "indexEntriesChanged": "exactly these 98 in blender/meshes.json (contentHash 98, structureHash 98, fbxSha256 98, tris 98, parts 71, maxTrianglesPerMesh 97); no other key; contentHash equals the dry bake of 3708fbc for all 98",
- "uploader": "structureHash differs from blender/upload_state.json for all 98 -> 98 new-asset (new ids); every key has a MeshIds id today",
- "eyeMeasure": {
-  "keys": 98,
-  "measured": 98,
-  "noEyeParts": [],
-  "high": {
-   "n": 49,
-   "hRatioMin": 0.7,
-   "hRatioMax": 1.0,
-   "smaller": 46
-  },
-  "low": {
-   "n": 49,
-   "hRatioMin": 0.444,
-   "hRatioMax": 1.0,
-   "smaller": 47
-  },
-  "note": "union box of the Body eye parts (EyePupil, EyeIris, EyeShine, EyeGlint, Lash, EyeRing), studs; h = one eye's height. High cute 0.72 -> 0.56 (7/9), fierce x 5/7; owls keep their painted EyeRing disc (h 1.0, w 0.91), pandas a tall Glint / Lash patch (h 0.97, w 0.91)",
-  "widthSmaller": 98
- },
- "fbxCheck": {
-  "how": "the 9 sheet pets' evo1 FBX opened in bpy 5.2.2: eye objects' height = the re-baked manifest's (not the live one)",
-  "keys": {
-   "evo1_phantom_kitsune": {
-    "objects": 36,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.1394,
-    "modelH": 4.4633
-   },
-   "evo1_stormfang": {
-    "objects": 33,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.1273,
-    "modelH": 4.4
-   },
-   "evo1_candy_unicorn": {
-    "objects": 33,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.1111,
-    "modelH": 5.04
-   },
-   "evo1_pebble_pup": {
-    "objects": 31,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.1458,
-    "modelH": 3.84
-   },
-   "evo1_mallow_kitten": {
-    "objects": 32,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.1321,
-    "modelH": 4.24
-   },
-   "evo1_honey_bunny": {
-    "objects": 29,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.1094,
-    "modelH": 5.12
-   },
-   "evo1_sunbeam_bear": {
-    "objects": 29,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.125,
-    "modelH": 4.48
-   },
-   "evo1_aurora_fox": {
-    "objects": 36,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.1321,
-    "modelH": 4.7111
-   },
-   "evo1_twilight_dragon": {
-    "objects": 31,
-    "eyeObjects": [
-     "EyeGlint",
-     "EyeIris",
-     "EyePupil",
-     "EyeShine",
-     "Lash"
-    ],
-    "eyeH_over_modelH": 0.0943,
-    "modelH": 4.7111
-   }
-  }
- },
- "totalBytes": 15357000,
+ "eyeMeasure": "per eye, the extent of its carved lid columns (the eyes mirror), voxels x voxelStuds; preTrim = the c733fe0 build, which equals the live meshes except the drift keys (see verify_diff.json)",
+ "fbxCheck": "98 built, 0 failed, every FBX re-import verified (build_all.py export build, bpy 5.2.2)",
+ "totalBytes": 15384216,
  "rows": [
   {
    "key": "evo1_aurora_fox",
@@ -157,28 +24,46 @@
     "tris": 10760,
     "parts": 40
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6889,
-     "h": 0.8001
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.711,
+     "h": 0.8,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.5111,
-     "h": 0.6222
+     "w": 0.533,
+     "h": 0.622,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 0.778,
-    "wRatio": 0.895
+    "hRatio": 0.777,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_aurora_fox_low",
    "fbx": "blender/out/evo1_aurora_fox_low.fbx",
-   "bytes": 122652,
-   "sha256": "9fe99b523bd91a64dc0ced5d654861f6ee4ae2a05bea982b9d3ea21fe21ad5d0",
-   "contentHash": "e0c0fccc0c2de5c6d55ce5b113c6327e",
-   "structureHash": "daa0f7030835f5bea249cda363223ad5",
-   "tris": 3552,
-   "parts": 30,
+   "bytes": 125420,
+   "sha256": "0caa6259453eb01ac4ac4e6697feec4cb64951ba5054b1a1d93a11a6bb748bc1",
+   "contentHash": "2a49481efd2a8fd8e144c2daa08a9232",
+   "structureHash": "533257372d6c922f61171fd13e114d9d",
+   "tris": 3570,
+   "parts": 31,
    "live": {
     "assetId": 77788282454956,
     "contentHash": "161ab0d03159f05818fbef4481d23412",
@@ -187,17 +72,35 @@
     "tris": 3694,
     "parts": 30
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 1.1965
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.5385,
-     "h": 0.8547
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.714,
-    "wRatio": 0.818
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -217,27 +120,45 @@
     "tris": 9986,
     "parts": 30
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 3.12
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 3.04
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 0.974,
-    "wRatio": 0.913
+    "hRatio": 0.778,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_bamboo_panda_low",
    "fbx": "blender/out/evo1_bamboo_panda_low.fbx",
-   "bytes": 106972,
-   "sha256": "7871ea24cee54d7613fc7ea83afaaa21faa8046d6d4f15d9ed1e37cb430287bc",
-   "contentHash": "5c491e8a5b7c78dbb97bbc73c49ecb13",
-   "structureHash": "e44292439dc1b7eb8d3fe95e7cb6e551",
-   "tris": 3638,
+   "bytes": 101324,
+   "sha256": "8265e17a5a29116b3ad2b4f81f23a14eba5d7844556038d8aa3000cefcedf818",
+   "contentHash": "039dbc09fb36055c641f3bac300c5d80",
+   "structureHash": "a493f7e57000bc1785a15b05419f5e32",
+   "tris": 2984,
    "parts": 24,
    "live": {
     "assetId": 129482935584530,
@@ -247,17 +168,35 @@
     "tris": 3090,
     "parts": 23
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 3.0769
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 2.9231
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.95,
-    "wRatio": 0.9
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -277,27 +216,45 @@
     "tris": 9136,
     "parts": 31
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_biscuit_bear_low",
    "fbx": "blender/out/evo1_biscuit_bear_low.fbx",
-   "bytes": 104460,
-   "sha256": "3364a63ae51fb2a5dd21fd56f4bca5512b50a0b26ec664dd50b011fafaeb071e",
-   "contentHash": "42700e55f981cbf66e20a73d896c2e63",
-   "structureHash": "cf5a543a7da0b3373c28da53dd7402a1",
-   "tris": 3344,
+   "bytes": 103964,
+   "sha256": "0cced476b07d1bd0ee557b703560f6e6cbaca6656afdbd8cb0de0edec4eed344",
+   "contentHash": "1a3b7df956751aca8f3b96dcde313815",
+   "structureHash": "23cad3aaf185736b067fdee2dab1c856",
+   "tris": 3308,
    "parts": 24,
    "live": {
     "assetId": 99723032833610,
@@ -307,17 +264,35 @@
     "tris": 3490,
     "parts": 23
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 1.2308
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.625,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -337,27 +312,45 @@
     "tris": 10222,
     "parts": 35
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.68,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.52,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_blossom_bunny_low",
    "fbx": "blender/out/evo1_blossom_bunny_low.fbx",
-   "bytes": 117276,
-   "sha256": "a1cbbb5e8e49d61c5b9282d95504e153eef364f93544ec59c3468367fe6bb166",
-   "contentHash": "5ac20ca9a16f1f0a8cb0c9a0490bffd8",
-   "structureHash": "2b6ffd6472d255034680a1850eae1c7a",
-   "tris": 3514,
+   "bytes": 116748,
+   "sha256": "7bc6d8a33e8a22c4190dc52f6084c74c72880b9a98360ee2ff734cff63d7bb70",
+   "contentHash": "b379369bc6475714d241790fb14ebc2d",
+   "structureHash": "67ad47bfb1a994df229eef8554f28ad4",
+   "tris": 3442,
    "parts": 28,
    "live": {
     "assetId": 75253507719284,
@@ -367,17 +360,35 @@
     "tris": 3594,
     "parts": 28
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 1.3846
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.556,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -397,28 +408,46 @@
     "tris": 10258,
     "parts": 31
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.84,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.92
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_bubble_axolotl_low",
    "fbx": "blender/out/evo1_bubble_axolotl_low.fbx",
-   "bytes": 112828,
-   "sha256": "65ea50e16539a55368edc10a5d38cb4ed30de5c3bf4644a2b9038b1cb69f08c8",
-   "contentHash": "9b9b2206e0ee6aefdec8ba441f9916f1",
-   "structureHash": "ff3b1af52205de331c0b354c26b063f7",
-   "tris": 3640,
-   "parts": 26,
+   "bytes": 100796,
+   "sha256": "f86fec78eb59aa8b5756ab8cb5ca708993bf2ceb08de4db4ace333bd6eb2cd56",
+   "contentHash": "617b9b6a1c2e8c1e6b1d7b457d72b0b5",
+   "structureHash": "7a2f7ae9803a73d486770acf5ae3b308",
+   "tris": 2984,
+   "parts": 24,
    "live": {
     "assetId": 138245964799147,
     "contentHash": "03e57c22e577f18c53bd9564765e2876",
@@ -427,17 +456,35 @@
     "tris": 3128,
     "parts": 24
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.2222,
-     "h": 1.0257
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.7692
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.75,
-    "wRatio": 0.762
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -457,28 +504,46 @@
     "tris": 10294,
     "parts": 35
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_candy_unicorn_low",
    "fbx": "blender/out/evo1_candy_unicorn_low.fbx",
-   "bytes": 126396,
-   "sha256": "9a31192147d4c29a5ccad59c97a81efa50943738505ec5550e63a283db98b7fe",
-   "contentHash": "3cdb4fc24695e0adab390c0447825a35",
-   "structureHash": "f25f4f52c549c1ea6a6fabca47ee7613",
-   "tris": 3660,
-   "parts": 31,
+   "bytes": 123308,
+   "sha256": "ad67dc40a3196ecb2df84f64a191c33a51089e6dae16581c64b6ed774bda7dfb",
+   "contentHash": "3c1596880140a721fdcf116c497df96f",
+   "structureHash": "a53138474a4789500cf3b52f063c4fd6",
+   "tris": 3106,
+   "parts": 32,
    "live": {
     "assetId": 83858413665107,
     "contentHash": "510b041052071664787377c719bbf977",
@@ -487,17 +552,35 @@
     "tris": 3300,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 1.5384
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.7692
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.5,
-    "wRatio": 0.9
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -517,28 +600,46 @@
     "tris": 10096,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 3.12
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 3.04
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 0.974,
-    "wRatio": 0.913
+    "hRatio": 0.778,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_cherry_panda_low",
    "fbx": "blender/out/evo1_cherry_panda_low.fbx",
-   "bytes": 112284,
-   "sha256": "c7b85b0df80e4a30f058be983b44e823f64e1d2324a7356b1cc11d21cd70d6e0",
-   "contentHash": "05ac6e538e617654b6464aa30a6511aa",
-   "structureHash": "6ae6786ce3871daed4ae0d0dd5af8206",
-   "tris": 3622,
-   "parts": 26,
+   "bytes": 104780,
+   "sha256": "0cc2f73d06e713407f26fe12de9d93f9a692145bf72b7847e9b5dd9d2bc0877c",
+   "contentHash": "a31f8a18e45e2f23227363e0ee929190",
+   "structureHash": "ac49d124a116b5cc7a2acb849c6b03ac",
+   "tris": 3048,
+   "parts": 25,
    "live": {
     "assetId": 118659270989807,
     "contentHash": "29e147193cbb4e37ad742241425c3911",
@@ -547,17 +648,35 @@
     "tris": 3138,
     "parts": 24
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 3.0769
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 2.9231
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.95,
-    "wRatio": 0.9
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -577,27 +696,45 @@
     "tris": 10250,
     "parts": 34
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8667,
-     "h": 0.6222
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.711,
+     "h": 0.622,
+     "voxels": [
+      8,
+      7
+     ]
     },
     "rebaked": {
-     "w": 1.6889,
-     "h": 0.4445
+     "w": 0.533,
+     "h": 0.444,
+     "voxels": [
+      6,
+      5
+     ]
     },
     "hRatio": 0.714,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_cloudy_dragon_low",
    "fbx": "blender/out/evo1_cloudy_dragon_low.fbx",
    "bytes": 117836,
-   "sha256": "8d4464b3a57729c9c5938d47f3a4f48268e75ee0caa024cd5d911577aace3409",
-   "contentHash": "691be04d149735c03a522d0af830be14",
-   "structureHash": "9e896af403cc08a2c88b8992c349b935",
-   "tris": 3446,
+   "sha256": "790056ff24bde36933fc6067ad5f357834d2114259631c9b6e896de175df1681",
+   "contentHash": "ca49969242c06c8527116fc3166360f1",
+   "structureHash": "dc6fc5d7bad19cc93cc57e2811bc57ac",
+   "tris": 3480,
    "parts": 29,
    "live": {
     "assetId": 93000498845226,
@@ -607,17 +744,35 @@
     "tris": 3664,
     "parts": 29
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 0.8547
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 0.855,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.5385,
-     "h": 0.5129
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.6,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -637,27 +792,45 @@
     "tris": 10508,
     "parts": 37
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8667,
-     "h": 0.6222
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.711,
+     "h": 0.622,
+     "voxels": [
+      8,
+      7
+     ]
     },
     "rebaked": {
-     "w": 1.6889,
-     "h": 0.4445
+     "w": 0.533,
+     "h": 0.444,
+     "voxels": [
+      6,
+      5
+     ]
     },
     "hRatio": 0.714,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_eclipse_dragon_low",
    "fbx": "blender/out/evo1_eclipse_dragon_low.fbx",
-   "bytes": 116556,
-   "sha256": "0241bef2238f8ca344a9660a8ab30d6f81f4da8311cb845dc44f17783328b740",
-   "contentHash": "6f880203c910839679f7c1a6055b8814",
-   "structureHash": "c1732eb1a8a47167fccf6006afb5deda",
-   "tris": 3110,
+   "bytes": 116764,
+   "sha256": "b1d81c568289becc56ec3491b38f3a63894ac360a7097ced83720198526bbe40",
+   "contentHash": "aa5c4f483f746281c15bd63845a0a182",
+   "structureHash": "886268cb9d356e5cd5d0982aee7f0a02",
+   "tris": 3238,
    "parts": 29,
    "live": {
     "assetId": 120102054910553,
@@ -667,17 +840,35 @@
     "tris": 3306,
     "parts": 28
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0893,
-     "h": 0.9497
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.95,
+     "h": 0.76,
+     "voxels": [
+      5,
+      4
+     ]
     },
     "rebaked": {
-     "w": 1.7094,
-     "h": 0.5698
+     "w": 0.76,
+     "h": 0.76,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.6,
-    "wRatio": 0.818
+    "hRatio": 1.0,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -697,27 +888,45 @@
     "tris": 8372,
     "parts": 36
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.52,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.36,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.895
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_ember_phoenix_low",
    "fbx": "blender/out/evo1_ember_phoenix_low.fbx",
-   "bytes": 109612,
-   "sha256": "28b7cf6974e78bc485d107d9dedd58562b8e45117325641dd7c66c3b18915db5",
-   "contentHash": "775898c7b21409319afd09494a4135e9",
-   "structureHash": "a3d96e8824c346c9d4179f2cf23fc42a",
-   "tris": 3080,
+   "bytes": 109564,
+   "sha256": "671fe4b54947e603cc2d9c48621871d9f9531920475ab52d984de0f4bd285ccf",
+   "contentHash": "5fb029976ec8af32fc9a0a42285f7af9",
+   "structureHash": "329cede4a28397fc0c6ba4a712be9db0",
+   "tris": 3056,
    "parts": 27,
    "live": {
     "assetId": 127384591685930,
@@ -727,17 +936,35 @@
     "tris": 3244,
     "parts": 27
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 1.077
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.714,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -757,27 +984,45 @@
     "tris": 9832,
     "parts": 33
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_frostling_penguin_low",
    "fbx": "blender/out/evo1_frostling_penguin_low.fbx",
-   "bytes": 104268,
-   "sha256": "cc0757beadb7786389454184961385df35250c2cfc77b0fcb4736419ad025e32",
-   "contentHash": "ea844e8e3d807ea4b9d92350d3c60904",
-   "structureHash": "bbdff7c0261c6f382bd841e96fc73f90",
-   "tris": 3118,
+   "bytes": 104492,
+   "sha256": "dc4eca41ddd20a88f63b461d0c15447b0735f5f8e171a1ff26655a4668141aec",
+   "contentHash": "ee4b788bf45ca71af09e9ad3aca4dd67",
+   "structureHash": "e8d6a43443fec1ca5a4d3de5e8f49133",
+   "tris": 3140,
    "parts": 25,
    "live": {
     "assetId": 117375525292782,
@@ -787,17 +1032,35 @@
     "tris": 3406,
     "parts": 25
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.9231
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.923,
+     "h": 0.923,
+     "voxels": [
+      6,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.833,
-    "wRatio": 0.846
+    "hRatio": 0.666,
+    "wRatio": 0.666,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -817,27 +1080,45 @@
     "tris": 10092,
     "parts": 33
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.68,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.52,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_honey_bunny_low",
    "fbx": "blender/out/evo1_honey_bunny_low.fbx",
-   "bytes": 111548,
-   "sha256": "40a2df22b8ef84efe7cba14e74e4a80aed40c52de9fa355672b6828debb776f8",
-   "contentHash": "d4c1585e51a1b7474b37ac10b772ff7d",
-   "structureHash": "b8b04a200b1c146e7cca72c09cf685c4",
-   "tris": 3452,
+   "bytes": 110956,
+   "sha256": "2caf3f7a31ff02dcce896a0c6fb130947860ae344a8d45e7c64f60df51745f5d",
+   "contentHash": "97d70b2f1dc2254aaee96136b544fc82",
+   "structureHash": "194bc6194bbd769cdefdd937f35961a0",
+   "tris": 3380,
    "parts": 26,
    "live": {
     "assetId": 139060124292304,
@@ -847,17 +1128,35 @@
     "tris": 3532,
     "parts": 26
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 1.3846
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.556,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -877,28 +1176,46 @@
     "tris": 9948,
     "parts": 39
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0444,
-     "h": 0.8001
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.84,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 0.7,
-    "wRatio": 0.9
+    "hRatio": 0.778,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_hydralotl_low",
    "fbx": "blender/out/evo1_hydralotl_low.fbx",
-   "bytes": 112044,
-   "sha256": "50570cb83536ffff0fac74483bf4d6266b87a46e375d8696b022579586a257e2",
-   "contentHash": "0e941b218d1efdbf25c903c956180f29",
-   "structureHash": "8c9ca1c4fb3b0ff6cdf4978fe4bc51c3",
-   "tris": 3282,
-   "parts": 27,
+   "bytes": 111804,
+   "sha256": "aca6c78827a80ddb6a105e7beed6b8c044a93a6494350d367b3f3fa52fd76e79",
+   "contentHash": "157e9aaa015f05689804af045b3c4e1c",
+   "structureHash": "32b2136b079f0d025b55a138cb70ece6",
+   "tris": 2708,
+   "parts": 29,
    "live": {
     "assetId": 75165208362476,
     "contentHash": "4ac84d414624f53a7611bde5de991600",
@@ -907,17 +1224,35 @@
     "tris": 2934,
     "parts": 30
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0893,
-     "h": 0.9497
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.95,
+     "h": 0.95,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.8803,
-     "h": 0.6838
+     "w": 0.76,
+     "h": 0.76,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.72,
-    "wRatio": 0.9
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -937,27 +1272,45 @@
     "tris": 11060,
     "parts": 38
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_magma_cub_low",
    "fbx": "blender/out/evo1_magma_cub_low.fbx",
-   "bytes": 117292,
-   "sha256": "49f0e2df8d15e39f4269a76c327d435f0057ade067e1a745c6c0e9909419b09b",
-   "contentHash": "a2de66a81fe370d1d6ac95e83fc0934f",
-   "structureHash": "ac07ee1bb07d13cf36e6e044d8943c2c",
-   "tris": 3666,
+   "bytes": 110460,
+   "sha256": "2616ee5bfd032b62376add0246fe74c3134be66abd82fb494d38c30cfd5a93a1",
+   "contentHash": "401e35eeca019b80bc54da3a14efd233",
+   "structureHash": "3ec927bde3c1041b2cace6f9806a2d9f",
+   "tris": 2984,
    "parts": 27,
    "live": {
     "assetId": 111156779183723,
@@ -967,17 +1320,35 @@
     "tris": 3100,
     "parts": 30
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 1.3675
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.562,
-    "wRatio": 0.736
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -997,27 +1368,45 @@
     "tris": 11152,
     "parts": 34
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_mallow_kitten_low",
    "fbx": "blender/out/evo1_mallow_kitten_low.fbx",
-   "bytes": 117244,
-   "sha256": "a6b785576e075ab4efbe0e68046a68062934adebdc5836ca1b18a20c8abe1ee1",
-   "contentHash": "bd4cd0bf09daa4df7811c63f2d28aa17",
-   "structureHash": "ff7821f882906a996a2f6a030c04419e",
-   "tris": 3604,
+   "bytes": 117436,
+   "sha256": "3bebf987a7ec043c6fa281110c00577a6acc1533f5c7524914622dee7e769794",
+   "contentHash": "a169372aaae06883acac332cc11e1660",
+   "structureHash": "f308b6edf97c122901e3959166c6107f",
+   "tris": 3610,
    "parts": 28,
    "live": {
     "assetId": 108260487493804,
@@ -1027,17 +1416,35 @@
     "tris": 3694,
     "parts": 28
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 1.3846
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.9231
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.667,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1057,28 +1464,46 @@
     "tris": 10358,
     "parts": 34
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6889,
-     "h": 0.8001
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.711,
+     "h": 0.8,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.5111,
-     "h": 0.6222
+     "w": 0.533,
+     "h": 0.622,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 0.778,
-    "wRatio": 0.895
+    "hRatio": 0.777,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_maple_fox_low",
    "fbx": "blender/out/evo1_maple_fox_low.fbx",
-   "bytes": 110316,
-   "sha256": "01efc96f169c5533dd576fd596b64b2b0e9403fe0de8925e3113663abdfd92eb",
-   "contentHash": "1e37459eb6d254af82b466e838b2cc57",
-   "structureHash": "163cb61178dc8224b4dc9bd16da214dc",
-   "tris": 3404,
-   "parts": 26,
+   "bytes": 113084,
+   "sha256": "cb10a3e5e09f2cd6305fb2cba96c546ba9d353ccfd1b43b295dabc873e3016e2",
+   "contentHash": "e6d1d1582b40d1ee18d724c0d7404dc0",
+   "structureHash": "36c53c2c5a4d48666fd1fd034aeec0a2",
+   "tris": 3422,
+   "parts": 27,
    "live": {
     "assetId": 71314104979558,
     "contentHash": "bef6dd2e7b01f25d3726e0cfe5bb46e6",
@@ -1087,17 +1512,35 @@
     "tris": 3536,
     "parts": 26
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 1.1965
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.5385,
-     "h": 0.8547
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.714,
-    "wRatio": 0.818
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1117,27 +1560,45 @@
     "tris": 7670,
     "parts": 23
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.68,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.52,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_mochi_slime_low",
    "fbx": "blender/out/evo1_mochi_slime_low.fbx",
-   "bytes": 85788,
-   "sha256": "7a117ca7f37a7c1ba8ffa8977d19f6667cc1202f0b532ca85321222bf246be3f",
-   "contentHash": "6c67b2a53c4ffb113725ed973e7cb465",
-   "structureHash": "2077eb219d1244f99ca687a267766dfe",
-   "tris": 2582,
+   "bytes": 85772,
+   "sha256": "586f9d42c33f0afa84b421f66518ec38ee90ba66c94ac227f57339d51a1d665c",
+   "contentHash": "fc7a630bc60d20bf4794999c45cfa88b",
+   "structureHash": "96dbf3b638014b9f45a7a1c69efe67b6",
+   "tris": 2562,
    "parts": 20,
    "live": {
     "assetId": 121585707246125,
@@ -1147,17 +1608,35 @@
     "tris": 2650,
     "parts": 20
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 0.923
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.833,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1177,28 +1656,46 @@
     "tris": 9254,
     "parts": 33
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.88
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.88
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 1.0,
-    "wRatio": 0.913
+    "hRatio": 0.778,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_moonlit_owl_low",
    "fbx": "blender/out/evo1_moonlit_owl_low.fbx",
-   "bytes": 94268,
-   "sha256": "3d9be6dadce2156cfb6b64fb4230f93a119fdb3ee213c20350c90bc507de3575",
-   "contentHash": "77ea6c9514a0f85e9c8c6120c68d05fe",
-   "structureHash": "d28c9564e7ca3a9dc4fb590ffe5f2895",
-   "tris": 2852,
-   "parts": 22,
+   "bytes": 106556,
+   "sha256": "fd3559915a597d0c1dfede1d3c3e9acd50483bad749092ca27bbf5d8da83b001",
+   "contentHash": "91db17ee03e760966962cca8805d19f5",
+   "structureHash": "2d12cf4ffe43710d2f1f15eb7228a957",
+   "tris": 3044,
+   "parts": 26,
    "live": {
     "assetId": 87552810305165,
     "contentHash": "a9e6533a88cf009d0bc2dbad459a7421",
@@ -1207,17 +1704,35 @@
     "tris": 3084,
     "parts": 26
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.9231
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.923,
+     "h": 0.923,
+     "voxels": [
+      6,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.9231
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 1.0,
-    "wRatio": 0.846
+    "hRatio": 0.666,
+    "wRatio": 0.666,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1237,27 +1752,45 @@
     "tris": 9816,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.84,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.92
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_nebula_axolotl_low",
    "fbx": "blender/out/evo1_nebula_axolotl_low.fbx",
-   "bytes": 112700,
-   "sha256": "6f46e99806df69a0e690aa0e2905feacb93bd9c8b4e12462de1099e0d3cbe862",
-   "contentHash": "83cdeace45201fdc46302f0a1da1f54e",
-   "structureHash": "0f8147e48d36aab26b8558edacb93114",
-   "tris": 3356,
+   "bytes": 113724,
+   "sha256": "b2b1ac888eceec0fe39771383494819e2c792d8ef425c073540532c0e4adec82",
+   "contentHash": "9e8c7cee274393675fa4e933bc3ab9a4",
+   "structureHash": "f46ef9125887e5dac6b095c5f28e3687",
+   "tris": 3404,
    "parts": 27,
    "live": {
     "assetId": 135511552169009,
@@ -1267,17 +1800,35 @@
     "tris": 3450,
     "parts": 26
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.9231
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.923,
+     "h": 0.923,
+     "voxels": [
+      6,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.833,
-    "wRatio": 0.846
+    "hRatio": 0.666,
+    "wRatio": 0.666,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1297,27 +1848,45 @@
     "tris": 9692,
     "parts": 41
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.52,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.36,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.895
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_obsidian_phoenix_low",
    "fbx": "blender/out/evo1_obsidian_phoenix_low.fbx",
-   "bytes": 126700,
-   "sha256": "414e4aa570690e6a24c944932f36d468ac1a4225f2b75e858e25d00906de3529",
-   "contentHash": "2bc04de297e2f8404240c676a168a075",
-   "structureHash": "4c04708f96a8361f4b60448ca7a5744a",
-   "tris": 3546,
+   "bytes": 120700,
+   "sha256": "a8df793eef48a2815d9b62b4a2a8c0d2763dd0caf4cfb8ca2cbee05d0ea14b24",
+   "contentHash": "c31dff93b7383971ed4304596389d6a5",
+   "structureHash": "f48fb20ab4a8fdf7b597c51e0d1f1b23",
+   "tris": 2814,
    "parts": 32,
    "live": {
     "assetId": 136278315485979,
@@ -1327,17 +1896,35 @@
     "tris": 2954,
     "parts": 31
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.5385,
-     "h": 1.1967
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.684,
+     "h": 1.026,
+     "voxels": [
+      4,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.643,
-    "wRatio": 0.9
+    "hRatio": 0.667,
+    "wRatio": 1.0,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1357,27 +1944,45 @@
     "tris": 10722,
     "parts": 35
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_pebble_pup_low",
    "fbx": "blender/out/evo1_pebble_pup_low.fbx",
-   "bytes": 114524,
-   "sha256": "682bee7dfac950a4907bab690eae392f8fea1307a02e6892f4404f5f9169be7f",
-   "contentHash": "25a7ade6249a61018a25ae507076254f",
-   "structureHash": "1fd1dc1e2a3211f62e8ca23e0d7d7736",
-   "tris": 3408,
+   "bytes": 115148,
+   "sha256": "ae09b4f3133f07b7a95a64c6decb3fd0bc83d3723252b46fe7ffebab75018de5",
+   "contentHash": "969028a58e3d36fb1d7f7adec2757edc",
+   "structureHash": "0e728d0e982330d6ba60cb4c63965455",
+   "tris": 3384,
    "parts": 28,
    "live": {
     "assetId": 73658366816678,
@@ -1387,28 +1992,46 @@
     "tris": 3548,
     "parts": 27
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 1.2308
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.625,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_phantom_kitsune",
    "fbx": "blender/out/evo1_phantom_kitsune.fbx",
-   "bytes": 204972,
-   "sha256": "d1cc9902e2d61fbc5420b7a6317e70c1e1d54d1c0272ee992f498e343b381065",
-   "contentHash": "8090779086741dfc3119eb50cbe1db5b",
-   "structureHash": "d1b494818236f368ab4a072550576592",
-   "tris": 11318,
-   "parts": 36,
+   "bytes": 196012,
+   "sha256": "3f805ef864cc383fa6e61798e10e705230aca98fd3ab0dd7db2ead4418e187a5",
+   "contentHash": "06968749a1968f363ec4373cf584e4be",
+   "structureHash": "bce1c7d8aaad595426a0a14df0ba9592",
+   "tris": 9626,
+   "parts": 38,
    "live": {
     "assetId": 109492203546111,
     "contentHash": "7330defb0c3388128041d015eaa38a59",
@@ -1417,28 +2040,46 @@
     "tris": 9902,
     "parts": 38
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8765,
-     "h": 0.8889
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.79,
+     "h": 0.889,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.5111,
-     "h": 0.6222
+     "w": 0.593,
+     "h": 0.691,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 0.7,
-    "wRatio": 0.805
+    "hRatio": 0.777,
+    "wRatio": 0.751,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_phantom_kitsune_low",
    "fbx": "blender/out/evo1_phantom_kitsune_low.fbx",
-   "bytes": 124668,
-   "sha256": "6d4b7de7ce215332445aa515fefc4895c80ca7bc4aaea8dbb4a20530d65515c9",
-   "contentHash": "ea4326bb9d7e0d5463559768400ff046",
-   "structureHash": "1017250fd46341489187ec9ea54cb1aa",
-   "tris": 3640,
-   "parts": 31,
+   "bytes": 113020,
+   "sha256": "e669af7085f2b808ad8e485d85a159fe7d1388a998443c7ab623bdb28a4e96ea",
+   "contentHash": "046c5b3b59623dfe3de3345b5337b59c",
+   "structureHash": "62790f842f042d504262da6461071da2",
+   "tris": 3100,
+   "parts": 28,
    "live": {
     "assetId": 73193456925742,
     "contentHash": "5baabf81b5d5a37c9c4f4f986e734327",
@@ -1447,17 +2088,35 @@
     "tris": 3224,
     "parts": 28
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.7094,
-     "h": 1.5195
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.76,
+     "h": 0.95,
+     "voxels": [
+      4,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.5385,
-     "h": 0.8547
+     "w": 0.76,
+     "h": 0.76,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.562,
-    "wRatio": 0.9
+    "hRatio": 0.8,
+    "wRatio": 1.0,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1477,27 +2136,45 @@
     "tris": 9068,
     "parts": 34
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_pip_penguin_low",
    "fbx": "blender/out/evo1_pip_penguin_low.fbx",
-   "bytes": 101948,
-   "sha256": "f4b43da8b94c111bba22b1a2463956f6253fb7e2f76dc5e1fc5d584505281a5e",
-   "contentHash": "468328b706a534a30cb4251af1a8baf0",
-   "structureHash": "bbb4eb91005cac9a0beced930a7225cd",
-   "tris": 2898,
+   "bytes": 102268,
+   "sha256": "3f55bdb72a8f45947ac4f6d98c1cff575ca78d536975acea20709e5fca7ebff5",
+   "contentHash": "00c0f177237a4f67ee1ce2d4a19bd19b",
+   "structureHash": "c140f3455a2bbc1f02b494fd5f186f75",
+   "tris": 2928,
    "parts": 25,
    "live": {
     "assetId": 119159628161633,
@@ -1507,17 +2184,35 @@
     "tris": 3154,
     "parts": 25
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.9231
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.923,
+     "h": 0.923,
+     "voxels": [
+      6,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.833,
-    "wRatio": 0.846
+    "hRatio": 0.666,
+    "wRatio": 0.666,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1537,27 +2232,45 @@
     "tris": 10516,
     "parts": 25
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_puddle_frog_low",
    "fbx": "blender/out/evo1_puddle_frog_low.fbx",
-   "bytes": 101532,
-   "sha256": "2c8c3a72f386156ae2563100e252ad1cdb8f39f5d2cbea14b9b46744cf8d96ac",
-   "contentHash": "7c3a32036027aae07e71a731359df354",
-   "structureHash": "8d1d180a0e4fbc84254e89904a2560be",
-   "tris": 3378,
+   "bytes": 100620,
+   "sha256": "594c5f404ecc802d479345c072635a5118e7b0ae1cbf9b7594c999f5f931ef6a",
+   "contentHash": "2d8fae6a61448c0d3ed06a465b4bfb72",
+   "structureHash": "74f0eb6b1e683b7d0048d5a3c4751651",
+   "tris": 3372,
    "parts": 23,
    "live": {
     "assetId": 109508565800347,
@@ -1567,17 +2280,35 @@
     "tris": 3582,
     "parts": 23
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.9231
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.923,
+     "h": 0.923,
+     "voxels": [
+      6,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.833,
-    "wRatio": 0.846
+    "hRatio": 0.666,
+    "wRatio": 0.666,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1597,27 +2328,45 @@
     "tris": 11296,
     "parts": 43
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8667,
-     "h": 0.6222
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.711,
+     "h": 0.622,
+     "voxels": [
+      8,
+      7
+     ]
     },
     "rebaked": {
-     "w": 1.6889,
-     "h": 0.4445
+     "w": 0.533,
+     "h": 0.444,
+     "voxels": [
+      6,
+      5
+     ]
     },
     "hRatio": 0.714,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_rime_wyrmling_low",
    "fbx": "blender/out/evo1_rime_wyrmling_low.fbx",
-   "bytes": 134588,
-   "sha256": "f5233ea29639ac9cc2d5b36a041b1cfe71dc49ed4e5f29d66f5f61e58b622cdf",
-   "contentHash": "08d2fd6537933e86d1b7a5b6fea7b095",
-   "structureHash": "1be5e15e21adcef42a28c439a7e48948",
-   "tris": 3312,
+   "bytes": 134796,
+   "sha256": "6178bc6574819279ec9a581249ebf6a114143a247b7ba7b43e10782716008419",
+   "contentHash": "1b5673427fca1872b21a05a9a1089a9c",
+   "structureHash": "dcee7901ff6c15ea3a046369428810fc",
+   "tris": 3444,
    "parts": 35,
    "live": {
     "assetId": 97518265520464,
@@ -1627,17 +2376,35 @@
     "tris": 3504,
     "parts": 34
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0893,
-     "h": 0.9497
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.95,
+     "h": 0.76,
+     "voxels": [
+      5,
+      4
+     ]
     },
     "rebaked": {
-     "w": 1.7094,
-     "h": 0.5698
+     "w": 0.76,
+     "h": 0.76,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.6,
-    "wRatio": 0.818
+    "hRatio": 1.0,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1657,27 +2424,45 @@
     "tris": 9778,
     "parts": 26
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_shroomie_frog_low",
    "fbx": "blender/out/evo1_shroomie_frog_low.fbx",
-   "bytes": 103292,
-   "sha256": "6467b99b49ba8f1ff7dc70a8858aeb6b76bd9de9d687252325f506379ad6230e",
-   "contentHash": "616e401c75d3b85f7d1006aef91e0670",
-   "structureHash": "1db9de422e89667596dc8bf4bcc777b7",
-   "tris": 3224,
+   "bytes": 102348,
+   "sha256": "389dd9d48647344737ccd4fa0d5905df5a99662c9fd90e40495b81b54affbeab",
+   "contentHash": "bc375c30ad1e77b09cfe8fb74ffa3f0d",
+   "structureHash": "f83c6e997652128d03f8460f50783856",
+   "tris": 3218,
    "parts": 24,
    "live": {
     "assetId": 89302304972875,
@@ -1687,17 +2472,35 @@
     "tris": 3450,
     "parts": 24
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.9231
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.923,
+     "h": 0.923,
+     "voxels": [
+      6,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.833,
-    "wRatio": 0.846
+    "hRatio": 0.666,
+    "wRatio": 0.666,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1717,28 +2520,46 @@
     "tris": 8950,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.88
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.88
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 1.0,
-    "wRatio": 0.913
+    "hRatio": 0.778,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_sleepy_owl_low",
    "fbx": "blender/out/evo1_sleepy_owl_low.fbx",
-   "bytes": 92284,
-   "sha256": "34a94cec7f17262ae9a6107fa23b60ddec2b3afa4244464ad05f8ac705674863",
-   "contentHash": "4ca322074868610863da2a34a0ccfe51",
-   "structureHash": "6ca43517e7df0775506f5eebfd87eb4f",
-   "tris": 2814,
-   "parts": 21,
+   "bytes": 104524,
+   "sha256": "6fd99a1007577135990c0f70eeaa0810ddfb3588fc7c7d0711447896733e4057",
+   "contentHash": "db18d9d0b962098d44949bb6fd3189f0",
+   "structureHash": "3f6c1b75f3a45a6c581340fc122c2f0a",
+   "tris": 3006,
+   "parts": 25,
    "live": {
     "assetId": 104696782911723,
     "contentHash": "0c415b0d0b7b9208ab9eff958377ffc0",
@@ -1747,17 +2568,35 @@
     "tris": 3042,
     "parts": 25
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0,
-     "h": 0.9231
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.923,
+     "h": 0.923,
+     "voxels": [
+      6,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.6923,
-     "h": 0.9231
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 1.0,
-    "wRatio": 0.846
+    "hRatio": 0.666,
+    "wRatio": 0.666,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1777,28 +2616,46 @@
     "tris": 10774,
     "parts": 34
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_starlight_unicorn_low",
    "fbx": "blender/out/evo1_starlight_unicorn_low.fbx",
-   "bytes": 119548,
-   "sha256": "9c52501e398edb58f0cfc0b34110fcf15ce6f6d61884919450ecd876bceef337",
-   "contentHash": "f3d6e5543b8f12afc78ca9c5a206f1a0",
-   "structureHash": "c9356b8c09ce5366869bb2bf84317748",
-   "tris": 3268,
-   "parts": 30,
+   "bytes": 124908,
+   "sha256": "e1d9131d2205f939f018eeb07ec1857ef399eed333eed45ca47cc30c3324941d",
+   "contentHash": "0cb987d340fa407e4f1cc3d257d0ddba",
+   "structureHash": "32ccf9df8650d625c931f4c5f4f0c223",
+   "tris": 3262,
+   "parts": 32,
    "live": {
     "assetId": 113879047878339,
     "contentHash": "b10d96c35df01d6ec3afe268899ddfda",
@@ -1807,17 +2664,35 @@
     "tris": 3452,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 1.5384
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.5385,
-     "h": 0.6837
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.444,
-    "wRatio": 0.818
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1837,26 +2712,44 @@
     "tris": 10222,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_storm_tabby_low",
    "fbx": "blender/out/evo1_storm_tabby_low.fbx",
-   "bytes": 111676,
-   "sha256": "3bc4f694b7fa066432f775afbb09a13dadf8550e9cbb2e08c0f4f1bb2e0edf45",
-   "contentHash": "c304101012874aff50ca67689c635451",
-   "structureHash": "66e404991faa9bda3c3b36c91f5d4e4c",
+   "bytes": 111804,
+   "sha256": "a9c93e448179395a459168e0cf77f047f76ded6edf5b881e09ff35f09208ce1a",
+   "contentHash": "65cab4311091722f167daa9d9570c1e2",
+   "structureHash": "902472b79858f6eeda1a5b58cf790f81",
    "tris": 3356,
    "parts": 27,
    "live": {
@@ -1867,27 +2760,45 @@
     "tris": 3438,
     "parts": 27
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 1.3846
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.9231
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.667,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_stormfang",
    "fbx": "blender/out/evo1_stormfang.fbx",
-   "bytes": 198188,
-   "sha256": "918211f795f55f15730b6362e547b35f4eb1be92d527794628a6f277b04c87f5",
-   "contentHash": "d7bdd6606e0b2effc41000d4323f9b39",
-   "structureHash": "fed7c97aa25e20898860bdf57711b599",
-   "tris": 11274,
+   "bytes": 181916,
+   "sha256": "f9f508d1f30da3c567774f78a8ab4721953ad05f30f57c088d84fc6c920cd051",
+   "contentHash": "2f43cfea45da54e6ca934286f774c2a5",
+   "structureHash": "6eeef2f2b0c89386e44b471751030522",
+   "tris": 9614,
    "parts": 33,
    "live": {
     "assetId": 93119026859574,
@@ -1897,28 +2808,46 @@
     "tris": 9888,
     "parts": 33
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6889,
-     "h": 0.8001
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.711,
+     "h": 0.8,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.52,
-     "h": 0.56
+     "w": 0.533,
+     "h": 0.622,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 0.7,
-    "wRatio": 0.9
+    "hRatio": 0.777,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_stormfang_low",
    "fbx": "blender/out/evo1_stormfang_low.fbx",
-   "bytes": 108380,
-   "sha256": "02d1fd8a73a24ac1ca4e7eb17c7bfbb26a40d1b5e6d2f7c28bcd39552eb10848",
-   "contentHash": "95ef1bbc2d254918b70b5a2d3bc3dcf4",
-   "structureHash": "037a1adf32b319d76a425063a2a7ff95",
-   "tris": 3228,
-   "parts": 26,
+   "bytes": 113772,
+   "sha256": "6b69b794b6837690c443111c6367b5a229d6cf9ec35264d763840bfd47362b31",
+   "contentHash": "01899caa417d3a7045f91c38cb41569b",
+   "structureHash": "4817e953beb3289f2da9f1acde11194f",
+   "tris": 3244,
+   "parts": 28,
    "live": {
     "assetId": 76844743783547,
     "contentHash": "412ab7494894c472aa0b5aebc2195d8d",
@@ -1927,17 +2856,35 @@
     "tris": 3360,
     "parts": 28
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 1.1965
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.5385,
-     "h": 1.0256
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.857,
-    "wRatio": 0.818
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -1957,27 +2904,45 @@
     "tris": 10410,
     "parts": 31
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_sunbeam_bear_low",
    "fbx": "blender/out/evo1_sunbeam_bear_low.fbx",
-   "bytes": 112076,
-   "sha256": "54c19ca41f8c84fcb013ec3217053504214b85785cd4160b46a31818d974eaf6",
-   "contentHash": "5a98986c30af6b594d764702eb979ab7",
-   "structureHash": "8ce9a521e785d65dec2adc743f262f4f",
-   "tris": 3520,
+   "bytes": 111548,
+   "sha256": "02c6f122ea74862bddfe1254ab87ca9712d0a22a1c266e6a73c25060fad46a8e",
+   "contentHash": "3b4011c011f131026c9e31c29447b3e6",
+   "structureHash": "4c2e6b2b29bb536c6eff95f8cd43ae07",
+   "tris": 3484,
    "parts": 26,
    "live": {
     "assetId": 130314648949999,
@@ -1987,17 +2952,35 @@
     "tris": 3662,
     "parts": 25
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.6923,
-     "h": 1.3846
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.769,
+     "h": 0.923,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.615,
+     "h": 0.615,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.556,
-    "wRatio": 0.818
+    "hRatio": 0.666,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2017,27 +3000,45 @@
     "tris": 10162,
     "parts": 33
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8667,
-     "h": 0.6222
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.711,
+     "h": 0.622,
+     "voxels": [
+      8,
+      7
+     ]
     },
     "rebaked": {
-     "w": 1.6889,
-     "h": 0.4445
+     "w": 0.533,
+     "h": 0.444,
+     "voxels": [
+      6,
+      5
+     ]
     },
     "hRatio": 0.714,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_twilight_dragon_low",
    "fbx": "blender/out/evo1_twilight_dragon_low.fbx",
-   "bytes": 110604,
-   "sha256": "79a7eb37122082e33e43122a5afa8c7888bbbb9393260c908fa123b0e7db957e",
-   "contentHash": "7a348010945fb44690225ae7c6acddd4",
-   "structureHash": "2ba796c939f1a1e906304932c35680e2",
-   "tris": 3046,
+   "bytes": 110812,
+   "sha256": "02db3bf5118b76c3b30f88ee70503bb8e08837663bed5aecc327b06d80218190",
+   "contentHash": "465cf67e58e0dfee11fb374f1e20d2c5",
+   "structureHash": "2fa6093deb5c1b3ba8787021981c6961",
+   "tris": 3174,
    "parts": 27,
    "live": {
     "assetId": 122058642544043,
@@ -2047,17 +3048,35 @@
     "tris": 3242,
     "parts": 26
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0893,
-     "h": 0.9497
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.95,
+     "h": 0.76,
+     "voxels": [
+      5,
+      4
+     ]
     },
     "rebaked": {
-     "w": 1.7094,
-     "h": 0.5698
+     "w": 0.76,
+     "h": 0.76,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.6,
-    "wRatio": 0.818
+    "hRatio": 1.0,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2077,27 +3096,45 @@
     "tris": 11044,
     "parts": 37
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.84,
-     "h": 0.72
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.64,
+     "h": 0.72,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.68,
-     "h": 0.56
+     "w": 0.48,
+     "h": 0.56,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo1_waffle_corgi_low",
    "fbx": "blender/out/evo1_waffle_corgi_low.fbx",
-   "bytes": 122748,
-   "sha256": "82f019decf456452fb629ae5cbf47a6a2764423f99725640c6e85879c1a00246",
-   "contentHash": "e017d725704e0b6acd90e01d786e0ec5",
-   "structureHash": "af7a95ed1c8ff88abc5c26c1105f180b",
-   "tris": 3698,
+   "bytes": 118284,
+   "sha256": "8c2d660d611927edf9ea473c20464ffbba798de3ab99bda0f9fd3138030766c6",
+   "contentHash": "dfc2ee1624863afaa0e7a8273b2c5807",
+   "structureHash": "f2bf33ea008e1dcb51ad23aada29e875",
+   "tris": 3254,
    "parts": 30,
    "live": {
     "assetId": 110708334812765,
@@ -2107,17 +3144,35 @@
     "tris": 3336,
     "parts": 30
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8803,
-     "h": 1.1966
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.855,
+     "h": 1.026,
+     "voxels": [
+      5,
+      6
+     ]
     },
     "rebaked": {
-     "w": 1.3846,
-     "h": 0.7692
+     "w": 0.684,
+     "h": 0.684,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.643,
-    "wRatio": 0.736
+    "hRatio": 0.667,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2137,28 +3192,46 @@
     "tris": 14250,
     "parts": 47
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0267,
-     "h": 0.96
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.8133,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.895
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_aurora_fox_low",
    "fbx": "blender/out/evo2_aurora_fox_low.fbx",
-   "bytes": 132076,
-   "sha256": "6205cf33168b2b6630c6455565ebc32e688ed7a8b2a23980a29585295d92e5b9",
-   "contentHash": "d4fcd7f329d5eb558ccd1b59e59fa9fe",
-   "structureHash": "c64080c5739be0118d82d6a19b394b31",
-   "tris": 3626,
-   "parts": 33,
+   "bytes": 134412,
+   "sha256": "1d193cc87595c527d2f46037c1d76b21f65f6031c2d634e29fd5a1f7e6fdfed6",
+   "contentHash": "86b9f22eed3743b1fee9ea0fd41ebae8",
+   "structureHash": "b77575a7920935cb7a469ac6269c6d23",
+   "tris": 3638,
+   "parts": 34,
    "live": {
     "assetId": 134494158953338,
     "contentHash": "41ad76060f557d538467a6bff361c0b7",
@@ -2167,17 +3240,35 @@
     "tris": 3786,
     "parts": 34
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.3091
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 1.0909
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.833,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2197,28 +3288,46 @@
     "tris": 12586,
     "parts": 46
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.24,
-     "h": 0.96
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 2.0267,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_candy_unicorn_low",
    "fbx": "blender/out/evo2_candy_unicorn_low.fbx",
-   "bytes": 130428,
-   "sha256": "808c92ed41bf20bc7aa6fd77608e574567d0b514da73abc94bd4e7fe17cb6845",
-   "contentHash": "f4cf152cdc0d218fc7ae364e7790b04e",
-   "structureHash": "7e93a1cc7eb5542546ab0d507a64cd08",
-   "tris": 3526,
-   "parts": 33,
+   "bytes": 134220,
+   "sha256": "47754463c9cc393c786e30a3e64a80d029c9822a3346fba5dac1238b94037da8",
+   "contentHash": "b33818c0b023e48c85aee4ef6596ef0b",
+   "structureHash": "02aced89e82552861e0a1e3576545c0d",
+   "tris": 3620,
+   "parts": 34,
    "live": {
     "assetId": 72655878660168,
     "contentHash": "c216cd4790df39b46660b8839a976c3d",
@@ -2227,17 +3336,35 @@
     "tris": 3746,
     "parts": 34
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.9636
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.8728
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.444,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2257,27 +3384,45 @@
     "tris": 13934,
     "parts": 39
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.24,
-     "h": 0.7467
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.747,
+     "voxels": [
+      8,
+      7
+     ]
     },
     "rebaked": {
-     "w": 2.0267,
-     "h": 0.5333
+     "w": 0.64,
+     "h": 0.533,
+     "voxels": [
+      6,
+      5
+     ]
     },
     "hRatio": 0.714,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_cloudy_dragon_low",
    "fbx": "blender/out/evo2_cloudy_dragon_low.fbx",
-   "bytes": 134988,
-   "sha256": "433a577e86580ab11521f23942ab1929541b9a7824ce56ac4dbcd1aad86e05ad",
-   "contentHash": "0b7072598bc584b0f3d72f9ce730f675",
-   "structureHash": "2128e62ac0c22ceed29aef5057e44b2a",
-   "tris": 4072,
+   "bytes": 136140,
+   "sha256": "9affe32b48f4fd7156c5c0e1ac9ebca5021ee5136e0a6a015a1a07a7b7f32366",
+   "contentHash": "f5ed11f5326c6f8938b8e0fc6d411f79",
+   "structureHash": "dfb251fb76352617c76174ee11d061cb",
+   "tris": 4178,
    "parts": 33,
    "live": {
     "assetId": 77495727832514,
@@ -2287,17 +3432,35 @@
     "tris": 4188,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.0909
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 0.873,
+     "voxels": [
+      5,
+      4
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.6546
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.6,
-    "wRatio": 0.818
+    "hRatio": 1.0,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2317,27 +3480,45 @@
     "tris": 14246,
     "parts": 42
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.24,
-     "h": 0.7467
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.747,
+     "voxels": [
+      8,
+      7
+     ]
     },
     "rebaked": {
-     "w": 2.0267,
-     "h": 0.5333
+     "w": 0.64,
+     "h": 0.533,
+     "voxels": [
+      6,
+      5
+     ]
     },
     "hRatio": 0.714,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_eclipse_dragon_low",
    "fbx": "blender/out/evo2_eclipse_dragon_low.fbx",
-   "bytes": 144012,
-   "sha256": "26e8c2eab865b407b71ebbcdf31e584eda52c8a3ff8c99da5e25b982a730e793",
-   "contentHash": "5272c2cc81c266220deb7f7f7a8aaeae",
-   "structureHash": "60e39c22c9ad8eb995bd501939766818",
-   "tris": 4054,
+   "bytes": 144748,
+   "sha256": "f387fcb14d18bd9f842efb5140986c7e29b234c0fbc6f52105873919c8742d31",
+   "contentHash": "2a2091ab620b5059836dfe91114605c4",
+   "structureHash": "c179d3d2be409ddca4a33848eb8429e1",
+   "tris": 4164,
    "parts": 36,
    "live": {
     "assetId": 116024781080229,
@@ -2347,17 +3528,35 @@
     "tris": 4160,
     "parts": 35
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.0909
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 0.873,
+     "voxels": [
+      5,
+      4
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.6546
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.6,
-    "wRatio": 0.818
+    "hRatio": 1.0,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2377,28 +3576,46 @@
     "tris": 11644,
     "parts": 43
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8133,
-     "h": 0.9599
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.6,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.882
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_ember_phoenix_low",
    "fbx": "blender/out/evo2_ember_phoenix_low.fbx",
-   "bytes": 107628,
-   "sha256": "4ba24c9607586eaa7842548dde9de8b15c0bc4602b980b372c22c2c4fe47e83c",
-   "contentHash": "a8ff980ab7e4baedd94096c336b8850a",
-   "structureHash": "2d5c4f5f1d299a9daaa1e221be8c27ad",
-   "tris": 3100,
-   "parts": 26,
+   "bytes": 111420,
+   "sha256": "c7b2db124ae79121ef8716feef954f28e5d556a32558a9a23f5af4f1db9615ef",
+   "contentHash": "5169d864829094b42c9fe8ae1c71dd5e",
+   "structureHash": "97acbb022f8c5d0b6ddda4ae6616a398",
+   "tris": 3148,
+   "parts": 27,
    "live": {
     "assetId": 129351525313180,
     "contentHash": "316b332d80b207265ee7590e8ba78e5d",
@@ -2407,17 +3624,35 @@
     "tris": 3268,
     "parts": 27
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.9636,
-     "h": 1.9637
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.873,
+     "h": 1.091,
+     "voxels": [
+      4,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.5273,
-     "h": 1.0909
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.556,
-    "wRatio": 0.778
+    "hRatio": 0.8,
+    "wRatio": 1.0,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2437,28 +3672,46 @@
     "tris": 13304,
     "parts": 40
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4533,
-     "h": 0.9599
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 2.24,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_hydralotl_low",
    "fbx": "blender/out/evo2_hydralotl_low.fbx",
-   "bytes": 123996,
-   "sha256": "032def1c16ff932b6910fe50f75b1e386876c49d0d35d28018a7611461cf2a60",
-   "contentHash": "045ffc1c15d95ed3c55e573f91ba23b1",
-   "structureHash": "b2c6685b0f8ae5e7c76a89068290b7ec",
-   "tris": 3750,
-   "parts": 30,
+   "bytes": 129724,
+   "sha256": "69b20bfcf44adadaea254db436eeff08284f978e3e786cbd379a9e01c03dbc17",
+   "contentHash": "e1be8cb86488168f840b12e328215473",
+   "structureHash": "bbb5aacdee4cb103ca78f8b5e0f2f621",
+   "tris": 3782,
+   "parts": 32,
    "live": {
     "assetId": 108255604353600,
     "contentHash": "4ff9c11d8f7dce1b7ca8305aff7a0088",
@@ -2467,17 +3720,35 @@
     "tris": 3858,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.3091
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.8726
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.667,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2497,28 +3768,46 @@
     "tris": 12888,
     "parts": 45
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0267,
-     "h": 0.96
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.8133,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.895
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_magma_cub_low",
    "fbx": "blender/out/evo2_magma_cub_low.fbx",
-   "bytes": 113996,
-   "sha256": "f1fc54d6c204a2fc5ac8ee5adb938a2fb033e938b9ef2abaf26fc861e9aad935",
-   "contentHash": "e5e238e28191c7a10649a07d0b0fc5b7",
-   "structureHash": "bb7c157b090ee38cd4d695e0a710cf47",
-   "tris": 3298,
-   "parts": 27,
+   "bytes": 119676,
+   "sha256": "0ea3a0ed23afe5b5960a7c3ac18ae9e0c10db1ce40d75f3f695dd3aaa00c82ec",
+   "contentHash": "1535549d5eb0f64ffc09e2469a69407e",
+   "structureHash": "1dc6293cacef70ca49c6e73b08855831",
+   "tris": 3368,
+   "parts": 29,
    "live": {
     "assetId": 104620513801272,
     "contentHash": "51be3e790bc903c25667183e17b5fe9e",
@@ -2527,17 +3816,35 @@
     "tris": 3498,
     "parts": 29
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.5273
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 1.309
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.857,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2557,28 +3864,46 @@
     "tris": 9692,
     "parts": 36
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.24,
-     "h": 1.0667
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 2.0267,
-     "h": 1.0667
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
-    "hRatio": 1.0,
-    "wRatio": 0.905
+    "hRatio": 0.778,
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_moonlit_owl_low",
    "fbx": "blender/out/evo2_moonlit_owl_low.fbx",
-   "bytes": 85292,
-   "sha256": "fc515f3c546328a780298c0b0a3cdf6f2bc1a34564d38204f7f0f947abad4f34",
-   "contentHash": "a11c60ca86c347e31e9e37d1b85e6808",
-   "structureHash": "b7aca29196f156b92e97f9fe88b01170",
-   "tris": 2474,
-   "parts": 20,
+   "bytes": 108684,
+   "sha256": "5ec436e72efb62e27ef42d25566c1d1feb9751d77e8ec703d056a548e9e85460",
+   "contentHash": "d345e79501f9e2642b529ba0c6cc7c99",
+   "structureHash": "2983a6dff431c06bc20e84c47de05126",
+   "tris": 2718,
+   "parts": 28,
    "live": {
     "assetId": 127699670768610,
     "contentHash": "064bc8097f518f087cc96caa6d85f3d0",
@@ -2587,17 +3912,35 @@
     "tris": 2680,
     "parts": 27
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4001,
-     "h": 1.5273
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.8727
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.571,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2617,28 +3960,46 @@
     "tris": 11906,
     "parts": 41
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4533,
-     "h": 0.9599
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 2.24,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.913
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_nebula_axolotl_low",
    "fbx": "blender/out/evo2_nebula_axolotl_low.fbx",
-   "bytes": 117628,
-   "sha256": "7fa8ffec9745780d6f0c3fabf960cae3e6efbf5fcf5daad3d01b07fda60ffdd1",
-   "contentHash": "ffc9ef6dc542b62ff073c84ab2863d19",
-   "structureHash": "6df6ba70a0ea22d820c6a5a88f5544af",
-   "tris": 3236,
-   "parts": 29,
+   "bytes": 123356,
+   "sha256": "cf2908b2e0ac02e97198ac3fe01bbba140b5c345088857a0c1e939394be1474a",
+   "contentHash": "23b80dd315355965ffc6662212c8e212",
+   "structureHash": "704074f427c0ab484a84eb72613d0dc1",
+   "tris": 3264,
+   "parts": 31,
    "live": {
     "assetId": 91217054217891,
     "contentHash": "a188c4ce33137322684b909e892e245e",
@@ -2647,17 +4008,35 @@
     "tris": 3344,
     "parts": 31
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.3091
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.8726
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.667,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2677,28 +4056,46 @@
     "tris": 11370,
     "parts": 40
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.8133,
-     "h": 0.9599
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.6,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.882
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_obsidian_phoenix_low",
    "fbx": "blender/out/evo2_obsidian_phoenix_low.fbx",
-   "bytes": 112028,
-   "sha256": "1a0a796bafb6d7a2e44c8156af02d8b1bd1e2762f50e1ebde1a5a18bb4a49549",
-   "contentHash": "4fc4eea9462f2d0a904fe51e8b705205",
-   "structureHash": "dd1e4ea3087c7954030a9b7ebb289b6b",
-   "tris": 2988,
-   "parts": 28,
+   "bytes": 115708,
+   "sha256": "a2ea1900c183930bbeaa829f2a02a8396e7c03480f432a3c7ea92d3728717f95",
+   "contentHash": "a51d2427ac68ac285f5a559a4c0a9339",
+   "structureHash": "9cad3a368f8f56de83c2a49c873d7c09",
+   "tris": 3068,
+   "parts": 29,
    "live": {
     "assetId": 89229925420725,
     "contentHash": "0f768afc3a41846677d0bdf46e348310",
@@ -2707,17 +4104,35 @@
     "tris": 3138,
     "parts": 29
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.9636,
-     "h": 1.9637
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.873,
+     "h": 1.091,
+     "voxels": [
+      4,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.5273,
-     "h": 1.0909
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.556,
-    "wRatio": 0.778
+    "hRatio": 0.8,
+    "wRatio": 1.0,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2737,28 +4152,46 @@
     "tris": 14474,
     "parts": 39
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0267,
-     "h": 0.96
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.8133,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.895
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_phantom_kitsune_low",
    "fbx": "blender/out/evo2_phantom_kitsune_low.fbx",
-   "bytes": 123004,
-   "sha256": "4624a8d6427f6d3bfade3b30f5fcb5118ba149ae21fa29f1349e952381f3e7c9",
-   "contentHash": "f51ad6314725404734afdba80f4889a4",
-   "structureHash": "8a8c84ef216adf7a26fede3085a47061",
-   "tris": 3808,
-   "parts": 29,
+   "bytes": 125388,
+   "sha256": "a3694a68553e9adafbb37f5e0f6d18656040c1517233f9e1b27902c0669a7d0c",
+   "contentHash": "7b65404b1ff359edc2bacc1bd75b051d",
+   "structureHash": "d4d8a1f992c83aa086e44073b5937506",
+   "tris": 3826,
+   "parts": 30,
    "live": {
     "assetId": 80582703392635,
     "contentHash": "85e6da10dcc79910ed9a3af3050bac45",
@@ -2767,17 +4200,35 @@
     "tris": 3974,
     "parts": 30
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.3091
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 1.0909
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.833,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2797,27 +4248,45 @@
     "tris": 14426,
     "parts": 47
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.24,
-     "h": 0.7467
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.747,
+     "voxels": [
+      8,
+      7
+     ]
     },
     "rebaked": {
-     "w": 2.0267,
-     "h": 0.5333
+     "w": 0.64,
+     "h": 0.533,
+     "voxels": [
+      6,
+      5
+     ]
     },
     "hRatio": 0.714,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_rime_wyrmling_low",
    "fbx": "blender/out/evo2_rime_wyrmling_low.fbx",
-   "bytes": 154028,
-   "sha256": "b867700c6908e763f46e381e8797bd16c965ed1b9dbae9e47ceff389af11cf3a",
-   "contentHash": "38d6689047304ddd1a21b3d847fd30cb",
-   "structureHash": "455bf3b090ae891106eb5a21e30c962f",
-   "tris": 3982,
+   "bytes": 154716,
+   "sha256": "7957c766fe5e218ca1cb56e3e5dfe7fa044b311185a55d619f14365bfc45b1c2",
+   "contentHash": "e544f8729b688b4570e0a0392991bcfb",
+   "structureHash": "5f0d26153ea3a779a24fa2454b9cb6eb",
+   "tris": 4092,
    "parts": 40,
    "live": {
     "assetId": 77245777274702,
@@ -2827,17 +4296,35 @@
     "tris": 4088,
     "parts": 39
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.0909
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 0.873,
+     "voxels": [
+      5,
+      4
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.6546
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.6,
-    "wRatio": 0.818
+    "hRatio": 1.0,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2857,28 +4344,46 @@
     "tris": 12138,
     "parts": 36
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.24,
-     "h": 0.96
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 2.0267,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_starlight_unicorn_low",
    "fbx": "blender/out/evo2_starlight_unicorn_low.fbx",
-   "bytes": 126028,
-   "sha256": "3d0109a6fae257769928975aeeeb41246cb3a74b54c922f9feb96dfc1369e9a7",
-   "contentHash": "313bc651bc565c1782e532925b6c8fb6",
-   "structureHash": "67a985ded082b5cd675a76b57fb2cbd1",
-   "tris": 3696,
-   "parts": 31,
+   "bytes": 129900,
+   "sha256": "fc9b2130b60472b9d87e6d4411a71493f298a165957430973c160459ec87041d",
+   "contentHash": "d7f7ad0449f9d3d6486e8bc7dbfd93d3",
+   "structureHash": "a7cf0ef23775a127956fb021f2b0fb90",
+   "tris": 3782,
+   "parts": 32,
    "live": {
     "assetId": 92883425379575,
     "contentHash": "9c1bff2c672cdef8f8decb52c65b85cb",
@@ -2887,17 +4392,35 @@
     "tris": 3856,
     "parts": 32
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.9636
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.8728
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.444,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2917,27 +4440,45 @@
     "tris": 12492,
     "parts": 33
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0267,
-     "h": 0.9601
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.8133,
-     "h": 0.7466
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.895
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_stormfang_low",
    "fbx": "blender/out/evo2_stormfang_low.fbx",
-   "bytes": 112092,
-   "sha256": "a4f854657b8a972aa264e4d3f836115a84a7782075cebd8f990f3f2bef5a2497",
-   "contentHash": "005e49efcbb2a54b56fc4fa6981fbdc7",
-   "structureHash": "6a55c29b91a4174c568b4c5c3d19f233",
-   "tris": 3524,
+   "bytes": 112748,
+   "sha256": "5b7a302cd269a7a663d07f4ca5e23cb342d4d0f4438460437faae16d56195145",
+   "contentHash": "d7c48bbbbabef5b8bdb95fadf0a34b0a",
+   "structureHash": "905ad5d7a94a5a5ccfe5c6a3a38dd896",
+   "tris": 3546,
    "parts": 26,
    "live": {
     "assetId": 108154765916829,
@@ -2947,17 +4488,35 @@
     "tris": 3618,
     "parts": 25
    },
-   "eyeBox": {
-    "live": {
-     "w": 1.9636,
-     "h": 1.5273
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 0.873,
+     "h": 1.091,
+     "voxels": [
+      4,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.5273,
-     "h": 1.3091
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.857,
-    "wRatio": 0.778
+    "hRatio": 0.8,
+    "wRatio": 1.0,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -2977,28 +4536,46 @@
     "tris": 13164,
     "parts": 39
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.0267,
-     "h": 0.96
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.96,
+     "voxels": [
+      8,
+      9
+     ]
     },
     "rebaked": {
-     "w": 1.8133,
-     "h": 0.7467
+     "w": 0.64,
+     "h": 0.747,
+     "voxels": [
+      6,
+      7
+     ]
     },
     "hRatio": 0.778,
-    "wRatio": 0.895
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_sunbeam_bear_low",
    "fbx": "blender/out/evo2_sunbeam_bear_low.fbx",
-   "bytes": 108364,
-   "sha256": "659072a17d83fb03474d367d4fd7884085c6f7665f7ccb678668659732cf97f6",
-   "contentHash": "3818c09d39fccc5b4ccd1649f89ccec4",
-   "structureHash": "37cb64113dc55d87185387c71753987f",
-   "tris": 3334,
-   "parts": 25,
+   "bytes": 114028,
+   "sha256": "74683bf43cbb3a3ad0e5cbf25a79f923e7edf3c9960da3aa3c963a59704d8793",
+   "contentHash": "28ff84eea223058af09832f16236907c",
+   "structureHash": "3ebdcbe7e83523e792c3c70d4848bcb2",
+   "tris": 3404,
+   "parts": 27,
    "live": {
     "assetId": 87184391459429,
     "contentHash": "29cc1b98f0dc1402a04f301adf628929",
@@ -3007,17 +4584,35 @@
     "tris": 3550,
     "parts": 27
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.5273
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 1.091,
+     "voxels": [
+      5,
+      5
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 1.309
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.857,
-    "wRatio": 0.818
+    "hRatio": 0.8,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
@@ -3037,27 +4632,45 @@
     "tris": 14016,
     "parts": 42
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.24,
-     "h": 0.7467
+   "newAsset": true,
+   "changedSinceReviewedBuild": false,
+   "eye": {
+    "preTrim": {
+     "w": 0.853,
+     "h": 0.747,
+     "voxels": [
+      8,
+      7
+     ]
     },
     "rebaked": {
-     "w": 2.0267,
-     "h": 0.5333
+     "w": 0.64,
+     "h": 0.533,
+     "voxels": [
+      6,
+      5
+     ]
     },
     "hRatio": 0.714,
-    "wRatio": 0.905
+    "wRatio": 0.75,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   },
   {
    "key": "evo2_twilight_dragon_low",
    "fbx": "blender/out/evo2_twilight_dragon_low.fbx",
-   "bytes": 137148,
-   "sha256": "772e3fa077bd5acb14487e130954ab5723179474c6145237994e1aa83569e949",
-   "contentHash": "0f7b8a3115383aad1ee1ee9041c605f2",
-   "structureHash": "1c6c8f873f7bd397265a9d4f42caf3a6",
-   "tris": 3906,
+   "bytes": 137884,
+   "sha256": "40678aa275bb8de360de43d40e9a38764fded03b96bebe7e63e156d5b2747c69",
+   "contentHash": "4279d4dea6771b2c646ceaa56fb3d4d9",
+   "structureHash": "fc7bfdacc978f8f02b925f5b8c9eed73",
+   "tris": 4016,
    "parts": 34,
    "live": {
     "assetId": 128380020278617,
@@ -3067,18 +4680,94 @@
     "tris": 4012,
     "parts": 33
    },
-   "eyeBox": {
-    "live": {
-     "w": 2.4,
-     "h": 1.0909
+   "newAsset": true,
+   "changedSinceReviewedBuild": true,
+   "eye": {
+    "preTrim": {
+     "w": 1.091,
+     "h": 0.873,
+     "voxels": [
+      5,
+      4
+     ]
     },
     "rebaked": {
-     "w": 1.9636,
-     "h": 0.6546
+     "w": 0.873,
+     "h": 0.873,
+     "voxels": [
+      4,
+      4
+     ]
     },
-    "hRatio": 0.6,
-    "wRatio": 0.818
+    "hRatio": 1.0,
+    "wRatio": 0.8,
+    "mirror": true,
+    "features": [
+     "EyeGlint",
+     "EyeIris",
+     "EyePupil",
+     "EyeShine",
+     "Lash"
+    ]
    }
   }
- ]
+ ],
+ "sameBytesTwice": "98 of 98 keys: two separate PC export builds gave the same sha256",
+ "changedSinceReviewedBuild": {
+  "keys": 51,
+  "list": [
+   "evo1_aurora_fox_low",
+   "evo1_bamboo_panda_low",
+   "evo1_biscuit_bear_low",
+   "evo1_blossom_bunny_low",
+   "evo1_bubble_axolotl_low",
+   "evo1_candy_unicorn_low",
+   "evo1_cherry_panda_low",
+   "evo1_cloudy_dragon_low",
+   "evo1_eclipse_dragon_low",
+   "evo1_ember_phoenix_low",
+   "evo1_frostling_penguin_low",
+   "evo1_honey_bunny_low",
+   "evo1_hydralotl_low",
+   "evo1_magma_cub_low",
+   "evo1_mallow_kitten_low",
+   "evo1_maple_fox_low",
+   "evo1_mochi_slime_low",
+   "evo1_moonlit_owl_low",
+   "evo1_nebula_axolotl_low",
+   "evo1_obsidian_phoenix_low",
+   "evo1_pebble_pup_low",
+   "evo1_phantom_kitsune",
+   "evo1_phantom_kitsune_low",
+   "evo1_pip_penguin_low",
+   "evo1_puddle_frog_low",
+   "evo1_rime_wyrmling_low",
+   "evo1_shroomie_frog_low",
+   "evo1_sleepy_owl_low",
+   "evo1_starlight_unicorn_low",
+   "evo1_storm_tabby_low",
+   "evo1_stormfang",
+   "evo1_stormfang_low",
+   "evo1_sunbeam_bear_low",
+   "evo1_twilight_dragon_low",
+   "evo1_waffle_corgi_low",
+   "evo2_aurora_fox_low",
+   "evo2_candy_unicorn_low",
+   "evo2_cloudy_dragon_low",
+   "evo2_eclipse_dragon_low",
+   "evo2_ember_phoenix_low",
+   "evo2_hydralotl_low",
+   "evo2_magma_cub_low",
+   "evo2_moonlit_owl_low",
+   "evo2_nebula_axolotl_low",
+   "evo2_obsidian_phoenix_low",
+   "evo2_phantom_kitsune_low",
+   "evo2_rime_wyrmling_low",
+   "evo2_starlight_unicorn_low",
+   "evo2_stormfang_low",
+   "evo2_sunbeam_bear_low",
+   "evo2_twilight_dragon_low"
+  ]
+ },
+ "newAssets": 98
 }
