@@ -54,9 +54,13 @@ local ATTR_IN_BATTLE = (Config.Attr and Config.Attr.InBattle) or "InBattle"
 local ATTR_IN_MATCH = (Config.Attr and Config.Attr.InMatch) or "InMatch"
 
 -- (Pitch 2 item 13 A) the gates say "Enter": "Travel" is gone from the game's words (the Shop's button became "Show the
--- way", a walking guide), so a gate you walk up to is a door you go through
+-- way", a walking guide), so a gate you walk up to is a door you go through.
+-- (look review r1, M2) Lift = studs the prompt's plank floats over its chest-high anchor (the prompt attribute CardLift,
+-- PromptController's StudsOffsetWorldSpace): at the gate the anchor projects onto the player's own body, under a phone's
+-- vitals card and the travel guide's chip; lifted, the plank hangs in the gate's opening over the player's head. The
+-- prompt's range is still measured from the anchor
 local PROMPTS = {
-	Altar = { Name = "AltarGatePrompt", Action = "Enter", Object = "Storm Altar" },
+	Altar = { Name = "AltarGatePrompt", Action = "Enter", Object = "Storm Altar", Lift = 6 },
 	Plaza = { Name = "PlazaGatePrompt", Action = "Enter", Object = "Plaza", Range = 8 }, -- bug batch 2 #4
 }
 local ORDER = { "Altar" } -- Phase 6: no Home gate (the Home window's Go home is the way home)
@@ -319,6 +323,9 @@ local function makePrompt(part, spec)
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = spec.Range or PROMPT_RANGE
 	prompt.RequiresLineOfSight = false
+	if type(spec.Lift) == "number" then
+		prompt:SetAttribute("CardLift", spec.Lift)
+	end
 	prompt.Parent = part
 	return prompt
 end

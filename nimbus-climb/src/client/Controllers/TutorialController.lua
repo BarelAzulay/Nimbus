@@ -193,6 +193,13 @@ local K = {
 	GUIDE_ARRIVE = 8,
 	GUIDE_HERE = 3,
 	GUIDE_SLIDE = 0.4,
+	-- (look review r1, M1 / M2) the chip never covers the guide: every GUIDE_DODGE_EVERY s the arrow, its GuideSign and (at
+	-- the gate) the gate prompt's plank are projected to the screen, grown by GUIDE_CLEAR px (1080p design px under the
+	-- screen factor); the chip leaves its spot for the first clear one (beside them, under them, over them) and comes back
+	-- once its own spot is clear by twice that. The GuideSign flips to the arrow's left when its right side runs off the
+	-- screen or under the HUD
+	GUIDE_CLEAR = 10,
+	GUIDE_DODGE_EVERY = 0.1,
 	-- confetti (gui px at factor 1)
 	CONFETTI_SMALL = 26,
 	CONFETTI_BIG = 64,
@@ -336,7 +343,7 @@ local function mod(name)
 		local loaded
 		if name == "CloudUI" or name == "PixelCrisp" then
 			loaded = loadModule(Client:FindFirstChild("UI"), name, 5)
-		elseif name == "MenuController" or name == "IndexController" or name == "HudController" then
+		elseif name == "MenuController" or name == "IndexController" or name == "HudController" or name == "PromptController" then
 			loaded = loadModule(script.Parent, name)
 		else
 			loaded = loadModule(Shared, name, 5)
@@ -2730,6 +2737,15 @@ local function buildWorldGuide()
 	model.Parent = folder
 	W.arrowParts, W.arrowOffsets = parts, offsets
 	W.arrowTop = nil
+	-- (look review r1, M1) the arrow's half extents round its centre (studs), for its box on the screen
+	local hx, hy, hz = 0.5, 0.5, 0.5
+	for i, p in ipairs(parts) do
+		local o, s = offsets[i].Position, p.Size
+		hx = math.max(hx, math.abs(o.X) + s.X / 2)
+		hy = math.max(hy, math.abs(o.Y) + s.Y / 2)
+		hz = math.max(hz, math.abs(o.Z) + s.Z / 2)
+	end
+	W.arrowHalf = Vector3.new(hx, hy, hz)
 
 	-- (Pitch 2 item 13_travel_guide A, the owner's pick "Gold arrow + dot trail"; it was a glowing Beam of a sparkle strip
 	-- from the hip and a ring of Neon sparkles) the trail is flat gold dot blocks on the ground (Dots: a pool of
@@ -3086,6 +3102,7 @@ local function updateWorldGuide(dt, t)
 	-- written only when it hops
 	local hop = (math.floor(t / K.BOB_STEP) % 2 == 0) and 0 or K.BOB
 	local top = goal.ArrowAt + Vector3.new(0, K.ARROW_LIFT + hop, 0)
+	W.arrowBase = goal.ArrowAt + Vector3.new(0, K.ARROW_LIFT, 0)
 	if W.arrowTop ~= top then
 		W.arrowTop = top
 		local cf = CFrame.new(top)
@@ -3260,8 +3277,213 @@ local function guidePart()
 	return G.part
 end
 
+-- (look review r1, M1 / M2) where the travel guide's parts land on the screen, in our gui px (viewport px less the top
+-- inset; nil when off / behind the camera). A world point:
+local function screenPoint(cam, p)
+	local ok, v = pcall(cam.WorldToViewportPoint, cam, p)
+	if not ok or typeof(v) ~= "Vector3" or v.Z <= 0 then
+		return nil
+	end
+	return v.X, v.Y - topInset()
+end
+
+-- a pixel BillboardGui (its adornee's point + StudsOffsetWorldSpace + StudsOffset along the camera's axes, moved by
+-- SizeOffset, a fraction of its size with +Y up) -> { x0, y0, x1, y1 } or nil (disabled, past MaxDistance, behind)
+local function billboardRect(gui)
+	local cam = Workspace.CurrentCamera
+	if not (cam and gui and gui.Parent and gui:IsA("BillboardGui") and gui.Enabled) then
+		return nil
+	end
+	local ad = gui.Adornee or gui.Parent
+	local pos = nil
+	if ad and ad:IsA("BasePart") then
+		pos = ad.Position
+	elseif ad and ad:IsA("Attachment") then
+		pos = ad.WorldPosition
+	end
+	if not pos then
+		return nil
+	end
+	local cf = cam.CFrame
+	local so = gui.StudsOffset
+	local p = pos + gui.StudsOffsetWorldSpace + cf.RightVector * so.X + cf.UpVector * so.Y - cf.LookVector * so.Z
+	if gui.MaxDistance > 0 and (p - cf.Position).Magnitude > gui.MaxDistance then
+		return nil
+	end
+	local x, y = screenPoint(cam, p)
+	if not x then
+		return nil
+	end
+	local w, h = gui.Size.X.Offset, gui.Size.Y.Offset
+	local x0 = x - w / 2 + gui.SizeOffset.X * w
+	local y0 = y - h / 2 - gui.SizeOffset.Y * h
+	return { x0 = x0, y0 = y0, x1 = x0 + w, y1 = y0 + h }
+end
+
+-- the voxel arrow's box (both hop heights) -> rect or nil
+local function arrowRect()
+	local cam = Workspace.CurrentCamera
+	local base, half = W.arrowBase, W.arrowHalf
+	if not (cam and base and half and W.active) then
+		return nil
+	end
+	local r = nil
+	local hy = half.Y + K.BOB / 2
+	local c = base + Vector3.new(0, K.BOB / 2, 0)
+	for _, dx in ipairs({ -1, 1 }) do
+		for _, dy in ipairs({ -1, 1 }) do
+			for _, dz in ipairs({ -1, 1 }) do
+				local x, y = screenPoint(cam, c + Vector3.new(dx * half.X, dy * hy, dz * half.Z))
+				if not x then
+					return nil
+				end
+				if r then
+					r.x0, r.y0, r.x1, r.y1 = math.min(r.x0, x), math.min(r.y0, y), math.max(r.x1, x), math.max(r.y1, y)
+				else
+					r = { x0 = x, y0 = y, x1 = x, y1 = y }
+				end
+			end
+		end
+	end
+	return r
+end
+
+-- the GuideSign's card (its wood edge included) inside its billboard -> rect or nil
+local function signRect()
+	local gui, card = W.labelGui, W.signCard
+	if not (gui and card and W.active) then
+		return nil
+	end
+	local bb = billboardRect(gui)
+	if not bb then
+		return nil
+	end
+	local k = W.signScale and W.signScale.Scale or 1
+	local w, h = card.Size.X.Offset * k, card.Size.Y.Offset * k
+	local e = K.SIGN_EDGE * k
+	local cy = (bb.y0 + bb.y1) / 2
+	local x0 = bb.x0 + card.Position.X.Offset + card.Position.X.Scale * (bb.x1 - bb.x0) - card.AnchorPoint.X * w
+	return { x0 = x0 - e, y0 = cy - h / 2 - e, x1 = x0 + w + e, y1 = cy + h / 2 + e }
+end
+
+-- the target gate prompt's plank (PromptController's card) while it shows -> rect or nil
+local function promptRect()
+	local part = G.part
+	local prompt = part and G.spec and part:FindFirstChild(G.spec.Prompt)
+	local PC = prompt and mod("PromptController")
+	local card = PC and type(PC.CardOf) == "function" and PC.CardOf(prompt) or nil
+	return card and billboardRect(card) or nil
+end
+
+-- the HUD round the chip's spots (our gui px): the menu column, the top-left panel block, the top-right currency stack,
+-- the vitals card, the tutorial card / its strip
+local function chipHudRects(area)
+	local out = {}
+	local m = menuRect()
+	if m then
+		out[#out + 1] = m
+	end
+	local hb = hudBounds(area)
+	if hb.TopLeftBottom > 0 and hb.TopLeftRight > 0 then
+		out[#out + 1] = { x0 = 0, y0 = 0, x1 = hb.TopLeftRight, y1 = hb.TopLeftBottom }
+	end
+	if hb.TopRightLeft > 0 and hb.TopRightBottom > 0 then
+		out[#out + 1] = { x0 = hb.TopRightLeft, y0 = 0, x1 = area.X, y1 = hb.TopRightBottom }
+	end
+	local v = vitalsRect()
+	if v then
+		out[#out + 1] = v
+	end
+	for _, part in ipairs({ UI.Root, UI.Strip }) do
+		if part and part.Visible and part.AbsoluteSize.X > 0 and UI.Gui and shownIn(part, UI.Gui) then
+			out[#out + 1] = rectOf(part, insetShift(UI.Gui))
+		end
+	end
+	-- the top band (over our gui: y < 0): the top bar's pill and Roblox's own buttons left / right of the TopbarInset
+	local pg = playerGui()
+	local bar = pg and pg:FindFirstChild("NimbusTopBar")
+	local pill = bar and bar:FindFirstChild("Pill", true)
+	if pill and pill:IsA("GuiObject") and pill.AbsoluteSize.X > 0 and shownIn(pill, bar) then
+		out[#out + 1] = rectOf(pill, insetShift(bar))
+	end
+	local inset = topInset()
+	if inset > 0 then
+		local okT, tb = pcall(function()
+			return GuiService.TopbarInset
+		end)
+		local minX, maxX = 112, area.X - 72
+		if okT and typeof(tb) == "Rect" and tb.Max.X > tb.Min.X then
+			minX, maxX = tb.Min.X, tb.Max.X
+		end
+		-- (the buttons stop a few px over the band's foot)
+		out[#out + 1] = { x0 = 0, y0 = -inset, x1 = minX, y1 = -4 }
+		out[#out + 1] = { x0 = maxX, y0 = -inset, x1 = area.X, y1 = -4 }
+	end
+	return out
+end
+
+local function grown(r, by)
+	return { x0 = r.x0 - by, y0 = r.y0 - by, x1 = r.x1 + by, y1 = r.y1 + by }
+end
+
+-- the GuideSign right of the arrow's shaft (its left edge on the axis) or left of it (its right edge on the axis)
+local function setSignSide(left)
+	local gui, card = W.labelGui, W.signCard
+	if not (gui and card) then
+		return
+	end
+	W.signLeft = left
+	gui.SizeOffset = Vector2.new(left and -0.5 or 0.5, 0)
+	gui.StudsOffset = Vector3.new(left and -K.SIGN_STUDS or K.SIGN_STUDS, 0, 0)
+	card.AnchorPoint = Vector2.new(left and 1 or 0, 0.5)
+	card.Position = left and UDim2.new(1, -K.SIGN_EDGE, 0.5, 0) or UDim2.new(0, K.SIGN_EDGE, 0.5, 0)
+end
+
+-- the GuideSign beside the arrow: right of its shaft, or (its right side off the screen or under the HUD while the left is
+-- clear) left of it
+local function placeSign()
+	local gui, card = W.labelGui, W.signCard
+	if not (gui and card and W.active) then
+		return
+	end
+	local area = guiArea()
+	local hud = chipHudRects(area)
+	local function blocked(r)
+		if not r then
+			return false
+		end
+		-- (a world card may stand in the top band, between Roblox's buttons and the pill: the HUD rects cover those)
+		if r.x0 < K.EDGE or r.x1 > area.X - K.EDGE or r.y0 < -topInset() then
+			return true
+		end
+		for _, h in ipairs(hud) do
+			if rectsOverlap(r, h) then
+				return true
+			end
+		end
+		return false
+	end
+	local setSide = setSignSide
+	local was = W.signLeft == true
+	if blocked(signRect()) then
+		setSide(not was)
+		if blocked(signRect()) then
+			setSide(was) -- neither side is clear: it stays where it was
+		end
+	elseif was then
+		-- back to the right once the right side is clear
+		setSide(false)
+		if blocked(signRect()) then
+			setSide(true)
+		end
+	end
+end
+
 -- the chip's place: top centre under the top bar; a portrait phone: K.GUIDE_DOCK_GAP over the vitals card (and over the
--- quest strip when it docks there). G.slide (0 / 0.5) lifts it by that much of its height; 1 hides it
+-- quest strip when it docks there). G.slide (0 / 0.5) lifts it by that much of its height; 1 hides it.
+-- (look review r1, M1 / M2) it never covers the guide: when its spot meets the arrow, the GuideSign or the gate prompt's
+-- plank (grown by K.GUIDE_CLEAR), it goes beside them (the side with more room first), under them or over them, the first
+-- spot that is on the screen and clear of them and of the HUD; it comes back once its own spot is clear by twice that
 local function placeChip()
 	local chip = G.chip
 	if not chip then
@@ -3285,9 +3507,89 @@ local function placeChip()
 			y = bottom - h - K.GUIDE_LIP * k
 		end
 	end
+	local w = chip.Size.X.Offset * k
+	local e = 3 * k -- the wood edge outside the face
+	local cx = area.X / 2
+	local spot = { x0 = cx - w / 2, y0 = y }
+	local clearPx = K.GUIDE_CLEAR * k
+	local okO, obstacles = pcall(function()
+		local list = {}
+		for _, fn in ipairs({ arrowRect, signRect, promptRect }) do
+			local r = fn()
+			if r then
+				list[#list + 1] = r
+			end
+		end
+		return list
+	end)
+	obstacles = okO and obstacles or {}
+	if #obstacles > 0 then
+		local hud = chipHudRects(area)
+		local function rectAt(x0, y0)
+			return { x0 = x0 - e, y0 = y0 - e, x1 = x0 + w + e, y1 = y0 + h + e }
+		end
+		-- (its own spot is laid out clear of the HUD: only a moved spot is checked against it)
+		local function clear(x0, y0, margin, own)
+			local r = rectAt(x0, y0)
+			for _, o in ipairs(obstacles) do
+				if rectsOverlap(r, grown(o, margin)) then
+					return false
+				end
+			end
+			if own then
+				return true
+			end
+			if r.x0 < K.EDGE or r.x1 > area.X - K.EDGE or r.y0 < 0 or r.y1 > area.Y then
+				return false
+			end
+			for _, hr in ipairs(hud) do
+				if rectsOverlap(r, hr) then
+					return false
+				end
+			end
+			return true
+		end
+		local home = clear(spot.x0, spot.y0, G.dodged and 2 * clearPx or clearPx, true)
+		if not home then
+			-- the obstacles the home spot meets, as one box
+			local u = nil
+			local hr = rectAt(spot.x0, spot.y0)
+			for _, o in ipairs(obstacles) do
+				local g = grown(o, clearPx)
+				if rectsOverlap(hr, grown(o, 2 * clearPx)) then
+					if u then
+						u.x0, u.y0, u.x1, u.y1 = math.min(u.x0, g.x0), math.min(u.y0, g.y0), math.max(u.x1, g.x1), math.max(u.y1, g.y1)
+					else
+						u = { x0 = g.x0, y0 = g.y0, x1 = g.x1, y1 = g.y1 }
+					end
+				end
+			end
+			u = u or grown(obstacles[1], clearPx)
+			local left = { u.x0 - e - w, y }
+			local right = { u.x1 + e, y }
+			local sides = ((u.x0 + u.x1) / 2 >= cx) and { left, right } or { right, left }
+			local found = nil
+			for _, c in ipairs({ sides[1], sides[2], { spot.x0, u.y1 + e }, { spot.x0, u.y0 - e - h } }) do
+				if clear(c[1], c[2], clearPx) then
+					found = c
+					break
+				end
+			end
+			if found then
+				spot.x0, spot.y0 = found[1], found[2]
+				G.dodged = true
+			else
+				G.dodged = false -- nowhere clear: its own spot
+			end
+		else
+			G.dodged = false
+		end
+	else
+		G.dodged = false
+	end
 	local slide = G.slide or 0
 	chip.Visible = slide < 1
-	chip.Position = UDim2.new(0.5, 0, 0, math.floor(y - slide * h + 0.5))
+	chip.Position = UDim2.new(0.5, math.floor(spot.x0 + w / 2 - cx + 0.5), 0, math.floor(spot.y0 - slide * h + 0.5))
 end
 
 -- paints the chip for `phase` and sizes it to its line
@@ -3419,11 +3721,14 @@ function Guide.Stop()
 	local was = G.active
 	G.active = false
 	G.phase, G.id, G.spec, G.target, G.part = nil, nil, nil, nil, nil
-	G.slide, G.hereUntil, G.icon = nil, nil, nil
+	G.slide, G.hereUntil, G.icon, G.dodged, G.dodgeTimer = nil, nil, nil, nil, nil
 	if G.gui then
 		G.gui:Destroy()
 	end
 	G.gui, G.chip, G.mark, G.text, G.close, G.scale = nil, nil, nil, nil, nil, nil
+	if W.signLeft then
+		setSignSide(false) -- (the tutorial's own guide keeps the sign on the right)
+	end
 	if was then
 		-- the world guide and the pointer go with it (the tutorial's own target, if any, comes back on its next frame)
 		setWorldActive(false)
@@ -3452,6 +3757,13 @@ local function updateTravel(dt)
 		Guide.Stop()
 		return
 	end
+	-- (look review r1, M1 / M2) the chip keeps clear of the arrow, its sign and the gate's prompt; the sign of the HUD
+	G.dodgeTimer = (G.dodgeTimer or 0) - dt
+	local dodge = G.dodgeTimer <= 0
+	if dodge then
+		G.dodgeTimer = K.GUIDE_DODGE_EVERY
+		safe("guide sign", placeSign)
+	end
 	if G.phase == "Here" then
 		local left = (G.hereUntil or 0) - S.clock
 		local slide = 0
@@ -3460,9 +3772,9 @@ local function updateTravel(dt)
 		elseif left <= K.GUIDE_SLIDE then
 			slide = 0.5
 		end
-		if slide ~= (G.slide or 0) then
+		if slide ~= (G.slide or 0) or dodge then
 			G.slide = slide
-			placeChip()
+			safe("guide chip", placeChip)
 		end
 		if left <= 0 then
 			Guide.Stop()
@@ -3495,9 +3807,13 @@ local function updateTravel(dt)
 		local okK, k = pcall(Theme.ScreenFactor)
 		if okK and G.scale and (k ~= G.scale.Scale or guiArea().X ~= G.areaX) then
 			safe("guide chip", paintChip, G.phase)
+			dodge = false
 		else
-			placeChip()
+			dodge = true
 		end
+	end
+	if dodge then
+		safe("guide chip", placeChip)
 	end
 end
 

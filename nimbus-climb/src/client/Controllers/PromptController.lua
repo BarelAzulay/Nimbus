@@ -54,6 +54,7 @@ local K = {
 	ACTION_PX = 26,
 	OBJECT_PX = 18,
 	MAX_DISTANCE = 100,
+	MAX_LIFT = 12, -- studs: the most a prompt's CardLift floats its plank
 }
 PromptController.K = K
 
@@ -152,9 +153,14 @@ local function build(prompt, inputType)
 		scale = Theme.ScreenFactor()
 	end)
 
+	-- (look review r1, M2) a prompt's CardLift attribute (studs, 0..K.MAX_LIFT; GateService's gate prompts) floats the plank
+	-- that far over its anchor
+	local lift = tonumber(prompt:GetAttribute("CardLift")) or 0
+	lift = (lift == lift) and math.clamp(lift, 0, K.MAX_LIFT) or 0
 	local gui = make("BillboardGui", {
 		Name = K.NAME,
 		Adornee = adornee,
+		StudsOffsetWorldSpace = Vector3.new(0, lift, 0),
 		Size = UDim2.fromOffset(math.ceil(W * scale), math.ceil(H * scale)),
 		AlwaysOnTop = true,
 		LightInfluence = 0,

@@ -5063,8 +5063,6 @@ function WU.guide(screen, mode)
 	at = Vector3.new(at.X, standY, at.Z)
 	Mock.Teleport(LocalPlayer, CFrame.lookAt(at, at + dir))
 	advance(0.4)
-	req("client/Controllers/TutorialController").Guide.Start("StormAltar")
-	advance(here and 0.6 or 1.6)
 	local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 	local rp = root and root.Position or at
 	local headP = rp + Vector3.new(0, 1.9, 0)
@@ -5077,6 +5075,47 @@ function WU.guide(screen, mode)
 	end
 	local camAt = headP - view * 12.5 + Vector3.new(0, 4.5, 0)
 	local cam = CFrame.lookAt(camAt, headP + view * 14 + Vector3.new(0, 2, 0))
+	-- (look review r1, M1 / M2) the client sees this camera: the mock's WorldToViewportPoint (the screen centre for every
+	-- point) becomes WU.project for the scene, so the chip's dodge and the GuideSign's side run as they do in the game
+	local camObj = workspace.CurrentCamera
+	local methods = Mock.Classes and Mock.Classes.Camera and Mock.Classes.Camera.methods
+	local saved = methods and { methods.WorldToViewportPoint, methods.WorldToScreenPoint }
+	if methods then
+		local function proj(_, p)
+			local sx, sy, z = WU.project(cam, p)
+			if not sx then
+				local lp = cam:PointToObjectSpace(p)
+				return Vector3.new(0, 0, -lp.Z), false
+			end
+			local vp = Mock.Viewport
+			return Vector3.new(sx, sy, z), sx >= 0 and sx <= vp.X and sy >= 0 and sy <= vp.Y
+		end
+		methods.WorldToViewportPoint, methods.WorldToScreenPoint = proj, proj
+	end
+	local function hold(seconds)
+		local t = 0
+		while t < seconds - 1e-6 do
+			if camObj then
+				camObj.CFrame = cam
+			end
+			advance(0.1)
+			t = t + 0.1
+		end
+	end
+	local TC = req("client/Controllers/TutorialController")
+	TC.Guide.Start("StormAltar")
+	local gatePrompt = gate:FindFirstChild("AltarGatePrompt")
+	if here and gatePrompt then
+		-- at the gate its prompt shows: PromptController's plank ("Storm Altar / Enter")
+		local PC = req("client/Controllers/PromptController")
+		PC.Custom(gatePrompt)
+		local touch = UserInputService.TouchEnabled == true and UserInputService.KeyboardEnabled ~= true
+		Mock.ShowPrompt(gatePrompt, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
+	end
+	hold(here and 0.6 or 1.6)
+	if methods then
+		methods.WorldToViewportPoint, methods.WorldToScreenPoint = saved[1], saved[2]
+	end
 	local list = {}
 	-- the Altar gate's own parts near its prompt (the arch, the pad, the swirl), the guide, the player
 	local gm = WU.lobby.Gates and WU.lobby.Gates.Altar and WU.lobby.Gates.Altar.Model
@@ -5111,22 +5150,27 @@ function WU.guide(screen, mode)
 			WU.cell(screen, sign, x, y, "GuideSign").ZIndex = 5000
 		end
 	end
-	if here then
-		-- at the gate its prompt shows: PromptController's plank ("Storm Altar / Enter") where its billboard projects
-		local prompt = gate:FindFirstChild("AltarGatePrompt")
-		local PC = req("client/Controllers/PromptController")
-		if prompt then
-			PC.Custom(prompt)
-			local touch = UserInputService.TouchEnabled == true and UserInputService.KeyboardEnabled ~= true
-			Mock.ShowPrompt(prompt, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
-			advance(0.1)
-			local card = PC.CardOf(prompt)
-			local x, y = card and WU.billboardRect(cam, card)
-			if x then
-				WU.cell(screen, card, x, y, "PromptCard").ZIndex = 5001
-				card.Enabled = false
-			end
+	if here and gatePrompt then
+		-- at the gate: PromptController's plank ("Storm Altar / Enter") where its billboard projects (its CardLift included).
+		-- (look review r1, M2: `card and WU.billboardRect(...)` kept only x, so the plank was drawn at y 0, under the top band,
+		-- wherever it really projected)
+		local card = req("client/Controllers/PromptController").CardOf(gatePrompt)
+		local x, y, w, h = nil, nil, nil, nil
+		if card then
+			x, y, w, h = WU.billboardRect(cam, card)
 		end
+		if x then
+			WU.cell(screen, card, x, y, "PromptCard").ZIndex = 5001
+			card.Enabled = false
+			note(fmt("worldui:guidehere the gate's plank at %.0f,%.0f (%dx%d px, lifted %.1f studs)", x, y, w, h, card.StudsOffsetWorldSpace.Y))
+		else
+			note("worldui:guidehere no plank for the gate's prompt")
+		end
+	end
+	local chipGui = LocalPlayer.PlayerGui:FindFirstChild("NimbusGuide")
+	local chip = chipGui and chipGui:FindFirstChild("Chip", true)
+	if chip then
+		note(fmt("worldui:guide the chip at %.0f,%.0f (%dx%d px, under the top inset)", chip.AbsolutePosition.X, chip.AbsolutePosition.Y, chip.AbsoluteSize.X, chip.AbsoluteSize.Y))
 	end
 	WU.caption(screen, here and "worldui:guidehere (parts sketched)" or ("worldui:" .. (mode == "walk" and "guide" or "guideahead") .. " (parts sketched)"), 24, 66)
 	note(fmt("worldui:guide %s %.0f studs from the gate: %d boxes drawn (%d arrow / sign parts, %d dots)", tostring(mode),
