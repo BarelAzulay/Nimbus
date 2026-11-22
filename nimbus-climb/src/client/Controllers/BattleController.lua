@@ -7174,6 +7174,13 @@ function Hud.LayoutFighter(B, m, top)
 				local nameH2 = 2 * math.ceil(lvPx * 1.2) + 2
 				local two = max(tile + 4 + L.CdH, L.H + 2 + nameH2)
 				L.LvSwap = true
+				if colTop + 2 * two + 6 > ring then
+					-- (keys lane, keys look r2: at 640 x 360 the 1.2 lines missed the ring by 6 design px and the names read
+					-- "STONE ...", "TIDE M...") the two lines set solid (a line as tall as the text, the label's LineHeight 1:
+					-- capitals have no descenders), 2 px over them
+					nameH2 = 2 * lvPx + 4
+					two = max(tile + 4 + L.CdH, L.H + 2 + nameH2)
+				end
 				if colTop + 2 * two + 6 <= ring then
 					L.NameH = nameH2
 					cellH = two
