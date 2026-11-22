@@ -179,7 +179,13 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 	local gui = card.Gui
 	T.check(gui ~= nil and gui:IsA("BillboardGui") and gui.Adornee == part, "PetCard.New makes a BillboardGui adorned to the part")
 	T.check(gui.Parent == LocalPlayer:FindFirstChildOfClass("PlayerGui"), "...in the PlayerGui (so the EVOLVE! pill can be tapped)", tostring(gui.Parent))
-	T.check(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset == 96, "...pixel-sized, 96 px wide at 1080p", tostring(gui.Size))
+	-- (Pitch 2 item 04_world_ui, the owner's approved pick B "Stone tags", docs/superpowers/specs/2026-11-20-pitch2-build-
+	-- design.md: "The pet tag is a compact wood chip with the stars inside plus one HP block row, because SPECIAL and XP
+	-- already show on the HUD helper cards") the pins below follow that decision: a follower's tag is the chip alone, as
+	-- wide as its row (the mock-up's w = cw; the HP modes keep the 96 px row), the XP / SPECIAL rows draw nothing over the
+	-- pet but keep their fractions, the HP row is 9 px (the mock-up's)
+	local wide = gui.Size.X.Offset
+	T.check(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and wide >= 40 and wide <= 96, "...pixel-sized, the chip's own width at 1080p (Pitch 2 item 04 B)", tostring(gui.Size))
 	T.check(gui.LightInfluence == 0 and gui.MaxDistance == 25 and abs(gui.StudsOffset.Y - 2.5) < 1e-6, "...LightInfluence 0, MaxDistance 25 (own follower; 2026-11-13 owner: 25, was 15; first 90), StudsOffset = heightStuds",
 		"MaxDistance " .. tostring(gui.MaxDistance))
 	card:SetLevel(12, 0, false)
@@ -187,9 +193,9 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 	T.check(lv and lv.Text == "Lv 12" and lv.TextSize >= 22 and stroked(lv) and not lv.TextScaled, "\"Lv 12\" at >= 22 px with a dark stroke", lv and fmt("'%s' %d px", lv.Text, lv.TextSize) or "no label")
 	local plate = gui:FindFirstChild("Plate")
 	T.check(plate and plate.BackgroundTransparency <= 0.25, "...on a solid plate")
-	T.check(barShown(gui, "Xp") and not barShown(gui, "Hp") and not barShown(gui, "Special") and not barShown(gui, "Timer"), "Follower mode: level + XP bar only")
+	T.check(not barShown(gui, "Xp") and not barShown(gui, "Hp") and not barShown(gui, "Special") and not barShown(gui, "Timer"), "Follower mode: the chip alone (Pitch 2 item 04 B: XP lives on the HUD card)")
 	local xpBar = plate:FindFirstChild("Xp")
-	T.eq(xpBar and xpBar.AbsoluteSize.Y, 8, "XP bar 8 px at 1080p (kit-b gate U9 round 3: a block row)")
+	T.check(xpBar ~= nil and xpBar:GetAttribute("Frac") ~= nil, "the XP row still exists and keeps its fraction (callers unchanged)")
 	-- (kit-b gate U9 round 3) every bar a kit B block row (no smooth fill), the plate the kit's square navy sign, no
 	-- rounded corner anywhere on the card
 	do
@@ -203,7 +209,7 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 		end
 		local edge = plate:FindFirstChild("SignEdge")
 		T.check(rows == 4 and corners == 0 and edge ~= nil and edge.LineJoinMode == Enum.LineJoinMode.Miter and plate:FindFirstChild("Lip") ~= nil,
-			"the card is kit B: four block-row bars, a square navy plate with its mitred edge and lip, no rounded corner",
+			"the card is kit B: four block-row bars, a square plate (the wood chip, Pitch 2 item 04 B) with its mitred edge and lip, no rounded corner",
 			fmt("%d block rows, %d corners, edge %s", rows, corners, tostring(edge)))
 	end
 	-- fills: written only when they moved by more than 0.004
@@ -233,7 +239,8 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 	T.check(badge and badge.Visible and stars and starsOn() == 1, "stage 1: one gold PixelIcon star on the card", stars and (stars.Text .. " " .. tostring(starsOn())) or "none")
 	local pill = gui:FindFirstChild("Evolve")
 	T.check(pill and pill:IsA("TextButton") and pill.Visible and pill.Active and pill.Text == "EVOLVE!" and pill.TextSize >= 20, "ready: a gold \"EVOLVE!\" pill (an Active button, >= 20 px)")
-	T.check(gui.Size.Y.Offset > hBefore and gui.Size.X.Offset == 96, "...above the plate (the card grows upwards, width kept)", fmt("%d -> %d px", hBefore, gui.Size.Y.Offset))
+	-- (Pitch 2 item 04 B) the stars sit inside the chip, so the chip widens by them; the pill spans the card
+	T.check(gui.Size.Y.Offset > hBefore and pill.Size.X.Offset == gui.Size.X.Offset, "...above the plate (the card grows upwards, the pill as wide as it)", fmt("%d -> %d px", hBefore, gui.Size.Y.Offset))
 	Mock.FireSignal(pill, "Activated")
 	T.eq(tapped, 1, "a tap on the pill calls OnEvolve")
 	card:SetLevel(55, 2, false)
@@ -242,8 +249,8 @@ S.client_p4pets_cards = guarded("client_p4pets_cards", function()
 	T.eq(starsOn(), 2, "(stars stay)")
 	-- modes
 	card:SetMode("Unit")
-	T.check(barShown(gui, "Hp") and barShown(gui, "Special") and barShown(gui, "Xp") and gui.MaxDistance == 140, "Unit mode: level + HP + SPECIAL + XP, MaxDistance 140")
-	T.eq(plate:FindFirstChild("Hp").AbsoluteSize.Y, 10, "HP bar 10 px at 1080p (a block row)")
+	T.check(barShown(gui, "Hp") and not barShown(gui, "Special") and not barShown(gui, "Xp") and gui.MaxDistance == 140, "Unit mode: the chip + HP (Pitch 2 item 04 B: SPECIAL / XP on the HUD cards), MaxDistance 140")
+	T.eq(plate:FindFirstChild("Hp").AbsoluteSize.Y, 9, "HP bar 9 px at 1080p (a block row; Pitch 2 item 04 B's mock-up)")
 	card:SetHp(0.25)
 	card:SetSpecial(1, true)
 	T.check(abs(fillOf(gui, "Hp") - 0.25) < 1e-6 and abs(fillOf(gui, "Special") - 1) < 1e-6, "SetHp / SetSpecial fill their bars")

@@ -5583,8 +5583,9 @@ local function clientScenarios()
 	end
 
 	-- (U9-3) the titles over heads: runs fn(players) with four dummy players in the lobby on High graphics (the crown shows
-	-- on High only): Top10 #3, Top100 #57, the Creator wearing the VIP pass (the crown inside the tag) and an untitled VIP
-	-- (the VipCrown billboard of its own); they leave after and the graphics answer is put back
+	-- on High only): Top10 #3, Top100 #57 wearing the VIP pass (the crown inside the tag), the Creator wearing it too (Pitch 2
+	-- item 04 B: its tag carries its own pixel crown, so no VIP crown over it) and an untitled VIP (the VipCrown billboard of
+	-- its own); they leave after and the graphics answer is put back
 	local U93 = {}
 	local U94 = {} -- (U9-4) the Gifts window and the Sky Trove helpers (filled in the U9-4 block below)
 	local U99 = {} -- (U9-9) the toasts, the result card, the tutorial, the NPC dialog and the "press L" hint (U9-9 block)
@@ -5597,7 +5598,7 @@ local function clientScenarios()
 				return "High"
 			end
 		end
-		local who = { { "U93TopTen", 986001, "Top10", 3 }, { "U93TopHundred", 986002, "Top100", 57 }, { "U93Creator", 986003, "Creator", 1, true },
+		local who = { { "U93TopTen", 986001, "Top10", 3 }, { "U93TopHundred", 986002, "Top100", 57, true }, { "U93Creator", 986003, "Creator", 1, true },
 			{ "U93Vip", 986004, nil, nil, true } }
 		local players = {}
 		for i, w in ipairs(who) do
@@ -12490,7 +12491,10 @@ local function clientScenarios()
 		local Theme = LoadingH.shared("Theme")
 		local Sign = Theme.Sign
 		local TC = U7.client("Controllers/TitleController")
-		local FACE = { Top10 = { Sign.Gold, Sign.Text }, Top100 = { Sign.Tile, Sign.Text }, Creator = { Sign.Navy, Sign.Gold } }
+		-- (Pitch 2 item 04_world_ui, the owner's approved pick B "Stone tags": "gold for the CREATOR title with a pixel
+		-- crown") Creator moved from the navy plank with gold letters to a stone face (its gold lip) with brown letters; the
+		-- 4.5:1 rule below still holds it (13.6:1)
+		local FACE = { Top10 = { Sign.Gold, Sign.Text }, Top100 = { Sign.Tile, Sign.Text }, Creator = { Sign.Stone, Sign.Text } }
 		local function tweened(root)
 			for tw in pairs(Mock.ActiveTweens) do
 				local ok, target = pcall(function()
@@ -12542,13 +12546,17 @@ local function clientScenarios()
 					T.check(not tweened(tag), k .. ": nothing in the tag tweens (no rainbow)")
 				end
 			end
-			local inTag = TC and TC.TagOf(players[3])
-			crownOk(inTag and inTag:FindFirstChild("Crown"), "titles kit b: the Creator's crown inside the tag")
+			-- (Pitch 2 item 04 B, look review r0: two gold crowns stacked over CREATOR) the VIP crown inside a titled tag is
+			-- checked on the VIP Top100; the VIP Creator's tag carries its own pixel crown and no VIP crown slot
+			local inTag = TC and TC.TagOf(players[2])
+			crownOk(inTag and inTag:FindFirstChild("Crown"), "titles kit b: a titled VIP's crown inside the tag (Top100)")
+			local creatorTag = TC and TC.TagOf(players[3])
+			T.check(creatorTag ~= nil and creatorTag:FindFirstChild("Crown") == nil, "titles kit b: the VIP Creator wears one crown, its tag's own")
 			-- (U9-3 review) a BillboardGui clips what lies outside its Size, and the plate's wood edge is a Border stroke drawn
 			-- outside the plate: the plate with its edge lies whole inside the billboard (a tag sitting flush on the gui's
 			-- bottom showed only its side edges), with the crown and without; the plate's face still 26 px above the anchor
 			for i, kind in ipairs({ "Top10", "Top100", "Creator" }) do
-				local k = "titles kit b: " .. kind .. (i == 3 and " (with the crown)" or "")
+				local k = "titles kit b: " .. kind .. (i == 2 and " (with the crown)" or "")
 				local tag = TC and TC.TagOf(players[i])
 				local plate = tag and tag:FindFirstChild("Plate")
 				local edge = plate and plate:FindFirstChild("SignEdge")

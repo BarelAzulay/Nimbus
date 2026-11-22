@@ -26,21 +26,27 @@
 --   PetCard.Count()                      cards alive right now (debug / tests)
 --   PetCard.Modes                        the mode table below (read-only)
 --
--- Modes (rows top to bottom; MaxDistance in studs):
---   "Follower"  own follower:           level + XP                         25 (2026-11-13 owner, was 15; first 90: the
+-- Modes (rows top to bottom; MaxDistance in studs). (Pitch 2 item 04 B) the Xp / Special flags still say which fractions
+-- a mode feeds; only HP and the timer draw a row under the chip:
+--   "Follower"  own follower:           the chip                           25 (2026-11-13 owner, was 15; first 90: the
 --                                                                          card shows only with the camera close)
---   "Garden"    own garden pet at home: level + XP                         90
---   "Training"  own training pet:       level + XP + the purple timer "2:10" 90
---   "Unit"      own unit in a battle:   level + HP + SPECIAL + XP          140 (BattleController's BAR_DISTANCE)
---   "Ally"      a teammate's unit:      level + HP (green)                 140
---   "Enemy"     enemy / NPC unit:       level + HP (red)                   140
---   "Other"     other players' pets:    level only                         60
+--   "Garden"    own garden pet at home: the chip                           90
+--   "Training"  own training pet:       the chip + the purple timer "2:10" 90
+--   "Unit"      own unit in a battle:   the chip + HP                      140 (BattleController's BAR_DISTANCE)
+--   "Ally"      a teammate's unit:      the chip + HP (green)              140
+--   "Enemy"     enemy / NPC unit:       the chip + HP (red)                140
+--   "Other"     other players' pets:    the chip                           60
 --
--- Looks (World text rule): a pixel-sized BillboardGui (offset UDim2, never studs-scaled text), LightInfluence 0, a
--- compact dark plate 96 px wide at 1080p; "Lv 12" at 22 px bold with a dark stroke; the stars (U+2605) in gold at
--- 18 px; bars 6 px (XP blue, SPECIAL gold, timer purple) and 9 px (HP); every size is scaled with Theme.ScaledSize
--- (screen-height factor, text never under 14 px). The EVOLVE! pill (20 px, gold) sits above the plate and pulses
--- with a reversing tween (the engine animates it; no Lua per frame).
+-- Looks (World text rule): a pixel-sized BillboardGui (offset UDim2, never studs-scaled text), LightInfluence 0.
+-- (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags"; owner shots 07 and 05: the navy plaque with a thin bar, its
+-- stars plaque on top where the pet's body covered it) the tag is a compact wood chip (Plate: the Wood face, a 2 px
+-- WoodDark edge, a 3 px lip, the lit top line), 30 px tall at 1080p and as wide as its row: the gold pixel stars INSIDE it
+-- (StarBadge, no plaque of its own, left of the level so they never cover it), then "Lv 12" at 22 px in stone with a
+-- dark wood stroke, then the lives pips. Under the chip ONE block row: HP (9 px, 8 blocks) in the modes that have it (the
+-- training timer in Training); SPECIAL and XP keep their fractions (SetSpecial / SetXp) but show on the HUD helper cards,
+-- not over the pet. The row is max(chip, 96) px wide with the chip centred over it. Every size is scaled with the
+-- screen-height factor (Theme.ScaledSize, text never under 14 px). The EVOLVE! pill (20 px, gold) sits above the chip and
+-- pulses with a reversing tween (the engine animates it; no Lua per frame).
 -- Cost: nothing runs per frame. A bar fill is written only when it moved by more than 0.004 (BattleController's
 -- rule); a text only when it changed. Plain Lua 5.1-compatible syntax only.
 
@@ -70,19 +76,24 @@ PetCard.Modes = {
 
 -- 1080p design pixels (scaled by the screen-height factor at layout time)
 local K = {
-	WIDTH = 96,
-	PAD = 4,
+	WIDTH = 96, -- the HP row's least width (the chip is centred over it)
 	LEVEL_PX = 22, -- "Lv 12"
 	STAR_PX = 18,
-	ROW_LEVEL = 24,
-	BAR = 8, -- XP / SPECIAL / timer (kit-b gate U9 round 3: block rows, a 1 px wood edge and lip round a face)
-	HP_BAR = 10,
+	STAR_GAP = 6, -- px between the stars and "Lv" (look review r0: 4 left 1-2 px of chip at 0.8; the mock's gap is ~7)
+	CHIP_H = 26, -- (Pitch 2 item 04 B) the chip's face (30 px with its 2 px edge)
+	CHIP_EDGE = 2,
+	CHIP_LIP = 3,
+	CHIP_PAD = 7, -- px from the face's side to the stars / the level (9 from the edge's outside)
+	ROW_GAP = 4, -- px between the chip's edge and the HP row (y 36 of the mock-up)
+	BAR = 8, -- the timer (kit-b gate U9 round 3: block rows, a 1 px wood edge and lip round a face)
+	HP_BAR = 9,
 	BLOCKS = { Hp = 8, Special = 8, Xp = 8, Timer = 4 }, -- one cell module: 8 across the plate (HP an eighth each), 4 in the timer's shorter row
 	GAP = 3,
 	TIMER_PX = 18,
 	TIMER_TEXT_W = 40,
 	PILL_H = 28,
 	PILL_PX = 20,
+	PILL_W = 108, -- (Pitch 2 item 04 B) the EVOLVE! plank's least width: the word in FredokaOne at PILL_PX (~89 px) + its room
 	PILL_GAP = 4,
 	FILL_EPS = 0.004,
 	PULSE = 0.55, -- seconds per half pulse of the EVOLVE! pill
@@ -102,11 +113,15 @@ local C = {
 	Star = Sign.Gold,
 	Pill = Sign.Gold,
 	PillGlow = Sign.GoldLight, -- the pulse: the gold face to its light step and back (no glow ring)
-	Text = Theme.Colors.White,
-	Stroke = Theme.Colors.TextStroke or Color3.fromRGB(16, 22, 50),
+	-- (Pitch 2 item 04 B) the wood chip: its face, edge and lip; "Lv" in stone with a dark wood stroke
+	Chip = Sign.Wood,
+	ChipEdge = Sign.WoodDark,
+	ChipLip = Sign.WoodDark,
+	Text = Sign.Stone,
+	Stroke = Sign.WoodDark,
 	Life = Sign.Red, -- a lit lives pip
-	LifeLost = Sign.NavyLip,
-	PipEdge = Sign.NavyLip,
+	LifeLost = Sign.WoodDark,
+	PipEdge = Sign.Text,
 }
 
 local STAR_ICON = "star" -- (kit-b U7b) the evolution stars are PixelIcons (they were U+2605)
@@ -220,12 +235,16 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 		StudsOffset = Vector3.new(0, self.height, 0),
 	})
 	self.Gui = gui
-	-- (kit-b gate U9 round 3) the kit's navy sign: square, a mitred 2 px edge, its lip along the bottom
+	-- (Pitch 2 item 04 B; it was the navy sign plate) the wood chip: square, a mitred 2 px dark wood edge, its 3 px lip,
+	-- the lit top line only (Finish "Lean": a small world tag's instance budget)
 	local plate = make("Frame", {
 		Name = "Plate",
 		BorderSizePixel = 0,
+		ZIndex = 1,
 	}, gui)
-	CloudUI.SignBlock(plate, "Navy", { EdgePx = 2, LipPx = 2, Pad = false })
+	CloudUI.SignBlock(plate, "Stone", {
+		Face = C.Chip, Edge = C.ChipEdge, Lip = C.ChipLip, EdgePx = K.CHIP_EDGE, LipPx = K.CHIP_LIP, Pad = false, Finish = "Lean",
+	})
 	self.plate = plate
 
 	local level = make("TextLabel", {
@@ -234,6 +253,7 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 		Text = "Lv 1",
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 2,
 	}, plate)
 	Theme.Style(level, "Display", { Color = C.Text, Outline = "World", OutlineThickness = 2, OutlineColor = C.Stroke }) -- over the world: ONE outline (kit-b U6)
 	self.levelLabel = level
@@ -241,14 +261,15 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 	local pips = make("Frame", { Name = "Lives", BackgroundTransparency = 1, Visible = false }, plate)
 	self.pipsFrame, self.pips = pips, {}
 
-	-- the evolution stars: a small badge straddling the plate's top-right corner (the level keeps the full width)
+	-- the evolution stars: (Pitch 2 item 04 B; they were a navy plaque straddling the corner, covered by the pet's body)
+	-- inside the chip, left of the level, with no plaque of their own
 	local badge = make("Frame", {
 		Name = "StarBadge",
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Visible = false,
 		ZIndex = 3,
 	}, gui)
-	CloudUI.SignBlock(badge, "Navy", { EdgePx = 2, LipPx = 0, Pad = false }) -- (gate U9 round 3) a square tab, not a pill
 	local stars = make("TextLabel", {
 		Name = "Stars",
 		BackgroundTransparency = 1,
@@ -312,39 +333,65 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 end
 
 -- lays the rows out for the current mode / ready state (called on SetMode / SetLevel changes, never per frame)
+-- (Pitch 2 item 04 B) top to bottom: the EVOLVE! pill, the wood chip (stars, "Lv", lives pips in one row), the HP row /
+-- the timer row under it. The chip is centred over the row; the billboard holds the chip's edge (it is drawn outside the
+-- face) and grows upwards, the bottom row keeps the bottom.
 function PetCard:_layout()
 	local m = PetCard.Modes[self.mode]
 	local gui = self.Gui
 	gui.MaxDistance = m.MaxDistance
 	gui.AlwaysOnTop = m.OnTop == true
-	local pad, gap = px(K.PAD, 2), px(K.GAP, 2)
-	local w = px(K.WIDTH, 60)
-	local inner = w - 2 * pad
-	local y = pad
-	local rowH = px(K.ROW_LEVEL, 16)
+	local gap = px(K.GAP, 2)
+	local edge = K.CHIP_EDGE
+	local chipH = px(K.CHIP_H, 18)
+	local rowH = chipH - K.CHIP_LIP -- the chip's row sits above its lip
+	local inset = px(K.CHIP_PAD, 4)
 	local levelPx = Theme.ScaledSize(K.LEVEL_PX)
 	local starPx = Theme.ScaledSize(K.STAR_PX)
 	local hasStars = self.stage > 0
 	self.levelLabel.TextSize = levelPx
-	self.levelLabel.Position = UDim2.fromOffset(pad, y)
-	self.levelLabel.Size = UDim2.fromOffset(inner, rowH)
-	-- Phase 5 lives pips: the level takes the left part of the row, the pips the right
+
+	-- the chip's row, left to right (x in the face)
+	local x = inset
+	local badge = self.badge
+	local bw, bh = 0, 0
+	if hasStars then
+		-- (look review r0: at 0.8 starPx 14 snapped to 9 px stars of 1 px cells beside an 18 px "Lv") the stars snap to the
+		-- largest multiple of 9 within the chip's row and the level's px: 18 at 0.8 and 1080p, 27 at 1.25
+		local snap = math.max(9, 9 * math.floor(math.min(rowH, math.max(starPx, levelPx)) / 9))
+		local cell = math.floor(snap / 9)
+		bw = self.stage * snap + (self.stage - 1) * cell
+		bh = snap
+		self.starsLabel.TextSize = starPx
+		badge.Size = UDim2.fromOffset(bw, bh)
+		-- (kit-b U7b) one PixelIcon star per stage, centred, at the multiple of 9 that fits starPx
+		PixelIcon.Lead(self.starsLabel, STAR_ICON, { Count = self.stage, Of = self.stage, Px = snap })
+		x = x + bw + px(K.STAR_GAP, 3)
+	end
+	badge.Visible = hasStars
+	local ring = 2 -- the level's outline on both sides
+	local levelW = math.ceil(Theme.MeasureLabel(self.levelLabel, self.levelLabel.Text, levelPx).X) + 2 * ring
+	self.levelLabel.Position = UDim2.fromOffset(x, 0)
+	self.levelLabel.Size = UDim2.fromOffset(levelW, rowH)
+	x = x + levelW
+	-- Phase 5 lives pips: right of the level, in the chip
 	local nPips = self.lives ~= nil and self.livesMax or 0
 	self.pipsFrame.Visible = nPips > 0
 	if nPips > 0 then
 		local pip, pgap = px(K.PIP, 5), px(K.PIP_GAP, 2)
 		local pw = nPips * pip + (nPips - 1) * pgap
-		self.levelLabel.Size = UDim2.fromOffset(inner - pw - gap, rowH)
-		self.pipsFrame.Position = UDim2.fromOffset(pad + inner - pw, y + math.floor((rowH - pip) / 2))
+		x = x + gap
+		self.pipsFrame.Position = UDim2.fromOffset(x, math.floor((rowH - pip) / 2))
 		self.pipsFrame.Size = UDim2.fromOffset(pw, pip)
+		x = x + pw
 		for i = 1, math.max(nPips, #self.pips) do
 			local p = self.pips[i]
 			if i <= nPips then
 				if not p then
-					p = make("Frame", { Name = "Pip" .. i, BorderSizePixel = 0, BackgroundColor3 = C.Life }, self.pipsFrame)
-					local edge = Theme.Stroke(p, C.PipEdge, 1, 0) -- (gate U9 round 3) a square pip in a 1 px edge
-					edge.Name = "Edge"
-					edge.LineJoinMode = Enum.LineJoinMode.Miter
+					p = make("Frame", { Name = "Pip" .. i, BorderSizePixel = 0, BackgroundColor3 = C.Life, ZIndex = 2 }, self.pipsFrame)
+					local edgeS = Theme.Stroke(p, C.PipEdge, 1, 0) -- (gate U9 round 3) a square pip in a 1 px edge
+					edgeS.Name = "Edge"
+					edgeS.LineJoinMode = Enum.LineJoinMode.Miter
 					self.pips[i] = p
 				end
 				p.Visible = true
@@ -356,26 +403,40 @@ function PetCard:_layout()
 			end
 		end
 	end
-	y = y + rowH + gap
+	local chipW = x + inset -- the face
+	local outerW = chipW + 2 * edge
 
+	-- the row under the chip: HP (the modes that have it), the training timer; SPECIAL and XP draw nothing here
 	local bars = self.bars
-	local function place(bar, on, h)
-		bar.Back.Visible = on
-		if on then
-			bar.Back.Position = UDim2.fromOffset(pad, y)
-			bar.Back.Size = UDim2.fromOffset(inner, h)
-			y = y + h + gap
-		end
+	local hpOn, timerOn = m.Hp == true, m.Timer == true
+	local w = outerW
+	if hpOn or timerOn then
+		w = math.max(outerW, px(K.WIDTH, 60))
 	end
-	place(bars.Hp, m.Hp == true, px(K.HP_BAR, 6))
+	-- (Pitch 2 item 04 B, the gate render) while EVOLVE! shows, the card is at least its word wide plus the plank's room
+	-- (the chip stays centred): a lone "Lv 20" chip is narrower than the word, which ran out of its plank
+	if self.ready then
+		local word = Theme.Measure(self.pill.Text, "Button", Theme.ScaledSize(K.PILL_PX)).X
+		w = math.max(w, math.ceil(word) + 2 * inset + 2 * edge, px(K.PILL_W, 80))
+	end
+	local chipX = math.floor((w - outerW) / 2) + edge -- the face's left in the billboard
+	bars.Special.Back.Visible = false
+	bars.Xp.Back.Visible = false
 	if bars.Hp.Enemy ~= (m.Enemy == true) then
 		bars.Hp.Enemy = m.Enemy == true
 		paintBar(bars.Hp, m.Enemy and C.HpEnemy or C.HpOwn, m.Enemy and C.HpEnemyLip or C.HpOwnLip)
 	end
-	place(bars.Special, m.Special == true, px(K.BAR, 5))
-	place(bars.Xp, m.Xp == true, px(K.BAR, 5))
-	-- training timer: the bar on the left, "2:10" on the right of the same row
-	local timerOn = m.Timer == true
+	-- the rows are the chip's children, placed from the face's corner: under its edge, as wide as the billboard
+	local rowY = chipH + edge + px(K.ROW_GAP, 2)
+	local belowH = 0
+	bars.Hp.Back.Visible = hpOn
+	if hpOn then
+		local hh = px(K.HP_BAR, 6)
+		bars.Hp.Back.Position = UDim2.fromOffset(-chipX, rowY)
+		bars.Hp.Back.Size = UDim2.fromOffset(w, hh)
+		belowH = rowY + hh - chipH - edge
+		rowY = rowY + hh + gap
+	end
 	bars.Timer.Back.Visible = timerOn
 	self.timerLabel.Visible = timerOn
 	if timerOn then
@@ -383,30 +444,17 @@ function PetCard:_layout()
 		local textW = px(K.TIMER_TEXT_W, 30)
 		local th = tpx + 2
 		local barH = px(K.BAR, 5)
-		bars.Timer.Back.Position = UDim2.fromOffset(pad, y + math.floor((th - barH) / 2))
-		bars.Timer.Back.Size = UDim2.fromOffset(inner - textW - gap, barH)
+		bars.Timer.Back.Position = UDim2.fromOffset(-chipX, rowY + math.floor((th - barH) / 2))
+		bars.Timer.Back.Size = UDim2.fromOffset(w - textW - gap, barH)
 		self.timerLabel.TextSize = tpx
-		self.timerLabel.Position = UDim2.fromOffset(w - pad - textW, y)
+		self.timerLabel.Position = UDim2.fromOffset(w - chipX - textW, rowY)
 		self.timerLabel.Size = UDim2.fromOffset(textW, th)
-		y = y + th + gap
+		belowH = rowY + th - chipH - edge
 	end
-	local plateH = y - gap + pad
 
-	-- the row above the plate: the EVOLVE! pill (left) and the star badge (right); the billboard grows upwards and
-	-- the plate keeps the bottom. A badge alone dips 3 px into the plate's top edge, like a tab.
+	-- the row above the chip: the EVOLVE! pill
 	local top = 0
 	local pill = self.pill
-	local badge = self.badge
-	local bw, bh = 0, 0
-	if hasStars then
-		bh = starPx + 4
-		bw = starPx * self.stage + px(10, 6)
-		self.starsLabel.TextSize = starPx
-		badge.Size = UDim2.fromOffset(bw, bh)
-		-- (kit-b U7b) one PixelIcon star per stage, centred, at the multiple of 9 that fits starPx
-		PixelIcon.Lead(self.starsLabel, STAR_ICON, { Count = self.stage, Of = self.stage, Px = math.max(9, 9 * math.floor(starPx / 9)) })
-	end
-	badge.Visible = hasStars
 	if self.ready then
 		local ph = px(K.PILL_H, 22)
 		top = ph + px(K.PILL_GAP, 2)
@@ -414,15 +462,13 @@ function PetCard:_layout()
 		pill.Size = UDim2.fromOffset(w, ph)
 		pill.Position = UDim2.fromOffset(0, 0)
 	end
-	if hasStars then
-		local dip = math.min(3, bh - 2)
-		badge.Position = UDim2.fromOffset(w - bw - px(6, 3), top)
-		top = top + bh - dip
-	end
 	pill.Visible = self.ready
-	self.plate.Position = UDim2.fromOffset(0, top)
-	self.plate.Size = UDim2.fromOffset(w, plateH)
-	gui.Size = UDim2.fromOffset(w, top + plateH)
+	self.plate.Position = UDim2.fromOffset(chipX, top + edge)
+	self.plate.Size = UDim2.fromOffset(chipW, chipH)
+	if hasStars then
+		badge.Position = UDim2.fromOffset(chipX + inset, top + edge + math.floor((rowH - bh) / 2))
+	end
+	gui.Size = UDim2.fromOffset(w, top + edge + chipH + edge + belowH)
 	self:_pulse(self.ready)
 end
 
@@ -458,11 +504,13 @@ function PetCard:SetLevel(level, stage, ready)
 		stage = 2
 	end
 	ready = ready == true
+	local relayout = false
 	if level ~= self.level then
+		-- (Pitch 2 item 04 B) the chip is as wide as its row: a level with more digits widens it
+		relayout = #tostring(level) ~= #tostring(self.level or 1)
 		self.level = level
 		self.levelLabel.Text = "Lv " .. tostring(level)
 	end
-	local relayout = false
 	if stage ~= self.stage then
 		self.stage = stage
 		self.starsLabel.Text = "" -- (kit-b U7b) the layout draws the stars (PixelIcon.Lead, Count = the stage)

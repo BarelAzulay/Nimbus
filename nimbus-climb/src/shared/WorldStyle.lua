@@ -41,9 +41,9 @@
 --       Children: the voxel parts (named by key: StoneDark, Stone, Frame, Trim, Glow, Swirl, Gem; Swirl / Glow / Gem
 --       never collide), "GlowCore" (invisible, the PrimaryPart, 11.5 up; not named SwirlCore so PortalService keeps the countdown face at the lock wall: PointLight "GateLight" Range 28 Brightness 1.3
 --       + ParticleEmitter "Sparkles" Rate 12 drifting toward the plaza), "Crest*" / "Star*" parts, "PromptAnchor"
---       (invisible, front of the opening, 3 up: prompts go here), the BillboardGui "GateTag" (Plate: Title 28 px,
---       Info 20 px, Pill.Label 18 px; anchor 27 studs up, MaxDistance = spec.TagRange or WorldStyle.TagRange 55, see the
---       card range below). Pad = true: "Pad" (14 x 0.6 x 14, 14 studs
+--       (invisible, front of the opening, 3 up: prompts go here), the BillboardGui "GateTag" (WorldStyle.BuildTag, the
+--       hanging stone board: Plate: Title 28 px, Info 20 px, Pill.Label 18 px; anchor 27 studs up, MaxDistance =
+--       spec.TagRange or WorldStyle.TagRange 55, see the card range below). Pad = true: "Pad" (14 x 0.6 x 14, 14 studs
 --       in front, walkable; the PortalService zone sits on it) tiled like P4 (a colour rim, a light stone ring, a Neon
 --       plus; X for swords, a crown for the arch: "PadTile*" 0.06 thick on top) + two lanterns on its front corners;
 --       else "Step" (10 x 0.3 x 6, 6 studs in front). Attributes GateId, Glyph, GateShape ("Hoop" | "Arch").
@@ -66,6 +66,8 @@ local Shared = script.Parent
 local Voxel = require(Shared:WaitForChild("Voxel", 10))
 local Theme = require(Shared:WaitForChild("Theme", 10))
 local FxSprites = require(Shared:WaitForChild("FxSprites", 10)) -- the game's own particle sprites (kit B X1)
+local WorldTag = require(Shared:WaitForChild("WorldTag", 10)) -- (look review r1, M5) the gate board's kit blocks and screen fit
+local Sign = Theme.Sign
 
 local WorldStyle = {}
 
@@ -184,7 +186,7 @@ WorldStyle.Palette = {
 		Pink = rgb(234, 120, 170),
 		Green = rgb(96, 190, 140), -- the arena's Return gate (the P4 Easy green)
 	},
-	TagPlate = rgb(20, 24, 52), -- the dark navy tag card
+	TagPlate = rgb(20, 24, 52), -- the old dark navy tag card (M5: BuildTag is the stone board now; kept for old readers)
 	TagInfo = rgb(214, 220, 255),
 }
 
@@ -374,40 +376,55 @@ local function placeGlyph(parent, glyph, cf, color, cell, depth, flat)
 end
 
 ----------------------------------------------------------------------
--- The pixel tag (World text rule): constant on-screen size, compact navy plate, neon border
+-- The gate board (World text rule: a pixel billboard, 1080p px). (look review r1, M5; Pitch 2 item 04_world_ui B "Stone
+-- tags" with A's hanging header for the place boards: the navy plate with the round corner, the neon border and the
+-- outlined white text went) a hanging board like the Storm Altar's header: a wood beam (lit top, dark foot) over two
+-- ropes, the stone board (a 3 px mitred wood edge, a 5 px lip in the gate's colour, two nail heads) holding the title
+-- (Heading 28 px, brown ink), the info line (Heading 20 px, muted ink) and the status pill (a kit block tinted from the
+-- gate's colour, its lip in that colour, Heading 18 px in brown ink). Readers keep their names: GateTag > Plate (the board) > Title,
+-- Info, Pill > Label (PortalService writes the party state into them, DungeonService the floors board, ArenaBuilder the
+-- Ring board): the board is measured again whenever a line or its shown state changes. The client fits it to each screen
+-- (WorldTag.MarkFit on the Plate).
+--   WorldStyle.BuildTag(adornee, lift, spec, color) -> BillboardGui "GateTag"   spec: Title, Info, Pill, TagRange
 ----------------------------------------------------------------------
 local TAG_TITLE, TAG_INFO, TAG_PILL = 28, 20, 18
+-- (look review fin0, minor) the info line and the pill in the Storm Altar header's type (Heading), as the approved mock
+-- 04 B sets its 'Secret pets' / 'Secret Roulette': they were Body / Label, so the Altar's two boards set the same words in
+-- two fonts
+local TAG_ROLE = "Heading"
+local HB = {
+	Beam = 12, -- the beam's height
+	Over = 16, -- px the beam runs past the board's edge each side
+	Drop = 12, -- the ropes' visible length
+	Rope = 5,
+	RopeIn = 22, -- a rope's x from the board's side
+	Edge = 3, -- the board's wood edge (outside the face)
+	Lip = 5, -- the board's lip (the gate's colour)
+	Nail = 6,
+	PadX = 18, -- px each side of the widest line
+	PadTop = 6,
+	Gap = 2,
+	PillGap = 4,
+	PillH = 28, -- the pill, its edge included
+	PillPad = 12,
+	PillEdge = 2,
+	PillLip = 3,
+	PadBottom = 6,
+	MinW = 160,
+	-- the widest text line before it wraps (design px): the widest board is then 383 + 2 x 18 + 2 x (3 + 16) = 457 px, at a
+	-- phone's 0.8 screen factor 366 px: a 390 px screen inside its 12 px gutters, so its 18 px lines stay 14.4 px (the
+	-- readability floor; the Ring's best-round pill and the Dungeon's floors board ran 511 / 540 px and shrank to 11 px)
+	MaxText = 383,
+}
+WorldStyle.TagBoard = HB
 
-local function tagLabel(parent, name, text, role, size, color, order)
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.BackgroundTransparency = 1
-	label.Text = text or ""
-	Theme.SetRole(label, role) -- (kit-b U6) an unknown role is Body
-	label.TextSize = size
-	label.TextColor3 = color
-	label.TextStrokeTransparency = 1
-	label.TextWrapped = false
-	label.Size = UDim2.fromOffset(0, size + 4)
-	label.AutomaticSize = Enum.AutomaticSize.X
-	label.LayoutOrder = order
-	local stroke = Instance.new("UIStroke")
-	stroke.Name = "TextOutline"
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Color = (Theme.Colors and Theme.Colors.Ink) or rgb(26, 32, 64)
-	stroke.Thickness = 2.5
-	stroke.Parent = label
-	label.Parent = parent
-	return label
-end
-
-local function buildTag(adornee, lift, spec, color)
+function WorldStyle.BuildTag(adornee, lift, spec, color)
+	spec = type(spec) == "table" and spec or {}
+	color = typeof(color) == "Color3" and color or Sign.Gold
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "GateTag"
-	gui.Size = UDim2.fromOffset(420, 150)
-	gui.SizeOffset = Vector2.new(0, 0.5) -- the plate grows upwards from the anchor
-	gui.StudsOffsetWorldSpace = Vector3.new(0, lift, 0)
+	gui.SizeOffset = Vector2.new(0, 0.5) -- the board grows upwards from the anchor
+	gui.StudsOffsetWorldSpace = Vector3.new(0, tonumber(lift) or 0, 0)
 	gui.LightInfluence = 0
 	-- the card range: spec.TagRange when it is a number > 0 (NaN fails the test), else WorldStyle.TagRange
 	local range = spec.TagRange
@@ -418,61 +435,217 @@ local function buildTag(adornee, lift, spec, color)
 	gui.AlwaysOnTop = false
 	gui.ClipsDescendants = false
 	gui.Adornee = adornee
-	local plate = Instance.new("Frame")
-	plate.Name = "Plate"
+	local function frame(parent, name, colour, z)
+		local f = Instance.new("Frame")
+		f.Name = name
+		f.BorderSizePixel = 0
+		f.BackgroundColor3 = colour
+		f.BackgroundTransparency = 0
+		f.ZIndex = z or 1
+		f.Parent = parent
+		return f
+	end
+	-- the board (its readers find it as tag.Plate), bottom-centred in the gui; the beam and the ropes hang over it
+	local plate = frame(gui, "Plate", Sign.Stone, 2)
 	plate.AnchorPoint = Vector2.new(0.5, 1)
-	plate.Position = UDim2.new(0.5, 0, 1, 0)
-	plate.Size = UDim2.fromOffset(0, 0)
-	plate.AutomaticSize = Enum.AutomaticSize.XY
-	plate.BackgroundColor3 = WorldStyle.Palette.TagPlate
-	plate.BackgroundTransparency = 0.08
-	plate.BorderSizePixel = 0
-	plate.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 14)
-	corner.Parent = plate
-	local border = Instance.new("UIStroke")
-	border.Name = "Border"
-	border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	border.Color = color
-	border.Thickness = 3
-	border.Parent = plate
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 6)
-	pad.PaddingBottom = UDim.new(0, 8)
-	pad.PaddingLeft = UDim.new(0, 16)
-	pad.PaddingRight = UDim.new(0, 16)
-	pad.Parent = plate
-	local list = Instance.new("UIListLayout")
-	list.FillDirection = Enum.FillDirection.Vertical
-	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	list.SortOrder = Enum.SortOrder.LayoutOrder
-	list.Padding = UDim.new(0, 2)
-	list.Parent = plate
-	tagLabel(plate, "Title", spec.Title or spec.Id or "", "Heading", TAG_TITLE, rgb(255, 255, 255), 1)
-	local info = tagLabel(plate, "Info", spec.Info or "", "Body", TAG_INFO, WorldStyle.Palette.TagInfo, 2)
+	plate.Position = UDim2.new(0.5, 0, 1, -HB.Edge)
+	WorldTag.Block(plate, Sign.Stone, color, Sign.Wood, HB.Edge, HB.Lip)
+	local beam = frame(plate, "Beam", Sign.Wood, 3)
+	frame(beam, "Lit", Sign.WoodLight, 3).Size = UDim2.new(1, 0, 0, 2)
+	local shade = frame(beam, "Shade", Sign.WoodDark, 3)
+	shade.AnchorPoint = Vector2.new(0, 1)
+	shade.Position = UDim2.new(0, 0, 1, 0)
+	shade.Size = UDim2.new(1, 0, 0, 3)
+	local ropes = { frame(plate, "Rope", Sign.Post, 2), frame(plate, "Rope", Sign.Post, 2) }
+	local nails = { frame(plate, "Nail", Sign.WoodDark, 4), frame(plate, "Nail", Sign.WoodDark, 4) }
+	local title = WorldTag.Text(plate, "Title", spec.Title or spec.Id or "", "Heading", TAG_TITLE, Sign.Text, {
+		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4,
+	})
+	local info = WorldTag.Text(plate, "Info", spec.Info or "", TAG_ROLE, TAG_INFO, Sign.TextMuted, {
+		TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4,
+	})
 	info.Visible = (spec.Info or "") ~= ""
 	-- the pill: the builder's status line (party, board, record); hidden while empty
-	local pill = Instance.new("Frame")
-	pill.Name = "Pill"
-	pill.BackgroundColor3 = color:Lerp(rgb(0, 0, 0), 0.55)
-	pill.BorderSizePixel = 0
-	pill.Size = UDim2.fromOffset(0, TAG_PILL + 8)
-	pill.AutomaticSize = Enum.AutomaticSize.X
-	pill.LayoutOrder = 3
+	local pill = frame(plate, "Pill", color, 4)
+	pill.AnchorPoint = Vector2.new(0.5, 0)
+	WorldTag.Block(pill, color, color, Sign.Wood, HB.PillEdge, HB.PillLip)
+	local label = WorldTag.Text(pill, "Label", spec.Pill or "", TAG_ROLE, TAG_PILL, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -HB.PillLip), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
+	})
+	WorldTag.Tint(pill, color)
 	pill.Visible = (spec.Pill or "") ~= ""
-	pill.Parent = plate
-	local pc = Instance.new("UICorner")
-	pc.CornerRadius = UDim.new(1, 0)
-	pc.Parent = pill
-	local pp = Instance.new("UIPadding")
-	pp.PaddingLeft = UDim.new(0, 10)
-	pp.PaddingRight = UDim.new(0, 10)
-	pp.Parent = pill
-	tagLabel(pill, "Label", spec.Pill or "", "Label", TAG_PILL, rgb(255, 255, 255), 1)
+
+	-- a line laid out: its text measured as the label shows it, wrapped at word breaks when wider than `maxW` (into as few
+	-- lines as fit, balanced: the narrowest box that still takes that many, so no word is left alone on the last line), plus
+	-- the label's own padding (PixelIcon.Lead's stars lead the info line through it) -> width, height, wrapped. The label
+	-- gets that box: the engine's greedy wrap at that width breaks where this one did (Theme.Measure never under-measures)
+	local function lineBox(l, role, px, maxW)
+		local pad = l:FindFirstChildOfClass("UIPadding")
+		local padW = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0
+		local function m(t)
+			return math.ceil(Theme.Measure(t, role, px).X)
+		end
+		local lineH = math.max(px, math.ceil(Theme.Measure("Ag", role, px).Y))
+		local whole = m(l.Text)
+		local limit = maxW - padW
+		if whole <= limit or not l.Text:find("%s") then
+			return whole + padW, px + 4, false
+		end
+		local words = {}
+		for word in l.Text:gmatch("%S+") do
+			words[#words + 1] = word
+		end
+		-- greedy at width `at` -> lines, widest
+		local function wrap(at)
+			local lines, widest, cur = 0, 0, nil
+			for _, word in ipairs(words) do
+				local try = cur and (cur .. " " .. word) or word
+				if cur == nil or m(try) <= at then
+					cur = try
+				else
+					lines, widest, cur = lines + 1, math.max(widest, m(cur)), word
+				end
+			end
+			return lines + 1, math.max(widest, m(cur))
+		end
+		local lines = wrap(limit)
+		local lo, hi = math.max(1, math.floor(whole / lines)), limit
+		while lo < hi do
+			local mid = math.floor((lo + hi) / 2)
+			if wrap(mid) <= lines then
+				hi = mid
+			else
+				lo = mid + 1
+			end
+		end
+		-- (look review fin0, minor) the greedy wrap at `at` breaks beside a " - " join (a name and its number:
+		-- 'Floors cleared here: Maximilianus99 -' / '12, Alexandrovich_X - 9')
+		local function parts(at)
+			local cur, prev = nil, nil
+			for _, word in ipairs(words) do
+				local try = cur and (cur .. " " .. word) or word
+				if cur == nil or m(try) <= at then
+					cur = try
+				else
+					if prev == "-" or word == "-" then
+						return true
+					end
+					cur = word
+				end
+				prev = word
+			end
+			return false
+		end
+		if parts(hi) then
+			-- the box that breaks clear of every join in the fewest lines (then the narrowest), from the widths of the
+			-- line's word runs that fit the limit (a greedy wrap's lines change only at those); none: the balanced box stays
+			local best, bestN = nil, math.huge
+			for i = 1, #words do
+				local acc = nil
+				for j = i, #words do
+					acc = acc and (acc .. " " .. words[j]) or words[j]
+					local at = m(acc)
+					if at > limit then
+						break
+					end
+					local n = wrap(at)
+					if (n < bestN or (n == bestN and at < best)) and not parts(at) then
+						best, bestN = at, n
+					end
+				end
+			end
+			if best then
+				hi, lines = best, bestN
+			end
+		end
+		local _, widest = wrap(hi)
+		return math.max(widest, hi) + padW, lines * lineH + 4, true
+	end
+	-- a line at its row: centred, wrapped in its own measured box when it is wider than the board allows
+	local function place(l, y, w, h, wrapped, inset)
+		l.AnchorPoint = Vector2.new(0.5, 0)
+		l.Position = UDim2.new(0.5, 0, 0, y)
+		l.TextWrapped = wrapped
+		l.Size = wrapped and UDim2.fromOffset(w, h) or UDim2.new(1, -inset, 0, h)
+	end
+	local laying = false
+	local function layout()
+		if laying then
+			return
+		end
+		laying = true
+		local pillTextMax = HB.MaxText - 2 * HB.PillPad - 2 * HB.PillEdge
+		local tW, tH, tWrap = lineBox(title, "Heading", TAG_TITLE, HB.MaxText)
+		local iW, iH, iWrap = 0, 0, false
+		if info.Visible then
+			iW, iH, iWrap = lineBox(info, TAG_ROLE, TAG_INFO, HB.MaxText)
+		end
+		local lW, lH, lWrap, pillW = 0, 0, false, 0
+		if pill.Visible then
+			lW, lH, lWrap = lineBox(label, TAG_ROLE, TAG_PILL, pillTextMax)
+			pillW = lW + 2 * HB.PillPad + 2 * HB.PillEdge
+		end
+		local inner = math.max(tW, iW, pillW)
+		local w = math.max(HB.MinW, inner + 2 * HB.PadX)
+		local y = HB.PadTop
+		place(title, y, tW, tH, tWrap, 2 * HB.PadX)
+		y = y + tH + HB.Gap
+		if info.Visible then
+			place(info, y, iW, iH, iWrap, 2 * HB.PadX)
+			y = y + iH + HB.Gap
+		end
+		if pill.Visible then
+			y = y + HB.PillGap
+			local pillH = math.max(HB.PillH, lH + 2 * HB.PillEdge + HB.PillLip)
+			pill.Position = UDim2.new(0.5, 0, 0, y + HB.PillEdge)
+			pill.Size = UDim2.fromOffset(pillW - 2 * HB.PillEdge, pillH - 2 * HB.PillEdge)
+			label.TextWrapped = lWrap
+			label.AnchorPoint = Vector2.new(0.5, 0)
+			label.Position = UDim2.new(0.5, 0, 0, 0)
+			label.Size = UDim2.new(0, lW, 1, -HB.PillLip)
+			y = y + pillH
+		end
+		local h = y + HB.PadBottom + HB.Lip
+		plate.Size = UDim2.fromOffset(w, h)
+		-- the beam over the board's wood edge and past it, the ropes from the beam to the board's face
+		local up = HB.Edge + HB.Drop + HB.Beam
+		beam.Position = UDim2.fromOffset(-HB.Edge - HB.Over, -up)
+		beam.Size = UDim2.fromOffset(w + 2 * (HB.Edge + HB.Over), HB.Beam)
+		for k, r in ipairs(ropes) do
+			r.Position = UDim2.fromOffset(k == 1 and HB.RopeIn or (w - HB.RopeIn - HB.Rope), -(HB.Edge + HB.Drop))
+			r.Size = UDim2.fromOffset(HB.Rope, HB.Drop + HB.Edge)
+		end
+		for k, n in ipairs(nails) do
+			n.Position = UDim2.fromOffset(k == 1 and 4 or (w - 4 - HB.Nail), 4)
+			n.Size = UDim2.fromOffset(HB.Nail, HB.Nail)
+		end
+		local gw, gh = w + 2 * (HB.Edge + HB.Over), up + h + HB.Edge
+		local cur = gui.Size
+		if cur.X.Scale ~= 0 or cur.Y.Scale ~= 0 or cur.X.Offset ~= gw or cur.Y.Offset ~= gh then
+			gui.Size = UDim2.fromOffset(gw, gh)
+		end
+		WorldTag.MarkFit(gui, plate, gw, gh)
+		laying = false
+	end
+	layout()
+	-- a line written later (PortalService's party state, DungeonService's floors board, ArenaBuilder's Ring board, a star
+	-- row leading the info line) measures the board again
+	for _, l in ipairs({ title, info, label }) do
+		l:GetPropertyChangedSignal("Text"):Connect(layout)
+		l.ChildAdded:Connect(function(c)
+			if c:IsA("UIPadding") then
+				c:GetPropertyChangedSignal("PaddingLeft"):Connect(layout)
+				c:GetPropertyChangedSignal("PaddingRight"):Connect(layout)
+				layout()
+			end
+		end)
+	end
+	info:GetPropertyChangedSignal("Visible"):Connect(layout)
+	pill:GetPropertyChangedSignal("Visible"):Connect(layout)
 	gui.Parent = adornee
 	return gui
 end
+local buildTag = WorldStyle.BuildTag
 
 ----------------------------------------------------------------------
 -- The gate family (6.0.3): the P4 round voxel hoop + the P4 crowned arch, a crest per mode

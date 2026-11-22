@@ -118,7 +118,11 @@ SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "matc
              "pets:recall",
              "battle:trial:ready", "battle:trial:retreat", "battle:trial:result", "battle:trial:lost",
              "battle:duel:overtime", "battle:ring:fight8", "battle:ring:next8", "battle:ring:result8", "battle:ring:record8",
-             "arena:side", "arena:team4", "arena:newteam", "ring:record", "battle", "hatch3"]
+             "arena:side", "arena:team4", "arena:newteam", "ring:record", "battle", "hatch3",
+             # (Pitch 2 world lane, look review r0) the world parts of items 04 B / 13 A by their real builders, mirrored
+             # into WorldMirror at their on-screen size, and the folded menu tab with its red '!' block
+             "lobby:fold", "worldui", "worldui:npc", "worldui:prompt", "worldui:altar", "worldui:gates", "worldui:hits", "worldui:places", "worldui:places2", "worldui:poster",
+             "worldui:guide", "worldui:guideahead", "worldui:guidenear", "worldui:guidetilt", "worldui:guidehere"]
 
 # ---------------------------------------------------------------------------------------------------
 # Lua world (booted the way tools/smoke.py boots its client world)

@@ -1010,9 +1010,18 @@ local function setPillMode(party, mode)
 	end
 	party.PillMode = mode
 	local base = (mode == "Countdown") and GOLD or Theme.Darken(party.Diff.Color, 0.2)
-	party.Pill.BackgroundColor3 = base
-	if party.PillStroke then
-		party.PillStroke.Color = Theme.Darken(base, 0.7)
+	if party.Pill:GetAttribute("WorldTag") == true then
+		-- (look review r1, M5) the gate board's pill is a kit block: the face a light tint of the mode's colour, its lip
+		-- that colour, the ink brown; the wood edge stays wood
+		local okW, WorldTag = pcall(require, Shared:WaitForChild("WorldTag"))
+		if okW and type(WorldTag) == "table" and type(WorldTag.Tint) == "function" then
+			WorldTag.Tint(party.Pill, base)
+		end
+	else
+		party.Pill.BackgroundColor3 = base
+		if party.PillStroke then
+			party.PillStroke.Color = Theme.Darken(base, 0.7)
+		end
 	end
 	local outline = party.Info.StatusLabel and party.Info.StatusLabel:FindFirstChild("TextOutline")
 	if outline then
@@ -1073,7 +1082,9 @@ local function refreshLabels(party)
 			party.LastInfoStars = stars
 			pcall(function()
 				if stars > 0 then
-					PixelIcon.Lead(info.InfoLabel, "star", { Count = stars, Of = stars, Colour = GOLD })
+					-- (look review fin0, minor) on the board's cream stone the kit's dark gold (Sign.GoldLip, as the HUD's
+					-- stars on its stone cards): the light gold read at ~1.5:1 there
+					PixelIcon.Lead(info.InfoLabel, "star", { Count = stars, Of = stars, Colour = Theme.Sign.GoldLip })
 				else
 					PixelIcon.Clear(info.InfoLabel)
 				end

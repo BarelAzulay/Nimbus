@@ -84,7 +84,11 @@ local function untaggedWorldStyle()
 	local _, tInst = req("Theme")
 	local _, fxInst = req("FxSprites")
 	local _, idsInst = req("TextureIds")
-	if not (wsInst and vInst and tInst and fxInst and idsInst) then
+	-- (look review r1, M5) the gate board is WorldTag's kit block (hanging board, screen fit): WorldStyle requires it, and
+	-- it PixelIcon; neither touches MeshLibrary, so the copy stays untagged
+	local _, wtInst = req("WorldTag")
+	local _, piInst = req("PixelIcon")
+	if not (wsInst and vInst and tInst and fxInst and idsInst and wtInst and piInst) then
 		return nil, nil
 	end
 	local box = Instance.new("Folder")
@@ -96,6 +100,8 @@ local function untaggedWorldStyle()
 	tInst:Clone().Parent = box
 	fxInst:Clone().Parent = box
 	idsInst:Clone().Parent = box
+	wtInst:Clone().Parent = box
+	piInst:Clone().Parent = box
 	local ok, mod = pcall(require, ws)
 	return ok and type(mod) == "table" and mod or nil, box
 end
