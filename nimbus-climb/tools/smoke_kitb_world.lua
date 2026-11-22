@@ -236,6 +236,172 @@ local function serverScenarios()
 			end
 		end
 
+		-- (look review r1, M5) the place boards at the guide's destination: every lobby gate's GateTag (WorldStyle.BuildTag),
+		-- the Altar gate's poster (StormAltar PosterGui) and the return ring's Part-fallback PlazaSign were the old kit (a
+		-- navy plate with a round corner and a neon border; a navy gradient card with gloss). Each is now B's hanging board /
+		-- a stone kit block: no navy, no round corner, no gradient, the ink on its own face at 4.5:1
+		local Contrast = SmokeCommon.Contrast
+		local function inkOK(root)
+			local bad = {}
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:IsA("TextLabel") and d.Text ~= "" and d.Visible then
+					local cur, face = d.Parent, nil
+					while cur and cur ~= root do
+						if cur:IsA("GuiObject") and cur.BackgroundTransparency < 0.3 then
+							face = cur
+							break
+						end
+						cur = cur.Parent
+					end
+					local ratio = face and Contrast and Contrast.Ratio(d.TextColor3, face.BackgroundColor3) or 0
+					if not face or ratio < 4.5 or d:FindFirstChild("TextOutline") ~= nil then
+						bad[#bad + 1] = fmt("'%s' %.1f:1 on %s", d.Text:sub(1, 18), ratio, face and face.Name or "no face")
+					end
+				end
+			end
+			return bad
+		end
+		-- every line inside its board (a wrapped line: its measured lines inside its own box), the board on a 390 px phone at
+		-- the 0.8 screen factor (WorldTag.FitScale of its BaseWidth) with its smallest line >= the 14 px readability floor
+		local WTf = shared("WorldTag")
+		local function boardFits(tag, k)
+			local plate = tag:FindFirstChild("Plate")
+			local over = {}
+			local roles = { Title = "Heading", Info = "Body", Label = "Label" }
+			for _, l in ipairs({ plate and plate:FindFirstChild("Title"), plate and plate:FindFirstChild("Info"), plate and plate:FindFirstChild("Pill") and plate.Pill:FindFirstChild("Label") }) do
+				if l and l.Visible and l.Text ~= "" and (l.Name ~= "Label" or l.Parent.Visible) then
+					local box = (l.Name == "Label") and l.Parent or plate
+					local w = Theme.Measure(l.Text, roles[l.Name], l.TextSize).X
+					if l.TextWrapped then
+						-- greedy word wrap at the label's own width, as the engine wraps
+						local lines, cur, widest = 0, nil, 0
+						for word in l.Text:gmatch("%S+") do
+							local try = cur and (cur .. " " .. word) or word
+							if cur == nil or Theme.Measure(try, roles[l.Name], l.TextSize).X <= l.Size.X.Offset then
+								cur = try
+							else
+								lines, widest, cur = lines + 1, math.max(widest, Theme.Measure(cur, roles[l.Name], l.TextSize).X), word
+							end
+						end
+						lines, widest = lines + 1, math.max(widest, cur and Theme.Measure(cur, roles[l.Name], l.TextSize).X or 0)
+						local hNeed = lines * l.TextSize
+						local hHave = l.Size.Y.Scale > 0 and (box.Size.Y.Offset * l.Size.Y.Scale + l.Size.Y.Offset) or l.Size.Y.Offset
+						if widest > l.Size.X.Offset + 0.5 or l.Size.X.Offset > box.Size.X.Offset + 0.5 or hNeed > hHave + 0.5 then
+							over[#over + 1] = fmt("%s wrapped %d lines %.0fx%d in %.0fx%.0f (board %d)", l.Name, lines, widest, hNeed, l.Size.X.Offset, hHave, box.Size.X.Offset)
+						end
+					elseif w > box.Size.X.Offset + 0.5 then
+						over[#over + 1] = fmt("%s %.0f > %d", l.Name, w, box.Size.X.Offset)
+					end
+				end
+			end
+			T.check(#over == 0, k .. ": its lines fit the board", table.concat(over, ", "))
+			local bw = tonumber(tag:GetAttribute("BaseWidth"))
+			local f = bw and WTf and WTf.FitScale(bw, 390, Theme.ScreenFactor(844)) or 0
+			T.check(bw ~= nil and bw * f <= 390 - 24 + 0.5 and 18 * f >= Theme.Readability.MinPx - 0.01,
+				fmt("%s: it fits a 390 px phone with its 18 px lines >= %d px (%s px wide, x%.2f)", k, Theme.Readability.MinPx, tostring(bw), f))
+		end
+		local gateTags = {}
+		local lobbyModel = workspace:FindFirstChild("NimbusLobby")
+		for _, d in ipairs(lobbyModel and lobbyModel:GetDescendants() or {}) do
+			if d:IsA("BillboardGui") and d.Name == "GateTag" then
+				gateTags[#gateTags + 1] = d
+			end
+		end
+		if T.check(#gateTags >= 3, "world signs: (setup) the lobby gates' boards (GateTag)", tostring(#gateTags)) then
+			for _, tag in ipairs(gateTags) do
+				local plate = tag:FindFirstChild("Plate")
+				local title = plate and plate:FindFirstChild("Title")
+				local k = "world signs: gate board " .. tostring(title and title.Text or tag:GetFullName())
+				local bad = oldKit(tag, Theme)
+				T.check(#bad == 0, k .. ": no navy plate, no round corner, no gradient", table.concat(bad, ", "))
+				local okP, whyP = block(plate, Sign.Stone, 3, 5)
+				local lip = plate and plate:FindFirstChild("Lip")
+				T.check(okP and lip ~= nil and not same(lip.BackgroundColor3, Sign.StoneLip), k .. ": the board is a stone kit block (3 px wood edge, a 5 px lip in the gate's colour)", whyP)
+				local ropes = 0
+				for _, d in ipairs(tag:GetDescendants()) do
+					ropes = ropes + ((d.Name == "Rope" and d:IsA("Frame")) and 1 or 0)
+				end
+				local beam = tag:FindFirstChild("Beam", true)
+				T.check(beam ~= nil and same(beam.BackgroundColor3, Sign.Wood) and ropes >= 2, k .. ": it hangs from a wood beam on two ropes (B's hanging board)", tostring(ropes) .. " ropes")
+				local ink = inkOK(tag)
+				T.check(#ink == 0, k .. ": every line in the kit's ink on its own face (4.5:1, no outline)", table.concat(ink, ", "))
+				T.check(tonumber(tag:GetAttribute("BaseWidth")) ~= nil and tag:GetAttribute("FitRoot") == "Plate",
+					k .. ": it is marked for the screen fit (BaseWidth, FitRoot Plate)")
+				boardFits(tag, k)
+			end
+		end
+		-- (M5) the longest lines the gate boards carry (ArenaBuilder's Ring board with a 12-letter name and a 3-digit round,
+		-- DungeonService's floors board with two long names, a party gate's state) wrap at the board's widest line: the board
+		-- still fits a 390 px phone at its 0.8 screen factor (its 18 px lines 14.4 px), each line inside the board
+		local WS = shared("WorldStyle")
+		if T.check(WS and type(WS.BuildTag) == "function", "world signs: (setup) WorldStyle.BuildTag") then
+			local anchor = Instance.new("Part")
+			anchor.Name = "LongBoards"
+			anchor.Anchored = true
+			anchor.Parent = workspace
+			local long = {
+				{ Title = "Champion Ring", Info = "Beat the champion, meet a stronger one", Pill = "Best in this server: Alexandrovic - Round 123" },
+				{ Title = "The Dungeon", Info = "Rooms, waves and a boss. Solo or up to 3 friends", Pill = "Floors cleared here: Maximilianus99 - 12, Alexandrovich_X - 9" },
+				{ Title = "Sky Obby", Info = "Hard - 2/4 players", Pill = "Step in to play" },
+			}
+			for i, spec in ipairs(long) do
+				local ok, tag = pcall(WS.BuildTag, anchor, 0, spec, i == 1 and Sign.Gold or Sign.Violet)
+				if T.check(ok and tag ~= nil, "world signs: (setup) a board for '" .. spec.Pill .. "'", tostring(tag)) then
+					boardFits(tag, "world signs: the board '" .. spec.Title .. " / " .. spec.Pill .. "'")
+				end
+			end
+			-- a line rewritten later (DungeonService writes the floors board into the built tag) lays the board out again
+			local okD, tagD = pcall(WS.BuildTag, anchor, 0, { Title = "The Dungeon", Info = "x", Pill = "-" }, Sign.Violet)
+			if okD and tagD then
+				local w0 = tagD:GetAttribute("BaseWidth")
+				tagD.Plate.Pill.Label.Text = long[2].Pill
+				T.check(tagD:GetAttribute("BaseWidth") ~= w0, "world signs: a pill rewritten later lays the board out again", fmt("%s -> %s", tostring(w0), tostring(tagD:GetAttribute("BaseWidth"))))
+				boardFits(tagD, "world signs: the Dungeon board after DungeonService writes its floors")
+			end
+			anchor:Destroy()
+		end
+		local poster = nil
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("SurfaceGui") and d.Name == "PosterGui" then
+				poster = d
+			end
+		end
+		if T.check(poster ~= nil, "world signs: (setup) the Altar gate's poster (PosterGui)") then
+			local bad = oldKit(poster, Theme)
+			T.check(#bad == 0, "world signs: the Altar gate's poster has no navy, no round corner, no gradient", table.concat(bad, ", "))
+			local okC, whyC = block(poster:FindFirstChild("Card"), Sign.Stone, 6, 8, Sign.Violet)
+			T.check(okC, "world signs: the poster is a stone card (6 px wood edge, the altar's violet lip)", whyC)
+			local okV, whyV = block(poster:FindFirstChild("SecretPill", true), Sign.Violet)
+			T.check(okV, "world signs: 'Secret pets' is a violet kit plank", whyV)
+			local ink = inkOK(poster)
+			T.check(#ink == 0, "world signs: the poster's lines in the kit's ink on their face (4.5:1, no outline)", table.concat(ink, ", "))
+		end
+		-- the return ring's Part fallback (the default run dresses the ring, so it is built here through StormAltar's own
+		-- builder): a stone kit block with a lip in the ring's green, its line in the kit's ink, room round the words
+		local SA = req(ROOTS["server"] .. "/Services/StormAltar")
+		if T.check(SA and type(SA._PlazaSign) == "function", "world signs: (setup) StormAltar._PlazaSign") then
+			local holder = Instance.new("Model")
+			holder.Name = "PlazaSignProbe"
+			holder.Parent = workspace
+			local anchor = Instance.new("Part")
+			anchor.Anchored = true
+			anchor.Parent = holder
+			local okS, sign = pcall(SA._PlazaSign, holder, anchor, CFrame.new(0, 500, 0), false)
+			if T.check(okS and sign ~= nil and sign:IsA("BillboardGui"), "world signs: (setup) the Part fallback's PlazaSign", tostring(sign)) then
+				local bad = oldKit(sign, Theme)
+				T.check(#bad == 0, "world signs: the return ring's 'To the Plaza' tag has no navy, no round corner, no gradient", table.concat(bad, ", "))
+				local okB, whyB = block(sign:FindFirstChild("Plate"), Sign.Stone, 3, 5)
+				T.check(okB, "world signs: 'To the Plaza' is a stone kit block (3 px wood edge, 5 px lip)", whyB)
+				local ink = inkOK(sign)
+				T.check(#ink == 0, "world signs: 'To the Plaza' in the kit's ink on its face (4.5:1, no outline)", table.concat(ink, ", "))
+				local text = sign:FindFirstChild("Text", true)
+				local w = text and Theme.Measure(text.Text, "Title", text.TextSize).X or 0
+				T.check(text ~= nil and sign.Size.X.Offset - 6 - w >= 2 * 12, "world signs: 'To the Plaza' has >= 12 px of stone each side of the words",
+					fmt("%d px tag, %.0f px words", sign.Size.X.Offset, w))
+			end
+			holder:Destroy()
+		end
+
 		-- THE GATES face: the five names at 52 px with their pixel icons, nothing else
 		if T.check(face ~= nil, "world signs: (setup) THE GATES board's face") then
 			local badG = oldKit(face, Theme)
@@ -761,6 +927,30 @@ local function clientScenarios()
 				tag .. ": the marked board is fitted to the screen (gutters 12 px, at most the screen factor)",
 				fmt("gui %d px, scale %s (want %.2f)", gui.Size.X.Offset, sc and fmt("%.2f", sc.Scale) or "none", want))
 			T.check(beam.AbsoluteSize.X <= gui.Size.X.Offset + 0.5, tag .. ": its content scales with it", fmt("beam %.0f px in a %d px gui", beam.AbsoluteSize.X, gui.Size.X.Offset))
+		end
+		-- (M5) a gate board (WorldStyle.BuildTag: its content in Plate, FitRoot) is fitted too, and fitted again when the
+		-- server lays it out anew (a line rewritten: its 1080p Size and BaseWidth written over the fitted ones)
+		local WS = shared("WorldStyle")
+		if T.check(WS ~= nil and type(WS.BuildTag) == "function", "world fit: (setup) WorldStyle.BuildTag") then
+			Mock.SetViewport(390, 844)
+			KC.advance(0.2)
+			local okB, board = pcall(WS.BuildTag, part, 0, { Title = "The Dungeon", Info = "Rooms, waves and a boss", Pill = "-" }, Theme.Sign.Violet)
+			if T.check(okB and board ~= nil, "world fit: (setup) a gate board", tostring(board)) then
+				KC.advance(0.2)
+				local plate = board:FindFirstChild("Plate")
+				local function fitted(label)
+					local sc = plate and plate:FindFirstChild("ReadScale")
+					local bw = tonumber(board:GetAttribute("BaseWidth")) or 0
+					local want = math.min(Theme.ScreenFactor(844), (390 - 24) / math.max(1, bw))
+					T.check(sc ~= nil and abs(sc.Scale - want) < 0.01 and abs(board.Size.X.Offset - bw * want) <= 1 and board.Size.X.Offset <= 390 - 24,
+						"world fit 390x844: " .. label, fmt("gui %d px of base %d, scale %s (want %.2f)", board.Size.X.Offset, bw, sc and fmt("%.2f", sc.Scale) or "none", want))
+				end
+				fitted("the gate board (FitRoot Plate) is fitted to the screen")
+				plate.Pill.Label.Text = "Floors cleared here: Maximilianus99 - 12, Alexandrovich_X - 9"
+				KC.advance(0.2)
+				fitted("the gate board is fitted again after its pill is rewritten")
+				board:Destroy()
+			end
 		end
 		part:Destroy()
 		Mock.SetViewport(1920, 1080)

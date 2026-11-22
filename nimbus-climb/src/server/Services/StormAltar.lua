@@ -1117,26 +1117,6 @@ end
 ----------------------------------------------------------------------
 -- Sign: the entrance gate with its art panel (SurfaceGui) + a title tag above the altar
 ----------------------------------------------------------------------
-local function corner(parent, scaleOrPx, isScale)
-	local c = Instance.new("UICorner")
-	if isScale then
-		c.CornerRadius = UDim.new(scaleOrPx, 0)
-	else
-		c.CornerRadius = UDim.new(0, scaleOrPx)
-	end
-	c.Parent = parent
-	return c
-end
-
-local function stroke(parent, color, thickness)
-	local s = Instance.new("UIStroke")
-	s.Color = color
-	s.Thickness = thickness
-	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	s.Parent = parent
-	return s
-end
-
 local function frame(parent, name, pos, size, color)
 	local f = Instance.new("Frame")
 	f.Name = name
@@ -1146,14 +1126,6 @@ local function frame(parent, name, pos, size, color)
 	f.BorderSizePixel = 0
 	f.Parent = parent
 	return f
-end
-
-local function gradient(parent, top, bottom)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(top, bottom)
-	g.Rotation = 90
-	g.Parent = parent
-	return g
 end
 
 local function label(parent, text, role, props, outline)
@@ -1168,20 +1140,15 @@ local function label(parent, text, role, props, outline)
 	return l
 end
 
--- glossy strip over the top half of a bar (the chunky cloud UI look)
-local function gloss(parent, radiusPx)
-	local g = frame(parent, "Gloss", UDim2.new(0, 4, 0, 3), UDim2.new(1, -8, 0.46, 0), C.White)
-	g.BackgroundTransparency = 0.78
-	g.ZIndex = 2
-	corner(g, radiusPx)
-	return g
-end
-
--- Gate poster: a SurfaceGui of 600 x 320 px (PANEL_W x PANEL_H studs at 50 px per stud) in the chunky cloud UI
--- style. World text rule: "STORM ALTAR" in two 56 px lines (1.12 studs), "Secret pets" 34 px (0.68 stud) and
--- "Awakens soon" 32 px (0.64 stud), so every line reads from ~30 studs; the player's art fills a 284 px
--- (5.7-stud) square well on the left.
+-- Gate poster: a SurfaceGui of 600 x 320 px (PANEL_W x PANEL_H studs at 50 px per stud). World text rule: "STORM ALTAR"
+-- in two 56 px lines (1.12 studs), "Secret pets" 34 px (0.68 stud) and "Awakens soon" 32 px (0.64 stud), so every line
+-- reads from ~30 studs; the player's art fills a 284 px (5.7-stud) square well on the left.
+-- (look review r1, M5; Pitch 2 item 04_world_ui B "Stone tags": the rounded navy gradient card, the blue gloss title bar
+-- and the violet gloss pill went) the HUD's card tier on the gate: a stone card (a 6 px mitred wood edge, an 8 px violet lip:
+-- the altar's role colour), the art in a sunk pet well (3 px wood edge), the title in the kit's brown ink on the stone, the
+-- violet "Secret pets" plank and the muted caption. No outline on a panel (kit B): the ink reads on its own face.
 local function panelGui(board)
+	local Sign = Theme.Sign
 	local gui = Instance.new("SurfaceGui")
 	gui.Name = "PosterGui"
 	gui.Face = Enum.NormalId.Front
@@ -1191,45 +1158,42 @@ local function panelGui(board)
 	gui.AlwaysOnTop = false
 	gui.Adornee = board
 
-	local card = frame(gui, "Card", UDim2.fromOffset(6, 6), UDim2.new(1, -12, 1, -12), C.White)
-	corner(card, 24)
-	stroke(card, C.Navy, 6)
-	gradient(card, C.StormTop, C.Storm)
+	local card = frame(gui, "Card", UDim2.fromOffset(6, 6), UDim2.new(1, -12, 1, -12), Sign.Stone)
+	WorldTag.Block(card, Sign.Stone, Sign.Violet, Sign.Wood, 6, 8)
 
-	-- the player's art in a dark well (left)
-	local well = frame(card, "ArtWell", UDim2.fromOffset(12, 12), UDim2.fromOffset(284, 284), C.White)
-	corner(well, 18)
-	stroke(well, C.CrystalCore, 4)
-	gradient(well, rgb(40, 50, 92), rgb(20, 26, 54))
+	-- the player's art in a sunk pet well (left)
+	local well = frame(card, "ArtWell", UDim2.fromOffset(12, 12), UDim2.fromOffset(284, 280), Sign.PetWell)
+	WorldTag.Block(well, Sign.PetWell, Sign.StoneLip, Sign.Wood, 3, 5)
+	well.ZIndex = 2
 	local art = Instance.new("ImageLabel")
 	art.Name = "StormfangArt"
 	art.BackgroundTransparency = 1
 	art.AnchorPoint = Vector2.new(0.5, 0.5)
-	art.Position = UDim2.fromScale(0.5, 0.5)
-	art.Size = UDim2.new(1, -12, 1, -12)
+	art.Position = UDim2.new(0.5, 0, 0.5, -2)
+	art.Size = UDim2.new(1, -12, 1, -17)
 	art.Image = Config.Art and Config.Art.StormfangImage or ""
 	art.ScaleType = Enum.ScaleType.Fit
 	art.ZIndex = 3
 	art.Parent = well
-	corner(art, 12)
 
-	-- right column (x 308..572): the title bar, the "Secret pets" pill, the phase 1 caption
+	-- right column (x 308..572): the title on the stone, the "Secret pets" plank, the phase 1 caption
 	local colX, colW = 308, 264
-	local bar = frame(card, "TitleBar", UDim2.fromOffset(colX, 12), UDim2.fromOffset(colW, 140), C.White)
-	corner(bar, 20)
-	stroke(bar, C.Navy, 5)
-	gradient(bar, rgb(84, 196, 255), rgb(40, 112, 214))
-	gloss(bar, 14)
-	local title = label(bar, "STORM\nALTAR", "Title", { Name = "Title", Size = 56, Box = UDim2.new(1, -16, 1, -10) }, 4)
+	local bar = frame(card, "TitleBar", UDim2.fromOffset(colX, 12), UDim2.fromOffset(colW, 140), Sign.Stone)
+	bar.BackgroundTransparency = 1
+	local title = WorldTag.Text(bar, "Title", "STORM\nALTAR", "Title", 56, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -10), TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 3,
+	})
 	title.LineHeight = 0.9
 
-	local pill = frame(card, "SecretPill", UDim2.fromOffset(colX, 164), UDim2.fromOffset(colW, 58), C.White)
-	corner(pill, 29)
-	stroke(pill, C.Navy, 5)
-	gradient(pill, rgb(150, 98, 255), rgb(88, 46, 204))
-	gloss(pill, 22)
-	label(pill, "Secret pets", "Title", { Name = "Subtitle", Size = 34, Box = UDim2.new(1, -16, 1, -6) }, 3)
-	label(card, "Awakens soon", "Body", { Name = "Caption", Size = 32, Color = C.Cyan, AnchorPoint = Vector2.new(0, 0), Position = UDim2.fromOffset(colX, 232), Box = UDim2.fromOffset(colW, 48) }, 3)
+	local pill = frame(card, "SecretPill", UDim2.fromOffset(colX + 3, 164 + 3), UDim2.fromOffset(colW - 6, 58 - 6), Sign.Violet)
+	WorldTag.Block(pill, Sign.Violet, Sign.VioletLip, Sign.Wood, 3, 5)
+	pill.ZIndex = 2
+	WorldTag.Text(pill, "Subtitle", "Secret pets", "Title", 34, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -5), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 3,
+	})
+	WorldTag.Text(card, "Caption", "Awakens soon", "Body", 32, Sign.TextMuted, {
+		Position = UDim2.fromOffset(colX, 232), Size = UDim2.fromOffset(colW, 48), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 3,
+	})
 
 	gui.Parent = board
 	return gui
@@ -1571,20 +1535,26 @@ local function plazaSign(parent, anchor, origin, dressed)
 		board.Parent = face
 		return board
 	end
+	-- (look review r1, M5: the navy gradient capsule with the green stroke went) a stone tag: a 3 px mitred wood edge, a
+	-- 5 px lip in the return ring's green, "To the Plaza" in the kit's brown ink (no outline on a panel)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "PlazaSign"
-	gui.Size = UDim2.fromOffset(200, 50)
+	-- 16 px of stone each side of the measured line, inside the 3 px edge (200 px left the words touching the wood)
+	local okM, textW = pcall(function()
+		return Theme.Measure("To the Plaza", "Title", 26).X
+	end)
+	gui.Size = UDim2.fromOffset(math.max(200, math.ceil(okM and textW or 0) + 2 * 16 + 6), 50)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, 7.2, 0) -- 9.7 over the deck: above the ring's top (8.6)
 	gui.AlwaysOnTop = false
 	gui.LightInfluence = 0
 	gui.MaxDistance = 60
 	gui.Adornee = anchor
-	local plate = frame(gui, "Plate", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), C.White)
-	plate.BackgroundTransparency = 0.04
-	corner(plate, 0.4, true)
-	stroke(plate, C.ReturnGreen, 3)
-	gradient(plate, rgb(52, 72, 120), rgb(24, 34, 70))
-	label(plate, "To the Plaza", "Title", { Name = "Text", Size = 26, Box = UDim2.new(1, -16, 1, -8) }, 2.5)
+	local Sign = Theme.Sign
+	local plate = frame(gui, "Plate", UDim2.fromOffset(3, 3), UDim2.new(1, -6, 1, -6), Sign.Stone)
+	WorldTag.Block(plate, Sign.Stone, C.ReturnGreen, Sign.Wood, 3, 5)
+	WorldTag.Text(plate, "Text", "To the Plaza", "Title", 26, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -5), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 2,
+	})
 	gui.Parent = anchor
 	return gui
 end
@@ -1896,6 +1866,7 @@ end
 ----------------------------------------------------------------------
 StormAltar._Kit = nil
 StormAltar._Mesh = Mesh
+StormAltar._PlazaSign = plazaSign -- (tests: the Part fallback's "To the Plaza" tag, which the default run dresses away)
 
 -- rim: the billow grid at `bv` studs per voxel (game: 2), belly: f voxels per 3-stud game voxel (game: 1)
 function StormAltar._Blueprint(gapDeg, bv, f)

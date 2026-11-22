@@ -2807,7 +2807,9 @@ function Gates.build(parent, site, spec)
 	local tag = model:FindFirstChild("GateTag", true)
 	local pill = tag and tag:FindFirstChild("Pill", true)
 	local label = pill and (pill:FindFirstChild("Label") or pill:FindFirstChild("PillLabel"))
-	if spec.TagWidth and tag and tag:IsA("BillboardGui") then
+	-- (look review r1, M5) WorldStyle's hanging gate board measures itself (BaseWidth) whenever a line changes: only the
+	-- stand-in tag above takes the fixed TagWidth
+	if spec.TagWidth and tag and tag:IsA("BillboardGui") and tag:GetAttribute("BaseWidth") == nil then
 		tag.Size = UDim2.fromOffset(spec.TagWidth, tag.Size.Y.Offset)
 	end
 	return model, pad, prompt, label

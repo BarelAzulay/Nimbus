@@ -132,9 +132,33 @@ function WorldTag.MarkFit(gui, root, w, h)
 		scale.Name = "ReadScale"
 		scale.Parent = root
 	end
+	if root.Name ~= "Root" then
+		gui:SetAttribute("FitRoot", root.Name) -- (a gate board's Plate: its readers find it by name, under the gui)
+	end
 	gui:SetAttribute("BaseWidth", w)
 	gui:SetAttribute("BaseHeight", h)
 	game:GetService("CollectionService"):AddTag(gui, WorldTag.FitTag)
+end
+
+-- a role-coloured kit block that keeps the ink readable: the face a light tint of `colour` (TINT of the way to Stone),
+-- the lip `colour` itself, its TextLabel children in the kit's brown ink (the gate board's status pill: PortalService's
+-- idle / countdown colours)
+WorldTag.TINT = 0.55
+function WorldTag.Tint(block, colour)
+	if typeof(colour) ~= "Color3" then
+		return
+	end
+	block:SetAttribute("WorldTag", true) -- (PortalService's status colours re-tint it through here)
+	block.BackgroundColor3 = colour:Lerp(Sign.Stone, WorldTag.TINT)
+	local lip = block:FindFirstChild("Lip")
+	if lip then
+		lip.BackgroundColor3 = colour
+	end
+	for _, c in ipairs(block:GetChildren()) do
+		if c:IsA("TextLabel") then
+			c.TextColor3 = Sign.Text
+		end
+	end
 end
 
 function WorldTag.FitScale(w, screenX, factor)
@@ -149,7 +173,7 @@ end
 
 function WorldTag.Fit(gui)
 	local w, h = tonumber(gui:GetAttribute("BaseWidth")), tonumber(gui:GetAttribute("BaseHeight"))
-	local root = gui:FindFirstChild("Root")
+	local root = gui:FindFirstChild(gui:GetAttribute("FitRoot") or "Root")
 	local scale = root and root:FindFirstChild("ReadScale")
 	local cam = workspace.CurrentCamera
 	local vp = cam and cam.ViewportSize
@@ -157,8 +181,14 @@ function WorldTag.Fit(gui)
 		return
 	end
 	local f = WorldTag.FitScale(w, vp.X, Theme.ScreenFactor(vp.Y))
-	gui.Size = UDim2.fromOffset(math.floor(w * f + 0.5), math.floor(h * f + 0.5))
-	scale.Scale = f
+	local sw, sh = math.floor(w * f + 0.5), math.floor(h * f + 0.5)
+	local cur = gui.Size
+	if cur.X.Scale ~= 0 or cur.Y.Scale ~= 0 or cur.X.Offset ~= sw or cur.Y.Offset ~= sh then
+		gui.Size = UDim2.fromOffset(sw, sh)
+	end
+	if scale.Scale ~= f then
+		scale.Scale = f
+	end
 end
 
 local watching = false
@@ -173,9 +203,25 @@ function WorldTag.WatchFit()
 			pcall(WorldTag.Fit, gui)
 		end
 	end
-	CollectionService:GetInstanceAddedSignal(WorldTag.FitTag):Connect(function(gui)
+	-- a board the server re-lays out (a gate board's line rewritten: a new BaseWidth, its 1080p Size replicated) is fitted again
+	local watched = setmetatable({}, { __mode = "k" })
+	local function watch(gui)
 		pcall(WorldTag.Fit, gui)
-	end)
+		if watched[gui] then
+			return
+		end
+		watched[gui] = true
+		local function refit()
+			pcall(WorldTag.Fit, gui)
+		end
+		gui:GetAttributeChangedSignal("BaseWidth"):Connect(refit)
+		gui:GetAttributeChangedSignal("BaseHeight"):Connect(refit)
+		gui:GetPropertyChangedSignal("Size"):Connect(refit)
+	end
+	CollectionService:GetInstanceAddedSignal(WorldTag.FitTag):Connect(watch)
+	for _, gui in ipairs(CollectionService:GetTagged(WorldTag.FitTag)) do
+		watch(gui)
+	end
 	local camConn = nil
 	local function watchCamera()
 		if camConn then

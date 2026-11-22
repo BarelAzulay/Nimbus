@@ -22,9 +22,11 @@
 --                         shared/PixelIcon at 18, 27 and 36 px
 --   lobby[:gift|:fold]    the idle lobby HUD (gift: U9-4 look review, the daily payload in, the Gifts block's PlayBar; fold:
 --                         Pitch 2 item 04 B, the menu column folded with a tile's badge on: the tab's red "!" block)
---   worldui[:npc|:prompt|:altar|:gates|:hits|:guide|:guideahead|:guidehere]  (Pitch 2 items 04 B / 13 A) the world parts built by
---                         their real builders, mirrored into the ScreenGui WorldMirror at their on-screen pixel size: NPC
+--   worldui[:npc|:prompt|:altar|:gates|:hits|:places|:poster|:guide|:guideahead|:guidehere]  (Pitch 2 items 04 B / 13 A) the
+--                         world parts
+--                         built by their real builders, mirrored into the ScreenGui WorldMirror at their on-screen pixel size: NPC
 --                         signs, prompt planks, the altar's hanging header, THE GATES face, the damage totals and pops,
+--                         the place boards (places: every gate's hanging board and the To the Plaza tag; poster: the Altar poster),
 --                         the travel guide's arrow, dot trail and sign (sketched from the default camera); see the
 --                         [kitb-p2-world] block
 --   title                 right after joining (the title card is still up)
@@ -5183,6 +5185,130 @@ function WU.guide(screen, mode)
 		Vector3.new(gate.Position.X - rp.X, 0, gate.Position.Z - rp.Z).Magnitude, drawn, voxels, dots))
 end
 
+-- (look review r1, M5) the place boards the guide leads to: every lobby gate's hanging board (WorldStyle.BuildTag:
+-- GateTag) at its fitted on-screen size, three more built by it with the longest lines the Ring, the Dungeon and a party
+-- gate carry (wrapped at the board's widest line), and the return ring's 'To the Plaza' tag (the Part fallback, forced:
+-- portal_ring reads "missing" for this scene). The Altar poster has its own scene (worldui:poster)
+function WU.places(screen)
+	NK.hideGame()
+	local ML = req("shared/MeshLibrary", true)
+	local status = ML and ML.Status
+	if type(status) == "function" then
+		ML.Status = function(key)
+			if key == "portal_ring" then
+				return "missing"
+			end
+			return status(key)
+		end
+	end
+	WU.serverWorld()
+	if type(status) == "function" then
+		ML.Status = status
+	end
+	advance(0.3) -- the client fits the boards (WorldTag.WatchFit)
+	local vp = Mock.Viewport
+	local place = WU.flow(24, 96)
+	local lobby = workspace:FindFirstChild("NimbusLobby")
+	local shown = 0
+	for _, d in ipairs(lobby and lobby:GetDescendants() or {}) do
+		if d:IsA("BillboardGui") and d.Name == "GateTag" then
+			local w, h = canvasOf(d)
+			local plate = d:FindFirstChild("Plate")
+			local title = plate and plate:FindFirstChild("Title")
+			local rs = plate and plate:FindFirstChild("ReadScale")
+			local cap = fmt("%s (%dx%d px, x%.2f)", title and title.Text or "?", w, h, rs and rs.Scale or 1)
+			local x, y = place(w, h, cap)
+			WU.caption(screen, cap, x, y - 26)
+			WU.cell(screen, d, x, y)
+			shown = shown + 1
+		end
+	end
+	-- the boards the render's lobby does not build (ArenaBuilder's Ring, DungeonBuilder's gate) with their longest lines, and
+	-- a party gate as PortalService shows it in a countdown (the stars leading the info line, the pill tinted gold)
+	local WS, WT, PI = req("shared/WorldStyle"), req("shared/WorldTag"), req("shared/PixelIcon")
+	local Sign = req("shared/Theme").Sign
+	local context = Mock.Context
+	Mock.Context = "server"
+	local extra = make("Part", { Name = "PlacesAnchor", Anchored = true, Size = Vector3.new(1, 1, 1), Position = Vector3.new(0, 500, 0) }, workspace)
+	local made = {}
+	pcall(function()
+		made[#made + 1] = WS.BuildTag(extra, 0, { Title = "Champion Ring", Info = "Beat the champion, meet a stronger one", Pill = "Best in this server: Alexandrovic - Round 123" }, Sign.Gold)
+		made[#made + 1] = WS.BuildTag(extra, 0, { Title = "The Dungeon", Info = "Rooms, waves and a boss. Solo or up to 3 friends", Pill = "Floors cleared here: Maximilianus99 - 12, Alexandrovich_X - 9" }, Sign.Violet)
+		local party = WS.BuildTag(extra, 0, { Title = "Sky Obby", Info = "Hard - 2/4 players", Pill = "Step in to play" }, Sign.Sky)
+		PI.Lead(party.Plate.Info, "star", { Count = 3, Of = 3, Colour = req("shared/Theme").Colors.Gold }) -- (PortalService: Count = Of = stars, GOLD)
+		WT.Tint(party.Plate.Pill, Sign.Gold)
+		party.Plate.Pill.Label.Text = "Starting in 5"
+		made[#made + 1] = party
+	end)
+	Mock.Context = context
+	advance(0.3)
+	for i, d in ipairs(made) do
+		local w, h = canvasOf(d)
+		local rs = d.Plate:FindFirstChild("ReadScale")
+		local cap = fmt("%s (%dx%d px, x%.2f)", ({ "Ring, its longest pill", "Dungeon, its floors board", "a party gate, counting down" })[i], w, h, rs and rs.Scale or 1)
+		local x, y = place(w, h, cap)
+		WU.caption(screen, cap, x, y - 26)
+		WU.cell(screen, d, (x + w > Mock.Viewport.X - 12) and max(12, floor((Mock.Viewport.X - w) / 2)) or x, y)
+		shown = shown + 1
+	end
+	local plaza = nil
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("BillboardGui") and d.Name == "PlazaSign" then
+			plaza = d
+		end
+	end
+	if plaza then
+		local w, h = canvasOf(plaza)
+		local cap = fmt("To the Plaza (Part fallback, %dx%d px)", w, h)
+		local x, y = place(w, h, cap)
+		WU.caption(screen, cap, x, y - 26)
+		WU.cell(screen, plaza, x, y)
+	else
+		note("worldui:places no Part-fallback PlazaSign")
+	end
+	note(fmt("worldui:places %d gate boards, plaza tag %s", shown, plaza and "yes" or "no"))
+end
+
+-- the Altar gate's poster (StormAltar PosterGui, 50 px per stud) as seen from 20 and 10 studs and its canvas fitted
+function WU.poster(screen)
+	NK.hideGame()
+	WU.serverWorld()
+	local vp = Mock.Viewport
+	local place = WU.flow(24, 96)
+	local poster = nil
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("SurfaceGui") and d.Name == "PosterGui" then
+			poster = d
+		end
+	end
+	if poster then
+		local part = poster.Adornee or poster.Parent
+		local pps = poster.PixelsPerStud
+		local W, H = 600, 320
+		if part and part:IsA("BasePart") then
+			W, H = floor(part.Size.X * pps + 0.5), floor(part.Size.Y * pps + 0.5)
+		end
+		for _, view in ipairs({ { onScreenScale(poster, 20), "Altar poster from 20 studs" }, { onScreenScale(poster, 10), "from 10 studs" },
+			{ min(1, (vp.X - 48) / W, (vp.Y - 200) / H / 2), "the canvas" } }) do
+			local s = view[1]
+			local cap = fmt("%s (x%.2f, %dx%d px)", view[2], s, floor(W * s + 0.5), floor(H * s + 0.5))
+			local x, y = place(W * s, H * s, cap)
+			WU.caption(screen, cap, x, y - 26)
+			local cell = make("Frame", { Name = "Poster", BackgroundTransparency = 1, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(W * s, H * s) }, screen)
+			for _, c in ipairs(poster:GetChildren()) do
+				if c:IsA("GuiObject") then
+					c:Clone().Parent = cell
+				end
+			end
+			if math.abs(s - 1) > 1e-3 then
+				deepScale(cell, s)
+			end
+		end
+	else
+		note("worldui:poster no PosterGui")
+	end
+end
+
 scenario("worldui", function(piece)
 	piece = tostring(piece or "")
 	if piece == "" then
@@ -5201,11 +5327,15 @@ scenario("worldui", function(piece)
 		WU.gates(screen)
 	elseif piece == "hits" then
 		WU.hits(screen)
+	elseif piece == "places" then
+		WU.places(screen)
+	elseif piece == "poster" then
+		WU.poster(screen)
 	elseif guide[piece] then
 		WU.guide(screen, guide[piece])
 	else
 		undo()
-		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:guide|:guideahead|:guidehere]")
+		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:poster|:guide|:guideahead|:guidehere]")
 	end
 	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	advance(0.1)

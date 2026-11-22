@@ -1010,9 +1010,18 @@ local function setPillMode(party, mode)
 	end
 	party.PillMode = mode
 	local base = (mode == "Countdown") and GOLD or Theme.Darken(party.Diff.Color, 0.2)
-	party.Pill.BackgroundColor3 = base
-	if party.PillStroke then
-		party.PillStroke.Color = Theme.Darken(base, 0.7)
+	if party.Pill:GetAttribute("WorldTag") == true then
+		-- (look review r1, M5) the gate board's pill is a kit block: the face a light tint of the mode's colour, its lip
+		-- that colour, the ink brown; the wood edge stays wood
+		local okW, WorldTag = pcall(require, Shared:WaitForChild("WorldTag"))
+		if okW and type(WorldTag) == "table" and type(WorldTag.Tint) == "function" then
+			WorldTag.Tint(party.Pill, base)
+		end
+	else
+		party.Pill.BackgroundColor3 = base
+		if party.PillStroke then
+			party.PillStroke.Color = Theme.Darken(base, 0.7)
+		end
 	end
 	local outline = party.Info.StatusLabel and party.Info.StatusLabel:FindFirstChild("TextOutline")
 	if outline then

@@ -121,7 +121,7 @@ SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "matc
              "arena:side", "arena:team4", "arena:newteam", "ring:record", "battle", "hatch3",
              # (Pitch 2 world lane, look review r0) the world parts of items 04 B / 13 A by their real builders, mirrored
              # into WorldMirror at their on-screen size, and the folded menu tab with its red '!' block
-             "lobby:fold", "worldui", "worldui:npc", "worldui:prompt", "worldui:altar", "worldui:gates", "worldui:hits",
+             "lobby:fold", "worldui", "worldui:npc", "worldui:prompt", "worldui:altar", "worldui:gates", "worldui:hits", "worldui:places", "worldui:poster",
              "worldui:guide", "worldui:guideahead", "worldui:guidehere"]
 
 # ---------------------------------------------------------------------------------------------------

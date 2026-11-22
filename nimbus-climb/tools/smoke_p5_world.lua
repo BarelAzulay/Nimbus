@@ -146,13 +146,32 @@ local function pixelTagCheck(gui, label, ws)
 	T.check(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset > 0, label .. ": the tag is pixel-sized (offset UDim2)", tostring(gui.Size))
 	T.check(range == 55 and gui.MaxDistance == range, label .. ": MaxDistance == WorldStyle.TagRange (55 studs)", "MaxDistance " .. tostring(gui.MaxDistance) .. ", TagRange " .. tostring(range))
 	T.eq(gui.LightInfluence, 0, label .. ": LightInfluence 0")
-	local t = T.tally(label .. ": every tag label is >= 18 px, outlined, not TextScaled")
+	-- (look review r1, M5: the gate board is kit B's hanging stone board) kit B puts no outline on a panel: a label whose
+	-- nearest opaque ancestor is a kit block (its mitred SignEdge) reads by its ink on that face, at 4.5:1 (WCAG AA; the
+	-- polish_worldtext rule), where the old navy plate's labels needed an outline
+	local t = T.tally(label .. ": every tag label is >= 18 px, outlined or in 4.5:1 ink on its kit block, not TextScaled")
 	local count = 0
+	local Contrast = SmokeCommon and SmokeCommon.Contrast
 	for _, d in ipairs(gui:GetDescendants()) do
 		if d:IsA("TextLabel") then
 			count = count + 1
 			local stroke = d:FindFirstChildOfClass("UIStroke")
-			t:case(d.TextSize >= 18 and not d.TextScaled and stroke ~= nil, d.Name .. " " .. tostring(d.TextSize))
+			local reads = stroke ~= nil
+			local why = ""
+			if not reads then
+				local cur = d.Parent
+				while cur and cur ~= gui do
+					if cur:IsA("GuiObject") and cur.BackgroundTransparency < 0.3 then
+						local edge = cur:FindFirstChild("SignEdge")
+						local ratio = Contrast and Contrast.Ratio(d.TextColor3, cur.BackgroundColor3) or 0
+						reads = edge ~= nil and edge:IsA("UIStroke") and ratio >= 4.5
+						why = string.format(" %.1f:1 on %s", ratio, cur.Name)
+						break
+					end
+					cur = cur.Parent
+				end
+			end
+			t:case(d.TextSize >= 18 and not d.TextScaled and reads, d.Name .. " " .. tostring(d.TextSize) .. why)
 		end
 	end
 	t:report(count .. " labels")
