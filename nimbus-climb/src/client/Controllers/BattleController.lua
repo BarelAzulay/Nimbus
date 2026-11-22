@@ -7596,7 +7596,9 @@ function Hud.LayoutFighter(B, m, top)
 			-- stick's ring, the Lv tag and SWAP (its arrows alone) share the top row and the name goes under them, on two lines
 			-- where that column still ends above the ring (Hud.PlaceHelper)
 			local colTop = (tonumber(top) or (Hud.team and Hud.team.Position.Y.Offset) or K.EDGE) + cardH + Hud.TeamGap(m)
-			local ring = Hud.StickRingTop(m)
+			-- (keys look r4: at 640 x 360 helper 2's box ended 1 design px above the ring, its name tag's 2 px frame 1.2 px
+			-- into it) the cells' ink, their frames, ends above the ring
+			local ring = Hud.StickRingTop(m) - Hud.Air(m, 2)
 			if colTop + 2 * cellH + Hud.CellGap(m) > ring then
 				-- (keys look r4: the air under the fighter card's shadow and between the cells cost 844 x 390 the mock-up's cell,
 				-- Lv / buff / Swap under each other, 5.5 design px short of the ring) first the same rows 2 px tighter each: the
@@ -7625,6 +7627,12 @@ function Hud.LayoutFighter(B, m, top)
 					-- 17.6 px tag (the fighter card's own), the lines 1.6 px over the text
 					local h2, n2 = lvPx + 4, 2 * lvPx + 2
 					local t2 = max(tile + 4 + L.CdH, h2 + 2 + n2)
+					if colTop + 2 * t2 + Hud.CellGap(m) > ring then
+						-- (keys look r4: 640 x 360's raid, the evolved fighter's card a row taller) the two lines exactly the
+						-- text's height (capitals: the cap height leaves air inside the tag's frame)
+						n2 = 2 * lvPx
+						t2 = max(tile + 4 + L.CdH, h2 + 2 + n2)
+					end
 					if colTop + 2 * t2 + Hud.CellGap(m) <= ring then
 						L.H, nameH2, two = h2, n2, t2
 					end
@@ -8042,14 +8050,23 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- 12 design px off the fighter card left 1.9 px between its hard shadow and the card's edge at 640 x 360) the fighter
 		-- card's edge and shadow, this card's 2 px edge and K.INK_AIR_PX of air
 		local side = max(12, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX))
-		local free = m.W - (K.EDGE + teamW + side) - (K.ROW_W_COMPACT + K.EDGE + 12)
+		local teamR = teamW
+		if m.Landscape and Hud.ThreeKeys(m) and Hud.cheer and (CheerUp.Allowed(B) or Retreat.Allowed(B)) then
+			-- (keys look r4: at 740 x 360 CHEER, beside the helpers, ended 0.4 px past the fighter card's shadow, its 2 px edge
+			-- 3.9 px off this card's) the team orders beside the helpers: their edge, this card's and the air past them too
+			local spots, kw = CheerUp.TeamSpots(m)
+			for _, sp in ipairs(spots or {}) do
+				teamR = max(teamR, sp[1] + kw / 2 + Hud.Air(m, 2 + 2 + K.INK_AIR_PX) - side - K.EDGE)
+			end
+		end
+		local free = m.W - (K.EDGE + teamR + side) - (K.ROW_W_COMPACT + K.EDGE + 12)
 		local dash = m.Landscape and Hud.ThreeKeys(m) and Hud.ClusterLayout(m).Dash
 		if dash then
 			-- (Pitch 2 item 1b, look review r0: at 667 x 375 DASH's face lay 8 px over the card's bottom-right corner) a wide
 			-- phone's card also ends 8 px left of DASH, the right thumb's upper key (its spot comes from the jump button alone);
 			-- (keys look r4: its shadow then stood 2.7 px off DASH's edge) its edge and shadow and K.INK_AIR_PX of air
 			local dashX0 = m.W + dash[1] - dash[3] / 2 - K.KEY_EDGE
-			free = min(free, dashX0 - max(8 / max(0.05, m.F), Hud.Air(m, K.SHADOW_PX + K.INK_AIR_PX)) - (K.EDGE + teamW + side))
+			free = min(free, dashX0 - max(8 / max(0.05, m.F), Hud.Air(m, K.SHADOW_PX + K.INK_AIR_PX)) - (K.EDGE + teamR + side))
 		end
 		-- (look review r2: at 640 x 360 that gap is 274, under TOP_W_COMPACT, so every mode's card went into the right column
 		-- below, the enemy list under it: both lay on DASH and RUN, RUN drawn under them) the three keys' wide phone keeps its
@@ -8060,7 +8077,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			w = floor(free) -- (a landscape phone: the card takes the gap; its pills wrap, LEAVE is inside it)
 		end
 		if free >= w then
-			x = K.EDGE + teamW + side + free / 2
+			x = K.EDGE + teamR + side + free / 2
 		elseif spectator then
 			w = min(w, m.W - 2 * K.EDGE)
 		else
