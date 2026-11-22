@@ -285,9 +285,13 @@ local K = {
 	WINDUP_MIN = 0.03, -- an NPC's wind-up shorter than this before its dash is skipped (the dash starts from rest)
 	-- (gate review r0, major 2) a dash called Melee.In or less before its hit (a player's fighter) rocks back this long
 	-- first, the run in the rest (at least RUN_MIN: a later call gets less wind-up, never a shorter run). (the owner,
-	-- 2026-11-20: the wind-up gets 0.25 s, client only) an NPC's run gives the same 0.10 of Melee.In to its wind-up: its
-	-- Windup comes Melee.In + 0.15 before the hit, so it rocks back 0.25 s and hops in 0.20 (the server's time unchanged)
+	-- 2026-11-20: the wind-up gets 0.25 s, client only) an NPC's run gives the same 0.10 of Melee.In to its wind-up: it
+	-- rocks back NPC_WIND 0.25 s and hops in 0.20 (the server's time unchanged)
 	FIGHTER_WIND = 0.10,
+	-- (look review r3 minor: "an NPC's wind-up is never the owner's 0.25 s on the real path") the server's Windup comes on
+	-- its 0.1 s step, 0.50 s before the hit (its `at` is that hit's step): the gather lasts this at most, a longer lead
+	-- stands at rest (the Windup's p 0) until it starts
+	NPC_WIND = 0.25,
 	RUN_MIN = 0.15,
 	BITE_IN = 0.25, -- (gate review r0 minor) world studs the deepest bite may reach into the target's box (the strip's aim)
 	WINDUP_LOAD = 0.82, -- PetPoses.WINDUP_LOAD (its own value wins when it loads)
@@ -3242,6 +3246,9 @@ local function nodTime(s, run, v)
 end
 
 local function segP(s, el)
+	if s.Still then
+		return 0 -- (look review r3 minor) an NPC's early Windup: at rest until its gather starts
+	end
 	local kn, kp = s.Knee, s.KneeP
 	if kn and kp and kn > 0 and s.Dur > kn then
 		if el <= kn then
@@ -4522,7 +4529,7 @@ local function dash(unit, src, tgt, landAt, now, opts)
 		-- it hopped in from a standstill) a dash called that late still rocks back and loads for FIGHTER_WIND first; the run
 		-- takes the rest of Melee.In (at least RUN_MIN). The landing is unchanged (the server's bite time).
 		-- (the owner, 2026-11-20: the wind-up gets 0.25 s, client only) every run gives FIGHTER_WIND of Melee.In to its
-		-- wind-up: an NPC's (its Windup Melee.In + 0.15 before the hit) rocks back 0.25 s and hops in 0.20, a fighter's
+		-- wind-up: an NPC's (its Windup 0.50 s before the hit) rocks back NPC_WIND 0.25 s and hops in 0.20, a fighter's
 		-- 0.10 and 0.20; a later call keeps at least RUN_MIN for the run
 		t0 = min(t0 + K.FIGHTER_WIND, max(t0, land - K.RUN_MIN))
 	end
@@ -4578,11 +4585,15 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	local segBack = { Name = "DashBack", T0 = bk, Dur = backDur * B.BackPose, Reach = edge, Feet = feet }
 	local segs = { segIn, segBack }
 	if state ~= "back" and t0 - now >= K.WINDUP_MIN then
-		-- (Pitch 2 item 5) an NPC's wind-up (its Windup came Melee.In + this before the hit; a fighter's FIGHTER_WIND): it
-		-- rocks back on its hind paws, trembles (a long one) and loads deepest exactly when the run starts. (gate review r0)
-		-- Reach = its length in seconds: PetPoses runs its beats in real time
-		local wDur = (t0 - now) / B.Load
-		table.insert(segs, 1, { Name = "Windup", T0 = now, Dur = wDur, Reach = wDur, Ranged = false, Feet = feet })
+		-- (Pitch 2 item 5) an NPC's wind-up (NPC_WIND before the run; a fighter's FIGHTER_WIND): it rocks back on its hind
+		-- paws, trembles (a long one) and loads deepest exactly when the run starts. (gate review r0) Reach = its length in
+		-- seconds: PetPoses runs its beats in real time. (look review r3 minor) a Windup further ahead stands still first
+		local w0 = max(now, t0 - K.NPC_WIND)
+		local wDur = (t0 - w0) / B.Load
+		table.insert(segs, 1, { Name = "Windup", T0 = w0, Dur = wDur, Reach = wDur, Ranged = false, Feet = feet })
+		if w0 > now + 1e-6 then
+			table.insert(segs, 1, { Name = "Windup", T0 = now, Dur = w0 - now, Still = true, Reach = wDur, Ranged = false, Feet = feet })
+		end
 	end
 	setPoses(unit, segs, now)
 	local e2 = St.poses[unit]
