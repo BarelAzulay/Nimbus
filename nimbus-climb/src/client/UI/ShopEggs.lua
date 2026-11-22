@@ -129,6 +129,12 @@ local K = {
 	HERO_PHONE = 200,
 	FADE = 48,
 	TILE_WIDE = 240, -- (fix round B) the widest a phone card grows to fill its viewport with whole cards
+	-- (fix6, P2 icons look pol1 #1) the narrowest phone card that draws the sheet's machines at 2 px cells: the card's stage
+	-- (w - 102, L.cardSheetPhone) holds the 53-cell drawing and its 2 px rim (106 + 4), the hero's column (w - 90,
+	-- L.heroPhone) the vault's 61 cells (122)
+	TILE_SHEET = 212,
+	-- (fix6) and the widest it grows to fill the row: two 2 px cards on an 800 wide phone left 120 px of bare page
+	TILE_WIDE_SHEET = 300,
 	MORE_GUTTER = 40, -- (fix round B) the More arrow's column right of the phone row's viewport (its block is 30 wide, 4 in)
 	SNAP_DELAY = 0.25, -- (fix round B) s a drag rests before the phone row snaps to a whole card
 	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
@@ -197,7 +203,9 @@ local K = {
 	-- CardsY + Card + 8 takes TIGHT, sized from the body (L.plan): the hero 180 with a 150 machine, the cards from y 208
 	-- down to the body's bottom (MinCard at least, then the page scrolls), the machine 84, the odds rows share what is left
 	-- over the two button rows
-	TIGHT = { Hero = 180, HeroArt = 150, CardsY = 208, Art = 84, RowsY = 182, HintH = 20, MinCard = 440 },
+	-- (fix6, P2 icons look pol1 #1's class at 960 x 540: MinCard 440 left the sheet's stage 146 tall, the machines at 1 px
+	-- cells) MinCard 457: the stage (Card - 282 - LIFT, L.cardSheetPC) keeps the 163 its 2 px cells need under the 0.8 Fit
+	TIGHT = { Hero = 180, HeroArt = 150, CardsY = 208, Art = 84, RowsY = 182, HintH = 20, MinCard = 457 },
 	-- the machine: the pitch's 200 x 230 drawing; its dome eggs (the pitch's lists) at the pitch's spots pulled 30% toward
 	-- the dome's centre (100, 76), so every egg stays inside the round glass (a plain Frame clips square)
 	BOX = { 0, 0, 200, 230 },
@@ -1703,9 +1711,13 @@ function L.phone(P, W, Hh)
 	local y = math.floor((Hh - th) / 2)
 	local gap = K.STEP - K.TILE
 	local items = 1 + #P.Cards
-	local n = math.max(1, math.min(items, math.floor((W - K.MORE_GUTTER + gap) / K.STEP)))
+	-- (fix6, P2 icons look pol1 #1: from 720 to 960 wide the row fitted 3-4 cards of 166-199, whose stages held the sheet's
+	-- machines at 1 px cells only, half size in an empty stage, the x3 plank's coin on its words) with the sheet's
+	-- machines a card is never narrower than K.TILE_SHEET: fewer whole cards, each drawn at 2 px cells
+	local minTile = (P.Hero and P.Hero.Machine and P.Hero.Machine.Sheet) and K.TILE_SHEET or K.TILE
+	local n = math.max(1, math.min(items, math.floor((W - K.MORE_GUTTER + gap) / (minTile + gap))))
 	local room = n < items and (W - K.MORE_GUTTER) or W
-	local tile = math.min(K.TILE_WIDE, math.max(K.TILE, math.floor((room - (n - 1) * gap) / n)))
+	local tile = math.min(minTile == K.TILE_SHEET and K.TILE_WIDE_SHEET or K.TILE_WIDE, math.max(minTile, math.floor((room - (n - 1) * gap) / n)))
 	local pitch = tile + gap
 	local viewW = math.min(W, n * pitch - gap)
 	place(s, 0, 0, viewW, Hh)
