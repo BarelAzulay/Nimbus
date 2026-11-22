@@ -12054,6 +12054,77 @@ local function clientScenarios()
 				T.check(#wrong == 0, tag .. ": every rail tab draws its B icon at the 54 px art size, the label 10 px clear of it", table.concat(wrong, "; "))
 			end)
 		end
+		-- (P2 icons look fin0, major 2: the Shop's gems were still the smooth vector GemIcon, a square turned 45 degrees,
+		-- beside the pixel coins and under the rail's pixel gem: two gem drawings in one window; the approved 10_optA /
+		-- 10_optA_phone draw item 9 B's pixel gem in the balance pill and every gem price plank) at the four screens: the
+		-- Gems pill and every gem plank (the cards' gem spins, the hero's SPIN) hold PixelIcon "gem" in its own colours and no
+		-- cut GemIcon. (minor: the pills' coin was 18 px, the mock-up's about 27) the pills' gem and coin the same size, the
+		-- screen's glyph cell: 27 px (3 px cells) at 1920, 2 px cells at 1280 and on phones. A gem plank's gem is its token
+		-- twin's size (the x3 plank's coin)
+		local function pixel(root, name)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:GetAttribute("PixelIcon") == name then
+					return d
+				end
+			end
+			return nil
+		end
+		local function cut(root)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d.Name == "GemIcon" and d:IsA("Frame") then
+					return true
+				end
+			end
+			return false
+		end
+		for _, s in ipairs({ { 1920, 1080, false, "PC", 3 }, { 1280, 720, false, "PC 0.8", 2 }, { 844, 390, true, "Phone", 2 }, { 390, 844, true, "Portrait", 2 } }) do
+			U92.at(s[1], s[2], s[3], "shop gems " .. s[4], "Eggs", false, function(tag, win)
+				local header = win:FindFirstChild("Header", true)
+				local gp, tp = header and header:FindFirstChild("Balance_Gems"), header and header:FindFirstChild("Balance_Tokens")
+				local gem, coin = pixel(gp, "gem"), pixel(tp, "token")
+				T.check(gem ~= nil and gem:GetAttribute("Own") == true and not cut(gp), tag .. ": the Gems pill draws item 9 B's pixel gem in its own colours (no cut GemIcon)",
+					gem and "" or (cut(gp) and "a GemIcon" or "no pixel gem"))
+				T.check(gem ~= nil and coin ~= nil and gem.Size.X.Offset == coin.Size.X.Offset and gem:GetAttribute("CellPx") == s[5] and coin:GetAttribute("CellPx") == s[5],
+					tag .. ": the pills' gem and coin the same size, " .. s[5] .. " screen px a cell",
+					fmt("gem %s px %s cells, coin %s px %s cells", tostring(gem and gem.Size.X.Offset), tostring(gem and gem:GetAttribute("CellPx")),
+						tostring(coin and coin.Size.X.Offset), tostring(coin and coin:GetAttribute("CellPx"))))
+				local bad, planks = {}, 0
+				local page = win:FindFirstChild("Page_Eggs", true)
+				for _, b in ipairs(page and page:GetDescendants() or {}) do
+					local card = b.Parent
+					while card and not card.Name:match("^ShopCard_") do
+						card = card.Parent
+					end
+					local hero = card ~= nil and card.Name == "ShopCard_Secret" and b.Name == "Spin"
+					if card and b:IsA("GuiButton") and (b.Name == "SpinGems" or hero) and U8.shown(b) then
+						planks = planks + 1
+						local g = pixel(b, "gem")
+						local twin = card and card:FindFirstChild("Spin3", true)
+						local tc = twin and pixel(twin, "token")
+						if not (g and g:GetAttribute("Own") == true) or cut(b) then
+							bad[#bad + 1] = card.Name .. "." .. b.Name .. (cut(b) and ": a GemIcon" or ": no pixel gem")
+						elseif tc and tc.Size.X.Offset ~= g.Size.X.Offset then
+							bad[#bad + 1] = fmt("%s.%s: gem %d px, the x3 coin %d", card.Name, b.Name, g.Size.X.Offset, tc.Size.X.Offset)
+						end
+					end
+				end
+				T.check(planks >= 5 and #bad == 0, tag .. ": every gem price plank (the cards' gem spins, the hero's SPIN) draws the pixel gem, its coin twin's size",
+					fmt("%d planks | ", planks) .. table.concat(bad, "; "))
+			end)
+		end
+		-- (P2 icons look fin0, minor: the 1920 hero's Travel signpost drew 2 px cells, 38 px, the one sheet image off the
+		-- screen's 3 px; without the sheet 4 px) the signpost at the screen's glyph cell: 3 screen px at 1920 (27 px, the
+		-- mock-up's), 2 at 1280
+		for _, s in ipairs({ { 1920, 1080, 3 }, { 1280, 720, 2 } }) do
+			U92.at(s[1], s[2], false, "shop travel icon", "Eggs", true, function(tag, win)
+				local hero = win:FindFirstChild("ShopCard_Secret", true)
+				local travel = hero and hero:FindFirstChild("Travel", true)
+				local icon = travel and pixel(travel, "signpost")
+				T.check(icon ~= nil and U8.shown(travel) and icon:GetAttribute("CellPx") == s[3],
+					tag .. ": the hero's Travel signpost at " .. s[3] .. " screen px a cell (the screen's glyph cell)",
+					icon and fmt("%s px, %s cells", tostring(icon.Size.X.Offset), tostring(icon:GetAttribute("CellPx"))) or "no signpost")
+			end)
+		end
 		LKC.flushErrors("icons_shop_header_rail")
 	end)
 
@@ -17671,6 +17742,44 @@ local function clientScenarios()
 					.. want .. " screen px a cell (the vector egg hidden)", fmt("%d chips | ", n) .. table.concat(wrong, "; ", 1, math.min(#wrong, 6)))
 				T.check(n >= 16 and #cramped == 0, "egg chips (" .. m[1] .. "): the egg and the percent inside each chip's face, apart, the text 2 px clear of the wood",
 					table.concat(cramped, "; ", 1, math.min(#cramped, 6)))
+				-- (P2 icons look fin0, major 1: at 1280 the percents went 18 -> 17, 13.6 screen px, under render_gui's 14 px
+				-- readability floor) every percent 14 screen px or more. (minor: the chips sat fused to the Spin plank, 1 px of
+				-- cream at 1920, the borders overlapping at 1280 and 844 x 390; the mock-up 10_optA has about 6 px) the chips'
+				-- wood edge 3 screen px or more over the Spin plank's (5 at 1920, the mock-up's gap), both UIStrokes counted
+				local scale = m[3] or 1
+				local small, fused = {}, {}
+				local function strokeOf(o)
+					local st = o and o:FindFirstChildOfClass("UIStroke")
+					return st and st.Enabled ~= false and st.Thickness or 0
+				end
+				chipsOf(roots, function(id, row, r)
+					local pct = row:FindFirstChild("Pct")
+					if pct and pct.Visible and pct.TextSize * scale < 14 - 1e-6 then
+						small[#small + 1] = fmt("%s.%s %.1f px", id, r, pct.TextSize * scale)
+					end
+				end)
+				local need = m[1] == "PC" and 5 or 3
+				for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+					local body = roots[id] and roots[id].Parent
+					local odds, spin = body and body:FindFirstChild("Odds"), body and body:FindFirstChild("Spin")
+					local low, ts = -math.huge, 0
+					for _, row in ipairs(odds and odds:GetChildren() or {}) do
+						if row:IsA("Frame") and row.Name:match("^Odds_") and row.Visible then
+							low = math.max(low, row.AbsolutePosition.Y + row.AbsoluteSize.Y)
+							ts = math.max(ts, strokeOf(row))
+						end
+					end
+					if spin and low > -math.huge then
+						local gap = (spin.AbsolutePosition.Y - strokeOf(spin) * scale) - (low + ts * scale)
+						if gap < need - 0.01 then
+							fused[#fused + 1] = fmt("%s %.1f px", id, gap)
+						end
+					end
+				end
+				T.check(n >= 16 and #small == 0, "egg chips (" .. m[1] .. "): every percent 14 screen px or more (the readability floor)",
+					table.concat(small, "; ", 1, math.min(#small, 6)))
+				T.check(#fused == 0, "egg chips (" .. m[1] .. "): the chips' wood edge " .. need .. " screen px or more over the Spin plank's (not fused to it)",
+					table.concat(fused, "; "))
 			end, m[3], true)
 			T.check(ok, "egg chips (" .. m[1] .. "): the page builds and lays out", tostring(err))
 		end

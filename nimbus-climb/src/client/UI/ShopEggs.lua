@@ -68,7 +68,7 @@
 --   ShopEggs.Metrics                 the K table (sizes, texts; MEASURE: a text-width hook for the offline renderer)
 -- Buttons: Spin = EggStage.Request(id, "Tokens", 1), Spin3 = (id, "Tokens", 3), SpinGems = (id, "Gems", 1), the Secret
 -- card's Spin = ("Secret", "Gems", 1). A spin button holds Word ("Spin" / "x3", or the state: "Locked", "Loading..."),
--- the currency icon (TokenIcon: the Cloud Token glyph; GemIcon: the drawn gem) and Price (Theme.Short(n): "3K", "250";
+-- the currency icon (TokenIcon: the Cloud Token glyph; GemPixel: item 9 B's pixel gem) and Price (Theme.Short(n): "3K", "250";
 -- Pitch 2 F0, one number style). The machines are frames placed
 -- by scale (the pitch's 200 x 230 drawing: base, panel, neck, the glass dome with seven EggArt eggs, the cap).
 -- Every PC text >= 18 px, every phone text >= 15 px. Plain Lua 5.1-compatible syntax only; no asset ids.
@@ -86,8 +86,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
-local GemIcon = require(UI:WaitForChild("GemIcon"))
-local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token coin, TRAVEL's arrow
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token coin, the gem, TRAVEL's arrow
 local SignKit = require(Shared:WaitForChild("SignKit")) -- (LOOK-ui) the kit's one scroll bar
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local EggArt = require(UI:WaitForChild("EggArt"))
@@ -671,6 +670,11 @@ function H.spinButton(P, parent, name, style, word, currency, id, spins)
 		local cur = Theme.Currency.Tokens
 		p.Icon = label("TokenIcon", p.Button, "", "Display", 22, { TextColor3 = SIGN.GoldLip, TextTruncate = Enum.TextTruncate.None })
 		PixelIcon.Host(p.Icon, cur.Icon) -- (kit-b U7a) the Cloud Token coin, sized with the label (the deep gold reads on stone)
+	else
+		-- (P2 icons look fin0, major 2: the cut GemIcon, a smooth square turned 45 degrees, sat beside the pixel coins) item
+		-- 9 B's pixel gem in its own colours, sized with the label as the coin (10_optA's gem planks)
+		p.Icon = label("GemPixel", p.Button, "", "Display", 22, { TextColor3 = SIGN.Text, TextTruncate = Enum.TextTruncate.None })
+		PixelIcon.Host(p.Icon, "gem")
 	end
 	p.Price = label("Price", p.Button, "", "Button", 22, { TextTruncate = Enum.TextTruncate.None, TextColor3 = p.Ink })
 	return p
@@ -685,15 +689,7 @@ function H.arrange(p, w, h, size, iconPx)
 		return
 	end
 	w, h, size, iconPx = p.W, p.H, p.Size, p.IconPx
-	if p.Currency == "Gems" and p.GemPx ~= iconPx then
-		if p.Icon then
-			p.Icon:Destroy()
-		end
-		p.Icon = GemIcon.New(p.Button, iconPx, { Name = "GemIcon" })
-		p.GemPx = iconPx
-	elseif p.Currency ~= "Gems" then
-		p.Icon.TextSize = iconPx
-	end
+	p.Icon.TextSize = iconPx
 	p.Word.TextSize = size
 	p.Price.TextSize = size
 	if p.PriceFull then
@@ -1173,7 +1169,9 @@ function L.heroPC(t, w, M)
 	place(t.Holder, w - 320, ref and 66 or 46, 290, 100)
 	place(t.Spin.Button, 0, 0, 290, 100)
 	H.arrange(t.Spin, 290, 100, 34, 44)
-	H.arrangeTravel(t.Travel, 290, 100, 34, 44)
+	-- (P2 icons look fin0, minor) the signpost 27 px, 3 px cells (the screen's glyph cell, the mock-up's): 44 drew it 36
+	-- px, the sheet's art at 2 px cells (4 px as the glyph)
+	H.arrangeTravel(t.Travel, 290, 100, 34, 30)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
 	-- (shop-area) the longest hint, "Secret rolls happen at the Storm Altar", is ~322 px at 18 (a bolder face runs ~350;
@@ -1322,11 +1320,14 @@ function L.chipEgg(row, cw, face, eggPx, size)
 	PixelIcon.Whole(row.Root, function(s)
 		local tw = H.textW(row.Pct.Text, size, Theme.FontOf(row.Pct)) + 2
 		local px = math.max(9, 9 * math.floor(eggPx / 9))
+		-- (P2 icons look fin0, major 1) the egg a screen px under the chip's top, the percent's box its text's height: the
+		-- 1280 chip holds the 18 px percent (14.4 screen px, the readability floor) over its egg again
+		local lid = 1 / s
 		local side, drawn, over
 		while true do
 			side = PixelIcon.BoxPx(px, 0, s) -- the 9 cells, whole screen px, in design px
 			drawn = side * 10 / 9 -- + the drop shadow's cell
-			over = face >= drawn + 1 + size + 2 and cw >= math.max(drawn, tw) + 4
+			over = face >= lid + drawn + 1 + size and cw >= math.max(drawn, tw) + 4
 			if over or (face >= drawn and cw >= drawn + 4 + tw + 4) or px <= 18 then
 				break
 			end
@@ -1344,10 +1345,10 @@ function L.chipEgg(row, cw, face, eggPx, size)
 		end
 		if over then
 			-- the room left split over and under, in whole screen px (a floor in design px left the 1280 egg on the wood)
-			local top = math.max(0, math.floor((face - (drawn + 1 + size + 2)) * s / 2 + 0.5) / s)
+			local top = math.max(lid, math.floor((face - (drawn + 1 + size)) * s / 2 + 0.5) / s)
 			at((cw - side) / 2, top)
 			row.Pct.TextXAlignment = CENTER
-			place(row.Pct, 0, top + drawn + 1, cw, size + 2)
+			place(row.Pct, 0, top + drawn + 1, cw, size)
 		else
 			local x0 = math.max(2, math.floor((cw - (drawn + 4 + tw)) / 2))
 			at(x0, math.max(0, (face - drawn) / 2))
@@ -1410,18 +1411,20 @@ function L.cardSheetPC(t, w, M, tall)
 	-- the hint clear of the x3 / gem planks' 5 px drop shadow (TIGHT: 6, so its 2 px stage keeps its height)
 	local row2Y = hintY - (tight and 6 or 8) - row2H
 	-- (P2 icons review r1, major 1 + the 1280 minor) TIGHT: the pixel egg (2 screen px cells: 22.5 design px under the
-	-- 0.8 Fit, + its drop shadow) over a 17 px percent, a screen px clear of the wood, needs a 50 px chip; the 10 px come
-	-- off the Spin plank (56: 44.8 screen px, still a 44 px touch target) and the gap over it (6), so the machine's stage
-	-- keeps its 2 px cells
+	-- 0.8 Fit, + its drop shadow) over an 18 px percent (14.4 screen px: P2 icons look fin0, major 1), a screen px under
+	-- the chip's top, fits a 49 px chip; the 10 px come off the Spin plank (56: 44.8 screen px, still a 44 px touch target)
 	local spinH = tight and 56 or 64
 	local spinY = row2Y - 8 - spinH
-	local chipH = tight and 50 or (M.Ref and 60 or 56)
-	local chipsY = spinY - (tight and 6 or 8) - chipH
-	local stageY = 12 + plateH + 8
-	place(t.Machine.Root, 12, stageY, w - 24, math.max(40, chipsY - 8 - stageY))
+	local chipH = tight and 49 or (M.Ref and 60 or 56)
+	-- (P2 icons look fin0, minor: the chips sat fused to the Spin plank) the chips' wood edge 6 px over the plank's at
+	-- 1920 (the mock-up's gap: 13 less the two edges, 2 + 5), 3.2 screen px at 1280 (11 under the 0.8 Fit); TIGHT takes
+	-- the 5 px from the chip (50 -> 49) and the stage's two gaps (8 -> 6): the stage keeps its 163 (2 px cells need 162.5)
+	local chipsY = spinY - (tight and 11 or 13) - chipH
+	local stageY = 12 + plateH + (tight and 6 or 8)
+	place(t.Machine.Root, 12, stageY, w - 24, math.max(40, chipsY - (tight and 6 or 8) - stageY))
 	t.Machine.AlignX = 0.5
 	H.sizeMachine(t.Machine, M.Art)
-	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, tight and 17 or 18, 6)
+	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, 18, 6)
 	place(t.Spin.Button, 14, spinY, w - 28, spinH)
 	H.arrange(t.Spin, w - 28, spinH, 23, 26)
 	local half = math.floor((w - 38) / 2)
@@ -1451,7 +1454,9 @@ function L.cardSheetPhone(t, w, th)
 	local sw = math.max(60, math.min(116, w - 6 - 6 - 6 - 80))
 	local rx = 6 + sw + 6
 	local rw = w - rx - 6
-	place(t.Machine.Root, 6, 6, sw, spinY - 12)
+	-- (P2 icons look fin0, minor: the chips' edge lay 1 px under the Spin plank's) the stage and the chips end 12 px over
+	-- the plank: the chips' wood edge 5 px clear of its edge
+	place(t.Machine.Root, 6, 6, sw, spinY - 18)
 	t.Machine.AlignX = 0.5
 	H.sizeMachine(t.Machine, 45)
 	t.Plate.Text = t.Id
@@ -1459,7 +1464,7 @@ function L.cardSheetPhone(t, w, th)
 	place(t.Plate, rx, 6, rw, 30)
 	-- (P2 icons review r1, major 1) two columns of tall chips, the pixel egg (2 px cells) over its percent as on PC: in one
 	-- column the chips were 20 px faces, the egg and its drop shadow flush on the wood
-	L.chips(t, rx, 40, rw, spinY - 6 - 40, 2, 20, 15, 4)
+	L.chips(t, rx, 40, rw, spinY - 12 - 40, 2, 20, 15, 4)
 	place(t.Spin.Button, 6, spinY, w - 12, 44)
 	H.arrange(t.Spin, w - 12, 44, 16, 18)
 	local half = math.floor((w - 18) / 2)
