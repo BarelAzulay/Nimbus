@@ -299,6 +299,30 @@ def test_evo_eyes(br):
           % len(lows), bad[:4])
     check(not lost_face, "evo eyes: the face under the game's carved eye comes back outside the Low eye (the owls' "
           "EyeRing disc too)", lost_face[:4])
+    # the trim must not re-voxelize a body: the smaller eyes cut the triangle count, so build_all's budget loop stopped
+    # one K step earlier on 11 keys (review: evo1_stormfang 0.0889 -> 0.080 studs a voxel).  Every evolved body's
+    # catalog start step ("kStep") is the step of its committed (uploaded) mesh.  evo1_hydralotl: its uploaded mesh
+    # predates today's design, which already fits at the catalog k before the trim (the pre-trim build is unstepped),
+    # so it is not pinned; once its re-bake is uploaded its committed mesh is unstepped and the exception is moot.
+    drift = {"evo1_hydralotl"}
+    stepped, pins = [], 0
+    for e in cat["keys"]:
+        if e["type"] != "pet" or e["key"] in drift:
+            continue
+        f = os.path.join(REPO, "src/shared/MeshManifests/%s.lua" % e["key"])
+        lua = open(f, encoding="utf-8").read() if os.path.exists(f) else ""
+        vs = re.search(r"VoxelStuds = ([0-9.]+)", lua)
+        grow = re.search(r"grow = ([0-9.]+)", lua)
+        if not (vs and grow):
+            stepped.append((e["key"], "no committed manifest"))
+            continue
+        k_mesh = 0.1 * float(grow.group(1)) / float(vs.group(1))
+        k_cat = evo_low_k(e)
+        pins += 1 if e.get("kStep") else 0
+        if abs(math.log(k_mesh / k_cat)) > 2e-3:
+            stepped.append((e["key"], "mesh K %.4f" % k_mesh, "catalog start K %.4f" % k_cat))
+    check(not stepped, "evo eyes: every evolved body starts its budget loop on its committed mesh's K step (%d kStep "
+          "pins)" % pins, stepped[:6])
 
 
 def test_prop_hooks():

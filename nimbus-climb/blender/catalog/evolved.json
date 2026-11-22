@@ -582,6 +582,7 @@
     "features": false
    },
    "description": "Evolved pet: maple fox, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -621,6 +622,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: maple fox, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -703,6 +705,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: bamboo panda, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -949,6 +952,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: waffle corgi, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1031,6 +1035,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: bubble axolotl, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1441,6 +1446,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: cherry panda, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1484,6 +1490,7 @@
     "features": false
    },
    "description": "Evolved pet: aurora fox, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -1523,6 +1530,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: aurora fox, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1769,6 +1777,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: candy unicorn, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1976,6 +1985,7 @@
     "features": false
    },
    "description": "Evolved pet: twilight dragon, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2015,6 +2025,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: twilight dragon, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2058,6 +2069,7 @@
     "features": false
    },
    "description": "Evolved pet: cloudy dragon, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2097,6 +2109,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: cloudy dragon, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2179,6 +2192,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: starlight unicorn, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2222,6 +2236,7 @@
     "features": false
    },
    "description": "Evolved pet: stormfang, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2261,6 +2276,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: stormfang, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2304,6 +2320,7 @@
     "features": false
    },
    "description": "Evolved pet: eclipse dragon, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2343,6 +2360,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: eclipse dragon, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2425,6 +2443,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: obsidian phoenix, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2468,6 +2487,7 @@
     "features": false
    },
    "description": "Evolved pet: phantom kitsune, first evolution, High",
+   "kStep": 2,
    "fixed": true
   },
   {
@@ -2507,6 +2527,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: phantom kitsune, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2589,6 +2610,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: magma cub, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2632,6 +2654,7 @@
     "features": false
    },
    "description": "Evolved pet: rime wyrmling, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2671,6 +2694,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: rime wyrmling, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2753,6 +2777,7 @@
     "eyes": "low"
    },
    "description": "Evolved pet: hydralotl, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },

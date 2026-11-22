@@ -39,6 +39,19 @@ FACE = {"eyes": "lua", "features": False}
 # lost its lash, glint or pupil at K 0.65 (the owls' eyes vanished into their painted EyeRing disc), see
 # faces.low_eye_specs
 FACE_LOW = {"eyes": "low"}
+# Pitch 2 item 7 (evolved eyes A Trim): the smaller eyes have fewer triangles, so the budget loop of build_all.py
+# would stop one K step earlier on 11 keys and re-voxelize the WHOLE pet on a finer grid. Every key the pre-trim build
+# stepped down starts at that K step ("kStep"), so the re-bake changes its face, not its body grid (the 25 pins = the
+# pre-trim build's steps; evo1_hydralotl is unstepped there: its uploaded mesh predates today's design).
+K_STEP = {
+    "evo1_aurora_fox": 1, "evo1_aurora_fox_low": 1, "evo1_bamboo_panda_low": 1, "evo1_bubble_axolotl_low": 1,
+    "evo1_candy_unicorn_low": 1, "evo1_cherry_panda_low": 1, "evo1_cloudy_dragon": 1, "evo1_cloudy_dragon_low": 1,
+    "evo1_eclipse_dragon": 1, "evo1_eclipse_dragon_low": 2, "evo1_hydralotl_low": 2, "evo1_magma_cub_low": 1,
+    "evo1_maple_fox": 1, "evo1_maple_fox_low": 1, "evo1_obsidian_phoenix_low": 1, "evo1_phantom_kitsune": 2,
+    "evo1_phantom_kitsune_low": 2, "evo1_rime_wyrmling": 1, "evo1_rime_wyrmling_low": 2,
+    "evo1_starlight_unicorn_low": 1, "evo1_stormfang": 1, "evo1_stormfang_low": 1, "evo1_twilight_dragon": 1,
+    "evo1_twilight_dragon_low": 2, "evo1_waffle_corgi_low": 1,
+}
 
 # recipe 4.2: evolved 1 <= 15k / 50 parts (Low 4.5k / 16), evolved 2 <= 20k / 60 (Low 6k / 18) per SET (body + wings);
 # keys get a share so the K step-down happens on the body first.  Part counts: see the doc string of BUDGETS_DOC.
@@ -106,6 +119,8 @@ def entries():
                      "face": FACE_LOW if low else FACE,
                      "description": "Evolved pet: %s, %s evolution, %s" % (
                          pid.replace("_", " "), "first" if stage == 1 else "second", lod)}
+                if body in K_STEP:
+                    e["kStep"] = K_STEP[body]
                 # evolved colours are per pet constants: every constant key nothing looks up by name is baked into one
                 # `Fixed` part (fewer MeshParts; Neon and referenced keys stay their own parts)
                 e["fixed"] = True
