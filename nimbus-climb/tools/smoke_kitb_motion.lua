@@ -1783,6 +1783,7 @@ local function clientScenarios()
 		local injected, bites = false, 0
 		-- (look review r2, major 1) my frog, the Double strike's victim: its drawn knock-back / lift every sub-step
 		local PPb = moduleAt(ROOTS.shared .. "/PetPoses")
+		local PBb = moduleAt(ROOTS.shared .. "/PetBuilder")
 		local frogRows = {}
 		-- (look review r3, major) each of the bear's dashes: where it lands (its LandAt on the render clock)
 		local lands, dashSeen = {}, {}
@@ -1801,7 +1802,19 @@ local function clientScenarios()
 				end
 				list = (ps.Name == "Hurt" and type(ps.Reach) == "table") and ps.Reach or nil
 			end
-			frogRows[#frogRows + 1] = { T = os.clock(), Name = ps and ps.Name or nil, Knock = k, Y = y, Hits = list }
+			-- (look review r3 minor) what BattleController draws (its crossfaded body) against AttackFx's own pose body
+			local srcZ, drawnZ = nil, nil
+			local Bf = BC._St.battle
+			local fu = Bf and Bf.units and Bf.units[f.id]
+			if fu and typeof(fu.poseBody) == "CFrame" then
+				drawnZ = fu.poseBody.Position.Z
+			end
+			if PBb and type(ps) == "table" and type(ps.Name) == "string" and not (type(ps.Prev) == "table" and (tonumber(ps.Blend) or 1) < 1) then
+				local okB, cf = pcall(PBb.PoseBody, { Pose = { Name = ps.Name, P = ps.P, Ranged = ps.Ranged, Amp = ps.Amp, Reach = ps.Reach, Feet = ps.Feet } })
+				srcZ = (okB and typeof(cf) == "CFrame") and cf.Position.Z - (tonumber(ps.Forward) or 0) or nil
+			end
+			frogRows[#frogRows + 1] = { T = os.clock(), Name = ps and ps.Name or nil, Knock = k, Y = y, Hits = list, SrcZ = srcZ, DrawnZ = drawnZ,
+				Src = fu and fu.poseSrc or nil }
 		end
 		-- (look review r3, major) the bear's first bite winds up on the step 4.8, where the old r1(t + 0.45) rounded down
 		-- (the review: every step from 4.7 s to 7.9 s): it walks in held until then
@@ -2027,6 +2040,36 @@ local function clientScenarios()
 		end
 		T.check(landOk, fmt("bounce battle: each of the NPC bear's dashes lands on the frame its bite's Hit plays (%d dashes; the hit flash vs the landing: %s s)",
 			#lands, table.concat(landTxt, ", ")))
+		-- (look review r3 minor: "the first bite's snap is drawn softer than the mock": BattleController crossfaded its pose
+		-- source idle -> AttackFx over CROSSFADE 0.12 s from the hit, so the knock-back drawn at hit + 0.07 was 0.069 of
+		-- AttackFx's 0.106; a re-hit played in full) each bite's knock-back on my frog is drawn at full strength once its
+		-- hit stop is over: BattleController's body is AttackFx's within 8 % from the stop to hit + 0.12
+		local snapOk, snapTxt = #lands >= 2, {}
+		for bi, la in ipairs(lands) do
+			local hf = nil
+			for _, x in ipairs(npcFlashes) do
+				if x.Id == f.id and x.At >= la - 0.15 and (not hf or x.At < hf) then
+					hf = x.At
+				end
+			end
+			-- (BattleController draws its units before its Atk.Update moves AttackFx's clock on: a frame's drawn body is
+			-- AttackFx's pose of the frame before, so each drawn row is read against the row before it)
+			local worst, n, from = huge, 0, "?"
+			for ri = 2, #frogRows do
+				local q, r = frogRows[ri - 1], frogRows[ri]
+				if hf and r.T <= hf + 1e-6 then
+					from = tostring(r.Src)
+				elseif hf and q.T >= hf + STOP + 0.005 and q.T <= hf + 0.12 and q.SrcZ and r.DrawnZ and q.SrcZ > 0.03 then
+					n = n + 1
+					worst = min(worst, r.DrawnZ / q.SrcZ)
+				end
+			end
+			snapTxt[#snapTxt + 1] = fmt("bite %d (from %s): %d frames, the least %.2f", bi, from, n, worst < huge and worst or -1)
+			if not hf or n < 1 or worst < 0.92 then
+				snapOk = false
+			end
+		end
+		T.check(snapOk, fmt("bounce battle: each bite's knock-back on my frog is drawn in full after its hit stop (drawn / AttackFx's: %s; >= 0.92)", table.concat(snapTxt, "; ")))
 		T.check(tPlay ~= nil and thr ~= nil and type(thr.Result) == "number" and abs(tPlay.DueAt - thr.Result) < 1e-6,
 			fmt("bounce battle: the Thorns bolt is due on the bite (due %s vs %s)", tostring(tPlay and tPlay.DueAt), tostring(thr and thr.Result)))
 		T.check(posesSeen.DashDouble == true and posesSeen.DashThorns == true, "bounce battle: the bear plays DashDouble and DashThorns")
