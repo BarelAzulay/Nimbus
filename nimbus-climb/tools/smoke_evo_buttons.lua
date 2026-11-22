@@ -795,8 +795,13 @@ local function clientScenarios()
 				if special and target then
 					T.eq(special.Size.X.Offset, 88, tag .. "Special is the big button (K.ATTACK_D)")
 					T.eq(target.Size.X.Offset, 64, tag .. "Target is a small one (K.ACTION_D)")
-					T.check(special.Position.X.Offset == -74 and special.Position.Y.Offset == -98, tag .. "Special sits where Attack sat", tostring(special.Position))
-					T.check(target.Position.X.Offset == -74 - 44 - 26 - 32 and target.Position.Y.Offset == -90, tag .. "Target sits where Special sat", tostring(target.Position))
+					-- (kit-b gate, keys look r5 c05, ab11837: a PC cluster now stands high enough for a two-line name tag under
+					-- SPECIAL, so below 1920 x 1080 every key rises by the same lift, 4 design px at 1366 x 768; the pinned -98 / -90
+					-- went stale. Not weaker: X stays exact, 1920 x 1080 keeps the old spots, both keys share one lift, and the
+					-- caption checks below still hold the tag on screen) the spots Attack and Special had, raised together
+					local lift = -98 - special.Position.Y.Offset
+					T.check(special.Position.X.Offset == -74 and lift >= 0 and lift <= 12 and (size[1] < 1920 or lift == 0), tag .. "Special sits where Attack sat (the PC cluster's lift for SPECIAL's two-line tag: " .. tostring(lift) .. ")", tostring(special.Position))
+					T.check(target.Position.X.Offset == -74 - 44 - 26 - 32 and target.Position.Y.Offset == -90 - lift, tag .. "Target sits where Special sat (the same lift)", tostring(target.Position))
 					T.check(special.AbsoluteSize.X > element.AbsoluteSize.X and special.AbsoluteSize.X > target.AbsoluteSize.X and special.AbsoluteSize.X > dash.AbsoluteSize.X, tag .. "Special is the biggest button")
 				end
 				local function chip(kind)
