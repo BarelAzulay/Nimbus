@@ -641,6 +641,79 @@ local function serverScenarios()
 			fmt("hurt: the hop home is low and late (%.3f studs high, <= 0.035, at %.2f s: the middle of the mock's way home 0.30 .. 0.62)", hopTop, hopAt))
 	end)
 
+	-- (look review r3, major: "about half of an NPC's bites land and chomp 0.10 s before their Hit plays": the Windup sent
+	-- at = r1(windAt) = r1(t + 0.45), the hit lands on the 10 Hz step t + 0.5, and r1 of x.x5 rounds down on ~49 % of the
+	-- steps, every one from 4.7 s to 7.9 s; the client lands the dash on `at`) a real BattleSim, an NPC bear biting my
+	-- standing frog for 60 s at the server's 0.1 s step: every Windup's `at` is the step its Hit lands on, exactly
+	S.melee_windup_lands = guarded("melee_windup_lands", function()
+		local BS = shared("BattleSim")
+		if not T.check(BS ~= nil and type(BS.new) == "function", "windup lands: shared/BattleSim loads") then
+			return
+		end
+		local sim = BS.new({ Mode = "Duel", Seed = 21, Zone = { X = 60, Z = 60 }, TimeLimit = 600,
+			Teams = { { Owner = 1, Side = 1, Pets = { { Key = "puddle_frog", PetId = "puddle_frog", Level = 20, Tier = "Normal", Slot = 1 } }, Auto = false },
+				{ Owner = "npc", Side = 2, Npc = true, Specials = false, Pets = { { Key = "biscuit_bear", Level = 18, NoSpecial = true, Slot = 1 } } } } })
+		if not T.check(sim ~= nil, "windup lands: (setup) a Duel: my standing frog vs an NPC bear") then
+			return
+		end
+		local tm = sim.teams[1]
+		local f = tm.fighter
+		f.x, f.z, f.px, f.pz = 0, 0, 0, 0
+		f.maxHp, f.hp = 1e9, 1e9
+		tm.wantX, tm.wantZ = 0, 0
+		tm.elementReadyAt = huge
+		local foe = nil
+		for _, u in ipairs(sim.units) do
+			if u.side == 2 then
+				foe = u
+				u.x, u.z, u.px, u.pz = 0, 3, 0, 3
+				u.maxHp, u.hp = 1e9, 1e9
+			end
+		end
+		local winds, hits = {}, {}
+		for _ = 1, 600 do
+			f.nextAttack = huge
+			f.meter = 0
+			tm.wantX, tm.wantZ = 0, 0
+			for _, ev in ipairs(sim:Step(0.1)) do
+				if ev.type == "Windup" and ev.unit == foe.id then
+					winds[#winds + 1] = { T = sim:Time(), At = ev.at }
+				elseif ev.type == "Hit" and ev.from == foe.id and ev.to == f.id and not ev.double and not ev.thorns then
+					hits[#hits + 1] = sim:Time()
+				end
+			end
+		end
+		local bad, worst, roundDown, n = 0, 0, 0, 0
+		local firstBad = ""
+		for i, w in ipairs(winds) do
+			local h = nil
+			for _, ht in ipairs(hits) do
+				if ht > w.T + 1e-6 then
+					h = ht
+					break
+				end
+			end
+			if h and (i == #winds or h < winds[i + 1].T + 1e-6) then
+				n = n + 1
+				local off = (type(w.At) == "number") and abs(w.At - h) or huge
+				worst = max(worst, off)
+				if off > 1e-6 then
+					bad = bad + 1
+					if firstBad == "" then
+						firstBad = fmt(" (first: Windup at step %.3f, at %s, its Hit on step %.3f)", w.T, tostring(w.At), h)
+					end
+				end
+				-- the steps where the old r1(windAt) rounded down: the case the review measured
+				if abs(floor((w.T + 0.45) * 10 + 0.5) / 10 - h) > 1e-6 then
+					roundDown = roundDown + 1
+				end
+			end
+		end
+		T.check(n >= 30 and roundDown >= 5 and bad == 0,
+			fmt("windup lands: every NPC Windup's `at` is the step its Hit lands on (%d bites, %d off, worst %.3f s; %d on the steps where r1(t + 0.45) rounds down)%s",
+				n, bad, worst, roundDown, firstBad))
+	end)
+
 	return S
 end
 
@@ -1694,6 +1767,8 @@ local function clientScenarios()
 		-- (look review r2, major 1) my frog, the Double strike's victim: its drawn knock-back / lift every sub-step
 		local PPb = moduleAt(ROOTS.shared .. "/PetPoses")
 		local frogRows = {}
+		-- (look review r3, major) each of the bear's dashes: where it lands (its LandAt on the render clock)
+		local lands, dashSeen = {}, {}
 		local function frogSample()
 			local ps = AF.Pose(f.id)
 			local k, y, list = 0, 0, nil
@@ -1711,11 +1786,20 @@ local function clientScenarios()
 			end
 			frogRows[#frogRows + 1] = { T = os.clock(), Name = ps and ps.Name or nil, Knock = k, Y = y, Hits = list }
 		end
+		-- (look review r3, major) the bear's first bite winds up on the step 4.8, where the old r1(t + 0.45) rounded down
+		-- (the review: every step from 4.7 s to 7.9 s): it walks in held until then
+		local released = false
 		local ok, err = pcall(function()
-			for _ = 1, 200 do
+			for _ = 1, 260 do
 				f.nextAttack = huge
 				tm.wantX, tm.wantZ = 0, -8
 				f.meter = 0
+				if not released then
+					foe.nextAttack = huge
+					if sim:Time() >= 4.7 - 1e-6 then
+						foe.nextAttack, released = sim:Time(), true
+					end
+				end
 				local evs = sim:Step(0.1)
 				for i = #evs, 1, -1 do
 					local ev = evs[i]
@@ -1741,6 +1825,11 @@ local function clientScenarios()
 				for _ = 1, 3 do
 					Mock.Step(0.1 / 3)
 					frogSample()
+					local _, dInfo = AF.DashState(foe.id)
+					if type(dInfo) == "table" and type(dInfo.LandAt) == "number" and not dashSeen[dInfo] then
+						dashSeen[dInfo] = true
+						lands[#lands + 1] = dInfo.LandAt
+					end
 					local B = BC._St.battle
 					local u = B and B.units and B.units[foe.id]
 					local ps = AF.Pose(foe.id)
@@ -1902,6 +1991,25 @@ local function clientScenarios()
 		T.check(dAt ~= nil and k0 ~= nil and k0 > 0.2 and half and minK > k0 - 0.03 and kTop > k0 + 0.1 and yTop > 0.025,
 			fmt("bounce battle: the Double strike re-hits my frog (its victim) at half power on the second chomp: a 0.5 hit listed (%s), %.3f back before, never pulled in (%.3f), stacks to %.3f (+%.3f >= 0.10), a second jolt %.3f (> 0.025)",
 				tostring(half), k0 or -1, minK, kTop, kTop - (k0 or 0), yTop))
+		-- (look review r3, major: "about half of an NPC's bites land and chomp 0.10 s before their Hit plays": the Windup's
+		-- `at` was r1(t + 0.45), the hit lands on the step t + 0.5) through the real BattleSim and BattleController: each of
+		-- the bear's dashes lands on the frame its bite's Hit plays on my frog (its hit flash), within a 30 fps frame
+		local landOk, landTxt = #lands >= 2, {}
+		for _, la in ipairs(lands) do
+			local fl = nil
+			for _, x in ipairs(npcFlashes) do
+				if x.Id == f.id and x.At >= la - 0.15 and (not fl or x.At < fl) then
+					fl = x.At
+				end
+			end
+			local off = fl and (fl - la) or nil
+			landTxt[#landTxt + 1] = off and fmt("%+.3f", off) or "no flash"
+			if not off or abs(off) > 0.034 then
+				landOk = false
+			end
+		end
+		T.check(landOk, fmt("bounce battle: each of the NPC bear's dashes lands on the frame its bite's Hit plays (%d dashes; the hit flash vs the landing: %s s)",
+			#lands, table.concat(landTxt, ", ")))
 		T.check(tPlay ~= nil and thr ~= nil and type(thr.Result) == "number" and abs(tPlay.DueAt - thr.Result) < 1e-6,
 			fmt("bounce battle: the Thorns bolt is due on the bite (due %s vs %s)", tostring(tPlay and tPlay.DueAt), tostring(thr and thr.Result)))
 		T.check(posesSeen.DashDouble == true and posesSeen.DashThorns == true, "bounce battle: the bear plays DashDouble and DashThorns")
