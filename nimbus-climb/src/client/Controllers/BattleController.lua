@@ -8269,15 +8269,29 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		local function nameRoom(tw)
 			return right - tw - gapT - x0 - 4
 		end
+		local fitted = false
 		for _, need in ipairs({ nameNeed + tierNeed, nameNeed }) do
 			if nameRoom(timerW) >= need then
+				fitted = true
 				break
 			end
 			if nameRoom(timerWidth(px(18))) >= need then
 				timerPx = px(18)
 				timerW = timerWidth(timerPx)
+				fitted = true
 				break
 			end
+		end
+		if not fitted then
+			-- (fix6, keys look pol1 #1: 46fe5ef's 2 design px more before Leave left 640 x 360's whole 'Storm Titan' short
+			-- even beside the floor-size timer, and the loop fell through with the 22 px timer: 'Storm T...') the floor-size
+			-- timer anyway, its box as wide as its widest time really is (the Display face's "8:88", 4 % over; the 0.56 em
+			-- guess ran ~8 px wide), never wider than the guess; the timer stays right-aligned at `right`, Leave's air kept
+			timerPx = px(18)
+			local guess = timerWidth(timerPx)
+			local okW, mW = pcall(Theme.Measure, (fmtTime(B.TimeLimit):gsub("%d", "8")), "Display", timerPx)
+			local real = (okW and typeof(mW) == "Vector2" and mW.X > 0) and (math.ceil(mW.X * 1.04) + 4) or guess
+			timerW = math.min(guess, real)
 		end
 	end
 	Hud.timer.Visible = hasTimer
