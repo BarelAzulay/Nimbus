@@ -148,7 +148,6 @@ local K = {
 	-- world guide (studs)
 	VOXEL = 0.36,
 	ARROW_LIFT = 5, -- arrow centre above the target top (the arrow is ~7.6 studs tall: its tip clears the top)
-	ARROW_BANDS = 8, -- (look review fin0, MJ1) the arrow's screen box is built from this many slices up its height
 	-- (Pitch 2 item 13 A) the arrow hops BOB studs every BOB_STEP s, two hard steps (it bobbed on a sine and spun)
 	BOB = 0.6,
 	BOB_STEP = 0.45,
@@ -2740,42 +2739,44 @@ local function buildWorldGuide()
 	model.Parent = folder
 	W.arrowParts, W.arrowOffsets = parts, offsets
 	W.arrowTop = nil
-	-- (look review r1, M1) the arrow's half height round its centre (studs), for its box on the screen
-	local hy = 0.5
+	-- (look review fin0, MJ1) the arrow's outline for its box on the screen: the corners of its parts that are the
+	-- farthest out along one of the 124 directions of a 5x5x5 grid (the points its silhouette can end at, a few dozen of
+	-- the ~800 corners), round its centre. One box round the whole arrow (r1) drew it a head's width wide at its narrow
+	-- tip: seen from below, that box's far bottom corners projected ~40 px under the real arrow and the chip dodged an
+	-- arrow that ended above it
+	local corners, wide = {}, 0
 	for i, p in ipairs(parts) do
-		hy = math.max(hy, math.abs(offsets[i].Position.Y) + p.Size.Y / 2)
-	end
-	-- (look review fin0, MJ1) its shape in K.ARROW_BANDS slices up that height: each slice's own height span and half
-	-- width, so the narrow tip is not drawn a head's width wide on the screen
-	local bands = {}
-	local step = 2 * hy / K.ARROW_BANDS
-	for i, p in ipairs(parts) do
-		local o, s = offsets[i].Position, p.Size
-		local lo, hi = o.Y - s.Y / 2, o.Y + s.Y / 2
-		local px, pz = math.abs(o.X) + s.X / 2, math.abs(o.Z) + s.Z / 2
-		for j = 1, K.ARROW_BANDS do
-			local blo = -hy + (j - 1) * step
-			local bhi = blo + step
-			if lo < bhi and hi > blo then
-				local b = bands[j]
-				if not b then
-					b = { lo = math.huge, hi = -math.huge, hx = 0, hz = 0 }
-					bands[j] = b
+		local o, s = offsets[i].Position, p.Size / 2
+		wide = math.max(wide, math.abs(o.X) + s.X, math.abs(o.Z) + s.Z)
+		for _, dx in ipairs({ -1, 1 }) do
+			for _, dy in ipairs({ -1, 1 }) do
+				for _, dz in ipairs({ -1, 1 }) do
+					corners[#corners + 1] = o + Vector3.new(dx * s.X, dy * s.Y, dz * s.Z)
 				end
-				b.lo, b.hi = math.min(b.lo, math.max(lo, blo)), math.max(b.hi, math.min(hi, bhi))
-				b.hx, b.hz = math.max(b.hx, px), math.max(b.hz, pz)
 			end
 		end
 	end
-	local list = {}
-	local wide = 0
-	for j = 1, K.ARROW_BANDS do
-		if bands[j] then
-			list[#list + 1] = bands[j]
-			wide = math.max(wide, bands[j].hx, bands[j].hz)
+	local hull, taken = {}, {}
+	for x = -2, 2 do
+		for y = -2, 2 do
+			for z = -2, 2 do
+				if x ~= 0 or y ~= 0 or z ~= 0 then
+					local best, at = -math.huge, nil
+					for i, c in ipairs(corners) do
+						local v = c.X * x + c.Y * y + c.Z * z
+						if v > best then
+							best, at = v, i
+						end
+					end
+					if at and not taken[at] then
+						taken[at] = true
+						hull[#hull + 1] = corners[at]
+					end
+				end
+			end
 		end
 	end
-	W.arrowBands = list
+	W.arrowHull = hull
 	-- (look review fin0, minor) the GuideSign's edge stands K.SIGN_GAP studs past the arrow's widest part (SIGN_STUDS
 	-- 1.6 sat inside its ~2.4-stud head: the card hid the arrow's side, 3 px at 844x390, 12 at 1920)
 	W.signStuds = math.max(K.SIGN_STUDS, wide + K.SIGN_GAP)
@@ -3387,35 +3388,32 @@ local function billboardRect(gui)
 	return { x0 = x0, y0 = y0, x1 = x0 + w, y1 = y0 + h }
 end
 
--- the voxel arrow on the screen (both hop heights) -> rect or nil. (look review fin0, MJ1) band by band (W.arrowBands),
--- not one box round it all: the whole box's far bottom corners stand a head's width out from the narrow tip and, seen
--- from below, projected ~40 px under the real arrow, so the chip dodged an arrow that ended above it
+-- the voxel arrow on the screen (both hop heights) -> rect or nil. (look review fin0, MJ1) from its outline's points
+-- (W.arrowHull), not one box round it all
 local function arrowRect()
 	local cam = Workspace.CurrentCamera
-	local base, bands = W.arrowBase, W.arrowBands
-	if not (cam and base and bands and W.active) then
+	local base, hull = W.arrowBase, W.arrowHull
+	if not (cam and base and hull and W.active) then
 		return nil
 	end
 	local r = nil
-	for _, b in ipairs(bands) do
-		for _, dx in ipairs({ -1, 1 }) do
-			for _, y in ipairs({ b.lo, b.hi + K.BOB }) do
-				for _, dz in ipairs({ -1, 1 }) do
-					local x, sy = screenPoint(cam, base + Vector3.new(dx * b.hx, y, dz * b.hz))
-					if not x then
-						return nil
-					end
-					if r then
-						r.x0, r.y0, r.x1, r.y1 = math.min(r.x0, x), math.min(r.y0, sy), math.max(r.x1, x), math.max(r.y1, sy)
-					else
-						r = { x0 = x, y0 = sy, x1 = x, y1 = sy }
-					end
-				end
+	local hop = Vector3.new(0, K.BOB, 0)
+	for _, c in ipairs(hull) do
+		for _, p in ipairs({ base + c, base + c + hop }) do
+			local x, sy = screenPoint(cam, p)
+			if not x then
+				return nil
+			end
+			if r then
+				r.x0, r.y0, r.x1, r.y1 = math.min(r.x0, x), math.min(r.y0, sy), math.max(r.x1, x), math.max(r.y1, sy)
+			else
+				r = { x0 = x, y0 = sy, x1 = x, y1 = sy }
 			end
 		end
 	end
 	return r
 end
+Guide._arrowRect = arrowRect -- (smoke travel_guide_clear holds it against the parts' own outline)
 
 -- the GuideSign's card (its wood edge included) inside its billboard -> rect or nil
 local function signRect()
@@ -3675,11 +3673,19 @@ local function placeChip()
 			local left = { u.x0 - e - w, y }
 			local right = { u.x1 + e, y }
 			local sides = ((u.x0 + u.x1) / 2 >= cx) and { left, right } or { right, left }
+			-- (look review fin0, MJ1) an arrow tip reaching into its spot from above by no more than its own height sends it
+			-- that far down, still centred (it jumped 250 px across the top); anything deeper: beside them, under, over
+			local under = { spot.x0, u.y1 + e }
 			local found = nil
-			for _, c in ipairs({ sides[1], sides[2], { spot.x0, u.y1 + e }, { spot.x0, u.y0 - e - h } }) do
+			if under[2] - spot.y0 <= h and clear(under[1], under[2], clearPx) then
+				found = under
+			end
+			for _, c in ipairs({ sides[1], sides[2], under, { spot.x0, u.y0 - e - h } }) do
+				if found then
+					break
+				end
 				if clear(c[1], c[2], clearPx) then
 					found = c
-					break
 				end
 			end
 			if found then

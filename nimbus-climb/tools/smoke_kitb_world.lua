@@ -1693,9 +1693,9 @@ local function clientScenarios()
 			for _, size in ipairs({ { 1920, 1080 }, { 1280, 720 }, { 390, 844 }, { 844, 390 } }) do
 				Mock.SetViewport(size[1], size[2])
 				KC.advance(0.4)
-				for _, mode in ipairs({ "ahead", "walk", "near", "here" }) do
+				for _, mode in ipairs({ "ahead", "walk", "near", "graze", "here" }) do
 					local tag = fmt("guide clear %dx%d %s", size[1], size[2], mode)
-					local dist = (mode == "here") and 7 or ((mode == "near") and 22 or 40)
+					local dist = ({ here = 7, near = 22, graze = 26 })[mode] or 40
 					local at = anchor.Position - dir * dist
 					at = Vector3.new(at.X, L.Origin.Y + 3, at.Z)
 					Mock.Teleport(player, CFrame.lookAt(at, at + dir))
@@ -1786,6 +1786,34 @@ local function clientScenarios()
 								local x0 = bb.X + card.Position.X.Offset + card.Position.X.Scale * (bb.R - bb.X) - card.AnchorPoint.X * w
 								local cy = (bb.Y + bb.B) / 2 + card.Position.Y.Offset -- (a sign hung under its arrow: its drop)
 								s = grow({ X = x0, Y = cy - h / 2, R = x0 + w, B = cy + h / 2 }, 3 * sk)
+							end
+							-- (fin0 MJ1) the box the chip dodges is the arrow's own outline (both hop heights) within 3 px: one box round
+							-- the whole arrow, seen from below, ended ~20-40 px under the real tip (the chip dodged an arrow above it)
+							local ar = box and type(Guide._arrowRect) == "function" and Guide._arrowRect() or nil
+							if T.check(ar ~= nil, tag .. ": (setup) the guide's arrow box") then
+								local top = Mock.TopInset or 0
+								local a = { X = ar.x0, Y = ar.y0 + top, R = ar.x1, B = ar.y1 + top }
+								-- (fin0 MJ1) graze, 26 studs out: on a landscape screen the arrow's tip reaches up to ~40 px into the
+								-- chip's spot from above. By no more than the chip's own height (45 px at 1080p) it steps down that
+								-- far, still centred, and hangs GUIDE_CLEAR under the tip (it jumped 250 px across the top)
+								if mode == "graze" and vp.X > vp.Y then
+									local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
+									local homeTop = top + 10 * k - 3 * k -- (GUIDE_TOP under the top band, its wood edge)
+									local w = c.R - c.X
+									local into = a.B + 10 * k - homeTop
+									if into > 0 and a.X < vp.X / 2 + w / 2 and a.R > vp.X / 2 - w / 2 and into <= 45 * k - 1 then
+										T.check(math.abs((c.X + c.R) / 2 - vp.X / 2) <= 1.5 and c.Y >= a.B + 10 * k - 1,
+											tag .. ": a tip reaching into the chip's spot moves it down under the tip, not across the top",
+											fmt("tip %.0f px into its spot; chip %s, arrow %s", into, show(c), show(a)))
+									end
+								end
+								local anyPart = arrow:FindFirstChildWhichIsA("BasePart", true)
+								local hopPx = abs(project(camObj, anyPart.Position).Y - project(camObj, anyPart.Position + Vector3.new(0, 0.6, 0)).Y) -- (K.BOB)
+								local tol = 3
+								T.check(a.X >= box.X - tol and a.R <= box.R + tol and a.X <= box.X + tol and a.R >= box.R - tol
+									and a.Y >= box.Y - hopPx - tol and a.Y <= box.Y + tol and a.B <= box.B + hopPx + tol and a.B >= box.B - tol,
+									tag .. ": the arrow box the chip dodges is the arrow's own outline",
+									"guide " .. show(a) .. " parts " .. show(box) .. fmt(" (hop %.1f px)", hopPx))
 							end
 							if T.check(box ~= nil and s ~= nil, tag .. ": (setup) the arrow and its sign are in view") then
 								T.check(not overlap(c, box), tag .. ": the chip never covers the arrow", "chip " .. show(c) .. " arrow " .. show(box))
