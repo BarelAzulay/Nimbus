@@ -1,0 +1,136 @@
+{
+  "sheet": "icons_b.png",
+  "item": "Pitch 2 item 9 B (Carved soft): the art-size icons (54 px on PC, 36 on a phone)",
+  "size": [
+    160,
+    80
+  ],
+  "cell": 20,
+  "art": [
+    19,
+    19
+  ],
+  "art_note": "18 x 18 cells at 1 px a cell + the 1-cell drop shadow (Text at 30 %) on the right and bottom",
+  "grey_offset": [
+    0,
+    40
+  ],
+  "grey_note": "the greyed (disabled) twin of each icon sits grey_offset below it",
+  "cells": {
+    "note": {
+      "drawing": "Cash",
+      "x": 0,
+      "y": 0,
+      "w": 19,
+      "h": 19
+    },
+    "token": {
+      "drawing": "Tokens",
+      "x": 20,
+      "y": 0,
+      "w": 19,
+      "h": 19
+    },
+    "gem": {
+      "drawing": "Gems",
+      "x": 40,
+      "y": 0,
+      "w": 19,
+      "h": 19
+    },
+    "pot": {
+      "drawing": "Food",
+      "x": 60,
+      "y": 0,
+      "w": 19,
+      "h": 19
+    },
+    "egg": {
+      "drawing": "Eggs",
+      "x": 80,
+      "y": 0,
+      "w": 19,
+      "h": 19
+    },
+    "bag": {
+      "drawing": "Shop",
+      "x": 100,
+      "y": 0,
+      "w": 19,
+      "h": 19
+    },
+    "gift": {
+      "drawing": "Gift",
+      "x": 120,
+      "y": 0,
+      "w": 19,
+      "h": 19
+    },
+    "box": {
+      "drawing": "Packs",
+      "x": 140,
+      "y": 0,
+      "w": 19,
+      "h": 19
+    },
+    "ticket": {
+      "drawing": "Passes",
+      "x": 0,
+      "y": 20,
+      "w": 19,
+      "h": 19
+    },
+    "potion": {
+      "drawing": "Boosts",
+      "x": 20,
+      "y": 20,
+      "w": 19,
+      "h": 19
+    },
+    "paw": {
+      "drawing": "Pets",
+      "x": 40,
+      "y": 20,
+      "w": 19,
+      "h": 19
+    },
+    "book": {
+      "drawing": "Index",
+      "x": 60,
+      "y": 20,
+      "w": 19,
+      "h": 19
+    },
+    "house": {
+      "drawing": "Home",
+      "x": 80,
+      "y": 20,
+      "w": 19,
+      "h": 19
+    },
+    "stats": {
+      "drawing": "Stats",
+      "x": 100,
+      "y": 20,
+      "w": 19,
+      "h": 19
+    },
+    "gear": {
+      "drawing": "Settings",
+      "x": 120,
+      "y": 20,
+      "w": 19,
+      "h": 19
+    },
+    "signpost": {
+      "drawing": "Travel",
+      "x": 140,
+      "y": 20,
+      "w": 19,
+      "h": 19
+    }
+  },
+  "config_key": "Config.IconSheet.Id",
+  "upload": "ONE Image asset (not a Decal id), from the owner's keyed cloud session; then set Config.IconSheet.Id to its image id. Until then (Id = 0) every icon draws its 9 x 9 glyph (shared/PixelIcon).",
+  "draw": "ImageLabel, Image rbxassetid://<id>, ImageRectOffset (x, y), ImageRectSize (19, 19), ResampleMode Pixelated, 19 cells x (icon px / 18) design px"
+}

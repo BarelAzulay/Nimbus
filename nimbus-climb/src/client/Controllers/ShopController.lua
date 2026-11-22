@@ -45,7 +45,8 @@
 --
 -- Screen: ScreenGui "NimbusShop" (DisplayOrder 19, IgnoreGuiInset, ResetOnSpawn false) > Frame "ShopWindow" (UIScale
 -- "Fit"; NeonKit.BigRect with RECT 820x330 at 390 px -> 1540x910 at 1080 px, PC_MAX_W 0.81) > Panel (the frame),
--- Header (Icon, Title "Shop", Balance_Gems (a GemIcon.Amount), Balance_Tokens, CloseButton; balances Theme.ShortNumber
+-- Header (Icon, Title "Shop", Balance_Gems and Balance_Tokens (Glyph: item 9 B's pixel gem / coin, Text: the amount),
+-- CloseButton; balances Theme.ShortNumber
 -- from 1e6), Rail (Tab_Eggs, Tab_Gems, RobuxDivider, Tab_Packs, Tab_Passes, Tab_Boosts: Icon + Label, attribute Selected;
 -- Tab_Packs.Dot while the Starter Pack is on sale and unbought; FastHatch) and Body (the content box) > Page_Eggs
 -- (ShopEggs), Page_Gems (ShopGems), Page_Packs / Page_Passes / Page_Boosts (ScrollingFrames of Card_<key>) and Soon ("The
@@ -97,7 +98,6 @@ local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U9-2) the awni
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
 local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
-local GemIcon = require(Client:WaitForChild("UI"):WaitForChild("GemIcon"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the header egg, the token coin, the card art
 local ShopGems = require(Client:WaitForChild("UI"):WaitForChild("ShopGems"))
 local ShopEggs = require(Client:WaitForChild("UI"):WaitForChild("ShopEggs"))
@@ -155,6 +155,11 @@ local K = {
 	WIN = {
 		PC = { Header = 76, Icon = 42, TitleText = 34, TitleW = 200, GemsW = 140, TokW = 190, PillH = 44, PillText = 22, Close = 56,
 			RailX = 18, RailW = 224, TabH = 80, TabY = 16, TabStep = 92, Split = 44, TabIcon = 40, TabLabel = 26, ContentX = 262, ContentR = 38,
+			-- (Pitch 2 item 9 B; P2 icons review r1, major 4) the tabs' icons at the 54 px art size (3 px cells, the header
+			-- glyph's), the label 12 px further right (TabArtX: the icon's inset)
+			TabArt = 54, TabArtX = 12,
+			-- (P2 icons look fin0) the balance pills' coin and gem at the glyph size (3 px cells; the mock-up's 27)
+			PillIcon = 27,
 			-- (a body too short for the five tabs + the Fast toggle: shorter tabs, the 12 px gap kept; the divider's 40 still
 			-- fits; needs 504 of body)
 			ShortTabH = 64, ShortTabY = 8, ShortTabStep = 76, ShortSplit = 52, ShortTabIcon = 32 },
@@ -163,7 +168,7 @@ local K = {
 			-- (the owner's ~1024x600: 557 px of body, the full rail + toggle needs 596; Short needs 466, the shortest Compact
 			-- body is 484; the label keeps its 18 above the 8 px lip, the tab 62 = 50 px on screen at the 0.8 scale, the
 			-- 12 px gap between tabs kept so their wood edges do not meet)
-			ShortTabH = 62, ShortTabY = 6, ShortTabStep = 74, ShortSplit = 14, ShortTabIcon = 24 },
+			ShortTabH = 62, ShortTabY = 6, ShortTabStep = 74, ShortSplit = 14, ShortTabIcon = 24, PillIcon = 27 },
 		Phone = { Header = 50, Icon = 28, TitleText = 20, TitleW = 130, GemsW = 96, TokW = 128, PillH = 32, PillText = 15, Close = 44,
 			RailX = 8, RailW = 104, TabH = 48, TabY = 6, TabStep = 54, Split = 0, TabIcon = 24, TabLabel = 15, ContentX = 120, ContentR = 8,
 			ShortBody = 276, ShortTabH = 44, ShortTabY = 4, ShortTabStep = 49 },
@@ -674,7 +679,9 @@ function H.build()
 	-- (LOOK-ui, kitb-look1: one style across screens) the Signboard header's icon slot: SignKit.Sizes.IconSlot square, a 2 px
 	-- brown ink line (was a 46 px square in a 3 px wood edge)
 	H.edge(U.Icon, 2, SIGN.Text)
-	PixelIcon.Host(U.Icon, NeonKit.IconName("Eggs")) -- (kit-b U7a) the egg, sized with the label
+	-- (Pitch 2 item 9 B; P2 icons review r1, major 5: the egg here read as the Eggs tab under it) the shop stall in its own
+	-- colours on the gold slot (the mock-up's header), sized with the label
+	PixelIcon.Host(U.Icon, NeonKit.IconName("Shop"))
 	U.Title = label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left })
 	U.Title:SetAttribute("RibbonBand", "NoTails") -- (render gate) the band ends square on the navy plank (its tails read as a glitchy block there)
 	Theme.StyleTitle(U.Title)
@@ -686,14 +693,15 @@ function H.build()
 		H.edge(root, 3)
 		return root, cur
 	end
+	-- (P2 icons look fin0, major 2: the Gems pill held the cut GemIcon, a smooth square turned 45 degrees, beside the
+	-- pixel coin) both pills as the mock-up's (10_optA): item 9 B's icon ("Glyph", in its own colours, at R.PillIcon:
+	-- H.layoutHeader hosts it) and the amount ("Text"); the gem and its amount centred in their pill
 	U.GemsPill = pill("Gems")
-	U.GemsAmount = GemIcon.Amount(U.GemsPill, "0", { TextSize = 22, Color = SIGN.Text })
-	U.GemsAmount.AnchorPoint = Vector2.new(0.5, 0.5)
-	U.GemsAmount.Position = UDim2.fromScale(0.5, 0.5)
-	local tokPill, tokCur = pill("Tokens")
+	U.GemGlyph = label("Glyph", U.GemsPill, "", "Display", 22, { TextColor3 = SIGN.Text, TextTruncate = Enum.TextTruncate.None })
+	U.GemText = label("Text", U.GemsPill, "0", "Display", 22, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.Text })
+	local tokPill = pill("Tokens")
 	U.TokPill = tokPill
 	U.TokGlyph = label("Glyph", tokPill, "", "Display", 22, { TextColor3 = SIGN.GoldLip, TextTruncate = Enum.TextTruncate.None })
-	PixelIcon.Host(U.TokGlyph, tokCur.Icon) -- (kit-b U7a) the Cloud Token coin, sized with the label
 	U.TokText = label("Text", tokPill, "0", "Display", 22, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = SIGN.Text })
 	U.Close = CloudUI.Button({
 		Name = "CloseButton",
@@ -805,25 +813,32 @@ end
 
 -- the tab's icon through NeonKit.Icon (the only path that reads Config.Icons): rebuilt when Config.Icons[tab] or the size
 -- changed
-function H.syncTabIcon(tab, px)
+function H.syncTabIcon(tab, px, art)
 	local t = U.Tabs[tab]
 	local icons = Config.Icons
 	local want = type(icons) == "table" and icons[tab] or nil
 	if type(want) ~= "string" or want == "" then
 		want = false
 	end
-	if t.Icon and t.IconImage == want and t.IconPx == px then
+	if t.Icon and t.IconImage == want and t.IconPx == px and t.IconArt == art then
 		return
 	end
 	if t.Icon then
 		t.Icon:Destroy()
 	end
-	t.Icon = NeonKit.Icon(t.Button, tab, px)
+	-- (Pitch 2 item 9 B; P2 icons review r1) the Gems tab draws the B gem like the other four (the finer cut gem mixed two
+	-- pixel sizes in the column); `art`: the hosted icon drawn at that px (the PC rail's 54 px art size)
+	t.Icon = NeonKit.Icon(t.Button, tab == "Gems" and "gem" or tab, px)
+	local pixelName = art and t.Icon:GetAttribute("PixelIcon")
+	if pixelName then
+		PixelIcon.Host(t.Icon, pixelName, art)
+	end
 	if t.Icon:IsA("TextLabel") then -- an asset-id icon is an ImageLabel (no TextColor3: the write would throw)
 		t.Icon.TextColor3 = SIGN.Text -- (kit-b U9-2) brown on the stone / gold tab
 	end
 	t.IconImage = want
 	t.IconPx = px
+	t.IconArt = art
 end
 
 -- the pack's colours (a key without an entry: its tab's neon colour)
@@ -1188,11 +1203,39 @@ function H.layoutHeader(W, R)
 		place(U.TokPill, tokX, py, tw, R.PillH)
 		place(U.GemsPill, tokX - 10 - gw, py, gw, R.PillH)
 	end
-	GemIcon.SetAmount(U.GemsAmount, nil, { TextSize = R.PillText })
-	place(U.TokGlyph, 8, 0, R.PillText + 6, R.PillH)
+	-- (P2 icons look fin0, minor: the coin was 18 px, the mock-up's about 27) the pills' icons at the screen's glyph size
+	-- (R.PillIcon: 27 on PC, 3 px cells; 18 on a phone), the coin and the gem alike
+	local ip = R.PillIcon or 18
+	for _, g in ipairs({ { U.TokGlyph, Theme.Currency.Tokens.Icon }, { U.GemGlyph, "gem" } }) do
+		if g[1]:GetAttribute("IconPx") ~= ip then
+			g[1]:SetAttribute("IconPx", ip)
+			PixelIcon.Host(g[1], g[2], ip)
+		end
+	end
 	U.TokGlyph.TextSize = R.PillText
-	place(U.TokText, R.PillText + 18, 0, tw - R.PillText - 24, R.PillH)
+	U.GemGlyph.TextSize = R.PillText
+	place(U.TokGlyph, 8, 0, ip + 6, R.PillH)
+	place(U.TokText, ip + 18, 0, tw - ip - 24, R.PillH)
 	U.TokText.TextSize = R.PillText
+	U.GemText.TextSize = R.PillText
+	U.PillR = R
+	H.layoutGemPill()
+end
+
+-- the Gems pill's gem and amount centred in it (as GemIcon.Amount drew them), again whenever the amount changes
+function H.layoutGemPill()
+	local R = U.PillR
+	if not R then
+		return
+	end
+	local ip = R.PillIcon or 18
+	local w = U.GemsPill.Size.X.Offset
+	local ok, v = pcall(Theme.MeasureLabel, U.GemText, U.GemText.Text, R.PillText, 10000)
+	local tw = (ok and typeof(v) == "Vector2") and math.ceil(v.X) or 0
+	-- the icon 3 px into its box, 7 px of stone between it and the amount (the coin's spacing)
+	local x = math.max(4, math.floor((w - (ip + 7 + tw)) / 2) - 3)
+	place(U.GemGlyph, x, 0, ip + 6, R.PillH)
+	place(U.GemText, x + ip + 10, 0, math.max(0, w - x - ip - 14), R.PillH)
 end
 
 -- the rail: PC / Compact / Phone a column at RailX; portrait one row of five tabs; answers the rail's bottom (portrait)
@@ -1239,7 +1282,9 @@ function H.layoutRail(W, Hh, R)
 		local t = U.Tabs[tab]
 		local y = tabY + (i - 1) * step + (i >= 3 and split or 0)
 		place(t.Button, R.RailX, y, R.RailW, tabH)
-		H.syncTabIcon(tab, icon)
+		-- (Pitch 2 item 9 B) the PC rail at full height: the 54 px art (a short body keeps its 27 px glyph: 3 px cells too)
+		local art = (layout == "PC" and not short and R.TabArt) or nil
+		H.syncTabIcon(tab, icon, art)
 		t.Label.TextSize = R.TabLabel
 		if layout == "Compact" then
 			-- the icon over the label
@@ -1254,11 +1299,16 @@ function H.layoutRail(W, Hh, R)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Center
 		else
 			local ix = layout == "PC" and 16 or 8
+			local lx = 10
+			if art then
+				-- the icon's box 2 px round the drawn art, the label 12 px clear of the art
+				ix, icon, lx = R.TabArtX - 2, art, 14
+			end
 			-- (F0 review, major 8) the icon and the label centred on the block's face, over its lip (the label's box ran
 			-- into the lip)
 			local face = tabH - SignKit.Sizes.Lip
 			place(t.Icon, ix, math.floor((face - icon - 4) / 2), icon + 4, icon + 4)
-			place(t.Label, ix + icon + 10, 0, R.RailW - ix - icon - 14, face)
+			place(t.Label, ix + icon + lx, 0, R.RailW - ix - icon - lx - 4, face)
 			t.Label.TextXAlignment = Enum.TextXAlignment.Left
 		end
 	end
@@ -1465,7 +1515,11 @@ function H.paintCards()
 		local ok, v = pcall(fn)
 		return ok and tonumber(v) or 0
 	end
-	GemIcon.SetAmount(U.GemsAmount, Theme.Short(value("Gems"))) -- (Pitch 2 F0) the one number style: 1.25K, 12.5K
+	local gems = Theme.Short(value("Gems")) -- (Pitch 2 F0) the one number style: 1.25K, 12.5K
+	if U.GemText.Text ~= gems then
+		U.GemText.Text = gems
+		H.layoutGemPill()
+	end
 	U.TokText.Text = Theme.Short(value("Tokens"))
 	local starter = S.ByKey.Starter
 	U.Dot.Visible = starter ~= nil and (starter.Created or H.preview()) and H.boughtKnown() and not csvSet(H.attr("StoreBought")).Starter

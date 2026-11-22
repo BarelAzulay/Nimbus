@@ -369,7 +369,8 @@ S.client_gem_icon = guarded("client_gem_icon", function()
 			G.ctrl("ShopController").Open({ Tab = "Gems" })
 		end },
 		{ "the Shop (Eggs tab)", function()
-			-- (lobby-shop Task 22: the Secret Roulette hero and every machine card's Gems button draw the GemIcon)
+			-- (lobby-shop Task 22: the Secret Roulette hero and every machine card's Gems button draw a gem; since P2 icons look
+			-- fin0, major 2, item 9 B's pixel gem: icons_shop_header_rail checks it)
 			LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
 			LocalPlayer:SetAttribute(Config.Attr.GemsSettled or "GemsSettled", true)
 			G.ctrl("ShopController").Open({ Tab = "Eggs" })

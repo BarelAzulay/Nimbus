@@ -311,7 +311,8 @@ function G.spinRowsReal()
 				local b = G.eggBtn(id, name)
 				if b then
 					local bw = G.rel(b, b).w
-					for _, part in ipairs({ "Word", "TokenIcon", "GemIcon", "Price" }) do
+					-- (P2 icons look fin0, major 2) a gem plank's gem is GemPixel (item 9 B's pixel gem; was the cut GemIcon)
+					for _, part in ipairs({ "Word", "TokenIcon", "GemPixel", "Price" }) do
 						local o = b:FindFirstChild(part)
 						if o and o.Visible then
 							prices = prices + (part == "Price" and 1 or 0)
@@ -619,8 +620,13 @@ S.client_shop_window = guarded("client_shop_window", function()
 	local title = header and header:FindFirstChild("Title")
 	local gemsPill = header and header:FindFirstChild("Balance_Gems")
 	T.check(title ~= nil and tostring(title.Text) == "SHOP", "shop window: the header's Title reads 'Shop'")
-	T.check(gemsPill ~= nil and gemsPill:FindFirstChild("GemAmount", true) ~= nil and header:FindFirstChild("Balance_Tokens") ~= nil and header:FindFirstChild("CloseButton") ~= nil,
-		"shop window: Balance_Gems (a GemIcon.Amount), Balance_Tokens and CloseButton")
+	-- (P2 icons look fin0, major 2: the approved 10_optA draws item 9 B's pixel gem in the pill, not the cut GemIcon) the
+	-- Gems pill as the Tokens one: Glyph (hosting PixelIcon "gem") and Text (was a GemIcon.Amount)
+	local gemGlyph = gemsPill and gemsPill:FindFirstChild("Glyph")
+	local gemHosted = gemGlyph and gemGlyph:FindFirstChild("Icon")
+	T.check(gemHosted ~= nil and gemHosted:GetAttribute("PixelIcon") == "gem" and gemsPill:FindFirstChild("Text") ~= nil and header:FindFirstChild("Balance_Tokens") ~= nil
+		and header:FindFirstChild("CloseButton") ~= nil,
+		"shop window: Balance_Gems (the pixel gem + its amount), Balance_Tokens and CloseButton")
 	local closeIssues = G.closeMarkIssues(header and header:FindFirstChild("CloseButton"))
 	T.check(#closeIssues == 0, "shop window: the CloseButton's X is drawn (NeonKit.CloseMark: BarA +45 / BarB -45, centred, no U+2715 box, no text), a tap of at least 44 px",
 		table.concat(closeIssues, "; "))
@@ -875,8 +881,9 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 		G.setAttr("SecretPityLeft", 3)
 		G.advance(0.3)
 		local hs = G.eggBtn("Secret", "Spin")
-		T.check(hs ~= nil and hs:FindFirstChild("GemIcon", true) ~= nil and G.priceOf(hs) == commas(Config.Gems.SecretRoulette.GemPrice) and G.priceOf(hs) == "500" and not G.disabled(hs),
-			"shop eggs: the hero's Spin is a GemIcon + '500'", hs and tostring(G.priceOf(hs)) or "no button")
+		-- (P2 icons look fin0, major 2) the gem is GemPixel, item 9 B's pixel gem (was the cut GemIcon)
+		T.check(hs ~= nil and hs:FindFirstChild("GemPixel", true) ~= nil and G.priceOf(hs) == commas(Config.Gems.SecretRoulette.GemPrice) and G.priceOf(hs) == "500" and not G.disabled(hs),
+			"shop eggs: the hero's Spin is the pixel gem + '500'", hs and tostring(G.priceOf(hs)) or "no button")
 		-- shop-area 16.17.3 (rewritten): the hint was "Also at the Storm Altar"; the Secret roll happens there only now.
 		-- (polish) G.begin pins the card at the altar, where the hint says so
 		T.eq(G.text(hero, "Hint"), "You are at the Storm Altar", "shop eggs: the hero's hint (at the altar)")
@@ -910,14 +917,14 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 			local want = { Short(r.Price), Short(3 * r.Price), tostring(gemPrices[id]) }
 			local got = { G.priceOf(spin), G.priceOf(s3), G.priceOf(sg) }
 			if got[1] ~= want[1] or got[2] ~= want[2] or got[3] ~= want[3] or not (spin and spin:FindFirstChild("TokenIcon", true)) or not (s3 and s3:FindFirstChild("TokenIcon", true))
-				or not (sg and sg:FindFirstChild("GemIcon", true)) then
+				or not (sg and sg:FindFirstChild("GemPixel", true)) then -- (P2 icons look fin0, major 2: the pixel gem, was the cut GemIcon)
 				prices[#prices + 1] = fmt("%s: %s / %s / %s (want %s / %s / %s)", id, tostring(got[1]), tostring(got[2]), tostring(got[3]), want[1], want[2], want[3])
 			end
 		end
 		T.check(#rows == 0, "shop eggs: every card's Odds_* rows = GetRarityOdds(id), in order and value", table.concat(rows, "; "))
 		T.check(G.gotRows(G.eggCard("Celestial")):match("Secret 2%%$") ~= nil and #G.oddsRows(G.eggCard("Celestial")) == 4, "shop eggs: Celestial has four rows, the last Secret 2%",
 			G.gotRows(G.eggCard("Celestial")))
-		T.check(#prices == 0, "shop eggs: Spin = token icon + the price, Spin3 = token icon + 3x, SpinGems = GemIcon + 20 / 40 / 60 / 180", table.concat(prices, "; "))
+		T.check(#prices == 0, "shop eggs: Spin = token icon + the price, Spin3 = token icon + 3x, SpinGems = the pixel gem + 20 / 40 / 60 / 180", table.concat(prices, "; "))
 		T.check(G.eggBtn("Cloud", "Spin3") and tostring(G.texts(G.eggBtn("Cloud", "Spin3"))):find("x3", 1, true) ~= nil, "shop eggs: Spin3 reads 'x3'")
 		local hints1 = {}
 		for _, id in ipairs(MACHINES) do

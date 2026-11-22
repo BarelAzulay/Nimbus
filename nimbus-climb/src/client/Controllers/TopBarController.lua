@@ -37,6 +37,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon"))
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
@@ -366,6 +367,13 @@ local function buildButton(parent, spec, order, callback)
 	local icon = NeonKit.Icon(root, spec.Icon, K.ICON)
 	icon.ZIndex = 4
 	icon.TextColor3 = SIGN.Gold
+	-- (Pitch 2 item 9 B; P2 icons review r1, major 7: the gear read as a grey smudge on the navy plank) each icon in its
+	-- own colours inside a 1-cell cream keyline (the mock-up's top bar), drawn again with it
+	local pixelName = icon:GetAttribute("PixelIcon")
+	if pixelName then
+		icon:SetAttribute("IconKey", SIGN.Tile)
+		PixelIcon.Host(icon, pixelName)
+	end
 	local label = Theme.Label(spec.Label, "Button", {
 		Size = K.LABEL_TEXT,
 		Color = SIGN.Gold,

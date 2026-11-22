@@ -812,7 +812,9 @@ local function serverScenarios()
 		-- (U7b review) PixelIcon may require Theme too, but only inside a function (Lead measuring a server-built sign's
 		-- text): at load it still requires nothing, so the loading screen can draw icons before Theme arrives
 		-- (LOOK-ui) SignKit may require PixelIcon too (its whole-px edges and lips): PixelIcon requires nothing at load
-		for name, allowed in pairs({ SignKit = { Theme = true, PixelIcon = true }, PixelIcon = { Theme = true } }) do
+		-- (Pitch 2 item 9 B) PixelIcon may require Config too, also only inside a function: the uploaded icon sheet's id
+		-- (Config.IconSheet.Id), read when an art-size icon draws; at load it still requires nothing (checked below)
+		for name, allowed in pairs({ SignKit = { Theme = true, PixelIcon = true }, PixelIcon = { Theme = true, Config = true } }) do
 			local src = code(name)
 			T.check(src ~= "", "shared only: " .. name .. " has source")
 			local bad = {}
@@ -822,7 +824,7 @@ local function serverScenarios()
 					bad[#bad + 1] = arg
 				end
 			end
-			T.check(#bad == 0, "shared only: " .. name .. " requires only Theme (a sibling in Shared)", table.concat(bad, ", "))
+			T.check(#bad == 0, "shared only: " .. name .. " requires only its allowed siblings in Shared (Theme; SignKit PixelIcon; PixelIcon Config)", table.concat(bad, ", "))
 			if name == "PixelIcon" then
 				local top = {}
 				for line in (src .. "\n"):gmatch("([^\n]*)\n") do
@@ -909,14 +911,18 @@ local function serverScenarios()
 		table.sort(empty)
 		T.check(#bad == 0, "pixelicon: every icon is 9 rows of 9 cells of '.' / '#' (" .. count .. " icons)", table.concat(bad, ", "))
 		T.check(#empty == 0, "pixelicon: no icon is blank", table.concat(empty, ", "))
+		-- (Pitch 2 items 9 B and 12_elements A, both owner-approved 2026-11-20) the flame is redrawn as the three-tongue
+		-- flame with a hollow core (the pitch's was a drop with a notch: Water -> Flame read drop -> drop); the other 26
+		-- stay exactly as the owner saw them
+		local REDRAWN = { flame = "....#..../.#..##.../.#..##.#./.##.####./#########/####.####/###...###/.##...##./..#####.." }
 		local changed = {}
 		for name, want in pairs(PITCH_ICONS) do
-			if B[name] ~= want then
+			if B[name] ~= (REDRAWN[name] or want) then
 				changed[#changed + 1] = name
 			end
 		end
 		table.sort(changed)
-		T.check(#changed == 0, "pixelicon: the pitch's 27 icons are ported exactly as the owner saw them", table.concat(changed, ", "))
+		T.check(#changed == 0, "pixelicon: the pitch's 27 icons are ported exactly as the owner saw them (the flame as Pitch 2 redrew it)", table.concat(changed, ", "))
 		local missing = {}
 		for _, name in ipairs(SCREEN_ICONS) do
 			if not B[name] then
@@ -1234,9 +1240,12 @@ local function serverScenarios()
 				local t0 = (align == L and x0) or (align == R and x1 - tw) or ((x0 + x1 - tw) / 2)
 				-- (U9-7 look) measured from the cells as drawn: under 0.8 an 18 px icon's whole-px cells draw past its box
 				-- (2 px cells, 18 px on the screen in a 14.4 px box) and Lead steps the box out by that much
+				-- (Pitch 2 item 9 B) the token is now drawn in its own colours with a 1-cell drop shadow (Text at 30 %,
+				-- attribute BaseT) right of and below the coin: a shadow falls into the gap, so the gap is measured to the
+				-- coin's own cells, not to its shadow
 				local d0, d1 = math.huge, -math.huge
 				for _, r in ipairs(box:GetDescendants()) do
-					if r:IsA("Frame") and r.Name:match("^R%d+$") then
+					if r:IsA("Frame") and r.Name:match("^R%d+$") and r:GetAttribute("BaseT") == nil then
 						d0 = math.min(d0, r.AbsolutePosition.X)
 						d1 = math.max(d1, r.AbsolutePosition.X + r.AbsoluteSize.X)
 					end
@@ -2460,6 +2469,624 @@ local function serverScenarios()
 		T.check(#own == 0, "short numbers: no script but Theme keeps its own K / M / B formatter", table.concat(own, ", "))
 		T.check(#plain == 0, "short numbers: every plain short number goes through Theme.Short (no one-argument Theme.ShortNumber)", table.concat(plain, ", "))
 		K.flushErrors("short_numbers")
+	end)
+
+	----------------------------------------------------------------------
+	-- Pitch 2 item 9 B "Carved soft" (spec docs/superpowers/specs/2026-11-20-pitch2-build-design.md, plan Task 6; branch
+	-- kitb-p2-icons): the redrawn icons in their own colours (9 x 9 glyphs, code only), the 18 x 18 art from ONE uploaded
+	-- sheet (build/upload_sheets/icons_b.png) once Config.IconSheet.Id is set, the 9 x 9 drawing until then
+	----------------------------------------------------------------------
+	-- the redrawn names: the spec's 16, the 7 rarity dots and the 8 element badges (Config.Elements.Info[*].Icon)
+	local B_MAIN = { "note", "token", "gem", "pot", "egg", "bag", "gift", "box", "ticket", "potion", "paw", "book", "house", "stats", "gear", "signpost" }
+	local B_DOTS = { "rarity_common", "rarity_uncommon", "rarity_rare", "rarity_epic", "rarity_legendary", "rarity_mythic", "rarity_secret" }
+	local B_ELEMENTS = { "drop", "flame", "flake", "leaf", "mountain", "bolt", "sparkle", "moon" }
+	-- a glyph in its own colours is drawn in layers (PixelIcon.Art[name].L: the drop shadow, then one colour at a time over
+	-- the colours drawn after it). (P2 icons review r1, major 6) the cap is the spec's for a code-only multi-colour icon
+	-- (item 9: "smoke cap 25 -> 40"); one Frame per merged run of one colour had cost 23 - 51 (the paw 51). The one-ink cap
+	-- of 25 (pixelicon_run_merge_count) holds for every icon drawn in one colour
+	local B_FRAME_CAP = 40
+	local function allB()
+		local out = {}
+		for _, list in ipairs({ B_MAIN, B_DOTS, B_ELEMENTS }) do
+			for _, n in ipairs(list) do
+				out[#out + 1] = n
+			end
+		end
+		return out
+	end
+	-- the 10 x 10 cells of an Art glyph: { [y * 10 + x] = letter } (0-based), nil for an unknown or malformed one
+	local function artCells(PI, name)
+		local a = PI.Art and PI.Art[name]
+		if type(a) ~= "table" or type(a.R) ~= "string" or type(a.P) ~= "table" then
+			return nil
+		end
+		local rows = {}
+		for row in (a.R .. "/"):gmatch("([^/]*)/") do
+			rows[#rows + 1] = row
+		end
+		if #rows ~= 10 then
+			return nil
+		end
+		local cells = {}
+		for y, row in ipairs(rows) do
+			if #row ~= 10 then
+				return nil
+			end
+			for x = 1, 10 do
+				local ch = row:sub(x, x)
+				if ch ~= "." then
+					cells[(y - 1) * 10 + (x - 1)] = ch
+				end
+			end
+		end
+		return cells
+	end
+	local function colourOf(PI, name, ch)
+		if ch == "~" then
+			return Color3.fromRGB(59, 36, 18) -- Theme.Sign.Text (the drop shadow, at 30 %)
+		end
+		local h = PI.Art[name].P[ch]
+		local n = tonumber(h or "", 16)
+		if not n then
+			return nil
+		end
+		return Color3.fromRGB(math.floor(n / 65536) % 256, math.floor(n / 256) % 256, n % 256)
+	end
+	-- paints an own-colour icon's Frames back onto the 10 x 10 grid in their draw order (child order, painter's): "" when
+	-- the picture is exactly the Art cells, each cell's top Frame in its letter's colour (the drop shadow Text at 0.7
+	-- transparency), no Frame on an empty cell, no opaque Frame on a drop-shadow cell, no cell under two shadow Frames (the
+	-- 30 % never doubles), on whole px; else what is wrong
+	local function paintsArt(PI, icon, name, px)
+		local cells = artCells(PI, name)
+		if not cells then
+			return "no Art data"
+		end
+		local cell = math.floor(px / 9)
+		local top, shaded = {}, {}
+		local frames = 0
+		for _, f in ipairs(icon:GetChildren()) do
+			if f:IsA("Frame") then
+				frames = frames + 1
+				local x, y, w, h = f.Position.X.Offset, f.Position.Y.Offset, f.Size.X.Offset, f.Size.Y.Offset
+				if x % 1 ~= 0 or y % 1 ~= 0 or w % 1 ~= 0 or h % 1 ~= 0 then
+					return "off the pixel grid " .. f.Name
+				end
+				local isShadow = f.BackgroundTransparency > 0.01
+				for gy = y / cell, (y + h) / cell - 1 do
+					for gx = x / cell, (x + w) / cell - 1 do
+						local k = gy * 10 + gx
+						local ch = cells[k]
+						if not ch then
+							return fmt("a Frame on an empty cell %d,%d", gx, gy)
+						end
+						if isShadow then
+							if shaded[k] then
+								return fmt("cell %d,%d under two shadow Frames", gx, gy)
+							end
+							shaded[k] = true
+						elseif ch == "~" then
+							return fmt("an opaque Frame on the drop shadow at %d,%d", gx, gy)
+						end
+						top[k] = f
+					end
+				end
+			end
+		end
+		for k, ch in pairs(cells) do
+			local f = top[k]
+			local gx, gy = k % 10, math.floor(k / 10)
+			if not f then
+				return fmt("cell %d,%d not drawn", gx, gy)
+			end
+			if not sameColor(f.BackgroundColor3, colourOf(PI, name, ch)) then
+				return fmt("cell %d,%d %s, want %s", gx, gy, hex(f.BackgroundColor3), hex(colourOf(PI, name, ch)))
+			end
+			local wantT = ch == "~" and 0.7 or 0
+			if math.abs(f.BackgroundTransparency - wantT) > 0.01 then
+				return fmt("cell %d,%d transparency %.2f, want %.2f", gx, gy, f.BackgroundTransparency, wantT)
+			end
+		end
+		if frames > B_FRAME_CAP then
+			return frames .. " Frames"
+		end
+		return ""
+	end
+	local function imagesIn(obj)
+		local n = 0
+		for _, d in ipairs(obj:GetDescendants()) do
+			if d:IsA("ImageLabel") or d:IsA("ImageButton") then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	-- the glyph data, the three-tongue flame, and the colour rule: an icon a caller gives no colour draws in its own
+	-- colours (Host / Lead / NeonKit.Icon), one given a colour draws in that one ink; one-ink glyphs follow their text
+	S.icons_b_glyphs = guarded("icons_b_glyphs", function()
+		local PI, Config = shared("PixelIcon"), shared("Config")
+		if not (PI and Config) then
+			return
+		end
+		T.check(type(PI.Art) == "table", "icons B: PixelIcon.Art holds the redrawn glyphs")
+		if type(PI.Art) ~= "table" then
+			return
+		end
+		local bad, noMono = {}, {}
+		for _, name in ipairs(allB()) do
+			local cells = artCells(PI, name)
+			local ok = cells ~= nil
+			for k, ch in pairs(cells or {}) do
+				if ch == "~" then
+					-- the drop shadow only falls right / below a drawn cell, never inside the glyph
+					local x, y = k % 10, math.floor(k / 10)
+					local up = cells[(y - 1) * 10 + (x - 1)]
+					if not (x >= 1 and y >= 1 and up and up ~= "~") then
+						ok = false
+					end
+				elseif not colourOf(PI, name, ch) then
+					ok = false
+				end
+			end
+			if not ok then
+				bad[#bad + 1] = name
+			end
+			if type(PI.Bitmaps[name]) ~= "string" then
+				noMono[#noMono + 1] = name
+			end
+		end
+		T.check(#bad == 0, "icons B: the 31 redrawn glyphs are 10 x 10 rows (9 x 9 + the drop shadow), every letter a colour of P", table.concat(bad, ", "))
+		T.check(#noMono == 0, "icons B: each has its one-ink twin in PixelIcon.Bitmaps (a caller that gives one colour)", table.concat(noMono, ", "))
+		-- the flame: three tongues and a hollow core, never a second drop (spec 12_elements A, item 9)
+		T.eq(PI.Bitmaps.flame, "....#..../.#..##.../.#..##.#./.##.####./#########/####.####/###...###/.##...##./..#####..",
+			"icons B: the one-ink flame is the three-tongue flame with a hollow core")
+		local flame = artCells(PI, "flame") or {}
+		-- the core's cells are shades of the kit's gold (GoldDeep / Gold / GoldLight / its outline / its spec), the B
+		-- shading's own tones
+		local GOLD = { ["#F2A93B"] = true, ["#FFD24A"] = true, ["#FFE58A"] = true, ["#70420E"] = true, ["#FFFCEC"] = true }
+		local coreOk = true
+		for _, xy in ipairs({ { 4, 5 }, { 3, 6 }, { 4, 6 }, { 5, 6 }, { 3, 7 }, { 4, 7 }, { 5, 7 } }) do
+			local ch = flame[xy[2] * 10 + xy[1]]
+			if not (ch and ch ~= "~" and GOLD[hex(colourOf(PI, "flame", ch))]) then
+				coreOk = false
+			end
+		end
+		T.check(coreOk and flame[0 * 10 + 4] and flame[1 * 10 + 1] and flame[2 * 10 + 7] and not flame[1 * 10 + 7],
+			"icons B: the Flame badge has the three tongues and its gold core")
+		T.eq(Config.Icons.Travel, "signpost", "icons B: Travel draws the signpost (the plain arrow stays a one-ink glyph)")
+		-- the colour rule
+		local red = Color3.fromRGB(200, 30, 40)
+		local parent = holder(300, 300)
+		local own = PI.New(parent, "note", 27, PI.Own)
+		T.eq(own and paintsArt(PI, own, "note", 27) or "nil", "", "icons B: New(.., PixelIcon.Own) draws the cash bills in their own colours, 3 px cells")
+		local mono = PI.New(parent, "note", 27, red)
+		local monoOk = mono ~= nil and #mono:GetChildren() == #PI.Runs("note")
+		for _, f in ipairs(mono and mono:GetChildren() or {}) do
+			if f:IsA("Frame") and not sameColor(f.BackgroundColor3, red) then
+				monoOk = false
+			end
+		end
+		T.check(monoOk, "icons B: New with a colour draws the one-ink twin in that colour")
+		local host = Instance.new("TextLabel")
+		host.Size = UDim2.fromOffset(40, 40)
+		host.TextSize = 30
+		host.TextColor3 = red
+		host.Parent = parent
+		local hosted = PI.Host(host, "token")
+		T.eq(hosted and paintsArt(PI, hosted, "token", 27) or "nil", "", "icons B: Host with no colour draws the gold coin in its own colours")
+		host.TextColor3 = Color3.fromRGB(10, 200, 30)
+		host.TextTransparency = 0.5
+		host.ZIndex = 6
+		local follows = hosted ~= nil
+		for _, f in ipairs(hosted and hosted:GetChildren() or {}) do
+			if f:IsA("Frame") then
+				local base = f:GetAttribute("BaseT") or 0
+				if sameColor(f.BackgroundColor3, host.TextColor3) or math.abs(f.BackgroundTransparency - (1 - (1 - base) * 0.5)) > 0.01 or f.ZIndex ~= 6 then
+					follows = false
+				end
+			end
+		end
+		T.check(follows, "icons B: a hosted own-colour icon keeps its colours and follows the text's transparency (the drop's 30 % kept) and ZIndex")
+		local tinted = PI.Host(host, "gem", nil, red)
+		local tintOk = tinted ~= nil
+		for _, f in ipairs(tinted and tinted:GetChildren() or {}) do
+			if f:IsA("Frame") and not sameColor(f.BackgroundColor3, red) then
+				tintOk = false
+			end
+		end
+		T.check(tintOk, "icons B: Host with a colour draws the one-ink twin in it")
+		local x = PI.Host(host, "x")
+		host.TextColor3 = red
+		local xOk = x ~= nil
+		for _, f in ipairs(x and x:GetChildren() or {}) do
+			if f:IsA("Frame") and not sameColor(f.BackgroundColor3, red) then
+				xOk = false
+			end
+		end
+		T.check(xOk, "icons B: a one-ink glyph (x) still follows its text's colour")
+		local lab = Instance.new("TextLabel")
+		lab.Size = UDim2.fromOffset(200, 30)
+		lab.TextSize = 20
+		lab.Text = "1,250"
+		lab.TextXAlignment = Enum.TextXAlignment.Left
+		lab.Parent = parent
+		local lead = PI.Lead(lab, "gem")
+		local leadIcon = lead and lead:FindFirstChild("Icon")
+		T.eq(leadIcon and paintsArt(PI, leadIcon, "gem", 18) or "nil", "", "icons B: Lead with no colour puts the gem in its own colours before the amount")
+		local leadMono = PI.Lead(lab, "gem", { Colour = red })
+		local lm = leadMono and leadMono:FindFirstChild("Icon")
+		T.check(lm and lm:FindFirstChild("R1") and sameColor(lm.R1.BackgroundColor3, red), "icons B: Lead with opts.Colour draws the one-ink twin")
+		-- (P2 icons review r1, major 7: the top bar's gear read as a grey smudge on the navy plank) a keyline colour draws the
+		-- glyph inside a 1-cell ring of it, under the glyph, with no drop shadow (the mock-up's cream keyline on the navy top
+		-- bar): every glyph cell keeps its colour, the ring round it is the key, nothing else; at most the cap's Frames
+		local key = Color3.fromRGB(255, 247, 230)
+		local function keyedArt(icon, name, px)
+			local cells = artCells(PI, name)
+			local want = {}
+			for k, ch in pairs(cells or {}) do
+				if ch ~= "~" then
+					want[k] = colourOf(PI, name, ch)
+				end
+			end
+			local ring = {}
+			for k in pairs(want) do
+				local x, y = k % 10, math.floor(k / 10)
+				for dy = -1, 1 do
+					for dx = -1, 1 do
+						local kk = (y + dy) * 100 + (x + dx)
+						if not want[(y + dy) * 10 + (x + dx)] or x + dx < 0 or y + dy < 0 or x + dx > 9 then
+							ring[kk] = true
+						end
+					end
+				end
+			end
+			local cell = math.floor(px / 9)
+			local top, frames = {}, 0
+			for _, f in ipairs(icon:GetChildren()) do
+				if f:IsA("Frame") then
+					frames = frames + 1
+					if f.BackgroundTransparency > 0.01 then
+						return "a see-through Frame (a drop shadow) " .. f.Name
+					end
+					local x, y = f.Position.X.Offset / cell, f.Position.Y.Offset / cell
+					for gy = y, y + f.Size.Y.Offset / cell - 1 do
+						for gx = x, x + f.Size.X.Offset / cell - 1 do
+							top[gy * 100 + gx] = f
+						end
+					end
+				end
+			end
+			for kk, f in pairs(top) do
+				local gx, gy = kk % 100, math.floor(kk / 100)
+				if gx >= 50 then -- a negative column (-1) folds to 99 under %
+					gx, gy = gx - 100, gy + 1
+				end
+				local inGlyph = gx >= 0 and gy >= 0 and gx <= 9 and want[gy * 10 + gx]
+				if inGlyph then
+					if not sameColor(f.BackgroundColor3, inGlyph) then
+						return fmt("glyph cell %d,%d %s", gx, gy, hex(f.BackgroundColor3))
+					end
+				elseif not (ring[gy * 100 + gx] and sameColor(f.BackgroundColor3, key)) then
+					return fmt("cell %d,%d is neither the glyph nor its ring", gx, gy)
+				end
+			end
+			for k in pairs(want) do
+				if not top[math.floor(k / 10) * 100 + k % 10] then
+					return "glyph cell " .. k .. " not drawn"
+				end
+			end
+			for kk in pairs(ring) do
+				local gx, gy = kk % 100, math.floor(kk / 100)
+				if gx >= 50 then
+					gx, gy = gx - 100, gy + 1
+				end
+				if not top[gy * 100 + gx] then
+					return fmt("ring cell %d,%d not drawn", gx, gy)
+				end
+			end
+			if frames > B_FRAME_CAP then
+				return frames .. " Frames"
+			end
+			return icon:GetAttribute("Key") and "" or "no Key attribute"
+		end
+		local keyed = PI.New(parent, "gear", 18, PI.Own, key)
+		T.eq(keyed and keyedArt(keyed, "gear", 18) or "nil", "", "icons B: New(.., Own, key) draws the gear in a 1-cell keyline ring, no drop shadow")
+		local khost = Instance.new("TextLabel")
+		khost.Size = UDim2.fromOffset(30, 30)
+		khost.TextSize = 20
+		khost:SetAttribute("IconKey", key)
+		khost.Parent = parent
+		local kh = PI.Host(khost, "bag")
+		T.eq(kh and keyedArt(kh, "bag", 18) or "nil", "", "icons B: a host with the IconKey attribute draws its own-colour icon keyed (the stall)")
+		local tb = io.open("src/client/Controllers/TopBarController.lua", "r")
+		local tbSrc = tb and tb:read("*a") or ""
+		if tb then
+			tb:close()
+		end
+		T.check(tbSrc:find('SetAttribute%("IconKey"') ~= nil, "icons B: the top bar's pill icons wear the keyline (TopBarController sets IconKey)")
+		-- (P2 icons look fin0, minor: the Daily's claimed tick, green on Day 1's green bills, had no rim) a one-ink glyph in
+		-- a keyline too: the ring in the key colour, the glyph in its host's ink; re-inking the host re-inks the glyph only
+		local thost = Instance.new("TextLabel")
+		thost.Size = UDim2.fromOffset(40, 40)
+		thost.TextSize = 30
+		thost.TextColor3 = Color3.fromRGB(63, 154, 69)
+		thost:SetAttribute("IconKey", key)
+		thost.Parent = parent
+		local ti = PI.Host(thost, "check")
+		local function inks(icon)
+			local ringN, glyphN, other = 0, 0, 0
+			for _, f in ipairs(icon and icon:GetChildren() or {}) do
+				if f:IsA("Frame") then
+					if sameColor(f.BackgroundColor3, key) then
+						ringN = ringN + 1
+					elseif sameColor(f.BackgroundColor3, thost.TextColor3) then
+						glyphN = glyphN + 1
+					else
+						other = other + 1
+					end
+				end
+			end
+			return ringN, glyphN, other
+		end
+		local r1, g1, o1 = inks(ti)
+		thost.TextColor3 = Color3.fromRGB(10, 20, 200)
+		local r2, g2, o2 = inks(ti)
+		T.check(ti ~= nil and ti:GetAttribute("Key") == true and r1 > 0 and g1 > 0 and o1 == 0 and r2 == r1 and g2 == g1 and o2 == 0,
+			"icons B: a one-ink glyph keyed (the Daily's tick): the ring in the key colour, the glyph in the host's ink, re-inked without its ring",
+			fmt("ring %d / %d, glyph %d / %d, other %d / %d, key %s", r1, r2, g1, g2, o1, o2, tostring(ti and ti:GetAttribute("Key"))))
+		-- the greyed state: every colour to its grey twin, and back
+		local g = PI.New(parent, "gift", 27, PI.Own)
+		T.check(type(PI.Grey) == "function", "icons B: PixelIcon.Grey(icon, on) exists")
+		if type(PI.Grey) == "function" and g then
+			PI.Grey(g, true)
+			local greyOk = g:GetAttribute("Grey") == true
+			for _, f in ipairs(g:GetChildren()) do
+				if f:IsA("Frame") and f:GetAttribute("BaseT") == nil then
+					local c = f.BackgroundColor3
+					if math.abs(c.R - c.G) > 0.12 or math.abs(c.G - c.B) > 0.12 then
+						greyOk = false
+					end
+				end
+			end
+			T.check(greyOk, "icons B: Grey(icon, true) turns an own-colour glyph grey")
+			PI.Grey(g, false)
+			T.eq(paintsArt(PI, g, "gift", 27), "", "icons B: Grey(icon, false) gives the colours back")
+		end
+		parent:Destroy()
+		K.flushErrors("icons_b_glyphs")
+	end)
+
+	-- (P2 icons review r1, major 1: the odds chips under the pixel machines drew today's smooth vector EggArt, a rounded
+	-- capsule with an ink outline and a smooth highlight: the loudest style break on every card) item 10 A's odds chip egg
+	-- as a 9 x 9 glyph a rarity, PixelIcon "egg_<rarity>": the approved mock-up's egg (make_item10.py EGG9 / odds_egg), its
+	-- rarity's colours (the Secret egg the night ramp and a white star), the 1-cell drop shadow, drawn in its own colours at
+	-- 27 and 18 px within the Frame cap. (The game cuts it from the machines sheet's egg row once that is uploaded; this
+	-- glyph is the code fallback and the same drawing)
+	S.odds_egg_glyphs = guarded("odds_egg_glyphs", function()
+		local PI, Config = shared("PixelIcon"), shared("Config")
+		if not (PI and Config) then
+			return
+		end
+		local EGG = { "...###...", "..#####..", "..#####..", ".#######.", ".#######.", ".#######.", ".#######.", ".#######.", "..#####.." }
+		local colours = {}
+		for _, r in ipairs(Config.Rarities or {}) do
+			colours[r.Id] = r.Color
+		end
+		local parent = holder(300, 300)
+		local bad = {}
+		for _, r in ipairs({ "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }) do
+			local name = "egg_" .. r:lower()
+			local cells = artCells(PI, name)
+			local why = cells and "" or "no Art data"
+			if cells then
+				for y = 0, 9 do
+					for x = 0, 9 do
+						local want = y <= 8 and x <= 8 and EGG[y + 1]:sub(x + 1, x + 1) == "#"
+						local ch = cells[y * 10 + x]
+						if why == "" and want ~= (ch ~= nil and ch ~= "~") then
+							why = fmt("cell %d,%d %s", x, y, want and "missing" or "drawn outside the egg")
+						end
+					end
+				end
+				local pal = PI.Art[name].P
+				local hexes = {}
+				for _, h in pairs(pal) do
+					hexes[h] = true
+				end
+				local c = colours[r]
+				if why == "" and r ~= "Secret" and not (c and hexes[string.format("%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))]) then
+					why = "its colours miss the rarity's own (Config.Rarities)"
+				end
+				if why == "" and r == "Secret" then
+					local star = cells[4 * 10 + 5]
+					if not (star and pal[star] == "FFFFFF") then
+						why = "no white star at 5,4"
+					end
+				end
+				for _, px in ipairs({ 27, 18 }) do
+					local icon = PI.New(parent, name, px, PI.Own)
+					local p = icon and paintsArt(PI, icon, name, px) or "nil"
+					if why == "" and p ~= "" then
+						why = px .. " px: " .. p
+					end
+				end
+			end
+			if why ~= "" then
+				bad[#bad + 1] = r .. ": " .. why
+			end
+		end
+		T.check(#bad == 0, "odds eggs: egg_<rarity> for the 7 rarities is the mock-up's 9 x 9 egg in its rarity's colours (+ the drop shadow), drawn at 27 and 18 px within the Frame cap",
+			table.concat(bad, "; "))
+		parent:Destroy()
+		K.flushErrors("odds_egg_glyphs")
+	end)
+
+	-- Review Focus 2 (missing upload ids): with Config.IconSheet.Id 0 (shipping, nothing uploaded) every redrawn icon draws
+	-- its 9 x 9 glyph at every size, the art sizes too (54 px: 6 px cells), with no image, no error and no empty box
+	S.icons_sheet_fallback = guarded("icons_sheet_fallback", function()
+		local PI, Config = shared("PixelIcon"), shared("Config")
+		if not (PI and Config) then
+			return
+		end
+		T.check(type(Config.IconSheet) == "table" and Config.IconSheet.Id == 0, "icons sheet: Config.IconSheet.Id ships 0 (nothing uploaded)",
+			tostring(type(Config.IconSheet) == "table" and Config.IconSheet.Id))
+		local parent = holder(400, 400)
+		local wrong = {}
+		for _, name in ipairs(allB()) do
+			for _, px in ipairs({ 18, 27, 36, 54 }) do
+				local icon = PI.New(parent, name, px, PI.Own)
+				local why = icon and paintsArt(PI, icon, name, px) or "nil"
+				if why == "" and imagesIn(icon) > 0 then
+					why = "an image"
+				end
+				if why == "" and (icon.Size ~= UDim2.fromOffset(px, px) or icon:GetAttribute("Sheet")) then
+					why = "box " .. tostring(icon.Size)
+				end
+				if why ~= "" then
+					wrong[#wrong + 1] = name .. "@" .. px .. ": " .. why
+				end
+				if icon then
+					icon:Destroy()
+				end
+			end
+		end
+		table.sort(wrong)
+		T.check(#wrong == 0, "icons sheet: with no sheet id every icon draws its 9 x 9 glyph at 18 / 27 / 36 / 54 px (54: 6 px cells), no image",
+			table.concat(wrong, "; ", 1, math.min(#wrong, 6)))
+		-- through a host too (NeonKit.Icon's path): an art-size coin on an empty label
+		local host = Instance.new("TextLabel")
+		host.Size = UDim2.fromOffset(60, 60)
+		host.TextSize = 60
+		host.Parent = parent
+		local big = PI.Host(host, "token", 54)
+		T.eq(big and paintsArt(PI, big, "token", 54) or "nil", "", "icons sheet: a hosted 54 px coin is the 9 x 9 glyph at 6 px cells")
+		T.check(PI.New(parent, "no_such_icon", 54, PI.Own) == nil, "icons sheet: an unknown name is still nil (no error)")
+		parent:Destroy()
+		K.flushErrors("icons_sheet_fallback")
+	end)
+
+	-- with a sheet id (a fake one here) an art-size redrawn icon (36 px and up) is ONE ImageLabel cut from the sheet: its
+	-- 19 x 19 cell (18 x 18 + the drop shadow), ResampleMode Pixelated, 19 cells x px / 18 on whole px; the glyph sizes,
+	-- the names with no art (rarity dots, element badges) and a one-ink draw stay Frames; Grey swaps to the greyed row.
+	-- The cells match the sheet's manifest, and the sheet is there
+	S.icons_sheet_rects = guarded("icons_sheet_rects", function()
+		local PI, Config = shared("PixelIcon"), shared("Config")
+		if not (PI and Config and type(Config.IconSheet) == "table") then
+			T.check(false, "icons sheet: Config.IconSheet exists")
+			return
+		end
+		local cellsOk = type(PI.SheetCells) == "table" and PI.SheetCells.Art == 19
+		T.check(cellsOk, "icons sheet: PixelIcon.SheetCells gives each icon's 19 x 19 cell")
+		if not cellsOk then
+			return
+		end
+		-- the manifest (build/upload_sheets/icons_b.json) and the PNG agree with the cells the game cuts
+		local fh = io.open("build/upload_sheets/icons_b.json", "r")
+		local json = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		local off = {}
+		for _, name in ipairs(B_MAIN) do
+			local c = PI.SheetCells[name]
+			local block = json:match('"' .. name .. '": (%b{})')
+			local jx, jy = block and tonumber(block:match('"x": (%d+)')), block and tonumber(block:match('"y": (%d+)'))
+			if not (type(c) == "table" and c[1] == jx and c[2] == jy) then
+				off[#off + 1] = name
+			end
+		end
+		T.check(json ~= "" and #off == 0, "icons sheet: every one of the 16 art icons has its cell, the same as icons_b.json's", table.concat(off, ", "))
+		local png = io.open("build/upload_sheets/icons_b.png", "rb")
+		local head = png and png:read(24) or ""
+		if png then
+			png:close()
+		end
+		local function u32(s, i)
+			local a, b, c, d = s:byte(i, i + 3)
+			return ((a or 0) * 256 + (b or 0)) * 65536 + (c or 0) * 256 + (d or 0)
+		end
+		local jw, jh = json:match('"size": %[%s*(%d+),%s*(%d+)%s*%]')
+		T.check(head:sub(2, 4) == "PNG" and u32(head, 17) == tonumber(jw) and u32(head, 21) == tonumber(jh),
+			"icons sheet: icons_b.png is there, the size its manifest gives", fmt("%s x %s", tostring(jw), tostring(jh)))
+		local saved = Config.IconSheet.Id
+		Config.IconSheet.Id = 4242424242
+		local parent = holder(400, 400)
+		-- the fake id goes back whatever happens below (a later scenario must see the shipping 0)
+		local okRun, err = pcall(function()
+		local wrong = {}
+		for _, name in ipairs(B_MAIN) do
+			for _, px in ipairs({ 36, 54 }) do
+				local icon = PI.New(parent, name, px, PI.Own)
+				local art = icon and icon:FindFirstChild("Art")
+				local c = PI.SheetCells[name]
+				local dc = px / 18
+				local why = ""
+				if not (icon and icon.Size == UDim2.fromOffset(px, px) and icon:GetAttribute("PixelIcon") == name and icon:GetAttribute("Sheet") == true) then
+					why = "box"
+				elseif not (art and art:IsA("ImageLabel")) then
+					why = "no ImageLabel"
+				elseif art.Image ~= "rbxassetid://4242424242" then
+					why = "image " .. tostring(art.Image)
+				elseif art.ImageRectOffset ~= Vector2.new(c[1], c[2]) or art.ImageRectSize ~= Vector2.new(19, 19) then
+					why = "rect " .. tostring(art.ImageRectOffset) .. " " .. tostring(art.ImageRectSize)
+				elseif art.ResampleMode ~= Enum.ResamplerMode.Pixelated then
+					why = "not Pixelated"
+				elseif art.Size ~= UDim2.fromOffset(19 * dc, 19 * dc) or art.Position ~= UDim2.fromOffset(0, 0) or art.BackgroundTransparency ~= 1 then
+					why = "art box " .. tostring(art.Size) .. " at " .. tostring(art.Position)
+				elseif #icon:GetChildren() ~= 1 then
+					why = #icon:GetChildren() .. " children"
+				end
+				if why ~= "" then
+					wrong[#wrong + 1] = name .. "@" .. px .. ": " .. why
+				end
+			end
+		end
+		T.check(#wrong == 0, "icons sheet: with an id each art-size icon (36 / 54 px) is one ImageLabel, its sheet cell, Pixelated, 19 cells x px / 18",
+			table.concat(wrong, "; ", 1, math.min(#wrong, 6)))
+		local glyph = PI.New(parent, "token", 27, PI.Own)
+		T.check(glyph and imagesIn(glyph) == 0 and paintsArt(PI, glyph, "token", 27) == "", "icons sheet: a glyph size (27 px) stays the 9 x 9 Frames")
+		local dot = PI.New(parent, "rarity_mythic", 54, PI.Own)
+		T.check(dot and imagesIn(dot) == 0 and paintsArt(PI, dot, "rarity_mythic", 54) == "", "icons sheet: a name with no art (a rarity dot) stays the 9 x 9 Frames at 54 px")
+		local inked = PI.New(parent, "token", 54, Color3.fromRGB(200, 30, 40))
+		T.check(inked and imagesIn(inked) == 0 and #inked:GetChildren() == #PI.Runs("token"), "icons sheet: a one-ink draw at 54 px stays the one-ink Frames")
+		local host = Instance.new("TextLabel")
+		host.Size = UDim2.fromOffset(60, 60)
+		host.TextSize = 60
+		host.Parent = parent
+		local hosted = PI.Host(host, "paw", 54)
+		local hart = hosted and hosted:FindFirstChild("Art")
+		host.TextTransparency = 0.4
+		host.ZIndex = 5
+		T.check(hart and math.abs(hart.ImageTransparency - 0.4) < 1e-6 and hart.ZIndex == 5, "icons sheet: a hosted sheet icon follows its text's transparency and ZIndex")
+		local g = PI.New(parent, "gift", 54, PI.Own)
+		if type(PI.Grey) == "function" and g and g:FindFirstChild("Art") then
+			PI.Grey(g, true)
+			local c = PI.SheetCells.gift
+			T.check(g.Art.ImageRectOffset == Vector2.new(c[1], c[2] + PI.SheetCells.GreyY), "icons sheet: Grey(icon, true) cuts the greyed row")
+			PI.Grey(g, false)
+			T.check(g.Art.ImageRectOffset == Vector2.new(c[1], c[2]), "icons sheet: Grey(icon, false) cuts the colour row again")
+		else
+			T.check(false, "icons sheet: PixelIcon.Grey and a sheet gift")
+		end
+		-- under a phone's 0.8 the 54 px art still draws whole screen px a cell (3 x 0.8 = 2.4 -> 2 px)
+		local gui = Instance.new("ScreenGui")
+		local win = Instance.new("Frame")
+		win.Size = UDim2.fromOffset(300, 300)
+		local sc = Instance.new("UIScale")
+		sc.Name = "Fit"
+		sc.Scale = 0.8
+		sc.Parent = win
+		win.Parent = gui
+		local scaled = PI.New(win, "house", 54, PI.Own)
+		local sart = scaled and scaled:FindFirstChild("Art")
+		T.check(sart and math.abs(sart.Size.X.Offset * 0.8 - 19 * 2) < 1e-6 and scaled:GetAttribute("CellPx") == 2,
+			"icons sheet: under a 0.8 scale the 18 x 18 art draws 2 screen px a cell", sart and tostring(sart.Size) or "nil")
+		gui:Destroy()
+		end)
+		Config.IconSheet.Id = saved
+		parent:Destroy()
+		T.check(okRun, "icons sheet: the sheet checks ran to the end", tostring(err))
+		K.flushErrors("icons_sheet_rects")
 	end)
 
 	return S
@@ -5309,14 +5936,27 @@ local function clientScenarios()
 		local pix = icon and icon:FindFirstChild("Icon")
 		T.check(icon and icon:IsA("TextLabel") and icon.Text == "" and icon:GetAttribute("PixelIcon") == "token" and pix and pix:GetAttribute("PixelIcon") == "token",
 			"token icon: NeonKit.Icon(parent, \"Tokens\") is an empty TextLabel hosting the token PixelIcon", icon and (icon.ClassName .. " '" .. tostring(icon.Text) .. "'") or "nil")
-		local rect = pix and pix:FindFirstChild("R1")
+		-- (P2 icons review r1, major 6) the glyph draws in layers, its drop shadow first (PixelIcon.Art[name].L): the check
+		-- reads the first opaque Frame (R1 is a shadow Frame now, at its own 30 % under the text's transparency)
+		local rect = nil
+		for _, f in ipairs(pix and pix:GetChildren() or {}) do
+			if not rect and f:IsA("Frame") and f:GetAttribute("BaseT") == nil then
+				rect = f
+			end
+		end
 		if rect then
-			T.check(pix.Size.X.Offset == 27 and #pix:GetChildren() == #PixelIcon.Runs("token"), "token icon: the coin is 27 px, one Frame per merged run")
+			-- (Pitch 2 item 9 B, owner-approved 2026-11-20) the coin is the redrawn gold coin in its own colours: one Frame per
+			-- merged run of one colour (PixelIcon.ArtRuns), and a caller's TextColor3 no longer tints it (the carved art keeps
+			-- its colours); it still follows the transparency and the ZIndex. A one-ink glyph still follows TextColor3 (the
+			-- "x" below; icons_b_glyphs)
+			T.check(pix.Size.X.Offset == 27 and pix:GetAttribute("Own") == true and #pix:GetChildren() == #PixelIcon.ArtRuns("token"),
+				"token icon: the coin is 27 px, in its own colours, one Frame per merged run of a colour")
+			local before = rect.BackgroundColor3
 			icon.TextColor3 = Color3.fromRGB(10, 200, 30)
 			icon.TextTransparency = 0.5
 			icon.ZIndex = 7
-			T.check(rect.BackgroundColor3 == Color3.fromRGB(10, 200, 30) and math.abs(rect.BackgroundTransparency - 0.5) < 1e-6 and rect.ZIndex == 7,
-				"token icon: the coin follows the icon's TextColor3, TextTransparency and ZIndex")
+			T.check(rect.BackgroundColor3 == before and math.abs(rect.BackgroundTransparency - 0.5) < 1e-6 and rect.ZIndex == 7,
+				"token icon: the coin keeps its own colours and follows the icon's TextTransparency and ZIndex")
 		end
 		local tile = NK.Icon(f, "Pets", 38)
 		T.check(tile and tile:GetAttribute("PixelIcon") == "paw" and tile:FindFirstChild("Icon") and tile:FindFirstChild("Icon").Size.X.Offset == 36,
@@ -11407,6 +12047,117 @@ local function clientScenarios()
 		LKC.flushErrors("shop_currency_once")
 	end)
 
+	-- (Pitch 2 item 9 B; P2 icons review r1, majors 4 and 5) the Shop's own icons: the header shows the shop stall ("bag":
+	-- it was the egg, the same spotted egg as the Eggs tab under it) in its own colours on the gold slot (the mock-up's);
+	-- on PC the rail's icons are the 54 px art size (3 px cells: the header glyph's cell), the label 10 px further right,
+	-- and the Gems tab draws the B gem like the other four (no finer cut gem in the pixel column)
+	S.icons_shop_header_rail = guarded("icons_shop_header_rail", function()
+		for _, s in ipairs({ { 1920, 1080, false, "PC" }, { 844, 390, true, "Phone" } }) do
+			U92.at(s[1], s[2], s[3], "shop icons " .. s[4], "Eggs", false, function(tag, win)
+				local header = win:FindFirstChild("Header", true)
+				local slot = header and header:FindFirstChild("Icon")
+				local hosted = slot and slot:FindFirstChild("Icon")
+				T.check(hosted ~= nil and hosted:GetAttribute("PixelIcon") == "bag" and hosted:GetAttribute("Own") == true,
+					tag .. ": the header's icon is the shop stall in its own colours", hosted and tostring(hosted:GetAttribute("PixelIcon")) or "none")
+				if s[4] ~= "PC" then
+					return
+				end
+				local wrong = {}
+				for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
+					local b = win:FindFirstChild("Tab_" .. tab, true)
+					local label = b and b:FindFirstChild("Label")
+					local host = b and b:FindFirstChild("Icon")
+					local icon = host and host:FindFirstChild("Icon")
+					local want = ({ Eggs = "egg", Gems = "gem", Packs = "box", Passes = "ticket", Boosts = "potion" })[tab]
+					local why = ""
+					if not (icon and icon:GetAttribute("PixelIcon") == want and icon:GetAttribute("Own") == true) then
+						why = "icon " .. tostring(icon and icon:GetAttribute("PixelIcon"))
+					elseif icon.Size.X.Offset ~= 54 then
+						why = "drawn at " .. tostring(icon.Size.X.Offset)
+					elseif not (label and label.AbsolutePosition.X - (icon.AbsolutePosition.X + icon.AbsoluteSize.X) >= 10) then
+						why = "label too close"
+					end
+					if why ~= "" then
+						wrong[#wrong + 1] = tab .. ": " .. why
+					end
+				end
+				T.check(#wrong == 0, tag .. ": every rail tab draws its B icon at the 54 px art size, the label 10 px clear of it", table.concat(wrong, "; "))
+			end)
+		end
+		-- (P2 icons look fin0, major 2: the Shop's gems were still the smooth vector GemIcon, a square turned 45 degrees,
+		-- beside the pixel coins and under the rail's pixel gem: two gem drawings in one window; the approved 10_optA /
+		-- 10_optA_phone draw item 9 B's pixel gem in the balance pill and every gem price plank) at the four screens: the
+		-- Gems pill and every gem plank (the cards' gem spins, the hero's SPIN) hold PixelIcon "gem" in its own colours and no
+		-- cut GemIcon. (minor: the pills' coin was 18 px, the mock-up's about 27) the pills' gem and coin the same size, the
+		-- screen's glyph cell: 27 px (3 px cells) at 1920, 2 px cells at 1280 and on phones. A gem plank's gem is its token
+		-- twin's size (the x3 plank's coin)
+		local function pixel(root, name)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d:GetAttribute("PixelIcon") == name then
+					return d
+				end
+			end
+			return nil
+		end
+		local function cut(root)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				if d.Name == "GemIcon" and d:IsA("Frame") then
+					return true
+				end
+			end
+			return false
+		end
+		for _, s in ipairs({ { 1920, 1080, false, "PC", 3 }, { 1280, 720, false, "PC 0.8", 2 }, { 844, 390, true, "Phone", 2 }, { 390, 844, true, "Portrait", 2 } }) do
+			U92.at(s[1], s[2], s[3], "shop gems " .. s[4], "Eggs", false, function(tag, win)
+				local header = win:FindFirstChild("Header", true)
+				local gp, tp = header and header:FindFirstChild("Balance_Gems"), header and header:FindFirstChild("Balance_Tokens")
+				local gem, coin = pixel(gp, "gem"), pixel(tp, "token")
+				T.check(gem ~= nil and gem:GetAttribute("Own") == true and not cut(gp), tag .. ": the Gems pill draws item 9 B's pixel gem in its own colours (no cut GemIcon)",
+					gem and "" or (cut(gp) and "a GemIcon" or "no pixel gem"))
+				T.check(gem ~= nil and coin ~= nil and gem.Size.X.Offset == coin.Size.X.Offset and gem:GetAttribute("CellPx") == s[5] and coin:GetAttribute("CellPx") == s[5],
+					tag .. ": the pills' gem and coin the same size, " .. s[5] .. " screen px a cell",
+					fmt("gem %s px %s cells, coin %s px %s cells", tostring(gem and gem.Size.X.Offset), tostring(gem and gem:GetAttribute("CellPx")),
+						tostring(coin and coin.Size.X.Offset), tostring(coin and coin:GetAttribute("CellPx"))))
+				local bad, planks = {}, 0
+				local page = win:FindFirstChild("Page_Eggs", true)
+				for _, b in ipairs(page and page:GetDescendants() or {}) do
+					local card = b.Parent
+					while card and not card.Name:match("^ShopCard_") do
+						card = card.Parent
+					end
+					local hero = card ~= nil and card.Name == "ShopCard_Secret" and b.Name == "Spin"
+					if card and b:IsA("GuiButton") and (b.Name == "SpinGems" or hero) and U8.shown(b) then
+						planks = planks + 1
+						local g = pixel(b, "gem")
+						local twin = card and card:FindFirstChild("Spin3", true)
+						local tc = twin and pixel(twin, "token")
+						if not (g and g:GetAttribute("Own") == true) or cut(b) then
+							bad[#bad + 1] = card.Name .. "." .. b.Name .. (cut(b) and ": a GemIcon" or ": no pixel gem")
+						elseif tc and tc.Size.X.Offset ~= g.Size.X.Offset then
+							bad[#bad + 1] = fmt("%s.%s: gem %d px, the x3 coin %d", card.Name, b.Name, g.Size.X.Offset, tc.Size.X.Offset)
+						end
+					end
+				end
+				T.check(planks >= 5 and #bad == 0, tag .. ": every gem price plank (the cards' gem spins, the hero's SPIN) draws the pixel gem, its coin twin's size",
+					fmt("%d planks | ", planks) .. table.concat(bad, "; "))
+			end)
+		end
+		-- (P2 icons look fin0, minor: the 1920 hero's Travel signpost drew 2 px cells, 38 px, the one sheet image off the
+		-- screen's 3 px; without the sheet 4 px) the signpost at the screen's glyph cell: 3 screen px at 1920 (27 px, the
+		-- mock-up's), 2 at 1280
+		for _, s in ipairs({ { 1920, 1080, 3 }, { 1280, 720, 2 } }) do
+			U92.at(s[1], s[2], false, "shop travel icon", "Eggs", true, function(tag, win)
+				local hero = win:FindFirstChild("ShopCard_Secret", true)
+				local travel = hero and hero:FindFirstChild("Travel", true)
+				local icon = travel and pixel(travel, "signpost")
+				T.check(icon ~= nil and U8.shown(travel) and icon:GetAttribute("CellPx") == s[3],
+					tag .. ": the hero's Travel signpost at " .. s[3] .. " screen px a cell (the screen's glyph cell)",
+					icon and fmt("%s px, %s cells", tostring(icon.Size.X.Offset), tostring(icon:GetAttribute("CellPx"))) or "no signpost")
+			end)
+		end
+		LKC.flushErrors("icons_shop_header_rail")
+	end)
+
 	-- (render gate) the Shop fits every grid size: the window inside the screen; on PC (1920x1080, 1280x720) every Eggs
 	-- button (SPIN, x3, the gem spin, the hero's SPIN / TRAVEL) and every Gems buy lies whole inside the body, the page at
 	-- the top (the x3 / gem row was cut by the bottom edge at 1280x720); on a touch phone Roblox's thumbstick and jump
@@ -11914,10 +12665,11 @@ local function clientScenarios()
 	end
 	-- (U9-4 look review: one pixel size per screen) the cell sizes (screen px) of the shown PixelIcons under `root`, as a
 	-- sorted list of distinct values, and the icons whose cell is not one of `allowed`
-	function U94.pixelCells(root, allowed)
+	-- (`skip`: an optional fn(icon) -> true for the icons another check measures)
+	function U94.pixelCells(root, allowed, skip)
 		local seen, odd = {}, {}
 		for _, d in ipairs(root:GetDescendants()) do
-			if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+			if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) and d.AbsoluteSize.X > 0 and not (skip and skip(d)) then
 				local c = d.AbsoluteSize.X / 9
 				local key = fmt("%.2f", c)
 				seen[key] = true
@@ -12324,27 +13076,39 @@ local function clientScenarios()
 				local room = U94.tileRoom(holder, "Cell")
 				T.check(#room == 0, tag .. ": stone round every day tile (3 px to the frame, 4 px between)", table.concat(room, "; ", 1, math.min(#room, 6)))
 				-- (U9-4 look review) one pixel size per screen: every pixel icon in the window at the glyph or the art size,
-				-- one double the other (3 / 6 px cells on PC, 2 / 4 on a phone): the header gift, the sparkles, the ticks, the art
-				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 })
+				-- one double the other (3 / 6 px cells on PC, 2 / 4 on a phone): the header gift, the sparkles, the ticks, the art.
+				-- (P2 icons review r1, major 2) Days 1-6's reward art is left out here: the owner-approved 09_daily_layout B
+				-- mock-up draws it bigger than the screen's art size, 72 px in 4 px cells on PC tiles and 54 px in 3 px cells
+				-- on phone tiles (the reward is the tile's hero); daily_reward_art checks those sizes
+				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 }, function(icon)
+					return icon.Parent ~= nil and icon.Parent.Name == "Chip" and icon.Parent:GetAttribute("Role") ~= nil
+				end)
 				T.check(#odd == 0, tag .. ": every pixel icon at one of the screen's two pixel sizes (" .. (pc and "3 / 6" or "2 / 4") .. " px cells)",
 					table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
-				-- each day's reward on its role's chip, as the HUD's strips colour each currency: cash grass, tokens gold, gems navy;
-				-- (U9-4 look review 2) the art a pixel icon (the gem the pitch's pixel gem in sky, no cut gem in the window)
-				local ROLE = { [4] = { "Cash", Sign.Grass, "note" }, [5] = { "Tokens", Sign.Gold, "token" }, [6] = { "Gems", Sign.Navy, "gem" } }
+				-- each day's reward is its role's pixel art (no cut gem in the window). (Pitch 2 item 9 B + 09_daily_layout B,
+				-- owner-approved 2026-11-20: "no slot or tile behind the art", "the old 'TV screen' cash and 'lump' token are
+				-- gone") the art stands on the tile in its own colours (the cash bills, the gold coin, the gem): the role's
+				-- chip is a clear holder (its Role kept), no block face, no wood edge (was: on a grass / gold / navy chip)
+				local ROLE = { [4] = { "Cash", "note" }, [5] = { "Tokens", "token" }, [6] = { "Gems", "gem" } }
 				local chipBad = {}
 				for i, want in pairs(ROLE) do
 					local c = holder:FindFirstChild("Cell" .. i, true)
 					local chip = c and c:FindFirstChild("Chip", true)
 					local art = nil
 					for _, d in ipairs(chip and chip:GetDescendants() or {}) do
-						art = art or d:GetAttribute("PixelIcon")
+						if not art and d:GetAttribute("PixelIcon") then
+							art = d
+						end
 					end
-					if not (chip and U8.shown(chip) and chip:GetAttribute("Role") == want[1] and sameColor(chip.BackgroundColor3, want[2]) and chip:FindFirstChild("SignEdge") and art == want[3]) then
-						chipBad[#chipBad + 1] = "Cell" .. i .. (chip and (" " .. tostring(chip:GetAttribute("Role")) .. " " .. hex(chip.BackgroundColor3) .. " " .. tostring(art)) or " no chip")
+					local name = art and art:GetAttribute("PixelIcon")
+					if not (chip and U8.shown(chip) and chip:GetAttribute("Role") == want[1] and chip.BackgroundTransparency == 1 and not chip:FindFirstChild("SignEdge")
+						and name == want[2] and art:GetAttribute("Own") == true) then
+						chipBad[#chipBad + 1] = "Cell" .. i .. (chip and (" " .. tostring(chip:GetAttribute("Role")) .. " t" .. tostring(chip.BackgroundTransparency) .. " " .. tostring(name)
+							.. " own " .. tostring(art and art:GetAttribute("Own"))) or " no chip")
 					end
 				end
 				local cut = holder:FindFirstChild("GemIcon", true)
-				T.check(#chipBad == 0 and cut == nil, tag .. ": each day's reward sits on its role's chip (cash grass, tokens gold, gems navy) with its pixel art (no cut gem)",
+				T.check(#chipBad == 0 and cut == nil, tag .. ": each day's reward is its role's pixel art in its own colours, no chip block behind it (no cut gem)",
 					table.concat(chipBad, ", ") .. (cut and " | a GemIcon in the window" or ""))
 				-- (U9-4 look review 2: whole pixels) every pixel icon and its cells on whole screen px (no AnchorPoint 0.5 half px)
 				local halves = U94.halfPixels(holder)
@@ -12696,6 +13460,27 @@ local function clientScenarios()
 					return
 				end
 				local hr = U8.rect(hero)
+				-- (P2 icons look fin0, minor: at 844 x 390 the Claim plank's wood edge touched the tiles' bottom edge, 0 px of
+				-- stone) the Claim's edge 3 screen px or more under every day tile's edge above it, both UIStrokes counted
+				local claim = page and page:FindFirstChild("ClaimButton", true)
+				if claim and U8.shown(claim) then
+					local function edge(o)
+						local st = o:FindFirstChildOfClass("UIStroke")
+						return (st and st.Enabled ~= false and st.Thickness or 0) * k
+					end
+					local c = U8.rect(claim)
+					local tight = {}
+					for i = 1, 6 do
+						local t = cells[i] and U8.shown(cells[i]) and U8.rect(cells[i])
+						if t and t.X < c.R and c.X < t.R and t.B <= c.Y + 0.5 then
+							local gap = (c.Y - edge(claim)) - (t.B + edge(cells[i]))
+							if gap < 3 - 0.01 then
+								tight[#tight + 1] = fmt("Day %d %.1f px", i, gap)
+							end
+						end
+					end
+					T.check(#tight == 0, tag .. ": the Claim's wood edge 3 px or more under the day tiles' edges", table.concat(tight, "; "))
+				end
 				-- the prize stand: the Wisp big, its name, its own countdown inside the card
 				local vp = hero:FindFirstChild("PetViewport", true)
 				local side = vp and math.min(vp.AbsoluteSize.X, vp.AbsoluteSize.Y) or 0
@@ -12808,6 +13593,116 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("daily_layout_b")
+	end)
+
+	-- (P2 icons review r1, major 2: the reward art drew 54 px on PC tiles and 38 on phone tiles, so the gem, the coin and the
+	-- bills floated small in big empty tiles; the approved 09_daily_layout B mock-up draws it 72 px in 4 px cells on PC tiles
+	-- and 54 px in 3 px cells on phone tiles: the reward is the tile's hero) Days 1-6's reward art at those sizes: the icon 72
+	-- design px on PC, 54 on a phone; with the icon sheet (a fake id here) the 18 x 18 art cut from it at 4 screen px a cell
+	-- at 1920, 3 under the 1280 window's 0.8 and on the phones; its drawn box (the drop shadow too) inside the tile's art box,
+	-- clear of the day's label and its amount. Without the sheet (Id 0, shipping) the same 72 / 54 px box draws the 9 x 9
+	-- glyph at whole cells (8 / 6 px)
+	S.daily_reward_art = guarded("daily_reward_art", function()
+		local Config = LoadingH.shared("Config")
+		local saved = Config.IconSheet.Id
+		local function rewardIcon(cell)
+			local chip = cell and cell:FindFirstChild("Chip", true)
+			for _, d in ipairs(chip and chip:GetDescendants() or {}) do
+				if d:GetAttribute("PixelIcon") then
+					return d
+				end
+			end
+			return nil
+		end
+		local function check(s, id, designPx, cellPx, sheet)
+			Config.IconSheet.Id = id
+			U94.at(s[1], s[2], s[3], "daily reward art" .. (sheet and "" or " (no sheet)"), "Daily", "", function(tag, holder)
+				local wrong, crowd = {}, {}
+				for i = 1, 6 do
+					local cell = holder:FindFirstChild("Cell" .. i, true)
+					local icon = rewardIcon(cell)
+					local art = icon and icon:FindFirstChild("Art")
+					local why = ""
+					if not (icon and U8.shown(icon)) then
+						why = "no reward art"
+					elseif icon.Size.X.Offset ~= designPx then
+						why = fmt("%d px, want %d", icon.Size.X.Offset, designPx)
+					elseif sheet and not (art and art:IsA("ImageLabel") and art.ResampleMode == Enum.ResamplerMode.Pixelated) then
+						why = "not the sheet's art"
+					elseif icon:GetAttribute("CellPx") ~= cellPx then
+						why = fmt("%s screen px a cell, want %d", tostring(icon:GetAttribute("CellPx")), cellPx)
+					end
+					if why ~= "" then
+						wrong[#wrong + 1] = "Cell" .. i .. ": " .. why
+					else
+						-- the drawn art (every shown part of the icon) inside the tile's art box, clear of the day and the amount
+						local box = cell:FindFirstChild("Art", true)
+						local br = box and U8.rect(box)
+						local a = { X = math.huge, Y = math.huge, R = -math.huge, B = -math.huge }
+						for _, d in ipairs(icon:GetDescendants()) do
+							if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+								local q = U8.rect(d)
+								a = { X = math.min(a.X, q.X), Y = math.min(a.Y, q.Y), R = math.max(a.R, q.R), B = math.max(a.B, q.B) }
+							end
+						end
+						local day, amount = cell:FindFirstChild("Day", true), cell:FindFirstChild("Amount", true)
+						local bad = not br or a.X < br.X - 0.5 or a.R > br.R + 0.5 or a.Y < br.Y - 0.5 or a.B > br.B + 0.5
+						for _, t in ipairs({ day, amount }) do
+							if t and U8.shown(t) and U8.overlap(a, U8.rect(t)) then
+								bad = true
+							end
+						end
+						if bad then
+							crowd[#crowd + 1] = fmt("Cell%d art %s in box %s", i, U8.show(a), br and U8.show(br) or "-")
+						end
+					end
+				end
+				T.check(#wrong == 0, fmt("%s: Days 1-6's reward art %d px, %d screen px a cell", tag, designPx, cellPx), table.concat(wrong, "; "))
+				T.check(#crowd == 0, tag .. ": each reward's art inside its tile's art box, clear of the day and the amount", table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
+				-- (P2 icons look fin0, minor: the claimed tick kept the tile's centre when the art grew, 11 px low and 4 px
+				-- right of it, and had no rim, green on Day 1's green bills; the 09_daily_layout B mock-up rims it in the
+				-- tile's cream) each claimed day's tick centred on its reward's art (1 screen px or less off), in a 1-cell
+				-- Sign.Tile ring (PixelIcon's keyline: the icon's Key attribute)
+				local Sign = LoadingH.shared("Theme").Sign
+				local function same(c1, c2)
+					return math.abs(c1.R - c2.R) < 0.01 and math.abs(c1.G - c2.G) < 0.01 and math.abs(c1.B - c2.B) < 0.01
+				end
+				local ticks, off = 0, {}
+				for i = 1, 6 do
+					local cell = holder:FindFirstChild("Cell" .. i, true)
+					local host = cell and cell:FindFirstChild("Check", true)
+					local tick = host and host:FindFirstChild("Icon")
+					local icon = rewardIcon(cell)
+					if host and U8.shown(host) and tick and icon then
+						ticks = ticks + 1
+						local t, a = U8.rect(tick), U8.rect(icon)
+						local dx, dy = (t.X + t.R) / 2 - (a.X + a.R) / 2, (t.Y + t.B) / 2 - (a.Y + a.B) / 2
+						local ring = 0
+						for _, f in ipairs(tick:GetChildren()) do
+							if f:IsA("Frame") and f.BackgroundTransparency < 0.01 and same(f.BackgroundColor3, Sign.Tile) then
+								ring = ring + 1
+							end
+						end
+						if math.abs(dx) > 1 or math.abs(dy) > 1 or ring == 0 or tick:GetAttribute("Key") ~= true then
+							off[#off + 1] = fmt("Cell%d: %+.1f, %+.1f px off its art, %d ring frames", i, dx, dy, ring)
+						end
+					end
+				end
+				T.check(ticks >= 1 and #off == 0, tag .. ": each claimed day's tick centred on its reward's art, in a 1-cell cream ring",
+					fmt("%d ticks | ", ticks) .. table.concat(off, "; "))
+			end)
+		end
+		local ok, err = pcall(function()
+			check({ 1920, 1080, false }, 4242424242, 72, 4, true)
+			check({ 1280, 720, false }, 4242424242, 72, 3, true)
+			check({ 844, 390, true }, 4242424242, 54, 3, true)
+			check({ 390, 844, true }, 4242424242, 54, 3, true)
+			check({ 1920, 1080, false }, 0, 72, 8, false)
+			check({ 390, 844, true }, 0, 54, 6, false)
+		end)
+		Config.IconSheet.Id = saved
+		T.check(ok, "daily reward art: the checks ran", tostring(err))
+		LKC.flushErrors("daily_reward_art")
 	end)
 
 	-- (finding 26: the week reward's rainbow sweep and rainbow confetti) a paid week (Weeks 1 -> 2) on High: the banner a gold
@@ -16536,6 +17431,466 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("mouselock_hint_plank")
+	end)
+
+	----------------------------------------------------------------------
+	-- Pitch 2 item 10 A "Workshop machines" (spec docs/superpowers/specs/2026-11-20-pitch2-build-design.md, plan Task 7;
+	-- branch kitb-p2-icons): each roulette its own pixel capsule machine, cut from ONE uploaded sheet
+	-- (build/upload_sheets/machines_a.png) once Config.MachineSheet.Id is set; until then today's drawn machine
+	----------------------------------------------------------------------
+	local MACHINES = { "Cloud", "Storm", "Sky", "Celestial", "Secret" }
+	-- a fresh Eggs page (ShopEggs.Build) laid out at `mode` in a ScreenGui; fn(P) gets each roulette's Machine root
+	-- (P2 icons review r1) `scale`: the page under a window Fit of that scale (1280 x 720: 0.8); away: the player away from
+	-- the Storm Altar on an unrestricted account (the hero's Dim / altar state)
+	local function machinesPage(mode, box, fn, scale, away)
+		local SE = U7.client("UI/ShopEggs")
+		local lp = game:GetService("Players").LocalPlayer
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "SmokeMachines"
+		local page = Instance.new("Frame")
+		page.Name = "Page_Eggs"
+		page.Size = UDim2.fromOffset(box.W, box.H)
+		if scale then
+			local fit = Instance.new("UIScale")
+			fit.Name = "Fit"
+			fit.Scale = scale
+			fit.Parent = page
+		end
+		page.Parent = gui
+		gui.Parent = lp:FindFirstChildOfClass("PlayerGui")
+		local old = { lp:GetAttribute("PaidRandomItemsRestricted"), SE._AtAltar }
+		if away then
+			lp:SetAttribute("PaidRandomItemsRestricted", false)
+			SE._AtAltar = false
+		end
+		local ok, err = pcall(function()
+			SE.Build(page, nil)
+			SE.Layout(page, box, mode)
+			SE.Refresh(page)
+			LKC.advance(0.1)
+			local roots = {}
+			for _, id in ipairs(MACHINES) do
+				local card = page:FindFirstChild("ShopCard_" .. id, true)
+				roots[id] = card and card:FindFirstChild("Machine", true)
+			end
+			fn(roots)
+		end)
+		lp:SetAttribute("PaidRandomItemsRestricted", old[1])
+		SE._AtAltar = old[2]
+		gui:Destroy()
+		LKC.advance(0.1)
+		return ok, err
+	end
+
+	-- Review Focus 2 (missing upload ids): with Config.MachineSheet.Id 0 (shipping, nothing uploaded) every roulette keeps
+	-- today's drawn machine (ShopEggs H.machine: the base, the dome, the glass), no image, no stage, no error
+	S.machines_fallback = guarded("machines_fallback", function()
+		local Config = LoadingH.shared("Config")
+		local ms = Config and Config.MachineSheet
+		T.check(type(ms) == "table" and ms.Id == 0, "machines: Config.MachineSheet.Id ships 0 (nothing uploaded)", tostring(type(ms) == "table" and ms.Id))
+		T.check(type(ms) == "table" and type(ms.Cells) == "table", "machines: Config.MachineSheet.Cells gives each roulette's cell in the sheet")
+		for _, m in ipairs({ { "PC", { W = 1240, H = 834 } }, { "Phone", { W = 790, H = 300 } } }) do
+			local ok, err = machinesPage(m[1], m[2], function(roots)
+				local wrong = {}
+				for _, id in ipairs(MACHINES) do
+					local root = roots[id]
+					local imgs = 0
+					for _, d in ipairs(root and root:GetDescendants() or {}) do
+						if d:IsA("ImageLabel") then
+							imgs = imgs + 1
+						end
+					end
+					if not (root and root:FindFirstChild("Dome") and root:FindFirstChild("Glass") and root:FindFirstChild("Base") and imgs == 0
+						and root:FindFirstChild("Stage") == nil and root:GetAttribute("Sheet") == nil) then
+						wrong[#wrong + 1] = id
+					end
+				end
+				T.check(#wrong == 0, "machines (" .. m[1] .. "): with no sheet id every roulette keeps today's drawn machine (dome, glass, base), no image", table.concat(wrong, ", "))
+			end)
+			T.check(ok, "machines (" .. m[1] .. "): the page builds and lays out", tostring(err))
+		end
+		LKC.flushErrors("machines_fallback")
+	end)
+
+	-- with a sheet id (a fake one here) each roulette is ONE ImageLabel cut from the sheet: its own cell (the four 52 x 60
+	-- drawings, the Secret's 60 x 68; each + its 1-cell drop shadow), ResampleMode Pixelated, a whole number of screen px a
+	-- cell, inside its machine box, standing on its stage; today's frames are gone. The cells match the sheet's manifest
+	S.machines_sheet = guarded("machines_sheet", function()
+		local Config = LoadingH.shared("Config")
+		local ms = Config and Config.MachineSheet
+		if not T.check(type(ms) == "table" and type(ms.Cells) == "table", "machines: Config.MachineSheet exists") then
+			return
+		end
+		local fh = io.open("build/upload_sheets/machines_a.json", "r")
+		local json = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		local off = {}
+		for _, id in ipairs(MACHINES) do
+			local c = ms.Cells[id]
+			local block = json:match('"' .. id .. '": (%b{})')
+			local j = {}
+			for _, k in ipairs({ "x", "y", "w", "h" }) do
+				j[#j + 1] = block and tonumber(block:match('"' .. k .. '": (%d+)'))
+			end
+			if not (type(c) == "table" and c[1] == j[1] and c[2] == j[2] and c[3] == j[3] and c[4] == j[4]) then
+				off[#off + 1] = id
+			end
+		end
+		T.check(json ~= "" and #off == 0, "machines: every roulette's cell in Config is the one machines_a.json gives", table.concat(off, ", "))
+		local sec = ms.Cells.Secret
+		T.check(type(sec) == "table" and sec[3] == 61 and sec[4] == 69 and ms.Cells.Cloud and ms.Cells.Cloud[3] == 53 and ms.Cells.Cloud[4] == 61,
+			"machines: the Secret's cell is its 60 x 68 drawing (+ the drop shadow: 61 x 69), the others 52 x 60 (53 x 61)")
+		local png = io.open("build/upload_sheets/machines_a.png", "rb")
+		local head = png and png:read(24) or ""
+		if png then
+			png:close()
+		end
+		local function u32(s, i)
+			local a, b, c, d = s:byte(i, i + 3)
+			return ((a or 0) * 256 + (b or 0)) * 65536 + (c or 0) * 256 + (d or 0)
+		end
+		local jw, jh = json:match('"size": %[%s*(%d+),%s*(%d+)%s*%]')
+		T.check(head:sub(2, 4) == "PNG" and u32(head, 17) == tonumber(jw) and u32(head, 21) == tonumber(jh),
+			"machines: machines_a.png is there, the size its manifest gives", fmt("%s x %s", tostring(jw), tostring(jh)))
+		local saved = ms.Id
+		ms.Id = 5151515151
+		-- (P2 icons review r1, majors 1 - 3) the four screens' real Eggs pages (render_gui dumps): 1920 x 1080 (REF), 1280 x 720
+		-- (TIGHT, under the window's 0.8 Fit), 844 x 390 and 390 x 844. Option A's numbers: 3 px cells on PC, 2 px on a phone
+		-- and at 1280 (one cell size a screen); the phones show the new machines too (they kept today's: the page showed the
+		-- sheet only when every box fit, and no phone box did); the player away from the altar (the Dim's state)
+		local function absRect(o)
+			return { o.AbsolutePosition.X, o.AbsolutePosition.Y, o.AbsoluteSize.X, o.AbsoluteSize.Y }
+		end
+		local function meets(a, b2)
+			return a[1] < b2[1] + b2[3] - 0.5 and b2[1] < a[1] + a[3] - 0.5 and a[2] < b2[2] + b2[4] - 0.5 and b2[2] < a[2] + a[4] - 0.5
+		end
+		for _, m in ipairs({ { "PC", { W = 1240, H = 834 }, nil, 3, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, 2, "PC" },
+			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
+			local scale, want = m[3] or 1, m[4]
+			local ok, err = machinesPage(m[5], m[2], function(roots)
+				local wrong, offsets, shown = {}, {}, 0
+				for _, id in ipairs(MACHINES) do
+					local root = roots[id]
+					local art = root and root:FindFirstChild("Art")
+					local drawn = root and root:FindFirstChild("Drawn")
+					local c = ms.Cells[id]
+					local why = ""
+					if not (root and root:GetAttribute("Sheet") == true and root:GetAttribute("SheetShown") == true) then
+						why = "no sheet machine shown"
+					elseif not (art and art:IsA("ImageLabel") and art.Visible) then
+						why = "no ImageLabel"
+					elseif art.Image ~= "rbxassetid://5151515151" then
+						why = "image " .. tostring(art.Image)
+					elseif art.ImageRectOffset ~= Vector2.new(c[1], c[2]) or art.ImageRectSize ~= Vector2.new(c[3], c[4]) then
+						why = "rect " .. tostring(art.ImageRectOffset) .. " " .. tostring(art.ImageRectSize)
+					elseif art.ResampleMode ~= Enum.ResamplerMode.Pixelated then
+						why = "not Pixelated"
+					else
+						local cw = art.Size.X.Offset / c[3]
+						local sc = cw * scale
+						local rw, rh = root.Size.X.Offset, root.Size.Y.Offset
+						local ax, ay = art.Position.X.Offset, art.Position.Y.Offset
+						if math.abs(sc - want) > 1e-4 or math.abs(art.Size.Y.Offset - cw * c[4]) > 1e-4 then
+							why = fmt("cells %.2f screen px, want %d", sc, want)
+						elseif ax < -1e-6 or ay < -1e-6 or ax + art.Size.X.Offset > rw + 1e-4 or ay + art.Size.Y.Offset > rh + 1e-4 then
+							why = fmt("art %.1f,%.1f %.1fx%.1f outside its %.1fx%.1f box", ax, ay, art.Size.X.Offset, art.Size.Y.Offset, rw, rh)
+						elseif root:FindFirstChild("Dome") or not (drawn and not drawn.Visible) then
+							why = "today's drawn machine still shows"
+						elseif not (root:FindFirstChild("Stage") and root.Stage.Visible) then
+							why = "no stage"
+						else
+							shown = shown + 1
+						end
+					end
+					-- nothing of the card under the machine's box
+					local card = root and root.Parent
+					if why == "" and card then
+						local mine = absRect(root)
+						for _, name in ipairs({ "NamePlate", "Odds", "Spin", "Spin3", "SpinGems", "Hint", "Title", "OddsLine", "PityChip", "AltarChip", "SpinHolder" }) do
+							local o = card:FindFirstChild(name)
+							if o and o:IsA("GuiObject") and o.Visible and o.AbsoluteSize.X > 0 and meets(mine, absRect(o)) then
+								why = "its box meets " .. name
+								break
+							end
+						end
+					end
+					if why ~= "" then
+						wrong[#wrong + 1] = id .. ": " .. why
+					end
+					offsets[tostring(c and c[1]) .. "," .. tostring(c and c[2])] = true
+				end
+				local n = 0
+				for _ in pairs(offsets) do
+					n = n + 1
+				end
+				T.check(#wrong == 0 and shown == 5, "machines (" .. m[1] .. "): every roulette shows its own sheet cell, one Pixelated ImageLabel at " .. want
+					.. " screen px a cell, inside its box on its stage, clear of the card's rows", table.concat(wrong, "; "))
+				T.check(n == 5, "machines (" .. m[1] .. "): five roulettes, five different cells (each its own machine)", tostring(n))
+				-- the hero: ONE bright vault (the mock-up's): the big egg goes, no Dim over it though away from the altar, no
+				-- box drawn round it (its stage is the card's own navy)
+				local hero = roots.Secret
+				local hb = hero and hero.Parent
+				local egg = hb and hb:FindFirstChild("HeroEgg")
+				local dim = hb and hb:FindFirstChild("Dim")
+				local chip = hb and hb:FindFirstChild("AltarChip")
+				T.check(chip ~= nil and chip.Visible, "machines (" .. m[1] .. "): the hero shows the away state (the altar chip)")
+				T.check(egg ~= nil and not egg.Visible and dim ~= nil and not dim.Visible,
+					"machines (" .. m[1] .. "): the vault is the hero's one art: no big egg beside it, no Dim over it",
+					fmt("egg %s, dim %s", tostring(egg and egg.Visible), tostring(dim and dim.Visible)))
+				local stage = hero and hero:FindFirstChild("Stage")
+				local face = stage and stage:FindFirstChild("Face")
+				T.check(stage ~= nil and stage.BackgroundTransparency >= 0.99 and face ~= nil and face.BackgroundTransparency >= 0.99,
+					"machines (" .. m[1] .. "): the vault stands on the card's navy (no stage box round it)")
+				if m[5] == "Portrait" and hb then
+					-- (P2 icons review r1, minor: an empty navy band of about 30 px under "Travel from the lobby", beside the
+					-- vault, over the Travel bar) the mock-up's column (10_optA_phone): the two odds one over the other, the
+					-- altar chip and the hint run down the vault's height, the bar 20 px or less under the hint; nothing meets
+					local rows, hint, bar = {}, hb:FindFirstChild("Hint"), hb:FindFirstChild("SpinHolder")
+					local oddsLine = hb:FindFirstChild("OddsLine")
+					for _, r in ipairs(oddsLine and oddsLine:GetChildren() or {}) do
+						if r:IsA("Frame") and r.Name:match("^Odds_") and r.Visible then
+							rows[#rows + 1] = absRect(r)
+						end
+					end
+					local stacked = #rows == 2 and math.abs(rows[1][1] - rows[2][1]) <= 1 and rows[2][2] >= rows[1][2] + rows[1][4] - 0.5
+					local h, b = hint and absRect(hint), bar and absRect(bar)
+					local gap = (h and b) and (b[2] - (h[2] + h[4])) or 999
+					local clear = h and chip and not meets(h, absRect(chip)) and rows[2] and not meets(absRect(chip), rows[2])
+					T.check(stacked and gap <= 20 and gap >= 0 and clear, "machines (Portrait): the hero's odds stacked, the altar chip and the hint run down beside the vault, the bar 20 px or less under the hint",
+						fmt("rows %d stacked %s, hint-to-bar %.0f px, clear %s", #rows, tostring(stacked), gap, tostring(clear)))
+				end
+				if m[5] == "PC" then
+					-- the cards: the stage spans the name plate's width, the odds are egg chips, the hint 12 px further up
+					local chips, lifted, span = {}, {}, {}
+					for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+						local root = roots[id]
+						local card = root and root.Parent
+						local plate = card and card:FindFirstChild("NamePlate")
+						if not (plate and math.abs(root.AbsoluteSize.X - plate.AbsoluteSize.X) <= 1 and math.abs(root.AbsolutePosition.X - plate.AbsolutePosition.X) <= 1) then
+							span[#span + 1] = id
+						end
+						local odds = card and card:FindFirstChild("Odds")
+						local rows = 0
+						for _, row in ipairs(odds and odds:GetChildren() or {}) do
+							if row:IsA("Frame") and row.Name:match("^Odds_") then
+								rows = rows + 1
+								local word = row:FindFirstChild("Word")
+								if row.BackgroundTransparency > 0.5 or (word and word.Visible) or not row:FindFirstChild("Egg") then
+									chips[#chips + 1] = id .. "." .. row.Name
+								end
+							end
+						end
+						if rows == 0 then
+							chips[#chips + 1] = id .. ": no odds"
+						end
+						local hint = card and card:FindFirstChild("Hint")
+						local cardRoot = card and card.Parent
+						local foot = cardRoot and cardRoot.AbsolutePosition.Y + cardRoot.AbsoluteSize.Y
+						if not (hint and foot and hint.AbsolutePosition.Y + hint.AbsoluteSize.Y <= foot - 20 * scale + 0.5) then
+							lifted[#lifted + 1] = id
+						end
+					end
+					T.check(#span == 0, "machines (" .. m[1] .. "): each card's stage spans its name plate's width", table.concat(span, ", "))
+					T.check(#chips == 0, "machines (" .. m[1] .. "): each card's odds are egg chips (a stone block, the egg, the percent)", table.concat(chips, ", "))
+					T.check(#lifted == 0, "machines (" .. m[1] .. "): the 'Gems: same odds' line ends 20 px over the card's foot (its lip 12 px clear)", table.concat(lifted, ", "))
+				end
+				if m[1] == "PC" then
+					-- today's drawn machine under a sheet one (shown when a smaller window can't fit the sheet) keeps its
+					-- 200 x 230 shape at the plan's art size, standing at the foot of the box, never stretched to the stage
+					local root = roots.Cloud
+					local drawn = root and root:FindFirstChild("Drawn")
+					T.check(drawn ~= nil and drawn.Size.X.Scale == 0 and drawn.Size.Y.Scale == 0
+						and math.abs(drawn.Size.Y.Offset - math.floor(drawn.Size.X.Offset * 1.15 + 0.5)) <= 1 and drawn.Size.Y.Offset <= root.Size.Y.Offset,
+						"machines (PC): the fallback drawing keeps its own shape in the wider stage", drawn and tostring(drawn.Size) or "no Drawn")
+				end
+			end, m[3], true)
+			T.check(ok, "machines (" .. m[1] .. "): the page builds and lays out with a sheet id", tostring(err))
+		end
+		ms.Id = saved
+		LKC.flushErrors("machines_sheet")
+	end)
+
+	-- (P2 icons review r1, major 1: under the 3 px pixel machines the odds chips drew today's smooth vector EggArt; minor:
+	-- at 1280 the chips were cramped, "60%" 0.4 px from the wood and the egg 1.6 px from it) with the machines sheet each
+	-- card's odds chip holds a hand-pixelled egg, the mock-up's (10_optA: make_item10.odds_egg): "PixelEgg", the rarity's
+	-- "egg_<rarity>" drawn at the screen's one cell size (3 screen px at 1920, 2 at 1280 and on a phone) and cut from the
+	-- machines sheet's egg row (Config.MachineSheet.Eggs, the cells machines_a.json gives) as one Pixelated ImageLabel; the
+	-- EggArt egg hidden. The egg (its drop shadow too) and the percent both inside the chip's face, apart, the percent's
+	-- text 2 px or more clear of the chip's sides. Without an egg cell (a sheet with no egg row) the same egg draws as the
+	-- 9 x 9 PixelIcon glyph in Frames
+	S.machines_egg_chips = guarded("machines_egg_chips", function()
+		local Config = LoadingH.shared("Config")
+		local Theme = LoadingH.shared("Theme")
+		local ms = Config and Config.MachineSheet
+		if not T.check(type(ms) == "table" and type(ms.Eggs) == "table", "egg chips: Config.MachineSheet.Eggs gives each rarity's egg cell in the sheet") then
+			return
+		end
+		local fh = io.open("build/upload_sheets/machines_a.json", "r")
+		local json = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		local eggsJson = json:match('"eggs": (%b{})') or ""
+		local off = {}
+		for _, r in ipairs({ "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }) do
+			local c = ms.Eggs[r]
+			local block = eggsJson:match('"' .. r .. '": (%b{})')
+			local j = {}
+			for _, k in ipairs({ "x", "y", "w", "h" }) do
+				j[#j + 1] = block and tonumber(block:match('"' .. k .. '": (%d+)'))
+			end
+			if not (type(c) == "table" and c[1] == j[1] and c[2] == j[2] and c[3] == j[3] and c[4] == j[4] and c[3] == 10 and c[4] == 10) then
+				off[#off + 1] = r
+			end
+		end
+		T.check(eggsJson ~= "" and #off == 0, "egg chips: each rarity's 10 x 10 egg cell (9 x 9 + the drop shadow) in Config is the one machines_a.json gives",
+			table.concat(off, ", "))
+		local saved = ms.Id
+		ms.Id = 5151515151
+		-- the drawn box of an icon (its Frames or its ImageLabel) in its row's design px
+		local function drawn(icon)
+			local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+			for _, d in ipairs(icon:GetChildren()) do
+				if d:IsA("GuiObject") and d.Visible then
+					local x, y = icon.Position.X.Offset + d.Position.X.Offset, icon.Position.Y.Offset + d.Position.Y.Offset
+					x0, y0 = math.min(x0, x), math.min(y0, y)
+					x1, y1 = math.max(x1, x + d.Size.X.Offset), math.max(y1, y + d.Size.Y.Offset)
+				end
+			end
+			return x0, y0, x1, y1
+		end
+		local function chipsOf(roots, fn)
+			for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+				local root = roots[id]
+				local odds = root and root.Parent and root.Parent:FindFirstChild("Odds")
+				for _, row in ipairs(odds and odds:GetChildren() or {}) do
+					if row:IsA("Frame") and row.Name:match("^Odds_") then
+						fn(id, row, row.Name:sub(6))
+					end
+				end
+			end
+		end
+		for _, m in ipairs({ { "PC", { W = 1240, H = 834 }, nil, 3, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, 2, "PC" },
+			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
+			local want = m[4]
+			local ok, err = machinesPage(m[5], m[2], function(roots)
+				local wrong, cramped, n = {}, {}, 0
+				chipsOf(roots, function(id, row, r)
+					n = n + 1
+					local tag = id .. "." .. r
+					local egg, pix, pct = row:FindFirstChild("Egg"), row:FindFirstChild("PixelEgg"), row:FindFirstChild("Pct")
+					local art = pix and pix:FindFirstChild("Art")
+					local c = ms.Eggs[r]
+					local why = ""
+					if egg and egg.Visible then
+						why = "the vector EggArt egg still shows"
+					elseif not (pix and pix.Visible and pix:GetAttribute("PixelIcon") == "egg_" .. r:lower()) then
+						why = "no pixel egg egg_" .. r:lower()
+					elseif not (art and art:IsA("ImageLabel") and art.Image == "rbxassetid://5151515151") then
+						why = "not cut from the machines sheet"
+					elseif art.ImageRectOffset ~= Vector2.new(c[1], c[2]) or art.ImageRectSize ~= Vector2.new(c[3], c[4]) then
+						why = "rect " .. tostring(art.ImageRectOffset) .. " " .. tostring(art.ImageRectSize)
+					elseif art.ResampleMode ~= Enum.ResamplerMode.Pixelated then
+						why = "not Pixelated"
+					elseif pix:GetAttribute("CellPx") ~= want then
+						why = fmt("%s screen px a cell, want %d", tostring(pix:GetAttribute("CellPx")), want)
+					end
+					if why ~= "" then
+						wrong[#wrong + 1] = tag .. ": " .. why
+						return
+					end
+					-- the egg and the percent inside the chip's face (over its 3 px lip), apart, the text 2 px clear of the sides
+					local cw, chh = row.Size.X.Offset, row.Size.Y.Offset
+					local ex0, ey0, ex1, ey1 = drawn(pix)
+					local tw = Theme.Measure(pct.Text, Theme.FontOf(pct), pct.TextSize, 10000).X
+					local px, pw = pct.Position.X.Offset, pct.Size.X.Offset
+					local tx0 = pct.TextXAlignment == Enum.TextXAlignment.Center and px + (pw - tw) / 2
+						or (pct.TextXAlignment == Enum.TextXAlignment.Right and px + pw - tw or px)
+					local ty0 = pct.Position.Y.Offset + (pct.Size.Y.Offset - pct.TextSize) / 2
+					local tx1, ty1 = tx0 + tw, ty0 + pct.TextSize
+					local apart = ex1 <= tx0 + 0.01 or tx1 <= ex0 + 0.01 or ey1 <= ty0 + 0.01 or ty1 <= ey0 + 0.01
+					-- (the egg a screen px or more under the chip's top: at 1280 it first sat on the wood)
+					if not (ex0 >= 2 - 0.01 and ey0 >= 1 / (m[3] or 1) - 0.01 and ex1 <= cw - 2 + 0.01 and ey1 <= chh - 3 + 0.01) then
+						cramped[#cramped + 1] = fmt("%s: egg %.1f,%.1f..%.1f,%.1f in a %dx%d chip", tag, ex0, ey0, ex1, ey1, cw, chh)
+					elseif not (tx0 >= 2 - 0.01 and tx1 <= cw - 2 + 0.01 and ty0 >= -0.01 and ty1 <= chh - 3 + 0.01 and pct.Visible) then
+						cramped[#cramped + 1] = fmt("%s: '%s' %.1f..%.1f (%.1f wide) in a %d px chip", tag, pct.Text, tx0, tx1, tw, cw)
+					elseif not apart then
+						cramped[#cramped + 1] = fmt("%s: egg %.1f,%.1f..%.1f,%.1f meets '%s' %.1f,%.1f..%.1f,%.1f", tag, ex0, ey0, ex1, ey1, pct.Text, tx0, ty0, tx1, ty1)
+					end
+				end)
+				T.check(n >= 16 and #wrong == 0, "egg chips (" .. m[1] .. "): every odds chip holds its rarity's pixel egg cut from the machines sheet at "
+					.. want .. " screen px a cell (the vector egg hidden)", fmt("%d chips | ", n) .. table.concat(wrong, "; ", 1, math.min(#wrong, 6)))
+				T.check(n >= 16 and #cramped == 0, "egg chips (" .. m[1] .. "): the egg and the percent inside each chip's face, apart, the text 2 px clear of the wood",
+					table.concat(cramped, "; ", 1, math.min(#cramped, 6)))
+				-- (P2 icons look fin0, major 1: at 1280 the percents went 18 -> 17, 13.6 screen px, under render_gui's 14 px
+				-- readability floor) every percent 14 screen px or more. (minor: the chips sat fused to the Spin plank, 1 px of
+				-- cream at 1920, the borders overlapping at 1280 and 844 x 390; the mock-up 10_optA has about 6 px) the chips'
+				-- wood edge 3 screen px or more over the Spin plank's (5 at 1920, the mock-up's gap), both UIStrokes counted
+				local scale = m[3] or 1
+				local small, fused = {}, {}
+				local function strokeOf(o)
+					local st = o and o:FindFirstChildOfClass("UIStroke")
+					return st and st.Enabled ~= false and st.Thickness or 0
+				end
+				chipsOf(roots, function(id, row, r)
+					local pct = row:FindFirstChild("Pct")
+					if pct and pct.Visible and pct.TextSize * scale < 14 - 1e-6 then
+						small[#small + 1] = fmt("%s.%s %.1f px", id, r, pct.TextSize * scale)
+					end
+				end)
+				local need = m[1] == "PC" and 5 or 3
+				for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+					local body = roots[id] and roots[id].Parent
+					local odds, spin = body and body:FindFirstChild("Odds"), body and body:FindFirstChild("Spin")
+					local low, ts = -math.huge, 0
+					for _, row in ipairs(odds and odds:GetChildren() or {}) do
+						if row:IsA("Frame") and row.Name:match("^Odds_") and row.Visible then
+							low = math.max(low, row.AbsolutePosition.Y + row.AbsoluteSize.Y)
+							ts = math.max(ts, strokeOf(row))
+						end
+					end
+					if spin and low > -math.huge then
+						local gap = (spin.AbsolutePosition.Y - strokeOf(spin) * scale) - (low + ts * scale)
+						if gap < need - 0.01 then
+							fused[#fused + 1] = fmt("%s %.1f px", id, gap)
+						end
+					end
+				end
+				T.check(n >= 16 and #small == 0, "egg chips (" .. m[1] .. "): every percent 14 screen px or more (the readability floor)",
+					table.concat(small, "; ", 1, math.min(#small, 6)))
+				T.check(#fused == 0, "egg chips (" .. m[1] .. "): the chips' wood edge " .. need .. " screen px or more over the Spin plank's (not fused to it)",
+					table.concat(fused, "; "))
+			end, m[3], true)
+			T.check(ok, "egg chips (" .. m[1] .. "): the page builds and lays out", tostring(err))
+		end
+		-- a sheet with no egg row: the same egg as the 9 x 9 glyph in Frames, own colours, at the screen's cell
+		local eggs = ms.Eggs
+		ms.Eggs = nil
+		local ok, err = machinesPage("Portrait", { W = 350, H = 552 }, function(roots)
+			local wrong, n = {}, 0
+			chipsOf(roots, function(id, row, r)
+				n = n + 1
+				local pix = row:FindFirstChild("PixelEgg")
+				local frames = 0
+				for _, d in ipairs(pix and pix:GetChildren() or {}) do
+					if d:IsA("Frame") then
+						frames = frames + 1
+					elseif d:IsA("ImageLabel") then
+						frames = -1000
+					end
+				end
+				if not (pix and pix.Visible and pix:GetAttribute("PixelIcon") == "egg_" .. r:lower() and pix:GetAttribute("Own") == true and frames > 0 and pix:GetAttribute("CellPx") == 2) then
+					wrong[#wrong + 1] = id .. "." .. r
+				end
+			end)
+			T.check(n >= 16 and #wrong == 0, "egg chips (no egg cell): each chip's egg is the 9 x 9 glyph in its own colours, Frames, 2 px cells", table.concat(wrong, ", "))
+		end, nil, true)
+		T.check(ok, "egg chips (no egg cell): the page builds and lays out", tostring(err))
+		ms.Eggs = eggs
+		ms.Id = saved
+		LKC.flushErrors("machines_egg_chips")
 	end)
 
 	return S

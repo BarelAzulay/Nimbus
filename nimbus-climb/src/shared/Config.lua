@@ -1470,7 +1470,7 @@ Config.Icons = {
 	Spot = "house",
 	Stats = "stats",
 	Settings = "gear",
-	Travel = "arrow",
+	Travel = "signpost", -- (Pitch 2 item 9 B) the wooden signpost; the plain "arrow" stays a one-ink glyph
 	Obby = "mountain",
 	Dungeon = "key",
 	Ring = "crown",
@@ -1496,6 +1496,41 @@ Config.Icons = {
 	Trove = "chest",
 	Group = "people",
 	Like = "heart",
+}
+
+-- (Pitch 2 item 9 B "Carved soft") the icon set's art-size drawings (18 x 18, 54 px on PC / 36 on a phone) ship as ONE
+-- uploaded PNG sheet, build/upload_sheets/icons_b.png (+ icons_b.json, its cells; tools/build_upload_sheets.py). The
+-- upload is the owner's call, done from the owner's keyed cloud session; nothing is uploaded from a PC. Id: that image's
+-- id. 0 (until then): every icon draws its 9 x 9 glyph in its own colours (shared/PixelIcon), the art sizes too
+Config.IconSheet = {
+	Id = 0,
+}
+
+-- (Pitch 2 item 10 A "Workshop machines") each roulette's own pixel capsule machine (52 x 60 cells, the Secret's vault
+-- 60 x 68) ships as ONE uploaded PNG sheet, build/upload_sheets/machines_a.png (+ machines_a.json; tools/
+-- build_upload_sheets.py writes the Cells below from it). The upload is the owner's call, from the owner's keyed cloud
+-- session. Id: that image's id. 0 (until then): every roulette keeps today's drawn machine (client/UI/ShopEggs H.machine).
+-- Cells: roulette id -> { x, y, w, h } in the sheet (the drawing + its 1-cell drop shadow). Eggs: rarity -> { x, y, w, h }
+-- of the odds chips' 9 x 9 egg (+ its drop shadow) in the sheet's egg row (P2 icons review r1, major 1); a rarity with no
+-- cell draws the same egg as the PixelIcon glyph "egg_<rarity>"
+Config.MachineSheet = {
+	Id = 0,
+	Cells = {
+		Cloud = { 0, 0, 53, 61 },
+		Storm = { 54, 0, 53, 61 },
+		Sky = { 108, 0, 53, 61 },
+		Celestial = { 162, 0, 53, 61 },
+		Secret = { 216, 0, 61, 69 },
+	},
+	Eggs = {
+		Common = { 0, 70, 10, 10 },
+		Uncommon = { 11, 70, 10, 10 },
+		Rare = { 22, 70, 10, 10 },
+		Epic = { 33, 70, 10, 10 },
+		Legendary = { 44, 70, 10, 10 },
+		Mythic = { 55, 70, 10, 10 },
+		Secret = { 66, 70, 10, 10 },
+	},
 }
 
 -- (Pitch 2 item 06 A) the battle top card's boss head portrait: boss id -> the shared/TextureIds key of its baked pixel
