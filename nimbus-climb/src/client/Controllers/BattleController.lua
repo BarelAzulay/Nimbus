@@ -490,7 +490,12 @@ local K = {
 	-- a tall row narrowed CHEER / BACK to 45 px, where CHEER ran onto its edges) the team orders are always the mock's 52 px
 	TEAM_KEY_W_PX = 52,
 	TEAM_KEY_H_PX = 46,
-	TEAM_KEY_GAP_PX = 6,
+	-- (keys look r4: 6 px between the boxes left 2 px between the 2 px frames, CHEER glued to BACK and to the helpers' Swap)
+	-- the mock's 6 px of air between the frames
+	TEAM_KEY_GAP_PX = 10,
+	-- (keys look r4) screen px of air between two of the team's parts' ink (frames and hard shadows counted:
+	-- battle_hud_no_overlap's MIN_GAP is 4)
+	INK_AIR_PX = 4,
 	-- (look review r1: at 360 x 640 BACK stood 18 px over DASH, where a thumb reaching up pulls the team out mid-fight) the
 	-- team orders keep this many screen px off every right-thumb key (MOVE, DASH, RUN)
 	TEAM_OFF_KEYS_PX = 40,
@@ -6696,7 +6701,9 @@ function Hud.Rebuild()
 	Hud.listLeft = false
 	local bandY = K.EDGE
 	local listAside = false -- (P2 fix round C) the strips step aside for the enemy list under the boss strip (below)
-	local bandGap = 8
+	-- (keys look r4: at 360 x 640 the 8 px under the strip left its hard shadow 1.6 px on the fighter card) the strip's shadow,
+	-- the card's 2 px edge and K.INK_AIR_PX of air at the least
+	local bandGap = Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX)
 	if band then
 		Hud.LayoutTop(B, m, 0, 0, K.EDGE, true)
 		-- (keys look r3: at 390 x 844 the fighter card and the enemy list under the strip started 0-0.4 px under its hard
@@ -6704,7 +6711,7 @@ function Hud.Rebuild()
 		-- K.CARD_GAP_PX under the strip (else the 8 px as before: 360 x 640's block needs it)
 		local wide = math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / max(0.05, m.F))
 		if not (isFighting or between) or Hud.BandRoom(B, m, K.EDGE + (Hud.topH or 0) + wide) then
-			bandGap = wide
+			bandGap = max(bandGap, wide)
 		end
 		bandY = K.EDGE + (Hud.topH or 0) + bandGap
 		-- (P2 fix A: at 360 x 640 the fighter card and its helpers under the strip reached the vitals slot, where Cheer up!
@@ -6723,7 +6730,9 @@ function Hud.Rebuild()
 	end
 	if band then
 		local bandBottom = K.EDGE + (Hud.topH or 0)
-		Hud.SetTopReserve(bandBottom * m.F)
+		-- (keys look r4: at 360 x 640 the strips started 2 px into the strip's hard shadow) the band the strip spans reaches
+		-- to its shadow's foot: the HUD's strips start their gap under that
+		Hud.SetTopReserve(bandBottom * m.F + K.SHADOW_PX)
 		curBottom, curLeft, curRight = Hud.CurrencyTop(m)
 		local trb = Hud.HudAttr("TopRightBottom")
 		if curBottom > 0 and trb and trb > 0 then
@@ -7319,6 +7328,27 @@ function Hud.PlaceBlockCount(A)
 	A.Count.Size = UDim2.fromOffset(cw, row.icon)
 end
 
+-- (keys look r4) design px for `px` screen px of air at the HUD's scale
+function Hud.Air(m, px)
+	return math.ceil(px / max(0.05, m and m.F or 1) - 1e-6)
+end
+
+-- (keys look r4) design px from the fighter card's box to its helpers: the card's edge (2 screen px on a phone, 3 on a
+-- PC) and its hard shadow (SignKit.Shadow's Finish.Card on whole screen px), the helper's own 2 px frame and
+-- K.INK_AIR_PX of air; a PC's key cap stands over its cell's top edge (Hud.PlaceHelper: 4 design px wide, 2 compact): that
+-- too
+function Hud.TeamGap(m)
+	local f = max(0.05, m and m.F or 1)
+	local cap = (m and not m.Touch) and (m.Compact and 2 or 4) or 0
+	return math.ceil(SignKit.Px(3, f) + SignKit.Px(Theme.Finish.Card, f) - 1e-6) + cap + Hud.Air(m, 2 + K.INK_AIR_PX)
+end
+
+-- (keys look r4: 6 design px between the cells left helper 1's Swap 0.8 px off helper 2's tags) design px between two
+-- helper cells: their two 2 px frames and K.INK_AIR_PX of air
+function Hud.CellGap(m)
+	return Hud.Air(m, 4 + K.INK_AIR_PX)
+end
+
 -- the fighter card + helper cells (sizes + positions; Team-local); returns the Team block's size
 -- (top: the Team block's top, design px, where Hud.Rebuild is about to put it; else where it stands)
 function Hud.LayoutFighter(B, m, top)
@@ -7329,7 +7359,8 @@ function Hud.LayoutFighter(B, m, top)
 	local barW = w - 2 * pad
 	local y = compact and 8 or 12
 	local nameSize = compact and 20 or 26
-	local nameH = compact and 26 or 32
+	-- (keys look r4: a phone's name row 26 tall for its 22 px Lv tag and 20 px name; 640 x 360's helper column needed the 4)
+	local nameH = compact and 22 or 32
 	F.Name.TextSize = nameSize
 	F.Name:SetAttribute("BaseText", nameSize)
 	local minSize = math.ceil(K.MIN_TEXT_PX / max(0.05, m.F))
@@ -7363,7 +7394,11 @@ function Hud.LayoutFighter(B, m, top)
 		if need > nameW then
 			starsLow = true
 			nameW = barW - lvW - badge - 11 - (tagGap - 5)
-			if need > nameW then
+			-- (keys look r4: the badge under the hearts needs the card 7 design px taller, which 640 x 360's helper column has
+			-- not got) the badge goes down only where the name, as the face measures it (4 % over), does not fit beside it:
+			-- a landscape phone's 232 px row holds "Mallow Kitten" at the floor (117 px), 360 x 640's 210 does not
+			local measured = (okN and typeof(sz) == "Vector2" and sz.X > 0) and (sz.X * 1.04) or need
+			if measured > nameW then
 				-- (360 x 640's narrow card, beside the currency chip: still "Mallow Kitt...") the element's badge goes down too,
 				-- left of the stars (the card's lip already wears the element's colour)
 				badgeLow = true
@@ -7439,7 +7474,12 @@ function Hud.LayoutFighter(B, m, top)
 	-- and is as tall as the tallest of them (the star is 9 whole screen px cells: 18 px drawn at any scale) and 3 px more:
 	-- all of it above the card's lip, the caption, the badge and the stars centred on one line
 	local rowY, rowH = y, capH
-	if starsLow then
+	if starsLow and not badgeLow then
+		-- (keys look r3) the stars alone: the row runs from the hearts' foot, as tall as the 18 screen px star and 3 px more
+		-- (the star's points miss the hearts' tips: battle_hud_no_overlap measures the cells)
+		rowY = livesFoot
+		rowH = max(capH, math.ceil(18 / f0)) + 3
+	elseif starsLow then
 		-- (keys look r4: the heart's 16 px pixel art ran 1.6 px past its 14.4 px box onto the badge's frame under it, and the
 		-- badge's frame 0.6 px onto the lip) the row runs from the hearts' INK (PixelIcon's whole-px cells: 9 of them from
 		-- the icon's padded origin, Host's 18 px icon centred in the heart) and holds the badge with its 2 px frame (or the
@@ -7506,6 +7546,18 @@ function Hud.LayoutFighter(B, m, top)
 		cellH = tile + 4 + L.CdH + 4 + L.H + 4 + L.BuffH + 6 + 28
 	elseif tall then
 		cellH = max(tile + 4 + L.CdH, L.H + 4 + 2 * math.ceil(lvPx * 1.2) + 4) + 4 + 30
+		if Hud.helpersRow then
+			-- (keys look r4: under 360 x 640's boss strip the block had no room for the air the parts keep, the shadows counted,
+			-- and the strip gave way to the old card) helpers side by side take the short phone's cell (Hud.PlaceHelper's
+			-- LvSwap): the Lv tag and SWAP's arrows on the top row, the buff's name under them on two solid lines, 44 design px
+			-- shorter; each cell as wide as the tile, "Lv 100"'s tag and the arrows need
+			L.LvSwap = true
+			L.NameH = 2 * lvPx + 4
+			cellH = max(tile + 4 + L.CdH, L.H + 2 + L.NameH)
+			local lv100 = math.ceil(3.34 * lvPx) + 14
+			cellW = max(cellW, tile + 8 + lv100 + 4 + K.SWAP_ICON_W)
+			L.CellW = cellW
+		end
 	else
 		cellH = max(tile + 4 + L.CdH, L.H + 4 + L.BuffH + 4 + 30)
 		if Hud.ThreeKeys(m) then
@@ -7513,20 +7565,41 @@ function Hud.LayoutFighter(B, m, top)
 			-- stick ring; at 667 x 375 "STONE S...", "TIDE ME...") where the column of Lv / name / SWAP rows would reach the
 			-- stick's ring, the Lv tag and SWAP (its arrows alone) share the top row and the name goes under them, on two lines
 			-- where that column still ends above the ring (Hud.PlaceHelper)
-			local colTop = (tonumber(top) or (Hud.team and Hud.team.Position.Y.Offset) or K.EDGE) + cardH + 8
+			local colTop = (tonumber(top) or (Hud.team and Hud.team.Position.Y.Offset) or K.EDGE) + cardH + Hud.TeamGap(m)
 			local ring = Hud.StickRingTop(m)
-			if colTop + 2 * cellH + 6 > ring then
+			if colTop + 2 * cellH + Hud.CellGap(m) > ring then
+				-- (keys look r4: the air under the fighter card's shadow and between the cells cost 844 x 390 the mock-up's cell,
+				-- Lv / buff / Swap under each other, 5.5 design px short of the ring) first the same rows 2 px tighter each: the
+				-- tags' 14.4 px text in 17.6 px tags (the fighter card's own), SWAP 28 tall (its pad is the 44 px thumb)
+				local tH, tS = lvPx + 4, 28
+				local tight = max(tile + 4 + L.CdH, tH + 4 + tH + 4 + tS)
+				if colTop + 2 * tight + Hud.CellGap(m) <= ring then
+					L.H, L.BuffH, L.SwapH = tH, tH, tS
+					cellH = tight
+				end
+			end
+			if colTop + 2 * cellH + Hud.CellGap(m) > ring then
 				local nameH2 = 2 * math.ceil(lvPx * 1.2) + 2
 				local two = max(tile + 4 + L.CdH, L.H + 2 + nameH2)
 				L.LvSwap = true
-				if colTop + 2 * two + 6 > ring then
+				if colTop + 2 * two + Hud.CellGap(m) > ring then
 					-- (keys lane, keys look r2: at 640 x 360 the 1.2 lines missed the ring by 6 design px and the names read
 					-- "STONE ...", "TIDE M...") the two lines set solid (a line as tall as the text, the label's LineHeight 1:
 					-- capitals have no descenders), 2 px over them
 					nameH2 = 2 * lvPx + 4
 					two = max(tile + 4 + L.CdH, L.H + 2 + nameH2)
 				end
-				if colTop + 2 * two + 6 <= ring then
+				if colTop + 2 * two + Hud.CellGap(m) > ring then
+					-- (keys look r4: the air under the fighter card's shadow and between the cells took 640 x 360's last 10 design
+					-- px, the names read "TIDE M...") the Lv row and the two lines 2 px tighter each: the tag's 14.4 px text in a
+					-- 17.6 px tag (the fighter card's own), the lines 1.6 px over the text
+					local h2, n2 = lvPx + 4, 2 * lvPx + 2
+					local t2 = max(tile + 4 + L.CdH, h2 + 2 + n2)
+					if colTop + 2 * t2 + Hud.CellGap(m) <= ring then
+						L.H, nameH2, two = h2, n2, t2
+					end
+				end
+				if colTop + 2 * two + Hud.CellGap(m) <= ring then
 					L.NameH = nameH2
 					cellH = two
 				else
@@ -7539,14 +7612,18 @@ function Hud.LayoutFighter(B, m, top)
 	L.CellH = cellH
 	Hud.helperLevel = L
 	Hud.helperCellW = cellW
-	local hy = cardH + (compact and 8 or 10)
+	-- (keys look r4: the card's 2 px edge and hard shadow lay 1.6 px on the helpers' Lv tags on every phone, 4 px on a PC's
+	-- key caps) the helpers start that reach, their own 2 px frame and the air below the card's box
+	local hy = cardH + Hud.TeamGap(m)
+	local cellGap = Hud.CellGap(m)
+	L.Gap = cellGap
 	Hud.helperHolder.Position = UDim2.fromOffset(0, hy)
 	-- (P2 fix A r1) a short portrait phone under the boss strip: the two helpers side by side (Hud.Rebuild's Hud.helpersRow)
 	local column = compact and Hud.helpersRow ~= true
 	for i, H in ipairs(Hud.helpers) do
 		local cell = H.Cell
 		cell.Size = UDim2.fromOffset(cellW, cellH)
-		cell.Position = column and UDim2.fromOffset(0, (i - 1) * (cellH + 6)) or UDim2.fromOffset((i - 1) * (cellW + (compact and 6 or 12)), 0)
+		cell.Position = column and UDim2.fromOffset(0, (i - 1) * (cellH + cellGap)) or UDim2.fromOffset((i - 1) * (cellW + cellGap), 0)
 		Theme.SetRole(H.Buff, compact and "Label" or "Heading")
 		H.Level.TextSize = lvPx
 		H.Level:SetAttribute("BaseText", lvPx)
@@ -7557,8 +7634,8 @@ function Hud.LayoutFighter(B, m, top)
 		H.Key.Visible = not m.Touch
 		Hud.PlaceHelper(H)
 	end
-	local helpersH = column and (2 * cellH + 6) or cellH
-	local helpersW = column and cellW or (2 * cellW + (compact and 6 or 12))
+	local helpersH = column and (2 * cellH + cellGap) or cellH
+	local helpersW = column and cellW or (2 * cellW + cellGap)
 	Hud.helperHolder.Size = UDim2.fromOffset(helpersW, helpersH)
 	return max(w, helpersW), hy + helpersH
 end
@@ -7674,10 +7751,10 @@ function Hud.PlaceHelper(H)
 		Hud.PlaceSwapHit(H, L, L.CellW, 30, Hud.helpersRow and 4 or nil)
 	else
 		H.Swap.Position = UDim2.fromOffset(x, by + bh + 4)
-		H.Swap.Size = UDim2.fromOffset(room, 30)
+		H.Swap.Size = UDim2.fromOffset(room, L.SwapH or 30)
 		-- (a landscape phone: the second helper's SWAP sits just above the thumbstick's zone: its pad reaches up, over the
 		-- tags beside the tile, not down)
-		Hud.PlaceSwapHit(H, L, room, 30, 0)
+		Hud.PlaceSwapHit(H, L, room, L.SwapH or 30, 0)
 	end
 end
 
@@ -9654,7 +9731,7 @@ function Hud.StackTop(B, m)
 		local small = min(m.VX, m.VY) <= K.STICK_SMALL_PHONE
 		local stickH = small and ((m.VY > m.VX) and K.STICK_H_TALL or K.STICK_H_WIDE) or K.STICK_H_LARGE
 		local row = (CheerUp.Allowed(B) or Retreat.Allowed(B)) and (K.TEAM_KEY_H_PX + 10) / f or 0
-		return m.H - (stickH + K.TEAM_KEY_GAP_PX) / f - row
+		return m.H - (stickH + 6) / f - row -- (6 px off the stick's zone: no ink there to keep air from)
 	end
 	local v = CheerUp.Layout()
 	if not v then
@@ -10202,10 +10279,10 @@ function CheerUp.TeamSpots(m)
 	local hx, hy = tx + (holder and holder.Position.X.Offset or 0), ty + (holder and holder.Position.Y.Offset or 0)
 	local hw, hh = holder and holder.Size.X.Offset or 0, holder and holder.Size.Y.Offset or 0
 	if m.VX > m.VY and cells > 0 and Hud.helpersRow ~= true then
-		local cellH = (Hud.helperLevel and Hud.helperLevel.CellH) or (hh - 6) / 2
+		local cellH = (Hud.helperLevel and Hud.helperLevel.CellH) or (hh - Hud.CellGap(m)) / 2
 		local spots = {}
 		for i = 1, 2 do
-			spots[i] = { hx + hw + gap + w / 2, hy + (i - 1) * (cellH + 6) + cellH / 2 + h / 2 }
+			spots[i] = { hx + hw + gap + w / 2, hy + (i - 1) * (cellH + Hud.CellGap(m)) + cellH / 2 + h / 2 }
 		end
 		return spots, w, h
 	end
@@ -10224,10 +10301,10 @@ function CheerUp.TeamSpots(m)
 	-- card pushed the portraits down to Roblox's stick, and the row under them landed on it, 2 px off the screen's foot) where
 	-- the row under them has no room, the orders go beside the portraits, as on a wide phone: one by each helper, else (DASH
 	-- left of MOVE stands by the second helper) a row by the first; nothing clear (never seen): the row under them
-	local cellH = Hud.helpersRow and hh or ((Hud.helperLevel and Hud.helperLevel.CellH) or (hh - 6) / 2)
+	local cellH = Hud.helpersRow and hh or ((Hud.helperLevel and Hud.helperLevel.CellH) or (hh - Hud.CellGap(m)) / 2)
 	local x = hx + hw + gap + w / 2
 	if not Hud.helpersRow then
-		local beside = { { x, hy + cellH / 2 + h / 2 }, { x, hy + cellH + 6 + cellH / 2 + h / 2 } }
+		local beside = { { x, hy + cellH / 2 + h / 2 }, { x, hy + cellH + Hud.CellGap(m) + cellH / 2 + h / 2 } }
 		if CheerUp.SpotsClear(m, beside, w, h) then
 			return beside, w, h
 		end
