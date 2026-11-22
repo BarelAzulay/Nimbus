@@ -80,9 +80,10 @@
 --              release: a forward thrust + nod and a wing downbeat; soft landing.
 --   Hurt       (Pitch 2 item 5 "Bounce in" A, the approved mock's bitten pet; it was a squash dip into the floor + a flinch
 --              0.3 turned about the middle) one rigid body pivoted on its paw lines (`feet`): knocked back 0.38 in a 0.10
---              jolt off the floor (0.12 s), the head snapped back (~7 deg nose up), a springy rock (~4 deg nose down onto
+--              jolt off the floor (0.14 s), the head snapped back (~7 deg nose up), a springy rock (~4 deg nose down onto
 --              the front paws, back) dying away, home over the mock's 0.30 .. 0.62 s with a low lift (0.025); nothing
---              under the floor, nothing slides; an evolved body (feet Hop) x its Hop; beats in seconds (p 1 = HURT_SECS
+--              under the floor, nothing slides; an evolved body (feet Hop 0.78) knocked back x 0.75, jolted and rocked
+--              x 0.8 (the mock's); beats in seconds (p 1 = HURT_SECS
 --              0.62, AttackFx's K.HURT). `amp` = the hit's power (nil = 1). `reach` = a re-hit's hits: { Secs, { Age,
 --              Power }, ... }: each reacts on its own time and the reactions add (the mock's), so a re-hit starts where the
 --              pet is, never pulled toward its biter, and stacks on top. Wings clamp down, tail tucks, halo knocked askew,
@@ -153,7 +154,12 @@ local HURT_SECS = 0.62
 PetPoses.HURT_SECS = HURT_SECS
 local KNOCK = 0.38 -- studs: knocked back
 local JOLT = 0.10 -- studs: the small jolt off the floor the knock-back flies in
-local HURT_OUT = 0.12 -- s: knocked back in that jolt (in the air: nothing slides)
+-- s: knocked back in that jolt (in the air: nothing slides). (look review r3 minor: "stacked knock-back runs 5-10 % over
+-- the mock") the mock's out3(v / 0.14), was 0.12: the knock-back arrived early and the stacked hits ran over
+local HURT_OUT = 0.14
+-- (look review r3 minor) the mock's evolved Sunbeam Bear (motion_pitch.enemy_new, heavy) is knocked back x 0.75 and
+-- jolted / rocked x 0.8: a body's Hop weight (EVO_HOP 0.78) maps onto those two, 1 stays 1
+local HURT_HEAVY_Z, HURT_HEAVY_Y = 0.25 / 0.22, 0.20 / 0.22
 local HURT_ROCK = 13 -- deg: the springy rock's first swing (the head snapped back)
 local HURT_HOME0 = 0.30 -- s: the way home starts (the mock's), home at HURT_SECS
 -- studs: (look review r2, minor 1: the 0.06 hop at 0.28 .. 0.50 read as a second bounce) the way home is one low, slow
@@ -488,7 +494,8 @@ end
 -- 0.1 into the floor and rolled a side paw under it) one rigid body like the melee motion, pivoted on its paw lines:
 -- knocked back KNOCK in the air (a JOLT off the floor over HURT_OUT: nothing slides), the head snapped back (nose up), a
 -- springy rock (nose down onto the front paws, up again) dying away, home over the mock's way home with a low lift
--- (HURT_HOME: nothing slides); an evolved body (feet Hop 0.78) moves x its Hop. Its beats run in seconds: p 1 =
+-- (HURT_HOME: nothing slides); an evolved body (feet Hop 0.78) is knocked back x 0.75, jolted and rocked x 0.8 (the
+-- mock's heavy lanes: HURT_HEAVY_Z / _Y). Its beats run in seconds: p 1 =
 -- HURT_SECS (AttackFx's K.HURT). `amp` = the hit's power (nil = 1; a Double strike's re-hit 0.5). `hits` (Sample's reach;
 -- look review r2, major 2: the mock ADDS each hit's reaction) = a re-hit's list of every hit it plays, its own included:
 -- { Secs = its length in seconds (p 1), { Age = the hit's own reaction time at p 0 (an earlier hit > 0; its own, landing
@@ -521,9 +528,10 @@ POSES.Hurt = function(f, p, _, amp, hits, feet)
 	else
 		add(t, hurtPower(amp))
 	end
-	f.z = KNOCK * w * z
-	f.y = w * y
-	f.pitch = w * pitch
+	local wz, wy = 1 - (1 - w) * HURT_HEAVY_Z, 1 - (1 - w) * HURT_HEAVY_Y
+	f.z = KNOCK * wz * z
+	f.y = wy * y
+	f.pitch = wy * pitch
 	f.paw = true
 	f.raise = -22 * env -- wings clamp down
 	f.back = 10 * env
