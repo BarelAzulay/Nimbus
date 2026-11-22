@@ -5,7 +5,8 @@ the blink lids from what it carved.
 API (cells = dict (x, y, z) -> palette key of the Body group, sculpted voxels at mesh K):
     restore_carved_eyes(cells, lid_cells, strict)    undo PetBuilder.carveEyes (uses bp.lid_cells)
     eyes = eye_specs(bp)                             [(cx, cy, rx, ry, kind, mask)] design units, one per eye
-    eyes = low_eye_specs(bp)                         the same, drawing the game's Low eye masks 1:1 (kind "pixel")
+    eyes = low_eye_specs(bp, high_k)                 the same, drawing the game's Low eye masks 1:1 (kind "pixel"),
+                                                     placed against the High mesh's eye (low_eye_column)
     lids = carve_eyes(cells, eyes, K, style)         carve them; returns per-eye lid cell lists [(x, y, z, key)]
     lid_groups(lids, single=False)                   -> [{x,y,z: key}] PetBuilder lidBoxes layout per eye
 Eye styles ("cute" default): lash rim on top, a big dark pupil, a lighter iris crescent below, a glint row, a large
@@ -81,21 +82,57 @@ def eye_specs(bp):
     return out
 
 
-def low_eye_specs(bp):
+def low_eye_column(x_outer, mask, w, K, high_k, fits=None):
+    """the Low eye's outer column (voxels at K, > 0) for a w-wide Low eye, against the High eye of the pet's High
+    mesh: PetBuilder carves the High `mask` at high_k with its outer column at vx(x_outer) (design units).  The Low eye
+    is wider than the High one (4 coarse voxels against 6 fine ones), so it cannot match both edges: it keeps at
+    least half the High eyes' spacing (a single gap column put the nose against both eyes and the eye onto the snout)
+    and, among those columns, sits nearest the High eye's centre (look review of 5cb4b2e: centred on eye_specs' design
+    centre the pair sat up to 1.4 Low voxels inside the High eye, cross-eyed).  fits(R): the whole eye lands on the
+    face at column R; a narrow head (evo1 obsidian phoenix: 9 voxels wide) gives up the spacing before the fit."""
+    X_h = int(math.floor(abs(x_outer) * high_k + 0.5))
+    xs = [X_h - c for c in range(max(len(r) for r in mask)) if any(c < len(r) and r[c] in EYE_KEYS for r in mask)]
+    inner, outer = (min(xs) - 0.5) / high_k, (max(xs) + 0.5) / high_k  # design units (High and Low share the grow)
+    best = None
+    for R in range(w, w + 64):
+        spaced = 2 * (R - w + 0.5) / K >= inner - 1e-9  # the Low gap >= half the High gap
+        fit = fits is None or fits(R)
+        d = abs((R - (w - 1) / 2.0) / K - (inner + outer) / 2.0)
+        score = (not fit, not spaced, d)
+        if best is None or score < best[0]:
+            best = (score, R)
+    return best[1]
+
+
+def low_eye_specs(bp, high_k=None, cells=None):
     """face option {"eyes": "low"} (the evolved Low LOD keys): every eye that has a Low version in the game
     (PetBuilder EYE_MASKS <kind>Low, exported as LowMask by the bridge) is drawn with it, one mesh voxel per mask
-    pixel, centred where eye_specs puts the High eye.  Scaling a big High mask down to a coarse grid drops whole rows
-    and columns (Pitch 2 item 7: the 6 x 7 evolved eye lost its lash, glint or pupil at K 0.65); the game's own Low
-    eye keeps every feature (lash, highlight, pupil, iris, glint, the fierce slant).  Eyes without a Low mask keep
-    their eye_specs entry."""
+    pixel.  Scaling a big High mask down to a coarse grid drops whole rows and columns (Pitch 2 item 7: the 6 x 7
+    evolved eye lost its lash, glint or pupil at K 0.65); the game's own Low eye keeps every feature (lash, highlight,
+    pupil, iris, glint, the fierce slant).  high_k (face option highK, the pet's High mesh K) places it across by
+    low_eye_column, on the face `cells` (the body before the carve); without it (or without the eye's XOuter) it is
+    centred where eye_specs puts the High eye.  The row is eye_specs' either way.  Eyes without a Low mask keep their
+    eye_specs entry."""
     out = []
+    fm = front_map(cells) if cells is not None else None
     for e, spec in zip(bp.eyes, eye_specs(bp)):
         low = e.get("LowMask")
         if not low:
             out.append(spec)
             continue
+        w, h = max(len(r) for r in low), len(low)
         cx, cy = spec[0], spec[1]
-        out.append((cx, cy, max(len(r) for r in low) / 2.0, len(low) / 2.0, "pixel", list(low)))
+        xo = e.get("XOuter")
+        if high_k and xo is not None:
+            Y_hi = _pixel_box(cx, cy, w, h, bp.K)[1]
+
+            def fits(R, xo=xo, Y_hi=Y_hi, low=low, w=w):
+                X_hi = R if xo > 0 else -R + w - 1
+                return fm is None or all((X_hi - i, Y_hi - j) in fm for j, line in enumerate(low)
+                                         for i, ch in enumerate(line) if ch in EYE_KEYS)
+            R = low_eye_column(xo, e["Mask"], w, bp.K, float(high_k), fits)
+            cx = math.copysign((R - (w - 1) / 2.0) / bp.K, xo)  # _pixel_box gives back column R
+        out.append((cx, cy, w / 2.0, h / 2.0, "pixel", list(low)))
     return out
 
 

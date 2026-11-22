@@ -37,7 +37,8 @@ FACE = {"eyes": "lua", "features": False}
 # Low: the game's own Low eye (EvoLow / EvoFierceLow, the eye the Low Part build draws, unchanged by the trim) one
 # mesh voxel per pixel.  Before Pitch 2 item 7 the Low keys scaled the High mask down; the trimmed 6 x 7 High eye then
 # lost its lash, glint or pupil at K 0.65 (the owls' eyes vanished into their painted EyeRing disc), see
-# faces.low_eye_specs
+# faces.low_eye_specs.  Each Low entry adds "highK", the K of its pet's High mesh (high_k below): the Low eye is placed
+# against that mesh's eye (faces.low_eye_column; the look review of 5cb4b2e found it 1-1.4 Low voxels inside on 16 keys)
 FACE_LOW = {"eyes": "low"}
 # Pitch 2 item 7 (evolved eyes A Trim): the smaller eyes have fewer triangles, so the budget loop of build_all.py
 # would stop one K step earlier on 11 keys and re-voxelize the WHOLE pet on a finer grid. Every key the pre-trim build
@@ -99,6 +100,15 @@ def sfx(lod):
     return "_low" if lod == "Low" else ""
 
 
+def high_k(stage, pid):
+    """the K the High body key of (stage, pet) is built at: its catalog k, times 0.9 per kStep (the same float
+    build_all.py's budget loop starts from)"""
+    k = K[(stage, "High")]
+    for _ in range(K_STEP.get("evo%d_%s" % (stage, pid), 0)):
+        k *= 0.9
+    return k
+
+
 def wing_key(pid, style, side, lod):
     return "evowing_%s_%s_%s%s" % (pid, style, side, sfx(lod))
 
@@ -116,7 +126,7 @@ def entries():
                 body = "evo%d_%s%s" % (stage, pid, sfx(lod))
                 e = {"key": body, "type": "pet", "pet": pid, "stage": stage, "k": k,
                      "budget": "evo%dBody%s" % (stage, "Low" if low else ""), "passes": PASSES_LOW if low else PASSES,
-                     "face": FACE_LOW if low else FACE,
+                     "face": dict(FACE_LOW, highK=high_k(stage, pid)) if low else FACE,
                      "description": "Evolved pet: %s, %s evolution, %s" % (
                          pid.replace("_", " "), "first" if stage == 1 else "second", lod)}
                 if body in K_STEP:

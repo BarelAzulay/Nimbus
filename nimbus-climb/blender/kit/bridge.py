@@ -175,7 +175,7 @@ function D.pet(id, look, stage, detail, k, wantPre)
 		return rows
 	end
 	for i, e in ipairs(A.Eyes or {}) do
-		eyes[i] = { XLeft = e.XLeft, Y = e.Y, Mask = maskRows(e.Mask), LowMask = maskRows(e.LowMask) }
+		eyes[i] = { XLeft = e.XLeft, Y = e.Y, Mask = maskRows(e.Mask), LowMask = maskRows(e.LowMask), XOuter = e.XOuter }
 	end
 	local lids = {}
 	for i, cells in ipairs(A.LidCells or {}) do

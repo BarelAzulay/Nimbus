@@ -767,22 +767,25 @@ end
 -- eye (+X side, screen left); the left eye is placed mirror-symmetrically, with the same (unmirrored) mask.
 -- Only for the Phase 6 kit (PetBuilder._Blueprint, MESH_K set) a High eye also carries LowMask, the Low version of
 -- the same eye (EYE_MASKS[kind .. "Low"], mirrored like Mask): the kit's Low LOD meshes draw it (blender/kit/
--- detail/faces.py low_eye_specs). The game never reads it.
+-- detail/faces.py low_eye_specs). The game never reads it. With LowMask the eye also carries XOuter, xOuter in design
+-- units (negative on the left eye): the kit places the Low eye against the High eye of the pet's High mesh, which
+-- sits on another grid (faces.low_eye_specs).
 local function addEyes(ctx, xOuter, yTop, kind, mirror)
 	local name = (kind or "Round") .. (ctx.High and "" or "Low")
 	local mask = parseMask(EYE_MASKS[name] or EYE_MASKS.Round)
 	local lowSrc = (MESH_K and ctx.High) and EYE_MASKS[(kind or "Round") .. "Low"] or nil
 	local low = lowSrc and parseMask(lowSrc) or nil
+	local outer = low and xOuter or nil
 	local w = #mask[1]
 	local X, Y = vx(xOuter), vx(yTop)
 	-- right eye: screen column 1 is the largest x
-	ctx.Eyes[#ctx.Eyes + 1] = { XLeft = X, Y = Y, Mask = mask, LowMask = low }
+	ctx.Eyes[#ctx.Eyes + 1] = { XLeft = X, Y = Y, Mask = mask, LowMask = low, XOuter = outer }
 	local other, otherLow = mask, low
 	if mirror then
 		other = mirrorMask(mask)
 		otherLow = low and mirrorMask(low) or nil
 	end
-	ctx.Eyes[#ctx.Eyes + 1] = { XLeft = -(X - w + 1), Y = Y, Mask = other, LowMask = otherLow }
+	ctx.Eyes[#ctx.Eyes + 1] = { XLeft = -(X - w + 1), Y = Y, Mask = other, LowMask = otherLow, XOuter = outer and -outer }
 end
 
 -- Carves every eye 1 voxel into the face: the frontmost voxel of each eye column is removed and the voxel behind

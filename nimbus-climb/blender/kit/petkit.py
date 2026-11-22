@@ -79,7 +79,7 @@ def face_pass(bp, body_cells, entry):
     face.eyes 'lua' (or a pet without Lua eye anchors) they run on the Lua-carved body and PetBuilder's own lids are
     returned; on the procedural path they run after the carved eyes are restored, before the kit carves its eyes.
     face.eyes 'low' is the procedural path with the game's Low eye masks drawn one voxel per pixel
-    (faces.low_eye_specs; the evolved Low LOD keys)."""
+    (faces.low_eye_specs; the evolved Low LOD keys), placed against the High mesh's eye (face.highK)."""
     opts = entry.get("face", {})
     mode = opts.get("eyes", "procedural")
     if mode not in ("procedural", "low") or not bp.eyes:
@@ -89,7 +89,7 @@ def face_pass(bp, body_cells, entry):
     if opts.get("features", True):
         faces.rescale_face_features(body_cells, bp.K, tuple(opts.get("featureKeys", faces.FACE_KEYS)))
     run_passes(bp, body_cells, entry)
-    specs = faces.low_eye_specs(bp) if mode == "low" else faces.eye_specs(bp)
+    specs = faces.low_eye_specs(bp, opts.get("highK"), body_cells) if mode == "low" else faces.eye_specs(bp)
     lids = faces.carve_eyes(body_cells, specs, bp.K, scale=float(opts.get("eyeScale", 1.1)),
                             inflate=float(opts.get("eyeInflate", 0.0)))
     return faces.lid_groups(lids, single=bool(opts.get("singleLid", False)))

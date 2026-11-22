@@ -13,8 +13,9 @@ Checks
               hyb_bear_ears) are picked by PetBuilder for earless bodies (a LEAD REQUEST check until runtime-pets
               adds it)
   evo eyes    (Pitch 2 item 7) every evolved Low body shows the game's whole Low eye in both eyes, mirrored, with
-              lash / highlight / pupil / iris / glint (the owls in their EyeRing disc), and the face under the game's
-              carved eye comes back outside it
+              lash / highlight / pupil / iris / glint (the owls in their EyeRing disc), the face under the game's
+              carved eye comes back outside it, and the Low eye sits on the High mesh's eye (nearest its centre in
+              studs, keeping at least half the High eyes' spacing)
   prop hooks  every catalog prop entry names a builder registered by kit/props/*.py ("<class>: hook <name> missing")
   vfx         the pet attack VFX cores (catalog vfx): one white Neon part Core per key, args.size, manifest up to date
   obby        the obby cloud set (catalog obby): one baked part per key, built twice = the committed manifest, each
@@ -241,10 +242,11 @@ def test_evo_eyes(br):
     from detail import faces
     cat = build_all.load_catalogs()["evolved"]
     lows = [e for e in cat["keys"] if e["type"] == "pet" and e.get("lod") == "Low"]
+    by_key = {e["key"]: e for e in cat["keys"] if e["type"] == "pet"}
     check(lows and all(e.get("face", {}).get("eyes") == "low" for e in lows),
           "evo eyes: every evolved Low body draws the game's Low eye (face eyes 'low')",
           sorted(e["key"] for e in lows if e.get("face", {}).get("eyes") != "low")[:6])
-    bad, lost_face = [], []
+    bad, lost_face, placed = [], [], []
     for e in lows:
         bp = petkit.pet_blueprint(br, e, evo_low_k(e))
         want = [sum(1 for ch in "".join(ey.get("LowMask") or []) if ch in faces.EYE_KEYS) for ey in bp.eyes]
@@ -272,6 +274,34 @@ def test_evo_eyes(br):
             probs.append("the eyes do not mirror")
         if probs:
             bad.append((e["key"], probs))
+        # where the Low eye sits (look review of 5cb4b2e: 16 keys pinched 0.9-1.4 Low voxels inside the High eye,
+        # cross-eyed, the nose in one gap column touching both eyes; 4 evo2 keys 0.8 outside): the High eye of the
+        # same pet, as its own High mesh carves it (the High key's blueprint at its K, PetBuilder's Lua eye), in studs.
+        # The Low eye (4 wide) is wider than the High one (6 voxels of a finer grid), so it cannot match both edges:
+        # it keeps at least half the High eyes' spacing (unless one column out would hang off the head: the evo1
+        # obsidian phoenix's head is 9 voxels wide at Low), and no other column keeping that spacing is nearer the
+        # High eye's centre
+        hi = by_key[e["key"][: -len("_low")]]
+        bph = petkit.pet_blueprint(br, hi, evo_low_k(hi))
+        vsh, vsl = 0.1 * bph.grow / bph.K, 0.1 * bp.grow / bp.K
+        eh = bph.eyes[0]
+        hx = [eh["XLeft"] - c for c in range(max(len(r) for r in eh["Mask"]))
+              if any(c < len(r) and r[c] in faces.EYE_KEYS for r in eh["Mask"])]
+        h_in, h_out = (min(hx) - 0.5) * vsh, (max(hx) + 0.5) * vsh
+        lx = sorted({x for (x, y) in eyes[1]})
+        if lx:
+            l_in, l_out = (lx[0] - 0.5) * vsl, (lx[-1] + 0.5) * vsl
+            shift = ((l_in + l_out) - (h_in + h_out)) / 2.0
+            keep = lambda inner: 2 * inner >= h_in - 1e-6  # the Low gap >= half the High gap
+            why = None
+            out_fits = all((x + 1, y) in fm for (x, y) in eyes[1])
+            if not keep(l_in) and out_fits:
+                why = "gap %.2f studs < half the High eyes' gap %.2f" % (2 * l_in, 2 * h_in)
+            elif (shift < -0.5 * vsl - 1e-6 and out_fits) or (shift > 0.5 * vsl + 1e-6 and keep(l_in - vsl)):
+                why = "centre %+.2f Low voxels off the High eye (%.2f-%.2f studs; Low %.2f-%.2f)" % (
+                    shift / vsl, h_in, h_out, l_in, l_out)
+            if why:
+                placed.append((e["key"], why))
         # the face colour PetBuilder's carve recorded (bp.lid_cells) is back wherever the kit's Low eye is not;
         # records of an eye key (two High eyes overlapping on the coarse grid) are not face colour.  Compared by
         # colour family: the evolved passes shade a voxel from its neighbours after the restore (Gold -> GoldLight /
@@ -299,6 +329,8 @@ def test_evo_eyes(br):
           % len(lows), bad[:4])
     check(not lost_face, "evo eyes: the face under the game's carved eye comes back outside the Low eye (the owls' "
           "EyeRing disc too)", lost_face[:4])
+    check(not placed, "evo eyes: every Low eye sits on its High eye (nearest centre in studs, keeping at least half "
+          "the High eyes' spacing): %d off" % len(placed), placed[:30])
     # the trim must not re-voxelize a body: the smaller eyes cut the triangle count, so build_all's budget loop stopped
     # one K step earlier on 11 keys (review: evo1_stormfang 0.0889 -> 0.080 studs a voxel).  Every evolved body's
     # catalog start step ("kStep") is the step of its committed (uploaded) mesh.  evo1_hydralotl: its uploaded mesh
