@@ -1250,7 +1250,10 @@ local function clientScenarios()
 		-- the column texts (one place: UpdateNotes.Credits)
 		local created, sig, thanks = part("CreatedBy"), part("Signature"), part("Thanks")
 		T.eq(created.Text, notes.Credits.Role, "p5credits " .. tag .. ": CREATED BY is UpdateNotes.Credits.Role")
-		CR.colour(created, "7a6a4c", tag .. " CREATED BY", "TextColor3")
+		-- (kit-b gate: P2 icons look fin1, 2c0254d, took CREATED BY's ink one step darker in the same brown, #7a6a4c -> #78684a,
+		-- because #7a6a4c read 4.48:1 on the cream under stroke_walk's 4.5:1 rule for small text (now 4.61:1); the same exact
+		-- colour check, the new approved value, as credits_unchanged_on_signkit's tree already holds)
+		CR.colour(created, "78684a", tag .. " CREATED BY", "TextColor3")
 		T.eq(sig.Text, notes.Credits.Creator, "p5credits " .. tag .. ": the signature is UpdateNotes.Credits.Creator")
 		T.check(sig.Font == Theme.Fonts.Signature, "p5credits " .. tag .. ": the signature uses Theme.Fonts.Signature")
 		CR.colour(sig, "1d2b55", tag .. " the signature ink", "TextColor3")
