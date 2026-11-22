@@ -39,7 +39,9 @@
 --                            for the NPC and the fighter; at the fast tempo bite 2's rebound leaves at hit 1 + 0.15, bite 3's
 --                            after the Double strike's second chomp; FeetOf's Hop (evolved 0.78) and the lower drawn hop;
 --                            the bite's Hit flinches the bear with its own paw lines, held through the hit stop, knocked
---                            back, never under the floor, back on its spot
+--                            back, never under the floor, back on its spot. (look review r2) home on the mock's beat (the
+--                            hit + 0.67), the fast tempo's bites stack like the mock's; the nod >= 2 frames at 60 fps in
+--                            the 0.20 s run; the chomp goes straight into the hop back (no level hold)
 --   client_feel_bounce_dust  the landing dust (the spec: "lands on its front paws with dust", "each landing with a rock and
 --                            dust"): a puff on the frame of each hop landing (the nod, the hops home, a flurry's rebounds,
 --                            the Thorns hop away), none on the bite's landing nor the ready bounces; on the floor under
@@ -48,7 +50,9 @@
 --                            Thorns hit (the server's event shapes): AttackFx.DashTwist runs for both, the DoubleHit sparks
 --                            are due on the second chomp, the Thorns bolt on the bite, the bear plays DashDouble and
 --                            DashThorns, its drawn pose carries its model's Feet into PoseBody; (gate review r0) the biter
---                            flashes on the Thorns prick: the NPC bear on its event, my fighter with its bite (held Melee.In)
+--                            flashes on the Thorns prick: the NPC bear on its event, my fighter with its bite (held Melee.In);
+--                            (look review r2, major 1) the Double strike re-hits its victim (my frog) at half power on the
+--                            second chomp: a second jolt, stacked on the bite's knock-back
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
