@@ -262,6 +262,28 @@ local function serverScenarios()
 		local function fontOf(d)
 			return Theme.FontOf and Theme.FontOf(d) or d.Font
 		end
+		-- (look review r1, M5: the gate card is kit B's hanging stone board, WorldStyle.BuildTag) kit B puts no outline on a
+		-- panel: a label whose nearest opaque ancestor is a kit block (its mitred SignEdge) reads by its ink on that face at
+		-- 4.5:1 (WCAG AA, the polish_worldtext rule); the old navy plate's labels needed an outline
+		local function reads(d, gui)
+			if d:FindFirstChild("TextOutline") ~= nil or d:FindFirstChildOfClass("UIStroke") ~= nil or d.TextStrokeTransparency < 0.5 then
+				return true
+			end
+			local cur = d.Parent
+			while cur and cur ~= gui do
+				if cur:IsA("GuiObject") and cur.BackgroundTransparency < 0.3 then
+					local edge = cur:FindFirstChild("SignEdge")
+					return edge ~= nil and edge:IsA("UIStroke") and SmokeCommon.Contrast.Ratio(d.TextColor3, cur.BackgroundColor3) >= 4.5
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		-- (M5) the hanging board measures itself (Theme.Measure on every line change; its 1080p size in BaseWidth for the
+		-- client's screen fit) where the old plate grew by AutomaticSize
+		local function sized(plate, gui)
+			return plate.AutomaticSize == Enum.AutomaticSize.XY or tonumber(gui:GetAttribute("BaseWidth")) ~= nil
+		end
 
 		------------------------------------------------------------------------------------------
 		-- 1. billboards (World text rule) + lock walls, on every portal
@@ -270,7 +292,7 @@ local function serverScenarios()
 		-- shows within exactly 55 studs (WorldStyle.TagRange, PortalService BB.MaxDistance); the text keeps its pixel size
 		local boards = T.tally("every portal billboard is PIXEL-sized (offset UDim2), LightInfluence 0, not AlwaysOnTop, MaxDistance exactly 55")
 		local single = T.tally("the old studs-sized portal card is gone (one BillboardGui per portal)")
-		local textRule = T.tally("billboard texts: not TextScaled, outlined, Theme fonts, names >= 22 px, info lines >= 18 px")
+		local textRule = T.tally("billboard texts: not TextScaled, outlined or in 4.5:1 ink on a kit block, Theme fonts, names >= 22 px, info lines >= 18 px")
 		local plates = T.tally("the billboard plate is solid, auto-sized to its text and compact (fits the container)")
 		local above = T.tally("the billboard floats just above the gate (over the star gems, readable from outside)")
 		local idle = T.tally("an idle portal reads '<Name>', '0/" .. Config.Match.MaxPlayers .. " players' and 'Step in to play'")
@@ -298,14 +320,14 @@ local function serverScenarios()
 				for _, d in ipairs(gui:GetDescendants()) do
 					if d:IsA("TextLabel") then
 						local floor = (d == info.TitleLabel) and 22 or 18
-						local outlined = d:FindFirstChild("TextOutline") ~= nil or d.TextStrokeTransparency < 0.5
+						local outlined = reads(d, gui)
 						textRule:case(not d.TextScaled and d.TextSize >= floor and outlined and fonts[fontOf(d)] == true, id .. ": " .. d.Name .. " (" .. tostring(d.TextSize) .. " px, scaled " .. tostring(d.TextScaled) .. ")")
 					end
 				end
 				local plate = gui:FindFirstChild("Plate")
 				if plate then
 					local size = plate.AbsoluteSize
-					plates:case(plate.BackgroundTransparency <= 0.1 and plate.AutomaticSize == Enum.AutomaticSize.XY and size.X > 0 and size.X <= gui.Size.X.Offset and size.Y <= gui.Size.Y.Offset, id .. ": plate " .. fmt(size.X, 0) .. "x" .. fmt(size.Y, 0) .. " in " .. tostring(gui.Size))
+					plates:case(plate.BackgroundTransparency <= 0.1 and sized(plate, gui) and size.X > 0 and size.X <= gui.Size.X.Offset and size.Y <= gui.Size.Y.Offset, id .. ": plate " .. fmt(size.X, 0) .. "x" .. fmt(size.Y, 0) .. " in " .. tostring(gui.Size))
 				else
 					plates:case(false, id .. ": no Plate frame")
 				end
@@ -487,20 +509,20 @@ local function serverScenarios()
 				for _, d in ipairs(gui:GetDescendants()) do
 					if d:IsA("TextLabel") then
 						local min = (d.Name == "TitleLabel" or d.Name == "Title") and 22 or 18
-						local outlined = d:FindFirstChild("TextOutline") ~= nil or d:FindFirstChildOfClass("UIStroke") ~= nil or d.TextStrokeTransparency < 0.5
+						local outlined = reads(d, gui)
 						if d.TextScaled or d.TextSize < min or not outlined or fonts[fontOf(d)] ~= true then
 							okText = false
 							bad[#bad + 1] = d.Name .. " " .. tostring(d.TextSize)
 						end
 					end
 				end
-				T.check(okText, "ring portal: tag texts are not TextScaled, outlined, Theme fonts, title >= 22 px, the rest >= 18 px", table.concat(bad, "; "))
+				T.check(okText, "ring portal: tag texts are not TextScaled, outlined or in 4.5:1 ink on a kit block, Theme fonts, title >= 22 px, the rest >= 18 px", table.concat(bad, "; "))
 				-- the longest pill: a 12-letter name (longer ones are cut) and a three-digit round
 				ringModel:SetAttribute("RingBoard", "Abcdefghijklmnopqrstu|123")
 				advance(0.2)
 				local plate = gui:FindFirstChild("Plate")
 				local size = plate and plate.AbsoluteSize
-				T.check(plate ~= nil and plate.BackgroundTransparency <= 0.1 and plate.AutomaticSize == Enum.AutomaticSize.XY and size.X > 0 and size.X <= gui.Size.X.Offset and size.Y <= gui.Size.Y.Offset,
+				T.check(plate ~= nil and plate.BackgroundTransparency <= 0.1 and sized(plate, gui) and size.X > 0 and size.X <= gui.Size.X.Offset and size.Y <= gui.Size.Y.Offset,
 					"ring portal: the plate is solid, auto-sized and holds the longest pill inside the container", plate and (fmt(size.X, 0) .. "x" .. fmt(size.Y, 0) .. " in " .. tostring(gui.Size)) or "no plate")
 				ringModel:SetAttribute("RingBoard", nil)
 				-- above the gate's crown, readable from the plaza
@@ -589,7 +611,11 @@ local function serverScenarios()
 		T.check(shown ~= nil and cd ~= nil and math.abs(shown - cd) <= 1, "the billboard shows 'Starting in N' with the party countdown", statusText("Obby") .. " vs " .. tostring(cd))
 		T.eq(countText("Obby"), "1/" .. Config.Match.MaxPlayers .. " players", "the billboard shows the players inside (1/" .. Config.Match.MaxPlayers .. ")")
 		local pill = hard.StatusPill or hard.Billboard:FindFirstChild("StatusPill", true)
-		T.check(pill ~= nil and pill.BackgroundColor3 == (Theme.Colors.Gold or Theme.Colors.Token), "the status pill turns gold while counting down")
+		-- (M5) the board's pill is a kit block (WorldTag.Tint): its lip in the mode's gold, the face a light tint of it
+		local goldC = Theme.Colors.Gold or Theme.Colors.Token
+		local pillLip = pill and pill:FindFirstChild("Lip")
+		T.check(pill ~= nil and (pill.BackgroundColor3 == goldC or (pill:GetAttribute("WorldTag") == true and pillLip ~= nil and pillLip.BackgroundColor3 == goldC)),
+			"the status pill turns gold while counting down")
 		T.eq(hard.Model:GetAttribute("PartyCount"), 1, "Portal_Hard attribute PartyCount = 1")
 		T.check(math.abs((hard.Model:GetAttribute("Countdown") or -99) - (cd or 0)) <= 1, "Portal_Hard attribute Countdown follows the timer", tostring(hard.Model:GetAttribute("Countdown")))
 		-- the eye-level face next to the pad shows the same countdown

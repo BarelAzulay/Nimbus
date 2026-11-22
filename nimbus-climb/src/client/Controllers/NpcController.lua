@@ -901,9 +901,8 @@ local function stepNpcs(dt, camPos, rootPos)
 					rec.Skip = 0
 					poseNpc(rec, step)
 				end
-				if rec.Badge and rec.Badge.Visible and d <= K.NEAR then
-					rec.Badge.Rotation = math.sin(clock * 4 + rec.Phase) * 12 -- a little "new tips" wiggle
-				end
+				-- (Pitch 2 item 04 B) the "!" is a gold block pinned on the sign's corner: it stays still (kit B world
+				-- signs never sway; the old "new tips" wiggle turned it 12 degrees off the pixel grid)
 			else
 				rec.Skip = 0
 			end

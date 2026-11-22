@@ -4076,13 +4076,15 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 				end
 			end
 			local numberAt, koAt, parkedAt, poseBad = nil, nil, nil, {}
-			if bossLabel("4321") then
+			-- (Pitch 2 item 04_world_ui B: a hit pops '+' .. Theme.Short, it was the raw "4321") the 4321 hit's pop reads "+4.32K"
+			local POP = "+4.32K"
+			if bossLabel(POP) then
 				numberAt = endAt -- (already up at the End: flushed early)
 			end
 			for _ = 1, 105 do
 				Mock.Step(1 / 30)
 				local now = os.clock()
-				if not numberAt and bossLabel("4321") then
+				if not numberAt and bossLabel(POP) then
 					numberAt = now
 				end
 				if not koAt and bossLabel("KO!") then
@@ -4759,11 +4761,12 @@ S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
 			step(0.1)
 		end
 		watch = nil
+		-- (Pitch 2 item 04_world_ui B: a hit pops '+' .. Theme.Short; the plain 3-damage hit was "3") the plain hit reads "+3"
 		local plainAt = numberAt(bots[2].id, A, function(t)
-			return t == "3"
+			return t == "+3"
 		end)
 		local spAt = spDmg[bots[2].id] and numberAt(bots[2].id, A, function(t)
-			return t:find(spDmg[bots[2].id], 1, true) ~= nil and t ~= "3"
+			return t:find(spDmg[bots[2].id], 1, true) ~= nil and t ~= "+3"
 		end)
 		local koAt = numberAt(bots[1].id, A, function(t)
 			return t == "KO!"

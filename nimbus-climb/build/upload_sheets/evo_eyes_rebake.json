@@ -1,0 +1,2583 @@
+{
+ "item": "Pitch 2 item 7 (07_evolved_eyes, option A Trim), plan Task 12, branch kitb-p2-eyes",
+ "status": "WAITING FOR THE OWNER: export re-bake + upload in the keyed cloud session. Nothing was uploaded and no committed manifest, meshes.json entry or MeshIds id was changed from the PC.",
+ "handOver": "2026-11-20, after the owner's RE-BAKE decision: the export re-bake was built and checked on the PC (98 FBX, bpy 5.2.2), still NOT uploaded and still no committed manifest / meshes.json / MeshIds change. The upload steps, the 98 FBX (path, size, sha256) and the renders are in build/upload_sheets/evo_eyes_UPLOAD.md + build/upload_sheets/evo_eyes/; follow that file (it replaces the steps below).",
+ "why": "Every evolved body key (evo1_* / evo2_*, High and _low) has a MeshIds id, so in the arena and as a follower the pet is drawn from the baked mesh, whose eyes are baked into the body MeshParts. The trimmed EYE_MASKS.Evo / EvoFierce reach only the Part build (fallback while a mesh loads, or when it fails) until these keys are re-baked from this source and uploaded.",
+ "keys": 98,
+ "keysWithMeshId": 98,
+ "dryBake": {
+  "how": "blender/build_all.py --no-export (lupa, no bpy) run into a scratch folder for the parent commit c733fe0 and for c116b44 (the eye commit); the repo's src/, blender/out and blender/meshes.json were not written",
+  "eyeCommitChangesContent": 98,
+  "eyeCommitChangesStructure": 98,
+  "lowKeysToo": "the _low meshes are cut from the same High sculpt at a lower K, so they carry the trimmed eye as well (EvoLow 4x4 is only the Low Part build)",
+  "wingsUnchanged": "22 evowing keys of the 4 pets checked: contentHash equal to the live ones",
+  "parentReproducesLive": "94 of 98 keys: the bake at the parent commit gives exactly the committed contentHash, so for them the re-bake is eyes only",
+  "olderDriftAlsoShips": [
+   "evo1_hydralotl",
+   "evo1_hydralotl_low",
+   "evo1_magma_cub",
+   "evo1_magma_cub_low"
+  ],
+  "olderDriftNote": "these keys were already stale before the eye change (their live mesh is older than today's design): a re-bake also ships that older drift; look at their previews before uploading",
+  "preview": "build/upload_sheets/evo_eyes_rebake_preview.png (render_model meshevo: live mesh | re-baked mesh for Phantom Kitsune 1 + 2, Stormfang 1 + 2, Candy Unicorn 1, Twilight Dragon 1 Low; Low wings drawn as boxes because their tris were not baked for the preview)"
+ },
+ "uploaderExpectation": "structureHash changes on all 98 keys, so tools/upload_assets.py makes NEW assets (POST), not PATCH: every evo id in MeshIds.lua changes and each new asset goes through moderation (until approved those pets fall back to the Part build)",
+ "doNot": "Do not commit re-baked MeshManifests/evo*.lua or meshes.json from a PC ahead of the upload: with the old ids the old assets no longer match the new manifests (part names / sizes changed): MeshLibrary's fit refuses a key (missing part or fit error -> the Part build, up to 380 / 520 parts per evolved pet) or, where the part names still line up, places old geometry in the new part boxes. Manifests, meshes.json, upload_state.json and MeshIds.lua land together in one commit from the upload session.",
+ "steps": [
+  "Owner says go (this is an upload: owner's call).",
+  "Keyed cloud session, on the branch that has the eye change (kit-b after its merge): /tmp/claude-0/bpyenv/bin/python blender/build_all.py --class evolved --preview   (export build, docs/phase6/OWNER_UPLOAD.md section 2)",
+  "Look at the previews (blender/out/previews) for the 4 drift keys and the arena pets before uploading.",
+  "python3 tools/upload_assets.py --class evolved   (dry run: expect 98 new-asset, the evowing keys skipped)",
+  "python3 tools/upload_assets.py --upload --class evolved   (section 5), then commit MeshManifests + blender/meshes.json + blender/upload_state.json + src/shared/MeshIds.lua together and run the --mesh suite"
+ ],
+ "perKey": [
+  {
+   "key": "evo1_pebble_pup",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10722,
+    "parent": 10722,
+    "head": 10286
+   },
+   "parts": {
+    "live": 35,
+    "parent": 35,
+    "head": 31
+   },
+   "contentHash": {
+    "live": "c5a510d5a873719fe8858578521a92b1",
+    "head": "6d9f5071207a63d48328b06d2f55d86b"
+   },
+   "structureHash": {
+    "live": "81381fb5b6ba8690f32d56855ffb14d4",
+    "head": "adb65e22c33ae9642289c83c527bd57f"
+   }
+  },
+  {
+   "key": "evo1_pebble_pup_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3548,
+    "parent": 3548,
+    "head": 3408
+   },
+   "parts": {
+    "live": 27,
+    "parent": 27,
+    "head": 28
+   },
+   "contentHash": {
+    "live": "2a33d2d13881a3eb467bbda011cae8db",
+    "head": "25a7ade6249a61018a25ae507076254f"
+   },
+   "structureHash": {
+    "live": "429f5067af7c6ddd4cefd1d883914bfc",
+    "head": "1fd1dc1e2a3211f62e8ca23e0d7d7736"
+   }
+  },
+  {
+   "key": "evo1_mallow_kitten",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 11152,
+    "parent": 11152,
+    "head": 11058
+   },
+   "parts": {
+    "live": 34,
+    "parent": 34,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "3ccabcc10399ad946008574f9a6efb2e",
+    "head": "6cd0f9e46892e092f2aa95d49ec1ae0c"
+   },
+   "structureHash": {
+    "live": "214c9e1c084020f582b2914fe327a305",
+    "head": "d406cc79151e3b103d86228bc4866c8b"
+   }
+  },
+  {
+   "key": "evo1_mallow_kitten_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3694,
+    "parent": 3694,
+    "head": 3604
+   },
+   "parts": {
+    "live": 28,
+    "parent": 28,
+    "head": 28
+   },
+   "contentHash": {
+    "live": "57f12883f5152b7da662cbbd90e1039e",
+    "head": "bd4cd0bf09daa4df7811c63f2d28aa17"
+   },
+   "structureHash": {
+    "live": "72ac8e580ab8eb9c28b2d33d2d11e333",
+    "head": "ff7821f882906a996a2f6a030c04419e"
+   }
+  },
+  {
+   "key": "evo1_puddle_frog",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10516,
+    "parent": 10516,
+    "head": 10238
+   },
+   "parts": {
+    "live": 25,
+    "parent": 25,
+    "head": 25
+   },
+   "contentHash": {
+    "live": "d3a1abc0234e1f354096869a9f787241",
+    "head": "3d193ec29ea451b94f280d23a6a8c56b"
+   },
+   "structureHash": {
+    "live": "1480ad3bbef198cc50427a5a26f3dfac",
+    "head": "a129e2526ff19934c92da8177f0774d8"
+   }
+  },
+  {
+   "key": "evo1_puddle_frog_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3582,
+    "parent": 3582,
+    "head": 3378
+   },
+   "parts": {
+    "live": 23,
+    "parent": 23,
+    "head": 23
+   },
+   "contentHash": {
+    "live": "68eb6b30e14a618258afb3a206d44ff7",
+    "head": "7c3a32036027aae07e71a731359df354"
+   },
+   "structureHash": {
+    "live": "441ba99b373d451363d60c878794d64a",
+    "head": "8d1d180a0e4fbc84254e89904a2560be"
+   }
+  },
+  {
+   "key": "evo1_honey_bunny",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10092,
+    "parent": 10092,
+    "head": 9848
+   },
+   "parts": {
+    "live": 33,
+    "parent": 33,
+    "head": 29
+   },
+   "contentHash": {
+    "live": "60accda1c4228ae088a83fa64064fc67",
+    "head": "2e4e99138f4fedf8f6de81a093009d76"
+   },
+   "structureHash": {
+    "live": "1bb35eb0e14193543c3f95800d058787",
+    "head": "f8d3281480c9c5a2633b5b51167c1e77"
+   }
+  },
+  {
+   "key": "evo1_honey_bunny_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3532,
+    "parent": 3532,
+    "head": 3452
+   },
+   "parts": {
+    "live": 26,
+    "parent": 26,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "783e760743100c1677954ff63a642d92",
+    "head": "d4c1585e51a1b7474b37ac10b772ff7d"
+   },
+   "structureHash": {
+    "live": "80966a82ef46146aa9cd4951cc67ead0",
+    "head": "b8b04a200b1c146e7cca72c09cf685c4"
+   }
+  },
+  {
+   "key": "evo1_biscuit_bear",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9136,
+    "parent": 9136,
+    "head": 8900
+   },
+   "parts": {
+    "live": 31,
+    "parent": 31,
+    "head": 29
+   },
+   "contentHash": {
+    "live": "5c9f88e75ddee42eb679190ba12eae48",
+    "head": "9a2b51fa22e74833af682edc2c79785a"
+   },
+   "structureHash": {
+    "live": "831c36c212ad5db2465646b2fac2988b",
+    "head": "acfc332d2d3fe7ac2f55288ab73e212c"
+   }
+  },
+  {
+   "key": "evo1_biscuit_bear_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3490,
+    "parent": 3490,
+    "head": 3344
+   },
+   "parts": {
+    "live": 23,
+    "parent": 23,
+    "head": 24
+   },
+   "contentHash": {
+    "live": "ede66a2ee09e3602d4ac14ef18a422f6",
+    "head": "42700e55f981cbf66e20a73d896c2e63"
+   },
+   "structureHash": {
+    "live": "401b8416084845782b55b147a62e481b",
+    "head": "cf5a543a7da0b3373c28da53dd7402a1"
+   }
+  },
+  {
+   "key": "evo1_pip_penguin",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9068,
+    "parent": 9068,
+    "head": 8826
+   },
+   "parts": {
+    "live": 34,
+    "parent": 34,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "214ba0c550177b5ae8543a7fc31a86da",
+    "head": "b1b24bf416a2a95881bf9086c78d114c"
+   },
+   "structureHash": {
+    "live": "6ebd5757e02392b654e27a69f450c077",
+    "head": "c2d77783dbbf960e6b260156a2547b82"
+   }
+  },
+  {
+   "key": "evo1_pip_penguin_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3154,
+    "parent": 3154,
+    "head": 2898
+   },
+   "parts": {
+    "live": 25,
+    "parent": 25,
+    "head": 25
+   },
+   "contentHash": {
+    "live": "0117f22b4ca2bade7826eeea8b0a5ba3",
+    "head": "468328b706a534a30cb4251af1a8baf0"
+   },
+   "structureHash": {
+    "live": "7fb22f18570a578c291fb0dd8de87731",
+    "head": "bbb4eb91005cac9a0beced930a7225cd"
+   }
+  },
+  {
+   "key": "evo1_maple_fox",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10358,
+    "parent": 10358,
+    "head": 10074
+   },
+   "parts": {
+    "live": 34,
+    "parent": 34,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "fe5dc30bae0b01d0c974b561a6f24860",
+    "head": "e3a79a80171091a23d85a8653c1b4d16"
+   },
+   "structureHash": {
+    "live": "dcda4901188fecd1d97c284280df3bdc",
+    "head": "73567822d620a2ffd2cd0d4fad79cac5"
+   }
+  },
+  {
+   "key": "evo1_maple_fox_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3536,
+    "parent": 3536,
+    "head": 3404
+   },
+   "parts": {
+    "live": 26,
+    "parent": 26,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "bef6dd2e7b01f25d3726e0cfe5bb46e6",
+    "head": "1e37459eb6d254af82b466e838b2cc57"
+   },
+   "structureHash": {
+    "live": "a8a9e38777f74ed189ed28b31283fafa",
+    "head": "163cb61178dc8224b4dc9bd16da214dc"
+   }
+  },
+  {
+   "key": "evo1_bamboo_panda",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9986,
+    "parent": 9986,
+    "head": 9812
+   },
+   "parts": {
+    "live": 30,
+    "parent": 30,
+    "head": 30
+   },
+   "contentHash": {
+    "live": "f4eee1153ee8cd579055240a764855b8",
+    "head": "d91932271734498361d41235fddb6d4d"
+   },
+   "structureHash": {
+    "live": "84ab321f9f5bc9ba2c4804f9cab57d7b",
+    "head": "ff2df31adbe22f748b354db351037e4d"
+   }
+  },
+  {
+   "key": "evo1_bamboo_panda_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3090,
+    "parent": 3090,
+    "head": 3638
+   },
+   "parts": {
+    "live": 23,
+    "parent": 23,
+    "head": 24
+   },
+   "contentHash": {
+    "live": "5937b0a6030fb5016961a16de1587d3f",
+    "head": "5c491e8a5b7c78dbb97bbc73c49ecb13"
+   },
+   "structureHash": {
+    "live": "611a4e22cd5e3d6e312542928b0fce48",
+    "head": "e44292439dc1b7eb8d3fe95e7cb6e551"
+   }
+  },
+  {
+   "key": "evo1_mochi_slime",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 7670,
+    "parent": 7670,
+    "head": 7402
+   },
+   "parts": {
+    "live": 23,
+    "parent": 23,
+    "head": 23
+   },
+   "contentHash": {
+    "live": "bd273729a7024c3c173b5e3a5716e18f",
+    "head": "de7a28fca441fb3308640166a3527ebf"
+   },
+   "structureHash": {
+    "live": "ebd6c213c7ea475e4db134ee17d03b93",
+    "head": "6c42dba83c6d3b5c9b27a79d13663955"
+   }
+  },
+  {
+   "key": "evo1_mochi_slime_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 2650,
+    "parent": 2650,
+    "head": 2582
+   },
+   "parts": {
+    "live": 20,
+    "parent": 20,
+    "head": 20
+   },
+   "contentHash": {
+    "live": "54bcd6ad14c198f6587eb9a87a61ead4",
+    "head": "6c67b2a53c4ffb113725ed973e7cb465"
+   },
+   "structureHash": {
+    "live": "17380a41fa1bd2d1eb634f3332676a11",
+    "head": "2077eb219d1244f99ca687a267766dfe"
+   }
+  },
+  {
+   "key": "evo1_sleepy_owl",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 8950,
+    "parent": 8950,
+    "head": 8676
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "2cfd77b5a0930755772db624216cc250",
+    "head": "02f3109befb690db125d033ca8a29db8"
+   },
+   "structureHash": {
+    "live": "5ad9ba6c57654b44eff2cdfd86a071d5",
+    "head": "d8ac54da5d8a9ce107f2739b56bd352d"
+   }
+  },
+  {
+   "key": "evo1_sleepy_owl_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3042,
+    "parent": 3042,
+    "head": 2814
+   },
+   "parts": {
+    "live": 25,
+    "parent": 25,
+    "head": 21
+   },
+   "contentHash": {
+    "live": "0c415b0d0b7b9208ab9eff958377ffc0",
+    "head": "4ca322074868610863da2a34a0ccfe51"
+   },
+   "structureHash": {
+    "live": "85b1c69b95f29606686412d634c99915",
+    "head": "6ca43517e7df0775506f5eebfd87eb4f"
+   }
+  },
+  {
+   "key": "evo1_waffle_corgi",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 11044,
+    "parent": 11044,
+    "head": 10612
+   },
+   "parts": {
+    "live": 37,
+    "parent": 37,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "784bdd393c002ba6659c5b94c138fde5",
+    "head": "452eb36154779d38700529de75fdc4e6"
+   },
+   "structureHash": {
+    "live": "008a91f4cf76ec39af667f5ce8122a23",
+    "head": "aa038a224daad0eb4a49b65b65d02526"
+   }
+  },
+  {
+   "key": "evo1_waffle_corgi_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3336,
+    "parent": 3336,
+    "head": 3698
+   },
+   "parts": {
+    "live": 30,
+    "parent": 30,
+    "head": 30
+   },
+   "contentHash": {
+    "live": "864a2d9ae19723f1dfc41e5eea052dd0",
+    "head": "e017d725704e0b6acd90e01d786e0ec5"
+   },
+   "structureHash": {
+    "live": "35ea829a8221bf45627d3ee8dba4652a",
+    "head": "af7a95ed1c8ff88abc5c26c1105f180b"
+   }
+  },
+  {
+   "key": "evo1_bubble_axolotl",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10258,
+    "parent": 10258,
+    "head": 10102
+   },
+   "parts": {
+    "live": 31,
+    "parent": 31,
+    "head": 29
+   },
+   "contentHash": {
+    "live": "f102746a9aa6c997de1df81a4e955208",
+    "head": "ed9ff15251edab0972f49703bb227b4c"
+   },
+   "structureHash": {
+    "live": "5813fa4223268584316668fa37c43454",
+    "head": "52cf06c8cf7ffe371de632fe37f7dff9"
+   }
+  },
+  {
+   "key": "evo1_bubble_axolotl_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3128,
+    "parent": 3128,
+    "head": 3640
+   },
+   "parts": {
+    "live": 24,
+    "parent": 24,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "03e57c22e577f18c53bd9564765e2876",
+    "head": "9b9b2206e0ee6aefdec8ba441f9916f1"
+   },
+   "structureHash": {
+    "live": "a12ecf872df515257b6a64a08b5fdbbd",
+    "head": "ff3b1af52205de331c0b354c26b063f7"
+   }
+  },
+  {
+   "key": "evo1_blossom_bunny",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10222,
+    "parent": 10222,
+    "head": 9978
+   },
+   "parts": {
+    "live": 35,
+    "parent": 35,
+    "head": 31
+   },
+   "contentHash": {
+    "live": "33ef41b5d8f532b0e0a71382dc4b5dc9",
+    "head": "6bad4db21f8455d221c74e47ce67063d"
+   },
+   "structureHash": {
+    "live": "7e44e236d4595a5766424de9956e68ae",
+    "head": "74684f74a28c707dfefc6c87e8631c5e"
+   }
+  },
+  {
+   "key": "evo1_blossom_bunny_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3594,
+    "parent": 3594,
+    "head": 3514
+   },
+   "parts": {
+    "live": 28,
+    "parent": 28,
+    "head": 28
+   },
+   "contentHash": {
+    "live": "bb4638d830f978038b73918ac54ab277",
+    "head": "5ac20ca9a16f1f0a8cb0c9a0490bffd8"
+   },
+   "structureHash": {
+    "live": "b289ddc661101bf7bb44d0626e5387e5",
+    "head": "2b6ffd6472d255034680a1850eae1c7a"
+   }
+  },
+  {
+   "key": "evo1_shroomie_frog",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9778,
+    "parent": 9778,
+    "head": 9500
+   },
+   "parts": {
+    "live": 26,
+    "parent": 26,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "5488187cfe79771637cc847eff23805a",
+    "head": "19edabfa5d62abc30c33f7871fcd8d48"
+   },
+   "structureHash": {
+    "live": "cda60632bb96d75ec0df69fefb67b7c7",
+    "head": "1d4c153306a5d48eba8db777cb1be319"
+   }
+  },
+  {
+   "key": "evo1_shroomie_frog_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3450,
+    "parent": 3450,
+    "head": 3224
+   },
+   "parts": {
+    "live": 24,
+    "parent": 24,
+    "head": 24
+   },
+   "contentHash": {
+    "live": "11b158be8e631addffa2658e7910ea25",
+    "head": "616e401c75d3b85f7d1006aef91e0670"
+   },
+   "structureHash": {
+    "live": "2ad81528c6feb7583fdf4bbb80db0471",
+    "head": "1db9de422e89667596dc8bf4bcc777b7"
+   }
+  },
+  {
+   "key": "evo1_frostling_penguin",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9832,
+    "parent": 9832,
+    "head": 9590
+   },
+   "parts": {
+    "live": 33,
+    "parent": 33,
+    "head": 31
+   },
+   "contentHash": {
+    "live": "6fb29ff1126921c28106623f6d1cdb28",
+    "head": "1ecbb5b6bcba49a926c4e165e0f5ffae"
+   },
+   "structureHash": {
+    "live": "c441368eef26016102e70a5a4d90782a",
+    "head": "1736a66b2cfbbfd5c2da88c637a6a7fc"
+   }
+  },
+  {
+   "key": "evo1_frostling_penguin_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3406,
+    "parent": 3406,
+    "head": 3118
+   },
+   "parts": {
+    "live": 25,
+    "parent": 25,
+    "head": 25
+   },
+   "contentHash": {
+    "live": "098dff7281d75406287e949d299134be",
+    "head": "ea844e8e3d807ea4b9d92350d3c60904"
+   },
+   "structureHash": {
+    "live": "2b7062c6250c6e4acb83abfe25eabc4c",
+    "head": "bbdff7c0261c6f382bd841e96fc73f90"
+   }
+  },
+  {
+   "key": "evo1_storm_tabby",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10222,
+    "parent": 10222,
+    "head": 10116
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "d3a7b35ba82410ac498102be1d4bdca5",
+    "head": "e36ccef46c631ffc9909895cab8d06a9"
+   },
+   "structureHash": {
+    "live": "d1502bcc2a0cb4847bbef3be7c6f5a67",
+    "head": "b04670a4d97aa46d51a722e5454308d6"
+   }
+  },
+  {
+   "key": "evo1_storm_tabby_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3438,
+    "parent": 3438,
+    "head": 3356
+   },
+   "parts": {
+    "live": 27,
+    "parent": 27,
+    "head": 27
+   },
+   "contentHash": {
+    "live": "090ec356f763acbe88a51defb85bbdcd",
+    "head": "c304101012874aff50ca67689c635451"
+   },
+   "structureHash": {
+    "live": "b33e6b7ec948ed74dc3a0005d0afa5c0",
+    "head": "66e404991faa9bda3c3b36c91f5d4e4c"
+   }
+  },
+  {
+   "key": "evo1_cherry_panda",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10096,
+    "parent": 10096,
+    "head": 9922
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "a9b7ace155ab886b4c680d772836f05f",
+    "head": "961fb105d131c9ed10477297d0237ed5"
+   },
+   "structureHash": {
+    "live": "a9210c202d78b85b4b0097ae6b36e855",
+    "head": "a9c4de490a141012964a236eb8982ee4"
+   }
+  },
+  {
+   "key": "evo1_cherry_panda_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3138,
+    "parent": 3138,
+    "head": 3622
+   },
+   "parts": {
+    "live": 24,
+    "parent": 24,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "29e147193cbb4e37ad742241425c3911",
+    "head": "05ac6e538e617654b6464aa30a6511aa"
+   },
+   "structureHash": {
+    "live": "9019f8c423687a1ace84069c1d6bb43b",
+    "head": "6ae6786ce3871daed4ae0d0dd5af8206"
+   }
+  },
+  {
+   "key": "evo1_aurora_fox",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10760,
+    "parent": 10760,
+    "head": 10464
+   },
+   "parts": {
+    "live": 40,
+    "parent": 40,
+    "head": 36
+   },
+   "contentHash": {
+    "live": "1eae1b6228d009e325a929d90a746cae",
+    "head": "4e8dfb93b55abad124269e28f6a0e04c"
+   },
+   "structureHash": {
+    "live": "677d55b271e169644d81d4c0eeb9c06a",
+    "head": "96dda66893584a72b44aadcfded65406"
+   }
+  },
+  {
+   "key": "evo1_aurora_fox_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3694,
+    "parent": 3694,
+    "head": 3552
+   },
+   "parts": {
+    "live": 30,
+    "parent": 30,
+    "head": 30
+   },
+   "contentHash": {
+    "live": "161ab0d03159f05818fbef4481d23412",
+    "head": "e0c0fccc0c2de5c6d55ce5b113c6327e"
+   },
+   "structureHash": {
+    "live": "360df43cce8f016fa20f096dec257634",
+    "head": "daa0f7030835f5bea249cda363223ad5"
+   }
+  },
+  {
+   "key": "evo1_moonlit_owl",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9254,
+    "parent": 9254,
+    "head": 8972
+   },
+   "parts": {
+    "live": 33,
+    "parent": 33,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "3159dd3119b8b7dff96f8909d8f87b9f",
+    "head": "eaebd77406586b19f54e99468ee29f6c"
+   },
+   "structureHash": {
+    "live": "ad69f1a14c912326ac748c4c7cc69967",
+    "head": "7fe984c6727f08487014548636a31435"
+   }
+  },
+  {
+   "key": "evo1_moonlit_owl_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3084,
+    "parent": 3084,
+    "head": 2852
+   },
+   "parts": {
+    "live": 26,
+    "parent": 26,
+    "head": 22
+   },
+   "contentHash": {
+    "live": "a9e6533a88cf009d0bc2dbad459a7421",
+    "head": "77ea6c9514a0f85e9c8c6120c68d05fe"
+   },
+   "structureHash": {
+    "live": "af72d703dc8912b0f1a21b7a220d29e8",
+    "head": "d28c9564e7ca3a9dc4fb590ffe5f2895"
+   }
+  },
+  {
+   "key": "evo1_nebula_axolotl",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9816,
+    "parent": 9816,
+    "head": 9658
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 30
+   },
+   "contentHash": {
+    "live": "1d55db57ad0efa5d253b53ea50f0832b",
+    "head": "52d5f40a8f38eb882d867ab5130da2e0"
+   },
+   "structureHash": {
+    "live": "a84ed595002267f52c124747eeb6b987",
+    "head": "25391a08a7ab7f8f4ea1fe7db8b3299b"
+   }
+  },
+  {
+   "key": "evo1_nebula_axolotl_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3450,
+    "parent": 3450,
+    "head": 3356
+   },
+   "parts": {
+    "live": 26,
+    "parent": 26,
+    "head": 27
+   },
+   "contentHash": {
+    "live": "68d945284ee00abc93aa42eb3d90c1cb",
+    "head": "83cdeace45201fdc46302f0a1da1f54e"
+   },
+   "structureHash": {
+    "live": "78673934bb6a29bc4ccfa88143bd60ef",
+    "head": "0f8147e48d36aab26b8558edacb93114"
+   }
+  },
+  {
+   "key": "evo1_candy_unicorn",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10294,
+    "parent": 10294,
+    "head": 10058
+   },
+   "parts": {
+    "live": 35,
+    "parent": 35,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "16329d9cf6404fd1e22cb84b9845247c",
+    "head": "a7a5a5a1946538a83c0e782d7825cdd9"
+   },
+   "structureHash": {
+    "live": "a858d1d4befd8a5bfc66a9475b0f81de",
+    "head": "68a22d362d6451914d157dfac05b6f54"
+   }
+  },
+  {
+   "key": "evo1_candy_unicorn_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3300,
+    "parent": 3300,
+    "head": 3660
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 31
+   },
+   "contentHash": {
+    "live": "510b041052071664787377c719bbf977",
+    "head": "3cdb4fc24695e0adab390c0447825a35"
+   },
+   "structureHash": {
+    "live": "9fbfda35740ca8b3e4b7b8947f878cab",
+    "head": "f25f4f52c549c1ea6a6fabca47ee7613"
+   }
+  },
+  {
+   "key": "evo1_ember_phoenix",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 8372,
+    "parent": 8372,
+    "head": 8134
+   },
+   "parts": {
+    "live": 36,
+    "parent": 36,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "3ab2bbf9ada6299b3ec6c55108cb11de",
+    "head": "dee7d3d9a01c447c7a0136e8f99e6b1a"
+   },
+   "structureHash": {
+    "live": "72ef24bd75d5d65ced6538008d1ef66c",
+    "head": "c4e94236b00b5b093f3d02f5b7f708a2"
+   }
+  },
+  {
+   "key": "evo1_ember_phoenix_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3244,
+    "parent": 3244,
+    "head": 3080
+   },
+   "parts": {
+    "live": 27,
+    "parent": 27,
+    "head": 27
+   },
+   "contentHash": {
+    "live": "8d9ae364d72cfc940a17d724041792f9",
+    "head": "775898c7b21409319afd09494a4135e9"
+   },
+   "structureHash": {
+    "live": "ade04e5d240568ffe1cecb045c12b72e",
+    "head": "a3d96e8824c346c9d4179f2cf23fc42a"
+   }
+  },
+  {
+   "key": "evo1_sunbeam_bear",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10410,
+    "parent": 10410,
+    "head": 10174
+   },
+   "parts": {
+    "live": 31,
+    "parent": 31,
+    "head": 29
+   },
+   "contentHash": {
+    "live": "3d0e88d42daa72a650d17f209fc17e40",
+    "head": "9b22557db71fd30e1e4de18f1f8a7f40"
+   },
+   "structureHash": {
+    "live": "aa85c6ec26ec323a9036b7314705df6f",
+    "head": "4b852bd8e0f4b4354b6e88d5a96a5068"
+   }
+  },
+  {
+   "key": "evo1_sunbeam_bear_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3662,
+    "parent": 3662,
+    "head": 3520
+   },
+   "parts": {
+    "live": 25,
+    "parent": 25,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "3c7e4558bffb0d6c45d6576654885a56",
+    "head": "5a98986c30af6b594d764702eb979ab7"
+   },
+   "structureHash": {
+    "live": "09919f1511028c7a6f130da0425c7990",
+    "head": "8ce9a521e785d65dec2adc743f262f4f"
+   }
+  },
+  {
+   "key": "evo1_twilight_dragon",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10162,
+    "parent": 10162,
+    "head": 9992
+   },
+   "parts": {
+    "live": 33,
+    "parent": 33,
+    "head": 31
+   },
+   "contentHash": {
+    "live": "0c6a59e419e4c5e5516da736a2bf75aa",
+    "head": "f5ddc15014f643eaef7f9b31ed209b48"
+   },
+   "structureHash": {
+    "live": "ff0ad9d2dc8799d6ca62eac3682a8483",
+    "head": "2bce6255e9884d21afaf806ce6ce1d48"
+   }
+  },
+  {
+   "key": "evo1_twilight_dragon_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3242,
+    "parent": 3242,
+    "head": 3046
+   },
+   "parts": {
+    "live": 26,
+    "parent": 26,
+    "head": 27
+   },
+   "contentHash": {
+    "live": "58f9ec46583461ecf63db98024828392",
+    "head": "7a348010945fb44690225ae7c6acddd4"
+   },
+   "structureHash": {
+    "live": "2d9a218e10e01ab86c5a1871cf2595f1",
+    "head": "2ba796c939f1a1e906304932c35680e2"
+   }
+  },
+  {
+   "key": "evo1_cloudy_dragon",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10250,
+    "parent": 10250,
+    "head": 10080
+   },
+   "parts": {
+    "live": 34,
+    "parent": 34,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "492c8dcda24f87ce5994a7c5be47d27e",
+    "head": "b3caf8103971dcffdc60a9ee6ca622fb"
+   },
+   "structureHash": {
+    "live": "649a5ed3106ea3963a5d071e3f288770",
+    "head": "59e6e65f30fc1d94e8e76b96833d173b"
+   }
+  },
+  {
+   "key": "evo1_cloudy_dragon_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3664,
+    "parent": 3664,
+    "head": 3446
+   },
+   "parts": {
+    "live": 29,
+    "parent": 29,
+    "head": 29
+   },
+   "contentHash": {
+    "live": "80494909cb89ead6222e48d3fb080c48",
+    "head": "691be04d149735c03a522d0af830be14"
+   },
+   "structureHash": {
+    "live": "8cdee0241179bcb52bc8754d525cbc92",
+    "head": "9e896af403cc08a2c88b8992c349b935"
+   }
+  },
+  {
+   "key": "evo1_starlight_unicorn",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10774,
+    "parent": 10774,
+    "head": 10542
+   },
+   "parts": {
+    "live": 34,
+    "parent": 34,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "43bb69ace831f05e36e691f0c10a7f90",
+    "head": "c027b2f5ee3e265d23efcd75152006e2"
+   },
+   "structureHash": {
+    "live": "084eb75cf85a32f04d056d916af1feb2",
+    "head": "60ba65111284645821b7151a001a6d2a"
+   }
+  },
+  {
+   "key": "evo1_starlight_unicorn_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3452,
+    "parent": 3452,
+    "head": 3268
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 30
+   },
+   "contentHash": {
+    "live": "b10d96c35df01d6ec3afe268899ddfda",
+    "head": "f3d6e5543b8f12afc78ca9c5a206f1a0"
+   },
+   "structureHash": {
+    "live": "8635912399bcbb0380e56f087100df64",
+    "head": "c9356b8c09ce5366869bb2bf84317748"
+   }
+  },
+  {
+   "key": "evo1_stormfang",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9888,
+    "parent": 9888,
+    "head": 11274
+   },
+   "parts": {
+    "live": 33,
+    "parent": 33,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "f2a448541cffa3beba6f3ddb9feccd2c",
+    "head": "d7bdd6606e0b2effc41000d4323f9b39"
+   },
+   "structureHash": {
+    "live": "bdd2590aae8aa381e4e04f65cc868c5d",
+    "head": "fed7c97aa25e20898860bdf57711b599"
+   }
+  },
+  {
+   "key": "evo1_stormfang_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3360,
+    "parent": 3360,
+    "head": 3228
+   },
+   "parts": {
+    "live": 28,
+    "parent": 28,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "412ab7494894c472aa0b5aebc2195d8d",
+    "head": "95ef1bbc2d254918b70b5a2d3bc3dcf4"
+   },
+   "structureHash": {
+    "live": "80a7ffeebdf07d491e792d5a5f54bb88",
+    "head": "037a1adf32b319d76a425063a2a7ff95"
+   }
+  },
+  {
+   "key": "evo1_eclipse_dragon",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 10508,
+    "parent": 10508,
+    "head": 10338
+   },
+   "parts": {
+    "live": 37,
+    "parent": 37,
+    "head": 35
+   },
+   "contentHash": {
+    "live": "2273f0bc4b44276a2a9f1b9c09e4a952",
+    "head": "71422b3462ad983dd667b25ad5f8a194"
+   },
+   "structureHash": {
+    "live": "af253161ed47ad04b9941291a3279b34",
+    "head": "22a3919a1db202293a13ec61a271a7d0"
+   }
+  },
+  {
+   "key": "evo1_eclipse_dragon_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3306,
+    "parent": 3306,
+    "head": 3110
+   },
+   "parts": {
+    "live": 28,
+    "parent": 28,
+    "head": 29
+   },
+   "contentHash": {
+    "live": "5151ffc1883f9fa7d2ca96c9601bb845",
+    "head": "6f880203c910839679f7c1a6055b8814"
+   },
+   "structureHash": {
+    "live": "74579fc2570540af76b443b46c1780d8",
+    "head": "c1732eb1a8a47167fccf6006afb5deda"
+   }
+  },
+  {
+   "key": "evo1_obsidian_phoenix",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9692,
+    "parent": 9692,
+    "head": 9454
+   },
+   "parts": {
+    "live": 41,
+    "parent": 41,
+    "head": 37
+   },
+   "contentHash": {
+    "live": "3aa9e7b557462da20f79e63c37c6b039",
+    "head": "444bab2f9ae4fae8c13c3d13fcf77c1e"
+   },
+   "structureHash": {
+    "live": "d6d64607f7f7ba669d8f813dfb5e46fb",
+    "head": "b40d80bd2aeabc81b1c76093d53b3622"
+   }
+  },
+  {
+   "key": "evo1_obsidian_phoenix_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 2954,
+    "parent": 2954,
+    "head": 3546
+   },
+   "parts": {
+    "live": 31,
+    "parent": 31,
+    "head": 32
+   },
+   "contentHash": {
+    "live": "4526a99cf96c3a892feb376763a9e8a3",
+    "head": "2bc04de297e2f8404240c676a168a075"
+   },
+   "structureHash": {
+    "live": "6d745fb55dfc764212327530147e179a",
+    "head": "4c04708f96a8361f4b60448ca7a5744a"
+   }
+  },
+  {
+   "key": "evo1_phantom_kitsune",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9902,
+    "parent": 9902,
+    "head": 11318
+   },
+   "parts": {
+    "live": 38,
+    "parent": 38,
+    "head": 36
+   },
+   "contentHash": {
+    "live": "7330defb0c3388128041d015eaa38a59",
+    "head": "8090779086741dfc3119eb50cbe1db5b"
+   },
+   "structureHash": {
+    "live": "12dad7d2ad7dd60b2c991a01e000cb28",
+    "head": "d1b494818236f368ab4a072550576592"
+   }
+  },
+  {
+   "key": "evo1_phantom_kitsune_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3224,
+    "parent": 3224,
+    "head": 3640
+   },
+   "parts": {
+    "live": 28,
+    "parent": 28,
+    "head": 31
+   },
+   "contentHash": {
+    "live": "5baabf81b5d5a37c9c4f4f986e734327",
+    "head": "ea4326bb9d7e0d5463559768400ff046"
+   },
+   "structureHash": {
+    "live": "6efc52f99c6833e8669d45fa00b9a481",
+    "head": "1017250fd46341489187ec9ea54cb1aa"
+   }
+  },
+  {
+   "key": "evo1_magma_cub",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": true,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 11060,
+    "parent": 10668,
+    "head": 10432
+   },
+   "parts": {
+    "live": 38,
+    "parent": 35,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "4864077841a97e679ded98904f245152",
+    "head": "7c19b783ac96f926a8474d3bc5137fa4"
+   },
+   "structureHash": {
+    "live": "d68c2ecadf2e5af9fb3ddcb0a4c19212",
+    "head": "e8a25738137634583ca9e3602479d9cf"
+   }
+  },
+  {
+   "key": "evo1_magma_cub_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": true,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3100,
+    "parent": 3116,
+    "head": 3666
+   },
+   "parts": {
+    "live": 30,
+    "parent": 27,
+    "head": 27
+   },
+   "contentHash": {
+    "live": "c1cca078b397c514bf104fc0509a60fc",
+    "head": "a2de66a81fe370d1d6ac95e83fc0934f"
+   },
+   "structureHash": {
+    "live": "b0ea0ecdfd6f1850b7f5662e5b829b60",
+    "head": "ac07ee1bb07d13cf36e6e044d8943c2c"
+   }
+  },
+  {
+   "key": "evo1_rime_wyrmling",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 11296,
+    "parent": 11296,
+    "head": 11126
+   },
+   "parts": {
+    "live": 43,
+    "parent": 43,
+    "head": 41
+   },
+   "contentHash": {
+    "live": "384e4321f9f02c785063faded93076fe",
+    "head": "f695b13c334742934be1a20337104348"
+   },
+   "structureHash": {
+    "live": "138a572d619ffd0aedac6b232c688f0f",
+    "head": "c3374d7b6aca04460167f0a552eb43a6"
+   }
+  },
+  {
+   "key": "evo1_rime_wyrmling_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3504,
+    "parent": 3504,
+    "head": 3312
+   },
+   "parts": {
+    "live": 34,
+    "parent": 34,
+    "head": 35
+   },
+   "contentHash": {
+    "live": "07d56c3b6827ac0ba149f054e2df1275",
+    "head": "08d2fd6537933e86d1b7a5b6fea7b095"
+   },
+   "structureHash": {
+    "live": "82d3d132fd4ab2ba98ff048f95f54a2d",
+    "head": "1be5e15e21adcef42a28c439a7e48948"
+   }
+  },
+  {
+   "key": "evo1_hydralotl",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": true,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9948,
+    "parent": 11324,
+    "head": 11166
+   },
+   "parts": {
+    "live": 39,
+    "parent": 36,
+    "head": 34
+   },
+   "contentHash": {
+    "live": "62daf5f42815a9acb3ed9d454a0abac7",
+    "head": "49df84ce67b4b1d20b4ee867168b94a1"
+   },
+   "structureHash": {
+    "live": "5645e99aee80085afa934a116ccba652",
+    "head": "0e75852dbb3f59d18d9fe17c9505d609"
+   }
+  },
+  {
+   "key": "evo1_hydralotl_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": true,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 2934,
+    "parent": 2822,
+    "head": 3282
+   },
+   "parts": {
+    "live": 30,
+    "parent": 29,
+    "head": 27
+   },
+   "contentHash": {
+    "live": "4ac84d414624f53a7611bde5de991600",
+    "head": "0e941b218d1efdbf25c903c956180f29"
+   },
+   "structureHash": {
+    "live": "8e58d429ea89ddb4a3afdc664bc6d1d9",
+    "head": "8c9ca1c4fb3b0ff6cdf4978fe4bc51c3"
+   }
+  },
+  {
+   "key": "evo2_aurora_fox",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 14250,
+    "parent": 14250,
+    "head": 13974
+   },
+   "parts": {
+    "live": 47,
+    "parent": 47,
+    "head": 43
+   },
+   "contentHash": {
+    "live": "826cb77ec17fd41bdb825fdf258bf7f3",
+    "head": "c5bbb1a00ab5716a6e30ca774e5941ce"
+   },
+   "structureHash": {
+    "live": "62f0470e7b0932829475ebc79fa08295",
+    "head": "f53804b0b4efcd573b8c805f631f6415"
+   }
+  },
+  {
+   "key": "evo2_aurora_fox_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3786,
+    "parent": 3786,
+    "head": 3626
+   },
+   "parts": {
+    "live": 34,
+    "parent": 34,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "41ad76060f557d538467a6bff361c0b7",
+    "head": "d4fcd7f329d5eb558ccd1b59e59fa9fe"
+   },
+   "structureHash": {
+    "live": "2d06af0e5ace9a1647afde787a0d0f67",
+    "head": "c64080c5739be0118d82d6a19b394b31"
+   }
+  },
+  {
+   "key": "evo2_moonlit_owl",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 9692,
+    "parent": 9692,
+    "head": 9478
+   },
+   "parts": {
+    "live": 36,
+    "parent": 36,
+    "head": 36
+   },
+   "contentHash": {
+    "live": "a8086f194665d38c8530be68a06d3b37",
+    "head": "5153a260a7bd7a5db715ba502b2eb538"
+   },
+   "structureHash": {
+    "live": "8910cad9052c5a2332631a9731ffcd9a",
+    "head": "fc4baba7123c283d79921fa38c05d59f"
+   }
+  },
+  {
+   "key": "evo2_moonlit_owl_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 2680,
+    "parent": 2680,
+    "head": 2474
+   },
+   "parts": {
+    "live": 27,
+    "parent": 27,
+    "head": 20
+   },
+   "contentHash": {
+    "live": "064bc8097f518f087cc96caa6d85f3d0",
+    "head": "a11c60ca86c347e31e9e37d1b85e6808"
+   },
+   "structureHash": {
+    "live": "01246a7be3b799c8216613a577063b8e",
+    "head": "b7aca29196f156b92e97f9fe88b01170"
+   }
+  },
+  {
+   "key": "evo2_nebula_axolotl",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 11906,
+    "parent": 11906,
+    "head": 11716
+   },
+   "parts": {
+    "live": 41,
+    "parent": 41,
+    "head": 40
+   },
+   "contentHash": {
+    "live": "cdb6db843e867e6fad3dcc8782fc72cc",
+    "head": "d2b0b4232cf890fad6bac7974a4f0423"
+   },
+   "structureHash": {
+    "live": "042e7df4f800a7680e30fc17ff61c582",
+    "head": "94317ad146701f5e0f60ab4655643edb"
+   }
+  },
+  {
+   "key": "evo2_nebula_axolotl_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3344,
+    "parent": 3344,
+    "head": 3236
+   },
+   "parts": {
+    "live": 31,
+    "parent": 31,
+    "head": 29
+   },
+   "contentHash": {
+    "live": "a188c4ce33137322684b909e892e245e",
+    "head": "ffc9ef6dc542b62ff073c84ab2863d19"
+   },
+   "structureHash": {
+    "live": "0d16f1b048ad288f6eb4d94eee7407b7",
+    "head": "6df6ba70a0ea22d820c6a5a88f5544af"
+   }
+  },
+  {
+   "key": "evo2_candy_unicorn",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 12586,
+    "parent": 12586,
+    "head": 12192
+   },
+   "parts": {
+    "live": 46,
+    "parent": 46,
+    "head": 42
+   },
+   "contentHash": {
+    "live": "d9df8a9c1ed30a0ce3d68ae58df9d7f7",
+    "head": "e8da52e641481db9605b2f3fadd4125c"
+   },
+   "structureHash": {
+    "live": "0eb341b67a5e4f53bf6cd6f0075224c7",
+    "head": "95440f346ccf7e476d137a5a00e9e121"
+   }
+  },
+  {
+   "key": "evo2_candy_unicorn_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3746,
+    "parent": 3746,
+    "head": 3526
+   },
+   "parts": {
+    "live": 34,
+    "parent": 34,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "c216cd4790df39b46660b8839a976c3d",
+    "head": "f4cf152cdc0d218fc7ae364e7790b04e"
+   },
+   "structureHash": {
+    "live": "12292cf8b5a4cf61594c88495bf5a465",
+    "head": "7e93a1cc7eb5542546ab0d507a64cd08"
+   }
+  },
+  {
+   "key": "evo2_ember_phoenix",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 11644,
+    "parent": 11644,
+    "head": 11282
+   },
+   "parts": {
+    "live": 43,
+    "parent": 43,
+    "head": 41
+   },
+   "contentHash": {
+    "live": "0d611a39c1501a382d2cb915820cfdfa",
+    "head": "c0a7f723b0400964c5cd66a19b722902"
+   },
+   "structureHash": {
+    "live": "9d2fcc855be9e8ef0510bd83b3b3e778",
+    "head": "f5cdc5dfe112b73d7bd6ca345265c72a"
+   }
+  },
+  {
+   "key": "evo2_ember_phoenix_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3268,
+    "parent": 3268,
+    "head": 3100
+   },
+   "parts": {
+    "live": 27,
+    "parent": 27,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "316b332d80b207265ee7590e8ba78e5d",
+    "head": "a8ff980ab7e4baedd94096c336b8850a"
+   },
+   "structureHash": {
+    "live": "5ed1b12573c9e92afde6a3ba916edcb7",
+    "head": "2d5c4f5f1d299a9daaa1e221be8c27ad"
+   }
+  },
+  {
+   "key": "evo2_sunbeam_bear",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 13164,
+    "parent": 13164,
+    "head": 12770
+   },
+   "parts": {
+    "live": 39,
+    "parent": 39,
+    "head": 35
+   },
+   "contentHash": {
+    "live": "bc528acb8fd91796ec7aaa7e88d6064b",
+    "head": "6cdbc6d16a75d80b63aee3e05f9332a7"
+   },
+   "structureHash": {
+    "live": "f1dd7e96cf296fa08e16d389039b91e1",
+    "head": "548af19e7c2876bceabf79c3c2ce61bc"
+   }
+  },
+  {
+   "key": "evo2_sunbeam_bear_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3550,
+    "parent": 3550,
+    "head": 3334
+   },
+   "parts": {
+    "live": 27,
+    "parent": 27,
+    "head": 25
+   },
+   "contentHash": {
+    "live": "29cc1b98f0dc1402a04f301adf628929",
+    "head": "3818c09d39fccc5b4ccd1649f89ccec4"
+   },
+   "structureHash": {
+    "live": "954968ccd5365a2435bdccd2979ea624",
+    "head": "37cb64113dc55d87185387c71753987f"
+   }
+  },
+  {
+   "key": "evo2_twilight_dragon",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 14016,
+    "parent": 14016,
+    "head": 13838
+   },
+   "parts": {
+    "live": 42,
+    "parent": 42,
+    "head": 40
+   },
+   "contentHash": {
+    "live": "c8ea31be87e75ab8c03b80170e126f9a",
+    "head": "e8295c0482170f06e565b923ae1be938"
+   },
+   "structureHash": {
+    "live": "f4e7aa2e7c96bd864f788b9b7c629ffb",
+    "head": "e9f9e69cd2fd3a1d88de85322c6efdbb"
+   }
+  },
+  {
+   "key": "evo2_twilight_dragon_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 4012,
+    "parent": 4012,
+    "head": 3906
+   },
+   "parts": {
+    "live": 33,
+    "parent": 33,
+    "head": 34
+   },
+   "contentHash": {
+    "live": "88913dce087737182b8396ba2703e526",
+    "head": "0f7b8a3115383aad1ee1ee9041c605f2"
+   },
+   "structureHash": {
+    "live": "be59755460e54b3004802d758de5ad84",
+    "head": "1c6c8f873f7bd397265a9d4f42caf3a6"
+   }
+  },
+  {
+   "key": "evo2_cloudy_dragon",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 13934,
+    "parent": 13934,
+    "head": 13748
+   },
+   "parts": {
+    "live": 39,
+    "parent": 39,
+    "head": 37
+   },
+   "contentHash": {
+    "live": "0c89c84a1824c0796ae5996937787f59",
+    "head": "0923ac174954d8b6a83866c0ce4957b6"
+   },
+   "structureHash": {
+    "live": "aacf39028d1df624353b8f13e1837ab6",
+    "head": "c279aae92b9f843d97db25e1de563426"
+   }
+  },
+  {
+   "key": "evo2_cloudy_dragon_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 4188,
+    "parent": 4188,
+    "head": 4072
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "a1bd732615e5f72bfb37f1c327a8c01d",
+    "head": "0b7072598bc584b0f3d72f9ce730f675"
+   },
+   "structureHash": {
+    "live": "1cd28b071aa1c32c75d1b3d1866f0458",
+    "head": "2128e62ac0c22ceed29aef5057e44b2a"
+   }
+  },
+  {
+   "key": "evo2_starlight_unicorn",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 12138,
+    "parent": 12138,
+    "head": 11876
+   },
+   "parts": {
+    "live": 36,
+    "parent": 36,
+    "head": 35
+   },
+   "contentHash": {
+    "live": "bcd9e47dfbc9630ae0d3f2a2149b04ac",
+    "head": "dc28113e0eb9041a2ad54319dabf021b"
+   },
+   "structureHash": {
+    "live": "5e8fb4df6c1069df6894c951abc90086",
+    "head": "a5290639dbe80c72b221b606508d63c8"
+   }
+  },
+  {
+   "key": "evo2_starlight_unicorn_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3856,
+    "parent": 3856,
+    "head": 3696
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 31
+   },
+   "contentHash": {
+    "live": "9c1bff2c672cdef8f8decb52c65b85cb",
+    "head": "313bc651bc565c1782e532925b6c8fb6"
+   },
+   "structureHash": {
+    "live": "183eb60a5894a8977ae4b2163549f192",
+    "head": "67a985ded082b5cd675a76b57fb2cbd1"
+   }
+  },
+  {
+   "key": "evo2_stormfang",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 12492,
+    "parent": 12492,
+    "head": 12182
+   },
+   "parts": {
+    "live": 33,
+    "parent": 33,
+    "head": 33
+   },
+   "contentHash": {
+    "live": "26795004021fc61bd090236f4bb262cf",
+    "head": "5371f77417c9ffc52fb27f411d8011e5"
+   },
+   "structureHash": {
+    "live": "d233d83598da9e1a26dea905c5dbd302",
+    "head": "679718e6a63f7bfe1a0926b321225151"
+   }
+  },
+  {
+   "key": "evo2_stormfang_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3618,
+    "parent": 3618,
+    "head": 3524
+   },
+   "parts": {
+    "live": 25,
+    "parent": 25,
+    "head": 26
+   },
+   "contentHash": {
+    "live": "99f27ffef849c5c2c93c7b82fcb7005c",
+    "head": "005e49efcbb2a54b56fc4fa6981fbdc7"
+   },
+   "structureHash": {
+    "live": "8ec58cd3ca336db9031e85b6c449567d",
+    "head": "6a55c29b91a4174c568b4c5c3d19f233"
+   }
+  },
+  {
+   "key": "evo2_eclipse_dragon",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 14246,
+    "parent": 14246,
+    "head": 14068
+   },
+   "parts": {
+    "live": 42,
+    "parent": 42,
+    "head": 40
+   },
+   "contentHash": {
+    "live": "6d3a6feee7e74f6815912c0d967d68e5",
+    "head": "12ca3a28bd9ffc3107c82dee86ff3d08"
+   },
+   "structureHash": {
+    "live": "6f7da82f85e1be38a64f0c5f1d599ab3",
+    "head": "5bcc8eba338217015d4407b75b77282d"
+   }
+  },
+  {
+   "key": "evo2_eclipse_dragon_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 4160,
+    "parent": 4160,
+    "head": 4054
+   },
+   "parts": {
+    "live": 35,
+    "parent": 35,
+    "head": 36
+   },
+   "contentHash": {
+    "live": "5df3d1d694a46827e469d2dced5feb29",
+    "head": "5272c2cc81c266220deb7f7f7a8aaeae"
+   },
+   "structureHash": {
+    "live": "fe39e31233134be68209b488caae307d",
+    "head": "60e39c22c9ad8eb995bd501939766818"
+   }
+  },
+  {
+   "key": "evo2_obsidian_phoenix",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 11370,
+    "parent": 11370,
+    "head": 11030
+   },
+   "parts": {
+    "live": 40,
+    "parent": 40,
+    "head": 40
+   },
+   "contentHash": {
+    "live": "2d28e4e0fa44dd84a4f65f025e7765d6",
+    "head": "cf6f641f28384da47cdff85c33bd204b"
+   },
+   "structureHash": {
+    "live": "009352b5f7993aa5e0ba7254ba875574",
+    "head": "62a48816688071efbf2d01dad866ac1e"
+   }
+  },
+  {
+   "key": "evo2_obsidian_phoenix_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3138,
+    "parent": 3138,
+    "head": 2988
+   },
+   "parts": {
+    "live": 29,
+    "parent": 29,
+    "head": 28
+   },
+   "contentHash": {
+    "live": "0f768afc3a41846677d0bdf46e348310",
+    "head": "4fc4eea9462f2d0a904fe51e8b705205"
+   },
+   "structureHash": {
+    "live": "a28284ad38fe1a33375fd058d3e2a8df",
+    "head": "dd1e4ea3087c7954030a9b7ebb289b6b"
+   }
+  },
+  {
+   "key": "evo2_phantom_kitsune",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 14474,
+    "parent": 14474,
+    "head": 14222
+   },
+   "parts": {
+    "live": 39,
+    "parent": 39,
+    "head": 37
+   },
+   "contentHash": {
+    "live": "5fc4d60f3374289e18f23efb0a8e4d30",
+    "head": "42bb6932ba3e74c61da461d904ffbd9c"
+   },
+   "structureHash": {
+    "live": "285b2868eeb9df9a717e274eaf6c228f",
+    "head": "505ced94edc4266f7f0f48e8e94fffd1"
+   }
+  },
+  {
+   "key": "evo2_phantom_kitsune_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3974,
+    "parent": 3974,
+    "head": 3808
+   },
+   "parts": {
+    "live": 30,
+    "parent": 30,
+    "head": 29
+   },
+   "contentHash": {
+    "live": "85e6da10dcc79910ed9a3af3050bac45",
+    "head": "f51ad6314725404734afdba80f4889a4"
+   },
+   "structureHash": {
+    "live": "cfd31c9a6e64b44e9b9abe525b0c4cef",
+    "head": "8a8c84ef216adf7a26fede3085a47061"
+   }
+  },
+  {
+   "key": "evo2_magma_cub",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 12888,
+    "parent": 12888,
+    "head": 12496
+   },
+   "parts": {
+    "live": 45,
+    "parent": 45,
+    "head": 41
+   },
+   "contentHash": {
+    "live": "ef176ff559a2a578959c5788b55e12c1",
+    "head": "69bdbfdb7422042bb67f344a45d83b96"
+   },
+   "structureHash": {
+    "live": "2a5d3a7c078b8f0f69b5584818ad640a",
+    "head": "d9bf59103e59abfd2430ca430ce5d94b"
+   }
+  },
+  {
+   "key": "evo2_magma_cub_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3498,
+    "parent": 3498,
+    "head": 3298
+   },
+   "parts": {
+    "live": 29,
+    "parent": 29,
+    "head": 27
+   },
+   "contentHash": {
+    "live": "51be3e790bc903c25667183e17b5fe9e",
+    "head": "e5e238e28191c7a10649a07d0b0fc5b7"
+   },
+   "structureHash": {
+    "live": "34d76d5dff1f68f3e4b6e217e2c783cf",
+    "head": "bb7c157b090ee38cd4d695e0a710cf47"
+   }
+  },
+  {
+   "key": "evo2_rime_wyrmling",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 14426,
+    "parent": 14426,
+    "head": 14248
+   },
+   "parts": {
+    "live": 47,
+    "parent": 47,
+    "head": 45
+   },
+   "contentHash": {
+    "live": "af28e8901b7f37f9ecaaad16bf7d8d91",
+    "head": "d58e3be194ba5259040203b911f3c49e"
+   },
+   "structureHash": {
+    "live": "5a415246852267a93a69e9640dc62a6b",
+    "head": "20cc075ad1395389cefc078ca890da6e"
+   }
+  },
+  {
+   "key": "evo2_rime_wyrmling_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 4088,
+    "parent": 4088,
+    "head": 3982
+   },
+   "parts": {
+    "live": 39,
+    "parent": 39,
+    "head": 40
+   },
+   "contentHash": {
+    "live": "d0e0f869efee778301f26e5a0baca0f9",
+    "head": "38d6689047304ddd1a21b3d847fd30cb"
+   },
+   "structureHash": {
+    "live": "f9b4478c7bd71bbd9e2c54b19e04347a",
+    "head": "455bf3b090ae891106eb5a21e30c962f"
+   }
+  },
+  {
+   "key": "evo2_hydralotl",
+   "lod": "High",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 13304,
+    "parent": 13304,
+    "head": 13126
+   },
+   "parts": {
+    "live": 40,
+    "parent": 40,
+    "head": 40
+   },
+   "contentHash": {
+    "live": "b903468f051f18aaaa05126623467cb4",
+    "head": "38acb50eba4174d33b253e6e2f71ff12"
+   },
+   "structureHash": {
+    "live": "6dd045b298f78f9db144600265f32a97",
+    "head": "ed6fc0eaf8ba52a41b4e723a85b77df8"
+   }
+  },
+  {
+   "key": "evo2_hydralotl_low",
+   "lod": "Low",
+   "hasMeshId": true,
+   "committedIsStaleVsParent": false,
+   "eyeCommitChangesContent": true,
+   "eyeCommitChangesStructure": true,
+   "tris": {
+    "live": 3858,
+    "parent": 3858,
+    "head": 3750
+   },
+   "parts": {
+    "live": 32,
+    "parent": 32,
+    "head": 30
+   },
+   "contentHash": {
+    "live": "4ff9c11d8f7dce1b7ca8305aff7a0088",
+    "head": "045ffc1c15d95ed3c55e573f91ba23b1"
+   },
+   "structureHash": {
+    "live": "c0d66f64f05f817003d5bd12dd27c25a",
+    "head": "b2c6685b0f8ae5e7c76a89068290b7ec"
+   }
+  }
+ ]
+}

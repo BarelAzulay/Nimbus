@@ -203,7 +203,12 @@ S.client_titles = guarded("client_titles", function()
 			T.check(tag.SizeOffset.X == 0 and abs(tag.SizeOffset.Y - (0.5 + 24 / H)) < 1e-6, k .. ": SizeOffset.Y == 0.5 + (26 - 2) / H (the plate 26 px above the anchor at any distance)", tostring(tag.SizeOffset))
 			T.check(tag.MaxDistance == 90 and tag.AlwaysOnTop == false and tag.LightInfluence == 0 and tag.Enabled == true, k .. ": MaxDistance 90, not on top, LightInfluence 0, shown",
 				fmt("max %s, top %s, light %s, enabled %s", tostring(tag.MaxDistance), tostring(tag.AlwaysOnTop), tostring(tag.LightInfluence), tostring(tag.Enabled)))
-			T.check(#tag:GetDescendants() <= 6, k .. ": at most 6 instances inside the tag (no crown)", tostring(#tag:GetDescendants()))
+			-- (Pitch 2 item 04_world_ui, the owner's approved pick B: CREATOR wears the pixel crown inside its tag) the
+			-- Creator tag's budget is the 6 plus that icon (its frame and one frame per run of the crown bitmap); the others
+			-- keep 6
+			local PIc = G.req("shared/PixelIcon")
+			local cap = (w.kind == "Creator") and (6 + 1 + (PIc and #PIc.Runs("crown") or 0)) or 6
+			T.check(#tag:GetDescendants() <= cap, k .. ": at most " .. cap .. " instances inside the tag (no VIP crown)", tostring(#tag:GetDescendants()))
 			local plate, label = G.parts(tag)
 			if T.check(plate ~= nil and plate:IsA("Frame") and label ~= nil and label:IsA("TextLabel"), k .. ": TitleTag > Plate > Label") then
 				T.eq(label.Text, w.text, k .. ": the text")
@@ -211,7 +216,9 @@ S.client_titles = guarded("client_titles", function()
 					fmt("%s px, %s", tostring(label.TextSize), tostring(label:GetAttribute("FontRole"))))
 				-- (kit-b U9-3) a flat kit B tag: an opaque face in its role's colour, a wood edge, its lip, square; no outline,
 				-- no gradient
-				local face = ({ Top10 = Theme.Sign.Gold, Top100 = Theme.Sign.Tile, Creator = Theme.Sign.Navy })[w.kind]
+				-- (Pitch 2 item 04_world_ui, the owner's approved pick B "Stone tags": "gold for the CREATOR title with a pixel
+				-- crown") CREATOR moved from the navy plank to a stone face on a gold lip; this pin follows that decision
+				local face = ({ Top10 = Theme.Sign.Gold, Top100 = Theme.Sign.Tile, Creator = Theme.Sign.Stone })[w.kind]
 				T.check(label:FindFirstChildWhichIsA("UIStroke") == nil, k .. ": no outline on the text (it sits on an opaque face)")
 				T.check(G.same(plate.BackgroundColor3, face) and plate.BackgroundTransparency == 0 and plate:FindFirstChildWhichIsA("UICorner") == nil
 					and plate:FindFirstChild("SignEdge") ~= nil and plate:FindFirstChild("Lip") ~= nil, k .. ": an opaque square plate in its role's colour, a wood edge and its lip")
@@ -229,8 +236,12 @@ S.client_titles = guarded("client_titles", function()
 				local tw = G.textWidth(label)
 				local px, pw = plate.AbsolutePosition.X, plate.AbsoluteSize.X
 				local lx, lw = label.AbsolutePosition.X, label.AbsoluteSize.X
-				T.check(pw >= tw and pw <= tw + 40 and abs(px + pw / 2 - 120) <= 1, k .. ": the plate is the text's width (plus padding), centred",
-					fmt("plate %d at %d, text %d", pw, px, tw))
+				-- (Pitch 2 item 04 B) the CREATOR plate also holds its pixel crown ahead of the word: the crown's lead
+				-- (TitleController.K: CREATOR_CROWN_PAD + CREATOR_CROWN + CREATOR_CROWN_GAP - PAD) rides on the same allowance
+				local TK = TC.K or {}
+				local lead = (w.kind == "Creator") and ((TK.CREATOR_CROWN_PAD or 0) + (TK.CREATOR_CROWN or 0) + (TK.CREATOR_CROWN_GAP or 0) - (TK.PAD or 0)) or 0
+				T.check(pw >= tw + lead and pw <= tw + 40 + lead and abs(px + pw / 2 - 120) <= 1, k .. ": the plate is the text's width (plus padding" .. (lead > 0 and ", plus the crown" or "") .. "), centred",
+					fmt("plate %d at %d, text %d, lead %d", pw, px, tw, lead))
 				local textX = lx + (lw - tw) / 2
 				T.check(label.TextXAlignment == Enum.TextXAlignment.Center and textX >= px - 0.5 and textX + tw <= px + pw + 0.5, k .. ": the text sits centred inside the plate",
 					fmt("text %d..%d, plate %d..%d", textX, textX + tw, px, px + pw))

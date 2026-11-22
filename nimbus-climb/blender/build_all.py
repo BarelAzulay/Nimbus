@@ -10,7 +10,8 @@ blender/out/ is then refused by tools/upload_assets.py) and keeps the sha + the 
 did not change (that FBX still matches). An export build records the sha256 of the verified FBX (review3 tooling-0).
 
 Per key: build the model (bridge / props / calibration), check the class budgets (too many triangles -> K x 0.9,
-up to 2 times, then the build FAILS; too many MeshParts or > 10k triangles in one part -> FAILS), check geometry
+up to 2 times, then the build FAILS; a catalog "kStep": n starts n steps down; too many MeshParts or > 10k
+triangles in one part -> FAILS), check geometry
 (no zero-area quads, every group closed), export blender/out/<key>.fbx (Roblox's Blender settings, deterministic
 bytes) and verify it (3 re-imports), then write
     blender/out/<key>.manifest.json, blender/out/<key>.tris.json.gz        (not committed: rebuilt from here)
@@ -175,8 +176,13 @@ class Builder:
     # ------------------------------------------------------------------ budgets + K steps
     def build(self, entry, budget):
         k = float(entry.get("k", 1.0))
+        # "kStep": n starts the budget loop n steps down (k x 0.9^n, the same float the loop reaches): it keeps a key
+        # on the voxel grid it was uploaded with when a face change lowers its triangle count (evolved_catalog.py)
+        start = min(int(entry.get("kStep", 0) or 0), K_STEPS)
+        for _ in range(start):
+            k *= K_STEP
         tries = []
-        for step in range(K_STEPS + 1):
+        for step in range(start, K_STEPS + 1):
             m = self.make(entry, k)
             tris = m.tris()
             worst = max([o.tris() for o in m.objects.values()] or [0])

@@ -6,10 +6,13 @@
 --   sky_blend_window   (server world, pure) Blend is 0 until Config.Sky.Cycle.Blend (75) s before a phase ends, then rises
 --                      monotonically to 1; Next is the following phase in Order (Night -> Dawn)
 --   sky_clock_no_wrap  (server world, pure) one loop sampled every 1 s: ClockTime in [0, 24), only ever forward round the
---                      dial (SkyCycle.ClockDelta), every 2 s step 0..0.2 h over the WHOLE loop incl. Sunset -> Night,
---                      Night -> Dawn and the loop wrap; midnight (24 -> 0) passed once, in the Night, which runs on to
---                      Dawn's 7 h (no 23.6 -> 7 jump); Sunset in [16, 17] outside its blend; Sunset -> Night walked
---                      across the blend (no one-frame horizon crossing)
+--                      dial (SkyCycle.ClockDelta), every 2 s step 0..0.2 h over the WHOLE loop incl. Night -> Dawn and
+--                      the loop wrap, save ONE step: P2 F11 C's quick sunset (the Sunset clock <= 17.2 h onto the Night's
+--                      18.9 h 2 s before the Sunset -> Night bridge peak, k >= 0.9, behind the cloud curtain); midnight
+--                      (24 -> 0) passed once, in the Night, which runs on to Dawn's 7 h (no 23.6 -> 7 jump); Sunset in
+--                      [16, 17] outside its blend; across the Sunset -> Night blend the clock holds <= 17.2 h until the
+--                      bridge's middle 4 s and is the Night's start from the peak on (the engine sun never sits on the
+--                      horizon on screen)
 --   sky_floor          (server world, pure) every phase sample and every raid look after Preset: Brightness >= 1.0, each
 --                      OutdoorAmbient channel >= 70/255, ColorCorrection TintColor within 8/255 of white; Floor lifts a
 --                      dark preset onto the floor
@@ -39,11 +42,14 @@
 --   client_sky_refresh (client) the loop calls SetBase every Refresh (2) s with Tween (2) s; skips while Busy(); one loop
 --                      (Start twice = one; Stop ends it); no RenderStepped / Heartbeat connection; a clock jump of more
 --                      than Config.Sky.ClockJump at a raid change is set at once; Sunset -> Night and Night -> Dawn are
---                      NOT (the clock tweens forward through them, every 2 s step <= 0.2 h); passing midnight
+--                      NOT (the clock tweens forward through them, every 2 s step <= 0.2 h, save P2 F11 C's one quick
+--                      sunset step: tweened over one refresh, never set at once, the first refresh from 2 s before the
+--                      bridge peak, its tween ending by peak + 2 s, under the cloud curtain at both ends); passing midnight
 --                      (23.9 -> 0.1) is set at once (a tween would run back through the day; 24 h = 0 h)
 --   client_sky_whole_loop (client) SkyController over a whole loop + a raid in 2 s refreshes: every step moves the sun
---                      0..0.2 h round the dial, and the only instant ClockTime sets are the one midnight re-base (a
---                      step of <= 0.2 h from just before 24 to just after 0) and a raid sky's fixed clock (in and out)
+--                      0..0.2 h round the dial (save the one tweened quick sunset step, P2 F11 C), and the only instant
+--                      ClockTime sets are the one midnight re-base (a step of <= 0.2 h from just before 24 to just after
+--                      0) and a raid sky's fixed clock (in and out)
 --   client_sky_event   (client) SkyEvent + SkyEventAt: the raid blend rises over Transitions.Raid.In (8) s to 1 (a late
 --                      joiner mid-raid lands on the raid sky at once); cleared -> back to the cycle over Raid.Out (6) s
 --   client_sky_event_back_to_back (client) SkyEvent storm_titan -> lava_golem with no clear: the base blends from the
@@ -271,10 +277,25 @@ local function serverScenarios()
 		local D = SC.ClockDelta
 		T.check(type(D) == "function" and abs(D(23.9, 0.1) - 0.2) < 1e-9 and abs(D(0.1, 23.9) + 0.2) < 1e-9 and abs(D(7, 13) - 6) < 1e-9 and D(0 / 0, 1) == 0, "SkyCycle.ClockDelta: the step round the 24 h dial (23.9 -> 0.1 = +0.2)")
 		local range = T.tally("ClockTime stays in [0, 24) (one loop, every 1 s)")
-		local fwd = T.tally("one loop, every 1 s incl. Night -> Dawn and the loop wrap: the clock only moves forward round the dial (the sun never runs back)")
-		local step2 = T.tally("every 2 s refresh step of the whole loop moves the sun 0..0.2 h (no visible jump anywhere)")
+		local fwd = T.tally("one loop, every 1 s incl. Night -> Dawn and the loop wrap: the clock only moves forward round the dial (the sun never runs back), every step <= 0.1 h save the quick sunset")
+		local step2 = T.tally("every 2 s refresh step of the whole loop moves the sun 0..0.2 h (no visible jump anywhere) save the quick sunset behind the bridge")
 		local sunset = T.tally("Sunset ClockTime stays in [16, 17] outside its blend (a modest sun, short shadows)")
-		local walk = T.tally("Sunset -> Night blend: ClockTime walks on to Night's start (every 2 s step <= 0.2 h, continuous into Night)")
+		local walk = T.tally("Sunset -> Night blend: the clock holds <= 17.2 h until the bridge's middle 4 s, then is the Night's start by the peak (one step, continuous into Night)")
+		-- P2 F11 C (the owner's pick "Clear air + a quick sunset behind the clouds", spec item F11_day_fade) changed these
+		-- limits on purpose: before it the clock walked 17 -> 18.4 h across the whole Sunset -> Night blend, so the engine
+		-- sun sat on the horizon on screen (the red-brown island of the owner's shot). Now the Sunset clock holds (<= 17.2 h)
+		-- until 2 s before the bridge peak and steps onto the Night's start (18.9 h) there, behind the cloud curtain, and SkyController
+		-- tweens that one step over one refresh. That step is the only one allowed past the old limits
+		local half = cfg.Transitions and cfg.Transitions.Cycle and cfg.Transitions.Cycle.BridgeHalf or 0
+		-- t = the sample that shows the new clock (the refresh that carries the step). P2 F11 C look review moved the step
+		-- to 2 s BEFORE the peak, where k still rises, so k is read there, not at the sample before the step (3.5 s before
+		-- the peak on an odd 2 s grid: k 0.85, though the step itself is under k 0.946); sky_fade_clear models the clock
+		-- on screen for every refresh phase
+		local function quickSunset(t, a, b)
+			local at = SC.At(t, 0, 1, 0)
+			return at.Phase == "Sunset" and SC.Bridge(at.Blend, half) >= 0.9 and a <= 17.2 + 1e-9 and abs(b - cfg.Looks.Night.Clock[1]) < 1e-6
+		end
+		local quick1, quick2 = 0, 0
 		local clocks, phases = {}, {}
 		for t = 0, 1199 do
 			local at = SC.At(t, 0, 1, 0)
@@ -291,7 +312,11 @@ local function serverScenarios()
 			local a, b = clocks[t], clocks[(t + 1) % 1200]
 			if type(a) == "number" and type(b) == "number" then
 				local d = D(a, b)
-				fwd:case(d >= -1e-9 and d <= 0.1, fmt("t %d %s %.3f -> %.3f (%.3f h)", t, phases[t], a, b, d))
+				local quick = d > 0.1 and quickSunset(t + 1, a, b)
+				if quick then
+					quick1 = quick1 + 1
+				end
+				fwd:case(d >= -1e-9 and (d <= 0.1 or quick), fmt("t %d %s %.3f -> %.3f (%.3f h)", t, phases[t], a, b, d))
 				if b < a - 12 then
 					wraps[#wraps + 1] = phases[t] .. "@" .. t
 				end
@@ -301,9 +326,14 @@ local function serverScenarios()
 			local a, b = clocks[t], clocks[(t + 2) % 1200]
 			if type(a) == "number" and type(b) == "number" then
 				local d = D(a, b)
-				step2:case(d >= -1e-9 and d <= 0.2 + 1e-9, fmt("t %d %s %.3f -> %.3f (%.3f h)", t, phases[t], a, b, d))
+				local quick = d > 0.2 + 1e-9 and quickSunset(t + 2, a, b)
+				if quick then
+					quick2 = quick2 + 1
+				end
+				step2:case(d >= -1e-9 and (d <= 0.2 + 1e-9 or quick), fmt("t %d %s %.3f -> %.3f (%.3f h)", t, phases[t], a, b, d))
 			end
 		end
+		T.check(quick1 == 1 and quick2 == 1, "the quick sunset is exactly one step a loop (1 s and 2 s samples), at the Sunset -> Night bridge peak", fmt("%d / %d", quick1, quick2))
 		T.check(#wraps == 1 and wraps[1]:sub(1, 5) == "Night", "the clock passes midnight (24 -> 0) exactly once a loop, in the Night", table.concat(wraps, ","))
 		local c = cfg.Cycle
 		local dawnFrom = cfg.Looks.Dawn.Clock[1]
@@ -315,9 +345,24 @@ local function serverScenarios()
 		for t = nightAt - c.Blend - 2, nightAt + 4, 2 do
 			local clock = clocks[t]
 			if prev and type(clock) == "number" then
-				walk:case(clock >= prev - 1e-9 and clock - prev <= 0.2, fmt("t %d %.3f after %.3f (step %.3f h)", t, clock, prev, clock - prev))
+				walk:case(clock >= prev - 1e-9 and (clock - prev <= 0.2 or quickSunset(t, prev, clock)), fmt("t %d %.3f after %.3f (step %.3f h)", t, clock, prev, clock - prev))
 			end
 			prev = clock
+		end
+		-- P2 F11 C look review (major) changed this on purpose: the step used to be at the peak (blend 0.5), and the client's
+		-- 2 s tween of it could end 4 s after the peak, outside the bridge's middle 4 s; the step now lands (Refresh + Tween)
+		-- / 2 = 2 s before the peak, so in the 2 s before the peak the clock is either still <= 17.2 h or already the
+		-- Night's start (smoke_kitb_sky's sky_fade_clear pins where, and models the clock on screen)
+		local peakAt = nightAt - c.Blend / 2
+		for t = nightAt - c.Blend, nightAt do
+			local at = SC.At(t, 0, 1, 0)
+			if at.Phase == "Sunset" and t < peakAt - 2 then
+				walk:case(clocks[t] <= 17.2 + 1e-9, fmt("t %d before the bridge's middle 4 s: %.3f h (the sun not yet on the horizon)", t, clocks[t]))
+			elseif at.Phase == "Sunset" and t < peakAt then
+				walk:case(clocks[t] <= 17.2 + 1e-9 or abs(clocks[t] - nightFrom) < 1e-9, fmt("t %d in the 2 s before the peak: %.3f h (<= 17.2 or the Night's %.2f)", t, clocks[t], nightFrom))
+			else
+				walk:case(abs(clocks[t] - nightFrom) < 1e-9, fmt("t %d from the bridge peak: %.3f h = the Night's start %.2f", t, clocks[t], nightFrom))
+			end
 		end
 		walk:case(clocks[nightAt - 1] > 17 + 1, fmt("1 s before Night the clock is already near Night's start (%.3f)", clocks[nightAt - 1]))
 		walk:case(abs(clocks[nightAt] - nightFrom) < 1e-9 and nightFrom - clocks[nightAt - 1] < 0.05, fmt("Night starts at %.2f, %.3f h after the last Sunset second", nightFrom, nightFrom - clocks[nightAt - 1]))
@@ -930,7 +975,7 @@ local function clientScenarios()
 		local calls = {}
 		local real = LS.SetBase
 		LS.SetBase = function(preset, seconds, instant)
-			calls[#calls + 1] = { seconds = seconds, instant = instant, preset = preset }
+			calls[#calls + 1] = { seconds = seconds, instant = instant, preset = preset, t = Workspace:GetServerTimeNow() }
 			return real(preset, seconds, instant)
 		end
 		local ok, err = pcall(function()
@@ -951,19 +996,26 @@ local function clientScenarios()
 			LS.Pop("Dungeon", 0)
 			KC.advance(2.1)
 			T.check(#calls > n0, "after the fade the refresh applies again")
-			-- Sunset -> Night (17 -> 18.4, across the ~18 h horizon where sunlight and shadows go off): never a jump;
-			-- the loop's 2 s steps walk the clock across the 75 s blend
+			-- Sunset -> Night: never an instant set. P2 F11 C (the owner's "Clear air + a quick sunset behind the clouds")
+			-- changed this check on purpose: the clock used to walk 17 -> 18.4 h across the whole blend in <= 0.2 h steps,
+			-- which left the engine sun on the horizon on screen (the red island of the owner's shot); now the Sunset clock
+			-- holds until the bridge peak and makes ONE step onto the Night's start there, which this controller tweens over
+			-- one refresh (the same phase segment: no jump) while the cloud curtain is up. Every other step keeps <= 0.2 h
 			local C = Cfg.Sky.Cycle
 			local nightAt = C.Seconds.Dawn + C.Seconds.Day + C.Seconds.Sunset
-			publish(nightAt - C.Blend - 2)
+			local pos0 = nightAt - C.Blend - 2
+			local epoch0 = publish(pos0)
 			KC.advance(0.05)
 			calls = {}
 			for _ = 1, math.ceil((C.Blend + 8) / C.Refresh) do
 				KC.advance(C.Refresh)
 			end
-			local walkBad, maxStep, prevClock, instants = nil, 0, nil, 0
+			local half = Cfg.Sky.Transitions.Cycle.BridgeHalf
+			local walkBad, maxStep, prevClock, prevBlend, instants = nil, 0, nil, nil, 0
+			local quick = {}
 			for _, c in ipairs(calls) do
 				local clock = c.preset.Lighting.ClockTime
+				local at = SCy.At(c.t, epoch0, 1, pos0)
 				if c.instant then
 					instants = instants + 1
 				end
@@ -971,14 +1023,37 @@ local function clientScenarios()
 					if clock < prevClock - 1e-9 then
 						walkBad = walkBad or fmt("%.3f after %.3f", clock, prevClock)
 					end
-					maxStep = math.max(maxStep, clock - prevClock)
+					if clock - prevClock > 0.2 then
+						quick[#quick + 1] = { a = prevClock, b = clock, at = at, t = c.t, prevBlend = prevBlend, seconds = c.seconds, instant = c.instant, cover = c.preset.Clouds and c.preset.Clouds.Cover }
+					else
+						maxStep = math.max(maxStep, clock - prevClock)
+					end
 				end
-				prevClock = clock
+				prevClock, prevBlend = clock, at.Phase == "Sunset" and at.Blend or 1
 			end
 			local first = calls[1] and calls[1].preset.Lighting.ClockTime
 			T.check(#calls >= 35 and SC.State().Phase == "Night" and first ~= nil and first <= 17 + 1e-6 and prevClock >= Cfg.Sky.Looks.Night.Clock[1] - 1e-6, fmt("Sunset -> Night through the loop: %d refreshes from %.2f h to %.2f h", #calls, first or -1, prevClock or -1), tostring(SC.State().Phase))
-			T.check(walkBad == nil and maxStep <= 0.2, "Sunset -> Night: ClockTime monotonic across the blend, no 2 s refresh step over 0.2 h", fmt("%s, max step %.3f h", tostring(walkBad), maxStep))
-			T.check(instants == 0, "Sunset -> Night: no instant clock set (the sun goes down over the blend, not in one frame)", fmt("%d instant sets", instants))
+			T.check(walkBad == nil and maxStep <= 0.2, "Sunset -> Night: ClockTime monotonic across the blend, every other 2 s refresh step <= 0.2 h", fmt("%s, max step %.3f h", tostring(walkBad), maxStep))
+			T.check(instants == 0, "Sunset -> Night: no instant clock set (the quick sunset is tweened, never set in one frame)", fmt("%d instant sets", instants))
+			local q = quick[1]
+			T.check(#quick == 1 and q.a <= 17.2 + 1e-9 and math.abs(q.b - Cfg.Sky.Looks.Night.Clock[1]) < 1e-6 and q.seconds == C.Tween and q.instant == nil,
+				fmt("the quick sunset: one refresh tweens the clock from <= 17.2 h onto the Night's %.1f h over %d s", Cfg.Sky.Looks.Night.Clock[1], C.Tween),
+				q and fmt("%d big step(s): %.2f -> %.2f over %s s, instant %s", #quick, q.a, q.b, tostring(q.seconds), tostring(q.instant)) or "no big step (the clock still walks across the horizon)")
+			-- P2 F11 C look review (major) changed this check on purpose: it asked for the step at the first refresh from the
+			-- peak (blend >= 0.5) and checked the curtain at the tween's START only, so the 2 s tween could end up to peak + 4 s
+			-- (k 0.81, Cover 0.85), outside the spec's middle 4 s. Now the step comes at the first refresh from (Refresh +
+			-- Tween) / 2 s before the peak, and its tween must start AND end inside the bridge's middle 4 s (peak +- 2 s, 0.1 s
+			-- for a frame late) with the curtain up at both ends (smoke_kitb_sky's sky_fade_clear proves every refresh phase)
+			local peakT = epoch0 + (nightAt - C.Blend / 2 - pos0)
+			local stepT = peakT - (C.Refresh + C.Tween) / 2
+			local endT = q and q.t + (q.seconds or 0)
+			local atEnd = q and SCy.At(endT, epoch0, 1, pos0)
+			local pEnd = q and SCy.Preset(atEnd, nil, 0, nil)
+			local kEnd = q and atEnd.Phase == "Sunset" and SCy.Bridge(atEnd.Blend, half) or 0
+			T.check(q ~= nil and q.at.Phase == "Sunset" and q.t >= stepT - 0.1 and q.t - C.Refresh < stepT + 0.1 and q.t >= peakT - 2 - 0.1 and endT <= peakT + 2 + 0.1
+				and SCy.Bridge(q.at.Blend, half) >= 0.9 and (q.cover or 0) >= 0.9 and kEnd >= 0.9 and (pEnd.Clouds.Cover or 0) >= 0.9,
+				"the quick sunset: at the first refresh from 2 s before the bridge peak, its 2 s tween ends by peak + 2 s, under the cloud curtain at both ends (k >= 0.9, Cover >= 0.9)",
+				q and fmt("tween %.2f -> %.2f s from the peak (step point %.2f), k %.3f / %.3f, Cover %s / %.3f", q.t - peakT, endT - peakT, stepT - peakT, SCy.Bridge(q.at.Blend, half), kEnd, tostring(q.cover), pEnd.Clouds.Cover or -1) or "no step")
 			-- Night -> Dawn: the night has run on through midnight to Dawn's 7 h, so no jump at the change either
 			publish(nightAt + C.Seconds.Night - 3)
 			KC.advance(0.05)
@@ -1033,13 +1108,19 @@ local function clientScenarios()
 			for k = 0, loop / C.Refresh do
 				SC.Refresh(epoch + k * C.Refresh)
 			end
-			local step = T.tally("a whole loop in 2 s refreshes (incl. Night -> Dawn and the loop wrap): every step moves the sun 0..0.2 h round the dial")
+			local step = T.tally("a whole loop in 2 s refreshes (incl. Night -> Dawn and the loop wrap): every step moves the sun 0..0.2 h round the dial, save the one tweened quick sunset")
 			local only = T.tally("the only instant ClockTime set of the cycle is the midnight re-base (just before 24 -> just after 0, one step)")
-			local prev, rebases = nil, 0
+			-- P2 F11 C changed this on purpose (see client_sky_refresh): the Sunset -> Night quick sunset is one tweened step from
+			-- <= 17.2 h onto the Night's start 2 s before the bridge peak; it is the only step allowed past 0.2 h, and never instant
+			local prev, rebases, quick = nil, 0, 0
 			for i, c in ipairs(calls) do
 				if prev then
 					local d = SCy.ClockDelta(prev, c.clock)
-					step:case(d >= -1e-9 and d <= 0.2 + 1e-9, fmt("#%d %s %.3f -> %.3f (%.3f h)", i, tostring(c.phase), prev, c.clock, d))
+					local isQuick = d > 0.2 + 1e-9 and c.phase == "Sunset" and not c.instant and prev <= 17.2 + 1e-9 and math.abs(c.clock - Cfg.Sky.Looks.Night.Clock[1]) < 1e-6
+					if isQuick then
+						quick = quick + 1
+					end
+					step:case(d >= -1e-9 and (d <= 0.2 + 1e-9 or isQuick), fmt("#%d %s %.3f -> %.3f (%.3f h)", i, tostring(c.phase), prev, c.clock, d))
 					if c.instant then
 						rebases = rebases + 1
 						only:case(prev > 23.7 and c.clock < 0.3 and d <= 0.2 + 1e-9, fmt("#%d %s instant %.3f -> %.3f", i, tostring(c.phase), prev, c.clock))
@@ -1052,6 +1133,7 @@ local function clientScenarios()
 			step:report()
 			only:report()
 			T.check(#calls == loop / C.Refresh + 1 and rebases == 1, fmt("%d refreshes over the loop, the midnight re-base once", #calls), fmt("%d calls, %d re-bases", #calls, rebases))
+			T.check(quick == 1, "the quick sunset: exactly one tweened step a loop onto the Night's start (P2 F11 C)", fmt("%d", quick))
 			-- a raid in the Day (lava: 15.5 h, 3 h from the Day clock): its fixed clock is set at once at the mid-blend, in and out; nothing else is
 			local t0 = epoch + 300
 			SC.Refresh(t0 - C.Refresh) -- (the test jumps its own clock back to the Day first: not recorded)

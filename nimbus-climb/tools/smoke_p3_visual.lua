@@ -507,10 +507,14 @@ local function clientScenarios()
 						modes[card.Mode] = true
 						local plate = card.Gui:FindFirstChild("Plate")
 						local c = plate and plate.BackgroundColor3
-						if c and plate.BackgroundTransparency <= 0.2 and (0.3 * c.R + 0.59 * c.G + 0.11 * c.B) < 0.35 then
+						local lv = plate and plate:FindFirstChild("Level")
+						-- (Pitch 2 item 04_world_ui, the owner's approved pick B: the tag is the wood chip, luminance 0.39, no
+						-- longer the dark navy plate under 0.35) the intent kept: an opaque plate the Lv reads on, its ink
+						-- 4.5:1 against the plate (stone on wood 5.4:1) and dark enough (under 0.45) to stand off the sand
+						if c and lv and plate.BackgroundTransparency <= 0.2 and (0.3 * c.R + 0.59 * c.G + 0.11 * c.B) < 0.45
+							and SmokeCommon.Contrast.Ratio(lv.TextColor3, c) >= 4.5 then
 							solid = solid + 1
 						end
-						local lv = plate and plate:FindFirstChild("Level")
 						if lv and (lv:FindFirstChildOfClass("UIStroke") or lv.TextStrokeTransparency < 0.5) then
 							stroked = stroked + 1
 						end

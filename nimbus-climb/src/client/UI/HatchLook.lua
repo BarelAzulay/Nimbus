@@ -127,7 +127,9 @@
 --                                             "SignEdge" 3 px inside the group and its "Lip" 5 px), "Label" (Theme "Button",
 --                                             the look's ink) and, with opts.Price, "Chip" (look review: the Shop's Spin row,
 --                                             no tag box: a transparent holder after the label) > "Coin" (the stage puts the
---                                             icon in it; a pixel coin in Sign.GoldLip), "Price" (Theme "Button" at the
+--                                             icon in it; the Shop's Spin coin: item 9 B's carved token in its own
+--                                             colours, greyed when disabled; a one-ink coin in Sign.GoldLip), "Price"
+--                                             (Theme "Button" at the
 --                                             label's size, the look's ink). The attribute Disabled (CloudUI.SetDisabled)
 --                                             paints the sunk "Off" well with muted words and coin. A press sinks the face
 --                                             onto its lip (PillState). opts = { Name, Kind = "Stone" | "Green" | "Gold",
@@ -167,6 +169,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Util = require(Shared:WaitForChild("Util"))
 local Theme = require(Shared:WaitForChild("Theme"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (Pitch 2 item 9 B) Grey: the carved coin's disabled state
 local CloudUI = require(script.Parent:WaitForChild("CloudUI")) -- (kit-b U9-2b) CloudUI.SignBlock / SignLooks: the kit's blocks
 
 local HatchLook = {}
@@ -1116,6 +1119,16 @@ local function layoutPill(btn, p)
 	end
 end
 
+-- (Pitch 2 item 9 B) the coin's drawn PixelIcon (the Frame inside its host label) greyed while the plank is disabled: the
+-- carved token keeps its own colours, so TextColor3 no longer mutes it; PixelIcon.Grey leaves a one-ink icon alone
+local function greyCoin(btn, coin)
+	for _, d in ipairs(coin and coin:GetDescendants() or {}) do
+		if d:IsA("Frame") and d:GetAttribute("PixelIcon") then
+			PixelIcon.Grey(d, btn:GetAttribute("Disabled") == true)
+		end
+	end
+end
+
 local function paintPill(btn)
 	local P = K.PILL
 	local p = HatchLook.PillParts(btn)
@@ -1125,12 +1138,14 @@ local function paintPill(btn)
 	p.Label.TextColor3 = CloudUI.SignLooks[role].Text
 	if p.Price then
 		p.Price.TextColor3 = CloudUI.SignLooks[role].Text
-		-- (look review) the token coin (a PixelIcon hosted in a text label: it follows TextColor3) in the deep gold the Shop's
-		-- Spin draws it in, muted with the words when disabled (a GemIcon keeps its own colours)
+		-- (look review) the token coin (a PixelIcon hosted in a text label) as the Shop's Spin draws it: (Pitch 2 item 9 B) the
+		-- carved token in its own colours, greyed when disabled; a one-ink coin follows TextColor3 (the deep gold, muted when
+		-- disabled). A GemIcon keeps its own colours
 		local icon = p.Coin and p.Coin:FindFirstChild("Icon")
 		if icon and icon:IsA("TextLabel") then
 			icon.TextColor3 = off and Sign.TextMuted or P.Coin
 		end
+		greyCoin(btn, p.Coin)
 	end
 	layoutPill(btn, p)
 end
@@ -1168,7 +1183,13 @@ function HatchLook.Pill(parent, opts)
 	if opts.Price then
 		-- (look review) the price row: a transparent holder (no tag box), the coin and the price at whole px
 		local chip = frame(face, "Chip", { ZIndex = z + 2 })
-		frame(chip, "Coin", { ZIndex = z + 3 })
+		local coin = frame(chip, "Coin", { ZIndex = z + 3 })
+		-- (Pitch 2 item 9 B) a coin drawn, or redrawn by a resize (PixelIcon.Host draws a new icon), while disabled lands greyed
+		coin.DescendantAdded:Connect(function(d)
+			if d:IsA("Frame") and d:GetAttribute("PixelIcon") then
+				PixelIcon.Grey(d, btn:GetAttribute("Disabled") == true)
+			end
+		end)
 		local price = Theme.Label("", "Button", { Size = opts.TextSize or 22, Stroke = 1 })
 		price.Name = "Price"
 		price.TextXAlignment = Enum.TextXAlignment.Left

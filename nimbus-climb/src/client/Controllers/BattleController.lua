@@ -321,6 +321,10 @@ local K = {
 	-- (battle-feel T2) a melee Hit this soon after the unit's Windup dashed it is that dash's bite (an NPC's: no new dash,
 	-- no hold); a melee Hit with no Windup before it (a player's fighter) dashes now, its impact held Melee.In (fxLate)
 	DASH_SEEN = 0.6,
+	PRICK_LATE_MIN = 0.02, -- (Pitch 2 item 5) a Thorns prick this much after its Hit holds the Hit to it (a fighter's bite)
+	-- (Pitch 2 item 5, look review r2 major 1) a Double strike's extra hit knocks its victim at this power (the approved
+	-- mock's second jolt: motion_pitch.enemy_new's 1.64 hit, power 0.5), on top of the bite's own reaction
+	DOUBLE_FLINCH = 0.5,
 	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
 	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
 	-- (evolved forms) a Rally's bigger pet by stage (a look only: hit radius, range and hitboxes never hear of it)
@@ -350,6 +354,26 @@ local K = {
 	LETHAL_CALLOUT = 1.2, -- seconds a "DASH!" floats over a fighter standing in a lethal telegraph (then the next one)
 	CALLOUT_PX = 26,
 	NUMBER_DISTANCE = 170,
+	-- (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags"; the raw white '20628 / 18332 / 136205' stacked into a wall)
+	-- a hit pops '+20.6K' (Theme.Short) beside ONE running total per target on a stone chip (Fx.HitLook / Fx.Total)
+	HIT_PX = 22, -- a plain hit's pop (World text rule: >= 22)
+	HIT_CRIT_PX = 30, -- a crit's, in gold
+	HIT_ELEM_PX = 24, -- an element / special hit's, in its colour (Storm violet)
+	HIT_SIDE = 0.42, -- the pop's SizeOffset X: it rises beside the total's chip, not over it
+	HIT_STEP = 34, -- (look review r1, M3) px between two pops of one target (Fx.Pop's stack: a crit's line and its birth pop)
+	-- (look review fin0, minor) the stack rose in a column ~220 px over the total at 1920 (four pops a step apart, each
+	-- rising the full NUMBER_RISE): three live pops, rising HIT_RISE of it (the steps keep them apart), cluster beside the
+	-- chip as the approved mock 04 B draws them
+	HIT_MAX = 3, -- live pops per target; a fourth ends the oldest (the total holds the sum)
+	HIT_RISE = 0.5, -- a stacked pop's rise, a share of NUMBER_RISE
+	TOTAL_PX = 24, -- the total's figure on its chip
+	TOTAL_PAD = 10, -- px each side of it
+	TOTAL_H = 34, -- the chip, its 3 px edge included
+	TOTAL_EDGE = 3,
+	TOTAL_LIP = 4,
+	TOTAL_HOLD = 2.5, -- seconds without a hit before the total clears (the next hit starts a new one)
+	TOTAL_DISTANCE = 150,
+	MAX_TOTALS = 16,
 	BAR_DISTANCE = 140,
 	END_LINGER = 3.5, -- seconds the floor stays drawn after the end
 	DUNGEON_LINGER = 1.0, -- wave 5 (bug #26): a cleared dungeon room's floor goes after this (= PetController.HANDOVER)
@@ -617,6 +641,8 @@ local St = {
 	effects = {}, -- live effects
 	numbers = {}, -- live numbers
 	numberPool = {},
+	totals = {}, -- (Pitch 2 item 04) the live running totals, one a target (Fx.Total)
+	totalPool = {},
 	flashes = {}, -- live flashes
 	flashPool = {},
 	lastCmd = {}, -- [action .. arg] = os.clock()
@@ -1185,6 +1211,9 @@ function Fx.ClearAll()
 		St.numberPool[#St.numberPool + 1] = n
 	end
 	St.numbers = {}
+	while #St.totals > 0 do
+		Fx.FreeTotal(St.totals[#St.totals])
+	end
 	for _, f in ipairs(St.flashes) do
 		f.hl.Enabled = false
 		f.hl.Adornee = nil
@@ -1245,8 +1274,10 @@ function Fx.Number(adornee, height, text, color, px, life)
 	n.t0 = os.clock()
 	n.life = life or K.NUMBER_TIME
 	n.base = height
+	n.riseK = 1 -- (Fx.Pop: a stacked pop rises K.HIT_RISE of it)
 	n.jx = (math.random() - 0.5) * 1.4
 	n.gui.StudsOffset = Vector3.new(n.jx, height, 0)
+	n.gui.SizeOffset = Vector2.new(0, 0) -- (Pitch 2 item 04) a hit's pop moves beside its total (the hit handler)
 	n.gui.Enabled = true
 	St.numbers[#St.numbers + 1] = n
 	BattleController._wake()
@@ -1266,7 +1297,7 @@ function Fx.UpdateNumbers(now)
 			St.numberPool[#St.numberPool + 1] = n
 		else
 			local rise = 1 - (1 - p) * (1 - p)
-			n.gui.StudsOffset = Vector3.new(n.jx, n.base + rise * K.NUMBER_RISE, 0)
+			n.gui.StudsOffset = Vector3.new(n.jx, n.base + rise * K.NUMBER_RISE * (n.riseK or 1), 0)
 			n.scale.Scale = 1 + 0.45 * max(0, 1 - p * 6)
 			local fade = clamp((p - 0.6) / 0.4, 0, 1)
 			n.label.TextTransparency = fade
@@ -1277,6 +1308,186 @@ function Fx.UpdateNumbers(now)
 			i = i + 1
 		end
 	end
+	-- (Pitch 2 item 04) a total clears after K.TOTAL_HOLD without a hit, or when its target went
+	local totals = St.totals
+	local j = #totals
+	while j >= 1 do
+		local t = totals[j]
+		if now >= t.untilT or not t.gui.Adornee or not t.gui.Adornee.Parent then
+			Fx.FreeTotal(t)
+		end
+		j = j - 1
+	end
+end
+
+-- the studs over a unit's centre its numbers start at (a boss's over its head)
+function Fx.NumberHeight(u)
+	if u.isBoss then
+		return (u.height or 20) * 0.5 + 2
+	end
+	return (u.height or 3) / 2 + 1.8
+end
+
+-- (Pitch 2 item 04_world_ui B) one hit's pop: '+' .. Theme.Short(dmg) ("+20.6K"; it was the raw "20628"), its colour and
+-- px: a plain hit in stone ink, a crit in gold (bigger), an element hit (ev.element: the attacker's element) or a strong
+-- one in that element's colour (Storm violet), a weak one muted, a burn tick in red (smaller). The words ("CRIT", "BURN",
+-- the "!") went: the colour and the size say it, so a pop never reads as a callout. -> text, colour, px
+Fx.ElementInk = { Storm = Theme.Sign.Violet } -- (an element's pop ink where its own colour is not the kit's)
+function Fx.HitLook(dmg, ev, element)
+	ev = type(ev) == "table" and ev or {}
+	local text = "+" .. Theme.Short(floor((tonumber(dmg) or 0) + 0.5))
+	local color, px = Theme.Sign.Stone, K.HIT_PX
+	local ink = (type(element) == "string" and element ~= "") and (Fx.ElementInk[element] or elementColor(element):Lerp(COLORS.White, 0.3)) or nil
+	if ev.crit then
+		color, px = Theme.Sign.Gold, K.HIT_CRIT_PX
+	elseif ev.burn then
+		color, px = Theme.Sign.Red, K.HIT_PX
+	elseif ev.element or (ev.elem and ev.elem > 1) then
+		color, px = ink or COLORS.Strong, K.HIT_ELEM_PX
+	elseif ev.elem and ev.elem < 1 then
+		color = COLORS.Weak
+	end
+	return text, color, px
+end
+
+function Fx.NewTotal()
+	local gui = make("BillboardGui", {
+		Name = "DamageTotal",
+		Size = UDim2.fromOffset(220, K.TOTAL_H + 8),
+		AlwaysOnTop = true,
+		LightInfluence = 0,
+		MaxDistance = K.TOTAL_DISTANCE,
+		ClipsDescendants = false,
+		Enabled = false,
+	})
+	local e = K.TOTAL_EDGE
+	local chip = make("Frame", {
+		Name = "Chip",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(60, K.TOTAL_H - 2 * e),
+		BorderSizePixel = 0,
+	}, gui)
+	-- the stone chip: a 3 px mitred wood edge, the red lip (damage)
+	local edge = make("UIStroke", { Name = "SignEdge", Color = Theme.Sign.Wood, Thickness = e, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, LineJoinMode = Enum.LineJoinMode.Miter }, chip)
+	chip.BackgroundColor3 = Theme.Sign.Stone
+	chip.BackgroundTransparency = 0
+	make("Frame", { Name = "Lip", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, K.TOTAL_LIP), BackgroundColor3 = Theme.Sign.RedLip, BorderSizePixel = 0 }, chip)
+	local label = Theme.Label("", "Heading", { Size = K.TOTAL_PX, Color = Theme.Sign.Text })
+	label.Name = "Text"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, 0, 1, -K.TOTAL_LIP)
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.ZIndex = 2
+	label.Parent = chip
+	return { gui = gui, chip = chip, label = label, edge = edge, sum = 0, untilT = 0, owner = nil, shown = "" }
+end
+
+function Fx.FreeTotal(t)
+	for i = #St.totals, 1, -1 do
+		if St.totals[i] == t then
+			table.remove(St.totals, i)
+		end
+	end
+	if t.owner and t.owner.total == t then
+		t.owner.total = nil
+	end
+	t.owner = nil
+	t.sum = 0
+	t.shown = "" -- (look review r0) a total taken from the pool is sized afresh (the screen may have changed)
+	t.gui.Enabled = false
+	t.gui.Adornee = nil
+	St.totalPool[#St.totalPool + 1] = t
+end
+
+-- adds `dmg` to unit `u`'s running total (u.root: the part it floats over) and shows it on its stone chip; a total that
+-- went quiet (K.TOTAL_HOLD) starts afresh. -> the total's record (u.total) or nil
+function Fx.Total(u, dmg)
+	dmg = floor((tonumber(dmg) or 0) + 0.5)
+	if type(u) ~= "table" or not u.root or not u.root.Parent or dmg <= 0 then
+		return nil
+	end
+	local t = u.total
+	if t and t.owner ~= u then
+		t = nil
+	end
+	if not t then
+		t = table.remove(St.totalPool)
+		if not t then
+			if #St.totals >= K.MAX_TOTALS then
+				Fx.FreeTotal(St.totals[1]) -- recycle the oldest
+				t = table.remove(St.totalPool)
+			else
+				t = Fx.NewTotal()
+			end
+		end
+		t.owner, t.sum = u, 0
+		u.total = t
+		St.totals[#St.totals + 1] = t
+	end
+	t.sum = t.sum + dmg
+	local text = Theme.Short(t.sum)
+	t.label.Text = text
+	if #text ~= #t.shown then
+		local tpx = Theme.ScaledSize(K.TOTAL_PX, 22)
+		t.label.TextSize = tpx
+		local w = math.ceil(Theme.Measure(text, "Heading", tpx).X) + 2 * K.TOTAL_PAD
+		-- (look review r0: at 1440p the 30 px figure ran over the red lip in the fixed 24 px box) the face holds the
+		-- figure's px above its lip, never less than the 1080p chip
+		local faceH = math.max(K.TOTAL_H - 2 * K.TOTAL_EDGE, tpx + K.TOTAL_LIP)
+		t.chip.Size = UDim2.fromOffset(w, faceH)
+		t.gui.Size = UDim2.fromOffset(math.max(220, w + 2 * K.TOTAL_EDGE + 8), faceH + 2 * K.TOTAL_EDGE + 8)
+	end
+	t.shown = text
+	t.gui.Parent = fxFolder()
+	t.gui.Adornee = u.root
+	t.gui.StudsOffset = Vector3.new(0, Fx.NumberHeight(u) - 0.6, 0)
+	t.gui.Enabled = true
+	t.untilT = os.clock() + K.TOTAL_HOLD
+	BattleController._wake()
+	return t
+end
+
+-- (look review r1, M3: at 844x390 '+18.3K' sat on '+136K'; the pops' rise is in studs, so on a small screen two hits a
+-- tempo apart rose less than a line apart) one hit on unit `u`: `dmg` onto its running total and the pop beside it
+-- (Fx.Number at `height` over `adornee`). The target's live pops stack in hard steps of K.HIT_STEP screen px (1080p px
+-- under Theme.ScaledSize): the newest at the chip, each older one a step higher (its SizeOffset Y), and since an older pop
+-- has always risen at least as far, two never share a line at any screen size; past K.HIT_MAX the oldest goes.
+-- -> pop, total
+function Fx.Pop(u, adornee, height, text, color, px, dmg)
+	local total = Fx.Total(u, dmg)
+	local pop = Fx.Number(adornee, height, text, color, px)
+	if not pop then
+		return nil, total
+	end
+	if total then
+		pop.gui.SizeOffset = Vector2.new(K.HIT_SIDE, 0)
+		pop.riseK = K.HIT_RISE -- (every pop of the stack the same share: an older one has still risen at least as far)
+	end
+	if type(u) ~= "table" then
+		return pop, total
+	end
+	-- the target's live pops, newest first (a pooled number reused since, or ended, has left the stack)
+	local live = { { n = pop, t0 = pop.t0 } }
+	for _, rec in ipairs(u.pops or {}) do
+		local n = rec.n
+		if n ~= pop and n.t0 == rec.t0 and n.gui.Enabled and n.gui.Adornee == adornee then
+			live[#live + 1] = rec
+		end
+	end
+	for i = #live, K.HIT_MAX + 1, -1 do
+		local n = live[i].n
+		n.t0 = n.t0 - n.life -- ends on the next update
+		live[i] = nil
+	end
+	local step = Theme.ScaledSize(K.HIT_STEP, 22)
+	for i, rec in ipairs(live) do
+		local g = rec.n.gui
+		g.SizeOffset = Vector2.new(g.SizeOffset.X, (i - 1) * step / math.max(1, g.Size.Y.Offset))
+	end
+	u.pops = live
+	return pop, total
 end
 
 -- a short white (or tinted) flash on a model (a pooled Highlight)
@@ -3599,17 +3810,37 @@ end
 
 -- (evolved forms) a hit that is no swing of its own: a Double strike's extra hit flashes on the victim; a Shield's Thorns (from the wearer, to its attacker) is a thin bolt back,
 -- one per RIPPLE_TICK_GAP (a boss's flurry would be a strobe). In the attacker's look: a Haste / Shield pet's flavour
+-- (Pitch 2 item 5 "Bounce in" A) on a dashing biter (AttackFx.DashTwist): a Double strike is a second chomp about 0.1 s
+-- after the bite, its gold sparks moved onto it; a Thorns prick snaps its head back and hops it away, the bolt on the bite
+function Atk.DashTwist(biter, kind, dueAt)
+	local AF = Atk.Mod()
+	if not (biter and AF and type(AF.DashTwist) == "function") then
+		return dueAt
+	end
+	local ok, at = pcall(AF.DashTwist, biter.id, kind, os.clock())
+	return (ok and type(at) == "number" and at == at) and at or dueAt
+end
+
 function Atk.HitTwist(B, ev, dueAt, v, a)
 	if not a or not Atk.Drawable(v) then
 		return "none"
 	end
 	if ev.double then
-		return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Haste", Twist = "DoubleHit", From = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+		dueAt = Atk.DashTwist(a, "Double", dueAt)
+		-- (look review r2, major 1) Flinch: the victim (From: the sparks are on it) is re-hit at DOUBLE_FLINCH on the second
+		-- chomp, its Hurt stacking on the bite's (AttackFx); without it no Hurt was scheduled and the mock's second jolt
+		-- never played
+		return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Haste", Twist = "DoubleHit", From = Atk.Side(B, v), Flinch = K.DOUBLE_FLINCH,
+			Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
 	end
 	if not Atk.Drawable(a) or (a.thornAt and dueAt - a.thornAt < K.RIPPLE_TICK_GAP) then
 		return "none"
 	end
 	a.thornAt = dueAt
+	local prick = Atk.DashTwist(v, "Thorns", dueAt)
+	-- (gate review r0 minor) a fighter's bite lands Melee.In after its Hit: the prick's flash and number wait for it (hitPlay)
+	ev.fxPrick = prick - dueAt
+	dueAt = prick
 	return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Shield", Twist = "Thorns", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, a) }))
 end
 
@@ -3619,7 +3850,16 @@ local function hitPlay(B, ev, dueAt, v, a)
 		return "none", 0
 	end
 	if ev.double or ev.thorns then
-		return Atk.HitTwist(B, ev, dueAt, v, a), 0
+		local played = Atk.HitTwist(B, ev, dueAt, v, a)
+		-- (Pitch 2 item 5, gate review r0 minor: "On Thorns it flashes") a Thorns hit on a dashing biter lands on its prick
+		-- (AttackFx.DashTwist): a player's fighter bites Melee.In after its Hit, so the Hit (the biter's flash, the number)
+		-- and the biter's next events wait that long, as the bite's own do (an NPC's prick is on the event: no wait)
+		local late = ev.thorns and num(ev.fxPrick, 0) or 0
+		if late > K.PRICK_LATE_MIN then
+			ev.fxLate = min(late, K.FX_LATE_MAX)
+			return played, ev.fxLate
+		end
+		return played, 0
 	end
 	if ev.tele or (a and a.isBoss) then
 		if ev.miss or v.isBoss or not v.mine or not Atk.Drawable(v) then
@@ -4218,7 +4458,8 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 	if ok and type(ps) == "table" and type(ps.Name) == "string" then
 		local cur = u.poseCur or {}
 		u.poseCur = cur
-		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach
+		-- (Pitch 2 item 5) Feet: the model's paw lines (the melee motion pivots about them: nothing sinks or slides)
+		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach, cur.Feet = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach, ps.Feet
 		pose, body, src = cur, poseBody(cur), "fx"
 		-- (battle-feel T2) a flurry's bite from the dash's edge: the held Forward (pose studs, scaled with the body below)
 		local fwd = num(ps.Forward, 0)
@@ -4245,6 +4486,8 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 			src = "ko"
 		elseif u.windup and not down and Atk.Drives(u) then
 			hold.Name, hold.P, hold.Ranged = "Windup", min(K.WINDUP_HOLD, max(0, now - (u.windAt or now)) / K.WINDUP_IN * 0.5), u.ranged == true
+			-- (Pitch 2 item 5) the melee wind-up rocks back about the hind paws (AttackFx.FeetOf: read once per model)
+			hold.Feet = (not u.ranged and type(AF.FeetOf) == "function") and AF.FeetOf(u.model) or nil
 			src = "hold"
 		elseif Atk.Idles(u, down, busy) then
 			hold.Name, hold.P, hold.Ranged = "IdleBattle", now + u.phase * K.IDLE_PHASE, false
@@ -4259,12 +4502,16 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 		u.poseSrc = src
 		u.poseFrom = u.poseBody
 		u.poseSwitch = now
+		-- (look review r3 minor: "the first bite's snap is drawn softer than the mock": 0.12 s from the hit drew 0.069 of
+		-- the knock-back's 0.106 at hit + 0.07; a re-hit, inside AttackFx, played in full) a hit's Hurt fades in over the
+		-- hit stop, while its victim is held still: the knock-back after it is drawn at full strength
+		u.poseFade = (src == "fx" and ps and ps.Name == "Hurt") and num(AF.HIT_STOP, 0.05) or num(AF.CROSSFADE, 0.12)
 		local from = u.poseFromPose or {}
 		u.poseFromPose = from
 		from.Name, from.P, from.Ranged, from.Amp, from.Reach = u.poseShown, u.poseShownP, u.poseShownRanged, u.poseShownAmp, u.poseShownReach
 	end
 	if u.poseSwitch then
-		local w = (now - u.poseSwitch) / num(AF.CROSSFADE, 0.12)
+		local w = (now - u.poseSwitch) / num(u.poseFade, num(AF.CROSSFADE, 0.12))
 		if w < 1 then
 			body = (u.poseFrom or IDENTITY):Lerp(body or IDENTITY, max(0, w))
 			local from = u.poseFromPose
@@ -4626,12 +4873,7 @@ local function specialColor(u, kind)
 	return COLORS.Gold
 end
 
-local function numberHeight(u)
-	if u.isBoss then
-		return (u.height or 20) * 0.5 + 2
-	end
-	return (u.height or 3) / 2 + 1.8
-end
+local numberHeight = Fx.NumberHeight -- (Pitch 2 item 04: moved up, Fx.Total needs it)
 
 ----------------------------------------------------------------------
 -- wave 6: the trainer's cheer (TrainerCheer): my avatar loops the cheer emote while the server holds me on the podium
@@ -4754,32 +4996,18 @@ Handlers[EV.Hit] = function(B, ev)
 	if not adornee or victim.parked then
 		return
 	end
-	local text, color, px = tostring(floor(dmg + 0.5)), COLORS.White, K.NUMBER_PX
-	if ev.crit then
-		text = "CRIT " .. text
-		color = COLORS.Gold
-		px = K.CRIT_PX
-	elseif ev.elem and ev.elem > 1 then
-		text = text .. "!"
-		color = COLORS.Strong
-		px = K.NUMBER_PX + 2
-	elseif ev.elem and ev.elem < 1 then
-		color = COLORS.Weak
+	-- (Pitch 2 item 04 B) the pop: '+' .. Theme.Short in the kit's colours (Fx.HitLook), beside the target's running total
+	local text, color, px = Fx.HitLook(dmg, ev, attacker and attacker.element or nil)
+	if victim.mine and color == Theme.Sign.Stone then
+		color = Color3.fromRGB(255, 196, 196) -- my unit's hurt (a plain hit)
 	end
-	if victim.mine then
-		color = (color == COLORS.White) and Color3.fromRGB(255, 196, 196) or color
-	end
-	if ev.special and attacker then
+	if ev.special and attacker and not ev.crit then
 		color = specialColor(attacker):Lerp(COLORS.White, 0.35)
-		px = max(px, K.NUMBER_PX + 2)
-	elseif ev.element and attacker then
-		color = elementColor(attacker.element):Lerp(COLORS.White, 0.3)
-		px = max(px, K.NUMBER_PX + 2)
-	elseif ev.burn then
-		text, color, px = "BURN " .. text, COLORS.Strong, K.NUMBER_PX - 4
+		px = max(px, K.HIT_ELEM_PX)
 	end
 	if dmg > 0 then
-		Fx.Number(adornee, numberHeight(victim), text, color, px)
+		-- (look review r1, M3) the target's pops stack a line apart (Fx.Pop), beside its total
+		Fx.Pop(victim, adornee, numberHeight(victim), text, color, px, dmg)
 		-- (audio wave 2) the attacker's element hit (+ Crit's sparkle on top); a burn / zone tick is silent (they come
 		-- in bursts), so is a hit with no attacker or element
 		if not ev.burn and not ev.zone and attacker and type(attacker.element) == "string" then
@@ -12910,7 +13138,7 @@ local function onFrame(dt)
 		perf.peak = ms
 	end
 	-- the loop sleeps when nothing is drawn
-	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.flashes == 0 and not St.result and not St.next and not St.shake
+	if not St.battle and #St.effects == 0 and #St.numbers == 0 and #St.totals == 0 and #St.flashes == 0 and not St.result and not St.next and not St.shake
 		and not screenFx and not Atk.Pending() then
 		if St.loop then
 			St.loop:Disconnect()

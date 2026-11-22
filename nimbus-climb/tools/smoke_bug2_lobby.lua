@@ -225,7 +225,8 @@ local function serverScenarios()
 		-- the prompt
 		local prompt = pad:FindFirstChild("PlazaGatePrompt")
 		if T.check(prompt ~= nil and prompt:IsA("ProximityPrompt") and GS.GetPrompt("Plaza") == prompt, "bug2 altar portal: GateService's PlazaGatePrompt sits on the pad anchor (GetPrompt('Plaza'))") then
-			T.check(prompt.ActionText == "Travel" and prompt.ObjectText == "Plaza", "bug2 altar portal: 'Travel' / 'Plaza'", prompt.ActionText .. " / " .. prompt.ObjectText)
+			-- (Pitch 2 item 13 A: the gates' prompts say 'Enter', was 'Travel': "Travel" left the game's words with the teleport)
+			T.check(prompt.ActionText == "Enter" and prompt.ObjectText == "Plaza", "bug2 altar portal: 'Enter' / 'Plaza'", prompt.ActionText .. " / " .. prompt.ObjectText)
 			T.check(prompt.KeyboardKeyCode == Enum.KeyCode.E and prompt.HoldDuration == 0 and prompt.MaxActivationDistance == 8, "bug2 altar portal: E, no hold, range 8")
 			T.check(prompt:GetAttribute("OpenPanel") == nil, "bug2 altar portal: no panel")
 		end

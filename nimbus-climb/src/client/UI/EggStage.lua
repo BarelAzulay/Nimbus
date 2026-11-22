@@ -1453,7 +1453,8 @@ function B.bar(roll)
 		gem.Position = UDim2.fromOffset(0, 0)
 	else
 		-- the token coin: a PixelIcon at 0.9 x the coin (27 px on a PC, 18 on a phone: the kit's Glyph size, whole cells)
-		-- in the Shop's deep gold (the plank's paint keeps it so, muted when disabled). (look review: whole px) its host is
+		-- as the Shop's Spin draws it (Pitch 2 item 9 B: the carved token in its own colours; the plank's paint greys it when
+		-- disabled). (look review: whole px) its host is
 		-- the coin's own box at 0, 0 (not 1.25 x the coin centred by scale: a half px), PixelIcon.Host centres it by floor
 		local icon = NeonKit.Icon(parts.Coin, "Tokens", P.Bar.Coin)
 		icon.ZIndex = z

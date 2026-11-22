@@ -116,12 +116,12 @@ LightingService.Look = {
 	Painted = {
 		Lighting = p4Light(), -- = Config.Sky.Looks.Day's light (SkyController's first apply sets the phase's own at once)
 		Atmosphere = {
-			Density = 0.28,
+			Density = 0.26, -- = Config.Sky.Looks.Day's clear resting air (P2 F11 C: was 0.28 / Haze 1.0, the old Day air)
 			Offset = 0.25,
 			Color = rgb(178, 198, 228), -- the Day look's sky-blue air
 			Decay = rgb(238, 200, 170),
 			Glare = 0, -- no engine sun to glare around
-			Haze = 1.0,
+			Haze = 0.8,
 		},
 		Sky = {
 			StarCount = 0, -- the painted skies have their own stars

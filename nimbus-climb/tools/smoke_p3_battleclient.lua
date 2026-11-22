@@ -544,7 +544,8 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 		for _, g in ipairs(fx and fx:GetChildren() or {}) do
 			if g:IsA("BillboardGui") and g.Enabled then
 				sawNumber = true
-				local lbl = g:FindFirstChildWhichIsA("TextLabel")
+				-- (Pitch 2 item 04 B) a target's running total (DamageTotal) holds its figure inside its stone chip
+				local lbl = g:FindFirstChildWhichIsA("TextLabel", true)
 				if g.Size.X.Scale ~= 0 or g.Size.Y.Scale ~= 0 or not lbl or lbl.TextSize < 22 or g.LightInfluence ~= 0 then
 					badNumber = g.Name .. " " .. tostring(lbl and lbl.TextSize)
 				end
@@ -1149,8 +1150,10 @@ S.client_p3battle_cards = guarded("client_p3battle_cards", function()
 			bad = "no card on unit " .. id
 		elseif gui.Name ~= "HpBar" or info.Card.Mode ~= "Unit" then
 			bad = "unit " .. id .. ": " .. gui.Name .. " / " .. tostring(info.Card.Mode)
-		elseif not (rowShown(gui, "Hp") and rowShown(gui, "Special") and rowShown(gui, "Xp")) then
-			bad = "unit " .. id .. ": rows hidden"
+		-- (Pitch 2 item 04_world_ui, the owner's approved pick B: "one HP block row, because SPECIAL and XP already show on
+		-- the HUD helper cards") a Unit card draws the HP row only; SPECIAL / XP keep their fractions off-screen
+		elseif not (rowShown(gui, "Hp") and not rowShown(gui, "Special") and not rowShown(gui, "Xp")) then
+			bad = "unit " .. id .. ": rows not the chip + HP"
 		elseif text ~= "Lv " .. tostring(info.Level) then
 			bad = "unit " .. id .. ": " .. tostring(text)
 		elseif gui.LightInfluence ~= 0 or gui.Size.X.Scale ~= 0 or gui.Size.Y.Scale ~= 0 or not gui.AlwaysOnTop then
@@ -1159,7 +1162,7 @@ S.client_p3battle_cards = guarded("client_p3battle_cards", function()
 			bad = "unit " .. id .. ": Lv " .. tostring(lvl and lvl.TextSize) .. " px"
 		end
 	end
-	T.check(#mineIds >= 2 and bad == nil, "cards: every own unit carries a PetCard (HpBar, mode Unit: Lv n >= 22 px + HP + SPECIAL + XP, pixel-sized, LightInfluence 0)", tostring(bad))
+	T.check(#mineIds >= 2 and bad == nil, "cards: every own unit carries a PetCard (HpBar, mode Unit: Lv n >= 22 px + the HP row, pixel-sized, LightInfluence 0)", tostring(bad))
 	local g1 = cardOf(BC, bySlot[1] and bySlot[1].id)
 	local g2 = cardOf(BC, bySlot[2] and bySlot[2].id)
 	T.near(fillOf(g1, "Xp") or -1, 1000 / need20, 0.01, "cards: the XP fill is xp / xpNext from Start (level 20)")
