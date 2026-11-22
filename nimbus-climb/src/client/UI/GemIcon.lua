@@ -369,6 +369,11 @@ local function measure(frame)
 	local g = icon.Size.X.Offset
 	local ts = value.TextSize
 	local gap = math.floor(g * K.AMOUNT_GAP + 0.5)
+	if icon.Name == "GemPixel" then
+		-- (P2 icons look pol0, minor: the pixel gem touched '100') its 1-cell drop shadow draws past its box: the gap
+		-- starts after it
+		gap = gap + math.ceil(g / 9)
+	end
 	local w = math.ceil(textWidth(value.Text, ts, Theme.FontOf(value))) + 2
 	local h = math.max(g, ts + 4)
 	icon.AnchorPoint = Vector2.new(0, 0.5)

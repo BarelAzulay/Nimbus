@@ -148,7 +148,7 @@ local K = {
 	-- (Pitch 2 item 10 A; P2 icons review r1) with the machines sheet: the portrait cards grow for the 2 px machines
 	-- (128 x 136 stages), and a PC card's Spin rows and hint sit LIFT px higher (the hint clears the card's colour lip)
 	PORTRAIT_CARD_SHEET = 292,
-	PORTRAIT_HERO_SHEET = 248,
+	PORTRAIT_HERO_SHEET = 254, -- (P2 icons look pol0, minor: 248 left the hint's second row on the button's wood edge)
 	HINT_SPARE = 1.02, -- (P2 icons look fin1) H.heroHintRows: the Body face's width over its Enum fallback's, rounded up
 	LIFT = 12,
 	TEXT = {
@@ -1226,7 +1226,18 @@ function L.heroPC(t, w, M)
 	t.Dim.Size = UDim2.new(0, x - 8, 1, 0) -- the machine and the big egg; the texts from x stay clear
 	place(t.Lock, x, cy, tw, 48)
 	t.Lock.TextSize = 20
-	place(t.Holder, w - 320, ref and 66 or 46, 290, 100)
+	-- (Pitch 2 look review r0, crop 06: on the tight 180 px hero the line sat 4 px over the card's foot) the hint's box ends
+	-- CARD_FOOT over the card's bottom: 22 px tall under the button on a tight hero. (P2 icons look pol0, minor: there, at
+	-- 1280, the line's text met the button's 5 px wood edge and its descenders the purple lip) on a hero too short for the
+	-- 28 px box the button rises so a 24 px box fits 2 px under its wood edge
+	local holderY = ref and 66 or 46
+	local hy, hh = ref and 172 or 152, 28
+	if hy + hh > M.Hero - K.CARD_FOOT then
+		hh = 24
+		hy = M.Hero - K.CARD_FOOT - hh
+		holderY = math.min(holderY, hy - 2 - 5 - 100)
+	end
+	place(t.Holder, w - 320, holderY, 290, 100)
 	place(t.Spin.Button, 0, 0, 290, 100)
 	H.arrange(t.Spin, 290, 100, 34, 44)
 	-- (P2 icons look fin0, minor) the signpost 27 px, 3 px cells (the screen's glyph cell, the mock-up's): 44 drew it 36
@@ -1242,13 +1253,6 @@ function L.heroPC(t, w, M)
 	-- the real face): one line from
 	-- w - 380 to 10 px short of the card's edge, starting 8 px clear of the chips when they reach that far
 	local hintL = math.max(w - 380, x + chipW + 8)
-	-- (Pitch 2 look review r0, crop 06: on the tight 180 px hero the line sat 4 px over the card's foot) the box ends
-	-- CARD_FOOT over the card's bottom: 22 px tall under the button on a tight hero
-	local hy, hh = ref and 172 or 152, 28
-	if hy + hh > M.Hero - K.CARD_FOOT then
-		hh = 22
-		hy = M.Hero - K.CARD_FOOT - hh
-	end
 	place(t.Hint, hintL, hy, w - 10 - hintL, hh)
 end
 
@@ -1282,17 +1286,23 @@ function L.cardPC(t, w, M, tall)
 	end
 	t.NoOdds.TextSize = 20
 	place(t.NoOdds, 16, M.RowsY, w - 32, rowsH)
-	place(t.Spin.Button, 14, M.SpinY, w - 28, 64)
-	H.arrange(t.Spin, w - 28, 64, 23, 26)
+	local spinH = M.Tight and 56 or 64 -- (P2 icons look pol0, minor: L.plan's TIGHT)
+	place(t.Spin.Button, 14, M.SpinY, w - 28, spinH)
+	H.arrange(t.Spin, w - 28, spinH, 23, 26)
 	local half = math.floor((w - 38) / 2)
 	place(t.Spin3.Button, 14, M.Row2Y, half, row2H)
 	H.arrange(t.Spin3, half, row2H, 18, 20)
 	place(t.SpinGems.Button, w - 14 - half, M.Row2Y, half, row2H)
 	H.arrange(t.SpinGems, half, row2H, 18, 22)
-	local hy = M.Row2Y + row2H + 2
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
-	place(t.Hint, 8, hy, w - 16, math.max(16, M.Card - K.CARD_FOOT - hy))
+	if M.Tight then
+		-- the line's own height, 2 px under the planks' 5 px edge and 5 px shadow (L.plan)
+		place(t.Hint, 8, M.Row2Y + row2H + 12, w - 16, 18)
+	else
+		local hy = M.Row2Y + row2H + 2
+		place(t.Hint, 8, hy, w - 16, math.max(16, M.Card - K.CARD_FOOT - hy))
+	end
 end
 
 -- the PC / Compact plan for a body Hh tall: REF, SHRUNK, or TIGHT worked out from Hh (the two button rows 64 + 56 and
@@ -1307,8 +1317,12 @@ function L.plan(Hh)
 	end
 	local T = K.TIGHT
 	local card = math.max(T.MinCard, Hh - T.CardsY - K.BODY_FOOT)
-	local row2Y = card - K.CARD_FOOT - T.HintH - 2 - 56
-	local spinY = row2Y - 8 - 64
+	-- (P2 icons look pol0, minor: today's machines at 1280, the shipping look: "Gems: same odds" started 2 px under the
+	-- x3 / gem planks' box, under their 5 px wood edge and 5 px shadow, its tops cut) the line (18 tall) ends 2 px over the
+	-- card's 5 px colour lip and starts 2 px under the planks' shadow; the Spin plank gives the 8 px back (56: 44.8 screen
+	-- px under the 0.8 Fit, still a touch target; L.cardPC), so the odds rows keep their room
+	local row2Y = card - 5 - 2 - 18 - 12 - 56
+	local spinY = row2Y - 8 - 56
 	return {
 		Ref = false, Tight = true, Hero = T.Hero, HeroArt = T.HeroArt, CardsY = T.CardsY, Card = card, Art = T.Art, RowsY = T.RowsY,
 		RowsH = math.max(96, spinY - 6 - T.RowsY), SpinY = spinY, Row2Y = row2Y,
@@ -1495,7 +1509,9 @@ function L.cardSheetPC(t, w, M, tall)
 	place(t.Machine.Root, 12, stageY, w - 24, math.max(40, chipsY - (tight and 6 or 8) - stageY))
 	t.Machine.AlignX = 0.5
 	H.sizeMachine(t.Machine, M.Art)
-	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, 18, 6)
+	-- (P2 icons look pol0, minor: the chips 6 apart left 2 px of cream between their 2 px edges at 1920, ~1.6 at 1280; the
+	-- 10_optA mock-up has 6) 10 apart: 6 px of cream at 1920, 4.8 at 1280 (chips 60 / 54 wide still hold "60%" over the egg)
+	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, 18, 10)
 	place(t.Spin.Button, 14, spinY, w - 28, spinH)
 	H.arrange(t.Spin, w - 28, spinH, 23, 26)
 	local half = math.floor((w - 38) / 2)
@@ -1567,7 +1583,8 @@ function L.cardSheetPortrait(t, w, h)
 	H.sizeMachine(t.Machine, 64)
 	local rx = 144
 	local rw = w - rx - 8
-	L.chips(t, rx, 52, rw, 82, 2, 22, 15, 6)
+	-- (P2 icons look pol0, minor: 2 px of cream between the chips' edges, the phone mock-up has about 7) 10 apart: 6 px
+	L.chips(t, rx, 52, rw, 82, 2, 22, 15, 10)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 15
 	place(t.Hint, rx, 140, rw, 20)
@@ -1807,8 +1824,10 @@ function L.heroPortrait(t, w, h)
 		t.Hint.Visible = true
 		t.Hint.TextSize = 15
 		t.Hint.TextWrapped = true
+		-- (P2 icons look pol0, minor: the box ran to 2 px over the button's box, under its 5 px wood edge, so the second
+		-- row's 'y' touched the wood) the box ends 3 px over that edge; K.PORTRAIT_HERO_SHEET grew the 6 px it costs
 		local hy = cy + 40
-		place(t.Hint, rx - 4, hy, rw + 4, h - 52 - 2 - hy)
+		place(t.Hint, rx - 4, hy, rw + 4, h - 52 - 8 - hy)
 		place(t.Holder, 8, h - 52, w - 16, 44)
 		place(t.Spin.Button, 0, 0, w - 16, 44)
 		H.arrange(t.Spin, w - 16, 44, 18, 20)

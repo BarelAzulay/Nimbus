@@ -1398,6 +1398,17 @@ S.client_shop_gems = guarded("client_shop_gems", function()
 			"shop gems: the potion plank's gem is the pixel gem (GemPixel, PixelIcon 'gem', whole cells), left of '100'; no cut GemIcon",
 			fmt("pixel %s, icon %s, cut %s, size %s", tostring(gp ~= nil), tostring(icon and icon:GetAttribute("PixelIcon")), tostring(cut ~= nil),
 				gp and tostring(gp.Size.X.Offset) or "-"))
+		-- (P2 icons look pol0, minor: the gem touched '100', 0-1 px: its 1-cell drop shadow ate the 6 px gap) the gem as
+		-- drawn (its 9 cells + the drop shadow) 4 px or more clear of the number's box. (The same review's "48.7 px in a 47
+		-- px box" is the renderer's flat 0.5 em measure: the Display role's Enum font is FredokaOne itself, so in the game
+		-- TextService measures the real face; not checked here)
+		if gp and value then
+			local cell = gp.Size.X.Offset / 9
+			local drawnR = gp.Position.X.Offset + gp.Size.X.Offset + cell
+			T.check(value.Position.X.Offset - drawnR >= 4 - 1e-6,
+				"shop gems: the potion plank's pixel gem (its drop shadow too) 4 px or more clear of '100'",
+				fmt("gap %.1f", value.Position.X.Offset - drawnR))
+		end
 	end
 	G.tap(pbuy)
 	T.eq(G.calls("StoreRequest", mark, "GemBuy", "XpPotionGems"), 1, "shop gems: only Ready sends StoreRequest('GemBuy', 'XpPotionGems')")

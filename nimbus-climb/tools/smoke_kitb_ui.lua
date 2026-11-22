@@ -17633,6 +17633,46 @@ local function clientScenarios()
 			end)
 			T.check(ok, "machines (" .. m[1] .. "): the page builds and lays out", tostring(err))
 		end
+		-- (P2 icons look pol0, minor: at 1280 x 720 with today's machines, the shipping look, the tops of "Gems: same odds"
+		-- were cut by the x3 / gem planks' wood edge and drop shadow) on the 1280 page (TIGHT, under the window's 0.8) each
+		-- card's line, its TextSize tall and centred in its box, starts 1 screen px or more under everything the two planks
+		-- draw (their box, their UIStroke, their finish shadow) and ends over the card's colour lip
+		local ok, err = machinesPage("PC", { W = 1144, H = 683 }, function(roots)
+			local bad = {}
+			for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+				local body = roots[id] and roots[id].Parent
+				local hint = body and body:FindFirstChild("Hint")
+				local cardRoot = body and body.Parent
+				local lip = cardRoot and cardRoot:FindFirstChild("Lip")
+				if hint and hint.Visible then
+					local k = hint.AbsoluteSize.Y / math.max(1, hint.Size.Y.Offset)
+					local th = hint.TextSize * k
+					local top = hint.AbsolutePosition.Y + (hint.AbsoluteSize.Y - th) / 2
+					local low = -math.huge
+					for _, name in ipairs({ "Spin3", "SpinGems" }) do
+						local p = body:FindFirstChild(name)
+						if p and p.Visible then
+							local st = p:FindFirstChildOfClass("UIStroke")
+							low = math.max(low, p.AbsolutePosition.Y + p.AbsoluteSize.Y + (st and st.Thickness or 0) * k)
+							for _, d in ipairs(p:GetDescendants()) do
+								if d:IsA("GuiObject") and d.Visible and d.BackgroundTransparency < 0.99 and d.AbsoluteSize.X > 0 then
+									low = math.max(low, d.AbsolutePosition.Y + d.AbsoluteSize.Y)
+								end
+							end
+						end
+					end
+					local lipTop = lip and lip.AbsolutePosition.Y or math.huge
+					if top < low + 1 - 1e-6 or top + th > lipTop + 1e-6 then
+						bad[#bad + 1] = fmt("%s: text %.1f..%.1f, the planks to %.1f, the lip from %.1f", id, top, top + th, low, lipTop)
+					end
+				else
+					bad[#bad + 1] = id .. ": no hint"
+				end
+			end
+			T.check(#bad == 0, "machines (PC 0.8): with today's machines each card's 'Gems: same odds' clear of the x3 / gem planks' edge and shadow, over the lip",
+				table.concat(bad, "; "))
+		end, 0.8)
+		T.check(ok, "machines (PC 0.8): the page builds and lays out", tostring(err))
 		LKC.flushErrors("machines_fallback")
 	end)
 
@@ -17966,7 +18006,7 @@ local function clientScenarios()
 						return
 					end
 					local old = { lp:GetAttribute("PaidRandomItemsRestricted"), lp:GetAttribute("InMatch"), SE._AtAltar, SE._InLobby }
-					local wrong, chipCut = {}, {}
+					local wrong, chipCut, edgy = {}, {}, {}
 					for _, st in ipairs(STATES) do
 						lp:SetAttribute("PaidRandomItemsRestricted", st[3])
 						lp:SetAttribute("InMatch", st[6] or nil)
@@ -18019,6 +18059,25 @@ local function clientScenarios()
 						if why ~= "" then
 							wrong[#wrong + 1] = st[1] .. ": " .. why
 						end
+						-- (P2 icons look pol0, minor: in portrait with the sheets the two-row hint's box ended 1 px over the
+						-- button's wood edge, so the 'y' of "you to the Storm Altar" touched it; the box check above never saw
+						-- the edge, a UIStroke outside the holder's box) where the hint shows, its text 2 screen px or more
+						-- clear of the shown button's wood edge
+						local holder = hero:FindFirstChild("SpinHolder")
+						if why == "" and holder and shown(hint, page) then
+							for _, btn in ipairs(holder:GetChildren()) do
+								if btn:IsA("GuiButton") and btn.Visible then
+									local stroke = btn:FindFirstChildOfClass("UIStroke")
+									local k = btn.AbsoluteSize.X / math.max(1, btn.Size.X.Offset)
+									local e = (stroke and stroke.Enabled ~= false and stroke.Thickness or 0) * k + 2
+									local b = absRect(btn)
+									local tr = textRect(hint)
+									if meets(tr, { b[1] - e, b[2] - e, b[3] + 2 * e, b[4] + 2 * e }) then
+										edgy[#edgy + 1] = fmt("%s: text %.0f..%.0f, the %s's edge %.0f..%.0f", st[1], tr[2], tr[2] + tr[4], btn.Name, b[2] - e + 2, b[2] + b[4] + e - 2)
+									end
+								end
+							end
+						end
 						-- (P2 icons look pol0, major: on the 360-wide portrait hero with the sheets the altar chip read "At the
 						-- Storm Al." and its padlock sat on the chip's left wood edge: a 158 px chip less the padlock's 26 px left
 						-- 132 for a 137 px line; this check read the hint against the chip's box, never the chip's own text) the
@@ -18038,6 +18097,8 @@ local function clientScenarios()
 					end
 					T.check(#chipCut == 0, "hero hints (" .. m[1] .. ", " .. look .. "): the altar chip's line reads whole in its chip, the padlock inside it",
 						table.concat(chipCut, "; "))
+					T.check(#edgy == 0, "hero hints (" .. m[1] .. ", " .. look .. "): the hint's text 2 px or more clear of the button's wood edge",
+						table.concat(edgy, "; "))
 					lp:SetAttribute("PaidRandomItemsRestricted", old[1])
 					lp:SetAttribute("InMatch", old[2])
 					SE._AtAltar, SE._InLobby = old[3], old[4]
@@ -18220,8 +18281,11 @@ local function clientScenarios()
 				-- fused into one 4 px line, and the name plate's edge touched the grid) cream between neighbouring chips'
 				-- wood edges (both UIStrokes counted, screen px): 3 or more on the landscape phone (the phone mock-up has
 				-- about 7), and the name plate's edge 3 or more over the grid there; elsewhere never fused (1 or more:
-				-- 2 at 1920 and 390, ~1 at 1280, the chips' gap left as it is)
-				local apartNeed = m[5] == "Phone" and 3 or 1
+				-- 2 at 1920 and 390, ~1 at 1280, the chips' gap left as it is). (P2 icons look pol0, minor: still nearly
+				-- fused at 1920 (2 px, the 10_optA mock-up has 6), 1280 (~1) and 390 (2)) 4 or more on every screen (6 at
+				-- 1920 and in portrait, the mock-ups'; 4.8 under the 1280 window's 0.8; 4 on the landscape phone)
+				local apartNeed = 4
+				local plateNeed = 3
 				local tight = {}
 				local function edgeGap(a, b2)
 					local ta, tb = strokeOf(a) * scale, strokeOf(b2) * scale
@@ -18252,14 +18316,14 @@ local function clientScenarios()
 					if m[5] == "Phone" and plate and plate.Visible then
 						for _, row in ipairs(rows) do
 							local g = edgeGap(plate, row)
-							if g < apartNeed - 0.01 then
+							if g < plateNeed - 0.01 then
 								tight[#tight + 1] = fmt("%s plate|%s %.1f px", id, row.Name:sub(6), g)
 							end
 						end
 					end
 				end
 				T.check(#tight == 0, "egg chips (" .. m[1] .. "): " .. apartNeed .. " screen px or more of cream between neighbouring chips' wood edges"
-					.. (m[5] == "Phone" and " and under the name plate's" or ""), table.concat(tight, "; ", 1, math.min(#tight, 6)))
+					.. (m[5] == "Phone" and " and " .. plateNeed .. " under the name plate's" or ""), table.concat(tight, "; ", 1, math.min(#tight, 6)))
 			end, m[3], true)
 			T.check(ok, "egg chips (" .. m[1] .. "): the page builds and lays out", tostring(err))
 		end
