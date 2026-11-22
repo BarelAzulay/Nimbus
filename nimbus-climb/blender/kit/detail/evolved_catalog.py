@@ -29,11 +29,30 @@ PET_CATALOG = os.path.join(REPO, "src", "shared", "PetCatalog.lua")
 
 K = {(1, "High"): 1.25, (1, "Low"): 0.65, (2, "High"): 1.125, (2, "Low"): 0.55}
 PASSES = ["evolved:body", "evolved:aura"]
-PASSES_LOW = ["evolved:body", "evolved:aura"]  # Low: the kit's pixel eyes read better than the Lua masks
+PASSES_LOW = ["evolved:body", "evolved:aura"]
 # the evolved faces keep the game's own carved Lua eyes and mouth (drawn for the evolved heads; the kit's procedural
 # eyes mis-read them): "eyes": "lua" (petkit.face_pass runs the passes on that path too since W2.5; the old
 # evolved:lua_eyes hook gave byte-identical keys and was removed)
 FACE = {"eyes": "lua", "features": False}
+# Low: the game's own Low eye (EvoLow / EvoFierceLow, the eye the Low Part build draws, unchanged by the trim) one
+# mesh voxel per pixel.  Before Pitch 2 item 7 the Low keys scaled the High mask down; the trimmed 6 x 7 High eye then
+# lost its lash, glint or pupil at K 0.65 (the owls' eyes vanished into their painted EyeRing disc), see
+# faces.low_eye_specs.  Each Low entry adds "highK", the K of its pet's High mesh (high_k below): the Low eye is placed
+# against that mesh's eye (faces.low_eye_column; the look review of 5cb4b2e found it 1-1.4 Low voxels inside on 16 keys)
+FACE_LOW = {"eyes": "low"}
+# Pitch 2 item 7 (evolved eyes A Trim): the smaller eyes have fewer triangles, so the budget loop of build_all.py
+# would stop one K step earlier on 11 keys and re-voxelize the WHOLE pet on a finer grid. Every key the pre-trim build
+# stepped down starts at that K step ("kStep"), so the re-bake changes its face, not its body grid (the 25 pins = the
+# pre-trim build's steps; evo1_hydralotl is unstepped there: its uploaded mesh predates today's design).
+K_STEP = {
+    "evo1_aurora_fox": 1, "evo1_aurora_fox_low": 1, "evo1_bamboo_panda_low": 1, "evo1_bubble_axolotl_low": 1,
+    "evo1_candy_unicorn_low": 1, "evo1_cherry_panda_low": 1, "evo1_cloudy_dragon": 1, "evo1_cloudy_dragon_low": 1,
+    "evo1_eclipse_dragon": 1, "evo1_eclipse_dragon_low": 2, "evo1_hydralotl_low": 2, "evo1_magma_cub_low": 1,
+    "evo1_maple_fox": 1, "evo1_maple_fox_low": 1, "evo1_obsidian_phoenix_low": 1, "evo1_phantom_kitsune": 2,
+    "evo1_phantom_kitsune_low": 2, "evo1_rime_wyrmling": 1, "evo1_rime_wyrmling_low": 2,
+    "evo1_starlight_unicorn_low": 1, "evo1_stormfang": 1, "evo1_stormfang_low": 1, "evo1_twilight_dragon": 1,
+    "evo1_twilight_dragon_low": 2, "evo1_waffle_corgi_low": 1,
+}
 
 # recipe 4.2: evolved 1 <= 15k / 50 parts (Low 4.5k / 16), evolved 2 <= 20k / 60 (Low 6k / 18) per SET (body + wings);
 # keys get a share so the K step-down happens on the body first.  Part counts: see the doc string of BUDGETS_DOC.
@@ -81,6 +100,15 @@ def sfx(lod):
     return "_low" if lod == "Low" else ""
 
 
+def high_k(stage, pid):
+    """the K the High body key of (stage, pet) is built at: its catalog k, times 0.9 per kStep (the same float
+    build_all.py's budget loop starts from)"""
+    k = K[(stage, "High")]
+    for _ in range(K_STEP.get("evo%d_%s" % (stage, pid), 0)):
+        k *= 0.9
+    return k
+
+
 def wing_key(pid, style, side, lod):
     return "evowing_%s_%s_%s%s" % (pid, style, side, sfx(lod))
 
@@ -98,9 +126,11 @@ def entries():
                 body = "evo%d_%s%s" % (stage, pid, sfx(lod))
                 e = {"key": body, "type": "pet", "pet": pid, "stage": stage, "k": k,
                      "budget": "evo%dBody%s" % (stage, "Low" if low else ""), "passes": PASSES_LOW if low else PASSES,
-                     "face": {} if low else FACE,
+                     "face": dict(FACE_LOW, highK=high_k(stage, pid)) if low else FACE,
                      "description": "Evolved pet: %s, %s evolution, %s" % (
                          pid.replace("_", " "), "first" if stage == 1 else "second", lod)}
+                if body in K_STEP:
+                    e["kStep"] = K_STEP[body]
                 # evolved colours are per pet constants: every constant key nothing looks up by name is baked into one
                 # `Fixed` part (fewer MeshParts; Neon and referenced keys stay their own parts)
                 e["fixed"] = True

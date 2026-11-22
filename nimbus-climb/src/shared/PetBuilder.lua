@@ -751,27 +751,42 @@ local function parseMask(mask)
 	return rows
 end
 
+local function mirrorMask(mask)
+	local out = {}
+	for r, cols in ipairs(mask) do
+		local rev = {}
+		for c = #cols, 1, -1 do
+			rev[#rev + 1] = cols[c]
+		end
+		out[r] = rev
+	end
+	return out
+end
+
 -- Registers a pair of eyes. xOuter / yTop (design units) = the outermost column and top row of the pet's right
 -- eye (+X side, screen left); the left eye is placed mirror-symmetrically, with the same (unmirrored) mask.
+-- Only for the Phase 6 kit (PetBuilder._Blueprint, MESH_K set) a High eye also carries LowMask, the Low version of
+-- the same eye (EYE_MASKS[kind .. "Low"], mirrored like Mask): the kit's Low LOD meshes draw it (blender/kit/
+-- detail/faces.py low_eye_specs). The game never reads it. With LowMask the eye also carries XOuter / YTop, xOuter
+-- (negative on the left eye) and yTop in design units: the kit places the Low eye against the High eye of the pet's
+-- High mesh, which sits on another grid (faces.low_eye_specs).
 local function addEyes(ctx, xOuter, yTop, kind, mirror)
 	local name = (kind or "Round") .. (ctx.High and "" or "Low")
 	local mask = parseMask(EYE_MASKS[name] or EYE_MASKS.Round)
+	local lowSrc = (MESH_K and ctx.High) and EYE_MASKS[(kind or "Round") .. "Low"] or nil
+	local low = lowSrc and parseMask(lowSrc) or nil
+	local outer, top = low and xOuter or nil, low and yTop or nil
 	local w = #mask[1]
 	local X, Y = vx(xOuter), vx(yTop)
 	-- right eye: screen column 1 is the largest x
-	ctx.Eyes[#ctx.Eyes + 1] = { XLeft = X, Y = Y, Mask = mask }
-	local other = mask
+	ctx.Eyes[#ctx.Eyes + 1] = { XLeft = X, Y = Y, Mask = mask, LowMask = low, XOuter = outer, YTop = top }
+	local other, otherLow = mask, low
 	if mirror then
-		other = {}
-		for r, cols in ipairs(mask) do
-			local rev = {}
-			for c = #cols, 1, -1 do
-				rev[#rev + 1] = cols[c]
-			end
-			other[r] = rev
-		end
+		other = mirrorMask(mask)
+		otherLow = low and mirrorMask(low) or nil
 	end
-	ctx.Eyes[#ctx.Eyes + 1] = { XLeft = -(X - w + 1), Y = Y, Mask = other }
+	ctx.Eyes[#ctx.Eyes + 1] =
+		{ XLeft = -(X - w + 1), Y = Y, Mask = other, LowMask = otherLow, XOuter = outer and -outer, YTop = top }
 end
 
 -- Carves every eye 1 voxel into the face: the frontmost voxel of each eye column is removed and the voxel behind
@@ -3091,28 +3106,31 @@ end
 local EVO = { Species = {}, Wings = {}, Pets = {}, Ground = -18 }
 local ASC = { Pets = {} } -- the second evolution (Epic and up), see "Second evolution" below
 
--- the evolved eye (High, sculpted at 1.6x): 10 x 11 voxels, lash line on top, a big highlight top left, a small one
--- lower right, the pupil in a coloured iris that lightens towards the bottom
+-- the evolved eye (High): a 6 x 7 eye (Pitch 2 item 7 A "Trim", about 25 % smaller than the old 8 x 9 one, which
+-- the owner found too big in the arena): lash line on top, a 2 x 2 highlight top left, a small one lower right, the
+-- pupil in a coloured iris band with a lower glint. The "." border keeps the shipped 8 x 9 grid, so the eye stays
+-- centred on the spot EVO.Face gives it (addEyes anchors the outer column and the top row; "." carves nothing).
 EYE_MASKS.Evo = {
+	". . . . . . . .",
 	". . L L L L . .",
-	". L P P P P L .",
-	"L S S P P P P L",
-	"P S S S P P P P",
-	"P S S P P P P I",
-	"I P P P P I S I",
-	"I I P P I I S I",
-	". I G G G G I .",
+	". L S S P P L .",
+	". P S S P P P .",
+	". P S P P P I .",
+	". I P P I S I .",
 	". . I G G I . .",
+	". . . I I . . .",
+	". . . . . . . .",
 }
--- the fierce evolved eye (dragons, Stormfang): the upper edge slants down towards the nose
+-- the fierce evolved eye (dragons, Stormfang): 6 x 5 in the shipped 8 x 7 grid, the upper edge slants down towards
+-- the nose
 EYE_MASKS.EvoFierce = {
-	"L L L . . . . .",
-	"L L L L L . . .",
-	"P S S L L L L .",
-	"P S S P P P L L",
-	"P S P P P P P I",
-	"I P P P P I S I",
-	". I G G G I I .",
+	". . . . . . . .",
+	". L L L . . . .",
+	". P S L L L . .",
+	". P S P P L L .",
+	". I P P P S I .",
+	". . I G G I . .",
+	". . . . . . . .",
 }
 EYE_MASKS.EvoFierceLow = {
 	"L L . .",
