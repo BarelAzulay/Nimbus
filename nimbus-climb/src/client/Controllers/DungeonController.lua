@@ -2152,7 +2152,10 @@ function R.placeEndLandscape(w, h, top, endH, strips)
 	local spots = {}
 	local stripsLeft = R.stripsLeft()
 	if stripsLeft then
-		spots[#spots + 1] = { stripsLeft - 8, y0 }
+		-- (keys look r4: at 844 x 390 the card's hard shadow ended on the strips' frame, 0 px between them) left of the strips
+		-- by the card's shadow (K.CHIP_SHADOW), the strips' 2 px frame, 4 px of air and 2 for the published left's rounding
+		-- (R.stripsLeft is whole px; 844 x 390 drew the strips 0.4 px left of it)
+		spots[#spots + 1] = { stripsLeft - (K.CHIP_SHADOW + 2 + 4 + 2), y0 }
 	end
 	if strips > 0 then
 		spots[#spots + 1] = { w - 12, math.max(y0, strips) }
