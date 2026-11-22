@@ -153,6 +153,16 @@ local K = {
 	-- 40 px it keeps off the thumbs' keys (MOVE / DASH / RUN), screen px (R.placeChip -> BattleController.ReserveUnderList)
 	CHIP_SHADOW = 6,
 	CHIP_KEYS_GAP = 40,
+	-- (keys look r4: the dropped chip hung 0.4 px under the enemy row's gold target bracket, its frame 1.2 px over it, 1.6-4.6
+	-- px from "+3 more") a fight's dropped chip is its Leave button alone (no card round it: the double frame and the purple
+	-- lip sliver went too) and keeps CHIP_AIR screen px from every part's INK: a part's ink reaches CHIP_REACH past its box (a
+	-- card's edge and hard shadow, a row's target bracket), a tag's 2 px; the button's own reaches CHIP_BTN_OUT (its bevel) up
+	-- and left, CHIP_BTN_OUT + CHIP_BTN_SHADOW down and right (screen px)
+	CHIP_AIR = 6,
+	CHIP_REACH = 6,
+	CHIP_BTN_OUT = 4,
+	CHIP_BTN_SHADOW = 4,
+	CHIP_LEAVE_H = 38, -- design px: the Leave button's height (CHIP_H less 12)
 	CHIP_HIT = 44, -- (keys look r3) screen px: a phone chip's Leave takes a thumb (its clear LeaveHit pad)
 	END_W = 440, -- (Pitch 2 item 02 B, look review round 1) the battle result card's width (one template: BattleController K.RESULT_W)
 	END_MIN_W = 300, -- (U9-7 look) design px: a landscape phone's End card is never squeezed narrower for a spot
@@ -1631,7 +1641,7 @@ function R.build()
 			R.ready()
 		end
 	end
-	U.ChipButton = W.button(chip.Body, "LeaveButton", "Leave", "Red", UDim2.fromOffset(92, K.CHIP_H - 12), 1, chipPress)
+	U.ChipButton = W.button(chip.Body, "LeaveButton", "Leave", "Red", UDim2.fromOffset(92, K.CHIP_LEAVE_H), 1, chipPress)
 	U.ChipButton.AnchorPoint = Vector2.new(1, 0.5)
 	U.ChipButton.Position = UDim2.new(1, -5, 0.5, 0)
 	-- (keys look r3: the chip's Leave was a 74 x 30 px touch target on a phone; the battle card's Leave has its 44 px pad) a
@@ -2142,7 +2152,10 @@ function R.placeEndLandscape(w, h, top, endH, strips)
 	local spots = {}
 	local stripsLeft = R.stripsLeft()
 	if stripsLeft then
-		spots[#spots + 1] = { stripsLeft - 8, y0 }
+		-- (keys look r4: at 844 x 390 the card's hard shadow ended on the strips' frame, 0 px between them) left of the strips
+		-- by the card's shadow (K.CHIP_SHADOW), the strips' 2 px frame, 4 px of air and 2 for the published left's rounding
+		-- (R.stripsLeft is whole px; 844 x 390 drew the strips 0.4 px left of it)
+		spots[#spots + 1] = { stripsLeft - (K.CHIP_SHADOW + 2 + 4 + 2), y0 }
 	end
 	if strips > 0 then
 		spots[#spots + 1] = { w - 12, math.max(y0, strips) }
@@ -2290,6 +2303,7 @@ function R.placeChip(w, h, top, view)
 	S.ChipRight = nil -- (U9-7 look) R.fitChip: a chip in the band keeps its left edge
 	if x1 - x0 >= K.CHIP_BAND_MIN then
 		R.listReserve(0)
+		R.chipSkin(false)
 		U.Chip.Root.Size = UDim2.fromOffset(math.min(K.CHIP_MAX_W, math.floor((x1 - x0) / scale)), K.CHIP_H)
 		U.Chip.Root.Position = UDim2.fromOffset(x0, 4 - top)
 		S.ChipMaxW = U.Chip.Root.Size.X.Offset
@@ -2297,15 +2311,18 @@ function R.placeChip(w, h, top, view)
 	end
 	local battle = R.battleParts()
 	S.ChipCompact = view == "Run" and battle.TopCard ~= nil and S.Run ~= nil and S.Run.State ~= "Ending"
+	R.chipSkin(S.ChipCompact)
 	-- (keys look r3: at 640 x 360 the dropped chip's red Leave stood 10 px above RUN, a held key, between the list's "+2
 	-- more" and the keys, its shadow on RUN) in a fight the battle HUD's enemy list keeps the chip, its shadow, the gap
-	-- and the team orders' 40 px off the thumbs' keys free under it (it shows fewer rows): the chip drops into that room
-	R.listReserve(S.ChipCompact and (K.CHIP_H * scale + K.CHIP_GAP + K.CHIP_SHADOW + K.CHIP_KEYS_GAP) or 0)
+	-- and the team orders' 40 px off the thumbs' keys free under it (it shows fewer rows): the chip drops into that room;
+	-- (keys look r4) the Leave button alone, the air over it from the list's ink and its own bevel and shadow
+	R.listReserve(S.ChipCompact and (K.CHIP_LEAVE_H * scale + K.CHIP_REACH + K.CHIP_AIR + 2 * K.CHIP_BTN_OUT + K.CHIP_BTN_SHADOW
+		+ K.CHIP_KEYS_GAP) or 0)
 	if S.ChipCompact then
 		battle = R.battleParts() -- (the list as it now lies)
 	end
 	local right = w - K.CHIP_EDGE
-	local width = K.CHIP_LEAVE_W
+	local width = S.ChipCompact and U.ChipButton.Size.X.Offset or K.CHIP_LEAVE_W
 	if not S.ChipCompact then
 		width = math.min(K.CHIP_DROP_W, math.floor((right - R.menuRight(w) - 8) / scale))
 	end
@@ -2333,13 +2350,21 @@ function R.placeChip(w, h, top, view)
 	end
 	-- down past everything in the chip's columns that it would touch (a few rounds: one step can meet the next part);
 	-- -> its top (screen px) and the part it hangs under (nil: right under the band)
-	local chipH = K.CHIP_H * scale
+	local chipH = (S.ChipCompact and K.CHIP_LEAVE_H or K.CHIP_H) * scale
 	local function drop(x0, x1)
 		local y, under = top + K.CHIP_GAP, nil
 		for _ = 1, 8 do
 			local moved = false
 			for _, r in ipairs(below) do
-				if r.x0 < x1 and x0 < r.x1 and r.y0 < y + chipH and y < r.y1 then
+				if S.ChipCompact then
+					-- (keys look r4) by ink: the part's reach and CHIP_AIR round it against the button's bevel and shadow
+					local m = (r.reach or K.CHIP_REACH) + K.CHIP_AIR
+					local o, f = K.CHIP_BTN_OUT, K.CHIP_BTN_OUT + K.CHIP_BTN_SHADOW
+					if r.x0 - m < x1 + f and x0 - o < r.x1 + m and r.y0 - m < y + chipH + f and y - o < r.y1 + m then
+						y, under = math.ceil(r.y1 + m + o), r
+						moved = true
+					end
+				elseif r.x0 < x1 and x0 < r.x1 and r.y0 < y + chipH and y < r.y1 then
 					y, under = math.ceil(r.y1 + K.CHIP_GAP), r
 					moved = true
 				end
@@ -2356,10 +2381,45 @@ function R.placeChip(w, h, top, view)
 		left, right = left + (under.x1 - right), under.x1
 		y = drop(left, right)
 	end
-	U.Chip.Root.Size = UDim2.fromOffset(width, K.CHIP_H)
+	if S.ChipCompact and right > w - 4 - (K.CHIP_BTN_OUT + K.CHIP_BTN_SHADOW) then
+		-- (keys look r4: the Leave button alone, flush with the list, put its bevel and shadow 1.4 px from the screen's right
+		-- edge at 640 x 360) its ink keeps 4 px off the edge, as the list's target bracket does
+		local most = w - 4 - (K.CHIP_BTN_OUT + K.CHIP_BTN_SHADOW)
+		left, right = left - (right - most), most
+		y = drop(left, right)
+	end
+	-- (the card's 4 px lip band stays under the body, empty: the button fills the body from the chip's top edge)
+	U.Chip.Root.Size = UDim2.fromOffset(width, S.ChipCompact and (K.CHIP_LEAVE_H + 4) or K.CHIP_H)
 	U.Chip.Root.Position = UDim2.fromOffset(math.floor(left + 0.5), y - top)
 	S.ChipRight = right -- (U9-7 look) R.fitChip: a dropped chip keeps its right edge
 	S.ChipMaxW = width
+end
+
+-- (keys look r4: the dropped chip's card round its Leave button drew two frames and two shadows, the card's purple lip
+-- a 3.2 px sliver under the button) a fight's dropped chip (S.ChipCompact) is its Leave button alone: the card's face,
+-- edge, finish and lip step aside, the button fills the chip; back for every other chip
+function R.chipSkin(compact)
+	compact = compact == true
+	if S.ChipSkinCompact == compact then
+		return
+	end
+	S.ChipSkinCompact = compact
+	local root = U.Chip and U.Chip.Root
+	if not root then
+		return
+	end
+	root.BackgroundTransparency = compact and 1 or 0
+	for _, c in ipairs(root:GetChildren()) do
+		if c:IsA("UIStroke") then
+			c.Enabled = not compact
+		elseif c.Name == "FinishBevel" or c.Name == "FinishShine" or c.Name == "FinishShadow" then
+			c:SetAttribute("FinishOff", compact)
+			c.Visible = not compact
+		elseif c.Name == "Lip" and c:IsA("GuiObject") then
+			c.Visible = not compact
+		end
+	end
+	U.ChipButton.Position = UDim2.new(1, compact and 0 or -5, 0.5, 0)
 end
 
 -- (keys look r3) the room (screen px) the battle HUD's enemy list keeps free under it for the dropped chip, 0 = none
@@ -2429,6 +2489,8 @@ function R.battleParts()
 				for _, row in ipairs(child:GetChildren()) do
 					local rr = R.shownRect(row)
 					if rr then
+						-- (keys look r4) how far its ink reaches past the box: a row's target bracket, the "+n more" tag's frame
+						rr.reach = (row.Name == "More") and 2 or K.CHIP_REACH
 						parts[#parts + 1] = rr
 					end
 				end

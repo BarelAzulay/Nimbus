@@ -29,7 +29,8 @@
 //                       card art, spec 9; lobby-shop Task 21 moved it) src/client/Controllers/ShopController.lua and
 //                       (roll-look, spec 16.15: the optional hatch_* images; egg-cards, spec 16.18: the strip cards'
 //                       egg pictures egg_card_*) src/client/UI/HatchLook.lua and (credits look B: the studio logos
-//                       saintsfield_*) src/client/Controllers/MainMenuController.lua, which
+//                       saintsfield_*) src/client/Controllers/MainMenuController.lua and (keys look r4: the battle
+//                       top card's boss head, for files outside this list) src/shared/Config.lua's Config.Art.TextureImage, which
 //                       join it to the numbers of
 //                       src/shared/TextureIds.lua (rule texture-ids: numbers only, written by tools/upload_assets.py), and
 //                       in src/client/SoundFx.lua, which joins it to the numbers of src/shared/AudioIds.lua (rule audio-ids) -
@@ -387,7 +388,11 @@ function analyse(file) {
 		|| (base === "SkyFaces.lua" && path.basename(path.dirname(file)) === "shared") // the living sky faces (TextureIds sky_<theme>_<Face>)
 		|| (base === "ShopController.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client") // the store card art (TextureIds store_*)
 		|| (base === "HatchLook.lua" && path.basename(path.dirname(file)) === "UI" && path.basename(path.dirname(path.dirname(file))) === "client") // the roll look's optional images (TextureIds hatch_*) and the card eggs' pictures (egg_card_*)
-		|| (base === "MainMenuController.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client"); // (credits look B) the studio wordmark + emblem (TextureIds saintsfield_*)
+		|| (base === "MainMenuController.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client") // (credits look B) the studio wordmark + emblem (TextureIds saintsfield_*)
+		// (keys look r4: the battle top card's boss head built "rbxassetid://" .. id in BattleController) Config.Art.TextureImage,
+		// the builder for files outside this list: the same rule (the prefix joined only to an id variable); every other asset
+		// string in Config must still be Config.Art.StormfangImage (the isConfig rule below)
+		|| (base === "Config.lua" && path.basename(path.dirname(file)) === "shared");
 	// review3 tooling-5: the PortalVortex prefix literals that are joined to a TextureIds id variable (not a literal id)
 	const vortexPrefixOk = isVortex ? vortexPrefixUses(ast) : new Set();
 	const normPath = file.replace(/\\/g, "/");
