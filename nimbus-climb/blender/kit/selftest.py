@@ -302,6 +302,18 @@ def test_evo_eyes(br):
                     shift / vsl, h_in, h_out, l_in, l_out)
             if why:
                 placed.append((e["key"], why))
+        # the same on the other axis (the same cause: eye_specs reads the 9-tall High mask as design units, so 26 Low
+        # eyes sat 0.6-1.1 Low voxels below the High eye): the row nearest the High eye's centre, unless the row
+        # toward it would put an eye pixel off the face
+        hr = [r for r, line in enumerate(eh["Mask"]) if any(ch in faces.EYE_KEYS for ch in line)]
+        h_c = (eh["Y"] - (min(hr) + max(hr)) / 2.0) * vsh
+        ly = sorted({y for (x, y) in eyes[1]})
+        if ly:
+            vshift = ((ly[0] + ly[-1]) / 2.0 * vsl - h_c) / vsl
+            step = 1 if vshift < 0 else -1
+            toward = all((x, y + step) in fm for (x, y) in eyes[1])
+            if abs(vshift) > 0.5 + 1e-6 and toward:
+                placed.append((e["key"], "row centre %+.2f Low voxels off the High eye" % vshift))
         # the face colour PetBuilder's carve recorded (bp.lid_cells) is back wherever the kit's Low eye is not;
         # records of an eye key (two High eyes overlapping on the coarse grid) are not face colour.  Compared by
         # colour family: the evolved passes shade a voxel from its neighbours after the restore (Gold -> GoldLight /
