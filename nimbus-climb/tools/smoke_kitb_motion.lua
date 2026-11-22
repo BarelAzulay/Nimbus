@@ -546,7 +546,7 @@ local function serverScenarios()
 		end
 		T.check(knock > 0.36 and knock < 0.40, fmt("hurt: knocked back ~0.38 studs (%.3f)", knock))
 		T.check(jolt > 0.08 and jolt < 0.12 and joltAt < 0.24 and lowest > -1e-6,
-			fmt("hurt: a small jolt off the floor (%.3f up at p %.2f, in its first 0.12 s), the root never below rest (%.4f)", jolt, joltAt, lowest))
+			fmt("hurt: a small jolt off the floor (%.3f up at p %.2f, in its first 0.14 s), the root never below rest (%.4f)", jolt, joltAt, lowest))
 		T.check(up > 6 and up < 14 and down < -2 and late < 0.5,
 			fmt("hurt: the head snaps back (%.1f deg nose up), a springy rock (%.1f nose down), settled by p 0.8 (%.2f)", up, down, late))
 		T.check(pivotOk and pivotN > 20, fmt("hurt: on the floor it rocks about its paws: nose up on the hind paws, nose down on the front ones (%d frames)", pivotN))
@@ -557,8 +557,36 @@ local function serverScenarios()
 			local o = P.Offset("Hurt", i / N, false, 1, nil, heavy)
 			hk, hj = max(hk, o.Z), max(hj, o.Y)
 		end
-		T.check(knock > 0 and jolt > 0 and abs(hk / knock - 0.78) < 0.01 and abs(hj / jolt - 0.78) < 0.01,
-			fmt("hurt: an evolved body (Hop 0.78) moves 0.78 x as far (back %.3f / %.3f, jolt %.3f / %.3f)", hk, knock, hj, jolt))
+		-- (look review r3 minor: "stacked knock-back runs 5-10 % over the mock in the fast lane ... the single-bite plateau
+		-- 0.296 against 0.285": the mock's evolved Sunbeam Bear, motion_pitch.enemy_new, is knocked back x 0.75 and jolted /
+		-- rocked x 0.8; was one 0.78 for all, the old check's number) the mock's two heavy weights
+		T.check(knock > 0 and jolt > 0 and abs(hk / knock - 0.75) < 0.01 and abs(hj / jolt - 0.8) < 0.01,
+			fmt("hurt: an evolved body (Hop 0.78) is knocked back 0.75 x as far and jolted 0.8 x as high, the mock's (back %.3f / %.3f, jolt %.3f / %.3f)", hk, knock, hj, jolt))
+		-- (e) (look review r3 minor) one hit's knock-back and head snap ARE the mock's enemy_new curves, base and evolved:
+		-- x = 0.38 w out3(v / 0.14) (1 - smooth((v - 0.30) / 0.32)), pitch = 13 k out3(v / 0.06) e^(-v / 0.13) cos(2 pi v / 0.3)
+		-- (w 0.75, k 0.8 evolved) over the reaction (v: seconds after the hit stop; the pitch up to the build's fade at 0.36)
+		local function out3(x)
+			x = max(0, min(1, x))
+			return 1 - (1 - x) ^ 3
+		end
+		local worstX, worstP, worstAtX = 0, 0, ""
+		for _, fs in ipairs({ { typical, 1, 1, "base" }, { heavy, 0.75, 0.8, "evolved" } }) do
+			for i = 0, N do
+				local v = 0.62 * i / N
+				local hm = max(0, min(1, (v - 0.30) / 0.32))
+				local mx = 0.38 * fs[2] * out3(v / 0.14) * (1 - hm * hm * (3 - 2 * hm))
+				local o = P.Offset("Hurt", v / 0.62, false, 1, nil, fs[1])
+				if abs(o.Z - mx) > worstX then
+					worstX, worstAtX = abs(o.Z - mx), fmt("%s v %.3f: %.4f vs the mock's %.4f", fs[4], v, o.Z, mx)
+				end
+				if v <= 0.36 then
+					local mp = 13 * fs[3] * out3(v / 0.06) * math.exp(-v / 0.13) * math.cos(2 * math.pi * v / 0.3)
+					worstP = max(worstP, abs(pitchOf(P.Sample("Hurt", v / 0.62, false, 1, nil, fs[1])) - mp))
+				end
+			end
+		end
+		T.check(worstX < 0.003 and worstP < 0.15,
+			fmt("hurt: one hit's knock-back and head snap are the mock's enemy_new curves, base and evolved (worst %.4f studs: %s; pitch %.2f deg)", worstX, worstAtX, worstP))
 		-- (d) (the approved mock's fast lane: "a Double strike adds a second jolt", its half-power 2nd hit 0.14 s after the
 		-- bite; the r2 look sheet: a fresh Hurt from the spot pulled the knocked-back bear 0.12 .. 0.16 toward its biter at a
 		-- re-hit) a re-hit while still knocked back. (look review r2, major 2: the mock ADDS each hit's knock-back,
@@ -1105,7 +1133,8 @@ local function clientScenarios()
 				local wHop = (type(foeFeet) == "table" and tonumber(foeFeet.Hop)) or 1
 				local late = frameAt(land + STOP + 0.45)
 				local lateK = (late and late.FoeName == "Hurt") and PP.Offset("Hurt", late.FoeP, false, late.FoeAmp, late.FoeReach, late.FoeFeet).Z or 0
-				local lateWant = 0.38 * wHop * (1 - (0.15 / 0.32) ^ 2 * (3 - 2 * 0.15 / 0.32))
+				-- (look review r3: the mock's evolved victim is knocked back x 0.75 at Hop 0.78)
+				local lateWant = 0.38 * (1 - (1 - wHop) * 0.25 / 0.22) * (1 - (0.15 / 0.32) ^ 2 * (3 - 2 * 0.15 / 0.32))
 				T.check(abs(lateK - lateWant) < 0.03,
 					fmt("bounce timing: %s: 0.45 s after the hit stop the bear is still %.3f back (the mock's %.3f +- 0.03)", look[3], lateK, lateWant))
 				T.check(lastHurt ~= nil and lastHurt.FoeBody.Position.Magnitude < 0.02 and lastHurt.T >= land + STOP + 0.62 - 2 * DT and lastHurt.T <= land + STOP + 0.62 + 2 * DT,
@@ -1378,7 +1407,7 @@ local function clientScenarios()
 						if v > 0 and v < 0.62 then
 							local o = 1 - math.min(1, v / 0.14)
 							local hm = math.max(0, math.min(1, (v - 0.30) / 0.32))
-							s = s + 0.38 * 0.78 * (1 - o * o * o) * (1 - hm * hm * (3 - 2 * hm))
+							s = s + 0.38 * 0.75 * (1 - o * o * o) * (1 - hm * hm * (3 - 2 * hm)) -- (look review r3: the mock's x 0.75)
 						end
 					end
 					return s
@@ -1410,7 +1439,7 @@ local function clientScenarios()
 				-- (look review r2, major 2: "at fast tempo the bitten pet never stays knocked back": the r2 Hurt was home by the
 				-- hit + 0.55, so before bites 2 and 3 the bear stood 0.04 back (the mock's 0.16) and hopped home toward the fox's
 				-- incoming hop-bite) bites 0.5 s apart on the evolved bear, each played as hitPlay plays a bite: just before bites
-				-- 2 and 3 it is still knocked back like the mock (its x: 0.296 x (1 - smooth(0.15 / 0.32)) = 0.16 at 0.45 s after
+				-- 2 and 3 it is still knocked back like the mock (its x: 0.285 x (1 - smooth(0.15 / 0.32)) = 0.15 at 0.45 s after
 				-- the stop, +- 0.03), the earlier reaction plays on through the new bite's hit stop (no freeze of the whole bear:
 				-- the mock adds each hit), and after the last bite it is home by the hit + 0.67 (+ 2 frames), not before + 0.62
 				local src3 = { Unit = 592, Model = me2, Pos = V3(300, G + 1.5, 0) }
@@ -1441,7 +1470,7 @@ local function clientScenarios()
 					end
 					return best
 				end
-				local want = 0.38 * 0.78 * (1 - (0.15 / 0.32) ^ 2 * (3 - 2 * 0.15 / 0.32))
+				local want = 0.38 * 0.75 * (1 - (0.15 / 0.32) ^ 2 * (3 - 2 * 0.15 / 0.32)) -- (look review r3: the mock's x 0.75)
 				local k2, k3 = knockAt(fh[2] - DT), knockAt(fh[3] - DT)
 				-- through bite 3's hit stop the earlier reaction goes on home (the mock: 0.16 -> 0.09), never frozen
 				local kS0, kS1 = knockAt(fh[3] + 1e-3), knockAt(fh[3] + STOP - 1e-3)
