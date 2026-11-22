@@ -111,6 +111,9 @@ if [ $do_smoke -eq 1 ]; then
 		# from src/shared/MeshManifests); skipped for an --only run
 		if [ $has_only -eq 0 ]; then
 			step "Smoke test, mesh mode (tools/smoke.py --quick --mesh)" python3 tools/smoke.py --quick --mesh
+			# (kit-b Pitch 2, keys lane) the battle HUD's parts never on each other or off the screen: render_gui's real-client
+			# dumps of 8 battle / dungeon scenarios at 7 sizes (needs numpy + Pillow, as render_gui; ~2 min)
+			step "Battle HUD no overlap (tools/battle_hud_no_overlap.py)" python3 tools/battle_hud_no_overlap.py
 		fi
 	else
 		echo "missing dependency: lupa (pip install lupa)" >&2

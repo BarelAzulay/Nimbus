@@ -255,7 +255,16 @@ python3 tools/render_gui.py gallery -o gallery.png                   # renderer 
 python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal's world GUIs (billboard + countdown face)
 python3 tools/stroke_walk.py                                         # kit B: the stroke and contrast rules over every render scenario's dump
 python3 tools/stroke_walk.py --casing --bare lobby shop              # + the casing rule, + texts with no plate and no outline
+python3 tools/battle_hud_no_overlap.py --size 360x640 --scenario battle:raid:full -v   # the battle HUD's parts: no overlap, on screen, names whole
 ```
+
+`battle_hud_no_overlap.py` (kit-b Pitch 2, keys lane) dumps 8 battle / dungeon scenarios (battle:raid, :raid:full,
+:raid:ready, battle:dungeon, battle:duel, dungeon:run, :end, :wipe) at 360x640, 640x360, 667x375, 390x844, 844x390,
+1280x720 and 1920x1080 and fails on any overlap of the keys, CHEER / BACK, the top card, the enemy rows, the fighter card,
+the helpers, the vitals card, the dungeon run chip, the result card, the currency strip and Roblox's stick / jump rings;
+on a part off the screen; on a phone key under 44 px or CHEER / BACK under 40 px from MOVE / DASH / RUN; on a cut or
+mid-word-broken name (laid out with render_gui's own text layout); on the full raid's pill rules (spec 06 A); on the
+vitals card showing beside a phone's result card (spec 02 B); and on a portrait phone's top card not spanning the top.
 
 `stroke_walk.py` (kit-b U6) dumps the render scenarios one at a time (default: all but the widget galleries, at 1920x1080;
 `--grid` adds the other three sizes) and fails on any text with a classic stroke under an outline, or an outline on an
