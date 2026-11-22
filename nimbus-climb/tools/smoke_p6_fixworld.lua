@@ -56,8 +56,13 @@ S.p6fixworld_board = guarded("p6fixworld_board", function()
 	local text = table.concat(all, " | ")
 	T.check(not string.find(text, "Your sky home", 1, true), "p6fixworld board: no 'Your sky home' gate row left", text)
 	T.check(string.find(text, "THE GATES", 1, true) ~= nil, "p6fixworld board: the THE GATES title stays")
-	T.check(string.find(text, "Tap Home, then Go home", 1, true) ~= nil, "p6fixworld board: the footer tells kids how to go home", text)
-	T.eq(#descs, 5, "p6fixworld board: one description per gate row")
+	-- (Pitch 2 item 04_world_ui, the owner's approved pick B "Stone tags", docs/superpowers/specs/2026-11-20-pitch2-build-
+	-- design.md: "THE GATES face lists only the five gate names at 52 px with their pixel icons ... descriptions move to
+	-- each gate's header") the footer and the five descriptions left the board on purpose: they were 30 px lines, about 8 px
+	-- on the plaza. These two pins flip to that decision (the way home stays the HUD's Home tile; smoke_kitb_world.lua
+	-- world_signs_kit holds the new face)
+	T.check(string.find(text, "Tap Home, then Go home", 1, true) == nil, "p6fixworld board: no footer (Pitch 2 item 04 B: names only)", text)
+	T.eq(#descs, 0, "p6fixworld board: no description rows (Pitch 2 item 04 B: each gate's header carries its line)")
 end)
 end
 

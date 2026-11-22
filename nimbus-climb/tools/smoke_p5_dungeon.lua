@@ -3240,6 +3240,12 @@ local function clientScenarios()
 					local jump = { x0 = W - j * 1.5 - 10, y0 = H - jb - j, x1 = W - j * 0.5 - 10, y1 = H - jb }
 					local touchOn = game:GetService("GuiService").TouchControlsEnabled ~= false
 					T.check(not touchOn or not over(jump, er), tag .. "clear of Roblox's jump button", rs(er) .. " | jump " .. rs(jump))
+					-- (keys lane, look review fixA r1: at 360 x 640 the cleared floor's and the wiped run's vitals card lay on RUN and
+					-- DASH under the card, and it showed at 390 x 844 too) spec 02 B: on a phone the vitals card hides while any
+					-- result card is up (HudController.SetVitalsHidden), portrait as well as landscape
+					local hud = C5.pg():FindFirstChild("NimbusHud")
+					local vit = hud and hud:FindFirstChild("Vitals", true)
+					T.check(vit == nil or not C5.shown(vit), tag .. "the vitals card steps aside while the card shows", vit and rs(C5.rect(vit)) or "")
 					if W > H and e[1] ~= "gems" then
 						local ys, n = {}, 0
 						local chips = C5.find(card, "Chips")
@@ -3264,6 +3270,7 @@ local function clientScenarios()
 						back = back and (b == nil or C5.shown(b))
 					end
 					T.check(back, tag .. "OK: the stick, jump, RUN and DASH are back")
+					T.check(vit == nil or C5.shown(vit), tag .. "OK: the vitals card is back")
 				end
 			end
 			if MC and type(MC._TouchButtons) == "function" then

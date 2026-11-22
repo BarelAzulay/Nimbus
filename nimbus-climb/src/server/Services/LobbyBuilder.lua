@@ -102,6 +102,7 @@ local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
 local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the token coin on the machines' price signs
+local WorldTag = require(Shared.WorldTag) -- (Pitch 2 item 04 B) THE GATES face as a stone card
 local LobbyBoardBuilder = require(script.Parent.LobbyBoardBuilder) -- lobby shop: the egg row and the leaderboard board
 local LobbyMachineBuilder = require(script.Parent.LobbyMachineBuilder) -- shop-area 16.17.1: the Gumball Globe's eggs
 
@@ -2953,20 +2954,51 @@ local function buildBoards(f, L)
 	if guideCf then
 		local face = noticeBoard(f, guideCf, 11, 8, "GuideBoard")
 		local gui = surfaceGui(face, Enum.NormalId.Front)
-		local panel = signPanel(gui, rgb(150, 200, 255))
-		signText(panel, "THE GATES", "Title", 52, C.TextGold, "Header", 0.04, 0.025, 0.92, 0.14)
-		-- Phase 6: the 5 real Gate Court gates (no Home gate any more); the way home is the footer hint
+		-- (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags"; the navy rounded panel with eight 30 px lines, about
+		-- 8 px on the plaza, went) the face is a stone card (a 6 px wood edge, an 8 px lip) that lists only the five gate
+		-- names at 52 px (about 15 px on the plaza, read from across the square) behind their pixel icons; each gate's own
+		-- header carries its description, and the way home is the HUD's Home tile. Px of the 550 x 400 canvas (SIGN_PPS)
+		local Sign = Theme.Sign
+		face.Color = Sign.Stone
+		local panel = Instance.new("Frame")
+		panel.Name = "Panel"
+		panel.Position = UDim2.fromOffset(6, 6) -- the edge is drawn outside the face: inset so the canvas keeps it
+		panel.Size = UDim2.new(1, -12, 1, -12)
+		panel.Parent = gui
+		WorldTag.Block(panel, Sign.Stone, Sign.StoneLip, Sign.Wood, 6, 8)
+		WorldTag.Text(panel, "Header", "THE GATES", "Title", 60, Sign.Text, {
+			Position = UDim2.fromOffset(0, 10), Size = UDim2.new(1, 0, 0, 68), TextXAlignment = Enum.TextXAlignment.Center,
+		})
+		local rule = Instance.new("Frame")
+		rule.Name = "Rule"
+		rule.BorderSizePixel = 0
+		rule.BackgroundColor3 = Sign.StoneLip
+		rule.Position = UDim2.fromOffset(24, 84)
+		rule.Size = UDim2.new(1, -48, 0, 5)
+		rule.Parent = panel
+		-- Phase 6: the 5 real Gate Court gates (no Home gate any more)
 		local lines = {
-			{ "OBBY", "Climb with friends" },
-			{ "DUNGEON", "Explore with your team" },
-			{ "RING", "Beat the champion" },
-			{ "ARENA", "Duels and raids" },
-			{ "ALTAR", "Secret storm pets!" },
+			{ "OBBY", "mountain", Sign.Sky },
+			{ "DUNGEON", "castle", Sign.WoodLight },
+			{ "RING", "trophy", Sign.Gold },
+			{ "ARENA", "sword", Sign.Red },
+			{ "ALTAR", "vault", Sign.Violet },
 		}
 		for i, line in ipairs(lines) do
-			keyRow(panel, 0.18 + (i - 1) * 0.12, 0.105, line[1], line[2])
+			local row = Instance.new("Frame")
+			row.Name = "Row_" .. line[1]
+			row.BackgroundTransparency = 1
+			row.Position = UDim2.fromOffset(0, 94 + (i - 1) * 56)
+			row.Size = UDim2.new(1, 0, 0, 56)
+			row.Parent = panel
+			local icon = PixelIcon.New(row, line[2], 36, line[3])
+			if icon then
+				icon.Position = UDim2.fromOffset(34, 10)
+			end
+			WorldTag.Text(row, "Key", line[1], "Heading", 52, Sign.Text, {
+				Position = UDim2.fromOffset(94, 0), Size = UDim2.new(1, -110, 1, 0), TextXAlignment = Enum.TextXAlignment.Left,
+			})
 		end
-		signText(panel, "Going home?\nTap Home, then Go home!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.785, 0.9, 0.19, nil, true)
 		gui.Parent = face
 	end
 end

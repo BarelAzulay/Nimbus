@@ -544,7 +544,8 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 		for _, g in ipairs(fx and fx:GetChildren() or {}) do
 			if g:IsA("BillboardGui") and g.Enabled then
 				sawNumber = true
-				local lbl = g:FindFirstChildWhichIsA("TextLabel")
+				-- (Pitch 2 item 04 B) a target's running total (DamageTotal) holds its figure inside its stone chip
+				local lbl = g:FindFirstChildWhichIsA("TextLabel", true)
 				if g.Size.X.Scale ~= 0 or g.Size.Y.Scale ~= 0 or not lbl or lbl.TextSize < 22 or g.LightInfluence ~= 0 then
 					badNumber = g.Name .. " " .. tostring(lbl and lbl.TextSize)
 				end
@@ -823,7 +824,9 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	d:run(1.5, 30)
 	b = BC.GetBattle()
 	T.check(b.Units > unitsBefore, "raid: a minion wave adds units", unitsBefore .. " -> " .. b.Units)
-	T.check(hasText(find("Root.TopCard"), "Minions"), "raid HUD: the minion pill")
+	-- (kit-b Pitch 2 item 06 A, keys lane look fixA r1: "Minions x4", not one of the approved strip's four pills, pushed
+	-- "3 players" onto a row of its own) a raid's minion wave is its "Wave n/N" pill, the minions themselves on the enemy list
+	T.check(hasText(find("Root.TopCard"), "^Wave %d+ ?/ ?%d+$") and not hasText(find("Root.TopCard"), "Minions"), "raid HUD: the minion wave's pill (Wave n/N)")
 	KC.toClient("BattleState", "Events", { { type = "Enrage", unit = d.sim.boss.id } }, d.id)
 	d:run(0.5, 30)
 	T.check(shown(find("Root.TopCard.Pills.Enraged")), "raid HUD: ENRAGED pill after the Enrage event")
@@ -967,15 +970,23 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	d:run(1.5, 30)
 	local b = BC.GetBattle()
 	T.check(b and b.Layout == "Compact", "phone: the compact battle HUD", b and b.Layout or "nil")
+	-- (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20: a touch screen has MOVE (the ELEMENT key,
+	-- which also holds the special) and DASH here, RUN in MobileControls; no SPECIAL / TARGET key, TARGET is automatic)
 	local tiny = nil
-	for _, k in ipairs({ "Target", "Element", "Special", "Dash" }) do
+	for _, k in ipairs({ "Element", "Dash" }) do
 		local btn = find("Root.Commands." .. k .. "Button")
 		local r = btn and shown(btn) and screenRect(btn)
 		if not r or (r.x1 - r.x0) < 48 or (r.y1 - r.y0) < 48 then
 			tiny = k .. " " .. (r and (fmt(r.x1 - r.x0, 0) .. "x" .. fmt(r.y1 - r.y0, 0)) or "missing")
 		end
 	end
-	T.check(tiny == nil, "phone: SPECIAL / TARGET / ELEMENT / DASH are touch-sized (>= 48 px on the screen)", tostring(tiny))
+	for _, k in ipairs({ "Target", "Special" }) do
+		local btn = find("Root.Commands." .. k .. "Button")
+		if btn and shown(btn) then
+			tiny = k .. " shown on touch"
+		end
+	end
+	T.check(tiny == nil, "phone: MOVE (ELEMENT) / DASH are touch-sized (>= 48 px on the screen), no SPECIAL / TARGET key", tostring(tiny))
 	-- every battle text >= 14 px on the screen
 	local scale = find("Root.ReadScale")
 	local f = scale and scale.Scale or 1
@@ -1139,8 +1150,10 @@ S.client_p3battle_cards = guarded("client_p3battle_cards", function()
 			bad = "no card on unit " .. id
 		elseif gui.Name ~= "HpBar" or info.Card.Mode ~= "Unit" then
 			bad = "unit " .. id .. ": " .. gui.Name .. " / " .. tostring(info.Card.Mode)
-		elseif not (rowShown(gui, "Hp") and rowShown(gui, "Special") and rowShown(gui, "Xp")) then
-			bad = "unit " .. id .. ": rows hidden"
+		-- (Pitch 2 item 04_world_ui, the owner's approved pick B: "one HP block row, because SPECIAL and XP already show on
+		-- the HUD helper cards") a Unit card draws the HP row only; SPECIAL / XP keep their fractions off-screen
+		elseif not (rowShown(gui, "Hp") and not rowShown(gui, "Special") and not rowShown(gui, "Xp")) then
+			bad = "unit " .. id .. ": rows not the chip + HP"
 		elseif text ~= "Lv " .. tostring(info.Level) then
 			bad = "unit " .. id .. ": " .. tostring(text)
 		elseif gui.LightInfluence ~= 0 or gui.Size.X.Scale ~= 0 or gui.Size.Y.Scale ~= 0 or not gui.AlwaysOnTop then
@@ -1149,7 +1162,7 @@ S.client_p3battle_cards = guarded("client_p3battle_cards", function()
 			bad = "unit " .. id .. ": Lv " .. tostring(lvl and lvl.TextSize) .. " px"
 		end
 	end
-	T.check(#mineIds >= 2 and bad == nil, "cards: every own unit carries a PetCard (HpBar, mode Unit: Lv n >= 22 px + HP + SPECIAL + XP, pixel-sized, LightInfluence 0)", tostring(bad))
+	T.check(#mineIds >= 2 and bad == nil, "cards: every own unit carries a PetCard (HpBar, mode Unit: Lv n >= 22 px + the HP row, pixel-sized, LightInfluence 0)", tostring(bad))
 	local g1 = cardOf(BC, bySlot[1] and bySlot[1].id)
 	local g2 = cardOf(BC, bySlot[2] and bySlot[2].id)
 	T.near(fillOf(g1, "Xp") or -1, 1000 / need20, 0.01, "cards: the XP fill is xp / xpNext from Start (level 20)")

@@ -1343,6 +1343,11 @@ P5.TAB_GAP = 4 -- design px between the tiles and the arrow tab
 P5.TAB_W = 30 -- design width of the arrow tab (touch: TAB_W_TOUCH, wider for a thumb). (LOOK-ui) 30: its 27 px pixel
 -- arrow fits inside the wood edge
 P5.TAB_W_TOUCH = 30
+P5.BADGE = 22 -- (Pitch 2 item 04) the folded tab's red "!" block (its face; 26 with the 2 px wood edge). (look review r0:
+-- an 18 px face held the 18 px bang over its 3 px lip) 22: the bang on the face, 1 px clear above the lip, as in the mock ...
+P5.BADGE_X = 4 -- ... its face's left / top in the tab (the edge keeps 2 px of the tab's face clear each side)
+P5.BADGE_DROP = 14 -- px the arrow steps down while it shows (2 px under the block's edge)
+P5.BADGE_LIP = 3 -- the block's lip (design px)
 P5.MAX_COLS = 3 -- the tiles wrap into at most this many columns (the shortest landscape phones)
 P5.CENTRE_TOL = 0.145 -- the column never reaches into the screen middle (|dx| < 14.5% of the width: HudController's rule)
 P5.SLIDE = 0.25 -- seconds of the collapse / expand slide
@@ -1477,6 +1482,43 @@ function P5.placeTiles(cols)
 	end
 end
 
+-- (Pitch 2 look review r0, the lobby:fold render) the "!" on the folded tab's red block. PixelIcon draws whole screen-px
+-- cells (an 18 px icon never under 2 px a cell), so under the column's scale below 1 (0.85 on a 1080p desktop, about 0.7
+-- on a phone) the 18 px bang drew 18 screen px on a 15 - 16 px face, over its top edge and its lip. The bang is 18 px
+-- where its drawn cells fit the face above the lip with a px to spare, else the 9 px one (1 px cells), centred on that
+-- face. Again whenever the column's scale changes (relayoutMenu)
+function P5.fitTabBang()
+	local badge = U.TabBadge
+	if not badge then
+		return
+	end
+	local s = U.ColumnScale and U.ColumnScale.Scale or 1
+	s = s > 0 and s or 1
+	local room = P5.BADGE - P5.BADGE_LIP
+	local px = (PixelIcon.BoxPx(18, 0, s) + 1 <= room) and 18 or 9
+	local bang = badge:FindFirstChild("Mark")
+	if bang and bang:GetAttribute("BangPx") == px then
+		return
+	end
+	if bang then
+		bang:Destroy()
+	end
+	bang = PixelIcon.New(badge, "bang", px, Theme.Sign.Text)
+	if not bang then
+		return
+	end
+	bang.Name = "Mark"
+	bang:SetAttribute("BangPx", px)
+	bang.AnchorPoint = Vector2.new(0.5, 0)
+	bang.Position = UDim2.new(0.5, 0, 0, math.floor((room - px) / 2))
+	bang.ZIndex = 6
+	for _, cell in ipairs(bang:GetChildren()) do
+		if cell:IsA("GuiObject") then
+			cell.ZIndex = 6
+		end
+	end
+end
+
 -- the fold tab's hit pad (touch only): 44 screen px each way at the column's scale, from the tab's bottom-left corner
 function P5.sizeTabHit()
 	local hit, tab = U.TabHit, U.Tab
@@ -1522,6 +1564,8 @@ function P5.paintTab()
 	end
 	if U.TabBadge.Visible ~= badge then
 		U.TabBadge.Visible = badge
+		-- (Pitch 2 item 04) the arrow steps down under the "!" block while it shows
+		U.TabArrow.Position = UDim2.fromOffset(0, badge and P5.BADGE_DROP or 0)
 	end
 	if U.Tab:GetAttribute("Collapsed") ~= (U.Collapsed == true) then
 		U.Tab:SetAttribute("Collapsed", U.Collapsed == true)
@@ -1629,16 +1673,31 @@ local function buildColumn()
 		Size = UDim2.new(1, 0, 1, -6),
 		ZIndex = 4,
 	})
+	-- (Pitch 2 item 04_world_ui, the owner's pick B: the 14 px pink dot straddled the tab's corner, half off the folded
+	-- tab at the screen's edge) the "!" is a red kit block INSIDE the tab's top (a 2 px mitred wood edge, a 3 px lip, the
+	-- pixel bang in the kit's brown ink); the arrow steps down under it while it shows (P5.paintTab)
 	U.TabBadge = makeFrame(tab, "Badge", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -2, 0, 4),
-		Size = UDim2.fromOffset(14, 14),
+		Position = UDim2.fromOffset(P5.BADGE_X, P5.BADGE_X),
+		Size = UDim2.fromOffset(P5.BADGE, P5.BADGE),
 		BackgroundTransparency = 0,
 		BackgroundColor3 = Theme.Sign.Red,
 		Visible = false,
 		ZIndex = 5,
 	})
-	stroke(U.TabBadge, Theme.Sign.Wood, 2, 0)
+	local badgeEdge = stroke(U.TabBadge, Theme.Sign.Wood, 2, 0)
+	badgeEdge.Name = "SignEdge"
+	badgeEdge.LineJoinMode = Enum.LineJoinMode.Miter
+	makeFrame(U.TabBadge, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, P5.BADGE_LIP),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.RedLip,
+		ZIndex = 5,
+	})
+	-- (the mock's tab and the NPC signs' "!": the kit's brown ink on the block; it was stone) its size follows the
+	-- column's scale (P5.fitTabBang)
+	P5.fitTabBang()
 	U.Tab = tab
 	tab.Activated:Connect(function()
 		safe("menu fold", P5.setCollapsed, not U.Collapsed, true)
@@ -1801,6 +1860,7 @@ function relayoutMenu()
 	local top = first + math.max(0, (avail - h * scale) / 2)
 	U.ColumnScale.Scale = scale
 	P5.sizeTabHit()
+	P5.fitTabBang()
 	-- a squeezed column (short screens) grows its labels so they stay >= 14 screen px
 	local labelPx = math.min(26, math.max(18, math.ceil(14.5 / math.max(scale, 0.3))))
 	-- ... and so does the "!" of a tile's red badge (its dot grows around it)

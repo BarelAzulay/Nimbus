@@ -14,9 +14,7 @@ NameTag
 Nameplate
 PadSign
 PadTag
-PosterGui
 PriceBillboard
 ShowcaseTag
 SignGui
-TitleTag
 TroveBillboard

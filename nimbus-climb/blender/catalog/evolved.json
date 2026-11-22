@@ -125,7 +125,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: pebble pup, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -205,7 +208,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: mallow kitten, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -285,7 +291,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: puddle frog, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -365,7 +374,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: honey bunny, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -445,7 +457,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: biscuit bear, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -525,7 +540,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: pip penguin, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -570,6 +588,7 @@
     "features": false
    },
    "description": "Evolved pet: maple fox, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -605,8 +624,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: maple fox, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -685,8 +708,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: bamboo panda, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -765,7 +792,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: mochi slime, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -845,7 +875,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: sleepy owl, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -925,8 +958,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: waffle corgi, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1005,8 +1042,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: bubble axolotl, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1085,7 +1126,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: blossom bunny, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -1165,7 +1209,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: shroomie frog, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -1245,7 +1292,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: frostling penguin, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -1325,7 +1375,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: storm tabby, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -1405,8 +1458,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: cherry panda, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1450,6 +1507,7 @@
     "features": false
    },
    "description": "Evolved pet: aurora fox, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -1485,8 +1543,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: aurora fox, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1565,7 +1627,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: moonlit owl, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -1645,7 +1710,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: nebula axolotl, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -1725,8 +1793,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: candy unicorn, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -1805,7 +1877,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: ember phoenix, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -1885,7 +1960,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: sunbeam bear, first evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -1930,6 +2008,7 @@
     "features": false
    },
    "description": "Evolved pet: twilight dragon, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -1965,8 +2044,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: twilight dragon, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2010,6 +2093,7 @@
     "features": false
    },
    "description": "Evolved pet: cloudy dragon, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2045,8 +2129,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: cloudy dragon, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2125,8 +2213,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: starlight unicorn, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2170,6 +2262,7 @@
     "features": false
    },
    "description": "Evolved pet: stormfang, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2205,8 +2298,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: stormfang, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2250,6 +2347,7 @@
     "features": false
    },
    "description": "Evolved pet: eclipse dragon, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2285,8 +2383,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: eclipse dragon, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2365,8 +2467,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: obsidian phoenix, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2410,6 +2516,7 @@
     "features": false
    },
    "description": "Evolved pet: phantom kitsune, first evolution, High",
+   "kStep": 2,
    "fixed": true
   },
   {
@@ -2445,8 +2552,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.0125
+   },
    "description": "Evolved pet: phantom kitsune, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2525,8 +2636,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: magma cub, first evolution, Low",
+   "kStep": 1,
    "fixed": true,
    "lod": "Low"
   },
@@ -2570,6 +2685,7 @@
     "features": false
    },
    "description": "Evolved pet: rime wyrmling, first evolution, High",
+   "kStep": 1,
    "fixed": true
   },
   {
@@ -2605,8 +2721,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: rime wyrmling, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2685,8 +2805,12 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.25
+   },
    "description": "Evolved pet: hydralotl, first evolution, Low",
+   "kStep": 2,
    "fixed": true,
    "lod": "Low"
   },
@@ -2787,7 +2911,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: aurora fox, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -2913,7 +3040,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: moonlit owl, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -3039,7 +3169,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: nebula axolotl, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -3165,7 +3298,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: candy unicorn, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -3291,7 +3427,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: ember phoenix, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -3417,7 +3556,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: sunbeam bear, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -3543,7 +3685,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: twilight dragon, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -3669,7 +3814,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: cloudy dragon, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -3795,7 +3943,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: starlight unicorn, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -3921,7 +4072,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: stormfang, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -4047,7 +4201,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: eclipse dragon, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -4173,7 +4330,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: obsidian phoenix, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -4277,7 +4437,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: phantom kitsune, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -4379,7 +4542,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: magma cub, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -4505,7 +4671,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: rime wyrmling, second evolution, Low",
    "fixed": true,
    "lod": "Low"
@@ -4631,7 +4800,10 @@
     "evolved:body",
     "evolved:aura"
    ],
-   "face": {},
+   "face": {
+    "eyes": "low",
+    "highK": 1.125
+   },
    "description": "Evolved pet: hydralotl, second evolution, Low",
    "fixed": true,
    "lod": "Low"

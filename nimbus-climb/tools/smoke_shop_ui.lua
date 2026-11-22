@@ -49,7 +49,8 @@
 --                        from the Storm Altar: CardState "Altar", SPIN hidden and a blue TRAVEL (compass glyph, no price) in
 --                        its box, the AltarChip "Available at the Storm Altar" ("At the Storm Altar" on a phone) in the pity
 --                        chip's place, the Dim over the card (under the chip / TRAVEL / hint), the hint "Secret rolls happen at
---                        the Storm Altar", no pulse; a TRAVEL mash sends one QuickTravel("Altar") and closes the Shop; at the
+--                        the Storm Altar", no pulse; (Pitch 2 item 13 A) a "Show the way" mash starts one walking guide
+--                        (TutorialController.Guide, no QuickTravel) and closes the Shop, away from the lobby too; at the
 --                        altar today's card; FromAltar unlocks until Close; walking to / away from the island follows on the
 --                        next Shop tick; Locked wins, Altar before Loading; RedoGeom on every size
 -- shop-area 16.17.3: G.begin pins ShopEggs._AtAltar = true (the older scenarios test the card as it reads at the altar).
@@ -2081,8 +2082,11 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- (shop-area polish) the hero's hint follows the state: Locked keeps the rule line, Altar says what TRAVEL does, Ready (at
 -- the altar) says where you are
-local ALTAR = { Lock = "Available at the Storm Altar", Short = "At the Storm Altar", Hint = "Secret rolls happen at the Storm Altar", Word = "Travel",
-	HintTravel = "Travel flies you to the Storm Altar", HintHere = "You are at the Storm Altar" } -- (kit-b U9-2: sentence case)
+-- (Pitch 2 item 13_travel_guide A, the owner's pick: TRAVEL no longer teleports; the button starts the walking guide)
+-- Word "Show the way" (was "Travel"), HintTravel "A gold arrow leads you to the Storm Altar" (was "Travel flies you to the
+-- Storm Altar")
+local ALTAR = { Lock = "Available at the Storm Altar", Short = "At the Storm Altar", Hint = "Secret rolls happen at the Storm Altar", Word = "Show the way",
+	HintTravel = "A gold arrow leads you to the Storm Altar", HintHere = "You are at the Storm Altar" } -- (kit-b U9-2: sentence case)
 
 -- the hero's widgets: Spin, Travel (the button), AltarChip, PityChip, Dim, Hint, Lock
 function G.heroKit()
@@ -2112,8 +2116,11 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 	local Shop = G.req("client/Controllers/ShopController")
 	local SE = G.req("client/UI/ShopEggs")
 	local NK = G.req("client/UI/NeonKit")
+	-- (Pitch 2 item 13 A) the button starts TutorialController.Guide; the checks below read and stop it
+	local TCG = G.req("client/Controllers/TutorialController")
+	local Guide = type(TCG) == "table" and TCG.Guide or nil
 	local okApi = type(Shop) == "table" and type(SE) == "table" and type(NK) == "table" and type(SE.AtAltar) == "function" and type(SE.SetFromAltar) == "function"
-		and type(SE.Metrics) == "table" and type(SE.Metrics.TEXT) == "table"
+		and type(SE.Metrics) == "table" and type(SE.Metrics.TEXT) == "table" and type(Guide) == "table" and type(Guide.Active) == "function"
 	if not T.check(okApi, "secret lock: ShopEggs.AtAltar / SetFromAltar and ShopController load") then
 		return
 	end
@@ -2197,7 +2204,7 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		local icon = k.Travel:FindFirstChild("Icon")
 		T.check(k.Travel:GetAttribute("Style") == "Green" and G.text(k.Travel, "Word") == ALTAR.Word and icon ~= nil and G.shown(icon) and icon:FindFirstChild("Icon") ~= nil and icon:FindFirstChild("Icon"):GetAttribute("PixelIcon") == NK.IconName("Travel")
 			and k.Travel:FindFirstChild("Price", true) == nil and k.Travel:FindFirstChild("GemIcon", true) == nil and not G.disabled(k.Travel),
-			"secret lock: ...the green plank (Style 'Green', kit-b U9-2: the page's one main action away from the altar), 'TRAVEL' with the travel icon (kit-b U7a: the pixel arrow), no price, active", G.texts(k.Travel))
+			"secret lock: ...the green plank (Style 'Green', kit-b U9-2: the page's one main action away from the altar), 'Show the way' (Pitch 2 item 13 A) with the travel icon (kit-b U7a: the pixel arrow), no price, active", G.texts(k.Travel))
 
 		local cb, pb = G.rel(k.Chip, k.Hero), k.Pity and G.rel(k.Pity, k.Hero)
 		T.check(G.shown(k.Chip) and k.Chip.Text == ALTAR.Lock and k.Pity and not G.shown(k.Pity) and G.near(cb.x, 360) and G.near(cb.y, 132) and G.near(cb.h, 48) and cb.w >= 400 - 1
@@ -2229,7 +2236,7 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		T.check(k.Dim.ZIndex > (egg and egg.ZIndex or 0) and k.Dim.ZIndex > (sparks and sparks.ZIndex or 0) and k.Dim.ZIndex < k.Chip.ZIndex and holder and k.Dim.ZIndex < holder.ZIndex and k.Dim.ZIndex < k.Hint.ZIndex,
 			"secret lock: ...over the machine, the big egg and its sparks, under the chip, the TRAVEL button and the hint",
 			fmt("dim %d, egg %s, sparks %s, chip %d, holder %s, hint %d", k.Dim.ZIndex, tostring(egg and egg.ZIndex), tostring(sparks and sparks.ZIndex), k.Chip.ZIndex, tostring(holder and holder.ZIndex), k.Hint.ZIndex))
-		T.eq(G.text(k.Hero, "Hint"), ALTAR.HintTravel, "secret lock: away from the altar the hint reads 'TRAVEL flies you to the Storm Altar'")
+		T.eq(G.text(k.Hero, "Hint"), ALTAR.HintTravel, "secret lock: away from the altar the hint reads 'A gold arrow leads you to the Storm Altar'")
 		fitsAll("secret lock 1920x1080", { k.Chip, k.Hint, k.Travel:FindFirstChild("Word") })
 		local states = {}
 		for _, id in ipairs(MACHINES) do
@@ -2240,34 +2247,41 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		T.check(frames == 0 and SE.HeroPulse() and SE.HeroPulse().Scale == 1, "secret lock: the hero's pulse stays off while Altar (Scale 1 for 3 s)", frames .. " frames")
 		RedoGeom.check(G.win(), "secret lock 1920x1080", { MinText = 18, MinTarget = 44, NoOverlap = G.noOverlapNames() })
 
-		------------------------------------------------------------------ the TRAVEL mash: one QuickTravel("Altar"), the Shop closes
+		------------------------------------------------------------------ the button mash: one guide, no teleport, the Shop closes
+		-- (Pitch 2 item 13 A: it was "exactly one QuickTravel('Altar')"; the button now starts the walking guide and sends
+		-- nothing: the same one-tap rule, read on the guide instead of the remote)
 		local mark = #Mock.RemoteLog
 		Mock.Click(k.Travel)
 		Mock.Click(k.Travel)
 		Mock.Click(k.Travel)
 		G.advance(0.1)
 		local qt = KC.serverCalls("QuickTravel", mark)
-		T.check(#qt == 1 and qt[1].args[1] == "Altar" and not Shop.IsOpen(), "secret lock: three TRAVEL taps within 0.1 s -> exactly one QuickTravel('Altar'), and the Shop closes",
-			#qt .. " sends, open " .. tostring(Shop.IsOpen()))
+		T.check(#qt == 0 and Guide.Active() == "StormAltar" and not Shop.IsOpen(), "secret lock: three 'Show the way' taps within 0.1 s -> the guide to the Storm Altar, no QuickTravel, and the Shop closes",
+			#qt .. " sends, guide " .. tostring(Guide.Active()) .. ", open " .. tostring(Shop.IsOpen()))
+		pcall(Guide.Stop)
 		G.advance(0.5)
 		Mock.Click(k.Travel)
 		G.advance(0.1)
-		T.eq(#KC.serverCalls("QuickTravel", mark), 1, "secret lock: ...a TRAVEL tap with the Shop closed sends nothing")
+		T.check(#KC.serverCalls("QuickTravel", mark) == 0 and Guide.Active() == nil, "secret lock: ...a tap with the Shop closed starts nothing", tostring(Guide.Active()))
 
-		------------------------------------------------------------------ away from the lobby: TRAVEL greys out (the owner's call 2026-11-11)
+		------------------------------------------------------------------ away from the lobby: the guide routes home first
+		-- (Pitch 2 item 13 A: TRAVEL greyed out here, "Go to the lobby to travel to the Storm Altar", the owner's call
+		-- 2026-11-11 for the teleport; the owner's pick A has the guide go home first, so the button stays live and says so;
+		-- it greys only while a match / run holds the player: smoke_kitb_world travel_shows_way)
 		SE._InLobby = false
 		Shop.Open({ Tab = "Eggs" })
 		G.advance(1.2)
 		k = G.heroKit()
 		local markAway = #Mock.RemoteLog
-		T.check(G.shown(k.Travel) and G.disabled(k.Travel) and G.text(k.Hero, "Hint") == "Go to the lobby to travel to the Storm Altar",
-			"secret lock: away from the lobby TRAVEL shows greyed out and the hint reads 'Go to the lobby to travel to the Storm Altar'",
+		T.check(G.shown(k.Travel) and not G.disabled(k.Travel) and G.text(k.Hero, "Hint") == "From here: Home first, then the arrow",
+			"secret lock: away from the lobby the button stays live and the hint reads 'From here: Home first, then the arrow'",
 			G.heroLook(k) .. "; hint " .. tostring(G.text(k.Hero, "Hint")))
 		fitsAll("secret lock away from the lobby 1920x1080", { k.Hint })
 		Mock.Click(k.Travel)
 		G.advance(0.6)
-		T.check(#KC.serverCalls("QuickTravel", markAway) == 0 and Shop.IsOpen(), "secret lock: ...a TRAVEL tap there sends nothing and the Shop stays open",
-			#KC.serverCalls("QuickTravel", markAway) .. " sends, open " .. tostring(Shop.IsOpen()))
+		T.check(#KC.serverCalls("QuickTravel", markAway) == 0 and Guide.Active() == "StormAltar" and not Shop.IsOpen(), "secret lock: ...a tap there starts the guide (no QuickTravel) and closes the Shop",
+			#KC.serverCalls("QuickTravel", markAway) .. " sends, guide " .. tostring(Guide.Active()) .. ", open " .. tostring(Shop.IsOpen()))
+		pcall(Guide.Stop)
 		SE._InLobby = true
 		Shop.Close()
 		G.advance(0.3)
@@ -2277,8 +2291,9 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 			Shop.Open({ Tab = "Eggs" })
 			G.advance(1.2)
 			local kk = G.heroKit()
-			T.check(not (kk.Hint and G.shown(kk.Hint)) or kk.Hint.Text == "Travel from the lobby",
-				"secret lock away 360x640: a shown hero hint reads 'Travel from the lobby'", kk.Hint and kk.Hint.Text or "no hint")
+			-- (Pitch 2 item 13 A: was 'Travel from the lobby')
+			T.check(not (kk.Hint and G.shown(kk.Hint)) or kk.Hint.Text == "Home first, then the arrow",
+				"secret lock away 360x640: a shown hero hint reads 'Home first, then the arrow'", kk.Hint and kk.Hint.Text or "no hint")
 			fitsAll("secret lock away 360x640", { kk.Hint })
 			SE._InLobby = true
 			Shop.Close()
@@ -2392,7 +2407,7 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 				local trb = kk.Travel and G.rel(kk.Travel, kk.Travel)
 				local spinAt = kk.Spin and G.rel(kk.Spin, kk.Hero)
 				local travelAt = kk.Travel and G.rel(kk.Travel, kk.Hero)
-				T.check(not (kk.Hint and G.shown(kk.Hint)) or kk.Hint.Text == ALTAR.HintTravel, label .. ": a shown hero hint reads 'TRAVEL flies you to the Storm Altar'",
+				T.check(not (kk.Hint and G.shown(kk.Hint)) or kk.Hint.Text == ALTAR.HintTravel, label .. ": a shown hero hint reads 'A gold arrow leads you to the Storm Altar'",
 					kk.Hint and kk.Hint.Text or "no hint")
 				T.check(SE.CardState("Secret") == "Altar" and kk.Chip and G.shown(kk.Chip) and kk.Chip.Text == want and not G.shown(kk.Spin) and kk.Travel and G.shown(kk.Travel) and G.shown(kk.Dim)
 					and spinAt and travelAt and G.near(spinAt.x, travelAt.x) and G.near(spinAt.y, travelAt.y) and G.near(spinAt.w, travelAt.w) and G.near(spinAt.h, travelAt.h),

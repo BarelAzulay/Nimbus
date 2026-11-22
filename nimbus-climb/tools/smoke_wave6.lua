@@ -35,9 +35,9 @@
 --                         screen and covering nothing (1920x1080, 1366x768); a click = ONE BattleCommand("Cheer"), the Cheer
 --                         event = the glow 5 s + the sweep 20 s + one emote; a click in the cooldown sends nothing and shakes;
 --                         ready again after 20 s; Ring / Duel: none; End takes it away
---   client_w6_cheer_mobile (phone world) the same placement at 844x390 / 390x844 / 749x388 / 360x640 on a touch phone (where
---                         the slot is the screen middle: beside the slot on the left, top level; where the slot's spot covers
---                         something, e.g. 360x640's RUN button: the shown-card place, 8 px above the slot or beside it),
+--   client_w6_cheer_mobile (phone world) at 844x390 / 390x844 / 749x388 / 360x640 on a touch phone (kit-b Pitch 2 item 1b, option
+--                         C "Three buttons": CHEER stands with the team, beside / under the helper portraits, no longer in the
+--                         slot; here: shown, >= 44 px, on screen, out of the middle, covering nothing; keys_three_buttons: its spot),
 --                         >= 44x44 px, clear of the action cluster, RUN / DASH and Roblox's jump button; the card hidden
 --                         during each fight, back after a leave, the result and the cleanup; a spectator keeps it; "Daily"'s
 --                         hide outlives the fight
@@ -2142,6 +2142,49 @@ local function clientScenarios()
 		return #why > 0 and table.concat(why, "; ") or nil, r
 	end
 
+	-- (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20) on a touch screen CHEER is a team order: it
+	-- stands with the team, beside the helper portraits (a wide phone) / in a row under them (a tall one), no longer in the vitals
+	-- card's slot (the card still steps aside). keys_three_buttons checks its spot; here: shown, >= 44 px, on the screen, out of
+	-- the middle and covering nothing (the Team block by its two parts: CHEER stands in its box beside the helper column)
+	local function cheerTeamProblem()
+		local b = H.find("Root.Cheer")
+		if not b or not shownIn(b) then
+			return "Cheer not shown"
+		end
+		local r = rectOf(b)
+		local why = {}
+		local vp = Mock.Viewport
+		local areaY = vp.Y - (Mock.TopInset or 0)
+		if r.x0 < 0 or r.y0 < 0 or r.x1 > vp.X or r.y1 > areaY then
+			why[#why + 1] = "off the screen " .. rstr(r)
+		end
+		if r.x1 - r.x0 < 44 or r.y1 - r.y0 < 44 then
+			why[#why + 1] = fmt("tap target %.0fx%.0f < 44x44", r.x1 - r.x0, r.y1 - r.y0)
+		end
+		local obstacles = {}
+		for _, o in ipairs(cheerObstacles(true)) do
+			if o[1] ~= "Battle.Team" then
+				obstacles[#obstacles + 1] = o
+			end
+		end
+		for _, path in ipairs({ "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2" }) do
+			local o = H.find(path)
+			if o and shownIn(o) and o.AbsoluteSize.X > 0 then
+				obstacles[#obstacles + 1] = { "Battle." .. path:sub(6), rectOf(o) }
+			end
+		end
+		for _, o in ipairs(obstacles) do
+			if overlaps(r, o[2]) then
+				why[#why + 1] = fmt("covers %s %s (Cheer %s)", o[1], rstr(o[2]), rstr(r))
+			end
+		end
+		local cx, cy = vp.X / 2, vp.Y / 2 - (Mock.TopInset or 0)
+		if r.x0 < cx + vp.X * 0.145 and r.x1 > cx - vp.X * 0.145 and r.y0 < cy + vp.Y * 0.145 and r.y1 > cy - vp.Y * 0.145 then
+			why[#why + 1] = "in the middle of the screen " .. rstr(r)
+		end
+		return #why > 0 and table.concat(why, "; ") or nil, r
+	end
+
 	local function cheerLayouts(label, sizes, touch)
 		local BC = H.moduleAt("client", "Controllers/BattleController")
 		for _, size in ipairs(sizes) do
@@ -2153,8 +2196,14 @@ local function clientScenarios()
 				d:run(0.6, 30)
 				local hiddenWhy = vitalsHiddenProblem()
 				T.check(hiddenWhy == nil, tag .. ": the vitals card steps aside for the fight (GetLayout().Vitals nil, VitalsSlot its rect, the frame hidden)", tostring(hiddenWhy))
-				local why, r = cheerProblem(touch)
-				T.check(why == nil, tag .. ": Cheer up! sits in the vitals card's slot, centred on it, its bottom edge on the slot's bottom edge, on screen, covering nothing",
+				local why, r
+				if touch then
+					why, r = cheerTeamProblem()
+				else
+					why, r = cheerProblem(touch)
+				end
+				T.check(why == nil, tag .. (touch and ": CHEER stands with the team (Pitch 2 item 1b), on screen, >= 44 px, out of the middle, covering nothing"
+					or ": Cheer up! sits in the vitals card's slot, centred on it, its bottom edge on the slot's bottom edge, on screen, covering nothing"),
 					tostring(why) .. (r and (" " .. rstr(r)) or ""))
 				H.cleanup(BC, d)
 				local shownWhy = vitalsShownProblem()

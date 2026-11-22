@@ -1655,6 +1655,22 @@ local function checkBillboardSign(label, portal)
 		end
 	end
 	T.eq(joinedText(gui), GLOW.SignText, label .. ": ...it reads 'To the Plaza'")
+	-- (look review r1, M5) the old navy gradient capsule (a round corner, a green stroke, outlined white text) went: a stone
+	-- kit block (a mitred wood edge, a lip in the ring's green) with the kit's brown ink on it
+	local oldKit = {}
+	for _, d in ipairs(gui:GetDescendants()) do
+		if d:IsA("UICorner") or d:IsA("UIGradient") then
+			oldKit[#oldKit + 1] = d.ClassName .. " on " .. d.Parent.Name
+		end
+	end
+	local plate = gui:FindFirstChild("Plate")
+	local edge = plate and plate:FindFirstChild("SignEdge")
+	local Theme = req("shared/Theme")
+	local Sign = Theme and Theme.Sign
+	local ink = plate and plate:FindFirstChild("Text")
+	T.check(#oldKit == 0 and plate ~= nil and plate.BackgroundTransparency == 0 and Sign ~= nil and plate.BackgroundColor3 == Sign.Stone and edge ~= nil
+		and edge.LineJoinMode == Enum.LineJoinMode.Miter and plate:FindFirstChild("Lip") ~= nil and ink ~= nil and ink.TextColor3 == Sign.Text,
+		label .. ": ...a stone kit block (mitred wood edge, a lip), brown ink, no round corner or gradient", table.concat(oldKit, ", "))
 	T.check(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset > 0 and #small == 0 and gui.LightInfluence == 0 and gui.MaxDistance >= 50 and gui.MaxDistance <= 150,
 		label .. ": ...pixel-sized, text >= 22 px (no TextScaled), LightInfluence 0, MaxDistance 50-150", tostring(gui.Size) .. ", MaxDistance " .. tostring(gui.MaxDistance) .. "; small: " .. table.concat(small, ", "))
 end

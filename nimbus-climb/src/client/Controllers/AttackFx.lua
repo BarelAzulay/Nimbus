@@ -184,7 +184,9 @@ local K = {
 	ABOVE = 5,
 	BEHIND = 2.6,
 	DROP = 1.6, -- default height of a unit's centre over the floor
-	HURT = 0.5,
+	-- (PetPoses' Hurt runs its beats in seconds at this length: HURT_SECS; look review r2, major 2: 0.62 after the hit
+	-- stop, home at the mock's hit + 0.67, so the fast tempo's bites stack)
+	HURT = 0.62,
 	KO = 0.9,
 	VICTORY = 1.2,
 	SHOOT = 0.6, -- the ranged Shoot pose (PetPoses): the head snaps forward, the body kicks back, settles
@@ -198,7 +200,8 @@ local K = {
 	POUNCE_DUR_MAX = 2.2,
 	LEAP_TRAIL_UP = 0.3, -- (Task 10) the leap trails ride the pet this far over its pivot
 	BAND_RARITY = { "Common", "Rare", "Legendary", "Secret" },
-	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1, DashIn = 2, DashBack = 2 },
+	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1, DashIn = 2, DashBack = 2,
+		DashBite = 2, DashDouble = 2, DashThorns = 2, DashReady = 2 },
 	-- (Task 11b) the charge cues and the predicted charge
 	RIM_IN = 0.3, -- the rim Highlight fades in over this from the charge's start (a backdated charge keeps its rim)
 	RIM_OUT = 0.25, -- ... and out over this after the release
@@ -256,13 +259,59 @@ local K = {
 	AIM_MIN = 1.0,
 	FLOOR_RAY = 80, -- studs: the one downward ray per effect that finds the real floor under the target
 	-- (battle-feel T2, the melee dash: AttackFx.Dash) PetPoses.DASH_RUN: DashIn's run reaches the edge at this p (the landing)
-	DASH_RUN = 0.78,
+	-- (Pitch 2 item 5 "Bounce in" A: Melee.In of hops then the 0.12 s chomp; PetPoses' own value wins when it loads)
+	DASH_RUN = 5 / 7,
 	DASH_MAX = 20, -- world studs a dash may run at most (the standoff gap to a boss's near edge is ~6-12)
-	LUNGE_DUR = 0.45, -- a flurry's in-place bite: a Strike of Melee.Lunge studs over this long, landing at p 0.26 (PetPoses LEAP_LAND)
+	LUNGE_DUR = 0.45, -- (no dash: the non-dash melee Strike's leap lands at p LEAP_LAND)
 	LEAP_LAND = 0.26,
+	-- (Pitch 2 item 5) the Bounce in's other beats (seconds at the shipped Melee knobs; PetPoses holds the shapes)
+	-- the chomp after a bite (DashIn / DashBite p DASH_RUN .. 1), this long whatever the run (review minor: a segment's
+	-- Knee times its run apart from its chomp; a 0.20 s run squeezed it to 0.08 s, then the pet froze upright 0.07 s)
+	CHOMP = 0.12,
+	-- (look review r2 minor: "after the chomp the biter holds level at the face 2 frames before DashBack; in the mock the
+	-- chomp goes straight into the hop back") a way home due less than this after the chomp ends leaves when it ends (the
+	-- mock's hit + 0.17; Bite + Hold 0.20 left a 0.03 s level hold); a longer Bite + Hold still holds at the face
+	HOLD_SNAP = 0.05,
+	-- (look review r2 minor) a DashIn's nod on the front paws lasts at least this (the mock's 0.04 s: 2 frames at 60 fps)
+	-- however short its run; the two hops take the rest
+	NOD_MIN = 0.04,
+	NOD = { 13 / 30, 17 / 30 }, -- PetPoses.DASH_NOD (its own value wins when it loads)
+	BITE_MIN = 0.12, -- a flurry bite's rebound + hop-bite get at least this long (a quicker tempo squeezes them)
+	-- (review minor: "fast-tempo bite 1 rebounds at hit + 0.15", the approved mock's) a flurry's next run leaves as soon as
+	-- the mouth is done: the chomp squeezed to FLURRY_CHOMP (ending level), a Double strike's second chomp, a Thorns hop
+	-- away; at most FLURRY_RUN before its hit (the mock's 0.35 s at the 0.5 s tempo: rebound 0.14, rock 0.06, hop-bite 0.15)
+	FLURRY_CHOMP = 0.10,
+	FLURRY_RUN = 0.35,
+	WINDUP_MIN = 0.03, -- an NPC's wind-up shorter than this before its dash is skipped (the dash starts from rest)
+	-- (gate review r0, major 2) a dash called Melee.In or less before its hit (a player's fighter) rocks back this long
+	-- first, the run in the rest (at least RUN_MIN: a later call gets less wind-up, never a shorter run). (the owner,
+	-- 2026-11-20: the wind-up gets 0.25 s, client only) an NPC's run gives the same 0.10 of Melee.In to its wind-up: it
+	-- rocks back NPC_WIND 0.25 s and hops in 0.20 (the server's time unchanged)
+	FIGHTER_WIND = 0.10,
+	-- (look review r3 minor: "an NPC's wind-up is never the owner's 0.25 s on the real path") the server's Windup comes on
+	-- its 0.1 s step, 0.50 s before the hit (its `at` is that hit's step): the gather lasts this at most, a longer lead
+	-- stands at rest (the Windup's p 0) until it starts
+	NPC_WIND = 0.25,
+	RUN_MIN = 0.15,
+	BITE_IN = 0.25, -- (gate review r0 minor) world studs the deepest bite may reach into the target's box (the strip's aim)
+	WINDUP_LOAD = 0.82, -- PetPoses.WINDUP_LOAD (its own value wins when it loads)
+	BACK_POSE = 1.4, -- PetPoses.BACK_POSE: DashBack lasts Melee.Back x this (the settle on the spot after the hops)
+	DOUBLE_DUR = 0.15, -- PetPoses.DOUBLE_DUR / DOUBLE_BITE: the Double strike's second chomp ...
+	DOUBLE_BITE = 0.6,
+	THORN_DUR = 0.34, -- PetPoses.THORN_DUR / THORN_BACK: the hop away from a Thorns shield (at most half the dash)
+	THORN_BACK = 1.3,
+	READY_BOUNCE = 0.17, -- PetPoses.READY_BOUNCE: the ready bounce between a flurry's bites (whole bounces only)
+	FOOT_BAND = 0.25, -- studs (x PB_Scale): a part whose bottom is this close to the lowest stands on the floor (> one Low voxel 0.2)
+	-- (review minor: "evolved pets hop x0.78 heavier", the mock's heavy lanes) FeetOf's Hop for an evolved form (PB_Evolved
+	-- >= 1): PetPoses weighs its hops by it
+	EVO_HOP = 0.78,
 	STREAK_LIFE = 0.12, -- the speed streak's Trail Lifetime (a short smear, never a tether)
 	STREAK_HALF = 0.4, -- studs: the streak's half-width
 	STREAK_TRANS = { Mine = 0.3, Other = 0.6 }, -- its transparency: my pet's reads first
+	-- (Pitch 2 item 5 "Bounce in" A: "a nod as it lands on its front paws with dust", "each landing with a rock and dust")
+	DUST_COUNT = { Mine = 6, Other = 4 }, -- fx_dust puffs per hop landing (High only, like the streak)
+	DUST_MAX = 6, -- landing-dust kits live at once (mine first: at the cap it takes the oldest other pet's)
+	DUST_LIFE = 0.5, -- s: a landing's kit goes back to the pool after this (its puffs live 0.3 .. 0.45)
 }
 -- (battle-feel T1) the ray's floor is believed only within this of ctx.Ground (a rail or a pit is not the arena floor)
 AttackFx.FLOOR_RAY_MAX = 6
@@ -427,6 +476,9 @@ local St = {
 	cueSeq = 0, -- (Task 11b) the last inhale token handed to Hooks.Inhale
 	lastBasicKick = nil, -- (attack effects, 2026-11-01) when a basic hit last kicked the camera (Kick.BasicGap)
 	streaks = {}, -- (battle-feel T2) the live dash streaks: { Kit, Unit, Model, T0, T1, Mine } (<= Melee.StreakMax)
+	dusts = {}, -- (Pitch 2 item 5) the live landing-dust kits: { Kit, Until, Mine } (<= DUST_MAX)
+	dustFrom = nil, -- the clock of the Update before: a hop landing in (dustFrom, now] kicks its dust
+	dustKicks = 0, -- landings that kicked dust since the load (Stats().DustKicks)
 }
 
 local function warnOnce(key, msg)
@@ -3158,13 +3210,87 @@ end
 -- from there to its landing spot, so a base the server slides to the target does not carry the pet past it (Task 10)
 -- (battle-feel T2) a segment's Until holds its end pose until then (DashIn at the edge until its DashBack); its Forward
 -- (pose studs) is an offset along the LookVector the pose does not carry itself (a flurry's bite from the edge)
-local function poseSample(entry, now, base)
+-- (Pitch 2 item 5, review minor: the chomp lasts K.CHOMP whatever the run) a segment's p at `el` seconds of its own time
+-- (the hit stop left out): linear over Dur, or with a Knee (a dash bite: Knee = its run's seconds, KneeP = DASH_RUN)
+-- 0 .. KneeP over the run and KneeP .. 1 over the rest (the chomp)
+-- (look review r2 minor: "the nod on the front paws lasts 0.027 s, under 2 frames at 60 fps" in the 0.20 s run the
+-- owner's 0.25 s wind-up leaves) a DashIn's run (s.Nod = PetPoses.DASH_NOD: its nod's share of the run's hops) gives the
+-- nod at least K.NOD_MIN seconds; the two hops share the rest in their own proportion. run = the knee's seconds, u = the
+-- run's time fraction -> the pose's fraction of the run (identity when the nod already lasts that long)
+local function nodSplit(s, run)
+	local a, b = s.Nod[1], s.Nod[2]
+	local n = min(0.5 * run, max((b - a) * run, K.NOD_MIN))
+	local rest = run - n
+	return a, b, n, rest * a / (1 - (b - a)), rest * (1 - b) / (1 - (b - a))
+end
+
+local function nodWarp(s, run, u)
+	local a, b, n, h1, h2 = nodSplit(s, run)
+	local t = u * run
+	if t < h1 then
+		return a * t / h1
+	elseif t < h1 + n then
+		return a + (b - a) * (t - h1) / n
+	end
+	return b + (1 - b) * clamp01((t - h1 - n) / max(1e-9, h2))
+end
+
+local function nodTime(s, run, v)
+	local a, b, n, h1, h2 = nodSplit(s, run)
+	if v <= a then
+		return v / a * h1
+	elseif v <= b then
+		return h1 + (v - a) / (b - a) * n
+	end
+	return h1 + n + (v - b) / (1 - b) * h2
+end
+
+local function segP(s, el)
+	if s.Still then
+		return 0 -- (look review r3 minor) an NPC's early Windup: at rest until its gather starts
+	end
+	local kn, kp = s.Knee, s.KneeP
+	if kn and kp and kn > 0 and s.Dur > kn then
+		if el <= kn then
+			local u = clamp01(el / kn)
+			if s.Nod then
+				u = nodWarp(s, kn, u)
+			end
+			return kp * u
+		end
+		return kp + (1 - kp) * clamp01((el - kn) / (s.Dur - kn))
+	end
+	return clamp01(el / s.Dur)
+end
+
+-- ... and the inverse: the seconds of its own time at which a segment reaches p (the landing dust's beats)
+local function segTime(s, p)
+	local kn, kp = s.Knee, s.KneeP
+	if kn and kp and kn > 0 and s.Dur > kn then
+		if p <= kp then
+			if s.Nod then
+				return nodTime(s, kn, p / kp)
+			end
+			return p / kp * kn
+		end
+		return kn + (p - kp) / (1 - kp) * (s.Dur - kn)
+	end
+	return p * s.Dur
+end
+
+-- the segment that plays at `at`: the last one started and not over (a Hold holds, Until holds it to then)
+local function segAt(entry, at)
 	local best = nil
 	for _, s in ipairs(entry.Segs) do
-		if now >= s.T0 and (now < s.T0 + s.Dur or s.Hold or (s.Until and now < s.Until)) then
+		if at >= s.T0 and (at < s.T0 + s.Dur or s.Hold or (s.Until and at < s.Until)) then
 			best = s
 		end
 	end
+	return best
+end
+
+local function poseSample(entry, now, base)
+	local best = segAt(entry, now)
 	if not best then
 		return nil
 	end
@@ -3177,7 +3303,8 @@ local function poseSample(entry, now, base)
 		local left = (best.Landing - flat(base)):Dot(best.Dir)
 		reach = max(0, min(K.LEAP_MAX, finite(left) and left or 0)) / best.Scale
 	end
-	return best.Name, clamp01(el / best.Dur), best.Ranged == true, best.Amp, reach, best.Forward
+	-- (Pitch 2 item 5) a looping segment (DashReady) samples its time in seconds; Feet = the model's paw lines
+	return best.Name, best.Loop and max(0, el) or segP(best, el), best.Ranged == true, best.Amp, reach, best.Forward, best.Feet
 end
 
 local function poseActive(entry, at)
@@ -3187,6 +3314,37 @@ local function poseActive(entry, at)
 		end
 	end
 	return false
+end
+
+-- (Pitch 2 item 5, look review r2, major 2) the hits a pose entry's Hurt still plays at `at`: { { Age = that hit's own
+-- reaction time then, Power }, ... } (PetPoses Hurt), nil when it plays no Hurt or every hit is home. Its own time leaves
+-- the hit stop out; a hit still to land counts its stop ahead (a negative Age)
+local function hurtHitsAt(entry, at)
+	local s = nil
+	for _, x in ipairs(entry.Segs) do
+		if x.Name == "Hurt" then
+			s = x
+		end
+	end
+	if not s then
+		return nil
+	end
+	local el = at - s.T0
+	if s.StopAt then
+		el = el - ((at >= s.StopAt) and min(at - s.StopAt, s.StopDur or 0) or (s.StopDur or 0))
+	end
+	local out = {}
+	if type(s.Reach) == "table" then
+		for _, h in ipairs(s.Reach) do
+			local age, pw = el + (tonumber(h.Age) or 0), tonumber(h.Power) or 1
+			if finite(age) and age < K.HURT and pw > 0 then
+				out[#out + 1] = { Age = age, Power = pw }
+			end
+		end
+	elseif finite(el) and el < K.HURT then
+		out[1] = { Age = el, Power = tonumber(s.Amp) or 1 }
+	end
+	return (#out > 0) and out or nil
 end
 
 local function setPoses(unit, segs, now)
@@ -3201,10 +3359,29 @@ local function setPoses(unit, segs, now)
 	if old and old.Prio > prio and poseActive(old, segs[1].T0) then
 		return -- a higher pose still plays then (a KO'd pet never strikes; an attack is not cut by a flinch)
 	end
+	-- (Pitch 2 item 5, the approved mock's fast lane: "a Double strike adds a second jolt"; look review r2, major 2: the
+	-- mock ADDS each hit's reaction, motion_pitch.enemy_new) a Hurt over a running Hurt (a re-hit) plays the earlier hits
+	-- on, each on its own time, and its own on top (PetPoses Hurt: Reach = the hits): it starts exactly where the pet is
+	-- (never pulled back toward its biter), and its hit stop holds only its own hit back (the earlier ones play on through
+	-- it, as the mock's do), so there is nothing to crossfade (Cut)
+	local s1 = segs[1]
+	local cut = nil
+	if old and s1.Name == "Hurt" and s1.Reach == nil then
+		local hits = hurtHitsAt(old, s1.T0)
+		if hits then
+			local delay = s1.StopAt and (s1.StopDur or 0) or 0
+			hits[#hits + 1] = { Age = -delay, Power = s1.Amp or 1 }
+			s1.Dur = K.HURT + delay
+			hits.Secs = s1.Dur
+			s1.Reach, s1.StopAt, s1.StopDur, s1.Until = hits, nil, nil, nil
+			cut = true
+		end
+	end
 	local entry = { Segs = segs, Prio = prio }
 	if old and poseActive(old, now) then
 		entry.Prev = old -- crossfade from the old timeline, still animating
 		entry.SwitchAt = max(now, segs[1].T0)
+		entry.Cut = cut
 	end
 	St.poses[unit] = entry
 end
@@ -3302,7 +3479,8 @@ local function schedulePoses(eff, now)
 		-- is this bite's body motion: no Windup / Strike / Cast segment here; the victims' Hurt below stays
 	elseif A == "Melee" or A == "Ranged" or (A == "Element" and eff.Area ~= "Circle") or (A == "Special" and r.Kind == "Pounce") then
 		if T.Release > 0.04 then
-			segs[#segs + 1] = { Name = "Windup", T0 = st, Dur = T.Release, Ranged = ranged }
+			-- (gate review r0) the melee Windup's Reach = its length in seconds (its tremble in real time)
+			segs[#segs + 1] = { Name = "Windup", T0 = st, Dur = T.Release, Ranged = ranged, Reach = (not ranged) and T.Release or nil }
 		end
 		if ranged then
 			-- a shot, never the melee lunge (player note 1): rear back (the ranged Windup), then Shoot = the head snaps
@@ -3343,7 +3521,8 @@ local function schedulePoses(eff, now)
 			seg.Until = max(seg.T0 + seg.Dur, seg.StopAt) + seg.StopDur
 		end
 	elseif A == "Hurt" then
-		segs[1] = { Name = "Hurt", T0 = st, Dur = K.HURT }
+		-- (Pitch 2 item 5) the reaction rocks about the pet's own paw lines (nothing goes under the floor)
+		segs[1] = { Name = "Hurt", T0 = st, Dur = K.HURT, Feet = eff.Src and AttackFx.FeetOf(eff.Src.Model) or nil }
 	elseif A == "Ko" then
 		segs[1] = { Name = "Ko", T0 = st, Dur = K.KO, Hold = true }
 	elseif A == "Victory" then
@@ -3355,15 +3534,30 @@ local function schedulePoses(eff, now)
 	if offensive and not eff.Miss and (A == "Melee" or A == "Ranged" or A == "Element" or A == "Special") then
 		-- (battle-feel T3) a special's victims flinch frozen for SPECIAL_HIT_STOP at the impact, like its caster
 		local stop = (A == "Special" and not r.Twist) and specialStop() or 0
+		-- (Pitch 2 item 5, the approved mock's bitten pet) a bite's victim holds still through the hit stop with its biter
+		-- (its hit flash plays), then is knocked back
+		if stop <= 0 and A == "Melee" then
+			stop = AttackFx.HIT_STOP
+		end
 		for _, side in ipairs(eff.Targets) do
 			if side.Unit ~= nil and side.Unit ~= eff.Unit then
-				local seg = { Name = "Hurt", T0 = st + T.Impact, Dur = K.HURT }
+				-- (Pitch 2 item 5) Feet: the victim's own paw lines (its Hurt rocks about them: nothing goes under the floor)
+				local seg = { Name = "Hurt", T0 = st + T.Impact, Dur = K.HURT, Feet = AttackFx.FeetOf(side.Model) }
 				if stop > 0 then
-					seg.StopAt, seg.StopDur = st + T.Impact, stop
+					-- (the whole reaction plays after the freeze: it lasts Dur + the freeze from the impact)
+					seg.StopAt, seg.StopDur, seg.Until = st + T.Impact, stop, st + T.Impact + K.HURT + stop
 				end
 				setPoses(side.Unit, { seg }, now)
 			end
 		end
+	end
+	-- (Pitch 2 item 5, look review r2 major 1: the approved mock's Double strike re-hits the bear at half power,
+	-- motion_pitch.enemy_new) a twist that re-hits the pet at From (eff.Flinch: BattleController's DoubleHit): its Hurt at
+	-- that power on the impact, after a bite's hit stop; over the bite's running Hurt it stacks (setPoses)
+	if eff.Flinch and not eff.Miss and eff.Src and eff.Src.Unit ~= nil then
+		local at = st + T.Impact
+		setPoses(eff.Src.Unit, { { Name = "Hurt", T0 = at, Dur = K.HURT, Feet = AttackFx.FeetOf(eff.Src.Model), Amp = eff.Flinch,
+			StopAt = at, StopDur = AttackFx.HIT_STOP, Until = at + K.HURT + AttackFx.HIT_STOP } }, now)
 	end
 end
 
@@ -3902,7 +4096,106 @@ end
 -- (battle-feel T2, spec decisions 1 + 3) the melee dash: a pose pair on the unit, nothing on the wire. The server keeps
 -- the unit at its rest spot (Damage.Standoff out); DashIn runs it to the target's near edge so the run ends on the
 -- landing (the hit), it bites (today's HIT_STOP freeze), holds Bite + Hold, and DashBack hops it home. A faster tempo
--- than Melee.FlurryBelow stays in: the next bite is a Strike lunge of Melee.Lunge on top of the edge (Forward).
+-- than Melee.FlurryBelow stays in: the next bite lands from the edge (Forward).
+-- (Pitch 2 item 5 "Bounce in" A, the owner: "the dash back was ugly, the wind-up looked wrong, it slid with no steps")
+-- an NPC's Windup rocks it back on its hind paws until the run (Windup to WINDUP_LOAD), DashIn hops in (hop, nod,
+-- hop-bite on the hit, chomp), DashBack hops home twice and settles; a flurry's bite is a DashBite (a rebound hop + a
+-- hop-bite on its hit) with a DashReady bounce on the spot between bites; a Double strike adds a DashDouble chomp and a
+-- Thorns shield a DashThorns hop away (AttackFx.DashTwist). Every pose pivots about the model's paw lines (FeetOf).
+-- The server's clock is unchanged: each hit lands on its time, the way home starts at the same bk.
+----------------------------------------------------------------------
+-- (Pitch 2 item 5) per model, read once: its paw lines in its pivot's frame in pose studs (/ PB_Scale): { Down = pivot
+-- to the floor, Front = to the front edge of what stands on the floor (forward), Hind = to its rear edge (back) } from
+-- the parts whose bottom is within FOOT_BAND of its lowest point (the animated wings / tail left out), or false. A rigid
+-- body rocks about the edge of its footprint, so nothing else of the footprint goes under the floor (and a greedy-merged
+-- voxel box spanning both paws still gives the right lines). Weak keys: a destroyed model drops out.
+local feetCache = setmetatable({}, { __mode = "k" })
+
+local function feetOf(model)
+	if typeof(model) ~= "Instance" then
+		return nil
+	end
+	local c = feetCache[model]
+	if c ~= nil then
+		return c or nil
+	end
+	feetCache[model] = false
+	local okP, pv = pcall(model.GetPivot, model)
+	if not okP or typeof(pv) ~= "CFrame" then
+		return nil
+	end
+	local s = tonumber(model:GetAttribute("PB_Scale")) or 1
+	if not finite(s) or s <= 0 then
+		s = 1
+	end
+	local bottoms, z0s, z1s = {}, {}, {}
+	local allCf, allSz = {}, {} -- (every visible part, the wings / tail / halo too: the bite's Lean below)
+	local lo = huge
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and d.Transparency < 1 then
+			allCf[#allCf + 1], allSz[#allSz + 1] = pv:ToObjectSpace(d.CFrame), d.Size
+		end
+		if d:IsA("BasePart") and d.Transparency < 1 and d:GetAttribute("PB_G") == nil then
+			local cf = pv:ToObjectSpace(d.CFrame)
+			local sz = d.Size
+			local hy = 0.5 * (abs(cf.RightVector.Y) * sz.X + abs(cf.UpVector.Y) * sz.Y + abs(cf.LookVector.Y) * sz.Z)
+			local hz = 0.5 * (abs(cf.RightVector.Z) * sz.X + abs(cf.UpVector.Z) * sz.Y + abs(cf.LookVector.Z) * sz.Z)
+			local b = cf.Position.Y - hy
+			local n = #bottoms + 1
+			bottoms[n], z0s[n], z1s[n] = b, cf.Position.Z - hz, cf.Position.Z + hz
+			if b < lo then
+				lo = b
+			end
+		end
+	end
+	if #bottoms == 0 then
+		return nil
+	end
+	-- (the pet faces -Z: the front edge is the footprint's lowest z, the rear edge its highest)
+	local zmin, zmax = huge, -huge
+	for i, b in ipairs(bottoms) do
+		if b <= lo + K.FOOT_BAND * s then
+			zmin, zmax = min(zmin, z0s[i]), max(zmax, z1s[i])
+		end
+	end
+	-- (review minor) Hop: the body's weight, EVO_HOP for an evolved form (its hops x 0.78, the mock's heavy lanes), else 1
+	local evo = tonumber(model:GetAttribute("PB_Evolved")) or 0
+	local feet = { Down = max(0, -lo / s), Front = max(0, -zmin / s), Hind = max(0, zmax / s), Lean = 0, Hop = (evo >= 1) and K.EVO_HOP or 1 }
+	-- (gate review r0 minor: the evolved hop-bite sank its snout 1.5 studs into the bear) Lean: how much farther forward the
+	-- front-most point reaches at the deepest bite on the face (DashIn's hit, DashDouble's second bite: nose down about the
+	-- front paws) than standing, pose studs. A head that sticks out past the paws dips that far into the target: the dash
+	-- stops short by what goes past BITE_IN (AttackFx.Dash)
+	local PP = dep("PetPoses")
+	if PP and type(PP.Sample) == "function" then
+		local function frontAt(body)
+			local bw = CFrame.new(body.Position * s) * CFrame.new(-body.Position) * body -- (the drawing scales the offset)
+			local best = -huge
+			for i, cf in ipairs(allCf) do
+				local c = bw * cf
+				local sz = allSz[i]
+				local hz = 0.5 * (abs(c.RightVector.Z) * sz.X + abs(c.UpVector.Z) * sz.Y + abs(c.LookVector.Z) * sz.Z)
+				best = max(best, -c.Position.Z + hz)
+			end
+			return best
+		end
+		local rest, deep = frontAt(CFrame.new()), -huge
+		for _, at in ipairs({ { "DashIn", finite(PP.DASH_RUN) and PP.DASH_RUN or K.DASH_RUN }, { "DashDouble", finite(PP.DOUBLE_BITE) and PP.DOUBLE_BITE or K.DOUBLE_BITE } }) do
+			local okS, smp = pcall(PP.Sample, at[1], at[2], false, 1, 0, feet)
+			if okS and type(smp) == "table" and typeof(smp.Body) == "CFrame" then
+				deep = max(deep, frontAt(smp.Body))
+			end
+		end
+		local lean = (deep - rest) / s
+		feet.Lean = (finite(lean) and lean > 0) and lean or 0
+	end
+	feetCache[model] = feet
+	return feet
+end
+
+function AttackFx.FeetOf(model)
+	local ok, r = pcall(feetOf, model)
+	return ok and r or nil
+end
 ----------------------------------------------------------------------
 local function streakOff(i)
 	local sk = St.streaks[i]
@@ -3986,6 +4279,117 @@ local function stepStreaks(now)
 	end
 end
 
+----------------------------------------------------------------------
+-- (Pitch 2 item 5 "Bounce in" A) the landing dust: a puff of the fx_dust sheet where a hop comes down with a rock
+-- (PetPoses.Landings), on the pet's floor under its paws; pooled Emitter kits, High only, DUST_MAX live (mine first)
+local function dustOff(i)
+	local dk = St.dusts[i]
+	table.remove(St.dusts, i)
+	if dk then
+		give(dk.Kit)
+	end
+end
+
+-- d = the dash record (Origin = the rest spot, Dir = the run's way, Scale = PB_Scale, Feet), fwd = pose studs along the
+-- run where the paws came down -> kicked?
+local function kickDust(d, fwd, mine, now)
+	if #St.dusts >= K.DUST_MAX then
+		local other = nil
+		for i, dk in ipairs(St.dusts) do
+			if not dk.Mine then
+				other = i
+				break
+			end
+		end
+		if not mine or not other then
+			return false
+		end
+		dustOff(other)
+	end
+	local ids = dep("TextureIds")
+	local id = type(ids) == "table" and ids.fx_dust or nil
+	if type(id) ~= "number" or id <= 0 then
+		return false
+	end
+	local kit = take("Emitter")
+	if not kit then
+		return false
+	end
+	local em, host = kit.Em, kit.Root
+	resetEmitter(em)
+	local s = finite(d.Scale) and d.Scale > 0 and d.Scale or 1
+	local feet = type(d.Feet) == "table" and d.Feet or {}
+	local down = finite(feet.Down) and feet.Down or 1
+	local len = max(0.4, ((finite(feet.Front) and feet.Front or 0.5) + (finite(feet.Hind) and feet.Hind or 0.5)) * s) -- its footprint
+	host.Size = V3(len, 0.1, len)
+	host.CFrame = CFrame.new(d.Origin + d.Dir * (fwd * s) - UP * (down * s))
+	em.Texture = "rbxassetid://" .. tostring(id)
+	local sheet = SHEETS.fx_dust
+	em.FlipbookLayout = Enum.ParticleFlipbookLayout.Grid4x4
+	em.FlipbookMode = Enum.ParticleFlipbookMode[sheet[1]]
+	em.FlipbookFramerate = NumberRange.new(sheet[2])
+	em.FlipbookStartRandom = false
+	em.LightEmission = sheet[3]
+	em.LightInfluence = 0.6
+	em.Color = ColorSequence.new(WHITE, Color3.fromRGB(214, 204, 186))
+	local sz = max(0.6, min(1.8, 0.6 * len)) -- (a bigger body kicks a bigger puff)
+	em.Size = NumberSequence.new({ kp(0, 0.55 * sz), kp(1, 1.5 * sz) })
+	em.Transparency = NumberSequence.new({ kp(0, 0.3), kp(0.6, 0.6), kp(1, 1) })
+	em.Lifetime = NumberRange.new(0.3, 0.45)
+	em.Speed = NumberRange.new(2.5, 4.5)
+	em.SpreadAngle = Vector2.new(80, 80) -- (out along the floor more than up)
+	em.Drag = 6
+	em.Acceleration = V3(0, 2, 0)
+	em.RotSpeed = NumberRange.new(-40, 40)
+	em.ZOffset = 0.3
+	em:Emit(mine and K.DUST_COUNT.Mine or K.DUST_COUNT.Other)
+	St.dusts[#St.dusts + 1] = { Kit = kit, Until = now + K.DUST_LIFE, Mine = mine == true }
+	St.dustKicks = St.dustKicks + 1
+	return true
+end
+
+-- once a frame: settled kits go back to the pool; each dashing pet's hop that came down since the Update before kicks
+-- its dust (only while that segment is the one playing then: a cut or replaced segment kicks none)
+local function stepDust(now)
+	for i = #St.dusts, 1, -1 do
+		if now >= St.dusts[i].Until then
+			dustOff(i)
+		end
+	end
+	local from = St.dustFrom
+	St.dustFrom = now
+	if not from or now <= from or effectiveQuality() == "Low" then
+		return
+	end
+	local PP = dep("PetPoses")
+	local lands = PP and PP.Landings
+	if type(lands) ~= "table" or type(PP.Offset) ~= "function" then
+		return
+	end
+	for _, entry in pairs(St.poses) do
+		local d = entry.Dash
+		if d and not d.Low and typeof(d.Origin) == "Vector3" and typeof(d.Dir) == "Vector3" then
+			for _, sg in ipairs(entry.Segs) do
+				local qs = lands[sg.Name]
+				if qs and sg.T0 <= now then
+					for _, q in ipairs(qs) do
+						local at = sg.T0 + segTime(sg, q)
+						if sg.StopAt and at > sg.StopAt then
+							at = at + (sg.StopDur or 0)
+						end
+						if at > from and at <= now and segAt(entry, at) == sg then
+							local ok, off = pcall(PP.Offset, sg.Name, q, false, 1, sg.Reach)
+							if ok and typeof(off) == "Vector3" then
+								pcall(kickDust, d, (tonumber(sg.Forward) or 0) - off.Z, d.Mine, now)
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
 -- "in" from the run's start until its DashBack, "back" while it hops home, else "out"
 local function dashState(entry, now)
 	local d = entry and entry.Dash
@@ -4004,10 +4408,53 @@ local function feelNum(v, default)
 	return finite(v) and v or default
 end
 
+-- (Pitch 2 item 5) the Bounce in's beats: PetPoses' own values (the shapes live there), K's when it does not load
+local function beats()
+	local PP = dep("PetPoses")
+	local function v(key)
+		local x = PP and PP[key]
+		return finite(x) and x > 0 and x or K[key]
+	end
+	local nod = PP and PP.DASH_NOD
+	if not (type(nod) == "table" and finite(nod[1]) and finite(nod[2]) and nod[1] > 0 and nod[2] > nod[1] and nod[2] < 1) then
+		nod = K.NOD
+	end
+	return { Run = v("DASH_RUN"), Load = v("WINDUP_LOAD"), BackPose = v("BACK_POSE"), DoubleDur = v("DOUBLE_DUR"), DoubleBite = v("DOUBLE_BITE"),
+		ThornDur = v("THORN_DUR"), ThornBack = v("THORN_BACK"), Bounce = v("READY_BOUNCE"), Nod = nod }
+end
+
+-- (Pitch 2 item 5) the flurry's ready bounce on the spot from `from` until the way home, whole bounces only (it ends
+-- level on the floor, where the hold it covers stands). The dash's last one is cut to whole bounces before `cutAt` (the
+-- next bite's run), or dropped (nil: a twist that replaces the chomp it followed)
+local function readyAt(d, segs, from, cutAt)
+	local bounce = beats().Bounce
+	local old = d.Ready
+	d.Ready = nil
+	if old then
+		if cutAt then
+			old.Dur = max(0, floor((cutAt - old.T0) / bounce + 1e-6) * bounce)
+		else
+			for i = #segs, 1, -1 do
+				if segs[i] == old then
+					table.remove(segs, i)
+				end
+			end
+		end
+	end
+	local n = floor((d.BackAt - from) / bounce + 1e-6)
+	if n >= 1 then
+		d.Ready = { Name = "DashReady", T0 = from, Dur = n * bounce, Forward = d.Reach - (d.Off or 0), Loop = true, Extra = true, Feet = d.Feet }
+		segs[#segs + 1] = d.Ready
+	end
+end
+
 -- AttackFx.Dash(unit, src, tgt, landAt, now, opts) -> taken? src / tgt = Play's sides ({ Unit, Model, Pos }: src.Pos =
 -- the unit's drawn spot before any pose, its rest spot); landAt = when the hit lands (the run ends there); opts =
 -- { Mine, Low, Tempo = the seconds since the unit's last attack }. false (the caller plays today's Strike): Melee.Dash
 -- off, no gap of Melee.MinGap studs, a higher pose playing (a KO, a cast)
+AttackFx.FIGHTER_WIND = K.FIGHTER_WIND -- (read by the checks)
+AttackFx.EVO_HOP = K.EVO_HOP -- (read by the checks)
+
 local function dash(unit, src, tgt, landAt, now, opts)
 	local M = feelOf("Melee")
 	if unit == nil or not (M and M.Dash == true) or type(src) ~= "table" or type(tgt) ~= "table" or not finite(landAt) then
@@ -4023,41 +4470,85 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	local below = feelNum(M.FlurryBelow, 0.75)
 	local flurry = finite(opts.Tempo) and opts.Tempo < below
 	local backDur = max(0.05, feelNum(M.Back, 0.4))
+	local inS = feelNum(M.In, 0.3)
 	local land = landAt
 	local bk = flurry and (land + below) or (land + feelNum(M.Bite, 0.08) + feelNum(M.Hold, 0.12))
+	if not flurry then
+		-- (look review r2 minor) the chomp goes straight into the hop back (the mock's hit + 0.17): no level hold of under
+		-- HOLD_SNAP (drawing only: the server's strike window is unchanged)
+		local up = land + AttackFx.HIT_STOP + K.CHOMP
+		if bk > up and bk - up <= K.HOLD_SNAP then
+			bk = up
+		end
+	end
 	local entry = St.poses[unit]
 	local d = entry and entry.Dash
 	local state = dashState(entry, now)
+	local B = beats()
 	if state == "in" then
-		-- the flurry: still at the edge, the next bite lunges in place on top of it
+		-- the flurry (Pitch 2 item 5): still in, no trip home: a rebound hop back + a hop-bite land the next bite on its
+		-- hit, from where the pet stands (d.Off behind the face after a Thorns hop away)
 		local segs = entry.Segs
 		for i = #segs, 1, -1 do
 			local sg = segs[i]
-			if sg.Lunge and sg.T0 + sg.Dur < now then
+			if sg.Extra and now >= sg.T0 + sg.Dur and not (sg.Until and now < sg.Until) then
 				table.remove(segs, i) -- (a long flurry keeps no spent bites)
 			end
 		end
-		local t0 = max(now, land - K.LEAP_LAND * K.LUNGE_DUR)
-		segs[#segs + 1] = { Name = "Strike", T0 = t0, Dur = K.LUNGE_DUR, Reach = feelNum(M.Lunge, 0.6), Forward = d.Reach, StopAt = land, StopDur = AttackFx.HIT_STOP, Lunge = true }
-		bk = max(bk, t0 + K.LUNGE_DUR)
-		d.In.Until, d.Back.T0, d.BackAt, d.LandAt = bk, bk, bk, land
+		-- the run: as soon as the last bite's mouth is done (its chomp squeezed to FLURRY_CHOMP, a Double strike's second
+		-- chomp, a Thorns hop away: d.FreeAt), at most FLURRY_RUN before the hit, at least BITE_MIN (a quick tempo squeezes
+		-- it). (review minor: "fast-tempo bite 1 rebounds at hit + 0.15", the mock's; Melee.In before the hit left at + 0.20)
+		local free = d.FreeAt or (d.LandAt + AttackFx.HIT_STOP + K.FLURRY_CHOMP)
+		local t0 = min(max(now, free, land - K.FLURRY_RUN), land - K.BITE_MIN)
+		t0 = max(now, t0)
+		-- the last bite's chomp ends level when the rebound leaves (squeezed, never cut mid-bite: no pop)
+		local prev = d.Bite
+		if prev and prev.Knee and prev.StopAt then
+			local c = t0 - (prev.StopAt + (prev.StopDur or 0))
+			if c > 0 and c < prev.Dur - prev.Knee then
+				prev.Dur = prev.Knee + c
+			end
+		end
+		local run = max(0.05, land - t0)
+		local off = d.Off or 0
+		local bite = { Name = "DashBite", T0 = t0, Dur = run + K.CHOMP, Knee = run, KneeP = B.Run, Reach = off, Forward = d.Reach - off, StopAt = land,
+			StopDur = AttackFx.HIT_STOP, Extra = true, Feet = d.Feet }
+		bk = max(bk, t0 + bite.Dur + AttackFx.HIT_STOP)
+		bite.Until = bk
+		segs[#segs + 1] = bite
+		d.Off, d.Bite, d.FreeAt = 0, bite, land + AttackFx.HIT_STOP + K.FLURRY_CHOMP
+		d.In.Until, d.Back.T0, d.BackAt, d.LandAt, d.Back.Reach = bk, bk, bk, land, d.Reach
+		readyAt(d, segs, land + AttackFx.HIT_STOP + K.CHOMP, t0)
 		return true
 	end
 	local s = { Model = (typeof(src.Model) == "Instance") and src.Model or nil, Pos = (typeof(src.Pos) == "Vector3") and src.Pos or nil }
 	local edge, fwd = nil, 0
-	local t0 = max(now, land - feelNum(M.In, 0.3))
+	local t0 = max(now, land - inS)
+	if state ~= "back" then
+		-- (gate review r0, major 2: a player's fighter has no Windup event, its Hit dashes it Melee.In before the landing, so
+		-- it hopped in from a standstill) a dash called that late still rocks back and loads for FIGHTER_WIND first; the run
+		-- takes the rest of Melee.In (at least RUN_MIN). The landing is unchanged (the server's bite time).
+		-- (the owner, 2026-11-20: the wind-up gets 0.25 s, client only) every run gives FIGHTER_WIND of Melee.In to its
+		-- wind-up: an NPC's (its Windup 0.50 s before the hit) rocks back NPC_WIND 0.25 s and hops in 0.20, a fighter's
+		-- 0.10 and 0.20; a later call keeps at least RUN_MIN for the run
+		t0 = min(t0 + K.FIGHTER_WIND, max(t0, land - K.RUN_MIN))
+	end
+	local origin, dir, scl = nil, nil, 1 -- (Pitch 2 item 5) the rest spot, the run's way and PB_Scale: the landing dust's place
 	if state == "back" then
+		origin, dir, scl = d.Origin, d.Dir, d.Scale or 1
 		-- caught on the way home: the run starts from where the hop back has got to when the run starts (t0; the old
 		-- DashBack plays on until then: review fix, sampled at `now` the DashIn snapped forward by the hop's last 0.15 s)
 		edge = d.Reach
-		local p = clamp01((t0 - d.BackAt) / d.BackDur)
+		-- (Pitch 2 item 5: the way home's pose lasts Back x BACK_POSE from its own Reach; its paw lines are its Offset)
+		local from = d.Back.Reach or edge
+		local p = clamp01((t0 - d.BackAt) / d.Back.Dur)
 		local PP = dep("PetPoses")
-		local smp = nil
-		if PP and type(PP.Sample) == "function" then
-			local okS, r = pcall(PP.Sample, "DashBack", p, false, 1, edge)
-			smp = okS and r or nil
+		local off = nil
+		if PP and type(PP.Offset) == "function" then
+			local okS, r = pcall(PP.Offset, "DashBack", p, false, 1, from)
+			off = (okS and typeof(r) == "Vector3") and r or nil
 		end
-		local cur = (type(smp) == "table" and typeof(smp.Body) == "CFrame") and -smp.Body.Position.Z or edge * (1 - smooth(p))
+		local cur = off and -off.Z or from * (1 - smooth(p))
 		fwd = max(0, min(edge, cur))
 	else
 		-- the gap from the rest spot (the drawn spot, not the posed pivot) to the target's near edge
@@ -4074,18 +4565,96 @@ local function dash(unit, src, tgt, landAt, now, opts)
 			return false
 		end
 		edge = min(K.DASH_MAX, world) / scale
+		-- (gate review r0 minor) a head that dips forward past the paws at the bite (FeetOf's Lean) stops BITE_IN into the
+		-- target's box (the strip's ~0.25), not through it: the run is short by the rest (gapOf aims LEAP_MARGIN short)
+		local ft = feetOf(s.Model)
+		local over = ((ft and finite(ft.Lean)) and ft.Lean or 0) * scale - K.LEAP_MARGIN - K.BITE_IN
+		if over > 0 then
+			edge = max(0, edge - over / scale)
+		end
+		local way = flat(t.Last - s.Last)
+		origin, dir, scl = s.Last, (way.Magnitude > 1e-6) and way.Unit or nil, scale
 	end
+	local feet = (state == "back" and d and d.Feet) or feetOf(s.Model)
 	local run = max(0.05, land - t0)
-	local segIn = { Name = "DashIn", T0 = t0, Dur = run / K.DASH_RUN, Reach = edge - fwd, Forward = fwd, Until = bk, StopAt = land, StopDur = AttackFx.HIT_STOP }
-	local segBack = { Name = "DashBack", T0 = bk, Dur = backDur, Reach = edge }
-	setPoses(unit, { segIn, segBack }, now)
+	-- (review minor) its run (Knee) to DASH_RUN, then the chomp K.CHOMP whatever the run (a 0.20 s run squeezed it to 0.08 s)
+	-- (look review r2 minor) Nod: its nod lasts at least NOD_MIN however short the run (segP)
+	local segIn = { Name = "DashIn", T0 = t0, Dur = run + K.CHOMP, Knee = run, KneeP = B.Run, Reach = edge - fwd, Forward = fwd, Until = bk, StopAt = land,
+		StopDur = AttackFx.HIT_STOP, Feet = feet, Nod = B.Nod }
+	-- (Pitch 2 item 5) the way home lasts Melee.Back x BACK_POSE: two hops home by Melee.Back, then the settle on the spot
+	local segBack = { Name = "DashBack", T0 = bk, Dur = backDur * B.BackPose, Reach = edge, Feet = feet }
+	local segs = { segIn, segBack }
+	if state ~= "back" and t0 - now >= K.WINDUP_MIN then
+		-- (Pitch 2 item 5) an NPC's wind-up (NPC_WIND before the run; a fighter's FIGHTER_WIND): it rocks back on its hind
+		-- paws, trembles (a long one) and loads deepest exactly when the run starts. (gate review r0) Reach = its length in
+		-- seconds: PetPoses runs its beats in real time. (look review r3 minor) a Windup further ahead stands still first
+		local w0 = max(now, t0 - K.NPC_WIND)
+		local wDur = (t0 - w0) / B.Load
+		table.insert(segs, 1, { Name = "Windup", T0 = w0, Dur = wDur, Reach = wDur, Ranged = false, Feet = feet })
+		if w0 > now + 1e-6 then
+			table.insert(segs, 1, { Name = "Windup", T0 = now, Dur = w0 - now, Still = true, Reach = wDur, Ranged = false, Feet = feet })
+		end
+	end
+	setPoses(unit, segs, now)
 	local e2 = St.poses[unit]
-	if not (e2 and e2.Segs[1] == segIn) then
+	if not (e2 and e2.Segs == segs) then
 		return false -- (a higher pose plays: a KO'd pet never dashes, a cast is not cut)
 	end
-	e2.Dash = { Reach = edge, LandAt = land, BackAt = bk, BackDur = backDur, In = segIn, Back = segBack, Mine = opts.Mine == true }
+	e2.Dash = { Reach = edge, LandAt = land, BackAt = bk, BackDur = backDur, In = segIn, Back = segBack, Mine = opts.Mine == true,
+		Feet = feet, Off = 0, Bite = segIn, Origin = origin, Dir = dir, Scale = scl, Low = opts.Low == true,
+		FreeAt = land + AttackFx.HIT_STOP + K.FLURRY_CHOMP } -- (the mouth done: a flurry's next run may leave, the chomp squeezed)
 	e2.Dash.Streak = (opts.Low ~= true) and streakFor(unit, s.Model, t0, land + 0.05, opts.Mine == true) or false
+	readyAt(e2.Dash, segs, land + AttackFx.HIT_STOP + K.CHOMP) -- (a flurry's first bite: bk is FlurryBelow on)
 	return true
+end
+
+-- (Pitch 2 item 5) AttackFx.DashTwist(unit, kind, now) -> the time the twist's effect lands, or false (no dash in): a
+-- Double strike ("Double") adds the second chomp on the last bite (the DoubleHit's gold sparks wait for its bite: the
+-- returned time); a Thorns shield ("Thorns") the prick and the hop away instead of the chomp (the bolt lands on the
+-- bite: the returned time). A twist that plays out past the way home's start moves it on (presentation only)
+local function dashTwist(unit, kind, now)
+	local entry = St.poses[unit]
+	local d = entry and entry.Dash
+	now = finite(now) and now or (St.now or os.clock())
+	if not d or dashState(entry, now) ~= "in" or (kind ~= "Double" and kind ~= "Thorns") then
+		return false
+	end
+	local B = beats()
+	local segs = entry.Segs
+	local t0 = d.LandAt + AttackFx.HIT_STOP
+	local seg, at
+	if kind == "Double" then
+		seg = { Name = "DashDouble", T0 = t0, Dur = B.DoubleDur, Forward = d.Reach - (d.Off or 0), Extra = true, Feet = d.Feet }
+		at = t0 + B.DoubleDur * B.DoubleBite
+	else
+		local back = min(B.ThornBack, 0.5 * d.Reach)
+		seg = { Name = "DashThorns", T0 = t0, Dur = B.ThornDur, Reach = back, Forward = d.Reach, Extra = true, Feet = d.Feet }
+		d.Off = back
+		d.Back.Reach = d.Reach - back
+		at = d.LandAt
+	end
+	local fin = t0 + seg.Dur
+	d.FreeAt = fin -- (a flurry's next run leaves when the second chomp / the hop away is done)
+	if d.BackAt < fin then
+		d.BackAt, d.In.Until, d.Back.T0 = fin, fin, fin
+		d.Bite.Until = fin
+	end
+	if kind == "Thorns" then
+		seg.Until = d.BackAt -- (held where it landed until the next bite or the way home)
+	end
+	segs[#segs + 1] = seg
+	readyAt(d, segs, fin)
+	return at
+end
+
+function AttackFx.DashTwist(unit, kind, now)
+	local ok, r = pcall(dashTwist, unit, kind, now)
+	if not ok then
+		St.errors = St.errors + 1
+		warnOnce("dashtwist", "DashTwist failed: " .. tostring(r))
+		return false
+	end
+	return r
 end
 
 function AttackFx.Dash(unit, src, tgt, landAt, now, opts)
@@ -4236,6 +4805,9 @@ function AttackFx.Play(ctx)
 			Bite = (r.Attack == "Melee" or (r.Attack == "Special" and ctx.Kind == "Pounce")) or nil,
 			FloorY = finite(ctx.Ground) and ctx.Ground or (src.Last.Y - drop),
 			Dashed = (ctx.Dashed == true and (r.Attack == "Melee" or r.Attack == "Element")) or nil, -- (battle-feel T2) the bite's pose is AttackFx.Dash's (feel-balance: an Element's too)
+			-- (Pitch 2 item 5, look review r2 major 1) a twist that re-hits the pet at From (a Double strike's extra hit: its
+			-- sparks are on the victim) at this power (0 .. 2): its Hurt (schedulePoses)
+			Flinch = (r.Twist and finite(ctx.Flinch) and ctx.Flinch > 0) and min(2, ctx.Flinch) or nil,
 		}
 		for i, side in ipairs(targets) do
 			eff.T[i] = side.Last
@@ -4479,6 +5051,7 @@ function AttackFx.Update(now)
 	end
 	trimTails()
 	stepStreaks(now)
+	stepDust(now)
 	for unit, entry in pairs(St.poses) do
 		local pending = entry.Prev and entry.SwitchAt and now < entry.SwitchAt + AttackFx.CROSSFADE
 		if not pending then
@@ -4497,7 +5070,7 @@ function AttackFx.Pose(unit, base)
 		return nil
 	end
 	local now = St.now or os.clock()
-	local name, p, ranged, amp, reach, fwd = poseSample(entry, now, base)
+	local name, p, ranged, amp, reach, fwd, feet = poseSample(entry, now, base)
 	local prev = entry.Prev
 	local out = entry.Out
 	if not out then
@@ -4506,28 +5079,37 @@ function AttackFx.Pose(unit, base)
 	end
 	out.Blend, out.Prev = 1, nil
 	if not name then
-		if prev and entry.SwitchAt and now < entry.SwitchAt then -- the new pose has not started: the old one plays on
-			local n2, p2, r2, a2, x2, f2 = poseSample(prev, now, base)
+		-- the new pose has not started: the old one plays on (Pitch 2 item 5, look review r2: or the one before it, when the
+		-- old one has not started either: a bite's Hurt and its Double strike's later re-hit are set in one frame)
+		local pe, sw = prev, entry.SwitchAt
+		for _ = 1, 3 do
+			if not (pe and sw and now < sw) then
+				break
+			end
+			local n2, p2, r2, a2, x2, f2, ft2 = poseSample(pe, now, base)
 			if n2 then
-				out.Name, out.P, out.Ranged, out.Amp, out.Reach, out.Forward = n2, p2, r2, a2, x2, f2 or 0
+				out.Name, out.P, out.Ranged, out.Amp, out.Reach, out.Forward, out.Feet = n2, p2, r2, a2, x2, f2 or 0, ft2
 				return out
 			end
+			pe, sw = pe.Prev, pe.SwitchAt
 		end
 		return nil
 	end
 	-- (battle-feel T2) out.Forward: pose studs along the LookVector on top of the pose (a flurry's bite from the edge)
-	out.Name, out.P, out.Ranged, out.Amp, out.Reach, out.Forward = name, p, ranged, amp, reach, fwd or 0
-	if prev and entry.SwitchAt then
+	-- (Pitch 2 item 5) out.Feet: the model's paw lines (PetPoses.Sample's feet: the melee motion pivots about them)
+	out.Name, out.P, out.Ranged, out.Amp, out.Reach, out.Forward, out.Feet = name, p, ranged, amp, reach, fwd or 0, feet
+	-- (Pitch 2 item 5, look review r2) a re-hit's Hurt (Cut) starts exactly on the old pose: no crossfade
+	if prev and entry.SwitchAt and not entry.Cut then
 		local w = (now - entry.SwitchAt) / AttackFx.CROSSFADE
 		if w < 1 then
-			local n2, p2, r2, a2, x2, f2 = poseSample(prev, now, base)
+			local n2, p2, r2, a2, x2, f2, ft2 = poseSample(prev, now, base)
 			if n2 then
 				local po = entry.PrevOut
 				if not po then
 					po = {}
 					entry.PrevOut = po
 				end
-				po.Name, po.P, po.Ranged, po.Amp, po.Reach, po.Forward = n2, p2, r2, a2, x2, f2 or 0
+				po.Name, po.P, po.Ranged, po.Amp, po.Reach, po.Forward, po.Feet = n2, p2, r2, a2, x2, f2 or 0, ft2
 				out.Blend = max(0, w)
 				out.Prev = po
 			end
@@ -4583,6 +5165,10 @@ function AttackFx.ClearAll()
 	for i = #St.streaks, 1, -1 do
 		streakOff(i)
 	end
+	for i = #St.dusts, 1, -1 do
+		dustOff(i)
+	end
+	St.dustFrom = nil
 	St.lastBasicKick = nil
 end
 
@@ -4596,7 +5182,9 @@ end
 
 function AttackFx.Stats()
 	-- (battle-feel T2) Streaks = the dash streaks live (their Trail kits count in Trails too)
-	local s = { Live = 0, Stepped = 0, Tails = 0, Emitters = 0, Beams = 0, Trails = #St.streaks, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors, Streaks = #St.streaks }
+	-- (Pitch 2 item 5) Dusts = the landing-dust kits live (they count in Emitters too), DustKicks = landings that kicked dust
+	local s = { Live = 0, Stepped = 0, Tails = 0, Emitters = #St.dusts, Beams = 0, Trails = #St.streaks, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors, Streaks = #St.streaks,
+		Dusts = #St.dusts, DustKicks = St.dustKicks }
 	for _, eff in ipairs(St.live) do
 		if eff.Tail then
 			s.Tails = s.Tails + 1

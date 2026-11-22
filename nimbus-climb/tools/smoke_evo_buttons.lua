@@ -12,8 +12,19 @@
 --                             TARGET flashes NEXT / AUTO; the Pets window names the form
 --   client_evo_keys           (client world) the key chips (keyboard and gamepad), Special the big button in Attack's old slot, Target the small
 --                             one in Special's old slot, the names under the buttons at 1080p and on a laptop, the help text
---   client_evo_buttons_mobile (phone world) 844x390, 740x360, 749x388, 667x375, 1024x768, 390x844, 360x640: Special >= 72 px, Target >= 44, Element >= 56, Dash >= 44; nothing overlaps the
---                             stick / jump / vitals / Cheer up! / another button; the longest names fit inside the faces in 2 lines at >= 11 px
+--   client_evo_buttons_mobile (phone world) 844x390, 740x360, 749x388, 667x375, 1024x768, 390x844, 360x640: (Pitch 2 item 1b, the three keys) MOVE (Element)
+--                             >= 56 px, Dash >= 44, no SPECIAL / TARGET key; nothing overlaps the stick / jump / vitals / Cheer up! / another button;
+--                             the longest names (the special's on MOVE with a full meter) fit inside the faces in 2 lines at >= 14 px
+--   keys_three_buttons        (phone world) Pitch 2 item 1b option C "Three buttons": MOVE / DASH / RUN only, steady across states, the HOLD special,
+--                             TARGET automatic + a tap locks with the LOCKED marker, CHEER / BACK with the helper portraits; (look review r0)
+--                             each key one block (glyph over name inside the face, the glyph kept beside a cooldown's seconds), the HOLD tag
+--                             pinned across MOVE's top edge, 8 px off Roblox's rings, CHEER / BACK 52 px, the top card off the keys, and the
+--                             360 x 640 raid full (top card in its tall column): CHEER / BACK with the team, off the stick and the foot;
+--                             (look review r1) CHEER / BACK 40 px off DASH / MOVE / RUN, each helper's Swap (and its hit pad) and cell
+--                             off Roblox's stick ring, the helpers' buff names whole, at 360x640, 640x360, 667x375, 390x844 and 844x390;
+--                             (look review r2) the HUD's cards (top card, enemy list rows and "+n more", fighter card, helpers) keep
+--                             clear of MOVE / DASH / RUN and MOVE's HOLD tag, the list 8 px off Roblox's rings, in the raid, the full
+--                             raid, the dungeon, the duel and the ring (at rest and with the meter full) at every phone size, 640x360 too
 -- The mock has no real font metrics (TextFits is always true, TextBounds counts 0.5 em a character, TextScaled is not modelled), so a name's fit
 -- is judged here by a wrap at a generous 0.62 em a character (Builder Sans Bold capitals), against the label's real box.
 -- White-box: the sim's units and teams (same Lua state). Plain Lua 5.1 syntax only.
@@ -245,9 +256,14 @@ local function clientScenarios()
 		local setup = { Mode = mode, Seed = 23, Id = id, Zone = { X = 90, Z = 90 }, TimeLimit = 300, Teams = { { Owner = me, Side = 1, Pets = mine } } }
 		if mode == "Raid" then
 			setup.Boss = "storm_titan"
+			-- (keys_three_buttons' raid full: render_gui's battle:raid:full, two more players' teams beside mine)
+			for i, pets in ipairs(opts.Allies or {}) do
+				setup.Teams[#setup.Teams + 1] = { Owner = 76 + i, Side = 1, Pets = pets, Auto = true }
+			end
 		elseif mode == "Ring" then
-			setup.Round = 1
-			setup.Teams[2] = BCat.ChampionTeam(1, 1)
+			-- (keys_three_buttons, look review r2: render_gui's "fighter" ring round 8 and its pack of three on the list)
+			setup.Round = opts.Round or 1
+			setup.Teams[2] = BCat.ChampionTeam(opts.Round or 1, opts.Round and 7 or 1)
 		elseif mode == "Duel" then
 			local frogs = {}
 			for i = 1, #(opts.Spots or { {} }) do
@@ -259,7 +275,7 @@ local function clientScenarios()
 		if not sim then
 			return nil
 		end
-		local d = setmetatable({ sim = sim, id = id, mode = mode, me = me, logIndex = #Mock.RemoteLog, last = {},
+		local d = setmetatable({ sim = sim, id = id, mode = mode, me = me, logIndex = #Mock.RemoteLog, last = {}, raid = opts.Raid,
 			dungeon = (mode == "Dungeon") and { Floor = 2, Room = 1, Wave = 1, Waves = 3, Name = "Ember Hall", Element = "Flame" } or nil }, Driver)
 		-- (white-box: the pet holds the point it stands on, so the distances the tests read stay put)
 		sim.teams[1].noEngage = true
@@ -285,7 +301,8 @@ local function clientScenarios()
 		if mode == "Dungeon" then
 			local wave = {}
 			for i = 1, 3 do
-				wave[i] = { PetId = "puddle_frog", Key = "puddle_frog", Level = 10, Tier = "Normal", Wild = true }
+				-- (keys_three_buttons, look review r2: render_gui's battle:dungeon has a crowned mini-boss in its wave, its boss card)
+				wave[i] = { PetId = "puddle_frog", Key = "puddle_frog", Level = 10, Tier = "Normal", Wild = true, Boss = (opts.MiniBoss and i == 3) or nil }
 			end
 			for i, info in ipairs(sim:SpawnEnemies(wave, { Wave = 1, Anchor = { 0, 10 } }) or {}) do
 				local u = sim.units[info.id]
@@ -304,6 +321,7 @@ local function clientScenarios()
 		p.Names = { [tostring(self.me)] = LocalPlayer.Name }
 		p.Side, p.Spectator, p.T = 1, false, self.sim:Time()
 		p.Dungeon = self.dungeon
+		p.Raid = self.raid -- (a raid's tier and boss id, as BattleService's Start carries them)
 		local team = self.sim:TeamOf(self.me)
 		p.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed,
 			Cooldowns = { Element = team.Cooldowns.Element, Dash = team.Cooldowns.Dash, Swap = team.Cooldowns.Swap, Cheer = team.Cooldowns.Cheer, Buff = {} } }
@@ -891,7 +909,11 @@ local function clientScenarios()
 			end
 			return out
 		end
-		local MIN_PX = { Special = 72, Target = 44, Element = 56, Dash = 44 }
+		-- (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20: the four-key phone cluster is gone. A touch
+		-- screen's right thumb has MOVE (the ELEMENT key, which also holds the special: its name shows on it with a full meter)
+		-- and DASH here, RUN in MobileControls; no SPECIAL and no TARGET key (TARGET is automatic). The sizes, the overlaps and
+		-- the names below hold for MOVE and DASH; keys_three_buttons checks the hold, the lock and the steadiness)
+		local MIN_PX = { Element = 56, Dash = 44 }
 		-- (P2 fix A) a real player's HUD: Cash, Gems and the tokens (three strips: the narrow stack in a battle, so the right
 		-- column starts low). Alone this list ran with the tokens strip only and passed; the whole suite (whose earlier lists
 		-- set Cash and Gems) found the enemy list on DASH at 360 x 640
@@ -915,9 +937,13 @@ local function clientScenarios()
 						T.check(r.x0 >= 0 and r.y0 >= 0 and r.x1 <= size[1] and r.y1 <= size[2] - (Mock.TopInset or 0), tag .. kind .. " is on the screen", rstr(r))
 					end
 				end
-				if rects.Special and rects.Target and rects.Element and rects.Dash then
-					T.check(rects.Special.x1 - rects.Special.x0 > rects.Element.x1 - rects.Element.x0, tag .. "Special is the biggest")
-					local kinds = { "Special", "Target", "Element", "Dash" }
+				for _, kind in ipairs({ "Special", "Target" }) do
+					local b = H.find("Root.Commands." .. kind .. "Button")
+					T.check(b == nil or not shownIn(b), tag .. "no " .. string.upper(kind) .. " key on touch (the three keys)")
+				end
+				if rects.Element and rects.Dash then
+					T.check(rects.Element.x1 - rects.Element.x0 > rects.Dash.x1 - rects.Dash.x0, tag .. "MOVE (the element + the special) is the biggest")
+					local kinds = { "Element", "Dash" }
 					local bad = {}
 					for i, a in ipairs(kinds) do
 						for j = i + 1, #kinds do
@@ -947,23 +973,34 @@ local function clientScenarios()
 					Hud.PlaceFaceName(A, A.Button.Size.X.Offset, false)
 					return r
 				end
-				local cap = H.find("Root.Commands.SpecialButton.Caption")
-				local glyph = H.find("Root.Commands.SpecialButton.Face.Glyph")
-				if T.check(cap ~= nil and shownIn(cap) and cap.Text == "WISH UPON THE STARS", tag .. "the Special face shows the name", cap and cap.Text or "nil") then
+				-- (Pitch 2 item 1b) the special's name shows on MOVE (the Element key) once the meter is full: the same fit there
+				d.sim.teams[1].fighter.meter = 100
+				d:run(0.4)
+				local cap = H.find("Root.Commands.ElementButton.Caption")
+				local glyph = H.find("Root.Commands.ElementButton.Face.Glyph")
+				if T.check(cap ~= nil and shownIn(cap) and cap.Text == "WISH UPON THE STARS", tag .. "a full meter: MOVE shows the special's name", cap and cap.Text or "nil") then
 					local readScale = H.find("Root.ReadScale").Scale
 					T.check(cap.TextWrapped == true and cap.TextScaled == false and cap.TextSize * readScale >= 14 - 0.01, tag .. "...wrapped, not scaled, at 14 px or more",
 						fmt("%s %.1f px", tostring(cap.TextScaled), cap.TextSize * readScale))
 					for _, name in ipairs({ "WISH UPON THE STARS", "MARSHMALLOW POUNCE", "MARSHMALLOW STAMPEDE" }) do
-						local r = tryName("Special", "SpecialButton", name)
+						local r = tryName("Element", "ElementButton", name)
 						local ok, lines, widest = H.fits(name, r.x1 - r.x0, r.y1 - r.y0, 14)
-						T.check(ok, tag .. "\"" .. name .. "\" fits the Special name tag in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
+						T.check(ok, tag .. "\"" .. name .. "\" fits MOVE's name tag in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
 					end
 					local r = rectOf(cap)
-					local br = rects.Special
+					local br = rects.Element
 					T.check(br ~= nil and r.y0 >= br.y0 and r.y1 <= br.y1 + 0.5, tag .. "...on the face's bottom edge", rstr(r))
+					-- (Pitch 2 item 1b: MOVE is smaller than the old SPECIAL key, so this reads the star as drawn, the PixelIcon at the
+					-- key's icon size (Hud.PlaceFaceName: 27 px, 18 where the room is short), where it read the host label's TextSize
+					-- (30), which draws nothing: the drawn star fits the room above the name)
 					local gr = glyph and rectOf(glyph)
-					T.check(glyph ~= nil and glyph.Size.Y.Scale <= 0.56 and gr.y1 <= r.y0 + 1 and glyph.TextSize * 1 <= glyph.AbsoluteSize.Y / readScale, tag .. "...the star shrinks to the room above it", glyph and tostring(glyph.Size) or "nil")
+					local icon = glyph and glyph:FindFirstChild("Icon")
+					local ir = icon and rectOf(icon)
+					T.check(glyph ~= nil and glyph.Size.Y.Scale <= 0.56 and gr.y1 <= r.y0 + 1 and ir ~= nil and ir.y1 - ir.y0 <= gr.y1 - gr.y0 + 0.5 and ir.y0 >= gr.y0 - 0.5 and ir.y1 <= r.y0 + 1,
+						tag .. "...the star shrinks to the room above it", fmt("%s glyph %s icon %s", glyph and tostring(glyph.Size) or "nil", gr and rstr(gr) or "-", ir and rstr(ir) or "-"))
 				end
+				d.sim.teams[1].fighter.meter = 0
+				d:run(0.4)
 				local ecap = H.find("Root.Commands.ElementButton.Caption")
 				if T.check(ecap ~= nil and shownIn(ecap), tag .. "the Element face shows the name") then
 					for _, name in ipairs({ "THUNDER LANCE", "BRAMBLE LASH", "WORLDROOT", "MAELSTROM" }) do
@@ -972,38 +1009,13 @@ local function clientScenarios()
 						T.check(ok, tag .. "\"" .. name .. "\" fits the Element name tag in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
 					end
 				end
-				-- TARGET: its caption shows on touch; ONE ENEMY takes the whole face while it shows
-				local tcap = H.find("Root.Commands.TargetButton.Caption")
-				local tglyph = H.find("Root.Commands.TargetButton.Face.Glyph")
-				if T.check(tcap ~= nil and shownIn(tcap) and tcap.Text == "TARGET", tag .. "the TARGET face says TARGET", tcap and tcap.Text or "nil") then
-					local r = rectOf(tcap)
-					T.check((H.fits("TARGET", r.x1 - r.x0, r.y1 - r.y0, 14)), tag .. "...and it fits at 14 px", rstr(r))
-					d.noForward = true
-					for _, id in ipairs(d:byDistance()) do
-						if id ~= d:byDistance()[1] then
-							d:kill(id)
-						end
-					end
-					T.eq(#d:byDistance(), 1, tag .. "(setup) one enemy left")
-					local tb = H.find("Root.Commands.TargetButton")
-					local a, s = tb.AbsolutePosition, tb.AbsoluteSize
-					local inp = Mock.NewInput("Unknown", "Touch", "Begin", { Position = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0) })
-					local idx = #Mock.RemoteLog
-					Mock.FireSignal(tb, "InputBegan", inp, false)
-					H.step(3, 1 / 30)
-					inp.UserInputState = Enum.UserInputState.End
-					Mock.FireSignal(tb, "InputEnded", inp, false)
-					Mock.FireSignal(UserInputService, "InputEnded", inp, false)
-					H.step(1, 1 / 30)
-					T.check(#H.commands(idx) == 0 and tcap.Text == "ONE ENEMY", tag .. "a tap with one enemy left says ONE ENEMY and sends nothing", tcap.Text)
-					r = rectOf(tcap)
-					local ok, lines, widest = H.fits("ONE ENEMY", r.x1 - r.x0, r.y1 - r.y0, 14)
-					T.check(ok and tglyph ~= nil and not shownIn(tglyph), tag .. "...over the whole face, in 2 lines at 14 px", fmt("%d lines, widest %.0f, box %.0fx%.0f", lines, widest, r.x1 - r.x0, r.y1 - r.y0))
-					H.step(24, 1 / 30)
-					T.check(tcap.Text == "TARGET" and tglyph ~= nil and shownIn(tglyph), tag .. "...then TARGET and its glyph are back", tcap.Text)
-				end
+				-- (Pitch 2 item 1b: the TARGET key's ONE ENEMY flash is a keyboard / gamepad matter now, client_evo_target; a touch
+				-- screen has no TARGET key) the three keys are named: DASH's name sits on its face too, at 14 px or more
 				local dcap = H.find("Root.Commands.DashButton.Caption")
-				T.check(dcap ~= nil and not shownIn(dcap), tag .. "DASH keeps its plain face on touch")
+				if T.check(dcap ~= nil and shownIn(dcap) and dcap.Text == "DASH", tag .. "DASH carries its name on touch (the three keys are named)", dcap and dcap.Text or "nil") then
+					local r = rectOf(dcap)
+					T.check((H.fits("DASH", r.x1 - r.x0, r.y1 - r.y0, 14)), tag .. "...and it fits at 14 px", rstr(r))
+				end
 				H.cleanup(BC, d)
 			end
 		end
@@ -1013,6 +1025,670 @@ local function clientScenarios()
 		LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems)
 		T.check(#Mock.Errors == err0, "evo phone: no script errors", tostring(Mock.Errors[#Mock.Errors]))
 		KC.flushErrors("client_evo_buttons_mobile")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- keys_three_buttons (kit-b Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20; the approved mock
+	-- .superpowers/slop-audit/round3/build/PITCH2/A_battle_hud/repitch/01b_optC*.png, its positions in repitch_01b.py layout_C):
+	-- on touch the right thumb has exactly three named buttons, MOVE (the element on a tap; a full meter turns it gold with a
+	-- HOLD tag and a hold fires the special), DASH and RUN, each >= 44 px, clear of Roblox's jump button and stick, none moves
+	-- or hides from one fight state to the next; TARGET is automatic (no button; a tap on an enemy locks it, a LOCKED marker
+	-- over it); CHEER and BACK sit beside the helper portraits (a wide phone) / in a row under them (a tall one); the middle
+	-- of a wide screen stays clear
+	------------------------------------------------------------------------------------------------
+	S.keys_three_buttons = guarded("keys_three_buttons", function()
+		local BC = H.moduleAt("client", "Controllers/BattleController")
+		local Theme = H.moduleAt("shared", "Theme")
+		if not T.check(BC ~= nil and Theme ~= nil and BC._Hud ~= nil and BC._St ~= nil, "keys: BattleController loads") then
+			return
+		end
+		local err0 = #Mock.Errors
+		local GuiService = game:GetService("GuiService")
+		local function inset()
+			local ok, a = pcall(function()
+				return GuiService:GetGuiInset()
+			end)
+			return (ok and typeof(a) == "Vector2") and a.Y or (Mock.TopInset or 0)
+		end
+		-- Roblox's own jump button and stick (gui-area px, Hud.TouchRects' numbers, as client_evo_buttons_mobile)
+		local function roblox(size)
+			local areaY = size[2] - (Mock.TopInset or 0)
+			local small = min(size[1], size[2]) <= 500
+			local j = small and 70 or 120
+			local jb = small and 20 or j * 0.75
+			local stickW = small and 110 or 190
+			local stickH = small and ((size[2] > size[1]) and 150 or 96) or 210
+			return { x0 = size[1] - j * 1.5 - 10, y0 = areaY - jb - j, x1 = size[1] - j * 0.5 - 10, y1 = areaY - jb },
+				{ x0 = 0, y0 = areaY - stickH, x1 = stickW, y1 = areaY }
+		end
+		local function apart(a, b) -- the clear px between two boxes (negative: they overlap)
+			return max(b.x0 - a.x1, a.x0 - b.x1, b.y0 - a.y1, a.y0 - b.y1)
+		end
+		-- (look review r0) Roblox's jump and stick rings as render_gui draws them (gui-area px: centre, radius) and the clear px
+		-- between a box and a ring: the pitch keeps every control 8 px off them (repitch_01b.py check)
+		local function rings(size)
+			local areaY = size[2] - (Mock.TopInset or 0)
+			local small = min(size[1], size[2]) <= 500
+			local j = small and 70 or 120
+			local jb = small and 20 or j * 0.75
+			return { x = size[1] - j - 10, y = areaY - jb - j / 2, r = j / 2 }, { x = j - 10, y = areaY - 20 - j / 2, r = j / 2 }
+		end
+		local function offRing(r, ring)
+			local dx = max(r.x0 - ring.x, 0, ring.x - r.x1)
+			local dy = max(r.y0 - ring.y, 0, ring.y - r.y1)
+			return math.sqrt(dx * dx + dy * dy) - ring.r
+		end
+		local function inside(a, b) -- box a within box b (half a px of rounding)
+			return a.x0 >= b.x0 - 0.5 and a.x1 <= b.x1 + 0.5 and a.y0 >= b.y0 - 0.5 and a.y1 <= b.y1 + 0.5
+		end
+		-- (look review r1, render_gui battle:raid:full at 360 x 640: the team row stood in the right thumb's cluster, BACK
+		-- 18 px above DASH, where a thumb reaching up for DASH pulls the team out mid-fight) the team orders keep this many
+		-- screen px off every right-thumb key
+		local TEAM_OFF_KEYS = 40
+		local function offKeys(tag, word, r, keys)
+			for n, k in pairs(keys) do
+				T.check(apart(r, k) >= TEAM_OFF_KEYS - 0.5, tag .. word .. " keeps 40 px clear of " .. n .. " (a thumb reaching for a key never hits a team order)",
+					fmt("%s vs %s: %.1f px", rstr(r), rstr(k), apart(r, k)))
+			end
+		end
+		-- (look review r1: at 360 x 640 the second helper's Swap lay on Roblox's stick ring; on a short landscape phone the
+		-- helper column's second Swap reached it too) each helper's cell, its Swap and the Swap's clear 44 px hit pad keep off
+		-- Roblox's stick ring: the stick takes every touch there, and a pad over it would take the stick's
+		local function helpersOffStick(tag, size)
+			local _, sr = rings(size)
+			for i = 1, 2 do
+				local cell = H.find("Root.Team.Helpers.Helper" .. i)
+				if cell and shownIn(cell) then
+					for _, part in ipairs({ { "cell", cell }, { "Swap", cell:FindFirstChild("Swap") }, { "Swap's hit pad", cell:FindFirstChild("SwapHit") } }) do
+						local o = part[2]
+						if o and shownIn(o) and o.AbsoluteSize.X > 1 then
+							local r = rectOf(o)
+							T.check(offRing(r, sr) >= 0, tag .. "helper " .. i .. "'s " .. part[1] .. " keeps off Roblox's stick ring", fmt("%s ring %.1f", rstr(r), offRing(r, sr)))
+						end
+					end
+				end
+			end
+		end
+		-- (look review r1, 667 x 375: "STONE S...", "TIDE ME..."; 360 x 640: "STON / E...") each helper's buff name is whole:
+		-- on one line where its tag holds it, else wrapped on lines its tag holds, no word broken. The mock has no font
+		-- metrics: FredokaOne's own advances (tools/fixtures/fonts, em) x 1.055, the heavier face render_gui draws ("STONE
+		-- SKIN" 89.3 px at 14.4 px there); anything else 0.75 em. render_gui is the pixel judge
+		local FREDOKA = { A = 0.765, B = 0.646, C = 0.679, D = 0.704, E = 0.638, F = 0.637, G = 0.714, H = 0.699, I = 0.257, J = 0.549,
+			K = 0.639, L = 0.587, M = 0.87, N = 0.72, O = 0.775, P = 0.632, Q = 0.83, R = 0.631, S = 0.583, T = 0.731, U = 0.726,
+			V = 0.783, W = 0.999, X = 0.741, Y = 0.686, Z = 0.643, ["0"] = 0.608, ["1"] = 0.407, ["2"] = 0.609, ["3"] = 0.608,
+			["4"] = 0.592, ["5"] = 0.53, ["6"] = 0.56, ["7"] = 0.561, ["8"] = 0.582, ["9"] = 0.56, [" "] = 0.253 }
+		local function emOf(s)
+			local e = 0
+			for ch in tostring(s):gmatch(".") do
+				e = e + (FREDOKA[ch] or 0.75) * 1.055
+			end
+			return e
+		end
+		local function namesWhole(tag)
+			local scale = H.find("Root.ReadScale")
+			local sc = scale and scale.Scale or 1
+			for i = 1, 2 do
+				local lbl = H.find("Root.Team.Helpers.Helper" .. i .. ".Buff")
+				if lbl and shownIn(lbl) and lbl.Text ~= "" then
+					local pad = lbl:FindFirstChildOfClass("UIPadding")
+					local px = lbl.TextSize * sc
+					local w = lbl.AbsoluteSize.X - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) * sc or 0)
+					local ok = emOf(lbl.Text) * px <= w + 0.5
+					local lines = 1
+					if not ok and lbl.TextWrapped then
+						ok, lines = true, 0
+						local cur = -1
+						for word in lbl.Text:gmatch("%S+") do
+							local ww = emOf(word) * px
+							ok = ok and ww <= w + 0.5
+							local sp = emOf(" ") * px
+							if cur < 0 or cur + sp + ww > w + 0.5 then
+								lines, cur = lines + 1, ww
+							else
+								cur = cur + sp + ww
+							end
+						end
+						ok = ok and lines * px * 1.2 <= lbl.AbsoluteSize.Y + 1
+					end
+					T.check(ok, tag .. "helper " .. i .. "'s buff name is whole ('" .. lbl.Text .. "')",
+						fmt("%.1f px of text in %.1f x %.1f, %s, %d line(s)", emOf(lbl.Text) * px, w, lbl.AbsoluteSize.Y, lbl.TextWrapped and "wrapped" or "one line", lines))
+				end
+			end
+		end
+		-- (look review r2, render_gui at 640 x 360 in every battle mode: the top card and the enemy list lay on DASH and RUN, RUN
+		-- drawn under them and hidden, DASH 58 px under the raid's boss card; in the full raid the list also ran 29 px into
+		-- Roblox's jump ring) the keys never move or hide, so the HUD's cards make room: the top card, each enemy row and the
+		-- list's "+n more" tag, the fighter card and the helpers keep 4 px clear of MOVE, DASH, RUN and MOVE's HOLD tag, and
+		-- the enemy list keeps the pitch's 8 px off Roblox's jump and stick rings
+		local function hudCards()
+			local out = {}
+			for _, path in ipairs({ "TopCard", "Team.Fighter", "Team.Helpers" }) do
+				local o = H.find("Root." .. path)
+				if o and shownIn(o) and o.AbsoluteSize.X > 1 and o.AbsoluteSize.Y > 1 then
+					out[path] = rectOf(o)
+				end
+			end
+			local en = H.find("Root.Enemies")
+			if en and shownIn(en) then
+				for _, row in ipairs(en:GetChildren()) do
+					if row:IsA("GuiObject") and shownIn(row) and row.AbsoluteSize.X > 1 and row.AbsoluteSize.Y > 1 then
+						out["Enemies." .. row.Name] = rectOf(row)
+					end
+				end
+			end
+			return out
+		end
+		local function cardsOffKeys(tag, keys, size, state)
+			local all = {}
+			for n, r in pairs(keys) do
+				all[n] = r
+			end
+			local hold = H.find("Root.Commands.ElementButton.HoldTag")
+			if hold and shownIn(hold) then
+				all["MOVE's HOLD tag"] = rectOf(hold)
+			end
+			for _, kind in ipairs({ "Element", "Dash" }) do -- (a long name's tag past its face, Hud.PlaceBlockFace's fallback)
+				local plate = H.find("Root.Commands." .. kind .. "Button.NamePlate")
+				if plate and shownIn(plate) and plate.AbsoluteSize.X > 1 then
+					all[kind .. "'s name tag"] = rectOf(plate)
+				end
+			end
+			local cards = hudCards()
+			local names = {}
+			for cn in pairs(cards) do
+				names[#names + 1] = cn
+			end
+			table.sort(names)
+			local jr, sr = rings(size)
+			for _, cn in ipairs(names) do
+				local cr, bad = cards[cn], {}
+				for kn, kr in pairs(all) do
+					if apart(cr, kr) < 4 then
+						bad[#bad + 1] = fmt("%s %s: %.1f px", kn, rstr(kr), apart(cr, kr))
+					end
+				end
+				table.sort(bad)
+				T.check(#bad == 0, tag .. "the " .. cn .. " keeps clear of MOVE, DASH, RUN and the HOLD tag (" .. state .. ")", rstr(cr) .. " vs " .. table.concat(bad, "; "))
+				if cn:sub(1, 8) == "Enemies." then
+					T.check(offRing(cr, jr) >= 8 and offRing(cr, sr) >= 8, tag .. "the " .. cn .. " keeps the pitch's 8 px off Roblox's jump and stick rings (" .. state .. ")",
+						fmt("%s jump ring %.1f stick ring %.1f", rstr(cr), offRing(cr, jr), offRing(cr, sr)))
+				end
+			end
+		end
+		-- every shown button of the right thumb: the battle's Commands and MovementController's MobileControls
+		local function thumb()
+			local out, names = {}, {}
+			local cmd = H.find("Root.Commands")
+			for _, b in ipairs(cmd and cmd:GetChildren() or {}) do
+				if b:IsA("GuiButton") and shownIn(b) then
+					out["Commands." .. b.Name] = rectOf(b)
+					names[#names + 1] = "Commands." .. b.Name
+				end
+			end
+			local pg = LocalPlayer:FindFirstChild("PlayerGui")
+			local mc = pg and pg:FindFirstChild("MobileControls")
+			for _, name in ipairs({ "RunButton", "DashButton" }) do
+				local b = mc and mc:FindFirstChild(name, true)
+				if b and b:IsA("GuiButton") and shownIn(b) and b.AbsoluteSize.X > 4 then
+					out["MobileControls." .. name] = rectOf(b)
+					names[#names + 1] = "MobileControls." .. name
+				end
+			end
+			table.sort(names)
+			return out, names
+		end
+		local function lockMark()
+			for _, o in ipairs(workspace:GetDescendants()) do
+				if o:IsA("BillboardGui") and o.Name == "LockMark" then
+					return o
+				end
+			end
+			return nil
+		end
+		local function press(b, seconds)
+			local a, s = b.AbsolutePosition, b.AbsoluteSize
+			local inp = Mock.NewInput("Unknown", "Touch", "Begin", { Position = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0) })
+			Mock.FireSignal(b, "InputBegan", inp, false)
+			Mock.FireSignal(UserInputService, "InputBegan", inp, true)
+			H.step(max(1, floor(seconds * 30 + 0.5)), 1 / 30)
+			inp.UserInputState = Enum.UserInputState.End
+			Mock.FireSignal(b, "InputEnded", inp, false)
+			Mock.FireSignal(UserInputService, "InputEnded", inp, true)
+			H.step(2, 1 / 30)
+		end
+		local WANT = { "Commands.DashButton", "Commands.ElementButton", "MobileControls.RunButton" }
+		local PETS = { { PetId = "ember_phoenix" }, { PetId = "starlight_unicorn", Evo = 2 }, { PetId = "puddle_frog" } }
+		-- (look review r1: 640 x 360's team orders, helpers and names are checked in the full raid below; look review r2: its
+		-- raid too, where the boss card lay on DASH and hid RUN)
+		for _, size in ipairs({ { 844, 390 }, { 740, 360 }, { 667, 375 }, { 640, 360 }, { 390, 844 }, { 360, 640 }, { 1024, 768 } }) do
+			Mock.SetViewport(size[1], size[2])
+			H.step(15, 1 / 30)
+			local tag = "keys " .. size[1] .. "x" .. size[2] .. ": "
+			local wide = size[1] > size[2]
+			local d = H.fight({ Mode = "Raid", Pets = PETS })
+			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) a boss raid with two helpers") then
+				local jump, stick = roblox(size)
+				local first, names = thumb()
+				T.check(table.concat(names, ",") == table.concat(WANT, ","), tag .. "exactly three right-thumb buttons: MOVE, DASH, RUN (no SPECIAL, no TARGET, no second DASH)", table.concat(names, ","))
+				for _, n in ipairs(WANT) do
+					local r = first[n]
+					if r then
+						T.check(r.x1 - r.x0 >= 44 - 0.01 and r.y1 - r.y0 >= 44 - 0.01, tag .. n .. " is at least 44 px on the screen", fmt("%.1fx%.1f", r.x1 - r.x0, r.y1 - r.y0))
+						T.check(apart(r, jump) >= 4 and apart(r, stick) >= 4, tag .. n .. " keeps clear of Roblox's jump button and stick", fmt("%s jump %.0f stick %.0f", rstr(r), apart(r, jump), apart(r, stick)))
+						local jr, sr = rings(size)
+						T.check(offRing(r, jr) >= 8 and offRing(r, sr) >= 8, tag .. n .. " keeps the pitch's 8 px off Roblox's jump and stick rings", fmt("%s jump ring %.1f stick ring %.1f", rstr(r), offRing(r, jr), offRing(r, sr)))
+					end
+				end
+				-- (look review r0: DASH and MOVE kept the old touch style, a separate name plate under the face and wider than it, so
+				-- only RUN carried its name inside; a cooling MOVE showed only its seconds) the approved mock draws each key as ONE
+				-- block: its glyph over its name, both inside the face, no plate; cooling, the glyph stays beside the seconds
+				local function oneBlock(kind, state)
+					local btn = H.find("Root.Commands." .. kind .. "Button")
+					local cap = btn and btn:FindFirstChild("Caption")
+					local plate = btn and btn:FindFirstChild("NamePlate")
+					local glyph = btn and btn:FindFirstChild("Glyph", true)
+					local count = btn and btn:FindFirstChild("Count", true)
+					if not T.check(btn ~= nil and cap ~= nil and glyph ~= nil and count ~= nil, tag .. kind .. " has its face parts (" .. state .. ")") then
+						return
+					end
+					local br, cr, gr = rectOf(btn), rectOf(cap), rectOf(glyph)
+					local scale = H.find("Root.ReadScale")
+					local px = cap.TextSize * (scale and scale.Scale or 1)
+					-- (look review r2: 640 x 360 joined this loop; the centre 40% caps its MOVE at 60 px, where the PHOENIX of a full
+					-- meter's PHOENIX FLARE is wider than the face at the 14 px floor) Hud.PlaceBlockFace's documented fallback for a
+					-- word wider than the face (its 0.62 em estimate, the face less 2 px a side): kit-b's tag over the face's lower
+					-- part, on the screen, the floor holding. Every name that fits keeps the one-block check below
+					local floorDesign = math.ceil(14 / ((scale and scale.Scale) or 1) - 1e-6)
+					local tooWide = false
+					for word in cap.Text:gmatch("%S+") do
+						tooWide = tooWide or #word * floorDesign * 0.62 > btn.Size.X.Offset - 4
+					end
+					if tooWide then
+						local pr = plate and shownIn(plate) and rectOf(plate)
+						T.check(shownIn(cap) and pr and inside(cr, pr) and pr.x0 >= 0 and pr.x1 <= size[1] and pr.y0 < br.y1 and pr.y1 > br.y0 and px >= 14 - 0.01,
+							tag .. kind .. "'s name (a word wider than its face at the floor) keeps kit-b's tag over the face, on the screen (" .. state .. ")",
+							fmt("'%s' %s on %s, face %s, %.1f px", cap.Text, rstr(cr), pr and rstr(pr) or "no plate", rstr(br), px))
+					else
+						T.check(shownIn(cap) and inside(cr, br) and not (plate and shownIn(plate)) and px >= 14 - 0.01,
+							tag .. kind .. "'s name lies inside its face, no plate (" .. state .. ")", fmt("'%s' %s in %s, plate %s, %.1f px", cap.Text, rstr(cr), rstr(br), tostring(plate and shownIn(plate)), px))
+					end
+					T.check(shownIn(glyph) and glyph.TextTransparency < 1 and inside(gr, br) and gr.y1 <= cr.y0 + 1,
+						tag .. kind .. "'s glyph shows above its name, inside the face (" .. state .. ")", fmt("glyph %s (t %.1f) name %s", rstr(gr), glyph.TextTransparency, rstr(cr)))
+					if shownIn(count) and count.Text ~= "" then
+						local kr = rectOf(count)
+						T.check(inside(kr, br) and not overlaps(kr, gr) and kr.y1 <= cr.y0 + 1,
+							tag .. kind .. "'s seconds stand beside its glyph, inside the face (" .. state .. ")", fmt("'%s' %s glyph %s", count.Text, rstr(kr), rstr(gr)))
+					end
+				end
+				oneBlock("Element", "at rest")
+				oneBlock("Dash", "at rest")
+				-- (look review r0, 667 x 375: DASH's face lay 8 px over the top card's bottom-right corner) the cards keep off the keys
+				local topCard = H.find("Root.TopCard")
+				if topCard and shownIn(topCard) then
+					local tr = rectOf(topCard)
+					for _, n in ipairs(WANT) do
+						if first[n] then
+							T.check(apart(first[n], tr) >= 4, tag .. n .. " keeps clear of the top card", rstr(first[n]) .. " vs " .. rstr(tr))
+						end
+					end
+				end
+				cardsOffKeys(tag, first, size, "at rest")
+				-- MOVE: the element on a tap
+				local Hud = BC._Hud
+				local move = H.find("Root.Commands.ElementButton")
+				local caps = Hud.CaptionTexts(BC._St.battle)
+				local holdTag = H.find("Root.Commands.ElementButton.HoldTag")
+				T.check(move ~= nil and H.text("Element") == caps.Element and not (holdTag and shownIn(holdTag)), tag .. "MOVE says the element's attack, no HOLD tag while the meter fills", H.text("Element"))
+				-- CHEER and BACK with the team: beside the helper portraits (wide) / a row under them (tall)
+				local helpers = H.find("Root.Team.Helpers")
+				local cheer, back = H.find("Root.Cheer"), H.find("Root.Retreat")
+				local function team()
+					if not T.check(helpers ~= nil and shownIn(helpers) and cheer ~= nil and shownIn(cheer) and back ~= nil and shownIn(back), tag .. "the helper portraits, CHEER and BACK are shown") then
+						return
+					end
+					local hr, cr, br = rectOf(helpers), rectOf(cheer), rectOf(back)
+					T.check(cheer.Text == "CHEER" and (back.Text == "BACK" or back.Text == "FIGHT"), tag .. "the team orders read CHEER and BACK", cheer.Text .. " / " .. back.Text)
+					for _, p in ipairs({ { "CHEER", cr }, { "BACK", br } }) do
+						T.check(p[2].x1 - p[2].x0 >= 44 - 0.01 and p[2].y1 - p[2].y0 >= 44 - 0.01, tag .. p[1] .. " is at least 44 px on the screen", rstr(p[2]))
+						T.check(apart(p[2], jump) >= 4 and apart(p[2], stick) >= 4, tag .. p[1] .. " keeps clear of Roblox's jump button and stick", rstr(p[2]))
+						local jr, sr = rings(size)
+						T.check(offRing(p[2], jr) >= 8 and offRing(p[2], sr) >= 8, tag .. p[1] .. " keeps the pitch's 8 px off Roblox's jump and stick rings", fmt("%s jump ring %.1f stick ring %.1f", rstr(p[2]), offRing(p[2], jr), offRing(p[2], sr)))
+						-- (look review r0: a tall phone's row narrowed them to 45-50 px, where CHEER at the 14 px floor ran onto its edges,
+						-- render_gui's overflow) the mock's 52 px block, which holds the word
+						T.check(p[2].x1 - p[2].x0 >= 52 - 0.6, tag .. p[1] .. " is the mock's 52 px block, wide enough for its word", rstr(p[2]))
+						for n, r in pairs(first) do
+							T.check(apart(p[2], r) >= 4, tag .. p[1] .. " keeps clear of " .. n, rstr(p[2]) .. " vs " .. rstr(r))
+						end
+						offKeys(tag, p[1], p[2], first)
+					end
+					helpersOffStick(tag, size)
+					if wide then
+						local cy, by = (cr.y0 + cr.y1) / 2, (br.y0 + br.y1) / 2
+						T.check(cr.x0 >= hr.x1 - 0.5 and cr.x0 - hr.x1 <= 16 and br.x0 >= hr.x1 - 0.5 and br.x0 - hr.x1 <= 16
+							and cy >= hr.y0 and cy <= hr.y1 and by >= hr.y0 and by <= hr.y1 and br.y0 >= cr.y1,
+							tag .. "CHEER and BACK stand beside the helper portraits, one per helper", rstr(cr) .. " / " .. rstr(br) .. " | helpers " .. rstr(hr))
+					else
+						T.check(cr.y0 >= hr.y1 - 0.5 and cr.y0 - hr.y1 <= 20 and abs(br.y0 - cr.y0) < 1 and br.x0 >= cr.x1 and cr.x0 >= hr.x0 - 1,
+							tag .. "CHEER and BACK are a row under the helper portraits", rstr(cr) .. " / " .. rstr(br) .. " | helpers " .. rstr(hr))
+					end
+					return cr, br
+				end
+				local cr0, br0 = team()
+				if not (size[1] == 640 and size[2] == 360) then
+					namesWhole(tag) -- (640 x 360: one line of name each, cut where longer: the full raid below says why)
+				end
+				-- the middle of a wide screen stays clear (the HUD's centre 40% of the width, client_p5battle_landscape's box)
+				if wide then
+					local box = { x0 = size[1] * 0.3, x1 = size[1] * 0.7, y0 = size[2] * 0.35, y1 = size[2] * 0.75 }
+					for n, r in pairs(first) do
+						T.check(not overlaps(r, box), tag .. n .. " stays out of the middle of the screen", rstr(r))
+					end
+					for _, p in ipairs({ { "CHEER", cr0 }, { "BACK", br0 } }) do
+						if p[2] then
+							T.check(not overlaps(p[2], box), tag .. p[1] .. " stays out of the middle of the screen", rstr(p[2]))
+						end
+					end
+				end
+				-- none moves or hides: the same three buttons in the same boxes, and CHEER / BACK in theirs, in every state
+				local function steady(state)
+					local now = thumb()
+					local bad = {}
+					for _, n in ipairs(WANT) do
+						local a, b = first[n], now[n]
+						if not (a and b) or abs(a.x0 - b.x0) > 0.5 or abs(a.y0 - b.y0) > 0.5 or abs(a.x1 - b.x1) > 0.5 or abs(a.y1 - b.y1) > 0.5 then
+							bad[#bad + 1] = n .. " " .. (a and rstr(a) or "-") .. " -> " .. (b and rstr(b) or "hidden")
+						end
+					end
+					for n in pairs(now) do
+						if not first[n] then
+							bad[#bad + 1] = n .. " appeared"
+						end
+					end
+					for _, p in ipairs({ { "CHEER", cheer, cr0 }, { "BACK", back, br0 } }) do
+						local r = p[2] and shownIn(p[2]) and rectOf(p[2])
+						if p[3] and not (r and abs(r.x0 - p[3].x0) <= 0.5 and abs(r.y0 - p[3].y0) <= 0.5) then
+							bad[#bad + 1] = p[1] .. " " .. rstr(p[3]) .. " -> " .. (r and rstr(r) or "hidden")
+						end
+					end
+					T.check(#bad == 0, tag .. "nothing moves or hides: " .. state, table.concat(bad, "; "))
+				end
+				-- TARGET is automatic: no lock, no marker; a tap on an enemy in the world locks it, a LOCKED marker over it
+				T.check(BC.GetBattle().Lock == nil and not (lockMark() and lockMark().Enabled), tag .. "TARGET starts automatic: no lock, no LOCKED marker")
+				local idx = #Mock.RemoteLog
+				local vp = Mock.Viewport
+				local centre = Vector3.new(vp.X / 2, vp.Y / 2 - inset(), 0) -- (the mock camera projects every unit to the screen's centre)
+				local touch = Mock.NewInput("Unknown", "Touch", "Begin", { Position = centre })
+				Mock.FireSignal(UserInputService, "InputBegan", touch, false)
+				H.step(3, 1 / 30)
+				touch.UserInputState = Enum.UserInputState.End
+				Mock.FireSignal(UserInputService, "InputEnded", touch, false)
+				H.step(3, 1 / 30)
+				local sent = H.commands(idx)
+				T.check(#sent == 1 and sent[1].action == "Target" and d.sim.units[sent[1].arg] ~= nil, tag .. "a tap on an enemy sends ONE Target(its id)", #sent .. " sent")
+				d:run(0.4)
+				local mark = lockMark()
+				local word = mark and mark:FindFirstChild("Locked", true)
+				local scale = H.find("Root.ReadScale")
+				T.check(BC.GetBattle().Lock ~= nil and mark ~= nil and mark.Enabled and mark.Adornee ~= nil and word ~= nil and word.Text == "LOCKED" and word.TextSize >= 14,
+					tag .. "...the echo locks it and a LOCKED marker stands over it", fmt("lock %s mark %s", tostring(BC.GetBattle().Lock), tostring(mark and mark.Enabled)))
+				steady("an enemy locked")
+				-- the HOLD special: a full meter turns MOVE gold with a HOLD tag; a tap is still the element, a hold fires the special
+				d.sim.teams[1].fighter.meter = 100
+				d:run(0.4)
+				d.noForward = true
+				local face = H.find("Root.Commands.ElementButton.Face")
+				T.check(holdTag ~= nil and shownIn(holdTag) and holdTag.Text == "HOLD" and face ~= nil and face.BackgroundColor3 == Theme.Sign.Gold and H.text("Element") == caps.Special,
+					tag .. "a full meter: MOVE turns gold, says the special's name, a HOLD tag on top", fmt("%s / %s", H.text("Element"), tostring(holdTag and shownIn(holdTag))))
+				if holdTag and shownIn(holdTag) then
+					local hr, mr = rectOf(holdTag), rectOf(move)
+					T.check(holdTag.TextSize * (scale and scale.Scale or 1) >= 14 - 0.01 and hr.y0 < mr.y0 and hr.y1 > mr.y0 and hr.x0 >= mr.x0 - 1 and hr.x1 <= mr.x1 + 1,
+						tag .. "...the HOLD tag sits on MOVE's top edge at 14 px or more", rstr(hr) .. " on " .. rstr(mr))
+					-- (look review r0: the tag hung 18 px over MOVE, 8 px under DASH's plate, and read as DASH's) the mock pins it
+					-- across the edge, about half in, so it reads as MOVE's top: well clear of DASH
+					local dr = rectOf(H.find("Root.Commands.DashButton"))
+					T.check(abs((hr.y0 + hr.y1) / 2 - mr.y0) <= 3 and apart(hr, dr) >= 12,
+						tag .. "...pinned across MOVE's top edge, 12 px or more from DASH", fmt("%s on %s, DASH %s %.1f px", rstr(hr), rstr(mr), rstr(dr), apart(hr, dr)))
+				end
+				oneBlock("Element", "the meter full")
+				oneBlock("Dash", "the meter full")
+				steady("the meter full")
+				cardsOffKeys(tag, first, size, "the meter full")
+				idx = #Mock.RemoteLog
+				press(move, 0.15)
+				T.check(H.count(idx, "Element") == 1 and H.count(idx, "Special") == 0, tag .. "...a tap on the gold MOVE is the element (ONE Element, no Special)", fmt("%d Element, %d Special", H.count(idx, "Element"), H.count(idx, "Special")))
+				H.step(12, 1 / 30)
+				idx = #Mock.RemoteLog
+				local a, s = move.AbsolutePosition, move.AbsoluteSize
+				local inp = Mock.NewInput("Unknown", "Touch", "Begin", { Position = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0) })
+				Mock.FireSignal(move, "InputBegan", inp, false)
+				H.step(18, 1 / 30)
+				T.check(H.count(idx, "Special") == 1 and H.count(idx, "Element") == 0, tag .. "...a hold of MOVE fires the special while it is held (ONE Special)", fmt("%d Special, %d Element", H.count(idx, "Special"), H.count(idx, "Element")))
+				inp.UserInputState = Enum.UserInputState.End
+				Mock.FireSignal(move, "InputEnded", inp, false)
+				Mock.FireSignal(UserInputService, "InputEnded", inp, true)
+				H.step(3, 1 / 30)
+				T.check(H.count(idx, "Special") == 1 and H.count(idx, "Element") == 0, tag .. "...and nothing more on the release", fmt("%d Special, %d Element", H.count(idx, "Special"), H.count(idx, "Element")))
+				steady("the special held")
+				d.noForward = false
+				d.sim.teams[1].fighter.meter = 0
+				d:run(1)
+				-- a meter that is not full: a press is the element at once (the unforwarded tap's prediction timed out: no cooldown)
+				for _ = 1, 90 do
+					if BC.GetBattle().Cooldowns.Element <= 0.05 then
+						break
+					end
+					d:run(0.1)
+				end
+				idx = #Mock.RemoteLog
+				local inp2 = Mock.NewInput("Unknown", "Touch", "Begin", { Position = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0) })
+				Mock.FireSignal(move, "InputBegan", inp2, false)
+				H.step(1, 1 / 30)
+				T.check(H.count(idx, "Element") == 1 and H.count(idx, "Special") == 0, tag .. "a meter that is not full: a press of MOVE is the element at once", H.count(idx, "Element") .. " sent")
+				inp2.UserInputState = Enum.UserInputState.End
+				Mock.FireSignal(move, "InputEnded", inp2, false)
+				Mock.FireSignal(UserInputService, "InputEnded", inp2, true)
+				d:run(0.3)
+				-- (the press may find no enemy in reach: the client's own cooldown clock, as a confirmed element sets it)
+				local Bc = BC._St.battle
+				if Bc and Bc.cd and (Bc.cd.Element or 0) - os.clock() < 1 then
+					Bc.cd.Element = os.clock() + 6.5
+					H.step(4, 1 / 30)
+				end
+				local cnt = H.find("Root.Commands.ElementButton.Face.Count")
+				T.check(cnt ~= nil and shownIn(cnt) and cnt.Text ~= "", tag .. "(setup) MOVE counts its cooldown down", cnt and cnt.Text or "nil")
+				oneBlock("Element", "the element cooling down")
+				steady("the element cooling down")
+				local dash = H.find("Root.Commands.DashButton")
+				if dash then
+					press(dash, 0.1)
+					d:run(0.3)
+				end
+				oneBlock("Dash", "the dash cooling down")
+				steady("the dash cooling down")
+				Mock.Click(back)
+				d:run(0.5)
+				T.check(BC.GetBattle().Retreated == true, tag .. "(setup) BACK pulls the team back")
+				steady("the team pulled back")
+				Mock.Click(back)
+				d:run(0.5)
+				H.cleanup(BC, d)
+			end
+		end
+		-- (look review r0, render_gui battle:raid:full at 360 x 640: the top card stacked into its tall column under the fighter
+		-- card, the helper portraits under it reached Roblox's stick, and the CHEER / BACK row under them landed on the stick, 2 px
+		-- from the screen's foot) the full raid: its tier, three players, the boss enraged with its minion waves. The team orders
+		-- stay with the team (beside the portraits, or a row under them) and off the stick, the keys and the foot
+		-- (look review r1) the same full raid at every phone size the review names: 360 x 640 in the render's no-strip layout,
+		-- 640 x 360, 667 x 375, 390 x 844 and 844 x 390 as they lay out
+		-- render_gui's teams (dump_gui battleTeam / BCDUMP.team): the catalog's combat pets with a special of their own kind,
+		-- `skip` of them passed over, levels from `level` up by 2
+		local Catalog = H.moduleAt("shared", "PetCatalog")
+		local function renderTeam(skip, level)
+			local out, kinds = {}, {}
+			for _, def in ipairs(Catalog and Catalog.Pets or {}) do
+				local sp = type(def.Special) == "table" and def.Special.Kind or nil
+				if sp and def.Role == "Combat" and not kinds[sp] and def.Rarity ~= "Secret" and not def.EventOnly then
+					if skip > 0 then
+						skip = skip - 1
+					else
+						kinds[sp] = true
+						out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = level + (#out + 1) * 2, Tier = "Normal", Slot = #out + 1 }
+						if #out >= 3 then
+							break
+						end
+					end
+				end
+			end
+			return out
+		end
+		-- (render_gui's HUD: the tokens strip alone; an earlier list of the whole suite may have left Cash / Gems set)
+		local Config = H.moduleAt("shared", "Config")
+		local oldCash, oldGems = LocalPlayer:GetAttribute(Config.Attr.Cash), LocalPlayer:GetAttribute(Config.Attr.Gems)
+		LocalPlayer:SetAttribute(Config.Attr.Cash, nil)
+		LocalPlayer:SetAttribute(Config.Attr.Gems, nil)
+		for _, size in ipairs({ { 360, 640 }, { 640, 360 }, { 667, 375 }, { 390, 844 }, { 844, 390 } }) do
+			Mock.SetViewport(size[1], size[2])
+			H.step(15, 1 / 30)
+			local tag = fmt("keys %dx%d raid full: ", size[1], size[2])
+			local wide = size[1] > size[2]
+			local mine = renderTeam(0, 30)
+			if mine[2] then
+				mine[2].Evo = 1
+				-- (the render's 9 s of fighting knock out its first fighter: the second, evolved, fights with both helpers'
+				-- two-line buff names in the column)
+				mine[1], mine[2] = mine[2], mine[1]
+			end
+			local d = H.fight({ Mode = "Raid", Pets = mine, Allies = { renderTeam(2, 26), renderTeam(4, 28) }, Raid = { Tier = "Starter", BossId = "storm_titan" } })
+			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) a full boss raid") then
+				if d.sim.boss then
+					d.sim.boss.hp = d.sim.boss.maxHp * 0.28 -- (the next step enrages it and sends its minion waves)
+				end
+				d:run(1.5)
+				local Hd = BC._Hud
+				local bandMode = Hd.BandMode
+				local noStrip = size[1] == 360 and size[2] == 640
+				if noStrip then
+					-- (white-box) after the render's 9 s of fighting the boss strip's block runs a few px past the room above the
+					-- stick: the no-strip layout. This short fight fits the strip with 3.5 design px to spare, so the strip is
+					-- turned down here to reach the render's layout
+					Hd.BandMode = function()
+						return false
+					end
+				end
+				Hd.Rebuild()
+				d:run(0.3)
+				local top = H.find("Root.TopCard")
+				local tr = top and shownIn(top) and rectOf(top)
+				if noStrip then
+					-- (look review r1: was "the top card stacks into its tall column" under the fighter card, which pushed the
+					-- helpers onto Roblox's stick and the team row into the keys; the no-strip card now goes under the enemy list,
+					-- so the left column holds the team as the mock's) the render's layout: no strip across the top
+					T.check(tr and (tr.x1 - tr.x0) < 0.9 * size[1], tag .. "(setup) the no-strip layout (the top card is not the strip)", tr and rstr(tr) or "hidden")
+				end
+				local areaY = size[2] - (Mock.TopInset or 0)
+				local jump, stick = roblox(size)
+				local jr, sr = rings(size)
+				local keys = thumb()
+				-- (look review r2: at 640 x 360 the list lay 43 px on DASH and RUN, the boss card 8 px on DASH, the list 29 px in
+				-- Roblox's jump ring)
+				cardsOffKeys(tag, keys, size, "the full raid")
+				local helpers, cheer, back = H.find("Root.Team.Helpers"), H.find("Root.Cheer"), H.find("Root.Retreat")
+				if T.check(helpers ~= nil and shownIn(helpers) and cheer ~= nil and shownIn(cheer) and back ~= nil and shownIn(back), tag .. "the helper portraits, CHEER and BACK are shown") then
+					local hr = rectOf(helpers)
+					local others = { TopCard = tr or nil, Fighter = H.find("Root.Team.Fighter") and rectOf(H.find("Root.Team.Fighter")), Helpers = hr }
+					local en = H.find("Root.Enemies")
+					if en and shownIn(en) then
+						others.Enemies = rectOf(en)
+					end
+					local cr, br = rectOf(cheer), rectOf(back)
+					for _, p in ipairs({ { "CHEER", cr }, { "BACK", br } }) do
+						local r = p[2]
+						T.check(r.x1 - r.x0 >= 44 - 0.01 and r.y1 - r.y0 >= 44 - 0.01 and r.x0 >= 4 and r.x1 <= size[1] - 4 and r.y1 <= areaY - 4,
+							tag .. p[1] .. " is touch-sized and whole on the screen, off its foot", rstr(r) .. fmt(" (area foot %.0f)", areaY))
+						T.check(apart(r, stick) >= 4 and apart(r, jump) >= 4 and offRing(r, sr) >= 8 and offRing(r, jr) >= 8,
+							tag .. p[1] .. " keeps clear of Roblox's stick and jump (8 px off their rings)", fmt("%s stick %.0f ring %.1f", rstr(r), apart(r, stick), offRing(r, sr)))
+						-- (look review r1: was 8 px, BACK stood 18 px over DASH) 40 px off every key
+						offKeys(tag, p[1], r, keys)
+						for n, o in pairs(others) do
+							T.check(not overlaps(r, o), tag .. p[1] .. " covers nothing of the " .. n, rstr(r) .. " vs " .. rstr(o))
+						end
+					end
+					T.check(apart(cr, br) >= 4, tag .. "CHEER and BACK stand apart", rstr(cr) .. " / " .. rstr(br))
+					-- with the team, as the mock: beside the helper portraits (a wide phone), a row under them (a tall one; under the
+					-- enemy list where it lies under the fighter's block)
+					local foot = hr.y1
+					if others.Enemies and others.Enemies.x0 < hr.x1 and others.Enemies.y0 >= hr.y1 - 1 then
+						foot = max(foot, others.Enemies.y1)
+					end
+					local beside = cr.x0 >= hr.x1 - 0.5 and cr.x0 - hr.x1 <= 16 and cr.y0 < hr.y1 and cr.y1 > hr.y0 and br.x0 >= hr.x1 - 0.5 and br.y0 < hr.y1 and br.y1 > hr.y0
+					local under = cr.y0 >= foot - 0.5 and cr.y0 - foot <= 20 and cr.x0 >= hr.x0 - 1 and abs(br.y0 - cr.y0) < 1 and br.x0 >= cr.x1
+					T.check(wide and beside or (not wide and under), tag .. "CHEER and BACK stay with the team (" .. (wide and "beside the helper portraits" or "a row under them") .. ")",
+						rstr(cr) .. " / " .. rstr(br) .. " | helpers " .. rstr(hr))
+				end
+				helpersOffStick(tag, size)
+				if size[1] == 640 and size[2] == 360 then
+					-- (look review r1) at 640 x 360 Roblox's stick ring leaves the two helpers 114 px under the fighter card: one
+					-- line of name each beside [Lv][Swap]; a name longer than the cell's room is cut there (two lines would put the
+					-- second helper's name on the stick)
+					T.check(true, tag .. "(640 x 360: one line of name each, see the note)")
+				else
+					namesWhole(tag)
+				end
+				Hd.BandMode = bandMode
+				H.cleanup(BC, d)
+			end
+		end
+		-- (look review r2: at 640 x 360 the dungeon's list lay 47 / 48 px on DASH / RUN, the ring's ("fighter:ready") 36 / 26 px,
+		-- RUN under "+1 more", and the duel's 12 / 2 px: a mode card too wide for the gap between the team and the keys went
+		-- into the right column, the list under it onto the keys) every other mode, its enemy list full ("+n more"), at every
+		-- phone size: the cards keep off the keys at rest and with the meter full (the HOLD tag up), and CHEER / BACK where
+		-- they show keep their 40 px off the keys
+		for _, size in ipairs({ { 640, 360 }, { 667, 375 }, { 740, 360 }, { 844, 390 }, { 360, 640 }, { 390, 844 } }) do
+			Mock.SetViewport(size[1], size[2])
+			H.step(15, 1 / 30)
+			-- (render_gui's battle:dungeon: a crowned mini-boss, its boss card; battle:fighter: a ring round 8 with a pack of three)
+			for _, v in ipairs({ { "Dungeon", "dungeon" }, { "Dungeon", "dungeon mini-boss", MiniBoss = true }, { "Duel", "duel", Spots = FIVE }, { "Ring", "ring round 8", Round = 8 } }) do
+				local mode = v[1]
+				local tag = fmt("keys %dx%d %s: ", size[1], size[2], v[2])
+				local d = H.fight({ Mode = mode, Pets = renderTeam(0, 30), Spots = v.Spots, MiniBoss = v.MiniBoss, Round = v.Round })
+				if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) the fight") then
+					local en = H.find("Root.Enemies")
+					local rows = 0
+					for _, row in ipairs(en and en:GetChildren() or {}) do
+						if row:IsA("GuiObject") and shownIn(row) and row.Name ~= "More" and row.AbsoluteSize.Y > 1 then
+							rows = rows + 1
+						end
+					end
+					-- (a ring champion's bench is not on the list: its fighter's row; a portrait phone's list keeps one row above the
+					-- keys and the band where it has to, its "+n more" tag beside or under it)
+					T.check(en ~= nil and shownIn(en) and rows >= 1, tag .. "(setup) the enemy list shows", rows .. " rows")
+					if v.MiniBoss then
+						T.check(BC._Hud.BossUnit(BC._St.battle) ~= nil, tag .. "(setup) the mini-boss's card (its boss bar)")
+					end
+					local keys, names = thumb()
+					T.check(table.concat(names, ",") == table.concat(WANT, ","), tag .. "exactly three right-thumb buttons: MOVE, DASH, RUN", table.concat(names, ","))
+					cardsOffKeys(tag, keys, size, "at rest")
+					for _, p in ipairs({ { "CHEER", H.find("Root.Cheer") }, { "BACK", H.find("Root.Retreat") } }) do
+						if p[2] and shownIn(p[2]) then
+							offKeys(tag, p[1], rectOf(p[2]), keys)
+						end
+					end
+					d.sim.teams[1].fighter.meter = 100
+					d:run(0.4)
+					local hold = H.find("Root.Commands.ElementButton.HoldTag")
+					T.check(hold ~= nil and shownIn(hold), tag .. "(setup) the meter full: MOVE's HOLD tag shows")
+					local now = thumb()
+					cardsOffKeys(tag, now, size, "the meter full")
+					H.cleanup(BC, d)
+				end
+			end
+		end
+		LocalPlayer:SetAttribute(Config.Attr.Cash, oldCash)
+		LocalPlayer:SetAttribute(Config.Attr.Gems, oldGems)
+		Mock.SetViewport(390, 844)
+		H.step(3, 0.1)
+		T.check(#Mock.Errors == err0, "keys: no script errors", tostring(Mock.Errors[#Mock.Errors]))
+		KC.flushErrors("keys_three_buttons")
 	end)
 
 	return S

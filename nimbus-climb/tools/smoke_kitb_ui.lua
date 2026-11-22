@@ -5583,8 +5583,9 @@ local function clientScenarios()
 	end
 
 	-- (U9-3) the titles over heads: runs fn(players) with four dummy players in the lobby on High graphics (the crown shows
-	-- on High only): Top10 #3, Top100 #57, the Creator wearing the VIP pass (the crown inside the tag) and an untitled VIP
-	-- (the VipCrown billboard of its own); they leave after and the graphics answer is put back
+	-- on High only): Top10 #3, Top100 #57 wearing the VIP pass (the crown inside the tag), the Creator wearing it too (Pitch 2
+	-- item 04 B: its tag carries its own pixel crown, so no VIP crown over it) and an untitled VIP (the VipCrown billboard of
+	-- its own); they leave after and the graphics answer is put back
 	local U93 = {}
 	local U94 = {} -- (U9-4) the Gifts window and the Sky Trove helpers (filled in the U9-4 block below)
 	local U99 = {} -- (U9-9) the toasts, the result card, the tutorial, the NPC dialog and the "press L" hint (U9-9 block)
@@ -5597,7 +5598,7 @@ local function clientScenarios()
 				return "High"
 			end
 		end
-		local who = { { "U93TopTen", 986001, "Top10", 3 }, { "U93TopHundred", 986002, "Top100", 57 }, { "U93Creator", 986003, "Creator", 1, true },
+		local who = { { "U93TopTen", 986001, "Top10", 3 }, { "U93TopHundred", 986002, "Top100", 57, true }, { "U93Creator", 986003, "Creator", 1, true },
 			{ "U93Vip", 986004, nil, nil, true } }
 		local players = {}
 		for i, w in ipairs(who) do
@@ -12490,7 +12491,10 @@ local function clientScenarios()
 		local Theme = LoadingH.shared("Theme")
 		local Sign = Theme.Sign
 		local TC = U7.client("Controllers/TitleController")
-		local FACE = { Top10 = { Sign.Gold, Sign.Text }, Top100 = { Sign.Tile, Sign.Text }, Creator = { Sign.Navy, Sign.Gold } }
+		-- (Pitch 2 item 04_world_ui, the owner's approved pick B "Stone tags": "gold for the CREATOR title with a pixel
+		-- crown") Creator moved from the navy plank with gold letters to a stone face (its gold lip) with brown letters; the
+		-- 4.5:1 rule below still holds it (13.6:1)
+		local FACE = { Top10 = { Sign.Gold, Sign.Text }, Top100 = { Sign.Tile, Sign.Text }, Creator = { Sign.Stone, Sign.Text } }
 		local function tweened(root)
 			for tw in pairs(Mock.ActiveTweens) do
 				local ok, target = pcall(function()
@@ -12542,13 +12546,17 @@ local function clientScenarios()
 					T.check(not tweened(tag), k .. ": nothing in the tag tweens (no rainbow)")
 				end
 			end
-			local inTag = TC and TC.TagOf(players[3])
-			crownOk(inTag and inTag:FindFirstChild("Crown"), "titles kit b: the Creator's crown inside the tag")
+			-- (Pitch 2 item 04 B, look review r0: two gold crowns stacked over CREATOR) the VIP crown inside a titled tag is
+			-- checked on the VIP Top100; the VIP Creator's tag carries its own pixel crown and no VIP crown slot
+			local inTag = TC and TC.TagOf(players[2])
+			crownOk(inTag and inTag:FindFirstChild("Crown"), "titles kit b: a titled VIP's crown inside the tag (Top100)")
+			local creatorTag = TC and TC.TagOf(players[3])
+			T.check(creatorTag ~= nil and creatorTag:FindFirstChild("Crown") == nil, "titles kit b: the VIP Creator wears one crown, its tag's own")
 			-- (U9-3 review) a BillboardGui clips what lies outside its Size, and the plate's wood edge is a Border stroke drawn
 			-- outside the plate: the plate with its edge lies whole inside the billboard (a tag sitting flush on the gui's
 			-- bottom showed only its side edges), with the crown and without; the plate's face still 26 px above the anchor
 			for i, kind in ipairs({ "Top10", "Top100", "Creator" }) do
-				local k = "titles kit b: " .. kind .. (i == 3 and " (with the crown)" or "")
+				local k = "titles kit b: " .. kind .. (i == 2 and " (with the crown)" or "")
 				local tag = TC and TC.TagOf(players[i])
 				local plate = tag and tag:FindFirstChild("Plate")
 				local edge = plate and plate:FindFirstChild("SignEdge")
@@ -14747,10 +14755,32 @@ local function clientScenarios()
 					table.sort(out)
 					return out
 				end
-				-- (look review) the Shop's Spin row: the coin in its deep gold (Sign.GoldLip), the price in the Button role in the
-				-- plank's brown, inline after the label (no tag box), the coin's cells on whole px
-				local ink = coinInk()
-				T.check(#ink == 1 and ink[1] == hex(Sign.GoldLip), tag .. ": the token coin is drawn in the Shop's deep gold (Sign.GoldLip)", table.concat(ink, ", "))
+				-- (Pitch 2 item 9 B "Carved soft", the owner's pick; mock-up PITCH2/C_icons_machines/09_optB_shop.png) the Shop's
+				-- Spin coin is the redrawn Cloud Token in its own colours (PixelIcon.Art.token), so the coin that matches it is too:
+				-- the colours a PixelIcon.Own "token" draws, armed (grey false) or greyed (PixelIcon.Grey, the disabled state)
+				local PI = LoadingH.shared("PixelIcon")
+				local function tokenInk(grey)
+					local ref = PI and PI.New(nil, "token", 27, PI.Own)
+					local out, seen = {}, {}
+					if ref then
+						PI.Grey(ref, grey)
+						for _, d in ipairs(ref:GetChildren()) do
+							local h = d:IsA("Frame") and d.BackgroundTransparency < 0.5 and hex(d.BackgroundColor3)
+							if h and not seen[h] then
+								seen[h], out[#out + 1] = true, h
+							end
+						end
+						ref:Destroy()
+					end
+					table.sort(out)
+					return out
+				end
+				-- (look review) the Shop's Spin row: the coin as the Shop draws it, the price in the Button role in the plank's
+				-- brown, inline after the label (no tag box), the coin's cells on whole px. Was "one ink, the deep gold
+				-- Sign.GoldLip": the one-ink coin item 9 B replaced (not weaker: the exact colour set is still pinned)
+				local ink, wantInk = coinInk(), tokenInk(false)
+				T.check(#wantInk >= 2 and table.concat(ink, ", ") == table.concat(wantInk, ", "), tag .. ": the token coin is the Shop's Spin coin: item 9 B's carved token in its own colours",
+					table.concat(ink, ", ") .. " / want " .. table.concat(wantInk, ", "))
 				local lr, cr = ap.Label and U8.rect(ap.Label), ap.Coin and U8.rect(ap.Coin)
 				local pr = ap.Price and U8.rect(ap.Price)
 				local br = ap.Body and U8.rect(ap.Body)
@@ -14843,12 +14873,25 @@ local function clientScenarios()
 				local body = ap.Body
 				T.check(body ~= nil and sameColor(body.BackgroundColor3, Sign.Well) and ap.Label and sameColor(ap.Label.TextColor3, Sign.TextMuted),
 					tag .. ": a disabled Spin again is the sunk Off well with muted words", body and hex(body.BackgroundColor3) or "no body")
-				local offInk = coinInk()
-				T.check(#offInk == 1 and offInk[1] == hex(Sign.TextMuted), tag .. ": ...its coin muted with the price", table.concat(offInk, ", "))
+				-- (Pitch 2 item 9 B) the carved coin mutes as an own-colour icon does: every colour its grey twin (PixelIcon.Grey,
+				-- the sheet's greyed-row rule); was one ink, Sign.TextMuted, which only the replaced one-ink coin could take
+				local offInk, greyInk = coinInk(), tokenInk(true)
+				T.check(#greyInk >= 2 and table.concat(offInk, ", ") == table.concat(greyInk, ", ") and table.concat(greyInk, ", ") ~= table.concat(wantInk, ", "),
+					tag .. ": ...its coin muted with the price (greyed: PixelIcon.Grey)", table.concat(offInk, ", ") .. " / want " .. table.concat(greyInk, ", "))
 				local offBad = U94.contrast("NimbusHatch")
 				T.check(#offBad == 0, fmt("%s: disabled, every text still reads on its fill (%d not)", tag, #offBad), table.concat(offBad, "; ", 1, math.min(#offBad, 8)))
+				-- (Pitch 2 item 9 B) a layout that resizes the coin while disabled (PixelIcon.Host draws a new icon) lands it greyed
+				local c0, ts0, ph0 = ap.Coin and ap.Coin.Size.X.Offset or 30, ap.Label and ap.Label.TextSize or 22, again:GetAttribute("Phone") == true
+				HL.SizePill(again, ts0, ph0, c0 + 10)
+				LKC.advance(0.1)
+				local resizedInk = coinInk()
+				HL.SizePill(again, ts0, ph0, c0)
+				LKC.advance(0.1)
+				T.check(table.concat(resizedInk, ", ") == table.concat(greyInk, ", ") and table.concat(coinInk(), ", ") == table.concat(greyInk, ", "),
+					tag .. ": ...and a coin redrawn by a resize while disabled lands greyed", table.concat(resizedInk, ", "))
 				CloudUI.SetDisabled(again, false)
 				LKC.advance(0.1)
+				T.check(table.concat(coinInk(), ", ") == table.concat(wantInk, ", "), tag .. ": ...and armed again, the coin's own colours come back", table.concat(coinInk(), ", "))
 				local lip = body and body:FindFirstChild("Lip")
 				local k = U8.scaleOf(body)
 				local rest = { lip and lip.AbsoluteSize.Y or 0, ap.Label and ap.Label.AbsolutePosition.Y or 0 }
@@ -16047,10 +16090,23 @@ local function clientScenarios()
 				local want = Hd.m.Compact and 14 or 20
 				T.check((n == want or (n < want and n >= 6 and card.AbsoluteSize.X / k < 400)) and thin == 0,
 					tag .. ": the HP is " .. want .. " chunky blocks (a narrow card fewer, each >= 12 px)", fmt("%d blocks, %d thin", n, thin))
-				-- no image id today: no portrait, the track starts at the card's inner left
+				-- no image id today. (keys lane, look review fixA r1: the PC strip with no portrait "reads as a generic bar"; the
+				-- lane's brief: keep the reserved slot / its fallback) a PC keeps the head's 74 px slot, the sunk well with the
+				-- gold pixel crown and no image, the track right of it; a phone keeps the spec's no-portrait fallback, the track
+				-- at the card's inner left (its narrower strip needs the room)
 				local portrait = top:FindFirstChild("Portrait", true)
-				T.check((portrait == nil or not U8.shown(portrait)) and hr.X - cr.X <= 14 * k, tag .. ": no boss head id: no portrait, the card still whole (the track at its left)",
-					fmt("track from %.0f, card %.0f", hr.X, cr.X))
+				if Hd.m.Compact then
+					T.check((portrait == nil or not U8.shown(portrait)) and hr.X - cr.X <= 14 * k, tag .. ": no boss head id on a phone: no portrait, the card still whole (the track at its left)",
+						fmt("track from %.0f, card %.0f", hr.X, cr.X))
+				else
+					local crown = portrait and portrait:FindFirstChild("Crown")
+					local img = portrait and portrait:FindFirstChild("Head")
+					local pr = portrait and U8.rect(portrait)
+					T.check(portrait and U8.shown(portrait) and crown and U8.shown(crown) and crown:GetAttribute("PixelIcon") == "crown" and not (img and U8.shown(img))
+						and math.abs(portrait.AbsoluteSize.X / k - 74) < 0.6 and P2.inside(pr, cr) and hr.X >= pr.R,
+						tag .. ": no boss head id on a PC: the head's 74 px slot keeps its place with the gold crown, the track right of it",
+						pr and fmt("slot %s, track from %.0f", U8.show(pr), hr.X) or "no slot")
+				end
 			end
 			-- the pills: the element and the players on every size, each inside the card, none on another
 			local pills = top:FindFirstChild("Pills")
@@ -17628,6 +17684,34 @@ local function clientScenarios()
 				T.check(#wrong == 0 and shown == 5, "machines (" .. m[1] .. "): every roulette shows its own sheet cell, one Pixelated ImageLabel at " .. want
 					.. " screen px a cell, inside its box on its stage, clear of the card's rows", table.concat(wrong, "; "))
 				T.check(n == 5, "machines (" .. m[1] .. "): five roulettes, five different cells (each its own machine)", tostring(n))
+				-- (kit-b wave-2 merge: icons item 10 A x world item 13 A minor 5) the landscape phone's away / match line
+				-- ("Home first, then the arrow" / "Finish the match first") with the vault drawn: the world lane placed it full
+				-- width at y 116, the band the vault now fills, so it moves to the odds column beside the vault (under the
+				-- odds, over the altar chip). That column is 72 x 32 on this 692 x 280 page, too small for its 4 wrapped rows,
+				-- so here it HIDES rather than overlap the vault or clip (an open layout call for the owner, logged in the merge
+				-- report). The check: when it shows, it is inside the card, over the chip, its rows fit; it never shows clipped.
+				-- Today's drawn machine (MachineSheet.Id 0, what ships) keeps the full-width line: travel_shows_way checks it.
+				if m[1] == "Phone" then
+					local hc = roots.Secret and roots.Secret.Parent
+					local hint = hc and hc:FindFirstChild("Hint")
+					local TX = U7.client("UI/ShopEggs").Metrics.TEXT
+					if hint and TX and (hint.Text == TX.HeroHintLobbyShort or hint.Text == TX.HeroHintLocked) then
+						local hr, cr = absRect(hint), absRect(hc)
+						local ach = hc:FindFirstChild("AltarChip")
+						local need = SmokeCommon.RealWidth(hint.Text, hint.TextSize, hint.Font) or hint.TextBounds.X
+						local rows = math.ceil(need / math.max(1, hint.Size.X.Offset))
+						local roomy = rows * hint.TextSize <= hint.Size.Y.Offset + 2
+						local fits = hint.Visible and hr[1] >= cr[1] - 0.5 and hr[1] + hr[3] <= cr[1] + cr[3] + 0.5
+							and not (ach and ach.Visible and meets(hr, absRect(ach)))
+							and roomy and hint.TextSize >= 14
+						T.check(fits or (not hint.Visible and not roomy), "machines (Phone): the away line, beside the vault, shows only where it fits (inside the card, over the altar chip, its rows whole); never clipped",
+							fmt("visible %s, %d rows of %d in %.0fx%.0f at %.0f,%.0f", tostring(hint.Visible), rows, hint.TextSize,
+								hint.Size.X.Offset, hint.Size.Y.Offset, hint.Position.X.Offset, hint.Position.Y.Offset))
+					else
+						T.check(false, "machines (Phone): the away line shows beside the vault (the card is away from the lobby)",
+							hint and hint.Text or "no Hint")
+					end
+				end
 				-- the hero: ONE bright vault (the mock-up's): the big egg goes, no Dim over it though away from the altar, no
 				-- box drawn round it (its stage is the card's own navy)
 				local hero = roots.Secret
