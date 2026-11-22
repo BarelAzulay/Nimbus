@@ -65,6 +65,12 @@
      "Blush"
     ]
    },
+   "evo2_magma_cub_low": {
+    "onlyPre": [
+     "Blush"
+    ],
+    "onlyNew": []
+   },
    "evo2_nebula_axolotl": {
     "onlyPre": [],
     "onlyNew": [
@@ -76,9 +82,15 @@
     "onlyNew": [
      "Nose"
     ]
+   },
+   "evo2_sunbeam_bear_low": {
+    "onlyPre": [
+     "Blush"
+    ],
+    "onlyNew": []
    }
   },
-  "voxelChangesInEyeArea": 12786,
+  "voxelChangesInEyeArea": 12842,
   "shadeOnlyOutsideEyeArea": 343,
   "maxShadeDistance": 3,
   "colourChangesOutsideEyeArea": {
@@ -176,7 +188,7 @@
    "sameGrid": true,
    "tris": [
     3694,
-    3570
+    3592
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -191,12 +203,11 @@
    "nonEyeTrisOnly": [
     "Belly",
     "Fur",
-    "GemB",
     "GoldDeep"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 127,
+    "eyeArea": 131,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -247,7 +258,7 @@
    "sameGrid": true,
    "tris": [
     3090,
-    2984
+    2998
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -255,15 +266,16 @@
      "Blush"
     ]
    },
-   "nonEyeBoxChanged": [],
+   "nonEyeBoxChanged": [
+    "Nose"
+   ],
    "nonEyeTrisOnly": [
     "Fur",
-    "Nose",
     "Patch"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 147,
+    "eyeArea": 150,
     "shadeOnlyOutside": 9,
     "colourOutside": 0,
     "maxShadeDistance": 3,
@@ -312,7 +324,7 @@
    "sameGrid": true,
    "tris": [
     3490,
-    3308
+    3250
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -330,7 +342,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 155,
+    "eyeArea": 154,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -381,7 +393,7 @@
    "sameGrid": true,
    "tris": [
     3594,
-    3442
+    3478
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -399,7 +411,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 158,
+    "eyeArea": 160,
     "shadeOnlyOutside": 0,
     "colourOutside": 2,
     "maxShadeDistance": 0,
@@ -471,7 +483,7 @@
    "sameGrid": true,
    "tris": [
     3128,
-    2984
+    2994
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -485,7 +497,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 112,
+    "eyeArea": 116,
     "shadeOnlyOutside": 3,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -537,7 +549,7 @@
    "sameGrid": true,
    "tris": [
     3300,
-    3106
+    3184
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -548,11 +560,12 @@
    "nonEyeTrisOnly": [
     "Fixed",
     "Fur",
+    "Mane",
     "Muzzle"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 137,
+    "eyeArea": 139,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -603,7 +616,7 @@
    "sameGrid": true,
    "tris": [
     3138,
-    3048
+    3062
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -611,15 +624,16 @@
      "Blush"
     ]
    },
-   "nonEyeBoxChanged": [],
+   "nonEyeBoxChanged": [
+    "Nose"
+   ],
    "nonEyeTrisOnly": [
     "Fur",
-    "Nose",
     "Patch"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 147,
+    "eyeArea": 150,
     "shadeOnlyOutside": 10,
     "colourOutside": 0,
     "maxShadeDistance": 2,
@@ -669,17 +683,16 @@
    "sameGrid": true,
    "tris": [
     3664,
-    3480
+    3546
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [],
    "nonEyeTrisOnly": [
-    "Brow",
     "Fur"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 88,
+    "eyeArea": 82,
     "shadeOnlyOutside": 2,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -791,16 +804,15 @@
    "sameGrid": true,
    "tris": [
     3244,
-    3056
+    3018
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
     "Beak",
+    "Belly",
     "Fur"
    ],
-   "nonEyeTrisOnly": [
-    "Belly"
-   ],
+   "nonEyeTrisOnly": [],
    "otherFieldsChanged": [],
    "voxels": {
     "eyeArea": 122,
@@ -853,7 +865,7 @@
    "sameGrid": true,
    "tris": [
     3406,
-    3140
+    3086
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -868,7 +880,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 133,
+    "eyeArea": 130,
     "shadeOnlyOutside": 1,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -919,7 +931,7 @@
    "sameGrid": true,
    "tris": [
     3532,
-    3380
+    3416
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -937,7 +949,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 158,
+    "eyeArea": 160,
     "shadeOnlyOutside": 0,
     "colourOutside": 2,
     "maxShadeDistance": 0,
@@ -1068,11 +1080,12 @@
    "sameGrid": true,
    "tris": [
     3116,
-    2984
+    2976
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
-    "Blush"
+    "Blush",
+    "Nose"
    ],
    "nonEyeTrisOnly": [
     "Fur",
@@ -1081,7 +1094,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 146,
+    "eyeArea": 149,
     "shadeOnlyOutside": 7,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -1133,7 +1146,7 @@
    "sameGrid": true,
    "tris": [
     3694,
-    3610
+    3576
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -1142,7 +1155,7 @@
     "Muzzle"
    ],
    "nonEyeTrisOnly": [
-    "GemB",
+    "Blush",
     "Gold"
    ],
    "otherFieldsChanged": [],
@@ -1199,7 +1212,7 @@
    "sameGrid": true,
    "tris": [
     3536,
-    3422
+    3448
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -1213,12 +1226,11 @@
    ],
    "nonEyeTrisOnly": [
     "Belly",
-    "Fixed",
     "Fur"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 127,
+    "eyeArea": 131,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -1266,7 +1278,7 @@
    "sameGrid": true,
    "tris": [
     2650,
-    2562
+    2598
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -1387,7 +1399,7 @@
    "sameGrid": true,
    "tris": [
     3450,
-    3404
+    3370
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -1403,7 +1415,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 145,
+    "eyeArea": 147,
     "shadeOnlyOutside": 6,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -1454,7 +1466,7 @@
    "sameGrid": true,
    "tris": [
     2954,
-    2814
+    2826
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -1474,7 +1486,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 129,
+    "eyeArea": 131,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -1523,7 +1535,7 @@
    "sameGrid": true,
    "tris": [
     3548,
-    3384
+    3418
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -1542,7 +1554,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 157,
+    "eyeArea": 158,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -1593,19 +1605,18 @@
    "sameGrid": true,
    "tris": [
     3224,
-    3100
+    3106
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
-    "Belly",
-    "Blush"
+    "Belly"
    ],
    "nonEyeTrisOnly": [
     "Fur"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 130,
+    "eyeArea": 150,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -1655,7 +1666,7 @@
    "sameGrid": true,
    "tris": [
     3154,
-    2928
+    2874
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -1668,7 +1679,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 130,
+    "eyeArea": 127,
     "shadeOnlyOutside": 3,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -1717,7 +1728,7 @@
    "sameGrid": true,
    "tris": [
     3582,
-    3372
+    3354
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -1730,7 +1741,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 130,
+    "eyeArea": 127,
     "shadeOnlyOutside": 3,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -1840,7 +1851,7 @@
    "sameGrid": true,
    "tris": [
     3450,
-    3218
+    3196
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -1853,7 +1864,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 133,
+    "eyeArea": 130,
     "shadeOnlyOutside": 3,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -1963,7 +1974,7 @@
    "sameGrid": true,
    "tris": [
     3452,
-    3262
+    3340
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -1972,11 +1983,12 @@
    ],
    "nonEyeTrisOnly": [
     "Fur",
+    "Mane",
     "Muzzle"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 137,
+    "eyeArea": 139,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -2025,7 +2037,7 @@
    "sameGrid": true,
    "tris": [
     3438,
-    3356
+    3326
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2033,6 +2045,7 @@
     "Muzzle"
    ],
    "nonEyeTrisOnly": [
+    "Blush",
     "Fur"
    ],
    "otherFieldsChanged": [],
@@ -2088,7 +2101,7 @@
    "sameGrid": true,
    "tris": [
     3360,
-    3244
+    3234
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2100,7 +2113,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 137,
+    "eyeArea": 139,
     "shadeOnlyOutside": 7,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -2149,7 +2162,7 @@
    "sameGrid": true,
    "tris": [
     3662,
-    3484
+    3426
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -2168,7 +2181,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 161,
+    "eyeArea": 160,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -2278,22 +2291,22 @@
    "sameGrid": true,
    "tris": [
     3336,
-    3254
+    3178
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
     "Blush",
+    "Fur",
     "Nose"
    ],
    "nonEyeTrisOnly": [
     "Fixed",
-    "Fur",
     "Mouth",
     "Muzzle"
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 137,
+    "eyeArea": 140,
     "shadeOnlyOutside": 1,
     "colourOutside": 0,
     "maxShadeDistance": 1,
@@ -2347,7 +2360,7 @@
    "sameGrid": true,
    "tris": [
     3786,
-    3638
+    3652
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2355,9 +2368,7 @@
     "Gold"
    ],
    "nonEyeTrisOnly": [
-    "Belly",
-    "Fixed",
-    "GemB"
+    "Belly"
    ],
    "otherFieldsChanged": [],
    "voxels": {
@@ -2413,7 +2424,7 @@
    "sameGrid": true,
    "tris": [
     3746,
-    3620
+    3576
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2480,7 +2491,7 @@
    "sameGrid": true,
    "tris": [
     4188,
-    4178
+    4162
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2543,7 +2554,7 @@
    "sameGrid": true,
    "tris": [
     4160,
-    4164
+    4148
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2610,7 +2621,7 @@
    "sameGrid": true,
    "tris": [
     3268,
-    3148
+    3160
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2679,7 +2690,7 @@
    "sameGrid": true,
    "tris": [
     3858,
-    3782
+    3778
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2744,9 +2755,14 @@
    "sameGrid": true,
    "tris": [
     3498,
-    3368
+    3312
    ],
-   "nonEyePartSet": null,
+   "nonEyePartSet": {
+    "onlyPre": [
+     "Blush"
+    ],
+    "onlyNew": []
+   },
    "nonEyeBoxChanged": [
     "Nose"
    ],
@@ -2809,7 +2825,7 @@
    "sameGrid": true,
    "tris": [
     2680,
-    2718
+    2714
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -2823,7 +2839,7 @@
    ],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 133,
+    "eyeArea": 128,
     "shadeOnlyOutside": 0,
     "colourOutside": 0,
     "maxShadeDistance": 0,
@@ -2879,7 +2895,7 @@
    "sameGrid": true,
    "tris": [
     3344,
-    3264
+    3260
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [],
@@ -2944,7 +2960,7 @@
    "sameGrid": true,
    "tris": [
     3138,
-    3068
+    3080
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -3008,7 +3024,7 @@
    "sameGrid": true,
    "tris": [
     3974,
-    3826
+    3834
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -3070,7 +3086,7 @@
    "sameGrid": true,
    "tris": [
     4088,
-    4092
+    4076
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
@@ -3196,7 +3212,7 @@
    "sameGrid": true,
    "tris": [
     3618,
-    3546
+    3500
    ],
    "nonEyePartSet": {
     "onlyPre": [],
@@ -3211,7 +3227,7 @@
    "nonEyeTrisOnly": [],
    "otherFieldsChanged": [],
    "voxels": {
-    "eyeArea": 146,
+    "eyeArea": 168,
     "shadeOnlyOutside": 6,
     "colourOutside": 0,
     "maxShadeDistance": 2,
@@ -3261,9 +3277,14 @@
    "sameGrid": true,
    "tris": [
     3550,
-    3404
+    3348
    ],
-   "nonEyePartSet": null,
+   "nonEyePartSet": {
+    "onlyPre": [
+     "Blush"
+    ],
+    "onlyNew": []
+   },
    "nonEyeBoxChanged": [
     "Nose"
    ],
@@ -3325,7 +3346,7 @@
    "sameGrid": true,
    "tris": [
     4012,
-    4016
+    4000
    ],
    "nonEyePartSet": null,
    "nonEyeBoxChanged": [
