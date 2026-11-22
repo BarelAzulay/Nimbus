@@ -1148,7 +1148,12 @@ local function clientScenarios()
 								cur = cur + sp + ww
 							end
 						end
-						ok = ok and lines * px * 1.2 <= lbl.AbsoluteSize.Y + 1
+						-- (keys look r4) the lines stand TextSize x LineHeight apart: Roblox's line advance (LineHeight, default 1,
+						-- a multiple of the em) and render_gui's (step = size x lineHeight), the pixel judge above. The 1.2 em
+						-- assumed here failed whole two-line names the render draws inside their tags (360 x 640 "TIDE / MEND":
+						-- 28.8 px of lines in a 32 px tag; 667 x 375 the same): the check keeps its 1 px slack, not the 0.2 em
+						local lh = tonumber(lbl.LineHeight) or 1
+						ok = ok and lines * px * max(1, lh) <= lbl.AbsoluteSize.Y + 1
 					end
 					T.check(ok, tag .. "helper " .. i .. "'s buff name is whole ('" .. lbl.Text .. "')",
 						fmt("%.1f px of text in %.1f x %.1f, %s, %d line(s)", emOf(lbl.Text) * px, w, lbl.AbsoluteSize.Y, lbl.TextWrapped and "wrapped" or "one line", lines))
@@ -1626,14 +1631,9 @@ local function clientScenarios()
 						rstr(cr) .. " / " .. rstr(br) .. " | helpers " .. rstr(hr))
 				end
 				helpersOffStick(tag, size)
-				if size[1] == 640 and size[2] == 360 then
-					-- (look review r1) at 640 x 360 Roblox's stick ring leaves the two helpers 114 px under the fighter card: one
-					-- line of name each beside [Lv][Swap]; a name longer than the cell's room is cut there (two lines would put the
-					-- second helper's name on the stick)
-					T.check(true, tag .. "(640 x 360: one line of name each, see the note)")
-				else
-					namesWhole(tag)
-				end
+				-- (look review r1: at 640 x 360 one line of name each, cut where longer; keys look r4: the cells' tighter rows
+				-- give 640 x 360 two whole lines above the stick too) every size's names whole
+				namesWhole(tag)
 				Hd.BandMode = bandMode
 				H.cleanup(BC, d)
 			end
