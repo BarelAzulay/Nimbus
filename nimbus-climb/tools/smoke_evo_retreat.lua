@@ -1518,10 +1518,23 @@ local function clientScenarios()
 		local why = {}
 		local vp = Mock.Viewport
 		local areaY = vp.Y - (Mock.TopInset or 0)
-		-- the Cheer row: its left, 8 px apart, the same height; or stacked above it where the row sits beside the vitals card; or under the
+		-- the Cheer row: its left, one gap apart (below), the same height; or stacked above it where the row sits beside the vitals card; or under the
 		-- vitals card (8 px below it, from its left edge or further right) where that stack would cover the fighter's cards or the middle
-		local row = abs((rc.x0 - r.x1) - 8) <= 2 and abs(r.y0 - rc.y0) <= 2 and abs(r.y1 - rc.y1) <= 2
-		local stack = abs((rc.y0 - r.y1) - 8) <= 2 and abs(r.x0 - rc.x0) <= 2 and abs(r.x1 - rc.x1) <= 2
+		-- (kit-b gate, keys look r4 ink rule, f004937: a PC's two buttons wear 5 px wood edges, so 8 px apart the edges lay 2 px
+		-- on each other at 1920 x 1080; Retreat.Place / CheerUp.Place now keep two plank edges (Cheer up!'s, 5 px; Retreat's own
+		-- stroke is the pulsing one, 3 px or tweening, so it never moves the pair) + 4 px of air between them, never under 8 px.
+		-- The pinned 8 went stale; the +-2 tolerance is unchanged, and the new air check below is stricter than before)
+		local function edgePx(g)
+			local s = g:FindFirstChildOfClass("UIStroke")
+			return (s and s.Enabled ~= false and s.Transparency < 0.99) and s.Thickness or 0
+		end
+		local gap = math.max(8, 2 * edgePx(c) + 4)
+		local row = abs((rc.x0 - r.x1) - gap) <= 2 and abs(r.y0 - rc.y0) <= 2 and abs(r.y1 - rc.y1) <= 2
+		local stack = abs((rc.y0 - r.y1) - gap) <= 2 and abs(r.x0 - rc.x0) <= 2 and abs(r.x1 - rc.x1) <= 2
+		local between = row and (rc.x0 - r.x1) or (stack and (rc.y0 - r.y1) or nil)
+		if between and between - edgePx(b) - edgePx(c) < 4 - 0.01 then
+			why[#why + 1] = fmt("Retreat's and Cheer up!'s wood edges keep %.1f px of air (< 4)", between - edgePx(b) - edgePx(c))
+		end
 		-- quick wins (win 4): a fighter's vitals card steps aside for the fight (GetLayout().Vitals nil) and the pair takes its slot
 		-- (GetLayout().VitalsSlot): the row centred on the slot, its bottom edge on the slot's bottom edge; where the row is wider than the
 		-- slot plus 8 px each side, Cheer up! centred on the slot and Retreat stacked above it; the stack beside the slot (Cheer up! moved
@@ -1540,16 +1553,16 @@ local function clientScenarios()
 		if v ~= nil then
 			local cxS, bottomS = v.X + v.W / 2, v.Y + v.H
 			local bw, bh = r.x1 - r.x0, r.y1 - r.y0
-			local rowFits = bw * 2 + 8 <= v.W + 16 + 2
+			local rowFits = bw * 2 + gap <= v.W + 2 * gap + 2
 			besideStack = stack and abs((v.X - rc.x1) - 8) <= 2 and abs(rc.y0 - v.Y) <= 2
 			-- where the slot's centred spots would cover something (a small portrait phone: the narrowest card reaches the battle's RUN
 			-- button) the pair slides flush with the slot's left or right edge; where that is not clear either it keeps its places around
 			-- a shown card: Cheer up! 8 px above the slot, centred, Retreat in its row or above it
 			local spots
 			if rowFits then
-				spots = { { x0 = cxS - bw - 4, y0 = bottomS - bh, x1 = cxS - 4, y1 = bottomS }, { x0 = cxS + 4, y0 = bottomS - bh, x1 = cxS + bw + 4, y1 = bottomS } }
+				spots = { { x0 = cxS - bw - gap / 2, y0 = bottomS - bh, x1 = cxS - gap / 2, y1 = bottomS }, { x0 = cxS + gap / 2, y0 = bottomS - bh, x1 = cxS + bw + gap / 2, y1 = bottomS } }
 			else
-				spots = { { x0 = cxS - bw / 2, y0 = bottomS - bh, x1 = cxS + bw / 2, y1 = bottomS }, { x0 = cxS - bw / 2, y0 = bottomS - 2 * bh - 8, x1 = cxS + bw / 2, y1 = bottomS - bh - 8 } }
+				spots = { { x0 = cxS - bw / 2, y0 = bottomS - bh, x1 = cxS + bw / 2, y1 = bottomS }, { x0 = cxS - bw / 2, y0 = bottomS - 2 * bh - gap, x1 = cxS + bw / 2, y1 = bottomS - bh - gap } }
 			end
 			for _, o in ipairs(obstacles(touch)) do
 				for _, q in ipairs(spots) do
