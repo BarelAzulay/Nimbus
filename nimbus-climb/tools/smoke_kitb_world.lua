@@ -213,6 +213,27 @@ local function serverScenarios()
 			local okPill, whyPill = block(pill, Sign.Violet)
 			local pillText = pill and pill:FindFirstChildWhichIsA("TextLabel", true)
 			T.check(okPill and pillText ~= nil and pillText.Text == "Secret Roulette", "world signs: the violet 'Secret Roulette' plank under the board", whyPill)
+			-- (look review r1, M4) the board was a fixed 429 x 171 px billboard, wider than a 390 px phone: the R of ALTAR and the
+			-- beam's right end were cut at any distance. It is marked for the client's fit (WorldTag.MarkFit: its 1080p size in
+			-- BaseWidth / BaseHeight, its content in Root under a ReadScale, the NC_FitTag tag) and the fit keeps it inside a
+			-- 390 px screen's gutters
+			local WT = shared("WorldTag")
+			local bw, bh = tonumber(header:GetAttribute("BaseWidth")), tonumber(header:GetAttribute("BaseHeight"))
+			local root = header:FindFirstChild("Root")
+			T.check(bw ~= nil and bh ~= nil and root ~= nil and root:FindFirstChild("ReadScale") ~= nil and root:FindFirstChild("Beam", true) ~= nil
+				and game:GetService("CollectionService"):HasTag(header, WT and WT.FitTag or "NC_FitTag"),
+				"world signs: the altar header is marked for the screen fit (BaseWidth / BaseHeight, Root + ReadScale, the fit tag)",
+				fmt("%s x %s, root %s", tostring(bw), tostring(bh), tostring(root)))
+			if WT and type(WT.FitScale) == "function" and bw then
+				for _, s in ipairs({ { 390, 844 }, { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }) do
+					local f = WT.FitScale(bw, s[1], Theme.ScreenFactor(s[2]))
+					-- inside 12 px gutters, never over the screen factor, its smallest line (the 18 px plank) still >= 14 px
+					T.check(bw * f <= s[1] - 24 + 0.5 and f <= Theme.ScreenFactor(s[2]) + 1e-6 and 18 * f >= Theme.Readability.MinPx - 0.01,
+						fmt("world signs: %dx%d the altar header fits the screen (%.0f px of %d, x%.2f)", s[1], s[2], bw * f, s[1], f))
+				end
+			else
+				T.check(false, "world signs: (setup) WorldTag.FitScale")
+			end
 		end
 
 		-- THE GATES face: the five names at 52 px with their pixel icons, nothing else
@@ -695,6 +716,56 @@ local function clientScenarios()
 		T.check(src ~= "" and not src:find("tostring%(floor%(dmg %+ 0%.5%)%)") and src:find("Fx.HitLook(dmg", 1, true) ~= nil,
 			"damage numbers: the hit handler uses Fx.HitLook (Theme.Short), no raw damage number")
 		KC.flushErrors("damage_numbers_short")
+	end)
+
+	----------------------------------------------------------------------------------------------------------------
+	-- world_tags_fit (look review r1, M4): a wide pixel board the server marks with WorldTag.MarkFit (the Storm Altar's
+	-- 429 x 171 px header; world_signs_kit checks the real one is marked) is fitted by the client's watch as it streams in
+	-- and again on a new screen size: inside 12 px gutters on a 390 px phone, at the screen factor elsewhere, its content
+	-- scaled with it
+	----------------------------------------------------------------------------------------------------------------
+	S.world_tags_fit = guarded("world_tags_fit", function()
+		local WT = shared("WorldTag")
+		local Theme = shared("Theme")
+		if not T.check(WT ~= nil and type(WT.MarkFit) == "function" and type(WT.FitScale) == "function", "world fit: (setup) WorldTag.MarkFit / FitScale") then
+			return
+		end
+		Mock.SetViewport(1920, 1080)
+		KC.advance(0.2)
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Parent = workspace
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "FitProbe"
+		gui.Size = UDim2.fromOffset(429, 171)
+		gui.Adornee = part
+		local root = Instance.new("Frame")
+		root.Name = "Root"
+		root.BackgroundTransparency = 1
+		root.Size = UDim2.fromOffset(429, 171)
+		root.Parent = gui
+		local beam = Instance.new("Frame")
+		beam.Name = "Beam"
+		beam.Size = UDim2.fromOffset(429, 14)
+		beam.Parent = root
+		WT.MarkFit(gui, root, 429, 171)
+		gui.Parent = part
+		KC.advance(0.2)
+		for _, s in ipairs({ { 1920, 1080 }, { 390, 844 }, { 844, 390 }, { 2560, 1440 }, { 1280, 720 } }) do
+			Mock.SetViewport(s[1], s[2])
+			KC.advance(0.2)
+			local sc = root:FindFirstChild("ReadScale")
+			local want = math.min(Theme.ScreenFactor(s[2]), (s[1] - 24) / 429)
+			local tag = fmt("world fit %dx%d", s[1], s[2])
+			T.check(sc ~= nil and abs(sc.Scale - want) < 0.01 and abs(gui.Size.X.Offset - 429 * want) <= 1 and gui.Size.X.Offset <= s[1] - 24,
+				tag .. ": the marked board is fitted to the screen (gutters 12 px, at most the screen factor)",
+				fmt("gui %d px, scale %s (want %.2f)", gui.Size.X.Offset, sc and fmt("%.2f", sc.Scale) or "none", want))
+			T.check(beam.AbsoluteSize.X <= gui.Size.X.Offset + 0.5, tag .. ": its content scales with it", fmt("beam %.0f px in a %d px gui", beam.AbsoluteSize.X, gui.Size.X.Offset))
+		end
+		part:Destroy()
+		Mock.SetViewport(1920, 1080)
+		KC.advance(0.2)
+		KC.flushErrors("world_tags_fit")
 	end)
 
 	----------------------------------------------------------------------------------------------------------------

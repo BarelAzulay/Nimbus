@@ -114,4 +114,82 @@ function WorldTag.Bang(parent, z)
 	return badge
 end
 
+-- (look review r1, M4: the Storm Altar's header was a fixed 429 x 171 px billboard, wider than a 390 px phone, so its
+-- right end was cut at any distance) a wide pixel board the server builds is fitted to each screen by the client:
+--   WorldTag.MarkFit(gui, root, w, h)   (server) gui: the BillboardGui, its content in `root` (a Frame w x h at 1080p
+--                                       px); adds the UIScale "ReadScale" to root, the attributes BaseWidth / BaseHeight and
+--                                       the tag WorldTag.FitTag
+--   WorldTag.FitScale(w, screenX, factor) -> scale   the screen factor, or less so w fits screenX inside FitGutter each side
+--   WorldTag.Fit(gui)                   (client) sizes one marked gui for the current screen
+--   WorldTag.WatchFit()                 (client, once) fits every marked gui now, as it streams in and on a new screen size
+WorldTag.FitTag = "NC_FitTag"
+WorldTag.FitGutter = 12
+
+function WorldTag.MarkFit(gui, root, w, h)
+	local scale = root:FindFirstChild("ReadScale")
+	if not scale then
+		scale = Instance.new("UIScale")
+		scale.Name = "ReadScale"
+		scale.Parent = root
+	end
+	gui:SetAttribute("BaseWidth", w)
+	gui:SetAttribute("BaseHeight", h)
+	game:GetService("CollectionService"):AddTag(gui, WorldTag.FitTag)
+end
+
+function WorldTag.FitScale(w, screenX, factor)
+	local f = tonumber(factor) or 1
+	local room = (tonumber(screenX) or 0) - 2 * WorldTag.FitGutter
+	w = tonumber(w) or 0
+	if w > 0 and room > 0 and w * f > room then
+		f = room / w
+	end
+	return math.max(0.25, f)
+end
+
+function WorldTag.Fit(gui)
+	local w, h = tonumber(gui:GetAttribute("BaseWidth")), tonumber(gui:GetAttribute("BaseHeight"))
+	local root = gui:FindFirstChild("Root")
+	local scale = root and root:FindFirstChild("ReadScale")
+	local cam = workspace.CurrentCamera
+	local vp = cam and cam.ViewportSize
+	if not (w and h and scale and vp and vp.X > 1 and vp.Y > 1) then
+		return
+	end
+	local f = WorldTag.FitScale(w, vp.X, Theme.ScreenFactor(vp.Y))
+	gui.Size = UDim2.fromOffset(math.floor(w * f + 0.5), math.floor(h * f + 0.5))
+	scale.Scale = f
+end
+
+local watching = false
+function WorldTag.WatchFit()
+	if watching then
+		return
+	end
+	watching = true
+	local CollectionService = game:GetService("CollectionService")
+	local function fitAll()
+		for _, gui in ipairs(CollectionService:GetTagged(WorldTag.FitTag)) do
+			pcall(WorldTag.Fit, gui)
+		end
+	end
+	CollectionService:GetInstanceAddedSignal(WorldTag.FitTag):Connect(function(gui)
+		pcall(WorldTag.Fit, gui)
+	end)
+	local camConn = nil
+	local function watchCamera()
+		if camConn then
+			camConn:Disconnect()
+			camConn = nil
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			camConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(fitAll)
+		end
+		fitAll()
+	end
+	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(watchCamera)
+	watchCamera()
+end
+
 return WorldTag

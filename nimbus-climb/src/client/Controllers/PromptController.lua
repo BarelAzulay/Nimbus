@@ -18,6 +18,8 @@
 --   PromptController.Init()                    idempotent
 --   PromptController.CardOf(prompt) -> BillboardGui | nil
 --   PromptController.Custom(prompt)            sets one prompt's Style (the watch calls it for every new prompt)
+-- Init also starts WorldTag.WatchFit (look review r1, M4): the server's wide pixel boards marked with WorldTag.MarkFit
+-- (the Storm Altar's header, the gates' boards) are fitted to each screen.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -344,6 +346,14 @@ function PromptController.Init()
 		return
 	end
 	S.started = true
+	-- (look review r1, M4) the world's wide pixel boards (the Storm Altar's header, the gates' boards) fit each screen
+	local okW, WorldTag = pcall(require, Shared:WaitForChild("WorldTag"))
+	if okW and type(WorldTag) == "table" and type(WorldTag.WatchFit) == "function" then
+		local okF, why = pcall(WorldTag.WatchFit)
+		if not okF then
+			warn("[PromptController] the world boards' fit failed: " .. tostring(why))
+		end
+	end
 	for _, d in ipairs(workspace:GetDescendants()) do
 		if d.ClassName == "ProximityPrompt" then
 			PromptController.Custom(d)
