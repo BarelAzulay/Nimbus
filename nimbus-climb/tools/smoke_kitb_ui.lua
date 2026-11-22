@@ -17490,6 +17490,24 @@ local function clientScenarios()
 				local face = stage and stage:FindFirstChild("Face")
 				T.check(stage ~= nil and stage.BackgroundTransparency >= 0.99 and face ~= nil and face.BackgroundTransparency >= 0.99,
 					"machines (" .. m[1] .. "): the vault stands on the card's navy (no stage box round it)")
+				if m[5] == "Portrait" and hb then
+					-- (P2 icons review r1, minor: an empty navy band of about 30 px under "Travel from the lobby", beside the
+					-- vault, over the Travel bar) the mock-up's column (10_optA_phone): the two odds one over the other, the
+					-- altar chip and the hint run down the vault's height, the bar 20 px or less under the hint; nothing meets
+					local rows, hint, bar = {}, hb:FindFirstChild("Hint"), hb:FindFirstChild("SpinHolder")
+					local oddsLine = hb:FindFirstChild("OddsLine")
+					for _, r in ipairs(oddsLine and oddsLine:GetChildren() or {}) do
+						if r:IsA("Frame") and r.Name:match("^Odds_") and r.Visible then
+							rows[#rows + 1] = absRect(r)
+						end
+					end
+					local stacked = #rows == 2 and math.abs(rows[1][1] - rows[2][1]) <= 1 and rows[2][2] >= rows[1][2] + rows[1][4] - 0.5
+					local h, b = hint and absRect(hint), bar and absRect(bar)
+					local gap = (h and b) and (b[2] - (h[2] + h[4])) or 999
+					local clear = h and chip and not meets(h, absRect(chip)) and rows[2] and not meets(absRect(chip), rows[2])
+					T.check(stacked and gap <= 20 and gap >= 0 and clear, "machines (Portrait): the hero's odds stacked, the altar chip and the hint run down beside the vault, the bar 20 px or less under the hint",
+						fmt("rows %d stacked %s, hint-to-bar %.0f px, clear %s", #rows, tostring(stacked), gap, tostring(clear)))
+				end
 				if m[5] == "PC" then
 					-- the cards: the stage spans the name plate's width, the odds are egg chips, the hint 12 px further up
 					local chips, lifted, span = {}, {}, {}

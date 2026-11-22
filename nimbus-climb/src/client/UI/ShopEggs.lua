@@ -1655,16 +1655,36 @@ function L.heroPortrait(t, w, h)
 		L.heroSheetArt(t, 8, 42, 128, h - 52 - 8 - 42)
 		place(t.Dim, 0, 38, 140, h - 52 - 38)
 		local rx, rw = 144, w - 152
-		L.portraitOdds(t, rx, 46, rw)
-		place(t.Pity, rx, 86, rw, 36)
+		-- (P2 icons review r1, minor: a band of about 30 px of empty navy under the hint, beside the vault) the mock-up's
+		-- column: the two odds one over the other (egg 30 beside its percent), the altar chip, the hint, down the vault's
+		-- height. More than two odds keep the two-column grid
+		local cy = 86
+		if #t.Rows == 2 then
+			place(t.Odds, rx, 46, rw, 68)
+			for i, row in ipairs(t.Rows) do
+				place(row.Root, 0, (i - 1) * 36, rw, 32)
+				local ew = H.sizeEgg(row.Egg, 30)
+				place(row.Egg, 2, 1, ew, 30)
+				row.Word.Visible = false
+				row.Pct.TextSize = 15
+				row.Pct.TextXAlignment = LEFT
+				place(row.Pct, ew + 8, 0, math.max(0, rw - ew - 10), 32)
+			end
+			t.NoOdds.TextSize = 15
+			place(t.NoOdds, rx, 46, rw, 68)
+			cy = 120
+		else
+			L.portraitOdds(t, rx, 46, rw)
+		end
+		place(t.Pity, rx, cy, rw, 36)
 		t.Pity.TextSize = 15
-		place(t.AltarChip, rx, 86, rw, 36)
+		place(t.AltarChip, rx, cy, rw, 36)
 		t.AltarChip.TextSize = 15
-		place(t.Lock, rx, 82, rw, 44)
+		place(t.Lock, rx, cy - 4, rw, 44)
 		t.Lock.TextSize = 15
 		t.Hint.Visible = true
 		t.Hint.TextSize = 15
-		place(t.Hint, rx, 128, rw, 20)
+		place(t.Hint, rx, cy + 42, rw, 20)
 		place(t.Holder, 8, h - 52, w - 16, 44)
 		place(t.Spin.Button, 0, 0, w - 16, 44)
 		H.arrange(t.Spin, w - 16, 44, 18, 20)
