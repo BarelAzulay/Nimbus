@@ -6731,8 +6731,8 @@ function Hud.Rebuild()
 	if band then
 		local bandBottom = K.EDGE + (Hud.topH or 0)
 		-- (keys look r4: at 360 x 640 the strips started 2 px into the strip's hard shadow) the band the strip spans reaches
-		-- to its shadow's foot: the HUD's strips start their gap under that
-		Hud.SetTopReserve(bandBottom * m.F + K.SHADOW_PX)
+		-- to its shadow's foot and the strips' own 2 px frame: the HUD's strips start their gap under that
+		Hud.SetTopReserve(bandBottom * m.F + K.SHADOW_PX + 2)
 		curBottom, curLeft, curRight = Hud.CurrencyTop(m)
 		local trb = Hud.HudAttr("TopRightBottom")
 		if curBottom > 0 and trb and trb > 0 then
@@ -6757,7 +6757,7 @@ function Hud.Rebuild()
 		-- clear of the fighter card, the list goes under the fighter's block on the left, above Cheer up! / Retreat; the
 		-- helpers go side by side for it where needed. No room there either: no strip (the old card, as before)
 		if isFighting and not Hud.ListFits(B, m, max(topY, curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F and (curBottom + 6) or 0), bandY) then
-			local need = Hud.ListMinH(B, m) + 8
+			local need = Hud.ListMinH(B, m) + Hud.ListGap(m)
 			local ok = Hud.BandRoom(B, m, bandY, need)
 			if not ok and not Hud.helpersRow then
 				Hud.helpersRow = true
@@ -6768,8 +6768,8 @@ function Hud.Rebuild()
 				-- (a raid's full strip, its pills in two rows) one row with its "+n more" tag beside it (Hud.TagBeside)
 				local rowH = m.Compact and K.ROW_H_COMPACT or K.ROW_H
 				local _, teamH = Hud.LayoutFighter(B, m)
-				ok = Hud.TagBeside(m, K.EDGE, bandY + teamH + 8, rowH, n - 1, m.Touch and Hud.KeyBoxes(m) or nil) ~= nil
-					and Hud.BandRoom(B, m, bandY, rowH + 8)
+				ok = Hud.TagBeside(m, K.EDGE, bandY + teamH + Hud.ListGap(m), rowH, n - 1, m.Touch and Hud.KeyBoxes(m) or nil) ~= nil
+					and Hud.BandRoom(B, m, bandY, rowH + Hud.ListGap(m))
 			end
 			if ok then
 				Hud.listLeft = true
@@ -6824,6 +6824,8 @@ function Hud.Rebuild()
 		end
 	end
 	local leftY =(curBottom > 0 and curLeft < K.EDGE + cardW + 8) and max(topY, curBottom + 6) or topY
+	-- (keys look r4) the HUD's strips beside the fighter card (design px), for helpers side by side that reach under them
+	Hud.stripsAbove = (curBottom > 0 and curLeft > 0) and { Left = curLeft, Bottom = curBottom } or nil
 	-- fighter card + helpers (top left) ----------------------------------------------------------
 	Hud.team.Visible = isFighting or between
 	local teamW, teamH = 0, 0
@@ -6843,7 +6845,9 @@ function Hud.Rebuild()
 	-- (kit-b U9-6, the render gate: the TARGET tab sat on the currency strip) a wide screen's locked row carries its TARGET
 	-- tab over its top edge: the list starts that much lower under the strips
 	-- (U9-6 review) with no strip up there the tab still needs its band: under the top edge, not into Roblox's bar
-	local over = m.Compact and 0 or K.TARGET_OVER
+	-- (keys look r4: under 390 x 844's boss strip the selected row's gold target bracket, 4 design px and a 2 px stroke out
+	-- of the row, stood 7.2 px under the strip's shadow) a phone's list under the strip starts the bracket's reach lower
+	local over = m.Compact and (band and (4 + Hud.Air(m, 2)) or 0) or K.TARGET_OVER
 	-- (keys look r4: on a PC the TARGET tab's frame stood 2.4-3 px under the strips' hard shadow) under the strips, their
 	-- shadow, the tab's 2 px frame and K.INK_AIR_PX of air
 	local underStrips = m.Compact and 6 or max(6, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX))
@@ -6853,9 +6857,11 @@ function Hud.Rebuild()
 	if Hud.listLeft then
 		-- (P2 fix A r1) under the fighter's block on the left (Hud.ListFits said the right column has no room), its rows down to
 		-- Cheer up! / Retreat (Hud.LayoutEnemies)
-		Hud.listTop = leftY + teamH + 8
+		Hud.listTop = leftY + teamH + Hud.ListGap(m)
 		Hud.listX = Hud.team.Position.X.Offset
-		Hud.listRoom = Hud.StackTop(B, m) - Hud.listTop - 4
+		-- (keys look r4: the "+n more" tag's frame stood 2.8 px over CHEER's at 360 x 640) its rows stop both frames and the
+		-- air above the team orders' row
+		Hud.listRoom = Hud.StackTop(B, m) - Hud.listTop - Hud.Air(m, 4 + K.INK_AIR_PX)
 	end
 	Hud.enemies.Visible = isFighting
 	-- (kit-b) a portrait phone: the action keys' boxes (their wood edge too) in our design px, for the list above them
@@ -7366,6 +7372,13 @@ function Hud.CellGap(m)
 	return Hud.Air(m, 4 + K.INK_AIR_PX)
 end
 
+-- (keys look r4: 8 design px under the helpers left the selected row's gold target bracket 0.8 px over their Swap keys at
+-- 360 x 640) design px from the team block to an enemy list under it: the bracket stands 4 design px and its 2 px stroke
+-- outside the row, the helpers' 2 px frames, K.INK_AIR_PX of air
+function Hud.ListGap(m)
+	return 4 + Hud.Air(m, 4 + K.INK_AIR_PX)
+end
+
 -- the fighter card + helper cells (sizes + positions; Team-local); returns the Team block's size
 -- (top: the Team block's top, design px, where Hud.Rebuild is about to put it; else where it stands)
 function Hud.LayoutFighter(B, m, top)
@@ -7634,6 +7647,14 @@ function Hud.LayoutFighter(B, m, top)
 	local hy = cardH + Hud.TeamGap(m)
 	local cellGap = Hud.CellGap(m)
 	L.Gap = cellGap
+	local strips = Hud.stripsAbove
+	if compact and Hud.helpersRow and strips and tonumber(top) then
+		-- (keys look r4: at 360 x 640 a run's third strip, under the card's foot, lay 0.8 px over helper 2's Lv tag) helpers
+		-- side by side that reach under the strips start under the strips' hard shadow, their frames and the air
+		if K.EDGE + 2 * cellW + cellGap + Hud.Air(m, 2 + K.INK_AIR_PX) > strips.Left then
+			hy = max(hy, strips.Bottom + Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX) - top)
+		end
+	end
 	Hud.helperHolder.Position = UDim2.fromOffset(0, hy)
 	-- (P2 fix A r1) a short portrait phone under the boss strip: the two helpers side by side (Hud.Rebuild's Hud.helpersRow)
 	local column = compact and Hud.helpersRow ~= true
@@ -10324,7 +10345,15 @@ function CheerUp.TeamSpots(m)
 	end
 	local top = (cells > 0) and (hy + hh) or (ty + Hud.team.Size.Y.Offset)
 	if Hud.listX and Hud.enemies and Hud.enemies.Visible then
-		top = max(top, (Hud.listTop or 0) + Hud.enemies.Size.Y.Offset)
+		-- (keys look r4: the "+n more" tag hangs past the list frame's height, its frame 2.8 px off CHEER's at 360 x 640) the
+		-- list's foot is its lowest shown row or tag
+		local foot = Hud.enemies.Size.Y.Offset
+		for _, c in ipairs(Hud.enemies:GetChildren()) do
+			if c:IsA("GuiObject") and c.Visible then
+				foot = max(foot, c.Position.Y.Offset - c.AnchorPoint.Y * c.Size.Y.Offset + c.Size.Y.Offset)
+			end
+		end
+		top = max(top, (Hud.listTop or 0) + foot)
 	end
 	-- (look review r0: the row narrowed them to 45-50 px to end before the screen's centre 40%, and CHEER at the 14 px floor
 	-- ran onto its edges; the mock's row is 52 px blocks and crosses that line too) the mock's 52 px
