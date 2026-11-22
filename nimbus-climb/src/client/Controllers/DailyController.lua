@@ -253,7 +253,9 @@ local K = {
 		-- (Pitch 2 09 B) the prize stand as on PC: the row and the Claim left, the prize card right
 		TilesY = 50, TileGap = 10, TileW = 92, TileMaxH = 150, TileMinH = 80, Raise = 8, PadTop = 6, PadBottom = 8, DayText = 15,
 		AmountText = 17, ChipPx = 54, PetPx = 60, RewardPx = 54,
-		AfterTiles = 8, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15,
+		-- (P2 icons look fin0, minor: Claim's 5 px edge met the tiles' 3 px edge, 0 px of stone) AfterTiles 12: 4 px of stone
+		-- (the 4 px come off the tiles, which have the room: 138 -> 134)
+		AfterTiles = 12, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15,
 		CountText = 17, KeepText = 15, Bottom = 20,
 		HeroW = 196, HeroY = 6, ColGap = 12, HeroPad = 6, CardGap = 2, HeroDayText = 15, PetMax = 160, PlinthH = 6, PlinthOut = 8,
 		PlankH = 26, PlankSide = 12, PlankText = 17, SpeciesText = 15, WispText = 15, BannerText = 15, BarH = 14, BarSide = 10, SegGap = 4,
@@ -1147,6 +1149,9 @@ function H.newCell(i, parent)
 	amount.TextTruncate = Enum.TextTruncate.AtEnd
 	local dim = H.dim(c.Body)
 	local check = label("Check", "", "Title", 36, c.Body, { TextColor3 = SIGN.GrassLip, ZIndex = 7, Visible = false, TextWrapped = false })
+	-- (P2 icons look fin0, minor: green on Day 1's green bills) the tick in a 1-cell cream ring, the 09_daily_layout B
+	-- mock-up's (PixelIcon's keyline)
+	check:SetAttribute("IconKey", SIGN.Tile)
 	PixelIcon.Host(check, CHECK) -- sized with the label
 	U.Cells[i] = { Card = c, Root = c.Root, Pop = pop, Day = day, Art = art, Amount = amount, Dim = dim, Check = check, ArtKey = nil, LookKey = nil,
 		Sparkles = H.sparkles(c.Body) }
@@ -1607,11 +1612,6 @@ function H.placeTile(cell, M, today, wide)
 	local artY = M.PadTop + dayH + 1
 	local artH = math.max(0, amountY - 1 - artY)
 	place(cell.Art, 0, artY, w, artH)
-	-- (U9-4 look review) the tick at the screen's art size (6 px cells on PC, 4 on a phone)
-	local tick = H.px("Art")
-	local check = hostSize(tick)
-	cell.Check.TextSize = check
-	place(cell.Check, (w - check - 8) / 2, (h - check - 8) / 2, check + 8, check + 8)
 	-- the reward's chip (ChipPx, or less where the tile is small) and the art on it at one of the screen's two pixel
 	-- sizes
 	cell.PetPx = math.max(12, math.min(M.PetPx, artH, w - 8))
@@ -1619,6 +1619,17 @@ function H.placeTile(cell, M, today, wide)
 	-- (P2 icons review r1, major 2) the chip is a clear holder now (item 9 B: no block behind the art): the art takes its
 	-- whole room at the 09 B size (it lost 12 px to the block's edge)
 	cell.ArtPx = H.rewardPx(cell.ChipPx, M)
+	-- (U9-4 look review) the tick at the screen's art size (6 px cells on PC, 4 on a phone); (P2 icons look fin0, minor:
+	-- it kept the tile's centre when the art grew, 11 px low and 4 px right of it) centred on the reward's chip, as
+	-- H.paintArt places it (centred with the art's drop shadow in the art box)
+	local tick = H.px("Art")
+	local check = hostSize(tick)
+	cell.Check.TextSize = check
+	local drop = math.ceil(cell.ArtPx / 9)
+	local cx = math.max(0, math.floor((w - cell.ChipPx - drop) / 2)) + cell.ChipPx / 2
+	local cy = artY + math.max(0, math.floor((artH - cell.ChipPx - drop) / 2)) + cell.ChipPx / 2
+	local inset = math.floor((check + 8 - tick) / 2) -- where Host centres the icon in its label
+	place(cell.Check, math.floor(cx - tick / 2) - inset, math.floor(cy - tick / 2) - inset, check + 8, check + 8)
 	-- (kit-b U9-4) the glint round the art (a cream sparkle reads on today's gold)
 	local a = wide and cell.PetPx or cell.ChipPx
 	H.placeSparkles(cell.Sparkles, (w - a) / 2, artY + (artH - a) / 2, a, a, sparklePx(), SIGN.Tile)

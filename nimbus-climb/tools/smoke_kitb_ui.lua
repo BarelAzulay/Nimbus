@@ -2804,6 +2804,36 @@ local function serverScenarios()
 			tb:close()
 		end
 		T.check(tbSrc:find('SetAttribute%("IconKey"') ~= nil, "icons B: the top bar's pill icons wear the keyline (TopBarController sets IconKey)")
+		-- (P2 icons look fin0, minor: the Daily's claimed tick, green on Day 1's green bills, had no rim) a one-ink glyph in
+		-- a keyline too: the ring in the key colour, the glyph in its host's ink; re-inking the host re-inks the glyph only
+		local thost = Instance.new("TextLabel")
+		thost.Size = UDim2.fromOffset(40, 40)
+		thost.TextSize = 30
+		thost.TextColor3 = Color3.fromRGB(63, 154, 69)
+		thost:SetAttribute("IconKey", key)
+		thost.Parent = parent
+		local ti = PI.Host(thost, "check")
+		local function inks(icon)
+			local ringN, glyphN, other = 0, 0, 0
+			for _, f in ipairs(icon and icon:GetChildren() or {}) do
+				if f:IsA("Frame") then
+					if sameColor(f.BackgroundColor3, key) then
+						ringN = ringN + 1
+					elseif sameColor(f.BackgroundColor3, thost.TextColor3) then
+						glyphN = glyphN + 1
+					else
+						other = other + 1
+					end
+				end
+			end
+			return ringN, glyphN, other
+		end
+		local r1, g1, o1 = inks(ti)
+		thost.TextColor3 = Color3.fromRGB(10, 20, 200)
+		local r2, g2, o2 = inks(ti)
+		T.check(ti ~= nil and ti:GetAttribute("Key") == true and r1 > 0 and g1 > 0 and o1 == 0 and r2 == r1 and g2 == g1 and o2 == 0,
+			"icons B: a one-ink glyph keyed (the Daily's tick): the ring in the key colour, the glyph in the host's ink, re-inked without its ring",
+			fmt("ring %d / %d, glyph %d / %d, other %d / %d, key %s", r1, r2, g1, g2, o1, o2, tostring(ti and ti:GetAttribute("Key"))))
 		-- the greyed state: every colour to its grey twin, and back
 		local g = PI.New(parent, "gift", 27, PI.Own)
 		T.check(type(PI.Grey) == "function", "icons B: PixelIcon.Grey(icon, on) exists")
@@ -13430,6 +13460,27 @@ local function clientScenarios()
 					return
 				end
 				local hr = U8.rect(hero)
+				-- (P2 icons look fin0, minor: at 844 x 390 the Claim plank's wood edge touched the tiles' bottom edge, 0 px of
+				-- stone) the Claim's edge 3 screen px or more under every day tile's edge above it, both UIStrokes counted
+				local claim = page and page:FindFirstChild("ClaimButton", true)
+				if claim and U8.shown(claim) then
+					local function edge(o)
+						local st = o:FindFirstChildOfClass("UIStroke")
+						return (st and st.Enabled ~= false and st.Thickness or 0) * k
+					end
+					local c = U8.rect(claim)
+					local tight = {}
+					for i = 1, 6 do
+						local t = cells[i] and U8.shown(cells[i]) and U8.rect(cells[i])
+						if t and t.X < c.R and c.X < t.R and t.B <= c.Y + 0.5 then
+							local gap = (c.Y - edge(claim)) - (t.B + edge(cells[i]))
+							if gap < 3 - 0.01 then
+								tight[#tight + 1] = fmt("Day %d %.1f px", i, gap)
+							end
+						end
+					end
+					T.check(#tight == 0, tag .. ": the Claim's wood edge 3 px or more under the day tiles' edges", table.concat(tight, "; "))
+				end
 				-- the prize stand: the Wisp big, its name, its own countdown inside the card
 				local vp = hero:FindFirstChild("PetViewport", true)
 				local side = vp and math.min(vp.AbsoluteSize.X, vp.AbsoluteSize.Y) or 0
@@ -13608,6 +13659,37 @@ local function clientScenarios()
 				end
 				T.check(#wrong == 0, fmt("%s: Days 1-6's reward art %d px, %d screen px a cell", tag, designPx, cellPx), table.concat(wrong, "; "))
 				T.check(#crowd == 0, tag .. ": each reward's art inside its tile's art box, clear of the day and the amount", table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
+				-- (P2 icons look fin0, minor: the claimed tick kept the tile's centre when the art grew, 11 px low and 4 px
+				-- right of it, and had no rim, green on Day 1's green bills; the 09_daily_layout B mock-up rims it in the
+				-- tile's cream) each claimed day's tick centred on its reward's art (1 screen px or less off), in a 1-cell
+				-- Sign.Tile ring (PixelIcon's keyline: the icon's Key attribute)
+				local Sign = LoadingH.shared("Theme").Sign
+				local function same(c1, c2)
+					return math.abs(c1.R - c2.R) < 0.01 and math.abs(c1.G - c2.G) < 0.01 and math.abs(c1.B - c2.B) < 0.01
+				end
+				local ticks, off = 0, {}
+				for i = 1, 6 do
+					local cell = holder:FindFirstChild("Cell" .. i, true)
+					local host = cell and cell:FindFirstChild("Check", true)
+					local tick = host and host:FindFirstChild("Icon")
+					local icon = rewardIcon(cell)
+					if host and U8.shown(host) and tick and icon then
+						ticks = ticks + 1
+						local t, a = U8.rect(tick), U8.rect(icon)
+						local dx, dy = (t.X + t.R) / 2 - (a.X + a.R) / 2, (t.Y + t.B) / 2 - (a.Y + a.B) / 2
+						local ring = 0
+						for _, f in ipairs(tick:GetChildren()) do
+							if f:IsA("Frame") and f.BackgroundTransparency < 0.01 and same(f.BackgroundColor3, Sign.Tile) then
+								ring = ring + 1
+							end
+						end
+						if math.abs(dx) > 1 or math.abs(dy) > 1 or ring == 0 or tick:GetAttribute("Key") ~= true then
+							off[#off + 1] = fmt("Cell%d: %+.1f, %+.1f px off its art, %d ring frames", i, dx, dy, ring)
+						end
+					end
+				end
+				T.check(ticks >= 1 and #off == 0, tag .. ": each claimed day's tick centred on its reward's art, in a 1-cell cream ring",
+					fmt("%d ticks | ", ticks) .. table.concat(off, "; "))
 			end)
 		end
 		local ok, err = pcall(function()

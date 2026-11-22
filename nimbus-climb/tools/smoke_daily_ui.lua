@@ -1046,8 +1046,9 @@ local function clientScenarios()
 		-- (U9-4 look review) a 10 px gap keeps 4 px of stone between two tiles' strokes: 90 wide (was 92 at an 8 px gap);
 		-- (look review 2) the tiles start 2 px lower (TilesY 50) so today's raised tile clears the chips: 120 tall (was 122).
 		-- (Pitch 2 item 09_daily_layout B, the prize stand: six tiles share the row with the 196 px prize card, 89 wide, and
-		-- take the height the Claim row under them leaves, 138 tall)
-		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 89) <= 1 and abs(cell.AbsoluteSize.Y - 138) <= 1, "daily mobile: tiles 89x138", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
+		-- take the height the Claim row under them leaves, 138 tall). (P2 icons look fin0, minor: the Claim's wood edge met
+		-- the tiles' edge, 0 px of stone) 134 tall: AfterTiles 8 -> 12 leaves 4 px of stone over the Claim (daily_layout_b)
+		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 89) <= 1 and abs(cell.AbsoluteSize.Y - 134) <= 1, "daily mobile: tiles 89x134", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
 		-- (slop-audit win 6, Review Focus 5) the phone layout re-sizes the X (56 -> 44 px): the drawn mark follows it.
 		-- (U9-4 look review 2) a phone draws a 36 px block in the band over its 44 px touch box (CloseTap, centred on it)
 		local closeBtn, closeTap = H.find(win, "CloseButton"), H.find(win, "CloseTap")

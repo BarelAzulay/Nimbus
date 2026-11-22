@@ -330,6 +330,8 @@ end
 -- draw list of an Art glyph in a keyline: first its silhouette grown one cell every way (8 neighbours) as letter "@" (the
 -- key colour: New draws it under the glyph, so only a 1-cell ring of it shows), then the glyph's layers without the drop
 -- shadow (the mock-up's top bar: make_item9.keyline, no drop on a dark plate). Cells run -1 .. 10. nil with no Art
+-- (P2 icons look fin0, minor: the Daily's claimed tick, green on Day 1's green bills) a one-ink glyph's keyline the same
+-- way: its runs ("#", drawn in the caller's ink) over the grown ring
 local keyCache = {}
 function PixelIcon.KeyRuns(name)
 	if keyCache[name] then
@@ -337,7 +339,14 @@ function PixelIcon.KeyRuns(name)
 	end
 	local art = PixelIcon.ArtRuns(name)
 	if not art then
-		return nil
+		local runs = PixelIcon.Runs(name)
+		if not runs then
+			return nil
+		end
+		art = {}
+		for i, r in ipairs(runs) do
+			art[i] = { r[1], r[2], r[3], r[4], "#" }
+		end
 	end
 	local solid = {}
 	for _, r in ipairs(art) do
@@ -822,8 +831,8 @@ function PixelIcon.New(parent, name, px, colour, key)
 	if colour == PixelIcon.Own and not own then
 		colour = nil -- a one-ink glyph has no colours of its own: white, as with no colour
 	end
-	if not (own and typeof(key) == "Color3") then
-		key = nil
+	if typeof(key) ~= "Color3" then
+		key = nil -- (P2 icons look fin0) a one-ink glyph takes a keyline too (KeyRuns)
 	end
 	local rects = (key and PixelIcon.KeyRuns(name)) or (own and PixelIcon.ArtRuns(name)) or PixelIcon.Runs(name)
 	if not rects then
@@ -881,8 +890,9 @@ function PixelIcon.New(parent, name, px, colour, key)
 		f.Name = "R" .. i
 		f.BorderSizePixel = 0
 		f.BackgroundTransparency = 0
-		if own and r[5] == "@" then
+		if key and r[5] == "@" then
 			f.BackgroundColor3 = key
+			f:SetAttribute("Ring", true) -- (a one-ink glyph's caller re-inks the glyph, never its ring: Host, Tint)
 		elseif own then
 			f.BackgroundColor3 = artColour(name, r[5])
 			if r[5] == "~" then
@@ -1011,7 +1021,7 @@ end
 -- recolours an icon made by PixelIcon.New (an own-colour glyph: every cell but its drop shadow, in one ink)
 function PixelIcon.Tint(icon, colour)
 	for _, f in ipairs(icon and icon:GetChildren() or {}) do
-		if f:IsA("Frame") and not f:GetAttribute("BaseT") then
+		if f:IsA("Frame") and not f:GetAttribute("BaseT") and not f:GetAttribute("Ring") then
 			f.BackgroundColor3 = colour
 		end
 	end
@@ -1131,7 +1141,7 @@ function PixelIcon.Host(host, name, px, colour)
 		icon.ZIndex = host.ZIndex
 		for _, f in ipairs(icon:GetChildren()) do
 			if f:IsA("Frame") then
-				if not own then
+				if not own and not f:GetAttribute("Ring") then
 					f.BackgroundColor3 = colour or host.TextColor3
 				end
 				f.BackgroundTransparency = composeT(f, host.TextTransparency)
@@ -1147,8 +1157,8 @@ function PixelIcon.Host(host, name, px, colour)
 			icon:Destroy()
 		end
 		-- (P2 icons review r1, major 7) a host's IconKey attribute (a Color3: the top bar's pill buttons) draws its own-colour
-		-- icon in that keyline
-		local key = own and host:GetAttribute("IconKey") or nil
+		-- icon in that keyline; (P2 icons look fin0) a one-ink one too (the Daily's claimed tick)
+		local key = host:GetAttribute("IconKey")
 		icon = PixelIcon.New(host, name, PixelIcon.Snap(px or (tonumber(host.TextSize) or 18) * 0.9), own and PixelIcon.Own or (colour or host.TextColor3), key)
 		centreIn(icon, host)
 		entry.icon = icon
