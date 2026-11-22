@@ -7037,11 +7037,13 @@ function Hud.LayoutFighter(B, m, top)
 			room = room - math.ceil((K.TEAM_KEY_W_PX + K.TEAM_KEY_GAP_PX + 2) / max(0.05, m.F))
 		end
 		cellW = max(tile + 78, min(m.Landscape and K.HELPER_W_WIDE or cellW, room))
-		if not m.Landscape and Hud.ThreeKeys(m) and room < tile + 78 and Hud.helpersRow ~= true then
+		if not m.Landscape and Hud.ThreeKeys(m) and room < tile + 78 then
 			-- (Pitch 2 item 1b, look review r1: at 360 x 640 "STONE SKIN" broke as "STON / E...") a small tall phone, whose
 			-- column's least width already passes the centre 40%: the column is as wide as the CHEER / BACK row under it, so a
-			-- word of the buff's name fits beside the tile (390 x 844 keeps its column, which holds the word, inside the 30%;
-			-- two helpers side by side under the boss strip keep their cells: the row would only reach further right)
+			-- word of the buff's name fits beside the tile (390 x 844 keeps its column, which holds the word, inside the 30%).
+			-- (keys lane, look fixA r1 follow-up: the full raid's strip now spans 360 x 640's top, its two helpers side by side
+			-- under the fighter card broke "STON / E..." again) two helpers side by side take the same cells: the row reaches
+			-- further right, over the empty sky under the strips (battle_hud_no_overlap keeps it off every card)
 			cellW = max(cellW, math.ceil((2 * K.TEAM_KEY_W_PX + K.TEAM_KEY_GAP_PX) / max(0.05, m.F)))
 		end
 	end
@@ -7538,18 +7540,33 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		return hasTimer and math.ceil(max(4, #fmtTime(B.TimeLimit)) * tpx * 0.56) + 4 or 0
 	end
 	local timerW = timerWidth(timerPx)
-	if hasTimer and bossUnit and B.Mode == "Raid" then
+	-- a raid's row 1: the boss's whole name at its floor size (nameNeed) and its tier beside it (tierNeed: the gap and the
+	-- tier's width, as the row lays them out below)
+	local raidName, raidTier, nameNeed, tierNeed = nil, "", 0, 0
+	if bossUnit and B.Mode == "Raid" then
+		raidName = tostring(bossUnit.name or "?")
+		local npx = px(18)
+		local okN, mN = pcall(Theme.Measure, raidName, "Heading", npx)
+		nameNeed = math.ceil(max((okN and typeof(mN) == "Vector2") and mN.X or 0, #raidName * npx * 0.56) * 1.04)
+		raidTier = (B.Raid and B.Raid.Tier) and tostring(B.Raid.Tier) or ""
+		tierNeed = (raidTier ~= "") and (8 + math.ceil(#raidTier * px(18) * 0.6) + 4) or 0
+	end
+	if hasTimer and raidName then
 		-- (Pitch 2 item 1b, look review r2: the 640 x 360 card in the gap, 274 wide, cut "Storm Ti..." by 1 px beside a 22 px
-		-- timer) a narrow raid card's timer takes the floor size where that keeps the boss's whole name on row 1
-		local name, npx = tostring(bossUnit.name or "?"), px(18)
-		local okN, mN = pcall(Theme.Measure, name, "Heading", npx)
-		local nameNeed = math.ceil(max((okN and typeof(mN) == "Vector2") and mN.X or 0, #name * npx * 0.56) * 1.04)
+		-- timer) a narrow raid card's timer takes the floor size where that keeps the boss's whole name on row 1; (keys lane,
+		-- look fixA r1: 390 x 844 sent the tier "Starter" to a pill of its own) first where it keeps the name AND its tier there
 		local function nameRoom(tw)
 			return right - tw - gapT - x0 - 4
 		end
-		if nameRoom(timerW) < nameNeed and nameRoom(timerWidth(px(18))) >= nameNeed then
-			timerPx = px(18)
-			timerW = timerWidth(timerPx)
+		for _, need in ipairs({ nameNeed + tierNeed, nameNeed }) do
+			if nameRoom(timerW) >= need then
+				break
+			end
+			if nameRoom(timerWidth(px(18))) >= need then
+				timerPx = px(18)
+				timerW = timerWidth(timerPx)
+				break
+			end
 		end
 	end
 	Hud.timer.Visible = hasTimer
@@ -7562,15 +7579,16 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local showClock = hasTimer and w >= 400
 	-- (P2 fix A: a portrait phone's 463 px strip cut a 20-character name beside the clock) any raid card: the clock only
 	-- where the boss's whole name fits beside it at the name's floor size, after the RAID tag where the tag shows
-	if hasTimer and bossUnit and B.Mode == "Raid" then
-		local name, npx = tostring(bossUnit.name or "?"), px(18)
-		local okN, mN = pcall(Theme.Measure, name, "Heading", npx)
-		local nameNeed = math.ceil(max((okN and typeof(mN) == "Vector2") and mN.X or 0, #name * npx * 0.56) * 1.04)
+	if hasTimer and raidName then
 		local withClock = right - timerW - 4 - 18 - 8
 		local tagW = math.ceil(4 * px(18) * 0.62) + 18 -- (the RAID tag's width below)
 		local tagRoom = (withClock - x0 - tagW - 10 >= 110) and (tagW + 10) or 0
-		showClock = withClock - x0 - tagRoom - 4 >= nameNeed
-	end
+		-- (keys lane, look fixA r1) the clock gives its room to the tier too: shown only where the whole name and, where the
+		-- row holds it without the clock, the tier beside it still fit
+		local without = right - timerW - gapT
+		local tagRoom0 = (without - x0 - tagW - 10 >= 110) and (tagW + 10) or 0
+		local tierFits = raidTier ~= "" and without - x0 - tagRoom0 - 4 >= nameNeed + tierNeed
+		showClock = withClock - x0 - tagRoom - 4 >= nameNeed + (tierFits and tierNeed or 0)	end
 	Hud.clock.Visible = showClock
 	Hud.clock.Position = UDim2.fromOffset(right - timerW - 4 - 18, P + (rowH - 18) / 2)
 	local leftEnd = showClock and (right - timerW - 4 - 18 - 8) or (hasTimer and (right - timerW - gapT) or right)
@@ -7596,7 +7614,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			lx = x0 + tagW + 10
 		end
 		Hud.bossName.Visible = true
-		local nameW = Hud.FitLine(Hud.bossName, tostring(bossUnit.name or "?"), px(compact and 22 or 24), px(18), leftEnd - lx - 4)
+		-- (keys lane, look fixA r1) the name keeps the tier's room beside it where both fit at the name's floor size
+		local tierRoom = (raidTier ~= "" and leftEnd - lx - 4 >= nameNeed + tierNeed) and tierNeed or 0
+		local nameW = Hud.FitLine(Hud.bossName, tostring(bossUnit.name or "?"), px(compact and 22 or 24), px(18), leftEnd - lx - 4 - tierRoom)
 		Hud.bossName.Position = UDim2.fromOffset(lx, P)
 		Hud.bossName.Size = UDim2.fromOffset(nameW + 4, rowH)
 		local tier = (B.Raid and B.Raid.Tier) and tostring(B.Raid.Tier) or ""
@@ -7761,6 +7781,12 @@ function Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
 	end
 	Hud.wavePill.Visible = waveText ~= ""
 	setText(Hud.wavePill, waveText)
+	-- (keys lane, look fixA r1: "Minions x4", not in the approved 06 A pills, pushed "3 players" onto a row of its own on PC
+	-- and the phone's pills onto a second row) a raid's minions are its wave pill, "Wave 2/2", as the mock-up's four pills
+	-- (Storm, Enraged, Wave, players); the minions themselves are on the enemy list. Elsewhere the count stays
+	if B.Mode == "Raid" and Hud.wavePill.Visible then
+		Hud.minionPill.Visible = false
+	end
 	Hud.tierPill.Visible = tierPill ~= nil and tierPill ~= ""
 	setText(Hud.tierPill, tierPill or "")
 	if bossUnit then
@@ -7794,22 +7820,52 @@ function Hud.FlowPills(width)
 	-- (each pill's 2 px wood edge is drawn outside its box: the box sits 2 px in, so the drawn pill is PILL_H tall and the
 	-- drawn gap PILL_GAP, as the pitch's)
 	local e = 2
-	local x, row, rows = 0, 0, 0
+	local rows, cur, x = {}, {}, 0
 	for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.wavePill, Hud.playersPill, Hud.tierPill }) do
 		if pill.Visible then
 			fitPill(pill, K.PILL_H - 2 * e)
 			local pw = min(pill.Size.X.Offset + 4, width - 2 * e) -- (4 px more: a lead icon's pill reads tight at 0.8 scale)
 			if x > 0 and x + pw + 2 * e > width then
-				x, row = 0, row + 1
+				rows[#rows + 1] = cur
+				cur, x = {}, 0
 			end
-			pill.AutomaticSize = Enum.AutomaticSize.None
-			pill.Position = UDim2.fromOffset(x + e, row * (K.PILL_H + K.PILL_GAP) + e)
-			pill.Size = UDim2.fromOffset(pw, K.PILL_H - 2 * e)
+			cur[#cur + 1] = { pill, pw }
 			x = x + pw + 2 * e + K.PILL_GAP
-			rows = row + 1
 		end
 	end
-	return rows > 0 and (rows * K.PILL_H + (rows - 1) * K.PILL_GAP) or 0
+	if #cur > 0 then
+		rows[#rows + 1] = cur
+	end
+	-- (keys lane, look fixA r1: "3 players" alone on a row of its own under the strip's other pills) a last row of one pill
+	-- takes the row above's last pill where that row keeps two and both still fit in the width
+	local function rowW(r)
+		local s = 0
+		for i, it in ipairs(r) do
+			s = s + it[2] + 2 * e + ((i > 1) and K.PILL_GAP or 0)
+		end
+		return s
+	end
+	while #rows >= 2 and #rows[#rows] == 1 and #rows[#rows - 1] >= 3 do
+		local prev = rows[#rows - 1]
+		local trial = { prev[#prev], rows[#rows][1] }
+		if rowW(trial) > width then
+			break
+		end
+		table.remove(prev)
+		rows[#rows] = trial
+	end
+	for row, list in ipairs(rows) do
+		local px0 = 0
+		for _, it in ipairs(list) do
+			local pill, pw = it[1], it[2]
+			pill.AutomaticSize = Enum.AutomaticSize.None
+			pill.Position = UDim2.fromOffset(px0 + e, (row - 1) * (K.PILL_H + K.PILL_GAP) + e)
+			pill.Size = UDim2.fromOffset(pw, K.PILL_H - 2 * e)
+			px0 = px0 + pw + 2 * e + K.PILL_GAP
+		end
+	end
+	local n = #rows
+	return n > 0 and (n * K.PILL_H + (n - 1) * K.PILL_GAP) or 0
 end
 
 -- the boss the top card shows: the raid boss, else a dungeon / wave mini-boss that is still up

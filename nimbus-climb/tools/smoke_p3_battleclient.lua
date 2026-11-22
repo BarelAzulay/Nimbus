@@ -823,7 +823,9 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	d:run(1.5, 30)
 	b = BC.GetBattle()
 	T.check(b.Units > unitsBefore, "raid: a minion wave adds units", unitsBefore .. " -> " .. b.Units)
-	T.check(hasText(find("Root.TopCard"), "Minions"), "raid HUD: the minion pill")
+	-- (kit-b Pitch 2 item 06 A, keys lane look fixA r1: "Minions x4", not one of the approved strip's four pills, pushed
+	-- "3 players" onto a row of its own) a raid's minion wave is its "Wave n/N" pill, the minions themselves on the enemy list
+	T.check(hasText(find("Root.TopCard"), "^Wave %d+ ?/ ?%d+$") and not hasText(find("Root.TopCard"), "Minions"), "raid HUD: the minion wave's pill (Wave n/N)")
 	KC.toClient("BattleState", "Events", { { type = "Enrage", unit = d.sim.boss.id } }, d.id)
 	d:run(0.5, 30)
 	T.check(shown(find("Root.TopCard.Pills.Enraged")), "raid HUD: ENRAGED pill after the Enrage event")

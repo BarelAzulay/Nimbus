@@ -272,9 +272,14 @@ class Checker:
             self.check(len(order) == 1, tag + "the pills sit in one row (spec 06 A: all four in one row on the phone)", names)
         if h > w:
             self.check(len(order) <= 2, tag + "the pills take at most two rows (spec 06 A: a portrait card wraps them to a second row)", names)
+        if (w, h) == (390, 844):
+            # (the look's 390 x 844 rule; at 360 x 640 the strip's row 1 has no room for the RAID tag, the name, the tier, the
+            # timer and Leave: its tier is the second pill row's, beside the players)
             tiers = [p for p, _ in pills if p.split(".")[-1].lower().startswith("tier")]
             self.check(not tiers, tag + "the tier sits beside the boss name, not as a pill", ", ".join(tiers))
-        if len(order) > 1:
+        if len(order) > 1 and (h > w or w >= 844):
+            # (PC, the wide phone and portrait; a short landscape phone's card is the 240-274 px gap between the team and the
+            # keys, where the widest pills go one a row by need)
             self.check(len(order[-1]) >= 2, tag + "no pill alone on the last row", names)
         enr = nodes.get(pre + "Enraged")
         t = text_of(enr) if enr else None
