@@ -1630,6 +1630,26 @@ local function clientScenarios()
 			return c.Result
 		end
 		local injected, bites = false, 0
+		-- (look review r2, major 1) my frog, the Double strike's victim: its drawn knock-back / lift every sub-step
+		local PPb = moduleAt(ROOTS.shared .. "/PetPoses")
+		local frogRows = {}
+		local function frogSample()
+			local ps = AF.Pose(f.id)
+			local k, y, list = 0, 0, nil
+			if PPb and type(ps) == "table" and type(ps.Name) == "string" then
+				local o = PPb.Offset(ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach, ps.Feet)
+				k, y = o.Z - (tonumber(ps.Forward) or 0), o.Y
+				local blend = tonumber(ps.Blend) or 1
+				if type(ps.Prev) == "table" and type(ps.Prev.Name) == "string" and blend < 1 then
+					local q = ps.Prev
+					local o2 = PPb.Offset(q.Name, q.P, q.Ranged, q.Amp, q.Reach, q.Feet)
+					k = o2.Z - (tonumber(q.Forward) or 0) + (k - (o2.Z - (tonumber(q.Forward) or 0))) * max(0, blend)
+					y = o2.Y + (y - o2.Y) * max(0, blend)
+				end
+				list = (ps.Name == "Hurt" and type(ps.Reach) == "table") and ps.Reach or nil
+			end
+			frogRows[#frogRows + 1] = { T = os.clock(), Name = ps and ps.Name or nil, Knock = k, Y = y, Hits = list }
+		end
 		local ok, err = pcall(function()
 			for _ = 1, 200 do
 				f.nextAttack = huge
@@ -1659,6 +1679,7 @@ local function clientScenarios()
 				KC.toClient("BattleState", "Snapshot", snap, id)
 				for _ = 1, 3 do
 					Mock.Step(0.1 / 3)
+					frogSample()
 					local B = BC._St.battle
 					local u = B and B.units and B.units[foe.id]
 					local ps = AF.Pose(foe.id)
@@ -1793,6 +1814,33 @@ local function clientScenarios()
 		end
 		T.check(dPlay ~= nil and dbl ~= nil and type(dbl.Result) == "number" and abs(dPlay.DueAt - dbl.Result) < 1e-6,
 			fmt("bounce battle: the DoubleHit sparks are due on the second chomp (due %s vs %s)", tostring(dPlay and dPlay.DueAt), tostring(dbl and dbl.Result)))
+		-- (look review r2, major 1: "the Double strike's second jolt on the bitten pet never plays in the game": HitTwist
+		-- played the DoubleHit with From = the victim and no To, so AttackFx scheduled no Hurt; the r2 evidence faked it with
+		-- a full Melee hit) through the real BattleController: on the second chomp my frog, the victim, re-hit at half power
+		-- (the mock's 1.64 hit, enemy_new power 0.5): its Hurt lists a 0.5 hit, it is not pulled toward the bear (its
+		-- knock-back never drops at the re-hit), the half hit stacks on top (~0.38 -> ~0.57: + 0.10 at least) with a second
+		-- jolt after its hit stop
+		local dAt = dbl and type(dbl.Result) == "number" and dbl.Result or nil
+		local k0, kTop, yTop, minK, half = nil, 0, 0, huge, false
+		for _, r in ipairs(frogRows) do
+			if dAt and r.T <= dAt + 1e-6 then
+				k0 = r.Knock
+			elseif dAt and r.T <= dAt + STOP + 0.3 then
+				kTop = max(kTop, r.Knock)
+				if r.T <= dAt + STOP + 0.12 then -- (the re-hit and its jolt: the bite's own way home starts later)
+					minK = min(minK, r.Knock)
+					if r.T > dAt + STOP then
+						yTop = max(yTop, r.Y)
+					end
+				end
+				for _, h in ipairs(r.Hits or {}) do
+					half = half or (type(h) == "table" and abs((tonumber(h.Power) or 0) - 0.5) < 1e-6)
+				end
+			end
+		end
+		T.check(dAt ~= nil and k0 ~= nil and k0 > 0.2 and half and minK > k0 - 0.03 and kTop > k0 + 0.1 and yTop > 0.025,
+			fmt("bounce battle: the Double strike re-hits my frog (its victim) at half power on the second chomp: a 0.5 hit listed (%s), %.3f back before, never pulled in (%.3f), stacks to %.3f (+%.3f >= 0.10), a second jolt %.3f (> 0.025)",
+				tostring(half), k0 or -1, minK, kTop, kTop - (k0 or 0), yTop))
 		T.check(tPlay ~= nil and thr ~= nil and type(thr.Result) == "number" and abs(tPlay.DueAt - thr.Result) < 1e-6,
 			fmt("bounce battle: the Thorns bolt is due on the bite (due %s vs %s)", tostring(tPlay and tPlay.DueAt), tostring(thr and thr.Result)))
 		T.check(posesSeen.DashDouble == true and posesSeen.DashThorns == true, "bounce battle: the bear plays DashDouble and DashThorns")
