@@ -2189,6 +2189,10 @@ local function clientScenarios()
 				T.info("*guide pins: NC_GUIDE_PINS_SIZES=" .. only .. " (not the gate run)")
 			end
 		end
+		-- (while working: NC_GUIDE_TRACE=<file> appends one line a frame: the run, the frame, the arrow, the chip and the
+		-- GuideSign as the walk reads them)
+		local tracePath = os and os.getenv and os.getenv("NC_GUIDE_TRACE")
+		local traceFile = (tracePath and tracePath ~= "" and io and io.open) and io.open(tracePath, "a") or nil
 		local runs = {}
 		local function add(kind, name, size, frames)
 			runs[#runs + 1] = { kind = kind, name = name, w = size[1], h = size[2], frames = frames }
@@ -2314,7 +2318,7 @@ local function clientScenarios()
 				local fullW, arrowNear = nil, nil
 				-- (guide_pins) the GuideSign's state each frame ("off", or its spot: right / left / under the tip, "/name"
 				-- with the name alone) and the first frame it stacked on the chip
-				local signStates, stack = {}, nil
+				local signStates, stack, traceSign = {}, nil, nil
 				for i, fr in ipairs(run.frames) do
 					if i > 1 then
 						place(fr[1], fr[2], fr[3])
@@ -2419,6 +2423,7 @@ local function clientScenarios()
 						local x0 = bb.X + card.Position.X.Offset + card.Position.X.Scale * (bb.R - bb.X) - card.AnchorPoint.X * w
 						local cy = (bb.Y + bb.B) / 2 + card.Position.Y.Offset
 						local s = grow({ X = x0, Y = cy - h / 2, R = x0 + w, B = cy + h / 2 }, 3 * sk)
+						traceSign = s
 						seenSign = seenSign or at
 						signFrames = signFrames + 1
 						if not onScreen(s) then
@@ -2457,6 +2462,14 @@ local function clientScenarios()
 						end
 					end
 					signStates[i] = signStates[i] or "off"
+					if traceFile then
+						local function r4(r)
+							return r and fmt("%.0f,%.0f,%.0f,%.0f", r.X, r.Y, r.R, r.B) or "-"
+						end
+						traceFile:write(fmt("%s|%d|%.1f|%.0f|%s|chip %s|arrow %s|sign %s %s\n", tag, i, fr[1], fr[2], tostring(fr[4] or ""),
+							r4(c), r4(box), signStates[i], r4(traceSign)))
+						traceSign = nil
+					end
 					if i == 1 and run.name == "walk" and (run.w == 1920 or run.w == 1280 or run.w == 390) then
 						T.check(box ~= nil and bb ~= nil, tag .. ": at 50 studs the arrow and its sign show (the mock's framing)",
 							fmt("arrow %s, sign %s", tostring(box ~= nil), tostring(bb ~= nil)))
@@ -2583,6 +2596,9 @@ local function clientScenarios()
 		Mock.Teleport(player, CFrame.new(L.Origin + Vector3.new(0, 3, 20)))
 		KC.advance(0.5)
 		putBack()
+		if traceFile then
+			traceFile:close()
+		end
 		T.check(ok, "guide walk: the scenario ran", tostring(err))
 		KC.flushErrors(scen)
 	end

@@ -276,7 +276,8 @@ the x3 plank's coin off its words), I2 the Secret hero's texts whole and clear o
 phone, C1 / C2 / C5 battle_hud_no_overlap's fighter-part, run-chip and card gap rules. `--list` says what each pin checks,
 `--pin K1,I2` runs a few. The world guide's pins (MJ-A / MJ-B fin1, W1 / W2 pol1: the walk, the stop at 20 studs, the slow
 pans, the walk with a turning camera) are the smoke list `guide_pins` (`smoke_kitb_world.lua`, travel_guide_walk's runner;
-`NC_GUIDE_PINS_SIZES=640x360,1920x1080` walks a few sizes while working).
+`NC_GUIDE_PINS_SIZES=640x360,1920x1080` walks a few sizes while working; `NC_GUIDE_TRACE=<file>` appends one line a frame:
+the run, the arrow, the chip and the GuideSign's spot and box).
 
 `stroke_walk.py` (kit-b U6) dumps the render scenarios one at a time (default: all but the widget galleries, at 1920x1080;
 `--grid` adds the other three sizes) and fails on any text with a classic stroke under an outline, or an outline on an
