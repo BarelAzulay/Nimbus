@@ -553,26 +553,46 @@ local function serverScenarios()
 		end
 		T.check(knock > 0 and jolt > 0 and abs(hk / knock - 0.78) < 0.01 and abs(hj / jolt - 0.78) < 0.01,
 			fmt("hurt: an evolved body (Hop 0.78) moves 0.78 x as far (back %.3f / %.3f, jolt %.3f / %.3f)", hk, knock, hj, jolt))
-		-- (d) (the approved mock's fast lane: "a Double strike adds a second jolt", its 2nd hit 0.14 s after the 1st; the r2
-		-- look sheet: a fresh Hurt from the spot pulled the knocked-back bear 0.12 .. 0.16 toward its biter at a re-hit) a
-		-- re-hit while still knocked back: Sample's `reach` = the knock-back carried (0..1 of the knock; AttackFx: the
-		-- running Hurt's own then). The new reaction starts there, still and on the floor, and is never nearer its biter
-		-- before its way home; on its paws and home at p 1 like any Hurt
-		local carry = 0.8
+		-- (d) (the approved mock's fast lane: "a Double strike adds a second jolt", its half-power 2nd hit 0.14 s after the
+		-- bite; the r2 look sheet: a fresh Hurt from the spot pulled the knocked-back bear 0.12 .. 0.16 toward its biter at a
+		-- re-hit) a re-hit while still knocked back. (look review r2, major 2: the mock ADDS each hit's knock-back,
+		-- motion_pitch.enemy_new; the r1 carry was one number 0..1 of a knock, which capped the stack at one knock-back, so
+		-- the mock's 0.29 -> 0.43 at the Double strike could never show) Sample's `reach` is now the hits themselves: a list
+		-- of { Age = seconds of the hit's own reaction at p 0 (an earlier hit > 0; one still to land < 0: the re-hit's own,
+		-- after its hit stop), Power }, Secs = the reaction's length (AttackFx: K.HURT + that delay). The bite 0.09 s into its
+		-- reaction (just knocked back) + the Double strike's half hit after its 0.05 stop: it starts exactly where the bite's
+		-- reaction is (no pull toward the biter), still on its way out, then the half hit stacks on top (0.38 -> ~0.57), a
+		-- second jolt (~0.05) and a second snap of the head; on its paws and home at p 1 like any Hurt
+		local secs = tonumber(P.HURT_SECS) or 0.5
+		local carry = { Secs = secs + STOP, { Age = 0.09, Power = 1 }, { Age = -STOP, Power = 0.5 } }
+		local function single(t)
+			return P.Offset("Hurt", math.max(0, math.min(1, t / secs)), false, 1, nil, typical)
+		end
 		local o0 = P.Offset("Hurt", 0, false, 1, carry, typical)
 		local s0 = P.Sample("Hurt", 0, false, 1, carry, typical)
-		local minZ, peakZ = huge, 0
+		local c0 = single(0.09)
+		local minZ, peakZ, jolt2, nose2 = huge, 0, 0, -huge
 		for i = 0, N do
 			local p = i / N
+			local t = p * (secs + STOP)
 			local o = P.Offset("Hurt", p, false, 1, carry, typical)
-			if p <= 0.56 then -- (its way home starts 0.28 s in: p 0.56)
+			local s = P.Sample("Hurt", p, false, 1, carry, typical)
+			if t <= 0.2 then -- (before either way home)
 				minZ = min(minZ, o.Z)
 			end
 			peakZ = max(peakZ, o.Z)
+			if t > STOP + 0.01 and t < STOP + 0.12 then
+				-- the half hit's own jolt / snap: over what the bite alone does then (its jolt is over by 0.03 s, its rock goes on)
+				local alone = P.Sample("Hurt", math.min(1, (0.09 + t) / secs), false, 1, nil, typical)
+				jolt2 = max(jolt2, o.Y - single(0.09 + t).Y)
+				nose2 = max(nose2, pitchOf(s) - pitchOf(alone))
+			end
 		end
-		T.check(abs(o0.Z - carry * 0.38) < 1e-3 and abs(o0.Y) < 1e-6 and abs(pitchOf(s0)) < 1e-3 and minZ > carry * 0.38 - 1e-4 and peakZ < 0.40,
-			fmt("hurt: a re-hit carries the knock-back (reach %.1f): it starts %.3f back, on the floor, level (%.2f deg); never nearer its biter before the way home (%.3f); peaks %.3f",
-				carry, o0.Z, pitchOf(s0), minZ, peakZ))
+		T.check(abs(o0.Z - c0.Z) < 1e-4 and abs(o0.Y - c0.Y) < 1e-4 and minZ > o0.Z - 1e-4 and peakZ > 0.52 and peakZ < 0.60,
+			fmt("hurt: a re-hit carries the earlier hit (Age 0.09): it starts exactly where that reaction is (%.3f back vs %.3f, %.4f up vs %.4f), never nearer its biter before the way home (%.3f), the half hit stacks on top (peak %.3f, 0.52 .. 0.60)",
+				o0.Z, c0.Z, o0.Y, c0.Y, minZ, peakZ))
+		T.check(jolt2 > 0.035 and jolt2 < 0.07 and nose2 > 2.5,
+			fmt("hurt: the Double strike's half hit adds a second jolt (%.3f up over the bite's own, 0.035 .. 0.07) and a second snap of the head (%.1f deg nose up over it, > 2.5)", jolt2, nose2))
 		local cSink, cSlide, cAt, cRest = 0, 0, "", true
 		for _, fs in ipairs(feetSets) do
 			local feet = fs[1] or typical
@@ -591,6 +611,28 @@ local function serverScenarios()
 		end
 		T.check(cSink > -1e-5 and cSlide < 1e-4 and cRest,
 			fmt("hurt: a re-hit's reaction never puts a paw under the floor (%.5f), never slides (%.5f), home at p 1 (%s), 6 paw sets", cSink, cSlide, tostring(cRest)), cAt)
+		-- (e) (look review r2, major 2 + minor 1) the way home is the mock's (motion_pitch.enemy_new: home over 0.30 .. 0.62 s
+		-- of its own time, after the hit stop: the hit + 0.35 .. 0.67), not 0.28 .. 0.50 (home 0.12 s early, so at the fast
+		-- tempo the bear was back on its spot before every bite and the knock-backs never stacked); the hop home that keeps
+		-- the paws from sliding is low and slow (the r2 0.06 hop at 0.28 .. 0.50 read as a second small bounce, 60 % of an
+		-- evolved bear's jolt): at most 0.035 high, peaking in the middle of the mock's way home
+		local function at(t)
+			return P.Offset("Hurt", math.max(0, math.min(1, t / secs)), false, 1, nil, typical)
+		end
+		local zMid, zLate, zHome = at(0.45).Z, at(0.58).Z, at(0.62).Z
+		local hopTop, hopAt = 0, 0
+		for i = 0, N do
+			local t = 0.15 + (0.62 - 0.15) * i / N -- (after the jolt)
+			local y = at(t).Y
+			if y > hopTop then
+				hopTop, hopAt = y, t
+			end
+		end
+		T.check(abs(secs - 0.62) < 1e-6 and abs(zMid - 0.38 * 0.546) < 0.012 and zLate > 0.008 and zLate < 0.03 and abs(zHome) < 1e-4,
+			fmt("hurt: the mock's way home: the reaction lasts 0.62 s after the hit stop (PetPoses.HURT_SECS %.3f); still %.3f back at 0.45 s (the mock's %.3f), %.3f at 0.58, home at 0.62 (%.5f)",
+				secs, zMid, 0.38 * 0.546, zLate, zHome))
+		T.check(hopTop > 0.005 and hopTop <= 0.035 and hopAt >= 0.42 and hopAt <= 0.50,
+			fmt("hurt: the hop home is low and late (%.3f studs high, <= 0.035, at %.2f s: the middle of the mock's way home 0.30 .. 0.62)", hopTop, hopAt))
 	end)
 
 	return S
@@ -768,6 +810,7 @@ local function clientScenarios()
 						-- (the bitten pet) the bear's own pose too
 						local fps = AF.Pose(tgt.Unit)
 						fr.FoeName, fr.FoeP, fr.FoeFeet = fps and fps.Name or nil, fps and fps.P or nil, fps and fps.Feet or nil
+						fr.FoeAmp, fr.FoeReach = fps and fps.Amp or nil, fps and fps.Reach or nil
 						fr.FoeBody = bodyOf(PP, fps)
 						frames[#frames + 1] = fr
 						if each then
@@ -917,8 +960,17 @@ local function clientScenarios()
 				T.check(heldStop and #hurtBodies > 20 and hSink > -1e-4 and hSlide < 1e-3 and deepest > 0.3 and deepest < 0.46,
 					fmt("bounce timing: %s: the bear holds through the hit stop (%s), is knocked back %.2f, never under the floor (%.5f), never sliding (%.5f)", look[3],
 						tostring(heldStop), deepest, hSink, hSlide), hAt)
-				T.check(lastHurt ~= nil and lastHurt.FoeBody.Position.Magnitude < 0.02 and lastHurt.T <= land + STOP + 0.5 + 2 * DT,
-					fmt("bounce timing: %s: the bear is back on its spot when its Hurt ends (%.4f off at %s s)", look[3],
+				-- (look review r2, major 2 + minor 1: the r2 Hurt was home by the hit + 0.55, about 0.12 s before the mock's; its
+				-- end moved from STOP + 0.5 to the mock's STOP + 0.62) and still knocked back like the mock 0.45 s after the stop
+				-- (0.38 x Hop x (1 - smooth(0.15 / 0.32)): the r2 bear was 0.05 back there, the mock's 0.21)
+				local wHop = (type(foeFeet) == "table" and tonumber(foeFeet.Hop)) or 1
+				local late = frameAt(land + STOP + 0.45)
+				local lateK = (late and late.FoeName == "Hurt") and PP.Offset("Hurt", late.FoeP, false, late.FoeAmp, late.FoeReach, late.FoeFeet).Z or 0
+				local lateWant = 0.38 * wHop * (1 - (0.15 / 0.32) ^ 2 * (3 - 2 * 0.15 / 0.32))
+				T.check(abs(lateK - lateWant) < 0.03,
+					fmt("bounce timing: %s: 0.45 s after the hit stop the bear is still %.3f back (the mock's %.3f +- 0.03)", look[3], lateK, lateWant))
+				T.check(lastHurt ~= nil and lastHurt.FoeBody.Position.Magnitude < 0.02 and lastHurt.T >= land + STOP + 0.62 - 2 * DT and lastHurt.T <= land + STOP + 0.62 + 2 * DT,
+					fmt("bounce timing: %s: the bear is back on its spot when its Hurt ends at the mock's hit + 0.67 (%.4f off at %s s)", look[3],
 						lastHurt and lastHurt.FoeBody.Position.Magnitude or -1, lastHurt and fmt("%+.3f", lastHurt.T - land) or "?"))
 
 				------------------------------------------------------------------ a fighter's bite (its Hit Melee.In before the landing)
@@ -1159,8 +1211,11 @@ local function clientScenarios()
 				end
 				local kD, dD = dropAt(hits[2])
 				local kB, dB = dropAt(hits[3])
+				-- (look review r2, major 1: the Double strike's own re-hit is no full bite: it is BattleController.HitTwist's
+				-- half-power DoubleHit, checked through the real BattleController in client_feel_bounce_battle; this one is a
+				-- second full bite 0.14 s on, e.g. a second biter)
 				T.check(kD > 0.2 and dD <= 0.03 and kB > 0.2 and dB <= 0.08,
-					fmt("bounce timing: re-hit: the knocked-back bear is not pulled toward its biter: the Double's hit (%.3f back) %.3f (<= 0.03), the next bite's (%.3f back) %.3f (<= 0.08, the mock's own 0.078)",
+					fmt("bounce timing: re-hit: the knocked-back bear is not pulled toward its biter: a 2nd bite 0.14 s on (%.3f back) %.3f (<= 0.03), the next bite's (%.3f back) %.3f (<= 0.08, the mock's own 0.078)",
 						kD, dD, kB, dB))
 				local bodies = {}
 				for _, r in ipairs(rows) do
@@ -1173,6 +1228,71 @@ local function clientScenarios()
 				T.check(#bodies > 60 and rs > -2e-3 and rsl < 1e-3 and (last.Body == nil or last.Body.Position.Magnitude < 1e-3),
 					fmt("bounce timing: re-hit: no paw under the floor (%.5f; the 0.12 s crossfade lerps two paw-pivoted poses: within 0.002), no slide (%.5f), home on its spot after",
 						rs, rsl), rat)
+				-------------------------------------------------------------------- the fast tempo's bites stack (review r2)
+				-- (look review r2, major 2: "at fast tempo the bitten pet never stays knocked back": the r2 Hurt was home by the
+				-- hit + 0.55, so before bites 2 and 3 the bear stood 0.04 back (the mock's 0.16) and hopped home toward the fox's
+				-- incoming hop-bite) bites 0.5 s apart on the evolved bear, each played as hitPlay plays a bite: just before bites
+				-- 2 and 3 it is still knocked back like the mock (its x: 0.296 x (1 - smooth(0.15 / 0.32)) = 0.16 at 0.45 s after
+				-- the stop, +- 0.03), the earlier reaction plays on through the new bite's hit stop (no freeze of the whole bear:
+				-- the mock adds each hit), and after the last bite it is home by the hit + 0.67 (+ 2 frames), not before + 0.62
+				local src3 = { Unit = 592, Model = me2, Pos = V3(300, G + 1.5, 0) }
+				local tgt3 = { Unit = 1592, Model = bear, Pos = V3(300, G + 1.5, -14) }
+				local f0 = clock + 0.2
+				local fh = { f0, f0 + 0.5, f0 + 1.0 }
+				local frows = {}
+				local function fstep(to)
+					while clock + DT <= to + 1e-9 do
+						clock = clock + DT
+						AF.Update(clock)
+						local ps = AF.Pose(tgt3.Unit)
+						frows[#frows + 1] = { T = clock, Knock = knockOf(ps), Body = drawnOf(ps) }
+					end
+				end
+				for _, h in ipairs(fh) do
+					fstep(h)
+					AF.Play({ Attack = "Melee", Element = "Flame", Rarity = "Common", Stage = 1, Mine = false, From = src3, To = tgt3,
+						Ground = G, Now = clock, DueAt = h, Dashed = true })
+				end
+				fstep(fh[3] + 0.9)
+				local function knockAt(t)
+					local best, bd = 0, huge
+					for _, r in ipairs(frows) do
+						if abs(r.T - t) < bd then
+							best, bd = r.Knock, abs(r.T - t)
+						end
+					end
+					return best
+				end
+				local want = 0.38 * 0.78 * (1 - (0.15 / 0.32) ^ 2 * (3 - 2 * 0.15 / 0.32))
+				local k2, k3 = knockAt(fh[2] - DT), knockAt(fh[3] - DT)
+				-- through bite 3's hit stop the earlier reaction goes on home (the mock: 0.16 -> 0.09), never frozen
+				local kS0, kS1 = knockAt(fh[3] + 1e-3), knockAt(fh[3] + STOP - 1e-3)
+				local homeAt, outLate = nil, 0
+				for _, r in ipairs(frows) do
+					if r.T > fh[3] + 0.3 then
+						if r.T >= fh[3] + 0.62 - 1e-6 and r.T <= fh[3] + 0.63 then
+							outLate = max(outLate, r.Knock)
+						end
+						if not homeAt and abs(r.Knock) < 1e-4 then
+							homeAt = r.T
+						end
+					end
+				end
+				T.check(abs(k2 - want) < 0.03 and abs(k3 - want) < 0.03 and kS0 - kS1 > 0.02,
+					fmt("bounce timing: fast tempo: the bear is still knocked back before bites 2 and 3 (%.3f / %.3f, the mock's %.3f +- 0.03); through bite 3's hit stop the earlier reaction plays on home (%.3f -> %.3f)",
+						k2, k3, want, kS0, kS1))
+				T.check(homeAt ~= nil and homeAt >= fh[3] + 0.66 - 1e-6 and homeAt <= fh[3] + 0.67 + 2 * DT and outLate > 1e-3,
+					fmt("bounce timing: fast tempo: home after the last bite at the mock's hit + 0.67 (at %s; %.4f back at + 0.62)",
+						homeAt and fmt("%+.3f", homeAt - fh[3]) or "never", outLate))
+				local fb = {}
+				for _, r in ipairs(frows) do
+					if r.Body then
+						fb[#fb + 1] = { Body = r.Body, T = fmt("%.3f", r.T - f0), Tag = "fast Hurt" }
+					end
+				end
+				local fs, fsl, fat = walkFeet(fb, bf)
+				T.check(#fb > 100 and fs > -2e-3 and fsl < 1e-3,
+					fmt("bounce timing: fast tempo: the stacked reaction never puts a paw under the floor (%.5f), never slides (%.5f)", fs, fsl), fat)
 			end
 		end)
 		AF.ClearAll()
