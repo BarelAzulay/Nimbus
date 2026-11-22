@@ -6251,8 +6251,8 @@ function Hud.BossHead(bossId)
 		end
 		ids = Mods.TextureIds or {}
 	end
-	local id = tonumber(ids[key])
-	return (id and id > 0) and ("rbxassetid://" .. string.format("%d", id)) or nil
+	-- (keys look r4: check.mjs asset-id) Config.Art builds the URI, the joiner's rule kept
+	return Config.Art.TextureImage(ids[key])
 end
 
 -- (Pitch 2 item 06 A) a label's text that fits `room` design px on one line: its design size steps down from `size` to

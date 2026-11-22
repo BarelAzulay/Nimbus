@@ -902,6 +902,18 @@ Config.Art = {
 	StormfangImage = "rbxassetid://101827417487186",
 }
 
+-- (keys look r4, tools/check.mjs asset-id: BattleController built this URI itself) the image of a shared/TextureIds number
+-- for a file outside check.mjs's TextureIds joiners (the battle top card's boss head, Pitch 2 item 06 A): the prefix joined
+-- to the id's whole digits only (a 15-digit id never prints as 1.05e+14), never a literal id; nil for no id or id <= 0
+function Config.Art.TextureImage(id)
+	id = tonumber(id)
+	if not id or id <= 0 then
+		return nil
+	end
+	local digits = string.format("%d", id)
+	return "rbxassetid://" .. digits
+end
+
 ----------------------------------------------------------------------
 -- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 6.4-6.5, 7): sky, audio, icons, loading screen, main menu
 ----------------------------------------------------------------------
