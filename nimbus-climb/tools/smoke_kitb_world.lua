@@ -1660,10 +1660,24 @@ local function clientScenarios()
 		local function grow(r, by)
 			return r and { X = r.X - by, Y = r.Y - by, R = r.R + by, B = r.B + by } or nil
 		end
-		-- the HUD that would cover a world card: every shown, opaque piece of the HUD, the menu, the hotbar and the touch buttons
+		-- the HUD that would cover a world card: every shown, opaque piece of the HUD, the menu, the hotbar and the touch buttons;
+		-- (look review fin1, MJ-B) the top bar's pill and Roblox's own buttons in the top band too (this list missed them,
+		-- so the GuideSign under the pill and '...' on 390x844 passed)
 		local function hudPieces()
 			local out = {}
-			for _, name in ipairs({ "NimbusHud", "NimbusMenu", "NimbusHotbar", "MobileControls", "NimbusDaily" }) do
+			local top = Mock.TopInset or 0
+			if top > 0 then
+				local minX, maxX = 112, Mock.Viewport.X - 72
+				local okT, tb = pcall(function()
+					return game:GetService("GuiService").TopbarInset
+				end)
+				if okT and typeof(tb) == "Rect" and tb.Max.X > tb.Min.X then
+					minX, maxX = tb.Min.X, tb.Max.X
+				end
+				out[#out + 1] = { name = "Roblox's buttons (left)", rect = { X = 0, Y = 0, R = minX, B = top - 4, W = minX, H = top - 4 } }
+				out[#out + 1] = { name = "Roblox's buttons (right)", rect = { X = maxX, Y = 0, R = Mock.Viewport.X, B = top - 4, W = Mock.Viewport.X - maxX, H = top - 4 } }
+			end
+			for _, name in ipairs({ "NimbusHud", "NimbusMenu", "NimbusHotbar", "MobileControls", "NimbusDaily", "NimbusTopBar" }) do
 				local g = pg():FindFirstChild(name)
 				if g and g:IsA("ScreenGui") and g.Enabled then
 					for _, d in ipairs(g:GetDescendants()) do
@@ -1766,7 +1780,35 @@ local function clientScenarios()
 							T.check(hit, tag .. ": the chip leaves the top centre only for a guide piece on the screen",
 								"chip " .. show(c) .. " pushed " .. fmt("%.0f", (c.X + c.R) / 2 - vp.X / 2) .. " px, " .. #onScreen .. " piece(s) on the screen")
 						end
-						if mode ~= "here" then
+						local fx0 = workspace:FindFirstChild("ClientFx")
+						local wg0 = fx0 and fx0:FindFirstChild("TutorialGuide")
+						if mode ~= "here" and not (wg0 and wg0:FindFirstChild("GuideArrow", true)) then
+							-- (look review fin1, MJ-B) the arrow is a world part over the gate and cannot move on the screen: it hides
+							-- (its sign with it) while it would lie under the HUD or past the screen's edge, even dipped its most
+							-- (near / graze at 22-26 studs it is out of the screen's top; 390x844 'walk' has it at the right edge
+							-- under the coin strip and the Gift tile). Hidden, there is nothing here to keep clear of
+							-- (travel_guide_walk walks it); it must not hide for nothing: where it would stand, undipped, it
+							-- meets the HUD or an edge
+							local ar = type(Guide._arrowRect) == "function" and Guide._arrowRect() or nil
+							local why = (ar == nil) and "behind the camera" or nil
+							if ar then
+								local top = Mock.TopInset or 0
+								local a = { X = ar.x0, Y = ar.y0 + top, R = ar.x1, B = ar.y1 + top }
+								-- (K.GUIDE_HIDE: it keeps 3 px off the HUD and the edges at 1080p, less on a smaller screen)
+								if a.X < 3 or a.Y < 3 or a.R > vp.X - 3 or a.B > vp.Y - 3 then
+									why = "past the screen's edge " .. show(a)
+								end
+								for _, piece in ipairs(hudPieces()) do
+									if not why and overlap(a, grow(piece.rect, 3)) then
+										why = "under " .. piece.name .. " " .. show(a)
+									end
+								end
+							end
+							T.check(why ~= nil, tag .. ": the arrow hides only where it would be under the HUD or past an edge", ar and show({ X = ar.x0, Y = ar.y0, R = ar.x1, B = ar.y1 }) or "nil")
+							local sign = wg0 and wg0:FindFirstChild("GuideSign", true)
+							T.check(not (sign and sign.Enabled), tag .. ": its GuideSign hides with it")
+							homeCheck()
+						elseif mode ~= "here" then
 							local fx = workspace:FindFirstChild("ClientFx")
 							local wg = fx and fx:FindFirstChild("TutorialGuide")
 							local arrow = wg and wg:FindFirstChild("GuideArrow", true)
@@ -1793,17 +1835,22 @@ local function clientScenarios()
 							if T.check(ar ~= nil, tag .. ": (setup) the guide's arrow box") then
 								local top = Mock.TopInset or 0
 								local a = { X = ar.x0, Y = ar.y0 + top, R = ar.x1, B = ar.y1 + top }
-								-- (fin0 MJ1) graze, 26 studs out: on a landscape screen the arrow's tip reaches up to ~40 px into the
-								-- chip's spot from above. By no more than the chip's own height (45 px at 1080p) it steps down that
-								-- far, still centred, and hangs GUIDE_CLEAR under the tip (it jumped 250 px across the top)
+								-- (fin0 MJ1) graze, 26 studs out: on a landscape screen the arrow's tip reaches into the chip's spot from
+								-- above. fin0 stepped the chip down under the tip, still centred (it had jumped 250 px across the top);
+								-- (look review fin1, MJ-A) that step down was a fourth place on the walk at the gate (left, right,
+								-- centre-low, home) and on a landscape phone it sat on the gate's crest. Now the chip takes ONE clear
+								-- step aside on its own row and glides there (travel_guide_walk holds the walk): a tip reaching into
+								-- its spot never sends it down onto the gate. (An arrow that reaches the chip's row from above stands
+								-- past the screen's top at these sizes, so it hides, and this check is idle; it stays for any size
+								-- where it shows)
 								if mode == "graze" and vp.X > vp.Y then
 									local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
 									local homeTop = top + 10 * k - 3 * k -- (GUIDE_TOP under the top band, its wood edge)
 									local w = c.R - c.X
 									local into = a.B + 10 * k - homeTop
-									if into > 0 and a.X < vp.X / 2 + w / 2 and a.R > vp.X / 2 - w / 2 and into <= 45 * k - 1 then
-										T.check(math.abs((c.X + c.R) / 2 - vp.X / 2) <= 1.5 and c.Y >= a.B + 10 * k - 1,
-											tag .. ": a tip reaching into the chip's spot moves it down under the tip, not across the top",
+									if into > 0 and a.X < vp.X / 2 + w / 2 and a.R > vp.X / 2 - w / 2 then
+										T.check(math.abs(c.Y - homeTop) <= 1.5 and not overlap(c, a),
+											tag .. ": a tip reaching into the chip's spot moves it aside on its own row, never down onto the gate",
 											fmt("tip %.0f px into its spot; chip %s, arrow %s", into, show(c), show(a)))
 									end
 								end
