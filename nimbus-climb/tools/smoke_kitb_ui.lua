@@ -3230,7 +3230,9 @@ local function clientScenarios()
 
 	-- U2: the Credits window built from SignKit parts dumps exactly what the approved window dumped. The baseline was
 	-- recorded from the window as it stood before the move (smoke.py --record-credits-tree rewrites it; never do that to
-	-- make this pass: the file IS the owner's approved look)
+	-- make this pass: the file IS the owner's approved look). (P2 icons look fin1) one deliberate change, by hand, not by
+	-- --record: CREATED BY's ink #7A6A4C -> #78684A on its four lines (one step darker in the same brown; it read 4.48:1 on
+	-- the cream, under stroke_walk's 4.5:1 contrast rule for small text); every other token is the approved window's
 	local CREDITS_TREE = "tools/fixtures/credits_tree_u1.txt"
 	local CREDITS_SIZES = { { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }
 

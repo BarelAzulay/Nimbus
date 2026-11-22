@@ -222,7 +222,9 @@ local K = {
 		Cream = Color3.fromRGB(246, 236, 214), -- #f6ecd6
 		CreamLine = Color3.fromRGB(234, 219, 184), -- #eadbb8
 		Drop = Color3.fromRGB(11, 19, 48), -- #0b1330 (the title's drop line)
-		Muted = Color3.fromRGB(122, 106, 76), -- #7a6a4c (CREATED BY)
+		-- #78684a (CREATED BY): (P2 icons look fin1, stroke_walk's contrast rule) a step darker in the same brown than the
+		-- approved #7a6a4c, which read 4.48:1 on the cream where this small text needs 4.5:1 (now 4.61:1)
+		Muted = Color3.fromRGB(120, 104, 74),
 		Gold = Color3.fromRGB(138, 101, 18), -- #8a6512 (the thank-you line)
 		Ring = Color3.fromRGB(227, 179, 65), -- #e3b341 (the sticker's ring, the plank's nails)
 		SkyTop = Color3.fromRGB(127, 196, 242), -- #7fc4f2
