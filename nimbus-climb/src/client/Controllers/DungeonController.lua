@@ -2019,7 +2019,9 @@ function R.place(view)
 		-- K.END_W at 0.8, 352 px), 8 px from the right edge as the battle's card (Hud.ResultSpot); the menu tiles step aside
 		-- where it covers them (R.endMenu), as they do for the battle's card
 		S.EndCompact = false
-		S.EndVitalsOff = false
+		-- (keys lane, look review fixA r1: at 360 x 640 the vitals card lay on RUN and DASH under the card) spec 02 B: on a
+		-- phone the vitals card hides while any result card is up, portrait too (R.endVitals: HudController.SetVitalsHidden)
+		S.EndVitalsOff = true
 		local scale = 0.8
 		U.EndScale.Scale = scale
 		local width = math.min(K.END_W, math.floor((w - 16) / scale))
@@ -2041,6 +2043,7 @@ function R.place(view)
 		end
 	elseif phone then
 		R.placeEndLandscape(w, h, top, endH, strips)
+		S.EndVitalsOff = true -- (spec 02 B: a phone's vitals card hides while a result card is up, wherever the card sits)
 	else
 		S.EndCompact = false
 		S.EndVitalsOff = false
