@@ -51,6 +51,9 @@ GROUPS = [
     ("DASH", r"^MobileControls\.DashButton$"),
     ("RUN", r"^MobileControls\.RunButton$"),
     ("KEY:{1}", r"^NimbusBattle\.Root\.Commands\.(\w+Button)$"),
+    # (a PC key's name tag hangs under its key: two keys' tags must not run into each other either; the render showed
+    # SPECIAL's "MARSHMALLOW STAMPEDE" tag over TARGET's at 1280 x 720)
+    ("KEY:{1}", r"^NimbusBattle\.Root\.Commands\.(\w+Button)\.NamePlate$"),
     ("KEY:{1}", r"^MobileControls\.(\w+Button)$"),
     ("CHEER", r"^NimbusBattle\.Root\.Cheer$"),
     ("BACK", r"^NimbusBattle\.Root\.Retreat$"),

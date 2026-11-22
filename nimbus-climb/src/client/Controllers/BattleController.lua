@@ -6683,31 +6683,7 @@ function Hud.PlaceFace(A, d, m)
 		A.Count.Position = A.Glyph.Position
 		A.Count.Size = A.Glyph.Size
 	else
-		-- (LOOK-ui2: white text in a navy outline over the arena, TARGET and COSY GUARD ran into each other at 1280x720) the
-		-- name on a stone tag under the key, centred, at most the key's width + 16 (two lines where it needs them)
-		local f = max(0.05, m.F)
-		local px = max(K.CAPTION_TEXT, math.ceil(Hud.FloorPx() / f - 1e-6))
-		local w = d + 16
-		-- (a long word keeps its line: "MARSHMALLOW" widens its tag past the clamp rather than break)
-		for word in string.gmatch(cap.Text, "%S+") do
-			w = max(w, math.ceil(textWidth(word, px)) + 12)
-		end
-		local lines = min(2, wrapLines(cap.Text, w - 12, px))
-		local single = math.ceil(textWidth(cap.Text, px)) + 12
-		if lines == 1 then
-			w = max(min(w, single), min(d, single))
-		end
-		local h = lines * math.ceil(px * 1.2) + 2
-		cap.Visible = true
-		plate.Visible = true
-		cap.TextTruncate = Enum.TextTruncate.AtEnd
-		cap.TextColor3 = KB.Ink
-		cap.TextSize = px
-		cap:SetAttribute("BaseText", px)
-		cap.Position = UDim2.new(0.5, 0, 1, K.KEY_EDGE + K.TAG_GAP)
-		cap.Size = UDim2.fromOffset(w, h)
-		plate.Position = cap.Position
-		plate.Size = cap.Size
+		Hud.PlaceCaptionUnder(A, d, m)
 		A.Glyph.Position = UDim2.new()
 		A.Glyph.Size = UDim2.new(1, 0, 1, -K.KEY_LIP)
 		A.Count.Position = A.Glyph.Position
@@ -6715,6 +6691,112 @@ function Hud.PlaceFace(A, d, m)
 	end
 	A.drawn = nil
 	Hud.PaintKey(A, os.clock())
+end
+
+-- (LOOK-ui2: white text in a navy outline over the arena, TARGET and COSY GUARD ran into each other at 1280x720) a PC key's
+-- name on a stone tag under the key, centred, at most the key's width + 16 (two lines where it needs them). (keys lane,
+-- look fixA r1: "COSY..." and "MARSHMALL / OW..." on PC: the tag was sized in Hud.PlaceFace for the caption's text before
+-- Hud.Captions set the attack's name, and never again) Hud.Captions calls it again with the name it sets
+function Hud.PlaceCaptionUnder(A, d, m)
+	local cap, plate = A.Caption, A.NamePlate
+	local f = max(0.05, m.F)
+	local px = max(K.CAPTION_TEXT, math.ceil(Hud.FloorPx() / f - 1e-6))
+	local w = d + 16
+	-- (keys lane: the 0.62 em guess is short for a capitals word, "MARSHMALLOW" broke mid-word in its tag) a word's width is
+	-- the largest of the guess, the caption's own face measured (Theme.MeasureLabel) and the helper tags' rough advance
+	-- (tagW: 0.72 em a capital, 0.58 any other letter or digit, 0.3 a space)
+	local function wordW(word)
+		local ok, s = pcall(Theme.MeasureLabel, cap, word, px)
+		local est = 0
+		for ch in tostring(word):gmatch(".") do
+			est = est + ((ch == " ") and 0.3 or (ch:match("%u") and 0.72 or 0.58))
+		end
+		-- (5% to spare, as Hud.FitLine keeps 4%: FredokaOne draws "MARSHMALLOW" at 0.74 em a letter, its M and W wide)
+		return max(textWidth(word, px), (ok and typeof(s) == "Vector2") and s.X or 0, est * px) * 1.05
+	end
+	local function wrapN(width)
+		local n, cur = 0, -1
+		local space = wordW("A A") - wordW("AA")
+		for word in string.gmatch(tostring(cap.Text), "%S+") do
+			local ww = wordW(word)
+			if cur < 0 or cur + space + ww > width then
+				n, cur = n + 1, ww
+			else
+				cur = cur + space + ww
+			end
+		end
+		return max(1, n)
+	end
+	-- (a long word keeps its line: "MARSHMALLOW" widens its tag past the clamp rather than break)
+	for word in string.gmatch(cap.Text, "%S+") do
+		w = max(w, math.ceil(wordW(word)) + 12)
+	end
+	local lines = min(2, wrapN(w - 12))
+	local single = math.ceil(wordW(cap.Text)) + 12
+	if lines == 1 then
+		w = max(min(w, single), min(d, single))
+	end
+	local h = lines * math.ceil(px * 1.2) + 2
+	cap.Visible = true
+	plate.Visible = true
+	cap.TextTruncate = Enum.TextTruncate.AtEnd
+	cap.TextColor3 = KB.Ink
+	cap.TextSize = px
+	cap:SetAttribute("BaseText", px)
+	-- (the wider tag of a long word stays on the screen: SPECIAL's sits near its right edge) moved aside only as far as the
+	-- screen's edge needs, from the cluster's own numbers (Hud.FaceTagShift's reading)
+	local spec = Hud.cluster and Hud.cluster[A.kind]
+	local shift = 0
+	if type(spec) == "table" and m.VX then
+		local ax = m.VX + spec[1] * f
+		local half = w * f / 2
+		shift = max(min(0, m.VX - 4 - (ax + half)), 4 - (ax - half)) / f
+	end
+	cap.Position = UDim2.new(0.5, shift, 1, K.KEY_EDGE + K.TAG_GAP)
+	cap.Size = UDim2.fromOffset(w, h)
+	plate.Position = cap.Position
+	plate.Size = cap.Size
+	A.capText = cap.Text
+	A.capBase = shift
+	Hud.SpreadCaptions(m)
+end
+
+-- (keys lane: SPECIAL's "MARSHMALLOW" tag, as wide as the word, ran over TARGET's tag beside it at 1280 x 720) the PC tags
+-- under the keys, right to left: a tag that would touch the one on its right in the same rows moves left by what it lacks
+-- (4 px apart), never into the screen's middle 40% (Hud.FaceTagShift's rule); the keys never move. Each pass starts from
+-- the tags' own places (A.capBase), so it can run after every tag placed. Design px from Commands' right edge (the screen's)
+function Hud.SpreadCaptions(m)
+	if not (m and not m.Touch and Hud.buttons and Hud.cluster) then
+		return
+	end
+	local tags = {}
+	local left = -0.3 * m.W
+	for kind, A in pairs(Hud.buttons) do
+		local spec = Hud.cluster[kind]
+		local cap = A.Caption
+		if type(spec) == "table" and A.capBase ~= nil and cap and cap.Visible and A.Button.Visible then
+			local top = spec[2] + spec[3] / 2 + K.KEY_EDGE + K.TAG_GAP
+			tags[#tags + 1] = { A = A, cx = spec[1], shift = A.capBase, w = cap.Size.X.Offset, top = top, bot = top + cap.Size.Y.Offset }
+		end
+	end
+	table.sort(tags, function(a, b)
+		return a.cx + a.shift > b.cx + b.shift
+	end)
+	for i, a in ipairs(tags) do
+		for j = 1, i - 1 do
+			local b = tags[j]
+			if a.top < b.bot and b.top < a.bot then
+				local over = (a.cx + a.shift + a.w / 2 + 4) - (b.cx + b.shift - b.w / 2)
+				if over > 0 then
+					a.shift = a.shift - over
+				end
+			end
+		end
+		a.shift = max(a.shift, min(0, left - (a.cx - a.w / 2)))
+		local p = a.A.Caption.Position
+		a.A.Caption.Position = UDim2.new(p.X.Scale, a.shift, p.Y.Scale, p.Y.Offset)
+		a.A.NamePlate.Position = a.A.Caption.Position
+	end
 end
 
 -- (kit-b U9-6) a key's colour (its role's, or the fighter's element for ELEMENT) and the ink of what sits on it
@@ -7387,6 +7469,9 @@ function Hud.Captions(B)
 		if Hud.m and Hud.m.Touch and (kind ~= "Dash" or Hud.ThreeKeys()) and A.Button.Visible then
 			-- (kit-b U9-6) the name's tag follows its text (a swap changes the attack's name)
 			Hud.PlaceFaceName(A, A.Button.Size.X.Offset, kind == "Target" and St.targetFlash ~= nil)
+		elseif Hud.m and not Hud.m.Touch and A.Button.Visible and A.capText ~= A.Caption.Text then
+			-- (keys lane) a PC key's tag under it follows its text too
+			Hud.PlaceCaptionUnder(A, A.Button.Size.X.Offset, Hud.m)
 		end
 		if kind == "Element" and f then
 			A.glyphName = full and ICON.Special or (ELEMENT_ICON[f.element] or ICON.Special)
