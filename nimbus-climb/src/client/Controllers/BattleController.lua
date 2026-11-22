@@ -316,6 +316,9 @@ local K = {
 	-- no hold); a melee Hit with no Windup before it (a player's fighter) dashes now, its impact held Melee.In (fxLate)
 	DASH_SEEN = 0.6,
 	PRICK_LATE_MIN = 0.02, -- (Pitch 2 item 5) a Thorns prick this much after its Hit holds the Hit to it (a fighter's bite)
+	-- (Pitch 2 item 5, look review r2 major 1) a Double strike's extra hit knocks its victim at this power (the approved
+	-- mock's second jolt: motion_pitch.enemy_new's 1.64 hit, power 0.5), on top of the bite's own reaction
+	DOUBLE_FLINCH = 0.5,
 	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
 	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
 	-- (evolved forms) a Rally's bigger pet by stage (a look only: hit radius, range and hitboxes never hear of it)
@@ -3577,7 +3580,11 @@ function Atk.HitTwist(B, ev, dueAt, v, a)
 	end
 	if ev.double then
 		dueAt = Atk.DashTwist(a, "Double", dueAt)
-		return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Haste", Twist = "DoubleHit", From = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+		-- (look review r2, major 1) Flinch: the victim (From: the sparks are on it) is re-hit at DOUBLE_FLINCH on the second
+		-- chomp, its Hurt stacking on the bite's (AttackFx); without it no Hurt was scheduled and the mock's second jolt
+		-- never played
+		return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Haste", Twist = "DoubleHit", From = Atk.Side(B, v), Flinch = K.DOUBLE_FLINCH,
+			Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
 	end
 	if not Atk.Drawable(a) or (a.thornAt and dueAt - a.thornAt < K.RIPPLE_TICK_GAP) then
 		return "none"

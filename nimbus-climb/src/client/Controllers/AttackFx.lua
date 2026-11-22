@@ -3497,6 +3497,14 @@ local function schedulePoses(eff, now)
 			end
 		end
 	end
+	-- (Pitch 2 item 5, look review r2 major 1: the approved mock's Double strike re-hits the bear at half power,
+	-- motion_pitch.enemy_new) a twist that re-hits the pet at From (eff.Flinch: BattleController's DoubleHit): its Hurt at
+	-- that power on the impact, after a bite's hit stop; over the bite's running Hurt it stacks (setPoses)
+	if eff.Flinch and not eff.Miss and eff.Src and eff.Src.Unit ~= nil then
+		local at = st + T.Impact
+		setPoses(eff.Src.Unit, { { Name = "Hurt", T0 = at, Dur = K.HURT, Feet = AttackFx.FeetOf(eff.Src.Model), Amp = eff.Flinch,
+			StopAt = at, StopDur = AttackFx.HIT_STOP, Until = at + K.HURT + AttackFx.HIT_STOP } }, now)
+	end
 end
 
 ----------------------------------------------------------------------
@@ -4726,6 +4734,9 @@ function AttackFx.Play(ctx)
 			Bite = (r.Attack == "Melee" or (r.Attack == "Special" and ctx.Kind == "Pounce")) or nil,
 			FloorY = finite(ctx.Ground) and ctx.Ground or (src.Last.Y - drop),
 			Dashed = (ctx.Dashed == true and (r.Attack == "Melee" or r.Attack == "Element")) or nil, -- (battle-feel T2) the bite's pose is AttackFx.Dash's (feel-balance: an Element's too)
+			-- (Pitch 2 item 5, look review r2 major 1) a twist that re-hits the pet at From (a Double strike's extra hit: its
+			-- sparks are on the victim) at this power (0 .. 2): its Hurt (schedulePoses)
+			Flinch = (r.Twist and finite(ctx.Flinch) and ctx.Flinch > 0) and min(2, ctx.Flinch) or nil,
 		}
 		for i, side in ipairs(targets) do
 			eff.T[i] = side.Last
