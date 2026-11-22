@@ -1,9 +1,9 @@
 {
   "sheet": "machines_a.png",
-  "item": "Pitch 2 item 10 A (Workshop machines): one pixel capsule machine per roulette",
+  "item": "Pitch 2 item 10 A (Workshop machines): one pixel capsule machine per roulette, and the odds chips' eggs",
   "size": [
     277,
-    69
+    80
   ],
   "cells": {
     "Cloud": {
@@ -57,6 +57,79 @@
       ]
     }
   },
+  "eggs": {
+    "Common": {
+      "x": 0,
+      "y": 70,
+      "w": 10,
+      "h": 10,
+      "cells": [
+        9,
+        9
+      ]
+    },
+    "Uncommon": {
+      "x": 11,
+      "y": 70,
+      "w": 10,
+      "h": 10,
+      "cells": [
+        9,
+        9
+      ]
+    },
+    "Rare": {
+      "x": 22,
+      "y": 70,
+      "w": 10,
+      "h": 10,
+      "cells": [
+        9,
+        9
+      ]
+    },
+    "Epic": {
+      "x": 33,
+      "y": 70,
+      "w": 10,
+      "h": 10,
+      "cells": [
+        9,
+        9
+      ]
+    },
+    "Legendary": {
+      "x": 44,
+      "y": 70,
+      "w": 10,
+      "h": 10,
+      "cells": [
+        9,
+        9
+      ]
+    },
+    "Mythic": {
+      "x": 55,
+      "y": 70,
+      "w": 10,
+      "h": 10,
+      "cells": [
+        9,
+        9
+      ]
+    },
+    "Secret": {
+      "x": 66,
+      "y": 70,
+      "w": 10,
+      "h": 10,
+      "cells": [
+        9,
+        9
+      ]
+    }
+  },
+  "egg_note": "the odds chip egg of each rarity (Config.MachineSheet.Eggs): 9 x 9 cells + its 1-cell drop shadow (Text at 30 %); 3 px a cell on PC (27 px), 2 on a phone (18). Without its cell the game draws PixelIcon \"egg_<rarity>\", the same drawing in Frames",
   "cell_note": "w x h = the drawing (52 x 60, the Secret 60 x 68) + its 1-cell drop shadow on the right and bottom",
   "config_key": "Config.MachineSheet.Id",
   "upload": "ONE Image asset (not a Decal id), from the owner's keyed cloud session; then set Config.MachineSheet.Id to its image id. Until then (Id = 0) every roulette keeps today's drawn machine (ShopEggs H.machine).",

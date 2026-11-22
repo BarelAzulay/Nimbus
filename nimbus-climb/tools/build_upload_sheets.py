@@ -15,9 +15,10 @@ Item 9 B ("Carved soft", spec docs/superpowers/specs/2026-11-20-pitch2-build-des
 Item 10 A ("Workshop machines"):
   build/upload_sheets/machines_a.png + machines_a.json
       the five roulette machines (52 x 60 cells, the Secret 60 x 68, each + its 1-cell drop shadow) at 1 px a cell in one
-      row; the game cuts one with ImageRectOffset / ImageRectSize, ResampleMode Pixelated (client/UI/ShopEggs, once
-      Config.MachineSheet.Id is set)
-  src/shared/Config.lua, Config.MachineSheet.Cells: each roulette's cell (written here, so the game and the sheet agree)
+      row; under them the odds chips' eggs (9 x 9 + the drop shadow, one a rarity) in a row; the game cuts one with
+      ImageRectOffset / ImageRectSize, ResampleMode Pixelated (client/UI/ShopEggs, once Config.MachineSheet.Id is set)
+  src/shared/Config.lua, Config.MachineSheet.Cells / Eggs: each roulette's and each rarity egg's cell (written here, so
+      the game and the sheet agree); the eggs' PixelIcon glyphs ("egg_<rarity>") go in the PixelIcon block above
 
 Nothing is uploaded here: the sheets are handed to the owner's keyed cloud session (tools/upload_assets.py runs there).
 The drawings are tools/pixelart/ (ported from the approved mock-up scripts).
@@ -79,6 +80,22 @@ def art_cols(name):
 
 def drawing_names():
     return list(I.NINE) + list(I.RARITY_DOTS) + list(I.ELEMENTS)
+
+
+# (P2 icons review r1, major 1) item 10's odds chip eggs (tools/pixelart/machines_a.py odds_egg): one 9 x 9 egg a rarity,
+# shaded B with the icons' drop shadow. They ship in the machines sheet's egg row and, for a sheet without that row, as
+# PixelIcon glyphs "egg_<rarity>" (the same drawing in Frames)
+def odds_eggs():
+    """[(rarity, the PixelIcon name)] in the sheet's order"""
+    import machines_a as M
+    return [(r, "egg_" + r.lower()) for r in M.ODDS_EGG_ORDER]
+
+
+def egg_cols(rarity):
+    """the odds chip egg of `rarity` shaded, 10 x 10 with its drop shadow"""
+    import machines_a as M
+    g, z, pal = M.odds_egg(rarity)
+    return K.shade(g, "B", pal, z=z, drop=DROP)
 
 
 def icons_sheet():
@@ -208,8 +225,9 @@ def lua_block():
         "-- (base 36, in cells) and the letter; the shadow first, then each colour over the ones drawn after it",
         "PixelIcon.Art = {",
     ]
-    for name in drawing_names():
-        cols = glyph_cols(name)
+    glyphs = [(I.GAME[name], glyph_cols(name), name) for name in drawing_names()]
+    glyphs += [(game, egg_cols(r), "odds egg " + r) for r, game in odds_eggs()]
+    for game, cols, label in glyphs:
         pal, rows = {}, []
         for row in cols:
             s = ""
@@ -226,7 +244,7 @@ def lua_block():
             rows.append(s)
         ptxt = ", ".join("%s = \"%s\"" % (v, k) for k, v in pal.items())
         ltxt = "".join(b36(x) + b36(y) + b36(w) + b36(h) + c for x, y, w, h, c in layer_rects(rows))
-        lines.append("\t%s = { R = \"%s\", P = { %s }, L = \"%s\" }, -- %s" % (I.GAME[name], "/".join(rows), ptxt, ltxt, name))
+        lines.append("\t%s = { R = \"%s\", P = { %s }, L = \"%s\" }, -- %s" % (game, "/".join(rows), ptxt, ltxt, label))
     lines.append("}")
     # the mono twins of the new names (a caller that asks for one ink colour, NeonKit.IconName, the Bitmaps walks)
     for name in drawing_names():
@@ -259,26 +277,44 @@ def machine_cols(name):
 
 
 def machines_sheet():
-    """the machines_a.png image and its manifest: the five drawings at 1 px a cell in one row, 1 px apart"""
+    """the machines_a.png image and its manifest: the five drawings at 1 px a cell in one row, 1 px apart; under them,
+    1 px clear, the odds chip eggs (10 x 10 each: 9 x 9 + the drop shadow) in one row, 1 px apart"""
     cols = {n: machine_cols(n) for n in MACHINE_ORDER}
-    w = sum(len(cols[n][0]) for n in MACHINE_ORDER) + len(MACHINE_ORDER) - 1
-    h = max(len(cols[n]) for n in MACHINE_ORDER)
+    eggs = [(r, egg_cols(r)) for r, _ in odds_eggs()]
+    mh = max(len(cols[n]) for n in MACHINE_ORDER)
+    ew = sum(len(c[0]) for _, c in eggs) + len(eggs) - 1
+    w = max(sum(len(cols[n][0]) for n in MACHINE_ORDER) + len(MACHINE_ORDER) - 1, ew)
+    h = mh + 1 + max(len(c) for _, c in eggs)
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+
+    def paint(c, x0, y0):
+        for gy, row in enumerate(c):
+            for gx, px in enumerate(row):
+                if px is not None:
+                    im.putpixel((x0 + gx, y0 + gy), px if len(px) == 4 else px + (255,))
+
     cells, x = {}, 0
     for n in MACHINE_ORDER:
         c = cols[n]
         cw, ch = len(c[0]), len(c)
-        for gy, row in enumerate(c):
-            for gx, px in enumerate(row):
-                if px is not None:
-                    im.putpixel((x + gx, gy), px if len(px) == 4 else px + (255,))
+        paint(c, x, 0)
         cells[n] = {"x": x, "y": 0, "w": cw, "h": ch, "cells": [cw - 1, ch - 1]}
+        x += cw + 1
+    egg_cells, x = {}, 0
+    for r, c in eggs:
+        cw, ch = len(c[0]), len(c)
+        paint(c, x, mh + 1)
+        egg_cells[r] = {"x": x, "y": mh + 1, "w": cw, "h": ch, "cells": [cw - 1, ch - 1]}
         x += cw + 1
     manifest = {
         "sheet": "machines_a.png",
-        "item": "Pitch 2 item 10 A (Workshop machines): one pixel capsule machine per roulette",
+        "item": "Pitch 2 item 10 A (Workshop machines): one pixel capsule machine per roulette, and the odds chips' eggs",
         "size": [w, h],
         "cells": cells,
+        "eggs": egg_cells,
+        "egg_note": "the odds chip egg of each rarity (Config.MachineSheet.Eggs): 9 x 9 cells + its 1-cell drop shadow (Text at "
+                    "30 %); 3 px a cell on PC (27 px), 2 on a phone (18). Without its cell the game draws PixelIcon "
+                    "\"egg_<rarity>\", the same drawing in Frames",
         "cell_note": "w x h = the drawing (52 x 60, the Secret 60 x 68) + its 1-cell drop shadow on the right and bottom",
         "config_key": "Config.MachineSheet.Id",
         "upload": "ONE Image asset (not a Decal id), from the owner's keyed cloud session; then set Config.MachineSheet.Id to "
@@ -290,7 +326,8 @@ def machines_sheet():
 
 
 CONFIG = os.path.join(ROOT, "src", "shared", "Config.lua")
-CELLS_RE = re.compile(r"(Config\.MachineSheet = \{\n\tId = \d+,\n\tCells = \{)(.*?)(\n\t\},\n\})", re.S)
+# the table's body after its Id line (Cells, then Eggs), up to its closing brace at the line's start
+CELLS_RE = re.compile(r"(Config\.MachineSheet = \{\n\tId = \d+,\n)(.*?)(\n\}\n)", re.S)
 
 
 def png_bytes(im):
@@ -358,10 +395,12 @@ def build(check):
     write_text(os.path.join(OUT, "machines_a.json"), json.dumps(man, indent=2) + "\n", check, stale)
     with open(CONFIG, "rb") as fh:
         cfg = fh.read().decode("utf-8").replace("\r\n", "\n")
-    cells = "".join("\n\t\t%s = { %d, %d, %d, %d }," % (n, c["x"], c["y"], c["w"], c["h"]) for n, c in man["cells"].items())
+    def rects(table):
+        return "".join("\n\t\t%s = { %d, %d, %d, %d }," % (n, c["x"], c["y"], c["w"], c["h"]) for n, c in table.items())
+    body = "\tCells = {" + rects(man["cells"]) + "\n\t},\n\tEggs = {" + rects(man["eggs"]) + "\n\t},"
     if not CELLS_RE.search(cfg):
-        raise SystemExit("Config.lua: no Config.MachineSheet = { ... Cells = { ... } } table")
-    write_text(CONFIG, CELLS_RE.sub(lambda m: m.group(1) + cells + m.group(3), cfg, count=1), check, stale)
+        raise SystemExit("Config.lua: no Config.MachineSheet = { Id = ..., ... } table")
+    write_text(CONFIG, CELLS_RE.sub(lambda m: m.group(1) + body + m.group(3), cfg, count=1), check, stale)
     return stale
 
 

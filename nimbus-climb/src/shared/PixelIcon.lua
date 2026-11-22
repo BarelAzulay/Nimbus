@@ -188,6 +188,13 @@ PixelIcon.Art = {
 	bolt = { R = ".....aab../....aab~~./...aab~~../..abaaab../...~aab~~./...aab~~../..abb~~.../.ab~~~..../..~~....../..........", P = { a = "5661C1", b = "3A3B76" }, L = "6125~3434~2821~8111~8411~6611~4125a5021a2351a3211a3511a2611a1711a3621b7011b6111b5211b3311b7311b6411b5511b2711b" }, -- Storm
 	sparkle = { R = "....a...../....b~..../...aab..../..acdab.../abadddabe./.~badae~~~/...bae~~../....b~~.../....e~..../.....~....", P = { a = "BF9D54", b = "947847", c = "FFF9EA", d = "FFD468", e = "715A3D" }, L = "5119~7531~6621~1511~6711~4117b1471b3235b2353b3311c4324a3221a2312a3442a4011a0411a8411e6511e5611e4811e4313d3431d" }, -- Celestial
 	moon = { R = "...aabc.../..aac~~~../.aac~~..../.adc~...../.aac~...../.aac~...../.baab...b./..baaaac.~/...bccc~~./....~~~~..", P = { a = "63388A", b = "502E6F", c = "412559", d = "EDE5F4" }, L = "4218~5832~5131~5211~9711~8811~1641b5011b8611b2711b3811b1224a3741a2126a3021a2311d3214c4831c6011c4111c7711c" }, -- Shadow
+	egg_common = { R = "...aab..../..acdab.../..adeaf~../.adeeeab../.adeeeaf~./.adddddf~./.adeeeaf~./.baaaaaf~./..bffff~~./...~~~~~..", P = { a = "808595", b = "666777", c = "F3F4F6", d = "CDD2DC", e = "A8B2C2", f = "504E5F" }, L = "3258~8415~1365a2142a3021a7414f3841f6211f5011b6111b7311b1711b2811b3334e4211e2551d2314d4111d3211d3111c" }, -- odds egg Common
+	egg_uncommon = { R = "...aab..../..acdab.../..adeaf~../.adeeeab../.adeeeaf~./.adddddf~./.adeeeaf~./.baaaaaf~./..bffff~~./...~~~~~..", P = { a = "529266", b = "447054", c = "EAF7ED", d = "A7DDB5", e = "68C480", f = "385446" }, L = "3258~8415~1365a2142a3021a7414f3841f6211f5011b6111b7311b1711b2811b3334e4211e2551d2314d4111d3211d3111c" }, -- odds egg Uncommon
+	egg_rare = { R = "...aab..../..acdab.../..adeaf~../.adeeeab../.adeeeaf~./.adddddf~./.adeeeaf~./.baaaaaf~./..bffff~~./...~~~~~..", P = { a = "4776B1", b = "3B5C8C", c = "E8F1FC", d = "9EC7F2", e = "589EE8", f = "32466D" }, L = "3258~8415~1365a2142a3021a7414f3841f6211f5011b6111b7311b1711b2811b3334e4211e2551d2314d4111d3211d3111c" }, -- odds egg Rare
+	egg_epic = { R = "...aab..../..acdab.../..adeaf~../.adeeeab../.adeeeaf~./.adddddf~./.adeeeaf~./.baaaaaf~./..bffff~~./...~~~~~..", P = { a = "8652B1", b = "6A418C", c = "F4EAFC", d = "D1AAF2", e = "B06CE8", f = "53336D" }, L = "3258~8415~1365a2142a3021a7414f3841f6211f5011b6111b7311b1711b2811b3334e4211e2551d2314d4111d3211d3111c" }, -- odds egg Epic
+	egg_legendary = { R = "...aab..../..acdab.../..adeaf~../.adeeeab../.adeeeaf~./.adddddf~./.adeeeaf~./.baaaaaf~./..bffff~~./...~~~~~..", P = { a = "B6883A", b = "8D6934", c = "FDF5E5", d = "F7D593", e = "F2B644", f = "6C4F2F" }, L = "3258~8415~1365a2142a3021a7414f3841f6211f5011b6111b7311b1711b2811b3334e4211e2551d2314d4111d3211d3111c" }, -- odds egg Legendary
+	egg_mythic = { R = "...aab..../..acdab.../..adeaf~../.adeeeab../.adeeeaf~./.adddddf~./.adeeeaf~./.baaaaaf~./..bffff~~./...~~~~~..", P = { a = "B34B6E", b = "8B3C5A", c = "FDE9EF", d = "F5A4BC", e = "EE628C", f = "6B2F4A" }, L = "3258~8415~1365a2142a3021a7414f3841f6211f5011b6111b7311b1711b2811b3334e4211e2551d2314d4111d3211d3111c" }, -- odds egg Mythic
+	egg_secret = { R = "...aab..../..acdab.../..adeaf~../.adeeeab../.adeegaf~./.adddddf~./.adeeeaf~./.baaaaaf~./..bffff~~./...~~~~~..", P = { a = "1E1C32", b = "131222", c = "DCD2FF", d = "5A548C", e = "2E2C48", f = "0A0A14", g = "FFFFFF" }, L = "3258~8415~1375b2158b5011b2256a1314a3021a2141a3334e4211e5411g2551d2314d4111d3211d7414f3841f6211f3111c" }, -- odds egg Secret
 }
 PixelIcon.Bitmaps.signpost = "....#..../#######../########./#########/########./#######../....#..../....#..../..#####.." -- Travel, one ink
 PixelIcon.Bitmaps.rarity_common = "........./...###.../..#####../.#######./.#######./.#######./..#####../...###.../........." -- Common, one ink
@@ -727,18 +734,20 @@ end
 
 fitCells = function(icon)
 	if icon:GetAttribute("Sheet") then
-		-- (Pitch 2 item 9 B) the sheet's art: 18 cells of px / 18, each a whole number of screen px (as below), centred
+		-- (Pitch 2 item 9 B) the sheet's art: 18 cells of px / 18, each a whole number of screen px (as below), centred.
+		-- (P2 icons review r1, major 1) a FromSheet drawing: Grid cells (9) of px / Grid, its ArtW x ArtH cut
 		local art = icon:FindFirstChild("Art")
 		local s, scales, rooted = layoutScale(icon)
 		if not (art and rooted) then
 			return
 		end
+		local grid = icon:GetAttribute("Grid") or 18
 		local px = icon.Size.X.Offset
-		local screenCell = screenCellOf(math.floor(px / 18), s)
+		local screenCell = screenCellOf(math.floor(px / grid), s)
 		local dc = screenCell / s
-		local pad = math.floor((px * s - 18 * screenCell) / 2) / s
+		local pad = math.floor((px * s - grid * screenCell) / 2) / s
 		art.Position = UDim2.fromOffset(pad, pad)
-		art.Size = UDim2.fromOffset(19 * dc, 19 * dc)
+		art.Size = UDim2.fromOffset((icon:GetAttribute("ArtW") or 19) * dc, (icon:GetAttribute("ArtH") or 19) * dc)
 		icon:SetAttribute("CellPx", screenCell)
 		for _, scale in ipairs(scales) do
 			watchScale(scale)[icon] = true
@@ -909,6 +918,59 @@ function PixelIcon.New(parent, name, px, colour, key)
 		end)
 	end
 	return icon
+end
+
+-- (P2 icons review r1, major 1: the odds chips under the pixel machines drew a smooth vector egg) a 9 x 9 drawing cut from
+-- an uploaded sheet other than the icon sheet (item 10's odds chip eggs, the machines sheet's egg row): icon `name` at px
+-- x px, ONE ImageLabel "Art" of image id `image` cut by `rect` { x, y, w, h } (the 9 x 9 cells + the drop shadow: 10 x
+-- 10), ResampleMode Pixelated, px / 9 a cell on whole screen px under the UIScales above it (as New's). Attributes as
+-- New's sheet icons (PixelIcon, Cell, Own, Sheet, CellPx) + Grid 9. nil without a whole image id above 0 or a rect
+function PixelIcon.FromSheet(parent, name, px, image, rect)
+	image = tonumber(image) or 0
+	if not (image > 0 and image == math.floor(image) and type(rect) == "table" and tonumber(rect[3]) and tonumber(rect[4])) then
+		return nil
+	end
+	px = math.max(9, math.floor(tonumber(px) or 18))
+	local icon = Instance.new("Frame")
+	icon.Name = "Icon"
+	icon.BackgroundTransparency = 1
+	icon.BorderSizePixel = 0
+	icon.Size = UDim2.fromOffset(px, px)
+	icon:SetAttribute("PixelIcon", name)
+	icon:SetAttribute("Cell", math.floor(px / 9))
+	icon:SetAttribute("Own", true)
+	icon:SetAttribute("Sheet", true)
+	icon:SetAttribute("Grid", 9)
+	icon:SetAttribute("ArtW", rect[3])
+	icon:SetAttribute("ArtH", rect[4])
+	local dc = math.floor(px / 9)
+	local pad = math.floor((px - 9 * dc) / 2)
+	local art = Instance.new("ImageLabel")
+	art.Name = "Art"
+	art.BackgroundTransparency = 1
+	art.BorderSizePixel = 0
+	art.Image = "rbxassetid://" .. string.format("%d", image)
+	art.ImageRectOffset = Vector2.new(rect[1], rect[2])
+	art.ImageRectSize = Vector2.new(rect[3], rect[4])
+	art.ResampleMode = Enum.ResamplerMode.Pixelated
+	art.ScaleType = Enum.ScaleType.Stretch
+	art.Position = UDim2.fromOffset(pad, pad)
+	art.Size = UDim2.fromOffset(rect[3] * dc, rect[4] * dc)
+	art.Parent = icon
+	icon.Parent = parent
+	fitCells(icon)
+	if not frozen then
+		icon.AncestryChanged:Connect(function()
+			fitCells(icon)
+		end)
+	end
+	return icon
+end
+
+-- (P2 icons review r1, major 2) the icon sheet's image id (Config.IconSheet.Id), 0 while nothing is uploaded: a caller
+-- that caches its drawn art keys it with this, so the art redraws when a sheet is set (render_gui --sheets, the tests)
+PixelIcon.SheetId = function()
+	return sheetId()
 end
 
 -- (LOOK-ui, kitb-look1: the host from the snapped icon, not the icon from the host) the design px a box needs round icon

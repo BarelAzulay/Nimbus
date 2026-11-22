@@ -360,6 +360,48 @@ function H.sizeEgg(egg, px)
 	return w
 end
 
+-- (P2 icons review r1, major 1: under the 3 px pixel machines the odds chips drew this module's smooth vector EggArt) an
+-- odds chip's hand-pixelled egg, "PixelEgg" (the mock-up's, 10_optA): cut from the machines sheet's egg row
+-- (Config.MachineSheet.Eggs) while that sheet has an id, else the same drawing as the 9 x 9 PixelIcon glyph
+-- "egg_<rarity>" in Frames. Drawn again only when px changes; nil for a rarity with neither (the vector egg stays)
+local function eggSheet(rarity)
+	local ms = Config.MachineSheet
+	local id = type(ms) == "table" and tonumber(ms.Id) or 0
+	local cell = type(ms) == "table" and type(ms.Eggs) == "table" and ms.Eggs[rarity] or nil
+	return (id and id > 0 and cell) and id or nil, cell
+end
+
+-- whether a chip of rarity row.Rarity has a pixel egg to draw (its sheet cell or its glyph)
+function H.canPixelEgg(row)
+	return eggSheet(row.Rarity) ~= nil or PixelIcon.Art["egg_" .. string.lower(tostring(row.Rarity))] ~= nil
+end
+
+function H.pixelEgg(row, px)
+	local old = row.PixelEgg
+	if old and old.Parent and old:GetAttribute("Px") == px then
+		return old
+	end
+	if old then
+		old:Destroy()
+	end
+	local name = "egg_" .. string.lower(tostring(row.Rarity))
+	local id, cell = eggSheet(row.Rarity)
+	local icon = (id and PixelIcon.FromSheet(row.Root, name, px, id, cell)) or PixelIcon.New(row.Root, name, px, PixelIcon.Own)
+	if icon then
+		icon.Name = "PixelEgg"
+		icon:SetAttribute("Px", px)
+		local z = row.Pct.ZIndex
+		icon.ZIndex = z
+		for _, d in ipairs(icon:GetChildren()) do
+			if d:IsA("GuiObject") then
+				d.ZIndex = z
+			end
+		end
+	end
+	row.PixelEgg = icon
+	return icon
+end
+
 function H.call(P, name, ...)
 	local fn = P.Ctx[name]
 	if type(fn) == "function" then
@@ -1271,6 +1313,50 @@ end
 -- the layouts once the machines sheet has an id (t.Machine.Sheet). Each box is sized so its machine draws whole px cells:
 -- 3 at 1920, 2 at 1280 (the window's 0.8) and on a phone. Without an id every layout above stays today's
 ----------------------------------------------------------------------
+-- (P2 icons review r1, major 1 + the 1280 minor: the vector egg sat 1.6 px from the wood, "60%" 0.4 px from it) a chip's
+-- pixel egg and its percent, laid out again whenever the rest scale above changes: the egg at eggPx (a multiple of 9: 3
+-- screen px cells at 1920, 2 under the 1280 window's 0.8 and on a phone) over the percent when the face holds both, else
+-- beside it; where neither fits, one cell size down (18 px). What is fitted is the egg as drawn: its 9 cells on whole
+-- screen px and its 1-cell drop shadow (PixelIcon.BoxPx), the percent's text 2 px or more clear of the chip's sides
+function L.chipEgg(row, cw, face, eggPx, size)
+	PixelIcon.Whole(row.Root, function(s)
+		local tw = H.textW(row.Pct.Text, size, Theme.FontOf(row.Pct)) + 2
+		local px = math.max(9, 9 * math.floor(eggPx / 9))
+		local side, drawn, over
+		while true do
+			side = PixelIcon.BoxPx(px, 0, s) -- the 9 cells, whole screen px, in design px
+			drawn = side * 10 / 9 -- + the drop shadow's cell
+			over = face >= drawn + 1 + size + 2 and cw >= math.max(drawn, tw) + 4
+			if over or (face >= drawn and cw >= drawn + 4 + tw + 4) or px <= 18 then
+				break
+			end
+			px = math.max(18, px - 9)
+		end
+		local icon = H.pixelEgg(row, px)
+		if not icon then
+			return
+		end
+		-- New / FromSheet centre the cells in the px box (pad, on a whole screen px): undo it so the cells start at ex, ey
+		local sc = side * s / 9
+		local pad = math.floor((px * s - 9 * sc) / 2) / s
+		local function at(ex, ey)
+			icon.Position = UDim2.fromOffset(math.floor(ex * s) / s - pad, math.floor(ey * s) / s - pad)
+		end
+		if over then
+			-- the room left split over and under, in whole screen px (a floor in design px left the 1280 egg on the wood)
+			local top = math.max(0, math.floor((face - (drawn + 1 + size + 2)) * s / 2 + 0.5) / s)
+			at((cw - side) / 2, top)
+			row.Pct.TextXAlignment = CENTER
+			place(row.Pct, 0, top + drawn + 1, cw, size + 2)
+		else
+			local x0 = math.max(2, math.floor((cw - (drawn + 4 + tw)) / 2))
+			at(x0, math.max(0, (face - drawn) / 2))
+			row.Pct.TextXAlignment = LEFT
+			place(row.Pct, x0 + drawn + 4, 0, math.max(0, cw - x0 - drawn - 4), face)
+		end
+	end)
+end
+
 -- the odds rows as egg chips (H.syncRows gave them their stone block) in a grid of `cols` columns in x, y, w x h: the egg
 -- over its percent when the chip is tall enough, else beside it
 function L.chips(t, x, y, w, h, cols, eggPx, size, gap)
@@ -1288,7 +1374,11 @@ function L.chips(t, x, y, w, h, cols, eggPx, size, gap)
 		place(row.Root, col * (cw + gap), line * (chH + gap), cw, chH)
 		row.Word.Visible = false
 		row.Pct.TextSize = size
-		if face >= eggPx + size + 8 then
+		if row.Chip and H.canPixelEgg(row) then
+			-- (P2 icons review r1, major 1) a card's chip: the hand-pixelled egg, not the vector one
+			row.Egg.Visible = false
+			L.chipEgg(row, cw, face, eggPx, size)
+		elseif face >= eggPx + size + 8 then
 			local ew = H.sizeEgg(row.Egg, eggPx)
 			local top = math.floor((face - eggPx - size - 2) / 2)
 			place(row.Egg, math.floor((cw - ew) / 2), top, ew, eggPx)
@@ -1319,16 +1409,21 @@ function L.cardSheetPC(t, w, M, tall)
 	local hintY = M.Card - K.CARD_FOOT - K.LIFT - 20
 	-- the hint clear of the x3 / gem planks' 5 px drop shadow (TIGHT: 6, so its 2 px stage keeps its height)
 	local row2Y = hintY - (tight and 6 or 8) - row2H
-	local spinY = row2Y - 8 - 64
-	local chipH = tight and 40 or (M.Ref and 60 or 56)
-	local chipsY = spinY - 8 - chipH
+	-- (P2 icons review r1, major 1 + the 1280 minor) TIGHT: the pixel egg (2 screen px cells: 22.5 design px under the
+	-- 0.8 Fit, + its drop shadow) over a 17 px percent, a screen px clear of the wood, needs a 50 px chip; the 10 px come
+	-- off the Spin plank (56: 44.8 screen px, still a 44 px touch target) and the gap over it (6), so the machine's stage
+	-- keeps its 2 px cells
+	local spinH = tight and 56 or 64
+	local spinY = row2Y - 8 - spinH
+	local chipH = tight and 50 or (M.Ref and 60 or 56)
+	local chipsY = spinY - (tight and 6 or 8) - chipH
 	local stageY = 12 + plateH + 8
 	place(t.Machine.Root, 12, stageY, w - 24, math.max(40, chipsY - 8 - stageY))
 	t.Machine.AlignX = 0.5
 	H.sizeMachine(t.Machine, M.Art)
-	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, 18, 6)
-	place(t.Spin.Button, 14, spinY, w - 28, 64)
-	H.arrange(t.Spin, w - 28, 64, 23, 26)
+	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, tight and 17 or 18, 6)
+	place(t.Spin.Button, 14, spinY, w - 28, spinH)
+	H.arrange(t.Spin, w - 28, spinH, 23, 26)
 	local half = math.floor((w - 38) / 2)
 	place(t.Spin3.Button, 14, row2Y, half, row2H)
 	H.arrange(t.Spin3, half, row2H, 18, 20)
@@ -1362,7 +1457,9 @@ function L.cardSheetPhone(t, w, th)
 	t.Plate.Text = t.Id
 	t.Plate.TextSize = rw < 90 and 15 or 17
 	place(t.Plate, rx, 6, rw, 30)
-	L.chips(t, rx, 40, rw, spinY - 6 - 40, 1, 20, 15, 4)
+	-- (P2 icons review r1, major 1) two columns of tall chips, the pixel egg (2 px cells) over its percent as on PC: in one
+	-- column the chips were 20 px faces, the egg and its drop shadow flush on the wood
+	L.chips(t, rx, 40, rw, spinY - 6 - 40, 2, 20, 15, 4)
 	place(t.Spin.Button, 6, spinY, w - 12, 44)
 	H.arrange(t.Spin, w - 12, 44, 16, 18)
 	local half = math.floor((w - 18) / 2)

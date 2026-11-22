@@ -2826,6 +2826,71 @@ local function serverScenarios()
 		K.flushErrors("icons_b_glyphs")
 	end)
 
+	-- (P2 icons review r1, major 1: the odds chips under the pixel machines drew today's smooth vector EggArt, a rounded
+	-- capsule with an ink outline and a smooth highlight: the loudest style break on every card) item 10 A's odds chip egg
+	-- as a 9 x 9 glyph a rarity, PixelIcon "egg_<rarity>": the approved mock-up's egg (make_item10.py EGG9 / odds_egg), its
+	-- rarity's colours (the Secret egg the night ramp and a white star), the 1-cell drop shadow, drawn in its own colours at
+	-- 27 and 18 px within the Frame cap. (The game cuts it from the machines sheet's egg row once that is uploaded; this
+	-- glyph is the code fallback and the same drawing)
+	S.odds_egg_glyphs = guarded("odds_egg_glyphs", function()
+		local PI, Config = shared("PixelIcon"), shared("Config")
+		if not (PI and Config) then
+			return
+		end
+		local EGG = { "...###...", "..#####..", "..#####..", ".#######.", ".#######.", ".#######.", ".#######.", ".#######.", "..#####.." }
+		local colours = {}
+		for _, r in ipairs(Config.Rarities or {}) do
+			colours[r.Id] = r.Color
+		end
+		local parent = holder(300, 300)
+		local bad = {}
+		for _, r in ipairs({ "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }) do
+			local name = "egg_" .. r:lower()
+			local cells = artCells(PI, name)
+			local why = cells and "" or "no Art data"
+			if cells then
+				for y = 0, 9 do
+					for x = 0, 9 do
+						local want = y <= 8 and x <= 8 and EGG[y + 1]:sub(x + 1, x + 1) == "#"
+						local ch = cells[y * 10 + x]
+						if why == "" and want ~= (ch ~= nil and ch ~= "~") then
+							why = fmt("cell %d,%d %s", x, y, want and "missing" or "drawn outside the egg")
+						end
+					end
+				end
+				local pal = PI.Art[name].P
+				local hexes = {}
+				for _, h in pairs(pal) do
+					hexes[h] = true
+				end
+				local c = colours[r]
+				if why == "" and r ~= "Secret" and not (c and hexes[string.format("%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))]) then
+					why = "its colours miss the rarity's own (Config.Rarities)"
+				end
+				if why == "" and r == "Secret" then
+					local star = cells[4 * 10 + 5]
+					if not (star and pal[star] == "FFFFFF") then
+						why = "no white star at 5,4"
+					end
+				end
+				for _, px in ipairs({ 27, 18 }) do
+					local icon = PI.New(parent, name, px, PI.Own)
+					local p = icon and paintsArt(PI, icon, name, px) or "nil"
+					if why == "" and p ~= "" then
+						why = px .. " px: " .. p
+					end
+				end
+			end
+			if why ~= "" then
+				bad[#bad + 1] = r .. ": " .. why
+			end
+		end
+		T.check(#bad == 0, "odds eggs: egg_<rarity> for the 7 rarities is the mock-up's 9 x 9 egg in its rarity's colours (+ the drop shadow), drawn at 27 and 18 px within the Frame cap",
+			table.concat(bad, "; "))
+		parent:Destroy()
+		K.flushErrors("odds_egg_glyphs")
+	end)
+
 	-- Review Focus 2 (missing upload ids): with Config.IconSheet.Id 0 (shipping, nothing uploaded) every redrawn icon draws
 	-- its 9 x 9 glyph at every size, the art sizes too (54 px: 6 px cells), with no image, no error and no empty box
 	S.icons_sheet_fallback = guarded("icons_sheet_fallback", function()
@@ -17389,6 +17454,149 @@ local function clientScenarios()
 		end
 		ms.Id = saved
 		LKC.flushErrors("machines_sheet")
+	end)
+
+	-- (P2 icons review r1, major 1: under the 3 px pixel machines the odds chips drew today's smooth vector EggArt; minor:
+	-- at 1280 the chips were cramped, "60%" 0.4 px from the wood and the egg 1.6 px from it) with the machines sheet each
+	-- card's odds chip holds a hand-pixelled egg, the mock-up's (10_optA: make_item10.odds_egg): "PixelEgg", the rarity's
+	-- "egg_<rarity>" drawn at the screen's one cell size (3 screen px at 1920, 2 at 1280 and on a phone) and cut from the
+	-- machines sheet's egg row (Config.MachineSheet.Eggs, the cells machines_a.json gives) as one Pixelated ImageLabel; the
+	-- EggArt egg hidden. The egg (its drop shadow too) and the percent both inside the chip's face, apart, the percent's
+	-- text 2 px or more clear of the chip's sides. Without an egg cell (a sheet with no egg row) the same egg draws as the
+	-- 9 x 9 PixelIcon glyph in Frames
+	S.machines_egg_chips = guarded("machines_egg_chips", function()
+		local Config = LoadingH.shared("Config")
+		local Theme = LoadingH.shared("Theme")
+		local ms = Config and Config.MachineSheet
+		if not T.check(type(ms) == "table" and type(ms.Eggs) == "table", "egg chips: Config.MachineSheet.Eggs gives each rarity's egg cell in the sheet") then
+			return
+		end
+		local fh = io.open("build/upload_sheets/machines_a.json", "r")
+		local json = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		local eggsJson = json:match('"eggs": (%b{})') or ""
+		local off = {}
+		for _, r in ipairs({ "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }) do
+			local c = ms.Eggs[r]
+			local block = eggsJson:match('"' .. r .. '": (%b{})')
+			local j = {}
+			for _, k in ipairs({ "x", "y", "w", "h" }) do
+				j[#j + 1] = block and tonumber(block:match('"' .. k .. '": (%d+)'))
+			end
+			if not (type(c) == "table" and c[1] == j[1] and c[2] == j[2] and c[3] == j[3] and c[4] == j[4] and c[3] == 10 and c[4] == 10) then
+				off[#off + 1] = r
+			end
+		end
+		T.check(eggsJson ~= "" and #off == 0, "egg chips: each rarity's 10 x 10 egg cell (9 x 9 + the drop shadow) in Config is the one machines_a.json gives",
+			table.concat(off, ", "))
+		local saved = ms.Id
+		ms.Id = 5151515151
+		-- the drawn box of an icon (its Frames or its ImageLabel) in its row's design px
+		local function drawn(icon)
+			local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+			for _, d in ipairs(icon:GetChildren()) do
+				if d:IsA("GuiObject") and d.Visible then
+					local x, y = icon.Position.X.Offset + d.Position.X.Offset, icon.Position.Y.Offset + d.Position.Y.Offset
+					x0, y0 = math.min(x0, x), math.min(y0, y)
+					x1, y1 = math.max(x1, x + d.Size.X.Offset), math.max(y1, y + d.Size.Y.Offset)
+				end
+			end
+			return x0, y0, x1, y1
+		end
+		local function chipsOf(roots, fn)
+			for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+				local root = roots[id]
+				local odds = root and root.Parent and root.Parent:FindFirstChild("Odds")
+				for _, row in ipairs(odds and odds:GetChildren() or {}) do
+					if row:IsA("Frame") and row.Name:match("^Odds_") then
+						fn(id, row, row.Name:sub(6))
+					end
+				end
+			end
+		end
+		for _, m in ipairs({ { "PC", { W = 1240, H = 834 }, nil, 3, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, 2, "PC" },
+			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
+			local want = m[4]
+			local ok, err = machinesPage(m[5], m[2], function(roots)
+				local wrong, cramped, n = {}, {}, 0
+				chipsOf(roots, function(id, row, r)
+					n = n + 1
+					local tag = id .. "." .. r
+					local egg, pix, pct = row:FindFirstChild("Egg"), row:FindFirstChild("PixelEgg"), row:FindFirstChild("Pct")
+					local art = pix and pix:FindFirstChild("Art")
+					local c = ms.Eggs[r]
+					local why = ""
+					if egg and egg.Visible then
+						why = "the vector EggArt egg still shows"
+					elseif not (pix and pix.Visible and pix:GetAttribute("PixelIcon") == "egg_" .. r:lower()) then
+						why = "no pixel egg egg_" .. r:lower()
+					elseif not (art and art:IsA("ImageLabel") and art.Image == "rbxassetid://5151515151") then
+						why = "not cut from the machines sheet"
+					elseif art.ImageRectOffset ~= Vector2.new(c[1], c[2]) or art.ImageRectSize ~= Vector2.new(c[3], c[4]) then
+						why = "rect " .. tostring(art.ImageRectOffset) .. " " .. tostring(art.ImageRectSize)
+					elseif art.ResampleMode ~= Enum.ResamplerMode.Pixelated then
+						why = "not Pixelated"
+					elseif pix:GetAttribute("CellPx") ~= want then
+						why = fmt("%s screen px a cell, want %d", tostring(pix:GetAttribute("CellPx")), want)
+					end
+					if why ~= "" then
+						wrong[#wrong + 1] = tag .. ": " .. why
+						return
+					end
+					-- the egg and the percent inside the chip's face (over its 3 px lip), apart, the text 2 px clear of the sides
+					local cw, chh = row.Size.X.Offset, row.Size.Y.Offset
+					local ex0, ey0, ex1, ey1 = drawn(pix)
+					local tw = Theme.Measure(pct.Text, Theme.FontOf(pct), pct.TextSize, 10000).X
+					local px, pw = pct.Position.X.Offset, pct.Size.X.Offset
+					local tx0 = pct.TextXAlignment == Enum.TextXAlignment.Center and px + (pw - tw) / 2
+						or (pct.TextXAlignment == Enum.TextXAlignment.Right and px + pw - tw or px)
+					local ty0 = pct.Position.Y.Offset + (pct.Size.Y.Offset - pct.TextSize) / 2
+					local tx1, ty1 = tx0 + tw, ty0 + pct.TextSize
+					local apart = ex1 <= tx0 + 0.01 or tx1 <= ex0 + 0.01 or ey1 <= ty0 + 0.01 or ty1 <= ey0 + 0.01
+					-- (the egg a screen px or more under the chip's top: at 1280 it first sat on the wood)
+					if not (ex0 >= 2 - 0.01 and ey0 >= 1 / (m[3] or 1) - 0.01 and ex1 <= cw - 2 + 0.01 and ey1 <= chh - 3 + 0.01) then
+						cramped[#cramped + 1] = fmt("%s: egg %.1f,%.1f..%.1f,%.1f in a %dx%d chip", tag, ex0, ey0, ex1, ey1, cw, chh)
+					elseif not (tx0 >= 2 - 0.01 and tx1 <= cw - 2 + 0.01 and ty0 >= -0.01 and ty1 <= chh - 3 + 0.01 and pct.Visible) then
+						cramped[#cramped + 1] = fmt("%s: '%s' %.1f..%.1f (%.1f wide) in a %d px chip", tag, pct.Text, tx0, tx1, tw, cw)
+					elseif not apart then
+						cramped[#cramped + 1] = fmt("%s: egg %.1f,%.1f..%.1f,%.1f meets '%s' %.1f,%.1f..%.1f,%.1f", tag, ex0, ey0, ex1, ey1, pct.Text, tx0, ty0, tx1, ty1)
+					end
+				end)
+				T.check(n >= 16 and #wrong == 0, "egg chips (" .. m[1] .. "): every odds chip holds its rarity's pixel egg cut from the machines sheet at "
+					.. want .. " screen px a cell (the vector egg hidden)", fmt("%d chips | ", n) .. table.concat(wrong, "; ", 1, math.min(#wrong, 6)))
+				T.check(n >= 16 and #cramped == 0, "egg chips (" .. m[1] .. "): the egg and the percent inside each chip's face, apart, the text 2 px clear of the wood",
+					table.concat(cramped, "; ", 1, math.min(#cramped, 6)))
+			end, m[3], true)
+			T.check(ok, "egg chips (" .. m[1] .. "): the page builds and lays out", tostring(err))
+		end
+		-- a sheet with no egg row: the same egg as the 9 x 9 glyph in Frames, own colours, at the screen's cell
+		local eggs = ms.Eggs
+		ms.Eggs = nil
+		local ok, err = machinesPage("Portrait", { W = 350, H = 552 }, function(roots)
+			local wrong, n = {}, 0
+			chipsOf(roots, function(id, row, r)
+				n = n + 1
+				local pix = row:FindFirstChild("PixelEgg")
+				local frames = 0
+				for _, d in ipairs(pix and pix:GetChildren() or {}) do
+					if d:IsA("Frame") then
+						frames = frames + 1
+					elseif d:IsA("ImageLabel") then
+						frames = -1000
+					end
+				end
+				if not (pix and pix.Visible and pix:GetAttribute("PixelIcon") == "egg_" .. r:lower() and pix:GetAttribute("Own") == true and frames > 0 and pix:GetAttribute("CellPx") == 2) then
+					wrong[#wrong + 1] = id .. "." .. r
+				end
+			end)
+			T.check(n >= 16 and #wrong == 0, "egg chips (no egg cell): each chip's egg is the 9 x 9 glyph in its own colours, Frames, 2 px cells", table.concat(wrong, ", "))
+		end, nil, true)
+		T.check(ok, "egg chips (no egg cell): the page builds and lays out", tostring(err))
+		ms.Eggs = eggs
+		ms.Id = saved
+		LKC.flushErrors("machines_egg_chips")
 	end)
 
 	return S

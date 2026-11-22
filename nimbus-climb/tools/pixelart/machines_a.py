@@ -258,3 +258,22 @@ def a_secret():
 
 
 A = {"Cloud": a_cloud, "Storm": a_storm, "Sky": a_sky, "Celestial": a_celestial, "Secret": a_secret}
+
+# (P2 icons review r1, major 1: the odds chips under the pixel machines drew today's smooth vector EggArt) the odds chip's
+# egg, the approved mock-up's (make_item10.py EGG9 / odds_egg): a 9 x 9 egg in its rarity's ramp, a lighter band across
+# row 5, the Secret egg a white star. 27 px on PC (3 px cells), 18 on a phone (2 px cells). The game draws it from the
+# machines sheet (its egg row) or, without that cell, as a 9 x 9 PixelIcon glyph ("egg_<rarity>", the same drawing)
+ODDS_EGG = "...eee.../..eEeee../..eeeee../.eeeeeee./.eeeeeee./.eeeeeee./.eeeeeee./.eeeeeee./..eeeee.."
+ODDS_EGG_ORDER = ["Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret"]
+
+
+def odds_egg(rarity):
+    """the odds chip egg of `rarity` as (Grid, z, palette)"""
+    g = Grid.parse(ODDS_EGG, "e")
+    for x in range(2, 7):
+        g.tone(x, 5, 3)
+    if rarity == "Secret":
+        g.put(5, 4, "*")
+    pal = dict(MPAL)
+    pal["e"] = MPAL["R_" + rarity]
+    return g, "", pal
