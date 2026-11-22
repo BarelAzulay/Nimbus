@@ -765,7 +765,9 @@ S.client_raid_enrage = guarded("client_raid_enrage", function()
 	end)
 	T.check(tele ~= nil, "raid battle client: the sim's lethal Telegraph arrives and is drawn as lethal")
 	if tele then
-		T.check(hudHas("ENRAGED %- DASH!"), "raid battle client: the enrage pill says DASH! while the lethal is pending")
+		-- (kit-b Pitch 2 item 06 A, keys lane look fixA r1: the mock-up's pill reads "Enraged", not "ENRAGED") the case is the
+		-- spec's; DASH! stays the call to act
+		T.check(hudHas("^Enraged %- DASH!$"), "raid battle client: the enrage pill says DASH! while the lethal is pending")
 		T.check(plain ~= nil and tele.RimWidth >= 2 * plain.RimWidth, "raid battle client: a thicker rim", tostring(tele.RimWidth) .. " vs " .. tostring(plain and plain.RimWidth))
 		T.check(tele.RimColor ~= nil and tele.RimColor.R > 0.9 and tele.RimColor.G < 0.4, "raid battle client: ...in the late colour from the start")
 		local inside = false
@@ -779,7 +781,7 @@ S.client_raid_enrage = guarded("client_raid_enrage", function()
 		end)
 		T.check(landed, "raid battle client: the lethal telegraph resolves")
 		d.run(0.3)
-		T.check(hudHas("ENRAGED") and not hudHas("DASH!"), "raid battle client: ...and plain ENRAGED after it lands")
+		T.check(hudHas("^Enraged$") and not hudHas("DASH!"), "raid battle client: ...and plain Enraged after it lands")
 	end
 	d.finish()
 	for _ = 1, 8 do
@@ -926,7 +928,7 @@ S.client_raid_enrage = guarded("client_raid_enrage", function()
 	d.run(0.6)
 	fx = pg():FindFirstChild("NimbusBattleFx")
 	edge = fx and fx:FindFirstChild("Edge1")
-	T.check(edge ~= nil and edge.Visible and edge.BackgroundColor3.G < 0.4 and hudHas("ENRAGED"), "raid battle client: a late joiner in an enraged fight sees the red edges and the pill at once")
+	T.check(edge ~= nil and edge.Visible and edge.BackgroundColor3.G < 0.4 and hudHas("^Enraged$"), "raid battle client: a late joiner in an enraged fight sees the red edges and the pill at once")
 	d.finish()
 	KC.advance(14)
 

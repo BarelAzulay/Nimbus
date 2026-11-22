@@ -5971,7 +5971,7 @@ function Hud.BuildTop()
 	-- (look review round 1: a narrow card, a tall phone's, dropped RAID) the RAID tag as the first pill where row 1 has no room
 	Hud.raidPill = smallPill(Hud.pills, "RAID", SIGN.Wood, { Name = "RaidPill", LayoutOrder = 0, Visible = false, ZIndex = 2 })
 	Hud.bossElement = smallPill(Hud.pills, "", KB.Loss, { Name = "Element", LayoutOrder = 1, ZIndex = 2 })
-	Hud.enragePill = smallPill(Hud.pills, "ENRAGED", SIGN.Red, { Name = "Enraged", LayoutOrder = 2, Visible = false, ZIndex = 2 })
+	Hud.enragePill = smallPill(Hud.pills, "Enraged", SIGN.Red, { Name = "Enraged", LayoutOrder = 2, Visible = false, ZIndex = 2 })
 	PixelIcon.Lead(Hud.enragePill, "skull")
 	Hud.minionPill = smallPill(Hud.pills, "", SIGN.Violet, { Name = "Minions", LayoutOrder = 3, Visible = false, ZIndex = 2 })
 	Hud.playersPill = smallPill(Hud.pills, "", SIGN.Sky, { Name = "Players", LayoutOrder = 4, Visible = false, ZIndex = 2 })
@@ -7722,7 +7722,8 @@ function Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
 	local size = max(18, fpx or 0)
 	local lethal = B.lethalPending == true
 	Hud.enragePill.Visible = B.enraged == true
-	setText(Hud.enragePill, lethal and "ENRAGED - DASH!" or "ENRAGED")
+	-- (keys lane, look fixA r1: the approved mock-up's pill reads "Enraged", the other pills' case)
+	setText(Hud.enragePill, lethal and "Enraged - DASH!" or "Enraged")
 	local minions, players = 0, {}
 	for _, u in ipairs(B.list) do
 		if u.kind == "Minion" and u.hp > 0 and u.state ~= S_DOWN then
