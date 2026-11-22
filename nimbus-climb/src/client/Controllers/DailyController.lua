@@ -230,7 +230,7 @@ local K = {
 		Side = 28, HeaderY = 18, HeaderH = 44, HeaderText = 34, ChipY = 20, ChipH = 44, ChipText = 22, ChipPad = 18,
 		StreakW = 190, VipW = 120, ChipGap = 14, LongStreak = true,
 		TilesY = 82, TileGap = 14, TileW = 128, TileMaxH = 260, TileMinH = 120, Raise = 8, PadTop = 12, PadBottom = 14, DayText = 22,
-		AmountText = 30, ChipPx = 72, PetPx = 150,
+		AmountText = 30, ChipPx = 72, PetPx = 150, RewardPx = 72,
 		AfterTiles = 22, ClaimW = 400, RepairW = 440, ClaimH = 96, ClaimText = 40, RepairText = 32, Line1 = 24, Line2 = 22,
 		CountText = 28, KeepText = 22, Bottom = 30, MaxBody = 485,
 		HeroW = 320, HeroY = 14, ColGap = 24, HeroPad = 14, CardGap = 6, HeroDayText = 22, PetMax = 260, PlinthH = 10, PlinthOut = 14,
@@ -252,7 +252,7 @@ local K = {
 		StreakW = 118, VipW = 84, ChipGap = 8,
 		-- (Pitch 2 09 B) the prize stand as on PC: the row and the Claim left, the prize card right
 		TilesY = 50, TileGap = 10, TileW = 92, TileMaxH = 150, TileMinH = 80, Raise = 8, PadTop = 6, PadBottom = 8, DayText = 15,
-		AmountText = 17, ChipPx = 48, PetPx = 60,
+		AmountText = 17, ChipPx = 54, PetPx = 60, RewardPx = 54,
 		AfterTiles = 8, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15,
 		CountText = 17, KeepText = 15, Bottom = 20,
 		HeroW = 196, HeroY = 6, ColGap = 12, HeroPad = 6, CardGap = 2, HeroDayText = 15, PetMax = 160, PlinthH = 6, PlinthOut = 8,
@@ -283,7 +283,7 @@ local K = {
 		-- and 5 px shadow, then 4 px of stone) and Bottom 22; the 12 px come off the prize card (HeroMaxH 124: its rows still
 		-- fit, the Wisp still over 60 % of it), not off the tiles, which were cut once already
 		TileGap = 10, TileW = 112, TileMaxH = 122, TileMinH = 60, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
-		AmountText = 15, ChipPx = 48, PetPx = 44,
+		AmountText = 15, ChipPx = 54, PetPx = 44, RewardPx = 54,
 		RowGap = 10, AfterTiles = 12, ClaimH = 60, ClaimGap = 14, KeepH = 20, KeepText = 15, Bottom = 22, ClaimW = 230, RepairW = 300,
 		ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
 		WinH = 676, WinMinRoom = 600, TopClear = 32, TopClearTight = 6, Foot = 12,
@@ -1108,6 +1108,18 @@ function H.fitPx(room)
 	return (tonumber(room) or 0) >= art and art or H.px("Glyph")
 end
 
+-- (P2 icons review r1, major 2: the reward art drew 54 px on PC tiles and 36 on phone tiles, the gem, the coin and the
+-- bills small in big empty tiles) a day's reward art at the approved 09_daily_layout B size, M.RewardPx (72 px: 4 px
+-- cells of the 18 x 18 sheet art on PC tiles; 54: 3 px cells on phone tiles; the reward is the tile's hero), where
+-- `room` holds it; else the largest of the screen's two pixel sizes that does
+function H.rewardPx(room, M)
+	local want = M and tonumber(M.RewardPx) or 0
+	if want > 0 and (tonumber(room) or 0) >= want then
+		return want
+	end
+	return H.fitPx(room)
+end
+
 -- a sparkle's px: the screen's glyph size
 local function sparklePx()
 	return H.px("Glyph")
@@ -1604,7 +1616,9 @@ function H.placeTile(cell, M, today, wide)
 	-- sizes
 	cell.PetPx = math.max(12, math.min(M.PetPx, artH, w - 8))
 	cell.ChipPx = math.max(12, math.min(M.ChipPx, artH, w - 8))
-	cell.ArtPx = H.fitPx(cell.ChipPx - 12)
+	-- (P2 icons review r1, major 2) the chip is a clear holder now (item 9 B: no block behind the art): the art takes its
+	-- whole room at the 09 B size (it lost 12 px to the block's edge)
+	cell.ArtPx = H.rewardPx(cell.ChipPx, M)
 	-- (kit-b U9-4) the glint round the art (a cream sparkle reads on today's gold)
 	local a = wide and cell.PetPx or cell.ChipPx
 	H.placeSparkles(cell.Sparkles, (w - a) / 2, artY + (artH - a) / 2, a, a, sparklePx(), SIGN.Tile)
@@ -1701,7 +1715,7 @@ function H.placeHero(cell, M)
 	place(cell.Check, artX + (side - check - 8) / 2, artY + (side - check - 8) / 2, check + 8, check + 8)
 	cell.PetPx = side
 	cell.ChipPx = math.max(12, math.min(M.ChipPx, side))
-	cell.ArtPx = H.fitPx(cell.ChipPx - 12)
+	cell.ArtPx = H.rewardPx(cell.ChipPx, M)
 	H.placeSparkles(cell.Sparkles, artX, artY, side, side, sparklePx(), SIGN.Tile)
 end
 
@@ -1928,7 +1942,10 @@ end
 function H.paintArt(cell, entry)
 	local px, chipPx = cell.ArtPx or 18, cell.ChipPx or 30
 	local artW, artH = cell.Art.Size.X.Offset, cell.Art.Size.Y.Offset
+	-- (P2 icons review r1, major 2) the key carries the icon sheet's id: a sheet set after the first draw (render_gui
+	-- --sheets, the tests) draws the sheet's art
 	local key = tostring(entry.Kind) .. ":" .. tostring(entry.PetId) .. ":" .. px .. ":" .. chipPx .. ":" .. tostring(cell.PetPx) .. ":" .. artW .. "x" .. artH
+		.. ":" .. tostring(PixelIcon.SheetId and PixelIcon.SheetId() or 0)
 	if cell.ArtKey == key then
 		return
 	end
@@ -1951,8 +1968,12 @@ function H.paintArt(cell, entry)
 	-- colours (the cash bills, the gold coin, the gem; the 18 x 18 art once the icon sheet is uploaded): "Chip" is a clear
 	-- holder that keeps the reward's Role (it was a grass / gold / navy kit block behind a one-ink icon)
 	local kind = tostring(entry.Kind or "")
+	-- (P2 icons review r1, major 2) centred with the art's 1-cell drop shadow (px / 9 on the right and below: the 9 x 9
+	-- glyph's cell, the larger of the two) inside the art box: at 54 px on a phone the shadow ran 1 px past it
+	local drop = math.ceil(px / 9)
 	local chip = Util.Create("Frame", {
-		Name = "Chip", BorderSizePixel = 0, BackgroundTransparency = 1, Position = UDim2.fromOffset(math.floor((artW - chipPx) / 2), math.floor((artH - chipPx) / 2)),
+		Name = "Chip", BorderSizePixel = 0, BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(math.max(0, math.floor((artW - chipPx - drop) / 2)), math.max(0, math.floor((artH - chipPx - drop) / 2))),
 		Size = UDim2.fromOffset(chipPx, chipPx), ZIndex = 5, Parent = cell.Art,
 	})
 	chip:SetAttribute("Role", K.ART_CHIP[kind] and kind or "Other")

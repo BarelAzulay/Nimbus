@@ -12564,10 +12564,11 @@ local function clientScenarios()
 	end
 	-- (U9-4 look review: one pixel size per screen) the cell sizes (screen px) of the shown PixelIcons under `root`, as a
 	-- sorted list of distinct values, and the icons whose cell is not one of `allowed`
-	function U94.pixelCells(root, allowed)
+	-- (`skip`: an optional fn(icon) -> true for the icons another check measures)
+	function U94.pixelCells(root, allowed, skip)
 		local seen, odd = {}, {}
 		for _, d in ipairs(root:GetDescendants()) do
-			if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+			if d:IsA("Frame") and d:GetAttribute("PixelIcon") and U8.shown(d) and d.AbsoluteSize.X > 0 and not (skip and skip(d)) then
 				local c = d.AbsoluteSize.X / 9
 				local key = fmt("%.2f", c)
 				seen[key] = true
@@ -12974,8 +12975,13 @@ local function clientScenarios()
 				local room = U94.tileRoom(holder, "Cell")
 				T.check(#room == 0, tag .. ": stone round every day tile (3 px to the frame, 4 px between)", table.concat(room, "; ", 1, math.min(#room, 6)))
 				-- (U9-4 look review) one pixel size per screen: every pixel icon in the window at the glyph or the art size,
-				-- one double the other (3 / 6 px cells on PC, 2 / 4 on a phone): the header gift, the sparkles, the ticks, the art
-				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 })
+				-- one double the other (3 / 6 px cells on PC, 2 / 4 on a phone): the header gift, the sparkles, the ticks, the art.
+				-- (P2 icons review r1, major 2) Days 1-6's reward art is left out here: the owner-approved 09_daily_layout B
+				-- mock-up draws it bigger than the screen's art size, 72 px in 4 px cells on PC tiles and 54 px in 3 px cells
+				-- on phone tiles (the reward is the tile's hero); daily_reward_art checks those sizes
+				local cells, odd = U94.pixelCells(holder, pc and { 3, 6 } or { 2, 4 }, function(icon)
+					return icon.Parent ~= nil and icon.Parent.Name == "Chip" and icon.Parent:GetAttribute("Role") ~= nil
+				end)
 				T.check(#odd == 0, tag .. ": every pixel icon at one of the screen's two pixel sizes (" .. (pc and "3 / 6" or "2 / 4") .. " px cells)",
 					table.concat(cells, ", ") .. " | " .. table.concat(odd, "; ", 1, math.min(#odd, 6)))
 				-- each day's reward is its role's pixel art (no cut gem in the window). (Pitch 2 item 9 B + 09_daily_layout B,
@@ -13465,6 +13471,85 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("daily_layout_b")
+	end)
+
+	-- (P2 icons review r1, major 2: the reward art drew 54 px on PC tiles and 38 on phone tiles, so the gem, the coin and the
+	-- bills floated small in big empty tiles; the approved 09_daily_layout B mock-up draws it 72 px in 4 px cells on PC tiles
+	-- and 54 px in 3 px cells on phone tiles: the reward is the tile's hero) Days 1-6's reward art at those sizes: the icon 72
+	-- design px on PC, 54 on a phone; with the icon sheet (a fake id here) the 18 x 18 art cut from it at 4 screen px a cell
+	-- at 1920, 3 under the 1280 window's 0.8 and on the phones; its drawn box (the drop shadow too) inside the tile's art box,
+	-- clear of the day's label and its amount. Without the sheet (Id 0, shipping) the same 72 / 54 px box draws the 9 x 9
+	-- glyph at whole cells (8 / 6 px)
+	S.daily_reward_art = guarded("daily_reward_art", function()
+		local Config = LoadingH.shared("Config")
+		local saved = Config.IconSheet.Id
+		local function rewardIcon(cell)
+			local chip = cell and cell:FindFirstChild("Chip", true)
+			for _, d in ipairs(chip and chip:GetDescendants() or {}) do
+				if d:GetAttribute("PixelIcon") then
+					return d
+				end
+			end
+			return nil
+		end
+		local function check(s, id, designPx, cellPx, sheet)
+			Config.IconSheet.Id = id
+			U94.at(s[1], s[2], s[3], "daily reward art" .. (sheet and "" or " (no sheet)"), "Daily", "", function(tag, holder)
+				local wrong, crowd = {}, {}
+				for i = 1, 6 do
+					local cell = holder:FindFirstChild("Cell" .. i, true)
+					local icon = rewardIcon(cell)
+					local art = icon and icon:FindFirstChild("Art")
+					local why = ""
+					if not (icon and U8.shown(icon)) then
+						why = "no reward art"
+					elseif icon.Size.X.Offset ~= designPx then
+						why = fmt("%d px, want %d", icon.Size.X.Offset, designPx)
+					elseif sheet and not (art and art:IsA("ImageLabel") and art.ResampleMode == Enum.ResamplerMode.Pixelated) then
+						why = "not the sheet's art"
+					elseif icon:GetAttribute("CellPx") ~= cellPx then
+						why = fmt("%s screen px a cell, want %d", tostring(icon:GetAttribute("CellPx")), cellPx)
+					end
+					if why ~= "" then
+						wrong[#wrong + 1] = "Cell" .. i .. ": " .. why
+					else
+						-- the drawn art (every shown part of the icon) inside the tile's art box, clear of the day and the amount
+						local box = cell:FindFirstChild("Art", true)
+						local br = box and U8.rect(box)
+						local a = { X = math.huge, Y = math.huge, R = -math.huge, B = -math.huge }
+						for _, d in ipairs(icon:GetDescendants()) do
+							if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+								local q = U8.rect(d)
+								a = { X = math.min(a.X, q.X), Y = math.min(a.Y, q.Y), R = math.max(a.R, q.R), B = math.max(a.B, q.B) }
+							end
+						end
+						local day, amount = cell:FindFirstChild("Day", true), cell:FindFirstChild("Amount", true)
+						local bad = not br or a.X < br.X - 0.5 or a.R > br.R + 0.5 or a.Y < br.Y - 0.5 or a.B > br.B + 0.5
+						for _, t in ipairs({ day, amount }) do
+							if t and U8.shown(t) and U8.overlap(a, U8.rect(t)) then
+								bad = true
+							end
+						end
+						if bad then
+							crowd[#crowd + 1] = fmt("Cell%d art %s in box %s", i, U8.show(a), br and U8.show(br) or "-")
+						end
+					end
+				end
+				T.check(#wrong == 0, fmt("%s: Days 1-6's reward art %d px, %d screen px a cell", tag, designPx, cellPx), table.concat(wrong, "; "))
+				T.check(#crowd == 0, tag .. ": each reward's art inside its tile's art box, clear of the day and the amount", table.concat(crowd, "; ", 1, math.min(#crowd, 4)))
+			end)
+		end
+		local ok, err = pcall(function()
+			check({ 1920, 1080, false }, 4242424242, 72, 4, true)
+			check({ 1280, 720, false }, 4242424242, 72, 3, true)
+			check({ 844, 390, true }, 4242424242, 54, 3, true)
+			check({ 390, 844, true }, 4242424242, 54, 3, true)
+			check({ 1920, 1080, false }, 0, 72, 8, false)
+			check({ 390, 844, true }, 0, 54, 6, false)
+		end)
+		Config.IconSheet.Id = saved
+		T.check(ok, "daily reward art: the checks ran", tostring(err))
+		LKC.flushErrors("daily_reward_art")
 	end)
 
 	-- (finding 26: the week reward's rainbow sweep and rainbow confetti) a paid week (Weeks 1 -> 2) on High: the banner a gold
