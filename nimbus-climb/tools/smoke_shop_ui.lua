@@ -1384,6 +1384,21 @@ S.client_shop_gems = guarded("client_shop_gems", function()
 	G.setAttr("Gems", 100)
 	G.advance(1.2)
 	T.check(SG.PotionState() == "Ready" and potionShows() == "gem:100", "shop gems: Ready at 100 gems, '100' on the button", tostring(SG.PotionState()))
+	-- (P2 icons look fin1, minor: the potion's '100' plank drew the cut GemIcon beside the pixel gem of the Gems pill and the
+	-- Eggs' gem planks, the same plank kind fixed there in fin0) its gem is item 9 B's pixel gem: "GemPixel" hosting
+	-- PixelIcon "gem" at whole cells (27 px on a PC plank, its 30 px price), left of the number, no cut gem on the plank
+	do
+		local amount = pbuy and pbuy:FindFirstChild("GemAmount", true)
+		local gp = amount and amount:FindFirstChild("GemPixel")
+		local icon = gp and gp:FindFirstChild("Icon")
+		local value = amount and amount:FindFirstChild("Value")
+		local cut = pbuy and pbuy:FindFirstChild("GemIcon", true)
+		T.check(gp ~= nil and icon ~= nil and icon:GetAttribute("PixelIcon") == "gem" and cut == nil and value ~= nil
+			and gp.Size.X.Offset % 9 == 0 and gp.Position.X.Offset + gp.Size.X.Offset <= value.Position.X.Offset,
+			"shop gems: the potion plank's gem is the pixel gem (GemPixel, PixelIcon 'gem', whole cells), left of '100'; no cut GemIcon",
+			fmt("pixel %s, icon %s, cut %s, size %s", tostring(gp ~= nil), tostring(icon and icon:GetAttribute("PixelIcon")), tostring(cut ~= nil),
+				gp and tostring(gp.Size.X.Offset) or "-"))
+	end
 	G.tap(pbuy)
 	T.eq(G.calls("StoreRequest", mark, "GemBuy", "XpPotionGems"), 1, "shop gems: only Ready sends StoreRequest('GemBuy', 'XpPotionGems')")
 	G.setAttr("Gems", 1250)

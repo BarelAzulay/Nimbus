@@ -378,7 +378,9 @@ local function buildPotion(P)
 		call(P, "GemBuy")
 	end, "Blue")
 	p.Buy.TextWrapped = true
-	p.Amount = GemIcon.Amount(p.Buy, "0", { TextSize = 30, Color = SIGN.Text })
+	-- (P2 icons look fin1, minor) the plank's gem is item 9 B's pixel gem, as on the Gems pill and the Eggs' gem planks
+	-- (the cut GemIcon sat beside them); the piles stay cut gems (the owner's 2026-11-07 call)
+	p.Amount = GemIcon.Amount(p.Buy, "0", { TextSize = 30, Color = SIGN.Text, Pixel = true })
 	p.Amount.AnchorPoint = Vector2.new(0.5, 0.5)
 	p.Amount.Position = UDim2.fromScale(0.5, 0.5)
 	return p
