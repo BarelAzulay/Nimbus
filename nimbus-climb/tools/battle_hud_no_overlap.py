@@ -270,6 +270,8 @@ class Checker:
         names = " | ".join(" ".join(x.split(".")[-1] for x in row) for row in order)
         if (w, h) == (844, 390):
             self.check(len(order) == 1, tag + "the pills sit in one row (spec 06 A: all four in one row on the phone)", names)
+        if w >= 1000:
+            self.check(len(order) == 1, tag + "the pills sit in one row beside the head's slot (spec 06 A's PC frame)", names)
         if h > w:
             self.check(len(order) <= 2, tag + "the pills take at most two rows (spec 06 A: a portrait card wraps them to a second row)", names)
         if (w, h) == (390, 844):

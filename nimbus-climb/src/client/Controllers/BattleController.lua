@@ -5961,6 +5961,15 @@ function Hud.BuildTop()
 	signEdge(Hud.portrait, KB.Edge, 2)
 	Hud.portraitImage = make("ImageLabel", { Name = "Head", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 3,
 		ResampleMode = Enum.ResamplerMode.Pixelated, ScaleType = Enum.ScaleType.Fit }, Hud.portrait)
+	-- (keys lane, look fixA r1: with no head uploaded the PC strip had no portrait and read as a generic bar) until the head's
+	-- image id exists, a PC's slot keeps its place with the gold pixel crown in the sunk well (the uploaded head replaces it)
+	Hud.portraitCrown = PixelIcon.New(Hud.portrait, "crown", 54, SIGN.Gold)
+	if Hud.portraitCrown then
+		Hud.portraitCrown.Name = "Crown"
+		Hud.portraitCrown.AnchorPoint = Vector2.new(0.5, 0.5)
+		Hud.portraitCrown.Position = UDim2.fromScale(0.5, 0.5)
+		Hud.portraitCrown.ZIndex = 3
+	end
 	-- the track: wood (its 2 px edge) round the sunk well face; the blocks, the divider and the number on that face
 	Hud.bossTrack = make("Frame", { Name = "Hp", BackgroundColor3 = KB.Edge, BorderSizePixel = 0, ZIndex = 2 }, boss)
 	Hud.bossFace = make("Frame", { Name = "Face", BackgroundColor3 = SIGN.Well, BorderSizePixel = 0, ZIndex = 2 }, Hud.bossTrack)
@@ -7654,10 +7663,17 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local bodyMin = 0
 	if bossUnit then
 		local head = Hud.BossHead(bossUnit.bossId or B.BossId or (B.Raid and B.Raid.BossId))
-		Hud.portrait.Visible = head ~= nil
+		-- (keys lane, look fixA r1) a PC keeps the head's slot before the upload: the crown in the well (a phone keeps the
+		-- spec's no-portrait fallback: its narrower strip needs the room for the track and the pills)
+		local slot = head ~= nil or not compact
+		Hud.portrait.Visible = slot
+		Hud.portraitImage.Visible = head ~= nil
+		if Hud.portraitCrown then
+			Hud.portraitCrown.Visible = head == nil
+		end
 		local bx = x0
-		if head then
-			Hud.portraitImage.Image = head
+		if slot then
+			Hud.portraitImage.Image = head or ""
 			Hud.portrait.Position = UDim2.fromOffset(x0, yy)
 			Hud.portrait.Size = UDim2.fromOffset(K.PORTRAIT, K.PORTRAIT)
 			bx = x0 + K.PORTRAIT + 10
@@ -7700,10 +7716,25 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	end
 	-- the pills (a boss, a dungeon run): every one shown, wrapped into rows inside the card
 	Hud.pills.Visible = bossUnit ~= nil or B.Mode == "Dungeon"
+	Hud.pillsShort = compact
 	Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
 	local pillsH = 0
 	if Hud.pills.Visible then
 		pillsH = Hud.FlowPills(pillW)
+		if not compact and raidBoss and pillsH > K.PILL_H then
+			-- (keys lane, look fixA r1: the PC strip's head slot narrows the pill row, whose four pills then took two rows; the
+			-- approved strip has them in one) the phone's shorter words ("Wave 2/2", the people icon and the count) where they
+			-- keep the pills in fewer rows; Hud.Update keeps the words this layout chose (Hud.pillsShort)
+			Hud.SetPills(B, bossUnit, tierPill, true, fpx)
+			local h2 = Hud.FlowPills(pillW)
+			if h2 < pillsH then
+				pillsH = h2
+				Hud.pillsShort = true
+			else
+				Hud.SetPills(B, bossUnit, tierPill, false, fpx)
+				pillsH = Hud.FlowPills(pillW)
+			end
+		end
 		Hud.pills.Position = UDim2.fromOffset(pillX, yy)
 		Hud.pills.Size = UDim2.fromOffset(pillW, max(1, pillsH))
 		Hud.bossElement.Visible = bossUnit ~= nil
@@ -7956,7 +7987,11 @@ function Hud.Update(B, now, force)
 		-- where they wrap anew)
 		local m = Hud.m or Hud.Metrics()
 		local fpx = math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6)
-		local key = Hud.SetPills(B, Hud.BossUnit(B), Hud.tierPill.Visible and Hud.tierPill.Text or nil, m.Compact, fpx)
+		local short = m.Compact
+		if Hud.pillsShort ~= nil then
+			short = Hud.pillsShort -- (keys lane: the words LayoutTop chose, a PC strip's shorter ones too)
+		end
+		local key = Hud.SetPills(B, Hud.BossUnit(B), Hud.tierPill.Visible and Hud.tierPill.Text or nil, short, fpx)
 		if last.pillKey ~= key then
 			local first = last.pillKey == nil
 			last.pillKey = key
