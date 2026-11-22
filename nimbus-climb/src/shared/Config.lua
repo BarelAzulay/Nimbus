@@ -901,6 +901,17 @@ Config.Dev = {
 Config.Art = {
 	StormfangImage = "rbxassetid://101827417487186",
 }
+-- (Pitch 2 items 9 B / 10 A; P2 icons look fin1, tools/check.mjs asset-id) an owner-uploaded sheet's image
+-- (Config.IconSheet.Id, Config.MachineSheet.Id: a whole number above 0) as its asset URL. Asset URLs are made only here
+-- in Config.Art, on the allowed art's own scheme (no second asset literal anywhere); nil for 0 or junk (nothing uploaded
+-- yet: the callers keep their fallback drawing)
+function Config.Art.Image(id)
+	id = tonumber(id)
+	if not (id and id > 0 and id == math.floor(id)) then
+		return nil
+	end
+	return Config.Art.StormfangImage:match("^%a+://") .. string.format("%d", id)
+end
 
 -- (keys look r4, tools/check.mjs asset-id: BattleController built this URI itself) the image of a shared/TextureIds number
 -- for a file outside check.mjs's TextureIds joiners (the battle top card's boss head, Pitch 2 item 06 A): the prefix joined

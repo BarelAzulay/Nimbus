@@ -1384,6 +1384,32 @@ S.client_shop_gems = guarded("client_shop_gems", function()
 	G.setAttr("Gems", 100)
 	G.advance(1.2)
 	T.check(SG.PotionState() == "Ready" and potionShows() == "gem:100", "shop gems: Ready at 100 gems, '100' on the button", tostring(SG.PotionState()))
+	-- (P2 icons look fin1, minor: the potion's '100' plank drew the cut GemIcon beside the pixel gem of the Gems pill and the
+	-- Eggs' gem planks, the same plank kind fixed there in fin0) its gem is item 9 B's pixel gem: "GemPixel" hosting
+	-- PixelIcon "gem" at whole cells (27 px on a PC plank, its 30 px price), left of the number, no cut gem on the plank
+	do
+		local amount = pbuy and pbuy:FindFirstChild("GemAmount", true)
+		local gp = amount and amount:FindFirstChild("GemPixel")
+		local icon = gp and gp:FindFirstChild("Icon")
+		local value = amount and amount:FindFirstChild("Value")
+		local cut = pbuy and pbuy:FindFirstChild("GemIcon", true)
+		T.check(gp ~= nil and icon ~= nil and icon:GetAttribute("PixelIcon") == "gem" and cut == nil and value ~= nil
+			and gp.Size.X.Offset % 9 == 0 and gp.Position.X.Offset + gp.Size.X.Offset <= value.Position.X.Offset,
+			"shop gems: the potion plank's gem is the pixel gem (GemPixel, PixelIcon 'gem', whole cells), left of '100'; no cut GemIcon",
+			fmt("pixel %s, icon %s, cut %s, size %s", tostring(gp ~= nil), tostring(icon and icon:GetAttribute("PixelIcon")), tostring(cut ~= nil),
+				gp and tostring(gp.Size.X.Offset) or "-"))
+		-- (P2 icons look pol0, minor: the gem touched '100', 0-1 px: its 1-cell drop shadow ate the 6 px gap) the gem as
+		-- drawn (its 9 cells + the drop shadow) 4 px or more clear of the number's box. (The same review's "48.7 px in a 47
+		-- px box" is the renderer's flat 0.5 em measure: the Display role's Enum font is FredokaOne itself, so in the game
+		-- TextService measures the real face; not checked here)
+		if gp and value then
+			local cell = gp.Size.X.Offset / 9
+			local drawnR = gp.Position.X.Offset + gp.Size.X.Offset + cell
+			T.check(value.Position.X.Offset - drawnR >= 4 - 1e-6,
+				"shop gems: the potion plank's pixel gem (its drop shadow too) 4 px or more clear of '100'",
+				fmt("gap %.1f", value.Position.X.Offset - drawnR))
+		end
+	end
 	G.tap(pbuy)
 	T.eq(G.calls("StoreRequest", mark, "GemBuy", "XpPotionGems"), 1, "shop gems: only Ready sends StoreRequest('GemBuy', 'XpPotionGems')")
 	G.setAttr("Gems", 1250)
@@ -1842,13 +1868,16 @@ S.client_shop_portrait = guarded("client_shop_portrait", function()
 			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
 				local card = G.eggCard(id)
 				local b = card and G.rel(card, G.body())
-				local wantH = id == "Secret" and 200 or 250
+				-- (P2 icons look fin1, major) on the 360-wide phone the Secret card is one 15 px row taller (215): its hint keeps
+				-- the 15 px phone floor and wraps, since "A gold arrow leads you to the Storm Altar" (~298 px in Nunito) ran
+				-- past the 294 px one-line box there (ShopEggs L.portrait, H.heroHintRows; machines_hero_hints checks the rows)
+				local wantH = id == "Secret" and (sz[1] < 390 and 215 or 200) or 250
 				if not (b and b.y > lastY and b.w >= bw - 16 and G.near(b.h, wantH)) then
 					listBad[#listBad + 1] = id .. " " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
 				end
 				lastY = b and b.y or lastY
 			end
-			T.check(#listBad == 0, label .. ": Eggs: full-width cards in a vertical list (Secret 200 tall first, the machines 250)", table.concat(listBad, "; "))
+			T.check(#listBad == 0, label .. ": Eggs: full-width cards in a vertical list (Secret 200 tall first (215 at 360 wide), the machines 250)", table.concat(listBad, "; "))
 			G.spinRowsCheck(label)
 			local grid = G.oddsRows(G.eggCard("Cloud"))
 			local xs, ys = {}, {}

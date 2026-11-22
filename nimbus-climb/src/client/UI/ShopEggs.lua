@@ -148,7 +148,8 @@ local K = {
 	-- (Pitch 2 item 10 A; P2 icons review r1) with the machines sheet: the portrait cards grow for the 2 px machines
 	-- (128 x 136 stages), and a PC card's Spin rows and hint sit LIFT px higher (the hint clears the card's colour lip)
 	PORTRAIT_CARD_SHEET = 292,
-	PORTRAIT_HERO_SHEET = 248,
+	PORTRAIT_HERO_SHEET = 254, -- (P2 icons look pol0, minor: 248 left the hint's second row on the button's wood edge)
+	HINT_SPARE = 1.02, -- (P2 icons look fin1) H.heroHintRows: the Body face's width over its Enum fallback's, rounded up
 	LIFT = 12,
 	TEXT = {
 		Lock = "Gem roulettes are not available on this account right now.",
@@ -175,6 +176,9 @@ local K = {
 		HeroHintLocked = "Finish the match first",
 		AltarLock = "Available at the Storm Altar",
 		AltarLockShort = "At the Storm Altar",
+		-- (P2 icons look pol0, major: the 360-wide portrait hero's chip, 132 px of room after the padlock, cut the short line
+		-- to "At the Storm Al.") the line a chip too narrow for the short one reads: it still names the Storm Altar
+		AltarLockTiny = "Storm Altar only",
 		Travel = "Show the way", -- (kit-b U9-2: buttons read in sentence case; Pitch 2 item 13 A: was "Travel")
 		GemsOnly = "gems only",
 	},
@@ -296,6 +300,30 @@ function H.textW(text, size, font)
 		return v.X
 	end
 	return #tostring(text) * size * 0.55
+end
+
+-- (P2 icons look fin1, major: the portrait hero's hint was cut at 390 and 360 wide) the rows the longest line any hero
+-- state can show takes, word-wrapped at `size` in a box `width` wide. Measured as the Body face: TextService knows only
+-- its Enum fallback (Builder Sans Bold), and Nunito ExtraBold runs about 1.015 x that in render_gui's real font, so
+-- K.HINT_SPARE rounds it up to 1.02 (Theme.MeasureSpare's 1.06 would add a row the face never needs)
+function H.heroHintRows(width, size, font)
+	local function w(s)
+		return H.textW(s, size, font) * K.HINT_SPARE
+	end
+	local most = 1
+	for _, text in ipairs({ K.TEXT.HeroHint, K.TEXT.HeroHintLocked, K.TEXT.HeroHintLobbyShort, K.TEXT.HeroHintTravel, K.TEXT.HeroHintHere }) do
+		local rows, line = 0, nil
+		for word in tostring(text):gmatch("%S+") do
+			local try = line and (line .. " " .. word) or word
+			if line and w(try) > width then
+				rows, line = rows + 1, word
+			else
+				line = try
+			end
+		end
+		most = math.max(most, rows + (line and 1 or 0))
+	end
+	return most
 end
 
 function H.roulette(id)
@@ -489,7 +517,7 @@ function H.addSheet(m, color, secret, sheetId, cell)
 		Name = "Art",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Image = "rbxassetid://" .. string.format("%d", sheetId),
+		Image = Config.Art.Image(sheetId) or "", -- (P2 icons look fin1) the URL from Config.Art
 		ImageRectOffset = Vector2.new(cell[1], cell[2]),
 		ImageRectSize = Vector2.new(cell[3], cell[4]),
 		ResampleMode = Enum.ResamplerMode.Pixelated,
@@ -524,15 +552,17 @@ function H.sheetShown(t)
 end
 
 -- the sheet machine in its box at rest scale s: the largest whole number of screen px a cell that fits, centred (m.AlignX),
--- on whole screen px. A card's machine stands 4 cells into an 8-cell floor (the drawing and 2 cells of it must fit, inside
--- the well's 2 px rim); the hero's vault stands on the box's foot over its 3-cell slab (no rim: the drawing must fit). A
--- box too small for 1 px a cell can't: then the page shows today's drawn machines (H.showSheets)
+-- on whole screen px. A card's machine stands 4 cells into an 8-cell floor where the stage is tall enough (the drawing and
+-- 1 cell of floor under its drop shadow must fit, inside the well's 2 px rim: P2 icons look pol0, the 640 x 360 phone's
+-- 129 px stage holds the 2 px cells so; it asked for 2 cells); the hero's vault stands on the box's foot over its 3-cell
+-- slab (no rim: the drawing must fit). A box too small for 1 px a cell can't: then the page shows today's drawn machines
+-- (H.showSheets)
 function H.layoutSheetMachine(m, s)
 	s = (s and s > 0) and s or 1
 	local W, Hh = m.Root.Size.X.Offset, m.Root.Size.Y.Offset
 	local cw, ch = m.Cell[3], m.Cell[4]
 	local edge = m.Secret and 0 or PixelIcon.Px(2, s)
-	local px = math.floor(math.min((W - 2 * edge) * s / cw, (Hh - 2 * edge) * s / (ch + (m.Secret and 0 or 2))))
+	local px = math.floor(math.min((W - 2 * edge) * s / cw, (Hh - 2 * edge) * s / (ch + (m.Secret and 0 or 1))))
 	m.Fits = px >= 1
 	H.showSheets(m)
 	if not m.Fits then
@@ -566,8 +596,9 @@ function H.layoutSheetMachine(m, s)
 	m.Floor.Size = UDim2.fromOffset(W - 2 * edge, floorH)
 	m.FloorLine.Size = UDim2.fromOffset(W - 2 * edge, edge)
 	-- the ground shadow: three stepped rows a cell tall under the feet, the middle one widest (no blur), centred under the
-	-- drawing (the rows sit in the Face, `edge` in from the root)
-	local mid = math.floor((feet - edge) * s) / s - dc
+	-- drawing (the rows sit in the Face, `edge` in from the root). The feet as drawn: a stage shorter than the 8-cell floor
+	-- wants (the phones) holds the drawing from its top, lower than `feet`, and the rows hid behind it
+	local mid = math.floor((ay + ah - edge) * s) / s - dc
 	local rx = math.floor(aw * 0.42 / dc) * dc
 	for i, row in ipairs({ { -1, 0.6 }, { 0, 1 }, { 1, 0.6 } }) do
 		local w = math.floor(2 * rx * row[2] / dc) * dc
@@ -1195,7 +1226,18 @@ function L.heroPC(t, w, M)
 	t.Dim.Size = UDim2.new(0, x - 8, 1, 0) -- the machine and the big egg; the texts from x stay clear
 	place(t.Lock, x, cy, tw, 48)
 	t.Lock.TextSize = 20
-	place(t.Holder, w - 320, ref and 66 or 46, 290, 100)
+	-- (Pitch 2 look review r0, crop 06: on the tight 180 px hero the line sat 4 px over the card's foot) the hint's box ends
+	-- CARD_FOOT over the card's bottom: 22 px tall under the button on a tight hero. (P2 icons look pol0, minor: there, at
+	-- 1280, the line's text met the button's 5 px wood edge and its descenders the purple lip) on a hero too short for the
+	-- 28 px box the button rises so a 24 px box fits 2 px under its wood edge
+	local holderY = ref and 66 or 46
+	local hy, hh = ref and 172 or 152, 28
+	if hy + hh > M.Hero - K.CARD_FOOT then
+		hh = 24
+		hy = M.Hero - K.CARD_FOOT - hh
+		holderY = math.min(holderY, hy - 2 - 5 - 100)
+	end
+	place(t.Holder, w - 320, holderY, 290, 100)
 	place(t.Spin.Button, 0, 0, 290, 100)
 	H.arrange(t.Spin, 290, 100, 34, 44)
 	-- (P2 icons look fin0, minor) the signpost 27 px, 3 px cells (the screen's glyph cell, the mock-up's): 44 drew it 36
@@ -1211,13 +1253,6 @@ function L.heroPC(t, w, M)
 	-- the real face): one line from
 	-- w - 380 to 10 px short of the card's edge, starting 8 px clear of the chips when they reach that far
 	local hintL = math.max(w - 380, x + chipW + 8)
-	-- (Pitch 2 look review r0, crop 06: on the tight 180 px hero the line sat 4 px over the card's foot) the box ends
-	-- CARD_FOOT over the card's bottom: 22 px tall under the button on a tight hero
-	local hy, hh = ref and 172 or 152, 28
-	if hy + hh > M.Hero - K.CARD_FOOT then
-		hh = 22
-		hy = M.Hero - K.CARD_FOOT - hh
-	end
 	place(t.Hint, hintL, hy, w - 10 - hintL, hh)
 end
 
@@ -1251,17 +1286,23 @@ function L.cardPC(t, w, M, tall)
 	end
 	t.NoOdds.TextSize = 20
 	place(t.NoOdds, 16, M.RowsY, w - 32, rowsH)
-	place(t.Spin.Button, 14, M.SpinY, w - 28, 64)
-	H.arrange(t.Spin, w - 28, 64, 23, 26)
+	local spinH = M.Tight and 56 or 64 -- (P2 icons look pol0, minor: L.plan's TIGHT)
+	place(t.Spin.Button, 14, M.SpinY, w - 28, spinH)
+	H.arrange(t.Spin, w - 28, spinH, 23, 26)
 	local half = math.floor((w - 38) / 2)
 	place(t.Spin3.Button, 14, M.Row2Y, half, row2H)
 	H.arrange(t.Spin3, half, row2H, 18, 20)
 	place(t.SpinGems.Button, w - 14 - half, M.Row2Y, half, row2H)
 	H.arrange(t.SpinGems, half, row2H, 18, 22)
-	local hy = M.Row2Y + row2H + 2
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
-	place(t.Hint, 8, hy, w - 16, math.max(16, M.Card - K.CARD_FOOT - hy))
+	if M.Tight then
+		-- the line's own height, 2 px under the planks' 5 px edge and 5 px shadow (L.plan)
+		place(t.Hint, 8, M.Row2Y + row2H + 12, w - 16, 18)
+	else
+		local hy = M.Row2Y + row2H + 2
+		place(t.Hint, 8, hy, w - 16, math.max(16, M.Card - K.CARD_FOOT - hy))
+	end
 end
 
 -- the PC / Compact plan for a body Hh tall: REF, SHRUNK, or TIGHT worked out from Hh (the two button rows 64 + 56 and
@@ -1276,8 +1317,12 @@ function L.plan(Hh)
 	end
 	local T = K.TIGHT
 	local card = math.max(T.MinCard, Hh - T.CardsY - K.BODY_FOOT)
-	local row2Y = card - K.CARD_FOOT - T.HintH - 2 - 56
-	local spinY = row2Y - 8 - 64
+	-- (P2 icons look pol0, minor: today's machines at 1280, the shipping look: "Gems: same odds" started 2 px under the
+	-- x3 / gem planks' box, under their 5 px wood edge and 5 px shadow, its tops cut) the line (18 tall) ends 2 px over the
+	-- card's 5 px colour lip and starts 2 px under the planks' shadow; the Spin plank gives the 8 px back (56: 44.8 screen
+	-- px under the 0.8 Fit, still a touch target; L.cardPC), so the odds rows keep their room
+	local row2Y = card - 5 - 2 - 18 - 12 - 56
+	local spinY = row2Y - 8 - 56
 	return {
 		Ref = false, Tight = true, Hero = T.Hero, HeroArt = T.HeroArt, CardsY = T.CardsY, Card = card, Art = T.Art, RowsY = T.RowsY,
 		RowsH = math.max(96, spinY - 6 - T.RowsY), SpinY = spinY, Row2Y = row2Y,
@@ -1464,7 +1509,9 @@ function L.cardSheetPC(t, w, M, tall)
 	place(t.Machine.Root, 12, stageY, w - 24, math.max(40, chipsY - (tight and 6 or 8) - stageY))
 	t.Machine.AlignX = 0.5
 	H.sizeMachine(t.Machine, M.Art)
-	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, 18, 6)
+	-- (P2 icons look pol0, minor: the chips 6 apart left 2 px of cream between their 2 px edges at 1920, ~1.6 at 1280; the
+	-- 10_optA mock-up has 6) 10 apart: 6 px of cream at 1920, 4.8 at 1280 (chips 60 / 54 wide still hold "60%" over the egg)
+	L.chips(t, 12, chipsY, w - 24, chipH, #t.Rows, tight and 18 or 27, 18, 10)
 	place(t.Spin.Button, 14, spinY, w - 28, spinH)
 	H.arrange(t.Spin, w - 28, spinH, 23, 26)
 	local half = math.floor((w - 38) / 2)
@@ -1491,20 +1538,30 @@ function L.cardSheetPhone(t, w, th)
 	local pad = phonePad(th)
 	local row2Y = th - pad - 44
 	local spinY = row2Y - 50
-	local sw = math.max(60, math.min(116, w - 6 - 6 - 6 - 80))
+	-- (P2 icons look fin1, minor) the chip column 84 wide (was 80) for the chips' 8 px gap below: the stage gives up 4 px
+	-- (112 still holds a 53-cell drawing at 2 px cells)
+	local sw = math.max(60, math.min(112, w - 6 - 6 - 6 - 84))
 	local rx = 6 + sw + 6
 	local rw = w - rx - 6
 	-- (P2 icons look fin0, minor: the chips' edge lay 1 px under the Spin plank's) the stage and the chips end 12 px over
-	-- the plank: the chips' wood edge 5 px clear of its edge
-	place(t.Machine.Root, 6, 6, sw, spinY - 18)
+	-- the plank: the chips' wood edge 5 px clear of its edge. (P2 icons look pol0, majors: at 640 x 360 / 667 x 375 the
+	-- stage, 120 / 127 tall, was too short for the 2 px drawing (it fell to 1 px, a small machine in an empty stage), and
+	-- the chips, 37 tall at 640, put each percent beside its egg, cut to "...") the upper band runs from 2 px under the
+	-- card's top (under its 2 px finish shine: the plate's wood edge's top) to 3 px of cream over the plank's 5 px wood
+	-- edge: the stage 2 .. spinY - 8 (its rim is inside its box), the plate 26 tall, the chips 3 px of cream under its
+	-- edge down to the same line (their 2 px edges outside the box): 640's chips 40 tall hold the 15 px percent over its
+	-- egg; its stage (128) holds the 2 px cells over one cell of floor (H.layoutSheetMachine)
+	place(t.Machine.Root, 6, 2, sw, spinY - 10)
 	t.Machine.AlignX = 0.5
 	H.sizeMachine(t.Machine, 45)
 	t.Plate.Text = t.Id
 	t.Plate.TextSize = rw < 90 and 15 or 17
-	place(t.Plate, rx, 6, rw, 30)
+	place(t.Plate, rx, 5, rw, 26)
 	-- (P2 icons review r1, major 1) two columns of tall chips, the pixel egg (2 px cells) over its percent as on PC: in one
-	-- column the chips were 20 px faces, the egg and its drop shadow flush on the wood
-	L.chips(t, rx, 40, rw, spinY - 12 - 40, 2, 20, 15, 4)
+	-- column the chips were 20 px faces, the egg and its drop shadow flush on the wood. (P2 icons look fin1, minor: the
+	-- chips' 2 px wood edges met in a 4 px gap, fused into one line, and the plate's edge touched the grid) 8 px apart:
+	-- 4 px of cream between the edges (chips 38 wide: the real "60%", ~30 px, stays over its egg)
+	L.chips(t, rx, 39, rw, spinY - 10 - 39, 2, 20, 15, 8)
 	place(t.Spin.Button, 6, spinY, w - 12, 44)
 	H.arrange(t.Spin, w - 12, 44, 16, 18)
 	local half = math.floor((w - 18) / 2)
@@ -1526,7 +1583,8 @@ function L.cardSheetPortrait(t, w, h)
 	H.sizeMachine(t.Machine, 64)
 	local rx = 144
 	local rw = w - rx - 8
-	L.chips(t, rx, 52, rw, 82, 2, 22, 15, 6)
+	-- (P2 icons look pol0, minor: 2 px of cream between the chips' edges, the phone mock-up has about 7) 10 apart: 6 px
+	L.chips(t, rx, 52, rw, 82, 2, 22, 15, 10)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 15
 	place(t.Hint, rx, 140, rw, 20)
@@ -1541,7 +1599,17 @@ end
 
 function L.heroPhone(t, w, th)
 	local pad = phonePad(th)
-	local chipY = th - pad - 94
+	-- (P2 icons look pol0, major: at 640 x 360 / 667 x 375 the vault's column, 126 / 133 tall, was short of the 2 px
+	-- drawing's 138, so it drew at 1 px a cell, half size) where the card is that short, the altar / pity / lock chip (a
+	-- label, not a touch target) gives up to 12 px (44 -> 32: its 15 px line still fits) so the vault keeps 2 px cells
+	local chipH = 44
+	if t.Machine.Sheet and t.Machine.Cell then
+		local short = 2 * t.Machine.Cell[4] - (th - pad - 94 - 12)
+		if short > 0 then
+			chipH = math.max(32, 44 - short)
+		end
+	end
+	local chipY = th - pad - 50 - chipH
 	t.Title.Text = "Secret"
 	t.Title.TextSize = 17
 	t.Title.TextXAlignment = CENTER
@@ -1565,11 +1633,11 @@ function L.heroPhone(t, w, th)
 		t.Egg.Visible = false -- (Task 26: no room on the phone card)
 		L.phoneOdds(t, 80, 40, w - 88)
 	end
-	place(t.Pity, 6, chipY, w - 12, 44)
+	place(t.Pity, 6, chipY, w - 12, chipH)
 	t.Pity.TextSize = 15
-	place(t.AltarChip, 6, chipY, w - 12, 44)
+	place(t.AltarChip, 6, chipY, w - 12, chipH)
 	t.AltarChip.TextSize = 15
-	place(t.Lock, 6, chipY, w - 12, 44)
+	place(t.Lock, 6, chipY, w - 12, chipH)
 	t.Lock.TextSize = 15
 	place(t.Holder, 6, th - pad - 44, w - 12, 44)
 	place(t.Spin.Button, 0, 0, w - 12, 44)
@@ -1747,9 +1815,19 @@ function L.heroPortrait(t, w, h)
 		t.AltarChip.TextSize = 15
 		place(t.Lock, rx, cy - 4, rw, 44)
 		t.Lock.TextSize = 15
+		-- (P2 icons look fin1, major: this was a one-line 188 x 20 box at 390 wide, so "A gold arrow leads you to the St..."
+		-- and "Secret rolls happen at th..." were cut) the hint wraps at 15 px (the phone floor) in the band from the chip /
+		-- lock line down to 2 px over the button: two rows hold every state's line at 390 wide; L.portrait makes the hero
+		-- taller where the longest needs more (a 360-wide phone). The box starts 4 px left of the column (still 4 px clear
+		-- of the vault's 136 px box) so "Home first, then the arrow" (~191 px in Nunito) keeps one row at 390 instead of
+		-- leaving "arrow" alone on the second
 		t.Hint.Visible = true
 		t.Hint.TextSize = 15
-		place(t.Hint, rx, cy + 42, rw, 20)
+		t.Hint.TextWrapped = true
+		-- (P2 icons look pol0, minor: the box ran to 2 px over the button's box, under its 5 px wood edge, so the second
+		-- row's 'y' touched the wood) the box ends 3 px over that edge; K.PORTRAIT_HERO_SHEET grew the 6 px it costs
+		local hy = cy + 40
+		place(t.Hint, rx - 4, hy, rw + 4, h - 52 - 8 - hy)
 		place(t.Holder, 8, h - 52, w - 16, 44)
 		place(t.Spin.Button, 0, 0, w - 16, 44)
 		H.arrange(t.Spin, w - 16, 44, 18, 20)
@@ -1769,8 +1847,10 @@ function L.heroPortrait(t, w, h)
 	t.Lock.TextSize = 15
 	t.Hint.Visible = true
 	t.Hint.TextSize = 15
-	t.Hint.TextWrapped = false
-	place(t.Hint, 8, 122, w - 16, 20)
+	-- (P2 icons look fin1, major) one 20 px row at 390 wide; on a 360-wide phone "A gold arrow leads you to the Storm
+	-- Altar" (~298 px in Nunito) ran past the 294 px box, so it wraps and L.portrait makes the hero a row taller
+	t.Hint.TextWrapped = true
+	place(t.Hint, 8, 122, w - 16, h - 52 - 6 - 122)
 	place(t.Holder, 8, h - 52, w - 16, 44)
 	place(t.Spin.Button, 0, 0, w - 16, 44)
 	H.arrange(t.Spin, w - 16, 44, 18, 20)
@@ -1805,6 +1885,12 @@ function L.portrait(P, W, Hh)
 	local w = W - K.SCROLLBAR - 2
 	local sheet = P.Hero.Machine.Sheet == true
 	local heroH = sheet and K.PORTRAIT_HERO_SHEET or K.PORTRAIT_HERO
+	-- (P2 icons look fin1, major) the hero's hint stays 15 px (the phone floor) and whole: its band holds two rows beside
+	-- the vault (one under today's drawn machine); a 15 px row more of hero for each row its longest line needs beyond
+	-- that (a 360-wide phone)
+	local band = sheet and 2 or 1
+	local hintW = sheet and (w - 148) or (w - 16)
+	heroH = heroH + math.max(0, H.heroHintRows(hintW, 15, Theme.FontOf(P.Hero.Hint)) - band) * 15
 	local cardH = sheet and K.PORTRAIT_CARD_SHEET or K.PORTRAIT_CARD
 	place(P.Hero.Root, 0, 0, w, heroH)
 	L.heroPortrait(P.Hero, w, heroH)
@@ -2033,7 +2119,17 @@ function ShopEggs.Refresh(page, fromLayout)
 	h.Away = altar
 	h.Dim.Visible = altar and not H.sheetShown(h)
 	h.AltarChip.Visible = altar
-	h.AltarChip.Text = brief and K.TEXT.AltarLockShort or K.TEXT.AltarLock
+	-- (P2 icons look pol0, major) the phone line while it fits the chip's room beside its padlock (the chip less its
+	-- UIPadding, 2 px spare), else the tiny one: never a cut "At the Storm Al."
+	local chipText = brief and K.TEXT.AltarLockShort or K.TEXT.AltarLock
+	if brief then
+		local pad = h.AltarChip:FindFirstChildOfClass("UIPadding")
+		local room = h.AltarChip.Size.X.Offset - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0)
+		if H.textW(chipText, h.AltarChip.TextSize, Theme.FontOf(h.AltarChip)) + 2 > room then
+			chipText = K.TEXT.AltarLockTiny
+		end
+	end
+	h.AltarChip.Text = chipText
 	h.Travel.Button.Visible = altar
 	h.Spin.Button.Visible = not altar
 	-- (Pitch 2 item 13 A) away from the lobby the guide routes home first, so the button stays live and the hint says so;

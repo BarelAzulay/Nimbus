@@ -7,7 +7,9 @@
 --     other count takes the nearest smaller pile)
 --   GemIcon.Amount(parent, n, opts) -> Frame "GemAmount" > GemIcon + TextLabel "Value" (n: a number -> "1,250", or a ready
 --     string such as "12.3M"; opts = { Size (the gem, default TextSize x 1.1), TextSize (22), Color (white), ZIndex })
---     sized to the gem + the measured number (attribute Width)
+--     sized to the gem + the measured number (attribute Width). (P2 icons look fin1) opts.Pixel = true: item 9 B's pixel
+--     gem in place of the cut one, a "GemPixel" label hosting PixelIcon "gem" at 0.9 x TextSize snapped to whole 9-cell
+--     steps (27 px beside a 30 px number), as the Eggs' gem planks and the Shop's Gems pill draw it
 --   GemIcon.SetAmount(frame, n, opts) writes the number (n nil keeps it) and re-measures; opts restyles (TextSize / Size /
 --     Color; the gem is rebuilt when its size changes)
 --   GemIcon.Driver() -> { Count = n, Running = bool }   the live icons the one shine Heartbeat drives (dead ones dropped)
@@ -32,6 +34,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (P2 icons look fin1) an amount's pixel gem (opts.Pixel)
 
 local GemIcon = {}
 
@@ -338,9 +341,27 @@ local function amountText(n)
 	return Util.Commas(math.max(0, math.floor(tonumber(n) or 0)))
 end
 
+-- an amount's gem at the number's text size `ts`: the cut GemIcon (g px), or with the frame's Pixel attribute item 9 B's
+-- pixel gem, a "GemPixel" label of whole 9-cell steps hosting PixelIcon "gem" (its own colours)
+local function amountGem(frame, g, ts, z)
+	if frame:GetAttribute("Pixel") == true then
+		local px = PixelIcon.Snap(ts * 0.9)
+		local host = Theme.Label("", "Display", {
+			Size = ts,
+			Props = { Name = "GemPixel", ZIndex = z, TextTruncate = Enum.TextTruncate.None },
+		})
+		host.BackgroundTransparency = 1
+		host.Size = UDim2.fromOffset(px, px)
+		host.Parent = frame
+		PixelIcon.Host(host, "gem", px)
+		return host
+	end
+	return GemIcon.New(frame, g, { ZIndex = z })
+end
+
 -- lays the gem and the number out side by side and sizes the frame to them
 local function measure(frame)
-	local icon = frame:FindFirstChild("GemIcon")
+	local icon = frame:FindFirstChild("GemIcon") or frame:FindFirstChild("GemPixel")
 	local value = frame:FindFirstChild("Value")
 	if not (icon and value) then
 		return
@@ -348,6 +369,11 @@ local function measure(frame)
 	local g = icon.Size.X.Offset
 	local ts = value.TextSize
 	local gap = math.floor(g * K.AMOUNT_GAP + 0.5)
+	if icon.Name == "GemPixel" then
+		-- (P2 icons look pol0, minor: the pixel gem touched '100') its 1-cell drop shadow draws past its box: the gap
+		-- starts after it
+		gap = gap + math.ceil(g / 9)
+	end
 	local w = math.ceil(textWidth(value.Text, ts, Theme.FontOf(value))) + 2
 	local h = math.max(g, ts + 4)
 	icon.AnchorPoint = Vector2.new(0, 0.5)
@@ -364,7 +390,10 @@ function GemIcon.Amount(parent, n, opts)
 	local g = math.floor((tonumber(opts.Size) or ts * 1.1) + 0.5)
 	local z = tonumber(opts.ZIndex) or 1
 	local frame = box("GemAmount", { Size = UDim2.fromOffset(g, g), ZIndex = z }, nil)
-	GemIcon.New(frame, g, { ZIndex = z + 1 })
+	if opts.Pixel == true then
+		frame:SetAttribute("Pixel", true)
+	end
+	amountGem(frame, g, ts, z + 1)
 	local value = Theme.Label(amountText(n), "Display", {
 		Size = ts,
 		Color = opts.Color or K.WHITE,
@@ -387,7 +416,7 @@ function GemIcon.SetAmount(frame, n, opts)
 		return
 	end
 	local value = frame:FindFirstChild("Value")
-	local icon = frame:FindFirstChild("GemIcon")
+	local icon = frame:FindFirstChild("GemIcon") or frame:FindFirstChild("GemPixel")
 	if not value then
 		return
 	end
@@ -402,12 +431,15 @@ function GemIcon.SetAmount(frame, n, opts)
 			value.TextColor3 = opts.Color
 		end
 		local g = math.floor((tonumber(opts.Size) or value.TextSize * 1.1) + 0.5)
+		if frame:GetAttribute("Pixel") == true then
+			g = PixelIcon.Snap(value.TextSize * 0.9) -- (the pixel gem's whole-cell size)
+		end
 		if not icon or icon.Size.X.Offset ~= g then
 			local z = icon and icon.ZIndex or value.ZIndex
 			if icon then
 				icon:Destroy()
 			end
-			GemIcon.New(frame, g, { ZIndex = z })
+			amountGem(frame, g, value.TextSize, z)
 		end
 	end
 	measure(frame)

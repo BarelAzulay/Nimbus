@@ -3230,7 +3230,9 @@ local function clientScenarios()
 
 	-- U2: the Credits window built from SignKit parts dumps exactly what the approved window dumped. The baseline was
 	-- recorded from the window as it stood before the move (smoke.py --record-credits-tree rewrites it; never do that to
-	-- make this pass: the file IS the owner's approved look)
+	-- make this pass: the file IS the owner's approved look). (P2 icons look fin1) one deliberate change, by hand, not by
+	-- --record: CREATED BY's ink #7A6A4C -> #78684A on its four lines (one step darker in the same brown; it read 4.48:1 on
+	-- the cream, under stroke_walk's 4.5:1 contrast rule for small text); every other token is the approved window's
 	local CREDITS_TREE = "tools/fixtures/credits_tree_u1.txt"
 	local CREDITS_SIZES = { { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }
 
@@ -13047,8 +13049,18 @@ local function clientScenarios()
 				end
 				T.check(on and icons == 2 and lit ~= nil and not lit:find("+", 1, true) and #others == 0,
 					tag .. ": today's claimable tile carries two pixel sparkles, one lit at a time; no other tile", fmt("%s %d %s | %s", tostring(on), icons, tostring(lit), table.concat(others, ",")))
-				LKC.advance(1.05)
-				local _, _, lit2 = sparkles(holder:FindFirstChild("Cell3", true))
+				-- (P2 icons look fin1 lists: one 1.05 s step could hold TWO of the window's 1 s ticks when the first fell in its
+				-- last 0.05 s, flipping A -> B -> A; it did at 844 x 390 after the client_daily_* lists, alone it passed) the
+				-- first flip within one tick period (+ a step), in 0.1 s steps
+				local lit2 = lit
+				for _ = 1, 11 do
+					LKC.advance(0.1)
+					local _, _, now = sparkles(holder:FindFirstChild("Cell3", true))
+					lit2 = now
+					if now ~= lit then
+						break
+					end
+				end
 				T.check(lit2 ~= nil and lit2 ~= lit, tag .. ": ...and they take turns on the tick (a twinkle, two frames)", tostring(lit) .. " -> " .. tostring(lit2))
 				local greens = U8.greenActions(holder)
 				T.check(#greens == 1 and greens[1] == "ClaimButton", tag .. ": Claim! is the Daily page's one green action", table.concat(greens, ", "))
@@ -13710,6 +13722,51 @@ local function clientScenarios()
 					fmt("%d ticks | ", ticks) .. table.concat(off, "; "))
 			end)
 		end
+		-- (P2 icons look pol0, major: at 360 x 640 the tiles are 60 px tall, an 11 px art row between the day and the amount,
+		-- and the claimed tick, the screen's fixed 36 px art size, covered "Day 1" / "Day 2" and "$400" / "50" half) every
+		-- shown claimed tick, its drawn cells, clear of its tile's day line and amount line (each line its TextSize tall,
+		-- centred in its box) and inside the tile, on every screen (the 360 x 640 phone too)
+		local function tickClear(s, id)
+			Config.IconSheet.Id = id
+			U94.at(s[1], s[2], s[3], "daily tick" .. (id > 0 and "" or " (no sheet)"), "Daily", "", function(tag, holder)
+				local over, ticks = {}, 0
+				local function line(t)
+					local r = U8.rect(t)
+					local k = t.AbsoluteSize.Y / math.max(1, t.Size.Y.Offset)
+					local h = t.TextSize * k
+					local y = r.Y + (r.B - r.Y - h) / 2
+					return { X = r.X, Y = y, R = r.R, B = y + h }
+				end
+				for i = 1, 6 do
+					local cell = holder:FindFirstChild("Cell" .. i, true)
+					local host = cell and cell:FindFirstChild("Check", true)
+					local tick = host and host:FindFirstChild("Icon")
+					if host and U8.shown(host) and tick then
+						ticks = ticks + 1
+						local a = { X = math.huge, Y = math.huge, R = -math.huge, B = -math.huge }
+						for _, d in ipairs(tick:GetDescendants()) do
+							if d:IsA("GuiObject") and U8.shown(d) and d.AbsoluteSize.X > 0 and (d.BackgroundTransparency < 0.99 or d:IsA("ImageLabel")) then
+								local q = U8.rect(d)
+								a = { X = math.min(a.X, q.X), Y = math.min(a.Y, q.Y), R = math.max(a.R, q.R), B = math.max(a.B, q.B) }
+							end
+						end
+						local root = U8.rect(cell)
+						local bad = a.X < root.X - 0.5 or a.R > root.R + 0.5 or a.Y < root.Y - 0.5 or a.B > root.B + 0.5
+						for _, name in ipairs({ "Day", "Amount" }) do
+							local t = cell:FindFirstChild(name, true)
+							if t and U8.shown(t) and t.Text ~= "" and U8.overlap(a, line(t)) then
+								bad = true
+							end
+						end
+						if bad then
+							over[#over + 1] = fmt("Cell%d tick %s", i, U8.show(a))
+						end
+					end
+				end
+				T.check(ticks >= 1 and #over == 0, tag .. ": each claimed day's tick clear of its day line and its amount, inside its tile",
+					fmt("%d ticks | ", ticks) .. table.concat(over, "; ", 1, math.min(#over, 4)))
+			end)
+		end
 		local ok, err = pcall(function()
 			check({ 1920, 1080, false }, 4242424242, 72, 4, true)
 			check({ 1280, 720, false }, 4242424242, 72, 3, true)
@@ -13717,6 +13774,10 @@ local function clientScenarios()
 			check({ 390, 844, true }, 4242424242, 54, 3, true)
 			check({ 1920, 1080, false }, 0, 72, 8, false)
 			check({ 390, 844, true }, 0, 54, 6, false)
+			for _, s in ipairs({ { 360, 640, true }, { 390, 844, true }, { 640, 360, true }, { 1280, 720, false } }) do
+				tickClear(s, 4242424242)
+				tickClear(s, 0)
+			end
 		end)
 		Config.IconSheet.Id = saved
 		T.check(ok, "daily reward art: the checks ran", tostring(err))
@@ -17555,6 +17616,13 @@ local function clientScenarios()
 		local ms = Config and Config.MachineSheet
 		T.check(type(ms) == "table" and ms.Id == 0, "machines: Config.MachineSheet.Id ships 0 (nothing uploaded)", tostring(type(ms) == "table" and ms.Id))
 		T.check(type(ms) == "table" and type(ms.Cells) == "table", "machines: Config.MachineSheet.Cells gives each roulette's cell in the sheet")
+		-- (P2 icons look fin1, tools/check.mjs asset-id) the sheets' image URLs are made in Config.Art (no asset literal in
+		-- ShopEggs / PixelIcon): an uploaded id gives its URL, 0 / junk gives none (the fallback stays)
+		local img = Config and Config.Art and Config.Art.Image
+		T.check(type(img) == "function" and img(5151515151) == "rbxassetid://5151515151" and img(0) == nil and img(-3) == nil
+			and img(1.5) == nil and img("x") == nil and img(nil) == nil,
+			"machines: Config.Art.Image(id) is a sheet's asset URL for a whole id above 0, nil for 0 or junk",
+			type(img) == "function" and tostring(img(5151515151)) or tostring(img))
 		for _, m in ipairs({ { "PC", { W = 1240, H = 834 } }, { "Phone", { W = 790, H = 300 } } }) do
 			local ok, err = machinesPage(m[1], m[2], function(roots)
 				local wrong = {}
@@ -17575,6 +17643,46 @@ local function clientScenarios()
 			end)
 			T.check(ok, "machines (" .. m[1] .. "): the page builds and lays out", tostring(err))
 		end
+		-- (P2 icons look pol0, minor: at 1280 x 720 with today's machines, the shipping look, the tops of "Gems: same odds"
+		-- were cut by the x3 / gem planks' wood edge and drop shadow) on the 1280 page (TIGHT, under the window's 0.8) each
+		-- card's line, its TextSize tall and centred in its box, starts 1 screen px or more under everything the two planks
+		-- draw (their box, their UIStroke, their finish shadow) and ends over the card's colour lip
+		local ok, err = machinesPage("PC", { W = 1144, H = 683 }, function(roots)
+			local bad = {}
+			for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+				local body = roots[id] and roots[id].Parent
+				local hint = body and body:FindFirstChild("Hint")
+				local cardRoot = body and body.Parent
+				local lip = cardRoot and cardRoot:FindFirstChild("Lip")
+				if hint and hint.Visible then
+					local k = hint.AbsoluteSize.Y / math.max(1, hint.Size.Y.Offset)
+					local th = hint.TextSize * k
+					local top = hint.AbsolutePosition.Y + (hint.AbsoluteSize.Y - th) / 2
+					local low = -math.huge
+					for _, name in ipairs({ "Spin3", "SpinGems" }) do
+						local p = body:FindFirstChild(name)
+						if p and p.Visible then
+							local st = p:FindFirstChildOfClass("UIStroke")
+							low = math.max(low, p.AbsolutePosition.Y + p.AbsoluteSize.Y + (st and st.Thickness or 0) * k)
+							for _, d in ipairs(p:GetDescendants()) do
+								if d:IsA("GuiObject") and d.Visible and d.BackgroundTransparency < 0.99 and d.AbsoluteSize.X > 0 then
+									low = math.max(low, d.AbsolutePosition.Y + d.AbsoluteSize.Y)
+								end
+							end
+						end
+					end
+					local lipTop = lip and lip.AbsolutePosition.Y or math.huge
+					if top < low + 1 - 1e-6 or top + th > lipTop + 1e-6 then
+						bad[#bad + 1] = fmt("%s: text %.1f..%.1f, the planks to %.1f, the lip from %.1f", id, top, top + th, low, lipTop)
+					end
+				else
+					bad[#bad + 1] = id .. ": no hint"
+				end
+			end
+			T.check(#bad == 0, "machines (PC 0.8): with today's machines each card's 'Gems: same odds' clear of the x3 / gem planks' edge and shadow, over the lip",
+				table.concat(bad, "; "))
+		end, 0.8)
+		T.check(ok, "machines (PC 0.8): the page builds and lays out", tostring(err))
 		LKC.flushErrors("machines_fallback")
 	end)
 
@@ -17632,8 +17740,12 @@ local function clientScenarios()
 		local function meets(a, b2)
 			return a[1] < b2[1] + b2[3] - 0.5 and b2[1] < a[1] + a[3] - 0.5 and a[2] < b2[2] + b2[4] - 0.5 and b2[2] < a[2] + a[4] - 0.5
 		end
+		-- (P2 icons look pol0, major: at 640 x 360 and 667 x 375 the vault drew 61 x 69 and the Cloud machine 53 x 61, 1 px
+		-- cells, in a mostly empty stage: the stages were 5 - 12 px too short for 2 px cells; these sizes were never walked)
+		-- the shorter landscape phones' real Eggs pages too (render_gui: 488 x 250 at 640 x 360, 515 x 265 at 667 x 375)
 		for _, m in ipairs({ { "PC", { W = 1240, H = 834 }, nil, 3, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, 2, "PC" },
-			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
+			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Phone 667", { W = 515, H = 265 }, nil, 2, "Phone" },
+			{ "Phone 640", { W = 488, H = 250 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
 			local scale, want = m[3] or 1, m[4]
 			local ok, err = machinesPage(m[5], m[2], function(roots)
 				local wrong, offsets, shown = {}, {}, 0
@@ -17701,7 +17813,7 @@ local function clientScenarios()
 				-- so here it HIDES rather than overlap the vault or clip (an open layout call for the owner, logged in the merge
 				-- report). The check: when it shows, it is inside the card, over the chip, its rows fit; it never shows clipped.
 				-- Today's drawn machine (MachineSheet.Id 0, what ships) keeps the full-width line: travel_shows_way checks it.
-				if m[1] == "Phone" then
+				if m[5] == "Phone" then
 					local hc = roots.Secret and roots.Secret.Parent
 					local hint = hc and hc:FindFirstChild("Hint")
 					local TX = U7.client("UI/ShopEggs").Metrics.TEXT
@@ -17806,6 +17918,210 @@ local function clientScenarios()
 		LKC.flushErrors("machines_sheet")
 	end)
 
+	-- (P2 icons look fin1, major: on the portrait phone, 390 x 844 with the machines sheet, the Secret hero's hint beside
+	-- the vault was a 188 x 20 box at 15 px, one line, cut: "Travel flies you to the St..." in the lobby, "Secret rolls
+	-- happen at th..." on a restricted account; the gate's default render is the away state, so nobody saw it) every hero
+	-- hint state on every screen, with the machines sheet and without: restricted, still checking, held by a match, away
+	-- from the lobby, in the lobby away from the altar, at the altar. The hint reads the state's line; where it shows, it
+	-- reads in full: at the text floor or more (14 screen px on a PC, 15 on a phone, as client_shop_secret_lock), its rows
+	-- (word-wrapped when the label wraps, else one) inside its box, inside the card,
+	-- clear of the chip, the lock line, the odds and the button. On a PC and in portrait it always shows (the landscape
+	-- phone may hide it where no row fits: the kit-b wave-2 merge's call, machines_sheet). Widths: Builder Sans Bold's real
+	-- advances x 1.02 (the Body face, Nunito ExtraBold, measures about 1.015 x Builder in render_gui's real font). The
+	-- 320-wide page is a 360 x 640 phone's
+	S.machines_hero_hints = guarded("machines_hero_hints", function()
+		local Config = LoadingH.shared("Config")
+		local Theme = LoadingH.shared("Theme")
+		local ms = Config and Config.MachineSheet
+		local SE = U7.client("UI/ShopEggs")
+		local TX = SE and SE.Metrics and SE.Metrics.TEXT
+		if not T.check(type(ms) == "table" and TX ~= nil, "hero hints: Config.MachineSheet and ShopEggs.Metrics.TEXT exist") then
+			return
+		end
+		local lp = game:GetService("Players").LocalPlayer
+		local RealWidth = SmokeCommon.RealWidth
+		local function absRect(o)
+			return { o.AbsolutePosition.X, o.AbsolutePosition.Y, o.AbsoluteSize.X, o.AbsoluteSize.Y }
+		end
+		local function meets(a, b2)
+			return a[1] < b2[1] + b2[3] - 0.5 and b2[1] < a[1] + a[3] - 0.5 and a[2] < b2[2] + b2[4] - 0.5 and b2[2] < a[2] + a[4] - 0.5
+		end
+		local function shown(o, top)
+			while o and o ~= top do
+				if o:IsA("GuiObject") and not o.Visible then
+					return false
+				end
+				o = o.Parent
+			end
+			return true
+		end
+		-- the rows a label's text takes at its size in its box (greedy word wrap when it wraps), and its widest row
+		local function rowsOf(hint)
+			local size, font = hint.TextSize, Theme.FontOf(hint)
+			local function w(s)
+				return (RealWidth(s, size, font, true) or Theme.MeasureLabel(hint, s, size).X) * 1.02
+			end
+			local room = hint.Size.X.Offset
+			if not hint.TextWrapped then
+				return 1, w(hint.Text)
+			end
+			local rows, line, widest = 0, nil, 0
+			for word in hint.Text:gmatch("%S+") do
+				local try = line and (line .. " " .. word) or word
+				if line and w(try) > room then
+					rows, line = rows + 1, word
+				else
+					line = try
+				end
+				widest = math.max(widest, w(line))
+			end
+			return rows + (line and 1 or 0), widest
+		end
+		-- the screen rect a label's text covers: its rows' height centred in the box, its widest row placed by its X alignment
+		local function textRect(o)
+			local r = absRect(o)
+			local k = o.AbsoluteSize.X / math.max(1, o.Size.X.Offset)
+			local rows, wide = rowsOf(o)
+			local tw, th = math.min(r[3], wide * k), rows * o.TextSize * k
+			local x = r[1] + (r[3] - tw) / 2
+			if o.TextXAlignment == Enum.TextXAlignment.Left then
+				x = r[1]
+			elseif o.TextXAlignment == Enum.TextXAlignment.Right then
+				x = r[1] + r[3] - tw
+			end
+			return { x, r[2] + (r[4] - th) / 2, tw, th }
+		end
+		local STATES = {
+			{ "restricted", TX.HeroHint, true, nil, nil, false },
+			{ "checking", TX.HeroHint, nil, nil, nil, false },
+			{ "held by a match", TX.HeroHintLocked, false, false, false, true },
+			{ "away from the lobby", "away", false, false, false, false },
+			{ "in the lobby", TX.HeroHintTravel, false, false, true, false },
+			{ "at the altar", TX.HeroHintHere, false, true, true, false },
+		}
+		local SCREENS = { { "PC", { W = 1240, H = 834 }, nil, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, "PC" },
+			{ "Phone", { W = 692, H = 280 }, nil, "Phone" }, { "Phone 667", { W = 515, H = 265 }, nil, "Phone" },
+			{ "Phone 640", { W = 488, H = 250 }, nil, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, "Portrait" },
+			{ "Portrait 360", { W = 320, H = 552 }, nil, "Portrait" } }
+		local saved = ms.Id
+		for _, sheetId in ipairs({ 5151515151, 0 }) do
+			ms.Id = sheetId
+			local look = sheetId > 0 and "sheet" or "drawn"
+			for _, m in ipairs(SCREENS) do
+				local ok, err = machinesPage(m[4], m[2], function(roots)
+					local hero = roots.Secret and roots.Secret.Parent
+					local hint = hero and hero:FindFirstChild("Hint")
+					local page = hero and hero:FindFirstAncestor("Page_Eggs")
+					if not T.check(hint ~= nil and page ~= nil, "hero hints (" .. m[1] .. ", " .. look .. "): the Secret hero has its Hint") then
+						return
+					end
+					local old = { lp:GetAttribute("PaidRandomItemsRestricted"), lp:GetAttribute("InMatch"), SE._AtAltar, SE._InLobby }
+					local wrong, chipCut, edgy = {}, {}, {}
+					for _, st in ipairs(STATES) do
+						lp:SetAttribute("PaidRandomItemsRestricted", st[3])
+						lp:SetAttribute("InMatch", st[6] or nil)
+						SE._AtAltar = st[4]
+						SE._InLobby = st[5]
+						SE.Refresh(page)
+						LKC.advance(0.05)
+						local want = st[2]
+						if want == "away" then
+							want = (m[4] == "PC") and TX.HeroHintLobby or TX.HeroHintLobbyShort
+						end
+						local why = ""
+						if hint.Text ~= want then
+							why = fmt("reads '%s', want '%s'", hint.Text, tostring(want))
+						elseif not shown(hint, page) then
+							if m[4] ~= "Phone" then
+								why = "hidden"
+							end
+						else
+							local rows, widest = rowsOf(hint)
+							local bw, bh = hint.Size.X.Offset, hint.Size.Y.Offset
+							local hr, cr = absRect(hint), absRect(hero)
+							local px, floor = hint.TextSize * (m[3] or 1), (m[4] == "PC") and 14 or 15
+							if px < floor - 1e-6 then
+								why = fmt("%.1f screen px (floor %d)", px, floor)
+							elseif widest > bw + 0.5 or rows * hint.TextSize > bh + 1 then
+								why = fmt("%d row(s) of %d px, widest %.1f, in a %.0f x %.0f box (wrapped %s)", rows, hint.TextSize, widest, bw, bh, tostring(hint.TextWrapped))
+							elseif hr[1] < cr[1] - 0.5 or hr[1] + hr[3] > cr[1] + cr[3] + 0.5 or hr[2] < cr[2] - 0.5 or hr[2] + hr[4] > cr[2] + cr[4] + 0.5 then
+								why = "outside the card"
+							else
+								for _, name in ipairs({ "AltarChip", "Lock", "OddsLine", "PityChip", "SpinHolder" }) do
+									local o = hero:FindFirstChild(name)
+									if o and o:IsA("GuiObject") and shown(o, page) and o.AbsoluteSize.X > 0 then
+										local orect, mine = absRect(o), hr
+										if name == "Lock" then
+											-- the lock line is bare text (no plank), left-aligned, its rows centred in a box
+											-- taller than them, and so is the hint: on a PC the two BOXES cross while the
+											-- lock's text stops ~15 px left of the hint's (seen in the 1920 / 1280 renders),
+											-- so the two TEXTS are what must stay apart
+											orect, mine = textRect(o), textRect(hint)
+										end
+										if meets(mine, orect) then
+											why = "meets " .. name
+											break
+										end
+									end
+								end
+							end
+						end
+						if why ~= "" then
+							wrong[#wrong + 1] = st[1] .. ": " .. why
+						end
+						-- (P2 icons look pol0, minor: in portrait with the sheets the two-row hint's box ended 1 px over the
+						-- button's wood edge, so the 'y' of "you to the Storm Altar" touched it; the box check above never saw
+						-- the edge, a UIStroke outside the holder's box) where the hint shows, its text 2 screen px or more
+						-- clear of the shown button's wood edge
+						local holder = hero:FindFirstChild("SpinHolder")
+						if why == "" and holder and shown(hint, page) then
+							for _, btn in ipairs(holder:GetChildren()) do
+								if btn:IsA("GuiButton") and btn.Visible then
+									local stroke = btn:FindFirstChildOfClass("UIStroke")
+									local k = btn.AbsoluteSize.X / math.max(1, btn.Size.X.Offset)
+									local e = (stroke and stroke.Enabled ~= false and stroke.Thickness or 0) * k + 2
+									local b = absRect(btn)
+									local tr = textRect(hint)
+									if meets(tr, { b[1] - e, b[2] - e, b[3] + 2 * e, b[4] + 2 * e }) then
+										edgy[#edgy + 1] = fmt("%s: text %.0f..%.0f, the %s's edge %.0f..%.0f", st[1], tr[2], tr[2] + tr[4], btn.Name, b[2] - e + 2, b[2] + b[4] + e - 2)
+									end
+								end
+							end
+						end
+						-- (P2 icons look pol0, major: on the 360-wide portrait hero with the sheets the altar chip read "At the
+						-- Storm Al." and its padlock sat on the chip's left wood edge: a 158 px chip less the padlock's 26 px left
+						-- 132 for a 137 px line; this check read the hint against the chip's box, never the chip's own text) the
+						-- altar chip's line whole in its padded room (2 px spare), the padlock inside the chip
+						local ach = hero:FindFirstChild("AltarChip")
+						if ach and shown(ach, page) then
+							local pad = ach:FindFirstChildOfClass("UIPadding")
+							local room = ach.Size.X.Offset - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0)
+							local tw = RealWidth(ach.Text, ach.TextSize, Theme.FontOf(ach), true) or Theme.MeasureLabel(ach, ach.Text, ach.TextSize).X
+							local lead = ach:FindFirstChild("LeadIcon")
+							if tw + 2 > room then
+								chipCut[#chipCut + 1] = fmt("%s: '%s' %.1f px in %.0f", st[1], ach.Text, tw, room)
+							elseif lead and lead.AbsolutePosition.X < ach.AbsolutePosition.X + 1 then
+								chipCut[#chipCut + 1] = fmt("%s: the padlock at %.0f, the chip at %.0f", st[1], lead.AbsolutePosition.X, ach.AbsolutePosition.X)
+							end
+						end
+					end
+					T.check(#chipCut == 0, "hero hints (" .. m[1] .. ", " .. look .. "): the altar chip's line reads whole in its chip, the padlock inside it",
+						table.concat(chipCut, "; "))
+					T.check(#edgy == 0, "hero hints (" .. m[1] .. ", " .. look .. "): the hint's text 2 px or more clear of the button's wood edge",
+						table.concat(edgy, "; "))
+					lp:SetAttribute("PaidRandomItemsRestricted", old[1])
+					lp:SetAttribute("InMatch", old[2])
+					SE._AtAltar, SE._InLobby = old[3], old[4]
+					T.check(#wrong == 0, "hero hints (" .. m[1] .. ", " .. look .. "): every state's hint reads its line in full (rows inside its box, at the text floor or more, clear of the chip, lock, odds and button)",
+						table.concat(wrong, "; "))
+				end, m[3], false)
+				T.check(ok, "hero hints (" .. m[1] .. ", " .. look .. "): the page builds and lays out", tostring(err))
+			end
+		end
+		ms.Id = saved
+		LKC.flushErrors("machines_hero_hints")
+	end)
+
 	-- (P2 icons review r1, major 1: under the 3 px pixel machines the odds chips drew today's smooth vector EggArt; minor:
 	-- at 1280 the chips were cramped, "60%" 0.4 px from the wood and the egg 1.6 px from it) with the machines sheet each
 	-- card's odds chip holds a hand-pixelled egg, the mock-up's (10_optA: make_item10.odds_egg): "PixelEgg", the rarity's
@@ -17843,6 +18159,14 @@ local function clientScenarios()
 			table.concat(off, ", "))
 		local saved = ms.Id
 		ms.Id = 5151515151
+		-- (P2 icons look fin1) the page lays its chips out with the real faces' widths, as TextService gives them in the game
+		-- (ShopEggs.Metrics.MEASURE, the hook render_gui uses too): with the mock's flat 0.5 em a 36 px phone chip put "60%"
+		-- over its egg here while the game put it beside the egg, cut to "..."
+		local SEm = U7.client("UI/ShopEggs").Metrics
+		local savedMeasure = SEm.MEASURE
+		SEm.MEASURE = function(text, size, font)
+			return SmokeCommon.RealWidth(text, size, font)
+		end
 		-- the drawn box of an icon (its Frames or its ImageLabel) in its row's design px
 		local function drawn(icon)
 			local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
@@ -17866,8 +18190,12 @@ local function clientScenarios()
 				end
 			end
 		end
+		-- (P2 icons look pol0, major: at 640 x 360 every odds chip read "..." for its percent, the chips 41 x 37 after the
+		-- fin1 spacing fix; this check walked 844 x 390 only) the shorter landscape phones' pages too (render_gui's 488 x 250
+		-- at 640 x 360, 515 x 265 at 667 x 375)
 		for _, m in ipairs({ { "PC", { W = 1240, H = 834 }, nil, 3, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, 2, "PC" },
-			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
+			{ "Phone", { W = 692, H = 280 }, nil, 2, "Phone" }, { "Phone 667", { W = 515, H = 265 }, nil, 2, "Phone" },
+			{ "Phone 640", { W = 488, H = 250 }, nil, 2, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, 2, "Portrait" } }) do
 			local want = m[4]
 			local ok, err = machinesPage(m[5], m[2], function(roots)
 				local wrong, cramped, n = {}, {}, 0
@@ -17898,7 +18226,10 @@ local function clientScenarios()
 					-- the egg and the percent inside the chip's face (over its 3 px lip), apart, the text 2 px clear of the sides
 					local cw, chh = row.Size.X.Offset, row.Size.Y.Offset
 					local ex0, ey0, ex1, ey1 = drawn(pix)
-					local tw = Theme.Measure(pct.Text, Theme.FontOf(pct), pct.TextSize, 10000).X
+					-- (P2 icons look fin1: the mock's flat 0.5 em measure let a 36 px phone chip pass while the real
+					-- FredokaOne "60%" (30 px) went to the side and cut to "...") the wider of the mock's and the real face's
+					local tw = math.max(Theme.Measure(pct.Text, Theme.FontOf(pct), pct.TextSize, 10000).X,
+						SmokeCommon.RealWidth(pct.Text, pct.TextSize, Theme.FontOf(pct), true) or 0)
 					local px, pw = pct.Position.X.Offset, pct.Size.X.Offset
 					local tx0 = pct.TextXAlignment == Enum.TextXAlignment.Center and px + (pw - tw) / 2
 						or (pct.TextXAlignment == Enum.TextXAlignment.Right and px + pw - tw or px)
@@ -17956,6 +18287,53 @@ local function clientScenarios()
 					table.concat(small, "; ", 1, math.min(#small, 6)))
 				T.check(#fused == 0, "egg chips (" .. m[1] .. "): the chips' wood edge " .. need .. " screen px or more over the Spin plank's (not fused to it)",
 					table.concat(fused, "; "))
+				-- (P2 icons look fin1, minor: at 844 x 390 the 2 x 2 chips had 0 px of cream between them, their wood edges
+				-- fused into one 4 px line, and the name plate's edge touched the grid) cream between neighbouring chips'
+				-- wood edges (both UIStrokes counted, screen px): 3 or more on the landscape phone (the phone mock-up has
+				-- about 7), and the name plate's edge 3 or more over the grid there; elsewhere never fused (1 or more:
+				-- 2 at 1920 and 390, ~1 at 1280, the chips' gap left as it is). (P2 icons look pol0, minor: still nearly
+				-- fused at 1920 (2 px, the 10_optA mock-up has 6), 1280 (~1) and 390 (2)) 4 or more on every screen (6 at
+				-- 1920 and in portrait, the mock-ups'; 4.8 under the 1280 window's 0.8; 4 on the landscape phone)
+				local apartNeed = 4
+				local plateNeed = 3
+				local tight = {}
+				local function edgeGap(a, b2)
+					local ta, tb = strokeOf(a) * scale, strokeOf(b2) * scale
+					local ax0, ay0 = a.AbsolutePosition.X - ta, a.AbsolutePosition.Y - ta
+					local ax1, ay1 = a.AbsolutePosition.X + a.AbsoluteSize.X + ta, a.AbsolutePosition.Y + a.AbsoluteSize.Y + ta
+					local bx0, by0 = b2.AbsolutePosition.X - tb, b2.AbsolutePosition.Y - tb
+					local bx1, by1 = b2.AbsolutePosition.X + b2.AbsoluteSize.X + tb, b2.AbsolutePosition.Y + b2.AbsoluteSize.Y + tb
+					return math.max(bx0 - ax1, ax0 - bx1, by0 - ay1, ay0 - by1)
+				end
+				for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+					local body = roots[id] and roots[id].Parent
+					local odds = body and body:FindFirstChild("Odds")
+					local rows = {}
+					for _, row in ipairs(odds and odds:GetChildren() or {}) do
+						if row:IsA("Frame") and row.Name:match("^Odds_") and row.Visible then
+							rows[#rows + 1] = row
+						end
+					end
+					for i = 1, #rows do
+						for j = i + 1, #rows do
+							local g = edgeGap(rows[i], rows[j])
+							if g < apartNeed - 0.01 then
+								tight[#tight + 1] = fmt("%s %s|%s %.1f px", id, rows[i].Name:sub(6), rows[j].Name:sub(6), g)
+							end
+						end
+					end
+					local plate = body and body:FindFirstChild("NamePlate")
+					if m[5] == "Phone" and plate and plate.Visible then
+						for _, row in ipairs(rows) do
+							local g = edgeGap(plate, row)
+							if g < plateNeed - 0.01 then
+								tight[#tight + 1] = fmt("%s plate|%s %.1f px", id, row.Name:sub(6), g)
+							end
+						end
+					end
+				end
+				T.check(#tight == 0, "egg chips (" .. m[1] .. "): " .. apartNeed .. " screen px or more of cream between neighbouring chips' wood edges"
+					.. (m[5] == "Phone" and " and " .. plateNeed .. " under the name plate's" or ""), table.concat(tight, "; ", 1, math.min(#tight, 6)))
 			end, m[3], true)
 			T.check(ok, "egg chips (" .. m[1] .. "): the page builds and lays out", tostring(err))
 		end
@@ -17984,6 +18362,7 @@ local function clientScenarios()
 		T.check(ok, "egg chips (no egg cell): the page builds and lays out", tostring(err))
 		ms.Eggs = eggs
 		ms.Id = saved
+		SEm.MEASURE = savedMeasure
 		LKC.flushErrors("machines_egg_chips")
 	end)
 
