@@ -21,6 +21,9 @@ reviews render, and fails on:
   gap       (phone) the enemy list under 8 px from the fighter card or the top card, shadows counted;
   fighter   the fighter card's own parts (name, Lv, element badge, evo stars, HP, ENERGY, hearts) under PART_GAP (1) px
             of each other or its lip, by their ink (a bare caption's text block may touch, not overlap);
+  tags      (PC) a key's name tag not under its own key (it spans the key's centre);
+  helpers   at 844 x 390 a helper without 01b C's cell (Lv / name / labelled Swap under each other); a name plate as tall
+            as two lines that draws one;
   clock     the top card's timer without its clock (640 x 360's raid / dungeon card excepted: no room);
   cut       a name cut ("Storm Ti...") or broken mid-word: the boss name, the top card's pills, the fighter's and the
             helpers' names, the vitals name, the keys' captions;
@@ -72,7 +75,10 @@ GROUPS = [
     ("BACK", r"^NimbusBattle\.Root\.Retreat$"),
     ("TOP", r"^NimbusBattle\.Root\.TopCard$"),
     ("TOP", r"^NimbusBattle\.Root\.LeaveButton$"),
-    ("ENEMIES", r"^NimbusBattle\.Root\.Enemies\.\w+$"),
+    # (keys look r5 c06: with the whole list one part, the selected row's gold target bracket lay 2.4-3 px on row 2's top
+    # frame and on '+3 more' at every size and the rows' frames stood 0.8 px apart, and 0 failed) each row and the
+    # '+n more' tag is its own part: MIN_GAP between them, the bracket counted
+    ("ENEMY:{1}", r"^NimbusBattle\.Root\.Enemies\.(\w+)$"),
     ("FIGHTER", r"^NimbusBattle\.Root\.Team\.Fighter$"),
     # (keys look r4: helper 1's Swap stood 0.8 px over helper 2's tags at 360 x 640 and 844 x 390) each helper's cell is
     # its own part, its Swap with it
@@ -414,7 +420,7 @@ class Checker:
                 for op, orr in groups.get("FIGHTER", []):
                     d = gap(cr, orr)
                     self.check(d >= 4 - 0.5, tag + "%s keeps 4 px off %s" % (cp, op), "%s vs %s: %.1f px" % (fmt(cr), fmt(orr), d))
-            for ep, er in groups.get("ENEMIES", []):
+            for ep, er in [x for g in sorted(groups) if g.startswith("ENEMY:") for x in groups[g]]:
                 for g in ("FIGHTER", "TOP"):
                     for op, orr in groups.get(g, []):
                         d = gap(er, orr)
@@ -423,6 +429,9 @@ class Checker:
         # phone it lay 18 x 4 px on the card's gold lip, the evo star on the hearts and the lip) the fighter card's own parts
         # never lie on each other nor on its lip
         self.fighter(tag, nodes)
+        if not touch:
+            self.key_tags(tag, nodes)
+        self.helpers(tag, w, h, nodes)
         # cut: the names stay whole, laid out the way render_gui draws them (its layout_text: the real font, the wrap,
         # the truncation): no ellipsis, no word broken over two lines, no line past the box's foot
         for path, n in nodes.items():
@@ -496,6 +505,46 @@ class Checker:
                 d, a, b = ink_gap(li, lk, ui, uk, need)
                 self.check(d >= need - 0.05, tag + "the fighter card's %s and %s keep %g px apart" % (pi, pk, need),
                            "ink %s vs %s: %s" % (fmt1(a), fmt1(b), ("%.1f px apart" % d) if d >= 0 else ("%.1f px over" % -d)))
+
+    def key_tags(self, tag, nodes):
+        """(keys look r5 c05: at 1280 x 720 the one-line 'MARSHMALLOW STAMPEDE' tag pushed TARGET's tag 67 px left of its F
+        key, a label for nothing, and the gap rules passed) a PC key's name tag hangs under its own key: the tag spans the
+        key's centre (06 A: every tag under its key)"""
+        pat = re.compile(r"^NimbusBattle\.Root\.Commands\.(\w+Button)\.NamePlate$")
+        for path, n in nodes.items():
+            m = pat.match(path)
+            key = nodes.get(B + "Commands." + m.group(1)) if m else None
+            if not key or n["w"] <= 1 or key["w"] <= 1 or float(n.get("bgT", 0)) >= 0.995:
+                continue
+            t, k = rect(n), rect(key)
+            cx = (k[0] + k[2]) / 2.0
+            self.check(t[0] - 0.5 <= cx <= t[2] + 0.5, tag + "%s hangs under its key" % path,
+                       "tag x %.0f..%.0f, key x %.0f..%.0f (centre %.0f)" % (t[0], t[2], k[0], k[2], cx))
+
+    def helpers(self, tag, w, h, nodes):
+        """(keys look r5 c04: at 844 x 390, the approved 01b C's own size, the evolved fighter's card 3.2 px taller flipped both
+        helpers to the short phone's cell, an arrows-only Swap beside the Lv tag, 'STONE SKIN' on one line in a two-line
+        plate beside 'TIDE MEND' in a one-line one) at 844 x 390 each helper keeps 01b C's cell, evolved or not: the Lv tag,
+        the name plate and the labelled Swap under each other; at every size a name plate as tall as two lines draws two"""
+        for i in (1, 2):
+            pre = B + "Team.Helpers.Helper%d." % i
+            lv, buff, swap = nodes.get(pre + "Level"), nodes.get(pre + "Buff"), nodes.get(pre + "Swap")
+            if not (lv and buff and swap) or swap["w"] <= 1 or buff["w"] <= 1:
+                continue
+            if (w, h) == (844, 390):
+                lr, br, sr = rect(lv), rect(buff), rect(swap)
+                st = text_of(swap)
+                ok = bool(st and st["text"].strip()) and br[1] >= lr[3] - 0.5 and sr[1] >= br[3] - 0.5
+                self.check(ok, tag + "helper %d keeps 01b C's cell: Lv, name, a labelled Swap under each other" % i,
+                           "Lv %s, name %s, Swap %s '%s'" % (fmt(lr), fmt(br), fmt(sr), st["text"] if st else ""))
+            t = text_of(buff)
+            if t and self.rg is not None:
+                pl, pr, pt, pb = (buff.get("pad") or [0, 0, 0, 0])[:4]
+                aw, ah = float(buff["w"]) - pl - pr, float(buff["h"]) - pt - pb
+                size, lines = self.rg.layout_text(self.fonts, t, aw, ah)
+                line = size * float(t.get("lineHeight", 1) or 1)
+                self.check(not (len(lines) == 1 and ah >= 2 * line - 0.5), tag + "helper %d's name plate is as tall as its lines" % i,
+                           "'%s' on %d line(s) of %.1f px in a %.1f px plate" % (t["text"], len(lines), line, ah))
 
     def pills(self, tag, w, h, nodes):
         pre = B + "TopCard.Pills."

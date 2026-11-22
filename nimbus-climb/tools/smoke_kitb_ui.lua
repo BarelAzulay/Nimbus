@@ -11354,7 +11354,17 @@ local function clientScenarios()
 					local bg = pg:FindFirstChild("NimbusBattle")
 					local root = bg and bg.Enabled and bg:FindFirstChild("Root")
 					for _, c in ipairs(root and root:GetChildren() or {}) do
-						avoid(c, "the battle HUD's " .. c.Name)
+						if c.Name == "Enemies" then
+							-- (keys look r5 c06: the rows keep their target bracket's air, so at 844 x 390 the "+n more" tag goes to
+							-- the list's left end and the chip hangs beside it, under the right end, as DungeonController's
+							-- R.battleParts plans) the enemy list is a clear holder as wide as its rows: the chip keeps off what
+							-- it shows, each row and the tag (battle_hud_no_overlap measures their ink, the bracket counted)
+							for _, row in ipairs(c:GetChildren()) do
+								avoid(row, "the battle HUD's Enemies." .. row.Name)
+							end
+						else
+							avoid(c, "the battle HUD's " .. c.Name)
+						end
 					end
 					for _, d in ipairs(bg and bg.Enabled and bg:GetDescendants() or {}) do
 						if d:IsA("GuiButton") then

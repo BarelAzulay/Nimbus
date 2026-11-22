@@ -6357,6 +6357,21 @@ function Hud.LayoutEnemies(B, m)
 	Hud.enemyKey = key
 	local maxRows = m.Compact and K.ROWS_COMPACT or K.ROWS_MAX
 	local w, h = m.Compact and K.ROW_W_COMPACT or K.ROW_W, m.Compact and K.ROW_H_COMPACT or K.ROW_H
+	-- (keys look r5 c06: K.ROW_GAP's 6 design px left two rows' 2 px frames 0.8 px apart, and the locked row's gold bracket
+	-- lay 2.4-3 px on row 2's frame and on "+n more" at every size) the list's parts keep their inks apart: after a row
+	-- (under it or beside it) Hud.ListAir, after the first row (the locked one's place, Hud.EnemyList) its bracket's reach
+	-- too, locked or not: a lock never moves the list (only Hud.Rebuild places Cheer up! and the cards around it)
+	local rowAir, lockAir = Hud.ListAir(m, false), Hud.ListAir(m, true)
+	local function gapAfter(i)
+		return (i == 1) and lockAir or rowAir
+	end
+	local function rowTop(i) -- design px from the list's top to row i's
+		local at = 0
+		for j = 1, i - 1 do
+			at = at + h + gapAfter(j)
+		end
+		return at
+	end
 	-- (kit-b) a portrait phone's list ends above the action keys under it (Hud.listKeys, set by Hud.Rebuild): a player's
 	-- three strips (Cash, Gems, tokens) start it low enough on a 360 x 640 phone that its second row and "+n more" tag ran
 	-- under DASH and TARGET. Its rows stop above the keys under the list; the tag goes under the list's right end, or under
@@ -6404,7 +6419,7 @@ function Hud.LayoutEnemies(B, m)
 			return nil
 		end
 		local tagW = math.ceil(textWidth("+" .. more .. " more", morePx)) + 18
-		local bottom = rows * (h + K.ROW_GAP) + 22
+		local bottom = rowTop(rows) + h + gapAfter(rows) + 22
 		if bottom <= room(w - tagW, w) then
 			return 1
 		end
@@ -6417,14 +6432,14 @@ function Hud.LayoutEnemies(B, m)
 			return 0
 		end
 		-- (P2 fix A r1) the list under the fighter's block: beside its last row, right of it, where no key stands there
-		local beside = Hud.listX and Hud.TagBeside(m, left, top + (rows - 1) * (h + K.ROW_GAP), h, more, keys)
+		local beside = Hud.listX and Hud.TagBeside(m, left, top + rowTop(rows), h, more, keys, gapAfter(rows))
 		if beside then
 			return 2, beside
 		end
 		return false
 	end
 	if keys or bandRoom then
-		while maxRows > 1 and (maxRows * (h + K.ROW_GAP) - K.ROW_GAP > room(0, w) or tagSide(maxRows) == false) do
+		while maxRows > 1 and (rowTop(maxRows) + h > room(0, w) or tagSide(maxRows) == false) do
 			maxRows = maxRows - 1
 		end
 	end
@@ -6480,10 +6495,14 @@ function Hud.LayoutEnemies(B, m)
 				lip.BackgroundColor3 = (locked or boss) and SIGN.GoldLip or SIGN.StoneLip
 			end
 			row.hpKey = nil
-			y = y + h + K.ROW_GAP
+			y = y + h + gapAfter(i)
 		end
 	end
 	local more = #list - n
+	-- (keys look r5 c06) the list's height as before: its last part's foot and K.ROW_GAP (the callers' measure); the tag
+	-- keeps the last row's air (its bracket's when it is the locked one)
+	local lastBottom = (n > 0) and (rowTop(n) + h) or 0
+	y = (n > 0) and (lastBottom + K.ROW_GAP) or 0
 	if not Hud.more then -- (the tag takes the old line's 22 + 2 px: the cluster under the list keeps its place)
 		-- (LOOK-ui2: was outlined text on the arena) a stone tag under the list's right end
 		Hud.more = smallPill(Hud.enemies, "", KB.Face, { Name = "More", AutomaticSize = Enum.AutomaticSize.None, AnchorPoint = Vector2.new(1, 0) })
@@ -6506,12 +6525,12 @@ function Hud.LayoutEnemies(B, m)
 		if at == 2 then
 			-- (P2 fix A r1) beside the last row (Hud.TagBeside): the list keeps its rows' height
 			Hud.more.AnchorPoint = Vector2.new(0, 0)
-			Hud.more.Position = UDim2.fromOffset(w + 6, y - K.ROW_GAP - h + floor((h - 22) / 2))
+			Hud.more.Position = UDim2.fromOffset(w + gapAfter(n), lastBottom - h + floor((h - 22) / 2))
 		else
 			local side = at == 0 and 0 or 1
 			Hud.more.AnchorPoint = Vector2.new(side, 0)
-			Hud.more.Position = UDim2.fromOffset(side * w, y)
-			y = y + 24
+			Hud.more.Position = UDim2.fromOffset(side * w, lastBottom + gapAfter(n))
+			y = lastBottom + gapAfter(n) + 24
 		end
 	end
 	Hud.enemies.Size = UDim2.fromOffset(w, max(0, y - K.ROW_GAP))
@@ -6617,6 +6636,20 @@ function Hud.ClusterLayout(m)
 		out.Element = { -74, -98 - big / 2 - max(36, Hud.CaptionH(m) + 4 + K.TAG_GAP + 2 * K.KEY_EDGE + 2) - small / 2, small }
 		out.Dash = { -74 - big / 2 - 26 - small / 2, -98 - big / 2 - 28 - small / 2, small }
 		out.w, out.h = 236, 270
+		-- (keys look r5 c05: at 1280 x 720 SPECIAL's two-line name tag would pass the screen's foot, so it took one 222 px line
+		-- and pushed TARGET's tag 67 px off its key; 06 A keeps every tag under its key) the cluster stands high enough for
+		-- a two-line tag under SPECIAL (Hud.PlaceCaptionUnder's size: the floor's design size, its 2 px frame and 2 px kept
+		-- above the foot); no name moves a key
+		local f = max(0.05, m.F)
+		local px = max(K.CAPTION_TEXT, math.ceil(Hud.FloorPx() / f - 1e-6))
+		local foot = out.Special[2] + big / 2 + K.KEY_EDGE + K.TAG_GAP + 2 * math.ceil(px * 1.2) + 2 + 4 / f
+		local lift = math.ceil(max(0, foot))
+		if lift > 0 then
+			for _, kind in ipairs({ "Special", "Target", "Element", "Dash" }) do
+				out[kind][2] = out[kind][2] - lift
+			end
+			out.h = out.h + lift
+		end
 		return out
 	end
 	-- (Pitch 2 item 1b, option C "Three buttons", the owner's pick 2026-11-20: .superpowers/slop-audit/round3/build/PITCH2/
@@ -6765,10 +6798,12 @@ function Hud.Rebuild()
 			end
 			local n = #Hud.EnemyList(B)
 			if not ok and n > 1 then
-				-- (a raid's full strip, its pills in two rows) one row with its "+n more" tag beside it (Hud.TagBeside)
+				-- (a raid's full strip, its pills in two rows) one row with its "+n more" tag beside it (Hud.TagBeside; keys
+				-- look r5 c06: the first row's bracket air, Hud.ListAir)
 				local rowH = m.Compact and K.ROW_H_COMPACT or K.ROW_H
 				local _, teamH = Hud.LayoutFighter(B, m)
-				ok = Hud.TagBeside(m, K.EDGE, bandY + teamH + Hud.ListGap(m), rowH, n - 1, m.Touch and Hud.KeyBoxes(m) or nil) ~= nil
+				local air = Hud.ListAir(m, true)
+				ok = Hud.TagBeside(m, K.EDGE, bandY + teamH + Hud.ListGap(m), rowH, n - 1, m.Touch and Hud.KeyBoxes(m) or nil, air) ~= nil
 					and Hud.BandRoom(B, m, bandY, rowH + Hud.ListGap(m))
 			end
 			if ok then
@@ -6969,6 +7004,11 @@ function Hud.PlaceFace(A, d, m)
 	local cap, plate = A.Caption, A.NamePlate
 	cap.TextScaled = false -- (kit-b U9-6) one size: the floor on touch (Hud.PlaceFaceName), CAPTION_TEXT under the key
 	A.capTop = nil -- (a tag on the face: Hud.PlaceFaceName sets it, Hud.PaintKey moves the tag down with the pressed face)
+	-- (keys look r5 c05) a new layout gives the tag its whole name again (Hud.SpreadCaptions measures the room anew)
+	A.capRoom, A.capShown = nil, nil
+	if A.capText ~= nil then
+		setText(cap, A.capText)
+	end
 	if inFace then
 		cap.Visible = true
 		cap.TextTruncate = Enum.TextTruncate.None
@@ -7000,7 +7040,6 @@ function Hud.PlaceCaptionUnder(A, d, m)
 	local cap, plate = A.Caption, A.NamePlate
 	local f = max(0.05, m.F)
 	local px = max(K.CAPTION_TEXT, math.ceil(Hud.FloorPx() / f - 1e-6))
-	local w = d + 16
 	-- (keys lane: the 0.62 em guess is short for a capitals word, "MARSHMALLOW" broke mid-word in its tag) a word's width is
 	-- the largest of the guess, the caption's own face measured (Theme.MeasureLabel) and the helper tags' rough advance
 	-- (tagW: 0.72 em a capital, 0.58 any other letter or digit, 0.3 a space)
@@ -7013,10 +7052,10 @@ function Hud.PlaceCaptionUnder(A, d, m)
 		-- (5% to spare, as Hud.FitLine keeps 4%: FredokaOne draws "MARSHMALLOW" at 0.74 em a letter, its M and W wide)
 		return max(textWidth(word, px), (ok and typeof(s) == "Vector2") and s.X or 0, est * px) * 1.05
 	end
-	local function wrapN(width)
+	local function wrapN(width, text)
 		local n, cur = 0, -1
 		local space = wordW("A A") - wordW("AA")
-		for word in string.gmatch(tostring(cap.Text), "%S+") do
+		for word in string.gmatch(tostring(text), "%S+") do
 			local ww = wordW(word)
 			if cur < 0 or cur + space + ww > width then
 				n, cur = n + 1, ww
@@ -7026,27 +7065,53 @@ function Hud.PlaceCaptionUnder(A, d, m)
 		end
 		return max(1, n)
 	end
-	-- (a long word keeps its line: "MARSHMALLOW" widens its tag past the clamp rather than break)
-	for word in string.gmatch(cap.Text, "%S+") do
-		w = max(w, math.ceil(wordW(word)) + 12)
-	end
-	local lines = min(2, wrapN(w - 12))
-	local single = math.ceil(wordW(cap.Text)) + 12
-	if lines == 1 then
-		w = max(min(w, single), min(d, single))
-	end
-	local h = lines * math.ceil(px * 1.2) + 2
-	local spec0 = Hud.cluster and Hud.cluster[A.kind]
-	if lines == 2 and type(spec0) == "table" and spec0[2] and spec0[3] then
-		-- (keys look r4: at 1280 x 720 SPECIAL's two-line "COSY / GUARD" tag ran 1 px off the screen's foot) where the second
-		-- line would pass the screen's foot (the tag's 2 px frame and 2 px kept: the cluster's spots are from Commands' bottom
-		-- edge, the screen's), the tag takes one line, as wide as its words (Hud.SpreadCaptions moves its neighbours aside)
-		local foot = spec0[2] + spec0[3] / 2 + K.KEY_EDGE + K.TAG_GAP + h + 4 / f
-		if foot > 0 then
-			lines = 1
-			w = max(w, single)
-			h = math.ceil(px * 1.2) + 2
+	-- the tag's size (design px) and lines for a text
+	local function sizeFor(text)
+		local w = d + 16
+		-- (a long word keeps its line: "MARSHMALLOW" widens its tag past the clamp rather than break)
+		for word in string.gmatch(text, "%S+") do
+			w = max(w, math.ceil(wordW(word)) + 12)
 		end
+		local lines = min(2, wrapN(w - 12, text))
+		local single = math.ceil(wordW(text)) + 12
+		if lines == 1 then
+			w = max(min(w, single), min(d, single))
+		end
+		local h = lines * math.ceil(px * 1.2) + 2
+		local spec0 = Hud.cluster and Hud.cluster[A.kind]
+		if lines == 2 and type(spec0) == "table" and spec0[2] and spec0[3] then
+			-- (keys look r4: at 1280 x 720 SPECIAL's two-line "COSY / GUARD" tag ran 1 px off the screen's foot) where the second
+			-- line would pass the screen's foot (the tag's 2 px frame and 2 px kept: the cluster's spots are from Commands' bottom
+			-- edge, the screen's), the tag takes one line, as wide as its words (Hud.ClusterLayout now stands the cluster high
+			-- enough for two: keys look r5 c05)
+			local foot = spec0[2] + spec0[3] / 2 + K.KEY_EDGE + K.TAG_GAP + h + 4 / f
+			if foot > 0 then
+				lines = 1
+				w = max(w, single)
+				h = math.ceil(px * 1.2) + 2
+			end
+		end
+		return w, h
+	end
+	-- (keys look r5 c05: at 1280 x 720 the whole "MARSHMALLOW STAMPEDE" tag pushed TARGET's tag 67 px off its key; 06 A keeps
+	-- every tag under its key) a tag given less room (A.capRoom: Hud.SpreadCaptions, its left neighbour's tag would leave
+	-- its own key) shows the name's last whole words that fit, as an enemy row drops "Wild" (never a word cut)
+	local fullText = tostring(cap.Text)
+	local text = fullText
+	local w, h = sizeFor(text)
+	if A.capRoom and w > A.capRoom then
+		local words = {}
+		for word in string.gmatch(fullText, "%S+") do
+			words[#words + 1] = word
+		end
+		for k = 2, #words do
+			text = table.concat(words, " ", k)
+			w, h = sizeFor(text)
+			if w <= A.capRoom then
+				break
+			end
+		end
+		setText(cap, text)
 	end
 	cap.Visible = true
 	plate.Visible = true
@@ -7067,7 +7132,8 @@ function Hud.PlaceCaptionUnder(A, d, m)
 	cap.Size = UDim2.fromOffset(w, h)
 	plate.Position = cap.Position
 	plate.Size = cap.Size
-	A.capText = cap.Text
+	A.capText = fullText -- (the HUD's name: Hud.Update re-places the tag when it changes)
+	A.capShown = text
 	A.capBase = shift
 	Hud.SpreadCaptions(m)
 end
@@ -7087,25 +7153,48 @@ function Hud.SpreadCaptions(m)
 		local cap = A.Caption
 		if type(spec) == "table" and A.capBase ~= nil and cap and cap.Visible and A.Button.Visible then
 			local top = spec[2] + spec[3] / 2 + K.KEY_EDGE + K.TAG_GAP
-			tags[#tags + 1] = { A = A, cx = spec[1], shift = A.capBase, w = cap.Size.X.Offset, top = top, bot = top + cap.Size.Y.Offset }
+			tags[#tags + 1] = { A = A, cx = spec[1], d = spec[3], shift = A.capBase, w = cap.Size.X.Offset, top = top, bot = top + cap.Size.Y.Offset }
 		end
 	end
 	table.sort(tags, function(a, b)
 		return a.cx + a.shift > b.cx + b.shift
 	end)
+	local air = Hud.Air(m, 4 + K.INK_AIR_PX)
 	for i, a in ipairs(tags) do
+		local pusher = nil
 		for j = 1, i - 1 do
 			local b = tags[j]
 			if a.top < b.bot and b.top < a.bot then
 				-- (keys look r4: 4 design px between the boxes left their 2 px frames 0.8 px over each other at 1280 x 720)
 				-- both frames and K.INK_AIR_PX of air
-				local over = (a.cx + a.shift + a.w / 2 + Hud.Air(m, 4 + K.INK_AIR_PX)) - (b.cx + b.shift - b.w / 2)
+				local over = (a.cx + a.shift + a.w / 2 + air) - (b.cx + b.shift - b.w / 2)
 				if over > 0 then
 					a.shift = a.shift - over
+					pusher = b
 				end
 			end
 		end
 		a.shift = max(a.shift, min(0, left - (a.cx - a.w / 2)))
+		-- (keys look r5 c05: at 1280 x 720 SPECIAL's whole-name tag pushed TARGET's 67 px off its key) a tag stays under its
+		-- key, its right edge a quarter key past the key's centre at least; where the tag on its right pushed it further,
+		-- that tag gets the room left (A.capRoom: Hud.PlaceCaptionUnder shows its name's last words that fit) and the tags
+		-- are spread again from their own places
+		local reach = a.cx + a.d / 4
+		if pusher and a.cx + a.shift + a.w / 2 < reach - 0.5 then
+			local b = pusher
+			local edgeR = -4 / max(0.05, m.F) -- (the screen's right edge, 4 px kept: PlaceCaptionUnder's clamp)
+			local from = min(reach, a.cx + a.w / 2) + air
+			-- the widest tag for b whose left edge stays at `from`: centred under its key, or against the screen's edge
+			local room = math.floor((b.cx - from <= edgeR - b.cx) and 2 * (b.cx - from) or (edgeR - from))
+			if b.w > room and (b.A.capRoom == nil or room < b.A.capRoom) then
+				b.A.capRoom = room
+				setText(b.A.Caption, b.A.capText or b.A.Caption.Text)
+				Hud.PlaceCaptionUnder(b.A, b.A.Button.Size.X.Offset, m) -- (spreads the tags again)
+				return
+			end
+		end
+	end
+	for _, a in ipairs(tags) do
 		local p = a.A.Caption.Position
 		a.A.Caption.Position = UDim2.new(p.X.Scale, a.shift, p.Y.Scale, p.Y.Offset)
 		a.A.NamePlate.Position = a.A.Caption.Position
@@ -7589,7 +7678,12 @@ function Hud.LayoutFighter(B, m, top)
 			L.CellW = cellW
 		end
 	else
-		cellH = max(tile + 4 + L.CdH, L.H + 4 + L.BuffH + 4 + 30)
+		-- (keys look r5 c04: at 844 x 390, the approved 01b C's own size, the evolved fighter's card 4 design px taller left
+		-- the Lv / name / Swap cells 3 px past the stick's ring, and both helpers took the short phone's arrows-only Swap)
+		-- a landscape phone's Lv tag, name plate and SWAP share one frame between them, as 01b C draws its cells: 4 design
+		-- px between the boxes stood their 2 px frames 0.8 px into each other, a 3.2 px double line
+		L.RowGap = SignKit.Px(2, m.F)
+		cellH = max(tile + 4 + L.CdH, L.H + L.RowGap + L.BuffH + L.RowGap + 30)
 		if Hud.ThreeKeys(m) then
 			-- (Pitch 2 item 1b, look review r1: at 640 x 360, 667 x 375 and 740 x 360 the second helper's SWAP lay on Roblox's
 			-- stick ring; at 667 x 375 "STONE S...", "TIDE ME...") where the column of Lv / name / SWAP rows would reach the
@@ -7604,7 +7698,7 @@ function Hud.LayoutFighter(B, m, top)
 				-- Lv / buff / Swap under each other, 5.5 design px short of the ring) first the same rows 2 px tighter each: the
 				-- tags' 14.4 px text in 17.6 px tags (the fighter card's own), SWAP 28 tall (its pad is the 44 px thumb)
 				local tH, tS = lvPx + 4, 28
-				local tight = max(tile + 4 + L.CdH, tH + 4 + tH + 4 + tS)
+				local tight = max(tile + 4 + L.CdH, tH + L.RowGap + tH + L.RowGap + tS)
 				if colTop + 2 * tight + Hud.CellGap(m) <= ring then
 					L.H, L.BuffH, L.SwapH = tH, tH, tS
 					cellH = tight
@@ -7778,7 +7872,7 @@ function Hud.PlaceHelper(H)
 	if lvW + 4 + buffW <= room then
 		H.Buff.Position = UDim2.fromOffset(x + lvW + 4, 0)
 	else
-		by = L.H + 4
+		by = L.H + (L.RowGap or 4)
 		bw = min(room, buffW)
 		if L.Tall and buffW > room then
 			-- (a tall phone: "TIDE MEND" on two lines in the room beside the tile)
@@ -7796,7 +7890,7 @@ function Hud.PlaceHelper(H)
 		H.Swap.Size = UDim2.fromOffset(L.CellW, 30)
 		Hud.PlaceSwapHit(H, L, L.CellW, 30, Hud.helpersRow and 4 or nil)
 	else
-		H.Swap.Position = UDim2.fromOffset(x, by + bh + 4)
+		H.Swap.Position = UDim2.fromOffset(x, by + bh + (L.RowGap or 4))
 		H.Swap.Size = UDim2.fromOffset(room, L.SwapH or 30)
 		-- (a landscape phone: the second helper's SWAP sits just above the thumbstick's zone: its pad reaches up, over the
 		-- tags beside the tile, not down)
@@ -7952,11 +8046,15 @@ function Hud.Captions(B)
 		-- (Pitch 2 item 1b) the three keys' MOVE: the element's name on a stone face with the meter rising; a full meter turns it
 		-- gold with the special's name and star (a hold fires it, the HOLD tag says so)
 		local full = A.three and A.full == true
-		setText(A.Caption, (full and caps.Special) or caps[kind] or kind)
+		local want = (full and caps.Special) or caps[kind] or kind
+		-- (keys look r5 c05) a PC tag showing its name's last words (Hud.PlaceCaptionUnder, A.capRoom) keeps them while the
+		-- name stays the same
+		local pcTag = Hud.m and not Hud.m.Touch and A.capShown ~= nil and A.capText == want
+		setText(A.Caption, pcTag and A.capShown or want)
 		if Hud.m and Hud.m.Touch and (kind ~= "Dash" or Hud.ThreeKeys()) and A.Button.Visible then
 			-- (kit-b U9-6) the name's tag follows its text (a swap changes the attack's name)
 			Hud.PlaceFaceName(A, A.Button.Size.X.Offset, kind == "Target" and St.targetFlash ~= nil)
-		elseif Hud.m and not Hud.m.Touch and A.Button.Visible and A.capText ~= A.Caption.Text then
+		elseif Hud.m and not Hud.m.Touch and A.Button.Visible and A.capText ~= want then
 			-- (keys lane) a PC key's tag under it follows its text too
 			Hud.PlaceCaptionUnder(A, A.Button.Size.X.Offset, Hud.m)
 		end
@@ -9827,7 +9925,22 @@ function Hud.ListMinH(B, m)
 	if n == 0 then
 		return 0
 	end
-	return (m.Compact and K.ROW_H_COMPACT or K.ROW_H) + ((n > 1) and 24 or 0)
+	-- (keys look r5 c06) the tag under the first row keeps that row's air (Hud.LayoutEnemies: its bracket's)
+	local air = Hud.ListAir(m, true)
+	return (m.Compact and K.ROW_H_COMPACT or K.ROW_H) + ((n > 1) and (24 + air - K.ROW_GAP) or 0)
+end
+
+-- (keys look r5 c06: K.ROW_GAP's 6 design px left two rows' 2 px frames 0.8 px apart; the locked row's gold bracket, 4
+-- design px out and its 3 px stroke (2 on a phone), lay 2.4-3 px on the next row's frame and on "+n more") design px
+-- after an enemy row, to the next row or the "+n more" tag (under it or beside it): both 2 px frames (SignKit.Px: whole
+-- screen px) and K.INK_AIR_PX of air; after the bracketed row its reach and stroke instead of its frame
+function Hud.ListAir(m, bracket)
+	local f = max(0.05, (m and m.F) or 1)
+	local edge = SignKit.Px(K.SMALL_EDGE, f) * f
+	if bracket then
+		return 4 + Hud.Air(m, SignKit.Px(3, f) * f + edge + K.INK_AIR_PX)
+	end
+	return max(K.ROW_GAP, Hud.Air(m, 2 * edge + K.INK_AIR_PX))
 end
 
 -- (P2 fix A r1) whether the right column holds the enemy list's first row (and its "+n more" tag) from `top` (design px):
@@ -9878,13 +9991,14 @@ end
 
 -- (P2 fix A r1) the list's "+n more" tag beside a row at rowTop (h tall) of the list whose left edge is `left`: right of
 -- the row, on the screen, clear of every key. Returns its text ("+n more", else the short "+n" beside the row) or nil
-function Hud.TagBeside(m, left, rowTop, h, more, keys)
+function Hud.TagBeside(m, left, rowTop, h, more, keys, gap)
 	local px = max(16, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
 	local w = m.Compact and K.ROW_W_COMPACT or K.ROW_W
 	local y0 = rowTop + floor((h - 22) / 2)
 	local y1 = y0 + 22
 	for _, text in ipairs({ "+" .. more .. " more", "+" .. more }) do
-		local x0 = left + w + 6
+		-- (keys look r5 c06: the row's air, Hud.ListAir; its bracket's beside the locked row)
+		local x0 = left + w + (gap or K.ROW_GAP)
 		local x1 = x0 + math.ceil(textWidth(text, px)) + 18
 		local clear = x1 <= m.W - K.EDGE
 		for _, k in ipairs(keys or {}) do

@@ -51,9 +51,20 @@ def main():
     ink = T.union(T.ink_of(nodes[B + "Enemies.Row1"], None, None))
     expect(close(ink, (457.2, 62.4, 635.6, 104.8)), "the row's ink is its bracket's Outer ring: %s" % (ink,))
     groups, inks = T.collect(nodes, None, None)
-    expect(close(groups["ENEMIES"][0][1], ink), "collect() gives the row its ink, not its box")
+    expect(close(groups["ENEMY:Row1"][0][1], ink), "collect() gives the row its ink, not its box")
     d, _, _ = T.ink_gap(inks[B + "Enemies.Row1"], inks["NimbusDungeonRun.RunChip"], ink, groups["RUNCHIP"][0][1], T.RUNCHIP_GAP)
     expect(d < 0, "the chip under the bracket lies on it (%.1f px), though the boxes are 4 px apart" % d)
+
+    # 1b. (keys look r5 c06) the next row 4.8 px under the bracketed row: two parts, and the bracket lies on its frame
+    row2 = node(B + "Enemies.Row2", 462.4, 104.4, 168, 32, strokes=[(2, "Outer")])
+    more = node(B + "Enemies.More", 462.4, 104.4, 80, 17.6, strokes=[(2, "Outer")])
+    nodes = T.nodes_of({"guis": [{"nodes": [row, row2]}]})
+    groups, inks = T.collect(nodes, None, None)
+    expect("ENEMY:Row1" in groups and "ENEMY:Row2" in groups, "each enemy row is its own part: %s" % sorted(groups))
+    d, _, _ = T.ink_gap(inks[B + "Enemies.Row1"], inks[B + "Enemies.Row2"], groups["ENEMY:Row1"][0][1], groups["ENEMY:Row2"][0][1], T.MIN_GAP)
+    expect(d < 0, "the bracket lies on row 2's frame (%.1f px)" % d)
+    nodes = T.nodes_of({"guis": [{"nodes": [more]}]})
+    expect(T.group_of(B + "Enemies.More") == "ENEMY:More", "the '+n more' tag is its own part")
 
     # 2. the hearts: a 14.4 px Lives box, a heart label 14.4 px, its pixel cells 16 px tall from 0.8 px above the label
     cells = [node(B + "Team.Fighter.Body.Lives.Heart1.Icon.C%d" % i, 156.8 + 2 * i, 113.2 + 2 * i, 2, 16 - 2 * i) for i in range(3)]
@@ -84,6 +95,14 @@ def main():
     a, b, c = (0, 0, 50, 50), (52, 0, 100, 50), (54, 0, 100, 50)
     expect(T.ink_gap([a], [b], a, b, T.MIN_GAP)[0] < T.MIN_GAP, "2 px of air is under MIN_GAP")
     expect(T.ink_gap([a], [c], a, c, T.MIN_GAP)[0] >= T.MIN_GAP, "4 px of air is MIN_GAP")
+    # 6. (keys look r5 c05) a PC key's name tag spans its key's centre: TARGET's tag at 971..1046 under its key at 1114..1165
+    # fails, the tag under it passes
+    for x0, want in ((971, False), (1100, True)):
+        key = node(B + "Commands.TargetButton", 1114, 560, 51, 51)
+        plate = node(B + "Commands.TargetButton.NamePlate", x0, 620, 75, 24)
+        ck = T.Checker(None, None)
+        ck.key_tags("t: ", T.nodes_of({"guis": [{"nodes": [key, plate]}]}))
+        expect((not ck.failed) == want, "a tag at x %d %s under its key (%s)" % (x0, "is" if want else "is not", ck.failed))
     print("test_battle_hud_no_overlap: %d failed" % len(FAILS))
     return 1 if FAILS else 0
 
