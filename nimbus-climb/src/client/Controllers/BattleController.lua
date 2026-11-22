@@ -8017,14 +8017,18 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- duel's mode line spans it too, as the boss strips do
 		w = bossUnit and min(w, m.W - 2 * K.EDGE) or (m.W - 2 * K.EDGE)
 	elseif m.Compact then
-		-- between the fighter card and the enemy list when there is room, else under the enemy list (right)
-		local free = m.W - (K.EDGE + teamW + 12) - (K.ROW_W_COMPACT + K.EDGE + 12)
+		-- between the fighter card and the enemy list when there is room, else under the enemy list (right). (keys look r4:
+		-- 12 design px off the fighter card left 1.9 px between its hard shadow and the card's edge at 640 x 360) the fighter
+		-- card's edge and shadow, this card's 2 px edge and K.INK_AIR_PX of air
+		local side = max(12, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX))
+		local free = m.W - (K.EDGE + teamW + side) - (K.ROW_W_COMPACT + K.EDGE + 12)
 		local dash = m.Landscape and Hud.ThreeKeys(m) and Hud.ClusterLayout(m).Dash
 		if dash then
 			-- (Pitch 2 item 1b, look review r0: at 667 x 375 DASH's face lay 8 px over the card's bottom-right corner) a wide
-			-- phone's card also ends 8 px left of DASH, the right thumb's upper key (its spot comes from the jump button alone)
+			-- phone's card also ends 8 px left of DASH, the right thumb's upper key (its spot comes from the jump button alone);
+			-- (keys look r4: its shadow then stood 2.7 px off DASH's edge) its edge and shadow and K.INK_AIR_PX of air
 			local dashX0 = m.W + dash[1] - dash[3] / 2 - K.KEY_EDGE
-			free = min(free, dashX0 - 8 / max(0.05, m.F) - (K.EDGE + teamW + 12))
+			free = min(free, dashX0 - max(8 / max(0.05, m.F), Hud.Air(m, K.SHADOW_PX + K.INK_AIR_PX)) - (K.EDGE + teamW + side))
 		end
 		-- (look review r2: at 640 x 360 that gap is 274, under TOP_W_COMPACT, so every mode's card went into the right column
 		-- below, the enemy list under it: both lay on DASH and RUN, RUN drawn under them) the three keys' wide phone keeps its
@@ -8035,7 +8039,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			w = floor(free) -- (a landscape phone: the card takes the gap; its pills wrap, LEAVE is inside it)
 		end
 		if free >= w then
-			x = K.EDGE + teamW + 12 + free / 2
+			x = K.EDGE + teamW + side + free / 2
 		elseif spectator then
 			w = min(w, m.W - 2 * K.EDGE)
 		else
@@ -8157,15 +8161,30 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	-- (P2 fix A: a portrait phone's 463 px strip cut a 20-character name beside the clock) any raid card: the clock only
 	-- where the boss's whole name fits beside it at the name's floor size, after the RAID tag where the tag shows
 	if hasTimer and raidName then
-		local withClock = right - timerW - 4 - 18 - 8
-		local tagW = math.ceil(4 * px(18) * 0.62) + 18 -- (the RAID tag's width below)
-		local tagRoom = (withClock - x0 - tagW - 10 >= 110) and (tagW + 10) or 0
-		-- (keys lane, look fixA r1) the clock gives its room to the tier too: shown only where the whole name and, where the
-		-- row holds it without the clock, the tier beside it still fit
-		local without = right - timerW - gapT
-		local tagRoom0 = (without - x0 - tagW - 10 >= 110) and (tagW + 10) or 0
-		local tierFits = raidTier ~= "" and without - x0 - tagRoom0 - 4 >= nameNeed + tierNeed
-		showClock = withClock - x0 - tagRoom - 4 >= nameNeed + (tierFits and tierNeed or 0)	end
+		local function clockFits(tw)
+			local withClock = right - tw - 4 - 18 - 8
+			local tagW = math.ceil(4 * px(18) * 0.62) + 18 -- (the RAID tag's width below)
+			local tagRoom = (withClock - x0 - tagW - 10 >= 110) and (tagW + 10) or 0
+			-- (keys lane, look fixA r1) the clock gives its room to the tier too: shown only where the whole name and, where the
+			-- row holds it without the clock, the tier beside it still fit
+			local without = right - tw - gapT
+			local tagRoom0 = (without - x0 - tagW - 10 >= 110) and (tagW + 10) or 0
+			local tierFits = raidTier ~= "" and without - x0 - tagRoom0 - 4 >= nameNeed + tierNeed
+			return withClock - x0 - tagRoom - 4 >= nameNeed + (tierFits and tierNeed or 0)
+		end
+		showClock = clockFits(timerW)
+		if not showClock and timerPx > px(18) and clockFits(timerWidth(px(18))) then
+			-- (keys look r4: the card 6 design px narrower for the air beside it lost 667 x 375's clock) the timer at the floor
+			-- size keeps the clock, the whole name and its tier
+			timerPx = px(18)
+			timerW = timerWidth(timerPx)
+			showClock = true
+			Hud.timer.TextSize = timerPx
+			Hud.timer:SetAttribute("BaseText", timerPx)
+			Hud.timer.Position = UDim2.fromOffset(right - timerW, P)
+			Hud.timer.Size = UDim2.fromOffset(timerW, rowH)
+		end
+	end
 	Hud.clock.Visible = showClock
 	Hud.clock.Position = UDim2.fromOffset(right - timerW - 4 - 18, P + (rowH - 18) / 2)
 	local leftEnd = showClock and (right - timerW - 4 - 18 - 8) or (hasTimer and (right - timerW - gapT) or right)
