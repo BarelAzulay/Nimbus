@@ -7344,10 +7344,14 @@ function Hud.LayoutFighter(B, m, top)
 	local lvW = floor(textWidth(lvText, lvSize) * 0.9) + ((lvText == "Lv 100") and 14 or 18)
 	local badge = compact and 22 or 26
 	local starsW = (B.fighterEvo or 0) > 0 and (compact and 30 or 38) or 0
+	-- (keys look r4: the Lv tag's and the badge's 2 px frames met, 5 design px apart = 4 screen px at a phone's 0.8) the
+	-- badge stands its frame, the tag's and 1 screen px off the Lv tag
+	local f0 = max(0.05, m.F)
+	local tagGap = max(5, math.ceil(5 / f0 - 1e-6))
 	-- (keys look r3: 390 x 844's card narrowed off the enemy list read "Biscuit Bear" 83 px in 83) a phone's badge without
 	-- stars ends on the column's right edge, as the HP number and the hearts under it (it stopped 5 px short): the name
 	-- keeps those 5 px
-	local nameW = barW - lvW - badge - starsW - ((compact and starsW == 0) and 11 or 16)
+	local nameW = barW - lvW - badge - starsW - ((compact and starsW == 0) and 11 or 16) - (tagGap - 5)
 	local nameFloor = max(minSize, compact and 16 or 18)
 	-- (keys lane: an evolved fighter's "Mallow Kitten" still read "Mallow K..." on every phone) where the name does not fit its
 	-- row at the floor beside the stars, a phone's stars move down to the right end of the ENERGY caption's row
@@ -7358,7 +7362,7 @@ function Hud.LayoutFighter(B, m, top)
 		local need = max((okN and typeof(sz) == "Vector2") and sz.X or 0, #nm * nameFloor * 0.56) * 1.04
 		if need > nameW then
 			starsLow = true
-			nameW = barW - lvW - badge - 11
+			nameW = barW - lvW - badge - 11 - (tagGap - 5)
 			if need > nameW then
 				-- (360 x 640's narrow card, beside the currency chip: still "Mallow Kitt...") the element's badge goes down too,
 				-- left of the stars (the card's lip already wears the element's colour)
@@ -7386,10 +7390,10 @@ function Hud.LayoutFighter(B, m, top)
 	F.Level.TextSize = lvSize
 	F.Level:SetAttribute("BaseText", lvSize)
 	F.Element.Size = UDim2.fromOffset(badge, badge)
-	F.Element.Position = UDim2.fromOffset(pad + nameW + 6 + lvW + 5, y + (nameH - badge) / 2)
+	F.Element.Position = UDim2.fromOffset(pad + nameW + 6 + lvW + tagGap, y + (nameH - badge) / 2)
 	F.ElementGlyph.TextSize = floor(badge * 0.6)
 	F.ElementGlyph:SetAttribute("BaseText", F.ElementGlyph.TextSize)
-	F.Stars.Position = UDim2.fromOffset(pad + nameW + 6 + lvW + 5 + badge + 4, y)
+	F.Stars.Position = UDim2.fromOffset(pad + nameW + 6 + lvW + tagGap + badge + 4, y)
 	F.Stars.Size = UDim2.fromOffset(starsW, nameH)
 	F.Stars.Visible = starsW > 0
 	y = y + nameH + (compact and 4 or 6)
@@ -7436,8 +7440,16 @@ function Hud.LayoutFighter(B, m, top)
 	-- all of it above the card's lip, the caption, the badge and the stars centred on one line
 	local rowY, rowH = y, capH
 	if starsLow then
-		rowY = livesFoot
-		rowH = max(capH, badgeLow and badge or 0, math.ceil(18 / max(0.05, m.F))) + 3
+		-- (keys look r4: the heart's 16 px pixel art ran 1.6 px past its 14.4 px box onto the badge's frame under it, and the
+		-- badge's frame 0.6 px onto the lip) the row runs from the hearts' INK (PixelIcon's whole-px cells: 9 of them from
+		-- the icon's padded origin, Host's 18 px icon centred in the heart) and holds the badge with its 2 px frame (or the
+		-- 18 px star) a whole screen px clear of the hearts above and the lip below: the card grows by what that needs
+		local cellD = PixelIcon.Px(2, f0)
+		local padD = floor((18 - 9 * cellD) / 2 * f0 + 1e-6) / f0
+		local heartFoot = livesFoot - hs + floor((hs - 18) / 2) + padD + 9 * cellD
+		local air = math.ceil(1.5 / f0 - 1e-6)
+		rowY = max(livesFoot, math.ceil(heartFoot - 1e-6))
+		rowH = max(capH, badgeLow and (badge + math.ceil(4 / f0 - 1e-6)) or 0, math.ceil(18 / f0 - 1e-6)) + 2 * air
 	end
 	F.EnergyText.Position = UDim2.fromOffset(pad, rowY + floor((rowH - capH) / 2))
 	F.EnergyText.Size = UDim2.fromOffset(capW, capH)
