@@ -164,14 +164,18 @@ function D.pet(id, look, stage, detail, k, wantPre)
 	end
 	local A = bp.Anchors or {}
 	local eyes = {}
-	for i, e in ipairs(A.Eyes or {}) do
+	local function maskRows(m)
+		if not m then return nil end
 		local rows = {}
-		for r, cols in ipairs(e.Mask) do
+		for r, cols in ipairs(m) do
 			local s = {}
 			for c, ch in ipairs(cols) do s[c] = ch end
 			rows[r] = table.concat(s)
 		end
-		eyes[i] = { XLeft = e.XLeft, Y = e.Y, Mask = rows }
+		return rows
+	end
+	for i, e in ipairs(A.Eyes or {}) do
+		eyes[i] = { XLeft = e.XLeft, Y = e.Y, Mask = maskRows(e.Mask), LowMask = maskRows(e.LowMask) }
 	end
 	local lids = {}
 	for i, cells in ipairs(A.LidCells or {}) do

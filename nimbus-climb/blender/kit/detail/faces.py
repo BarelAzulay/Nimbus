@@ -3,8 +3,9 @@ kit puts the carved face back, then carves PROCEDURAL eyes sized in design units
 the blink lids from what it carved.
 
 API (cells = dict (x, y, z) -> palette key of the Body group, sculpted voxels at mesh K):
-    restore_carved_eyes(cells, lid_cells)            undo PetBuilder.carveEyes (uses bp.lid_cells)
+    restore_carved_eyes(cells, lid_cells, strict)    undo PetBuilder.carveEyes (uses bp.lid_cells)
     eyes = eye_specs(bp)                             [(cx, cy, rx, ry, kind, mask)] design units, one per eye
+    eyes = low_eye_specs(bp)                         the same, drawing the game's Low eye masks 1:1 (kind "pixel")
     lids = carve_eyes(cells, eyes, K, style)         carve them; returns per-eye lid cell lists [(x, y, z, key)]
     lid_groups(lids, single=False)                   -> [{x,y,z: key}] PetBuilder lidBoxes layout per eye
 Eye styles ("cute" default): lash rim on top, a big dark pupil, a lighter iris crescent below, a glint row, a large
@@ -35,15 +36,27 @@ def front_map(cells):
     return fm
 
 
-def restore_carved_eyes(cells, lid_cells):
-    """PetBuilder.carveEyes moved every eye voxel one step back: put the face surface back."""
+def _face_lid_key(k, strict=False):
+    """a lid cell's key that is the face colour it covered: not the LidLine / Lid placeholders.  strict (the evolved
+    Low keys, face eyes 'low'): not an eye key either (where two of the game's fixed-pixel eyes overlap - a big High
+    eye on a coarse Low grid - the second eye was carved into the first and recorded the first eye's key as its lid;
+    restored, those showed as stray eye pixels around the Low eye), except EyeRing: a painted ring under the eye (the
+    evolved owls' gold disc) is face colour"""
+    if k in ("LidLine", "Lid"):
+        return False
+    return not strict or _base(k) not in FLAT_EYE or _base(k) == "EyeRing"
+
+
+def restore_carved_eyes(cells, lid_cells, strict=False):
+    """PetBuilder.carveEyes moved every eye voxel one step back: put the face surface back.  strict: see
+    _face_lid_key (the default keeps every other key's restore exactly as before)."""
     for eye in lid_cells:
         col_key = {}
         for (x, y, z, k) in eye:
-            if k not in ("LidLine", "Lid"):
+            if _face_lid_key(k, strict):
                 col_key.setdefault(x, k)
         for (x, y, z, k) in eye:
-            key = k if k not in ("LidLine", "Lid") else col_key.get(x) or next(iter(col_key.values()), "Fur")
+            key = k if _face_lid_key(k, strict) else col_key.get(x) or next(iter(col_key.values()), "Fur")
             cells[(x, y, z)] = key
             cells[(x, y, z + 1)] = key
 
@@ -65,6 +78,24 @@ def eye_specs(bp):
         chars = "".join(mask)
         kind = "mask" if ("R" in chars or chars.count("L") > 2) else ("big" if w >= 5 else "cute")
         out.append((cx, cy, w / 2.0, rows / 2.0, kind, mask))
+    return out
+
+
+def low_eye_specs(bp):
+    """face option {"eyes": "low"} (the evolved Low LOD keys): every eye that has a Low version in the game
+    (PetBuilder EYE_MASKS <kind>Low, exported as LowMask by the bridge) is drawn with it, one mesh voxel per mask
+    pixel, centred where eye_specs puts the High eye.  Scaling a big High mask down to a coarse grid drops whole rows
+    and columns (Pitch 2 item 7: the 6 x 7 evolved eye lost its lash, glint or pupil at K 0.65); the game's own Low
+    eye keeps every feature (lash, highlight, pupil, iris, glint, the fierce slant).  Eyes without a Low mask keep
+    their eye_specs entry."""
+    out = []
+    for e, spec in zip(bp.eyes, eye_specs(bp)):
+        low = e.get("LowMask")
+        if not low:
+            out.append(spec)
+            continue
+        cx, cy = spec[0], spec[1]
+        out.append((cx, cy, max(len(r) for r in low) / 2.0, len(low) / 2.0, "pixel", list(low)))
     return out
 
 
@@ -115,15 +146,29 @@ def _small_key(i, j, w, h):
     return "EyePupil"
 
 
+def _pixel_box(cx, cy, w, h, K):
+    """(X_hi, Y_hi): the viewer's-left column (+X) and the top row of a w x h pixel eye centred on (cx, cy).  The
+    left eye (cx < 0) is placed as the exact mirror of a right eye at -cx, so the pair stays symmetric about x = 0
+    even where the rounding hits a .5; eyes set close together (the phoenixes) keep the x = 0 column between them
+    instead of sharing it"""
+    Y_hi = int(round(cy * K + (h - 1) / 2.0))
+    right = max(int(round(abs(cx) * K + (w - 1) / 2.0)), w)
+    return (right if cx >= 0 else -right + w - 1), Y_hi
+
+
 def carve_eyes(cells, eyes, K, scale=1.0, inflate=0.0):
     """carve every eye one voxel into the face (like PetBuilder.carveEyes); returns lid cells per eye.
     Big enough eyes (>= 5 voxels tall) are drawn procedurally (lash rim, pupil, iris crescent, glint, two
-    highlights); smaller ones (Low LOD) get a pixel eye that keeps one clear highlight."""
+    highlights); smaller ones (Low LOD) get a pixel eye that keeps one clear highlight; "pixel" specs
+    (low_eye_specs) draw their mask one voxel per pixel, and a painted EyeRing under a "pixel" eye (the evolved owls'
+    gold disc) is a backdrop it is carved into, as PetBuilder.carveEyes does at High (the other kinds still skip
+    every eye key, so their keys carve as before)."""
     fm = front_map(cells)
     lids = []
+    carved = set()  # (X, Y) carved by this call: never carved twice, even where the eye left an EyeRing pixel
     for (cx, cy, rx0, ry0, kind, mask) in eyes:
         rx, ry = rx0 * scale + inflate, ry0 * scale + inflate
-        if kind != "mask" and 2 * ry * K < 5.0:
+        if kind not in ("mask", "pixel") and 2 * ry * K < 5.0:
             kind, rx, ry = "small", rx0, ry0  # pixel eyes keep the game's eye size
         lid = []
         x0, x1 = int(math.floor((cx - rx) * K)) - 1, int(math.ceil((cx + rx) * K)) + 1
@@ -136,11 +181,19 @@ def carve_eyes(cells, eyes, K, scale=1.0, inflate=0.0):
             X_hi = int(round(cx * K + (w - 1) / 2.0))  # the viewer's left column (+X)
             Y_hi = int(round(cy * K + (h - 1) / 2.0))
             x0, x1, y0, y1 = X_hi - w + 1, X_hi, Y_hi - h + 1, Y_hi
+        elif kind == "pixel":
+            X_hi, Y_hi = _pixel_box(cx, cy, w, rows, K)
+            x0, x1, y0, y1 = X_hi - w + 1, X_hi, Y_hi - rows + 1, Y_hi
         for X in range(x0, x1 + 1):
             for Y in range(y0, y1 + 1):
                 x, y = X / K, Y / K
                 u, v = (x - cx) / rx, (y - cy) / ry
-                if kind == "small":
+                if kind == "pixel":
+                    # screen column 1 of the mask = the viewer's left (the largest x), row 1 = the top
+                    line = mask[Y_hi - Y]
+                    i = X_hi - X
+                    key = EYE_KEYS.get(line[i]) if i < len(line) else None
+                elif kind == "small":
                     key = _small_key(X_hi - X, Y_hi - Y, w, h)
                 elif u * u + v * v > 1.0 and kind != "mask":
                     continue
@@ -162,11 +215,13 @@ def carve_eyes(cells, eyes, K, scale=1.0, inflate=0.0):
                 if z is None:
                     continue
                 was = cells.get((X, Y, z))
-                if was is None or _base(was) in FLAT_EYE:
+                ring = kind == "pixel" and _base(was or "") == "EyeRing"
+                if was is None or (X, Y) in carved or (_base(was) in FLAT_EYE and not ring):
                     continue
                 del cells[(X, Y, z)]
                 cells[(X, Y, z + 1)] = key
                 fm[(X, Y)] = z + 1
+                carved.add((X, Y))
                 lid.append((X, Y, z, _base(was)))
         lids.append((lid, int(round(cy * K))))
     return lids

@@ -29,11 +29,16 @@ PET_CATALOG = os.path.join(REPO, "src", "shared", "PetCatalog.lua")
 
 K = {(1, "High"): 1.25, (1, "Low"): 0.65, (2, "High"): 1.125, (2, "Low"): 0.55}
 PASSES = ["evolved:body", "evolved:aura"]
-PASSES_LOW = ["evolved:body", "evolved:aura"]  # Low: the kit's pixel eyes read better than the Lua masks
+PASSES_LOW = ["evolved:body", "evolved:aura"]
 # the evolved faces keep the game's own carved Lua eyes and mouth (drawn for the evolved heads; the kit's procedural
 # eyes mis-read them): "eyes": "lua" (petkit.face_pass runs the passes on that path too since W2.5; the old
 # evolved:lua_eyes hook gave byte-identical keys and was removed)
 FACE = {"eyes": "lua", "features": False}
+# Low: the game's own Low eye (EvoLow / EvoFierceLow, the eye the Low Part build draws, unchanged by the trim) one
+# mesh voxel per pixel.  Before Pitch 2 item 7 the Low keys scaled the High mask down; the trimmed 6 x 7 High eye then
+# lost its lash, glint or pupil at K 0.65 (the owls' eyes vanished into their painted EyeRing disc), see
+# faces.low_eye_specs
+FACE_LOW = {"eyes": "low"}
 
 # recipe 4.2: evolved 1 <= 15k / 50 parts (Low 4.5k / 16), evolved 2 <= 20k / 60 (Low 6k / 18) per SET (body + wings);
 # keys get a share so the K step-down happens on the body first.  Part counts: see the doc string of BUDGETS_DOC.
@@ -98,7 +103,7 @@ def entries():
                 body = "evo%d_%s%s" % (stage, pid, sfx(lod))
                 e = {"key": body, "type": "pet", "pet": pid, "stage": stage, "k": k,
                      "budget": "evo%dBody%s" % (stage, "Low" if low else ""), "passes": PASSES_LOW if low else PASSES,
-                     "face": {} if low else FACE,
+                     "face": FACE_LOW if low else FACE,
                      "description": "Evolved pet: %s, %s evolution, %s" % (
                          pid.replace("_", " "), "first" if stage == 1 else "second", lod)}
                 # evolved colours are per pet constants: every constant key nothing looks up by name is baked into one

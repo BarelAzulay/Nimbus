@@ -12,6 +12,9 @@ Checks
               translucent closure rule of build_all.check_geometry, the hybrid ear variants (hyb_dog_ears /
               hyb_bear_ears) are picked by PetBuilder for earless bodies (a LEAD REQUEST check until runtime-pets
               adds it)
+  evo eyes    (Pitch 2 item 7) every evolved Low body shows the game's whole Low eye in both eyes, mirrored, with
+              lash / highlight / pupil / iris / glint (the owls in their EyeRing disc), and the face under the game's
+              carved eye comes back outside it
   prop hooks  every catalog prop entry names a builder registered by kit/props/*.py ("<class>: hook <name> missing")
   vfx         the pet attack VFX cores (catalog vfx): one white Neon part Core per key, args.size, manifest up to date
   obby        the obby cloud set (catalog obby): one baked part per key, built twice = the committed manifest, each
@@ -212,6 +215,92 @@ def test_wave25():
           "(PetBuilder.lua MESH.makePlan ~:6991, see the fix-kit wave 2.5 report)", ears)
 
 
+EYE_PARTS = ("Lash", "EyeShine", "EyePupil", "EyeIris", "EyeGlint")
+
+
+def evo_low_k(entry):
+    """the K an evolved key's budget loop starts at (catalog k, times 0.9 per "kStep", multiplied as build_all does)"""
+    import build_all
+    k = float(entry["k"])
+    for _ in range(min(int(entry.get("kStep", 0) or 0), build_all.K_STEPS)):
+        k *= build_all.K_STEP
+    return k
+
+
+def test_evo_eyes(br):
+    """Pitch 2 item 7 (evolved eyes A Trim) on the evolved Low LOD keys.  Every Low body carves the game's own Low eye
+    (PetBuilder EvoLow / EvoFierceLow, 4 x 4, unchanged by the trim) whole in both eyes, the eyes mirror each other and
+    every eye feature is there (lash, highlight, pupil, iris, glint; the owls' too, carved into their gold EyeRing
+    disc).  Scaling the trimmed 6 x 7 High eye down to the Low grid lost them (review: the owls' pupil 13 x 4 -> 1 x 1,
+    glint and lash gone, Stormfang's eye a grey / white jumble).  And the face the game's eye carve covered comes back
+    as it was outside the Low eye (the owls' EyeRing disc too)."""
+    import math
+    from collections import Counter
+    import build_all
+    import petkit
+    from detail import faces
+    cat = build_all.load_catalogs()["evolved"]
+    lows = [e for e in cat["keys"] if e["type"] == "pet" and e.get("lod") == "Low"]
+    check(lows and all(e.get("face", {}).get("eyes") == "low" for e in lows),
+          "evo eyes: every evolved Low body draws the game's Low eye (face eyes 'low')",
+          sorted(e["key"] for e in lows if e.get("face", {}).get("eyes") != "low")[:6])
+    bad, lost_face = [], []
+    for e in lows:
+        bp = petkit.pet_blueprint(br, e, evo_low_k(e))
+        want = [sum(1 for ch in "".join(ey.get("LowMask") or []) if ch in faces.EYE_KEYS) for ey in bp.eyes]
+        cells = petkit._cells_of(bp.group("Body"))
+        lids = petkit.face_pass(bp, cells, e)
+        fm = faces.front_map(cells)
+        rows = set()  # the eye's rows (+ 1 around): the evolved pandas carry a Lash-keyed voxel by the paws
+        for s in faces.eye_specs(bp):
+            rows.update(range(int(math.floor((s[1] - s[3]) * bp.K)) - 1, int(math.ceil((s[1] + s[3]) * bp.K)) + 2))
+        eyes = {1: {}, -1: {}}
+        for (x, y, z), key in cells.items():
+            b = faces._base(key)
+            if b in EYE_PARTS and x != 0 and fm[(x, y)] == z and y in rows:
+                eyes[1 if x > 0 else -1][(abs(x), y)] = b
+        probs = []
+        if len(want) != 2 or min(want) < 12:
+            probs.append("Low masks %s" % want)
+        for s, eye in eyes.items():
+            if len(eye) != (want[0] if want else -1):
+                probs.append("eye %+d shows %d of %s pixels" % (s, len(eye), want[:1]))
+            miss = [p for p in EYE_PARTS if p not in eye.values()]
+            if miss:
+                probs.append("eye %+d misses %s" % (s, miss))
+        if set(eyes[1]) != set(eyes[-1]):
+            probs.append("the eyes do not mirror")
+        if probs:
+            bad.append((e["key"], probs))
+        # the face colour PetBuilder's carve recorded (bp.lid_cells) is back wherever the kit's Low eye is not;
+        # records of an eye key (two High eyes overlapping on the coarse grid) are not face colour.  Compared by
+        # colour family: the evolved passes shade a voxel from its neighbours after the restore (Gold -> GoldLight /
+        # GoldDeep, Fur -> Fur_Dark), which is not a lost face
+        def fam(k):
+            k = faces._base(k) if k else k
+            for sfx in ("Light", "Deep", "Dark"):
+                if k and k.endswith(sfx) and len(k) > len(sfx):
+                    k = k[: -len(sfx)]
+            return k
+        kit_cols = {(x, y) for g in lids for (x, y, z) in g}
+        lost = Counter()
+        for eye in bp.lid_cells:
+            for (x, y, z, k0) in eye:
+                b0 = fam(k0)
+                if k0 in ("LidLine", "Lid") or b0 in EYE_PARTS or (x, y) in kit_cols:
+                    continue
+                zf = fm.get((x, y))
+                now = fam(cells[(x, y, zf)]) if zf is not None else None
+                if now != b0:
+                    lost["%s>%s" % (b0, now)] += 1
+        if lost:
+            lost_face.append((e["key"], dict(lost)))
+    check(not bad, "evo eyes: %d Low bodies show the whole Low eye in both eyes (lash, highlight, pupil, iris, glint)"
+          % len(lows), bad[:4])
+    check(not lost_face, "evo eyes: the face under the game's carved eye comes back outside the Low eye (the owls' "
+          "EyeRing disc too)", lost_face[:4])
+
+
 def test_prop_hooks():
     """every prop entry of every catalog names a builder that kit/props/*.py registers"""
     import build_all
@@ -356,14 +445,16 @@ def test_obby(br):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", help="comma list of checks: hooks, recipes, determinism, wave25, props, vfx, obby, manifests")
+    ap.add_argument("--only", help="comma list of checks: hooks, recipes, determinism, wave25, evoeyes, props, vfx, "
+                                   "obby, manifests")
     a = ap.parse_args()
     only = set(a.only.split(",")) if a.only else None
     t0 = time.time()
     from bridge import Bridge
     br = Bridge()
     for name, fn in (("hooks", test_hooks), ("recipes", test_recipes), ("determinism", test_determinism),
-                     ("wave25", lambda _: test_wave25()), ("props", lambda _: test_prop_hooks()), ("vfx", test_vfx),
+                     ("wave25", lambda _: test_wave25()), ("evoeyes", test_evo_eyes),
+                     ("props", lambda _: test_prop_hooks()), ("vfx", test_vfx),
                      ("obby", test_obby), ("manifests", test_manifests)):
         if only is None or name in only:
             fn(br)
