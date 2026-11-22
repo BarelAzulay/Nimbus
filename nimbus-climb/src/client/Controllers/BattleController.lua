@@ -7067,7 +7067,7 @@ function Hud.LayoutFighter(B, m, top)
 	local nameFloor = max(minSize, compact and 16 or 18)
 	-- (keys lane: an evolved fighter's "Mallow Kitten" still read "Mallow K..." on every phone) where the name does not fit its
 	-- row at the floor beside the stars, a phone's stars move down to the right end of the ENERGY caption's row
-	local starsLow = false
+	local starsLow, badgeLow = false, false
 	if compact and starsW > 0 and fu0 and fu0.name then
 		local nm = tostring(fu0.name)
 		local okN, sz = pcall(Theme.Measure, nm, F.Name:GetAttribute("FontRole") or "Heading", nameFloor)
@@ -7075,6 +7075,12 @@ function Hud.LayoutFighter(B, m, top)
 		if need > nameW then
 			starsLow = true
 			nameW = barW - lvW - badge - 11
+			if need > nameW then
+				-- (360 x 640's narrow card, beside the currency chip: still "Mallow Kitt...") the element's badge goes down too,
+				-- left of the stars (the card's lip already wears the element's colour)
+				badgeLow = true
+				nameW = barW - lvW - 6
+			end
 		end
 	end
 	F.Name.Position = UDim2.fromOffset(pad, y)
@@ -7131,7 +7137,7 @@ function Hud.LayoutFighter(B, m, top)
 	y = y + enH + max(3, math.ceil((hs - enH) / 2) + 2)
 	local capH = compact and 18 or 22
 	local capSize = compact and 14 or 15
-	local capW = starsLow and (barW - starsW - 4) or barW
+	local capW = starsLow and (barW - starsW - 4 - (badgeLow and (badge + 4) or 0)) or barW
 	F.EnergyText.Position = UDim2.fromOffset(pad, y)
 	F.EnergyText.Size = UDim2.fromOffset(capW, capH)
 	F.EnergyText.TextSize = capSize
@@ -7141,6 +7147,11 @@ function Hud.LayoutFighter(B, m, top)
 	if starsLow then
 		F.Stars.Position = UDim2.fromOffset(pad + barW - starsW, y)
 		F.Stars.Size = UDim2.fromOffset(starsW, capH)
+		if badgeLow then
+			-- (its top on the row's, clear of the hearts above; its foot in the gap under the row: the card keeps its
+			-- height, a taller one moved 360 x 640's boss strip off the top)
+			F.Element.Position = UDim2.fromOffset(pad + barW - starsW - 4 - badge, y)
+		end
 	end
 	y = y + capH + (compact and 6 or 10)
 	local cardH = y
