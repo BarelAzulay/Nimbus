@@ -350,6 +350,8 @@ local K = {
 	HIT_CRIT_PX = 30, -- a crit's, in gold
 	HIT_ELEM_PX = 24, -- an element / special hit's, in its colour (Storm violet)
 	HIT_SIDE = 0.42, -- the pop's SizeOffset X: it rises beside the total's chip, not over it
+	HIT_STEP = 34, -- (look review r1, M3) px between two pops of one target (Fx.Pop's stack: a crit's line and its birth pop)
+	HIT_MAX = 4, -- live pops per target; a fifth ends the oldest (the total holds the sum)
 	TOTAL_PX = 24, -- the total's figure on its chip
 	TOTAL_PAD = 10, -- px each side of it
 	TOTAL_H = 34, -- the chip, its 3 px edge included
@@ -1396,6 +1398,46 @@ function Fx.Total(u, dmg)
 	t.untilT = os.clock() + K.TOTAL_HOLD
 	BattleController._wake()
 	return t
+end
+
+-- (look review r1, M3: at 844x390 '+18.3K' sat on '+136K'; the pops' rise is in studs, so on a small screen two hits a
+-- tempo apart rose less than a line apart) one hit on unit `u`: `dmg` onto its running total and the pop beside it
+-- (Fx.Number at `height` over `adornee`). The target's live pops stack in hard steps of K.HIT_STEP screen px (1080p px
+-- under Theme.ScaledSize): the newest at the chip, each older one a step higher (its SizeOffset Y), and since an older pop
+-- has always risen at least as far, two never share a line at any screen size; past K.HIT_MAX the oldest goes.
+-- -> pop, total
+function Fx.Pop(u, adornee, height, text, color, px, dmg)
+	local total = Fx.Total(u, dmg)
+	local pop = Fx.Number(adornee, height, text, color, px)
+	if not pop then
+		return nil, total
+	end
+	if total then
+		pop.gui.SizeOffset = Vector2.new(K.HIT_SIDE, 0)
+	end
+	if type(u) ~= "table" then
+		return pop, total
+	end
+	-- the target's live pops, newest first (a pooled number reused since, or ended, has left the stack)
+	local live = { { n = pop, t0 = pop.t0 } }
+	for _, rec in ipairs(u.pops or {}) do
+		local n = rec.n
+		if n ~= pop and n.t0 == rec.t0 and n.gui.Enabled and n.gui.Adornee == adornee then
+			live[#live + 1] = rec
+		end
+	end
+	for i = #live, K.HIT_MAX + 1, -1 do
+		local n = live[i].n
+		n.t0 = n.t0 - n.life -- ends on the next update
+		live[i] = nil
+	end
+	local step = Theme.ScaledSize(K.HIT_STEP, 22)
+	for i, rec in ipairs(live) do
+		local g = rec.n.gui
+		g.SizeOffset = Vector2.new(g.SizeOffset.X, (i - 1) * step / math.max(1, g.Size.Y.Offset))
+	end
+	u.pops = live
+	return pop, total
 end
 
 -- a short white (or tinted) flash on a model (a pooled Highlight)
@@ -4878,11 +4920,8 @@ Handlers[EV.Hit] = function(B, ev)
 		px = max(px, K.HIT_ELEM_PX)
 	end
 	if dmg > 0 then
-		local total = Fx.Total(victim, dmg)
-		local pop = Fx.Number(adornee, numberHeight(victim), text, color, px)
-		if pop and total then
-			pop.gui.SizeOffset = Vector2.new(K.HIT_SIDE, 0)
-		end
+		-- (look review r1, M3) the target's pops stack a line apart (Fx.Pop), beside its total
+		Fx.Pop(victim, adornee, numberHeight(victim), text, color, px, dmg)
 		-- (audio wave 2) the attacker's element hit (+ Crit's sparkle on top); a burn / zone tick is silent (they come
 		-- in bursts), so is a hit with no attacker or element
 		if not ev.burn and not ev.zone and attacker and type(attacker.element) == "string" then

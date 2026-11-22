@@ -698,6 +698,125 @@ local function clientScenarios()
 	end)
 
 	----------------------------------------------------------------------------------------------------------------
+	-- damage_pops_apart (look review r1, M3): at 844x390 "+18.3K" (violet) sat on "+136K" (gold), crop 02. Seen through a
+	-- real perspective camera 20 studs from the target, at 1920x1080, 844x390 and 390x844: three hits 0.3 s apart (the
+	-- scene) and five 0.1 s apart (the fast tempo). After every hit and while they rise, no two of the target's pops share
+	-- a line: their text centres are at least 0.4 x (the two heights, the birth pop included) apart. The hit handler pops
+	-- through Fx.Pop (the stack), not Fx.Number on its own
+	----------------------------------------------------------------------------------------------------------------
+	S.damage_pops_apart = guarded("damage_pops_apart", function()
+		local BC = client("Controllers/BattleController")
+		local Fx = BC and BC._Fx
+		local methods = Mock.Classes and Mock.Classes.Camera and Mock.Classes.Camera.methods
+		if not T.check(Fx ~= nil and type(Fx.HitLook) == "function" and methods ~= nil and workspace.CurrentCamera ~= nil, "damage pops: (setup) BattleController._Fx, the mock camera") then
+			return
+		end
+		local camObj = workspace.CurrentCamera
+		local saved = { methods.WorldToViewportPoint, methods.WorldToScreenPoint }
+		local function project(self, pos)
+			local rel = self.CFrame:PointToObjectSpace(pos)
+			local vp = Mock.Viewport
+			local d = -rel.Z
+			local f = (vp.Y / 2) / math.tan(math.rad(self.FieldOfView / 2))
+			local dd = (abs(d) < 1e-6) and 1e-6 or d
+			return Vector3.new(vp.X / 2 + rel.X / dd * f, vp.Y / 2 - rel.Y / dd * f, d), d > 0
+		end
+		-- the pop as the hit handler made it before the stack (the total, the pop, its side) when Fx.Pop is missing
+		local pop = Fx.Pop or function(u, adornee, height, text, colour, px, dmg)
+			local total = Fx.Total(u, dmg)
+			local n = Fx.Number(adornee, height, text, colour, px)
+			if n and total then
+				n.gui.SizeOffset = Vector2.new(0.42, 0)
+			end
+			return n, total
+		end
+		local Config = shared("Config")
+		local origin = (Config.Lobby and Config.Lobby.Origin) or Vector3.new(0, 300, 0)
+		local part = Instance.new("Part")
+		part.Name = "PopTarget"
+		part.Anchored = true
+		part.Size = Vector3.new(4, 4, 4)
+		part.CFrame = CFrame.new(origin + Vector3.new(0, 4, -40))
+		part.Parent = workspace
+		local head = part.Position + Vector3.new(0, 2, 0)
+		local camCF = CFrame.lookAt(head + Vector3.new(0, 3, 20), head)
+		local worst = nil
+		local function measure(tag)
+			camObj.CFrame = camCF
+			local list = {}
+			for _, g in ipairs(workspace:GetDescendants()) do
+				if g:IsA("BillboardGui") and g.Name == "BattleNumber" and g.Enabled and g.Adornee == part then
+					local label = g:FindFirstChildWhichIsA("TextLabel")
+					local sc = label and label:FindFirstChildWhichIsA("UIScale")
+					if label and label.TextTransparency < 0.95 then
+						local so = g.StudsOffset
+						local cf = camObj.CFrame
+						local v = project(camObj, part.Position + g.StudsOffsetWorldSpace + cf.RightVector * so.X + cf.UpVector * so.Y)
+						list[#list + 1] = { y = v.Y - g.SizeOffset.Y * g.Size.Y.Offset, h = label.TextSize * (sc and sc.Scale or 1), text = label.Text }
+					end
+				end
+			end
+			for i = 1, #list do
+				for j = i + 1, #list do
+					local a, b = list[i], list[j]
+					local gap = abs(a.y - b.y)
+					local need = 0.4 * (a.h + b.h)
+					if not worst or gap - need < worst.margin then
+						worst = { margin = gap - need, why = fmt("%s: '%s' and '%s' %.1f px apart (need %.1f)", tag, a.text, b.text, gap, need) }
+					end
+				end
+			end
+			return #list
+		end
+		local ok, err = pcall(function()
+			methods.WorldToViewportPoint, methods.WorldToScreenPoint = project, project
+			for _, size in ipairs({ { 1920, 1080 }, { 844, 390 }, { 390, 844 } }) do
+				Mock.SetViewport(size[1], size[2])
+				KC.advance(0.2)
+				for _, run in ipairs({ { "scene", 0.3, { { 20628, {} }, { 136205, { crit = true } }, { 18332, { element = true }, "Storm" } } },
+					{ "fast", 0.1, { { 20628, {} }, { 136205, { crit = true } }, { 18332, { element = true }, "Storm" }, { 9120, {} }, { 151000, { crit = true } } } } }) do
+					local worstBefore = worst
+					worst = nil
+					local u = { root = part, height = 4, id = 9101 }
+					local most = 0
+					for _, h in ipairs(run[3]) do
+						local text, colour, px = Fx.HitLook(h[1], h[2], h[3])
+						pop(u, part, Fx.NumberHeight(u), text, colour, px, h[1])
+						KC.advance(0.02)
+						most = math.max(most, measure(fmt("%dx%d %s", size[1], size[2], run[1])))
+						local t = 0.02
+						while t < run[2] - 1e-6 do
+							KC.advance(0.05)
+							t = t + 0.05
+							measure(fmt("%dx%d %s", size[1], size[2], run[1]))
+						end
+					end
+					KC.advance(0.15)
+					measure(fmt("%dx%d %s", size[1], size[2], run[1]))
+					T.check(most >= 2, fmt("damage pops %dx%d %s: (setup) several pops rise at once", size[1], size[2], run[1]), tostring(most))
+					T.check(worst == nil or worst.margin >= 0, fmt("damage pops %dx%d %s: no two pops of one target share a line", size[1], size[2], run[1]), worst and worst.why or "-")
+					worst = worstBefore
+					Fx.ClearAll()
+					KC.advance(0.1)
+				end
+			end
+		end)
+		methods.WorldToViewportPoint, methods.WorldToScreenPoint = saved[1], saved[2]
+		pcall(Fx.ClearAll)
+		part:Destroy()
+		Mock.SetViewport(1920, 1080)
+		KC.advance(0.2)
+		T.check(ok, "damage pops: the scenario ran", tostring(err))
+		local fh = io.open("src/client/Controllers/BattleController.lua", "r")
+		local src = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		T.check(src:find("Fx.Pop(victim", 1, true) ~= nil, "damage pops: the hit handler pops through Fx.Pop (the target's stack)")
+		KC.flushErrors("damage_pops_apart")
+	end)
+
+	----------------------------------------------------------------------------------------------------------------
 	-- travel_shows_way
 	----------------------------------------------------------------------------------------------------------------
 	S.travel_shows_way = guarded("travel_shows_way", function()

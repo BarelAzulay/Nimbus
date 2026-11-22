@@ -4635,8 +4635,8 @@ end)
 --     gates   LobbyBuilder's THE GATES face (550 x 400 canvas, the five names at 52 px with their icons) face-on from 40 and
 --             20 studs (70 degree field of view) and at 1:1
 --     hits    BattleController's damage over a target seen from 20 studs: one running total on its stone chip (Fx.Total)
---             with "+20.6K" / a crit "+136K" / a Storm "+18.3K" popping beside it (Fx.HitLook + Fx.Number, as the hit
---             handler places them), each billboard where it projects
+--             with "+20.6K" / a crit "+136K" / a Storm "+18.3K" / "+9.1K" popping beside it (Fx.HitLook + Fx.Pop, the
+--             target's stack, as the hit handler places them), each billboard where it projects
 --     guide / guideahead / guidehere  TutorialController's travel guide in the real lobby (Guide.Start("StormAltar")): the
 --             voxel GuideArrow over the Altar gate, the flat gold dot trail and the GuideSign, seen from the default camera
 --             12.5 studs behind the player 40 studs out (each part's projected box, far to near, under the HUD and its chip):
@@ -5007,16 +5007,22 @@ function WU.hits(screen)
 		CFrame = CFrame.new(origin + Vector3.new(0, 4, -40)) }, workspace)
 	local u = { root = part, height = 4, id = 9001 }
 	local side = (type(BC._K) == "table" and BC._K.HIT_SIDE) or 0.42 -- BattleController K.HIT_SIDE (the hit handler's pop offset)
-	local hits = { { 20628, {} }, { 136205, { crit = true } }, { 18332, { element = true }, "Storm" } }
+	-- (look review r1, minor: the plain pop had faded out of the shot) a plain hit, a crit, a Storm hit, then a plain one
+	local hits = { { 20628, {} }, { 136205, { crit = true } }, { 18332, { element = true }, "Storm" }, { 9120, {} } }
 	for _, hcase in ipairs(hits) do
 		local dmg = hcase[1]
 		local text, colour, px = Fx.HitLook(dmg, hcase[2], hcase[3])
-		Fx.Total(u, dmg)
-		local pop = Fx.Number(part, Fx.NumberHeight(u), text, colour, px)
-		if pop then
-			pop.gui.SizeOffset = Vector2.new(side, 0)
+		if Fx.Pop then
+			-- (look review r1, M3) as the hit handler does: the total and the pop on the target's stack
+			Fx.Pop(u, part, Fx.NumberHeight(u), text, colour, px, dmg)
+		else
+			Fx.Total(u, dmg)
+			local pop = Fx.Number(part, Fx.NumberHeight(u), text, colour, px)
+			if pop then
+				pop.gui.SizeOffset = Vector2.new(side, 0)
+			end
 		end
-		advance(0.3) -- three hits about a fast pet's tempo apart, the pops still rising
+		advance(0.18) -- hits about a fast pet's tempo apart, the pops still rising
 	end
 	local head = part.Position + Vector3.new(0, 2, 0)
 	local cam = CFrame.lookAt(head + Vector3.new(0, 3, 20), head)
