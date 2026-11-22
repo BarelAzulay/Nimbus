@@ -265,6 +265,20 @@ class Checker:
                             continue
                         ov = overlap(hr, r)
                         self.check(ov is None, tag + "the run chip's LeaveHit stays off %s" % path, "%s vs %s" % (fmt(hr), fmt(r)))
+        # (keys look r3: at 640 x 360 and 667 x 375 helper 1's 44 px Swap pad reached 6 px over the fighter card and helper
+        # 2's 8 px over helper 1's buff plate) a helper's Swap pad stays off every other part: the other helper, the cards,
+        # the keys
+        for i in (1, 2):
+            cell = B + "Team.Helpers.Helper%d" % i
+            pad = nodes.get(cell + ".SwapHit")
+            if not pad or pad["w"] <= 1:
+                continue
+            pr = rect(pad)
+            for g, path, r in boxes:
+                if g.startswith("Roblox ") or path == cell or path.startswith(cell + "."):
+                    continue
+                ov = overlap(pr, r)
+                self.check(ov is None, tag + "helper %d's SwapHit stays off %s" % (i, path), "%s vs %s: %s" % (fmt(pr), fmt(r), "%.0f x %.0f px" % ov if ov else ""))
         # (keys look r3: at 390 x 844 the enemy list's first row started 0-1 px from the fighter card, over its shadow, its
         # top 0.4 px under the top card's shadow; the selected row's outline merged with both. The mock-up keeps 14-23 px)
         # on a phone the enemy list keeps 8 px off the fighter card and the top card, their shadows counted

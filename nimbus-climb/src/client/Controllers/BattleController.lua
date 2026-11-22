@@ -7455,8 +7455,20 @@ function Hud.PlaceSwapHit(H, L, w, h, below, right)
 	end
 	-- (the pad is the block's sibling in the cell, placed from the block's corner)
 	local at = H.Swap.Position
+	local px0 = at.X.Offset + (right and (w - pw) or floor((w - pw) / 2))
+	local py0 = at.Y.Offset + h + under - ph
+	-- (keys look r3: at 640 x 360 / 667 x 375 helper 1's pad reached 6 px over the fighter card, helper 2's 8 px over helper
+	-- 1's buff plate; at 390 x 844 helper 1's 5 px over helper 2) the pad stays inside its own cell, which is 44 screen px
+	-- tall or more on every phone layout: it reaches over the cell's own tags (no buttons) instead
+	local cw, ch = tonumber(L.CellW) or 0, tonumber(L.CellH) or 0
+	if ch >= ph then
+		py0 = clamp(py0, 0, ch - ph)
+	end
+	if cw >= pw then
+		px0 = clamp(px0, 0, cw - pw)
+	end
 	pad.AnchorPoint = Vector2.new(0, 0)
-	pad.Position = UDim2.fromOffset(at.X.Offset + (right and (w - pw) or floor((w - pw) / 2)), at.Y.Offset + h + under - ph)
+	pad.Position = UDim2.fromOffset(px0, py0)
 	pad.Size = UDim2.fromOffset(pw, ph)
 end
 
