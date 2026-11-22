@@ -7450,8 +7450,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local band = Hud.bandOn == true and Hud.BandMode(B, m)
 	if band then
 		-- (P2 fix A, item 06 A) a portrait phone's boss strip: across the top, the pitch's 500 where it fits, else the screen
-		-- less its edges (Hud.Rebuild put the HUD's strips, the fighter card and the enemy list under it)
-		w = min(w, m.W - 2 * K.EDGE)
+		-- less its edges (Hud.Rebuild put the HUD's strips, the fighter card and the enemy list under it); (keys lane) a
+		-- duel's mode line spans it too, as the boss strips do
+		w = bossUnit and min(w, m.W - 2 * K.EDGE) or (m.W - 2 * K.EDGE)
 	elseif m.Compact then
 		-- between the fighter card and the enemy list when there is room, else under the enemy list (right)
 		local free = m.W - (K.EDGE + teamW + 12) - (K.ROW_W_COMPACT + K.EDGE + 12)
@@ -9078,7 +9079,10 @@ end
 -- (P2 fix A, item 06 A) a portrait phone's boss fight: the top card is the pitch's strip across the top (Hud.Rebuild lays
 -- it out first; the fighter card, the enemy list and the HUD's strips go under it)
 function Hud.BandMode(B, m)
-	return m.Compact == true and not m.Landscape and Hud.BossUnit(B) ~= nil
+	-- (keys lane, look fixA r1 minor: the duel's one-row card dropped to the middle left at 390 x 844, between the helpers
+	-- and the enemy list, and at 360 x 640 the list lay on the fighter card) a duel's card is placed as the raid's and the
+	-- dungeon's: the strip across the top, the team and the list under it
+	return m.Compact == true and not m.Landscape and (Hud.BossUnit(B) ~= nil or B.Mode == "Duel")
 end
 
 -- (P2 fix A) whether the fighter's block (the card and its helpers), its top at y (design px) under the boss strip, ends
