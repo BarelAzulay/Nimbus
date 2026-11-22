@@ -13039,8 +13039,18 @@ local function clientScenarios()
 				end
 				T.check(on and icons == 2 and lit ~= nil and not lit:find("+", 1, true) and #others == 0,
 					tag .. ": today's claimable tile carries two pixel sparkles, one lit at a time; no other tile", fmt("%s %d %s | %s", tostring(on), icons, tostring(lit), table.concat(others, ",")))
-				LKC.advance(1.05)
-				local _, _, lit2 = sparkles(holder:FindFirstChild("Cell3", true))
+				-- (P2 icons look fin1 lists: one 1.05 s step could hold TWO of the window's 1 s ticks when the first fell in its
+				-- last 0.05 s, flipping A -> B -> A; it did at 844 x 390 after the client_daily_* lists, alone it passed) the
+				-- first flip within one tick period (+ a step), in 0.1 s steps
+				local lit2 = lit
+				for _ = 1, 11 do
+					LKC.advance(0.1)
+					local _, _, now = sparkles(holder:FindFirstChild("Cell3", true))
+					lit2 = now
+					if now ~= lit then
+						break
+					end
+				end
 				T.check(lit2 ~= nil and lit2 ~= lit, tag .. ": ...and they take turns on the tick (a twinkle, two frames)", tostring(lit) .. " -> " .. tostring(lit2))
 				local greens = U8.greenActions(holder)
 				T.check(#greens == 1 and greens[1] == "ClaimButton", tag .. ": Claim! is the Daily page's one green action", table.concat(greens, ", "))
