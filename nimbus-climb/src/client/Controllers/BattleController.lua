@@ -401,6 +401,10 @@ local K = {
 	COMPACT_H = 600,
 	EDGE = 12,
 	PAD = 10,
+	-- (keys look r3) screen px: how far a kit card's drawn hard shadow reaches past its box (SignKit.Shadow: the 2 px bevel
+	-- cover and the 4 px step), and the clear gap a phone keeps between two cards past that shadow (the mock-up's 14-23 px)
+	SHADOW_PX = 6,
+	CARD_GAP_PX = 12,
 	FC_W = 352, -- the fighter card (bars 320)
 	FC_H = 130,
 	FC_W_COMPACT = 252, -- (bars 232)
@@ -435,6 +439,7 @@ local K = {
 	LEAVE_W_CARD_COMPACT = 72,
 	PORTRAIT = 74,
 	BOSS_TRACK_H = 40,
+	BOSS_TRACK_H_COMPACT = 34, -- (keys look r3) a phone's: the 06 A phone mock-up's track, 27 px at 0.8
 	BOSS_BLOCKS_COMPACT = 14,
 	PILL_H = 26,
 	PILL_GAP = 6,
@@ -6133,11 +6138,28 @@ function Hud.LayoutEnemies(B, m)
 		left = Hud.listX
 		bandRoom = Hud.listRoom or bandRoom
 	end
+	-- (keys look r3: at 640 x 360 the dungeon run chip's Leave, dropped under the list, stood 10 px above RUN, its shadow on
+	-- it) the room a card that hangs under the list asked for (BattleController.ReserveUnderList, screen px) stays free
+	-- above the keys under it
+	local reserve = (Hud.listReserve or 0) / max(0.05, m.F)
+	if reserve > 0 and keys then
+		-- (the chip hangs at the list's right end, over MovementController's RUN on a wide phone: RUN counts there too)
+		local run = Hud.TouchRects(m).run
+		if type(run) == "table" then
+			local f = max(0.05, m.F)
+			local list = {}
+			for _, k in ipairs(keys) do
+				list[#list + 1] = k
+			end
+			list[#list + 1] = { X0 = run[1] / f, X1 = run[3] / f, Y0 = m.H - run[4] / f, Y1 = m.H - run[2] / f }
+			keys = list
+		end
+	end
 	local function room(x0, x1) -- a list-local span -> its design px from the list's top to the first key under it
 		local out = bandRoom or math.huge
 		for _, k in ipairs(keys or {}) do
 			if k.X1 > left + x0 and k.X0 < left + x1 then
-				out = min(out, k.Y0 - top - 4)
+				out = min(out, k.Y0 - top - 4 - reserve)
 			end
 		end
 		return out
@@ -6154,6 +6176,11 @@ function Hud.LayoutEnemies(B, m)
 			return 1
 		end
 		if bottom <= room(0, tagW) then
+			return 0
+		end
+		if reserve > 0 and bottom <= room(0, tagW) + reserve then
+			-- (keys look r3) the card the reserve keeps room for hangs under the list's right end: the tag goes beside it, at
+			-- the left end, in the same band
 			return 0
 		end
 		-- (P2 fix A r1) the list under the fighter's block: beside its last row, right of it, where no key stands there
@@ -6441,9 +6468,17 @@ function Hud.Rebuild()
 	Hud.listLeft = false
 	local bandY = K.EDGE
 	local listAside = false -- (P2 fix round C) the strips step aside for the enemy list under the boss strip (below)
+	local bandGap = 8
 	if band then
 		Hud.LayoutTop(B, m, 0, 0, K.EDGE, true)
-		bandY = K.EDGE + (Hud.topH or 0) + 8
+		-- (keys look r3: at 390 x 844 the fighter card and the enemy list under the strip started 0-0.4 px under its hard
+		-- shadow; the mock-up keeps 14-23 px) where the fighter's block still has the room, they start the shadow and
+		-- K.CARD_GAP_PX under the strip (else the 8 px as before: 360 x 640's block needs it)
+		local wide = math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / max(0.05, m.F))
+		if not (isFighting or between) or Hud.BandRoom(B, m, K.EDGE + (Hud.topH or 0) + wide) then
+			bandGap = wide
+		end
+		bandY = K.EDGE + (Hud.topH or 0) + bandGap
 		-- (P2 fix A: at 360 x 640 the fighter card and its helpers under the strip reached the vitals slot, where Cheer up!
 		-- and Retreat stack) a short portrait phone keeps the right column's card where the fighter's block under the strip
 		-- would reach that stack (Hud.BandRoom). (Look review r1: that card was the old 211 px one under DASH / TARGET /
@@ -6466,7 +6501,7 @@ function Hud.Rebuild()
 		if curBottom > 0 and trb and trb > 0 then
 			curBottom = math.ceil(trb / max(0.05, m.F)) -- (the strips' new place, published as the HUD laid them out)
 		end
-		topY = bandBottom + 8
+		topY = bandBottom + bandGap
 		-- (P2 fix round C: at 390 x 844 a player's three strips under the boss strip ended at 271, the list's first row under
 		-- them lay in the screen's centre band, and Hud.LayoutEnemies keeps one row whatever the room) where the strips push
 		-- the list's first row into the band and right under the boss strip it would end above it, the strips step aside for
@@ -6533,7 +6568,19 @@ function Hud.Rebuild()
 		Hud.fcW = curLeft - K.EDGE - 8
 		cardW = Hud.fcW
 	end
-	local leftY = (curBottom > 0 and curLeft < K.EDGE + cardW + 8) and max(topY, curBottom + 6) or topY
+	if m.Compact and not m.Landscape and isFighting and not Hud.listLeft and #Hud.EnemyList(B) > 0 then
+		-- (keys look r3: at 390 x 844 the enemy list's first row started 0-1 px from the fighter card, over its hard shadow,
+		-- and the selected row's outline merged with it; the mock-up keeps 14-23 px) a portrait phone whose list stands
+		-- beside the fighter card: the card narrows to keep its shadow and K.CARD_GAP_PX between them (never under the
+		-- 208 a narrow card keeps beside the strips)
+		local listX0 = m.W - K.EDGE - K.ROW_W_COMPACT
+		local keep = math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / max(0.05, m.F))
+		if K.EDGE + cardW + keep > listX0 and listX0 - keep - K.EDGE >= 208 then
+			Hud.fcW = max(208, floor(listX0 - keep - K.EDGE))
+			cardW = Hud.fcW
+		end
+	end
+	local leftY =(curBottom > 0 and curLeft < K.EDGE + cardW + 8) and max(topY, curBottom + 6) or topY
 	-- fighter card + helpers (top left) ----------------------------------------------------------
 	Hud.team.Visible = isFighting or between
 	local teamW, teamH = 0, 0
@@ -7063,7 +7110,10 @@ function Hud.LayoutFighter(B, m, top)
 	local lvW = floor(textWidth(lvText, lvSize) * 0.9) + ((lvText == "Lv 100") and 14 or 18)
 	local badge = compact and 22 or 26
 	local starsW = (B.fighterEvo or 0) > 0 and (compact and 30 or 38) or 0
-	local nameW = barW - lvW - badge - starsW - 16
+	-- (keys look r3: 390 x 844's card narrowed off the enemy list read "Biscuit Bear" 83 px in 83) a phone's badge without
+	-- stars ends on the column's right edge, as the HP number and the hearts under it (it stopped 5 px short): the name
+	-- keeps those 5 px
+	local nameW = barW - lvW - badge - starsW - ((compact and starsW == 0) and 11 or 16)
 	local nameFloor = max(minSize, compact and 16 or 18)
 	-- (keys lane: an evolved fighter's "Mallow Kitten" still read "Mallow K..." on every phone) where the name does not fit its
 	-- row at the floor beside the stars, a phone's stars move down to the right end of the ENERGY caption's row
@@ -7082,6 +7132,14 @@ function Hud.LayoutFighter(B, m, top)
 				nameW = barW - lvW - 6
 			end
 		end
+	end
+	if starsLow then
+		-- (keys look r3: the 18 px badge and the evo star on the 14 px ENERGY caption's row lay 18 x 4 px on the card's gold
+		-- lip and touched the hearts, at every phone size) the name's row is the Lv tag's height and starts 2 px higher: the
+		-- 6 px it gives go to the row the stars (and the badge) moved to, which then holds them whole between the hearts and
+		-- the lip; the card keeps its height (a taller card moved 360 x 640's boss strip off the top)
+		y = 6
+		nameH = 22
 	end
 	F.Name.Position = UDim2.fromOffset(pad, y)
 	F.Name.Size = UDim2.fromOffset(nameW, nameH)
@@ -7134,26 +7192,38 @@ function Hud.LayoutFighter(B, m, top)
 		h.TextSize = hs - 2
 		h:SetAttribute("BaseText", hs - 2)
 	end
+	local livesFoot = y + floor((enH - hs) / 2) + hs
 	y = y + enH + max(3, math.ceil((hs - enH) / 2) + 2)
 	local capH = compact and 18 or 22
 	local capSize = compact and 14 or 15
 	local capW = starsLow and (barW - starsW - 4 - (badgeLow and (badge + 4) or 0)) or barW
-	F.EnergyText.Position = UDim2.fromOffset(pad, y)
+	-- the caption's row; (keys look r3) where the stars (and the badge) moved down to it, the row runs from the hearts' foot
+	-- and is as tall as the tallest of them (the star is 9 whole screen px cells: 18 px drawn at any scale) and 3 px more:
+	-- all of it above the card's lip, the caption, the badge and the stars centred on one line
+	local rowY, rowH = y, capH
+	if starsLow then
+		rowY = livesFoot
+		rowH = max(capH, badgeLow and badge or 0, math.ceil(18 / max(0.05, m.F))) + 3
+	end
+	F.EnergyText.Position = UDim2.fromOffset(pad, rowY + floor((rowH - capH) / 2))
 	F.EnergyText.Size = UDim2.fromOffset(capW, capH)
 	F.EnergyText.TextSize = capSize
 	F.EnergyText.TextTruncate = Enum.TextTruncate.AtEnd
 	F.EnergyText:SetAttribute("BaseText", capSize)
-	Hud.energyShort = textWidth("ENERGY " .. METER_MAX .. "/" .. METER_MAX, max(capSize, minSize)) > capW
+	-- (keys look r3: with the stars and the badge on its row, 390 x 844's narrower card read "83/100": the 0.62 em guess is
+	-- 30 px wider than the words) the words' real width (Theme.Measure, 4 % over), the guess where it cannot measure
+	local capText = "ENERGY " .. METER_MAX .. "/" .. METER_MAX
+	local okC, mC = pcall(Theme.Measure, capText, "Label", max(capSize, minSize))
+	local capNeed = (okC and typeof(mC) == "Vector2" and mC.X > 0) and (mC.X * 1.04 + 2) or textWidth(capText, max(capSize, minSize))
+	Hud.energyShort = capNeed > capW
 	if starsLow then
-		F.Stars.Position = UDim2.fromOffset(pad + barW - starsW, y)
-		F.Stars.Size = UDim2.fromOffset(starsW, capH)
+		F.Stars.Position = UDim2.fromOffset(pad + barW - starsW, rowY)
+		F.Stars.Size = UDim2.fromOffset(starsW, rowH)
 		if badgeLow then
-			-- (its top on the row's, clear of the hearts above; its foot in the gap under the row: the card keeps its
-			-- height, a taller one moved 360 x 640's boss strip off the top)
-			F.Element.Position = UDim2.fromOffset(pad + barW - starsW - 4 - badge, y)
+			F.Element.Position = UDim2.fromOffset(pad + barW - starsW - 4 - badge, rowY + floor((rowH - badge) / 2))
 		end
 	end
-	y = y + capH + (compact and 6 or 10)
+	y = rowY + rowH + (compact and 6 or 10)
 	local cardH = y
 	Hud.fighterCard.Root.Size = UDim2.fromOffset(w, cardH)
 	Hud.fighterCard.Root.Position = UDim2.fromOffset(0, 0)
@@ -7684,14 +7754,18 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local timerW = timerWidth(timerPx)
 	-- a raid's row 1: the boss's whole name at its floor size (nameNeed) and its tier beside it (tierNeed: the gap and the
 	-- tier's width, as the row lays them out below)
-	local raidName, raidTier, nameNeed, tierNeed = nil, "", 0, 0
+	local raidName, raidTier, nameNeed, tierNeed, tierTextW = nil, "", 0, 0, 0
 	if bossUnit and B.Mode == "Raid" then
 		raidName = tostring(bossUnit.name or "?")
 		local npx = px(18)
 		local okN, mN = pcall(Theme.Measure, raidName, "Heading", npx)
 		nameNeed = math.ceil(max((okN and typeof(mN) == "Vector2") and mN.X or 0, #raidName * npx * 0.56) * 1.04)
 		raidTier = (B.Raid and B.Raid.Tier) and tostring(B.Raid.Tier) or ""
-		tierNeed = (raidTier ~= "") and (8 + math.ceil(#raidTier * px(18) * 0.6) + 4) or 0
+		-- (keys look r3: at 390 x 844 the clock gave way to the tier beside the name; the mock-up keeps both, and the 0.6 em
+		-- guess made "Starter" 20 px wider than it is) the tier's real width (Theme.Measure, 4 % over)
+		local okT, mT = pcall(Theme.Measure, raidTier, "Heading", px(18))
+		tierTextW = (okT and typeof(mT) == "Vector2" and mT.X > 0) and math.ceil(mT.X * 1.04) or math.ceil(#raidTier * px(18) * 0.6)
+		tierNeed = (raidTier ~= "") and (8 + tierTextW + 4) or 0
 	end
 	if hasTimer and raidName then
 		-- (Pitch 2 item 1b, look review r2: the 640 x 360 card in the gap, 274 wide, cut "Storm Ti..." by 1 px beside a 22 px
@@ -7719,6 +7793,15 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	-- (a narrow card, a tall phone's right column: the clock icon gives its room to the name; the time reads without it.
 	-- Look review round 1: it stays where the boss's whole name still fits beside it at the name's floor size)
 	local showClock = hasTimer and w >= 400
+	if hasTimer and not raidName and not showClock then
+		-- (keys look r3: the clock came and went with the card's width alone: none on 640 x 360's duel card or 667 x 375's
+		-- and 844 x 390's, with 70 px free there) a narrow card's clock wherever the mode line's whole text still fits beside
+		-- it at the size it is drawn (Hud.SetFit keeps the whole line first: the clock never costs it words)
+		local text = tostring((Hud.ModeText(B)) or "")
+		local okM, mM = pcall(Theme.Measure, text, "Heading", px(20))
+		local need = (okM and typeof(mM) == "Vector2" and mM.X > 0) and (mM.X * 1.04 + 4) or textWidth(text, px(20))
+		showClock = right - timerW - 4 - 18 - 8 - x0 >= need
+	end
 	-- (P2 fix A: a portrait phone's 463 px strip cut a 20-character name beside the clock) any raid card: the clock only
 	-- where the boss's whole name fits beside it at the name's floor size, after the RAID tag where the tag shows
 	if hasTimer and raidName then
@@ -7763,7 +7846,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		Hud.bossName.Size = UDim2.fromOffset(nameW + 4, rowH)
 		local tier = (B.Raid and B.Raid.Tier) and tostring(B.Raid.Tier) or ""
 		local tierPx = px(18)
-		local tierW = math.ceil(#tier * tierPx * 0.6) + 4
+		local tierW = ((tier == raidTier and tierTextW > 0) and tierTextW or math.ceil(#tier * tierPx * 0.6)) + 4
 		local tx = lx + nameW + 4 + 8
 		local inRow = tier ~= "" and tx + tierW <= leftEnd
 		Hud.bossTier.Visible = inRow
@@ -7811,7 +7894,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			bx = x0 + K.PORTRAIT + 10
 			bodyMin = K.PORTRAIT
 		end
-		local tw, th = x1 - bx, K.BOSS_TRACK_H
+		-- (keys look r3: 640 x 360's full raid card was 52 % of the height) a phone's track is the 06 A phone mock-up's, 27
+		-- screen px at its 0.8 (K.BOSS_TRACK_H_COMPACT), not the PC's 40
+		local tw, th = x1 - bx, compact and K.BOSS_TRACK_H_COMPACT or K.BOSS_TRACK_H
 		Hud.bossTrack.Position = UDim2.fromOffset(bx, yy)
 		Hud.bossTrack.Size = UDim2.fromOffset(tw, th)
 		local e, pad = 2, 3
@@ -7984,24 +8069,14 @@ function Hud.FlowPills(width)
 	-- (each pill's 2 px wood edge is drawn outside its box: the box sits 2 px in, so the drawn pill is PILL_H tall and the
 	-- drawn gap PILL_GAP, as the pitch's)
 	local e = 2
-	local rows, cur, x = {}, {}, 0
+	local items = {}
 	for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.wavePill, Hud.playersPill, Hud.tierPill }) do
 		if pill.Visible then
 			fitPill(pill, K.PILL_H - 2 * e)
 			local pw = min(pill.Size.X.Offset + 4, width - 2 * e) -- (4 px more: a lead icon's pill reads tight at 0.8 scale)
-			if x > 0 and x + pw + 2 * e > width then
-				rows[#rows + 1] = cur
-				cur, x = {}, 0
-			end
-			cur[#cur + 1] = { pill, pw }
-			x = x + pw + 2 * e + K.PILL_GAP
+			items[#items + 1] = { pill, pw }
 		end
 	end
-	if #cur > 0 then
-		rows[#rows + 1] = cur
-	end
-	-- (keys lane, look fixA r1: "3 players" alone on a row of its own under the strip's other pills) a last row of one pill
-	-- takes the row above's last pill where that row keeps two and both still fit in the width
 	local function rowW(r)
 		local s = 0
 		for i, it in ipairs(r) do
@@ -8009,14 +8084,65 @@ function Hud.FlowPills(width)
 		end
 		return s
 	end
-	while #rows >= 2 and #rows[#rows] == 1 and #rows[#rows - 1] >= 3 do
-		local prev = rows[#rows - 1]
-		local trial = { prev[#prev], rows[#rows][1] }
-		if rowW(trial) > width then
-			break
+	-- the pills in this order, left to right, a new row where one would run past the width
+	local function flow(list)
+		local rows, cur, x = {}, {}, 0
+		for _, it in ipairs(list) do
+			if x > 0 and x + it[2] + 2 * e > width then
+				rows[#rows + 1] = cur
+				cur, x = {}, 0
+			end
+			cur[#cur + 1] = it
+			x = x + it[2] + 2 * e + K.PILL_GAP
 		end
-		table.remove(prev)
-		rows[#rows] = trial
+		if #cur > 0 then
+			rows[#rows + 1] = cur
+		end
+		-- (keys lane, look fixA r1: "3 players" alone on a row of its own under the strip's other pills) a last row of one
+		-- pill takes the row above's last pill where that row keeps two and both still fit in the width
+		while #rows >= 2 and #rows[#rows] == 1 and #rows[#rows - 1] >= 3 do
+			local prev = rows[#rows - 1]
+			local trial = { prev[#prev], rows[#rows][1] }
+			if rowW(trial) > width then
+				break
+			end
+			table.remove(prev)
+			rows[#rows] = trial
+		end
+		return rows
+	end
+	local function lone(rows)
+		local n = 0
+		for _, r in ipairs(rows) do
+			if #rows > 1 and #r == 1 then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	-- (keys look r3: at 640 x 360 the full raid's card in the gap took four rows, "Enraged" and "Starter" each alone: Enraged
+	-- and the wave pill beside it miss the 203 px row by 2 px; the card was 52 % of the height) where the plain order leaves
+	-- a pill alone on a row, the order with one pill moved to the end where that takes fewer rows or leaves fewer alone (of
+	-- the orders that do it best, the one that moves the LAST such pill: the fewest pills change place, the RAID tag and the
+	-- element lead)
+	local rows = flow(items)
+	if lone(rows) > 0 then
+		local plain = rows
+		for i = 1, #items - 1 do
+			local list = {}
+			for k, it in ipairs(items) do
+				if k ~= i then
+					list[#list + 1] = it
+				end
+			end
+			list[#list + 1] = items[i]
+			local trial = flow(list)
+			local better = #trial < #rows or (#trial == #rows and lone(trial) < lone(rows))
+			local asGood = rows ~= plain and #trial == #rows and lone(trial) == lone(rows)
+			if better or asGood then
+				rows = trial
+			end
+		end
 	end
 	for row, list in ipairs(rows) do
 		local px0 = 0
@@ -13024,6 +13150,21 @@ end
 
 function BattleController.PaintResultTimer(t, frac)
 	Hud.PaintTimer(t, frac)
+end
+
+-- (keys look r3) a card that hangs under the enemy list (DungeonController's run chip, dropped there on a phone) asks for px
+-- screen px under the list's last row (its tag) and above the action keys under it: the list shows fewer rows for it.
+-- 0 / nil frees it. Lays the HUD out again only when the ask changes
+function BattleController.ReserveUnderList(px)
+	px = tonumber(px) or 0
+	px = (px > 0) and math.ceil(px) or nil
+	if Hud.listReserve == px then
+		return
+	end
+	Hud.listReserve = px
+	if St.battle and Hud.root then
+		Hud.Rebuild()
+	end
 end
 
 function BattleController.IsHudVisible()

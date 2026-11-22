@@ -10,15 +10,19 @@ reviews render, and fails on:
   overlap   any two of: the keys (MOVE / DASH / RUN on a phone, every Commands key on a PC), CHEER, BACK, the top card
             (with its Leave), the enemy list's rows, the fighter card, the helpers (their cells and Swap), the vitals card
             (with its name tab), the dungeon run chip, the result card (the battle's and the dungeon's End card), the
-            currency strip, and on a phone Roblox's own thumbstick and jump rings;
+            currency strip, and on a phone Roblox's own thumbstick and jump rings; each card's drawn hard shadow (its
+            FinishShadow's FarR / FarB) counts as part of it (keys look r3);
   edge      one of them past the screen's edge;
-  key       a phone key (MOVE / DASH / RUN / CHEER / BACK) under 44 px on a side; CHEER / BACK under 40 px from MOVE /
-            DASH / RUN;
+  key       a phone key (MOVE / DASH / RUN / CHEER / BACK) under 44 px on a side; CHEER / BACK / the run chip under 40 px
+            from MOVE / DASH / RUN; the run chip's Leave under 44 px (its LeaveHit pad), or that pad on another part;
+  gap       (phone) the enemy list under 8 px from the fighter card or the top card, shadows counted;
+  fighter   the fighter card's own parts (name, Lv, element badge, evo stars, HP, ENERGY, hearts) on each other or its lip;
+  clock     the top card's timer without its clock (640 x 360's raid / dungeon card excepted: no room);
   cut       a name cut ("Storm Ti...") or broken mid-word: the boss name, the top card's pills, the fighter's and the
             helpers' names, the vitals name, the keys' captions;
   pills     (battle:raid:full) the boss strip's pills: one row at 844 x 390, at most two rows on a portrait phone with
-            the tier beside the boss name (not a pill), no pill alone on a last row, "Enraged" as the mock-up writes it,
-            and on a PC the boss portrait's slot kept;
+            the tier beside the boss name (not a pill), no pill alone on a row at any size, "Enraged" as the mock-up
+            writes it, on a PC the boss portrait's slot kept, and a landscape phone's top card under 45 % of the height;
   result    on a phone the vitals card hides while a result card is up (spec 02 B: SetVitalsHidden "Result");
   place     a portrait phone's top card spans the top above the team in every mode, the duel's as the others'.
 Exit 0 when every check passes. Each failure prints its scenario, size, the two boxes and the overlap in px.
@@ -76,6 +80,7 @@ WHOLE = [
     r"^NimbusBattle\.Root\.TopCard\..*BossName$",
     r"^NimbusBattle\.Root\.TopCard\.Pills\.\w+$",
     r"^NimbusBattle\.Root\.Team\.Fighter\..*PetName$",
+    r"^NimbusBattle\.Root\.Team\.Fighter\.Body\.EnergyText$",  # (keys look r3: the stars' row narrows it)
     r"^NimbusBattle\.Root\.Team\.Helpers\.Helper\d+\..*(Buff|Name)\w*$",
     r"^NimbusHud\.\w+\.Vitals\..*Name\w*$",
     r"^NimbusBattle\.Root\.Commands\.\w+Button\.(Caption|NamePlate)(\.\w+)?$",
@@ -142,12 +147,31 @@ def group_of(path):
     return None
 
 
+SHADOW = re.compile(r"\.FinishShadow\.Far[RB]$")
+
+
+def owner_group(path):
+    """the group of a card's drawn hard shadow (its FinishShadow's FarR / FarB): its nearest grouped ancestor's"""
+    owner = path[:path.index(".FinishShadow")]
+    while owner:
+        g = group_of(owner)
+        if g:
+            return g
+        owner = owner.rpartition(".")[0]
+    return None
+
+
 def collect(nodes):
     groups = {}
     for path, n in nodes.items():
         if n["w"] <= 1 or n["h"] <= 1:
             continue
         g = group_of(path)
+        if not g and SHADOW.search(path):
+            # (keys look r3: the "no overlap" held for the card bodies only; at 390 x 844 the enemy list's first row lay over
+            # the fighter card's hard shadow, 4 x 30 px, and at 640 x 360 the run chip's shadow on RUN) a card's drawn hard
+            # shadow is part of its box
+            g = owner_group(path)
         if g:
             groups.setdefault(g, []).append((path, rect(n)))
     # (a phone's DASH out of a battle is MovementController's; in a battle the HUD's own) one DASH box per screen
@@ -219,11 +243,41 @@ class Checker:
                     if path.endswith(("HoldTag", "NamePlate")):
                         continue
                     self.check(min(r[2] - r[0], r[3] - r[1]) >= 44 - 0.5, tag + "%s is at least 44 px" % path, fmt(r))
-            for t in ("CHEER", "BACK"):
+            # (keys look r3: at 640 x 360 the dungeon run chip's red Leave stood 10 px above RUN, a held key, its shadow on
+            # it) the run chip keeps the team orders' 40 px off the thumbs' keys too: one press arms it
+            for t in ("CHEER", "BACK", "RUNCHIP"):
                 for tp, tr in groups.get(t, []):
                     for k in PHONE_KEYS:
                         for kp, kr in groups.get(k, []):
                             self.check(gap(tr, kr) >= 40 - 0.5, tag + "%s keeps 40 px off %s" % (tp, kp), "%.1f px" % gap(tr, kr))
+            # (keys look r3: the run chip's Leave was a 74 x 30 touch target; the top card's has its 58 x 44 LeaveHit) a
+            # phone's Leave takes a thumb: its button or its hit pad at least 44 px on a side
+            for lp in [p for p in nodes if re.match(r"^NimbusDungeonRun\.RunChip\.Body\.LeaveButton$", p)]:
+                lr = rect(nodes[lp])
+                hit = nodes.get(lp + ".LeaveHit")
+                hr = rect(hit) if hit else lr
+                big = max(min(lr[2] - lr[0], lr[3] - lr[1]), min(hr[2] - hr[0], hr[3] - hr[1]))
+                self.check(big >= 44 - 0.5, tag + "%s takes a 44 px thumb (its hit pad)" % lp, "button %s, pad %s" % (fmt(lr), fmt(hr) if hit else "none"))
+                if hit:
+                    # (the pad stays off the keys and the other cards: a tap there must not leave the run)
+                    for g, path, r in boxes:
+                        if g in ("RUNCHIP",) or g.startswith("Roblox "):
+                            continue
+                        ov = overlap(hr, r)
+                        self.check(ov is None, tag + "the run chip's LeaveHit stays off %s" % path, "%s vs %s" % (fmt(hr), fmt(r)))
+        # (keys look r3: at 390 x 844 the enemy list's first row started 0-1 px from the fighter card, over its shadow, its
+        # top 0.4 px under the top card's shadow; the selected row's outline merged with both. The mock-up keeps 14-23 px)
+        # on a phone the enemy list keeps 8 px off the fighter card and the top card, their shadows counted
+        if touch:
+            for ep, er in groups.get("ENEMIES", []):
+                for g in ("FIGHTER", "TOP"):
+                    for op, orr in groups.get(g, []):
+                        d = gap(er, orr)
+                        self.check(d >= 8 - 0.5, tag + "%s keeps 8 px off %s" % (ep, op), "%s vs %s: %.1f px" % (fmt(er), fmt(orr), d))
+        # (keys look r3: commits 24784ca / 704fdfa put the 18 px element badge on the 14 px ENERGY caption's row: on every
+        # phone it lay 18 x 4 px on the card's gold lip, the evo star on the hearts and the lip) the fighter card's own parts
+        # never lie on each other nor on its lip
+        self.fighter(tag, nodes)
         # cut: the names stay whole, laid out the way render_gui draws them (its layout_text: the real font, the wrap,
         # the truncation): no ellipsis, no word broken over two lines, no line past the box's foot
         for path, n in nodes.items():
@@ -245,6 +299,13 @@ class Checker:
         if touch and groups.get("RESULT"):
             self.check(not groups.get("VITALS"), tag + "the vitals card hides while the result card is up (SetVitalsHidden 'Result')",
                        ", ".join(p for p, _ in groups.get("VITALS", [])))
+        # clock: (keys look r3: the timer's clock came and went with the card's width alone, none at 667 x 375 in the
+        # dungeon and the duel, at 844 x 390 in the duel with 70 px free, at 390 x 844 in the full raid) the top card's timer
+        # wears the mock-up's clock ("clock 4:57") at every size; 640 x 360's 274 px raid / dungeon card in the gap has no room
+        # for it beside the whole boss name / mode line (the duel's has)
+        timer = nodes.get(B + "TopCard.ModeCard.Body.Timer")
+        if timer and text_of(timer) and not ((w, h) == (640, 360) and not scen.startswith("battle:duel")):
+            self.check(B + "TopCard.ModeCard.Body.Clock" in nodes, tag + "the top card's timer wears its clock")
         # pills (the full raid's boss strip)
         if scen == "battle:raid:full":
             self.pills(tag, w, h, nodes)
@@ -259,6 +320,18 @@ class Checker:
                 fy = min(r[1] for _, r in fighter)
                 self.check(cr[1] < fy and cr[2] - cr[0] >= 0.85 * w, tag + "the top card spans the top of the screen, above the team",
                            "top card %s (%.0f px wide), fighter y %.0f" % (fmt(cr), cr[2] - cr[0], fy))
+
+    def fighter(self, tag, nodes):
+        pre = B + "Team.Fighter."
+        names = ["Body.PetName", "Body.Level", "Body.Element", "Body.Stars.LeadIcon", "Body.Hp", "Body.HpText", "Body.Energy",
+                 "Body.EnergyText", "Body.Lives", "Lip"]
+        parts = [(p, rect(nodes[pre + p])) for p in names if pre + p in nodes and nodes[pre + p]["w"] > 1 and nodes[pre + p]["h"] > 1]
+        for i in range(len(parts)):
+            for k in range(i + 1, len(parts)):
+                (pi, ri), (pk, rk) = parts[i], parts[k]
+                ov = overlap(ri, rk)
+                self.check(ov is None, tag + "the fighter card's %s and %s do not overlap" % (pi, pk),
+                           "%s vs %s: %s" % (fmt(ri), fmt(rk), "%.1f x %.1f px" % ov if ov else ""))
 
     def pills(self, tag, w, h, nodes):
         pre = B + "TopCard.Pills."
@@ -282,10 +355,18 @@ class Checker:
             # timer and Leave: its tier is the second pill row's, beside the players)
             tiers = [p for p, _ in pills if p.split(".")[-1].lower().startswith("tier")]
             self.check(not tiers, tag + "the tier sits beside the boss name, not as a pill", ", ".join(tiers))
-        if len(order) > 1 and (h > w or w >= 844):
-            # (PC, the wide phone and portrait; a short landscape phone's card is the 240-274 px gap between the team and the
-            # keys, where the widest pills go one a row by need)
-            self.check(len(order[-1]) >= 2, tag + "no pill alone on the last row", names)
+        if len(order) > 1:
+            # (keys look r3: this held only for PC, the wide phone and portrait; at 640 x 360 the full raid's card in the gap
+            # took 4 rows, "Enraged" and "Starter" each alone, 219 x 188 px = 52 % of the height) every size: no pill alone on
+            # a row (the pills take the order that keeps them in pairs where the plain order leaves one alone)
+            lone = [" ".join(x.split(".")[-1] for x in row) for row in order if len(row) < 2]
+            self.check(not lone, tag + "no pill alone on a row", names)
+        card = nodes.get(B + "TopCard")
+        if card and h < w and min(w, h) <= 500:
+            # (keys look r3: review r2 flagged a 48 % top card at 360 wide; 640 x 360's was 52 %) a landscape phone's top card
+            # stays under 45 % of the screen's height
+            ch = float(card["h"])
+            self.check(ch <= 0.45 * h + 0.5, tag + "the top card stays under 45 % of the screen's height", "%.0f px = %.0f %%" % (ch, 100.0 * ch / h))
         enr = nodes.get(pre + "Enraged")
         t = text_of(enr) if enr else None
         if t:
