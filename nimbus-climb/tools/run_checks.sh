@@ -110,6 +110,11 @@ if [ $do_smoke -eq 1 ]; then
 		if [ $has_only -eq 0 ]; then
 			step "Smoke test, mesh mode (tools/smoke.py --quick --mesh)" python3 tools/smoke.py --quick --mesh
 		fi
+		# Release step 1, gate 2: main's saves against this branch (main's code comes from git: origin/main must be
+		# fetched; exit 2 = it could not be read); skipped for an --only run
+		if [ $has_only -eq 0 ]; then
+			step "Save round trip vs main (tools/save_roundtrip.py)" python3 tools/save_roundtrip.py
+		fi
 	else
 		echo "missing dependency: lupa (pip install lupa)" >&2
 		record "Smoke test (tools/smoke.py)" "FAILED (python3 / lupa missing)"
