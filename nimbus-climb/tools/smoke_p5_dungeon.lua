@@ -2754,6 +2754,17 @@ local function clientScenarios()
 				pcall(m.Close)
 			end
 		end
+		-- (keys look r4: "p5dgn client window 390x844: the GUI covers <= 60% of the screen -- 61.1%") the phone world starts
+		-- from the server smoke's replayed session, which ends with a won obby match moments before: ObbyController's
+		-- "Extreme unlocked!" toast (shown K.TOAST_SECONDS) was still up at the top right, 240 x 70 px, 5.1 % of a 390 x 844
+		-- screen; without it the Dungeon window and the HUD cover 56 %. The rule weighs the window's screen, not a notification
+		-- an earlier match left: the toast is taken away from outside (its loop ends when its card is hidden), as the windows
+		-- above are closed; the 60 % rule itself is unchanged
+		local toastGui = C5.pg():FindFirstChild("NimbusObbyToast")
+		local toast = toastGui and toastGui:FindFirstChild("UnlockToast")
+		if toast then
+			toast.Visible = false
+		end
 		pcall(DC.Close)
 		KC.advance(0.5)
 		return DC, LP
