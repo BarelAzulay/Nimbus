@@ -1842,13 +1842,16 @@ S.client_shop_portrait = guarded("client_shop_portrait", function()
 			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
 				local card = G.eggCard(id)
 				local b = card and G.rel(card, G.body())
-				local wantH = id == "Secret" and 200 or 250
+				-- (P2 icons look fin1, major) on the 360-wide phone the Secret card is one 15 px row taller (215): its hint keeps
+				-- the 15 px phone floor and wraps, since "A gold arrow leads you to the Storm Altar" (~298 px in Nunito) ran
+				-- past the 294 px one-line box there (ShopEggs L.portrait, H.heroHintRows; machines_hero_hints checks the rows)
+				local wantH = id == "Secret" and (sz[1] < 390 and 215 or 200) or 250
 				if not (b and b.y > lastY and b.w >= bw - 16 and G.near(b.h, wantH)) then
 					listBad[#listBad + 1] = id .. " " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
 				end
 				lastY = b and b.y or lastY
 			end
-			T.check(#listBad == 0, label .. ": Eggs: full-width cards in a vertical list (Secret 200 tall first, the machines 250)", table.concat(listBad, "; "))
+			T.check(#listBad == 0, label .. ": Eggs: full-width cards in a vertical list (Secret 200 tall first (215 at 360 wide), the machines 250)", table.concat(listBad, "; "))
 			G.spinRowsCheck(label)
 			local grid = G.oddsRows(G.eggCard("Cloud"))
 			local xs, ys = {}, {}

@@ -149,6 +149,7 @@ local K = {
 	-- (128 x 136 stages), and a PC card's Spin rows and hint sit LIFT px higher (the hint clears the card's colour lip)
 	PORTRAIT_CARD_SHEET = 292,
 	PORTRAIT_HERO_SHEET = 248,
+	HINT_SPARE = 1.02, -- (P2 icons look fin1) H.heroHintRows: the Body face's width over its Enum fallback's, rounded up
 	LIFT = 12,
 	TEXT = {
 		Lock = "Gem roulettes are not available on this account right now.",
@@ -296,6 +297,30 @@ function H.textW(text, size, font)
 		return v.X
 	end
 	return #tostring(text) * size * 0.55
+end
+
+-- (P2 icons look fin1, major: the portrait hero's hint was cut at 390 and 360 wide) the rows the longest line any hero
+-- state can show takes, word-wrapped at `size` in a box `width` wide. Measured as the Body face: TextService knows only
+-- its Enum fallback (Builder Sans Bold), and Nunito ExtraBold runs about 1.015 x that in render_gui's real font, so
+-- K.HINT_SPARE rounds it up to 1.02 (Theme.MeasureSpare's 1.06 would add a row the face never needs)
+function H.heroHintRows(width, size, font)
+	local function w(s)
+		return H.textW(s, size, font) * K.HINT_SPARE
+	end
+	local most = 1
+	for _, text in ipairs({ K.TEXT.HeroHint, K.TEXT.HeroHintLocked, K.TEXT.HeroHintLobbyShort, K.TEXT.HeroHintTravel, K.TEXT.HeroHintHere }) do
+		local rows, line = 0, nil
+		for word in tostring(text):gmatch("%S+") do
+			local try = line and (line .. " " .. word) or word
+			if line and w(try) > width then
+				rows, line = rows + 1, word
+			else
+				line = try
+			end
+		end
+		most = math.max(most, rows + (line and 1 or 0))
+	end
+	return most
 end
 
 function H.roulette(id)
@@ -1747,9 +1772,17 @@ function L.heroPortrait(t, w, h)
 		t.AltarChip.TextSize = 15
 		place(t.Lock, rx, cy - 4, rw, 44)
 		t.Lock.TextSize = 15
+		-- (P2 icons look fin1, major: this was a one-line 188 x 20 box at 390 wide, so "A gold arrow leads you to the St..."
+		-- and "Secret rolls happen at th..." were cut) the hint wraps at 15 px (the phone floor) in the band from the chip /
+		-- lock line down to 2 px over the button: two rows hold every state's line at 390 wide; L.portrait makes the hero
+		-- taller where the longest needs more (a 360-wide phone). The box starts 4 px left of the column (still 4 px clear
+		-- of the vault's 136 px box) so "Home first, then the arrow" (~191 px in Nunito) keeps one row at 390 instead of
+		-- leaving "arrow" alone on the second
 		t.Hint.Visible = true
 		t.Hint.TextSize = 15
-		place(t.Hint, rx, cy + 42, rw, 20)
+		t.Hint.TextWrapped = true
+		local hy = cy + 40
+		place(t.Hint, rx - 4, hy, rw + 4, h - 52 - 2 - hy)
 		place(t.Holder, 8, h - 52, w - 16, 44)
 		place(t.Spin.Button, 0, 0, w - 16, 44)
 		H.arrange(t.Spin, w - 16, 44, 18, 20)
@@ -1769,8 +1802,10 @@ function L.heroPortrait(t, w, h)
 	t.Lock.TextSize = 15
 	t.Hint.Visible = true
 	t.Hint.TextSize = 15
-	t.Hint.TextWrapped = false
-	place(t.Hint, 8, 122, w - 16, 20)
+	-- (P2 icons look fin1, major) one 20 px row at 390 wide; on a 360-wide phone "A gold arrow leads you to the Storm
+	-- Altar" (~298 px in Nunito) ran past the 294 px box, so it wraps and L.portrait makes the hero a row taller
+	t.Hint.TextWrapped = true
+	place(t.Hint, 8, 122, w - 16, h - 52 - 6 - 122)
 	place(t.Holder, 8, h - 52, w - 16, 44)
 	place(t.Spin.Button, 0, 0, w - 16, 44)
 	H.arrange(t.Spin, w - 16, 44, 18, 20)
@@ -1805,6 +1840,12 @@ function L.portrait(P, W, Hh)
 	local w = W - K.SCROLLBAR - 2
 	local sheet = P.Hero.Machine.Sheet == true
 	local heroH = sheet and K.PORTRAIT_HERO_SHEET or K.PORTRAIT_HERO
+	-- (P2 icons look fin1, major) the hero's hint stays 15 px (the phone floor) and whole: its band holds two rows beside
+	-- the vault (one under today's drawn machine); a 15 px row more of hero for each row its longest line needs beyond
+	-- that (a 360-wide phone)
+	local band = sheet and 2 or 1
+	local hintW = sheet and (w - 148) or (w - 16)
+	heroH = heroH + math.max(0, H.heroHintRows(hintW, 15, Theme.FontOf(P.Hero.Hint)) - band) * 15
 	local cardH = sheet and K.PORTRAIT_CARD_SHEET or K.PORTRAIT_CARD
 	place(P.Hero.Root, 0, 0, w, heroH)
 	L.heroPortrait(P.Hero, w, heroH)

@@ -17796,6 +17796,170 @@ local function clientScenarios()
 		LKC.flushErrors("machines_sheet")
 	end)
 
+	-- (P2 icons look fin1, major: on the portrait phone, 390 x 844 with the machines sheet, the Secret hero's hint beside
+	-- the vault was a 188 x 20 box at 15 px, one line, cut: "Travel flies you to the St..." in the lobby, "Secret rolls
+	-- happen at th..." on a restricted account; the gate's default render is the away state, so nobody saw it) every hero
+	-- hint state on every screen, with the machines sheet and without: restricted, still checking, held by a match, away
+	-- from the lobby, in the lobby away from the altar, at the altar. The hint reads the state's line; where it shows, it
+	-- reads in full: at the text floor or more (14 screen px on a PC, 15 on a phone, as client_shop_secret_lock), its rows
+	-- (word-wrapped when the label wraps, else one) inside its box, inside the card,
+	-- clear of the chip, the lock line, the odds and the button. On a PC and in portrait it always shows (the landscape
+	-- phone may hide it where no row fits: the kit-b wave-2 merge's call, machines_sheet). Widths: Builder Sans Bold's real
+	-- advances x 1.02 (the Body face, Nunito ExtraBold, measures about 1.015 x Builder in render_gui's real font). The
+	-- 320-wide page is a 360 x 640 phone's
+	S.machines_hero_hints = guarded("machines_hero_hints", function()
+		local Config = LoadingH.shared("Config")
+		local Theme = LoadingH.shared("Theme")
+		local ms = Config and Config.MachineSheet
+		local SE = U7.client("UI/ShopEggs")
+		local TX = SE and SE.Metrics and SE.Metrics.TEXT
+		if not T.check(type(ms) == "table" and TX ~= nil, "hero hints: Config.MachineSheet and ShopEggs.Metrics.TEXT exist") then
+			return
+		end
+		local lp = game:GetService("Players").LocalPlayer
+		local RealWidth = SmokeCommon.RealWidth
+		local function absRect(o)
+			return { o.AbsolutePosition.X, o.AbsolutePosition.Y, o.AbsoluteSize.X, o.AbsoluteSize.Y }
+		end
+		local function meets(a, b2)
+			return a[1] < b2[1] + b2[3] - 0.5 and b2[1] < a[1] + a[3] - 0.5 and a[2] < b2[2] + b2[4] - 0.5 and b2[2] < a[2] + a[4] - 0.5
+		end
+		local function shown(o, top)
+			while o and o ~= top do
+				if o:IsA("GuiObject") and not o.Visible then
+					return false
+				end
+				o = o.Parent
+			end
+			return true
+		end
+		-- the rows a label's text takes at its size in its box (greedy word wrap when it wraps), and its widest row
+		local function rowsOf(hint)
+			local size, font = hint.TextSize, Theme.FontOf(hint)
+			local function w(s)
+				return (RealWidth(s, size, font, true) or Theme.MeasureLabel(hint, s, size).X) * 1.02
+			end
+			local room = hint.Size.X.Offset
+			if not hint.TextWrapped then
+				return 1, w(hint.Text)
+			end
+			local rows, line, widest = 0, nil, 0
+			for word in hint.Text:gmatch("%S+") do
+				local try = line and (line .. " " .. word) or word
+				if line and w(try) > room then
+					rows, line = rows + 1, word
+				else
+					line = try
+				end
+				widest = math.max(widest, w(line))
+			end
+			return rows + (line and 1 or 0), widest
+		end
+		-- the screen rect a label's text covers: its rows' height centred in the box, its widest row placed by its X alignment
+		local function textRect(o)
+			local r = absRect(o)
+			local k = o.AbsoluteSize.X / math.max(1, o.Size.X.Offset)
+			local rows, wide = rowsOf(o)
+			local tw, th = math.min(r[3], wide * k), rows * o.TextSize * k
+			local x = r[1] + (r[3] - tw) / 2
+			if o.TextXAlignment == Enum.TextXAlignment.Left then
+				x = r[1]
+			elseif o.TextXAlignment == Enum.TextXAlignment.Right then
+				x = r[1] + r[3] - tw
+			end
+			return { x, r[2] + (r[4] - th) / 2, tw, th }
+		end
+		local STATES = {
+			{ "restricted", TX.HeroHint, true, nil, nil, false },
+			{ "checking", TX.HeroHint, nil, nil, nil, false },
+			{ "held by a match", TX.HeroHintLocked, false, false, false, true },
+			{ "away from the lobby", "away", false, false, false, false },
+			{ "in the lobby", TX.HeroHintTravel, false, false, true, false },
+			{ "at the altar", TX.HeroHintHere, false, true, true, false },
+		}
+		local SCREENS = { { "PC", { W = 1240, H = 834 }, nil, "PC" }, { "PC 0.8", { W = 1144, H = 683 }, 0.8, "PC" },
+			{ "Phone", { W = 692, H = 280 }, nil, "Phone" }, { "Portrait", { W = 350, H = 552 }, nil, "Portrait" },
+			{ "Portrait 360", { W = 320, H = 552 }, nil, "Portrait" } }
+		local saved = ms.Id
+		for _, sheetId in ipairs({ 5151515151, 0 }) do
+			ms.Id = sheetId
+			local look = sheetId > 0 and "sheet" or "drawn"
+			for _, m in ipairs(SCREENS) do
+				local ok, err = machinesPage(m[4], m[2], function(roots)
+					local hero = roots.Secret and roots.Secret.Parent
+					local hint = hero and hero:FindFirstChild("Hint")
+					local page = hero and hero:FindFirstAncestor("Page_Eggs")
+					if not T.check(hint ~= nil and page ~= nil, "hero hints (" .. m[1] .. ", " .. look .. "): the Secret hero has its Hint") then
+						return
+					end
+					local old = { lp:GetAttribute("PaidRandomItemsRestricted"), lp:GetAttribute("InMatch"), SE._AtAltar, SE._InLobby }
+					local wrong = {}
+					for _, st in ipairs(STATES) do
+						lp:SetAttribute("PaidRandomItemsRestricted", st[3])
+						lp:SetAttribute("InMatch", st[6] or nil)
+						SE._AtAltar = st[4]
+						SE._InLobby = st[5]
+						SE.Refresh(page)
+						LKC.advance(0.05)
+						local want = st[2]
+						if want == "away" then
+							want = (m[4] == "PC") and TX.HeroHintLobby or TX.HeroHintLobbyShort
+						end
+						local why = ""
+						if hint.Text ~= want then
+							why = fmt("reads '%s', want '%s'", hint.Text, tostring(want))
+						elseif not shown(hint, page) then
+							if m[4] ~= "Phone" then
+								why = "hidden"
+							end
+						else
+							local rows, widest = rowsOf(hint)
+							local bw, bh = hint.Size.X.Offset, hint.Size.Y.Offset
+							local hr, cr = absRect(hint), absRect(hero)
+							local px, floor = hint.TextSize * (m[3] or 1), (m[4] == "PC") and 14 or 15
+							if px < floor - 1e-6 then
+								why = fmt("%.1f screen px (floor %d)", px, floor)
+							elseif widest > bw + 0.5 or rows * hint.TextSize > bh + 1 then
+								why = fmt("%d row(s) of %d px, widest %.1f, in a %.0f x %.0f box (wrapped %s)", rows, hint.TextSize, widest, bw, bh, tostring(hint.TextWrapped))
+							elseif hr[1] < cr[1] - 0.5 or hr[1] + hr[3] > cr[1] + cr[3] + 0.5 or hr[2] < cr[2] - 0.5 or hr[2] + hr[4] > cr[2] + cr[4] + 0.5 then
+								why = "outside the card"
+							else
+								for _, name in ipairs({ "AltarChip", "Lock", "OddsLine", "PityChip", "SpinHolder" }) do
+									local o = hero:FindFirstChild(name)
+									if o and o:IsA("GuiObject") and shown(o, page) and o.AbsoluteSize.X > 0 then
+										local orect, mine = absRect(o), hr
+										if name == "Lock" then
+											-- the lock line is bare text (no plank), left-aligned, its rows centred in a box
+											-- taller than them, and so is the hint: on a PC the two BOXES cross while the
+											-- lock's text stops ~15 px left of the hint's (seen in the 1920 / 1280 renders),
+											-- so the two TEXTS are what must stay apart
+											orect, mine = textRect(o), textRect(hint)
+										end
+										if meets(mine, orect) then
+											why = "meets " .. name
+											break
+										end
+									end
+								end
+							end
+						end
+						if why ~= "" then
+							wrong[#wrong + 1] = st[1] .. ": " .. why
+						end
+					end
+					lp:SetAttribute("PaidRandomItemsRestricted", old[1])
+					lp:SetAttribute("InMatch", old[2])
+					SE._AtAltar, SE._InLobby = old[3], old[4]
+					T.check(#wrong == 0, "hero hints (" .. m[1] .. ", " .. look .. "): every state's hint reads its line in full (rows inside its box, at the text floor or more, clear of the chip, lock, odds and button)",
+						table.concat(wrong, "; "))
+				end, m[3], false)
+				T.check(ok, "hero hints (" .. m[1] .. ", " .. look .. "): the page builds and lays out", tostring(err))
+			end
+		end
+		ms.Id = saved
+		LKC.flushErrors("machines_hero_hints")
+	end)
+
 	-- (P2 icons review r1, major 1: under the 3 px pixel machines the odds chips drew today's smooth vector EggArt; minor:
 	-- at 1280 the chips were cramped, "60%" 0.4 px from the wood and the egg 1.6 px from it) with the machines sheet each
 	-- card's odds chip holds a hand-pixelled egg, the mock-up's (10_optA: make_item10.odds_egg): "PixelEgg", the rarity's
