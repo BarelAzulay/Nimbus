@@ -260,9 +260,12 @@ python3 tools/battle_hud_no_overlap.py --size 360x640 --scenario battle:raid:ful
 
 `battle_hud_no_overlap.py` (kit-b Pitch 2, keys lane) dumps 8 battle / dungeon scenarios (battle:raid, :raid:full,
 :raid:ready, battle:dungeon, battle:duel, dungeon:run, :end, :wipe) at 360x640, 640x360, 667x375, 390x844, 844x390,
-1280x720 and 1920x1080 and fails on any overlap of the keys, CHEER / BACK, the top card, the enemy rows, the fighter card,
-the helpers, the vitals card, the dungeon run chip, the result card, the currency strip and Roblox's stick / jump rings;
-on a part off the screen; on a phone key under 44 px or CHEER / BACK under 40 px from MOVE / DASH / RUN; on a cut or
+1280x720 and 1920x1080 and fails when any two of the keys, CHEER / BACK, the top card, the enemy rows, the fighter card,
+each helper, the vitals card, the dungeon run chip, the result card, the currency strip and Roblox's stick / jump rings
+come closer than 4 px (the run chip 6 px), measured by their ink (keys look r4: what render_gui paints of each part's
+subtree, the strokes past its box, the target bracket, a helper's Lv tag, the hearts' pixel art and the hard shadow, not
+the layout box; `tools/test_battle_hud_no_overlap.py` tests that measure offline); on the fighter card's own parts under
+1 px apart; on a part off the screen; on a phone key under 44 px or CHEER / BACK under 40 px from MOVE / DASH / RUN; on a cut or
 mid-word-broken name (laid out with render_gui's own text layout); on the full raid's pill rules (spec 06 A); on the
 vitals card showing beside a phone's result card (spec 02 B); and on a portrait phone's top card not spanning the top.
 

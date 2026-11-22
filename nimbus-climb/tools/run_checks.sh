@@ -98,6 +98,7 @@ if [ $do_static -eq 1 ]; then
 		step "Gate scenario list (tools/test_gate_scenarios.py, offline: stroke_walk walks every documented render form)" python3 tools/test_gate_scenarios.py
 		step "Mesh key scanner tests (tools/test_mesh_keys.py, offline)" python3 tools/test_mesh_keys.py
 		step "Place verifier tests (tools/test_verify_place.py, offline)" python3 tools/test_verify_place.py
+		step "Battle HUD ink tests (tools/test_battle_hud_no_overlap.py, offline)" python3 tools/test_battle_hud_no_overlap.py
 		# lobby-shop review round 1: the key contract itself (every Mesh.tag key has a manifest; every manifest this build
 		# adds is tagged), not only the scanner's unit tests
 		step "Mesh key contract (tools/mesh_keys.py --check)" python3 tools/mesh_keys.py --check

@@ -8,15 +8,19 @@ It dumps the REAL client (tools/render_gui.py's dump: tools/dump_gui.lua in the 
 touch device when the screen's short side is <= 500 px) for every size x scenario below, the same data the look
 reviews render, and fails on:
   overlap   any two of: the keys (MOVE / DASH / RUN on a phone, every Commands key on a PC), CHEER, BACK, the top card
-            (with its Leave), the enemy list's rows, the fighter card, the helpers (their cells and Swap), the vitals card
+            (with its Leave), the enemy list's rows, the fighter card, each helper (its cell and Swap), the vitals card
             (with its name tab), the dungeon run chip, the result card (the battle's and the dungeon's End card), the
-            currency strip, and on a phone Roblox's own thumbstick and jump rings; each card's drawn hard shadow (its
-            FinishShadow's FarR / FarB) counts as part of it (keys look r3);
+            currency strip, and on a phone Roblox's own thumbstick and jump rings, closer than MIN_GAP (4) px; the run
+            chip closer than RUNCHIP_GAP (6) px to any of them. Each part is measured by its INK (keys look r4), what
+            render_gui paints of its subtree: backgrounds, Outer / Center UIStrokes and borders past the box (the enemy
+            row's gold target bracket), children past their parent (a helper's Lv tag, the hearts' pixel art), images,
+            the text block, the drawn hard shadow (FinishShadow), each cut by its clipping ancestors;
   edge      one of them past the screen's edge;
   key       a phone key (MOVE / DASH / RUN / CHEER / BACK) under 44 px on a side; CHEER / BACK / the run chip under 40 px
             from MOVE / DASH / RUN; the run chip's Leave under 44 px (its LeaveHit pad), or that pad on another part;
   gap       (phone) the enemy list under 8 px from the fighter card or the top card, shadows counted;
-  fighter   the fighter card's own parts (name, Lv, element badge, evo stars, HP, ENERGY, hearts) on each other or its lip;
+  fighter   the fighter card's own parts (name, Lv, element badge, evo stars, HP, ENERGY, hearts) under PART_GAP (1) px
+            of each other or its lip, by their ink (a bare caption's text block may touch, not overlap);
   clock     the top card's timer without its clock (640 x 360's raid / dungeon card excepted: no room);
   cut       a name cut ("Storm Ti...") or broken mid-word: the boss name, the top card's pills, the fighter's and the
             helpers' names, the vitals name, the keys' captions;
@@ -45,6 +49,11 @@ SCENARIOS = ["battle:raid", "battle:raid:full", "battle:raid:ready", "battle:dun
 
 B = "NimbusBattle.Root."
 PHONE_KEYS = ("MOVE", "DASH", "RUN")
+# (keys look r4) the air between two parts' inks, screen px: the cards and keys (the mock-ups 01b C / 06 A keep 5-6 px
+# between neighbouring cards; 2 px read as glued), the run chip's from every neighbour, the fighter card's own parts
+MIN_GAP = 4.0
+RUNCHIP_GAP = 6.0
+PART_GAP = 1.0
 # the cards and keys, by group: (group, path regex). A node matched by a group's regex joins that group's boxes; the
 # first group that matches wins. The keys' NamePlate / HoldTag ride with their key.
 GROUPS = [
@@ -65,8 +74,10 @@ GROUPS = [
     ("TOP", r"^NimbusBattle\.Root\.LeaveButton$"),
     ("ENEMIES", r"^NimbusBattle\.Root\.Enemies\.\w+$"),
     ("FIGHTER", r"^NimbusBattle\.Root\.Team\.Fighter$"),
-    ("HELPERS", r"^NimbusBattle\.Root\.Team\.Helpers\.Helper\d+$"),
-    ("HELPERS", r"^NimbusBattle\.Root\.Team\.Helpers\.Helper\d+\.Swap$"),  # (its invisible 44 px SwapHit pad: not a box)
+    # (keys look r4: helper 1's Swap stood 0.8 px over helper 2's tags at 360 x 640 and 844 x 390) each helper's cell is
+    # its own part, its Swap with it
+    ("HELPER:{1}", r"^NimbusBattle\.Root\.Team\.Helpers\.(Helper\d+)$"),
+    ("HELPER:{1}", r"^NimbusBattle\.Root\.Team\.Helpers\.(Helper\d+)\.Swap$"),  # (its invisible 44 px SwapHit pad: not a box)
     ("VITALS", r"^NimbusHud\.\w+\.Vitals$"),
     ("VITALS", r"^NimbusHud\.\w+\.Vitals\.(NameTab|Tab|Stamp)\w*$"),
     ("RUNCHIP", r"^NimbusDungeonRun\.RunChip$"),
@@ -124,19 +135,138 @@ def rings(w, h):
     return {"Roblox jump": ((jx0 + j / 2, y1 - j / 2), j / 2), "Roblox stick": ((tx0 + j / 2, y1 - j / 2), j / 2)}
 
 
+def clip_to(a, b):
+    if a is None:
+        return b
+    if b is None:
+        return a
+    r = (max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3]))
+    return r if r[2] > r[0] and r[3] > r[1] else (r[0], r[1], r[0], r[1])
+
+
 def nodes_of(dump):
+    """{path: node}; each node also gets "_clip", the rect its clipping ancestors (ClipsDescendants) leave it"""
     out = {}
 
-    def walk(n):
+    def walk(n, clip):
+        n["_clip"] = clip
         out.setdefault(n["path"], n)
+        inner = clip_to(clip, rect(n)) if n.get("clip") else clip
         for c in n.get("children", []):
-            walk(c)
+            walk(c, inner)
 
     for g in dump["guis"]:
         if g.get("enabled", True):
             for n in g["nodes"]:
-                walk(n)
+                walk(n, None)
     return out
+
+
+# --- ink: what the player sees of a part, not its layout box (keys look r4: a 16 px pixel heart in a 14.4 px Lives box
+# ran 1.6 px past it onto the element badge's frame; the selected enemy row's gold target bracket, an Outer UIStroke 2 px
+# round a box 3.2 px wider than the row, lay on the run chip, the Swap keys and "+3 more"; a helper's Lv tag stands above
+# its cell, where the fighter card's shadow fell on it). Drawn the way tools/render_gui.py paints them.
+def ring_out(n):
+    """how far a node's drawn box ring reaches past its box: UIStroke Outer / Center (a text's Contextual stroke rings
+    its glyphs, not the box) and Roblox's legacy border (drawn only with a visible background and no UICorner)"""
+    text_node = n.get("text") is not None
+    out = None
+    for k in n.get("strokes") or []:
+        if text_node and k.get("mode", "Contextual") == "Contextual":
+            continue
+        t = float(k.get("thickness", 1))
+        if t <= 0 or float(k.get("t", 0)) >= 0.995:
+            continue
+        pos = k.get("position") or "Outer"
+        o = t if pos == "Outer" else (t / 2.0 if pos == "Center" else 0.0)
+        out = o if out is None else max(out, o)
+    b = n.get("border")
+    if b and n.get("corner") is None and float(n.get("bgT", 0)) < 0.995 and float(b.get("size", 0)) > 0:
+        mode = b.get("mode", "Outline")
+        t = float(b["size"])
+        o = t / 2.0 if mode == "Middle" else (0.0 if mode == "Inset" else t)
+        out = o if out is None else max(out, o)
+    return out
+
+
+def text_ink(n, rg, fonts):
+    """the drawn text block of a text node (render_gui's paint_text), None when it draws no text"""
+    tx = n.get("text")
+    if not isinstance(tx, dict) or not str(tx.get("text", "")).strip() or float(tx.get("t", 0)) >= 0.99:
+        return None
+    if int(tx.get("maxGraphemes", -1)) == 0:
+        return None
+    pl, pr, pt, pb = (n.get("pad") or [0, 0, 0, 0])[:4]
+    ax, ay = float(n["x"]) + pl, float(n["y"]) + pt
+    aw, ah = max(0.0, float(n["w"]) - pl - pr), max(0.0, float(n["h"]) - pt - pb)
+    size, lines = rg.layout_text(fonts, tx, aw, ah)
+    if not lines:
+        return None
+    font = tx.get("font", "SourceSans")
+    step = size * float(tx.get("lineHeight", 1) or 1)
+    total = step * len(lines)
+    ya, xa = tx.get("ya", "Center"), tx.get("xa", "Center")
+    top = ay if ya == "Top" else (ay + ah - total if ya == "Bottom" else ay + (ah - total) / 2.0)
+    x0, x1 = None, None
+    for line in lines:
+        lw = fonts.width(font, "".join(c for c, _ in line), size)
+        lx = ax if xa == "Left" else (ax + aw - lw if xa == "Right" else ax + (aw - lw) / 2.0)
+        x0 = lx if x0 is None else min(x0, lx)
+        x1 = lx + lw if x1 is None else max(x1, lx + lw)
+    if x1 - x0 <= 0:
+        return None
+    return (x0, top, x1, top + total)
+
+
+def drawn_rects(n, rg, fonts):
+    """the rects one node paints: its background, its ring (stroke / border, with the box inside it), its image, its
+    text; each cut by its clipping ancestors"""
+    out = []
+    r = rect(n)
+    has_box = r[2] - r[0] > 0 and r[3] - r[1] > 0
+    if has_box and float(n.get("bgT", 0)) < 0.995:
+        out.append(r)
+    o = ring_out(n) if has_box else None
+    if o is not None:
+        out.append((r[0] - o, r[1] - o, r[2] + o, r[3] + o))
+    img = n.get("image")
+    if has_box and img and float(img.get("t", 0)) < 0.99:
+        out.append(r)
+    t = text_ink(n, rg, fonts) if rg is not None else None
+    if t:
+        out.append(t)
+    clip = n.get("_clip")
+    if clip is not None:
+        out = [c for c in (clip_to(x, clip) for x in out) if c[2] - c[0] > 0 and c[3] - c[1] > 0]
+    return out
+
+
+def ink_of(n, rg, fonts):
+    """every rect a node and its subtree paint (a group's part: a card with its tags, hearts, brackets and shadow)"""
+    out = list(drawn_rects(n, rg, fonts))
+    for c in n.get("children", []):
+        out.extend(ink_of(c, rg, fonts))
+    return out
+
+
+def union(rs):
+    return (min(r[0] for r in rs), min(r[1] for r in rs), max(r[2] for r in rs), max(r[3] for r in rs)) if rs else None
+
+
+def ink_gap(la, lb, ua, ub, need):
+    """(the least gap between two inks, the two rects that make it); the unions first: apart by need, done"""
+    d = gap(ua, ub)
+    if d >= need:
+        return d, ua, ub
+    best = None
+    for a in la:
+        if gap(a, ub) >= need:
+            continue
+        for b in lb:
+            g = gap(a, b)
+            if best is None or g < best[0]:
+                best = (g, a, b)
+    return best if best else (d, ua, ub)
 
 
 def group_of(path):
@@ -147,35 +277,25 @@ def group_of(path):
     return None
 
 
-SHADOW = re.compile(r"\.FinishShadow\.Far[RB]$")
-
-
-def owner_group(path):
-    """the group of a card's drawn hard shadow (its FinishShadow's FarR / FarB): its nearest grouped ancestor's"""
-    owner = path[:path.index(".FinishShadow")]
-    while owner:
-        g = group_of(owner)
-        if g:
-            return g
-        owner = owner.rpartition(".")[0]
-    return None
-
-
-def collect(nodes):
-    groups = {}
+def collect(nodes, rg=None, fonts=None):
+    """{group: [(path, ink union)]} and {path: [ink rects]}: each part as the player sees it (its subtree's ink), not its
+    layout box"""
+    groups, inks = {}, {}
     for path, n in nodes.items():
         if n["w"] <= 1 or n["h"] <= 1:
             continue
         g = group_of(path)
-        if not g and SHADOW.search(path):
-            # (keys look r3: the "no overlap" held for the card bodies only; at 390 x 844 the enemy list's first row lay over
-            # the fighter card's hard shadow, 4 x 30 px, and at 640 x 360 the run chip's shadow on RUN) a card's drawn hard
-            # shadow is part of its box
-            g = owner_group(path)
+        # (keys look r3: the "no overlap" held for the card bodies only; at 390 x 844 the enemy list's first row lay over the
+        # fighter card's hard shadow, 4 x 30 px, and at 640 x 360 the run chip's shadow on RUN) a card's drawn hard shadow
+        # (its FinishShadow's FarR / FarB) is part of it: its ink, the card's subtree, holds it
         if g:
-            groups.setdefault(g, []).append((path, rect(n)))
+            ink = ink_of(n, rg, fonts)  # (rg None: all but the texts)
+            if not ink:
+                continue
+            inks[path] = ink
+            groups.setdefault(g, []).append((path, union(ink)))
     # (a phone's DASH out of a battle is MovementController's; in a battle the HUD's own) one DASH box per screen
-    return groups
+    return groups, inks
 
 
 def text_of(n):
@@ -202,8 +322,8 @@ class Checker:
         tag = "%s %dx%d: " % (scen, w, h)
         touch = bool(dump.get("touch"))
         nodes = nodes_of(dump)
-        groups = collect(nodes)
-        boxes = []  # (group, path, rect)
+        groups, inks = collect(nodes, self.rg, self.fonts)
+        boxes = []  # (group, path, ink union)
         for g, items in sorted(groups.items()):
             for path, r in items:
                 boxes.append((g, path, r))
@@ -225,12 +345,17 @@ class Checker:
                     continue
                 if ring_i or ring_k:
                     (c, rad), r, other, op = (rings(w, h)[gi], rk, gk, pk) if ring_i else (rings(w, h)[gk], ri, gi, pi)
-                    d = ring_gap(r, c, rad)
+                    d = min(ring_gap(x, c, rad) for x in inks.get(op, [r]))
                     self.check(d >= 0, tag + "%s keeps off %s" % (op, gi if ring_i else gk), "%s %s %.1f px" % (other, fmt(r), d))
                     continue
-                ov = overlap(ri, rk)
-                self.check(ov is None, tag + "%s and %s do not overlap" % (pi, pk),
-                           "%s vs %s: %s" % (fmt(ri), fmt(rk), "%.0f x %.0f px" % ov if ov else ""))
+                # (keys look r4: "no overlap" let parts touch: at 640 x 360 the run chip's Leave hung 0.4 px under the
+                # target bracket, '+3 more' 4.6 px beside it; at 360 x 640 a currency strip's border lay on helper 2's Lv
+                # tag and the chip 2.2 px under the strip) every two parts keep MIN_GAP px of air between their inks, the
+                # run chip RUNCHIP_GAP px from every neighbour
+                need = RUNCHIP_GAP if "RUNCHIP" in (gi, gk) else MIN_GAP
+                d, a, b = ink_gap(inks[pi], inks[pk], ri, rk, need)
+                self.check(d >= need - 0.05, tag + "%s and %s keep %g px apart" % (pi, pk, need),
+                           "ink %s vs %s: %s" % (fmt(a), fmt(b), ("%.1f px apart" % d) if d >= 0 else ("%.1f px over" % -d)))
         # edge
         for g, path, r in boxes:
             if g.startswith("Roblox "):
@@ -345,13 +470,32 @@ class Checker:
         pre = B + "Team.Fighter."
         names = ["Body.PetName", "Body.Level", "Body.Element", "Body.Stars.LeadIcon", "Body.Hp", "Body.HpText", "Body.Energy",
                  "Body.EnergyText", "Body.Lives", "Lip"]
-        parts = [(p, rect(nodes[pre + p])) for p in names if pre + p in nodes and nodes[pre + p]["w"] > 1 and nodes[pre + p]["h"] > 1]
+        # (keys look r4: the hearts' 16 px pixel art in their 14.4 px Lives box ran onto the element badge's frame below:
+        # the boxes were apart, the inks touched) each part's ink (its subtree: the hearts' cells, the badge's frame), and
+        # PART_GAP px of air between any two; the lip is a box (the card's foot), the others what they paint
+        # A bare caption (the name, ENERGY, the HP number) is measured by its text block, a line as tall as its size with
+        # the letters inside it: that block may touch a neighbour, not lie on it
+        parts = []
+        for p in names:
+            n = nodes.get(pre + p)
+            if not n or n["w"] <= 1 or n["h"] <= 1:
+                continue
+            if p == "Lip":
+                ink, bare = [rect(n)], False
+            else:
+                ink = ink_of(n, None, None)  # (what it paints but its text)
+                bare = not ink
+                if bare:
+                    ink = ink_of(n, self.rg, self.fonts)
+            if ink:
+                parts.append((p, ink, union(ink), bare))
         for i in range(len(parts)):
             for k in range(i + 1, len(parts)):
-                (pi, ri), (pk, rk) = parts[i], parts[k]
-                ov = overlap(ri, rk)
-                self.check(ov is None, tag + "the fighter card's %s and %s do not overlap" % (pi, pk),
-                           "%s vs %s: %s" % (fmt(ri), fmt(rk), "%.1f x %.1f px" % ov if ov else ""))
+                (pi, li, ui, bi), (pk, lk, uk, bk) = parts[i], parts[k]
+                need = 0.0 if (bi or bk) else PART_GAP
+                d, a, b = ink_gap(li, lk, ui, uk, need)
+                self.check(d >= need - 0.05, tag + "the fighter card's %s and %s keep %g px apart" % (pi, pk, need),
+                           "ink %s vs %s: %s" % (fmt1(a), fmt1(b), ("%.1f px apart" % d) if d >= 0 else ("%.1f px over" % -d)))
 
     def pills(self, tag, w, h, nodes):
         pre = B + "TopCard.Pills."
@@ -398,6 +542,10 @@ class Checker:
 
 def fmt(r):
     return "%.0f,%.0f-%.0f,%.0f" % r
+
+
+def fmt1(r):
+    return "%.1f,%.1f-%.1f,%.1f" % r
 
 
 def parse_sizes(text):
