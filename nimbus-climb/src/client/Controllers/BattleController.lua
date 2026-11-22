@@ -6844,7 +6844,10 @@ function Hud.Rebuild()
 	-- tab over its top edge: the list starts that much lower under the strips
 	-- (U9-6 review) with no strip up there the tab still needs its band: under the top edge, not into Roblox's bar
 	local over = m.Compact and 0 or K.TARGET_OVER
-	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and max(topY, curBottom + 6) + over or (topY + over)
+	-- (keys look r4: on a PC the TARGET tab's frame stood 2.4-3 px under the strips' hard shadow) under the strips, their
+	-- shadow, the tab's 2 px frame and K.INK_AIR_PX of air
+	local underStrips = m.Compact and 6 or max(6, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX))
+	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and max(topY, curBottom + underStrips) + over or (topY + over)
 	Hud.listTop = rightY
 	Hud.listX = nil
 	if Hud.listLeft then
@@ -7027,6 +7030,18 @@ function Hud.PlaceCaptionUnder(A, d, m)
 		w = max(min(w, single), min(d, single))
 	end
 	local h = lines * math.ceil(px * 1.2) + 2
+	local spec0 = Hud.cluster and Hud.cluster[A.kind]
+	if lines == 2 and type(spec0) == "table" and spec0[2] and spec0[3] then
+		-- (keys look r4: at 1280 x 720 SPECIAL's two-line "COSY / GUARD" tag ran 1 px off the screen's foot) where the second
+		-- line would pass the screen's foot (the tag's 2 px frame and 2 px kept: the cluster's spots are from Commands' bottom
+		-- edge, the screen's), the tag takes one line, as wide as its words (Hud.SpreadCaptions moves its neighbours aside)
+		local foot = spec0[2] + spec0[3] / 2 + K.KEY_EDGE + K.TAG_GAP + h + 4 / f
+		if foot > 0 then
+			lines = 1
+			w = max(w, single)
+			h = math.ceil(px * 1.2) + 2
+		end
+	end
 	cap.Visible = true
 	plate.Visible = true
 	cap.TextTruncate = Enum.TextTruncate.AtEnd
@@ -7076,7 +7091,9 @@ function Hud.SpreadCaptions(m)
 		for j = 1, i - 1 do
 			local b = tags[j]
 			if a.top < b.bot and b.top < a.bot then
-				local over = (a.cx + a.shift + a.w / 2 + 4) - (b.cx + b.shift - b.w / 2)
+				-- (keys look r4: 4 design px between the boxes left their 2 px frames 0.8 px over each other at 1280 x 720)
+				-- both frames and K.INK_AIR_PX of air
+				local over = (a.cx + a.shift + a.w / 2 + Hud.Air(m, 4 + K.INK_AIR_PX)) - (b.cx + b.shift - b.w / 2)
 				if over > 0 then
 					a.shift = a.shift - over
 				end
@@ -10350,7 +10367,10 @@ function CheerUp.Place(m, B, isFighting)
 		w = max(w, K.CHEER_TOUCH_W_PX / f)
 		h = max(h, K.CHEER_TOUCH_PX / f)
 	end
-	local gap = K.CHEER_GAP_PX / f
+	-- (keys look r4) between Cheer up! and Retreat (a row or a stack): both wood edges and K.INK_AIR_PX of air (Retreat.Place)
+	local edge = C.Button:FindFirstChildOfClass("UIStroke")
+	local edgePx = (edge and edge.Enabled ~= false and edge.Transparency < 0.99) and edge.Thickness or 0
+	local gap = max(K.CHEER_GAP_PX, 2 * edgePx + K.INK_AIR_PX) / f
 	local v, hidden = CheerUp.Layout()
 	local withRetreat = Retreat.Allowed(B)
 	local cx, bottom
@@ -10525,7 +10545,11 @@ function Retreat.Place(m, B, isFighting)
 	local w, h = C.Size.X.Offset, C.Size.Y.Offset
 	local cx, bottom = C.Position.X.Offset, C.Position.Y.Offset
 	local f = max(0.05, m.F)
-	local gap = K.CHEER_GAP_PX / f
+	-- (keys look r4: a PC's two buttons wear 5 px wood edges, 8 px apart they lay 2 px on each other at 1920 x 1080, met at
+	-- 1280 x 720) beside or over Cheer up!, both edges and K.INK_AIR_PX of air between them
+	local edge = C:FindFirstChildOfClass("UIStroke")
+	local edgePx = (edge and edge.Enabled ~= false and edge.Transparency < 0.99) and edge.Thickness or 0
+	local gap = max(K.CHEER_GAP_PX, 2 * edgePx + K.INK_AIR_PX) / f
 	local x, y = cx - w - gap, bottom
 	Retreat.how = "row"
 	local v = CheerUp.Layout()
