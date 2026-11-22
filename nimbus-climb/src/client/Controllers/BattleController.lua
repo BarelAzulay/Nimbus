@@ -420,6 +420,9 @@ local K = {
 	TARGET_OVER = 22, -- the TARGET tab sits on its row's top edge, this far over it with 2 px to spare (wide screens; U9-6 review: was 12, the tab hung over the name)
 	TOP_W = 470,
 	TOP_W_COMPACT = 300,
+	-- (Pitch 2 item 1b, look review r2) a wide phone's top card in the gap between the team and the three keys, at least
+	-- this wide (640 x 360: 274); narrower than TOP_W_COMPACT it went into the right column, on DASH and RUN
+	TOP_W_GAP_MIN = 240,
 	MODE_H = 40,
 	-- (Pitch 2 item 06 A) the boss card: 640 wide (500 on a phone), its inside PAD in from the edge; row 1 TOP_ROW_H tall
 	-- (the RAID tag, the name, the clock + timer, LEAVE LEAVE_W_CARD wide); the head PORTRAIT square, two rows tall; the
@@ -6500,7 +6503,18 @@ function Hud.Rebuild()
 			end
 		end
 	else
+		-- (Pitch 2 item 1b, look review r2: a fight whose boss strip turned down laid the enemy list and the top card out
+		-- against the strips' place under the strip, read above before they came back up: at 360 x 640 the list started 175 px
+		-- low and the top card under it lay on DASH and MOVE until the next relayout) where the strips leave the strip's band
+		-- now, their new place as the HUD published it (as the strip's own layout reads it above)
+		local reserved = Hud.topReserve ~= nil
 		Hud.SetTopReserve(nil)
+		if reserved and curBottom > 0 then
+			local trb = Hud.HudAttr("TopRightBottom")
+			if trb and trb > 0 then
+				curBottom = math.ceil(trb / max(0.05, m.F))
+			end
+		end
 	end
 	-- (a landscape phone's currency pills sit in the top band: stay below them where they reach down)
 	local cardW = m.Compact and K.FC_W_COMPACT or K.FC_W
@@ -7446,7 +7460,12 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			local dashX0 = m.W + dash[1] - dash[3] / 2 - K.KEY_EDGE
 			free = min(free, dashX0 - 8 / max(0.05, m.F) - (K.EDGE + teamW + 12))
 		end
-		if m.Landscape and free < w and free >= K.TOP_W_COMPACT then
+		-- (look review r2: at 640 x 360 that gap is 274, under TOP_W_COMPACT, so every mode's card went into the right column
+		-- below, the enemy list under it: both lay on DASH and RUN, RUN drawn under them) the three keys' wide phone keeps its
+		-- right column for the list and the keys: the card takes the gap down to TOP_W_GAP_MIN (its pills wrap, the boss's name
+		-- keeps its room: the timer's size below)
+		local least = dash and K.TOP_W_GAP_MIN or K.TOP_W_COMPACT
+		if m.Landscape and free < w and free >= least then
 			w = floor(free) -- (a landscape phone: the card takes the gap; its pills wrap, LEAVE is inside it)
 		end
 		if free >= w then
@@ -7515,7 +7534,24 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local hasTimer = B.TimeLimit > 0
 	local timerPx = px(compact and 22 or 24)
 	-- (as wide as the longest time this fight shows: the clock sits right before it, as the pitch's "clock 4:57")
-	local timerW = hasTimer and math.ceil(max(4, #fmtTime(B.TimeLimit)) * timerPx * 0.56) + 4 or 0
+	local function timerWidth(tpx)
+		return hasTimer and math.ceil(max(4, #fmtTime(B.TimeLimit)) * tpx * 0.56) + 4 or 0
+	end
+	local timerW = timerWidth(timerPx)
+	if hasTimer and bossUnit and B.Mode == "Raid" then
+		-- (Pitch 2 item 1b, look review r2: the 640 x 360 card in the gap, 274 wide, cut "Storm Ti..." by 1 px beside a 22 px
+		-- timer) a narrow raid card's timer takes the floor size where that keeps the boss's whole name on row 1
+		local name, npx = tostring(bossUnit.name or "?"), px(18)
+		local okN, mN = pcall(Theme.Measure, name, "Heading", npx)
+		local nameNeed = math.ceil(max((okN and typeof(mN) == "Vector2") and mN.X or 0, #name * npx * 0.56) * 1.04)
+		local function nameRoom(tw)
+			return right - tw - gapT - x0 - 4
+		end
+		if nameRoom(timerW) < nameNeed and nameRoom(timerWidth(px(18))) >= nameNeed then
+			timerPx = px(18)
+			timerW = timerWidth(timerPx)
+		end
+	end
 	Hud.timer.Visible = hasTimer
 	Hud.timer.TextSize = timerPx
 	Hud.timer:SetAttribute("BaseText", timerPx)
