@@ -23,9 +23,14 @@
 --                            (no paw under the floor on six paw sets, nothing slides), knocked back ~0.38 with a small
 --                            jolt, the head snapped back, a springy rock, settled; an evolved body moves 0.78 x as far;
 --                            (look review r2) home on the mock's way home (0.30 .. 0.62 s after the stop) with a low late
---                            lift, and a re-hit's hits add like the mock's (the Double strike's half hit: a second jolt)
+--                            lift, and a re-hit's hits add like the mock's (the Double strike's half hit: a second jolt);
+--                            (look review r3) one hit's knock-back and head snap are the mock's enemy_new curves, an
+--                            evolved body knocked back x 0.75 and jolted / rocked x 0.8 (the mock's heavy lanes)
+--   melee_windup_lands       (look review r3, major) a real BattleSim at the server's 0.1 s step: every NPC Windup's `at`
+--                            is the step its Hit lands on (r1(t + 0.45) rounded down on ~half the steps: 0.10 s early)
 -- Client world (AttackFx on a fake clock, real PetBuilder pets: base Maple Fox, evolved Aurora Fox):
---   client_feel_bounce_timing  AttackFx.FeetOf measures each model's paw lines; an NPC's bite (Windup 0.45 s before the hit):
+--   client_feel_bounce_timing  AttackFx.FeetOf measures each model's paw lines; an NPC's bite (Windup 0.50 s before the hit,
+--                            the server's step; look review r3: the gather lasts 0.25 s, at rest before it):
 --                            the wind-up to the run, the hit frame on the hit's time, the hit stop, the way home from
 --                            bk, the pose over and the pet exactly on its spot; the fast tempo (3 bites 0.5 s apart, the
 --                            2nd a Double strike, the 3rd on a Thorns shield): no trip home between bites, every hit frame
@@ -52,7 +57,10 @@
 --                            DashThorns, its drawn pose carries its model's Feet into PoseBody; (gate review r0) the biter
 --                            flashes on the Thorns prick: the NPC bear on its event, my fighter with its bite (held Melee.In);
 --                            (look review r2, major 1) the Double strike re-hits its victim (my frog) at half power on the
---                            second chomp: a second jolt, stacked on the bite's knock-back
+--                            second chomp: a second jolt, stacked on the bite's knock-back. (look review r3) the bear walks
+--                            in held until 4.7 s, so its bites wind up on steps where r1(t + 0.45) rounded down: each dash
+--                            lands on the frame its Hit flashes my frog; each bite's knock-back is drawn by BattleController
+--                            in full after its hit stop (no 0.12 s source crossfade softening the snap)
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
