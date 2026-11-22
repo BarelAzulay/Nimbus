@@ -315,6 +315,10 @@ local K = {
 	-- (battle-feel T2) a melee Hit this soon after the unit's Windup dashed it is that dash's bite (an NPC's: no new dash,
 	-- no hold); a melee Hit with no Windup before it (a player's fighter) dashes now, its impact held Melee.In (fxLate)
 	DASH_SEEN = 0.6,
+	PRICK_LATE_MIN = 0.02, -- (Pitch 2 item 5) a Thorns prick this much after its Hit holds the Hit to it (a fighter's bite)
+	-- (Pitch 2 item 5, look review r2 major 1) a Double strike's extra hit knocks its victim at this power (the approved
+	-- mock's second jolt: motion_pitch.enemy_new's 1.64 hit, power 0.5), on top of the bite's own reaction
+	DOUBLE_FLINCH = 0.5,
 	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
 	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
 	-- (evolved forms) a Rally's bigger pet by stage (a look only: hit radius, range and hitboxes never hear of it)
@@ -3766,17 +3770,37 @@ end
 
 -- (evolved forms) a hit that is no swing of its own: a Double strike's extra hit flashes on the victim; a Shield's Thorns (from the wearer, to its attacker) is a thin bolt back,
 -- one per RIPPLE_TICK_GAP (a boss's flurry would be a strobe). In the attacker's look: a Haste / Shield pet's flavour
+-- (Pitch 2 item 5 "Bounce in" A) on a dashing biter (AttackFx.DashTwist): a Double strike is a second chomp about 0.1 s
+-- after the bite, its gold sparks moved onto it; a Thorns prick snaps its head back and hops it away, the bolt on the bite
+function Atk.DashTwist(biter, kind, dueAt)
+	local AF = Atk.Mod()
+	if not (biter and AF and type(AF.DashTwist) == "function") then
+		return dueAt
+	end
+	local ok, at = pcall(AF.DashTwist, biter.id, kind, os.clock())
+	return (ok and type(at) == "number" and at == at) and at or dueAt
+end
+
 function Atk.HitTwist(B, ev, dueAt, v, a)
 	if not a or not Atk.Drawable(v) then
 		return "none"
 	end
 	if ev.double then
-		return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Haste", Twist = "DoubleHit", From = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+		dueAt = Atk.DashTwist(a, "Double", dueAt)
+		-- (look review r2, major 1) Flinch: the victim (From: the sparks are on it) is re-hit at DOUBLE_FLINCH on the second
+		-- chomp, its Hurt stacking on the bite's (AttackFx); without it no Hurt was scheduled and the mock's second jolt
+		-- never played
+		return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Haste", Twist = "DoubleHit", From = Atk.Side(B, v), Flinch = K.DOUBLE_FLINCH,
+			Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
 	end
 	if not Atk.Drawable(a) or (a.thornAt and dueAt - a.thornAt < K.RIPPLE_TICK_GAP) then
 		return "none"
 	end
 	a.thornAt = dueAt
+	local prick = Atk.DashTwist(v, "Thorns", dueAt)
+	-- (gate review r0 minor) a fighter's bite lands Melee.In after its Hit: the prick's flash and number wait for it (hitPlay)
+	ev.fxPrick = prick - dueAt
+	dueAt = prick
 	return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Shield", Twist = "Thorns", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, a) }))
 end
 
@@ -3786,7 +3810,16 @@ local function hitPlay(B, ev, dueAt, v, a)
 		return "none", 0
 	end
 	if ev.double or ev.thorns then
-		return Atk.HitTwist(B, ev, dueAt, v, a), 0
+		local played = Atk.HitTwist(B, ev, dueAt, v, a)
+		-- (Pitch 2 item 5, gate review r0 minor: "On Thorns it flashes") a Thorns hit on a dashing biter lands on its prick
+		-- (AttackFx.DashTwist): a player's fighter bites Melee.In after its Hit, so the Hit (the biter's flash, the number)
+		-- and the biter's next events wait that long, as the bite's own do (an NPC's prick is on the event: no wait)
+		local late = ev.thorns and num(ev.fxPrick, 0) or 0
+		if late > K.PRICK_LATE_MIN then
+			ev.fxLate = min(late, K.FX_LATE_MAX)
+			return played, ev.fxLate
+		end
+		return played, 0
 	end
 	if ev.tele or (a and a.isBoss) then
 		if ev.miss or v.isBoss or not v.mine or not Atk.Drawable(v) then
@@ -4385,7 +4418,8 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 	if ok and type(ps) == "table" and type(ps.Name) == "string" then
 		local cur = u.poseCur or {}
 		u.poseCur = cur
-		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach
+		-- (Pitch 2 item 5) Feet: the model's paw lines (the melee motion pivots about them: nothing sinks or slides)
+		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach, cur.Feet = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach, ps.Feet
 		pose, body, src = cur, poseBody(cur), "fx"
 		-- (battle-feel T2) a flurry's bite from the dash's edge: the held Forward (pose studs, scaled with the body below)
 		local fwd = num(ps.Forward, 0)
@@ -4412,6 +4446,8 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 			src = "ko"
 		elseif u.windup and not down and Atk.Drives(u) then
 			hold.Name, hold.P, hold.Ranged = "Windup", min(K.WINDUP_HOLD, max(0, now - (u.windAt or now)) / K.WINDUP_IN * 0.5), u.ranged == true
+			-- (Pitch 2 item 5) the melee wind-up rocks back about the hind paws (AttackFx.FeetOf: read once per model)
+			hold.Feet = (not u.ranged and type(AF.FeetOf) == "function") and AF.FeetOf(u.model) or nil
 			src = "hold"
 		elseif Atk.Idles(u, down, busy) then
 			hold.Name, hold.P, hold.Ranged = "IdleBattle", now + u.phase * K.IDLE_PHASE, false
@@ -4426,12 +4462,16 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 		u.poseSrc = src
 		u.poseFrom = u.poseBody
 		u.poseSwitch = now
+		-- (look review r3 minor: "the first bite's snap is drawn softer than the mock": 0.12 s from the hit drew 0.069 of
+		-- the knock-back's 0.106 at hit + 0.07; a re-hit, inside AttackFx, played in full) a hit's Hurt fades in over the
+		-- hit stop, while its victim is held still: the knock-back after it is drawn at full strength
+		u.poseFade = (src == "fx" and ps and ps.Name == "Hurt") and num(AF.HIT_STOP, 0.05) or num(AF.CROSSFADE, 0.12)
 		local from = u.poseFromPose or {}
 		u.poseFromPose = from
 		from.Name, from.P, from.Ranged, from.Amp, from.Reach = u.poseShown, u.poseShownP, u.poseShownRanged, u.poseShownAmp, u.poseShownReach
 	end
 	if u.poseSwitch then
-		local w = (now - u.poseSwitch) / num(AF.CROSSFADE, 0.12)
+		local w = (now - u.poseSwitch) / num(u.poseFade, num(AF.CROSSFADE, 0.12))
 		if w < 1 then
 			body = (u.poseFrom or IDENTITY):Lerp(body or IDENTITY, max(0, w))
 			local from = u.poseFromPose

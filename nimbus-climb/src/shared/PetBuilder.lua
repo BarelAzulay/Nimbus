@@ -6753,7 +6753,7 @@ end
 -- (one table keeps PetBuilder's main chunk under the local-variable limit)
 local POSE = {
 	Identity = CFrame.new(),
-	Cache = { Name = nil, P = nil, Ranged = nil, Amp = nil, Reach = nil, Sample = nil },
+	Cache = { Name = nil, P = nil, Ranged = nil, Amp = nil, Reach = nil, Feet = nil, Sample = nil },
 	Forward = math.rad(10), -- how far past broadside a pose may swing a wing forward
 }
 
@@ -6764,16 +6764,19 @@ function POSE.sample(pose)
 	local p = tonumber(pose.P) or 0
 	local ranged = pose.Ranged == true
 	local amp = tonumber(pose.Amp) or 1 -- (the melee Strike's leap scale: PetPoses.Sample)
-	local reach = tonumber(pose.Reach) -- (the melee Strike's leap length, studs at scale 1; nil = the fixed hop)
+	-- (the melee Strike's leap length, studs at scale 1; nil = the fixed hop. Pitch 2 item 5, look review r2: a re-hit's
+	-- Hurt passes its hits as a table: PetPoses Hurt)
+	local reach = type(pose.Reach) == "table" and pose.Reach or tonumber(pose.Reach)
+	local feet = type(pose.Feet) == "table" and pose.Feet or nil -- (Pitch 2 item 5: the paw lines the melee motion turns about)
 	local c = POSE.Cache
-	if c.Sample and c.Name == pose.Name and c.P == p and c.Ranged == ranged and c.Amp == amp and c.Reach == reach then
+	if c.Sample and c.Name == pose.Name and c.P == p and c.Ranged == ranged and c.Amp == amp and c.Reach == reach and c.Feet == feet then
 		return c.Sample
 	end
-	local s = PetPoses.Sample(pose.Name, p, ranged, amp, reach)
+	local s = PetPoses.Sample(pose.Name, p, ranged, amp, reach, feet)
 	if type(s) ~= "table" or typeof(s.Body) ~= "CFrame" or type(s.Groups) ~= "table" or type(s.Lids) ~= "number" then
 		return nil
 	end
-	c.Name, c.P, c.Ranged, c.Amp, c.Reach, c.Sample = pose.Name, p, ranged, amp, reach, s
+	c.Name, c.P, c.Ranged, c.Amp, c.Reach, c.Feet, c.Sample = pose.Name, p, ranged, amp, reach, feet, s
 	return s
 end
 
