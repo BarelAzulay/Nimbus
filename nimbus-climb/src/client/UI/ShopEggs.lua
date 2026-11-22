@@ -1516,7 +1516,9 @@ function L.cardSheetPhone(t, w, th)
 	local pad = phonePad(th)
 	local row2Y = th - pad - 44
 	local spinY = row2Y - 50
-	local sw = math.max(60, math.min(116, w - 6 - 6 - 6 - 80))
+	-- (P2 icons look fin1, minor) the chip column 84 wide (was 80) for the chips' 8 px gap below: the stage gives up 4 px
+	-- (112 still holds a 53-cell drawing at 2 px cells)
+	local sw = math.max(60, math.min(112, w - 6 - 6 - 6 - 84))
 	local rx = 6 + sw + 6
 	local rw = w - rx - 6
 	-- (P2 icons look fin0, minor: the chips' edge lay 1 px under the Spin plank's) the stage and the chips end 12 px over
@@ -1528,8 +1530,10 @@ function L.cardSheetPhone(t, w, th)
 	t.Plate.TextSize = rw < 90 and 15 or 17
 	place(t.Plate, rx, 6, rw, 30)
 	-- (P2 icons review r1, major 1) two columns of tall chips, the pixel egg (2 px cells) over its percent as on PC: in one
-	-- column the chips were 20 px faces, the egg and its drop shadow flush on the wood
-	L.chips(t, rx, 40, rw, spinY - 12 - 40, 2, 20, 15, 4)
+	-- column the chips were 20 px faces, the egg and its drop shadow flush on the wood. (P2 icons look fin1, minor: the
+	-- chips' 2 px wood edges met in a 4 px gap, fused into one line, and the plate's edge touched the grid) 8 px apart and
+	-- 8 under the plate: 4 px of cream between the edges (chips 38 wide: the real "60%", ~30 px, stays over its egg)
+	L.chips(t, rx, 44, rw, spinY - 12 - 44, 2, 20, 15, 8)
 	place(t.Spin.Button, 6, spinY, w - 12, 44)
 	H.arrange(t.Spin, w - 12, 44, 16, 18)
 	local half = math.floor((w - 18) / 2)

@@ -18006,6 +18006,14 @@ local function clientScenarios()
 			table.concat(off, ", "))
 		local saved = ms.Id
 		ms.Id = 5151515151
+		-- (P2 icons look fin1) the page lays its chips out with the real faces' widths, as TextService gives them in the game
+		-- (ShopEggs.Metrics.MEASURE, the hook render_gui uses too): with the mock's flat 0.5 em a 36 px phone chip put "60%"
+		-- over its egg here while the game put it beside the egg, cut to "..."
+		local SEm = U7.client("UI/ShopEggs").Metrics
+		local savedMeasure = SEm.MEASURE
+		SEm.MEASURE = function(text, size, font)
+			return SmokeCommon.RealWidth(text, size, font)
+		end
 		-- the drawn box of an icon (its Frames or its ImageLabel) in its row's design px
 		local function drawn(icon)
 			local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
@@ -18061,7 +18069,10 @@ local function clientScenarios()
 					-- the egg and the percent inside the chip's face (over its 3 px lip), apart, the text 2 px clear of the sides
 					local cw, chh = row.Size.X.Offset, row.Size.Y.Offset
 					local ex0, ey0, ex1, ey1 = drawn(pix)
-					local tw = Theme.Measure(pct.Text, Theme.FontOf(pct), pct.TextSize, 10000).X
+					-- (P2 icons look fin1: the mock's flat 0.5 em measure let a 36 px phone chip pass while the real
+					-- FredokaOne "60%" (30 px) went to the side and cut to "...") the wider of the mock's and the real face's
+					local tw = math.max(Theme.Measure(pct.Text, Theme.FontOf(pct), pct.TextSize, 10000).X,
+						SmokeCommon.RealWidth(pct.Text, pct.TextSize, Theme.FontOf(pct), true) or 0)
 					local px, pw = pct.Position.X.Offset, pct.Size.X.Offset
 					local tx0 = pct.TextXAlignment == Enum.TextXAlignment.Center and px + (pw - tw) / 2
 						or (pct.TextXAlignment == Enum.TextXAlignment.Right and px + pw - tw or px)
@@ -18119,6 +18130,50 @@ local function clientScenarios()
 					table.concat(small, "; ", 1, math.min(#small, 6)))
 				T.check(#fused == 0, "egg chips (" .. m[1] .. "): the chips' wood edge " .. need .. " screen px or more over the Spin plank's (not fused to it)",
 					table.concat(fused, "; "))
+				-- (P2 icons look fin1, minor: at 844 x 390 the 2 x 2 chips had 0 px of cream between them, their wood edges
+				-- fused into one 4 px line, and the name plate's edge touched the grid) cream between neighbouring chips'
+				-- wood edges (both UIStrokes counted, screen px): 3 or more on the landscape phone (the phone mock-up has
+				-- about 7), and the name plate's edge 3 or more over the grid there; elsewhere never fused (1 or more:
+				-- 2 at 1920 and 390, ~1 at 1280, the chips' gap left as it is)
+				local apartNeed = m[1] == "Phone" and 3 or 1
+				local tight = {}
+				local function edgeGap(a, b2)
+					local ta, tb = strokeOf(a) * scale, strokeOf(b2) * scale
+					local ax0, ay0 = a.AbsolutePosition.X - ta, a.AbsolutePosition.Y - ta
+					local ax1, ay1 = a.AbsolutePosition.X + a.AbsoluteSize.X + ta, a.AbsolutePosition.Y + a.AbsoluteSize.Y + ta
+					local bx0, by0 = b2.AbsolutePosition.X - tb, b2.AbsolutePosition.Y - tb
+					local bx1, by1 = b2.AbsolutePosition.X + b2.AbsoluteSize.X + tb, b2.AbsolutePosition.Y + b2.AbsoluteSize.Y + tb
+					return math.max(bx0 - ax1, ax0 - bx1, by0 - ay1, ay0 - by1)
+				end
+				for _, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+					local body = roots[id] and roots[id].Parent
+					local odds = body and body:FindFirstChild("Odds")
+					local rows = {}
+					for _, row in ipairs(odds and odds:GetChildren() or {}) do
+						if row:IsA("Frame") and row.Name:match("^Odds_") and row.Visible then
+							rows[#rows + 1] = row
+						end
+					end
+					for i = 1, #rows do
+						for j = i + 1, #rows do
+							local g = edgeGap(rows[i], rows[j])
+							if g < apartNeed - 0.01 then
+								tight[#tight + 1] = fmt("%s %s|%s %.1f px", id, rows[i].Name:sub(6), rows[j].Name:sub(6), g)
+							end
+						end
+					end
+					local plate = body and body:FindFirstChild("NamePlate")
+					if m[1] == "Phone" and plate and plate.Visible then
+						for _, row in ipairs(rows) do
+							local g = edgeGap(plate, row)
+							if g < apartNeed - 0.01 then
+								tight[#tight + 1] = fmt("%s plate|%s %.1f px", id, row.Name:sub(6), g)
+							end
+						end
+					end
+				end
+				T.check(#tight == 0, "egg chips (" .. m[1] .. "): " .. apartNeed .. " screen px or more of cream between neighbouring chips' wood edges"
+					.. (m[1] == "Phone" and " and under the name plate's" or ""), table.concat(tight, "; ", 1, math.min(#tight, 6)))
 			end, m[3], true)
 			T.check(ok, "egg chips (" .. m[1] .. "): the page builds and lays out", tostring(err))
 		end
@@ -18147,6 +18202,7 @@ local function clientScenarios()
 		T.check(ok, "egg chips (no egg cell): the page builds and lays out", tostring(err))
 		ms.Eggs = eggs
 		ms.Id = saved
+		SEm.MEASURE = savedMeasure
 		LKC.flushErrors("machines_egg_chips")
 	end)
 
