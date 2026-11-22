@@ -917,8 +917,11 @@ local function clientScenarios()
 					return best
 				end
 
-				------------------------------------------------------------------ one bite (an NPC: its Windup 0.45 s ahead)
-				local land = clock + 0.45
+				------------------------------------------------------------------ one bite (an NPC: its Windup 0.50 s ahead)
+				-- (look review r3: the server's Windup comes on its 0.1 s step, 0.50 s before the hit, and its `at` is that
+				-- hit's step; was 0.45 s here, a lead the real path never sends)
+				local windAt = clock
+				local land = clock + 0.5
 				T.check(AF.Dash(unit, src, tgt, land, clock, { Tempo = 2 }) == true, fmt("bounce timing: %s: an NPC's dash is taken", look[3]))
 				local _, info = AF.DashState(unit)
 				local edge = type(info) == "table" and info.Reach or nil
@@ -945,9 +948,23 @@ local function clientScenarios()
 						firstIn = f.T
 					end
 				end
-				T.check(fw >= 0.08 and firstIn ~= nil and firstIn - (land - 0.45) >= 0.25 - DT - 1e-6 and abs(firstIn - runAt) <= DT + 1e-6,
-					fmt("bounce timing: %s: the NPC's wind-up lasts 0.25 s on the client (%.3f s from its Windup to the run, the run %.3f s before the hit)", look[3],
-						firstIn and firstIn - (land - 0.45) or -1, firstIn and land - firstIn or -1))
+				-- (look review r3 minor: "an NPC's wind-up is never the owner's 0.25 s on the real path": AttackFx assumed its
+				-- Windup 0.45 s ahead; the server's 0.50 s gave a 0.30 s wind-up, 0.40 s (`at` early) a 0.20 s one) the gather
+				-- (the Windup's p above 0) lasts the owner's 0.25 s up to the run; before it the pet stands exactly at rest
+				local gather, stillOk = nil, true
+				for _, f in ipairs(frames) do
+					if f.T > windAt and firstIn and f.T < firstIn and f.Name == "Windup" then
+						if (f.P or 0) > 1e-6 then
+							gather = gather or f.T
+						elseif not gather and f.Body then
+							local _, ang = f.Body:ToAxisAngle()
+							stillOk = stillOk and f.Body.Position.Magnitude < 1e-5 and abs(ang) < 1e-4
+						end
+					end
+				end
+				T.check(fw >= 0.08 and firstIn ~= nil and gather ~= nil and abs((firstIn - gather) - 0.25) <= DT + 1e-6 and stillOk and abs(firstIn - runAt) <= DT + 1e-6,
+					fmt("bounce timing: %s: the NPC's wind-up gathers for 0.25 s on the client (%.3f s up to the run; at rest %.3f s before it; the run %.3f s before the hit)", look[3],
+						(firstIn and gather) and firstIn - gather or -1, gather and gather - windAt or -1, firstIn and land - firstIn or -1))
 				-- the hit frame: the face is reached exactly on the hit's time, held through the hit stop
 				local reachAt = nil
 				for _, f in ipairs(frames) do
