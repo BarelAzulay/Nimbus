@@ -3885,7 +3885,17 @@ local function npcStep(self, u, dt, events)
 			u.windAt = t + windup
 			u.windTarget = target
 			u.nextAttack = t + u.interval / slow * (0.9 + 0.2 * rand(self))
-			events[#events + 1] = { type = EV.Windup, unit = u.id, target = target.id, at = r1(u.windAt) }
+			-- (look review r3, major: "about half of an NPC's bites land and chomp 0.10 s before their Hit plays") `at` is
+			-- the step the hit lands on: the first step at or past windAt, added up the way Step adds dt (r1(t + 0.45)
+			-- rounded x.x5 down on about half the steps, while the hit lands on t + 0.5; the client lands its dash on `at`)
+			local landAt = t
+			for _ = 1, 1000 do
+				landAt = landAt + dt
+				if landAt >= u.windAt then
+					break
+				end
+			end
+			events[#events + 1] = { type = EV.Windup, unit = u.id, target = target.id, at = r1(landAt) }
 			Strike.open(self, u, target, u.windAt) -- (feel-balance) the client lands this bite's dash at windAt
 		end
 	elseif moved then
