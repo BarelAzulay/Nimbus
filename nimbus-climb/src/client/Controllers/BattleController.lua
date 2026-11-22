@@ -7064,10 +7064,23 @@ function Hud.LayoutFighter(B, m, top)
 	local badge = compact and 22 or 26
 	local starsW = (B.fighterEvo or 0) > 0 and (compact and 30 or 38) or 0
 	local nameW = barW - lvW - badge - starsW - 16
+	local nameFloor = max(minSize, compact and 16 or 18)
+	-- (keys lane: an evolved fighter's "Mallow Kitten" still read "Mallow K..." on every phone) where the name does not fit its
+	-- row at the floor beside the stars, a phone's stars move down to the right end of the ENERGY caption's row
+	local starsLow = false
+	if compact and starsW > 0 and fu0 and fu0.name then
+		local nm = tostring(fu0.name)
+		local okN, sz = pcall(Theme.Measure, nm, F.Name:GetAttribute("FontRole") or "Heading", nameFloor)
+		local need = max((okN and typeof(sz) == "Vector2") and sz.X or 0, #nm * nameFloor * 0.56) * 1.04
+		if need > nameW then
+			starsLow = true
+			nameW = barW - lvW - badge - 11
+		end
+	end
 	F.Name.Position = UDim2.fromOffset(pad, y)
 	F.Name.Size = UDim2.fromOffset(nameW, nameH)
 	if fu0 and fu0.name then
-		Hud.FitLine(F.Name, tostring(fu0.name), nameSize, max(minSize, compact and 16 or 18), nameW)
+		Hud.FitLine(F.Name, tostring(fu0.name), nameSize, nameFloor, nameW)
 		setText(F.Name, tostring(fu0.name)) -- (the whole name: TextTruncate cuts it only where the floor still runs past)
 	end
 	F.Level.Size = UDim2.fromOffset(lvW, compact and 22 or 26)
@@ -7118,12 +7131,17 @@ function Hud.LayoutFighter(B, m, top)
 	y = y + enH + max(3, math.ceil((hs - enH) / 2) + 2)
 	local capH = compact and 18 or 22
 	local capSize = compact and 14 or 15
+	local capW = starsLow and (barW - starsW - 4) or barW
 	F.EnergyText.Position = UDim2.fromOffset(pad, y)
-	F.EnergyText.Size = UDim2.fromOffset(barW, capH)
+	F.EnergyText.Size = UDim2.fromOffset(capW, capH)
 	F.EnergyText.TextSize = capSize
 	F.EnergyText.TextTruncate = Enum.TextTruncate.AtEnd
 	F.EnergyText:SetAttribute("BaseText", capSize)
-	Hud.energyShort = textWidth("ENERGY " .. METER_MAX .. "/" .. METER_MAX, max(capSize, minSize)) > barW
+	Hud.energyShort = textWidth("ENERGY " .. METER_MAX .. "/" .. METER_MAX, max(capSize, minSize)) > capW
+	if starsLow then
+		F.Stars.Position = UDim2.fromOffset(pad + barW - starsW, y)
+		F.Stars.Size = UDim2.fromOffset(starsW, capH)
+	end
 	y = y + capH + (compact and 6 or 10)
 	local cardH = y
 	Hud.fighterCard.Root.Size = UDim2.fromOffset(w, cardH)
