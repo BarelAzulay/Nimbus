@@ -4255,12 +4255,16 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 		u.poseSrc = src
 		u.poseFrom = u.poseBody
 		u.poseSwitch = now
+		-- (look review r3 minor: "the first bite's snap is drawn softer than the mock": 0.12 s from the hit drew 0.069 of
+		-- the knock-back's 0.106 at hit + 0.07; a re-hit, inside AttackFx, played in full) a hit's Hurt fades in over the
+		-- hit stop, while its victim is held still: the knock-back after it is drawn at full strength
+		u.poseFade = (src == "fx" and ps and ps.Name == "Hurt") and num(AF.HIT_STOP, 0.05) or num(AF.CROSSFADE, 0.12)
 		local from = u.poseFromPose or {}
 		u.poseFromPose = from
 		from.Name, from.P, from.Ranged, from.Amp, from.Reach = u.poseShown, u.poseShownP, u.poseShownRanged, u.poseShownAmp, u.poseShownReach
 	end
 	if u.poseSwitch then
-		local w = (now - u.poseSwitch) / num(AF.CROSSFADE, 0.12)
+		local w = (now - u.poseSwitch) / num(u.poseFade, num(AF.CROSSFADE, 0.12))
 		if w < 1 then
 			body = (u.poseFrom or IDENTITY):Lerp(body or IDENTITY, max(0, w))
 			local from = u.poseFromPose
