@@ -22,7 +22,8 @@
 --                         shared/PixelIcon at 18, 27 and 36 px
 --   lobby[:gift|:fold]    the idle lobby HUD (gift: U9-4 look review, the daily payload in, the Gifts block's PlayBar; fold:
 --                         Pitch 2 item 04 B, the menu column folded with a tile's badge on: the tab's red "!" block)
---   worldui[:npc|:prompt|:altar|:gates|:hits|:places|:poster|:guide|:guideahead|:guidehere]  (Pitch 2 items 04 B / 13 A) the
+--   worldui[:npc|:prompt|:altar|:gates|:hits|:places|:poster|:guide|:guideahead|:guidenear|:guidehere]  (Pitch 2 items 04 B /
+--                         13 A) the
 --                         world parts
 --                         built by their real builders, mirrored into the ScreenGui WorldMirror at their on-screen pixel size: NPC
 --                         signs, prompt planks, the altar's hanging header, THE GATES face, the damage totals and pops,
@@ -5067,7 +5068,8 @@ function WU.guide(screen, mode)
 	local flat = Vector3.new(gate.Position.X - spawn.X, 0, gate.Position.Z - spawn.Z)
 	local dir = flat.Magnitude > 1 and flat.Unit or Vector3.new(0, 0, -1)
 	local standY = spawn.Y
-	local at = here and (gate.Position - dir * 7) or (gate.Position - dir * 40) -- (here: inside the 8-stud arrival)
+	-- (here: inside the 8-stud arrival; near: 22 studs out, the gate's hanging board in range over it)
+	local at = here and (gate.Position - dir * 7) or (gate.Position - dir * (mode == "near" and 22 or 40))
 	at = Vector3.new(at.X, standY, at.Z)
 	Mock.Teleport(LocalPlayer, CFrame.lookAt(at, at + dir))
 	advance(0.4)
@@ -5151,6 +5153,23 @@ function WU.guide(screen, mode)
 		end
 	end
 	local drawn = WU.sketch(screen, cam, list)
+	-- (look review r1, M5) the gate's own hanging board (GateTag) where it projects, when the camera is within its
+	-- MaxDistance, behind the guide's sign: the guide and the place board seen together
+	local gp = WU.gatePart()
+	local gateModel = gp and gp:FindFirstAncestorWhichIsA("Model")
+	local gateTag = gateModel and gateModel:FindFirstChild("GateTag", true)
+	if gateTag and gateTag.Enabled ~= false then
+		local ad = gateTag.Adornee or gateTag.Parent
+		local at = ad and ad:IsA("BasePart") and (ad.Position + gateTag.StudsOffsetWorldSpace)
+		local dist = at and (cam.Position - at).Magnitude
+		local x, y, w, h = WU.billboardRect(cam, gateTag)
+		if x and dist and dist <= gateTag.MaxDistance then
+			WU.cell(screen, gateTag, x, y, "GateTag").ZIndex = 4990
+			note(fmt("worldui:guide the gate's board at %.0f,%.0f (%dx%d px, %.0f studs from the camera)", x, y, w, h, dist))
+		else
+			note(fmt("worldui:guide the gate's board is out of range (%s studs, MaxDistance %d)", dist and fmt("%.0f", dist) or "?", gateTag.MaxDistance))
+		end
+	end
 	local sign = wg and wg:FindFirstChild("GuideSign", true)
 	if sign and sign.Enabled ~= false then
 		local x, y = WU.billboardRect(cam, sign)
@@ -5180,7 +5199,7 @@ function WU.guide(screen, mode)
 	if chip then
 		note(fmt("worldui:guide the chip at %.0f,%.0f (%dx%d px, under the top inset)", chip.AbsolutePosition.X, chip.AbsolutePosition.Y, chip.AbsoluteSize.X, chip.AbsoluteSize.Y))
 	end
-	WU.caption(screen, here and "worldui:guidehere (parts sketched)" or ("worldui:" .. (mode == "walk" and "guide" or "guideahead") .. " (parts sketched)"), 24, 66)
+	WU.caption(screen, here and "worldui:guidehere (parts sketched)" or ("worldui:" .. (mode == "walk" and "guide" or (mode == "near" and "guidenear" or "guideahead")) .. " (parts sketched)"), 24, 66)
 	note(fmt("worldui:guide %s %.0f studs from the gate: %d boxes drawn (%d arrow / sign parts, %d dots)", tostring(mode),
 		Vector3.new(gate.Position.X - rp.X, 0, gate.Position.Z - rp.Z).Magnitude, drawn, voxels, dots))
 end
@@ -5315,7 +5334,7 @@ scenario("worldui", function(piece)
 		piece = "npc"
 	end
 	local undo = WU.realMeasure(req("shared/Theme"))
-	local guide = { guide = "walk", guideahead = "ahead", guidehere = "here" }
+	local guide = { guide = "walk", guideahead = "ahead", guidehere = "here", guidenear = "near" }
 	local screen = WU.screen(guide[piece] and -1 or 0)
 	if piece == "npc" then
 		WU.npc(screen)
@@ -5335,7 +5354,7 @@ scenario("worldui", function(piece)
 		WU.guide(screen, guide[piece])
 	else
 		undo()
-		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:poster|:guide|:guideahead|:guidehere]")
+		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:poster|:guide|:guideahead|:guidenear|:guidehere]")
 	end
 	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	advance(0.1)
