@@ -8236,6 +8236,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	Hud.leaveSlot = leaveOn and { w - P - leaveW, P, leaveW, rowH } or nil
 	-- (a narrow card under 300, a tall phone's: tighter gaps, the mode line keeps the room its shortest form needs)
 	local gapL, gapT = (w < 300) and 6 or 10, (w < 300) and 4 or 8
+	-- (keys look r5 c07: at 640 x 360 the timer's text ended 2.8 px from Leave's 2 px frame) Leave's frame and
+	-- K.INK_AIR_PX of air at least
+	gapL = max(gapL, Hud.Air(m, 2 + K.INK_AIR_PX))
 	local right = x1 - (leaveOn and (leaveW + gapL) or 0)
 	local hasTimer = B.TimeLimit > 0
 	local timerPx = px(compact and 22 or 24)

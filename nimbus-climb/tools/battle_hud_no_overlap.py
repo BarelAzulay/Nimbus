@@ -351,6 +351,10 @@ class Checker:
                     continue
                 if ring_i or ring_k:
                     (c, rad), r, other, op = (rings(w, h)[gi], rk, gk, pk) if ring_i else (rings(w, h)[gk], ri, gi, pi)
+                    # (keys look r5 c09 asked MIN_GAP here: 844 x 390's helpers now end 4.8 / 8 px above the stick's ring;
+                    # 640 x 360 and 667 x 375 keep 1-2 px: their helper column is already at its tightest (the short
+                    # cell, the names on two solid lines), and 4 px more would cut "TIDE MEND". The ring is Roblox's
+                    # translucent sketch, so the rule stays: no ink on it)
                     d = min(ring_gap(x, c, rad) for x in inks.get(op, [r]))
                     self.check(d >= 0, tag + "%s keeps off %s" % (op, gi if ring_i else gk), "%s %s %.1f px" % (other, fmt(r), d))
                     continue
@@ -460,6 +464,15 @@ class Checker:
         timer = nodes.get(B + "TopCard.ModeCard.Body.Timer")
         if timer and text_of(timer) and not ((w, h) == (640, 360) and not scen.startswith("battle:duel")):
             self.check(B + "TopCard.ModeCard.Body.Clock" in nodes, tag + "the top card's timer wears its clock")
+        # (keys look r5 c07: at 640 x 360 the timer '5:21' ended 2.8 px from Leave's frame; both ride in the TOP part) the
+        # timer's text keeps MIN_GAP off Leave's ink
+        leave = nodes.get(B + "LeaveButton")
+        if timer and leave and text_of(timer) and leave["w"] > 1 and self.rg is not None:
+            ti, li = text_ink(timer, self.rg, self.fonts), ink_of(leave, None, None)
+            if ti and li:
+                d = ink_gap([ti], li, ti, union(li), MIN_GAP)[0]
+                self.check(d >= MIN_GAP - 0.05, tag + "the top card's timer keeps %g px off Leave" % MIN_GAP,
+                           "timer %s, Leave %s: %.1f px" % (fmt(ti), fmt(union(li)), d))
         # pills (the full raid's boss strip)
         if scen == "battle:raid:full":
             self.pills(tag, w, h, nodes)
