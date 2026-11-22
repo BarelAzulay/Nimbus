@@ -6971,12 +6971,23 @@ function Hud.LayoutFighter(B, m, top)
 	F.Name:SetAttribute("BaseText", nameSize)
 	local minSize = math.ceil(K.MIN_TEXT_PX / max(0.05, m.F))
 	local lvSize = max(compact and 15 or 17, minSize)
-	local lvW = floor(textWidth("Lv 100", lvSize) * 0.9) + 14
+	-- (keys lane, look fixA r1 / keys r2 minor: "Biscuit B...", "Mallow ...", "Mallow Kitt..." at every size, even where the
+	-- card had room) the Lv tag as wide as this fighter's own level ("Lv 34", not always "Lv 100"), and the name below steps
+	-- down to the readability floor before it is cut
+	local fu0 = B.fighterId and B.units and B.units[B.fighterId]
+	local lvText = (fu0 and fu0.level) and ("Lv " .. tostring(floor(fu0.level))) or "Lv 100"
+	-- ("Lv 100" kept 0.9 of the 0.62 em guess + 14; a shorter level's own text 4 px more: battle_family_fits read "Lv 30"
+	-- at 62 px, wanting its spare past that)
+	local lvW = floor(textWidth(lvText, lvSize) * 0.9) + ((lvText == "Lv 100") and 14 or 18)
 	local badge = compact and 22 or 26
 	local starsW = (B.fighterEvo or 0) > 0 and (compact and 30 or 38) or 0
 	local nameW = barW - lvW - badge - starsW - 16
 	F.Name.Position = UDim2.fromOffset(pad, y)
 	F.Name.Size = UDim2.fromOffset(nameW, nameH)
+	if fu0 and fu0.name then
+		Hud.FitLine(F.Name, tostring(fu0.name), nameSize, max(minSize, compact and 16 or 18), nameW)
+		setText(F.Name, tostring(fu0.name)) -- (the whole name: TextTruncate cuts it only where the floor still runs past)
+	end
 	F.Level.Size = UDim2.fromOffset(lvW, compact and 22 or 26)
 	F.Level.Position = UDim2.fromOffset(pad + nameW + 6, y + (nameH - (compact and 22 or 26)) / 2)
 	F.Level.TextSize = lvSize
