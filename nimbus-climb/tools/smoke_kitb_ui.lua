@@ -17636,6 +17636,34 @@ local function clientScenarios()
 				T.check(#wrong == 0 and shown == 5, "machines (" .. m[1] .. "): every roulette shows its own sheet cell, one Pixelated ImageLabel at " .. want
 					.. " screen px a cell, inside its box on its stage, clear of the card's rows", table.concat(wrong, "; "))
 				T.check(n == 5, "machines (" .. m[1] .. "): five roulettes, five different cells (each its own machine)", tostring(n))
+				-- (kit-b wave-2 merge: icons item 10 A x world item 13 A minor 5) the landscape phone's away / match line
+				-- ("Home first, then the arrow" / "Finish the match first") with the vault drawn: the world lane placed it full
+				-- width at y 116, the band the vault now fills, so it moves to the odds column beside the vault (under the
+				-- odds, over the altar chip). That column is 72 x 32 on this 692 x 280 page, too small for its 4 wrapped rows,
+				-- so here it HIDES rather than overlap the vault or clip (an open layout call for the owner, logged in the merge
+				-- report). The check: when it shows, it is inside the card, over the chip, its rows fit; it never shows clipped.
+				-- Today's drawn machine (MachineSheet.Id 0, what ships) keeps the full-width line: travel_shows_way checks it.
+				if m[1] == "Phone" then
+					local hc = roots.Secret and roots.Secret.Parent
+					local hint = hc and hc:FindFirstChild("Hint")
+					local TX = U7.client("UI/ShopEggs").Metrics.TEXT
+					if hint and TX and (hint.Text == TX.HeroHintLobbyShort or hint.Text == TX.HeroHintLocked) then
+						local hr, cr = absRect(hint), absRect(hc)
+						local ach = hc:FindFirstChild("AltarChip")
+						local need = SmokeCommon.RealWidth(hint.Text, hint.TextSize, hint.Font) or hint.TextBounds.X
+						local rows = math.ceil(need / math.max(1, hint.Size.X.Offset))
+						local roomy = rows * hint.TextSize <= hint.Size.Y.Offset + 2
+						local fits = hint.Visible and hr[1] >= cr[1] - 0.5 and hr[1] + hr[3] <= cr[1] + cr[3] + 0.5
+							and not (ach and ach.Visible and meets(hr, absRect(ach)))
+							and roomy and hint.TextSize >= 14
+						T.check(fits or (not hint.Visible and not roomy), "machines (Phone): the away line, beside the vault, shows only where it fits (inside the card, over the altar chip, its rows whole); never clipped",
+							fmt("visible %s, %d rows of %d in %.0fx%.0f at %.0f,%.0f", tostring(hint.Visible), rows, hint.TextSize,
+								hint.Size.X.Offset, hint.Size.Y.Offset, hint.Position.X.Offset, hint.Position.Y.Offset))
+					else
+						T.check(false, "machines (Phone): the away line shows beside the vault (the card is away from the lobby)",
+							hint and hint.Text or "no Hint")
+					end
+				end
 				-- the hero: ONE bright vault (the mock-up's): the big egg goes, no Dim over it though away from the altar, no
 				-- box drawn round it (its stage is the card's own navy)
 				local hero = roots.Secret

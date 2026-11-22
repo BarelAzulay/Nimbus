@@ -1580,8 +1580,21 @@ function L.heroPhone(t, w, th)
 	-- one 15 px row (H.paint shows it away from the lobby or held by a match, never in the plain lobby state)
 	t.Hint.TextSize = 15
 	t.Hint.TextWrapped = true
-	place(t.Hint, 6, 116, w - 12, chipY - 2 - 116)
-	t.PhoneHintRoom = (chipY - 2 - 116) >= 17
+	-- (kit-b wave-2 merge, icons item 10 A x world item 13 A) with the vault drawn (P2 icons r1) the left column down to the
+	-- chip is the vault's, so the line takes the odds column beside it (under the odds' 112 px foot); today's drawn
+	-- machine ends at 114, so there the line keeps the full width. It shows only where its wrapped rows fit (H.paint)
+	local hx, hw = 6, w - 12
+	if t.Machine.Sheet then
+		hx = 6 + math.max(64, math.min(122, w - 6 - 6 - 6 - 72)) + 6
+		hw = w - hx - 6
+	end
+	local hh = chipY - 2 - 116
+	place(t.Hint, hx, 116, hw, hh)
+	local rows = 1
+	for _, s in ipairs({ K.TEXT.HeroHintLobbyShort, K.TEXT.HeroHintLocked }) do
+		rows = math.max(rows, math.ceil((H.textW(s, 15, Theme.FontOf(t.Hint)) + 2) / math.max(1, hw)))
+	end
+	t.PhoneHintRoom = hh >= rows * 15 + 2
 	t.Hint.Visible = false
 end
 
