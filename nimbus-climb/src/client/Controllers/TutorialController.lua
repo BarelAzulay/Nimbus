@@ -3744,13 +3744,31 @@ local function placeSign(area, hud, m, a)
 	-- (G.away.hide: it shows again at its next spot at once), its row within its reach of home (its whole width off it,
 	-- each way); grown as its box is above
 	local soon = {}
+	-- (the arrow's shift in K.SIGN_HOLD s: sideways at least as far as its fastest of the last K.GUIDE_HOLD s carries it,
+	-- either way - turning back, its speed passes through 0)
+	local sx = math.max(math.abs(((ahead.x0 + ahead.x1) - (a.x0 + a.x1)) / 2), (G.vxPeak or 0) * K.SIGN_HOLD)
+	local sy = ((ahead.y0 + ahead.y1) - (a.y0 + a.y1)) / 2
 	if G.chip and G.to and G.away then
 		local kc = G.scale and G.scale.Scale or 1
 		local wf = ((G.lineFull and G.lineFull.w) or G.chip.Size.X.Offset) * kc
 		local hx, hy = G.homeAt and G.homeAt.x or area.X / 2, G.homeAt and G.homeAt.y or G.to.y
 		local r0 = chipRectAt(hx, hy, wf)
 		local extra = math.max(0, 2 * K.SIGN_CLEAR * kc + 1 - m)
-		soon[1] = grown(G.away.hide and { x0 = r0.x0 - wf, y0 = r0.y0, x1 = r0.x1 + wf, y1 = r0.y1 } or r0, extra)
+		-- (travel_guide_clear 1920 x 1080 graze: the arrow's tip on home, the chip aside, and the sign hid) away, it comes
+		-- home only once the arrow is off home in either line: while the arrow, all the way it may go in that time, stays on
+		-- the compact line's home and off the chip's berth where it stands, it stays where it is. An arrow coming within
+		-- that berth sends it anywhere in its row (720 x 405, pan at 6 degrees a second: it took the other side, over the
+		-- sign), as when it is hidden
+		local rc = chipRectAt(hx, hy, math.min(wf, (G.lineCompact and G.lineCompact.w * kc) or wf))
+		local function at(dx, dy)
+			return { x0 = a.x0 + dx, y0 = a.y0 + dy, x1 = a.x1 + dx, y1 = a.y1 + dy }
+		end
+		local reach = boxOf(boxOf(at(sx, sy), at(-sx, sy)), a)
+		local row = G.away.hide or rectsOverlap(reach, grown(chipRectAt(G.to.x, G.to.y), K.GUIDE_CLEAR * kc))
+		local stays = not row and rectsOverlap(a, rc) and rectsOverlap(at(sx, sy), rc) and rectsOverlap(at(-sx, sy), rc)
+		if not stays then
+			soon[1] = grown(row and { x0 = r0.x0 - wf, y0 = r0.y0, x1 = r0.x1 + wf, y1 = r0.y1 } or r0, extra)
+		end
 	end
 	local k = (W.signScale and W.signScale.Scale) or 1
 	-- (fix6) the spot `spot` the sign `r` just took still holds with the arrow at `ahead`: beside it, its middle between the
@@ -3791,10 +3809,7 @@ local function placeSign(area, hud, m, a)
 		-- turned back) and clear of the HUD and the chip all the way the arrow carries it in that time - and as far the
 		-- other way (a camera turning back) - and of where the chip may stand by then: home while it is away, and its row
 		-- within its reach while it is hidden
-		-- (sideways at least as far as the arrow's fastest of the last K.GUIDE_HOLD s carries it: turning back, its speed
-		-- passes through 0; and wholly on the screen all that way)
-		local sx, sy = ((ahead.x0 + ahead.x1) - (a.x0 + a.x1)) / 2, ((ahead.y0 + ahead.y1) - (a.y0 + a.y1)) / 2
-		sx = math.max(math.abs(sx), (G.vxPeak or 0) * K.SIGN_HOLD)
+		-- (the arrow's shift sx, sy above; and wholly on the screen all that way)
 		local way = boxOf({ x0 = r.x0 + sx, y0 = r.y0 + sy, x1 = r.x1 + sx, y1 = r.y1 + sy },
 			{ x0 = r.x0 - sx, y0 = r.y0 + sy, x1 = r.x1 - sx, y1 = r.y1 + sy })
 		way = boxOf(way, r)
