@@ -6487,6 +6487,20 @@ function Hud.LayoutEnemies(B, m)
 			row.Target.TextSize = max(15, math.ceil(Hud.FloorPx() / max(0.05, m.F) - 1e-6))
 			row.Target:SetAttribute("BaseText", 15)
 			fitPill(row.Target, 22)
+			-- (fix6b, look1 #5: from 1920 x 1200 up, a screen factor over 1, 'TARGET' ran 3.4 - 3.9 px past its tab: the box
+			-- leant on AutomaticSize to grow past fitPill's 0.62 em guess, which it did not under the HUD's scale) the box as
+			-- wide as the capitals need on its own: 0.72 em a capital (FredokaOne's run past Theme's measure), 0.58 any other
+			-- character, 0.3 a space, its padding and fitPill's 4 px to spare
+			local tpad = row.Target:FindFirstChildOfClass("UIPadding")
+			local tin = tpad and (tpad.PaddingLeft.Offset + tpad.PaddingRight.Offset) or 16
+			local tem = 0
+			for ch in tostring(row.Target.Text):gmatch(".") do
+				tem = tem + ((ch == " ") and 0.3 or (ch:match("%u") and 0.72 or 0.58))
+			end
+			local tneed = math.ceil(tem * row.Target.TextSize) + tin + 4
+			if row.Target.Size.X.Offset < tneed then
+				row.Target.Size = UDim2.fromOffset(tneed, 22)
+			end
 			-- (kit-b U9-6) the locked row is the selected card (the gold face, the ink edge); a boss's row keeps a gold lip
 			row.Stroke.Color = locked and KB.Ink or KB.Edge
 			row.Frame.BackgroundColor3 = locked and SIGN.Selected or KB.Face
@@ -6893,7 +6907,10 @@ function Hud.Rebuild()
 		-- reach (4 design px and its 2 px stroke) and K.INK_AIR_PX of air
 		underStrips = max(6, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX)) + 4 + Hud.Air(m, 2)
 	end
-	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and max(topY, curBottom + underStrips) + over or (topY + over)
+	-- (fix6b, look1 #5: the strips' right edge, design px, was held against the screen's width in screen px - m.W * m.F -
+	-- so from 1440 px tall up, a factor over 1, the list missed them and lay on the token strip, 33.5 px at 2560 x 1440)
+	-- both in design px
+	local rightY = (curBottom > 0 and curRight > m.W - (K.ROW_W + 40)) and max(topY, curBottom + underStrips) + over or (topY + over)
 	Hud.listTop = rightY
 	Hud.listX = nil
 	if Hud.listLeft then
