@@ -2089,10 +2089,21 @@ function R.place(view)
 		S.EndVitalsOff = true -- (spec 02 B: a phone's vitals card hides while a result card is up, wherever the card sits)
 	else
 		S.EndCompact = false
-		S.EndVitalsOff = false
 		U.EndScale.Scale = f
 		U.End.Root.Size = UDim2.fromOffset(K.END_W, endH)
-		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - K.END_W * f), math.floor(h * 0.3) - top)
+		-- (fix6 look0 #3c: at 960 x 540, a small window with a keyboard, the card at 30 % of the height started 1.2 px under
+		-- the token strip's shadow and reached 56 px over the vitals card, '100 / 100' cut to '100 /') under the top-right
+		-- strips by their shadow, the card's frame and air (R.stripsBottom keeps 8 px); and where the card still covers the
+		-- vitals card's slot (8 px round it), the vitals card steps aside while the card shows, as a phone's does (spec 02 B)
+		local x = math.floor(w - 12 - K.END_W * f)
+		local y = math.floor(h * 0.3) - top
+		if strips > 0 then
+			y = math.max(y, strips + 2)
+		end
+		U.End.Root.Position = UDim2.fromOffset(x, y)
+		local vitals = R.vitalsSlot(top)
+		local x1, y0, y1 = x + K.END_W * f, top + y, top + y + endH * f
+		S.EndVitalsOff = vitals ~= nil and x < vitals.x1 + 8 and vitals.x0 < x1 + 8 and y0 < vitals.y1 + 8 and vitals.y0 < y1 + 8
 	end
 	-- the run card / chip
 	if phone then
