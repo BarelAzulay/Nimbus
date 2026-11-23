@@ -2701,7 +2701,12 @@ local function clientScenarios()
 						-- pan's pass, where W2 has the chip go behind the arrow; at 640 x 360 the arrow at -35 leaves a spot on the
 						-- right only and the gate one on the left only, so that pass's one crossing is the least there is. The
 						-- sways count from their first frame)
+						-- (Its way back ends where the run began, the arrow by home: at 667 x 375 that rest leaves room on the side
+						-- the chip stood on at the first frame only - home and the other side under the arrow - and the chip, held
+						-- on the other side, kept it under the arrow's foot, a cover travel_guide_walk counts. So a swap back to
+						-- the first frame's side within 1 degree of the camera's start is that rest, not a swap)
 						local swaps, last, from = {}, nil, 1
+						local first, turn0 = nil, run.frames[1][2]
 						if run.kind == "panrev" then
 							for i = 2, n do
 								if run.frames[i][2] < run.frames[i - 1][2] - 1e-6 then
@@ -2715,7 +2720,9 @@ local function clientScenarios()
 							if s then
 								local off = s.x - vp.X / 2
 								local sd = (off > 2 and "R") or (off < -2 and "L") or nil
-								if sd and last and sd ~= last and i >= from then
+								first = first or sd or "C" -- (the first frame it shows: home, or the side it stood on)
+								local rest = run.kind == "panrev" and sd == first and math.abs(run.frames[i][2] - turn0) <= 1
+								if sd and last and sd ~= last and i >= from and not rest then
 									swaps[#swaps + 1] = fmt("%s -> %s at %s (x %.0f)", last, sd, where(i), off)
 								end
 								last = sd or last

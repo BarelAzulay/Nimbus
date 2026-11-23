@@ -3983,7 +3983,9 @@ local function chipObstacles(area, dt)
 					else
 						G.vy = G.vy + (rawY - G.vy) * math.min(1, dt / K.GUIDE_VX_SMOOTH)
 					end
-					if G.vy <= -1 then
+					-- (and rising this look: smoothed, a pan come to rest still read as rising ~0.7 s, and at 667 x 375 the
+					-- chip stayed under the arrow's foot, 1 px on its wood edge - travel_guide_walk's cover)
+					if G.vy <= -1 and rawY < 0 then
 						rise = onScreen({ x0 = r.x0 + (r.x0 - was.x0) * 2, y0 = r.y0 + (r.y0 - was.y0) * 2,
 							x1 = r.x1 + (r.x1 - was.x1) * 2, y1 = r.y1 + (r.y1 - was.y1) * 2 })
 					end
