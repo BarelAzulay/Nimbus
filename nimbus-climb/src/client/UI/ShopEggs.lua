@@ -32,7 +32,8 @@
 --                                    button = "Spin" (default) | "Spin3" | "SpinGems". In that order: no odds; a request
 --                                    pending (EggStage.IsPending: every button); every button while
 --                                    PaidRandomItemsRestricted is not false (Locked; token spins too since lobby-shop
---                                    16.12); the Secret card away from the Storm Altar (Altar, shop-area 16.17.3:
+--                                    16.12, but only while the Store is on: StoreCatalog.Enabled(), release step 1);
+--                                    the Secret card away from the Storm Altar (Altar, shop-area 16.17.3:
 --                                    ShopEggs.AtAltar() false); a gem button (SpinGems, every Secret button) before
 --                                    GemsSettled (Loading); the balance under the price (Short: the price kept, drawn
 --                                    red, the button still taps and EggStage toasts); else Ready
@@ -81,6 +82,7 @@ local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PetCatalog = require(Shared:WaitForChild("PetCatalog"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local StoreCatalog = require(Shared:WaitForChild("StoreCatalog"))
 
 local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
@@ -1256,8 +1258,10 @@ function ShopEggs.CardState(id, button)
 		return "Pending"
 	end
 	local gems = id == K.SECRET or button == "SpinGems"
-	-- (lobby-shop 16.12, the owner's pick A: the token spins lock too, as the server refuses them while not "Allowed")
-	if attr("PaidRandomItemsRestricted") ~= false then
+	-- (lobby-shop 16.12, the owner's pick A: the token spins lock too, as the server refuses them while not "Allowed".
+	-- Release step 1, the owner's pick 2026-11-23: only while the Store is on; with the Store off a token button is
+	-- never Locked, as on main. The gem buttons and the Secret card keep the lock in both states.)
+	if attr("PaidRandomItemsRestricted") ~= false and (gems or StoreCatalog.Enabled()) then
 		return "Locked"
 	end
 	if id == K.SECRET and not ShopEggs.AtAltar() then

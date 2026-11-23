@@ -74,10 +74,17 @@ This puts TODAY's live game into TEST, so TEST gets saves in the old format.
       button, then spins the Cloud machine with the gem button (20 gems).
       **Pass:** gems go down by 20, a pet hatches, and the gems stay down after a rejoin.
       (If the gem button says Locked, your account's country or age blocks paid random items. That is Roblox's
-      policy rule working, not a bug. Skip this step then and say so.)
+      policy rule working, not a bug. Skip this step then and say so. The live game has the same rule for gem spins.)
+      That rule locks **only the gem button and the Secret Roulette** while the Store is off. The Token **Spin** and
+      **x3** buttons on the same card must stay open on every account (owner's pick, 2026-11-23): see B10.
 
 - [ ] B10. **Alt, no DEV tools.** The alt plays 3 minutes the normal way: a climb, a spin with Tokens, a visit home.
       **Pass:** no error message on screen, the numbers are kept after a rejoin.
+      The spin with Tokens works on **every** account while the Store is off, as in the live game: also on an
+      account Roblox restricts from paid random items, and also in the first seconds after a join, before Roblox's
+      policy answer has arrived. **Fail:** the Token Spin button says "Locked", or you read "Token spins are not
+      available on your account" or "Checking your account". Tell Claude. (That lock comes back, on purpose, only
+      when the Store is turned on and Tokens can be bought.)
 
 ## Part C: practise the rollback (8 minutes)
 

@@ -313,6 +313,128 @@ local function serverScenarios()
 		T.check(okRun, tag .. "the scenario ran to its end", tostring(errRun))
 	end
 
+	-- release step 1 follow-up (the owner's pick, 2026-11-23): the PolicyService lock on TOKEN spins (lobby-shop 16.12)
+	-- belongs to a Store that sells Tokens for Robux. While the Store is off nothing sells Tokens, so a restricted account,
+	-- an account whose PolicyService lookup errors and one with no PolicyService answer at all spin with Tokens exactly as
+	-- on origin/main (which has no such lock). On: the 16.12 lock, unchanged. Gem spins keep main's own lock in both states.
+	local function runSpins(on)
+		local tag = on and "store switch on, token spins: " or "store switch off, token spins: "
+		local TOKEN_LOCK, CHECKING = "Token spins are not available on your account", "Checking your account, try again in a moment"
+		local Config = K.config()
+		local Gems, PS = GS(), K.mod("PetService")
+		local PolS = game:GetService("PolicyService")
+		local folder = K.remoteFolder()
+		local remote = folder and folder:FindFirstChild("BuyRoulette")
+		local cloud = Config.Roulettes[1]
+		if not T.check(type(Gems) == "table" and type(Gems.TokenSpinLock) == "function" and type(PS) == "table" and type(PS.BuyRoulette) == "function" and remote ~= nil and type(cloud) == "table",
+			tag .. "GemService.TokenSpinLock, PetService.BuyRoulette and the BuyRoulette remote exist") then
+			return
+		end
+		local saved = { Enabled = Config.Store.Enabled, Lock = Gems.TokenSpinLock }
+		local players, modes = {}, {}
+		local function install()
+			PolS.GetPolicyInfoForPlayerAsync = function(_, player)
+				if modes[player.UserId] == "error" then
+					error("smoke: PolicyService is down")
+				end
+				return { ArePaidRandomItemsRestricted = modes[player.UserId] == "restrict", IsPaidItemTradingAllowed = true }
+			end
+		end
+		local function joinAs(prefix, mode)
+			local uid = newUserId()
+			modes[uid] = mode
+			local p = join(prefix, uid)
+			players[#players + 1] = p
+			T.check(loaded(p), tag .. "(precondition) " .. prefix .. "'s profile is loaded")
+			DS()._SettleForTest(p)
+			DS().AddTokens(p, 100000)
+			DS().AddGems(p, 5000)
+			return p
+		end
+		local okRun, errRun = pcall(function()
+			Config.Store.Enabled = on
+			install()
+			local allowed = joinAs("SpinAllow", "allow")
+			local restricted = joinAs("SpinRestr", "restrict")
+			local failing = joinAs("SpinFail", "error")
+			PolS.GetPolicyInfoForPlayerAsync = false -- (the mock: no PolicyService API at all, so no answer ever comes)
+			local absent = joinAs("SpinNoApi", "allow")
+			K.advance(1.1)
+			T.eq(Gems.PolicyState(allowed), "Allowed", tag .. "(precondition) the allowed account's policy answer is 'Allowed'")
+			T.eq(Gems.PolicyState(restricted), "Restricted", tag .. "(precondition) the restricted account's policy answer is 'Restricted'")
+			T.eq(Gems.PolicyState(failing), "Checking", tag .. "(precondition) a failing PolicyService leaves the answer unknown ('Checking')")
+			T.eq(Gems.PolicyState(absent), "Checking", tag .. "(precondition) without a PolicyService API the answer stays unknown ('Checking')")
+			-- (the account without an answer goes first, while the API is still absent: a refused spin asks PolicyService
+			-- again, so the API comes back only after its case)
+			local cases = { { absent, "no PolicyService answer yet", CHECKING }, { restricted, "restricted", TOKEN_LOCK }, { failing, "PolicyService failing", CHECKING } }
+			for _, case in ipairs(cases) do
+				local p, name, lockText = case[1], case[2], case[3]
+				local t0, g0 = DS().GetTokens(p), DS().GetGems(p)
+				local lock = Gems.TokenSpinLock(p)
+				local ok1, why1 = PS.BuyRoulette(p, cloud.Id)
+				if on then
+					T.check(lock == lockText, tag .. name .. ": GemService.TokenSpinLock answers '" .. lockText .. "' (16.12, unchanged)", tostring(lock))
+					T.check(ok1 == false and why1 == lockText and DS().GetTokens(p) == t0, tag .. name .. ": a token spin is refused with that text, nothing charged", tostring(ok1) .. " / " .. tostring(why1))
+				else
+					T.check(lock == nil, tag .. name .. ": GemService.TokenSpinLock answers nil (no lock while nothing sells Tokens)", tostring(lock))
+					T.check(ok1 == true and DS().GetTokens(p) == t0 - cloud.Price, tag .. name .. ": a token spin goes through and charges " .. cloud.Price .. " Tokens, as on main",
+						tostring(ok1) .. " / " .. tostring(why1) .. ", tokens " .. tostring(t0) .. " -> " .. tostring(DS().GetTokens(p)))
+					local t1 = DS().GetTokens(p)
+					local ok3, why3 = PS.BuyRoulette(p, cloud.Id, "Tokens", 3)
+					T.check(ok3 == true and DS().GetTokens(p) == t1 - 3 * cloud.Price, tag .. name .. ": x3 with Tokens goes through too", tostring(ok3) .. " / " .. tostring(why3))
+					K.advance(0.4)
+					local t2 = DS().GetTokens(p)
+					local mark = K.logSize()
+					Mock.FromClient(remote, p, cloud.Id, "Tokens", 1)
+					K.advance(0.3)
+					local ans = K.lastRemote("RouletteResult", p.UserId, mark)
+					local a1 = ans and ans.args[1]
+					T.check(type(a1) == "table" and a1.Ok == true and DS().GetTokens(p) == t2 - cloud.Price, tag .. name .. ": the BuyRoulette remote answers Ok = true and charges once",
+						"Ok " .. tostring(type(a1) == "table" and a1.Ok) .. ", reason " .. tostring(type(a1) == "table" and a1.Reason))
+				end
+				T.eq(DS().GetGems(p), g0, tag .. name .. ": no Gems are touched by a token spin")
+				if p == absent then
+					T.eq(Gems.PolicyState(absent), "Checking", tag .. name .. ": (the answer was unknown through the whole case)")
+					install()
+				end
+			end
+			-- an account PolicyService allows spins in both states
+			local ta = DS().GetTokens(allowed)
+			local okA, whyA = PS.BuyRoulette(allowed, cloud.Id)
+			T.check(okA == true and DS().GetTokens(allowed) == ta - cloud.Price, tag .. "an allowed account spins with Tokens", tostring(okA) .. " / " .. tostring(whyA))
+			-- main's own lock (gem-priced spins) does not follow the switch
+			local tr, gr = DS().GetTokens(restricted), DS().GetGems(restricted)
+			local okG, whyG = PS.BuyRoulette(restricted, cloud.Id, "Gems")
+			T.check(okG == false and whyG == "Gem roulettes are not available on your account" and DS().GetGems(restricted) == gr and DS().GetTokens(restricted) == tr,
+				tag .. "a restricted account's GEM spin is still refused (main's lock, in both states), nothing charged", tostring(okG) .. " / " .. tostring(whyG))
+			if not on then
+				-- PetService never asks for the lock while the Store is off: a GemService that cannot answer changes nothing
+				Gems.TokenSpinLock = function()
+					error("smoke: TokenSpinLock must not be asked while the Store is off")
+				end
+				local tb = DS().GetTokens(restricted)
+				local okB, whyB = PS.BuyRoulette(restricted, cloud.Id)
+				T.check(okB == true and DS().GetTokens(restricted) == tb - cloud.Price, tag .. "PetService does not ask GemService for the token lock at all", tostring(okB) .. " / " .. tostring(whyB))
+			end
+		end)
+		Gems.TokenSpinLock = saved.Lock
+		Config.Store.Enabled = saved.Enabled
+		PolS.GetPolicyInfoForPlayerAsync = nil
+		leaveAll(players)
+		T.check(okRun, tag .. "the scenario ran to its end", tostring(errRun))
+	end
+
+	S.store_switch_spins_off = guarded("store_switch_spins_off", function()
+		if K.needBoot() then
+			runSpins(false)
+		end
+	end)
+	S.store_switch_spins_on = guarded("store_switch_spins_on", function()
+		if K.needBoot() then
+			runSpins(true)
+		end
+	end)
+
 	S.store_switch_off = guarded("store_switch_off", function()
 		if K.needBoot() then
 			run(false)
@@ -337,7 +459,7 @@ local function clientScenarios()
 	local LocalPlayer = Players.LocalPlayer
 	local H = {}
 	local STORE_IDS = { Starter = 8101, Pro = 8102, VIP = 8201, Cash2x = 8202, PetXp2x = 8203, XpPotion1 = 8103, XpPotion3 = 8104, Tokens1 = 8105, Tokens2 = 8106, Tokens3 = 8107 }
-	local ATTRS = { "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "PaidRandomItemsRestricted", "GemsSettled", "XpPassState" }
+	local ATTRS = { "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "PaidRandomItemsRestricted", "GemsSettled", "XpPassState", "CloudTokens", "Gems" }
 	local BAD_TEXTS = { "PREVIEW", "Coming soon", "opens soon", "Robux", "XP Potion", "Cloud Tokens" }
 
 	function H.moduleAt(top, rest)
@@ -445,7 +567,10 @@ local function clientScenarios()
 			it.Id = store and (STORE_IDS[it.Key] or 0) or 0
 		end
 		for i, p in ipairs(Config.Gems.Products) do
-			p.Id = (type(gems) == "table" and gems[i]) or (gems == true and (8300 + i)) or 0
+			-- (8390 + i: ids no other client list uses. ShopController asks each id's price once per SESSION, and the
+			-- shop lists that run before this one in a whole run create gem packs 8301..8304: with those ids the "prices
+			-- are asked for the gem packs" check below found nothing left to ask and failed in any run that had them first.)
+			p.Id = (type(gems) == "table" and gems[i]) or (gems == true and (8390 + i)) or 0
 		end
 	end
 	function H.begin()
@@ -654,6 +779,65 @@ local function clientScenarios()
 			Shop.Open({ Tab = "Packs" })
 			KC.advance(0.5)
 			T.check(Shop.Tab() == "Packs" and H.cardCount() > 0, "store switch ui: (on again) the Packs tab shows its cards")
+
+			-- release step 1 follow-up (the owner's pick, 2026-11-23): the policy lock on TOKEN spins (lobby-shop 16.12) is the
+			-- Store's. Off: a restricted account and one with no answer yet see live token Spin / x3 buttons and the request
+			-- is sent, exactly as on main; the gem buttons and the Secret card keep main's own lock. On: 16.12, unchanged.
+			local SE, ES = H.moduleAt("client", "UI/ShopEggs"), H.moduleAt("client", "UI/EggStage")
+			if T.check(type(SE) == "table" and type(SE.CardState) == "function" and type(ES) == "table" and type(ES.Request) == "function", "store switch ui: ShopEggs.CardState and EggStage.Request exist") then
+				LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
+				LocalPlayer:SetAttribute(Config.Attr.Gems, 50000)
+				local function tokenBtn(name)
+					local card = H.find("ShopCard_Cloud")
+					return card and card:FindFirstChild(name, true)
+				end
+				local function btnOff(b)
+					return b == nil or b:GetAttribute("Disabled") == true or b.Active == false
+				end
+				local function btnTexts(b)
+					local out = {}
+					for _, d in ipairs(b and b:GetDescendants() or {}) do
+						if (d:IsA("TextLabel") or d:IsA("TextButton")) and H.shownIn(d) and tostring(d.Text) ~= "" then
+							out[#out + 1] = tostring(d.Text)
+						end
+					end
+					return table.concat(out, " | ")
+				end
+				for _, case in ipairs({ { true, "restricted" }, { nil, "unknown" } }) do
+					local tag = "store switch ui: token spins, policy " .. case[2] .. ": "
+					LocalPlayer:SetAttribute("PaidRandomItemsRestricted", case[1])
+					Config.Store.Enabled = false
+					Shop._S.Tab = nil
+					H.reopen()
+					T.check(SE.CardState("Cloud", "Spin") == "Ready" and SE.CardState("Cloud", "Spin3") == "Ready", tag .. "(off) CardState of the token Spin and x3 is Ready, as on main",
+						tostring(SE.CardState("Cloud", "Spin")) .. " / " .. tostring(SE.CardState("Cloud", "Spin3")))
+					for _, name in ipairs({ "Spin", "Spin3" }) do
+						local b = tokenBtn(name)
+						T.check(b ~= nil and not btnOff(b) and string.find(btnTexts(b), "Locked", 1, true) == nil, tag .. "(off) the Cloud card's " .. name .. " button is live, no 'Locked'", btnTexts(b))
+					end
+					T.check(SE.CardState("Cloud", "SpinGems") == "Locked" and SE.CardState("Secret") == "Locked", tag .. "(off) the gem button and the Secret card keep main's lock",
+						tostring(SE.CardState("Cloud", "SpinGems")) .. " / " .. tostring(SE.CardState("Secret")))
+					KC.advance(0.5)
+					local mark = #Mock.RemoteLog
+					local sentGem = ES.Request("Cloud", "Gems", 1)
+					T.check(sentGem == false and H.calls("BuyRoulette", mark) == 0, tag .. "(off) a gem spin request is still refused on the client, nothing sent")
+					local sent = ES.Request("Cloud", "Tokens", 1)
+					T.check(sent == true and H.calls("BuyRoulette", mark, "Cloud", "Tokens") == 1, tag .. "(off) EggStage.Request(Cloud, Tokens) sends BuyRoulette", tostring(sent))
+					ES._Answer({ Ok = false, Reason = "smoke probe", RouletteId = "Cloud", Currency = "Tokens", Spins = 1 })
+					KC.advance(0.6)
+
+					Config.Store.Enabled = true
+					Shop._S.Tab = nil
+					H.reopen()
+					T.check(SE.CardState("Cloud", "Spin") == "Locked" and SE.CardState("Cloud", "Spin3") == "Locked", tag .. "(on) CardState of the token Spin and x3 is Locked (16.12, unchanged)",
+						tostring(SE.CardState("Cloud", "Spin")) .. " / " .. tostring(SE.CardState("Cloud", "Spin3")))
+					T.check(btnOff(tokenBtn("Spin")) and string.find(btnTexts(tokenBtn("Spin")), "Locked", 1, true) ~= nil, tag .. "(on) the Cloud card's Spin button reads 'Locked', inactive", btnTexts(tokenBtn("Spin")))
+					mark = #Mock.RemoteLog
+					local sentOn = ES.Request("Cloud", "Tokens", 1)
+					T.check(sentOn == false and H.calls("BuyRoulette", mark) == 0, tag .. "(on) EggStage.Request(Cloud, Tokens) sends nothing (16.12, unchanged)", tostring(sentOn))
+					KC.advance(0.5)
+				end
+			end
 		end)
 		H.finish(saved)
 		T.check(okRun, "store switch ui: the scenario ran to its end", tostring(errRun))

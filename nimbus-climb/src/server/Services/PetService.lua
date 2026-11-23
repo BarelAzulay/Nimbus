@@ -86,7 +86,8 @@
 --      Roulette's pity read (DataService.GetPity; provisional or no answer -> "Your data is still loading"), a
 --      gem-priced spin only once DataService.GemsSettled (the server-hop settle hold, same text), GemService.Quote (the
 --      PolicyService lock, unchanged), a token-paid spin only for a PolicyService-"Allowed" account (16.12:
---      GemService.TokenSpinLock; "Token spins are not available on your account", or the checking text while unknown),
+--      GemService.TokenSpinLock; "Token spins are not available on your account", or the checking text while unknown;
+--      ONLY while the Store is on, release step 1: with Config.Store.Enabled off every account spins with Tokens),
 --      the balance against Price = UnitPrice x spins (computed once, both currencies);
 --   2. the pulls, from RNG.Roll in order (roll(id, RNG.Roll): PetCatalog.RollPet, or the quote's GemService.RollPet
 --      for the Secret Roulette; the pity's forced pull is roll(id, RNG.Roll, { ForceRarity = "Secret" }), Pity = true,
@@ -204,6 +205,7 @@ end
 
 local PetCatalog = loadShared("PetCatalog")
 local PetKeys = loadShared("PetKeys")
+local StoreCatalog = loadShared("StoreCatalog") -- the Store switch (release step 1): tokenSpinLock reads it
 
 -- GemService (Phase 2, gems) is looked up when a gem roll needs it: an optional module that Main loads after this one
 -- (requiring it here at load time would tie the two to their load order).
@@ -1177,7 +1179,15 @@ end
 -- The token part of step 1 (lobby-shop 16.12, the owner's pick A): GemService.TokenSpinLock, nil only for a
 -- PolicyService-"Allowed" account. No GemService, a missing function, an error or an odd answer is unknown: refused with
 -- the checking text (fails closed, like StoreService's token lock). -> nil | reason
+-- Release step 1 (the owner's pick, 2026-11-23): the lock belongs to a Store that sells Tokens for Robux, so it applies
+-- ONLY while the Store is on (StoreCatalog.Enabled(): Config.Store.Enabled == true; no StoreCatalog counts as off, its
+-- own rule). While the Store is off nothing sells Tokens: GemService is not asked and a restricted account, an
+-- unanswered one and a failing PolicyService all spin with Tokens exactly as on origin/main, which has no such lock.
+-- (Gem-priced spins keep GemService.Quote's PolicyService lock in both states: main has that one too.)
 local function tokenSpinLock(player)
+	if not (StoreCatalog and type(StoreCatalog.Enabled) == "function" and StoreCatalog.Enabled() == true) then
+		return nil
+	end
 	local checking = "Checking your account, try again in a moment"
 	local gems = getGemService()
 	if not gems or type(gems.TokenSpinLock) ~= "function" then
