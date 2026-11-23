@@ -281,7 +281,13 @@ header, chips and day tiles whole. `--list` says what each pin checks,
 pans at 6, 12, 23 and 60 degrees a second, the walk with a turning camera, and look0's 0.5 s hide cap there) are the
 smoke list `guide_pins` (`smoke_kitb_world.lua`, travel_guide_walk's runner;
 `NC_GUIDE_PINS_SIZES=640x360,1920x1080` walks a few sizes while working; `NC_GUIDE_TRACE=<file>` appends one line a frame:
-the run, the arrow, the chip and the GuideSign's spot and box).
+the run, the arrow, the chip and the GuideSign's spot and box). (fix6b) Each walk runs in parts, one list a part, each
+under its own `--scenario-timeout` (`WALK_LISTS` in `smoke_kitb_world.lua`: `travel_guide_walk`, `_pans`, `_pans_b`,
+`_looks`; `guide_pins`, `_walks`, `_turns`, `_pan6`, `_pan6_b`, `_pan6_c`, `_pan12`, `_pan12_b`, `_pans`, `_sways`,
+`_looks`, each about 3600 frames at most, ~190 s alone); `--only travel_guide_walk` or
+`--only guide_pins` runs every part of that walk, and `--in-order` runs the named lists in the order given (`--only
+guide_pins,travel_guide_walk --in-order`). Every part builds its own lobby with a fresh GateService (its Init runs once
+a server).
 
 `stroke_walk.py` (kit-b U6) dumps the render scenarios one at a time (default: all but the widget galleries, at 1920x1080;
 `--grid` adds the other three sizes) and fails on any text with a classic stroke under an outline, or an outline on an

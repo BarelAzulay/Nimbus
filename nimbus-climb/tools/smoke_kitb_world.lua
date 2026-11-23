@@ -1993,7 +1993,52 @@ local function clientScenarios()
 	--                    keeps the side it took (it jumped 477 px across the arrow at each turn of a sway on desktop)
 	--   pin G3 (look1 #3) the same runs and a look up at 12 studs: each GuideSign show lasts 0.5 s (W1 held the walk only)
 	----------------------------------------------------------------------------------------------------------------
-	local function guideWalk(scen, pins)
+	-- (fix6b harness) each walk's runs, one scenario list a part: travel_guide_walk took 293 s alone and ran past the 600 s
+	-- per-scenario cap in the whole suite under load; guide_pins took 1036 s alone and hit the cap after it. Each part is
+	-- its own list with its own cap; tools/smoke.py runs every part when the walk's first list is named (`--only
+	-- travel_guide_walk` / `--only guide_pins` run the whole walk, as before). A part takes the runs of a kind
+	-- ("kind:look"), of one name ("pan 23 deg/s at 45 studs") or of one name at some sizes ("pan 6 deg/s at 45
+	-- studs@360x640|640x360"); every run is in exactly one part (checked). The runs, their frames and their rules are
+	-- unchanged. A frame costs about 50 ms alone; each part holds at most ~3600 frames (~190 s alone, a third of the cap;
+	-- a 6 deg/s pan is 720 frames a size, 12 deg/s 370, 23 deg/s 202, a walk 73)
+	local function sizesOf(name, sizes)
+		return name .. "@" .. sizes
+	end
+	local PAN6, PAN12 = "pan 6 deg/s at 45 studs", "pan 12 deg/s at 45 studs"
+	local WALK_PARTS = {
+		travel = {
+			{ "kind:walk", "kind:far" }, -- travel_guide_walk
+			{ "pan 23 deg/s at 45 studs", "pan 120 deg/s at 45 studs" }, -- travel_guide_walk_pans
+			{ "pan 60 deg/s at 45 studs", "pan 23 deg/s at 70 studs" }, -- travel_guide_walk_pans_b
+			{ "kind:look" }, -- travel_guide_walk_looks
+		},
+		pins = {
+			{ "walk", "walk turned 12", "walk turned -15", "walk turned 6" }, -- guide_pins (3212 frames)
+			{ "walk turned -8", "walk turned 24", "walk turned -25" }, -- guide_pins_walks (2409)
+			{ "kind:stop", "kind:turnwalk" }, -- guide_pins_turns (2574)
+			{ sizesOf(PAN6, "360x640|640x360|667x375|720x405") }, -- guide_pins_pan6 (2880)
+			{ sizesOf(PAN6, "800x450|844x390|960x540|390x844") }, -- guide_pins_pan6_b (2880)
+			{ sizesOf(PAN6, "1024x768|1280x720|1920x1080"), "pan 60 deg/s at 45 studs" }, -- guide_pins_pan6_c (3150)
+			{ sizesOf(PAN12, "360x640|640x360|667x375|720x405|800x450|844x390"), "kind:panstop" }, -- guide_pins_pan12 (3496)
+			{ sizesOf(PAN12, "960x540|390x844|1024x768|1280x720|1920x1080"), "kind:panrev" }, -- guide_pins_pan12_b (3082)
+			{ "pan 23 deg/s at 45 studs", "sway +-6 deg at 24 deg/s" }, -- guide_pins_pans (3432)
+			{ "pan 35 deg/s at 45 studs", "sway +-3 deg at 6 deg/s" }, -- guide_pins_sways (3080)
+			{ "kind:look" }, -- guide_pins_looks (1430)
+		},
+	}
+	local WALK_LISTS = {
+		travel = { "travel_guide_walk", "travel_guide_walk_pans", "travel_guide_walk_pans_b", "travel_guide_walk_looks" },
+		pins = { "guide_pins", "guide_pins_walks", "guide_pins_turns", "guide_pins_pan6", "guide_pins_pan6_b", "guide_pins_pan6_c",
+			"guide_pins_pan12", "guide_pins_pan12_b", "guide_pins_pans", "guide_pins_sways", "guide_pins_looks" },
+	}
+	local function partKey(key, run)
+		if key == "kind:" .. run.kind or key == run.name then
+			return true
+		end
+		local name, sizes = key:match("^(.-)@(.+)$")
+		return name == run.name and (("|" .. sizes .. "|"):find(fmt("|%dx%d|", run.w, run.h), 1, true)) ~= nil
+	end
+	local function guideWalk(scen, pins, part)
 		local Config = shared("Config")
 		local TC = client("Controllers/TutorialController")
 		local MC = client("Controllers/MovementController")
@@ -2031,6 +2076,11 @@ local function clientScenarios()
 		local info = nil
 		local context = Mock.Context
 		Mock.Context = "server"
+		-- (fix6b harness) GateService.Init runs once a server (its S.initialized guard): a second walk in the same client
+		-- world built a new lobby, but Init returned at once and its gate got no AltarGatePrompt (guide_pins after
+		-- travel_guide_walk: "(setup) the built lobby's Altar gate prompt" failed). Each walk binds its own lobby with a
+		-- fresh copy of the module (a cloned ModuleScript is a new module, as in Roblox), removed with the lobby
+		local gsCopy = nil
 		local okB, whyB = pcall(function()
 			local LB = req(ROOTS.server .. "/Services/LobbyBuilder")
 			info = LB and LB.Build()
@@ -2039,7 +2089,15 @@ local function clientScenarios()
 			if SA then
 				pcall(SA.Build, info)
 			end
-			local GSv = req(ROOTS.server .. "/Services/GateService")
+			local gsMod = Mock.GetPath(ROOTS.server .. "/Services/GateService")
+			gsCopy = gsMod and gsMod:Clone()
+			local GSv = nil
+			if gsCopy then
+				gsCopy.Name = "GateService_" .. scen
+				gsCopy.Parent = gsMod.Parent
+				local okR, m = pcall(require, gsCopy)
+				GSv = okR and m or nil
+			end
 			if GSv then
 				pcall(GSv.Init, info, { StormAltar = SA })
 			end
@@ -2063,6 +2121,9 @@ local function clientScenarios()
 		local function putBack()
 			for _, c in ipairs(built) do
 				c:Destroy()
+			end
+			if gsCopy then
+				gsCopy:Destroy()
 			end
 			if aside then
 				aside.Parent = workspace
@@ -2363,6 +2424,35 @@ local function clientScenarios()
 			runs = keep
 			T.info("*guide pins: NC_GUIDE_PINS_RUNS=" .. onlyRuns .. " (not the gate run)")
 		end
+		-- (fix6b harness) this list's part of the runs (WALK_PARTS); no run is left out of every part
+		if part then
+			local parts = WALK_PARTS[pins and "pins" or "travel"]
+			local keep, odd = {}, {}
+			for _, run in ipairs(runs) do
+				local found = {}
+				for i, keys in ipairs(parts) do
+					for _, key in ipairs(keys) do
+						if partKey(key, run) then
+							found[#found + 1] = i
+							break
+						end
+					end
+				end
+				if #found == 1 and found[1] == part then
+					keep[#keep + 1] = run
+				elseif #found ~= 1 then
+					odd[#odd + 1] = fmt("%s %dx%d in %d parts", run.name, run.w, run.h, #found)
+				end
+			end
+			T.check(#odd == 0, scen .. ": (setup) every run is in exactly one part of the walk", table.concat(odd, "; "))
+			-- (NC_GUIDE_PINS_SIZES / _RUNS, while working, may leave a part empty on purpose)
+			local devFilter = pins and os and os.getenv and ((os.getenv("NC_GUIDE_PINS_SIZES") or "") ~= "" or (os.getenv("NC_GUIDE_PINS_RUNS") or "") ~= "")
+			if not devFilter then
+				T.check(#keep > 0, scen .. ": (setup) part " .. part .. " of the walk has runs")
+			end
+			T.info(fmt("*%s: part %d of %d, %d runs", scen, part, #parts, #keep))
+			runs = keep
+		end
 		local touchWas = UIS.TouchEnabled
 		local ok, err = pcall(function()
 			methods.WorldToViewportPoint, methods.WorldToScreenPoint = project, project
@@ -2480,19 +2570,35 @@ local function clientScenarios()
 					if not arrow then
 						fail("arrow", at .. ": the arrow is hidden")
 					end
-					local box = nil
+					local box, partBoxes = nil, {}
 					for _, d in ipairs(arrow and arrow:GetDescendants() or {}) do
 						if d:IsA("BasePart") then
 							local b = boxOf(d)
 							if b then
+								partBoxes[#partBoxes + 1] = b
 								box = box and { X = math.min(box.X, b.X), Y = math.min(box.Y, b.Y), R = math.max(box.R, b.R), B = math.max(box.B, b.B) } or b
 							end
 						end
 					end
+					-- (fix6b harness) "covers the arrow" is read against the arrow's parts (each part's projected box holds
+					-- every pixel it draws), not their union: the arrow is a stepped head narrowing to its tip, and the union's
+					-- bottom corners hold nothing (TutorialController reads its silhouette, fin0 MJ1, for the same reason).
+					-- Split into lists, the pans start on the other step of the arrow's 0.45 s hop, and at 667 x 375 the union's
+					-- empty corner met the chip's corner by 2 px for 1 - 3 frames (travel_guide_walk_pans at 23 and 60 degrees a
+					-- second; in one list the same frames fell on the upper step and passed)
+					local function onArrow(r)
+						for _, b in ipairs(partBoxes) do
+							if overlap(r, b) then
+								return b
+							end
+						end
+						return nil
+					end
 					if box then
 						seenArrow = seenArrow or at
-						if c and overlap(c, box) then
-							fail("clear", fmt("%s: the chip %s covers the arrow %s", at, show(c), show(box)))
+						local hit = c and onArrow(c)
+						if hit then
+							fail("clear", fmt("%s: the chip %s covers the arrow %s (its part %s)", at, show(c), show(box), show(hit)))
 						end
 					end
 					-- (pol0 minor 3) on a landscape walk the chip rests off the top centre only for the arrow: it came within 40 px
@@ -2533,8 +2639,9 @@ local function clientScenarios()
 						if c and overlap(c, s) then
 							fail("clear", fmt("%s: the chip %s covers the GuideSign %s", at, show(c), show(s)))
 						end
-						if box and overlap(s, box) then
-							fail("clear", fmt("%s: the GuideSign %s covers the arrow %s", at, show(s), show(box)))
+						local hit = box and onArrow(s)
+						if hit then
+							fail("clear", fmt("%s: the GuideSign %s covers the arrow %s (its part %s)", at, show(s), show(box), show(hit)))
 						end
 						-- (guide_pins) its spot as drawn: hung under the arrow's tip (its top at or below the tip), else the
 						-- side of the arrow's axis its middle is on
@@ -2801,12 +2908,15 @@ local function clientScenarios()
 		T.check(ok, "guide walk: the scenario ran", tostring(err))
 		KC.flushErrors(scen)
 	end
-	S.travel_guide_walk = guarded("travel_guide_walk", function()
-		guideWalk("travel_guide_walk", false)
-	end)
-	S.guide_pins = guarded("guide_pins", function()
-		guideWalk("guide_pins", true)
-	end)
+	-- (fix6b harness) each walk in its parts (WALK_PARTS, WALK_LISTS), one list a part; tools/smoke.py runs every part
+	-- when the walk's first list is named
+	for kind, names in pairs(WALK_LISTS) do
+		for i, name in ipairs(names) do
+			S[name] = guarded(name, function()
+				guideWalk(name, kind == "pins", i)
+			end)
+		end
+	end
 
 	return S
 end
