@@ -88,6 +88,10 @@ Step 5 matters. Without it, servers of the new version keep running until they e
 
 - **Main reads every save quick-wins wrote**, at once, with no error and no warning. Tested on a new player, a
   maxed player, two saves with missing fields, two v1 saves and an empty one.
+- **A crash right after a join is covered too.** A quick-wins server that dies before a player's first full save
+  leaves a record main can read: a player who only had a very old (v1) save still has all Tokens on main.
+- **A pet main does not know stays in the save.** The Week Wisp (day 7 of the daily streak) is kept with its count
+  and its level.
 - **No field main knows is lost or changed.** Tokens, Cash and Gems earned on quick-wins are still there.
 - **A lock left by a quick-wins server does not block main.** Main does not read the lock.
 - **Old and new servers running together are safe** in both directions: Tokens earned on both end up in the save.
@@ -101,6 +105,7 @@ Step 5 matters. Without it, servers of the new version keep running until they e
 | Raid reward clock, raid loss clock | They restart. A player may get one raid reward sooner than the cooldown. |
 | Recent duel notes | Forgotten. The duel reward window for the last opponents restarts. |
 | Fast hatch setting | Goes back to off. |
+| A Week Wisp on the team | Not shown on the team while main is live (main does not know that pet). The pet, its level and its team slot stay in the save. It is back on the team when quick-wins returns. |
 
 Also true while main is live: the daily streak does not count days (main has no daily gifts), so a streak can step
 back by its own 48 hour rule; the leaderboard and the titles are not shown.
