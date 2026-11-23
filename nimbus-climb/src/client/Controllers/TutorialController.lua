@@ -219,7 +219,10 @@ local K = {
 	GUIDE_STEP = 1 / 15,
 	GUIDE_STEP_PART = 0.25,
 	GUIDE_HIDE_STEP = 0.1,
-	GUIDE_PASS = 60,
+	-- (kit-b P2 fix6 look0 #5) 20, was 60: a 6 degrees a second pan moves the arrow ~45 px a second (1080p px) and went
+	-- for the side ahead, then crossed (two trips a pass); the speed is smoothed over GUIDE_VX_SMOOTH s (chipObstacles)
+	GUIDE_PASS = 20,
+	GUIDE_VX_SMOOTH = 0.2,
 	SIGN_CLEAR = 8, -- (fin1) the GuideSign takes a spot this far off the HUD and the chip (1080p px), keeps it while half that
 	-- (kit-b P2 fix6, world look pol1 A) the GuideSign takes a NEW spot or line only where it still holds with the arrow
 	-- where it will stand SIGN_HOLD s on (its way on the screen over the last SIGN_SEEN s), and once hidden stays hidden
@@ -3893,8 +3896,21 @@ local function chipObstacles(area, dt)
 				end
 				swept, soon = ahead(K.GUIDE_LEAD / dt), ahead(2)
 				if key == "arrow" then
-					vx = ((r.x0 + r.x1) - (was.x0 + was.x1)) / 2 / dt
+					-- (kit-b P2 fix6 look0 #5: at 6 degrees a second the arrow moves 1 px a frame on whole px, 0 / 30 / 60 px a
+					-- second frame to frame, under K.GUIDE_PASS, so the chip took the side ahead) its sideways speed smoothed
+					-- over K.GUIDE_VX_SMOOTH s
+					-- (from rest - a pan's start, the arrow still before - it takes the first move's speed at once: the chip
+					-- leaves home on that first frame, and smoothed up from 0 it read as no pass and took the side ahead)
+					local raw = ((r.x0 + r.x1) - (was.x0 + was.x1)) / 2 / dt
+					if G.vx == nil or (math.abs(G.vx) < 1 and math.abs(raw) >= 1) then
+						G.vx = raw
+					else
+						G.vx = G.vx + (raw - G.vx) * math.min(1, dt / K.GUIDE_VX_SMOOTH)
+					end
+					vx = G.vx
 				end
+			elseif key == "arrow" then
+				G.vx = nil -- (it just showed: no speed yet)
 			end
 			local a, s = onScreen(swept), onScreen(soon)
 			if a then
@@ -4012,6 +4028,12 @@ local function placeChip(dt, snap)
 		-- and a spot just clear of it was met again at 844x390). (kit-b P2 fix6, world look pol1 B) a piece passing across:
 		-- only the side it comes from, never the side ahead of it (that spot was met 0.9 s later, then the far side: three
 		-- moves a pass); no spot there yet within its width of home, it hides (stepChip) until there is
+		-- (fix6 look0 #4: waiting for that spot behind it within the chip's width of home hid the chip and its X 0.6 - 2.1 s
+		-- on slow pans and turning walks - at 800 x 450 the 286 px line had no room left of the arrow until it was 304 px
+		-- in) a piece passing across: its compact line may stand behind it as far as the FULL line's width off home (the
+		-- berth pol0 MAJOR 2 b set for the chip, not a nearer one for its shorter word), so it steps behind the piece as
+		-- soon as the piece comes within the berth: one trip, crossing it in a hide-step
+		local reach = (passing and compact) and math.max(w, wFull) or w
 		local order = {}
 		for _, s in ipairs(passing and { first } or { first, (first == "L") and "R" or "L" }) do
 			for _, gap in ipairs({ take, math.max(clearPx + 1, take * 0.75), math.max(clearPx + 1, take * 0.5), clearPx + 1 }) do
@@ -4023,7 +4045,7 @@ local function placeChip(dt, snap)
 					x = u.x1 + gap + e + w / 2
 					x = (gap == take) and math.max(x, homeX + w / 2) or x
 				end
-				if math.abs(x - homeX) <= w then
+				if math.abs(x - homeX) <= reach then
 					order[#order + 1] = { side = s, x = x, y = homeY, compact = compact }
 				end
 			end
@@ -4060,7 +4082,7 @@ local function placeChip(dt, snap)
 		if clearOf(homeR, obstacles, clearPx) then
 			G.away = nil
 		else
-			G.away = pickAny(G.away.side) or G.away
+			G.away = pickAny(G.away.side) or (G.away.side ~= "C" and homeCompact()) or G.away
 		end
 	elseif G.away then
 		G.homeClear = clearOf(homeR, obstacles, 2 * clearPx) and ((G.homeClear or 0) + dt) or 0
@@ -4079,8 +4101,9 @@ local function placeChip(dt, snap)
 	elseif not clearOf(homeR, obstacles, clearPx)
 		and (math.abs(vx) < K.GUIDE_PASS * k or not clearOf(homeR, near, clearPx)) then
 		-- (fix6, pol1 B) a piece passing across: home until it, as it stands (and two looks on), comes within the berth
-		-- (its K.GUIDE_LEAD sweep put the spot behind it past the chip's width, so it took the side ahead)
-		G.away = pickAny(nil) or { hide = true }
+		-- (its K.GUIDE_LEAD sweep put the spot behind it past the chip's width, so it took the side ahead). (fix6 look0
+		-- #4) no spot behind it yet: the compact line at home while the piece keeps off that, before it hides
+		G.away = pickAny(nil) or homeCompact() or { hide = true }
 		G.homeClear = 0
 	end
 	-- (the compact line while it stands aside with it; its own line at home)
@@ -4317,6 +4340,7 @@ function Guide.Stop()
 	G.phase, G.id, G.spec, G.target, G.part = nil, nil, nil, nil, nil
 	G.slide, G.hereUntil, G.icon, G.dodgeTimer, G.lookDt = nil, nil, nil, nil, nil
 	G.away, G.at, G.to, G.homeClear, G.seen, G.hud, G.move, G.wasHidden = nil, nil, nil, nil, nil, nil, nil, nil
+	G.vx = nil
 	G.lineFull, G.lineCompact, G.compact, G.resized = nil, nil, nil, nil
 	if G.gui then
 		G.gui:Destroy()

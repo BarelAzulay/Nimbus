@@ -2391,8 +2391,12 @@ local function clientScenarios()
 								fail("row", fmt("%s: the chip %s left its home row (top %.0f) on a landscape screen", at, show(c), homeTop))
 							end
 						end
-						if abs(cx - vp.X / 2) > cw + 2 then
-							fail("row", fmt("%s: the chip %s is pushed %.0f px off the top centre (its width %.0f)", at, show(c), cx - vp.X / 2, cw))
+						-- (fix6 look0 #4) within the chip's FULL width (its widest drawn this run): the compact line, the same
+						-- chip in a shorter word, may step behind a passing arrow that far; it hid 0.6 - 2.1 s waiting for room
+						-- within its own shorter width. pol0 MAJOR 2 b's 750 px corner still fails it
+						local lim = math.max(cw, fullW or cw)
+						if abs(cx - vp.X / 2) > lim + 2 then
+							fail("row", fmt("%s: the chip %s is pushed %.0f px off the top centre (its width %.0f)", at, show(c), cx - vp.X / 2, lim))
 						end
 					end
 					-- the arrow (its model in the world guide's folder while it shows)
