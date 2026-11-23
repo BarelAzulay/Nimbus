@@ -20,7 +20,12 @@ What it does (no real DataStore, no network, no API key: everything runs in tool
             FIELD with this branch's reading, and the stored record before / after a session of this branch.
   rollback  (b) a save this branch wrote (its session lock fields, its Store / Daily / Trove / Pity fields, progress
             on main's fields) is read by MAIN's code without an error and without losing a main field; main then
-            saves it and this branch reads it again (roll forward).
+            saves it and this branch reads it again (roll forward). The branch's session also grants a pet main's
+            catalog does not know (week_wisp, the 7-day streak's pet): main must keep it in the save.
+  crash     (b2) a server of this branch dies BEFORE the player's first full save and the next server is MAIN (a
+            rollback, or the mixed fleet of the first hour): a v1-only player's Tokens must still reach main (the
+            record this branch's claim wrote must not make main skip its v1 migration), a brand-new player is a
+            brand-new player, and the branch reads main's save again. Also: the next server is this branch again.
   lock      (c) two servers of this branch on one save: a second server while the first holds the lock, a rejoin, a
             server hop while the old server's last save is still on its way, a crash without a release (the lock
             expires): never two owners, never a lost write. And a mixed fleet (a MAIN server and a branch server on
@@ -578,7 +583,7 @@ def phase_load(env, rep):
 
 # What a session of THIS BRANCH writes before the rollback: progress on main's own fields, and every new field of the
 # branch through the branch's own DataService API (the Store ledger, a potion, the daily streak, the Trove, the Secret
-# pity, a duel note, the raid clocks, Fast hatch).
+# pity, a duel note, the raid clocks, Fast hatch), and a pet main's catalog does not know (two Week Wisps at level 7).
 PROGRESS = """
 local c = ...
 local D, p = c.DS, c.player
@@ -602,6 +607,12 @@ out.Raid = D.MutateBattle(p, function(b)
 	b.RaidRewardAt = os.time()
 	b.RaidLossAt = os.time() - 50
 end)
+-- a pet main's catalog does not know (the 7-day streak's Week Wisp), through the real grant path, at level 7, and
+-- equipped when a slot is free (main may take an unknown pet off the team: it must still keep the pet and its level)
+local PS = require(c.Mock.GetPath(ROOTS.server .. "/Services/PetService"))
+local okWisp, gotWisp = PS.GrantPet(p, "week_wisp", { Count = 2, Level = 7 })
+out.Wisp = okWisp == true and type(gotWisp) == "table" and gotWisp.Granted == 2
+out.WispEquipped = select(1, PS.Equip(p, "week_wisp")) == true
 local prof = D.GetProfile(p)
 for uid, h in pairs(prof.Hybrids or {}) do
 	h.SpecialFrom = "Style"
@@ -611,7 +622,8 @@ end
 D.MarkDirty(p)
 return out
 """
-PROGRESS_KEYS = ["Tokens", "Cash", "Gems", "Bought", "Boost", "Pass", "Trove", "Daily", "Pity", "Duel", "Fast", "Raid"]
+PROGRESS_KEYS = ["Tokens", "Cash", "Gems", "Bought", "Boost", "Pass", "Trove", "Daily", "Pity", "Duel", "Fast", "Raid", "Wisp"]
+WISP, WISP_LEVEL = "week_wisp", 7  # a pet only this branch's catalog knows (the 7-day streak's Week Wisp), granted at level 7
 CRASHED = ("new", "noinner")  # these two never get a release: their server dies after an autosave (the Lock stays stored)
 FOREIGN = ["Store", "Daily", "Trove", "Pity"]  # this branch's top-level keys: main does not know them
 
@@ -648,10 +660,17 @@ ROLLBACK_COST = [
     (".Daily.PlayStart", "diff", "the play-time clock of the new session", None),
     (".Daily.PlaySec", "diff", "the play-time clock of the new session", None),
 ]
+WISP_OFF = ("ROLLBACK COST: while main is live, a pet main's catalog does not know (the Week Wisp) is not on the team main shows; "
+            "the save keeps the pet, its level and its team slot")
 # main's reading of a save this branch wrote, against what this branch had in memory (main value, branch value)
 BRANCH_ONLY = "a field only this branch has: main does not read it (and carries the top-level ones through its saves untouched)"
 ALLOWED_ROLLBACK_PROFILE = [(row[0], row[1], BRANCH_ONLY) + tuple(row[3:]) if row[1] == "extra" else row for row in ALLOWED_PROFILE] + [
     (".Hybrids", "extra", "a field only this branch has, inside a hybrid (SpecialFrom: which parent gives the special); main carries it"),
+    # main's reading only: main takes a pet its catalog does not know off the team it shows. Allowed for the Week Wisp and
+    # nothing else (a known pet missing from main's team is still a failure); the stored save keeps the slot (checked in
+    # the roll forward: this branch reads the same team again).
+    (".Equipped", "extra", WISP_OFF, lambda a, b: b == "s:" + WISP),
+    (".Equipped", "missing", WISP_OFF, lambda a, b: a == "{}"),
     (".Home.LastSeen", "diff", STAMP),
     (".Berries", "diff", INCOME, not_more),
     (".Home.CollectorCash", "diff", INCOME, not_more),
@@ -674,6 +693,10 @@ def phase_rollback(env, rep):
         rep.check(not failed, "branch '%s': progress and every new field written through the branch's own API" % name, "refused: " + ", ".join(failed))
     step_all([q], 3)
     final = {name: q.profile(u) or {} for name, u in USERS.items()}
+    # the players whose Week Wisp is on the team (the grant equips a first pet by itself; Equip takes a free slot)
+    wisp_on = [name for name in USERS if any(v == "s:" + WISP for p_, v in final[name].items() if p_.startswith(".Equipped"))]
+    rep.check(len(wisp_on) >= 3, "branch: the Week Wisp is on the team of the players with a free slot (so main's reading of an unknown equipped pet is tested)", ", ".join(wisp_on))
+    rep.info("the Week Wisp is equipped for: " + ", ".join(wisp_on))
     for name, u in USERS.items():
         if name not in CRASHED:
             q.leave(u)
@@ -701,6 +724,14 @@ def phase_rollback(env, rep):
         absent = [k for k in FOREIGN if k not in r]
         rep.check(not absent, "branch '%s': the record holds the branch's new fields (Store, Daily, Trove, Pity)" % name, "absent: " + ", ".join(absent))
     rep.check(not store.bad, "rollback: every value this branch stored is one a real DataStore can hold", " | ".join(store.bad[:3]))
+    # a pet main's catalog does not know (release step 1 follow-up): it is in the record this branch wrote
+    wisp = {}
+    for name, u in USERS.items():
+        r = store.record(u) or {}
+        wisp[name] = (r.get("Pets") or {}).get(WISP)
+        rep.check(isinstance(wisp[name], (int, float)) and wisp[name] >= 2 and final[name].get(".Pets." + WISP) == "n:%.17g" % wisp[name],
+                  "branch '%s': the record holds the Week Wisp (%s, a pet main's catalog does not know), as many as in memory" % (name, WISP),
+                  "stored %s, memory %s" % (wisp[name], final[name].get(".Pets." + WISP)))
 
     rep.section("rollback (b): MAIN's code reads what this branch wrote (commit %s)" % env.commit[:12])
     m = Server(env, "main-rollback", env.main_root, clock)
@@ -723,7 +754,10 @@ def phase_rollback(env, rep):
         rep.check(not bad, "main '%s': every field main reads has the value this branch had (%d fields)" % (name, len(main2[name])), fmt_rows(bad))
         # 2. nothing of main's was lost on the way: main's first reading + the progress = main's reading now
         base, now_ = env.main_view[name], main2[name]
-        gone = sorted(p for p in base if p not in now_ and not p.startswith(".Equipped") and not p.startswith(".Teams"))
+        # (an empty table, flat value "{}", that got its first entry is not gone: its entries are there now. The Week
+        # Wisp is the first pet / pet level / discovery of the players who had none.)
+        grew = lambda p: base[p] == "{}" and any(x.startswith(p + ".") or x.startswith(p + "[") for x in now_)
+        gone = sorted(p for p in base if p not in now_ and not grew(p) and not p.startswith(".Equipped") and not p.startswith(".Teams"))
         rep.check(not gone, "main '%s': no field main read before the branch touched the save is gone" % name, ", ".join(gone[:8]))
         for field, add in ((".Tokens", 111), (".Cash", 222), (".Gems", 333)):
             a, b = float(base[field][2:]), float(now_[field][2:])
@@ -746,6 +780,17 @@ def phase_rollback(env, rep):
     rep.check(not errors_of(m.problems()), "main saves the branch's saves without a script error")
     for name, u in USERS.items():
         a, b = written.get(key(u)) or {}, store.record(u) or {}
+        rep.check(main2[name].get(".Pets." + WISP) == final[name].get(".Pets." + WISP) and final[name].get(".Pets." + WISP) is not None,
+                  "main '%s': main's loaded profile still holds the Week Wisp it does not know (same count)" % name,
+                  "main %s, branch %s" % (main2[name].get(".Pets." + WISP), final[name].get(".Pets." + WISP)))
+        rep.check((b.get("Pets") or {}).get(WISP) == (a.get("Pets") or {}).get(WISP) and (a.get("Pets") or {}).get(WISP) is not None,
+                  "main '%s': main's own save writes the Week Wisp back, same count (no loss)" % name,
+                  "%s -> %s" % ((a.get("Pets") or {}).get(WISP), (b.get("Pets") or {}).get(WISP)))
+        for field in ("PetLevels", "PetGrowth", "Discovered"):
+            av, bv = a.get(field), b.get(field)
+            if isinstance(av, dict) and WISP in av:
+                rep.check(isinstance(bv, dict) and bv.get(WISP) == av.get(WISP), "main '%s': main's save keeps the Week Wisp's %s entry as it was" % (name, field),
+                          "%s -> %s" % (json.dumps(av.get(WISP)), json.dumps(bv.get(WISP) if isinstance(bv, dict) else None)))
         same = [k for k in FOREIGN if a.get(k) == b.get(k) and k in b]
         rep.check(len(same) == len(FOREIGN), "main '%s': its save writes Store, Daily, Trove and Pity back untouched" % name, "kept: " + ", ".join(same))
         rep.check(b.get("Tokens") == a.get("Tokens", 0) + 5, "main '%s': its own progress is stored on top (+5 Tokens)" % name, "%s -> %s" % (a.get("Tokens"), b.get("Tokens")))
@@ -775,6 +820,14 @@ def phase_rollback(env, rep):
         rep.check(not wrong, "branch '%s': the Store ledger, the potion, the streak, the pity and the Trove are all still there" % name, " | ".join(wrong))
         t = float(final[name][".Tokens"][2:]) + 5
         rep.check(view.get(".Tokens") == "n:%.17g" % t, "branch '%s': Tokens = the branch's + main's 5" % name, "%s (want %.17g)" % (view.get(".Tokens"), t))
+        rep.check(view.get(".Pets." + WISP) == final[name].get(".Pets." + WISP) and view.get(".Pets." + WISP) is not None,
+                  "branch '%s': the Week Wisp is still owned after main's session (same count)" % name, "%s (want %s)" % (view.get(".Pets." + WISP), final[name].get(".Pets." + WISP)))
+        team_a = {p_: v for p_, v in final[name].items() if p_.startswith(".Equipped")}
+        team_b = {p_: v for p_, v in view.items() if p_.startswith(".Equipped")}
+        rep.check(team_a == team_b, "branch '%s': the team (Equipped) is what it was before the rollback%s" % (name, ", the Week Wisp back in its slot" if name in wisp_on else ""),
+                  "%s -> %s" % (json.dumps(team_a, sort_keys=True), json.dumps(team_b, sort_keys=True)))
+        lvl = q2.exec("local c = ...; local l = c.DS.GetPetLevel(c.player, '%s'); return l" % WISP, u)
+        rep.check(num(lvl) == WISP_LEVEL, "branch '%s': ...and it kept its level (%d)" % (name, WISP_LEVEL), "level %s" % lvl)
         # the whole cost of the rollback for this player: the branch's memory before it against its reading now
         missing, different, extra = compare(final[name], view)
         bad = judge(rep, env, "rollback-cost " + name, {"missing": missing, "diff": different, "extra": extra}, ROLLBACK_COST)

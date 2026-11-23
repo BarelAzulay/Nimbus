@@ -411,14 +411,18 @@ will a rollback survive it too?" without a real DataStore, a network or an API k
 - `build`: main's own save code writes the fake saves: a new player, a maxed player (every field, big numbers, every
   pet), two saves with missing fields, two v1 legacy saves, and a player with nothing stored.
 - `load`: main's reading of each save against this branch's reading, field by field; and the record each one stores.
-- `rollback`: this branch writes the saves (lock fields, Store / Daily / Trove / Pity, progress), main reads and saves
-  them, this branch reads them again.
+- `rollback`: this branch writes the saves (lock fields, Store / Daily / Trove / Pity, progress, and two Week Wisps,
+  a pet main's catalog does not know), main reads and saves them, this branch reads them again.
+- `crash`: a branch server dies before a player's first full save and the next server is main: a v1-only player's
+  Tokens must reach main (the claim's record carries them), a brand-new player stays brand-new; then the branch reads
+  main's save, and the dead server's own record.
 - `lock`: two servers, a rejoin, a server hop with a slow last save, a crash (the lock expires), and a mixed fleet
   (a main server and a branch server on one save, both ways).
 
 Every difference is printed in the FIELD DIFFERENCES list with the reason it is allowed; one that is not in the allowed
 list fails the run. Lines marked ROLLBACK COST are what a player loses if the owner restores main and the player then
-plays on main (`docs/release/step1-rollback.md`). `--only build,lock` runs some phases, `-v` prints passing checks,
+plays on main (`docs/release/step1-rollback.md`). `--only build,lock` runs some phases (`load`, `rollback`, `crash`,
+`lock`; `build` always runs), `-v` prints passing checks,
 `--json FILE` writes the checks and differences, `--dump FILE` writes the fake saves. `--branch-root DIR` tests a copy
 of the branch: break the copy on purpose and the run must go red. `tools/run_checks.sh` runs it after the smoke test.
 
