@@ -3081,9 +3081,10 @@ scenario("battle", function(mode, phase)
 		local bossId = (type(ARGS.boss) == "string" and ARGS.boss ~= "") and ARGS.boss or "storm_titan"
 		setup.Boss = bossId
 		setup.Teams = { mine, { Owner = 77, Side = 1, Pets = BCDUMP.team(3, 2, 26), Auto = true }, { Owner = 78, Side = 1, Pets = BCDUMP.team(3, 4, 28), Auto = true } }
-		if fullRaid then
-			extra.Raid = { Tier = "Starter", BossId = bossId }
-		end
+		-- (kit-b P2 fix6b, T1: only the full raid carried Raid.Tier, so raid:ready and raid drew a top card the game never
+		-- shows - at 360 x 640 and 720 x 405 a clock that the tier takes back in raid:full - and look_pins T1 read two forms
+		-- in one fight) the server sends the tier in every phase of a raid (BattleService: d.Raid = { Tier = b.RaidTier, ... })
+		extra.Raid = { Tier = "Starter", BossId = bossId }
 	elseif mode == "dungeon" then
 		setup.Mode = "Dungeon"
 		setup.Zone = { X = 44, Z = 44 }
