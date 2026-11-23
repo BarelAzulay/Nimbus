@@ -3914,6 +3914,19 @@ local function chipObstacles(area, dt)
 						G.vx = G.vx + (raw - G.vx) * math.min(1, dt / K.GUIDE_VX_SMOOTH)
 					end
 					vx = G.vx
+					-- (kit-b P2 fix6b, look1 #1: the camera turning back passes the arrow's speed through 0, and the chip came home
+					-- 9 frames before the arrow did) the fastest it went in the last K.GUIDE_HOLD s: placeChip's way home
+					G.vxClock = (G.vxClock or 0) + dt
+					local hist = G.vxHist or {}
+					G.vxHist = hist
+					hist[#hist + 1] = { t = G.vxClock, v = math.abs(G.vx) }
+					while #hist > 1 and G.vxClock - hist[1].t > K.GUIDE_HOLD do
+						table.remove(hist, 1)
+					end
+					G.vxPeak = 0
+					for _, s in ipairs(hist) do
+						G.vxPeak = math.max(G.vxPeak, s.v)
+					end
 					-- (kit-b P2 fix6b, look1 #1: walking up to the gate the arrow rises out of the chip's row; at 720 x 405 the
 					-- compact line met it 1 px into the berth, hid 0.37 s and came back as the full line on the same spot)
 					-- its rise, smoothed the same way, and where it stands two looks on: placeChip keeps its spot while an
@@ -3930,7 +3943,7 @@ local function chipObstacles(area, dt)
 					end
 				end
 			elseif key == "arrow" then
-				G.vx, G.vy = nil, nil -- (it just showed: no speed yet)
+				G.vx, G.vy, G.vxPeak, G.vxHist = nil, nil, nil, nil -- (it just showed: no speed yet)
 			end
 			local a, s = onScreen(swept), onScreen(soon)
 			if a then
@@ -4142,7 +4155,11 @@ local function placeChip(dt, snap)
 		if a then
 			local tX = ((vx > 0) and (r.x0 - 1 - a.x1) or (a.x0 - 1 - r.x1)) / math.abs(vx)
 			local over = rise and G.vy and G.vy < 0 and (a.y1 - (r.y0 + e)) / -G.vy < tX
-			if tX < K.GUIDE_HOLD + 2 * K.GUIDE_DODGE_EVERY and not over then
+			-- (the two looks the met check leads by; an arrow rising out of the row - a player walking up to the gate -
+			-- slows as the camera comes round: at 800 x 450 the line stood 0.57 s where its speed said 0.52, and the chip
+			-- hid 0.97 s instead)
+			local need = K.GUIDE_HOLD + ((rise and 0) or 2 * K.GUIDE_DODGE_EVERY)
+			if tX < need and not over then
 				return nil
 			end
 		end
@@ -4174,12 +4191,14 @@ local function placeChip(dt, snap)
 	elseif G.away then
 		-- (kit-b P2 fix6b, look1 #1: at 35 degrees a second the chip came home 0.2 s before the pan turned back, and left
 		-- again) home counts as clear only while the arrow, on its row, is far enough off that were the camera to turn back
-		-- at once it would not reach home's berth for K.GUIDE_HOLD s
+		-- at once it would not reach home's berth for K.GUIDE_HOLD s (at its fastest of the last K.GUIDE_HOLD s: turning back,
+		-- the camera's speed passes through 0)
 		local a = G.seen and G.seen.arrow
 		local backSoon = false
-		if a and math.abs(vx) >= K.GUIDE_PASS * k and a.y1 >= homeR.y0 - clearPx and a.y0 <= homeR.y1 + clearPx then
+		local speed = math.max(math.abs(vx), G.vxPeak or 0)
+		if a and speed >= K.GUIDE_PASS * k and a.y1 >= homeR.y0 - clearPx and a.y0 <= homeR.y1 + clearPx then
 			local gap = math.max(homeR.x0 - a.x1, a.x0 - homeR.x1) - clearPx
-			backSoon = gap < math.abs(vx) * K.GUIDE_HOLD
+			backSoon = gap < speed * K.GUIDE_HOLD
 		end
 		G.homeClear = (clearOf(homeR, obstacles, 2 * clearPx) and not backSoon) and ((G.homeClear or 0) + dt) or 0
 		local spot = chipRectAt(G.away.x, G.away.y, (G.away.compact and wCompact) or wFull)
@@ -4449,7 +4468,7 @@ function Guide.Stop()
 	G.phase, G.id, G.spec, G.target, G.part = nil, nil, nil, nil, nil
 	G.slide, G.hereUntil, G.icon, G.dodgeTimer, G.lookDt = nil, nil, nil, nil, nil
 	G.away, G.at, G.to, G.homeClear, G.seen, G.hud, G.move, G.wasHidden = nil, nil, nil, nil, nil, nil, nil, nil
-	G.vx, G.vy = nil, nil
+	G.vx, G.vy, G.vxPeak, G.vxHist = nil, nil, nil, nil
 	G.lineFull, G.lineCompact, G.compact, G.resized = nil, nil, nil, nil
 	if G.gui then
 		G.gui:Destroy()
