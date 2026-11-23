@@ -8535,6 +8535,29 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		elseif tier ~= "" then
 			tierPill = tier
 		end
+		if hasTimer and not timerLow then
+			-- (fix6b, look1 minor 2 / keys pol1: 1024 x 768's narrowed full-raid card drew Shadow Hydra's timer at 19.2 px beside
+			-- a 14.4 px name and lost its clock; 640 / 667 / 800 drew 17.6 px timers beside 14.4 px names) the timer never
+			-- larger than the boss name as Hud.FitLine drew it, its box as wide as its widest time at that size; then the clock
+			-- wherever it fits between the name (its tier) and the time as they are drawn
+			local np = Hud.bossName.TextSize
+			if np > 0 and Hud.timer.TextSize > np then
+				timerPx = np
+				local okW, mW = pcall(Theme.Measure, (fmtTime(B.TimeLimit):gsub("%d", "8")), "Display", timerPx)
+				local real = (okW and typeof(mW) == "Vector2" and mW.X > 0) and (math.ceil(mW.X * 1.04) + 4) or timerWidth(timerPx)
+				timerW = math.min(timerWidth(timerPx), real)
+				Hud.timer.TextSize = timerPx
+				Hud.timer:SetAttribute("BaseText", timerPx)
+				Hud.timer.Position = UDim2.fromOffset(right - timerW, P)
+				Hud.timer.Size = UDim2.fromOffset(timerW, rowH)
+			end
+			local rowEnd = inRow and (tx + tierW) or (lx + nameW + 4)
+			if not showClock and right - timerW - 4 - 18 - 8 >= rowEnd then
+				showClock = true
+			end
+			Hud.clock.Visible = showClock
+			Hud.clock.Position = UDim2.fromOffset(right - timerW - 4 - 18, P + (rowH - 18) / 2)
+		end
 	else
 		Hud.modeTag.Visible = false
 		Hud.raidPill.Visible = false
@@ -8645,13 +8668,14 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 					end
 				end
 			end
-			if lastY >= 0 and pillX + lastR + K.PILL_GAP + timerW <= x1 then
-				Hud.timer.Position = UDim2.fromOffset(x1 - timerW, yy + lastY - e)
-				Hud.timer.Size = UDim2.fromOffset(timerW, K.PILL_H)
-			elseif Hud.raidPill.Visible then
-				-- no room on the last pill row either (a full raid's Enraged, wave and tier pills): not a row of its own (a
-				-- landscape phone's card stays under 45 % of the height, keys look r3) - the RAID pill carries the time, sized
-				-- for the widest time this fight shows; Hud.Update writes it each second (red under 15 s, as the timer)
+			-- (fix6b, the owner's pick of 2026-11-23: e272588 put Shadow Hydra's timer at the foot of the card in raid / raid:ready
+			-- and inside the RAID pill in raid:full - three places on one phone; the place followed the pills, which change in
+			-- the fight) one place for the whole fight: the RAID pill carries the time whenever it shows (row 1, which decides
+			-- timerLow and the pill, is the same in every phase); the last pill row's end or a row of its own only without it
+			if Hud.raidPill.Visible then
+				-- not a row of its own (a landscape phone's card stays under 45 % of the height, keys look r3) - the RAID pill
+				-- carries the time, sized for the widest time this fight shows; Hud.Update writes it each second (red under
+				-- 15 s, as the timer)
 				Hud.timerPill = true
 				Hud.timer.Visible = false
 				setText(Hud.raidPill, (fmtTime(B.TimeLimit):gsub("%d", "8")))
@@ -8660,6 +8684,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 				local left = B.TimeLimit - (B.renderT or 0)
 				setText(Hud.raidPill, fmtTime(max(0, left)))
 				paintPill(Hud.raidPill, (left < 15) and SIGN.Red or SIGN.Wood)
+			elseif lastY >= 0 and pillX + lastR + K.PILL_GAP + timerW <= x1 then
+				Hud.timer.Position = UDim2.fromOffset(x1 - timerW, yy + lastY - e)
+				Hud.timer.Size = UDim2.fromOffset(timerW, K.PILL_H)
 			else
 				pillsH = pillsH + K.PILL_GAP + K.PILL_H
 				Hud.timer.Position = UDim2.fromOffset(x1 - timerW, yy + pillsH - K.PILL_H)
