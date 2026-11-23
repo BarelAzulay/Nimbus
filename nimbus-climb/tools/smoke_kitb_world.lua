@@ -1985,6 +1985,13 @@ local function clientScenarios()
 	--                    studs): in each pass the chip leaves home at most once, for one spot (it stepped into the arrow's
 	--                    path, then hid and came back 483 px away on the other side: three moves a pass); and (look0 #4) it
 	--                    hides at most 0.5 s at a time there (the one trip had cost hides of 0.6 - 2.1 s)
+	--   pin G1 (look1 #1) the pans (and one at 35 degrees a second), the turning walks, a pan that stops facing the gate,
+	--                    one that turns back from it and two sways: every chip state (a show between two hides or two
+	--                    changes of its line) lasts 0.5 s, and it never blinks in place (e272588: three blinks a pass, the
+	--                    short line at home 1 - 14 frames)
+	--   pin G2 (look1 #2) the sways (+-3 degrees at 6 degrees a second, +-6 at 24) and the pan that turns back: the chip
+	--                    keeps the side it took (it jumped 477 px across the arrow at each turn of a sway on desktop)
+	--   pin G3 (look1 #3) the same runs and a look up at 12 studs: each GuideSign show lasts 0.5 s (W1 held the walk only)
 	----------------------------------------------------------------------------------------------------------------
 	local function guideWalk(scen, pins)
 		local Config = shared("Config")
@@ -2256,6 +2263,55 @@ local function clientScenarios()
 					add("turnwalk", fmt("walk turning %d -> %d", tt[1], tt[2]), size, f)
 				end
 			end
+			-- (fix6b, look1 #1 - #3) a pan at 35 degrees a second (the short line at home held 0.13 - 0.23 s there), a pan
+			-- that stops facing the gate and one that turns back from it (23 degrees a second), the camera swayed +-3
+			-- degrees at 6 degrees a second (1 s a leg) and +-6 at 24 (0.5 s a leg) standing 45 studs out (the chip jumped
+			-- 477 px across the arrow at each turn of the sway), and the look up at 12 studs (the GuideSign's 2-frame
+			-- name-alone flash on every landscape phone)
+			for _, size in ipairs(SIZES) do
+				local f = {}
+				hold(f, 45, -35, 2, 10)
+				local p1 = #f + 1
+				seg(f, 45, 45, -35, 35, 2, 2, 70 / 35)
+				mark(f, p1, 1)
+				local p2 = #f + 1
+				seg(f, 45, 45, 35, -35, 2, 2, 70 / 35)
+				mark(f, p2, 2)
+				hold(f, 45, -35, 2, 10)
+				add("pan", "pan 35 deg/s at 45 studs", size, f)
+			end
+			for _, size in ipairs(SIZES) do
+				local f = {}
+				hold(f, 45, -35, 2, 10)
+				seg(f, 45, 45, -35, 0, 2, 2, 35 / 23)
+				hold(f, 45, 0, 2, 60)
+				add("panstop", "pan 23 deg/s, stop facing the gate", size, f)
+				f = {}
+				hold(f, 45, -35, 2, 10)
+				seg(f, 45, 45, -35, 0, 2, 2, 35 / 23)
+				seg(f, 45, 45, 0, -35, 2, 2, 35 / 23)
+				hold(f, 45, -35, 2, 10)
+				add("panrev", "pan 23 deg/s to the gate and back", size, f)
+			end
+			for _, sw in ipairs({ { 3, 1, 4 }, { 6, 0.5, 6 } }) do
+				for _, size in ipairs(SIZES) do
+					local f = {}
+					hold(f, 45, -sw[1], 2, 10)
+					for leg = 1, sw[3] do
+						local a0 = (leg % 2 == 1) and -sw[1] or sw[1]
+						seg(f, 45, 45, a0, -a0, 2, 2, sw[2])
+					end
+					hold(f, 45, (sw[3] % 2 == 1) and sw[1] or -sw[1], 2, 10)
+					add("sway", fmt("sway +-%d deg at %d deg/s", sw[1], math.floor(2 * sw[1] / sw[2] + 0.5)), size, f)
+				end
+			end
+			for _, size in ipairs(SIZES) do
+				local f = {}
+				hold(f, 12, 0, 2, 10)
+				seg(f, 12, 12, 0, 0, 2, 14, 2)
+				seg(f, 12, 12, 0, 0, 14, 2, 2)
+				add("look", "look up at 12 studs", size, f)
+			end
 		end
 		for _, turn in ipairs(pins and {} or { 0, 12, 16, 20, -15, 28, 32 }) do
 			for _, size in ipairs(SIZES) do
@@ -2336,6 +2392,8 @@ local function clientScenarios()
 				-- (guide_pins) the GuideSign's state each frame ("off", or its spot: right / left / under the tip, "/name"
 				-- with the name alone) and the first frame it stacked on the chip
 				local signStates, stack, traceSign = {}, nil, nil
+				-- (guide_pins, fix6b) the chip each frame: false hidden, else its middle, top and line ({ x, y, t })
+				local chipSeq = {}
 				for i, fr in ipairs(run.frames) do
 					if i > 1 then
 						place(fr[1], fr[2], fr[3])
@@ -2347,6 +2405,7 @@ local function clientScenarios()
 					local gui = pg():FindFirstChild("NimbusGuide")
 					local chip = gui and gui:FindFirstChild("Chip", true)
 					local c = nil
+					chipSeq[i] = false
 					if not (chip and chip.Visible and gui.Enabled) then
 						hidden = hidden + 1
 						hiddenFrames = hiddenFrames + 1
@@ -2360,6 +2419,8 @@ local function clientScenarios()
 						c = grow(screenRect(chip), 3 * k) -- its wood edge
 						local cw = c.R - c.X
 						local cx = (c.X + c.R) / 2
+						local tl = chip:FindFirstChild("Text")
+						chipSeq[i] = { x = cx, y = c.Y, t = (tl and tl:IsA("TextLabel")) and tl.Text or "" }
 						if prev then
 							local moved = math.max(abs(cx - prev.x), abs(c.Y - prev.y))
 							if moved > cw / 4 + 2 and not prev.hid then
@@ -2487,8 +2548,8 @@ local function clientScenarios()
 						local function r4(r)
 							return r and fmt("%.0f,%.0f,%.0f,%.0f", r.X, r.Y, r.R, r.B) or "-"
 						end
-						traceFile:write(fmt("%s|%d|%.1f|%.0f|%s|chip %s|arrow %s|sign %s %s\n", tag, i, fr[1], fr[2], tostring(fr[4] or ""),
-							r4(c), r4(box), signStates[i], r4(traceSign)))
+						traceFile:write(fmt("%s|%d|%.1f|%.1f|%s|chip %s|arrow %s|sign %s %s|%s\n", tag, i, fr[1], fr[2], tostring(fr[4] or ""),
+							r4(c), r4(box), signStates[i], r4(traceSign), chipSeq[i] and chipSeq[i].t or "-"))
 						traceSign = nil
 					end
 					if i == 1 and run.name == "walk" and (run.w == 1920 or run.w == 1280 or run.w == 390) then
@@ -2577,6 +2638,83 @@ local function clientScenarios()
 						-- walks: the chip hides at most 0.5 s at a time
 						T.check(maxHidden <= 15, "pin W2 (look0 #4) " .. tag .. ": the chip hides at most 0.5 s at a time",
 							fmt("hidden %d frames in a row (%d in all) | %s", maxHidden, hiddenFrames, table.concat(seq, " -> ")))
+					end
+					local n = #run.frames
+					local function where(i)
+						return fmt("%.1f studs, turn %.1f", run.frames[i][1], run.frames[i][2])
+					end
+					local moving = run.kind == "pan" or run.kind == "turnwalk" or run.kind == "sway" or run.kind == "panstop" or run.kind == "panrev"
+					if moving then
+						-- (fix6b, look1 #1: e272588's pass was full line, a 0.1 s blink, 'Guiding' at home for 1 - 14 frames, a
+						-- blink, 'Guiding' behind the arrow, a blink, the full line: three blinks a pass, the cancel X moving
+						-- each time) every chip state - a show between two hides, or between two changes of its line - lasts
+						-- 0.5 s (15 frames) unless the run starts or ends in it, and the chip never blinks in place (a hide
+						-- with the chip back on the same spot: its change of line at home)
+						local short, blink = {}, {}
+						local k = 1
+						while k <= n do
+							local j = k
+							if chipSeq[k] then
+								while j < n and chipSeq[j + 1] and chipSeq[j + 1].t == chipSeq[k].t do
+									j = j + 1
+								end
+								if k > 1 and j < n and j - k + 1 < 15 then
+									short[#short + 1] = fmt("'%s' %d frames at %s (x %.0f)", chipSeq[k].t, j - k + 1, where(k), chipSeq[k].x - vp.X / 2)
+								end
+							else
+								while j < n and not chipSeq[j + 1] do
+									j = j + 1
+								end
+								local a, b = chipSeq[k - 1], chipSeq[j + 1]
+								if a and b and abs(a.x - b.x) <= 2 and abs(a.y - b.y) <= 2 then
+									blink[#blink + 1] = fmt("hidden %d frames at %s, back on its spot (x %.0f, '%s' -> '%s')", j - k + 1, where(k), a.x - vp.X / 2, a.t, b.t)
+								end
+							end
+							k = j + 1
+						end
+						T.check(#short == 0, "pin G1 (look1 #1) " .. tag .. ": every chip state (a show, its line) lasts 0.5 s",
+							table.concat(short, "; ") .. " | " .. table.concat(seq, " -> "))
+						T.check(#blink == 0, "pin G1 (look1 #1) " .. tag .. ": the chip never blinks in place (its change of line at home)",
+							table.concat(blink, "; "))
+					end
+					if run.kind == "sway" or run.kind == "panrev" then
+						-- (fix6b, look1 #2: a +-3 degree sway at 6 degrees a second sent the chip from +223 to -254 px and back,
+						-- 4 crossings in 4.5 s at 1920x1080) on a sway and a pan that turns back the chip keeps the side it
+						-- took: no swap from one side of the top centre to the other while it shows (hidden frames and home
+						-- skipped)
+						local swaps, last = {}, nil
+						for i = 1, n do
+							local s = chipSeq[i]
+							if s then
+								local off = s.x - vp.X / 2
+								local sd = (off > 2 and "R") or (off < -2 and "L") or nil
+								if sd and last and sd ~= last then
+									swaps[#swaps + 1] = fmt("%s -> %s at %s (x %.0f)", last, sd, where(i), off)
+								end
+								last = sd or last
+							end
+						end
+						T.check(#swaps == 0, "pin G2 (look1 #2) " .. tag .. ": the chip keeps one side on a sway or a reversal (no swap)",
+							table.concat(swaps, "; ") .. " | " .. table.concat(seq, " -> "))
+					end
+					if moving or run.kind == "look" then
+						-- (fix6b, look1 #3: W1 held the walk only; pans flashed the GuideSign for 1 - 6 frames on landscape
+						-- phones and a look up at 12 studs for 2) each show of the sign (a spot, or its name alone) lasts 0.5 s
+						-- unless the run starts or ends in it
+						local flashes = {}
+						local k = 1
+						while k <= n do
+							local j = k
+							while j < n and signStates[j + 1] == signStates[k] do
+								j = j + 1
+							end
+							if signStates[k] ~= "off" and k > 1 and j < n and j - k + 1 < 15 then
+								flashes[#flashes + 1] = fmt("%s %d frames at %s", signStates[k], j - k + 1, where(k))
+							end
+							k = j + 1
+						end
+						T.check(#flashes == 0, "pin G3 (look1 #3) " .. tag .. ": each GuideSign show lasts 0.5 s on a pan or a look up",
+							table.concat(flashes, "; "))
 					end
 				end
 				local hideCap = (run.kind == "walk" or run.kind == "far") and 6 or 15
