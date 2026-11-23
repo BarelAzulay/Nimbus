@@ -2348,6 +2348,21 @@ local function clientScenarios()
 				add("look", fmt("look up at %d studs", d), size, f)
 			end
 		end
+		-- (while working: NC_GUIDE_PINS_RUNS="sway,and back" walks the runs whose names hold one of those; the gate runs all)
+		local onlyRuns = pins and os and os.getenv and os.getenv("NC_GUIDE_PINS_RUNS")
+		if onlyRuns and onlyRuns ~= "" then
+			local keep = {}
+			for _, run in ipairs(runs) do
+				for word in (onlyRuns .. ","):gmatch("([^,]+),") do
+					if run.name:find(word, 1, true) then
+						keep[#keep + 1] = run
+						break
+					end
+				end
+			end
+			runs = keep
+			T.info("*guide pins: NC_GUIDE_PINS_RUNS=" .. onlyRuns .. " (not the gate run)")
+		end
 		local touchWas = UIS.TouchEnabled
 		local ok, err = pcall(function()
 			methods.WorldToViewportPoint, methods.WorldToScreenPoint = project, project
@@ -2682,13 +2697,25 @@ local function clientScenarios()
 						-- 4 crossings in 4.5 s at 1920x1080) on a sway and a pan that turns back the chip keeps the side it
 						-- took: no swap from one side of the top centre to the other while it shows (hidden frames and home
 						-- skipped)
-						local swaps, last = {}, nil
+						-- (The pan that turns back counts from the turn back on: "never swap on a reversal". Its way to the gate is a
+						-- pan's pass, where W2 has the chip go behind the arrow; at 640 x 360 the arrow at -35 leaves a spot on the
+						-- right only and the gate one on the left only, so that pass's one crossing is the least there is. The
+						-- sways count from their first frame)
+						local swaps, last, from = {}, nil, 1
+						if run.kind == "panrev" then
+							for i = 2, n do
+								if run.frames[i][2] < run.frames[i - 1][2] - 1e-6 then
+									from = i
+									break
+								end
+							end
+						end
 						for i = 1, n do
 							local s = chipSeq[i]
 							if s then
 								local off = s.x - vp.X / 2
 								local sd = (off > 2 and "R") or (off < -2 and "L") or nil
-								if sd and last and sd ~= last then
+								if sd and last and sd ~= last and i >= from then
 									swaps[#swaps + 1] = fmt("%s -> %s at %s (x %.0f)", last, sd, where(i), off)
 								end
 								last = sd or last

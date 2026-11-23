@@ -226,6 +226,9 @@ local K = {
 	-- (kit-b P2 fix6b, look1 #1) every state the chip shows (a spot, a line) holds GUIDE_HOLD s: the short line waits at home
 	-- for a passing arrow only where it will stand that long, else the chip hides until the spot behind the arrow is free
 	GUIDE_HOLD = 0.5,
+	-- (kit-b P2 fix6b, look1 #2) the camera's turn either side of the gate (a sway) the chip's spot aside allows for
+	GUIDE_SWAY = 8,
+	GUIDE_HOME_WAIT = 0.15,
 	SIGN_CLEAR = 8, -- (fin1) the GuideSign takes a spot this far off the HUD and the chip (1080p px), keeps it while half that
 	-- (kit-b P2 fix6, world look pol1 A) the GuideSign takes a NEW spot or line only where it still holds with the arrow
 	-- where it will stand SIGN_HOLD s on (its way on the screen over the last SIGN_SEEN s), and once hidden stays hidden
@@ -4029,7 +4032,22 @@ local function placeChip(dt, snap)
 		return true
 	end
 	local homeR = chipRectAt(homeX, homeY, wFull)
-	local function pick(side, w, compact)
+	-- (kit-b P2 fix6b, look1 #2: standing 45 studs out, a +-3 degree sway sent the chip across the arrow and back at each
+	-- turn, 162 - 282 px, and a pan to the gate and back did it once each way: its spot, K.GUIDE_TAKE past the arrow, was
+	-- met as the sway came its way or the camera came round to face the gate) home's middle: where the arrow stands while
+	-- the camera faces the gate within K.GUIDE_SWAY degrees (the arrow's width, and that turn's px at the screen's middle).
+	-- pickAny takes a spot clear of it first, the compact line before a full line that is not, so a sway or the camera
+	-- turned to face the gate never meets it, and the chip keeps its side until the arrow leaves home's middle its way
+	local zone
+	do
+		local a = G.seen and G.seen.arrow
+		local aw = a and (a.x1 - a.x0) or 0
+		local cam = workspace.CurrentCamera
+		local fov = (cam and cam.FieldOfView and cam.FieldOfView > 1) and cam.FieldOfView or 70
+		local sway = (area.Y / 2) * math.tan(math.rad(K.GUIDE_SWAY)) / math.tan(math.rad(fov / 2))
+		zone = { x0 = homeX - aw / 2 - sway, y0 = homeR.y0, x1 = homeX + aw / 2 + sway, y1 = homeR.y1 }
+	end
+	local function pick(side, w, compact, zoned)
 		local u = nil
 		local g = grown(homeR, take)
 		for _, o in ipairs(obstacles) do
@@ -4058,6 +4076,22 @@ local function placeChip(dt, snap)
 		-- soon as the piece comes within the berth: one trip, crossing it in a hide-step
 		local reach = (passing and compact) and math.max(w, wFull) or w
 		local order = {}
+		if zoned then
+			-- (kit-b P2 fix6b) `zoned`: only spots 1 px clear of home's middle (zone: it holds the two looks' lead the chip
+			-- keeps its spot by), the nearest such on each side first
+			for _, s in ipairs(passing and { first } or { first, (first == "L") and "R" or "L" }) do
+				local dir = (s == "L") and -1 or 1
+				local x = (s == "L") and math.min(zone.x0 - 2 - e - w / 2, homeX - w / 2) or math.max(zone.x1 + 2 + e + w / 2, homeX + w / 2)
+				while math.abs(x - homeX) <= reach do
+					local r = chipRectAt(x, homeY, w)
+					if clearOf(r, obstacles, clearPx) and clearOf(r, { zone }, 1) and onFree(r) then
+						return { side = s, x = x, y = homeY, compact = compact }
+					end
+					x = x + dir * 2 * k
+				end
+			end
+			return nil
+		end
 		for _, s in ipairs(passing and { first } or { first, (first == "L") and "R" or "L" }) do
 			for _, gap in ipairs({ take, math.max(clearPx + 1, take * 0.75), math.max(clearPx + 1, take * 0.5), clearPx + 1 }) do
 				local x
@@ -4085,7 +4119,8 @@ local function placeChip(dt, snap)
 		return nil
 	end
 	local function pickAny(side)
-		return pick(side, wFull, nil) or (wCompact and pick(side, wCompact, true)) or nil
+		return pick(side, wFull, nil, true) or (wCompact and pick(side, wCompact, true, true))
+			or pick(side, wFull, nil) or (wCompact and pick(side, wCompact, true)) or nil
 	end
 	-- (fix6, pol1 B) a piece passing across meets the spot the chip took ahead of it while the camera stood still, and there
 	-- is no spot behind it yet within the chip's width of home: the compact line at home while the piece as it stands (and
@@ -4131,6 +4166,8 @@ local function placeChip(dt, snap)
 	if G.away and G.away.hide then
 		if clearOf(homeR, obstacles, clearPx) then
 			G.away = nil
+		elseif G.away.home and G.away.home + dt < 2 * K.GUIDE_HOME_WAIT then
+			G.away.home = G.away.home + dt -- (waiting for home, above; past twice that, a spot as below)
 		else
 			G.away = pickAny(G.away.side) or (G.away.side ~= "C" and homeCompact()) or G.away
 		end
@@ -4150,8 +4187,16 @@ local function placeChip(dt, snap)
 			G.away = nil
 		elseif met(spot) or not onFree(spot) then
 			local side = G.away.side
+			local a = G.seen and G.seen.arrow
+			local leaving = a and ((side == "L" and vx <= -K.GUIDE_PASS * k) or (side == "R" and vx >= K.GUIDE_PASS * k))
 			if clearOf(homeR, obstacles, clearPx) then
 				G.away = nil
+			elseif leaving and ((side == "L") and (a.x1 + clearPx - homeR.x0) or (homeR.x1 - a.x0 + clearPx)) / math.abs(vx)
+				<= K.GUIDE_HOME_WAIT then
+				-- (kit-b P2 fix6b, look1 #2: the camera turned back from the gate, the arrow came back its way and the chip
+				-- crossed it to the other side) the arrow on its way out of home toward it, home clear behind it within
+				-- K.GUIDE_HOME_WAIT s: it waits hidden and comes home, no swap
+				G.away = { hide = true, side = side, home = 0 }
 			else
 				G.away = pickAny((side == "L" and "R") or (side == "R" and "L") or nil) or (side ~= "C" and homeCompact())
 					or { hide = true, side = side }
