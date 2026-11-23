@@ -7860,12 +7860,58 @@ end
 -- helper cell's parts for its texts (Hud.LayoutFighter, and Hud.FillFighter once the texts are known): the square tile with
 -- its four buff blocks under it, the navy Lv tag and the buff's stone tag (each as wide as its text, never over the pet),
 -- SWAP. Wide: a centred column; a phone: the tags beside the tile (one line when both fit, else the buff's under the Lv)
+-- (fix6b, look1 #4: at 720 x 405 the full raid cut helper 1's 'STONE SKIN' to 'STONE SK...' in its 88 px plate, 700 x 394
+-- 'STONE S...' and 'TIDE MEN...': a landscape phone's Lv / name / Swap column there is too narrow for the name at the
+-- floor size with the plate's 6 px sides) a capital name's width, the wider of the HUD's two faces (FredokaOne, Nunito
+-- ExtraBold) a letter, em: tagW's flat 0.72 read 'I' as wide as 'O' (the buff's face has no Enum twin to measure with)
+local CAP_EM = { A = 0.78, B = 0.72, C = 0.72, D = 0.79, E = 0.64, F = 0.64, G = 0.77, H = 0.81, I = 0.27, J = 0.55, K = 0.67,
+	L = 0.59, M = 0.9, N = 0.79, O = 0.82, P = 0.69, Q = 0.83, R = 0.73, S = 0.66, T = 0.73, U = 0.77, V = 0.78, W = 1.18,
+	X = 0.74, Y = 0.69, Z = 0.64 }
+local function capNameNeed(text, px)
+	local em = 0
+	for ch in tostring(text or ""):gmatch(".") do
+		em = em + (CAP_EM[ch] or ((ch == " ") and 0.3 or 0.58))
+	end
+	-- (its plate's 2 px sides and 2 to spare: Hud.PlaceHelper tightens the sides of a name that needs it)
+	return math.ceil(em * px) + 2 * 2 + 2
+end
+
+-- where a shown helper's name does not fit its plate on one line even with tight sides, both cells take the short
+-- phone's form (the Lv tag and SWAP's arrows on the top row, the name under them on two solid lines), as 640 x 360 and
+-- 667 x 375 draw them; one form for both cells
+local function namesTwoLine(L)
+	if not (L.Compact and not L.Tall and not L.LvSwap) or L.H + 2 + 2 * L.Px + 4 > (L.CellH or 0) then
+		return false
+	end
+	local room = L.CellW - (L.Tile + 8)
+	for _, other in ipairs(Hud.helpers or {}) do
+		local b = other.Buff
+		if b and other.Cell and other.Cell.Visible and tostring(b.Text) ~= "" and capNameNeed(b.Text, L.Px) > room then
+			return true
+		end
+	end
+	return false
+end
+
 function Hud.PlaceHelper(H)
 	local L = Hud.helperLevel
 	if not L then
 		return
 	end
-	H.swapIcon = L.LvSwap == true -- (Pitch 2 item 1b, look review r1: SWAP's arrows alone, Hud.Update)
+	local two = namesTwoLine(L)
+	if (Hud.namesTwo == true) ~= two and not Hud.placingAll then
+		-- (fix6b) the other cell takes the same form
+		Hud.namesTwo = two
+		Hud.placingAll = true
+		for _, other in ipairs(Hud.helpers or {}) do
+			if other ~= H then
+				Hud.PlaceHelper(other)
+				other.stateKey = nil
+			end
+		end
+		Hud.placingAll = false
+	end
+	H.swapIcon = L.LvSwap == true or two -- (Pitch 2 item 1b, look review r1: SWAP's arrows alone, Hud.Update)
 	local tile, cdH = L.Tile, L.CdH
 	H.Level.AutomaticSize = Enum.AutomaticSize.None
 	H.Level.AnchorPoint = Vector2.new(0, 0)
@@ -7910,10 +7956,10 @@ function Hud.PlaceHelper(H)
 	Hud.HelperFace(H, L)
 	local x = tile + 8
 	local room = L.CellW - x
-	if L.LvSwap then
+	if L.LvSwap or two then
 		-- (Pitch 2 item 1b, look review r1) a short landscape phone (Hud.LayoutFighter): the Lv tag, then SWAP as its arrows
 		-- alone to the cell's right edge, on the top row; the buff's name under them, on two lines where it is longer than
-		-- the room and the cell has them (L.NameH)
+		-- the room and the cell has them (L.NameH; fix6b: a cell taking this form for a long name, two solid lines)
 		local sw = min(room, max(K.SWAP_ICON_W, room - lvW - 4))
 		local lw = max(10, room - sw - 4)
 		H.Level.Position = UDim2.fromOffset(x, 0)
@@ -7921,9 +7967,10 @@ function Hud.PlaceHelper(H)
 		H.Swap.Position = UDim2.fromOffset(L.CellW - sw, 0)
 		H.Swap.Size = UDim2.fromOffset(sw, L.H)
 		local bh = L.BuffH
-		if buffW > room and (L.NameH or 0) > L.BuffH then
+		local nameH = L.LvSwap and L.NameH or (2 * L.Px + 4)
+		if buffW > room and (nameH or 0) > L.BuffH then
 			H.Buff.TextWrapped = true
-			bh = L.NameH
+			bh = nameH
 		end
 		H.Buff.Position = UDim2.fromOffset(x, L.H + 2)
 		H.Buff.Size = UDim2.fromOffset(min(room, buffW), bh)
@@ -7943,6 +7990,14 @@ function Hud.PlaceHelper(H)
 			-- (a tall phone: "TIDE MEND" on two lines in the room beside the tile)
 			H.Buff.TextWrapped = true
 			bh = 2 * math.ceil(L.Px * 1.2) + 4
+		elseif buffW > room and capNameNeed(H.Buff.Text, L.Px) <= room then
+			-- (fix6b, look1 #4) a landscape phone's name a few px past its plate's 6 px sides: 2 px sides (the plate keeps the
+			-- room's width; its centred word does not move)
+			local pad = H.Buff:FindFirstChildOfClass("UIPadding")
+			if pad then
+				pad.PaddingLeft = UDim.new(0, 2)
+				pad.PaddingRight = UDim.new(0, 2)
+			end
 		end
 		H.Buff.Position = UDim2.fromOffset(x, by)
 	end
