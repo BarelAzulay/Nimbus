@@ -38,6 +38,15 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     battle_hud_no_overlap's ink gap between the end card and every part it lists
   D1  fix6 look0 #6 1024 x 768 Daily: the header 88 px past its box under the Streak chip, '$1.45K' read '$1.4...', 'TODAY'
                     1.4 px past its box. Rule: the Daily page's header, chips and day tiles' names and amounts whole
+  O1  fix6 look1 #4 720 x 405 / 700 x 394: helper tags 'STONE SK...', 'TIDE MEN...'. Rule: battle_hud_no_overlap's 'is
+                    whole' for the helpers' tags, at the gate sizes and 700 x 394
+  O2  fix6 look1 #5 2560 x 1440, 3440 x 1440, 3840 x 2160: the enemy list on the currency strips; 'TARGET' 3.4-3.9 px past
+                    its box from 1920 x 1200 up. Rule: the rows keep the ink gap off the strips; the TARGET tab reads whole
+  O3  fix6 look1 #6 lobby 360 x 640 / 375 x 667: the vitals card on DASH and RUN, its name 'SkyCli...'. Rule: the card's
+                    ink MIN_GAP off DASH and RUN, the player's name whole
+  T1  fix6 look1    the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
+                    1024 x 768 raid:full. Rule: a phone's timer one place and form through raid:ready / raid / raid:full;
+                    the clock at 1024 x 768 raid:full; the timer never larger than the boss name
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -59,7 +68,7 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -403,8 +412,138 @@ def pin_D1(c, sizes):
                 c.check("D1", ok, "D1 %s %dx%d: %s is whole" % (scen, w, h, p.replace(DAILY, "")), how)
 
 
+# ---------------------------------------------------------------------------------------------------------------- O1
+# (fix6b, look1 #4: 720 x 405 raid:full cut helper 1's 'STONE SKIN' to 'STONE SK...' in its 88 px plate; 700 x 394 cut
+# 'STONE S...' and 'TIDE MEN...' in raid:full, 'TIDE MEN...' in dungeon:run) battle_hud_no_overlap's 'is whole' rule for
+# the helpers' tags, at the gate sizes and 700 x 394
+O1_SIZES = [(700, 394)]
+O1_PAT = re.compile(r"Team\.Helpers\.Helper\d+\.\S+ '.*' is whole")
+
+
+def pin_O1(c, sizes):
+    col = Collect(c)
+    for scen in ("battle:raid", "battle:raid:full", "battle:raid:ready", "battle:dungeon", "battle:duel", "dungeon:run"):
+        for (w, h) in list(sizes) + [s for s in O1_SIZES if s not in sizes]:
+            d = c.dump(scen, w, h)
+            n, fails = col.run(scen, w, h, d)
+            mine = [f for f in fails if O1_PAT.search(f)]
+            c.check("O1", not mine, "O1 %s %dx%d: the helpers' tags read whole" % (scen, w, h), " | ".join(mine[:3]))
+
+
+# ---------------------------------------------------------------------------------------------------------------- O2
+# (fix6b, look1 #5: on screens 1440 px tall and up the enemy list lay on the currency strips - 2560 x 1440 battle:dungeon
+# 33.5 px over the token strip, raid:full and duel 16.5 px, dungeon:run over all three; the 'TARGET' tab's text ran 3.4 -
+# 3.9 px past its box from 1920 x 1200 up) the list's rows keep battle_hud_no_overlap's ink gap off the strips, and the
+# locked row's 'TARGET' tab reads whole, at the big screens (and the gate sizes for the tab)
+O2_BIG = [(1920, 1200), (2560, 1440), (3440, 1440), (3840, 2160)]
+O2_SCENES = ("battle:dungeon", "battle:raid:full", "battle:duel", "dungeon:run")
+
+
+def pin_O2(c, sizes):
+    col = Collect(c)
+    for scen in O2_SCENES:
+        for (w, h) in O2_BIG + [s for s in sizes if s not in O2_BIG]:
+            d = c.dump(scen, w, h)
+            nodes = c.nodes(d)
+            if (w, h) in O2_BIG:
+                n, fails = col.run(scen, w, h, d)
+                mine = []
+                for f in fails:
+                    m = re.match(r"^\S+ \d+x\d+: (\S+) and (\S+) keep [\d.]+ px apart", f)
+                    pair = (m.group(1), m.group(2)) if m else ()
+                    if any("Enemies" in p for p in pair) and any("Currency" in p for p in pair):
+                        mine.append(f)
+                c.check("O2", not mine, "O2 %s %dx%d: the enemy list keeps its ink gap off the currency strips" % (scen, w, h), " | ".join(mine[:3]))
+            tabs = [(p, n) for p, n in nodes.items() if re.search(r"^NimbusBattle\.Root\.Enemies\.Row\d+\.Target$", p)]
+            for p, n in tabs:
+                ok, how = c.whole(n)
+                c.check("O2", ok, "O2 %s %dx%d: %s reads whole in its box" % (scen, w, h, p.split(".")[-2] + ".Target"), how)
+
+
+# ---------------------------------------------------------------------------------------------------------------- O3
+# (fix6b, look1 #6, world pol1's minor: in the lobby at 360 x 640 and 375 x 667 the vitals card lay on DASH - 59 of its
+# 66 px, its full height - and on RUN's foot, its name tab cut to 'SkyCli...') the vitals card (its name tab with it) keeps
+# battle_hud_no_overlap's MIN_GAP of ink off the touch keys, and the player's name reads whole, at the gate sizes and
+# 375 x 667
+O3_SIZES = [(375, 667)]
+
+
+def pin_O3(c, sizes):
+    for (w, h) in list(sizes) + [s for s in O3_SIZES if s not in sizes]:
+        nodes = c.nodes(c.dump("lobby", w, h))
+        vit = [(p, n) for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals$", p)]
+        if not c.check("O3", bool(vit), "O3 lobby %dx%d: the vitals card shows" % (w, h)):
+            continue
+        vp, vn = vit[0]
+        ink = c.BH.ink_of(vn, c.RG, c.fonts)
+        for key in ("DashButton", "RunButton"):
+            kn = nodes.get("MobileControls." + key)
+            if not kn or float(kn["w"]) <= 1:
+                continue
+            kink = c.BH.ink_of(kn, c.RG, c.fonts)
+            if not (ink and kink):
+                continue
+            g = min(c.BH.gap(a, b) for a in ink for b in kink)
+            c.check("O3", g >= c.BH.MIN_GAP - 0.05, "O3 lobby %dx%d: the vitals card keeps %g px off %s" % (w, h, c.BH.MIN_GAP, key),
+                    "card ink %s, key %s: %.1f px" % (fmt(c.BH.union(ink)), fmt(c.BH.union(kink)), g))
+        for p, n in nodes.items():
+            if p.startswith(vp + ".") and p.endswith("PlayerName"):
+                ok, how = c.whole(n)
+                c.check("O3", ok, "O3 lobby %dx%d: the player's name reads whole on the vitals card" % (w, h), how)
+
+
+# ---------------------------------------------------------------------------------------------------------------- T1
+# (fix6b, look1 minors 1 / 2 and the owner's pick of 2026-11-23: e272588 gave the raid timer three places on one phone -
+# Shadow Hydra's bare at the card's foot in raid / raid:ready, inside the RAID pill in raid:full - dropped its clock at
+# 1024 x 768 Hydra raid:full and drew it larger than the boss name there, as 640 / 667 / 800 drew 17.6 px timers beside
+# 14.4 px names) for every raid boss: on a phone one place and one form for the whole fight (raid:ready, raid, raid:full
+# the same: row 1, the pill rows or the RAID pill; clock or not); at 1024 x 768 the full raid's timer wears its clock;
+# at every size the timer is never larger than the boss name
+TIMER = "NimbusBattle.Root.TopCard.ModeCard.Body.Timer"
+CLOCK = "NimbusBattle.Root.TopCard.ModeCard.Body.Clock"
+RAIDPILL = "NimbusBattle.Root.TopCard.Pills.RaidPill"
+
+
+def timer_form(nodes):
+    """(where, clock, size): 'row1' (beside the boss name), 'pills' (under the track), 'pill' (the RAID pill reads the
+    time) or 'none'"""
+    name = next((n for p, n in nodes.items() if p.startswith("NimbusBattle.Root.TopCard.") and p.endswith("BossName")), None)
+    t = nodes.get(TIMER)
+    tt = t and t.get("text")
+    rp = nodes.get(RAIDPILL)
+    rpt = rp and rp.get("text")
+    if isinstance(tt, dict) and str(tt.get("text", "")).strip():
+        ny = (rect(name)[1] + rect(name)[3]) / 2 if name else None
+        r = rect(t)
+        where = "row1" if ny is not None and r[1] <= ny <= r[3] else "pills"
+        return where, CLOCK in nodes, float(tt.get("size", 0)), name
+    if isinstance(rpt, dict) and re.match(r"^\d+:\d\d$", str(rpt.get("text", "")).strip()):
+        return "pill", CLOCK in nodes, float(rpt.get("size", 0)), name
+    return "none", CLOCK in nodes, 0.0, name
+
+
+def pin_T1(c, sizes):
+    for boss in K1_BOSSES:
+        for (w, h) in sizes:
+            forms = {}
+            for scen in ("battle:raid:ready", "battle:raid", "battle:raid:full"):
+                nodes = c.nodes(c.dump(scen, w, h, boss=boss))
+                where, clock, size, name = timer_form(nodes)
+                forms[scen] = (where, clock)
+                nt = name and name.get("text")
+                if size > 0 and isinstance(nt, dict):
+                    c.check("T1", size <= float(nt.get("size", 0)) + 0.05, "T1 %s %s %dx%d: the timer is never larger than the boss name" % (boss, scen, w, h),
+                            "timer %.1f px (%s), name '%s' %.1f px" % (size, where, nt.get("text"), float(nt.get("size", 0))))
+                if (w, h) == (1024, 768) and scen == "battle:raid:full":
+                    c.check("T1", where != "none" and clock, "T1 %s %s %dx%d: the timer wears its clock" % (boss, scen, w, h), "%s, clock %s" % (where, clock))
+            if c.RG.is_touch(w, h, None):
+                c.check("T1", len(set(forms.values())) == 1, "T1 %s %dx%d: one place and one form for the timer the whole fight" % (boss, w, h),
+                        ", ".join("%s %s%s" % (s.replace("battle:", ""), f[0], " +clock" if f[1] else "") for s, f in forms.items()))
+            c.cache.clear()
+
+
 RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
-       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1}
+       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1}
 
 
 def parse_sizes(text):
