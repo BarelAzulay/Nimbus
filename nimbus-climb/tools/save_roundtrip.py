@@ -785,6 +785,97 @@ def phase_rollback(env, rep):
     env.rollback_before = before
 
 
+# (b2) players with no v2 record: a v1 legacy save (a table, a bare number) or nothing at all. (uid, v1 value, Tokens)
+FIRST_SAVE = {"v1table": (7111, {"Tokens": 5555}, 5555), "v1number": (7112, 888, 888), "nothing": (7113, None, 0)}
+FIRST_SAVE_BRANCH = {"v1table": (7114, {"Tokens": 5555}, 5555), "v1number": (7115, 888, 888)}
+
+
+def phase_crash(env, rep):
+    """(b2) a branch server dies before a player's FIRST full save; the next server is main (then the branch again)."""
+    store = env.store
+    rep.section("crash (b2): a branch server dies before the first full save; the next server is MAIN")
+    store.restore(env.fixture)
+    for name, (u, v1, _) in list(FIRST_SAVE.items()) + list(FIRST_SAVE_BRANCH.items()):
+        store.data.pop(key(u), None)
+        if v1 is not None:
+            store.data[key(u, V1)] = json.loads(json.dumps(v1))
+    v1_before = {k: json.dumps(v, sort_keys=True) for k, v in store.data.items() if k.startswith(V1 + "/")}
+    q = Server(env, "branch-D", env.branch_root, env.clock, "srv-D")
+    for group in (FIRST_SAVE, FIRST_SAVE_BRANCH):
+        for name, (u, v1, tokens) in group.items():
+            q.join(u)
+            rep.check(wait_loaded(q, u) is not None, "crash '%s' (%d): the branch loads the player" % (name, u))
+            st = q.status(u)
+            rep.check(st.get("Tokens") == tokens and st.get("Owns"), "crash '%s' (%d): the branch plays with the v1 Tokens (%d) on a save it owns" % (name, u, tokens), json.dumps(st))
+    step_all([q], 5)  # well inside the first autosave interval: no full save has been written yet
+    for group in (FIRST_SAVE, FIRST_SAVE_BRANCH):
+        for name, (u, v1, tokens) in group.items():
+            r = store.record(u)
+            rep.check(isinstance(r, dict) and (r.get("Lock") or {}).get("Id") == "srv-D" and "Version" not in r,
+                      "crash '%s' (%d): 5 s in, the record is the claim's (this server's lock, no full save yet)" % (name, u), json.dumps(r))
+            rep.info("crash '%s' (%d): the record the dead server leaves: %s" % (name, u, json.dumps({k: (v if k != "Lock" else "{...}") for k, v in (r or {}).items()}, sort_keys=True)))
+    rep.check(not errors_of(q.problems()), "crash: the branch raised no script error")
+    clock = q.now()
+    q.close(shutdown=False)  # the server dies: no release, no save
+    rep.check(not store.bad, "crash: every value the branch stored is one a real DataStore can hold", " | ".join(store.bad[:3]))
+
+    m = Server(env, "main-after-crash", env.main_root, clock + 30)
+    for name, (u, v1, tokens) in FIRST_SAVE.items():
+        m.join(u)
+        waited = wait_loaded(m, u)
+        st = m.status(u)
+        rep.check(waited is not None and waited <= 5 and not st.get("Provisional"), "crash '%s': main loads the player at once, as a real save" % name, "waited %s, %s" % (waited, json.dumps(st)))
+        rep.check(st.get("Tokens") == tokens, "crash '%s': MAIN has the player's %d v1 Tokens (its v1 migration is not skipped, or the record carries them)" % (name, tokens),
+                  "main Tokens %s (want %d)" % (st.get("Tokens"), tokens))
+    problems = m.problems()
+    rep.check(not errors_of(problems), "crash: main reads those records without a script error", " | ".join(problems[:4]))
+    warns = [x for x in problems if x.startswith("warn") and "DataService" in x]
+    rep.check(not warns, "crash: main reads those records without a DataService warning", " | ".join(warns[:4]))
+    for name, (u, v1, tokens) in FIRST_SAVE.items():
+        m.exec("local c = ...; c.DS.AddTokens(c.player, 5)", u)
+    m.advance(3)
+    for name, (u, v1, tokens) in FIRST_SAVE.items():
+        m.leave(u)
+    m.advance(8)
+    for name, (u, v1, tokens) in FIRST_SAVE.items():
+        r = store.record(u) or {}
+        rep.check(r.get("Tokens") == tokens + 5 and r.get("Version") == 2, "crash '%s': main's save stores %d + 5 Tokens (Version 2)" % (name, tokens), "Tokens %s, Version %s" % (r.get("Tokens"), r.get("Version")))
+    rep.check(not errors_of(m.problems()), "crash: main saves without a script error")
+    clock = m.now()
+    m.close()
+
+    rep.section("crash (b2): this branch reads again (10 minutes later): after main, and straight after the crash")
+    q2 = Server(env, "branch-E", env.branch_root, clock + 600, "srv-E")
+    for name, (u, v1, tokens) in FIRST_SAVE.items():
+        q2.join(u)
+        waited = wait_loaded(q2, u)
+        st = q2.status(u)
+        rep.check(waited is not None and waited <= 5 and st.get("Owns") and st.get("Tokens") == tokens + 5,
+                  "crash '%s': the branch loads main's save as a real, owned save with %d + 5 Tokens (not doubled)" % (name, tokens), "waited %s, %s" % (waited, json.dumps(st)))
+    # the next server after the crash is this branch again: the dead server's lock is stale, the v1 Tokens count once
+    for name, (u, v1, tokens) in FIRST_SAVE_BRANCH.items():
+        q2.join(u)
+        waited = wait_loaded(q2, u)
+        st = q2.status(u)
+        rep.check(waited is not None and waited <= 5 and st.get("Owns") and st.get("Tokens") == tokens,
+                  "crash '%s' (branch next): the branch loads the dead server's record with the %d v1 Tokens, once" % (name, tokens), "waited %s, %s" % (waited, json.dumps(st)))
+        give(q2, u, 7)
+    step_all([q2], 3)
+    for group in (FIRST_SAVE, FIRST_SAVE_BRANCH):
+        for name, (u, v1, tokens) in group.items():
+            q2.leave(u)
+    step_all([q2], 8)
+    for name, (u, v1, tokens) in FIRST_SAVE_BRANCH.items():
+        r = store.record(u) or {}
+        rep.check(r.get("Tokens") == tokens + 7 and "Lock" not in r, "crash '%s' (branch next): the final record holds %d + 7 Tokens and no lock" % (name, tokens), "Tokens %s, Lock %s" % (r.get("Tokens"), json.dumps(r.get("Lock"))))
+    v1_after = {k: json.dumps(v, sort_keys=True) for k, v in store.data.items() if k.startswith(V1 + "/")}
+    rep.check(v1_before == v1_after, "crash: the v1 legacy store is never written (by either build)")
+    rep.check(not errors_of(q2.problems()), "crash: the branch reads and saves without a script error")
+    rep.check(not store.bad, "crash: every value stored is one a real DataStore can hold", " | ".join(store.bad[:3]))
+    env.clock = q2.now()
+    q2.close()
+
+
 LOCK_SECONDS = 360  # Config.Save.LockSeconds: a lock this old is stale
 CLAIM_WAIT = 12  # Config.Save.ClaimWaitSeconds: a load waits this long for a live lock, then plays on a stand-in
 
@@ -1044,7 +1135,7 @@ def phase_lock(env, rep):
 def main():
     ap = argparse.ArgumentParser(description="Nimbus Climb: the save round trip between main and this branch (release step 1, gate 2)")
     ap.add_argument("--main-ref", default="origin/main", help="the git ref of the live game's code (default origin/main)")
-    ap.add_argument("--only", help="comma separated phases: build,load,rollback,lock (build always runs)")
+    ap.add_argument("--only", help="comma separated phases: build,load,rollback,crash,lock (build always runs)")
     ap.add_argument("--json", metavar="FILE", help="write the checks and every field difference as JSON")
     ap.add_argument("--dump", metavar="FILE", help="write the fake saves main's code wrote (the fixture) as JSON")
     ap.add_argument("-v", "--verbose", action="store_true", help="print passing checks too")
@@ -1052,7 +1143,7 @@ def main():
     ap.add_argument("--branch-root", metavar="DIR", help="test this copy of the branch (src/ + default.project.json) instead of the repo: "
                     "for proving the checks fail on a deliberately broken copy")
     a = ap.parse_args()
-    phases = set(x.strip() for x in a.only.split(",")) if a.only else {"build", "load", "rollback", "lock"}
+    phases = set(x.strip() for x in a.only.split(",")) if a.only else {"build", "load", "rollback", "crash", "lock"}
 
     env = Env()
     env.engine_name, env.engine = smoke.load_engine(a.engine)
@@ -1084,6 +1175,8 @@ def main():
             if not hasattr(env, "main_view"):
                 phase_load(env, Report(False))  # main's first reading of the saves is the reference
             phase_rollback(env, rep)
+        if "crash" in phases:
+            phase_crash(env, rep)
         if "lock" in phases:
             phase_lock(env, rep)
     finally:
