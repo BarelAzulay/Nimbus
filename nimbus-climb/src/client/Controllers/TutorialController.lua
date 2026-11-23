@@ -4002,15 +4002,18 @@ local function placeChip(dt, snap)
 			return nil
 		end
 		local first = side
-		if math.abs(vx) >= K.GUIDE_PASS * k then
+		local passing = math.abs(vx) >= K.GUIDE_PASS * k
+		if passing then
 			first = (vx > 0) and "L" or "R" -- (it moves on away from there)
 		elseif first ~= "L" and first ~= "R" then
 			first = ((u.x0 + u.x1) / 2 >= homeX) and "L" or "R"
 		end
 		-- (K.GUIDE_TAKE past them, else as far toward that as the HUD leaves room: the arrow grows as the camera nears it,
-		-- and a spot just clear of it was met again at 844x390)
+		-- and a spot just clear of it was met again at 844x390). (kit-b P2 fix6, world look pol1 B) a piece passing across:
+		-- only the side it comes from, never the side ahead of it (that spot was met 0.9 s later, then the far side: three
+		-- moves a pass); no spot there yet within its width of home, it hides (stepChip) until there is
 		local order = {}
-		for _, s in ipairs({ first, (first == "L") and "R" or "L" }) do
+		for _, s in ipairs(passing and { first } or { first, (first == "L") and "R" or "L" }) do
 			for _, gap in ipairs({ take, math.max(clearPx + 1, take * 0.75), math.max(clearPx + 1, take * 0.5), clearPx + 1 }) do
 				local x
 				if s == "L" then
@@ -4039,6 +4042,17 @@ local function placeChip(dt, snap)
 	local function pickAny(side)
 		return pick(side, wFull, nil) or (wCompact and pick(side, wCompact, true)) or nil
 	end
+	-- (fix6, pol1 B) a piece passing across meets the spot the chip took ahead of it while the camera stood still, and there
+	-- is no spot behind it yet within the chip's width of home: the compact line at home while the piece as it stands (and
+	-- two looks on) keeps the berth off it, else hidden (on a 640 phone it hid ~1 s waiting for the spot behind; pol0's
+	-- compact line exists so it need not hide). From home it only hides that wait (under 0.5 s on every size)
+	local function homeCompact()
+		if not wCompact or math.abs(vx) < K.GUIDE_PASS * k then
+			return nil
+		end
+		local r = chipRectAt(homeX, homeY, wCompact)
+		return (clearOf(r, near, clearPx) and onFree(r)) and { side = "C", x = homeX, y = homeY, compact = true } or nil
+	end
 	if snap then
 		G.away, G.homeClear = nil, 0
 	end
@@ -4058,10 +4072,14 @@ local function placeChip(dt, snap)
 			if clearOf(homeR, obstacles, clearPx) then
 				G.away = nil
 			else
-				G.away = pickAny((side == "L" and "R") or (side == "R" and "L") or nil) or { hide = true, side = side }
+				G.away = pickAny((side == "L" and "R") or (side == "R" and "L") or nil) or (side ~= "C" and homeCompact())
+					or { hide = true, side = side }
 			end
 		end
-	elseif not clearOf(homeR, obstacles, clearPx) then
+	elseif not clearOf(homeR, obstacles, clearPx)
+		and (math.abs(vx) < K.GUIDE_PASS * k or not clearOf(homeR, near, clearPx)) then
+		-- (fix6, pol1 B) a piece passing across: home until it, as it stands (and two looks on), comes within the berth
+		-- (its K.GUIDE_LEAD sweep put the spot behind it past the chip's width, so it took the side ahead)
 		G.away = pickAny(nil) or { hide = true }
 		G.homeClear = 0
 	end

@@ -2244,9 +2244,12 @@ local function clientScenarios()
 			end
 			for _, tt in ipairs({ { 0, 40 }, { 40, 0 } }) do
 				for _, size in ipairs(SIZES) do
+					-- (fix6) the standing start is no part of the pass, as the pans' hold is not: a spot the chip took there,
+					-- the camera still, could not know which way the arrow would go; the pass is the turning walk from the
+					-- second frame (a spot taken once the turn runs still counts)
 					local f = { { 50, tt[1], 2 } }
 					seg(f, 50, 20, tt[1], tt[2], 2, 2)
-					mark(f, 1, 1)
+					mark(f, 2, 1)
 					add("turnwalk", fmt("walk turning %d -> %d", tt[1], tt[2]), size, f)
 				end
 			end
