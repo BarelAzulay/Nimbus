@@ -97,6 +97,7 @@ local K = {
 	VITALS_W = 430, -- (Pitch 2 item 08 C: the pitch's 430; was 300, bug batch 2 #1's compact card)
 	VITALS_H = 128, -- the vitals slot: the name tab's 32 above the card + the 96 card (see VG; U9-8 look's card was 100)
 	VITALS_MIN_W = 236, -- narrowest the vitals get squeezed on a small phone
+	VITALS_EDGE = 2, -- (kit-b P2 fix6b) the card's wood edge, drawn outside its box (screen px)
 	HOTBAR_GAP = 8, -- screen px between the old hotbar's top and the vitals card
 	HOTBAR_FALLBACK = 78, -- gui px the old item hotbar reached above the bottom edge (14 + 64): the card keeps that spot
 	OBSTACLE_GAP = 8, -- kept between the vitals and the column / the touch buttons / Roblox's stick and jump button
@@ -668,9 +669,11 @@ local function mobileRects()
 	local dy = insetShift(mobile)
 	for _, d in ipairs(mobile:GetDescendants()) do
 		if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.AbsoluteSize.X > 0 and shownIn(d, mobile) then
-			-- (LOOK-ui) a kit tile's wood edge is a Border stroke drawn outside its box: it counts
+			-- (LOOK-ui) a kit tile's wood edge is a Border stroke drawn outside its box: it counts. (kit-b P2 fix6b, look1 O3:
+			-- RUN / DASH draw theirs on the key's Block, so it was missed and the vitals card's ink came 3 px off RUN's)
 			local r = rectOf(d, dy)
-			local edge = d:FindFirstChild("SignEdge")
+			local block = d:FindFirstChild("Block")
+			local edge = d:FindFirstChild("SignEdge") or (block and block:FindFirstChild("SignEdge"))
 			local e = (edge and edge:IsA("UIStroke")) and edge.Thickness or 0
 			r.x0, r.y0, r.x1, r.y1 = r.x0 - e, r.y0 - e, r.x1 + e, r.y1 + e
 			table.insert(out, r)
@@ -788,7 +791,7 @@ local function robloxTouchRects(area, vp)
 		stickH = K.STICK_H_PORTRAIT
 	end
 	return {
-		{ x0 = 0, y0 = area.Y - stickH, x1 = stickW, y1 = area.Y },
+		{ x0 = 0, y0 = area.Y - stickH, x1 = stickW, y1 = area.Y, soft = true }, -- (the zone the thumb roams: placeVitals)
 		{ x0 = area.X - (1.5 * j + 10), y0 = area.Y - jumpBottom - j, x1 = area.X - (0.5 * j + 10), y1 = area.Y - jumpBottom },
 	}
 end
@@ -800,20 +803,31 @@ end
 -- its top above `ceiling` (the middle of the screen): there it keeps the last rows, squeezed to minW.
 -- Returns left (gui px), width (design px), bottom (gui px).
 local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling)
-	local gap = K.OBSTACLE_GAP
+	-- (kit-b P2 fix6b, look1 O3) the card's own wood edge is drawn outside its box: the gap is kept from it
+	local gap = K.OBSTACLE_GAP + K.VITALS_EDGE
 	for _ = 1, 6 do
 		local top = bottom - h * k
 		local left, right = side, area.X - side
+		local hardLeft, hardRight = side, area.X - side
 		local step = nil
 		for _, r in ipairs(obstacles) do
 			if top < r.y1 + gap and bottom > r.y0 - gap then
 				if (r.x0 + r.x1) / 2 < cx then
 					left = math.max(left, r.x1 + gap)
+					hardLeft = r.soft and hardLeft or math.max(hardLeft, r.x1 + gap)
 				else
 					right = math.min(right, r.x0 - gap)
+					hardRight = r.soft and hardRight or math.min(hardRight, r.x0 - gap)
 				end
 				step = math.max(step or -math.huge, r.y0 - gap)
 			end
+		end
+		if right - left < minW * k and step and step - h * k < ceiling and hardRight - hardLeft >= minW * k then
+			-- (kit-b P2 fix6b, look1 O3: at 360 x 640 and 375 x 667 the card, squeezed at the middle's edge between the
+			-- stick's zone and RUN / DASH, lay on both keys and cut the name to 'SkyCli...') at the last rows it may reach,
+			-- the card gives way to the drawn keys and buttons only: it may share rows with the zone the stick's thumb roams
+			-- (nothing is drawn there; its ring sits under the card)
+			left, right = hardLeft, hardRight
 		end
 		if right - left >= minW * k or not step or step - h * k < ceiling then
 			local width = math.floor(Util.Clamp((right - left) / k, minW, w))
