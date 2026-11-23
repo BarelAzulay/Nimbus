@@ -188,9 +188,9 @@ so the list failed whenever those lists ran before it (as they do in a whole run
 
 ## Open risks
 
-1. **The whole suite has not run on this head yet.** Only the lists above ran (one at a time, as told). The plan's
-   gate 4 is the full `--quick` and `--mesh` run plus a Fable review. A whole run of `qw-step1-gate` at `756d0d1`
-   does not cover the follow-up: gate 4 has to run on `qw-step1-gate-b`.
+1. **Gate 4 is done on this head.** Whole suite at `0e032b9` (2026-11-23): `--quick` **29406 passed, 0 failed**,
+   `--mesh` **1265 passed, 0 failed**. Fable 5.2 xhigh re-review of `0e032b9`: PASS, no major (minors listed above
+   and in "Known, for later").
 2. **The rollback cost** above (four small fields, and a Week Wisp off the team while main is live).
 3. **After a server crash** a player can be on a stand-in for up to about 6 minutes on the next server. Progress made
    there is kept. `step1-rollback.md` now says how to tell this from real save loss (the toast, wait 8 minutes,
@@ -211,8 +211,10 @@ so the list failed whenever those lists ran before it (as they do in a whole run
 - [ ] **Rebuild + verify_place again if `src/` changes before the merge**: run the two commands above, commit the
       file, and put the new commit id here and in `step1-test-checklist.md` B0. The file the owner tests must be the
       file that is published.
-- [ ] Full suite `--quick` and `--mesh`, and the Fable review (gate 4).
+- [x] Full suite `--quick` (29406 / 0) and `--mesh` (1265 / 0) at `0e032b9`, and the Fable review: PASS, no major (gate 4).
 - [ ] The owner's test checklist passed (gate 5).
 - [ ] The owner says yes in chat.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_01ACtM8s7SJ44rug3Djr4JS9
