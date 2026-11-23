@@ -1470,12 +1470,26 @@ local function layout()
 	-- stack over the vitals card (from its left edge to the RUN / DASH column's right edge, STRIP_DOCK_GAP over it); on
 	-- PC and a landscape phone top-left under the top bar (under a top-left panel, else beside it at the top edge), right
 	-- of the menu column and short of the top-right stack. Too narrow, with no room, or meeting the arena's side stack: the
-	-- portrait chip alone
+	-- portrait chip alone. (look:fix6b major 1) On a portrait phone the strip docks over the whole stack it spans: where
+	-- RUN stands higher than the vitals card (360 x 640, 375 x 667, 384 x 640 since O3's 2947a7a moved the card left of
+	-- RUN / DASH and below RUN's top) it sits STRIP_DOCK_GAP over RUN (it ran 58 x 22 px over RUN); a strip that would
+	-- then meet a key, the menu column, the top-right stack or the top edge folds to the portrait chip
 	local stripW, stripChip = K.STRIP_W, false
 	if folded then
 		local h2 = K.STRIP_H * k
 		local chipH = K.STRIP_CHIP * k
 		local v = area.Y > area.X and vitalsRect() or nil
+		local dockBlocked = false
+		-- a touch key round `x0`..`x1` x `t0`..`t1` (STRIP_DOCK_GAP of air, half a px spare), nil when none
+		local function keyIn(x0, x1, t0, t1)
+			local d = K.STRIP_DOCK_GAP - 0.5
+			for _, r in ipairs(touchButtonRects()) do
+				if r.x1 > x0 - d and r.x0 < x1 + d and r.y1 > t0 - d and r.y0 < t1 + d then
+					return r
+				end
+			end
+			return nil
+		end
 		if v then
 			local right = v.x1
 			for _, r in ipairs(touchButtonRects()) do
@@ -1483,8 +1497,21 @@ local function layout()
 					right = math.max(right, r.x1)
 				end
 			end
-			left, top = v.x0, v.y0 - K.STRIP_DOCK_GAP - h2
+			left = v.x0
 			stripW = math.min(K.STRIP_W, math.floor((math.min(right, area.X - edge) - left) / k))
+			-- the stack's top across the strip's width: the vitals card's, or a key's beside it that stands higher
+			local stackTop = v.y0
+			for _, r in ipairs(touchButtonRects()) do
+				if r.x1 > left and r.x0 < left + stripW * k and r.y0 < v.y1 and r.y1 > v.y0 - K.STRIP_DOCK_GAP - h2 then
+					stackTop = math.min(stackTop, r.y0)
+				end
+			end
+			top = stackTop - K.STRIP_DOCK_GAP - h2
+			local x1 = left + stripW * k
+			local g = K.GAP * k
+			dockBlocked = top < edge or keyIn(left, x1, top, top + h2) ~= nil
+				or (column ~= nil and left < column.x1 + g and x1 > column.x0 - g and top < column.y1 + g and top + h2 > column.y0 - g)
+				or (hud.TopRightLeft > 0 and x1 > hud.TopRightLeft - g and top < hud.TopRightBottom + g)
 		else
 			top = hud.TopLeftBottom > 0 and (hud.TopLeftBottom + K.GAP * k) or edge
 			left = leftFor(top, h2)
@@ -1502,10 +1529,15 @@ local function layout()
 		local x1, y1 = left + stripW * k, top + h2
 		local g = K.GAP * k
 		local meets = side ~= nil and left < side.x1 + g and x1 > side.x0 - g and top < side.y1 + g and y1 > side.y0 - g
-		stripChip = stripW < K.STRIP_MIN_W or meets or (v == nil and y1 > bottomLimit)
+		stripChip = stripW < K.STRIP_MIN_W or meets or dockBlocked or (v == nil and y1 > bottomLimit)
 		if stripChip then
 			if v then
-				top = v.y0 - K.STRIP_DOCK_GAP - chipH -- (on the stack still, its foot where the strip's was)
+				top = v.y0 - K.STRIP_DOCK_GAP - chipH -- (on the stack still, over the vitals card)
+				-- (look:fix6b major 1) and over a key in its own column, should one stand there
+				local r = keyIn(left, left + chipH, top, top + chipH)
+				if r then
+					top = r.y0 - K.STRIP_DOCK_GAP - chipH
+				end
 			elseif top + chipH > bottomLimit then
 				top = math.max(edge, bottomLimit - chipH)
 				left = leftFor(top, chipH)

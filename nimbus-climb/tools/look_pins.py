@@ -47,6 +47,9 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
   T1  fix6 look1    the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
                     1024 x 768 raid:full. Rule: a phone's timer one place and form through raid:ready / raid / raid:full;
                     the clock at 1024 x 768 raid:full; the timer never larger than the boss name
+  U1  look:fix6b #1 360 x 640 / 375 x 667 / 384 x 640 tutorial steps 1, 3, 6: the folded quest strip 58 x 22 px over RUN
+                    (from O3). Rule: at every step, as the game shows it, the tutorial's ink MIN_GAP off RUN, DASH, the
+                    vitals card and Roblox's thumbstick and jump rings, at the gate sizes and the phones
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -68,7 +71,7 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -542,8 +545,74 @@ def pin_T1(c, sizes):
             c.cache.clear()
 
 
+# ---------------------------------------------------------------------------------------------------------------- U1
+# (look:fix6b major 1, NEW from O3's 2947a7a: at 360 x 640, 375 x 667 and 384 x 640 the folded tutorial - the quest strip
+# 'Hi there, climber! 1/21' - lay 58 x 22 px over RUN at steps 1, 3 and 6, hiding its icon: the vitals card moved left of
+# RUN / DASH and below RUN's top, and the strip docks STRIP_DOCK_GAP over the card from its left edge to the RUN / DASH
+# column's right edge, so it ran through RUN's row) at EVERY tutorial step, as the game shows it: the tutorial's ink keeps
+# battle_hud_no_overlap's MIN_GAP off RUN, DASH, the vitals card and Roblox's thumbstick and jump rings, at the gate sizes
+# and every phone size the reviews used.
+# Not here: the card the player opens with a tap (tutorial:<n>:open; tutorial_fits_phone holds it over no thumb zone and
+# no RUN / DASH at steps 1 and 5). Where it only fits at its 0.7 last resort or beside the keys, its window shadow (8
+# design px past the box) comes 0 - 3 px near RUN, or over RUN's edge: 640 x 360 step 6, 667 x 375 steps 7 / 11 / 13 /
+# 14 / 20 (1 px over), 700 x 394 steps 5 / 6 / 16 / 21 (4 px over RUN's corner), 375 x 667 steps 7 / 11 / 14. The same
+# at 775923a (build/GATE_P2/tutfix/U1_red.txt), not from O3; reported to the look as a minor of its own
+U1_EXTRA = [(320, 568), (375, 667), (384, 640), (393, 852), (412, 915), (430, 932), (568, 320), (700, 394), (740, 360),
+            (800, 360), (812, 375), (932, 430)]
+U1_PANEL = "NimbusTutorial.TutorialPanel"
+
+
+def tutorial_total(nodes):
+    """the step count the tutorial shows ('Step 1/21' on the card, '1/21' on the strip), None when it shows none"""
+    for p, n in nodes.items():
+        t = n.get("text")
+        if p.startswith("NimbusTutorial.") and isinstance(t, dict):
+            m = re.match(r"^\s*(?:Step\s+)?\d+\s*/\s*(\d+)\s*$", str(t.get("text", "")))
+            if m:
+                return int(m.group(1))
+    return None
+
+
+def pin_U1(c, sizes):
+    # the step count as the PC card shows it (a phone's portrait chip shows none)
+    total = tutorial_total(c.nodes(c.dump("tutorial:1", 1280, 720)))
+    if not c.check("U1", total is not None and total > 1, "U1 tutorial 1280x720: the tutorial shows its step count"):
+        return
+    for (w, h) in list(sizes) + [s for s in U1_EXTRA if s not in sizes]:
+        touch = c.RG.is_touch(w, h, None)
+        for step in range(1, total + 1):
+            scen = "tutorial:%d" % step
+            nodes = c.nodes(c.dump(scen, w, h))
+            what = "U1 %s %dx%d" % (scen, w, h)
+            panel = nodes.get(U1_PANEL)
+            ink = c.BH.ink_of(panel, c.RG, c.fonts) if panel else []
+            if not c.check("U1", bool(ink), what + ": the tutorial shows"):
+                continue
+            ui = c.BH.union(ink)
+            others = []
+            for key in ("RunButton", "DashButton"):
+                kn = nodes.get("MobileControls." + key)
+                if kn and float(kn["w"]) > 1:
+                    others.append((key, c.BH.ink_of(kn, c.RG, c.fonts)))
+            for p, n in nodes.items():
+                if re.match(r"^NimbusHud\.\w+\.Vitals$", p):
+                    others.append(("the vitals card", c.BH.ink_of(n, c.RG, c.fonts)))
+            for name, kink in others:
+                if not kink:
+                    continue
+                g, a, b = c.BH.ink_gap(ink, kink, ui, c.BH.union(kink), c.BH.MIN_GAP)
+                c.check("U1", g >= c.BH.MIN_GAP - 0.05, "%s: the tutorial keeps %g px off %s" % (what, c.BH.MIN_GAP, name),
+                        "tutorial ink %s, %s %s: %.1f px" % (fmt(a), name, fmt(b), g))
+            if touch:
+                for name, (cen, rad) in c.BH.rings(w, h).items():
+                    g = min(c.BH.ring_gap(r, cen, rad) for r in ink)
+                    c.check("U1", g >= c.BH.MIN_GAP - 0.05, "%s: the tutorial keeps %g px off %s's ring" % (what, c.BH.MIN_GAP, name),
+                            "tutorial ink %s, ring at %.0f,%.0f r %.0f: %.1f px" % (fmt(ui), cen[0], cen[1], rad, g))
+        c.cache.clear()
+
+
 RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
-       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1}
+       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1}
 
 
 def parse_sizes(text):
