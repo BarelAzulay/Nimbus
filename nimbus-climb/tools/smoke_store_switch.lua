@@ -9,7 +9,9 @@
 --                         nothing; "GemBuy" / BuyWithGems charge nothing and add no potion; no toast; StorePreview is
 --                         false even in Studio. What main already sells keeps working: a created gem pack is prompted.
 --                         Receipts and passes stay ON: a paid token pack, potion, Starter Pack and gem pack are granted,
---                         an owned pass is Owned (UserOwnsGamePassAsync and PromptGamePassPurchaseFinished).
+--                         an owned pass is Owned (UserOwnsGamePassAsync). PromptGamePassPurchaseFinished(true) alone
+--                         grants nothing (a forged signal): Owned, the ledger and the thank-you wait for the engine's
+--                         UserOwnsGamePassAsync to confirm (retried), in both switch states.
 --   store_switch_on       on: the same requests prompt / charge as they did before this gate, the preview flag is back
 -- Client world (1920x1080) and phone world:
 --   client_store_switch          off: the Shop opens on Eggs with ONE rail tab, no divider, no cards, no PREVIEW /
@@ -206,8 +208,19 @@ local function serverScenarios()
 			prompts[#prompts + 1] = { Kind = "Pass", Player = player, Id = id }
 		end
 		local owners = {} -- [uid] = pass id the engine says is owned
+		-- what the engine answers for one pass id from now on (release step 1 follow-up): { [passId] = true | false |
+		-- "error" | { answer, answer... } (one per call, the last one stays) }
+		local engine, lookups = {}, {}
 		MPS.UserOwnsGamePassAsync = function(_, uid, id)
-			return owners[uid] == id
+			lookups[id] = (lookups[id] or 0) + 1
+			local answer = engine[id]
+			if type(answer) == "table" then
+				answer = answer[math.min(lookups[id] - (answer.From or 0), #answer)]
+			end
+			if answer == "error" then
+				error("HTTP 503 (smoke: pass lookup outage)")
+			end
+			return owners[uid] == id or answer == true
 		end
 		-- the token packs are prompted only for an "Allowed" account (lobby-shop 16.1): answered here, so a refusal below
 		-- is the switch and nothing else
@@ -298,9 +311,62 @@ local function serverScenarios()
 			-- an owned pass stays owned (the join lookup and a finished pass purchase)
 			T.check(Store.Owns(p, "VIP") == true, tag .. "a pass the engine says is owned is Owned", tostring(Store.PassState(p, "VIP")))
 			T.check(string.find(tostring(p:GetAttribute(Config.Attr.OwnedPasses)), "VIP", 1, true) ~= nil, tag .. "...and OwnedPasses lists it (its perk still applies)", tostring(p:GetAttribute(Config.Attr.OwnedPasses)))
+			-- release step 1 follow-up: PromptGamePassPurchaseFinished(wasPurchased = true) is only a hint. An exploit client
+			-- can fire that signal itself, so it alone never marks a pass Owned, never writes the saved ledger and never
+			-- thanks: the server asks UserOwnsGamePassAsync (a few tries), then leaves it to the normal ownership check.
+			-- (This replaces "a finished pass purchase is Owned at once", which pinned the unsafe behaviour.)
+			local function ledger(key)
+				local st = DS().GetStore(p)
+				return type(st) == "table" and type(st.Passes) == "table" and st.Passes[key] or nil
+			end
+			local function thanks(from)
+				local n = 0
+				for _, text in ipairs(toasts(p, from)) do
+					if string.find(text, "Thank you", 1, true) then
+						n = n + 1
+					end
+				end
+				return n
+			end
+			-- 1. a FORGED signal: the engine says the pass is not owned
+			engine[IDS.PetXp2x] = false
+			local seen = lookups[IDS.PetXp2x] or 0
+			mark = K.logSize()
 			Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p, IDS.PetXp2x, true)
 			K.advance(0.3)
-			T.check(Store.Owns(p, "PetXp2x") == true, tag .. "a finished pass purchase is Owned at once")
+			T.check(Store.Owns(p, "PetXp2x") == false and Store.PassState(p, "PetXp2x") ~= "Owned", tag .. "a forged 'pass purchase finished' signal does NOT make the pass Owned", tostring(Store.PassState(p, "PetXp2x")))
+			for _ = 1, 20 do
+				Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p, IDS.PetXp2x, true)
+			end
+			K.advance(180) -- past every confirmation retry
+			T.check(Store.Owns(p, "PetXp2x") == false and Store.PassState(p, "PetXp2x") == "NotOwned", tag .. "...not after every retry either, however often it is fired", tostring(Store.PassState(p, "PetXp2x")))
+			T.check(string.find(tostring(p:GetAttribute(Config.Attr.OwnedPasses)), "PetXp2x", 1, true) == nil, tag .. "...OwnedPasses does not list it (no perk)", tostring(p:GetAttribute(Config.Attr.OwnedPasses)))
+			T.check(ledger("PetXp2x") == nil, tag .. "...nothing is written to the saved ledger (Store.Passes)", tostring(ledger("PetXp2x")))
+			T.eq(thanks(mark), 0, tag .. "...and nobody is thanked")
+			local asked = (lookups[IDS.PetXp2x] or 0) - seen
+			T.check(asked >= 2 and asked <= 8, tag .. "...the 21 forged signals cost a few UserOwnsGamePassAsync calls, not one each (2..8)", tostring(asked))
+			-- 2. a REAL purchase the engine confirms at once
+			engine[IDS.PetXp2x] = true
+			mark = K.logSize()
+			Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p, IDS.PetXp2x, true)
+			K.advance(0.5)
+			T.check(Store.Owns(p, "PetXp2x") == true, tag .. "a finished pass purchase the engine confirms is Owned within half a second", tostring(Store.PassState(p, "PetXp2x")))
+			T.check(ledger("PetXp2x") ~= nil and thanks(mark) == 1, tag .. "...the ledger is written and the player is thanked once", tostring(ledger("PetXp2x")) .. " / " .. thanks(mark))
+			-- 3. a REAL purchase the engine only confirms late (its ownership cache), with an outage in between
+			engine[IDS.Cash2x] = { false, "error", false, true, From = lookups[IDS.Cash2x] or 0 }
+			mark = K.logSize()
+			Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p, IDS.Cash2x, true)
+			K.advance(0.5)
+			T.check(Store.Owns(p, "Cash2x") == false and thanks(mark) == 0, tag .. "a finished purchase the engine does not confirm yet is not Owned and not thanked yet", tostring(Store.PassState(p, "Cash2x")))
+			K.advance(120)
+			T.check(Store.Owns(p, "Cash2x") == true and ledger("Cash2x") ~= nil, tag .. "...the retries find it Owned once the engine confirms (a false, an outage, a false, then true)", tostring(Store.PassState(p, "Cash2x")))
+			T.eq(thanks(mark), 1, tag .. "...and the player is thanked once")
+			-- 4. wasPurchased = false and an unknown pass id ask nothing
+			seen = lookups[IDS.VIP] or 0
+			Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p, IDS.VIP, false)
+			Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p, 424242, true)
+			K.advance(5)
+			T.check((lookups[IDS.VIP] or 0) == seen and (lookups[424242] or 0) == 0, tag .. "wasPurchased = false and an unknown pass id start no lookup")
 		end)
 		Config.Store.Enabled = saved.Enabled
 		Mock.Options.Studio = saved.Studio

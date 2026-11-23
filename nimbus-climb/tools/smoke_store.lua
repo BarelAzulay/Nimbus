@@ -481,8 +481,18 @@ local function serverScenarios()
 		end
 		return nil
 	end
-	-- the engine's "the player just bought that pass" event
+	-- a REAL pass purchase: the engine owns the pass from now on (UserOwnsGamePassAsync answers true for this player
+	-- and id, on top of the scenario's own double), then the "purchase finished" event. (Release step 1 follow-up: the
+	-- event alone grants nothing, since an exploit client can fire it; StoreService confirms with the engine first.
+	-- Before that fix this helper fired the event only, which pinned the unsafe behaviour.)
 	local function ownPass(p, id)
+		local before = MPS.UserOwnsGamePassAsync
+		MPS.UserOwnsGamePassAsync = function(self, uid, passId)
+			if uid == p.UserId and passId == id then
+				return true
+			end
+			return before(self, uid, passId)
+		end
 		Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p, id, true)
 		K.advance(0.2)
 	end
@@ -737,8 +747,21 @@ local function serverScenarios()
 			players[#players + 1] = p3
 			T.eq(Store.PassState(p3, "VIP"), "NotOwned", "store passes: a false answer = NotOwned")
 			local mark = K.logSize()
+			-- (release step 1 follow-up) the event alone grants nothing: a forged one (the engine still says "not owned")
+			-- leaves the pass NotOwned, the ledger empty and nobody thanked, through every confirmation retry
 			Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p3, 7001, true)
-			T.check(Store.Owns(p3, "VIP") == true and Store.PassState(p3, "VIP") == "Owned", "store passes: PromptGamePassPurchaseFinished(player, id, true) = Owned at once")
+			K.advance(0.3)
+			T.check(Store.Owns(p3, "VIP") == false and Store.PassState(p3, "VIP") == "NotOwned", "store passes: PromptGamePassPurchaseFinished(player, id, true) alone (a forged signal) does not make the pass Owned",
+				tostring(Store.PassState(p3, "VIP")))
+			K.advance(90)
+			T.check(Store.Owns(p3, "VIP") == false and DS().GetStore(p3).Passes.VIP == nil and toastCount(p3, "Thank you", mark) == 0 and (p3:GetAttribute(Config.Attr.OwnedPasses) or "") == "",
+				"store passes: ...not after the confirmation retries either: no ledger entry, no thank-you, OwnedPasses empty", toastsSince(p3, mark))
+			T.eq(calls[uid3 .. ":7001"], 6, "store passes: ...the forged signal cost 5 more lookups of that pass (now, +2, +5, +15, +45 s), then none")
+			-- a real purchase: the engine says owned, then the event
+			modes[uid3] = true
+			mark = K.logSize()
+			Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", p3, 7001, true)
+			T.check(Store.Owns(p3, "VIP") == true and Store.PassState(p3, "VIP") == "Owned", "store passes: PromptGamePassPurchaseFinished(player, id, true) + the engine's own 'owned' answer = Owned")
 			K.advance(0.3)
 			T.check(DS().GetStore(p3).Passes.VIP ~= nil, "store passes: ...Store.Passes.VIP set")
 			T.eq(p3:GetAttribute(Config.Attr.OwnedPasses), "VIP", "store passes: ...OwnedPasses == 'VIP'")
