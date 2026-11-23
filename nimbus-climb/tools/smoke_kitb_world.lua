@@ -1980,10 +1980,11 @@ local function clientScenarios()
 	--                    line change or new spot holds 0.5 s, unless the run ends first), takes at most two spots a walk,
 	--                    and never stacks on the chip (sharing columns, at least twice the sign's 8 px clearance apart,
 	--                    under the screen factor: 7-10 px read as one block, 'Storm Altar' over 'Guiding to Storm Altar')
-	--   pin W2 (pol1 B)  standing 45 studs out, the camera panned -35 -> 35 -> -35 at 23 and 60 degrees a second, and two
-	--                    walks with the camera turning (0 -> 40 and 40 -> 0 degrees, 50 -> 20 studs): in each pass the chip
-	--                    leaves home at most once, for one spot (it stepped into the arrow's path, then hid and came back
-	--                    483 px away on the other side: three moves a pass)
+	--   pin W2 (pol1 B)  standing 45 studs out, the camera panned -35 -> 35 -> -35 at 6, 12, 23 and 60 degrees a second (6
+	--                    and 12: fix6 look0 #5), and two walks with the camera turning (0 -> 40 and 40 -> 0 degrees, 50 -> 20
+	--                    studs): in each pass the chip leaves home at most once, for one spot (it stepped into the arrow's
+	--                    path, then hid and came back 483 px away on the other side: three moves a pass); and (look0 #4) it
+	--                    hides at most 0.5 s at a time there (the one trip had cost hides of 0.6 - 2.1 s)
 	----------------------------------------------------------------------------------------------------------------
 	local function guideWalk(scen, pins)
 		local Config = shared("Config")
@@ -2228,7 +2229,9 @@ local function clientScenarios()
 				hold(f, 20, 0, 2, 60)
 				add("stop", "walk, stop at 20 studs", size, f)
 			end
-			for _, deg in ipairs({ 23, 60 }) do
+			-- (fix6 look0 #5: at 6 degrees a second the chip still took the side ahead, then crossed: two trips a pass; W2 had
+			-- 23 and 60 alone) the slow pans too
+			for _, deg in ipairs({ 6, 12, 23, 60 }) do
 				for _, size in ipairs(SIZES) do
 					local f = {}
 					hold(f, 45, -35, 2, 10)
@@ -2564,6 +2567,12 @@ local function clientScenarios()
 						end
 						T.check(#bad == 0, "pin W2 (pol1 B) " .. tag .. ": in each pass the chip leaves home at most once, for one spot",
 							table.concat(bad, "; ") .. " | " .. table.concat(seq, " -> "))
+						-- (fix6 look0 #4: W2's one trip cost a long hide, the chip and its cancel X gone 0.6 - 1.03 s on the
+						-- turning walks and 0.8 - 2.07 s on slow pans, while the commit said "under 0.5 s"; only
+						-- travel_guide_walk held the 0.5 s rule, at 7 sizes and 23 - 120 degrees a second) the same pans and
+						-- walks: the chip hides at most 0.5 s at a time
+						T.check(maxHidden <= 15, "pin W2 (look0 #4) " .. tag .. ": the chip hides at most 0.5 s at a time",
+							fmt("hidden %d frames in a row (%d in all) | %s", maxHidden, hiddenFrames, table.concat(seq, " -> ")))
 					end
 				end
 				local hideCap = (run.kind == "walk" or run.kind == "far") and 6 or 15
