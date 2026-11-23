@@ -6886,6 +6886,13 @@ function Hud.Rebuild()
 	-- (keys look r4: on a PC the TARGET tab's frame stood 2.4-3 px under the strips' hard shadow) under the strips, their
 	-- shadow, the tab's 2 px frame and K.INK_AIR_PX of air
 	local underStrips = m.Compact and 6 or max(6, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX))
+	if m.Compact and not band and curBottom > 0 and curRight > m.W - K.EDGE - K.ROW_W_COMPACT then
+		-- (fix6 look0 #3b: at 960 x 540, a small window with a keyboard, the token strip stands right over the list's
+		-- column and the locked row's gold bracket lay 2.4 px on its foot, 0.8 px from it in a full raid) where the strips
+		-- stand over the list's own column, a compact list starts as a PC's does under them: their shadow, the bracket's
+		-- reach (4 design px and its 2 px stroke) and K.INK_AIR_PX of air
+		underStrips = max(6, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX)) + 4 + Hud.Air(m, 2)
+	end
 	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and max(topY, curBottom + underStrips) + over or (topY + over)
 	Hud.listTop = rightY
 	Hud.listX = nil
@@ -7793,6 +7800,45 @@ local function tagW(l, px, padding)
 	return math.ceil(tw) + padding + 2
 end
 
+-- (fix6 look0 #3a: at 960 x 540, a small window with a keyboard, the '1' / '2' key caps, 30 x 24 on the 48 px tile, hid
+-- the helper's cooldown count and 'KO') the count and KO keep clear of the key cap: where the cap shows and reaches the
+-- centred text, they sit at the tile's foot (above its lip), at the size that leaves 2 px under the cap's gold edge, never
+-- under the readability floor; elsewhere centred at their own sizes, as before
+function Hud.HelperFace(H, L)
+	local tile = tonumber(L and L.Tile) or 0
+	local countPx = floor(tile * 0.42)
+	local koPx = 22 -- (H.KO's size as made)
+	local capped = false
+	local s = countPx
+	if H.Key and H.Key.Visible and tile > 0 then
+		local kp, ks, dp = H.Key.Position, H.Key.Size, H.Disc.Position
+		local edge = 2 -- (keyChip's gold edge, outside its box)
+		local capR = kp.X.Offset + ks.X.Offset + edge - dp.X.Offset
+		local capB = kp.Y.Offset + ks.Y.Offset + edge - dp.Y.Offset
+		local big = max(countPx, koPx)
+		capped = capB > (tile - big) / 2 and capR > (tile - big) / 2
+		if capped then
+			local fpx = math.ceil(Hud.FloorPx() / max(0.05, tonumber(L.F) or 1) - 1e-6)
+			s = max(fpx, min(countPx, tile - 4 - (capB + 2)))
+		end
+	end
+	for _, t in ipairs({ H.Count, H.KO }) do
+		if t then
+			local size = capped and s or ((t == H.KO) and koPx or countPx)
+			t.TextSize = size
+			t:SetAttribute("BaseText", size)
+			t.TextYAlignment = capped and Enum.TextYAlignment.Bottom or Enum.TextYAlignment.Center
+			local pad = t:FindFirstChild("CapPad")
+			if capped and not pad then
+				pad = make("UIPadding", { Name = "CapPad" }, t)
+			end
+			if pad then
+				pad.PaddingBottom = UDim.new(0, capped and 4 or 0)
+			end
+		end
+	end
+end
+
 -- (kit-b U9-6; LOOK-ui2: the Lv tag sat over the portrait's lower third, the buff's name floated on the arena) places a
 -- helper cell's parts for its texts (Hud.LayoutFighter, and Hud.FillFighter once the texts are known): the square tile with
 -- its four buff blocks under it, the navy Lv tag and the buff's stone tag (each as wide as its text, never over the pet),
@@ -7835,6 +7881,7 @@ function Hud.PlaceHelper(H)
 		H.Swap.Position = UDim2.fromOffset(floor((L.CellW - 104) / 2), y)
 		H.Swap.Size = UDim2.fromOffset(104, 28)
 		H.Key.Position = UDim2.fromOffset(x0 - 6, -4)
+		Hud.HelperFace(H, L)
 		Hud.PlaceSwapHit(H, L, 104, 28, nil)
 		return
 	end
@@ -7843,6 +7890,7 @@ function Hud.PlaceHelper(H)
 	H.Cd.Root.Position = UDim2.fromOffset(0, tile + 4)
 	H.Cd.Root.Size = UDim2.fromOffset(tile, cdH)
 	H.Key.Position = UDim2.fromOffset(-4, -2)
+	Hud.HelperFace(H, L)
 	local x = tile + 8
 	local room = L.CellW - x
 	if L.LvSwap then
@@ -8213,6 +8261,26 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 				y = max(y, Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset + 8)
 			end
 		end
+	elseif Hud.team.Visible and teamW > 0 then
+		-- (fix6 look0 #2: at 1024 x 768 the PC's card, centred, lay 113.6 px over the fighter card in every battle mode - its
+		-- Lv tag cut to 'L', its HP and hearts hidden - its shadow on the enemy rows and 1.6 px from helper 2's cap) a wide
+		-- screen's card stays in the gap between the fighter's block and the enemy list's column: the fighter card's edge and
+		-- shadow, this card's edge and K.INK_AIR_PX of air on the left; on the right the list's target bracket (4 design px
+		-- and its 2 px stroke out of the row), this card's edge and shadow and the air. Centred on the screen where it fits
+		-- there (every PC size until now), else centred in the gap at the gap's width (never under TOP_W_GAP_MIN)
+		local gapL = Hud.team.Position.X.Offset + teamW + max(12, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX))
+		local gapR = m.W - K.EDGE
+		if Hud.enemies.Visible and not Hud.listX then
+			local listW = Hud.enemies.Size.X.Offset > 0 and Hud.enemies.Size.X.Offset or K.ROW_W
+			gapR = m.W - K.EDGE - listW - (4 + Hud.Air(m, 2)) - Hud.Air(m, 2 + K.SHADOW_PX + K.INK_AIR_PX)
+		end
+		local free = gapR - gapL
+		if (x - w / 2 < gapL or x + w / 2 > gapR) and free >= K.TOP_W_GAP_MIN then
+			-- (a boss card narrowed under the PC's 640 keeps the PC frame's head slot; its pills wrap to a second row where the
+			-- four do not fit beside it, as the flow does on every card)
+			w = min(w, floor(free))
+			x = gapL + free / 2
+		end
 	end
 	w = floor(w)
 	-- (a landscape phone's currency pills in the top band: stay under them where they overlap)
@@ -8262,6 +8330,13 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		tierTextW = (okT and typeof(mT) == "Vector2" and mT.X > 0) and math.ceil(mT.X * 1.04) or math.ceil(#raidTier * px(18) * 0.6)
 		tierNeed = (raidTier ~= "") and (8 + tierTextW + 4) or 0
 	end
+	local timerLow = false
+	if Hud.timerPill then
+		-- (fix6 look0 #1) the RAID pill back to its word (it carries the time only while row 1 has no room for the timer)
+		Hud.timerPill = false
+		setText(Hud.raidPill, "RAID")
+		paintPill(Hud.raidPill, SIGN.Wood)
+	end
 	if hasTimer and raidName then
 		-- (Pitch 2 item 1b, look review r2: the 640 x 360 card in the gap, 274 wide, cut "Storm Ti..." by 1 px beside a 22 px
 		-- timer) a narrow raid card's timer takes the floor size where that keeps the boss's whole name on row 1; (keys lane,
@@ -8293,6 +8368,11 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			local real = (okW and typeof(mW) == "Vector2" and mW.X > 0) and (math.ceil(mW.X * 1.04) + 4) or guess
 			timerW = math.min(guess, real)
 		end
+		-- (fix6 look0 #1: K1 read Storm Titan alone; 'Shadow Hydra' still missed 640 x 360's row by ~10 design px beside the
+		-- floor-size timer at its real width, and Hud.FitLine wrote 'Shadow H...') where the boss's whole name has no room
+		-- beside the timer even so, the timer leaves row 1 for the right end of the pill rows under the boss's track (as the
+		-- tier leaves for a pill where it has no room); row 1 keeps the name and Leave
+		timerLow = nameRoom(timerW) < nameNeed
 	end
 	Hud.timer.Visible = hasTimer
 	Hud.timer.TextSize = timerPx
@@ -8325,8 +8405,8 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 			local tierFits = raidTier ~= "" and without - x0 - tagRoom0 - 4 >= nameNeed + tierNeed
 			return withClock - x0 - tagRoom - 4 >= nameNeed + (tierFits and tierNeed or 0)
 		end
-		showClock = clockFits(timerW)
-		if not showClock and timerPx > px(18) and clockFits(timerWidth(px(18))) then
+		showClock = (not timerLow) and clockFits(timerW)
+		if not showClock and not timerLow and timerPx > px(18) and clockFits(timerWidth(px(18))) then
 			-- (keys look r4: the card 6 design px narrower for the air beside it lost 667 x 375's clock) the timer at the floor
 			-- size keeps the clock, the whole name and its tier
 			timerPx = px(18)
@@ -8340,7 +8420,7 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	end
 	Hud.clock.Visible = showClock
 	Hud.clock.Position = UDim2.fromOffset(right - timerW - 4 - 18, P + (rowH - 18) / 2)
-	local leftEnd = showClock and (right - timerW - 4 - 18 - 8) or (hasTimer and (right - timerW - gapT) or right)
+	local leftEnd = showClock and (right - timerW - 4 - 18 - 8) or ((hasTimer and not timerLow) and (right - timerW - gapT) or right)
 	-- row 1, left: a raid's RAID tag, the boss's name and its tier (as a pill where it has no room); else the mode line
 	local raidBoss = B.Mode == "Raid" and bossUnit ~= nil
 	local tierPill = nil
@@ -8479,6 +8559,41 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		Hud.pills.Position = UDim2.fromOffset(pillX, yy)
 		Hud.pills.Size = UDim2.fromOffset(pillW, max(1, pillsH))
 		Hud.bossElement.Visible = bossUnit ~= nil
+		if timerLow and pillsH > 0 then
+			-- (fix6 look0 #1) the timer that left row 1: right-aligned at the card's inner edge (under Leave), on the last pill
+			-- row where it clears that row's pills by K.PILL_GAP, else on a row of its own under them
+			local e, lastY, lastR = 2, -1, 0
+			for _, pill in ipairs({ Hud.raidPill, Hud.bossElement, Hud.enragePill, Hud.minionPill, Hud.wavePill, Hud.playersPill, Hud.tierPill }) do
+				if pill.Visible then
+					local py, pr = pill.Position.Y.Offset, pill.Position.X.Offset + pill.Size.X.Offset + e
+					if py > lastY + 0.5 then
+						lastY, lastR = py, pr
+					elseif abs(py - lastY) <= 0.5 then
+						lastR = max(lastR, pr)
+					end
+				end
+			end
+			if lastY >= 0 and pillX + lastR + K.PILL_GAP + timerW <= x1 then
+				Hud.timer.Position = UDim2.fromOffset(x1 - timerW, yy + lastY - e)
+				Hud.timer.Size = UDim2.fromOffset(timerW, K.PILL_H)
+			elseif Hud.raidPill.Visible then
+				-- no room on the last pill row either (a full raid's Enraged, wave and tier pills): not a row of its own (a
+				-- landscape phone's card stays under 45 % of the height, keys look r3) - the RAID pill carries the time, sized
+				-- for the widest time this fight shows; Hud.Update writes it each second (red under 15 s, as the timer)
+				Hud.timerPill = true
+				Hud.timer.Visible = false
+				setText(Hud.raidPill, (fmtTime(B.TimeLimit):gsub("%d", "8")))
+				pillsH = Hud.FlowPills(pillW)
+				Hud.pills.Size = UDim2.fromOffset(pillW, max(1, pillsH))
+				local left = B.TimeLimit - (B.renderT or 0)
+				setText(Hud.raidPill, fmtTime(max(0, left)))
+				paintPill(Hud.raidPill, (left < 15) and SIGN.Red or SIGN.Wood)
+			else
+				pillsH = pillsH + K.PILL_GAP + K.PILL_H
+				Hud.timer.Position = UDim2.fromOffset(x1 - timerW, yy + pillsH - K.PILL_H)
+				Hud.timer.Size = UDim2.fromOffset(timerW, K.PILL_H)
+			end
+		end
 		if pillsH > 0 then
 			yy = yy + pillsH + 8
 		end
@@ -8582,7 +8697,8 @@ function Hud.SetPills(B, bossUnit, tierPill, compact, fpx)
 			pill.TextSize = size
 		end
 		pill:SetAttribute("BaseText", size)
-		key[#key + 1] = (pill.Visible and "1" or "0") .. pill.Text
+		-- (fix6 look0 #1: the RAID pill that carries the time changes its words each second, sized once for the widest)
+		key[#key + 1] = (pill.Visible and "1" or "0") .. ((pill == Hud.raidPill and Hud.timerPill) and "<time>" or pill.Text)
 	end
 	return table.concat(key, "|")
 end
@@ -8752,6 +8868,11 @@ function Hud.Update(B, now, force)
 		last.timer = timerText
 		Hud.timer.Text = timerText
 		Hud.timer.TextColor3 = (left < 15 and B.TimeLimit > 0) and SIGN.RedLip or KB.Ink -- (Pitch 2 item 06 A: on the stone card)
+		if Hud.timerPill then
+			-- (fix6 look0 #1) the RAID pill that carries the time (Hud.LayoutTop, a narrow card's long boss name)
+			setText(Hud.raidPill, timerText)
+			paintPill(Hud.raidPill, (left < 15 and B.TimeLimit > 0) and SIGN.Red or SIGN.Wood)
+		end
 	end
 	local bossUnit = Hud.boss.Visible and Hud.BossUnit(B) or nil
 	if bossUnit then
