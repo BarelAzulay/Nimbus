@@ -221,6 +221,11 @@ local K = {
 	GUIDE_HIDE_STEP = 0.1,
 	GUIDE_PASS = 60,
 	SIGN_CLEAR = 8, -- (fin1) the GuideSign takes a spot this far off the HUD and the chip (1080p px), keeps it while half that
+	-- (kit-b P2 fix6, world look pol1 A) the GuideSign takes a NEW spot or line only where it still holds with the arrow
+	-- where it will stand SIGN_HOLD s on (its way on the screen over the last SIGN_SEEN s), and once hidden stays hidden
+	-- SIGN_HOLD s: no show, hide, line or spot under SIGN_HOLD s (it flashed four times in 0.6 s on a landscape phone)
+	SIGN_HOLD = 0.5,
+	SIGN_SEEN = 0.2,
 	GUIDE_HUD_EVERY = 0.25,
 	-- confetti (gui px at factor 1)
 	CONFETTI_SMALL = 26,
@@ -3666,17 +3671,48 @@ end
 -- which grow past the sign's fixed offset when seen turned: pol0 minor 5, and slid down below what it meets, its middle
 -- never under the arrow's tip), hung under the tip (slid sideways clear of the HUD, the tip still over it); first with
 -- both lines, then with the name alone; none: it hides, the arrow stays. It keeps the spot it holds while that stays `m`
--- clear
+-- clear. (kit-b P2 fix6, world look pol1 A: on a landscape phone it flashed four times in the last 0.6 s of every walk:
+-- the name alone 0.15 s, hidden 0.13 s, hung under the tip 0.2 s on the chip's row, 7-10 px over it, hidden again) It takes
+-- a NEW spot or line only where it still holds with the arrow where it will stand K.SIGN_HOLD s on (lasts: so as the arrow
+-- leaves the screen's top it hides and stays hidden), once hidden stays hidden K.SIGN_HOLD s, and keeps twice
+-- K.SIGN_CLEAR (the chip's own px) off the chip
 local SIGN_SPOTS = { "right", "left", "under" }
 local function placeSign(area, hud, m, a)
 	local gui, card = W.labelGui, W.signCard
 	if not (gui and card) then
 		return
 	end
-	if not a then
+	local now = S.clock
+	local function hide()
+		if W.signSpot ~= nil then
+			W.signOffAt = now
+		end
 		W.signSpot = nil
+	end
+	if not a then
+		hide()
+		W.signHist = nil
 		setSignShown(false)
 		return
+	end
+	-- the arrow's way on the screen over the last K.SIGN_SEEN s (a new screen size starts it again) -> where it will stand
+	-- K.SIGN_HOLD s on
+	local hist = W.signHist
+	if not hist or hist.w ~= area.X or hist.h ~= area.Y then
+		hist = { w = area.X, h = area.Y }
+		W.signHist = hist
+	end
+	hist[#hist + 1] = { t = now, a = a }
+	while #hist > 2 and now - hist[2].t >= K.SIGN_SEEN do
+		table.remove(hist, 1)
+	end
+	local ahead, o = a, hist[1]
+	if now - o.t > 1e-3 then
+		local f = K.SIGN_HOLD / (now - o.t)
+		ahead = {
+			x0 = a.x0 + (a.x0 - o.a.x0) * f, y0 = a.y0 + (a.y0 - o.a.y0) * f,
+			x1 = a.x1 + (a.x1 - o.a.x1) * f, y1 = a.y1 + (a.y1 - o.a.y1) * f,
+		}
 	end
 	local block = hud
 	if G.chip and G.to and not (G.away and G.away.hide) then
@@ -3684,16 +3720,44 @@ local function placeSign(area, hud, m, a)
 		for _, r in ipairs(hud) do
 			block[#block + 1] = r
 		end
-		local to = chipRectAt(G.to.x, G.to.y)
+		-- (fix6) the chip's boxes grown so the sign keeps 2 x K.SIGN_CLEAR of the chip's px off it as it keeps its spot
+		local extra = math.max(0, 2 * K.SIGN_CLEAR * (G.scale and G.scale.Scale or 1) + 1 - m)
+		local to = grown(chipRectAt(G.to.x, G.to.y), extra)
 		block[#block + 1] = to
 		if G.at and not (G.move and G.move.hide) then
 			-- (its way there while it steps; a way across the arrow is a hide-step, so then only where it stands)
-			local at = chipRectAt(G.at.x, G.at.y)
+			local at = grown(chipRectAt(G.at.x, G.at.y), extra)
 			local way = boxOf(at, to)
 			block[#block + 1] = rectsOverlap(way, a) and at or way
 		end
 	end
 	local k = (W.signScale and W.signScale.Scale) or 1
+	-- (fix6) the spot `spot` the sign `r` just took still holds with the arrow at `ahead`: beside it, its middle between the
+	-- arrow's top and tip and the sign under the screen's top, its side on the screen; under it, under the screen's top
+	local function lasts(spot, r)
+		if not r then
+			return false
+		end
+		local h = r.y1 - r.y0
+		local top = -topInset() + m
+		if spot == "under" then
+			local y0 = ahead.y1 + K.SIGN_DROP * k
+			return y0 >= top and y0 + h <= area.Y - m
+		end
+		-- (the highest it can slide in its column: under the screen's top and under what stands over it there)
+		for _, b in ipairs(block) do
+			if b.x1 > r.x0 - m and b.x0 < r.x1 + m and b.y1 <= r.y0 + 1 then
+				top = math.max(top, b.y1 + m + 1)
+			end
+		end
+		if math.min(ahead.y1, area.Y - m - h / 2) < math.max(ahead.y0, top + h / 2) then
+			return false
+		end
+		if spot == "left" then
+			return r.x0 + (ahead.x0 - a.x0) >= m
+		end
+		return r.x1 + (ahead.x1 - a.x1) <= area.X - m
+	end
 	local function fits(r, margin)
 		return r ~= nil and freeRect(r, area, block, margin)
 	end
@@ -3768,18 +3832,23 @@ local function placeSign(area, hud, m, a)
 	if W.signSpot and try(W.signSpot, W.signShort, m) then
 		return
 	end
-	for _, short in ipairs({ false, true }) do
-		for _, spot in ipairs(SIGN_SPOTS) do
-			if try(spot, short, 2 * m) then
-				if W.signSpot ~= spot then
-					W.signSpot = spot
-					W.signGen = (W.signGen or 0) + 1
+	-- (fix6) hidden, it stays hidden K.SIGN_HOLD s; while the arrow leaves the screen's top (its top cut, rising) it takes
+	-- no name-alone line and no spot under the tip (there they held 2 to 13 frames: the arrow speeds up as it nears)
+	local leaving = a.y0 < -topInset() and ahead.y0 < a.y0
+	if not (W.signSpot == nil and W.signOffAt and now - W.signOffAt < K.SIGN_HOLD) then
+		for _, short in ipairs(leaving and { false } or { false, true }) do
+			for _, spot in ipairs(SIGN_SPOTS) do
+				if not (leaving and spot == "under") and try(spot, short, 2 * m) and lasts(spot, signRect()) then
+					if W.signSpot ~= spot then
+						W.signSpot = spot
+						W.signGen = (W.signGen or 0) + 1
+					end
+					return
 				end
-				return
 			end
 		end
 	end
-	W.signSpot = nil
+	hide()
 	setSignSide(false)
 	setSignShown(false)
 end
@@ -4236,7 +4305,7 @@ function Guide.Stop()
 	end
 	G.gui, G.chip, G.mark, G.text, G.close, G.scale = nil, nil, nil, nil, nil, nil
 	-- (the tutorial's own guide keeps its two-line sign on the right)
-	W.signSpot = nil
+	W.signSpot, W.signOffAt, W.signHist = nil, nil, nil
 	setSignShown(true, false)
 	if W.signLeft or W.signDrop then
 		setSignSide(false)
@@ -4347,6 +4416,7 @@ function Guide.Start(id)
 	G.target = { Kind = spec.Kind, Id = spec.Id, Label = spec.Label, Prompt = spec.Prompt }
 	G.phase, G.part, G.slide, G.hereUntil = nil, nil, nil, nil
 	W.key = nil
+	W.signOffAt, W.signHist = nil, nil -- (fix6) the sign's hold and the arrow's way start again
 	if not keep then
 		local ok, built = pcall(buildChip)
 		if not (ok and built) then

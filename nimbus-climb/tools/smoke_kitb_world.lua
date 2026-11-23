@@ -1849,7 +1849,18 @@ local function clientScenarios()
 							-- desktop sizes, the mock's framings, it shows
 							T.check(box ~= nil, tag .. ": (setup) the arrow is in view")
 							if s == nil and vp.X >= 1280 then
-								T.check(false, tag .. ": (setup) the arrow and its sign are in view")
+								-- (kit-b P2 fix6, world look pol1 A) ... unless the arrow's tip stands in the chip's columns within
+								-- the sign's height and twice its 8 px clearance over the chip's top: every spot beside or under the
+								-- tip would stack the sign on the chip ('Storm Altar' over 'Guiding to Storm Altar', read as one
+								-- block; guide_pins W1), so it hides there (1920 near: the tip 18 px over the chip at home)
+								local stacked = false
+								if box and card then
+									local sk = (card:FindFirstChild("ReadScale") and card.ReadScale.Scale) or 1
+									local sh = (card.Size.Y.Offset + 6) * sk
+									stacked = box.B <= c.Y and box.B >= c.Y - sh - 16 * k and box.R > c.X and box.X < c.R
+								end
+								T.check(stacked, tag .. ": (setup) the arrow and its sign are in view (it hides only where it would stack on the chip)",
+									"arrow " .. (box and show(box) or "-") .. " chip " .. show(c))
 							end
 							if box and not s then
 								T.check(not overlap(c, box), tag .. ": the chip never covers the arrow", "chip " .. show(c) .. " arrow " .. show(box))
