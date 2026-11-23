@@ -23,6 +23,35 @@ Rule: **restore first, find the cause after.** A rollback is safe for saves. It 
 Not a trigger: a player who sees "Another server is still saving your progress..." for up to 12 seconds after a
 server hop. That is the session lock working.
 
+### Empty save after a crash: a stand-in, not a loss
+
+One case looks exactly like save loss and is not. Check it before you count a report as "Any save loss".
+
+When a server crashes (or its last save did not land), the save stays locked by the dead server for 6 minutes. A
+player who joins another server in that time plays on an **empty stand-in save**: 0 Tokens, no pets. Nothing was
+deleted. The real save is still in the store, and what the player earns on the stand-in is added to it later.
+
+How to tell the two apart:
+
+| | Stand-in after a crash (not a trigger) | Real save loss (trigger) |
+|---|---|---|
+| The toast when the world opens | **"Your progress is still being saved by another server. Your pets and gems will show up in a moment."** | No such toast |
+| The loading screen before it | "Another server is still saving your progress..." for about 12 seconds | The normal captions |
+| What is missing | Everything at once: 0 Tokens, 0 Cash, no pets | Usually a part: some pets, some currency, an older balance |
+| Later, in the same session | The toast **"Your progress is back!"** and everything returns, within about 6 to 8 minutes | Nothing comes back |
+| After 8 minutes and a rejoin | Everything is there | Still missing |
+
+What to do when a player (or you) reports an empty save:
+
+1. Ask: did you see the toast "Your progress is still being saved by another server"?
+2. **Wait 8 minutes.** The player can keep playing or leave.
+3. The player **rejoins**. Compare with the numbers from before.
+4. Still missing after that: it is real save loss. Roll back.
+5. Back: no rollback. Note the time; a crashed server is worth telling Claude about, but it is not a save problem.
+
+Many players reporting an empty save in the same few minutes means one server crashed. Each of them comes back by
+itself. It becomes a trigger only if their saves are still empty after the 8 minutes and a rejoin.
+
 ## What to check first (2 minutes, then decide)
 
 1. **Join** with your account and the alt. Do you both get in?
