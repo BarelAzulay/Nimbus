@@ -271,11 +271,15 @@ vitals card showing beside a phone's result card (spec 02 B); and on a portrait 
 
 `look_pins.py` (kit-b Pitch 2 fix6) pins every major the look reviews found as a check, at the eleven gate sizes (360x640,
 640x360, 667x375, 720x405, 800x450, 844x390, 960x540, 390x844, 1024x768, 1280x720, 1920x1080) plus the sizes a review
-named: K1 the raid boss name whole, K2 the dungeon run card's party row, I1 the roulette machines at 2 px cells or more (and
-the x3 plank's coin off its words), I2 the Secret hero's texts whole and clear of its button, H1 the hero's hint whole on a
-phone, C1 / C2 / C5 battle_hud_no_overlap's fighter-part, run-chip and card gap rules. `--list` says what each pin checks,
-`--pin K1,I2` runs a few. The world guide's pins (MJ-A / MJ-B fin1, W1 / W2 pol1: the walk, the stop at 20 studs, the slow
-pans, the walk with a turning camera) are the smoke list `guide_pins` (`smoke_kitb_world.lua`, travel_guide_walk's runner;
+named: K1 the raid boss name whole (every boss: `render_gui.py --boss shadow_hydra` renders another one), K2 the dungeon
+run card's party row, I1 the roulette machines at 2 px cells or more (and the x3 plank's coin off its words), I2 the Secret
+hero's texts whole and clear of its button, H1 the hero's hint whole on a phone, C1 / C2 / C5 battle_hud_no_overlap's
+fighter-part, run-chip and card gap rules (C5 in the five battle modes and the run), and (fix6 look0) Q1 a helper's key
+cap off its cooldown count and KO, E1 the dungeon's end card off the vitals card and the strips, D1 the Daily page's
+header, chips and day tiles whole. `--list` says what each pin checks,
+`--pin K1,I2` runs a few. The world guide's pins (MJ-A / MJ-B fin1, W1 / W2 pol1: the walk, the stop at 20 studs, the
+pans at 6, 12, 23 and 60 degrees a second, the walk with a turning camera, and look0's 0.5 s hide cap there) are the
+smoke list `guide_pins` (`smoke_kitb_world.lua`, travel_guide_walk's runner;
 `NC_GUIDE_PINS_SIZES=640x360,1920x1080` walks a few sizes while working; `NC_GUIDE_TRACE=<file>` appends one line a frame:
 the run, the arrow, the chip and the GuideSign's spot and box).
 

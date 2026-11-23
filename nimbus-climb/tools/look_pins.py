@@ -30,7 +30,15 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
   C5  keys fin1 c05 360 x 640: the currency strip's border on helper 2's Lv tag, the chip under the strip, the bracket on
                     the Swaps, the top card's shadow on the fighter card and the strip. Rule: battle_hud_no_overlap's ink
                     gap (MIN_GAP, the run chip RUNCHIP_GAP) between the top card, the enemy rows, the fighter card, the
-                    helpers, the run chip and the currency strips
+                    helpers, the run chip and the currency strips (fix6 look0 #2 / #3b: raid:ready and duel too; 1024 x 768
+                    put the top card on the fighter card in every mode, 960 x 540 the token strip on the target row)
+  Q1  fix6 look0 #3a 960 x 540: the '1' / '2' key caps on the 38 px helper tiles hid the cooldown count and 'KO'. Rule: a
+                    helper's key cap keeps 1 px of ink off its count and KO text blocks
+  E1  fix6 look0 #3c 960 x 540 dungeon:end / :wipe: the end card 56 px over the vitals card ('100 / 100' cut). Rule:
+                    battle_hud_no_overlap's ink gap between the end card and every part it lists
+  D1  fix6 look0 #6 1024 x 768 Daily: the header 88 px past its box under the Streak chip, '$1.45K' read '$1.4...', 'TODAY'
+                    1.4 px past its box. Rule: the Daily page's header, chips and day tiles' names and amounts whole
+  (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
 import argparse
@@ -51,7 +59,7 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -81,12 +89,12 @@ class Ctx:
         self.verbose = verbose
         self.passed, self.failed = {}, {}
 
-    def dump(self, scen, w, h, touch=None, sheets=False):
+    def dump(self, scen, w, h, touch=None, sheets=False, boss=None):
         t = self.RG.is_touch(w, h, touch)
-        key = (scen, w, h, t, sheets)
+        key = (scen, w, h, t, sheets, boss)
         if key not in self.cache:
             try:
-                d = self.RG.dump_scenario(scen, w, h, t, self.fonts, sheets=sheets)
+                d = self.RG.dump_scenario(scen, w, h, t, self.fonts, sheets=sheets, boss=boss)
             except SystemExit as exc:
                 d = {"guis": [], "errors": [str(exc)]}
             self.cache[key] = d
@@ -128,18 +136,25 @@ class Ctx:
 
 
 # ---------------------------------------------------------------------------------------------------------------- K1
+# (fix6 look0 #1: K1 read Storm Titan alone and stayed green while 640 x 360 cut 'Shadow H...') every raid boss, in
+# BattleCatalog.BossOrder: storm_titan, lava_golem, frost_wyrm, shadow_hydra (the longest name)
+K1_BOSSES = ["storm_titan", "lava_golem", "frost_wyrm", "shadow_hydra"]
+
+
 def pin_K1(c, sizes):
     B = "NimbusBattle.Root.TopCard."
-    for scen in ("battle:raid", "battle:raid:full", "battle:raid:ready"):
-        for (w, h) in sizes:
-            d = c.dump(scen, w, h)
-            nodes = c.nodes(d)
-            names = [(p, n) for p, n in nodes.items() if p.startswith(B) and p.endswith("BossName")]
-            if not c.check("K1", bool(names), "K1 %s %dx%d: the top card shows the boss name" % (scen, w, h)):
-                continue
-            for p, n in names:
-                ok, how = c.whole(n)
-                c.check("K1", ok, "K1 %s %dx%d: the boss name is whole" % (scen, w, h), how)
+    for boss in K1_BOSSES:
+        for scen in ("battle:raid", "battle:raid:full", "battle:raid:ready"):
+            for (w, h) in sizes:
+                d = c.dump(scen, w, h, boss=boss)
+                nodes = c.nodes(d)
+                names = [(p, n) for p, n in nodes.items() if p.startswith(B) and p.endswith("BossName")]
+                if not c.check("K1", bool(names), "K1 %s %s %dx%d: the top card shows the boss name" % (boss, scen, w, h)):
+                    continue
+                for p, n in names:
+                    ok, how = c.whole(n)
+                    c.check("K1", ok, "K1 %s %s %dx%d: the boss name is whole" % (boss, scen, w, h), how)
+            c.cache.clear()  # (a dump is a few MB; 132 a boss)
 
 
 # ---------------------------------------------------------------------------------------------------------------- K2
@@ -303,10 +318,14 @@ def pin_C2(c, sizes):
         c.check("C2", not mine, "C2 dungeon:run %dx%d: the run chip keeps 6 px off the enemy list, its LeaveHit on no part" % (w, h), " | ".join(mine[:3]))
 
 
+# (fix6 look0 #2: at 1024 x 768 the top card lay on the fighter card in EVERY battle mode, raid:ready and duel too, which
+# C5 did not dump) the five battle modes and the run
+C5_SCENES = ("battle:raid", "battle:raid:full", "battle:raid:ready", "battle:dungeon", "battle:duel", "dungeon:run")
+
+
 def pin_C5(c, sizes):
     col = Collect(c)
-    pat = re.compile(r"^(\S+) %dx%d: (\S+) and (\S+) keep (\d+) px apart")
-    for scen in ("battle:raid", "battle:raid:full", "battle:dungeon", "dungeon:run"):
+    for scen in C5_SCENES:
         for (w, h) in sizes:
             d = c.dump(scen, w, h)
             n, fails = col.run(scen, w, h, d)
@@ -318,7 +337,74 @@ def pin_C5(c, sizes):
             c.check("C5", not mine, "C5 %s %dx%d: the cards, rows, helpers, run chip and currency strips keep their ink gap" % (scen, w, h), " | ".join(mine[:3]))
 
 
-RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5}
+# ---------------------------------------------------------------------------------------------------------------- Q1 / E1
+BH_SCENES = ("battle:raid", "battle:raid:full", "battle:raid:ready", "battle:dungeon", "battle:duel", "dungeon:run",
+             "dungeon:end", "dungeon:wipe")
+
+
+def pin_Q1(c, sizes):
+    """fix6 look0 #3a: a helper's key cap ('1' / '2', a keyboard's) keeps 1 px of air off its tile's cooldown count and
+    'KO' (their text blocks as render_gui lays them out); 960 x 540's 24 x 19 px caps hid both on the 38 px tiles"""
+    for scen in BH_SCENES:
+        for (w, h) in sizes:
+            nodes = c.nodes(c.dump(scen, w, h))
+            caps = 0
+            for i in (1, 2):
+                base = "NimbusBattle.Root.Team.Helpers.Helper%d" % i
+                key = nodes.get(base + ".Key")
+                if not key:
+                    continue
+                kink = c.BH.ink_of(key, c.RG, c.fonts)
+                if not kink:
+                    continue
+                caps += 1
+                for part in ("Count", "KO"):
+                    tn = nodes.get(base + ".Disc.Portrait." + part)
+                    ti = tn and c.BH.text_ink(tn, c.RG, c.fonts)
+                    if not ti:
+                        continue
+                    g = min(c.BH.gap(r, ti) for r in kink)
+                    c.check("Q1", g >= 1.0, "Q1 %s %dx%d: helper %d's key cap keeps off its '%s'" % (scen, w, h, i, tn["text"]["text"]),
+                            "cap ink %s, text %s: %.1f px" % (fmt(c.BH.union(kink)), fmt(ti), g))
+            if not caps:
+                c.check("Q1", True, "Q1 %s %dx%d: (no key caps: a touch screen or no helpers)" % (scen, w, h))
+
+
+def pin_E1(c, sizes):
+    """fix6 look0 #3c: the dungeon's end / wipe card keeps battle_hud_no_overlap's ink gap from the vitals card and the
+    currency strips (960 x 540: the end card 56 px over the vitals card, '100 / 100' cut to '100 /')"""
+    col = Collect(c)
+    for scen in ("dungeon:end", "dungeon:wipe"):
+        for (w, h) in sizes:
+            d = c.dump(scen, w, h)
+            n, fails = col.run(scen, w, h, d)
+            mine = [f for f in fails if "EndCard" in f and " keep " in f]
+            c.check("E1", not mine, "E1 %s %dx%d: the end card keeps its ink gap" % (scen, w, h), " | ".join(mine[:3]))
+
+
+# ---------------------------------------------------------------------------------------------------------------- D1
+DAILY = "NimbusDaily.DailyHolder.DailyWindow.Body.DailyPage."
+
+
+def pin_D1(c, sizes):
+    """fix6 look0 #6: the Daily page's texts whole (1024 x 768: the header 88 px past its box under the Streak chip,
+    today's '$1.45K' read '$1.4...', 'TODAY' 1.4 px past its box): the header, the chips and every day tile's name and
+    amount, as render_gui lays them out (c.whole: no ellipsis, no '...', no line past its box)"""
+    for scen in ("daily", "daily:week", "daily:locked"):
+        for (w, h) in sizes:
+            nodes = c.nodes(c.dump(scen, w, h))
+            texts = [(p, n) for p, n in nodes.items()
+                     if re.match(re.escape(DAILY) + r"(Header|StreakChip|VipChip|Cells\.Cell[1-6]\.Body\.(Day|Amount))$", p)
+                     and isinstance(n.get("text"), dict) and str(n["text"].get("text", "")).strip()]
+            if not c.check("D1", bool(texts), "D1 %s %dx%d: the Daily page shows its header and tiles" % (scen, w, h)):
+                continue
+            for p, n in texts:
+                ok, how = c.whole(n)
+                c.check("D1", ok, "D1 %s %dx%d: %s is whole" % (scen, w, h, p.replace(DAILY, "")), how)
+
+
+RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
+       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1}
 
 
 def parse_sizes(text):

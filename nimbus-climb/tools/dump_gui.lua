@@ -3076,10 +3076,13 @@ scenario("battle", function(mode, phase)
 	local wave = nil
 	if mode == "raid" then
 		setup.Mode = "Raid"
-		setup.Boss = "storm_titan"
+		-- (fix6 look0 #1: the reviewer set Shadow Hydra, whose name is longer than Storm Titan's) DUMP.boss picks the boss
+		-- (render_gui.dump_scenario(..., boss=id); tools/look_pins.py K1 walks every boss)
+		local bossId = (type(ARGS.boss) == "string" and ARGS.boss ~= "") and ARGS.boss or "storm_titan"
+		setup.Boss = bossId
 		setup.Teams = { mine, { Owner = 77, Side = 1, Pets = BCDUMP.team(3, 2, 26), Auto = true }, { Owner = 78, Side = 1, Pets = BCDUMP.team(3, 4, 28), Auto = true } }
 		if fullRaid then
-			extra.Raid = { Tier = "Starter", BossId = "storm_titan" }
+			extra.Raid = { Tier = "Starter", BossId = bossId }
 		end
 	elseif mode == "dungeon" then
 		setup.Mode = "Dungeon"
