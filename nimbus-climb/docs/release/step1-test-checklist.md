@@ -30,7 +30,12 @@ This puts TODAY's live game into TEST, so TEST gets saves in the old format.
 
 ## Part B: the quick-wins build (22 minutes)
 
-- [ ] B0. Publish the checked quick-wins `.rbxl` Claude prepared to **nimbus TEST** (same place, overwrite).
+- [ ] B0. Publish the checked quick-wins place file to **nimbus TEST** (same place, overwrite).
+      The file is `play/NimbusClimb.rbxlx` of branch `qw-step1-gate-b`, built in commit **`37fcbc6`** (Rojo 7.7.1,
+      `tools/verify_place.py`: all 1166 scripts match the code). Open that file in Studio, then File > Publish to
+      Roblox As > **nimbus TEST**. Read the name twice before you confirm.
+      If the branch got a newer commit that changes `src/`, the file must be rebuilt and verified again first: ask
+      Claude, and use the commit id Claude gives you. **The file you test here is the file that goes to MAIN later.**
       Creator Hub > Configurations > Server management > Restart Servers, so no old server is left.
 
 - [ ] B1. **Join** with both accounts.
@@ -96,7 +101,7 @@ Do the real steps of `step1-rollback.md` once, in TEST, so they are not new on t
       **Pass:** the game loads at once (the old build has no lock and does not wait). Tokens, Cash, Gems and pets
       are the numbers from Part B. Nothing is lower.
 - [ ] C3. Play 1 minute, earn a few Tokens, leave.
-- [ ] C4. Publish the quick-wins `.rbxl` again. Restart Servers. Join.
+- [ ] C4. Publish the quick-wins place file (the same `play/NimbusClimb.rbxlx` as in B0) again. Restart Servers. Join.
       **Pass:** the numbers include the Tokens from C3. The Shop still shows only Eggs.
 
 ## Result

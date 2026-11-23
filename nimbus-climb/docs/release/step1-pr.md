@@ -132,7 +132,7 @@ Each item was red first, then green, and has its own commit.
 | 4 | **A pet main does not know.** The round trip's rollback gives every player two Week Wisps. Main keeps them. | `423024c`. No game code changed. One rollback cost found (above). |
 | 5 | **Rollback page.** How to tell an empty stand-in after a crash from real save loss. | `6f88b01`. |
 | 6 | **Shipped-value run.** | Section below. |
-| 7 | **The place file** is rebuilt from the follow-up head and verified. | "Before merge" below. |
+| 7 | **The place file** is rebuilt from the follow-up head and verified. | `37fcbc6`. `verify_place`: all 1166 scripts match. See "Before merge". |
 | 8 | **AFK play-time gifts.** | "Known, for later" below. |
 
 Two notes for step 2 (turning the Store on), from items 1 and 2:
@@ -188,9 +188,10 @@ so the list failed whenever those lists ran before it (as they do in a whole run
 
 ## Open risks
 
-1. **The whole suite has not run on this branch yet.** Only the lists above ran (one at a time, as told). The plan's
-   gate 4 is the full `--quick` and `--mesh` run plus a Fable review.
-2. **The rollback cost** above (four small fields).
+1. **The whole suite has not run on this head yet.** Only the lists above ran (one at a time, as told). The plan's
+   gate 4 is the full `--quick` and `--mesh` run plus a Fable review. A whole run of `qw-step1-gate` at `756d0d1`
+   does not cover the follow-up: gate 4 has to run on `qw-step1-gate-b`.
+2. **The rollback cost** above (four small fields, and a Week Wisp off the team while main is live).
 3. **After a server crash** a player can be on a stand-in for up to about 6 minutes on the next server. Progress made
    there is kept. `step1-rollback.md` now says how to tell this from real save loss (the toast, wait 8 minutes,
    rejoin).
@@ -204,6 +205,12 @@ so the list failed whenever those lists ran before it (as they do in a whole run
 
 ## Before merge
 
+- [x] The place file is rebuilt and verified: `play/NimbusClimb.rbxlx`, commit **`37fcbc6`** (Rojo 7.7.1,
+      `rojo build default.project.json -o play/NimbusClimb.rbxlx` from `8d52bcf`; `py -3.12 tools/verify_place.py`:
+      OK, all 1166 scripts match). Only docs changed after it.
+- [ ] **Rebuild + verify_place again if `src/` changes before the merge**: run the two commands above, commit the
+      file, and put the new commit id here and in `step1-test-checklist.md` B0. The file the owner tests must be the
+      file that is published.
 - [ ] Full suite `--quick` and `--mesh`, and the Fable review (gate 4).
 - [ ] The owner's test checklist passed (gate 5).
 - [ ] The owner says yes in chat.
