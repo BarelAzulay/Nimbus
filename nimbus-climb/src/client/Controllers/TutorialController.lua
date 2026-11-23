@@ -3740,6 +3740,18 @@ local function placeSign(area, hud, m, a)
 			block[#block + 1] = rectsOverlap(way, a) and at or way
 		end
 	end
+	-- (kit-b P2 fix6b) where the chip may stand soon, for a new spot (lasts): away, its home (it comes back there); hidden
+	-- (G.away.hide: it shows again at its next spot at once), its row within its reach of home (its whole width off it,
+	-- each way); grown as its box is above
+	local soon = {}
+	if G.chip and G.to and G.away then
+		local kc = G.scale and G.scale.Scale or 1
+		local wf = ((G.lineFull and G.lineFull.w) or G.chip.Size.X.Offset) * kc
+		local hx, hy = G.homeAt and G.homeAt.x or area.X / 2, G.homeAt and G.homeAt.y or G.to.y
+		local r0 = chipRectAt(hx, hy, wf)
+		local extra = math.max(0, 2 * K.SIGN_CLEAR * kc + 1 - m)
+		soon[1] = grown(G.away.hide and { x0 = r0.x0 - wf, y0 = r0.y0, x1 = r0.x1 + wf, y1 = r0.y1 } or r0, extra)
+	end
 	local k = (W.signScale and W.signScale.Scale) or 1
 	-- (fix6) the spot `spot` the sign `r` just took still holds with the arrow at `ahead`: beside it, its middle between the
 	-- arrow's top and tip and the sign under the screen's top, its side on the screen; under it, under the screen's top
@@ -3751,21 +3763,55 @@ local function placeSign(area, hud, m, a)
 		local top = -topInset() + m
 		if spot == "under" then
 			local y0 = ahead.y1 + K.SIGN_DROP * k
-			return y0 >= top and y0 + h <= area.Y - m
-		end
-		-- (the highest it can slide in its column: under the screen's top and under what stands over it there)
-		for _, b in ipairs(block) do
-			if b.x1 > r.x0 - m and b.x0 < r.x1 + m and b.y1 <= r.y0 + 1 then
-				top = math.max(top, b.y1 + m + 1)
+			if not (y0 >= top and y0 + h <= area.Y - m) then
+				return false
+			end
+		else
+			-- (the highest it can slide in its column: under the screen's top and under what stands over it there)
+			for _, b in ipairs(block) do
+				if b.x1 > r.x0 - m and b.x0 < r.x1 + m and b.y1 <= r.y0 + 1 then
+					top = math.max(top, b.y1 + m + 1)
+				end
+			end
+			if math.min(ahead.y1, area.Y - m - h / 2) < math.max(ahead.y0, top + h / 2) then
+				return false
 			end
 		end
-		if math.min(ahead.y1, area.Y - m - h / 2) < math.max(ahead.y0, top + h / 2) then
+		if spot == "under" then
+			-- (it hangs under the tip: carried below)
+		elseif spot == "left" then
+			if r.x0 + (ahead.x0 - a.x0) < m then
+				return false
+			end
+		elseif r.x1 + (ahead.x1 - a.x1) > area.X - m then
 			return false
 		end
-		if spot == "left" then
-			return r.x0 + (ahead.x0 - a.x0) >= m
+		-- (kit-b P2 fix6b, look1 #3: on pans, turning walks and a look up the sign still showed 1 - 14 frames: a spot in a
+		-- gap the arrow carried it out of, into the HUD or the chip, one the chip came back over, or one taken as a pan
+		-- turned back) and clear of the HUD and the chip all the way the arrow carries it in that time - and as far the
+		-- other way (a camera turning back) - and of where the chip may stand by then: home while it is away, and its row
+		-- within its reach while it is hidden
+		-- (sideways at least as far as the arrow's fastest of the last K.GUIDE_HOLD s carries it: turning back, its speed
+		-- passes through 0; and wholly on the screen all that way)
+		local sx, sy = ((ahead.x0 + ahead.x1) - (a.x0 + a.x1)) / 2, ((ahead.y0 + ahead.y1) - (a.y0 + a.y1)) / 2
+		sx = math.max(math.abs(sx), (G.vxPeak or 0) * K.SIGN_HOLD)
+		local way = boxOf({ x0 = r.x0 + sx, y0 = r.y0 + sy, x1 = r.x1 + sx, y1 = r.y1 + sy },
+			{ x0 = r.x0 - sx, y0 = r.y0 + sy, x1 = r.x1 - sx, y1 = r.y1 + sy })
+		way = boxOf(way, r)
+		if way.x0 < m or way.x1 > area.X - m then
+			return false
 		end
-		return r.x1 + (ahead.x1 - a.x1) <= area.X - m
+		for _, b in ipairs(block) do
+			if rectsOverlap(way, grown(b, m)) then
+				return false
+			end
+		end
+		for _, b in ipairs(soon) do
+			if rectsOverlap(way, grown(b, m)) then
+				return false
+			end
+		end
+		return true
 	end
 	local function fits(r, margin)
 		return r ~= nil and freeRect(r, area, block, margin)
@@ -4017,6 +4063,7 @@ local function placeChip(dt, snap)
 	local wFull = ((G.lineFull and G.lineFull.w) or chip.Size.X.Offset) * k
 	local wCompact = G.lineCompact and G.lineCompact.w * k or nil
 	local homeX, homeY = chipHome(area, k, h, wFull)
+	G.homeAt = { x = homeX, y = homeY } -- (placeSign keeps a new spot off it while the chip is away)
 	local clearPx, take = K.GUIDE_CLEAR * k, K.GUIDE_TAKE * k
 	local okO, obstacles, near, vx, rise, others = pcall(chipObstacles, area, dt)
 	if not okO then
