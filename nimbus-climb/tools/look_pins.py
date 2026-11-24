@@ -55,6 +55,9 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     the portrait chip under the menu's Home tile in a 3-4 player match / on a full pad) and over a match
                     (1-4 players), the party pad and the countdown: MIN_GAP off EVERY other HUD piece and the rings, plus a
                     portrait sweep 320-430 x 568 / 640 / 720 (U1_BACKLOG: kit-b's own cases, no worse than kit-b)
+  U2  look:fix6b2 N3 360 x 640 step 20 'The Champion Ri...' (the title not shrunk before the ellipsis). Rule: the
+                    tutorial's titles (the strip's, the card's as shown and opened) read whole at every step (U2_BACKLOG:
+                    kit-b's own cuts at the 14.4 px floor)
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -76,7 +79,7 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -707,8 +710,42 @@ def u1_states(c, sizes):
         c.cache.clear()
 
 
+# ---------------------------------------------------------------------------------------------------------------- U2
+# (look:fix6b2 N3: the tutorial's titles cut with an ellipsis. NEW in fix6b: 360 x 640 step 20 'The Champion Ri...' on the
+# folded strip - O3 put the strip there, where kit-b showed the portrait chip and no title. OLD (kit-b): the strip at
+# 390 x 844 steps 15 / 20 and 640 x 360 steps 6 / 8 / 10 / 11, the opened card at 390 x 844 steps 16 / 20 / 21 and
+# 375 x 667 step 11. The title was not shrunk first: 640 x 360 step 10 drew 'Claim Your Home' at its full 18.4 px, 7.7 px
+# too wide.) Rule: wherever the tutorial shows a title - the folded strip's QuestTitle, the card's StepTitle as shown or
+# opened with a tap (tutorial:<n>:open) - it reads whole (no ellipsis, no line past its box), at every step, at the gate
+# sizes and the phones the looks used.
+# U2_BACKLOG: (scenario, size, title) kit-b 1a55f73 cuts too, at its 14.4 px floor (the owner's rule of 2026-11-24: what
+# kit-b already has goes to the backlog), measured by this pin on kit-b's src; every other title reads whole.
+U2_EXTRA = [(375, 667), (384, 640), (320, 568)]
+U2_BACKLOG = kitb_backlog("U2")
+
+
+def pin_U2(c, sizes):
+    total = tutorial_total(c.nodes(c.dump("tutorial:1", 1280, 720)))
+    if not c.check("U2", total is not None and total > 1, "U2 tutorial 1280x720: the tutorial shows its step count"):
+        return
+    for (w, h) in list(sizes) + [s for s in U2_EXTRA if s not in sizes]:
+        for step in range(1, total + 1):
+            for mode in ("", ":open"):
+                scen = "tutorial:%d%s" % (step, mode)
+                nodes = c.nodes(c.dump(scen, w, h))
+                titles = [(p, n) for p, n in nodes.items() if p.startswith(U1_PANEL + ".") and re.search(r"\.(QuestTitle|StepTitle)$", p)
+                          and isinstance(n.get("text"), dict) and str(n["text"].get("text", "")).strip() and float(n["w"]) > 1]
+                for p, n in titles:
+                    ok, how = c.whole(n)
+                    name = p.split(".")[-1]
+                    c.check("U2", ok or (scen, w, h, name) in U2_BACKLOG, "U2 %s %dx%d: the tutorial's %s reads whole" % (scen, w, h, name), how)
+                if not mode and any(p.endswith(".StepTitle") for p, _ in titles):
+                    break  # (the card shows already: a tap opens nothing more)
+        c.cache.clear()
+
+
 RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
-       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1}
+       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1, "U2": pin_U2}
 
 
 def parse_sizes(text):

@@ -75,6 +75,11 @@ local Client = script.Parent.Parent
 local LocalPlayer = Players.LocalPlayer
 
 local TutorialController = {}
+-- (look:fix6b2 N3) Metrics.MEASURE(text, size, role) -> Vector2: a one-line text's size (design px) when a hook is set, else
+-- Theme.Measure (TextService). tools/dump_gui.lua's tutorial scenes hand it the renderer's font metrics: the mock's
+-- TextService answers a flat 0.5 em a letter, so the titles' fit (fitTextSize) kept 'The Champion Ring' (FredokaOne draws it
+-- 0.545 em a letter) at its full size and the gate's render cut it to 'The Champion Ri...'; Roblox measures the face
+TutorialController.Metrics = { MEASURE = nil }
 
 ----------------------------------------------------------------------
 -- Tunables (design pixels of a 1080p screen unless noted)
@@ -723,7 +728,11 @@ end
 -- FontFace role widened: the Title role's Enum font in lower case measured "NIMBUS" 10 % short, and the name came out
 -- "NIMB..."); a rough per-character estimate when TextService cannot measure.
 local function textWidth(text, size, role)
+	local hook = TutorialController.Metrics.MEASURE
 	local ok, measured = pcall(function()
+		if hook then
+			return hook(text, size, role)
+		end
 		return Theme.Measure(text, role, size, 10000)
 	end)
 	if ok and measured and measured.X > 0 then

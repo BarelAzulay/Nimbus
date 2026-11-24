@@ -276,7 +276,10 @@ run card's party row, I1 the roulette machines at 2 px cells or more (and the x3
 hero's texts whole and clear of its button, H1 the hero's hint whole on a phone, C1 / C2 / C5 battle_hud_no_overlap's
 fighter-part, run-chip and card gap rules (C5 in the five battle modes and the run), and (fix6 look0) Q1 a helper's key
 cap off its cooldown count and KO, E1 the dungeon's end card off the vitals card and the strips, D1 the Daily page's
-header, chips and day tiles whole. `--list` says what each pin checks,
+header, chips and day tiles whole. (look:fix6b2) O3 reads the vitals card in the lobby, a match, the party pad and the
+countdown; U1 reads the tutorial over a match (1-4 players), the pad and the countdown too, against every other HUD piece,
+plus a portrait sweep; U2 the tutorial's titles whole at every step. `*_BACKLOG` in the file holds what kit-b 1a55f73
+already has (measured by the same pin on kit-b's src): such a case passes while it is no worse than kit-b. `--list` says what each pin checks,
 `--pin K1,I2` runs a few. The world guide's pins (MJ-A / MJ-B fin1, W1 / W2 pol1: the walk, the stop at 20 studs, the
 pans at 6, 12, 23 and 60 degrees a second, the walk with a turning camera, and look0's 0.5 s hide cap there) are the
 smoke list `guide_pins` (`smoke_kitb_world.lua`, travel_guide_walk's runner;
@@ -300,7 +303,8 @@ scenario names its lines no text hits any more. `--casing` lists Button-role tex
 reports.
 
 * Scenarios: `lobby`, `title` (title card up), `match` / `match:hit` (a quarter second after a hit), `countdown`,
-  `party` (portal party panel), `results`, `menu:<Window>[:<Tab or Index group>]`, `tutorial[:<step>]`, `npc[:<n>]`,
+  `party` (portal party panel), `results`, `menu:<Window>[:<Tab or Index group>]`,
+  `tutorial[:<step>[:open|fold|match[:<players>|:full]|party[:leader]|countdown]]`, `npc[:<n>]`,
   `dev` (owner panel), `toasts`, `gallery`, `portal[:<Id>[:<players>[:<studs>]]]`, or a `.json` dump written earlier
   with `--json`. `--list` prints them.
 * `battle[:<mode>[:<phase>]]` (BattleController): the battle HUD fed by a real BattleSim stepped at 10 Hz through

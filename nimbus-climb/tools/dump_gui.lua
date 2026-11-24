@@ -1336,7 +1336,31 @@ end)
 -- a match with n players (1-4; full: the match scenario's four long names, SAINT), the party pad (leader: its leader with a
 -- full party of four) or a match's countdown - so the folded guide is laid out round the panel and the menu column it moves
 local TUT_MEMBER4 = { UserId = 79, Name = "Quiet", Health = 0.6, Downed = false, Finished = false, Tokens = 1 }
+-- (look:fix6b2 N3) the tutorial measures its one-line texts (its titles' fit, the step count, the name plank) through
+-- TutorialController.Metrics.MEASURE: here the renderer's font metrics, on a label of the role as the game draws it (the
+-- mock's TextService answers a flat 0.5 em a letter, so the titles were never shrunk and the render cut them:
+-- 'The Champion Ri...'). A build without the hook (kit-b) measures as before
+local function tutorialMetrics()
+	local TC = req("client/Controllers/TutorialController")
+	local ThemeM = req("shared/Theme")
+	if not (TC and type(TC.Metrics) == "table" and ThemeM) then
+		return
+	end
+	local probe = Instance.new("TextLabel")
+	TC.Metrics.MEASURE = function(text, size, role)
+		probe.Font = ThemeM.Fonts[role] or ThemeM.Fonts.Body
+		pcall(ThemeM.Face, probe, role)
+		text = tostring(text or "")
+		if ThemeM.CapsRoles and ThemeM.CapsRoles[role] then
+			text = ThemeM.Caps(text)
+		end
+		probe.TextSize, probe.Text = size, text
+		local w, h = Mock.TextExtent(probe)
+		return Vector2.new(w, h)
+	end
+end
 scenario("tutorial", function(step, mode, arg)
+	tutorialMetrics()
 	if mode == "match" then
 		if arg == "full" then
 			SCENARIOS.match("full")
