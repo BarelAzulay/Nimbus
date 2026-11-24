@@ -44,12 +44,15 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     its box from 1920 x 1200 up. Rule: the rows keep the ink gap off the strips; the TARGET tab reads whole
   O3  fix6 look1 #6 lobby 360 x 640 / 375 x 667: the vitals card on DASH and RUN, its name 'SkyCli...'. Rule: the card's
                     ink MIN_GAP off DASH and RUN, the player's name whole
-  T1  fix6 look1    the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
+  T1  fix6 look1   the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
                     1024 x 768 raid:full. Rule: a phone's timer one place and form through raid:ready / raid / raid:full;
                     the clock at 1024 x 768 raid:full; the timer never larger than the boss name
   U1  look:fix6b #1 360 x 640 / 375 x 667 / 384 x 640 tutorial steps 1, 3, 6: the folded quest strip 58 x 22 px over RUN
                     (from O3). Rule: at every step, as the game shows it, the tutorial's ink MIN_GAP off RUN, DASH, the
-                    vitals card and Roblox's thumbstick and jump rings, at the gate sizes and the phones
+                    vitals card and Roblox's thumbstick and jump rings, at the gate sizes and the phones. (look:fix6b2 N1:
+                    the portrait chip under the menu's Home tile in a 3-4 player match / on a full pad) and over a match
+                    (1-4 players), the party pad and the countdown: MIN_GAP off EVERY other HUD piece and the rings, plus a
+                    portrait sweep 320-430 x 568 / 640 / 720 (U1_BACKLOG: kit-b's own cases, no worse than kit-b)
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -78,6 +81,13 @@ SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
 HERO = SHOP + "ShopCard_Secret"
 # the hero's states: the plain shop (away from the altar), in the lobby, at the altar, a restricted account
 HERO_STATES = ["shop", "shop_secret_locked:lobby", "shop_secret_altar", "shop:restricted"]
+
+
+def kitb_backlog(pin):
+    """(look:fix6b2) tools/fixtures/look_pins_backlog_kitb.json's rows for a pin: {(scenario, w, h, part): kit-b's value}"""
+    with open(os.path.join(HERE, "fixtures", "look_pins_backlog_kitb.json"), encoding="utf-8") as fh:
+        rows = json.load(fh).get(pin, [])
+    return {(r[0], int(r[1]), int(r[2]), r[3]): r[4] for r in rows}
 
 
 def rect(n):
@@ -608,6 +618,75 @@ def pin_U1(c, sizes):
                     g = min(c.BH.ring_gap(r, cen, rad) for r in ink)
                     c.check("U1", g >= c.BH.MIN_GAP - 0.05, "%s: the tutorial keeps %g px off %s's ring" % (what, c.BH.MIN_GAP, name),
                             "tutorial ink %s, ring at %.0f,%.0f r %.0f: %.1f px" % (fmt(ui), cen[0], cen[1], rad, g))
+        c.cache.clear()
+    u1_states(c, sizes)
+
+
+# (look:fix6b2 N1, NEW from c1e122e's chip fallback: in a 3 or 4 player match - tutorial step 8 - and on a full party pad -
+# step 7 - the portrait chip lay under the menu column's Home tile: 360 x 640 20-23 px, 384 x 640 23.5-26.5 px, 375 x 667
+# 1.9 px, at every width 320-430 on 640-tall screens and in solo matches on 568-tall: the chip's fallback dock over the
+# vitals card was checked against the touch keys only. U1 read the lobby alone.) The tutorial over the other HUD states, as
+# the game sets them (tools/dump_gui.lua tutorial:<step>:match / party / countdown): a match with 1 - 4 players and the
+# long-name SAINT match, the party pad and its leader's full pad, a match's countdown. Rule: the tutorial's ink keeps MIN_GAP
+# off EVERY other HUD piece (each ScreenGui's pieces and their parts: the menu column and its tiles, the touch keys, the
+# vitals card, the match / party panel, the wallet strips, the gift ...) and off Roblox's thumbstick and jump rings, at the
+# gate sizes, U1's phones and a portrait sweep (320 - 430 wide, 568 / 640 / 720 tall).
+# U1_BACKLOG: where kit-b 1a55f73 already has a gap under MIN_GAP in these states (the owner's rule of 2026-11-24: what
+# kit-b already has goes to the backlog), measured by this pin on kit-b's src with these tools (the tutorial chip / strip /
+# card 1.6 - 2.4 px off the match / party panel on landscape phones and PC, the landscape chip on the wallet strip, the
+# portrait chip on the column's fold tab at 320 - 384 wide): such a case passes while its gap is no worse than kit-b's and
+# fails as soon as it gets worse; every other case keeps MIN_GAP.
+U1_STATES = ["tutorial:8:match:1", "tutorial:8:match:2", "tutorial:8:match:3", "tutorial:8:match:4", "tutorial:8:match:full",
+             "tutorial:7:party", "tutorial:7:party:leader", "tutorial:8:countdown"]
+U1_SWEEP = [(w, h) for h in (568, 640, 720) for w in (320, 340, 360, 375, 384, 393, 400, 412, 430)]
+U1_BACKLOG = kitb_backlog("U1")
+
+
+def tutorial_gaps(c, nodes, w, h):
+    """[(gap, piece path, piece ink rect)] for every other piece (depth 1 / 2 of a ScreenGui, holders skipped) and Roblox's
+    rings within MIN_GAP of the tutorial's ink; None when the tutorial shows no ink"""
+    panel = nodes.get(U1_PANEL)
+    ink = c.BH.ink_of(panel, c.RG, c.fonts) if panel else []
+    if not ink:
+        return None
+    ui = c.BH.union(ink)
+    out = []
+    for p, n in nodes.items():
+        if p.startswith("NimbusTutorial") or p.count(".") not in (1, 2):
+            continue
+        if float(n["w"]) <= 1 or float(n["h"]) <= 1 or (float(n["w"]) > 0.9 * w and float(n["h"]) > 0.6 * h):
+            continue
+        kink = c.BH.ink_of(n, c.RG, c.fonts)
+        if not kink:
+            continue
+        uk = c.BH.union(kink)
+        if uk[2] - uk[0] > 0.9 * w and uk[3] - uk[1] > 0.6 * h:
+            continue
+        g, a, b = c.BH.ink_gap(ink, kink, ui, uk, c.BH.MIN_GAP)
+        if g < c.BH.MIN_GAP - 0.05:
+            out.append((round(g, 1), p, b))
+    if c.RG.is_touch(w, h, None):
+        for name, (cen, rad) in c.BH.rings(w, h).items():
+            g = min(c.BH.ring_gap(r, cen, rad) for r in ink)
+            if g < c.BH.MIN_GAP - 0.05:
+                out.append((round(g, 1), name + "'s ring", None))
+    return out
+
+
+def u1_states(c, sizes):
+    for (w, h) in list(sizes) + [s for s in U1_EXTRA + U1_SWEEP if s not in sizes]:
+        for scen in U1_STATES:
+            nodes = c.nodes(c.dump(scen, w, h))
+            what = "U1 %s %dx%d" % (scen, w, h)
+            gaps = tutorial_gaps(c, nodes, w, h)
+            if not c.check("U1", gaps is not None, what + ": the tutorial shows"):
+                continue
+            bad = []
+            for g, p, b in gaps:
+                was = U1_BACKLOG.get((scen, w, h, p))
+                if was is None or g < was - 0.05:
+                    bad.append("%s %.1f px%s%s" % (p, g, (" at " + fmt(b)) if b else "", (" (kit-b %.1f)" % was) if was is not None else ""))
+            c.check("U1", not bad, "%s: the tutorial keeps %g px of ink off every HUD piece and the rings" % (what, c.BH.MIN_GAP), "; ".join(bad[:4]))
         c.cache.clear()
 
 

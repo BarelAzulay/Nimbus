@@ -816,6 +816,26 @@ local function menuRect()
 	return found
 end
 
+-- (look:fix6b2 N1) the menu column as far as it reaches: menuRect with every shown button in the column - its tiles, its
+-- fold tab and the tab's tap pad (MenuController's ToggleHit, reaching right into the free sky); nil without a column
+local function columnReach()
+	local r = menuRect()
+	local pg = playerGui()
+	local menuGui = pg and pg:FindFirstChild("NimbusMenu")
+	local column = r and menuGui and menuGui:FindFirstChild("MenuColumn", true)
+	if not column then
+		return r
+	end
+	local dy = insetShift(menuGui)
+	for _, d in ipairs(column:GetDescendants()) do
+		if d:IsA("GuiButton") and d.AbsoluteSize.X > 0 and shownIn(d, menuGui) then
+			local b = rectOf(d, dy)
+			r = { x0 = math.min(r.x0, b.x0), y0 = math.min(r.y0, b.y0), x1 = math.max(r.x1, b.x1), y1 = math.max(r.y1, b.y1) }
+		end
+	end
+	return r
+end
+
 -- HUD neighbours (published by HudController, gui px): bottom of the top-left panel area and top of the
 -- bottom-left block (vitals / currency), plus the top-left panel's right edge and the top-right stack (0 when absent).
 local function hudBounds(area)
@@ -1479,6 +1499,7 @@ local function layout()
 		local h2 = K.STRIP_H * k
 		local chipH = K.STRIP_CHIP * k
 		local v = area.Y > area.X and vitalsRect() or nil
+		local reach = v and columnReach() or nil -- (look:fix6b2 N1) the menu column with its fold tab's tap pad
 		local dockBlocked = false
 		-- a touch key round `x0`..`x1` x `t0`..`t1` (STRIP_DOCK_GAP of air, half a px spare), nil when none
 		local function keyIn(x0, x1, t0, t1)
@@ -1509,8 +1530,12 @@ local function layout()
 			top = stackTop - K.STRIP_DOCK_GAP - h2
 			local x1 = left + stripW * k
 			local g = K.GAP * k
+			-- (look:fix6b2 N1) the column with STRIP_DOCK_GAP of air beyond the strip's own wood edge: GAP's 8 px off its box
+			-- left 3.5 px of ink between the strip's edge and the tiles' shadow at 384 x 720 in a 3 player match (0.9 px at
+			-- 400 x 720)
+			local d = K.STRIP_DOCK_GAP + K.STRIP_EDGE * k - 0.5
 			dockBlocked = top < edge or keyIn(left, x1, top, top + h2) ~= nil
-				or (column ~= nil and left < column.x1 + g and x1 > column.x0 - g and top < column.y1 + g and top + h2 > column.y0 - g)
+				or (reach ~= nil and left < reach.x1 + d and x1 > reach.x0 - d and top < reach.y1 + d and top + h2 > reach.y0 - d)
 				or (hud.TopRightLeft > 0 and x1 > hud.TopRightLeft - g and top < hud.TopRightBottom + g)
 		else
 			top = hud.TopLeftBottom > 0 and (hud.TopLeftBottom + K.GAP * k) or edge
@@ -1532,11 +1557,58 @@ local function layout()
 		stripChip = stripW < K.STRIP_MIN_W or meets or dockBlocked or (v == nil and y1 > bottomLimit)
 		if stripChip then
 			if v then
-				top = v.y0 - K.STRIP_DOCK_GAP - chipH -- (on the stack still, over the vitals card)
-				-- (look:fix6b major 1) and over a key in its own column, should one stand there
-				local r = keyIn(left, left + chipH, top, top + chipH)
-				if r then
-					top = r.y0 - K.STRIP_DOCK_GAP - chipH
+				-- on the stack still, STRIP_DOCK_GAP over the vitals card; (look:fix6b major 1) and over a key in its own
+				-- column, should one stand there
+				local function spot(l)
+					local t = v.y0 - K.STRIP_DOCK_GAP - chipH
+					local r = keyIn(l, l + chipH, t, t + chipH)
+					return r and (r.y0 - K.STRIP_DOCK_GAP - chipH) or t
+				end
+				-- (look:fix6b2 N1) at the card's left edge, else right of the menu column and its fold tab's tap pad
+				-- (columnReach), else right of its tiles (menuRect; the tap pad, over the chip, takes a tap there): the
+				-- first spot that keeps STRIP_DOCK_GAP of air off every HUD piece round it (the column, the keys, the vitals
+				-- block, the top-left panel, each piece of the top-right stack - the wallet strips, the Gift tile, the boost
+				-- chips -, the arena's side stack, the screen's edges). In a 3 or 4 player match and on a full party pad the
+				-- panel pushes the column down to the card: the chip, checked against the keys only, lay under its Home tile
+				-- (20 - 26.5 px). Where no spot is clear it keeps the first
+				local d = K.STRIP_DOCK_GAP - 0.5
+				local pieces = {}
+				local pg = playerGui()
+				for _, spec in ipairs({ { "NimbusHud", "TopRight" }, { "NimbusDaily" }, { "NimbusBoosts" } }) do
+					local g = pg and pg:FindFirstChild(spec[1])
+					local holder = g and g:IsA("ScreenGui") and g.Enabled and (spec[2] and g:FindFirstChild(spec[2]) or g)
+					for _, c in ipairs(holder and holder:GetChildren() or {}) do
+						local s = c:IsA("GuiObject") and c.AbsoluteSize
+						if s and s.X > 0 and s.X < area.X * 0.6 and s.Y < area.Y * 0.6 and shownIn(c, g) then
+							pieces[#pieces + 1] = rectOf(c, insetShift(g))
+						end
+					end
+				end
+				local function clear(l, t, col)
+					local function meets(r)
+						return r ~= nil and r.x1 > l - d and r.x0 < l + chipH + d and r.y1 > t - d and r.y0 < t + chipH + d
+					end
+					if t < edge or l + chipH > area.X - edge or meets(col) or meets(arenaSideRect()) then
+						return false
+					end
+					for _, list in ipairs({ touchButtonRects(), bottomLeftRects(), pieces }) do
+						for _, r in ipairs(list) do
+							if meets(r) then
+								return false
+							end
+						end
+					end
+					return not (hud.TopLeftBottom > 0 and t < hud.TopLeftBottom + d and (hud.TopLeftRight <= 0 or l < hud.TopLeftRight + d))
+				end
+				local tiles = menuRect()
+				top = spot(left)
+				for _, s in ipairs({ { left, reach }, { reach and reach.x1 + K.STRIP_DOCK_GAP, reach }, { tiles and tiles.x1 + K.STRIP_DOCK_GAP, tiles } }) do
+					local l = s[1] and math.max(left, s[1])
+					local t = l and spot(l)
+					if l and clear(l, t, s[2]) then
+						left, top = l, t
+						break
+					end
 				end
 			elseif top + chipH > bottomLimit then
 				top = math.max(edge, bottomLimit - chipH)
