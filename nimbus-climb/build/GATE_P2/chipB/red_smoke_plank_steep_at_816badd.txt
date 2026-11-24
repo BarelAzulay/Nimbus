@@ -1,0 +1,103 @@
+﻿Nimbus Climb smoke test  (Lua engine: luajit21, 300 layout seeds/difficulty)
+
+== client_load ==
+
+== travel_guide_plank ==
+  FAIL  guide plank 320x568 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -41.5 px at 0.10 s (Walk): chip 10,205 .. 201,253, Enter plank 100,211 .. 220,276
+  FAIL  guide plank 320x568 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.2 px at 0.10 s (Walk): chip 10,205 .. 201,253, Enter plank 100,215 .. 220,280
+  FAIL  guide plank 320x568 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -41.9 px at 0.10 s (Here): chip 10,205 .. 162,253, Enter plank 100,211 .. 220,276
+  ..    guide plank 320x568 tutorial folded, here: tutorial strip 12,263 .. 300,324; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -41.9 px off the plank (1 s in: chip 10,205 .. 162,253 shown, plank 100,211 .. 220,276)
+  FAIL  guide plank 320x568 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -41.9 px at 2.03 s (Here): chip 10,205 .. 162,253, Enter plank 100,211 .. 220,276
+  FAIL  guide plank 320x568 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -41.5 px at 0.10 s (Walk): chip 10,205 .. 201,253, Enter plank 100,211 .. 220,276
+  FAIL  guide plank 320x568 tutorial folded, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  FAIL  guide plank 320x568 tutorial done, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -14.6 px at 1.50 s (Walk): chip 10,338 .. 201,386, Enter plank 100,288 .. 220,353
+  ..    guide plank 320x568 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 61.9 px off the plank (1 s in: chip 10,338 .. 162,386 shown, plank 100,211 .. 220,276)
+  FAIL  guide plank 320x568 tutorial done, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -16.1 px at 1.03 s (Here): chip 10,338 .. 162,386, Enter plank 100,289 .. 220,354
+  FAIL  guide plank 320x568 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -31.7 px at 0.60 s (Walk): chip 10,338 .. 201,386, Talk plank 169,329 .. 279,394
+  FAIL  guide plank 320x568 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  FAIL  guide plank 340x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 10,277 .. 201,325, Enter plank 110,242 .. 230,307
+  FAIL  guide plank 340x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 10,277 .. 201,325, Enter plank 110,269 .. 230,334
+  FAIL  guide plank 340x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -52.0 px at 2.63 s (Here): chip 10,253 .. 162,301, Enter plank 110,242 .. 230,307
+  ..    guide plank 340x640 tutorial folded, here: tutorial strip 12,335 .. 320,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 10,277 .. 162,325 shown, plank 110,242 .. 230,307)
+  FAIL  guide plank 340x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -52.0 px at 0.30 s (Here): chip 10,277 .. 162,325, Enter plank 110,265 .. 230,330
+  FAIL  guide plank 340x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 10,277 .. 201,325, Enter plank 110,242 .. 230,307
+  FAIL  guide plank 340x640 tutorial folded, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 340x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 10,410 .. 162,458 shown, plank 110,242 .. 230,307)
+  FAIL  guide plank 340x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -13.6 px at 0.60 s (Walk): chip 10,410 .. 201,458, Talk plank 187,375 .. 297,440
+  FAIL  guide plank 340x640 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  FAIL  guide plank 360x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 10,277 .. 201,325, Enter plank 120,242 .. 240,307
+  FAIL  guide plank 360x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 10,277 .. 201,325, Enter plank 120,269 .. 240,334
+  FAIL  guide plank 360x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -42.0 px at 2.63 s (Here): chip 10,253 .. 162,301, Enter plank 120,242 .. 240,307
+  ..    guide plank 360x640 tutorial folded, here: tutorial strip 12,335 .. 340,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 10,277 .. 162,325 shown, plank 120,242 .. 240,307)
+  FAIL  guide plank 360x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -42.0 px at 0.20 s (Here): chip 10,277 .. 162,325, Enter plank 120,256 .. 240,321
+  FAIL  guide plank 360x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 10,277 .. 201,325, Enter plank 120,242 .. 240,307
+  FAIL  guide plank 360x640 tutorial folded, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 360x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 10,410 .. 162,458 shown, plank 120,242 .. 240,307)
+  FAIL  guide plank 360x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -3.6 px at 0.60 s (Walk): chip 10,410 .. 201,458, Talk plank 197,375 .. 307,440
+  FAIL  guide plank 360x640 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  FAIL  guide plank 375x667 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -15.0 px at 0.10 s (Walk): chip 14,304 .. 205,352, Enter plank 128,254 .. 248,319
+  FAIL  guide plank 375x667 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.4 px at 0.73 s (Walk): chip 14,304 .. 205,352, Enter plank 128,295 .. 248,360
+  FAIL  guide plank 375x667 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.5 px at 2.63 s (Here): chip 14,280 .. 166,328, Enter plank 128,254 .. 248,319
+  ..    guide plank 375x667 tutorial folded, here: tutorial strip 16,362 .. 354,423; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -14.6 px off the plank (1 s in: chip 14,304 .. 166,352 shown, plank 128,254 .. 248,319)
+  FAIL  guide plank 375x667 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.5 px at 0.33 s (Here): chip 14,304 .. 166,352, Enter plank 128,280 .. 248,345
+  FAIL  guide plank 375x667 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -15.0 px at 0.10 s (Walk): chip 14,304 .. 205,352, Enter plank 128,254 .. 248,319
+  FAIL  guide plank 375x667 tutorial folded, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 375x667 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 118.4 px off the plank (1 s in: chip 14,437 .. 166,485 shown, plank 128,254 .. 248,319)
+  FAIL  guide plank 375x667 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- 3.0 px at 0.60 s (Walk): chip 14,437 .. 205,485, Talk plank 208,393 .. 318,458
+  FAIL  guide plank 375x667 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  FAIL  guide plank 384x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 18,277 .. 209,325, Enter plank 132,242 .. 252,307
+  FAIL  guide plank 384x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 18,277 .. 209,325, Enter plank 132,269 .. 252,334
+  FAIL  guide plank 384x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.0 px at 2.63 s (Here): chip 18,253 .. 170,301, Enter plank 132,242 .. 252,307
+  ..    guide plank 384x640 tutorial folded, here: tutorial strip 20,335 .. 364,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 18,277 .. 170,325 shown, plank 132,242 .. 252,307)
+  FAIL  guide plank 384x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.0 px at 0.13 s (Here): chip 18,277 .. 170,325, Enter plank 132,250 .. 252,315
+  FAIL  guide plank 384x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 18,277 .. 209,325, Enter plank 132,242 .. 252,307
+  FAIL  guide plank 384x640 tutorial folded, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 384x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 18,410 .. 170,458 shown, plank 132,242 .. 252,307)
+  FAIL  guide plank 384x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- 0.4 px at 0.60 s (Walk): chip 18,410 .. 209,458, Talk plank 209,375 .. 319,440
+  FAIL  guide plank 384x640 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  FAIL  guide plank 390x844 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -27.2 px at 1.50 s (Walk): chip 21,481 .. 212,529, Enter plank 135,443 .. 255,508
+  ..    guide plank 390x844 tutorial folded, here: tutorial strip 23,539 .. 367,600; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 86.5 px off the plank (1 s in: chip 21,481 .. 173,529 shown, plank 135,330 .. 255,395)
+  FAIL  guide plank 390x844 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -29.4 px at 1.03 s (Here): chip 21,481 .. 173,529, Enter plank 135,445 .. 255,510
+  FAIL  guide plank 390x844 tutorial folded, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 390x844 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 219.5 px off the plank (1 s in: chip 21,614 .. 173,662 shown, plank 135,330 .. 255,395)
+  FAIL  guide plank 390x844 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  FAIL  guide plank 400x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 26,277 .. 217,325, Enter plank 140,242 .. 260,307
+  FAIL  guide plank 400x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 26,277 .. 217,325, Enter plank 140,269 .. 260,334
+  FAIL  guide plank 400x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.0 px at 2.63 s (Here): chip 26,253 .. 178,301, Enter plank 140,242 .. 260,307
+  ..    guide plank 400x640 tutorial folded, here: tutorial strip 28,335 .. 372,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 26,277 .. 178,325 shown, plank 140,242 .. 260,307)
+  FAIL  guide plank 400x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.0 px at 0.13 s (Here): chip 26,277 .. 178,325, Enter plank 140,250 .. 260,315
+  FAIL  guide plank 400x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 26,277 .. 217,325, Enter plank 140,242 .. 260,307
+  FAIL  guide plank 400x640 tutorial folded, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 400x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 26,410 .. 178,458 shown, plank 140,242 .. 260,307)
+  FAIL  guide plank 400x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- 0.4 px at 0.60 s (Walk): chip 26,410 .. 217,458, Talk plank 217,375 .. 327,440
+  FAIL  guide plank 400x640 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  FAIL  guide plank 412x915 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -5.2 px at 1.50 s (Walk): chip 22,545 .. 226,596, Enter plank 142,481 .. 270,550
+  ..    guide plank 412x915 tutorial folded, here: tutorial strip 24,607 .. 387,671; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 118.0 px off the plank (1 s in: chip 22,545 .. 183,596 shown, plank 142,358 .. 270,427)
+  FAIL  guide plank 412x915 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -7.6 px at 1.03 s (Here): chip 22,545 .. 183,596, Enter plank 142,484 .. 270,553
+  FAIL  guide plank 412x915 tutorial folded, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 412x915 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 245.0 px off the plank (1 s in: chip 22,672 .. 183,723 shown, plank 142,358 .. 270,427)
+  FAIL  guide plank 412x915 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+
+== travel_guide_plank_wide ==
+  ..    guide plank 640x360 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 66.9 px off the plank (1 s in: chip 410,3 .. 562,55 shown, plank 260,122 .. 380,187)
+  FAIL  guide plank 640x360 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 667x375 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 73.4 px off the plank (1 s in: chip 437,3 .. 589,55 shown, plank 274,128 .. 394,193)
+  FAIL  guide plank 667x375 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 720x405 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 86.2 px off the plank (1 s in: chip 490,3 .. 642,55 shown, plank 300,141 .. 420,206)
+  FAIL  guide plank 720x405 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 800x450 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 110.0 px off the plank (1 s in: chip 570,3 .. 722,55 shown, plank 340,161 .. 460,226)
+  FAIL  guide plank 800x450 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 844x390 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 132.0 px off the plank (1 s in: chip 614,3 .. 766,55 shown, plank 362,135 .. 482,200)
+  FAIL  guide plank 844x390 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 960x540 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 147.1 px off the plank (1 s in: chip 621,6 .. 883,52 shown, plank 422,199 .. 538,264)
+  FAIL  guide plank 960x540 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 1024x768 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 244.9 px off the plank (1 s in: chip 685,6 .. 947,52 shown, plank 454,297 .. 570,362)
+  FAIL  guide plank 1024x768 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 1280x720 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 243.0 px off the plank (1 s in: chip 941,6 .. 1203,52 shown, plank 582,276 .. 698,341)
+  FAIL  guide plank 1280x720 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 1920x1080 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 548.5 px off the plank (1 s in: chip 1581,6 .. 1843,52 shown, plank 888,423 .. 1032,504)
+  FAIL  guide plank 1920x1080 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+  ..    guide plank 2560x1440 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 850.0 px off the plank (1 s in: chip 2221,6 .. 2483,52 shown, plank 1189,567 .. 1371,669)
+  FAIL  guide plank 2560x1440 tutorial done, look steep: a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)  -- 0.03 s: Needle left
+
+smoke test: 873 passed, 68 failed, 0 warnings  (10.8s)

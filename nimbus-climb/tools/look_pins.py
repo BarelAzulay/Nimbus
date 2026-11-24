@@ -59,9 +59,10 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     tutorial's titles (the strip's, the card's as shown and opened) read whole at every step (U2_BACKLOG:
                     kit-b's own cuts at the 14.4 px floor)
   B0-B3 the owner's pick B of 2026-11-23, the guide chip ("Top-bar plank", X on the right): over every HUD state it
-                    can meet (guidechip:<state>) at fifteen sizes 320 x 568 .. 2560 x 1440: B0 its home (the top band's
+                    can meet (guidechip:<state>) at sixteen sizes 320 x 568 .. 2560 x 1440: B0 its home (the top band's
                     right end beside '...', a portrait phone's vitals stack 8 px over the name plank / the quest strip),
-                    B1 its ink MIN_GAP off every other HUD piece, Roblox's buttons and rings (a match: no chip), B2 its X
+                    wholly on the screen 8 px in from its sides, B1 its ink MIN_GAP off every other HUD piece, Roblox's
+                    buttons and rings (a match: no chip; a dungeon party's chip in its spot: hidden), B2 its X
                     a 44 px hit box 16 px or more off '...', B3 its words whole, >= 14.4 px on a phone, the place and its
                     distance. (Its frame-by-frame rules - one rect on every camera move, the needle - are guide_pins')
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
@@ -758,8 +759,8 @@ def pin_U2(c, sizes):
 # plank (over the tutorial's quest strip when that docks there). It never moves on a camera move (guide_pins in the smoke
 # holds that frame by frame, and the needle). Here, over every HUD state the chip can meet (tools/dump_gui.lua
 # guidechip:<state>), at the fifteen sizes of the pick (B_SIZES):
-#   B0  its home: a landscape screen's chip wholly in the top band at its right end (its right edge within
-#       B_DOCK px of TopbarInset's right end, the '...' room); a portrait phone's on the vitals stack (its ink's foot
+#   B0  its home: a landscape screen's chip wholly in the top band at its right end (its face's right edge B_DOCK px
+#       left of TopbarInset's right end, the '...' room); a portrait phone's on the vitals stack (its ink's foot
 #       B_STACK px over the name plank or the docked quest strip - or over a touch key in its columns: "clear of RUN" -,
 #       its face's left edge the card's)
 #   B1  its ink keeps battle_hud_no_overlap's MIN_GAP off every other HUD piece (the menu column, the pill, the wallet
@@ -770,14 +771,28 @@ def pin_U2(c, sizes):
 #   B3  its words: the place and its distance ('Storm Altar' / 'NN studs away', a PC's tag 'NN studs'), 'Home first' /
 #       'then follow the arrow' away, "You're here" / the prompt's words at the gate; each whole (no ellipsis, no line past
 #       its box), >= 14.4 px on a phone (the readability floor elsewhere: 14 px, 15 on a screen 1000 px tall or more)
-B_SIZES = [(320, 568), (360, 640), (375, 667), (384, 640), (390, 844), (640, 360), (667, 375), (720, 405), (800, 450),
-           (844, 390), (960, 540), (1024, 768), (1280, 720), (1920, 1080), (2560, 1440)]
+# (look:chipB minor 3: the narrowest landscape phone, 568 x 320, where the pill and the chip share the band most tightly)
+B_SIZES = [(320, 568), (360, 640), (375, 667), (384, 640), (390, 844), (568, 320), (640, 360), (667, 375), (720, 405),
+           (800, 450), (844, 390), (960, 540), (1024, 768), (1280, 720), (1920, 1080), (2560, 1440)]
+#   (look:chipB, the look review of 816badd) B0 also holds the chip wholly on the screen (minor 5: nothing did; major 3:
+#       at 320 x 568 the ticket stood flush with a vitals card standing right of the menu, its right end past the screen)
+#       and its face's right edge exactly B_DOCK px left of the band's right end (minor 5: was any of 24 px); B1 reads the
+#       HUD three levels deep (was two) and meets the states it had not: a dungeon party's countdown (major 2: its chip
+#       holds the band from the pill to '...', where the guide's yields its spot - hidden while the two would meet), the
+#       arena's side card, an NPC's dialog and an open window (minor 5); B3 holds a PC's Home / Here second line as plain
+#       words, no stud count's number cell (minor 4)
 B_STATES = ["guidechip:lobby", "guidechip:boosts", "guidechip:toasts", "guidechip:tutorial:3", "guidechip:tutorial:3:fold",
             "guidechip:mousehint", "guidechip:party", "guidechip:party:leader", "guidechip:match:4", "guidechip:countdown",
-            "guidechip:away", "guidechip:here"]
+            "guidechip:away", "guidechip:here", "guidechip:dungeon", "guidechip:arenaside", "guidechip:npc", "guidechip:window"]
 B_GONE = {"guidechip:match:4", "guidechip:countdown"}
+# (look:chipB) the states where a card may take the chip's spot for a while (the chip yields it: hidden, see B1); every
+# other state keeps the chip on the screen. An open window too: on a portrait phone it covers the vitals stack, and at
+# 960 x 540 the Shop's awning reaches into the band 1 px under the chip (3 px under the pill: the window's own seat)
+B_YIELD = {"guidechip:party", "guidechip:party:leader", "guidechip:dungeon", "guidechip:arenaside", "guidechip:npc",
+           "guidechip:window"}
 B_CHIP = "NimbusGuide.Chip"
-B_DOCK = 24
+B_DOCK = 8
+B_GUTTER = 8
 B_STACK = 8
 B_DOTS = 16
 B_DONE = set()
@@ -809,7 +824,7 @@ def pin_B(c, sizes):
     if B_DONE:
         return
     B_DONE.add(True)
-    # (the pick's fifteen sizes; --size names others instead, while working)
+    # (the pick's fifteen sizes plus 568 x 320, look:chipB minor 3; --size names others instead, while working)
     for (w, h) in (B_SIZES if sizes is SIZES else sizes):
         touch = c.RG.is_touch(w, h, None)
         for scen in B_STATES:
@@ -823,16 +838,46 @@ def pin_B(c, sizes):
             if scen in B_GONE:
                 c.check("B1", not ink, "B1 %s: a match ends the guide (no chip)" % what, fmt(c.BH.union(ink)) if ink else "")
                 continue
+            # (look:chipB major 2) the chip never moves for a camera, but a card that comes to stand on its spot (a dungeon
+            # party's countdown in the top band, the arena's side card, an NPC's talk, a window, the party panel) takes
+            # it: the chip hides while it stands there. Hidden passes only with that card's ink within MIN_GAP of the
+            # chip's noted home - a chip hidden for nothing is still red
+            if not ink and scen in B_YIELD:
+                # (look:chipB major 2 and the new states) a card that takes the chip's spot for a while (a dungeon party's
+                # countdown chip in the band, an NPC's dialog, the arena's invite card, a full portal party's panel with
+                # the menu tiles it pushes down on a portrait phone): the chip yields its spot - hidden, the guide still
+                # running. Held only where some shown piece meets the hidden chip's home (the scenario's note) within
+                # MIN_GAP; a chip hidden with its spot free fails. (Was: B0 'the chip shows' in every state but a match)
+                hm = next((re.match(r"^guidechip (\w+) home ([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+)$", s) for s in d.get("notes", [])
+                           if str(s).startswith("guidechip ")), None)
+                hr = tuple(float(v) for v in hm.groups()[1:]) if hm else None
+                who = None
+                for p, n in (nodes.items() if hr else []):
+                    if p.startswith("NimbusGuide") or p.count(".") not in (1, 2, 3) or float(n["w"]) <= 1 or float(n["h"]) <= 1:
+                        continue
+                    kink = c.BH.ink_of(n, c.RG, c.fonts)
+                    if kink and min(c.BH.gap(r, hr) for r in kink) < c.BH.MIN_GAP - 0.05:
+                        who = p
+                        break
+                c.check("B1", who is not None, "B1 %s: the chip yields its spot only to a card standing on it" % what,
+                        "hidden at %s, %s" % (fmt(hr), ("taken by " + who) if who else "nothing there") if hr else "no home noted")
+                continue
             if not c.check("B0", bool(ink), "B0 %s: the chip shows" % what):
                 continue
             ui = c.BH.union(ink)
             inset = float(d.get("inset", 0) or 0)
+            # B0 wholly on the screen, B_GUTTER px or more in from its sides (look:chipB major 3, minor 5: at 320 x 568 the
+            # ticket's ink ended 3 px from the right edge, 7 px past the vitals card it stands on)
+            c.check("B0", ui[0] >= B_GUTTER - 0.05 and ui[1] >= -0.05 and ui[2] <= w - B_GUTTER + 0.05 and ui[3] <= h + 0.05,
+                    "B0 %s: the chip stands wholly on the screen, %d px or more in from its sides" % (what, B_GUTTER),
+                    "chip ink %s on a %dx%d screen" % (fmt(ui), w, h))
             # B0 the home
             if w > h:
                 limit = w - 72.0  # (TopbarInset's right end: render_gui's phone Rect(112, 0, W - 72, 58); a desktop's fallback)
-                ok = ui[1] >= 0 and ui[3] <= inset + 0.5 and limit - B_DOCK <= ui[2] <= limit + 0.5
+                face = rect(chip)
+                ok = ui[1] >= 0 and ui[3] <= inset + 0.5 and abs(face[2] - (limit - B_DOCK)) <= 0.5
                 c.check("B0", ok, "B0 %s: the chip docks in the top band at its right end (the pill's twin)" % what,
-                        "chip ink %s, band 0..%.0f, its right end %.0f..%.0f" % (fmt(ui), inset, limit - B_DOCK, limit))
+                        "chip ink %s (face right %.1f), band 0..%.0f, its face's right edge due at %.0f" % (fmt(ui), face[2], inset, limit - B_DOCK))
             else:
                 tab = next((n for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals\.Body\.NameTab$", p)), None)
                 card = next((n for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals\.Body\.Card$", p)), None)
@@ -853,13 +898,32 @@ def pin_B(c, sizes):
                         if ku[0] < ui[2] + B_STACK and ku[2] > ui[0] - B_STACK and ku[1] < foot and ku[3] > ui[1] - B_STACK:
                             foot = min(foot, ku[1])
                 face = rect(chip)
-                ok = abs((foot - B_STACK) - ui[3]) <= 1.5 and abs(face[0] - rect(card)[0]) <= 1.5
+                # (look:chipB major 3) flush with the card's left edge; where that would run past the screen's right
+                # gutter (12 px: a vitals card standing right of the menu at 320 x 568, the wider Home ticket) the chip
+                # stands pushed in from it, its ink's right edge on the gutter
+                flush = abs(face[0] - rect(card)[0]) <= 1.5 or (face[0] < rect(card)[0] and abs(ui[2] - (w - 12.0)) <= 1.5)
+                ok = abs((foot - B_STACK) - ui[3]) <= 1.5 and flush
                 c.check("B0", ok, "B0 %s: the chip stands on the vitals stack, %d px over the name plank (or the strip), flush with the card" % (what, B_STACK),
                         "chip ink %s (face x %.1f), card x %.1f, under it at y %.1f" % (fmt(ui), face[0], rect(card)[0], foot))
             # B1 clear of every other piece
             bad = []
+            # (look:chipB, the window state) a ScreenGui drawn over the chip's (a higher DisplayOrder) with a piece that
+            # wholly covers the chip's ink hides it: on a portrait phone an open window covers the vitals stack, the chip
+            # with it, as it covers the vitals card. Its parts are not the chip's neighbours (a part over a chip it only
+            # partly covers still counts)
+            orders = {g.get("name"): float(g.get("displayOrder", 0) or 0) for g in d.get("guis", [])}
+            mine = orders.get(B_CHIP.split(".")[0], 0.0)
+            over = set()
             for p, n in nodes.items():
-                if p.startswith("NimbusGuide") or p.count(".") not in (1, 2):
+                gname = p.split(".")[0]
+                if orders.get(gname, 0.0) > mine and gname not in over:
+                    for r in c.BH.drawn_rects(n, c.RG, c.fonts):
+                        if r[0] <= ui[0] + 0.05 and r[1] <= ui[1] + 0.05 and r[2] >= ui[2] - 0.05 and r[3] >= ui[3] - 0.05:
+                            over.add(gname)
+                            break
+            for p, n in nodes.items():
+                # (minor 5: three levels deep, was two: a piece inside a card's body, a window's part)
+                if p.startswith("NimbusGuide") or p.count(".") not in (1, 2, 3) or p.split(".")[0] in over:
                     continue
                 if float(n["w"]) <= 1 or float(n["h"]) <= 1 or (float(n["w"]) > 0.9 * w and float(n["h"]) > 0.6 * h):
                     continue
@@ -905,6 +969,12 @@ def pin_B(c, sizes):
                             "%s (%.1f px)" % (how, size))
             ok, said = b_words(scen, touch, texts)
             c.check("B3", ok, "B3 %s: the chip says the place and its distance (Home / here: its phase's words)" % what, said)
+            if scen in ("guidechip:away", "guidechip:here"):
+                # (minor 4) the stud count's number cell is the walk's alone: Home / Here say their second line in words
+                tag = nodes.get(B_CHIP + ".Tag")
+                tagged = tag is not None and float(tag["w"]) > 1 and bool(c.BH.ink_of(tag, c.RG, c.fonts))
+                c.check("B3", not tagged, "B3 %s: its second line is plain words (no stud count's tag)" % what,
+                        "a tag at %s" % fmt(rect(tag)) if tagged else "")
         c.cache.clear()
 
 

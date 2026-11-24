@@ -217,6 +217,7 @@ local K = {
 	GUIDE_BAR_TAG_PAD = 7,
 	GUIDE_BAR_TAG_GAP = 10,
 	GUIDE_BAR_X_GAP = 12,
+	GUIDE_BAR_LANE = 0.6, -- (look:chipB) a PC's one-line bar starts at 60 % of the width or further right, else the ticket
 	GUIDE_CLOSE = 44,
 	GUIDE_ARRIVE = 8,
 	GUIDE_HERE = 3,
@@ -3554,9 +3555,9 @@ local function chipHome(w, h, e)
 	local cam = Workspace.CurrentCamera
 	local vp = cam and cam.ViewportSize or Vector2.new(1920, 1080)
 	if not G.portrait then
+		-- (the pill's row: its own height's middle of the band; a PC's ticket, a touch pill tall, the same rule)
 		local band, right = bandOf(vp.X)
-		local _, y = pillRow(band)
-		return right - K.GUIDE_DOCK - w, y
+		return right - K.GUIDE_DOCK - w, math.max(0, math.floor((band - h) / 2))
 	end
 	-- the vitals stack: the card's left edge, the name plank's ink top (the quest strip's when it docks over it)
 	local pg = playerGui()
@@ -3570,6 +3571,11 @@ local function chipHome(w, h, e)
 		x = card.AbsolutePosition.X
 		foot = inkRect(tab and tab.AbsoluteSize.X > 0 and tab or card).y0
 	end
+	-- (look:chipB major 3) never past the screen's K.EDGE gutter: paintChip shortens a ticket that would run past it
+	-- (its 'NN studs'); this holds a chip whose short line still would not fit
+	if w > 0 then
+		x = math.max(K.EDGE + e, math.min(x, vp.X - K.EDGE - e - w))
+	end
 	local strip = UI.Strip
 	if strip and strip.Visible and strip.AbsoluteSize.Y > 0 and UI.Gui and shownIn(strip, UI.Gui) then
 		local s = inkRect(strip)
@@ -3577,15 +3583,33 @@ local function chipHome(w, h, e)
 			foot = s.y0
 		end
 	end
-	-- (clear of RUN) a touch key in the chip's columns that its spot meets: the chip stands over the key instead
-	local inset = topInset()
+	-- (clear of RUN) a touch key in the chip's columns that its spot meets: the chip stands over the key instead, by the
+	-- key's ink (look:chipB: its block's 3 px wood edge is drawn outside the button's box; by the box the chip's foot
+	-- stood 5 px over RUN's ink at 320 x 568, not GUIDE_STACK)
+	local keys = {}
+	local pgK = playerGui()
+	local mobile = pgK and pgK:FindFirstChild("MobileControls")
+	if mobile and mobile:IsA("ScreenGui") and mobile.Enabled then
+		for _, d in ipairs(mobile:GetDescendants()) do
+			if d:IsA("GuiButton") and d.AbsoluteSize.X > 0 and shownIn(d, mobile) then
+				local r = inkRect(d)
+				for _, c in ipairs(d:GetDescendants()) do
+					if c:IsA("GuiObject") and c.AbsoluteSize.X > 0 and shownIn(c, mobile) then
+						local q = inkRect(c)
+						r = { x0 = math.min(r.x0, q.x0), y0 = math.min(r.y0, q.y0), x1 = math.max(r.x1, q.x1), y1 = math.max(r.y1, q.y1) }
+					end
+				end
+				keys[#keys + 1] = r
+			end
+		end
+	end
 	local moved = true
 	while moved do
 		moved = false
 		local y1 = foot - K.GUIDE_STACK
 		local y0 = y1 - h - 2 * e
-		for _, r in ipairs(touchButtonRects()) do
-			local ky0, ky1 = r.y0 + inset, r.y1 + inset
+		for _, r in ipairs(keys) do
+			local ky0, ky1 = r.y0, r.y1
 			if r.x0 < x + w + e + K.GUIDE_STACK and r.x1 > x - e - K.GUIDE_STACK and ky0 < y1 + K.GUIDE_STACK and ky1 > y0 - K.GUIDE_STACK and ky0 < foot then
 				foot, moved = ky0, true
 				break
@@ -3600,10 +3624,10 @@ end
 local GUIDE_LOOK = {
 	Walk = { Face = "Gold", Icon = "arrowup", Lip = "StoneLip", Close = true, Name = function(spec)
 		return spec.Label
-	end, Info = function(d, bar)
-		return math.clamp(math.floor((d or 0) + 0.5), 0, 999) .. (bar and " studs" or " studs away")
-	end, Reserve = function(bar)
-		return bar and "888 studs" or "888 studs away"
+	end, Info = function(d, bar, short) -- (short: a ticket with no room for 'away', look:chipB major 3)
+		return math.clamp(math.floor((d or 0) + 0.5), 0, 999) .. ((bar or short) and " studs" or " studs away")
+	end, Reserve = function(bar, short)
+		return (bar or short) and "888 studs" or "888 studs away"
 	end },
 	Home = { Face = "Gold", Icon = "house", Lip = "StoneLip", Close = true, Name = function()
 		return "Home first"
@@ -3676,23 +3700,30 @@ local function paintChip(phase)
 	local band = bandOf(vp.X)
 	local pillH = pillRow(band)
 	-- the sizes (screen px): the ticket's from the kit's design px at the screen factor, the bar's at the pill's own
-	local e, h, lip, mk, pad, gap, ts, ss
-	if bar then
-		e, h, lip = K.GUIDE_BAR_EDGE, pillH, K.GUIDE_BAR_LIP
-		mk, pad, gap = h - lip - 4, K.GUIDE_BAR_PAD, K.GUIDE_BAR_GAP
-		ts, ss = K.GUIDE_BAR_NAME, K.GUIDE_BAR_INFO
-	else
-		e = (G.k < 1) and 2 or 3
-		h = G.portrait and chipPx(K.GUIDE_TICKET_H) or pillH
-		lip, mk, pad, gap = chipPx(K.GUIDE_LIP), chipPx(K.GUIDE_MARK), chipPx(K.GUIDE_PAD), chipPx(K.GUIDE_GAP)
-		ts, ss = math.ceil(K.GUIDE_NAME * G.k - 1e-6), math.ceil(K.GUIDE_INFO * G.k - 1e-6)
+	local e, h, lip, mk, pad, gap, ts, ss, tagged
+	local function sizes()
+		if bar then
+			e, h, lip = K.GUIDE_BAR_EDGE, pillH, K.GUIDE_BAR_LIP
+			mk, pad, gap = h - lip - 4, K.GUIDE_BAR_PAD, K.GUIDE_BAR_GAP
+			ts, ss = K.GUIDE_BAR_NAME, K.GUIDE_BAR_INFO
+		else
+			e = (G.k < 1) and 2 or 3
+			-- (a PC's ticket: a touch pill's height, as tall as the band allows: two lines want it)
+			h = G.portrait and chipPx(K.GUIDE_TICKET_H) or math.max(pillH, math.min(K.GUIDE_PILL_TOUCH, band - 6))
+			lip, mk, pad, gap = chipPx(K.GUIDE_LIP), chipPx(K.GUIDE_MARK), chipPx(K.GUIDE_PAD), chipPx(K.GUIDE_GAP)
+			ts, ss = math.ceil(K.GUIDE_NAME * G.k - 1e-6), math.ceil(K.GUIDE_INFO * G.k - 1e-6)
+		end
+		-- (look:chipB minor 4) a PC's tag is the stud count's number cell: only the walk (a distance) wears it; Home /
+		-- Here say their second line ('then follow the arrow', 'press E') as plain muted words after the name, as the
+		-- ticket does
+		tagged = bar and look.Reserve ~= nil
 	end
-	local face = h - lip
+	sizes()
 	local function widthOf(info)
 		local nw = math.ceil(textWidth(name, ts, "Heading"))
 		local iw = math.ceil(textWidth(info, ss, "Heading"))
 		if bar then
-			local tagW = iw + 2 * K.GUIDE_BAR_TAG_PAD
+			local tagW = tagged and (iw + 2 * K.GUIDE_BAR_TAG_PAD) or iw
 			return pad + mk + gap + nw + K.GUIDE_BAR_TAG_GAP + tagW + (close and (K.GUIDE_BAR_X_GAP + mk + pad) or K.GUIDE_BAR_X_GAP), nw, tagW
 		end
 		local tw = math.max(nw, iw)
@@ -3704,11 +3735,29 @@ local function paintChip(phase)
 			G.distance = Vector3.new(part.Position.X - root.Position.X, 0, part.Position.Z - root.Position.Z).Magnitude
 		end
 	end
-	local info = look.Info(G.distance, bar)
-	local reserve = look.Reserve and look.Reserve(bar) or info
+	local info = look.Info(G.distance, bar, false)
+	local reserve = look.Reserve and look.Reserve(bar, false) or info
 	local w, tw, tagW = widthOf(reserve)
-	if look.Short then
-		-- (a line that runs past the pill, or past the screen's right gutter on a portrait phone) the short one
+	if bar then
+		-- (look:chipB, travel_guide_clear's walk at 844 x 390 with no touch, red from 816badd: the one-line bar reached in
+		-- to x 450, over the gold arrow at x 487 - 516; B's case is the arrow's lane kept free) a PC screen whose bar would
+		-- start left of K.GUIDE_BAR_LANE of its width (a small window) wears the phones' two-line ticket instead
+		local _, right = bandOf(vp.X)
+		if right - K.GUIDE_DOCK - w - K.GUIDE_BAR_EDGE < vp.X * K.GUIDE_BAR_LANE then
+			bar = false
+			sizes()
+			info = look.Info(G.distance, bar, false)
+			reserve = look.Reserve and look.Reserve(bar, false) or info
+			w, tw, tagW = widthOf(reserve)
+		end
+	end
+	local face = h - lip
+	local short = false
+	if look.Short or (look.Reserve and not bar) then
+		-- (a line that runs past the pill, or past the screen's right gutter on a portrait phone) the short one: Home's
+		-- 'then the arrow'; (look:chipB major 3: at 320 x 568 the ticket stood flush with a vitals card standing right of
+		-- the menu, its ink 3 px from the screen's right edge, 7 px past the card) the walk's 'NN studs' (minor 3: the walk
+		-- now reads the pill's room in the band too; the band holds it at every screen of the pick, 568 x 320 too)
 		local pg = playerGui()
 		local pillGui = pg and pg:FindFirstChild("NimbusTopBar")
 		local pillRight = pillGui and tonumber(pillGui:GetAttribute("PillRight")) or 0
@@ -3718,12 +3767,13 @@ local function paintChip(phase)
 			room = vp.X - K.EDGE - chipHome(0, h, e)
 		end
 		if w + 2 * e > room then
-			info = look.Short(G.spec)
-			reserve = info
+			short = true
+			info = look.Short and look.Short(G.spec) or look.Info(G.distance, bar, true)
+			reserve = look.Reserve and look.Reserve(bar, true) or info
 			w, tw, tagW = widthOf(reserve)
 		end
 	end
-	G.look, G.bar, G.e, G.h, G.w = look, bar, e, h, w
+	G.look, G.bar, G.e, G.h, G.w, G.short = look, bar, e, h, w, short
 	chip.Size = UDim2.fromOffset(w, h)
 	setBlockEdge(chip, e, lip)
 	local chipLip = chip:FindFirstChild("Lip")
@@ -3763,9 +3813,18 @@ local function paintChip(phase)
 	G.place.Text = name
 	G.info.TextSize = ss
 	G.info.Text = info
-	G.info.TextColor3 = bar and SIGN.Text or SIGN.TextMuted
+	G.info.TextColor3 = tagged and SIGN.Text or SIGN.TextMuted
 	local lh, ih = ts + 4, ss + 4
-	if bar then
+	if bar and not tagged then
+		-- (minor 4) Home / Here on a PC: the name, then its second line in plain muted words, no number cell
+		G.place.Position = UDim2.fromOffset(tx, math.floor((face - lh) / 2))
+		G.place.Size = UDim2.fromOffset(tw + 2, lh)
+		G.tag.Visible = false
+		G.info.Parent = chip
+		G.info.TextXAlignment = Enum.TextXAlignment.Left
+		G.info.Position = UDim2.fromOffset(tx + tw + K.GUIDE_BAR_TAG_GAP, math.floor((face - ih) / 2))
+		G.info.Size = UDim2.fromOffset(tagW + 2, ih)
+	elseif bar then
 		G.place.Position = UDim2.fromOffset(tx, math.floor((face - lh) / 2))
 		G.place.Size = UDim2.fromOffset(tw + 2, lh)
 		local tagH = K.GUIDE_BAR_TAG_H
@@ -3804,6 +3863,85 @@ local function paintChip(phase)
 	G.placeTimer = 0
 end
 
+-- (look:chipB major 2, and the states the B pins had not met) the cards that take the chip's spot for a while, each
+-- its ScreenGui and its part (its shown children counted: an invite card, a menu tile): a dungeon party's chip
+-- (DungeonController's RunChip, a phone's party countdown with its window closed: "Starting in 24 - press READY" /
+-- "Dungeon in 5...", from the pill to '...' in the band), an NPC's dialog (it reaches the band on a landscape phone, the
+-- vitals stack on a portrait one), the arena's side card (a duel invite, the queue), and on a portrait phone a portal
+-- party's panel with the menu column and the wallet strips it pushes down onto the vitals stack
+local SPOT_CLAIMS = {
+	{ "NimbusDungeonRun", "RunChip" },
+	{ "NimbusNpcDialog", "NpcDialog" },
+	{ "NimbusArenaSide", "SideStack" },
+	{ "NimbusMenu", "MenuColumn" },
+	{ "NimbusHud", "PartyPanel" },
+	{ "NimbusHud", "Currency" },
+	-- (an open Shop: at 960 x 540 its awning, seated over the window's top, reaches into the band 1 px under the chip)
+	{ "NimbusShop", "ShopWindow" },
+}
+local SPOT_HOLD = 12 -- (no flicker) a yielded chip comes back only this far clear: the party chip is fitted to its words
+
+-- where one of SPOT_CLAIMS would meet the chip's home (ink K.GUIDE_PILL_GAP px round: battle_hud_no_overlap's MIN_GAP)
+-- the chip yields its spot - hidden, the guide still running (the arrow and the trail stay), back once the card goes. A
+-- HUD state, never a camera move; each of these is the moment's word (a party about to start, a talk, an invite).
+-- Was: drawn over the dungeon party's chip (13 over 12) until the run began, over the NPC's dialog, the invite card,
+-- under the menu tiles a full portal party pushes down at 360 x 640
+local function spotClaimed()
+	local home = G.home
+	if not (home and G.w and G.h and G.e) then
+		return false
+	end
+	local pg = playerGui()
+	if not pg then
+		return false
+	end
+	local m = K.GUIDE_PILL_GAP + (G.yielded and SPOT_HOLD or 0)
+	local x0, y0 = home.x - G.e - m, home.y - G.e - m
+	local x1, y1 = home.x + G.w + G.e + m, home.y + G.h + G.e + m
+	-- what a part draws, not its box (the arena's empty side stack is an 8 px transparent list across the vitals stack)
+	local function draws(o)
+		if o.BackgroundTransparency < 0.99 or o:FindFirstChildOfClass("UIStroke") then
+			return true
+		end
+		if (o:IsA("ImageLabel") or o:IsA("ImageButton")) and o.Image ~= "" and o.ImageTransparency < 0.99 then
+			return true
+		end
+		return (o:IsA("TextLabel") or o:IsA("TextButton")) and o.Text ~= "" and o.TextTransparency < 0.99
+	end
+	local function meets(obj)
+		if not (obj:IsA("GuiObject") and obj.Visible) then
+			return false
+		end
+		local r = inkRect(obj)
+		local hit = r.x0 < x1 and x0 < r.x1 and r.y0 < y1 and y0 < r.y1
+		if hit and obj.AbsoluteSize.X > 1 and obj.AbsoluteSize.Y > 1 and draws(obj) then
+			return true
+		end
+		if obj.ClipsDescendants and not hit then
+			return false -- (its children are cut to its box: a window's scrolling page is not walked)
+		end
+		for _, c in ipairs(obj:GetChildren()) do
+			if meets(c) then
+				return true
+			end
+		end
+		return false
+	end
+	G.claimRefs = G.claimRefs or {}
+	for i, claim in ipairs(SPOT_CLAIMS) do
+		local gui = pg:FindFirstChild(claim[1])
+		local obj = G.claimRefs[i]
+		if not (obj and gui and obj:IsDescendantOf(gui)) then
+			obj = gui and gui:FindFirstChild(claim[2], true)
+			G.claimRefs[i] = obj
+		end
+		if obj and obj:IsA("GuiObject") and gui:IsA("ScreenGui") and shownIn(obj, gui) and meets(obj) then
+			return true
+		end
+	end
+	return false
+end
+
 -- the chip at its home (read again every K.LAYOUT_EVERY s, never on a camera move); the "You're here" slide lifts it
 local function placeChip()
 	local chip = G.chip
@@ -3812,9 +3950,10 @@ local function placeChip()
 	end
 	local x, y = chipHome(G.w, G.h, G.e)
 	G.home = { x = math.floor(x + 0.5), y = math.floor(y + 0.5) }
+	G.yielded = spotClaimed()
 	local lift = math.floor((G.slide or 0) * (G.h + 2 * G.e) + 0.5)
 	chip.Position = UDim2.fromOffset(G.home.x, G.home.y - lift)
-	chip.Visible = (G.slide or 0) < 1
+	chip.Visible = (G.slide or 0) < 1 and not G.yielded
 end
 
 local function buildChip()
@@ -3907,9 +4046,10 @@ function Guide.Stop()
 	local was = G.active
 	G.active = false
 	G.phase, G.id, G.spec, G.target, G.part = nil, nil, nil, nil, nil
-	G.slide, G.hereUntil, G.placeTimer, G.home, G.distance, G.distTimer = nil, nil, nil, nil, nil, nil
+	G.slide, G.hereUntil, G.placeTimer, G.home, G.distance, G.distTimer, G.yielded = nil, nil, nil, nil, nil, nil, nil
+	G.claimTimer, G.claimRefs = nil, nil
 	G.needle, G.stepIcon, G.stepTo, G.stepLeft, G.sprite = nil, nil, nil, nil, nil
-	G.look, G.bar, G.e, G.h, G.w, G.k, G.vp, G.portrait = nil, nil, nil, nil, nil, nil, nil, nil
+	G.look, G.bar, G.e, G.h, G.w, G.k, G.vp, G.portrait, G.short = nil, nil, nil, nil, nil, nil, nil, nil, nil
 	if G.gui then
 		G.gui:Destroy()
 	end
@@ -3954,7 +4094,7 @@ local function readDistance(dt)
 	end
 	G.distance = d
 	if G.phase == "Walk" and G.info and G.look then
-		local text = G.look.Info(d, G.bar)
+		local text = G.look.Info(d, G.bar, G.short)
 		if G.info.Text ~= text then
 			G.info.Text = text
 		end
@@ -3974,6 +4114,15 @@ local function updateTravel(dt)
 	-- again after the start is hidden too)
 	if W.labelGui and W.labelGui.Enabled then
 		setSignShown(false)
+	end
+	-- (major 2) a card coming to or going from the chip's spot (spotClaimed): read at the kit's step, 1/15 s
+	G.claimTimer = (G.claimTimer or 0) - dt
+	if G.home and G.claimTimer <= 0 then
+		G.claimTimer = K.GUIDE_NEEDLE_STEP
+		local okB, claimed = pcall(spotClaimed)
+		if okB and (claimed == true) ~= (G.yielded == true) then
+			safe("guide chip", placeChip)
+		end
 	end
 	if G.phase == "Here" then
 		local left = (G.hereUntil or 0) - S.clock
@@ -4062,10 +4211,31 @@ local function guideNeedle(dt)
 		on = onScreen(mid / #W.arrowParts)
 	end
 	local prev = G.needle
+	-- (look:chipB minor 6) the gate's bearing on the ground: the camera's heading, its pitch left out (in camera space a
+	-- steep look up or down swelled a small turn: 9 degrees off read 48 at a 72 degree look up, the needle 'right' with the
+	-- gate ahead, and a gate under the view could read 'behind'). A camera looking straight up or down takes its heading
+	-- from the screen's up (down: ahead; up: behind)
+	local function flat()
+		local cf = cam.CFrame
+		local look = cf.LookVector
+		local fwd = Vector3.new(look.X, 0, look.Z)
+		if fwd.Magnitude < 0.05 then
+			local up = cf.UpVector
+			fwd = Vector3.new(up.X, 0, up.Z) * ((look.Y < 0) and 1 or -1)
+		end
+		if fwd.Magnitude < 1e-6 then
+			return 0, -1
+		end
+		fwd = fwd.Unit
+		local to = part.Position - cf.Position
+		-- (x: right of the heading, z: -ahead, as in camera space)
+		return to.X * -fwd.Z + to.Z * fwd.X, -(to.X * fwd.X + to.Z * fwd.Z)
+	end
 	if on then
 		want = "ahead"
 	else
-		local v = cam.CFrame:PointToObjectSpace(part.Position)
+		local vx, vz = flat()
+		local v = { X = vx, Z = vz }
 		local b = math.deg(math.atan2(v.X, -v.Z))
 		local ab = math.abs(b)
 		local half = math.deg(math.atan(math.tan(math.rad(cam.FieldOfView / 2)) * vp.X / math.max(1, vp.Y)))
@@ -4094,12 +4264,11 @@ local function guideNeedle(dt)
 		local step = NEEDLE_STEP[prev .. ":" .. want] or NEEDLE_STEP[want .. ":" .. prev]
 		if not step then
 			-- (a half turn: the side the gate went round; right <-> left: over the way it went, ahead or behind)
+			local vx, vz = flat()
 			if (prev == "ahead" and want == "behind") or (prev == "behind" and want == "ahead") then
-				local v = cam.CFrame:PointToObjectSpace(part.Position)
-				step = NEEDLE_ICON[(v.X > 0) and "right" or "left"]
+				step = NEEDLE_ICON[(vx > 0) and "right" or "left"]
 			else
-				local v = cam.CFrame:PointToObjectSpace(part.Position)
-				step = NEEDLE_ICON[(v.Z < 0) and "ahead" or "behind"]
+				step = NEEDLE_ICON[(vz < 0) and "ahead" or "behind"]
 			end
 		end
 		G.stepIcon, G.stepTo, G.stepLeft = step, want, K.GUIDE_NEEDLE_STEP

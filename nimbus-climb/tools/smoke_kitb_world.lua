@@ -2127,6 +2127,11 @@ local function clientScenarios()
 					return (t <= 1) and (20 * t) or (t <= 2 and 20 * (2 - t) or 0)
 				end },
 				{ name = "other", dist = 11, secs = 1, other = true },
+				-- (look:chipB minor 6: the needle's bearing was taken in camera space, pitch and all; no run looked up
+				-- steeply) 20 studs out, the camera turned half the screen's half width off the trail and looking 78
+				-- degrees up (the stock camera reaches 80): the gate is off the screen, ahead on the ground, so the needle
+				-- stays on 'ahead' every frame
+				{ name = "look steep", dist = 20, secs = 1, steep = true },
 			}
 			for _, size in ipairs(SIZES) do
 				local touch = math.min(size[1], size[2]) <= 500
@@ -2156,6 +2161,16 @@ local function clientScenarios()
 						local function camAtTilt(deg)
 							return CFrame.lookAt(camAt, head + dir * 14 + Vector3.new(0, 2 + 14 * math.tan(math.rad(deg)), 0))
 						end
+						-- (look steep) the stock camera's orbit turned half the screen's half width, 78 degrees up
+						local function camSteep()
+							local vp = Mock.Viewport
+							local half = math.deg(math.atan(math.tan(math.rad(camObj.FieldOfView / 2)) * vp.X / math.max(1, vp.Y)))
+							local a, p = math.rad(half / 2), math.rad(78)
+							local dY = Vector3.new(dir.X * math.cos(a) - dir.Z * math.sin(a), 0, dir.X * math.sin(a) + dir.Z * math.cos(a))
+							local from = head - dY * 12.5 + Vector3.new(0, 4.5, 0)
+							return CFrame.lookAt(from, from + Vector3.new(dY.X * math.cos(p), math.sin(p), dY.Z * math.cos(p)))
+						end
+						local steepBad, steepFrames = nil, 0
 						camObj.CFrame = camAtTilt(0)
 						KC.advance(0.1)
 						T.check(Guide.Start("StormAltar") == true, tag .. ": (setup) the guide starts")
@@ -2166,11 +2181,20 @@ local function clientScenarios()
 						local hereShown, hereFrames, hereGap, hereAt = 0, 0, nil, "-"
 						local placed = false
 						while t < mode.secs - 1e-6 do
-							local cf = camAtTilt(mode.tilt and mode.tilt(t) or 0)
+							local cf = mode.steep and camSteep() or camAtTilt(mode.tilt and mode.tilt(t) or 0)
 							camObj.CFrame = cf
 							KC.advance(1 / 30)
 							camObj.CFrame = cf
 							t = t + 1 / 30
+							if mode.steep then
+								local gg = pg():FindFirstChild("NimbusGuide")
+								local chipI = gg and gg:FindFirstChild("Chip", true)
+								local needle = chipI and chipI:GetAttribute("Needle")
+								steepFrames = steepFrames + 1
+								if needle ~= "ahead" and not steepBad then
+									steepBad = fmt("%.2f s: Needle %s", t, tostring(needle))
+								end
+							end
 							if mode.other and not placed and t >= 0.5 - 1e-6 then
 								-- (owner pick B) an NPC's Talk plank where it shows for a player talking to it: the NPC 6 studs
 								-- ahead, 3 to the side, its prompt at chest height (was: stood on the chip's own spot, its middle on
@@ -2221,6 +2245,10 @@ local function clientScenarios()
 						end
 						T.check(worst >= 6 - 1e-3, tag .. ": the chip, while it shows, keeps 6 px off every prompt plank",
 							fmt("%.1f px at %s", worst, tostring(worstAt)))
+						if mode.steep then
+							T.check(steepFrames > 0 and steepBad == nil, tag .. ": a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)",
+								steepBad or fmt("%d frames", steepFrames))
+						end
 						-- (updated for the owner's pick B of 2026-11-23: the chip never hides, so it shows on every frame of a
 						-- walk run and through the "You're here" phase up to its slide out, in every tutorial state at every size.
 						-- Was: through 0.5 - 2.5 s of "You're here" with the tutorial done, 320 x 568 listed not held - its dodge
@@ -3053,8 +3081,11 @@ local function clientScenarios()
 					if i == 1 and run.name == "walk" and (run.w == 1920 or run.w == 1280 or run.w == 390) then
 						-- (updated for the owner's pick B of 2026-11-23: the GuideSign is retired while the travel guide runs, its
 						-- name and stud count in the chip. Was: the arrow and its sign show)
-						T.check(box ~= nil and bb == nil, tag .. ": at 50 studs the arrow shows and the GuideSign does not (the mock's framing)",
-							fmt("arrow %s, sign %s", tostring(box ~= nil), tostring(bb ~= nil)))
+						-- (look:chipB: `bb` is false, not nil, while the sign is off - `card` is `sign.Enabled and ...` - so
+						-- 'bb == nil' failed with the sign off: red at 816badd with the GuideSign's Enabled read false that
+						-- frame. Read as 'no sign rect')
+						T.check(box ~= nil and not bb, tag .. ": at 50 studs the arrow shows and the GuideSign does not (the mock's framing)",
+							fmt("arrow %s, sign %s", tostring(box ~= nil), tostring(bb and true or false)))
 					end
 				end
 				-- the chip's rests in order, as stretches: home "C" or away "L" / "R"; away trips, both sides, a second spot in

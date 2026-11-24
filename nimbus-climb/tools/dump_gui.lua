@@ -1429,6 +1429,10 @@ end)
 --   lobby | boosts (both boost chips under the gift) | toasts (four, last) | tutorial[:<step>[:fold]] (the tutorial as
 --   the game shows it, or folded into its quest strip) | mousehint (a desktop's "press L" plank, last) | party[:leader] |
 --   match[:<n>|:full] | countdown (both end the guide: the chip must be gone) | away (routing Home) | here (at the gate)
+--   (look:chipB minor 5: the states the B pins had not met) dungeon (a dungeon party's countdown, its window closed: the
+--   party's chip in the top band, DungeonController's dungeon:countdown) | arenaside (the arena's side card: a duel invite,
+--   the queue and the Double Rewards countdown, arena:side) | npc (talking to an NPC: its dialog, npc:1) | window (an
+--   open window: the Shop, shop)
 scenario("guidechip", function(state, a, b)
 	tutorialMetrics()
 	state = (state and state ~= "") and state or "lobby"
@@ -1475,6 +1479,27 @@ scenario("guidechip", function(state, a, b)
 		SCENARIOS.toasts()
 	elseif state == "mousehint" then
 		SCENARIOS.mousehint()
+	elseif state == "dungeon" or state == "arenaside" or state == "npc" or state == "window" then
+		if state == "dungeon" then
+			SCENARIOS.dungeon("countdown")
+		elseif state == "arenaside" then
+			SCENARIOS.arena("side")
+		elseif state == "npc" then
+			SCENARIOS.npc(a or "1")
+		else
+			SCENARIOS.shop(a)
+		end
+		advance(0.6) -- (the guide's next layout read, K.LAYOUT_EVERY 0.5 s)
+	end
+	-- (look:chipB) the chip's home even while it yields its spot (a hidden chip is not in the dump): its ink, screen px
+	local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local gg = pg and pg:FindFirstChild("NimbusGuide")
+	local chip = gg and gg:FindFirstChild("Chip")
+	if chip then
+		local s = chip:FindFirstChild("SignEdge")
+		local e = s and s.Thickness or 0
+		local p, z = chip.AbsolutePosition, chip.AbsoluteSize
+		note(fmt("guidechip %s home %.1f,%.1f,%.1f,%.1f", chip.Visible and "shown" or "hidden", p.X - e, p.Y - e, p.X + z.X + e, p.Y + z.Y + e))
 	end
 end)
 
