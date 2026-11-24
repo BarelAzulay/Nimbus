@@ -1,0 +1,7 @@
+﻿stroke walk: 159 scenario(s) x 4 size(s): 0 stroke+outline, 0 outlined on a panel, 0 below the contrast rule (16188 texts read; 14 more in the backlog, 2 of its 2 lines seen)
+neon rule: 0 hit(s) in 0 window(s) on the old skin (452 more in the backlog, 5 of its 5 lines seen)
+    backlog    NimbusDev                (dev)
+    not a window EggGallery             the renderer's egg gallery (eggs, eggs:simple)
+    not a window GemGallery             the renderer's gem gallery (gems)
+    not a window NimbusDamageFx         the hit vignette (an effect) (match:hit)
+world rule: 0 hit(s) on world GUIs outside the W wave's backlog (16032 more in the backlog, 31 of its 31 lines seen)

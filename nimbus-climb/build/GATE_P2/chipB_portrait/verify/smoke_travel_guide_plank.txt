@@ -1,0 +1,199 @@
+﻿Nimbus Climb smoke test  (Lua engine: luajit21, 300 layout seeds/difficulty)
+
+== client_load ==
+
+== travel_guide_plank ==
+  ..    guide plank 320x568 tutorial folded, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 320x568 tutorial folded, walk tilt: 16 of 45 frames stepped aside before the slide out; changes: aside 1.00
+  ..    guide plank 320x568 tutorial folded, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 320x568 tutorial folded, here: tutorial strip 12,263 .. 300,324; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 61.9 px off the plank (1 s in: chip 12,338 .. 164,386 shown, plank 100,211 .. 220,276)
+  ..    guide plank 320x568 tutorial folded, here tilt: 28 of 90 frames stepped aside before the slide out; changes: aside 0.67, back 1.60
+  ..    guide plank 320x568 tutorial folded, other: 15 of 30 frames stepped aside before the slide out; changes: aside 0.53
+  ..    guide plank 320x568 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 320x568 tutorial folded, tilt rock: 56 of 135 frames stepped aside before the slide out; changes: aside 1.00, back 2.33, aside 4.00
+  ..    guide plank 320x568 tutorial folded, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 320x568 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 320x568 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 320x568 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 320x568 tutorial done, walk tilt: 16 of 45 frames stepped aside before the slide out; changes: aside 1.00
+  ..    guide plank 320x568 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 320x568 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 61.9 px off the plank (1 s in: chip 12,338 .. 164,386 shown, plank 100,211 .. 220,276)
+  ..    guide plank 320x568 tutorial done, here tilt: 28 of 90 frames stepped aside before the slide out; changes: aside 0.67, back 1.60
+  ..    guide plank 320x568 tutorial done, other: 15 of 30 frames stepped aside before the slide out; changes: aside 0.53
+  ..    guide plank 320x568 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 320x568 tutorial done, tilt rock: 56 of 135 frames stepped aside before the slide out; changes: aside 1.00, back 2.33, aside 4.00
+  ..    guide plank 320x568 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 320x568 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 320x568 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 340x640 tutorial folded, walk: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 340x640 tutorial folded, walk tilt: 44 of 45 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 340x640 tutorial folded, here: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 340x640 tutorial folded, here: tutorial strip 12,335 .. 320,396; the chip shows 0 of 61 frames 0.5 - 2.5 s into "You're here", - px off the plank (1 s in: chip 12,277 .. 164,325 hidden, plank 110,242 .. 230,307)
+  ..    guide plank 340x640 tutorial folded, here tilt: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 340x640 tutorial folded, other: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 340x640 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 340x640 tutorial folded, tilt rock: 134 of 135 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 340x640 tutorial folded, sign leaves: 30 of 75 frames stepped aside before the slide out; changes: aside 0.07, back 1.07
+  ..    guide plank 340x640 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 340x640 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 340x640 tutorial done, walk tilt: 0 of 45 frames stepped aside before the slide out; changes: none
+  ..    guide plank 340x640 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 340x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 12,410 .. 164,458 shown, plank 110,242 .. 230,307)
+  ..    guide plank 340x640 tutorial done, here tilt: 16 of 90 frames stepped aside before the slide out; changes: aside 1.00, back 1.53
+  ..    guide plank 340x640 tutorial done, other: 15 of 30 frames stepped aside before the slide out; changes: aside 0.53
+  ..    guide plank 340x640 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 340x640 tutorial done, tilt rock: 0 of 135 frames stepped aside before the slide out; changes: none
+  ..    guide plank 340x640 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 340x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 340x640 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 360x640 tutorial folded, walk: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 360x640 tutorial folded, walk tilt: 44 of 45 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 360x640 tutorial folded, here: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 360x640 tutorial folded, here: tutorial strip 12,335 .. 340,396; the chip shows 0 of 61 frames 0.5 - 2.5 s into "You're here", - px off the plank (1 s in: chip 12,277 .. 164,325 hidden, plank 120,242 .. 240,307)
+  ..    guide plank 360x640 tutorial folded, here tilt: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 360x640 tutorial folded, other: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 360x640 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 360x640 tutorial folded, tilt rock: 134 of 135 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 360x640 tutorial folded, sign leaves: 30 of 75 frames stepped aside before the slide out; changes: aside 0.07, back 1.07
+  ..    guide plank 360x640 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 360x640 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 360x640 tutorial done, walk tilt: 0 of 45 frames stepped aside before the slide out; changes: none
+  ..    guide plank 360x640 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 360x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 12,410 .. 164,458 shown, plank 120,242 .. 240,307)
+  ..    guide plank 360x640 tutorial done, here tilt: 16 of 90 frames stepped aside before the slide out; changes: aside 1.00, back 1.53
+  ..    guide plank 360x640 tutorial done, other: 15 of 30 frames stepped aside before the slide out; changes: aside 0.53
+  ..    guide plank 360x640 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 360x640 tutorial done, tilt rock: 0 of 135 frames stepped aside before the slide out; changes: none
+  ..    guide plank 360x640 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 360x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 360x640 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 375x640 tutorial folded, walk: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x640 tutorial folded, walk tilt: 44 of 45 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x640 tutorial folded, here: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x640 tutorial folded, here: tutorial strip 16,335 .. 354,396; the chip shows 0 of 61 frames 0.5 - 2.5 s into "You're here", - px off the plank (1 s in: chip 14,277 .. 166,325 hidden, plank 128,242 .. 248,307)
+  ..    guide plank 375x640 tutorial folded, here tilt: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x640 tutorial folded, other: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x640 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x640 tutorial folded, tilt rock: 134 of 135 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x640 tutorial folded, sign leaves: 30 of 75 frames stepped aside before the slide out; changes: aside 0.07, back 1.07
+  ..    guide plank 375x640 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 375x640 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x640 tutorial done, walk tilt: 0 of 45 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x640 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 14,410 .. 166,458 shown, plank 128,242 .. 248,307)
+  ..    guide plank 375x640 tutorial done, here tilt: 16 of 90 frames stepped aside before the slide out; changes: aside 1.00, back 1.53
+  ..    guide plank 375x640 tutorial done, other: 15 of 30 frames stepped aside before the slide out; changes: aside 0.53
+  ..    guide plank 375x640 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x640 tutorial done, tilt rock: 0 of 135 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x640 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 375x640 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 375x667 tutorial folded, walk: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x667 tutorial folded, walk tilt: 44 of 45 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x667 tutorial folded, here: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x667 tutorial folded, here: tutorial strip 16,362 .. 354,423; the chip shows 0 of 61 frames 0.5 - 2.5 s into "You're here", - px off the plank (1 s in: chip 14,304 .. 166,352 hidden, plank 128,254 .. 248,319)
+  ..    guide plank 375x667 tutorial folded, here tilt: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x667 tutorial folded, other: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x667 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x667 tutorial folded, tilt rock: 134 of 135 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 375x667 tutorial folded, sign leaves: 30 of 75 frames stepped aside before the slide out; changes: aside 0.07, back 1.07
+  ..    guide plank 375x667 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 375x667 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x667 tutorial done, walk tilt: 0 of 45 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x667 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x667 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 118.4 px off the plank (1 s in: chip 14,437 .. 166,485 shown, plank 128,254 .. 248,319)
+  ..    guide plank 375x667 tutorial done, here tilt: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x667 tutorial done, other: 15 of 30 frames stepped aside before the slide out; changes: aside 0.53
+  ..    guide plank 375x667 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x667 tutorial done, tilt rock: 0 of 135 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x667 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 375x667 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 375x667 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 384x640 tutorial folded, walk: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 384x640 tutorial folded, walk tilt: 44 of 45 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 384x640 tutorial folded, here: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 384x640 tutorial folded, here: tutorial strip 20,335 .. 364,396; the chip shows 0 of 61 frames 0.5 - 2.5 s into "You're here", - px off the plank (1 s in: chip 18,277 .. 170,325 hidden, plank 132,242 .. 252,307)
+  ..    guide plank 384x640 tutorial folded, here tilt: 77 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 384x640 tutorial folded, other: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 384x640 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 384x640 tutorial folded, tilt rock: 134 of 135 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 384x640 tutorial folded, sign leaves: 30 of 75 frames stepped aside before the slide out; changes: aside 0.07, back 1.07
+  ..    guide plank 384x640 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 384x640 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 384x640 tutorial done, walk tilt: 0 of 45 frames stepped aside before the slide out; changes: none
+  ..    guide plank 384x640 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 384x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 18,410 .. 170,458 shown, plank 132,242 .. 252,307)
+  ..    guide plank 384x640 tutorial done, here tilt: 16 of 90 frames stepped aside before the slide out; changes: aside 1.00, back 1.53
+  ..    guide plank 384x640 tutorial done, other: 15 of 30 frames stepped aside before the slide out; changes: aside 0.53
+  ..    guide plank 384x640 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 384x640 tutorial done, tilt rock: 0 of 135 frames stepped aside before the slide out; changes: none
+  ..    guide plank 384x640 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 384x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 384x640 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 390x844 tutorial folded, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial folded, walk tilt: 16 of 45 frames stepped aside before the slide out; changes: aside 1.00
+  ..    guide plank 390x844 tutorial folded, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial folded, here: tutorial strip 23,539 .. 367,600; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 86.5 px off the plank (1 s in: chip 21,481 .. 173,529 shown, plank 135,330 .. 255,395)
+  ..    guide plank 390x844 tutorial folded, here tilt: 28 of 90 frames stepped aside before the slide out; changes: aside 0.67, back 1.60
+  ..    guide plank 390x844 tutorial folded, other: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial folded, tilt rock: 54 of 135 frames stepped aside before the slide out; changes: aside 1.00, back 2.27, aside 4.00
+  ..    guide plank 390x844 tutorial folded, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 390x844 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 390x844 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial done, walk tilt: 0 of 45 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 219.5 px off the plank (1 s in: chip 21,614 .. 173,662 shown, plank 135,330 .. 255,395)
+  ..    guide plank 390x844 tutorial done, here tilt: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial done, other: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial done, tilt rock: 0 of 135 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 390x844 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 390x844 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 400x640 tutorial folded, walk: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 400x640 tutorial folded, walk tilt: 44 of 45 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 400x640 tutorial folded, here: 76 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 400x640 tutorial folded, here: tutorial strip 28,335 .. 372,396; the chip shows 0 of 61 frames 0.5 - 2.5 s into "You're here", - px off the plank (1 s in: chip 26,277 .. 178,325 hidden, plank 140,242 .. 260,307)
+  ..    guide plank 400x640 tutorial folded, here tilt: 76 of 90 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 400x640 tutorial folded, other: 29 of 30 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 400x640 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 400x640 tutorial folded, tilt rock: 134 of 135 frames stepped aside before the slide out; changes: aside 0.07
+  ..    guide plank 400x640 tutorial folded, sign leaves: 30 of 75 frames stepped aside before the slide out; changes: aside 0.07, back 1.07
+  ..    guide plank 400x640 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 400x640 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 400x640 tutorial done, walk tilt: 0 of 45 frames stepped aside before the slide out; changes: none
+  ..    guide plank 400x640 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 400x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 26,410 .. 178,458 shown, plank 140,242 .. 260,307)
+  ..    guide plank 400x640 tutorial done, here tilt: 16 of 90 frames stepped aside before the slide out; changes: aside 1.00, back 1.53
+  ..    guide plank 400x640 tutorial done, other: 15 of 30 frames stepped aside before the slide out; changes: aside 0.53
+  ..    guide plank 400x640 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 400x640 tutorial done, tilt rock: 0 of 135 frames stepped aside before the slide out; changes: none
+  ..    guide plank 400x640 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 400x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 400x640 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 412x915 tutorial folded, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial folded, walk tilt: 8 of 45 frames stepped aside before the slide out; changes: aside 1.27
+  ..    guide plank 412x915 tutorial folded, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial folded, here: tutorial strip 24,607 .. 387,671; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 118.0 px off the plank (1 s in: chip 22,545 .. 183,596 shown, plank 142,358 .. 270,427)
+  ..    guide plank 412x915 tutorial folded, here tilt: 16 of 90 frames stepped aside before the slide out; changes: aside 0.87, back 1.40
+  ..    guide plank 412x915 tutorial folded, other: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial folded, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial folded, tilt rock: 30 of 135 frames stepped aside before the slide out; changes: aside 1.27, back 2.00, aside 4.27
+  ..    guide plank 412x915 tutorial folded, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 412x915 tutorial folded, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+  ..    guide plank 412x915 tutorial done, walk: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial done, walk tilt: 0 of 45 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial done, here: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 245.0 px off the plank (1 s in: chip 22,672 .. 183,723 shown, plank 142,358 .. 270,427)
+  ..    guide plank 412x915 tutorial done, here tilt: 0 of 90 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial done, other: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial done, look steep: 0 of 30 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial done, tilt rock: 0 of 135 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial done, sign leaves: 0 of 75 frames stepped aside before the slide out; changes: none
+  ..    guide plank 412x915 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  ..    guide plank 412x915 tutorial done, npc on spot: 30 of 75 frames stepped aside before the slide out; changes: aside 0.33, back 1.33
+
+smoke test: 1326 passed, 0 failed, 0 warnings  (21.9s)

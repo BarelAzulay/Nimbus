@@ -1933,6 +1933,21 @@ local function clientScenarios()
 	-- NPC's plank on the chip's own spot to test its dodge, which the pick retired: it now stands an NPC's Talk plank where
 	-- it shows for a player talking to it (the NPC 6 studs ahead, a little to the side), as the gate's stands. The
 	-- landscape screens of the pick (the band) are the list travel_guide_plank_wide, the tutorial done)
+	-- (the owner's pick of 2026-11-24 for PORTRAIT phones, the chip "steps aside for signs": look:chipB found its portrait
+	-- home - the vitals stack, over the quest strip when that docks - under the gate's 'TAP Enter' plank at 340 - 400 x 640
+	-- and 375 x 667 with the strip docked, on a camera tilt at 320 x 568 / 390 x 844 / 412 x 915, and under an NPC's Talk
+	-- plank. On a portrait screen the chip now hides, its X with it (a tap on the sign never cancels the guide), while a
+	-- shown prompt plank stands within 6 px of its spot, as it yields its spot to a card; read every 1/15 s with a 12 px
+	-- hold, back no sooner than 0.5 s, in the same place: it never moves to dodge. So on portrait the rule "the chip shows
+	-- on every frame" became "it hides only for a sign": each hidden frame before the slide out lies within 0.5 s + 2/15 s
+	-- of a frame with a plank within 6 + 12 px of its spot (plus twice the plank's move over the last 1/15 s, the margin
+	-- the chip keeps for a sign the camera brings in between two reads), no show / hide state shorter than 0.5 s, one
+	-- spot a phase; the 6 px keep while it shows and the landscape list (it shows on every frame there) are unchanged.
+	-- New runs: 'tilt rock' (0 <-> 20 degrees up, 1.5 s each way, three times), 'sign leaves' (the gate's plank goes at
+	-- 1 s: the chip comes back in its place) and, portrait only, 'npc on spot' (an NPC's Talk plank on the chip's middle
+	-- 0.3 - 1.3 s, the gate's plank not shown); 375 x 640 joins the sizes; the strip docks at 340 / 360 / 375 / 384 / 400
+	-- x 640 and 375 x 667 (a setup check). At 320 x 568 with the strip docked the chip stood on the menu column's tiles
+	-- (look:chipB: 0 of 30 frames shown, a card yield for the whole guide): its home is under the strip there)
 	----------------------------------------------------------------------------------------------------------------
 	local function plankRun(scen, SIZES, STATES)
 		local Config = shared("Config")
@@ -2062,12 +2077,18 @@ local function clientScenarios()
 			local gui = pg():FindFirstChild("NimbusGuide")
 			local chip = gui and gui:FindFirstChild("Chip", true)
 			if not chip then
-				return nil, false
+				return nil, false, nil
 			end
 			-- (its wood edge: the owner's pick B draws it on screen px, 2 on a phone and 3 on a PC - its SignEdge as drawn)
 			local s = chip:FindFirstChild("SignEdge")
 			local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
-			return grow(screenRect(chip), (s and s.Thickness or 3) * k), shownGui(chip)
+			return grow(screenRect(chip), (s and s.Thickness or 3) * k), shownGui(chip), chip
+		end
+		-- the world point the mock camera draws at screen px (x, y), `d` studs in front (the inverse of project)
+		local function unproject(x, y, d)
+			local vp = Mock.Viewport
+			local f = focal(camObj)
+			return camObj.CFrame:PointToWorldSpace(Vector3.new((x - vp.X / 2) / f * d, -(y - vp.Y / 2) / f * d, -d))
 		end
 		local function tutorialPayload(index) -- (smoke_kitb_ui's U99.tutorialPayload)
 			local list = Steps.Steps
@@ -2132,9 +2153,24 @@ local function clientScenarios()
 				-- degrees up (the stock camera reaches 80): the gate is off the screen, ahead on the ground, so the needle
 				-- stays on 'ahead' every frame
 				{ name = "look steep", dist = 20, secs = 1, steep = true },
+				-- (the owner's pick of 2026-11-24, portrait "steps aside for signs") the camera rocked 0 <-> 20 degrees up, 1.5 s
+				-- each way (the walk tilt's pace), three times: the plank comes onto the chip's spot and goes, no chatter
+				{ name = "tilt rock", dist = 11, secs = 4.5, tilt = function(t)
+					local p = t % 3
+					return (p <= 1.5) and (20 * p / 1.5) or (20 * (3 - p) / 1.5)
+				end },
+				-- the gate's plank goes at 1 s (the player steps out of its range): the chip comes back in its place
+				{ name = "sign leaves", dist = 11, secs = 2.5, leaveAt = 1 },
+				-- (portrait only: a landscape chip keeps the band, the pick) an NPC's Talk plank on the chip's middle from 0.3 to
+				-- 1.3 s, the gate's plank not shown: the chip steps aside for it and comes back in the same place
+				{ name = "npc on spot", dist = 11, secs = 2.5, onSpot = { 0.3, 1.3 }, noGate = true, portrait = true },
 			}
+			-- (the owner's portrait case) the sizes where the tutorial's quest strip docks on the vitals stack, the chip over it
+			local STRIP_AT = { ["340x640"] = true, ["360x640"] = true, ["375x640"] = true, ["375x667"] = true, ["384x640"] = true, ["400x640"] = true }
+			local KEEP, HOLD, DWELL, READ = 6, 12, 0.5, 1 / 15
 			for _, size in ipairs(SIZES) do
 				local touch = math.min(size[1], size[2]) <= 500
+				local portrait = size[2] > size[1]
 				UIS.TouchEnabled = touch
 				Mock.SetViewport(size[1], size[2])
 				pcall(MC._TouchButtons, touch)
@@ -2146,7 +2182,11 @@ local function clientScenarios()
 				end
 				for _, state in ipairs(STATES) do
 					local how = (state == "tutorial folded") and tutorialFolded() or (tutorialDone() or "hidden")
+					if state == "tutorial folded" and STRIP_AT[fmt("%dx%d", size[1], size[2])] then
+						T.check(how:sub(1, 6) == "strip ", fmt("guide plank %dx%d tutorial folded: (setup) the tutorial's quest strip docks on the vitals stack", size[1], size[2]), how)
+					end
 					for _, mode in ipairs(MODES) do
+					if portrait or not mode.portrait then
 						local tag = fmt("guide plank %dx%d %s, %s", size[1], size[2], state, mode.name)
 						pcall(Guide.Stop)
 						pcall(Mock.HidePrompt, prompt)
@@ -2175,11 +2215,15 @@ local function clientScenarios()
 						KC.advance(0.1)
 						T.check(Guide.Start("StormAltar") == true, tag .. ": (setup) the guide starts")
 						-- (travel_guide_plank_wide: a PC's plank on a PC screen)
-						Mock.ShowPrompt(prompt, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
-						local cards = { { prompt = prompt, from = 0 } }
+						local cards = {}
+						if not mode.noGate then
+							Mock.ShowPrompt(prompt, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
+							cards[1] = { prompt = prompt, from = 0 }
+						end
 						local t, worst, worstAt, frames, shownFrames, gateFrames = 0, math.huge, nil, 0, 0, 0
 						local hereShown, hereFrames, hereGap, hereAt = 0, 0, nil, "-"
-						local placed = false
+						local placed, left = false, nil
+						local rec = {} -- (the owner's portrait rule) every frame: t, shown, the chip's rect, its phase and row, the planks
 						while t < mode.secs - 1e-6 do
 							local cf = mode.steep and camSteep() or camAtTilt(mode.tilt and mode.tilt(t) or 0)
 							camObj.CFrame = cf
@@ -2208,9 +2252,35 @@ local function clientScenarios()
 								cards[#cards + 1] = { prompt = other, from = t }
 								placed = true
 							end
+							if mode.leaveAt and not left and t >= mode.leaveAt - 1e-6 then
+								pcall(Mock.HidePrompt, prompt)
+								left = t
+							end
+							if mode.onSpot and not placed and t >= mode.onSpot[1] - 1e-6 then
+								local c0 = chipNow()
+								if c0 then
+									otherPart.CFrame = CFrame.new(unproject((c0.X + c0.R) / 2, (c0.Y + c0.B) / 2, 10))
+									Mock.ShowPrompt(other, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
+									T.check(PC.CardOf(other) ~= nil, tag .. ": (setup) the NPC's plank")
+									cards[#cards + 1] = { prompt = other, from = t }
+									placed = true
+								end
+							elseif mode.onSpot and placed and not left and t >= mode.onSpot[2] - 1e-6 then
+								pcall(Mock.HidePrompt, other)
+								left = t
+							end
 							frames = frames + 1
-							local c, vis = chipNow()
+							local c, vis, chipI = chipNow()
 							local phase = Guide.Phase and Guide.Phase() or nil
+							local planksNow = {}
+							for _, e in ipairs(cards) do
+								local card = PC.CardOf(e.prompt)
+								local r = card and card.Enabled and billboard(card)
+								if r then
+									planksNow[e.prompt] = r
+								end
+							end
+							rec[#rec + 1] = { t = t, vis = (vis and c ~= nil) == true, c = c, phase = phase, y = chipI and chipI.Position.Y.Offset, planks = planksNow }
 							if vis and c then
 								shownFrames = shownFrames + 1
 								for _, e in ipairs(cards) do
@@ -2249,15 +2319,119 @@ local function clientScenarios()
 							T.check(steepFrames > 0 and steepBad == nil, tag .. ": a steep look up with the gate ahead on the ground keeps the needle on 'ahead' (its bearing on the ground, pitch left out)",
 								steepBad or fmt("%d frames", steepFrames))
 						end
-						-- (updated for the owner's pick B of 2026-11-23: the chip never hides, so it shows on every frame of a
-						-- walk run and through the "You're here" phase up to its slide out, in every tutorial state at every size.
-						-- Was: through 0.5 - 2.5 s of "You're here" with the tutorial done, 320 x 568 listed not held - its dodge
-						-- hid it there)
-						if mode.dist > 8 then
-							T.check(shownFrames == frames, tag .. ": the chip shows on every frame", fmt("%d of %d frames shown", shownFrames, frames))
+						-- the frames before the slide out: the chip on its phase's first row (the "You're here" slide lifts it)
+						local baseY, pre = {}, {}
+						for i, f in ipairs(rec) do
+							if f.phase and f.y then
+								baseY[f.phase] = baseY[f.phase] or f.y
+								pre[i] = f.y >= baseY[f.phase] - 0.5
+							else
+								pre[i] = false
+							end
+						end
+						-- one spot a phase, shown or stepped aside: it never moves to dodge a sign (the owner's pick B and its
+						-- portrait rule of 2026-11-24 alike)
+						local firstRect, moved = {}, nil
+						for i, f in ipairs(rec) do
+							if pre[i] and f.c then
+								local r0 = firstRect[f.phase]
+								if not r0 then
+									firstRect[f.phase] = f.c
+								elseif not moved and (abs(f.c.X - r0.X) > 0.5 or abs(f.c.Y - r0.Y) > 0.5 or abs(f.c.R - r0.R) > 0.5 or abs(f.c.B - r0.B) > 0.5) then
+									moved = fmt("%.2f s (%s): chip %s, its spot %s", f.t, tostring(f.phase), show(f.c), show(r0))
+								end
+							end
+						end
+						T.check(moved == nil, tag .. ": the chip keeps one spot through its phase, shown or stepped aside (it never moves to dodge)", moved or "")
+						if not portrait then
+							-- (the owner's pick B of 2026-11-23, unchanged on landscape screens by the portrait rule of 2026-11-24:
+							-- the chip never hides, so it shows on every frame of a walk run and through the "You're here" phase up to
+							-- its slide out, in every tutorial state at every size. Was: through 0.5 - 2.5 s of "You're here" with the
+							-- tutorial done, 320 x 568 listed not held - its dodge hid it there)
+							if mode.dist > 8 then
+								T.check(shownFrames == frames, tag .. ": the chip shows on every frame", fmt("%d of %d frames shown", shownFrames, frames))
+							else
+								T.check(hereFrames > 0 and hereShown == hereFrames, tag .. ": the chip shows through the \"You're here\" phase (0.5 - 2.5 s)",
+									fmt("%d of %d frames shown", hereShown, hereFrames))
+							end
 						else
-							T.check(hereFrames > 0 and hereShown == hereFrames, tag .. ": the chip shows through the \"You're here\" phase (0.5 - 2.5 s)",
-								fmt("%d of %d frames shown", hereShown, hereFrames))
+							-- (the owner's pick of 2026-11-24 for portrait phones, "steps aside for signs": the rule above, "shows on
+							-- every frame", is the owner's own retired rule here - the chip hides while a shown prompt plank stands
+							-- within KEEP px of its spot, so the pin became "it hides only for a sign") a sign near the chip's spot:
+							-- within KEEP + HOLD px (+ 2 for its X's 44 px target past the ink) plus twice the plank's move over the
+							-- last 1/15 s (the margin the chip keeps for a sign the camera brings in between two reads)
+							local function nearGap(i)
+								local f, best = rec[i], nil
+								if not f.c then
+									return nil
+								end
+								for p, r in pairs(f.planks) do
+									local back = rec[i - 2] and rec[i - 2].planks[p]
+									local mv = back and math.max(abs(r.X - back.X), abs(r.Y - back.Y)) or 0
+									local g = gapOf(f.c, r) - 2 * mv
+									if not best or g < best then
+										best = g
+									end
+								end
+								return best
+							end
+							local lastNear, why, hidden = nil, nil, 0
+							for i, f in ipairs(rec) do
+								local g = nearGap(i)
+								if g and g < KEEP + HOLD + 2 then
+									lastNear = f.t
+								end
+								if pre[i] and not f.vis then
+									hidden = hidden + 1
+									if not why and (not lastNear or f.t - lastNear > DWELL + 2 * READ + 1e-6) then
+										why = fmt("%.2f s (%s): hidden, chip %s; %s", f.t, tostring(f.phase), show(f.c),
+											lastNear and fmt("the last sign near its spot at %.2f s", lastNear) or "no sign near its spot")
+									end
+								end
+							end
+							T.check(why == nil, tag .. ": the chip hides only for a sign (a prompt plank on its spot, the 0.5 s hold after it)", why or fmt("%d frames stepped aside", hidden))
+							-- no show / hide chatter: every state between two changes (before the slide out) lasts 0.5 s or more
+							local prevVis, runFrom, onChange, chatter, changes = nil, nil, false, nil, {}
+							for i, f in ipairs(rec) do
+								if pre[i] then
+									if prevVis == nil then
+										prevVis, runFrom = f.vis, f.t
+									elseif f.vis ~= prevVis then
+										if onChange and f.t - runFrom < DWELL - 1e-3 and not chatter then
+											chatter = fmt("%s for %.2f s from %.2f s", prevVis and "shown" or "stepped aside", f.t - runFrom, runFrom)
+										end
+										changes[#changes + 1] = fmt("%s %.2f", f.vis and "back" or "aside", f.t)
+										prevVis, runFrom, onChange = f.vis, f.t, true
+									end
+								end
+							end
+							T.check(chatter == nil, tag .. ": no show / hide chatter (each state 0.5 s or more)", chatter or "")
+							T.info(fmt("*%s: %d of %d frames stepped aside before the slide out; changes: %s", tag, hidden, #rec, #changes > 0 and table.concat(changes, ", ") or "none"))
+						end
+						-- the sign goes (the gate's plank at 1 s, the NPC's at 1.3 s): a chip that stepped aside for it comes back
+						-- within 0.5 s + 2/15 s, in the same place
+						if mode.leaveAt or mode.onSpot then
+							local leaveT = mode.leaveAt or mode.onSpot[2]
+							local aside, back = false, nil
+							for i, f in ipairs(rec) do
+								if f.t < leaveT - 1e-6 and f.t >= leaveT - 0.2 - 1e-6 and not f.vis then
+									aside = true
+								end
+								if left and f.t > left + 1e-6 and f.vis and pre[i] and not back then
+									back = f
+								end
+							end
+							if mode.onSpot then
+								T.check(aside, tag .. ": the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot")
+							end
+							if aside then
+								local r0 = back and firstRect[back.phase]
+								T.check(back ~= nil and back.t - left <= DWELL + 2 * READ + 1e-6 and r0 ~= nil and abs(back.c.X - r0.X) <= 0.5 and abs(back.c.Y - r0.Y) <= 0.5,
+									tag .. ": the chip comes back in the same place within 0.5 s + 2/15 s of the sign going",
+									back and fmt("back at %.2f s (the sign went at %.2f s): %s, its spot %s", back.t, left, show(back.c), r0 and show(r0) or "-") or "never back")
+							elseif mode.leaveAt then
+								T.info(fmt("*%s: the chip showed when the gate's plank went (no sign on its spot)", tag))
+							end
 						end
 						if mode.name == "here" then
 							T.info(fmt("*%s: tutorial %s; the chip shows %d of %d frames 0.5 - 2.5 s into \"You're here\", %s px off the plank (1 s in: %s)",
@@ -2268,6 +2442,7 @@ local function clientScenarios()
 						pcall(Mock.HidePrompt, other)
 						otherPart.CFrame = away
 						KC.advance(0.1)
+					end -- (a portrait-only run is not run on a landscape screen)
 					end
 				end
 				pcall(MC._TouchButtons, false)
@@ -2291,7 +2466,7 @@ local function clientScenarios()
 		KC.flushErrors(scen)
 	end
 	S.travel_guide_plank = guarded("travel_guide_plank", function()
-		plankRun("travel_guide_plank", { { 320, 568 }, { 340, 640 }, { 360, 640 }, { 375, 667 }, { 384, 640 }, { 390, 844 }, { 400, 640 }, { 412, 915 } },
+		plankRun("travel_guide_plank", { { 320, 568 }, { 340, 640 }, { 360, 640 }, { 375, 640 }, { 375, 667 }, { 384, 640 }, { 390, 844 }, { 400, 640 }, { 412, 915 } },
 			{ "tutorial folded", "tutorial done" })
 	end)
 	-- (the owner's pick B of 2026-11-23) the landscape screens of the pick, the chip in the top band

@@ -5344,7 +5344,16 @@ function WU.guide(screen, mode)
 		end
 		if x then
 			WU.cell(screen, card, x, y, "PromptCard").ZIndex = 5001
-			card.Enabled = false
+			-- (the owner's portrait pick of 2026-11-24: a portrait chip steps aside while a shown plank stands on its spot) the
+			-- billboard goes off only after the scene's last frame (WU.afterDump), so the guide reads it shown on that frame as
+			-- the game does: turned off before it, a chip that stepped aside for the plank came back for the dump
+			local before = WU.afterDump
+			WU.afterDump = function()
+				if before then
+					before()
+				end
+				card.Enabled = false
+			end
 			note(fmt("worldui:guidehere the gate's plank at %.0f,%.0f (%dx%d px, lifted %.1f studs)", x, y, w, h, card.StudsOffsetWorldSpace.Y))
 		else
 			note("worldui:guidehere no plank for the gate's prompt")
