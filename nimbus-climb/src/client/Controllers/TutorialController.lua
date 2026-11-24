@@ -206,6 +206,9 @@ local K = {
 	-- once its own spot is clear by twice that. The GuideSign flips to the arrow's left when its right side runs off the
 	-- screen or under the HUD
 	GUIDE_CLEAR = 10,
+	-- (look:new3) screen px the chip keeps off a prompt's plank (the gate's Enter, an NPC's Talk) at a spot aside and on a
+	-- step: 6, and a half px for the chip's whole px. Home leaves at GUIDE_CLEAR (8 px or more under the 0.8 floor)
+	GUIDE_PLANK_KEEP = 7,
 	-- (look review fin1, MJ-A; pol0, MAJOR 2) the guide is laid out every GUIDE_DODGE_EVERY s (a frame at 30 fps). The
 	-- chip keeps one place while the player walks at the gate: it leaves home only for the arrow or the gate's plank (the
 	-- GuideSign gives way to the chip: pol0 minor 3), seeing each GUIDE_LEAD s ahead along the way it moves (from past the
@@ -3588,12 +3591,32 @@ local function signRect()
 end
 
 -- the target gate prompt's plank (PromptController's card) while it shows -> rect or nil
-local function promptRect()
+local function targetCard()
 	local part = G.part
 	local prompt = part and G.spec and part:FindFirstChild(G.spec.Prompt)
 	local PC = prompt and mod("PromptController")
-	local card = PC and type(PC.CardOf) == "function" and PC.CardOf(prompt) or nil
+	return PC and type(PC.CardOf) == "function" and PC.CardOf(prompt) or nil
+end
+local function promptRect()
+	local card = targetCard()
 	return card and billboardRect(card) or nil
+end
+
+-- (look:new3) the planks of the world's other prompts while they show (an NPC's "Talk", a machine's: PromptController's
+-- cards, BillboardGuis in the PlayerGui): the chip keeps off each as off the gate's -> { { card, rect } }
+local function otherPlanks()
+	local out = {}
+	local pg = playerGui()
+	local target = targetCard()
+	for _, c in ipairs(pg and pg:GetChildren() or {}) do
+		if c ~= target and c.Name == "PromptCard" and c:IsA("BillboardGui") then
+			local r = billboardRect(c)
+			if r then
+				out[#out + 1] = { card = c, rect = r }
+			end
+		end
+	end
+	return out
 end
 
 -- Roblox's own buttons in the top band (over our gui: y < 0), left / right of the TopbarInset; none without a band
@@ -4062,7 +4085,12 @@ local function chipObstacles(area, dt)
 	end
 	local seen, list, near, vx, rise, others = {}, {}, {}, 0, nil, {}
 	local pieces = { arrow = arrowRect(), plank = promptRect() }
-	for _, key in ipairs({ "arrow", "plank" }) do
+	local keys = { "arrow", "plank" }
+	for _, o in ipairs(otherPlanks()) do -- (look:new3; each swept by its own card)
+		pieces[o.card] = o.rect
+		keys[#keys + 1] = o.card
+	end
+	for _, key in ipairs(keys) do
 		local r = pieces[key]
 		if r then
 			seen[key] = r
@@ -4149,7 +4177,10 @@ local function chipHome(area, k, h, w)
 		local v = vitalsRect()
 		local bottom = v and (v.y0 - K.GUIDE_DOCK_GAP * k) or nil
 		local strip = UI.Strip
-		if bottom and strip and strip.Visible and strip.AbsoluteSize.Y > 0 then
+		-- (look:new3) only a strip that shows: the tutorial hidden (done, skipped) still lays its strip out, Visible in its
+		-- hidden card, and since c1e122e docks it over RUN on small portrait phones it lifted the chip onto the gate's
+		-- Enter plank (21.4 px at 360 x 640; the chip hid the whole "You're here")
+		if bottom and strip and strip.Visible and strip.AbsoluteSize.Y > 0 and UI.Gui and shownIn(strip, UI.Gui) then
 			local sy = strip.AbsolutePosition.Y
 			if sy < bottom and sy > bottom - 200 * k then
 				bottom = sy - K.GUIDE_DOCK_GAP * k
@@ -4345,6 +4376,11 @@ local function placeChip(dt, snap)
 	-- its spot, as rect, met: the pieces as they stand or two looks on come within 1 px of it; an arrow rising out of its
 	-- row only when, as it stands or two looks on, it is on the chip's face (it passes over: see chipObstacles)
 	local function met(spot)
+		-- (look:new3) a prompt plank (the gate's, any other) within K.GUIDE_PLANK_KEEP px: met, so a spot aside keeps the
+		-- plank's 6 px as home does (the 1 px berth below is the arrow's: pol0 minor 1)
+		if not clearOf(spot, others, K.GUIDE_PLANK_KEEP) then
+			return true
+		end
 		if clearOf(spot, near, 1) then
 			return false
 		end
@@ -4436,6 +4472,16 @@ local function crossesPiece(from, to)
 	local pieces = { arrowRect() or false, signRect() or false, promptRect() or false }
 	for i = 1, 3 do
 		if pieces[i] and rectsOverlap(way, pieces[i]) then
+			return true
+		end
+	end
+	-- (look:new3) the planks with their K.GUIDE_PLANK_KEEP px: a step never passes nearer, every plank's
+	local plank = pieces[3]
+	if plank and rectsOverlap(way, grown(plank, K.GUIDE_PLANK_KEEP)) then
+		return true
+	end
+	for _, o in ipairs(otherPlanks()) do
+		if rectsOverlap(way, grown(o.rect, K.GUIDE_PLANK_KEEP)) then
 			return true
 		end
 	end

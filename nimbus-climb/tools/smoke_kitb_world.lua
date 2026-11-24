@@ -1940,6 +1940,350 @@ local function clientScenarios()
 	end)
 
 	----------------------------------------------------------------------------------------------------------------
+	-- travel_guide_plank (look:new3 vs kit-b 1a55f73, its one new major: at the Storm Altar gate on small portrait phones
+	-- the chip "You're here: tap the button" lay over the gate's Enter plank, 'Enter' cut through: 21.4 px at 340 / 360 /
+	-- 384 / 400 x 640, 6 px at 375 x 667, from c1e122e on; travel_guide_clear has the rule but runs at 1920x1080,
+	-- 1280x720, 390x844 and 844x390 with no touch keys, so it stayed green). Here the portrait phones WITH the touch keys
+	-- (MovementController's MobileControls: RUN / DASH) at 320x568, 340x640, 360x640, 375x667, 384x640, 390x844, 400x640
+	-- and 412x915, the mock Altar gate and the stock camera as travel_guide_clear has them, the tutorial on step 3 folded
+	-- (its quest strip where it docks, else its portrait chip) and then done (hidden: a player who finished or skipped it;
+	-- the look's state), one 1/30 s frame a step:
+	--   walk       11 studs out (the gate's prompt in range, MaxActivationDistance 12; the guide still walking), 1 s
+	--   walk tilt  the same, the camera tilted up 0 -> 20 degrees over 1.5 s (the plank comes down the screen)
+	--   here       7 studs out: the whole "You're here" phase (3 s)
+	--   here tilt  the same, the camera tilted 0 -> 20 -> 0 degrees over its first 2 s
+	--   other      11 studs out, a second prompt's plank (an NPC's "Talk") standing on the chip where it is: every world
+	--              prompt plank, not the gate's alone
+	-- Every frame the chip, while it shows, keeps 6 px or more (screen px, its wood edge counted) off every shown prompt
+	-- plank (a plank that just showed: from 0.1 s on, the guide's next looks). With the tutorial done the chip shows on
+	-- every frame from 0.5 to 2.5 s of the "You're here" phase as it stands (here): it is the guide's last word, so hiding
+	-- it all the way is no way to keep off the plank (at 77f5f56 it hid the whole phase at 340 - 400 x 640 and 375 x 667,
+	-- the look's dumps drew it on the plank). The frames it shows at the gate with the tutorial folded are listed
+	----------------------------------------------------------------------------------------------------------------
+	S.travel_guide_plank = guarded("travel_guide_plank", function()
+		local Config = shared("Config")
+		local Steps = shared("TutorialSteps")
+		local TC = client("Controllers/TutorialController")
+		local PC = client("Controllers/PromptController")
+		local MC = client("Controllers/MovementController")
+		local Guide = TC and TC.Guide
+		local methods = Mock.Classes and Mock.Classes.Camera and Mock.Classes.Camera.methods
+		if not T.check(type(Guide) == "table" and PC ~= nil and type(PC.CardOf) == "function" and MC ~= nil and type(MC._TouchButtons) == "function"
+			and methods ~= nil and workspace.CurrentCamera ~= nil and type(Steps) == "table",
+			"guide plank: (setup) TutorialController.Guide, PromptController.CardOf, MovementController._TouchButtons, the mock camera") then
+			return
+		end
+		local player = game:GetService("Players").LocalPlayer
+		local UIS = game:GetService("UserInputService")
+		local L = Config.Lobby
+		local camObj = workspace.CurrentCamera
+		local fh = io.open("src/server/Services/GateService.lua", "r")
+		local src = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		local lift = tonumber(src:match('Name = "AltarGatePrompt"[^\n]-Lift = ([%d%.]+)'))
+		local saved = { methods.WorldToViewportPoint, methods.WorldToScreenPoint }
+		local function focal(self)
+			return (Mock.Viewport.Y / 2) / math.tan(math.rad(self.FieldOfView / 2))
+		end
+		local function project(self, pos)
+			local rel = self.CFrame:PointToObjectSpace(pos)
+			local vp = Mock.Viewport
+			local d = -rel.Z
+			local f = focal(self)
+			local dd = (abs(d) < 1e-6) and 1e-6 or d
+			local x, y = vp.X / 2 + rel.X / dd * f, vp.Y / 2 - rel.Y / dd * f
+			return Vector3.new(x, y, d), d > 0 and x >= 0 and x <= vp.X and y >= 0 and y <= vp.Y
+		end
+		-- the Altar gate as travel_guide_clear mocks it (WorldStyle.BuildGate's hoop, its PromptAnchor 3.5 studs up and 2.8
+		-- in front, GateService's prompt and Lift) and a second prompt, an NPC's "Talk", for the 'other' runs
+		local lobby = workspace:FindFirstChild("NimbusLobby")
+		local madeLobby = lobby == nil
+		if madeLobby then
+			lobby = Instance.new("Model")
+			lobby.Name = "NimbusLobby"
+			lobby.Parent = workspace
+		end
+		local site = L.Origin + Vector3.new(60, 0, 100)
+		local dir = Vector3.new(0, 0, 1)
+		local gate = Instance.new("Model")
+		gate.Name = "Portal_Altar"
+		local hoop = Instance.new("Part")
+		hoop.Name = "Hoop"
+		hoop.Anchored = true
+		hoop.Size = Vector3.new(23, 26, 5)
+		hoop.CFrame = CFrame.new(site + Vector3.new(0, 13, 0))
+		hoop.Parent = gate
+		local anchor = Instance.new("Part")
+		anchor.Name = "PromptAnchor"
+		anchor.Anchored = true
+		anchor.Transparency = 1
+		anchor.Size = Vector3.new(2, 2, 1)
+		anchor.CFrame = CFrame.new(site + Vector3.new(0, 3.5, -2.8))
+		anchor.Parent = gate
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "AltarGatePrompt"
+		prompt.ActionText = "Enter"
+		prompt.ObjectText = "Storm Altar"
+		if lift then
+			prompt:SetAttribute("CardLift", lift)
+		end
+		prompt.Parent = anchor
+		local away = CFrame.new(site + Vector3.new(200, 3, 0))
+		local otherPart = Instance.new("Part")
+		otherPart.Name = "TalkAnchor"
+		otherPart.Anchored = true
+		otherPart.Transparency = 1
+		otherPart.Size = Vector3.new(1, 1, 1)
+		otherPart.CFrame = away
+		otherPart.Parent = gate
+		local other = Instance.new("ProximityPrompt")
+		other.Name = "TalkPrompt"
+		other.ActionText = "Talk"
+		other.ObjectText = "Nimbus"
+		other.Parent = otherPart
+		gate.Parent = lobby
+		PC.Custom(prompt)
+		PC.Custom(other)
+		local function shownGui(o)
+			local a = o
+			while a and not a:IsA("ScreenGui") do
+				if a:IsA("GuiObject") and not a.Visible then
+					return false
+				end
+				a = a.Parent
+			end
+			return a ~= nil and a.Enabled ~= false
+		end
+		local function screenRect(obj)
+			local owner = obj:FindFirstAncestorOfClass("ScreenGui")
+			local dy = (owner and owner.IgnoreGuiInset) and 0 or (Mock.TopInset or 0)
+			local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+			return { X = p.X, Y = p.Y + dy, R = p.X + s.X, B = p.Y + s.Y + dy }
+		end
+		local function grow(r, by)
+			return { X = r.X - by, Y = r.Y - by, R = r.R + by, B = r.B + by }
+		end
+		-- a pixel billboard's rect on the screen (viewport px), as travel_guide_clear reads it
+		local function billboard(gui)
+			local ad = gui.Adornee or gui.Parent
+			local cf = camObj.CFrame
+			local so = gui.StudsOffset
+			local p = ad.Position + gui.StudsOffsetWorldSpace + cf.RightVector * so.X + cf.UpVector * so.Y - cf.LookVector * so.Z
+			local v = project(camObj, p)
+			if v.Z <= 0 then
+				return nil
+			end
+			local w, h = gui.Size.X.Offset, gui.Size.Y.Offset
+			local x0 = v.X - w / 2 + gui.SizeOffset.X * w
+			local y0 = v.Y - h / 2 - gui.SizeOffset.Y * h
+			return { X = x0, Y = y0, R = x0 + w, B = y0 + h }
+		end
+		-- px between two rects (negative: they overlap by that much)
+		local function gapOf(a, b)
+			return math.max(b.X - a.R, a.X - b.R, b.Y - a.B, a.Y - b.B)
+		end
+		local function chipNow()
+			local gui = pg():FindFirstChild("NimbusGuide")
+			local chip = gui and gui:FindFirstChild("Chip", true)
+			if not chip then
+				return nil, false
+			end
+			local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
+			return grow(screenRect(chip), 3 * k), shownGui(chip) -- (its wood edge)
+		end
+		local function tutorialPayload(index) -- (smoke_kitb_ui's U99.tutorialPayload)
+			local list = Steps.Steps
+			index = math.max(1, math.min(#list, index))
+			local step = list[index]
+			local cfg = Config.Tutorial or {}
+			local text = tostring(step.Text or "")
+			text = (text:gsub("{GiftTokens}", tostring(cfg.GiftTokens or 0)))
+			text = (text:gsub("{FinishTokens}", tostring((cfg.FinishReward or {}).Tokens or 0)))
+			text = (text:gsub("{RaidMinutes}", "20"))
+			return { Step = index, Total = #list, Id = step.Id, Title = step.Title, Text = text, Target = step.Target, Chapter = step.Chapter or 1,
+				CompleteOn = step.CompleteOn, Hint = step.Hint, Button = step.Button, Gift = step.Gift == true, Done = false, Completed = false,
+				Skipped = false, Reward = 0 }
+		end
+		local function tutorialDone()
+			local n = #Steps.Steps
+			KC.toClient("TutorialState", { Step = n, Total = n, Id = "done", Text = "", Done = true, Completed = false, Skipped = true, Reward = 0 })
+			KC.advance(1)
+		end
+		-- the tutorial on step 3, folded -> "strip" / "portrait chip" / what shows
+		local function tutorialFolded()
+			local g0 = pg():FindFirstChild("NimbusTutorial")
+			local fold0, main0 = g0 and g0:FindFirstChild("Fold", true), g0 and g0:FindFirstChild("Main", true)
+			if fold0 and main0 and shownGui(main0) then
+				Mock.Click(fold0)
+				KC.advance(0.5)
+			end
+			tutorialDone()
+			KC.toClient("TutorialState", tutorialPayload(3))
+			KC.advance(3)
+			local g = pg():FindFirstChild("NimbusTutorial")
+			local main, fold = g and g:FindFirstChild("Main", true), g and g:FindFirstChild("Fold", true)
+			if main and fold and shownGui(main) then
+				Mock.Click(fold)
+				KC.advance(1)
+			end
+			local strip = g and g:FindFirstChild("QuestStrip", true)
+			local portrait = g and g:FindFirstChild("Portrait", true)
+			if strip and shownGui(strip) then
+				return "strip " .. show(screenRect(strip))
+			elseif portrait and shownGui(portrait) then
+				return "portrait chip " .. show(screenRect(portrait))
+			end
+			return (main and shownGui(main)) and "the card open" or "nothing shown"
+		end
+		local touchWas = UIS.TouchEnabled
+		local ok, err = pcall(function()
+			T.check(lift ~= nil, "guide plank: (setup) GateService's Altar prompt Lift", tostring(lift))
+			methods.WorldToViewportPoint, methods.WorldToScreenPoint = project, project
+			local MODES = {
+				{ name = "walk", dist = 11, secs = 1 },
+				{ name = "walk tilt", dist = 11, secs = 1.5, tilt = function(t)
+					return 20 * math.min(1, t / 1.5)
+				end },
+				{ name = "here", dist = 7, secs = 3, shows = true },
+				{ name = "here tilt", dist = 7, secs = 3, tilt = function(t)
+					return (t <= 1) and (20 * t) or (t <= 2 and 20 * (2 - t) or 0)
+				end },
+				{ name = "other", dist = 11, secs = 1, other = true },
+			}
+			for _, size in ipairs({ { 320, 568 }, { 340, 640 }, { 360, 640 }, { 375, 667 }, { 384, 640 }, { 390, 844 }, { 400, 640 }, { 412, 915 } }) do
+				UIS.TouchEnabled = true
+				Mock.SetViewport(size[1], size[2])
+				pcall(MC._TouchButtons, true)
+				KC.advance(1.2) -- (the HUD's layout poll: the vitals card steps round the keys)
+				local mobile = pg():FindFirstChild("MobileControls")
+				local runKey = mobile and mobile:FindFirstChild("RunButton", true)
+				T.check(runKey ~= nil and shownGui(runKey), fmt("guide plank %dx%d: (setup) the touch keys (RUN) are on the screen", size[1], size[2]))
+				for _, state in ipairs({ "tutorial folded", "tutorial done" }) do
+					local how = (state == "tutorial folded") and tutorialFolded() or (tutorialDone() or "hidden")
+					for _, mode in ipairs(MODES) do
+						local tag = fmt("guide plank %dx%d %s, %s", size[1], size[2], state, mode.name)
+						pcall(Guide.Stop)
+						pcall(Mock.HidePrompt, prompt)
+						pcall(Mock.HidePrompt, other)
+						otherPart.CFrame = away
+						KC.advance(0.1)
+						local at = anchor.Position - dir * mode.dist
+						at = Vector3.new(at.X, L.Origin.Y + 3, at.Z)
+						Mock.Teleport(player, CFrame.lookAt(at, at + dir))
+						local head = at + Vector3.new(0, 1.9, 0)
+						local camAt = head - dir * 12.5 + Vector3.new(0, 4.5, 0)
+						local function camAtTilt(deg)
+							return CFrame.lookAt(camAt, head + dir * 14 + Vector3.new(0, 2 + 14 * math.tan(math.rad(deg)), 0))
+						end
+						camObj.CFrame = camAtTilt(0)
+						KC.advance(0.1)
+						T.check(Guide.Start("StormAltar") == true, tag .. ": (setup) the guide starts")
+						Mock.ShowPrompt(prompt, Enum.ProximityPromptInputType.Touch)
+						local cards = { { prompt = prompt, from = 0 } }
+						local t, worst, worstAt, frames, shownFrames, gateFrames = 0, math.huge, nil, 0, 0, 0
+						local hereShown, hereFrames, hereGap, hereAt = 0, 0, nil, "-"
+						local placed = false
+						while t < mode.secs - 1e-6 do
+							local cf = camAtTilt(mode.tilt and mode.tilt(t) or 0)
+							camObj.CFrame = cf
+							KC.advance(1 / 30)
+							camObj.CFrame = cf
+							t = t + 1 / 30
+							if mode.other and placed and placed ~= true then
+								-- the NPC's plank (shown the frame before, 200 studs off: past its MaxDistance) stood on the chip where
+								-- it was (its middle on the chip's, 16 studs from the camera)
+								local c, card = placed, PC.CardOf(other)
+								if T.check(card ~= nil, tag .. ": (setup) the NPC's plank") then
+									local vp, f, d = Mock.Viewport, focal(camObj), 16
+									local w, h = card.Size.X.Offset, card.Size.Y.Offset
+									local vx, vy = (c.X + c.R) / 2 - card.SizeOffset.X * w, (c.Y + c.B) / 2 + card.SizeOffset.Y * h
+									local p = camObj.CFrame:PointToWorldSpace(Vector3.new((vx - vp.X / 2) * d / f, -(vy - vp.Y / 2) * d / f, -d))
+									otherPart.CFrame = CFrame.new(p - card.StudsOffsetWorldSpace)
+									cards[#cards + 1] = { prompt = other, from = t }
+								end
+								placed = true
+							elseif mode.other and not placed and t >= 0.5 - 1e-6 then
+								placed = chipNow() or true
+								Mock.ShowPrompt(other, Enum.ProximityPromptInputType.Touch)
+							end
+							frames = frames + 1
+							local c, vis = chipNow()
+							local phase = Guide.Phase and Guide.Phase() or nil
+							if vis and c then
+								shownFrames = shownFrames + 1
+								for _, e in ipairs(cards) do
+									local card = PC.CardOf(e.prompt)
+									local r = card and card.Enabled and billboard(card)
+									if r and t >= e.from + 0.1 - 1e-6 then
+										local g = gapOf(c, r)
+										if e.prompt == prompt then
+											gateFrames = gateFrames + 1
+										end
+										if g < worst then
+											worst = g
+											worstAt = fmt("%.2f s (%s): chip %s, %s plank %s", t, tostring(phase), show(c), e.prompt.ActionText, show(r))
+										end
+									end
+								end
+							end
+							if phase == "Here" and t >= 0.5 - 1e-6 and t <= 2.5 + 1e-6 then
+								if hereFrames == 15 then -- (1 s in: where it stands, shown or not, and the plank)
+									local card = PC.CardOf(prompt)
+									local r = card and card.Enabled and billboard(card)
+									hereAt = fmt("chip %s %s, plank %s", show(c), vis and "shown" or "hidden", show(r or nil))
+								end
+								hereFrames = hereFrames + 1
+								if vis then
+									hereShown = hereShown + 1
+									local card = PC.CardOf(prompt)
+									local r = card and card.Enabled and billboard(card)
+									hereGap = r and c and gapOf(c, r) or hereGap
+								end
+							end
+						end
+						T.check(worst >= 6 - 1e-3, tag .. ": the chip, while it shows, keeps 6 px off every prompt plank",
+							fmt("%.1f px at %s", worst, tostring(worstAt)))
+						-- (320 x 568: the mock gate's plank reaches the chip's home there on kit-b 1a55f73 too, 1 px over it, and
+						-- no spot holds the full line, so the chip hides the whole phase on both trees; listed, not held)
+						if mode.shows and state == "tutorial done" and not (size[1] == 320 and size[2] == 568) then
+							T.check(hereFrames > 0 and hereShown == hereFrames, tag .. ": the chip shows through the \"You're here\" phase (0.5 - 2.5 s)",
+								fmt("%d of %d frames shown", hereShown, hereFrames))
+						end
+						if mode.name == "here" then
+							T.info(fmt("*%s: tutorial %s; the chip shows %d of %d frames 0.5 - 2.5 s into \"You're here\", %s px off the plank (1 s in: %s)",
+								tag, how, hereShown, hereFrames, hereGap and fmt("%.1f", hereGap) or "-", hereAt))
+						end
+						Guide.Stop()
+						pcall(Mock.HidePrompt, prompt)
+						pcall(Mock.HidePrompt, other)
+						otherPart.CFrame = away
+						KC.advance(0.1)
+					end
+				end
+				pcall(MC._TouchButtons, false)
+			end
+		end)
+		methods.WorldToViewportPoint, methods.WorldToScreenPoint = saved[1], saved[2]
+		pcall(Guide.Stop)
+		pcall(Mock.HidePrompt, prompt)
+		pcall(Mock.HidePrompt, other)
+		pcall(MC._TouchButtons, false)
+		UIS.TouchEnabled = touchWas
+		Mock.SetViewport(1920, 1080)
+		pcall(tutorialDone)
+		Mock.Teleport(player, CFrame.new(L.Origin + Vector3.new(0, 3, 20)))
+		KC.advance(0.5)
+		gate:Destroy()
+		if madeLobby then
+			lobby:Destroy()
+		end
+		T.check(ok, "guide plank: the scenario ran", tostring(err))
+		KC.flushErrors("travel_guide_plank")
+	end)
+
+	----------------------------------------------------------------------------------------------------------------
 	-- travel_guide_walk (look review fin1, MJ-A / MJ-B; pol0, MAJOR 1 - 3): the camera moves at the REAL lobby's Altar
 	-- gate (LobbyBuilder, StormAltar and GateService built in the client world as dump_gui's worldui scenes build it; pol0:
 	-- the mock gate and its fixed turns missed what the real lobby showed) under the stock camera (12.5 studs behind the
