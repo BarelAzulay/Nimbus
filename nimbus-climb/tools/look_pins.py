@@ -43,7 +43,9 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
   O2  fix6 look1 #5 2560 x 1440, 3440 x 1440, 3840 x 2160: the enemy list on the currency strips; 'TARGET' 3.4-3.9 px past
                     its box from 1920 x 1200 up. Rule: the rows keep the ink gap off the strips; the TARGET tab reads whole
   O3  fix6 look1 #6 lobby 360 x 640 / 375 x 667: the vitals card on DASH and RUN, its name 'SkyCli...'. Rule: the card's
-                    ink MIN_GAP off DASH and RUN, the player's name whole
+                    ink MIN_GAP off DASH and RUN, the player's name whole. (look:fix6b2 N2: 'SkyCli...' at 800 x 450 in a
+                    match / countdown) in every state the card shows in: lobby, match, the pad, the countdown (O3_BACKLOG:
+                    kit-b's own cases on landscape phones, no worse than kit-b)
   T1  fix6 look1   the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
                     1024 x 768 raid:full. Rule: a phone's timer one place and form through raid:ready / raid / raid:full;
                     the clock at 1024 x 768 raid:full; the timer never larger than the boss name
@@ -479,30 +481,45 @@ def pin_O2(c, sizes):
 # battle_hud_no_overlap's MIN_GAP of ink off the touch keys, and the player's name reads whole, at the gate sizes and
 # 375 x 667
 O3_SIZES = [(375, 667)]
+# (look:fix6b2 N2, NEW from O3's 2947a7a: at 800 x 450 in a match and in a countdown the card's name read 'SkyCli...' -
+# whole at e272588 / kit-b: the card keeps O3's 8 px of air plus its 2 px edge off the match panel and RUN's block edge,
+# and the 211 px between them left it 190 px, short of the name at its 14.4 px floor. O3 read the lobby alone.) The same
+# rule in every state the vitals card shows in: the lobby, a match (3 players; the long-name SAINT match), the party pad
+# (2 players; its leader's full pad) and a match's countdown.
+# O3_BACKLOG: what kit-b 1a55f73 already has there (the owner's rule of 2026-11-24), measured by this pin on kit-b's src: on
+# landscape phones 640 - 720 wide in a match / on the pad / in the countdown the squeezed card lies on DASH and RUN and
+# cuts the name (look:fix6b2's OLD major). Such a case passes while its key gap is no worse than kit-b's (a name kit-b
+# cuts may stay cut there); every other case keeps MIN_GAP and the whole name.
+O3_STATES = ["lobby", "match", "match:full", "party", "party:leader", "countdown"]
+O3_BACKLOG = kitb_backlog("O3")
 
 
 def pin_O3(c, sizes):
     for (w, h) in list(sizes) + [s for s in O3_SIZES if s not in sizes]:
-        nodes = c.nodes(c.dump("lobby", w, h))
-        vit = [(p, n) for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals$", p)]
-        if not c.check("O3", bool(vit), "O3 lobby %dx%d: the vitals card shows" % (w, h)):
-            continue
-        vp, vn = vit[0]
-        ink = c.BH.ink_of(vn, c.RG, c.fonts)
-        for key in ("DashButton", "RunButton"):
-            kn = nodes.get("MobileControls." + key)
-            if not kn or float(kn["w"]) <= 1:
+        for scen in O3_STATES:
+            nodes = c.nodes(c.dump(scen, w, h))
+            vit = [(p, n) for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals$", p)]
+            if not c.check("O3", bool(vit), "O3 %s %dx%d: the vitals card shows" % (scen, w, h)):
                 continue
-            kink = c.BH.ink_of(kn, c.RG, c.fonts)
-            if not (ink and kink):
-                continue
-            g = min(c.BH.gap(a, b) for a in ink for b in kink)
-            c.check("O3", g >= c.BH.MIN_GAP - 0.05, "O3 lobby %dx%d: the vitals card keeps %g px off %s" % (w, h, c.BH.MIN_GAP, key),
-                    "card ink %s, key %s: %.1f px" % (fmt(c.BH.union(ink)), fmt(c.BH.union(kink)), g))
-        for p, n in nodes.items():
-            if p.startswith(vp + ".") and p.endswith("PlayerName"):
-                ok, how = c.whole(n)
-                c.check("O3", ok, "O3 lobby %dx%d: the player's name reads whole on the vitals card" % (w, h), how)
+            vp, vn = vit[0]
+            ink = c.BH.ink_of(vn, c.RG, c.fonts)
+            for key in ("DashButton", "RunButton"):
+                kn = nodes.get("MobileControls." + key)
+                if not kn or float(kn["w"]) <= 1:
+                    continue
+                kink = c.BH.ink_of(kn, c.RG, c.fonts)
+                if not (ink and kink):
+                    continue
+                g = min(c.BH.gap(a, b) for a in ink for b in kink)
+                was = O3_BACKLOG.get((scen, w, h, key))
+                ok = g >= c.BH.MIN_GAP - 0.05 or (was is not None and g >= was - 0.05)
+                c.check("O3", ok, "O3 %s %dx%d: the vitals card keeps %g px off %s" % (scen, w, h, c.BH.MIN_GAP, key),
+                        "card ink %s, key %s: %.1f px%s" % (fmt(c.BH.union(ink)), fmt(c.BH.union(kink)), g, (" (kit-b %.1f)" % was) if was is not None else ""))
+            for p, n in nodes.items():
+                if p.startswith(vp + ".") and p.endswith("PlayerName"):
+                    ok, how = c.whole(n)
+                    c.check("O3", ok or (scen, w, h, "name") in O3_BACKLOG, "O3 %s %dx%d: the player's name reads whole on the vitals card" % (scen, w, h), how)
+        c.cache.clear()
 
 
 # ---------------------------------------------------------------------------------------------------------------- T1
