@@ -1301,7 +1301,7 @@ local function clientScenarios()
 			T.eq(#KC.serverCalls("QuickTravel", mark), 0, "travel: no teleport (no QuickTravel sent)")
 			T.check(not Shop.IsOpen(), "travel: 'Show the way' closes the Shop")
 			T.eq(Guide.Active and Guide.Active(), "StormAltar", "travel: the guide runs to the Storm Altar")
-			T.check(tostring(chipText()):match("^Storm Altar / %d+ studs$") ~= nil, "travel: the chip reads 'Storm Altar' and its distance (a PC's tag 'NN studs')",
+			T.check(tostring(chipText()):match("^Storm Altar / %d+ studs") ~= nil, "travel: the chip reads 'Storm Altar' and its distance ('NN studs away', a PC's tag 'NN studs')",
 				tostring(chipText()))
 			local wg = worldGuide()
 			if T.check(wg ~= nil, "travel: the world guide is out (workspace.ClientFx.TutorialGuide)") then
@@ -1389,7 +1389,7 @@ local function clientScenarios()
 			T.check(worldGuide() == nil, "travel: no world trail away from the lobby")
 			Mock.Teleport(player, plaza)
 			KC.advance(1.0)
-			T.check(tostring(chipText()):match("^Storm Altar / %d+ studs$") ~= nil and worldGuide() ~= nil, "travel: back in the lobby the trail picks up by itself", tostring(chipText()))
+			T.check(tostring(chipText()):match("^Storm Altar / %d+ studs") ~= nil and worldGuide() ~= nil, "travel: back in the lobby the trail picks up by itself", tostring(chipText()))
 
 			------------------------------------------------------------------ a battle / match ends it cleanly
 			player:SetAttribute(Config.Attr.InBattle, "B9")
@@ -2064,8 +2064,10 @@ local function clientScenarios()
 			if not chip then
 				return nil, false
 			end
+			-- (its wood edge: the owner's pick B draws it on screen px, 2 on a phone and 3 on a PC - its SignEdge as drawn)
+			local s = chip:FindFirstChild("SignEdge")
 			local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
-			return grow(screenRect(chip), 3 * k), shownGui(chip) -- (its wood edge)
+			return grow(screenRect(chip), (s and s.Thickness or 3) * k), shownGui(chip)
 		end
 		local function tutorialPayload(index) -- (smoke_kitb_ui's U99.tutorialPayload)
 			local list = Steps.Steps
@@ -2157,7 +2159,8 @@ local function clientScenarios()
 						camObj.CFrame = camAtTilt(0)
 						KC.advance(0.1)
 						T.check(Guide.Start("StormAltar") == true, tag .. ": (setup) the guide starts")
-						Mock.ShowPrompt(prompt, Enum.ProximityPromptInputType.Touch)
+						-- (travel_guide_plank_wide: a PC's plank on a PC screen)
+						Mock.ShowPrompt(prompt, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
 						local cards = { { prompt = prompt, from = 0 } }
 						local t, worst, worstAt, frames, shownFrames, gateFrames = 0, math.huge, nil, 0, 0, 0
 						local hereShown, hereFrames, hereGap, hereAt = 0, 0, nil, "-"

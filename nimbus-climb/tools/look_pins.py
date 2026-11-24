@@ -760,7 +760,8 @@ def pin_U2(c, sizes):
 # guidechip:<state>), at the fifteen sizes of the pick (B_SIZES):
 #   B0  its home: a landscape screen's chip wholly in the top band at its right end (its right edge within
 #       B_DOCK px of TopbarInset's right end, the '...' room); a portrait phone's on the vitals stack (its ink's foot
-#       B_STACK px over the name plank or the docked quest strip, its face's left edge the card's)
+#       B_STACK px over the name plank or the docked quest strip - or over a touch key in its columns: "clear of RUN" -,
+#       its face's left edge the card's)
 #   B1  its ink keeps battle_hud_no_overlap's MIN_GAP off every other HUD piece (the menu column, the pill, the wallet
 #       strips, the gift and boosts, the toasts, the tutorial, the mouse-lock plank, the party panel, the vitals card and
 #       the touch keys) and off Roblox's own top-bar buttons and touch rings; a match or its countdown ends the guide:
@@ -844,6 +845,13 @@ def pin_B(c, sizes):
                     su = c.BH.union(sink)
                     if su[3] <= foot + 0.5 and su[1] < foot:
                         foot = min(foot, su[1])
+                # (the pick: "clear of RUN") a touch key in the chip's columns that reaches up into its spot: the chip
+                # stands B_STACK px over the key instead (320 x 568: the vitals card stands right of the menu, under RUN)
+                for p, n in nodes.items():
+                    if re.match(r"^MobileControls\.\w+Button$", p) and float(n["w"]) > 1:
+                        ku = c.BH.union(c.BH.ink_of(n, c.RG, c.fonts) or [rect(n)])
+                        if ku[0] < ui[2] + B_STACK and ku[2] > ui[0] - B_STACK and ku[1] < foot and ku[3] > ui[1] - B_STACK:
+                            foot = min(foot, ku[1])
                 face = rect(chip)
                 ok = abs((foot - B_STACK) - ui[3]) <= 1.5 and abs(face[0] - rect(card)[0]) <= 1.5
                 c.check("B0", ok, "B0 %s: the chip stands on the vitals stack, %d px over the name plank (or the strip), flush with the card" % (what, B_STACK),
