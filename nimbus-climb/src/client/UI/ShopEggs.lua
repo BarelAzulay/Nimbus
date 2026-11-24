@@ -129,6 +129,12 @@ local K = {
 	HERO_PHONE = 200,
 	FADE = 48,
 	TILE_WIDE = 240, -- (fix round B) the widest a phone card grows to fill its viewport with whole cards
+	-- (fix6, P2 icons look pol1 #1) the narrowest phone card that draws the sheet's machines at 2 px cells: the card's stage
+	-- (w - 102, L.cardSheetPhone) holds the 53-cell drawing and its 2 px rim (106 + 4), the hero's column (w - 90,
+	-- L.heroPhone) the vault's 61 cells (122)
+	TILE_SHEET = 212,
+	-- (fix6) and the widest it grows to fill the row: two 2 px cards on an 800 wide phone left 120 px of bare page
+	TILE_WIDE_SHEET = 300,
 	MORE_GUTTER = 40, -- (fix round B) the More arrow's column right of the phone row's viewport (its block is 30 wide, 4 in)
 	SNAP_DELAY = 0.25, -- (fix round B) s a drag rests before the phone row snaps to a whole card
 	SCROLLBAR = SignKit.Sizes.ScrollBar, -- (LOOK-ui) the kit's one bar (was 6, black, round ends)
@@ -197,7 +203,9 @@ local K = {
 	-- CardsY + Card + 8 takes TIGHT, sized from the body (L.plan): the hero 180 with a 150 machine, the cards from y 208
 	-- down to the body's bottom (MinCard at least, then the page scrolls), the machine 84, the odds rows share what is left
 	-- over the two button rows
-	TIGHT = { Hero = 180, HeroArt = 150, CardsY = 208, Art = 84, RowsY = 182, HintH = 20, MinCard = 440 },
+	-- (fix6, P2 icons look pol1 #1's class at 960 x 540: MinCard 440 left the sheet's stage 146 tall, the machines at 1 px
+	-- cells) MinCard 457: the stage (Card - 282 - LIFT, L.cardSheetPC) keeps the 163 its 2 px cells need under the 0.8 Fit
+	TIGHT = { Hero = 180, HeroArt = 150, CardsY = 208, Art = 84, RowsY = 182, HintH = 20, MinCard = 457 },
 	-- the machine: the pitch's 200 x 230 drawing; its dome eggs (the pitch's lists) at the pitch's spots pulled 30% toward
 	-- the dome's centre (100, 76), so every egg stays inside the round glass (a plain Frame clips square)
 	BOX = { 0, 0, 200, 230 },
@@ -1153,24 +1161,31 @@ end
 -- the hero's odds line on PC: each row Egg 40 + the rarity + the percent (24 px), then "gems only"
 function L.heroOddsPC(t, w)
 	-- (Task 26: the big egg moved the texts right) the gap between the rows narrows from 24 to 12 before "gems only"
-	-- is left out for want of room
-	local widths, total = {}, 0
-	for i, row in ipairs(t.Rows) do
-		local ww = H.textW(row.Word.Text, 24, Theme.FontOf(row.Word)) + 2
-		local pw = H.textW(row.Pct.Text, 24, Theme.FontOf(row.Pct)) + 2
-		widths[i] = { ww, pw }
-		total = total + math.floor(EggArt.Metrics.WIDTH * 40 + 0.5) + 8 + ww + 8 + pw
+	-- is left out for want of room. (kit-b P2 fix6, icons look pol1 #2: at 1024 x 768 "Secret 40%" ran under the button)
+	-- then the words step down from 24 px to 22 and 20 before the rows run past their column
+	local widths, total, size = {}, 0, 24
+	for _, sz in ipairs({ 24, 22, 20 }) do
+		widths, total, size = {}, 0, sz
+		for i, row in ipairs(t.Rows) do
+			local ww = H.textW(row.Word.Text, sz, Theme.FontOf(row.Word)) + 2
+			local pw = H.textW(row.Pct.Text, sz, Theme.FontOf(row.Pct)) + 2
+			widths[i] = { ww, pw }
+			total = total + math.floor(EggArt.Metrics.WIDTH * 40 + 0.5) + 8 + ww + 8 + pw
+		end
+		if total + 12 * (#t.Rows - 1) <= w then
+			break
+		end
 	end
-	t.GemsOnly.TextSize = 24
-	local gw = H.textW(t.GemsOnly.Text, 24, Theme.FontOf(t.GemsOnly)) + 2
+	t.GemsOnly.TextSize = size
+	local gw = H.textW(t.GemsOnly.Text, size, Theme.FontOf(t.GemsOnly)) + 2
 	local gap = (total + 24 * #t.Rows + gw <= w) and 24 or 12
 	local x = 0
 	for i, row in ipairs(t.Rows) do
 		local ew = H.sizeEgg(row.Egg, 40)
 		place(row.Egg, 0, 0, ew, 40)
 		row.Word.Visible = true
-		row.Word.TextSize = 24
-		row.Pct.TextSize = 24
+		row.Word.TextSize = size
+		row.Pct.TextSize = size
 		local ww, pw = widths[i][1], widths[i][2]
 		place(row.Word, ew + 8, 0, ww, 40)
 		place(row.Pct, ew + 8 + ww + 8, 0, pw, 40)
@@ -1188,13 +1203,29 @@ function L.heroPC(t, w, M)
 	local art = M.HeroArt
 	local artH = math.floor(art * 1.15)
 	local ep = ref and K.HERO_EGG.Ref or K.HERO_EGG.Shrunk
+	local vaultH = M.Hero - (M.Ref and 16 or 6)
+	-- (kit-b P2 fix6, icons look pol1 #2: a tablet's card, 864 wide at 1024 x 768, left the texts w - 305 - 340 = 219 px:
+	-- "SECRET...", the odds under the button, "Available at the...", its padlock outside the chip) the texts start at
+	-- ep[3] while the title has its 46 px there; a narrower card's art column gives up the room it holds empty: down to
+	-- the vault's own width (its cells come from the column's height, so a column cw / ch of that height draws the same
+	-- cells) or to the drawn machine's box (the big egg goes)
+	-- (the title reads in capitals: its role's; "Secret Roulette" measured 8 % short)
+	local caps = Theme.Caps(t.Name)
+	local want = H.textW(caps, 46, Theme.FontOf(t.Title)) + 2
+	local x = ep[3]
+	if w - x - 340 < want then
+		local c = t.Machine.Sheet and t.Machine.Cell
+		local least = c and (12 + math.ceil(vaultH * c[3] / c[4])) or (26 + art + 12)
+		x = math.min(x, math.max(least, math.floor(w - 340 - want)))
+	end
+	local roomy = x >= ep[3]
 	-- (Pitch 2 item 10 A) the sheet's vault stands on its own stage left of the big egg (Task 26), not under it; today's
 	-- drawn machine keeps its whole box (the egg overlaps its edge, as before)
 	if t.Machine.Sheet then
 		-- (P2 icons review r1, major 3) the vault alone, as tall as the card allows (3 px cells at 1920), centred in the art
 		-- column left of the texts: the big egg goes (two hero objects fought there)
 		-- (its foot 14 px over the card's foot on REF, clear of the colour lip; 4 px on the shorter plans, so 1280 keeps 2 px)
-		L.heroSheetArt(t, 4, 2, ep[3] - 12, M.Hero - (M.Ref and 16 or 6))
+		L.heroSheetArt(t, 4, 2, x - 12, vaultH)
 	else
 		place(t.Machine.Root, 26, ref and 10 or 8, art, artH)
 		t.Machine.AlignX = 0
@@ -1203,12 +1234,16 @@ function L.heroPC(t, w, M)
 		local ew = math.floor(EggArt.Metrics.WIDTH * ep[1] + 0.5)
 		EggArt.Resize(t.Egg, ep[1])
 		place(t.Egg, ep[2], (M.Hero - ep[1]) / 2, ew, ep[1])
-		t.Egg.Visible = true
+		t.Egg.Visible = roomy
 	end
-	local x = ep[3]
 	local tw = w - x - 340
 	t.Title.Text = t.Name
-	t.Title.TextSize = 46
+	-- (fix6) the title steps down from 46 px while it is wider than its column (36 at 1024 x 768)
+	local ts = 46
+	while ts > 28 and H.textW(caps, ts, Theme.FontOf(t.Title)) + 2 > tw do
+		ts = ts - 1
+	end
+	t.Title.TextSize = ts
 	place(t.Title, x, ref and 22 or 12, tw, 56)
 	local oy = ref and 84 or 76
 	place(t.Odds, x, oy, tw, 40)
@@ -1216,11 +1251,14 @@ function L.heroPC(t, w, M)
 	place(t.NoOdds, x, oy, tw, 40)
 	t.NoOdds.TextSize = 22
 	local cy = ref and 132 or 124
-	place(t.Pity, x, cy, math.min(400, tw), 48)
+	-- (fix6) on a narrow card the chips end 8 px short of the hint's line (w - 380: its longest line, 358 px, whole) and
+	-- take the line that fits them (ShopEggs.Refresh: "At the Storm Altar", "Secret in N")
+	local chipMax = roomy and tw or math.max(0, math.min(tw, w - 388 - x))
+	place(t.Pity, x, cy, math.min(400, chipMax), 48)
 	t.Pity.TextSize = 22
 	-- (shop-area) the altar chip in the pity chip's place, as wide as its long line needs (400 at least)
 	t.AltarChip.TextSize = 22
-	local chipW = math.min(tw, math.max(400, H.textW(K.TEXT.AltarLock, 22, Theme.FontOf(t.AltarChip)) + 32 + 26)) -- (+ the padlock and its gap)
+	local chipW = math.min(chipMax, math.max(400, H.textW(K.TEXT.AltarLock, 22, Theme.FontOf(t.AltarChip)) + 32 + 26)) -- (+ the padlock and its gap)
 	place(t.AltarChip, x, cy, chipW, 48)
 	t.Dim.Position = UDim2.fromOffset(0, 0)
 	t.Dim.Size = UDim2.new(0, x - 8, 1, 0) -- the machine and the big egg; the texts from x stay clear
@@ -1703,9 +1741,13 @@ function L.phone(P, W, Hh)
 	local y = math.floor((Hh - th) / 2)
 	local gap = K.STEP - K.TILE
 	local items = 1 + #P.Cards
-	local n = math.max(1, math.min(items, math.floor((W - K.MORE_GUTTER + gap) / K.STEP)))
+	-- (fix6, P2 icons look pol1 #1: from 720 to 960 wide the row fitted 3-4 cards of 166-199, whose stages held the sheet's
+	-- machines at 1 px cells only, half size in an empty stage, the x3 plank's coin on its words) with the sheet's
+	-- machines a card is never narrower than K.TILE_SHEET: fewer whole cards, each drawn at 2 px cells
+	local minTile = (P.Hero and P.Hero.Machine and P.Hero.Machine.Sheet) and K.TILE_SHEET or K.TILE
+	local n = math.max(1, math.min(items, math.floor((W - K.MORE_GUTTER + gap) / (minTile + gap))))
 	local room = n < items and (W - K.MORE_GUTTER) or W
-	local tile = math.min(K.TILE_WIDE, math.max(K.TILE, math.floor((room - (n - 1) * gap) / n)))
+	local tile = math.min(minTile == K.TILE_SHEET and K.TILE_WIDE_SHEET or K.TILE_WIDE, math.max(minTile, math.floor((room - (n - 1) * gap) / n)))
 	local pitch = tile + gap
 	local viewW = math.min(W, n * pitch - gap)
 	place(s, 0, 0, viewW, Hh)
@@ -2120,14 +2162,21 @@ function ShopEggs.Refresh(page, fromLayout)
 	h.Dim.Visible = altar and not H.sheetShown(h)
 	h.AltarChip.Visible = altar
 	-- (P2 icons look pol0, major) the phone line while it fits the chip's room beside its padlock (the chip less its
-	-- UIPadding, 2 px spare), else the tiny one: never a cut "At the Storm Al."
+	-- UIPadding, 2 px spare), else the tiny one: never a cut "At the Storm Al." (kit-b P2 fix6, icons look pol1 #2) the
+	-- PC chip the same way from its long line: a tablet's narrow chip (L.heroPC) reads the phone's
 	local chipText = brief and K.TEXT.AltarLockShort or K.TEXT.AltarLock
+	local pad = h.AltarChip:FindFirstChildOfClass("UIPadding")
+	local room = h.AltarChip.Size.X.Offset - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0)
+	local function fits(line)
+		return H.textW(line, h.AltarChip.TextSize, Theme.FontOf(h.AltarChip)) + 2 <= room
+	end
 	if brief then
-		local pad = h.AltarChip:FindFirstChildOfClass("UIPadding")
-		local room = h.AltarChip.Size.X.Offset - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0)
-		if H.textW(chipText, h.AltarChip.TextSize, Theme.FontOf(h.AltarChip)) + 2 > room then
+		if not fits(chipText) then
 			chipText = K.TEXT.AltarLockTiny
 		end
+	elseif h.AltarChip.Size.X.Offset > 0 and not fits(chipText) then
+		-- (laid out: before its first layout it keeps the long line)
+		chipText = fits(K.TEXT.AltarLockShort) and K.TEXT.AltarLockShort or K.TEXT.AltarLockTiny
 	end
 	h.AltarChip.Text = chipText
 	h.Travel.Button.Visible = altar
@@ -2156,9 +2205,11 @@ function ShopEggs.Refresh(page, fromLayout)
 			h.Lock.Text = brief and K.TEXT.CheckingShort or K.TEXT.Checking
 		end
 	else
-		-- (Portrait: the long line while it fits the chip, else the phone's "Secret in N")
+		-- (Portrait: the long line while it fits the chip, else the phone's "Secret in N"; kit-b P2 fix6: on PC too, the
+		-- tablet's narrow chip)
 		local text = H.pityText(short)
-		if P.Mode == "Portrait" and H.textW(text, h.Pity.TextSize, Theme.FontOf(h.Pity)) + 16 > h.Pity.Size.X.Offset then
+		if not short and (P.Mode == "Portrait" or h.Pity.Size.X.Offset > 0)
+			and H.textW(text, h.Pity.TextSize, Theme.FontOf(h.Pity)) + 16 > h.Pity.Size.X.Offset then
 			text = H.pityText(true)
 		end
 		h.Pity.Text = text

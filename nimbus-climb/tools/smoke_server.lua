@@ -176,6 +176,47 @@ S.mock_selftest = guarded("mock_selftest", function()
 		return Enum.Material.Cloud
 	end, "not a valid member"), "unknown Enum.Material member is an error")
 	T.eq(Enum.Material.Neon, Enum.Material.Neon, "enum items are interned")
+	-- (fix6, the 'client final' flake: ShowcaseController.lua:285 "RenderStepped can only be used from a LocalScript".
+	-- The client world builds the real lobby as the server for a while (travel_guide_walk, dump_gui's worldui scenes:
+	-- Mock.Context = "server"); a client controller's tag handler fired there, and a client thread waking from its 0.25 s
+	-- task.wait inside that window, ran as the server) a thread runs in the context of the script that made it: a
+	-- handler in the context it was connected from, a thread spawned there in that one, across its waits
+	do
+		local RS = game:GetService("RunService")
+		local was = Mock.Context
+		local seen, errs = {}, {}
+		local function look(tag)
+			local ok, err = pcall(function()
+				return RS.RenderStepped
+			end)
+			seen[#seen + 1] = tag .. "=" .. tostring(Mock.Context)
+			if not ok then
+				errs[#errs + 1] = tag .. ": " .. tostring(err)
+			end
+		end
+		local ev = Instance.new("BindableEvent")
+		Mock.Context = "client"
+		local conn = ev.Event:Connect(function()
+			look("handler")
+			task.spawn(function()
+				task.wait(0.25)
+				look("its thread")
+			end)
+		end)
+		task.spawn(function()
+			task.wait(0.25)
+			look("client thread")
+		end)
+		Mock.Context = "server"
+		ev:Fire()
+		Mock.Advance(0.5)
+		T.check(#errs == 0 and #seen == 3, "mock: a client handler fired from the server, and client threads waking in a server window, run as the client",
+			table.concat(seen, ", ") .. (#errs > 0 and (" | " .. table.concat(errs, "; ")) or ""))
+		T.check(Mock.Context == "server", "mock: the context is the driver's again after the client threads ran", tostring(Mock.Context))
+		conn:Disconnect()
+		ev:Destroy()
+		Mock.Context = was
+	end
 	-- Random is deterministic and well spread
 	local a, b = Random.new(42), Random.new(42)
 	local same = true

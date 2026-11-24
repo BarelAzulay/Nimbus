@@ -75,6 +75,11 @@ local Client = script.Parent.Parent
 local LocalPlayer = Players.LocalPlayer
 
 local TutorialController = {}
+-- (look:fix6b2 N3) Metrics.MEASURE(text, size, role) -> Vector2: a one-line text's size (design px) when a hook is set, else
+-- Theme.Measure (TextService). tools/dump_gui.lua's tutorial scenes hand it the renderer's font metrics: the mock's
+-- TextService answers a flat 0.5 em a letter, so the titles' fit (fitTextSize) kept 'The Champion Ring' (FredokaOne draws it
+-- 0.545 em a letter) at its full size and the gate's render cut it to 'The Champion Ri...'; Roblox measures the face
+TutorialController.Metrics = { MEASURE = nil }
 
 ----------------------------------------------------------------------
 -- Tunables (design pixels of a 1080p screen unless noted)
@@ -201,6 +206,9 @@ local K = {
 	-- once its own spot is clear by twice that. The GuideSign flips to the arrow's left when its right side runs off the
 	-- screen or under the HUD
 	GUIDE_CLEAR = 10,
+	-- (look:new3) screen px the chip keeps off a prompt's plank (the gate's Enter, an NPC's Talk) at a spot aside and on a
+	-- step: 6, and a half px for the chip's whole px. Home leaves at GUIDE_CLEAR (8 px or more under the 0.8 floor)
+	GUIDE_PLANK_KEEP = 7,
 	-- (look review fin1, MJ-A; pol0, MAJOR 2) the guide is laid out every GUIDE_DODGE_EVERY s (a frame at 30 fps). The
 	-- chip keeps one place while the player walks at the gate: it leaves home only for the arrow or the gate's plank (the
 	-- GuideSign gives way to the chip: pol0 minor 3), seeing each GUIDE_LEAD s ahead along the way it moves (from past the
@@ -219,8 +227,22 @@ local K = {
 	GUIDE_STEP = 1 / 15,
 	GUIDE_STEP_PART = 0.25,
 	GUIDE_HIDE_STEP = 0.1,
-	GUIDE_PASS = 60,
+	-- (kit-b P2 fix6 look0 #5) 20, was 60: a 6 degrees a second pan moves the arrow ~45 px a second (1080p px) and went
+	-- for the side ahead, then crossed (two trips a pass); the speed is smoothed over GUIDE_VX_SMOOTH s (chipObstacles)
+	GUIDE_PASS = 20,
+	GUIDE_VX_SMOOTH = 0.2,
+	-- (kit-b P2 fix6b, look1 #1) every state the chip shows (a spot, a line) holds GUIDE_HOLD s: the short line waits at home
+	-- for a passing arrow only where it will stand that long, else the chip hides until the spot behind the arrow is free
+	GUIDE_HOLD = 0.5,
+	-- (kit-b P2 fix6b, look1 #2) the camera's turn either side of the gate (a sway) the chip's spot aside allows for
+	GUIDE_SWAY = 8,
+	GUIDE_HOME_WAIT = 0.15,
 	SIGN_CLEAR = 8, -- (fin1) the GuideSign takes a spot this far off the HUD and the chip (1080p px), keeps it while half that
+	-- (kit-b P2 fix6, world look pol1 A) the GuideSign takes a NEW spot or line only where it still holds with the arrow
+	-- where it will stand SIGN_HOLD s on (its way on the screen over the last SIGN_SEEN s), and once hidden stays hidden
+	-- SIGN_HOLD s: no show, hide, line or spot under SIGN_HOLD s (it flashed four times in 0.6 s on a landscape phone)
+	SIGN_HOLD = 0.5,
+	SIGN_SEEN = 0.2,
 	GUIDE_HUD_EVERY = 0.25,
 	-- confetti (gui px at factor 1)
 	CONFETTI_SMALL = 26,
@@ -709,7 +731,11 @@ end
 -- FontFace role widened: the Title role's Enum font in lower case measured "NIMBUS" 10 % short, and the name came out
 -- "NIMB..."); a rough per-character estimate when TextService cannot measure.
 local function textWidth(text, size, role)
+	local hook = TutorialController.Metrics.MEASURE
 	local ok, measured = pcall(function()
+		if hook then
+			return hook(text, size, role)
+		end
 		return Theme.Measure(text, role, size, 10000)
 	end)
 	if ok and measured and measured.X > 0 then
@@ -800,6 +826,26 @@ local function menuRect()
 		end
 	end
 	return found
+end
+
+-- (look:fix6b2 N1) the menu column as far as it reaches: menuRect with every shown button in the column - its tiles, its
+-- fold tab and the tab's tap pad (MenuController's ToggleHit, reaching right into the free sky); nil without a column
+local function columnReach()
+	local r = menuRect()
+	local pg = playerGui()
+	local menuGui = pg and pg:FindFirstChild("NimbusMenu")
+	local column = r and menuGui and menuGui:FindFirstChild("MenuColumn", true)
+	if not column then
+		return r
+	end
+	local dy = insetShift(menuGui)
+	for _, d in ipairs(column:GetDescendants()) do
+		if d:IsA("GuiButton") and d.AbsoluteSize.X > 0 and shownIn(d, menuGui) then
+			local b = rectOf(d, dy)
+			r = { x0 = math.min(r.x0, b.x0), y0 = math.min(r.y0, b.y0), x1 = math.max(r.x1, b.x1), y1 = math.max(r.y1, b.y1) }
+		end
+	end
+	return r
 end
 
 -- HUD neighbours (published by HudController, gui px): bottom of the top-left panel area and top of the
@@ -1456,12 +1502,27 @@ local function layout()
 	-- stack over the vitals card (from its left edge to the RUN / DASH column's right edge, STRIP_DOCK_GAP over it); on
 	-- PC and a landscape phone top-left under the top bar (under a top-left panel, else beside it at the top edge), right
 	-- of the menu column and short of the top-right stack. Too narrow, with no room, or meeting the arena's side stack: the
-	-- portrait chip alone
+	-- portrait chip alone. (look:fix6b major 1) On a portrait phone the strip docks over the whole stack it spans: where
+	-- RUN stands higher than the vitals card (360 x 640, 375 x 667, 384 x 640 since O3's 2947a7a moved the card left of
+	-- RUN / DASH and below RUN's top) it sits STRIP_DOCK_GAP over RUN (it ran 58 x 22 px over RUN); a strip that would
+	-- then meet a key, the menu column, the top-right stack or the top edge folds to the portrait chip
 	local stripW, stripChip = K.STRIP_W, false
 	if folded then
 		local h2 = K.STRIP_H * k
 		local chipH = K.STRIP_CHIP * k
 		local v = area.Y > area.X and vitalsRect() or nil
+		local reach = v and columnReach() or nil -- (look:fix6b2 N1) the menu column with its fold tab's tap pad
+		local dockBlocked = false
+		-- a touch key round `x0`..`x1` x `t0`..`t1` (STRIP_DOCK_GAP of air, half a px spare), nil when none
+		local function keyIn(x0, x1, t0, t1)
+			local d = K.STRIP_DOCK_GAP - 0.5
+			for _, r in ipairs(touchButtonRects()) do
+				if r.x1 > x0 - d and r.x0 < x1 + d and r.y1 > t0 - d and r.y0 < t1 + d then
+					return r
+				end
+			end
+			return nil
+		end
 		if v then
 			local right = v.x1
 			for _, r in ipairs(touchButtonRects()) do
@@ -1469,8 +1530,25 @@ local function layout()
 					right = math.max(right, r.x1)
 				end
 			end
-			left, top = v.x0, v.y0 - K.STRIP_DOCK_GAP - h2
+			left = v.x0
 			stripW = math.min(K.STRIP_W, math.floor((math.min(right, area.X - edge) - left) / k))
+			-- the stack's top across the strip's width: the vitals card's, or a key's beside it that stands higher
+			local stackTop = v.y0
+			for _, r in ipairs(touchButtonRects()) do
+				if r.x1 > left and r.x0 < left + stripW * k and r.y0 < v.y1 and r.y1 > v.y0 - K.STRIP_DOCK_GAP - h2 then
+					stackTop = math.min(stackTop, r.y0)
+				end
+			end
+			top = stackTop - K.STRIP_DOCK_GAP - h2
+			local x1 = left + stripW * k
+			local g = K.GAP * k
+			-- (look:fix6b2 N1) the column with STRIP_DOCK_GAP of air beyond the strip's own wood edge: GAP's 8 px off its box
+			-- left 3.5 px of ink between the strip's edge and the tiles' shadow at 384 x 720 in a 3 player match (0.9 px at
+			-- 400 x 720)
+			local d = K.STRIP_DOCK_GAP + K.STRIP_EDGE * k - 0.5
+			dockBlocked = top < edge or keyIn(left, x1, top, top + h2) ~= nil
+				or (reach ~= nil and left < reach.x1 + d and x1 > reach.x0 - d and top < reach.y1 + d and top + h2 > reach.y0 - d)
+				or (hud.TopRightLeft > 0 and x1 > hud.TopRightLeft - g and top < hud.TopRightBottom + g)
 		else
 			top = hud.TopLeftBottom > 0 and (hud.TopLeftBottom + K.GAP * k) or edge
 			left = leftFor(top, h2)
@@ -1488,10 +1566,62 @@ local function layout()
 		local x1, y1 = left + stripW * k, top + h2
 		local g = K.GAP * k
 		local meets = side ~= nil and left < side.x1 + g and x1 > side.x0 - g and top < side.y1 + g and y1 > side.y0 - g
-		stripChip = stripW < K.STRIP_MIN_W or meets or (v == nil and y1 > bottomLimit)
+		stripChip = stripW < K.STRIP_MIN_W or meets or dockBlocked or (v == nil and y1 > bottomLimit)
 		if stripChip then
 			if v then
-				top = v.y0 - K.STRIP_DOCK_GAP - chipH -- (on the stack still, its foot where the strip's was)
+				-- on the stack still, STRIP_DOCK_GAP over the vitals card; (look:fix6b major 1) and over a key in its own
+				-- column, should one stand there
+				local function spot(l)
+					local t = v.y0 - K.STRIP_DOCK_GAP - chipH
+					local r = keyIn(l, l + chipH, t, t + chipH)
+					return r and (r.y0 - K.STRIP_DOCK_GAP - chipH) or t
+				end
+				-- (look:fix6b2 N1) at the card's left edge, else right of the menu column and its fold tab's tap pad
+				-- (columnReach), else right of its tiles (menuRect; the tap pad, over the chip, takes a tap there): the
+				-- first spot that keeps STRIP_DOCK_GAP of air off every HUD piece round it (the column, the keys, the vitals
+				-- block, the top-left panel, each piece of the top-right stack - the wallet strips, the Gift tile, the boost
+				-- chips -, the arena's side stack, the screen's edges). In a 3 or 4 player match and on a full party pad the
+				-- panel pushes the column down to the card: the chip, checked against the keys only, lay under its Home tile
+				-- (20 - 26.5 px). Where no spot is clear it keeps the first
+				local d = K.STRIP_DOCK_GAP - 0.5
+				local pieces = {}
+				local pg = playerGui()
+				for _, spec in ipairs({ { "NimbusHud", "TopRight" }, { "NimbusDaily" }, { "NimbusBoosts" } }) do
+					local g = pg and pg:FindFirstChild(spec[1])
+					local holder = g and g:IsA("ScreenGui") and g.Enabled and (spec[2] and g:FindFirstChild(spec[2]) or g)
+					for _, c in ipairs(holder and holder:GetChildren() or {}) do
+						local s = c:IsA("GuiObject") and c.AbsoluteSize
+						if s and s.X > 0 and s.X < area.X * 0.6 and s.Y < area.Y * 0.6 and shownIn(c, g) then
+							pieces[#pieces + 1] = rectOf(c, insetShift(g))
+						end
+					end
+				end
+				local function clear(l, t, col)
+					local function meets(r)
+						return r ~= nil and r.x1 > l - d and r.x0 < l + chipH + d and r.y1 > t - d and r.y0 < t + chipH + d
+					end
+					if t < edge or l + chipH > area.X - edge or meets(col) or meets(arenaSideRect()) then
+						return false
+					end
+					for _, list in ipairs({ touchButtonRects(), bottomLeftRects(), pieces }) do
+						for _, r in ipairs(list) do
+							if meets(r) then
+								return false
+							end
+						end
+					end
+					return not (hud.TopLeftBottom > 0 and t < hud.TopLeftBottom + d and (hud.TopLeftRight <= 0 or l < hud.TopLeftRight + d))
+				end
+				local tiles = menuRect()
+				top = spot(left)
+				for _, s in ipairs({ { left, reach }, { reach and reach.x1 + K.STRIP_DOCK_GAP, reach }, { tiles and tiles.x1 + K.STRIP_DOCK_GAP, tiles } }) do
+					local l = s[1] and math.max(left, s[1])
+					local t = l and spot(l)
+					if l and clear(l, t, s[2]) then
+						left, top = l, t
+						break
+					end
+				end
 			elseif top + chipH > bottomLimit then
 				top = math.max(edge, bottomLimit - chipH)
 				left = leftFor(top, chipH)
@@ -3461,12 +3591,32 @@ local function signRect()
 end
 
 -- the target gate prompt's plank (PromptController's card) while it shows -> rect or nil
-local function promptRect()
+local function targetCard()
 	local part = G.part
 	local prompt = part and G.spec and part:FindFirstChild(G.spec.Prompt)
 	local PC = prompt and mod("PromptController")
-	local card = PC and type(PC.CardOf) == "function" and PC.CardOf(prompt) or nil
+	return PC and type(PC.CardOf) == "function" and PC.CardOf(prompt) or nil
+end
+local function promptRect()
+	local card = targetCard()
 	return card and billboardRect(card) or nil
+end
+
+-- (look:new3) the planks of the world's other prompts while they show (an NPC's "Talk", a machine's: PromptController's
+-- cards, BillboardGuis in the PlayerGui): the chip keeps off each as off the gate's -> { { card, rect } }
+local function otherPlanks()
+	local out = {}
+	local pg = playerGui()
+	local target = targetCard()
+	for _, c in ipairs(pg and pg:GetChildren() or {}) do
+		if c ~= target and c.Name == "PromptCard" and c:IsA("BillboardGui") then
+			local r = billboardRect(c)
+			if r then
+				out[#out + 1] = { card = c, rect = r }
+			end
+		end
+	end
+	return out
 end
 
 -- Roblox's own buttons in the top band (over our gui: y < 0), left / right of the TopbarInset; none without a band
@@ -3666,17 +3816,48 @@ end
 -- which grow past the sign's fixed offset when seen turned: pol0 minor 5, and slid down below what it meets, its middle
 -- never under the arrow's tip), hung under the tip (slid sideways clear of the HUD, the tip still over it); first with
 -- both lines, then with the name alone; none: it hides, the arrow stays. It keeps the spot it holds while that stays `m`
--- clear
+-- clear. (kit-b P2 fix6, world look pol1 A: on a landscape phone it flashed four times in the last 0.6 s of every walk:
+-- the name alone 0.15 s, hidden 0.13 s, hung under the tip 0.2 s on the chip's row, 7-10 px over it, hidden again) It takes
+-- a NEW spot or line only where it still holds with the arrow where it will stand K.SIGN_HOLD s on (lasts: so as the arrow
+-- leaves the screen's top it hides and stays hidden), once hidden stays hidden K.SIGN_HOLD s, and keeps twice
+-- K.SIGN_CLEAR (the chip's own px) off the chip
 local SIGN_SPOTS = { "right", "left", "under" }
 local function placeSign(area, hud, m, a)
 	local gui, card = W.labelGui, W.signCard
 	if not (gui and card) then
 		return
 	end
-	if not a then
+	local now = S.clock
+	local function hide()
+		if W.signSpot ~= nil then
+			W.signOffAt = now
+		end
 		W.signSpot = nil
+	end
+	if not a then
+		hide()
+		W.signHist = nil
 		setSignShown(false)
 		return
+	end
+	-- the arrow's way on the screen over the last K.SIGN_SEEN s (a new screen size starts it again) -> where it will stand
+	-- K.SIGN_HOLD s on
+	local hist = W.signHist
+	if not hist or hist.w ~= area.X or hist.h ~= area.Y then
+		hist = { w = area.X, h = area.Y }
+		W.signHist = hist
+	end
+	hist[#hist + 1] = { t = now, a = a }
+	while #hist > 2 and now - hist[2].t >= K.SIGN_SEEN do
+		table.remove(hist, 1)
+	end
+	local ahead, o = a, hist[1]
+	if now - o.t > 1e-3 then
+		local f = K.SIGN_HOLD / (now - o.t)
+		ahead = {
+			x0 = a.x0 + (a.x0 - o.a.x0) * f, y0 = a.y0 + (a.y0 - o.a.y0) * f,
+			x1 = a.x1 + (a.x1 - o.a.x1) * f, y1 = a.y1 + (a.y1 - o.a.y1) * f,
+		}
 	end
 	local block = hud
 	if G.chip and G.to and not (G.away and G.away.hide) then
@@ -3684,16 +3865,105 @@ local function placeSign(area, hud, m, a)
 		for _, r in ipairs(hud) do
 			block[#block + 1] = r
 		end
-		local to = chipRectAt(G.to.x, G.to.y)
+		-- (fix6) the chip's boxes grown so the sign keeps 2 x K.SIGN_CLEAR of the chip's px off it as it keeps its spot
+		local extra = math.max(0, 2 * K.SIGN_CLEAR * (G.scale and G.scale.Scale or 1) + 1 - m)
+		local to = grown(chipRectAt(G.to.x, G.to.y), extra)
 		block[#block + 1] = to
 		if G.at and not (G.move and G.move.hide) then
 			-- (its way there while it steps; a way across the arrow is a hide-step, so then only where it stands)
-			local at = chipRectAt(G.at.x, G.at.y)
+			local at = grown(chipRectAt(G.at.x, G.at.y), extra)
 			local way = boxOf(at, to)
 			block[#block + 1] = rectsOverlap(way, a) and at or way
 		end
 	end
+	-- (kit-b P2 fix6b) where the chip may stand soon, for a new spot (lasts): away, its home (it comes back there); hidden
+	-- (G.away.hide: it shows again at its next spot at once), its row within its reach of home (its whole width off it,
+	-- each way); grown as its box is above
+	local soon = {}
+	-- (the arrow's shift in K.SIGN_HOLD s: sideways at least as far as its fastest of the last K.GUIDE_HOLD s carries it,
+	-- either way - turning back, its speed passes through 0)
+	local sx = math.max(math.abs(((ahead.x0 + ahead.x1) - (a.x0 + a.x1)) / 2), (G.vxPeak or 0) * K.SIGN_HOLD)
+	local sy = ((ahead.y0 + ahead.y1) - (a.y0 + a.y1)) / 2
+	if G.chip and G.to and G.away then
+		local kc = G.scale and G.scale.Scale or 1
+		local wf = ((G.lineFull and G.lineFull.w) or G.chip.Size.X.Offset) * kc
+		local hx, hy = G.homeAt and G.homeAt.x or area.X / 2, G.homeAt and G.homeAt.y or G.to.y
+		local r0 = chipRectAt(hx, hy, wf)
+		local extra = math.max(0, 2 * K.SIGN_CLEAR * kc + 1 - m)
+		-- (travel_guide_clear 1920 x 1080 graze: the arrow's tip on home, the chip aside, and the sign hid) away, it comes
+		-- home only once the arrow is off home in either line: while the arrow, all the way it may go in that time, stays on
+		-- the compact line's home and off the chip's berth where it stands, it stays where it is. An arrow coming within
+		-- that berth sends it anywhere in its row (720 x 405, pan at 6 degrees a second: it took the other side, over the
+		-- sign), as when it is hidden
+		local rc = chipRectAt(hx, hy, math.min(wf, (G.lineCompact and G.lineCompact.w * kc) or wf))
+		local function at(dx, dy)
+			return { x0 = a.x0 + dx, y0 = a.y0 + dy, x1 = a.x1 + dx, y1 = a.y1 + dy }
+		end
+		local reach = boxOf(boxOf(at(sx, sy), at(-sx, sy)), a)
+		local row = G.away.hide or rectsOverlap(reach, grown(chipRectAt(G.to.x, G.to.y), K.GUIDE_CLEAR * kc))
+		local stays = not row and rectsOverlap(a, rc) and rectsOverlap(at(sx, sy), rc) and rectsOverlap(at(-sx, sy), rc)
+		if not stays then
+			soon[1] = grown(row and { x0 = r0.x0 - wf, y0 = r0.y0, x1 = r0.x1 + wf, y1 = r0.y1 } or r0, extra)
+		end
+	end
 	local k = (W.signScale and W.signScale.Scale) or 1
+	-- (fix6) the spot `spot` the sign `r` just took still holds with the arrow at `ahead`: beside it, its middle between the
+	-- arrow's top and tip and the sign under the screen's top, its side on the screen; under it, under the screen's top
+	local function lasts(spot, r)
+		if not r then
+			return false
+		end
+		local h = r.y1 - r.y0
+		local top = -topInset() + m
+		if spot == "under" then
+			local y0 = ahead.y1 + K.SIGN_DROP * k
+			if not (y0 >= top and y0 + h <= area.Y - m) then
+				return false
+			end
+		else
+			-- (the highest it can slide in its column: under the screen's top and under what stands over it there)
+			for _, b in ipairs(block) do
+				if b.x1 > r.x0 - m and b.x0 < r.x1 + m and b.y1 <= r.y0 + 1 then
+					top = math.max(top, b.y1 + m + 1)
+				end
+			end
+			if math.min(ahead.y1, area.Y - m - h / 2) < math.max(ahead.y0, top + h / 2) then
+				return false
+			end
+		end
+		if spot == "under" then
+			-- (it hangs under the tip: carried below)
+		elseif spot == "left" then
+			if r.x0 + (ahead.x0 - a.x0) < m then
+				return false
+			end
+		elseif r.x1 + (ahead.x1 - a.x1) > area.X - m then
+			return false
+		end
+		-- (kit-b P2 fix6b, look1 #3: on pans, turning walks and a look up the sign still showed 1 - 14 frames: a spot in a
+		-- gap the arrow carried it out of, into the HUD or the chip, one the chip came back over, or one taken as a pan
+		-- turned back) and clear of the HUD and the chip all the way the arrow carries it in that time - and as far the
+		-- other way (a camera turning back) - and of where the chip may stand by then: home while it is away, and its row
+		-- within its reach while it is hidden
+		-- (the arrow's shift sx, sy above; and wholly on the screen all that way)
+		local way = boxOf({ x0 = r.x0 + sx, y0 = r.y0 + sy, x1 = r.x1 + sx, y1 = r.y1 + sy },
+			{ x0 = r.x0 - sx, y0 = r.y0 + sy, x1 = r.x1 - sx, y1 = r.y1 + sy })
+		way = boxOf(way, r)
+		if way.x0 < m or way.x1 > area.X - m then
+			return false
+		end
+		for _, b in ipairs(block) do
+			if rectsOverlap(way, grown(b, m)) then
+				return false
+			end
+		end
+		for _, b in ipairs(soon) do
+			if rectsOverlap(way, grown(b, m)) then
+				return false
+			end
+		end
+		return true
+	end
 	local function fits(r, margin)
 		return r ~= nil and freeRect(r, area, block, margin)
 	end
@@ -3768,18 +4038,23 @@ local function placeSign(area, hud, m, a)
 	if W.signSpot and try(W.signSpot, W.signShort, m) then
 		return
 	end
-	for _, short in ipairs({ false, true }) do
-		for _, spot in ipairs(SIGN_SPOTS) do
-			if try(spot, short, 2 * m) then
-				if W.signSpot ~= spot then
-					W.signSpot = spot
-					W.signGen = (W.signGen or 0) + 1
+	-- (fix6) hidden, it stays hidden K.SIGN_HOLD s; while the arrow leaves the screen's top (its top cut, rising) it takes
+	-- no name-alone line and no spot under the tip (there they held 2 to 13 frames: the arrow speeds up as it nears)
+	local leaving = a.y0 < -topInset() and ahead.y0 < a.y0
+	if not (W.signSpot == nil and W.signOffAt and now - W.signOffAt < K.SIGN_HOLD) then
+		for _, short in ipairs(leaving and { false } or { false, true }) do
+			for _, spot in ipairs(SIGN_SPOTS) do
+				if not (leaving and spot == "under") and try(spot, short, 2 * m) and lasts(spot, signRect()) then
+					if W.signSpot ~= spot then
+						W.signSpot = spot
+						W.signGen = (W.signGen or 0) + 1
+					end
+					return
 				end
-				return
 			end
 		end
 	end
-	W.signSpot = nil
+	hide()
 	setSignSide(false)
 	setSignShown(false)
 end
@@ -3801,16 +4076,21 @@ end
 -- GuideSign gives way to the chip instead), each swept K.GUIDE_LEAD s ahead along the way it moved since the last look,
 -- from where it stands even past the screen's edge (looking up at the gate, the arrow came in from the top right under
 -- the chip: pol0 MAJOR 2 c), then cut to the screen (the top band included). A piece that just showed is not swept.
--- -> swept list, the pieces as they stand and two looks on (on the screen), the arrow's sideways speed (px a second)
+-- -> swept list, the pieces as they stand and two looks on (on the screen), the arrow's sideways speed (px a second), the arrow two looks on and as it stands while it rises (or nil), the other pieces two looks on
 local function chipObstacles(area, dt)
 	local inset = topInset()
 	local function onScreen(r)
 		local c = { x0 = math.max(r.x0, 0), y0 = math.max(r.y0, -inset), x1 = math.min(r.x1, area.X), y1 = math.min(r.y1, area.Y) }
 		return (c.x1 > c.x0 and c.y1 > c.y0) and c or nil
 	end
-	local seen, list, near, vx = {}, {}, {}, 0
+	local seen, list, near, vx, rise, others = {}, {}, {}, 0, nil, {}
 	local pieces = { arrow = arrowRect(), plank = promptRect() }
-	for _, key in ipairs({ "arrow", "plank" }) do
+	local keys = { "arrow", "plank" }
+	for _, o in ipairs(otherPlanks()) do -- (look:new3; each swept by its own card)
+		pieces[o.card] = o.rect
+		keys[#keys + 1] = o.card
+	end
+	for _, key in ipairs(keys) do
 		local r = pieces[key]
 		if r then
 			seen[key] = r
@@ -3824,8 +4104,50 @@ local function chipObstacles(area, dt)
 				end
 				swept, soon = ahead(K.GUIDE_LEAD / dt), ahead(2)
 				if key == "arrow" then
-					vx = ((r.x0 + r.x1) - (was.x0 + was.x1)) / 2 / dt
+					-- (kit-b P2 fix6 look0 #5: at 6 degrees a second the arrow moves 1 px a frame on whole px, 0 / 30 / 60 px a
+					-- second frame to frame, under K.GUIDE_PASS, so the chip took the side ahead) its sideways speed smoothed
+					-- over K.GUIDE_VX_SMOOTH s
+					-- (from rest - a pan's start, the arrow still before - it takes the first move's speed at once: the chip
+					-- leaves home on that first frame, and smoothed up from 0 it read as no pass and took the side ahead)
+					local raw = ((r.x0 + r.x1) - (was.x0 + was.x1)) / 2 / dt
+					if G.vx == nil or (math.abs(G.vx) < 1 and math.abs(raw) >= 1) then
+						G.vx = raw
+					else
+						G.vx = G.vx + (raw - G.vx) * math.min(1, dt / K.GUIDE_VX_SMOOTH)
+					end
+					vx = G.vx
+					-- (kit-b P2 fix6b, look1 #1: the camera turning back passes the arrow's speed through 0, and the chip came home
+					-- 9 frames before the arrow did) the fastest it went in the last K.GUIDE_HOLD s: placeChip's way home
+					G.vxClock = (G.vxClock or 0) + dt
+					local hist = G.vxHist or {}
+					G.vxHist = hist
+					hist[#hist + 1] = { t = G.vxClock, v = math.abs(G.vx) }
+					while #hist > 1 and G.vxClock - hist[1].t > K.GUIDE_HOLD do
+						table.remove(hist, 1)
+					end
+					G.vxPeak = 0
+					for _, s in ipairs(hist) do
+						G.vxPeak = math.max(G.vxPeak, s.v)
+					end
+					-- (kit-b P2 fix6b, look1 #1: walking up to the gate the arrow rises out of the chip's row; at 720 x 405 the
+					-- compact line met it 1 px into the berth, hid 0.37 s and came back as the full line on the same spot)
+					-- its rise, smoothed the same way, and where it stands two looks on: placeChip keeps its spot while an
+					-- arrow rising out of its row stays, two looks on, off the chip's face
+					local rawY = ((r.y0 + r.y1) - (was.y0 + was.y1)) / 2 / dt
+					if G.vy == nil or (math.abs(G.vy) < 1 and math.abs(rawY) >= 1) then
+						G.vy = rawY
+					else
+						G.vy = G.vy + (rawY - G.vy) * math.min(1, dt / K.GUIDE_VX_SMOOTH)
+					end
+					-- (and rising this look: smoothed, a pan come to rest still read as rising ~0.7 s, and at 667 x 375 the
+					-- chip stayed under the arrow's foot, 1 px on its wood edge - travel_guide_walk's cover)
+					if G.vy <= -1 and rawY < 0 then
+						rise = onScreen({ x0 = r.x0 + (r.x0 - was.x0) * 2, y0 = r.y0 + (r.y0 - was.y0) * 2,
+							x1 = r.x1 + (r.x1 - was.x1) * 2, y1 = r.y1 + (r.y1 - was.y1) * 2 })
+					end
 				end
+			elseif key == "arrow" then
+				G.vx, G.vy, G.vxPeak, G.vxHist = nil, nil, nil, nil -- (it just showed: no speed yet)
 			end
 			local a, s = onScreen(swept), onScreen(soon)
 			if a then
@@ -3833,11 +4155,17 @@ local function chipObstacles(area, dt)
 			end
 			if s then
 				near[#near + 1] = s
+				if key == "arrow" and rise then
+					-- (the rising arrow: as it stands and two looks on, for placeChip's face check; the pieces besides it)
+					rise = { rise, onScreen(r) or rise }
+				elseif key ~= "arrow" then
+					others[#others + 1] = s
+				end
 			end
 		end
 	end
 	G.seen = seen
-	return list, near, vx
+	return list, near, vx, (type(rise) == "table" and rise[1] and rise) or nil, others
 end
 
 -- the chip's home: top centre under the top bar; a portrait phone: K.GUIDE_DOCK_GAP over the vitals card (and over the
@@ -3849,7 +4177,10 @@ local function chipHome(area, k, h, w)
 		local v = vitalsRect()
 		local bottom = v and (v.y0 - K.GUIDE_DOCK_GAP * k) or nil
 		local strip = UI.Strip
-		if bottom and strip and strip.Visible and strip.AbsoluteSize.Y > 0 then
+		-- (look:new3) only a strip that shows: the tutorial hidden (done, skipped) still lays its strip out, Visible in its
+		-- hidden card, and since c1e122e docks it over RUN on small portrait phones it lifted the chip onto the gate's
+		-- Enter plank (21.4 px at 360 x 640; the chip hid the whole "You're here")
+		if bottom and strip and strip.Visible and strip.AbsoluteSize.Y > 0 and UI.Gui and shownIn(strip, UI.Gui) then
 			local sy = strip.AbsolutePosition.Y
 			if sy < bottom and sy > bottom - 200 * k then
 				bottom = sy - K.GUIDE_DOCK_GAP * k
@@ -3893,10 +4224,11 @@ local function placeChip(dt, snap)
 	local wFull = ((G.lineFull and G.lineFull.w) or chip.Size.X.Offset) * k
 	local wCompact = G.lineCompact and G.lineCompact.w * k or nil
 	local homeX, homeY = chipHome(area, k, h, wFull)
+	G.homeAt = { x = homeX, y = homeY } -- (placeSign keeps a new spot off it while the chip is away)
 	local clearPx, take = K.GUIDE_CLEAR * k, K.GUIDE_TAKE * k
-	local okO, obstacles, near, vx = pcall(chipObstacles, area, dt)
+	local okO, obstacles, near, vx, rise, others = pcall(chipObstacles, area, dt)
 	if not okO then
-		obstacles, near, vx = {}, {}, 0
+		obstacles, near, vx, rise, others = {}, {}, 0, nil, {}
 	end
 	local hud = chipHudRects(area)
 	local function clearOf(r, list, margin)
@@ -3921,7 +4253,22 @@ local function placeChip(dt, snap)
 		return true
 	end
 	local homeR = chipRectAt(homeX, homeY, wFull)
-	local function pick(side, w, compact)
+	-- (kit-b P2 fix6b, look1 #2: standing 45 studs out, a +-3 degree sway sent the chip across the arrow and back at each
+	-- turn, 162 - 282 px, and a pan to the gate and back did it once each way: its spot, K.GUIDE_TAKE past the arrow, was
+	-- met as the sway came its way or the camera came round to face the gate) home's middle: where the arrow stands while
+	-- the camera faces the gate within K.GUIDE_SWAY degrees (the arrow's width, and that turn's px at the screen's middle).
+	-- pickAny takes a spot clear of it first, the compact line before a full line that is not, so a sway or the camera
+	-- turned to face the gate never meets it, and the chip keeps its side until the arrow leaves home's middle its way
+	local zone
+	do
+		local a = G.seen and G.seen.arrow
+		local aw = a and (a.x1 - a.x0) or 0
+		local cam = workspace.CurrentCamera
+		local fov = (cam and cam.FieldOfView and cam.FieldOfView > 1) and cam.FieldOfView or 70
+		local sway = (area.Y / 2) * math.tan(math.rad(K.GUIDE_SWAY)) / math.tan(math.rad(fov / 2))
+		zone = { x0 = homeX - aw / 2 - sway, y0 = homeR.y0, x1 = homeX + aw / 2 + sway, y1 = homeR.y1 }
+	end
+	local function pick(side, w, compact, zoned)
 		local u = nil
 		local g = grown(homeR, take)
 		for _, o in ipairs(obstacles) do
@@ -3933,15 +4280,40 @@ local function placeChip(dt, snap)
 			return nil
 		end
 		local first = side
-		if math.abs(vx) >= K.GUIDE_PASS * k then
+		local passing = math.abs(vx) >= K.GUIDE_PASS * k
+		if passing then
 			first = (vx > 0) and "L" or "R" -- (it moves on away from there)
 		elseif first ~= "L" and first ~= "R" then
 			first = ((u.x0 + u.x1) / 2 >= homeX) and "L" or "R"
 		end
 		-- (K.GUIDE_TAKE past them, else as far toward that as the HUD leaves room: the arrow grows as the camera nears it,
-		-- and a spot just clear of it was met again at 844x390)
+		-- and a spot just clear of it was met again at 844x390). (kit-b P2 fix6, world look pol1 B) a piece passing across:
+		-- only the side it comes from, never the side ahead of it (that spot was met 0.9 s later, then the far side: three
+		-- moves a pass); no spot there yet within its width of home, it hides (stepChip) until there is
+		-- (fix6 look0 #4: waiting for that spot behind it within the chip's width of home hid the chip and its X 0.6 - 2.1 s
+		-- on slow pans and turning walks - at 800 x 450 the 286 px line had no room left of the arrow until it was 304 px
+		-- in) a piece passing across: its compact line may stand behind it as far as the FULL line's width off home (the
+		-- berth pol0 MAJOR 2 b set for the chip, not a nearer one for its shorter word), so it steps behind the piece as
+		-- soon as the piece comes within the berth: one trip, crossing it in a hide-step
+		local reach = (passing and compact) and math.max(w, wFull) or w
 		local order = {}
-		for _, s in ipairs({ first, (first == "L") and "R" or "L" }) do
+		if zoned then
+			-- (kit-b P2 fix6b) `zoned`: only spots 1 px clear of home's middle (zone: it holds the two looks' lead the chip
+			-- keeps its spot by), the nearest such on each side first
+			for _, s in ipairs(passing and { first } or { first, (first == "L") and "R" or "L" }) do
+				local dir = (s == "L") and -1 or 1
+				local x = (s == "L") and math.min(zone.x0 - 2 - e - w / 2, homeX - w / 2) or math.max(zone.x1 + 2 + e + w / 2, homeX + w / 2)
+				while math.abs(x - homeX) <= reach do
+					local r = chipRectAt(x, homeY, w)
+					if clearOf(r, obstacles, clearPx) and clearOf(r, { zone }, 1) and onFree(r) then
+						return { side = s, x = x, y = homeY, compact = compact }
+					end
+					x = x + dir * 2 * k
+				end
+			end
+			return nil
+		end
+		for _, s in ipairs(passing and { first } or { first, (first == "L") and "R" or "L" }) do
 			for _, gap in ipairs({ take, math.max(clearPx + 1, take * 0.75), math.max(clearPx + 1, take * 0.5), clearPx + 1 }) do
 				local x
 				if s == "L" then
@@ -3951,7 +4323,7 @@ local function placeChip(dt, snap)
 					x = u.x1 + gap + e + w / 2
 					x = (gap == take) and math.max(x, homeX + w / 2) or x
 				end
-				if math.abs(x - homeX) <= w then
+				if math.abs(x - homeX) <= reach then
 					order[#order + 1] = { side = s, x = x, y = homeY, compact = compact }
 				end
 			end
@@ -3968,7 +4340,55 @@ local function placeChip(dt, snap)
 		return nil
 	end
 	local function pickAny(side)
-		return pick(side, wFull, nil) or (wCompact and pick(side, wCompact, true)) or nil
+		return pick(side, wFull, nil, true) or (wCompact and pick(side, wCompact, true, true))
+			or pick(side, wFull, nil) or (wCompact and pick(side, wCompact, true)) or nil
+	end
+	-- (fix6, pol1 B) a piece passing across meets the spot the chip took ahead of it while the camera stood still, and there
+	-- is no spot behind it yet within the chip's width of home: the compact line at home while the piece as it stands (and
+	-- two looks on) keeps the berth off it, else hidden (on a 640 phone it hid ~1 s waiting for the spot behind; pol0's
+	-- compact line exists so it need not hide). From home it only hides that wait (under 0.5 s on every size)
+	local function homeCompact()
+		if not wCompact or math.abs(vx) < K.GUIDE_PASS * k then
+			return nil
+		end
+		local r = chipRectAt(homeX, homeY, wCompact)
+		if not (clearOf(r, near, clearPx) and onFree(r)) then
+			return nil
+		end
+		-- (kit-b P2 fix6b, look1 #1: e272588 showed it 1 - 14 frames at 23 - 60 degrees a second, then blinked behind the
+		-- arrow) only where the arrow as it stands, coming on at its speed, meets it K.GUIDE_HOLD s on or later
+		-- (an arrow rising out of the row - the player walking up to the gate - whose foot clears the line's face before
+		-- it comes over it passes above it)
+		local a = G.seen and G.seen.arrow
+		if a then
+			local tX = ((vx > 0) and (r.x0 - 1 - a.x1) or (a.x0 - 1 - r.x1)) / math.abs(vx)
+			local over = rise and G.vy and G.vy < 0 and (a.y1 - (r.y0 + e)) / -G.vy < tX
+			-- (the two looks the met check leads by; an arrow rising out of the row - a player walking up to the gate -
+			-- slows as the camera comes round: at 800 x 450 the line stood 0.57 s where its speed said 0.52, and the chip
+			-- hid 0.97 s instead)
+			local need = K.GUIDE_HOLD + ((rise and 0) or 2 * K.GUIDE_DODGE_EVERY)
+			if tX < need and not over then
+				return nil
+			end
+		end
+		return { side = "C", x = homeX, y = homeY, compact = true }
+	end
+	-- its spot, as rect, met: the pieces as they stand or two looks on come within 1 px of it; an arrow rising out of its
+	-- row only when, as it stands or two looks on, it is on the chip's face (it passes over: see chipObstacles)
+	local function met(spot)
+		-- (look:new3) a prompt plank (the gate's, any other) within K.GUIDE_PLANK_KEEP px: met, so a spot aside keeps the
+		-- plank's 6 px as home does (the 1 px berth below is the arrow's: pol0 minor 1)
+		if not clearOf(spot, others, K.GUIDE_PLANK_KEEP) then
+			return true
+		end
+		if clearOf(spot, near, 1) then
+			return false
+		end
+		if not rise then
+			return true
+		end
+		local face = { x0 = spot.x0 + e, y0 = spot.y0 + e, x1 = spot.x1 - e, y1 = spot.y1 - e }
+		return not (clearOf(spot, others, 1) and clearOf(face, rise, 0))
 	end
 	if snap then
 		G.away, G.homeClear = nil, 0
@@ -3976,24 +4396,50 @@ local function placeChip(dt, snap)
 	if G.away and G.away.hide then
 		if clearOf(homeR, obstacles, clearPx) then
 			G.away = nil
+		elseif G.away.home and G.away.home + dt < 2 * K.GUIDE_HOME_WAIT then
+			G.away.home = G.away.home + dt -- (waiting for home, above; past twice that, a spot as below)
 		else
-			G.away = pickAny(G.away.side) or G.away
+			G.away = pickAny(G.away.side) or (G.away.side ~= "C" and homeCompact()) or G.away
 		end
 	elseif G.away then
-		G.homeClear = clearOf(homeR, obstacles, 2 * clearPx) and ((G.homeClear or 0) + dt) or 0
+		-- (kit-b P2 fix6b, look1 #1: at 35 degrees a second the chip came home 0.2 s before the pan turned back, and left
+		-- again) home counts as clear only while the arrow, on its row, is far enough off that were the camera to turn back
+		-- at once it would not reach home's berth for K.GUIDE_HOLD s (at its fastest of the last K.GUIDE_HOLD s: turning back,
+		-- the camera's speed passes through 0)
+		local a = G.seen and G.seen.arrow
+		local backSoon = false
+		local speed = math.max(math.abs(vx), G.vxPeak or 0)
+		if a and speed >= K.GUIDE_PASS * k and a.y1 >= homeR.y0 - clearPx and a.y0 <= homeR.y1 + clearPx then
+			local gap = math.max(homeR.x0 - a.x1, a.x0 - homeR.x1) - clearPx
+			backSoon = gap < speed * K.GUIDE_HOLD
+		end
+		G.homeClear = (clearOf(homeR, obstacles, 2 * clearPx) and not backSoon) and ((G.homeClear or 0) + dt) or 0
 		local spot = chipRectAt(G.away.x, G.away.y, (G.away.compact and wCompact) or wFull)
 		if G.homeClear >= K.GUIDE_HOME_HOLD then
 			G.away = nil
-		elseif not (clearOf(spot, near, 1) and onFree(spot)) then
+		elseif met(spot) or not onFree(spot) then
 			local side = G.away.side
+			local a = G.seen and G.seen.arrow
+			local leaving = a and ((side == "L" and vx <= -K.GUIDE_PASS * k) or (side == "R" and vx >= K.GUIDE_PASS * k))
 			if clearOf(homeR, obstacles, clearPx) then
 				G.away = nil
+			elseif leaving and ((side == "L") and (a.x1 + clearPx - homeR.x0) or (homeR.x1 - a.x0 + clearPx)) / math.abs(vx)
+				<= K.GUIDE_HOME_WAIT then
+				-- (kit-b P2 fix6b, look1 #2: the camera turned back from the gate, the arrow came back its way and the chip
+				-- crossed it to the other side) the arrow on its way out of home toward it, home clear behind it within
+				-- K.GUIDE_HOME_WAIT s: it waits hidden and comes home, no swap
+				G.away = { hide = true, side = side, home = 0 }
 			else
-				G.away = pickAny((side == "L" and "R") or (side == "R" and "L") or nil) or { hide = true, side = side }
+				G.away = pickAny((side == "L" and "R") or (side == "R" and "L") or nil) or (side ~= "C" and homeCompact())
+					or { hide = true, side = side }
 			end
 		end
-	elseif not clearOf(homeR, obstacles, clearPx) then
-		G.away = pickAny(nil) or { hide = true }
+	elseif not clearOf(homeR, obstacles, clearPx)
+		and (math.abs(vx) < K.GUIDE_PASS * k or not clearOf(homeR, near, clearPx)) then
+		-- (fix6, pol1 B) a piece passing across: home until it, as it stands (and two looks on), comes within the berth
+		-- (its K.GUIDE_LEAD sweep put the spot behind it past the chip's width, so it took the side ahead). (fix6 look0
+		-- #4) no spot behind it yet: the compact line at home while the piece keeps off that, before it hides
+		G.away = pickAny(nil) or homeCompact() or { hide = true }
 		G.homeClear = 0
 	end
 	-- (the compact line while it stands aside with it; its own line at home)
@@ -4029,6 +4475,16 @@ local function crossesPiece(from, to)
 			return true
 		end
 	end
+	-- (look:new3) the planks with their K.GUIDE_PLANK_KEEP px: a step never passes nearer, every plank's
+	local plank = pieces[3]
+	if plank and rectsOverlap(way, grown(plank, K.GUIDE_PLANK_KEEP)) then
+		return true
+	end
+	for _, o in ipairs(otherPlanks()) do
+		if rectsOverlap(way, grown(o.rect, K.GUIDE_PLANK_KEEP)) then
+			return true
+		end
+	end
 	return false
 end
 
@@ -4046,8 +4502,13 @@ local function stepChip(dt, snap)
 	if snap or not G.at then
 		G.at, G.move, G.wasHidden = { x = to.x, y = to.y }, nil, nil
 	elseif resized and not (G.away and G.away.hide) then
-		-- (its line changed, the compact one or its own: a hide-step to its spot)
-		G.move = { hide = true, to = { x = to.x, y = to.y }, t = K.GUIDE_HIDE_STEP }
+		-- (its line changed, the compact one or its own: a hide-step to its spot; kit-b P2 fix6b, look1 #1: on its own spot
+		-- - the change of line at home - it changes there, no blink)
+		if math.abs(to.x - G.at.x) <= 0.5 and math.abs(to.y - G.at.y) <= 0.5 and not (m and m.hide) then
+			G.move = nil
+		else
+			G.move = { hide = true, to = { x = to.x, y = to.y }, t = K.GUIDE_HIDE_STEP }
+		end
 	elseif G.away and G.away.hide then
 		G.move, G.wasHidden = nil, true
 	elseif G.wasHidden then
@@ -4230,13 +4691,14 @@ function Guide.Stop()
 	G.phase, G.id, G.spec, G.target, G.part = nil, nil, nil, nil, nil
 	G.slide, G.hereUntil, G.icon, G.dodgeTimer, G.lookDt = nil, nil, nil, nil, nil
 	G.away, G.at, G.to, G.homeClear, G.seen, G.hud, G.move, G.wasHidden = nil, nil, nil, nil, nil, nil, nil, nil
+	G.vx, G.vy, G.vxPeak, G.vxHist = nil, nil, nil, nil
 	G.lineFull, G.lineCompact, G.compact, G.resized = nil, nil, nil, nil
 	if G.gui then
 		G.gui:Destroy()
 	end
 	G.gui, G.chip, G.mark, G.text, G.close, G.scale = nil, nil, nil, nil, nil, nil
 	-- (the tutorial's own guide keeps its two-line sign on the right)
-	W.signSpot = nil
+	W.signSpot, W.signOffAt, W.signHist = nil, nil, nil
 	setSignShown(true, false)
 	if W.signLeft or W.signDrop then
 		setSignSide(false)
@@ -4347,6 +4809,7 @@ function Guide.Start(id)
 	G.target = { Kind = spec.Kind, Id = spec.Id, Label = spec.Label, Prompt = spec.Prompt }
 	G.phase, G.part, G.slide, G.hereUntil = nil, nil, nil, nil
 	W.key = nil
+	W.signOffAt, W.signHist = nil, nil -- (fix6) the sign's hold and the arrow's way start again
 	if not keep then
 		local ok, built = pcall(buildChip)
 		if not (ok and built) then

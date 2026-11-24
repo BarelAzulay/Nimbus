@@ -1870,9 +1870,12 @@ end
 
 -- (U9-7 look) a desktop card pushed down under a long enemy list (R.place) still ends 8 px above the battle HUD's ability
 -- buttons: the Wave line goes first (the HUD's mode card says the wave in a fight), then the status line, then the loot
--- line (the room's loot still flashes on the card's toast), then the party's chips and the room line (the mode card says
--- the room too); a card that still reaches them (the loot plate under four enemy rows) takes the chip form meanwhile.
--- R.refresh shows every line again on its next pass
+-- line (the room's loot still flashes on the card's toast), then the room line (the mode card says the room too:
+-- "DUNGEON - Floor 3 - Room 2"), then the party's chips; a card that still reaches them (the loot plate under four enemy
+-- rows) takes the chip form meanwhile. (fix6, keys look pol1 #2: ab11837's 12 px taller enemy list left 1280 x 720's card
+-- 19 px over the keys where the party row needs 30, and the party went before the room line: the card kept "Room 2 / 4",
+-- which the mode card says, and lost who is alive, which no other part shows.) R.refresh shows every line again on its
+-- next pass
 function R.fitCard()
 	if S.CardMode ~= "Card" then
 		return
@@ -1888,7 +1891,7 @@ function R.fitCard()
 	if cmd.x0 >= x0 + K.CARD_W * f or cmd.x1 <= x0 then
 		return
 	end
-	for _, line in ipairs({ U.CardWave, U.CardStatus, U.CardLoot, U.CardMembers, U.CardRoom }) do
+	for _, line in ipairs({ U.CardWave, U.CardStatus, U.CardLoot, U.CardRoom, U.CardMembers }) do
 		if y0 + root.Size.Y.Offset * f <= cmd.y0 - 8 then
 			return
 		end
@@ -2086,10 +2089,21 @@ function R.place(view)
 		S.EndVitalsOff = true -- (spec 02 B: a phone's vitals card hides while a result card is up, wherever the card sits)
 	else
 		S.EndCompact = false
-		S.EndVitalsOff = false
 		U.EndScale.Scale = f
 		U.End.Root.Size = UDim2.fromOffset(K.END_W, endH)
-		U.End.Root.Position = UDim2.fromOffset(math.floor(w - 12 - K.END_W * f), math.floor(h * 0.3) - top)
+		-- (fix6 look0 #3c: at 960 x 540, a small window with a keyboard, the card at 30 % of the height started 1.2 px under
+		-- the token strip's shadow and reached 56 px over the vitals card, '100 / 100' cut to '100 /') under the top-right
+		-- strips by their shadow, the card's frame and air (R.stripsBottom keeps 8 px); and where the card still covers the
+		-- vitals card's slot (8 px round it), the vitals card steps aside while the card shows, as a phone's does (spec 02 B)
+		local x = math.floor(w - 12 - K.END_W * f)
+		local y = math.floor(h * 0.3) - top
+		if strips > 0 then
+			y = math.max(y, strips + 2)
+		end
+		U.End.Root.Position = UDim2.fromOffset(x, y)
+		local vitals = R.vitalsSlot(top)
+		local x1, y0, y1 = x + K.END_W * f, top + y, top + y + endH * f
+		S.EndVitalsOff = vitals ~= nil and x < vitals.x1 + 8 and vitals.x0 < x1 + 8 and y0 < vitals.y1 + 8 and vitals.y0 < y1 + 8
 	end
 	-- the run card / chip
 	if phone then

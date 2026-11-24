@@ -1329,10 +1329,59 @@ scenario("menu", function(window, tab, action, key)
 	advance(2.5)
 end)
 
--- tutorial[:<step>[:open|fold]]: open (kit B U9-9) taps the portrait when the screen folded the card into the bubble (a
--- phone), so the card the player opens is drawn too; fold (Pitch 2 03_tutorial_dock B) presses the card's fold block
--- where the card is open (PC), so the folded quest strip is drawn at every size
-scenario("tutorial", function(step, mode)
+-- tutorial[:<step>[:open|fold|match[:<n>|:full]|party[:leader]|countdown]]: open (kit B U9-9) taps the portrait when the
+-- screen folded the card into the bubble (a phone), so the card the player opens is drawn too; fold (Pitch 2
+-- 03_tutorial_dock B) presses the card's fold block where the card is open (PC), so the folded quest strip is drawn at every
+-- size. (look:fix6b N1) match / party / countdown: the tutorial over another HUD state, set first as the game sets it -
+-- a match with n players (1-4; full: the match scenario's four long names, SAINT), the party pad (leader: its leader with a
+-- full party of four) or a match's countdown - so the folded guide is laid out round the panel and the menu column it moves
+local TUT_MEMBER4 = { UserId = 79, Name = "Quiet", Health = 0.6, Downed = false, Finished = false, Tokens = 1 }
+-- (look:fix6b2 N3) the tutorial measures its one-line texts (its titles' fit, the step count, the name plank) through
+-- TutorialController.Metrics.MEASURE: here the renderer's font metrics, on a label of the role as the game draws it (the
+-- mock's TextService answers a flat 0.5 em a letter, so the titles were never shrunk and the render cut them:
+-- 'The Champion Ri...'). A build without the hook (kit-b) measures as before
+local function tutorialMetrics()
+	local TC = req("client/Controllers/TutorialController")
+	local ThemeM = req("shared/Theme")
+	if not (TC and type(TC.Metrics) == "table" and ThemeM) then
+		return
+	end
+	local probe = Instance.new("TextLabel")
+	TC.Metrics.MEASURE = function(text, size, role)
+		probe.Font = ThemeM.Fonts[role] or ThemeM.Fonts.Body
+		pcall(ThemeM.Face, probe, role)
+		text = tostring(text or "")
+		if ThemeM.CapsRoles and ThemeM.CapsRoles[role] then
+			text = ThemeM.Caps(text)
+		end
+		probe.TextSize, probe.Text = size, text
+		local w, h = Mock.TextExtent(probe)
+		return Vector2.new(w, h)
+	end
+end
+scenario("tutorial", function(step, mode, arg)
+	tutorialMetrics()
+	if mode == "match" then
+		if arg == "full" then
+			SCENARIOS.match("full")
+		else
+			LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
+			LocalPlayer:SetAttribute(Config.Attr.MatchTokens, 7)
+			local ms = matchState()
+			local all = { ms.Members[1], ms.Members[2], ms.Members[3], TUT_MEMBER4 }
+			local members = {}
+			for i = 1, math.max(1, math.min(4, tonumber(arg) or 3)) do
+				members[i] = all[i]
+			end
+			ms.Members = members
+			toClient("MatchState", ms)
+			advance(2.5)
+		end
+	elseif mode == "party" then
+		SCENARIOS.party(arg)
+	elseif mode == "countdown" then
+		SCENARIOS.countdown()
+	end
 	toClient("TutorialState", tutorialPayload(tonumber(step) or 1))
 	advance(5)
 	if mode == "fold" then
@@ -3076,11 +3125,15 @@ scenario("battle", function(mode, phase)
 	local wave = nil
 	if mode == "raid" then
 		setup.Mode = "Raid"
-		setup.Boss = "storm_titan"
+		-- (fix6 look0 #1: the reviewer set Shadow Hydra, whose name is longer than Storm Titan's) DUMP.boss picks the boss
+		-- (render_gui.dump_scenario(..., boss=id); tools/look_pins.py K1 walks every boss)
+		local bossId = (type(ARGS.boss) == "string" and ARGS.boss ~= "") and ARGS.boss or "storm_titan"
+		setup.Boss = bossId
 		setup.Teams = { mine, { Owner = 77, Side = 1, Pets = BCDUMP.team(3, 2, 26), Auto = true }, { Owner = 78, Side = 1, Pets = BCDUMP.team(3, 4, 28), Auto = true } }
-		if fullRaid then
-			extra.Raid = { Tier = "Starter", BossId = "storm_titan" }
-		end
+		-- (kit-b P2 fix6b, T1: only the full raid carried Raid.Tier, so raid:ready and raid drew a top card the game never
+		-- shows - at 360 x 640 and 720 x 405 a clock that the tier takes back in raid:full - and look_pins T1 read two forms
+		-- in one fight) the server sends the tier in every phase of a raid (BattleService: d.Raid = { Tier = b.RaidTier, ... })
+		extra.Raid = { Tier = "Starter", BossId = bossId }
 	elseif mode == "dungeon" then
 		setup.Mode = "Dungeon"
 		setup.Zone = { X = 44, Z = 44 }

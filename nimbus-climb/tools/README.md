@@ -269,6 +269,29 @@ the layout box; `tools/test_battle_hud_no_overlap.py` tests that measure offline
 mid-word-broken name (laid out with render_gui's own text layout); on the full raid's pill rules (spec 06 A); on the
 vitals card showing beside a phone's result card (spec 02 B); and on a portrait phone's top card not spanning the top.
 
+`look_pins.py` (kit-b Pitch 2 fix6) pins every major the look reviews found as a check, at the eleven gate sizes (360x640,
+640x360, 667x375, 720x405, 800x450, 844x390, 960x540, 390x844, 1024x768, 1280x720, 1920x1080) plus the sizes a review
+named: K1 the raid boss name whole (every boss: `render_gui.py --boss shadow_hydra` renders another one), K2 the dungeon
+run card's party row, I1 the roulette machines at 2 px cells or more (and the x3 plank's coin off its words), I2 the Secret
+hero's texts whole and clear of its button, H1 the hero's hint whole on a phone, C1 / C2 / C5 battle_hud_no_overlap's
+fighter-part, run-chip and card gap rules (C5 in the five battle modes and the run), and (fix6 look0) Q1 a helper's key
+cap off its cooldown count and KO, E1 the dungeon's end card off the vitals card and the strips, D1 the Daily page's
+header, chips and day tiles whole. (look:fix6b2) O3 reads the vitals card in the lobby, a match, the party pad and the
+countdown; U1 reads the tutorial over a match (1-4 players), the pad and the countdown too, against every other HUD piece,
+plus a portrait sweep; U2 the tutorial's titles whole at every step. `*_BACKLOG` in the file holds what kit-b 1a55f73
+already has (measured by the same pin on kit-b's src): such a case passes while it is no worse than kit-b. `--list` says what each pin checks,
+`--pin K1,I2` runs a few. The world guide's pins (MJ-A / MJ-B fin1, W1 / W2 pol1: the walk, the stop at 20 studs, the
+pans at 6, 12, 23 and 60 degrees a second, the walk with a turning camera, and look0's 0.5 s hide cap there) are the
+smoke list `guide_pins` (`smoke_kitb_world.lua`, travel_guide_walk's runner;
+`NC_GUIDE_PINS_SIZES=640x360,1920x1080` walks a few sizes while working; `NC_GUIDE_TRACE=<file>` appends one line a frame:
+the run, the arrow, the chip and the GuideSign's spot and box). (fix6b) Each walk runs in parts, one list a part, each
+under its own `--scenario-timeout` (`WALK_LISTS` in `smoke_kitb_world.lua`: `travel_guide_walk`, `_pans`, `_pans_b`,
+`_looks`; `guide_pins`, `_walks`, `_turns`, `_pan6`, `_pan6_b`, `_pan6_c`, `_pan12`, `_pan12_b`, `_pans`, `_sways`,
+`_looks`, each about 3600 frames at most, ~190 s alone); `--only travel_guide_walk` or
+`--only guide_pins` runs every part of that walk, and `--in-order` runs the named lists in the order given (`--only
+guide_pins,travel_guide_walk --in-order`). Every part builds its own lobby with a fresh GateService (its Init runs once
+a server).
+
 `stroke_walk.py` (kit-b U6) dumps the render scenarios one at a time (default: all but the widget galleries, at 1920x1080;
 `--grid` adds the other three sizes) and fails on any text with a classic stroke under an outline, or an outline on an
 opaque panel (kit B "stroke or panel, never both"; the world signs mirrored into WorldMirror keep their one outline on
@@ -280,7 +303,8 @@ scenario names its lines no text hits any more. `--casing` lists Button-role tex
 reports.
 
 * Scenarios: `lobby`, `title` (title card up), `match` / `match:hit` (a quarter second after a hit), `countdown`,
-  `party` (portal party panel), `results`, `menu:<Window>[:<Tab or Index group>]`, `tutorial[:<step>]`, `npc[:<n>]`,
+  `party` (portal party panel), `results`, `menu:<Window>[:<Tab or Index group>]`,
+  `tutorial[:<step>[:open|fold|match[:<players>|:full]|party[:leader]|countdown]]`, `npc[:<n>]`,
   `dev` (owner panel), `toasts`, `gallery`, `portal[:<Id>[:<players>[:<studs>]]]`, or a `.json` dump written earlier
   with `--json`. `--list` prints them.
 * `battle[:<mode>[:<phase>]]` (BattleController): the battle HUD fed by a real BattleSim stepped at 10 Hz through

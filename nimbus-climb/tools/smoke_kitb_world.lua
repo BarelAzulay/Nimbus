@@ -1849,7 +1849,18 @@ local function clientScenarios()
 							-- desktop sizes, the mock's framings, it shows
 							T.check(box ~= nil, tag .. ": (setup) the arrow is in view")
 							if s == nil and vp.X >= 1280 then
-								T.check(false, tag .. ": (setup) the arrow and its sign are in view")
+								-- (kit-b P2 fix6, world look pol1 A) ... unless the arrow's tip stands in the chip's columns within
+								-- the sign's height and twice its 8 px clearance over the chip's top: every spot beside or under the
+								-- tip would stack the sign on the chip ('Storm Altar' over 'Guiding to Storm Altar', read as one
+								-- block; guide_pins W1), so it hides there (1920 near: the tip 18 px over the chip at home)
+								local stacked = false
+								if box and card then
+									local sk = (card:FindFirstChild("ReadScale") and card.ReadScale.Scale) or 1
+									local sh = (card.Size.Y.Offset + 6) * sk
+									stacked = box.B <= c.Y and box.B >= c.Y - sh - 16 * k and box.R > c.X and box.X < c.R
+								end
+								T.check(stacked, tag .. ": (setup) the arrow and its sign are in view (it hides only where it would stack on the chip)",
+									"arrow " .. (box and show(box) or "-") .. " chip " .. show(c))
 							end
 							if box and not s then
 								T.check(not overlap(c, box), tag .. ": the chip never covers the arrow", "chip " .. show(c) .. " arrow " .. show(box))
@@ -1929,6 +1940,350 @@ local function clientScenarios()
 	end)
 
 	----------------------------------------------------------------------------------------------------------------
+	-- travel_guide_plank (look:new3 vs kit-b 1a55f73, its one new major: at the Storm Altar gate on small portrait phones
+	-- the chip "You're here: tap the button" lay over the gate's Enter plank, 'Enter' cut through: 21.4 px at 340 / 360 /
+	-- 384 / 400 x 640, 6 px at 375 x 667, from c1e122e on; travel_guide_clear has the rule but runs at 1920x1080,
+	-- 1280x720, 390x844 and 844x390 with no touch keys, so it stayed green). Here the portrait phones WITH the touch keys
+	-- (MovementController's MobileControls: RUN / DASH) at 320x568, 340x640, 360x640, 375x667, 384x640, 390x844, 400x640
+	-- and 412x915, the mock Altar gate and the stock camera as travel_guide_clear has them, the tutorial on step 3 folded
+	-- (its quest strip where it docks, else its portrait chip) and then done (hidden: a player who finished or skipped it;
+	-- the look's state), one 1/30 s frame a step:
+	--   walk       11 studs out (the gate's prompt in range, MaxActivationDistance 12; the guide still walking), 1 s
+	--   walk tilt  the same, the camera tilted up 0 -> 20 degrees over 1.5 s (the plank comes down the screen)
+	--   here       7 studs out: the whole "You're here" phase (3 s)
+	--   here tilt  the same, the camera tilted 0 -> 20 -> 0 degrees over its first 2 s
+	--   other      11 studs out, a second prompt's plank (an NPC's "Talk") standing on the chip where it is: every world
+	--              prompt plank, not the gate's alone
+	-- Every frame the chip, while it shows, keeps 6 px or more (screen px, its wood edge counted) off every shown prompt
+	-- plank (a plank that just showed: from 0.1 s on, the guide's next looks). With the tutorial done the chip shows on
+	-- every frame from 0.5 to 2.5 s of the "You're here" phase as it stands (here): it is the guide's last word, so hiding
+	-- it all the way is no way to keep off the plank (at 77f5f56 it hid the whole phase at 340 - 400 x 640 and 375 x 667,
+	-- the look's dumps drew it on the plank). The frames it shows at the gate with the tutorial folded are listed
+	----------------------------------------------------------------------------------------------------------------
+	S.travel_guide_plank = guarded("travel_guide_plank", function()
+		local Config = shared("Config")
+		local Steps = shared("TutorialSteps")
+		local TC = client("Controllers/TutorialController")
+		local PC = client("Controllers/PromptController")
+		local MC = client("Controllers/MovementController")
+		local Guide = TC and TC.Guide
+		local methods = Mock.Classes and Mock.Classes.Camera and Mock.Classes.Camera.methods
+		if not T.check(type(Guide) == "table" and PC ~= nil and type(PC.CardOf) == "function" and MC ~= nil and type(MC._TouchButtons) == "function"
+			and methods ~= nil and workspace.CurrentCamera ~= nil and type(Steps) == "table",
+			"guide plank: (setup) TutorialController.Guide, PromptController.CardOf, MovementController._TouchButtons, the mock camera") then
+			return
+		end
+		local player = game:GetService("Players").LocalPlayer
+		local UIS = game:GetService("UserInputService")
+		local L = Config.Lobby
+		local camObj = workspace.CurrentCamera
+		local fh = io.open("src/server/Services/GateService.lua", "r")
+		local src = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		local lift = tonumber(src:match('Name = "AltarGatePrompt"[^\n]-Lift = ([%d%.]+)'))
+		local saved = { methods.WorldToViewportPoint, methods.WorldToScreenPoint }
+		local function focal(self)
+			return (Mock.Viewport.Y / 2) / math.tan(math.rad(self.FieldOfView / 2))
+		end
+		local function project(self, pos)
+			local rel = self.CFrame:PointToObjectSpace(pos)
+			local vp = Mock.Viewport
+			local d = -rel.Z
+			local f = focal(self)
+			local dd = (abs(d) < 1e-6) and 1e-6 or d
+			local x, y = vp.X / 2 + rel.X / dd * f, vp.Y / 2 - rel.Y / dd * f
+			return Vector3.new(x, y, d), d > 0 and x >= 0 and x <= vp.X and y >= 0 and y <= vp.Y
+		end
+		-- the Altar gate as travel_guide_clear mocks it (WorldStyle.BuildGate's hoop, its PromptAnchor 3.5 studs up and 2.8
+		-- in front, GateService's prompt and Lift) and a second prompt, an NPC's "Talk", for the 'other' runs
+		local lobby = workspace:FindFirstChild("NimbusLobby")
+		local madeLobby = lobby == nil
+		if madeLobby then
+			lobby = Instance.new("Model")
+			lobby.Name = "NimbusLobby"
+			lobby.Parent = workspace
+		end
+		local site = L.Origin + Vector3.new(60, 0, 100)
+		local dir = Vector3.new(0, 0, 1)
+		local gate = Instance.new("Model")
+		gate.Name = "Portal_Altar"
+		local hoop = Instance.new("Part")
+		hoop.Name = "Hoop"
+		hoop.Anchored = true
+		hoop.Size = Vector3.new(23, 26, 5)
+		hoop.CFrame = CFrame.new(site + Vector3.new(0, 13, 0))
+		hoop.Parent = gate
+		local anchor = Instance.new("Part")
+		anchor.Name = "PromptAnchor"
+		anchor.Anchored = true
+		anchor.Transparency = 1
+		anchor.Size = Vector3.new(2, 2, 1)
+		anchor.CFrame = CFrame.new(site + Vector3.new(0, 3.5, -2.8))
+		anchor.Parent = gate
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "AltarGatePrompt"
+		prompt.ActionText = "Enter"
+		prompt.ObjectText = "Storm Altar"
+		if lift then
+			prompt:SetAttribute("CardLift", lift)
+		end
+		prompt.Parent = anchor
+		local away = CFrame.new(site + Vector3.new(200, 3, 0))
+		local otherPart = Instance.new("Part")
+		otherPart.Name = "TalkAnchor"
+		otherPart.Anchored = true
+		otherPart.Transparency = 1
+		otherPart.Size = Vector3.new(1, 1, 1)
+		otherPart.CFrame = away
+		otherPart.Parent = gate
+		local other = Instance.new("ProximityPrompt")
+		other.Name = "TalkPrompt"
+		other.ActionText = "Talk"
+		other.ObjectText = "Nimbus"
+		other.Parent = otherPart
+		gate.Parent = lobby
+		PC.Custom(prompt)
+		PC.Custom(other)
+		local function shownGui(o)
+			local a = o
+			while a and not a:IsA("ScreenGui") do
+				if a:IsA("GuiObject") and not a.Visible then
+					return false
+				end
+				a = a.Parent
+			end
+			return a ~= nil and a.Enabled ~= false
+		end
+		local function screenRect(obj)
+			local owner = obj:FindFirstAncestorOfClass("ScreenGui")
+			local dy = (owner and owner.IgnoreGuiInset) and 0 or (Mock.TopInset or 0)
+			local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+			return { X = p.X, Y = p.Y + dy, R = p.X + s.X, B = p.Y + s.Y + dy }
+		end
+		local function grow(r, by)
+			return { X = r.X - by, Y = r.Y - by, R = r.R + by, B = r.B + by }
+		end
+		-- a pixel billboard's rect on the screen (viewport px), as travel_guide_clear reads it
+		local function billboard(gui)
+			local ad = gui.Adornee or gui.Parent
+			local cf = camObj.CFrame
+			local so = gui.StudsOffset
+			local p = ad.Position + gui.StudsOffsetWorldSpace + cf.RightVector * so.X + cf.UpVector * so.Y - cf.LookVector * so.Z
+			local v = project(camObj, p)
+			if v.Z <= 0 then
+				return nil
+			end
+			local w, h = gui.Size.X.Offset, gui.Size.Y.Offset
+			local x0 = v.X - w / 2 + gui.SizeOffset.X * w
+			local y0 = v.Y - h / 2 - gui.SizeOffset.Y * h
+			return { X = x0, Y = y0, R = x0 + w, B = y0 + h }
+		end
+		-- px between two rects (negative: they overlap by that much)
+		local function gapOf(a, b)
+			return math.max(b.X - a.R, a.X - b.R, b.Y - a.B, a.Y - b.B)
+		end
+		local function chipNow()
+			local gui = pg():FindFirstChild("NimbusGuide")
+			local chip = gui and gui:FindFirstChild("Chip", true)
+			if not chip then
+				return nil, false
+			end
+			local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
+			return grow(screenRect(chip), 3 * k), shownGui(chip) -- (its wood edge)
+		end
+		local function tutorialPayload(index) -- (smoke_kitb_ui's U99.tutorialPayload)
+			local list = Steps.Steps
+			index = math.max(1, math.min(#list, index))
+			local step = list[index]
+			local cfg = Config.Tutorial or {}
+			local text = tostring(step.Text or "")
+			text = (text:gsub("{GiftTokens}", tostring(cfg.GiftTokens or 0)))
+			text = (text:gsub("{FinishTokens}", tostring((cfg.FinishReward or {}).Tokens or 0)))
+			text = (text:gsub("{RaidMinutes}", "20"))
+			return { Step = index, Total = #list, Id = step.Id, Title = step.Title, Text = text, Target = step.Target, Chapter = step.Chapter or 1,
+				CompleteOn = step.CompleteOn, Hint = step.Hint, Button = step.Button, Gift = step.Gift == true, Done = false, Completed = false,
+				Skipped = false, Reward = 0 }
+		end
+		local function tutorialDone()
+			local n = #Steps.Steps
+			KC.toClient("TutorialState", { Step = n, Total = n, Id = "done", Text = "", Done = true, Completed = false, Skipped = true, Reward = 0 })
+			KC.advance(1)
+		end
+		-- the tutorial on step 3, folded -> "strip" / "portrait chip" / what shows
+		local function tutorialFolded()
+			local g0 = pg():FindFirstChild("NimbusTutorial")
+			local fold0, main0 = g0 and g0:FindFirstChild("Fold", true), g0 and g0:FindFirstChild("Main", true)
+			if fold0 and main0 and shownGui(main0) then
+				Mock.Click(fold0)
+				KC.advance(0.5)
+			end
+			tutorialDone()
+			KC.toClient("TutorialState", tutorialPayload(3))
+			KC.advance(3)
+			local g = pg():FindFirstChild("NimbusTutorial")
+			local main, fold = g and g:FindFirstChild("Main", true), g and g:FindFirstChild("Fold", true)
+			if main and fold and shownGui(main) then
+				Mock.Click(fold)
+				KC.advance(1)
+			end
+			local strip = g and g:FindFirstChild("QuestStrip", true)
+			local portrait = g and g:FindFirstChild("Portrait", true)
+			if strip and shownGui(strip) then
+				return "strip " .. show(screenRect(strip))
+			elseif portrait and shownGui(portrait) then
+				return "portrait chip " .. show(screenRect(portrait))
+			end
+			return (main and shownGui(main)) and "the card open" or "nothing shown"
+		end
+		local touchWas = UIS.TouchEnabled
+		local ok, err = pcall(function()
+			T.check(lift ~= nil, "guide plank: (setup) GateService's Altar prompt Lift", tostring(lift))
+			methods.WorldToViewportPoint, methods.WorldToScreenPoint = project, project
+			local MODES = {
+				{ name = "walk", dist = 11, secs = 1 },
+				{ name = "walk tilt", dist = 11, secs = 1.5, tilt = function(t)
+					return 20 * math.min(1, t / 1.5)
+				end },
+				{ name = "here", dist = 7, secs = 3, shows = true },
+				{ name = "here tilt", dist = 7, secs = 3, tilt = function(t)
+					return (t <= 1) and (20 * t) or (t <= 2 and 20 * (2 - t) or 0)
+				end },
+				{ name = "other", dist = 11, secs = 1, other = true },
+			}
+			for _, size in ipairs({ { 320, 568 }, { 340, 640 }, { 360, 640 }, { 375, 667 }, { 384, 640 }, { 390, 844 }, { 400, 640 }, { 412, 915 } }) do
+				UIS.TouchEnabled = true
+				Mock.SetViewport(size[1], size[2])
+				pcall(MC._TouchButtons, true)
+				KC.advance(1.2) -- (the HUD's layout poll: the vitals card steps round the keys)
+				local mobile = pg():FindFirstChild("MobileControls")
+				local runKey = mobile and mobile:FindFirstChild("RunButton", true)
+				T.check(runKey ~= nil and shownGui(runKey), fmt("guide plank %dx%d: (setup) the touch keys (RUN) are on the screen", size[1], size[2]))
+				for _, state in ipairs({ "tutorial folded", "tutorial done" }) do
+					local how = (state == "tutorial folded") and tutorialFolded() or (tutorialDone() or "hidden")
+					for _, mode in ipairs(MODES) do
+						local tag = fmt("guide plank %dx%d %s, %s", size[1], size[2], state, mode.name)
+						pcall(Guide.Stop)
+						pcall(Mock.HidePrompt, prompt)
+						pcall(Mock.HidePrompt, other)
+						otherPart.CFrame = away
+						KC.advance(0.1)
+						local at = anchor.Position - dir * mode.dist
+						at = Vector3.new(at.X, L.Origin.Y + 3, at.Z)
+						Mock.Teleport(player, CFrame.lookAt(at, at + dir))
+						local head = at + Vector3.new(0, 1.9, 0)
+						local camAt = head - dir * 12.5 + Vector3.new(0, 4.5, 0)
+						local function camAtTilt(deg)
+							return CFrame.lookAt(camAt, head + dir * 14 + Vector3.new(0, 2 + 14 * math.tan(math.rad(deg)), 0))
+						end
+						camObj.CFrame = camAtTilt(0)
+						KC.advance(0.1)
+						T.check(Guide.Start("StormAltar") == true, tag .. ": (setup) the guide starts")
+						Mock.ShowPrompt(prompt, Enum.ProximityPromptInputType.Touch)
+						local cards = { { prompt = prompt, from = 0 } }
+						local t, worst, worstAt, frames, shownFrames, gateFrames = 0, math.huge, nil, 0, 0, 0
+						local hereShown, hereFrames, hereGap, hereAt = 0, 0, nil, "-"
+						local placed = false
+						while t < mode.secs - 1e-6 do
+							local cf = camAtTilt(mode.tilt and mode.tilt(t) or 0)
+							camObj.CFrame = cf
+							KC.advance(1 / 30)
+							camObj.CFrame = cf
+							t = t + 1 / 30
+							if mode.other and placed and placed ~= true then
+								-- the NPC's plank (shown the frame before, 200 studs off: past its MaxDistance) stood on the chip where
+								-- it was (its middle on the chip's, 16 studs from the camera)
+								local c, card = placed, PC.CardOf(other)
+								if T.check(card ~= nil, tag .. ": (setup) the NPC's plank") then
+									local vp, f, d = Mock.Viewport, focal(camObj), 16
+									local w, h = card.Size.X.Offset, card.Size.Y.Offset
+									local vx, vy = (c.X + c.R) / 2 - card.SizeOffset.X * w, (c.Y + c.B) / 2 + card.SizeOffset.Y * h
+									local p = camObj.CFrame:PointToWorldSpace(Vector3.new((vx - vp.X / 2) * d / f, -(vy - vp.Y / 2) * d / f, -d))
+									otherPart.CFrame = CFrame.new(p - card.StudsOffsetWorldSpace)
+									cards[#cards + 1] = { prompt = other, from = t }
+								end
+								placed = true
+							elseif mode.other and not placed and t >= 0.5 - 1e-6 then
+								placed = chipNow() or true
+								Mock.ShowPrompt(other, Enum.ProximityPromptInputType.Touch)
+							end
+							frames = frames + 1
+							local c, vis = chipNow()
+							local phase = Guide.Phase and Guide.Phase() or nil
+							if vis and c then
+								shownFrames = shownFrames + 1
+								for _, e in ipairs(cards) do
+									local card = PC.CardOf(e.prompt)
+									local r = card and card.Enabled and billboard(card)
+									if r and t >= e.from + 0.1 - 1e-6 then
+										local g = gapOf(c, r)
+										if e.prompt == prompt then
+											gateFrames = gateFrames + 1
+										end
+										if g < worst then
+											worst = g
+											worstAt = fmt("%.2f s (%s): chip %s, %s plank %s", t, tostring(phase), show(c), e.prompt.ActionText, show(r))
+										end
+									end
+								end
+							end
+							if phase == "Here" and t >= 0.5 - 1e-6 and t <= 2.5 + 1e-6 then
+								if hereFrames == 15 then -- (1 s in: where it stands, shown or not, and the plank)
+									local card = PC.CardOf(prompt)
+									local r = card and card.Enabled and billboard(card)
+									hereAt = fmt("chip %s %s, plank %s", show(c), vis and "shown" or "hidden", show(r or nil))
+								end
+								hereFrames = hereFrames + 1
+								if vis then
+									hereShown = hereShown + 1
+									local card = PC.CardOf(prompt)
+									local r = card and card.Enabled and billboard(card)
+									hereGap = r and c and gapOf(c, r) or hereGap
+								end
+							end
+						end
+						T.check(worst >= 6 - 1e-3, tag .. ": the chip, while it shows, keeps 6 px off every prompt plank",
+							fmt("%.1f px at %s", worst, tostring(worstAt)))
+						-- (320 x 568: the mock gate's plank reaches the chip's home there on kit-b 1a55f73 too, 1 px over it, and
+						-- no spot holds the full line, so the chip hides the whole phase on both trees; listed, not held)
+						if mode.shows and state == "tutorial done" and not (size[1] == 320 and size[2] == 568) then
+							T.check(hereFrames > 0 and hereShown == hereFrames, tag .. ": the chip shows through the \"You're here\" phase (0.5 - 2.5 s)",
+								fmt("%d of %d frames shown", hereShown, hereFrames))
+						end
+						if mode.name == "here" then
+							T.info(fmt("*%s: tutorial %s; the chip shows %d of %d frames 0.5 - 2.5 s into \"You're here\", %s px off the plank (1 s in: %s)",
+								tag, how, hereShown, hereFrames, hereGap and fmt("%.1f", hereGap) or "-", hereAt))
+						end
+						Guide.Stop()
+						pcall(Mock.HidePrompt, prompt)
+						pcall(Mock.HidePrompt, other)
+						otherPart.CFrame = away
+						KC.advance(0.1)
+					end
+				end
+				pcall(MC._TouchButtons, false)
+			end
+		end)
+		methods.WorldToViewportPoint, methods.WorldToScreenPoint = saved[1], saved[2]
+		pcall(Guide.Stop)
+		pcall(Mock.HidePrompt, prompt)
+		pcall(Mock.HidePrompt, other)
+		pcall(MC._TouchButtons, false)
+		UIS.TouchEnabled = touchWas
+		Mock.SetViewport(1920, 1080)
+		pcall(tutorialDone)
+		Mock.Teleport(player, CFrame.new(L.Origin + Vector3.new(0, 3, 20)))
+		KC.advance(0.5)
+		gate:Destroy()
+		if madeLobby then
+			lobby:Destroy()
+		end
+		T.check(ok, "guide plank: the scenario ran", tostring(err))
+		KC.flushErrors("travel_guide_plank")
+	end)
+
+	----------------------------------------------------------------------------------------------------------------
 	-- travel_guide_walk (look review fin1, MJ-A / MJ-B; pol0, MAJOR 1 - 3): the camera moves at the REAL lobby's Altar
 	-- gate (LobbyBuilder, StormAltar and GateService built in the client world as dump_gui's worldui scenes build it; pol0:
 	-- the mock gate and its fixed turns missed what the real lobby showed) under the stock camera (12.5 studs behind the
@@ -1957,8 +2312,77 @@ local function clientScenarios()
 	-- (fin1's rule "never more than 40 px in one frame" became the steps rule. Reason: pol0 minor 2 asks for the kit's
 	-- hard steps in place of the eased glide, and MAJOR 2 a for a hard step or a hide where the chip crosses a piece.
 	-- The 500 px jump fin1 caught still fails it: a jump is more than a quarter of the chip's width with no hide between)
+	--
+	-- guide_pins (fix6: every look major of the world lane pinned, at the eleven gate sizes 360x640, 640x360, 667x375,
+	-- 720x405, 800x450, 844x390, 960x540, 390x844, 1024x768, 1280x720, 1920x1080; the same walk, its runs and its rules
+	-- only as the reviews worded them; a pin's name says its review):
+	--   pin MJ-A (fin1)  a straight walk (turned 0 / 12 / -15 / 6 / -8 / 24 / -25): the chip keeps one place off home,
+	--                    out and back, and moves in hard steps or across a hide (the 500 px jump, four places in 1.7 s)
+	--   pin MJ-B (fin1)  the same walks: the GuideSign, while it shows, wholly on the screen and under no HUD piece (390x844:
+	--                    jammed under the wallet strip, the top bar's pill and the "..." button from 35 to 26 studs)
+	--   pin W1 (pol1 A)  the same walks and a walk that stops at 20 studs: the GuideSign does not flash (each show, hide,
+	--                    line change or new spot holds 0.5 s, unless the run ends first), takes at most two spots a walk,
+	--                    and never stacks on the chip (sharing columns, at least twice the sign's 8 px clearance apart,
+	--                    under the screen factor: 7-10 px read as one block, 'Storm Altar' over 'Guiding to Storm Altar')
+	--   pin W2 (pol1 B)  standing 45 studs out, the camera panned -35 -> 35 -> -35 at 6, 12, 23 and 60 degrees a second (6
+	--                    and 12: fix6 look0 #5), and two walks with the camera turning (0 -> 40 and 40 -> 0 degrees, 50 -> 20
+	--                    studs): in each pass the chip leaves home at most once, for one spot (it stepped into the arrow's
+	--                    path, then hid and came back 483 px away on the other side: three moves a pass); and (look0 #4) it
+	--                    hides at most 0.5 s at a time there (the one trip had cost hides of 0.6 - 2.1 s)
+	--   pin G1 (look1 #1) the pans (and one at 35 degrees a second), the turning walks, a pan that stops facing the gate,
+	--                    one that turns back from it and two sways: every chip state (a show between two hides or two
+	--                    changes of its line) lasts 0.5 s, and it never blinks in place (e272588: three blinks a pass, the
+	--                    short line at home 1 - 14 frames)
+	--   pin G2 (look1 #2) the sways (+-3 degrees at 6 degrees a second, +-6 at 24) and the pan that turns back: the chip
+	--                    keeps the side it took (it jumped 477 px across the arrow at each turn of a sway on desktop)
+	--   pin G3 (look1 #3) the same runs and a look up at 12 studs: each GuideSign show lasts 0.5 s (W1 held the walk only)
 	----------------------------------------------------------------------------------------------------------------
-	S.travel_guide_walk = guarded("travel_guide_walk", function()
+	-- (fix6b harness) each walk's runs, one scenario list a part: travel_guide_walk took 293 s alone and ran past the 600 s
+	-- per-scenario cap in the whole suite under load; guide_pins took 1036 s alone and hit the cap after it. Each part is
+	-- its own list with its own cap; tools/smoke.py runs every part when the walk's first list is named (`--only
+	-- travel_guide_walk` / `--only guide_pins` run the whole walk, as before). A part takes the runs of a kind
+	-- ("kind:look"), of one name ("pan 23 deg/s at 45 studs") or of one name at some sizes ("pan 6 deg/s at 45
+	-- studs@360x640|640x360"); every run is in exactly one part (checked). The runs, their frames and their rules are
+	-- unchanged. A frame costs about 50 ms alone; each part holds at most ~3600 frames (~190 s alone, a third of the cap;
+	-- a 6 deg/s pan is 720 frames a size, 12 deg/s 370, 23 deg/s 202, a walk 73)
+	local function sizesOf(name, sizes)
+		return name .. "@" .. sizes
+	end
+	local PAN6, PAN12 = "pan 6 deg/s at 45 studs", "pan 12 deg/s at 45 studs"
+	local WALK_PARTS = {
+		travel = {
+			{ "kind:walk", "kind:far" }, -- travel_guide_walk
+			{ "pan 23 deg/s at 45 studs", "pan 120 deg/s at 45 studs" }, -- travel_guide_walk_pans
+			{ "pan 60 deg/s at 45 studs", "pan 23 deg/s at 70 studs" }, -- travel_guide_walk_pans_b
+			{ "kind:look" }, -- travel_guide_walk_looks
+		},
+		pins = {
+			{ "walk", "walk turned 12", "walk turned -15", "walk turned 6" }, -- guide_pins (3212 frames)
+			{ "walk turned -8", "walk turned 24", "walk turned -25" }, -- guide_pins_walks (2409)
+			{ "kind:stop", "kind:turnwalk" }, -- guide_pins_turns (2574)
+			{ sizesOf(PAN6, "360x640|640x360|667x375|720x405") }, -- guide_pins_pan6 (2880)
+			{ sizesOf(PAN6, "800x450|844x390|960x540|390x844") }, -- guide_pins_pan6_b (2880)
+			{ sizesOf(PAN6, "1024x768|1280x720|1920x1080"), "pan 60 deg/s at 45 studs" }, -- guide_pins_pan6_c (3150)
+			{ sizesOf(PAN12, "360x640|640x360|667x375|720x405|800x450|844x390"), "kind:panstop" }, -- guide_pins_pan12 (3496)
+			{ sizesOf(PAN12, "960x540|390x844|1024x768|1280x720|1920x1080"), "kind:panrev" }, -- guide_pins_pan12_b (3082)
+			{ "pan 23 deg/s at 45 studs", "sway +-6 deg at 24 deg/s" }, -- guide_pins_pans (3432)
+			{ "pan 35 deg/s at 45 studs", "sway +-3 deg at 6 deg/s" }, -- guide_pins_sways (3080)
+			{ "kind:look" }, -- guide_pins_looks (1430)
+		},
+	}
+	local WALK_LISTS = {
+		travel = { "travel_guide_walk", "travel_guide_walk_pans", "travel_guide_walk_pans_b", "travel_guide_walk_looks" },
+		pins = { "guide_pins", "guide_pins_walks", "guide_pins_turns", "guide_pins_pan6", "guide_pins_pan6_b", "guide_pins_pan6_c",
+			"guide_pins_pan12", "guide_pins_pan12_b", "guide_pins_pans", "guide_pins_sways", "guide_pins_looks" },
+	}
+	local function partKey(key, run)
+		if key == "kind:" .. run.kind or key == run.name then
+			return true
+		end
+		local name, sizes = key:match("^(.-)@(.+)$")
+		return name == run.name and (("|" .. sizes .. "|"):find(fmt("|%dx%d|", run.w, run.h), 1, true)) ~= nil
+	end
+	local function guideWalk(scen, pins, part)
 		local Config = shared("Config")
 		local TC = client("Controllers/TutorialController")
 		local MC = client("Controllers/MovementController")
@@ -1996,6 +2420,11 @@ local function clientScenarios()
 		local info = nil
 		local context = Mock.Context
 		Mock.Context = "server"
+		-- (fix6b harness) GateService.Init runs once a server (its S.initialized guard): a second walk in the same client
+		-- world built a new lobby, but Init returned at once and its gate got no AltarGatePrompt (guide_pins after
+		-- travel_guide_walk: "(setup) the built lobby's Altar gate prompt" failed). Each walk binds its own lobby with a
+		-- fresh copy of the module (a cloned ModuleScript is a new module, as in Roblox), removed with the lobby
+		local gsCopy = nil
 		local okB, whyB = pcall(function()
 			local LB = req(ROOTS.server .. "/Services/LobbyBuilder")
 			info = LB and LB.Build()
@@ -2004,7 +2433,15 @@ local function clientScenarios()
 			if SA then
 				pcall(SA.Build, info)
 			end
-			local GSv = req(ROOTS.server .. "/Services/GateService")
+			local gsMod = Mock.GetPath(ROOTS.server .. "/Services/GateService")
+			gsCopy = gsMod and gsMod:Clone()
+			local GSv = nil
+			if gsCopy then
+				gsCopy.Name = "GateService_" .. scen
+				gsCopy.Parent = gsMod.Parent
+				local okR, m = pcall(require, gsCopy)
+				GSv = okR and m or nil
+			end
 			if GSv then
 				pcall(GSv.Init, info, { StormAltar = SA })
 			end
@@ -2028,6 +2465,9 @@ local function clientScenarios()
 		local function putBack()
 			for _, c in ipairs(built) do
 				c:Destroy()
+			end
+			if gsCopy then
+				gsCopy:Destroy()
 			end
 			if aside then
 				aside.Parent = workspace
@@ -2157,11 +2597,128 @@ local function clientScenarios()
 			end
 		end
 		local SIZES = { { 360, 640 }, { 640, 360 }, { 667, 375 }, { 390, 844 }, { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }
+		if pins then
+			SIZES = { { 360, 640 }, { 640, 360 }, { 667, 375 }, { 720, 405 }, { 800, 450 }, { 844, 390 }, { 960, 540 }, { 390, 844 },
+				{ 1024, 768 }, { 1280, 720 }, { 1920, 1080 } }
+			-- (while working: NC_GUIDE_PINS_SIZES="640x360,1920x1080" walks those alone; the gate runs all eleven)
+			local only = os and os.getenv and os.getenv("NC_GUIDE_PINS_SIZES")
+			if only and only ~= "" then
+				local keep = {}
+				for _, sz in ipairs(SIZES) do
+					if (("," .. only .. ","):find("," .. sz[1] .. "x" .. sz[2] .. ",", 1, true)) then
+						keep[#keep + 1] = sz
+					end
+				end
+				SIZES = keep
+				T.info("*guide pins: NC_GUIDE_PINS_SIZES=" .. only .. " (not the gate run)")
+			end
+		end
+		-- (while working: NC_GUIDE_TRACE=<file> appends one line a frame: the run, the frame, the arrow, the chip and the
+		-- GuideSign as the walk reads them)
+		local tracePath = os and os.getenv and os.getenv("NC_GUIDE_TRACE")
+		local traceFile = (tracePath and tracePath ~= "" and io and io.open) and io.open(tracePath, "a") or nil
 		local runs = {}
 		local function add(kind, name, size, frames)
 			runs[#runs + 1] = { kind = kind, name = name, w = size[1], h = size[2], frames = frames }
 		end
-		for _, turn in ipairs({ 0, 12, 16, 20, -15, 28, 32 }) do
+		-- (guide_pins) a pass's frames carry its number (fr[4]): W2 counts the chip's trips off home in each
+		local function mark(list, from, pass)
+			for i = from, #list do
+				list[i][4] = pass
+			end
+		end
+		if pins then
+			for _, turn in ipairs({ 0, 12, -15, 6, -8, 24, -25 }) do
+				for _, size in ipairs(SIZES) do
+					local f = { { 50, turn, 2 } }
+					seg(f, 50, 12, turn, turn, 2, 2)
+					add("walk", turn ~= 0 and fmt("walk turned %d", turn) or "walk", size, f)
+				end
+			end
+			for _, size in ipairs(SIZES) do
+				local f = { { 50, 0, 2 } }
+				seg(f, 50, 20, 0, 0, 2, 2)
+				hold(f, 20, 0, 2, 60)
+				add("stop", "walk, stop at 20 studs", size, f)
+			end
+			-- (fix6 look0 #5: at 6 degrees a second the chip still took the side ahead, then crossed: two trips a pass; W2 had
+			-- 23 and 60 alone) the slow pans too
+			for _, deg in ipairs({ 6, 12, 23, 60 }) do
+				for _, size in ipairs(SIZES) do
+					local f = {}
+					hold(f, 45, -35, 2, 10)
+					local p1 = #f + 1
+					seg(f, 45, 45, -35, 35, 2, 2, 70 / deg)
+					mark(f, p1, 1)
+					local p2 = #f + 1
+					seg(f, 45, 45, 35, -35, 2, 2, 70 / deg)
+					mark(f, p2, 2)
+					hold(f, 45, -35, 2, 10)
+					add("pan", fmt("pan %d deg/s at 45 studs", deg), size, f)
+				end
+			end
+			for _, tt in ipairs({ { 0, 40 }, { 40, 0 } }) do
+				for _, size in ipairs(SIZES) do
+					-- (fix6) the standing start is no part of the pass, as the pans' hold is not: a spot the chip took there,
+					-- the camera still, could not know which way the arrow would go; the pass is the turning walk from the
+					-- second frame (a spot taken once the turn runs still counts)
+					local f = { { 50, tt[1], 2 } }
+					seg(f, 50, 20, tt[1], tt[2], 2, 2)
+					mark(f, 2, 1)
+					add("turnwalk", fmt("walk turning %d -> %d", tt[1], tt[2]), size, f)
+				end
+			end
+			-- (fix6b, look1 #1 - #3) a pan at 35 degrees a second (the short line at home held 0.13 - 0.23 s there), a pan
+			-- that stops facing the gate and one that turns back from it (23 degrees a second), the camera swayed +-3
+			-- degrees at 6 degrees a second (1 s a leg) and +-6 at 24 (0.5 s a leg) standing 45 studs out (the chip jumped
+			-- 477 px across the arrow at each turn of the sway), and the look up at 12 studs (the GuideSign's 2-frame
+			-- name-alone flash on every landscape phone)
+			for _, size in ipairs(SIZES) do
+				local f = {}
+				hold(f, 45, -35, 2, 10)
+				local p1 = #f + 1
+				seg(f, 45, 45, -35, 35, 2, 2, 70 / 35)
+				mark(f, p1, 1)
+				local p2 = #f + 1
+				seg(f, 45, 45, 35, -35, 2, 2, 70 / 35)
+				mark(f, p2, 2)
+				hold(f, 45, -35, 2, 10)
+				add("pan", "pan 35 deg/s at 45 studs", size, f)
+			end
+			for _, size in ipairs(SIZES) do
+				local f = {}
+				hold(f, 45, -35, 2, 10)
+				seg(f, 45, 45, -35, 0, 2, 2, 35 / 23)
+				hold(f, 45, 0, 2, 60)
+				add("panstop", "pan 23 deg/s, stop facing the gate", size, f)
+				f = {}
+				hold(f, 45, -35, 2, 10)
+				seg(f, 45, 45, -35, 0, 2, 2, 35 / 23)
+				seg(f, 45, 45, 0, -35, 2, 2, 35 / 23)
+				hold(f, 45, -35, 2, 10)
+				add("panrev", "pan 23 deg/s to the gate and back", size, f)
+			end
+			for _, sw in ipairs({ { 3, 1, 4 }, { 6, 0.5, 6 } }) do
+				for _, size in ipairs(SIZES) do
+					local f = {}
+					hold(f, 45, -sw[1], 2, 10)
+					for leg = 1, sw[3] do
+						local a0 = (leg % 2 == 1) and -sw[1] or sw[1]
+						seg(f, 45, 45, a0, -a0, 2, 2, sw[2])
+					end
+					hold(f, 45, (sw[3] % 2 == 1) and sw[1] or -sw[1], 2, 10)
+					add("sway", fmt("sway +-%d deg at %d deg/s", sw[1], math.floor(2 * sw[1] / sw[2] + 0.5)), size, f)
+				end
+			end
+			for _, size in ipairs(SIZES) do
+				local f = {}
+				hold(f, 12, 0, 2, 10)
+				seg(f, 12, 12, 0, 0, 2, 14, 2)
+				seg(f, 12, 12, 0, 0, 14, 2, 2)
+				add("look", "look up at 12 studs", size, f)
+			end
+		end
+		for _, turn in ipairs(pins and {} or { 0, 12, 16, 20, -15, 28, 32 }) do
 			for _, size in ipairs(SIZES) do
 				if abs(turn) < 25 or size[1] >= 1280 then
 					local f = { { 50, turn, 2 } }
@@ -2172,12 +2729,12 @@ local function clientScenarios()
 		end
 		-- (pol0 minor 3: from far off only the sign reached the chip's home at 844x390, which sent it 168 px aside from 120
 		-- studs in) the far walk, 120 -> 50 studs
-		for _, size in ipairs({ { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }) do
+		for _, size in ipairs(pins and {} or { { 844, 390 }, { 1280, 720 }, { 1920, 1080 } }) do
 			local f = { { 120, 0, 2 } }
 			seg(f, 120, 50, 0, 0, 2, 2)
 			add("far", "far walk", size, f)
 		end
-		for _, p in ipairs({ { 45, 23 }, { 45, 60 }, { 45, 120 }, { 70, 23 } }) do
+		for _, p in ipairs(pins and {} or { { 45, 23 }, { 45, 60 }, { 45, 120 }, { 70, 23 } }) do
 			for _, size in ipairs(SIZES) do
 				local f = {}
 				hold(f, p[1], -35, 2, 10)
@@ -2187,7 +2744,7 @@ local function clientScenarios()
 				add("pan", fmt("pan %d deg/s at %d studs", p[2], p[1]), size, f)
 			end
 		end
-		for _, d in ipairs({ 20, 12 }) do
+		for _, d in ipairs(pins and {} or { 20, 12 }) do
 			for _, size in ipairs(SIZES) do
 				local f = {}
 				hold(f, d, 0, 2, 10)
@@ -2195,6 +2752,50 @@ local function clientScenarios()
 				seg(f, d, d, 0, 0, 14, 2, 2)
 				add("look", fmt("look up at %d studs", d), size, f)
 			end
+		end
+		-- (while working: NC_GUIDE_PINS_RUNS="sway,and back" walks the runs whose names hold one of those; the gate runs all)
+		local onlyRuns = pins and os and os.getenv and os.getenv("NC_GUIDE_PINS_RUNS")
+		if onlyRuns and onlyRuns ~= "" then
+			local keep = {}
+			for _, run in ipairs(runs) do
+				for word in (onlyRuns .. ","):gmatch("([^,]+),") do
+					if run.name:find(word, 1, true) then
+						keep[#keep + 1] = run
+						break
+					end
+				end
+			end
+			runs = keep
+			T.info("*guide pins: NC_GUIDE_PINS_RUNS=" .. onlyRuns .. " (not the gate run)")
+		end
+		-- (fix6b harness) this list's part of the runs (WALK_PARTS); no run is left out of every part
+		if part then
+			local parts = WALK_PARTS[pins and "pins" or "travel"]
+			local keep, odd = {}, {}
+			for _, run in ipairs(runs) do
+				local found = {}
+				for i, keys in ipairs(parts) do
+					for _, key in ipairs(keys) do
+						if partKey(key, run) then
+							found[#found + 1] = i
+							break
+						end
+					end
+				end
+				if #found == 1 and found[1] == part then
+					keep[#keep + 1] = run
+				elseif #found ~= 1 then
+					odd[#odd + 1] = fmt("%s %dx%d in %d parts", run.name, run.w, run.h, #found)
+				end
+			end
+			T.check(#odd == 0, scen .. ": (setup) every run is in exactly one part of the walk", table.concat(odd, "; "))
+			-- (NC_GUIDE_PINS_SIZES / _RUNS, while working, may leave a part empty on purpose)
+			local devFilter = pins and os and os.getenv and ((os.getenv("NC_GUIDE_PINS_SIZES") or "") ~= "" or (os.getenv("NC_GUIDE_PINS_RUNS") or "") ~= "")
+			if not devFilter then
+				T.check(#keep > 0, scen .. ": (setup) part " .. part .. " of the walk has runs")
+			end
+			T.info(fmt("*%s: part %d of %d, %d runs", scen, part, #parts, #keep))
+			runs = keep
 		end
 		local touchWas = UIS.TouchEnabled
 		local ok, err = pcall(function()
@@ -2237,6 +2838,11 @@ local function clientScenarios()
 				local hidden, maxHidden, hiddenFrames = 0, 0, 0
 				local seenArrow, seenSign, signFrames = nil, nil, 0
 				local fullW, arrowNear = nil, nil
+				-- (guide_pins) the GuideSign's state each frame ("off", or its spot: right / left / under the tip, "/name"
+				-- with the name alone) and the first frame it stacked on the chip
+				local signStates, stack, traceSign = {}, nil, nil
+				-- (guide_pins, fix6b) the chip each frame: false hidden, else its middle, top and line ({ x, y, t })
+				local chipSeq = {}
 				for i, fr in ipairs(run.frames) do
 					if i > 1 then
 						place(fr[1], fr[2], fr[3])
@@ -2248,6 +2854,7 @@ local function clientScenarios()
 					local gui = pg():FindFirstChild("NimbusGuide")
 					local chip = gui and gui:FindFirstChild("Chip", true)
 					local c = nil
+					chipSeq[i] = false
 					if not (chip and chip.Visible and gui.Enabled) then
 						hidden = hidden + 1
 						hiddenFrames = hiddenFrames + 1
@@ -2261,6 +2868,8 @@ local function clientScenarios()
 						c = grow(screenRect(chip), 3 * k) -- its wood edge
 						local cw = c.R - c.X
 						local cx = (c.X + c.R) / 2
+						local tl = chip:FindFirstChild("Text")
+						chipSeq[i] = { x = cx, y = c.Y, t = (tl and tl:IsA("TextLabel")) and tl.Text or "" }
 						if prev then
 							local moved = math.max(abs(cx - prev.x), abs(c.Y - prev.y))
 							if moved > cw / 4 + 2 and not prev.hid then
@@ -2274,7 +2883,7 @@ local function clientScenarios()
 						if still == 3 or #places == 0 then
 							local last = places[#places]
 							if not last or math.max(abs(cx - last.x), abs(c.Y - last.y)) > 6 then
-								places[#places + 1] = { x = cx, y = c.Y, at = at }
+								places[#places + 1] = { x = cx, y = c.Y, at = at, i = i, pass = fr[4] }
 								local off = cx - vp.X / 2
 								sides[#sides + 1] = (off > 2 and "R") or (off < -2 and "L") or "C"
 							end
@@ -2292,8 +2901,12 @@ local function clientScenarios()
 								fail("row", fmt("%s: the chip %s left its home row (top %.0f) on a landscape screen", at, show(c), homeTop))
 							end
 						end
-						if abs(cx - vp.X / 2) > cw + 2 then
-							fail("row", fmt("%s: the chip %s is pushed %.0f px off the top centre (its width %.0f)", at, show(c), cx - vp.X / 2, cw))
+						-- (fix6 look0 #4) within the chip's FULL width (its widest drawn this run): the compact line, the same
+						-- chip in a shorter word, may step behind a passing arrow that far; it hid 0.6 - 2.1 s waiting for room
+						-- within its own shorter width. pol0 MAJOR 2 b's 750 px corner still fails it
+						local lim = math.max(cw, fullW or cw)
+						if abs(cx - vp.X / 2) > lim + 2 then
+							fail("row", fmt("%s: the chip %s is pushed %.0f px off the top centre (its width %.0f)", at, show(c), cx - vp.X / 2, lim))
 						end
 					end
 					-- the arrow (its model in the world guide's folder while it shows)
@@ -2301,19 +2914,35 @@ local function clientScenarios()
 					if not arrow then
 						fail("arrow", at .. ": the arrow is hidden")
 					end
-					local box = nil
+					local box, partBoxes = nil, {}
 					for _, d in ipairs(arrow and arrow:GetDescendants() or {}) do
 						if d:IsA("BasePart") then
 							local b = boxOf(d)
 							if b then
+								partBoxes[#partBoxes + 1] = b
 								box = box and { X = math.min(box.X, b.X), Y = math.min(box.Y, b.Y), R = math.max(box.R, b.R), B = math.max(box.B, b.B) } or b
 							end
 						end
 					end
+					-- (fix6b harness) "covers the arrow" is read against the arrow's parts (each part's projected box holds
+					-- every pixel it draws), not their union: the arrow is a stepped head narrowing to its tip, and the union's
+					-- bottom corners hold nothing (TutorialController reads its silhouette, fin0 MJ1, for the same reason).
+					-- Split into lists, the pans start on the other step of the arrow's 0.45 s hop, and at 667 x 375 the union's
+					-- empty corner met the chip's corner by 2 px for 1 - 3 frames (travel_guide_walk_pans at 23 and 60 degrees a
+					-- second; in one list the same frames fell on the upper step and passed)
+					local function onArrow(r)
+						for _, b in ipairs(partBoxes) do
+							if overlap(r, b) then
+								return b
+							end
+						end
+						return nil
+					end
 					if box then
 						seenArrow = seenArrow or at
-						if c and overlap(c, box) then
-							fail("clear", fmt("%s: the chip %s covers the arrow %s", at, show(c), show(box)))
+						local hit = c and onArrow(c)
+						if hit then
+							fail("clear", fmt("%s: the chip %s covers the arrow %s (its part %s)", at, show(c), show(box), show(hit)))
 						end
 					end
 					-- (pol0 minor 3) on a landscape walk the chip rests off the top centre only for the arrow: it came within 40 px
@@ -2341,6 +2970,7 @@ local function clientScenarios()
 						local x0 = bb.X + card.Position.X.Offset + card.Position.X.Scale * (bb.R - bb.X) - card.AnchorPoint.X * w
 						local cy = (bb.Y + bb.B) / 2 + card.Position.Y.Offset
 						local s = grow({ X = x0, Y = cy - h / 2, R = x0 + w, B = cy + h / 2 }, 3 * sk)
+						traceSign = s
 						seenSign = seenSign or at
 						signFrames = signFrames + 1
 						if not onScreen(s) then
@@ -2353,39 +2983,53 @@ local function clientScenarios()
 						if c and overlap(c, s) then
 							fail("clear", fmt("%s: the chip %s covers the GuideSign %s", at, show(c), show(s)))
 						end
-						if box and overlap(s, box) then
-							fail("clear", fmt("%s: the GuideSign %s covers the arrow %s", at, show(s), show(box)))
+						local hit = box and onArrow(s)
+						if hit then
+							fail("clear", fmt("%s: the GuideSign %s covers the arrow %s (its part %s)", at, show(s), show(box), show(hit)))
 						end
+						-- (guide_pins) its spot as drawn: hung under the arrow's tip (its top at or below the tip), else the
+						-- side of the arrow's axis its middle is on
+						local spot = "right"
+						if box and s.Y >= box.B - 2 then
+							spot = "under"
+						elseif box and (s.X + s.R) / 2 < (box.X + box.R) / 2 then
+							spot = "left"
+						end
+						local dl = card:FindFirstChild("Distance")
+						signStates[i] = spot .. ((dl and dl:IsA("GuiObject") and not dl.Visible) and "/name" or "")
+						-- stacked on the chip: sharing columns and closer than twice the sign's own clearance (TutorialController
+						-- K.SIGN_CLEAR, 8 px at 1080p under the screen factor; pol1 A's pair stood 7-10 px apart at 640x360,
+						-- the clearance itself, and read as one block). The factor from the chip: 51 px tall at 1080p
+						if c and not stack and math.min(c.R, s.R) > math.max(c.X, s.X) then
+							local gy = (s.Y >= c.B) and (s.Y - c.B) or ((c.Y >= s.B) and (c.Y - s.B) or -1)
+							local need = 16 * (c.B - c.Y) / 51
+							if gy < need then
+								stack = fmt("%s: the GuideSign %s %s the chip %s (%.0f px apart, %.0f wanted)", at, show(s),
+									gy < 0 and "on" or "stacked on", show(c), gy, need)
+							end
+						end
+					end
+					signStates[i] = signStates[i] or "off"
+					if traceFile then
+						local function r4(r)
+							return r and fmt("%.0f,%.0f,%.0f,%.0f", r.X, r.Y, r.R, r.B) or "-"
+						end
+						traceFile:write(fmt("%s|%d|%.1f|%.1f|%s|chip %s|arrow %s|sign %s %s|%s\n", tag, i, fr[1], fr[2], tostring(fr[4] or ""),
+							r4(c), r4(box), signStates[i], r4(traceSign), chipSeq[i] and chipSeq[i].t or "-"))
+						traceSign = nil
 					end
 					if i == 1 and run.name == "walk" and (run.w == 1920 or run.w == 1280 or run.w == 390) then
 						T.check(box ~= nil and bb ~= nil, tag .. ": at 50 studs the arrow and its sign show (the mock's framing)",
 							fmt("arrow %s, sign %s", tostring(box ~= nil), tostring(bb ~= nil)))
 					end
 				end
-				local hideCap = (run.kind == "walk" or run.kind == "far") and 6 or 15
-				T.check(maxHidden <= hideCap, tag .. fmt(": the chip hides at most %.1f s at a time", hideCap / 30),
-					fmt("hidden %d frames in a row (%d in all)", maxHidden, hiddenFrames))
-				T.check(fails.steps == nil, tag .. ": the chip moves in hard steps of at most a quarter of its width, or across a hide",
-					fails.steps and (fails.steps .. fmt(" (%d frames)", counts.steps)))
-				T.check(fails.row == nil, tag .. ": the chip keeps its home row on a landscape screen and stays within its width of the top centre",
-					fails.row and (fails.row .. fmt(" (%d frames)", counts.row)))
-				if (run.kind == "walk" or run.kind == "far") and run.w > run.h then
-					T.check(fails.home == nil, tag .. ": the chip rests off the top centre only while the arrow is near it (the sign gives way)",
-						fails.home and (fails.home .. fmt(" (%d frames)", counts.home)))
-				end
-				local seq = {}
-				for i, p in ipairs(places) do
-					seq[#seq + 1] = sides[i] .. fmt("@%s(%.0f,%.0f)", p.at, p.x, p.y)
-				end
-				if run.kind == "walk" then
-					-- (pick a side and keep it) its rests in order: home "C" (the home itself may move with the HUD, e.g. a
-					-- quest strip docking over the vitals card), or away "L" / "R" of the middle; never both sides, one away
-					-- stretch at most and one spot in it (every rest there within 6 px of its first), home at the end (by
-					-- 12 studs the arrow, shown all the way now, has risen past the chip's row on every screen)
+				-- the chip's rests in order, as stretches: home "C" or away "L" / "R"; away trips, both sides, a second spot in
+				-- one trip (`list`: the places to read, `sides` theirs)
+				local function trips(list, sds)
 					local stretches, spot, creep = {}, nil, nil
 					local hasL, hasR = false, false
-					for i, p in ipairs(places) do
-						local sd = sides[i]
+					for k, p in ipairs(list) do
+						local sd = sds[k]
 						hasL, hasR = hasL or sd == "L", hasR or sd == "R"
 						if stretches[#stretches] ~= sd then
 							stretches[#stretches + 1] = sd
@@ -2398,6 +3042,184 @@ local function clientScenarios()
 					for _, sd in ipairs(stretches) do
 						away = away + ((sd ~= "C") and 1 or 0)
 					end
+					return away, hasL, hasR, creep
+				end
+				local seq = {}
+				for k, p in ipairs(places) do
+					seq[#seq + 1] = sides[k] .. fmt("@%s(%.0f,%.0f)", p.at, p.x, p.y)
+				end
+				if pins then
+					if run.kind == "walk" then
+						local away, hasL, hasR, creep = trips(places, sides)
+						T.check(not (hasL and hasR) and away <= 1 and creep == nil and sides[#sides] == "C" and fails.steps == nil,
+							"pin MJ-A (fin1) " .. tag .. ": the chip keeps one place off home, out and back, in hard steps or across a hide",
+							table.concat(seq, " -> ") .. (creep and (" (a second spot at " .. creep .. ")") or "") .. (fails.steps and (" | " .. fails.steps) or ""))
+						T.check(fails["sign free"] == nil, "pin MJ-B (fin1) " .. tag .. ": the GuideSign, while it shows, is wholly on the screen, under no HUD piece",
+							fails["sign free"] and (fails["sign free"] .. fmt(" (%d frames)", counts["sign free"])))
+					end
+					if run.kind == "walk" or run.kind == "stop" then
+						-- the sign's stretches: a state (shown at a spot, the name alone, hidden) held under 0.5 s that the run
+						-- does not end in is a flash; its spots in order (hidden frames skipped)
+						local flashes, spots, n = {}, {}, #run.frames
+						local k = 1
+						while k <= n do
+							local j = k
+							while j < n and signStates[j + 1] == signStates[k] do
+								j = j + 1
+							end
+							-- (the first stretch began in the run's 0.5 s pre-roll, before frame 1: not a flash)
+						if k > 1 and j < n and j - k + 1 < 15 then
+								flashes[#flashes + 1] = fmt("%s %d frames at %.1f studs", signStates[k], j - k + 1, run.frames[k][1])
+							end
+							local sp = signStates[k]:gsub("/name", "")
+							if sp ~= "off" and spots[#spots] ~= sp then
+								spots[#spots + 1] = sp
+							end
+							k = j + 1
+						end
+						T.check(#flashes == 0, "pin W1 (pol1 A) " .. tag .. ": the GuideSign does not flash (each show, hide, line or spot holds 0.5 s)",
+							table.concat(flashes, "; "))
+						T.check(#spots <= 2, "pin W1 (pol1 A) " .. tag .. ": the GuideSign takes at most two spots a walk", table.concat(spots, " -> "))
+						T.check(stack == nil, "pin W1 (pol1 A) " .. tag .. ": the GuideSign never stacks on the chip", stack)
+					end
+					if run.kind == "pan" or run.kind == "turnwalk" then
+						local bad = {}
+						for pass = 1, 2 do
+							local list, sds = {}, {}
+							for k, p in ipairs(places) do
+								if p.pass == pass then
+									list[#list + 1], sds[#sds + 1] = p, sides[k]
+								end
+							end
+							local away, _, _, creep = trips(list, sds)
+							if away > 1 or creep then
+								bad[#bad + 1] = fmt("pass %d: %d trips off home%s", pass, away, creep and (", a second spot at " .. creep) or "")
+							end
+						end
+						T.check(#bad == 0, "pin W2 (pol1 B) " .. tag .. ": in each pass the chip leaves home at most once, for one spot",
+							table.concat(bad, "; ") .. " | " .. table.concat(seq, " -> "))
+						-- (fix6 look0 #4: W2's one trip cost a long hide, the chip and its cancel X gone 0.6 - 1.03 s on the
+						-- turning walks and 0.8 - 2.07 s on slow pans, while the commit said "under 0.5 s"; only
+						-- travel_guide_walk held the 0.5 s rule, at 7 sizes and 23 - 120 degrees a second) the same pans and
+						-- walks: the chip hides at most 0.5 s at a time
+						T.check(maxHidden <= 15, "pin W2 (look0 #4) " .. tag .. ": the chip hides at most 0.5 s at a time",
+							fmt("hidden %d frames in a row (%d in all) | %s", maxHidden, hiddenFrames, table.concat(seq, " -> ")))
+					end
+					local n = #run.frames
+					local function where(i)
+						return fmt("%.1f studs, turn %.1f", run.frames[i][1], run.frames[i][2])
+					end
+					local moving = run.kind == "pan" or run.kind == "turnwalk" or run.kind == "sway" or run.kind == "panstop" or run.kind == "panrev"
+					if moving then
+						-- (fix6b, look1 #1: e272588's pass was full line, a 0.1 s blink, 'Guiding' at home for 1 - 14 frames, a
+						-- blink, 'Guiding' behind the arrow, a blink, the full line: three blinks a pass, the cancel X moving
+						-- each time) every chip state - a show between two hides, or between two changes of its line - lasts
+						-- 0.5 s (15 frames) unless the run starts or ends in it, and the chip never blinks in place (a hide
+						-- with the chip back on the same spot: its change of line at home)
+						local short, blink = {}, {}
+						local k = 1
+						while k <= n do
+							local j = k
+							if chipSeq[k] then
+								while j < n and chipSeq[j + 1] and chipSeq[j + 1].t == chipSeq[k].t do
+									j = j + 1
+								end
+								if k > 1 and j < n and j - k + 1 < 15 then
+									short[#short + 1] = fmt("'%s' %d frames at %s (x %.0f)", chipSeq[k].t, j - k + 1, where(k), chipSeq[k].x - vp.X / 2)
+								end
+							else
+								while j < n and not chipSeq[j + 1] do
+									j = j + 1
+								end
+								local a, b = chipSeq[k - 1], chipSeq[j + 1]
+								if a and b and abs(a.x - b.x) <= 2 and abs(a.y - b.y) <= 2 then
+									blink[#blink + 1] = fmt("hidden %d frames at %s, back on its spot (x %.0f, '%s' -> '%s')", j - k + 1, where(k), a.x - vp.X / 2, a.t, b.t)
+								end
+							end
+							k = j + 1
+						end
+						T.check(#short == 0, "pin G1 (look1 #1) " .. tag .. ": every chip state (a show, its line) lasts 0.5 s",
+							table.concat(short, "; ") .. " | " .. table.concat(seq, " -> "))
+						T.check(#blink == 0, "pin G1 (look1 #1) " .. tag .. ": the chip never blinks in place (its change of line at home)",
+							table.concat(blink, "; "))
+					end
+					if run.kind == "sway" or run.kind == "panrev" then
+						-- (fix6b, look1 #2: a +-3 degree sway at 6 degrees a second sent the chip from +223 to -254 px and back,
+						-- 4 crossings in 4.5 s at 1920x1080) on a sway and a pan that turns back the chip keeps the side it
+						-- took: no swap from one side of the top centre to the other while it shows (hidden frames and home
+						-- skipped)
+						-- (The pan that turns back counts from the turn back on: "never swap on a reversal". Its way to the gate is a
+						-- pan's pass, where W2 has the chip go behind the arrow; at 640 x 360 the arrow at -35 leaves a spot on the
+						-- right only and the gate one on the left only, so that pass's one crossing is the least there is. The
+						-- sways count from their first frame)
+						-- (Its way back ends where the run began, the arrow by home: at 667 x 375 that rest leaves room on the side
+						-- the chip stood on at the first frame only - home and the other side under the arrow - and the chip, held
+						-- on the other side, kept it under the arrow's foot, a cover travel_guide_walk counts. So a swap back to
+						-- the first frame's side within 1 degree of the camera's start is that rest, not a swap)
+						local swaps, last, from = {}, nil, 1
+						local first, turn0 = nil, run.frames[1][2]
+						if run.kind == "panrev" then
+							for i = 2, n do
+								if run.frames[i][2] < run.frames[i - 1][2] - 1e-6 then
+									from = i
+									break
+								end
+							end
+						end
+						for i = 1, n do
+							local s = chipSeq[i]
+							if s then
+								local off = s.x - vp.X / 2
+								local sd = (off > 2 and "R") or (off < -2 and "L") or nil
+								first = first or sd or "C" -- (the first frame it shows: home, or the side it stood on)
+								local rest = run.kind == "panrev" and sd == first and math.abs(run.frames[i][2] - turn0) <= 1
+								if sd and last and sd ~= last and i >= from and not rest then
+									swaps[#swaps + 1] = fmt("%s -> %s at %s (x %.0f)", last, sd, where(i), off)
+								end
+								last = sd or last
+							end
+						end
+						T.check(#swaps == 0, "pin G2 (look1 #2) " .. tag .. ": the chip keeps one side on a sway or a reversal (no swap)",
+							table.concat(swaps, "; ") .. " | " .. table.concat(seq, " -> "))
+					end
+					if moving or run.kind == "look" then
+						-- (fix6b, look1 #3: W1 held the walk only; pans flashed the GuideSign for 1 - 6 frames on landscape
+						-- phones and a look up at 12 studs for 2) each show of the sign (a spot, or its name alone) lasts 0.5 s
+						-- unless the run starts or ends in it
+						local flashes = {}
+						local k = 1
+						while k <= n do
+							local j = k
+							while j < n and signStates[j + 1] == signStates[k] do
+								j = j + 1
+							end
+							if signStates[k] ~= "off" and k > 1 and j < n and j - k + 1 < 15 then
+								flashes[#flashes + 1] = fmt("%s %d frames at %s", signStates[k], j - k + 1, where(k))
+							end
+							k = j + 1
+						end
+						T.check(#flashes == 0, "pin G3 (look1 #3) " .. tag .. ": each GuideSign show lasts 0.5 s on a pan or a look up",
+							table.concat(flashes, "; "))
+					end
+				end
+				local hideCap = (run.kind == "walk" or run.kind == "far") and 6 or 15
+				if not pins then
+				T.check(maxHidden <= hideCap, tag .. fmt(": the chip hides at most %.1f s at a time", hideCap / 30),
+					fmt("hidden %d frames in a row (%d in all)", maxHidden, hiddenFrames))
+				T.check(fails.steps == nil, tag .. ": the chip moves in hard steps of at most a quarter of its width, or across a hide",
+					fails.steps and (fails.steps .. fmt(" (%d frames)", counts.steps)))
+				T.check(fails.row == nil, tag .. ": the chip keeps its home row on a landscape screen and stays within its width of the top centre",
+					fails.row and (fails.row .. fmt(" (%d frames)", counts.row)))
+				if (run.kind == "walk" or run.kind == "far") and run.w > run.h then
+					T.check(fails.home == nil, tag .. ": the chip rests off the top centre only while the arrow is near it (the sign gives way)",
+						fails.home and (fails.home .. fmt(" (%d frames)", counts.home)))
+				end
+				if run.kind == "walk" then
+					-- (pick a side and keep it) its rests in order: home "C" (the home itself may move with the HUD, e.g. a
+					-- quest strip docking over the vitals card), or away "L" / "R" of the middle; never both sides, one away
+					-- stretch at most and one spot in it (every rest there within 6 px of its first), home at the end (by
+					-- 12 studs the arrow, shown all the way now, has risen past the chip's row on every screen)
+					local away, hasL, hasR, creep = trips(places, sides)
 					T.check(not (hasL and hasR) and away <= 1 and creep == nil and sides[#sides] == "C",
 						tag .. ": the chip keeps one place off home, out and back (no side flip, no creep, home at the end)",
 						table.concat(seq, " -> ") .. (creep and (" (a second spot at " .. creep .. ")") or ""))
@@ -2409,6 +3231,7 @@ local function clientScenarios()
 					fails.arrow and (fails.arrow .. fmt(" (%d frames)", counts.arrow)))
 				T.check(fails.clear == nil, tag .. ": the chip never covers the arrow or the sign, the sign never the arrow",
 					fails.clear and (fails.clear .. fmt(" (%d frames)", counts.clear)))
+				end
 				T.info(fmt("%s: places %s; hidden %d frames; sign %d of %d frames; arrow first seen %s, sign %s", tag, table.concat(seq, " -> "),
 					hiddenFrames, signFrames, #run.frames, tostring(seenArrow), tostring(seenSign)))
 				Guide.Stop()
@@ -2423,9 +3246,21 @@ local function clientScenarios()
 		Mock.Teleport(player, CFrame.new(L.Origin + Vector3.new(0, 3, 20)))
 		KC.advance(0.5)
 		putBack()
+		if traceFile then
+			traceFile:close()
+		end
 		T.check(ok, "guide walk: the scenario ran", tostring(err))
-		KC.flushErrors("travel_guide_walk")
-	end)
+		KC.flushErrors(scen)
+	end
+	-- (fix6b harness) each walk in its parts (WALK_PARTS, WALK_LISTS), one list a part; tools/smoke.py runs every part
+	-- when the walk's first list is named
+	for kind, names in pairs(WALK_LISTS) do
+		for i, name in ipairs(names) do
+			S[name] = guarded(name, function()
+				guideWalk(name, kind == "pins", i)
+			end)
+		end
+	end
 
 	return S
 end

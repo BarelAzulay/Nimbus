@@ -196,6 +196,7 @@ local K = {
 	BACK_ACTION = "NimbusDailyBack",
 	REPAIR_TEXT = "Repair streak (no gift)", -- the claim button of a repair claim (re-review 1)
 	FIT_SLACK = 2, -- px a text keeps free in its box (the outline)
+	FLOOR_PX = 14.4, -- (fix6 look0 #6) screen px: H.shrinkFit never draws a text smaller (the Readability rule's floor)
 	WRAP_BELOW = 96, -- a gift box narrower inside than this gives its reward two lines
 	BOB = 5, -- px a ready box's gift bobs up
 	-- design px per layout. PC: the box at 1080p has a 1180 x 644 body; the Daily page's window keeps 485 of it (MaxBody,
@@ -675,6 +676,56 @@ function H.fitText(lbl, texts)
 		end
 	end
 	return texts[#texts]
+end
+
+-- (fix6 look0 #6: at 1024 x 768 the PC page at its 0.8 scale left 66 px tiles: '$1.45K' at 24 px read '$1.4...', 'TODAY'
+-- ran 1.4 px past its box) the label's own text at the largest size up to `size` that fits its box (less K.FIT_SLACK),
+-- never under the readability floor (K.FLOOR_PX screen px at this window's scale); the size it set. The measure keeps 4 %
+-- to spare, as BattleController's Hud.FitLine (a heavy face's measure ran short of its drawn width: 'TODAY')
+function H.shrinkFit(lbl, size)
+	local floorPx = H.floorPx()
+	local width = lbl.Size.X.Offset - K.FIT_SLACK
+	local s = size
+	while s > floorPx and H.drawnW(lbl, lbl.Text, s) > width do
+		s = s - 1
+	end
+	lbl.TextSize = s
+	return s
+end
+
+-- (fix6 look0 #6) the readability floor in this window's design px
+function H.floorPx()
+	return math.ceil(K.FLOOR_PX / math.max(0.05, tonumber(S.Scale) or 1) - 1e-6)
+end
+
+-- (fix6 look0 #6) a label's text width at `s` as it will draw: the wider of its own measure and its font role's (a face
+-- label - Nunito ExtraBold - measures by its role's stand-in font and spare: Theme.Measure), 4 % to spare; a word in
+-- capitals ('TODAY') never under BattleController's tagW guess, 0.72 em a capital, 0.58 any other letter or digit, 0.3
+-- a space (capitals in the heavy face run past the stand-in's measure: 'TODAY' drew 1.4 px past a box it measured into)
+function H.drawnW(lbl, text, s)
+	local best = 0
+	text = tostring(text or "")
+	if not text:find("%l") and select(2, text:gsub("%u", "")) >= 2 then
+		local em = 0
+		for ch in text:gmatch(".") do
+			em = em + ((ch == " ") and 0.3 or (ch:match("%u") and 0.72 or 0.58))
+		end
+		best = em * s
+	end
+	for _, f in ipairs({
+		function()
+			return Theme.MeasureLabel(lbl, text, s, 4096)
+		end,
+		function()
+			return Theme.Measure(text, lbl:GetAttribute("FontRole") or "Body", s, 4096)
+		end,
+	}) do
+		local ok, v = pcall(f)
+		if ok and typeof(v) == "Vector2" then
+			best = math.max(best, v.X)
+		end
+	end
+	return best * 1.04
 end
 
 -- a text's width at a size and font (TextService; the mock's flat 0.5 em when that fails)
@@ -2246,6 +2297,13 @@ function H.renderDaily(st, M)
 	U.StreakChip.Visible = streak > 0
 	U.VipChip.Visible = showVip
 	H.placeChips(M, streak > 0, showVip)
+	-- (fix6 look0 #6: at 1024 x 768 'DAY 3 OF 7 · WEEK 2' ran 88 px past its box, under the Streak chip) the header whole
+	-- beside the chips: the week dropped where the line does not fit at its size ("Day 3 of 7"), then a smaller size
+	if not loading then
+		U.DailyHeader.TextSize = M.HeaderText
+		U.DailyHeader.Text = H.fitText(U.DailyHeader, { U.DailyHeader.Text, "Day " .. tostring(cellNo) .. " of 7" })
+		H.shrinkFit(U.DailyHeader, M.HeaderText)
+	end
 	-- the tiles
 	local list = days(st)
 	for i, cell in ipairs(U.Cells) do
@@ -2253,10 +2311,20 @@ function H.renderDaily(st, M)
 		local claimed = e.Claimed == true
 		local today = e.Today == true and not claimed and not waiting
 		H.placeTile(cell, M, today, i == 7)
+		if not cell.Species then
+			-- (fix6 look0 #6) the tile's sizes again before its texts are fitted (H.shrinkFit below)
+			cell.Day.TextSize, cell.Amount.TextSize = M.DayText, M.AmountText
+		end
 		cell.Root:SetAttribute("Claimed", claimed)
 		cell.Root:SetAttribute("Today", today)
 		cell.Root:SetAttribute("Pulsing", today)
-		cell.Day.Text = (today and due) and "TODAY" or (i == 7 and TEXT.Prize or ("Day " .. i))
+		-- (fix6 look0 #6: a 640 x 360 tile, 51 px inside, ran 'TODAY' 4 px past it at the 15 px floor) "Today" where the
+		-- capitals do not fit at the tile's size; H.shrinkFit below then takes the size down where it still runs over
+		local todayWord = "TODAY"
+		if not cell.Species and H.drawnW(cell.Day, "TODAY", math.min(M.DayText, H.floorPx())) > cell.Day.Size.X.Offset - K.FIT_SLACK then
+			todayWord = "Today"
+		end
+		cell.Day.Text = (today and due) and todayWord or (i == 7 and TEXT.Prize or ("Day " .. i))
 		cell.Dim.Visible = claimed
 		cell.Check.Visible = claimed
 		-- (F0 review, minor: the mock keeps a claimed day's name and amount brown) the cover dims the art only: the texts
@@ -2291,6 +2359,23 @@ function H.renderDaily(st, M)
 			H.paintArt(cell, e)
 		else
 			cell.Amount.Text = ""
+		end
+		if not cell.Species then
+			-- (fix6 look0 #6) a narrow tile's day name and amount whole: a smaller size, never under the floor
+			H.shrinkFit(cell.Day, M.DayText)
+			H.shrinkFit(cell.Amount, M.AmountText)
+		end
+	end
+	-- (fix6 look0 #6) the row's names and amounts at one size each: the smallest a tile needed
+	local dayPx, amountPx = M.DayText, M.AmountText
+	for _, cell in ipairs(U.Cells) do
+		if not cell.Species then
+			dayPx, amountPx = math.min(dayPx, cell.Day.TextSize), math.min(amountPx, cell.Amount.TextSize)
+		end
+	end
+	for _, cell in ipairs(U.Cells) do
+		if not cell.Species then
+			cell.Day.TextSize, cell.Amount.TextSize = dayPx, amountPx
 		end
 	end
 	-- the Week Wisp line and its bar (the banner takes the line's place while it is up)

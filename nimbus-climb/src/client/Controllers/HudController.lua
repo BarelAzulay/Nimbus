@@ -97,9 +97,13 @@ local K = {
 	VITALS_W = 430, -- (Pitch 2 item 08 C: the pitch's 430; was 300, bug batch 2 #1's compact card)
 	VITALS_H = 128, -- the vitals slot: the name tab's 32 above the card + the 96 card (see VG; U9-8 look's card was 100)
 	VITALS_MIN_W = 236, -- narrowest the vitals get squeezed on a small phone
+	VITALS_EDGE = 2, -- (kit-b P2 fix6b) the card's wood edge, drawn outside its box (screen px)
 	HOTBAR_GAP = 8, -- screen px between the old hotbar's top and the vitals card
 	HOTBAR_FALLBACK = 78, -- gui px the old item hotbar reached above the bottom edge (14 + 64): the card keeps that spot
 	OBSTACLE_GAP = 8, -- kept between the vitals and the column / the touch buttons / Roblox's stick and jump button
+	-- (look:fix6b2 N2) the least air the card keeps where OBSTACLE_GAP would cut the player's name: the ink rule's 4 px
+	-- (battle_hud_no_overlap MIN_GAP) and 1 px to spare
+	OBSTACLE_TIGHT = 5,
 	-- Roblox's own touch controls (gui px; small = the smaller screen side <= SMALL_PHONE): the thumbstick's zone at
 	-- the bottom-left (width, height above the bottom edge: the dynamic stick's idle ring reaches ~93 px on phones)
 	-- and the jump button (J x J square, left edge 1.5 J + 10 and right edge 0.5 J + 10 px from the right edge, bottom
@@ -668,9 +672,11 @@ local function mobileRects()
 	local dy = insetShift(mobile)
 	for _, d in ipairs(mobile:GetDescendants()) do
 		if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.AbsoluteSize.X > 0 and shownIn(d, mobile) then
-			-- (LOOK-ui) a kit tile's wood edge is a Border stroke drawn outside its box: it counts
+			-- (LOOK-ui) a kit tile's wood edge is a Border stroke drawn outside its box: it counts. (kit-b P2 fix6b, look1 O3:
+			-- RUN / DASH draw theirs on the key's Block, so it was missed and the vitals card's ink came 3 px off RUN's)
 			local r = rectOf(d, dy)
-			local edge = d:FindFirstChild("SignEdge")
+			local block = d:FindFirstChild("Block")
+			local edge = d:FindFirstChild("SignEdge") or (block and block:FindFirstChild("SignEdge"))
 			local e = (edge and edge:IsA("UIStroke")) and edge.Thickness or 0
 			r.x0, r.y0, r.x1, r.y1 = r.x0 - e, r.y0 - e, r.x1 + e, r.y1 + e
 			table.insert(out, r)
@@ -788,7 +794,7 @@ local function robloxTouchRects(area, vp)
 		stickH = K.STICK_H_PORTRAIT
 	end
 	return {
-		{ x0 = 0, y0 = area.Y - stickH, x1 = stickW, y1 = area.Y },
+		{ x0 = 0, y0 = area.Y - stickH, x1 = stickW, y1 = area.Y, soft = true }, -- (the zone the thumb roams: placeVitals)
 		{ x0 = area.X - (1.5 * j + 10), y0 = area.Y - jumpBottom - j, x1 = area.X - (0.5 * j + 10), y1 = area.Y - jumpBottom },
 	}
 end
@@ -798,22 +804,33 @@ end
 -- column, the touch RUN / DASH buttons, Roblox's stick and jump button - limits it from the side it is on; when the
 -- room left is narrower than minW the card steps up just above the lowest of those and tries again, but never with
 -- its top above `ceiling` (the middle of the screen): there it keeps the last rows, squeezed to minW.
--- Returns left (gui px), width (design px), bottom (gui px).
-local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling)
-	local gap = K.OBSTACLE_GAP
+-- Returns left (gui px), width (design px), bottom (gui px). `air`: the air kept off them (default OBSTACLE_GAP).
+local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling, air)
+	-- (kit-b P2 fix6b, look1 O3) the card's own wood edge is drawn outside its box: the gap is kept from it
+	local gap = (air or K.OBSTACLE_GAP) + K.VITALS_EDGE
 	for _ = 1, 6 do
 		local top = bottom - h * k
 		local left, right = side, area.X - side
+		local hardLeft, hardRight = side, area.X - side
 		local step = nil
 		for _, r in ipairs(obstacles) do
 			if top < r.y1 + gap and bottom > r.y0 - gap then
 				if (r.x0 + r.x1) / 2 < cx then
 					left = math.max(left, r.x1 + gap)
+					hardLeft = r.soft and hardLeft or math.max(hardLeft, r.x1 + gap)
 				else
 					right = math.min(right, r.x0 - gap)
+					hardRight = r.soft and hardRight or math.min(hardRight, r.x0 - gap)
 				end
 				step = math.max(step or -math.huge, r.y0 - gap)
 			end
+		end
+		if right - left < minW * k and step and step - h * k < ceiling and hardRight - hardLeft >= minW * k then
+			-- (kit-b P2 fix6b, look1 O3: at 360 x 640 and 375 x 667 the card, squeezed at the middle's edge between the
+			-- stick's zone and RUN / DASH, lay on both keys and cut the name to 'SkyCli...') at the last rows it may reach,
+			-- the card gives way to the drawn keys and buttons only: it may share rows with the zone the stick's thumb roams
+			-- (nothing is drawn there; its ring sits under the card)
+			left, right = hardLeft, hardRight
 		end
 		if right - left >= minW * k or not step or step - h * k < ceiling then
 			local width = math.floor(Util.Clamp((right - left) / k, minW, w))
@@ -897,6 +914,7 @@ local function applyMargins(animate, force)
 	for _, c in ipairs(currencies) do
 		table.insert(parts, c.Id)
 	end
+	table.insert(parts, Vitals.FullName() .. "|" .. Vitals.TrophyText()) -- (look:fix6b2 N2: the name's room sets the card's air)
 	for _, r in ipairs(buttons) do
 		table.insert(parts, rectKey(r))
 	end
@@ -979,7 +997,19 @@ local function applyMargins(animate, force)
 		table.insert(obstacles, r)
 	end
 	local vitalsLeft, vitalsW
-	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, vitalsBottom, cx, obstacles, side, band.y1)
+	local bottom0 = vitalsBottom
+	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1)
+	-- (look:fix6b2 N2) a card too narrow for the player's whole name keeps only OBSTACLE_TIGHT of air where that gives the
+	-- name its room (at 800 x 450 in a match / countdown it sat in the 211 px between the match panel and RUN's block edge,
+	-- O3's 8 px of air + its 2 px edge on each side left it 190 px, under the 196 'SkyClimber' needs at its 14.4 px floor:
+	-- 'SkyCli...', whole at e272588). Where even that leaves no room the card stays as it was
+	local nameW = Vitals.WholeNameW(geometry, k)
+	if math.floor(vitalsW * k) < nameW then
+		local left2, w2, bottom2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT)
+		if math.floor(w2 * k) >= nameW then
+			vitalsLeft, vitalsW, vitalsBottom = left2, w2, bottom2
+		end
+	end
 	vitalsW = math.floor(vitalsW * k) / k
 	local vitalsTop = vitalsBottom - vitalsH * k
 	-- ... and where no row beside the dock is wide enough the card steps aside while the dock is open (never half under it)
@@ -1419,6 +1449,31 @@ local function measureAt(text, role, size, k)
 	return math.ceil(w * 1.04 * k)
 end
 
+-- the name the vitals card's tab shows (the display name, else the user name)
+function Vitals.FullName()
+	return (player and (player.DisplayName ~= "" and player.DisplayName or player.Name)) or ""
+end
+
+-- (look:fix6b2 N2) the tab's parts beside the name, in screen px under the scale k: fixed (the stamp, the gaps, the
+-- trophies tag), the tag's width, its number's width, and the name's floor size (design px). LayoutTab lays them out;
+-- WholeNameW asks how wide the card must be for the whole name
+function Vitals.TabParts(g, k)
+	local function px(n)
+		return Vitals.Px(n, k)
+	end
+	local numW = measureAt(Vitals.TrophyText(), "Display", g.TROPHY_TEXT, k)
+	local trW = px(8) + px(18) + px(5) + numW + px(9)
+	local fixed = px(5) + px(g.STAMP) + px(8) + px(10) + trW + px(6)
+	return fixed, trW, numW, math.max(g.NAME_MIN, math.ceil(14 / k - 1e-6))
+end
+
+-- (look:fix6b2 N2) the card's width (screen px) that shows the player's name whole at its floor size: LayoutTab cuts it
+-- when the tab's room (the card less TAB_X a side, less the fixed parts) is narrower than the name there
+function Vitals.WholeNameW(g, k)
+	local fixed, _, _, minSize = Vitals.TabParts(g, k)
+	return 2 * Vitals.Px(g.TAB_X, k) + fixed + measureAt(Vitals.FullName(), "Heading", minSize, k)
+end
+
 -- (Pitch 2 item 08 C) the wood name tab over the card's top edge: the stamp, the name (its design size steps down to the
 -- floor, then the name is cut with "..." so it always fits whole), the trophies tag at the tab's right end; the tab as wide
 -- as its contents, never wider than the card less TAB_X on each side. W: the slot's width in screen px
@@ -1442,16 +1497,13 @@ function Vitals.LayoutTab(g, k, W)
 	-- the trophies tag: [8][icon 18][5][number][9]
 	T.Value.Text = Vitals.TrophyText()
 	T.Value.TextSize = g.TROPHY_TEXT
-	local numW = measureAt(T.Value.Text, "Display", g.TROPHY_TEXT, k)
 	local iconS = px(18)
-	local trW = px(8) + iconS + px(5) + numW + px(9)
+	local fixed, trW, numW, minSize = Vitals.TabParts(g, k)
 	local trH = px(g.TROPHY_H)
 	-- the name: as wide as it needs, in the room the tab leaves
 	local maxTab = W - 2 * tabX
-	local fixed = px(5) + stampS + px(8) + px(10) + trW + px(6)
 	local room = maxTab - fixed
-	local full = (player and (player.DisplayName ~= "" and player.DisplayName or player.Name)) or ""
-	local minSize = math.max(g.NAME_MIN, math.ceil(14 / k - 1e-6))
+	local full = Vitals.FullName()
 	local size, text = g.NAME_TEXT, full
 	while size > minSize and measureAt(text, "Heading", size, k) > room do
 		size = size - 2

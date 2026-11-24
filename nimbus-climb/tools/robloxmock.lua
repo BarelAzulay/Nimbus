@@ -230,6 +230,14 @@ local function watchdog()
 	end
 end
 
+-- (fix6, the 'client final' flake) the context ("server" / "client") each thread runs in, as Roblox runs a script's
+-- threads in that script's own context: a thread made by task.spawn / task.delay / task.defer or a signal handler takes
+-- the context it was made in (a handler: the one it was connected from, SignalMT.Fire) and keeps it across its waits,
+-- whatever Mock.Context the driver holds when it wakes (the client world builds the real lobby as the server for a
+-- while: a client controller's thread that woke in that window ran as the server, ShowcaseController's RenderStepped).
+-- A thread that sets Mock.Context itself keeps what it set; the driver gets its own context back after every resume
+local ThreadCtx = setmetatable({}, { __mode = "k" })
+
 local function newThread(fn)
 	if rawtype(fn) ~= "function" then
 		error("Argument 1 missing or nil", 3)
@@ -246,6 +254,7 @@ local function newThread(fn)
 	if Mock.Options.Watchdog and debug.sethook then
 		pcall(debug.sethook, co, watchdog, "", 200000)
 	end
+	ThreadCtx[co] = Mock.Context
 	return co
 end
 
@@ -256,7 +265,15 @@ local function resume(co, ...)
 	local prev = Sched.current
 	Sched.current = co
 	Sched.sliceStart = realClock()
+	local outer, mine = Mock.Context, ThreadCtx[co]
+	if mine ~= nil then
+		Mock.Context = mine
+	end
 	local ok, err = coroutine.resume(co, ...)
+	if mine ~= nil then
+		ThreadCtx[co] = Mock.Context
+		Mock.Context = outer
+	end
 	Sched.current = prev
 	if not ok then
 		reportError(err, "resume")
@@ -509,7 +526,8 @@ function SignalMT.Connect(self, fn)
 	if rawtype(fn) ~= "function" then
 		error("Attempt to connect failed: Passed value is not a function", 2)
 	end
-	local conn = setmetatable({ Connected = true, _fn = fn, _sig = self }, ConnMT)
+	-- (fix6) the context it was connected from: its handler runs there (SignalMT.Fire)
+	local conn = setmetatable({ Connected = true, _fn = fn, _sig = self, _ctx = Mock.Context }, ConnMT)
 	local conns = self._conns
 	conns[#conns + 1] = conn
 	Live.connections = Live.connections + 1
@@ -581,7 +599,13 @@ function SignalMT.Fire(self, ...)
 		for i = 1, n do
 			local c = snapshot[i]
 			if c.Connected then
+				-- (fix6) the handler's thread is made, and runs, in the context it was connected from
+				local outer = Mock.Context
+				if c._ctx ~= nil then
+					Mock.Context = c._ctx
+				end
 				task.spawn(c._fn, ...)
+				Mock.Context = outer
 			end
 		end
 	end
