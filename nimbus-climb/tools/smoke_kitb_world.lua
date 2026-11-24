@@ -1209,10 +1209,18 @@ local function clientScenarios()
 			local c = g and g.Enabled and g:FindFirstChild("Chip", true)
 			return (c and c.Visible) and c or nil
 		end
+		-- (updated for the owner's pick B of 2026-11-23, the guide chip "Top-bar plank": its words are the place over its
+		-- distance - "Place" and "Info", the info a PC's tag - and its phases say "Home first" / "then follow the arrow" and
+		-- "You're here" / the prompt's words. Was: one line, "Guiding to Storm Altar" / "Home first, then follow the arrow" /
+		-- "You're here: press E") -> "Place / Info"
 		local function chipText()
 			local c = chip()
-			local l = c and c:FindFirstChild("Text", true)
-			return l and l.Text or nil
+			local p = c and c:FindFirstChild("Place", true)
+			local i = c and c:FindFirstChild("Info", true)
+			if not p then
+				return nil
+			end
+			return p.Text .. ((i and i.Text ~= "") and (" / " .. i.Text) or "")
 		end
 		local function worldGuide()
 			local fx = workspace:FindFirstChild("ClientFx")
@@ -1293,7 +1301,8 @@ local function clientScenarios()
 			T.eq(#KC.serverCalls("QuickTravel", mark), 0, "travel: no teleport (no QuickTravel sent)")
 			T.check(not Shop.IsOpen(), "travel: 'Show the way' closes the Shop")
 			T.eq(Guide.Active and Guide.Active(), "StormAltar", "travel: the guide runs to the Storm Altar")
-			T.eq(chipText(), "Guiding to Storm Altar", "travel: the chip reads 'Guiding to Storm Altar'")
+			T.check(tostring(chipText()):match("^Storm Altar / %d+ studs$") ~= nil, "travel: the chip reads 'Storm Altar' and its distance (a PC's tag 'NN studs')",
+				tostring(chipText()))
 			local wg = worldGuide()
 			if T.check(wg ~= nil, "travel: the world guide is out (workspace.ClientFx.TutorialGuide)") then
 				local dots, neon, lights = 0, 0, 0
@@ -1312,12 +1321,13 @@ local function clientScenarios()
 					fmt("%d dots, %d neon, %d lights", dots, neon, lights))
 				local arrow = wg:FindFirstChild("GuideArrow", true)
 				T.check(arrow ~= nil, "travel: the voxel arrow is over the gate")
+				-- (updated for the owner's pick B of 2026-11-23: the travel guide's GuideSign is retired, its name and stud count
+				-- live in the chip; the chip is a stone plank in the kit. Was: the GuideSign, a stone tag naming the Storm Altar
+				-- beside the arrow's shaft)
 				local sign = wg:FindFirstChild("GuideSign", true)
-				local signCard = sign and sign:FindFirstChild("Card", true)
-				local okS, whyS = block(signCard, Sign.Stone)
-				local name = signCard and signCard:FindFirstChild("Name", true)
-				T.check(okS and name ~= nil and name.Text == "Storm Altar", "travel: the GuideSign is a stone tag naming the Storm Altar", whyS)
-				T.check(sign ~= nil and sign.SizeOffset.X > 0, "travel: the GuideSign sits beside the arrow's shaft", sign and tostring(sign.SizeOffset) or "no sign")
+				T.check(sign == nil or sign.Enabled == false, "travel: the GuideSign does not show (its words live in the chip)")
+				local okS, whyS = block(chip(), Sign.Stone)
+				T.check(okS, "travel: the chip is a stone plank in the kit (its face, wood edge and lip)", whyS)
 				-- the dots start just ahead of the feet: none behind me, none within 1.5 studs
 				local here = KC.root().Position
 				local goal = gatePrompt.Parent.Position
@@ -1362,7 +1372,7 @@ local function clientScenarios()
 			local gp = gatePrompt.Parent.Position
 			Mock.Teleport(player, CFrame.new(gp + Vector3.new(0, 0, 4)))
 			KC.advance(0.6)
-			T.eq(chipText(), "You're here: press E", "travel: at the gate the chip says 'You're here: press E'")
+			T.eq(chipText(), "You're here / press E", "travel: at the gate the chip says 'You're here' / 'press E'")
 			KC.advance(4.5)
 			T.check(Guide.Active() == nil and chip() == nil and worldGuide() == nil, "travel: the guide ends by itself after arriving",
 				fmt("active %s, chip %s", tostring(Guide.Active()), tostring(chipText())))
@@ -1372,14 +1382,14 @@ local function clientScenarios()
 			KC.advance(0.5)
 			T.check(Guide.Start("StormAltar") == true, "travel: Start away from the lobby is taken")
 			KC.advance(0.6)
-			T.eq(chipText(), "Home first, then follow the arrow", "travel: away from the lobby the chip says 'Home first, then follow the arrow'")
+			T.eq(chipText(), "Home first / then follow the arrow", "travel: away from the lobby the chip says 'Home first' / 'then follow the arrow'")
 			local pointer = pg():FindFirstChild("NimbusTutorialPointer")
 			local arrow = pointer and pointer:FindFirstChild("Arrow", true)
 			T.check(arrow ~= nil and arrow.Visible, "travel: the pointer points at the Home tile")
 			T.check(worldGuide() == nil, "travel: no world trail away from the lobby")
 			Mock.Teleport(player, plaza)
 			KC.advance(1.0)
-			T.check(chipText() == "Guiding to Storm Altar" and worldGuide() ~= nil, "travel: back in the lobby the trail picks up by itself", tostring(chipText()))
+			T.check(tostring(chipText()):match("^Storm Altar / %d+ studs$") ~= nil and worldGuide() ~= nil, "travel: back in the lobby the trail picks up by itself", tostring(chipText()))
 
 			------------------------------------------------------------------ a battle / match ends it cleanly
 			player:SetAttribute(Config.Attr.InBattle, "B9")
@@ -1531,6 +1541,11 @@ local function clientScenarios()
 	--                 tilted up a little cannot bring it back); once the guide ends the board shows again
 	--   every         the chip leaves the top centre only for a guide piece ON the screen (it was pushed 267 px aside by an
 	--                 arrow above the screen's top edge)
+	-- (the owner's pick B of 2026-11-23, the guide chip "Top-bar plank": the chip's home is the top band's right end beside
+	-- '...' - a portrait phone's the vitals stack - and it never leaves it; the GuideSign is retired while the travel guide
+	-- runs. So 'every' now holds the chip at that home, the GuideSign checks read "it does not show", and the dodge's own
+	-- checks (the arrow box it dodged, the graze step aside) are retired; the chip still never covers the arrow, the board
+	-- or the plank here)
 	----------------------------------------------------------------------------------------------------------------
 	S.travel_guide_clear = guarded("travel_guide_clear", function()
 		local Config = shared("Config")
@@ -1766,19 +1781,15 @@ local function clientScenarios()
 								onScreen[#onScreen + 1] = v
 							end
 						end
+						-- (updated for the owner's pick B of 2026-11-23, the guide chip "Top-bar plank": the chip's home is Roblox's
+						-- top band at its right end on a landscape screen, the vitals stack on a portrait one, and it never leaves
+						-- it for a guide piece. Was: it left the top centre only for a guide piece on the screen)
 						local function homeCheck()
-							local w = c.R - c.X
-							if math.abs((c.X + c.R) / 2 - vp.X / 2) <= 1.5 then
-								return
+							if vp.X > vp.Y then
+								local top, maxX = Mock.TopInset or 0, vp.X - 72
+								T.check(c.Y >= -0.5 and c.B <= top + 0.5 and c.R <= maxX + 0.5 and c.R >= maxX - 24,
+									tag .. ": the chip stands at its home, the top band's right end", "chip " .. show(c) .. fmt(" (band 0..%d, right end %d)", top, maxX))
 							end
-							local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
-							local home = grow({ X = vp.X / 2 - w / 2, Y = c.Y, R = vp.X / 2 + w / 2, B = c.B }, 20 * k)
-							local hit = false
-							for _, v in ipairs(onScreen) do
-								hit = hit or overlap(home, v)
-							end
-							T.check(hit, tag .. ": the chip leaves the top centre only for a guide piece on the screen",
-								"chip " .. show(c) .. " pushed " .. fmt("%.0f", (c.X + c.R) / 2 - vp.X / 2) .. " px, " .. #onScreen .. " piece(s) on the screen")
 						end
 						local fx0 = workspace:FindFirstChild("ClientFx")
 						local wg0 = fx0 and fx0:FindFirstChild("TutorialGuide")
@@ -1810,58 +1821,15 @@ local function clientScenarios()
 								local cy = (bb.Y + bb.B) / 2 + card.Position.Y.Offset -- (a sign hung under its arrow: its drop)
 								s = grow({ X = x0, Y = cy - h / 2, R = x0 + w, B = cy + h / 2 }, 3 * sk)
 							end
-							-- (fin0 MJ1) the box the chip dodges is the arrow's own outline (both hop heights) within 3 px: one box round
-							-- the whole arrow, seen from below, ended ~20-40 px under the real tip (the chip dodged an arrow above it)
-							local ar = box and type(Guide._arrowRect) == "function" and Guide._arrowRect() or nil
-							if T.check(ar ~= nil, tag .. ": (setup) the guide's arrow box") then
-								local top = Mock.TopInset or 0
-								local a = { X = ar.x0, Y = ar.y0 + top, R = ar.x1, B = ar.y1 + top }
-								-- (fin0 MJ1) graze, 26 studs out: on a landscape screen the arrow's tip reaches into the chip's spot from
-								-- above. fin0 stepped the chip down under the tip, still centred (it had jumped 250 px across the top);
-								-- (look review fin1, MJ-A) that step down was a fourth place on the walk at the gate (left, right,
-								-- centre-low, home) and on a landscape phone it sat on the gate's crest. Now the chip takes ONE clear
-								-- step aside on its own row and glides there (travel_guide_walk holds the walk): a tip reaching into
-								-- its spot never sends it down onto the gate. (An arrow that reaches the chip's row from above stands
-								-- past the screen's top at these sizes, so it hides, and this check is idle; it stays for any size
-								-- where it shows)
-								if mode == "graze" and vp.X > vp.Y then
-									local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
-									local homeTop = top + 10 * k - 3 * k -- (GUIDE_TOP under the top band, its wood edge)
-									local w = c.R - c.X
-									local into = a.B + 10 * k - homeTop
-									if into > 0 and a.X < vp.X / 2 + w / 2 and a.R > vp.X / 2 - w / 2 then
-										T.check(math.abs(c.Y - homeTop) <= 1.5 and not overlap(c, a),
-											tag .. ": a tip reaching into the chip's spot moves it aside on its own row, never down onto the gate",
-											fmt("tip %.0f px into its spot; chip %s, arrow %s", into, show(c), show(a)))
-									end
-								end
-								local anyPart = arrow:FindFirstChildWhichIsA("BasePart", true)
-								local hopPx = abs(project(camObj, anyPart.Position).Y - project(camObj, anyPart.Position + Vector3.new(0, 0.6, 0)).Y) -- (K.BOB)
-								local tol = 3
-								T.check(a.X >= box.X - tol and a.R <= box.R + tol and a.X <= box.X + tol and a.R >= box.R - tol
-									and a.Y >= box.Y - hopPx - tol and a.Y <= box.Y + tol and a.B <= box.B + hopPx + tol and a.B >= box.B - tol,
-									tag .. ": the arrow box the chip dodges is the arrow's own outline",
-									"guide " .. show(a) .. " parts " .. show(box) .. fmt(" (hop %.1f px)", hopPx))
-							end
-							-- (look review pol0, MAJOR 1) the keep-clear rule is the GuideSign's alone: with no room beside the
-							-- arrow clear of the HUD and the chip it takes the name alone or hides while the arrow stays (390x844
-							-- walk and near, 844x390 near: the arrow out of the top or against the wallet strip). On the
-							-- desktop sizes, the mock's framings, it shows
+							-- (retired with the owner's pick B of 2026-11-23: "the arrow box the chip dodges is the arrow's own outline"
+							-- and "a tip reaching into the chip's spot moves it aside on its own row" - the chip no longer dodges the
+							-- arrow, it stands out of its lane at its home)
 							T.check(box ~= nil, tag .. ": (setup) the arrow is in view")
-							if s == nil and vp.X >= 1280 then
-								-- (kit-b P2 fix6, world look pol1 A) ... unless the arrow's tip stands in the chip's columns within
-								-- the sign's height and twice its 8 px clearance over the chip's top: every spot beside or under the
-								-- tip would stack the sign on the chip ('Storm Altar' over 'Guiding to Storm Altar', read as one
-								-- block; guide_pins W1), so it hides there (1920 near: the tip 18 px over the chip at home)
-								local stacked = false
-								if box and card then
-									local sk = (card:FindFirstChild("ReadScale") and card.ReadScale.Scale) or 1
-									local sh = (card.Size.Y.Offset + 6) * sk
-									stacked = box.B <= c.Y and box.B >= c.Y - sh - 16 * k and box.R > c.X and box.X < c.R
-								end
-								T.check(stacked, tag .. ": (setup) the arrow and its sign are in view (it hides only where it would stack on the chip)",
-									"arrow " .. (box and show(box) or "-") .. " chip " .. show(c))
-							end
+							-- (updated for the owner's pick B: the GuideSign is retired while the travel guide runs, its name and stud
+							-- count in the chip. Was: on the desktop sizes the arrow and its sign are in view, the sign hiding only
+							-- where it would stack on the chip)
+							T.check(s == nil and not (sign and sign.Enabled), tag .. ": the GuideSign does not show (its words live in the chip)",
+								s and ("sign " .. show(s)) or "")
 							if box and not s then
 								T.check(not overlap(c, box), tag .. ": the chip never covers the arrow", "chip " .. show(c) .. " arrow " .. show(box))
 								seen(box)
@@ -1959,8 +1927,14 @@ local function clientScenarios()
 	-- every frame from 0.5 to 2.5 s of the "You're here" phase as it stands (here): it is the guide's last word, so hiding
 	-- it all the way is no way to keep off the plank (at 77f5f56 it hid the whole phase at 340 - 400 x 640 and 375 x 667,
 	-- the look's dumps drew it on the plank). The frames it shows at the gate with the tutorial folded are listed
+	-- (the owner's pick B of 2026-11-23, the guide chip "Top-bar plank": the chip never moves or hides, so it keeps off the
+	-- planks by its home - the top band's right end, a portrait phone's vitals stack clear of the gate's Enter plank - and
+	-- shows on EVERY frame of every run (was: from 0.5 to 2.5 s of "You're here", with the tutorial done). 'other' stood the
+	-- NPC's plank on the chip's own spot to test its dodge, which the pick retired: it now stands an NPC's Talk plank where
+	-- it shows for a player talking to it (the NPC 6 studs ahead, a little to the side), as the gate's stands. The
+	-- landscape screens of the pick (the band) are the list travel_guide_plank_wide, the tutorial done)
 	----------------------------------------------------------------------------------------------------------------
-	S.travel_guide_plank = guarded("travel_guide_plank", function()
+	local function plankRun(scen, SIZES, STATES)
 		local Config = shared("Config")
 		local Steps = shared("TutorialSteps")
 		local TC = client("Controllers/TutorialController")
@@ -2152,15 +2126,18 @@ local function clientScenarios()
 				end },
 				{ name = "other", dist = 11, secs = 1, other = true },
 			}
-			for _, size in ipairs({ { 320, 568 }, { 340, 640 }, { 360, 640 }, { 375, 667 }, { 384, 640 }, { 390, 844 }, { 400, 640 }, { 412, 915 } }) do
-				UIS.TouchEnabled = true
+			for _, size in ipairs(SIZES) do
+				local touch = math.min(size[1], size[2]) <= 500
+				UIS.TouchEnabled = touch
 				Mock.SetViewport(size[1], size[2])
-				pcall(MC._TouchButtons, true)
+				pcall(MC._TouchButtons, touch)
 				KC.advance(1.2) -- (the HUD's layout poll: the vitals card steps round the keys)
 				local mobile = pg():FindFirstChild("MobileControls")
 				local runKey = mobile and mobile:FindFirstChild("RunButton", true)
-				T.check(runKey ~= nil and shownGui(runKey), fmt("guide plank %dx%d: (setup) the touch keys (RUN) are on the screen", size[1], size[2]))
-				for _, state in ipairs({ "tutorial folded", "tutorial done" }) do
+				if touch then
+					T.check(runKey ~= nil and shownGui(runKey), fmt("guide plank %dx%d: (setup) the touch keys (RUN) are on the screen", size[1], size[2]))
+				end
+				for _, state in ipairs(STATES) do
 					local how = (state == "tutorial folded") and tutorialFolded() or (tutorialDone() or "hidden")
 					for _, mode in ipairs(MODES) do
 						local tag = fmt("guide plank %dx%d %s, %s", size[1], size[2], state, mode.name)
@@ -2191,22 +2168,18 @@ local function clientScenarios()
 							KC.advance(1 / 30)
 							camObj.CFrame = cf
 							t = t + 1 / 30
-							if mode.other and placed and placed ~= true then
-								-- the NPC's plank (shown the frame before, 200 studs off: past its MaxDistance) stood on the chip where
-								-- it was (its middle on the chip's, 16 studs from the camera)
-								local c, card = placed, PC.CardOf(other)
-								if T.check(card ~= nil, tag .. ": (setup) the NPC's plank") then
-									local vp, f, d = Mock.Viewport, focal(camObj), 16
-									local w, h = card.Size.X.Offset, card.Size.Y.Offset
-									local vx, vy = (c.X + c.R) / 2 - card.SizeOffset.X * w, (c.Y + c.B) / 2 + card.SizeOffset.Y * h
-									local p = camObj.CFrame:PointToWorldSpace(Vector3.new((vx - vp.X / 2) * d / f, -(vy - vp.Y / 2) * d / f, -d))
-									otherPart.CFrame = CFrame.new(p - card.StudsOffsetWorldSpace)
-									cards[#cards + 1] = { prompt = other, from = t }
-								end
+							if mode.other and not placed and t >= 0.5 - 1e-6 then
+								-- (owner pick B) an NPC's Talk plank where it shows for a player talking to it: the NPC 6 studs
+								-- ahead, 3 to the side, its prompt at chest height (was: stood on the chip's own spot, its middle on
+								-- the chip's, to test the dodge the pick retired)
+								local right = camObj.CFrame.RightVector
+								local side = Vector3.new(right.X, 0, right.Z)
+								side = side.Magnitude > 1e-3 and side.Unit or Vector3.new(1, 0, 0)
+								otherPart.CFrame = CFrame.new(at + dir * 6 + side * 3 + Vector3.new(0, 1, 0))
+								Mock.ShowPrompt(other, touch and Enum.ProximityPromptInputType.Touch or Enum.ProximityPromptInputType.Keyboard)
+								T.check(PC.CardOf(other) ~= nil, tag .. ": (setup) the NPC's plank")
+								cards[#cards + 1] = { prompt = other, from = t }
 								placed = true
-							elseif mode.other and not placed and t >= 0.5 - 1e-6 then
-								placed = chipNow() or true
-								Mock.ShowPrompt(other, Enum.ProximityPromptInputType.Touch)
 							end
 							frames = frames + 1
 							local c, vis = chipNow()
@@ -2245,9 +2218,13 @@ local function clientScenarios()
 						end
 						T.check(worst >= 6 - 1e-3, tag .. ": the chip, while it shows, keeps 6 px off every prompt plank",
 							fmt("%.1f px at %s", worst, tostring(worstAt)))
-						-- (320 x 568: the mock gate's plank reaches the chip's home there on kit-b 1a55f73 too, 1 px over it, and
-						-- no spot holds the full line, so the chip hides the whole phase on both trees; listed, not held)
-						if mode.shows and state == "tutorial done" and not (size[1] == 320 and size[2] == 568) then
+						-- (updated for the owner's pick B of 2026-11-23: the chip never hides, so it shows on every frame of a
+						-- walk run and through the "You're here" phase up to its slide out, in every tutorial state at every size.
+						-- Was: through 0.5 - 2.5 s of "You're here" with the tutorial done, 320 x 568 listed not held - its dodge
+						-- hid it there)
+						if mode.dist > 8 then
+							T.check(shownFrames == frames, tag .. ": the chip shows on every frame", fmt("%d of %d frames shown", shownFrames, frames))
+						else
 							T.check(hereFrames > 0 and hereShown == hereFrames, tag .. ": the chip shows through the \"You're here\" phase (0.5 - 2.5 s)",
 								fmt("%d of %d frames shown", hereShown, hereFrames))
 						end
@@ -2280,7 +2257,16 @@ local function clientScenarios()
 			lobby:Destroy()
 		end
 		T.check(ok, "guide plank: the scenario ran", tostring(err))
-		KC.flushErrors("travel_guide_plank")
+		KC.flushErrors(scen)
+	end
+	S.travel_guide_plank = guarded("travel_guide_plank", function()
+		plankRun("travel_guide_plank", { { 320, 568 }, { 340, 640 }, { 360, 640 }, { 375, 667 }, { 384, 640 }, { 390, 844 }, { 400, 640 }, { 412, 915 } },
+			{ "tutorial folded", "tutorial done" })
+	end)
+	-- (the owner's pick B of 2026-11-23) the landscape screens of the pick, the chip in the top band
+	S.travel_guide_plank_wide = guarded("travel_guide_plank_wide", function()
+		plankRun("travel_guide_plank_wide", { { 640, 360 }, { 667, 375 }, { 720, 405 }, { 800, 450 }, { 844, 390 }, { 960, 540 }, { 1024, 768 },
+			{ 1280, 720 }, { 1920, 1080 }, { 2560, 1440 } }, { "tutorial done" })
 	end)
 
 	----------------------------------------------------------------------------------------------------------------
@@ -2312,6 +2298,12 @@ local function clientScenarios()
 	-- (fin1's rule "never more than 40 px in one frame" became the steps rule. Reason: pol0 minor 2 asks for the kit's
 	-- hard steps in place of the eased glide, and MAJOR 2 a for a hard step or a hide where the chip crosses a piece.
 	-- The 500 px jump fin1 caught still fails it: a jump is more than a quarter of the chip's width with no hide between)
+	-- (the owner's pick B of 2026-11-23, the guide chip "Top-bar plank": the arrow-following chip and the travel guide's
+	-- GuideSign are retired. The chip stands at ONE home - Roblox's top band at its right end beside '...', the top bar
+	-- pill's twin; a portrait phone's vitals stack - and never moves, hides or changes its line on a camera move; the
+	-- sign's name and stud count live in it. Each rule below that held the dodge or the sign says how it changed and why;
+	-- guide_pins adds B-a (one rect on every frame of every run) and B-e (the needle: PixelIcon's arrows, 'ahead' while
+	-- the gate is on the screen, a new sector only once it leaves))
 	--
 	-- guide_pins (fix6: every look major of the world lane pinned, at the eleven gate sizes 360x640, 640x360, 667x375,
 	-- 720x405, 800x450, 844x390, 960x540, 390x844, 1024x768, 1280x720, 1920x1080; the same walk, its runs and its rules
@@ -2843,6 +2835,10 @@ local function clientScenarios()
 				local signStates, stack, traceSign = {}, nil, nil
 				-- (guide_pins, fix6b) the chip each frame: false hidden, else its middle, top and line ({ x, y, t })
 				local chipSeq = {}
+				-- (guide_pins, the owner's pick B of 2026-11-23) the chip's frame each frame (false: hidden), its words (each
+				-- label's name and text), its needle (the Chip's Needle attribute) and the gate on the screen (its prompt
+				-- part's middle or the arrow's middle 8 px or more inside the viewport: plainly on it)
+				local chipRects, chipWords, needles, needleIcons, gateOn = {}, {}, {}, {}, {}
 				for i, fr in ipairs(run.frames) do
 					if i > 1 then
 						place(fr[1], fr[2], fr[3])
@@ -2855,6 +2851,40 @@ local function clientScenarios()
 					local chip = gui and gui:FindFirstChild("Chip", true)
 					local c = nil
 					chipSeq[i] = false
+					chipRects[i] = false
+					if chip and chip.Visible and gui.Enabled then
+						chipRects[i] = screenRect(chip)
+						local words, icon, turned = {}, nil, nil
+						for _, d in ipairs(chip:GetDescendants()) do
+							if d:IsA("TextLabel") and d.Visible and d.Text ~= "" then
+								words[#words + 1] = d.Name .. "=" .. d.Text
+							end
+							if d:IsA("GuiObject") and d.Rotation ~= 0 then
+								turned = turned or d:GetFullName()
+							end
+							if not icon and d:GetAttribute("PixelIcon") and d:FindFirstAncestor("Mark") then
+								icon = d:GetAttribute("PixelIcon")
+							end
+						end
+						table.sort(words)
+						chipWords[i] = table.concat(words, " | ")
+						needles[i] = chip:GetAttribute("Needle")
+						needleIcons[i] = turned and ("turned " .. turned) or tostring(icon)
+					end
+					do
+						local function inside(p)
+							local v = project(camObj, p)
+							return v.Z > 0 and v.X >= 8 and v.X <= vp.X - 8 and v.Y >= 8 and v.Y <= vp.Y - 8
+						end
+						local mid, nParts = Vector3.new(), 0
+						local arrowModel = wg and wg.Parent and wg:FindFirstChild("GuideArrow", true)
+						for _, d in ipairs(arrowModel and arrowModel:GetDescendants() or {}) do
+							if d:IsA("BasePart") then
+								mid, nParts = mid + d.Position, nParts + 1
+							end
+						end
+						gateOn[i] = inside(gate.Position) or (nParts > 0 and inside(mid / nParts))
+					end
 					if not (chip and chip.Visible and gui.Enabled) then
 						hidden = hidden + 1
 						hiddenFrames = hiddenFrames + 1
@@ -2868,7 +2898,8 @@ local function clientScenarios()
 						c = grow(screenRect(chip), 3 * k) -- its wood edge
 						local cw = c.R - c.X
 						local cx = (c.X + c.R) / 2
-						local tl = chip:FindFirstChild("Text")
+						-- (the owner's pick B: its line is the place's name, "Place"; the retired chip's was "Text")
+						local tl = chip:FindFirstChild("Text") or chip:FindFirstChild("Place", true)
 						chipSeq[i] = { x = cx, y = c.Y, t = (tl and tl:IsA("TextLabel")) and tl.Text or "" }
 						if prev then
 							local moved = math.max(abs(cx - prev.x), abs(c.Y - prev.y))
@@ -2895,18 +2926,21 @@ local function clientScenarios()
 						if hn then
 							fail("chip free", fmt("%s: the chip %s is under %s", at, show(c), hn))
 						end
+						-- (updated for the owner's pick B of 2026-11-23, the guide chip "Top-bar plank": its home on a landscape
+						-- screen is Roblox's top band at its right end, beside '...' (TopbarInset's right end, the pill's twin),
+						-- and it never leaves it. Was: its home row under the band, never further than its width off the top
+						-- centre - the arrow-following chip, retired)
 						if vp.X > vp.Y then
-							local homeTop = top + 10 * k - 3 * k -- (GUIDE_TOP under the top band, its wood edge)
-							if abs(c.Y - homeTop) > 1.5 then
-								fail("row", fmt("%s: the chip %s left its home row (top %.0f) on a landscape screen", at, show(c), homeTop))
+							local maxX = vp.X - 72
+							local okT, tb = pcall(function()
+								return GS.TopbarInset
+							end)
+							if okT and typeof(tb) == "Rect" and tb.Max.X > tb.Min.X then
+								maxX = tb.Max.X
 							end
-						end
-						-- (fix6 look0 #4) within the chip's FULL width (its widest drawn this run): the compact line, the same
-						-- chip in a shorter word, may step behind a passing arrow that far; it hid 0.6 - 2.1 s waiting for room
-						-- within its own shorter width. pol0 MAJOR 2 b's 750 px corner still fails it
-						local lim = math.max(cw, fullW or cw)
-						if abs(cx - vp.X / 2) > lim + 2 then
-							fail("row", fmt("%s: the chip %s is pushed %.0f px off the top centre (its width %.0f)", at, show(c), cx - vp.X / 2, lim))
+							if c.Y < -0.5 or c.B > top + 0.5 or c.R > maxX + 0.5 or c.R < maxX - 24 then
+								fail("row", fmt("%s: the chip %s is off its home, the top band's right end (0..%d, its right end %.0f..%.0f)", at, show(c), top, maxX - 24, maxX))
+							end
 						end
 					end
 					-- the arrow (its model in the world guide's folder while it shows)
@@ -2938,27 +2972,22 @@ local function clientScenarios()
 						end
 						return nil
 					end
+					-- (updated for the owner's pick B of 2026-11-23: the chip never moves, so it is out of the arrow's lane by its
+					-- home, not by stepping aside: the pick measured the arrow behind it 0 % of a straight walk at every size,
+					-- and passing behind it only with the camera turned well off the gate - world art behind the HUD, accepted
+					-- in the pick (its con 3). So "the chip never covers the arrow" holds the straight walk and the far walk;
+					-- was: every run, the chip stepping aside)
 					if box then
 						seenArrow = seenArrow or at
 						local hit = c and onArrow(c)
-						if hit then
+						if hit and (run.name == "walk" or run.kind == "far") then
 							fail("clear", fmt("%s: the chip %s covers the arrow %s (its part %s)", at, show(c), show(box), show(hit)))
 						end
 					end
-					-- (pol0 minor 3) on a landscape walk the chip rests off the top centre only for the arrow: it came within 40 px
-					-- (1080p: its 10 px berth and its 0.3 s lead on a walk) of the chip's home in the last 20 frames (its 0.3 s
-					-- hold and its steps home); the GuideSign gives way to the chip
+					-- (pol0 minor 3's rule, "the chip rests off the top centre only for the arrow", is retired with the owner's
+					-- pick B: the chip's home is no longer the top centre and it never rests anywhere else - the row rule above)
 					if c then
-						local k = (chip:FindFirstChild("ReadScale") and chip.ReadScale.Scale) or 1
 						fullW = math.max(fullW or 0, c.R - c.X)
-						local home = { X = vp.X / 2 - fullW / 2, Y = top + 7 * k, R = vp.X / 2 + fullW / 2, B = top + 7 * k + (c.B - c.Y) }
-						if box and overlap(grow(home, 40 * k), box) then
-							arrowNear = i
-						end
-						if (run.kind == "walk" or run.kind == "far") and vp.X > vp.Y and still >= 3 and abs((c.X + c.R) / 2 - vp.X / 2) > 2
-							and not (arrowNear and i - arrowNear <= 20) then
-							fail("home", fmt("%s: the chip %s rests off the top centre with the arrow %s far from it", at, show(c), show(box)))
-						end
 					end
 					-- the GuideSign while it shows
 					local sign = wg and wg.Parent and wg:FindFirstChild("GuideSign", true)
@@ -3019,7 +3048,9 @@ local function clientScenarios()
 						traceSign = nil
 					end
 					if i == 1 and run.name == "walk" and (run.w == 1920 or run.w == 1280 or run.w == 390) then
-						T.check(box ~= nil and bb ~= nil, tag .. ": at 50 studs the arrow and its sign show (the mock's framing)",
+						-- (updated for the owner's pick B of 2026-11-23: the GuideSign is retired while the travel guide runs, its
+						-- name and stud count in the chip. Was: the arrow and its sign show)
+						T.check(box ~= nil and bb == nil, tag .. ": at 50 studs the arrow shows and the GuideSign does not (the mock's framing)",
 							fmt("arrow %s, sign %s", tostring(box ~= nil), tostring(bb ~= nil)))
 					end
 				end
@@ -3049,13 +3080,80 @@ local function clientScenarios()
 					seq[#seq + 1] = sides[k] .. fmt("@%s(%.0f,%.0f)", p.at, p.x, p.y)
 				end
 				if pins then
+					local n0 = #run.frames
+					local function at0(i)
+						return fmt("%.1f studs, turn %.1f, tilt %.1f", run.frames[i][1], run.frames[i][2], run.frames[i][3])
+					end
+					-- pin B-a (the owner's pick B of 2026-11-23, the guide chip "Top-bar plank"): the chip shows on every frame
+					-- of every camera run at ONE rect (it never moves, hides or changes its line on a camera move: the band's
+					-- right end, a portrait phone's vitals stack). Its words never change while the player stands (pans,
+					-- sways, looks); on a walk only the stud count ticks
+					local firstR, moved, gone, reworded = nil, nil, nil, nil
+					local standing = run.kind ~= "walk" and run.kind ~= "stop" and run.kind ~= "turnwalk"
+					for i = 1, n0 do
+						local r = chipRects[i]
+						if not r then
+							gone = gone or at0(i)
+						elseif not firstR then
+							firstR = r
+						elseif math.max(abs(r.X - firstR.X), abs(r.Y - firstR.Y), abs(r.R - firstR.R), abs(r.B - firstR.B)) > 0.01 then
+							moved = moved or fmt("%s: %s, was %s", at0(i), show(r), show(firstR))
+						end
+						if i > 1 and chipWords[i] and chipWords[i - 1] and not reworded then
+							local a, b = chipWords[i - 1], chipWords[i]
+							if not standing then
+								a, b = a:gsub("%d+", "#"), b:gsub("%d+", "#")
+							end
+							if a ~= b then
+								reworded = fmt("%s: '%s' -> '%s'", at0(i), chipWords[i - 1], chipWords[i])
+							end
+						end
+					end
+					T.check(gone == nil and moved == nil, "pin B-a (owner pick B) " .. tag .. ": the chip shows on every frame at one rect (never moves or hides on a camera move)",
+						(gone and ("hidden at " .. gone .. "; ") or "") .. (moved and ("moved at " .. moved) or ""))
+					T.check(reworded == nil, "pin B-a (owner pick B) " .. tag .. (standing and ": its words never change on a camera move" or ": on a walk only its stud count ticks"),
+						reworded)
+					-- pin B-e (the owner's pick B) the needle: PixelIcon's own arrows (the four, and the 45 degree ones of its
+					-- two hard steps; never a turned frame), resting on 'ahead' while the gate is on the screen and changing
+					-- its sector only once the gate leaves it (a change on a frame where the gate was plainly on the screen
+					-- this frame and the frame before fails)
+					local ICONS = { arrowup = true, arrow = true, left = true, arrowdown = true, arrowne = true, arrowse = true, arrowsw = true, arrownw = true }
+					local SECTORS = { ahead = true, right = true, left = true, behind = true }
+					local noNeedle, badIcon, onChange, offRest = nil, nil, nil, nil
+					for i = 1, n0 do
+						if chipRects[i] then
+							if not SECTORS[needles[i] or ""] then
+								noNeedle = noNeedle or fmt("%s: Needle %s", at0(i), tostring(needles[i]))
+							end
+							if not ICONS[needleIcons[i] or ""] then
+								badIcon = badIcon or fmt("%s: the mark's icon %s", at0(i), tostring(needleIcons[i]))
+							end
+							if i > 1 and chipRects[i - 1] and needles[i] ~= needles[i - 1] and gateOn[i] and gateOn[i - 1] then
+								onChange = onChange or fmt("%s: %s -> %s with the gate on the screen", at0(i), tostring(needles[i - 1]), tostring(needles[i]))
+							end
+							if i > 1 and gateOn[i] and gateOn[i - 1] and needles[i] ~= "ahead" then
+								offRest = offRest or fmt("%s: %s with the gate on the screen", at0(i), tostring(needles[i]))
+							end
+						end
+					end
+					T.check(noNeedle == nil and badIcon == nil, "pin B-e (owner pick B) " .. tag .. ": the chip's needle is one of PixelIcon's arrows (never a turned frame)",
+						(noNeedle or "") .. " " .. (badIcon or ""))
+					T.check(onChange == nil and offRest == nil, "pin B-e (owner pick B) " .. tag .. ": the needle rests on 'ahead' while the gate is on the screen and changes only once it leaves",
+						(onChange or "") .. " " .. (offRest or ""))
 					if run.kind == "walk" then
-						local away, hasL, hasR, creep = trips(places, sides)
-						T.check(not (hasL and hasR) and away <= 1 and creep == nil and sides[#sides] == "C" and fails.steps == nil,
-							"pin MJ-A (fin1) " .. tag .. ": the chip keeps one place off home, out and back, in hard steps or across a hide",
-							table.concat(seq, " -> ") .. (creep and (" (a second spot at " .. creep .. ")") or "") .. (fails.steps and (" | " .. fails.steps) or ""))
-						T.check(fails["sign free"] == nil, "pin MJ-B (fin1) " .. tag .. ": the GuideSign, while it shows, is wholly on the screen, under no HUD piece",
-							fails["sign free"] and (fails["sign free"] .. fmt(" (%d frames)", counts["sign free"])))
+						-- pin MJ-A (fin1), updated for the owner's pick B of 2026-11-23: the chip no longer steps off a top-centre
+						-- home round the arrow (the arrow-following chip is retired); it keeps one place, its home in the band or
+						-- on the vitals stack, the whole walk. Was: one place off home, out and back, home at the end (the top
+						-- centre), in hard steps or across a hide
+						local away = trips(places, sides)
+						T.check(#places == 1 and away <= 1 and fails.steps == nil,
+							"pin MJ-A (fin1, owner pick B) " .. tag .. ": the chip keeps one place the whole walk",
+							table.concat(seq, " -> ") .. (fails.steps and (" | " .. fails.steps) or ""))
+						-- pin MJ-B (fin1), updated for the owner's pick B: the world GuideSign is retired while the travel guide
+						-- runs (its name and stud count live in the chip). Was: while it shows, wholly on the screen and under
+						-- no HUD piece
+						T.check(signFrames == 0, "pin MJ-B (fin1, owner pick B) " .. tag .. ": the GuideSign never shows (its words live in the chip)",
+							fmt("shown %d frames, first at %s", signFrames, tostring(seenSign)))
 					end
 					if run.kind == "walk" or run.kind == "stop" then
 						-- the sign's stretches: a state (shown at a spot, the name alone, hidden) held under 0.5 s that the run
@@ -3077,12 +3175,16 @@ local function clientScenarios()
 							end
 							k = j + 1
 						end
-						T.check(#flashes == 0, "pin W1 (pol1 A) " .. tag .. ": the GuideSign does not flash (each show, hide, line or spot holds 0.5 s)",
-							table.concat(flashes, "; "))
-						T.check(#spots <= 2, "pin W1 (pol1 A) " .. tag .. ": the GuideSign takes at most two spots a walk", table.concat(spots, " -> "))
-						T.check(stack == nil, "pin W1 (pol1 A) " .. tag .. ": the GuideSign never stacks on the chip", stack)
+						-- pin W1 (pol1 A), updated for the owner's pick B of 2026-11-23: the GuideSign is retired while the travel
+						-- guide runs, so it never shows: no flash, no spot, no stack on the chip. Was: each show / hide / line /
+						-- spot held 0.5 s, at most two spots a walk, never stacked on the chip
+						T.check(#flashes == 0 and #spots == 0 and stack == nil, "pin W1 (pol1 A, owner pick B) " .. tag .. ": the GuideSign never shows (no flash, no spot, no stack on the chip)",
+							table.concat(flashes, "; ") .. " | spots " .. table.concat(spots, " -> ") .. " | " .. tostring(stack))
 					end
 					if run.kind == "pan" or run.kind == "turnwalk" then
+						-- pin W2 (pol1 B, look0 #4), updated for the owner's pick B of 2026-11-23: the chip never leaves its home
+						-- (no trip in a pass) and never hides on a pan or a turning walk. Was: at most one trip off a top-centre
+						-- home a pass, each hide at most 0.5 s (the arrow-following chip, retired)
 						local bad = {}
 						for pass = 1, 2 do
 							local list, sds = {}, {}
@@ -3091,18 +3193,13 @@ local function clientScenarios()
 									list[#list + 1], sds[#sds + 1] = p, sides[k]
 								end
 							end
-							local away, _, _, creep = trips(list, sds)
-							if away > 1 or creep then
-								bad[#bad + 1] = fmt("pass %d: %d trips off home%s", pass, away, creep and (", a second spot at " .. creep) or "")
+							if #list > 0 then
+								bad[#bad + 1] = fmt("pass %d: %d new places", pass, #list)
 							end
 						end
-						T.check(#bad == 0, "pin W2 (pol1 B) " .. tag .. ": in each pass the chip leaves home at most once, for one spot",
+						T.check(#bad == 0, "pin W2 (pol1 B, owner pick B) " .. tag .. ": in each pass the chip stays at its home (no trip)",
 							table.concat(bad, "; ") .. " | " .. table.concat(seq, " -> "))
-						-- (fix6 look0 #4: W2's one trip cost a long hide, the chip and its cancel X gone 0.6 - 1.03 s on the
-						-- turning walks and 0.8 - 2.07 s on slow pans, while the commit said "under 0.5 s"; only
-						-- travel_guide_walk held the 0.5 s rule, at 7 sizes and 23 - 120 degrees a second) the same pans and
-						-- walks: the chip hides at most 0.5 s at a time
-						T.check(maxHidden <= 15, "pin W2 (look0 #4) " .. tag .. ": the chip hides at most 0.5 s at a time",
+						T.check(hiddenFrames == 0, "pin W2 (look0 #4, owner pick B) " .. tag .. ": the chip never hides",
 							fmt("hidden %d frames in a row (%d in all) | %s", maxHidden, hiddenFrames, table.concat(seq, " -> ")))
 					end
 					local n = #run.frames
@@ -3198,38 +3295,33 @@ local function clientScenarios()
 							end
 							k = j + 1
 						end
-						T.check(#flashes == 0, "pin G3 (look1 #3) " .. tag .. ": each GuideSign show lasts 0.5 s on a pan or a look up",
-							table.concat(flashes, "; "))
+						-- (updated for the owner's pick B of 2026-11-23: the GuideSign is retired while the travel guide runs, so
+						-- it never shows on a pan or a look up. Was: each show lasted 0.5 s)
+						T.check(#flashes == 0 and signFrames == 0, "pin G3 (look1 #3, owner pick B) " .. tag .. ": the GuideSign never shows on a pan or a look up",
+							table.concat(flashes, "; ") .. fmt(" (shown %d frames)", signFrames))
 					end
 				end
-				local hideCap = (run.kind == "walk" or run.kind == "far") and 6 or 15
 				if not pins then
-				T.check(maxHidden <= hideCap, tag .. fmt(": the chip hides at most %.1f s at a time", hideCap / 30),
+				-- (updated for the owner's pick B of 2026-11-23, the guide chip "Top-bar plank": the chip never hides or moves
+				-- on a camera move, and its home on a landscape screen is the top band's right end. Was: hides of at most
+				-- 0.2 s on a walk / 0.5 s on a pan, moves in hard steps, its row within its width of the top centre, rests
+				-- off the top centre only for the arrow, one place off home out and back - the arrow-following chip, retired)
+				T.check(hiddenFrames == 0, tag .. ": the chip never hides",
 					fmt("hidden %d frames in a row (%d in all)", maxHidden, hiddenFrames))
-				T.check(fails.steps == nil, tag .. ": the chip moves in hard steps of at most a quarter of its width, or across a hide",
+				T.check(fails.steps == nil, tag .. ": the chip never jumps",
 					fails.steps and (fails.steps .. fmt(" (%d frames)", counts.steps)))
-				T.check(fails.row == nil, tag .. ": the chip keeps its home row on a landscape screen and stays within its width of the top centre",
+				T.check(fails.row == nil, tag .. ": the chip stays at its home (a landscape screen: the top band's right end)",
 					fails.row and (fails.row .. fmt(" (%d frames)", counts.row)))
-				if (run.kind == "walk" or run.kind == "far") and run.w > run.h then
-					T.check(fails.home == nil, tag .. ": the chip rests off the top centre only while the arrow is near it (the sign gives way)",
-						fails.home and (fails.home .. fmt(" (%d frames)", counts.home)))
-				end
-				if run.kind == "walk" then
-					-- (pick a side and keep it) its rests in order: home "C" (the home itself may move with the HUD, e.g. a
-					-- quest strip docking over the vitals card), or away "L" / "R" of the middle; never both sides, one away
-					-- stretch at most and one spot in it (every rest there within 6 px of its first), home at the end (by
-					-- 12 studs the arrow, shown all the way now, has risen past the chip's row on every screen)
-					local away, hasL, hasR, creep = trips(places, sides)
-					T.check(not (hasL and hasR) and away <= 1 and creep == nil and sides[#sides] == "C",
-						tag .. ": the chip keeps one place off home, out and back (no side flip, no creep, home at the end)",
-						table.concat(seq, " -> ") .. (creep and (" (a second spot at " .. creep .. ")") or ""))
-				end
+				T.check(#places == 1, tag .. ": the chip keeps one place the whole run", table.concat(seq, " -> "))
 				T.check(fails["chip free"] == nil, tag .. ": the chip is wholly on the screen, under no HUD piece", fails["chip free"])
-				T.check(fails["sign free"] == nil, tag .. ": the GuideSign, while it shows, is wholly on the screen, under no HUD piece",
-					fails["sign free"] and (fails["sign free"] .. fmt(" (%d frames)", counts["sign free"])))
+				-- (updated for the owner's pick B: the GuideSign is retired while the travel guide runs. Was: while it shows,
+				-- wholly on the screen and under no HUD piece)
+				T.check(signFrames == 0, tag .. ": the GuideSign never shows (its words live in the chip)", fmt("shown %d frames, first at %s", signFrames, tostring(seenSign)))
 				T.check(fails.arrow == nil, tag .. ": the arrow shows all the way (a world part: it may pass behind the HUD or out of the top)",
 					fails.arrow and (fails.arrow .. fmt(" (%d frames)", counts.arrow)))
-				T.check(fails.clear == nil, tag .. ": the chip never covers the arrow or the sign, the sign never the arrow",
+				-- (updated for the owner's pick B: held on the straight walk and the far walk only, see the clear rule above.
+				-- Was: every run, and the sign never on the arrow)
+				T.check(fails.clear == nil, tag .. ": on the straight walk the chip never covers the arrow",
 					fails.clear and (fails.clear .. fmt(" (%d frames)", counts.clear)))
 				end
 				T.info(fmt("%s: places %s; hidden %d frames; sign %d of %d frames; arrow first seen %s, sign %s", tag, table.concat(seq, " -> "),

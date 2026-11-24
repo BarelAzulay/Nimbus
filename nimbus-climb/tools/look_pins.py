@@ -58,6 +58,12 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
   U2  look:fix6b2 N3 360 x 640 step 20 'The Champion Ri...' (the title not shrunk before the ellipsis). Rule: the
                     tutorial's titles (the strip's, the card's as shown and opened) read whole at every step (U2_BACKLOG:
                     kit-b's own cuts at the 14.4 px floor)
+  B0-B3 the owner's pick B of 2026-11-23, the guide chip ("Top-bar plank", X on the right): over every HUD state it
+                    can meet (guidechip:<state>) at fifteen sizes 320 x 568 .. 2560 x 1440: B0 its home (the top band's
+                    right end beside '...', a portrait phone's vitals stack 8 px over the name plank / the quest strip),
+                    B1 its ink MIN_GAP off every other HUD piece, Roblox's buttons and rings (a match: no chip), B2 its X
+                    a 44 px hit box 16 px or more off '...', B3 its words whole, >= 14.4 px on a phone, the place and its
+                    distance. (Its frame-by-frame rules - one rect on every camera move, the needle - are guide_pins')
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -79,7 +85,7 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "B0", "B1", "B2", "B3"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -744,8 +750,159 @@ def pin_U2(c, sizes):
         c.cache.clear()
 
 
+# ------------------------------------------------------------------------------------------------------------- B0-B3
+# (the owner's pick B of 2026-11-23 on the guide chip pitch, "Top-bar plank", the X on the RIGHT: Gemini's left X not
+# taken) the travel guide's chip is the top bar pill's twin: a cream plank docked in Roblox's top band at its right end
+# beside the '...' button (the pill's height, GuiService.TopbarInset read as the pill reads it); a portrait phone, with no
+# room in the band, gets the same two-line ticket on the vitals stack, flush with the card's left edge, 8 px over the name
+# plank (over the tutorial's quest strip when that docks there). It never moves on a camera move (guide_pins in the smoke
+# holds that frame by frame, and the needle). Here, over every HUD state the chip can meet (tools/dump_gui.lua
+# guidechip:<state>), at the fifteen sizes of the pick (B_SIZES):
+#   B0  its home: a landscape screen's chip wholly in the top band at its right end (its right edge within
+#       B_DOCK px of TopbarInset's right end, the '...' room); a portrait phone's on the vitals stack (its ink's foot
+#       B_STACK px over the name plank or the docked quest strip, its face's left edge the card's)
+#   B1  its ink keeps battle_hud_no_overlap's MIN_GAP off every other HUD piece (the menu column, the pill, the wallet
+#       strips, the gift and boosts, the toasts, the tutorial, the mouse-lock plank, the party panel, the vitals card and
+#       the touch keys) and off Roblox's own top-bar buttons and touch rings; a match or its countdown ends the guide:
+#       no chip
+#   B2  its X: a 44 px hit box at least B_DOTS px off Roblox's '...' button
+#   B3  its words: the place and its distance ('Storm Altar' / 'NN studs away', a PC's tag 'NN studs'), 'Home first' /
+#       'then follow the arrow' away, "You're here" / the prompt's words at the gate; each whole (no ellipsis, no line past
+#       its box), >= 14.4 px on a phone (the readability floor elsewhere: 14 px, 15 on a screen 1000 px tall or more)
+B_SIZES = [(320, 568), (360, 640), (375, 667), (384, 640), (390, 844), (640, 360), (667, 375), (720, 405), (800, 450),
+           (844, 390), (960, 540), (1024, 768), (1280, 720), (1920, 1080), (2560, 1440)]
+B_STATES = ["guidechip:lobby", "guidechip:boosts", "guidechip:toasts", "guidechip:tutorial:3", "guidechip:tutorial:3:fold",
+            "guidechip:mousehint", "guidechip:party", "guidechip:party:leader", "guidechip:match:4", "guidechip:countdown",
+            "guidechip:away", "guidechip:here"]
+B_GONE = {"guidechip:match:4", "guidechip:countdown"}
+B_CHIP = "NimbusGuide.Chip"
+B_DOCK = 24
+B_STACK = 8
+B_DOTS = 16
+B_DONE = set()
+
+
+def roblox_buttons(w, h, inset):
+    """Roblox's own top-bar buttons as render_gui sketches them (44 px, 12 px in): the menu and chat on the left, '...' on
+    the right -> {name: rect}"""
+    if inset <= 0:
+        return {}
+    y = (inset - 44.0) / 2.0
+    return {"Roblox menu": (12.0, y, 56.0, y + 44), "Roblox chat": (64.0, y, 108.0, y + 44),
+            "Roblox '...'": (w - 56.0, y, w - 12.0, y + 44)}
+
+
+def b_words(state, touch, texts):
+    """(ok, what the chip says) for the state's phase"""
+    said = " / ".join(texts)
+    if state == "guidechip:away":
+        ok = "Home first" in texts and any(t in ("then follow the arrow", "then the arrow") for t in texts)
+    elif state == "guidechip:here":
+        ok = "You're here" in texts and ("tap the button" if touch else "press E") in texts
+    else:
+        ok = "Storm Altar" in texts and any(re.match(r"^\d+ studs( away)?$", t) for t in texts)
+    return ok, said
+
+
+def pin_B(c, sizes):
+    if B_DONE:
+        return
+    B_DONE.add(True)
+    # (the pick's fifteen sizes; --size names others instead, while working)
+    for (w, h) in (B_SIZES if sizes is SIZES else sizes):
+        touch = c.RG.is_touch(w, h, None)
+        for scen in B_STATES:
+            if scen == "guidechip:mousehint" and touch:
+                continue  # (a desktop's plank: the scenario turns touch off)
+            d = c.dump(scen, w, h)
+            nodes = c.nodes(d)
+            what = "%s %dx%d" % (scen, w, h)
+            chip = nodes.get(B_CHIP)
+            ink = c.BH.ink_of(chip, c.RG, c.fonts) if chip else []
+            if scen in B_GONE:
+                c.check("B1", not ink, "B1 %s: a match ends the guide (no chip)" % what, fmt(c.BH.union(ink)) if ink else "")
+                continue
+            if not c.check("B0", bool(ink), "B0 %s: the chip shows" % what):
+                continue
+            ui = c.BH.union(ink)
+            inset = float(d.get("inset", 0) or 0)
+            # B0 the home
+            if w > h:
+                limit = w - 72.0  # (TopbarInset's right end: render_gui's phone Rect(112, 0, W - 72, 58); a desktop's fallback)
+                ok = ui[1] >= 0 and ui[3] <= inset + 0.5 and limit - B_DOCK <= ui[2] <= limit + 0.5
+                c.check("B0", ok, "B0 %s: the chip docks in the top band at its right end (the pill's twin)" % what,
+                        "chip ink %s, band 0..%.0f, its right end %.0f..%.0f" % (fmt(ui), inset, limit - B_DOCK, limit))
+            else:
+                tab = next((n for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals\.Body\.NameTab$", p)), None)
+                card = next((n for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals\.Body\.Card$", p)), None)
+                strip = next((n for p, n in nodes.items() if p.startswith("NimbusTutorial.") and p.endswith(".QuestStrip")), None)
+                sink = c.BH.ink_of(strip, c.RG, c.fonts) if strip else []
+                if not c.check("B0", tab is not None and card is not None, "B0 %s: (setup) the vitals card shows" % what):
+                    continue
+                foot = c.BH.union(c.BH.ink_of(tab, c.RG, c.fonts) or [rect(tab)])[1]
+                if sink:
+                    su = c.BH.union(sink)
+                    if su[3] <= foot + 0.5 and su[1] < foot:
+                        foot = min(foot, su[1])
+                face = rect(chip)
+                ok = abs((foot - B_STACK) - ui[3]) <= 1.5 and abs(face[0] - rect(card)[0]) <= 1.5
+                c.check("B0", ok, "B0 %s: the chip stands on the vitals stack, %d px over the name plank (or the strip), flush with the card" % (what, B_STACK),
+                        "chip ink %s (face x %.1f), card x %.1f, under it at y %.1f" % (fmt(ui), face[0], rect(card)[0], foot))
+            # B1 clear of every other piece
+            bad = []
+            for p, n in nodes.items():
+                if p.startswith("NimbusGuide") or p.count(".") not in (1, 2):
+                    continue
+                if float(n["w"]) <= 1 or float(n["h"]) <= 1 or (float(n["w"]) > 0.9 * w and float(n["h"]) > 0.6 * h):
+                    continue
+                kink = c.BH.ink_of(n, c.RG, c.fonts)
+                if not kink:
+                    continue
+                uk = c.BH.union(kink)
+                if uk[2] - uk[0] > 0.9 * w and uk[3] - uk[1] > 0.6 * h:
+                    continue
+                g, a, bb = c.BH.ink_gap(ink, kink, ui, uk, c.BH.MIN_GAP)
+                if g < c.BH.MIN_GAP - 0.05:
+                    bad.append("%s %.1f px at %s" % (p, g, fmt(bb)))
+            for name, r in roblox_buttons(w, h, inset).items():
+                g = min(c.BH.gap(a, r) for a in ink)
+                if g < c.BH.MIN_GAP - 0.05:
+                    bad.append("%s %.1f px" % (name, g))
+            if touch:
+                for name, (cen, rad) in c.BH.rings(w, h).items():
+                    g = min(c.BH.ring_gap(r, cen, rad) for r in ink)
+                    if g < c.BH.MIN_GAP - 0.05:
+                        bad.append("%s's ring %.1f px" % (name, g))
+            c.check("B1", not bad, "B1 %s: the chip keeps %g px of ink off every HUD piece" % (what, c.BH.MIN_GAP), "; ".join(bad[:4]))
+            # B2 the X
+            close = nodes.get(B_CHIP + ".Close")
+            if scen != "guidechip:here":
+                if c.check("B2", close is not None and float(close["w"]) > 1, "B2 %s: the chip has its X" % what):
+                    cr = rect(close)
+                    dots = roblox_buttons(w, h, inset).get("Roblox '...'")
+                    g = c.BH.gap(cr, dots) if dots else 999.0
+                    c.check("B2", cr[2] - cr[0] >= 44 - 0.05 and cr[3] - cr[1] >= 44 - 0.05 and g >= B_DOTS - 0.05,
+                            "B2 %s: the X is a 44 px hit box %d px or more off '...'" % (what, B_DOTS),
+                            "hit box %s (%.1f x %.1f), %.1f px off '...'" % (fmt(cr), cr[2] - cr[0], cr[3] - cr[1], g))
+            # B3 the words
+            floor = 14.4 if touch else (15.0 if h >= 1000 else 14.0)
+            texts = []
+            for p, n in nodes.items():
+                t = n.get("text")
+                if p.startswith(B_CHIP + ".") and isinstance(t, dict) and str(t.get("text", "")).strip() and float(n["w"]) > 1:
+                    texts.append(str(t["text"]).strip())
+                    ok, how = c.whole(n)
+                    size = float(t.get("size", 0))
+                    c.check("B3", ok and size >= floor - 0.05, "B3 %s: '%s' reads whole at %g px or more" % (what, t["text"], floor),
+                            "%s (%.1f px)" % (how, size))
+            ok, said = b_words(scen, touch, texts)
+            c.check("B3", ok, "B3 %s: the chip says the place and its distance (Home / here: its phase's words)" % what, said)
+        c.cache.clear()
+
+
 RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
-       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1, "U2": pin_U2}
+       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1, "U2": pin_U2,
+       "B0": pin_B, "B1": pin_B, "B2": pin_B, "B3": pin_B}
 
 
 def parse_sizes(text):

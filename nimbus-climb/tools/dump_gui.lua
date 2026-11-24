@@ -1098,6 +1098,40 @@ local function scenario(name, fn)
 	ORDER[#ORDER + 1] = name
 end
 
+-- (Pitch 2 item 13 A) the travel guide started as the Shop's "Show the way" starts it: walking in the plaza ("plaza"),
+-- away from the lobby ("away": routing Home, the pointer on the Home tile) or at the gate ("here": "You're here"). The
+-- client world has no server lobby: a stand-in Altar gate prompt part as the lobby replicates it
+local function startTravel(where)
+	local origin = (Config.Lobby and Config.Lobby.Origin) or Vector3.new(0, 300, 0)
+	local lobby = workspace:FindFirstChild("NimbusLobby")
+	if not lobby then
+		lobby = Instance.new("Model")
+		lobby.Name = "NimbusLobby"
+		lobby.Parent = workspace
+	end
+	local part = Instance.new("Part")
+	part.Name = "AltarGatePromptPart"
+	part.Anchored = true
+	part.Size = Vector3.new(4, 4, 4)
+	part.CFrame = CFrame.new(origin + Vector3.new(60, 4, 100))
+	part.Parent = lobby
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "AltarGatePrompt"
+	prompt.ActionText = "Enter"
+	prompt.ObjectText = "Storm Altar"
+	prompt.Parent = part
+	local at = origin + Vector3.new(0, 3, 20)
+	if where == "away" then
+		at = ((Config.Match and Config.Match.ArenaOrigin) or Vector3.new(4000, 800, 0)) + Vector3.new(0, 4, 0)
+	elseif where == "here" then
+		at = part.Position + Vector3.new(0, 0, 4)
+	end
+	Mock.Teleport(LocalPlayer, CFrame.new(at))
+	advance(0.3)
+	req("client/Controllers/TutorialController").Guide.Start("StormAltar")
+	advance(where == "here" and 0.6 or 1.2)
+end
+
 -- lobby[:boosts]: boosts (kit-b U8 review) owns the Cash2x and PetXp2x passes, so both boost chips hang under the gift
 scenario("lobby", function(arg)
 	if arg == "boosts" then
@@ -1112,37 +1146,9 @@ scenario("lobby", function(arg)
 		advance(0.3)
 	end
 	if arg == "travel" or arg == "travelaway" or arg == "travelhere" then
-		-- (Pitch 2 item 13 A) the travel guide's chip: walking in the plaza ("Guiding to Storm Altar"), away from the lobby
-		-- ("Home first, then follow the arrow", the pointer on the Home tile) or at the gate ("You're here: press E"). The
-		-- client world has no server lobby: a stand-in Altar gate prompt part as the lobby replicates it
-		local origin = (Config.Lobby and Config.Lobby.Origin) or Vector3.new(0, 300, 0)
-		local lobby = workspace:FindFirstChild("NimbusLobby")
-		if not lobby then
-			lobby = Instance.new("Model")
-			lobby.Name = "NimbusLobby"
-			lobby.Parent = workspace
-		end
-		local part = Instance.new("Part")
-		part.Name = "AltarGatePromptPart"
-		part.Anchored = true
-		part.Size = Vector3.new(4, 4, 4)
-		part.CFrame = CFrame.new(origin + Vector3.new(60, 4, 100))
-		part.Parent = lobby
-		local prompt = Instance.new("ProximityPrompt")
-		prompt.Name = "AltarGatePrompt"
-		prompt.ActionText = "Enter"
-		prompt.ObjectText = "Storm Altar"
-		prompt.Parent = part
-		local at = origin + Vector3.new(0, 3, 20)
-		if arg == "travelaway" then
-			at = ((Config.Match and Config.Match.ArenaOrigin) or Vector3.new(4000, 800, 0)) + Vector3.new(0, 4, 0)
-		elseif arg == "travelhere" then
-			at = part.Position + Vector3.new(0, 0, 4)
-		end
-		Mock.Teleport(LocalPlayer, CFrame.new(at))
-		advance(0.3)
-		req("client/Controllers/TutorialController").Guide.Start("StormAltar")
-		advance(arg == "travelhere" and 0.6 or 1.2)
+		-- (Pitch 2 item 13 A) the travel guide's chip: walking in the plaza, away from the lobby (routing Home, the pointer on
+		-- the Home tile) or at the gate ("You're here")
+		startTravel(({ travelaway = "away", travelhere = "here" })[arg] or "plaza")
 	end
 	if arg == "fold" then
 		-- (Pitch 2 item 04 B, look review r0) the folded menu column with a tile asking for attention: the stone tab flush on
@@ -1416,6 +1422,60 @@ scenario("mousehint", function()
 	ML.Hold("dump:hint")
 	ML.Release("dump:hint")
 	advance(1)
+end)
+
+-- guidechip:<state>[:<a>[:<b>]] (the owner's pick B of 2026-11-23, the guide chip "Top-bar plank", X on the right): the
+-- travel guide (startTravel) over another HUD state, set as the game sets it, for tools/look_pins.py's B pins:
+--   lobby | boosts (both boost chips under the gift) | toasts (four, last) | tutorial[:<step>[:fold]] (the tutorial as
+--   the game shows it, or folded into its quest strip) | mousehint (a desktop's "press L" plank, last) | party[:leader] |
+--   match[:<n>|:full] | countdown (both end the guide: the chip must be gone) | away (routing Home) | here (at the gate)
+scenario("guidechip", function(state, a, b)
+	tutorialMetrics()
+	state = (state and state ~= "") and state or "lobby"
+	if state == "boosts" then
+		LocalPlayer:SetAttribute("OwnedPasses", "Cash2x,PetXp2x")
+	end
+	advance(0.5)
+	if state == "tutorial" then
+		toClient("TutorialState", tutorialPayload(tonumber(a) or 3))
+		advance(5)
+		if b == "fold" then
+			local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+			local gui = pg and pg:FindFirstChild("NimbusTutorial")
+			local main = gui and gui:FindFirstChild("Main", true)
+			local fold = gui and gui:FindFirstChild("Fold", true)
+			if main and main.Visible and fold then
+				Mock.Click(fold)
+				advance(1)
+			end
+		end
+	end
+	startTravel((state == "away" or state == "here") and state or "plaza")
+	if state == "party" then
+		SCENARIOS.party(a)
+	elseif state == "match" then
+		if a == "full" then
+			SCENARIOS.match("full")
+		else
+			LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
+			LocalPlayer:SetAttribute(Config.Attr.MatchTokens, 7)
+			local ms = matchState()
+			local all = { ms.Members[1], ms.Members[2], ms.Members[3], TUT_MEMBER4 }
+			local members = {}
+			for i = 1, math.max(1, math.min(4, tonumber(a) or 1)) do
+				members[i] = all[i]
+			end
+			ms.Members = members
+			toClient("MatchState", ms)
+			advance(2.5)
+		end
+	elseif state == "countdown" then
+		SCENARIOS.countdown()
+	elseif state == "toasts" then
+		SCENARIOS.toasts()
+	elseif state == "mousehint" then
+		SCENARIOS.mousehint()
+	end
 end)
 
 scenario("npc", function(which)
