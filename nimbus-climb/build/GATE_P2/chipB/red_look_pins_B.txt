@@ -1,0 +1,67 @@
+﻿pin B0  RED       37 passed,   28 failed  (38s)
+    FAIL  B0 guidechip:lobby 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 279.2,64.0-564.8,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:boosts 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 279.2,64.0-564.8,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:toasts 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 279.2,64.0-564.8,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:tutorial:3 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 279.2,64.0-564.8,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:tutorial:3:fold 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 279.2,64.0-564.8,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:party 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 279.2,64.0-564.8,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:party:leader 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 279.2,64.0-564.8,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:away 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 230.8,64.0-613.2,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:here 844x390: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 273.2,64.0-570.8,104.0, band 0..58, its right end 748..772
+    FAIL  B0 guidechip:lobby 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 37.2,356.0-322.8,396.0 (face x 39.2), card x 20.0, under it at y 436.0
+    FAIL  B0 guidechip:boosts 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 37.2,356.0-322.8,396.0 (face x 39.2), card x 20.0, under it at y 436.0
+    FAIL  B0 guidechip:toasts 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 37.2,356.0-322.8,396.0 (face x 39.2), card x 20.0, under it at y 436.0
+    FAIL  B0 guidechip:tutorial:3 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 37.2,285.0-322.8,325.0 (face x 39.2), card x 20.0, under it at y 333.0
+    FAIL  B0 guidechip:tutorial:3:fold 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 37.2,285.0-322.8,325.0 (face x 39.2), card x 20.0, under it at y 333.0
+    FAIL  B0 guidechip:party 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 37.2,356.0-322.8,396.0 (face x 39.2), card x 20.0, under it at y 436.0
+    FAIL  B0 guidechip:party:leader 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 37.2,356.0-322.8,396.0 (face x 39.2), card x 20.0, under it at y 436.0
+    FAIL  B0 guidechip:away 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 19.6,356.0-340.4,396.0 (face x 21.6), card x 20.0, under it at y 436.0
+    FAIL  B0 guidechip:here 360x640: the chip stands on the vitals stack, 8 px over the name plank (or the strip), flush with the card  -- chip ink 31.2,356.0-328.8,396.0 (face x 33.2), card x 20.0, under it at y 436.0
+    FAIL  B0 guidechip:lobby 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 781.0,65.0-1139.0,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:boosts 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 781.0,65.0-1139.0,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:toasts 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 781.0,65.0-1139.0,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:tutorial:3 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 781.0,65.0-1139.0,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:tutorial:3:fold 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 781.0,65.0-1139.0,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:mousehint 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 781.0,65.0-1139.0,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:party 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 781.0,65.0-1139.0,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:party:leader 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 781.0,65.0-1139.0,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:away 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 720.5,65.0-1199.5,116.0, band 0..58, its right end 1824..1848
+    FAIL  B0 guidechip:here 1920x1080: the chip docks in the top band at its right end (the pill's twin)  -- chip ink 812.0,65.0-1108.0,116.0, band 0..58, its right end 1824..1848
+pin B1  RED       28 passed,    6 failed  (0s)
+    FAIL  B1 guidechip:tutorial:3 844x390: the chip keeps 4 px of ink off every HUD piece  -- NimbusTutorial.TutorialPanel -28.0 px at 95.0,76.0-451.0,141.0; NimbusTutorial.TutorialPanel.Slide -28.0 px at 95.0,76.0-451.0,141.0
+    FAIL  B1 guidechip:tutorial:3:fold 844x390: the chip keeps 4 px of ink off every HUD piece  -- NimbusTutorial.TutorialPanel -28.0 px at 95.0,76.0-451.0,141.0; NimbusTutorial.TutorialPanel.Slide -28.0 px at 95.0,76.0-451.0,141.0
+    FAIL  B1 guidechip:party 844x390: the chip keeps 4 px of ink off every HUD piece  -- NimbusHud.TopLeft.PartyPanel -34.0 px at 96.7,70.0-394.3,253.2
+    FAIL  B1 guidechip:party:leader 844x390: the chip keeps 4 px of ink off every HUD piece  -- NimbusHud.TopLeft.PartyPanel -34.0 px at 96.7,70.0-394.3,286.8
+    FAIL  B1 guidechip:party 360x640: the chip keeps 4 px of ink off every HUD piece  -- NimbusMenu.MenuColumn -16.4 px at 18.0,328.8-61.6,372.4; NimbusMenu.MenuColumn.Entry_Spot -16.4 px at 18.0,328.8-61.6,372.4; NimbusMenu.MenuColumn.Entry_Stats -16.4 px at 64.8,328.8-108.4,372.4; NimbusMenu.MenuColumn.Toggle -16.4 px at 106.8,328.8-128.8,372.4
+    FAIL  B1 guidechip:party:leader 360x640: the chip keeps 4 px of ink off every HUD piece  -- NimbusMenu.MenuColumn -33.2 px at 64.8,362.8-108.4,406.4; NimbusMenu.MenuColumn.Entry_Pets -3.6 px at 18.0,316.0-61.6,359.6; NimbusMenu.MenuColumn.Entry_Index -3.6 px at 64.8,316.0-108.4,359.6; NimbusMenu.MenuColumn.Entry_Spot -24.4 px at 18.0,362.8-61.6,406.4
+pin B2  GREEN     50 passed,    0 failed  (0s)
+pin B3  RED       28 passed,   28 failed  (0s)
+    FAIL  B3 guidechip:lobby 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:boosts 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:toasts 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:tutorial:3 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:tutorial:3:fold 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:party 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:party:leader 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:away 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- Home first, then follow the arrow
+    FAIL  B3 guidechip:here 844x390: the chip says the place and its distance (Home / here: its phase's words)  -- You're here: tap the button
+    FAIL  B3 guidechip:lobby 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:boosts 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:toasts 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:tutorial:3 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:tutorial:3:fold 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:party 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:party:leader 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:away 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- Home first, then the arrow
+    FAIL  B3 guidechip:here 360x640: the chip says the place and its distance (Home / here: its phase's words)  -- You're here: tap the button
+    FAIL  B3 guidechip:lobby 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:boosts 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:toasts 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:tutorial:3 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:tutorial:3:fold 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:mousehint 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:party 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:party:leader 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Guiding to Storm Altar
+    FAIL  B3 guidechip:away 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- Home first, then follow the arrow
+    FAIL  B3 guidechip:here 1920x1080: the chip says the place and its distance (Home / here: its phase's words)  -- You're here: press E
+look_pins: 4 pins, 1 green, 3 red (B0, B1, B3)  (38s)

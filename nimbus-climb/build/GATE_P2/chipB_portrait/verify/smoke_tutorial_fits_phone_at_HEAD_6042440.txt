@@ -1,0 +1,15 @@
+﻿Nimbus Climb smoke test  (Lua engine: luajit21, 300 layout seeds/difficulty)
+
+== client_load ==
+
+== tutorial_fits_phone ==
+  warn  tutorial phone 800x360 step 1 as shown: the opened card reaches into the thumbstick's zone (the 0.7 last resort)  -- thumbstick 0,200..116,302 | 88,5..396,223
+  warn  tutorial phone 800x360 step 1 opened: the opened card reaches into the thumbstick's zone (the 0.7 last resort)  -- thumbstick 0,200..116,302 | 88,5..396,223
+  warn  tutorial phone 740x360 step 1 as shown: the opened card reaches into the thumbstick's zone (the 0.7 last resort)  -- thumbstick 0,200..116,302 | 88,5..396,223
+  warn  tutorial phone 740x360 step 1 opened: the opened card reaches into the thumbstick's zone (the 0.7 last resort)  -- thumbstick 0,200..116,302 | 88,5..396,223
+  warn  tutorial phone 667x375 step 1 as shown: the opened card reaches into the thumbstick's zone (the 0.7 last resort)  -- thumbstick 0,215..116,317 | 88,5..396,223
+  warn  tutorial phone 667x375 step 1 opened: the opened card reaches into the thumbstick's zone (the 0.7 last resort)  -- thumbstick 0,215..116,317 | 88,5..396,223
+  warn  tutorial phone 640x360 step 1 as shown: the opened card reaches into the thumbstick's zone (the 0.7 last resort)  -- thumbstick 0,200..116,302 | 88,5..396,223
+  warn  tutorial phone 640x360 step 1 opened: the opened card reaches into the thumbstick's zone (the 0.7 last resort)  -- thumbstick 0,200..116,302 | 88,5..396,223
+
+smoke test: 631 passed, 0 failed, 8 warnings  (14.6s)

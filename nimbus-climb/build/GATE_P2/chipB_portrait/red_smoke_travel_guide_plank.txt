@@ -1,0 +1,139 @@
+﻿Nimbus Climb smoke test  (Lua engine: luajit21, 300 layout seeds/difficulty)
+
+== client_load ==
+
+== travel_guide_plank ==
+  ..    guide plank 320x568 tutorial folded, here: tutorial strip 12,263 .. 300,324; the chip shows 0 of 61 frames 0.5 - 2.5 s into "You're here", - px off the plank (1 s in: chip 12,205 .. 164,253 hidden, plank 100,211 .. 220,276)
+  FAIL  guide plank 320x568 tutorial folded, look steep: the chip hides only for a sign (a prompt plank on its spot, the 0.5 s hold after it)  -- 0.03 s (Walk): hidden, chip 12,205 .. 203,253; no sign near its spot
+  FAIL  guide plank 320x568 tutorial folded, sign leaves: the chip hides only for a sign (a prompt plank on its spot, the 0.5 s hold after it)  -- 1.63 s (Walk): hidden, chip 12,205 .. 203,253; the last sign near its spot at 0.97 s
+  FAIL  guide plank 320x568 tutorial folded, sign leaves: the chip comes back in the same place within 0.5 s + 2/15 s of the sign going  -- never back
+  FAIL  guide plank 320x568 tutorial folded, npc on spot: the chip hides only for a sign (a prompt plank on its spot, the 0.5 s hold after it)  -- 0.03 s (Walk): hidden, chip 12,205 .. 203,253; no sign near its spot
+  FAIL  guide plank 320x568 tutorial folded, npc on spot: the chip comes back in the same place within 0.5 s + 2/15 s of the sign going  -- never back
+  FAIL  guide plank 320x568 tutorial done, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -14.6 px at 1.50 s (Walk): chip 12,338 .. 203,386, Enter plank 100,288 .. 220,353
+  ..    guide plank 320x568 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 61.9 px off the plank (1 s in: chip 12,338 .. 164,386 shown, plank 100,211 .. 220,276)
+  FAIL  guide plank 320x568 tutorial done, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -16.1 px at 1.03 s (Here): chip 12,338 .. 164,386, Enter plank 100,289 .. 220,354
+  FAIL  guide plank 320x568 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -33.7 px at 0.60 s (Walk): chip 12,338 .. 203,386, Talk plank 169,329 .. 279,394
+  FAIL  guide plank 320x568 tutorial done, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -16.5 px at 1.53 s (Walk): chip 12,338 .. 203,386, Enter plank 100,289 .. 220,354
+  ..    guide plank 320x568 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 320x568 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 12,338 .. 203,386, Talk plank 52,329 .. 162,394
+  FAIL  guide plank 320x568 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  FAIL  guide plank 340x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 12,277 .. 203,325, Enter plank 110,242 .. 230,307
+  FAIL  guide plank 340x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 12,277 .. 203,325, Enter plank 110,269 .. 230,334
+  FAIL  guide plank 340x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -54.0 px at 2.63 s (Here): chip 12,253 .. 164,301, Enter plank 110,242 .. 230,307
+  ..    guide plank 340x640 tutorial folded, here: tutorial strip 12,335 .. 320,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 12,277 .. 164,325 shown, plank 110,242 .. 230,307)
+  FAIL  guide plank 340x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -54.0 px at 0.33 s (Here): chip 12,277 .. 164,325, Enter plank 110,267 .. 230,332
+  FAIL  guide plank 340x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 12,277 .. 203,325, Enter plank 110,242 .. 230,307
+  FAIL  guide plank 340x640 tutorial folded, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 12,277 .. 203,325, Enter plank 110,269 .. 230,334
+  FAIL  guide plank 340x640 tutorial folded, sign leaves: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 12,277 .. 203,325, Enter plank 110,242 .. 230,307
+  ..    guide plank 340x640 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 340x640 tutorial folded, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 12,277 .. 203,325, Talk plank 52,268 .. 162,333
+  FAIL  guide plank 340x640 tutorial folded, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  ..    guide plank 340x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 12,410 .. 164,458 shown, plank 110,242 .. 230,307)
+  FAIL  guide plank 340x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -15.6 px at 0.60 s (Walk): chip 12,410 .. 203,458, Talk plank 187,375 .. 297,440
+  ..    guide plank 340x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 340x640 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 12,410 .. 203,458, Talk plank 52,401 .. 162,466
+  FAIL  guide plank 340x640 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  FAIL  guide plank 360x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 12,277 .. 203,325, Enter plank 120,242 .. 240,307
+  FAIL  guide plank 360x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 12,277 .. 203,325, Enter plank 120,269 .. 240,334
+  FAIL  guide plank 360x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -44.0 px at 2.63 s (Here): chip 12,253 .. 164,301, Enter plank 120,242 .. 240,307
+  ..    guide plank 360x640 tutorial folded, here: tutorial strip 12,335 .. 340,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 12,277 .. 164,325 shown, plank 120,242 .. 240,307)
+  FAIL  guide plank 360x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -44.0 px at 0.20 s (Here): chip 12,277 .. 164,325, Enter plank 120,256 .. 240,321
+  FAIL  guide plank 360x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 12,277 .. 203,325, Enter plank 120,242 .. 240,307
+  FAIL  guide plank 360x640 tutorial folded, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 12,277 .. 203,325, Enter plank 120,269 .. 240,334
+  FAIL  guide plank 360x640 tutorial folded, sign leaves: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 12,277 .. 203,325, Enter plank 120,242 .. 240,307
+  ..    guide plank 360x640 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 360x640 tutorial folded, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 12,277 .. 203,325, Talk plank 52,268 .. 162,333
+  FAIL  guide plank 360x640 tutorial folded, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  ..    guide plank 360x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 12,410 .. 164,458 shown, plank 120,242 .. 240,307)
+  FAIL  guide plank 360x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -5.6 px at 0.60 s (Walk): chip 12,410 .. 203,458, Talk plank 197,375 .. 307,440
+  ..    guide plank 360x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 360x640 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 12,410 .. 203,458, Talk plank 53,401 .. 163,466
+  FAIL  guide plank 360x640 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  FAIL  guide plank 375x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 14,277 .. 205,325, Enter plank 128,242 .. 248,307
+  FAIL  guide plank 375x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 14,277 .. 205,325, Enter plank 128,269 .. 248,334
+  FAIL  guide plank 375x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.5 px at 2.63 s (Here): chip 14,253 .. 166,301, Enter plank 128,242 .. 248,307
+  ..    guide plank 375x640 tutorial folded, here: tutorial strip 16,335 .. 354,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 14,277 .. 166,325 shown, plank 128,242 .. 248,307)
+  FAIL  guide plank 375x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.5 px at 0.17 s (Here): chip 14,277 .. 166,325, Enter plank 128,253 .. 248,318
+  FAIL  guide plank 375x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 14,277 .. 205,325, Enter plank 128,242 .. 248,307
+  FAIL  guide plank 375x640 tutorial folded, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 14,277 .. 205,325, Enter plank 128,269 .. 248,334
+  FAIL  guide plank 375x640 tutorial folded, sign leaves: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 14,277 .. 205,325, Enter plank 128,242 .. 248,307
+  ..    guide plank 375x640 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 375x640 tutorial folded, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 14,277 .. 205,325, Talk plank 54,268 .. 164,333
+  FAIL  guide plank 375x640 tutorial folded, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  ..    guide plank 375x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 14,410 .. 166,458 shown, plank 128,242 .. 248,307)
+  FAIL  guide plank 375x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -0.1 px at 0.60 s (Walk): chip 14,410 .. 205,458, Talk plank 205,375 .. 315,440
+  ..    guide plank 375x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 375x640 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 14,410 .. 205,458, Talk plank 54,401 .. 164,466
+  FAIL  guide plank 375x640 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  FAIL  guide plank 375x667 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -15.0 px at 0.10 s (Walk): chip 14,304 .. 205,352, Enter plank 128,254 .. 248,319
+  FAIL  guide plank 375x667 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.4 px at 0.73 s (Walk): chip 14,304 .. 205,352, Enter plank 128,295 .. 248,360
+  FAIL  guide plank 375x667 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.5 px at 2.63 s (Here): chip 14,280 .. 166,328, Enter plank 128,254 .. 248,319
+  ..    guide plank 375x667 tutorial folded, here: tutorial strip 16,362 .. 354,423; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -14.6 px off the plank (1 s in: chip 14,304 .. 166,352 shown, plank 128,254 .. 248,319)
+  FAIL  guide plank 375x667 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.5 px at 0.33 s (Here): chip 14,304 .. 166,352, Enter plank 128,280 .. 248,345
+  FAIL  guide plank 375x667 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -15.0 px at 0.10 s (Walk): chip 14,304 .. 205,352, Enter plank 128,254 .. 248,319
+  FAIL  guide plank 375x667 tutorial folded, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.4 px at 0.73 s (Walk): chip 14,304 .. 205,352, Enter plank 128,295 .. 248,360
+  FAIL  guide plank 375x667 tutorial folded, sign leaves: the chip, while it shows, keeps 6 px off every prompt plank  -- -15.0 px at 0.10 s (Walk): chip 14,304 .. 205,352, Enter plank 128,254 .. 248,319
+  ..    guide plank 375x667 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 375x667 tutorial folded, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 14,304 .. 205,352, Talk plank 55,295 .. 165,360
+  FAIL  guide plank 375x667 tutorial folded, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  ..    guide plank 375x667 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 118.4 px off the plank (1 s in: chip 14,437 .. 166,485 shown, plank 128,254 .. 248,319)
+  FAIL  guide plank 375x667 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- 3.0 px at 0.60 s (Walk): chip 14,437 .. 205,485, Talk plank 208,393 .. 318,458
+  ..    guide plank 375x667 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 375x667 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 14,437 .. 205,485, Talk plank 54,428 .. 164,493
+  FAIL  guide plank 375x667 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  FAIL  guide plank 384x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 18,277 .. 209,325, Enter plank 132,242 .. 252,307
+  FAIL  guide plank 384x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 18,277 .. 209,325, Enter plank 132,269 .. 252,334
+  FAIL  guide plank 384x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.0 px at 2.63 s (Here): chip 18,253 .. 170,301, Enter plank 132,242 .. 252,307
+  ..    guide plank 384x640 tutorial folded, here: tutorial strip 20,335 .. 364,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 18,277 .. 170,325 shown, plank 132,242 .. 252,307)
+  FAIL  guide plank 384x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.0 px at 0.13 s (Here): chip 18,277 .. 170,325, Enter plank 132,250 .. 252,315
+  FAIL  guide plank 384x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 18,277 .. 209,325, Enter plank 132,242 .. 252,307
+  FAIL  guide plank 384x640 tutorial folded, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 18,277 .. 209,325, Enter plank 132,269 .. 252,334
+  FAIL  guide plank 384x640 tutorial folded, sign leaves: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 18,277 .. 209,325, Enter plank 132,242 .. 252,307
+  ..    guide plank 384x640 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 384x640 tutorial folded, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 18,277 .. 209,325, Talk plank 58,268 .. 168,333
+  FAIL  guide plank 384x640 tutorial folded, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  ..    guide plank 384x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 18,410 .. 170,458 shown, plank 132,242 .. 252,307)
+  FAIL  guide plank 384x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- 0.4 px at 0.60 s (Walk): chip 18,410 .. 209,458, Talk plank 209,375 .. 319,440
+  ..    guide plank 384x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 384x640 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 18,410 .. 209,458, Talk plank 58,401 .. 168,466
+  FAIL  guide plank 384x640 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  FAIL  guide plank 390x844 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -27.2 px at 1.50 s (Walk): chip 21,481 .. 212,529, Enter plank 135,443 .. 255,508
+  ..    guide plank 390x844 tutorial folded, here: tutorial strip 23,539 .. 367,600; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 86.5 px off the plank (1 s in: chip 21,481 .. 173,529 shown, plank 135,330 .. 255,395)
+  FAIL  guide plank 390x844 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -29.4 px at 1.03 s (Here): chip 21,481 .. 173,529, Enter plank 135,445 .. 255,510
+  FAIL  guide plank 390x844 tutorial folded, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -29.9 px at 1.53 s (Walk): chip 21,481 .. 212,529, Enter plank 135,446 .. 255,511
+  ..    guide plank 390x844 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 390x844 tutorial folded, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 21,481 .. 212,529, Talk plank 61,472 .. 171,537
+  FAIL  guide plank 390x844 tutorial folded, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  ..    guide plank 390x844 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 219.5 px off the plank (1 s in: chip 21,614 .. 173,662 shown, plank 135,330 .. 255,395)
+  ..    guide plank 390x844 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 390x844 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 21,614 .. 212,662, Talk plank 61,605 .. 171,670
+  FAIL  guide plank 390x844 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  FAIL  guide plank 400x640 tutorial folded, walk: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 26,277 .. 217,325, Enter plank 140,242 .. 260,307
+  FAIL  guide plank 400x640 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 26,277 .. 217,325, Enter plank 140,269 .. 260,334
+  FAIL  guide plank 400x640 tutorial folded, here: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.0 px at 2.60 s (Here): chip 26,253 .. 178,301, Enter plank 140,242 .. 260,307
+  ..    guide plank 400x640 tutorial folded, here: tutorial strip 28,335 .. 372,396; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", -30.0 px off the plank (1 s in: chip 26,277 .. 178,325 shown, plank 140,242 .. 260,307)
+  FAIL  guide plank 400x640 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -38.0 px at 0.13 s (Here): chip 26,277 .. 178,325, Enter plank 140,250 .. 260,315
+  FAIL  guide plank 400x640 tutorial folded, other: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 26,277 .. 217,325, Enter plank 140,242 .. 260,307
+  FAIL  guide plank 400x640 tutorial folded, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.2 px at 0.50 s (Walk): chip 26,277 .. 217,325, Enter plank 140,269 .. 260,334
+  FAIL  guide plank 400x640 tutorial folded, sign leaves: the chip, while it shows, keeps 6 px off every prompt plank  -- -30.4 px at 0.10 s (Walk): chip 26,277 .. 217,325, Enter plank 140,242 .. 260,307
+  ..    guide plank 400x640 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 400x640 tutorial folded, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 26,277 .. 217,325, Talk plank 66,268 .. 176,333
+  FAIL  guide plank 400x640 tutorial folded, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  ..    guide plank 400x640 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 103.0 px off the plank (1 s in: chip 26,410 .. 178,458 shown, plank 140,242 .. 260,307)
+  FAIL  guide plank 400x640 tutorial done, other: the chip, while it shows, keeps 6 px off every prompt plank  -- 0.4 px at 0.60 s (Walk): chip 26,410 .. 217,458, Talk plank 217,375 .. 327,440
+  ..    guide plank 400x640 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 400x640 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -56.5 px at 0.40 s (Walk): chip 26,410 .. 217,458, Talk plank 66,401 .. 176,466
+  FAIL  guide plank 400x640 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  FAIL  guide plank 412x915 tutorial folded, walk tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -5.2 px at 1.50 s (Walk): chip 22,545 .. 226,596, Enter plank 142,481 .. 270,550
+  ..    guide plank 412x915 tutorial folded, here: tutorial strip 24,607 .. 387,671; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 118.0 px off the plank (1 s in: chip 22,545 .. 183,596 shown, plank 142,358 .. 270,427)
+  FAIL  guide plank 412x915 tutorial folded, here tilt: the chip, while it shows, keeps 6 px off every prompt plank  -- -7.6 px at 1.03 s (Here): chip 22,545 .. 183,596, Enter plank 142,484 .. 270,553
+  FAIL  guide plank 412x915 tutorial folded, tilt rock: the chip, while it shows, keeps 6 px off every prompt plank  -- -8.2 px at 1.53 s (Walk): chip 22,545 .. 226,596, Enter plank 142,484 .. 270,553
+  ..    guide plank 412x915 tutorial folded, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 412x915 tutorial folded, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -60.0 px at 0.40 s (Walk): chip 22,545 .. 226,596, Talk plank 66,536 .. 183,605
+  FAIL  guide plank 412x915 tutorial folded, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+  ..    guide plank 412x915 tutorial done, here: tutorial hidden; the chip shows 61 of 61 frames 0.5 - 2.5 s into "You're here", 245.0 px off the plank (1 s in: chip 22,672 .. 183,723 shown, plank 142,358 .. 270,427)
+  ..    guide plank 412x915 tutorial done, sign leaves: the chip showed when the gate's plank went (no sign on its spot)
+  FAIL  guide plank 412x915 tutorial done, npc on spot: the chip, while it shows, keeps 6 px off every prompt plank  -- -60.0 px at 0.40 s (Walk): chip 22,672 .. 226,723, Talk plank 66,663 .. 183,732
+  FAIL  guide plank 412x915 tutorial done, npc on spot: the chip steps aside (hidden, its X with it) while the NPC's plank stands on its spot
+
+smoke test: 1207 passed, 97 failed, 0 warnings  (20.8s)

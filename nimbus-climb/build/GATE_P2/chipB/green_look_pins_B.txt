@@ -1,0 +1,5 @@
+﻿pin B0  GREEN    602 passed,    0 failed  (303s)
+pin B1  GREEN    245 passed,    0 failed  (0s)
+pin B2  GREEN    338 passed,    0 failed  (0s)
+pin B3  GREEN    587 passed,    0 failed  (0s)
+look_pins: 4 pins, 4 green, 0 red  (303s)

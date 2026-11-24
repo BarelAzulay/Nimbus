@@ -1,0 +1,24 @@
+﻿Nimbus Climb smoke test  (Lua engine: luajit21, 300 layout seeds/difficulty)
+
+== client_load ==
+
+== travel_guide_walk ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    travel_guide_walk: part 1 of 4, 42 runs
+  FAIL  guide walk 390x844: at 50 studs the arrow shows and the GuideSign does not (the mock's framing)  -- arrow true, sign true
+  FAIL  guide walk 1280x720: at 50 studs the arrow shows and the GuideSign does not (the mock's framing)  -- arrow true, sign true
+  FAIL  guide walk 1920x1080: at 50 studs the arrow shows and the GuideSign does not (the mock's framing)  -- arrow true, sign true
+
+== travel_guide_walk_pans ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    travel_guide_walk_pans: part 2 of 4, 14 runs
+
+== travel_guide_walk_pans_b ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    travel_guide_walk_pans_b: part 3 of 4, 14 runs
+
+== travel_guide_walk_looks ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    travel_guide_walk_looks: part 4 of 4, 14 runs
+
+smoke test: 1182 passed, 3 failed, 0 warnings  (451.7s)
