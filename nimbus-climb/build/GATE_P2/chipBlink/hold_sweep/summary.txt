@@ -1,0 +1,43 @@
+The hold sweep (kitb-chip-blink, 2026-11-25): GUIDE_SIGN_DWELL (TutorialController) and CLEAR (the pin) set together,
+travel_guide_plank run once per value, one run at a time. File per run: hold<value>[_fps<N>]_travel_guide_plank.txt;
+every run's result line is in runs_memory.txt. A later run of the same value wrote over the file: hold09 and hold1 hold
+section 3's 30 fps runs, hold095 section 2's, hold10_fps30 section 4's; hold060 / hold07 / hold08 / hold085 are section 1's.
+The new rule in every run: a chip that stepped aside comes back only once its spot has been clear of every sign for the
+hold on end (was: no sooner than 0.5 s after it hid).
+
+The real jump at the gate (Config.Physics): JumpPower 52, Gravity 196.2 -> 6.89 studs up, 0.530 s in the air.
+
+1. The pin as committed red (939cc54c: jumps held / 0.2 / 0.5 s apart, here jumps, rocks 0.3 / 0.5 s, wobbles), 30 fps
+   hold 0.60   8 failed  (tilt rock 0.5 s at 340/360/375/384/400x640 and 375x667 done; jumps 0.5 s apart at 390x844 / 412x915 done)
+   hold 0.70   3 failed  (tilt rock 0.5 s at 375x667 done; jumps 0.5 s apart at 390x844 / 412x915 done)
+   hold 0.80   3 failed  (same)
+   hold 0.85   2 failed  (jumps 0.5 s apart at 390x844 / 412x915 done: shown 0.07 s)
+   hold 0.90   0 failed
+   hold 0.95   0 failed
+   hold 1.00   0 failed
+   Why: where the plank meets the chip's spot only near a jump's top (390x844 / 412x915, tutorial done) or only near a
+   rock's top (375x667 done), the spot is clear for up to ~0.93 s between two touches.
+
+2. + 'a frame later' runs (the reads' other phase), 30 fps: 0.90 / 0.95 / 1.00 all 0 failed (file names hold09 / hold095 /
+   hold1, the second set, 2568 checks).
+
+3. + probes (sub-frame phases 1..7/120 s, rests 0.45 / 0.55 / 0.6 s, rocks 0.4 / 0.45 / 0.55 s; PROBE runs, not kept):
+   30 fps: hold 0.90  5 failed (rock 0.5 s 3/120 s late at 375x667 done; jumps 0.55 / 0.6 s apart at 390x844 / 412x915 done)
+           hold 0.95  0 failed
+           hold 1.00  0 failed
+   60 fps: chatter fails  hold 0.90: 2 (rock 0.55 s at 375x667 done; jumps 0.6 s apart at 412x915 done)
+                          hold 0.95: 1 (jumps 0.6 s apart at 412x915 done, shown 0.07 s)
+                          hold 1.00: 0
+   (At 60 fps, at every hold, two other kinds fail that the hold does not touch: 198 'a shown chip is never on a sign
+   past the frame after its pop-in' at the guide's start - the signs are read every 1/15 s, 4 frames at 60 fps, so the
+   gate's plank, shown just after the start, stands on the chip for 0.07 s; and the pin's 'hides only for a sign' at
+   390x844 / 412x915 done in jump runs - the pin looks for a sign near the spot on 1/30 s frames, the chip reads on
+   other 60 fps frames with the move margin of a plank in fast flight.)
+
+-> hold 1.0 s: the smallest with no blink in every run at 30 and 60 fps. Kept in the pin from the probes: 'jumps 0.6 s
+   apart', 'tilt rock 0.5 s, 0.025 s later', 'tilt rock 0.55 s' (0.9 s blinks on them).
+
+4. The limit at 1.0 s (hold1_fps30, PROBE runs, not kept), 30 fps: 22 failed - jumps 0.7 / 0.8 / 1.0 s apart on the ground
+   (shown 0.07 - 0.40 s at most sizes) and rocks of 0.75 s each way (shown 0.13 - 0.33 s); jumps 1.5 s apart and rocks of
+   0.6 s each way are clean. A sign that comes back 1.0 - 1.5 s after it left still lets the chip show for under 0.5 s:
+   no pure hold can avoid that band.

@@ -2163,13 +2163,14 @@ local function clientScenarios()
 					return q < AIR and math.max(0, V0 * q - 0.5 * GRAV * q * q) or 0
 				end
 			end
-			-- the camera rocked 0 <-> `amp` degrees up, `half` s each way, `n` times, then level
-			local function rock(amp, half, n)
+			-- the camera rocked 0 <-> `amp` degrees up, `half` s each way, `n` times from `from` s, then level
+			local function rock(amp, half, n, from)
 				return function(t)
-					if t >= 2 * half * n then
+					local p = t - (from or 0)
+					if p < 0 or p >= 2 * half * n then
 						return 0
 					end
-					return amp * (1 - abs(((t / half) % 2) - 1))
+					return amp * (1 - abs(((p / half) % 2) - 1))
 				end
 			end
 			local MODES = {
@@ -2207,9 +2208,19 @@ local function clientScenarios()
 				{ name = "jumps held", dist = 11, secs = 0.5 + 6 * (AIR + 0.03) + 1, rise = jumps(6, 0.03, 0.5), portrait = true },
 				{ name = "jumps 0.2 s apart", dist = 11, secs = 0.5 + 6 * (AIR + 0.2) + 1, rise = jumps(6, 0.2, 0.5), portrait = true },
 				{ name = "jumps 0.5 s apart", dist = 11, secs = 0.5 + 6 * (AIR + 0.5) + 1, rise = jumps(6, 0.5, 0.5), portrait = true },
+				-- (the two runs that set the hold, 'a frame later' too: the chip reads every other 1/30 s frame, so a frame's
+				-- shift meets the reads in their other phase)
+				{ name = "jumps 0.5 s apart, a frame later", dist = 11, secs = 0.5 + 1 / 30 + 6 * (AIR + 0.5) + 1, rise = jumps(6, 0.5, 0.5 + 1 / 30), portrait = true },
 				{ name = "here jumps", dist = 7, secs = 3, rise = jumps(5, 0.03, 0.1), portrait = true },
 				{ name = "tilt rock 0.3 s", dist = 11, secs = 2.4 + 1, tilt = rock(20, 0.3, 4), portrait = true },
 				{ name = "tilt rock 0.5 s", dist = 11, secs = 4 + 1, tilt = rock(20, 0.5, 4), portrait = true },
+				{ name = "tilt rock 0.5 s, a frame later", dist = 11, secs = 4 + 1 / 30 + 1, tilt = rock(20, 0.5, 4, 1 / 30), portrait = true },
+				-- (the hold's sweep, build/GATE_P2/chipBlink/hold_sweep: these three blinked at a 0.9 s hold - 0.6 s on the
+				-- ground at 412x915 / 390x844, the rock 0.025 s late at 375x667, the 0.55 s rock at 60 fps - and set it at 1.0 s:
+				-- no blink at 30 and 60 fps)
+				{ name = "jumps 0.6 s apart", dist = 11, secs = 0.5 + 6 * (AIR + 0.6) + 1, rise = jumps(6, 0.6, 0.5), portrait = true },
+				{ name = "tilt rock 0.5 s, 0.025 s later", dist = 11, secs = 4 + 0.025 + 1, tilt = rock(20, 0.5, 4, 0.025), portrait = true },
+				{ name = "tilt rock 0.55 s", dist = 11, secs = 4.4 + 1, tilt = rock(20, 0.55, 4), portrait = true },
 				{ name = "slow tilt wobble 0.7 s", dist = 11, secs = 10, tilt = function(t)
 					return 20 * t / 10 + 1.5 * math.sin(2 * math.pi * t / 0.7)
 				end, portrait = true },
@@ -2221,8 +2232,10 @@ local function clientScenarios()
 			local STRIP_AT = { ["340x640"] = true, ["360x640"] = true, ["375x640"] = true, ["375x667"] = true, ["384x640"] = true, ["400x640"] = true }
 			-- (the owner's pick of 2026-11-25) CLEAR: a chip that stepped aside comes back only once its spot has been clear of
 			-- every sign for CLEAR s on end (TutorialController's GUIDE_SIGN_DWELL; was 0.5 s counted from when it hid). DWELL
-			-- stays the owner's "each state 0.5 s or more"
-			local KEEP, HOLD, DWELL, READ, CLEAR = 6, 12, 0.5, 1 / 15, 0.6
+			-- stays the owner's "each state 0.5 s or more". The hold's limit, measured and left: a sign that comes back 1.0 - 1.5 s
+			-- after it left still lets the chip show for under 0.5 s (jumps 0.7 - 1.0 s apart on the ground, rocks of 0.75 s
+			-- each way), so no run here goes there
+			local KEEP, HOLD, DWELL, READ, CLEAR = 6, 12, 0.5, 1 / 15, 1.0
 			for _, size in ipairs(SIZES) do
 				local touch = math.min(size[1], size[2]) <= 500
 				local portrait = size[2] > size[1]

@@ -1,0 +1,205 @@
+﻿guidechip:lobby              640x360    shown ink 363.0,3.0-562.0,55.0 1.2s
+guidechip:boosts             640x360    shown ink 363.0,3.0-562.0,55.0 0.8s
+guidechip:toasts             640x360    shown ink 363.0,3.0-562.0,55.0 1.2s
+guidechip:tutorial:3         640x360    shown ink 363.0,3.0-562.0,55.0 1.4s
+guidechip:tutorial:3:fold    640x360    shown ink 363.0,3.0-562.0,55.0 1.5s
+guidechip:party              640x360    shown ink 363.0,3.0-562.0,55.0 1.4s
+guidechip:party:leader       640x360    shown ink 363.0,3.0-562.0,55.0 1.5s
+guidechip:match:4            640x360    HIDDEN  1.3s
+guidechip:countdown          640x360    HIDDEN  1.2s
+guidechip:away               640x360    shown ink 316.0,3.0-562.0,55.0 1.2s
+guidechip:here               640x360    shown ink 403.0,3.0-562.0,55.0 1.1s
+guidechip:dungeon            640x360    HIDDEN ['guidechip hidden home 363.0,3.0,562.0,55.0'] 1.3s
+guidechip:arenaside          640x360    HIDDEN ['guidechip hidden home 363.0,3.0,562.0,55.0'] 1.4s
+guidechip:npc                640x360    HIDDEN ['guidechip hidden home 363.0,3.0,562.0,55.0'] 3.4s
+guidechip:window             640x360    shown ink 363.0,3.0-562.0,55.0 1.8s
+worldui:guide                640x360    shown ink 363.0,3.0-562.0,55.0 3.1s
+worldui:guideahead           640x360    shown ink 363.0,3.0-562.0,55.0 3.0s
+worldui:guidehere            640x360    shown ink 403.0,3.0-562.0,55.0 2.5s
+worldui:guidenear            640x360    shown ink 363.0,3.0-562.0,55.0 2.6s
+worldui:guidetilt            640x360    shown ink 363.0,3.0-562.0,55.0 2.7s
+guidechip:lobby              667x375    shown ink 390.0,3.0-589.0,55.0 1.2s
+guidechip:boosts             667x375    shown ink 390.0,3.0-589.0,55.0 1.1s
+guidechip:toasts             667x375    shown ink 390.0,3.0-589.0,55.0 1.3s
+guidechip:tutorial:3         667x375    shown ink 390.0,3.0-589.0,55.0 1.3s
+guidechip:tutorial:3:fold    667x375    shown ink 390.0,3.0-589.0,55.0 1.4s
+guidechip:party              667x375    shown ink 390.0,3.0-589.0,55.0 1.3s
+guidechip:party:leader       667x375    shown ink 390.0,3.0-589.0,55.0 1.4s
+guidechip:match:4            667x375    HIDDEN  1.2s
+guidechip:countdown          667x375    HIDDEN  1.2s
+guidechip:away               667x375    shown ink 343.0,3.0-589.0,55.0 1.2s
+guidechip:here               667x375    shown ink 430.0,3.0-589.0,55.0 1.2s
+guidechip:dungeon            667x375    HIDDEN ['guidechip hidden home 390.0,3.0,589.0,55.0'] 1.3s
+guidechip:arenaside          667x375    shown ink 390.0,3.0-589.0,55.0 1.5s
+guidechip:npc                667x375    HIDDEN ['guidechip hidden home 390.0,3.0,589.0,55.0'] 3.4s
+guidechip:window             667x375    shown ink 390.0,3.0-589.0,55.0 1.9s
+worldui:guide                667x375    shown ink 390.0,3.0-589.0,55.0 3.1s
+worldui:guideahead           667x375    shown ink 390.0,3.0-589.0,55.0 3.2s
+worldui:guidehere            667x375    shown ink 430.0,3.0-589.0,55.0 2.5s
+worldui:guidenear            667x375    shown ink 390.0,3.0-589.0,55.0 2.6s
+worldui:guidetilt            667x375    shown ink 390.0,3.0-589.0,55.0 2.8s
+guidechip:lobby              720x405    shown ink 443.0,3.0-642.0,55.0 1.3s
+guidechip:boosts             720x405    shown ink 443.0,3.0-642.0,55.0 1.3s
+guidechip:toasts             720x405    shown ink 443.0,3.0-642.0,55.0 1.3s
+guidechip:tutorial:3         720x405    shown ink 443.0,3.0-642.0,55.0 1.3s
+guidechip:tutorial:3:fold    720x405    shown ink 443.0,3.0-642.0,55.0 1.4s
+guidechip:party              720x405    shown ink 443.0,3.0-642.0,55.0 1.3s
+guidechip:party:leader       720x405    shown ink 443.0,3.0-642.0,55.0 1.3s
+guidechip:match:4            720x405    HIDDEN  1.3s
+guidechip:countdown          720x405    HIDDEN  1.3s
+guidechip:away               720x405    shown ink 396.0,3.0-642.0,55.0 1.3s
+guidechip:here               720x405    shown ink 483.0,3.0-642.0,55.0 1.1s
+guidechip:dungeon            720x405    HIDDEN ['guidechip hidden home 443.0,3.0,642.0,55.0'] 1.4s
+guidechip:arenaside          720x405    shown ink 443.0,3.0-642.0,55.0 1.4s
+guidechip:npc                720x405    shown ink 443.0,3.0-642.0,55.0 4.1s
+guidechip:window             720x405    shown ink 443.0,3.0-642.0,55.0 2.2s
+worldui:guide                720x405    shown ink 443.0,3.0-642.0,55.0 2.9s
+worldui:guideahead           720x405    shown ink 443.0,3.0-642.0,55.0 3.0s
+worldui:guidehere            720x405    shown ink 483.0,3.0-642.0,55.0 2.4s
+worldui:guidenear            720x405    shown ink 443.0,3.0-642.0,55.0 2.6s
+worldui:guidetilt            720x405    shown ink 443.0,3.0-642.0,55.0 2.7s
+guidechip:lobby              800x450    shown ink 523.0,3.0-722.0,55.0 1.2s
+guidechip:boosts             800x450    shown ink 523.0,3.0-722.0,55.0 1.3s
+guidechip:toasts             800x450    shown ink 523.0,3.0-722.0,55.0 1.4s
+guidechip:tutorial:3         800x450    shown ink 523.0,3.0-722.0,55.0 1.5s
+guidechip:tutorial:3:fold    800x450    shown ink 523.0,3.0-722.0,55.0 1.4s
+guidechip:party              800x450    shown ink 523.0,3.0-722.0,55.0 1.4s
+guidechip:party:leader       800x450    shown ink 523.0,3.0-722.0,55.0 1.3s
+guidechip:match:4            800x450    HIDDEN  1.4s
+guidechip:countdown          800x450    HIDDEN  1.3s
+guidechip:away               800x450    shown ink 476.0,3.0-722.0,55.0 1.2s
+guidechip:here               800x450    shown ink 563.0,3.0-722.0,55.0 1.2s
+guidechip:dungeon            800x450    HIDDEN ['guidechip hidden home 523.0,3.0,722.0,55.0'] 1.4s
+guidechip:arenaside          800x450    shown ink 523.0,3.0-722.0,55.0 1.4s
+guidechip:npc                800x450    shown ink 523.0,3.0-722.0,55.0 3.6s
+guidechip:window             800x450    shown ink 523.0,3.0-722.0,55.0 2.2s
+worldui:guide                800x450    shown ink 523.0,3.0-722.0,55.0 3.2s
+worldui:guideahead           800x450    shown ink 523.0,3.0-722.0,55.0 3.2s
+worldui:guidehere            800x450    shown ink 563.0,3.0-722.0,55.0 2.4s
+worldui:guidenear            800x450    shown ink 523.0,3.0-722.0,55.0 2.7s
+worldui:guidetilt            800x450    shown ink 523.0,3.0-722.0,55.0 2.8s
+guidechip:lobby              844x390    shown ink 567.0,3.0-766.0,55.0 1.2s
+guidechip:boosts             844x390    shown ink 567.0,3.0-766.0,55.0 1.3s
+guidechip:toasts             844x390    shown ink 567.0,3.0-766.0,55.0 1.3s
+guidechip:tutorial:3         844x390    shown ink 567.0,3.0-766.0,55.0 1.4s
+guidechip:tutorial:3:fold    844x390    shown ink 567.0,3.0-766.0,55.0 1.4s
+guidechip:party              844x390    shown ink 567.0,3.0-766.0,55.0 1.4s
+guidechip:party:leader       844x390    shown ink 567.0,3.0-766.0,55.0 1.4s
+guidechip:match:4            844x390    HIDDEN  1.4s
+guidechip:countdown          844x390    HIDDEN  1.3s
+guidechip:away               844x390    shown ink 520.0,3.0-766.0,55.0 1.3s
+guidechip:here               844x390    shown ink 607.0,3.0-766.0,55.0 1.2s
+guidechip:dungeon            844x390    shown ink 567.0,3.0-766.0,55.0 1.4s
+guidechip:arenaside          844x390    shown ink 567.0,3.0-766.0,55.0 1.5s
+guidechip:npc                844x390    shown ink 567.0,3.0-766.0,55.0 3.4s
+guidechip:window             844x390    shown ink 567.0,3.0-766.0,55.0 1.9s
+worldui:guide                844x390    shown ink 567.0,3.0-766.0,55.0 3.2s
+worldui:guideahead           844x390    shown ink 567.0,3.0-766.0,55.0 3.1s
+worldui:guidehere            844x390    shown ink 607.0,3.0-766.0,55.0 2.4s
+worldui:guidenear            844x390    shown ink 567.0,3.0-766.0,55.0 2.6s
+worldui:guidetilt            844x390    shown ink 567.0,3.0-766.0,55.0 2.7s
+guidechip:lobby              960x540    shown ink 683.0,3.0-882.0,55.0 1.3s
+guidechip:boosts             960x540    shown ink 683.0,3.0-882.0,55.0 1.3s
+guidechip:toasts             960x540    shown ink 683.0,3.0-882.0,55.0 1.5s
+guidechip:tutorial:3         960x540    shown ink 683.0,3.0-882.0,55.0 1.5s
+guidechip:tutorial:3:fold    960x540    shown ink 683.0,3.0-882.0,55.0 1.7s
+guidechip:mousehint          960x540    shown ink 683.0,3.0-882.0,55.0 1.4s
+guidechip:party              960x540    shown ink 683.0,3.0-882.0,55.0 1.4s
+guidechip:party:leader       960x540    shown ink 683.0,3.0-882.0,55.0 1.4s
+guidechip:match:4            960x540    HIDDEN  1.4s
+guidechip:countdown          960x540    HIDDEN  1.3s
+guidechip:away               960x540    shown ink 636.0,3.0-882.0,55.0 1.3s
+guidechip:here               960x540    shown ink 633.0,6.0-883.0,52.0 1.2s
+guidechip:dungeon            960x540    shown ink 683.0,3.0-882.0,55.0 1.5s
+guidechip:arenaside          960x540    shown ink 683.0,3.0-882.0,55.0 1.6s
+guidechip:npc                960x540    shown ink 683.0,3.0-882.0,55.0 3.7s
+guidechip:window             960x540    shown ink 683.0,3.0-882.0,55.0 2.3s
+worldui:guide                960x540    shown ink 683.0,3.0-882.0,55.0 3.1s
+worldui:guideahead           960x540    shown ink 683.0,3.0-882.0,55.0 3.0s
+worldui:guidehere            960x540    shown ink 633.0,6.0-883.0,52.0 2.5s
+worldui:guidenear            960x540    shown ink 683.0,3.0-882.0,55.0 2.9s
+worldui:guidetilt            960x540    shown ink 683.0,3.0-882.0,55.0 2.6s
+guidechip:lobby              1024x768   shown ink 621.0,6.0-947.0,52.0 1.3s
+guidechip:boosts             1024x768   shown ink 621.0,6.0-947.0,52.0 1.3s
+guidechip:toasts             1024x768   shown ink 621.0,6.0-947.0,52.0 1.5s
+guidechip:tutorial:3         1024x768   shown ink 621.0,6.0-947.0,52.0 1.5s
+guidechip:tutorial:3:fold    1024x768   shown ink 621.0,6.0-947.0,52.0 1.5s
+guidechip:mousehint          1024x768   shown ink 621.0,6.0-947.0,52.0 1.4s
+guidechip:party              1024x768   shown ink 621.0,6.0-947.0,52.0 1.5s
+guidechip:party:leader       1024x768   shown ink 621.0,6.0-947.0,52.0 1.5s
+guidechip:match:4            1024x768   HIDDEN  1.4s
+guidechip:countdown          1024x768   HIDDEN  1.3s
+guidechip:away               1024x768   shown ink 700.0,3.0-946.0,55.0 1.3s
+guidechip:here               1024x768   shown ink 697.0,6.0-947.0,52.0 1.3s
+guidechip:dungeon            1024x768   shown ink 621.0,6.0-947.0,52.0 1.5s
+guidechip:arenaside          1024x768   shown ink 621.0,6.0-947.0,52.0 1.6s
+guidechip:npc                1024x768   shown ink 621.0,6.0-947.0,52.0 3.8s
+guidechip:window             1024x768   shown ink 621.0,6.0-947.0,52.0 2.3s
+worldui:guide                1024x768   shown ink 621.0,6.0-947.0,52.0 3.2s
+worldui:guideahead           1024x768   shown ink 621.0,6.0-947.0,52.0 3.2s
+worldui:guidehere            1024x768   shown ink 697.0,6.0-947.0,52.0 2.6s
+worldui:guidenear            1024x768   shown ink 621.0,6.0-947.0,52.0 2.8s
+worldui:guidetilt            1024x768   shown ink 621.0,6.0-947.0,52.0 2.7s
+guidechip:lobby              1280x720   shown ink 877.0,6.0-1203.0,52.0 1.4s
+guidechip:boosts             1280x720   shown ink 877.0,6.0-1203.0,52.0 1.5s
+guidechip:toasts             1280x720   shown ink 877.0,6.0-1203.0,52.0 1.5s
+guidechip:tutorial:3         1280x720   shown ink 877.0,6.0-1203.0,52.0 1.6s
+guidechip:tutorial:3:fold    1280x720   shown ink 877.0,6.0-1203.0,52.0 1.5s
+guidechip:mousehint          1280x720   shown ink 877.0,6.0-1203.0,52.0 1.5s
+guidechip:party              1280x720   shown ink 877.0,6.0-1203.0,52.0 1.5s
+guidechip:party:leader       1280x720   shown ink 877.0,6.0-1203.0,52.0 1.5s
+guidechip:match:4            1280x720   HIDDEN  1.4s
+guidechip:countdown          1280x720   HIDDEN  1.5s
+guidechip:away               1280x720   shown ink 797.0,6.0-1203.0,52.0 1.4s
+guidechip:here               1280x720   shown ink 953.0,6.0-1203.0,52.0 1.3s
+guidechip:dungeon            1280x720   shown ink 877.0,6.0-1203.0,52.0 1.5s
+guidechip:arenaside          1280x720   shown ink 877.0,6.0-1203.0,52.0 1.6s
+guidechip:npc                1280x720   shown ink 877.0,6.0-1203.0,52.0 3.8s
+guidechip:window             1280x720   shown ink 877.0,6.0-1203.0,52.0 2.5s
+worldui:guide                1280x720   shown ink 877.0,6.0-1203.0,52.0 3.3s
+worldui:guideahead           1280x720   shown ink 877.0,6.0-1203.0,52.0 3.2s
+worldui:guidehere            1280x720   shown ink 953.0,6.0-1203.0,52.0 2.6s
+worldui:guidenear            1280x720   shown ink 877.0,6.0-1203.0,52.0 3.0s
+worldui:guidetilt            1280x720   shown ink 877.0,6.0-1203.0,52.0 3.0s
+guidechip:lobby              1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.7s
+guidechip:boosts             1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.8s
+guidechip:toasts             1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.9s
+guidechip:tutorial:3         1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.9s
+guidechip:tutorial:3:fold    1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.9s
+guidechip:mousehint          1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.6s
+guidechip:party              1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.9s
+guidechip:party:leader       1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.9s
+guidechip:match:4            1920x1080  HIDDEN  1.8s
+guidechip:countdown          1920x1080  HIDDEN  1.7s
+guidechip:away               1920x1080  shown ink 1437.0,6.0-1843.0,52.0 1.8s
+guidechip:here               1920x1080  shown ink 1593.0,6.0-1843.0,52.0 1.7s
+guidechip:dungeon            1920x1080  shown ink 1517.0,6.0-1843.0,52.0 1.9s
+guidechip:arenaside          1920x1080  shown ink 1517.0,6.0-1843.0,52.0 2.0s
+guidechip:npc                1920x1080  shown ink 1517.0,6.0-1843.0,52.0 4.0s
+guidechip:window             1920x1080  shown ink 1517.0,6.0-1843.0,52.0 3.2s
+worldui:guide                1920x1080  shown ink 1517.0,6.0-1843.0,52.0 3.6s
+worldui:guideahead           1920x1080  shown ink 1517.0,6.0-1843.0,52.0 3.5s
+worldui:guidehere            1920x1080  shown ink 1593.0,6.0-1843.0,52.0 3.0s
+worldui:guidenear            1920x1080  shown ink 1517.0,6.0-1843.0,52.0 3.2s
+worldui:guidetilt            1920x1080  shown ink 1517.0,6.0-1843.0,52.0 3.2s
+guidechip:lobby              2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.2s
+guidechip:boosts             2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.3s
+guidechip:toasts             2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.3s
+guidechip:tutorial:3         2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.4s
+guidechip:tutorial:3:fold    2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.4s
+guidechip:mousehint          2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.4s
+guidechip:party              2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.3s
+guidechip:party:leader       2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.3s
+guidechip:match:4            2560x1440  HIDDEN  2.4s
+guidechip:countdown          2560x1440  HIDDEN  2.3s
+guidechip:away               2560x1440  shown ink 2077.0,6.0-2483.0,52.0 2.2s
+guidechip:here               2560x1440  shown ink 2233.0,6.0-2483.0,52.0 2.1s
+guidechip:dungeon            2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.3s
+guidechip:arenaside          2560x1440  shown ink 2157.0,6.0-2483.0,52.0 2.5s
+guidechip:npc                2560x1440  shown ink 2157.0,6.0-2483.0,52.0 4.4s
+guidechip:window             2560x1440  shown ink 2157.0,6.0-2483.0,52.0 3.7s
+worldui:guide                2560x1440  shown ink 2157.0,6.0-2483.0,52.0 4.3s
+worldui:guideahead           2560x1440  shown ink 2157.0,6.0-2483.0,52.0 4.0s
+worldui:guidehere            2560x1440  shown ink 2233.0,6.0-2483.0,52.0 3.4s
+worldui:guidenear            2560x1440  shown ink 2157.0,6.0-2483.0,52.0 3.8s
+worldui:guidetilt            2560x1440  shown ink 2157.0,6.0-2483.0,52.0 3.8s

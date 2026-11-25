@@ -1,0 +1,4 @@
+﻿landscape/PC: 205 identical (pixels and the chip's row), 0 differ
+portrait: 0 identical (pixels and the chip's row), 0 differ
+missing on one side: 0 []
+script / dump errors at B: 0 []

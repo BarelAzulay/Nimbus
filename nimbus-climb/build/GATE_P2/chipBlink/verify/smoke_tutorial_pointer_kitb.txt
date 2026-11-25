@@ -1,0 +1,7 @@
+﻿Nimbus Climb smoke test  (Lua engine: luajit21, 300 layout seeds/difficulty)
+
+== client_load ==
+
+== tutorial_pointer_kitb ==
+
+smoke test: 447 passed, 0 failed, 0 warnings  (1.4s)
