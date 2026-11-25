@@ -49,7 +49,9 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     and 4, the obby's picker and party, at 700 x 394, 384 x 640 and the corners 568 x 320 / 320 x 568, and
                     the 14 portrait windows new3_look measured at 360 x 640 / 375 x 667 / 384 x 640; MIN_GAP off Roblox's
                     jump ring too, the card wholly on the screen (on a landscape phone's party pad with no slot it may step
-                    aside whole, as under a window). O3_BACKLOG now holds only the corners' cases kit-b already had
+                    aside whole, as under a window). O3_BACKLOG now holds only the corners' cases kit-b already had.
+                    (re-verify: the card moved beside the panel and under the strips) its ink MIN_GAP off EVERY other HUD
+                    piece and Roblox's stick ring too (piece_gaps; the 'piece:' rows: kit-b's own gaps there, no worse)
   T1  fix6 look1   the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
                     1024 x 768 raid:full. Rule: a phone's timer one place and form through raid:ready / raid / raid:full;
                     the clock at 1024 x 768 raid:full; the timer never larger than the boss name
@@ -564,6 +566,15 @@ def o3_case(c, scen, w, h, window):
         c.check("O3", g >= c.BH.MIN_GAP - 0.05 or (was is not None and g >= was - 0.05),
                 "O3 %s %dx%d: the vitals card keeps %g px off Roblox's jump button" % (scen, w, h, c.BH.MIN_GAP),
                 "card ink %s: %.1f px%s" % (fmt(u), g, (" (kit-b %.1f)" % was) if was is not None else ""))
+    # (kitb-bl-hud re-verify) ... and off every other HUD piece (the tutorial and the guide chip read it themselves: U1, B1;
+    # the touch keys above). A piece kit-b already came closer to passes while no worse (key 'piece:<path>')
+    near = piece_gaps(c, c.dump(scen, w, h), nodes, ink, w, h, vp, ("NimbusTutorial", "NimbusGuide", "MobileControls.DashButton", "MobileControls.RunButton"))
+    for g, p in near:
+        was = O3_BACKLOG.get((scen, w, h, "piece:" + p))
+        c.check("O3", was is not None and g >= was - 0.05, "O3 %s %dx%d: the vitals card keeps %g px off %s" % (scen, w, h, c.BH.MIN_GAP, p),
+                "card ink %s: %.1f px%s" % (fmt(u), g, (" (kit-b %.1f)" % was) if was is not None else ""))
+    if not near:
+        c.check("O3", True, "O3 %s %dx%d: the vitals card keeps %g px off every other HUD piece" % (scen, w, h, c.BH.MIN_GAP))
     off = max(0.0, -u[0], -u[1], u[2] - w, u[3] - h)
     was = O3_BACKLOG.get((scen, w, h, "edge"))
     c.check("O3", off <= 0.5 or (was is not None and off <= was + 0.05), "O3 %s %dx%d: the vitals card is wholly on the screen" % (scen, w, h),
@@ -572,6 +583,52 @@ def o3_case(c, scen, w, h, window):
         if p.startswith(vp + ".") and p.endswith("PlayerName"):
             ok, how = c.whole(n)
             c.check("O3", ok or (scen, w, h, "name") in O3_BACKLOG, "O3 %s %dx%d: the player's name reads whole on the vitals card" % (scen, w, h), how)
+
+
+def piece_gaps(c, d, nodes, ink, w, h, own, skip=()):
+    """(kitb-bl-hud re-verify: the vitals card left its bottom-centre spot for the corner beside the match panel and under
+    the wallet strips on short landscape phones, and the NPC dialog moved down to the touch keys' rows: O3 and N1 read the
+    touch keys alone) [(gap, piece path)] for every other HUD piece (depth 1 / 2 of each ScreenGui, as U1's tutorial_gaps:
+    the menu column and its tiles, the match / party panel, the strips, the gift, the toasts, an open window ...) and
+    Roblox's thumbstick ring within MIN_GAP of `ink`; `own`: the subject's path (it, its holders and its parts are not
+    others), `skip`: path prefixes another pin reads against the subject (the tutorial: U1, the guide chip: B1). A piece of
+    a ScreenGui drawn above the subject's (DisplayOrder) whose ink covers all of the subject's hides it (a portrait phone's
+    window over the vitals card, as O3's "steps aside under the window"): not near, it is not seen"""
+    ui = c.BH.union(ink)
+    if not ui:
+        return []
+    order = {g.get("name"): float(g.get("displayOrder", 0) or 0) for g in d.get("guis", [])}
+    mine = order.get(own.split(".")[0], 0.0)
+    out = []
+    for p, n in nodes.items():
+        if p == own or p.startswith(own + ".") or own.startswith(p + ".") or p.count(".") not in (1, 2):
+            continue
+        if any(p == s or p.startswith(s + ".") for s in skip):
+            continue
+        if float(n["w"]) <= 1 or float(n["h"]) <= 1 or (float(n["w"]) > 0.9 * w and float(n["h"]) > 0.6 * h):
+            continue
+        kink = c.BH.ink_of(n, c.RG, c.fonts)
+        if not kink:
+            continue
+        uk = c.BH.union(kink)
+        if uk[2] - uk[0] > 0.9 * w and uk[3] - uk[1] > 0.6 * h:
+            continue
+        if c.BH.gap(ui, uk) >= c.BH.MIN_GAP:
+            continue
+        if order.get(p.split(".")[0], 0.0) > mine and any(b[0] <= ui[0] + 0.5 and b[1] <= ui[1] + 0.5 and b[2] >= ui[2] - 0.5
+                                                          and b[3] >= ui[3] - 0.5 for b in kink):
+            continue
+        # the least gap of the drawn rects themselves (BH.ink_gap falls back on the unions' gap - an overlap - where no
+        # pair is near: the dialog's union over the strip's at 640 x 360 with every rect 4+ px apart)
+        g = min(c.BH.gap(a, b) for a in ink for b in kink)
+        if g < c.BH.MIN_GAP - 0.05:
+            out.append((round(g, 1), p))
+    if c.RG.is_touch(w, h, None):
+        (sc, sr) = c.BH.rings(w, h)["Roblox stick"]
+        g = min(c.BH.ring_gap(r, sc, sr) for r in ink)
+        if g < c.BH.MIN_GAP - 0.05:
+            out.append((round(g, 1), "Roblox stick's ring"))
+    return out
 
 
 def pin_O3(c, sizes):

@@ -48,7 +48,8 @@
 -- run into the column steps aside to its right; the vitals never reach under the touch buttons. The geometry is
 -- re-checked twice a second and on every viewport change, and published as attributes on the NimbusHud
 -- gui (TopLeftRight, TopLeftBottom, TopRightLeft, TopRightBottom, BottomLeftTop = the top of the bottom block (the
--- vitals card), BottomCentreTop / Left / Right = the vitals card, HudScale100; gui-area pixels) so the toasts,
+-- vitals card; its home slot while a short landscape phone's card stands in the top-right stack, which then counts it),
+-- BottomCentreTop / Left / Right = the vitals card, HudScale100; gui-area pixels) so the toasts,
 -- dialogs and side panels can keep clear of the HUD. (kit-b U8) GiftLeft / GiftTop / GiftSize: the gift's dock under the
 -- strips in the lobby (0 = none); DailyController puts its Gifts button there and TopRightBottom includes it.
 -- kit-b U8 (the pitch's HUD stage, kit B): the strips are stone blocks with a coloured coin square, the vitals card a stone
@@ -835,10 +836,10 @@ function Vitals.Sweep(area, k, w, minW, h, bottom0, cx, obstacles, side, gap, ro
 	-- a span as wide as the player's whole name first (room.nameW, screen px), then any span the card fits in
 	if room.nameW and room.nameW > minW * k and not room.any then
 		room.any = true
-		local l, wd, b = Vitals.Sweep(area, k, w, math.ceil(room.nameW / k - 1e-6), h, bottom0, cx, obstacles, side, gap, room)
+		local l, wd, b, up = Vitals.Sweep(area, k, w, math.ceil(room.nameW / k - 1e-6), h, bottom0, cx, obstacles, side, gap, room)
 		room.any = nil
 		if l then
-			return l, wd, b
+			return l, wd, b, up
 		end
 	end
 	local hk = h * k
@@ -881,19 +882,27 @@ function Vitals.Sweep(area, k, w, minW, h, bottom0, cx, obstacles, side, gap, ro
 			if band and b < bottom0 - 0.01 and top < band.y1 and b > band.y0 then
 				cut(band.x0, band.x1)
 			end
+			-- (re-verify, U1) a landscape card that rose from its spot joins the top-right stack: the right end of the
+			-- rightmost span (flush with the wallet strips), so the room beside the top-left panel stays free for what docks
+			-- there (the tutorial's folded chip, as with the card at the foot: hugging the panel it took that room)
+			local stack = room.stack and b < bottom0 - 0.01
 			local best, bestD = nil, math.huge
 			for _, s in ipairs(spans) do
 				if s[2] - s[1] >= minW * k then
 					local width = math.floor(math.min((s[2] - s[1]) / k, w))
 					local half = width * k / 2
 					local x = Util.Clamp(cx, s[1] + half, s[2] - half)
-					if math.abs(x - cx) < bestD then
-						best, bestD = { x - half, width }, math.abs(x - cx)
+					local d = math.abs(x - cx)
+					if stack then
+						x, d = s[2] - half, area.X - s[2]
+					end
+					if d < bestD then
+						best, bestD = { x - half, width }, d
 					end
 				end
 			end
 			if best then
-				return best[1], best[2], b
+				return best[1], best[2], b, stack
 			end
 		end
 	end
@@ -939,9 +948,9 @@ local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, cei
 		if right - left >= minW * k or not step or step - h * k < ceiling then
 			if right - left < minW * k and room then
 				-- (kit-b backlog 5 / 20 / 30) no row here: the card looks for a slot clear of everything before it squeezes
-				local sl, sw, sb = Vitals.Sweep(area, k, w, minW, h, bottom0, cx, obstacles, side, gap, room)
+				local sl, sw, sb, up = Vitals.Sweep(area, k, w, minW, h, bottom0, cx, obstacles, side, gap, room)
 				if sl then
-					return sl, sw, sb, true
+					return sl, sw, sb, true, up
 				end
 			end
 			local width = math.floor(Util.Clamp((right - left) / k, minW, w))
@@ -1185,40 +1194,45 @@ local function applyMargins(animate, force)
 		return obstacles
 	end
 	local nameW = Vitals.WholeNameW(geometry, k)
-	local room = { band = band, top = K.EDGE, nameW = nameW }
-	-- -> left, width, bottom, and how well it sits: 2 its room (no squeeze) + 1 the whole name
+	local room = { band = band, top = K.EDGE, nameW = nameW, stack = vp.X > vp.Y }
+	-- -> left, width, bottom, how well it sits: 2 its room (no squeeze) + 1 the whole name, and whether it rose into the
+	-- top-right stack (Vitals.Sweep)
 	local function placeAmong(obstacles)
-		local l, w, b, fits = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, nil, room)
+		local l, w, b, fits, up = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, nil, room)
 		-- (look:fix6b2 N2) a card too narrow for the player's whole name keeps only OBSTACLE_TIGHT of air where that gives the
 		-- name its room (at 800 x 450 in a match / countdown it sat in the 211 px between the match panel and RUN's block
 		-- edge, O3's 8 px of air + its 2 px edge on each side left it 190 px, under the 196 'SkyClimber' needs at its 14.4 px
 		-- floor: 'SkyCli...', whole at e272588). Where even that leaves no room the card stays as it was
 		if math.floor(w * k) < nameW then
-			local l2, w2, b2, f2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT, room)
+			local l2, w2, b2, f2, up2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT, room)
 			if math.floor(w2 * k) >= nameW and (f2 or not fits) then
-				l, w, b, fits = l2, w2, b2, f2
+				l, w, b, fits, up = l2, w2, b2, f2, up2
 			end
 		end
-		return l, w, b, (fits and 2 or 0) + ((math.floor(w * k) >= nameW) and 1 or 0)
+		return l, w, b, (fits and 2 or 0) + ((math.floor(w * k) >= nameW) and 1 or 0), up == true
 	end
 	local topLeft, panelW = topLeftFor(column)
 	local strips = stripsAt(topLeft, panelW)
-	local vitalsLeft, vitalsW, vitalsBottom, sits = placeAmong(obstaclesFor(column, topLeft, panelW, strips))
+	local vitalsLeft, vitalsW, vitalsBottom, sits, stacked = placeAmong(obstaclesFor(column, topLeft, panelW, strips))
 	-- (kit-b backlog 5 / 20 / 30: at 640 x 360 and 667 x 375 the two-wide tile column puts the match / party panel 165 px in,
 	-- and right of the panel 144 / 171 px stay for a card at least 189 wide: no slot anywhere) on a short landscape phone,
 	-- while a panel shows, the tiles step aside where the card then has all its room (as a battle's HUD sends them aside
 	-- on a phone; in a match the strips with them: the panel counts the run's tokens): the panel takes the corner and the
 	-- card its slot beside it. The column's frame keeps its place, so this weighs the same every layout
+	-- (re-verify, U1) in a match / its countdown only: on the party pad the card steps aside instead where it has no room
+	-- (below), and the tiles keep their place (with the panel in the corner the tutorial's quest strip fitted beside it,
+	-- its edge 0.4 px off the panel's shadow and 3.6 off the wallet strips at 740 - 812 x 360 - 375, where kit-b's chip
+	-- kept 1.6)
 	local aside = false
 	local shortPhone = touch and vp.X > vp.Y and math.min(vp.X, vp.Y) <= K.SMALL_PHONE
-	if sits < 3 and column and hasPanel and topLeft > side and shortPhone then
+	if sits < 3 and column and hasPanel and inMatch and topLeft > side and shortPhone then
 		local tl2, pw2 = topLeftFor(nil, true)
 		local strips2 = stripsAt(tl2, pw2, true)
-		local l2, w2, b2, sits2 = placeAmong(obstaclesFor(nil, tl2, pw2, strips2))
+		local l2, w2, b2, sits2, up2 = placeAmong(obstaclesFor(nil, tl2, pw2, strips2))
 		if sits2 >= 2 and sits2 > sits then
 			aside = true
 			topLeft, panelW, strips, sits = tl2, pw2, strips2, sits2
-			vitalsLeft, vitalsW, vitalsBottom = l2, w2, b2
+			vitalsLeft, vitalsW, vitalsBottom, stacked = l2, w2, b2, up2
 		end
 	end
 	Vitals.SetColumnAside(aside)
@@ -1304,6 +1318,20 @@ local function applyMargins(animate, force)
 	end
 	S.currencyMode = mode
 
+	-- (kit-b backlog 5 re-verify, U1: in a match on a landscape phone the tutorial's folded chip lay 45 px on the match panel)
+	-- a card that rose into the top-right stack (Vitals.Sweep) is no bottom block: read as one (BottomLeftTop at its top,
+	-- near the screen's top) it left the tutorial no row under the top-left panel nor beside it, and its chip fell back to
+	-- the right of the tile column - onto the panel that took the corner. The bottom block keeps the card's home slot (its
+	-- spot at the foot, as when it sits there), and the card counts in the top-right block (TopRightLeft / TopRightBottom,
+	-- its wood edge with it): what docks there (the tutorial's strip, the toasts, the boost chips) keeps clear of it
+	local bottomBlockTop = vitalsTop
+	if stacked and UI.Vitals and UI.Vitals.Visible and vitalsTop < area.Y / 2 then
+		bottomBlockTop = bottom0 - vitalsH * k
+		local x0 = vitalsLeft - K.VITALS_EDGE
+		topRightLeft = topRightLeft > 0 and math.min(topRightLeft, x0) or x0
+		topRightBottom = math.max(topRightBottom, vitalsBottom + K.VITALS_EDGE)
+	end
+
 	setPadding("TopLeft", topLeft, K.EDGE, 0, 0, animate)
 	setPadding("TopRight", 0, 0, 0, 0)
 	setPadding("BottomLeft", 0, 0, 0, 0)
@@ -1319,14 +1347,19 @@ local function applyMargins(animate, force)
 		topW = math.max(topW, K.TITLE_W)
 	end
 	publish("HudScale100", k * 100)
-	publish("TopLeftRight", topH > 0 and (topLeft + topW * k) or 0)
+	-- (re-verify, U1) the panel that took the corner while the tiles stepped aside (a match on a short phone): its right
+	-- edge as drawn, its hard shadow (SignKit's window shadow) with it - the tutorial's quest strip docks GAP right of this
+	-- edge and its own wood edge reached 0.4 px from the shadow at 800 x 360 / 812 x 375. Elsewhere the box's edge, as on
+	-- kit-b (the neighbours' measured gaps there stay as they were)
+	local shadowW = aside and SignKit.Px(Theme.Finish and Theme.Finish.Window or 0, k) * k or 0
+	publish("TopLeftRight", topH > 0 and (topLeft + topW * k + shadowW) or 0)
 	publish("TopLeftBottom", topH > 0 and (K.EDGE + topH * k) or 0)
 	publish("TopRightBottom", topRightBottom)
 	publish("TopRightLeft", topRightLeft)
 	publish("GiftLeft", giftLeft)
 	publish("GiftTop", giftTop)
 	publish("GiftSize", giftSize)
-	publish("BottomLeftTop", vitalsTop)
+	publish("BottomLeftTop", bottomBlockTop)
 	publish("BottomCentreTop", vitalsTop)
 	-- (P2 fix A) the card's own top edge under its name tab (Vitals.Layout's cardY): what docks beside the card lines up
 	-- with it (the mouse-lock plank), BottomCentreTop being the tab's top
