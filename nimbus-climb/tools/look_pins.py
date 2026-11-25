@@ -45,7 +45,11 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
   O3  fix6 look1 #6 lobby 360 x 640 / 375 x 667: the vitals card on DASH and RUN, its name 'SkyCli...'. Rule: the card's
                     ink MIN_GAP off DASH and RUN, the player's name whole. (look:fix6b2 N2: 'SkyCli...' at 800 x 450 in a
                     match / countdown) in every state the card shows in: lobby, match, the pad, the countdown (O3_BACKLOG:
-                    kit-b's own cases on landscape phones, no worse than kit-b)
+                    kit-b's own cases, no worse than kit-b). (kit-b backlog 5 / 20 / 30, kitb-bl-hud) also a match of 1, 2
+                    and 4, the obby's picker and party, at 700 x 394, 384 x 640 and the corners 568 x 320 / 320 x 568, and
+                    the 14 portrait windows new3_look measured at 360 x 640 / 375 x 667 / 384 x 640; MIN_GAP off Roblox's
+                    jump ring too, the card wholly on the screen (on a landscape phone's party pad with no slot it may step
+                    aside whole, as under a window). O3_BACKLOG now holds only the corners' cases kit-b already had
   T1  fix6 look1   the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
                     1024 x 768 raid:full. Rule: a phone's timer one place and form through raid:ready / raid / raid:full;
                     the clock at 1024 x 768 raid:full; the timer never larger than the boss name
@@ -499,36 +503,83 @@ O3_SIZES = [(375, 667)]
 # O3_BACKLOG: what kit-b 1a55f73 already has there (the owner's rule of 2026-11-24), measured by this pin on kit-b's src: on
 # landscape phones 640 - 720 wide in a match / on the pad / in the countdown the squeezed card lies on DASH and RUN and
 # cuts the name (look:fix6b2's OLD major). Such a case passes while its key gap is no worse than kit-b's (a name kit-b
-# cuts may stay cut there); every other case keeps MIN_GAP and the whole name.
+# cuts may stay cut there); every other case keeps MIN_GAP and the whole name. (kitb-bl-hud fixed those: the rows left are
+# the corners 320 x 568 / 568 x 320, measured on kit-b 3d165faa, where no slot exists - 'jump' and 'edge' rows too)
 O3_STATES = ["lobby", "match", "match:full", "party", "party:leader", "countdown"]
 O3_BACKLOG = kitb_backlog("O3")
+# (kit-b backlog 5 / 20 / 30, branch kitb-bl-hud: on landscape phones 640 - 720 wide the card lay on DASH and RUN in a match,
+# on the pad and in the countdown, its name 'SkyCli...', at 640 x 360 on a full pad 20 px off the right edge; new3_look found
+# the same card on the keys on portrait phones in 14 more scenes, windows open over the lobby) every state the card shows in:
+# a match of 1 (a solo run), 2, 3 and 4 players (short names) and the long-name SAINT match, the pad (2 players, a leader's
+# full pad), the countdown, the obby's picker and party; the sizes the backlog names beyond the gate's (700 x 394; the
+# corners 568 x 320 / 320 x 568; 384 x 640); and the portrait windows at the three phones new3_look measured. Each case: the
+# card's ink MIN_GAP off DASH, RUN and Roblox's jump ring, wholly on the screen, the player's name whole
+O3_STATES += ["match:1", "match:2", "match:4", "obby", "obby:party"]
+O3_SIZES += [(700, 394), (384, 640), (568, 320), (320, 568)]
+O3_SCENES = ["arena:duels", "arena:raid", "arena:dungeon", "arena:dungeon:party", "dungeon", "dungeon:lobby", "dungeon:leader",
+             "dungeon:party", "feed", "obby", "obby:party", "ring", "ring:new", "ring:record"]
+O3_SCENE_SIZES = [(360, 640), (375, 667), (384, 640)]
+
+
+def o3_case(c, scen, w, h, window):
+    """one state at one size; window: an open window's scene (new3_look's), where the card may also step aside (hidden)"""
+    nodes = c.nodes(c.dump(scen, w, h))
+    vit = [(p, n) for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals$", p)]
+    if window and not vit:
+        c.check("O3", True, "O3 %s %dx%d: (the card steps aside under the window)" % (scen, w, h))
+        return
+    # (kit-b backlog 5, kitb-bl-hud) on the party pad of a landscape phone (short side <= HudController's SMALL_PHONE 500)
+    # with no slot clear of the keys, the strips, the gift and the middle (at 640 - 700 wide) the card steps aside whole
+    # while the party panel shows (no damage comes on the pad) instead of lying on DASH and RUN: that passes. In a match it
+    # must show.
+    if not vit and scen.startswith("party") and w > h and h <= 500 and c.RG.is_touch(w, h, None):
+        c.check("O3", True, "O3 %s %dx%d: (the card steps aside on the party pad)" % (scen, w, h))
+        return
+    if not c.check("O3", bool(vit), "O3 %s %dx%d: the vitals card shows" % (scen, w, h)):
+        return
+    vp, vn = vit[0]
+    ink = c.BH.ink_of(vn, c.RG, c.fonts)
+    for key in ("DashButton", "RunButton"):
+        kn = nodes.get("MobileControls." + key)
+        if not kn or float(kn["w"]) <= 1:
+            continue
+        kink = c.BH.ink_of(kn, c.RG, c.fonts)
+        if not (ink and kink):
+            continue
+        g = min(c.BH.gap(a, b) for a in ink for b in kink)
+        was = O3_BACKLOG.get((scen, w, h, key))
+        ok = g >= c.BH.MIN_GAP - 0.05 or (was is not None and g >= was - 0.05)
+        c.check("O3", ok, "O3 %s %dx%d: the vitals card keeps %g px off %s" % (scen, w, h, c.BH.MIN_GAP, key),
+                "card ink %s, key %s: %.1f px%s" % (fmt(c.BH.union(ink)), fmt(c.BH.union(kink)), g, (" (kit-b %.1f)" % was) if was is not None else ""))
+    if not ink:
+        return
+    u = c.BH.union(ink)
+    if c.RG.is_touch(w, h, None):
+        (jc, jr) = c.BH.rings(w, h)["Roblox jump"]
+        g = min(c.BH.ring_gap(r, jc, jr) for r in ink)
+        was = O3_BACKLOG.get((scen, w, h, "jump"))
+        c.check("O3", g >= c.BH.MIN_GAP - 0.05 or (was is not None and g >= was - 0.05),
+                "O3 %s %dx%d: the vitals card keeps %g px off Roblox's jump button" % (scen, w, h, c.BH.MIN_GAP),
+                "card ink %s: %.1f px%s" % (fmt(u), g, (" (kit-b %.1f)" % was) if was is not None else ""))
+    off = max(0.0, -u[0], -u[1], u[2] - w, u[3] - h)
+    was = O3_BACKLOG.get((scen, w, h, "edge"))
+    c.check("O3", off <= 0.5 or (was is not None and off <= was + 0.05), "O3 %s %dx%d: the vitals card is wholly on the screen" % (scen, w, h),
+            "card ink %s: %.1f px off%s" % (fmt(u), off, (" (kit-b %.1f)" % was) if was is not None else ""))
+    for p, n in nodes.items():
+        if p.startswith(vp + ".") and p.endswith("PlayerName"):
+            ok, how = c.whole(n)
+            c.check("O3", ok or (scen, w, h, "name") in O3_BACKLOG, "O3 %s %dx%d: the player's name reads whole on the vitals card" % (scen, w, h), how)
 
 
 def pin_O3(c, sizes):
     for (w, h) in list(sizes) + [s for s in O3_SIZES if s not in sizes]:
         for scen in O3_STATES:
-            nodes = c.nodes(c.dump(scen, w, h))
-            vit = [(p, n) for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals$", p)]
-            if not c.check("O3", bool(vit), "O3 %s %dx%d: the vitals card shows" % (scen, w, h)):
-                continue
-            vp, vn = vit[0]
-            ink = c.BH.ink_of(vn, c.RG, c.fonts)
-            for key in ("DashButton", "RunButton"):
-                kn = nodes.get("MobileControls." + key)
-                if not kn or float(kn["w"]) <= 1:
-                    continue
-                kink = c.BH.ink_of(kn, c.RG, c.fonts)
-                if not (ink and kink):
-                    continue
-                g = min(c.BH.gap(a, b) for a in ink for b in kink)
-                was = O3_BACKLOG.get((scen, w, h, key))
-                ok = g >= c.BH.MIN_GAP - 0.05 or (was is not None and g >= was - 0.05)
-                c.check("O3", ok, "O3 %s %dx%d: the vitals card keeps %g px off %s" % (scen, w, h, c.BH.MIN_GAP, key),
-                        "card ink %s, key %s: %.1f px%s" % (fmt(c.BH.union(ink)), fmt(c.BH.union(kink)), g, (" (kit-b %.1f)" % was) if was is not None else ""))
-            for p, n in nodes.items():
-                if p.startswith(vp + ".") and p.endswith("PlayerName"):
-                    ok, how = c.whole(n)
-                    c.check("O3", ok or (scen, w, h, "name") in O3_BACKLOG, "O3 %s %dx%d: the player's name reads whole on the vitals card" % (scen, w, h), how)
+            o3_case(c, scen, w, h, scen in O3_SCENES)
+        c.cache.clear()
+    for (w, h) in O3_SCENE_SIZES:
+        for scen in O3_SCENES:
+            if scen not in O3_STATES:
+                o3_case(c, scen, w, h, True)
         c.cache.clear()
 
 

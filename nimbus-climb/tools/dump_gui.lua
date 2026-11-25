@@ -31,7 +31,7 @@
 --                         the travel guide's arrow, dot trail and sign (sketched from the default camera); see the
 --                         [kitb-p2-world] block
 --   title                 right after joining (the title card is still up)
---   match[:hit|:full]     in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
+--   match[:hit|:full|:<1-4>] in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
 --                         (":hit" = a quarter second after a hit, damage feedback included; ":full" = the panel's worst
 --                         case: SAINT, four players with 20-character names, one fallen)
 --   countdown             the pre-match countdown inside the match panel
@@ -1183,13 +1183,23 @@ local function longMembers(withHealth)
 	return out
 end
 
--- match[:hit|:dash|:full]: full (kit-b U9-8 A) SAINT, four players with long names, one fallen
+-- match[:hit|:dash|:full|:<1-4>]: full (kit-b U9-8 A) SAINT, four players with long names, one fallen; 1-4 (kit-b backlog
+-- 5 / 20 / 30, the vitals card beside the match panel) that many players with short names, 1 = a solo run (3 = the default)
 scenario("match", function(arg)
 	LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
 	LocalPlayer:SetAttribute(Config.Attr.MatchTokens, 7)
+	local count = tonumber(arg)
 	if arg == "full" then
 		local saint = difficulty("Saint")
 		toClient("MatchState", matchState({ DifficultyId = saint.Id, DifficultyName = saint.DisplayName, Color = saint.Color, Members = longMembers(true) }))
+	elseif count then
+		local members = matchState().Members
+		members[4] = { UserId = 79, Name = "Cloudy", Health = 0.6, Downed = false, Finished = false, Tokens = 1 }
+		local out = {}
+		for i = 1, math.max(1, math.min(4, count)) do
+			out[i] = members[i]
+		end
+		toClient("MatchState", matchState({ Members = out }))
 	else
 		toClient("MatchState", matchState())
 	end

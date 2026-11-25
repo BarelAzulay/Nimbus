@@ -654,6 +654,13 @@ local function menuRect(area)
 		if box then
 			return box
 		end
+		-- (kit-b backlog 5, new3_look: with a window open on a portrait phone - the Arena, the Ring, the Food Machine, the
+		-- dungeon and obby pickers - MenuController hides the column; the estimate below then put a 62 x 347 phantom column on
+		-- the left edge, the card found no room left of RUN and DASH and lay on both, 'SkyCli...') a column that is built
+		-- but hidden is none to avoid
+		if column then
+			return nil
+		end
 	end
 	-- not built yet: a generous estimate of the v3 column (vertically centred against the left edge)
 	local s = Util.Clamp(math.min(area.X / 1280, area.Y / 720), 0.72, 1.2)
@@ -799,15 +806,112 @@ local function robloxTouchRects(area, vp)
 	}
 end
 
+-- (kit-b backlog 5 / 20 / 30) the menu tiles step aside (MenuController.SetColumnCovered, owner "Vitals") while a short
+-- phone's match / party panel and the vitals card have no room beside them (applyMargins); back when they have
+function Vitals.SetColumnAside(on)
+	on = on == true
+	if (S.columnAside == true) == on then
+		return
+	end
+	local module = script.Parent:FindFirstChild("MenuController")
+	local ok, menu = pcall(function()
+		return module and require(module)
+	end)
+	if ok and type(menu) == "table" and type(menu.SetColumnCovered) == "function" and pcall(menu.SetColumnCovered, on and 0 or nil, "Vitals") then
+		S.columnAside = on
+	elseif not on then
+		S.columnAside = false
+	end
+end
+
+-- (kit-b backlog 5 / 20 / 30: on landscape phones 640 - 720 wide in a match, on the pad and in the countdown no row under
+-- the middle of the screen had the card's room between the match panel and RUN / DASH, so it squeezed onto both keys,
+-- 'SkyCli...', at 640 x 360 20 px off the right edge) the card's slot where it has its room: the lowest bottom from its own
+-- spot up to room.top, at its own spot and just above or below each obstacle, whose rows leave a span at least minW wide
+-- clear of every drawn obstacle (the keys, Roblox's jump button, the panels, the strips, the docks; the stick's zone
+-- may be shared, as above) and, once the card rises above its spot, of the middle of the screen (room.band); the span
+-- nearest the centre, the card at most w wide. -> left (gui px), width (design px), bottom (gui px), or nil
+function Vitals.Sweep(area, k, w, minW, h, bottom0, cx, obstacles, side, gap, room)
+	-- a span as wide as the player's whole name first (room.nameW, screen px), then any span the card fits in
+	if room.nameW and room.nameW > minW * k and not room.any then
+		room.any = true
+		local l, wd, b = Vitals.Sweep(area, k, w, math.ceil(room.nameW / k - 1e-6), h, bottom0, cx, obstacles, side, gap, room)
+		room.any = nil
+		if l then
+			return l, wd, b
+		end
+	end
+	local hk = h * k
+	local band, topY = room.band, room.top or K.EDGE
+	local tries = { bottom0 }
+	for _, r in ipairs(obstacles) do
+		if not r.soft then
+			tries[#tries + 1] = r.y0 - gap
+			tries[#tries + 1] = r.y1 + gap + hk
+		end
+	end
+	table.sort(tries, function(a, b)
+		return a > b
+	end)
+	for _, b in ipairs(tries) do
+		local top = b - hk
+		if b <= bottom0 + 0.01 and top >= topY - 0.01 then
+			local spans = { { side, area.X - side } }
+			local function cut(x0, x1)
+				local out = {}
+				for _, s in ipairs(spans) do
+					if x1 <= s[1] or x0 >= s[2] then
+						out[#out + 1] = s
+					else
+						if x0 > s[1] then
+							out[#out + 1] = { s[1], x0 }
+						end
+						if x1 < s[2] then
+							out[#out + 1] = { x1, s[2] }
+						end
+					end
+				end
+				spans = out
+			end
+			for _, r in ipairs(obstacles) do
+				if not r.soft and top < r.y1 + gap and b > r.y0 - gap then
+					cut(r.x0 - gap, r.x1 + gap)
+				end
+			end
+			if band and b < bottom0 - 0.01 and top < band.y1 and b > band.y0 then
+				cut(band.x0, band.x1)
+			end
+			local best, bestD = nil, math.huge
+			for _, s in ipairs(spans) do
+				if s[2] - s[1] >= minW * k then
+					local width = math.floor(math.min((s[2] - s[1]) / k, w))
+					local half = width * k / 2
+					local x = Util.Clamp(cx, s[1] + half, s[2] - half)
+					if math.abs(x - cx) < bestD then
+						best, bestD = { x - half, width }, math.abs(x - cx)
+					end
+				end
+			end
+			if best then
+				return best[1], best[2], b
+			end
+		end
+	end
+	return nil
+end
+
 -- Where the vitals card goes (bug batch 2 #1): bottom centre, its bottom at `bottom` (gui px, where the old hotbar's
 -- top was) and centred on `cx`, as wide as `w` design px (>= minW). Whatever shares its rows - the menu
 -- column, the touch RUN / DASH buttons, Roblox's stick and jump button - limits it from the side it is on; when the
 -- room left is narrower than minW the card steps up just above the lowest of those and tries again, but never with
 -- its top above `ceiling` (the middle of the screen): there it keeps the last rows, squeezed to minW.
--- Returns left (gui px), width (design px), bottom (gui px). `air`: the air kept off them (default OBSTACLE_GAP).
-local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling, air)
+-- Returns left (gui px), width (design px), bottom (gui px), and whether the card has its room (false: squeezed).
+-- `air`: the air kept off them (default OBSTACLE_GAP). `room` ({ band, top }, optional): where no row has the room, the
+-- card first looks for a slot clear of every drawn obstacle (Vitals.Sweep) before it squeezes.
+local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling, air, room)
 	-- (kit-b P2 fix6b, look1 O3) the card's own wood edge is drawn outside its box: the gap is kept from it
 	local gap = (air or K.OBSTACLE_GAP) + K.VITALS_EDGE
+	local bottom0 = bottom
 	for _ = 1, 6 do
 		local top = bottom - h * k
 		local left, right = side, area.X - side
@@ -833,14 +937,21 @@ local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, cei
 			left, right = hardLeft, hardRight
 		end
 		if right - left >= minW * k or not step or step - h * k < ceiling then
+			if right - left < minW * k and room then
+				-- (kit-b backlog 5 / 20 / 30) no row here: the card looks for a slot clear of everything before it squeezes
+				local sl, sw, sb = Vitals.Sweep(area, k, w, minW, h, bottom0, cx, obstacles, side, gap, room)
+				if sl then
+					return sl, sw, sb, true
+				end
+			end
 			local width = math.floor(Util.Clamp((right - left) / k, minW, w))
 			local half = width * k / 2
 			local x = Util.Clamp(cx, left + half, math.max(left + half, right - half))
-			return x - half, width, bottom
+			return x - half, width, bottom, right - left >= minW * k
 		end
 		bottom = step
 	end
-	return cx - minW * k / 2, minW, bottom
+	return cx - minW * k / 2, minW, bottom, false
 end
 
 -- Lays out the HUD (bug batch 2 #1, option A "Split & shift"). Inputs are measured every time; when nothing changed
@@ -927,9 +1038,9 @@ local function applyMargins(animate, force)
 	end
 	layoutKey = key
 
-	local function clearOfColumn(top, bottom)
-		if column and top < column.y1 + K.SPAN_MARGIN and bottom > column.y0 - K.SPAN_MARGIN then
-			return math.max(side, column.x1 + K.MENU_CLEARANCE)
+	local function clearOfColumn(col, top, bottom)
+		if col and top < col.y1 + K.SPAN_MARGIN and bottom > col.y0 - K.SPAN_MARGIN then
+			return math.max(side, col.x1 + K.MENU_CLEARANCE)
 		end
 		return side
 	end
@@ -939,28 +1050,94 @@ local function applyMargins(animate, force)
 		y0 = vp.Y * (0.5 - K.CENTRE_TOL) - inset, y1 = vp.Y * (0.5 + K.CENTRE_TOL) - inset,
 	}
 
-	-- top-left panels: right of the menu column when they would reach it, and on short screens no wider than
-	-- what keeps their text out of the middle of the screen
-	local topLeft = side
-	local panelW = K.PANEL_W
-	if topH > 0 then
-		topLeft = clearOfColumn(K.EDGE, K.EDGE + topH * k)
-		if topLeft > side and topLeft + K.PANEL_MIN_W * k > area.X - side then
-			-- a narrow portrait phone has no room beside the tile column (the panel would run off the right edge): the
-			-- panel keeps the corner and MenuController moves the tiles below it (our TopLeftBottom)
-			topLeft = side
+	-- top-left panels: right of the menu column `col` when they would reach it, and on short screens no wider than
+	-- what keeps their text out of the middle of the screen -> left (gui px), width (design px)
+	local function topLeftFor(col, aside)
+		local tl, pw = side, K.PANEL_W
+		if topH > 0 then
+			tl = clearOfColumn(col, K.EDGE, K.EDGE + topH * k)
+			if tl > side and tl + K.PANEL_MIN_W * k > area.X - side then
+				-- a narrow portrait phone has no room beside the tile column (the panel would run off the right edge): the
+				-- panel keeps the corner and MenuController moves the tiles below it (our TopLeftBottom)
+				tl = side
+			end
+			if aside then
+				-- (kit-b backlog 5) the tiles stepped aside on a short phone (applyMargins tries it there only): a panel that
+				-- reaches the rows of Roblox's thumbstick keeps the tile column's clearance off its ring (a small phone's:
+				-- K.JUMP_SMALL wide, from half of it less 10 in from the left edge, 20 over the foot)
+				local j = K.JUMP_SMALL
+				if K.EDGE + topH * k + K.MENU_CLEARANCE > area.Y - 20 - j then
+					tl = math.max(tl, j / 2 - 10 + j + K.MENU_CLEARANCE)
+				end
+			end
+			if K.EDGE + topH * k > band.y0 then
+				pw = math.floor(Util.Clamp((band.x0 - tl - 4) / k, K.PANEL_MIN_W, K.PANEL_W))
+			end
 		end
-		if K.EDGE + topH * k > band.y0 then
-			panelW = math.floor(Util.Clamp((band.x0 - topLeft - 4) / k, K.PANEL_MIN_W, K.PANEL_W))
+		-- (kit-b U9-8 A) a portrait screen takes the narrow card (the pitch's phone card), and no card runs off the screen
+		if vp.X < vp.Y then
+			pw = math.min(pw, K.PANEL_MIN_W)
+		end
+		return tl, math.max(1, math.min(pw, math.floor((area.X - tl - side) / k)))
+	end
+
+	-- currencies: thin strips stacked top-right, right-aligned (the token strip carries the "+n" chip in a match)
+	local n = math.max(1, #currencies)
+	local stripW = K.STRIP_W
+	for _, c in ipairs(currencies) do
+		if c.Chip and inMatch then
+			stripW = math.max(stripW, K.STRIP_W + K.STRIP_CHIP_W + 6)
 		end
 	end
-	-- (kit-b U9-8 A) a portrait screen takes the narrow card (the pitch's phone card), and no card runs off the screen
-	if vp.X < vp.Y then
-		panelW = math.min(panelW, K.PANEL_MIN_W)
-	end
-	panelW = math.max(1, math.min(panelW, math.floor((area.X - topLeft - side) / k)))
-	if setPanelWidth then
-		setPanelWidth(panelW)
+	local stackH = n * K.STRIP_H + (n - 1) * K.STRIP_GAP
+	-- (kit-b backlog 5) where the strips and the gift go beside top-left panels at tl, pw wide (laid out below; the vitals
+	-- card keeps clear of them when it rises beside them): { blockW, blockH, rowW, left, top, bottom, overPanel, shown,
+	-- giftLeft, giftTop, giftSize }; nil in the top band
+	local function stripsAt(tl, pw, aside)
+		if topBand or not UI.Currency then
+			return nil
+		end
+		local s = { blockW = stripW, blockH = stackH, giftLeft = 0, giftTop = 0, giftSize = 0 }
+		if vp.X < vp.Y and n > 1 and not inBattle then
+			-- portrait: one row, right-aligned (in a battle the narrow stack: the fighter card narrows beside it)
+			s.rowW = math.floor(Util.Clamp((area.X - 2 * side - (n - 1) * K.STRIP_GAP * k) / n / k, K.ROW_MIN_W, math.min(K.ROW_MAX_W, stripW)))
+			s.blockW, s.blockH = n * s.rowW + (n - 1) * K.STRIP_GAP, K.STRIP_H
+		end
+		s.left = area.X - side - s.blockW * k
+		-- (kit-b gate U9 r4: on a portrait phone the strips lay over the match / party panel's Leave button) where the
+		-- strips would reach over the top-left panel: in the lobby (a party) they sit under it, right-aligned as before; in
+		-- a match they step aside while the panel shows (it counts the run's tokens itself; under it they pushed the
+		-- result card into the middle of the screen)
+		local stripTop = K.EDGE
+		s.overPanel = hasPanel and s.left < tl + pw * k + K.STRIP_GAP * k
+		if s.overPanel and not inMatch then
+			stripTop = math.floor(K.EDGE + topH * k + K.GIFT_GAP * k + 0.5)
+		end
+		-- (P2 fix A, item 06 A) a card spanning a portrait phone's top band (the battle's boss strip, SetTopReserve): the
+		-- strips start GIFT_GAP under it (the pitch's portrait: the strip under the boss card, beside the fighter card)
+		local reserve = 0
+		for _, px in pairs(S.topReserve) do
+			reserve = math.max(reserve, px)
+		end
+		if reserve > 0 then
+			stripTop = math.max(stripTop, math.floor(reserve + K.GIFT_GAP * k + 0.5))
+		end
+		s.top, s.bottom = stripTop, stripTop + s.blockH * k
+		-- a card that takes the corner for a moment (a dungeon run's result on a phone) hides the strips meanwhile
+		local yield = cornerCard ~= nil and cornerCard.x0 < area.X - side and s.left < cornerCard.x1
+			and cornerCard.y0 < s.bottom and s.top < cornerCard.y1
+		-- (kit-b backlog 5) in a match the panel counts the run's tokens: the strips also step aside with the tiles (aside)
+		s.shown = not yield and not ((s.overPanel or aside) and inMatch) and next(S.currencyOwners) == nil
+		-- (kit-b U8) the gift's dock under the strips, in the lobby only (DailyController hides its button in a match or a
+		-- battle anyway): DailyController puts its button on this square (GiftLeft / GiftTop / GiftSize), and the toasts,
+		-- side panels and the tutorial start under it (TopRightBottom). While a corner card is up (a phone's dungeon End
+		-- card) the gift steps aside, so the card starts right under the strips
+		if not inMatch and not inBattle and cornerCard == nil then
+			s.giftSize = math.max(K.GIFT_MIN, math.floor(K.GIFT * k)) -- (44 on a 844x390 phone, as the button was)
+			s.giftTop = math.floor(s.bottom + K.GIFT_GAP * k + 0.5)
+			s.giftLeft = math.floor(area.X - side - s.giftSize + 0.5)
+		end
+		return s
 	end
 
 	-- vitals: the regular card, the flatter compact card on short touch screens (landscape phones: the bottom band
@@ -972,43 +1149,91 @@ local function applyMargins(animate, force)
 	-- (U9-8 look) the card's height and width whole screen px, so its top corner (it hangs from a whole-px bottom) is too
 	local vitalsH = math.floor(geometry.H * k + 0.5) / k
 	-- (HUD cleanup: no hotbar to measure any more; the card keeps the bottom-centre spot it had above it)
-	local vitalsBottom = area.Y - K.HOTBAR_FALLBACK * k - K.HOTBAR_GAP
+	local bottom0 = area.Y - K.HOTBAR_FALLBACK * k - K.HOTBAR_GAP
 	local cx = area.X / 2
-	local obstacles = {}
-	if column then
-		table.insert(obstacles, column)
-	end
-	if topH > 0 then
-		-- the match / party panel (a 4-player party on a landscape phone reaches the bottom band)
-		local w = math.max(hasPanel and panelW or 0, hasTitle and K.TITLE_W or 0)
-		table.insert(obstacles, { x0 = topLeft, y0 = K.EDGE, x1 = topLeft + w * k, y1 = K.EDGE + topH * k })
-	end
-	for _, r in ipairs(buttons) do
-		table.insert(obstacles, r)
-	end
-	if touch then
-		for _, r in ipairs(robloxTouchRects(area, vp)) do
+	-- what the card keeps clear of with the column `col` and the top-left panels at tl, pw wide (strips: stripsAt's)
+	local function obstaclesFor(col, tl, pw, strips)
+		local obstacles = {}
+		if col then
+			table.insert(obstacles, col)
+		end
+		if topH > 0 then
+			-- the match / party panel (a 4-player party on a landscape phone reaches the bottom band)
+			local w = math.max(hasPanel and pw or 0, hasTitle and K.TITLE_W or 0)
+			table.insert(obstacles, { x0 = tl, y0 = K.EDGE, x1 = tl + w * k, y1 = K.EDGE + topH * k })
+		end
+		for _, r in ipairs(buttons) do
 			table.insert(obstacles, r)
 		end
-	end
-	-- (U9-7 look) an open side dock: the card slides left until its right edge is OBSTACLE_GAP px from the dock's frame
-	-- (its wood edge covered the HP bar's right end and the dash chip at 844x390 and touched the card at 1280x720)
-	for _, r in ipairs(docks) do
-		table.insert(obstacles, r)
-	end
-	local vitalsLeft, vitalsW
-	local bottom0 = vitalsBottom
-	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1)
-	-- (look:fix6b2 N2) a card too narrow for the player's whole name keeps only OBSTACLE_TIGHT of air where that gives the
-	-- name its room (at 800 x 450 in a match / countdown it sat in the 211 px between the match panel and RUN's block edge,
-	-- O3's 8 px of air + its 2 px edge on each side left it 190 px, under the 196 'SkyClimber' needs at its 14.4 px floor:
-	-- 'SkyCli...', whole at e272588). Where even that leaves no room the card stays as it was
-	local nameW = Vitals.WholeNameW(geometry, k)
-	if math.floor(vitalsW * k) < nameW then
-		local left2, w2, bottom2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT)
-		if math.floor(w2 * k) >= nameW then
-			vitalsLeft, vitalsW, vitalsBottom = left2, w2, bottom2
+		if touch then
+			for _, r in ipairs(robloxTouchRects(area, vp)) do
+				table.insert(obstacles, r)
+			end
 		end
+		-- (U9-7 look) an open side dock: the card slides left until its right edge is OBSTACLE_GAP px from the dock's frame
+		-- (its wood edge covered the HP bar's right end and the dash chip at 844x390 and touched the card at 1280x720)
+		for _, r in ipairs(docks) do
+			table.insert(obstacles, r)
+		end
+		-- (kit-b backlog 5) the strips and the gift in the top-right corner: the card's slot may rise beside them now
+		if strips and strips.shown then
+			table.insert(obstacles, { x0 = strips.left, y0 = strips.top, x1 = area.X - side, y1 = strips.bottom })
+		end
+		if strips and strips.giftSize > 0 then
+			table.insert(obstacles, { x0 = strips.giftLeft, y0 = strips.giftTop, x1 = strips.giftLeft + strips.giftSize, y1 = strips.giftTop + strips.giftSize })
+		end
+		return obstacles
+	end
+	local nameW = Vitals.WholeNameW(geometry, k)
+	local room = { band = band, top = K.EDGE, nameW = nameW }
+	-- -> left, width, bottom, and how well it sits: 2 its room (no squeeze) + 1 the whole name
+	local function placeAmong(obstacles)
+		local l, w, b, fits = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, nil, room)
+		-- (look:fix6b2 N2) a card too narrow for the player's whole name keeps only OBSTACLE_TIGHT of air where that gives the
+		-- name its room (at 800 x 450 in a match / countdown it sat in the 211 px between the match panel and RUN's block
+		-- edge, O3's 8 px of air + its 2 px edge on each side left it 190 px, under the 196 'SkyClimber' needs at its 14.4 px
+		-- floor: 'SkyCli...', whole at e272588). Where even that leaves no room the card stays as it was
+		if math.floor(w * k) < nameW then
+			local l2, w2, b2, f2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT, room)
+			if math.floor(w2 * k) >= nameW and (f2 or not fits) then
+				l, w, b, fits = l2, w2, b2, f2
+			end
+		end
+		return l, w, b, (fits and 2 or 0) + ((math.floor(w * k) >= nameW) and 1 or 0)
+	end
+	local topLeft, panelW = topLeftFor(column)
+	local strips = stripsAt(topLeft, panelW)
+	local vitalsLeft, vitalsW, vitalsBottom, sits = placeAmong(obstaclesFor(column, topLeft, panelW, strips))
+	-- (kit-b backlog 5 / 20 / 30: at 640 x 360 and 667 x 375 the two-wide tile column puts the match / party panel 165 px in,
+	-- and right of the panel 144 / 171 px stay for a card at least 189 wide: no slot anywhere) on a short landscape phone,
+	-- while a panel shows, the tiles step aside where the card then has all its room (as a battle's HUD sends them aside
+	-- on a phone; in a match the strips with them: the panel counts the run's tokens): the panel takes the corner and the
+	-- card its slot beside it. The column's frame keeps its place, so this weighs the same every layout
+	local aside = false
+	local shortPhone = touch and vp.X > vp.Y and math.min(vp.X, vp.Y) <= K.SMALL_PHONE
+	if sits < 3 and column and hasPanel and topLeft > side and shortPhone then
+		local tl2, pw2 = topLeftFor(nil, true)
+		local strips2 = stripsAt(tl2, pw2, true)
+		local l2, w2, b2, sits2 = placeAmong(obstaclesFor(nil, tl2, pw2, strips2))
+		if sits2 >= 2 and sits2 > sits then
+			aside = true
+			topLeft, panelW, strips, sits = tl2, pw2, strips2, sits2
+			vitalsLeft, vitalsW, vitalsBottom = l2, w2, b2
+		end
+	end
+	Vitals.SetColumnAside(aside)
+	-- ... and on the party pad, where even then the card has no slot (beside the strips and the gift right of the middle
+	-- 175 px stay at 700 x 394, under the 189 the card needs; under them DASH), it steps aside while the party panel
+	-- shows, as under a dock: never on the keys nor off the screen (no damage comes on the pad; in a match it stays)
+	local noRoom = sits < 2 and hasPanel and shortPhone and not inMatch and not inBattle
+	if (S.vitalsOwners.Room == true) ~= noRoom then
+		S.vitalsOwners.Room = noRoom or nil
+		if UI.Vitals then
+			UI.Vitals.Visible = next(S.vitalsOwners) == nil
+		end
+	end
+	if setPanelWidth then
+		setPanelWidth(panelW)
 	end
 	vitalsW = math.floor(vitalsW * k) / k
 	local vitalsTop = vitalsBottom - vitalsH * k
@@ -1035,15 +1260,8 @@ local function applyMargins(animate, force)
 	vitalsRect = { X = math.floor(vitalsLeft + 0.5), Y = math.floor(vitalsBottom + 0.5) - vitalsH * k, W = vitalsW * k, H = vitalsH * k,
 		TabUp = math.floor(geometry.TAB_UP * k + 0.5) } -- (P2 fix A) the name tab's band over the card's own top (Vitals.Layout's cardY)
 
-	-- currencies: thin strips stacked top-right, right-aligned (the token strip carries the "+n" chip in a match)
-	local n = math.max(1, #currencies)
-	local stripW = K.STRIP_W
-	for _, c in ipairs(currencies) do
-		if c.Chip and inMatch then
-			stripW = math.max(stripW, K.STRIP_W + K.STRIP_CHIP_W + 6)
-		end
-	end
-	local stackH = n * K.STRIP_H + (n - 1) * K.STRIP_GAP
+	-- currencies: thin strips stacked top-right, right-aligned (the token strip carries the "+n" chip in a match), where
+	-- stripsAt put them above
 	local topRightBottom, topRightLeft = 0, 0
 	local giftLeft, giftTop, giftSize = 0, 0, 0
 	local mode = "TopRight"
@@ -1062,58 +1280,25 @@ local function applyMargins(animate, force)
 		if UI.Currency.Visible ~= want then
 			UI.Currency.Visible = want
 		end
-	elseif UI.Currency then
-		local blockW, blockH = stripW, stackH
-		if vp.X < vp.Y and n > 1 and not inBattle then
-			-- portrait: one row, right-aligned (in a battle the narrow stack: the fighter card narrows beside it)
-			local rowW = math.floor(Util.Clamp((area.X - 2 * side - (n - 1) * K.STRIP_GAP * k) / n / k, K.ROW_MIN_W, math.min(K.ROW_MAX_W, stripW)))
-			blockW, blockH = n * rowW + (n - 1) * K.STRIP_GAP, K.STRIP_H
+	elseif UI.Currency and strips then
+		if strips.rowW then
 			if layoutCurrencyRows then
-				layoutCurrencyRows(currencies, "Band", rowW)
+				layoutCurrencyRows(currencies, "Band", strips.rowW)
 			end
 		elseif layoutCurrencyRows then
 			layoutCurrencyRows(currencies, "Strips", stripW)
 		end
 		UI.Currency.Parent = UI.TopRight
 		UI.Currency.AnchorPoint = Vector2.new(1, 0)
-		UI.Currency.Size = UDim2.fromOffset(blockW, blockH)
-		topRightLeft = area.X - side - blockW * k
-		-- (kit-b gate U9 r4: on a portrait phone the strips lay over the match / party panel's Leave button) where the
-		-- strips would reach over the top-left panel: in the lobby (a party) they sit under it, right-aligned as before; in
-		-- a match they step aside while the panel shows (it counts the run's tokens itself; under it they pushed the
-		-- result card into the middle of the screen)
-		local stripTop = K.EDGE
-		local overPanel = hasPanel and topRightLeft < topLeft + panelW * k + K.STRIP_GAP * k
-		if overPanel and not inMatch then
-			stripTop = math.floor(K.EDGE + topH * k + K.GIFT_GAP * k + 0.5)
+		UI.Currency.Size = UDim2.fromOffset(strips.blockW, strips.blockH)
+		topRightLeft = strips.left
+		UI.Currency.Position = UDim2.new(1, -side, 0, strips.top)
+		topRightBottom = strips.bottom
+		if UI.Currency.Visible ~= strips.shown then
+			UI.Currency.Visible = strips.shown
 		end
-		-- (P2 fix A, item 06 A) a card spanning a portrait phone's top band (the battle's boss strip, SetTopReserve): the
-		-- strips start GIFT_GAP under it (the pitch's portrait: the strip under the boss card, beside the fighter card)
-		local reserve = 0
-		for _, px in pairs(S.topReserve) do
-			reserve = math.max(reserve, px)
-		end
-		if reserve > 0 then
-			stripTop = math.max(stripTop, math.floor(reserve + K.GIFT_GAP * k + 0.5))
-		end
-		UI.Currency.Position = UDim2.new(1, -side, 0, stripTop)
-		topRightBottom = stripTop + blockH * k
-		-- a card that takes the corner for a moment (a dungeon run's result on a phone) hides the strips meanwhile
-		local strips = { x0 = topRightLeft, y0 = stripTop, x1 = area.X - side, y1 = topRightBottom }
-		local yield = cornerCard ~= nil and cornerCard.x0 < strips.x1 and strips.x0 < cornerCard.x1
-			and cornerCard.y0 < strips.y1 and strips.y0 < cornerCard.y1
-		local want = not yield and not (overPanel and inMatch) and next(S.currencyOwners) == nil
-		if UI.Currency.Visible ~= want then
-			UI.Currency.Visible = want
-		end
-		-- (kit-b U8) the gift's dock under the strips, in the lobby only (DailyController hides its button in a match or a
-		-- battle anyway): DailyController puts its button on this square (GiftLeft / GiftTop / GiftSize), and the toasts,
-		-- side panels and the tutorial start under it (TopRightBottom). While a corner card is up (a phone's dungeon End
-		-- card) the gift steps aside, so the card starts right under the strips
-		if not inMatch and not inBattle and cornerCard == nil then
-			giftSize = math.max(K.GIFT_MIN, math.floor(K.GIFT * k)) -- (44 on a 844x390 phone, as the button was)
-			giftTop = math.floor(topRightBottom + K.GIFT_GAP * k + 0.5)
-			giftLeft = math.floor(area.X - side - giftSize + 0.5)
+		if strips.giftSize > 0 then
+			giftSize, giftTop, giftLeft = strips.giftSize, strips.giftTop, strips.giftLeft
 			topRightBottom = giftTop + giftSize
 		end
 	end
