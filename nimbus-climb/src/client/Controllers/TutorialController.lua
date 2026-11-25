@@ -109,6 +109,10 @@ local K = {
 	FOOTER_H = 48,
 	NAME_SIZE = 30,
 	TITLE_SIZE = 22,
+	-- (kit-b backlog items 10 / 16) a step title that does not fit one line at TITLE_FLOOR (its 14 screen px floor on the
+	-- smallest card, 0.7) takes two lines at that size, the header TITLE_LINE taller (it was cut at 14.4 px: 'Pick Your Te...')
+	TITLE_FLOOR = 20,
+	TITLE_LINE = 24,
 	BODY_SIZE = 20,
 	CAPTION_SIZE = 18,
 	BUTTON_SIZE = 22,
@@ -136,6 +140,9 @@ local K = {
 	EDGE = 12,
 	TOUCH_EDGE = 20,
 	GAP = 10,
+	-- (kit-b backlog items 6 / 7 / 8) a window's hard shadow (Theme.Finish.Window), design px past its box to the right and
+	-- down: the card's own, and the HUD's top-left panel's. GAP is kept off the ink, past it (box to box it left 0 - 2.4 px)
+	SHADOW = 8,
 	MIDDLE = 0.15, -- the screen middle the panel keeps out of: |dx| < 15% width and |dy| < 15% height
 	TYPE_CPS = 52, -- typewriter characters per second
 	TYPE_DELAY = 0.2,
@@ -274,6 +281,9 @@ local K = {
 	STRIP_CELL_H = 14,
 	STRIP_CHAPTER_GAP = 3,
 	STRIP_DOCK_GAP = 10,
+	-- (kit-b backlog items 7 / 8) a landscape chip's air off a HUD piece's box where STRIP_DOCK_GAP finds no spot (568 x 320
+	-- in a match: 59 px between the thumbstick and the panel), screen px: 4 px of ink past a touch key's 3 px edge
+	MIN_AIR = 7,
 }
 
 local BULLET = "\194\187 " -- >>
@@ -745,19 +755,56 @@ local function fitTextSize(text, size, minSize, role, room)
 	return size
 end
 
+-- (kit-b backlog item 10) the lines `text` wraps to at `size` in `width` design px, word by word as the engine wraps it,
+-- each line measured as it shows (textWidth: the titles' measure) with its glyph outline's room
+local function wrapLines(text, size, role, width)
+	local lines, line = 0, nil
+	for sep, word in string.gmatch(text, "(%s*)(%S+)") do
+		local try = line and (line .. sep .. word) or word
+		if line and textWidth(try, size, role) + K.OUTLINE_ROOM > width then
+			lines, line = lines + 1, word
+		else
+			line = try
+		end
+	end
+	return lines + (line and 1 or 0)
+end
+
 -- (U9-9 look) the objective line wraps to a second line rather than cut its words (it was "Tap the glowing Pet..." on a
 -- portrait phone): measured at the size it takes on the smallest card (14 screen px at 0.7) with the room the distance
--- suffix needs, so the card never jumps in height as the player walks. Returns its row's design height and its lines
+-- suffix needs, so the card never jumps in height as the player walks. Returns its row's design height and its lines.
+-- (kit-b backlog item 10: 13 objective lines ran past a one-line row - 960 x 540 '...then Food' / 'Machine' - where
+-- TextService's wrapped height was read as one line; and a third line was never counted) its lines counted word by word
+-- (wrapLines), as many as it takes
 local HINT_MEASURE = math.max(K.CAPTION_SIZE, math.ceil(14 / 0.7 - 1e-6))
 local function hintHeight(width)
 	local st = S.state
 	local text = st and (st.Hint or DEFAULT_HINTS[st.CompleteOn]) or ""
 	if st and type(st.Target) == "table" and WORLD_KINDS[st.Target.Kind] then
-		text = text .. "  9483  you're here!"
+		text = text .. "  \194\183  you're here!" -- (kit-b backlog item 10: the middle dot, as the live line has it; it was the bytes 1, "94", 1, "83")
 	end
-	local ok, size = pcall(Theme.Measure, BULLET .. text, "Label", HINT_MEASURE, width)
-	local lines = (ok and typeof(size) == "Vector2" and size.Y > HINT_MEASURE * 1.5) and 2 or 1
+	local lines = math.max(1, wrapLines(BULLET .. text, HINT_MEASURE, "Label", width))
 	return K.HINT_H + (lines - 1) * math.ceil(HINT_MEASURE * 1.2), lines
+end
+
+-- (kit-b backlog items 10 / 16: 'Pick Your Te...', 'Your Pet Gar...' on a narrow card at the 14.4 px floor) the lines the
+-- step's title takes in a card `width` design px wide: 1 where it fits one line of the header at K.TITLE_FLOOR - its floor
+-- on the smallest card (14 screen px at 0.7) -, else the lines it wraps to at that size (applyGeometry, panelHeight)
+local function titleLines(width)
+	local title = UI.StepTitle and UI.StepTitle.Text or ""
+	local room = width - (K.PAD + K.PORTRAIT + 12) - K.PAD
+	if title == "" or textWidth(title, K.TITLE_FLOOR, "Heading") + K.OUTLINE_ROOM <= room then
+		return 1
+	end
+	return math.max(2, wrapLines(title, K.TITLE_FLOOR, "Heading", room))
+end
+
+-- the header's extra design px for the title's lines: each line past the first is K.TITLE_LINE, but on a narrow card (no
+-- counter tag) the progress row moves up beside the fold block and the first two lines fit the header (applyGeometry)
+local function titleExtraOf(width, lines)
+	local headRoom = width - (K.PAD + K.PORTRAIT + 12) - K.PAD
+	local counterShown = headRoom >= K.COUNTER_W + 6 + K.FOLD_W
+	return math.max(0, lines - (counterShown and 1 or 2)) * K.TITLE_LINE
 end
 
 local function hintShown()
@@ -770,17 +817,20 @@ local function footerShown()
 	return not S.finale
 end
 
--- Design-pixel height of the expanded panel at `width` (cached per width + text), its body's and its hint's.
+-- Design-pixel height of the expanded panel at `width` (cached per width + text), its body's and its hint's, and the
+-- header's extra for a title on more lines (titleLines, titleExtraOf).
 local function panelHeight(width)
 	local text = S.fullText or ""
 	local st = S.state
-	local key = tostring(width) .. "|" .. text .. "|" .. tostring(hintShown()) .. "|" .. tostring(footerShown()) .. "|" .. tostring(st and st.Step)
+	local title = UI.StepTitle and UI.StepTitle.Text or ""
+	local key = tostring(width) .. "|" .. text .. "|" .. tostring(hintShown()) .. "|" .. tostring(footerShown()) .. "|" .. tostring(st and st.Step) .. "|" .. title
 	if S.heightKey == key then
-		return S.heightValue, S.bodyValue, S.hintValue
+		return S.heightValue, S.bodyValue, S.hintValue, S.titleExtraValue
 	end
 	local wellW = width - 2 * K.PAD - 2 * K.WELL_PAD
 	local bodyH = bodyHeight(text, wellW)
-	local h = K.HEADER_H + 10 + bodyH + 8 + K.FOOT_PAD -- (kit B U9-9) the well ends above the stone lip
+	local titleExtra = titleExtraOf(width, titleLines(width))
+	local h = K.HEADER_H + titleExtra + 10 + bodyH + 8 + K.FOOT_PAD -- (kit B U9-9) the well ends above the stone lip
 	local hintH = K.HINT_H
 	if hintShown() then
 		hintH = hintHeight(wellW)
@@ -789,8 +839,8 @@ local function panelHeight(width)
 	if footerShown() then
 		h = h + K.FOOTER_H
 	end
-	S.heightKey, S.heightValue, S.bodyValue, S.hintValue = key, h, bodyH, hintH
-	return h, bodyH, hintH
+	S.heightKey, S.heightValue, S.bodyValue, S.hintValue, S.titleExtraValue = key, h, bodyH, hintH, titleExtra
+	return h, bodyH, hintH, titleExtra
 end
 
 -- MenuController's column (or the union of its MenuButton_* tiles) in our gui coordinates.
@@ -1229,7 +1279,18 @@ local function placeStrip(w, chip)
 	UI.StripCount.Position = UDim2.fromOffset(x1 - countW, pad)
 	UI.StripCount.Size = UDim2.fromOffset(countW, titleH)
 	local titleW = math.max(20, colW - countW - 8)
-	UI.StripTitle.TextSize = fitTextSize(UI.StripTitle.Text, K.STRIP_TITLE, K.STRIP_TITLE_MIN, "Heading", titleW)
+	local title = UI.StripTitle.Text
+	local size = fitTextSize(title, K.STRIP_TITLE, K.STRIP_TITLE_MIN, "Heading", titleW)
+	-- (kit-b backlog items 10 / 16: 'The Pet Ind...' at 640 x 360) a title that does not fit beside its count even at its
+	-- floor takes the count's room too: the strip drops "6/21" (its step cells still show the progress), as a narrow card
+	-- drops its counter tag
+	local showCount = textWidth(title, size, "Heading") + K.OUTLINE_ROOM <= titleW
+	UI.StripCount.Visible = showCount
+	if not showCount then
+		titleW = colW
+		size = fitTextSize(title, K.STRIP_TITLE, K.STRIP_TITLE_MIN, "Heading", titleW)
+	end
+	UI.StripTitle.TextSize = size
 	UI.StripTitle.Position = UDim2.fromOffset(x0, pad)
 	UI.StripTitle.Size = UDim2.fromOffset(titleW, titleH)
 	local stepsY = pad + titleH + 4
@@ -1258,9 +1319,29 @@ local function syncVitals(rect)
 	end
 end
 
--- Applies the inner geometry of the panel for a design width / height.
-local function applyGeometry(width, height, bodyH, hintH)
+-- Applies the inner geometry of the panel for a design width / height (`titleExtra`: the header's second title line).
+local function applyGeometry(width, height, bodyH, hintH, titleExtra)
+	titleExtra = titleExtra or 0
 	UI.Root.Size = UDim2.fromOffset(width, height)
+	-- (kit-b backlog items 10 / 16) a title on two lines or more (titleLines): on a narrow card, with no counter tag, the
+	-- progress row takes the tag's place left of the fold block and the title the progress row's, so two lines keep the
+	-- header's height (a short phone's card has no px to spare); the progress row and the text well titleExtra lower.
+	-- (written only when they move: PixelCrisp keeps its whole-px nudge in their Scale)
+	local x0 = K.PAD + K.PORTRAIT + 12
+	local headRoom = width - x0 - K.PAD
+	local counterShown = headRoom >= K.COUNTER_W + 6 + K.FOLD_W
+	local wraps = titleLines(width) > 1
+	local progUp = wraps and not counterShown
+	local function at(obj, x, y)
+		if obj.Position.X.Offset ~= x or obj.Position.Y.Offset ~= y then
+			obj.Position = UDim2.fromOffset(x, y)
+		end
+	end
+	at(UI.Progress, x0, progUp and (K.TAG_Y + math.floor((K.TAG_H - K.PROG_H) / 2)) or (76 + titleExtra))
+	at(UI.Well, K.PAD, K.HEADER_H + titleExtra)
+	if UI.Well.Size.Y.Offset ~= -(K.HEADER_H + titleExtra + K.FOOT_PAD) then
+		UI.Well.Size = UDim2.new(1, -2 * K.PAD, 1, -(K.HEADER_H + titleExtra + K.FOOT_PAD))
+	end
 	UI.Body.Size = UDim2.new(1, -2 * K.WELL_PAD, 0, bodyH)
 	UI.TypeSkip.Size = UI.Body.Size
 	UI.Hint.Position = UDim2.fromOffset(K.WELL_PAD, 10 + bodyH + 4)
@@ -1272,9 +1353,7 @@ local function applyGeometry(width, height, bodyH, hintH)
 	local cap = math.max(K.CAPTION_SIZE, math.ceil(14 / math.max(0.1, UI.Scale.Scale) - 1e-6))
 	-- narrow cards drop the counter tag (the progress row still shows the progress): the counter and the fold share the
 	-- row under the name plank (U9-9 look 2), the fold always shown
-	local x0 = K.PAD + K.PORTRAIT + 12
-	local headRoom = width - x0 - K.PAD
-	UI.CounterPill.Visible = headRoom >= K.COUNTER_W + 6 + K.FOLD_W
+	UI.CounterPill.Visible = counterShown
 	-- (U9-9 look 2) the name on its navy plank: as wide as the name at its size (measured as it shows, the Title role in
 	-- capitals) and its insets, never wider than the header; the name down to the caption size before it would cut, the
 	-- label TextScaled under that size (as the NPC's name), so the engine's own fit has the last word
@@ -1294,8 +1373,14 @@ local function applyGeometry(width, height, bodyH, hintH)
 	UI.Hint.TextSize = cap
 	UI.SkipLink.TextSize = cap
 	UI.ConfirmQuestion.TextSize = math.max(19, cap)
-	UI.StepTitle.TextSize = fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_SIZE, cap), "Heading", headRoom)
-	layoutProgress(headRoom)
+	-- (kit-b backlog items 10 / 16) one line from TITLE_SIZE down to TITLE_FLOOR, else its lines at TITLE_FLOOR
+	-- (titleLines); it was cut at the 14.4 px floor on a narrow card. Its box: from the title row's top to 1 px over the
+	-- well with the progress row moved up, or the row's 26 px; each line past those TITLE_LINE taller (titleExtra)
+	UI.StepTitle.TextWrapped = wraps
+	UI.StepTitle.TextYAlignment = wraps and Enum.TextYAlignment.Bottom or Enum.TextYAlignment.Center
+	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, (progUp and (K.HEADER_H - 1 - 46) or 26) + titleExtra)
+	UI.StepTitle.TextSize = wraps and K.TITLE_FLOOR or fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_FLOOR, cap), "Heading", headRoom)
+	layoutProgress(progUp and (headRoom - K.FOLD_W - 6) or headRoom)
 	-- narrow footers: "Skip tutorial" shortens to "Skip" and the Next button narrows, so they never overlap
 	local footerW = width - 2 * K.PAD - 2 * K.WELL_PAD
 	local shortSkip = footerW < K.SKIP_W + K.GAP + K.NEXT_W
@@ -1348,8 +1433,11 @@ local function layout()
 	-- the thumbstick's zone); under a top-left panel they keep the whole gap
 	local cardTop0 = math.max(edge, K.POP_EDGE - K.PORTRAIT_Y * k)
 	local top = cardTop0
+	-- (kit-b backlog item 8) the top-left panel (a match / party panel) casts its hard shadow right and down: GAP of air
+	-- past it (GAP off its box left 1.6 - 2.4 px of ink, 0 px at 932 x 430 / 960 x 540)
+	local panelGap = (K.GAP + K.SHADOW) * k
 	if hud.TopLeftBottom > 0 then
-		top = math.max(edge, hud.TopLeftBottom + K.GAP * k) - K.PORTRAIT_Y * k
+		top = math.max(edge, hud.TopLeftBottom + panelGap) - K.PORTRAIT_Y * k
 	end
 	-- the HUD's bottom-left block (vitals card / currency stack) is a hard limit for the bubble and the card
 	local bottomLimit = math.min(area.Y - edge, hud.BottomLeftTop - K.GAP * k)
@@ -1416,11 +1504,28 @@ local function layout()
 		local positions = { { Top = top, Left = nil } }
 		if hud.TopLeftRight > 0 then
 			-- beside the top-left panel (party panel) at the top edge
-			positions[#positions + 1] = { Top = cardTop0, Left = hud.TopLeftRight + K.GAP * k }
+			positions[#positions + 1] = { Top = cardTop0, Left = hud.TopLeftRight + panelGap }
 		end
 		if hud.TopRightBottom > 0 then
 			-- below the HUD's top-right block (the currency strips) when they leave the top too narrow
 			positions[#positions + 1] = { Top = hud.TopRightBottom + K.GAP * k - K.PORTRAIT_Y * k, Left = nil }
+		end
+		-- (kit-b backlog item 6: on 360 x 640 / 384 x 640 the card could not open at any step, 375 x 667 at 18 of 21, so a
+		-- tap did nothing and the tutorial could not pass step 1: beside the wallet strip and the Gift tile the top row is
+		-- under PANEL_MIN_W, and under them the card has 160 - 180 px above RUN) a portrait phone's spot under the menu
+		-- column, its right edge GAP of air left of the touch keys past its shadow: down to Roblox's thumbstick (it may lie
+		-- over the vitals card, which steps aside - syncVitals - as for any card the player opens in the lobby)
+		local reach = area.Y > area.X and columnReach() or nil
+		if reach then
+			local keysX = nil
+			for _, r in ipairs(touchButtonRects()) do
+				keysX = math.min(keysX or r.x0, r.x0)
+			end
+			positions[#positions + 1] = {
+				Top = reach.y1 + (K.GAP + K.SHADOW) * k - K.PORTRAIT_Y * k,
+				Left = nil,
+				Right = keysX and (keysX - (K.GAP + K.SHADOW) * k) or nil,
+			}
 		end
 		local function try(pos, avoidBar, compact, lastResort)
 			S.compactCard = compact
@@ -1430,8 +1535,12 @@ local function layout()
 			if hud.TopRightLeft > 0 and t < hud.TopRightBottom + K.GAP * k then
 				rightLimit = math.min(rightLimit, hud.TopRightLeft - K.GAP * k)
 			end
+			if pos.Right then
+				rightLimit = math.min(rightLimit, pos.Right)
+			end
 			local w2 = math.min(K.PANEL_W, math.floor((rightLimit - l) / k))
-			if w2 < K.PANEL_MIN_W then
+			-- (an in-place last resort may still be PANEL_MIN_W wide at 0.7: its search below)
+			if w2 < K.PANEL_MIN_W and not (lastResort == "inPlace" and (rightLimit - l) / 0.7 >= K.PANEL_MIN_W) then
 				return nil
 			end
 			local designH2 = panelHeight(w2)
@@ -1441,11 +1550,17 @@ local function layout()
 			end
 			local x1 = l + w2 * k
 			local floorY = area.Y - edge
-			for _, list in ipairs({ inputs, hard }) do
-				for _, r in pairs(list) do
-					if l < r.x1 and x1 > r.x0 then
-						floorY = math.min(floorY, r.y0 - K.GAP * k)
-					end
+			-- (kit-b backlog item 6) the touch keys and the thumbstick: GAP of air off the card's ink, its shadow included
+			-- (box to box, the shadow lay 1 px into RUN at 375 x 667 steps 7 / 11 / 14)
+			local s = K.SHADOW * k
+			for _, r in pairs(inputs) do
+				if l < r.x1 and x1 + s + K.GAP * k > r.x0 then
+					floorY = math.min(floorY, r.y0 - K.GAP * k - s)
+				end
+			end
+			for _, r in pairs(hard) do
+				if l < r.x1 and x1 > r.x0 then
+					floorY = math.min(floorY, r.y0 - K.GAP * k)
 				end
 			end
 			if avoidBar and bar and l < bar.x1 and x1 > bar.x0 then
@@ -1453,6 +1568,22 @@ local function layout()
 			end
 			if not lastResort and t + h2 <= floorY then
 				return { Width = w2, Left = l, Top = t, H = h2, Scale = k, Compact = compact }
+			elseif lastResort == "inPlace" then
+				-- (kit-b backlog item 6) shrunk just enough (never below 0.7) to fit where it stands, or not here: a card
+				-- shrunk to s may be (rightLimit - l) / s design px wide, its words on fewer lines, so a few widths are
+				-- tried and the largest scale that fits both ways wins
+				local best = nil
+				for _, sTry in ipairs({ k, (k + 0.7) / 2, 0.7 }) do
+					local w3 = math.min(K.PANEL_W, math.floor((rightLimit - l) / sTry))
+					if w3 >= K.PANEL_MIN_W then
+						local designH3 = panelHeight(w3)
+						local fit = math.min(k, (floorY - t) / designH3, (rightLimit - l) / w3)
+						if fit >= 0.7 and (best == nil or fit > best.Scale) then
+							best = { Width = w3, Left = l, Top = t, H = designH3 * fit, Scale = fit, Compact = compact }
+						end
+					end
+				end
+				return best
 			elseif lastResort then
 				-- shrink just enough (never below 0.7: body text 14 px) to keep the card on screen
 				local fit = math.max(0.7, math.min(k, (floorY - t) / designH2))
@@ -1472,6 +1603,11 @@ local function layout()
 			-- nothing else fits in the plain lobby: the compact card, shrunk just enough (the Next button and the
 			-- Skip link must stay reachable). With a party panel up (a short countdown) the bubble waits instead.
 			relaxed = try(positions[1], false, true, true)
+			-- (kit-b backlog item 6) where the top row is too narrow even for that (a short portrait phone), the first
+			-- other spot where the compact card fits shrunk in its place
+			for i = 2, #positions do
+				relaxed = relaxed or try(positions[i], false, true, "inPlace")
+			end
 		end
 		-- the variant that won decides whether the objective line is shown
 		S.compactCard = relaxed ~= nil and relaxed.Compact == true
@@ -1489,7 +1625,7 @@ local function layout()
 		UI.Scale.Scale = cardScale
 	end
 
-	local designH, bodyH, hintH = panelHeight(width)
+	local designH, bodyH, hintH, titleExtra = panelHeight(width)
 	-- (Pitch 2 item 03_tutorial_dock B) folded, the guide is the quest strip (K.STRIP_*): on a portrait phone on the HUD
 	-- stack over the vitals card (from its left edge to the RUN / DASH column's right edge, STRIP_DOCK_GAP over it); on
 	-- PC and a landscape phone top-left under the top bar (under a top-left panel, else beside it at the top edge), right
@@ -1542,17 +1678,22 @@ local function layout()
 				or (reach ~= nil and left < reach.x1 + d and x1 > reach.x0 - d and top < reach.y1 + d and top + h2 > reach.y0 - d)
 				or (hud.TopRightLeft > 0 and x1 > hud.TopRightLeft - g and top < hud.TopRightBottom + g)
 		else
-			top = hud.TopLeftBottom > 0 and (hud.TopLeftBottom + K.GAP * k) or edge
+			-- (kit-b backlog items 7 / 8) STRIP_DOCK_GAP of air past the top-left panel's hard shadow (GAP off its box left
+			-- 0 - 2.4 px of ink: 0 at 844 x 390 on the party pad), and past the strip's own wood edge short of the top-right
+			-- stack (3.6 px off the wallet strip there); a strip that would meet a touch key folds to the chip
+			local dockPanel = K.STRIP_DOCK_GAP + K.SHADOW * k
+			top = hud.TopLeftBottom > 0 and (hud.TopLeftBottom + dockPanel) or edge
 			left = leftFor(top, h2)
 			if top + h2 > bottomLimit and hud.TopLeftRight > 0 then
 				top = edge
-				left = math.max(hud.TopLeftRight + K.GAP * k, leftFor(top, h2))
+				left = math.max(hud.TopLeftRight + dockPanel, leftFor(top, h2))
 			end
 			local rightLimit = area.X - edge
 			if hud.TopRightLeft > 0 and top < hud.TopRightBottom + K.GAP * k then
-				rightLimit = math.min(rightLimit, hud.TopRightLeft - K.GAP * k)
+				rightLimit = math.min(rightLimit, hud.TopRightLeft - K.STRIP_DOCK_GAP - K.STRIP_EDGE * k)
 			end
 			stripW = math.min(K.STRIP_W, math.floor((rightLimit - left) / k))
+			dockBlocked = keyIn(left, left + stripW * k, top, top + h2) ~= nil
 		end
 		local side = arenaSideRect()
 		local x1, y1 = left + stripW * k, top + h2
@@ -1560,6 +1701,57 @@ local function layout()
 		local meets = side ~= nil and left < side.x1 + g and x1 > side.x0 - g and top < side.y1 + g and y1 > side.y0 - g
 		stripChip = stripW < K.STRIP_MIN_W or meets or dockBlocked or (v == nil and y1 > bottomLimit)
 		if stripChip then
+			-- (look:fix6b2 N1) the chip's spot keeps STRIP_DOCK_GAP of air off every HUD piece round it (the column, the keys,
+			-- the vitals block, the top-left panel, each piece of the top-right stack - the wallet strips, the Gift tile, the
+			-- boost chips -, the arena's side stack, the screen's edges). (kit-b backlog items 7 / 8) A landscape chip (`wide`)
+			-- also keeps it off Roblox's thumbstick and the screen's left and bottom edges, and off the top-left panel as it
+			-- stands, past its hard shadow (`gap`: the air, STRIP_DOCK_GAP unless given)
+			local d = K.STRIP_DOCK_GAP - 0.5
+			local pieces = {}
+			local pg = playerGui()
+			for _, spec in ipairs({ { "NimbusHud", "TopRight" }, { "NimbusDaily" }, { "NimbusBoosts" } }) do
+				local g = pg and pg:FindFirstChild(spec[1])
+				local holder = g and g:IsA("ScreenGui") and g.Enabled and (spec[2] and g:FindFirstChild(spec[2]) or g)
+				for _, c in ipairs(holder and holder:GetChildren() or {}) do
+					local s = c:IsA("GuiObject") and c.AbsoluteSize
+					if s and s.X > 0 and s.X < area.X * 0.6 and s.Y < area.Y * 0.6 and shownIn(c, g) then
+						pieces[#pieces + 1] = rectOf(c, insetShift(g))
+					end
+				end
+			end
+			local wide = {}
+			if not v then
+				local hudGui = pg and pg:FindFirstChild("NimbusHud")
+				local block = hudGui and hudGui:IsA("ScreenGui") and hudGui.Enabled and hudGui:FindFirstChild("TopLeft")
+				local s = K.SHADOW * k
+				for _, c in ipairs(block and block:GetChildren() or {}) do
+					if c:IsA("GuiObject") and c.AbsoluteSize.X > 0 and shownIn(c, hudGui) then
+						local r = rectOf(c, insetShift(hudGui))
+						wide[#wide + 1] = { x0 = r.x0, y0 = r.y0, x1 = r.x1 + s, y1 = r.y1 + s }
+					end
+				end
+				wide[#wide + 1] = thumbstickRect(area)
+			end
+			local function clear(l, t, col, gap)
+				local m = gap and (gap - 0.5) or d
+				local function meets(r)
+					return r ~= nil and r.x1 > l - m and r.x0 < l + chipH + m and r.y1 > t - m and r.y0 < t + chipH + m
+				end
+				if t < edge or l + chipH > area.X - edge or meets(col) or meets(arenaSideRect()) then
+					return false
+				end
+				if not v and (l < edge or t + chipH > area.Y - edge) then
+					return false
+				end
+				for _, list in ipairs({ touchButtonRects(), bottomLeftRects(), pieces, wide }) do
+					for _, r in pairs(list) do
+						if meets(r) then
+							return false
+						end
+					end
+				end
+				return not v or not (hud.TopLeftBottom > 0 and t < hud.TopLeftBottom + d and (hud.TopLeftRight <= 0 or l < hud.TopLeftRight + d))
+			end
 			if v then
 				-- on the stack still, STRIP_DOCK_GAP over the vitals card; (look:fix6b major 1) and over a key in its own
 				-- column, should one stand there
@@ -1570,40 +1762,9 @@ local function layout()
 				end
 				-- (look:fix6b2 N1) at the card's left edge, else right of the menu column and its fold tab's tap pad
 				-- (columnReach), else right of its tiles (menuRect; the tap pad, over the chip, takes a tap there): the
-				-- first spot that keeps STRIP_DOCK_GAP of air off every HUD piece round it (the column, the keys, the vitals
-				-- block, the top-left panel, each piece of the top-right stack - the wallet strips, the Gift tile, the boost
-				-- chips -, the arena's side stack, the screen's edges). In a 3 or 4 player match and on a full party pad the
-				-- panel pushes the column down to the card: the chip, checked against the keys only, lay under its Home tile
-				-- (20 - 26.5 px). Where no spot is clear it keeps the first
-				local d = K.STRIP_DOCK_GAP - 0.5
-				local pieces = {}
-				local pg = playerGui()
-				for _, spec in ipairs({ { "NimbusHud", "TopRight" }, { "NimbusDaily" }, { "NimbusBoosts" } }) do
-					local g = pg and pg:FindFirstChild(spec[1])
-					local holder = g and g:IsA("ScreenGui") and g.Enabled and (spec[2] and g:FindFirstChild(spec[2]) or g)
-					for _, c in ipairs(holder and holder:GetChildren() or {}) do
-						local s = c:IsA("GuiObject") and c.AbsoluteSize
-						if s and s.X > 0 and s.X < area.X * 0.6 and s.Y < area.Y * 0.6 and shownIn(c, g) then
-							pieces[#pieces + 1] = rectOf(c, insetShift(g))
-						end
-					end
-				end
-				local function clear(l, t, col)
-					local function meets(r)
-						return r ~= nil and r.x1 > l - d and r.x0 < l + chipH + d and r.y1 > t - d and r.y0 < t + chipH + d
-					end
-					if t < edge or l + chipH > area.X - edge or meets(col) or meets(arenaSideRect()) then
-						return false
-					end
-					for _, list in ipairs({ touchButtonRects(), bottomLeftRects(), pieces }) do
-						for _, r in ipairs(list) do
-							if meets(r) then
-								return false
-							end
-						end
-					end
-					return not (hud.TopLeftBottom > 0 and t < hud.TopLeftBottom + d and (hud.TopLeftRight <= 0 or l < hud.TopLeftRight + d))
-				end
+				-- first clear spot. In a 3 or 4 player match and on a full party pad the panel pushes the column down to the
+				-- card: the chip, checked against the keys only, lay under its Home tile (20 - 26.5 px). Where no spot is
+				-- clear it keeps the first
 				local tiles = menuRect()
 				top = spot(left)
 				for _, s in ipairs({ { left, reach }, { reach and reach.x1 + K.STRIP_DOCK_GAP, reach }, { tiles and tiles.x1 + K.STRIP_DOCK_GAP, tiles } }) do
@@ -1614,14 +1775,50 @@ local function layout()
 						break
 					end
 				end
-			elseif top + chipH > bottomLimit then
-				top = math.max(edge, bottomLimit - chipH)
-				left = leftFor(top, chipH)
+			else
+				if top + chipH > bottomLimit then
+					top = math.max(edge, bottomLimit - chipH)
+					left = leftFor(top, chipH)
+				end
+				-- (kit-b backlog items 7 / 8: beside a party / match panel the chip lay on the wallet strip - 640 x 360
+				-- 19.6 px - and, at 568 x 320, where RUN stands at the top right beside the panel, 40 px over RUN: nothing
+				-- checked it against the top-right stack or the keys) its spot, else under the top-left panel, else under the
+				-- menu column, each right of Roblox's thumbstick where it meets it: the first clear spot, with STRIP_DOCK_GAP
+				-- of air, else (the smallest phones: 568 x 320 has 59 px between the stick and the panel) with MIN_AIR.
+				-- Where none is clear it keeps the first
+				local dockPanel = K.STRIP_DOCK_GAP + K.SHADOW * k
+				local col = columnReach()
+				local stick = thumbstickRect(area)
+				local spots = { { left, top } }
+				if hud.TopLeftBottom > 0 then
+					local t = hud.TopLeftBottom + dockPanel
+					spots[#spots + 1] = { leftFor(t, chipH), t }
+				end
+				if col then
+					local t = col.y1 + dockPanel
+					spots[#spots + 1] = { leftFor(t, chipH), t }
+				end
+				local found = false
+				for _, gap in ipairs({ K.STRIP_DOCK_GAP, K.MIN_AIR }) do
+					for _, s in ipairs(spots) do
+						local l, t = s[1], s[2]
+						if stick and stick.x1 > l - gap and stick.x0 < l + chipH + gap and stick.y1 > t - gap and stick.y0 < t + chipH + gap then
+							l = stick.x1 + gap
+						end
+						if clear(l, t, col, gap) then
+							left, top, found = l, t, true
+							break
+						end
+					end
+					if found then
+						break
+					end
+				end
 			end
 		end
 	end
 	S.stripChip = folded and stripChip
-	applyGeometry(width, designH, bodyH, hintH)
+	applyGeometry(width, designH, bodyH, hintH, titleExtra)
 	if folded then
 		placeStrip(stripW, stripChip)
 		UI.Root.Size = stripChip and UDim2.fromOffset(K.STRIP_CHIP, K.STRIP_CHIP) or UDim2.fromOffset(stripW, K.STRIP_H)

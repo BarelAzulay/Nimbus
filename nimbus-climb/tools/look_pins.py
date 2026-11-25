@@ -57,7 +57,13 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     portrait sweep 320-430 x 568 / 640 / 720 (U1_BACKLOG: kit-b's own cases, no worse than kit-b)
   U2  look:fix6b2 N3 360 x 640 step 20 'The Champion Ri...' (the title not shrunk before the ellipsis). Rule: the
                     tutorial's titles (the strip's, the card's as shown and opened) read whole at every step (U2_BACKLOG:
-                    kit-b's own cuts at the 14.4 px floor)
+                    kit-b's own cuts at the 14.4 px floor). (kit-b backlog item 10) the card's objective line too: every
+                    line it wraps to inside its box
+  U3  kit-b backlog item 6, 360 x 640 / 384 x 640 (all 21 steps), 375 x 667 (18 of 21): a tap on the folded tutorial
+                    opened no card, so its Next and Skip were out of reach. Rule: at every step the card the player opens
+                    (tutorial:<n>:open) shows, its Skip link and its Next (where the step has one) whole on the screen, its
+                    ink MIN_GAP off RUN, DASH and the stick and jump rings, on the short portrait phones, the portrait
+                    sweep 320-430 x 568 / 640 / 720 and the tall phones that open it today
   B0-B3 the owner's pick B of 2026-11-23, the guide chip ("Top-bar plank", X on the right): over every HUD state it
                     can meet (guidechip:<state>) at sixteen sizes 320 x 568 .. 2560 x 1440: B0 its home (the top band's
                     right end beside '...', a portrait phone's vitals stack 8 px over the name plank / the quest strip),
@@ -86,7 +92,7 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "B0", "B1", "B2", "B3"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "U3", "B0", "B1", "B2", "B3"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -662,7 +668,9 @@ def pin_U1(c, sizes):
 # kit-b already has goes to the backlog), measured by this pin on kit-b's src with these tools (the tutorial chip / strip /
 # card 1.6 - 2.4 px off the match / party panel on landscape phones and PC, the landscape chip on the wallet strip, the
 # portrait chip on the column's fold tab at 320 - 384 wide): such a case passes while its gap is no worse than kit-b's and
-# fails as soon as it gets worse; every other case keeps MIN_GAP.
+# fails as soon as it gets worse; every other case keeps MIN_GAP. (kit-b backlog items 7 / 8) The fixture's U1 key is
+# empty: its 142 landscape rows closed with those items, its 242 portrait rows (320 - 430 x 568 / 640 / 720) keep MIN_GAP
+# on kit-b 3d165fa already (build/GATE_BL/tutorial/pins/u1_backlog_rows_kitb.txt), so every case keeps MIN_GAP.
 U1_STATES = ["tutorial:8:match:1", "tutorial:8:match:2", "tutorial:8:match:3", "tutorial:8:match:4", "tutorial:8:match:full",
              "tutorial:7:party", "tutorial:7:party:leader", "tutorial:8:countdown"]
 U1_SWEEP = [(w, h) for h in (568, 640, 720) for w in (320, 340, 360, 375, 384, 393, 400, 412, 430)]
@@ -746,8 +754,89 @@ def pin_U2(c, sizes):
                     ok, how = c.whole(n)
                     name = p.split(".")[-1]
                     c.check("U2", ok or (scen, w, h, name) in U2_BACKLOG, "U2 %s %dx%d: the tutorial's %s reads whole" % (scen, w, h, name), how)
+                # (kit-b backlog item 10: 13 objective lines ran past their box - 960 x 540 steps 11 / 13 / 14 / 17 / 20,
+                # 1024 x 768 steps 16 / 17 / 20, 390 x 844 opened 16 / 17 / 20 / 21: the row was one line tall where the words
+                # took two) the card's objective line reads whole too: every line it wraps to inside its box
+                for p, n in nodes.items():
+                    if p.startswith(U1_PANEL + ".") and p.endswith(".Hint") and isinstance(n.get("text"), dict) \
+                            and str(n["text"].get("text", "")).strip() and float(n["w"]) > 1:
+                        ok, how = c.whole(n)
+                        c.check("U2", ok, "U2 %s %dx%d: the tutorial's objective line reads whole" % (scen, w, h), how)
                 if not mode and any(p.endswith(".StepTitle") for p, _ in titles):
                     break  # (the card shows already: a tap opens nothing more)
+        c.cache.clear()
+
+
+# ---------------------------------------------------------------------------------------------------------------- U3
+# (kit-b backlog item 6, GATE_P2 tutfix_look c05: on 360 x 640 and 384 x 640 at all 21 steps, and 375 x 667 at 18 of 21, a
+# tap on the folded guide opened nothing - no '+', the taps returned early - so the step's words, its Next and the Skip link
+# were out of reach and the tutorial could not pass step 1 there. TutorialController's last-resort card was tried only
+# beside the wallet strip and the Gift tile, too narrow there; the spot under them had 160 - 180 px above RUN.) Rule: on
+# the short portrait phones and the portrait sweep, every step's card the player opens with a tap (tutorial:<n>:open)
+# shows - its Skip link, and its Next where the step has one (as the same step shows it at 1280 x 720) - wholly on the
+# screen, the Next and Skip words whole, the card's ink MIN_GAP off RUN, DASH and Roblox's stick and jump rings. The tall
+# phones that open it today (390 x 844, 393 x 852, 412 x 915) are the control.
+U3_SIZES = [(360, 640), (384, 640), (375, 667), (390, 844), (393, 852), (412, 915)]
+U3_REF = (1280, 720)
+# U3_NO_ROOM: the sizes where kit-b 3d165fa opens no card at any step (build/GATE_BL/tutorial/pins/red_U3_kitb.txt) and no
+# spot has room for one within the card's own rule - it never covers the menu column, the touch keys or the thumbstick, and
+# never shrinks below 0.7 (14 px words) or PANEL_MIN_W: a 568-tall phone has about 190 px under the menu column above the
+# stick (the shortest card needs about 210 at 0.7), a 320-wide phone 172 px left of RUN / DASH (a card 182 at 0.7). Whether
+# the opened card may lie over the menu column there is the owner's call. Here a tap that opens nothing passes (no worse
+# than kit-b); a card that does open keeps every other rule
+U3_NO_ROOM = {(320, 568), (320, 640), (320, 720)} | {(w, 568) for w in (340, 360, 375, 384, 393, 400, 412, 430)}
+
+
+def pin_U3(c, sizes):
+    total = tutorial_total(c.nodes(c.dump("tutorial:1", U3_REF[0], U3_REF[1])))
+    if not c.check("U3", total is not None and total > 1, "U3 tutorial %dx%d: the tutorial shows its step count" % U3_REF):
+        return
+    has_next = {}
+    for step in range(1, total + 1):
+        nodes = c.nodes(c.dump("tutorial:%d:open" % step, U3_REF[0], U3_REF[1]))
+        has_next[step] = any(p.startswith(U1_PANEL + ".") and p.endswith(".Footer.Next") for p in nodes)
+    c.cache.clear()
+    want = [s for s in U3_SIZES + U1_SWEEP if s[1] > s[0]]
+    for (w, h) in [s for i, s in enumerate(want) if s not in want[:i]]:
+        for step in range(1, total + 1):
+            scen = "tutorial:%d:open" % step
+            nodes = c.nodes(c.dump(scen, w, h))
+            what = "U3 %s %dx%d" % (scen, w, h)
+            panel = nodes.get(U1_PANEL)
+            main = [p for p in nodes if p.startswith(U1_PANEL + ".") and p.endswith(".Main")]
+            if (w, h) in U3_NO_ROOM and not (panel is not None and main):
+                c.check("U3", True, what + ": no room for a card (U3_NO_ROOM, as kit-b)")
+                continue
+            if not c.check("U3", panel is not None and bool(main), what + ": a tap opens the card",
+                           "folded: %s" % ("the quest strip" if any(p.endswith(".QuestStrip") for p in nodes) else "the portrait chip")):
+                continue
+            ink = c.BH.ink_of(panel, c.RG, c.fonts)
+            ui = c.BH.union(ink)
+            c.check("U3", ui[0] >= -0.5 and ui[1] >= -0.5 and ui[2] <= w + 0.5 and ui[3] <= h + 0.5, what + ": the card wholly on the screen", fmt(ui))
+            parts = {"Skip": [p for p in nodes if p.startswith(U1_PANEL + ".") and p.endswith(".Footer.SkipLink")],
+                     "Next": [p for p in nodes if p.startswith(U1_PANEL + ".") and p.endswith(".Footer.Next")]}
+            for name, paths in parts.items():
+                if name == "Next" and not has_next[step]:
+                    continue
+                if not c.check("U3", bool(paths), "%s: its %s shows" % (what, name)):
+                    continue
+                r = rect(nodes[paths[0]])
+                c.check("U3", r[0] >= -0.5 and r[1] >= -0.5 and r[2] <= w + 0.5 and r[3] <= h + 0.5, "%s: its %s on the screen" % (what, name), fmt(r))
+                for p, n in nodes.items():
+                    if p == paths[0] or (p.startswith(paths[0] + ".") and isinstance(n.get("text"), dict)):
+                        ok, how = c.whole(n)
+                        c.check("U3", ok, "%s: its %s reads whole" % (what, name), how)
+            for key in ("RunButton", "DashButton"):
+                kn = nodes.get("MobileControls." + key)
+                kink = c.BH.ink_of(kn, c.RG, c.fonts) if kn and float(kn["w"]) > 1 else []
+                if kink:
+                    g, a, b = c.BH.ink_gap(ink, kink, ui, c.BH.union(kink), c.BH.MIN_GAP)
+                    c.check("U3", g >= c.BH.MIN_GAP - 0.05, "%s: the card keeps %g px off %s" % (what, c.BH.MIN_GAP, key),
+                            "card ink %s, %s %s: %.1f px" % (fmt(a), key, fmt(b), g))
+            for name, (cen, rad) in c.BH.rings(w, h).items():
+                g = min(c.BH.ring_gap(r, cen, rad) for r in ink)
+                c.check("U3", g >= c.BH.MIN_GAP - 0.05, "%s: the card keeps %g px off %s's ring" % (what, c.BH.MIN_GAP, name),
+                        "card ink %s, ring at %.0f,%.0f r %.0f: %.1f px" % (fmt(ui), cen[0], cen[1], rad, g))
         c.cache.clear()
 
 
@@ -979,7 +1068,7 @@ def pin_B(c, sizes):
 
 
 RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
-       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1, "U2": pin_U2,
+       "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1, "U2": pin_U2, "U3": pin_U3,
        "B0": pin_B, "B1": pin_B, "B2": pin_B, "B3": pin_B}
 
 
