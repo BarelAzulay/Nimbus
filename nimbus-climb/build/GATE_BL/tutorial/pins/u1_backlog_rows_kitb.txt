@@ -1,0 +1,3 @@
+﻿u1rows: 242 rows, 242 closed (now >= MIN_GAP), 0 worse than kit-b (102s)
+    CLOSED ['tutorial:7:party', 400, 640, 'NimbusMenu.MenuColumn', 3.9, None]
+    CLOSED ['tutorial:7:party', 400, 640, 'NimbusMenu.MenuColumn.Entry_Stats', 3.9, None]

@@ -1,0 +1,25 @@
+{
+ "passed": {
+  "U2": 574
+ },
+ "failed": {
+  "U2": [
+   "U2 tutorial:6 640x360: the tutorial's QuestTitle reads whole  -- 'The Pet Index' drawn 'The Pet Ind\u2026' in 92.8 x 23.2 at 14.4 px (ellipsis)",
+   "U2 tutorial:11 960x540: the tutorial's objective line reads whole  -- '\u00bb Put a pet in your Pet Garden' drawn '\u00bb Put a pet in your Pet' / 'Garden' in 204.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:13 960x540: the tutorial's objective line reads whole  -- '\u00bb Berry Farm, then Food Machine' drawn '\u00bb Berry Farm, then Food' / 'Machine' in 204.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:14 960x540: the tutorial's objective line reads whole  -- '\u00bb Feed a pet at the Food Machine' drawn '\u00bb Feed a pet at the Food' / 'Machine' in 204.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:17 960x540: the tutorial's objective line reads whole  -- '\u00bb Clear the first room of Dungeon floor 1' drawn '\u00bb Clear the first room of' / 'Dungeon floor 1' in 204.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:20 960x540: the tutorial's objective line reads whole  -- '\u00bb Win a round in the Champion Ring' drawn '\u00bb Win a round in the' / 'Champion Ring' in 204.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:16:open 390x844: the tutorial's StepTitle reads whole  -- 'Pick Your Team' drawn 'Pick Your Te\u2026' in 101.6 x 20.8 at 14.4 px (ellipsis)",
+   "U2 tutorial:16:open 390x844: the tutorial's objective line reads whole  -- '\u00bb Open Pets: put 3 pets in your team' drawn '\u00bb Open Pets: put 3 pets' / 'in your team' in 167.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:17:open 390x844: the tutorial's objective line reads whole  -- '\u00bb Clear the first room of Dungeon floor 1' drawn '\u00bb Clear the first room of Dungeon' / 'floor 1' in 228.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:20:open 390x844: the tutorial's objective line reads whole  -- '\u00bb Win a round in the Champion Ring' drawn '\u00bb Win a round in the Champion' / 'Ring' in 228.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:21:open 390x844: the tutorial's objective line reads whole  -- '\u00bb Tap Home, then Go home' drawn '\u00bb Tap Home, then Go' / 'home' in 167.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:16 1024x768: the tutorial's StepTitle reads whole  -- 'Pick Your Team' drawn 'Pick Your Te\u2026' in 99.2 x 20.8 at 14.4 px (ellipsis)",
+   "U2 tutorial:16 1024x768: the tutorial's objective line reads whole  -- '\u00bb Open Pets: put 3 pets in your team' drawn '\u00bb Open Pets: put 3 pets' / 'in your team' in 165.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:17 1024x768: the tutorial's objective line reads whole  -- '\u00bb Clear the first room of Dungeon floor 1' drawn '\u00bb Clear the first room of' / 'Dungeon floor 1' in 226.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:20 1024x768: the tutorial's objective line reads whole  -- '\u00bb Win a round in the Champion Ring' drawn '\u00bb Win a round in the Champion' / 'Ring' in 226.8 x 20.8 at 14.4 px (past the foot)",
+   "U2 tutorial:11:open 375x667: the tutorial's StepTitle reads whole  -- 'Your Pet Garden' drawn 'Your Pet Gar\u2026' in 105.6 x 20.8 at 14.4 px (ellipsis)"
+  ]
+ }
+}

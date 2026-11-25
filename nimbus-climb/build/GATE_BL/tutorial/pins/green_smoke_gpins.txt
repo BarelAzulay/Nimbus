@@ -1,0 +1,50 @@
+# 2026-11-25 19:39:23  free 6148084 KB  cmd: tools/smoke.py --only guide_pins --json C:\Users\elmoz\OneDrive\שולחן העבודה\Projects Main\Nimbus\.worktrees\kitb-bl-tutorial\nimbus-climb\build\GATE_BL\tutorial\pins\green_smoke_guide_pins.json
+Nimbus Climb smoke test  (Lua engine: luajit21, 300 layout seeds/difficulty)
+
+== client_load ==
+
+== guide_pins ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins: part 1 of 11, 44 runs
+
+== guide_pins_walks ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_walks: part 2 of 11, 33 runs
+
+== guide_pins_turns ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_turns: part 3 of 11, 33 runs
+
+== guide_pins_pan6 ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_pan6: part 4 of 11, 4 runs
+
+== guide_pins_pan6_b ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_pan6_b: part 5 of 11, 4 runs
+
+== guide_pins_pan6_c ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_pan6_c: part 6 of 11, 14 runs
+
+== guide_pins_pan12 ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_pan12: part 7 of 11, 17 runs
+
+== guide_pins_pan12_b ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_pan12_b: part 8 of 11, 16 runs
+
+== guide_pins_pans ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_pans: part 9 of 11, 22 runs
+
+== guide_pins_sways ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_sways: part 10 of 11, 22 runs
+
+== guide_pins_looks ==
+  ..    guide walk: the built lobby's Altar gate prompt Workspace.NimbusLobby.Gates.Portal_Altar.PromptAnchor at -68, 304, 93
+  ..    guide_pins_looks: part 11 of 11, 11 runs
+
+smoke test: 2374 passed, 0 failed, 0 warnings  (1658.6s)
