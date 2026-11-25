@@ -73,7 +73,9 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     distance. (Its frame-by-frame rules - one rect on every camera move, the needle - are guide_pins')
   N1  kit-b backlog 21 / 31 the NPC dialog 77 px past the right edge at 360 x 640, into Roblox's top band at 640 x 360 /
                     667 x 375. Rule: every NPC's dialog wholly on the screen, under the top band, MIN_GAP off DASH and RUN,
-                    at those sizes, 375 x 667, 390 x 844, 844 x 390 and 1280 x 720 (NPC 1 at the gate sizes)
+                    at those sizes, 375 x 667, 390 x 844, 844 x 390 and 1280 x 720 (NPC 1 at the gate sizes); (re-verify)
+                    and MIN_GAP off every other HUD piece and Roblox's stick ring (its hard shadow was 1-2 px from the
+                    vitals card's name tab at 720 x 405 .. 1024 x 768)
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -1125,6 +1127,11 @@ def pin_N1(c, sizes):
                 g = min(c.BH.gap(a, b) for a in ink for b in kink)
                 c.check("N1", g >= c.BH.MIN_GAP - 0.05, "N1 %s %dx%d: the NPC dialog keeps %g px off %s" % (scen, w, h, c.BH.MIN_GAP, key),
                         "dialog ink %s, key %s: %.1f px" % (fmt(u), fmt(c.BH.union(kink)), g))
+        # (kitb-bl-hud re-verify) ... and off every other HUD piece (the menu tiles, the vitals card, the strips, the gift,
+        # Roblox's stick ring; the guide chip reads it itself: B1's guidechip:npc)
+        near = piece_gaps(c, d, nodes, ink, w, h, "NimbusNpcDialog", ("NimbusGuide", "MobileControls.DashButton", "MobileControls.RunButton"))
+        c.check("N1", not near, "N1 %s %dx%d: the NPC dialog keeps %g px off every other HUD piece" % (scen, w, h, c.BH.MIN_GAP),
+                "dialog ink %s: %s" % (fmt(u), ", ".join("%s %.1f px" % (p, g) for g, p in near)))
         c.cache.clear()
 
 

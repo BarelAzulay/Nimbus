@@ -1499,7 +1499,10 @@ local function layoutDialog()
 		local shift = insetShift(hud)
 		local blt = hud:GetAttribute("BottomLeftTop")
 		if type(blt) == "number" and blt > 0 then
-			bottom = blt + shift - K.GAP
+			-- (kit-b backlog 21 / 31 re-verify: the card's hard shadow - SignKit.FinishFrame's, Theme.Finish.Window px at its
+			-- scale, under its bottom edge - came 2 px from the vitals card's name tab at 800 x 450 .. 1024 x 768, 1 at 720 x 405)
+			-- the gap is kept from the shadow (at most the screen factor's: the card's scale never exceeds f)
+			bottom = blt + shift - K.GAP - math.floor((tonumber(Theme.Finish and Theme.Finish.Window) or 0) * f + 0.5)
 		end
 		local tlb = hud:GetAttribute("TopLeftBottom")
 		if type(tlb) == "number" and tlb > 0 then
@@ -1531,6 +1534,18 @@ local function layoutDialog()
 			end
 		end
 		local s, cw, ch, rows = fitCard(left, b, topLimit, rightLimit, f, tall)
+		-- (re-verify, N1 at 390 x 844) a card from the edge under the tile column keeps GAP under it: the rows probe above
+		-- reads the full card's height, the portrait's compact card is taller, and with the gap now kept from the card's
+		-- shadow (bottom, above) its top met the column's Stats tile. Its own top limit there: the short rows where they fit
+		if column and left < column.x1 + K.GAP and column.y1 + K.GAP > topLimit and column.y1 < b then
+			local _, ex = tabFor(cw)
+			if b - (ch + rows.TabAbove + ex) * math.max(K.MIN_SCALE, s) < column.y1 + K.GAP then
+				local s2, cw2, ch2, rows2 = fitCard(left, b, column.y1 + K.GAP, rightLimit, f, tall)
+				if s2 >= K.MIN_SCALE or rows2 ~= rows then
+					s, cw, ch, rows = s2, cw2, ch2, rows2
+				end
+			end
+		end
 		return s, cw, ch, left, rows
 	end
 	local scale, w, h, left, rows = placeAt(bottom)
@@ -1567,7 +1582,16 @@ local function layoutDialog()
 		end
 	end
 	local overColumn = false
-	if scale < K.MIN_SCALE and touch then
+	-- (re-verify, B0 guidechip:npc 390 x 844) only where the card forced to MIN_SCALE would leave the screen - past its
+	-- right edge or up into Roblox's top band, the backlog's two faults -: at 390 x 844 the forced card stood whole above
+	-- the vitals card, as on kit-b, and step 3 took the screen's width, sent the tiles and the vitals card aside and the
+	-- guide chip, whose home is on the vitals stack, down onto Roblox's thumbstick
+	local function leavesScreen()
+		local _, extraTab = tabFor(w)
+		local cardTop = y - (h + rows.TabAbove + extraTab) * K.MIN_SCALE
+		return x + w * K.MIN_SCALE > area.X - edge + 0.5 or cardTop < 0
+	end
+	if scale < K.MIN_SCALE and touch and leavesScreen() then
 		-- 3) (kit-b backlog 21 / 31: forced to MIN_SCALE in a box too small for it, the card ran 77 px past the right edge at
 		-- 360 x 640, from right of the tile column, and into Roblox's top band at 640 x 360 / 667 x 375, above the lobby's
 		-- vitals card) a phone gives it the rows down to its touch keys, Roblox's stick and jump button (the vitals card
