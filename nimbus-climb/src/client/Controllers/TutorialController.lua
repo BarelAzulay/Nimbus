@@ -281,6 +281,9 @@ local K = {
 	STRIP_CELL_H = 14,
 	STRIP_CHAPTER_GAP = 3,
 	STRIP_DOCK_GAP = 10,
+	-- (kit-b backlog items 7 / 8) a landscape chip's air off a HUD piece's box where STRIP_DOCK_GAP finds no spot (568 x 320
+	-- in a match: 59 px between the thumbstick and the panel), screen px: 4 px of ink past a touch key's 3 px edge
+	MIN_AIR = 7,
 }
 
 local BULLET = "\194\187 " -- >>
@@ -1430,8 +1433,11 @@ local function layout()
 	-- the thumbstick's zone); under a top-left panel they keep the whole gap
 	local cardTop0 = math.max(edge, K.POP_EDGE - K.PORTRAIT_Y * k)
 	local top = cardTop0
+	-- (kit-b backlog item 8) the top-left panel (a match / party panel) casts its hard shadow right and down: GAP of air
+	-- past it (GAP off its box left 1.6 - 2.4 px of ink, 0 px at 932 x 430 / 960 x 540)
+	local panelGap = (K.GAP + K.SHADOW) * k
 	if hud.TopLeftBottom > 0 then
-		top = math.max(edge, hud.TopLeftBottom + K.GAP * k) - K.PORTRAIT_Y * k
+		top = math.max(edge, hud.TopLeftBottom + panelGap) - K.PORTRAIT_Y * k
 	end
 	-- the HUD's bottom-left block (vitals card / currency stack) is a hard limit for the bubble and the card
 	local bottomLimit = math.min(area.Y - edge, hud.BottomLeftTop - K.GAP * k)
@@ -1498,7 +1504,7 @@ local function layout()
 		local positions = { { Top = top, Left = nil } }
 		if hud.TopLeftRight > 0 then
 			-- beside the top-left panel (party panel) at the top edge
-			positions[#positions + 1] = { Top = cardTop0, Left = hud.TopLeftRight + K.GAP * k }
+			positions[#positions + 1] = { Top = cardTop0, Left = hud.TopLeftRight + panelGap }
 		end
 		if hud.TopRightBottom > 0 then
 			-- below the HUD's top-right block (the currency strips) when they leave the top too narrow
@@ -1672,17 +1678,22 @@ local function layout()
 				or (reach ~= nil and left < reach.x1 + d and x1 > reach.x0 - d and top < reach.y1 + d and top + h2 > reach.y0 - d)
 				or (hud.TopRightLeft > 0 and x1 > hud.TopRightLeft - g and top < hud.TopRightBottom + g)
 		else
-			top = hud.TopLeftBottom > 0 and (hud.TopLeftBottom + K.GAP * k) or edge
+			-- (kit-b backlog items 7 / 8) STRIP_DOCK_GAP of air past the top-left panel's hard shadow (GAP off its box left
+			-- 0 - 2.4 px of ink: 0 at 844 x 390 on the party pad), and past the strip's own wood edge short of the top-right
+			-- stack (3.6 px off the wallet strip there); a strip that would meet a touch key folds to the chip
+			local dockPanel = K.STRIP_DOCK_GAP + K.SHADOW * k
+			top = hud.TopLeftBottom > 0 and (hud.TopLeftBottom + dockPanel) or edge
 			left = leftFor(top, h2)
 			if top + h2 > bottomLimit and hud.TopLeftRight > 0 then
 				top = edge
-				left = math.max(hud.TopLeftRight + K.GAP * k, leftFor(top, h2))
+				left = math.max(hud.TopLeftRight + dockPanel, leftFor(top, h2))
 			end
 			local rightLimit = area.X - edge
 			if hud.TopRightLeft > 0 and top < hud.TopRightBottom + K.GAP * k then
-				rightLimit = math.min(rightLimit, hud.TopRightLeft - K.GAP * k)
+				rightLimit = math.min(rightLimit, hud.TopRightLeft - K.STRIP_DOCK_GAP - K.STRIP_EDGE * k)
 			end
 			stripW = math.min(K.STRIP_W, math.floor((rightLimit - left) / k))
+			dockBlocked = keyIn(left, left + stripW * k, top, top + h2) ~= nil
 		end
 		local side = arenaSideRect()
 		local x1, y1 = left + stripW * k, top + h2
@@ -1690,6 +1701,57 @@ local function layout()
 		local meets = side ~= nil and left < side.x1 + g and x1 > side.x0 - g and top < side.y1 + g and y1 > side.y0 - g
 		stripChip = stripW < K.STRIP_MIN_W or meets or dockBlocked or (v == nil and y1 > bottomLimit)
 		if stripChip then
+			-- (look:fix6b2 N1) the chip's spot keeps STRIP_DOCK_GAP of air off every HUD piece round it (the column, the keys,
+			-- the vitals block, the top-left panel, each piece of the top-right stack - the wallet strips, the Gift tile, the
+			-- boost chips -, the arena's side stack, the screen's edges). (kit-b backlog items 7 / 8) A landscape chip (`wide`)
+			-- also keeps it off Roblox's thumbstick and the screen's left and bottom edges, and off the top-left panel as it
+			-- stands, past its hard shadow (`gap`: the air, STRIP_DOCK_GAP unless given)
+			local d = K.STRIP_DOCK_GAP - 0.5
+			local pieces = {}
+			local pg = playerGui()
+			for _, spec in ipairs({ { "NimbusHud", "TopRight" }, { "NimbusDaily" }, { "NimbusBoosts" } }) do
+				local g = pg and pg:FindFirstChild(spec[1])
+				local holder = g and g:IsA("ScreenGui") and g.Enabled and (spec[2] and g:FindFirstChild(spec[2]) or g)
+				for _, c in ipairs(holder and holder:GetChildren() or {}) do
+					local s = c:IsA("GuiObject") and c.AbsoluteSize
+					if s and s.X > 0 and s.X < area.X * 0.6 and s.Y < area.Y * 0.6 and shownIn(c, g) then
+						pieces[#pieces + 1] = rectOf(c, insetShift(g))
+					end
+				end
+			end
+			local wide = {}
+			if not v then
+				local hudGui = pg and pg:FindFirstChild("NimbusHud")
+				local block = hudGui and hudGui:IsA("ScreenGui") and hudGui.Enabled and hudGui:FindFirstChild("TopLeft")
+				local s = K.SHADOW * k
+				for _, c in ipairs(block and block:GetChildren() or {}) do
+					if c:IsA("GuiObject") and c.AbsoluteSize.X > 0 and shownIn(c, hudGui) then
+						local r = rectOf(c, insetShift(hudGui))
+						wide[#wide + 1] = { x0 = r.x0, y0 = r.y0, x1 = r.x1 + s, y1 = r.y1 + s }
+					end
+				end
+				wide[#wide + 1] = thumbstickRect(area)
+			end
+			local function clear(l, t, col, gap)
+				local m = gap and (gap - 0.5) or d
+				local function meets(r)
+					return r ~= nil and r.x1 > l - m and r.x0 < l + chipH + m and r.y1 > t - m and r.y0 < t + chipH + m
+				end
+				if t < edge or l + chipH > area.X - edge or meets(col) or meets(arenaSideRect()) then
+					return false
+				end
+				if not v and (l < edge or t + chipH > area.Y - edge) then
+					return false
+				end
+				for _, list in ipairs({ touchButtonRects(), bottomLeftRects(), pieces, wide }) do
+					for _, r in pairs(list) do
+						if meets(r) then
+							return false
+						end
+					end
+				end
+				return not v or not (hud.TopLeftBottom > 0 and t < hud.TopLeftBottom + d and (hud.TopLeftRight <= 0 or l < hud.TopLeftRight + d))
+			end
 			if v then
 				-- on the stack still, STRIP_DOCK_GAP over the vitals card; (look:fix6b major 1) and over a key in its own
 				-- column, should one stand there
@@ -1700,40 +1762,9 @@ local function layout()
 				end
 				-- (look:fix6b2 N1) at the card's left edge, else right of the menu column and its fold tab's tap pad
 				-- (columnReach), else right of its tiles (menuRect; the tap pad, over the chip, takes a tap there): the
-				-- first spot that keeps STRIP_DOCK_GAP of air off every HUD piece round it (the column, the keys, the vitals
-				-- block, the top-left panel, each piece of the top-right stack - the wallet strips, the Gift tile, the boost
-				-- chips -, the arena's side stack, the screen's edges). In a 3 or 4 player match and on a full party pad the
-				-- panel pushes the column down to the card: the chip, checked against the keys only, lay under its Home tile
-				-- (20 - 26.5 px). Where no spot is clear it keeps the first
-				local d = K.STRIP_DOCK_GAP - 0.5
-				local pieces = {}
-				local pg = playerGui()
-				for _, spec in ipairs({ { "NimbusHud", "TopRight" }, { "NimbusDaily" }, { "NimbusBoosts" } }) do
-					local g = pg and pg:FindFirstChild(spec[1])
-					local holder = g and g:IsA("ScreenGui") and g.Enabled and (spec[2] and g:FindFirstChild(spec[2]) or g)
-					for _, c in ipairs(holder and holder:GetChildren() or {}) do
-						local s = c:IsA("GuiObject") and c.AbsoluteSize
-						if s and s.X > 0 and s.X < area.X * 0.6 and s.Y < area.Y * 0.6 and shownIn(c, g) then
-							pieces[#pieces + 1] = rectOf(c, insetShift(g))
-						end
-					end
-				end
-				local function clear(l, t, col)
-					local function meets(r)
-						return r ~= nil and r.x1 > l - d and r.x0 < l + chipH + d and r.y1 > t - d and r.y0 < t + chipH + d
-					end
-					if t < edge or l + chipH > area.X - edge or meets(col) or meets(arenaSideRect()) then
-						return false
-					end
-					for _, list in ipairs({ touchButtonRects(), bottomLeftRects(), pieces }) do
-						for _, r in ipairs(list) do
-							if meets(r) then
-								return false
-							end
-						end
-					end
-					return not (hud.TopLeftBottom > 0 and t < hud.TopLeftBottom + d and (hud.TopLeftRight <= 0 or l < hud.TopLeftRight + d))
-				end
+				-- first clear spot. In a 3 or 4 player match and on a full party pad the panel pushes the column down to the
+				-- card: the chip, checked against the keys only, lay under its Home tile (20 - 26.5 px). Where no spot is
+				-- clear it keeps the first
 				local tiles = menuRect()
 				top = spot(left)
 				for _, s in ipairs({ { left, reach }, { reach and reach.x1 + K.STRIP_DOCK_GAP, reach }, { tiles and tiles.x1 + K.STRIP_DOCK_GAP, tiles } }) do
@@ -1744,9 +1775,45 @@ local function layout()
 						break
 					end
 				end
-			elseif top + chipH > bottomLimit then
-				top = math.max(edge, bottomLimit - chipH)
-				left = leftFor(top, chipH)
+			else
+				if top + chipH > bottomLimit then
+					top = math.max(edge, bottomLimit - chipH)
+					left = leftFor(top, chipH)
+				end
+				-- (kit-b backlog items 7 / 8: beside a party / match panel the chip lay on the wallet strip - 640 x 360
+				-- 19.6 px - and, at 568 x 320, where RUN stands at the top right beside the panel, 40 px over RUN: nothing
+				-- checked it against the top-right stack or the keys) its spot, else under the top-left panel, else under the
+				-- menu column, each right of Roblox's thumbstick where it meets it: the first clear spot, with STRIP_DOCK_GAP
+				-- of air, else (the smallest phones: 568 x 320 has 59 px between the stick and the panel) with MIN_AIR.
+				-- Where none is clear it keeps the first
+				local dockPanel = K.STRIP_DOCK_GAP + K.SHADOW * k
+				local col = columnReach()
+				local stick = thumbstickRect(area)
+				local spots = { { left, top } }
+				if hud.TopLeftBottom > 0 then
+					local t = hud.TopLeftBottom + dockPanel
+					spots[#spots + 1] = { leftFor(t, chipH), t }
+				end
+				if col then
+					local t = col.y1 + dockPanel
+					spots[#spots + 1] = { leftFor(t, chipH), t }
+				end
+				local found = false
+				for _, gap in ipairs({ K.STRIP_DOCK_GAP, K.MIN_AIR }) do
+					for _, s in ipairs(spots) do
+						local l, t = s[1], s[2]
+						if stick and stick.x1 > l - gap and stick.x0 < l + chipH + gap and stick.y1 > t - gap and stick.y0 < t + chipH + gap then
+							l = stick.x1 + gap
+						end
+						if clear(l, t, col, gap) then
+							left, top, found = l, t, true
+							break
+						end
+					end
+					if found then
+						break
+					end
+				end
 			end
 		end
 	end
