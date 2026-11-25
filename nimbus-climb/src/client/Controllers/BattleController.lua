@@ -6867,11 +6867,14 @@ function Hud.Rebuild()
 		-- 208 a narrow card keeps beside the strips)
 		local listX0 = m.W - K.EDGE - K.ROW_W_COMPACT
 		-- (kit-b backlog 9: the ring's card across the top put its list beside the fighter card, and the locked row's gold
-		-- target bracket, 4 design px and its 2 px stroke out of the row, came 7.4 / 5.5 px from the card's shadow at
-		-- 393 x 852 / 412 x 915) and at least the bracket's reach, its stroke, a px of snapping and the list's 8 px of air
-		-- (no more: at 390 x 844 a card 3 design px narrower cut 'Biscuit Bear')
-		local keep = max(math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / max(0.05, m.F)),
-			math.ceil((K.SHADOW_PX + 2 + 1 + 8) / max(0.05, m.F)) + 4)
+		-- target bracket came 7.4 / 5.5 px from the card's shadow at 393 x 852 / 412 x 915) and at least the card's ink and
+		-- the bracket's, on the whole screen px they draw on, and the list's 8 px of air: the card's edge and hard shadow
+		-- (Hud.TeamGap's), the bracket's 4 design px and its 3 px stroke (2 on a 0.8 phone: SignKit.Px), nothing more (a
+		-- design px more at 390 x 844 cut 'Biscuit Bear'; a fixed count of design px left 5.6 px at 428 x 926)
+		local f = max(0.05, m.F)
+		local stroke = SignKit.Px(3, f)
+		local keep = max(math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / f),
+			math.ceil(stroke + SignKit.Px(Theme.Finish.Card, f) + 4 + stroke + 8 / f - 1e-6))
 		if K.EDGE + cardW + keep > listX0 and listX0 - keep - K.EDGE >= 208 then
 			Hud.fcW = max(208, floor(listX0 - keep - K.EDGE))
 			cardW = Hud.fcW
