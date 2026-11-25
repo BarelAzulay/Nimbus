@@ -49,7 +49,9 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     and 4, the obby's picker and party, at 700 x 394, 384 x 640 and the corners 568 x 320 / 320 x 568, and
                     the 14 portrait windows new3_look measured at 360 x 640 / 375 x 667 / 384 x 640; MIN_GAP off Roblox's
                     jump ring too, the card wholly on the screen (on a landscape phone's party pad with no slot it may step
-                    aside whole, as under a window). O3_BACKLOG now holds only the corners' cases kit-b already had.
+                    aside whole, as under a window). O3_BACKLOG holds the corners' cases kit-b already had and (look0
+                    N2: the tiles and strips stay in a match) a match / its countdown at 640 x 360 / 667 x 375, the
+                    owner's call.
                     (re-verify: the card moved beside the panel and under the strips) its ink MIN_GAP off EVERY other HUD
                     piece and Roblox's stick ring too (piece_gaps; the 'piece:' rows: kit-b's own gaps there, no worse)
   T1  fix6 look1   the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
@@ -76,6 +78,11 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     at those sizes, 375 x 667, 390 x 844, 844 x 390 and 1280 x 720 (NPC 1 at the gate sizes); (re-verify)
                     and MIN_GAP off every other HUD piece and Roblox's stick ring (its hard shadow was 1-2 px from the
                     vitals card's name tab at 720 x 405 .. 1024 x 768)
+  V1  kitb-bl-hud look0 N2 / N3 the menu tiles and the wallet strip sent aside for a whole match on landscape phones
+                    640 - 812 x 360 - 375 (unpitched); the VICTORY card's Time row dropped at 640 x 360 - 720 x 405 (the
+                    risen vitals card counted in TopRightBottom). Rule: in a match, its countdown and on the pad the tiles
+                    and their fold tab show, the strip too (in a match not where it would reach over the panel); the
+                    VICTORY card keeps its Time row (not at 568 x 320 / 360 x 640: kit-b's micro card)
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -97,7 +104,7 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "B0", "B1", "B2", "B3", "N1"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "B0", "B1", "B2", "B3", "N1", "V1"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -512,6 +519,11 @@ O3_SIZES = [(375, 667)]
 # cuts the name (look:fix6b2's OLD major). Such a case passes while its key gap is no worse than kit-b's (a name kit-b
 # cuts may stay cut there); every other case keeps MIN_GAP and the whole name. (kitb-bl-hud fixed those: the rows left are
 # the corners 320 x 568 / 568 x 320, measured on kit-b 3d165faa, where no slot exists - 'jump' and 'edge' rows too)
+# (kitb-bl-hud look0 N2) and a match of 1-4, the SAINT match and the countdown at 640 x 360 / 667 x 375 again: 058ef01
+# freed the card a slot there by sending the menu tiles and the wallet strips aside for the whole match, unpitched (kit-b
+# and the approved U9-8 match pitch keep them). With them in place no slot exists (the two-wide tile column puts the
+# panel 163 px in, 156 / 183 px stay right of it for a card at least 189 wide, and the tutorial's chip docks there), so
+# the card keeps kit-b's place, no worse, until the owner picks how the card and the match panel share such a phone
 O3_STATES = ["lobby", "match", "match:full", "party", "party:leader", "countdown"]
 O3_BACKLOG = kitb_backlog("O3")
 # (kit-b backlog 5 / 20 / 30, branch kitb-bl-hud: on landscape phones 640 - 720 wide the card lay on DASH and RUN in a match,
@@ -1135,9 +1147,47 @@ def pin_N1(c, sizes):
         c.cache.clear()
 
 
+# ---------------------------------------------------------------------------------------------------------------- V1
+# (kitb-bl-hud look0 N2 / N3, NEW from 058ef01 / 547e637: to free the vitals card a slot beside the match panel on
+# landscape phones 640 - 812 x 360 - 375, the menu tiles - Pets, Index, Home, Stats and their fold tab - and in a match the
+# wallet strip stepped aside for the whole match, with no way back, unpitched (kit-b and the approved U9-8 match pitch keep
+# them; Pets, Index and Stats still work in a match); and the card that rose under the strips counted in TopRightBottom,
+# so the match's VICTORY card, sized to the room under it, dropped its 'Time 3:07' row at 640 x 360 - 720 x 405) Rule, at
+# the landscape phones the looks used: in a match of 1 - 4, the SAINT match, the countdown and the party pad the four
+# tiles and the fold tab show; the wallet strip shows (in a match / countdown not where it would reach over the panel,
+# which counts the run's tokens: kit-b's rule, V1_NO_STRIP); the VICTORY card keeps its Time row at those sizes and the
+# gate sizes (not at 568 x 320 and 360 x 640, where kit-b 3d165faa draws its micro card, with no Time row, too)
+V1_SIZES = [(568, 320), (640, 360), (667, 375), (700, 394), (720, 405), (740, 360), (760, 375), (800, 360), (812, 375),
+            (844, 390), (800, 450), (932, 430)]
+V1_STATES = ["match:1", "match:2", "match", "match:4", "match:full", "countdown", "party", "party:leader"]
+V1_TILES = ["Entry_Pets", "Entry_Index", "Entry_Spot", "Entry_Stats", "Toggle"]
+V1_NO_STRIP = [(568, 320), (640, 360), (667, 375)]
+V1_NO_TIME = [(568, 320), (360, 640)]
+
+
+def pin_V1(c, sizes):
+    for (w, h) in V1_SIZES:
+        for scen in V1_STATES:
+            nodes = c.nodes(c.dump(scen, w, h))
+            what = "V1 %s %dx%d" % (scen, w, h)
+            gone = [t for t in V1_TILES if ("NimbusMenu.MenuColumn." + t) not in nodes]
+            c.check("V1", not gone, what + ": the menu tiles and their fold tab show", "missing " + ", ".join(gone))
+            if scen.startswith("party") or (w, h) not in V1_NO_STRIP:
+                c.check("V1", "NimbusHud.TopRight.Currency" in nodes, what + ": the wallet strip shows")
+        c.cache.clear()
+    for (w, h) in V1_SIZES + [s for s in sizes if s not in V1_SIZES]:
+        if (w, h) in V1_NO_TIME:
+            continue
+        nodes = c.nodes(c.dump("results", w, h))
+        texts = [str(n["text"].get("text", "")).strip() for p, n in nodes.items()
+                 if p.startswith("NimbusNotify.ResultHolder.ResultCard.") and isinstance(n.get("text"), dict)]
+        c.check("V1", "Time" in texts, "V1 results %dx%d: the VICTORY card keeps its Time row" % (w, h), "rows: " + ", ".join(t for t in texts if t)[:160])
+        c.cache.clear()
+
+
 RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
        "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1, "U2": pin_U2,
-       "B0": pin_B, "B1": pin_B, "B2": pin_B, "B3": pin_B, "N1": pin_N1}
+       "B0": pin_B, "B1": pin_B, "B2": pin_B, "B3": pin_B, "N1": pin_N1, "V1": pin_V1}
 
 
 def parse_sizes(text):

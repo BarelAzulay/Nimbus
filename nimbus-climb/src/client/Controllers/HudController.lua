@@ -48,7 +48,7 @@
 -- run into the column steps aside to its right; the vitals never reach under the touch buttons. The geometry is
 -- re-checked twice a second and on every viewport change, and published as attributes on the NimbusHud
 -- gui (TopLeftRight, TopLeftBottom, TopRightLeft, TopRightBottom, BottomLeftTop = the top of the bottom block (the
--- vitals card; its home slot while a short landscape phone's card stands in the top-right stack, which then counts it),
+-- vitals card; its home slot while a short landscape phone's card stands under the top-right strips),
 -- BottomCentreTop / Left / Right = the vitals card, HudScale100; gui-area pixels) so the toasts,
 -- dialogs and side panels can keep clear of the HUD. (kit-b U8) GiftLeft / GiftTop / GiftSize: the gift's dock under the
 -- strips in the lobby (0 = none); DailyController puts its Gifts button there and TopRightBottom includes it.
@@ -807,24 +807,6 @@ local function robloxTouchRects(area, vp)
 	}
 end
 
--- (kit-b backlog 5 / 20 / 30) the menu tiles step aside (MenuController.SetColumnCovered, owner "Vitals") while a short
--- phone's match / party panel and the vitals card have no room beside them (applyMargins); back when they have
-function Vitals.SetColumnAside(on)
-	on = on == true
-	if (S.columnAside == true) == on then
-		return
-	end
-	local module = script.Parent:FindFirstChild("MenuController")
-	local ok, menu = pcall(function()
-		return module and require(module)
-	end)
-	if ok and type(menu) == "table" and type(menu.SetColumnCovered) == "function" and pcall(menu.SetColumnCovered, on and 0 or nil, "Vitals") then
-		S.columnAside = on
-	elseif not on then
-		S.columnAside = false
-	end
-end
-
 -- (kit-b backlog 5 / 20 / 30: on landscape phones 640 - 720 wide in a match, on the pad and in the countdown no row under
 -- the middle of the screen had the card's room between the match panel and RUN / DASH, so it squeezed onto both keys,
 -- 'SkyCli...', at 640 x 360 20 px off the right edge) the card's slot where it has its room: the lowest bottom from its own
@@ -1061,7 +1043,7 @@ local function applyMargins(animate, force)
 
 	-- top-left panels: right of the menu column `col` when they would reach it, and on short screens no wider than
 	-- what keeps their text out of the middle of the screen -> left (gui px), width (design px)
-	local function topLeftFor(col, aside)
+	local function topLeftFor(col)
 		local tl, pw = side, K.PANEL_W
 		if topH > 0 then
 			tl = clearOfColumn(col, K.EDGE, K.EDGE + topH * k)
@@ -1069,15 +1051,6 @@ local function applyMargins(animate, force)
 				-- a narrow portrait phone has no room beside the tile column (the panel would run off the right edge): the
 				-- panel keeps the corner and MenuController moves the tiles below it (our TopLeftBottom)
 				tl = side
-			end
-			if aside then
-				-- (kit-b backlog 5) the tiles stepped aside on a short phone (applyMargins tries it there only): a panel that
-				-- reaches the rows of Roblox's thumbstick keeps the tile column's clearance off its ring (a small phone's:
-				-- K.JUMP_SMALL wide, from half of it less 10 in from the left edge, 20 over the foot)
-				local j = K.JUMP_SMALL
-				if K.EDGE + topH * k + K.MENU_CLEARANCE > area.Y - 20 - j then
-					tl = math.max(tl, j / 2 - 10 + j + K.MENU_CLEARANCE)
-				end
 			end
 			if K.EDGE + topH * k > band.y0 then
 				pw = math.floor(Util.Clamp((band.x0 - tl - 4) / k, K.PANEL_MIN_W, K.PANEL_W))
@@ -1102,7 +1075,7 @@ local function applyMargins(animate, force)
 	-- (kit-b backlog 5) where the strips and the gift go beside top-left panels at tl, pw wide (laid out below; the vitals
 	-- card keeps clear of them when it rises beside them): { blockW, blockH, rowW, left, top, bottom, overPanel, shown,
 	-- giftLeft, giftTop, giftSize }; nil in the top band
-	local function stripsAt(tl, pw, aside)
+	local function stripsAt(tl, pw)
 		if topBand or not UI.Currency then
 			return nil
 		end
@@ -1135,8 +1108,7 @@ local function applyMargins(animate, force)
 		-- a card that takes the corner for a moment (a dungeon run's result on a phone) hides the strips meanwhile
 		local yield = cornerCard ~= nil and cornerCard.x0 < area.X - side and s.left < cornerCard.x1
 			and cornerCard.y0 < s.bottom and s.top < cornerCard.y1
-		-- (kit-b backlog 5) in a match the panel counts the run's tokens: the strips also step aside with the tiles (aside)
-		s.shown = not yield and not ((s.overPanel or aside) and inMatch) and next(S.currencyOwners) == nil
+		s.shown = not yield and not (s.overPanel and inMatch) and next(S.currencyOwners) == nil
 		-- (kit-b U8) the gift's dock under the strips, in the lobby only (DailyController hides its button in a match or a
 		-- battle anyway): DailyController puts its button on this square (GiftLeft / GiftTop / GiftSize), and the toasts,
 		-- side panels and the tutorial start under it (TopRightBottom). While a corner card is up (a phone's dungeon End
@@ -1214,31 +1186,18 @@ local function applyMargins(animate, force)
 	local topLeft, panelW = topLeftFor(column)
 	local strips = stripsAt(topLeft, panelW)
 	local vitalsLeft, vitalsW, vitalsBottom, sits, stacked = placeAmong(obstaclesFor(column, topLeft, panelW, strips))
-	-- (kit-b backlog 5 / 20 / 30: at 640 x 360 and 667 x 375 the two-wide tile column puts the match / party panel 165 px in,
-	-- and right of the panel 144 / 171 px stay for a card at least 189 wide: no slot anywhere) on a short landscape phone,
-	-- while a panel shows, the tiles step aside where the card then has all its room (as a battle's HUD sends them aside
-	-- on a phone; in a match the strips with them: the panel counts the run's tokens): the panel takes the corner and the
-	-- card its slot beside it. The column's frame keeps its place, so this weighs the same every layout
-	-- (re-verify, U1) in a match / its countdown only: on the party pad the card steps aside instead where it has no room
-	-- (below), and the tiles keep their place (with the panel in the corner the tutorial's quest strip fitted beside it,
-	-- its edge 0.4 px off the panel's shadow and 3.6 off the wallet strips at 740 - 812 x 360 - 375, where kit-b's chip
-	-- kept 1.6)
-	local aside = false
+	-- (kitb-bl-hud look0 N2) the menu tiles and the wallet strips keep their place in a match, as on kit-b and in the
+	-- approved match pitch (U9-8: tiles, panel and card together). 058ef01 sent the tiles (and in a match the strips) aside
+	-- on short landscape phones to free a slot for the card: unpitched, and it took working navigation away for the whole
+	-- match. Where no slot is clear of the tiles, the panel, the strips and the keys (a match or its countdown at 640 x 360
+	-- and 667 x 375: the two-wide tile column puts the panel 163 px in and 156 / 183 px stay right of it for a card at
+	-- least 189 wide, and the tutorial's chip docks there; 740 x 360 / 760 x 375 under the strips) the card keeps kit-b's
+	-- place, squeezed, until the owner picks how the card and the match panel share such a phone (O3_BACKLOG holds those
+	-- cases, no worse than kit-b).
+	-- On the party pad, where it has no slot (beside the strips and the gift right of the middle 175 px stay at 700 x 394,
+	-- under the 189 the card needs; under them DASH), it steps aside while the party panel shows, as under a dock: never on
+	-- the keys nor off the screen (no damage comes on the pad; in a match it stays)
 	local shortPhone = touch and vp.X > vp.Y and math.min(vp.X, vp.Y) <= K.SMALL_PHONE
-	if sits < 3 and column and hasPanel and inMatch and topLeft > side and shortPhone then
-		local tl2, pw2 = topLeftFor(nil, true)
-		local strips2 = stripsAt(tl2, pw2, true)
-		local l2, w2, b2, sits2, up2 = placeAmong(obstaclesFor(nil, tl2, pw2, strips2))
-		if sits2 >= 2 and sits2 > sits then
-			aside = true
-			topLeft, panelW, strips, sits = tl2, pw2, strips2, sits2
-			vitalsLeft, vitalsW, vitalsBottom, stacked = l2, w2, b2, up2
-		end
-	end
-	Vitals.SetColumnAside(aside)
-	-- ... and on the party pad, where even then the card has no slot (beside the strips and the gift right of the middle
-	-- 175 px stay at 700 x 394, under the 189 the card needs; under them DASH), it steps aside while the party panel
-	-- shows, as under a dock: never on the keys nor off the screen (no damage comes on the pad; in a match it stays)
 	local noRoom = sits < 2 and hasPanel and shortPhone and not inMatch and not inBattle
 	if (S.vitalsOwners.Room == true) ~= noRoom then
 		S.vitalsOwners.Room = noRoom or nil
@@ -1322,14 +1281,14 @@ local function applyMargins(animate, force)
 	-- a card that rose into the top-right stack (Vitals.Sweep) is no bottom block: read as one (BottomLeftTop at its top,
 	-- near the screen's top) it left the tutorial no row under the top-left panel nor beside it, and its chip fell back to
 	-- the right of the tile column - onto the panel that took the corner. The bottom block keeps the card's home slot (its
-	-- spot at the foot, as when it sits there), and the card counts in the top-right block (TopRightLeft / TopRightBottom,
-	-- its wood edge with it): what docks there (the tutorial's strip, the toasts, the boost chips) keeps clear of it
+	-- spot at the foot, as when it sits there).
+	-- (kitb-bl-hud look0 N3) TopRightLeft / TopRightBottom stay the strips' and the gift's, as on kit-b: counting the risen
+	-- card there pushed the match's result card under it (NotifyController sizes the card to the room under TopRightBottom
+	-- when it opens), and at 640 x 360 - 720 x 405 the VICTORY card dropped its 'Time' row. The result card lies over the
+	-- vitals card's slot there, and NotifyController steps the vitals card aside meanwhile, as on kit-b
 	local bottomBlockTop = vitalsTop
 	if stacked and UI.Vitals and UI.Vitals.Visible and vitalsTop < area.Y / 2 then
 		bottomBlockTop = bottom0 - vitalsH * k
-		local x0 = vitalsLeft - K.VITALS_EDGE
-		topRightLeft = topRightLeft > 0 and math.min(topRightLeft, x0) or x0
-		topRightBottom = math.max(topRightBottom, vitalsBottom + K.VITALS_EDGE)
 	end
 
 	setPadding("TopLeft", topLeft, K.EDGE, 0, 0, animate)
@@ -1347,12 +1306,7 @@ local function applyMargins(animate, force)
 		topW = math.max(topW, K.TITLE_W)
 	end
 	publish("HudScale100", k * 100)
-	-- (re-verify, U1) the panel that took the corner while the tiles stepped aside (a match on a short phone): its right
-	-- edge as drawn, its hard shadow (SignKit's window shadow) with it - the tutorial's quest strip docks GAP right of this
-	-- edge and its own wood edge reached 0.4 px from the shadow at 800 x 360 / 812 x 375. Elsewhere the box's edge, as on
-	-- kit-b (the neighbours' measured gaps there stay as they were)
-	local shadowW = aside and SignKit.Px(Theme.Finish and Theme.Finish.Window or 0, k) * k or 0
-	publish("TopLeftRight", topH > 0 and (topLeft + topW * k + shadowW) or 0)
+	publish("TopLeftRight", topH > 0 and (topLeft + topW * k) or 0)
 	publish("TopLeftBottom", topH > 0 and (K.EDGE + topH * k) or 0)
 	publish("TopRightBottom", topRightBottom)
 	publish("TopRightLeft", topRightLeft)
