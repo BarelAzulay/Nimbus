@@ -69,6 +69,9 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     buttons and rings (a match: no chip; a dungeon party's chip in its spot: hidden), B2 its X
                     a 44 px hit box 16 px or more off '...', B3 its words whole, >= 14.4 px on a phone, the place and its
                     distance. (Its frame-by-frame rules - one rect on every camera move, the needle - are guide_pins')
+  N1  kit-b backlog 21 / 31 the NPC dialog 77 px past the right edge at 360 x 640, into Roblox's top band at 640 x 360 /
+                    667 x 375. Rule: every NPC's dialog wholly on the screen, under the top band, MIN_GAP off DASH and RUN,
+                    at those sizes, 375 x 667, 390 x 844, 844 x 390 and 1280 x 720 (NPC 1 at the gate sizes)
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -90,7 +93,7 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "B0", "B1", "B2", "B3"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "B0", "B1", "B2", "B3", "N1"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -1029,9 +1032,48 @@ def pin_B(c, sizes):
         c.cache.clear()
 
 
+# ---------------------------------------------------------------------------------------------------------------- N1
+# (kit-b backlog 21 / 31, branch kitb-bl-hud: the chip-b looks saw the NPC dialog run off the right edge at 360 x 640 and
+# reach Roblox's top band at 640 x 360 and 667 x 375, "may be an artefact of the render tool", never judged) the dialog
+# (NimbusNpcDialog, IgnoreGuiInset off: its gui starts under the top band) paints all its ink - the card, its name plank,
+# its buttons - on the screen and under the top band (the dump's inset), for every NPC at the sizes the looks named and
+# the controls, and for NPC 1 at the gate sizes
+N1_NPCS = ["npc:1", "npc:2", "npc:3", "npc:4", "npc:5", "npc:6"]
+N1_SIZES = [(360, 640), (640, 360), (667, 375), (375, 667), (390, 844), (844, 390), (1280, 720)]
+
+
+def pin_N1(c, sizes):
+    runs = [(s, w, h) for s in N1_NPCS for (w, h) in N1_SIZES]
+    runs += [("npc:1", w, h) for (w, h) in sizes if (w, h) not in N1_SIZES]
+    for scen, w, h in runs:
+        d = c.dump(scen, w, h)
+        nodes = c.nodes(d)
+        top = float(d.get("inset", 0) or 0)
+        roots = [(p, n) for p, n in nodes.items() if p.startswith("NimbusNpcDialog.") and p.count(".") == 1 and float(n["w"]) > 1]
+        ink = [r for _, n in roots for r in c.BH.ink_of(n, c.RG, c.fonts)]
+        if not c.check("N1", bool(ink), "N1 %s %dx%d: the NPC dialog shows" % (scen, w, h)):
+            continue
+        u = c.BH.union(ink)
+        right, foot, left = u[2] - w, u[3] - h, -u[0]
+        high = top - u[1]
+        c.check("N1", max(right, foot, left) <= 0.5, "N1 %s %dx%d: the NPC dialog is wholly on the screen" % (scen, w, h),
+                "dialog ink %s on %dx%d: %.1f px past the right edge, %.1f past the left, %.1f past the foot" % (fmt(u), w, h, right, left, foot))
+        c.check("N1", high <= 0.5, "N1 %s %dx%d: the NPC dialog stays under Roblox's top band (y >= %.0f)" % (scen, w, h, top),
+                "dialog ink %s: its top %.1f px into the band" % (fmt(u), high))
+        # ... and where it moves to stay on the screen, it never lies on the touch keys (battle_hud_no_overlap's MIN_GAP)
+        for key in ("DashButton", "RunButton"):
+            kn = nodes.get("MobileControls." + key)
+            kink = c.BH.ink_of(kn, c.RG, c.fonts) if kn and float(kn["w"]) > 1 else None
+            if kink:
+                g = min(c.BH.gap(a, b) for a in ink for b in kink)
+                c.check("N1", g >= c.BH.MIN_GAP - 0.05, "N1 %s %dx%d: the NPC dialog keeps %g px off %s" % (scen, w, h, c.BH.MIN_GAP, key),
+                        "dialog ink %s, key %s: %.1f px" % (fmt(u), fmt(c.BH.union(kink)), g))
+        c.cache.clear()
+
+
 RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
        "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1, "U2": pin_U2,
-       "B0": pin_B, "B1": pin_B, "B2": pin_B, "B3": pin_B}
+       "B0": pin_B, "B1": pin_B, "B2": pin_B, "B3": pin_B, "N1": pin_N1}
 
 
 def parse_sizes(text):
