@@ -668,7 +668,9 @@ def pin_U1(c, sizes):
 # kit-b already has goes to the backlog), measured by this pin on kit-b's src with these tools (the tutorial chip / strip /
 # card 1.6 - 2.4 px off the match / party panel on landscape phones and PC, the landscape chip on the wallet strip, the
 # portrait chip on the column's fold tab at 320 - 384 wide): such a case passes while its gap is no worse than kit-b's and
-# fails as soon as it gets worse; every other case keeps MIN_GAP.
+# fails as soon as it gets worse; every other case keeps MIN_GAP. (kit-b backlog items 7 / 8) The fixture's U1 key is
+# empty: its 142 landscape rows closed with those items, its 242 portrait rows (320 - 430 x 568 / 640 / 720) keep MIN_GAP
+# on kit-b 3d165fa already (build/GATE_BL/tutorial/pins/u1_backlog_rows_kitb.txt), so every case keeps MIN_GAP.
 U1_STATES = ["tutorial:8:match:1", "tutorial:8:match:2", "tutorial:8:match:3", "tutorial:8:match:4", "tutorial:8:match:full",
              "tutorial:7:party", "tutorial:7:party:leader", "tutorial:8:countdown"]
 U1_SWEEP = [(w, h) for h in (568, 640, 720) for w in (320, 340, 360, 375, 384, 393, 400, 412, 430)]
