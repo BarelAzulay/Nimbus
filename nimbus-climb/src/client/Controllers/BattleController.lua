@@ -6866,7 +6866,12 @@ function Hud.Rebuild()
 		-- beside the fighter card: the card narrows to keep its shadow and K.CARD_GAP_PX between them (never under the
 		-- 208 a narrow card keeps beside the strips)
 		local listX0 = m.W - K.EDGE - K.ROW_W_COMPACT
-		local keep = math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / max(0.05, m.F))
+		-- (kit-b backlog 9: the ring's card across the top put its list beside the fighter card, and the locked row's gold
+		-- target bracket, 4 design px and its 2 px stroke out of the row, came 7.4 / 5.5 px from the card's shadow at
+		-- 393 x 852 / 412 x 915) and at least the bracket's reach, its stroke, a px of snapping and the list's 8 px of air
+		-- (no more: at 390 x 844 a card 3 design px narrower cut 'Biscuit Bear')
+		local keep = max(math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / max(0.05, m.F)),
+			math.ceil((K.SHADOW_PX + 2 + 1 + 8) / max(0.05, m.F)) + 4)
 		if K.EDGE + cardW + keep > listX0 and listX0 - keep - K.EDGE >= 208 then
 			Hud.fcW = max(208, floor(listX0 - keep - K.EDGE))
 			cardW = Hud.fcW
@@ -8458,10 +8463,23 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- (keys look r3: the clock came and went with the card's width alone: none on 640 x 360's duel card or 667 x 375's
 		-- and 844 x 390's, with 70 px free there) a narrow card's clock wherever the mode line's whole text still fits beside
 		-- it at the size it is drawn (Hud.SetFit keeps the whole line first: the clock never costs it words)
-		local text = tostring((Hud.ModeText(B)) or "")
-		local okM, mM = pcall(Theme.Measure, text, "Heading", px(20))
-		local need = (okM and typeof(mM) == "Vector2" and mM.X > 0) and (mM.X * 1.04 + 4) or textWidth(text, px(20))
-		showClock = right - timerW - 4 - 18 - 8 - x0 >= need
+		-- (kit-b backlog 9: at 844 x 390 the ring's 'Round 8 - Best 12' has no room even without the clock, so the card drew
+		-- 'Round 8' and still lost its clock) the form of the line the card draws without the clock (the whole line, else
+		-- Hud.ModeText's short forms) must fit beside it: the clock still never costs the line words
+		local text, _, shorts = Hud.ModeText(B)
+		local forms = { tostring(text or "") }
+		for _, t in ipairs(shorts or {}) do
+			forms[#forms + 1] = tostring(t)
+		end
+		local without = right - timerW - gapT - x0
+		for i, form in ipairs(forms) do
+			local okM, mM = pcall(Theme.Measure, form, "Heading", px(20))
+			local need = (okM and typeof(mM) == "Vector2" and mM.X > 0) and (mM.X * 1.04 + 4) or textWidth(form, px(20))
+			if need <= without or i == #forms then
+				showClock = right - timerW - 4 - 18 - 8 - x0 >= need
+				break
+			end
+		end
 	end
 	-- (P2 fix A: a portrait phone's 463 px strip cut a 20-character name beside the clock) any raid card: the clock only
 	-- where the boss's whole name fits beside it at the name's floor size, after the RAID tag where the tag shows
@@ -10118,8 +10136,11 @@ end
 function Hud.BandMode(B, m)
 	-- (keys lane, look fixA r1 minor: the duel's one-row card dropped to the middle left at 390 x 844, between the helpers
 	-- and the enemy list, and at 360 x 640 the list lay on the fighter card) a duel's card is placed as the raid's and the
-	-- dungeon's: the strip across the top, the team and the list under it
-	return m.Compact == true and not m.Landscape and (Hud.BossUnit(B) ~= nil or B.Mode == "Duel")
+	-- dungeon's: the strip across the top, the team and the list under it. (kit-b backlog 9: the Champion Ring's rounds and
+	-- the trials fought as them kept the old card under the fighter card: at 360 x 640 enemy row 1 lay 15-18 px on the
+	-- fighter card and 'Round 8' read 'Ro...' in a 40 px box, at 390 x 844 the card lay 37.6 px on the fighter card) the
+	-- ring's card spans the top too
+	return m.Compact == true and not m.Landscape and (Hud.BossUnit(B) ~= nil or B.Mode == "Duel" or B.Mode == "Ring")
 end
 
 -- (P2 fix A) whether the fighter's block (the card and its helpers), its top at y (design px) under the boss strip, ends
