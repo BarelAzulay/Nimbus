@@ -1,0 +1,34 @@
+08:20:11 free 6.03 GB before hold060_travel_guide_plank
+08:21:15 hold060_travel_guide_plank: exit 1, 64 s: smoke test: 2344 passed, 8 failed, 0 warnings  (64.0s)
+08:22:12 free 6.21 GB before hold09_travel_guide_plank
+08:23:16 hold09_travel_guide_plank: exit 0, 63 s: smoke test: 2352 passed, 0 failed, 0 warnings  (63.0s)
+08:23:16 free 6.24 GB before hold095_travel_guide_plank
+08:24:21 hold095_travel_guide_plank: exit 0, 65 s: smoke test: 2352 passed, 0 failed, 0 warnings  (65.2s)
+08:24:21 free 6.15 GB before hold1_travel_guide_plank
+08:25:28 hold1_travel_guide_plank: exit 0, 67 s: smoke test: 2352 passed, 0 failed, 0 warnings  (66.6s)
+08:25:35 free 6.33 GB before hold07_travel_guide_plank
+08:26:39 hold07_travel_guide_plank: exit 1, 64 s: smoke test: 2349 passed, 3 failed, 0 warnings  (64.0s)
+08:26:39 free 6.13 GB before hold08_travel_guide_plank
+08:27:42 hold08_travel_guide_plank: exit 1, 63 s: smoke test: 2349 passed, 3 failed, 0 warnings  (63.0s)
+08:27:43 free 6.25 GB before hold085_travel_guide_plank
+08:28:47 hold085_travel_guide_plank: exit 1, 64 s: smoke test: 2350 passed, 2 failed, 0 warnings  (63.9s)
+08:29:35 free 6.28 GB before hold09_travel_guide_plank
+08:30:47 hold09_travel_guide_plank: exit 0, 73 s: smoke test: 2568 passed, 0 failed, 0 warnings  (72.5s)
+08:30:48 free 6.12 GB before hold095_travel_guide_plank
+08:32:13 hold095_travel_guide_plank: exit 0, 85 s: smoke test: 2568 passed, 0 failed, 0 warnings  (85.3s)
+08:32:13 free 6.27 GB before hold1_travel_guide_plank
+08:33:28 hold1_travel_guide_plank: exit 0, 75 s: smoke test: 2568 passed, 0 failed, 0 warnings  (74.6s)
+08:34:03 free 6.14 GB before hold09_travel_guide_plank
+08:36:54 hold09_travel_guide_plank: exit 1, 171 s: smoke test: 4291 passed, 5 failed, 0 warnings  (170.9s)
+08:36:54 free 6.29 GB before hold1_travel_guide_plank
+08:39:40 hold1_travel_guide_plank: exit 0, 165 s: smoke test: 4296 passed, 0 failed, 0 warnings  (165.1s)
+08:40:10 free 6.27 GB before hold095_fps30_travel_guide_plank
+08:42:57 hold095_fps30_travel_guide_plank: exit 0, 166 s: smoke test: 4296 passed, 0 failed, 0 warnings  (166.2s)
+08:42:57 free 6.29 GB before hold09_fps60_travel_guide_plank
+08:46:47 hold09_fps60_travel_guide_plank: exit 1, 230 s: smoke test: 4083 passed, 213 failed, 0 warnings  (229.4s)
+08:46:47 free 6.3 GB before hold095_fps60_travel_guide_plank
+08:50:16 hold095_fps60_travel_guide_plank: exit 1, 209 s: smoke test: 4073 passed, 223 failed, 0 warnings  (209.3s)
+08:50:17 free 6.29 GB before hold1_fps60_travel_guide_plank
+08:53:44 hold1_fps60_travel_guide_plank: exit 1, 207 s: smoke test: 4085 passed, 211 failed, 0 warnings  (206.6s)
+08:54:30 free 6.14 GB before hold10_fps30_travel_guide_plank
+08:56:33 hold10_fps30_travel_guide_plank: exit 1, 123 s: smoke test: 3194 passed, 22 failed, 0 warnings  (123.2s)

@@ -1,0 +1,3 @@
+﻿self vs self: landscape/PC: 205 identical (pixels and the chip's row), 0 differ | portrait: 0 identical (pixels and the chip's row), 0 differ
+one pixel changed in guidechip_party_800x450.png: landscape/PC: 204 identical (pixels and the chip's row), 1 differ | portrait: 0 identical (pixels and the chip's row), 0 differ
+SELFTEST PASS

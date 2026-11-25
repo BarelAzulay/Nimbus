@@ -1,0 +1,39 @@
+09:00:17 free 6.26 GB before smoke_travel_guide_plank
+09:01:48 smoke_travel_guide_plank: exit 0, 91 s: smoke test: 2892 passed, 0 failed, 0 warnings  (90.4s)
+09:01:48 free 6.3 GB before smoke_travel_guide_plank_wide
+09:01:56 smoke_travel_guide_plank_wide: exit 0, 8 s: smoke test: 750 passed, 0 failed, 0 warnings  (7.5s)
+09:01:56 free 6.31 GB before smoke_travel_guide_clear
+09:01:58 smoke_travel_guide_clear: exit 0, 2 s: smoke test: 568 passed, 0 failed, 0 warnings  (1.7s)
+09:01:58 free 6.3 GB before smoke_travel_shows_way
+09:02:00 smoke_travel_shows_way: exit 0, 2 s: smoke test: 448 passed, 0 failed, 0 warnings  (1.7s)
+09:02:00 free 6.28 GB before smoke_tutorial_dock_b
+09:02:02 smoke_tutorial_dock_b: exit 0, 2 s: smoke test: 456 passed, 0 failed, 0 warnings  (1.5s)
+09:02:02 free 6.3 GB before smoke_tutorial_fits_phone
+09:02:06 smoke_tutorial_fits_phone: exit 0, 4 s: smoke test: 631 passed, 0 failed, 8 warnings  (4.2s)
+09:02:07 free 6.29 GB before smoke_tutorial_signboard_skin
+09:02:08 smoke_tutorial_signboard_skin: exit 0, 1 s: smoke test: 424 passed, 0 failed, 0 warnings  (1.0s)
+09:02:08 free 6.26 GB before smoke_tutorial_pointer_kitb
+09:02:10 smoke_tutorial_pointer_kitb: exit 0, 2 s: smoke test: 447 passed, 0 failed, 0 warnings  (1.4s)
+09:02:10 free 6.3 GB before smoke_client_bug2tut_portrait
+09:02:11 smoke_client_bug2tut_portrait: exit 0, 1 s: smoke test: 409 passed, 0 failed, 0 warnings  (1.0s)
+09:02:11 free 6.24 GB before smoke_client_bug2tut_raidnext
+09:02:12 smoke_client_bug2tut_raidnext: exit 0, 1 s: smoke test: 406 passed, 0 failed, 0 warnings  (0.8s)
+09:02:12 free 6.27 GB before smoke_client_bug2tut_mouse
+09:02:13 smoke_client_bug2tut_mouse: exit 0, 1 s: smoke test: 428 passed, 0 failed, 0 warnings  (0.9s)
+09:02:14 free 6.3 GB before smoke_client_p3fixcli_tutorial
+09:02:16 smoke_client_p3fixcli_tutorial: exit 0, 3 s: smoke test: 415 passed, 0 failed, 0 warnings  (2.5s)
+09:02:16 free 6.3 GB before check_mjs
+09:02:17 check_mjs: exit 2, 0 s:     + FullyQualifiedErrorId : NativeCommandError
+09:02:17 free 6.3 GB before smoke_travel_guide_walk_lists
+09:10:19 smoke_travel_guide_walk_lists: exit 0, 482 s: smoke test: 1185 passed, 0 failed, 0 warnings  (482.0s)
+09:10:19 free 6.25 GB before smoke_guide_pins_lists
+09:11:03 free 6.07 GB before check_mjs
+09:11:07 check_mjs: exit 0, 4 s: checked 1186 files: 0 error(s), 8 warning(s)
+09:39:23 smoke_guide_pins_lists: exit 0, 1,744 s: smoke test: 2374 passed, 0 failed, 0 warnings  (1743.4s)
+09:39:23 free 6.13 GB before battle_hud_no_overlap
+09:41:18 battle_hud_no_overlap: exit 0, 115 s: battle_hud_no_overlap: 10062 passed, 0 failed  (113.2s)
+09:41:18 free 6.33 GB before stroke_walk_grid_neon
+09:54:59 stroke_walk_grid_neon: exit 0, 820 s: world rule: 0 hit(s) on world GUIs outside the W wave's backlog (16032 more in the backlog, 31 of its 31 lines seen)
+09:54:59 free 6.16 GB before look_pins_all
+10:53:26 look_pins_all: exit 0, 3,507 s: look_pins: 21 pins, 21 green, 0 red  (3507s)
+10:53:26 QUEUE DONE

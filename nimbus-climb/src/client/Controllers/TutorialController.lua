@@ -229,9 +229,13 @@ local K = {
 	GUIDE_HOLD_DEG = 10,
 	GUIDE_NEEDLE_STEP = 1 / 15,
 	-- (the owner's portrait pick of 2026-11-24, "steps aside for signs": asideWanted) a portrait chip hides while a shown
-	-- prompt plank stands within GUIDE_SIGN_KEEP px of its spot, back no sooner than GUIDE_SIGN_DWELL s after
+	-- prompt plank stands within GUIDE_SIGN_KEEP px of its spot, back only once its spot has been clear of every sign
+	-- for GUIDE_SIGN_DWELL s on end (the owner's pick of 2026-11-25: was 0.5 s from when it hid). 1.0 s covers the jumps
+	-- at the gate (Config.Physics: 6.9 studs, 0.53 s in the air; where the plank meets the spot only near the top, the
+	-- spot is clear for up to 0.93 s between two jumps 0.5 - 0.6 s apart) and tilts of 0.5 s each way: the smallest hold
+	-- with no blink in travel_guide_plank at 30 and 60 fps (0.9 s blinked there)
 	GUIDE_SIGN_KEEP = 6,
-	GUIDE_SIGN_DWELL = 0.5,
+	GUIDE_SIGN_DWELL = 1.0,
 	-- confetti (gui px at factor 1)
 	CONFETTI_SMALL = 26,
 	CONFETTI_BIG = 64,
@@ -3977,9 +3981,9 @@ end
 -- PlayerGui: the gate's 'TAP Enter', an NPC's 'Talk', any that shows - standing within GUIDE_SIGN_KEEP px of the chip's spot
 -- (its ink and its X's GUIDE_CLOSE px target, where it is drawn) takes the spot, as a card does (spotClaimed): the chip
 -- hides, its X with it (a tap on the sign never cancels the guide), the guide still running. Read every
--- GUIDE_NEEDLE_STEP s; back only SPOT_HOLD px clear and no sooner than GUIDE_SIGN_DWELL s after it stepped aside (no
--- flicker), in the same place: it never moves to dodge. A sign the camera carries is kept off by twice its move since
--- the last read more (where it is by the next read: it never reaches the chip between two reads). Landscape screens and
+-- GUIDE_NEEDLE_STEP s; back only once its spot has been SPOT_HOLD px clear of every sign for GUIDE_SIGN_DWELL s on end
+-- (no flicker: the owner's pick of 2026-11-25, was no sooner than that after it stepped aside), in the same place: it
+-- never moves to dodge. A sign the camera carries is kept off by twice its move since the last read more (where it is by the next read: it never reaches the chip between two reads). Landscape screens and
 -- a PC keep the band as they are: never aside there
 
 -- a shown prompt plank's rect on the screen (viewport px: the chip's ScreenGui ignores the inset) as the engine draws a
@@ -4046,7 +4050,7 @@ local function trackSigns()
 end
 
 -- whether the chip stands aside for a sign now (a portrait screen): one within the keep of its spot where it is drawn,
--- or one that left less than GUIDE_SIGN_DWELL s after it stepped aside
+-- or, once aside, its spot clear of every sign for less than GUIDE_SIGN_DWELL s
 local function asideWanted()
 	if not (G.portrait and G.home and G.w and G.h and G.e) then
 		return false
@@ -4065,10 +4069,13 @@ local function asideWanted()
 		local last = G.signSeen and G.signSeen[c]
 		local m = keep + 2 * (last and last.move or 0)
 		if r.x0 < s.x1 + m and s.x0 - m < r.x1 and r.y0 < s.y1 + m and s.y0 - m < r.y1 then
+			G.signAt = S.clock -- (the owner's pick of 2026-11-25) the spot's last read with a sign on it
 			return true
 		end
 	end
-	return G.aside == true and S.clock - (G.asideAt or 0) < K.GUIDE_SIGN_DWELL - 1e-6
+	-- (the owner's pick of 2026-11-25; look:portrait: counted from when it hid, a sign that left for a moment - a jump,
+	-- a quick tilt - let it back for 0.07 - 0.2 s) back only once the spot has been clear for the hold on end
+	return G.aside == true and S.clock - (G.signAt or 0) < K.GUIDE_SIGN_DWELL - 1e-6
 end
 
 -- the chip at its home (read again every K.LAYOUT_EVERY s, never on a camera move); the "You're here" slide lifts it
@@ -4082,7 +4089,7 @@ local function placeChip()
 	G.yielded = spotClaimed()
 	local aside = asideWanted()
 	if aside ~= (G.aside == true) then
-		G.aside, G.asideAt = aside, S.clock
+		G.aside = aside
 	end
 	local lift = math.floor((G.slide or 0) * (G.h + 2 * G.e) + 0.5)
 	chip.Position = UDim2.fromOffset(G.home.x, G.home.y - lift)
@@ -4180,7 +4187,7 @@ function Guide.Stop()
 	G.active = false
 	G.phase, G.id, G.spec, G.target, G.part = nil, nil, nil, nil, nil
 	G.slide, G.hereUntil, G.placeTimer, G.home, G.distance, G.distTimer, G.yielded = nil, nil, nil, nil, nil, nil, nil
-	G.claimTimer, G.claimRefs, G.aside, G.asideAt, G.signSeen = nil, nil, nil, nil, nil
+	G.claimTimer, G.claimRefs, G.aside, G.signSeen, G.signAt = nil, nil, nil, nil, nil
 	G.needle, G.stepIcon, G.stepTo, G.stepLeft, G.sprite = nil, nil, nil, nil, nil
 	G.look, G.bar, G.e, G.h, G.w, G.k, G.vp, G.portrait, G.short = nil, nil, nil, nil, nil, nil, nil, nil, nil
 	if G.gui then

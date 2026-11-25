@@ -1,0 +1,27 @@
+﻿travel_guide_plank, portrait (9 sizes x 2 tutorial states = 18 size-states): shown / stepped-aside changes per run, summed
+58a4c0e = the final pin run on 58a4c0e's source (red/red_final_pin_at_58a4c0e.txt); HEAD = verify/smoke_travel_guide_plank.txt
+
+run                                 58a4c0e   HEAD
+here                                      6      6
+here jumps                               92     18
+here tilt                                24     24
+jumps 0.2 s apart                       222     30
+jumps 0.5 s apart                       222     30
+jumps 0.5 s apart, a frame later        222     30
+jumps 0.6 s apart                       222     30
+jumps held                              124     30
+look steep                                0      0
+npc on spot                              36     36
+other                                    14     14
+sign leaves                              12     12
+slow tilt wobble 0.35 s                  28     16
+slow tilt wobble 0.7 s                   15     15
+tilt rock                                18     18
+tilt rock 0.3 s                          62     26
+tilt rock 0.5 s                          86     26
+tilt rock 0.5 s, 0.025 s later           86     26
+tilt rock 0.5 s, a frame later           78     24
+tilt rock 0.55 s                         82     28
+walk                                      6      6
+walk tilt                                10     10
+TOTAL                                  1667    455

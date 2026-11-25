@@ -1,0 +1,8 @@
+10:53:27 free 6.26 GB before render_before_58a4c0e
+11:00:27 render_before_58a4c0e: exit 0, 420 s: worldui:guidetilt            2560x1440  shown ink 2157.0,6.0-2483.0,52.0 3.8s
+11:00:27 free 6.29 GB before render_after_HEAD
+11:07:29 render_after_HEAD: exit 0, 423 s: worldui:guidetilt            2560x1440  shown ink 2157.0,6.0-2483.0,52.0 3.8s
+11:07:30 free 6.14 GB before pixel_compare
+11:07:33 pixel_compare: exit 0, 4 s: script / dump errors at B: 0 []
+11:07:34 free 6.13 GB before pixel_compare_selftest
+11:07:44 pixel_compare_selftest: exit 0, 10 s: SELFTEST PASS
