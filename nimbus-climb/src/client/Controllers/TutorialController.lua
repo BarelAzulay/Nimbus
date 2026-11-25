@@ -140,6 +140,9 @@ local K = {
 	EDGE = 12,
 	TOUCH_EDGE = 20,
 	GAP = 10,
+	-- (kit-b backlog items 6 / 7 / 8) a window's hard shadow (Theme.Finish.Window), design px past its box to the right and
+	-- down: the card's own, and the HUD's top-left panel's. GAP is kept off the ink, past it (box to box it left 0 - 2.4 px)
+	SHADOW = 8,
 	MIDDLE = 0.15, -- the screen middle the panel keeps out of: |dx| < 15% width and |dy| < 15% height
 	TYPE_CPS = 52, -- typewriter characters per second
 	TYPE_DELAY = 0.2,
@@ -781,13 +784,24 @@ local function hintHeight(width)
 	return K.HINT_H + (lines - 1) * math.ceil(HINT_MEASURE * 1.2), lines
 end
 
--- (kit-b backlog items 10 / 16: 'Pick Your Te...', 'Your Pet Gar...' on a narrow card at the 14.4 px floor) true when the
--- step's title does not fit one line of the header at K.TITLE_FLOOR - its floor on the smallest card (14 screen px at
--- 0.7) -, so it takes two lines there and the header one K.TITLE_LINE taller (applyGeometry, panelHeight)
-local function titleWraps(width)
+-- (kit-b backlog items 10 / 16: 'Pick Your Te...', 'Your Pet Gar...' on a narrow card at the 14.4 px floor) the lines the
+-- step's title takes in a card `width` design px wide: 1 where it fits one line of the header at K.TITLE_FLOOR - its floor
+-- on the smallest card (14 screen px at 0.7) -, else the lines it wraps to at that size (applyGeometry, panelHeight)
+local function titleLines(width)
 	local title = UI.StepTitle and UI.StepTitle.Text or ""
 	local room = width - (K.PAD + K.PORTRAIT + 12) - K.PAD
-	return title ~= "" and textWidth(title, K.TITLE_FLOOR, "Heading") + K.OUTLINE_ROOM > room
+	if title == "" or textWidth(title, K.TITLE_FLOOR, "Heading") + K.OUTLINE_ROOM <= room then
+		return 1
+	end
+	return math.max(2, wrapLines(title, K.TITLE_FLOOR, "Heading", room))
+end
+
+-- the header's extra design px for the title's lines: each line past the first is K.TITLE_LINE, but on a narrow card (no
+-- counter tag) the progress row moves up beside the fold block and the first two lines fit the header (applyGeometry)
+local function titleExtraOf(width, lines)
+	local headRoom = width - (K.PAD + K.PORTRAIT + 12) - K.PAD
+	local counterShown = headRoom >= K.COUNTER_W + 6 + K.FOLD_W
+	return math.max(0, lines - (counterShown and 1 or 2)) * K.TITLE_LINE
 end
 
 local function hintShown()
@@ -801,7 +815,7 @@ local function footerShown()
 end
 
 -- Design-pixel height of the expanded panel at `width` (cached per width + text), its body's and its hint's, and the
--- header's extra for a two-line title (titleWraps).
+-- header's extra for a title on more lines (titleLines, titleExtraOf).
 local function panelHeight(width)
 	local text = S.fullText or ""
 	local st = S.state
@@ -812,7 +826,7 @@ local function panelHeight(width)
 	end
 	local wellW = width - 2 * K.PAD - 2 * K.WELL_PAD
 	local bodyH = bodyHeight(text, wellW)
-	local titleExtra = titleWraps(width) and K.TITLE_LINE or 0
+	local titleExtra = titleExtraOf(width, titleLines(width))
 	local h = K.HEADER_H + titleExtra + 10 + bodyH + 8 + K.FOOT_PAD -- (kit B U9-9) the well ends above the stone lip
 	local hintH = K.HINT_H
 	if hintShown() then
@@ -1306,14 +1320,21 @@ end
 local function applyGeometry(width, height, bodyH, hintH, titleExtra)
 	titleExtra = titleExtra or 0
 	UI.Root.Size = UDim2.fromOffset(width, height)
-	-- (kit-b backlog items 10 / 16) a two-line title: the progress row and the text well one title line lower (written only
-	-- when they move: PixelCrisp keeps its whole-px nudge in their Scale)
+	-- (kit-b backlog items 10 / 16) a title on two lines or more (titleLines): on a narrow card, with no counter tag, the
+	-- progress row takes the tag's place left of the fold block and the title the progress row's, so two lines keep the
+	-- header's height (a short phone's card has no px to spare); the progress row and the text well titleExtra lower.
+	-- (written only when they move: PixelCrisp keeps its whole-px nudge in their Scale)
+	local x0 = K.PAD + K.PORTRAIT + 12
+	local headRoom = width - x0 - K.PAD
+	local counterShown = headRoom >= K.COUNTER_W + 6 + K.FOLD_W
+	local wraps = titleLines(width) > 1
+	local progUp = wraps and not counterShown
 	local function at(obj, x, y)
 		if obj.Position.X.Offset ~= x or obj.Position.Y.Offset ~= y then
 			obj.Position = UDim2.fromOffset(x, y)
 		end
 	end
-	at(UI.Progress, K.PAD + K.PORTRAIT + 12, 76 + titleExtra)
+	at(UI.Progress, x0, progUp and (K.TAG_Y + math.floor((K.TAG_H - K.PROG_H) / 2)) or (76 + titleExtra))
 	at(UI.Well, K.PAD, K.HEADER_H + titleExtra)
 	if UI.Well.Size.Y.Offset ~= -(K.HEADER_H + titleExtra + K.FOOT_PAD) then
 		UI.Well.Size = UDim2.new(1, -2 * K.PAD, 1, -(K.HEADER_H + titleExtra + K.FOOT_PAD))
@@ -1329,9 +1350,7 @@ local function applyGeometry(width, height, bodyH, hintH, titleExtra)
 	local cap = math.max(K.CAPTION_SIZE, math.ceil(14 / math.max(0.1, UI.Scale.Scale) - 1e-6))
 	-- narrow cards drop the counter tag (the progress row still shows the progress): the counter and the fold share the
 	-- row under the name plank (U9-9 look 2), the fold always shown
-	local x0 = K.PAD + K.PORTRAIT + 12
-	local headRoom = width - x0 - K.PAD
-	UI.CounterPill.Visible = headRoom >= K.COUNTER_W + 6 + K.FOLD_W
+	UI.CounterPill.Visible = counterShown
 	-- (U9-9 look 2) the name on its navy plank: as wide as the name at its size (measured as it shows, the Title role in
 	-- capitals) and its insets, never wider than the header; the name down to the caption size before it would cut, the
 	-- label TextScaled under that size (as the NPC's name), so the engine's own fit has the last word
@@ -1351,14 +1370,14 @@ local function applyGeometry(width, height, bodyH, hintH, titleExtra)
 	UI.Hint.TextSize = cap
 	UI.SkipLink.TextSize = cap
 	UI.ConfirmQuestion.TextSize = math.max(19, cap)
-	-- (kit-b backlog items 10 / 16) one line from TITLE_SIZE down to TITLE_FLOOR, else two lines at TITLE_FLOOR (titleWraps);
-	-- it was cut at the 14.4 px floor on a narrow card
-	local wraps = titleExtra > 0
+	-- (kit-b backlog items 10 / 16) one line from TITLE_SIZE down to TITLE_FLOOR, else its lines at TITLE_FLOOR
+	-- (titleLines); it was cut at the 14.4 px floor on a narrow card. Its box: from the title row's top to 1 px over the
+	-- well with the progress row moved up, or the row's 26 px; each line past those TITLE_LINE taller (titleExtra)
 	UI.StepTitle.TextWrapped = wraps
 	UI.StepTitle.TextYAlignment = wraps and Enum.TextYAlignment.Bottom or Enum.TextYAlignment.Center
-	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, 26 + titleExtra)
+	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, (progUp and (K.HEADER_H - 1 - 46) or 26) + titleExtra)
 	UI.StepTitle.TextSize = wraps and K.TITLE_FLOOR or fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_FLOOR, cap), "Heading", headRoom)
-	layoutProgress(headRoom)
+	layoutProgress(progUp and (headRoom - K.FOLD_W - 6) or headRoom)
 	-- narrow footers: "Skip tutorial" shortens to "Skip" and the Next button narrows, so they never overlap
 	local footerW = width - 2 * K.PAD - 2 * K.WELL_PAD
 	local shortSkip = footerW < K.SKIP_W + K.GAP + K.NEXT_W
@@ -1485,6 +1504,23 @@ local function layout()
 			-- below the HUD's top-right block (the currency strips) when they leave the top too narrow
 			positions[#positions + 1] = { Top = hud.TopRightBottom + K.GAP * k - K.PORTRAIT_Y * k, Left = nil }
 		end
+		-- (kit-b backlog item 6: on 360 x 640 / 384 x 640 the card could not open at any step, 375 x 667 at 18 of 21, so a
+		-- tap did nothing and the tutorial could not pass step 1: beside the wallet strip and the Gift tile the top row is
+		-- under PANEL_MIN_W, and under them the card has 160 - 180 px above RUN) a portrait phone's spot under the menu
+		-- column, its right edge GAP of air left of the touch keys past its shadow: down to Roblox's thumbstick (it may lie
+		-- over the vitals card, which steps aside - syncVitals - as for any card the player opens in the lobby)
+		local reach = area.Y > area.X and columnReach() or nil
+		if reach then
+			local keysX = nil
+			for _, r in ipairs(touchButtonRects()) do
+				keysX = math.min(keysX or r.x0, r.x0)
+			end
+			positions[#positions + 1] = {
+				Top = reach.y1 + (K.GAP + K.SHADOW) * k - K.PORTRAIT_Y * k,
+				Left = nil,
+				Right = keysX and (keysX - (K.GAP + K.SHADOW) * k) or nil,
+			}
+		end
 		local function try(pos, avoidBar, compact, lastResort)
 			S.compactCard = compact
 			local t = pos.Top
@@ -1493,8 +1529,12 @@ local function layout()
 			if hud.TopRightLeft > 0 and t < hud.TopRightBottom + K.GAP * k then
 				rightLimit = math.min(rightLimit, hud.TopRightLeft - K.GAP * k)
 			end
+			if pos.Right then
+				rightLimit = math.min(rightLimit, pos.Right)
+			end
 			local w2 = math.min(K.PANEL_W, math.floor((rightLimit - l) / k))
-			if w2 < K.PANEL_MIN_W then
+			-- (an in-place last resort may still be PANEL_MIN_W wide at 0.7: its search below)
+			if w2 < K.PANEL_MIN_W and not (lastResort == "inPlace" and (rightLimit - l) / 0.7 >= K.PANEL_MIN_W) then
 				return nil
 			end
 			local designH2 = panelHeight(w2)
@@ -1504,11 +1544,17 @@ local function layout()
 			end
 			local x1 = l + w2 * k
 			local floorY = area.Y - edge
-			for _, list in ipairs({ inputs, hard }) do
-				for _, r in pairs(list) do
-					if l < r.x1 and x1 > r.x0 then
-						floorY = math.min(floorY, r.y0 - K.GAP * k)
-					end
+			-- (kit-b backlog item 6) the touch keys and the thumbstick: GAP of air off the card's ink, its shadow included
+			-- (box to box, the shadow lay 1 px into RUN at 375 x 667 steps 7 / 11 / 14)
+			local s = K.SHADOW * k
+			for _, r in pairs(inputs) do
+				if l < r.x1 and x1 + s + K.GAP * k > r.x0 then
+					floorY = math.min(floorY, r.y0 - K.GAP * k - s)
+				end
+			end
+			for _, r in pairs(hard) do
+				if l < r.x1 and x1 > r.x0 then
+					floorY = math.min(floorY, r.y0 - K.GAP * k)
 				end
 			end
 			if avoidBar and bar and l < bar.x1 and x1 > bar.x0 then
@@ -1516,6 +1562,22 @@ local function layout()
 			end
 			if not lastResort and t + h2 <= floorY then
 				return { Width = w2, Left = l, Top = t, H = h2, Scale = k, Compact = compact }
+			elseif lastResort == "inPlace" then
+				-- (kit-b backlog item 6) shrunk just enough (never below 0.7) to fit where it stands, or not here: a card
+				-- shrunk to s may be (rightLimit - l) / s design px wide, its words on fewer lines, so a few widths are
+				-- tried and the largest scale that fits both ways wins
+				local best = nil
+				for _, sTry in ipairs({ k, (k + 0.7) / 2, 0.7 }) do
+					local w3 = math.min(K.PANEL_W, math.floor((rightLimit - l) / sTry))
+					if w3 >= K.PANEL_MIN_W then
+						local designH3 = panelHeight(w3)
+						local fit = math.min(k, (floorY - t) / designH3, (rightLimit - l) / w3)
+						if fit >= 0.7 and (best == nil or fit > best.Scale) then
+							best = { Width = w3, Left = l, Top = t, H = designH3 * fit, Scale = fit, Compact = compact }
+						end
+					end
+				end
+				return best
 			elseif lastResort then
 				-- shrink just enough (never below 0.7: body text 14 px) to keep the card on screen
 				local fit = math.max(0.7, math.min(k, (floorY - t) / designH2))
@@ -1535,6 +1597,11 @@ local function layout()
 			-- nothing else fits in the plain lobby: the compact card, shrunk just enough (the Next button and the
 			-- Skip link must stay reachable). With a party panel up (a short countdown) the bubble waits instead.
 			relaxed = try(positions[1], false, true, true)
+			-- (kit-b backlog item 6) where the top row is too narrow even for that (a short portrait phone), the first
+			-- other spot where the compact card fits shrunk in its place
+			for i = 2, #positions do
+				relaxed = relaxed or try(positions[i], false, true, "inPlace")
+			end
 		end
 		-- the variant that won decides whether the objective line is shown
 		S.compactCard = relaxed ~= nil and relaxed.Compact == true

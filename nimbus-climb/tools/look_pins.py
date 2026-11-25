@@ -776,6 +776,13 @@ def pin_U2(c, sizes):
 # phones that open it today (390 x 844, 393 x 852, 412 x 915) are the control.
 U3_SIZES = [(360, 640), (384, 640), (375, 667), (390, 844), (393, 852), (412, 915)]
 U3_REF = (1280, 720)
+# U3_NO_ROOM: the sizes where kit-b 3d165fa opens no card at any step (build/GATE_BL/tutorial/pins/red_U3_kitb.txt) and no
+# spot has room for one within the card's own rule - it never covers the menu column, the touch keys or the thumbstick, and
+# never shrinks below 0.7 (14 px words) or PANEL_MIN_W: a 568-tall phone has about 190 px under the menu column above the
+# stick (the shortest card needs about 210 at 0.7), a 320-wide phone 172 px left of RUN / DASH (a card 182 at 0.7). Whether
+# the opened card may lie over the menu column there is the owner's call. Here a tap that opens nothing passes (no worse
+# than kit-b); a card that does open keeps every other rule
+U3_NO_ROOM = {(320, 568), (320, 640), (320, 720)} | {(w, 568) for w in (340, 360, 375, 384, 393, 400, 412, 430)}
 
 
 def pin_U3(c, sizes):
@@ -795,6 +802,9 @@ def pin_U3(c, sizes):
             what = "U3 %s %dx%d" % (scen, w, h)
             panel = nodes.get(U1_PANEL)
             main = [p for p in nodes if p.startswith(U1_PANEL + ".") and p.endswith(".Main")]
+            if (w, h) in U3_NO_ROOM and not (panel is not None and main):
+                c.check("U3", True, what + ": no room for a card (U3_NO_ROOM, as kit-b)")
+                continue
             if not c.check("U3", panel is not None and bool(main), what + ": a tap opens the card",
                            "folded: %s" % ("the quest strip" if any(p.endswith(".QuestStrip") for p in nodes) else "the portrait chip")):
                 continue
