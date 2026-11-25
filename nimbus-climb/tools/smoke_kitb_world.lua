@@ -1948,6 +1948,14 @@ local function clientScenarios()
 	-- 0.3 - 1.3 s, the gate's plank not shown); 375 x 640 joins the sizes; the strip docks at 340 / 360 / 375 / 384 / 400
 	-- x 640 and 375 x 667 (a setup check). At 320 x 568 with the strip docked the chip stood on the menu column's tiles
 	-- (look:chipB: 0 of 30 frames shown, a card yield for the whole guide): its home is under the strip there)
+	-- (the owner's pick of 2026-11-25, look:portrait's first old major, "chatter": the chip came back for 0.07 - 0.2 s
+	-- between two asides when the player jumped at the gate with the plank shown, on tilts 0 - 20 degrees and back in
+	-- 0.5 s or less, and on a slow tilt with a hand's wobble, as its 0.5 s hold counted from when it hid, not from when the
+	-- sign left. A chip that stepped aside now comes back only once its spot has been clear of every sign (the keep, the
+	-- 12 px hold and the move margin) for the clear hold on end, in the same place; it still hides at once. New portrait
+	-- runs: six jumps at the gate (the real jump: Config.Physics) 0.03 / 0.2 / 0.5 s apart, jumps through "You're here",
+	-- tilt rocks of 0.3 and 0.5 s each way, slow tilts with a wobble; a shown chip is never on a sign past the frame after
+	-- its pop-in; 'sign leaves' / 'npc on spot' come back the clear hold after the sign goes)
 	----------------------------------------------------------------------------------------------------------------
 	local function plankRun(scen, SIZES, STATES)
 		local Config = shared("Config")
@@ -2138,6 +2146,32 @@ local function clientScenarios()
 		local ok, err = pcall(function()
 			T.check(lift ~= nil, "guide plank: (setup) GateService's Altar prompt Lift", tostring(lift))
 			methods.WorldToViewportPoint, methods.WorldToScreenPoint = project, project
+			-- (the owner's pick of 2026-11-25, look:portrait's first old major) the player's real jump at the gate: Config.Physics'
+			-- JumpPower and Gravity (52 and 196.2: 6.9 studs up, 0.53 s in the air), `n` jumps from `from` s, `rest` s on the
+			-- ground between two; the camera follows the head (the stock camera: its subject rises with the character)
+			local PH = Config.Physics
+			local V0, GRAV = PH.JumpPower, PH.Gravity
+			local AIR = 2 * V0 / GRAV
+			local function jumps(n, rest, from)
+				return function(t)
+					local p = t - from
+					local k = math.floor(p / (AIR + rest))
+					if p < 0 or k >= n then
+						return 0
+					end
+					local q = p - k * (AIR + rest)
+					return q < AIR and math.max(0, V0 * q - 0.5 * GRAV * q * q) or 0
+				end
+			end
+			-- the camera rocked 0 <-> `amp` degrees up, `half` s each way, `n` times, then level
+			local function rock(amp, half, n)
+				return function(t)
+					if t >= 2 * half * n then
+						return 0
+					end
+					return amp * (1 - abs(((t / half) % 2) - 1))
+				end
+			end
 			local MODES = {
 				{ name = "walk", dist = 11, secs = 1 },
 				{ name = "walk tilt", dist = 11, secs = 1.5, tilt = function(t)
@@ -2164,10 +2198,31 @@ local function clientScenarios()
 				-- (portrait only: a landscape chip keeps the band, the pick) an NPC's Talk plank on the chip's middle from 0.3 to
 				-- 1.3 s, the gate's plank not shown: the chip steps aside for it and comes back in the same place
 				{ name = "npc on spot", dist = 11, secs = 2.5, onSpot = { 0.3, 1.3 }, noGate = true, portrait = true },
+				-- (the owner's pick of 2026-11-25, portrait only; look:portrait's first old major: the chip came back for 0.07 -
+				-- 0.2 s between two asides on these, as the 0.5 s hold counted from when it hid, not from when the sign left; the
+				-- 'tilt rock' above, 1.5 s each way, never showed it) the player jumping at the gate with its plank shown, six
+				-- jumps in a row, 0.03 s (jump held), 0.2 s and 0.5 s on the ground between two, at 11 studs; jumps through
+				-- "You're here" (7 studs); the camera rocked 0 <-> 20 degrees up 0.3 s and 0.5 s each way, four times; a slow
+				-- tilt 0 -> 20 degrees over 10 s with a hand's wobble of +-1.5 degrees every 0.7 s and every 0.35 s
+				{ name = "jumps held", dist = 11, secs = 0.5 + 6 * (AIR + 0.03) + 1, rise = jumps(6, 0.03, 0.5), portrait = true },
+				{ name = "jumps 0.2 s apart", dist = 11, secs = 0.5 + 6 * (AIR + 0.2) + 1, rise = jumps(6, 0.2, 0.5), portrait = true },
+				{ name = "jumps 0.5 s apart", dist = 11, secs = 0.5 + 6 * (AIR + 0.5) + 1, rise = jumps(6, 0.5, 0.5), portrait = true },
+				{ name = "here jumps", dist = 7, secs = 3, rise = jumps(5, 0.03, 0.1), portrait = true },
+				{ name = "tilt rock 0.3 s", dist = 11, secs = 2.4 + 1, tilt = rock(20, 0.3, 4), portrait = true },
+				{ name = "tilt rock 0.5 s", dist = 11, secs = 4 + 1, tilt = rock(20, 0.5, 4), portrait = true },
+				{ name = "slow tilt wobble 0.7 s", dist = 11, secs = 10, tilt = function(t)
+					return 20 * t / 10 + 1.5 * math.sin(2 * math.pi * t / 0.7)
+				end, portrait = true },
+				{ name = "slow tilt wobble 0.35 s", dist = 11, secs = 10, tilt = function(t)
+					return 20 * t / 10 + 1.5 * math.sin(2 * math.pi * t / 0.35)
+				end, portrait = true },
 			}
 			-- (the owner's portrait case) the sizes where the tutorial's quest strip docks on the vitals stack, the chip over it
 			local STRIP_AT = { ["340x640"] = true, ["360x640"] = true, ["375x640"] = true, ["375x667"] = true, ["384x640"] = true, ["400x640"] = true }
-			local KEEP, HOLD, DWELL, READ = 6, 12, 0.5, 1 / 15
+			-- (the owner's pick of 2026-11-25) CLEAR: a chip that stepped aside comes back only once its spot has been clear of
+			-- every sign for CLEAR s on end (TutorialController's GUIDE_SIGN_DWELL; was 0.5 s counted from when it hid). DWELL
+			-- stays the owner's "each state 0.5 s or more"
+			local KEEP, HOLD, DWELL, READ, CLEAR = 6, 12, 0.5, 1 / 15, 0.6
 			for _, size in ipairs(SIZES) do
 				local touch = math.min(size[1], size[2]) <= 500
 				local portrait = size[2] > size[1]
@@ -2222,10 +2277,15 @@ local function clientScenarios()
 						end
 						local t, worst, worstAt, frames, shownFrames, gateFrames = 0, math.huge, nil, 0, 0, 0
 						local hereShown, hereFrames, hereGap, hereAt = 0, 0, nil, "-"
-						local placed, left = false, nil
+						local placed, left, onSign = false, nil, nil
 						local rec = {} -- (the owner's portrait rule) every frame: t, shown, the chip's rect, its phase and row, the planks
 						while t < mode.secs - 1e-6 do
 							local cf = mode.steep and camSteep() or camAtTilt(mode.tilt and mode.tilt(t) or 0)
+							if mode.rise then -- (a jump) the character up, the camera with it
+								local up = Vector3.new(0, mode.rise(t), 0)
+								cf = cf + up
+								Mock.Teleport(player, CFrame.lookAt(at, at + dir) + up)
+							end
 							camObj.CFrame = cf
 							KC.advance(1 / 30)
 							camObj.CFrame = cf
@@ -2286,6 +2346,10 @@ local function clientScenarios()
 								for _, e in ipairs(cards) do
 									local card = PC.CardOf(e.prompt)
 									local r = card and card.Enabled and billboard(card)
+									-- (the owner's pick of 2026-11-25) on the plank: only on its pop-in's frame and the next
+									if r and not onSign and gapOf(c, r) < 0 and t > e.from + 1 / 30 + 1e-6 then
+										onSign = fmt("%.2f s (%s): chip %s, %s plank %s (shown from %.2f s)", t, tostring(phase), show(c), e.prompt.ActionText, show(r), e.from)
+									end
 									if r and t >= e.from + 0.1 - 1e-6 then
 										local g = gapOf(c, r)
 										if e.prompt == prompt then
@@ -2381,15 +2445,21 @@ local function clientScenarios()
 								if g and g < KEEP + HOLD + 2 then
 									lastNear = f.t
 								end
+								-- (the owner's pick of 2026-11-25: back only after the spot was clear for CLEAR s, so a hidden frame
+								-- now lies up to CLEAR + 2/15 s after the last sign near its spot, not DWELL + 2/15 s; still only for
+								-- a sign)
 								if pre[i] and not f.vis then
 									hidden = hidden + 1
-									if not why and (not lastNear or f.t - lastNear > DWELL + 2 * READ + 1e-6) then
+									if not why and (not lastNear or f.t - lastNear > CLEAR + 2 * READ + 1e-6) then
 										why = fmt("%.2f s (%s): hidden, chip %s; %s", f.t, tostring(f.phase), show(f.c),
 											lastNear and fmt("the last sign near its spot at %.2f s", lastNear) or "no sign near its spot")
 									end
 								end
 							end
-							T.check(why == nil, tag .. ": the chip hides only for a sign (a prompt plank on its spot, the 0.5 s hold after it)", why or fmt("%d frames stepped aside", hidden))
+							T.check(why == nil, tag .. ": the chip hides only for a sign (a prompt plank on its spot, the clear hold after it)", why or fmt("%d frames stepped aside", hidden))
+							-- (the owner's pick of 2026-11-25) a sign never sits on a shown chip: only on a plank's pop-in frame
+							-- and the next (the chip reads the signs every 1/15 s), never as the camera or a jump brings it on
+							T.check(onSign == nil, tag .. ": a shown chip is never on a sign past the frame after the sign's pop-in", onSign or "")
 							-- no show / hide chatter: every state between two changes (before the slide out) lasts 0.5 s or more
 							local prevVis, runFrom, onChange, chatter, changes = nil, nil, false, nil, {}
 							for i, f in ipairs(rec) do
@@ -2426,8 +2496,11 @@ local function clientScenarios()
 							end
 							if aside then
 								local r0 = back and firstRect[back.phase]
-								T.check(back ~= nil and back.t - left <= DWELL + 2 * READ + 1e-6 and r0 ~= nil and abs(back.c.X - r0.X) <= 0.5 and abs(back.c.Y - r0.Y) <= 0.5,
-									tag .. ": the chip comes back in the same place within 0.5 s + 2/15 s of the sign going",
+								-- (the owner's pick of 2026-11-25: was "within 0.5 s + 2/15 s of the sign going"; now the spot must be
+								-- clear for CLEAR s first, so it comes back CLEAR s after, give or take a read)
+								T.check(back ~= nil and back.t - left <= CLEAR + 2 * READ + 1e-6 and back.t - left >= CLEAR - 2 * READ - 1e-6 and r0 ~= nil
+									and abs(back.c.X - r0.X) <= 0.5 and abs(back.c.Y - r0.Y) <= 0.5,
+									tag .. ": the chip comes back in the same place once its spot has been clear for the hold (+- 2/15 s)",
 									back and fmt("back at %.2f s (the sign went at %.2f s): %s, its spot %s", back.t, left, show(back.c), r0 and show(r0) or "-") or "never back")
 							elseif mode.leaveAt then
 								T.info(fmt("*%s: the chip showed when the gate's plank went (no sign on its spot)", tag))

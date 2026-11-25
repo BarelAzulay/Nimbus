@@ -1,0 +1,4 @@
+08:16:25 free 6.24 GB before red_travel_guide_plank
+08:17:26 red_travel_guide_plank: exit 1, 61 s: smoke test: 2232 passed, 120 failed, 0 warnings  (60.4s)
+08:17:56 free 6.11 GB before red_travel_guide_plank
+08:19:01 red_travel_guide_plank: exit 1, 64 s: smoke test: 2232 passed, 120 failed, 0 warnings  (64.1s)
