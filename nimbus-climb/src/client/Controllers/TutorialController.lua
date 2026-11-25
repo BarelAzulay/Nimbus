@@ -109,6 +109,10 @@ local K = {
 	FOOTER_H = 48,
 	NAME_SIZE = 30,
 	TITLE_SIZE = 22,
+	-- (kit-b backlog items 10 / 16) a step title that does not fit one line at TITLE_FLOOR (its 14 screen px floor on the
+	-- smallest card, 0.7) takes two lines at that size, the header TITLE_LINE taller (it was cut at 14.4 px: 'Pick Your Te...')
+	TITLE_FLOOR = 20,
+	TITLE_LINE = 24,
 	BODY_SIZE = 20,
 	CAPTION_SIZE = 18,
 	BUTTON_SIZE = 22,
@@ -745,19 +749,45 @@ local function fitTextSize(text, size, minSize, role, room)
 	return size
 end
 
+-- (kit-b backlog item 10) the lines `text` wraps to at `size` in `width` design px, word by word as the engine wraps it,
+-- each line measured as it shows (textWidth: the titles' measure) with its glyph outline's room
+local function wrapLines(text, size, role, width)
+	local lines, line = 0, nil
+	for sep, word in string.gmatch(text, "(%s*)(%S+)") do
+		local try = line and (line .. sep .. word) or word
+		if line and textWidth(try, size, role) + K.OUTLINE_ROOM > width then
+			lines, line = lines + 1, word
+		else
+			line = try
+		end
+	end
+	return lines + (line and 1 or 0)
+end
+
 -- (U9-9 look) the objective line wraps to a second line rather than cut its words (it was "Tap the glowing Pet..." on a
 -- portrait phone): measured at the size it takes on the smallest card (14 screen px at 0.7) with the room the distance
--- suffix needs, so the card never jumps in height as the player walks. Returns its row's design height and its lines
+-- suffix needs, so the card never jumps in height as the player walks. Returns its row's design height and its lines.
+-- (kit-b backlog item 10: 13 objective lines ran past a one-line row - 960 x 540 '...then Food' / 'Machine' - where
+-- TextService's wrapped height was read as one line; and a third line was never counted) its lines counted word by word
+-- (wrapLines), as many as it takes
 local HINT_MEASURE = math.max(K.CAPTION_SIZE, math.ceil(14 / 0.7 - 1e-6))
 local function hintHeight(width)
 	local st = S.state
 	local text = st and (st.Hint or DEFAULT_HINTS[st.CompleteOn]) or ""
 	if st and type(st.Target) == "table" and WORLD_KINDS[st.Target.Kind] then
-		text = text .. "  9483  you're here!"
+		text = text .. "  \194\183  you're here!" -- (kit-b backlog item 10: the middle dot, as the live line has it; it was the bytes 1, "94", 1, "83")
 	end
-	local ok, size = pcall(Theme.Measure, BULLET .. text, "Label", HINT_MEASURE, width)
-	local lines = (ok and typeof(size) == "Vector2" and size.Y > HINT_MEASURE * 1.5) and 2 or 1
+	local lines = math.max(1, wrapLines(BULLET .. text, HINT_MEASURE, "Label", width))
 	return K.HINT_H + (lines - 1) * math.ceil(HINT_MEASURE * 1.2), lines
+end
+
+-- (kit-b backlog items 10 / 16: 'Pick Your Te...', 'Your Pet Gar...' on a narrow card at the 14.4 px floor) true when the
+-- step's title does not fit one line of the header at K.TITLE_FLOOR - its floor on the smallest card (14 screen px at
+-- 0.7) -, so it takes two lines there and the header one K.TITLE_LINE taller (applyGeometry, panelHeight)
+local function titleWraps(width)
+	local title = UI.StepTitle and UI.StepTitle.Text or ""
+	local room = width - (K.PAD + K.PORTRAIT + 12) - K.PAD
+	return title ~= "" and textWidth(title, K.TITLE_FLOOR, "Heading") + K.OUTLINE_ROOM > room
 end
 
 local function hintShown()
@@ -770,17 +800,20 @@ local function footerShown()
 	return not S.finale
 end
 
--- Design-pixel height of the expanded panel at `width` (cached per width + text), its body's and its hint's.
+-- Design-pixel height of the expanded panel at `width` (cached per width + text), its body's and its hint's, and the
+-- header's extra for a two-line title (titleWraps).
 local function panelHeight(width)
 	local text = S.fullText or ""
 	local st = S.state
-	local key = tostring(width) .. "|" .. text .. "|" .. tostring(hintShown()) .. "|" .. tostring(footerShown()) .. "|" .. tostring(st and st.Step)
+	local title = UI.StepTitle and UI.StepTitle.Text or ""
+	local key = tostring(width) .. "|" .. text .. "|" .. tostring(hintShown()) .. "|" .. tostring(footerShown()) .. "|" .. tostring(st and st.Step) .. "|" .. title
 	if S.heightKey == key then
-		return S.heightValue, S.bodyValue, S.hintValue
+		return S.heightValue, S.bodyValue, S.hintValue, S.titleExtraValue
 	end
 	local wellW = width - 2 * K.PAD - 2 * K.WELL_PAD
 	local bodyH = bodyHeight(text, wellW)
-	local h = K.HEADER_H + 10 + bodyH + 8 + K.FOOT_PAD -- (kit B U9-9) the well ends above the stone lip
+	local titleExtra = titleWraps(width) and K.TITLE_LINE or 0
+	local h = K.HEADER_H + titleExtra + 10 + bodyH + 8 + K.FOOT_PAD -- (kit B U9-9) the well ends above the stone lip
 	local hintH = K.HINT_H
 	if hintShown() then
 		hintH = hintHeight(wellW)
@@ -789,8 +822,8 @@ local function panelHeight(width)
 	if footerShown() then
 		h = h + K.FOOTER_H
 	end
-	S.heightKey, S.heightValue, S.bodyValue, S.hintValue = key, h, bodyH, hintH
-	return h, bodyH, hintH
+	S.heightKey, S.heightValue, S.bodyValue, S.hintValue, S.titleExtraValue = key, h, bodyH, hintH, titleExtra
+	return h, bodyH, hintH, titleExtra
 end
 
 -- MenuController's column (or the union of its MenuButton_* tiles) in our gui coordinates.
@@ -1229,7 +1262,18 @@ local function placeStrip(w, chip)
 	UI.StripCount.Position = UDim2.fromOffset(x1 - countW, pad)
 	UI.StripCount.Size = UDim2.fromOffset(countW, titleH)
 	local titleW = math.max(20, colW - countW - 8)
-	UI.StripTitle.TextSize = fitTextSize(UI.StripTitle.Text, K.STRIP_TITLE, K.STRIP_TITLE_MIN, "Heading", titleW)
+	local title = UI.StripTitle.Text
+	local size = fitTextSize(title, K.STRIP_TITLE, K.STRIP_TITLE_MIN, "Heading", titleW)
+	-- (kit-b backlog items 10 / 16: 'The Pet Ind...' at 640 x 360) a title that does not fit beside its count even at its
+	-- floor takes the count's room too: the strip drops "6/21" (its step cells still show the progress), as a narrow card
+	-- drops its counter tag
+	local showCount = textWidth(title, size, "Heading") + K.OUTLINE_ROOM <= titleW
+	UI.StripCount.Visible = showCount
+	if not showCount then
+		titleW = colW
+		size = fitTextSize(title, K.STRIP_TITLE, K.STRIP_TITLE_MIN, "Heading", titleW)
+	end
+	UI.StripTitle.TextSize = size
 	UI.StripTitle.Position = UDim2.fromOffset(x0, pad)
 	UI.StripTitle.Size = UDim2.fromOffset(titleW, titleH)
 	local stepsY = pad + titleH + 4
@@ -1258,9 +1302,22 @@ local function syncVitals(rect)
 	end
 end
 
--- Applies the inner geometry of the panel for a design width / height.
-local function applyGeometry(width, height, bodyH, hintH)
+-- Applies the inner geometry of the panel for a design width / height (`titleExtra`: the header's second title line).
+local function applyGeometry(width, height, bodyH, hintH, titleExtra)
+	titleExtra = titleExtra or 0
 	UI.Root.Size = UDim2.fromOffset(width, height)
+	-- (kit-b backlog items 10 / 16) a two-line title: the progress row and the text well one title line lower (written only
+	-- when they move: PixelCrisp keeps its whole-px nudge in their Scale)
+	local function at(obj, x, y)
+		if obj.Position.X.Offset ~= x or obj.Position.Y.Offset ~= y then
+			obj.Position = UDim2.fromOffset(x, y)
+		end
+	end
+	at(UI.Progress, K.PAD + K.PORTRAIT + 12, 76 + titleExtra)
+	at(UI.Well, K.PAD, K.HEADER_H + titleExtra)
+	if UI.Well.Size.Y.Offset ~= -(K.HEADER_H + titleExtra + K.FOOT_PAD) then
+		UI.Well.Size = UDim2.new(1, -2 * K.PAD, 1, -(K.HEADER_H + titleExtra + K.FOOT_PAD))
+	end
 	UI.Body.Size = UDim2.new(1, -2 * K.WELL_PAD, 0, bodyH)
 	UI.TypeSkip.Size = UI.Body.Size
 	UI.Hint.Position = UDim2.fromOffset(K.WELL_PAD, 10 + bodyH + 4)
@@ -1294,7 +1351,13 @@ local function applyGeometry(width, height, bodyH, hintH)
 	UI.Hint.TextSize = cap
 	UI.SkipLink.TextSize = cap
 	UI.ConfirmQuestion.TextSize = math.max(19, cap)
-	UI.StepTitle.TextSize = fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_SIZE, cap), "Heading", headRoom)
+	-- (kit-b backlog items 10 / 16) one line from TITLE_SIZE down to TITLE_FLOOR, else two lines at TITLE_FLOOR (titleWraps);
+	-- it was cut at the 14.4 px floor on a narrow card
+	local wraps = titleExtra > 0
+	UI.StepTitle.TextWrapped = wraps
+	UI.StepTitle.TextYAlignment = wraps and Enum.TextYAlignment.Bottom or Enum.TextYAlignment.Center
+	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, 26 + titleExtra)
+	UI.StepTitle.TextSize = wraps and K.TITLE_FLOOR or fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_FLOOR, cap), "Heading", headRoom)
 	layoutProgress(headRoom)
 	-- narrow footers: "Skip tutorial" shortens to "Skip" and the Next button narrows, so they never overlap
 	local footerW = width - 2 * K.PAD - 2 * K.WELL_PAD
@@ -1489,7 +1552,7 @@ local function layout()
 		UI.Scale.Scale = cardScale
 	end
 
-	local designH, bodyH, hintH = panelHeight(width)
+	local designH, bodyH, hintH, titleExtra = panelHeight(width)
 	-- (Pitch 2 item 03_tutorial_dock B) folded, the guide is the quest strip (K.STRIP_*): on a portrait phone on the HUD
 	-- stack over the vitals card (from its left edge to the RUN / DASH column's right edge, STRIP_DOCK_GAP over it); on
 	-- PC and a landscape phone top-left under the top bar (under a top-left panel, else beside it at the top edge), right
@@ -1621,7 +1684,7 @@ local function layout()
 		end
 	end
 	S.stripChip = folded and stripChip
-	applyGeometry(width, designH, bodyH, hintH)
+	applyGeometry(width, designH, bodyH, hintH, titleExtra)
 	if folded then
 		placeStrip(stripW, stripChip)
 		UI.Root.Size = stripChip and UDim2.fromOffset(K.STRIP_CHIP, K.STRIP_CHIP) or UDim2.fromOffset(stripW, K.STRIP_H)
