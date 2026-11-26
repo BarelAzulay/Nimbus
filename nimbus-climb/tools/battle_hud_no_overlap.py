@@ -25,8 +25,8 @@ reviews render, and fails on:
   helpers   at 844 x 390 a helper without 01b C's cell (Lv / name / labelled Swap under each other); a name plate as tall
             as two lines that draws one;
   clock     the top card's timer without its clock (640 x 360's raid / dungeon card excepted: no room);
-  cut       a name cut ("Storm Ti...") or broken mid-word: the boss name, the top card's pills, the fighter's and the
-            helpers' names, the vitals name, the keys' captions;
+  cut       a name cut ("Storm Ti...") or broken mid-word: the boss name, the top card's pills and mode line ('Round 8'),
+            the fighter's and the helpers' names, the vitals name, the keys' captions;
   pills     (battle:raid:full) the boss strip's pills: one row at 844 x 390, at most two rows on a portrait phone with
             the tier beside the boss name (not a pill), no pill alone on a row at any size, "Enraged" as the mock-up
             writes it, on a PC the boss portrait's slot kept, and a landscape phone's top card under 45 % of the height;
@@ -48,7 +48,11 @@ sys.path.insert(0, HERE)
 
 SIZES = [(360, 640), (640, 360), (667, 375), (390, 844), (844, 390), (1280, 720), (1920, 1080)]
 SCENARIOS = ["battle:raid", "battle:raid:full", "battle:raid:ready", "battle:dungeon", "battle:duel", "dungeon:run",
-             "dungeon:end", "dungeon:wipe"]
+             "dungeon:end", "dungeon:wipe",
+             # (kit-b backlog 9: the Champion Ring's fight and the trial's, never listed here: at 360 x 640 enemy row 1 lay
+             # 15-18 px on the fighter card, 'Round 8' read 'Ro...'; 375 x 667 'Biscuit B...'; 390 x 844 the top card 37.6 px
+             # on the fighter card)
+             "battle:fighter", "battle:ring:fight8", "battle:trial:ready"]
 
 B = "NimbusBattle.Root."
 PHONE_KEYS = ("MOVE", "DASH", "RUN")
@@ -96,6 +100,9 @@ GROUPS = [(g, re.compile(p)) for g, p in GROUPS]
 WHOLE = [
     r"^NimbusBattle\.Root\.TopCard\..*BossName$",
     r"^NimbusBattle\.Root\.TopCard\.Pills\.\w+$",
+    # (kit-b backlog 9: the ring round's mode line 'Round 8' drawn 'Ro...' in a 40 px box at 360 x 640, 'Roun...' at
+    # 375 x 667) the mode line reads whole (its shortest form at least: Hud.ModeText's shorts)
+    r"^NimbusBattle\.Root\.TopCard\.ModeCard\.Body\.Mode$",
     r"^NimbusBattle\.Root\.Team\.Fighter\..*PetName$",
     r"^NimbusBattle\.Root\.Team\.Fighter\.Body\.EnergyText$",  # (keys look r3: the stars' row narrows it)
     r"^NimbusBattle\.Root\.Team\.Helpers\.Helper\d+\..*(Buff|Name)\w*$",
@@ -621,7 +628,7 @@ def parse_sizes(text):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--size", help="WxH[,WxH...] (default: all seven)")
-    ap.add_argument("--scenario", help="S[,S...] (default: all eight)")
+    ap.add_argument("--scenario", help="S[,S...] (default: all eleven)")
     ap.add_argument("-v", "--verbose", action="store_true", help="print every box")
     ap.add_argument("--json", help="write the failures as JSON")
     args = ap.parse_args()
