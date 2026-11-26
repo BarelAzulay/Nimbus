@@ -9357,8 +9357,11 @@ local function clientScenarios()
 							ok = ok or Hd.mode.Text == t
 						end
 						T.check(ok, fmt("%s: the mode line is its whole text or a short form (%q)", tag, Hd.mode.Text), tostring(full))
+						-- (kit-b backlog 9: the ring's narrow card under the fighter card cut 'Round 8' to 'Ro...' and lay under enemy
+						-- row 1 at 360 x 640) a ring round on a portrait phone takes the strip across the top, as a duel, a raid and
+						-- a dungeon do (Hud.BandMode); this fixture's portrait under-card was that ring card, so it checks the strip
 						if f[1] == "battle:fighter" and W < Hh then
-							T.check(Hd.top.AnchorPoint.X == 0, tag .. ": (fixture) the top card is the narrow card under the fighter card", tostring(Hd.top.AnchorPoint))
+							T.check(Hd.top.AnchorPoint.X == 0.5, tag .. ": (fixture) the ring's top card is the strip across the top", tostring(Hd.top.AnchorPoint))
 						end
 					end
 					-- a wrapped text that cuts its end (TextTruncate) fits its box too: every word on a line, its lines in its height
