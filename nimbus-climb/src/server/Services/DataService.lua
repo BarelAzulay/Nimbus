@@ -237,7 +237,8 @@
 --     a later phase is published never erases that phase's data.
 --   * v1 saves ({Tokens = n} in Config.Tokens.LegacyDataStoreName) are migrated once: when the v2
 --     key is empty, the legacy key is read and its tokens become the starting balance. The legacy
---     store is never written.
+--     store is never written. (Release step 1: the load's claim writes those tokens into the v2 record together
+--     with its lock, so a server of the older build, which reads any stored record as a v2 save, never skips them.)
 --   * A leaving player's cache entry is only freed once the store holds everything it knows. If the
 --     final save failed (outage, throttling, lock timeout, failed load that cannot be recovered), the
 --     entry is kept as an "orphan": it is retried in the background with backoff, flushed by the
@@ -4715,21 +4716,37 @@ end
 -- (LockHeld / LockAt / ClaimLanded), before the read is normalised, so an error after it (Load's pcall fallback, the
 -- claim loop's pcall) still leaves an entry whose release lets go of the lock; a claim that errored may have committed
 -- (its answer lost): entry.ClaimSent = true until a later claim is answered or the stand-in's release clears it (P8.letGo).
-function P8.claim(dataStore, key, entry)
-	local seen, held, stamp = nil, nil, nil
+-- Release step 1 follow-up (the v1-only rollback gap), `seed`: a record that holds nothing yet (no record, or only a
+-- dead claim's lock: P8.lockOnly) is NOT claimed by a call without `seed`: no write, the 4th value `empty` is true, and
+-- the caller reads the v1 store first (fetchProfile). The second call passes seed = { Tokens = n } (the v1 balance) or
+-- false (no v1 save): when the record is still empty its claim writes the lock AND, for a v1 player, Tokens = n in the
+-- same write (the 5th value `written` = that record). So no record ever holds a lock without the v1 balance: a server
+-- of the live build (main reads any stored record as a v2 save and then never looks at v1) still finds the Tokens when
+-- this server dies before its first full save. A brand-new player's claim is still the lock-only record.
+function P8.claim(dataStore, key, entry, seed)
+	local seen, held, stamp, empty, written = nil, nil, nil, false, nil
 	local ok, err = pcall(function()
 		dataStore:UpdateAsync(key, function(old)
 			local now = os.time()
-			seen, stamp = old, nil
+			seen, stamp, empty, written = old, nil, false, nil
 			held = P8.foreign(old, now)
 			if held or (old ~= nil and type(old) ~= "table") then
 				return nil
+			end
+			local nothing = old == nil or P8.lockOnly(old)
+			if nothing and seed == nil then
+				empty = true
+				return nil -- nothing stored: the v1 store is read before anything is written (no write)
 			end
 			local rec = {}
 			if type(old) == "table" then
 				for k, v in pairs(old) do
 					rec[k] = v
 				end
+			end
+			if nothing and type(seed) == "table" then
+				rec.Tokens = seed.Tokens -- the v1 balance travels with the lock (never a lock-only record over a v1 save)
+				written = rec
 			end
 			rec.Lock = P8.lockRecord(now)
 			rec.WriteId = nil -- review round 2: a claim ends what the last writer can call its own (P8.mine)
@@ -4750,7 +4767,7 @@ function P8.claim(dataStore, key, entry)
 			entry.LockHeld, entry.LockAt, entry.ClaimLanded = true, stamp, true
 		end
 	end
-	return true, seen, held
+	return true, seen, held, empty, written
 end
 
 -- Reads a player's stored profile.
@@ -4764,16 +4781,49 @@ end
 -- A lock-only record counts as nothing stored, in both modes. (The load and the recovery always claim; the plain-read
 -- mode lost its last caller with the gem settle read, 2026-11-10.) Review round 2: `claim` is the cache entry (P8.claim
 -- records a landed claim on it at once).
+-- Release step 1 follow-up (the v1-only rollback gap): with `claim`, a record that holds nothing yet is not written by
+-- the first P8.claim (`empty`); the v1 store is read, then a second P8.claim writes the lock together with the v1
+-- balance (see P8.claim). The profile is then read from that record as a stored save (migrated = false: its Tokens ARE
+-- in the store, so the first save adds no v1 delta on top). A v1 read that fails leaves the record untouched (wrote
+-- false). The v1 store is read once per load, as before; a player with nothing stored costs one more UpdateAsync.
 local function fetchProfile(userId, attempts, claim)
 	local s = getStore()
 	if not s then
 		return false, nil, false
 	end
 	local ok, raw, held
+	local legacyRead = false -- claim mode: the v1 store was read already (and held nothing)
 	if claim then
-		ok, raw, held = P8.claim(s, keyFor(userId), type(claim) == "table" and claim or nil)
+		local entry = type(claim) == "table" and claim or nil
+		local empty, written
+		ok, raw, held, empty = P8.claim(s, keyFor(userId), entry)
 		if ok and held then
 			return false, nil, false, false, nil, held, false
+		end
+		if ok and empty then
+			local seed = false
+			local legacy = getLegacyStore()
+			if legacy then
+				local okLegacy, old = readKey(legacy, keyFor(userId), attempts)
+				if not okLegacy then
+					return false, nil, false, false, nil, nil, false
+				end
+				if old ~= nil then
+					if type(old) == "table" then
+						seed = { Tokens = sanitize(old.Tokens) }
+					else
+						seed = { Tokens = sanitize(old) }
+					end
+				end
+			end
+			legacyRead = true
+			ok, raw, held, empty, written = P8.claim(s, keyFor(userId), entry, seed)
+			if ok and held then
+				return false, nil, false, false, nil, held, false
+			end
+			if ok and written then
+				return true, normalizeProfile(written), false, false, nil, nil, true, P8.ours(raw)
+			end
 		end
 	else
 		ok, raw = readKey(s, keyFor(userId), attempts)
@@ -4789,6 +4839,9 @@ local function fetchProfile(userId, attempts, claim)
 		local info = {}
 		local profile = normalizeProfile(raw, info)
 		return true, profile, false, P5.hadLongPreset(raw), info.GardenMoved, nil, wrote, ours
+	end
+	if legacyRead then
+		return true, nil, false, false, nil, nil, wrote, ours -- (claim mode) nothing in v2 and no v1 save: a brand-new player
 	end
 	-- Nothing in v2: look for a v1 save to migrate.
 	local legacy = getLegacyStore()

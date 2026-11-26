@@ -116,6 +116,11 @@ if [ $do_smoke -eq 1 ]; then
 			# dumps of 8 battle / dungeon scenarios at 7 sizes (needs numpy + Pillow, as render_gui; ~2 min)
 			step "Battle HUD no overlap (tools/battle_hud_no_overlap.py)" python3 tools/battle_hud_no_overlap.py
 		fi
+		# Release step 1, gate 2: main's saves against this branch (main's code comes from git: origin/main must be
+		# fetched; exit 2 = it could not be read); skipped for an --only run
+		if [ $has_only -eq 0 ]; then
+			step "Save round trip vs main (tools/save_roundtrip.py)" python3 tools/save_roundtrip.py
+		fi
 	else
 		echo "missing dependency: lupa (pip install lupa)" >&2
 		record "Smoke test (tools/smoke.py)" "FAILED (python3 / lupa missing)"

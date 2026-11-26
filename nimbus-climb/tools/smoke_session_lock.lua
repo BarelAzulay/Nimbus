@@ -20,7 +20,8 @@
 --                        claim (Latency) is refused while A's leave save is still in flight, then claims
 --   lock_rejoin_migrate  a brand-new player's claim writes a lock-only record that makes another server wait (no second
 --                        "new player": no gift decided twice); its leave writes a full record without a lock; the v1
---                        migration through a lock-only record; an old record (no Lock) and a newer build's record (a
+--                        migration: the claim's record carries the v1 tokens with the lock (release step 1 follow-up:
+--                        never a lock-only record over a v1 save); an old record (no Lock) and a newer build's record (a
 --                        foreign field, Version 3) keep everything across the claim and the release; a quick rejoin while
 --                        the release is pending keeps the cached entry; a rejoin that races the leave's release write gets
 --                        the lock back at once (a re-take right after the release, review round 2: under a low budget too;
@@ -45,7 +46,7 @@
 --                        during a held load still releases the late claim; slow calls do not stretch the held wait;
 --                        (review round 2) a claim that landed before its read errored still releases; an expired re-claim
 --                        that cannot reach the store plays the cached session on and its strict write lands
---   lock_review2         (review round 2, spec 22) an expired re-claim of a still lock-only record applies the v1 tokens
+--   lock_review2         (review round 2, spec 22) an expired re-claim of a record that still holds only the claim applies the v1 tokens
 --                        once; a held rejoin shows SaveWaiting; a held entry's recovery claims 4 s after the give-up; a
 --                        claim that committed then failed (Mock.DataStore.CommitThenFail) does not strand its lock; a lost
 --                        answer to a strict release is adopted (WriteId: no guard trip, no second delta); a held orphan
@@ -813,13 +814,19 @@ local function serverScenarios()
 			T.check(type(rec) == "table" and rec.Version == 2 and type(rec.Tokens) == "number" and rec.Lock == nil,
 				"lock new: the leave with nothing earned writes a full record (Version 2, Tokens) without a lock", showLock(type(rec) == "table" and rec.Lock))
 
-			-- the v1 migration still works through a lock-only record
+			-- the v1 migration: the claim's record carries the v1 tokens with the lock. (Release step 1 follow-up. Before it
+			-- this check read "the lock-only record exists, the tokens are not written yet": that lock-only record made a
+			-- server of the live build, which reads any stored record as a v2 save, skip its v1 migration when this
+			-- server died before its first full save. The claim never leaves a lock without the v1 balance now.)
 			local uV = newUserId()
 			data()[legacyKey(uV)] = { Tokens = 33 }
 			local pv = join("LockLegacy", uV)
 			players[#players + 1] = pv
 			T.eq(D.GetTokens(pv), 33, "lock legacy: the v1 tokens are the starting balance")
-			T.check(type(lockOf(uV)) == "table" and (stored(uV) or {}).Tokens == nil, "lock legacy: the lock-only record exists, the tokens are not written yet")
+			local recV = stored(uV) or {}
+			T.check(type(lockOf(uV)) == "table" and lockOf(uV).Id == "mock-job" and recV.Tokens == 33 and recV.Version == nil and count(recV) == 2,
+				"lock legacy: the claim's record is { Tokens = 33, Lock }: the v1 tokens are stored with the lock, before any full save", "Tokens " .. tostring(recV.Tokens) .. ", " .. count(recV) .. " keys")
+			T.eq(D.OwnsSave(pv), true, "lock legacy: this server owns the save")
 			D.AddTokens(pv, 1)
 			T.check(K.waitFor(function()
 				return (stored(uV) or {}).Tokens == 34
@@ -1499,14 +1506,15 @@ local function serverScenarios()
 				end
 			end
 
-			-- finding 1: a v1 player whose writes fail past the trust window rejoins: the record is still lock-only, the
-			-- re-claim reads the v1 balance again: it must not be added on top of the profile that already holds it
+			-- finding 1: a v1 player whose writes fail past the trust window rejoins: the record still holds only the claim
+			-- (the lock and, since release step 1's follow-up, the v1 tokens: before it the record was lock-only and the
+			-- re-claim read the v1 balance again): the balance must not be added on top of the profile that already holds it
 			local uV = newUserId()
 			data()[legacyKey(uV)] = { Tokens = 33 }
 			local v1 = join("R2Legacy", uV)
 			players[#players + 1] = v1
-			T.check(D.GetTokens(v1) == 33 and type(lockOf(uV)) == "table" and (stored(uV) or {}).Tokens == nil,
-				"r2 legacy: (setup) the v1 tokens are the balance, the record is lock-only")
+			T.check(D.GetTokens(v1) == 33 and type(lockOf(uV)) == "table" and (stored(uV) or {}).Tokens == 33 and (stored(uV) or {}).Version == nil,
+				"r2 legacy: (setup) the v1 tokens are the balance, the record is the claim's { Tokens = 33, Lock } (no full save yet)")
 			D.AddTokens(v1, 1)
 			failWrites(true)
 			leave(v1)
@@ -1514,7 +1522,7 @@ local function serverScenarios()
 			failWrites(false)
 			local v2 = join("R2Legacy", uV)
 			players[#players + 1] = v2
-			T.eq(D.GetTokens(v2), 34, "r2 legacy: the expired re-claim of a still lock-only record applies the v1 migration once (33 + 1, not 67)")
+			T.eq(D.GetTokens(v2), 34, "r2 legacy: the expired re-claim of a record that still holds only the claim applies the v1 migration once (33 + 1, not 67)")
 			leave(v2)
 			T.check((stored(uV) or {}).Tokens == 34 and lockOf(uV) == nil, "r2 legacy: ...one legacy balance stored after the leave (34), lock released",
 				"stored tokens " .. tostring((stored(uV) or {}).Tokens))

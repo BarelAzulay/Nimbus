@@ -119,6 +119,7 @@ local Util = require(Shared:WaitForChild("Util"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local PetCatalog = require(Shared:WaitForChild("PetCatalog"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local StoreCatalog = require(Shared:WaitForChild("StoreCatalog"))
 
 local UIFolder = script.Parent
 local ClientFolder = UIFolder.Parent
@@ -486,6 +487,16 @@ end
 
 function H.gemsOpen()
 	return LocalPlayer ~= nil and LocalPlayer:GetAttribute(K.RESTRICTED_ATTR) == false
+end
+
+-- May a spin paid with `currency` be asked for this account? Gems: only once PolicyService said "allowed" (main's
+-- lock). Tokens: the same answer while the Store is on (lobby-shop 16.12); while the Store is off (release step 1, the
+-- owner's pick 2026-11-23: nothing sells Tokens) always, as on main. The server decides the same way (PetService).
+function H.spinOpen(currency)
+	if currency ~= "Gems" and not StoreCatalog.Enabled() then
+		return true
+	end
+	return H.gemsOpen()
 end
 
 function H.remote(name)
@@ -2056,8 +2067,8 @@ function H.refreshAgain()
 		reason = "none"
 	elseif H.inMatch() then
 		reason = "Shop closed"
-	elseif not H.gemsOpen() then
-		reason = "Locked" -- (lobby-shop 16.12: a token spin too, as the server refuses it while not "Allowed")
+	elseif not H.spinOpen(roll.Currency) then
+		reason = "Locked" -- (lobby-shop 16.12: a token spin too, as the server refuses it while not "Allowed"; Store on only)
 	elseif H.balance(roll.Currency) < price then
 		reason = roll.Currency == "Gems" and "Not enough Gems" or "Not enough Tokens"
 	end
@@ -3749,8 +3760,8 @@ function EggStage.Request(rouletteId, currency, spins)
 		return false
 	end
 	local price = H.price(roulette, currency) * spins
-	if not H.gemsOpen() then
-		-- (lobby-shop 16.12, the owner's pick A: token spins need the same "allowed" answer)
+	if not H.spinOpen(currency) then
+		-- (lobby-shop 16.12, the owner's pick A: token spins need the same "allowed" answer, while the Store is on)
 		H.toast(currency == "Gems" and K.TEXT.Policy or K.TEXT.TokenPolicy)
 		return false
 	end

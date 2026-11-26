@@ -356,7 +356,9 @@ S.gem_potion_buy = guarded("gem_potion_buy", function()
 		T.check(okFill == true and ends(a) == target, "gem potion: (setup) the potion bank ends at now + 7 d - 1,000 s", tostring(ends(a) - os.time()))
 		refusedWith(a, TEXT.Full, "the bank full (now + 7 d - 1,000 s)")
 
-		-- the pass bought in this session: Owned
+		-- the pass bought in this session: Owned (a real purchase: the engine answers "owned" from now on; the event
+		-- alone grants nothing since release step 1's follow-up, StoreService confirms with UserOwnsGamePassAsync)
+		modes[uidA] = true
 		Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", a, PASS_ID, true)
 		K.advance(0.2)
 		passAttrOk(a, "Owned", "PromptGamePassPurchaseFinished")

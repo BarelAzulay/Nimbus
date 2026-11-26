@@ -15,7 +15,12 @@
 --   purchase is granted for good (the save landed; in Studio also after a failed save).
 -- * Passes (Z3): on join every Pass with Id > 0 is asked ONCE with pcall(MarketplaceService:UserOwnsGamePassAsync); a
 --   failure keeps "Checking" (fail closed) and is retried after 5 / 15 / 45 / 120 s, then every 300 s. true -> Owned +
---   DataService.MarkPassSeen. PromptGamePassPurchaseFinished(player, id, true) marks Owned at once. With
+--   DataService.MarkPassSeen. PromptGamePassPurchaseFinished(player, id, true) is only a HINT (release step 1
+--   follow-up): an exploit client can fire that signal itself, so it alone never marks a pass Owned, never writes the
+--   ledger and never thanks. It starts a confirmation: UserOwnsGamePassAsync now and again after 2 / 5 / 15 / 45 s
+--   (PASS_CONFIRM; Roblox may answer from its ownership cache for a while after a real purchase); the first true
+--   answer marks Owned, writes the ledger and thanks once. Never confirmed -> nothing is granted and the normal
+--   ownership check (the next join's lookup) decides. One confirmation per pass at a time, however often it fires. With
 --   Config.Store.TrustLedgerAfter > 0, that many seconds of failures let the stored Store.Passes ledger count as Owned
 --   (0 = never). Owns / PassState read THIS server's cache only; the attributes are written, never read back.
 -- * StoreRequest ("Buy", key): a live player, a string key, 1 request/s, refused in a match ("The Store is closed
@@ -38,6 +43,11 @@
 --   refusal toasts (bad). Restricted accounts may buy (a potion is not random). No receipt, no purchase id.
 -- * XpPassState: the player attribute = PassState(player, "PetXp2x"), written at the join and on every Changed when it
 --   differs from the last written value (the shop's potion label reads it; never read back).
+-- * The Store switch (release step 1; Config.Store.Enabled through StoreCatalog.Enabled / OnSale, read on every call):
+--   while it is off, PromptPurchase answers false ("That item is not on sale yet", no toast, no prompt) for every item
+--   but a gem pack (Config.Gems.Products: what the live game already sold), BuyWithGems answers false before any check
+--   (no charge, no toast) and StorePreview is false for everyone. ApplyGrant, Thank, the pass lookups and
+--   PromptGamePassPurchaseFinished never read the switch: a paid receipt and an owned pass are always honoured.
 -- * StorePreview: written once at the join, true in Studio (RunService:IsStudio()) or for DevService.IsAllowed(player)
 --   (may yield once: a task.spawn), never on a timer.
 --
@@ -78,6 +88,7 @@ local PROMPT_COOLDOWN = 1 -- seconds between two purchase prompts of one player
 local PASS_RETRY = { 5, 15, 45, 120 } -- seconds before the retries of a failed pass lookup...
 local PASS_RETRY_LATER = 300 -- ...then every this many seconds
 local PASS_TICK = 1 -- the retry loop looks for due lookups this often
+local PASS_CONFIRM = { 2, 5, 15, 45 } -- seconds before each further UserOwnsGamePassAsync after a "purchase finished" signal that was not confirmed
 local THANKS_SECONDS = 5
 local GEM_POTION = { Id = "XpPotion", Pass = "PetXp2x" } -- the boost a gem item sells and the pass that makes it pointless
 local TEXT = {
@@ -375,6 +386,31 @@ local function setOwned(player, key)
 	end
 end
 
+-- A "purchase finished" signal waits on this pass (entry.Confirm, onPassFinished) and a lookup was just answered:
+-- Owned -> the thank-you, once, and the confirmation is over; else the next try is booked (PASS_CONFIRM), and after the
+-- last one the confirmation is dropped: nothing was granted, the normal ownership check decides from here (a failed
+-- lookup keeps the failure ladder's NextTry set above; the next join asks again).
+local function confirmStep(player, key, entry)
+	if not entry.Confirm then
+		return
+	end
+	if entry.State == "Owned" then
+		entry.Confirm = nil
+		local item = passItem(key)
+		if item then
+			StoreService.Thank(player, item, { Perks = item.Grants and item.Grants.Perks }, nil)
+		end
+		return
+	end
+	entry.Confirm.Tries = entry.Confirm.Tries + 1
+	local wait = PASS_CONFIRM[entry.Confirm.Tries]
+	if wait then
+		entry.NextTry = os.clock() + wait
+	else
+		entry.Confirm = nil
+	end
+end
+
 -- One lookup (yields inside the MarketplaceService call). A failure keeps the state and schedules a retry.
 local function lookupPass(player, key, id)
 	local entry = passMap(player)[key]
@@ -404,6 +440,7 @@ local function lookupPass(player, key, id)
 		entry.NextTry = os.clock() + (PASS_RETRY[entry.Fails] or PASS_RETRY_LATER)
 		warnOnce("pass-fail", "[StoreService] UserOwnsGamePassAsync failed (" .. tostring(owns) .. "): passes stay unowned for that player until a retry succeeds")
 	end
+	confirmStep(player, key, entry)
 	StoreService.Changed:Fire(player)
 end
 
@@ -558,6 +595,9 @@ function StoreService.PromptPurchase(player, key)
 	if not item then
 		return false, TEXT.Unknown
 	end
+	if not StoreCatalog.OnSale(item) then
+		return false, TEXT.NotYet -- the Store switch is off (Config.Store.Enabled): only a gem pack is prompted, like Id 0 no toast
+	end
 	if not item.Created then
 		return false, TEXT.NotYet -- Id 0: hidden, preview or not (Z12)
 	end
@@ -642,6 +682,9 @@ function StoreService.BuyWithGems(player, key)
 	if not isPlayer(player) then
 		return false, "Player unavailable"
 	end
+	if not StoreCatalog.Enabled() then
+		return false, TEXT.NotYet -- the Store switch is off: a gem item is not shown, so no charge and no toast
+	end
 	local item = StoreCatalog.GemItem(key)
 	local boost = item and type(item.Grants) == "table" and type(item.Grants.Boost) == "table" and item.Grants.Boost or nil
 	local seconds = boost and wholeNumber(boost[GEM_POTION.Id]) or nil
@@ -692,8 +735,10 @@ end
 -- Players
 ----------------------------------------------------------------------
 local function setPreview(player)
-	local preview = RunService:IsStudio()
-	if not preview and S.Dev and type(S.Dev.IsAllowed) == "function" then
+	-- the Store switch off: no preview either (no PREVIEW card or row for a dev while the Store is hidden)
+	local on = StoreCatalog.Enabled()
+	local preview = on and RunService:IsStudio()
+	if on and not preview and S.Dev and type(S.Dev.IsAllowed) == "function" then
 		local ok, allowed = pcall(S.Dev.IsAllowed, player) -- may yield once (a group-owned game)
 		preview = ok and allowed == true
 	end
@@ -732,9 +777,21 @@ local function onPassFinished(player, id, wasPurchased)
 	if not item then
 		return
 	end
-	setOwned(player, item.Key)
-	StoreService.Thank(player, item, { Perks = item.Grants and item.Grants.Perks }, nil)
-	StoreService.Changed:Fire(player)
+	-- Release step 1 follow-up: the signal is a hint, never a grant (an exploit client can fire it). Owned, the ledger
+	-- and the thank-you come only from UserOwnsGamePassAsync answering true (lookupPass -> setOwned, confirmStep).
+	local map = passMap(player)
+	local entry = map[item.Key]
+	if not entry then
+		entry = { State = "Checking", Busy = false, Fails = 0, NextTry = nil, FirstFail = nil }
+		map[item.Key] = entry
+	end
+	if entry.State == "Owned" or entry.Confirm then
+		return -- owned already, or a confirmation is running: a repeated (or forged) signal costs no further lookup
+	end
+	entry.Confirm = { Tries = 0 }
+	if not entry.Busy then
+		task.spawn(lookupPass, player, item.Key, item.Id) -- (a lookup in flight answers first: confirmStep books the next try)
+	end
 end
 
 ----------------------------------------------------------------------
@@ -755,6 +812,10 @@ local function checkConfig()
 				onSale = onSale + 1
 			end
 		end
+	end
+	if not StoreCatalog.Enabled() then
+		print("[StoreService] the Store is OFF (Config.Store.Enabled = false): its tabs and prompts are hidden and refused; receipts and owned passes are still granted")
+		return
 	end
 	print(string.format("[StoreService] %d of %d Store items on sale%s", onSale, total,
 		onSale < total and " (Id 0 = not created yet: paste the product / pass ids into Config.Store.Items)" or ""))

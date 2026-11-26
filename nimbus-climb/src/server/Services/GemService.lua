@@ -33,7 +33,10 @@
 --   and the player attribute PaidRandomItemsRestricted (true while restricted or unknown) tells the client to hide them.
 --   Buying Gems themselves stays possible (a fixed amount is not a random item). lobby-shop 16.12 (the owner's pick A,
 --   2026-11-08): token-paid roulette spins follow the same answer (TokenSpinLock: only "Allowed" spins with tokens), since
---   a client can open the token packs' Robux prompt itself and a paid receipt is always granted.
+--   a client can open the token packs' Robux prompt itself and a paid receipt is always granted. Release step 1 (the
+--   owner's pick, 2026-11-23): that token lock applies only while Config.Store.Enabled is true; with the Store off
+--   (nothing sells Tokens) every account spins with Tokens, as on main. Paste a token pack's product id only together
+--   with turning the Store on.
 -- * Gem roulettes: every token roulette with a price in Config.Gems.RouletteGemPrices (the same odds as with Cloud
 --   Tokens) and the gems-only Secret roulette (Config.Gems.SecretRoulette, AllowSecret = true) at the Storm Altar. Secret
 --   pets come from the Secret roulette and from Celestial's 2% Secret row (its AllowSecret, lobby-shop 16.1: token and gem
@@ -50,7 +53,8 @@
 --   GemService.PolicyState(player) -> "Allowed" | "Restricted" | "Checking"
 --   GemService.IsRestricted(player) -> bool                  true unless the policy said "Allowed"
 --   GemService.SecretRouletteState(player) -> "Open" | "Restricted" | "Checking" | "Unavailable"   (the Storm Altar)
---   GemService.TokenSpinLock(player) -> nil | reason   nil only when PolicyState is "Allowed" (16.12; never yields)
+--   GemService.TokenSpinLock(player) -> nil | reason   nil only when PolicyState is "Allowed" (16.12; never yields);
+--                                        always nil while the Store is off (Config.Store.Enabled, release step 1)
 --   GemService.Recheck(player) -> state   asks PolicyService again while "Checking" (kickPolicy's 5 s gap; 16.13 review)
 --   GemService.GetRoulette(id) -> {Id, DisplayName, GemPrice, Color, AllowSecret, GemsOnly, Odds} | nil   (a copy)
 --   GemService.ListRoulettes() -> {def...}   token roulettes with a gem price (Config.Roulettes order), then gems-only
@@ -630,7 +634,13 @@ end
 -- tokenLock), but a client can open it itself and a paid receipt is always granted, so the spin is the lock: only
 -- PolicyState "Allowed" spins with tokens; "Restricted" gets TOKEN_SPIN_LOCK; anything else is still unknown (fail closed,
 -- the token lock's rule) and asks PolicyService again (kickPolicy). Never yields; no saved field.
+-- Release step 1 (the owner's pick, 2026-11-23): only while the Store is on (StoreCatalog.Enabled()). With the Store off
+-- nothing sells Tokens, so there is no lock: nil for every account, whatever PolicyService said or failed to say.
 function GemService.TokenSpinLock(player)
+	local catalog = getStoreCatalog()
+	if not (catalog and type(catalog.Enabled) == "function" and catalog.Enabled() == true) then
+		return nil
+	end
 	local state = GemService.PolicyState(player)
 	if state == "Allowed" then
 		return nil

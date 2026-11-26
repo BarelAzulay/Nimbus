@@ -4117,6 +4117,7 @@ scenario("gems", function(view)
 	LocalPlayer:SetAttribute(Config.Attr.Gems, 1250)
 	advance(0.6)
 	if tostring(view or ""):lower() == "store" then
+		Config.Store.Enabled = true -- (the Store switch ships off: this view looks at the Store's Gems tab)
 		for i, p in ipairs(Config.Gems.Products) do
 			p.Id = 7100 + i
 		end
@@ -4619,12 +4620,23 @@ end
 -- shop:restricted       the Eggs tab for an account where paid random items are restricted (the gem spins read Locked, the
 --                       hero's Lock line replaces the pity chip)
 -- store[:<tab>]         the same, opened through the StoreController forwarder (old callers; "Currency" -> the Gems tab)
+-- shop:off              release step 1 (the Store switch): the Shop as it SHIPS, Config.Store.Enabled = false and every
+--                       Id 0: one rail tab (Eggs), no divider, no card, no PREVIEW
+-- shop:offgems          the switch off with the gem packs created (what the live game already sold): Eggs + Gems, the
+--                       Gems tab with the gem packs only
+-- Every other view draws the Store ON (the shipped Config line is false; these views exist to look at the Store).
 local function shopScene(tab, via)
+	local view = tostring(tab or ""):lower()
+	local off = view == "off" or view == "offgems"
+	Config.Store.Enabled = not off
 	for i, it in ipairs(Config.Store.Items) do
-		it.Id = 7000 + i
+		it.Id = off and 0 or (7000 + i)
 	end
 	for i, p in ipairs(Config.Gems.Products) do
-		p.Id = 7100 + i
+		p.Id = (off and view ~= "offgems") and 0 or (7100 + i)
+	end
+	if off then
+		tab = view == "offgems" and "Gems" or "Eggs"
 	end
 	local MPS = game:GetService("MarketplaceService")
 	MPS.GetProductInfo = function(_, id)

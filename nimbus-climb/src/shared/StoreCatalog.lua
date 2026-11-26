@@ -9,6 +9,11 @@
 --
 -- API
 --   StoreCatalog.Tabs                    a copy of Config.Store.Tabs (lobby-shop 16.3: Eggs, Gems, Packs, Passes, Boosts)
+--   StoreCatalog.Enabled() -> bool       the Store switch (release step 1): Config.Store.Enabled == true, read on every call
+--   StoreCatalog.OnSale(item) -> bool    may this List item be shown and prompted: a gem pack always, any other item only
+--                                        while Enabled() (the grant path never asks: a paid receipt is always granted)
+--   StoreCatalog.ShownTabs() -> { tab... }  the rail: every tab while Enabled(); else Eggs, plus Gems while a gem pack has
+--                                        an Id > 0
 --   StoreCatalog.List() -> { item... }   every Config.Store.Items entry with Enabled ~= false as a cleaned copy
 --                                        { Key, Kind, Tab, Id (whole, >= 0), Robux, Name, Grants (by reference), Once,
 --                                        Hero, Line, Created = Id > 0 }, in Config order, then one item per
@@ -195,6 +200,39 @@ end
 StoreCatalog.Tabs = {}
 for i, tab in ipairs(store().Tabs or {}) do
 	StoreCatalog.Tabs[i] = tab
+end
+
+-- The Store switch (release step 1): Config.Store.Enabled, read on every call. Only an explicit true is ON (a missing
+-- line is off: fail closed). It decides what is SHOWN and PROMPTED, never what is GRANTED: List / Item / ProductById /
+-- PassById are untouched, so a paid receipt and an owned pass resolve exactly as before.
+function StoreCatalog.Enabled()
+	return store().Enabled == true
+end
+
+-- May this List item be shown and prompted now? A gem pack (item.Gem: Config.Gems.Products, what the live game already
+-- sold) always; every Config.Store.Items entry only while the Store is on.
+function StoreCatalog.OnSale(item)
+	return type(item) == "table" and (item.Gem == true or StoreCatalog.Enabled())
+end
+
+-- The Shop rail's tabs, in order. On: every Config.Store.Tabs entry. Off: "Eggs" (not the Store's), plus "Gems" while
+-- a gem pack is created (Id > 0): no empty tab, no dead button.
+function StoreCatalog.ShownTabs()
+	local out = {}
+	if StoreCatalog.Enabled() then
+		for i, tab in ipairs(store().Tabs or {}) do
+			out[i] = tab
+		end
+		return out
+	end
+	out[1] = "Eggs"
+	for _, product in ipairs(gemProducts()) do
+		if type(product) == "table" and cleanId(product.Id) > 0 then
+			out[2] = "Gems"
+			break
+		end
+	end
+	return out
 end
 
 function StoreCatalog.List()
