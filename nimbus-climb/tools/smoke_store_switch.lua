@@ -22,6 +22,11 @@
 --                                On: the five tabs, the divider, the potion and the token packs are back.
 --   client_store_switch_mobile   off at 390x844 and 844x390: one tab (two with gem packs) inside the window, finite
 --                                positions, the Gems row holds the gem packs only
+--   (combined release, kit-b's restyle: H.offAt) off at 1920x1080, 1024x600 (kit-b's Short rail under the Fast toggle),
+--   1280x720, 1366x768, 390x844 and 844x390 with a Studio dev's preview flag: one rail tab, no "ROBUX ITEMS" rule (the
+--   captioned divider, its label and dotted rules), no Starter square, no "opens soon", no card, no Store text (matched
+--   without case: "ROBUX ITEMS", a "Preview" Buy, the items' names) in the Shop window or anywhere in the PlayerGui, the
+--   Fast toggle in the rail clear of the tab; then on at the same size: the five tabs
 -- Every scenario restores the switch, the Config ids, the attributes and the doubles. Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -526,7 +531,10 @@ local function clientScenarios()
 	local H = {}
 	local STORE_IDS = { Starter = 8101, Pro = 8102, VIP = 8201, Cash2x = 8202, PetXp2x = 8203, XpPotion1 = 8103, XpPotion3 = 8104, Tokens1 = 8105, Tokens2 = 8106, Tokens3 = 8107 }
 	local ATTRS = { "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "PaidRandomItemsRestricted", "GemsSettled", "XpPassState", "CloudTokens", "Gems" }
-	local BAD_TEXTS = { "PREVIEW", "Coming soon", "opens soon", "Robux", "XP Potion", "Cloud Tokens" }
+	-- matched without case (combined release, kit-b's restyle): kit-b writes the rail's caption "ROBUX ITEMS" and a card's
+	-- Buy "Preview" (sentence case), which a case-sensitive "Robux" / "PREVIEW" read past; the Store items' own names too
+	local BAD_TEXTS = { "preview", "coming soon", "opens soon", "robux", "xp potion", "cloud tokens", "starter pack", "pro pack",
+		"x2 cash", "x2 pet xp", "token pack" }
 
 	function H.moduleAt(top, rest)
 		local inst = Mock.GetPath(ROOTS[top] .. "/" .. rest)
@@ -596,15 +604,16 @@ local function clientScenarios()
 		end
 		return n
 	end
-	-- the shown texts of the Shop window that a Store-off player must never read
-	function H.badTexts()
+	-- the shown texts of the Shop window (or of `root`: the whole PlayerGui) that a Store-off player must never read
+	function H.badTexts(root)
 		local out = {}
-		local win = H.win()
+		local win = root or H.win()
 		for _, d in ipairs(win and win:GetDescendants() or {}) do
 			if (d:IsA("TextLabel") or d:IsA("TextButton")) and H.shownIn(d) then
 				local text = tostring(d.Text)
+				local low = string.lower(text)
 				for _, bad in ipairs(BAD_TEXTS) do
-					if string.find(text, bad, 1, true) then
+					if string.find(low, bad, 1, true) then
 						out[#out + 1] = d.Name .. " '" .. text .. "'"
 						break
 					end
@@ -626,6 +635,55 @@ local function clientScenarios()
 		local p, s, hp, hs = obj.AbsolutePosition, obj.AbsoluteSize, host.AbsolutePosition, host.AbsoluteSize
 		local finite = T.finite(p.X) and T.finite(p.Y) and T.finite(s.X) and T.finite(s.Y)
 		return finite and s.X > 0 and s.Y > 0 and p.X >= hp.X - 1 and p.Y >= hp.Y - 1 and p.X + s.X <= hp.X + hs.X + 1 and p.Y + s.Y <= hp.Y + hs.Y + 1
+	end
+	-- two boxes that do not overlap (touching edges allowed)
+	function H.apart(a, b)
+		local pa, sa, pb, sb = a.AbsolutePosition, a.AbsoluteSize, b.AbsolutePosition, b.AbsoluteSize
+		return pa.X + sa.X <= pb.X + 1 or pb.X + sb.X <= pa.X + 1 or pa.Y + sa.Y <= pb.Y + 1 or pb.Y + sb.Y <= pa.Y + 1
+	end
+	-- (combined release) the Store-off rule at one window size, the shipped ids (every Id 0) and a Studio dev's preview
+	-- flag: one rail tab (Eggs), none of the Store's parts kit-b restyled (the "ROBUX ITEMS" rule, the Starter's red
+	-- square, the "opens soon" line, a card), no Store text in the window or anywhere in the PlayerGui, the Fast toggle in
+	-- the rail clear of the tab. Then the same size ON: the five tabs, so the off rail is the switch's only change.
+	function H.offAt(w, h, expectLayout)
+		local Shop = H.ctrl("ShopController")
+		local Config = KC.env()
+		local tag = fmt("store switch ui: (off, %dx%d) ", w, h)
+		Mock.SetViewport(w, h)
+		KC.advance(0.5)
+		Config.Store.Enabled = false
+		LocalPlayer:SetAttribute("StorePreview", true)
+		H.setIds(false, false)
+		Shop._S.Tab = nil
+		T.check(H.reopen() == true and H.win().Visible == true, tag .. "the Shop opens")
+		if expectLayout then
+			T.eq(Shop.Layout(), expectLayout, tag .. "(precondition) the " .. expectLayout .. " layout")
+		end
+		local names, list = H.tabs()
+		T.eq(names, "Eggs", tag .. "one rail tab, Eggs (layout " .. tostring(Shop.Layout()) .. ")")
+		T.check(list[1] ~= nil and H.inside(list[1], H.win()), tag .. "the Eggs tab sits inside the window")
+		local div = H.find("RobuxDivider")
+		local divShown = div ~= nil and H.shownIn(div)
+		for _, part in ipairs({ "Label", "RuleL", "RuleR", "Line", "Glyph" }) do
+			local child = div and div:FindFirstChild(part)
+			divShown = divShown or (child ~= nil and H.shownIn(child))
+		end
+		T.check(div ~= nil and not divShown, tag .. "no 'ROBUX ITEMS' rule (kit-b's captioned divider: its label and dotted rules)")
+		T.check(not H.shown("Soon") and not H.shown("Dot") and H.cardCount() == 0, tag .. "no 'opens soon', no Starter square, no card")
+		local bad = H.badTexts()
+		T.check(#bad == 0, tag .. "no Store text in the Shop window", table.concat(bad, " | "))
+		bad = H.badTexts(H.pg())
+		T.check(#bad == 0, tag .. "no Store text anywhere in the PlayerGui", table.concat(bad, " | "))
+		if Shop.Layout() ~= "Phone" and Shop.Layout() ~= "Portrait" then
+			local fast, rail = H.find("FastHatch"), H.find("Rail")
+			T.check(fast ~= nil and rail ~= nil and list[1] ~= nil and H.shown("FastHatch") and H.inside(fast, rail) and H.apart(fast, list[1]),
+				tag .. "the Fast hatch toggle sits in the rail, clear of the Eggs tab")
+		end
+		Config.Store.Enabled = true
+		Shop._S.Tab = nil
+		H.reopen()
+		T.eq((H.tabs()), "Eggs,Gems,Packs,Passes,Boosts", fmt("store switch ui: (on, %dx%d) ", w, h) .. "the five tabs (only the switch hides them)")
+		Config.Store.Enabled = false
 	end
 	function H.setIds(store, gems)
 		local Config = KC.env()
@@ -834,6 +892,14 @@ local function clientScenarios()
 				"store switch ui: (off, one pack) only the created pack shows (no hero for an uncreated Chest, no dead 'Coming soon' button)")
 			T.check(H.find("GemPack_2").Position.X.Offset < 1, "store switch ui: (off, one pack) ...in the first place", tostring(H.find("GemPack_2").Position.X.Offset))
 
+			-- (combined release) kit-b's window sizes: 1920x1080, the short rail of the owner's ~1024x600 (kit-b's Short tab
+			-- metrics under the Fast toggle), 1280x720 and 1366x768 (the look reviews' PC sizes)
+			for _, vp in ipairs({ { 1920, 1080 }, { 1024, 600 }, { 1280, 720 }, { 1366, 768 } }) do
+				H.offAt(vp[1], vp[2])
+			end
+			Mock.SetViewport(1920, 1080)
+			KC.advance(0.5)
+
 			-- ON again, created: everything is back
 			Config.Store.Enabled = true
 			H.setIds(true, true)
@@ -921,6 +987,10 @@ local function clientScenarios()
 			Config.Store.Enabled = false
 			for _, view in ipairs({ { 390, 844, "Portrait" }, { 844, 390, "Phone" } }) do
 				local tag = fmt("store switch phone %dx%d: ", view[1], view[2])
+				-- (combined release) kit-b's phone rail: the one tab, no "ROBUX ITEMS" rule, no Starter square on the tab's
+				-- corner, no Store text anywhere in the PlayerGui
+				H.offAt(view[1], view[2], view[3])
+				Config.Store.Enabled = false
 				Mock.SetViewport(view[1], view[2])
 				KC.advance(0.5)
 				H.setIds(false, false)
