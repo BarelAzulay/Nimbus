@@ -71,6 +71,11 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     buttons and rings (a match: no chip; a dungeon party's chip in its spot: hidden), B2 its X
                     a 44 px hit box 16 px or more off '...', B3 its words whole, >= 14.4 px on a phone, the place and its
                     distance. (Its frame-by-frame rules - one rect on every camera move, the needle - are guide_pins')
+  N1  kit-b backlog 21 / 31 the NPC dialog 77 px past the right edge at 360 x 640, into Roblox's top band at 640 x 360 /
+                    667 x 375. Rule: every NPC's dialog wholly on the screen, under the top band, MIN_GAP off DASH and RUN,
+                    at those sizes, 375 x 667, 390 x 844, 844 x 390 and 1280 x 720 (NPC 1 at the gate sizes); and MIN_GAP
+                    off every other HUD piece and Roblox's stick ring (its hard shadow was 1-2 px from the vitals card's
+                    name tab at 720 x 405 .. 1024 x 768). (carried from kitb-bl-hud ab3b782 / ca611b3)
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -92,7 +97,8 @@ SIZES = [(360, 640), (640, 360), (667, 375), (720, 405), (800, 450), (844, 390),
 I1_EXTRA = [(800, 360), (812, 375), (932, 430)]
 I2_EXTRA = [(1024, 768, True), (1180, 820, None), (1366, 1024, None)]
 
-PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "U3", "B0", "B1", "B2", "B3"]
+PINS = ["K1", "K2", "I1", "I2", "H1", "C1", "C2", "C5", "Q1", "E1", "D1", "O1", "O2", "O3", "T1", "U1", "U2", "U3", "B0", "B1", "B2", "B3",
+        "N1"]
 NEW = {"K1", "K2", "I1", "I2"}  # (the 6 open majors at kit-b 1a55f73; W1 / W2 are guide_pins' in the smoke)
 
 SHOP = "NimbusShop.ShopWindow.Body.Page_Eggs.Scroll."
@@ -489,6 +495,50 @@ def pin_O2(c, sizes):
             for p, n in tabs:
                 ok, how = c.whole(n)
                 c.check("O2", ok, "O2 %s %dx%d: %s reads whole in its box" % (scen, w, h, p.split(".")[-2] + ".Target"), how)
+
+
+def piece_gaps(c, d, nodes, ink, w, h, own, skip=()):
+    """(kitb-bl-hud re-verify, carried: O3 and N1 read the touch keys alone) [(gap, piece path)] for every other HUD piece
+    (depth 1 / 2 of each ScreenGui, as U1's tutorial_gaps: the menu column and its tiles, the match / party panel, the
+    strips, the gift, the toasts, an open window ...) and Roblox's thumbstick ring within MIN_GAP of `ink`; `own`: the
+    subject's path (it, its holders and its parts are not others), `skip`: path prefixes another pin reads against the
+    subject (the tutorial: U1, the guide chip: B1). A piece of a ScreenGui drawn above the subject's (DisplayOrder) whose
+    ink covers all of the subject's hides it (a portrait phone's window over the vitals card): not near, it is not seen"""
+    ui = c.BH.union(ink)
+    if not ui:
+        return []
+    order = {g.get("name"): float(g.get("displayOrder", 0) or 0) for g in d.get("guis", [])}
+    mine = order.get(own.split(".")[0], 0.0)
+    out = []
+    for p, n in nodes.items():
+        if p == own or p.startswith(own + ".") or own.startswith(p + ".") or p.count(".") not in (1, 2):
+            continue
+        if any(p == s or p.startswith(s + ".") for s in skip):
+            continue
+        if float(n["w"]) <= 1 or float(n["h"]) <= 1 or (float(n["w"]) > 0.9 * w and float(n["h"]) > 0.6 * h):
+            continue
+        kink = c.BH.ink_of(n, c.RG, c.fonts)
+        if not kink:
+            continue
+        uk = c.BH.union(kink)
+        if uk[2] - uk[0] > 0.9 * w and uk[3] - uk[1] > 0.6 * h:
+            continue
+        if c.BH.gap(ui, uk) >= c.BH.MIN_GAP:
+            continue
+        if order.get(p.split(".")[0], 0.0) > mine and any(b[0] <= ui[0] + 0.5 and b[1] <= ui[1] + 0.5 and b[2] >= ui[2] - 0.5
+                                                          and b[3] >= ui[3] - 0.5 for b in kink):
+            continue
+        # the least gap of the drawn rects themselves (BH.ink_gap falls back on the unions' gap - an overlap - where no
+        # pair is near: the dialog's union over the strip's at 640 x 360 with every rect 4+ px apart)
+        g = min(c.BH.gap(a, b) for a in ink for b in kink)
+        if g < c.BH.MIN_GAP - 0.05:
+            out.append((round(g, 1), p))
+    if c.RG.is_touch(w, h, None):
+        (sc, sr) = c.BH.rings(w, h)["Roblox stick"]
+        g = min(c.BH.ring_gap(r, sc, sr) for r in ink)
+        if g < c.BH.MIN_GAP - 0.05:
+            out.append((round(g, 1), "Roblox stick's ring"))
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------------------- O3
@@ -1067,9 +1117,53 @@ def pin_B(c, sizes):
         c.cache.clear()
 
 
+# ---------------------------------------------------------------------------------------------------------------- N1
+# (kit-b backlog 21 / 31, carried from kitb-bl-hud ab3b782 / ca611b3: the chip-b looks saw the NPC dialog run off the
+# right edge at 360 x 640 and reach Roblox's top band at 640 x 360 and 667 x 375) the dialog (NimbusNpcDialog,
+# IgnoreGuiInset off: its gui starts under the top band) paints all its ink - the card, its name plank, its buttons - on
+# the screen and under the top band (the dump's inset), for every NPC at the sizes the looks named and the controls, and
+# for NPC 1 at the gate sizes
+N1_NPCS = ["npc:1", "npc:2", "npc:3", "npc:4", "npc:5", "npc:6"]
+N1_SIZES = [(360, 640), (640, 360), (667, 375), (375, 667), (390, 844), (844, 390), (1280, 720)]
+
+
+def pin_N1(c, sizes):
+    runs = [(s, w, h) for s in N1_NPCS for (w, h) in N1_SIZES]
+    runs += [("npc:1", w, h) for (w, h) in sizes if (w, h) not in N1_SIZES]
+    for scen, w, h in runs:
+        d = c.dump(scen, w, h)
+        nodes = c.nodes(d)
+        top = float(d.get("inset", 0) or 0)
+        roots = [(p, n) for p, n in nodes.items() if p.startswith("NimbusNpcDialog.") and p.count(".") == 1 and float(n["w"]) > 1]
+        ink = [r for _, n in roots for r in c.BH.ink_of(n, c.RG, c.fonts)]
+        if not c.check("N1", bool(ink), "N1 %s %dx%d: the NPC dialog shows" % (scen, w, h)):
+            continue
+        u = c.BH.union(ink)
+        right, foot, left = u[2] - w, u[3] - h, -u[0]
+        high = top - u[1]
+        c.check("N1", max(right, foot, left) <= 0.5, "N1 %s %dx%d: the NPC dialog is wholly on the screen" % (scen, w, h),
+                "dialog ink %s on %dx%d: %.1f px past the right edge, %.1f past the left, %.1f past the foot" % (fmt(u), w, h, right, left, foot))
+        c.check("N1", high <= 0.5, "N1 %s %dx%d: the NPC dialog stays under Roblox's top band (y >= %.0f)" % (scen, w, h, top),
+                "dialog ink %s: its top %.1f px into the band" % (fmt(u), high))
+        # ... and where it moves to stay on the screen, it never lies on the touch keys (battle_hud_no_overlap's MIN_GAP)
+        for key in ("DashButton", "RunButton"):
+            kn = nodes.get("MobileControls." + key)
+            kink = c.BH.ink_of(kn, c.RG, c.fonts) if kn and float(kn["w"]) > 1 else None
+            if kink:
+                g = min(c.BH.gap(a, b) for a in ink for b in kink)
+                c.check("N1", g >= c.BH.MIN_GAP - 0.05, "N1 %s %dx%d: the NPC dialog keeps %g px off %s" % (scen, w, h, c.BH.MIN_GAP, key),
+                        "dialog ink %s, key %s: %.1f px" % (fmt(u), fmt(c.BH.union(kink)), g))
+        # ... and off every other HUD piece (the menu tiles, the vitals card, the strips, the gift, Roblox's stick ring; the
+        # guide chip reads it itself: B1's guidechip:npc)
+        near = piece_gaps(c, d, nodes, ink, w, h, "NimbusNpcDialog", ("NimbusGuide", "MobileControls.DashButton", "MobileControls.RunButton"))
+        c.check("N1", not near, "N1 %s %dx%d: the NPC dialog keeps %g px off every other HUD piece" % (scen, w, h, c.BH.MIN_GAP),
+                "dialog ink %s: %s" % (fmt(u), ", ".join("%s %.1f px" % (p, g) for g, p in near)))
+        c.cache.clear()
+
+
 RUN = {"K1": pin_K1, "K2": pin_K2, "I1": pin_I1, "I2": pin_I2, "H1": pin_H1, "C1": pin_C1, "C2": pin_C2, "C5": pin_C5,
        "Q1": pin_Q1, "E1": pin_E1, "D1": pin_D1, "O1": pin_O1, "O2": pin_O2, "O3": pin_O3, "T1": pin_T1, "U1": pin_U1, "U2": pin_U2, "U3": pin_U3,
-       "B0": pin_B, "B1": pin_B, "B2": pin_B, "B3": pin_B}
+       "B0": pin_B, "B1": pin_B, "B2": pin_B, "B3": pin_B, "N1": pin_N1}
 
 
 def parse_sizes(text):
