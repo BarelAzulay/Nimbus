@@ -310,6 +310,7 @@ local dialog = {
 	PendingOpen = nil, -- an NPC model whose prompt was used before it finished replicating
 	Width = nil,
 	VitalsOff = false, -- (U9-9 look) the HUD's vitals card is stepped aside under the card (HudController.SetVitalsHidden)
+	ColumnCover = nil, -- (kit-b backlog 21 / 31) the card's left edge while it lies over the menu tiles (setColumnCover)
 }
 
 ----------------------------------------------------------------------
@@ -1326,6 +1327,54 @@ local function setVitalsOff(off)
 	end
 end
 
+-- (kit-b backlog 21 / 31) the menu tiles step aside while the card lies over them (layoutDialog's last box on a narrow
+-- phone: MenuController.SetColumnCovered, the column frame keeping its place); back when it leaves them or closes
+local function setColumnCover(left)
+	if left == dialog.ColumnCover then
+		return
+	end
+	local module = script.Parent:FindFirstChild("MenuController")
+	local okMenu, menu = false, nil
+	if module then
+		okMenu, menu = pcall(require, module)
+	end
+	if okMenu and type(menu) == "table" and type(menu.SetColumnCovered) == "function" then
+		dialog.ColumnCover = left
+		pcall(menu.SetColumnCovered, left, "NpcDialog")
+	end
+end
+
+-- (kit-b backlog 21 / 31) what a phone draws at the screen's foot, in our gui px: the touch RUN / DASH keys
+-- (MovementController's MobileControls, their wood edge counted, as HudController measures them) and Roblox's thumb
+-- stick's zone and jump button (where HudController's robloxTouchRects puts them)
+local function touchRects(area)
+	local out = {}
+	local pg = playerGui()
+	local mobile = pg and pg:FindFirstChild("MobileControls")
+	if mobile and mobile:IsA("ScreenGui") and mobile.Enabled then
+		local dy = insetShift(mobile)
+		for _, d in ipairs(mobile:GetDescendants()) do
+			if (d:IsA("TextButton") or d:IsA("ImageButton")) and d.AbsoluteSize.X > 0 and shownIn(d, mobile) then
+				local r = rectOf(d, dy)
+				local block = d:FindFirstChild("Block")
+				local edge = d:FindFirstChild("SignEdge") or (block and block:FindFirstChild("SignEdge"))
+				local e = (edge and edge:IsA("UIStroke")) and edge.Thickness or 0
+				r.x0, r.y0, r.x1, r.y1 = r.x0 - e, r.y0 - e, r.x1 + e, r.y1 + e
+				table.insert(out, r)
+			end
+		end
+	end
+	local cam = Workspace.CurrentCamera
+	local vp = cam and cam.ViewportSize or area
+	local small = math.min(vp.X, vp.Y) <= 500
+	local j = small and 70 or 120
+	local foot = small and 20 or j * 0.75
+	local stickH = small and (vp.Y > vp.X and 150 or 96) or 210
+	table.insert(out, { x0 = 0, y0 = area.Y - stickH, x1 = small and 110 or 190, y1 = area.Y })
+	table.insert(out, { x0 = area.X - (1.5 * j + 10), y0 = area.Y - foot - j, x1 = area.X - (0.5 * j + 10), y1 = area.Y - foot })
+	return out
+end
+
 local function syncVitals(card)
 	local off = false
 	local module = script.Parent:FindFirstChild("HudController")
@@ -1401,6 +1450,24 @@ local function fitCard(left, bottom, topLimit, rightLimit, f, tall)
 	return scale, w, h, rows
 end
 
+-- (kit-b backlog 21 / 31) the full card at MIN_SCALE as wide as the box left..rightLimit allows (from K.W - 60 design px
+-- on; it is shorter than the compact card), its tall or short rows, in the box down to `bottom`: -> scale, width,
+-- height, rows, or nil where it does not fit
+local function fitWide(left, bottom, topLimit, rightLimit)
+	local w = math.min(K.W, math.floor((rightLimit - left) / K.MIN_SCALE))
+	if w < K.W - 60 then
+		return nil
+	end
+	local _, extra = tabFor(w)
+	for _, rows in ipairs({ K.ROWS.Tall, K.ROWS.Short }) do
+		local h = K.H - rows.Cut
+		if (h + rows.TabAbove + extra) * K.MIN_SCALE <= bottom - topLimit then
+			return K.MIN_SCALE, w, h, rows
+		end
+	end
+	return nil
+end
+
 local function layoutDialog()
 	local gui, root = UI.Gui, UI.Root
 	if not (gui and root) then
@@ -1432,7 +1499,10 @@ local function layoutDialog()
 		local shift = insetShift(hud)
 		local blt = hud:GetAttribute("BottomLeftTop")
 		if type(blt) == "number" and blt > 0 then
-			bottom = blt + shift - K.GAP
+			-- (kit-b backlog 21 / 31 re-verify: the card's hard shadow - SignKit.FinishFrame's, Theme.Finish.Window px at its
+			-- scale, under its bottom edge - came 2 px from the vitals card's name tab at 800 x 450 .. 1024 x 768, 1 at 720 x 405)
+			-- the gap is kept from the shadow (at most the screen factor's: the card's scale never exceeds f)
+			bottom = blt + shift - K.GAP - math.floor((tonumber(Theme.Finish and Theme.Finish.Window) or 0) * f + 0.5)
 		end
 		local tlb = hud:GetAttribute("TopLeftBottom")
 		if type(tlb) == "number" and tlb > 0 then
@@ -1464,6 +1534,18 @@ local function layoutDialog()
 			end
 		end
 		local s, cw, ch, rows = fitCard(left, b, topLimit, rightLimit, f, tall)
+		-- (re-verify, N1 at 390 x 844) a card from the edge under the tile column keeps GAP under it: the rows probe above
+		-- reads the full card's height, the portrait's compact card is taller, and with the gap now kept from the card's
+		-- shadow (bottom, above) its top met the column's Stats tile. Its own top limit there: the short rows where they fit
+		if column and left < column.x1 + K.GAP and column.y1 + K.GAP > topLimit and column.y1 < b then
+			local _, ex = tabFor(cw)
+			if b - (ch + rows.TabAbove + ex) * math.max(K.MIN_SCALE, s) < column.y1 + K.GAP then
+				local s2, cw2, ch2, rows2 = fitCard(left, b, column.y1 + K.GAP, rightLimit, f, tall)
+				if s2 >= K.MIN_SCALE or rows2 ~= rows then
+					s, cw, ch, rows = s2, cw2, ch2, rows2
+				end
+			end
+		end
 		return s, cw, ch, left, rows
 	end
 	local scale, w, h, left, rows = placeAt(bottom)
@@ -1497,6 +1579,62 @@ local function layoutDialog()
 		local s2, w2, h2, r2 = fitCard(edge, b2, topLimit, area.X - edge, f, tall)
 		if s2 >= K.MIN_SCALE then
 			scale, w, h, x, y, rows = s2, w2, h2, edge, b2, r2
+		end
+	end
+	local overColumn = false
+	-- (re-verify, B0 guidechip:npc 390 x 844) only where the card forced to MIN_SCALE would leave the screen - past its
+	-- right edge or up into Roblox's top band, the backlog's two faults -: at 390 x 844 the forced card stood whole above
+	-- the vitals card, as on kit-b, and step 3 took the screen's width, sent the tiles and the vitals card aside and the
+	-- guide chip, whose home is on the vitals stack, down onto Roblox's thumbstick
+	local function leavesScreen()
+		local _, extraTab = tabFor(w)
+		local cardTop = y - (h + rows.TabAbove + extraTab) * K.MIN_SCALE
+		return x + w * K.MIN_SCALE > area.X - edge + 0.5 or cardTop < 0
+	end
+	if scale < K.MIN_SCALE and touch and leavesScreen() then
+		-- 3) (kit-b backlog 21 / 31: forced to MIN_SCALE in a box too small for it, the card ran 77 px past the right edge at
+		-- 360 x 640, from right of the tile column, and into Roblox's top band at 640 x 360 / 667 x 375, above the lobby's
+		-- vitals card) a phone gives it the rows down to its touch keys, Roblox's stick and jump button (the vitals card
+		-- steps aside under it: syncVitals) right of the tile column; where that is still too narrow, the screen's width
+		-- from the left edge (the tiles step aside under it: setColumnCover)
+		-- Each box may also end GAP left of a key, its bottom then only over the keys it still reaches; where the compact
+		-- card is too tall, the full one, as wide as the box (at 640 x 360 the 346 x 187 px between the column, DASH and
+		-- RUN hold the full card at 0.7, not the compact one)
+		local foot = touchRects(area)
+		local found = false
+		for _, box in ipairs({ { left, rightLimit, false }, { edge, area.X - edge, true } }) do
+			local l = box[1]
+			local rights = { box[2] }
+			for _, t in ipairs(foot) do
+				if t.x0 - K.GAP > l and t.x0 - K.GAP < box[2] then
+					rights[#rights + 1] = t.x0 - K.GAP
+				end
+			end
+			table.sort(rights, function(a, b)
+				return a > b
+			end)
+			for _, r in ipairs(rights) do
+				local b = area.Y - edge
+				for _, t in ipairs(foot) do
+					if t.x0 < r + K.GAP and t.x1 > l - K.GAP then
+						b = math.min(b, t.y0 - K.GAP)
+					end
+				end
+				if b > topLimit then
+					local s3, w3, h3, r3 = fitCard(l, b, topLimit, r, f, tall)
+					if s3 < K.MIN_SCALE then
+						s3, w3, h3, r3 = fitWide(l, b, topLimit, r)
+					end
+					if s3 and s3 >= K.MIN_SCALE then
+						scale, w, h, x, y, rows, overColumn = s3, w3, h3, l, b, r3, box[3]
+						found = true
+						break
+					end
+				end
+			end
+			if found then
+				break
+			end
 		end
 	end
 	scale = math.max(K.MIN_SCALE, scale) -- never below readable text, even if the card then overlaps a little
@@ -1580,6 +1718,9 @@ local function layoutDialog()
 		UI.NameTab:SetAttribute("Rows", extra > 0 and 2 or 1)
 	end
 	syncVitals({ x0 = math.floor(x + 0.5), y0 = top, x1 = math.floor(x + 0.5) + w * scale, y1 = top + h * scale })
+	local tabTop = top - rows.TabAbove * scale
+	setColumnCover((overColumn and column and x < column.x1 + K.GAP and tabTop < column.y1 + K.GAP and top + h * scale > column.y0 - K.GAP)
+		and math.floor(x + 0.5) or nil)
 	if PixelCrisp then
 		PixelCrisp.Refresh(root) -- (kit B U9-9) the icons and wood edges back on whole pixels at the new scale
 	end
@@ -1822,6 +1963,7 @@ function NpcController.Close()
 	end
 	slideTo(false)
 	setVitalsOff(false)
+	setColumnCover(nil)
 	refreshTargets()
 end
 
