@@ -10302,6 +10302,66 @@
       "structureHash": "c6fa48067f99b2b5ad38da7ba65a3b52",
       "uploadedAt": "2026-10-23T18:58:50Z"
     },
+    "prop_trove_body": {
+      "assetId": 121976093430850,
+      "contentHash": "009f51224291ec77a5230e1027ca7c0f",
+      "fileSha256": "cfa529d53134eed5f3b3def31f522ec11fa866dcaaa2a9e3535304bf57619b47",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-26T23:17:49.589Z",
+      "revisionId": "1",
+      "structureHash": "11d6bcde93aad6bb317559174b24ddab",
+      "uploadedAt": "2026-11-26T23:17:52Z"
+    },
+    "prop_trove_body_low": {
+      "assetId": 116871565525162,
+      "contentHash": "0c15f6af9e8d9160acb5e0a3eb2170ef",
+      "fileSha256": "1a1c2c54ab5a324ad1c29e8f7491f0bd2d027e585bdd7e6c24f01ecdd6b1320f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-26T23:17:58.501Z",
+      "revisionId": "1",
+      "structureHash": "cdf2ab8e4979af6c8976a5f89d803a93",
+      "uploadedAt": "2026-11-26T23:17:59Z"
+    },
+    "prop_trove_lid": {
+      "assetId": 85958273892634,
+      "contentHash": "f97aae8b061d0684f3b7b060a8849bf7",
+      "fileSha256": "b7d932bcc42fb24e4b1b59216bd1a805d64e7444434da82705706e80f0269bd3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-26T23:18:08.198Z",
+      "revisionId": "1",
+      "structureHash": "63c6e4541a4d8a3f6ac2b2be380bc8cc",
+      "uploadedAt": "2026-11-26T23:18:11Z"
+    },
+    "prop_trove_lid_low": {
+      "assetId": 79811248143347,
+      "contentHash": "a9b2def5291b141f3cdb34224323d73d",
+      "fileSha256": "22c0d8c9d19dfaf2cb4823241ac7b33be806c7a538b238ed973c653bedd7fbf5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-26T23:18:18.406Z",
+      "revisionId": "1",
+      "structureHash": "ae41ab77d8533a65c9e098b3d49903a5",
+      "uploadedAt": "2026-11-26T23:18:22Z"
+    },
+    "prop_trove_sign": {
+      "assetId": 103800237633482,
+      "contentHash": "9028f6e385bc9f51d54ff9e470ef08e5",
+      "fileSha256": "9a9e1feaf12485f49c9e1a7e35dbf86859360ee7e014575a80d701e2411ef28f",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-26T23:18:34.688Z",
+      "revisionId": "1",
+      "structureHash": "fa95c0277480d6c236c90003437dcbbd",
+      "uploadedAt": "2026-11-26T23:18:41Z"
+    },
+    "prop_trove_sign_low": {
+      "assetId": 119808755477141,
+      "contentHash": "2217afa1650f65fc74ca11d17b2bdbda",
+      "fileSha256": "3766204c4069d4262bec01bedce4eda9781b2ea9aa6a84b89a9c31950e2f2e57",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-26T23:18:56.301Z",
+      "revisionId": "1",
+      "structureHash": "a2765aca708efe6c5e8d4fd1689dea86",
+      "uploadedAt": "2026-11-26T23:19:00Z"
+    },
     "prop_welcome_arch": {
       "assetId": 74927694777669,
       "contentHash": "23b8d3eea16d118ccfeb7f50212d8cbd",
