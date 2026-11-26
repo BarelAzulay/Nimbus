@@ -45,7 +45,11 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
   O3  fix6 look1 #6 lobby 360 x 640 / 375 x 667: the vitals card on DASH and RUN, its name 'SkyCli...'. Rule: the card's
                     ink MIN_GAP off DASH and RUN, the player's name whole. (look:fix6b2 N2: 'SkyCli...' at 800 x 450 in a
                     match / countdown) in every state the card shows in: lobby, match, the pad, the countdown (O3_BACKLOG:
-                    kit-b's own cases on landscape phones, no worse than kit-b)
+                    kit-b's own cases on landscape phones, no worse than kit-b). (kitb-matchhud, the owner's pick A "Slim
+                    bar") through a match's life - a match of 1-4 and SAINT, the countdown, the pad, the leader's pad, the
+                    results - at 568 x 320 .. 1920 x 1080 and the portrait phones: the card's and the match / party panel's
+                    ink MIN_GAP off DASH, RUN, the rings and every other HUD piece, wholly on the screen, their texts
+                    whole; the tiles, their fold tab and the wallet strip where kit-b shows them; the VICTORY card's Time row
   T1  fix6 look1   the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
                     1024 x 768 raid:full. Rule: a phone's timer one place and form through raid:ready / raid / raid:full;
                     the clock at 1024 x 768 raid:full; the timer never larger than the boss name
@@ -560,11 +564,22 @@ O3_STATES = ["lobby", "match", "match:full", "party", "party:leader", "countdown
 O3_BACKLOG = kitb_backlog("O3")
 
 
+def pad_aside(c, scen, w, h):
+    """(kitb-matchhud, the owner's pick A of 2026-11-27, the pitch's stated pad rule) on the party pad of a short landscape
+    phone - a touch screen, landscape, where the card has no row clear of the keys - the vitals step aside while the party
+    panel shows (no damage comes on the pad; the tutorial's chip docks bottom-left there): a hidden card passes there. The
+    pin cannot see the row itself: O3M's dump compare (build/GATE_MH) holds 844 x 390 and up identical to kit-b"""
+    return scen.startswith("party") and w > h and c.RG.is_touch(w, h, None)
+
+
 def pin_O3(c, sizes):
     for (w, h) in list(sizes) + [s for s in O3_SIZES if s not in sizes]:
         for scen in O3_STATES:
             nodes = c.nodes(c.dump(scen, w, h))
             vit = [(p, n) for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals$", p)]
+            if not vit and pad_aside(c, scen, w, h):
+                c.check("O3", True, "O3 %s %dx%d: (the vitals step aside on the party pad)" % (scen, w, h))
+                continue
             if not c.check("O3", bool(vit), "O3 %s %dx%d: the vitals card shows" % (scen, w, h)):
                 continue
             vp, vn = vit[0]
@@ -585,6 +600,99 @@ def pin_O3(c, sizes):
                 if p.startswith(vp + ".") and p.endswith("PlayerName"):
                     ok, how = c.whole(n)
                     c.check("O3", ok or (scen, w, h, "name") in O3_BACKLOG, "O3 %s %dx%d: the player's name reads whole on the vitals card" % (scen, w, h), how)
+        c.cache.clear()
+    o3_match_hud(c, sizes)
+
+
+# (kitb-matchhud, the owner's pick A "Slim bar" of 2026-11-27: .superpowers/slop-audit/round3/build/PITCH_MATCHHUD/A_*.png.
+# On short landscape phones kit-b's vitals card had no row in a match: at 640 x 360 / 667 x 375 squeezed to 188 px it lay
+# on DASH, 14 px over RUN, on Roblox's jump ring, 18 px off the right edge at 640, its name 'SkyCli...'; at 812 x 375 still
+# over RUN; and at 640 x 360 the 3 - 4 player match panel's corner and its hard shadow lay on RUN's top-left corner, which
+# the card-only rules above never read) every scene the vitals show in through a match's life - a match of 1, 2, 3 and 4
+# players and the long-name SAINT match, its countdown, the party pad and its leader's full pad, the results - at the
+# pitch's phones, the short landscape phones round them, the normal sizes and the portrait phones. Each case:
+#   * the vitals card's ink MIN_GAP off DASH, RUN, Roblox's jump and stick rings and EVERY other HUD piece (the match /
+#     party panel with its shadow, the menu tiles, the wallet strip, the gift, the result card ...; the tutorial reads it
+#     itself: U1 over these states, the guide chip B1), wholly on the screen, every text on it whole (the name where it
+#     shows, the HP number); the pad of a short landscape phone may send it aside (pad_aside);
+#   * the match / party panel's ink MIN_GAP off the keys, the rings and every other piece, wholly on the screen, its clock
+#     row's texts whole;
+#   * (kitb-bl-hud look0 N2 / N3, the stopped lane's regressions, kept away) on a landscape phone the four menu tiles and
+#     their fold tab show, the wallet strip too where kit-b shows it (in a match not where it would reach over the panel,
+#     O3M_NO_STRIP), and the VICTORY card keeps its Time row (not where kit-b itself draws its micro card with no Time
+#     row: O3M_NO_TIME, measured on kit-b acf2192 by this pin: 568 x 320 and the portrait phones 360 x 640, 375 x 667,
+#     384 x 640 - build/GATE_MH/pins/red_O3.txt)
+#   * on the results the vitals may step aside under the result card (NotifyController's syncVitals, kit-b's own rule:
+#     the card's corner over the vitals slot on a landscape phone)
+# No backlog rows: every case keeps the rule outright.
+O3M_STATES = ["match:1", "match:2", "match", "match:4", "match:full", "countdown", "party", "party:leader", "results"]
+O3M_SIZES = [(568, 320), (640, 360), (667, 375), (700, 394), (720, 405), (740, 360), (800, 360), (800, 450), (812, 375),
+             (844, 390), (932, 430), (960, 540), (1280, 720), (1920, 1080), (360, 640), (375, 667), (384, 640), (390, 844)]
+O3M_PANELS = ("NimbusHud.TopLeft.MatchPanel", "NimbusHud.TopLeft.PartyPanel")
+O3M_TILES = ["Entry_Pets", "Entry_Index", "Entry_Spot", "Entry_Stats", "Toggle"]
+O3M_NO_STRIP = [(568, 320), (640, 360), (667, 375)]
+O3M_NO_TIME = [(568, 320), (360, 640), (375, 667), (384, 640)]
+O3M_SKIP = ("NimbusTutorial", "NimbusGuide", "MobileControls.DashButton", "MobileControls.RunButton")
+
+
+def o3m_subject(c, d, nodes, what, path, n, w, h, texts):
+    """one subject (the vitals card or the panel): its ink off the keys, the rings and every other piece, on the screen,
+    the texts whose path ends in one of `texts` (or all of its texts: None) whole"""
+    ink = c.BH.ink_of(n, c.RG, c.fonts)
+    if not c.check("O3", bool(ink), "%s: %s draws" % (what, path)):
+        return
+    u = c.BH.union(ink)
+    for key in ("DashButton", "RunButton"):
+        kn = nodes.get("MobileControls." + key)
+        kink = c.BH.ink_of(kn, c.RG, c.fonts) if kn and float(kn["w"]) > 1 else None
+        if kink:
+            g = min(c.BH.gap(a, b) for a in ink for b in kink)
+            c.check("O3", g >= c.BH.MIN_GAP - 0.05, "%s: %s keeps %g px off %s" % (what, path, c.BH.MIN_GAP, key),
+                    "ink %s, key %s: %.1f px" % (fmt(u), fmt(c.BH.union(kink)), g))
+    if c.RG.is_touch(w, h, None):
+        (jc, jr) = c.BH.rings(w, h)["Roblox jump"]
+        g = min(c.BH.ring_gap(r, jc, jr) for r in ink)
+        c.check("O3", g >= c.BH.MIN_GAP - 0.05, "%s: %s keeps %g px off Roblox's jump ring" % (what, path, c.BH.MIN_GAP), "ink %s: %.1f px" % (fmt(u), g))
+    near = piece_gaps(c, d, nodes, ink, w, h, path, O3M_SKIP)
+    c.check("O3", not near, "%s: %s keeps %g px off every other HUD piece and the stick ring" % (what, path, c.BH.MIN_GAP),
+            "ink %s: %s" % (fmt(u), ", ".join("%s %.1f px" % (p, g) for g, p in near)))
+    off = max(0.0, -u[0], -u[1], u[2] - w, u[3] - h)
+    c.check("O3", off <= 0.5, "%s: %s is wholly on the screen" % (what, path), "ink %s: %.1f px off" % (fmt(u), off))
+    for p, tn in nodes.items():
+        if not p.startswith(path + ".") or not isinstance(tn.get("text"), dict) or not str(tn["text"].get("text", "")).strip():
+            continue
+        if float(tn["w"]) <= 1 or (texts is not None and not any(p.endswith(t) for t in texts)):
+            continue
+        ok, how = c.whole(tn)
+        c.check("O3", ok, "%s: %s reads whole" % (what, p[len(path) + 1:]), how)
+
+
+def o3_match_hud(c, sizes):
+    for (w, h) in O3M_SIZES + [s for s in sizes if s not in O3M_SIZES]:
+        for scen in O3M_STATES:
+            d = c.dump(scen, w, h)
+            nodes = c.nodes(d)
+            what = "O3 %s %dx%d" % (scen, w, h)
+            vit = [(p, n) for p, n in nodes.items() if re.match(r"^NimbusHud\.\w+\.Vitals$", p)]
+            if not vit and pad_aside(c, scen, w, h):
+                c.check("O3", True, what + ": (the vitals step aside on the party pad)")
+            elif not vit and scen == "results":
+                c.check("O3", True, what + ": (the vitals step aside under the result card)")
+            elif c.check("O3", bool(vit), what + ": the vitals card shows"):
+                o3m_subject(c, d, nodes, what, vit[0][0], vit[0][1], w, h, None)
+            for pp in O3M_PANELS:
+                pn = nodes.get(pp)
+                if pn is not None and float(pn["w"]) > 1:
+                    o3m_subject(c, d, nodes, what, pp, pn, w, h, (".Inner.Timer", ".Inner.Tokens", ".CheckpointBar.Label"))
+            if w > h and c.RG.is_touch(w, h, None) and scen != "results":
+                gone = [t for t in O3M_TILES if ("NimbusMenu.MenuColumn." + t) not in nodes]
+                c.check("O3", not gone, what + ": the menu tiles and their fold tab show", "missing " + ", ".join(gone))
+                if scen.startswith("party") or (w, h) not in O3M_NO_STRIP:
+                    c.check("O3", "NimbusHud.TopRight.Currency" in nodes, what + ": the wallet strip shows")
+            if scen == "results" and (w, h) not in O3M_NO_TIME:
+                texts = [str(n["text"].get("text", "")).strip() for p, n in nodes.items()
+                         if p.startswith("NimbusNotify.ResultHolder.ResultCard.") and isinstance(n.get("text"), dict)]
+                c.check("O3", "Time" in texts, what + ": the VICTORY card keeps its Time row", "rows: " + ", ".join(t for t in texts if t)[:160])
         c.cache.clear()
 
 
