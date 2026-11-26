@@ -13,9 +13,11 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
 - 2026-10-20: ART RULE, Blender models only (see ARCHITECTURE_V3 "ART RULE").
 - 2026-10-22: `claude-setup/CLAUDE_SYSTEM_SETUP.md` adopted as the standing rules for this project ("the bible").
   Its step-4 rules live in `ABSOLUTE_RULES.md`; its skill pack is unpacked into `.claude/skills/`.
-- 2026-10-30: Gemini fallback (owner's rule). If the Gemini API key fails (e.g. 402 "prepayment credits are depleted"),
-  use Gemini on the web (gemini.google.com) through Claude in Chrome, where the owner's Google account (AI Pro plan)
-  is already signed in. Paste the prompt there and read the reply. Never open the Gemini desktop app from an agent.
+- 2026-11-26: STONE RULE (owner): Gemini ONLY through Chrome. Use gemini.google.com in Claude in Chrome, where the
+  owner's Google account is signed in. NEVER the Gemini API or the gemini-cli MCP (`ask-gemini`, `brainstorm`): no API
+  credits. Never the Gemini desktop app. If Chrome is not connected, STOP and tell the owner; never ship a pitch,
+  review or decision without Gemini's view. Every agent prompt that needs Gemini says this. (Replaces the 2026-10-30
+  "API first, web as fallback" rule.)
 - 2026-10-31: the speed scout (owner's rule, `ABSOLUTE_RULES.md`): always search for a way to make progress quicker without affecting the build or its quality.
   First use: the team-balance build ran its Pets window and loss screen side by side, since the two share almost no files.
 - 2026-11-01: the model and effort router (owner's rule): `docs/superpowers/specs/2026-11-01-model-effort-router.md` says which
