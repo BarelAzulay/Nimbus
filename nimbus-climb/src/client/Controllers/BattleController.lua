@@ -1871,27 +1871,45 @@ local function addBar(u, adornee, height)
 		LightInfluence = 0,
 		MaxDistance = K.BAR_DISTANCE,
 	})
+	-- (world signs kit-b, audit item 31: the rounded navy track went) a square sunk well (the Well face) in a mitred wood
+	-- edge, inset by that edge (drawn outside it) so the billboard keeps it, its WellEdge lip along the bottom; the fill a
+	-- square block over it (its size stays the caller's: UDim2.new(frac, -2, 1, -2) at 1, 1) with its own lip: the ink at
+	-- 0.68 over the fill's colour, which is exactly WorldTag.LipOf(that colour) and follows a recolour of the fill. The
+	-- bar's weight is SignKit's Micro (the kit's one weight for a bar on a world billboard: PetCard's HP row)
+	local WorldTag = require(Shared:WaitForChild("WorldTag"))
+	local micro = SignKit.Sizes.Micro
+	local edge, lip = micro.Edge, micro.Lip
 	local back = make("Frame", {
 		Name = "Back",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = COLORS.Track,
+		Position = UDim2.fromOffset(edge, edge),
+		Size = UDim2.new(1, -2 * edge, 1, -2 * edge),
 		BorderSizePixel = 0,
 	}, gui)
-	Theme.Corner(back, "S")
-	Theme.Stroke(back, u.mine and COLORS.Gold or COLORS.Ink, u.mine and 2 or 1.5, 0)
+	WorldTag.Block(back, SIGN.Well, SIGN.WellEdge, SIGN.Wood, edge, lip)
 	local fill = make("Frame", {
 		Name = "Fill",
 		Position = UDim2.fromOffset(1, 1),
 		Size = UDim2.new(1, -2, 1, -2),
 		BackgroundColor3 = color,
 		BorderSizePixel = 0,
+		ZIndex = back.ZIndex + 1,
 	}, back)
-	Theme.Corner(fill, "S")
+	make("Frame", {
+		Name = "Lip",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, lip),
+		BackgroundColor3 = SIGN.Text,
+		BackgroundTransparency = 0.68,
+		BorderSizePixel = 0,
+		ZIndex = fill.ZIndex,
+	}, fill)
 	gui.Parent = u.model
 	u.bar = gui
 	u.barFill = fill
 	u.barFrac = 1
 end
+Units._AddBar = addBar -- TESTS ONLY (tools/smoke_p3_battleclient.lua: the fallback bar's kit look, a build without PetCard)
 
 -- builds one unit's model (pcall'd by the caller)
 local function buildUnit(B, u)
@@ -11482,11 +11500,18 @@ function Ring.Tag(B, u, root, h)
 		MaxDistance = K.BAR_DISTANCE,
 		ResetOnSpawn = false,
 	})
-	local plate = make("Frame", { Name = "Plate", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, th) }, gui)
-	Theme.Corner(plate, "M")
-	Theme.Stroke(plate, Ring.GOLD, 2, 0)
-	local l = label(plate, name, "Heading", px, { Name = "Name", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Ring.GOLD })
-	l.TextStrokeColor3 = COLORS.Ink
+	-- (world signs kit-b, audit item 31: the navy rounded plate in a gold ring went) a stone card in a mitred wood edge,
+	-- its lip in the ring's gold (WorldTag.LipOf), the name in the kit's brown ink, no outline. The card is inset by its
+	-- edge (drawn outside it) so the billboard keeps the edge whole; the name sits above the lip
+	local WorldTag = require(Shared:WaitForChild("WorldTag"))
+	local edge = WorldTag.Sizes.Edge
+	local lip = Theme.ScaledSize(WorldTag.Sizes.Lip, 4)
+	local plate = make("Frame", { Name = "Plate", BorderSizePixel = 0, Position = UDim2.fromOffset(edge, edge), Size = UDim2.new(1, -2 * edge, 0, th) }, gui)
+	WorldTag.Block(plate, SIGN.Stone, WorldTag.LipOf(Ring.GOLD), SIGN.Wood, edge, lip)
+	WorldTag.Text(plate, "Name", name, "Heading", px, SIGN.Text, {
+		Size = UDim2.new(1, 0, 1, -lip),
+		TextXAlignment = Enum.TextXAlignment.Center,
+	})
 	gui.Parent = u.model
 	u.tag = gui
 end
