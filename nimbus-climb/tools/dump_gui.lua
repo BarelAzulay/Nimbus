@@ -106,7 +106,10 @@
 --                         WorldMirror: the pixel billboard at its own size, the eye-level countdown face at the
 --                         size it has on this screen from <studs> away (default 36, a friend outside the lock
 --                         walls) over a sketch of the swirl, and the face's canvas at 1:1
---   homepads[:<tier>]     no game HUD: a Phase 2 home (real LobbyBuilder + HomeBuilder + TycoonCatalog) built half way
+--   homepads[:<tier>[:signs]]  no game HUD: a Phase 2 home (real LobbyBuilder + HomeBuilder + TycoonCatalog) built half way
+--                         (signs: the stations' FarmSign / BowlSign / MachineSign, a closed garden bed's board, the
+--                         lobby egg shelf's RarityStrip and the home portal's PortalName tag in place of the pads and
+--                         the claim post)
 --                         to house tier <tier> (default 2) with its buy pads; every pad sign (pixel billboards at
 --                         their own size) and the "FREE HOME" signpost of a free plot (from 30 studs and at canvas
 --                         size) mirrored flat into the ScreenGui WorldMirror (the plot attributes CollectorCash /
@@ -2469,12 +2472,44 @@ end
 ----------------------------------------------------------------------
 -- homepads: the world GUIs of a Phase 2 home (server/Services/HomeBuilder.lua), mirrored flat like the portal's
 ----------------------------------------------------------------------
-local function homePadsScene(tier, width, height)
+-- (kit-b world signs, lane B) HomeBuilder sizes its stone cards with Theme.Measure, which Roblox's TextService answers with
+-- the font: the mock's GetTextSize is a flat 0.5 em, so for the scene Theme.Measure takes the renderer's font metrics (the
+-- role's font, its MeasureSpare, a caps role in capitals), as worldui's WU.realMeasure does (it sees the same _wuReal mark)
+local function homeRealMeasure(Theme)
+	if not Theme or Theme._wuReal then
+		return
+	end
+	local probe = Instance.new("TextLabel")
+	Theme.Measure = function(text, role, size, width)
+		local spare, font = 1, role
+		text = tostring(text or "")
+		if typeof(role) ~= "EnumItem" or role == Enum.Font.Unknown then
+			if not Theme.Fonts[role] then
+				role = "Body"
+			end
+			if Theme.CapsRoles and Theme.CapsRoles[role] then
+				text = Theme.Caps(text)
+			end
+			size = tonumber(size) or Theme.RoleSize(role)
+			spare = Theme.MeasureSpare[role] or 1
+			font = Theme.Fonts[role]
+		end
+		probe.Font = font
+		probe.Text = text
+		probe.TextSize = tonumber(size) or 14
+		local w, h = realExtent(probe, tonumber(width) and (tonumber(width) / spare) or nil)
+		return Vector2.new(math.ceil(w * spare), h)
+	end
+	Theme._wuReal = true
+end
+
+local function homePadsScene(tier, width, height, view)
 	Config = req("shared/Config")
 	local okMetrics, why = installMetrics()
 	if not okMetrics then
 		note("text metrics: " .. tostring(why))
 	end
+	homeRealMeasure(req("shared/Theme"))
 	ensureRemotes()
 	Mock.SetViewport(width, height)
 	local context = Mock.Context
@@ -2529,9 +2564,12 @@ local function homePadsScene(tier, width, height)
 		rowH = max(rowH, h)
 		return px, py
 	end
+	-- (kit-b world signs, lane B) view "signs": the stations' own signs (Kit.sign: the farm, the bowl, the food machine)
+	-- in place of the pads, and a closed garden bed's board in place of the claim post
+	local SIGN_NAMES = (view == "signs") and { FarmSign = true, BowlSign = true, MachineSign = true } or { PadSign = true }
 	local pads = {}
 	for _, d in ipairs(spot.Folder:GetDescendants()) do
-		if d:IsA("BillboardGui") and d.Name == "PadSign" then
+		if d:IsA("BillboardGui") and SIGN_NAMES[d.Name] then
 			pads[#pads + 1] = d
 		end
 	end
@@ -2550,6 +2588,9 @@ local function homePadsScene(tier, width, height)
 				id = node:GetAttribute("StationId")
 				break
 			end
+		end
+		if view == "signs" then
+			id = id .. " " .. gui.Name
 		end
 		local px, py = place(w, h, id)
 		mirrorCell(screen, gui, px, py, 1, id)
@@ -2596,8 +2637,47 @@ local function homePadsScene(tier, width, height)
 			})
 		end
 	end
-	local claim = free and free.Folder and free.Folder:FindFirstChild("ClaimGui", true)
-	surface(claim, "Claim sign")
+	if view == "signs" then
+		surface(spot.Folder:FindFirstChild("ClosedGui", true), "Closed bed sign")
+		-- (kit-b world signs, lane B review) the lobby's egg-shelf RarityStrip (LobbyBoardBuilder, built with the lobby
+		-- above) and the home portal's PortalName tag (client HomePortalFx, drawn from the local player's HomePortal
+		-- attribute as dump_model's portal:home does), so both stone cards have a render
+		local strip = nil
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("SurfaceGui") and d.Name == "RarityStrip" then
+				strip = d
+				break
+			end
+		end
+		surface(strip, "Egg shelf RarityStrip")
+		local Fx = req("client/Controllers/HomePortalFx", true)
+		local okFx, whyFx = false, "client/Controllers/HomePortalFx.lua has no Init"
+		if Fx and type(Fx.Init) == "function" then
+			okFx, whyFx = pcall(function()
+				Fx.Init()
+				LocalPlayer:SetAttribute("HomePortal", fmt("%d,%d,%d,%d,%d", 0, 3, 0, 0, floor(workspace:GetServerTimeNow() + 60)))
+				advance(1.0)
+			end)
+		end
+		local tag = nil
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("BillboardGui") and d.Name == "PortalName" then
+				tag = d
+				break
+			end
+		end
+		if tag then
+			local w, h = canvasOf(tag)
+			local cap = fmt("Home PortalName (%dx%d px)", w, h)
+			local px, py = place(w, h, cap)
+			mirrorCell(screen, tag, px, py, 1, cap)
+		else
+			note("homepads: no PortalName tag" .. (okFx and "" or (": " .. tostring(whyFx))))
+		end
+	else
+		local claim = free and free.Folder and free.Folder:FindFirstChild("ClaimGui", true)
+		surface(claim, "Claim sign")
+	end
 	screen.Parent = pg
 	advance(0.1)
 	return okMetrics
@@ -5567,6 +5647,157 @@ function WU.poster(screen)
 	end
 end
 
+-- (kit B lane A, the owner's "home gui's havent changed") the lobby's own signs on the stone kit, built by LobbyBuilder /
+-- SpotService as the server builds them. worldui:lobby = the pixel tags 1:1: a free home's nameplate and two owned ones (the
+-- silhouette well, a long name with the Prestige line), the podium tag (SpotService's buildTag + paintTag) for a Common and
+-- a Secret pet, the four machine tags, SKY TROVE, the Join sign, the garden name tags and a 'No. 7' face (1:1);
+-- worldui:lobbyboards = the welcome arch, HOW TO PLAY, CLOUD SHOP and WINGED PETS boards, each canvas fitted
+function WU.surfaceCanvas(face)
+	local W, H = face.CanvasSize.X, face.CanvasSize.Y
+	local part = face.Adornee or face.Parent
+	if face.SizingMode == Enum.SurfaceGuiSizingMode.PixelsPerStud and part and part:IsA("BasePart") then
+		local n, s, pps = face.Face, part.Size, face.PixelsPerStud
+		local a, b = s.X, s.Y
+		if n == Enum.NormalId.Left or n == Enum.NormalId.Right then
+			a = s.Z
+		elseif n == Enum.NormalId.Top or n == Enum.NormalId.Bottom then
+			b = s.Z
+		end
+		W, H = floor(a * pps + 0.5), floor(b * pps + 0.5)
+	end
+	return W, H
+end
+
+function WU.faceCell(screen, face, x, y, s, name)
+	local W, H = WU.surfaceCanvas(face)
+	local cell = make("Frame", { Name = name or "Face", BackgroundTransparency = 1, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(W * s, H * s) }, screen)
+	for _, c in ipairs(face:GetChildren()) do
+		if c:IsA("GuiObject") then
+			c:Clone().Parent = cell
+		end
+	end
+	if math.abs(s - 1) > 1e-3 then
+		deepScale(cell, s)
+	end
+	return cell
+end
+
+function WU.lobbySigns(screen, boards)
+	NK.hideGame()
+	local lobby = WU.serverWorld()
+	advance(0.3)
+	local place = WU.flow(24, 96)
+	local root = workspace:FindFirstChild("NimbusLobby")
+	local shown = 0
+	local function show(gui, cap)
+		local w, h = canvasOf(gui)
+		cap = fmt("%s (%dx%d px)", cap, w, h)
+		local x, y = place(w, h, cap)
+		WU.caption(screen, cap, x, y - 26)
+		WU.cell(screen, gui, x, y)
+		shown = shown + 1
+	end
+	if boards then
+		local vp = Mock.Viewport
+		local faces = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d:IsA("SurfaceGui") and d.Face == Enum.NormalId.Front and d.Parent then
+				local p = d.Parent
+				local key = (p.Name == "Face" and p.Parent) and p.Parent.Name or p.Name
+				if (key == "WelcomeSign" or key == "HowToBoard" or key == "ShopSign" or key == "RarityBoard") and not faces[key] then
+					faces[key] = d
+				end
+			end
+		end
+		local order = { { "WelcomeSign", "the welcome arch" }, { "HowToBoard", "HOW TO PLAY" }, { "ShopSign", "CLOUD SHOP" }, { "RarityBoard", "WINGED PETS" } }
+		local x, y, rowH = 24, 96, 0
+		for _, o in ipairs(order) do
+			local face = faces[o[1]]
+			if face then
+				local W, H = WU.surfaceCanvas(face)
+				local s = min(1, (vp.X - 48) / W, (vp.Y - 140) / H, 0.62)
+				local w, h = W * s, H * s
+				if x > 24 and x + w > vp.X - 12 then
+					x, y, rowH = 24, y + rowH + 46, 0
+				end
+				local cap = fmt("%s (%dx%d canvas, x%.2f)", o[2], W, H, s)
+				WU.caption(screen, cap, x, y - 26)
+				WU.faceCell(screen, face, x, y, s, o[1])
+				rowH = max(rowH, h)
+				x = x + max(w, utf8len(cap) * 9 + 12) + 30
+				shown = shown + 1
+			else
+				note("worldui:lobbyboards no " .. o[1])
+			end
+		end
+		note(fmt("worldui:lobbyboards %d boards", shown))
+		return
+	end
+	-- the nameplates: spot 1 free; spot 2 owned (the silhouette); spot 3 a long name with the Prestige line
+	local spots = type(lobby.Spots) == "table" and lobby.Spots or {}
+	local function well(spot, mode)
+		local disc = spot.Nameplate and spot.Nameplate:FindFirstChild("Avatar", true)
+		if disc then
+			disc.BackgroundColor3 = disc:GetAttribute(mode == "Free" and "FreeColor" or "OwnedColor") or disc.BackgroundColor3
+			disc.FreeIcon.Visible = mode == "Free"
+			disc.Silhouette.Visible = mode == "Owned"
+		end
+	end
+	local looks = { { "Free home", "Press E at the gate", "Free" }, { "Mia", "Home Level 3", "Owned" }, { "Alexandrovich_X", "Home Level 12 \226\128\162 2 stars", "Owned" } }
+	for i, look in ipairs(looks) do
+		local spot = spots[i]
+		if spot and spot.Nameplate then
+			spot.NameLabel.Text, spot.SubLabel.Text = look[1], look[2]
+			well(spot, look[3])
+			show(spot.Nameplate, fmt("home nameplate #%d, %s", i, look[3] == "Free" and "free" or "owned"))
+		end
+	end
+	-- the podium tag, as SpotService builds and paints it
+	local SS = req("server/Services/SpotService", true)
+	local PC = req("shared/PetCatalog", true)
+	if SS and SS._Tag and spots[1] then
+		local context = Mock.Context
+		Mock.Context = "server"
+		for _, rarity in ipairs({ "Common", "Secret" }) do
+			local def = nil
+			for _, p in ipairs(PC and PC.Pets or {}) do
+				if not def and p.Rarity == rarity then
+					def = p
+				end
+			end
+			local ok, tag = pcall(SS._Tag.Build, { PodiumCFrame = spots[1].PodiumCFrame, Folder = workspace })
+			if ok and tag and def then
+				SS._Tag.Paint(tag, def, def.Id)
+				advance(0.05)
+				show(tag.Gui, "podium tag, " .. rarity)
+			else
+				note("worldui:lobby podium tag: " .. tostring(tag))
+			end
+		end
+		Mock.Context = context
+	end
+	for _, name in ipairs({ "PriceBillboard", "TroveBillboard", "JoinBillboard", "NameTag" }) do
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d:IsA("BillboardGui") and d.Name == name then
+				local first = d:FindFirstChildWhichIsA("TextLabel", true)
+				show(d, name .. (first and (" '" .. first.Text .. "'") or ""))
+			end
+		end
+	end
+	local sign = spots[7] and spots[7].Folder and spots[7].Folder:FindFirstChild("NumberSign", true)
+	local face = sign and sign:FindFirstChildOfClass("SurfaceGui")
+	if face then
+		local W, H = WU.surfaceCanvas(face)
+		-- 1:1 (deepScale past 100 px text adds a UIScale that grows the label's box: a x2 mirror drew it off-centre)
+		local cap = fmt("'No. 7' gate sign face (%dx%d canvas, 1:1)", W, H)
+		local x, y = place(W, H, cap)
+		WU.caption(screen, cap, x, y - 26)
+		WU.faceCell(screen, face, x, y, 1, "NumberSign")
+		shown = shown + 1
+	end
+	note(fmt("worldui:lobby %d signs", shown))
+end
+
 scenario("worldui", function(piece)
 	piece = tostring(piece or "")
 	if piece == "" then
@@ -5589,11 +5820,13 @@ scenario("worldui", function(piece)
 		WU.places(screen, piece == "places2")
 	elseif piece == "poster" then
 		WU.poster(screen)
+	elseif piece == "lobby" or piece == "lobbyboards" then
+		WU.lobbySigns(screen, piece == "lobbyboards")
 	elseif guide[piece] then
 		WU.guide(screen, guide[piece])
 	else
 		undo()
-		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:places2|:poster|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]")
+		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:places2|:poster|:lobby|:lobbyboards|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]")
 	end
 	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	if guide[piece] and workspace.CurrentCamera then
@@ -5756,7 +5989,7 @@ else
 		data.metrics = okMetrics and "font" or "mock"
 	elseif name == "homepads" then
 		-- the world GUIs of a Phase 2 home (no game HUD)
-		local okMetrics = homePadsScene(fields[2], width, height)
+		local okMetrics = homePadsScene(fields[2], width, height, fields[3])
 		data = walk()
 		data.metrics = okMetrics and "font" or "mock"
 	elseif name == "arenaboards" then

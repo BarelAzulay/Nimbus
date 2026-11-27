@@ -104,10 +104,11 @@
 --                      shop centre, every egg >= 2 studs from the Cloud machine's 9 x 7 footprint): EggShelf (the shelf numbers
 --                      of EGGROW below) with the seven Egg_<Rarity> eggs at Step 2.7 (Common at the reader's left), the
 --                      turntable tags, the sparkles, the egg_<rarity> requests; the RarityStrip SurfaceGui on the shelf's
---                      front (50 px per stud, LightInfluence 0, a Navy Band at 0.2, seven Label_<Rarity> 135 x 40 px under
---                      their eggs, 30 px Body text in the rarity colour (Secret 178,150,255) with the INK outline, no
---                      TextScaled; measured with Roblox's BuilderSans-Bold no two labels meet and each stays on the
---                      canvas); one EggShelfGlow; the PromptPart at cf * (0, 2, -5.6); LobbyInfo.Shop.Counter = { that
+--                      front (50 px per stud, LightInfluence 0; kit-b world signs: the Band a stone card inset by its 2 px
+--                      mitred wood edge with a 4 px lip, no navy, no round corner, no gradient; seven Label_<Rarity> 135 x
+--                      32 px under their eggs, 30 px Body text in the kit's brown ink with no outline, no TextScaled, each
+--                      over its word-wide Lip_<Rarity> piece in the rarity colour (Secret its violet glow 138,92,255);
+--                      measured with Roblox's BuilderSans-Bold no two labels meet and each stays on the canvas); one EggShelfGlow; the PromptPart at cf * (0, 2, -5.6); LobbyInfo.Shop.Counter = { that
 --                      part, Center = the board's Face, Model = EggRow } with its one ShopPrompt; the WINGED PETS board's
 --                      letters and pills end above y 3.9 (<= 375 of 450 px), the subtitle right-aligned in the header row;
 --                      the eggs >= 3 studs from every roulette prompt, the row clear of every other shop prop; the right
@@ -154,11 +155,13 @@ local RARITY_SUB = "Every egg hatches a pet of its rarity"
 -- the egg row under the WINGED PETS board (shop-area spec 16.17.2): the shelf, the egg step, the label strip, the prompt
 -- part's offset and the board's 450 px canvas with its 375 px line (the eggs in front stand 3.8 studs tall: every letter
 -- ends above y 3.9 = (11.4 - 3.9) x 50 px from the face's top). TextW: the labels' widths at 30 px measured with Roblox's
--- own BuilderSans-Bold (content/fonts; Theme's Body face), the gap rule's input; Outline = signText's INK stroke at 30 px.
+-- own BuilderSans-Bold (content/fonts; Theme's Body face), the gap rule's input (kit-b world signs: the labels carry no
+-- outline any more, Outline 0); BandEdge / BandLip: the stone band's wood edge (its inset) and lip; LabelH = the canvas's 40
+-- px less both edges and the lip.
 local EGGROW = {
 	Shelf = Vector3.new(19.3, 0.8, 2.6), ShelfZ = -3, ShelfX = 1.35, EggsX = 1.0, Step = 2.7, EggSize = Vector3.new(2.25, 3, 2.5),
-	PPS = 50, StripH = 40, Cell = 135, Text = 30, BandAlpha = 0.2, Navy = Color3.fromRGB(34, 42, 76),
-	SecretText = Color3.fromRGB(178, 150, 255), MinGap = 6, Outline = 2, UnderEgg = 30,
+	PPS = 50, StripH = 40, Cell = 135, Text = 30, BandEdge = 2, BandLip = 4, LipInset = 4, LabelH = 32,
+	SecretTint = Color3.fromRGB(138, 92, 255), MinGap = 6, Outline = 0, UnderEgg = 30,
 	TextW = { Common = 126, Uncommon = 161, Rare = 65, Epic = 59, Legendary = 151, Mythic = 98, Secret = 91 },
 	Prompt = Vector3.new(0, 2, -5.6), PromptSize = Vector3.new(5, 4, 3),
 	CanvasH = 450, MaxBottom = 375, HeaderTop = 60, RowTop = 68,
@@ -734,15 +737,29 @@ local function checkEggRow(label, lobby, Config, info)
 			label .. ": ...on the shelf's Front face at 50 px per stud, LightInfluence 0")
 		local W, H = shelf.Size.X * strip.PixelsPerStud, shelf.Size.Y * strip.PixelsPerStud
 		local band = strip:FindFirstChild("Band")
-		T.check(band ~= nil and band:IsA("Frame") and band.Size.X.Scale == 1 and band.Size.Y.Scale == 1 and band.Size.X.Offset == 0 and band.Size.Y.Offset == 0
-			and math.abs(band.BackgroundTransparency - EGGROW.BandAlpha) < 1e-6 and sameColor(band.BackgroundColor3, EGGROW.Navy),
-			label .. ": ...a Navy Band over the whole canvas at BackgroundTransparency 0.2")
+		-- (kit-b world signs, lane B: was a navy band at 0.2) the band is the kit's stone card, inset by its mitred wood edge
 		local Theme = req("shared/Theme")
-		local badL, spans = {}, {}
+		local Sign = Theme and Theme.Sign
+		local e = EGGROW.BandEdge
+		local edge = band and band:FindFirstChild("SignEdge")
+		local blip = band and band:FindFirstChild("Lip")
+		local round = {}
+		for _, d in ipairs(strip:GetDescendants()) do
+			if (d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0)) or d:IsA("UIGradient") then
+				round[#round + 1] = d.ClassName .. " on " .. d.Parent.Name
+			end
+		end
+		T.check(band ~= nil and band:IsA("Frame") and band.Size.X.Scale == 1 and band.Size.Y.Scale == 1 and band.Size.X.Offset == -2 * e and band.Size.Y.Offset == -2 * e
+			and band.Position.X.Offset == e and band.Position.Y.Offset == e and band.BackgroundTransparency == 0 and Sign and sameColor(band.BackgroundColor3, Sign.Stone)
+			and edge and edge:IsA("UIStroke") and edge.LineJoinMode == Enum.LineJoinMode.Miter and edge.Thickness == e and blip and blip.Size.Y.Offset == EGGROW.BandLip
+			and #round == 0,
+			label .. ": ...the Band a stone card over the canvas, inset by its 2 px mitred wood edge (SignEdge), a 4 px Lip; no round corner or gradient",
+			table.concat(round, ", "))
+		local badL, spans, pieces = {}, {}, {}
 		for i, id in ipairs(Config.Eggs.Order) do
 			local l = strip:FindFirstChild("Label_" .. id, true)
 			local def = rarityDef(Config, id)
-			local colour = (id == "Secret") and EGGROW.SecretText or (def and def.Color)
+			local colour = (id == "Secret") and EGGROW.SecretTint or (def and def.Color)
 			local x, _, w, h = nil, nil, nil, nil
 			if l and l:IsA("TextLabel") then
 				x, _, w, h = guiBox(l, strip, W, H)
@@ -753,8 +770,7 @@ local function checkEggRow(label, lobby, Config, info)
 			else
 				local c = x + w / 2
 				spans[i] = { Id = id, C = c, Half = ((EGGROW.TextW[id] or 0) + 2 * EGGROW.Outline) / 2 }
-				local stroke = l:FindFirstChildOfClass("UIStroke")
-				if not (math.abs(w - EGGROW.Cell) <= 0.5 and math.abs(h - EGGROW.StripH) <= 0.5) then
+				if not (math.abs(w - EGGROW.Cell) <= 0.5 and math.abs(h - EGGROW.LabelH) <= 0.5) then
 					badL[#badL + 1] = id .. fmt(" box %.1f x %.1f px", w, h)
 				end
 				if math.abs(c - eggC) > EGGROW.UnderEgg then
@@ -763,11 +779,31 @@ local function checkEggRow(label, lobby, Config, info)
 				if l.Text ~= id or l.TextSize ~= EGGROW.Text or l.TextScaled ~= false or l.TextWrapped ~= false then
 					badL[#badL + 1] = id .. fmt(" text '%s' %s px scaled %s", tostring(l.Text), tostring(l.TextSize), tostring(l.TextScaled))
 				end
-				if not (colour and sameColor(l.TextColor3, colour)) then
-					badL[#badL + 1] = id .. " colour " .. tostring(l.TextColor3)
+				if not (Sign and sameColor(l.TextColor3, Sign.Text)) then
+					badL[#badL + 1] = id .. " colour " .. tostring(l.TextColor3) .. " (want the kit's ink)"
 				end
-				if not (stroke and stroke.Thickness >= EGGROW.Outline and stroke.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual) then
-					badL[#badL + 1] = id .. " no INK outline"
+				for _, st in ipairs(l:GetChildren()) do
+					if st:IsA("UIStroke") and st.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual and st.Enabled ~= false then
+						badL[#badL + 1] = id .. " has an outline (it sits on the stone face)"
+					end
+				end
+				if l.TextStrokeTransparency < 1 then
+					badL[#badL + 1] = id .. " has a classic stroke"
+				end
+				-- its lip piece: the rarity colour, as wide as the word (Theme.Measure in the Body role, as the label shows it)
+				-- less LipInset px each end, centred under it, on the band's bottom
+				local piece = band and band:FindFirstChild("Lip_" .. id)
+				local px, py, pw, ph = nil, nil, nil, nil
+				if piece then
+					px, py, pw, ph = guiBox(piece, strip, W, H)
+					pieces[i] = { Id = id, X0 = px, X1 = px + pw }
+				end
+				if not (piece and px and colour and sameColor(piece.BackgroundColor3, colour)) then
+					badL[#badL + 1] = id .. " no Lip_" .. id .. " piece in its rarity colour"
+				elseif not (math.abs(px + pw / 2 - c) <= 1 and math.abs(ph - EGGROW.BandLip) <= 0.5 and math.abs(py + ph - (H - e)) <= 0.5
+					and Theme and math.abs(pw - math.max(24, math.ceil(Theme.Measure(id, "Body", EGGROW.Text).X) - 2 * EGGROW.LipInset)) <= 0.5) then
+					badL[#badL + 1] = id .. fmt(" lip piece %.1f..%.1f x %.1f px at y %.1f (the word %.1f wide at %.1f)", px, px + pw, ph, py,
+						Theme and Theme.Measure(id, "Body", EGGROW.Text).X or -1, c)
 				end
 				-- (kit-b U1 review) a Body label draws Nunito ExtraBold and reads .Font = Unknown; Theme.FontOf gives its measured font
 				if Theme and (l:GetAttribute("FontRole") ~= "Body" or Theme.FontOf(l) ~= Theme.Fonts.Body) then
@@ -775,7 +811,7 @@ local function checkEggRow(label, lobby, Config, info)
 				end
 			end
 		end
-		T.check(#badL == 0, label .. ": seven Label_<Rarity> in Config.Eggs.Order, 135 x 40 px boxes standing under their eggs, the rarity id in 30 px Body (no TextScaled, no wrap) in the rarity colour (Secret 178,150,255) with the INK outline",
+		T.check(#badL == 0, label .. ": seven Label_<Rarity> in Config.Eggs.Order, 135 x 32 px boxes standing under their eggs, the rarity id in 30 px Body (no TextScaled, no wrap) in the kit's ink with no outline, each over its Lip_<Rarity> piece in the rarity colour (Secret 138,92,255)",
 			table.concat(badL, "; "))
 		-- the measured widths: neighbours >= MinGap apart, the end labels on the canvas
 		local gaps, worst = {}, math.huge
@@ -796,6 +832,18 @@ local function checkEggRow(label, lobby, Config, info)
 		end
 		T.check(#spans == 7 and worst >= EGGROW.MinGap, label .. fmt(": no two labels meet (measured widths: every gap >= %d px) and the end labels stay on the %.0f px canvas", EGGROW.MinGap, W),
 			table.concat(gaps, ", "))
+		-- (kit-b world signs, lane B render review) two neighbours' lip pieces never meet: the band's StoneLip shows between
+		-- them (with the real font Common's and Uncommon's touched before the LipInset)
+		local lipGaps, lipWorst = {}, math.huge
+		for i = 1, #Config.Eggs.Order - 1 do
+			local a, b = pieces[i], pieces[i + 1]
+			if a and b then
+				lipWorst = math.min(lipWorst, b.X0 - a.X1)
+				lipGaps[#lipGaps + 1] = fmt("%s/%s %.1f", a.Id, b.Id, b.X0 - a.X1)
+			end
+		end
+		T.check(#lipGaps == #Config.Eggs.Order - 1 and lipWorst >= 2, label .. ": no two Lip_<Rarity> pieces meet (every gap >= 2 px of the band's StoneLip)",
+			table.concat(lipGaps, ", "))
 	end
 
 	------------------------------------------------------------------ the shelf's one glow
@@ -1160,6 +1208,30 @@ local function checkAltarGate(label, gate, site)
 		label .. ": the tag reads '" .. ALTAR.Title .. "' / '" .. ALTAR.Info .. "'", tostring(title and title.Text) .. " / " .. tostring(infoL and infoL.Text))
 	T.check(pill ~= nil and pill.Visible == true and pillLabel ~= nil and pillLabel.Text == ALTAR.Pill,
 		label .. ": ...and shows the Pill '" .. ALTAR.Pill .. "'", pillLabel and (pillLabel.Text .. (pill.Visible and "" or " (hidden)")) or "no pill")
+	-- (kit B lane A: the stand-in gate's tag moved to the stone kit too) the board a stone block (a mitred SignEdge, a
+	-- Lip), the Pill a tinted block (its own SignEdge + Lip, the WorldTag attribute PortalService re-tints through), the
+	-- texts in ink (no outline), no round corner or gradient under the tag
+	do
+		local tag = model:FindFirstChild("GateTag", true)
+		local plate = tag and tag:FindFirstChild("Plate")
+		local probs = {}
+		for _, d in ipairs(tag and tag:GetDescendants() or {}) do
+			if (d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0)) or d:IsA("UIGradient") then
+				probs[#probs + 1] = d.ClassName .. " on " .. d.Parent.Name
+			elseif d:IsA("TextLabel") and d.Visible and (d.TextStrokeTransparency <= 0.5 or d:FindFirstChildWhichIsA("UIStroke") ~= nil) then
+				probs[#probs + 1] = "'" .. d.Text .. "' is outlined"
+			end
+		end
+		for _, b in ipairs({ plate or false, pill or false }) do
+			local edge = b and b:FindFirstChild("SignEdge")
+			local lip = b and b:FindFirstChild("Lip")
+			if not (b and edge and edge.LineJoinMode == Enum.LineJoinMode.Miter and lip and lip.Visible and b.BackgroundTransparency == 0) then
+				probs[#probs + 1] = (b and b.Name or "a block") .. ": no stone kit block (SignEdge + Lip)"
+			end
+		end
+		T.check(tag ~= nil and pill ~= nil and pill:GetAttribute("WorldTag") == true and #probs == 0,
+			label .. ": kit B: the tag is a stone block over a tinted Pill block (SignEdge + Lip each, ink texts, no round corner / gradient)", table.concat(probs, "; "))
+	end
 	T.eq(model:GetAttribute("VortexBoost"), ALTAR.Boost, label .. ": the gate model carries VortexBoost 1.4")
 	-- the pad
 	local okPad = pad ~= nil and pad:IsA("BasePart") and pad.Name == "Pad" and pad:IsDescendantOf(model)

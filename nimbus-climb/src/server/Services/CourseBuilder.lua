@@ -30,6 +30,7 @@ local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the bounce pads' arrow
 local FxSprites = require(Shared.FxSprites) -- kit-b O3: the game's own particle sprites (no stock sparkle / smoke)
+local WorldTag = require(Shared.WorldTag) -- (kit-b world signs, lane C) the stone card tier of the hint tags and boards
 local CourseLayout = require(script.Parent.CourseLayout)
 
 local CourseBuilder = {}
@@ -492,8 +493,8 @@ end
 -- GUI helpers (all text through Theme roles)
 ----------------------------------------------------------------------
 -- World text rule (ARCHITECTURE_V3.md): hints floating over the course are PIXEL-sized BillboardGuis (constant
--- on-screen size: titles >= 22 px, info lines >= 18 px at 1080p, outlined glyphs on a compact solid plate that
--- sizes itself to its lines, LightInfluence 0, MaxDistance ~100-120); signs on surfaces are SurfaceGuis at 50-60
+-- on-screen size: titles >= 22 px, info lines >= 18 px at 1080p, the kit's ink on a compact stone card measured to its
+-- lines, LightInfluence 0, MaxDistance ~100-120); signs on surfaces are SurfaceGuis at 50-60
 -- px per stud with FIXED text sizes (titles >= 1 stud, info lines >= 0.6 stud). Never TextScaled in the world.
 local TEXT_INK = Theme.Colors.TextStroke or C.Ink
 local HINT_TITLE = 30 -- px
@@ -535,17 +536,19 @@ local function worldText(parent, text, role, size, color, place, order, wrap)
 	return label
 end
 
-local function addGradient(target, top, bottom)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(top, bottom)
-	g.Rotation = 90
-	g.Parent = target
-	return g
-end
+-- (kit-b world signs, lane C; the owner's "home gui's havent changed", 2026-11-27: the course's hint tags and boards were
+-- still navy rounded plates and the START / FINISH words wore gradients) no new look: the kit's stone card tier as the
+-- NPC nameplate (NpcService buildNameplate) and THE GATES board (LobbyBuilder GuideBoard) draw it. A Sign.Stone face, a
+-- mitred wood edge (WorldTag's SignEdge, outside the face), a lip in the sign's role colour, the text in the kit's brown
+-- ink with no outline (WorldTag.Text). No UICorner, no UIGradient, no navy.
+local Sign = Theme.Sign
+local HINT = { PadX = 16, PadTop = 5, Gap = 1, PadBottom = 5, MinW = 120 }
+local hintLines = setmetatable({}, { __mode = "k" }) -- a tag's card -> its lines { label, texts, role, px }
 
 -- Pixel-sized hint tag on `part`. Its bottom edge sits `lift` studs above the part (world space) and it grows
--- upwards, so it never sinks into what it labels. Returns the compact plate; add lines with hintLine.
-local function hintTag(part, lift, maxDistance, edge)
+-- upwards, so it never sinks into what it labels. Returns the stone card (its lip in `accent`: WorldTag.LipOf); add
+-- lines with hintLine. The card never grows by AutomaticSize: every line is measured as it is added.
+local function hintTag(part, lift, maxDistance, accent)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "HintTag"
 	gui.Size = UDim2.fromOffset(420, 120)
@@ -556,44 +559,54 @@ local function hintTag(part, lift, maxDistance, edge)
 	gui.MaxDistance = maxDistance or 110
 	gui.ClipsDescendants = false
 	gui.Parent = part
-	-- dark plate: gold or pale text straight on the sky is only 1.2 - 2.1 : 1, on this plate 7 : 1 or better
+	local Z = WorldTag.Sizes
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
-	plate.Position = UDim2.new(0.5, 0, 1, 0)
-	plate.Size = UDim2.fromOffset(120, 0)
-	plate.AutomaticSize = Enum.AutomaticSize.XY
-	plate.BackgroundColor3 = C.Panel
-	plate.BackgroundTransparency = 0.06
-	plate.BorderSizePixel = 0
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 14)
-	corner.Parent = plate
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = edge or C.Ink
-	stroke.Thickness = 3
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = plate
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 5)
-	pad.PaddingBottom = UDim.new(0, 7)
-	pad.PaddingLeft = UDim.new(0, 16)
-	pad.PaddingRight = UDim.new(0, 16)
-	pad.Parent = plate
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 1)
-	layout.Parent = plate
+	plate.Position = UDim2.new(0.5, 0, 1, -Z.Edge) -- the wood edge is drawn outside the face: kept inside the gui
+	plate.Size = UDim2.fromOffset(HINT.MinW - 2 * Z.Edge, 0)
+	plate.ZIndex = 2
+	WorldTag.Block(plate, Sign.Stone, WorldTag.LipOf(accent), Sign.Wood, Z.Edge, Z.Lip)
 	plate.Parent = gui
+	hintLines[plate] = {}
 	return plate
 end
 
-local function hintLine(plate, text, role, size, color, order)
-	return worldText(plate, text, role, size, color, nil, order)
+-- A line on a hint tag's card, in the kit's ink (`color`: Sign.Text for the title, Sign.TextMuted for the info line),
+-- stacked by `order`. `alts`: the other texts the line may show (a help line's other devices: MovementController swaps
+-- the text), measured too so the card is wide enough for every one.
+local function hintLine(plate, text, role, size, color, order, alts)
+	local label = WorldTag.Text(plate, "Line" .. tostring(order or 0), text, role, size, color or Sign.Text, {
+		TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = order or 0, ZIndex = 3,
+	})
+	local list = hintLines[plate]
+	if not list then
+		return label
+	end
+	local texts = { text }
+	for _, t in ipairs(alts or {}) do
+		texts[#texts + 1] = t
+	end
+	list[#list + 1] = { label = label, texts = texts, role = role, px = size }
+	table.sort(list, function(a, b)
+		return a.label.LayoutOrder < b.label.LayoutOrder
+	end)
+	local Z = WorldTag.Sizes
+	local w, y = HINT.MinW - 2 * Z.Edge - 2 * HINT.PadX, HINT.PadTop
+	for i, l in ipairs(list) do
+		if i > 1 then
+			y = y + HINT.Gap
+		end
+		for _, t in ipairs(l.texts) do
+			w = math.max(w, math.ceil(Theme.Measure(t, l.role, l.px).X))
+		end
+		l.label.Position = UDim2.fromOffset(0, y)
+		l.label.Size = UDim2.new(1, 0, 0, l.px + 4)
+		y = y + l.px + 4
+	end
+	plate.Size = UDim2.fromOffset(w + 2 * HINT.PadX, y + HINT.PadBottom + Z.Lip)
+	return label
 end
-
 -- kit-b O4 (finding 12): help text that names keys (Config.Course.Help: one text per device). The label carries the
 -- keyboard text, a HelpKey and the help tag; MovementController puts the text of the player's device on it.
 local HELP = Config.Course.Help
@@ -630,22 +643,29 @@ local function faceTextSize(part, face, pps, k)
 	return math.max(SIGN_INFO, math.min(100, math.floor(math.min(w, h) * k)))
 end
 
--- chunky dark sign panel for SurfaceGuis
-local function panelFrame(parent, transparency)
+-- THE GATES board's stone card filling a SurfaceGui: inset BOARD.Edge px (the wood edge is drawn outside the face, so
+-- the canvas keeps it), a BOARD.Lip px lip in the sign's role colour `lip`
+local BOARD = { Edge = 6, Lip = 8 }
+local function boardPanel(gui, lip)
 	local f = Instance.new("Frame")
-	f.Size = UDim2.new(1, 0, 1, 0)
-	f.BackgroundColor3 = C.Panel
-	f.BackgroundTransparency = transparency or 0.06
-	f.BorderSizePixel = 0
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 18)
-	corner.Parent = f
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = C.Ink
-	stroke.Thickness = 3
-	stroke.Parent = f
-	f.Parent = parent
+	f.Name = "Panel"
+	f.Position = UDim2.fromOffset(BOARD.Edge, BOARD.Edge)
+	f.Size = UDim2.new(1, -2 * BOARD.Edge, 1, -2 * BOARD.Edge)
+	f.Parent = gui
+	WorldTag.Block(f, Sign.Stone, typeof(lip) == "Color3" and lip or Sign.StoneLip, Sign.Wood, BOARD.Edge, BOARD.Lip)
 	return f
+end
+
+-- fixed-size board text in the kit's ink (no outline on a panel), place = { x, y, w, h } fractions of the panel
+local function boardText(panel, text, role, size, color, place, wrap)
+	return WorldTag.Text(panel, "Text", text, role, size, color or Sign.Text, {
+		Position = UDim2.new(place[1], 0, place[2], 0),
+		Size = UDim2.new(place[3], 0, place[4], 0),
+		TextWrapped = wrap == true,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 2,
+	})
 end
 
 ----------------------------------------------------------------------
@@ -1431,8 +1451,8 @@ function KB.CannonPad(ctx, step, look)
 	end
 	-- label
 	local chip = hintTag(pad, 4.8, 100, C.Gold)
-	hintLine(chip, "CANNON", "Accent", HINT_TITLE, C.Gold, 1)
-	hintLine(chip, "step on to launch!", "Body", HINT_INFO, C.Text, 2)
+	hintLine(chip, "CANNON", "Accent", HINT_TITLE, Sign.Text, 1)
+	hintLine(chip, "step on to launch!", "Body", HINT_INFO, Sign.TextMuted, 2)
 	return main
 end
 
@@ -1489,11 +1509,11 @@ function KB.PlateBridge(ctx, step, look)
 			worldText(gui, "HOLD", "Heading", faceTextSize(plate, Enum.NormalId.Top, 60, 0.25), C.Ink, { 0, 0.2, 1, 0.6 })
 			local sign = hintTag(plate, 3.7, 110, color)
 			if i == 1 then
-				hintLine(sign, "HOLD THE PLATE", "Accent", 28, color:Lerp(C.Text, 0.3), 1)
-				hintLine(sign, "so your team can cross", "Body", HINT_INFO, C.Text, 2)
+				hintLine(sign, "HOLD THE PLATE", "Accent", 28, Sign.Text, 1)
+				hintLine(sign, "so your team can cross", "Body", HINT_INFO, Sign.TextMuted, 2)
 			else
-				hintLine(sign, "HOLD TO LET THEM CROSS", "Accent", 28, color:Lerp(C.Text, 0.3), 1)
-				hintLine(sign, "then everyone moves on", "Body", HINT_INFO, C.Text, 2)
+				hintLine(sign, "HOLD TO LET THEM CROSS", "Accent", 28, Sign.Text, 1)
+				hintLine(sign, "then everyone moves on", "Body", HINT_INFO, Sign.TextMuted, 2)
 			end
 		end
 	end
@@ -1509,19 +1529,20 @@ end
 ----------------------------------------------------------------------
 -- Start, checkpoint and finish
 ----------------------------------------------------------------------
--- dark rounded sign board standing at `localPos` (in the frame F), readable from its `face` side. helpKey: the body is
--- Config.Course.Help[helpKey] (the keyboard text here; the client swaps in its own device's)
+-- a sign board standing at `localPos` (in the frame F), readable from its `face` side: a wood board carrying THE GATES
+-- board's stone card (kit-b world signs, lane C; its lip in `accent`), the title and the body in the kit's ink. helpKey:
+-- the body is Config.Course.Help[helpKey] (the keyboard text here; the client swaps in its own device's)
 local function buildBoard(ctx, F, localPos, face, title, body, accent, helpKey)
 	local cf = F * CFrame.new(localPos)
-	local board = blk(ctx, "Signs", "InfoBoard", Vector3.new(0.4, 5.6, 8.6), cf, C.Panel, MAT.SmoothPlastic)
+	local board = blk(ctx, "Signs", "InfoBoard", Vector3.new(0.4, 5.6, 8.6), cf, Sign.Wood, MAT.SmoothPlastic)
 	for _, dz in ipairs({ -3.2, 3.2 }) do
 		cyl(ctx, "Signs", "BoardLeg", 1.0, 0.5, F * CFrame.new(localPos.X, localPos.Y - 3.3, localPos.Z + dz), C.Iron, MAT.SmoothPlastic)
 	end
 	-- 430 x 280 px canvas: a 1-stud title, then 0.6-stud body lines
 	local gui = surfaceOn(board, face, 50)
-	local panel = panelFrame(gui, 0.04)
-	worldText(panel, title, "Title", 50, accent, { 0.03, 0.03, 0.94, 0.2 })
-	local lines = worldText(panel, body, "Body", SIGN_INFO, C.Text, { 0.05, 0.27, 0.9, 0.69 }, nil, true)
+	local panel = boardPanel(gui, accent)
+	boardText(panel, title, "Title", 50, Sign.Text, { 0.03, 0.03, 0.94, 0.2 })
+	local lines = boardText(panel, body, "Body", SIGN_INFO, Sign.Text, { 0.05, 0.27, 0.9, 0.69 }, true)
 	lines.TextYAlignment = Enum.TextYAlignment.Top
 	lines.LineHeight = 1.12
 	if helpKey then
@@ -1548,7 +1569,7 @@ function KB.Start(ctx, step, look)
 		cyl(ctx, "Decor", "ArchBase", 1.2, 2.8, F * CFrame.new(sgn * half, 0.6, archZ), C.Side)
 		ball(ctx, "Decor", "ArchCap", 2.4, F * CFrame.new(sgn * half, 13.3, archZ), trim, MAT.Neon, 0.1)
 	end
-	local beam = blk(ctx, "Signs", "StartBeam", Vector3.new(22, 3.4, 2), F * CFrame.new(0, 14.2, archZ), C.Panel)
+	local beam = blk(ctx, "Signs", "StartBeam", Vector3.new(22, 3.4, 2), F * CFrame.new(0, 14.2, archZ), Sign.Wood)
 	blk(ctx, "Decor", "StartGlow", Vector3.new(22, 0.25, 2.1), F * CFrame.new(0, 12.45, archZ), trim, MAT.Neon, 0.1)
 	-- kit-b O4 (finding 12): the bunting hangs from a rope tied to the two pillars, under the beam (it used to be six
 	-- balls floating over it)
@@ -1557,15 +1578,15 @@ function KB.Start(ctx, step, look)
 	-- kit-b O4 (finding 20): just the title; the little Script line under it was unreadable at play distance
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		local gui = surfaceOn(beam, face, 50) -- 1100 x 170 px: the title 2 studs tall
-		local title = worldText(gui, "START", "Title", 100, C.Text, { 0, 0.08, 1, 0.84 })
-		addGradient(title, C.Text, trim:Lerp(C.Text, 0.35))
+		-- (kit-b world signs, lane C: the navy beam and the gradient word went) the stone card, the trim's lip, ink letters
+		boardText(boardPanel(gui, trim), "START", "Title", 100, Sign.Text, { 0, 0.08, 1, 0.84 })
 	end
 	-- info boards on both sides (the climb text names the keys of the device in use: MovementController swaps it)
 	buildBoard(ctx, F, Vector3.new(-11.4, 3.6, -3), Enum.NormalId.Right, "HOW TO CLIMB", HELP.Climb.Keyboard,
-		trim:Lerp(C.Text, 0.3), "Climb")
+		trim, "Climb")
 	buildBoard(ctx, F, Vector3.new(11.4, 3.6, -3), Enum.NormalId.Left, "TEAMWORK",
 		"Flags heal everyone and\nlift up downed friends.\nHold plates for bridges.\nNobody gets left behind!",
-		C.Checkpoint:Lerp(C.Text, 0.3))
+		C.Checkpoint)
 	return main
 end
 
@@ -1612,13 +1633,13 @@ function KB.Checkpoint(ctx, step, look)
 		end
 	end
 	local gui = hintTag(orb, labelBottom - orbY, 120, C.Checkpoint)
-	hintLine(gui, "Checkpoint " .. index .. "/" .. total, "Title", 28, C.Text, 1)
+	hintLine(gui, "Checkpoint " .. index .. "/" .. total, "Title", 28, Sign.Text, 1)
 	local nextStage = ctx.Layout.Stages and ctx.Layout.Stages[index + 1]
 	local sub = "Final stretch - the finish is close!"
 	if nextStage and nextStage.Name then
 		sub = "Next: " .. nextStage.Name
 	end
-	hintLine(gui, sub, "Body", HINT_INFO, C.Checkpoint:Lerp(C.Text, 0.45), 2)
+	hintLine(gui, sub, "Body", HINT_INFO, Sign.TextMuted, 2)
 	return main
 end
 
@@ -1650,17 +1671,17 @@ function KB.Finish(ctx, step, look)
 			cyl(ctx, "Decor", "ArchSegment", 2.4, 2.2, F * CFrame.new(sgn * half, 1.2 + (k - 1) * 2.4, archZ), c)
 		end
 	end
-	local beam = blk(ctx, "Signs", "FinishBeam", Vector3.new(26, 3.6, 2), F * CFrame.new(0, 16, archZ), C.Panel)
+	local beam = blk(ctx, "Signs", "FinishBeam", Vector3.new(26, 3.6, 2), F * CFrame.new(0, 16, archZ), Sign.Wood)
 	blk(ctx, "Decor", "FinishGlow", Vector3.new(26, 0.25, 2.1), F * CFrame.new(0, 14.1, archZ), C.Gold, MAT.Neon, 0.1)
 	-- kit-b O4 (finding 20): just the title (the calligraphy "you made it" line is gone; the GOAL tag says the rest)
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		local gui = surfaceOn(beam, face, 50) -- 1300 x 180 px: the title 2 studs tall
-		local title = worldText(gui, "FINISH", "Title", 100, C.Text, { 0, 0.08, 1, 0.84 })
-		addGradient(title, C.Gold:Lerp(C.Text, 0.4), C.Rainbow[1])
+		-- (kit-b world signs, lane C: the navy beam and the rainbow gradient word went) the stone card, a gold lip, ink letters
+		boardText(boardPanel(gui, C.Gold), "FINISH", "Title", 100, Sign.Text, { 0, 0.08, 1, 0.84 })
 	end
 	local sign = hintTag(orb, GOAL_TAG_LIFT, 120, C.Gold)
-	hintLine(sign, "GOAL", "Title", HINT_TITLE, C.Gold:Lerp(C.Text, 0.25), 1)
-	hintLine(sign, "wait here for your team", "Body", HINT_INFO, C.Text, 2)
+	hintLine(sign, "GOAL", "Title", HINT_TITLE, Sign.Text, 1)
+	hintLine(sign, "wait here for your team", "Body", HINT_INFO, Sign.TextMuted, 2)
 	return main
 end
 
@@ -1695,11 +1716,12 @@ local function buildDashHint(ctx, step)
 	rod(ctx, "Decor", "DashPole", pole, pole + Vector3.new(0, 4.6, 0), 0.25, C.Brass, MAT.SmoothPlastic)
 	local head = ball(ctx, "Decor", "DashBeacon", 0.9, CFrame.new(pole + Vector3.new(0, 4.8, 0)), C.Gold, MAT.Neon, 0.1)
 	local gui = hintTag(head, 0.8, 110, C.Gold)
-	hintLine(gui, "DASH!", "Accent", 32, C.Gold, 1)
+	hintLine(gui, "DASH!", "Accent", 32, Sign.Text, 1)
 	if step.Kind == "PlateBridge" then
-		hintLine(gui, "or hold the plate for a bridge", "Body", HINT_INFO, C.Text, 2)
+		hintLine(gui, "or hold the plate for a bridge", "Body", HINT_INFO, Sign.TextMuted, 2)
 	else
-		helpText(hintLine(gui, HELP.Dash.Keyboard, "Body", HINT_INFO, C.Text, 2), "Dash")
+		-- (the card is measured for every device's text: MovementController swaps it on the client)
+		helpText(hintLine(gui, HELP.Dash.Keyboard, "Body", HINT_INFO, Sign.TextMuted, 2, { HELP.Dash.Touch, HELP.Dash.Gamepad }), "Dash")
 	end
 end
 

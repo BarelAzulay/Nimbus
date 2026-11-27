@@ -4,17 +4,5 @@
 # look (the W wave: PortalService, LeaderboardController's lobby board, ArenaBuilder, HomeBuilder, WorldStyle.buildTag,
 # StormAltar, LobbyBuilder, CourseBuilder). The list only shrinks: a name leaves when its builder moves to SignKit, and no
 # name is ever added. One gui name per line.
-BoardGui
-ClaimGui
-CountdownGui
 GateTag
-JoinBillboard
-LeaderGui
-NameTag
-Nameplate
-PadSign
-PadTag
-PriceBillboard
-ShowcaseTag
 SignGui
-TroveBillboard

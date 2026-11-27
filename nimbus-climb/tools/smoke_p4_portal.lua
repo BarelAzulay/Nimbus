@@ -133,6 +133,31 @@ local function clientScenarios()
 			T.check(gui and gui:IsA("BillboardGui") and gui.Size.X.Scale == 0 and gui.LightInfluence == 0 and label.TextSize >= 22
 				and label.TextStrokeTransparency == 1 and label:FindFirstChild("TextOutline") == nil and label.Parent:IsA("Frame") and label.Parent.BackgroundTransparency <= 0.25 and gui.MaxDistance >= 60,
 				"p4 portal client: ...a pixel-sized 22 px tag on its solid plate, no stroke (kit-b U6; was the World text rule's stroke)", label and tostring(label.TextSize) or "")
+			-- (kit-b world signs, lane B: was a see-through ink plate with a round corner) the tag is the kit's stone card: its
+			-- Plate the Stone face with the mitred SignEdge (inside the gui) and a Lip in the portal's colour's lip, the name in
+			-- the brown ink; no round corner or gradient anywhere under the tag
+			do
+				local Theme = moduleAt("shared", "Theme")
+				local Sign = Theme and Theme.Sign
+				local plate = gui and gui:FindFirstChild("Plate")
+				local edge = plate and plate:FindFirstChild("SignEdge")
+				local lip = plate and plate:FindFirstChild("Lip")
+				local round = {}
+				for _, d in ipairs(gui and gui:GetDescendants() or {}) do
+					if (d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0)) or d:IsA("UIGradient") then
+						round[#round + 1] = d.ClassName .. " on " .. d.Parent.Name
+					end
+				end
+				local function near(a, b)
+					return typeof(a) == "Color3" and typeof(b) == "Color3" and math.abs(a.R - b.R) < 0.01 and math.abs(a.G - b.G) < 0.01 and math.abs(a.B - b.B) < 0.01
+				end
+				T.check(Sign ~= nil and plate ~= nil and plate.BackgroundTransparency == 0 and near(plate.BackgroundColor3, Sign.Stone) and edge ~= nil
+					and edge.LineJoinMode == Enum.LineJoinMode.Miter and plate.Position.X.Offset >= edge.Thickness and lip ~= nil and lip.Visible
+					and not near(lip.BackgroundColor3, Sign.StoneLip) and label and label.Parent == plate and near(label.TextColor3, Sign.Text) and #round == 0
+					and plate.Size.X.Offset + 2 * plate.Position.X.Offset <= gui.Size.X.Offset,
+					"p4 portal client: ...the tag is a stone card (Stone face, mitred SignEdge inside the gui, a Lip in the portal's colour, the name in the brown ink; no round corner or gradient)",
+					(plate and string.format("face %s, lip %s, %s", tostring(plate.BackgroundColor3), lip and tostring(lip.BackgroundColor3) or "-", table.concat(round, ", "))) or "no Plate")
+			end
 			-- the vortex (fix round): the Gate Court gates' own PortalVortex, centred in the opening, grown to full size, not
 			-- dimmed. Its mode follows shared/TextureIds: "Texture" (the uploaded vortex layers on a SurfaceGui) or
 			-- "Fallback" (no ids: Beam spiral arms on two turning spinner parts)

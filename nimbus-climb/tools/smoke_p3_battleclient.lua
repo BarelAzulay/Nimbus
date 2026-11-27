@@ -1347,6 +1347,51 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	local tagLabel = tag and tag:FindFirstChild("Name", true)
 	T.check(cu and cu.Crowned and tag and tagLabel and tostring(tagLabel.Text):find("^Champion") and tagLabel.TextSize >= 22 and tag.LightInfluence == 0 and tag.Size.X.Scale == 0,
 		"ring: the champion wears the crown and a 22 px name tag above its card", tagLabel and (tagLabel.Text .. " " .. tagLabel.TextSize .. " px") or "nil")
+	-- (world signs kit-b, audit item 31) the tag is a kit stone card: no UICorner / UIGradient under it, its Plate a stone
+	-- face in a mitred wood SignEdge with a Lip in the ring's gold (WorldTag.LipOf), the name in the kit's brown ink, no outline
+	local function kitPlain(root)
+		local bad = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d:IsA("UICorner") or d:IsA("UIGradient") then
+				bad[#bad + 1] = d:GetFullName()
+			end
+		end
+		return root ~= nil and #bad == 0, table.concat(bad, ", ")
+	end
+	local function near(c, r, g, b)
+		return typeof(c) == "Color3" and math.abs(c.R * 255 - r) < 1.5 and math.abs(c.G * 255 - g) < 1.5 and math.abs(c.B * 255 - b) < 1.5
+	end
+	local tagPlain, tagWhy = kitPlain(tag)
+	T.check(tagPlain, "ring kit: no UICorner / UIGradient under the ChampionTag", tagWhy)
+	local plate = tag and tag:FindFirstChild("Plate")
+	local pEdge, pLip = plate and plate:FindFirstChild("SignEdge"), plate and plate:FindFirstChild("Lip")
+	local goldLip = Color3.fromRGB(250, 190, 56):Lerp(Color3.fromRGB(59, 36, 18), 0.32)
+	T.check(plate and plate.BackgroundTransparency == 0 and near(plate.BackgroundColor3, 255, 247, 230) and pEdge and pEdge:IsA("UIStroke") and pEdge.LineJoinMode == Enum.LineJoinMode.Miter
+		and near(pEdge.Color, 140, 90, 46) and pLip and pLip.Visible and near(pLip.BackgroundColor3, goldLip.R * 255, goldLip.G * 255, goldLip.B * 255),
+		"ring kit: the ChampionTag's Plate is a stone card (a mitred wood SignEdge, a Lip in the ring's gold)")
+	T.check(tagLabel and tagLabel.Parent == plate and near(tagLabel.TextColor3, 59, 36, 18) and tagLabel.TextStrokeTransparency >= 0.99 and not tagLabel:FindFirstChild("TextOutline"),
+		"ring kit: the champion's name in the kit's brown ink on the card, no outline", tagLabel and tostring(tagLabel.TextColor3) or "nil")
+	-- the Phase 3 fallback bar (a build without PetCard): a square Well track in a mitred wood edge with its lip, a square fill
+	-- with its own lip, nothing round; u.barFill is the Fill
+	local addBar = BC._Units and BC._Units._AddBar
+	if T.check(type(addBar) == "function", "ring kit: (setup) BattleController._Units._AddBar (the fallback bar, TESTS ONLY)") then
+		local fm = Instance.new("Model")
+		local fr = Instance.new("Part")
+		fr.Anchored = true
+		fr.Parent = fm
+		local fu = { mine = true, model = fm }
+		local okBar, errBar = pcall(addBar, fu, fr, 2)
+		local bar = fu.bar
+		local back = bar and bar:FindFirstChild("Back")
+		local bEdge, bLip = back and back:FindFirstChild("SignEdge"), back and back:FindFirstChild("Lip")
+		local fill = back and back:FindFirstChild("Fill")
+		local barPlain, barWhy = kitPlain(bar)
+		T.check(okBar and bar and bar.Name == "HpBar" and bar.Parent == fm and barPlain and back and bEdge and bEdge.LineJoinMode == Enum.LineJoinMode.Miter and near(bEdge.Color, 140, 90, 46)
+			and bLip and bLip.Visible and fill and fu.barFill == fill and fill:FindFirstChild("Lip") ~= nil and fill.Size == UDim2.new(1, -2, 1, -2),
+			"ring kit: the fallback HP bar is a square Well track (mitred wood SignEdge + Lip) with a square Fill on its lip, no UICorner / UIGradient",
+			okBar and barWhy or tostring(errBar))
+		fm:Destroy()
+	end
 	-- the crown is PetBuilder's voxel Crown accessory: gold voxels on top of the head
 	local gold = 0
 	if cu and cu.Model then

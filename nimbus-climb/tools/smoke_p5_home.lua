@@ -1667,6 +1667,27 @@ if CONTEXT == "client" then
 		mine.Folder:SetAttribute("BerryCap", 4500)
 		KC.advance(0.1)
 		T.eq(textOf(machine, "BasketLine"), "2,999 / 4,500 berries", "p5 flow ui: ...and of the plot's BerryCap")
+		-- (kit-b world signs, lane B review) the stone card is a fixed size with room for "00,000 / 00,000 berries"; a
+		-- bigger basket (BasketCap = ips x 450) writes a longer line and HomeFx widens the card (and its billboard) to fit
+		do
+			local Theme = req("shared/Theme")
+			local plate = machine and machine:FindFirstChild("Plate")
+			local line = machine and machine:FindFirstChild("BasketLine", true)
+			local w0 = plate and plate.Size.X.Offset or 0
+			LocalPlayer:SetAttribute("Berries", 1234567)
+			mine.Folder:SetAttribute("BerryCap", 1500000)
+			KC.advance(0.2)
+			local need = (Theme and line) and math.ceil(Theme.Measure(line.Text, line:GetAttribute("FontRole") or "Body", line.TextSize).X) or math.huge
+			local face = plate and plate.Size.X.Offset or 0
+			local rowW = line and (face + line.Size.X.Offset) or 0
+			T.check(line and line.Text == "1,234,567 / 1,500,000 berries" and rowW >= need and face > w0 and machine.Size.X.Offset >= face,
+				"p5 flow ui: a 7-digit basket line widens the Food Machine's stone card to fit (HomeFx R.basketFit)",
+				string.format("line '%s' %s px in a %d px row (card %d -> %d px, gui %d px)", line and line.Text or "?", tostring(need), rowW, w0, face, machine and machine.Size.X.Offset or 0))
+			LocalPlayer:SetAttribute("Berries", 10)
+			mine.Folder:SetAttribute("BerryCap", 3000)
+			KC.advance(0.2)
+			T.check(plate and plate.Size.X.Offset == w0, "p5 flow ui: ...and back to the server's width for a short line", plate and tostring(plate.Size.X.Offset) or "no plate")
+		end
 		-- berry flights while the farm is built (pooled with the puffs)
 		local fl0 = HF.Stats().BerryFlights
 		for _ = 1, 50 do
@@ -1703,6 +1724,39 @@ if CONTEXT == "client" then
 			end
 		end
 		T.check(okAll and unsigned > 0, "p5 flow ui: an open pad SignedPads did not pick is 'Unsigned' (hidden); the picked ones may show", tostring(bad) .. ", " .. unsigned .. " unsigned")
+		-- (kit-b world signs, lane B review) a pad the owner cannot pay for yet shows its price in HomeFx's short colour; on the
+		-- stone card it keeps >= 4.5:1 against Theme.Sign.Stone (the navy plate's light coral read 2.2:1 there)
+		do
+			local Sign = req("shared/Theme").Sign
+			local function lum(c)
+				local function ch(v)
+					return (v <= 0.03928) and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4
+				end
+				return 0.2126 * ch(c.R) + 0.7152 * ch(c.G) + 0.0722 * ch(c.B)
+			end
+			LocalPlayer:SetAttribute("Cash", 0)
+			KC.advance(0.3)
+			local seen, short, worst, worstWhy = 0, 0, math.huge, "no short price"
+			for _, pad in ipairs(home.Pads:GetChildren()) do
+				local locked = pad:GetAttribute("Locked")
+				local price = tonumber(pad:GetAttribute("Price")) or 0
+				local label = pad:FindFirstChild("PriceLabel", true)
+				if label and label:IsA("TextLabel") and (locked == nil or locked == "") and price > 0 then
+					local a, b = lum(Sign.Stone), lum(label.TextColor3)
+					local ratio = (math.max(a, b) + 0.05) / (math.min(a, b) + 0.05)
+					seen = seen + 1
+					local c, t = label.TextColor3, Sign.Text
+					if math.abs(c.R - t.R) + math.abs(c.G - t.G) + math.abs(c.B - t.B) > 0.05 then
+						short = short + 1 -- HomeFx recoloured it: the short state
+					end
+					if ratio < worst then
+						worst, worstWhy = ratio, string.format("%s %s on stone %.2f:1", tostring(pad:GetAttribute("StationId")), tostring(label.TextColor3), ratio)
+					end
+				end
+			end
+			T.check(short > 0 and worst >= 4.5, "p5 flow ui: a pad's price the owner cannot pay yet reads >= 4.5:1 on the PadSign's stone card",
+				seen .. " pads, " .. short .. " short, worst " .. worstWhy)
+		end
 		LocalPlayer:SetAttribute("Cash", 1e12)
 		KC.advance(0.3)
 		local want2 = TC.SignedPads(pads, 1e12)

@@ -298,7 +298,7 @@ local function serverScenarios()
 		local idle = T.tally("an idle portal reads '<Name>', '0/" .. Config.Match.MaxPlayers .. " players' and 'Step in to play'")
 		local faces = T.tally("every portal has an eye-level CountdownFace: an invisible part (no collision / query / touch / shadow) with a SurfaceGui on its Front face (40-60 px per stud, LightInfluence 0, not AlwaysOnTop), hidden on an empty pad")
 		local faceSpot = T.tally("the face sits in the gate's swirl, facing the plaza, just in front of the back lock wall (inside the enclosure), 8-14 studs above the pad")
-		local faceLetters = T.tally("face letters: the numeral >= 3 studs tall (TextSize x UIScale / px per stud), 'Starting in' >= 1 stud, the head count >= 0.6 stud; outlined, not TextScaled, Theme fonts")
+		local faceLetters = T.tally("face letters: the numeral >= 3 studs tall (TextSize x UIScale / px per stud), 'Starting in' >= 1 stud, the head count >= 0.6 stud; outlined or in 4.5:1 ink on a kit block, not TextScaled, Theme fonts")
 		local eyeLevel = T.tally("a friend 4 studs outside the front lock wall, default camera (12.5 studs behind the head, pitched 10/15/20 deg down), has the whole numeral within 30 deg of the view centre (vertical half-FOV 35 deg)")
 		local eyeWorst, boardWorst = 0, 0
 		local walls = T.tally("five lock walls per pad in NC_PortalWall: anchored, collidable, no Touched, no shadow, invisible while idle")
@@ -381,7 +381,9 @@ local function serverScenarios()
 				local okText = true
 				for _, d in ipairs(gui:GetDescendants()) do
 					if d:IsA("TextLabel") then
-						okText = okText and not d.TextScaled and fonts[fontOf(d)] == true and (d:FindFirstChild("TextOutline") ~= nil or d.TextStrokeTransparency < 0.5)
+						-- (kit-b world signs, lane C) outlined, or the kit's 4.5:1 ink on a kit block (the stone badge, the gold
+						-- ribbon, the count block: no outline on a panel)
+						okText = okText and not d.TextScaled and fonts[fontOf(d)] == true and reads(d, gui)
 					end
 				end
 				local num, top, cnt = letterStuds(face.Num, gui), letterStuds(face.Top, gui), letterStuds(face.Count, gui)
@@ -625,8 +627,11 @@ local function serverScenarios()
 			"the eye-level face appears with 'Starting in', the billboard's seconds and '1/" .. Config.Match.MaxPlayers .. " players'",
 			faceText("Obby", "Top") .. " / " .. faceText("Obby", "Num") .. " / " .. faceText("Obby", "Count"))
 		local hardFace = faceOf("Obby")
-		local rim = hardFace and hardFace.Disc and hardFace.Disc:FindFirstChildWhichIsA("UIStroke")
-		T.check(rim ~= nil and rim.Color == (Theme.Colors.Gold or Theme.Colors.Token), "the face's badge rim turns gold while counting down")
+		-- (kit-b world signs, lane C) the badge is a stone kit block: its lip turns gold, the mitred wood edge stays wood
+		local rim = hardFace and hardFace.Disc and hardFace.Disc:FindFirstChild("Lip")
+		local discEdge = hardFace and hardFace.Disc and hardFace.Disc:FindFirstChild("SignEdge")
+		T.check(rim ~= nil and rim.BackgroundColor3 == (Theme.Colors.Gold or Theme.Colors.Token) and discEdge ~= nil and discEdge.Color == Theme.Sign.Wood,
+			"the face's badge lip turns gold while counting down (its wood edge stays wood)")
 		local writes, faceWrites = 0, 0
 		local conn = hard.StatusLabel:GetPropertyChangedSignal("Text"):Connect(function()
 			writes = writes + 1

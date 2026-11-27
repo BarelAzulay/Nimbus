@@ -12,9 +12,13 @@
 -- when the first board is found, so a world without the board gets no SurfaceGui. Face Front,
 -- PixelsPerStud 50: the 16 x 13 stud face is an 800 x 650 px canvas (CanvasSize says the same for tools; Roblox ignores
 -- it under PixelsPerStud), MaxDistance 80, ResetOnSpawn false, LightInfluence 0. Layout (the pitch mock-up boardA):
+--   (world signs kit-b, audit item 19: the navy gradient board with round badges went) the Board is the GuideBoard's
+--   stone card ("THE GATES", LobbyBuilder): WorldTag.Block, a 6 px mitred wood edge and an 8 px lip, inset by its edge so
+--   the canvas keeps it (788 x 638 at 6, 6); every text in the kit's brown ink, no outline; square, no corner, no gradient.
 --   Board > IconL / IconR (the page's glyph), Title (50 px, Config.Leaderboard.Titles[stat]), Tabs > Tab_<stat> (one
---   TextButton per page, its Label), Scope ("All players . all time" / "This server only"), Rows > Row1..10 (38 px each:
---   Rank badge, Head 34 px headshot, Name, Value; ranks 1-3 gold, silver, bronze; my own row green), YouRow
+--   TextButton per page, its Label: a stone block, the shown page's gold), Scope ("All players . all time" / "This
+--   server only"), Rows > Row1..10 (38 px each, flat bands: Rank block, Head 34 px headshot in a square well with a
+--   mitred wood edge, Name, Value; ranks 1-3 gold, silver, bronze blocks; my own row the selected gold), YouRow
 --   ("You . 1,240 . #37" / "You . 1,240 . not in the top 100" / "You . ..." while my value is unknown), Footer
 --   ("Refreshes in m:ss . tap a tab, or it turns in 0:ss", from NextAt on workspace:GetServerTimeNow()), Status
 --   ("Loading scores..." before the first state / "No scores yet. Be the first!" for an empty page).
@@ -23,7 +27,7 @@
 -- turns the page, counts the footer down and drops a Face that left the workspace for any tagged one still there (no
 -- Heartbeat).
 -- Headshots: Players:GetUserThumbnailAsync(id, HeadShot, Size48x48) in a deferred pcall'd task, cached per user for the
--- session (a failed one stays blank: the round placeholder shows). The client sends nothing.
+-- session (a failed one stays blank: the square well shows). The client sends nothing.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local Players = game:GetService("Players")
@@ -34,6 +38,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local WorldTag = require(Shared:WaitForChild("WorldTag")) -- (world signs kit-b) the stone card, its blocks and ink
 
 local Client = script.Parent.Parent
 local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
@@ -43,21 +48,31 @@ local LocalPlayer = Players.LocalPlayer
 local LeaderboardController = {}
 
 local rgb = Color3.fromRGB
+local Sign = Theme.Sign
+-- (world signs kit-b) the board's layout is px INSIDE the stone card (the Board, inset by its wood edge EDGE): IW x IH,
+-- the bottom LIP px of it the card's lip (no text over it). Every text keeps its old px (the 30 px floor)
 local K = {
 	MODEL = "LobbyLeaderboard", -- the workspace board model and the PlayerGui SurfaceGui
 	PPS = 50, -- px per stud: 16 x 13 studs -> 800 x 650 px
 	W = 800,
 	H = 650,
+	EDGE = 6, -- the card's mitred wood edge (drawn outside the Board: the Board is inset by it) ...
+	LIP = 8, -- ... and its lip (the GuideBoard's 6 / 8)
+	IW = 788, -- the Board: W - 2 x EDGE ...
+	IH = 638, -- ... H - 2 x EDGE
 	MAX_DISTANCE = 80,
 	PAD = 14,
-	TITLE_Y = 4, TITLE_H = 56, TITLE_TEXT = 50, ICON = 44, ICON_BOX = 56,
-	TABS_Y = 64, TABS_H = 46, TAB_GAP = 8,
-	SCOPE_Y = 114, SCOPE_H = 34,
-	ROWS_Y = 150, ROW_H = 38, ROWS = 10,
-	BADGE = 34, -- the rank badge and the headshot (px)
-	NAME_X = 90, NAME_W = 450, VALUE_W = 226,
-	YOU_Y = 534, YOU_H = 40,
-	FOOT_Y = 578, FOOT_H = 66,
+	TITLE_Y = 0, TITLE_H = 56, TITLE_TEXT = 50, ICON = 44, ICON_BOX = 56,
+	TABS_Y = 60, TABS_H = 44, TAB_GAP = 10,
+	SCOPE_Y = 106, SCOPE_H = 34,
+	ROWS_Y = 142, ROW_H = 38, ROWS = 10,
+	BADGE = 34, -- the rank block and the headshot well (px)
+	BLOCK_EDGE = 2, -- a tab's, a rank block's, the head well's and the You row's mitred wood edge ...
+	BLOCK_LIP = 4, -- ... a tab's and the You row's lip
+	RANK_LIP = 3, -- a rank block's lip
+	NAME_X = 90, NAME_W = 440, VALUE_W = 220,
+	YOU_Y = 524, YOU_H = 40,
+	FOOT_Y = 568, FOOT_H = 62, -- (ends at IH - LIP)
 	TEXT = 30, -- the floor: every text on the board
 	VALUE_TEXT = 32,
 	STATUS_TEXT = 32,
@@ -65,15 +80,17 @@ local K = {
 	TICK = 0.25,
 	HEAD_CACHE = 200, -- headshots kept before the cache starts over
 	ICONS = { Trophies = "trophy", Pets = "Pets", Ring = "Ring" }, -- NeonKit icon ids / PixelIcon names (trophy, paw, crown)
-	GOLD = rgb(255, 211, 77),
-	MUTED = rgb(201, 211, 242),
-	TOP = rgb(36, 50, 122),
-	BOTTOM = rgb(20, 27, 72),
-	TAB_OFF = rgb(46, 62, 140),
-	MEDALS = { rgb(255, 201, 60), rgb(217, 224, 238), rgb(224, 149, 90) },
-	ME = rgb(42, 106, 58),
-	ME_RING = rgb(141, 255, 166),
-	HEAD_BG = rgb(70, 90, 160),
+	ICON_INK = { Trophies = Sign.GoldLip, Pets = Sign.Wood, Ring = Sign.GoldLip }, -- their colour on the stone
+	MEDALS = { rgb(255, 201, 60), rgb(217, 224, 238), rgb(224, 149, 90) }, -- the rank blocks' faces (lip: WorldTag.LipOf)
+	INK = Sign.Text,
+	MUTED = Sign.TextMuted,
+	BAND = Sign.Well, -- every other row's flat band (the rest show the stone)
+	ME = Sign.Selected, -- my own row and the You row: the kit's selected gold
+	ME_LIP = Sign.GoldLip,
+	TAB_ON = Sign.Gold, TAB_ON_LIP = Sign.GoldLip,
+	TAB_OFF = Sign.Tile, TAB_OFF_LIP = Sign.StoneLip,
+	RANK = Sign.Tile, -- a rank block under 4th
+	HEAD_BG = Sign.PetWell, -- the headshot's well (shows while the headshot loads, or when it failed)
 }
 LeaderboardController.K = K
 
@@ -120,13 +137,13 @@ local function mmss(seconds)
 	return string.format("%d:%02d", math.floor(s / 60), s % 60)
 end
 
--- kit-b U6: every board text sits on the board, a row or a tab, so it reads by contrast (no classic stroke any more)
+-- kit-b U6: every board text sits on the board, a row or a tab, so it reads by contrast (no classic stroke any more);
+-- (world signs kit-b) WorldTag.Text: the kit's brown ink on the stone, no outline, never scaled
 local function label(parent, name, text, role, size, props)
 	props = props or {}
-	props.Name = name
-	local l = Theme.Label(text, role, { Size = size, Color = props.TextColor3, Props = props })
-	l.Parent = parent
-	return l
+	local color = props.TextColor3 or K.INK
+	props.TextColor3 = nil
+	return WorldTag.Text(parent, name, text, role, size, color, props)
 end
 
 local function frame(parent, name, pos, size, color, alpha)
@@ -152,36 +169,55 @@ local function setIcons(stat)
 	S.Icon = stat
 	for _, holder in ipairs({ ui.IconL, ui.IconR }) do
 		holder:ClearAllChildren()
-		NeonKit.Icon(holder, K.ICONS[stat] or "Stats", K.ICON)
+		local icon = NeonKit.Icon(holder, K.ICONS[stat] or "Stats", K.ICON)
+		-- (world signs kit-b) a pixel icon follows its host's text colour (white by default: lost on the stone)
+		if typeof(icon) == "Instance" and (icon:IsA("TextLabel") or icon:IsA("TextButton")) then
+			icon.TextColor3 = K.ICON_INK[stat] or K.INK
+		end
 	end
 end
 
+-- a mitred wood edge round a square well (the head well: a headshot fills it, so no lip over the picture)
+local function woodEdge(obj, px)
+	local edge = Instance.new("UIStroke")
+	edge.Name = "SignEdge"
+	edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	edge.Color = Sign.Wood
+	edge.Thickness = px
+	edge.Transparency = 0
+	edge.Parent = obj
+	return edge
+end
+
+-- a row: a flat square band (every other one the Well, my own the selected gold: render), the rank block (a medal's
+-- face on its LipOf lip for ranks 1-3, a stone Tile below), the headshot's square well, the name and the value in ink
 local function buildRow(parent, i)
-	local row = frame(parent, "Row" .. i, UDim2.fromOffset(10, (i - 1) * K.ROW_H + 1), UDim2.fromOffset(K.W - 20, K.ROW_H - 2), Theme.Colors.White, 0.92)
-	Theme.Corner(row, "M")
+	local rowW = K.IW - 20
+	local row = frame(parent, "Row" .. i, UDim2.fromOffset(10, (i - 1) * K.ROW_H + 1), UDim2.fromOffset(rowW, K.ROW_H - 2), K.BAND, 1)
 	local medal = K.MEDALS[i]
 	local rank = label(row, "Rank", tostring(i), "Display", K.TEXT, {
-		Position = UDim2.fromOffset(6, 1), Size = UDim2.fromOffset(K.BADGE, K.BADGE),
-		BackgroundTransparency = medal and 0 or 0.86, BackgroundColor3 = medal or Theme.Colors.White,
-		TextColor3 = medal and Theme.Colors.Navy or Theme.Colors.White,
+		Position = UDim2.fromOffset(6, 1), Size = UDim2.fromOffset(K.BADGE, K.BADGE), ZIndex = 2,
 	})
-	Theme.Corner(rank, "Round")
+	WorldTag.Block(rank, medal or K.RANK, medal and WorldTag.LipOf(medal) or Sign.StoneLip, Sign.Wood, K.BLOCK_EDGE, K.RANK_LIP)
 	local head = Instance.new("ImageLabel")
 	head.Name = "Head"
 	head.Position = UDim2.fromOffset(12 + K.BADGE, 1)
 	head.Size = UDim2.fromOffset(K.BADGE, K.BADGE)
 	head.BackgroundColor3 = K.HEAD_BG
+	head.BackgroundTransparency = 0
 	head.BorderSizePixel = 0
 	head.Image = ""
-	head.ScaleType = Enum.ScaleType.Crop
-	Theme.Corner(head, "Round")
+	head.ScaleType = Enum.ScaleType.Crop -- (the square headshot fills the square well)
+	head.ZIndex = 2
+	woodEdge(head, K.BLOCK_EDGE)
 	head.Parent = row
 	local name = label(row, "Name", "", "Body", K.TEXT, {
 		Position = UDim2.fromOffset(K.NAME_X, 0), Size = UDim2.fromOffset(K.NAME_W, K.ROW_H - 2),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
 	})
 	local value = label(row, "Value", "", "Display", K.VALUE_TEXT, {
-		Position = UDim2.fromOffset(K.W - 20 - 12 - K.VALUE_W, 0), Size = UDim2.fromOffset(K.VALUE_W, K.ROW_H - 2),
+		Position = UDim2.fromOffset(rowW - 12 - K.VALUE_W, 0), Size = UDim2.fromOffset(K.VALUE_W, K.ROW_H - 2),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
 	return { Frame = row, Rank = rank, Head = head, Name = name, Value = value, UserId = nil }
@@ -203,23 +239,24 @@ local function build()
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 	local ui = { Tabs = {}, Rows = {} }
-	local board = frame(gui, "Board", UDim2.fromOffset(0, 0), UDim2.fromOffset(K.W, K.H), Theme.Colors.White, 0)
-	Theme.Gradient(board, K.TOP, K.BOTTOM, 90)
-	Theme.Corner(board, "M")
-	Theme.Stroke(board, Theme.Colors.Navy, 3, 0)
+	-- (world signs kit-b) the GuideBoard's stone card: inset by its 6 px wood edge (drawn outside it) so the canvas keeps
+	-- the edge whole; its 8 px lip along the bottom
+	local board = frame(gui, "Board", UDim2.fromOffset(K.EDGE, K.EDGE), UDim2.fromOffset(K.IW, K.IH), Sign.Stone, 0)
+	WorldTag.Block(board, Sign.Stone, Sign.StoneLip, Sign.Wood, K.EDGE, K.LIP)
 	ui.Board = board
 
 	ui.IconL = frame(board, "IconL", UDim2.fromOffset(K.PAD, K.TITLE_Y), UDim2.fromOffset(K.ICON_BOX, K.ICON_BOX), nil, 1)
-	ui.IconR = frame(board, "IconR", UDim2.fromOffset(K.W - K.PAD - K.ICON_BOX, K.TITLE_Y), UDim2.fromOffset(K.ICON_BOX, K.ICON_BOX), nil, 1)
+	ui.IconR = frame(board, "IconR", UDim2.fromOffset(K.IW - K.PAD - K.ICON_BOX, K.TITLE_Y), UDim2.fromOffset(K.ICON_BOX, K.ICON_BOX), nil, 1)
 	ui.Title = label(board, "Title", "", "Heading", K.TITLE_TEXT, {
-		Position = UDim2.fromOffset(K.PAD + K.ICON_BOX + 8, K.TITLE_Y), Size = UDim2.fromOffset(K.W - 2 * (K.PAD + K.ICON_BOX + 8), K.TITLE_H),
-		TextColor3 = K.GOLD,
+		Position = UDim2.fromOffset(K.PAD + K.ICON_BOX + 8, K.TITLE_Y), Size = UDim2.fromOffset(K.IW - 2 * (K.PAD + K.ICON_BOX + 8), K.TITLE_H),
+		TextXAlignment = Enum.TextXAlignment.Center,
 	})
 
-	local tabs = frame(board, "Tabs", UDim2.fromOffset(K.PAD, K.TABS_Y), UDim2.fromOffset(K.W - 2 * K.PAD, K.TABS_H), nil, 1)
+	-- the page tabs: stone blocks in a mitred wood edge on their lip, the shown page's gold (render)
+	local tabs = frame(board, "Tabs", UDim2.fromOffset(K.PAD, K.TABS_Y), UDim2.fromOffset(K.IW - 2 * K.PAD, K.TABS_H), nil, 1)
 	local list = pages()
 	local n = math.max(1, #list)
-	local tw = math.floor((K.W - 2 * K.PAD - (n - 1) * K.TAB_GAP) / n)
+	local tw = math.floor((K.IW - 2 * K.PAD - (n - 1) * K.TAB_GAP) / n)
 	for i, stat in ipairs(list) do
 		local b = Instance.new("TextButton")
 		b.Name = "Tab_" .. stat
@@ -228,8 +265,8 @@ local function build()
 		b.Position = UDim2.fromOffset((i - 1) * (tw + K.TAB_GAP), 0)
 		b.Size = UDim2.fromOffset(tw, K.TABS_H)
 		b.Text = tostring((type(cfg().Labels) == "table" and cfg().Labels[stat]) or stat)
-		Theme.Style(b, "Button", { Size = K.TEXT })
-		Theme.Corner(b, "M")
+		Theme.Style(b, "Button", { Size = K.TEXT, Color = K.INK })
+		WorldTag.Block(b, K.TAB_OFF, K.TAB_OFF_LIP, Sign.Wood, K.BLOCK_EDGE, K.BLOCK_LIP)
 		b.Parent = tabs
 		b.Activated:Connect(function()
 			safe("tap", LeaderboardController.SetPage, stat)
@@ -238,27 +275,32 @@ local function build()
 	end
 
 	ui.Scope = label(board, "Scope", "", "Body", K.TEXT, {
-		Position = UDim2.fromOffset(K.PAD, K.SCOPE_Y), Size = UDim2.fromOffset(K.W - 2 * K.PAD, K.SCOPE_H), TextColor3 = K.MUTED,
+		Position = UDim2.fromOffset(K.PAD, K.SCOPE_Y), Size = UDim2.fromOffset(K.IW - 2 * K.PAD, K.SCOPE_H), TextColor3 = K.MUTED,
+		TextXAlignment = Enum.TextXAlignment.Center,
 	})
-	ui.RowsFrame = frame(board, "Rows", UDim2.fromOffset(0, K.ROWS_Y), UDim2.fromOffset(K.W, K.ROWS * K.ROW_H), nil, 1)
+	ui.RowsFrame = frame(board, "Rows", UDim2.fromOffset(0, K.ROWS_Y), UDim2.fromOffset(K.IW, K.ROWS * K.ROW_H), nil, 1)
 	for i = 1, K.ROWS do
 		ui.Rows[i] = buildRow(ui.RowsFrame, i)
 	end
 	ui.Status = label(board, "Status", "", "Heading", K.STATUS_TEXT, {
-		Position = UDim2.fromOffset(K.PAD, K.ROWS_Y), Size = UDim2.fromOffset(K.W - 2 * K.PAD, K.ROWS * K.ROW_H), TextWrapped = true,
+		Position = UDim2.fromOffset(K.PAD, K.ROWS_Y), Size = UDim2.fromOffset(K.IW - 2 * K.PAD, K.ROWS * K.ROW_H), TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
 	})
+	-- my line: the selected gold block (a mitred wood edge, its GoldLip lip); its side padding pads the lip too, so the
+	-- lip reaches back out by it (flush on the edge)
 	ui.You = label(board, "YouRow", "", "Heading", K.TEXT, {
-		Position = UDim2.fromOffset(10, K.YOU_Y), Size = UDim2.fromOffset(K.W - 20, K.YOU_H),
-		BackgroundTransparency = 0, BackgroundColor3 = K.ME, TextXAlignment = Enum.TextXAlignment.Left,
+		Position = UDim2.fromOffset(10, K.YOU_Y), Size = UDim2.fromOffset(K.IW - 20, K.YOU_H), TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	Theme.Corner(ui.You, "M")
-	Theme.Stroke(ui.You, K.ME_RING, 2, 0)
+	local _, youLip = WorldTag.Block(ui.You, K.ME, K.ME_LIP, Sign.Wood, K.BLOCK_EDGE, K.BLOCK_LIP)
 	local pad = Instance.new("UIPadding")
 	pad.PaddingLeft = UDim.new(0, 14)
 	pad.PaddingRight = UDim.new(0, 14)
 	pad.Parent = ui.You
+	youLip.Position = UDim2.new(0, -14, 1, 0)
+	youLip.Size = UDim2.new(1, 28, 0, K.BLOCK_LIP)
 	ui.Footer = label(board, "Footer", "", "Body", K.TEXT, {
-		Position = UDim2.fromOffset(K.PAD, K.FOOT_Y), Size = UDim2.fromOffset(K.W - 2 * K.PAD, K.FOOT_H), TextColor3 = K.MUTED, TextWrapped = true,
+		Position = UDim2.fromOffset(K.PAD, K.FOOT_Y), Size = UDim2.fromOffset(K.IW - 2 * K.PAD, K.FOOT_H), TextColor3 = K.MUTED, TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
 	})
 
 	S.Gui, S.Ui, S.Icon = gui, ui, nil
@@ -337,8 +379,12 @@ local function render()
 	setIcons(stat)
 	for key, b in pairs(ui.Tabs) do
 		local on = key == stat
-		b.BackgroundColor3 = on and K.GOLD or K.TAB_OFF
-		b.TextColor3 = on and Theme.Colors.Navy or Theme.Colors.White
+		b.BackgroundColor3 = on and K.TAB_ON or K.TAB_OFF
+		local lip = b:FindFirstChild("Lip")
+		if lip then
+			lip.BackgroundColor3 = on and K.TAB_ON_LIP or K.TAB_OFF_LIP
+		end
+		b.TextColor3 = K.INK
 	end
 	local state = S.State
 	ui.Scope.Text = (state and state.Scope == "Server") and "This server only" or "All players \194\183 all time"
@@ -352,9 +398,10 @@ local function render()
 		if e then
 			r.Name.Text = tostring(e.Name or "Player")
 			r.Value.Text = Theme.ShortNumber(tonumber(e.Value) or 0, K.SHORT_FROM)
+			-- flat square bands: my own row the selected gold, every other row the Well, the rest the card's stone
 			local mine = r.UserId ~= nil and r.UserId == me
-			r.Frame.BackgroundColor3 = mine and K.ME or (i <= 3 and K.GOLD or Theme.Colors.White)
-			r.Frame.BackgroundTransparency = mine and 0 or (i <= 3 and 0.88 or (i % 2 == 0 and 0.96 or 0.92))
+			r.Frame.BackgroundColor3 = mine and K.ME or K.BAND
+			r.Frame.BackgroundTransparency = (mine or i % 2 == 1) and 0 or 1
 		end
 	end
 	applyHeads()
