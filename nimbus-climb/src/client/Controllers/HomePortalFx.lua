@@ -15,7 +15,7 @@
 --   own vortex (client/PortalVortex: 6 broad + 9 fine Beam spiral arms turning inward at two speeds, light streaks
 --   pulled to the centre, rim crackles; the textured layers once shared/TextureIds has them) in front of a deep Neon
 --   backdrop filling the 4 x 7 stud opening, a lighter well and a bright core (<= 40 parts in all), sparkles, and a 22 px name tag
---   "Alex's portal" (pixel-sized BillboardGui with a stroke and a backing plate, World text rule). Other players'
+--   "Alex's portal" (pixel-sized BillboardGui: a stone card with a lip in the portal's colour, World text rule). Other players'
 --   portals are faded (only the owner and their pets can go through). It grows in when it opens and shrinks away when
 --   the attribute is cleared (used) or closesAt passes (expired).
 -- * Config.Attr.PortalArrived = server time of the last arrival: the arrival ring (<= 20 parts: a flat ring that
@@ -39,6 +39,13 @@ local okTheme, Theme = pcall(function()
 end)
 if not okTheme or type(Theme) ~= "table" then
 	Theme = nil
+end
+-- (kit-b world signs) the name tag is the kit's stone card (shared/WorldTag; the rounded ink plate went)
+local okTag, WorldTag = pcall(function()
+	return require(Shared:WaitForChild("WorldTag"))
+end)
+if not okTag or type(WorldTag) ~= "table" then
+	WorldTag = nil
 end
 
 local HomePortalFx = {}
@@ -75,6 +82,10 @@ local K = {
 	ARRIVAL_SPARKS = 6,
 	MAX_ARRIVALS = 4,
 	NAME_PX = 22, -- the name tag at 1080p
+	-- (kit-b world signs) its stone card at 1080p (WorldTag.Sizes: the wood edge, the lip) and px each side of the name
+	TAG_EDGE = 3,
+	TAG_LIP = 5,
+	TAG_PAD = 14,
 }
 HomePortalFx.K = K
 
@@ -88,7 +99,9 @@ local PALETTE = {
 	Color3.fromRGB(96, 214, 236),
 }
 local GOLD = Color3.fromRGB(255, 214, 92)
-local INK = Color3.fromRGB(26, 30, 52)
+-- the name tag's stone card when shared/WorldTag cannot load (Theme.Sign's Stone / Text / Wood, copied)
+local TAG_STONE = Color3.fromRGB(255, 247, 230)
+local TAG_INK = Color3.fromRGB(59, 36, 18)
 
 local localPlayer = Players.LocalPlayer
 local portals = {} -- [player] = record
@@ -378,12 +391,16 @@ function P.build(rec)
 	if not ok then
 		att:Destroy()
 	end
-	-- the name tag (pixel-sized, World text rule), over the gate's top
+	-- the name tag (pixel-sized, World text rule), over the gate's top. (kit-b world signs; NpcService's nameplate is the
+	-- model) a stone card: the Stone face, a mitred wood edge (WorldTag's SignEdge, drawn outside the face, inside the gui),
+	-- a lip in the portal's colour (WorldTag.LipOf), the name in the kit's brown ink with no outline (kit-b U6: it sits on the
+	-- opaque face); the card sized from the measured name. The rounded see-through ink plate went.
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "PortalName"
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.MaxDistance = 120
+	gui.ClipsDescendants = false
 	gui.StudsOffset = Vector3.new(0, K.TOP + 1.2 - K.CENTER_Y, 0)
 	gui.Parent = center
 	local px = K.NAME_PX
@@ -393,33 +410,49 @@ function P.build(rec)
 			px = s
 		end
 	end
+	local f = px / K.NAME_PX -- the screen factor the text got: the card's edge, lip and padding follow it
+	local edge = math.max(2, math.floor(K.TAG_EDGE * f + 0.5))
+	local lip = math.max(3, math.floor(K.TAG_LIP * f + 0.5))
 	local text = tostring(rec.Name) .. "'s portal"
-	local w = math.floor(px * 0.58 * #text + 28)
-	gui.Size = UDim2.fromOffset(w, math.floor(px * 1.6))
+	local tw = nil
+	if Theme and type(Theme.Measure) == "function" then
+		local okM, v = pcall(Theme.Measure, text, "Title", px)
+		if okM and typeof(v) == "Vector2" and v.X > 0 then
+			tw = v.X
+		end
+	end
+	tw = tw or px * 0.62 * #text
+	local w = math.ceil(tw + 2 * math.floor(K.TAG_PAD * f + 0.5))
+	local h = math.floor(px * 1.6) + lip
+	gui.Size = UDim2.fromOffset(w + 2 * edge, h + 2 * edge)
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
-	plate.Size = UDim2.fromScale(1, 1)
-	plate.BackgroundColor3 = INK
-	plate.BackgroundTransparency = 0.25
+	plate.Position = UDim2.fromOffset(edge, edge)
+	plate.Size = UDim2.fromOffset(w, h)
+	plate.BackgroundColor3 = TAG_STONE
+	plate.BackgroundTransparency = 0
 	plate.BorderSizePixel = 0
 	plate.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = plate
+	if WorldTag and Theme and type(Theme.Sign) == "table" then
+		WorldTag.Block(plate, Theme.Sign.Stone, WorldTag.LipOf(color), Theme.Sign.Wood, edge, lip)
+	end
 	local label = Instance.new("TextLabel")
 	label.Name = "Name"
 	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
+	label.Size = UDim2.new(1, 0, 1, -lip)
 	label.Text = text
 	label.TextSize = px
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.TextStrokeTransparency = 0
-	label.TextStrokeColor3 = INK
+	label.TextColor3 = TAG_INK
+	label.TextStrokeTransparency = 1
+	label.TextWrapped = false
+	label.TextScaled = false
 	label.Parent = plate
 	if Theme then
-		-- (kit-b U6) the name sits on its plate: no outline and no classic stroke (the stroke above is the no-Theme fallback)
-		Theme.SetRole(label, "Title")
+		Theme.SetRole(label, "Title") -- (kit-b U6) capitals, no outline and no classic stroke
 		label.TextStrokeTransparency = 1
+		if type(Theme.Sign) == "table" then
+			label.TextColor3 = Theme.Sign.Text
+		end
 	end
 	rec.Model, rec.Items, rec.Gui, rec.Label = model, items, gui, label
 	rec.PlacedScale, rec.PlacedFade = nil, nil

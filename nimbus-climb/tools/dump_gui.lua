@@ -106,7 +106,9 @@
 --                         WorldMirror: the pixel billboard at its own size, the eye-level countdown face at the
 --                         size it has on this screen from <studs> away (default 36, a friend outside the lock
 --                         walls) over a sketch of the swirl, and the face's canvas at 1:1
---   homepads[:<tier>]     no game HUD: a Phase 2 home (real LobbyBuilder + HomeBuilder + TycoonCatalog) built half way
+--   homepads[:<tier>[:signs]]  no game HUD: a Phase 2 home (real LobbyBuilder + HomeBuilder + TycoonCatalog) built half way
+--                         (signs: the stations' FarmSign / BowlSign / MachineSign and a closed garden bed's board in
+--                         place of the pads and the claim post)
 --                         to house tier <tier> (default 2) with its buy pads; every pad sign (pixel billboards at
 --                         their own size) and the "FREE HOME" signpost of a free plot (from 30 studs and at canvas
 --                         size) mirrored flat into the ScreenGui WorldMirror (the plot attributes CollectorCash /
@@ -2469,12 +2471,44 @@ end
 ----------------------------------------------------------------------
 -- homepads: the world GUIs of a Phase 2 home (server/Services/HomeBuilder.lua), mirrored flat like the portal's
 ----------------------------------------------------------------------
-local function homePadsScene(tier, width, height)
+-- (kit-b world signs, lane B) HomeBuilder sizes its stone cards with Theme.Measure, which Roblox's TextService answers with
+-- the font: the mock's GetTextSize is a flat 0.5 em, so for the scene Theme.Measure takes the renderer's font metrics (the
+-- role's font, its MeasureSpare, a caps role in capitals), as worldui's WU.realMeasure does (it sees the same _wuReal mark)
+local function homeRealMeasure(Theme)
+	if not Theme or Theme._wuReal then
+		return
+	end
+	local probe = Instance.new("TextLabel")
+	Theme.Measure = function(text, role, size, width)
+		local spare, font = 1, role
+		text = tostring(text or "")
+		if typeof(role) ~= "EnumItem" or role == Enum.Font.Unknown then
+			if not Theme.Fonts[role] then
+				role = "Body"
+			end
+			if Theme.CapsRoles and Theme.CapsRoles[role] then
+				text = Theme.Caps(text)
+			end
+			size = tonumber(size) or Theme.RoleSize(role)
+			spare = Theme.MeasureSpare[role] or 1
+			font = Theme.Fonts[role]
+		end
+		probe.Font = font
+		probe.Text = text
+		probe.TextSize = tonumber(size) or 14
+		local w, h = realExtent(probe, tonumber(width) and (tonumber(width) / spare) or nil)
+		return Vector2.new(math.ceil(w * spare), h)
+	end
+	Theme._wuReal = true
+end
+
+local function homePadsScene(tier, width, height, view)
 	Config = req("shared/Config")
 	local okMetrics, why = installMetrics()
 	if not okMetrics then
 		note("text metrics: " .. tostring(why))
 	end
+	homeRealMeasure(req("shared/Theme"))
 	ensureRemotes()
 	Mock.SetViewport(width, height)
 	local context = Mock.Context
@@ -2529,9 +2563,12 @@ local function homePadsScene(tier, width, height)
 		rowH = max(rowH, h)
 		return px, py
 	end
+	-- (kit-b world signs, lane B) view "signs": the stations' own signs (Kit.sign: the farm, the bowl, the food machine)
+	-- in place of the pads, and a closed garden bed's board in place of the claim post
+	local SIGN_NAMES = (view == "signs") and { FarmSign = true, BowlSign = true, MachineSign = true } or { PadSign = true }
 	local pads = {}
 	for _, d in ipairs(spot.Folder:GetDescendants()) do
-		if d:IsA("BillboardGui") and d.Name == "PadSign" then
+		if d:IsA("BillboardGui") and SIGN_NAMES[d.Name] then
 			pads[#pads + 1] = d
 		end
 	end
@@ -2550,6 +2587,9 @@ local function homePadsScene(tier, width, height)
 				id = node:GetAttribute("StationId")
 				break
 			end
+		end
+		if view == "signs" then
+			id = id .. " " .. gui.Name
 		end
 		local px, py = place(w, h, id)
 		mirrorCell(screen, gui, px, py, 1, id)
@@ -2596,8 +2636,12 @@ local function homePadsScene(tier, width, height)
 			})
 		end
 	end
-	local claim = free and free.Folder and free.Folder:FindFirstChild("ClaimGui", true)
-	surface(claim, "Claim sign")
+	if view == "signs" then
+		surface(spot.Folder:FindFirstChild("ClosedGui", true), "Closed bed sign")
+	else
+		local claim = free and free.Folder and free.Folder:FindFirstChild("ClaimGui", true)
+		surface(claim, "Claim sign")
+	end
 	screen.Parent = pg
 	advance(0.1)
 	return okMetrics
@@ -5720,7 +5764,7 @@ else
 		data.metrics = okMetrics and "font" or "mock"
 	elseif name == "homepads" then
 		-- the world GUIs of a Phase 2 home (no game HUD)
-		local okMetrics = homePadsScene(fields[2], width, height)
+		local okMetrics = homePadsScene(fields[2], width, height, fields[3])
 		data = walk()
 		data.metrics = okMetrics and "font" or "mock"
 	elseif name == "arenaboards" then

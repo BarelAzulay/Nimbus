@@ -9,11 +9,13 @@
 --     reader; WorldPivot = cf). No board of its own:
 --       * EggShelf: a low stone shelf (SHELF: 19.3 x 0.8 x 2.6) 3 studs in front of the board, colliding; the row slides
 --         1.0 stud (the eggs) / 1.35 (the shelf) towards the reader's left, off the Cloud machine (see SHELF).
---       * RarityStrip: a SurfaceGui on the shelf's Front face at 50 px per stud (965 x 40 px), LightInfluence 0: a Navy
---         Band over the whole canvas (BackgroundTransparency 0.2) holding seven labels Label_<Rarity> (135 x 40 px, one
---         under each egg) that name the rarity in its colour (Secret: the light violet, its own colour is near-black) at
---         30 px = 0.6 stud (the World text rule's line floor; a label strip has no title line) in Theme's Body face with the
---         INK outline (H.signText), TextScaled off. Measured with Roblox's own BuilderSans-Bold the words are 59 .. 161 px
+--       * RarityStrip: a SurfaceGui on the shelf's Front face at 50 px per stud (965 x 40 px), LightInfluence 0: the
+--         Band, a stone card (kit-b world signs, shared/WorldTag: the Stone face inset by its 2 px mitred wood edge, a 4 px
+--         StoneLip lip; the navy see-through band went) holding seven labels Label_<Rarity> (135 x 32 px over the lip, one
+--         under each egg) that name the rarity in the kit's brown ink (no outline: it sits on the opaque face) at 30 px =
+--         0.6 stud (the World text rule's line floor; a label strip has no title line) in Theme's Body face, TextScaled off,
+--         each over its own lip piece Lip_<Rarity> as wide as its word in the rarity colour (Secret: its violet glow, its
+--         own colour is near-black). Measured with Roblox's own BuilderSans-Bold the words are 59 .. 161 px
 --         wide, so two neighbours of the 135 px cells would meet (Common 126 + Uncommon 161): STRIP.Nudge moves the Common
 --         label 22 px out to the shelf's end and the Mythic one 8 px towards Secret, each still under its egg; every gap is
 --         then >= 9 px (the spec's GothamBlack "Heading" face is wider still: Uncommon 185 px, Legendary 175).
@@ -59,6 +61,8 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local WorldStyle = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WorldStyle"))
 local FxSprites = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FxSprites"))
+local Theme = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Theme"))
+local WorldTag = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WorldTag")) -- (kit-b world signs) the stone card
 
 local LobbyBoardBuilder = {}
 
@@ -87,15 +91,15 @@ local ROW_X = 1.0
 -- the rarity label strip on the shelf's front (16.17.2): px per stud, the label cell, the text size (0.6 stud), the band;
 -- Nudge = px a label moves off its cell's centre (+ = towards the canvas's right = the reader's right), measured above
 local STRIP = {
-	Name = "RarityStrip", PPS = 50, Cell = 135, Text = 30, Role = "Body", BandAlpha = 0.2,
+	Name = "RarityStrip", PPS = 50, Cell = 135, Text = 30, Role = "Body",
+	Edge = 2, Lip = 4, -- (kit-b world signs) the band's wood edge (the band is inset by it) and lip, px
 	Nudge = { Common = -22, Mythic = 8 },
 }
 -- the walk-up Shop prompt's part (lobby shop 16.3: just in front of the shelf)
 local COUNTER = { Offset = CFrame.new(0, 2, -5.6), Size = Vector3.new(5, 4, 3) }
 local SECRET = {
 	Body = Color3.fromRGB(40, 40, 52), -- Config.Rarities Secret
-	Tint = Color3.fromRGB(138, 92, 255), -- the Secret egg's violet glow (spec 5.6)
-	Text = Color3.fromRGB(178, 150, 255), -- its label on the navy band
+	Tint = Color3.fromRGB(138, 92, 255), -- the Secret egg's violet glow (spec 5.6; its strip label's lip piece)
 }
 -- the shelf VFX (spec 16.5 "The world eggs"): the sparkle per egg from Rare up and the shelf's one light
 local SHELF_FX = {
@@ -174,28 +178,46 @@ local function eggSparkle(egg, id)
 	return pe
 end
 
--- the rarity label strip on the shelf's front (16.17.2): a Navy band, one label per egg standing under it. The canvas's
--- left is the shelf's +X (the reader's left, where egg 1 stands), so egg i's centre is W / 2 - x_i * PPS px.
+-- the rarity label strip on the shelf's front (16.17.2): a stone band (kit-b world signs), one ink label per egg standing
+-- under it over its word-wide lip piece in the rarity colour. The canvas's left is the shelf's +X (the reader's left, where
+-- egg 1 stands), so egg i's centre is W / 2 - x_i * PPS px of the canvas (the band starts STRIP.Edge px in).
 local function rarityStrip(shelf, order, H)
+	local Sign = Theme.Sign
 	local gui = H.surfaceGui(shelf, Enum.NormalId.Front)
 	gui.Name = STRIP.Name
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	gui.PixelsPerStud = STRIP.PPS
 	gui.LightInfluence = 0
+	local e = STRIP.Edge
 	local band = Instance.new("Frame")
 	band.Name = "Band"
-	band.Size = UDim2.new(1, 0, 1, 0)
-	band.BackgroundColor3 = H.C.Navy
-	band.BackgroundTransparency = STRIP.BandAlpha
-	band.BorderSizePixel = 0
+	band.Position = UDim2.fromOffset(e, e) -- the edge is drawn outside the face: inset so the canvas keeps it
+	band.Size = UDim2.new(1, -2 * e, 1, -2 * e)
 	band.Parent = gui
+	WorldTag.Block(band, Sign.Stone, Sign.StoneLip, Sign.Wood, e, STRIP.Lip)
 	local w = SHELF.Size.X * STRIP.PPS
+	local lineH = SHELF.Size.Y * STRIP.PPS - 2 * e - STRIP.Lip
 	for i, id in ipairs(order) do
 		local eggX = ROW_X - SHELF.X + (#order + 1 - 2 * i) * EGG.Step / 2 -- the egg's centre from the shelf's
-		local centre = w / 2 - eggX * STRIP.PPS + (STRIP.Nudge[id] or 0)
-		local color = (id == "Secret") and SECRET.Text or rarityColor(id)
-		local label = H.signText(band, id, STRIP.Role, STRIP.Text, color, "Label_" .. id, (centre - STRIP.Cell / 2) / w, 0, STRIP.Cell / w, 1)
-		label.TextScaled = false
+		local centre = w / 2 - eggX * STRIP.PPS + (STRIP.Nudge[id] or 0) - e
+		WorldTag.Text(band, "Label_" .. id, id, STRIP.Role, STRIP.Text, Sign.Text, {
+			Position = UDim2.fromOffset(centre - STRIP.Cell / 2, 0),
+			Size = UDim2.fromOffset(STRIP.Cell, lineH),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			ZIndex = 2,
+		})
+		-- the word's own lip piece in the rarity colour, as wide as the word (the band's StoneLip shows between them)
+		local tw = math.ceil(Theme.Measure(id, STRIP.Role, STRIP.Text).X)
+		local piece = Instance.new("Frame")
+		piece.Name = "Lip_" .. id
+		piece.BorderSizePixel = 0
+		piece.BackgroundColor3 = (id == "Secret") and SECRET.Tint or rarityColor(id)
+		piece.AnchorPoint = Vector2.new(0.5, 1)
+		piece.Position = UDim2.new(0, centre, 1, 0)
+		piece.Size = UDim2.fromOffset(math.max(24, tw), STRIP.Lip)
+		piece.ZIndex = 2
+		piece.Parent = band
 	end
 	gui.Parent = shelf
 	return gui

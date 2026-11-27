@@ -10,10 +10,8 @@ World.Base.**
 World.Board.**
 World.Cabinet.**
 World.ChallengePad.**
-World.ClosedSign.**
 World.CountdownFace.**
 World.Face.**
-World.FoodBowl.**
 World.GateSign.**
 World.JoinAnchor.**
 World.NameTag.**
@@ -27,11 +25,9 @@ World.SignBoard.**
 World.Unit_4.**
 World.WelcomeSign.**
 WorldMirror.BoardGui.**
-WorldMirror.ClaimGui.**
 WorldMirror.CountdownGui.**
 WorldMirror.LeaderGui.**
 WorldMirror.LobbyBoard.**
-WorldMirror.PadSign.**
 WorldMirror.PadTag.**
 WorldMirror.SignGui.**
 WorldMirror.SwirlSketch.**
