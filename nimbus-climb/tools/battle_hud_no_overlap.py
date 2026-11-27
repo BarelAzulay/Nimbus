@@ -117,6 +117,8 @@ WHOLE = [
     r"^NimbusBattle\.Root\.Team\.Helpers\.Helper\d+\..*(Buff|Name)\w*$",
     r"^NimbusHud\.\w+\.Vitals\..*Name\w*$",
     r"^NimbusBattle\.Root\.Commands\.\w+Button\.(Caption|NamePlate)(\.\w+)?$",
+    # (look0 N2 re-look) the next round's countdown ('Next in 3' ran past its box under LEAVE at 640 x 360)
+    r"^NimbusBattle\.Root\.NextRoundCard\.Countdown$",
 ]
 WHOLE = [re.compile(p) for p in WHOLE]
 
@@ -489,6 +491,16 @@ class Checker:
                 d = ink_gap([ti], li, ti, union(li), MIN_GAP)[0]
                 self.check(d >= MIN_GAP - 0.05, tag + "the top card's timer keeps %g px off Leave" % MIN_GAP,
                            "timer %s, Leave %s: %.1f px" % (fmt(ti), fmt(union(li)), d))
+        # (kitb-matchhud look0 N2 re-look: the card between ring rounds, kept off the top card's shadow at 640 x 360 /
+        # 667 x 375, drew 'Next in 3' 1.4 px from its inline LEAVE's frame, its stroke on it; kit-b kept 5.4) the countdown's
+        # text keeps MIN_GAP off LEAVE's ink, as the top card's timer does
+        count, nleave = nodes.get(B + "NextRoundCard.Countdown"), nodes.get(B + "NextRoundCard.LeaveButton")
+        if count and nleave and text_of(count) and nleave["w"] > 1 and self.rg is not None:
+            ci, li = text_ink(count, self.rg, self.fonts), ink_of(nleave, None, None)
+            if ci and li:
+                d = ink_gap([ci], li, ci, union(li), MIN_GAP)[0]
+                self.check(d >= MIN_GAP - 0.05, tag + "the next round's countdown keeps %g px off its LEAVE" % MIN_GAP,
+                           "countdown %s, LEAVE %s: %.1f px" % (fmt(ci), fmt(union(li)), d))
         # pills (the full raid's boss strip)
         if scen == "battle:raid:full":
             self.pills(tag, w, h, nodes)
