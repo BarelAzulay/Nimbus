@@ -217,6 +217,74 @@ local function clientScenarios()
 		KC.flushErrors("battle_tags_clear")
 	end)
 
+	----------------------------------------------------------------------------------------------------------------
+	-- egg_stage_resize_in_build (owner's Studio log 2026-11-27: "[EggStage] resize: ...HatchLook:1326: attempt to index
+	-- nil with 'FindFirstChild'"): H.startRoll published the roll (S.Roll) before B.roll had built its chips, so the
+	-- stage's AbsoluteSize hook (H.open) relaid a half-built roll and H.applyBar sized a Skip chip that did not exist
+	-- yet. A new NimbusHatch gets its size on its first layout, which Roblox can run (and signal at once) while the roll
+	-- is still being built; here the screen turns during B.roll (before B.bar). No warning, and the stage that comes up
+	-- is laid out for the new screen; a resize after the build still relays it out
+	----------------------------------------------------------------------------------------------------------------
+	S.egg_stage_resize_in_build = guarded("egg_stage_resize_in_build", function()
+		local ES = client("UI/EggStage")
+		local HL = client("UI/HatchLook")
+		local PC = shared("PetCatalog")
+		local pool = PC and PC.RarityPool and PC.RarityPool("Cloud", "Epic") or {}
+		if not T.check(type(ES) == "table" and type(ES.Show) == "function" and type(ES._S) == "table" and type(HL) == "table" and type(HL.Word) == "function" and #pool >= 1,
+			"egg stage resize in build: (setup) EggStage, HatchLook.Word, a Cloud Epic pet") then
+			return
+		end
+		local def = pool[1]
+		local pull = { PetId = def.Id, Key = def.Id, Rarity = def.Rarity, IsNew = true, NewDiscovery = true, Count = 1, PoolSize = #pool }
+		local result = { Ok = true, RouletteId = "Cloud", Currency = "Tokens", Spins = 1, UnitPrice = 50, Price = 50, Pulls = { pull }, Tokens = 5000, Gems = 5000,
+			PetId = pull.PetId, Key = pull.Key, IsNew = true, NewDiscovery = true, Count = 1 }
+		local oldVp = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		KC.advance(0.2)
+		local realWord = HL.Word
+		local turned = false
+		HL.Word = function(...)
+			-- B.roll's crack word: the roll is published, its bottom bar (B.bar) not built yet
+			if not turned then
+				turned = true
+				Mock.SetViewport(844, 390)
+			end
+			return realWord(...)
+		end
+		local o0 = #Mock.Output
+		local ok, err = pcall(ES.Show, result)
+		HL.Word = realWord
+		local resizeWarns = {}
+		for i = o0 + 1, #Mock.Output do
+			local o = Mock.Output[i]
+			if o.kind == "warn" and tostring(o.text):find("[EggStage] resize", 1, true) then
+				resizeWarns[#resizeWarns + 1] = tostring(o.text)
+			end
+		end
+		T.check(ok and turned, "egg stage resize in build: (setup) the stage opens, the screen turned during B.roll", tostring(err))
+		T.check(#resizeWarns == 0, "egg stage resize in build: a resize while the roll is built warns nothing (no half-built roll relaid)", resizeWarns[1] or "-")
+		local S = ES._S
+		local content = S.Content
+		local bar = content and content:FindFirstChild("BottomBar")
+		local skip = bar and bar:FindFirstChild("Skip")
+		T.check(S.Lay ~= nil and S.Lay.W == 844 and bar ~= nil and bar.Size.X.Offset == 844 and skip ~= nil and skip:FindFirstChild("Pill") ~= nil,
+			"egg stage resize in build: the stage comes up laid out for the turned screen (844 wide, its Skip chip built)",
+			fmt("lay %s, bar %s", S.Lay and tostring(S.Lay.W) or "nil", bar and tostring(bar.Size.X.Offset) or "nil"))
+		-- a resize after the build still relays the stage out
+		KC.advance(0.3)
+		Mock.SetViewport(1920, 1080)
+		KC.advance(0.1)
+		T.check(S.Lay ~= nil and S.Lay.W == 1920 and bar ~= nil and bar.Size.X.Offset == 1920, "egg stage resize in build: a resize after the build relays it out (1920 wide)",
+			fmt("lay %s, bar %s", S.Lay and tostring(S.Lay.W) or "nil", bar and tostring(bar.Size.X.Offset) or "nil"))
+		if ES.IsShowing() then
+			ES.Close()
+		end
+		KC.advance(0.6)
+		Mock.SetViewport(oldVp[1], oldVp[2])
+		KC.advance(0.2)
+		KC.flushErrors("egg_stage_resize_in_build")
+	end)
+
 	return S
 end
 

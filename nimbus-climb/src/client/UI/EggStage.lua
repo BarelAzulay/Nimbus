@@ -3388,6 +3388,14 @@ function H.startRoll(roll)
 	roll.Phase = "Intro"
 	S.Lay = L.compute(roll.N, roll)
 	B.roll(roll)
+	-- (owner's log 2026-11-27, "[EggStage] resize: ...HatchLook:1326") the roll is published above before its chips exist:
+	-- a resize signalled while B.roll builds (a new NimbusHatch's first layout can fire it at once) is held (H.relayout)
+	-- and taken here, the layout read again for the new screen
+	roll.Built = true
+	if roll.ResizedInBuild then
+		roll.ResizedInBuild = nil
+		S.Lay = L.compute(roll.N, roll)
+	end
 	H.apply()
 	-- the intro: the dim, the vignette, the title sliding down
 	if S.Dim and S.Dim.BackgroundTransparency > K.DIM then
@@ -3539,6 +3547,10 @@ end
 function H.relayout()
 	local roll = S.Roll
 	if not roll or not S.Content then
+		return
+	end
+	if not roll.Built then
+		roll.ResizedInBuild = true -- (a half-built roll: H.startRoll lays it out for the new screen once B.roll is done)
 		return
 	end
 	H.cancelTweens(true)
