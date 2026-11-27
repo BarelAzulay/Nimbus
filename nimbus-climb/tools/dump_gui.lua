@@ -107,8 +107,9 @@
 --                         size it has on this screen from <studs> away (default 36, a friend outside the lock
 --                         walls) over a sketch of the swirl, and the face's canvas at 1:1
 --   homepads[:<tier>[:signs]]  no game HUD: a Phase 2 home (real LobbyBuilder + HomeBuilder + TycoonCatalog) built half way
---                         (signs: the stations' FarmSign / BowlSign / MachineSign and a closed garden bed's board in
---                         place of the pads and the claim post)
+--                         (signs: the stations' FarmSign / BowlSign / MachineSign, a closed garden bed's board, the
+--                         lobby egg shelf's RarityStrip and the home portal's PortalName tag in place of the pads and
+--                         the claim post)
 --                         to house tier <tier> (default 2) with its buy pads; every pad sign (pixel billboards at
 --                         their own size) and the "FREE HOME" signpost of a free plot (from 30 studs and at canvas
 --                         size) mirrored flat into the ScreenGui WorldMirror (the plot attributes CollectorCash /
@@ -2638,6 +2639,41 @@ local function homePadsScene(tier, width, height, view)
 	end
 	if view == "signs" then
 		surface(spot.Folder:FindFirstChild("ClosedGui", true), "Closed bed sign")
+		-- (kit-b world signs, lane B review) the lobby's egg-shelf RarityStrip (LobbyBoardBuilder, built with the lobby
+		-- above) and the home portal's PortalName tag (client HomePortalFx, drawn from the local player's HomePortal
+		-- attribute as dump_model's portal:home does), so both stone cards have a render
+		local strip = nil
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("SurfaceGui") and d.Name == "RarityStrip" then
+				strip = d
+				break
+			end
+		end
+		surface(strip, "Egg shelf RarityStrip")
+		local Fx = req("client/Controllers/HomePortalFx", true)
+		local okFx, whyFx = false, "client/Controllers/HomePortalFx.lua has no Init"
+		if Fx and type(Fx.Init) == "function" then
+			okFx, whyFx = pcall(function()
+				Fx.Init()
+				LocalPlayer:SetAttribute("HomePortal", fmt("%d,%d,%d,%d,%d", 0, 3, 0, 0, floor(workspace:GetServerTimeNow() + 60)))
+				advance(1.0)
+			end)
+		end
+		local tag = nil
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("BillboardGui") and d.Name == "PortalName" then
+				tag = d
+				break
+			end
+		end
+		if tag then
+			local w, h = canvasOf(tag)
+			local cap = fmt("Home PortalName (%dx%d px)", w, h)
+			local px, py = place(w, h, cap)
+			mirrorCell(screen, tag, px, py, 1, cap)
+		else
+			note("homepads: no PortalName tag" .. (okFx and "" or (": " .. tostring(whyFx))))
+		end
 	else
 		local claim = free and free.Folder and free.Folder:FindFirstChild("ClaimGui", true)
 		surface(claim, "Claim sign")

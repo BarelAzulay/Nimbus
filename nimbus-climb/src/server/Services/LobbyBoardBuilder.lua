@@ -14,7 +14,8 @@
 --         StoneLip lip; the navy see-through band went) holding seven labels Label_<Rarity> (135 x 32 px over the lip, one
 --         under each egg) that name the rarity in the kit's brown ink (no outline: it sits on the opaque face) at 30 px =
 --         0.6 stud (the World text rule's line floor; a label strip has no title line) in Theme's Body face, TextScaled off,
---         each over its own lip piece Lip_<Rarity> as wide as its word in the rarity colour (Secret: its violet glow, its
+--         each over its own lip piece Lip_<Rarity> as wide as its word (less STRIP.LipInset each end, so two pieces never
+--         meet) in the rarity colour (Secret: its violet glow, its
 --         own colour is near-black). Measured with Roblox's own BuilderSans-Bold the words are 59 .. 161 px
 --         wide, so two neighbours of the 135 px cells would meet (Common 126 + Uncommon 161): STRIP.Nudge moves the Common
 --         label 22 px out to the shelf's end and the Mythic one 8 px towards Secret, each still under its egg; every gap is
@@ -93,6 +94,7 @@ local ROW_X = 1.0
 local STRIP = {
 	Name = "RarityStrip", PPS = 50, Cell = 135, Text = 30, Role = "Body",
 	Edge = 2, Lip = 4, -- (kit-b world signs) the band's wood edge (the band is inset by it) and lip, px
+	LipInset = 4, -- px a word's lip piece stops short of each end of the word (render review: Common's and Uncommon's met)
 	Nudge = { Common = -22, Mythic = 8 },
 }
 -- the walk-up Shop prompt's part (lobby shop 16.3: just in front of the shelf)
@@ -207,7 +209,8 @@ local function rarityStrip(shelf, order, H)
 			TextYAlignment = Enum.TextYAlignment.Center,
 			ZIndex = 2,
 		})
-		-- the word's own lip piece in the rarity colour, as wide as the word (the band's StoneLip shows between them)
+		-- the word's own lip piece in the rarity colour, as wide as the word less LipInset each end (the band's StoneLip
+		-- shows between them, even where two words nearly meet)
 		local tw = math.ceil(Theme.Measure(id, STRIP.Role, STRIP.Text).X)
 		local piece = Instance.new("Frame")
 		piece.Name = "Lip_" .. id
@@ -215,7 +218,7 @@ local function rarityStrip(shelf, order, H)
 		piece.BackgroundColor3 = (id == "Secret") and SECRET.Tint or rarityColor(id)
 		piece.AnchorPoint = Vector2.new(0.5, 1)
 		piece.Position = UDim2.new(0, centre, 1, 0)
-		piece.Size = UDim2.fromOffset(math.max(24, tw), STRIP.Lip)
+		piece.Size = UDim2.fromOffset(math.max(24, tw - 2 * STRIP.LipInset), STRIP.Lip)
 		piece.ZIndex = 2
 		piece.Parent = band
 	end

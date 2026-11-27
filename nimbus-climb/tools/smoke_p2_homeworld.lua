@@ -566,6 +566,27 @@ local function serverScenarios()
 			T.check(ok and panel and colorNear(panel.BackgroundColor3, Sign.Stone, 2) and panel.Position.X.Offset >= 2 and panel.Size.X.Offset <= -4
 				and star and star:FindFirstChild("Icon") ~= nil and star.Icon:GetAttribute("PixelIcon") == "star",
 				"kit-b world signs: a closed bed's ClosedGui is a stone card inset by its edge (the Panel: Stone face, SignEdge, Lip) with the pixel star, 'Prestige' / 'to open' in ink", why)
+			-- (lane B review: the star sat flush on the wood edge, "to open" reached the lip) everything keeps >= 2 px off the
+			-- face's sides, its top and the lip; the two lines stay 30 px (never smaller than before)
+			local title, info = panel and panel:FindFirstChild("Title"), panel and panel:FindFirstChild("Info")
+			local lip = panel and panel:FindFirstChild("Lip")
+			local pw = board and cg and board.Size.X * cg.PixelsPerStud + panel.Size.X.Offset or 0
+			local ph = board and cg and board.Size.Y * cg.PixelsPerStud + panel.Size.Y.Offset or 0
+			local faceH = ph - (lip and lip.Size.Y.Offset or 0)
+			local roomBad = {}
+			for _, g in ipairs({ star, title, info }) do
+				if not g then
+					roomBad[#roomBad + 1] = "missing piece"
+				else
+					local x0, y0 = g.Position.X.Offset, g.Position.Y.Offset
+					local x1, y1 = x0 + g.Size.X.Offset, y0 + g.Size.Y.Offset
+					if x0 < 2 or x1 > pw - 2 or y0 < 2 or y1 > faceH - 2 then
+						roomBad[#roomBad + 1] = string.format("%s %.0f..%.0f x %.0f..%.0f on a %.0f x %.0f face", g.Name, x0, x1, y0, y1, pw, faceH)
+					end
+				end
+			end
+			T.check(#roomBad == 0 and title and info and title.TextSize >= 30 and info.TextSize >= 30,
+				"kit-b world signs: the ClosedGui's star and its two 30 px lines keep >= 2 px off the wood edge, the top and the lip", table.concat(roomBad, "; "))
 			if g0 then
 				g0:Destroy()
 			end

@@ -216,7 +216,9 @@ local K = {
 
 local COLORS = {
 	PriceOk = Color3.fromRGB(170, 244, 140),
-	PriceShort = Color3.fromRGB(255, 132, 120),
+	-- the price of a pad the owner cannot pay for yet (kit-b world signs: the PadSign is a stone card now, so the light coral
+	-- of the navy plate read 2.2:1; Theme.Sign.RedLip is 5.3:1 on Sign.Stone)
+	PriceShort = (Theme and type(Theme.Sign) == "table" and Theme.Sign.RedLip) or Color3.fromRGB(184, 54, 79),
 	Gold = Color3.fromRGB(255, 206, 84),
 	GoldDark = Color3.fromRGB(214, 150, 46),
 	Puff = Color3.fromRGB(246, 248, 255), -- the poop puff
@@ -688,7 +690,15 @@ local function utf8len(text)
 	return n
 end
 
--- the plate's size when the layout engine has not measured it (yet): its rows of text
+-- (kit-b world signs) the stone card's mitred wood edge (WorldTag's UIStroke "SignEdge") is drawn outside the Plate, so
+-- the sign covers the plate plus this much on each side
+local function plateEdge(plate)
+	local s = plate and plate:FindFirstChild("SignEdge")
+	return (s and s:IsA("UIStroke")) and s.Thickness or 0
+end
+
+-- the plate's size when the layout engine has not measured it (yet): its rows of text, laid out as HomeBuilder's tagFit
+-- lays the stone card (14 px each side, 6 over the first row, 3 between rows, 4 under the last over the 5 px lip)
 local function estimatePlate(plate)
 	local w, h = 150, 70
 	if not plate then
@@ -718,26 +728,30 @@ local function estimatePlate(plate)
 		end
 	end
 	if rows > 0 then
-		w, h = max(150, widest + 28), total + 14
+		local lip = plate:FindFirstChild("Lip")
+		local lipH = (lip and lip:IsA("GuiObject")) and lip.Size.Y.Offset or 0
+		w, h = max(150, widest + 28), total + 10 + lipH
 	end
 	return w, h
 end
 
--- the sign's plate in pixels (it keeps that size on screen at any distance)
+-- the sign's plate in pixels with its wood edge (it keeps that size on screen at any distance)
 local function plateSize(gui)
 	local plate = gui:FindFirstChild("Plate")
+	local e = 2 * plateEdge(plate)
 	if plate and plate:IsA("GuiObject") then
 		local s = plate.AbsoluteSize
 		if s.X >= 40 and s.Y >= 20 then
 			plateSizes[gui] = s
-			return s.X, s.Y
+			return s.X + e, s.Y + e
 		end
 	end
 	local known = plateSizes[gui]
 	if known then
-		return known.X, known.Y
+		return known.X + e, known.Y + e
 	end
-	return estimatePlate(plate)
+	local w, h = estimatePlate(plate)
+	return w + e, h + e
 end
 
 -- the world point the billboard hangs from: its adornee plus the studs offsets
@@ -3167,6 +3181,37 @@ function R.basket(rec)
 	end
 	if label.Text ~= text then
 		label.Text = text
+		R.basketFit(m, label)
+	end
+end
+
+-- (kit-b world signs) HomeBuilder's tagFit gives the stone card a fixed size with room for "00,000 / 00,000 berries"; a
+-- longer line (a big BasketCap) widens the card and its billboard to fit, never narrower than the server made them. The
+-- line's row is the card's width less its padding (Size.X.Offset = -2 x TAG.PadX), the edge sits inside the gui.
+function R.basketFit(m, label)
+	local plate = label.Parent
+	local gui = plate and plate.Parent
+	if not (plate and plate.Name == "Plate" and plate:IsA("GuiObject") and gui and gui:IsA("BillboardGui")) then
+		return
+	end
+	if not m.BasketBase then
+		m.BasketBase = { Face = plate.Size.X.Offset, Gui = gui.Size.X.Offset }
+	end
+	local base = m.BasketBase
+	local tw = nil
+	if Theme and type(Theme.Measure) == "function" then
+		local ok, v = pcall(Theme.Measure, label.Text, label:GetAttribute("FontRole") or "Body", label.TextSize)
+		if ok and typeof(v) == "Vector2" then
+			tw = v.X
+		end
+	end
+	tw = tw or utf8len(label.Text) * label.TextSize * 0.56
+	local pad = max(0, -label.Size.X.Offset)
+	local face = max(base.Face, math.ceil(tw + pad))
+	local edge = plateEdge(plate)
+	if plate.Size.X.Offset ~= face then
+		plate.Size = UDim2.fromOffset(face, plate.Size.Y.Offset)
+		gui.Size = UDim2.fromOffset(max(base.Gui, face + 2 * edge), gui.Size.Y.Offset)
 	end
 end
 

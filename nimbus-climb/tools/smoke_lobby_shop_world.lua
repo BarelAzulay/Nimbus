@@ -160,7 +160,7 @@ local RARITY_SUB = "Every egg hatches a pet of its rarity"
 -- px less both edges and the lip.
 local EGGROW = {
 	Shelf = Vector3.new(19.3, 0.8, 2.6), ShelfZ = -3, ShelfX = 1.35, EggsX = 1.0, Step = 2.7, EggSize = Vector3.new(2.25, 3, 2.5),
-	PPS = 50, StripH = 40, Cell = 135, Text = 30, BandEdge = 2, BandLip = 4, LabelH = 32,
+	PPS = 50, StripH = 40, Cell = 135, Text = 30, BandEdge = 2, BandLip = 4, LipInset = 4, LabelH = 32,
 	SecretTint = Color3.fromRGB(138, 92, 255), MinGap = 6, Outline = 0, UnderEgg = 30,
 	TextW = { Common = 126, Uncommon = 161, Rare = 65, Epic = 59, Legendary = 151, Mythic = 98, Secret = 91 },
 	Prompt = Vector3.new(0, 2, -5.6), PromptSize = Vector3.new(5, 4, 3),
@@ -755,7 +755,7 @@ local function checkEggRow(label, lobby, Config, info)
 			and #round == 0,
 			label .. ": ...the Band a stone card over the canvas, inset by its 2 px mitred wood edge (SignEdge), a 4 px Lip; no round corner or gradient",
 			table.concat(round, ", "))
-		local badL, spans = {}, {}
+		local badL, spans, pieces = {}, {}, {}
 		for i, id in ipairs(Config.Eggs.Order) do
 			local l = strip:FindFirstChild("Label_" .. id, true)
 			local def = rarityDef(Config, id)
@@ -790,17 +790,18 @@ local function checkEggRow(label, lobby, Config, info)
 				if l.TextStrokeTransparency < 1 then
 					badL[#badL + 1] = id .. " has a classic stroke"
 				end
-				-- its lip piece: the rarity colour, as wide as the word (Theme.Measure in the Body role, as the label shows it),
-				-- centred under it, on the band's bottom
+				-- its lip piece: the rarity colour, as wide as the word (Theme.Measure in the Body role, as the label shows it)
+				-- less LipInset px each end, centred under it, on the band's bottom
 				local piece = band and band:FindFirstChild("Lip_" .. id)
 				local px, py, pw, ph = nil, nil, nil, nil
 				if piece then
 					px, py, pw, ph = guiBox(piece, strip, W, H)
+					pieces[i] = { Id = id, X0 = px, X1 = px + pw }
 				end
 				if not (piece and px and colour and sameColor(piece.BackgroundColor3, colour)) then
 					badL[#badL + 1] = id .. " no Lip_" .. id .. " piece in its rarity colour"
 				elseif not (math.abs(px + pw / 2 - c) <= 1 and math.abs(ph - EGGROW.BandLip) <= 0.5 and math.abs(py + ph - (H - e)) <= 0.5
-					and Theme and math.abs(pw - math.max(24, math.ceil(Theme.Measure(id, "Body", EGGROW.Text).X))) <= 0.5) then
+					and Theme and math.abs(pw - math.max(24, math.ceil(Theme.Measure(id, "Body", EGGROW.Text).X) - 2 * EGGROW.LipInset)) <= 0.5) then
 					badL[#badL + 1] = id .. fmt(" lip piece %.1f..%.1f x %.1f px at y %.1f (the word %.1f wide at %.1f)", px, px + pw, ph, py,
 						Theme and Theme.Measure(id, "Body", EGGROW.Text).X or -1, c)
 				end
@@ -831,6 +832,18 @@ local function checkEggRow(label, lobby, Config, info)
 		end
 		T.check(#spans == 7 and worst >= EGGROW.MinGap, label .. fmt(": no two labels meet (measured widths: every gap >= %d px) and the end labels stay on the %.0f px canvas", EGGROW.MinGap, W),
 			table.concat(gaps, ", "))
+		-- (kit-b world signs, lane B render review) two neighbours' lip pieces never meet: the band's StoneLip shows between
+		-- them (with the real font Common's and Uncommon's touched before the LipInset)
+		local lipGaps, lipWorst = {}, math.huge
+		for i = 1, #Config.Eggs.Order - 1 do
+			local a, b = pieces[i], pieces[i + 1]
+			if a and b then
+				lipWorst = math.min(lipWorst, b.X0 - a.X1)
+				lipGaps[#lipGaps + 1] = fmt("%s/%s %.1f", a.Id, b.Id, b.X0 - a.X1)
+			end
+		end
+		T.check(#lipGaps == #Config.Eggs.Order - 1 and lipWorst >= 2, label .. ": no two Lip_<Rarity> pieces meet (every gap >= 2 px of the band's StoneLip)",
+			table.concat(lipGaps, ", "))
 	end
 
 	------------------------------------------------------------------ the shelf's one glow

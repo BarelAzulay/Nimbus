@@ -1121,18 +1121,19 @@ function Garden.promptPoint(def, i)
 end
 
 -- the "Prestige to open" sign of a closed bed (World text rule: 50 px per stud, letters 0.6 stud). (kit-b world signs) a
--- stone card on the 170 x 70 px canvas, inset by its 3 px wood edge (164 x 64), a 4 px lip in the Prestige violet. The star
--- (54 px) and "Prestige" (120 px of FredokaOne at 30 px) need 174 px side by side, so they share a corner: the lines sit
--- right-aligned (the title a little high, the second line low) and the star's wide arm row runs between them, its narrow
--- top beside the title's first letter
-Garden.CLOSED = { Edge = 3, Lip = 4, Star = 54, StarY = 6, TextX = 44, TextW = 120, LineH = 30, TitleY = -2, InfoY = 27 }
+-- stone card on the 170 x 75 px canvas (the board 3.4 x 1.5 studs), inset by its 3 px wood edge (164 x 69), a 4 px lip in
+-- the Prestige violet, so 65 px of face over the lip. Everything keeps Pad px off the wood edge and the lip: the star
+-- (46 px, low on the face: its arm row clears the title's "P") and "Prestige" (120 px of FredokaOne at 30 px) need 166 px side by side, so they share a
+-- corner: the two 30 px lines sit right-aligned and the star's wide arm row runs between them, its narrow top beside the
+-- title's first letter. (Review: the 1.4 stud board left the star flush on the edge and "to open" on the lip.)
+Garden.CLOSED = { Edge = 3, Lip = 4, Pad = 4, Board = Vector3.new(3.4, 1.5, 0.15), Star = 46, StarY = 14, TextX = 40, TextW = 120, LineH = 30, TitleY = 2, InfoY = 31 }
 function Garden.closedSign(parent, bedCF, size)
 	local Q = Garden.CLOSED
-	local board = Kit.p(parent, "ClosedSign", bedCF * CFrame.new(0, 0.95, -(size / 2 + 0.05)), Vector3.new(3.4, 1.4, 0.15), K.PlanksLight, M.Planks)
+	local board = Kit.p(parent, "ClosedSign", bedCF * CFrame.new(0, 0.95, -(size / 2 + 0.05)), Q.Board, K.PlanksLight, M.Planks)
 	local gui = surfaceGui(board, Enum.NormalId.Front, "ClosedGui")
 	local panel = boardPanel(gui, Q.Edge, Q.Lip, Sign.VioletLip)
-	-- (kit-b U7b) the star is a 54 px PixelIcon (1.08 stud: the sign's biggest mark, as the 48 px glyph was), in its own colours
-	PixelIcon.Host(boardText(panel, "", "Heading", 48, Sign.GoldLip, "Star", 0, Q.StarY, Q.Star, Q.Star), "star", Q.Star)
+	-- (kit-b U7b) the star is a 46 px PixelIcon (0.92 stud: the sign's biggest mark), in its own colours
+	PixelIcon.Host(boardText(panel, "", "Heading", 48, Sign.GoldLip, "Star", Q.Pad, Q.StarY, Q.Star, Q.Star), "star", Q.Star)
 	local title = boardText(panel, "Prestige", "Heading", 30, Sign.Text, "Title", Q.TextX, Q.TitleY, Q.TextW, Q.LineH)
 	local info = boardText(panel, "to open", "Heading", 30, Sign.TextMuted, "Info", Q.TextX, Q.InfoY, Q.TextW, Q.LineH)
 	title.TextXAlignment = Enum.TextXAlignment.Right
@@ -1361,7 +1362,8 @@ function Art.FoodMachine(def, level)
 	-- the machine's sign (World text rule); HomeFx rewrites BasketLine for the owner
 	Kit.sign(body, "MachineSign", (gy0 + gh + 1.6) - (0.5 + (top - 0.5) / 2), "Food Machine", {
 		{ Name = "Info", Text = "Berries -> XP: press E" },
-		-- the owner's line ("1,240 / 3,000 berries", HomeFx) in the ink, the card wide enough for a big basket
+		-- the owner's line ("1,240 / 3,000 berries", HomeFx) in the ink, the card wide enough for a big basket (review: a
+		-- BasketCap past 99,999 writes a longer line; HomeFx's R.basketFit then widens the card to fit it)
 		{ Name = "BasketLine", Text = "Berry Basket", Color = Sign.Text, Reserve = "00,000 / 00,000 berries" },
 	}, 60, Sign.Grass)
 	tpl.Points.ChuteMouth = Vector3.new(-0.6, 2.0, z0 - 0.5)
