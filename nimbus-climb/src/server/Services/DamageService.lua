@@ -25,6 +25,7 @@ local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
 local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
+local WorldTag = require(Shared.WorldTag) -- (kit-b world signs, lane C) the DOWNED marker's stone card
 
 local DamageService = {}
 
@@ -97,39 +98,23 @@ local function destroyMarker(s)
 	end
 end
 
--- Downed marker (World text rule): a PIXEL-sized tag over the head: "DOWNED" in a red pill over a hint line, on
--- a compact navy plate that sizes itself to the text (fixed sizes, outlined glyphs). AlwaysOnTop and a long
--- MaxDistance on purpose: teammates must spot a downed friend across the course. Static: per-frame visual
--- animation belongs to the client (replication rule), so the server no longer tweens the text.
+-- Downed marker (World text rule): a PIXEL-sized tag over the head. AlwaysOnTop and a long MaxDistance on purpose:
+-- teammates must spot a downed friend across the course. Static: per-frame visual animation belongs to the client
+-- (replication rule), so the server no longer tweens the text.
+-- (kit-b world signs, lane C: the rounded navy plate with the rounded red pill went) the NPC nameplate's stone card: a
+-- 3 px mitred wood edge, a red lip, "DOWNED" in a small square red block (WorldTag.Tint: a light red face, the red lip,
+-- the kit's brown ink) over the hint line in the muted ink. Both lines are measured, so the card hugs them.
 local MARKER_TITLE_PX = 28
 local MARKER_HINT_PX = 19
-
-local function markerLabel(parent, name, text, role, size, outlineColor, order)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = Theme.Colors.White,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2.5,
-		OutlineColor = outlineColor,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order,
-		},
-	})
-	label.Parent = parent
-	return label
-end
+local MARKER = { PadX = 14, PadTop = 6, Gap = 3, PadBottom = 6, PillEdge = 2, PillLip = 3, PillPadX = 14, PillPadY = 2 }
 
 local function createMarker(s, char)
 	local anchor = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
 	if not anchor then
 		return
 	end
-	local ink = Theme.Colors.TextStroke or Theme.Colors.Ink
-	local red = Theme.Colors.Bad
+	local Sign, Z, M = Theme.Sign, WorldTag.Sizes, MARKER
+	local red = Sign.Red
 
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "NimbusDownedMarker"
@@ -141,50 +126,42 @@ local function createMarker(s, char)
 	gui.LightInfluence = 0
 	gui.ClipsDescendants = false
 
+	local title, hint = "DOWNED", "reach the next checkpoint!"
+	local titleW = math.ceil(Theme.Measure(title, "Accent", MARKER_TITLE_PX).X) + 2 * (M.PillPadX + M.PillEdge)
+	local hintW = math.ceil(Theme.Measure(hint, "Body", MARKER_HINT_PX).X)
+	local faceW = math.max(titleW, hintW) + 2 * M.PadX
+	local pillH = MARKER_TITLE_PX + 2 * M.PillPadY + 4 + M.PillLip -- the pill's face, its lip included
+
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
-	plate.Position = UDim2.new(0.5, 0, 1, 0)
-	plate.Size = UDim2.fromOffset(120, 0)
-	plate.AutomaticSize = Enum.AutomaticSize.XY
-	plate.BackgroundColor3 = Theme.Colors.Panel
-	plate.BackgroundTransparency = 0.06
-	plate.BorderSizePixel = 0
+	plate.Position = UDim2.new(0.5, 0, 1, -Z.Edge)
+	plate.ZIndex = 2
+	WorldTag.Block(plate, Sign.Stone, Sign.RedLip, Sign.Wood, Z.Edge, Z.Lip)
 	plate.Parent = gui
-	Theme.Corner(plate, UDim.new(0, 14))
-	Theme.Stroke(plate, red, 3, 0)
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 6)
-	pad.PaddingBottom = UDim.new(0, 7)
-	pad.PaddingLeft = UDim.new(0, 14)
-	pad.PaddingRight = UDim.new(0, 14)
-	pad.Parent = plate
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 3)
-	layout.Parent = plate
 
+	local y = M.PadTop
 	local pill = Instance.new("Frame")
 	pill.Name = "TitlePill"
-	pill.Size = UDim2.fromOffset(0, MARKER_TITLE_PX + 8)
-	pill.AutomaticSize = Enum.AutomaticSize.XY
-	pill.BackgroundColor3 = red
-	pill.BorderSizePixel = 0
+	pill.AnchorPoint = Vector2.new(0.5, 0)
+	pill.Position = UDim2.new(0.5, 0, 0, y + M.PillEdge)
+	pill.Size = UDim2.fromOffset(titleW - 2 * M.PillEdge, pillH)
 	pill.LayoutOrder = 1
+	pill.ZIndex = 3
+	WorldTag.Block(pill, red, red, Sign.Wood, M.PillEdge, M.PillLip)
 	pill.Parent = plate
-	Theme.Corner(pill, UDim.new(0, 12))
-	Theme.Stroke(pill, ink, 2.5, 0)
-	local pillPad = Instance.new("UIPadding")
-	pillPad.PaddingTop = UDim.new(0, 2)
-	pillPad.PaddingBottom = UDim.new(0, 2)
-	pillPad.PaddingLeft = UDim.new(0, 14)
-	pillPad.PaddingRight = UDim.new(0, 14)
-	pillPad.Parent = pill
-	markerLabel(pill, "Title", "DOWNED", "Accent", MARKER_TITLE_PX, Theme.Darken(red, 0.6), 1)
+	WorldTag.Text(pill, "Title", title, "Accent", MARKER_TITLE_PX, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -M.PillLip), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, ZIndex = 4,
+	})
+	WorldTag.Tint(pill, red)
+	y = y + pillH + 2 * M.PillEdge + M.Gap
 
-	markerLabel(plate, "Hint", "reach the next checkpoint!", "Body", MARKER_HINT_PX, ink, 2)
+	WorldTag.Text(plate, "Hint", hint, "Body", MARKER_HINT_PX, Sign.TextMuted, {
+		Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, MARKER_HINT_PX + 4), TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = 2, ZIndex = 3,
+	})
+	y = y + MARKER_HINT_PX + 4
+	plate.Size = UDim2.fromOffset(faceW, y + M.PadBottom + Z.Lip)
 
 	gui.Parent = anchor
 	s.Marker = gui
