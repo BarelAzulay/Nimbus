@@ -609,7 +609,8 @@ def pin_O3(c, sizes):
 # on DASH, 14 px over RUN, on Roblox's jump ring, 18 px off the right edge at 640, its name 'SkyCli...'; at 812 x 375 still
 # over RUN; and at 640 x 360 the 3 - 4 player match panel's corner and its hard shadow lay on RUN's top-left corner, which
 # the card-only rules above never read) every scene the vitals show in through a match's life - a match of 1, 2, 3 and 4
-# players and the long-name SAINT match, its countdown, the party pad and its leader's full pad, the results - at the
+# players and the long-name SAINT match, the player downed (DOWNED and 'Wait for a teammate!' on the vitals), its
+# countdown, the party pad and its leader's full pad, the results - at the
 # pitch's phones, the short landscape phones round them, the normal sizes and the portrait phones. Each case:
 #   * the vitals card's ink MIN_GAP off DASH, RUN, Roblox's jump and stick rings and EVERY other HUD piece (the match /
 #     party panel with its shadow, the menu tiles, the wallet strip, the gift, the result card ...; the tutorial reads it
@@ -624,8 +625,14 @@ def pin_O3(c, sizes):
 #     384 x 640 - build/GATE_MH/pins/red_O3.txt)
 #   * on the results the vitals may step aside under the result card (NotifyController's syncVitals, kit-b's own rule:
 #     the card's corner over the vitals slot on a landscape phone)
+#   * O3M_NO_ROW: at 568 x 320 a match card with two rows of players (3 - 4, its countdown) reaches 209 of the 262 gui px
+#     under the top bar, the keys stand in a column at the right and the stick's and jump's rings take the foot: no row is
+#     left for the slim bar (it needs 40 px + its air under the panel's shadow, above the screen's foot), so the vitals
+#     step aside there (kit-b laid the card 68 px over the panel) - the panel's gold 'you' chip must show, its HP bar on
+#     the screen (the touch DASH key shows the dash's cool-down). A one-row card (1 - 2 players) leaves the row: the bar
+#     shows. (kitb-matchhud, a corner the pitch did not draw: the owner's call, reported)
 # No backlog rows: every case keeps the rule outright.
-O3M_STATES = ["match:1", "match:2", "match", "match:4", "match:full", "countdown", "party", "party:leader", "results"]
+O3M_STATES = ["match:1", "match:2", "match", "match:4", "match:full", "match:down", "countdown", "party", "party:leader", "results"]
 O3M_SIZES = [(568, 320), (640, 360), (667, 375), (700, 394), (720, 405), (740, 360), (800, 360), (800, 450), (812, 375),
              (844, 390), (932, 430), (960, 540), (1280, 720), (1920, 1080), (360, 640), (375, 667), (384, 640), (390, 844)]
 O3M_PANELS = ("NimbusHud.TopLeft.MatchPanel", "NimbusHud.TopLeft.PartyPanel")
@@ -633,6 +640,19 @@ O3M_TILES = ["Entry_Pets", "Entry_Index", "Entry_Spot", "Entry_Stats", "Toggle"]
 O3M_NO_STRIP = [(568, 320), (640, 360), (667, 375)]
 O3M_NO_TIME = [(568, 320), (360, 640), (375, 667), (384, 640)]
 O3M_SKIP = ("NimbusTutorial", "NimbusGuide", "MobileControls.DashButton", "MobileControls.RunButton")
+O3M_NO_ROW = {(568, 320): ("match", "match:4", "match:full", "match:down", "countdown")}
+
+
+def you_chip(nodes):
+    """the match card's chip of the player (the mock's LocalPlayer, 'SkyClimber...') with its HP bar drawn, or None"""
+    for p, n in nodes.items():
+        t = n.get("text")
+        if re.match(r"^NimbusHud\.TopLeft\.MatchPanel\.Content\.Inner\.Team\.Chip\d+\.Name$", p) and isinstance(t, dict) \
+                and str(t.get("text", "")).startswith("SkyClimber"):
+            chip = p.rsplit(".", 1)[0]
+            if any(q.startswith(chip + ".Health") for q in nodes):
+                return chip
+    return None
 
 
 def o3m_subject(c, d, nodes, what, path, n, w, h, texts):
@@ -678,6 +698,8 @@ def o3_match_hud(c, sizes):
                 c.check("O3", True, what + ": (the vitals step aside on the party pad)")
             elif not vit and scen == "results":
                 c.check("O3", True, what + ": (the vitals step aside under the result card)")
+            elif not vit and scen in O3M_NO_ROW.get((w, h), ()):
+                c.check("O3", you_chip(nodes) is not None, what + ": (no row for the slim bar: the vitals step aside) the gold 'you' chip shows the HP")
             elif c.check("O3", bool(vit), what + ": the vitals card shows"):
                 o3m_subject(c, d, nodes, what, vit[0][0], vit[0][1], w, h, None)
             for pp in O3M_PANELS:

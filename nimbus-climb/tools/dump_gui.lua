@@ -1183,13 +1183,26 @@ local function longMembers(withHealth)
 	return out
 end
 
--- match[:hit|:dash|:full|:<1-4>]: full (kit-b U9-8 A) SAINT, four players with long names, one fallen; 1-4 (kitb-matchhud,
--- carried from kitb-bl-hud 058ef01's tool part: the match HUD on short landscape phones) that many players with short names,
--- 1 = a solo run (3 = the default)
+-- match[:hit|:dash|:full|:down|:<1-4>]: full (kit-b U9-8 A) SAINT, four players with long names, one fallen; 1-4
+-- (kitb-matchhud, carried from kitb-bl-hud 058ef01's tool part: the match HUD on short landscape phones) that many players
+-- with short names, 1 = a solo run (3 = the default); down (kitb-matchhud) the default match with the player downed (the
+-- vitals' DOWNED and 'Wait for a teammate!')
 scenario("match", function(arg)
 	LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
 	LocalPlayer:SetAttribute(Config.Attr.MatchTokens, 7)
 	local count = tonumber(arg)
+	if arg == "down" then
+		local members = matchState().Members
+		members[1].Health, members[1].Downed = 0, true
+		toClient("MatchState", matchState({ Members = members }))
+		advance(2.5)
+		setHealth(117, 117)
+		advance(0.6)
+		setHealth(117, 1) -- (not 0: the mock's humanoid would die and respawn)
+		LocalPlayer:SetAttribute(Config.Attr.Downed, true)
+		advance(0.6)
+		return
+	end
 	if arg == "full" then
 		local saint = difficulty("Saint")
 		toClient("MatchState", matchState({ DifficultyId = saint.Id, DifficultyName = saint.DisplayName, Color = saint.Color, Members = longMembers(true) }))
