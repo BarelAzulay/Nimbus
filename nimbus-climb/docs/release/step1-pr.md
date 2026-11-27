@@ -1,3 +1,5 @@
+Superseded by docs/release/combined-test-checklist.md / combined-pr.md
+
 # Release step 1: quick-wins to live, Store off, save gates passed
 
 **Base:** `main` (`ac552d0`). **Head:** `qw-step1-gate-b` = `quick-wins` (`cfa377c`) plus the gate commits

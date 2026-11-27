@@ -1,3 +1,5 @@
+Superseded by docs/release/combined-test-checklist.md / combined-pr.md
+
 # Step 1 test checklist (owner + 1 alt, about 40 minutes)
 
 Where: a **separate private experience** called "nimbus TEST". **Never a place inside MAIN's experience**: places in
