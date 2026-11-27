@@ -805,7 +805,10 @@ end
 -- room left is narrower than minW the card steps up just above the lowest of those and tries again, but never with
 -- its top above `ceiling` (the middle of the screen): there it keeps the last rows, squeezed to minW.
 -- Returns left (gui px), width (design px), bottom (gui px). `air`: the air kept off them (default OBSTACLE_GAP).
-local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling, air)
+-- (kitb-matchhud) `tabUp`: the screen px of the slot over the card's own top (its name tab's band): an obstacle marked
+-- cardOnly (the match / party panel's hard shadow) is kept off the card's rows only - the tab, inset from the card's left
+-- edge, already keeps its air off the panel's box
+local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling, air, tabUp)
 	-- (kit-b P2 fix6b, look1 O3) the card's own wood edge is drawn outside its box: the gap is kept from it
 	local gap = (air or K.OBSTACLE_GAP) + K.VITALS_EDGE
 	for _ = 1, 6 do
@@ -814,7 +817,7 @@ local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, cei
 		local hardLeft, hardRight = side, area.X - side
 		local step = nil
 		for _, r in ipairs(obstacles) do
-			if top < r.y1 + gap and bottom > r.y0 - gap then
+			if (r.cardOnly and (top + (tabUp or 0)) or top) < r.y1 + gap and bottom > r.y0 - gap then
 				if (r.x0 + r.x1) / 2 < cx then
 					left = math.max(left, r.x1 + gap)
 					hardLeft = r.soft and hardLeft or math.max(hardLeft, r.x1 + gap)
@@ -959,58 +962,98 @@ local function applyMargins(animate, force)
 		panelW = math.min(panelW, K.PANEL_MIN_W)
 	end
 	panelW = math.max(1, math.min(panelW, math.floor((area.X - topLeft - side) / k)))
-	if setPanelWidth then
-		setPanelWidth(panelW)
-	end
+	-- ((kitb-matchhud) the width is set below, once the panel's clearance off the touch keys is known)
 
 	-- vitals: the regular card, the flatter compact card on short touch screens (landscape phones: the bottom band
 	-- between the stick and the jump button is busy there)
 	local geometry = (touch and vp.Y <= K.SMALL_PHONE) and VG.Compact or VG.Regular
-	if setVitalsGeometry then
-		setVitalsGeometry(geometry)
-	end
 	-- (U9-8 look) the card's height and width whole screen px, so its top corner (it hangs from a whole-px bottom) is too
 	local vitalsH = math.floor(geometry.H * k + 0.5) / k
 	-- (HUD cleanup: no hotbar to measure any more; the card keeps the bottom-centre spot it had above it)
 	local vitalsBottom = area.Y - K.HOTBAR_FALLBACK * k - K.HOTBAR_GAP
 	local cx = area.X / 2
-	local obstacles = {}
-	if column then
-		table.insert(obstacles, column)
-	end
-	if topH > 0 then
-		-- the match / party panel (a 4-player party on a landscape phone reaches the bottom band)
-		local w = math.max(hasPanel and panelW or 0, hasTitle and K.TITLE_W or 0)
-		table.insert(obstacles, { x0 = topLeft, y0 = K.EDGE, x1 = topLeft + w * k, y1 = K.EDGE + topH * k })
-	end
-	for _, r in ipairs(buttons) do
-		table.insert(obstacles, r)
-	end
-	if touch then
-		for _, r in ipairs(robloxTouchRects(area, vp)) do
-			table.insert(obstacles, r)
+	-- (kitb-matchhud) the match / party panel's hard shadow (SignKit.Frame's, Theme.Finish.Window design px under its scale,
+	-- whole screen px) below and right of its box: the card's ink came 1.6 - 2.4 px off it at 640 x 360 .. 932 x 430
+	local shadowPx = hasPanel and math.floor((tonumber(Theme.Finish and Theme.Finish.Window) or 0) * k + 0.5) or 0
+	-- the obstacles for a panel `pw` design px wide and `ph` tall: with `whole` its box and its shadow as one rect (the slim
+	-- bar and its tag sit under it), else its box and the shadow kept off the card's rows only (cardOnly: the card's name
+	-- tab, inset from its left edge, keeps its air off the box; at 800 x 450 the tab sits 9.6 px right of the shadow)
+	local function obstaclesFor(pw, ph, whole)
+		local list = {}
+		if column then
+			table.insert(list, column)
 		end
+		if ph > 0 then
+			-- the match / party panel (a 4-player party on a landscape phone reaches the bottom band)
+			local w = math.max(hasPanel and pw or 0, hasTitle and K.TITLE_W or 0)
+			local box = { x0 = topLeft, y0 = K.EDGE, x1 = topLeft + w * k, y1 = K.EDGE + ph * k }
+			if shadowPx > 0 and whole then
+				box.x1, box.y1 = box.x1 + shadowPx, box.y1 + shadowPx
+			end
+			table.insert(list, box)
+			if shadowPx > 0 and not whole then
+				table.insert(list, { x0 = topLeft + shadowPx, y0 = K.EDGE + shadowPx, x1 = topLeft + pw * k + shadowPx, y1 = K.EDGE + ph * k + shadowPx, cardOnly = true })
+			end
+		end
+		for _, r in ipairs(buttons) do
+			table.insert(list, r)
+		end
+		if touch then
+			for _, r in ipairs(robloxTouchRects(area, vp)) do
+				table.insert(list, r)
+			end
+		end
+		-- (U9-7 look) an open side dock: the card slides left until its right edge is OBSTACLE_GAP px from the dock's frame
+		-- (its wood edge covered the HP bar's right end and the dash chip at 844x390 and touched the card at 1280x720)
+		for _, r in ipairs(docks) do
+			table.insert(list, r)
+		end
+		return list
 	end
-	-- (U9-7 look) an open side dock: the card slides left until its right edge is OBSTACLE_GAP px from the dock's frame
-	-- (its wood edge covered the HP bar's right end and the dash chip at 844x390 and touched the card at 1280x720)
-	for _, r in ipairs(docks) do
-		table.insert(obstacles, r)
-	end
+	local obstacles = obstaclesFor(panelW, topH, false)
+	local tabUpPx = math.floor(geometry.TAB_UP * k + 0.5)
 	local vitalsLeft, vitalsW
 	local bottom0 = vitalsBottom
-	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1)
+	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, nil, tabUpPx)
 	-- (look:fix6b2 N2) a card too narrow for the player's whole name keeps only OBSTACLE_TIGHT of air where that gives the
 	-- name its room (at 800 x 450 in a match / countdown it sat in the 211 px between the match panel and RUN's block edge,
 	-- O3's 8 px of air + its 2 px edge on each side left it 190 px, under the 196 'SkyClimber' needs at its 14.4 px floor:
 	-- 'SkyCli...', whole at e272588). Where even that leaves no room the card stays as it was
 	local nameW = Vitals.WholeNameW(geometry, k)
 	if math.floor(vitalsW * k) < nameW then
-		local left2, w2, bottom2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT)
+		local left2, w2, bottom2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT, tabUpPx)
 		if math.floor(w2 * k) >= nameW then
 			vitalsLeft, vitalsW, vitalsBottom = left2, w2, bottom2
 		end
 	end
 	vitalsW = math.floor(vitalsW * k) / k
+	-- (kitb-matchhud) a panel never reaches into a touch key or Roblox's jump button that shares its rows (kit-b: at 568 x 320
+	-- the panel lay on RUN, DASH and the jump ring; at 640 x 360 the leader's full pad on RUN): narrower, OBSTACLE_TIGHT of
+	-- air off its shadow
+	if hasPanel and touch and topH > 0 then
+		local inkBottom = K.EDGE + topH * k + shadowPx
+		local limit = nil
+		local keys = {}
+		for _, r in ipairs(buttons) do
+			table.insert(keys, r)
+		end
+		table.insert(keys, robloxTouchRects(area, vp)[2])
+		for _, r in ipairs(keys) do
+			if r.x0 > topLeft and r.y0 - K.OBSTACLE_TIGHT < inkBottom and r.y1 + K.OBSTACLE_TIGHT > K.EDGE then
+				limit = math.min(limit or math.huge, r.x0 - K.OBSTACLE_TIGHT - shadowPx)
+			end
+		end
+		if limit and topLeft + panelW * k > limit then
+			panelW = math.max(1, math.floor((limit - topLeft) / k))
+		end
+	end
+	if setPanelWidth then
+		setPanelWidth(panelW)
+		hasPanel, hasTitle, topH = topLeftState()
+	end
+	if setVitalsGeometry then
+		setVitalsGeometry(geometry)
+	end
 	local vitalsTop = vitalsBottom - vitalsH * k
 	-- ... and where no row beside the dock is wide enough the card steps aside while the dock is open (never half under it)
 	local underDock = false
@@ -1085,7 +1128,9 @@ local function applyMargins(animate, force)
 		local stripTop = K.EDGE
 		local overPanel = hasPanel and topRightLeft < topLeft + panelW * k + K.STRIP_GAP * k
 		if overPanel and not inMatch then
-			stripTop = math.floor(K.EDGE + topH * k + K.GIFT_GAP * k + 0.5)
+			-- ((kitb-matchhud) GIFT_GAP of air under the panel's hard shadow, the strip's own wood edge counted: under the
+			-- box alone the shadow lay 1.2 - 1.8 px over the strip's edge on the portrait pad)
+			stripTop = math.floor(K.EDGE + topH * k + shadowPx + Vitals.Px(2, k) + K.GIFT_GAP * k + 0.5)
 		end
 		-- (P2 fix A, item 06 A) a card spanning a portrait phone's top band (the battle's boss strip, SetTopReserve): the
 		-- strips start GIFT_GAP under it (the pitch's portrait: the strip under the boss card, beside the fighter card)
