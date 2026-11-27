@@ -1,12 +1,13 @@
 # Combined release test checklist (owner, about 60 minutes)
 
 This is the test of the ONE combined release: kit-b's new look, the guide chip, the tutorial fixes, the slim match bar,
-step 1's Store off and save safety, and the 104 new meshes (evolved pet eyes and the Sky Trove chest).
+step 1's Store off and save safety, the 104 new meshes (evolved pet eyes and the Sky Trove chest), the 7 uploaded
+pictures, the battle damage-total and hatch fixes, and the world signs in the kit-b stone look.
 After this test it goes to MAIN, but only after your yes in the chat.
 
 Where: the test experience **"Nimbus test 2.0"** (universe 10779238980, place 74125226332082). **Never MAIN.**
 
-`BUILD: release-combined bb92b05f (place file built from 568e185c), 1186 scripts, verify_place OK`
+`BUILD: release-combined d33c7b91 (place file built on d33c7b91's sources), 1186 scripts, verify_place OK`
 
 (Claude writes the commit id and the number of scripts on the line above. If it still says "filled in by Claude",
 stop and ask Claude. Do not test an unnamed build.)
@@ -19,12 +20,12 @@ How to use this page:
 - Something looks wrong? See "If something is wrong" at the end.
 
 These look different on purpose for now. Do not report them:
-- The small icons (menu tiles, wallet strip, Shop tabs) are little pixel drawings. The new carved icon picture is
-  not uploaded yet.
-- The egg machines in the Shop are the drawn ones. The new machine picture is not uploaded yet.
-- The title and loading screens show the "Storm plaque" logo. The new voxel logo is not uploaded yet.
-- The raid's top card has no boss face. The boss portraits are not made yet.
 - The Sky Trove says "Coming soon". That is right: it has no group yet.
+
+New in this build (since your last look): the 7 uploaded pictures (carved icons, workshop egg machines, the voxel
+logo, the four boss heads), the damage total that no longer covers the pet's Lv card, and about 31 world signs in the
+stone block look (home nameplates, pad, farm, bowl and machine signs, the FREE HOME sign, garden and lobby boards,
+arena and course signs).
 
 ## Setup (10 minutes)
 
@@ -94,12 +95,15 @@ of anything else, nothing on the RUN / DASH / jump buttons.
 ### Lobby
 
 - [ ] **15. Title and loading screens.** Join again and watch the loading and title screens.
-      **You should see:** the carved wooden signboard look, the Storm plaque logo, no cut words.
+      **You should see:** the carved wooden signboard look, the new voxel Nimbus logo (not the Storm plaque), no cut
+      words.
 - [ ] **16. Lobby screen.** Look at the menu tiles, the wallet strip (Cash, Tokens, Gems) and your vitals card.
-      **You should see:** the vitals card has a wooden name tab with your whole name, and HP and stamina in blocks.
-      Everything sharp and in one style.
-- [ ] **17. The world.** Walk around the lobby. Type `/sky sunset` in the game chat (it changes no save).
-      **You should see:** stone name tags over the places. The sun sets behind the clouds, with no hard jump.
+      **You should see:** the carved icons on the tiles and the wallet strip, sharp, not blurry. The vitals card has a
+      wooden name tab with your whole name, and HP and stamina in blocks. Everything sharp and in one style.
+- [ ] **17. The world.** Walk around the lobby and the homes. Type `/sky sunset` in the game chat (it changes no save).
+      **You should see:** stone name tags over the places. Each home's nameplate over its mailbox, the "FREE HOME"
+      sign, the build and upgrade pad signs and the lobby boards are square stone blocks with a coloured lip, like the
+      other tags: no old rounded navy plates. The sun sets behind the clouds, with no hard jump.
 - [ ] **18. Show the way.** In the Shop, on the Secret Roulette card, press "Show the way". Follow the gold arrow to
       the Storm Altar gate. Jump at the gate a few times.
       **You should see:** the arrow always shows. The guide chip ("Guiding to Storm Altar") sits on the top bar's
@@ -109,8 +113,8 @@ of anything else, nothing on the RUN / DASH / jump buttons.
 ### Shop
 
 - [ ] **19. Eggs tab.** Open the Shop and look at the whole Eggs tab.
-      **You should see:** the Secret Roulette at the top, four machine cards with their odds chips, all four cards
-      whole on the PC.
+      **You should see:** the Secret Roulette at the top, four machine cards with their pixel workshop machines and
+      odds chips (each chip an egg and its percent), all four cards whole on the PC.
 - [ ] **20. Hatch.** Spin once with Tokens. Next time press Skip.
       **You should see:** the egg cutscene on the wooden kit, the pet appears. Skip works at once. You are back in the
       Shop.
@@ -147,13 +151,15 @@ of anything else, nothing on the RUN / DASH / jump buttons.
       (like `8:53 [blocks] 7 / 24`). At the end, one result card. Nothing covers the buttons.
 - [ ] **28. Pet battle on the phone.** In the emulator, start a pet battle in the Arena.
       **You should see:** three action keys as clean blocks, Cheer up! and Retreat apart from each other, the team
-      list whole. A melee pet bounces in, bites and hops back.
+      list whole. A melee pet bounces in, bites and hops back. The damage total sits above the pet's Lv card, never on
+      top of it (your bug screenshot).
 
 ### Raid boss bar
 
 - [ ] **29. Raid.** On the PC, type `/raid` in the game chat and go to the boss.
-      **You should see:** the raid's top card is one stone card with the boss's whole name, one timer, and the minion
-      wave. Do it once more in the emulator (iPhone SE landscape): the same, nothing cut.
+      **You should see:** the raid's top card is one stone card with the boss's head picture, its whole name, one
+      timer, and the minion wave. Do it once more in the emulator (iPhone SE landscape): the same, the pills under the
+      head, nothing cut, nothing on DASH or RUN.
 - [ ] **30. Raid end.** Finish or lose the raid.
       **You should see:** one result card that says when the rewards come again.
 

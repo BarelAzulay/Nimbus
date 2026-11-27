@@ -1,7 +1,7 @@
-# Combined release: kit-b look + release step 1 (Store off, save safety) + 104 meshes
+# Combined release: kit-b look + release step 1 (Store off, save safety) + 104 meshes + 7 images + world signs
 
 **Base:** `main` (`ac552d0`). **Head:** `release-combined`. Final head and place file:
-`BUILD: release-combined bb92b05f (place file built from 568e185c), 1186 scripts, verify_place OK`.
+`BUILD: release-combined d33c7b91 (place file built on d33c7b91's sources), 1186 scripts, verify_place OK`.
 **Do not merge before the owner says yes in chat.** This PR replaces `step1-pr.md`: step 1 never went to main on its
 own, it ships inside this release.
 
@@ -33,15 +33,29 @@ Owner test: `docs/release/combined-test-checklist.md`, in the test experience "N
 - **104 uploaded meshes** (merged in `0110e4d5`): 98 evolved pet meshes with the smaller eyes (`c7deca0b`, every
   `evo1_*` / `evo2_*` key, High and Low) and the 6 Sky Trove meshes (`598df3bb`, `prop_trove_body` / `_lid` / `_sign`
   and their `_low` twins).
+- **7 uploaded images** (I1 - I7, uploaded from Studio with the owner's OK, ids recorded in `79363a36`): I1 icon set B
+  (`Config.IconSheet.Id = 94977768447984`), I2 workshop machines A (`Config.MachineSheet.Id = 76428055171576`), I3 the
+  L1 voxel logo (`nimbus_logo`), I4 - I7 the four boss heads (`boss_head_*`, the owner kept them as they are). The
+  smoke checks moved to the uploaded state, with the drawn fallbacks still tested (`7290ae69`, `e399d6eb`).
+- **Battle tag fixes** (branch `fix-battle-tags`, merged in `276a1afc`): the damage total sits on the champion tag /
+  card / bar it belongs to and never covers the pet's Lv card (the owner's bug screenshot, `7cb68120`, new
+  `tools/smoke_battle_tags.lua`); the egg stage holds a resize during a roll (`91f7b067`).
+- **Kit-b world signs** (branch `kitb-world-signs`, merged in `f1315eee`): about 31 world signs that were still on the
+  old rounded navy look (home nameplate and avatar disc, gate number, showcase tag, pad / farm / bowl / machine signs,
+  FREE HOME sign, closed garden bed, home portal tag, lobby gardens, machines, trove, boards, arch, shop sign, the
+  lobby leaderboard, the egg shelf's rarity strip, the obby gate countdown face and portal billboard, arena
+  boards and gate signs, course hints, boards and START / FINISH, the DOWNED marker, the champion tag) now use
+  `WorldTag.Block` / `Tint` / `Text`, the stone square block with its coloured lip (the owner's "home gui's havent
+  changed" report). Two stand-ins stay on the backlog list (`tools/fixtures/world_round_backlog.txt`: GateTag,
+  SignGui).
+- **Release-check fix** (`d33c7b91`): with the boss heads uploaded, a phone's raid card showed the head too and its
+  pills wrapped in a half-width column (the 360 x 640 card reached MOVE); on a phone the pills now go under the head
+  at full width where that makes the card shorter.
 
 ## What is NOT in it
 
 | Item | State | What players see without it |
 |---|---|---|
-| Boss head portraits (I4 - I7, `boss_head_*`) | **not made**: no PNG baked, nothing uploaded | the raid's top card without a face; the card is whole |
-| I1 icon set B ("Carved soft" sheet, `Config.IconSheet.Id`) | **pending** owner upload | each icon draws its 9 x 9 pixel glyph |
-| I2 workshop machines A (`Config.MachineSheet.Id`) | **pending** owner upload | today's drawn machines and pixel eggs in the Shop |
-| I3 L1 logo (`nimbus_logo`) | **pending** owner upload | the L2 "Storm plaque" logo |
 | The Robux Store, products, passes | off; no product or pass id is set | nothing is sold for Robux, as on main today |
 
 Known and left open (the owner's call): the kit-b look backlog
@@ -67,12 +81,16 @@ The place file committed in `a28a7aff` was stale after `0110e4d5`; it was rebuil
 
 ## Before merge
 
-- [x] Whole suite on the final head: `tools/smoke.py --quick` and the mesh suite `tools/smoke.py --mesh`, both
-      0 failed. Head `bb92b05f` (2026-11-27): whole 45661 passed / 0 failed (6299 s), mesh 1267 passed / 0 failed.
+- [ ] Whole suite on the final head: `tools/smoke.py --quick` and the mesh suite `tools/smoke.py --mesh`, both
+      0 failed. Earlier heads: `bb92b05f` whole 45661 / 0, mesh 1267 / 0. `f7516428` (2026-11-27, with the images,
+      battle tags and world signs): whole 46167 passed / 4 failed (6997 s), mesh 1267 / 0. Of the 4: three came from
+      recording the image ids (pass on `14bdaaa7`, fail from `79363a36`) and are fixed in `d33c7b91` (75 battle / HUD /
+      storm sections: 5564 passed, 0 failed); `travel_shows_way` fails only in the whole run (passes alone). The whole
+      run on `d33c7b91` itself is the open box.
 - [x] Place file rebuilt on the final head (`rojo build default.project.json -o play/NimbusClimb.rbxlx`, Rojo 7.7.1)
-      and `py -3.12 tools/verify_place.py` OK on it: `bb92b05f`, all 1186 scripts match, no extra scripts.
-- [x] `py -3.12 tools/save_roundtrip.py` against `origin/main` on the final head: 356 passed, 0 failed (main
-      `ac552d0574e0`).
+      and `py -3.12 tools/verify_place.py` OK on it: `d33c7b91`, all 1186 scripts match, no extra scripts.
+- [x] `py -3.12 tools/save_roundtrip.py` against `origin/main`: 356 passed, 0 failed (main `ac552d0574e0`) on
+      `f7516428`; `d33c7b91` changes no save code. `tools/test_render_sheets.py` ok.
 - [ ] The owner's checklist (`docs/release/combined-test-checklist.md`) done on that place file.
 - [ ] The owner says yes in chat.
 
