@@ -256,7 +256,7 @@ class LuaWorld:
                 out.append(str(lines[i]["text"]))
         return out
 
-    def dump(self, scenario, width, height, touch, out=None, sheets=False, boss=None):
+    def dump(self, scenario, width, height, touch, out=None, sheets=False, boss=None, fallback=False):
         g = self.rt.globals()
         spec = {"scenario": scenario, "width": width, "height": height, "touch": bool(touch)}
         if out:
@@ -267,6 +267,10 @@ class LuaWorld:
         if sheets:
             # (Pitch 2 items 9 B / 10 A) preview the upload sheets: stub ids for this render only (tools/dump_gui.lua)
             spec["sheets"] = True
+        if fallback:
+            # (I1 / I2 uploaded) Config.IconSheet.Id / MachineSheet.Id forced to 0 for this render only: the 9 x 9 glyphs
+            # and the drawn machines a place without the sheets falls back to (tools/dump_gui.lua)
+            spec["fallback"] = True
         g.DUMP = self.rt.table_from(spec)
         # (Pitch 2 fix round B) a phone's real top bar on a touch render: Roblox's buttons on the left (112 px), the "..."
         # button on the right (72 px), a 58 px band (GuiService.TopbarInset). Unset (nil, a desktop render) the game takes
@@ -291,10 +295,12 @@ def is_touch(width, height, flag):
 
 
 def dump_scenario(scenario, width, height, touch, fonts, json_out=None, engine=None, echo=False, verbose=False, sheets=False,
-                  boss=None):
+                  boss=None, fallback=False):
+    if sheets and fallback:
+        raise SystemExit("--sheets and --fallback do not go together")
     world = LuaWorld(touch, engine, echo, fonts.measure_em)
     try:
-        data = world.dump(scenario, width, height, touch, json_out, sheets=sheets, boss=boss)
+        data = world.dump(scenario, width, height, touch, json_out, sheets=sheets, boss=boss, fallback=fallback)
     except Exception as exc:  # a Lua error: its message plus the game's own errors
         msg = str(exc).split("\nstack traceback:")[0].replace("dump_gui: ", "")
         extra = world.script_errors()
@@ -1936,7 +1942,10 @@ def main():
     ap.add_argument("--no-labels", action="store_true", help="no captions on image / viewport placeholders")
     ap.add_argument("--json", metavar="FILE", help="also write the GUI dump as JSON")
     ap.add_argument("--sheets", action="store_true", help="preview the upload sheets (build/upload_sheets: icons_b, "
-                    "machines_a) as if uploaded: stub ids for this render only, Config stays 0")
+                    "machines_a) from stub ids for this render only; Config ships the uploaded ids, which a plain "
+                    "render already draws from the same PNGs, so --sheets is for a rebuilt sheet not yet re-uploaded")
+    ap.add_argument("--fallback", action="store_true", help="draw with Config.IconSheet.Id and Config.MachineSheet.Id "
+                    "forced to 0 for this render only: the 9x9 glyphs and the drawn machines (the no-sheet fallback)")
     ap.add_argument("--boss", help="a battle:raid* render's boss id (default storm_titan; e.g. shadow_hydra)")
     ap.add_argument("--list", action="store_true", help="list the scenarios and exit")
     ap.add_argument("--engine", help="lupa engine (default: luajit21)")
@@ -1975,7 +1984,7 @@ def main():
             touch = is_touch(w, h, args.touch)
             t1 = time.time()
             dump = dump_scenario(scenario, w, h, touch, fonts, None, args.engine, args.echo, args.verbose, sheets=args.sheets,
-                                 boss=args.boss)
+                                 boss=args.boss, fallback=args.fallback)
             img, r = render_one(dump, fonts, args)
             label = "%dx%d%s" % (w, h, " touch" if touch else "")
             smallest = print_report(dump, r, "%s %s (%.1fs)" % (scenario, label, time.time() - t1), args.verbose)
@@ -1996,7 +2005,7 @@ def main():
     else:
         touch = is_touch(w, h, args.touch)
         dump = dump_scenario(scenario, w, h, touch, fonts, args.json, args.engine, args.echo, args.verbose, sheets=args.sheets,
-                             boss=args.boss)
+                             boss=args.boss, fallback=args.fallback)
         label = "%s at %dx%d%s" % (scenario, w, h, " (touch)" if touch else "")
         print("dumped %s in %.1fs (text metrics: %s)" % (label, time.time() - t0, dump.get("metrics", "?")))
     t1 = time.time()

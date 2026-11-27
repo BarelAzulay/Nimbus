@@ -1549,6 +1549,8 @@ local function clientScenarios()
 				fit.Parent = page
 				page.Parent = gui
 				gui.Parent = pg()
+				-- (the fresh page's Build points ShopEggs' last-built page at it: put back on the Shop's real page after)
+				local restoreCur, curFound = SmokeCommon.KeepEggsPage(SE)
 				local okDrawn, errDrawn = pcall(function()
 					ms.Id = 0
 					SE.Build(page, nil)
@@ -1562,8 +1564,13 @@ local function clientScenarios()
 				end)
 				ms.Id = savedId
 				gui:Destroy()
+				local curBack = restoreCur()
 				KC.advance(0.1)
 				T.check(okDrawn, "travel: 844x390 the drawn-machine page ran", tostring(errDrawn))
+				local fxNow, fxReal = SE.Fx(), realPage and SE.Fx(realPage)
+				T.check(curFound and curBack and fxNow ~= nil and fxReal ~= nil and fxNow.Egg == fxReal.Egg,
+					"travel: after the drawn-machine page ShopEggs' last-built page is the Shop's real Eggs page again",
+					fmt("CUR found %s, put back %s, Fx() %s, Fx(real) %s", tostring(curFound), tostring(curBack), tostring(fxNow ~= nil), tostring(fxReal ~= nil)))
 			end
 			Mock.SetViewport(1920, 1080)
 			KC.advance(0.5)

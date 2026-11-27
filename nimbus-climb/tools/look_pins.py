@@ -144,11 +144,13 @@ class Ctx:
         self.passed, self.failed = {}, {}
 
     def dump(self, scen, w, h, touch=None, sheets=False, boss=None):
+        """sheets: True (render_gui --sheets), "fallback" (--fallback: both sheet ids forced 0), else the shipped ids"""
         t = self.RG.is_touch(w, h, touch)
         key = (scen, w, h, t, sheets, boss)
         if key not in self.cache:
             try:
-                d = self.RG.dump_scenario(scen, w, h, t, self.fonts, sheets=sheets, boss=boss)
+                d = self.RG.dump_scenario(scen, w, h, t, self.fonts, sheets=sheets is True, boss=boss,
+                                          fallback=sheets == "fallback")
             except SystemExit as exc:
                 d = {"guis": [], "errors": [str(exc)]}
             self.cache[key] = d
@@ -288,11 +290,12 @@ def hero_texts(nodes):
 def pin_I2(c, sizes):
     runs = [(w, h, None) for (w, h) in sizes] + I2_EXTRA
     for scen in HERO_STATES:
-        for sheets in (True, False):
+        # (I1 / I2 uploaded: a plain dump draws the shipped sheets) the sheet look and the Id 0 fallback, as before
+        for sheets in (True, "fallback"):
             for (w, h, touch) in runs:
                 d = c.dump(scen, w, h, touch, sheets)
                 nodes = c.nodes(d)
-                tag = "I2 %s %s %dx%d%s" % (scen, "sheets" if sheets else "fallback", w, h, " touch" if touch else "")
+                tag = "I2 %s %s %dx%d%s" % (scen, "sheets" if sheets is True else "fallback", w, h, " touch" if touch else "")
                 if not c.check("I2", HERO in nodes, tag + ": the Secret hero shows"):
                     continue
                 for p, n in hero_texts(nodes):

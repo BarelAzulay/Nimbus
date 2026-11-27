@@ -1791,7 +1791,11 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 				if G.sheetShown(G.eggCard(id)) then
 					sheetCards = sheetCards + 1
 					if id ~= "Secret" then
-						for _, r in ipairs(G.oddsRows(G.eggCard(id))) do
+						local rows = G.oddsRows(G.eggCard(id))
+						if #rows == 0 then
+							noPixel[#noPixel + 1] = id .. ": no odds rows"
+						end
+						for _, r in ipairs(rows) do
 							local px = r.Row:FindFirstChild("PixelEgg", true)
 							if not (px and G.shown(px)) then
 								noPixel[#noPixel + 1] = id .. "." .. r.Rarity
@@ -1803,10 +1807,29 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 			if sheetCards > 0 then
 				T.check(sheetCards == 5 and #noPixel == 0, label .. ": Eggs: the shipped sheet's machines on every card, each machine card's odds the pixel egg",
 					fmt("%d sheet cards; %s", sheetCards, table.concat(noPixel, "; ")))
+				-- the Secret card keeps its vector odds eggs beside the vault on the shipped window too. With the sheet its two odds
+				-- are chips one over the other right of the vault (ShopEggs L.heroPhone: L.chips at a 26 px egg, P2 icons review r1
+				-- major 1), not the drawn layout's 30 px row (L.phoneOdds, read on the drawn page below): each at that full 26 px
+				local secretSmall = {}
+				local secretRows = G.oddsRows(G.eggCard("Secret"))
+				if #secretRows == 0 then
+					secretSmall[1] = "no odds rows"
+				end
+				for _, r in ipairs(secretRows) do
+					local egg = r.Row:FindFirstChild("Egg", true)
+					if not (egg and G.shown(egg) and egg.AbsoluteSize.Y >= 26 - 0.5) then
+						secretSmall[#secretSmall + 1] = r.Rarity .. " " .. (egg and fmt("%.1f", egg.AbsoluteSize.Y) or "no egg")
+					end
+				end
+				T.check(#secretSmall == 0, label .. ": Eggs: the shipped window's Secret card odds eggs show at the chips' full 26 px", table.concat(secretSmall, "; "))
 				G.drawnPage(label .. " (drawn machine)", Shop, SE, Config, function(page)
 					local small = {}
 					for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
-						for _, r in ipairs(G.oddsRows(G.find(page, "ShopCard_" .. id))) do
+						local rows = G.oddsRows(G.find(page, "ShopCard_" .. id))
+						if #rows == 0 then
+							small[#small + 1] = id .. ": no odds rows"
+						end
+						for _, r in ipairs(rows) do
 							local egg = r.Row:FindFirstChild("Egg", true)
 							if not (egg and egg.AbsoluteSize.Y >= 30 - 0.5) then
 								small[#small + 1] = id .. "." .. r.Rarity .. " " .. (egg and fmt("%.1f", egg.AbsoluteSize.Y) or "no egg")
@@ -2218,8 +2241,9 @@ function G.sheetShown(card)
 	return m ~= nil and m:GetAttribute("SheetShown") == true
 end
 -- today's drawn machine (Config.MachineSheet.Id 0, forced and restored) on a fresh Eggs page with the OPEN Shop's own
--- box, layout and Fit (the Shop's window is built once, with the shipped sheet); fn(page) reads it. The fresh page becomes
--- ShopEggs' last-built page (its HeroPulse() / Fx() with no page), so a scenario calls this after those reads
+-- box, layout and Fit (the Shop's window is built once, with the shipped sheet); fn(page) reads it. Building the fresh
+-- page points ShopEggs' last-built page (its HeroPulse() / Fx() / Focus() with no page) at it: SmokeCommon.KeepEggsPage
+-- points it back at the Shop's real Eggs page after, checked
 function G.drawnPage(tag, Shop, SE, Config, fn)
 	local win = G.win()
 	local real = win and win:FindFirstChild("Page_Eggs", true)
@@ -2245,6 +2269,7 @@ function G.drawnPage(tag, Shop, SE, Config, fn)
 	fit.Parent = page
 	page.Parent = gui
 	gui.Parent = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local restoreCur, curFound = SmokeCommon.KeepEggsPage(SE)
 	local okD, errD = pcall(function()
 		ms.Id = 0
 		SE.Build(page, nil)
@@ -2262,8 +2287,14 @@ function G.drawnPage(tag, Shop, SE, Config, fn)
 	end)
 	ms.Id = savedId
 	gui:Destroy()
+	local curBack = restoreCur()
 	G.advance(0.1)
 	T.check(okD, tag .. ": the drawn-machine page ran", tostring(errD))
+	-- ShopEggs' no-page calls read the Shop's real Eggs page again, not the destroyed fresh one
+	local fxNow, fxReal = SE.Fx(), SE.Fx(real)
+	T.check(curFound and curBack and fxNow ~= nil and fxReal ~= nil and fxNow.Egg == fxReal.Egg,
+		tag .. ": after it ShopEggs' last-built page is the Shop's real Eggs page again (Fx() / HeroPulse() with no page)",
+		fmt("CUR found %s, put back %s, Fx() %s, Fx(real) %s", tostring(curFound), tostring(curBack), tostring(fxNow ~= nil), tostring(fxReal ~= nil)))
 end
 
 S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()

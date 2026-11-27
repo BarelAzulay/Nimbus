@@ -863,6 +863,38 @@ function SmokeCommon.RebuildShop(Shop, Config, sheetId, advance)
 	return true
 end
 
+-- (release-combined review) ShopEggs.Build points ShopEggs' last-built page (its CUR.Page: what Fx() / HeroPulse() /
+-- Focus() read when called with no page) at the page it builds, so a check that builds a throwaway Eggs page (the drawn
+-- machine at Id 0) would leave it on a dead page. KeepEggsPage(SE) before that Build -> restore, found: restore() after
+-- the throwaway page is destroyed puts CUR.Page back on the page it was (the Shop's real Eggs page) and returns true when
+-- it did; found is false when CUR could not be reached (ShopEggs reshaped: the caller's check fails then)
+function SmokeCommon.KeepEggsPage(SE)
+	local cur
+	if type(SE) == "table" and type(debug) == "table" and debug.getupvalue then
+		for _, fn in ipairs({ SE.HeroPulse, SE.Fx, SE.Focus }) do
+			local i = 1
+			while type(fn) == "function" and not cur do
+				local name, v = debug.getupvalue(fn, i)
+				if name == nil then
+					break
+				end
+				if name == "CUR" and type(v) == "table" then
+					cur = v
+				end
+				i = i + 1
+			end
+		end
+	end
+	local was = cur and cur.Page
+	return function()
+		if not cur then
+			return false
+		end
+		cur.Page = was
+		return was ~= nil and cur.Page == was
+	end, cur ~= nil
+end
+
 -- (battle-feel T3, the real server cast) a special press's effects land BattleCatalog.Damage.SpecialCast[kind] s after the
 -- press (Cast event first, the Special + its hits at `at`). `evs` = the events of the step after the press: when they hold
 -- a Cast of unit `unitId` (any unit when nil) and no Special of it, the battle is stepped `dt` (0.05) at a time until its

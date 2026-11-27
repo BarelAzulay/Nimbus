@@ -5679,9 +5679,35 @@ else
 	local name = (fields[1] or ""):lower()
 	local width = tonumber(ARGS.width) or 1920
 	local height = tonumber(ARGS.height) or 1080
+	do
+		-- (I1-I7, uploaded 2026-11-27) the shipped ids of the uploaded sheets, logo and boss heads drawn from their source
+		-- PNGs (blender/textures/textures.json "png"), so a plain render of the Shop, title, loading screen or battle top
+		-- card shows the pictures Roblox will. Both spellings of the URI are mapped: Config.Art's whole digits and a plain
+		-- tostring (the mock's LuaJIT prints a 15-digit number as 1.2e+14). With --sheets the two sheets run on stub ids
+		-- and with --fallback on Id 0 (below), so their shipped ids are left unmapped there.
+		local ids = req("shared/TextureIds") or {}
+		local ownSheets = not ARGS.sheets and not ARGS.fallback
+		local uploaded = {
+			icons_b = ownSheets and "build/upload_sheets/icons_b.png" or nil,
+			machines_a = ownSheets and "build/upload_sheets/machines_a.png" or nil,
+			nimbus_logo = "branding/nimbus_logo_L1_1024.png",
+			boss_head_storm_titan = "branding/boss_heads/boss_head_storm_titan.png",
+			boss_head_lava_golem = "branding/boss_heads/boss_head_lava_golem.png",
+			boss_head_frost_wyrm = "branding/boss_heads/boss_head_frost_wyrm.png",
+			boss_head_shadow_hydra = "branding/boss_heads/boss_head_shadow_hydra.png",
+		}
+		for key, png in pairs(uploaded) do
+			local id = ids[key]
+			if type(id) == "number" and id > 0 then
+				LOCAL_IMAGES["rbxassetid://" .. fmt("%.0f", id)] = png
+				LOCAL_IMAGES["rbxassetid://" .. tostring(id)] = png
+			end
+		end
+	end
 	if ARGS.sheets then
-		-- (Pitch 2 items 9 B / 10 A, render_gui.py --sheets) preview the upload sheets as if uploaded: a stub id each for
-		-- this render only (the files' Config keeps 0), drawn from the local PNG (each ImageLabel's rect cut, see `rect`)
+		-- (Pitch 2 items 9 B / 10 A, render_gui.py --sheets) preview the upload sheets from stub ids for this render only:
+		-- Config ships the uploaded ids (I1 / I2), so a plain render draws the same PNGs; --sheets swaps in stub ids mapped
+		-- to build/upload_sheets (a rebuilt sheet previews before it is uploaded again), each ImageLabel's rect cut (`rect`)
 		local cfg = req("shared/Config")
 		for _, s in ipairs({ { cfg.IconSheet, 9000000001, "build/upload_sheets/icons_b.png" }, { cfg.MachineSheet, 9000000002, "build/upload_sheets/machines_a.png" } }) do
 			if type(s[1]) == "table" then
@@ -5689,7 +5715,17 @@ else
 				LOCAL_IMAGES["rbxassetid://" .. fmt("%.0f", s[2])] = s[3]
 			end
 		end
-		note("sheets: the upload sheets drawn from build/upload_sheets (stub ids; nothing uploaded)")
+		note("sheets: the upload sheets drawn from build/upload_sheets (stub ids in place of the shipped ones)")
+	elseif ARGS.fallback then
+		-- (render_gui.py --fallback) both sheet ids forced to 0 for this render only: the 9 x 9 glyphs and the drawn
+		-- machines, the look a place without the sheets falls back to
+		local cfg = req("shared/Config")
+		for _, s in ipairs({ cfg.IconSheet, cfg.MachineSheet }) do
+			if type(s) == "table" then
+				s.Id = 0
+			end
+		end
+		note("fallback: Config.IconSheet.Id / MachineSheet.Id forced to 0 (the glyphs, the drawn machines)")
 	end
 	if name == "gallery" then
 		-- the widget gallery alone (no game UI)
