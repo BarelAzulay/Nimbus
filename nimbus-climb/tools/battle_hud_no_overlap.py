@@ -10,7 +10,7 @@ reviews render, and fails on:
   overlap   any two of: the keys (MOVE / DASH / RUN on a phone, every Commands key on a PC), CHEER, BACK, the top card
             (with its Leave), the enemy list's rows, the fighter card, each helper (its cell and Swap), the vitals card
             (with its name tab), the dungeon run chip, the result card (the battle's and the dungeon's End card), the
-            currency strip, and on a phone Roblox's own thumbstick and jump rings, closer than MIN_GAP (4) px; the run
+            card between two ring rounds, the currency strip, and on a phone Roblox's own thumbstick and jump rings, closer than MIN_GAP (4) px; the run
             chip closer than RUNCHIP_GAP (6) px to any of them. Each part is measured by its INK (keys look r4), what
             render_gui paints of its subtree: backgrounds, Outer / Center UIStrokes and borders past the box (the enemy
             row's gold target bracket), children past their parent (a helper's Lv tag, the hearts' pixel art), images,
@@ -25,8 +25,8 @@ reviews render, and fails on:
   helpers   at 844 x 390 a helper without 01b C's cell (Lv / name / labelled Swap under each other); a name plate as tall
             as two lines that draws one;
   clock     the top card's timer without its clock (640 x 360's raid / dungeon card excepted: no room);
-  cut       a name cut ("Storm Ti...") or broken mid-word: the boss name, the top card's pills, the fighter's and the
-            helpers' names, the vitals name, the keys' captions;
+  cut       a name cut ("Storm Ti...") or broken mid-word: the boss name, the top card's pills and mode line ('Round 8'),
+            the fighter's and the helpers' names, the vitals name, the keys' captions;
   pills     (battle:raid:full) the boss strip's pills: one row at 844 x 390, at most two rows on a portrait phone with
             the tier beside the boss name (not a pill), no pill alone on a row at any size, "Enraged" as the mock-up
             writes it, on a PC the boss portrait's slot kept, and a landscape phone's top card under 45 % of the height;
@@ -48,7 +48,18 @@ sys.path.insert(0, HERE)
 
 SIZES = [(360, 640), (640, 360), (667, 375), (390, 844), (844, 390), (1280, 720), (1920, 1080)]
 SCENARIOS = ["battle:raid", "battle:raid:full", "battle:raid:ready", "battle:dungeon", "battle:duel", "dungeon:run",
-             "dungeon:end", "dungeon:wipe"]
+             "dungeon:end", "dungeon:wipe",
+             # (kit-b backlog 9: the Champion Ring's fight and the trial's, never listed here: at 360 x 640 enemy row 1 lay
+             # 15-18 px on the fighter card, 'Round 8' read 'Ro...'; 375 x 667 'Biscuit B...'; 390 x 844 the top card 37.6 px
+             # on the fighter card)
+             "battle:fighter", "battle:ring:fight8", "battle:trial:ready",
+             # (kitb-matchhud look0 N2: the card between two ring rounds, 'ROUND 8 WON! Round 9 in 3', never listed either:
+             # with the ring's strip across a portrait phone's top (kit-b backlog 9) the team moved down under it and the
+             # card did not - at 360 x 640 it lay 32.8 px on the helpers ('HA', 'T... ME'), at 375 x 667 19.4, at 384 x 640
+             # 13.6; at 390 x 844 .. 430 x 932 it ended 2-3 px above RUN)
+             "battle:ring:next8"]
+# (look0 N2) the portrait phones the look rendered the card between ring rounds at, beyond SIZES (a default run only)
+SCENARIO_SIZES = {"battle:ring:next8": [(375, 667), (384, 640), (393, 852), (412, 915), (430, 932)]}
 
 B = "NimbusBattle.Root."
 PHONE_KEYS = ("MOVE", "DASH", "RUN")
@@ -89,6 +100,8 @@ GROUPS = [
     ("RUNCHIP", r"^NimbusDungeonRun\.RunChip$"),
     ("RESULT", r"^NimbusBattle\.Root\.ResultCard$"),
     ("RESULT", r"^NimbusDungeonRun\.EndCard$"),
+    # (look0 N2) the card between two ring rounds (Ring.PlaceNext), its LEAVE on it
+    ("NEXT", r"^NimbusBattle\.Root\.NextRoundCard$"),
     ("CURRENCY", r"^NimbusHud\.\w+\.Currency\.Currency_\w+$"),
 ]
 GROUPS = [(g, re.compile(p)) for g, p in GROUPS]
@@ -96,11 +109,16 @@ GROUPS = [(g, re.compile(p)) for g, p in GROUPS]
 WHOLE = [
     r"^NimbusBattle\.Root\.TopCard\..*BossName$",
     r"^NimbusBattle\.Root\.TopCard\.Pills\.\w+$",
+    # (kit-b backlog 9: the ring round's mode line 'Round 8' drawn 'Ro...' in a 40 px box at 360 x 640, 'Roun...' at
+    # 375 x 667) the mode line reads whole (its shortest form at least: Hud.ModeText's shorts)
+    r"^NimbusBattle\.Root\.TopCard\.ModeCard\.Body\.Mode$",
     r"^NimbusBattle\.Root\.Team\.Fighter\..*PetName$",
     r"^NimbusBattle\.Root\.Team\.Fighter\.Body\.EnergyText$",  # (keys look r3: the stars' row narrows it)
     r"^NimbusBattle\.Root\.Team\.Helpers\.Helper\d+\..*(Buff|Name)\w*$",
     r"^NimbusHud\.\w+\.Vitals\..*Name\w*$",
     r"^NimbusBattle\.Root\.Commands\.\w+Button\.(Caption|NamePlate)(\.\w+)?$",
+    # (look0 N2 re-look) the next round's countdown ('Next in 3' ran past its box under LEAVE at 640 x 360)
+    r"^NimbusBattle\.Root\.NextRoundCard\.Countdown$",
 ]
 WHOLE = [re.compile(p) for p in WHOLE]
 
@@ -473,6 +491,16 @@ class Checker:
                 d = ink_gap([ti], li, ti, union(li), MIN_GAP)[0]
                 self.check(d >= MIN_GAP - 0.05, tag + "the top card's timer keeps %g px off Leave" % MIN_GAP,
                            "timer %s, Leave %s: %.1f px" % (fmt(ti), fmt(union(li)), d))
+        # (kitb-matchhud look0 N2 re-look: the card between ring rounds, kept off the top card's shadow at 640 x 360 /
+        # 667 x 375, drew 'Next in 3' 1.4 px from its inline LEAVE's frame, its stroke on it; kit-b kept 5.4) the countdown's
+        # text keeps MIN_GAP off LEAVE's ink, as the top card's timer does
+        count, nleave = nodes.get(B + "NextRoundCard.Countdown"), nodes.get(B + "NextRoundCard.LeaveButton")
+        if count and nleave and text_of(count) and nleave["w"] > 1 and self.rg is not None:
+            ci, li = text_ink(count, self.rg, self.fonts), ink_of(nleave, None, None)
+            if ci and li:
+                d = ink_gap([ci], li, ci, union(li), MIN_GAP)[0]
+                self.check(d >= MIN_GAP - 0.05, tag + "the next round's countdown keeps %g px off its LEAVE" % MIN_GAP,
+                           "countdown %s, LEAVE %s: %.1f px" % (fmt(ci), fmt(union(li)), d))
         # pills (the full raid's boss strip)
         if scen == "battle:raid:full":
             self.pills(tag, w, h, nodes)
@@ -621,7 +649,7 @@ def parse_sizes(text):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--size", help="WxH[,WxH...] (default: all seven)")
-    ap.add_argument("--scenario", help="S[,S...] (default: all eight)")
+    ap.add_argument("--scenario", help="S[,S...] (default: all eleven)")
     ap.add_argument("-v", "--verbose", action="store_true", help="print every box")
     ap.add_argument("--json", help="write the failures as JSON")
     args = ap.parse_args()
@@ -634,7 +662,8 @@ def main():
     ck = Checker(RG, fonts, args.verbose)
     t0 = time.time()
     for scen in scens:
-        for (w, h) in sizes:
+        extra = [] if args.size else [s for s in SCENARIO_SIZES.get(scen, []) if s not in sizes]
+        for (w, h) in list(sizes) + extra:
             touch = RG.is_touch(w, h, None)
             try:
                 dump = RG.dump_scenario(scen, w, h, touch, fonts)

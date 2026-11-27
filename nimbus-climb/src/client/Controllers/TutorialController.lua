@@ -930,8 +930,9 @@ local function hotbarRect()
 	return nil
 end
 
--- The HUD's bottom-left block (vitals card, currency pills) as rects in our gui coordinates.
-local function bottomLeftRects()
+-- The HUD's bottom-left block (vitals card, currency pills) as rects in our gui coordinates. ((kitb-matchhud) `noVitals`:
+-- without the vitals card)
+local function bottomLeftRects(noVitals)
 	local out = {}
 	local pg = playerGui()
 	local hud = pg and pg:FindFirstChild("NimbusHud")
@@ -941,11 +942,26 @@ local function bottomLeftRects()
 	end
 	local dy = insetShift(hud)
 	for _, child in ipairs(block:GetChildren()) do
-		if child:IsA("GuiObject") and child.AbsoluteSize.X > 0 and shownIn(child, hud) then
+		if child:IsA("GuiObject") and child.AbsoluteSize.X > 0 and shownIn(child, hud) and not (noVitals and child.Name == "Vitals") then
 			out[#out + 1] = rectOf(child, dy)
 		end
 	end
 	return out
+end
+
+-- (kitb-matchhud) the vitals card's slot, shown or stepped aside (HudController.GetLayout().VitalsSlot: gui-area px of an
+-- IgnoreGuiInset = false gui, as ours), nil when there is none
+local function vitalsSlot()
+	local hud = mod("HudController")
+	if not (hud and type(hud.GetLayout) == "function") then
+		return nil
+	end
+	local ok, lay = pcall(hud.GetLayout)
+	local s = ok and type(lay) == "table" and lay.VitalsSlot
+	if not s then
+		return nil
+	end
+	return { x0 = s.X, y0 = s.Y, x1 = s.X + s.W, y1 = s.Y + s.H }
 end
 
 -- Phase 3: the compact battle team cards (BattleController on phones and small windows: a row under the battle's
@@ -1300,11 +1316,12 @@ end
 
 -- (U9-9 look) the HUD's vitals card steps aside while the opened card lies over a part of it (the plain lobby's card
 -- the player opened on a short screen), as the result card and the NPC dialog do; back when the card folds or goes.
--- `rect`: the opened card in gui px, nil when it is folded or hidden
-local function syncVitals(rect)
-	local off = false
+-- `rect`: the opened card in gui px, nil when it is folded or hidden. ((kitb-matchhud) `aside`: the folded chip's spot
+-- holds them aside - layout's landscape chip)
+local function syncVitals(rect, aside)
+	local off = aside == true
 	local hud = mod("HudController")
-	if rect and hud and type(hud.GetLayout) == "function" then
+	if not off and rect and hud and type(hud.GetLayout) == "function" then
 		local okLayout, lay = pcall(hud.GetLayout)
 		local slot = okLayout and type(lay) == "table" and lay.VitalsSlot
 		if slot then -- (gui-area px of an IgnoreGuiInset = false gui, as ours)
@@ -1635,6 +1652,7 @@ local function layout()
 	-- RUN / DASH and below RUN's top) it sits STRIP_DOCK_GAP over RUN (it ran 58 x 22 px over RUN); a strip that would
 	-- then meet a key, the menu column, the top-right stack or the top edge folds to the portrait chip
 	local stripW, stripChip = K.STRIP_W, false
+	local chipAside = false -- ((kitb-matchhud) the landscape chip's spot holds the vitals aside: below)
 	if folded then
 		local h2 = K.STRIP_H * k
 		local chipH = K.STRIP_CHIP * k
@@ -1732,6 +1750,7 @@ local function layout()
 				end
 				wide[#wide + 1] = thumbstickRect(area)
 			end
+			local blocks = bottomLeftRects()
 			local function clear(l, t, col, gap)
 				local m = gap and (gap - 0.5) or d
 				local function meets(r)
@@ -1743,7 +1762,7 @@ local function layout()
 				if not v and (l < edge or t + chipH > area.Y - edge) then
 					return false
 				end
-				for _, list in ipairs({ touchButtonRects(), bottomLeftRects(), pieces, wide }) do
+				for _, list in ipairs({ touchButtonRects(), blocks, pieces, wide }) do
 					for _, r in pairs(list) do
 						if meets(r) then
 							return false
@@ -1798,26 +1817,41 @@ local function layout()
 					local t = col.y1 + dockPanel
 					spots[#spots + 1] = { leftFor(t, chipH), t }
 				end
-				local found = false
-				for _, gap in ipairs({ K.STRIP_DOCK_GAP, K.MIN_AIR }) do
-					for _, s in ipairs(spots) do
-						local l, t = s[1], s[2]
-						if stick and stick.x1 > l - gap and stick.x0 < l + chipH + gap and stick.y1 > t - gap and stick.y0 < t + chipH + gap then
-							l = stick.x1 + gap
-						end
-						if clear(l, t, col, gap) then
-							left, top, found = l, t, true
-							break
+				local function search()
+					for _, gap in ipairs({ K.STRIP_DOCK_GAP, K.MIN_AIR }) do
+						for _, s in ipairs(spots) do
+							local l, t = s[1], s[2]
+							if stick and stick.x1 > l - gap and stick.x0 < l + chipH + gap and stick.y1 > t - gap and stick.y0 < t + chipH + gap then
+								l = stick.x1 + gap
+							end
+							if clear(l, t, col, gap) then
+								left, top = l, t
+								return true
+							end
 						end
 					end
-					if found then
-						break
-					end
+					return false
+				end
+				-- (kitb-matchhud, the owner's pick A "Slim bar") at 568 x 320 in a solo / duo match the slim bar takes the row
+				-- under the menu column the chip had, and no other spot is clear (the chip lay 40 px over RUN): where one is
+				-- clear but for the vitals, the chip takes it and the vitals step aside while it shows there (the panel's gold
+				-- 'you' chip shows the HP), as for the card the player opens (syncVitals). While it holds them aside their slot
+				-- counts as if they showed, so the chip's spot never flips with them
+				local slot = S.chipAside and vitalsSlot() or nil
+				if slot then
+					blocks[#blocks + 1] = slot
+				end
+				local found = search()
+				if not found and (slot or vitalsRect()) then
+					blocks = bottomLeftRects(true)
+					found = search()
+					chipAside = found
 				end
 			end
 		end
 	end
 	S.stripChip = folded and stripChip
+	S.chipAside = folded and stripChip and chipAside
 	applyGeometry(width, designH, bodyH, hintH, titleExtra)
 	if folded then
 		placeStrip(stripW, stripChip)
@@ -1836,7 +1870,7 @@ local function layout()
 
 	local goal = UDim2.fromOffset(math.floor(left + 0.5), math.floor(top + 0.5))
 	if folded or not S.shown then
-		syncVitals(nil)
+		syncVitals(nil, S.shown and S.chipAside)
 	else
 		local gx, gy = goal.X.Offset, goal.Y.Offset
 		syncVitals({ x0 = gx, y0 = gy, x1 = gx + width * cardScale, y1 = gy + designH * cardScale })
