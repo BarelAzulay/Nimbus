@@ -81,12 +81,13 @@ The place file committed in `a28a7aff` was stale after `0110e4d5`; it was rebuil
 
 ## Before merge
 
-- [ ] Whole suite on the final head: `tools/smoke.py --quick` and the mesh suite `tools/smoke.py --mesh`, both
-      0 failed. Earlier heads: `bb92b05f` whole 45661 / 0, mesh 1267 / 0. `f7516428` (2026-11-27, with the images,
-      battle tags and world signs): whole 46167 passed / 4 failed (6997 s), mesh 1267 / 0. Of the 4: three came from
-      recording the image ids (pass on `14bdaaa7`, fail from `79363a36`) and are fixed in `d33c7b91` (75 battle / HUD /
-      storm sections: 5564 passed, 0 failed); `travel_shows_way` fails only in the whole run (passes alone). The whole
-      run on `d33c7b91` itself is the open box.
+- [x] Whole suite on the final head: `tools/smoke.py --quick` and the mesh suite `tools/smoke.py --mesh`. On
+      `b4f01bbe` (2026-11-27, `d33c7b91`'s code plus docs): whole 46170 passed / 1 failed (6598 s), mesh 1267 / 0,
+      save_roundtrip 356 / 0 (main `ac552d0574e0`), `test_render_sheets` ok. The one failure is
+      `travel_shows_way` ("after the drawn-machine page ShopEggs' last-built page is the Shop's real Eggs page again"),
+      which fails only in the whole run and passes alone (`--only travel_shows_way`: 454 / 0): test order, not the
+      game. Earlier heads: `bb92b05f` whole 45661 / 0; `f7516428` whole 46167 / 4 (three fixed in `d33c7b91`, the
+      fourth the same `travel_shows_way` order case).
 - [x] Place file rebuilt on the final head (`rojo build default.project.json -o play/NimbusClimb.rbxlx`, Rojo 7.7.1)
       and `py -3.12 tools/verify_place.py` OK on it: `d33c7b91`, all 1186 scripts match, no extra scripts.
 - [x] `py -3.12 tools/save_roundtrip.py` against `origin/main`: 356 passed, 0 failed (main `ac552d0574e0`) on
