@@ -1,7 +1,7 @@
 # Combined release: kit-b look + release step 1 (Store off, save safety) + 104 meshes
 
 **Base:** `main` (`ac552d0`). **Head:** `release-combined`. Final head and place file:
-`BUILD: <filled in by Claude after the final rebuild>`.
+`BUILD: release-combined bb92b05f (place file built from 568e185c), 1186 scripts, verify_place OK`.
 **Do not merge before the owner says yes in chat.** This PR replaces `step1-pr.md`: step 1 never went to main on its
 own, it ships inside this release.
 
@@ -26,8 +26,9 @@ Owner test: `docs/release/combined-test-checklist.md`, in the test experience "N
   `02a3462d`, `72f4de55`, `594ff6a4`, `b32607f6`, `4113d7e8`): on short landscape phones the vitals become one slim
   row in a match and its countdown, the match card puts its checkpoints in the clock row, the pad's vitals step aside.
   The branch also carries kit-b backlog 9 (ring and trial fights on portrait phones, `cad9687d`) and 21 / 31 (the
-  NPC dialog on a phone's screen, `1b26ff8b`). **Not merged into `release-combined` yet at `0110e4d5`**: it is merged
-  before the final rebuild, and the BUILD line above names a head that contains it.
+  NPC dialog on a phone's screen, `1b26ff8b`), and the look fix round for N1 - N3 (final branch head `29d8a699`).
+  Merged into kit-b in `d2ee8ca8` (look PASS, 0 new majors; kit-b `949373ff` whole suite 45380 / 0, mesh 1267 / 0),
+  then into `release-combined` in `568e185c`.
 - **The Store-off pin on kit-b's restyled Shop** (`fec10e06`).
 - **104 uploaded meshes** (merged in `0110e4d5`): 98 evolved pet meshes with the smaller eyes (`c7deca0b`, every
   `evo1_*` / `evo2_*` key, High and Low) and the 6 Sky Trove meshes (`598df3bb`, `prop_trove_body` / `_lid` / `_sign`
@@ -61,17 +62,17 @@ Run on `a28a7aff` (before the mesh merge and before the slim bar). They are **no
 | Lock lists | 772 passed, 0 failed |
 | Store switch lists | 938 passed, 0 failed |
 
-The place file committed in `a28a7aff` is stale: `0110e4d5` changed `src/` (`MeshIds.lua` and 98 mesh manifests) after
-it, and the slim bar still has to come in. It is rebuilt once, on the final head.
+The place file committed in `a28a7aff` was stale after `0110e4d5`; it was rebuilt once, on the final head, in
+`bb92b05f`.
 
 ## Before merge
 
-- [ ] Whole suite on the final head: `tools/smoke.py --quick` and the mesh suite `tools/smoke.py --mesh`, both
-      0 failed. Results and head here.
-- [ ] Place file rebuilt on the final head (`rojo build default.project.json -o play/NimbusClimb.rbxlx`) and
-      `py -3.12 tools/verify_place.py` OK on it: commit id and script count here and on the BUILD lines of this PR and
-      the checklist.
-- [ ] `py -3.12 tools/save_roundtrip.py` against `origin/main` on the final head: 0 failed.
+- [x] Whole suite on the final head: `tools/smoke.py --quick` and the mesh suite `tools/smoke.py --mesh`, both
+      0 failed. Head `bb92b05f` (2026-11-27): whole 45661 passed / 0 failed (6299 s), mesh 1267 passed / 0 failed.
+- [x] Place file rebuilt on the final head (`rojo build default.project.json -o play/NimbusClimb.rbxlx`, Rojo 7.7.1)
+      and `py -3.12 tools/verify_place.py` OK on it: `bb92b05f`, all 1186 scripts match, no extra scripts.
+- [x] `py -3.12 tools/save_roundtrip.py` against `origin/main` on the final head: 356 passed, 0 failed (main
+      `ac552d0574e0`).
 - [ ] The owner's checklist (`docs/release/combined-test-checklist.md`) done on that place file.
 - [ ] The owner says yes in chat.
 

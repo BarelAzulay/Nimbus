@@ -6,7 +6,7 @@ After this test it goes to MAIN, but only after your yes in the chat.
 
 Where: the test experience **"Nimbus test 2.0"** (universe 10779238980, place 74125226332082). **Never MAIN.**
 
-`BUILD: <filled in by Claude after the final rebuild>`
+`BUILD: release-combined bb92b05f (place file built from 568e185c), 1186 scripts, verify_place OK`
 
 (Claude writes the commit id and the number of scripts on the line above. If it still says "filled in by Claude",
 stop and ask Claude. Do not test an unnamed build.)
