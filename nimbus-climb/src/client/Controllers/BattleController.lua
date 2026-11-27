@@ -10504,7 +10504,7 @@ function Leave.Place(m, B, isFighting)
 end
 
 -- the next-round card's LEAVE: a row at the bottom of the card (returns the card's new height)
-function Leave.PlaceOnCard(m, B, w, y, inline)
+function Leave.PlaceOnCard(m, B, w, y, inline, inlineW)
 	local b = Hud.nextLeave
 	if not b then
 		return y
@@ -10516,8 +10516,8 @@ function Leave.PlaceOnCard(m, B, w, y, inline)
 	end
 	Leave.Paint()
 	if inline then
-		-- beside the countdown (a landscape phone)
-		b.Size = UDim2.fromOffset(92, 38)
+		-- beside the countdown (a landscape phone; inlineW: narrower where the countdown needs the room)
+		b.Size = UDim2.fromOffset(inlineW or 92, 38)
 		b.AnchorPoint = Vector2.new(1, 0)
 		b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
 		return y
@@ -11710,7 +11710,15 @@ function Ring.PlaceNext(B)
 			Hud.nextExtra.Size = UDim2.fromOffset(inner, 22)
 			y = y + 26
 		end
-		local countW = inline and (inner - 92 - 6) or inner
+		-- (look0 N2 re-look: the landscape card, kept off the top card's shadow, is 5 design px narrower at 640 x 360 /
+		-- 667 x 375 and 'Next in 3' ran under LEAVE) an inline LEAVE gives the countdown's short form its room, down to 76
+		local leaveW = 92
+		if inline and inner - 92 - 6 < 150 then
+			local okN, mN = pcall(Theme.Measure, "Next in 9", "Display", 24)
+			local need = (okN and typeof(mN) == "Vector2" and mN.X > 0) and (mN.X * 1.04 + 4) or 0
+			leaveW = max(76, min(92, floor(inner - 6 - need)))
+		end
+		local countW = inline and (inner - leaveW - 6) or inner
 		Hud.nextShort = countW < 150 -- ("Next in 3" when the row is short)
 		Hud.nextCount.Position = UDim2.fromOffset(K.PAD + 4, y + (inline and 4 or 0))
 		Hud.nextCount.Size = UDim2.fromOffset(countW, 30)
@@ -11719,7 +11727,7 @@ function Ring.PlaceNext(B)
 		Hud.nextBar.Root.Position = UDim2.fromOffset(K.PAD + 4, y)
 		y = y + 14 + K.PAD
 		if inline then
-			Leave.PlaceOnCard(m, B, w, countY, true)
+			Leave.PlaceOnCard(m, B, w, countY, true, leaveW)
 		else
 			y = Leave.PlaceOnCard(m, B, w, y)
 		end
