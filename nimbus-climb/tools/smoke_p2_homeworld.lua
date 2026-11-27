@@ -161,6 +161,64 @@ local function plainText(root)
 	return table.concat(out, " | ")
 end
 
+-- (kit-b world signs, lane B) a home sign drawn as the kit's stone card (shared/WorldTag; NpcService's nameplate and
+-- LobbyBuilder's THE GATES board are the models): no rounded corner and no gradient anywhere under the gui, a face block
+-- (opaque Frame) with its mitred UIStroke "SignEdge" and its Frame "Lip", every text on it in ink with no outline (no
+-- Contextual UIStroke, no classic stroke) whose nearest opaque ancestor is that kind of block, and each of `texts` shown
+-- (plain find, the caller's casing). -> ok, why
+local function kitSign(gui, texts)
+	if not gui then
+		return false, "no gui"
+	end
+	local bad, blocks = {}, 0
+	for _, d in ipairs(gui:GetDescendants()) do
+		if d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0) then
+			bad[#bad + 1] = "round corner on " .. d.Parent.Name
+		elseif d:IsA("UIGradient") then
+			bad[#bad + 1] = "gradient on " .. d.Parent.Name
+		elseif d:IsA("UIStroke") and d.Name == "SignEdge" then
+			local face = d.Parent
+			local lip = face and face:FindFirstChild("Lip")
+			if d.LineJoinMode == Enum.LineJoinMode.Miter and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and d.Thickness >= 2
+				and face:IsA("Frame") and face.BackgroundTransparency == 0 and lip and lip:IsA("Frame") and lip.Visible and lip.Size.Y.Offset >= 3 then
+				blocks = blocks + 1
+			else
+				bad[#bad + 1] = "a SignEdge without its mitre / face / lip on " .. face.Name
+			end
+		elseif d:IsA("TextLabel") and d.Text ~= "" then
+			if d.TextStrokeTransparency < 1 then
+				bad[#bad + 1] = "'" .. d.Text .. "' has a classic stroke"
+			end
+			for _, c in ipairs(d:GetChildren()) do
+				if c:IsA("UIStroke") and c.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual and c.Enabled ~= false then
+					bad[#bad + 1] = "'" .. d.Text .. "' has an outline"
+				end
+			end
+			local cur, onBlock = d.Parent, false
+			while cur and cur ~= gui do
+				if cur:IsA("GuiObject") and cur.BackgroundTransparency < 0.3 then
+					onBlock = cur:FindFirstChild("SignEdge") ~= nil
+					break
+				end
+				cur = cur.Parent
+			end
+			if not onBlock then
+				bad[#bad + 1] = "'" .. d.Text .. "' is not on a stone card"
+			end
+		end
+	end
+	if blocks == 0 then
+		bad[#bad + 1] = "no stone card (no SignEdge + Lip block)"
+	end
+	local text = plainText(gui)
+	for _, t in ipairs(texts or {}) do
+		if not text:find(t, 1, true) then
+			bad[#bad + 1] = "no '" .. t .. "'"
+		end
+	end
+	return #bad == 0, table.concat(bad, "; ") .. " [" .. text .. "]"
+end
+
 -- the station's stamp: part count + bounds + colour/material census (to tell two levels apart)
 local function signature(model)
 	local list = {}
@@ -365,6 +423,30 @@ local function serverScenarios()
 				"level " .. level .. ": " .. #list .. " Hopper parts, sign '" .. text .. "'")
 		end
 		hopper:report()
+		-- (kit-b world signs, lane B) the station signs (Kit.sign) are the kit's stone card: its Plate is the block, the lip in
+		-- the grass accent's lip, the title in the ink and the info lines in the muted ink, no outline, no round corner / gradient
+		do
+			local Theme = requireAt("shared/Theme")
+			local Sign = Theme.Sign
+			for _, spec in ipairs({
+				{ "Press1", 13, "FarmSign", { "BERRY FARM LV 13", "Grows berries for your pets" } },
+				{ "Kitchen", 1, "MachineSign", { "FOOD MACHINE", "Berries -> XP: press E", "Berry Basket" } },
+			}) do
+				local gui = find(modelAt(spec[1], spec[2]), spec[3], "BillboardGui")
+				local ok, why = kitSign(gui, spec[4])
+				local plate = gui and gui:FindFirstChild("Plate")
+				local title, info = plate and plate:FindFirstChild("Title"), plate and plate:FindFirstChild("Info")
+				T.check(ok and plate and plate:FindFirstChild("SignEdge") ~= nil and plate:FindFirstChild("Lip") ~= nil and colorNear(plate.BackgroundColor3, Sign.Stone, 2)
+					and title and info and colorNear(title.TextColor3, Sign.Text, 2) and colorNear(info.TextColor3, Sign.TextMuted, 2) and title.TextSize >= 24 and info.TextSize >= 20,
+					"kit-b world signs: " .. spec[3] .. " is a stone card (Plate: Stone face, mitred SignEdge, Lip; title 24 px ink, info 20 px muted ink; no outline, round corner or gradient)", why)
+			end
+			-- the basket line HomeFx rewrites ("12,345 / 30,000 berries") keeps room on the card
+			local gui = find(modelAt("Kitchen", 1), "MachineSign", "BillboardGui")
+			local plate = gui and gui:FindFirstChild("Plate")
+			local need = Theme.Measure("00,000 / 00,000 berries", "Body", 20).X
+			T.check(plate and plate.Size.X.Offset >= need + 20, "kit-b world signs: the MachineSign card keeps room for a big basket line",
+				plate and string.format("card %d px, the line %d px", plate.Size.X.Offset, need) or "no plate")
+		end
 		-- the Training Place: one mat per level with the Spot<i> attachments at the catalog's Spots, on the deck
 		local mats = T.tally("station art: the Training Place (Gym) lays one mat per level with Attachments Spot1..level (attribute Slot) at Slot.Spots on the deck")
 		local gymDef = TC.Get("Gym")
@@ -470,6 +552,45 @@ local function serverScenarios()
 		T.check(bowl ~= nil and abs(bowl.Position.X - gs.Bowl.Center.X) < 0.05 and abs(bowl.Position.Z - gs.Bowl.Center.Z) < 0.05 and abs(math.max(bowl.Size.X, bowl.Size.Z) - 2 * gs.Bowl.Radius) < 0.6
 			and bowlGui ~= nil and bowlGui.MaxDistance == 40 and bowlText:find("FOOD BOWL", 1, true) and bowlText:find("Pets eat here, then poop Cloud Cash!", 1, true),
 			"station art: the Food Bowl stands at Slot.Bowl (radius " .. gs.Bowl.Radius .. ") with its sign 'Food Bowl' / 'Pets eat here, then poop Cloud Cash!' (MaxDistance 40)", bowlText)
+		-- (kit-b world signs, lane B) the bowl's sign and a closed bed's "Prestige / to open" board are stone cards
+		local okBowl, whyBowl = kitSign(bowlGui, { "FOOD BOWL", "Pets eat here, then poop Cloud Cash!" })
+		T.check(okBowl, "kit-b world signs: the BowlSign is a stone card (SignEdge + Lip, ink text, no outline, round corner or gradient)", whyBowl)
+		do
+			local g0 = HB.BuildStationModel("Garden", 1, nil, 3)
+			local board = g0 and find(g0, "ClosedSign", "BasePart")
+			local cg = board and board:FindFirstChild("ClosedGui")
+			local ok, why = kitSign(cg, { "Prestige", "to open" })
+			local panel = cg and cg:FindFirstChild("Panel")
+			local star = panel and panel:FindFirstChild("Star")
+			local Sign = requireAt("shared/Theme").Sign
+			T.check(ok and panel and colorNear(panel.BackgroundColor3, Sign.Stone, 2) and panel.Position.X.Offset >= 2 and panel.Size.X.Offset <= -4
+				and star and star:FindFirstChild("Icon") ~= nil and star.Icon:GetAttribute("PixelIcon") == "star",
+				"kit-b world signs: a closed bed's ClosedGui is a stone card inset by its edge (the Panel: Stone face, SignEdge, Lip) with the pixel star, 'Prestige' / 'to open' in ink", why)
+			-- (lane B review: the star sat flush on the wood edge, "to open" reached the lip) everything keeps >= 2 px off the
+			-- face's sides, its top and the lip; the two lines stay 30 px (never smaller than before)
+			local title, info = panel and panel:FindFirstChild("Title"), panel and panel:FindFirstChild("Info")
+			local lip = panel and panel:FindFirstChild("Lip")
+			local pw = board and cg and board.Size.X * cg.PixelsPerStud + panel.Size.X.Offset or 0
+			local ph = board and cg and board.Size.Y * cg.PixelsPerStud + panel.Size.Y.Offset or 0
+			local faceH = ph - (lip and lip.Size.Y.Offset or 0)
+			local roomBad = {}
+			for _, g in ipairs({ star, title, info }) do
+				if not g then
+					roomBad[#roomBad + 1] = "missing piece"
+				else
+					local x0, y0 = g.Position.X.Offset, g.Position.Y.Offset
+					local x1, y1 = x0 + g.Size.X.Offset, y0 + g.Size.Y.Offset
+					if x0 < 2 or x1 > pw - 2 or y0 < 2 or y1 > faceH - 2 then
+						roomBad[#roomBad + 1] = string.format("%s %.0f..%.0f x %.0f..%.0f on a %.0f x %.0f face", g.Name, x0, x1, y0, y1, pw, faceH)
+					end
+				end
+			end
+			T.check(#roomBad == 0 and title and info and title.TextSize >= 30 and info.TextSize >= 30,
+				"kit-b world signs: the ClosedGui's star and its two 30 px lines keep >= 2 px off the wood edge, the top and the lip", table.concat(roomBad, "; "))
+			if g0 then
+				g0:Destroy()
+			end
+		end
 		local g3a, g3b, g7 = HB.BuildStationModel("Garden", 3, nil, 5), HB.BuildStationModel("Garden", 3, nil, 5), HB.BuildStationModel("Garden", 3, nil, 7)
 		T.check(g3a and g3b and g7 and signature(g3a) == signature(g3b) and signature(g3a) ~= signature(g7),
 			"station art: the Garden template is cached per Garden:<level>:<open> (same open count = the same model, another count = another model)")
@@ -783,6 +904,15 @@ local function serverScenarios()
 		local sign = find(spotFolder, "ClaimGui", "SurfaceGui")
 		T.check(sign ~= nil and sign.PixelsPerStud >= 40 and sign.PixelsPerStud <= 60 and plainText(sign):find("FREE HOME", 1, true) and plainText(sign):find("Press E", 1, true),
 			"home plot: a FREE HOME signpost tells free plots apart (\"Press E at the gate\", 40-60 px per stud)")
+		-- (kit-b world signs, lane B) the signpost's face is a stone card as THE GATES board: inset by its edge, a green lip
+		do
+			local ok, why = kitSign(sign, { "FREE HOME", "Press E at the gate" })
+			local panel = sign and sign:FindFirstChild("Panel")
+			local lip = panel and panel:FindFirstChild("Lip")
+			local Sign = requireAt("shared/Theme").Sign
+			T.check(ok and panel and panel.Position.X.Offset >= 3 and panel.Size.X.Offset <= -6 and lip and colorNear(lip.BackgroundColor3, Sign.GrassLip, 2),
+				"kit-b world signs: the ClaimGui is a stone card inset by its mitred edge, the lip in the grass green, ink text with no outline", why)
+		end
 		local lobbySpots = (K.W and K.W.lobbyInfo and K.W.lobbyInfo.Spots) or {}
 		local cheap = T.tally("home plot: every free lobby plot carries its ClaimPrompt in the gate on the lobby's own gate part (2 parts added per plot)")
 		for i, info in pairs(lobbySpots) do
@@ -839,7 +969,7 @@ local function serverScenarios()
 		local maxParts, maxAt, steps = 0, "", 0
 		local stationOk = T.tally("home plot: every purchase builds Station_<Id> under Home with StationId / Level / BuiltAt; the pads follow")
 		local padOk = T.tally("home plot: every pad is Pad_<Id> under Home/Pads with a BuyPrompt 'Buy' (E, 0.25 s, StationId, OwnerUserId; the Prestige pad's says 'Prestige' with a hold >= 1 s), enabled only when unlocked")
-		local signOk = T.tally("home plot: every pad sign is a pixel-sized billboard (names >= 22 px, info >= 18 px, outlined, LightInfluence 0, MaxDistance 50-150) showing the name and 'Lv a -> b' + price or the lock reason")
+		local signOk = T.tally("home plot: every pad sign is a pixel-sized billboard (names >= 22 px, info >= 18 px, LightInfluence 0, MaxDistance 50-150) showing the name and 'Lv a -> b' + price or the lock reason; kit-b world signs: a stone card (its Plate: SignEdge + Lip, inside the gui; NameRow / InfoRow) with ink text, no outline, round corner or gradient")
 		local ghostOk = T.tally("home plot: stations that unlock later ('Unlocks at Prestige', 'Coming soon') show a cheap ghost (<= 12 parts, no prompts, no collisions)")
 		local function checkPads(pads)
 			local padFolder = home:FindFirstChild("Pads")
@@ -864,20 +994,21 @@ local function serverScenarios()
 						signOk:case(false, pad.StationId .. ": no PadSign")
 					else
 						local pixel = gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.LightInfluence == 0 and gui.MaxDistance >= 50 and gui.MaxDistance <= 150
-						local biggest, smallest, outlined = 0, huge, true
+						local biggest, smallest = 0, huge
 						for _, d in ipairs(gui:GetDescendants()) do
 							if d:IsA("TextLabel") and d.Text ~= "" then
 								biggest, smallest = max(biggest, d.TextSize), min(smallest, d.TextSize)
-								local stroke = d:FindFirstChildWhichIsA("UIStroke")
-								if d.TextStrokeTransparency > 0.5 and not stroke then
-									outlined = false
-								end
 							end
 						end
 						local text = plainText(gui)
 						local wants = locked and tostring(pad.Locked) or tostring(pad.LevelText or "")
-						signOk:case(pixel and biggest >= 22 and smallest >= 18 and outlined and text:upper():find(tostring(pad.Title or pad.Name):upper(), 1, true) ~= nil and text:find(wants, 1, true) ~= nil,
-							pad.StationId .. ": '" .. text .. "' sizes " .. smallest .. "-" .. biggest)
+						-- (kit-b world signs, lane B: was "every text outlined") every text reads by its ink on the stone card
+						local kit, kitWhy = kitSign(gui, { wants })
+						local plate = gui:FindFirstChild("Plate")
+						local fits = plate and plate:FindFirstChild("SignEdge") ~= nil and plate.Size.X.Offset >= 150 and plate.Size.X.Offset <= gui.Size.X.Offset
+							and plate.Size.Y.Offset <= gui.Size.Y.Offset and plate:FindFirstChild("NameRow") ~= nil and plate:FindFirstChild("InfoRow") ~= nil
+						signOk:case(pixel and biggest >= 22 and smallest >= 18 and kit and fits and text:upper():find(tostring(pad.Title or pad.Name):upper(), 1, true) ~= nil and text:find(wants, 1, true) ~= nil,
+							pad.StationId .. ": '" .. text .. "' sizes " .. smallest .. "-" .. biggest .. (kit and "" or (" " .. kitWhy)) .. (fits and "" or " (its Plate card is not in the gui)"))
 					end
 					if locked and (pad.Locked:find("Prestige", 1, true) or pad.Locked:find("Coming soon", 1, true)) and (tonumber(pad.Level) or 0) == 0 and pad.StationId ~= "Prestige" then
 						local ghost = home:FindFirstChild("Ghost_" .. pad.StationId)

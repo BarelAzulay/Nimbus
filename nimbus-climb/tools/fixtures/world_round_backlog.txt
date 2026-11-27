@@ -5,10 +5,8 @@
 # StormAltar, LobbyBuilder, CourseBuilder). The list only shrinks: a name leaves when its builder moves to SignKit, and no
 # name is ever added. One gui name per line.
 BoardGui
-ClaimGui
 CountdownGui
 GateTag
 LeaderGui
-PadSign
 PadTag
 SignGui
