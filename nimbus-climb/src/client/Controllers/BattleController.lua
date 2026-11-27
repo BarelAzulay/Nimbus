@@ -371,6 +371,7 @@ local K = {
 	TOTAL_H = 34, -- the chip, its 3 px edge included
 	TOTAL_EDGE = 3,
 	TOTAL_LIP = 4,
+	TOTAL_GAP = 4, -- (bug 2026-11-27) px between the unit's plate (card, EVOLVE! pill, champion tag) and the total's chip
 	TOTAL_HOLD = 2.5, -- seconds without a hit before the total clears (the next hit starts a new one)
 	TOTAL_DISTANCE = 150,
 	MAX_TOTALS = 16,
@@ -1280,6 +1281,7 @@ function Fx.Number(adornee, height, text, color, px, life)
 	n.life = life or K.NUMBER_TIME
 	n.base = height
 	n.riseK = 1 -- (Fx.Pop: a stacked pop rises K.HIT_RISE of it)
+	n.lift = 0 -- (Fx.Pop: px its total stands over the unit's plate)
 	n.jx = (math.random() - 0.5) * 1.4
 	n.gui.StudsOffset = Vector3.new(n.jx, height, 0)
 	n.gui.SizeOffset = Vector2.new(0, 0) -- (Pitch 2 item 04) a hit's pop moves beside its total (the hit handler)
@@ -1406,6 +1408,18 @@ function Fx.FreeTotal(t)
 	St.totalPool[#St.totalPool + 1] = t
 end
 
+-- the billboard a unit's total stands on: the ring champion's tag (it holds the card under its plate), the unit card
+-- (PetCard "HpBar": its Size holds the EVOLVE! pill), else the Phase 3 bar (addBar); only one on the unit's root.
+-- nil for a raid boss (no world plate: its bar is the HUD's top card). -> BillboardGui or nil
+function Fx.PlateOf(u)
+	for _, g in ipairs({ u.tag or false, (u.card and u.card.Gui) or false, u.bar or false }) do
+		if g and g.Parent and g.Adornee == u.root and g:IsA("BillboardGui") then
+			return g
+		end
+	end
+	return nil
+end
+
 -- adds `dmg` to unit `u`'s running total (u.root: the part it floats over) and shows it on its stone chip; a total that
 -- went quiet (K.TOTAL_HOLD) starts afresh. -> the total's record (u.total) or nil
 function Fx.Total(u, dmg)
@@ -1447,7 +1461,19 @@ function Fx.Total(u, dmg)
 	t.shown = text
 	t.gui.Parent = fxFolder()
 	t.gui.Adornee = u.root
-	t.gui.StudsOffset = Vector3.new(0, Fx.NumberHeight(u) - 0.6, 0)
+	-- (bug "damage total covers the pet level card", 2026-11-27: it sat 0.3 studs over the card, so at fighting distance the
+	-- 34 px chip covered the 43 px card but for the "L" of "Lv 4") the total stands on its unit's plate in screen px: on the
+	-- plate's own anchor, its chip K.TOTAL_GAP px over the plate's top edge (SizeOffset: a share of its own px size, true
+	-- at every distance and screen). No plate (a raid boss): over its head as before
+	local plate = Fx.PlateOf(u)
+	local height, lift = Fx.NumberHeight(u) - 0.6, 0
+	if plate then
+		height = plate.StudsOffset.Y
+		lift = plate.Size.Y.Offset / 2 + Theme.ScaledSize(K.TOTAL_GAP, 3) + (t.chip.Size.Y.Offset + 2 * K.TOTAL_EDGE) / 2
+	end
+	t.lift = lift
+	t.gui.StudsOffset = Vector3.new(0, height, 0)
+	t.gui.SizeOffset = Vector2.new(0, lift / max(1, t.gui.Size.Y.Offset))
 	t.gui.Enabled = true
 	t.untilT = os.clock() + K.TOTAL_HOLD
 	BattleController._wake()
@@ -1469,6 +1495,10 @@ function Fx.Pop(u, adornee, height, text, color, px, dmg)
 	if total then
 		pop.gui.SizeOffset = Vector2.new(K.HIT_SIDE, 0)
 		pop.riseK = K.HIT_RISE -- (every pop of the stack the same share: an older one has still risen at least as far)
+		-- (bug 2026-11-27: the total stands on the card in px, Fx.Total) the pop keeps its place beside it: 0.6 studs over
+		-- the total's anchor, lifted the same px (the stack below adds the lift to its steps)
+		pop.base, pop.lift = total.gui.StudsOffset.Y + 0.6, total.lift or 0
+		pop.gui.StudsOffset = Vector3.new(pop.jx, pop.base, 0)
 	end
 	if type(u) ~= "table" then
 		return pop, total
@@ -1489,7 +1519,7 @@ function Fx.Pop(u, adornee, height, text, color, px, dmg)
 	local step = Theme.ScaledSize(K.HIT_STEP, 22)
 	for i, rec in ipairs(live) do
 		local g = rec.n.gui
-		g.SizeOffset = Vector2.new(g.SizeOffset.X, (i - 1) * step / math.max(1, g.Size.Y.Offset))
+		g.SizeOffset = Vector2.new(g.SizeOffset.X, ((rec.n.lift or 0) + (i - 1) * step) / math.max(1, g.Size.Y.Offset))
 	end
 	u.pops = live
 	return pop, total
@@ -14190,6 +14220,7 @@ BattleController._Me = Me -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Eclip
 BattleController._Fx = Fx -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Special pre-charge, Task 11b: numbers / flashes)
 BattleController._Ring = Ring -- TESTS ONLY (tools/smoke_ring_noheal_client.lua: the run card's line, HUD cleanup Task 4)
 BattleController._Hud = Hud -- TESTS ONLY (tools/smoke_wave6.lua: the vitals hold let go without a battle gui, quick wins review)
+BattleController._Cards = Cards -- TESTS ONLY (tools/smoke_battle_tags.lua: the unit cards the damage total clears)
 BattleController._St = St -- TESTS ONLY (tools/smoke_kitb_ui.lua battle_family_fits: Hud.ModeText of the drawn battle, U9-6 review)
 
 -- TESTS ONLY (Task 11b): the raw battle unit record (its drawn HP, hold, hurt time) and my predicted charge
