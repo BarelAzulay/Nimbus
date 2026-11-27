@@ -580,6 +580,11 @@ def pin_O3(c, sizes):
             if not vit and pad_aside(c, scen, w, h):
                 c.check("O3", True, "O3 %s %dx%d: (the vitals step aside on the party pad)" % (scen, w, h))
                 continue
+            if not vit and scen in O3M_NO_ROW.get((w, h), ()):
+                # (kitb-matchhud) the same corner as o3_match_hud's (O3M_NO_ROW), where --size names 568 x 320
+                c.check("O3", you_chip(nodes) is not None,
+                        "O3 %s %dx%d: (no row for the slim bar: the vitals step aside) the gold 'you' chip shows the HP" % (scen, w, h))
+                continue
             if not c.check("O3", bool(vit), "O3 %s %dx%d: the vitals card shows" % (scen, w, h)):
                 continue
             vp, vn = vit[0]
@@ -617,7 +622,9 @@ def pin_O3(c, sizes):
 #     itself: U1 over these states, the guide chip B1), wholly on the screen, every text on it whole (the name where it
 #     shows, the HP number); the pad of a short landscape phone may send it aside (pad_aside);
 #   * the match / party panel's ink MIN_GAP off the keys, the rings and every other piece, wholly on the screen, its clock
-#     row's texts whole;
+#     row's texts whole, and its title and level name ('SKY OBBY', 'Extreme': a panel kept off the keys is narrower - at
+#     640 x 360 the leader's pad drew 'Extr...' beside its stars). (Not the players' names: the long-name cases cut them
+#     on kit-b as designed);
 #   * (kitb-bl-hud look0 N2 / N3, the stopped lane's regressions, kept away) on a landscape phone the four menu tiles and
 #     their fold tab show, the wallet strip too where kit-b shows it (in a match not where it would reach over the panel,
 #     O3M_NO_STRIP), and the VICTORY card keeps its Time row (not where kit-b itself draws its micro card with no Time
@@ -705,7 +712,7 @@ def o3_match_hud(c, sizes):
             for pp in O3M_PANELS:
                 pn = nodes.get(pp)
                 if pn is not None and float(pn["w"]) > 1:
-                    o3m_subject(c, d, nodes, what, pp, pn, w, h, (".Inner.Timer", ".Inner.Tokens", ".CheckpointBar.Label"))
+                    o3m_subject(c, d, nodes, what, pp, pn, w, h, (".Inner.Timer", ".Inner.Tokens", ".CheckpointBar.Label", ".Inner.Title", ".Inner.Level"))
             if w > h and c.RG.is_touch(w, h, None) and scen != "results":
                 gone = [t for t in O3M_TILES if ("NimbusMenu.MenuColumn." + t) not in nodes]
                 c.check("O3", not gone, what + ": the menu tiles and their fold tab show", "missing " + ", ".join(gone))
