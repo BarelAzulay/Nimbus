@@ -1160,6 +1160,30 @@ local function checkAltarGate(label, gate, site)
 		label .. ": the tag reads '" .. ALTAR.Title .. "' / '" .. ALTAR.Info .. "'", tostring(title and title.Text) .. " / " .. tostring(infoL and infoL.Text))
 	T.check(pill ~= nil and pill.Visible == true and pillLabel ~= nil and pillLabel.Text == ALTAR.Pill,
 		label .. ": ...and shows the Pill '" .. ALTAR.Pill .. "'", pillLabel and (pillLabel.Text .. (pill.Visible and "" or " (hidden)")) or "no pill")
+	-- (kit B lane A: the stand-in gate's tag moved to the stone kit too) the board a stone block (a mitred SignEdge, a
+	-- Lip), the Pill a tinted block (its own SignEdge + Lip, the WorldTag attribute PortalService re-tints through), the
+	-- texts in ink (no outline), no round corner or gradient under the tag
+	do
+		local tag = model:FindFirstChild("GateTag", true)
+		local plate = tag and tag:FindFirstChild("Plate")
+		local probs = {}
+		for _, d in ipairs(tag and tag:GetDescendants() or {}) do
+			if (d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0)) or d:IsA("UIGradient") then
+				probs[#probs + 1] = d.ClassName .. " on " .. d.Parent.Name
+			elseif d:IsA("TextLabel") and d.Visible and (d.TextStrokeTransparency <= 0.5 or d:FindFirstChildWhichIsA("UIStroke") ~= nil) then
+				probs[#probs + 1] = "'" .. d.Text .. "' is outlined"
+			end
+		end
+		for _, b in ipairs({ plate or false, pill or false }) do
+			local edge = b and b:FindFirstChild("SignEdge")
+			local lip = b and b:FindFirstChild("Lip")
+			if not (b and edge and edge.LineJoinMode == Enum.LineJoinMode.Miter and lip and lip.Visible and b.BackgroundTransparency == 0) then
+				probs[#probs + 1] = (b and b.Name or "a block") .. ": no stone kit block (SignEdge + Lip)"
+			end
+		end
+		T.check(tag ~= nil and pill ~= nil and pill:GetAttribute("WorldTag") == true and #probs == 0,
+			label .. ": kit B: the tag is a stone block over a tinted Pill block (SignEdge + Lip each, ink texts, no round corner / gradient)", table.concat(probs, "; "))
+	end
 	T.eq(model:GetAttribute("VortexBoost"), ALTAR.Boost, label .. ": the gate model carries VortexBoost 1.4")
 	-- the pad
 	local okPad = pad ~= nil and pad:IsA("BasePart") and pad.Name == "Pad" and pad:IsDescendantOf(model)

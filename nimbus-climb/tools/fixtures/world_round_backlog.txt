@@ -8,13 +8,7 @@ BoardGui
 ClaimGui
 CountdownGui
 GateTag
-JoinBillboard
 LeaderGui
-NameTag
-Nameplate
 PadSign
 PadTag
-PriceBillboard
-ShowcaseTag
 SignGui
-TroveBillboard

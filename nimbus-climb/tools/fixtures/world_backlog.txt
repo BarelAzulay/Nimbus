@@ -15,17 +15,9 @@ World.CountdownFace.**
 World.Face.**
 World.FoodBowl.**
 World.GateSign.**
-World.JoinAnchor.**
-World.NameTag.**
-World.NameplateAnchor.**
-World.NumberSign.**
 World.Panel.**
-World.PlateAnchor.**
-World.PriceAnchor.**
-World.ShopSign.**
 World.SignBoard.**
 World.Unit_4.**
-World.WelcomeSign.**
 WorldMirror.BoardGui.**
 WorldMirror.ClaimGui.**
 WorldMirror.CountdownGui.**

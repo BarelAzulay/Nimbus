@@ -5567,6 +5567,157 @@ function WU.poster(screen)
 	end
 end
 
+-- (kit B lane A, the owner's "home gui's havent changed") the lobby's own signs on the stone kit, built by LobbyBuilder /
+-- SpotService as the server builds them. worldui:lobby = the pixel tags 1:1: a free home's nameplate and two owned ones (the
+-- silhouette well, a long name with the Prestige line), the podium tag (SpotService's buildTag + paintTag) for a Common and
+-- a Secret pet, the four machine tags, SKY TROVE, the Join sign, the garden name tags and a 'No. 7' face (1:1);
+-- worldui:lobbyboards = the welcome arch, HOW TO PLAY, CLOUD SHOP and WINGED PETS boards, each canvas fitted
+function WU.surfaceCanvas(face)
+	local W, H = face.CanvasSize.X, face.CanvasSize.Y
+	local part = face.Adornee or face.Parent
+	if face.SizingMode == Enum.SurfaceGuiSizingMode.PixelsPerStud and part and part:IsA("BasePart") then
+		local n, s, pps = face.Face, part.Size, face.PixelsPerStud
+		local a, b = s.X, s.Y
+		if n == Enum.NormalId.Left or n == Enum.NormalId.Right then
+			a = s.Z
+		elseif n == Enum.NormalId.Top or n == Enum.NormalId.Bottom then
+			b = s.Z
+		end
+		W, H = floor(a * pps + 0.5), floor(b * pps + 0.5)
+	end
+	return W, H
+end
+
+function WU.faceCell(screen, face, x, y, s, name)
+	local W, H = WU.surfaceCanvas(face)
+	local cell = make("Frame", { Name = name or "Face", BackgroundTransparency = 1, Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(W * s, H * s) }, screen)
+	for _, c in ipairs(face:GetChildren()) do
+		if c:IsA("GuiObject") then
+			c:Clone().Parent = cell
+		end
+	end
+	if math.abs(s - 1) > 1e-3 then
+		deepScale(cell, s)
+	end
+	return cell
+end
+
+function WU.lobbySigns(screen, boards)
+	NK.hideGame()
+	local lobby = WU.serverWorld()
+	advance(0.3)
+	local place = WU.flow(24, 96)
+	local root = workspace:FindFirstChild("NimbusLobby")
+	local shown = 0
+	local function show(gui, cap)
+		local w, h = canvasOf(gui)
+		cap = fmt("%s (%dx%d px)", cap, w, h)
+		local x, y = place(w, h, cap)
+		WU.caption(screen, cap, x, y - 26)
+		WU.cell(screen, gui, x, y)
+		shown = shown + 1
+	end
+	if boards then
+		local vp = Mock.Viewport
+		local faces = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d:IsA("SurfaceGui") and d.Face == Enum.NormalId.Front and d.Parent then
+				local p = d.Parent
+				local key = (p.Name == "Face" and p.Parent) and p.Parent.Name or p.Name
+				if (key == "WelcomeSign" or key == "HowToBoard" or key == "ShopSign" or key == "RarityBoard") and not faces[key] then
+					faces[key] = d
+				end
+			end
+		end
+		local order = { { "WelcomeSign", "the welcome arch" }, { "HowToBoard", "HOW TO PLAY" }, { "ShopSign", "CLOUD SHOP" }, { "RarityBoard", "WINGED PETS" } }
+		local x, y, rowH = 24, 96, 0
+		for _, o in ipairs(order) do
+			local face = faces[o[1]]
+			if face then
+				local W, H = WU.surfaceCanvas(face)
+				local s = min(1, (vp.X - 48) / W, (vp.Y - 140) / H, 0.62)
+				local w, h = W * s, H * s
+				if x > 24 and x + w > vp.X - 12 then
+					x, y, rowH = 24, y + rowH + 46, 0
+				end
+				local cap = fmt("%s (%dx%d canvas, x%.2f)", o[2], W, H, s)
+				WU.caption(screen, cap, x, y - 26)
+				WU.faceCell(screen, face, x, y, s, o[1])
+				rowH = max(rowH, h)
+				x = x + max(w, utf8len(cap) * 9 + 12) + 30
+				shown = shown + 1
+			else
+				note("worldui:lobbyboards no " .. o[1])
+			end
+		end
+		note(fmt("worldui:lobbyboards %d boards", shown))
+		return
+	end
+	-- the nameplates: spot 1 free; spot 2 owned (the silhouette); spot 3 a long name with the Prestige line
+	local spots = type(lobby.Spots) == "table" and lobby.Spots or {}
+	local function well(spot, mode)
+		local disc = spot.Nameplate and spot.Nameplate:FindFirstChild("Avatar", true)
+		if disc then
+			disc.BackgroundColor3 = disc:GetAttribute(mode == "Free" and "FreeColor" or "OwnedColor") or disc.BackgroundColor3
+			disc.FreeIcon.Visible = mode == "Free"
+			disc.Silhouette.Visible = mode == "Owned"
+		end
+	end
+	local looks = { { "Free home", "Press E at the gate", "Free" }, { "Mia", "Home Level 3", "Owned" }, { "Alexandrovich_X", "Home Level 12 \226\128\162 2 stars", "Owned" } }
+	for i, look in ipairs(looks) do
+		local spot = spots[i]
+		if spot and spot.Nameplate then
+			spot.NameLabel.Text, spot.SubLabel.Text = look[1], look[2]
+			well(spot, look[3])
+			show(spot.Nameplate, fmt("home nameplate #%d, %s", i, look[3] == "Free" and "free" or "owned"))
+		end
+	end
+	-- the podium tag, as SpotService builds and paints it
+	local SS = req("server/Services/SpotService", true)
+	local PC = req("shared/PetCatalog", true)
+	if SS and SS._Tag and spots[1] then
+		local context = Mock.Context
+		Mock.Context = "server"
+		for _, rarity in ipairs({ "Common", "Secret" }) do
+			local def = nil
+			for _, p in ipairs(PC and PC.Pets or {}) do
+				if not def and p.Rarity == rarity then
+					def = p
+				end
+			end
+			local ok, tag = pcall(SS._Tag.Build, { PodiumCFrame = spots[1].PodiumCFrame, Folder = workspace })
+			if ok and tag and def then
+				SS._Tag.Paint(tag, def, def.Id)
+				advance(0.05)
+				show(tag.Gui, "podium tag, " .. rarity)
+			else
+				note("worldui:lobby podium tag: " .. tostring(tag))
+			end
+		end
+		Mock.Context = context
+	end
+	for _, name in ipairs({ "PriceBillboard", "TroveBillboard", "JoinBillboard", "NameTag" }) do
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d:IsA("BillboardGui") and d.Name == name then
+				local first = d:FindFirstChildWhichIsA("TextLabel", true)
+				show(d, name .. (first and (" '" .. first.Text .. "'") or ""))
+			end
+		end
+	end
+	local sign = spots[7] and spots[7].Folder and spots[7].Folder:FindFirstChild("NumberSign", true)
+	local face = sign and sign:FindFirstChildOfClass("SurfaceGui")
+	if face then
+		local W, H = WU.surfaceCanvas(face)
+		-- 1:1 (deepScale past 100 px text adds a UIScale that grows the label's box: a x2 mirror drew it off-centre)
+		local cap = fmt("'No. 7' gate sign face (%dx%d canvas, 1:1)", W, H)
+		local x, y = place(W, H, cap)
+		WU.caption(screen, cap, x, y - 26)
+		WU.faceCell(screen, face, x, y, 1, "NumberSign")
+		shown = shown + 1
+	end
+	note(fmt("worldui:lobby %d signs", shown))
+end
+
 scenario("worldui", function(piece)
 	piece = tostring(piece or "")
 	if piece == "" then
@@ -5589,11 +5740,13 @@ scenario("worldui", function(piece)
 		WU.places(screen, piece == "places2")
 	elseif piece == "poster" then
 		WU.poster(screen)
+	elseif piece == "lobby" or piece == "lobbyboards" then
+		WU.lobbySigns(screen, piece == "lobbyboards")
 	elseif guide[piece] then
 		WU.guide(screen, guide[piece])
 	else
 		undo()
-		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:places2|:poster|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]")
+		fail("usage: worldui[:npc|:prompt|:altar|:gates|:hits|:places|:places2|:poster|:lobby|:lobbyboards|:guide|:guideahead|:guidenear|:guidetilt|:guidehere]")
 	end
 	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	if guide[piece] and workspace.CurrentCamera then

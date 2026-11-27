@@ -500,6 +500,52 @@ local function serverScenarios()
 		end
 	end)
 
+	-- (kit B lane A: the lobby's own signs moved to the stone kit, item 04 B) what is wrong with one converted sign: a
+	-- rounded corner or a gradient anywhere under `root`, `block` (the face) without its mitred SignEdge stroke or a visible
+	-- Lip (`lipColour` checked when given), or one of `texts` (names) missing / empty / outlined -> list of problems
+	local function near3(a, b)
+		return typeof(a) == "Color3" and typeof(b) == "Color3" and math.abs(a.R - b.R) < 0.01 and math.abs(a.G - b.G) < 0.01 and math.abs(a.B - b.B) < 0.01
+	end
+	local function kitIssues(root, block, texts, lipColour)
+		local out = {}
+		if not root then
+			return { "missing" }
+		end
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("UICorner") and (d.CornerRadius.Scale > 0 or d.CornerRadius.Offset > 0) then
+				out[#out + 1] = "a round corner on " .. d.Parent.Name
+			elseif d:IsA("UIGradient") then
+				out[#out + 1] = "a gradient on " .. d.Parent.Name
+			end
+		end
+		local edge = block and block:FindFirstChild("SignEdge")
+		local lip = block and block:FindFirstChild("Lip")
+		if not (edge and edge:IsA("UIStroke") and edge.LineJoinMode == Enum.LineJoinMode.Miter and edge.Thickness >= 2
+			and edge.ApplyStrokeMode == Enum.ApplyStrokeMode.Border) then
+			out[#out + 1] = (block and block.Name or "the block") .. " has no mitred SignEdge"
+		end
+		if not (lip and lip:IsA("Frame") and lip.Visible and lip.Size.Y.Offset > 0) then
+			out[#out + 1] = (block and block.Name or "the block") .. " has no Lip"
+		elseif typeof(lipColour) == "Color3" then
+			local c = lip.BackgroundColor3
+			if not near3(c, lipColour) then
+				out[#out + 1] = string.format("%s's lip %d,%d,%d (want %d,%d,%d)", block.Name, c.R * 255, c.G * 255, c.B * 255, lipColour.R * 255, lipColour.G * 255, lipColour.B * 255)
+			end
+		end
+		if block and block.BackgroundTransparency ~= 0 then
+			out[#out + 1] = block.Name .. " is not an opaque face"
+		end
+		for _, name in ipairs(texts or {}) do
+			local t = root:FindFirstChild(name, true)
+			if not (t and t:IsA("TextLabel") and plain(t.Text) ~= "") then
+				out[#out + 1] = "no text " .. name
+			elseif outlined(t) then
+				out[#out + 1] = name .. " is outlined (the kit's ink has none)"
+			end
+		end
+		return out
+	end
+
 	S.polish_worldtext = guarded("polish_worldtext", function()
 		local K = _G.K
 		if not K.needBoot() then
@@ -607,8 +653,40 @@ local function serverScenarios()
 			.. " px over an info line >= " .. INFO_MIN .. " px, an avatar disc (Headshot / Silhouette / FreeIcon) and the '#N' badge")
 		local free = T.tally("free homes read 'Free home' / 'Press E at the gate' with the '+' on the disc (no headshot)")
 		local signs = T.tally("every plot's gate sign reads 'No. N' on both faces in letters >= 1 stud")
+		-- (kit B lane A: the owner's "home gui's havent changed") the nameplate is ONE stone card (a mitred wood edge, a lip
+		-- in the plot's colour), the avatar a square well with a mitred wood edge, the '#N' a gold block; the number sign a
+		-- stone panel with the plot-coloured lip; no round corner or gradient anywhere, the texts in ink (no outline)
+		local Theme, WT = mod("Theme"), mod("WorldTag")
+		local kitPlates = T.tally("kit B: every home nameplate is one stone card (SignEdge + a lip in the plot's colour), a square avatar well with a mitred wood edge, a gold '#N' block, no round corner / gradient, NameLabel / SubLabel in ink")
+		local kitSigns = T.tally("kit B: every plot's 'No. N' face is a stone panel (SignEdge + a lip in the plot's colour), no round corner / gradient, the number in ink")
 		for i, spot in ipairs(info.Spots) do
 			local gui, disc = discOf(spot)
+			local accentLip = (WT and typeof(spot.Accent) == "Color3") and WT.LipOf(spot.Accent) or nil
+			local plateBlock = gui and gui:FindFirstChild("Plate")
+			local probs = kitIssues(gui, plateBlock, { "NameLabel", "SubLabel", "Number" }, accentLip)
+			local wellEdge = disc and disc:FindFirstChild("SignEdge")
+			if not (wellEdge and wellEdge.LineJoinMode == Enum.LineJoinMode.Miter and Theme and near3(wellEdge.Color, Theme.Sign.Wood)) then
+				probs[#probs + 1] = "the avatar well has no mitred wood edge"
+			end
+			local nb = gui and gui:FindFirstChild("NumberBadge", true)
+			local nbProbs = kitIssues(nb, nb, { "Number" }, Theme and Theme.Sign.GoldLip)
+			for _, p in ipairs(nbProbs) do
+				probs[#probs + 1] = "badge: " .. p
+			end
+			if nb and Theme and not near3(nb.BackgroundColor3, Theme.Sign.Gold) then
+				probs[#probs + 1] = "the '#N' block is not gold"
+			end
+			kitPlates:case(#probs == 0, "spot " .. i .. ": " .. table.concat(probs, "; "))
+			local signProbs = {}
+			local numberSign = spot.Folder:FindFirstChild("NumberSign", true)
+			for _, sg in ipairs(numberSign and numberSign:GetChildren() or {}) do
+				if sg:IsA("SurfaceGui") then
+					for _, p in ipairs(kitIssues(sg, sg:FindFirstChild("Plate"), { "Number" }, accentLip)) do
+						signProbs[#signProbs + 1] = sg.Face.Name .. ": " .. p
+					end
+				end
+			end
+			kitSigns:case(numberSign ~= nil and #signProbs == 0, "spot " .. i .. ": " .. table.concat(signProbs, "; "))
 			local ok = gui ~= nil and gui:IsA("BillboardGui") and disc ~= nil and gui.Size.X.Scale == 0 and gui.MaxDistance >= 80 and gui.MaxDistance <= 120
 				and spot.NameLabel.TextSize >= NAME_MIN and spot.SubLabel.TextSize >= INFO_MIN and not spot.NameLabel.TextScaled
 			local badge = gui and gui:FindFirstChild("NumberBadge", true)
@@ -637,6 +715,8 @@ local function serverScenarios()
 		plates:report()
 		free:report()
 		signs:report()
+		kitPlates:report()
+		kitSigns:report()
 
 		-- Phase 2: a home is claimed with E at its gate (its ClaimPrompt; TycoonService answers it)
 		local function claimHome(player)
@@ -723,6 +803,21 @@ local function serverScenarios()
 				if tag then
 					local rec = auditGui(tag)
 					T.check(#rec.problems == 0 and rec.texts == 2, "...as a pixel-sized tag with readable text", table.concat(rec.problems, "; "))
+					-- (kit B lane A) ONE stone card with a lip in the rarity's colour (WorldTag.LipOf), the rarity a small
+					-- square block tinted in it (WorldTag.Tint: its lip the colour itself), no round corner / gradient
+					local rcol = nil
+					for _, r in ipairs(Config.Rarities) do
+						if shown and r.Id == shown.Rarity then
+							rcol = r.Color
+						end
+					end
+					local card, pill = tag:FindFirstChild("Card"), tag:FindFirstChild("RarityPill", true)
+					local probs = kitIssues(tag, card, { "PetName", "PetRarity" }, (WT and rcol) and WT.LipOf(rcol) or nil)
+					for _, p in ipairs(kitIssues(pill, pill, { "PetRarity" }, rcol)) do
+						probs[#probs + 1] = "rarity block: " .. p
+					end
+					T.check(#probs == 0, "kit B: the podium tag is one stone card (a lip in the rarity's colour) over a tinted square rarity block, no round corner / gradient, the texts in ink",
+						table.concat(probs, "; "))
 				end
 			end
 
@@ -903,6 +998,74 @@ local function serverScenarios()
 		T.check(stripRec ~= nil and stripRec.kind == "SurfaceGui" and #stripRec.problems == 0 and stripRec.texts == 7 and (stripRec.minStuds or 0) >= INFO_STUDS - 0.001,
 			"polish worldtext: the egg row's RarityStrip (seven rarity labels, every line >= 0.6 stud, fitting its box) is in the census and keeps the sign rule",
 			stripRec and (stripRec.texts .. " texts; " .. table.concat(stripRec.problems, "; ")) or "not in the census")
+		-- (kit B lane A: the lobby's own signs on the stone kit) every LobbyBuilder tag is a stone card (the SignEdge, a lip)
+		-- with its lines in ink, every board a stone panel (THE GATES face), every pill a small square tinted block; none has a
+		-- round corner or a gradient (the old navy capsules and panels)
+		do
+			local lobbyKit = T.tally("kit B: the lobby's own tags and boards (machine tags, SKY TROVE, the Join sign, the garden name tags, the welcome arch, HOW TO PLAY, CLOUD SHOP, WINGED PETS) are stone blocks with a SignEdge + Lip, their texts in ink, no round corner / gradient")
+			local seen = { PriceBillboard = 0, TroveBillboard = 0, JoinBillboard = 0, NameTag = 0, WelcomeSign = 0, HowToBoard = 0, ShopSign = 0, RarityBoard = 0 }
+			local tagTexts = { PriceBillboard = { "NameLabel", "PriceLabel" }, TroveBillboard = { "Title" }, NameTag = { "Text" } }
+			for _, d in ipairs(lobbyModel and lobbyModel:GetDescendants() or {}) do
+				if d:IsA("BillboardGui") and seen[d.Name] ~= nil then
+					seen[d.Name] = seen[d.Name] + 1
+					local texts = tagTexts[d.Name]
+					if d.Name == "JoinBillboard" then
+						texts = {}
+						for _, n in ipairs({ "JoinTitle", "JoinReward", "JoinSoon" }) do
+							if d:FindFirstChild(n, true) then
+								texts[#texts + 1] = n
+							end
+						end
+						if #texts == 0 then
+							texts = { "JoinSoon" }
+						end
+					end
+					local probs = kitIssues(d, d:FindFirstChild("Plate"), texts)
+					lobbyKit:case(#probs == 0, shortPath(d) .. ": " .. table.concat(probs, "; "))
+				elseif d:IsA("SurfaceGui") and d.Parent and (seen[d.Parent.Name] ~= nil or (d.Parent.Name == "Face" and d.Parent.Parent and d.Parent.Parent.Name == "HowToBoard")) then
+					local key = seen[d.Parent.Name] ~= nil and d.Parent.Name or "HowToBoard"
+					seen[key] = seen[key] + 1
+					local panel = d:FindFirstChild("Panel")
+					local probs = kitIssues(d, panel, {})
+					if panel and panel.Parent then
+						for _, t in ipairs(d:GetDescendants()) do
+							if t:IsA("TextLabel") and outlined(t) then
+								probs[#probs + 1] = "'" .. plain(t.Text):sub(1, 20) .. "' is outlined"
+							end
+						end
+					end
+					lobbyKit:case(#probs == 0, shortPath(d) .. ": " .. table.concat(probs, "; "))
+				elseif d:IsA("Model") and d.Name == "RarityBoard" then
+					seen.RarityBoard = seen.RarityBoard + 1
+					local face = d:FindFirstChild("Face")
+					local sg = face and face:FindFirstChildOfClass("SurfaceGui")
+					local panel = sg and sg:FindFirstChild("Panel")
+					local probs = kitIssues(sg, panel, { "Header", "Sub", "Name1", "Price1" })
+					local pills = 0
+					for _, p in ipairs(panel and panel:GetDescendants() or {}) do
+						if p:IsA("Frame") and p.Name:match("^Rarity_") then
+							pills = pills + 1
+							for _, q in ipairs(kitIssues(p, p, { p.Name .. "Label" })) do
+								probs[#probs + 1] = p.Name .. ": " .. q
+							end
+						end
+					end
+					if pills < 4 then
+						probs[#probs + 1] = pills .. " rarity blocks"
+					end
+					lobbyKit:case(#probs == 0, "RarityBoard: " .. table.concat(probs, "; "))
+				end
+			end
+			local missing = {}
+			for name, n in pairs(seen) do
+				if n == 0 then
+					missing[#missing + 1] = name
+				end
+			end
+			table.sort(missing)
+			T.check(#missing == 0, "kit B: (setup) the lobby's machine tags, trove signs, garden tags and boards are all built", table.concat(missing, ", "))
+			lobbyKit:report()
+		end
 		-- lobby shop Task 13 (spec 5.11 c): the Storm Altar is exempt above, but its return sign keeps the rule. On the
 		-- Part fallback it is a tag "To the Plaza" (the full tag rule); on the dressed portal_ring mesh the 4 x 1-stud navy
 		-- board reads "Plaza" (shop-area polish: "To the Plaza" fit it only at 0.6 stud), so the full sign rule applies,
