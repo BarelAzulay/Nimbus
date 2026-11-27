@@ -1080,11 +1080,13 @@ local function applyMargins(animate, force)
 		end
 		return true
 	end
-	-- On a touch screen in landscape, in a match / its countdown, where that card has no row (kit-b: at 640 x 360 ..
-	-- 812 x 375 squeezed onto DASH, RUN and the jump ring, 'SkyCli...', off the right edge at 640): the card becomes the
-	-- slim bar, and the match card's checkpoints move up into its clock row (a narrow card 28 design px shorter: at
-	-- 640 x 360 its corner and shadow lay on RUN)
-	local noRow = touch and vp.X > vp.Y and inMatch
+	-- On a touch screen in landscape, in a match / its countdown or on the party pad, where that card has no row (kit-b:
+	-- at 640 x 360 .. 812 x 375 squeezed onto DASH, RUN and the jump ring, 'SkyCli...', off the right edge at 640):
+	--   * in a match the card becomes the slim bar, and the match card's checkpoints move up into its clock row (a narrow
+	--     card 28 design px shorter: at 640 x 360 its corner and shadow lay on RUN);
+	--   * on the pad the vitals step aside while the panel shows (no damage comes on the pad; the tutorial's chip docks
+	--     bottom-left there): the pitch's pad rule.
+	local noRow = touch and vp.X > vp.Y and (hasPanel or inMatch)
 		and not rowClear(obstacles, vitalsLeft, math.floor(vitalsW * k), vitalsBottom, vitalsH * k, tabUpPx, nameW)
 	local slim = noRow and inMatch
 	if setMatchCompact and setMatchCompact(slim and hasPanel) then
