@@ -31,7 +31,7 @@
 -- play" / "Starting in 12"). It floats ~27 studs up and shows within 55 studs (the gate card range,
 -- WorldStyle.TagRange; 2026-11-13 owner: 55, was 45; first 120).
 -- Countdown face (eye level, for friends standing next to the portal): a SurfaceGui in the gate's swirl,
--- facing the plaza, ~11 studs above the pad: "Starting in", a 3.2-stud numeral on a round badge and the head
+-- facing the plaza, ~11 studs above the pad: "Starting in", a 3.2-stud numeral on a square stone badge and the head
 -- count. Shown only while the pad has a party.
 -- The server writes a text only when it changes (at most once per second per line) and mirrors the numbers as
 -- attributes on the portal model (PartyCount, PartyMax, Countdown).
@@ -48,6 +48,7 @@ local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
 local Theme = require(Shared.Theme)
 local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the difficulty stars on the gate cards
+local WorldTag = require(Shared.WorldTag) -- (kit-b world signs, lane C) the stone card tier of the stand-in board and the face
 
 local ObbyLevels = nil
 do
@@ -100,6 +101,15 @@ local BB = {
 	InfoText = 21,
 	StatusText = 25,
 	PlateMinW = 190,
+	-- (kit-b world signs, lane C) the stand-in board's stone card (NpcService's nameplate numbers): px inside the face, the
+	-- status pill's wood edge, lip and side room
+	PadX = 18,
+	PadTop = 8,
+	Gap = 3,
+	PadBottom = 6,
+	PillEdge = 2,
+	PillLip = 4,
+	PillPad = 14,
 }
 
 -- Countdown face (SurfaceGui, World text rule: 40-60 px per stud, titles >= 1 stud, info lines >= 0.6 stud).
@@ -120,6 +130,13 @@ local FACE = {
 	NumScale = 1.6,
 	TopText = 56, -- 1.12 studs
 	CountText = 40, -- 0.8 stud
+	-- (kit-b world signs, lane C) the badge is a square stone card (THE GATES board's 6 px wood edge, a 10 px lip in the
+	-- portal's colour, gold while counting down); the ribbon and the head count are small square blocks (a 4 px wood edge)
+	Edge = 6,
+	Lip = 10,
+	PillEdge = 4,
+	PillLip = 6,
+	PillPad = 32, -- side room each side (FredokaOne's capitals run wider than a quick measure: the world text audit's real widths)
 }
 
 local MAX_STARS = 5 -- a difficulty's rating: PixelIcon stars (kit-b U7b; they were the star glyphs)
@@ -583,33 +600,13 @@ end
 ----------------------------------------------------------------------
 -- Billboard (pixel-sized, World text rule)
 ----------------------------------------------------------------------
-local INK = Theme.Colors.TextStroke or Theme.Colors.Ink
 local GOLD = Theme.Colors.Gold or Theme.Colors.Token
 -- (kit-b U7b) the rating on an empty label: `filled` gold PixelIcon stars of MAX_STARS, the rest dim
 local function starRating(label, filled)
 	filled = math.max(0, math.min(MAX_STARS, math.floor(tonumber(filled) or 1)))
 	label.Text = ""
 	label.TextXAlignment = Enum.TextXAlignment.Left
-	PixelIcon.Lead(label, "star", { Count = filled, Of = MAX_STARS, Colour = GOLD })
-end
-
-local function plateLabel(parent, name, text, role, size, color, outlineColor, order)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = color,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2.5,
-		OutlineColor = outlineColor or INK,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order or 0,
-		},
-	})
-	label.Parent = parent
-	return label
+	PixelIcon.Lead(label, "star", { Count = filled, Of = MAX_STARS, Colour = Theme.Sign.GoldLip }) -- (the gate board's stars on stone)
 end
 
 local function listLayout(parent, direction, padding)
@@ -621,16 +618,6 @@ local function listLayout(parent, direction, padding)
 	layout.Padding = UDim.new(0, padding)
 	layout.Parent = parent
 	return layout
-end
-
-local function uiPadding(parent, top, side, bottom)
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, top)
-	pad.PaddingBottom = UDim.new(0, bottom)
-	pad.PaddingLeft = UDim.new(0, side)
-	pad.PaddingRight = UDim.new(0, side)
-	pad.Parent = parent
-	return pad
 end
 
 -- World height of the gate's top (the star gems), or a sensible height above the zone.
@@ -700,6 +687,7 @@ local function buildBillboard(party)
 	local diff = party.Diff
 	local color = diff.Color
 	local anchor = billboardAnchor(party)
+	local Sign, Z = Theme.Sign, WorldTag.Sizes
 
 	-- the old studs-sized card (text shrank with distance) goes away
 	local old = info.Billboard
@@ -722,55 +710,82 @@ local function buildBillboard(party)
 	gui.MaxDistance = BB.MaxDistance
 	gui.ClipsDescendants = false
 	gui.Adornee = anchor
+	gui:SetAttribute("BaseWidth", BB.Width)
+	gui:SetAttribute("BaseHeight", BB.Height)
 
+	-- (kit-b world signs, lane C: the rounded gradient plate in the portal's colour went) the NPC nameplate's stone card:
+	-- a 3 px mitred wood edge, a lip in the portal's colour, the name and the head count in the kit's brown ink, the stars
+	-- in the dark gold, the status pill a small square block tinted in the portal's colour (setPillMode re-tints it gold
+	-- while counting down). Every line is measured (the longest status and head count too), so the card never resizes
+	local maxP = Config.Match.MaxPlayers
+	local name = diff.DisplayName or diff.Id
+	local function wide(text, role, px)
+		return math.ceil(Theme.Measure(text, role, px).X)
+	end
+	local statusW = 0
+	for _, t in ipairs({ "Step in to play", "Waiting for players...", string.format("Full! Starting in %d", 88) }) do
+		statusW = math.max(statusW, wide(t, "Display", BB.StatusText))
+	end
+	local infoW = MAX_STARS * (BB.InfoText + 2) + 12 + wide(string.format("%d/%d players", maxP, maxP), "Heading", BB.InfoText)
+	local faceW = math.max(BB.PlateMinW - 2 * Z.Edge, wide(name, "Title", BB.NameText) + 2 * BB.PadX, infoW + 2 * BB.PadX,
+		statusW + 2 * (BB.PillPad + BB.PillEdge + BB.PadX))
+	local pillH = BB.StatusText + 6 + BB.PillLip -- the pill's face, its lip included
+	local y = BB.PadTop
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
-	plate.Position = UDim2.new(0.5, 0, 1, 0)
-	plate.Size = UDim2.fromOffset(BB.PlateMinW, 0)
-	plate.AutomaticSize = Enum.AutomaticSize.XY
-	plate.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- the gradient supplies the colour
-	plate.BackgroundTransparency = 0.04
-	plate.BorderSizePixel = 0
-	Theme.Corner(plate, UDim.new(0, 16))
-	Theme.Stroke(plate, Theme.Lighten(color, 0.15), 4, 0)
-	Theme.Gradient(plate, Theme.Darken(color, 0.48), Theme.Darken(color, 0.72), 90)
-	uiPadding(plate, 8, 18, 10)
-	listLayout(plate, Enum.FillDirection.Vertical, 3)
+	plate.Position = UDim2.new(0.5, 0, 1, -Z.Edge)
+	plate.ZIndex = 2
+	WorldTag.Block(plate, Sign.Stone, WorldTag.LipOf(color), Sign.Wood, Z.Edge, Z.Lip)
 	plate.Parent = gui
 
-	local title = plateLabel(plate, "TitleLabel", diff.DisplayName or diff.Id, "Title", BB.NameText, Theme.Lighten(color, 0.6), Theme.Darken(color, 0.7), 1)
+	local title = WorldTag.Text(plate, "TitleLabel", name, "Title", BB.NameText, Sign.Text, {
+		Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, BB.NameText + 4), TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = 1, ZIndex = 3,
+	})
+	y = y + BB.NameText + 4 + BB.Gap
 
 	local infoRow = Instance.new("Frame")
 	infoRow.Name = "InfoRow"
 	infoRow.BackgroundTransparency = 1
+	infoRow.AnchorPoint = Vector2.new(0.5, 0)
+	infoRow.Position = UDim2.new(0.5, 0, 0, y)
 	infoRow.Size = UDim2.fromOffset(0, BB.InfoText + 4)
-	infoRow.AutomaticSize = Enum.AutomaticSize.XY
+	infoRow.AutomaticSize = Enum.AutomaticSize.X
 	infoRow.LayoutOrder = 2
+	infoRow.ZIndex = 3
 	listLayout(infoRow, Enum.FillDirection.Horizontal, 12)
 	infoRow.Parent = plate
-	local stars = plateLabel(infoRow, "StarLabel", "", "Heading", BB.InfoText, GOLD, INK, 1)
+	local stars = WorldTag.Text(infoRow, "StarLabel", "", "Heading", BB.InfoText, Sign.Text, {
+		Size = UDim2.fromOffset(0, BB.InfoText + 4), AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 1, ZIndex = 3,
+	})
 	starRating(stars, diff.Stars)
-	local count = plateLabel(infoRow, "CountLabel", "0/" .. tostring(Config.Match.MaxPlayers) .. " players", "Heading", BB.InfoText, Theme.Colors.White, INK, 2)
+	local count = WorldTag.Text(infoRow, "CountLabel", "0/" .. tostring(maxP) .. " players", "Heading", BB.InfoText, Sign.TextMuted, {
+		Size = UDim2.fromOffset(0, BB.InfoText + 4), AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 2, ZIndex = 3,
+	})
+	y = y + BB.InfoText + 4 + BB.Gap
 
 	local pill = Instance.new("Frame")
 	pill.Name = "StatusPill"
-	pill.Size = UDim2.fromOffset(0, BB.StatusText + 10)
-	pill.AutomaticSize = Enum.AutomaticSize.XY
-	pill.BorderSizePixel = 0
-	pill.BackgroundTransparency = 0
+	pill.AnchorPoint = Vector2.new(0.5, 0)
+	pill.Position = UDim2.new(0.5, 0, 0, y + BB.PillEdge)
+	pill.Size = UDim2.fromOffset(faceW - 2 * (BB.PadX + BB.PillEdge), pillH)
 	pill.LayoutOrder = 3
-	Theme.Corner(pill, UDim.new(0, 12))
-	local pillStroke = Theme.Stroke(pill, INK, 2.5, 0)
-	uiPadding(pill, 3, 14, 4)
+	pill.ZIndex = 3
+	WorldTag.Block(pill, color, color, Sign.Wood, BB.PillEdge, BB.PillLip)
 	pill.Parent = plate
-	local status = plateLabel(pill, "StatusLabel", "Step in to play", "Display", BB.StatusText, Theme.Colors.White, INK, 1)
+	local status = WorldTag.Text(pill, "StatusLabel", "Step in to play", "Display", BB.StatusText, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -BB.PillLip), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, ZIndex = 4,
+	})
+	WorldTag.Tint(pill, color)
+	y = y + pillH + 2 * BB.PillEdge
+	plate.Size = UDim2.fromOffset(faceW, y + BB.PadBottom + Z.Lip)
 
 	gui.Parent = anchor
 
 	party.Billboard = gui
 	party.Pill = pill
-	party.PillStroke = pillStroke
+	party.PillStroke = nil
 	party.PillMode = nil
 	-- keep the LobbyInfo contract (Billboard + labels) pointing at the live billboard
 	info.Billboard = gui
@@ -805,6 +820,7 @@ local function buildFace(party)
 	local info = party.Info
 	local color = party.Diff.Color
 	local parent = info.Model or info.Zone.Parent
+	local Sign = Theme.Sign
 	local old = parent:FindFirstChild("CountdownFace")
 	if old then
 		old:Destroy()
@@ -832,93 +848,70 @@ local function buildFace(party)
 	gui.AlwaysOnTop = false
 	gui.Enabled = false -- shown while the pad has a party
 	gui.Adornee = part
+	local canvasW = FACE.Width * FACE.PPS
 
-	-- round badge: portal-coloured gradient, gold rim, a soft inner ring
+	-- (kit-b world signs, lane C: the round gradient badge with its gold rim, the gloss ring and the rounded ribbon and
+	-- count pill went) the badge is a square stone card (THE GATES board's 6 px mitred wood edge, a FACE.Lip px lip in the
+	-- portal's colour that turns gold while a countdown runs), the numeral in the kit's brown ink
 	local disc = Instance.new("Frame")
 	disc.Name = "Disc"
 	disc.AnchorPoint = Vector2.new(0.5, 0.5)
 	disc.Position = UDim2.new(0.5, 0, 0, FACE.DiscY)
 	disc.Size = UDim2.fromOffset(FACE.Disc, FACE.Disc)
-	disc.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- the gradient supplies the colour
-	disc.BackgroundTransparency = 0.04
-	disc.BorderSizePixel = 0
-	Theme.Corner(disc, UDim.new(0.5, 0))
-	local discStroke = Theme.Stroke(disc, GOLD, 9, 0)
-	Theme.Gradient(disc, Theme.Darken(color, 0.38), Theme.Darken(color, 0.74), 90)
+	local _, discLip = WorldTag.Block(disc, Sign.Stone, color, Sign.Wood, FACE.Edge, FACE.Lip)
 	disc.Parent = gui
-	local ring = Instance.new("Frame")
-	ring.Name = "Ring"
-	ring.AnchorPoint = Vector2.new(0.5, 0.5)
-	ring.Position = UDim2.fromScale(0.5, 0.5)
-	ring.Size = UDim2.fromOffset(FACE.Disc - 26, FACE.Disc - 26)
-	ring.BackgroundTransparency = 1
-	Theme.Corner(ring, UDim.new(0.5, 0))
-	Theme.Stroke(ring, Theme.Lighten(color, 0.35), 3, 0.35)
-	ring.Parent = disc
 
-	-- the numeral fills the badge box (its UIScale grows it around the centre)
-	local num = Theme.Label("0", "Display", {
-		Size = FACE.NumText,
-		Color = Theme.Colors.White,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 6,
-		OutlineColor = INK,
-		Props = {
-			Name = "NumeralLabel",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromScale(1, 1),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			TextYAlignment = Enum.TextYAlignment.Center,
-			ZIndex = 3,
-		},
+	-- the numeral fills the badge box above the lip (its UIScale grows it around the centre)
+	local num = WorldTag.Text(disc, "NumeralLabel", "0", "Display", FACE.NumText, Sign.Text, {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, -math.floor(FACE.Lip / 2)),
+		Size = UDim2.new(1, 0, 1, -FACE.Lip),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 3,
 	})
 	local numScale = Instance.new("UIScale")
 	numScale.Scale = FACE.NumScale
 	numScale.Parent = num
-	num.Parent = disc
 
-	-- "Starting in" ribbon over the badge's top edge
+	-- a measured block: as wide as the widest of `texts` plus its side room, inside the canvas (its edge too)
+	local function blockW(texts, role, px)
+		local w = 0
+		for _, t in ipairs(texts) do
+			w = math.max(w, math.ceil(Theme.Measure(t, role, px).X))
+		end
+		return math.min(w + 2 * FACE.PillPad, canvasW - 2 * FACE.PillEdge)
+	end
+
+	-- "Starting in" ribbon over the badge's top edge: a small square gold block (WorldTag.Tint; setPillMode re-tints it
+	-- in the portal's colour while waiting)
 	local top = Instance.new("Frame")
 	top.Name = "TopPill"
 	top.AnchorPoint = Vector2.new(0.5, 0)
-	top.Position = UDim2.new(0.5, 0, 0, FACE.TopY)
-	top.Size = UDim2.fromOffset(0, FACE.TopText + 12)
-	top.AutomaticSize = Enum.AutomaticSize.X
-	top.BackgroundColor3 = GOLD
-	top.BorderSizePixel = 0
+	top.Position = UDim2.new(0.5, 0, 0, FACE.TopY + FACE.PillEdge)
+	top.Size = UDim2.fromOffset(blockW({ "Starting in", "Waiting..." }, "Title", FACE.TopText), FACE.TopText + 8 + FACE.PillLip)
 	top.ZIndex = 4
-	Theme.Corner(top, UDim.new(0, 22))
-	local topStroke = Theme.Stroke(top, Theme.Darken(GOLD, 0.7), 5, 0)
-	uiPadding(top, 3, 24, 5)
+	WorldTag.Block(top, GOLD, GOLD, Sign.Wood, FACE.PillEdge, FACE.PillLip)
 	top.Parent = gui
-	local topLabel = plateLabel(top, "TopLabel", "Starting in", "Title", FACE.TopText, Theme.Colors.White, Theme.Darken(GOLD, 0.66), 1)
-	topLabel.ZIndex = 5
-	local topOutline = topLabel:FindFirstChild("TextOutline")
-	if topOutline then
-		topOutline.Thickness = 4
-	end
+	local topLabel = WorldTag.Text(top, "TopLabel", "Starting in", "Title", FACE.TopText, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -FACE.PillLip), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
+	})
+	WorldTag.Tint(top, GOLD)
 
-	-- head count under the badge
+	-- head count under the badge: a small square stone block, its lip in the portal's colour
+	local maxP = Config.Match.MaxPlayers
 	local bottom = Instance.new("Frame")
 	bottom.Name = "CountPill"
 	bottom.AnchorPoint = Vector2.new(0.5, 0.5)
 	bottom.Position = UDim2.new(0.5, 0, 0, FACE.CountY)
-	bottom.Size = UDim2.fromOffset(0, FACE.CountText + 12)
-	bottom.AutomaticSize = Enum.AutomaticSize.X
-	bottom.BackgroundColor3 = Theme.Colors.Panel or INK
-	bottom.BorderSizePixel = 0
+	bottom.Size = UDim2.fromOffset(blockW({ string.format("%d/%d players", maxP, maxP), string.format("Full! %d/%d", maxP, maxP) }, "Heading", FACE.CountText),
+		FACE.CountText + 8 + FACE.PillLip)
 	bottom.ZIndex = 4
-	Theme.Corner(bottom, UDim.new(0, 18))
-	Theme.Stroke(bottom, Theme.Lighten(color, 0.15), 4, 0)
-	uiPadding(bottom, 3, 18, 5)
+	WorldTag.Block(bottom, Sign.Tile, WorldTag.LipOf(color), Sign.Wood, FACE.PillEdge, FACE.PillLip)
 	bottom.Parent = gui
-	local countLabel = plateLabel(bottom, "CountLabel", "0/" .. tostring(Config.Match.MaxPlayers) .. " players", "Heading", FACE.CountText, Theme.Colors.White, INK, 1)
-	countLabel.ZIndex = 5
-	local countOutline = countLabel:FindFirstChild("TextOutline")
-	if countOutline then
-		countOutline.Thickness = 3
-	end
+	local countLabel = WorldTag.Text(bottom, "CountLabel", "0/" .. tostring(maxP) .. " players", "Heading", FACE.CountText, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -FACE.PillLip), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
+	})
 
 	gui.Parent = part
 	part.Parent = parent
@@ -926,10 +919,8 @@ local function buildFace(party)
 	party.Face = {
 		Part = part,
 		Gui = gui,
-		DiscStroke = discStroke,
+		DiscLip = discLip,
 		TopPill = top,
-		TopStroke = topStroke,
-		TopOutline = topOutline,
 		Top = topLabel,
 		Num = num,
 		Count = countLabel,
@@ -1013,10 +1004,7 @@ local function setPillMode(party, mode)
 	if party.Pill:GetAttribute("WorldTag") == true then
 		-- (look review r1, M5) the gate board's pill is a kit block: the face a light tint of the mode's colour, its lip
 		-- that colour, the ink brown; the wood edge stays wood
-		local okW, WorldTag = pcall(require, Shared:WaitForChild("WorldTag"))
-		if okW and type(WorldTag) == "table" and type(WorldTag.Tint) == "function" then
-			WorldTag.Tint(party.Pill, base)
-		end
+		WorldTag.Tint(party.Pill, base)
 	else
 		party.Pill.BackgroundColor3 = base
 		if party.PillStroke then
@@ -1027,15 +1015,14 @@ local function setPillMode(party, mode)
 	if outline then
 		outline.Color = Theme.Darken(base, 0.66)
 	end
-	-- the face's ribbon and badge rim follow: gold while counting down, the portal colour while waiting
+	-- the face's ribbon and badge lip follow (kit-b world signs, lane C: kit blocks, the wood edges stay wood): gold while
+	-- counting down, the portal colour while waiting
 	local face = party.Face
 	if face then
-		face.TopPill.BackgroundColor3 = base
-		face.TopStroke.Color = Theme.Darken(base, 0.7)
-		if face.TopOutline then
-			face.TopOutline.Color = Theme.Darken(base, 0.66)
+		WorldTag.Tint(face.TopPill, base)
+		if face.DiscLip then
+			face.DiscLip.BackgroundColor3 = (mode == "Countdown") and GOLD or party.Diff.Color
 		end
-		face.DiscStroke.Color = (mode == "Countdown") and GOLD or Theme.Lighten(party.Diff.Color, 0.2)
 	end
 end
 
@@ -1554,6 +1541,19 @@ function PortalService.GetParty(portalId)
 		return { Players = {}, Countdown = nil }
 	end
 	return { Players = copyList(party.Players), Countdown = countdownOf(party), Level = party.Diff.Id, Leader = party.Leader }
+end
+
+-- TESTS (kit-b world signs, lane C): builds the stand-in PortalBillboard and the countdown face for `info` ({ Model, Zone }:
+-- a gate WITHOUT a GateTag, which today's world never has) as Init does, the labels filled for `n` players; `mode`
+-- "Countdown" tints the pill and the face as a running countdown does. Not a live party (never polled) -> the party table
+function PortalService._BuildCards(info, n, mode)
+	local party = { Id = "Test", Info = info, Diff = Config.Difficulties[1], Players = {}, LastStateAt = 0 }
+	buildBillboard(party)
+	buildFace(party)
+	setText(info.CountLabel, string.format("%d/%d players", n or 0, Config.Match.MaxPlayers), "LastCount", party)
+	setPillMode(party, mode or "Idle")
+	refreshFace(party, n or 0, 9, mode or "Idle")
+	return party
 end
 
 -- The Obby gate's prompt (6.3): "Pick level" / "Sky Obby", OpenPanel = "Obby" (ObbyController opens the picker).
