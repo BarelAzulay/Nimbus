@@ -60,13 +60,16 @@ local BULLET = "\226\128\162"
 local FREE_NAME = "Free home"
 local FREE_SUB = "Press E at the gate"
 
--- Showcase tag (World text rule): pixel-sized, names >= 22 px, info >= 18 px, compact solid plate.
+-- Showcase tag (World text rule): pixel-sized, names >= 22 px, info >= 18 px, a compact stone card (kit B).
 local TAG_W, TAG_H = 300, 96
 local TAG_NAME_PX = 26
 local TAG_RARITY_PX = 18
 local TAG_RANGE = 80
 local TAG_LIFT = -1.2 -- studs: the plate's bottom edge sits ~0.7 stud over the highest point of the bob
-local INK = Theme.Colors.TextStroke or Theme.Colors.Ink
+local WorldTag = require(Shared.WorldTag) -- (Pitch 2 item 04 B) the podium tag as a kit B stone card
+local Sign = Theme.Sign
+-- the stone card (px at 1080p): its wood edge and lip, the paddings, the rarity block (its edge outside it)
+local TAG = { Edge = 3, Lip = 5, PadX = 16, PadTop = 6, Gap = 3, PadBottom = 5, PillEdge = 2, PillLip = 3, PillPad = 10, MinW = 120 }
 
 local SHOWCASE_SCALE = 1.4 -- the podium pet is a bit larger than a follower
 local SHOWCASE_TAG = "NC_Showcase" -- ShowcaseController (client) hovers / sways / animates every model with this tag
@@ -330,24 +333,23 @@ end
 ----------------------------------------------------------------------
 
 -- The tag floating above the pet (World text rule): a PIXEL-sized BillboardGui, so it reads the same at any
--- distance: the pet name (big, outlined) over a rarity pill in the rarity colour, on a compact navy plate with a
--- rarity-coloured outline that sizes itself to the text. Its bottom edge sits just over the bobbing pet.
-local function tagLabel(parent, name, text, role, size, order)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2.5,
-		OutlineColor = INK,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order,
-		},
+-- distance. (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags", modelled on WorldStyle.BuildTag: the navy gradient
+-- capsule, its rounded rarity pill and the outlined letters went) ONE stone card (shared/WorldTag: the Stone face, a 3 px
+-- mitred wood edge, a 5 px lip in the rarity's colour, WorldTag.LipOf) with the pet name in the kit's ink over a small
+-- square rarity block tinted in the rarity's colour (WorldTag.Tint), sized from the measured texts (tag.Layout, called
+-- after the texts are written). Its bottom edge sits just over the bobbing pet.
+local function tagLabel(parent, name, text, role, size, z)
+	local label = WorldTag.Text(parent, name, text, role, size, Sign.Text, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = z,
 	})
-	label.Parent = parent
+	label:SetAttribute("KitRole", role)
 	return label
+end
+
+local function lineW(label)
+	return math.ceil(Theme.Measure(label.Text, label:GetAttribute("KitRole") or "Body", label.TextSize).X)
 end
 
 local function buildTag(info)
@@ -377,51 +379,45 @@ local function buildTag(info)
 	local card = Instance.new("Frame")
 	card.Name = "Card"
 	card.AnchorPoint = Vector2.new(0.5, 1)
-	card.Position = UDim2.new(0.5, 0, 1, 0)
-	-- minimum width: catalog names are wider anyway; a short hybrid name ("Draar" + "Mythic") still gets a plate
-	-- that hugs it (140 left ~75 px of empty plate around it)
-	card.Size = UDim2.fromOffset(120, 0)
-	card.AutomaticSize = Enum.AutomaticSize.XY
-	card.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- the gradient below sets the real colour
-	card.BackgroundTransparency = 0.04
-	card.BorderSizePixel = 0
+	card.Position = UDim2.new(0.5, 0, 1, -TAG.Edge) -- raised by its edge (a BillboardGui clips what lies outside it)
+	card.Size = UDim2.fromOffset(TAG.MinW, 0)
+	card.ZIndex = 2
 	card.Parent = gui
-	Theme.Gradient(card, Theme.Colors.PanelLight, Theme.Colors.Panel, 90)
-	Theme.Corner(card, UDim.new(0, 14))
-	local stroke = Theme.Stroke(card, Theme.Colors.PanelLight, 3.5, 0)
-	stroke.Name = "RarityStroke"
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 6)
-	pad.PaddingBottom = UDim.new(0, 8)
-	pad.PaddingLeft = UDim.new(0, 16)
-	pad.PaddingRight = UDim.new(0, 16)
-	pad.Parent = card
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 3)
-	layout.Parent = card
+	local _, lip = WorldTag.Block(card, Sign.Stone, Sign.StoneLip, Sign.Wood, TAG.Edge, TAG.Lip)
 
-	local nameLabel = tagLabel(card, "PetName", "", "Title", TAG_NAME_PX, 1)
+	local nameLabel = tagLabel(card, "PetName", "", "Title", TAG_NAME_PX, 3)
 
 	local pill = Instance.new("Frame")
 	pill.Name = "RarityPill"
-	pill.Size = UDim2.fromOffset(0, TAG_RARITY_PX + 8)
-	pill.AutomaticSize = Enum.AutomaticSize.XY
-	pill.BackgroundColor3 = Theme.Colors.PanelLight
-	pill.BorderSizePixel = 0
-	pill.LayoutOrder = 2
+	pill.AnchorPoint = Vector2.new(0.5, 0)
+	pill.ZIndex = 3
 	pill.Parent = card
-	Theme.Corner(pill, UDim.new(0, 10))
-	Theme.Stroke(pill, INK, 2.5, 0)
-	local pillPad = Instance.new("UIPadding")
-	pillPad.PaddingTop = UDim.new(0, 2)
-	pillPad.PaddingBottom = UDim.new(0, 3)
-	pillPad.PaddingLeft = UDim.new(0, 10)
-	pillPad.PaddingRight = UDim.new(0, 10)
-	pillPad.Parent = pill
-	local rarityLabel = tagLabel(pill, "PetRarity", "", "Heading", TAG_RARITY_PX, 1)
+	WorldTag.Block(pill, Sign.Stone, Sign.StoneLip, Sign.Wood, TAG.PillEdge, TAG.PillLip)
+	local rarityLabel = tagLabel(pill, "PetRarity", "", "Heading", TAG_RARITY_PX, 4)
+	rarityLabel.AnchorPoint = Vector2.new(0, 0)
+	rarityLabel.Position = UDim2.fromOffset(0, 0)
+	rarityLabel.Size = UDim2.new(1, 0, 1, -TAG.PillLip)
+
+	-- the name over the rarity block, the card as wide as the wider needs (never under MinW): minimum width a short hybrid
+	-- name ("Draar" + "Mythic") still gets a card that hugs it
+	local function layout()
+		local nameH = TAG_NAME_PX + 4
+		local nw = lineW(nameLabel)
+		local pw = lineW(rarityLabel) + 2 * TAG.PillPad
+		local ph = TAG_RARITY_PX + 4 + TAG.PillLip
+		local w = math.max(TAG.MinW, nw + 2 * TAG.PadX, pw + 2 * TAG.PillEdge + 2 * TAG.PadX)
+		local y = TAG.PadTop
+		nameLabel.Position = UDim2.new(0.5, 0, 0, y)
+		nameLabel.Size = UDim2.fromOffset(nw, nameH)
+		y = y + nameH + TAG.Gap
+		pill.Position = UDim2.new(0.5, 0, 0, y + TAG.PillEdge)
+		pill.Size = UDim2.fromOffset(pw, ph)
+		y = y + ph + 2 * TAG.PillEdge
+		card.Size = UDim2.fromOffset(w, y + TAG.PadBottom + TAG.Lip)
+	end
+	-- (no Text listener: the tag is kept for the server's life and only showPet writes it, then calls Layout; final_checks
+	-- allows the pet name's one caps listener per tag and no more)
+	layout()
 
 	anchor.Parent = info.Folder or workspace
 	gui.Parent = anchor
@@ -431,9 +427,29 @@ local function buildTag(info)
 		NameLabel = nameLabel,
 		RarityLabel = rarityLabel,
 		RarityPill = pill,
-		Stroke = stroke,
+		Lip = lip,
+		Layout = layout,
 	}
 end
+
+-- the tag shows a pet: its name over its rarity, the rarity's colour on the card's lip (WorldTag.LipOf) and on the rarity
+-- block (WorldTag.Tint: a light face of the colour, its lip the colour itself, the text kept in ink, so even the dark
+-- Secret reads); the card hugs the new texts (tag.Layout)
+local function paintTag(tag, def, key)
+	local color = rarityColor[def.Rarity] or Sign.StoneLip
+	tag.NameLabel.Text = tostring(def.DisplayName or def.Name or key)
+	tag.RarityLabel.Text = tostring(def.Rarity or "")
+	if tag.Layout then
+		tag.Layout()
+	end
+	if tag.Lip then
+		tag.Lip.BackgroundColor3 = WorldTag.LipOf(color)
+	end
+	WorldTag.Tint(tag.RarityPill, color)
+	tag.Gui.Enabled = true
+end
+-- (tools/dump_gui.lua worldui:lobby renders the podium tag as the server builds and paints it)
+SpotService._Tag = { Build = buildTag, Paint = paintTag }
 
 local function makeShow(index)
 	local info = spots[index]
@@ -568,15 +584,8 @@ local function setShowcasePet(index, key, def, stage)
 	-- Tag: name + rarity, floating above the highest point of the bob.
 	local tag = show.Tag
 	if tag then
-		local color = rarityColor[def.Rarity] or Theme.Colors.PanelLight
 		tag.Anchor.CFrame = CFrame.new(podium.Position + Vector3.new(0, HOVER_HEIGHT + height + BOB_HEIGHT + 1.9, 0))
-		tag.NameLabel.Text = tostring(def.DisplayName or def.Name or key)
-		tag.RarityLabel.Text = tostring(def.Rarity or "")
-		tag.RarityPill.BackgroundColor3 = color:Lerp(Theme.Colors.Panel, 0.2)
-		-- a very dark rarity colour (Secret) would vanish against the navy plate: lift the outline
-		local luma = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B
-		tag.Stroke.Color = (luma < 0.35) and color:Lerp(Theme.Colors.Muted or Theme.Colors.White, 0.55) or color
-		tag.Gui.Enabled = true
+		paintTag(tag, def, key)
 	end
 end
 
