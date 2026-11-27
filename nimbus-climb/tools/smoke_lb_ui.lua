@@ -7,6 +7,9 @@
 --       LobbyLeaderboard in PlayerGui adorned to that Face: Face Front, PixelsPerStud 50 (800 x 650 px), MaxDistance 80,
 --       ResetOnSpawn false, LightInfluence 0 > Board > Title, Tabs > Tab_<stat> per Config.Leaderboard.Pages (their Labels),
 --       Scope, Rows > Row1..10 (Rank, Head 34 px ImageLabel, Name, Value), YouRow, Footer, Status
+--     (world signs kit-b, audit item 19) the Board a 788 x 638 stone card at 6, 6 in its 6 px mitred wood edge with an
+--       8 px lip; no UICorner / UIGradient under the gui; tabs, rank blocks and the You row kit blocks (SignEdge + Lip),
+--       each head a square well in a mitred wood edge; the texts in the kit's brown ink, no outline
 --     before any LeaderboardState: Status "Loading scores...", no row shown
 --     a state with ten rows and You = { Rank 37, Value 1240 }: Row1..10 filled (ranks, names, values with commas,
 --       Theme.ShortNumber from 1e6), ranks 1-3 gold / silver / bronze, the headshots fetched once per user
@@ -233,8 +236,59 @@ S.client_leaderboard = guarded("client_leaderboard", function()
 		if not board then
 			return
 		end
-		local bs = board.AbsoluteSize
-		T.check(bs.X == 800 and bs.Y == 650, "leaderboard: the Board fills the 800 x 650 canvas", fmt("%dx%d", bs.X, bs.Y))
+		-- (world signs kit-b, audit item 19) the Board is the GuideBoard's stone card, inset by its 6 px wood edge (drawn
+		-- outside it), so card and edge fill the 800 x 650 canvas exactly
+		local bs, bp = board.AbsoluteSize, board.AbsolutePosition
+		local bEdge = board:FindFirstChild("SignEdge")
+		local bw = bEdge and bEdge.Thickness or 0
+		T.check(bs.X == 788 and bs.Y == 638 and bp.X == 6 and bp.Y == 6 and bw == 6, "leaderboard: the Board is a 788 x 638 card at 6, 6 in its 6 px edge (card + edge fill the 800 x 650 canvas)",
+			fmt("%dx%d at %d,%d, edge %s", bs.X, bs.Y, bp.X, bp.Y, tostring(bw)))
+		-- the kit: no UICorner / UIGradient anywhere under the gui, the card's mitred wood SignEdge and its Lip, a stone face;
+		-- the tabs, the rank blocks and the You row kit blocks too (SignEdge + Lip), the head well's square SignEdge, the
+		-- texts present and in the kit's ink (no outline stroke)
+		local rounded = {}
+		for _, d in ipairs(gui:GetDescendants()) do
+			if d:IsA("UICorner") or d:IsA("UIGradient") then
+				rounded[#rounded + 1] = d:GetFullName()
+			end
+		end
+		T.check(#rounded == 0, "leaderboard kit: no UICorner / UIGradient under the board", table.concat(rounded, ", "))
+		local function kitBlock(obj)
+			local e, l = obj and obj:FindFirstChild("SignEdge"), obj and obj:FindFirstChild("Lip")
+			return e ~= nil and e:IsA("UIStroke") and e.LineJoinMode == Enum.LineJoinMode.Miter and e.ApplyStrokeMode == Enum.ApplyStrokeMode.Border
+				and G.rgb(e.Color, 140, 90, 46) and l ~= nil and l:IsA("Frame") and l.Visible and obj.BackgroundTransparency == 0
+		end
+		local bLip = board:FindFirstChild("Lip")
+		T.check(kitBlock(board) and G.rgb(board.BackgroundColor3, 255, 247, 230) and bLip and bLip.AbsoluteSize.Y == 8 and G.rgb(bLip.BackgroundColor3, 220, 201, 160),
+			"leaderboard kit: the Board is a stone card (a mitred wood SignEdge, an 8 px StoneLip Lip)")
+		local blocksOk, blocksWhy = true, ""
+		local tabRow = board:FindFirstChild("Tabs")
+		for _, stat in ipairs(PAGES) do
+			local tab = tabRow and tabRow:FindFirstChild("Tab_" .. stat)
+			if not kitBlock(tab) then
+				blocksOk, blocksWhy = false, "Tab_" .. stat
+			end
+		end
+		for i = 1, 10 do
+			local r = G.row(gui, i)
+			local headEdge = r and r.Head:FindFirstChild("SignEdge")
+			if not (r and kitBlock(r.Rank) and headEdge and headEdge.LineJoinMode == Enum.LineJoinMode.Miter and r.Head.BackgroundTransparency == 0 and r.Head.ScaleType == Enum.ScaleType.Crop) then
+				blocksOk, blocksWhy = false, "Row" .. i
+			end
+		end
+		if not kitBlock(board:FindFirstChild("YouRow")) then
+			blocksOk, blocksWhy = false, "YouRow"
+		end
+		T.check(blocksOk, "leaderboard kit: tabs, rank blocks and the You row are kit blocks (SignEdge + Lip); each head a square well in a mitred wood edge", blocksWhy)
+		local inkOk, inkWhy = true, ""
+		for _, name in ipairs({ "Title", "Scope", "YouRow", "Footer", "Status" }) do
+			local t = board:FindFirstChild(name)
+			local outlined = t and t:FindFirstChild("TextOutline")
+			if not (t and t:IsA("TextLabel") and (G.rgb(t.TextColor3, 59, 36, 18) or G.rgb(t.TextColor3, 118, 84, 54)) and t.TextStrokeTransparency >= 0.99 and not outlined) then
+				inkOk, inkWhy = false, name
+			end
+		end
+		T.check(inkOk, "leaderboard kit: Title, Scope, YouRow, Footer, Status present, in the kit's brown ink, no outline", inkWhy)
 		local tabs = board:FindFirstChild("Tabs")
 		local tabOk = tabs ~= nil
 		for _, stat in ipairs(PAGES) do
@@ -286,12 +340,13 @@ S.client_leaderboard = guarded("client_leaderboard", function()
 			local c = G.row(gui, i).Rank.BackgroundColor3
 			medalOk = medalOk and G.rgb(c, medals[i][1], medals[i][2], medals[i][3]) and G.row(gui, i).Rank.BackgroundTransparency < 0.5
 		end
+		-- (world signs kit-b) rank 4 on: a plain stone Tile block (it was a see-through disc)
 		local c4 = G.row(gui, 4).Rank
-		local plain4 = c4.BackgroundTransparency > 0.5
+		local plain4 = G.rgb(c4.BackgroundColor3, 255, 253, 246)
 		for i = 1, 3 do
 			plain4 = plain4 and not G.rgb(c4.BackgroundColor3, medals[i][1], medals[i][2], medals[i][3])
 		end
-		T.check(medalOk and plain4, "leaderboard: ranks 1-3 gold, silver, bronze; rank 4 plain")
+		T.check(medalOk and plain4, "leaderboard: ranks 1-3 gold, silver, bronze blocks; rank 4 a plain stone block")
 		KC.advance(0.4)
 		local heads = 0
 		for i = 1, 10 do
