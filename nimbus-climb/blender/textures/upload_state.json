@@ -1,5 +1,41 @@
 {
   "assets": {
+    "boss_head_frost_wyrm": {
+      "assetId": 136389934544455,
+      "contentHash": "750d1c093051fe337ed16d502e1f3abdfee6c4aef88591b875f54c2cac548d89",
+      "fileSha256": "750d1c093051fe337ed16d502e1f3abdfee6c4aef88591b875f54c2cac548d89",
+      "idSetByHand": "2026-11-27T15:42:39Z",
+      "moderationState": null,
+      "structureHash": "800fb7ce868a2a95dc128021e8516ab4",
+      "uploadedOutside": true
+    },
+    "boss_head_lava_golem": {
+      "assetId": 116384424235714,
+      "contentHash": "9e444af1bbe9432efbf16f16c792749f97f1de06ddf10e4838d7e5285129920e",
+      "fileSha256": "9e444af1bbe9432efbf16f16c792749f97f1de06ddf10e4838d7e5285129920e",
+      "idSetByHand": "2026-11-27T15:42:39Z",
+      "moderationState": null,
+      "structureHash": "800fb7ce868a2a95dc128021e8516ab4",
+      "uploadedOutside": true
+    },
+    "boss_head_shadow_hydra": {
+      "assetId": 109878325025225,
+      "contentHash": "bc5c3cb27e3fed0a554e6a5da83d25278b08d68c4d74c402e9cdb4acaa9a105f",
+      "fileSha256": "bc5c3cb27e3fed0a554e6a5da83d25278b08d68c4d74c402e9cdb4acaa9a105f",
+      "idSetByHand": "2026-11-27T15:42:39Z",
+      "moderationState": null,
+      "structureHash": "800fb7ce868a2a95dc128021e8516ab4",
+      "uploadedOutside": true
+    },
+    "boss_head_storm_titan": {
+      "assetId": 83460247196766,
+      "contentHash": "4274a37306a8d9184c098e2d49d71145e40e2361433c0044763a6ed42dd4f338",
+      "fileSha256": "4274a37306a8d9184c098e2d49d71145e40e2361433c0044763a6ed42dd4f338",
+      "idSetByHand": "2026-11-27T15:42:39Z",
+      "moderationState": null,
+      "structureHash": "800fb7ce868a2a95dc128021e8516ab4",
+      "uploadedOutside": true
+    },
     "egg_card_common": {
       "assetId": 82905985057225,
       "contentHash": "3428b9561a5eb785e6510e9e7918cc7eee1267bddfbaa045f23787c5e6074e2b",
@@ -331,6 +367,33 @@
       "idSetByHand": "2026-10-23T20:03:18Z",
       "moderationState": null,
       "structureHash": "c949ca5f2270f9c991f288082a0370bc",
+      "uploadedOutside": true
+    },
+    "icons_b": {
+      "assetId": 94977768447984,
+      "contentHash": "81d5853070ca634cab6bc47365079081ca460536a9f3dcfb9c896fd28ac7463c",
+      "fileSha256": "81d5853070ca634cab6bc47365079081ca460536a9f3dcfb9c896fd28ac7463c",
+      "idSetByHand": "2026-11-27T15:42:39Z",
+      "moderationState": null,
+      "structureHash": "6fb80447c2b2d0365bbc18458a49c0c1",
+      "uploadedOutside": true
+    },
+    "machines_a": {
+      "assetId": 76428055171576,
+      "contentHash": "5f765e55260f9733c0af1b2653c4301f0eb79f06a5e3c517506db0aab784fa22",
+      "fileSha256": "5f765e55260f9733c0af1b2653c4301f0eb79f06a5e3c517506db0aab784fa22",
+      "idSetByHand": "2026-11-27T15:42:39Z",
+      "moderationState": null,
+      "structureHash": "e3ce1dde28f6cf3f85942788225ae1bc",
+      "uploadedOutside": true
+    },
+    "nimbus_logo": {
+      "assetId": 132483372849628,
+      "contentHash": "d4128175029cb631294d62750ddd5731acd6b8cbff6fc66fa4fe7c8e3250b0bd",
+      "fileSha256": "d4128175029cb631294d62750ddd5731acd6b8cbff6fc66fa4fe7c8e3250b0bd",
+      "idSetByHand": "2026-11-27T15:42:39Z",
+      "moderationState": null,
+      "structureHash": "8cd358fa6c845316c9ab57bc4561cf94",
       "uploadedOutside": true
     },
     "saintsfield_emblem": {

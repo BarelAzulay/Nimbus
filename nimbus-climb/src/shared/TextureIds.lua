@@ -3,6 +3,10 @@
 -- effects-only fallback) and the pet attack VFX sheets fx_* (blender/vfx/textures.json).
 -- Rejected assets are left out; assets still in review are listed and simply fall back until approved.
 return {
+	boss_head_frost_wyrm = 136389934544455,
+	boss_head_lava_golem = 116384424235714,
+	boss_head_shadow_hydra = 109878325025225,
+	boss_head_storm_titan = 83460247196766,
 	egg_card_common = 82905985057225,
 	egg_card_epic = 138322305015306,
 	egg_card_legendary = 116610779042439,
@@ -40,6 +44,9 @@ return {
 	fx_thorn = 108794659764717,
 	fx_voidring = 72735299069339,
 	fx_wisps = 87801455217864,
+	icons_b = 94977768447984,
+	machines_a = 76428055171576,
+	nimbus_logo = 132483372849628,
 	saintsfield_emblem = 114032351365198,
 	saintsfield_wordmark = 105015128819853,
 	sky_day_vivid_Bk = 105357670769779,

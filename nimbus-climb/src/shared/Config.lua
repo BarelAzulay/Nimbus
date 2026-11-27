@@ -1532,7 +1532,7 @@ Config.Icons = {
 -- upload is the owner's call, done from the owner's keyed cloud session; nothing is uploaded from a PC. Id: that image's
 -- id. 0 (until then): every icon draws its 9 x 9 glyph in its own colours (shared/PixelIcon), the art sizes too
 Config.IconSheet = {
-	Id = 0,
+	Id = 94977768447984,
 }
 
 -- (Pitch 2 item 10 A "Workshop machines") each roulette's own pixel capsule machine (52 x 60 cells, the Secret's vault
@@ -1543,7 +1543,7 @@ Config.IconSheet = {
 -- of the odds chips' 9 x 9 egg (+ its drop shadow) in the sheet's egg row (P2 icons review r1, major 1); a rarity with no
 -- cell draws the same egg as the PixelIcon glyph "egg_<rarity>"
 Config.MachineSheet = {
-	Id = 0,
+	Id = 76428055171576,
 	Cells = {
 		Cloud = { 0, 0, 53, 61 },
 		Storm = { 54, 0, 53, 61 },

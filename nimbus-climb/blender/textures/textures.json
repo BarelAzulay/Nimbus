@@ -718,6 +718,30 @@
       "displayName": "NC vortex streaks",
       "png": "blender/textures/vortex/vortex_streaks.png",
       "structureHash": "2d61feb51a7c6bae74fcec251b494041"
+    },
+    "nimbus_logo": {
+      "build": "the L1 voxel storm logo (.superpowers/sign-logo-pitch/img/final/nimbus_logo_L1_1024.png), uploaded from Studio as an Image",
+      "contentHash": "d4128175029cb631294d62750ddd5731acd6b8cbff6fc66fa4fe7c8e3250b0bd",
+      "description": "Nimbus Climb title and loading screen header: the L1 voxel storm logo, 1024 x 259, transparent (owner OK 2026-11-14; Config.Loading.Images.Logo)",
+      "displayName": "NC Nimbus logo L1",
+      "png": "branding/nimbus_logo_L1_1024.png",
+      "structureHash": "8cd358fa6c845316c9ab57bc4561cf94"
+    },
+    "icons_b": {
+      "build": "tools/build_upload_sheets.py (Pitch 2 item 9 B), uploaded from Studio as an Image",
+      "contentHash": "81d5853070ca634cab6bc47365079081ca460536a9f3dcfb9c896fd28ac7463c",
+      "description": "Nimbus Climb icon set B \"Carved soft\": one 160 x 80 sheet of the 16 art-size icons and their greyed twins (Config.IconSheet.Id)",
+      "displayName": "NC icon sheet B",
+      "png": "build/upload_sheets/icons_b.png",
+      "structureHash": "6fb80447c2b2d0365bbc18458a49c0c1"
+    },
+    "machines_a": {
+      "build": "tools/build_upload_sheets.py (Pitch 2 item 10 A), uploaded from Studio as an Image",
+      "contentHash": "5f765e55260f9733c0af1b2653c4301f0eb79f06a5e3c517506db0aab784fa22",
+      "description": "Nimbus Climb Shop Eggs tab: one 277 x 80 sheet of the five roulette capsule machines and the 7 odds-chip eggs (Config.MachineSheet.Id)",
+      "displayName": "NC workshop machines A",
+      "png": "build/upload_sheets/machines_a.png",
+      "structureHash": "e3ce1dde28f6cf3f85942788225ae1bc"
     }
   }
 }
