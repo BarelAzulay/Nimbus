@@ -1206,6 +1206,14 @@ scenario("match", function(arg)
 	if arg == "full" then
 		local saint = difficulty("Saint")
 		toClient("MatchState", matchState({ DifficultyId = saint.Id, DifficultyName = saint.DisplayName, Color = saint.Color, Members = longMembers(true) }))
+	elseif arg == "saint" then
+		-- (kitb-matchhud look0 N1) a real SAINT run: its own stage count (10 checkpoints), its clock (24:53 of 25:00) and a
+		-- three-digit token count, four long names (match:full keeps the default 4 checkpoints)
+		local saint = difficulty("Saint")
+		local stages = tonumber(saint.Stages) or 10
+		toClient("MatchState", matchState({ DifficultyId = saint.Id, DifficultyName = saint.DisplayName, Color = saint.Color,
+			Seconds = (tonumber(saint.TimeLimit) or 1500) - 7, Checkpoint = math.floor(stages / 2), TotalCheckpoints = stages,
+			TokensCollected = 107, TotalTokens = 120, Members = longMembers(true) }))
 	elseif count then
 		local members = matchState().Members
 		members[4] = { UserId = 79, Name = "Cloudy", Health = 0.6, Downed = false, Finished = false, Tokens = 1 }
@@ -1247,10 +1255,24 @@ scenario("match", function(arg)
 	end
 end)
 
-scenario("countdown", function()
+-- countdown[:saint|:go]: saint (kitb-matchhud look0 N1) a SAINT run's countdown (its 10 checkpoints, four long names);
+-- go (look0's minor) the countdown ending: 'GO!' over the clock row at the start of its pop
+scenario("countdown", function(arg)
 	LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
+	if arg == "saint" then
+		local saint = difficulty("Saint")
+		toClient("MatchState", matchState({ Phase = "Countdown", Seconds = 3, Checkpoint = 0, TokensCollected = 0, DifficultyId = saint.Id,
+			DifficultyName = saint.DisplayName, Color = saint.Color, TotalCheckpoints = tonumber(saint.Stages) or 10, TotalTokens = 120,
+			Members = longMembers(true) }))
+		advance(0.6)
+		return
+	end
 	toClient("MatchState", matchState({ Phase = "Countdown", Seconds = 3, Checkpoint = 0, TokensCollected = 0 }))
 	advance(0.6)
+	if arg == "go" then
+		toClient("MatchState", matchState({ Phase = "Playing", Seconds = 540, Checkpoint = 0, TokensCollected = 0 }))
+		advance(0.3)
+	end
 end)
 
 -- party[:leader]: leader (kit-b U9-8 A) the leader on the pad with a full party (four long names), EXTREME
@@ -1531,6 +1553,19 @@ scenario("npc", function(which)
 	local ND = req("shared/NpcDialog")
 	local NC = req("client/Controllers/NpcController")
 	local NS = req("server/Services/NpcService")
+	-- (kitb-matchhud look0 N3) the dialog weighs its speech's rows in a card's line (NpcController.Metrics.MEASURE): the
+	-- renderer's font metrics, wrapped as the drawing wraps (the mock's GetTextSize is a flat 0.5 em and never wraps)
+	if NC and type(NC.Metrics) == "table" then
+		local probe = Instance.new("TextLabel")
+		NC.Metrics.MEASURE = function(label, text, width)
+			probe.FontFace = label.FontFace
+			probe.TextSize = label.TextSize
+			probe.LineHeight = label.LineHeight
+			probe.Text = tostring(text or "")
+			local w, h = Mock.TextExtent(probe, width)
+			return Vector2.new(w, h)
+		end
+	end
 	local list = ND.Npcs or ND.List or {}
 	local count = max(1, #list)
 	local spots = {}

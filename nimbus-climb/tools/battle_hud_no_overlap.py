@@ -10,7 +10,7 @@ reviews render, and fails on:
   overlap   any two of: the keys (MOVE / DASH / RUN on a phone, every Commands key on a PC), CHEER, BACK, the top card
             (with its Leave), the enemy list's rows, the fighter card, each helper (its cell and Swap), the vitals card
             (with its name tab), the dungeon run chip, the result card (the battle's and the dungeon's End card), the
-            currency strip, and on a phone Roblox's own thumbstick and jump rings, closer than MIN_GAP (4) px; the run
+            card between two ring rounds, the currency strip, and on a phone Roblox's own thumbstick and jump rings, closer than MIN_GAP (4) px; the run
             chip closer than RUNCHIP_GAP (6) px to any of them. Each part is measured by its INK (keys look r4), what
             render_gui paints of its subtree: backgrounds, Outer / Center UIStrokes and borders past the box (the enemy
             row's gold target bracket), children past their parent (a helper's Lv tag, the hearts' pixel art), images,
@@ -52,7 +52,14 @@ SCENARIOS = ["battle:raid", "battle:raid:full", "battle:raid:ready", "battle:dun
              # (kit-b backlog 9: the Champion Ring's fight and the trial's, never listed here: at 360 x 640 enemy row 1 lay
              # 15-18 px on the fighter card, 'Round 8' read 'Ro...'; 375 x 667 'Biscuit B...'; 390 x 844 the top card 37.6 px
              # on the fighter card)
-             "battle:fighter", "battle:ring:fight8", "battle:trial:ready"]
+             "battle:fighter", "battle:ring:fight8", "battle:trial:ready",
+             # (kitb-matchhud look0 N2: the card between two ring rounds, 'ROUND 8 WON! Round 9 in 3', never listed either:
+             # with the ring's strip across a portrait phone's top (kit-b backlog 9) the team moved down under it and the
+             # card did not - at 360 x 640 it lay 32.8 px on the helpers ('HA', 'T... ME'), at 375 x 667 19.4, at 384 x 640
+             # 13.6; at 390 x 844 .. 430 x 932 it ended 2-3 px above RUN)
+             "battle:ring:next8"]
+# (look0 N2) the portrait phones the look rendered the card between ring rounds at, beyond SIZES (a default run only)
+SCENARIO_SIZES = {"battle:ring:next8": [(375, 667), (384, 640), (393, 852), (412, 915), (430, 932)]}
 
 B = "NimbusBattle.Root."
 PHONE_KEYS = ("MOVE", "DASH", "RUN")
@@ -93,6 +100,8 @@ GROUPS = [
     ("RUNCHIP", r"^NimbusDungeonRun\.RunChip$"),
     ("RESULT", r"^NimbusBattle\.Root\.ResultCard$"),
     ("RESULT", r"^NimbusDungeonRun\.EndCard$"),
+    # (look0 N2) the card between two ring rounds (Ring.PlaceNext), its LEAVE on it
+    ("NEXT", r"^NimbusBattle\.Root\.NextRoundCard$"),
     ("CURRENCY", r"^NimbusHud\.\w+\.Currency\.Currency_\w+$"),
 ]
 GROUPS = [(g, re.compile(p)) for g, p in GROUPS]
@@ -641,7 +650,8 @@ def main():
     ck = Checker(RG, fonts, args.verbose)
     t0 = time.time()
     for scen in scens:
-        for (w, h) in sizes:
+        extra = [] if args.size else [s for s in SCENARIO_SIZES.get(scen, []) if s not in sizes]
+        for (w, h) in list(sizes) + extra:
             touch = RG.is_touch(w, h, None)
             try:
                 dump = RG.dump_scenario(scen, w, h, touch, fonts)

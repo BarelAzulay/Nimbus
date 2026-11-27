@@ -49,7 +49,10 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     bar") through a match's life - a match of 1-4 and SAINT, the countdown, the pad, the leader's pad, the
                     results - at 568 x 320 .. 1920 x 1080 and the portrait phones: the card's and the match / party panel's
                     ink MIN_GAP off DASH, RUN, the rings and every other HUD piece, wholly on the screen, their texts
-                    whole; the tiles, their fold tab and the wallet strip where kit-b shows them; the VICTORY card's Time row
+                    whole; the tiles, their fold tab and the wallet strip where kit-b shows them; the VICTORY card's Time row.
+                    (look0 N1) a real SAINT run (10 checkpoints, 24:53, '107 / 120') and its countdown, and in every state
+                    the checkpoint blocks MIN_GAP off the clock, the tokens tile and the 'Checkpoint n/m' words, each
+                    block's face drawn; (look0's minor) 'GO!' popping off the blocks that share its row
   T1  fix6 look1   the raid timer in three places on one phone (Shadow Hydra), no clock and larger than the name at
                     1024 x 768 raid:full. Rule: a phone's timer one place and form through raid:ready / raid / raid:full;
                     the clock at 1024 x 768 raid:full; the timer never larger than the boss name
@@ -79,7 +82,8 @@ Pins (the review, its major; RED until fixed, then GREEN for good):
                     667 x 375. Rule: every NPC's dialog wholly on the screen, under the top band, MIN_GAP off DASH and RUN,
                     at those sizes, 375 x 667, 390 x 844, 844 x 390 and 1280 x 720 (NPC 1 at the gate sizes); and MIN_GAP
                     off every other HUD piece and Roblox's stick ring (its hard shadow was 1-2 px from the vitals card's
-                    name tab at 720 x 405 .. 1024 x 768). (carried from kitb-bl-hud ab3b782 / ca611b3)
+                    name tab at 720 x 405 .. 1024 x 768). (carried from kitb-bl-hud ab3b782 / ca611b3) (kitb-matchhud look0
+                    N3) and the speech whole: every row it wraps to inside its line (640 x 360 cut 'rarer!', 'there!')
   (K1 also walks every raid boss since look0 #1: 'Shadow H...' at 640 x 360 while the pin read Storm Titan alone)
 Exit 0 when every pin passes. --list prints the pins and what they check.
 """
@@ -160,10 +164,10 @@ class Ctx:
     def nodes(self, d):
         return self.BH.nodes_of(d)
 
-    def whole(self, n):
+    def whole(self, n, dots_ok=False):
         """(whole?, how it is drawn): the label's text as the renderer lays it out in its box: no ellipsis it draws, no
-        '...' the game wrote, no line wider than the box (a label that does not truncate runs past it), no line past the
-        box's foot"""
+        '...' the game wrote (dots_ok: a speech may end on its own '...'), no line wider than the box (a label that does
+        not truncate runs past it), no line past the box's foot"""
         t = n.get("text")
         if not isinstance(t, dict) or not str(t.get("text", "")).strip():
             return True, ""
@@ -175,7 +179,7 @@ class Ctx:
         font = t.get("font", "SourceSans")
         wide = max([self.fonts.width(font, d, size) for d in drawn] or [0])
         cut = any("…" in d for d in drawn) and "…" not in label
-        dots = label.rstrip().endswith("...")
+        dots = label.rstrip().endswith("...") and not dots_ok
         over = wide > aw + 0.6
         tall = len(lines) * size * float(t.get("lineHeight", 1) or 1) > ah + 1.0
         ok = not (cut or dots or over or tall)
@@ -639,7 +643,18 @@ def pin_O3(c, sizes):
 #     the screen (the touch DASH key shows the dash's cool-down). A one-row card (1 - 2 players) leaves the row: the bar
 #     shows. (kitb-matchhud, a corner the pitch did not draw: the owner's call, reported)
 # No backlog rows: every case keeps the rule outright.
-O3M_STATES = ["match:1", "match:2", "match", "match:4", "match:full", "match:down", "countdown", "party", "party:leader", "results"]
+O3M_STATES = ["match:1", "match:2", "match", "match:4", "match:full", "match:down", "countdown", "party", "party:leader", "results",
+              "match:saint", "countdown:saint", "countdown:go"]
+# (kitb-matchhud look0 N1: SAINT's 10 checkpoints, never rendered - every state above sends 4 - overflowed the clock row's
+# bar at their 10 design px floor: at 640 x 360 .. 812 x 375 with '107 / 120' the first block 3.2 px into the clock '24:53'
+# and the last 7.6 px into the tokens tile, 0.4 px into 'Get ready!' in the countdown, both at 568 x 320; kit-b's wide card
+# at 1280 x 720 already ran 8.8 px into the tile) match:saint / countdown:saint (a real SAINT run: 10 checkpoints, its clock,
+# a three-digit token count) and, in every state, the panel's checkpoint blocks MIN_GAP off the clock, the tokens tile and
+# the 'Checkpoint n/m' words, each block's face drawn (O3M_FACE px wide at least). (look0's minor: at the countdown's end
+# 'GO!' pops over the clock row, its '!' 17.5 px on the first block on every short phone) countdown:go: the clock's ink
+# off the blocks where they share its row (the words gone: the slim layout's narrow card)
+O3M_ROW = "NimbusHud.TopLeft.MatchPanel.Content.Inner."
+O3M_FACE = 2.0
 O3M_SIZES = [(568, 320), (640, 360), (667, 375), (700, 394), (720, 405), (740, 360), (800, 360), (800, 450), (812, 375),
              (844, 390), (932, 430), (960, 540), (1280, 720), (1920, 1080), (360, 640), (375, 667), (384, 640), (390, 844)]
 O3M_PANELS = ("NimbusHud.TopLeft.MatchPanel", "NimbusHud.TopLeft.PartyPanel")
@@ -647,7 +662,7 @@ O3M_TILES = ["Entry_Pets", "Entry_Index", "Entry_Spot", "Entry_Stats", "Toggle"]
 O3M_NO_STRIP = [(568, 320), (640, 360), (667, 375)]
 O3M_NO_TIME = [(568, 320), (360, 640), (375, 667), (384, 640)]
 O3M_SKIP = ("NimbusTutorial", "NimbusGuide", "MobileControls.DashButton", "MobileControls.RunButton")
-O3M_NO_ROW = {(568, 320): ("match", "match:4", "match:full", "match:down", "countdown")}
+O3M_NO_ROW = {(568, 320): ("match", "match:4", "match:full", "match:down", "countdown", "match:saint", "countdown:saint", "countdown:go")}
 
 
 def you_chip(nodes):
@@ -694,6 +709,38 @@ def o3m_subject(c, d, nodes, what, path, n, w, h, texts):
         c.check("O3", ok, "%s: %s reads whole" % (what, p[len(path) + 1:]), how)
 
 
+def o3_clock_row(c, nodes, what, scen):
+    """(look0 N1) the match panel's checkpoint blocks: MIN_GAP of ink off the clock, the tokens tile and the 'Checkpoint n/m'
+    words, each block's face O3M_FACE px wide at least; at countdown:go the clock only where the words are gone (the blocks
+    share its row)"""
+    row = nodes.get(O3M_ROW + "CheckpointBar.BlockRow")
+    if row is None or float(row["w"]) <= 1:
+        return
+    bink = c.BH.ink_of(row, c.RG, c.fonts)
+    if not bink:
+        return
+    label = nodes.get(O3M_ROW + "CheckpointBar.Label")
+    bare = label is None or float(label["w"]) <= 1
+    for name, says in (("Timer", "the clock"), ("Tokens", "the tokens tile"), ("CheckpointBar.Label", "the 'Checkpoint n/m' words")):
+        if name == "Timer" and scen == "countdown:go" and not bare:
+            continue
+        n = nodes.get(O3M_ROW + name)
+        if n is None or float(n["w"]) <= 1:
+            continue
+        kink = c.BH.ink_of(n, c.RG, c.fonts)
+        if not kink:
+            continue
+        g = min(c.BH.gap(a, b) for a in bink for b in kink)
+        c.check("O3", g >= c.BH.MIN_GAP - 0.05, "%s: the checkpoints' blocks keep %g px off %s" % (what, c.BH.MIN_GAP, says),
+                "blocks %s, %s %s: %.1f px" % (fmt(c.BH.union(bink)), says, fmt(c.BH.union(kink)), g))
+    i = 1
+    while (O3M_ROW + "CheckpointBar.BlockRow.Block%d" % i) in nodes:
+        face = nodes.get(O3M_ROW + "CheckpointBar.BlockRow.Block%d.Face" % i)
+        fw = float(face["w"]) if face else 0.0
+        c.check("O3", fw >= O3M_FACE - 0.05, "%s: checkpoint block %d draws its face (%g px wide at least)" % (what, i, O3M_FACE), "%.1f px" % fw)
+        i += 1
+
+
 def o3_match_hud(c, sizes):
     for (w, h) in O3M_SIZES + [s for s in sizes if s not in O3M_SIZES]:
         for scen in O3M_STATES:
@@ -713,6 +760,8 @@ def o3_match_hud(c, sizes):
                 pn = nodes.get(pp)
                 if pn is not None and float(pn["w"]) > 1:
                     o3m_subject(c, d, nodes, what, pp, pn, w, h, (".Inner.Timer", ".Inner.Tokens", ".CheckpointBar.Label", ".Inner.Title", ".Inner.Level"))
+                    if pp.endswith("MatchPanel"):
+                        o3_clock_row(c, nodes, what, scen)
             if w > h and c.RG.is_touch(w, h, None) and scen != "results":
                 gone = [t for t in O3M_TILES if ("NimbusMenu.MenuColumn." + t) not in nodes]
                 c.check("O3", not gone, what + ": the menu tiles and their fold tab show", "missing " + ", ".join(gone))
@@ -1295,6 +1344,14 @@ def pin_N1(c, sizes):
         near = piece_gaps(c, d, nodes, ink, w, h, "NimbusNpcDialog", ("NimbusGuide", "MobileControls.DashButton", "MobileControls.RunButton"))
         c.check("N1", not near, "N1 %s %dx%d: the NPC dialog keeps %g px off every other HUD piece" % (scen, w, h, c.BH.MIN_GAP),
                 "dialog ink %s: %s" % (fmt(u), ", ".join("%s %.1f px" % (p, g) for g, p in near)))
+        # (kitb-matchhud look0 N3: the card moved on the screen at 640 x 360 had 61 px of line for speeches that wrap to five
+        # 14 px rows - Granny Owl's 'rarer!' gone, Mayor Panda's 'there!' sliced under the page dots - and this pin read the
+        # card's box alone) the speech reads whole: every row it wraps to inside the line's box (U2's rule for the tutorial
+        # card's objective line)
+        for p, n in nodes.items():
+            if p.startswith("NimbusNpcDialog.") and p.endswith(".Well.Line") and float(n["w"]) > 1:
+                ok, how = c.whole(n, dots_ok=True)
+                c.check("N1", ok, "N1 %s %dx%d: the NPC's speech reads whole in its line" % (scen, w, h), how)
         c.cache.clear()
 
 
