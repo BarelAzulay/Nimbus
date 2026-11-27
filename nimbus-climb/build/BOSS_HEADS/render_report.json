@@ -17,28 +17,49 @@
   },
   "res": 288,
   "samples": 128,
-  "orthoScaleStuds": 10.942,
-  "yaw": -16,
-  "pitch": 6,
+  "orthoScaleStuds": 11.299,
+  "camera": {
+   "yaw": -15,
+   "pitch": 4,
+   "top": 0.045
+  },
   "tris": 14728,
-  "glowParts": 9,
+  "glowParts": 7,
   "shot": {
    "focus": [
     "Head"
    ],
-   "yaw": -16,
-   "pitch": 6,
-   "zoom": 1.2,
-   "dx": 0.0,
-   "dy": 0.05,
-   "exposure": 0.0
+   "head": 0.8,
+   "exposure": 0.0,
+   "rim": 0.6,
+   "shade": [
+    [
+     "Body",
+     "ArmL",
+     "ArmR",
+     "Base"
+    ],
+    0.4
+   ],
+   "mute": [
+    [
+     "Body",
+     "Bolt",
+     "Cloud"
+    ],
+    [
+     "Body",
+     "Rune",
+     "Cloud"
+    ]
+   ]
   },
   "png": "branding/boss_heads/boss_head_storm_titan.png",
   "size": [
    74,
    74
   ],
-  "opaqueCells": 347
+  "opaqueCells": 345
  },
  {
   "boss": "lava_golem",
@@ -56,28 +77,48 @@
   },
   "res": 288,
   "samples": 128,
-  "orthoScaleStuds": 10.287,
-  "yaw": -18,
-  "pitch": 0,
+  "orthoScaleStuds": 10.534,
+  "camera": {
+   "yaw": -15,
+   "pitch": 4,
+   "top": 0.045
+  },
   "tris": 14444,
   "glowParts": 8,
   "shot": {
    "focus": [
     "Head"
    ],
-   "yaw": -18,
-   "pitch": 0,
-   "zoom": 1.75,
-   "dx": 0.0,
-   "dy": 0.05,
-   "exposure": 0.45
+   "head": 0.55,
+   "exposure": 0.2,
+   "rim": 2.2,
+   "rimColor": [
+    1.0,
+    0.45,
+    0.1
+   ],
+   "lift": [
+    [
+     "Head"
+    ],
+    4.0
+   ],
+   "shade": [
+    [
+     "Body",
+     "ArmL",
+     "ArmR"
+    ],
+    0.5
+   ],
+   "outline": 0.35
   },
   "png": "branding/boss_heads/boss_head_lava_golem.png",
   "size": [
    74,
    74
   ],
-  "opaqueCells": 442
+  "opaqueCells": 523
  },
  {
   "boss": "frost_wyrm",
@@ -93,9 +134,12 @@
   },
   "res": 288,
   "samples": 128,
-  "orthoScaleStuds": 9.625,
-  "yaw": -22,
-  "pitch": 8,
+  "orthoScaleStuds": 9.835,
+  "camera": {
+   "yaw": -15,
+   "pitch": 4,
+   "top": 0.045
+  },
   "tris": 10634,
   "glowParts": 2,
   "shot": {
@@ -103,19 +147,16 @@
     "Head",
     "Jaw"
    ],
-   "yaw": -22,
-   "pitch": 8,
-   "zoom": 1.25,
-   "dx": 0.0,
-   "dy": 0.08,
-   "exposure": 0.0
+   "head": 0.74,
+   "exposure": 0.0,
+   "ring": 0.6
   },
   "png": "branding/boss_heads/boss_head_frost_wyrm.png",
   "size": [
    74,
    74
   ],
-  "opaqueCells": 274
+  "opaqueCells": 245
  },
  {
   "boss": "shadow_hydra",
@@ -133,9 +174,12 @@
   },
   "res": 288,
   "samples": 128,
-  "orthoScaleStuds": 18.199,
-  "yaw": -14,
-  "pitch": 10,
+  "orthoScaleStuds": 13.435,
+  "camera": {
+   "yaw": -15,
+   "pitch": 4,
+   "top": 0.045
+  },
   "tris": 14516,
   "glowParts": 6,
   "shot": {
@@ -145,19 +189,26 @@
     "Head3"
    ],
    "top": 0.4,
-   "yaw": -14,
-   "pitch": 10,
-   "zoom": 1.1,
-   "dx": -0.005,
-   "dy": 0.2,
-   "exposure": 0.4,
-   "rim": 1.8
+   "span": 1.25,
+   "exposure": 1.0,
+   "rim": 2.4,
+   "rimColor": [
+    1.0,
+    0.35,
+    0.85
+   ],
+   "lift": [
+    [
+     "Head2"
+    ],
+    3.0
+   ]
   },
   "png": "branding/boss_heads/boss_head_shadow_hydra.png",
   "size": [
    74,
    74
   ],
-  "opaqueCells": 288
+  "opaqueCells": 361
  }
 ]

@@ -3,7 +3,7 @@
   "keys": {
     "boss_head_frost_wyrm": {
       "build": "blender/boss_heads.py render --boss frost_wyrm (Blender 5.2 bpy, Cycles, the game's boss_frost_wyrm_* joint meshes); uploaded from Studio as an Image",
-      "contentHash": "c83bca77eb08451eec5358db8c8c393555780309d18b68ba1d843527804c7706",
+      "contentHash": "750d1c093051fe337ed16d502e1f3abdfee6c4aef88591b875f54c2cac548d89",
       "description": "Nimbus Climb battle top card: the Frost Wyrm's baked pixel head portrait (74 x 74, 3 px cells, shown Pixelated on the navy well; Config.BossHeads)",
       "displayName": "NC boss head Frost Wyrm",
       "png": "branding/boss_heads/boss_head_frost_wyrm.png",
@@ -11,7 +11,7 @@
     },
     "boss_head_lava_golem": {
       "build": "blender/boss_heads.py render --boss lava_golem (Blender 5.2 bpy, Cycles, the game's boss_lava_golem_* joint meshes); uploaded from Studio as an Image",
-      "contentHash": "3c26cd5ce2458c362935c7668e7d934ea6783c80c4f5070a5cb6cfd9a2137796",
+      "contentHash": "9e444af1bbe9432efbf16f16c792749f97f1de06ddf10e4838d7e5285129920e",
       "description": "Nimbus Climb battle top card: the Lava Golem's baked pixel head portrait (74 x 74, 3 px cells, shown Pixelated on the navy well; Config.BossHeads)",
       "displayName": "NC boss head Lava Golem",
       "png": "branding/boss_heads/boss_head_lava_golem.png",
@@ -19,7 +19,7 @@
     },
     "boss_head_shadow_hydra": {
       "build": "blender/boss_heads.py render --boss shadow_hydra (Blender 5.2 bpy, Cycles, the game's boss_shadow_hydra_* joint meshes); uploaded from Studio as an Image",
-      "contentHash": "76bcb4c499ae70a2b2d7967c9053f3439e530a206529b7b005d39b8335671b03",
+      "contentHash": "bc5c3cb27e3fed0a554e6a5da83d25278b08d68c4d74c402e9cdb4acaa9a105f",
       "description": "Nimbus Climb battle top card: the Shadow Hydra's baked pixel head portrait (74 x 74, 3 px cells, shown Pixelated on the navy well; Config.BossHeads)",
       "displayName": "NC boss head Shadow Hydra",
       "png": "branding/boss_heads/boss_head_shadow_hydra.png",
@@ -27,7 +27,7 @@
     },
     "boss_head_storm_titan": {
       "build": "blender/boss_heads.py render --boss storm_titan (Blender 5.2 bpy, Cycles, the game's boss_storm_titan_* joint meshes); uploaded from Studio as an Image",
-      "contentHash": "780617a53a4e9e63bf4da50cfe06a6e310b85150562c5aab9f6c3989c158704a",
+      "contentHash": "4274a37306a8d9184c098e2d49d71145e40e2361433c0044763a6ed42dd4f338",
       "description": "Nimbus Climb battle top card: the Storm Titan's baked pixel head portrait (74 x 74, 3 px cells, shown Pixelated on the navy well; Config.BossHeads)",
       "displayName": "NC boss head Storm Titan",
       "png": "branding/boss_heads/boss_head_storm_titan.png",

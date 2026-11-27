@@ -8,7 +8,8 @@ render (needs bpy + lupa, the bpy venv of blender/README.md): per boss it builds
 (blender/catalog/creatures.json "boss_<id>_<Joint>", the SAME keys the game assembles) through build_all.Builder, so
 the K steps and budgets are the build's own, and checks each model's contentHash against blender/meshes.json (the
 mesh rendered = the mesh uploaded). The joints stand at rest on their BossBuilder pivots. Cycles, orthographic, a
-front three-quarter view of the head and shoulders, a warm key from the upper front and a cool rim from behind,
+front three-quarter tight bust, the same view for the four (CAMERA), a warm key from the upper front and cool (or the
+shot's own colour) rims from behind; the cut adds the shot's outline / eye ring and drops orphan cells;
 transparent film, CELLS x RENDER_CELL px (4x the on-screen size). The cut: a premultiplied BOX average per cell,
 alpha >= 0.5 -> opaque (no soft edge, so no halo on the navy well), NEAREST x CELL_PX -> 72 px, a 1 px clear margin
 -> PORTRAIT x PORTRAIT px. Clear pixels carry the well's NavyLip so a resampler can only ever bleed navy.
@@ -57,15 +58,36 @@ PHONE_K = 0.8  # Theme.ScreenFactor on a phone
 ORDER = ["storm_titan", "lava_golem", "frost_wyrm", "shadow_hydra"]
 NAMES = {"storm_titan": "Storm Titan", "lava_golem": "Lava Golem", "frost_wyrm": "Frost Wyrm", "shadow_hydra": "Shadow Hydra"}
 
-# per boss: the joints the frame is fitted around, the view (yaw: 0 = the face, negative = from the boss's right;
-# pitch up), the frame (zoom x the focus box, dx / dy = the centre's shift in frame widths: + = right / down)
+# ONE camera rule for the set (look review 2: the four heads had four angles and four framings): the same view for
+# every boss, a light front three-quarter (yaw: 0 = the face, negative = turned toward the boss's right; pitch: the
+# camera a little above the face; 0 lost the wyrm's snout, -22 turned the titan away from the mock's front bust), and
+# a tight bust like the approved mock: the head box's top one cell (TOP of the frame) under the frame's top, centred
+# across, the head filling the top of the frame and the shoulders the bottom.
+CAMERA = {"yaw": -15, "pitch": 4, "top": 0.045}
+
+# per boss: "focus" the joints of the head box ("top": a joint that is mostly neck counts its top part only); its scale:
+# "head" = the box's height as a share of the frame (each boss's own crown / horns / cap differ, so the share differs:
+# it is set so the faces come out alike, near the mock's), or "span" = the box's width as a multiple of the frame (a
+# boss whose heads stand side by side: the outer ones may run off the edges); "dx" a sideways nudge in frame widths.
+# Light: "exposure", "rim" (x the rims' strength), "rimColor" (instead of the cool blue), "lift" ([joints], energy: a
+# second warm key on those joints only, Cycles light linking), "shade" ([joints], share: those joints get the key at
+# that share of its strength, so the face leads). The cut: "outline" (darken the body cells around the
+# head by this factor), "ring" (darken the cells around a glow cell: a pale eye on a pale face), "mute" ([joint, part,
+# like]: a glow part painted like the part around it, out of the glow mask).
 SHOTS = {
-    "storm_titan": {"focus": ["Head"], "yaw": -16, "pitch": 6, "zoom": 1.2, "dx": 0.0, "dy": 0.05, "exposure": 0.0},
-    # (level camera: the golem's back hump sinks behind its head instead of sitting on it like a hat)
-    "lava_golem": {"focus": ["Head"], "yaw": -18, "pitch": 0, "zoom": 1.75, "dx": 0.0, "dy": 0.05, "exposure": 0.45},
-    "frost_wyrm": {"focus": ["Head", "Jaw"], "yaw": -22, "pitch": 8, "zoom": 1.25, "dx": 0.0, "dy": 0.08, "exposure": 0.0},
-    "shadow_hydra": {"focus": ["Head1", "Head2", "Head3"], "top": 0.4, "yaw": -14, "pitch": 10, "zoom": 1.1, "dx": -0.005, "dy": 0.2,
-                     "exposure": 0.4, "rim": 1.8},  # (dark hide on the navy well: a stronger cool rim lifts its edges)
+    # (the chest Bolt / Rune run up to the chin: at 24 cells they were a pale 2-cell strip that read as a necktie; the
+    # white shoulder tops beside the face: the body takes the key at 0.4, the rims at 0.6)
+    "storm_titan": {"focus": ["Head"], "head": 0.8, "exposure": 0.0, "rim": 0.6,
+                    "shade": [["Body", "ArmL", "ArmR", "Base"], 0.4],
+                    "mute": [["Body", "Bolt", "Cloud"], ["Body", "Rune", "Cloud"]]},
+    # (the small head sits in shoulders as high as its ash cap: a warm key on the head, the body at half the key, orange
+    # rims and a dark outline part it from them)
+    "lava_golem": {"focus": ["Head"], "head": 0.55, "exposure": 0.2, "rim": 2.2, "rimColor": [1.0, 0.45, 0.1],
+                   "lift": [["Head"], 4.0], "shade": [["Body", "ArmL", "ArmR"], 0.5], "outline": 0.35},
+    "frost_wyrm": {"focus": ["Head", "Jaw"], "head": 0.74, "exposure": 0.0, "ring": 0.6},
+    # (dark violet hide on the navy well: pushed in on the three heads, a magenta rim, the front head lit by its own key)
+    "shadow_hydra": {"focus": ["Head1", "Head2", "Head3"], "top": 0.4, "span": 1.25, "exposure": 1.0, "rim": 2.4,
+                     "rimColor": [1.0, 0.35, 0.85], "lift": [["Head2"], 3.0]},
 }
 
 # lights (Blender space: the boss faces -Y, +Z up): direction TO the light, colour, sun strength
@@ -135,6 +157,7 @@ def render_boss(builder, boss, tmp):
     joints = build_joints(builder, boss)
     sc = B.reset_scene()
     made, glow = {}, set()
+    joints_by = {joint: m for _, joint, m in joints}
     for key, joint, m in joints:
         pivot = np.asarray(m.meta["pivotStuds"], float)
         mat = np.eye(4)
@@ -143,6 +166,11 @@ def render_boss(builder, boss, tmp):
         for spec, ob in zip(m.objects.values(), made[joint]):
             if spec.material == "Neon":  # BossBuilder's glow keys (Eye, Rune, Bolt, Magma, Glow): Neon in the game
                 glow.add(ob.name)
+    for joint, part, like in shot.get("mute", ()):  # a glow part painted like the part around it: at 24 cells it misreads
+        obs = {spec.name: ob for spec, ob in zip(joints_by[joint].objects.values(), made[joint])}
+        obs[part].data.materials.clear()
+        obs[part].data.materials.append(obs[like].data.materials[0])
+        glow.discard(obs[part].name)
     bpy.context.view_layer.update()
     res = CELLS * RENDER_CELL
     sc.render.engine = "CYCLES"
@@ -169,10 +197,28 @@ def render_boss(builder, boss, tmp):
     bg.inputs["Color"].default_value = WORLD[0] + (1.0,)
     bg.inputs["Strength"].default_value = WORLD[1]
     for name, (d, col, e) in (("Key", KEY), ("Rim", RIM), ("Rim2", RIM2), ("Fill", FILL)):
-        _sun(bpy, sc, name, d, col, e * (shot.get("rim", 1.0) if name.startswith("Rim") else 1.0))
+        rim = name.startswith("Rim")
+        li = _sun(bpy, sc, name, d, tuple(shot["rimColor"]) if rim and shot.get("rimColor") else col,
+                  e * (shot.get("rim", 1.0) if rim else 1.0))
+        if name == "Key" and shot.get("shade"):  # these joints get the key at a share of its strength (light linking)
+            shaded, share = shot["shade"]
+            keyed, dim = bpy.data.collections.new("KeyReceivers"), bpy.data.collections.new("KeyShaded")
+            for j, obs in made.items():
+                for ob in obs:
+                    (dim if j in shaded else keyed).objects.link(ob)
+            li.light_linking.receiver_collection = keyed
+            _sun(bpy, sc, "KeyShaded", d, col, e * share).light_linking.receiver_collection = dim
+    if shot.get("lift"):  # a second warm key that only lights these joints (the hydra's front head): light linking
+        joints_lit, energy = shot["lift"]
+        coll = bpy.data.collections.new("LiftReceivers")
+        for j in joints_lit:
+            for ob in made[j]:
+                coll.objects.link(ob)
+        lift = _sun(bpy, sc, "Lift", KEY[0], KEY[1], energy)
+        lift.light_linking.receiver_collection = coll
     sc.view_settings.exposure = shot.get("exposure", 0.0)  # the darkest hides (golem rock, hydra hide) lifted a little
-    # the camera: orthographic, looking at the focus joints from the shot's yaw / pitch
-    y, p = math.radians(shot["yaw"]), math.radians(shot["pitch"])
+    # the camera: orthographic, the set's one view (CAMERA), framed on the head box
+    y, p = math.radians(CAMERA["yaw"]), math.radians(CAMERA["pitch"])
     d = Vector((math.sin(y) * math.cos(p), -math.cos(y) * math.cos(p), math.sin(p)))
     rot = (-d).to_track_quat("-Z", "Y")
     right, up = rot @ Vector((1, 0, 0)), rot @ Vector((0, 1, 0))
@@ -184,9 +230,12 @@ def render_boss(builder, boss, tmp):
         pts = [q for q, u in zip(pts, u_all) if u >= cut_u]
     rs = [q.dot(right) for q in pts]
     us = [q.dot(up) for q in pts]
-    size = max(max(rs) - min(rs), max(us) - min(us)) * shot["zoom"]
-    cr = (max(rs) + min(rs)) / 2 + shot["dx"] * size
-    cu = (max(us) + min(us)) / 2 - shot["dy"] * size
+    if shot.get("span"):  # several heads side by side: their row is `span` frame widths wide
+        size = (max(rs) - min(rs)) / shot["span"]
+    else:  # the head is `head` of the frame tall
+        size = (max(us) - min(us)) / shot["head"]
+    cr = (max(rs) + min(rs)) / 2 + shot.get("dx", 0.0) * size
+    cu = max(us) + CAMERA["top"] * size - size / 2  # the head's top sits CAMERA["top"] frame heights under the frame's top
     depth = max(abs(q.dot(d)) for q in allpts) + 50
     cam_data = bpy.data.cameras.new("Cam")
     cam_data.type = "ORTHO"
@@ -202,13 +251,15 @@ def render_boss(builder, boss, tmp):
     sc.render.filepath = raw
     bpy.ops.render.render(write_still=True)
     # the glow mask: the same view with every Neon part flat white and everything else flat black (occlusion kept), so
-    # the cut can let a lit eye / rune / bolt win its cell instead of averaging into the dark visor around it
+    # the cut can let a lit eye / rune / bolt win its cell instead of averaging into the dark visor around it; the
+    # head (the focus joints' other parts) flat blue, so the cut can draw a shot's "outline" around it
     white = _flat(bpy, "MaskGlow", (1.0, 1.0, 1.0))
+    blue = _flat(bpy, "MaskHead", (0.0, 0.0, 1.0))
     black = _flat(bpy, "MaskBody", (0.0, 0.0, 0.0))
-    for obs in made.values():
+    for joint, obs in made.items():
         for ob in obs:
             ob.data.materials.clear()
-            ob.data.materials.append(white if ob.name in glow else black)
+            ob.data.materials.append(white if ob.name in glow else blue if joint in shot["focus"] else black)
     for ob in sc.collection.objects:
         if ob.type == "LIGHT":
             ob.hide_render = True
@@ -220,7 +271,7 @@ def render_boss(builder, boss, tmp):
     bpy.ops.render.render(write_still=True)
     from nvox.manifest import hashes
     info = {"boss": boss, "keys": [k for k, _, _ in joints], "contentHash": {k: hashes(m)[0] for k, _, m in joints},
-            "res": res, "samples": BEAUTY_SAMPLES, "orthoScaleStuds": round(size, 3), "yaw": shot["yaw"], "pitch": shot["pitch"],
+            "res": res, "samples": BEAUTY_SAMPLES, "orthoScaleStuds": round(size, 3), "camera": CAMERA,
             "tris": int(sum(len(pp.vertices) - 2 for obs in made.values() for ob in obs for pp in ob.data.polygons)),
             "glowParts": len(glow), "shot": shot}
     return raw, mask, info
@@ -241,10 +292,14 @@ def _flat(bpy, name, rgb):
     return mat
 
 
-def cut(raw_png, mask_png=None):
+def cut(raw_png, mask_png=None, outline=None, ring=None):
     """4x render -> CELLS x CELLS cells (premultiplied BOX, alpha >= 0.5 opaque) -> PORTRAIT px with CELL_PX cells.
     With the glow mask: a cell that is at least GLOW_WIN lit Neon takes the average of its glow pixels only (an eye one
-    voxel tall stays a lit cell instead of a grey smear), and such a cell is opaque even at the silhouette (bolt tips)"""
+    voxel tall stays a lit cell instead of a grey smear), and such a cell is opaque even at the silhouette (bolt tips).
+    outline (a factor, with the mask): every body cell beside a head cell (mostly the mask's blue / white) is darkened
+    by it, a one-cell dark line that parts a head sunk in its shoulders from them (glow cells keep their colour).
+    ring (a factor, with the mask): every body cell beside a glow cell is darkened by it, so a pale eye on a pale face
+    still reads as an eye. Last, a body cell with at most one opaque neighbour (of 8) is cleared: no orphan specks."""
     import numpy as np
     from PIL import Image
     im = np.asarray(Image.open(raw_png).convert("RGBA"), np.float32) / 255.0
@@ -264,6 +319,29 @@ def cut(raw_png, mask_png=None):
         win = cov[..., 0] >= GLOW_WIN
         rgb = np.where(win[..., None], gsum / np.maximum(gw, 1e-4), rgb)
         opaque = opaque | win
+        if outline:
+            hcov = (mk[..., 2:3] * mk[..., 3:4] * a).reshape(n, c, n, c, 1).mean(axis=(1, 3))[..., 0]
+            head = opaque & (hcov >= 0.5 * al[..., 0])
+            near = np.zeros_like(head)
+            near[1:, :] |= head[:-1, :]
+            near[:-1, :] |= head[1:, :]
+            near[:, 1:] |= head[:, :-1]
+            near[:, :-1] |= head[:, 1:]
+            edge = opaque & ~head & ~win & near
+            rgb = np.where(edge[..., None], rgb * outline, rgb)
+        if ring:
+            near = np.zeros_like(win)
+            near[1:, :] |= win[:-1, :]
+            near[:-1, :] |= win[1:, :]
+            near[:, 1:] |= win[:, :-1]
+            near[:, :-1] |= win[:, 1:]
+            rgb = np.where((opaque & ~win & near)[..., None], rgb * ring, rgb)
+    else:
+        win = np.zeros_like(opaque)
+    # no orphan cells: a body cell with at most one opaque cell around it (a spike tip cut to one cell) is dropped
+    pad = np.pad(opaque, 1)
+    around = sum(pad[1 + dr:n + 1 + dr, 1 + dc:n + 1 + dc] for dr in (-1, 0, 1) for dc in (-1, 0, 1) if dr or dc)
+    opaque = opaque & ~(~win & (around <= 1))
     cells = np.zeros((n, n, 4), np.uint8)
     cells[..., :3] = np.where(opaque[..., None], np.clip(rgb * 255 + 0.5, 0, 255), np.array(NAVY_LIP, np.float32)).astype(np.uint8)
     cells[..., 3] = np.where(opaque, 255, 0)
@@ -291,7 +369,7 @@ def cmd_render(args):
             raw, mask, info = render_boss(builder, boss, tmp)
             for f in (raw, mask):
                 shutil.copyfile(f, os.path.join(BUILD_DIR, "raw", os.path.basename(f)))
-            img, cells = cut(raw, mask)
+            img, cells = cut(raw, mask, SHOTS[boss].get("outline"), SHOTS[boss].get("ring"))
             png = os.path.join(OUT_DIR, head_key(boss) + ".png")
             img.save(png, optimize=True)
             info["png"] = os.path.relpath(png, REPO).replace("\\", "/")
@@ -359,6 +437,9 @@ def rename(im, name, ox, oy, w, k):
     tier_x = nx + tw(name, 24) + 10
     if tier_x + tw("Starter", 18) + 12 <= clock_l:
         d.text((ox + _X(tier_x, k), oy + _X(13 + 16, k)), "Starter", font=_font(18 * k), fill=S["TextMuted"], anchor="lm")
+        return True
+    return False  # (no room: the game moves the tier to a pill of its own, BattleController Hud tierPill; this mock-up
+    # keeps the mock's pill row as drawn, so the card's note says so)
 
 
 def well(head, s, pad=10, label=None):
@@ -422,14 +503,18 @@ def cmd_compose(args):
             im = base[n].copy()
             ox, oy = c["origin"]
             place_portrait(im, heads[b], ox, oy, c["k"])
+            tier_in_row = True
             if b != "storm_titan":
-                rename(im, NAMES[b], ox, oy, c["w"], c["k"])
-            note = "" if b == "storm_titan" else "  (name rewritten; the pills are still the mock's Storm Titan pills)"
+                tier_in_row = rename(im, NAMES[b], ox, oy, c["w"], c["k"])
+            note = "" if b == "storm_titan" else "  (name rewritten; the pills are still the mock's Storm Titan pills%s)" % (
+                "" if tier_in_row else "; no room for 'Starter' beside the name: the game moves it to a pill")
             tiles.append(("%s top card at 1:1%s" % ("PC 1920x1080" if n == "1920" else "phone 844x390 at 0.8", note), im.crop(c["crop"])))
         pc = tiles[0][1]
         zoom = pc.crop((0, 0, 300, pc.height)).resize((900, pc.height * 3), 0)
         tiles.append(("PC card's left end at 3x (nearest)", zoom))
-        W = max(t.width for _, t in tiles) + 40
+        lab_font = _font(15, "Nunito-Regular.ttf")
+        probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+        W = max(max(t.width for _, t in tiles), max(int(probe.textlength(lab, font=lab_font)) for lab, _ in tiles)) + 40
         H = 50 + sum(t.height + 40 for _, t in tiles)
         out = Image.new("RGBA", (W, H), S["Page"] + (255,))
         d = ImageDraw.Draw(out)
