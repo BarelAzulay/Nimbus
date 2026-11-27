@@ -551,7 +551,7 @@ local function layout()
 end
 
 ----------------------------------------------------------------------
--- the picks' images (Config.Loading.Images keys in TextureIds; none has an id tonight)
+-- the picks' images (Config.Loading.Images keys in TextureIds; the logo has its uploaded id, the backdrop and mascot none)
 ----------------------------------------------------------------------
 
 local function applyImages(ids)
@@ -559,7 +559,8 @@ local function applyImages(ids)
 	for role, key in pairs(names) do
 		local id = type(ids) == "table" and tonumber(ids[key]) or nil
 		if id and id > 0 then
-			St.Images[role] = "rbxassetid://" .. tostring(id)
+			local digits = string.format("%.0f", id) -- whole digits: a 15-digit id (nimbus_logo) never prints as 1.3e+14
+			St.Images[role] = "rbxassetid://" .. digits
 		end
 	end
 	local ui = St.Ui
@@ -14840,7 +14841,7 @@ Config.Icons = {
 -- upload is the owner's call, done from the owner's keyed cloud session; nothing is uploaded from a PC. Id: that image's
 -- id. 0 (until then): every icon draws its 9 x 9 glyph in its own colours (shared/PixelIcon), the art sizes too
 Config.IconSheet = {
-	Id = 0,
+	Id = 94977768447984,
 }
 
 -- (Pitch 2 item 10 A "Workshop machines") each roulette's own pixel capsule machine (52 x 60 cells, the Secret's vault
@@ -14851,7 +14852,7 @@ Config.IconSheet = {
 -- of the odds chips' 9 x 9 egg (+ its drop shadow) in the sheet's egg row (P2 icons review r1, major 1); a rarity with no
 -- cell draws the same egg as the PixelIcon glyph "egg_<rarity>"
 Config.MachineSheet = {
-	Id = 0,
+	Id = 76428055171576,
 	Cells = {
 		Cloud = { 0, 0, 53, 61 },
 		Storm = { 54, 0, 53, 61 },
@@ -169894,6 +169895,10 @@ return StoreCatalog
 -- effects-only fallback) and the pet attack VFX sheets fx_* (blender/vfx/textures.json).
 -- Rejected assets are left out; assets still in review are listed and simply fall back until approved.
 return {
+	boss_head_frost_wyrm = 136389934544455,
+	boss_head_lava_golem = 116384424235714,
+	boss_head_shadow_hydra = 109878325025225,
+	boss_head_storm_titan = 83460247196766,
 	egg_card_common = 82905985057225,
 	egg_card_epic = 138322305015306,
 	egg_card_legendary = 116610779042439,
@@ -169931,6 +169936,9 @@ return {
 	fx_thorn = 108794659764717,
 	fx_voidring = 72735299069339,
 	fx_wisps = 87801455217864,
+	icons_b = 94977768447984,
+	machines_a = 76428055171576,
+	nimbus_logo = 132483372849628,
 	saintsfield_emblem = 114032351365198,
 	saintsfield_wordmark = 105015128819853,
 	sky_day_vivid_Bk = 105357670769779,
@@ -178515,6 +178523,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the trophy board's trophies
+local WorldTag = require(Shared:WaitForChild("WorldTag")) -- (kit-b world signs, lane C) the stone card tier of the tags and boards
 
 local ArenaBuilder = {}
 ArenaBuilder.Teleported = Util.Signal()
@@ -179174,50 +179183,51 @@ end
 local SIGN_PPS = 50
 local TAG_RANGE = 110
 
-local function rounded(parent, radius)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, radius)
-	c.Parent = parent
-	return c
-end
+-- (kit-b world signs, lane C; the owner's "home gui's havent changed", 2026-11-27: the arena's tags and boards were still
+-- the navy rounded gradient plates) no new look: the kit's stone card tier as the NPC nameplate (NpcService
+-- buildNameplate) and THE GATES board (LobbyBuilder GuideBoard) draw it. A Sign.Stone face, a mitred wood edge (WorldTag's
+-- SignEdge, drawn outside the face), a lip in the sign's role colour, the text in the kit's brown ink with no outline
+-- (WorldTag.Text); a pill is a small square block tinted in its colour (WorldTag.Tint). No UICorner, no UIGradient, no navy.
+local Sign = Theme.Sign
+local WZ = WorldTag.Sizes
+-- a tag card's px (PadX .. PillPadY); a SurfaceGui board's wood edge and lip (BoardEdge / BoardLip: THE GATES face's
+-- numbers); the arena's role colour on a board's lip (Lip: THE GATES lists ARENA in red)
+local TAG = {
+	PadX = 16, PadTop = 6, Gap = 2, PadBottom = 6, PillEdge = 2, PillLip = 3, PillPadX = 12, PillPadY = 4,
+	BoardEdge = 6, BoardLip = 8, Lip = Sign.Red,
+}
 
-local function outline(parent, color, thickness, transparency)
-	local s = Instance.new("UIStroke")
-	s.Color = color
-	s.Thickness = thickness
-	s.Transparency = transparency or 0
-	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	s.Parent = parent
-	return s
-end
-
-local function vgradient(parent, top, bottom)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(top, bottom)
-	g.Rotation = 90
-	g.Parent = parent
-	return g
-end
-
-local function padding(parent, top, left, bottom, right)
-	local p = Instance.new("UIPadding")
-	p.PaddingTop = UDim.new(0, top)
-	p.PaddingLeft = UDim.new(0, left)
-	p.PaddingBottom = UDim.new(0, bottom or top)
-	p.PaddingRight = UDim.new(0, right or left)
-	p.Parent = parent
-	return p
-end
-
-local function listLayout(parent, direction, gap)
-	local l = Instance.new("UIListLayout")
-	l.FillDirection = direction or Enum.FillDirection.Vertical
-	l.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	l.VerticalAlignment = Enum.VerticalAlignment.Center
-	l.SortOrder = Enum.SortOrder.LayoutOrder
-	l.Padding = UDim.new(0, gap or 0)
-	l.Parent = parent
-	return l
+-- a sign colour made readable on a stone face (`face`, default Sign.Stone): the old light-on-navy roles map to the kit's
+-- ink (C.Text / C.TextGold the brown ink, C.TextDim the muted caption); any other colour (a boss's element, the raid gold)
+-- is pulled toward the ink until it reads 4.5:1 (WCAG AA, the world text audit's rule for ink on a kit block)
+local function inkOf(colour, face)
+	face = typeof(face) == "Color3" and face or Sign.Stone
+	local function same(a, b)
+		return abs(a.R - b.R) < 0.002 and abs(a.G - b.G) < 0.002 and abs(a.B - b.B) < 0.002
+	end
+	local function lum(c)
+		local function ch(v)
+			if v <= 0.03928 then
+				return v / 12.92
+			end
+			return ((v + 0.055) / 1.055) ^ 2.4
+		end
+		return 0.2126 * ch(c.R) + 0.7152 * ch(c.G) + 0.0722 * ch(c.B)
+	end
+	if typeof(colour) ~= "Color3" or same(colour, C.Text) or same(colour, C.TextGold) then
+		return Sign.Text
+	elseif same(colour, C.TextDim) then
+		return Sign.TextMuted
+	end
+	local lf = lum(face)
+	for k = 3, 10 do
+		local c = colour:Lerp(Sign.Text, k / 10)
+		local lc = lum(c)
+		if (max(lc, lf) + 0.05) / (min(lc, lf) + 0.05) >= 4.5 then
+			return c
+		end
+	end
+	return Sign.Text
 end
 
 local function plainFrame(parent, name, props)
@@ -179248,56 +179258,66 @@ local function newTag(adornee, name, w, h, lift, maxDistance)
 	return gui
 end
 
--- the compact solid plate of a tag (navy gradient, rounded, outlined), sized to its content
-local function tagPlate(gui, edge, minW)
-	local plate = plainFrame(gui, "Plate", {
+-- A tag's stone card in `gui` (bottom-centred, its wood edge kept inside the gui): `lines` stacked and centred, each
+-- { Name, Text, Role, Px, Colour [, Pill = true, Fill = Color3, Label = name] [, Measure = { other texts }] }. Every line
+-- is measured (Theme.Measure, its Measure texts too: what the line may say later), so the card hugs the widest and never
+-- grows by AutomaticSize; a Pill line is a small square block tinted in Fill (WorldTag.Tint: the face a light tint, the
+-- lip Fill, the ink brown), as wide as the card's inside. `lip`: the card's lip colour; `minW`: its least outer width.
+-- -> the card (Frame "Plate"), { [name] = label }
+local function kitPlate(gui, lines, lip, minW)
+	local faceW = max(0, (minW or 0) - 2 * WZ.Edge)
+	for _, l in ipairs(lines) do
+		local w = 0
+		local texts = { l.Text or "" }
+		for _, t in ipairs(l.Measure or {}) do
+			texts[#texts + 1] = t
+		end
+		for _, t in ipairs(texts) do
+			w = max(w, ceil(Theme.Measure(t, l.Role, l.Px).X))
+		end
+		if l.Pill then
+			w = w + 2 * (TAG.PillPadX + TAG.PillEdge)
+		end
+		faceW = max(faceW, w + 2 * TAG.PadX)
+	end
+	local card = plainFrame(gui, "Plate", {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, 0),
-		Size = UDim2.fromOffset(minW or 0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-		BackgroundTransparency = 0.04,
+		Position = UDim2.new(0.5, 0, 1, -WZ.Edge),
+		ZIndex = 2,
 	})
-	rounded(plate, 16)
-	outline(plate, edge or C.TextGold, 3.5)
-	vgradient(plate, (Theme.Colors and Theme.Colors.PanelLight) or C.Violet, (Theme.Colors and Theme.Colors.Panel) or C.Navy)
-	padding(plate, 7, 16, 9)
-	listLayout(plate, Enum.FillDirection.Vertical, 2)
-	return plate
-end
-
-local function tagText(parent, name, text, role, size, color, order)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = color or C.Text,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2.5,
-		OutlineColor = C.Ink,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order or 0,
-		},
-	})
-	label.Parent = parent
-	return label
-end
-
-local function tagPill(parent, name, text, role, size, fill, order)
-	local pill = plainFrame(parent, name, {
-		Size = UDim2.fromOffset(0, size + 8),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		BackgroundColor3 = fill,
-		BackgroundTransparency = 0,
-		LayoutOrder = order or 0,
-	})
-	rounded(pill, floor(size * 0.55))
-	outline(pill, C.Ink, 2.5)
-	padding(pill, 2, floor(size * 0.5), 3)
-	local label = tagText(pill, name .. "Label", text, role, size, C.Text, 1)
-	return pill, label
+	WorldTag.Block(card, Sign.Stone, lip or Sign.StoneLip, Sign.Wood, WZ.Edge, WZ.Lip)
+	local labels = {}
+	local y = TAG.PadTop
+	for i, l in ipairs(lines) do
+		if i > 1 then
+			y = y + TAG.Gap
+		end
+		if l.Pill then
+			local fill = typeof(l.Fill) == "Color3" and l.Fill or Sign.Gold
+			local innerH = l.Px + 2 * TAG.PillPadY + TAG.PillLip
+			local pill = plainFrame(card, l.Name, {
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0, y + TAG.PillEdge),
+				Size = UDim2.fromOffset(faceW - 2 * TAG.PadX - 2 * TAG.PillEdge, innerH),
+				LayoutOrder = i,
+				ZIndex = 3,
+			})
+			WorldTag.Block(pill, fill, fill, Sign.Wood, TAG.PillEdge, TAG.PillLip)
+			labels[l.Label or (l.Name .. "Label")] = WorldTag.Text(pill, l.Label or (l.Name .. "Label"), l.Text or "", l.Role, l.Px, Sign.Text, {
+				Size = UDim2.new(1, 0, 1, -TAG.PillLip), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, ZIndex = 4,
+			})
+			WorldTag.Tint(pill, fill)
+			y = y + innerH + 2 * TAG.PillEdge
+		else
+			labels[l.Name] = WorldTag.Text(card, l.Name, l.Text or "", l.Role, l.Px, l.Colour or Sign.Text, {
+				Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, l.Px + 4), TextXAlignment = Enum.TextXAlignment.Center,
+				LayoutOrder = i, ZIndex = 3,
+			})
+			y = y + l.Px + 4
+		end
+	end
+	card.Size = UDim2.fromOffset(faceW, y + TAG.PadBottom + WZ.Lip)
+	return card, labels
 end
 
 local function surfaceGui(part, face)
@@ -179313,39 +179333,43 @@ local function surfaceGui(part, face)
 	return gui
 end
 
--- navy -> violet rounded panel with an outline, filling the whole SurfaceGui
-local function signPanel(gui, strokeColor)
+-- THE GATES board's stone card filling a SurfaceGui: inset TAG.BoardEdge px (the wood edge is drawn outside the face, so
+-- the canvas keeps it), a TAG.BoardLip px lip in `lip` (the arena red by default)
+local function signPanel(gui, lip)
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
-	panel.Size = UDim2.new(1, 0, 1, 0)
-	panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	panel.BorderSizePixel = 0
-	vgradient(panel, C.Violet, C.Navy)
-	rounded(panel, 24)
-	outline(panel, strokeColor or C.TextGold, 6, 0.15)
+	panel.Position = UDim2.fromOffset(TAG.BoardEdge, TAG.BoardEdge)
+	panel.Size = UDim2.new(1, -2 * TAG.BoardEdge, 1, -2 * TAG.BoardEdge)
 	panel.Parent = gui
+	WorldTag.Block(panel, Sign.Stone, lip or TAG.Lip, Sign.Wood, TAG.BoardEdge, TAG.BoardLip)
 	return panel
 end
 
--- fixed-size sign text (px at SIGN_PPS) placed with fractions of its parent
-local function signText(parent, name, text, role, size, color, x, y, w, h, align)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = color,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = max(2, floor(size / 16 + 0.5)),
-		OutlineColor = C.Ink,
-		Props = {
-			Name = name,
-			Position = UDim2.new(x, 0, y, 0),
-			Size = UDim2.new(w, 0, h, 0),
-			TextWrapped = false,
-			TextXAlignment = align or Enum.TextXAlignment.Center,
-			TextYAlignment = Enum.TextYAlignment.Center,
-		},
+-- the panel's px width on a board w studs wide (SurfaceGuis lay out on the client only, so the server works it out)
+local function panelPx(studs)
+	return studs * SIGN_PPS - 2 * TAG.BoardEdge
+end
+
+-- a thin StoneLip rule across the panel at `y` (a fraction of it), under a board's header (THE GATES' Rule)
+local function signRule(panel, y)
+	return plainFrame(panel, "Rule", {
+		Position = UDim2.new(0.04, 0, y, 0),
+		Size = UDim2.new(0.92, 0, 0, 4),
+		BackgroundColor3 = Sign.StoneLip,
+		BackgroundTransparency = 0,
 	})
-	label.Parent = parent
-	return label
+end
+
+-- fixed-size sign text (px at SIGN_PPS) placed with fractions of its parent, in the kit's ink (inkOf: the old light
+-- roles map to the brown ink, an accent is darkened until it reads on the stone); no outline on a panel (kit B)
+local function signText(parent, name, text, role, size, color, x, y, w, h, align)
+	return WorldTag.Text(parent, name, text, role, size, inkOf(color), {
+		Position = UDim2.new(x, 0, y, 0),
+		Size = UDim2.new(w, 0, h, 0),
+		TextXAlignment = align or Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 2,
+	})
 end
 
 -- Fits a text into `widthPx` at `px` (the smoke audit's 0.5 em per character estimate): cuts it with "..." when needed.
@@ -180460,11 +180484,12 @@ local function buildRing(parent, A, spec, index)
 		base:SetAttribute("RingIndex", index)
 		base:SetAttribute("PadIndex", p)
 		makePrompt(base, "DuelPrompt", "Duel", spec.Name, "Arena", { RingIndex = index, PadIndex = p })
-		-- a pixel tag over the pad
+		-- a pixel tag over the pad: the NPC nameplate's stone card, its lip in the ring's accent
 		local gui = newTag(base, "PadTag", 300, 110, 3.2, 60)
-		local plate = tagPlate(gui, accent:Lerp(C.Text, 0.2), 150)
-		tagText(plate, "RingName", spec.Name, "Title", 26, accent:Lerp(C.Text, 0.55), 1)
-		tagText(plate, "RingHint", "Challenge a player", "Heading", 19, C.Text, 2)
+		kitPlate(gui, {
+			{ Name = "RingName", Text = spec.Name, Role = "Title", Px = 26, Colour = Sign.Text },
+			{ Name = "RingHint", Text = "Challenge a player", Role = "Heading", Px = 19, Colour = Sign.TextMuted },
+		}, WorldTag.LipOf(accent), 150)
 		pads[#pads + 1] = base
 	end
 	Mesh.tag(m, "arena_ring_" .. index, cf, { Primary = accent, Secondary = curbColor }, Mesh.Keep.Ring)
@@ -180509,43 +180534,46 @@ local function buildEventBoard(parent, cf)
 	local m, panel = boardFrame(parent, "EventBoard", cf, BOARD_W, BOARD_H)
 	local gui = surfaceGui(panel, Enum.NormalId.Front)
 	gui.Name = "BoardGui"
-	local p = signPanel(gui, C.TextGold)
+	-- (kit-b world signs, lane C) THE GATES board's stone card with the arena's red lip, the lines in the kit's ink
+	local p = signPanel(gui, TAG.Lip)
 	local labels = {}
 	labels.Header = signText(p, "Header", "ARENA EVENTS", "Title", 60, C.TextGold, 0.04, 0.03, 0.92, 0.15)
+	signRule(p, 0.185)
 	labels.Next = signText(p, "NextLabel", "NEXT EVENT", "Heading", 34, C.TextDim, 0.04, 0.2, 0.92, 0.1)
 	labels.Boss = signText(p, "BossLabel", "Boss Raid", "Title", 46, C.Text, 0.04, 0.31, 0.92, 0.12)
 	labels.Countdown = signText(p, "CountdownLabel", "--:--", "Display", 100, C.Text, 0.04, 0.44, 0.92, 0.27)
 	labels.Status = signText(p, "StatusLabel", "", "Body", 30, C.Text, 0.04, 0.72, 0.92, 0.11)
+	-- Double Rewards: a small square gold block (WorldTag.Tint: a light gold face, the gold lip, the ink brown)
 	local pill = plainFrame(p, "DoublePill", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.845, 0),
 		Size = UDim2.new(0.62, 0, 0.11, 0),
-		BackgroundColor3 = C.GoldDark,
-		BackgroundTransparency = 0,
 		Visible = false,
+		ZIndex = 2,
 	})
-	rounded(pill, 18)
-	outline(pill, C.Ink, 3)
+	WorldTag.Block(pill, Sign.Gold, Sign.Gold, Sign.Wood, 3, 5)
+	WorldTag.Tint(pill, Sign.Gold)
 	labels.Double = signText(pill, "DoubleLabel", "", "Heading", 30, C.Text, 0, 0, 1, 1)
+	labels.Double.Size = UDim2.new(1, 0, 1, -5) -- over the lip
+	labels.Double.ZIndex = 3
 	labels.DoublePill = pill
-	-- the live boss's HP bar (in the pill's slot while a raid runs): the board reads at a glance from the forum
+	-- the live boss's HP bar (in the pill's slot while a raid runs): the board reads at a glance from the forum. A sunk
+	-- stone well (the kit's Well, its wood edge), the fill a flat block of the boss's element colour
 	local track = plainFrame(p, "RaidHpBar", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.855, 0),
 		Size = UDim2.new(0.8, 0, 0.085, 0),
-		BackgroundColor3 = C.Navy,
-		BackgroundTransparency = 0,
 		Visible = false,
 		ClipsDescendants = true,
+		ZIndex = 2,
 	})
-	rounded(track, 16)
-	outline(track, C.Ink, 3)
+	WorldTag.Block(track, Sign.Well, Sign.WellEdge, Sign.Wood, 3, 4)
 	labels.RaidFill = plainFrame(track, "Fill", {
-		Size = UDim2.new(1, 0, 1, 0),
+		Size = UDim2.new(1, 0, 1, -4), -- (over the well's lip)
 		BackgroundColor3 = C.Crimson,
 		BackgroundTransparency = 0,
+		ZIndex = 3,
 	})
-	rounded(labels.RaidFill, 16)
 	labels.RaidBar = track
 	-- a line per running tier fight while the boss waits (the countdown shrinks to make room; at most 3: the fourth would have the floor)
 	labels.Fights = {}
@@ -180560,28 +180588,48 @@ local function buildLeaderboard(parent, cf)
 	local m, panel = boardFrame(parent, "Leaderboard", cf, LEADER_W, LEADER_H)
 	local gui = surfaceGui(panel, Enum.NormalId.Front)
 	gui.Name = "LeaderGui"
-	local p = signPanel(gui, C.TextGold)
+	-- (kit-b world signs, lane C) THE GATES board's stone card with the trophy gold lip; the rows flat stripes on the
+	-- stone (every other one a half StoneLip tint), the top three ranks in small square blocks tinted gold / iron / bronze
+	local p = signPanel(gui, Sign.Gold)
 	signText(p, "Header", "TROPHY LEADERS", "Title", 56, C.TextGold, 0.04, 0.025, 0.92, 0.11)
+	signRule(p, 0.137)
 	local rows = {}
 	local top, rowH = 0.15, 0.073
+	local medals = { Sign.Gold, Sign.Iron, Sign.Post }
 	for i = 1, 10 do
 		local row = plainFrame(p, "Row" .. i, {
 			Position = UDim2.new(0.03, 0, top + (i - 1) * rowH, 0),
 			Size = UDim2.new(0.94, 0, rowH * 0.92, 0),
-			BackgroundColor3 = (i % 2 == 0) and C.Navy or C.Violet,
-			BackgroundTransparency = 0.35,
+			BackgroundColor3 = Sign.StoneLip,
+			BackgroundTransparency = (i % 2 == 0) and 0.5 or 1,
 			Visible = false,
+			ZIndex = 2,
 		})
-		rounded(row, 10)
-		local rankColor = (i == 1 and C.Gold) or (i == 2 and rgb(214, 222, 236)) or (i == 3 and rgb(226, 160, 110)) or C.TextDim
-		local rank = signText(row, "Rank", tostring(i), "Display", 32, rankColor, 0.01, 0, 0.1, 1)
+		local rank
+		if medals[i] then
+			local medal = plainFrame(row, "RankBlock", {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0.012, 0, 0.5, 0),
+				Size = UDim2.fromOffset(40, 36),
+				ZIndex = 3,
+			})
+			WorldTag.Block(medal, medals[i], medals[i], Sign.Wood, 2, 3)
+			rank = WorldTag.Text(medal, "Rank", tostring(i), "Display", 32, Sign.Text, {
+				Size = UDim2.new(1, 0, 1, -3), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4,
+			})
+			WorldTag.Tint(medal, medals[i])
+		else
+			rank = signText(row, "Rank", tostring(i), "Display", 32, C.TextDim, 0.01, 0, 0.1, 1)
+			rank.ZIndex = 3
+		end
 		local name = signText(row, "PlayerName", "", "Heading", 32, C.Text, 0.12, 0, 0.6, 1, Enum.TextXAlignment.Left)
 		local trophies = signText(row, "Trophies", "", "Display", 32, C.TextGold, 0.72, 0, 0.27, 1, Enum.TextXAlignment.Right)
+		name.ZIndex, trophies.ZIndex = 3, 3
 		PixelIcon.Lead(trophies, "trophy", { After = true }) -- (kit-b U7b) the trophy after the count, drawn
 		rows[i] = { Frame = row, Rank = rank, Name = name, Trophies = trophies }
 	end
 	local empty = signText(p, "EmptyLabel", "No champions yet!", "Heading", 36, C.Text, 0.04, 0.42, 0.92, 0.1)
-	local footer = signText(p, "Footer", "Win duels to earn trophies", "Body", 30, C.TextGold, 0.04, 0.895, 0.92, 0.08)
+	local footer = signText(p, "Footer", "Win duels to earn trophies", "Body", 30, C.TextDim, 0.04, 0.895, 0.92, 0.08)
 	makePrompt(panel, "BoardPrompt", "Leaders", "Trophy Leaders", "Arena", { OpenPanelTab = "Leaderboard" })
 	return { Model = m, Gui = gui, Panel = panel, Rows = rows, Empty = empty, Footer = footer }
 end
@@ -180631,13 +180679,15 @@ local function setLabel(label, text, px, color)
 	if not label then
 		return
 	end
-	local width = BOARD_W * SIGN_PPS * label.Size.X.Scale
+	local width = panelPx(BOARD_W) * label.Size.X.Scale
+	local face = Sign.Stone
 	if label.Parent and label.Parent.Name == "DoublePill" then
-		width = BOARD_W * SIGN_PPS * 0.62 * label.Size.X.Scale
+		width = panelPx(BOARD_W) * 0.62 * label.Size.X.Scale
+		face = label.Parent.BackgroundColor3
 	end
 	label.Text = fitText(text, px, width - 4)
 	if color then
-		label.TextColor3 = color
+		label.TextColor3 = inkOf(color, face) -- (kit-b world signs, lane C) ink on the stone: the colour kept readable
 	end
 end
 
@@ -180654,7 +180704,7 @@ local function drawBoard()
 	if st and st.RaidActive then
 		setLabel(L.Next, "BOSS RAID LIVE!", 34, C.Gold)
 		local name, element = bossName(st.RaidBoss)
-		setLabel(L.Boss, st.RaidTier and (name .. " - " .. tostring(st.RaidTier)) or name, 46, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
+		setLabel(L.Boss, st.RaidTier and (name .. " - " .. tostring(st.RaidTier)) or name, 46, elementColorById(element) or C.Text)
 		setLabel(L.Countdown, clockText((st.RaidEndsAt or now) - now), 100, C.Text)
 		local hpText = ""
 		if tonumber(st.RaidHp) and tonumber(st.RaidMaxHp) and st.RaidMaxHp > 0 then
@@ -180664,7 +180714,7 @@ local function drawBoard()
 		setLabel(L.Status, hpText .. (hpText ~= "" and "  " .. GLYPH.Dot .. "  " or "") .. players .. (players == 1 and " fighter" or " fighters"), 30, C.Text)
 	elseif st and st.RaidWaiting then
 		local name, element = bossName(st.RaidBoss)
-		setLabel(L.Next, name .. " waits at the gate", 34, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
+		setLabel(L.Next, name .. " waits at the gate", 34, elementColorById(element) or C.Text)
 		setLabel(L.Boss, "Next boss in", 46, C.Text)
 		setLabel(L.Countdown, st.NextBossAt and clockText(st.NextBossAt - now) or "--:--", 100, C.Text)
 		setLabel(L.Status, "Walk through the gate to fight", 30, C.Text)
@@ -180675,7 +180725,7 @@ local function drawBoard()
 		else
 			setLabel(L.Next, "NEXT BOSS", 34, C.TextDim)
 			local name, element = bossName(st.NextBoss)
-			setLabel(L.Boss, name, 46, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
+			setLabel(L.Boss, name, 46, elementColorById(element) or C.Text)
 		end
 		setLabel(L.Countdown, clockText((st.NextAt or now) - now), 100, C.Text)
 		setLabel(L.Status, "Walk through the gate to fight", 30, C.Text)
@@ -180699,7 +180749,7 @@ local function drawBoard()
 		L.RaidBar.Visible = raidBar and true or false
 		if raidBar then
 			local f = max(0, min(1, st.RaidHp / st.RaidMaxHp))
-			L.RaidFill.Size = UDim2.new(f, 0, 1, 0)
+			L.RaidFill.Size = UDim2.new(f, 0, 1, -4)
 			local _, element = bossName(st.RaidBoss)
 			L.RaidFill.BackgroundColor3 = elementColorById(element) or C.Crimson
 		end
@@ -180728,7 +180778,7 @@ local function drawLeaders(list)
 		if type(e) == "table" and (type(e.Name) == "string" or type(e.UserId) == "number") then
 			shown = shown + 1
 			row.Frame.Visible = true
-			local nameW = LEADER_W * SIGN_PPS * 0.94 * 0.6
+			local nameW = panelPx(LEADER_W) * 0.94 * 0.6
 			row.Name.Text = fitText(tostring(e.Name or ("Player " .. tostring(e.UserId))), 32, nameW - 6)
 			local t = max(0, floor(tonumber(e.Trophies) or 0))
 			row.Trophies.Text = commas(t)
@@ -181029,11 +181079,12 @@ local function buildGateSign(parent, A)
 	local frame = Art.part(parent, "GateSignFrame", cf * CFrame.new(0, 0, 0.35), Vector3.new(w + 0.8, h + 0.8, 0.4), "Brass", { Collide = true, Shadow = false })
 	frame.CanQuery = false
 	local gui = surfaceGui(part, Enum.NormalId.Front)
-	local p = signPanel(gui, C.TextGold)
+	-- (kit-b world signs, lane C) THE GATES board's stone card with the arena's red lip; the title in the kit's ink
+	local p = signPanel(gui, TAG.Lip)
 	-- (T0 review) 56 px: FredokaOne runs about 1.2 x as wide as the old LuckiestGuy, so BATTLE ARENA at 64 px (507 px + the
 	-- outline) spilled past its 506 px box; at 56 px it is about 449 px with the outline, still 1.12 stud tall
 	signText(p, "Title", "BATTLE ARENA", "Title", 56, C.TextGold, 0.04, 0.08, 0.92, 0.48)
-	signText(p, "Subtitle", "Duels and boss raids", "Heading", 30, C.Text, 0.04, 0.6, 0.92, 0.3)
+	signText(p, "Subtitle", "Duels and boss raids", "Heading", 30, C.TextDim, 0.04, 0.6, 0.92, 0.3)
 	-- the main gate's own prompt: the arena panel (raids, duels, the queue)
 	local anchor = anchorPart(parent, "GatePromptAnchor", A * CFrame.new(0, 3, -(COL.WallOut + 2)), Vector3.new(1, 1, 1))
 	makePrompt(anchor, "ArenaPrompt", "Arena", "Battle Arena", "Arena", { OpenPanelTab = "Raid" })
@@ -181045,9 +181096,9 @@ end
 ----------------------------------------------------------------------
 local function archSign(part, face, title, sub)
 	local gui = surfaceGui(part, face)
-	local p = signPanel(gui, C.TextGold)
+	local p = signPanel(gui, TAG.Lip) -- (kit-b world signs, lane C) the stone card, the arena's red lip
 	signText(p, "Title", title, "Title", 62, C.TextGold, 0.04, 0.06, 0.92, 0.5)
-	signText(p, "Subtitle", sub, "Heading", 30, C.Text, 0.04, 0.6, 0.92, 0.32)
+	signText(p, "Subtitle", sub, "Heading", 30, C.TextDim, 0.04, 0.6, 0.92, 0.32)
 	return gui
 end
 
@@ -181198,10 +181249,20 @@ function Gates.build(parent, site, spec)
 		prompt = box(model, "PromptAnchor", site * CFrame.new(0, 3, -2.2), Vector3.new(2, 2, 1), C.Stone, { Transparency = 1, Shadow = false })
 		local anchor = anchorPart(model, "TagAnchor", site * CFrame.new(0, 27, 0))
 		local gui = newTag(anchor, "GateTag", spec.TagWidth or 420, 150, 0, spec.TagRange or 55) -- 55: the gate card range (2026-11-13 owner: 55, was 45; first 120)
-		local plate = tagPlate(gui, C.Gold, 200)
-		tagText(plate, "Title", spec.Title, "Heading", 28, C.Text, 1)
-		tagText(plate, "Info", spec.Info, "Body", 20, C.Text, 2)
-		tagPill(plate, "Pill", spec.Pill or "", "Label", 18, C.Navy, 3)
+		-- (kit-b world signs, lane C) WorldStyle.BuildTag's look in one card: the stone face with the gate's colour on the
+		-- lip, the title and info in the kit's ink, the status pill a small square block tinted in the gate's colour (its
+		-- width measured for the longest status the services write into it: "Pill.Label", as WorldStyle's board)
+		local fill = spec.Color
+		if typeof(fill) ~= "Color3" then
+			local key = ({ Green = "Grass", Blue = "Sky" })[fill] or fill
+			fill = type(key) == "string" and typeof(Sign[key]) == "Color3" and Sign[key] or Sign.Gold
+		end
+		kitPlate(gui, {
+			{ Name = "Title", Text = spec.Title, Role = "Heading", Px = 28, Colour = Sign.Text },
+			{ Name = "Info", Text = spec.Info, Role = "Body", Px = 20, Colour = Sign.TextMuted },
+			{ Name = "Pill", Label = "Label", Text = spec.Pill or "", Role = "Label", Px = 18, Pill = true, Fill = fill,
+				Measure = { "Waiting for players...", "Full! Starting in 10" } },
+		}, fill, 260)
 	end
 	local tag = model:FindFirstChild("GateTag", true)
 	local pill = tag and tag:FindFirstChild("Pill", true)
@@ -188018,6 +188079,7 @@ local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the bounce pads' arrow
 local FxSprites = require(Shared.FxSprites) -- kit-b O3: the game's own particle sprites (no stock sparkle / smoke)
+local WorldTag = require(Shared.WorldTag) -- (kit-b world signs, lane C) the stone card tier of the hint tags and boards
 local CourseLayout = require(script.Parent.CourseLayout)
 
 local CourseBuilder = {}
@@ -188480,8 +188542,8 @@ end
 -- GUI helpers (all text through Theme roles)
 ----------------------------------------------------------------------
 -- World text rule (ARCHITECTURE_V3.md): hints floating over the course are PIXEL-sized BillboardGuis (constant
--- on-screen size: titles >= 22 px, info lines >= 18 px at 1080p, outlined glyphs on a compact solid plate that
--- sizes itself to its lines, LightInfluence 0, MaxDistance ~100-120); signs on surfaces are SurfaceGuis at 50-60
+-- on-screen size: titles >= 22 px, info lines >= 18 px at 1080p, the kit's ink on a compact stone card measured to its
+-- lines, LightInfluence 0, MaxDistance ~100-120); signs on surfaces are SurfaceGuis at 50-60
 -- px per stud with FIXED text sizes (titles >= 1 stud, info lines >= 0.6 stud). Never TextScaled in the world.
 local TEXT_INK = Theme.Colors.TextStroke or C.Ink
 local HINT_TITLE = 30 -- px
@@ -188523,17 +188585,19 @@ local function worldText(parent, text, role, size, color, place, order, wrap)
 	return label
 end
 
-local function addGradient(target, top, bottom)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(top, bottom)
-	g.Rotation = 90
-	g.Parent = target
-	return g
-end
+-- (kit-b world signs, lane C; the owner's "home gui's havent changed", 2026-11-27: the course's hint tags and boards were
+-- still navy rounded plates and the START / FINISH words wore gradients) no new look: the kit's stone card tier as the
+-- NPC nameplate (NpcService buildNameplate) and THE GATES board (LobbyBuilder GuideBoard) draw it. A Sign.Stone face, a
+-- mitred wood edge (WorldTag's SignEdge, outside the face), a lip in the sign's role colour, the text in the kit's brown
+-- ink with no outline (WorldTag.Text). No UICorner, no UIGradient, no navy.
+local Sign = Theme.Sign
+local HINT = { PadX = 16, PadTop = 5, Gap = 1, PadBottom = 5, MinW = 120 }
+local hintLines = setmetatable({}, { __mode = "k" }) -- a tag's card -> its lines { label, texts, role, px }
 
 -- Pixel-sized hint tag on `part`. Its bottom edge sits `lift` studs above the part (world space) and it grows
--- upwards, so it never sinks into what it labels. Returns the compact plate; add lines with hintLine.
-local function hintTag(part, lift, maxDistance, edge)
+-- upwards, so it never sinks into what it labels. Returns the stone card (its lip in `accent`: WorldTag.LipOf); add
+-- lines with hintLine. The card never grows by AutomaticSize: every line is measured as it is added.
+local function hintTag(part, lift, maxDistance, accent)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "HintTag"
 	gui.Size = UDim2.fromOffset(420, 120)
@@ -188544,44 +188608,54 @@ local function hintTag(part, lift, maxDistance, edge)
 	gui.MaxDistance = maxDistance or 110
 	gui.ClipsDescendants = false
 	gui.Parent = part
-	-- dark plate: gold or pale text straight on the sky is only 1.2 - 2.1 : 1, on this plate 7 : 1 or better
+	local Z = WorldTag.Sizes
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
-	plate.Position = UDim2.new(0.5, 0, 1, 0)
-	plate.Size = UDim2.fromOffset(120, 0)
-	plate.AutomaticSize = Enum.AutomaticSize.XY
-	plate.BackgroundColor3 = C.Panel
-	plate.BackgroundTransparency = 0.06
-	plate.BorderSizePixel = 0
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 14)
-	corner.Parent = plate
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = edge or C.Ink
-	stroke.Thickness = 3
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = plate
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 5)
-	pad.PaddingBottom = UDim.new(0, 7)
-	pad.PaddingLeft = UDim.new(0, 16)
-	pad.PaddingRight = UDim.new(0, 16)
-	pad.Parent = plate
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 1)
-	layout.Parent = plate
+	plate.Position = UDim2.new(0.5, 0, 1, -Z.Edge) -- the wood edge is drawn outside the face: kept inside the gui
+	plate.Size = UDim2.fromOffset(HINT.MinW - 2 * Z.Edge, 0)
+	plate.ZIndex = 2
+	WorldTag.Block(plate, Sign.Stone, WorldTag.LipOf(accent), Sign.Wood, Z.Edge, Z.Lip)
 	plate.Parent = gui
+	hintLines[plate] = {}
 	return plate
 end
 
-local function hintLine(plate, text, role, size, color, order)
-	return worldText(plate, text, role, size, color, nil, order)
+-- A line on a hint tag's card, in the kit's ink (`color`: Sign.Text for the title, Sign.TextMuted for the info line),
+-- stacked by `order`. `alts`: the other texts the line may show (a help line's other devices: MovementController swaps
+-- the text), measured too so the card is wide enough for every one.
+local function hintLine(plate, text, role, size, color, order, alts)
+	local label = WorldTag.Text(plate, "Line" .. tostring(order or 0), text, role, size, color or Sign.Text, {
+		TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = order or 0, ZIndex = 3,
+	})
+	local list = hintLines[plate]
+	if not list then
+		return label
+	end
+	local texts = { text }
+	for _, t in ipairs(alts or {}) do
+		texts[#texts + 1] = t
+	end
+	list[#list + 1] = { label = label, texts = texts, role = role, px = size }
+	table.sort(list, function(a, b)
+		return a.label.LayoutOrder < b.label.LayoutOrder
+	end)
+	local Z = WorldTag.Sizes
+	local w, y = HINT.MinW - 2 * Z.Edge - 2 * HINT.PadX, HINT.PadTop
+	for i, l in ipairs(list) do
+		if i > 1 then
+			y = y + HINT.Gap
+		end
+		for _, t in ipairs(l.texts) do
+			w = math.max(w, math.ceil(Theme.Measure(t, l.role, l.px).X))
+		end
+		l.label.Position = UDim2.fromOffset(0, y)
+		l.label.Size = UDim2.new(1, 0, 0, l.px + 4)
+		y = y + l.px + 4
+	end
+	plate.Size = UDim2.fromOffset(w + 2 * HINT.PadX, y + HINT.PadBottom + Z.Lip)
+	return label
 end
-
 -- kit-b O4 (finding 12): help text that names keys (Config.Course.Help: one text per device). The label carries the
 -- keyboard text, a HelpKey and the help tag; MovementController puts the text of the player's device on it.
 local HELP = Config.Course.Help
@@ -188618,22 +188692,29 @@ local function faceTextSize(part, face, pps, k)
 	return math.max(SIGN_INFO, math.min(100, math.floor(math.min(w, h) * k)))
 end
 
--- chunky dark sign panel for SurfaceGuis
-local function panelFrame(parent, transparency)
+-- THE GATES board's stone card filling a SurfaceGui: inset BOARD.Edge px (the wood edge is drawn outside the face, so
+-- the canvas keeps it), a BOARD.Lip px lip in the sign's role colour `lip`
+local BOARD = { Edge = 6, Lip = 8 }
+local function boardPanel(gui, lip)
 	local f = Instance.new("Frame")
-	f.Size = UDim2.new(1, 0, 1, 0)
-	f.BackgroundColor3 = C.Panel
-	f.BackgroundTransparency = transparency or 0.06
-	f.BorderSizePixel = 0
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 18)
-	corner.Parent = f
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = C.Ink
-	stroke.Thickness = 3
-	stroke.Parent = f
-	f.Parent = parent
+	f.Name = "Panel"
+	f.Position = UDim2.fromOffset(BOARD.Edge, BOARD.Edge)
+	f.Size = UDim2.new(1, -2 * BOARD.Edge, 1, -2 * BOARD.Edge)
+	f.Parent = gui
+	WorldTag.Block(f, Sign.Stone, typeof(lip) == "Color3" and lip or Sign.StoneLip, Sign.Wood, BOARD.Edge, BOARD.Lip)
 	return f
+end
+
+-- fixed-size board text in the kit's ink (no outline on a panel), place = { x, y, w, h } fractions of the panel
+local function boardText(panel, text, role, size, color, place, wrap)
+	return WorldTag.Text(panel, "Text", text, role, size, color or Sign.Text, {
+		Position = UDim2.new(place[1], 0, place[2], 0),
+		Size = UDim2.new(place[3], 0, place[4], 0),
+		TextWrapped = wrap == true,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 2,
+	})
 end
 
 ----------------------------------------------------------------------
@@ -189419,8 +189500,8 @@ function KB.CannonPad(ctx, step, look)
 	end
 	-- label
 	local chip = hintTag(pad, 4.8, 100, C.Gold)
-	hintLine(chip, "CANNON", "Accent", HINT_TITLE, C.Gold, 1)
-	hintLine(chip, "step on to launch!", "Body", HINT_INFO, C.Text, 2)
+	hintLine(chip, "CANNON", "Accent", HINT_TITLE, Sign.Text, 1)
+	hintLine(chip, "step on to launch!", "Body", HINT_INFO, Sign.TextMuted, 2)
 	return main
 end
 
@@ -189477,11 +189558,11 @@ function KB.PlateBridge(ctx, step, look)
 			worldText(gui, "HOLD", "Heading", faceTextSize(plate, Enum.NormalId.Top, 60, 0.25), C.Ink, { 0, 0.2, 1, 0.6 })
 			local sign = hintTag(plate, 3.7, 110, color)
 			if i == 1 then
-				hintLine(sign, "HOLD THE PLATE", "Accent", 28, color:Lerp(C.Text, 0.3), 1)
-				hintLine(sign, "so your team can cross", "Body", HINT_INFO, C.Text, 2)
+				hintLine(sign, "HOLD THE PLATE", "Accent", 28, Sign.Text, 1)
+				hintLine(sign, "so your team can cross", "Body", HINT_INFO, Sign.TextMuted, 2)
 			else
-				hintLine(sign, "HOLD TO LET THEM CROSS", "Accent", 28, color:Lerp(C.Text, 0.3), 1)
-				hintLine(sign, "then everyone moves on", "Body", HINT_INFO, C.Text, 2)
+				hintLine(sign, "HOLD TO LET THEM CROSS", "Accent", 28, Sign.Text, 1)
+				hintLine(sign, "then everyone moves on", "Body", HINT_INFO, Sign.TextMuted, 2)
 			end
 		end
 	end
@@ -189497,19 +189578,20 @@ end
 ----------------------------------------------------------------------
 -- Start, checkpoint and finish
 ----------------------------------------------------------------------
--- dark rounded sign board standing at `localPos` (in the frame F), readable from its `face` side. helpKey: the body is
--- Config.Course.Help[helpKey] (the keyboard text here; the client swaps in its own device's)
+-- a sign board standing at `localPos` (in the frame F), readable from its `face` side: a wood board carrying THE GATES
+-- board's stone card (kit-b world signs, lane C; its lip in `accent`), the title and the body in the kit's ink. helpKey:
+-- the body is Config.Course.Help[helpKey] (the keyboard text here; the client swaps in its own device's)
 local function buildBoard(ctx, F, localPos, face, title, body, accent, helpKey)
 	local cf = F * CFrame.new(localPos)
-	local board = blk(ctx, "Signs", "InfoBoard", Vector3.new(0.4, 5.6, 8.6), cf, C.Panel, MAT.SmoothPlastic)
+	local board = blk(ctx, "Signs", "InfoBoard", Vector3.new(0.4, 5.6, 8.6), cf, Sign.Wood, MAT.SmoothPlastic)
 	for _, dz in ipairs({ -3.2, 3.2 }) do
 		cyl(ctx, "Signs", "BoardLeg", 1.0, 0.5, F * CFrame.new(localPos.X, localPos.Y - 3.3, localPos.Z + dz), C.Iron, MAT.SmoothPlastic)
 	end
 	-- 430 x 280 px canvas: a 1-stud title, then 0.6-stud body lines
 	local gui = surfaceOn(board, face, 50)
-	local panel = panelFrame(gui, 0.04)
-	worldText(panel, title, "Title", 50, accent, { 0.03, 0.03, 0.94, 0.2 })
-	local lines = worldText(panel, body, "Body", SIGN_INFO, C.Text, { 0.05, 0.27, 0.9, 0.69 }, nil, true)
+	local panel = boardPanel(gui, accent)
+	boardText(panel, title, "Title", 50, Sign.Text, { 0.03, 0.03, 0.94, 0.2 })
+	local lines = boardText(panel, body, "Body", SIGN_INFO, Sign.Text, { 0.05, 0.27, 0.9, 0.69 }, true)
 	lines.TextYAlignment = Enum.TextYAlignment.Top
 	lines.LineHeight = 1.12
 	if helpKey then
@@ -189536,7 +189618,7 @@ function KB.Start(ctx, step, look)
 		cyl(ctx, "Decor", "ArchBase", 1.2, 2.8, F * CFrame.new(sgn * half, 0.6, archZ), C.Side)
 		ball(ctx, "Decor", "ArchCap", 2.4, F * CFrame.new(sgn * half, 13.3, archZ), trim, MAT.Neon, 0.1)
 	end
-	local beam = blk(ctx, "Signs", "StartBeam", Vector3.new(22, 3.4, 2), F * CFrame.new(0, 14.2, archZ), C.Panel)
+	local beam = blk(ctx, "Signs", "StartBeam", Vector3.new(22, 3.4, 2), F * CFrame.new(0, 14.2, archZ), Sign.Wood)
 	blk(ctx, "Decor", "StartGlow", Vector3.new(22, 0.25, 2.1), F * CFrame.new(0, 12.45, archZ), trim, MAT.Neon, 0.1)
 	-- kit-b O4 (finding 12): the bunting hangs from a rope tied to the two pillars, under the beam (it used to be six
 	-- balls floating over it)
@@ -189545,15 +189627,15 @@ function KB.Start(ctx, step, look)
 	-- kit-b O4 (finding 20): just the title; the little Script line under it was unreadable at play distance
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		local gui = surfaceOn(beam, face, 50) -- 1100 x 170 px: the title 2 studs tall
-		local title = worldText(gui, "START", "Title", 100, C.Text, { 0, 0.08, 1, 0.84 })
-		addGradient(title, C.Text, trim:Lerp(C.Text, 0.35))
+		-- (kit-b world signs, lane C: the navy beam and the gradient word went) the stone card, the trim's lip, ink letters
+		boardText(boardPanel(gui, trim), "START", "Title", 100, Sign.Text, { 0, 0.08, 1, 0.84 })
 	end
 	-- info boards on both sides (the climb text names the keys of the device in use: MovementController swaps it)
 	buildBoard(ctx, F, Vector3.new(-11.4, 3.6, -3), Enum.NormalId.Right, "HOW TO CLIMB", HELP.Climb.Keyboard,
-		trim:Lerp(C.Text, 0.3), "Climb")
+		trim, "Climb")
 	buildBoard(ctx, F, Vector3.new(11.4, 3.6, -3), Enum.NormalId.Left, "TEAMWORK",
 		"Flags heal everyone and\nlift up downed friends.\nHold plates for bridges.\nNobody gets left behind!",
-		C.Checkpoint:Lerp(C.Text, 0.3))
+		C.Checkpoint)
 	return main
 end
 
@@ -189600,13 +189682,13 @@ function KB.Checkpoint(ctx, step, look)
 		end
 	end
 	local gui = hintTag(orb, labelBottom - orbY, 120, C.Checkpoint)
-	hintLine(gui, "Checkpoint " .. index .. "/" .. total, "Title", 28, C.Text, 1)
+	hintLine(gui, "Checkpoint " .. index .. "/" .. total, "Title", 28, Sign.Text, 1)
 	local nextStage = ctx.Layout.Stages and ctx.Layout.Stages[index + 1]
 	local sub = "Final stretch - the finish is close!"
 	if nextStage and nextStage.Name then
 		sub = "Next: " .. nextStage.Name
 	end
-	hintLine(gui, sub, "Body", HINT_INFO, C.Checkpoint:Lerp(C.Text, 0.45), 2)
+	hintLine(gui, sub, "Body", HINT_INFO, Sign.TextMuted, 2)
 	return main
 end
 
@@ -189638,17 +189720,17 @@ function KB.Finish(ctx, step, look)
 			cyl(ctx, "Decor", "ArchSegment", 2.4, 2.2, F * CFrame.new(sgn * half, 1.2 + (k - 1) * 2.4, archZ), c)
 		end
 	end
-	local beam = blk(ctx, "Signs", "FinishBeam", Vector3.new(26, 3.6, 2), F * CFrame.new(0, 16, archZ), C.Panel)
+	local beam = blk(ctx, "Signs", "FinishBeam", Vector3.new(26, 3.6, 2), F * CFrame.new(0, 16, archZ), Sign.Wood)
 	blk(ctx, "Decor", "FinishGlow", Vector3.new(26, 0.25, 2.1), F * CFrame.new(0, 14.1, archZ), C.Gold, MAT.Neon, 0.1)
 	-- kit-b O4 (finding 20): just the title (the calligraphy "you made it" line is gone; the GOAL tag says the rest)
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		local gui = surfaceOn(beam, face, 50) -- 1300 x 180 px: the title 2 studs tall
-		local title = worldText(gui, "FINISH", "Title", 100, C.Text, { 0, 0.08, 1, 0.84 })
-		addGradient(title, C.Gold:Lerp(C.Text, 0.4), C.Rainbow[1])
+		-- (kit-b world signs, lane C: the navy beam and the rainbow gradient word went) the stone card, a gold lip, ink letters
+		boardText(boardPanel(gui, C.Gold), "FINISH", "Title", 100, Sign.Text, { 0, 0.08, 1, 0.84 })
 	end
 	local sign = hintTag(orb, GOAL_TAG_LIFT, 120, C.Gold)
-	hintLine(sign, "GOAL", "Title", HINT_TITLE, C.Gold:Lerp(C.Text, 0.25), 1)
-	hintLine(sign, "wait here for your team", "Body", HINT_INFO, C.Text, 2)
+	hintLine(sign, "GOAL", "Title", HINT_TITLE, Sign.Text, 1)
+	hintLine(sign, "wait here for your team", "Body", HINT_INFO, Sign.TextMuted, 2)
 	return main
 end
 
@@ -189683,11 +189765,12 @@ local function buildDashHint(ctx, step)
 	rod(ctx, "Decor", "DashPole", pole, pole + Vector3.new(0, 4.6, 0), 0.25, C.Brass, MAT.SmoothPlastic)
 	local head = ball(ctx, "Decor", "DashBeacon", 0.9, CFrame.new(pole + Vector3.new(0, 4.8, 0)), C.Gold, MAT.Neon, 0.1)
 	local gui = hintTag(head, 0.8, 110, C.Gold)
-	hintLine(gui, "DASH!", "Accent", 32, C.Gold, 1)
+	hintLine(gui, "DASH!", "Accent", 32, Sign.Text, 1)
 	if step.Kind == "PlateBridge" then
-		hintLine(gui, "or hold the plate for a bridge", "Body", HINT_INFO, C.Text, 2)
+		hintLine(gui, "or hold the plate for a bridge", "Body", HINT_INFO, Sign.TextMuted, 2)
 	else
-		helpText(hintLine(gui, HELP.Dash.Keyboard, "Body", HINT_INFO, C.Text, 2), "Dash")
+		-- (the card is measured for every device's text: MovementController swaps it on the client)
+		helpText(hintLine(gui, HELP.Dash.Keyboard, "Body", HINT_INFO, Sign.TextMuted, 2, { HELP.Dash.Touch, HELP.Dash.Gamepad }), "Dash")
 	end
 end
 
@@ -195612,6 +195695,7 @@ local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
 local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
+local WorldTag = require(Shared.WorldTag) -- (kit-b world signs, lane C) the DOWNED marker's stone card
 
 local DamageService = {}
 
@@ -195684,39 +195768,23 @@ local function destroyMarker(s)
 	end
 end
 
--- Downed marker (World text rule): a PIXEL-sized tag over the head: "DOWNED" in a red pill over a hint line, on
--- a compact navy plate that sizes itself to the text (fixed sizes, outlined glyphs). AlwaysOnTop and a long
--- MaxDistance on purpose: teammates must spot a downed friend across the course. Static: per-frame visual
--- animation belongs to the client (replication rule), so the server no longer tweens the text.
+-- Downed marker (World text rule): a PIXEL-sized tag over the head. AlwaysOnTop and a long MaxDistance on purpose:
+-- teammates must spot a downed friend across the course. Static: per-frame visual animation belongs to the client
+-- (replication rule), so the server no longer tweens the text.
+-- (kit-b world signs, lane C: the rounded navy plate with the rounded red pill went) the NPC nameplate's stone card: a
+-- 3 px mitred wood edge, a red lip, "DOWNED" in a small square red block (WorldTag.Tint: a light red face, the red lip,
+-- the kit's brown ink) over the hint line in the muted ink. Both lines are measured, so the card hugs them.
 local MARKER_TITLE_PX = 28
 local MARKER_HINT_PX = 19
-
-local function markerLabel(parent, name, text, role, size, outlineColor, order)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = Theme.Colors.White,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2.5,
-		OutlineColor = outlineColor,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order,
-		},
-	})
-	label.Parent = parent
-	return label
-end
+local MARKER = { PadX = 14, PadTop = 6, Gap = 3, PadBottom = 6, PillEdge = 2, PillLip = 3, PillPadX = 14, PillPadY = 2 }
 
 local function createMarker(s, char)
 	local anchor = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
 	if not anchor then
 		return
 	end
-	local ink = Theme.Colors.TextStroke or Theme.Colors.Ink
-	local red = Theme.Colors.Bad
+	local Sign, Z, M = Theme.Sign, WorldTag.Sizes, MARKER
+	local red = Sign.Red
 
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "NimbusDownedMarker"
@@ -195728,50 +195796,42 @@ local function createMarker(s, char)
 	gui.LightInfluence = 0
 	gui.ClipsDescendants = false
 
+	local title, hint = "DOWNED", "reach the next checkpoint!"
+	local titleW = math.ceil(Theme.Measure(title, "Accent", MARKER_TITLE_PX).X) + 2 * (M.PillPadX + M.PillEdge)
+	local hintW = math.ceil(Theme.Measure(hint, "Body", MARKER_HINT_PX).X)
+	local faceW = math.max(titleW, hintW) + 2 * M.PadX
+	local pillH = MARKER_TITLE_PX + 2 * M.PillPadY + 4 + M.PillLip -- the pill's face, its lip included
+
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
-	plate.Position = UDim2.new(0.5, 0, 1, 0)
-	plate.Size = UDim2.fromOffset(120, 0)
-	plate.AutomaticSize = Enum.AutomaticSize.XY
-	plate.BackgroundColor3 = Theme.Colors.Panel
-	plate.BackgroundTransparency = 0.06
-	plate.BorderSizePixel = 0
+	plate.Position = UDim2.new(0.5, 0, 1, -Z.Edge)
+	plate.ZIndex = 2
+	WorldTag.Block(plate, Sign.Stone, Sign.RedLip, Sign.Wood, Z.Edge, Z.Lip)
 	plate.Parent = gui
-	Theme.Corner(plate, UDim.new(0, 14))
-	Theme.Stroke(plate, red, 3, 0)
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 6)
-	pad.PaddingBottom = UDim.new(0, 7)
-	pad.PaddingLeft = UDim.new(0, 14)
-	pad.PaddingRight = UDim.new(0, 14)
-	pad.Parent = plate
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 3)
-	layout.Parent = plate
 
+	local y = M.PadTop
 	local pill = Instance.new("Frame")
 	pill.Name = "TitlePill"
-	pill.Size = UDim2.fromOffset(0, MARKER_TITLE_PX + 8)
-	pill.AutomaticSize = Enum.AutomaticSize.XY
-	pill.BackgroundColor3 = red
-	pill.BorderSizePixel = 0
+	pill.AnchorPoint = Vector2.new(0.5, 0)
+	pill.Position = UDim2.new(0.5, 0, 0, y + M.PillEdge)
+	pill.Size = UDim2.fromOffset(titleW - 2 * M.PillEdge, pillH)
 	pill.LayoutOrder = 1
+	pill.ZIndex = 3
+	WorldTag.Block(pill, red, red, Sign.Wood, M.PillEdge, M.PillLip)
 	pill.Parent = plate
-	Theme.Corner(pill, UDim.new(0, 12))
-	Theme.Stroke(pill, ink, 2.5, 0)
-	local pillPad = Instance.new("UIPadding")
-	pillPad.PaddingTop = UDim.new(0, 2)
-	pillPad.PaddingBottom = UDim.new(0, 2)
-	pillPad.PaddingLeft = UDim.new(0, 14)
-	pillPad.PaddingRight = UDim.new(0, 14)
-	pillPad.Parent = pill
-	markerLabel(pill, "Title", "DOWNED", "Accent", MARKER_TITLE_PX, Theme.Darken(red, 0.6), 1)
+	WorldTag.Text(pill, "Title", title, "Accent", MARKER_TITLE_PX, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -M.PillLip), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, ZIndex = 4,
+	})
+	WorldTag.Tint(pill, red)
+	y = y + pillH + 2 * M.PillEdge + M.Gap
 
-	markerLabel(plate, "Hint", "reach the next checkpoint!", "Body", MARKER_HINT_PX, ink, 2)
+	WorldTag.Text(plate, "Hint", hint, "Body", MARKER_HINT_PX, Sign.TextMuted, {
+		Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, MARKER_HINT_PX + 4), TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = 2, ZIndex = 3,
+	})
+	y = y + MARKER_HINT_PX + 4
+	plate.Size = UDim2.fromOffset(faceW, y + M.PadBottom + Z.Lip)
 
 	gui.Parent = anchor
 	s.Marker = gui
@@ -217799,6 +217859,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the pad signs' icons, the closed bed's star
+local WorldTag = require(Shared.WorldTag) -- (kit-b world signs) the kit's stone card every home sign is drawn as
+local Sign = Theme.Sign
 
 local HomeBuilder = {}
 
@@ -218021,40 +218083,18 @@ end
 ----------------------------------------------------------------------
 -- GUI helpers (World text rule; fonts only through Theme roles)
 ----------------------------------------------------------------------
-local function rounded(parent, radius)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = (type(radius) == "number") and UDim.new(0, radius) or radius
-	c.Parent = parent
-	return c
-end
-
-local function outline(parent, color, thickness, transparency)
-	local s = Instance.new("UIStroke")
-	s.Color = color
-	s.Thickness = thickness
-	s.Transparency = transparency or 0
-	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	s.Parent = parent
-	return s
-end
-
-local function vgradient(parent, top, bottom)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(top, bottom)
-	g.Rotation = 90
-	g.Parent = parent
-	return g
-end
-
-local function padding(parent, top, left, bottom, right)
-	local p = Instance.new("UIPadding")
-	p.PaddingTop = UDim.new(0, top)
-	p.PaddingLeft = UDim.new(0, left)
-	p.PaddingBottom = UDim.new(0, bottom or top)
-	p.PaddingRight = UDim.new(0, right or left)
-	p.Parent = parent
-	return p
-end
+-- (kit-b world signs, lane B; Pitch 2 item 04_world_ui, the owner's pick B "Stone tags") every home sign is the kit's
+-- stone card (shared/WorldTag; NpcService's nameplate is the model for the billboards, LobbyBuilder's "THE GATES" board for
+-- the surface boards): the Stone face, a mitred wood edge (the UIStroke "SignEdge", drawn outside the face), a lip along
+-- the bottom in the sign's accent, the text in the kit's brown ink on the opaque face with no outline. No round corner, no
+-- gradient, no navy (the rounded navy plates with a vertical gradient and a glowing edge went).
+local TAG = {
+	PadX = 14, -- px each side of the widest row, inside the face (the old plate's padding)
+	PadTop = 6, -- over the first row
+	Gap = 3, -- between rows
+	PadBottom = 4, -- under the last row, over the lip
+	MinW = 150, -- the face's least width
+}
 
 local function listLayout(parent, direction, gap, hAlign)
 	local l = Instance.new("UIListLayout")
@@ -218081,24 +218121,14 @@ local function plainFrame(parent, name, props)
 	return f
 end
 
--- Fixed-size outlined text that sizes itself (tags, pills).
+-- Fixed-size ink text that sizes itself (tags, rows): the kit's brown ink by default, no outline (kit B U6: "no outline on
+-- a panel"; it sits on the opaque stone face)
 local function tagText(parent, name, text, role, size, color, order)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = color or C.Text,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2.5,
-		OutlineColor = C.Ink,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order or 0,
-		},
+	return WorldTag.Text(parent, name, text, role, size, color or Sign.Text, {
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Size = UDim2.fromOffset(0, size + 4),
+		LayoutOrder = order or 0,
 	})
-	label.Parent = parent
-	return label
 end
 
 -- Pixel-sized billboard (constant on-screen size) whose bottom edge sits on the adornee.
@@ -218116,22 +218146,84 @@ local function newTag(adornee, name, w, h, maxDistance)
 	return gui
 end
 
-local function tagPlate(gui, edge)
+-- the tag's stone card, the Frame "Plate" (its readers find it as gui.Plate: HomeFx lays the pad signs out by its size),
+-- bottom-centred in the gui with its wood edge inside the gui; the lip in `accent`'s lip (WorldTag.LipOf, as the NPC cards).
+-- tagFit sizes it once its rows are in.
+local function tagPlate(gui, accent)
+	local Z = WorldTag.Sizes
 	local plate = plainFrame(gui, "Plate", {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, 0),
-		Size = UDim2.fromOffset(150, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-		BackgroundTransparency = 0.04,
+		Position = UDim2.new(0.5, 0, 1, -Z.Edge),
+		Size = UDim2.fromOffset(TAG.MinW, 40),
+		ZIndex = 2,
 	})
-	rounded(plate, 14)
-	local stroke = outline(plate, edge or C.TextGold, 3.5)
-	stroke.Name = "Edge"
-	vgradient(plate, (Theme.Colors and Theme.Colors.PanelLight) or C.Violet, (Theme.Colors and Theme.Colors.Panel) or C.Navy)
-	padding(plate, 6, 14, 8)
-	listLayout(plate, Enum.FillDirection.Vertical, 3)
+	WorldTag.Block(plate, Sign.Stone, WorldTag.LipOf(accent), Sign.Wood, Z.Edge, Z.Lip)
 	return plate
+end
+
+-- a label's width as it shows: its text measured in its role with Theme.Measure (capitals and the face's spare included,
+-- as NpcService's card) plus its UIPadding (a Lead icon's room); a fixed box (an icon's host) its own width
+local function labelW(label)
+	if label.AutomaticSize == Enum.AutomaticSize.None then
+		return label.Size.X.Offset
+	end
+	local pad = label:FindFirstChildOfClass("UIPadding")
+	local padW = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0
+	local ok, v = pcall(Theme.Measure, label.Text, label:GetAttribute("FontRole") or "Body", label.TextSize)
+	local w = (ok and typeof(v) == "Vector2") and v.X or 0
+	if label.Text == "" then
+		w = 0
+	end
+	return math.ceil(w) + padW
+end
+
+-- one row's size: a lone label, or a Frame whose UIListLayout lines its labels up (gap = the layout's padding)
+local function rowSize(row, reserve)
+	local w, h = 0, 0
+	if row:IsA("TextLabel") then
+		w, h = labelW(row), row.TextSize + 4
+	else
+		local layout = row:FindFirstChildOfClass("UIListLayout")
+		local gap = layout and layout.Padding.Offset or 0
+		local n = 0
+		for _, c in ipairs(row:GetChildren()) do
+			if c:IsA("TextLabel") then
+				w = w + labelW(c) + ((n > 0) and gap or 0)
+				h = max(h, c.TextSize + 4, (c.AutomaticSize == Enum.AutomaticSize.None) and c.Size.Y.Offset or 0)
+				n = n + 1
+			end
+		end
+	end
+	return max(w, reserve or 0), h
+end
+
+-- lays the rows out down the stone card (centred, TAG's padding) and sizes the card to them; the gui grows when the card
+-- needs more room than its design box. reserve = { [row] = px }: a line the client rewrites keeps room for its longest text
+local function tagFit(gui, plate, rows, reserve)
+	local Z = WorldTag.Sizes
+	local widest, sizes = 0, {}
+	for i, row in ipairs(rows) do
+		local w, h = rowSize(row, reserve and reserve[row])
+		sizes[i] = h
+		widest = max(widest, w)
+	end
+	local y = TAG.PadTop
+	for i, row in ipairs(rows) do
+		row.AutomaticSize = Enum.AutomaticSize.None
+		row.AnchorPoint = Vector2.new(0.5, 0)
+		row.Position = UDim2.new(0.5, 0, 0, y)
+		row.Size = UDim2.new(1, -2 * TAG.PadX, 0, sizes[i])
+		row.ZIndex = plate.ZIndex + 1
+		if row:IsA("TextLabel") then
+			row.TextXAlignment = Enum.TextXAlignment.Center
+		end
+		y = y + sizes[i] + ((i < #rows) and TAG.Gap or 0)
+	end
+	local faceW = math.ceil(max(TAG.MinW, widest + 2 * TAG.PadX))
+	local faceH = y + TAG.PadBottom + Z.Lip
+	plate.Size = UDim2.fromOffset(faceW, faceH)
+	local size = gui.Size
+	gui.Size = UDim2.fromOffset(max(size.X.Offset, faceW + 2 * Z.Edge), max(size.Y.Offset, faceH + 2 * Z.Edge))
 end
 
 local function surfaceGui(part, face, name)
@@ -218147,24 +218239,25 @@ local function surfaceGui(part, face, name)
 	return gui
 end
 
-local function signText(parent, text, role, size, color, name, x, y, w, h)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = color,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = max(2, floor(size / 16 + 0.5)),
-		OutlineColor = C.Ink,
-		Props = {
-			Name = name,
-			Position = UDim2.new(x, 0, y, 0),
-			Size = UDim2.new(w, 0, h, 0),
-			TextWrapped = false,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			TextYAlignment = Enum.TextYAlignment.Center,
-		},
+-- a surface board's face (LobbyBuilder's "THE GATES" board): a stone card inset by its edge so the canvas keeps the
+-- mitred wood edge drawn outside it, the lip `lipPx` tall in `lip`
+local function boardPanel(gui, edge, lipPx, lip)
+	local panel = plainFrame(gui, "Panel", {
+		Position = UDim2.fromOffset(edge, edge),
+		Size = UDim2.new(1, -2 * edge, 1, -2 * edge),
 	})
-	label.Parent = parent
-	return label
+	WorldTag.Block(panel, Sign.Stone, lip or Sign.StoneLip, Sign.Wood, edge, lipPx)
+	return panel
+end
+
+-- ink text on a surface board, its box in px of the panel
+local function boardText(parent, text, role, size, color, name, x, y, w, h)
+	return WorldTag.Text(parent, name, text, role, size, color or Sign.Text, {
+		Position = UDim2.fromOffset(x, y),
+		Size = UDim2.fromOffset(w, h),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+	})
 end
 
 local function formatCash(n)
@@ -218393,17 +218486,26 @@ function Kit.jit(color, seed)
 	return Color3.fromRGB(ch(color.R), ch(color.G), ch(color.B))
 end
 
--- a pixel billboard sign (World text rule): a title line and info lines on a navy plate; returns gui, labels
-function Kit.sign(adornee, name, lift, title, infos, maxDistance, edge)
+-- a pixel billboard sign (World text rule): a title line and info lines on a stone card (kit-b world signs: the title
+-- in the brown ink, the info lines in the muted ink, the lip in `accent`'s lip); returns gui, labels. info.Reserve: a text
+-- as long as the longest the client will write on that line (HomeFx's basket line), the card keeps room for it
+function Kit.sign(adornee, name, lift, title, infos, maxDistance, accent)
 	local gui = newTag(adornee, name, 360, 120, maxDistance or 70)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, lift or 3, 0)
-	local plate = tagPlate(gui, edge or C.TextGold)
-	local labels = {}
-	labels.Title = tagText(plate, "Title", title, "Title", TAG_NAME, C.Text, 1)
+	local plate = tagPlate(gui, accent or Sign.Gold)
+	local labels, rows, reserve = {}, {}, {}
+	labels.Title = tagText(plate, "Title", title, "Title", TAG_NAME, Sign.Text, 1)
+	rows[1] = labels.Title
 	for i, info in ipairs(infos or {}) do
 		local key = info.Name or ("Info" .. i)
-		labels[key] = tagText(plate, key, info.Text, "Body", TAG_INFO, info.Color or C.TextGold, i + 1)
+		local label = tagText(plate, key, info.Text, "Body", TAG_INFO, info.Color or Sign.TextMuted, i + 1)
+		if info.Reserve then
+			reserve[label] = math.ceil(Theme.Measure(info.Reserve, "Body", TAG_INFO).X)
+		end
+		labels[key] = label
+		rows[#rows + 1] = label
 	end
+	tagFit(gui, plate, rows, reserve)
 	return gui, labels
 end
 
@@ -218716,7 +218818,7 @@ function Art.Farm(def, level)
 		Kit.p(d, "CrateBerries", CFrame.new(c[1], c[2] + 0.6, c[3]) * CFrame.Angles(0, rad((i - 2) * 6), 0), Vector3.new(0.95, 0.18, 0.95), c[4], M.Plastic)
 	end
 	-- the farm sign (World text rule, MaxDistance 70)
-	Kit.sign(sign, "FarmSign", 4.2, "Berry Farm Lv " .. level, { { Name = "Info", Text = "Grows berries for your pets", Color = C.TextGreen } }, 70, C.CashGlow)
+	Kit.sign(sign, "FarmSign", 4.2, "Berry Farm Lv " .. level, { { Name = "Info", Text = "Grows berries for your pets" } }, 70, Sign.Grass)
 	-- where HomeFx's berry flights start: the top of the planted rows, in the middle of the field
 	local topRow = (vines > 0) and 3 or ((level > Farm.RED) and 2 or 1)
 	tpl.Points.BerryPoint = Vector3.new(cx, Farm.ROWS[topRow].Top + 2.2, Farm.ROWS[topRow].Z)
@@ -218781,18 +218883,27 @@ function Garden.promptPoint(def, i)
 	return (Garden.bedFrame(def, v) * CFrame.new(0, 1.3, -(size / 2 + 0.35))).Position
 end
 
--- the "Prestige to open" sign of a closed bed (World text rule: 50 px per stud, letters 0.6 stud)
+-- the "Prestige to open" sign of a closed bed (World text rule: 50 px per stud, letters 0.6 stud). (kit-b world signs) a
+-- stone card on the 170 x 80 px canvas (the board 3.4 x 1.6 studs), inset by its 3 px wood edge (164 x 74), a 4 px lip in
+-- the Prestige violet, so 70 px of face over the lip. Everything keeps Pad px off the wood edge and the lip: the star
+-- (54 px, low on the face: its arm row clears the title's "P") and "Prestige" (120 px of FredokaOne at 30 px) need 174 px side by side, so they share a
+-- corner: the two 30 px lines sit right-aligned and the star's wide arm row runs between them, its narrow top beside the
+-- title's first letter. (Review: the 1.4 stud board left the star flush on the edge and "to open" on the lip.)
+-- (world text rule: the sign's biggest mark >= 0.95 stud) the star is a 9-cell PixelIcon, so it draws in whole 6 px
+-- cells at 54 px (1.08 stud; 46 px drew as 45 px = 0.90 stud); the board is 1.6 studs tall so its wide arm row sits
+-- below the "Prestige" line and the star keeps Pad px off the lip
+Garden.CLOSED = { Edge = 3, Lip = 4, Pad = 4, Board = Vector3.new(3.4, 1.6, 0.15), Star = 54, StarY = 12, TextX = 40, TextW = 120, LineH = 30, TitleY = 2, InfoY = 33 }
 function Garden.closedSign(parent, bedCF, size)
-	local board = Kit.p(parent, "ClosedSign", bedCF * CFrame.new(0, 0.95, -(size / 2 + 0.05)), Vector3.new(3.4, 1.4, 0.15), K.PlanksLight, M.Planks)
+	local Q = Garden.CLOSED
+	local board = Kit.p(parent, "ClosedSign", bedCF * CFrame.new(0, 0.95, -(size / 2 + 0.05)), Q.Board, K.PlanksLight, M.Planks)
 	local gui = surfaceGui(board, Enum.NormalId.Front, "ClosedGui")
-	local panel = plainFrame(gui, "Panel", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(255, 255, 255), BackgroundTransparency = 0 })
-	vgradient(panel, C.Violet, C.Navy)
-	rounded(panel, 10)
-	outline(panel, C.TextGold, 4, 0.1)
-	-- (kit-b U7b) the star is a 54 px PixelIcon (1.08 stud: the sign's biggest mark, as the 48 px glyph was)
-	PixelIcon.Host(signText(panel, "", "Heading", 48, C.TextGold, "Star", 0.0, 0.0, 0.3, 1.0), "star", 54)
-	signText(panel, "Prestige", "Heading", 30, C.TextGold, "Title", 0.28, 0.02, 0.72, 0.48)
-	signText(panel, "to open", "Heading", 30, C.Text, "Info", 0.28, 0.5, 0.72, 0.48)
+	local panel = boardPanel(gui, Q.Edge, Q.Lip, Sign.VioletLip)
+	-- (kit-b U7b) the star is a 54 px PixelIcon (1.08 stud: the sign's biggest mark), in its own colours
+	PixelIcon.Host(boardText(panel, "", "Heading", 48, Sign.GoldLip, "Star", Q.Pad, Q.StarY, Q.Star, Q.Star), "star", Q.Star)
+	local title = boardText(panel, "Prestige", "Heading", 30, Sign.Text, "Title", Q.TextX, Q.TitleY, Q.TextW, Q.LineH)
+	local info = boardText(panel, "to open", "Heading", 30, Sign.TextMuted, "Info", Q.TextX, Q.InfoY, Q.TextW, Q.LineH)
+	title.TextXAlignment = Enum.TextXAlignment.Right
+	info.TextXAlignment = Enum.TextXAlignment.Right
 	return board
 end
 
@@ -218853,7 +218964,7 @@ function Art.Garden(def, level, open)
 	for _, h in ipairs(heap) do
 		Kit.ball(m, "BowlBerry", Vector3.new(bc.X + h[1], Garden.LAWN_TOP + 1.05, bc.Z + h[2]), 0.85, h[3], M.Plastic)
 	end
-	Kit.sign(basin, "BowlSign", 3.4, "Food Bowl", { { Name = "Info", Text = "Pets eat here, then poop Cloud Cash!", Color = C.TextGreen } }, 40, C.CashGlow)
+	Kit.sign(basin, "BowlSign", 3.4, "Food Bowl", { { Name = "Info", Text = "Pets eat here, then poop Cloud Cash!" } }, 40, Sign.Grass)
 	tpl.Points.BowlCenter = Vector3.new(bc.X, Garden.LAWN_TOP + 0.9, bc.Z)
 	-- the beds
 	for i, v in ipairs(beds) do
@@ -219016,9 +219127,11 @@ function Art.FoodMachine(def, level)
 	end
 	-- the machine's sign (World text rule); HomeFx rewrites BasketLine for the owner
 	Kit.sign(body, "MachineSign", (gy0 + gh + 1.6) - (0.5 + (top - 0.5) / 2), "Food Machine", {
-		{ Name = "Info", Text = "Berries -> XP: press E", Color = C.TextGreen },
-		{ Name = "BasketLine", Text = "Berry Basket", Color = C.TextGold },
-	}, 60, C.CashGlow)
+		{ Name = "Info", Text = "Berries -> XP: press E" },
+		-- the owner's line ("1,240 / 3,000 berries", HomeFx) in the ink, the card wide enough for a big basket (review: a
+		-- BasketCap past 99,999 writes a longer line; HomeFx's R.basketFit then widens the card to fit it)
+		{ Name = "BasketLine", Text = "Berry Basket", Color = Sign.Text, Reserve = "00,000 / 00,000 berries" },
+	}, 60, Sign.Grass)
 	tpl.Points.ChuteMouth = Vector3.new(-0.6, 2.0, z0 - 0.5)
 	tpl.Points.Tray = Vector3.new(-0.6, 1.0, z0 - 1.0)
 	tpl.Points.HopperTop = Vector3.new(0, gy0 + gh, zc)
@@ -219960,17 +220073,16 @@ local function buildClaimSign(rec)
 	-- a signboard on a wooden post on the verge beside the gate, facing the street. Two parts only: the free plots
 	-- live inside the lobby and count toward its part budget. (World text rule: 50 px per stud, a 1.04 stud title (T0 review:
 	-- 52 px, FREE HOME in FredokaOne is about 306 px with its outline in the 329 px box; 56 px touched its edges),
-	-- 0.6 stud info, both fitting the 7 x 2.6 stud board; the GUI draws the board's frame.)
+	-- 0.6 stud info, both fitting the 7 x 2.6 stud board; the GUI draws the board's frame.) (kit-b world signs) the face is a
+	-- stone card as LobbyBuilder's "THE GATES" board: inset by its 5 px mitred wood edge (340 x 120 px of the 350 x 130 canvas),
+	-- a 6 px lip in the grass green of a free home; FREE HOME (300 px of FredokaOne at 52 px) in the ink over the muted line
 	local base = cf * CFrame.new(11, 0, -half - 2) * CFrame.Angles(0, math.pi, 0)
 	box(m, "Post", base * CFrame.new(0, 1.6, 0), Vector3.new(0.6, 3.2, 0.6), C.PlankDark, { Collide = true })
 	local board = box(m, "Board", base * CFrame.new(0, 3.9, 0), Vector3.new(7.0, 2.6, 0.4), C.Plank, { Collide = true, Shadow = false })
 	local gui = surfaceGui(board, Enum.NormalId.Back, "ClaimGui")
-	local panel = plainFrame(gui, "Panel", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(255, 255, 255), BackgroundTransparency = 0 })
-	vgradient(panel, C.Violet, C.Navy)
-	rounded(panel, 14)
-	outline(panel, C.CashGlow, 5, 0.1)
-	signText(panel, "FREE HOME", "Title", 52, C.TextGreen, "Title", 0.03, 0.06, 0.94, 0.5)
-	signText(panel, "Press E at the gate", "Body", 30, C.Text, "Info", 0.03, 0.58, 0.94, 0.34)
+	local panel = boardPanel(gui, 5, 6, Sign.GrassLip)
+	boardText(panel, "FREE HOME", "Title", 52, Sign.Text, "Title", 0, 6, 340, 58)
+	boardText(panel, "Press E at the gate", "Body", 30, Sign.TextMuted, "Info", 0, 66, 340, 40)
 	rec.ClaimSign = m
 	return m
 end
@@ -220623,28 +220735,38 @@ local function padSignature(pad, uid)
 	}, "|")
 end
 
--- the floating sign (pixel tag): icon + name, then "Lv a -> b" + price, or the lock reason
+-- (kit-b world signs) a pad sign's accent, its stone card's lip: build green, upgrade gold, locked the well's stone edge,
+-- Prestige violet (the kit's own colours; PAD_COLORS stays the pads' glowing plates)
+local PAD_ACCENT = {
+	Build = Sign.Grass,
+	Upgrade = Sign.Gold,
+	Locked = Sign.WellEdge,
+	Prestige = Sign.Violet,
+}
+
+-- the floating sign (pixel tag): icon + name, then "Lv a -> b" + price, or the lock reason; a stone card (kit-b world
+-- signs: the name and the price in the ink, the level and the lock reason in the muted ink, the lip in PAD_ACCENT)
 local function buildPadSign(anchor, pad, state)
-	local edge = PAD_COLORS[state] or C.TextGold
 	local gui = newTag(anchor, "PadSign", 360, 130, PAD_SIGN_RANGE)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, PAD_SIGN_LIFT, 0)
-	local plate = tagPlate(gui, edge)
-	local row1 = plainFrame(plate, "NameRow", { AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 1 })
+	local plate = tagPlate(gui, PAD_ACCENT[state] or Sign.Gold)
+	local row1 = plainFrame(plate, "NameRow", { LayoutOrder = 1 })
 	listLayout(row1, Enum.FillDirection.Horizontal, 6)
 	-- (kit-b U7b) the station's PixelIcon in a fixed box (an empty label would size to nothing)
-	local icon = tagText(row1, "Icon", "", "Title", TAG_NAME, C.Text, 1)
+	local icon = tagText(row1, "Icon", "", "Title", TAG_NAME, Sign.Text, 1)
 	icon.AutomaticSize = Enum.AutomaticSize.None
 	icon.Size = UDim2.fromOffset(TAG_NAME + 4, TAG_NAME + 4)
 	PixelIcon.Host(icon, PixelIcon.Bitmaps[pad.Icon] and pad.Icon or PAD_ICON, PixelIcon.Snap(TAG_NAME))
-	tagText(row1, "NameLabel", tostring(pad.Title or pad.Name or pad.StationId), "Title", TAG_NAME, C.Text, 2)
-	local row2 = plainFrame(plate, "InfoRow", { AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 2 })
+	tagText(row1, "NameLabel", tostring(pad.Title or pad.Name or pad.StationId), "Title", TAG_NAME, Sign.Text, 2)
+	local row2 = plainFrame(plate, "InfoRow", { LayoutOrder = 2 })
 	listLayout(row2, Enum.FillDirection.Horizontal, 10)
 	if state == "Locked" then
-		PixelIcon.Lead(tagText(row2, "LockLabel", tostring(pad.Locked), "Body", TAG_INFO, C.TextLock, 1), "lock") -- (kit-b U7b)
+		PixelIcon.Lead(tagText(row2, "LockLabel", tostring(pad.Locked), "Body", TAG_INFO, Sign.TextMuted, 1), "lock") -- (kit-b U7b)
 	else
-		tagText(row2, "LevelLabel", tostring(pad.LevelText or ""), "Body", TAG_INFO, C.TextGold, 1)
-		tagText(row2, "PriceLabel", priceText(pad), "Display", TAG_PRICE, (state == "Prestige") and rgb(226, 196, 255) or C.TextGreen, 2)
+		tagText(row2, "LevelLabel", tostring(pad.LevelText or ""), "Body", TAG_INFO, Sign.TextMuted, 1)
+		tagText(row2, "PriceLabel", priceText(pad), "Display", TAG_PRICE, Sign.Text, 2)
 	end
+	tagFit(gui, plate, { row1, row2 })
 	return gui
 end
 
@@ -222626,11 +222748,14 @@ return LightingService
 --     reader; WorldPivot = cf). No board of its own:
 --       * EggShelf: a low stone shelf (SHELF: 19.3 x 0.8 x 2.6) 3 studs in front of the board, colliding; the row slides
 --         1.0 stud (the eggs) / 1.35 (the shelf) towards the reader's left, off the Cloud machine (see SHELF).
---       * RarityStrip: a SurfaceGui on the shelf's Front face at 50 px per stud (965 x 40 px), LightInfluence 0: a Navy
---         Band over the whole canvas (BackgroundTransparency 0.2) holding seven labels Label_<Rarity> (135 x 40 px, one
---         under each egg) that name the rarity in its colour (Secret: the light violet, its own colour is near-black) at
---         30 px = 0.6 stud (the World text rule's line floor; a label strip has no title line) in Theme's Body face with the
---         INK outline (H.signText), TextScaled off. Measured with Roblox's own BuilderSans-Bold the words are 59 .. 161 px
+--       * RarityStrip: a SurfaceGui on the shelf's Front face at 50 px per stud (965 x 40 px), LightInfluence 0: the
+--         Band, a stone card (kit-b world signs, shared/WorldTag: the Stone face inset by its 2 px mitred wood edge, a 4 px
+--         StoneLip lip; the navy see-through band went) holding seven labels Label_<Rarity> (135 x 32 px over the lip, one
+--         under each egg) that name the rarity in the kit's brown ink (no outline: it sits on the opaque face) at 30 px =
+--         0.6 stud (the World text rule's line floor; a label strip has no title line) in Theme's Body face, TextScaled off,
+--         each over its own lip piece Lip_<Rarity> as wide as its word (less STRIP.LipInset each end, so two pieces never
+--         meet) in the rarity colour (Secret: its violet glow, its
+--         own colour is near-black). Measured with Roblox's own BuilderSans-Bold the words are 59 .. 161 px
 --         wide, so two neighbours of the 135 px cells would meet (Common 126 + Uncommon 161): STRIP.Nudge moves the Common
 --         label 22 px out to the shelf's end and the Mythic one 8 px towards Secret, each still under its egg; every gap is
 --         then >= 9 px (the spec's GothamBlack "Heading" face is wider still: Uncommon 185 px, Legendary 175).
@@ -222676,6 +222801,8 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local WorldStyle = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WorldStyle"))
 local FxSprites = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FxSprites"))
+local Theme = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Theme"))
+local WorldTag = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WorldTag")) -- (kit-b world signs) the stone card
 
 local LobbyBoardBuilder = {}
 
@@ -222704,15 +222831,16 @@ local ROW_X = 1.0
 -- the rarity label strip on the shelf's front (16.17.2): px per stud, the label cell, the text size (0.6 stud), the band;
 -- Nudge = px a label moves off its cell's centre (+ = towards the canvas's right = the reader's right), measured above
 local STRIP = {
-	Name = "RarityStrip", PPS = 50, Cell = 135, Text = 30, Role = "Body", BandAlpha = 0.2,
+	Name = "RarityStrip", PPS = 50, Cell = 135, Text = 30, Role = "Body",
+	Edge = 2, Lip = 4, -- (kit-b world signs) the band's wood edge (the band is inset by it) and lip, px
+	LipInset = 4, -- px a word's lip piece stops short of each end of the word (render review: Common's and Uncommon's met)
 	Nudge = { Common = -22, Mythic = 8 },
 }
 -- the walk-up Shop prompt's part (lobby shop 16.3: just in front of the shelf)
 local COUNTER = { Offset = CFrame.new(0, 2, -5.6), Size = Vector3.new(5, 4, 3) }
 local SECRET = {
 	Body = Color3.fromRGB(40, 40, 52), -- Config.Rarities Secret
-	Tint = Color3.fromRGB(138, 92, 255), -- the Secret egg's violet glow (spec 5.6)
-	Text = Color3.fromRGB(178, 150, 255), -- its label on the navy band
+	Tint = Color3.fromRGB(138, 92, 255), -- the Secret egg's violet glow (spec 5.6; its strip label's lip piece)
 }
 -- the shelf VFX (spec 16.5 "The world eggs"): the sparkle per egg from Rare up and the shelf's one light
 local SHELF_FX = {
@@ -222791,28 +222919,47 @@ local function eggSparkle(egg, id)
 	return pe
 end
 
--- the rarity label strip on the shelf's front (16.17.2): a Navy band, one label per egg standing under it. The canvas's
--- left is the shelf's +X (the reader's left, where egg 1 stands), so egg i's centre is W / 2 - x_i * PPS px.
+-- the rarity label strip on the shelf's front (16.17.2): a stone band (kit-b world signs), one ink label per egg standing
+-- under it over its word-wide lip piece in the rarity colour. The canvas's left is the shelf's +X (the reader's left, where
+-- egg 1 stands), so egg i's centre is W / 2 - x_i * PPS px of the canvas (the band starts STRIP.Edge px in).
 local function rarityStrip(shelf, order, H)
+	local Sign = Theme.Sign
 	local gui = H.surfaceGui(shelf, Enum.NormalId.Front)
 	gui.Name = STRIP.Name
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	gui.PixelsPerStud = STRIP.PPS
 	gui.LightInfluence = 0
+	local e = STRIP.Edge
 	local band = Instance.new("Frame")
 	band.Name = "Band"
-	band.Size = UDim2.new(1, 0, 1, 0)
-	band.BackgroundColor3 = H.C.Navy
-	band.BackgroundTransparency = STRIP.BandAlpha
-	band.BorderSizePixel = 0
+	band.Position = UDim2.fromOffset(e, e) -- the edge is drawn outside the face: inset so the canvas keeps it
+	band.Size = UDim2.new(1, -2 * e, 1, -2 * e)
 	band.Parent = gui
+	WorldTag.Block(band, Sign.Stone, Sign.StoneLip, Sign.Wood, e, STRIP.Lip)
 	local w = SHELF.Size.X * STRIP.PPS
+	local lineH = SHELF.Size.Y * STRIP.PPS - 2 * e - STRIP.Lip
 	for i, id in ipairs(order) do
 		local eggX = ROW_X - SHELF.X + (#order + 1 - 2 * i) * EGG.Step / 2 -- the egg's centre from the shelf's
-		local centre = w / 2 - eggX * STRIP.PPS + (STRIP.Nudge[id] or 0)
-		local color = (id == "Secret") and SECRET.Text or rarityColor(id)
-		local label = H.signText(band, id, STRIP.Role, STRIP.Text, color, "Label_" .. id, (centre - STRIP.Cell / 2) / w, 0, STRIP.Cell / w, 1)
-		label.TextScaled = false
+		local centre = w / 2 - eggX * STRIP.PPS + (STRIP.Nudge[id] or 0) - e
+		WorldTag.Text(band, "Label_" .. id, id, STRIP.Role, STRIP.Text, Sign.Text, {
+			Position = UDim2.fromOffset(centre - STRIP.Cell / 2, 0),
+			Size = UDim2.fromOffset(STRIP.Cell, lineH),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			ZIndex = 2,
+		})
+		-- the word's own lip piece in the rarity colour, as wide as the word less LipInset each end (the band's StoneLip
+		-- shows between them, even where two words nearly meet)
+		local tw = math.ceil(Theme.Measure(id, STRIP.Role, STRIP.Text).X)
+		local piece = Instance.new("Frame")
+		piece.Name = "Lip_" .. id
+		piece.BorderSizePixel = 0
+		piece.BackgroundColor3 = (id == "Secret") and SECRET.Tint or rarityColor(id)
+		piece.AnchorPoint = Vector2.new(0.5, 1)
+		piece.Position = UDim2.new(0, centre, 1, 0)
+		piece.Size = UDim2.fromOffset(math.max(24, tw - 2 * STRIP.LipInset), STRIP.Lip)
+		piece.ZIndex = 2
+		piece.Parent = band
 	end
 	gui.Parent = shelf
 	return gui
@@ -223447,14 +223594,13 @@ end
 ----------------------------------------------------------------------
 -- World text rule (ARCHITECTURE_V3.md, added after the playtest "letters too small"):
 --   * Tags above things are PIXEL-sized BillboardGuis (offset UDim2), so their text keeps one on-screen size at
---     any distance: names >= 22 px and info lines >= 18 px at 1080p, outlined glyphs on a compact solid plate
+--     any distance: names >= 22 px and info lines >= 18 px at 1080p, ink on a compact stone plate (kit B)
 --     that sizes itself to its text, LightInfluence 0 and a MaxDistance of ~60-120 studs (a gate's name card 55:
 --     the gate card range, WorldStyle.TagRange; 2026-11-13 owner: 55, was 45).
 --   * Signs on surfaces are SurfaceGuis at SIGN_PPS pixels per stud with FIXED text sizes: titles >= 1 stud,
 --     info lines >= 0.6 stud.
 --   * Never TextScaled in the world: the engine drew the auto-scaled world text tiny in the playtest.
 
-local INK = (Theme.Colors and Theme.Colors.TextStroke) or C.Ink
 local TAG_NAME = 28 -- px: the name / title of a tag
 local TAG_INFO = 20 -- px: info lines of a tag
 local TAG_SMALL = 18 -- px: badges and pills (the info-line minimum)
@@ -223492,41 +223638,6 @@ local function listLayout(parent, direction, gap, hAlign)
 	return layout
 end
 
-local function padding(parent, top, left, bottom, right)
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, top)
-	pad.PaddingLeft = UDim.new(0, left)
-	pad.PaddingBottom = UDim.new(0, bottom or top)
-	pad.PaddingRight = UDim.new(0, right or left)
-	pad.Parent = parent
-	return pad
-end
-
-local function rounded(parent, radius)
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = (type(radius) == "number") and UDim.new(0, radius) or radius
-	corner.Parent = parent
-	return corner
-end
-
-local function outline(parent, color, thickness, transparency)
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = color
-	stroke.Thickness = thickness
-	stroke.Transparency = transparency or 0
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = parent
-	return stroke
-end
-
-local function vgradient(parent, top, bottom)
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(top, bottom)
-	g.Rotation = 90
-	g.Parent = parent
-	return g
-end
-
 local function plainFrame(parent, name, props)
 	local f = Instance.new("Frame")
 	f.Name = name
@@ -223541,58 +223652,172 @@ local function plainFrame(parent, name, props)
 	return f
 end
 
--- The compact solid plate of a tag in the HUD card look (navy gradient, rounded, a thick outline in `edge`),
--- sized to its content and standing on the bottom centre of the tag; its children are laid out by a list.
-local function tagPlate(gui, edge, minW, direction, gap)
-	local plate = plainFrame(gui, "Plate", {
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, 0),
-		Size = UDim2.fromOffset(minW or 0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		BackgroundColor3 = Color3.fromRGB(255, 255, 255), -- the gradient supplies the colour
-		BackgroundTransparency = 0.04,
-	})
-	rounded(plate, 16)
-	outline(plate, edge or C.TextGold, 3.5)
-	vgradient(plate, (Theme.Colors and Theme.Colors.PanelLight) or C.Violet, (Theme.Colors and Theme.Colors.Panel) or C.Navy)
-	padding(plate, 7, 16, 9)
-	listLayout(plate, direction, gap or 2)
+-- (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags", carried to the lobby's own signs: the navy gradient plates,
+-- the rounded pills, the outlined and gradient letters went) every tag and board here is a kit B stone block
+-- (shared/WorldTag, the NPC card / THE GATES face): the Stone face, a mitred wood edge (the Border UIStroke SignEdge, drawn
+-- outside the face), a darker lip along the bottom in the sign's accent (WorldTag.LipOf: the plot / roulette / gate
+-- colour); its lines in the kit's brown ink on the opaque face (WorldTag.Text, no outline); a pill is a small square block
+-- tinted in its colour (WorldTag.Tint). A UIListLayout would lay the Lip out as one more row, so a tag's lines are placed
+-- by hand from their measured text (Theme.Measure, as WorldStyle.BuildTag does) and placed again whenever a text changes
+-- (SpotService's owner names, PortalService's party line on the stand-in gate).
+local KIT = {
+	Sign = Theme.Sign,
+	Edge = WorldTag.Sizes.Edge, -- 3 px: a tag's wood edge
+	Lip = WorldTag.Sizes.Lip, -- 5 px: ... and its lip
+	PadX = 16, -- px each side of the widest line, inside the face
+	PadTop = 6,
+	PadBottom = 5, -- over the lip
+	Gap = 2,
+	PillGap = 4, -- extra px over a pill
+	PillEdge = 2,
+	PillLip = 3,
+	PillPad = 10, -- px each side of a pill's text
+	BoardEdge = 6, -- a surface board's wood edge (THE GATES face)
+	BoardLip = 8,
+}
+
+-- a line's box as the label shows it: its text measured in its role (+ its UIPadding: a PixelIcon.Lead coin) -> w, h
+function KIT.LineSize(label)
+	local pad = label:FindFirstChildOfClass("UIPadding")
+	local padW = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0
+	local m = Theme.Measure(label.Text, label:GetAttribute("KitRole") or "Body", label.TextSize)
+	return math.ceil(m.X) + padW, label.TextSize + 4
+end
+
+-- a pill block sized to its text (the first TextLabel in it), the lip under the text
+function KIT.FitPill(pill)
+	local label = pill:FindFirstChildWhichIsA("TextLabel")
+	if not label then
+		return
+	end
+	local w, h = KIT.LineSize(label)
+	pill.Size = UDim2.fromOffset(w + 2 * KIT.PillPad, h + KIT.PillLip)
+	label.AnchorPoint = Vector2.new(0, 0)
+	label.Position = UDim2.fromOffset(0, 0)
+	label.Size = UDim2.new(1, 0, 1, -KIT.PillLip)
+	label.TextXAlignment = Enum.TextXAlignment.Center
+end
+
+-- a tag's plate laid out: its visible lines and pills (LayoutOrder, then the order they were added) one under the other,
+-- centred, the plate as wide as the widest (never under its KitMinW) and as tall as they need over its lip
+KIT.Laying = setmetatable({}, { __mode = "k" })
+function KIT.Stack(plate)
+	if KIT.Laying[plate] then
+		return
+	end
+	KIT.Laying[plate] = true
+	local items = {}
+	for i, c in ipairs(plate:GetChildren()) do
+		if c:IsA("GuiObject") and c.Name ~= "Lip" and c.Visible then
+			items[#items + 1] = { c = c, i = i }
+		end
+	end
+	table.sort(items, function(a, b)
+		if a.c.LayoutOrder ~= b.c.LayoutOrder then
+			return a.c.LayoutOrder < b.c.LayoutOrder
+		end
+		return a.i < b.i
+	end)
+	local widest, y = 0, KIT.PadTop
+	for n, it in ipairs(items) do
+		local c = it.c
+		if c:IsA("TextLabel") then
+			local w, h = KIT.LineSize(c)
+			c.AnchorPoint = Vector2.new(0.5, 0)
+			c.Position = UDim2.new(0.5, 0, 0, y)
+			c.Size = UDim2.fromOffset(w, h)
+			c.TextXAlignment = Enum.TextXAlignment.Center
+			widest = math.max(widest, w)
+			y = y + h
+		else -- a pill block: its edge is drawn outside it
+			KIT.FitPill(c)
+			y = y + (n > 1 and KIT.PillGap or 0)
+			c.AnchorPoint = Vector2.new(0.5, 0)
+			c.Position = UDim2.new(0.5, 0, 0, y + KIT.PillEdge)
+			widest = math.max(widest, c.Size.X.Offset + 2 * KIT.PillEdge)
+			y = y + c.Size.Y.Offset + 2 * KIT.PillEdge
+		end
+		if n < #items then
+			y = y + KIT.Gap
+		end
+	end
+	local minW = tonumber(plate:GetAttribute("KitMinW")) or 0
+	plate.Size = UDim2.fromOffset(math.max(minW, widest + 2 * KIT.PadX), y + KIT.PadBottom + KIT.Lip)
+	KIT.Laying[plate] = nil
+end
+
+-- lays the plate out now and again whenever one of its texts (or a pill's) changes or a pill is shown / hidden
+function KIT.Done(plate)
+	local function again()
+		KIT.Stack(plate)
+	end
+	for _, c in ipairs(plate:GetChildren()) do
+		if c:IsA("GuiObject") and c.Name ~= "Lip" then
+			c:GetPropertyChangedSignal("Visible"):Connect(again)
+			local labels = c:IsA("TextLabel") and { c } or {}
+			for _, d in ipairs(c:GetChildren()) do
+				if d:IsA("TextLabel") then
+					labels[#labels + 1] = d
+				end
+			end
+			for _, l in ipairs(labels) do
+				l:GetPropertyChangedSignal("Text"):Connect(again)
+				l:GetPropertyChangedSignal("TextSize"):Connect(again)
+				l.ChildAdded:Connect(function() -- a PixelIcon.Lead added later pads the label: measure it again
+					task.defer(again)
+				end)
+			end
+		end
+	end
+	again()
 	return plate
 end
 
--- Fixed-size outlined text that sizes itself to its text (tags, pills, list layouts).
-local function tagText(parent, name, text, role, size, color, order, thickness)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = color or C.Text,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = thickness or 2.5,
-		OutlineColor = INK,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order or 0,
-		},
+-- canvas fractions -> the place on a board's panel: a panel signPanel made (inset by its edge) is placed in px of the
+-- whole canvas, so every line keeps the place it had on the old full-face panel; any other parent takes the fractions
+function KIT.Place(parent, x, y, w, h)
+	local cw, ch = parent:GetAttribute("CanvasW"), parent:GetAttribute("CanvasH")
+	if type(cw) == "number" and type(ch) == "number" then
+		local inset = tonumber(parent:GetAttribute("CanvasInset")) or 0
+		return UDim2.fromOffset(x * cw - inset, y * ch - inset), UDim2.fromOffset(w * cw, h * ch)
+	end
+	return UDim2.new(x, 0, y, 0), UDim2.new(w, 0, h, 0)
+end
+
+-- A tag's stone plate, standing on the bottom centre of the tag (raised by its edge: a BillboardGui clips what lies outside
+-- it), its lip in WorldTag.LipOf(accent). Its lines are tagText / tagPill children; KIT.Done(plate) lays them out.
+local function tagPlate(gui, accent, minW)
+	local plate = plainFrame(gui, "Plate", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -KIT.Edge),
+		Size = UDim2.fromOffset(minW or 0, 0),
+		ZIndex = 2,
 	})
-	label.Parent = parent
+	plate:SetAttribute("KitMinW", minW or 0)
+	WorldTag.Block(plate, KIT.Sign.Stone, WorldTag.LipOf(accent), KIT.Sign.Wood, KIT.Edge, KIT.Lip)
+	return plate
+end
+
+-- Fixed-size ink text on a kit face (no outline), its box set by KIT.Stack / the caller.
+local function tagText(parent, name, text, role, size, color, order)
+	local label = WorldTag.Text(parent, name, text, role, size, color or KIT.Sign.Text, {
+		Size = UDim2.fromOffset(0, size + 4),
+		LayoutOrder = order or 0,
+		ZIndex = 3,
+	})
+	label:SetAttribute("KitRole", role)
 	return label
 end
 
--- A rounded colour pill around one short text (status, price, rarity). Returns pill, label.
-local function tagPill(parent, name, text, role, size, fill, order)
-	local pill = plainFrame(parent, name, {
-		Size = UDim2.fromOffset(0, size + 8),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		BackgroundColor3 = fill,
-		BackgroundTransparency = 0,
-		LayoutOrder = order or 0,
-	})
-	rounded(pill, math.floor(size * 0.55))
-	outline(pill, INK, 2.5)
-	padding(pill, 2, math.floor(size * 0.5), 3)
-	local label = tagText(pill, name .. "Label", text, role, size, C.Text, 1, 2)
+-- A pill: a small square block in `colour` (WorldTag.Tint: a light face of it, its lip the colour, the text in ink)
+-- round one short text (status, rarity), sized to it. Returns pill, label.
+local function tagPill(parent, name, text, role, size, colour, order)
+	local pill = plainFrame(parent, name, { LayoutOrder = order or 0, ZIndex = 3 })
+	WorldTag.Block(pill, colour, colour, KIT.Sign.Wood, KIT.PillEdge, KIT.PillLip)
+	local label = tagText(pill, name .. "Label", text, role, size, KIT.Sign.Text, 1)
+	label.ZIndex = 4
+	WorldTag.Tint(pill, colour)
+	KIT.FitPill(pill)
 	return pill, label
 end
 
@@ -223608,28 +223833,54 @@ local function surfaceGui(part, face)
 	return gui
 end
 
--- Navy -> violet rounded panel with a soft golden outline, filling the whole SurfaceGui.
-local function signPanel(gui, strokeColor)
+-- A board's stone panel (THE GATES face): inset by its wood edge so the canvas keeps the edge, a lip along the bottom
+-- (`lip`, else the stone's), the part's face painted Stone under it. signText places lines in fractions of the canvas.
+local function signPanel(gui, lip, edgePx, lipPx)
+	edgePx, lipPx = edgePx or KIT.BoardEdge, lipPx or KIT.BoardLip
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
-	panel.Size = UDim2.new(1, 0, 1, 0)
-	panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- UIGradient multiplies this
-	panel.BorderSizePixel = 0
-	vgradient(panel, C.PanelTop, C.PanelBottom)
-	rounded(panel, 24)
-	outline(panel, strokeColor or C.TextGold, 6, 0.2)
+	panel.Position = UDim2.fromOffset(edgePx, edgePx)
+	panel.Size = UDim2.new(1, -2 * edgePx, 1, -2 * edgePx)
 	panel.Parent = gui
+	WorldTag.Block(panel, KIT.Sign.Stone, lip or KIT.Sign.StoneLip, KIT.Sign.Wood, edgePx, lipPx)
+	local part = gui.Adornee
+	if part and part:IsA("BasePart") then
+		local s, face = part.Size, gui.Face
+		local fw, fh = s.X, s.Y
+		if face == Enum.NormalId.Top or face == Enum.NormalId.Bottom then
+			fw, fh = s.X, s.Z
+		elseif face == Enum.NormalId.Left or face == Enum.NormalId.Right then
+			fw, fh = s.Z, s.Y
+		end
+		panel:SetAttribute("CanvasW", fw * gui.PixelsPerStud)
+		panel:SetAttribute("CanvasH", fh * gui.PixelsPerStud)
+		panel:SetAttribute("CanvasInset", edgePx)
+	end
 	return panel
 end
 
--- Sign text with a FIXED size (px at SIGN_PPS), placed with fractions of its parent (x, y, w, h).
+-- Sign text with a FIXED size (px at SIGN_PPS) in the kit's ink (no outline), placed with fractions of the canvas (on a
+-- signPanel) or of its parent (x, y, w, h).
 local function signText(parent, text, role, size, color, name, x, y, w, h, align, wrap)
+	local label = WorldTag.Text(parent, name, text, role, size, color or KIT.Sign.Text, {
+		TextWrapped = wrap == true,
+		TextXAlignment = align or Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+	})
+	label.Position, label.Size = KIT.Place(parent, x, y, w, h)
+	return label
+end
+
+-- the old outlined sign text (ONE world outline in the ink, the colour the caller's, fractions of the parent), kept only
+-- for LobbyBoardBuilder's egg-row RarityStrip (its own builder, a navy band: L.H.signText) until that builder moves to the
+-- kit; L.H.kitText is the kit's signText above
+function KIT.OutlinedText(parent, text, role, size, color, name, x, y, w, h, align, wrap)
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = color,
 		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
 		OutlineThickness = math.max(2, math.floor(size / 16 + 0.5)),
-		OutlineColor = INK,
+		OutlineColor = (Theme.Colors and Theme.Colors.TextStroke) or C.Ink,
 		Props = {
 			Name = name,
 			Position = UDim2.new(x, 0, y, 0),
@@ -223641,18 +223892,6 @@ local function signText(parent, text, role, size, color, name, x, y, w, h, align
 	})
 	label.Parent = parent
 	return label
-end
-
-local function textGradient(label, keypoints, rotation)
-	local seq = {}
-	for _, kp in ipairs(keypoints) do
-		seq[#seq + 1] = ColorSequenceKeypoint.new(kp[1], kp[2])
-	end
-	local g = Instance.new("UIGradient")
-	g.Color = ColorSequence.new(seq)
-	g.Rotation = rotation or 0
-	g.Parent = label
-	return g
 end
 
 -- "50" / "5,000" (kit-b U7b: the token is the PixelIcon coin in front, tokenPrice)
@@ -223667,21 +223906,21 @@ local function tokenPrice(label)
 	return label
 end
 
--- A key-cap chip + a description: one row of a notice board (fractions of the 550 x 400 px board canvas).
+-- A key-cap chip + a description: one row of a notice board (fractions of the 550 x 400 px board canvas). The chip is a
+-- small raised stone block (Tile face, a 2 px wood edge inside the old chip's box, a stone lip).
 local function keyRow(parent, y, rowH, keyText, descText)
 	local chip = Instance.new("Frame")
 	chip.Name = "KeyChip"
-	-- (T0 review) 0.30 wide (165 px): DUNGEON in FredokaOne at 30 px is about 154 px with its outline (the chip was 148 px);
-	-- the description moves right to match and keeps the board's right margin
-	chip.Size = UDim2.new(0.30, 0, rowH, 0)
-	chip.Position = UDim2.new(0.04, 0, y, 0)
-	chip.BackgroundColor3 = rgb(58, 66, 100)
-	chip.BorderSizePixel = 0
-	rounded(chip, 12)
-	outline(chip, C.TextGold, 2.5, 0.25)
+	-- (T0 review) 0.30 wide (165 px): DUNGEON at 30 px fits it; the description moves right to match and keeps the board's
+	-- right margin
+	local pos, size = KIT.Place(parent, 0.04, y, 0.30, rowH)
+	chip.Position = UDim2.new(pos.X.Scale, pos.X.Offset + 2, pos.Y.Scale, pos.Y.Offset + 2)
+	chip.Size = UDim2.new(size.X.Scale, size.X.Offset - 4, size.Y.Scale, size.Y.Offset - 4)
 	chip.Parent = parent
-	signText(chip, keyText, "Heading", SIGN_INFO, C.TextGold, "Key", 0, 0, 1, 1)
-	signText(parent, descText, "Body", SIGN_INFO, C.Text, "Desc", 0.355, y, 0.62, rowH, Enum.TextXAlignment.Left)
+	WorldTag.Block(chip, KIT.Sign.Tile, KIT.Sign.StoneLip, KIT.Sign.Wood, 2, 4)
+	local key = signText(chip, keyText, "Heading", SIGN_INFO, KIT.Sign.Text, "Key", 0, 0, 1, 1)
+	key.Size = UDim2.new(1, 0, 1, -4)
+	signText(parent, descText, "Body", SIGN_INFO, KIT.Sign.Text, "Desc", 0.355, y, 0.62, rowH, Enum.TextXAlignment.Left)
 end
 
 ----------------------------------------------------------------------
@@ -224426,7 +224665,7 @@ local function noticeBoard(parent, cf, width, height, name)
 		box(m, "PostFoot", cf * CFrame.new(s * (width / 2 + 0.5), 0.4, 0), Vector3.new(1.6, 0.8, 1.6), C.StoneDark, { Collide = true })
 	end
 	box(m, "Frame", cf * CFrame.new(0, 2.4 + height / 2, 0.15), Vector3.new(width + 0.6, height + 0.6, 0.6), C.Plank, { Collide = true })
-	local face = box(m, "Face", cf * CFrame.new(0, 2.4 + height / 2, -0.2), Vector3.new(width, height, 0.2), C.Navy)
+	local face = box(m, "Face", cf * CFrame.new(0, 2.4 + height / 2, -0.2), Vector3.new(width, height, 0.2), KIT.Sign.Stone) -- (kit B) under a stone panel
 	box(m, "Roof", cf * CFrame.new(0, postH + 0.25, 0), Vector3.new(width + 3, 0.5, 2.4), C.PlankDark)
 	box(m, "RoofTop", cf * CFrame.new(0, postH + 0.75, 0), Vector3.new(width + 1.6, 0.5, 1.4), C.Rose)
 	-- Phase 6: prop_board_s (11 x 8) / prop_board_l (14 x 9); the Face keeps its SurfaceGui and stays visible
@@ -225737,18 +225976,15 @@ function Court.WelcomeArch(parent, L, radius)
 	local boardCf = cf * CFrame.new(0, beamY + 1.5 + 3.4, 0) * CFrame.Angles(0, math.pi, 0)
 	box(m, "SignFrame", boardCf, Vector3.new(19.4, 6.4, 0.8), C.SlateDark)
 	box(m, "SignCap", boardCf * CFrame.new(0, 3.45, 0), Vector3.new(20.2, 0.5, 1.2), C.MarbleShade)
-	local board = box(m, "WelcomeSign", boardCf, Vector3.new(18.4, 5.4, 1.0), C.Navy, { Shadow = true })
+	-- (kit B stone board: the navy gradient panel and the title's gold-to-sky text gradient went) a stone panel with a gold
+	-- lip, every line in the kit's ink; the board's sides in the frame's wood
+	local board = box(m, "WelcomeSign", boardCf, Vector3.new(18.4, 5.4, 1.0), KIT.Sign.Wood, { Shadow = true })
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		local gui = surfaceGui(board, face)
-		local panel = signPanel(gui, C.TextGold)
-		signText(panel, "~ welcome to the clouds ~", "Script", 36, C.TextGold, "Welcome", 0.04, 0.05, 0.92, 0.17)
-		local title = signText(panel, Config.GameName, "Title", 100, rgb(255, 255, 255), "Title", 0.03, 0.23, 0.94, 0.44)
-		textGradient(title, {
-			{ 0, rgb(255, 236, 160) },
-			{ 0.5, rgb(255, 255, 255) },
-			{ 1, rgb(180, 220, 255) },
-		}, 90)
-		signText(panel, Config.Tagline or "", "Script", 36, C.Text, "Tagline", 0.04, 0.72, 0.92, 0.17)
+		local panel = signPanel(gui, KIT.Sign.GoldLip)
+		signText(panel, "~ welcome to the clouds ~", "Script", 36, KIT.Sign.TextMuted, "Welcome", 0.04, 0.05, 0.92, 0.17)
+		signText(panel, Config.GameName, "Title", 100, KIT.Sign.Text, "Title", 0.03, 0.23, 0.94, 0.44)
+		signText(panel, Config.Tagline or "", "Script", 36, KIT.Sign.Text, "Tagline", 0.04, 0.72, 0.92, 0.17)
 		gui.Parent = board
 	end
 	Mesh.tag(m, "prop_welcome_arch", cf, nil, { "WelcomeSign" }) -- Phase 6: the sign board stays (SurfaceGuis)
@@ -225839,8 +226075,10 @@ local function buildBoards(f, L)
 	if howCf then
 		local face = noticeBoard(f, howCf, 11, 8, "HowToBoard")
 		local gui = surfaceGui(face, Enum.NormalId.Front)
+		-- (kit B: THE GATES face's stone panel, the key chips small raised stone blocks; the navy panel went)
+		face.Color = KIT.Sign.Stone
 		local panel = signPanel(gui)
-		signText(panel, "HOW TO PLAY", "Title", 52, C.TextGold, "Header", 0.04, 0.025, 0.92, 0.14)
+		signText(panel, "HOW TO PLAY", "Title", 52, KIT.Sign.Text, "Header", 0.04, 0.025, 0.92, 0.14)
 		local rows = {
 			{ "W A S D", "Move around" },
 			{ "SHIFT", "Hold to run" },
@@ -225851,7 +226089,7 @@ local function buildBoards(f, L)
 		for i, row in ipairs(rows) do
 			keyRow(panel, 0.18 + (i - 1) * 0.12, 0.105, row[1], row[2])
 		end
-		signText(panel, "Walk up the avenue to the GATES!", "Body", SIGN_INFO, C.TextGold, "Footer", 0.05, 0.785, 0.9, 0.19, nil, true)
+		signText(panel, "Walk up the avenue to the GATES!", "Body", SIGN_INFO, KIT.Sign.TextMuted, "Footer", 0.05, 0.785, 0.9, 0.19, nil, true)
 		gui.Parent = face
 	end
 	local guideCf = spotFor(L.MidAngle + 58)
@@ -226090,12 +226328,15 @@ function Gates.Fallback(parent, site, id, info, color)
 	-- 55 studs: the gate card range (= WorldStyle.TagRange, written out: this stand-in runs without WorldStyle;
 	-- 2026-11-13 owner: 55, was 45; first 120)
 	local gui = newTag(lintel, "GateTag", 420, 150, 27 - 17.4, 55)
-	local plate = tagPlate(gui, color, 190, Enum.FillDirection.Vertical, 2)
-	tagText(plate, "Title", info.Title, "Heading", 28, rgb(255, 255, 255), 1)
-	tagText(plate, "Info", info.Info, "Body", 20, C.TextDim, 2)
+	-- (kit B) WorldStyle.BuildTag's stone board without its beam: Title / Info in ink, the Pill a block tinted in the gate's
+	-- colour (PortalService re-tints it through WorldTag.Tint: the block carries the WorldTag attribute)
+	local plate = tagPlate(gui, color, 190)
+	tagText(plate, "Title", info.Title, "Heading", 28, KIT.Sign.Text, 1)
+	tagText(plate, "Info", info.Info, "Body", 20, KIT.Sign.TextMuted, 2)
 	-- the Pill shows info.Pill (the Altar's "Secret Roulette"); hidden while empty, as BuildGate's
-	local pill = tagPill(plate, "Pill", info.Pill or "", "Label", 18, color:Lerp(C.Ink, 0.55), 3)
+	local pill = tagPill(plate, "Pill", info.Pill or "", "Label", 18, color, 3)
 	pill.Visible = (info.Pill or "") ~= ""
+	KIT.Done(plate)
 	if type(info.VortexBoost) == "number" then
 		model:SetAttribute("VortexBoost", info.VortexBoost)
 	end
@@ -226191,9 +226432,11 @@ local machineBoxCache = nil
 local function machineTag(anchor, roulette, lift)
 	local color = roulette.Color or C.Rose
 	local gui = newTag(anchor, "PriceBillboard", 320, 110, lift, 60)
+	-- (kit B) a stone card, its lip in the roulette's colour; the name and the coin price in ink
 	local plate = tagPlate(gui, color, 160)
-	tagText(plate, "NameLabel", roulette.DisplayName or roulette.Id, "Title", 26, color:Lerp(C.Text, 0.55), 1)
-	tokenPrice(tagText(plate, "PriceLabel", priceText(roulette.Price or 0), "Display", 24, C.TextGold, 2))
+	tagText(plate, "NameLabel", roulette.DisplayName or roulette.Id, "Title", 26, KIT.Sign.Text, 1)
+	tokenPrice(tagText(plate, "PriceLabel", priceText(roulette.Price or 0), "Display", 24, KIT.Sign.TextMuted, 2))
+	KIT.Done(plate)
 	return gui
 end
 
@@ -226441,8 +226684,9 @@ local function buildTrove(parent, cf)
 	-- the name plate rides the lid (one pixel-sized tag, the world text rule)
 	local plateAnchor = anchorPart(lid, "PlateAnchor", (lidCF * CFrame.new(0, 1.6, -3)).Position)
 	local bb = newTag(plateAnchor, "TroveBillboard", 320, 110, 1.4, 80)
-	local plate = tagPlate(bb, Theme.Neon and Theme.Neon.Green or C.Gold, 160)
-	tagText(plate, "Title", "SKY TROVE", "Title", TAG_NAME, C.TextGold, 1)
+	local plate = tagPlate(bb, KIT.Sign.Gold, 160) -- (kit B) the stone card, a gold lip
+	tagText(plate, "Title", "SKY TROVE", "Title", TAG_NAME, KIT.Sign.Text, 1)
+	KIT.Done(plate)
 	Mesh.tag(lid, "prop_trove_lid", lidCF, nil, { "Hinge", "PlateAnchor" })
 
 	-- the warm light and the sparkles in the gap (pure decor: Low graphics parks them)
@@ -226477,9 +226721,9 @@ local function buildTrove(parent, cf)
 	local trove = type(Config.Trove) == "table" and Config.Trove or {}
 	local joinAnchor = anchorPart(model, "JoinAnchor", (cf * CFrame.new(0, 10.5, 0)).Position)
 	local join = newTag(joinAnchor, "JoinBillboard", 360, 110, 0, 60)
-	local joinPlate = tagPlate(join, Theme.Neon and Theme.Neon.Green or C.Gold, 160)
+	local joinPlate = tagPlate(join, KIT.Sign.Grass, 160) -- (kit B) the stone card, the main action's green lip
 	if (tonumber(trove.GroupId) or 0) > 0 then
-		tagText(joinPlate, "JoinTitle", "Join the group!", "Title", TAG_NAME, C.TextGold, 1)
+		tagText(joinPlate, "JoinTitle", "Join the group!", "Title", TAG_NAME, KIT.Sign.Text, 1)
 		local reward, bits = nil, {}
 		for _, ask in ipairs(type(trove.Asks) == "table" and trove.Asks or {}) do
 			if type(ask) == "table" and ask.Id == "Group" and type(ask.Reward) == "table" then
@@ -226493,11 +226737,12 @@ local function buildTrove(parent, cf)
 			end
 		end
 		if #bits > 0 then
-			tagText(joinPlate, "JoinReward", table.concat(bits, " + "), "Body", TAG_INFO, C.Text, 2)
+			tagText(joinPlate, "JoinReward", table.concat(bits, " + "), "Body", TAG_INFO, KIT.Sign.TextMuted, 2)
 		end
 	else
-		tagText(joinPlate, "JoinSoon", "Group rewards coming soon!", "Heading", 24, C.TextGold, 1)
+		tagText(joinPlate, "JoinSoon", "Group rewards coming soon!", "Heading", 24, KIT.Sign.Text, 1)
 	end
+	KIT.Done(joinPlate)
 	CollectionService:AddTag(join, Config.Tags.Bob or "NC_Bob")
 	join:SetAttribute("BobStuds", 0.5)
 	join:SetAttribute("BobSeconds", 2.4)
@@ -226534,30 +226779,27 @@ local function buildRarityBoard(parent, cf)
 	local RB = { TitleX = 0.025, TitleW = 0.56, SubX = 0.575, SubW = 0.40, SubY = 4, SubH = 62, RowTop = 68, Pitch = 74, Name = 36, PillTop = 38, Pill = 34 }
 	local face, model = noticeBoard(parent, cf, 14, 9, "RarityBoard")
 	local gui = surfaceGui(face, Enum.NormalId.Front)
+	-- (kit B: THE GATES face's stone panel; the navy panel and the rounded outlined pills went) every line in ink, each
+	-- rarity a small square block tinted in its colour (WorldTag.Tint)
+	face.Color = KIT.Sign.Stone
 	local panel = signPanel(gui)
 	local H = 450
-	signText(panel, "WINGED PETS", "Title", 50, C.Gold, "Header", RB.TitleX, 6 / H, RB.TitleW, 54 / H, Enum.TextXAlignment.Left)
-	signText(panel, "Every egg hatches a pet of its rarity", "Body", SIGN_INFO, C.Text, "Sub", RB.SubX, RB.SubY / H, RB.SubW, RB.SubH / H, Enum.TextXAlignment.Right, true) -- lobby shop (5.9)
+	signText(panel, "WINGED PETS", "Title", 50, KIT.Sign.Text, "Header", RB.TitleX, 6 / H, RB.TitleW, 54 / H, Enum.TextXAlignment.Left)
+	signText(panel, "Every egg hatches a pet of its rarity", "Body", SIGN_INFO, KIT.Sign.TextMuted, "Sub", RB.SubX, RB.SubY / H, RB.SubW, RB.SubH / H, Enum.TextXAlignment.Right, true) -- lobby shop (5.9)
 	for i, roulette in ipairs(Config.Roulettes) do
 		local top = RB.RowTop + (i - 1) * RB.Pitch
 		local y = top / H
-		local color = roulette.Color or C.Rose
-		signText(panel, roulette.DisplayName or roulette.Id, "Heading", SIGN_INFO, color:Lerp(C.Text, 0.35), "Name" .. i, 0.04, y, 0.6, RB.Name / H, Enum.TextXAlignment.Left)
-		tokenPrice(signText(panel, priceText(roulette.Price or 0), "Body", SIGN_INFO, C.TextGold, "Price" .. i, 0.6, y, 0.36, RB.Name / H, Enum.TextXAlignment.Right))
-		local pills = plainFrame(panel, "Rarities" .. i, {
-			Position = UDim2.new(0.04, 0, (top + RB.PillTop) / H, 0),
-			Size = UDim2.new(0.92, 0, RB.Pill / H, 0),
-		})
-		local layout = listLayout(pills, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left)
+		signText(panel, roulette.DisplayName or roulette.Id, "Heading", SIGN_INFO, KIT.Sign.Text, "Name" .. i, 0.04, y, 0.6, RB.Name / H, Enum.TextXAlignment.Left)
+		tokenPrice(signText(panel, priceText(roulette.Price or 0), "Body", SIGN_INFO, KIT.Sign.Text, "Price" .. i, 0.6, y, 0.36, RB.Name / H, Enum.TextXAlignment.Right))
+		local pills = plainFrame(panel, "Rarities" .. i)
+		pills.Position, pills.Size = KIT.Place(panel, 0.04, (top + RB.PillTop) / H, 0.92, RB.Pill / H)
+		-- 12 px apart: the pills' 2 px edges are drawn outside them
+		local layout = listLayout(pills, Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Left)
 		layout.VerticalAlignment = Enum.VerticalAlignment.Center
 		for k, rarity in ipairs(oddsRarities(roulette)) do
-			local pill = tagPill(pills, "Rarity_" .. rarity.Id, rarity.Id, "Body", SIGN_INFO, rarity.Color:Lerp(C.Navy, 0.18), k)
-			local pad = pill:FindFirstChildOfClass("UIPadding")
-			if pad then -- a slim pill: the row keeps a clear gap to the next roulette
-				pad.PaddingTop = UDim.new(0, 0)
-				pad.PaddingBottom = UDim.new(0, 0)
-			end
-			pill.Size = UDim2.fromOffset(0, RB.Pill)
+			local pill = tagPill(pills, "Rarity_" .. rarity.Id, rarity.Id, "Body", SIGN_INFO, rarity.Color, k)
+			-- a slim pill (32 px, its edge outside): the row keeps a clear gap to the next roulette
+			pill.Size = UDim2.fromOffset(pill.Size.X.Offset, RB.Pill - 2 * KIT.PillEdge)
 		end
 	end
 	gui.Parent = face
@@ -226762,15 +227004,16 @@ local function buildShop(root, L)
 			box(arch, "PillarLamp", archCF * CFrame.new(s * 7.6, 11.2, 0), Vector3.new(1, 1, 1), C.Lamp, { Material = MAT.Neon })
 		end
 		box(arch, "Beam", archCF * CFrame.new(0, 10.3, 0), Vector3.new(13, 0.6, 1.2), C.PlankDark)
-		local sign = box(arch, "ShopSign", archCF * CFrame.new(0, 12.38, 0), Vector3.new(12.4, 3.6, 0.8), C.Navy, { Shadow = true })
+		local sign = box(arch, "ShopSign", archCF * CFrame.new(0, 12.38, 0), Vector3.new(12.4, 3.6, 0.8), KIT.Sign.Wood, { Shadow = true })
 		box(arch, "SignRoof", archCF * CFrame.new(0, 14.46, 0), Vector3.new(14, 0.6, 1.8), C.Rose)
 		Mesh.tag(arch, "prop_shop_arch", archCF, nil, { "ShopSign" }) -- Phase 6: the sign board stays (SurfaceGuis)
 		-- 620 x 180 px canvas: the name 1.6 studs tall, the caption 0.68 stud
 		for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 			local gui = surfaceGui(sign, face)
-			local panel = signPanel(gui, C.TextGold)
-			signText(panel, "CLOUD SHOP", "Title", 80, C.Gold, "Name", 0.03, 0.05, 0.94, 0.56)
-			signText(panel, "eggs & gems", "Body", 34, C.Text, "Sub", 0.04, 0.62, 0.92, 0.3) -- lobby shop 16.3: no items any more
+			-- (kit B) the stone panel with the shop roof's pink lip, ink lines (the navy gradient panel went)
+			local panel = signPanel(gui, KIT.Sign.RoofLip)
+			signText(panel, "CLOUD SHOP", "Title", 80, KIT.Sign.Text, "Name", 0.03, 0.05, 0.94, 0.56)
+			signText(panel, "eggs & gems", "Body", 34, KIT.Sign.TextMuted, "Sub", 0.04, 0.62, 0.92, 0.3) -- lobby shop 16.3: no items any more
 			gui.Parent = sign
 		end
 		local lampTpl = Props.Lamp()
@@ -226977,128 +227220,146 @@ local function plotTemplate()
 	end)
 end
 
--- "No. 7" on both faces of the plot's gate sign: 220 x 90 px, the number 1.12 studs tall, gold on navy.
+-- "No. 7" on both faces of the plot's gate sign: 220 x 90 px, the number 1.12 studs tall. (kit B: THE GATES face's stone
+-- panel, a 4 px wood edge, its 6 px lip in the plot's colour, the number in ink; the rounded navy gradient plate went)
 local function numberSign(sign, index, accent)
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		local gui = surfaceGui(sign, face)
-		local plate = plainFrame(gui, "Plate", {
-			Size = UDim2.new(1, 0, 1, 0),
-			BackgroundColor3 = Color3.fromRGB(255, 255, 255),
-			BackgroundTransparency = 0,
-		})
-		vgradient(plate, C.Violet, C.Navy)
-		rounded(plate, 10)
-		outline(plate, accent:Lerp(C.TextGold, 0.5), 4)
-		signText(plate, "No. " .. tostring(index), "Title", SIGN_TITLE, C.TextGold, "Number", 0.03, 0.04, 0.94, 0.92)
+		local plate = signPanel(gui, WorldTag.LipOf(accent), 4, 6)
+		plate.Name = "Plate"
+		signText(plate, "No. " .. tostring(index), "Title", SIGN_TITLE, KIT.Sign.Text, "Number", 0.05, 0, 0.9, 0.88)
 		gui.Parent = sign
 	end
 end
 
--- Home nameplate over the mailbox (World text rule): a compact pixel tag, readable from ~80 studs. Left: a round
--- avatar disc with the plot number badge; right: the name (big, outlined) and an info line. The disc holds
---   Headshot    ImageLabel: SpotService loads the owner's headshot into it (Players:GetUserThumbnailAsync)
---   Silhouette  the fallback built from frames (head + shoulders) while no headshot is available
+-- Home nameplate over the mailbox (World text rule): a compact pixel tag, readable from ~80 studs. (Pitch 2 item 04 B
+-- "Stone tags", modelled on the NPC card: the rounded navy gradient capsule and the round disc went) ONE stone card (a 3 px
+-- mitred wood edge, a 5 px lip in the plot's colour, WorldTag.LipOf); left: a square avatar well with a mitred wood edge
+-- (MenuController's icon well), the plot number a small gold block on its lower-left corner (WorldTag.Bang's block);
+-- right: the name (Nameplate role, 28 px) over the info line (20 px) in the kit's ink. The card is sized from the measured
+-- texts and laid out again whenever SpotService writes them. The well holds
+--   Headshot    ImageLabel: SpotService loads the owner's headshot into it (Players:GetUserThumbnailAsync), square-cropped
+--   Silhouette  the fallback built from square frames (head + shoulders) while no headshot is available
 --   FreeIcon    a "+" shown while the home is free
--- and the attributes OwnedColor / FreeColor (disc colour per state, read by SpotService).
+-- and the attributes OwnedColor / FreeColor (the well's colour per state, read by SpotService).
 -- Returns gui, nameLabel, subLabel.
-local AVATAR_PX = 60
+local NP = {
+	Avatar = 60, -- the well (its 3 px edge outside)
+	WellEdge = 3,
+	Pad = 9, -- px from the face's left / top to the well
+	Gap = 14, -- px from the well to the texts
+	PadR = 16,
+	FaceH = 83, -- 9 + the 60 px well + 9, the 5 px lip
+	NameY = 8,
+	NameH = 32,
+	SubY = 41,
+	SubH = 26,
+	MinW = 230, -- the card's least face width (as the old plate's)
+	Badge = 26, -- the number block's height (its 2 px edge outside, a 4 px gold lip)
+	BadgePad = 6,
+	BadgeOut = 6, -- px it reaches past the well's left and bottom
+}
 
 local function avatarDisc(parent, index, accent)
-	local holder = plainFrame(parent, "AvatarHolder", { Size = UDim2.fromOffset(AVATAR_PX + 8, AVATAR_PX + 8), LayoutOrder = 1 })
-	local freeColor = (Theme.Buttons and Theme.Buttons.Green) or rgb(96, 196, 108)
-	local ownedColor = accent:Lerp(C.Cloud, 0.45)
-	local disc = plainFrame(holder, "Avatar", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(AVATAR_PX, AVATAR_PX),
-		BackgroundColor3 = freeColor,
-		BackgroundTransparency = 0,
+	local holder = plainFrame(parent, "AvatarHolder", {
+		Position = UDim2.fromOffset(NP.Pad, NP.Pad),
+		Size = UDim2.fromOffset(NP.Avatar, NP.Avatar),
+		ZIndex = 3,
 	})
+	local freeColor = KIT.Sign.Grass
+	local ownedColor = accent:Lerp(C.Cloud, 0.45)
+	local disc = plainFrame(holder, "Avatar", { Size = UDim2.fromScale(1, 1), ZIndex = 3 })
+	WorldTag.Block(disc, freeColor, nil, KIT.Sign.Wood, NP.WellEdge, 0) -- a well: the edge, no lip
 	disc:SetAttribute("OwnedColor", ownedColor)
 	disc:SetAttribute("FreeColor", freeColor)
-	rounded(disc, UDim.new(0.5, 0))
-	outline(disc, INK, 3)
 
-	-- fallback avatar: head + shoulders in a deeper shade of the plot colour (fits inside the circle)
-	local shade = Theme.Darken and Theme.Darken(accent, 0.38) or accent:Lerp(C.Navy, 0.38)
-	local silhouette = plainFrame(disc, "Silhouette", { Size = UDim2.fromScale(1, 1), Visible = false })
-	local head = plainFrame(silhouette, "Head", {
+	-- fallback avatar: a square head over square shoulders in a deeper shade of the plot colour
+	local shade = Theme.Darken and Theme.Darken(accent, 0.38) or accent:Lerp(C.Ink, 0.38)
+	local silhouette = plainFrame(disc, "Silhouette", { Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 4 })
+	plainFrame(silhouette, "Head", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 10),
-		Size = UDim2.fromOffset(23, 23),
+		Size = UDim2.fromOffset(22, 22),
 		BackgroundColor3 = shade,
 		BackgroundTransparency = 0,
+		ZIndex = 4,
 	})
-	rounded(head, UDim.new(0.5, 0))
-	local body = plainFrame(silhouette, "Shoulders", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 35),
-		Size = UDim2.fromOffset(36, 19),
+	plainFrame(silhouette, "Shoulders", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.fromScale(0.5, 1),
+		Size = UDim2.fromOffset(38, 22),
 		BackgroundColor3 = shade,
 		BackgroundTransparency = 0,
+		ZIndex = 4,
 	})
-	rounded(body, 10)
 
-	-- free home: a chunky "+"
-	local plus = plainFrame(disc, "FreeIcon", { Size = UDim2.fromScale(1, 1) })
+	-- free home: a chunky square "+" in the ink that reads on the grass well
+	local plus = plainFrame(disc, "FreeIcon", { Size = UDim2.fromScale(1, 1), ZIndex = 4 })
 	for _, size in ipairs({ Vector2.new(30, 9), Vector2.new(9, 30) }) do
-		local bar = plainFrame(plus, "Bar", {
+		plainFrame(plus, "Bar", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
 			Size = UDim2.fromOffset(size.X, size.Y),
-			BackgroundColor3 = C.Text,
+			BackgroundColor3 = KIT.Sign.OnGrass,
 			BackgroundTransparency = 0,
+			ZIndex = 4,
 		})
-		rounded(bar, 4)
 	end
 
 	local shot = Instance.new("ImageLabel")
 	shot.Name = "Headshot"
-	shot.AnchorPoint = Vector2.new(0.5, 0.5)
-	shot.Position = UDim2.fromScale(0.5, 0.5)
-	shot.Size = UDim2.new(1, -4, 1, -4)
+	shot.Size = UDim2.fromScale(1, 1)
 	shot.BackgroundTransparency = 1
 	shot.BorderSizePixel = 0
 	shot.Image = ""
-	shot.ScaleType = Enum.ScaleType.Crop
+	shot.ScaleType = Enum.ScaleType.Crop -- square-cropped
 	shot.Visible = false
-	rounded(shot, UDim.new(0.5, 0))
+	shot.ZIndex = 4
 	shot.Parent = disc
 
-	-- plot number badge on the disc's lower-left edge
-	local badge = plainFrame(holder, "NumberBadge", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0, 10, 1, -9),
-		Size = UDim2.fromOffset(26, TAG_SMALL + 6),
-		AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundColor3 = C.Gold,
-		BackgroundTransparency = 0,
-		ZIndex = 3,
-	})
-	rounded(badge, 10)
-	outline(badge, INK, 2.5)
-	padding(badge, 1, 6, 2)
-	local number = tagText(badge, "Number", "#" .. tostring(index), "Display", TAG_SMALL, C.Text, 1, 2)
-	number.ZIndex = 4
+	-- the plot number: a small gold block (WorldTag.Bang's) pinned on the well's lower-left corner
+	local badge = plainFrame(holder, "NumberBadge", { ZIndex = 5 })
+	WorldTag.Block(badge, KIT.Sign.Gold, KIT.Sign.GoldLip, KIT.Sign.Wood, 2, 4)
+	local number = tagText(badge, "Number", "#" .. tostring(index), "Display", TAG_SMALL, KIT.Sign.Text, 1)
+	number.ZIndex = 6
+	local w = KIT.LineSize(number)
+	badge.AnchorPoint = Vector2.new(0, 1)
+	badge.Position = UDim2.new(0, -NP.BadgeOut, 1, NP.BadgeOut)
+	badge.Size = UDim2.fromOffset(w + 2 * NP.BadgePad, NP.Badge)
+	number.Position = UDim2.fromOffset(0, 0)
+	number.Size = UDim2.new(1, 0, 1, -4)
+	number.TextXAlignment = Enum.TextXAlignment.Center
 	return holder
 end
 
 local function homeNameplate(anchor, index, accent)
 	-- bottom edge 7.2 studs up: a few studs over the mailbox, under the gate lanterns' glow
 	local gui = newTag(anchor, "Nameplate", 460, 110, -2.4, 100)
-	local plate = tagPlate(gui, accent, 230, Enum.FillDirection.Horizontal, 12)
-	local pad = plate:FindFirstChildOfClass("UIPadding")
-	if pad then -- the avatar disc hugs the left edge
-		pad.PaddingLeft = UDim.new(0, 6)
-		pad.PaddingRight = UDim.new(0, 18)
-		pad.PaddingTop = UDim.new(0, 5)
-		pad.PaddingBottom = UDim.new(0, 5)
-	end
+	local plate = tagPlate(gui, accent, NP.MinW)
+	plate.Size = UDim2.fromOffset(NP.MinW, NP.FaceH)
 	avatarDisc(plate, index, accent)
-	local texts = plainFrame(plate, "Texts", { AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 2 })
-	listLayout(texts, Enum.FillDirection.Vertical, 0, Enum.HorizontalAlignment.Left)
-	local nameLabel = tagText(texts, "NameLabel", "Free home", "Nameplate", TAG_NAME, C.Text, 1) -- (kit-b U6) a player's name keeps its case
-	local subLabel = tagText(texts, "SubLabel", "Step in to claim", "Body", TAG_INFO, C.TextGold, 2, 2)
+	local textX = NP.Pad + NP.Avatar + NP.Gap
+	local texts = plainFrame(plate, "Texts", { Position = UDim2.fromOffset(textX, 0), Size = UDim2.new(0, 0, 1, -KIT.Lip), ZIndex = 3 })
+	local nameLabel = tagText(texts, "NameLabel", "Free home", "Nameplate", TAG_NAME, KIT.Sign.Text, 1) -- (kit-b U6) a player's name keeps its case
+	local subLabel = tagText(texts, "SubLabel", "Step in to claim", "Body", TAG_INFO, KIT.Sign.TextMuted, 2)
+	nameLabel.Position = UDim2.fromOffset(0, NP.NameY)
+	subLabel.Position = UDim2.fromOffset(0, NP.SubY)
+	for _, l in ipairs({ nameLabel, subLabel }) do
+		l.TextXAlignment = Enum.TextXAlignment.Left
+	end
+	-- the card as wide as the longer line needs (never under MinW), laid out again whenever SpotService writes a line
+	local function layout()
+		local nw = KIT.LineSize(nameLabel)
+		local sw = KIT.LineSize(subLabel)
+		local textW = math.max(nw, sw)
+		nameLabel.Size = UDim2.fromOffset(textW, NP.NameH)
+		subLabel.Size = UDim2.fromOffset(textW, NP.SubH)
+		texts.Size = UDim2.new(0, textW, 1, -KIT.Lip)
+		plate.Size = UDim2.fromOffset(math.max(NP.MinW, textX + textW + NP.PadR), NP.FaceH)
+	end
+	nameLabel:GetPropertyChangedSignal("Text"):Connect(layout)
+	subLabel:GetPropertyChangedSignal("Text"):Connect(layout)
+	layout()
 	return gui, nameLabel, subLabel
 end
 
@@ -227473,8 +227734,9 @@ local function buildGarden(parent, spec, L)
 	-- name tag + the bridge to the street junction
 	local tag = anchorPart(f, "NameTag", c + Vector3.new(0, 22, 0))
 	local gui = newTag(tag, "NameTag", 320, 80, -1.7, 120)
-	local plate = tagPlate(gui, rgb(150, 210, 160), 160)
-	tagText(plate, "Text", spec.Name, "Title", TAG_NAME + 2, C.Text, 1)
+	local plate = tagPlate(gui, KIT.Sign.Grass, 160) -- (kit B) the stone card, a grass lip
+	tagText(plate, "Text", spec.Name, "Title", TAG_NAME + 2, KIT.Sign.Text, 1)
+	KIT.Done(plate)
 	woodBridge(f, "GardenBridge", polar(a, G.GardenR + R - 3, TOP), polar(a, G.SpokeEndR, TOP), 8, { RailInsetA = 3, RailInsetB = 2.6, MeshKey = "floor_garden_bridge" })
 	return f
 end
@@ -228236,8 +228498,10 @@ function LobbyBuilder.Build()
 	end
 	-- lobby shop: the helpers LobbyBoardBuilder draws with (the egg row in buildShop, the leaderboard board in
 	-- buildPlazaDecor), one table as a field of the layout (no new local)
+	-- (kit B, the lobby's signs on stone) signText stays the old outlined text for LobbyBoardBuilder's RarityStrip; kitText
+	-- / signPanel / KIT are the kit's ink text, stone panel and tag helpers for when that builder moves over
 	L.H = {
-		noticeBoard = noticeBoard, surfaceGui = surfaceGui, signPanel = signPanel, signText = signText,
+		noticeBoard = noticeBoard, surfaceGui = surfaceGui, signPanel = signPanel, signText = KIT.OutlinedText, kitText = signText, KIT = KIT,
 		box = box, Mesh = Mesh, C = C, MAT = MAT, LAWN = LAWN, plazaSpot = plazaSpot, faceCentre = faceCentre,
 		Detail = DETAIL_TAG, -- shop-area: the in-globe pile eggs (LobbyMachineBuilder.GlobeEggs)
 	}
@@ -235940,7 +236204,7 @@ return Podium
 -- play" / "Starting in 12"). It floats ~27 studs up and shows within 55 studs (the gate card range,
 -- WorldStyle.TagRange; 2026-11-13 owner: 55, was 45; first 120).
 -- Countdown face (eye level, for friends standing next to the portal): a SurfaceGui in the gate's swirl,
--- facing the plaza, ~11 studs above the pad: "Starting in", a 3.2-stud numeral on a round badge and the head
+-- facing the plaza, ~11 studs above the pad: "Starting in", a 3.2-stud numeral on a square stone badge and the head
 -- count. Shown only while the pad has a party.
 -- The server writes a text only when it changes (at most once per second per line) and mirrors the numbers as
 -- attributes on the portal model (PartyCount, PartyMax, Countdown).
@@ -235957,6 +236221,7 @@ local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
 local Theme = require(Shared.Theme)
 local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the difficulty stars on the gate cards
+local WorldTag = require(Shared.WorldTag) -- (kit-b world signs, lane C) the stone card tier of the stand-in board and the face
 
 local ObbyLevels = nil
 do
@@ -236009,6 +236274,15 @@ local BB = {
 	InfoText = 21,
 	StatusText = 25,
 	PlateMinW = 190,
+	-- (kit-b world signs, lane C) the stand-in board's stone card (NpcService's nameplate numbers): px inside the face, the
+	-- status pill's wood edge, lip and side room
+	PadX = 18,
+	PadTop = 8,
+	Gap = 3,
+	PadBottom = 6,
+	PillEdge = 2,
+	PillLip = 4,
+	PillPad = 14,
 }
 
 -- Countdown face (SurfaceGui, World text rule: 40-60 px per stud, titles >= 1 stud, info lines >= 0.6 stud).
@@ -236029,6 +236303,13 @@ local FACE = {
 	NumScale = 1.6,
 	TopText = 56, -- 1.12 studs
 	CountText = 40, -- 0.8 stud
+	-- (kit-b world signs, lane C) the badge is a square stone card (THE GATES board's 6 px wood edge, a 10 px lip in the
+	-- portal's colour, gold while counting down); the ribbon and the head count are small square blocks (a 4 px wood edge)
+	Edge = 6,
+	Lip = 10,
+	PillEdge = 4,
+	PillLip = 6,
+	PillPad = 32, -- side room each side (FredokaOne's capitals run wider than a quick measure: the world text audit's real widths)
 }
 
 local MAX_STARS = 5 -- a difficulty's rating: PixelIcon stars (kit-b U7b; they were the star glyphs)
@@ -236492,33 +236773,13 @@ end
 ----------------------------------------------------------------------
 -- Billboard (pixel-sized, World text rule)
 ----------------------------------------------------------------------
-local INK = Theme.Colors.TextStroke or Theme.Colors.Ink
 local GOLD = Theme.Colors.Gold or Theme.Colors.Token
 -- (kit-b U7b) the rating on an empty label: `filled` gold PixelIcon stars of MAX_STARS, the rest dim
 local function starRating(label, filled)
 	filled = math.max(0, math.min(MAX_STARS, math.floor(tonumber(filled) or 1)))
 	label.Text = ""
 	label.TextXAlignment = Enum.TextXAlignment.Left
-	PixelIcon.Lead(label, "star", { Count = filled, Of = MAX_STARS, Colour = GOLD })
-end
-
-local function plateLabel(parent, name, text, role, size, color, outlineColor, order)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Color = color,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2.5,
-		OutlineColor = outlineColor or INK,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order or 0,
-		},
-	})
-	label.Parent = parent
-	return label
+	PixelIcon.Lead(label, "star", { Count = filled, Of = MAX_STARS, Colour = Theme.Sign.GoldLip }) -- (the gate board's stars on stone)
 end
 
 local function listLayout(parent, direction, padding)
@@ -236530,16 +236791,6 @@ local function listLayout(parent, direction, padding)
 	layout.Padding = UDim.new(0, padding)
 	layout.Parent = parent
 	return layout
-end
-
-local function uiPadding(parent, top, side, bottom)
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, top)
-	pad.PaddingBottom = UDim.new(0, bottom)
-	pad.PaddingLeft = UDim.new(0, side)
-	pad.PaddingRight = UDim.new(0, side)
-	pad.Parent = parent
-	return pad
 end
 
 -- World height of the gate's top (the star gems), or a sensible height above the zone.
@@ -236609,6 +236860,7 @@ local function buildBillboard(party)
 	local diff = party.Diff
 	local color = diff.Color
 	local anchor = billboardAnchor(party)
+	local Sign, Z = Theme.Sign, WorldTag.Sizes
 
 	-- the old studs-sized card (text shrank with distance) goes away
 	local old = info.Billboard
@@ -236631,55 +236883,82 @@ local function buildBillboard(party)
 	gui.MaxDistance = BB.MaxDistance
 	gui.ClipsDescendants = false
 	gui.Adornee = anchor
+	gui:SetAttribute("BaseWidth", BB.Width)
+	gui:SetAttribute("BaseHeight", BB.Height)
 
+	-- (kit-b world signs, lane C: the rounded gradient plate in the portal's colour went) the NPC nameplate's stone card:
+	-- a 3 px mitred wood edge, a lip in the portal's colour, the name and the head count in the kit's brown ink, the stars
+	-- in the dark gold, the status pill a small square block tinted in the portal's colour (setPillMode re-tints it gold
+	-- while counting down). Every line is measured (the longest status and head count too), so the card never resizes
+	local maxP = Config.Match.MaxPlayers
+	local name = diff.DisplayName or diff.Id
+	local function wide(text, role, px)
+		return math.ceil(Theme.Measure(text, role, px).X)
+	end
+	local statusW = 0
+	for _, t in ipairs({ "Step in to play", "Waiting for players...", string.format("Full! Starting in %d", 88) }) do
+		statusW = math.max(statusW, wide(t, "Display", BB.StatusText))
+	end
+	local infoW = MAX_STARS * (BB.InfoText + 2) + 12 + wide(string.format("%d/%d players", maxP, maxP), "Heading", BB.InfoText)
+	local faceW = math.max(BB.PlateMinW - 2 * Z.Edge, wide(name, "Title", BB.NameText) + 2 * BB.PadX, infoW + 2 * BB.PadX,
+		statusW + 2 * (BB.PillPad + BB.PillEdge + BB.PadX))
+	local pillH = BB.StatusText + 6 + BB.PillLip -- the pill's face, its lip included
+	local y = BB.PadTop
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
 	plate.AnchorPoint = Vector2.new(0.5, 1)
-	plate.Position = UDim2.new(0.5, 0, 1, 0)
-	plate.Size = UDim2.fromOffset(BB.PlateMinW, 0)
-	plate.AutomaticSize = Enum.AutomaticSize.XY
-	plate.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- the gradient supplies the colour
-	plate.BackgroundTransparency = 0.04
-	plate.BorderSizePixel = 0
-	Theme.Corner(plate, UDim.new(0, 16))
-	Theme.Stroke(plate, Theme.Lighten(color, 0.15), 4, 0)
-	Theme.Gradient(plate, Theme.Darken(color, 0.48), Theme.Darken(color, 0.72), 90)
-	uiPadding(plate, 8, 18, 10)
-	listLayout(plate, Enum.FillDirection.Vertical, 3)
+	plate.Position = UDim2.new(0.5, 0, 1, -Z.Edge)
+	plate.ZIndex = 2
+	WorldTag.Block(plate, Sign.Stone, WorldTag.LipOf(color), Sign.Wood, Z.Edge, Z.Lip)
 	plate.Parent = gui
 
-	local title = plateLabel(plate, "TitleLabel", diff.DisplayName or diff.Id, "Title", BB.NameText, Theme.Lighten(color, 0.6), Theme.Darken(color, 0.7), 1)
+	local title = WorldTag.Text(plate, "TitleLabel", name, "Title", BB.NameText, Sign.Text, {
+		Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, BB.NameText + 4), TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = 1, ZIndex = 3,
+	})
+	y = y + BB.NameText + 4 + BB.Gap
 
 	local infoRow = Instance.new("Frame")
 	infoRow.Name = "InfoRow"
 	infoRow.BackgroundTransparency = 1
+	infoRow.AnchorPoint = Vector2.new(0.5, 0)
+	infoRow.Position = UDim2.new(0.5, 0, 0, y)
 	infoRow.Size = UDim2.fromOffset(0, BB.InfoText + 4)
-	infoRow.AutomaticSize = Enum.AutomaticSize.XY
+	infoRow.AutomaticSize = Enum.AutomaticSize.X
 	infoRow.LayoutOrder = 2
+	infoRow.ZIndex = 3
 	listLayout(infoRow, Enum.FillDirection.Horizontal, 12)
 	infoRow.Parent = plate
-	local stars = plateLabel(infoRow, "StarLabel", "", "Heading", BB.InfoText, GOLD, INK, 1)
+	local stars = WorldTag.Text(infoRow, "StarLabel", "", "Heading", BB.InfoText, Sign.Text, {
+		Size = UDim2.fromOffset(0, BB.InfoText + 4), AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 1, ZIndex = 3,
+	})
 	starRating(stars, diff.Stars)
-	local count = plateLabel(infoRow, "CountLabel", "0/" .. tostring(Config.Match.MaxPlayers) .. " players", "Heading", BB.InfoText, Theme.Colors.White, INK, 2)
+	local count = WorldTag.Text(infoRow, "CountLabel", "0/" .. tostring(maxP) .. " players", "Heading", BB.InfoText, Sign.TextMuted, {
+		Size = UDim2.fromOffset(0, BB.InfoText + 4), AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 2, ZIndex = 3,
+	})
+	y = y + BB.InfoText + 4 + BB.Gap
 
 	local pill = Instance.new("Frame")
 	pill.Name = "StatusPill"
-	pill.Size = UDim2.fromOffset(0, BB.StatusText + 10)
-	pill.AutomaticSize = Enum.AutomaticSize.XY
-	pill.BorderSizePixel = 0
-	pill.BackgroundTransparency = 0
+	pill.AnchorPoint = Vector2.new(0.5, 0)
+	pill.Position = UDim2.new(0.5, 0, 0, y + BB.PillEdge)
+	pill.Size = UDim2.fromOffset(faceW - 2 * (BB.PadX + BB.PillEdge), pillH)
 	pill.LayoutOrder = 3
-	Theme.Corner(pill, UDim.new(0, 12))
-	local pillStroke = Theme.Stroke(pill, INK, 2.5, 0)
-	uiPadding(pill, 3, 14, 4)
+	pill.ZIndex = 3
+	WorldTag.Block(pill, color, color, Sign.Wood, BB.PillEdge, BB.PillLip)
 	pill.Parent = plate
-	local status = plateLabel(pill, "StatusLabel", "Step in to play", "Display", BB.StatusText, Theme.Colors.White, INK, 1)
+	local status = WorldTag.Text(pill, "StatusLabel", "Step in to play", "Display", BB.StatusText, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -BB.PillLip), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, ZIndex = 4,
+	})
+	WorldTag.Tint(pill, color)
+	y = y + pillH + 2 * BB.PillEdge
+	plate.Size = UDim2.fromOffset(faceW, y + BB.PadBottom + Z.Lip)
 
 	gui.Parent = anchor
 
 	party.Billboard = gui
 	party.Pill = pill
-	party.PillStroke = pillStroke
+	party.PillStroke = nil
 	party.PillMode = nil
 	-- keep the LobbyInfo contract (Billboard + labels) pointing at the live billboard
 	info.Billboard = gui
@@ -236714,6 +236993,7 @@ local function buildFace(party)
 	local info = party.Info
 	local color = party.Diff.Color
 	local parent = info.Model or info.Zone.Parent
+	local Sign = Theme.Sign
 	local old = parent:FindFirstChild("CountdownFace")
 	if old then
 		old:Destroy()
@@ -236741,93 +237021,70 @@ local function buildFace(party)
 	gui.AlwaysOnTop = false
 	gui.Enabled = false -- shown while the pad has a party
 	gui.Adornee = part
+	local canvasW = FACE.Width * FACE.PPS
 
-	-- round badge: portal-coloured gradient, gold rim, a soft inner ring
+	-- (kit-b world signs, lane C: the round gradient badge with its gold rim, the gloss ring and the rounded ribbon and
+	-- count pill went) the badge is a square stone card (THE GATES board's 6 px mitred wood edge, a FACE.Lip px lip in the
+	-- portal's colour that turns gold while a countdown runs), the numeral in the kit's brown ink
 	local disc = Instance.new("Frame")
 	disc.Name = "Disc"
 	disc.AnchorPoint = Vector2.new(0.5, 0.5)
 	disc.Position = UDim2.new(0.5, 0, 0, FACE.DiscY)
 	disc.Size = UDim2.fromOffset(FACE.Disc, FACE.Disc)
-	disc.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- the gradient supplies the colour
-	disc.BackgroundTransparency = 0.04
-	disc.BorderSizePixel = 0
-	Theme.Corner(disc, UDim.new(0.5, 0))
-	local discStroke = Theme.Stroke(disc, GOLD, 9, 0)
-	Theme.Gradient(disc, Theme.Darken(color, 0.38), Theme.Darken(color, 0.74), 90)
+	local _, discLip = WorldTag.Block(disc, Sign.Stone, color, Sign.Wood, FACE.Edge, FACE.Lip)
 	disc.Parent = gui
-	local ring = Instance.new("Frame")
-	ring.Name = "Ring"
-	ring.AnchorPoint = Vector2.new(0.5, 0.5)
-	ring.Position = UDim2.fromScale(0.5, 0.5)
-	ring.Size = UDim2.fromOffset(FACE.Disc - 26, FACE.Disc - 26)
-	ring.BackgroundTransparency = 1
-	Theme.Corner(ring, UDim.new(0.5, 0))
-	Theme.Stroke(ring, Theme.Lighten(color, 0.35), 3, 0.35)
-	ring.Parent = disc
 
-	-- the numeral fills the badge box (its UIScale grows it around the centre)
-	local num = Theme.Label("0", "Display", {
-		Size = FACE.NumText,
-		Color = Theme.Colors.White,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 6,
-		OutlineColor = INK,
-		Props = {
-			Name = "NumeralLabel",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromScale(1, 1),
-			TextXAlignment = Enum.TextXAlignment.Center,
-			TextYAlignment = Enum.TextYAlignment.Center,
-			ZIndex = 3,
-		},
+	-- the numeral fills the badge box above the lip (its UIScale grows it around the centre)
+	local num = WorldTag.Text(disc, "NumeralLabel", "0", "Display", FACE.NumText, Sign.Text, {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, -math.floor(FACE.Lip / 2)),
+		Size = UDim2.new(1, 0, 1, -FACE.Lip),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 3,
 	})
 	local numScale = Instance.new("UIScale")
 	numScale.Scale = FACE.NumScale
 	numScale.Parent = num
-	num.Parent = disc
 
-	-- "Starting in" ribbon over the badge's top edge
+	-- a measured block: as wide as the widest of `texts` plus its side room, inside the canvas (its edge too)
+	local function blockW(texts, role, px)
+		local w = 0
+		for _, t in ipairs(texts) do
+			w = math.max(w, math.ceil(Theme.Measure(t, role, px).X))
+		end
+		return math.min(w + 2 * FACE.PillPad, canvasW - 2 * FACE.PillEdge)
+	end
+
+	-- "Starting in" ribbon over the badge's top edge: a small square gold block (WorldTag.Tint; setPillMode re-tints it
+	-- in the portal's colour while waiting)
 	local top = Instance.new("Frame")
 	top.Name = "TopPill"
 	top.AnchorPoint = Vector2.new(0.5, 0)
-	top.Position = UDim2.new(0.5, 0, 0, FACE.TopY)
-	top.Size = UDim2.fromOffset(0, FACE.TopText + 12)
-	top.AutomaticSize = Enum.AutomaticSize.X
-	top.BackgroundColor3 = GOLD
-	top.BorderSizePixel = 0
+	top.Position = UDim2.new(0.5, 0, 0, FACE.TopY + FACE.PillEdge)
+	top.Size = UDim2.fromOffset(blockW({ "Starting in", "Waiting..." }, "Title", FACE.TopText), FACE.TopText + 8 + FACE.PillLip)
 	top.ZIndex = 4
-	Theme.Corner(top, UDim.new(0, 22))
-	local topStroke = Theme.Stroke(top, Theme.Darken(GOLD, 0.7), 5, 0)
-	uiPadding(top, 3, 24, 5)
+	WorldTag.Block(top, GOLD, GOLD, Sign.Wood, FACE.PillEdge, FACE.PillLip)
 	top.Parent = gui
-	local topLabel = plateLabel(top, "TopLabel", "Starting in", "Title", FACE.TopText, Theme.Colors.White, Theme.Darken(GOLD, 0.66), 1)
-	topLabel.ZIndex = 5
-	local topOutline = topLabel:FindFirstChild("TextOutline")
-	if topOutline then
-		topOutline.Thickness = 4
-	end
+	local topLabel = WorldTag.Text(top, "TopLabel", "Starting in", "Title", FACE.TopText, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -FACE.PillLip), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
+	})
+	WorldTag.Tint(top, GOLD)
 
-	-- head count under the badge
+	-- head count under the badge: a small square stone block, its lip in the portal's colour
+	local maxP = Config.Match.MaxPlayers
 	local bottom = Instance.new("Frame")
 	bottom.Name = "CountPill"
 	bottom.AnchorPoint = Vector2.new(0.5, 0.5)
 	bottom.Position = UDim2.new(0.5, 0, 0, FACE.CountY)
-	bottom.Size = UDim2.fromOffset(0, FACE.CountText + 12)
-	bottom.AutomaticSize = Enum.AutomaticSize.X
-	bottom.BackgroundColor3 = Theme.Colors.Panel or INK
-	bottom.BorderSizePixel = 0
+	bottom.Size = UDim2.fromOffset(blockW({ string.format("%d/%d players", maxP, maxP), string.format("Full! %d/%d", maxP, maxP) }, "Heading", FACE.CountText),
+		FACE.CountText + 8 + FACE.PillLip)
 	bottom.ZIndex = 4
-	Theme.Corner(bottom, UDim.new(0, 18))
-	Theme.Stroke(bottom, Theme.Lighten(color, 0.15), 4, 0)
-	uiPadding(bottom, 3, 18, 5)
+	WorldTag.Block(bottom, Sign.Tile, WorldTag.LipOf(color), Sign.Wood, FACE.PillEdge, FACE.PillLip)
 	bottom.Parent = gui
-	local countLabel = plateLabel(bottom, "CountLabel", "0/" .. tostring(Config.Match.MaxPlayers) .. " players", "Heading", FACE.CountText, Theme.Colors.White, INK, 1)
-	countLabel.ZIndex = 5
-	local countOutline = countLabel:FindFirstChild("TextOutline")
-	if countOutline then
-		countOutline.Thickness = 3
-	end
+	local countLabel = WorldTag.Text(bottom, "CountLabel", "0/" .. tostring(maxP) .. " players", "Heading", FACE.CountText, Sign.Text, {
+		Size = UDim2.new(1, 0, 1, -FACE.PillLip), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 5,
+	})
 
 	gui.Parent = part
 	part.Parent = parent
@@ -236835,10 +237092,8 @@ local function buildFace(party)
 	party.Face = {
 		Part = part,
 		Gui = gui,
-		DiscStroke = discStroke,
+		DiscLip = discLip,
 		TopPill = top,
-		TopStroke = topStroke,
-		TopOutline = topOutline,
 		Top = topLabel,
 		Num = num,
 		Count = countLabel,
@@ -236922,10 +237177,7 @@ local function setPillMode(party, mode)
 	if party.Pill:GetAttribute("WorldTag") == true then
 		-- (look review r1, M5) the gate board's pill is a kit block: the face a light tint of the mode's colour, its lip
 		-- that colour, the ink brown; the wood edge stays wood
-		local okW, WorldTag = pcall(require, Shared:WaitForChild("WorldTag"))
-		if okW and type(WorldTag) == "table" and type(WorldTag.Tint) == "function" then
-			WorldTag.Tint(party.Pill, base)
-		end
+		WorldTag.Tint(party.Pill, base)
 	else
 		party.Pill.BackgroundColor3 = base
 		if party.PillStroke then
@@ -236936,15 +237188,14 @@ local function setPillMode(party, mode)
 	if outline then
 		outline.Color = Theme.Darken(base, 0.66)
 	end
-	-- the face's ribbon and badge rim follow: gold while counting down, the portal colour while waiting
+	-- the face's ribbon and badge lip follow (kit-b world signs, lane C: kit blocks, the wood edges stay wood): gold while
+	-- counting down, the portal colour while waiting
 	local face = party.Face
 	if face then
-		face.TopPill.BackgroundColor3 = base
-		face.TopStroke.Color = Theme.Darken(base, 0.7)
-		if face.TopOutline then
-			face.TopOutline.Color = Theme.Darken(base, 0.66)
+		WorldTag.Tint(face.TopPill, base)
+		if face.DiscLip then
+			face.DiscLip.BackgroundColor3 = (mode == "Countdown") and GOLD or party.Diff.Color
 		end
-		face.DiscStroke.Color = (mode == "Countdown") and GOLD or Theme.Lighten(party.Diff.Color, 0.2)
 	end
 end
 
@@ -237465,6 +237716,19 @@ function PortalService.GetParty(portalId)
 	return { Players = copyList(party.Players), Countdown = countdownOf(party), Level = party.Diff.Id, Leader = party.Leader }
 end
 
+-- TESTS (kit-b world signs, lane C): builds the stand-in PortalBillboard and the countdown face for `info` ({ Model, Zone }:
+-- a gate WITHOUT a GateTag, which today's world never has) as Init does, the labels filled for `n` players; `mode`
+-- "Countdown" tints the pill and the face as a running countdown does. Not a live party (never polled) -> the party table
+function PortalService._BuildCards(info, n, mode)
+	local party = { Id = "Test", Info = info, Diff = Config.Difficulties[1], Players = {}, LastStateAt = 0 }
+	buildBillboard(party)
+	buildFace(party)
+	setText(info.CountLabel, string.format("%d/%d players", n or 0, Config.Match.MaxPlayers), "LastCount", party)
+	setPillMode(party, mode or "Idle")
+	refreshFace(party, n or 0, 9, mode or "Idle")
+	return party
+end
+
 -- The Obby gate's prompt (6.3): "Pick level" / "Sky Obby", OpenPanel = "Obby" (ObbyController opens the picker).
 function PortalService._MakePrompt(info)
 	local part = info and info.PromptPart
@@ -237956,13 +238220,16 @@ local BULLET = "\226\128\162"
 local FREE_NAME = "Free home"
 local FREE_SUB = "Press E at the gate"
 
--- Showcase tag (World text rule): pixel-sized, names >= 22 px, info >= 18 px, compact solid plate.
+-- Showcase tag (World text rule): pixel-sized, names >= 22 px, info >= 18 px, a compact stone card (kit B).
 local TAG_W, TAG_H = 300, 96
 local TAG_NAME_PX = 26
 local TAG_RARITY_PX = 18
 local TAG_RANGE = 80
 local TAG_LIFT = -1.2 -- studs: the plate's bottom edge sits ~0.7 stud over the highest point of the bob
-local INK = Theme.Colors.TextStroke or Theme.Colors.Ink
+local WorldTag = require(Shared.WorldTag) -- (Pitch 2 item 04 B) the podium tag as a kit B stone card
+local Sign = Theme.Sign
+-- the stone card (px at 1080p): its wood edge and lip, the paddings, the rarity block (its edge outside it)
+local TAG = { Edge = 3, Lip = 5, PadX = 16, PadTop = 6, Gap = 3, PadBottom = 5, PillEdge = 2, PillLip = 3, PillPad = 10, MinW = 120 }
 
 local SHOWCASE_SCALE = 1.4 -- the podium pet is a bit larger than a follower
 local SHOWCASE_TAG = "NC_Showcase" -- ShowcaseController (client) hovers / sways / animates every model with this tag
@@ -238226,24 +238493,23 @@ end
 ----------------------------------------------------------------------
 
 -- The tag floating above the pet (World text rule): a PIXEL-sized BillboardGui, so it reads the same at any
--- distance: the pet name (big, outlined) over a rarity pill in the rarity colour, on a compact navy plate with a
--- rarity-coloured outline that sizes itself to the text. Its bottom edge sits just over the bobbing pet.
-local function tagLabel(parent, name, text, role, size, order)
-	local label = Theme.Label(text, role, {
-		Size = size,
-		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
-		OutlineThickness = 2.5,
-		OutlineColor = INK,
-		Props = {
-			Name = name,
-			AutomaticSize = Enum.AutomaticSize.XY,
-			Size = UDim2.fromOffset(0, size + 4),
-			TextWrapped = false,
-			LayoutOrder = order,
-		},
+-- distance. (Pitch 2 item 04_world_ui, the owner's pick B "Stone tags", modelled on WorldStyle.BuildTag: the navy gradient
+-- capsule, its rounded rarity pill and the outlined letters went) ONE stone card (shared/WorldTag: the Stone face, a 3 px
+-- mitred wood edge, a 5 px lip in the rarity's colour, WorldTag.LipOf) with the pet name in the kit's ink over a small
+-- square rarity block tinted in the rarity's colour (WorldTag.Tint), sized from the measured texts (tag.Layout, called
+-- after the texts are written). Its bottom edge sits just over the bobbing pet.
+local function tagLabel(parent, name, text, role, size, z)
+	local label = WorldTag.Text(parent, name, text, role, size, Sign.Text, {
+		AnchorPoint = Vector2.new(0.5, 0),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = z,
 	})
-	label.Parent = parent
+	label:SetAttribute("KitRole", role)
 	return label
+end
+
+local function lineW(label)
+	return math.ceil(Theme.Measure(label.Text, label:GetAttribute("KitRole") or "Body", label.TextSize).X)
 end
 
 local function buildTag(info)
@@ -238273,51 +238539,45 @@ local function buildTag(info)
 	local card = Instance.new("Frame")
 	card.Name = "Card"
 	card.AnchorPoint = Vector2.new(0.5, 1)
-	card.Position = UDim2.new(0.5, 0, 1, 0)
-	-- minimum width: catalog names are wider anyway; a short hybrid name ("Draar" + "Mythic") still gets a plate
-	-- that hugs it (140 left ~75 px of empty plate around it)
-	card.Size = UDim2.fromOffset(120, 0)
-	card.AutomaticSize = Enum.AutomaticSize.XY
-	card.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- the gradient below sets the real colour
-	card.BackgroundTransparency = 0.04
-	card.BorderSizePixel = 0
+	card.Position = UDim2.new(0.5, 0, 1, -TAG.Edge) -- raised by its edge (a BillboardGui clips what lies outside it)
+	card.Size = UDim2.fromOffset(TAG.MinW, 0)
+	card.ZIndex = 2
 	card.Parent = gui
-	Theme.Gradient(card, Theme.Colors.PanelLight, Theme.Colors.Panel, 90)
-	Theme.Corner(card, UDim.new(0, 14))
-	local stroke = Theme.Stroke(card, Theme.Colors.PanelLight, 3.5, 0)
-	stroke.Name = "RarityStroke"
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 6)
-	pad.PaddingBottom = UDim.new(0, 8)
-	pad.PaddingLeft = UDim.new(0, 16)
-	pad.PaddingRight = UDim.new(0, 16)
-	pad.Parent = card
-	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Vertical
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Padding = UDim.new(0, 3)
-	layout.Parent = card
+	local _, lip = WorldTag.Block(card, Sign.Stone, Sign.StoneLip, Sign.Wood, TAG.Edge, TAG.Lip)
 
-	local nameLabel = tagLabel(card, "PetName", "", "Title", TAG_NAME_PX, 1)
+	local nameLabel = tagLabel(card, "PetName", "", "Title", TAG_NAME_PX, 3)
 
 	local pill = Instance.new("Frame")
 	pill.Name = "RarityPill"
-	pill.Size = UDim2.fromOffset(0, TAG_RARITY_PX + 8)
-	pill.AutomaticSize = Enum.AutomaticSize.XY
-	pill.BackgroundColor3 = Theme.Colors.PanelLight
-	pill.BorderSizePixel = 0
-	pill.LayoutOrder = 2
+	pill.AnchorPoint = Vector2.new(0.5, 0)
+	pill.ZIndex = 3
 	pill.Parent = card
-	Theme.Corner(pill, UDim.new(0, 10))
-	Theme.Stroke(pill, INK, 2.5, 0)
-	local pillPad = Instance.new("UIPadding")
-	pillPad.PaddingTop = UDim.new(0, 2)
-	pillPad.PaddingBottom = UDim.new(0, 3)
-	pillPad.PaddingLeft = UDim.new(0, 10)
-	pillPad.PaddingRight = UDim.new(0, 10)
-	pillPad.Parent = pill
-	local rarityLabel = tagLabel(pill, "PetRarity", "", "Heading", TAG_RARITY_PX, 1)
+	WorldTag.Block(pill, Sign.Stone, Sign.StoneLip, Sign.Wood, TAG.PillEdge, TAG.PillLip)
+	local rarityLabel = tagLabel(pill, "PetRarity", "", "Heading", TAG_RARITY_PX, 4)
+	rarityLabel.AnchorPoint = Vector2.new(0, 0)
+	rarityLabel.Position = UDim2.fromOffset(0, 0)
+	rarityLabel.Size = UDim2.new(1, 0, 1, -TAG.PillLip)
+
+	-- the name over the rarity block, the card as wide as the wider needs (never under MinW): minimum width a short hybrid
+	-- name ("Draar" + "Mythic") still gets a card that hugs it
+	local function layout()
+		local nameH = TAG_NAME_PX + 4
+		local nw = lineW(nameLabel)
+		local pw = lineW(rarityLabel) + 2 * TAG.PillPad
+		local ph = TAG_RARITY_PX + 4 + TAG.PillLip
+		local w = math.max(TAG.MinW, nw + 2 * TAG.PadX, pw + 2 * TAG.PillEdge + 2 * TAG.PadX)
+		local y = TAG.PadTop
+		nameLabel.Position = UDim2.new(0.5, 0, 0, y)
+		nameLabel.Size = UDim2.fromOffset(nw, nameH)
+		y = y + nameH + TAG.Gap
+		pill.Position = UDim2.new(0.5, 0, 0, y + TAG.PillEdge)
+		pill.Size = UDim2.fromOffset(pw, ph)
+		y = y + ph + 2 * TAG.PillEdge
+		card.Size = UDim2.fromOffset(w, y + TAG.PadBottom + TAG.Lip)
+	end
+	-- (no Text listener: the tag is kept for the server's life and only showPet writes it, then calls Layout; final_checks
+	-- allows the pet name's one caps listener per tag and no more)
+	layout()
 
 	anchor.Parent = info.Folder or workspace
 	gui.Parent = anchor
@@ -238327,9 +238587,29 @@ local function buildTag(info)
 		NameLabel = nameLabel,
 		RarityLabel = rarityLabel,
 		RarityPill = pill,
-		Stroke = stroke,
+		Lip = lip,
+		Layout = layout,
 	}
 end
+
+-- the tag shows a pet: its name over its rarity, the rarity's colour on the card's lip (WorldTag.LipOf) and on the rarity
+-- block (WorldTag.Tint: a light face of the colour, its lip the colour itself, the text kept in ink, so even the dark
+-- Secret reads); the card hugs the new texts (tag.Layout)
+local function paintTag(tag, def, key)
+	local color = rarityColor[def.Rarity] or Sign.StoneLip
+	tag.NameLabel.Text = tostring(def.DisplayName or def.Name or key)
+	tag.RarityLabel.Text = tostring(def.Rarity or "")
+	if tag.Layout then
+		tag.Layout()
+	end
+	if tag.Lip then
+		tag.Lip.BackgroundColor3 = WorldTag.LipOf(color)
+	end
+	WorldTag.Tint(tag.RarityPill, color)
+	tag.Gui.Enabled = true
+end
+-- (tools/dump_gui.lua worldui:lobby renders the podium tag as the server builds and paints it)
+SpotService._Tag = { Build = buildTag, Paint = paintTag }
 
 local function makeShow(index)
 	local info = spots[index]
@@ -238464,15 +238744,8 @@ local function setShowcasePet(index, key, def, stage)
 	-- Tag: name + rarity, floating above the highest point of the bob.
 	local tag = show.Tag
 	if tag then
-		local color = rarityColor[def.Rarity] or Theme.Colors.PanelLight
 		tag.Anchor.CFrame = CFrame.new(podium.Position + Vector3.new(0, HOVER_HEIGHT + height + BOB_HEIGHT + 1.9, 0))
-		tag.NameLabel.Text = tostring(def.DisplayName or def.Name or key)
-		tag.RarityLabel.Text = tostring(def.Rarity or "")
-		tag.RarityPill.BackgroundColor3 = color:Lerp(Theme.Colors.Panel, 0.2)
-		-- a very dark rarity colour (Secret) would vanish against the navy plate: lift the outline
-		local luma = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B
-		tag.Stroke.Color = (luma < 0.35) and color:Lerp(Theme.Colors.Muted or Theme.Colors.White, 0.55) or color
-		tag.Gui.Enabled = true
+		paintTag(tag, def, key)
 	end
 end
 
@@ -257552,6 +257825,7 @@ local K = {
 	TOTAL_H = 34, -- the chip, its 3 px edge included
 	TOTAL_EDGE = 3,
 	TOTAL_LIP = 4,
+	TOTAL_GAP = 4, -- (bug 2026-11-27) px between the unit's plate (card, EVOLVE! pill, champion tag) and the total's chip
 	TOTAL_HOLD = 2.5, -- seconds without a hit before the total clears (the next hit starts a new one)
 	TOTAL_DISTANCE = 150,
 	MAX_TOTALS = 16,
@@ -258461,6 +258735,7 @@ function Fx.Number(adornee, height, text, color, px, life)
 	n.life = life or K.NUMBER_TIME
 	n.base = height
 	n.riseK = 1 -- (Fx.Pop: a stacked pop rises K.HIT_RISE of it)
+	n.lift = 0 -- (Fx.Pop: px its total stands over the unit's plate)
 	n.jx = (math.random() - 0.5) * 1.4
 	n.gui.StudsOffset = Vector3.new(n.jx, height, 0)
 	n.gui.SizeOffset = Vector2.new(0, 0) -- (Pitch 2 item 04) a hit's pop moves beside its total (the hit handler)
@@ -258587,6 +258862,18 @@ function Fx.FreeTotal(t)
 	St.totalPool[#St.totalPool + 1] = t
 end
 
+-- the billboard a unit's total stands on: the ring champion's tag (it holds the card under its plate), the unit card
+-- (PetCard "HpBar": its Size holds the EVOLVE! pill), else the Phase 3 bar (addBar); only one on the unit's root.
+-- nil for a raid boss (no world plate: its bar is the HUD's top card). -> BillboardGui or nil
+function Fx.PlateOf(u)
+	for _, g in ipairs({ u.tag or false, (u.card and u.card.Gui) or false, u.bar or false }) do
+		if g and g.Parent and g.Adornee == u.root and g:IsA("BillboardGui") then
+			return g
+		end
+	end
+	return nil
+end
+
 -- adds `dmg` to unit `u`'s running total (u.root: the part it floats over) and shows it on its stone chip; a total that
 -- went quiet (K.TOTAL_HOLD) starts afresh. -> the total's record (u.total) or nil
 function Fx.Total(u, dmg)
@@ -258628,7 +258915,19 @@ function Fx.Total(u, dmg)
 	t.shown = text
 	t.gui.Parent = fxFolder()
 	t.gui.Adornee = u.root
-	t.gui.StudsOffset = Vector3.new(0, Fx.NumberHeight(u) - 0.6, 0)
+	-- (bug "damage total covers the pet level card", 2026-11-27: it sat 0.3 studs over the card, so at fighting distance the
+	-- 34 px chip covered the 43 px card but for the "L" of "Lv 4") the total stands on its unit's plate in screen px: on the
+	-- plate's own anchor, its chip K.TOTAL_GAP px over the plate's top edge (SizeOffset: a share of its own px size, true
+	-- at every distance and screen). No plate (a raid boss): over its head as before
+	local plate = Fx.PlateOf(u)
+	local height, lift = Fx.NumberHeight(u) - 0.6, 0
+	if plate then
+		height = plate.StudsOffset.Y
+		lift = plate.Size.Y.Offset / 2 + Theme.ScaledSize(K.TOTAL_GAP, 3) + (t.chip.Size.Y.Offset + 2 * K.TOTAL_EDGE) / 2
+	end
+	t.lift = lift
+	t.gui.StudsOffset = Vector3.new(0, height, 0)
+	t.gui.SizeOffset = Vector2.new(0, lift / max(1, t.gui.Size.Y.Offset))
 	t.gui.Enabled = true
 	t.untilT = os.clock() + K.TOTAL_HOLD
 	BattleController._wake()
@@ -258650,6 +258949,10 @@ function Fx.Pop(u, adornee, height, text, color, px, dmg)
 	if total then
 		pop.gui.SizeOffset = Vector2.new(K.HIT_SIDE, 0)
 		pop.riseK = K.HIT_RISE -- (every pop of the stack the same share: an older one has still risen at least as far)
+		-- (bug 2026-11-27: the total stands on the card in px, Fx.Total) the pop keeps its place beside it: 0.6 studs over
+		-- the total's anchor, lifted the same px (the stack below adds the lift to its steps)
+		pop.base, pop.lift = total.gui.StudsOffset.Y + 0.6, total.lift or 0
+		pop.gui.StudsOffset = Vector3.new(pop.jx, pop.base, 0)
 	end
 	if type(u) ~= "table" then
 		return pop, total
@@ -258670,7 +258973,7 @@ function Fx.Pop(u, adornee, height, text, color, px, dmg)
 	local step = Theme.ScaledSize(K.HIT_STEP, 22)
 	for i, rec in ipairs(live) do
 		local g = rec.n.gui
-		g.SizeOffset = Vector2.new(g.SizeOffset.X, (i - 1) * step / math.max(1, g.Size.Y.Offset))
+		g.SizeOffset = Vector2.new(g.SizeOffset.X, ((rec.n.lift or 0) + (i - 1) * step) / math.max(1, g.Size.Y.Offset))
 	end
 	u.pops = live
 	return pop, total
@@ -259052,27 +259355,45 @@ local function addBar(u, adornee, height)
 		LightInfluence = 0,
 		MaxDistance = K.BAR_DISTANCE,
 	})
+	-- (world signs kit-b, audit item 31: the rounded navy track went) a square sunk well (the Well face) in a mitred wood
+	-- edge, inset by that edge (drawn outside it) so the billboard keeps it, its WellEdge lip along the bottom; the fill a
+	-- square block over it (its size stays the caller's: UDim2.new(frac, -2, 1, -2) at 1, 1) with its own lip: the ink at
+	-- 0.68 over the fill's colour, which is exactly WorldTag.LipOf(that colour) and follows a recolour of the fill. The
+	-- bar's weight is SignKit's Micro (the kit's one weight for a bar on a world billboard: PetCard's HP row)
+	local WorldTag = require(Shared:WaitForChild("WorldTag"))
+	local micro = SignKit.Sizes.Micro
+	local edge, lip = micro.Edge, micro.Lip
 	local back = make("Frame", {
 		Name = "Back",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = COLORS.Track,
+		Position = UDim2.fromOffset(edge, edge),
+		Size = UDim2.new(1, -2 * edge, 1, -2 * edge),
 		BorderSizePixel = 0,
 	}, gui)
-	Theme.Corner(back, "S")
-	Theme.Stroke(back, u.mine and COLORS.Gold or COLORS.Ink, u.mine and 2 or 1.5, 0)
+	WorldTag.Block(back, SIGN.Well, SIGN.WellEdge, SIGN.Wood, edge, lip)
 	local fill = make("Frame", {
 		Name = "Fill",
 		Position = UDim2.fromOffset(1, 1),
 		Size = UDim2.new(1, -2, 1, -2),
 		BackgroundColor3 = color,
 		BorderSizePixel = 0,
+		ZIndex = back.ZIndex + 1,
 	}, back)
-	Theme.Corner(fill, "S")
+	make("Frame", {
+		Name = "Lip",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.new(1, 0, 0, lip),
+		BackgroundColor3 = SIGN.Text,
+		BackgroundTransparency = 0.68,
+		BorderSizePixel = 0,
+		ZIndex = fill.ZIndex,
+	}, fill)
 	gui.Parent = u.model
 	u.bar = gui
 	u.barFill = fill
 	u.barFrac = 1
 end
+Units._AddBar = addBar -- TESTS ONLY (tools/smoke_p3_battleclient.lua: the fallback bar's kit look, a build without PetCard)
 
 -- builds one unit's model (pcall'd by the caller)
 local function buildUnit(B, u)
@@ -268663,11 +268984,18 @@ function Ring.Tag(B, u, root, h)
 		MaxDistance = K.BAR_DISTANCE,
 		ResetOnSpawn = false,
 	})
-	local plate = make("Frame", { Name = "Plate", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.08, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, th) }, gui)
-	Theme.Corner(plate, "M")
-	Theme.Stroke(plate, Ring.GOLD, 2, 0)
-	local l = label(plate, name, "Heading", px, { Name = "Name", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = Ring.GOLD })
-	l.TextStrokeColor3 = COLORS.Ink
+	-- (world signs kit-b, audit item 31: the navy rounded plate in a gold ring went) a stone card in a mitred wood edge,
+	-- its lip in the ring's gold (WorldTag.LipOf), the name in the kit's brown ink, no outline. The card is inset by its
+	-- edge (drawn outside it) so the billboard keeps the edge whole; the name sits above the lip
+	local WorldTag = require(Shared:WaitForChild("WorldTag"))
+	local edge = WorldTag.Sizes.Edge
+	local lip = Theme.ScaledSize(WorldTag.Sizes.Lip, 4)
+	local plate = make("Frame", { Name = "Plate", BorderSizePixel = 0, Position = UDim2.fromOffset(edge, edge), Size = UDim2.new(1, -2 * edge, 0, th) }, gui)
+	WorldTag.Block(plate, SIGN.Stone, WorldTag.LipOf(Ring.GOLD), SIGN.Wood, edge, lip)
+	WorldTag.Text(plate, "Name", name, "Heading", px, SIGN.Text, {
+		Size = UDim2.new(1, 0, 1, -lip),
+		TextXAlignment = Enum.TextXAlignment.Center,
+	})
 	gui.Parent = u.model
 	u.tag = gui
 end
@@ -271371,6 +271699,7 @@ BattleController._Me = Me -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Eclip
 BattleController._Fx = Fx -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Special pre-charge, Task 11b: numbers / flashes)
 BattleController._Ring = Ring -- TESTS ONLY (tools/smoke_ring_noheal_client.lua: the run card's line, HUD cleanup Task 4)
 BattleController._Hud = Hud -- TESTS ONLY (tools/smoke_wave6.lua: the vitals hold let go without a battle gui, quick wins review)
+BattleController._Cards = Cards -- TESTS ONLY (tools/smoke_battle_tags.lua: the unit cards the damage total clears)
 BattleController._St = St -- TESTS ONLY (tools/smoke_kitb_ui.lua battle_family_fits: Hud.ModeText of the drawn battle, U9-6 review)
 
 -- TESTS ONLY (Task 11b): the raw battle unit record (its drawn HP, hold, hurt time) and my predicted charge
@@ -289657,7 +289986,9 @@ local K = {
 
 local COLORS = {
 	PriceOk = Color3.fromRGB(170, 244, 140),
-	PriceShort = Color3.fromRGB(255, 132, 120),
+	-- the price of a pad the owner cannot pay for yet (kit-b world signs: the PadSign is a stone card now, so the light coral
+	-- of the navy plate read 2.2:1; Theme.Sign.RedLip is 5.3:1 on Sign.Stone)
+	PriceShort = (Theme and type(Theme.Sign) == "table" and Theme.Sign.RedLip) or Color3.fromRGB(184, 54, 79),
 	Gold = Color3.fromRGB(255, 206, 84),
 	GoldDark = Color3.fromRGB(214, 150, 46),
 	Puff = Color3.fromRGB(246, 248, 255), -- the poop puff
@@ -290129,7 +290460,15 @@ local function utf8len(text)
 	return n
 end
 
--- the plate's size when the layout engine has not measured it (yet): its rows of text
+-- (kit-b world signs) the stone card's mitred wood edge (WorldTag's UIStroke "SignEdge") is drawn outside the Plate, so
+-- the sign covers the plate plus this much on each side
+local function plateEdge(plate)
+	local s = plate and plate:FindFirstChild("SignEdge")
+	return (s and s:IsA("UIStroke")) and s.Thickness or 0
+end
+
+-- the plate's size when the layout engine has not measured it (yet): its rows of text, laid out as HomeBuilder's tagFit
+-- lays the stone card (14 px each side, 6 over the first row, 3 between rows, 4 under the last over the 5 px lip)
 local function estimatePlate(plate)
 	local w, h = 150, 70
 	if not plate then
@@ -290159,26 +290498,30 @@ local function estimatePlate(plate)
 		end
 	end
 	if rows > 0 then
-		w, h = max(150, widest + 28), total + 14
+		local lip = plate:FindFirstChild("Lip")
+		local lipH = (lip and lip:IsA("GuiObject")) and lip.Size.Y.Offset or 0
+		w, h = max(150, widest + 28), total + 10 + lipH
 	end
 	return w, h
 end
 
--- the sign's plate in pixels (it keeps that size on screen at any distance)
+-- the sign's plate in pixels with its wood edge (it keeps that size on screen at any distance)
 local function plateSize(gui)
 	local plate = gui:FindFirstChild("Plate")
+	local e = 2 * plateEdge(plate)
 	if plate and plate:IsA("GuiObject") then
 		local s = plate.AbsoluteSize
 		if s.X >= 40 and s.Y >= 20 then
 			plateSizes[gui] = s
-			return s.X, s.Y
+			return s.X + e, s.Y + e
 		end
 	end
 	local known = plateSizes[gui]
 	if known then
-		return known.X, known.Y
+		return known.X + e, known.Y + e
 	end
-	return estimatePlate(plate)
+	local w, h = estimatePlate(plate)
+	return w + e, h + e
 end
 
 -- the world point the billboard hangs from: its adornee plus the studs offsets
@@ -292608,6 +292951,37 @@ function R.basket(rec)
 	end
 	if label.Text ~= text then
 		label.Text = text
+		R.basketFit(m, label)
+	end
+end
+
+-- (kit-b world signs) HomeBuilder's tagFit gives the stone card a fixed size with room for "00,000 / 00,000 berries"; a
+-- longer line (a big BasketCap) widens the card and its billboard to fit, never narrower than the server made them. The
+-- line's row is the card's width less its padding (Size.X.Offset = -2 x TAG.PadX), the edge sits inside the gui.
+function R.basketFit(m, label)
+	local plate = label.Parent
+	local gui = plate and plate.Parent
+	if not (plate and plate.Name == "Plate" and plate:IsA("GuiObject") and gui and gui:IsA("BillboardGui")) then
+		return
+	end
+	if not m.BasketBase then
+		m.BasketBase = { Face = plate.Size.X.Offset, Gui = gui.Size.X.Offset }
+	end
+	local base = m.BasketBase
+	local tw = nil
+	if Theme and type(Theme.Measure) == "function" then
+		local ok, v = pcall(Theme.Measure, label.Text, label:GetAttribute("FontRole") or "Body", label.TextSize)
+		if ok and typeof(v) == "Vector2" then
+			tw = v.X
+		end
+	end
+	tw = tw or utf8len(label.Text) * label.TextSize * 0.56
+	local pad = max(0, -label.Size.X.Offset)
+	local face = max(base.Face, math.ceil(tw + pad))
+	local edge = plateEdge(plate)
+	if plate.Size.X.Offset ~= face then
+		plate.Size = UDim2.fromOffset(face, plate.Size.Y.Offset)
+		gui.Size = UDim2.fromOffset(max(base.Gui, face + 2 * edge), gui.Size.Y.Offset)
 	end
 end
 
@@ -294182,7 +294556,7 @@ return HomeFx
 --   own vortex (client/PortalVortex: 6 broad + 9 fine Beam spiral arms turning inward at two speeds, light streaks
 --   pulled to the centre, rim crackles; the textured layers once shared/TextureIds has them) in front of a deep Neon
 --   backdrop filling the 4 x 7 stud opening, a lighter well and a bright core (<= 40 parts in all), sparkles, and a 22 px name tag
---   "Alex's portal" (pixel-sized BillboardGui with a stroke and a backing plate, World text rule). Other players'
+--   "Alex's portal" (pixel-sized BillboardGui: a stone card with a lip in the portal's colour, World text rule). Other players'
 --   portals are faded (only the owner and their pets can go through). It grows in when it opens and shrinks away when
 --   the attribute is cleared (used) or closesAt passes (expired).
 -- * Config.Attr.PortalArrived = server time of the last arrival: the arrival ring (<= 20 parts: a flat ring that
@@ -294206,6 +294580,13 @@ local okTheme, Theme = pcall(function()
 end)
 if not okTheme or type(Theme) ~= "table" then
 	Theme = nil
+end
+-- (kit-b world signs) the name tag is the kit's stone card (shared/WorldTag; the rounded ink plate went)
+local okTag, WorldTag = pcall(function()
+	return require(Shared:WaitForChild("WorldTag"))
+end)
+if not okTag or type(WorldTag) ~= "table" then
+	WorldTag = nil
 end
 
 local HomePortalFx = {}
@@ -294242,6 +294623,10 @@ local K = {
 	ARRIVAL_SPARKS = 6,
 	MAX_ARRIVALS = 4,
 	NAME_PX = 22, -- the name tag at 1080p
+	-- (kit-b world signs) its stone card at 1080p (WorldTag.Sizes: the wood edge, the lip) and px each side of the name
+	TAG_EDGE = 3,
+	TAG_LIP = 5,
+	TAG_PAD = 14,
 }
 HomePortalFx.K = K
 
@@ -294255,7 +294640,9 @@ local PALETTE = {
 	Color3.fromRGB(96, 214, 236),
 }
 local GOLD = Color3.fromRGB(255, 214, 92)
-local INK = Color3.fromRGB(26, 30, 52)
+-- the name tag's stone card when shared/WorldTag cannot load (Theme.Sign's Stone / Text / Wood, copied)
+local TAG_STONE = Color3.fromRGB(255, 247, 230)
+local TAG_INK = Color3.fromRGB(59, 36, 18)
 
 local localPlayer = Players.LocalPlayer
 local portals = {} -- [player] = record
@@ -294545,12 +294932,16 @@ function P.build(rec)
 	if not ok then
 		att:Destroy()
 	end
-	-- the name tag (pixel-sized, World text rule), over the gate's top
+	-- the name tag (pixel-sized, World text rule), over the gate's top. (kit-b world signs; NpcService's nameplate is the
+	-- model) a stone card: the Stone face, a mitred wood edge (WorldTag's SignEdge, drawn outside the face, inside the gui),
+	-- a lip in the portal's colour (WorldTag.LipOf), the name in the kit's brown ink with no outline (kit-b U6: it sits on the
+	-- opaque face); the card sized from the measured name. The rounded see-through ink plate went.
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "PortalName"
 	gui.LightInfluence = 0
 	gui.AlwaysOnTop = false
 	gui.MaxDistance = 120
+	gui.ClipsDescendants = false
 	gui.StudsOffset = Vector3.new(0, K.TOP + 1.2 - K.CENTER_Y, 0)
 	gui.Parent = center
 	local px = K.NAME_PX
@@ -294560,33 +294951,49 @@ function P.build(rec)
 			px = s
 		end
 	end
+	local f = px / K.NAME_PX -- the screen factor the text got: the card's edge, lip and padding follow it
+	local edge = math.max(2, math.floor(K.TAG_EDGE * f + 0.5))
+	local lip = math.max(3, math.floor(K.TAG_LIP * f + 0.5))
 	local text = tostring(rec.Name) .. "'s portal"
-	local w = math.floor(px * 0.58 * #text + 28)
-	gui.Size = UDim2.fromOffset(w, math.floor(px * 1.6))
+	local tw = nil
+	if Theme and type(Theme.Measure) == "function" then
+		local okM, v = pcall(Theme.Measure, text, "Title", px)
+		if okM and typeof(v) == "Vector2" and v.X > 0 then
+			tw = v.X
+		end
+	end
+	tw = tw or px * 0.62 * #text
+	local w = math.ceil(tw + 2 * math.floor(K.TAG_PAD * f + 0.5))
+	local h = math.floor(px * 1.6) + lip
+	gui.Size = UDim2.fromOffset(w + 2 * edge, h + 2 * edge)
 	local plate = Instance.new("Frame")
 	plate.Name = "Plate"
-	plate.Size = UDim2.fromScale(1, 1)
-	plate.BackgroundColor3 = INK
-	plate.BackgroundTransparency = 0.25
+	plate.Position = UDim2.fromOffset(edge, edge)
+	plate.Size = UDim2.fromOffset(w, h)
+	plate.BackgroundColor3 = TAG_STONE
+	plate.BackgroundTransparency = 0
 	plate.BorderSizePixel = 0
 	plate.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = plate
+	if WorldTag and Theme and type(Theme.Sign) == "table" then
+		WorldTag.Block(plate, Theme.Sign.Stone, WorldTag.LipOf(color), Theme.Sign.Wood, edge, lip)
+	end
 	local label = Instance.new("TextLabel")
 	label.Name = "Name"
 	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
+	label.Size = UDim2.new(1, 0, 1, -lip)
 	label.Text = text
 	label.TextSize = px
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.TextStrokeTransparency = 0
-	label.TextStrokeColor3 = INK
+	label.TextColor3 = TAG_INK
+	label.TextStrokeTransparency = 1
+	label.TextWrapped = false
+	label.TextScaled = false
 	label.Parent = plate
 	if Theme then
-		-- (kit-b U6) the name sits on its plate: no outline and no classic stroke (the stroke above is the no-Theme fallback)
-		Theme.SetRole(label, "Title")
+		Theme.SetRole(label, "Title") -- (kit-b U6) capitals, no outline and no classic stroke
 		label.TextStrokeTransparency = 1
+		if type(Theme.Sign) == "table" then
+			label.TextColor3 = Theme.Sign.Text
+		end
 	end
 	rec.Model, rec.Items, rec.Gui, rec.Label = model, items, gui, label
 	rec.PlacedScale, rec.PlacedFade = nil, nil
@@ -302404,9 +302811,13 @@ return IndexController
 -- when the first board is found, so a world without the board gets no SurfaceGui. Face Front,
 -- PixelsPerStud 50: the 16 x 13 stud face is an 800 x 650 px canvas (CanvasSize says the same for tools; Roblox ignores
 -- it under PixelsPerStud), MaxDistance 80, ResetOnSpawn false, LightInfluence 0. Layout (the pitch mock-up boardA):
+--   (world signs kit-b, audit item 19: the navy gradient board with round badges went) the Board is the GuideBoard's
+--   stone card ("THE GATES", LobbyBuilder): WorldTag.Block, a 6 px mitred wood edge and an 8 px lip, inset by its edge so
+--   the canvas keeps it (788 x 638 at 6, 6); every text in the kit's brown ink, no outline; square, no corner, no gradient.
 --   Board > IconL / IconR (the page's glyph), Title (50 px, Config.Leaderboard.Titles[stat]), Tabs > Tab_<stat> (one
---   TextButton per page, its Label), Scope ("All players . all time" / "This server only"), Rows > Row1..10 (38 px each:
---   Rank badge, Head 34 px headshot, Name, Value; ranks 1-3 gold, silver, bronze; my own row green), YouRow
+--   TextButton per page, its Label: a stone block, the shown page's gold), Scope ("All players . all time" / "This
+--   server only"), Rows > Row1..10 (38 px each, flat bands: Rank block, Head 34 px headshot in a square well with a
+--   mitred wood edge, Name, Value; ranks 1-3 gold, silver, bronze blocks; my own row the selected gold), YouRow
 --   ("You . 1,240 . #37" / "You . 1,240 . not in the top 100" / "You . ..." while my value is unknown), Footer
 --   ("Refreshes in m:ss . tap a tab, or it turns in 0:ss", from NextAt on workspace:GetServerTimeNow()), Status
 --   ("Loading scores..." before the first state / "No scores yet. Be the first!" for an empty page).
@@ -302415,7 +302826,7 @@ return IndexController
 -- turns the page, counts the footer down and drops a Face that left the workspace for any tagged one still there (no
 -- Heartbeat).
 -- Headshots: Players:GetUserThumbnailAsync(id, HeadShot, Size48x48) in a deferred pcall'd task, cached per user for the
--- session (a failed one stays blank: the round placeholder shows). The client sends nothing.
+-- session (a failed one stays blank: the square well shows). The client sends nothing.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local Players = game:GetService("Players")
@@ -302426,6 +302837,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local WorldTag = require(Shared:WaitForChild("WorldTag")) -- (world signs kit-b) the stone card, its blocks and ink
 
 local Client = script.Parent.Parent
 local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
@@ -302435,21 +302847,31 @@ local LocalPlayer = Players.LocalPlayer
 local LeaderboardController = {}
 
 local rgb = Color3.fromRGB
+local Sign = Theme.Sign
+-- (world signs kit-b) the board's layout is px INSIDE the stone card (the Board, inset by its wood edge EDGE): IW x IH,
+-- the bottom LIP px of it the card's lip (no text over it). Every text keeps its old px (the 30 px floor)
 local K = {
 	MODEL = "LobbyLeaderboard", -- the workspace board model and the PlayerGui SurfaceGui
 	PPS = 50, -- px per stud: 16 x 13 studs -> 800 x 650 px
 	W = 800,
 	H = 650,
+	EDGE = 6, -- the card's mitred wood edge (drawn outside the Board: the Board is inset by it) ...
+	LIP = 8, -- ... and its lip (the GuideBoard's 6 / 8)
+	IW = 788, -- the Board: W - 2 x EDGE ...
+	IH = 638, -- ... H - 2 x EDGE
 	MAX_DISTANCE = 80,
 	PAD = 14,
-	TITLE_Y = 4, TITLE_H = 56, TITLE_TEXT = 50, ICON = 44, ICON_BOX = 56,
-	TABS_Y = 64, TABS_H = 46, TAB_GAP = 8,
-	SCOPE_Y = 114, SCOPE_H = 34,
-	ROWS_Y = 150, ROW_H = 38, ROWS = 10,
-	BADGE = 34, -- the rank badge and the headshot (px)
-	NAME_X = 90, NAME_W = 450, VALUE_W = 226,
-	YOU_Y = 534, YOU_H = 40,
-	FOOT_Y = 578, FOOT_H = 66,
+	TITLE_Y = 0, TITLE_H = 56, TITLE_TEXT = 50, ICON = 44, ICON_BOX = 56,
+	TABS_Y = 60, TABS_H = 44, TAB_GAP = 10,
+	SCOPE_Y = 106, SCOPE_H = 34,
+	ROWS_Y = 142, ROW_H = 38, ROWS = 10,
+	BADGE = 34, -- the rank block and the headshot well (px)
+	BLOCK_EDGE = 2, -- a tab's, a rank block's, the head well's and the You row's mitred wood edge ...
+	BLOCK_LIP = 4, -- ... a tab's and the You row's lip
+	RANK_LIP = 3, -- a rank block's lip
+	NAME_X = 90, NAME_W = 440, VALUE_W = 220,
+	YOU_Y = 524, YOU_H = 40,
+	FOOT_Y = 568, FOOT_H = 62, -- (ends at IH - LIP)
 	TEXT = 30, -- the floor: every text on the board
 	VALUE_TEXT = 32,
 	STATUS_TEXT = 32,
@@ -302457,15 +302879,17 @@ local K = {
 	TICK = 0.25,
 	HEAD_CACHE = 200, -- headshots kept before the cache starts over
 	ICONS = { Trophies = "trophy", Pets = "Pets", Ring = "Ring" }, -- NeonKit icon ids / PixelIcon names (trophy, paw, crown)
-	GOLD = rgb(255, 211, 77),
-	MUTED = rgb(201, 211, 242),
-	TOP = rgb(36, 50, 122),
-	BOTTOM = rgb(20, 27, 72),
-	TAB_OFF = rgb(46, 62, 140),
-	MEDALS = { rgb(255, 201, 60), rgb(217, 224, 238), rgb(224, 149, 90) },
-	ME = rgb(42, 106, 58),
-	ME_RING = rgb(141, 255, 166),
-	HEAD_BG = rgb(70, 90, 160),
+	ICON_INK = { Trophies = Sign.GoldLip, Pets = Sign.Wood, Ring = Sign.GoldLip }, -- their colour on the stone
+	MEDALS = { rgb(255, 201, 60), rgb(217, 224, 238), rgb(224, 149, 90) }, -- the rank blocks' faces (lip: WorldTag.LipOf)
+	INK = Sign.Text,
+	MUTED = Sign.TextMuted,
+	BAND = Sign.Well, -- every other row's flat band (the rest show the stone)
+	ME = Sign.Selected, -- my own row and the You row: the kit's selected gold
+	ME_LIP = Sign.GoldLip,
+	TAB_ON = Sign.Gold, TAB_ON_LIP = Sign.GoldLip,
+	TAB_OFF = Sign.Tile, TAB_OFF_LIP = Sign.StoneLip,
+	RANK = Sign.Tile, -- a rank block under 4th
+	HEAD_BG = Sign.PetWell, -- the headshot's well (shows while the headshot loads, or when it failed)
 }
 LeaderboardController.K = K
 
@@ -302512,13 +302936,13 @@ local function mmss(seconds)
 	return string.format("%d:%02d", math.floor(s / 60), s % 60)
 end
 
--- kit-b U6: every board text sits on the board, a row or a tab, so it reads by contrast (no classic stroke any more)
+-- kit-b U6: every board text sits on the board, a row or a tab, so it reads by contrast (no classic stroke any more);
+-- (world signs kit-b) WorldTag.Text: the kit's brown ink on the stone, no outline, never scaled
 local function label(parent, name, text, role, size, props)
 	props = props or {}
-	props.Name = name
-	local l = Theme.Label(text, role, { Size = size, Color = props.TextColor3, Props = props })
-	l.Parent = parent
-	return l
+	local color = props.TextColor3 or K.INK
+	props.TextColor3 = nil
+	return WorldTag.Text(parent, name, text, role, size, color, props)
 end
 
 local function frame(parent, name, pos, size, color, alpha)
@@ -302544,36 +302968,55 @@ local function setIcons(stat)
 	S.Icon = stat
 	for _, holder in ipairs({ ui.IconL, ui.IconR }) do
 		holder:ClearAllChildren()
-		NeonKit.Icon(holder, K.ICONS[stat] or "Stats", K.ICON)
+		local icon = NeonKit.Icon(holder, K.ICONS[stat] or "Stats", K.ICON)
+		-- (world signs kit-b) a pixel icon follows its host's text colour (white by default: lost on the stone)
+		if typeof(icon) == "Instance" and (icon:IsA("TextLabel") or icon:IsA("TextButton")) then
+			icon.TextColor3 = K.ICON_INK[stat] or K.INK
+		end
 	end
 end
 
+-- a mitred wood edge round a square well (the head well: a headshot fills it, so no lip over the picture)
+local function woodEdge(obj, px)
+	local edge = Instance.new("UIStroke")
+	edge.Name = "SignEdge"
+	edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	edge.Color = Sign.Wood
+	edge.Thickness = px
+	edge.Transparency = 0
+	edge.Parent = obj
+	return edge
+end
+
+-- a row: a flat square band (every other one the Well, my own the selected gold: render), the rank block (a medal's
+-- face on its LipOf lip for ranks 1-3, a stone Tile below), the headshot's square well, the name and the value in ink
 local function buildRow(parent, i)
-	local row = frame(parent, "Row" .. i, UDim2.fromOffset(10, (i - 1) * K.ROW_H + 1), UDim2.fromOffset(K.W - 20, K.ROW_H - 2), Theme.Colors.White, 0.92)
-	Theme.Corner(row, "M")
+	local rowW = K.IW - 20
+	local row = frame(parent, "Row" .. i, UDim2.fromOffset(10, (i - 1) * K.ROW_H + 1), UDim2.fromOffset(rowW, K.ROW_H - 2), K.BAND, 1)
 	local medal = K.MEDALS[i]
 	local rank = label(row, "Rank", tostring(i), "Display", K.TEXT, {
-		Position = UDim2.fromOffset(6, 1), Size = UDim2.fromOffset(K.BADGE, K.BADGE),
-		BackgroundTransparency = medal and 0 or 0.86, BackgroundColor3 = medal or Theme.Colors.White,
-		TextColor3 = medal and Theme.Colors.Navy or Theme.Colors.White,
+		Position = UDim2.fromOffset(6, 1), Size = UDim2.fromOffset(K.BADGE, K.BADGE), ZIndex = 2,
 	})
-	Theme.Corner(rank, "Round")
+	WorldTag.Block(rank, medal or K.RANK, medal and WorldTag.LipOf(medal) or Sign.StoneLip, Sign.Wood, K.BLOCK_EDGE, K.RANK_LIP)
 	local head = Instance.new("ImageLabel")
 	head.Name = "Head"
 	head.Position = UDim2.fromOffset(12 + K.BADGE, 1)
 	head.Size = UDim2.fromOffset(K.BADGE, K.BADGE)
 	head.BackgroundColor3 = K.HEAD_BG
+	head.BackgroundTransparency = 0
 	head.BorderSizePixel = 0
 	head.Image = ""
-	head.ScaleType = Enum.ScaleType.Crop
-	Theme.Corner(head, "Round")
+	head.ScaleType = Enum.ScaleType.Crop -- (the square headshot fills the square well)
+	head.ZIndex = 2
+	woodEdge(head, K.BLOCK_EDGE)
 	head.Parent = row
 	local name = label(row, "Name", "", "Body", K.TEXT, {
 		Position = UDim2.fromOffset(K.NAME_X, 0), Size = UDim2.fromOffset(K.NAME_W, K.ROW_H - 2),
 		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
 	})
 	local value = label(row, "Value", "", "Display", K.VALUE_TEXT, {
-		Position = UDim2.fromOffset(K.W - 20 - 12 - K.VALUE_W, 0), Size = UDim2.fromOffset(K.VALUE_W, K.ROW_H - 2),
+		Position = UDim2.fromOffset(rowW - 12 - K.VALUE_W, 0), Size = UDim2.fromOffset(K.VALUE_W, K.ROW_H - 2),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
 	return { Frame = row, Rank = rank, Head = head, Name = name, Value = value, UserId = nil }
@@ -302595,23 +303038,24 @@ local function build()
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 	local ui = { Tabs = {}, Rows = {} }
-	local board = frame(gui, "Board", UDim2.fromOffset(0, 0), UDim2.fromOffset(K.W, K.H), Theme.Colors.White, 0)
-	Theme.Gradient(board, K.TOP, K.BOTTOM, 90)
-	Theme.Corner(board, "M")
-	Theme.Stroke(board, Theme.Colors.Navy, 3, 0)
+	-- (world signs kit-b) the GuideBoard's stone card: inset by its 6 px wood edge (drawn outside it) so the canvas keeps
+	-- the edge whole; its 8 px lip along the bottom
+	local board = frame(gui, "Board", UDim2.fromOffset(K.EDGE, K.EDGE), UDim2.fromOffset(K.IW, K.IH), Sign.Stone, 0)
+	WorldTag.Block(board, Sign.Stone, Sign.StoneLip, Sign.Wood, K.EDGE, K.LIP)
 	ui.Board = board
 
 	ui.IconL = frame(board, "IconL", UDim2.fromOffset(K.PAD, K.TITLE_Y), UDim2.fromOffset(K.ICON_BOX, K.ICON_BOX), nil, 1)
-	ui.IconR = frame(board, "IconR", UDim2.fromOffset(K.W - K.PAD - K.ICON_BOX, K.TITLE_Y), UDim2.fromOffset(K.ICON_BOX, K.ICON_BOX), nil, 1)
+	ui.IconR = frame(board, "IconR", UDim2.fromOffset(K.IW - K.PAD - K.ICON_BOX, K.TITLE_Y), UDim2.fromOffset(K.ICON_BOX, K.ICON_BOX), nil, 1)
 	ui.Title = label(board, "Title", "", "Heading", K.TITLE_TEXT, {
-		Position = UDim2.fromOffset(K.PAD + K.ICON_BOX + 8, K.TITLE_Y), Size = UDim2.fromOffset(K.W - 2 * (K.PAD + K.ICON_BOX + 8), K.TITLE_H),
-		TextColor3 = K.GOLD,
+		Position = UDim2.fromOffset(K.PAD + K.ICON_BOX + 8, K.TITLE_Y), Size = UDim2.fromOffset(K.IW - 2 * (K.PAD + K.ICON_BOX + 8), K.TITLE_H),
+		TextXAlignment = Enum.TextXAlignment.Center,
 	})
 
-	local tabs = frame(board, "Tabs", UDim2.fromOffset(K.PAD, K.TABS_Y), UDim2.fromOffset(K.W - 2 * K.PAD, K.TABS_H), nil, 1)
+	-- the page tabs: stone blocks in a mitred wood edge on their lip, the shown page's gold (render)
+	local tabs = frame(board, "Tabs", UDim2.fromOffset(K.PAD, K.TABS_Y), UDim2.fromOffset(K.IW - 2 * K.PAD, K.TABS_H), nil, 1)
 	local list = pages()
 	local n = math.max(1, #list)
-	local tw = math.floor((K.W - 2 * K.PAD - (n - 1) * K.TAB_GAP) / n)
+	local tw = math.floor((K.IW - 2 * K.PAD - (n - 1) * K.TAB_GAP) / n)
 	for i, stat in ipairs(list) do
 		local b = Instance.new("TextButton")
 		b.Name = "Tab_" .. stat
@@ -302620,8 +303064,8 @@ local function build()
 		b.Position = UDim2.fromOffset((i - 1) * (tw + K.TAB_GAP), 0)
 		b.Size = UDim2.fromOffset(tw, K.TABS_H)
 		b.Text = tostring((type(cfg().Labels) == "table" and cfg().Labels[stat]) or stat)
-		Theme.Style(b, "Button", { Size = K.TEXT })
-		Theme.Corner(b, "M")
+		Theme.Style(b, "Button", { Size = K.TEXT, Color = K.INK })
+		WorldTag.Block(b, K.TAB_OFF, K.TAB_OFF_LIP, Sign.Wood, K.BLOCK_EDGE, K.BLOCK_LIP)
 		b.Parent = tabs
 		b.Activated:Connect(function()
 			safe("tap", LeaderboardController.SetPage, stat)
@@ -302630,27 +303074,32 @@ local function build()
 	end
 
 	ui.Scope = label(board, "Scope", "", "Body", K.TEXT, {
-		Position = UDim2.fromOffset(K.PAD, K.SCOPE_Y), Size = UDim2.fromOffset(K.W - 2 * K.PAD, K.SCOPE_H), TextColor3 = K.MUTED,
+		Position = UDim2.fromOffset(K.PAD, K.SCOPE_Y), Size = UDim2.fromOffset(K.IW - 2 * K.PAD, K.SCOPE_H), TextColor3 = K.MUTED,
+		TextXAlignment = Enum.TextXAlignment.Center,
 	})
-	ui.RowsFrame = frame(board, "Rows", UDim2.fromOffset(0, K.ROWS_Y), UDim2.fromOffset(K.W, K.ROWS * K.ROW_H), nil, 1)
+	ui.RowsFrame = frame(board, "Rows", UDim2.fromOffset(0, K.ROWS_Y), UDim2.fromOffset(K.IW, K.ROWS * K.ROW_H), nil, 1)
 	for i = 1, K.ROWS do
 		ui.Rows[i] = buildRow(ui.RowsFrame, i)
 	end
 	ui.Status = label(board, "Status", "", "Heading", K.STATUS_TEXT, {
-		Position = UDim2.fromOffset(K.PAD, K.ROWS_Y), Size = UDim2.fromOffset(K.W - 2 * K.PAD, K.ROWS * K.ROW_H), TextWrapped = true,
+		Position = UDim2.fromOffset(K.PAD, K.ROWS_Y), Size = UDim2.fromOffset(K.IW - 2 * K.PAD, K.ROWS * K.ROW_H), TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
 	})
+	-- my line: the selected gold block (a mitred wood edge, its GoldLip lip); its side padding pads the lip too, so the
+	-- lip reaches back out by it (flush on the edge)
 	ui.You = label(board, "YouRow", "", "Heading", K.TEXT, {
-		Position = UDim2.fromOffset(10, K.YOU_Y), Size = UDim2.fromOffset(K.W - 20, K.YOU_H),
-		BackgroundTransparency = 0, BackgroundColor3 = K.ME, TextXAlignment = Enum.TextXAlignment.Left,
+		Position = UDim2.fromOffset(10, K.YOU_Y), Size = UDim2.fromOffset(K.IW - 20, K.YOU_H), TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	Theme.Corner(ui.You, "M")
-	Theme.Stroke(ui.You, K.ME_RING, 2, 0)
+	local _, youLip = WorldTag.Block(ui.You, K.ME, K.ME_LIP, Sign.Wood, K.BLOCK_EDGE, K.BLOCK_LIP)
 	local pad = Instance.new("UIPadding")
 	pad.PaddingLeft = UDim.new(0, 14)
 	pad.PaddingRight = UDim.new(0, 14)
 	pad.Parent = ui.You
+	youLip.Position = UDim2.new(0, -14, 1, 0)
+	youLip.Size = UDim2.new(1, 28, 0, K.BLOCK_LIP)
 	ui.Footer = label(board, "Footer", "", "Body", K.TEXT, {
-		Position = UDim2.fromOffset(K.PAD, K.FOOT_Y), Size = UDim2.fromOffset(K.W - 2 * K.PAD, K.FOOT_H), TextColor3 = K.MUTED, TextWrapped = true,
+		Position = UDim2.fromOffset(K.PAD, K.FOOT_Y), Size = UDim2.fromOffset(K.IW - 2 * K.PAD, K.FOOT_H), TextColor3 = K.MUTED, TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
 	})
 
 	S.Gui, S.Ui, S.Icon = gui, ui, nil
@@ -302729,8 +303178,12 @@ local function render()
 	setIcons(stat)
 	for key, b in pairs(ui.Tabs) do
 		local on = key == stat
-		b.BackgroundColor3 = on and K.GOLD or K.TAB_OFF
-		b.TextColor3 = on and Theme.Colors.Navy or Theme.Colors.White
+		b.BackgroundColor3 = on and K.TAB_ON or K.TAB_OFF
+		local lip = b:FindFirstChild("Lip")
+		if lip then
+			lip.BackgroundColor3 = on and K.TAB_ON_LIP or K.TAB_OFF_LIP
+		end
+		b.TextColor3 = K.INK
 	end
 	local state = S.State
 	ui.Scope.Text = (state and state.Scope == "Server") and "This server only" or "All players \194\183 all time"
@@ -302744,9 +303197,10 @@ local function render()
 		if e then
 			r.Name.Text = tostring(e.Name or "Player")
 			r.Value.Text = Theme.ShortNumber(tonumber(e.Value) or 0, K.SHORT_FROM)
+			-- flat square bands: my own row the selected gold, every other row the Well, the rest the card's stone
 			local mine = r.UserId ~= nil and r.UserId == me
-			r.Frame.BackgroundColor3 = mine and K.ME or (i <= 3 and K.GOLD or Theme.Colors.White)
-			r.Frame.BackgroundTransparency = mine and 0 or (i <= 3 and 0.88 or (i % 2 == 0 and 0.96 or 0.92))
+			r.Frame.BackgroundColor3 = mine and K.ME or K.BAND
+			r.Frame.BackgroundTransparency = (mine or i % 2 == 1) and 0 or 1
 		end
 	end
 	applyHeads()
@@ -354154,6 +354608,14 @@ function H.startRoll(roll)
 	roll.Phase = "Intro"
 	S.Lay = L.compute(roll.N, roll)
 	B.roll(roll)
+	-- (owner's log 2026-11-27, "[EggStage] resize: ...HatchLook:1326") the roll is published above before its chips exist:
+	-- a resize signalled while B.roll builds (a new NimbusHatch's first layout can fire it at once) is held (H.relayout)
+	-- and taken here, the layout read again for the new screen
+	roll.Built = true
+	if roll.ResizedInBuild then
+		roll.ResizedInBuild = nil
+		S.Lay = L.compute(roll.N, roll)
+	end
 	H.apply()
 	-- the intro: the dim, the vignette, the title sliding down
 	if S.Dim and S.Dim.BackgroundTransparency > K.DIM then
@@ -354305,6 +354767,10 @@ end
 function H.relayout()
 	local roll = S.Roll
 	if not roll or not S.Content then
+		return
+	end
+	if not roll.Built then
+		roll.ResizedInBuild = true -- (a half-built roll: H.startRoll lays it out for the new screen once B.roll is done)
 		return
 	end
 	H.cancelTweens(true)
