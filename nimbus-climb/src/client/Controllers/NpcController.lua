@@ -1468,6 +1468,52 @@ local function fitWide(left, bottom, topLimit, rightLimit)
 	return nil
 end
 
+-- (kitb-matchhud look0 N3: at 640 x 360 step 3 below put the full card at 0.7, 494 design px wide, whose line holds four
+-- 20 px rows under its well: Granny Owl's and Mayor Panda's speeches wrap to five there, and 'rarer!' / 'there!' were cut)
+-- the rows the open dialog's longest page wraps to in a line `width` design px wide, in the Line's font
+-- (NpcController.Metrics.MEASURE(label, text, width) -> Vector2 when set: the offline renderer's font metrics, wrapped as
+-- it draws; else TextService through Theme.MeasureLabel), cached per dialog and width
+NpcController.Metrics = { MEASURE = nil }
+local speechCache = { Lines = nil, Rows = {} }
+local function speechRows(width)
+	local lines = dialog.Lines
+	if not (lines and UI.Line) then
+		return 0
+	end
+	if speechCache.Lines ~= lines then
+		speechCache.Lines, speechCache.Rows = lines, {}
+	end
+	local key = math.floor(width)
+	if speechCache.Rows[key] then
+		return speechCache.Rows[key]
+	end
+	local rec = dialog.Rec
+	local most = 0
+	for _, text in ipairs(lines) do
+		local _, plain = richLine(text, rec and rec.Def, (rec and rec.Accent) or C.Gold)
+		local ok, size = pcall(function()
+			local hook = NpcController.Metrics.MEASURE
+			if hook then
+				return hook(UI.Line, plain, key)
+			end
+			return Theme.MeasureLabel(UI.Line, plain, K.TEXT, key)
+		end)
+		if ok and typeof(size) == "Vector2" then
+			most = math.max(most, math.floor(size.Y / K.TEXT + 0.5))
+		end
+	end
+	speechCache.Rows[key] = most
+	return most
+end
+
+-- whether every page of the open dialog fits the line of a card w x h design px with `rows`' well (the Line: the well
+-- less 28 x 37 design px; its rows K.TEXT * LineHeight tall)
+local function speechFits(w, h, rows)
+	local lineW = w - K.WELL_X - K.PAD - 28
+	local lineH = h - K.WELL_TOP - K.FOOTER_H - rows.Well - 37
+	return speechRows(lineW) * K.TEXT * ((UI.Line and UI.Line.LineHeight) or 1) <= lineH + 0.5
+end
+
 local function layoutDialog()
 	local gui, root = UI.Gui, UI.Root
 	if not (gui and root) then
@@ -1602,34 +1648,41 @@ local function layoutDialog()
 		-- RUN hold the full card at 0.7, not the compact one)
 		local foot = touchRects(area)
 		local found = false
-		for _, box in ipairs({ { left, rightLimit, false }, { edge, area.X - edge, true } }) do
-			local l = box[1]
-			local rights = { box[2] }
-			for _, t in ipairs(foot) do
-				if t.x0 - K.GAP > l and t.x0 - K.GAP < box[2] then
-					rights[#rights + 1] = t.x0 - K.GAP
-				end
-			end
-			table.sort(rights, function(a, b)
-				return a > b
-			end)
-			for _, r in ipairs(rights) do
-				local b = area.Y - edge
+		-- (kitb-matchhud look0 N3) first a box whose card shows every page of the speech whole (at 640 x 360 the full card
+		-- from the left edge, the tiles aside under it: as wide as the speech's rows need), then any box as before
+		for _, whole in ipairs({ true, false }) do
+			for _, box in ipairs({ { left, rightLimit, false }, { edge, area.X - edge, true } }) do
+				local l = box[1]
+				local rights = { box[2] }
 				for _, t in ipairs(foot) do
-					if t.x0 < r + K.GAP and t.x1 > l - K.GAP then
-						b = math.min(b, t.y0 - K.GAP)
+					if t.x0 - K.GAP > l and t.x0 - K.GAP < box[2] then
+						rights[#rights + 1] = t.x0 - K.GAP
 					end
 				end
-				if b > topLimit then
-					local s3, w3, h3, r3 = fitCard(l, b, topLimit, r, f, tall)
-					if s3 < K.MIN_SCALE then
-						s3, w3, h3, r3 = fitWide(l, b, topLimit, r)
+				table.sort(rights, function(a, b)
+					return a > b
+				end)
+				for _, r in ipairs(rights) do
+					local b = area.Y - edge
+					for _, t in ipairs(foot) do
+						if t.x0 < r + K.GAP and t.x1 > l - K.GAP then
+							b = math.min(b, t.y0 - K.GAP)
+						end
 					end
-					if s3 and s3 >= K.MIN_SCALE then
-						scale, w, h, x, y, rows, overColumn = s3, w3, h3, l, b, r3, box[3]
-						found = true
-						break
+					if b > topLimit then
+						local s3, w3, h3, r3 = fitCard(l, b, topLimit, r, f, tall)
+						if s3 < K.MIN_SCALE or (whole and not speechFits(w3, h3, r3)) then
+							s3, w3, h3, r3 = fitWide(l, b, topLimit, r)
+						end
+						if s3 and s3 >= K.MIN_SCALE and (not whole or speechFits(w3, h3, r3)) then
+							scale, w, h, x, y, rows, overColumn = s3, w3, h3, l, b, r3, box[3]
+							found = true
+							break
+						end
 					end
+				end
+				if found then
+					break
 				end
 			end
 			if found then
