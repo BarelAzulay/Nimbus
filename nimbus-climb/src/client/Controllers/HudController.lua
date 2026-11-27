@@ -1327,6 +1327,9 @@ local function panelMetrics(touch)
 		TimerH = 34, TimerText = 32, CountText = 42,
 		TokensH = 34, TokensText = 20, TokensPad = 10,
 		CpX = 96, CpH = 22, CpText = 18, CpBlockW = 26, CpBlockGap = 4, CpBlockLip = 3,
+		-- (kitb-matchhud look0 N1) the blocks' floor at that gap; where the floor overflows the bar, the gap closes to
+		-- CpGapTight, then the blocks narrow down to CpBlockThin on a 1 px wood edge (PK.BlockFit)
+		CpBlockMin = 10, CpGapTight = 2, CpBlockThin = 5,
 		TeamGap = 8, ChipH = 48, ChipGap = 6, ChipText = 18, StateText = 18, HpH = 10,
 		Wide = 480, -- a card this wide or wider puts the checkpoints in row B (the pitch's 1920 card)
 		-- the party card. Row A: the obby's gold icon square, the title, the big red Leave. Row B: the countdown after the
@@ -2790,6 +2793,29 @@ function PK.SetCheckpoints(cp, total)
 	PK.LayCheckpoints()
 end
 
+-- (kitb-matchhud look0 N1: SAINT's 10 blocks at the 10 px floor and the 4 px gap overflowed their bar - in the slim layout's
+-- clock row 3.2 px into the clock '24:53' and 7.6 px into a three-digit tokens tile at 640 x 360 .. 812 x 375; kit-b's wide
+-- card 8.8 px into the tile at 1280 x 720) `total` blocks in `avail` design px -> width, gap, wood edge: the widest that fit
+-- (26 at most) at the 4 px gap and the 10 px floor, as before; where the floor overflows, the gap closes to CpGapTight, then
+-- the blocks narrow under the floor on a 1 px edge (a face kept) down to CpBlockThin, the gap at 1 px last
+function PK.BlockFit(avail, total)
+	local function widest(gap)
+		return math.min(M.CpBlockW, math.floor((avail - (total - 1) * gap) / total))
+	end
+	local bw = widest(M.CpBlockGap)
+	if bw >= M.CpBlockMin then
+		return bw, M.CpBlockGap, M.BlockEdge
+	end
+	bw = widest(M.CpGapTight)
+	if bw >= M.CpBlockMin then
+		return bw, M.CpGapTight, M.BlockEdge
+	end
+	if bw >= M.CpBlockMin - 2 then
+		return bw, M.CpGapTight, 1
+	end
+	return math.max(M.CpBlockThin, widest(1)), 1, 1
+end
+
 function PK.LayCheckpoints()
 	local bar = UI.CpBar
 	local total = Mt.CpTotal or 4
@@ -2801,17 +2827,20 @@ function PK.LayCheckpoints()
 	local labelW = bare and 0 or (PK.LabelW(UI.CpLabel, "Heading") + 2)
 	local room = bar.Size.X.Offset > 0 and bar.Size.X.Offset or (innerWidth() - labelW - 10)
 	local avail = math.max(10, bare and room or (room - labelW - 10))
-	local bw = math.max(10, math.min(M.CpBlockW, math.floor((avail - (total - 1) * M.CpBlockGap) / total)))
+	local bw, gap, edge = PK.BlockFit(avail, total)
 	local row = bar:FindFirstChild("BlockRow")
-	if not row or row:GetAttribute("Count") ~= total or row:GetAttribute("BlockW") ~= bw then
+	if not row or row:GetAttribute("Count") ~= total or row:GetAttribute("BlockW") ~= bw or row:GetAttribute("BlockGap") ~= gap
+		or row:GetAttribute("BlockEdge") ~= edge then
 		if row then
 			row:Destroy()
 		end
 		row = SignKit.BlockRow(bar, {
-			Count = total, BlockW = bw, BlockH = M.CpH, Gap = M.CpBlockGap, EdgePx = M.BlockEdge, LipPx = M.CpBlockLip,
+			Count = total, BlockW = bw, BlockH = M.CpH, Gap = gap, EdgePx = edge, LipPx = M.CpBlockLip,
 			Fill = SIGN.Sky, FillLip = SIGN.SkyLip,
 		})
 		row:SetAttribute("BlockW", bw)
+		row:SetAttribute("BlockGap", gap)
+		row:SetAttribute("BlockEdge", edge)
 	end
 	UI.CpLabel.AnchorPoint = Vector2.new(0, 0.5)
 	UI.CpLabel.Position = UDim2.new(0, 0, 0.5, 0)
@@ -3803,7 +3832,20 @@ local function applyMatchState(state)
 	if phase == "Playing" and prevPhase == "Countdown" then
 		Mt.GoUntil = now + K.GO_SECONDS
 		Mt.Last = nil
-		UI.TimerScale.Scale = 1.7
+		-- (kitb-matchhud look0's minor: where the checkpoints share the clock row - the slim layout's narrow card - GO!'s 1.7
+		-- pop put its '!' 17.5 px on the first block) there the pop stops 4 px of ink short of the first block
+		local peak = 1.7
+		local row = UI.CpBar and UI.CpBar:FindFirstChild("BlockRow")
+		local k = currentScale()
+		if Mt.Compact and not PK.Wide() and row and k > 0 then
+			setTimerText("GO!", SIGN.Good, M.CountText)
+			local w = PK.LabelW(UI.Timer, "Display")
+			local room = (row.AbsolutePosition.X - UI.Timer.AbsolutePosition.X - 4) / k - 1
+			if w > 0 then
+				peak = math.max(1, math.min(peak, room / w))
+			end
+		end
+		UI.TimerScale.Scale = peak
 		tween(UI.TimerScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end
 	if phase ~= "Countdown" then
