@@ -6791,8 +6791,11 @@ function Hud.Rebuild()
 		-- the list's first row into the band and right under the boss strip it would end above it, the strips step aside for
 		-- the fight, as they do where they lie on the keys (BattleKeys below); once aside they stay aside for this fight on this
 		-- screen (weighed from the HUD's laid-out edges, shown or aside, so they never flip)
-		local listKey = isFighting and string.format("%s/%dx%d", tostring(B), m.VX, m.VY) or nil
-		if listKey and Hud.stripsListAt ~= listKey and Hud.StripsPushList(B, m, topY) then
+		-- (kitb-matchhud look0 N2: between two ring rounds the strips came back under the ring's strip, beside a fighter card
+		-- laid out without them - at 360 x 640 the token strip lay 9.6 px on it) the fight's choice holds between its rounds
+		-- too (the top card and the fighter card stay then: no flicker), weighed during the fight only
+		local listKey = (isFighting or between) and string.format("%s/%dx%d", tostring(B), m.VX, m.VY) or nil
+		if isFighting and Hud.stripsListAt ~= listKey and Hud.StripsPushList(B, m, topY) then
 			Hud.stripsListAt = listKey
 		end
 		listAside = listKey ~= nil and Hud.stripsListAt == listKey
@@ -6866,7 +6869,15 @@ function Hud.Rebuild()
 		-- beside the fighter card: the card narrows to keep its shadow and K.CARD_GAP_PX between them (never under the
 		-- 208 a narrow card keeps beside the strips)
 		local listX0 = m.W - K.EDGE - K.ROW_W_COMPACT
-		local keep = math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / max(0.05, m.F))
+		-- (kit-b backlog 9: the ring's card across the top put its list beside the fighter card, and the locked row's gold
+		-- target bracket came 7.4 / 5.5 px from the card's shadow at 393 x 852 / 412 x 915) and at least the card's ink and
+		-- the bracket's, on the whole screen px they draw on, and the list's 8 px of air: the card's edge and hard shadow
+		-- (Hud.TeamGap's), the bracket's 4 design px and its 3 px stroke (2 on a 0.8 phone: SignKit.Px), nothing more (a
+		-- design px more at 390 x 844 cut 'Biscuit Bear'; a fixed count of design px left 5.6 px at 428 x 926)
+		local f = max(0.05, m.F)
+		local stroke = SignKit.Px(3, f)
+		local keep = max(math.ceil((K.SHADOW_PX + K.CARD_GAP_PX) / f),
+			math.ceil(stroke + SignKit.Px(Theme.Finish.Card, f) + 4 + stroke + 8 / f - 1e-6))
 		if K.EDGE + cardW + keep > listX0 and listX0 - keep - K.EDGE >= 208 then
 			Hud.fcW = max(208, floor(listX0 - keep - K.EDGE))
 			cardW = Hud.fcW
@@ -6933,8 +6944,9 @@ function Hud.Rebuild()
 	-- (P2 fix A r1: at 360 x 640 the strips under the boss strip lay on DASH and TARGET) they step aside for the fight; once
 	-- aside they stay aside for this fight on this screen (the keys' place follows the vitals card's, which the HUD's own
 	-- relayout of the strips moves for a frame: weighed again it flipped them on and off)
-	local stripsKey = (band and isFighting and m.Touch) and string.format("%s/%dx%d", tostring(B), m.VX, m.VY) or nil
-	if stripsKey and Hud.stripsKeysAt ~= stripsKey and Hud.StripsOnKeys(m) then
+	-- ((kitb-matchhud look0 N2) and between its rounds, as the list's choice above)
+	local stripsKey = (band and (isFighting or between) and m.Touch) and string.format("%s/%dx%d", tostring(B), m.VX, m.VY) or nil
+	if isFighting and stripsKey and Hud.stripsKeysAt ~= stripsKey and Hud.StripsOnKeys(m) then
 		Hud.stripsKeysAt = stripsKey
 	end
 	Hud.HoldStrips("BattleKeys", stripsKey ~= nil and Hud.stripsKeysAt == stripsKey)
@@ -8458,10 +8470,23 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- (keys look r3: the clock came and went with the card's width alone: none on 640 x 360's duel card or 667 x 375's
 		-- and 844 x 390's, with 70 px free there) a narrow card's clock wherever the mode line's whole text still fits beside
 		-- it at the size it is drawn (Hud.SetFit keeps the whole line first: the clock never costs it words)
-		local text = tostring((Hud.ModeText(B)) or "")
-		local okM, mM = pcall(Theme.Measure, text, "Heading", px(20))
-		local need = (okM and typeof(mM) == "Vector2" and mM.X > 0) and (mM.X * 1.04 + 4) or textWidth(text, px(20))
-		showClock = right - timerW - 4 - 18 - 8 - x0 >= need
+		-- (kit-b backlog 9: at 844 x 390 the ring's 'Round 8 - Best 12' has no room even without the clock, so the card drew
+		-- 'Round 8' and still lost its clock) the form of the line the card draws without the clock (the whole line, else
+		-- Hud.ModeText's short forms) must fit beside it: the clock still never costs the line words
+		local text, _, shorts = Hud.ModeText(B)
+		local forms = { tostring(text or "") }
+		for _, t in ipairs(shorts or {}) do
+			forms[#forms + 1] = tostring(t)
+		end
+		local without = right - timerW - gapT - x0
+		for i, form in ipairs(forms) do
+			local okM, mM = pcall(Theme.Measure, form, "Heading", px(20))
+			local need = (okM and typeof(mM) == "Vector2" and mM.X > 0) and (mM.X * 1.04 + 4) or textWidth(form, px(20))
+			if need <= without or i == #forms then
+				showClock = right - timerW - 4 - 18 - 8 - x0 >= need
+				break
+			end
+		end
 	end
 	-- (P2 fix A: a portrait phone's 463 px strip cut a 20-character name beside the clock) any raid card: the clock only
 	-- where the boss's whole name fits beside it at the name's floor size, after the RAID tag where the tag shows
@@ -10118,8 +10143,11 @@ end
 function Hud.BandMode(B, m)
 	-- (keys lane, look fixA r1 minor: the duel's one-row card dropped to the middle left at 390 x 844, between the helpers
 	-- and the enemy list, and at 360 x 640 the list lay on the fighter card) a duel's card is placed as the raid's and the
-	-- dungeon's: the strip across the top, the team and the list under it
-	return m.Compact == true and not m.Landscape and (Hud.BossUnit(B) ~= nil or B.Mode == "Duel")
+	-- dungeon's: the strip across the top, the team and the list under it. (kit-b backlog 9: the Champion Ring's rounds and
+	-- the trials fought as them kept the old card under the fighter card: at 360 x 640 enemy row 1 lay 15-18 px on the
+	-- fighter card and 'Round 8' read 'Ro...' in a 40 px box, at 390 x 844 the card lay 37.6 px on the fighter card) the
+	-- ring's card spans the top too
+	return m.Compact == true and not m.Landscape and (Hud.BossUnit(B) ~= nil or B.Mode == "Duel" or B.Mode == "Ring")
 end
 
 -- (P2 fix A) whether the fighter's block (the card and its helpers), its top at y (design px) under the boss strip, ends
@@ -10476,7 +10504,7 @@ function Leave.Place(m, B, isFighting)
 end
 
 -- the next-round card's LEAVE: a row at the bottom of the card (returns the card's new height)
-function Leave.PlaceOnCard(m, B, w, y, inline)
+function Leave.PlaceOnCard(m, B, w, y, inline, inlineW)
 	local b = Hud.nextLeave
 	if not b then
 		return y
@@ -10488,8 +10516,8 @@ function Leave.PlaceOnCard(m, B, w, y, inline)
 	end
 	Leave.Paint()
 	if inline then
-		-- beside the countdown (a landscape phone)
-		b.Size = UDim2.fromOffset(92, 38)
+		-- beside the countdown (a landscape phone; inlineW: narrower where the countdown needs the room)
+		b.Size = UDim2.fromOffset(inlineW or 92, 38)
 		b.AnchorPoint = Vector2.new(1, 0)
 		b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
 		return y
@@ -11625,7 +11653,9 @@ function Ring.PlaceNext(B)
 		local tr = Hud.topRect
 		if tr and Hud.top.Visible and tr[3] > m.W - w - 20 then
 			-- a landscape phone: narrow the card to stay beside the top card (below it would reach the DASH button)
-			local w2 = m.W - 8 - (tr[3] + 10)
+			-- (kitb-matchhud look0 N2, kit-b's own: 10 design px left the top card's hard shadow on the card's frame, 0 px of
+			-- air at 640 x 360 / 667 x 375) its shadow, the card's 2 px frame and K.INK_AIR_PX of air at the least
+			local w2 = m.W - 8 - (tr[3] + max(10, Hud.Air(m, K.SHADOW_PX + 2 + K.INK_AIR_PX)))
 			if m.Landscape and w2 >= 220 then
 				w = w2
 			else
@@ -11642,12 +11672,21 @@ function Ring.PlaceNext(B)
 			if Hud.team.Visible then
 				local teamRight = Hud.team.Position.X.Offset + Hud.team.Size.X.Offset
 				local teamBottom = Hud.team.Position.Y.Offset + Hud.team.Size.Y.Offset
+				if Hud.bandOn and Hud.fighterCard then
+					-- (kitb-matchhud look0 N2: with the ring's strip across the top - kit-b backlog 9 - the team stands under it
+					-- and the card, placed under the strip, found the fighter card's whole width there, fell back to 340 wide and
+					-- lay 32.8 px on the helpers at 360 x 640) it starts under the fighter card, its edge and shadow (Hud.TeamGap;
+					-- the card's own frame 2 px more), beside the helpers alone, as it did under kit-b's top card beside the
+					-- fighter card
+					portraitTop = max(portraitTop, Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset + Hud.TeamGap(m) + Hud.Air(m, 2))
+				end
 				if Hud.fighterCard and portraitTop >= Hud.team.Position.Y.Offset + Hud.fighterCard.Root.Size.Y.Offset then
 					-- (only the helpers reach down here: their column, or P2 fix A r1's row of two)
 					teamRight = Hud.team.Position.X.Offset + (Hud.helperHolder and Hud.helperHolder.Size.X.Offset or Hud.helperCellW or 0)
 				end
 				if teamBottom > portraitTop then
-					w = min(w, m.W - 8 - teamRight - 8)
+					-- ((look0 N2, kit-b's own: 8 design px left the two frames 1.8 - 2.4 px apart) K.INK_AIR_PX more)
+					w = min(w, m.W - 8 - teamRight - 8 - Hud.Air(m, K.INK_AIR_PX))
 				end
 			end
 			if w < 240 then
@@ -11657,32 +11696,58 @@ function Ring.PlaceNext(B)
 		end
 	end
 	local inner = w - 2 * K.PAD - 8
-	local y = K.PAD
-	Hud.nextTitle.Position = UDim2.fromOffset(K.PAD + 4, y)
-	Hud.nextTitle.Size = UDim2.fromOffset(inner, 32)
-	y = y + 34
-	Hud.nextLine.Position = UDim2.fromOffset(K.PAD + 4, y)
-	Hud.nextLine.Size = UDim2.fromOffset(inner, 26)
-	y = y + 28
-	if #extra > 0 then
-		Hud.nextExtra.Position = UDim2.fromOffset(K.PAD + 4, y)
-		Hud.nextExtra.Size = UDim2.fromOffset(inner, 22)
-		y = y + 26
+	-- the rows, top down; `inline`: LEAVE shares the countdown's row -> the card's height
+	local function layRows(inline)
+		local y = K.PAD
+		Hud.nextTitle.Position = UDim2.fromOffset(K.PAD + 4, y)
+		Hud.nextTitle.Size = UDim2.fromOffset(inner, 32)
+		y = y + 34
+		Hud.nextLine.Position = UDim2.fromOffset(K.PAD + 4, y)
+		Hud.nextLine.Size = UDim2.fromOffset(inner, 26)
+		y = y + 28
+		if #extra > 0 then
+			Hud.nextExtra.Position = UDim2.fromOffset(K.PAD + 4, y)
+			Hud.nextExtra.Size = UDim2.fromOffset(inner, 22)
+			y = y + 26
+		end
+		-- (look0 N2 re-look: the landscape card, kept off the top card's shadow, is 5 design px narrower at 640 x 360 /
+		-- 667 x 375 and 'Next in 3' ran under LEAVE) an inline LEAVE gives the countdown's short form its room, down to 76
+		local leaveW = 92
+		if inline and inner - 92 - 6 < 150 then
+			local okN, mN = pcall(Theme.Measure, "Next in 9", "Display", 24)
+			local need = (okN and typeof(mN) == "Vector2" and mN.X > 0) and (mN.X * 1.04 + 4) or 0
+			leaveW = max(76, min(92, floor(inner - 6 - need)))
+		end
+		local countW = inline and (inner - leaveW - 6) or inner
+		Hud.nextShort = countW < 150 -- ("Next in 3" when the row is short)
+		Hud.nextCount.Position = UDim2.fromOffset(K.PAD + 4, y + (inline and 4 or 0))
+		Hud.nextCount.Size = UDim2.fromOffset(countW, 30)
+		local countY = y
+		y = y + (inline and 42 or 32)
+		Hud.nextBar.Root.Position = UDim2.fromOffset(K.PAD + 4, y)
+		y = y + 14 + K.PAD
+		if inline then
+			Leave.PlaceOnCard(m, B, w, countY, true, leaveW)
+		else
+			y = Leave.PlaceOnCard(m, B, w, y)
+		end
+		return y
 	end
 	-- a landscape phone: LEAVE shares the countdown's row (the card stays clear of the DASH / RUN buttons under it)
 	local inline = m.Compact and m.Landscape and Leave.Allowed(B)
-	local countW = inline and (inner - 92 - 6) or inner
-	Hud.nextShort = countW < 150 -- ("Next in 3" when the row is short)
-	Hud.nextCount.Position = UDim2.fromOffset(K.PAD + 4, y + (inline and 4 or 0))
-	Hud.nextCount.Size = UDim2.fromOffset(countW, 30)
-	local countY = y
-	y = y + (inline and 42 or 32)
-	Hud.nextBar.Root.Position = UDim2.fromOffset(K.PAD + 4, y)
-	y = y + 14 + K.PAD
-	if inline then
-		Leave.PlaceOnCard(m, B, w, countY, true)
-	else
-		y = Leave.PlaceOnCard(m, B, w, y)
+	local y = layRows(inline)
+	local above = nil
+	if m.Compact and not m.Landscape then
+		local r = Hud.TouchRects(m)
+		-- (kitb-matchhud look0 N2: the card's hard shadow and RUN's wood edge took 9 - 10 of the 12 screen px it kept over
+		-- RUN's box: 2 - 3 px of air at 360 x 640 .. 430 x 932) K.INK_AIR_PX more
+		above = (max(r.jump[4], r.run[4]) + 12 + K.INK_AIR_PX) / max(0.05, m.F)
+		-- (look0 N2) under the ring's strip the card stands between the fighter card and RUN (portraitTop): where its rows
+		-- are taller than that room (384 x 640), LEAVE shares the countdown's row, as on a landscape phone
+		if Hud.bandOn and portraitTop and not inline and Leave.Allowed(B) and portraitTop + y > m.H - above then
+			inline = true
+			y = layRows(true)
+		end
 	end
 	f.Size = UDim2.fromOffset(w, y)
 	if m.Compact and not m.Landscape then
@@ -11690,8 +11755,6 @@ function Ring.PlaceNext(B)
 			f.AnchorPoint = Vector2.new(1, 0)
 			f.Position = UDim2.fromOffset(m.W - 8, portraitTop)
 		else
-			local r = Hud.TouchRects(m)
-			local above = (max(r.jump[4], r.run[4]) + 12) / max(0.05, m.F)
 			f.AnchorPoint = Vector2.new(1, 1)
 			f.Position = UDim2.fromOffset(m.W - 8, m.H - above)
 		end

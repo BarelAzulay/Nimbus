@@ -31,7 +31,7 @@
 --                         the travel guide's arrow, dot trail and sign (sketched from the default camera); see the
 --                         [kitb-p2-world] block
 --   title                 right after joining (the title card is still up)
---   match[:hit|:full]     in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
+--   match[:hit|:full|:<1-4>] in a match: match panel, team chips, a damaged HP bar, a partly drained stamina bar
 --                         (":hit" = a quarter second after a hit, damage feedback included; ":full" = the panel's worst
 --                         case: SAINT, four players with 20-character names, one fallen)
 --   countdown             the pre-match countdown inside the match panel
@@ -1183,13 +1183,45 @@ local function longMembers(withHealth)
 	return out
 end
 
--- match[:hit|:dash|:full]: full (kit-b U9-8 A) SAINT, four players with long names, one fallen
+-- match[:hit|:dash|:full|:down|:<1-4>]: full (kit-b U9-8 A) SAINT, four players with long names, one fallen; 1-4
+-- (kitb-matchhud, carried from kitb-bl-hud 058ef01's tool part: the match HUD on short landscape phones) that many players
+-- with short names, 1 = a solo run (3 = the default); down (kitb-matchhud) the default match with the player downed (the
+-- vitals' DOWNED and 'Wait for a teammate!')
 scenario("match", function(arg)
 	LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
 	LocalPlayer:SetAttribute(Config.Attr.MatchTokens, 7)
+	local count = tonumber(arg)
+	if arg == "down" then
+		local members = matchState().Members
+		members[1].Health, members[1].Downed = 0, true
+		toClient("MatchState", matchState({ Members = members }))
+		advance(2.5)
+		setHealth(117, 117)
+		advance(0.6)
+		setHealth(117, 1) -- (not 0: the mock's humanoid would die and respawn)
+		LocalPlayer:SetAttribute(Config.Attr.Downed, true)
+		advance(0.6)
+		return
+	end
 	if arg == "full" then
 		local saint = difficulty("Saint")
 		toClient("MatchState", matchState({ DifficultyId = saint.Id, DifficultyName = saint.DisplayName, Color = saint.Color, Members = longMembers(true) }))
+	elseif arg == "saint" then
+		-- (kitb-matchhud look0 N1) a real SAINT run: its own stage count (10 checkpoints), its clock (24:53 of 25:00) and a
+		-- three-digit token count, four long names (match:full keeps the default 4 checkpoints)
+		local saint = difficulty("Saint")
+		local stages = tonumber(saint.Stages) or 10
+		toClient("MatchState", matchState({ DifficultyId = saint.Id, DifficultyName = saint.DisplayName, Color = saint.Color,
+			Seconds = (tonumber(saint.TimeLimit) or 1500) - 7, Checkpoint = math.floor(stages / 2), TotalCheckpoints = stages,
+			TokensCollected = 107, TotalTokens = 120, Members = longMembers(true) }))
+	elseif count then
+		local members = matchState().Members
+		members[4] = { UserId = 79, Name = "Cloudy", Health = 0.6, Downed = false, Finished = false, Tokens = 1 }
+		local out = {}
+		for i = 1, math.max(1, math.min(4, count)) do
+			out[i] = members[i]
+		end
+		toClient("MatchState", matchState({ Members = out }))
 	else
 		toClient("MatchState", matchState())
 	end
@@ -1223,10 +1255,24 @@ scenario("match", function(arg)
 	end
 end)
 
-scenario("countdown", function()
+-- countdown[:saint|:go]: saint (kitb-matchhud look0 N1) a SAINT run's countdown (its 10 checkpoints, four long names);
+-- go (look0's minor) the countdown ending: 'GO!' over the clock row at the start of its pop
+scenario("countdown", function(arg)
 	LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
+	if arg == "saint" then
+		local saint = difficulty("Saint")
+		toClient("MatchState", matchState({ Phase = "Countdown", Seconds = 3, Checkpoint = 0, TokensCollected = 0, DifficultyId = saint.Id,
+			DifficultyName = saint.DisplayName, Color = saint.Color, TotalCheckpoints = tonumber(saint.Stages) or 10, TotalTokens = 120,
+			Members = longMembers(true) }))
+		advance(0.6)
+		return
+	end
 	toClient("MatchState", matchState({ Phase = "Countdown", Seconds = 3, Checkpoint = 0, TokensCollected = 0 }))
 	advance(0.6)
+	if arg == "go" then
+		toClient("MatchState", matchState({ Phase = "Playing", Seconds = 540, Checkpoint = 0, TokensCollected = 0 }))
+		advance(0.3)
+	end
 end)
 
 -- party[:leader]: leader (kit-b U9-8 A) the leader on the pad with a full party (four long names), EXTREME
@@ -1507,6 +1553,19 @@ scenario("npc", function(which)
 	local ND = req("shared/NpcDialog")
 	local NC = req("client/Controllers/NpcController")
 	local NS = req("server/Services/NpcService")
+	-- (kitb-matchhud look0 N3) the dialog weighs its speech's rows in a card's line (NpcController.Metrics.MEASURE): the
+	-- renderer's font metrics, wrapped as the drawing wraps (the mock's GetTextSize is a flat 0.5 em and never wraps)
+	if NC and type(NC.Metrics) == "table" then
+		local probe = Instance.new("TextLabel")
+		NC.Metrics.MEASURE = function(label, text, width)
+			probe.FontFace = label.FontFace
+			probe.TextSize = label.TextSize
+			probe.LineHeight = label.LineHeight
+			probe.Text = tostring(text or "")
+			local w, h = Mock.TextExtent(probe, width)
+			return Vector2.new(w, h)
+		end
+	end
 	local list = ND.Npcs or ND.List or {}
 	local count = max(1, #list)
 	local spots = {}

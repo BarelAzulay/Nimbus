@@ -104,6 +104,10 @@ local K = {
 	-- (look:fix6b2 N2) the least air the card keeps where OBSTACLE_GAP would cut the player's name: the ink rule's 4 px
 	-- (battle_hud_no_overlap MIN_GAP) and 1 px to spare
 	OBSTACLE_TIGHT = 5,
+	-- (kitb-matchhud, pick A "Slim bar") the slim bar's foot above the screen's bottom edge (gui px): where the pitch drew
+	-- it, level with RUN's foot (24 px up on a phone), lifted 7 more (Gemini's tweak, accepted: a thumb at the rim must not
+	-- clip it)
+	SLIM_FOOT = 31,
 	-- Roblox's own touch controls (gui px; small = the smaller screen side <= SMALL_PHONE): the thumbstick's zone at
 	-- the bottom-left (width, height above the bottom edge: the dynamic stick's idle ring reaches ~93 px on phones)
 	-- and the jump button (J x J square, left edge 1.5 J + 10 and right edge 0.5 J + 10 px from the right edge, bottom
@@ -175,6 +179,8 @@ local K = {
 	LEAVE_CONFIRM_SECONDS = 3,
 	GO_SECONDS = 1.0, -- how long "GO!" replaces the timer
 	STAR_PX = 18, -- (kit-b U7a) a difficulty star (PixelIcon) after the match / party level name
+	-- (kitb-matchhud) the stars where the name would cut beside full-size ones (PK.FitName): one px cells, 9 px
+	STAR_PX_MIN = 9,
 	LAYOUT_POLL = 0.5, -- seconds between two geometry checks
 }
 
@@ -216,6 +222,28 @@ local VG = {
 		TRACK_X = 39, HP_Y = 12, HP_H = 30, HP_TEXT = 18, PAD_R = 13,
 		ST_Y = 48, ST_H = 30, ST_BLOCK = 28, ST_TEXT = 18,
 		KEY = 26, KEY_ICON = 18, KEY_STEP = 2,
+	},
+	-- (kitb-matchhud, the owner's pick A "Slim bar" of 2026-11-27: .superpowers/slop-audit/round3/build/PITCH_MATCHHUD/
+	-- A_640x360_match.png) a match / its countdown on a short landscape phone where the card above has no row clear of the
+	-- keys, the panel and the rings: the card becomes ONE slim row of the same kit parts - the bare heart, the HP track (the
+	-- blocks HP_BLOCK wide, down to HP_BLOCK_MIN where the row is narrower, the divider, the number), GROUP_GAP, the stamina
+	-- well (the bare bolt, the blocks ST_BLOCK wide), PAD_R - CARD_H tall, the rows ROW_Y down. No stamp, no trophies, no dash
+	-- words (the name and an HP bar are the panel's gold 'you' chip; the touch DASH key shows its own cool-down). Slim: with
+	-- the small name tag (the card's wood tab, the name alone, NAME_TEXT) TAB_UP over the bar's top-left, where it fits whole
+	-- with the bar's air (applyMargins); SlimBare: the bar alone (a 360-tall phone: no room under the panel)
+	Slim = {
+		Name = "Slim", Slim = true, H = 76, TAB_UP = 26, CARD_H = 50, CARD_X = 0, CARD_CORNER = 0,
+		TAB_X = 14, TAB_H = 32, TAB_PAD = 9, NAME_TEXT = 18, NAME_MIN = 18,
+		HEART_X = 10, HEART = 24, HEART_TEXT = 22, BOLT = 24, BADGE_ICON = 18, BADGE_LIP = 0, BARE = true,
+		TRACK_X = 39, ROW_Y = 8, ROW_H = 30, HP_TEXT = 18, HP_BLOCK = 16, HP_BLOCK_MIN = 10, GROUP_GAP = 10, PAD_R = 10,
+		ST_BLOCK = 22, ST_TEXT = 18, KEY = 26, KEY_ICON = 18, KEY_STEP = 2,
+	},
+	SlimBare = {
+		Name = "SlimBare", Slim = true, H = 50, TAB_UP = 0, CARD_H = 50, CARD_X = 0, CARD_CORNER = 0,
+		TAB_X = 14, TAB_H = 32, TAB_PAD = 9, NAME_TEXT = 18, NAME_MIN = 18,
+		HEART_X = 10, HEART = 24, HEART_TEXT = 22, BOLT = 24, BADGE_ICON = 18, BADGE_LIP = 0, BARE = true,
+		TRACK_X = 39, ROW_Y = 8, ROW_H = 30, HP_TEXT = 18, HP_BLOCK = 16, HP_BLOCK_MIN = 10, GROUP_GAP = 10, PAD_R = 10,
+		ST_BLOCK = 22, ST_TEXT = 18, KEY = 26, KEY_ICON = 18, KEY_STEP = 2,
 	},
 	TRACK_EDGE = 2, TRACK_PAD = 3, DIVIDER = 2, -- the sunk track's / well's edge, its inside padding, the HP number's divider
 	-- the dash's state in the stamina group (each state's longest form that fits whole: Vitals.Layout)
@@ -326,6 +354,7 @@ local St = { Frac = 1, Dim = 0, DimDrawn = -1, Drained = false, Charge = -1, Rea
 local Tk = { RunSeen = 0 } -- the "+n" match chip
 local Mt = { -- match panel bookkeeping
 	Base = 0, At = 0, Phase = nil, Last = nil, GoUntil = 0, Rows = 1, Chips = {}, Count = 0,
+	Compact = false, -- (kitb-matchhud) the checkpoints share the clock row on a narrow card (the slim layout: applyMargins)
 }
 local Pt = { -- party panel bookkeeping (Fit*: what the text sizes were last fitted for)
 	Base = nil, At = 0, Rows = 1, Chips = {}, Count = 0, LastText = nil, LeaveLockUntil = 0,
@@ -766,6 +795,9 @@ end
 local layoutCurrencyRows -- (style, width) -> places the rows; defined with the currency code below
 local setPanelWidth -- (designWidth) -> resizes the match / party panels; defined with the panels below
 local setVitalsGeometry -- (VG.Regular | VG.Compact) -> places the vitals card's parts; defined with the card
+-- (kitb-matchhud) (on) -> the match card's checkpoints in its clock row (true) or their own row; true when that changed its
+-- size. And the design px that saves on a narrow card (0 where they already share the clock row). Defined with the panels
+local setMatchCompact, compactSaving
 
 -- Cards that own the top-right corner for a moment (in our coordinates, nil when none is up): the currency strips
 -- step out of their way. Today: DungeonController's End card (NimbusDungeonRun.EndCard), which phones draw under the
@@ -805,7 +837,10 @@ end
 -- room left is narrower than minW the card steps up just above the lowest of those and tries again, but never with
 -- its top above `ceiling` (the middle of the screen): there it keeps the last rows, squeezed to minW.
 -- Returns left (gui px), width (design px), bottom (gui px). `air`: the air kept off them (default OBSTACLE_GAP).
-local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling, air)
+-- (kitb-matchhud) `tabUp`: the screen px of the slot over the card's own top (its name tab's band): an obstacle marked
+-- cardOnly (the match / party panel's hard shadow) is kept off the card's rows only - the tab, inset from the card's left
+-- edge, already keeps its air off the panel's box
+local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, ceiling, air, tabUp)
 	-- (kit-b P2 fix6b, look1 O3) the card's own wood edge is drawn outside its box: the gap is kept from it
 	local gap = (air or K.OBSTACLE_GAP) + K.VITALS_EDGE
 	for _ = 1, 6 do
@@ -814,7 +849,7 @@ local function placeVitals(area, k, w, minW, h, bottom, cx, obstacles, side, cei
 		local hardLeft, hardRight = side, area.X - side
 		local step = nil
 		for _, r in ipairs(obstacles) do
-			if top < r.y1 + gap and bottom > r.y0 - gap then
+			if (r.cardOnly and (top + (tabUp or 0)) or top) < r.y1 + gap and bottom > r.y0 - gap then
 				if (r.x0 + r.x1) / 2 < cx then
 					left = math.max(left, r.x1 + gap)
 					hardLeft = r.soft and hardLeft or math.max(hardLeft, r.x1 + gap)
@@ -959,58 +994,163 @@ local function applyMargins(animate, force)
 		panelW = math.min(panelW, K.PANEL_MIN_W)
 	end
 	panelW = math.max(1, math.min(panelW, math.floor((area.X - topLeft - side) / k)))
-	if setPanelWidth then
-		setPanelWidth(panelW)
-	end
+	-- ((kitb-matchhud) the width is set below, once the panel's clearance off the touch keys is known)
 
 	-- vitals: the regular card, the flatter compact card on short touch screens (landscape phones: the bottom band
 	-- between the stick and the jump button is busy there)
 	local geometry = (touch and vp.Y <= K.SMALL_PHONE) and VG.Compact or VG.Regular
-	if setVitalsGeometry then
-		setVitalsGeometry(geometry)
-	end
 	-- (U9-8 look) the card's height and width whole screen px, so its top corner (it hangs from a whole-px bottom) is too
 	local vitalsH = math.floor(geometry.H * k + 0.5) / k
 	-- (HUD cleanup: no hotbar to measure any more; the card keeps the bottom-centre spot it had above it)
 	local vitalsBottom = area.Y - K.HOTBAR_FALLBACK * k - K.HOTBAR_GAP
 	local cx = area.X / 2
-	local obstacles = {}
-	if column then
-		table.insert(obstacles, column)
-	end
-	if topH > 0 then
-		-- the match / party panel (a 4-player party on a landscape phone reaches the bottom band)
-		local w = math.max(hasPanel and panelW or 0, hasTitle and K.TITLE_W or 0)
-		table.insert(obstacles, { x0 = topLeft, y0 = K.EDGE, x1 = topLeft + w * k, y1 = K.EDGE + topH * k })
-	end
-	for _, r in ipairs(buttons) do
-		table.insert(obstacles, r)
-	end
-	if touch then
-		for _, r in ipairs(robloxTouchRects(area, vp)) do
-			table.insert(obstacles, r)
+	-- (kitb-matchhud) the match / party panel's hard shadow (SignKit.Frame's, Theme.Finish.Window design px under its scale,
+	-- whole screen px) below and right of its box: the card's ink came 1.6 - 2.4 px off it at 640 x 360 .. 932 x 430
+	local shadowPx = hasPanel and math.floor((tonumber(Theme.Finish and Theme.Finish.Window) or 0) * k + 0.5) or 0
+	-- the obstacles for a panel `pw` design px wide and `ph` tall: with `whole` its box and its shadow as one rect (the slim
+	-- bar and its tag sit under it), else its box and the shadow kept off the card's rows only (cardOnly: the card's name
+	-- tab, inset from its left edge, keeps its air off the box; at 800 x 450 the tab sits 9.6 px right of the shadow)
+	local function obstaclesFor(pw, ph, whole)
+		local list = {}
+		if column then
+			table.insert(list, column)
 		end
+		if ph > 0 then
+			-- the match / party panel (a 4-player party on a landscape phone reaches the bottom band)
+			local w = math.max(hasPanel and pw or 0, hasTitle and K.TITLE_W or 0)
+			local box = { x0 = topLeft, y0 = K.EDGE, x1 = topLeft + w * k, y1 = K.EDGE + ph * k }
+			if shadowPx > 0 and whole then
+				box.x1, box.y1 = box.x1 + shadowPx, box.y1 + shadowPx
+			end
+			table.insert(list, box)
+			if shadowPx > 0 and not whole then
+				table.insert(list, { x0 = topLeft + shadowPx, y0 = K.EDGE + shadowPx, x1 = topLeft + pw * k + shadowPx, y1 = K.EDGE + ph * k + shadowPx, cardOnly = true })
+			end
+		end
+		for _, r in ipairs(buttons) do
+			table.insert(list, r)
+		end
+		if touch then
+			for _, r in ipairs(robloxTouchRects(area, vp)) do
+				table.insert(list, r)
+			end
+		end
+		-- (U9-7 look) an open side dock: the card slides left until its right edge is OBSTACLE_GAP px from the dock's frame
+		-- (its wood edge covered the HP bar's right end and the dash chip at 844x390 and touched the card at 1280x720)
+		for _, r in ipairs(docks) do
+			table.insert(list, r)
+		end
+		return list
 	end
-	-- (U9-7 look) an open side dock: the card slides left until its right edge is OBSTACLE_GAP px from the dock's frame
-	-- (its wood edge covered the HP bar's right end and the dash chip at 844x390 and touched the card at 1280x720)
-	for _, r in ipairs(docks) do
-		table.insert(obstacles, r)
-	end
+	-- (kitb-matchhud) the match card as kit-b lays it (its checkpoints in their own row): the slim layout below is decided
+	-- against it, so the decision never flips with the shorter card it brings
+	local topH0 = topH + ((hasPanel and Mt.Compact and Items.Match and Items.Match.Shown and compactSaving) and compactSaving() or 0)
+	local obstacles = obstaclesFor(panelW, topH0, false)
+	local tabUpPx = math.floor(geometry.TAB_UP * k + 0.5)
 	local vitalsLeft, vitalsW
 	local bottom0 = vitalsBottom
-	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1)
+	vitalsLeft, vitalsW, vitalsBottom = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, nil, tabUpPx)
 	-- (look:fix6b2 N2) a card too narrow for the player's whole name keeps only OBSTACLE_TIGHT of air where that gives the
 	-- name its room (at 800 x 450 in a match / countdown it sat in the 211 px between the match panel and RUN's block edge,
 	-- O3's 8 px of air + its 2 px edge on each side left it 190 px, under the 196 'SkyClimber' needs at its 14.4 px floor:
 	-- 'SkyCli...', whole at e272588). Where even that leaves no room the card stays as it was
 	local nameW = Vitals.WholeNameW(geometry, k)
 	if math.floor(vitalsW * k) < nameW then
-		local left2, w2, bottom2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT)
+		local left2, w2, bottom2 = placeVitals(area, k, K.VITALS_W, K.VITALS_MIN_W, vitalsH, bottom0, cx, obstacles, side, band.y1, K.OBSTACLE_TIGHT, tabUpPx)
 		if math.floor(w2 * k) >= nameW then
 			vitalsLeft, vitalsW, vitalsBottom = left2, w2, bottom2
 		end
 	end
 	vitalsW = math.floor(vitalsW * k) / k
+
+	-- (kitb-matchhud, the owner's pick A "Slim bar" of 2026-11-27) whether a slot has its row: wholly on the screen inside
+	-- the side margins, the player's whole name on it (nameNeed screen px), and every drawn obstacle (not the zone the
+	-- stick's thumb roams) OBSTACLE_TIGHT of air off its ink, its wood edge counted
+	local function rowClear(list, left, wPx, bottom, hPx, tabPx, nameNeed)
+		if left < side - 0.5 or left + wPx > area.X - side + 0.5 or bottom > area.Y + 0.5 or bottom - hPx < -0.5 then
+			return false
+		end
+		if nameNeed and math.floor(wPx) < nameNeed then
+			return false
+		end
+		local g = K.OBSTACLE_TIGHT + K.VITALS_EDGE
+		for _, r in ipairs(list) do
+			local top = bottom - hPx + (r.cardOnly and tabPx or 0)
+			if not r.soft and left < r.x1 + g - 0.5 and left + wPx > r.x0 - g + 0.5 and top < r.y1 + g - 0.5 and bottom > r.y0 - g + 0.5 then
+				return false
+			end
+		end
+		return true
+	end
+	-- On a touch screen in landscape, in a match / its countdown or on the party pad, where that card has no row (kit-b:
+	-- at 640 x 360 .. 812 x 375 squeezed onto DASH, RUN and the jump ring, 'SkyCli...', off the right edge at 640):
+	--   * in a match the card becomes the slim bar, and the match card's checkpoints move up into its clock row (a narrow
+	--     card 28 design px shorter: at 640 x 360 its corner and shadow lay on RUN);
+	--   * on the pad the vitals step aside while the panel shows (no damage comes on the pad; the tutorial's chip docks
+	--     bottom-left there): the pitch's pad rule.
+	local noRow = touch and vp.X > vp.Y and (hasPanel or inMatch)
+		and not rowClear(obstacles, vitalsLeft, math.floor(vitalsW * k), vitalsBottom, vitalsH * k, tabUpPx, nameW)
+	local slim = noRow and inMatch
+	if setMatchCompact and setMatchCompact(slim and hasPanel) then
+		hasPanel, hasTitle, topH = topLeftState()
+	end
+	-- (kitb-matchhud) a panel never reaches into a touch key or Roblox's jump button that shares its rows (kit-b: at 568 x 320
+	-- the panel lay on RUN, DASH and the jump ring; at 640 x 360 the leader's full pad on RUN): narrower, OBSTACLE_TIGHT of
+	-- air off its shadow
+	if hasPanel and touch and topH > 0 then
+		local inkBottom = K.EDGE + topH * k + shadowPx
+		local limit = nil
+		local keys = {}
+		for _, r in ipairs(buttons) do
+			table.insert(keys, r)
+		end
+		table.insert(keys, robloxTouchRects(area, vp)[2])
+		for _, r in ipairs(keys) do
+			if r.x0 > topLeft and r.y0 - K.OBSTACLE_TIGHT < inkBottom and r.y1 + K.OBSTACLE_TIGHT > K.EDGE then
+				limit = math.min(limit or math.huge, r.x0 - K.OBSTACLE_TIGHT - shadowPx)
+			end
+		end
+		if limit and topLeft + panelW * k > limit then
+			panelW = math.max(1, math.floor((limit - topLeft) / k))
+		end
+	end
+	if setPanelWidth then
+		setPanelWidth(panelW)
+		hasPanel, hasTitle, topH = topLeftState()
+	end
+	if slim then
+		-- the slim bar: its foot SLIM_FOOT over the screen's bottom edge, between the stick's zone and RUN / the jump button,
+		-- centred where it can be, under the panel and its shadow (OBSTACLE_GAP of air); with its name tag where the tag fits
+		-- too and shows the whole name, else bare; where not even the bare bar has that row (568 x 320 under a two-row match
+		-- card) the vitals step aside (the panel's gold 'you' chip shows the HP; DASH its cool-down)
+		local slimObs = obstaclesFor(panelW, topH, true)
+		local placed = nil
+		for _, g in ipairs({ VG.Slim, VG.SlimBare }) do
+			local P = Vitals.SlimParts(g, k)
+			local h = math.floor(g.H * k + 0.5) / k
+			local foot = area.Y - K.SLIM_FOOT
+			local l, w, b = placeVitals(area, k, P.Pref / k, P.Min / k, h, foot, cx, slimObs, side, band.y1)
+			w = math.floor(w * k) / k
+			local tagNeed = g.TAB_UP > 0 and (Vitals.SlimTagW(g, k) + 2 * Vitals.Px(g.TAB_X, k)) or nil
+			if math.abs(b - foot) < 0.5 and w * k >= P.Min - k - 0.5 and rowClear(slimObs, l, math.floor(w * k), b, h * k, 0, tagNeed) then
+				placed = { g = g, l = l, w = w, b = b, h = h }
+				break
+			end
+		end
+		if placed then
+			geometry, vitalsLeft, vitalsW, vitalsBottom, vitalsH = placed.g, placed.l, placed.w, placed.b, placed.h
+		end
+		noRow = placed == nil
+	end
+	if (S.vitalsOwners.NoRow == true) ~= (noRow == true) then
+		S.vitalsOwners.NoRow = noRow or nil
+		if UI.Vitals then
+			UI.Vitals.Visible = next(S.vitalsOwners) == nil
+		end
+	end
+	if setVitalsGeometry then
+		setVitalsGeometry(geometry)
+	end
 	local vitalsTop = vitalsBottom - vitalsH * k
 	-- ... and where no row beside the dock is wide enough the card steps aside while the dock is open (never half under it)
 	local underDock = false
@@ -1085,7 +1225,9 @@ local function applyMargins(animate, force)
 		local stripTop = K.EDGE
 		local overPanel = hasPanel and topRightLeft < topLeft + panelW * k + K.STRIP_GAP * k
 		if overPanel and not inMatch then
-			stripTop = math.floor(K.EDGE + topH * k + K.GIFT_GAP * k + 0.5)
+			-- ((kitb-matchhud) GIFT_GAP of air under the panel's hard shadow, the strip's own wood edge counted: under the
+			-- box alone the shadow lay 1.2 - 1.8 px over the strip's edge on the portrait pad)
+			stripTop = math.floor(K.EDGE + topH * k + shadowPx + Vitals.Px(2, k) + K.GIFT_GAP * k + 0.5)
 		end
 		-- (P2 fix A, item 06 A) a card spanning a portrait phone's top band (the battle's boss strip, SetTopReserve): the
 		-- strips start GIFT_GAP under it (the pitch's portrait: the strip under the boss card, beside the fighter card)
@@ -1185,6 +1327,9 @@ local function panelMetrics(touch)
 		TimerH = 34, TimerText = 32, CountText = 42,
 		TokensH = 34, TokensText = 20, TokensPad = 10,
 		CpX = 96, CpH = 22, CpText = 18, CpBlockW = 26, CpBlockGap = 4, CpBlockLip = 3,
+		-- (kitb-matchhud look0 N1) the blocks' floor at that gap; where the floor overflows the bar, the gap closes to
+		-- CpGapTight, then the blocks narrow down to CpBlockThin on a 1 px wood edge (PK.BlockFit)
+		CpBlockMin = 10, CpGapTight = 2, CpBlockThin = 5,
 		TeamGap = 8, ChipH = 48, ChipGap = 6, ChipText = 18, StateText = 18, HpH = 10,
 		Wide = 480, -- a card this wide or wider puts the checkpoints in row B (the pitch's 1920 card)
 		-- the party card. Row A: the obby's gold icon square, the title, the big red Leave. Row B: the countdown after the
@@ -1551,6 +1696,73 @@ function Vitals.LayoutTab(g, k, W)
 	T.Value.Position = UDim2.fromOffset((px(8) + iconS + px(5)) / k, 0)
 	T.Value.Size = UDim2.fromOffset((numW + px(4)) / k, (trH - px(3)) / k)
 	UI.TabSig = text .. "|" .. T.Value.Text .. "|" .. letter
+	T.Stamp.Visible, T.Trophies.Visible, T.Root.Visible = true, true, true
+end
+
+-- (kitb-matchhud, pick A "Slim bar") the slim bar's parts in screen px under the scale k: the stamina well's width (GroupW:
+-- its edge, pad, the bolt, the blocks ST_BLOCK wide, pad, edge), DOWNED's box at the HP text size with 10 px of air (DownW:
+-- the notice beside it keeps the rest of the row), and the bar's
+-- width with its HP blocks HP_BLOCK wide (Pref) or HP_BLOCK_MIN wide (Min): the heart's column (TRACK_X), the HP track
+-- (edge, pad, the blocks, pad, divider, pad, the number's box, pad, edge: Vitals.Layout's track), GROUP_GAP, the well, PAD_R
+function Vitals.SlimParts(g, k)
+	local function px(n)
+		return Vitals.Px(n, k)
+	end
+	local e, pad, gap = px(VG.TRACK_EDGE), px(VG.TRACK_PAD), Vitals.Px(VG.BLOCK_GAP, k)
+	local hpText = math.max(g.HP_TEXT, math.ceil(18 / k - 1e-6))
+	local numW = math.ceil((Vitals.NumberW(hpText) + 16) * k)
+	local nS = (UI.StBar and #UI.StBar.Blocks) or 4
+	local edge1 = 2 * Vitals.Px(VG.BLOCK_EDGE, k) + 1
+	local stCell = math.max(edge1, px(g.ST_BLOCK))
+	local groupW = e + pad + px(g.BADGE_ICON) + px(6) + nS * stCell + (nS - 1) * gap + pad + e
+	local nH = VG.HP_BLOCKS
+	local function width(cell)
+		local track = 2 * e + 4 * pad + px(VG.DIVIDER) + numW + nH * math.max(edge1, cell) + (nH - 1) * gap
+		return px(g.TRACK_X) + track + px(g.GROUP_GAP) + groupW + px(g.PAD_R)
+	end
+	-- (DOWNED is all capitals: ~0.76 em a letter in the Display face, over measureAt's 0.56 floor - the render drew it 83.5
+	-- px wide at 18.4 px, 5.5 px past a box measured at the floor)
+	local downW = math.max(measureAt("DOWNED", "Display", hpText, k), math.ceil(6 * hpText * 0.78 * k))
+	return { GroupW = groupW, DownW = downW + px(10),
+		Pref = width(px(g.HP_BLOCK)), Min = width(px(g.HP_BLOCK_MIN)) }
+end
+
+-- (kitb-matchhud, pick A) the slim bar's name tag: the card's wood tab (Vitals.LayoutTab's), the name alone - no stamp, no
+-- trophies - TAB_X in from the bar's left, TAB_UP over its top, as wide as the whole name (applyMargins shows the tag only
+-- where the whole name fits: never a cut name); the bare bar (TAB_UP 0) hides it
+function Vitals.SlimTagW(g, k)
+	return 2 * Vitals.Px(g.TAB_PAD, k) + measureAt(Vitals.FullName(), "Heading", math.max(g.NAME_MIN, math.ceil(14 / k - 1e-6)), k) + Vitals.Px(2, k)
+end
+
+function Vitals.LayoutSlimTab(g, k, W)
+	local T = UI.Tab
+	if not T then
+		return
+	end
+	T.Stamp.Visible, T.Trophies.Visible = false, false
+	T.Root.Visible = g.TAB_UP > 0
+	if g.TAB_UP <= 0 then
+		UI.TabSig = "-"
+		return
+	end
+	local function px(n)
+		return Vitals.Px(n, k)
+	end
+	local size = math.max(g.NAME_TEXT, g.NAME_MIN, math.ceil(14 / k - 1e-6))
+	local text = Vitals.FullName()
+	local nameW = measureAt(text, "Heading", size, k) + px(2)
+	local tabX, padX = px(g.TAB_X), px(g.TAB_PAD)
+	local tabW = math.min(W - 2 * tabX, nameW + 2 * padX)
+	T.Name.Text = text
+	T.Name.TextSize = size
+	T.Root.Position = UDim2.fromOffset(tabX / k, 0)
+	T.Root.Size = UDim2.fromOffset(tabW / k, px(g.TAB_H) / k)
+	T.Edge.Thickness = px(2) / k
+	T.Light.Position = UDim2.fromOffset(0, 0)
+	T.Light.Size = UDim2.new(1, 0, 0, 1 / k)
+	T.Name.Position = UDim2.fromOffset(padX / k, 0)
+	T.Name.Size = UDim2.fromOffset((tabW - 2 * padX) / k, (px(g.TAB_UP) - px(2)) / k)
+	UI.TabSig = text
 end
 
 -- (kit-b U9-8; U9-8 look) places every part of the vitals card on whole screen px for its geometry (UI.VitalsGeometry),
@@ -1589,7 +1801,11 @@ function Vitals.Layout(force)
 	UI.LayoutSig = sig
 	-- (Pitch 2 item 08 C) the tab over the card's top edge, then the card under it: its height, its wood edge and its lip
 	local cardY = at(g.TAB_UP)
-	Vitals.LayoutTab(g, k, W)
+	if g.Slim then
+		Vitals.LayoutSlimTab(g, k, W)
+	else
+		Vitals.LayoutTab(g, k, W)
+	end
 	UI.Card.Position = UDim2.fromOffset(0, cardY / k)
 	UI.Card.Size = UDim2.new(1, 0, 0, px(g.CARD_H) / k)
 	UI.CardStroke.Thickness = px(VG.CARD_EDGE) / k
@@ -1597,8 +1813,23 @@ function Vitals.Layout(force)
 	local e, pad, gapPx = px(VG.TRACK_EDGE), px(VG.TRACK_PAD), Vitals.Px(VG.BLOCK_GAP, k)
 	local trackX = at(g.TRACK_X)
 	local trackW = W - px(g.PAD_R) - trackX
+	-- the HP track's and the stamina group's rows: the card's two rows, (kitb-matchhud) or the slim bar's one row with the
+	-- HP track (its blocks take what the row leaves) and the stamina well side by side GROUP_GAP apart
+	local hpY, hpH = cardY + at(g.HP_Y or g.ROW_Y), px(g.HP_H or g.ROW_H)
+	local stY, stH = cardY + at(g.ST_Y or g.ROW_Y), px(g.ST_H or g.ROW_H)
+	local hpTrackW, stX0, stW0 = trackW, trackX, trackW
+	if g.Slim then
+		local P = Vitals.SlimParts(g, k)
+		stW0 = P.GroupW
+		if S.downed then
+			-- (downed: DOWNED takes the HP track, as wide as the word; the notice takes the rest of the row)
+			stW0 = math.max(P.GroupW, trackW - px(g.GROUP_GAP) - (2 * e + 2 * pad + P.DownW))
+		end
+		hpTrackW = trackW - px(g.GROUP_GAP) - stW0
+		stX0 = trackX + hpTrackW + px(g.GROUP_GAP)
+	end
 	-- the HP track: one sunk well in its wood edge; the blocks, the 2 px divider and the number on the same face
-	local hpY, hpH = cardY + at(g.HP_Y), px(g.HP_H)
+	trackW = hpTrackW
 	UI.HpTrack.Position = UDim2.fromOffset(trackX / k, hpY / k)
 	UI.HpTrack.Size = UDim2.fromOffset(trackW / k, hpH / k)
 	UI.HpFace.Position = UDim2.fromOffset(e / k, e / k)
@@ -1622,17 +1853,17 @@ function Vitals.Layout(force)
 	local numL = S.downed and innerL or numX
 	UI.HpNum.Position = UDim2.fromOffset(numL / k, e / k)
 	UI.HpNum.Size = UDim2.fromOffset((innerR - numL) / k, (hpH - 2 * e) / k)
-	UI.HpNum.TextXAlignment = S.downed and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+	-- ((kitb-matchhud) the slim bar's DOWNED centred in its own track, the number box's air round it: SlimParts' DownW)
+	UI.HpNum.TextXAlignment = (S.downed and not g.Slim) and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
 	UI.HpNum.TextSize = hpText
 	-- the stamina group: one sunk well (the well edge) with the bolt, the blocks, the dash state and the dash key
-	local stY, stH = cardY + at(g.ST_Y), px(g.ST_H)
-	UI.StGroup.Position = UDim2.fromOffset(trackX / k, stY / k)
-	UI.StGroup.Size = UDim2.fromOffset(trackW / k, stH / k)
+	UI.StGroup.Position = UDim2.fromOffset(stX0 / k, stY / k)
+	UI.StGroup.Size = UDim2.fromOffset(stW0 / k, stH / k)
 	UI.StFace.Position = UDim2.fromOffset(e / k, e / k)
-	UI.StFace.Size = UDim2.fromOffset((trackW - 2 * e) / k, (stH - 2 * e) / k)
+	UI.StFace.Size = UDim2.fromOffset((stW0 - 2 * e) / k, (stH - 2 * e) / k)
 	local key = UI.Key
 	local keyS = math.min(px(g.KEY), stH - 2 * e)
-	local keyX = trackW - e - keyS
+	local keyX = stW0 - e - keyS
 	key.Root.Position = UDim2.fromOffset(keyX / k, e / k)
 	key.Root.Size = UDim2.fromOffset(keyS / k, keyS / k)
 	key.Edge.Thickness = px(VG.KEY_EDGE) / k
@@ -1642,7 +1873,7 @@ function Vitals.Layout(force)
 	local nS = #UI.StBar.Blocks
 	local stX = innerL + px(g.BADGE_ICON) + px(6)
 	local sh = stH - 2 * (e + pad)
-	local right = keyOn and (keyX - px(4)) or (trackW - e - pad)
+	local right = keyOn and (keyX - px(4)) or (stW0 - e - pad)
 	local stCell = math.max(2 * Vitals.Px(VG.BLOCK_EDGE, k) + 1, px(g.ST_BLOCK))
 	local stW = math.min(right - stX, nS * stCell + (nS - 1) * gapPx)
 	UI.StBar.Root.Position = UDim2.fromOffset(stX / k, (e + pad) / k)
@@ -1660,8 +1891,8 @@ function Vitals.Layout(force)
 			end
 		end
 	end
-	if not (words.ready and words.cool and words.off) then
-		words = nil
+	if g.Slim or not (words.ready and words.cool and words.off) then
+		words = nil -- ((kitb-matchhud) the slim bar has no dash words: the touch DASH key shows its own cool-down)
 	end
 	UI.DashWords = words or VG.DASH_WORDS
 	UI.DashText.TextSize = g.ST_TEXT
@@ -1675,6 +1906,11 @@ function Vitals.Layout(force)
 	-- the badges: the bare heart left of the HP track, the bare bolt at the group's left end; then the key's look again
 	Vitals.PlaceBadge(UI.Heart, g.HEART, at(g.HEART_X) + px(g.BADGE_ICON) / 2, hpY + hpH / 2, g, k)
 	Vitals.PlaceBadge(UI.Bolt.Badge, g.BOLT, innerL + px(g.BADGE_ICON) / 2, stH / 2, g, k)
+	if g.Slim then
+		-- ((kitb-matchhud) the notice that replaces the stamina row while downed: over the slim bar's widened well)
+		UI.DownedNotice.Position = UDim2.fromOffset((stX0 + e) / k, (stY + e) / k)
+		UI.DownedNotice.Size = UDim2.fromOffset(math.max(0, stW0 - 2 * e) / k, math.max(0, stH - 2 * e) / k)
+	end
 	Vitals.PaintKey(key.State or "ready", St.Charge)
 	St.DimDrawn = -1
 end
@@ -1856,8 +2092,8 @@ setVitalsGeometry = function(g)
 	end
 	UI.HeartGlyph.TextSize = g.HEART_TEXT
 	-- (Pitch 2 item 08 C) the notice takes the stamina group's place
-	UI.DownedNotice.Position = UDim2.fromOffset(g.TRACK_X, g.TAB_UP + g.ST_Y)
-	UI.DownedNotice.Size = UDim2.new(1, -(g.TRACK_X + g.PAD_R), 0, g.ST_H)
+	UI.DownedNotice.Position = UDim2.fromOffset(g.TRACK_X, g.TAB_UP + (g.ST_Y or g.ROW_Y))
+	UI.DownedNotice.Size = UDim2.new(1, -(g.TRACK_X + g.PAD_R), 0, g.ST_H or g.ROW_H)
 	Vitals.Layout(true)
 end
 
@@ -2273,19 +2509,23 @@ function PK.PaintBadge(b, number, color)
 	b.Num.TextColor3 = ink
 end
 
--- the level's name in ink with its gold-lip stars after it (PixelIcon.Lead, the room kept inside the label)
-function PK.Stars(label, n)
+-- the level's name in ink with its gold-lip stars after it (PixelIcon.Lead, the room kept inside the label).
+-- ((kitb-matchhud) `px`: the stars' size, K.STAR_PX or the smaller K.STAR_PX_MIN PK.FitName steps down to; nil keeps the
+-- label's)
+function PK.Stars(label, n, px)
 	n = math.max(0, math.min(5, math.floor(tonumber(n) or 0)))
-	if label:GetAttribute("Stars") == n then
+	px = px or label:GetAttribute("StarPx") or K.STAR_PX
+	if label:GetAttribute("Stars") == n and label:GetAttribute("StarPx") == px then
 		return
 	end
 	label:SetAttribute("Stars", n)
+	label:SetAttribute("StarPx", px)
 	local old = label:FindFirstChild("TrailIcon")
 	if old then
 		old:Destroy()
 	end
 	if n > 0 then
-		PixelIcon.Lead(label, "star", { After = true, Count = n, Px = K.STAR_PX, Gap = M.NameGap, Room = true, Colour = SIGN.GoldLip })
+		PixelIcon.Lead(label, "star", { After = true, Count = n, Px = px, Gap = M.NameGap, Room = true, Colour = SIGN.GoldLip })
 	end
 end
 
@@ -2303,19 +2543,33 @@ function PK.FitName(label, room)
 	-- is fitted by what it draws)
 	local m0 = PK.TextW(label.Text, "Heading", label.TextSize)
 	local factor = (m0 > 0) and math.max(1, PK.LabelW(label, "Heading") / m0) or 1
-	local size = M.NameText
+	local n = label:GetAttribute("Stars") or 0
+	-- (kitb-matchhud) the full-size stars where the name fits beside them at 22 / 20 / 18 px; else (a panel narrowed off
+	-- the touch keys: 'Extr...' at 640 x 360 on the leader's pad) the smaller stars (K.STAR_PX_MIN) before the name cuts.
+	-- The full-size stars' width: measured, or while the small ones show twice their box (a full-size cell never draws
+	-- more than twice a small one's screen px), so the choice never flips between two fits
+	local fullW = PK.StarsW(label)
+	local trail = label:FindFirstChild("TrailIcon")
+	if trail and label:GetAttribute("StarPx") == K.STAR_PX_MIN then
+		fullW = 2 * trail.Size.X.Offset + M.NameGap
+	end
+	local size = nil
 	for _, s in ipairs({ M.NameText, 20, 18 }) do
-		size = s
-		if PK.TextW(label.Text, "Heading", s) * factor + 4 <= room - PK.StarsW(label) then
+		if PK.TextW(label.Text, "Heading", s) * factor + 4 <= room - fullW then
+			size = s
 			break
 		end
+	end
+	local starPx = (size == nil and n > 0) and K.STAR_PX_MIN or K.STAR_PX
+	size = size or 18
+	if (label:GetAttribute("StarPx") or K.STAR_PX) ~= starPx then
+		PK.Stars(label, n, starPx)
 	end
 	if label.TextSize ~= size then
 		label.TextSize = size
 		-- the stars placed anew after the smaller name (not where the cut one ended)
-		local n = label:GetAttribute("Stars")
 		label:SetAttribute("Stars", nil)
-		PK.Stars(label, n or 0)
+		PK.Stars(label, n, starPx)
 	end
 end
 
@@ -2539,29 +2793,62 @@ function PK.SetCheckpoints(cp, total)
 	PK.LayCheckpoints()
 end
 
+-- (kitb-matchhud look0 N1: SAINT's 10 blocks at the 10 px floor and the 4 px gap overflowed their bar - in the slim layout's
+-- clock row 3.2 px into the clock '24:53' and 7.6 px into a three-digit tokens tile at 640 x 360 .. 812 x 375; kit-b's wide
+-- card 8.8 px into the tile at 1280 x 720) `total` blocks in `avail` design px -> width, gap, wood edge: the widest that fit
+-- (26 at most) at the 4 px gap and the 10 px floor, as before; where the floor overflows, the gap closes to CpGapTight, then
+-- the blocks narrow under the floor on a 1 px edge (a face kept) down to CpBlockThin, the gap at 1 px last
+function PK.BlockFit(avail, total)
+	local function widest(gap)
+		return math.min(M.CpBlockW, math.floor((avail - (total - 1) * gap) / total))
+	end
+	local bw = widest(M.CpBlockGap)
+	if bw >= M.CpBlockMin then
+		return bw, M.CpBlockGap, M.BlockEdge
+	end
+	bw = widest(M.CpGapTight)
+	if bw >= M.CpBlockMin then
+		return bw, M.CpGapTight, M.BlockEdge
+	end
+	if bw >= M.CpBlockMin - 2 then
+		return bw, M.CpGapTight, 1
+	end
+	return math.max(M.CpBlockThin, widest(1)), 1, 1
+end
+
 function PK.LayCheckpoints()
 	local bar = UI.CpBar
 	local total = Mt.CpTotal or 4
-	local labelW = PK.LabelW(UI.CpLabel, "Heading") + 2
-	local room = bar.Size.X.Offset > 0 and bar.Size.X.Offset or (innerWidth() - labelW - 10)
 	local wide = PK.Wide()
-	local avail = math.max(10, (wide and (room - labelW - 10) or (room - labelW - 10)))
-	local bw = math.max(10, math.min(M.CpBlockW, math.floor((avail - (total - 1) * M.CpBlockGap) / total)))
+	-- (kitb-matchhud, pick A) a narrow card in the slim layout: the blocks alone in the clock row, centred between the clock
+	-- and the tokens tile ('8:53 [blocks] 7 / 24'); the 'Checkpoint 2/4' words go (the blocks count it)
+	local bare = Mt.Compact and not wide
+	UI.CpLabel.Visible = not bare
+	local labelW = bare and 0 or (PK.LabelW(UI.CpLabel, "Heading") + 2)
+	local room = bar.Size.X.Offset > 0 and bar.Size.X.Offset or (innerWidth() - labelW - 10)
+	local avail = math.max(10, bare and room or (room - labelW - 10))
+	local bw, gap, edge = PK.BlockFit(avail, total)
 	local row = bar:FindFirstChild("BlockRow")
-	if not row or row:GetAttribute("Count") ~= total or row:GetAttribute("BlockW") ~= bw then
+	if not row or row:GetAttribute("Count") ~= total or row:GetAttribute("BlockW") ~= bw or row:GetAttribute("BlockGap") ~= gap
+		or row:GetAttribute("BlockEdge") ~= edge then
 		if row then
 			row:Destroy()
 		end
 		row = SignKit.BlockRow(bar, {
-			Count = total, BlockW = bw, BlockH = M.CpH, Gap = M.CpBlockGap, EdgePx = M.BlockEdge, LipPx = M.CpBlockLip,
+			Count = total, BlockW = bw, BlockH = M.CpH, Gap = gap, EdgePx = edge, LipPx = M.CpBlockLip,
 			Fill = SIGN.Sky, FillLip = SIGN.SkyLip,
 		})
 		row:SetAttribute("BlockW", bw)
+		row:SetAttribute("BlockGap", gap)
+		row:SetAttribute("BlockEdge", edge)
 	end
 	UI.CpLabel.AnchorPoint = Vector2.new(0, 0.5)
 	UI.CpLabel.Position = UDim2.new(0, 0, 0.5, 0)
 	UI.CpLabel.Size = UDim2.new(0, labelW, 1, 0)
-	if wide then
+	if bare then
+		row.AnchorPoint = Vector2.new(0.5, 0.5)
+		row.Position = UDim2.new(0.5, 0, 0.5, 0)
+	elseif wide then
 		row.AnchorPoint = Vector2.new(0, 0.5)
 		row.Position = UDim2.new(0, labelW + 10, 0.5, 0)
 	else
@@ -2590,7 +2877,8 @@ function PK.LayoutMatch()
 		return
 	end
 	local cw = innerWidth()
-	local wide = PK.Wide()
+	-- (kitb-matchhud) a narrow card in the slim layout puts its checkpoints in row B too, as a wide card does (Mt.Compact)
+	local wide = PK.Wide() or Mt.Compact
 	local e = PK.EdgeW()
 	-- row A
 	PK.Place(UI.MatchBadge, 0, math.floor((M.RowA - M.Badge) / 2), M.Badge, M.Badge)
@@ -3260,6 +3548,30 @@ setPanelWidth = function(width)
 	PK.LayoutParty()
 end
 
+-- (kitb-matchhud, pick A) the slim layout's match card: its checkpoints up in the clock row (applyMargins decides);
+-- returns true when the card's height changed
+setMatchCompact = function(on)
+	on = on == true
+	if Mt.Compact == on then
+		return false
+	end
+	Mt.Compact = on
+	if not UI.Match then
+		return false
+	end
+	local before = UI.Match.Root.Size.Y.Offset
+	PK.LayoutMatch()
+	return UI.Match.Root.Size.Y.Offset ~= before
+end
+
+-- the design px the checkpoints' own row takes on a narrow card (its gap above and its height): what the slim layout saves
+compactSaving = function()
+	if not M or PK.Wide() then
+		return 0
+	end
+	return M.RowGap + M.CpH
+end
+
 -- a card that grew or shrank (a row of chips more or less) may now reach the menu column (or no longer does)
 local function resizePanel(panel, layout)
 	local before = panel.Root.Size.Y.Offset
@@ -3315,7 +3627,7 @@ local function setTokensText(text, coin)
 	end
 	local before = UI.MatchTokens.Size.X.Offset
 	PK.FitTokens()
-	if PK.Wide() and UI.MatchTokens.Size.X.Offset ~= before then
+	if (PK.Wide() or Mt.Compact) and UI.MatchTokens.Size.X.Offset ~= before then
 		PK.LayoutMatch() -- (the checkpoints end left of the tile)
 	end
 end
@@ -3353,7 +3665,7 @@ local function setTimerText(text, color, size)
 		local over = (w > M.CpX - 8) and w or nil
 		if over ~= Mt.TimerTextW then
 			Mt.TimerTextW = over
-			if PK.Wide() then
+			if PK.Wide() or Mt.Compact then
 				PK.LayoutMatch()
 			end
 		end
@@ -3520,7 +3832,20 @@ local function applyMatchState(state)
 	if phase == "Playing" and prevPhase == "Countdown" then
 		Mt.GoUntil = now + K.GO_SECONDS
 		Mt.Last = nil
-		UI.TimerScale.Scale = 1.7
+		-- (kitb-matchhud look0's minor: where the checkpoints share the clock row - the slim layout's narrow card - GO!'s 1.7
+		-- pop put its '!' 17.5 px on the first block) there the pop stops 4 px of ink short of the first block
+		local peak = 1.7
+		local row = UI.CpBar and UI.CpBar:FindFirstChild("BlockRow")
+		local k = currentScale()
+		if Mt.Compact and not PK.Wide() and row and k > 0 then
+			setTimerText("GO!", SIGN.Good, M.CountText)
+			local w = PK.LabelW(UI.Timer, "Display")
+			local room = (row.AbsolutePosition.X - UI.Timer.AbsolutePosition.X - 4) / k - 1
+			if w > 0 then
+				peak = math.max(1, math.min(peak, room / w))
+			end
+		end
+		UI.TimerScale.Scale = peak
 		tween(UI.TimerScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end
 	if phase ~= "Countdown" then
