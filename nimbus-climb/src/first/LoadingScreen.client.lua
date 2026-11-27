@@ -508,7 +508,7 @@ local function layout()
 end
 
 ----------------------------------------------------------------------
--- the picks' images (Config.Loading.Images keys in TextureIds; none has an id tonight)
+-- the picks' images (Config.Loading.Images keys in TextureIds; the logo has its uploaded id, the backdrop and mascot none)
 ----------------------------------------------------------------------
 
 local function applyImages(ids)
@@ -516,7 +516,8 @@ local function applyImages(ids)
 	for role, key in pairs(names) do
 		local id = type(ids) == "table" and tonumber(ids[key]) or nil
 		if id and id > 0 then
-			St.Images[role] = "rbxassetid://" .. tostring(id)
+			local digits = string.format("%.0f", id) -- whole digits: a 15-digit id (nimbus_logo) never prints as 1.3e+14
+			St.Images[role] = "rbxassetid://" .. digits
 		end
 	end
 	local ui = St.Ui

@@ -1478,36 +1478,93 @@ local function clientScenarios()
 
 			------------------------------------------------------------------ (look review r0, minor 5) a landscape phone away
 			-- from the lobby: the Secret card had no subline, so nothing said "Home first" before the tap; its short line shows
-			-- on the card, between the odds and the altar chip, inside the card
+			-- on the card, between the odds and the altar chip, inside the card.
+			-- (machines sheet uploaded, Config.MachineSheet.Id 76428055171576 ships) the Shop's real window draws the sheet's
+			-- vault, and beside it the line's column is too small, so on the landscape phone it HIDES rather than overlap the
+			-- vault or clip (the kit-b wave-2 merge's call, machines_sheet): the shipped window shows the line only where it
+			-- fits. The drawn machine (Id 0, forced on a fresh Eggs page with the Shop window's own box, layout and Fit)
+			-- keeps the full-width line, which must show and fit
+			local function awayLine(where, scope, mustShow)
+				local away, chipAt, hidden = nil, nil, nil
+				for _, d in ipairs(scope:GetDescendants()) do
+					if d.Name == "Hint" and d:IsA("TextLabel") and d.Text == SE.Metrics.TEXT.HeroHintLobbyShort then
+						if d.Visible then
+							away = d
+						else
+							hidden = d
+						end
+					end
+					if d.Name == "AltarChip" and d:IsA("GuiObject") and d.Visible then
+						chipAt = d
+					end
+				end
+				local a2 = (away or hidden) and (away or hidden).Parent
+				while a2 and not (a2:IsA("GuiObject") and a2:GetAttribute("Hero") == true) do
+					a2 = a2.Parent
+				end
+				local heroCard = a2
+				if not mustShow and away == nil then
+					-- the shipped sheet: hidden, never shown clipped; the card still away from the lobby (its line set, the chip shown)
+					T.check(hidden ~= nil and heroCard ~= nil and chipAt ~= nil, "travel: 844x390 " .. where .. ": away from the lobby the Secret card's line is set ('"
+						.. tostring(SE.Metrics.TEXT.HeroHintLobbyShort) .. "'), hidden beside the vault, the altar chip shown",
+						fmt("hint %s, chip %s", hidden and "hidden" or "missing", chipAt and "shown" or "missing"))
+					return
+				end
+				if T.check(away ~= nil, "travel: 844x390 " .. where .. ": away from the lobby the Secret card says '" .. tostring(SE.Metrics.TEXT.HeroHintLobbyShort) .. "'") then
+					local hr, cr = rect(away), heroCard and rect(heroCard)
+					local k = hr.W / math.max(1, away.Size.X.Offset) -- screen px per design px (the window's scale)
+					local px = away.TextSize * k
+					local need = SmokeCommon.RealWidth(away.Text, away.TextSize, Theme.FontOf and Theme.FontOf(away) or away.Font) * k
+					local rows = math.ceil(need / math.max(1, hr.W))
+					T.check(cr ~= nil and hr.X >= cr.X - 0.5 and hr.R <= cr.R + 0.5 and (chipAt == nil or not overlap(hr, rect(chipAt))) and rows * px <= hr.H + 2 and px >= 14 - 0.01,
+						"travel: 844x390 " .. where .. ": the away line fits inside the card (>= 14 px), clear of the altar chip",
+						fmt("line %s (%d rows of %.1f px) card %s chip %s", show(hr), rows, px, show(cr), chipAt and show(rect(chipAt)) or "-"))
+				end
+			end
 			Mock.SetViewport(844, 390)
 			KC.advance(0.5)
 			Shop.Open({ Tab = "Eggs" })
 			KC.advance(1.2)
-			local away, chipAt, heroCard = nil, nil, nil
-			for _, d in ipairs(pg():GetDescendants()) do
-				if d.Name == "Hint" and d:IsA("TextLabel") and d.Visible and d.Text == SE.Metrics.TEXT.HeroHintLobbyShort then
-					away = d
-				end
-				if d.Name == "AltarChip" and d:IsA("GuiObject") and d.Visible then
-					chipAt = d
-				end
-			end
-			local a2 = away and away.Parent
-			while a2 and not (a2:IsA("GuiObject") and a2:GetAttribute("Hero") == true) do
-				a2 = a2.Parent
-			end
-			heroCard = a2
-			if T.check(away ~= nil, "travel: 844x390 away from the lobby the Secret card says '" .. tostring(SE.Metrics.TEXT.HeroHintLobbyShort) .. "'") then
-				local hr, cr = rect(away), heroCard and rect(heroCard)
-				local k = hr.W / math.max(1, away.Size.X.Offset) -- screen px per design px (the window's scale)
-				local px = away.TextSize * k
-				local need = SmokeCommon.RealWidth(away.Text, away.TextSize, Theme.FontOf and Theme.FontOf(away) or away.Font) * k
-				local rows = math.ceil(need / math.max(1, hr.W))
-				T.check(cr ~= nil and hr.X >= cr.X - 0.5 and hr.R <= cr.R + 0.5 and (chipAt == nil or not overlap(hr, rect(chipAt))) and rows * px <= hr.H + 2 and px >= 14 - 0.01,
-					"travel: 844x390 the away line fits inside the card (>= 14 px), clear of the altar chip",
-					fmt("line %s (%d rows of %.1f px) card %s chip %s", show(hr), rows, px, show(cr), chipAt and show(rect(chipAt)) or "-"))
-			end
+			local ms = Config.MachineSheet
+			T.check(type(ms) == "table" and ms.Id == 76428055171576, "travel: (setup) Config.MachineSheet.Id ships the uploaded machines_a id", tostring(type(ms) == "table" and ms.Id))
+			local win = pg():FindFirstChild("ShopWindow", true)
+			local realPage = win and win:FindFirstChild("Page_Eggs", true)
+			local fitScale = win and win:FindFirstChild("Fit") and win.Fit.Scale or 1
+			local mode = type(Shop._S) == "table" and Shop._S.Layout or nil
+			awayLine("(the shipped sheet, the Shop window)", win or pg(), false)
+			local box = realPage and { W = math.floor(realPage.AbsoluteSize.X / fitScale + 0.5), H = math.floor(realPage.AbsoluteSize.Y / fitScale + 0.5) }
 			Shop.Close()
+			KC.advance(0.3)
+			if T.check(box ~= nil and mode ~= nil, "travel: (setup) 844x390 the Shop's Eggs page box and layout", fmt("box %s, mode %s", box and (box.W .. "x" .. box.H) or "-", tostring(mode))) then
+				-- the drawn machine: a fresh Eggs page at the Shop's box, layout and Fit with Config.MachineSheet.Id 0 (restored)
+				local savedId = ms.Id
+				local gui = Instance.new("ScreenGui")
+				gui.Name = "SmokeTravelDrawn"
+				local page = Instance.new("Frame")
+				page.Name = "Page_Eggs"
+				page.Size = UDim2.fromOffset(box.W, box.H)
+				local fit = Instance.new("UIScale")
+				fit.Name = "Fit"
+				fit.Scale = fitScale
+				fit.Parent = page
+				page.Parent = gui
+				gui.Parent = pg()
+				local okDrawn, errDrawn = pcall(function()
+					ms.Id = 0
+					SE.Build(page, nil)
+					SE.Layout(page, box, mode)
+					SE.Refresh(page)
+					KC.advance(0.1)
+					local secret = page:FindFirstChild("ShopCard_Secret", true)
+					local machine = secret and secret:FindFirstChild("Machine", true)
+					T.check(machine ~= nil and machine:FindFirstChild("Dome") ~= nil and machine:GetAttribute("Sheet") == nil, "travel: (setup) 844x390 the fresh page draws today's machine (Id 0)")
+					awayLine("(the drawn machine, Id 0)", page, true)
+				end)
+				ms.Id = savedId
+				gui:Destroy()
+				KC.advance(0.1)
+				T.check(okDrawn, "travel: 844x390 the drawn-machine page ran", tostring(errDrawn))
+			end
 			Mock.SetViewport(1920, 1080)
 			KC.advance(0.5)
 		end)

@@ -835,6 +835,34 @@ function SmokeCommon.IconOn(label, which)
 	return nil, 0
 end
 
+-- (the machines sheet is uploaded: Config.MachineSheet.Id 76428055171576 ships) ShopController builds its window once,
+-- and the Eggs page picks the sheet's machines or today's drawn ones when it is built. A check of the drawn machine's look
+-- in the Shop's own window rebuilds it: RebuildShop(Shop, Config, 0, advance) closes the Shop, removes its window and
+-- sets Config.MachineSheet.Id, so the next Shop.Open builds it again with that id; RebuildShop(Shop, Config, savedId,
+-- advance) after the checks gives the later scenarios the shipped window back. -> true when it could
+function SmokeCommon.RebuildShop(Shop, Config, sheetId, advance)
+	local S = type(Shop) == "table" and Shop._S
+	local ms = type(Config) == "table" and Config.MachineSheet
+	if type(S) ~= "table" or type(ms) ~= "table" then
+		return false
+	end
+	pcall(Shop.Close)
+	if advance then
+		advance(0.5)
+	end
+	local lp = game:GetService("Players").LocalPlayer
+	local pg = lp and lp:FindFirstChildOfClass("PlayerGui")
+	local gui = pg and pg:FindFirstChild("NimbusShop")
+	local win = gui and gui:FindFirstChild("ShopWindow")
+	if win then
+		win:Destroy()
+	end
+	ms.Id = sheetId
+	S.Built = false
+	S.Signature = nil -- (the next refresh rebuilds the card pages into the new window)
+	return true
+end
+
 -- (battle-feel T3, the real server cast) a special press's effects land BattleCatalog.Damage.SpecialCast[kind] s after the
 -- press (Cast event first, the Special + its hits at `at`). `evs` = the events of the step after the press: when they hold
 -- a Cast of unit `unitId` (any unit when nil) and no Special of it, the battle is stepped `dt` (0.05) at a time until its

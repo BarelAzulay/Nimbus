@@ -695,6 +695,26 @@ S.client_egg3d = guarded("client_egg3d", function()
 			E3._ML = G.stubML(G.allKeys(), { egg_rare = true })
 		end)
 		------------------------------------------------------------------ the Shop's hero egg
+		-- (the machines sheet is uploaded: Config.MachineSheet.Id 76428055171576 ships) the shipped page's Secret hero is the
+		-- sheet's vault alone (machines_sheet): no big egg, so no 3D view; the hero egg's 3D look below is today's drawn
+		-- machine's, read in the Shop's own window rebuilt with Id 0 (SmokeCommon.RebuildShop) and given back after
+		local Config = env.Config
+		local shippedId = Config and Config.MachineSheet and Config.MachineSheet.Id
+		T.check(shippedId == 76428055171576, "egg3d shop: Config.MachineSheet.Id ships the uploaded machines_a id", tostring(shippedId))
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(1)
+		do
+			local sg = G.pg():FindFirstChild("NimbusShop")
+			local sp = sg and sg:FindFirstChild("Page_Eggs", true)
+			local sfx = sp and SE.Fx(sp)
+			local sh = sp and sp:FindFirstChild("ShopCard_Secret", true)
+			local sm = sh and sh:FindFirstChild("Machine", true)
+			T.check(sm ~= nil and sm:GetAttribute("SheetShown") == true and sfx ~= nil and sfx.Egg3D == nil and E3.Live() == 0,
+				"egg3d shop: the shipped page: the Secret hero's vault shows, no 3D egg view (Live 0)",
+				fmt("vault %s, view %s, live %d", tostring(sm and sm:GetAttribute("SheetShown")), tostring(sfx and sfx.Egg3D ~= nil), E3.Live()))
+		end
+		T.check(SmokeCommon.RebuildShop(Shop, Config, 0, G.advance), "egg3d shop: (setup) the Shop's window rebuilt with today's drawn machines (Id 0)")
+		local okDrawn, errDrawn = pcall(function()
 		Shop.Open({ Tab = "Eggs" })
 		G.advance(1)
 		local shopGui = G.pg():FindFirstChild("NimbusShop")
@@ -739,6 +759,11 @@ S.client_egg3d = guarded("client_egg3d", function()
 		T.check(not ES.IsShowing() and fx3 ~= nil and fx3.Egg3D ~= nil and E3.Live() == 1, "egg3d shop x3: after DONE the Shop is back with its 3D Secret hero (Live 1)", tostring(E3.Live()))
 		Shop.Close()
 		G.advance(0.5)
+		end)
+		env.mode = "High"
+		pcall(ES.Close)
+		T.check(SmokeCommon.RebuildShop(Shop, Config, shippedId, G.advance), "egg3d shop: the Shop's window rebuilt with the shipped machines sheet again")
+		T.check(okDrawn, "egg3d shop: the drawn-machine Shop checks ran", tostring(errDrawn))
 	end)
 	if not ok then
 		T.check(false, "egg3d: the scenario ran without an error", tostring(err))

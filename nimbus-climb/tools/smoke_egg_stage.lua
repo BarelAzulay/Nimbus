@@ -2248,6 +2248,35 @@ S.client_egg_vfx = guarded("client_egg_vfx", function()
 		if MC and MC.Close then
 			MC.Close()
 		end
+		-- (the machines sheet is uploaded: Config.MachineSheet.Id 76428055171576 ships) the shipped page: the Secret hero's
+		-- one art is the sheet's vault (machines_sheet), so its big egg and the egg's sparkles are off, and the machines are the
+		-- sheet's pictures (no drawn dome, so no glass sheen); the spec 16.5 look below is today's drawn machine's, read in the
+		-- Shop's own window rebuilt with Id 0 (SmokeCommon.RebuildShop) and given back after
+		local ms = Config.MachineSheet
+		local shippedId = ms and ms.Id
+		T.check(shippedId == 76428055171576, "egg vfx: Config.MachineSheet.Id ships the uploaded machines_a id", tostring(shippedId))
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(1)
+		do
+			local sg = G.pg():FindFirstChild("NimbusShop")
+			local sp = sg and sg:FindFirstChild("Page_Eggs", true)
+			local sfx = sp and SE.Fx(sp)
+			local sh = sp and sp:FindFirstChild("ShopCard_Secret", true)
+			local sm = sh and sh:FindFirstChild("Machine", true)
+			local se = sh and sh:FindFirstChild("HeroEgg", true)
+			local sheen = 0
+			for _, d in ipairs(sp and sp:GetDescendants() or {}) do
+				if d.Name == "GlassSheen" and d:IsA("UIGradient") and G.tweensUnder(d) > 0 then
+					sheen = sheen + 1
+				end
+			end
+			G.advance(1)
+			T.check(sm ~= nil and sm:GetAttribute("SheetShown") == true and se ~= nil and not G.shown(se) and sfx ~= nil and sfx.Pool ~= nil and sfx.Pool:Live() == 0 and sheen == 0,
+				"egg vfx: the shipped page: the Secret hero's vault shows, its big egg hidden with no sparkle, no glass sheen on the sheet's machines",
+				fmt("vault %s, egg %s, live %s, sheen %d", tostring(sm and sm:GetAttribute("SheetShown")), tostring(se and G.shown(se)), tostring(sfx and sfx.Pool and sfx.Pool:Live()), sheen))
+		end
+		T.check(SmokeCommon.RebuildShop(Shop, Config, 0, G.advance), "egg vfx: (setup) the Shop's window rebuilt with today's drawn machines (Id 0)")
+		local okDrawn, errDrawn = pcall(function()
 		Shop.Open({ Tab = "Eggs" })
 		G.advance(1)
 		local shopGui = G.pg():FindFirstChild("NimbusShop")
@@ -2300,6 +2329,11 @@ S.client_egg_vfx = guarded("client_egg_vfx", function()
 			Mock.SetViewport(1920, 1080)
 			G.advance(0.6)
 		end
+		end)
+		mode = "High"
+		Mock.SetViewport(1920, 1080)
+		T.check(SmokeCommon.RebuildShop(Shop, Config, shippedId, G.advance), "egg vfx: the Shop's window rebuilt with the shipped machines sheet again")
+		T.check(okDrawn, "egg vfx: the drawn-machine Shop page checks ran", tostring(errDrawn))
 		-- census: the old gem glyph nowhere in the Shop or on the egg boards
 		Shop.Open({ Tab = "Eggs" })
 		G.advance(0.5)

@@ -1650,6 +1650,8 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 	local KC = G.KC()
 	local Shop = G.req("client/Controllers/ShopController")
 	local NK = G.req("client/UI/NeonKit")
+	local SE = G.req("client/UI/ShopEggs")
+	local Config = KC.env()
 	if not T.check(type(Shop) == "table" and type(Shop.Open) == "function", "shop phone: ShopController loads") then
 		return
 	end
@@ -1781,7 +1783,41 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 			end
 			T.check(#shortTotals == 0, label .. ": Eggs: Spin3 reads 'x3' + token icon + Theme.ShortNumber(3 * price, 1000) (150, 750, 3K, 15K)", table.concat(shortTotals, "; "))
 			G.spinRowsCheck(label)
-			T.check(#smallEggs == 0, label .. ": Eggs: every odds egg is at least 30 px", table.concat(smallEggs, "; "))
+			-- (the machines sheet ships) with the sheet's machines each card's odds egg is its hand-pixelled egg on whole screen
+			-- px cells (machines_egg_chips: its sizes); spec 16.3's 30 px vector egg is today's drawn machine's, read on a fresh
+			-- drawn page (Config.MachineSheet.Id 0) at the Shop's own box
+			local sheetCards, noPixel = 0, {}
+			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+				if G.sheetShown(G.eggCard(id)) then
+					sheetCards = sheetCards + 1
+					if id ~= "Secret" then
+						for _, r in ipairs(G.oddsRows(G.eggCard(id))) do
+							local px = r.Row:FindFirstChild("PixelEgg", true)
+							if not (px and G.shown(px)) then
+								noPixel[#noPixel + 1] = id .. "." .. r.Rarity
+							end
+						end
+					end
+				end
+			end
+			if sheetCards > 0 then
+				T.check(sheetCards == 5 and #noPixel == 0, label .. ": Eggs: the shipped sheet's machines on every card, each machine card's odds the pixel egg",
+					fmt("%d sheet cards; %s", sheetCards, table.concat(noPixel, "; ")))
+				G.drawnPage(label .. " (drawn machine)", Shop, SE, Config, function(page)
+					local small = {}
+					for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+						for _, r in ipairs(G.oddsRows(G.find(page, "ShopCard_" .. id))) do
+							local egg = r.Row:FindFirstChild("Egg", true)
+							if not (egg and egg.AbsoluteSize.Y >= 30 - 0.5) then
+								small[#small + 1] = id .. "." .. r.Rarity .. " " .. (egg and fmt("%.1f", egg.AbsoluteSize.Y) or "no egg")
+							end
+						end
+					end
+					T.check(#small == 0, label .. " (drawn machine): Eggs: every odds egg is at least 30 px", table.concat(small, "; "))
+				end)
+			else
+				T.check(#smallEggs == 0, label .. ": Eggs: every odds egg is at least 30 px", table.concat(smallEggs, "; "))
+			end
 			if sz[1] == 844 then
 				local fade = G.find(G.find(body, "Page_Eggs"), "Fade")
 				T.check(fade ~= nil and G.shown(fade), label .. ": Eggs: the right Fade shows while more of the row is to the right", fade and G.d(fade) or "none")
@@ -1832,6 +1868,8 @@ end)
 S.client_shop_portrait = guarded("client_shop_portrait", function()
 	local KC = G.KC()
 	local Shop = G.req("client/Controllers/ShopController")
+	local SE = G.req("client/UI/ShopEggs")
+	local Config = KC.env()
 	if not T.check(type(Shop) == "table" and type(Shop.Open) == "function", "shop portrait: ShopController loads") then
 		return
 	end
@@ -1862,49 +1900,84 @@ S.client_shop_portrait = guarded("client_shop_portrait", function()
 			-- the Eggs list (Task 22): full-width cards (the Secret card 200 tall on top, the machines 250), the odds a 2 x 2 grid
 			Shop.Open({ Tab = "Eggs" })
 			G.advance(0.3)
-			local listBad = {}
-			local bw = G.rel(G.body(), G.body()).w
-			local lastY = -1
-			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
-				local card = G.eggCard(id)
-				local b = card and G.rel(card, G.body())
-				-- (P2 icons look fin1, major) on the 360-wide phone the Secret card is one 15 px row taller (215): its hint keeps
-				-- the 15 px phone floor and wraps, since "A gold arrow leads you to the Storm Altar" (~298 px in Nunito) ran
-				-- past the 294 px one-line box there (ShopEggs L.portrait, H.heroHintRows; machines_hero_hints checks the rows)
-				local wantH = id == "Secret" and (sz[1] < 390 and 215 or 200) or 250
-				if not (b and b.y > lastY and b.w >= bw - 16 and G.near(b.h, wantH)) then
-					listBad[#listBad + 1] = id .. " " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
+			-- the list: (the machines sheet ships) with the sheet's machines the Secret card 254 tall (269 at 360 wide) over the
+			-- vault, the machines 292 over their stages; today's drawn machine (Id 0, a fresh drawn page at the Shop's box) the
+			-- spec's 200 (215) and 250
+			local function listCheck(root, look, sheet)
+				local listBad = {}
+				local bw = G.rel(root, root).w
+				local lastY = -1
+				for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+					local card = G.find(root, "ShopCard_" .. id)
+					local b = card and G.rel(card, root)
+					-- (P2 icons look fin1, major) on the 360-wide phone the Secret card is one 15 px row taller (215): its hint keeps
+					-- the 15 px phone floor and wraps, since "A gold arrow leads you to the Storm Altar" (~298 px in Nunito) ran
+					-- past the 294 px one-line box there (ShopEggs L.portrait, H.heroHintRows; machines_hero_hints checks the rows)
+					local wantH = id == "Secret" and ((sz[1] < 390 and 215 or 200) + (sheet and 54 or 0)) or (sheet and 292 or 250)
+					if not (b and b.y > lastY and b.w >= bw - 16 and G.near(b.h, wantH) and G.sheetShown(card) == sheet) then
+						listBad[#listBad + 1] = id .. " " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
+					end
+					lastY = b and b.y or lastY
 				end
-				lastY = b and b.y or lastY
+				T.check(#listBad == 0, label .. look .. ": Eggs: full-width cards in a vertical list (Secret " .. (sheet and "254 tall first (269" or "200 tall first (215")
+					.. " at 360 wide), the machines " .. (sheet and "292" or "250") .. ")", table.concat(listBad, "; "))
 			end
-			T.check(#listBad == 0, label .. ": Eggs: full-width cards in a vertical list (Secret 200 tall first (215 at 360 wide), the machines 250)", table.concat(listBad, "; "))
-			G.spinRowsCheck(label)
-			local grid = G.oddsRows(G.eggCard("Cloud"))
-			local xs, ys = {}, {}
-			for _, r in ipairs(grid) do
-				xs[math.floor(r.X + 0.5)] = true
-				ys[math.floor(r.Y + 0.5)] = true
-			end
-			local nx, ny = 0, 0
-			for _ in pairs(xs) do
-				nx = nx + 1
-			end
-			for _ in pairs(ys) do
-				ny = ny + 1
-			end
-			T.check(#grid == 4 and nx == 2 and ny == 2, label .. ": Eggs: Cloud's four odds as a 2 x 2 grid", #grid .. " rows, " .. nx .. " columns x " .. ny .. " rows")
-			-- spec 16.3: each portrait odds cell is the egg 30 + the percent 15 (no rarity word: it would not fit the cell)
-			local cellBad = {}
-			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
-				for _, r in ipairs(G.oddsRows(G.eggCard(id))) do
-					local egg, word, pct = r.Row:FindFirstChild("Egg"), r.Row:FindFirstChild("Word"), r.Row:FindFirstChild("Pct")
-					local eb, pb, cb = egg and G.rel(egg, r.Row), pct and G.rel(pct, r.Row), G.rel(r.Row, r.Row)
-					if not (egg and pct and G.near(eb.h, 30) and pct.TextSize == 15 and not G.shown(word) and pb.x >= eb.x + eb.w - 1 and pb.x + pb.w <= cb.w + 1) then
-						cellBad[#cellBad + 1] = id .. "/" .. r.Rarity .. (word and G.shown(word) and " (word shown)" or "")
+			-- spec 16.3: each portrait odds cell is the egg 30 + the percent 15 (no rarity word: it would not fit the cell); the
+			-- sheet's machine cards: the hand-pixelled egg (machines_egg_chips: its sizes) and the percent inside the cell, no word
+			local function cellCheck(root, look, sheet)
+				local cellBad = {}
+				for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+					for _, r in ipairs(G.oddsRows(G.find(root, "ShopCard_" .. id))) do
+						local egg, word, pct = r.Row:FindFirstChild("Egg"), r.Row:FindFirstChild("Word"), r.Row:FindFirstChild("Pct")
+						local pixel = r.Row:FindFirstChild("PixelEgg", true)
+						local eb, pb, cb = egg and G.rel(egg, r.Row), pct and G.rel(pct, r.Row), G.rel(r.Row, r.Row)
+						local good
+						if sheet and id ~= "Secret" then
+							good = pixel and G.shown(pixel) and pct and G.shown(pct) and not G.shown(word) and pb.x >= -1 and pb.x + pb.w <= cb.w + 1
+						else
+							good = egg and pct and G.near(eb.h, 30) and pct.TextSize == 15 and not G.shown(word) and pb.x >= eb.x + eb.w - 1 and pb.x + pb.w <= cb.w + 1
+						end
+						if not good then
+							cellBad[#cellBad + 1] = id .. "/" .. r.Rarity .. (word and G.shown(word) and " (word shown)" or "")
+						end
 					end
 				end
+				T.check(#cellBad == 0, label .. look .. ": Eggs: every odds cell is " .. (sheet and "the pixel egg + its percent (the machines; the Secret card's egg 30 + the percent 15)" or "the egg 30 + the percent 15")
+					.. ", no rarity word", table.concat(cellBad, ", "))
 			end
-			T.check(#cellBad == 0, label .. ": Eggs: every odds cell is the egg 30 + the percent 15, no rarity word", table.concat(cellBad, ", "))
+			local shippedSheet = G.sheetShown(G.eggCard("Cloud"))
+			T.check(shippedSheet, label .. ": Eggs: the shipped machines sheet draws the machines (Config.MachineSheet.Id 76428055171576)")
+			listCheck(G.body(), "", shippedSheet)
+			if shippedSheet then
+				G.drawnPage(label .. " (drawn machine)", Shop, SE, Config, function(page)
+					listCheck(page, " (drawn machine)", false)
+				end)
+			end
+			G.spinRowsCheck(label)
+			local function gridCheck(root, look)
+				local grid = G.oddsRows(G.find(root, "ShopCard_Cloud"))
+				local xs, ys = {}, {}
+				for _, r in ipairs(grid) do
+					xs[math.floor(r.X + 0.5)] = true
+					ys[math.floor(r.Y + 0.5)] = true
+				end
+				local nx, ny = 0, 0
+				for _ in pairs(xs) do
+					nx = nx + 1
+				end
+				for _ in pairs(ys) do
+					ny = ny + 1
+				end
+				T.check(#grid == 4 and nx == 2 and ny == 2, label .. look .. ": Eggs: Cloud's four odds as a 2 x 2 grid", #grid .. " rows, " .. nx .. " columns x " .. ny .. " rows")
+			end
+			gridCheck(G.body(), "")
+			cellCheck(G.body(), "", shippedSheet)
+			if shippedSheet then
+				G.drawnPage(label .. " (drawn machine)", Shop, SE, Config, function(page)
+					gridCheck(page, " (drawn machine)")
+					cellCheck(page, " (drawn machine)", false)
+				end)
+			end
 			-- the PityChip keeps to one line: "Secret for sure in N more spins" while it fits the chip, else "Secret in N"
 			G.setAttr("GemsSettled", true)
 			G.setAttr("PaidRandomItemsRestricted", false)
@@ -2138,6 +2211,60 @@ function G.heroLook(k)
 	end
 	return fmt("spin %s travel %s chip %s pity %s dim %s lock %s", f(k.Spin), f(k.Travel), f(k.Chip), f(k.Pity), f(k.Dim), f(k.Lock))
 end
+-- (the machines sheet is uploaded: Config.MachineSheet.Id 76428055171576 ships) true when `card`'s machine is the sheet's
+-- (its SheetShown), false for today's drawn machine
+function G.sheetShown(card)
+	local m = card and card:FindFirstChild("Machine", true)
+	return m ~= nil and m:GetAttribute("SheetShown") == true
+end
+-- today's drawn machine (Config.MachineSheet.Id 0, forced and restored) on a fresh Eggs page with the OPEN Shop's own
+-- box, layout and Fit (the Shop's window is built once, with the shipped sheet); fn(page) reads it. The fresh page becomes
+-- ShopEggs' last-built page (its HeroPulse() / Fx() with no page), so a scenario calls this after those reads
+function G.drawnPage(tag, Shop, SE, Config, fn)
+	local win = G.win()
+	local real = win and win:FindFirstChild("Page_Eggs", true)
+	local fitScale = G.scale()
+	local mode = type(Shop._S) == "table" and Shop._S.Layout or nil
+	local ms = Config and Config.MachineSheet
+	if not T.check(real ~= nil and mode ~= nil and type(ms) == "table", tag .. ": (setup) the open Shop's Eggs page, its layout and Config.MachineSheet") then
+		return
+	end
+	local box = {
+		W = (real.Size.X.Scale == 0 and real.Size.X.Offset > 0) and real.Size.X.Offset or math.floor(real.AbsoluteSize.X / fitScale + 0.5),
+		H = (real.Size.Y.Scale == 0 and real.Size.Y.Offset > 0) and real.Size.Y.Offset or math.floor(real.AbsoluteSize.Y / fitScale + 0.5),
+	}
+	local savedId = ms.Id
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "SmokeDrawnPage"
+	local page = Instance.new("Frame")
+	page.Name = "Page_Eggs"
+	page.Size = UDim2.fromOffset(box.W, box.H)
+	local fit = Instance.new("UIScale")
+	fit.Name = "Fit"
+	fit.Scale = fitScale
+	fit.Parent = page
+	page.Parent = gui
+	gui.Parent = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local okD, errD = pcall(function()
+		ms.Id = 0
+		SE.Build(page, nil)
+		SE.Layout(page, box, mode)
+		SE.Refresh(page)
+		G.advance(0.1)
+		local drawn = true
+		for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+			local card = G.find(page, "ShopCard_" .. id)
+			drawn = drawn and card ~= nil and not G.sheetShown(card)
+		end
+		if T.check(drawn, tag .. ": (setup) the fresh page draws today's machines (Id 0)", fmt("box %dx%d, %s", box.W, box.H, tostring(mode))) then
+			fn(page)
+		end
+	end)
+	ms.Id = savedId
+	gui:Destroy()
+	G.advance(0.1)
+	T.check(okD, tag .. ": the drawn-machine page ran", tostring(errD))
+end
 
 S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 	local KC = G.KC()
@@ -2196,6 +2323,52 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		end
 		T.check(#bad == 0, label .. ": the lock chip, the hint and TRAVEL fit their boxes with the real font widths", table.concat(bad, "; "))
 	end
+	local function vaultShown(k)
+		return G.sheetShown(k.Hero)
+	end
+	-- the Dim veil of today's drawn machine away from the altar (the sheet's vault has none: it stays the hero's one bright
+	-- art, machines_sheet): the art column only, the card's own face colour, over the machine / egg / sparks, under the chip,
+	-- TRAVEL and the hint
+	local function dimLook(k, label)
+		local hb = G.rel(k.Hero, k.Hero)
+		local cb = G.rel(k.Chip, k.Hero)
+		local db = G.rel(k.Dim, k.Hero)
+		local egg = G.part(k.Hero, "HeroEgg")
+		local sparks = G.part(k.Hero, "Sparks")
+		local holder = k.Travel and k.Travel.Parent
+		-- (LOOK-ui, kitb-look1) the veil is the art column's only: the title, the odds and the chip (from x 360) stay clear,
+		-- and the chip leads with the padlock
+		local titleAt = G.rel(G.part(k.Hero, "Title"), k.Hero)
+		T.check(G.shown(k.Dim) and G.near(db.x, 0) and G.near(db.y, 0) and G.near(db.w, 352) and G.near(db.h, hb.h) and abs(k.Dim.BackgroundTransparency - 0.35) < 1e-6
+			and k.Dim.BackgroundTransparency < 1 and k.Dim.Parent == k.Chip.Parent and titleAt.x >= db.x + db.w and cb.x >= db.x + db.w,
+			label .. ": Dim (K.NAVY at 0.35) veils the art column only (0..352), the title and the chip clear of it", fmt("%.0f,%.0f %.0fx%.0f t %.2f, title x %.0f", db.x, db.y, db.w, db.h, k.Dim.BackgroundTransparency, titleAt.x))
+		-- (Pitch 2 fix round B r1, look review minor: at 844x390 the machine sat on "a visible darker navy rectangle, an
+		-- unblended picture box that looks like a placeholder") the veil is the card's own face colour: the art fades into the
+		-- card, no darker box shows round it
+		local face, up = nil, k.Dim.Parent
+		while up and up:IsA("GuiObject") and not face do
+			face = up.BackgroundTransparency < 1 and up.BackgroundColor3 or nil
+			up = up.Parent
+		end
+		local dc = k.Dim.BackgroundColor3
+		T.check(face ~= nil and abs(dc.R - face.R) < 0.004 and abs(dc.G - face.G) < 0.004 and abs(dc.B - face.B) < 0.004,
+			label .. ": ...the veil in the card's own face colour (no darker box round the machine)", fmt("veil %s, card %s", tostring(dc), tostring(face)))
+		T.check(k.Dim.ZIndex > (egg and egg.ZIndex or 0) and k.Dim.ZIndex > (sparks and sparks.ZIndex or 0) and k.Dim.ZIndex < k.Chip.ZIndex and holder and k.Dim.ZIndex < holder.ZIndex and k.Dim.ZIndex < k.Hint.ZIndex,
+			label .. ": ...over the machine, the big egg and its sparks, under the chip, the TRAVEL button and the hint",
+			fmt("dim %d, egg %s, sparks %s, chip %d, holder %s, hint %d", k.Dim.ZIndex, tostring(egg and egg.ZIndex), tostring(sparks and sparks.ZIndex), k.Chip.ZIndex, tostring(holder and holder.ZIndex), k.Hint.ZIndex))
+	end
+	-- today's drawn machine's Secret hero kit on a fresh drawn Eggs page (G.drawnPage). Run at the scenario's end: a fresh
+	-- page becomes ShopEggs' last-built page (ShopEggs.HeroPulse() with no page)
+	local function drawnHero(tag, fn)
+		G.drawnPage(tag, Shop, SE, Config, function(page)
+			local hero = G.find(page, "ShopCard_Secret")
+			local kit = { Hero = hero, Spin = hero and hero:FindFirstChild("Spin", true), Travel = hero and hero:FindFirstChild("Travel", true),
+				Chip = G.part(hero, "AltarChip"), Pity = G.part(hero, "PityChip"), Dim = G.part(hero, "Dim"), Hint = G.part(hero, "Hint"), Lock = G.part(hero, "Lock") }
+			if T.check(hero ~= nil and kit.Chip and kit.Dim and kit.Hint and kit.Travel, tag .. ": (setup) the fresh page's hero kit", G.heroLook(kit)) then
+				fn(kit)
+			end
+		end)
+	end
 	-- the Altar look below is read from the lobby (TRAVEL live); "away from the lobby" has its own block
 	SE._InLobby = true
 	local ok, err = pcall(function()
@@ -2239,32 +2412,16 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		T.check(G.shown(k.Chip) and k.Chip.Text == ALTAR.Lock and k.Pity and not G.shown(k.Pity) and G.near(cb.x, 360) and G.near(cb.y, 132) and G.near(cb.h, 48) and cb.w >= 400 - 1
 			and k.Chip.TextSize == 22 and pb and G.near(pb.x, cb.x) and G.near(pb.y, cb.y),
 			"secret lock: AltarChip 'Available at the Storm Altar' in the pity chip's place (360, 132, >= 400 x 48, 22 px), the PityChip hidden", G.heroLook(k) .. "; " .. fmt("%.0f,%.0f %.0fx%.0f", cb.x, cb.y, cb.w, cb.h))
-		local db = G.rel(k.Dim, k.Hero)
-		local egg = G.part(k.Hero, "HeroEgg")
-		local sparks = G.part(k.Hero, "Sparks")
-		local holder = k.Travel.Parent
-		-- (LOOK-ui, kitb-look1) the veil is the art column's only: the title, the odds and the chip (from x 360) stay clear,
-		-- and the chip leads with the padlock
-		local titleAt = G.rel(G.part(k.Hero, "Title"), k.Hero)
-		T.check(G.shown(k.Dim) and G.near(db.x, 0) and G.near(db.y, 0) and G.near(db.w, 352) and G.near(db.h, hb.h) and abs(k.Dim.BackgroundTransparency - 0.35) < 1e-6
-			and k.Dim.BackgroundTransparency < 1 and k.Dim.Parent == k.Chip.Parent and titleAt.x >= db.x + db.w and cb.x >= db.x + db.w,
-			"secret lock: Dim (K.NAVY at 0.35) veils the art column only (0..352), the title and the chip clear of it", fmt("%.0f,%.0f %.0fx%.0f t %.2f, title x %.0f", db.x, db.y, db.w, db.h, k.Dim.BackgroundTransparency, titleAt.x))
-		-- (Pitch 2 fix round B r1, look review minor: at 844x390 the machine sat on "a visible darker navy rectangle, an
-		-- unblended picture box that looks like a placeholder") the veil is the card's own face colour: the art fades into the
-		-- card, no darker box shows round it
-		local face, up = nil, k.Dim.Parent
-		while up and up:IsA("GuiObject") and not face do
-			face = up.BackgroundTransparency < 1 and up.BackgroundColor3 or nil
-			up = up.Parent
+		-- the shipped sheet: the vault shown and no Dim over it (it stays the hero's one bright art); today's drawn machine's
+		-- veil (dimLook) is read on a fresh drawn page at the scenario's end
+		local vault1920 = vaultShown(k)
+		if vault1920 then
+			T.check(not G.shown(k.Dim), "secret lock: with the shipped machines sheet the vault shows and no Dim veils it (the hero's one bright art)", G.heroLook(k))
+		else
+			dimLook(k, "secret lock")
 		end
-		local dc = k.Dim.BackgroundColor3
-		T.check(face ~= nil and abs(dc.R - face.R) < 0.004 and abs(dc.G - face.G) < 0.004 and abs(dc.B - face.B) < 0.004,
-			"secret lock: ...the veil in the card's own face colour (no darker box round the machine)", fmt("veil %s, card %s", tostring(dc), tostring(face)))
 		local lead = k.Chip:FindFirstChild("LeadIcon")
 		T.check(lead ~= nil and lead:GetAttribute("PixelIcon") == "lock" and G.shown(lead), "secret lock: the AltarChip leads with the pixel padlock", lead and tostring(lead:GetAttribute("PixelIcon")) or "no LeadIcon")
-		T.check(k.Dim.ZIndex > (egg and egg.ZIndex or 0) and k.Dim.ZIndex > (sparks and sparks.ZIndex or 0) and k.Dim.ZIndex < k.Chip.ZIndex and holder and k.Dim.ZIndex < holder.ZIndex and k.Dim.ZIndex < k.Hint.ZIndex,
-			"secret lock: ...over the machine, the big egg and its sparks, under the chip, the TRAVEL button and the hint",
-			fmt("dim %d, egg %s, sparks %s, chip %d, holder %s, hint %d", k.Dim.ZIndex, tostring(egg and egg.ZIndex), tostring(sparks and sparks.ZIndex), k.Chip.ZIndex, tostring(holder and holder.ZIndex), k.Hint.ZIndex))
 		T.eq(G.text(k.Hero, "Hint"), ALTAR.HintTravel, "secret lock: away from the altar the hint reads 'A gold arrow leads you to the Storm Altar'")
 		fitsAll("secret lock 1920x1080", { k.Chip, k.Hint, k.Travel:FindFirstChild("Word") })
 		local states = {}
@@ -2438,9 +2595,24 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 				local travelAt = kk.Travel and G.rel(kk.Travel, kk.Hero)
 				T.check(not (kk.Hint and G.shown(kk.Hint)) or kk.Hint.Text == ALTAR.HintTravel, label .. ": a shown hero hint reads 'A gold arrow leads you to the Storm Altar'",
 					kk.Hint and kk.Hint.Text or "no hint")
-				T.check(SE.CardState("Secret") == "Altar" and kk.Chip and G.shown(kk.Chip) and kk.Chip.Text == want and not G.shown(kk.Spin) and kk.Travel and G.shown(kk.Travel) and G.shown(kk.Dim)
+				-- the Dim: over today's drawn machine, none over the shipped sheet's vault (the drawn page's Dim: the end block)
+				local vault = vaultShown(kk)
+				-- (P2 icons look pol0, major) beside the sheet's vault the 360-wide hero's chip is narrower: the phone line where
+				-- it fits the chip's room beside its padlock (2 px spare), else the tiny "Storm Altar only", never a cut line
+				if vault and phone and kk.Chip and kk.Chip.Text ~= want then
+					local pad = kk.Chip:FindFirstChildOfClass("UIPadding")
+					local room = kk.Chip.Size.X.Offset - (pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0)
+					local shortW = game:GetService("TextService"):GetTextSize(want, kk.Chip.TextSize, kk.Chip.Font, Vector2.new(10000, 1000)).X
+					if shortW + 2 > room and K.TEXT.AltarLockTiny == "Storm Altar only" then
+						want = "Storm Altar only"
+					end
+				end
+				T.check(SE.CardState("Secret") == "Altar" and kk.Chip and G.shown(kk.Chip) and kk.Chip.Text == want and not G.shown(kk.Spin) and kk.Travel and G.shown(kk.Travel)
+					and (vault and not G.shown(kk.Dim) or (not vault and G.shown(kk.Dim)))
 					and spinAt and travelAt and G.near(spinAt.x, travelAt.x) and G.near(spinAt.y, travelAt.y) and G.near(spinAt.w, travelAt.w) and G.near(spinAt.h, travelAt.h),
-					label .. ": the AltarChip reads '" .. want .. "', TRAVEL in SPIN's box, the Dim over the card", G.heroLook(kk))
+					label .. ": the AltarChip reads '" .. want .. "', TRAVEL in SPIN's box, " .. (vault and "no Dim over the shipped sheet's vault" or "the Dim over the card"),
+					G.heroLook(kk) .. fmt("; state %s, vault %s, chip '%s', spin %s, travel %s", tostring(SE.CardState("Secret")), tostring(vault), kk.Chip and tostring(kk.Chip.Text) or "-",
+						spinAt and fmt("%.0f,%.0f %.0fx%.0f", spinAt.x, spinAt.y, spinAt.w, spinAt.h) or "-", travelAt and fmt("%.0f,%.0f %.0fx%.0f", travelAt.x, travelAt.y, travelAt.w, travelAt.h) or "-"))
 				if phone then
 					T.check(trb and G.near(trb.h, 44) and trb.w >= 44, label .. ": TRAVEL is 44 tall and at least 44 wide", trb and fmt("%.0fx%.0f", trb.w, trb.h) or "none")
 				else
@@ -2448,6 +2620,29 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 				end
 				fitsAll(label, { kk.Chip, kk.Hint, kk.Travel and kk.Travel:FindFirstChild("Word") })
 				RedoGeom.check(G.win(), label, { MinText = sz[4], MinTarget = 44, NoOverlap = G.noOverlapNames() })
+				Shop.Close()
+				G.advance(0.3)
+			end)
+		end
+
+		------------------------------------------------------------------ today's drawn machine (Id 0, forced): the Dim veil
+		-- (the sheet ships, so the Shop's own window shows the vault; the drawn machine's away-from-the-altar look is read on a
+		-- fresh Eggs page with the open Shop's box, layout and Fit, at 1920x1080 in full and on the four other screens)
+		for _, sz in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 640, 360, true }, { 360, 640, true } }) do
+			local label = fmt("secret lock %dx%d (drawn machine)", sz[1], sz[2])
+			RedoGeom.at(sz[1], sz[2], sz[3], label, function()
+				SE._AtAltar = false
+				SE._InLobby = true
+				Shop.Open({ Tab = "Eggs" })
+				G.advance(0.6)
+				drawnHero(label, function(dk)
+					local want = sz[3] and ALTAR.Short or ALTAR.Lock
+					T.check(SE.CardState("Secret") == "Altar" and G.shown(dk.Chip) and dk.Chip.Text == want and G.shown(dk.Travel) and G.shown(dk.Dim),
+						label .. ": away from the altar the AltarChip reads '" .. want .. "', TRAVEL and the Dim over the card", G.heroLook(dk) .. "; chip '" .. tostring(dk.Chip.Text) .. "'")
+					if sz[1] == 1920 then
+						dimLook(dk, label)
+					end
+				end)
 				Shop.Close()
 				G.advance(0.3)
 			end)

@@ -29,9 +29,9 @@
 --                                level with Camera shake OFF; the loading board's the same with its Sway attribute
 --   loading_sway_like_menu       the loading board sways as the title screen's (Config.MainMenu.Sway), stops level with its
 --                                Sway attribute off, which the title screen sets from Camera shake; no world sign sways
---   logo_fallback_l2             the L1 key (Config.Loading.Images.Logo) has id 0, so the title screen's and the loading
---                                screen's headers show the live L2 logo (letters, bands, outline, sides, bounce, plaque,
---                                bolt; it fits the header); with an id, the L1 picture instead
+--   logo_fallback_l2             the L1 key (Config.Loading.Images.Logo) ships its uploaded id: the title and loading
+--                                screens show the L1 picture; with the key cleared they show the live L2 logo (letters,
+--                                bands, outline, sides, bounce, plaque, bolt; it fits the header); with an id, L1 again
 --   title_outline_exception      U6's Title-only exception: a styled title's ONE outline on its plate passes the stroke
 --                                walk; an outlined Heading, a doubled Title and a Title with two outlines still fail
 --   menu_fits_short_viewport     1274x580 and 1366x600: the (swinging) board ends 16 px or more above the screen bottom,
@@ -866,9 +866,11 @@ local function clientScenarios()
 
 	------------------------------------------------------------------------------------------------
 	-- the logo (the owner's picks 2026-11-13): L1, the voxel storm logo, is a Blender picture that needs one upload after
-	-- the owner's OK, so its TextureIds key (Config.Loading.Images.Logo) has no id yet (id 0) and the header shows L2, the
-	-- live storm plaque (per-letter FredokaOne, three-band fills, one brown outline, a two-step block side; the cloud plaque
-	-- of stepped navy blocks; the pixel bolt). With an id the same header shows the L1 picture instead
+	-- the owner's OK. It is uploaded now: its TextureIds key (Config.Loading.Images.Logo, nimbus_logo) ships the id
+	-- 132483372849628 and the header shows that L1 picture on the title and loading screens. While a key has no id (the
+	-- key cleared here, restored after) the header shows L2, the live storm plaque (per-letter FredokaOne, three-band
+	-- fills, one brown outline, a two-step block side; the cloud plaque of stepped navy blocks; the pixel bolt). With any
+	-- id the same header shows the L1 picture instead
 	S.logo_fallback_l2 = guarded("logo_fallback_l2", function()
 		local ids = shared("TextureIds")
 		local Config = shared("Config")
@@ -881,8 +883,27 @@ local function clientScenarios()
 				return
 			end
 			local Sg = Theme.Sign
-			T.check((tonumber(ids[key]) or 0) == 0, "sign logo: the L1 key " .. key .. " has id 0 (not uploaded: the owner's OK first)", tostring(ids[key]))
+			T.check(key == "nimbus_logo" and ids[key] == 132483372849628, "sign logo: the L1 key " .. key .. " ships the uploaded id 132483372849628",
+				string.format("%.0f", tonumber(ids[key]) or 0))
 			T.check(Logo.Key() == key, "sign logo: Logo.Key() is Config.Loading.Images.Logo", tostring(Logo.Key()))
+			-- the shipped state: the uploaded L1 picture (its whole digits) on the title screen, on a phone and on the loading screen
+			local shippedImage = "rbxassetid://132483372849628"
+			local function checkShippedL1(l1, where)
+				T.check(l1 ~= nil and l1:IsA("ImageLabel") and l1.Image == shippedImage and l1:GetAttribute("Logo") == "L1" and l1.Visible,
+					"sign logo: shipped -> the uploaded L1 picture on the " .. where, l1 and (l1.ClassName .. " " .. tostring(l1:GetAttribute("Logo")) .. " " .. tostring(l1.Image)) or "missing")
+			end
+			local s1 = Menu.open({ Wait = 2.5 })
+			checkShippedL1(Menu.find(Menu.find(s1, "Board"), "Logo"), "title screen")
+			Menu.close()
+			local s2 = Menu.open({ Size = { 844, 390 }, Input = "Touch" })
+			checkShippedL1(Menu.find(Menu.find(s2, "Board"), "Logo"), "title screen at 844x390")
+			Menu.close()
+			local s3 = Load.run({ 1920, 1080 })
+			local s3b = s3 and s3:FindFirstChild("Board", true)
+			checkShippedL1(s3b and s3b:FindFirstChild("Logo", true), "loading screen")
+			Load.cleanup()
+			-- the no-id path: the key cleared (its state before the upload)
+			ids[key] = nil
 			local function checkL2(logo, board, plate, where)
 				if not T.check(logo ~= nil and logo:GetAttribute("Logo") == "L2" and logo.Visible and not logo:IsA("ImageLabel"), "sign logo: id 0 -> the live L2 logo on the " .. where,
 					logo and tostring(logo:GetAttribute("Logo")) or "missing") then
@@ -984,6 +1005,22 @@ local function clientScenarios()
 			local lb = lg and lg:FindFirstChild("Board", true)
 			checkL2(lb and lb:FindFirstChild("Logo", true), lb, lb and lb:FindFirstChild("Plate", true), "loading screen")
 			Load.cleanup()
+			-- (moved here from loading_board_parts / menu_board_parts, which now check the shipped L1) the L2 stand-in on the
+			-- menu and loading boards at the other grid sizes too
+			for _, s in ipairs({ { 1280, 720 }, { 390, 844 } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local mm = Menu.open({ Size = s, Input = (s[1] < s[2]) and "Touch" or nil })
+				local ml = Menu.find(Menu.find(mm, "Board"), "Logo")
+				T.check(ml ~= nil and ml:GetAttribute("Logo") == "L2" and ml.Visible and not ml:IsA("ImageLabel"), "sign logo: id 0 -> the menu board's header shows L2 at " .. tag,
+					ml and tostring(ml:GetAttribute("Logo")) or "missing")
+				Menu.close()
+				local lgs = Load.run(s)
+				local lbs = lgs and lgs:FindFirstChild("Board", true)
+				local ll = lbs and lbs:FindFirstChild("Logo", true)
+				T.check(ll ~= nil and ll:GetAttribute("Logo") == "L2" and ll.Visible and not ll:IsA("ImageLabel"), "sign logo: id 0 -> the loading board's header shows L2 at " .. tag,
+					ll and tostring(ll:GetAttribute("Logo")) or "missing")
+				Load.cleanup()
+			end
 			-- with an id (after the owner's OK and the upload): the L1 picture in the same place, no L2
 			ids[key] = 4242
 			local m2 = Menu.open({ Wait = 2.5 })
