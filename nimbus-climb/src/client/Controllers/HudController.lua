@@ -326,6 +326,7 @@ local St = { Frac = 1, Dim = 0, DimDrawn = -1, Drained = false, Charge = -1, Rea
 local Tk = { RunSeen = 0 } -- the "+n" match chip
 local Mt = { -- match panel bookkeeping
 	Base = 0, At = 0, Phase = nil, Last = nil, GoUntil = 0, Rows = 1, Chips = {}, Count = 0,
+	Compact = false, -- (kitb-matchhud) the checkpoints share the clock row on a narrow card (the slim layout: applyMargins)
 }
 local Pt = { -- party panel bookkeeping (Fit*: what the text sizes were last fitted for)
 	Base = nil, At = 0, Rows = 1, Chips = {}, Count = 0, LastText = nil, LeaveLockUntil = 0,
@@ -766,6 +767,9 @@ end
 local layoutCurrencyRows -- (style, width) -> places the rows; defined with the currency code below
 local setPanelWidth -- (designWidth) -> resizes the match / party panels; defined with the panels below
 local setVitalsGeometry -- (VG.Regular | VG.Compact) -> places the vitals card's parts; defined with the card
+-- (kitb-matchhud) (on) -> the match card's checkpoints in its clock row (true) or their own row; true when that changed its
+-- size. And the design px that saves on a narrow card (0 where they already share the clock row). Defined with the panels
+local setMatchCompact, compactSaving
 
 -- Cards that own the top-right corner for a moment (in our coordinates, nil when none is up): the currency strips
 -- step out of their way. Today: DungeonController's End card (NimbusDungeonRun.EndCard), which phones draw under the
@@ -1010,7 +1014,10 @@ local function applyMargins(animate, force)
 		end
 		return list
 	end
-	local obstacles = obstaclesFor(panelW, topH, false)
+	-- (kitb-matchhud) the match card as kit-b lays it (its checkpoints in their own row): the slim layout below is decided
+	-- against it, so the decision never flips with the shorter card it brings
+	local topH0 = topH + ((hasPanel and Mt.Compact and Items.Match and Items.Match.Shown and compactSaving) and compactSaving() or 0)
+	local obstacles = obstaclesFor(panelW, topH0, false)
 	local tabUpPx = math.floor(geometry.TAB_UP * k + 0.5)
 	local vitalsLeft, vitalsW
 	local bottom0 = vitalsBottom
@@ -1027,6 +1034,36 @@ local function applyMargins(animate, force)
 		end
 	end
 	vitalsW = math.floor(vitalsW * k) / k
+
+	-- (kitb-matchhud, the owner's pick A "Slim bar" of 2026-11-27) whether a slot has its row: wholly on the screen inside
+	-- the side margins, the player's whole name on it (nameNeed screen px), and every drawn obstacle (not the zone the
+	-- stick's thumb roams) OBSTACLE_TIGHT of air off its ink, its wood edge counted
+	local function rowClear(list, left, wPx, bottom, hPx, tabPx, nameNeed)
+		if left < side - 0.5 or left + wPx > area.X - side + 0.5 or bottom > area.Y + 0.5 or bottom - hPx < -0.5 then
+			return false
+		end
+		if nameNeed and math.floor(wPx) < nameNeed then
+			return false
+		end
+		local g = K.OBSTACLE_TIGHT + K.VITALS_EDGE
+		for _, r in ipairs(list) do
+			local top = bottom - hPx + (r.cardOnly and tabPx or 0)
+			if not r.soft and left < r.x1 + g - 0.5 and left + wPx > r.x0 - g + 0.5 and top < r.y1 + g - 0.5 and bottom > r.y0 - g + 0.5 then
+				return false
+			end
+		end
+		return true
+	end
+	-- On a touch screen in landscape, in a match / its countdown, where that card has no row (kit-b: at 640 x 360 ..
+	-- 812 x 375 squeezed onto DASH, RUN and the jump ring, 'SkyCli...', off the right edge at 640), the match card's
+	-- checkpoints move up into its clock row (a narrow card 28 design px shorter: at 640 x 360 its corner and shadow lay on
+	-- RUN); the vitals' slim bar takes the card's place there (the next part)
+	local noRow = touch and vp.X > vp.Y and inMatch
+		and not rowClear(obstacles, vitalsLeft, math.floor(vitalsW * k), vitalsBottom, vitalsH * k, tabUpPx, nameW)
+	local slim = noRow and inMatch
+	if setMatchCompact and setMatchCompact(slim and hasPanel) then
+		hasPanel, hasTitle, topH = topLeftState()
+	end
 	-- (kitb-matchhud) a panel never reaches into a touch key or Roblox's jump button that shares its rows (kit-b: at 568 x 320
 	-- the panel lay on RUN, DASH and the jump ring; at 640 x 360 the leader's full pad on RUN): narrower, OBSTACLE_TIGHT of
 	-- air off its shadow
@@ -2587,10 +2624,14 @@ end
 function PK.LayCheckpoints()
 	local bar = UI.CpBar
 	local total = Mt.CpTotal or 4
-	local labelW = PK.LabelW(UI.CpLabel, "Heading") + 2
-	local room = bar.Size.X.Offset > 0 and bar.Size.X.Offset or (innerWidth() - labelW - 10)
 	local wide = PK.Wide()
-	local avail = math.max(10, (wide and (room - labelW - 10) or (room - labelW - 10)))
+	-- (kitb-matchhud, pick A) a narrow card in the slim layout: the blocks alone in the clock row, centred between the clock
+	-- and the tokens tile ('8:53 [blocks] 7 / 24'); the 'Checkpoint 2/4' words go (the blocks count it)
+	local bare = Mt.Compact and not wide
+	UI.CpLabel.Visible = not bare
+	local labelW = bare and 0 or (PK.LabelW(UI.CpLabel, "Heading") + 2)
+	local room = bar.Size.X.Offset > 0 and bar.Size.X.Offset or (innerWidth() - labelW - 10)
+	local avail = math.max(10, bare and room or (room - labelW - 10))
 	local bw = math.max(10, math.min(M.CpBlockW, math.floor((avail - (total - 1) * M.CpBlockGap) / total)))
 	local row = bar:FindFirstChild("BlockRow")
 	if not row or row:GetAttribute("Count") ~= total or row:GetAttribute("BlockW") ~= bw then
@@ -2606,7 +2647,10 @@ function PK.LayCheckpoints()
 	UI.CpLabel.AnchorPoint = Vector2.new(0, 0.5)
 	UI.CpLabel.Position = UDim2.new(0, 0, 0.5, 0)
 	UI.CpLabel.Size = UDim2.new(0, labelW, 1, 0)
-	if wide then
+	if bare then
+		row.AnchorPoint = Vector2.new(0.5, 0.5)
+		row.Position = UDim2.new(0.5, 0, 0.5, 0)
+	elseif wide then
 		row.AnchorPoint = Vector2.new(0, 0.5)
 		row.Position = UDim2.new(0, labelW + 10, 0.5, 0)
 	else
@@ -2635,7 +2679,8 @@ function PK.LayoutMatch()
 		return
 	end
 	local cw = innerWidth()
-	local wide = PK.Wide()
+	-- (kitb-matchhud) a narrow card in the slim layout puts its checkpoints in row B too, as a wide card does (Mt.Compact)
+	local wide = PK.Wide() or Mt.Compact
 	local e = PK.EdgeW()
 	-- row A
 	PK.Place(UI.MatchBadge, 0, math.floor((M.RowA - M.Badge) / 2), M.Badge, M.Badge)
@@ -3305,6 +3350,30 @@ setPanelWidth = function(width)
 	PK.LayoutParty()
 end
 
+-- (kitb-matchhud, pick A) the slim layout's match card: its checkpoints up in the clock row (applyMargins decides);
+-- returns true when the card's height changed
+setMatchCompact = function(on)
+	on = on == true
+	if Mt.Compact == on then
+		return false
+	end
+	Mt.Compact = on
+	if not UI.Match then
+		return false
+	end
+	local before = UI.Match.Root.Size.Y.Offset
+	PK.LayoutMatch()
+	return UI.Match.Root.Size.Y.Offset ~= before
+end
+
+-- the design px the checkpoints' own row takes on a narrow card (its gap above and its height): what the slim layout saves
+compactSaving = function()
+	if not M or PK.Wide() then
+		return 0
+	end
+	return M.RowGap + M.CpH
+end
+
 -- a card that grew or shrank (a row of chips more or less) may now reach the menu column (or no longer does)
 local function resizePanel(panel, layout)
 	local before = panel.Root.Size.Y.Offset
@@ -3360,7 +3429,7 @@ local function setTokensText(text, coin)
 	end
 	local before = UI.MatchTokens.Size.X.Offset
 	PK.FitTokens()
-	if PK.Wide() and UI.MatchTokens.Size.X.Offset ~= before then
+	if (PK.Wide() or Mt.Compact) and UI.MatchTokens.Size.X.Offset ~= before then
 		PK.LayoutMatch() -- (the checkpoints end left of the tile)
 	end
 end
@@ -3398,7 +3467,7 @@ local function setTimerText(text, color, size)
 		local over = (w > M.CpX - 8) and w or nil
 		if over ~= Mt.TimerTextW then
 			Mt.TimerTextW = over
-			if PK.Wide() then
+			if PK.Wide() or Mt.Compact then
 				PK.LayoutMatch()
 			end
 		end
