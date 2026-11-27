@@ -193,3 +193,9 @@ are instanced by Roblox, so draw calls grow with distinct keys, not with copies.
 to `blender/textures/vortex/` and the uploader index `blender/textures/textures.json`; uploaded with
 `python3 tools/upload_assets.py --textures` (dry run by default) into `src/shared/TextureIds.lua`.  It has no `--help`:
 running it builds at once (same bytes every time).
+
+`blender/boss_heads.py` bakes the battle top card's boss head portraits (`Config.BossHeads`, Pitch 2 item 06 A) from the
+game's own `boss_<id>_*` High joint meshes (contentHash checked against `meshes.json`): `render` (bpy) writes
+`branding/boss_heads/boss_head_<id>.png` (74 x 74, 24 x 24 cells of 3 px, binary alpha, same bytes every run),
+`compose` the review sheet and in-card mock-ups under `build/BOSS_HEADS/`, `index` their `textures.json` entries (it
+keeps every other entry; never re-index with `build_vortex.py`).
