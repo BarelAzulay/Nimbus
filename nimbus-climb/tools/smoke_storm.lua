@@ -89,11 +89,11 @@ end
 
 -- every image / texture / mesh / sound id of `root` that is neither empty, built in (rbxasset://), an emitter's
 -- FxSprites sheet (kit B X1) nor the player's art: { "ClassName Name: id" }
-local function foreignAssets(root, art)
+local function foreignAssets(root, art, allowed)
 	local out = {}
 	local function check(d, id)
 		id = tostring(id or "")
-		if id ~= "" and id ~= art and not id:find("^rbxasset://") and not (d:IsA("ParticleEmitter") and fxRole(id)) then
+		if id ~= "" and id ~= art and not (allowed and allowed[id]) and not id:find("^rbxasset://") and not (d:IsA("ParticleEmitter") and fxRole(id)) then
 			out[#out + 1] = d.ClassName .. " " .. d.Name .. ": " .. id
 		end
 	end
@@ -1348,7 +1348,11 @@ local function clientScenarios()
 					local word = row and row:FindFirstChild("Word")
 					local pct = row and row:FindFirstChild("Pct")
 					local v = pct and tonumber((tostring(pct.Text):gsub("%%", "")))
-					rows:case(shown(word) and word.Text == o.Rarity and shown(pct) and v ~= nil and math.abs(v - o.Chance * 100) <= 0.06,
+					-- (images I1-I7 uploaded) a sheet card's odds are egg chips (ShopEggs L.chips): the rarity's own egg over
+					-- or beside its percent, no word; a row card names the rarity in its Word
+					local egg = row and (row:FindFirstChild("PixelEgg", true) or row:FindFirstChild("Egg"))
+					local named_ = (shown(word) and word.Text == o.Rarity) or (word ~= nil and word.Text == o.Rarity and not shown(word) and shown(egg))
+					rows:case(named_ and shown(pct) and v ~= nil and math.abs(v - o.Chance * 100) <= 0.06,
 						id .. "/" .. tostring(o.Rarity) .. ": " .. (row and (tostring(word and word.Text) .. " " .. tostring(pct and pct.Text)) or "no row"))
 				end
 			end
@@ -1559,9 +1563,17 @@ local function clientScenarios()
 		petsPanelChecks(Config, PC)
 		closeAll(Index)
 
-		-- the only asset id on screen is the player's art
-		local foreign = foreignAssets(gui(), Config.Art.StormfangImage)
-		T.check(#foreign == 0, "storm client: no asset id in the GUI but Config.Art.StormfangImage", table.concat(foreign, "; ", 1, min(#foreign, 4)))
+		-- the only asset ids on screen are the player's art and the uploaded UI sheets (images I1-I7: the icon sheet and
+		-- the machines sheet the GUI cuts its icons, eggs and machines from)
+		local sheets = {}
+		for _, t in ipairs({ Config.IconSheet, Config.MachineSheet }) do
+			local u = type(t) == "table" and Config.Art.Image(t.Id) or nil
+			if u then
+				sheets[u] = true
+			end
+		end
+		local foreign = foreignAssets(gui(), Config.Art.StormfangImage, sheets)
+		T.check(#foreign == 0, "storm client: no asset id in the GUI but Config.Art.StormfangImage and the uploaded UI sheets", table.concat(foreign, "; ", 1, min(#foreign, 4)))
 
 		-- the altar toast is a side toast, never in the middle of the screen
 		toClient("Notify", TOAST_TEXT, "info", 5)

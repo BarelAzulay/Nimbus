@@ -266164,6 +266164,18 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 	local pillsH = 0
 	if Hud.pills.Visible then
 		pillsH = Hud.FlowPills(pillW)
+		if compact and bossUnit and bodyMin > 0 and pillX > x0 then
+			-- (release check 2026-11-27, images I1-I7 uploaded) a phone shows the uploaded head too, and its slot narrowed the
+			-- pill column beside it to half the card: the pills wrapped to twice the rows and a 360 x 640 full raid card reached
+			-- MOVE. The pills go under the head at the card's full width where that ends the card higher
+			local fullW, underY = x1 - x0, P + rowH + 8 + bodyMin + 8
+			local fullH = Hud.FlowPills(fullW)
+			if underY + fullH < max(yy + pillsH, underY - 8) then
+				pillX, pillW, yy, pillsH = x0, fullW, underY, fullH
+			else
+				pillsH = Hud.FlowPills(pillW)
+			end
+		end
 		if not compact and raidBoss and pillsH > K.PILL_H then
 			-- (keys lane, look fixA r1: the PC strip's head slot narrows the pill row, whose four pills then took two rows; the
 			-- approved strip has them in one) the phone's shorter words ("Wave 2/2", the people icon and the count) where they
