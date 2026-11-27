@@ -179,6 +179,8 @@ local K = {
 	LEAVE_CONFIRM_SECONDS = 3,
 	GO_SECONDS = 1.0, -- how long "GO!" replaces the timer
 	STAR_PX = 18, -- (kit-b U7a) a difficulty star (PixelIcon) after the match / party level name
+	-- (kitb-matchhud) the stars where the name would cut beside full-size ones (PK.FitName): one px cells, 9 px
+	STAR_PX_MIN = 9,
 	LAYOUT_POLL = 0.5, -- seconds between two geometry checks
 }
 
@@ -2504,19 +2506,23 @@ function PK.PaintBadge(b, number, color)
 	b.Num.TextColor3 = ink
 end
 
--- the level's name in ink with its gold-lip stars after it (PixelIcon.Lead, the room kept inside the label)
-function PK.Stars(label, n)
+-- the level's name in ink with its gold-lip stars after it (PixelIcon.Lead, the room kept inside the label).
+-- ((kitb-matchhud) `px`: the stars' size, K.STAR_PX or the smaller K.STAR_PX_MIN PK.FitName steps down to; nil keeps the
+-- label's)
+function PK.Stars(label, n, px)
 	n = math.max(0, math.min(5, math.floor(tonumber(n) or 0)))
-	if label:GetAttribute("Stars") == n then
+	px = px or label:GetAttribute("StarPx") or K.STAR_PX
+	if label:GetAttribute("Stars") == n and label:GetAttribute("StarPx") == px then
 		return
 	end
 	label:SetAttribute("Stars", n)
+	label:SetAttribute("StarPx", px)
 	local old = label:FindFirstChild("TrailIcon")
 	if old then
 		old:Destroy()
 	end
 	if n > 0 then
-		PixelIcon.Lead(label, "star", { After = true, Count = n, Px = K.STAR_PX, Gap = M.NameGap, Room = true, Colour = SIGN.GoldLip })
+		PixelIcon.Lead(label, "star", { After = true, Count = n, Px = px, Gap = M.NameGap, Room = true, Colour = SIGN.GoldLip })
 	end
 end
 
@@ -2534,19 +2540,33 @@ function PK.FitName(label, room)
 	-- is fitted by what it draws)
 	local m0 = PK.TextW(label.Text, "Heading", label.TextSize)
 	local factor = (m0 > 0) and math.max(1, PK.LabelW(label, "Heading") / m0) or 1
-	local size = M.NameText
+	local n = label:GetAttribute("Stars") or 0
+	-- (kitb-matchhud) the full-size stars where the name fits beside them at 22 / 20 / 18 px; else (a panel narrowed off
+	-- the touch keys: 'Extr...' at 640 x 360 on the leader's pad) the smaller stars (K.STAR_PX_MIN) before the name cuts.
+	-- The full-size stars' width: measured, or while the small ones show twice their box (a full-size cell never draws
+	-- more than twice a small one's screen px), so the choice never flips between two fits
+	local fullW = PK.StarsW(label)
+	local trail = label:FindFirstChild("TrailIcon")
+	if trail and label:GetAttribute("StarPx") == K.STAR_PX_MIN then
+		fullW = 2 * trail.Size.X.Offset + M.NameGap
+	end
+	local size = nil
 	for _, s in ipairs({ M.NameText, 20, 18 }) do
-		size = s
-		if PK.TextW(label.Text, "Heading", s) * factor + 4 <= room - PK.StarsW(label) then
+		if PK.TextW(label.Text, "Heading", s) * factor + 4 <= room - fullW then
+			size = s
 			break
 		end
+	end
+	local starPx = (size == nil and n > 0) and K.STAR_PX_MIN or K.STAR_PX
+	size = size or 18
+	if (label:GetAttribute("StarPx") or K.STAR_PX) ~= starPx then
+		PK.Stars(label, n, starPx)
 	end
 	if label.TextSize ~= size then
 		label.TextSize = size
 		-- the stars placed anew after the smaller name (not where the cut one ended)
-		local n = label:GetAttribute("Stars")
 		label:SetAttribute("Stars", nil)
-		PK.Stars(label, n or 0)
+		PK.Stars(label, n, starPx)
 	end
 end
 
