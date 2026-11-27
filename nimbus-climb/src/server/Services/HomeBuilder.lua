@@ -1121,18 +1121,21 @@ function Garden.promptPoint(def, i)
 end
 
 -- the "Prestige to open" sign of a closed bed (World text rule: 50 px per stud, letters 0.6 stud). (kit-b world signs) a
--- stone card on the 170 x 75 px canvas (the board 3.4 x 1.5 studs), inset by its 3 px wood edge (164 x 69), a 4 px lip in
--- the Prestige violet, so 65 px of face over the lip. Everything keeps Pad px off the wood edge and the lip: the star
--- (46 px, low on the face: its arm row clears the title's "P") and "Prestige" (120 px of FredokaOne at 30 px) need 166 px side by side, so they share a
+-- stone card on the 170 x 80 px canvas (the board 3.4 x 1.6 studs), inset by its 3 px wood edge (164 x 74), a 4 px lip in
+-- the Prestige violet, so 70 px of face over the lip. Everything keeps Pad px off the wood edge and the lip: the star
+-- (54 px, low on the face: its arm row clears the title's "P") and "Prestige" (120 px of FredokaOne at 30 px) need 174 px side by side, so they share a
 -- corner: the two 30 px lines sit right-aligned and the star's wide arm row runs between them, its narrow top beside the
 -- title's first letter. (Review: the 1.4 stud board left the star flush on the edge and "to open" on the lip.)
-Garden.CLOSED = { Edge = 3, Lip = 4, Pad = 4, Board = Vector3.new(3.4, 1.5, 0.15), Star = 46, StarY = 14, TextX = 40, TextW = 120, LineH = 30, TitleY = 2, InfoY = 31 }
+-- (world text rule: the sign's biggest mark >= 0.95 stud) the star is a 9-cell PixelIcon, so it draws in whole 6 px
+-- cells at 54 px (1.08 stud; 46 px drew as 45 px = 0.90 stud); the board is 1.6 studs tall so its wide arm row sits
+-- below the "Prestige" line and the star keeps Pad px off the lip
+Garden.CLOSED = { Edge = 3, Lip = 4, Pad = 4, Board = Vector3.new(3.4, 1.6, 0.15), Star = 54, StarY = 12, TextX = 40, TextW = 120, LineH = 30, TitleY = 2, InfoY = 33 }
 function Garden.closedSign(parent, bedCF, size)
 	local Q = Garden.CLOSED
 	local board = Kit.p(parent, "ClosedSign", bedCF * CFrame.new(0, 0.95, -(size / 2 + 0.05)), Q.Board, K.PlanksLight, M.Planks)
 	local gui = surfaceGui(board, Enum.NormalId.Front, "ClosedGui")
 	local panel = boardPanel(gui, Q.Edge, Q.Lip, Sign.VioletLip)
-	-- (kit-b U7b) the star is a 46 px PixelIcon (0.92 stud: the sign's biggest mark), in its own colours
+	-- (kit-b U7b) the star is a 54 px PixelIcon (1.08 stud: the sign's biggest mark), in its own colours
 	PixelIcon.Host(boardText(panel, "", "Heading", 48, Sign.GoldLip, "Star", Q.Pad, Q.StarY, Q.Star, Q.Star), "star", Q.Star)
 	local title = boardText(panel, "Prestige", "Heading", 30, Sign.Text, "Title", Q.TextX, Q.TitleY, Q.TextW, Q.LineH)
 	local info = boardText(panel, "to open", "Heading", 30, Sign.TextMuted, "Info", Q.TextX, Q.InfoY, Q.TextW, Q.LineH)
