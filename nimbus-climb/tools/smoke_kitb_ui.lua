@@ -8301,6 +8301,21 @@ local function clientScenarios()
 		T.check(hadFinish and #finishShown(listed) == 0 and #finishShown(gridded) == 0,
 			"finish pass block: a block a UIListLayout / UIGridLayout lays out shows no finish part (added before or after SignBlock, repainted)",
 			table.concat(finishShown(listed), ",") .. " / " .. table.concat(finishShown(gridded), ","))
+		-- (C2 review) every layout class that places children: a page or a table layout too (before or after SignBlock)
+		local paged = Instance.new("Frame")
+		paged.Size = UDim2.fromOffset(300, 120)
+		paged.Parent = win
+		Instance.new("UIPageLayout").Parent = paged
+		CloudUI.SignBlock(paged, "Stone")
+		local tabled = Instance.new("Frame")
+		tabled.Size = UDim2.fromOffset(300, 120)
+		tabled.Parent = win
+		CloudUI.SignBlock(tabled, "Stone", { EdgePx = 2, LipPx = 0 })
+		local tabledHad = #finishShown(tabled) > 0
+		Instance.new("UITableLayout").Parent = tabled
+		T.check(tabledHad and #finishShown(paged) == 0 and #finishShown(tabled) == 0 and SK.Finishless(paged) and SK.Finishless(tabled),
+			"finish pass block: a block a UIPageLayout / UITableLayout lays out shows no finish part either",
+			table.concat(finishShown(paged), ",") .. " / " .. table.concat(finishShown(tabled), ","))
 		local grown = Instance.new("Frame")
 		grown.Size = UDim2.fromOffset(0, 0)
 		grown.AutomaticSize = Enum.AutomaticSize.XY
@@ -8386,7 +8401,7 @@ local function clientScenarios()
 						end
 						local e = d:FindFirstChild("SignEdge")
 						if e and e:IsA("UIStroke") and sameColor(e.Color, Sg.Wood) and d.BackgroundTransparency == 0 and d.Size.Y.Scale == 0 and d.Size.Y.Offset >= 30
-							and d:GetAttribute("SignLook") ~= "Off" and not sameColor(d.BackgroundColor3, Sg.Well) and not SK.Finishless(d) then
+							and d:GetAttribute("SignLook") ~= "Off" and not sameColor(d.BackgroundColor3, Sg.Well) then
 							blocks = blocks + 1
 							if not shown(d:FindFirstChild("FinishShine")) then
 								bad[#bad + 1] = family .. ": " .. d.Name .. " has no shine"
@@ -10153,16 +10168,57 @@ local function clientScenarios()
 			end
 		end
 		restoreMeasure()
-		-- (playtest 2026-11-28 C13) the side stack's neighbours that draw over it: at 360x640 (touch) the menu tiles hid a
-		-- duel challenge's left side ("uel challenge!", "mChaser wants to battle"), at 640x360 the top bar's pill a practice
-		-- duel's title. Every shown side card keeps clear of the shown pill and of every shown menu tile
+		-- (playtest 2026-11-28 C13, review) the side stack's neighbours: at 360x640 (touch) the menu tiles hid a duel
+		-- challenge's left side ("uel challenge!", "mChaser wants to battle"), at 640x360 the top bar's pill a practice duel's
+		-- title (both draw over the stack), and on the short landscape phones the stack's foot lay on the vitals card's name
+		-- tab (the stack draws over it: the player's name and trophies). Every shown side card keeps clear of every shown
+		-- menu tile. Where the stack fits between the pill and the name tab (6 px off each, under Roblox's band) it keeps
+		-- clear of both, 4 px or more (their strokes); where it does not (FITS false: 640x360 either card, a practice card at
+		-- 667x375 and 844x390) it keeps its own place, as with neither there: stepping down onto the name tab (5433cce3) only
+		-- swapped one cover for the other, and which gives way there is the owner's look call (playtest 1128 group C, held)
 		local function srect(o)
 			local r = U8.rect(o)
 			local g = o:FindFirstAncestorWhichIsA("LayerCollector")
 			local dy = (g and g:IsA("ScreenGui") and not g.IgnoreGuiInset) and (Mock.TopInset or 0) or 0
 			return { X = r.X, R = r.R, Y = r.Y + dy, B = r.B + dy }
 		end
-		for _, sz in ipairs({ { 360, 640, false }, { 640, 360, true }, { 844, 390, false }, { 390, 844, false } }) do
+		local function grown(r, by)
+			return { X = r.X - by, R = r.R + by, Y = r.Y - by, B = r.B + by }
+		end
+		-- (C13 review) a neighbour's box in the stack's gui px is right however Roblox counts an IgnoreGuiInset gui's
+		-- AbsolutePosition: from the screen's top (the mock) or from below the top bar (the engine: its top reads -inset)
+		do
+			local AC = U7.client("Controllers/ArenaController")
+			local inset = Mock.TopInset or 0
+			local side = { IgnoreGuiInset = false }
+			local none = { X = 0 / 0, Y = 0 / 0, R = 0 / 0, B = 0 / 0 }
+			local got = {}
+			if AC and type(AC._SideRect) == "function" then
+				for _, reading in ipairs({ { 0, 5 }, { -inset, 5 - inset } }) do -- the mock's reading, the engine's
+					local ok, r = pcall(AC._SideRect, { IgnoreGuiInset = true, AbsolutePosition = Vector2.new(0, reading[1]) },
+						{ AbsolutePosition = Vector2.new(120, reading[2]), AbsoluteSize = Vector2.new(144, 48) }, side)
+					got[#got + 1] = ok and r or none
+				end
+				local ok, r = pcall(AC._SideRect, { IgnoreGuiInset = false, AbsolutePosition = Vector2.new(0, 0) },
+					{ AbsolutePosition = Vector2.new(176, 130), AbsoluteSize = Vector2.new(200, 35) }, side)
+				got[#got + 1] = ok and r or none
+			end
+			local function is(r, x, y, rr, b)
+				return r ~= nil and math.abs(r.X - x) < 0.01 and math.abs(r.Y - y) < 0.01 and math.abs(r.R - rr) < 0.01 and math.abs(r.B - b) < 0.01
+			end
+			local shown = {}
+			for _, r in ipairs(got) do
+				shown[#shown + 1] = fmt("%.0f,%.0f..%.0f,%.0f", r.X, r.Y, r.R, r.B)
+			end
+			T.check(#got == 3 and is(got[1], 120, 5 - inset, 264, 53 - inset) and is(got[2], 120, 5 - inset, 264, 53 - inset) and is(got[3], 176, 130, 376, 165),
+				"side stack: the pill's box (IgnoreGuiInset) in the stack's px whichever way Roblox counts its AbsolutePosition; the HUD's (inset kept) as it is",
+				table.concat(shown, " / "))
+		end
+		local CASES = { -- w, h, a practice card, FITS (between the pill and the vitals' name tab)
+			{ 360, 640, false, true }, { 640, 360, false, false }, { 640, 360, true, false }, { 667, 375, false, true },
+			{ 667, 375, true, false }, { 844, 390, false, true }, { 844, 390, true, false }, { 390, 844, false, true },
+		}
+		for _, sz in ipairs(CASES) do
 			U8.at(sz[1], sz[2], true, "side stack clear" .. (sz[3] and " (practice)" or ""), function(tag)
 				U97.open("arena:side")
 				if sz[3] then
@@ -10171,35 +10227,80 @@ local function clientScenarios()
 				end
 				LKC.advance(2)
 				local side = U8.pg():FindFirstChild("NimbusArenaSide")
+				local stack = side and side:FindFirstChild("SideStack")
 				local cards = {}
-				for _, c in ipairs(side and side:FindFirstChild("SideStack") and side.SideStack:GetChildren() or {}) do
+				for _, c in ipairs(stack and stack:GetChildren() or {}) do
 					if c:IsA("GuiObject") and U8.shown(c) and c.AbsoluteSize.Y > 0 then
 						cards[#cards + 1] = c
 					end
 				end
-				local over = {}
 				local bar = U8.pg():FindFirstChild("NimbusTopBar")
 				local pill = bar and bar:FindFirstChild("Pill", true)
-				local others = {}
-				if pill and U8.shown(pill) then
-					others[#others + 1] = pill
-				end
+				pill = (pill and U8.shown(pill)) and pill or nil
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				local tab = hud and hud:FindFirstChild("NameTab", true)
+				tab = (tab and U8.shown(tab) and tab.AbsoluteSize.X > 0) and tab or nil
+				local over = {}
 				local menu = U8.pg():FindFirstChild("NimbusMenu")
 				local column = menu and menu:FindFirstChild("MenuColumn", true)
 				for _, d in ipairs(column and column:GetDescendants() or {}) do
 					if d:IsA("GuiButton") and U8.shown(d) and d.AbsoluteSize.X > 0 then
-						others[#others + 1] = d
-					end
-				end
-				for _, c in ipairs(cards) do
-					for _, o in ipairs(others) do
-						if U8.overlap(srect(c), srect(o)) then
-							over[#over + 1] = c.Name .. " under " .. o.Name .. " " .. U8.show(srect(o))
+						for _, c in ipairs(cards) do
+							if U8.overlap(srect(c), srect(d)) then
+								over[#over + 1] = c.Name .. " under " .. d.Name .. " " .. U8.show(srect(d))
+							end
 						end
 					end
 				end
-				T.check(#cards >= 1 and #over == 0, tag .. ": no side card under the top bar's pill or a menu tile (they draw over it)",
+				T.check(#cards >= 1 and #over == 0, tag .. ": no side card under a menu tile (they draw over it)",
 					fmt("%d cards; %s", #cards, table.concat(over, "; ", 1, math.min(#over, 6))))
+				if stack and #cards >= 1 then
+					local sr = srect(stack)
+					local pr = pill and srect(pill)
+					local tr = tab and srect(tab)
+					pr = (pr and pr.R > sr.X and pr.X < sr.R) and pr or nil
+					tr = (tr and tr.R > sr.X and tr.X < sr.R and tr.Y > sr.Y) and tr or nil
+					local topLimit = math.max(Mock.TopInset or 0, pr and (pr.B + 6) or 0)
+					local footLimit = tr and (tr.Y - 6) or sz[2]
+					local fits = sr.B - sr.Y <= footLimit - topLimit + 0.5
+					local where = fmt("stack %s, pill %s, name tab %s", U8.show(sr), pr and U8.show(pr) or "-", tr and U8.show(tr) or "-")
+					T.check(fits == sz[4], tag .. ": the stack " .. (sz[4] and "fits" or "does not fit") .. " between the pill and the vitals' name tab", where)
+					if fits then
+						local hits = {}
+						for _, c in ipairs(cards) do
+							for _, n in ipairs({ { pr, "the pill" }, { tr, "the vitals' name tab" } }) do
+								if n[1] and U8.overlap(grown(srect(c), 4), n[1]) then
+									hits[#hits + 1] = c.Name .. " on " .. n[2]
+								end
+							end
+						end
+						T.check(#hits == 0 and sr.Y >= (Mock.TopInset or 0) - 0.5,
+							tag .. ": the cards keep 4 px or more off the top bar's pill and the vitals' name tab, under Roblox's band",
+							table.concat(hits, "; ") .. " | " .. where)
+					else
+						-- its own place: where it lies with neither neighbour there (the top bar and the HUD off for a moment)
+						local hudOn, barOn = hud and hud.Enabled, bar and bar.Enabled
+						if hud then
+							hud.Enabled = false
+						end
+						if bar then
+							bar.Enabled = false
+						end
+						LKC.advance(0.6)
+						local own = srect(stack)
+						if hud then
+							hud.Enabled = hudOn
+						end
+						if bar then
+							bar.Enabled = barOn
+						end
+						LKC.advance(0.6)
+						local now = srect(stack)
+						T.check(math.abs(now.Y - own.Y) < 0.5 and math.abs(now.B - own.B) < 0.5,
+							tag .. ": no room between the pill and the name tab: the stack keeps its own place, not stepped onto the name tab (held: the owner's look call)",
+							fmt("now %s, own %s | %s", U8.show(now), U8.show(own), where))
+					end
+				end
 				U97.close()
 				LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
 				LKC.advance(1)
@@ -16650,6 +16751,86 @@ local function clientScenarios()
 				U96.close()
 			end)
 		end
+		-- (C33 review) end to end on the live layout: the menu tiles laid out as on a touch phone (Roblox's thumbstick on the
+		-- screen: they take the band above it in two columns, as the game and render_gui draw them, so there is no room left
+		-- of RUN at 640x360 and 667x375; the client world boots as a desktop, and its one thin column left the card room to
+		-- slide left, so the check passed on 91aa9a7a too). Every variant: off DASH, RUN and the jump button, 8 px or more
+		-- inside the screen's sides and foot (Hud.ResultSpot's margin), OK with its timer lip whole on the screen (the raid's
+		-- win card, narrowed, ran past 640x360's foot)
+		local function stickGui()
+			local pg = U8.pg()
+			local old = pg:FindFirstChild("TouchGui")
+			if old then
+				old:Destroy()
+			end
+			local g = Instance.new("ScreenGui")
+			g.Name = "TouchGui"
+			g.ResetOnSpawn = false
+			local frame = Instance.new("Frame")
+			frame.Name = "TouchControlFrame"
+			frame.BackgroundTransparency = 1
+			frame.Size = UDim2.fromScale(1, 1)
+			frame.Parent = g
+			local stick = Instance.new("Frame")
+			stick.Name = "DynamicThumbstickFrame"
+			stick.BackgroundTransparency = 1
+			stick.Size = UDim2.new(0.4, 100, 2 / 3, 100)
+			stick.Position = UDim2.new(0, -100, 1 / 3, 0)
+			stick.Parent = frame
+			g.Parent = pg
+			return g
+		end
+		local MenuC = U7.client("Controllers/MenuController")
+		for _, size in ipairs({ { 640, 360 }, { 667, 375 } }) do
+			for _, v in ipairs(VARIANTS) do
+				U99.atPhone(size[1], size[2], "result card B " .. v[1] .. " (touch tiles)", function(tag)
+					local touchGui = stickGui()
+					LKC.advance(0.6) -- the menu polls for the stick 4 times a second
+					local ok, err = pcall(function()
+						U96.open(v[2])
+						local d = U96.d
+						local B = BC._St.battle
+						if not T.check(d and B, tag .. ": (setup) the fight is up") then
+							return
+						end
+						if v[6] and B.boss then
+							B.boss.name = "Twentycharacterboss1"
+						end
+						local payload = {}
+						for k2, x in pairs(v[3]) do
+							payload[k2] = x
+						end
+						payload.BattleId, payload.Spectator = d.id, false
+						LKC.toClient("BattleState", "End", payload, d.id)
+						LKC.advance(0.9)
+						local gui = U8.pg():FindFirstChild("NimbusBattle")
+						local card = gui and gui.Root:FindFirstChild("ResultCard")
+						if T.check(card and U8.shown(card), tag .. ": the result card shows") then
+							local cr = U8.rect(card)
+							local area = gui.AbsoluteSize
+							local k = U8.scaleOf(card)
+							local okB = card:FindFirstChild("OkButton", true)
+							local orr = okB and U8.shown(okB) and U8.rect(okB)
+							local hits = U99.overTouch(gui, cr, false, nil)
+							local col = U8.pg():FindFirstChild("NimbusMenu") and U8.pg().NimbusMenu:FindFirstChild("MenuColumn", true)
+							T.check(#hits == 0 and cr.X >= 8 - 0.5 and cr.R <= area.X - 8 + 0.5 and cr.B <= area.Y - 8 * k + 0.5 and orr and orr.B <= area.Y + 0.5,
+								tag .. ": the card keeps off DASH, RUN and the jump button, 8 px or more inside the screen's sides and foot, OK whole on it",
+								fmt("%s | card %s, OK %s, screen %dx%d, menu tiles %s", table.concat(hits, "; "), U8.show(cr), orr and U8.show(orr) or "-", area.X, area.Y,
+									col and U8.show(U8.rect(col)) or "-"))
+						end
+					end)
+					U96.close()
+					touchGui:Destroy()
+					if MenuC and type(MenuC.ResetStickSeen) == "function" then
+						MenuC.ResetStickSeen()
+					end
+					LKC.advance(0.3)
+					if not ok then
+						error(err, 0)
+					end
+				end)
+			end
+		end
 		local battleW = {} -- (P2 fix A) the battle result card's width per size ("WxH")
 		for _, s in ipairs(U8.SIZES) do
 			local at = s[3] and function(w, h, _, label, fn)
@@ -16835,17 +17016,27 @@ local function clientScenarios()
 						tag .. ": the battle's template: the head, the reason, the stats, the chips, OK", key)
 					T.check(head and sameColor(head.BackgroundColor3, dv[4]) and title and title.Text == dv[3] and head:FindFirstChild("Icon") ~= nil,
 						tag .. ": the head band in the result's colour with its icon and word", head and (hex(head.BackgroundColor3) .. " " .. (title and title.Text or "?")) or "no head")
-					local rows, badRow = 0, {}
+					-- (playtest 2026-11-28 C9 review) a green tick only on what the player achieved, as on the battle's cards: every
+					-- row of a cleared floor, none on a lost run without a new best (a wipe read "Floor 5 [tick] / Rooms 2 / 4 [tick]";
+					-- this check asked for "a green tick each", the defect itself)
+					local rows, badRow, ticked = 0, {}, {}
 					for _, row in ipairs(body and body:FindFirstChild("Stats") and body.Stats:GetChildren() or {}) do
 						if row.Name:match("^Stat_") and U8.shown(row) then
 							rows = rows + 1
 							local tick = row:FindFirstChild("Tick")
-							if not (tick and U8.shown(tick) and sameColor(tick.BackgroundColor3, Sign.Grass)) then
+							local on = tick ~= nil and U8.shown(tick)
+							if on then
+								ticked[#ticked + 1] = row.Name
+							end
+							if not (tick and (not on or sameColor(tick.BackgroundColor3, Sign.Grass))) then
 								badRow[#badRow + 1] = row.Name
 							end
 						end
 					end
-					T.check(rows >= 2 and #badRow == 0, tag .. ": stat rows, a green tick each", fmt("%d rows; bad: %s", rows, table.concat(badRow, ", ")))
+					local wantTicks = dv[2].Cleared and rows or 0
+					T.check(rows >= 2 and #badRow == 0 and #ticked == wantTicks,
+						tag .. ": stat rows, a green tick on what the player achieved (every row of a cleared floor, none on a lost run)",
+						fmt("%d rows, ticked %s (want %d); bad: %s", rows, table.concat(ticked, ","), wantTicks, table.concat(badRow, ", ")))
 					local widths = {}
 					for _, c in ipairs(body and body:FindFirstChild("Chips") and body.Chips:GetChildren() or {}) do
 						if c.Name:match("^Chip_") and U8.shown(c) then

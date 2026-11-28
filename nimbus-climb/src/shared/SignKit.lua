@@ -308,7 +308,7 @@ end
 -- own fit stays). It never moves or resizes the part, so no window's layout or fit changes. A UIPadding on the part (a
 -- text block's LipPad) would move its children: the holders reach back out by it, now and whenever it changes. Calling a
 -- finish again updates its one holder. A part built with opts.Finish = false (the approved Credits window) gets none.
--- (playtest 2026-11-28 C2 / C3) nor does a part whose children a UIListLayout / UIGridLayout places, or whose size
+-- (playtest 2026-11-28 C2 / C3) nor does a part whose children a layout (list, grid, page, table) places, or whose size
 -- AutomaticSize takes from its children, now or when that comes later (most callers add the layout after SignBlock):
 -- a layout laid the holders out as rows (the Ring champion and rewards cards and the Raid tier card came out empty,
 -- the trophy chip blank, a stray shadow line beside the x2 countdown) and an AutomaticSize part grew round holders that
@@ -344,12 +344,29 @@ local function finishParts(obj)
 	return out
 end
 
+-- (C2 review) every layout class that places a part's children (Roblox's UIGridStyleLayout family, named one by one:
+-- the test mock has no UIGridStyleLayout base class)
+local LAYOUTS = { "UIListLayout", "UIGridLayout", "UIPageLayout", "UITableLayout" }
+local function isLayout(c)
+	for _, class in ipairs(LAYOUTS) do
+		if c:IsA(class) then
+			return true
+		end
+	end
+	return false
+end
+
 -- (C2 / C3) true when a layout places obj's children or AutomaticSize sizes obj: it takes no finish parts
 local function finishless(obj)
 	if obj:IsA("GuiObject") and obj.AutomaticSize ~= Enum.AutomaticSize.None then
 		return true
 	end
-	return obj:FindFirstChildWhichIsA("UIListLayout") ~= nil or obj:FindFirstChildWhichIsA("UIGridLayout") ~= nil
+	for _, c in ipairs(obj:GetChildren()) do
+		if isLayout(c) then
+			return true
+		end
+	end
+	return false
 end
 SignKit.Finishless = finishless
 
@@ -383,7 +400,7 @@ local function track(obj, h)
 			if c:IsA("UIPadding") or c.Name == "CloseMark" then
 				again()
 			end
-			if c:IsA("UIListLayout") or c:IsA("UIGridLayout") then
+			if isLayout(c) then
 				shed(obj) -- (C2) a layout came after the finish: its parts leave the layout
 			end
 		end)

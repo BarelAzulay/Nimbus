@@ -9651,8 +9651,8 @@ function Hud.BuildResult(body, M, opts)
 		ic.Name = "Icon"
 		ic.Position = UDim2.fromOffset(0, floor((rowH - 18) / 2))
 		-- the tick: a green kit block (26 drawn: 22 + its 2 px edge) with the check
-		-- (playtest 2026-11-28 C9) not on a row the player did not achieve (s[5] false; a model without the field, the
-		-- dungeon's End card, keeps it); the value keeps its place either way
+		-- (playtest 2026-11-28 C9) not on a row the player did not achieve (s[5] false; a model without the field keeps it;
+		-- the dungeon's End card sets it too, R.endModel); the value keeps its place either way
 		local tick = make("Frame", { Name = "Tick", Visible = s[5] ~= false, BackgroundColor3 = SIGN.Grass, BorderSizePixel = 0, Position = UDim2.fromOffset(colw - 24, floor((rowH - 22) / 2)), Size = UDim2.fromOffset(22, 22) }, row)
 		signEdge(tick, SIGN.GrassLip, 2)
 		local ck = PixelIcon.New(tick, "check", 18, SIGN.OnGrass)
@@ -9941,8 +9941,9 @@ function Hud.ShowResult(B, payload)
 	end
 	w = floor(w)
 	local built, h
+	local noReason = false
 	local function build()
-		built = Hud.BuildResult(body, M, { W = w, F = m.F, Compact = compact, Landscape = landscape, OnOk = function()
+		built = Hud.BuildResult(body, M, { W = w, F = m.F, Compact = compact, Landscape = landscape, NoReason = noReason, OnOk = function()
 			Hud.HideResult()
 		end })
 		h = built.H + K.PLANK_LIP
@@ -9951,10 +9952,23 @@ function Hud.ShowResult(B, payload)
 	if landscape then
 		-- (playtest 2026-11-28 C33) a card that can go neither left of nor above a touch button (the RUN OVER card on RUN
 		-- at 640x360) is narrowed to end before it (not under K.RESULT_MIN_W)
+		-- (C33 review) only to a form that ends on the screen (its highest top 6, 8 px clear of the foot: Hud.ResultSpot): a
+		-- narrower card is taller (the raid win's reason wrapped to two lines and its card ran past 640x360's foot, OK's
+		-- timer lip off it), so it drops the reason line where only that fits (the dungeon End card's rule, NoReason), else
+		-- it keeps its width
 		local _, _, _, fitW = Hud.ResultSpot(m, w, h, landscape)
 		if fitW and fitW < w and fitW >= K.RESULT_MIN_W then
+			local fullW = w
 			w = fitW
 			build()
+			if 6 + h > m.H - 8 then
+				noReason = true
+				build()
+			end
+			if 6 + h > m.H - 8 then
+				w, noReason = fullW, false
+				build()
+			end
 		end
 	end
 	Hud.resultTimer = { segs = built.Segs, count = 5, lit = -1 }
