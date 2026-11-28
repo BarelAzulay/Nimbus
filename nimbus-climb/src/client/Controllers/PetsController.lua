@@ -118,6 +118,7 @@ local K = {
 	BUSY_TEXT = 16,
 	BUSY_LIP = 3,
 	BUSY_GAP = 4,
+	TEAM_BUSY_TEXT = 18, -- (F0 review) the team's busy line under Team power; (C19 review) down to the 14 screen px floor to fit
 }
 
 -- (kit-b U8) the Signboard palette: brown ink on stone, the role tags on red / sky, the busy covers on violet / grass
@@ -1095,7 +1096,7 @@ function H.build()
 	-- ("2 helpers in the garden") under a dotted rule below the breakdown, and the grid's empty slots (H.fillEmpty)
 	U.PetCount = text(U.Content, "PetCount", "", "Heading", 20, MUTED, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Visible = false })
 	U.TeamRule = SignKit.Rule(U.Content, { Name = "TeamRule", ZIndex = 2, Visible = false })
-	U.TeamBusy = text(U.Content, "TeamBusy", "", "Body", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2, Visible = false })
+	U.TeamBusy = text(U.Content, "TeamBusy", "", "Body", K.TEAM_BUSY_TEXT, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2, Visible = false })
 	U.Empties = {}
 	-- pick mode's banner: a small navy sign with the gold words
 	U.Banner = text(U.Content, "PickBanner", "", "Heading", 20, GOLD, {
@@ -1638,6 +1639,7 @@ function H.layoutPC(W, H0)
 		U.TeamRule.Position = UDim2.fromOffset(powerX, top + 100)
 		place(U.TeamBusy, powerX, top + 108, powerW, 26)
 		S.BusyRoom = true
+		H.fitTeamBusy()
 		place(U.AutoFill, buttonX, top + 8, buttonW, 60)
 		place(U.Clear, buttonX, top + 80, buttonW, 60)
 		for i, button in ipairs(U.Presets) do
@@ -2135,6 +2137,31 @@ function H.fillEmpty()
 			well.Visible = false
 		end
 	end
+end
+
+-- (2026-11-28 playtest C19 review: one row as wide as the Team power column, 257 design px at 1280 x 720, and "1 fighter,
+-- 1 helper in the garden" ran 14 px past it onto the Clear button, a whole busy team 126 px) the busy line fits its box:
+-- the fighter and helpers named (S.BusyWords[1]) at TEAM_BUSY_TEXT or smaller down to the 14 screen px floor, else the
+-- counts alone ("2 in the garden, 1 in training", as the training count always read) the same way; the short form at
+-- the floor (cut at its end) only if neither fits
+function H.fitTeamBusy()
+	local words = S.BusyWords
+	if not (U.TeamBusy and type(words) == "table") then
+		return
+	end
+	local room = U.TeamBusy.Size.X.Offset
+	local top = K.TEAM_BUSY_TEXT
+	local floor = math.min(top, math.ceil(Theme.Readability.MinPx / math.max(0.01, S.Scale or 1) - 0.001))
+	for _, line in ipairs(words) do
+		for size = top, floor, -1 do
+			local ok, m = pcall(Theme.Measure, line, "Body", size)
+			if ok and typeof(m) == "Vector2" and m.X <= room then
+				U.TeamBusy.Text, U.TeamBusy.TextSize = line, size
+				return
+			end
+		end
+	end
+	U.TeamBusy.Text, U.TeamBusy.TextSize = words[#words], floor
 end
 
 -- the pet count and the busy helpers' line where the layout gave them room (not while picking: the banner and Cancel
@@ -2663,23 +2690,37 @@ function H.refresh()
 	H.refreshDetail(keys, order)
 	-- (F0 review) the pet count, the busy helpers' line and the grid's empty wells follow the pets
 	U.PetCount.Text = #order == 1 and "1 pet" or (#order .. " pets")
-	local garden, training = 0, 0
-	for _, key in ipairs(keys) do
+	-- (2026-11-28 playtest C19) slot 1 is the fighter: a gardening fighter was counted as a "helper"
+	local garden, training, fighter = 0, 0, 0
+	for i, key in ipairs(keys) do
 		local busy = Bits.busyOf(key)
 		if busy == "Training" then
 			training = training + 1
+		elseif busy and i == 1 then
+			fighter = 1
 		elseif busy then
 			garden = garden + 1
 		end
 	end
-	local lines = {}
-	if garden > 0 then
-		lines[#lines + 1] = string.format("%d %s in the garden", garden, garden == 1 and "helper" or "helpers")
+	-- (C19 review) and the counts alone, the line's short form where the named one does not fit (H.fitTeamBusy)
+	local named, counted = {}, {}
+	if fighter + garden > 0 then
+		local who = {}
+		if fighter > 0 then
+			who[#who + 1] = "1 fighter"
+		end
+		if garden > 0 then
+			who[#who + 1] = string.format("%d %s", garden, garden == 1 and "helper" or "helpers")
+		end
+		named[#named + 1] = table.concat(who, ", ") .. " in the garden"
+		counted[#counted + 1] = string.format("%d in the garden", fighter + garden)
 	end
 	if training > 0 then
-		lines[#lines + 1] = string.format("%d in training", training)
+		named[#named + 1] = string.format("%d in training", training)
+		counted[#counted + 1] = named[#named]
 	end
-	U.TeamBusy.Text = table.concat(lines, ", ")
+	S.BusyWords = { table.concat(named, ", "), table.concat(counted, ", ") }
+	H.fitTeamBusy()
 	H.fillEmpty()
 	H.showTeamExtras()
 end

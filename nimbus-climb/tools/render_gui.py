@@ -71,7 +71,7 @@ except Exception:  # pragma: no cover
 
 GRID_SIZES = [(1920, 1080), (1280, 720), (390, 844), (844, 390)]
 EGG_FILL = 0.9  # (egg-cards) HatchLook.Metrics.EGG_PIC.Fill: the egg's share of its card picture's height
-SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "match:dash", "match:full", "countdown", "party", "party:leader", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
+SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "match:dash", "match:full", "countdown", "party", "party:leader", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "pets:busy", "loss", "loss:dungeon", "loss:phone",
              "menu:Index", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # kit B U9-9: the lost match's card, the tutorial card the player opened (phones fold it), the "press L" plank
              "results:loss", "tutorial:5:open", "mousehint",

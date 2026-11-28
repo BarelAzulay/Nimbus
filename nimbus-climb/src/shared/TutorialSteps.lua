@@ -207,7 +207,8 @@ TutorialSteps.Steps = {
 		Chapter = 1,
 		ChapterEnd = true,
 		Title = "You're a Natural!",
-		Text = "That's the basics, climber! Here are {FinishTokens} Cloud Tokens to celebrate. Next up: your very own home in the sky!",
+		-- (2026-11-28 playtest C19) was "Next up: your very own home in the sky!", read after step 2 had claimed it
+		Text = "That's the basics, climber! Here are {FinishTokens} Cloud Tokens to celebrate. Next up: your home in the sky!",
 		Target = nil,
 		CompleteOn = "Next",
 		Button = "Collect!",
@@ -328,7 +329,9 @@ TutorialSteps.Steps = {
 		Id = "ring",
 		Chapter = 4,
 		Title = "The Champion Ring",
-		Text = "Claim your home, then press E at the Champion Ring portal on the plaza. Beat the champion: Cash and XP!",
+		-- (2026-11-28 playtest C19) was "Claim your home, then press E ...": at step 20 the home is long claimed (the
+		-- Ring window still says "Claim your home first" to a player without one)
+		Text = "Press E at the Champion Ring portal on the plaza and send your team in. Beat the champion: Cash and XP!",
 		Target = { Kind = "Arena", Place = "Ring", Label = "Champion Ring" },
 		CompleteOn = "RingWon",
 		Hint = "Win a round in the Champion Ring",

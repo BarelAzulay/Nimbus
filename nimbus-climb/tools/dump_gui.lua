@@ -42,8 +42,9 @@
 --                         (Tab = window tab, or the Index group, e.g. menu:Index:Mythic; Action / Key are passed along;
 --                         with an Action or Key the Phase 4 care profile below is synced first; the Shop left the menu in
 --                         lobby-shop Task 22: shop[:<tab>])
---   pets[:phone|:pick|:sheet|:<key>]  team balance: the Pets window (PetsController) with the care profile; phone = at
---                         844x390, pick = pick mode on slot 2, sheet = at 844x390 with a pet's sheet open, <key> = on that pet
+--   pets[:phone|:pick|:sheet|:busy|:<key>]  team balance: the Pets window (PetsController) with the care profile; phone = at
+--                         844x390, pick = pick mode on slot 2, sheet = at 844x390 with a pet's sheet open, busy = the fighter
+--                         and a helper gardening, the other helper training (the longest busy line), <key> = on that pet
 --   loss[:ring|:dungeon|:phone]  team balance: LossScreen after a lost run; phone = at 844x390
 --   home[:coins]          Phase 4: the Home window with the care profile (Prestige 1, the Garden with 4 places, plants,
 --                         the Food Machine, the Training Place) and the plot attributes CollectorCash / IncomePerSecond /
@@ -87,7 +88,9 @@
 --                         (Best 24); view new (no record yet) | record (default)
 --   petcards              the floating pet cards (PetController's own followers + one sample of every PetCard mode)
 --                         mirrored flat into the ScreenGui WorldMirror
---   tutorial[:<step>]     the tutorial side panel at step n (default 1)
+--   tutorial[:<step>]     the tutorial side panel at step n (default 1); tutorial:<step>:open|fold:<window> then opens a
+--                         window over it (ring, dungeon, feed, garden, train, trove, fusion, gifts, shop, pets, settings,
+--                         run = the dungeon run's chip in the chest room)
 --   npc[:<n>]             the NPC dialog of NPC n (default 1); the NPCs are built by the real NpcService
 --   dev                   the owner-only DEV panel (NC_Dev attribute), when DevController exists
 --   toasts                four side toasts (info / good / bad / token)
@@ -1384,7 +1387,7 @@ scenario("menu", function(window, tab, action, key)
 	advance(2.5)
 end)
 
--- tutorial[:<step>[:open|fold|match[:<n>|:full]|party[:leader]|countdown]]: open (kit B U9-9) taps the portrait when the
+-- tutorial[:<step>[:open|fold[:<window>]|match[:<n>|:full]|party[:leader]|countdown]]: open (kit B U9-9) taps the portrait when the
 -- screen folded the card into the bubble (a phone), so the card the player opens is drawn too; fold (Pitch 2
 -- 03_tutorial_dock B) presses the card's fold block where the card is open (PC), so the folded quest strip is drawn at every
 -- size. (look:fix6b N1) match / party / countdown: the tutorial over another HUD state, set first as the game sets it -
@@ -1457,6 +1460,53 @@ scenario("tutorial", function(step, mode, arg)
 			Mock.Click(toggle)
 			advance(1)
 		end
+	end
+	-- (2026-11-28 playtest C17 review) tutorial:<step>:open|fold:<window>: then a window opens over the guide, as the step
+	-- sends the player there (ring, dungeon, feed = the Food Machine, garden = the garden picker, train, trove, fusion,
+	-- gifts, shop, pets), so the guide is drawn as it is under it
+	local windows = {
+		ring = function()
+			SCENARIOS.ring()
+		end,
+		dungeon = function()
+			SCENARIOS.dungeon("lobby")
+		end,
+		feed = function()
+			SCENARIOS.feed()
+		end,
+		garden = function()
+			SCENARIOS.garden()
+		end,
+		train = function()
+			SCENARIOS.train()
+		end,
+		trove = function()
+			SCENARIOS.trove()
+		end,
+		fusion = function()
+			SCENARIOS.fusion()
+		end,
+		gifts = function()
+			SCENARIOS.daily()
+		end,
+		shop = function()
+			SCENARIOS.shop()
+		end,
+		pets = function()
+			SCENARIOS.pets()
+		end,
+		-- (C17 review 2) the top bar gear's Settings window (MainMenuController's), the dungeon run's chip (its chest room)
+		settings = function()
+			SCENARIOS.settings()
+		end,
+		run = function()
+			SCENARIOS.dungeon("treasure")
+			advance(4.4) -- the room's Loot toast takes the chip's place for its 4 s (smoke U97.open)
+		end,
+	}
+	if (mode == "open" or mode == "fold") and windows[arg] then
+		windows[arg]()
+		advance(1.5)
 	end
 end)
 
@@ -3572,8 +3622,15 @@ scenario("train", function(key)
 end)
 
 scenario("pets", function(view)
-	local ids = CAREUI.profile()
+	local ids, snap = CAREUI.profile()
 	local args = {}
+	if view == "busy" then
+		-- (2026-11-28 playtest C19 review) pets:busy: the team's longest busy line, the fighter and a helper in the Pet
+		-- Garden and the other helper training ("1 fighter, 1 helper in the garden, 1 in training")
+		snap.Teams = { Presets = { { ids.Garden1, ids.Epic, ids.Training }, { ids.Ready }, {} }, Active = 1, Slots = 3 }
+		toClient("ProfileSync", snap)
+		advance(0.5)
+	end
 	if view == "phone" or view == "sheet" then
 		Mock.SetViewport(844, 390)
 		advance(0.2)
@@ -3582,7 +3639,7 @@ scenario("pets", function(view)
 		args.Pick = 2
 	elseif view == "sheet" then
 		args.Key = ids.Epic
-	elseif view and view ~= "" and view ~= "phone" and view ~= "recall" then
+	elseif view and view ~= "" and view ~= "phone" and view ~= "recall" and view ~= "busy" then
 		args.Key = view
 	end
 	toClient("OpenPanel", "Pets", args)
