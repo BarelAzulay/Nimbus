@@ -3016,6 +3016,11 @@ local function clientScenarios()
 		if not phone then
 			local toast = C5.find(card, "LootToast")
 			T.check(toast and C5.shown(toast) and C5.find(toast, "Text").Text:find("+$340", 1, true), "p5dgn desktop: the loot toast 'Room 2 cleared! +$340 ...'")
+			-- (playtest 2026-11-28 C45) "3 level ups!", not "3 level up!" (a zero loot: the totals stay)
+			KC.toClient("DungeonState", "Loot", { Room = 2, Cash = 0, Tokens = 0, Xp = 0, LevelUps = 3 })
+			KC.advance(0.4)
+			local ups = toast and C5.find(toast, "Text")
+			T.check(ups ~= nil and ups.Text:find("(3 level ups!)", 1, true) ~= nil, "p5dgn desktop: the loot toast counts '3 level ups!'", ups and ups.Text or "no toast")
 		else
 			T.check(C5.find(card, "Text").Text:find("+$340", 1, true), "p5dgn phone: the chip flashes the loot", C5.find(card, "Text").Text)
 		end

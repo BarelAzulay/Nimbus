@@ -1997,6 +1997,8 @@ function ShopController.Open(args)
 	H.syncBack()
 	if focus then
 		safe("focus", ShopEggs.Focus, U.EggsPage, focus)
+	elseif not wasOpen then
+		safe("home", ShopEggs.ScrollHome, U.EggsPage) -- (playtest 2026-11-28 C18) the pill's open: the top, not the last machine
 	end
 	if not wasOpen then
 		SignKit.Rise(U.Holder) -- (Pitch 2 F0, finish pass A) the kit's open: the window rises 12 px in 3 hard steps

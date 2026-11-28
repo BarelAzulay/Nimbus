@@ -1782,12 +1782,20 @@ function H.placeWord(roll, lay)
 	local word = roll.UI.Crack
 	if word and lay then
 		local cr = lay.Crack
-		if roll.CrackWord then
-			roll.CrackWord:SetSize(cr.WordH) -- (the outline follows the size)
-		else
-			word.TextSize = cr.WordH
+		-- (playtest 2026-11-28 C30) a word wider than the screen's room shrinks to fit it: "LEGENDARY EGG!" at 40 px ran
+		-- out of its clamped box to within 5 px of both edges at 360x640
+		local size, tw = cr.WordH, H.textW(word.Text, cr.WordH, "Title")
+		local room = lay.W - 24 - 40
+		if tw > room and tw > 0 then
+			size = math.max(12, math.floor(cr.WordH * room / tw))
+			tw = H.textW(word.Text, size, "Title")
 		end
-		local w = math.min(lay.W - 24, H.textW(word.Text, cr.WordH, "Title") + 40)
+		if roll.CrackWord then
+			roll.CrackWord:SetSize(size) -- (the outline follows the size)
+		else
+			word.TextSize = size
+		end
+		local w = math.min(lay.W - 24, tw + 40)
 		H.place(word, (lay.W - w) / 2, cr.WordY, w, cr.WordH)
 	end
 end

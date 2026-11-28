@@ -1685,7 +1685,7 @@ local function milestoneToasts(player, before, after)
 		end
 	end
 	if stationLevel(before, "Garden") < 1 and stationLevel(after, "Garden") >= 1 then
-		notify(player, "Put pets in your Pet Garden: they eat and pop out rainbow coins!", "info", 6)
+		notify(player, "Put pets in your Pet Garden: they eat and pop out Cloud Cash!", "info", 6) -- (playtest 2026-11-28 C20: one name per currency)
 	end
 end
 
@@ -1946,7 +1946,7 @@ function TycoonService.Prestige(player)
 	if type(catalog.PrestigeMultiplier) == "function" then
 		mult = catalog.PrestigeMultiplier(stars)
 	end
-	local text = "Prestige " .. stars .. "! Coins x" .. multiplierText(mult) .. " forever"
+	local text = "Prestige " .. stars .. "! Cash x" .. multiplierText(mult) .. " forever" -- (playtest 2026-11-28 C20: was "Coins")
 	if gems > 0 then
 		text = text .. ", +" .. gems .. " Gems"
 	end
@@ -2087,7 +2087,7 @@ function Garden.announceSolo(player, keys)
 		list = list .. " and " .. (#keys - #names) .. " more"
 	end
 	notify(player, "New rule: a pet does one job at a time! " .. list .. (#keys == 1 and " stays" or " stay")
-		.. " with you and your team, so " .. (#keys == 1 and "it" or "they") .. " left your garden. Put other pets in the garden to keep the coins coming!", "info", 10)
+		.. " with you and your team, so " .. (#keys == 1 and "it" or "they") .. " left your garden. Put other pets in the garden to keep the Cloud Cash coming!", "info", 10) -- (C20)
 end
 
 -- after a Garden write: the coin epochs and the plot (X5 / Y8: the epoch rule, right away)

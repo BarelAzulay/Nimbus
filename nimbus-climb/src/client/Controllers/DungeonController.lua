@@ -4368,7 +4368,8 @@ function R.onState(kind, payload)
 			text = ((room >= 4) and "Boss beaten!" or ("Room " .. room .. " cleared!")) .. " +$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. " tokens +"
 				.. H.commas(payload.Xp) .. " XP"
 			if (tonumber(payload.LevelUps) or 0) > 0 then
-				text = text .. " (" .. math.floor(payload.LevelUps) .. " level up!)"
+				local ups = math.floor(payload.LevelUps) -- (playtest 2026-11-28 C45: "3 level ups!", as BattleController says it)
+				text = text .. " (" .. (ups == 1 and "1 level up!" or (ups .. " level ups!")) .. ")"
 			end
 		end
 		R.toast(text, payload.Loss and C.Blue or C.Gold, nil, "+$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. " tokens +" .. H.commas(payload.Xp) .. "XP",

@@ -148,7 +148,7 @@ PetCatalog.RoleBlurbs = {
 	Combat = "Fights in the arena with strong attacks.",
 }
 PetCatalog.StatOrder = { "Income", "Power", "Health", "Speed" }
-PetCatalog.StatNames = { Income = "Coins", Power = "Power", Health = "Health", Speed = "Speed" } -- Phase 4: pets make coins
+PetCatalog.StatNames = { Income = "Cash", Power = "Power", Health = "Health", Speed = "Speed" } -- Phase 4: pets make coins
 PetCatalog.SpecialKinds = { "Blast", "Heal", "Shield", "Storm", "Pounce", "Freeze", "Beam", "Rally", "Haste" } -- Phase 5: + Rally / Haste (Support kinds)
 PetCatalog.SupportKinds = { "Heal", "Shield", "Rally", "Haste" } -- Phase 5 contract 3.2: the kinds an Economy (Support) pet may have
 
@@ -179,7 +179,7 @@ local RAW = {
 	------------------------------------------------------------ Common (6): 3 Economy, 3 Combat
 	{
 		Id = "pebble_pup", Name = "Pebble Pup", Rarity = "Common",
-		Blurb = "A loyal little pup who fetches stray cloud tokens for you.",
+		Blurb = "A loyal little pup who fetches stray Cloud Tokens for you.", -- (playtest 2026-11-28 C20)
 		Look = {
 			Species = "Dog", Primary = C(190, 154, 114), Secondary = C(238, 222, 196), Eye = C(50, 36, 32),
 			Glow = false, WingStyle = "Feather", WingColor = C(226, 208, 182),

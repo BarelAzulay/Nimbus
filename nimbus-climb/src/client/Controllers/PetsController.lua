@@ -133,7 +133,8 @@ local TRAIN_COLOR = SIGN.Violet
 local TIER_COLORS = { Golden = Color3.fromRGB(246, 196, 64), Rainbow = Color3.fromRGB(226, 110, 214), Hybrid = Color3.fromRGB(150, 110, 232) }
 local XP_COLOR = SIGN.Sky
 -- id, name, the short name a one-line tile falls back to (LOOK-ui: "Battle powe13,213" ran into its number)
-local ROWS = { { "Income", "Coins", "Coins" }, { "Power", "Battle power", "Power" }, { "Health", "Health", "Health" }, { "Speed", "Speed", "Speed" } }
+-- (playtest 2026-11-28 C20) Income is "Cash" (Theme.Currency.Cash.Name; was "Coins")
+local ROWS = { { "Income", "Cash", "Cash" }, { "Power", "Battle power", "Power" }, { "Health", "Health", "Health" }, { "Speed", "Speed", "Speed" } }
 
 -- typography (kit-b U7b: the sword, the stars and the busy / work marks are PixelIcons, ICON; the emoji went)
 local G = {
@@ -142,7 +143,8 @@ local G = {
 }
 local ICON = { Power = "sword", Star = "star", Training = "weight", Garden = "sprout", Evolve = "sparkle" }
 -- (LOOK-ui, kitb-look1) the detail's stat tiles (icon, role colour: the pitch's .ci) and the actions' lead icons
-local ROW_LOOK = { Income = { "coin", Theme.Sign.Gold }, Power = { "sword", Theme.Sign.Red }, Health = { "heart", Theme.Sign.Roof }, Speed = { "dash", Theme.Sign.Sky } }
+-- (playtest 2026-11-28 C20) Income is Cash: the banknote (Theme.Currency.Cash.Icon); a gold coin read as Cloud Tokens
+local ROW_LOOK = { Income = { Theme.Currency.Cash.Icon or "note", Theme.Sign.Gold }, Power = { "sword", Theme.Sign.Red }, Health = { "heart", Theme.Sign.Roof }, Speed = { "dash", Theme.Sign.Sky } }
 local ACT_ICON = { ActPut = "plus", ActFeed = "apple", ActTrain = "bell", ActGarden = "sprout", ActEvolve = "sparkle", ActFighter = "sword" }
 
 local frame, text, stroke = Bits.frame, Bits.text, Bits.stroke

@@ -1454,6 +1454,44 @@ local function serverScenarios()
 		end
 		T.check(n > 20, "token glyph: the game's scripts are mounted", tostring(n))
 		T.check(#hits == 0, "token glyph: no script writes the cloud glyph (the token is its PixelIcon)", table.concat(hits, ", "))
+		-- (playtest 2026-11-28 C20) one name per currency (Theme.Currency): Cash is "Cash" ("Cloud Cash" the lawn's lore name),
+		-- never "coins" / "rainbow coins"; the tokens are "Cloud Tokens" (or "Tokens"), never "cloud token(s)" / "Cloud tokens".
+		-- Read from the string literals of every game script, comments aside ("Coins.BaseRadius" config names aside)
+		local function literals(src)
+			local out = {}
+			for line in (src .. "\n"):gmatch("([^\n]*)\n") do
+				local i, q, buf = 1, nil, nil
+				while i <= #line do
+					local c = line:sub(i, i)
+					if q then
+						if c == "\\" then
+							i = i + 1
+						elseif c == q then
+							out[#out + 1] = buf
+							q, buf = nil, nil
+						else
+							buf = buf .. c
+						end
+					elseif c == '"' or c == "'" then
+						q, buf = c, ""
+					elseif line:sub(i, i + 1) == "--" then
+						break
+					end
+					i = i + 1
+				end
+			end
+			return out
+		end
+		local stale = {}
+		for _, f in ipairs(gameSources()) do
+			for _, s in ipairs(literals(f.src)) do
+				local t = s:gsub("Coins%.%a+", "")
+				if t:find(" ", 1, true) and (t:lower():find("rainbow coin", 1, true) or t:find("%f[%a][Cc]oins%f[%A]") or t:find("cloud token", 1, true) or t:find("Cloud token", 1, true)) then
+					stale[#stale + 1] = f.inst.Name .. ": '" .. s .. "'"
+				end
+			end
+		end
+		T.check(#stale == 0, "currency words: no player text calls Cash 'coins' or spells Cloud Tokens another way (Theme.Currency names)", table.concat(stale, "; ", 1, math.min(#stale, 8)))
 		K.flushErrors("token_glyph_sources")
 	end)
 
@@ -10384,6 +10422,17 @@ local function clientScenarios()
 							why = fmt("plate %s in %s, words %s, clock %s", U8.show(r), U8.show(c), U8.show(lr), U8.show(cr))
 						end
 						T.check(ok, tag .. ": the next-boss plate inside the Boss card, its words before the clock", why)
+						-- (playtest 2026-11-28 C45) a reward tier of one gem says "1 gem" (it read "4% for 1 gems")
+						local rows, plural = 0, {}
+						for _, d in ipairs(gui:GetDescendants()) do
+							if d:IsA("TextLabel") and d.Parent and tostring(d.Parent.Name):find("^Tier_") then
+								rows = rows + 1
+								if tostring(d.Text):find("for 1 gems", 1, true) then
+									plural[#plural + 1] = d.Text
+								end
+							end
+						end
+						T.check(rows > 0 and #plural == 0, tag .. ": the raid tiers' rewards never say '1 gems'", rows .. " tier texts; " .. table.concat(plural, " | "))
 					end
 					-- (U9-7 look) the Ring's champion against the team is pinned in the team row: whole, outside the scroller, apart
 					if f[1] == "ring" then
@@ -14407,6 +14456,30 @@ local function clientScenarios()
 				and sameColor(banner.TextColor3, Sign.Text), tag .. ": the week banner is a gold block with brown words", banner and hex(banner.BackgroundColor3) or "no banner")
 			LKC.advance(3)
 		end)
+		-- (playtest 2026-11-28 C28) on the short portrait card the banner's words fit its box (at their real width, wrapped)
+		-- and the box stays off the Week Wisp plank: it was one 15 px line for two lines of text, over the plank and the blocks
+		for _, sz in ipairs({ { 360, 640 }, { 390, 844 } }) do
+			U94.at(sz[1], sz[2], true, "daily week", "Daily", "", function(tag, holder)
+				local p = U94.payload("")
+				p.Cell, p.Streak, p.Paid, p.Weeks = 7, 14, 14, 2
+				for _, d in ipairs(p.Days) do
+					d.Claimed, d.Today = true, false
+				end
+				p.ReadyAt = p.ServerNow + 20 * 3600
+				LKC.toClient("DailyState", p)
+				LKC.advance(0.1)
+				local banner = holder:FindFirstChild("WeekBanner", true)
+				local plank = banner and banner.Parent and banner.Parent:FindFirstChild("Amount")
+				if T.check(banner ~= nil and U8.shown(banner) and plank ~= nil, tag .. ": (setup) the week banner shows by the Week Wisp plank", banner and tostring(plank) or "no banner") then
+					local r, k = U8.rect(banner), U8.scaleOf(banner)
+					local px = banner.TextSize * k
+					local lines = math.ceil(SmokeCommon.RealWidth(banner.Text:upper(), px, banner.Font, true) / math.max(1, r.R - r.X - 4))
+					T.check(lines * px <= r.B - r.Y + 0.5 and not U8.overlap(r, U8.rect(plank)), tag .. ": the week banner's words fit its box, clear of the plank",
+						fmt("%d line(s) of %.1f px in %s; plank %s", lines, px, U8.show(r), U8.show(U8.rect(plank))))
+				end
+				LKC.advance(5)
+			end)
+		end
 		if GQ then
 			GQ.Effective = oldEffective
 		end

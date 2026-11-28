@@ -2105,7 +2105,7 @@ P5.STAT_TILES = {
 	{ "Matches", "Matches played", "mountain", Theme.Sign.Sky },
 	{ "Wins", "Victories", "trophy", Theme.Sign.Sky },
 	{ "WinRate", "Win rate", "target", Theme.Sign.Sky },
-	{ "Tokens", "Cloud tokens", "token", Theme.Sign.Gold }, -- the chip's coin is the token icon (U7a: no second coin)
+	{ "Tokens", "Cloud Tokens", "token", Theme.Sign.Gold }, -- (playtest 2026-11-28 C20: Theme.Currency.Tokens.Name) -- the chip's coin is the token icon (U7a: no second coin)
 	{ "Earned", "Tokens earned", "token", Theme.Sign.Gold },
 	{ "Spins", "Roulette spins", "gumball", Theme.Sign.Roof },
 	{ "Found", "Pets discovered", "book", Theme.Sign.Violet },
@@ -2491,11 +2491,11 @@ P5.HERO = {
 P5.PRESTIGE_TEXT = {
 	Reset = "Your Cash, the Cloud Cash on your lawn and your stations (not the Garden)",
 	Keep = "Pets, levels, evolutions, training, your teams, berries, the Garden and decor",
-	Gain = "Star 10: x9.31 coins, garden place 12 and 1,000 Gems",
+	Gain = "Star 10: x9.31 Cash, garden place 12 and 1,000 Gems", -- (playtest 2026-11-28 C20: Cash, not "coins")
 	Short = {
-		Reset = "Cash, lawn coins and stations (not the Garden)",
+		Reset = "Cash, lawn Cash and stations (not the Garden)",
 		Keep = "Pets, teams, berries, the Garden and decor",
-		Gain = "Star 2: x1.56 coins, garden place 5 and 25 Gems",
+		Gain = "Star 2: x1.56 Cash, garden place 5 and 25 Gems",
 	},
 }
 -- what a home gives (the claim view's "Your home" tiles)
@@ -2744,9 +2744,9 @@ do
 		elseif kind == "Garden" then
 			local lucky = tonumber(e.Lucky) or 0
 			if lucky <= 0 then
-				return "Rainbow coins"
+				return "Cloud Cash" -- (playtest 2026-11-28 C20: was "Rainbow coins")
 			end
-			return shortPercent(lucky) .. " Lucky coins"
+			return shortPercent(lucky) .. " Lucky Cash"
 		elseif kind == "FoodMachine" then
 			return "Feeds fill " .. shortPercent(e.FeedShare) .. " of a bar"
 		elseif kind == "Training" then
@@ -3361,7 +3361,7 @@ do
 				H.ConfirmLines.Reset.Text = words.Reset
 				H.ConfirmLines.Keep.Text = words.Keep
 				local places = math.min(tonumber(P.GardenSlotsMax) or 12, (tonumber(P.GardenSlotsBase) or 3) + (tonumber(P.GardenSlotsPerStar) or 1) * (stars + 1))
-				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " coins, garden place " .. places .. " and " .. commas(gems) .. " Gems"
+				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " Cash, garden place " .. places .. " and " .. commas(gems) .. " Gems"
 				if stars + 1 == (tonumber(P.FusionUnlock) or 1) then
 					gain = gain .. ", the Fusion Machine"
 				end
@@ -3577,7 +3577,7 @@ do
 				H.PrestigeNeed.TextColor3 = P5.HS.TextMuted
 			end
 			local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0
-			local reward = "Reward: x" .. shortNumber(P.IncomeMultiplier or 1.25) .. " coins forever, +1 garden place, " .. commas(gems) .. " Gems"
+			local reward = "Reward: x" .. shortNumber(P.IncomeMultiplier or 1.25) .. " Cash forever, +1 garden place, " .. commas(gems) .. " Gems"
 			if stars + 1 == (tonumber(P.FusionUnlock) or 1) then
 				reward = reward .. " + the Fusion Machine"
 			end
@@ -3623,15 +3623,15 @@ do
 			local maxPlaces = tonumber(P.GardenSlotsMax) or 12
 			H.CoinsWaiting.Text = P2.formatCash(waiting) .. " waiting"
 			H.CoinsWaiting.TextColor3 = waiting > 0 and P5.GOOD or P5.HS.TextMuted
-			H.CoinsPerMin.Text = "Coins " .. P2.formatCash(math.floor(income * 60 + 0.5)) .. "/min"
+			H.CoinsPerMin.Text = "Cash " .. P2.formatCash(math.floor(income * 60 + 0.5)) .. "/min"
 			H.Places.Text = built and ("Places " .. math.floor(open) .. "/" .. maxPlaces) or "Not built"
 			local tips = {}
 			local legacySlots = tonumber(home.LegacySlots)
 			local kept = legacySlots and legacySlots > (tonumber(P.GardenSlotsBase) or 3) + math.floor(tonumber(home.Prestige) or 0)
 			if not built then
-				tips[1] = "Build your free Pet Garden: pets eat there and pop out rainbow coins."
+				tips[1] = "Build your free Pet Garden: pets eat there and pop out Cloud Cash." -- (playtest 2026-11-28 C20)
 			elseif kept or home.LegacyPrices == true then
-				tips[1] = "Walk over your rainbow coins to scoop them!"
+				tips[1] = "Walk over your Cloud Cash to scoop it!"
 				if kept and home.LegacyPrices == true then
 					tips[2] = "Kept from your old home: " .. math.floor(legacySlots) .. " places and old prices until your next Prestige."
 				elseif kept then
@@ -3640,7 +3640,7 @@ do
 					tips[2] = "Old prices until your next Prestige."
 				end
 			else
-				tips[1] = "Walk over your rainbow coins to scoop them! " .. tostring(P.GardenSlotsBase or 3) .. " places + 1 per prestige."
+				tips[1] = "Walk over your Cloud Cash to scoop it! " .. tostring(P.GardenSlotsBase or 3) .. " places + 1 per prestige."
 			end
 			H.GardenTip.Text = table.concat(tips, " ")
 		end

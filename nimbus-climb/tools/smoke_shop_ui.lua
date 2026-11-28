@@ -2119,6 +2119,28 @@ S.client_shop_openers = guarded("client_shop_openers", function()
 		G.pill("Shop")
 		T.check(not Shop.IsOpen(), "shop openers: ...a press while it is open closes it")
 
+		-- (playtest 2026-11-28 C18) a machine's open scrolls the Eggs page to its card; the next plain pill open starts at the
+		-- top again (it kept the machine's scroll: the Secret hero's title and odds cut at 1274x580), on PC and on a phone
+		for _, sz in ipairs({ { 1274, 580 }, { 844, 390 } }) do
+			Mock.SetViewport(sz[1], sz[2])
+			G.advance(0.5)
+			Shop.Open({ RouletteId = "Celestial" })
+			G.advance(3)
+			Shop.Close()
+			G.advance(0.4)
+			G.pill("Shop")
+			G.advance(0.4)
+			local eggs = G.find(G.win(), "Page_Eggs")
+			local sc, row = eggs and G.find(eggs, "Scroll"), eggs and G.find(eggs, "Cards")
+			T.check(Shop.Tab() == "Eggs" and sc ~= nil and row ~= nil and sc.CanvasPosition.Y < 1 and row.CanvasPosition.X < 1,
+				fmt("shop openers %dx%d: after a machine's focus, the pill's open starts the Eggs page at the top", sz[1], sz[2]),
+				fmt("tab %s, scroll %s, row %s", tostring(Shop.Tab()), sc and tostring(sc.CanvasPosition) or "none", row and tostring(row.CanvasPosition) or "none"))
+			Shop.Close()
+			G.advance(0.4)
+		end
+		Mock.SetViewport(1920, 1080)
+		G.advance(0.5)
+
 		-- the Pets window's Open Shop button (no pets yet) -> Eggs, not the last tab
 		MC.Open("Pets")
 		G.advance(0.6)

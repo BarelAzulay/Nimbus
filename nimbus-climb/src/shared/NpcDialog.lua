@@ -422,7 +422,7 @@ NpcDialog.Npcs = {
 		Accent = Color3.fromRGB(240, 174, 70),
 		Keywords = { "yours to keep", "Dungeon", "Training Place", "Champion Ring", "record", "Open Pets", "trophies", "fighter", "helpers" },
 		Lines = {
-			"Woof! Coins you grab on a climb are yours to keep. Open Pets, then duel friends in the arena: +" .. trophyWin .. " trophies a win!",
+			"Woof! Cloud Tokens you grab on a climb are yours to keep. Open Pets, then duel friends in the arena: +" .. trophyWin .. " trophies a win!",
 			"The Dungeon portal on the plaza has " .. floorCount .. " floors of rooms, waves and bosses. Every first clear pays big token bonuses and Gems!",
 			trainLine(skillList),
 			"Try the Champion Ring on the plaza: one champion after another, each stronger. Beat your record for "
@@ -443,7 +443,7 @@ NpcDialog.Npcs = {
 			"Your garden pets roam your yard, eat at the Food Bowl and poop Cloud Cash. Only you can scoop it: walk over it!",
 			"Level up your Berry Farm: bigger berries make bigger Cloud Cash, and more berries for the Food Machine!",
 			"Home Level " .. prestigeLevel .. " and a " .. castleName .. "? Prestige! You get x" .. prestigeMul
-				.. " coins forever, " .. prestigeGems .. " Gems and " .. placeWord .. ".",
+				.. " Cash forever, " .. prestigeGems .. " Gems and " .. placeWord .. ".",
 			"Tap Home in the menu to see your stations. Go home opens a magic portal just for you and your pets!",
 		},
 	},
