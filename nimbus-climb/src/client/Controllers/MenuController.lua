@@ -738,18 +738,14 @@ end
 -- (playtest 2026-11-28 C24: the hint, centred on the column, lay on the vitals card's name plank at 640 x 360 / 844 x 390
 -- and reached the Gift block at 360 x 640) its centre moved (from the column's, Hint.BaseY) so the block ends GAP above
 -- the vitals card's name tab and starts GAP under the gift, where it shares their columns (NimbusHud's published rects);
--- where both cannot hold, the vitals card wins
-function P5.clampHint()
-	local f = Hint.Frame
+-- where both cannot hold, the vitals card wins.
+-- (C24 round 2: at 568 x 320 the vitals' limit lifted the block 34 px over the gui's top, under the top bar's pill; on the
+-- party pad at 360 x 640 it ended on RUN) the touch keys in its columns are limits too (above: under them; below: over
+-- them), as the vitals card; where the limits cross, the text wraps wider (fewer lines, a shorter block) up to the room
+-- left of the HUD's top-right block; and the block's top never goes over the gui's top + 4 px
+function P5.hintLimits(x0, w, h, cy)
 	local hud = gui and gui.Parent and gui.Parent:FindFirstChild("NimbusHud")
-	if not (f and Hint.Scale) then
-		return
-	end
-	local s = Hint.Scale.Scale
-	local w, h = f.Size.X.Offset * s, f.Size.Y.Offset * s
-	local x0 = f.Position.X.Offset
 	local x1 = x0 + w
-	local cy = Hint.BaseY or f.Position.Y.Offset
 	local GAP = 8
 	local lo, hi = h / 2 + 4, math.huge
 	local function num(name)
@@ -763,7 +759,112 @@ function P5.clampHint()
 	if vt and vl and vr and vt > 0 and x1 + GAP > vl and x0 - GAP < vr then
 		hi = vt - GAP - h / 2
 	end
-	cy = math.min(math.max(cy, lo), hi)
+	local mobile = gui and gui.Parent and gui.Parent:FindFirstChild("MobileControls")
+	if mobile and mobile:IsA("LayerCollector") and mobile.Enabled then
+		local dy = mobile.IgnoreGuiInset and P5.inset() or 0 -- (its keys in our gui-area px)
+		for _, key in ipairs(mobile:GetDescendants()) do
+			if key:IsA("GuiButton") and key.Visible and key.AbsoluteSize.X > 0 then
+				local kx0, ky0 = key.AbsolutePosition.X, key.AbsolutePosition.Y - dy
+				local kx1, ky1 = kx0 + key.AbsoluteSize.X, ky0 + key.AbsoluteSize.Y
+				local shown = true
+				local cur = key.Parent
+				while cur and cur ~= mobile do
+					if cur:IsA("GuiObject") and not cur.Visible then
+						shown = false
+					end
+					cur = cur.Parent
+				end
+				if shown and x1 + GAP > kx0 and x0 - GAP < kx1 then
+					if (ky0 + ky1) / 2 > cy then
+						hi = math.min(hi, ky0 - GAP - h / 2)
+					else
+						lo = math.max(lo, ky1 + GAP + h / 2)
+					end
+				end
+			end
+		end
+	end
+	return lo, hi, num("TopRightLeft"), gl
+end
+
+function P5.clampHint()
+	local f = Hint.Frame
+	if not (f and Hint.Scale) then
+		return
+	end
+	local base = Hint.MaxW or 300
+	local s = Hint.ReadScale or Hint.Scale.Scale -- (the screen's read scale relayoutMenu set; a block shrunk below is put back)
+	if Hint.Wide then
+		-- (widened or shrunk for an earlier screen) back to the column's width and the read scale first
+		Hint.Wide = nil
+		Hint.Scale.Scale = s
+		P5.sizeHint(base)
+	end
+	local x0 = f.Position.X.Offset
+	local cy = Hint.BaseY or f.Position.Y.Offset
+	local w, h = f.Size.X.Offset * s, f.Size.Y.Offset * s
+	local lo, hi, blockLeft, giftLeft = P5.hintLimits(x0, w, h, cy)
+	if hi < lo and Hint.Label and Hint.Label.Text ~= "" then
+		-- the limits cross: wider, so fewer lines, while the block stays left of the HUD's top-right block (and the gift);
+		-- then (568 x 320: no room to widen) the block a little smaller, its text never under 14 screen px
+		local right = (gui and gui.AbsoluteSize.X or 0) - 8
+		for _, edge in ipairs({ blockLeft or 0, giftLeft or 0 }) do
+			if edge > x0 then
+				right = math.min(right, edge - 8)
+			end
+		end
+		local chrome = 28 + Hint.CHIP + Hint.CHIP_GAP -- (the block's padding and the chip beside the text, design px)
+		local floorScale = 14 / math.max(1, Hint.Label.TextSize)
+		local scales = { s }
+		for sc = s - 0.05, floorScale, -0.05 do
+			scales[#scales + 1] = sc
+		end
+		if s > floorScale then
+			scales[#scales + 1] = floorScale
+		end
+		local fits = false
+		local best = { Short = lo - hi, Scale = s, MaxW = base }
+		for _, sc in ipairs(scales) do
+			local most = math.floor((right - x0) / sc) - chrome
+			local tries = {}
+			if sc < s then
+				tries[1] = base
+			end
+			for maxW = base + 20, most - 1, 20 do
+				tries[#tries + 1] = maxW
+			end
+			if most > base then
+				tries[#tries + 1] = most -- (the whole room last)
+			end
+			for _, maxW in ipairs(tries) do
+				Hint.Scale.Scale = sc
+				P5.sizeHint(maxW)
+				Hint.Wide = true
+				w, h = f.Size.X.Offset * sc, f.Size.Y.Offset * sc
+				lo, hi = P5.hintLimits(x0, w, h, cy)
+				if hi >= lo then
+					fits = true
+					break
+				end
+				if lo - hi < best.Short - 0.5 then
+					best = { Short = lo - hi, Scale = sc, MaxW = maxW }
+				end
+			end
+			if fits then
+				break
+			end
+		end
+		if not fits and Hint.Wide then
+			-- nothing fits: the shortest block tried (the least it lies over), the vitals card's limit over the gift's, the
+			-- top's over both
+			Hint.Scale.Scale = best.Scale
+			P5.sizeHint(best.MaxW)
+			Hint.Wide = best.Scale ~= s or best.MaxW ~= base or nil
+			w, h = f.Size.X.Offset * best.Scale, f.Size.Y.Offset * best.Scale
+			lo, hi = P5.hintLimits(x0, w, h, cy)
+		end
+	end
+	cy = math.max(math.min(math.max(cy, lo), hi), h / 2 + 4)
 	f.Position = UDim2.new(0, x0, 0, math.floor(cy + 0.5))
 end
 
@@ -782,7 +883,20 @@ function showHint(text, kind)
 		lip.BackgroundColor3 = HINT_LIP[kind or "info"] or SIGN.StoneLip
 	end
 	P5.paintHintChip(kind)
-	local maxW = Hint.MaxW or 300
+	Hint.Wide = nil
+	Hint.Scale.Scale = Hint.ReadScale or Hint.Scale.Scale -- (a block shrunk for the last text: the screen's read scale back)
+	P5.sizeHint(Hint.MaxW or 300)
+	P5.clampHint()
+	Hint.Frame.Visible = true
+	task.delay(K.HINT_SECONDS, function()
+		if Hint.Token == mine and Hint.Frame then
+			Hint.Frame.Visible = false
+		end
+	end)
+end
+
+-- the hint's block for its text wrapped at `maxW` design px: one line when it fits, the label as tall as its lines
+function P5.sizeHint(maxW)
 	local width = maxW
 	local ok, bounds = pcall(function()
 		return Theme.MeasureLabel(Hint.Label, Hint.Label.Text, Hint.Label.TextSize, 4000)
@@ -817,13 +931,6 @@ function showHint(text, kind)
 	Hint.Label.Size = UDim2.fromOffset(width, textH)
 	Hint.Label.Position = UDim2.fromOffset(Hint.CHIP + Hint.CHIP_GAP, math.floor((rowH - textH) / 2))
 	Hint.Frame.Size = UDim2.fromOffset(width + 28 + Hint.CHIP + Hint.CHIP_GAP, rowH + 16 + CloudUI.SignMetrics.Lip)
-	P5.clampHint()
-	Hint.Frame.Visible = true
-	task.delay(K.HINT_SECONDS, function()
-		if Hint.Token == mine and Hint.Frame then
-			Hint.Frame.Visible = false
-		end
-	end)
 end
 
 ----------------------------------------------------------------------
@@ -1930,6 +2037,7 @@ function relayoutMenu()
 		local hintLeft = left + w * scale + 10
 		local room = math.max(120, area.X * 0.34 - hintLeft - 28 * factor)
 		Hint.Scale.Scale = factor
+		Hint.ReadScale = factor -- (C24 round 2: P5.clampHint may shrink the block a little, never under this read scale's 14 px floor)
 		Hint.BaseY = math.floor(top + h * scale / 2 + 0.5) -- (playtest 2026-11-28 C24: P5.clampHint moves it off the HUD)
 		Hint.Frame.Position = UDim2.new(0, hintLeft, 0, Hint.BaseY)
 		Hint.MaxW = math.min(300, math.floor(room / factor))

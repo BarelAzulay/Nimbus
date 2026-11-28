@@ -1820,6 +1820,51 @@ local function clientScenarios()
 				end
 			end
 		end
+		-- (C48 round 2: the reported case had no check, a Leave tap on the dungeon run chip opening Dev Tools at 667 x 375) in a
+		-- dungeon run's room fight (BattleController's keys, DungeonController's run chip with its Leave): the tile keeps 12 px
+		-- off the run chip, its Leave and every battle key (the Commands cluster's buttons), as off RUN / DASH
+		local BH = _G.P5BattleH
+		local BCm = BH and BH.load and BH.load()
+		if T.check(BH ~= nil and BCm ~= nil, "DEV (phone) dungeon run: (setup) the battle helpers and BattleController") then
+			for _, size in ipairs({ { 667, 375 }, { 640, 360 } }) do
+				Mock.SetViewport(size[1], size[2])
+				advance(0.6)
+				local label = "DEV phone " .. size[1] .. "x" .. size[2] .. " dungeon run"
+				local d = BH.dungeon(4, true)
+				if T.check(d ~= nil, label .. ": (setup) a dungeon room fight") then
+					BH.begin(d)
+					d:run(1, 30)
+					KC.toClient("DungeonState", "Run", { RunId = d.id, Floor = 3, Name = "Flooded Vaults", Element = "Water", Room = 2, RoomCount = 4, Wave = 2,
+						Waves = 2, State = "Fight", Members = { { UserId = LocalPlayer.UserId, Name = LocalPlayer.Name, Downed = false, Left = false } }, Joinable = true })
+					advance(1.2)
+					local runGui = playerGui():FindFirstChild("NimbusDungeonRun")
+					local chip = named(runGui, "RunChip")
+					local leave = named(chip, "LeaveButton") -- (the chip's own Leave; the run card has one too)
+					local battle = playerGui():FindFirstChild("NimbusBattle")
+					local commands = battle and named(battle, "Commands")
+					if T.check(shown(chip) and shown(leave) and commands ~= nil, label .. ": (setup) the run chip, its Leave and the battle keys show",
+						string.format("chip %s, leave %s, commands %s, run gui %s", tostring(shown(chip)), tostring(shown(leave)), tostring(commands ~= nil), tostring(runGui and runGui.Enabled))) then
+						checkTile(label, 14)
+						local r = rect(named(devGui(), "DevTile"))
+						local parts = { { "the run chip", chip }, { "the run chip's Leave", leave } }
+						for _, b in ipairs(commands:GetChildren()) do
+							if b:IsA("GuiObject") and shown(b) and b.AbsoluteSize.X > 0 then
+								parts[#parts + 1] = { "the battle key " .. b.Name, b }
+							end
+						end
+						for _, p in ipairs(parts) do
+							local k = rect(p[2])
+							local air = math.max(k.x0 - r.x1, r.x0 - k.x1, k.y0 - r.y1, r.y0 - k.y1)
+							T.check(air >= 12, label .. ": the DEV button keeps 12 px off " .. p[1], string.format("tile %d,%d..%d,%d, part %d,%d..%d,%d, air %.1f",
+								r.x0, r.y0, r.x1, r.y1, k.x0, k.y0, k.x1, k.y1, air))
+						end
+					end
+					BH.cleanup(BCm, d)
+					KC.toClient("DungeonState", "Lobby", { Parties = {}, Mine = nil })
+					advance(0.6)
+				end
+			end
+		end
 		Mock.SetViewport(390, 844)
 		setHint(ATTR, nil)
 		advance(0.6)

@@ -1284,6 +1284,7 @@ function Fx.Number(adornee, height, text, color, px, life)
 	n.lift = 0 -- (Fx.Pop: px its total stands over the unit's plate)
 	n.jx = (math.random() - 0.5) * 1.4
 	n.gui.StudsOffset = Vector3.new(n.jx, height, 0)
+	n.gui.StudsOffsetWorldSpace = Vector3.new(0, 0, 0) -- (C60 round 2: a boss's pop takes its total's world height, Fx.Pop)
 	n.gui.SizeOffset = Vector2.new(0, 0) -- (Pitch 2 item 04) a hit's pop moves beside its total (the hit handler)
 	n.gui.Enabled = true
 	St.numbers[#St.numbers + 1] = n
@@ -1327,12 +1328,21 @@ function Fx.UpdateNumbers(now)
 	end
 end
 
+-- (C60 round 2: over a boss the total stood at Root + height + 1.4, inside the focus arrow's span, and its opaque
+-- AlwaysOnTop chip hid "who my pet attacks") the studs over a boss's Root the focus arrow reaches at most: its anchor
+-- (Units.UpdateFocus: height + 2), its 0.35 bob and its top half (the Part arrow's 0.25, the fx_arrow mesh's 0.41 at 1.4)
+Fx.ARROW_OVER = 0.8
+function Fx.ArrowTop(u)
+	return (u.height or 20) + 2 + Fx.ARROW_OVER
+end
+
 -- the studs over a unit's centre its numbers start at (a boss's over its head)
 function Fx.NumberHeight(u)
 	if u.isBoss then
 		-- (playtest 2026-11-28 C60: height x 0.5 + 2 put the total mid-body on a 20-stud boss) BossBuilder roots a boss at its
-		-- feet (buildUnit's worldFrame at y 0; the lock mark's top is height + 2 too): over its head is the whole height
-		return (u.height or 20) + 2
+		-- feet (buildUnit's worldFrame at y 0; the lock mark's top is height + 2 too): over its head is the whole height,
+		-- (round 2) and over the focus arrow there (the total stands on the arrow's top: Fx.Total)
+		return Fx.ArrowTop(u) + 0.6
 	end
 	return (u.height or 3) / 2 + 1.8
 end
@@ -1468,12 +1478,19 @@ function Fx.Total(u, dmg)
 	-- plate's own anchor, its chip K.TOTAL_GAP px over the plate's top edge (SizeOffset: a share of its own px size, true
 	-- at every distance and screen). No plate (a raid boss): over its head as before
 	local plate = Fx.PlateOf(u)
-	local height, lift = Fx.NumberHeight(u) - 0.6, 0
+	local height, lift, world = Fx.NumberHeight(u) - 0.6, 0, 0
 	if plate then
 		height = plate.StudsOffset.Y
 		lift = plate.Size.Y.Offset / 2 + Theme.ScaledSize(K.TOTAL_GAP, 3) + (t.chip.Size.Y.Offset + 2 * K.TOTAL_EDGE) / 2
+	elseif u.isBoss then
+		-- (C60 round 2) a boss: on the focus arrow's top (Fx.ArrowTop), the whole chip K.TOTAL_GAP px over it at every
+		-- distance. The arrow stands in world studs (Units.UpdateFocus), so the anchor does too: a camera-space StudsOffset
+		-- of ~28 studs leans with the camera's tilt and would drift off the arrow
+		height, world = 0, Fx.ArrowTop(u)
+		lift = Theme.ScaledSize(K.TOTAL_GAP, 3) + (t.chip.Size.Y.Offset + 2 * K.TOTAL_EDGE) / 2
 	end
 	t.lift = lift
+	t.gui.StudsOffsetWorldSpace = Vector3.new(0, world, 0)
 	t.gui.StudsOffset = Vector3.new(0, height, 0)
 	t.gui.SizeOffset = Vector2.new(0, lift / max(1, t.gui.Size.Y.Offset))
 	t.gui.Enabled = true
@@ -1501,6 +1518,7 @@ function Fx.Pop(u, adornee, height, text, color, px, dmg)
 		-- the total's anchor, lifted the same px (the stack below adds the lift to its steps)
 		pop.base, pop.lift = total.gui.StudsOffset.Y + 0.6, total.lift or 0
 		pop.gui.StudsOffset = Vector3.new(pop.jx, pop.base, 0)
+		pop.gui.StudsOffsetWorldSpace = total.gui.StudsOffsetWorldSpace -- (C60 round 2: a boss's total stands in world studs)
 	end
 	if type(u) ~= "table" then
 		return pop, total

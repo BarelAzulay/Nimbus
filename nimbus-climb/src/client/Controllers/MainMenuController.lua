@@ -1776,24 +1776,34 @@ end
 -- board's PLAY / UPDATES cut in half where Win.clearOfBoard gave up narrowing, and the HUD's wallet strip beside the
 -- awning after PLAY) on a landscape screen a window that still meets the board hides the board (Win.close brings it back,
 -- as a portrait sheet's); on a landscape touch screen the currency strips step aside while the window's column reaches
--- under them (HudController.SetCurrencyHidden "MainMenuWin", let go by Win.close)
+-- under them (HudController.SetCurrencyHidden "MainMenuWin", let go by Win.close).
+-- (C27 round 2: on the touch tablets, 1024 x 768 .. 1366 x 1024, the window starts 100+ px under the strips, yet a test of
+-- x alone hid the wallet while Settings / What's New / Credits was open) the window's docked box (NeonKit.Dock's Rect, not
+-- the holder's AbsolutePosition of the frame that placed it) with its awning decides, by HudController.Overlaps, as the
+-- game's windows do (MenuController's HideCurrency "Over")
 function Win.cover(holder)
 	local vp = H.viewport()
-	if vp.X <= vp.Y or not (holder and holder.Parent) then
+	local rect = M.Win.Dock and M.Win.Dock.Rect
+	if vp.X <= vp.Y or not (holder and holder.Parent and rect) then
 		return
 	end
 	local board = M.Ui and M.Ui.Board
 	if board and board.Parent and M.Ui.Swing and M.Ui.Swing.Visible ~= false then
 		local right = board.AbsolutePosition.X + board.AbsoluteSize.X + 3 + 5 + 4 + 5 -- (Win.clearOfBoard's edge)
-		if right > holder.AbsolutePosition.X then
+		if right > rect.x then
 			M.Ui.Swing.Visible = false
 		end
 	end
 	local uis = game:GetService("UserInputService")
-	local pg = H.playerGui()
-	local hud = pg and pg:FindFirstChild("NimbusHud")
-	local left = hud and tonumber(hud:GetAttribute("TopRightLeft")) or 0
-	Win.strips(uis.TouchEnabled and left > 0 and left < holder.AbsolutePosition.X + holder.AbsoluteSize.X)
+	local hud = H.mod("HudController")
+	local over = false
+	if uis.TouchEnabled and hud and type(hud.Overlaps) == "function" then
+		-- (the awning: SignKit.Roof seated at RoofSeat(HEAD_Y), over the window's top by that many design px)
+		local above = math.max(0, -SignKit.RoofSeat(K.WIN.HEAD_Y)) * (rect.scale or 1)
+		local ok, _, strips = pcall(hud.Overlaps, rect, above)
+		over = ok and strips == true
+	end
+	Win.strips(over)
 end
 
 function Win.strips(on)

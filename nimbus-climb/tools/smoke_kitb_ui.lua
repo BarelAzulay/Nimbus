@@ -5083,30 +5083,35 @@ local function clientScenarios()
 				end
 				return mockMeasure(text, role, size, width)
 			end
-			for _, s in ipairs({ { 640, 360, "Touch" }, { 667, 375, "Touch" }, { 844, 390, "Touch" }, { 390, 844, "Touch" }, { 1280, 720, "Keyboard" } }) do
-				local tag = s[1] .. "x" .. s[2]
-				local holder = WinH.open("Updates", { Size = s, Input = s[3] })
-				if T.check(holder ~= nil, "updates ribbon: the window opens at " .. tag) then
-					local title, close = nil, nil
-					for _, d in ipairs(holder:GetDescendants()) do
-						if d:IsA("TextLabel") and d.Name == "Title" and d:GetAttribute("TitleLook") == "Ribbon" then
-							title = title or d
-						elseif d:IsA("GuiButton") and d.Name == "Close" and d.AbsoluteSize.X > 0 then
-							close = close or d
+			-- (C25 round 2: an error between the swap and the last line left the real-width measure installed for the rest
+			-- of the client world) the sizes run in their own pcall; the mock's measure comes back on every path
+			local okFit, errFit = pcall(function()
+				for _, s in ipairs({ { 640, 360, "Touch" }, { 667, 375, "Touch" }, { 844, 390, "Touch" }, { 390, 844, "Touch" }, { 1280, 720, "Keyboard" } }) do
+					local tag = s[1] .. "x" .. s[2]
+					local holder = WinH.open("Updates", { Size = s, Input = s[3] })
+					if T.check(holder ~= nil, "updates ribbon: the window opens at " .. tag) then
+						local title, close = nil, nil
+						for _, d in ipairs(holder:GetDescendants()) do
+							if d:IsA("TextLabel") and d.Name == "Title" and d:GetAttribute("TitleLook") == "Ribbon" then
+								title = title or d
+							elseif d:IsA("GuiButton") and d.Name == "Close" and d.AbsoluteSize.X > 0 then
+								close = close or d
+							end
+						end
+						if T.check(title ~= nil and close ~= nil, "updates ribbon: (setup) the ribboned title and Close at " .. tag) then
+							local scale = LoadingH.shared("SignKit").LayoutScale(title)
+							local boxW = title.AbsoluteSize.X / math.max(scale, 0.01)
+							local w = real(Theme.Caps(title.Text), title.TextSize, Enum.Font.FredokaOne, true) or 0
+							T.check(w + 4 <= boxW + 0.5 and title.AbsolutePosition.X + title.AbsoluteSize.X <= close.AbsolutePosition.X + 0.5,
+								"updates ribbon: the title and its ribbon's least pads fit the box left of Close (real widths) at " .. tag,
+								fmt("%q %.1f + 4 in %.1f at %d px", title.Text, w, boxW, title.TextSize))
 						end
 					end
-					if T.check(title ~= nil and close ~= nil, "updates ribbon: (setup) the ribboned title and Close at " .. tag) then
-						local scale = LoadingH.shared("SignKit").LayoutScale(title)
-						local boxW = title.AbsoluteSize.X / math.max(scale, 0.01)
-						local w = real(Theme.Caps(title.Text), title.TextSize, Enum.Font.FredokaOne, true) or 0
-						T.check(w + 4 <= boxW + 0.5 and title.AbsolutePosition.X + title.AbsoluteSize.X <= close.AbsolutePosition.X + 0.5,
-							"updates ribbon: the title and its ribbon's least pads fit the box left of Close (real widths) at " .. tag,
-							fmt("%q %.1f + 4 in %.1f at %d px", title.Text, w, boxW, title.TextSize))
-					end
+					WinH.close()
 				end
-				WinH.close()
-			end
+			end)
 			Theme.Measure = mockMeasure
+			T.check(okFit, "updates ribbon: the real-width fit ran (and the mock's measure is back)", tostring(errFit))
 		end)
 		WinH.close()
 		T.check(ok, "updates kit: the scenario ran", tostring(err))
@@ -5129,8 +5134,16 @@ local function clientScenarios()
 			end
 			return cur ~= nil and cur.Enabled ~= false
 		end
+		-- (C27 round 2: the strips' rule tested x alone, as the code did; on the touch tablets the window starts 100+ px under
+		-- the strips and the wallet still went) a box in screen px (a gui under the top bar is shifted down by it)
+		local function screenBox(o)
+			local p, sz = o.AbsolutePosition, o.AbsoluteSize
+			local sg = o:FindFirstAncestorOfClass("ScreenGui")
+			local dy = (sg and not sg.IgnoreGuiInset) and (Mock.TopInset or 0) or 0
+			return { X = p.X, Y = p.Y + dy, R = p.X + sz.X, B = p.Y + sz.Y + dy }
+		end
 		local ok, err = pcall(function()
-			for _, s in ipairs({ { 640, 360, "Touch" }, { 667, 375, "Touch" }, { 844, 390, "Touch" } }) do
+			for _, s in ipairs({ { 640, 360, "Touch" }, { 667, 375, "Touch" }, { 844, 390, "Touch" }, { 1024, 768, "Touch" } }) do
 				MenuH.open({ Size = { s[1], s[2] }, Input = s[3] }) -- (the title screen up: its board in its Swing)
 				for _, which in ipairs({ "Settings", "Updates", "Credits" }) do
 					local tag = fmt("menu cover %s %dx%d", which, s[1], s[2])
@@ -5153,9 +5166,27 @@ local function clientScenarios()
 						if s[1] == 844 then
 							T.check(shownIn(swing), tag .. ": the board stays where the window narrows clear of it")
 						end
-						local left = hud and tonumber(hud:GetAttribute("TopRightLeft")) or 0
-						if strips and left > 0 and left < hx + holder.AbsoluteSize.X then
-							T.check(not strips.Visible, tag .. ": the currency strips step aside under the window's column")
+						if strips then
+							-- the window's ink (its awning over its top) against the strips' box: lying over them (more than a
+							-- shared 4 px), they step aside; clear of them (the tablets: the window starts well under them), they stay
+							local w = screenBox(holder)
+							for _, d in ipairs(holder:GetDescendants()) do
+								if d:IsA("GuiObject") and shownIn(d) and d.AbsoluteSize.X > 0 then
+									w.Y = math.min(w.Y, screenBox(d).Y)
+								end
+							end
+							local sr = screenBox(strips)
+							-- (the strips' box runs down to the gift's dock under them, as HudController.Overlaps documents it)
+							local gs, gt, gl = tonumber(hud:GetAttribute("GiftSize")) or 0, tonumber(hud:GetAttribute("GiftTop")) or 0, tonumber(hud:GetAttribute("GiftLeft")) or 0
+							if gs > 0 and gl >= sr.X - 0.5 then
+								sr.B = math.max(sr.B, gt + (Mock.TopInset or 0))
+							end
+							local over = math.min(w.R, sr.R) - math.max(w.X, sr.X) > 4 and math.min(w.B, sr.B) - math.max(w.Y, sr.Y) > 4
+							T.check(strips.Visible == not over, tag .. (over and ": the currency strips step aside under the window" or ": the currency strips stay (the window is clear of them)"),
+								fmt("window %d,%d..%d,%d, strips %d,%d..%d,%d, strips shown %s", w.X, w.Y, w.R, w.B, sr.X, sr.Y, sr.R, sr.B, tostring(strips.Visible)))
+							if s[1] == 1024 then
+								T.check(not over, tag .. ": (setup) on the tablet the window starts under the strips", fmt("window top %d, strips bottom %d", w.Y, sr.B))
+							end
 						end
 					end
 					WinH.close()
@@ -6872,32 +6903,74 @@ local function clientScenarios()
 	-- (playtest 2026-11-28 C24: the side hint, centred on the menu column, lay on the vitals card's name plank at 640 x 360 /
 	-- 844 x 390 and reached the Gift block at 360 x 640) on the phones the hint keeps 6 px off the vitals card (its name tab
 	-- counted) and off the gift
+	-- (C24 round 2: at 568 x 320 the vitals' limit lifted the hint 34 px over the gui's top, its first line under the top
+	-- bar's pill; on the party pad at 360 x 640 it ended on RUN) the game's RUN / DASH on the touch screens (MovementController
+	-- builds them: the client world boots as a desktop), the hint 6 px off each; 568 x 320 and the party pad at 360 x 640
+	-- added: its top never over the gui's top + 4 px. At 568 x 320 nothing fits between that top and the name tab with 6 px
+	-- (a 4-line block at the 14 px floor is 84 px, the room 78): there it shrinks to the floor and may only meet the tab, never
+	-- lie on it
 	S.hint_clear_of_hud = guarded("hint_clear_of_hud", function()
 		local MC = U7.client("Controllers/MenuController")
-		for _, s in ipairs({ { 640, 360, true }, { 667, 375, true }, { 844, 390, true }, { 360, 640, true }, { 390, 844, true }, { 1280, 720, false } }) do
-			U8.at(s[1], s[2], s[3], "side hint", function(tag)
+		local Move = U7.client("Controllers/MovementController")
+		local lp = game:GetService("Players").LocalPlayer
+		for _, s in ipairs({ { 640, 360, true }, { 667, 375, true }, { 844, 390, true }, { 360, 640, true }, { 390, 844, true }, { 1280, 720, false },
+			{ 568, 320, true }, { 360, 640, true, "pad" } }) do
+			U8.at(s[1], s[2], s[3], s[4] and "side hint (party pad)" or "side hint", function(tag)
+				local keysOn = s[3] and Move and Move._TouchButtons and Move._TouchButtons(true)
+				if s[4] then
+					LKC.toClient("PartyState", { PortalId = "Obby", Level = "Hard", Stars = 3, LeaderUserId = 77, DifficultyName = "Hard",
+						Players = { { UserId = 77, Name = "Buddy" }, { UserId = lp.UserId, Name = lp.Name } }, Max = 4, Countdown = 12, Locked = true })
+					lp:SetAttribute("PortalLocked", "Obby")
+				end
+				LKC.advance(1.2) -- (the HUD's layout poll: the vitals card and the gift step round the keys)
 				MC.Hint("Claim a home first: tap the button at a free gate.", "bad")
 				LKC.advance(0.1)
 				local pg = U8.pg()
 				local hint = pg:FindFirstChild("MenuHint", true)
-				if not T.check(hint ~= nil and U8.shown(hint), tag .. ": (setup) the side hint shows") then
-					return
+				local ok = T.check(hint ~= nil and U8.shown(hint), tag .. ": (setup) the side hint shows")
+				if ok then
+					local h = U8.rect(hint)
+					local short = s[1] == 568
+					local hud = pg:FindFirstChild("NimbusHud")
+					local vt = hud and tonumber(hud:GetAttribute("BottomCentreTop"))
+					local vl, vr = hud and tonumber(hud:GetAttribute("BottomCentreLeft")), hud and tonumber(hud:GetAttribute("BottomCentreRight"))
+					if vt and vl and vr and vt > 0 and h.R > vl and h.X < vr then
+						T.check(h.B <= vt - (short and 0 or 6), tag .. ": the hint ends above the vitals card's name tab" .. (short and " (568 x 320: it may meet it)" or ""),
+							fmt("hint %s, tab top %.0f", U8.show(h), vt))
+					end
+					T.check(h.Y >= 4 - 0.5, tag .. ": the hint's top stays in the gui (4 px under its top: never under Roblox's top bar)", U8.show(h))
+					local label = hint:FindFirstChild("Text")
+					T.check(label ~= nil and label.TextSize * U8.scaleOf(label) >= 14 - 0.01, tag .. ": the hint's words stay >= 14 px",
+						label and fmt("%d x %.2f", label.TextSize, U8.scaleOf(label)) or "-")
+					local daily = pg:FindFirstChild("NimbusDaily")
+					local gift = daily and daily:FindFirstChild("GiftsButton", true)
+					if gift and U8.shown(gift) and not s[4] then
+						local g = U8.rect(gift)
+						local air = math.max(g.X - h.R, h.X - g.R, g.Y - h.B, h.Y - g.B)
+						T.check(air >= 6, tag .. ": the hint keeps 6 px off the gift", fmt("hint %s, gift %s, air %.1f", U8.show(h), U8.show(g), air))
+					end
+					local mobile = pg:FindFirstChild("MobileControls")
+					local keys = 0
+					for _, d in ipairs(mobile and mobile:GetDescendants() or {}) do
+						if d:IsA("GuiButton") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+							keys = keys + 1
+							local k = U8.rect(d)
+							local dy = mobile.IgnoreGuiInset and (Mock.TopInset or 0) or 0 -- (one space: the gui area's)
+							k = { X = k.X, R = k.R, Y = k.Y - dy, B = k.B - dy }
+							local air = math.max(k.X - h.R, h.X - k.R, k.Y - h.B, h.Y - k.B)
+							T.check(air >= 6, tag .. ": the hint keeps 6 px off " .. d.Name, fmt("hint %s, key %s, air %.1f", U8.show(h), U8.show(k), air))
+						end
+					end
+					T.check(not s[3] or keys > 0, tag .. ": (setup) the touch keys show", tostring(keys))
+					hint.Visible = false
 				end
-				local h = U8.rect(hint)
-				local hud = pg:FindFirstChild("NimbusHud")
-				local vt = hud and tonumber(hud:GetAttribute("BottomCentreTop"))
-				local vl, vr = hud and tonumber(hud:GetAttribute("BottomCentreLeft")), hud and tonumber(hud:GetAttribute("BottomCentreRight"))
-				if vt and vl and vr and vt > 0 and h.R > vl and h.X < vr then
-					T.check(h.B <= vt - 6, tag .. ": the hint ends above the vitals card's name tab", fmt("hint %s, tab top %.0f", U8.show(h), vt))
+				if s[4] then
+					LKC.toClient("PartyState", nil)
+					lp:SetAttribute("PortalLocked", nil)
 				end
-				local daily = pg:FindFirstChild("NimbusDaily")
-				local gift = daily and daily:FindFirstChild("GiftsButton", true)
-				if gift and U8.shown(gift) then
-					local g = U8.rect(gift)
-					local air = math.max(g.X - h.R, h.X - g.R, g.Y - h.B, h.Y - g.B)
-					T.check(air >= 6, tag .. ": the hint keeps 6 px off the gift", fmt("hint %s, gift %s, air %.1f", U8.show(h), U8.show(g), air))
+				if keysOn then
+					Move._TouchButtons(false)
 				end
-				hint.Visible = false
 			end)
 		end
 		LKC.flushErrors("hint_clear_of_hud")
@@ -16430,9 +16503,28 @@ local function clientScenarios()
 				local hr, br, nr, dr = U8.rect(hp), U8.rect(blocks), U8.rect(num), U8.rect(div)
 				T.check(P2.inside(br, hr) and P2.inside(nr, hr) and br.R <= dr.X + 0.5 and dr.R <= nr.X + 0.5 and math.abs(dr.R - dr.X - 2 * k) < 0.6,
 					tag .. ": the number in the track behind the 2 px divider, right of the blocks", fmt("blocks %s | div %s | num %s in %s", U8.show(br), U8.show(dr), U8.show(nr), U8.show(hr)))
-				-- (playtest 2026-11-28 C6) a track too narrow for 'HP / max' beside six 12 px blocks reads the HP alone
-				local hpOnly = Hd.bossShort == true and num.Text:match("^%d[%d%.]*[KMB]?$") ~= nil
-				T.check(hpOnly or (num.Text:match("^%d[%d%.]*[KMB]? / %d[%d%.]*[KMB]?$") ~= nil and (not worst or num.Text:match(" / 1%.01B$") ~= nil)), tag .. ": the number reads 'HP / max' (short numbers; a narrow track the HP alone)", num.Text)
+				-- (playtest 2026-11-28 C6; round 2: the check worked this out from the code's own Hd.bossShort) the check's own
+				-- reading of the track: the room the blocks would keep beside a number box holding "max / max" (the track less
+				-- its edges, pads and divider as laid out now, less the box's padding as laid out now and the "max / max" text
+				-- at the number's size). Under six 12 px blocks (and their 3 px gaps, 87 design px) the number may read the HP
+				-- alone; with a block's room to spare (15 px, the measure's slack) it reads 'HP / max' and keeps six blocks
+				local function textW(s)
+					local okM, m = pcall(Theme.Measure, s, "Display", num.TextSize)
+					return math.max((okM and typeof(m) == "Vector2") and m.X or 0, #s * num.TextSize * 0.5)
+				end
+				local maxText = Theme.Short(B.boss.maxHp)
+				local trackW, rowW, boxW = (hr.R - hr.X) / k, (br.R - br.X) / k, (nr.R - nr.X) / k
+				local chrome = trackW - rowW - boxW
+				local boxPad = boxW - textW(num.Text)
+				local roomFull = trackW - chrome - boxPad - textW(maxText .. " / " .. maxText)
+				local mayShort = roomFull < 6 * 15 - 3 + 15
+				local hpOnly = mayShort and num.Text:match("^%d[%d%.]*[KMB]?$") ~= nil
+				T.check(hpOnly or (num.Text:match("^%d[%d%.]*[KMB]? / %d[%d%.]*[KMB]?$") ~= nil and (not worst or num.Text:match(" / 1%.01B$") ~= nil)),
+					tag .. ": the number reads 'HP / max' (short numbers; the HP alone only where 'max / max' leaves no six 12 px blocks)",
+					fmt("%q, room beside 'max / max' %.0f design px", num.Text, roomFull))
+				if roomFull < 6 * 15 - 3 - 15 then
+					T.check(hpOnly, tag .. ": a track with no room for six blocks beside 'max / max' reads the HP alone (no 0 px blocks)", fmt("%q, room %.0f", num.Text, roomFull))
+				end
 				-- 20 blocks (14 on a phone, the pitch's); a narrower track (a tall phone's right column, not drawn in the pitch)
 				-- fewer, never thin slivers: each block at least 12 design px wide
 				local n, thin = 0, 0
@@ -16448,8 +16540,9 @@ local function clientScenarios()
 					-- would not fit the blocks' row, never a thin one
 					local room = (br.R - br.X) / k
 					local full = (n + 1) * 15 - 3 > room + 0.5
-					-- (playtest 2026-11-28 C6: a 640 x 360 track holds five; never a thin one)
-					T.check((n == want or (n < want and n >= 3 and full)) and thin == 0,
+					-- (playtest 2026-11-28 C6: a 640 x 360 track holds five; never a thin one. Round 2: the floor of 6 everywhere
+					-- but a track the check itself reads as short, above)
+					T.check((n == want or (n < want and n >= (mayShort and 3 or 6) and full)) and thin == 0,
 						tag .. ": the HP is " .. want .. " chunky blocks (fewer only where no more 12 px block fits the track beside the head)",
 						fmt("%d blocks, %d thin, row %.0f design px", n, thin, room))
 				else
@@ -17492,6 +17585,151 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("tutorial_dock_b")
+	end)
+
+	-- (playtest 2026-11-28 C31 round 2) the gift docked beside the three strips on a small landscape phone, against what docks
+	-- by the HUD's top-right block (the phone world: MobileControls on screen). Round 1 moved the gift left of the strips but
+	-- still published TopRightLeft as the strips' edge: at 640 x 360 / 667 x 375 the gift lay on the tutorial strip's + (and
+	-- NimbusDaily draws over NimbusTutorial), every side toast lay on the gift (568 x 320 .. 812 x 375) and the gift on the duel
+	-- invite card; HudController.Overlaps read GiftTop (now the strips' top) as their foot; on the party pad the panel held the
+	-- row beside the strips and the gift stayed on DASH
+	S.hud_gift_beside_mobile = guarded("hud_gift_beside_mobile", function()
+		local Attr = LoadingH.shared("Config").Attr
+		local lp = game:GetService("Players").LocalPlayer
+		local HC = U7.client("Controllers/HudController")
+		local was = { Cash = lp:GetAttribute(Attr.Cash), Gems = lp:GetAttribute(Attr.Gems), Tokens = lp:GetAttribute(Attr.Tokens) }
+		-- (one space: the gui area's; a ScreenGui that ignores the inset (MobileControls) is shifted up by it)
+		local function areaRect(inst)
+			local r = U8.rect(inst)
+			local sg = inst:FindFirstAncestorOfClass("ScreenGui")
+			local dy = (sg and sg.IgnoreGuiInset) and (Mock.TopInset or 0) or 0
+			return { X = r.X, Y = r.Y - dy, R = r.R, B = r.B - dy }
+		end
+		local function air(a, b)
+			return math.max(a.X - b.R, b.X - a.R, a.Y - b.B, b.Y - a.B)
+		end
+		local function wallet()
+			lp:SetAttribute(Attr.Cash, 48200)
+			lp:SetAttribute(Attr.Gems, 320)
+			lp:SetAttribute(Attr.Tokens, 1250)
+			LKC.advance(1.2)
+		end
+		local function giftRect()
+			local daily = U8.pg():FindFirstChild("NimbusDaily")
+			local gift = daily and daily:FindFirstChild("GiftsButton", true)
+			return gift, (gift and U8.shown(gift)) and areaRect(gift) or nil
+		end
+		for _, s in ipairs({ { 640, 360 }, { 667, 375 }, { 812, 375 }, { 568, 320 } }) do
+			U8.at(s[1], s[2], true, "hud gift beside", function(tag)
+				wallet()
+				local pg = U8.pg()
+				local hud = pg:FindFirstChild("NimbusHud")
+				local strips, n = nil, 0
+				for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+					if d.Name:match("^Currency_") and d:IsA("GuiObject") and U8.shown(d) then
+						n = n + 1
+						local r = areaRect(d)
+						strips = strips and { X = math.min(strips.X, r.X), Y = math.min(strips.Y, r.Y), R = math.max(strips.R, r.R), B = math.max(strips.B, r.B) } or r
+					end
+				end
+				local _, g = giftRect()
+				if not T.check(g ~= nil and n >= 3, tag .. ": (setup) three strips and the Gifts button show", fmt("%d strips", n)) then
+					return
+				end
+				if not T.check(g.R <= strips.X + 0.5 and math.abs(g.Y - strips.Y) <= 1, tag .. ": (setup) the gift docks beside the strips at their top here",
+					fmt("gift %s, strips %s", U8.show(g), U8.show(strips))) then
+					return
+				end
+				-- the block's left edge every neighbour docks against is the gift's
+				local left = tonumber(hud:GetAttribute("TopRightLeft")) or 0
+				T.check(left > 0 and left <= g.X + 0.5, tag .. ": TopRightLeft is the whole block's left (the gift's)", fmt("TopRightLeft %d, gift %s", left, U8.show(g)))
+				-- Overlaps: a window box over the strips' lower rows lies over the strips (round 1: a 12 px tall box missed it)
+				local inset = game:GetService("GuiService"):GetGuiInset().Y
+				local box = { x = strips.X + 8, y = inset + strips.B - 16, w = 40, h = 80 }
+				local okO, _, over = pcall(HC.Overlaps, box, 0)
+				T.check(okO and over == true, tag .. ": HudController.Overlaps sees a box over the strips' lower rows", fmt("box y %d..%d, strips %s", box.y - inset, box.y - inset + box.h, U8.show(strips)))
+				-- the side toasts dock left of the gift (or under the block), never on it
+				local toasts = U99.toasts()
+				local seen = 0
+				for kind, t in pairs(toasts) do
+					seen = seen + 1
+					local r = areaRect(t)
+					T.check(air(r, g) >= 4, tag .. ": the " .. kind .. " toast keeps 4 px off the gift", fmt("toast %s, gift %s", U8.show(r), U8.show(g)))
+				end
+				T.check(seen > 0, tag .. ": (setup) the side toasts show", tostring(seen))
+				U99.clearToasts()
+				-- the tutorial folded (step 3): its quest strip, its + and the portrait chip clear of the gift
+				local _, root = U99.tutorial(3, false)
+				local parts = 0
+				for _, name in ipairs({ "QuestStrip", "QuestOpen", "Portrait" }) do
+					local p = root and root:FindFirstChild(name, true)
+					if p and U8.shown(p) and p.AbsoluteSize.X > 0 then
+						parts = parts + 1
+						local r = areaRect(p)
+						T.check(air(r, g) >= 4, tag .. ": the tutorial's " .. name .. " keeps 4 px off the gift", fmt("%s %s, gift %s", name, U8.show(r), U8.show(g)))
+					end
+				end
+				T.check(parts > 0, tag .. ": (setup) the folded tutorial shows", tostring(parts))
+				U99.tutorialOff()
+				-- the duel invite: the arena's side stack docks left of the block (its card is 138 px tall at 640 x 360, so its
+				-- rows reach the gift's; the mock runs no AutomaticSize, so the stack's right edge is what is measured)
+				LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 },
+					Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 1210, Power = 1380, ExpiresIn = 21 } } })
+				LKC.advance(0.8)
+				local side = pg:FindFirstChild("NimbusArenaSide")
+				local stack = side and side:FindFirstChild("SideStack")
+				if T.check(stack ~= nil and side:FindFirstChild("Invite1", true) ~= nil, tag .. ": (setup) the duel invite card is up") then
+					local sr = areaRect(stack)
+					if s[1] >= 640 then
+						T.check(sr.R <= g.X - 4, tag .. ": the arena's side stack docks left of the gift", fmt("stack right %.1f, gift %s", sr.R, U8.show(g)))
+					else
+						-- (held for the owner: at 568 x 320 the 272 px card has no room between the menu column and the block, with
+						-- or without the gift: base put it 20 px under the column, docked left of the gift it is 71)
+						T.warn(tag .. ": the invite card has no room between the menu column and the top-right block (owner call)", fmt("stack right %.1f, gift %s", sr.R, U8.show(g)))
+					end
+				end
+				LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
+				LKC.advance(0.8)
+			end)
+		end
+		-- on the party pad the panel holds the row beside the strips: the gift steps aside (or keeps 8 px off every key).
+		-- (a friend leads: U98.open("obby:party") also opens the leader's level picker, a window, which hides the gift)
+		for _, s in ipairs({ { 640, 360 }, { 667, 375 }, { 812, 375 }, { 568, 320 } }) do
+			U8.at(s[1], s[2], true, "hud gift party pad", function(tag)
+				wallet()
+				local pg = U8.pg()
+				LKC.toClient("PartyState", { PortalId = "Obby", Level = "Hard", Stars = 3, LeaderUserId = 77, DifficultyName = "Hard",
+					Players = { { UserId = 77, Name = "Buddy" }, { UserId = lp.UserId, Name = lp.Name } }, Max = 4, Countdown = 12, Locked = true })
+				lp:SetAttribute("PortalLocked", "Obby")
+				wallet()
+				local _, pgift = giftRect()
+				local mobile = pg:FindFirstChild("MobileControls")
+				local keys = 0
+				for _, d in ipairs(mobile and mobile:GetDescendants() or {}) do
+					if d:IsA("GuiButton") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+						keys = keys + 1
+						if pgift then
+							local r = areaRect(d)
+							T.check(air(r, pgift) >= 8, tag .. ": the gift keeps 8 px off " .. d.Name, fmt("gift %s, key %s", U8.show(pgift), U8.show(r)))
+						end
+					end
+				end
+				local hud = pg:FindFirstChild("NimbusHud")
+				local panel = hud and hud:FindFirstChild("PartyPanel", true)
+				T.check(keys > 0 and panel ~= nil and U8.shown(panel), tag .. ": (setup) the party panel and the touch keys show", tostring(keys))
+				local DC = U7.client("Controllers/DailyController")
+				T.check(DC and DC._H and DC._H.windowUp() == false, tag .. ": (setup) no window is open (the gift would hide for it)")
+				LKC.toClient("PartyState", nil)
+				lp:SetAttribute("PortalLocked", nil)
+				wallet()
+				local _, back = giftRect()
+				T.check(back ~= nil, tag .. ": the gift is back off the pad")
+			end)
+		end
+		lp:SetAttribute(Attr.Cash, was.Cash)
+		lp:SetAttribute(Attr.Gems, was.Gems)
+		lp:SetAttribute(Attr.Tokens, was.Tokens)
+		LKC.flushErrors("hud_gift_beside_mobile")
 	end)
 
 	-- the menu pointer (step 5, a menu target) on a PC and the phones: (U9-9 look 2) the pointed tile wears the kit's Selected

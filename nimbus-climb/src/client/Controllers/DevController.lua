@@ -76,6 +76,7 @@ local K = {
 	TOUCH_EDGE = 20,
 	GAP = 8, -- screen px kept free around every neighbour
 	KEY_AIR = 8, -- (playtest 2026-11-28 C48: a Leave tap opened the DEV panel) screen px more off a thumb key or the run chip
+	RIGHT_SHARE = 0.62, -- (C48 round 2) the tile sits on the right edge: its centre right of this share of the width
 	CENTRE_TOL = 0.145, -- the middle of the screen: |dx| < 14.5% of the width and |dy| < 14.5% of the height
 	SCAN_STEP = 4, -- screen px between two candidate spots of the tile
 	TILE = 84, -- same size as a menu tile
@@ -1090,16 +1091,28 @@ local function placeTile(area, side, size, layout, band)
 	-- (playtest 2026-11-28 C48: at 667 x 375 the right edge had no gap even for the shrunk tile, so it went to the top-right
 	-- corner over the currency strips, the gift and the run chip) the same search in columns further left (a quarter tile
 	-- apart, the right half of the screen, never into the centre band)
+	-- (C48 round 2: in a 640 x 360 dungeon run the search reached x 360 .. 428, its centre left of the right-edge rule) the
+	-- tile's centre stays right of K.RIGHT_SHARE of the width; the column at that limit is tried last
 	local step = math.max(K.SCAN_STEP, math.floor(size / 4))
-	local x = right - step
-	while x - size * K.TILE_MIN_SHRINK >= area.X * 0.5 do
+	local function limit(shrink) -- the right edge that puts the tile's centre at the rule's line (whole px, past it)
+		return math.ceil(area.X * K.RIGHT_SHARE + size * shrink / 2 + 0.5)
+	end
+	local last = limit(K.TILE_MIN_SHRINK)
+	local columns = {}
+	for x = right - step, last + 1, -step do
+		columns[#columns + 1] = x
+	end
+	columns[#columns + 1] = limit(1)
+	columns[#columns + 1] = last
+	for _, x in ipairs(columns) do
 		for _, shrink in ipairs({ 1, K.TILE_MIN_SHRINK }) do
-			local y1 = lowestFreeSpot(area, side, x, size * shrink, layout.Others, band, true)
-			if y1 then
-				return x, y1, shrink
+			if x < right and x >= limit(shrink) then
+				local y1 = lowestFreeSpot(area, side, x, size * shrink, layout.Others, band, true)
+				if y1 then
+					return x, y1, shrink
+				end
 			end
 		end
-		x = x - step
 	end
 	-- no free spot at all (a tiny window): the top-right corner
 	return right, math.min(area.Y - side, side + size), 1

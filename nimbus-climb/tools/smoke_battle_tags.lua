@@ -199,15 +199,106 @@ local function clientScenarios()
 				for _, d in ipairs(boss.model:GetDescendants()) do
 					plates = plates + ((d:IsA("BillboardGui") and d.Name ~= "DamageTotal") and 1 or 0)
 				end
-				T.check(total ~= nil and plates == 0 and abs(total.gui.StudsOffset.Y - (Fx.NumberHeight(boss) - 0.6)) < 1e-6 and abs(total.gui.SizeOffset.Y) < 1e-6,
-					fmt("battle tags %dx%d raid boss: no world plate, the total over its head (NumberHeight - 0.6)", size[1], size[2]),
-					total and fmt("plates %d, studs %.2f, size offset %.3f", plates, total.gui.StudsOffset.Y, total.gui.SizeOffset.Y) or "no total")
+				-- (C60 round 2: the chip's anchor stays at NumberHeight - 0.6, now the focus arrow's top, held in world studs
+				-- (StudsOffsetWorldSpace, as the arrow) instead of camera studs, and the chip stands on it in screen px: its
+				-- SizeOffset lifts it by its half height + the gap; it was 0, the chip centred on the arrow)
+				local anchorY = total and (total.gui.StudsOffset.Y + total.gui.StudsOffsetWorldSpace.Y) or 0
+				local lifted = total ~= nil and total.gui.SizeOffset.Y * total.gui.Size.Y.Offset >= (total.chip.Size.Y.Offset / 2) - 0.5
+				T.check(total ~= nil and plates == 0 and abs(anchorY - (Fx.NumberHeight(boss) - 0.6)) < 1e-6 and lifted,
+					fmt("battle tags %dx%d raid boss: no world plate, the total over its head (NumberHeight - 0.6), its chip standing on that point", size[1], size[2]),
+					total and fmt("plates %d, studs %.2f, size offset %.3f", plates, anchorY, total.gui.SizeOffset.Y) or "no total")
 				-- (playtest 2026-11-28 C60: the total stood at Root + height x 0.5 + 2, mid-body on a 20-stud boss: BossBuilder
 				-- roots a boss at its feet) the boss's total and pops start over its head: the Root plus its height
-				T.check(total ~= nil and total.gui.StudsOffset.Y >= boss.height and Fx.NumberHeight(boss) >= boss.height + 1,
+				T.check(total ~= nil and anchorY >= boss.height and Fx.NumberHeight(boss) >= boss.height + 1,
 					fmt("battle tags %dx%d raid boss: the total and pops start over its head (Root at its feet + its height)", size[1], size[2]),
-					total and fmt("studs %.2f, NumberHeight %.2f, height %.1f", total.gui.StudsOffset.Y, Fx.NumberHeight(boss), boss.height) or "no total")
+					total and fmt("studs %.2f, NumberHeight %.2f, height %.1f", anchorY, Fx.NumberHeight(boss), boss.height) or "no total")
+				-- a hit's pop on the boss starts at its total's world height (beside the chip, not ~28 camera studs off it)
+				local btext, bcolour, bpx = Fx.HitLook(17, {})
+				local bpop, btotal = Fx.Pop(boss, boss.root, Fx.NumberHeight(boss), btext, bcolour, bpx, 17)
+				T.check(bpop ~= nil and btotal ~= nil and abs(bpop.gui.StudsOffsetWorldSpace.Y - btotal.gui.StudsOffsetWorldSpace.Y) < 1e-6
+					and abs(bpop.gui.StudsOffset.Y - (btotal.gui.StudsOffset.Y + 0.6)) < 1e-6,
+					fmt("battle tags %dx%d raid boss: a hit's pop starts at its total's height", size[1], size[2]),
+					bpop and fmt("pop world %.2f + %.2f, total world %.2f + %.2f", bpop.gui.StudsOffsetWorldSpace.Y, bpop.gui.StudsOffset.Y,
+						btotal.gui.StudsOffsetWorldSpace.Y, btotal.gui.StudsOffset.Y) or "no pop")
 				Fx.ClearAll()
+				-- (playtest 2026-11-28 C60 round 2: the total stood at Root + height + 1.4, inside the focus arrow's span (height
+				-- + 0.36 .. + 2.6 with its bob), and its opaque AlwaysOnTop chip hid the arrow) a real BossBuilder boss with the
+				-- real focus arrow (Units.UpdateFocus, my pet's pick on it), the arrow read at the top and the foot of its bob: in
+				-- screen px at 10 .. 130 studs the total's chip never covers the arrow
+				local BB = shared("BossBuilder")
+				local Units = BC._Units
+				local okB, bossModel = pcall(function()
+					return BB and BB.Build("storm_titan", { Detail = "High", CFrame = CFrame.new(origin + Vector3.new(0, 0, -60)) })
+				end)
+				if T.check(okB and bossModel ~= nil and type(Units) == "table" and type(Units.UpdateFocus) == "function",
+					fmt("battle tags %dx%d real boss: (setup) BossBuilder.Build('storm_titan') and Units.UpdateFocus", size[1], size[2]), tostring(bossModel)) then
+					made[#made + 1] = bossModel
+					bossModel.Parent = workspace
+					local folder = Instance.new("Folder")
+					folder.Name = "SmokeBossFocus"
+					folder.Parent = workspace
+					made[#made + 1] = folder
+					local zone = origin + Vector3.new(0, 0, -60)
+					local real = {
+						id = 2, isBoss = true, model = bossModel, root = bossModel.PrimaryPart or bossModel:FindFirstChild("Root"),
+						height = BB.GetHeight(bossModel), x = 0, z = 0, hp = 900, maxHp = 1000, level = 30, evo = 0, name = "Storm Titan",
+					}
+					local B = { units = { [1] = { id = 1, ally = true, target = 2 }, [2] = real }, Fighter = true, fighterId = 1, folder = folder,
+						basis = { zone.X, zone.Y, zone.Z, 1, 0, 0, 0, 1, 0, 0, 0, 1 } }
+					local arrows = {}
+					for _, now in ipairs({ math.pi / 8, 3 * math.pi / 8 }) do -- (sin(4 t) = 1 and -1: the bob's top and foot)
+						local okF, why = pcall(Units.UpdateFocus, B, now)
+						T.check(okF and B.focusMark ~= nil, fmt("battle tags %dx%d real boss: (setup) the focus arrow shows", size[1], size[2]), tostring(why))
+						for _, p in ipairs(B.focusMark and B.focusMark:GetChildren() or {}) do
+							if p:IsA("BasePart") then
+								local r = math.max(p.Size.X, p.Size.Z) * 0.75 -- (it spins: its widest turn)
+								arrows[#arrows + 1] = { lo = p.Position - Vector3.new(r, p.Size.Y / 2, r), hi = p.Position + Vector3.new(r, p.Size.Y / 2, r) }
+							end
+						end
+					end
+					local realTotal = Fx.Total(real, 48200)
+					if T.check(real.root ~= nil and real.height > 0 and #arrows > 0 and realTotal ~= nil,
+						fmt("battle tags %dx%d real boss: (setup) its Root, height, arrow and total", size[1], size[2]), fmt("height %s, arrow parts %d", tostring(real.height), #arrows)) then
+						local g, chip = realTotal.gui, realTotal.chip
+						local edge = (chip:FindFirstChild("SignEdge") and chip.SignEdge.Thickness) or 0
+						local worst = nil
+						for _, dist in ipairs({ 10, 20, 40, 80, 130 }) do
+							local head = real.root.Position + Vector3.new(0, real.height, 0)
+							cam.CFrame = CFrame.lookAt(head + Vector3.new(0, 0.25 * dist, dist), head)
+							local ar = nil
+							for _, a in ipairs(arrows) do
+								for _, cx in ipairs({ a.lo.X, a.hi.X }) do
+									for _, cy in ipairs({ a.lo.Y, a.hi.Y }) do
+										for _, cz in ipairs({ a.lo.Z, a.hi.Z }) do
+											local sx, sy = project(cam, Vector3.new(cx, cy, cz))
+											ar = ar or { X = sx, Y = sy, R = sx, B = sy }
+											ar.X, ar.Y, ar.R, ar.B = math.min(ar.X, sx), math.min(ar.Y, sy), math.max(ar.R, sx), math.max(ar.B, sy)
+										end
+									end
+								end
+							end
+							local tx, ty = centre(cam, g)
+							local tr = box(tx, ty, chip.Size.X.Offset + 2 * edge, chip.Size.Y.Offset + 2 * edge)
+							if overlap(tr, ar) and worst == nil then
+								worst = fmt("at %d studs the total %s covers the arrow %s (total at Root + %.2f, height %.1f)", dist, show(tr), show(ar),
+									g.StudsOffset.Y, real.height)
+							end
+						end
+						T.check(worst == nil, fmt("battle tags %dx%d real boss: the damage total's chip never covers the focus arrow (10 .. 130 studs)", size[1], size[2]), worst or "-")
+					end
+					-- the Blender arrow (fx_arrow at 1.4, Units.UpdateFocus) reaches higher than the Part arrow: the total's anchor
+					-- clears its top too, with the bob
+					local manifest = shared("MeshManifests/fx_arrow")
+					local meshTop = manifest and manifest.Bounds and manifest.Bounds.Max and manifest.Bounds.Max[2]
+					T.check(meshTop ~= nil and Fx.NumberHeight(real) - 0.6 >= real.height + 2 + meshTop * 1.4 + 0.35,
+						fmt("battle tags %dx%d real boss: the total's anchor clears the fx_arrow mesh's top and bob too", size[1], size[2]),
+						fmt("anchor %.2f, mesh top %.2f", Fx.NumberHeight(real) - 0.6, real.height + 2 + (meshTop or 0) * 1.4 + 0.35))
+					if B.focusMark then
+						B.focusMark:Destroy()
+						B.focusMark = nil
+					end
+					Fx.ClearAll()
+				end
 			end
 		end)
 		PetCard.New = saved[5]
