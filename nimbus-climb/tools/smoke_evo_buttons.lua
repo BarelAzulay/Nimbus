@@ -1643,6 +1643,39 @@ local function clientScenarios()
 				H.cleanup(BC, d)
 			end
 		end
+		-- (playtest 2026-11-28 C5: a raid with ONE pet, no helper portraits, put CHEER and BACK on Roblox's stick at 667 x 375:
+		-- the row went under the Team block, which keeps the empty helpers' height) the solo raid at every phone size: the
+		-- team orders a row under the fighter card, off the stick, the jump button and the keys
+		for _, size in ipairs({ { 640, 360 }, { 667, 375 }, { 844, 390 }, { 360, 640 }, { 390, 844 } }) do
+			Mock.SetViewport(size[1], size[2])
+			H.step(15, 1 / 30)
+			local tag = fmt("keys %dx%d raid solo: ", size[1], size[2])
+			local mine = renderTeam(0, 30)
+			mine = { mine[1] }
+			local d = H.fight({ Mode = "Raid", Pets = mine, Allies = { renderTeam(2, 26), renderTeam(4, 28) }, Raid = { Tier = "Starter", BossId = "storm_titan" } })
+			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) a boss raid with one pet") then
+				d:run(0.5)
+				local areaY = size[2] - (Mock.TopInset or 0)
+				local jump, stick = roblox(size)
+				local jr, sr = rings(size)
+				local keys = thumb()
+				local fighter, cheer, back = H.find("Root.Team.Fighter"), H.find("Root.Cheer"), H.find("Root.Retreat")
+				if T.check(fighter ~= nil and shownIn(fighter) and cheer ~= nil and shownIn(cheer) and back ~= nil and shownIn(back), tag .. "the fighter card, CHEER and BACK are shown") then
+					local fr = rectOf(fighter)
+					local cr, br = rectOf(cheer), rectOf(back)
+					for _, p in ipairs({ { "CHEER", cr }, { "BACK", br } }) do
+						local r = p[2]
+						T.check(r.y1 <= areaY - 4 and r.x0 >= 4, tag .. p[1] .. " whole on the screen", rstr(r))
+						T.check(apart(r, stick) >= 4 and apart(r, jump) >= 4 and offRing(r, sr) >= 8 and offRing(r, jr) >= 8,
+							tag .. p[1] .. " keeps clear of Roblox's stick and jump (8 px off their rings)", fmt("%s stick %.0f ring %.1f", rstr(r), apart(r, stick), offRing(r, sr)))
+						offKeys(tag, p[1], r, keys)
+						T.check(not overlaps(r, fr), tag .. p[1] .. " covers nothing of the fighter card", rstr(r) .. " vs " .. rstr(fr))
+					end
+					T.check(cr.y0 >= fr.y1 - 0.5 and cr.y0 - fr.y1 <= 20, tag .. "CHEER and BACK stay with the team (a row under the fighter card)", rstr(cr) .. " | fighter " .. rstr(fr))
+				end
+				H.cleanup(BC, d)
+			end
+		end
 		-- (look review r2: at 640 x 360 the dungeon's list lay 47 / 48 px on DASH / RUN, the ring's ("fighter:ready") 36 / 26 px,
 		-- RUN under "+1 more", and the duel's 12 / 2 px: a mode card too wide for the gap between the team and the keys went
 		-- into the right column, the list under it onto the keys) every other mode, its enemy list full ("+n more"), at every

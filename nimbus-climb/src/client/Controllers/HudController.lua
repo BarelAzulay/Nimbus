@@ -1256,7 +1256,28 @@ local function applyMargins(animate, force)
 			giftSize = math.max(K.GIFT_MIN, math.floor(K.GIFT * k)) -- (44 on a 844x390 phone, as the button was)
 			giftTop = math.floor(topRightBottom + K.GIFT_GAP * k + 0.5)
 			giftLeft = math.floor(area.X - side - giftSize + 0.5)
-			topRightBottom = giftTop + giftSize
+			-- (playtest 2026-11-28 C31: three strips stacked put the gift square on DASH at 640 x 360) where the square under
+			-- the strips would meet a touch key (its wood edge and OBSTACLE_TIGHT of air counted), it docks left of the strips
+			-- at their top, as the HUD without a dock had it (DailyController.layoutButton's fallback)
+			local keys = {}
+			for _, r in ipairs(buttons) do
+				table.insert(keys, r)
+			end
+			if touch then
+				table.insert(keys, robloxTouchRects(area, vp)[2])
+			end
+			local air = K.OBSTACLE_TIGHT + 3
+			local onKey = false
+			for _, r in ipairs(keys) do
+				if giftLeft - air < r.x1 and r.x0 < giftLeft + giftSize + air and giftTop - air < r.y1 and r.y0 < giftTop + giftSize + air then
+					onKey = true
+				end
+			end
+			local besideLeft = math.floor(topRightLeft - K.GIFT_GAP * k - giftSize + 0.5)
+			if onKey and besideLeft >= side and not (hasPanel and besideLeft < topLeft + panelW * k + K.GIFT_GAP * k and stripTop < K.EDGE + topH * k + shadowPx) then
+				giftLeft, giftTop = besideLeft, stripTop
+			end
+			topRightBottom = math.max(topRightBottom, giftTop + giftSize)
 		end
 	end
 	S.currencyMode = mode

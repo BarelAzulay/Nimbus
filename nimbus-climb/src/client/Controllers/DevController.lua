@@ -75,6 +75,7 @@ local K = {
 	EDGE = 12, -- KEEP IN SYNC with HudController.lua: EDGE and TOUCH_EDGE (screen px)
 	TOUCH_EDGE = 20,
 	GAP = 8, -- screen px kept free around every neighbour
+	KEY_AIR = 8, -- (playtest 2026-11-28 C48: a Leave tap opened the DEV panel) screen px more off a thumb key or the run chip
 	CENTRE_TOL = 0.145, -- the middle of the screen: |dx| < 14.5% of the width and |dy| < 14.5% of the height
 	SCAN_STEP = 4, -- screen px between two candidate spots of the tile
 	TILE = 84, -- same size as a menu tile
@@ -857,7 +858,7 @@ local function shownIn(inst, root)
 	return true
 end
 
-local function addRect(list, inst, root, dy)
+local function addRect(list, inst, root, dy, pad)
 	if not (inst and inst:IsA("GuiObject")) then
 		return
 	end
@@ -865,7 +866,8 @@ local function addRect(list, inst, root, dy)
 	if s.X <= 0 or s.Y <= 0 or not shownIn(inst, root) then
 		return
 	end
-	list[#list + 1] = { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + s.Y + dy }
+	local e = tonumber(pad) or 0 -- (playtest 2026-11-28 C48) a thumb key's extra air (K.KEY_AIR)
+	list[#list + 1] = { x0 = p.X - e, y0 = p.Y + dy - e, x1 = p.X + s.X + e, y1 = p.Y + s.Y + dy + e }
 end
 
 local function enabledGui(pg, name)
@@ -936,10 +938,21 @@ local function neighbours(area, factor)
 				if block.Name == "Commands" then
 					for _, b in ipairs(block:GetChildren()) do
 						if b:IsA("GuiObject") then
-							addRect(out, b, battle, dy)
+							addRect(out, b, battle, dy, K.KEY_AIR) -- (C48: a thumb key)
 						end
 					end
 				end
+			end
+		end
+	end
+	-- (playtest 2026-11-28 C48: at 667 x 375 the tile lay on the dungeon run chip's Leave, and a Leave tap opened the DEV
+	-- panel) the dungeon run's chip and cards (DungeonController's NimbusDungeonRun: RunChip, RunCard, EndCard)
+	local run = enabledGui(pg, "NimbusDungeonRun")
+	if run then
+		local dy = insetShift(run)
+		for _, block in ipairs(run:GetChildren()) do
+			if block:IsA("GuiObject") and block.Visible then
+				addRect(out, block, run, dy, K.KEY_AIR)
 			end
 		end
 	end
@@ -957,7 +970,7 @@ local function neighbours(area, factor)
 		local dy = insetShift(mobile)
 		for _, d in ipairs(mobile:GetDescendants()) do
 			if d:IsA("TextButton") or d:IsA("ImageButton") then
-				addRect(out, d, mobile, dy)
+				addRect(out, d, mobile, dy, K.KEY_AIR)
 			end
 		end
 	end
@@ -1073,6 +1086,20 @@ local function placeTile(area, side, size, layout, band)
 				return right, y1, shrink
 			end
 		end
+	end
+	-- (playtest 2026-11-28 C48: at 667 x 375 the right edge had no gap even for the shrunk tile, so it went to the top-right
+	-- corner over the currency strips, the gift and the run chip) the same search in columns further left (a quarter tile
+	-- apart, the right half of the screen, never into the centre band)
+	local step = math.max(K.SCAN_STEP, math.floor(size / 4))
+	local x = right - step
+	while x - size * K.TILE_MIN_SHRINK >= area.X * 0.5 do
+		for _, shrink in ipairs({ 1, K.TILE_MIN_SHRINK }) do
+			local y1 = lowestFreeSpot(area, side, x, size * shrink, layout.Others, band, true)
+			if y1 then
+				return x, y1, shrink
+			end
+		end
+		x = x - step
 	end
 	-- no free spot at all (a tiny window): the top-right corner
 	return right, math.min(area.Y - side, side + size), 1

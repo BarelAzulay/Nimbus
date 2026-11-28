@@ -1663,6 +1663,7 @@ function Win.close()
 	end
 	Win.bindBack(false)
 	Win.touch(false)
+	Win.strips(false) -- (playtest 2026-11-28 C27) the currency strips back
 end
 
 -- what lies behind a window that opens: the game's windows close on MenuController.WindowOpened (as they do for each
@@ -1764,10 +1765,47 @@ function Win.holder(name, prefW, prefH, fit)
 	local fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
 	W.Dock = NeonKit.Dock(holder, fit, prefW, prefH)
 	W.Name, W.Holder = name, holder
+	Win.cover(holder)
 	Win.clearBehind(name)
 	Win.bindBack(true)
 	Win.touch(true)
 	return holder
+end
+
+-- (playtest 2026-11-28 C27: on a landscape phone the docked window left half pieces peeking from under it: the title
+-- board's PLAY / UPDATES cut in half where Win.clearOfBoard gave up narrowing, and the HUD's wallet strip beside the
+-- awning after PLAY) on a landscape screen a window that still meets the board hides the board (Win.close brings it back,
+-- as a portrait sheet's); on a landscape touch screen the currency strips step aside while the window's column reaches
+-- under them (HudController.SetCurrencyHidden "MainMenuWin", let go by Win.close)
+function Win.cover(holder)
+	local vp = H.viewport()
+	if vp.X <= vp.Y or not (holder and holder.Parent) then
+		return
+	end
+	local board = M.Ui and M.Ui.Board
+	if board and board.Parent and M.Ui.Swing and M.Ui.Swing.Visible ~= false then
+		local right = board.AbsolutePosition.X + board.AbsoluteSize.X + 3 + 5 + 4 + 5 -- (Win.clearOfBoard's edge)
+		if right > holder.AbsolutePosition.X then
+			M.Ui.Swing.Visible = false
+		end
+	end
+	local uis = game:GetService("UserInputService")
+	local pg = H.playerGui()
+	local hud = pg and pg:FindFirstChild("NimbusHud")
+	local left = hud and tonumber(hud:GetAttribute("TopRightLeft")) or 0
+	Win.strips(uis.TouchEnabled and left > 0 and left < holder.AbsolutePosition.X + holder.AbsoluteSize.X)
+end
+
+function Win.strips(on)
+	on = on == true
+	if on == (M.Win.StripsOff == true) then
+		return
+	end
+	M.Win.StripsOff = on
+	local hud = H.mod("HudController")
+	if hud and type(hud.SetCurrencyHidden) == "function" then
+		H.safe("currency strips", hud.SetCurrencyHidden, "MainMenuWin", on)
+	end
 end
 
 -- (kit-b gate U9 r4) on a touch-only device Roblox's thumbstick and jump button go while a menu window (Settings, What's
@@ -1880,7 +1918,9 @@ function Win.open(name, title, icon, prefH, reopen, fit)
 	local size = Theme.RoleSize("Title")
 	while size > 22 do
 		local ok, m = pcall(Theme.Measure, title, "Title", size)
-		if not ok or not m or m.X <= room then
+		-- (playtest 2026-11-28 C25: at 667 x 375 the text filled its box to 0.6 px and the ribbon's band lay flush on the
+		-- letters) the room less the ribbon's least pads, 2 px a side (Theme's ribbonLayout)
+		if not ok or not m or m.X + 4 <= room then
 			break
 		end
 		size = size - 2

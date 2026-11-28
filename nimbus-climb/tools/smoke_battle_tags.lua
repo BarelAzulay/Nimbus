@@ -202,6 +202,11 @@ local function clientScenarios()
 				T.check(total ~= nil and plates == 0 and abs(total.gui.StudsOffset.Y - (Fx.NumberHeight(boss) - 0.6)) < 1e-6 and abs(total.gui.SizeOffset.Y) < 1e-6,
 					fmt("battle tags %dx%d raid boss: no world plate, the total over its head (NumberHeight - 0.6)", size[1], size[2]),
 					total and fmt("plates %d, studs %.2f, size offset %.3f", plates, total.gui.StudsOffset.Y, total.gui.SizeOffset.Y) or "no total")
+				-- (playtest 2026-11-28 C60: the total stood at Root + height x 0.5 + 2, mid-body on a 20-stud boss: BossBuilder
+				-- roots a boss at its feet) the boss's total and pops start over its head: the Root plus its height
+				T.check(total ~= nil and total.gui.StudsOffset.Y >= boss.height and Fx.NumberHeight(boss) >= boss.height + 1,
+					fmt("battle tags %dx%d raid boss: the total and pops start over its head (Root at its feet + its height)", size[1], size[2]),
+					total and fmt("studs %.2f, NumberHeight %.2f, height %.1f", total.gui.StudsOffset.Y, Fx.NumberHeight(boss), boss.height) or "no total")
 				Fx.ClearAll()
 			end
 		end)

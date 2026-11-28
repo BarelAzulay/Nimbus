@@ -1803,6 +1803,23 @@ local function clientScenarios()
 			Dev.Close()
 			advance(0.3)
 		end
+		-- (playtest 2026-11-28 C48: on a 667 x 375 phone the right edge had no gap for the tile, which went to the top-right
+		-- corner over the currency strips and the gift, and in a dungeon run over the run chip's Leave) the small landscape
+		-- phones: the tile touches no neighbour, and keeps 12 px (more than the 8 of the rest) off every touch key
+		for _, size in ipairs({ { 667, 375 }, { 640, 360 } }) do
+			Mock.SetViewport(size[1], size[2])
+			advance(1.2)
+			local label = "DEV phone " .. size[1] .. "x" .. size[2]
+			checkTile(label, 14)
+			local r = rect(named(devGui(), "DevTile"))
+			for _, d in ipairs(mobile and mobile:GetDescendants() or {}) do
+				if (d:IsA("TextButton") or d:IsA("ImageButton")) and shown(d) and d.AbsoluteSize.X > 0 then
+					local k = rect(d)
+					local air = math.max(k.x0 - r.x1, r.x0 - k.x1, k.y0 - r.y1, r.y0 - k.y1)
+					T.check(air >= 12, label .. ": the DEV button keeps 12 px off the touch key " .. d.Name, string.format("air %.1f", air))
+				end
+			end
+		end
 		Mock.SetViewport(390, 844)
 		setHint(ATTR, nil)
 		advance(0.6)

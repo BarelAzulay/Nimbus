@@ -735,6 +735,38 @@ function P5.paintHintChip(kind)
 	end
 end
 
+-- (playtest 2026-11-28 C24: the hint, centred on the column, lay on the vitals card's name plank at 640 x 360 / 844 x 390
+-- and reached the Gift block at 360 x 640) its centre moved (from the column's, Hint.BaseY) so the block ends GAP above
+-- the vitals card's name tab and starts GAP under the gift, where it shares their columns (NimbusHud's published rects);
+-- where both cannot hold, the vitals card wins
+function P5.clampHint()
+	local f = Hint.Frame
+	local hud = gui and gui.Parent and gui.Parent:FindFirstChild("NimbusHud")
+	if not (f and Hint.Scale) then
+		return
+	end
+	local s = Hint.Scale.Scale
+	local w, h = f.Size.X.Offset * s, f.Size.Y.Offset * s
+	local x0 = f.Position.X.Offset
+	local x1 = x0 + w
+	local cy = Hint.BaseY or f.Position.Y.Offset
+	local GAP = 8
+	local lo, hi = h / 2 + 4, math.huge
+	local function num(name)
+		return hud and tonumber(hud:GetAttribute(name)) or nil
+	end
+	local gl, gt, gs = num("GiftLeft"), num("GiftTop"), num("GiftSize")
+	if gl and gt and gs and gs > 0 and x1 + GAP > gl and x0 - GAP < gl + gs then
+		lo = math.max(lo, gt + gs + GAP + h / 2)
+	end
+	local vt, vl, vr = num("BottomCentreTop"), num("BottomCentreLeft"), num("BottomCentreRight")
+	if vt and vl and vr and vt > 0 and x1 + GAP > vl and x0 - GAP < vr then
+		hi = vt - GAP - h / 2
+	end
+	cy = math.min(math.max(cy, lo), hi)
+	f.Position = UDim2.new(0, x0, 0, math.floor(cy + 0.5))
+end
+
 function showHint(text, kind)
 	if not Hint.Frame then
 		return
@@ -785,6 +817,7 @@ function showHint(text, kind)
 	Hint.Label.Size = UDim2.fromOffset(width, textH)
 	Hint.Label.Position = UDim2.fromOffset(Hint.CHIP + Hint.CHIP_GAP, math.floor((rowH - textH) / 2))
 	Hint.Frame.Size = UDim2.fromOffset(width + 28 + Hint.CHIP + Hint.CHIP_GAP, rowH + 16 + CloudUI.SignMetrics.Lip)
+	P5.clampHint()
 	Hint.Frame.Visible = true
 	task.delay(K.HINT_SECONDS, function()
 		if Hint.Token == mine and Hint.Frame then
@@ -1897,8 +1930,10 @@ function relayoutMenu()
 		local hintLeft = left + w * scale + 10
 		local room = math.max(120, area.X * 0.34 - hintLeft - 28 * factor)
 		Hint.Scale.Scale = factor
-		Hint.Frame.Position = UDim2.new(0, hintLeft, 0, math.floor(top + h * scale / 2 + 0.5))
+		Hint.BaseY = math.floor(top + h * scale / 2 + 0.5) -- (playtest 2026-11-28 C24: P5.clampHint moves it off the HUD)
+		Hint.Frame.Position = UDim2.new(0, hintLeft, 0, Hint.BaseY)
 		Hint.MaxW = math.min(300, math.floor(room / factor))
+		P5.clampHint()
 	end
 	for _, win in pairs(windows) do
 		if win.Shown then

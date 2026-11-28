@@ -1330,7 +1330,9 @@ end
 -- the studs over a unit's centre its numbers start at (a boss's over its head)
 function Fx.NumberHeight(u)
 	if u.isBoss then
-		return (u.height or 20) * 0.5 + 2
+		-- (playtest 2026-11-28 C60: height x 0.5 + 2 put the total mid-body on a 20-stud boss) BossBuilder roots a boss at its
+		-- feet (buildUnit's worldFrame at y 0; the lock mark's top is height + 2 too): over its head is the whole height
+		return (u.height or 20) + 2
 	end
 	return (u.height or 3) / 2 + 1.8
 end
@@ -8677,8 +8679,20 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- the number's box: as wide as "max / max" (the widest it gets), centred behind the divider
 		local numPx = px(20)
 		local maxText = Theme.Short(bossUnit.maxHp)
-		local ok, ms = pcall(Theme.Measure, maxText .. " / " .. maxText, "Display", numPx)
-		local nw = math.ceil(max((ok and typeof(ms) == "Vector2") and ms.X or 0, #(maxText .. " / " .. maxText) * numPx * 0.56) * 1.04) + 16
+		local function numW(s)
+			local ok, ms = pcall(Theme.Measure, s, "Display", numPx)
+			return math.ceil(max((ok and typeof(ms) == "Vector2") and ms.X or 0, #s * numPx * 0.56) * 1.04) + 16
+		end
+		local nw = numW(maxText .. " / " .. maxText)
+		-- (playtest 2026-11-28 C6: beside the phone's boss head a 640 x 360 track left the blocks 10 design px, six 0 px
+		-- blocks, and 667 x 375 six 2 px slivers) where "max / max" leaves the blocks less than six 12 px blocks (their 3 px
+		-- gaps), the number is the boss's HP alone (Hud.Update reads Hud.bossShort)
+		Hud.bossShort = tw - 2 * e - 4 * pad - 2 - nw < 6 * (12 + 3) - 3
+		if Hud.bossShort then
+			nw = numW(maxText)
+		end
+		local hpNow = Theme.Short(clamp(bossUnit.hp or 0, 0, bossUnit.maxHp or 0))
+		setText(Hud.bossText, Hud.bossShort and hpNow or (hpNow .. " / " .. maxText))
 		local numX = tw - e - pad - nw
 		local divX = numX - pad - 2
 		Hud.bossDivider.Position = UDim2.fromOffset(divX, e)
@@ -8690,7 +8704,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- 20 blocks (14 on a phone); a narrow track (a tall phone's right column) fewer, each still a chunky >= 12 px block
 		local n = compact and K.BOSS_BLOCKS_COMPACT or K.BOSS_BLOCKS
 		local room = divX - pad - (e + pad)
-		n = clamp(floor((room + 3) / (12 + 3)), 6, n)
+		-- (playtest 2026-11-28 C6: the floor of six kept six blocks in 10 design px, each 0 px) under six 12 px blocks of
+		-- room, fewer blocks (never under three), each still 12 px or more
+		n = clamp(floor((room + 3) / (12 + 3)), min(6, max(3, floor((room + 3) / (12 + 3)))), n)
 		if Hud.bossBar.count ~= n then
 			SignKit.SetBlockCount(Hud.bossBar.Root, n, KB.Loss, SIGN.RedLip)
 			Hud.bossBar.count = n
@@ -9066,7 +9082,7 @@ function Hud.Update(B, now, force)
 			-- every screen, in the track behind its divider
 			setBlocks(Hud.bossBar, healthBlocks(clamp(bossUnit.hp / bossUnit.maxHp, 0, 1), Hud.bossBar.count))
 			local hpText = Theme.Short(clamp(bossUnit.hp, 0, bossUnit.maxHp))
-			setText(Hud.bossText, hpText .. " / " .. Theme.Short(bossUnit.maxHp))
+			setText(Hud.bossText, Hud.bossShort and hpText or (hpText .. " / " .. Theme.Short(bossUnit.maxHp))) -- (playtest 2026-11-28 C6: a narrow track, the HP alone)
 		end
 	end
 	if Hud.pills.Visible and Hud.topArgs then
@@ -10800,6 +10816,12 @@ function CheerUp.TeamSpots(m)
 		return spots, w, h
 	end
 	local top = (cells > 0) and (hy + hh) or (ty + Hud.team.Size.Y.Offset)
+	local fc = Hud.fighterCard and Hud.fighterCard.Root
+	if cells == 0 and fc and fc.Parent == Hud.team then
+		-- (playtest 2026-11-28 C5: a raid with no helpers put CHEER / BACK on Roblox's stick at 667 x 375; the Team block
+		-- keeps the empty helpers' height, so its foot is the screen's) no helpers: the row under the fighter card itself
+		top = ty + fc.Position.Y.Offset + fc.Size.Y.Offset
+	end
 	if Hud.listX and Hud.enemies and Hud.enemies.Visible then
 		-- (keys look r4: the "+n more" tag hangs past the list frame's height, its frame 2.8 px off CHEER's at 360 x 640) the
 		-- list's foot is its lowest shown row or tag
