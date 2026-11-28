@@ -9039,11 +9039,33 @@ local function clientScenarios()
 					and U8.rect(rule).Y >= U8.rect(crumbs).Y and U8.rect(busy).Y >= U8.rect(rule).B,
 					tag .. ": the team's busy helpers under a dotted rule ('2 helpers in the garden')",
 					fmt("'%s' shown %s, rule %s with %d dots", busy and busy.Text or "missing", tostring(busy and U8.shown(busy)), tostring(rule and U8.shown(rule)), dots))
-				-- (2026-11-28 playtest C19) the fighter (slot 1) in the garden is a fighter, not a "helper"
-				U8.feed({ U8.KEYS[1], U8.KEYS[2], U8.KEYS[3] }, { U8.KEYS[1], U8.KEYS[2] }, nil, nil, nil, { Garden = 3 })
-				LKC.advance(0.6)
-				T.check(busy and busy.Text == "1 fighter, 1 helper in the garden", tag .. ": a gardening fighter is named a fighter ('1 fighter, 1 helper in the garden')",
-					busy and busy.Text or "missing")
+				-- (2026-11-28 playtest C19) the fighter (slot 1) in the garden is a fighter, not a "helper"; (C19 review) and the line
+				-- fits its box at the face's width as the game measures it (Theme.Measure on Builder Sans x 1.06, U8.measureReal;
+				-- the drawn Nunito ExtraBold is a little narrower) at >= 14 screen px: "1 fighter, 1 helper in the garden" ran 14 px
+				-- past it at 1280 x 720 onto Clear, a whole busy team 126 px. Named while that fits, else the counts alone. The
+				-- longest teams: the fighter and a helper gardening with the other helper training, all three gardening, and the
+				-- fighter and a helper gardening
+				local restoreMeasure = U8.measureReal()
+				local Theme = LoadingH.shared("Theme")
+				local job = { Job = { Stat = "Speed", Ends = os.time() + 600, Rank = 1, Slot = 1, From = "Follow", Paid = 10 } }
+				local team = { U8.KEYS[1], U8.KEYS[2], U8.KEYS[3] }
+				for _, case in ipairs({
+					{ { U8.KEYS[1], U8.KEYS[2] }, { [U8.KEYS[3]] = job }, { "1 fighter, 1 helper in the garden, 1 in training", "2 in the garden, 1 in training" } },
+					{ { U8.KEYS[1], U8.KEYS[2], U8.KEYS[3] }, nil, { "1 fighter, 2 helpers in the garden", "3 in the garden" } },
+					{ { U8.KEYS[1], U8.KEYS[2] }, nil, { "1 fighter, 1 helper in the garden", "2 in the garden" } },
+				}) do
+					U8.feed(team, case[1], case[2], nil, nil, { Garden = 3 })
+					LKC.advance(0.6)
+					local k = busy and U8.scaleOf(busy) or 1
+					local text = busy and busy.Text or "missing"
+					local w = busy and SmokeCommon.RealWidth(text, busy.TextSize, Theme.Fonts.Body, true)
+					w = (w or math.huge) * (Theme.MeasureSpare.Body or 1)
+					local boxW = busy and busy.AbsoluteSize.X / k or 0
+					T.check(busy and U8.shown(busy) and (text == case[3][1] or text == case[3][2]) and w <= boxW + 0.5 and busy.TextSize * k >= 14 - 0.05,
+						tag .. ": the team's busy line names a gardening fighter right and fits its box ('" .. case[3][1] .. "')",
+						fmt("'%s' at %.1f px: %.1f of %.1f design px", text, busy and busy.TextSize * k or 0, w, boxW))
+				end
+				restoreMeasure()
 				PC.Close(true)
 				LKC.advance(0.4)
 			end)
@@ -17153,6 +17175,11 @@ local function clientScenarios()
 						if boxW < need - 0.5 then
 							tight[#tight + 1] = fmt("step %d name box %.1f < %.1f", step, boxW, need)
 						end
+						-- (C42 review: this measure restates the code's and the mock's fit always passes, so it cannot prove the
+						-- engine keeps the name whole) and the engine never cuts it: no truncation (the plank holds a wider draw)
+						if name and name.TextTruncate ~= Enum.TextTruncate.None then
+							tight[#tight + 1] = fmt("step %d name cut at its end by the engine (%s)", step, tostring(name.TextTruncate))
+						end
 						local title, well = root:FindFirstChild("StepTitle", true), root:FindFirstChild("Well", true)
 						if title and well and U8.shown(title) and title.Size.Y.Offset > 26 then
 							wrapped = wrapped + 1
@@ -17332,41 +17359,127 @@ local function clientScenarios()
 		end
 		-- (2026-11-28 playtest C17) a window over the guide: the Shop left 'Pick a B' of the folded strip showing, the Gifts
 		-- window and an NPC's dialog stacked on the open card, a phone's dungeon chip lay under the strip ('Door: tap Enter'
-		-- read 'Enter'). Each of them (and the Pets window) now hides the card and the strip; both back when it goes
+		-- read 'Enter'); (C17 review) at 667 x 375 the Ring, Dungeon and Food Machine windows the steps send the player to lay
+		-- over the card and the strip ('The Champion Rin', '20/21' and the + under it), and the first fix hid the guide under
+		-- every window, also where nothing lay over it. Each window folds the card; the guide (card or strip) is out of sight
+		-- exactly while the window's ink meets its own (measured here: the guide's drawn parts against the window's shown,
+		-- drawn parts, clipped to their clipping frames); both back when the window goes. Pinned: at 667 x 375 the Ring,
+		-- Dungeon and Food Machine windows hide it, at 1920 x 1080 the docked Ring window leaves the strip in view
+		local function draws(o)
+			if o.BackgroundTransparency < 0.99 or o:FindFirstChildOfClass("UIStroke") then
+				return true
+			end
+			if (o:IsA("ImageLabel") or o:IsA("ImageButton")) and o.Image ~= "" and o.ImageTransparency < 0.99 then
+				return true
+			end
+			return (o:IsA("TextLabel") or o:IsA("TextButton")) and o.Text ~= "" and o.TextTransparency < 0.99
+		end
+		-- the guide's drawn box (its Slide's shown parts, the Slide's own Visible aside: it is what the guide hides)
+		local function guideBox(slide)
+			local box = nil
+			local function walk(o)
+				for _, c in ipairs(o:GetChildren()) do
+					if c:IsA("GuiObject") and c.Visible then
+						if c.AbsoluteSize.X > 1 and c.AbsoluteSize.Y > 1 and draws(c) then
+							local r = U8.rect(c)
+							box = box and { X = math.min(box.X, r.X), Y = math.min(box.Y, r.Y), R = math.max(box.R, r.R), B = math.max(box.B, r.B) } or r
+						end
+						walk(c)
+					end
+				end
+			end
+			walk(slide)
+			return box
+		end
+		-- the shown, drawn parts of `root` (a ScreenGui or a part) that lie over `box` (in the space of the guide's gui, which
+		-- keeps Roblox's top bar out: the Shop and the Pets window ignore it) grown by `grow` px, cut to their clipping frames
+		-- -> names
+		local function inkOver(root, box, grow, guideGui)
+			local hits = {}
+			local inset = Mock.TopInset or 0
+			local owner = root
+			while owner and not owner:IsA("LayerCollector") do
+				owner = owner.Parent
+			end
+			local dy = ((owner and owner.IgnoreGuiInset) and 0 or inset) - ((guideGui and guideGui.IgnoreGuiInset) and 0 or inset)
+			local b = { X = box.X - grow, Y = box.Y - grow - dy, R = box.R + grow, B = box.B + grow - dy }
+			local list = root:GetDescendants()
+			if root:IsA("GuiObject") then
+				list[#list + 1] = root
+			end
+			for _, d in ipairs(list) do
+				if d:IsA("GuiObject") and d.AbsoluteSize.X > 1 and d.AbsoluteSize.Y > 1 and U8.shown(d) and draws(d) then
+					local r = U8.rect(d)
+					local a = d.Parent
+					while a and a:IsA("GuiObject") do
+						if a.ClipsDescendants then
+							local cr = U8.rect(a)
+							r = { X = math.max(r.X, cr.X), Y = math.max(r.Y, cr.Y), R = math.min(r.R, cr.R), B = math.min(r.B, cr.B) }
+						end
+						a = a.Parent
+					end
+					if r.R > r.X and r.B > r.Y and U8.overlap(r, b) then
+						hits[#hits + 1] = d.Name .. " " .. U8.show(r)
+					end
+				end
+			end
+			return hits
+		end
 		for _, s in ipairs({ { 1920, 1080, false }, { 667, 375, true } }) do
 			U8.at(s[1], s[2], s[3], "tutorial covered", function(tag)
 				local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
 				local function guide()
-					local gui, root = U99.tutorial(5, true)
+					local _, root = U99.tutorial(5, true)
 					local slide = root and root:FindFirstChild("Slide")
 					local main = root and root:FindFirstChild("Main", true)
-					return slide, main
+					return slide, main, root
 				end
 				local function seen(slide)
 					return slide ~= nil and U8.shown(slide)
 				end
+				-- { name, open, close, the window's ScreenGui (its part), pinned: "hides" | "shows" }
 				local covers = {
 					{ "the Gifts window", function()
 						U7.client("Controllers/DailyController").Open({})
 					end, function()
 						pcall(U7.client("Controllers/DailyController").Close, true)
-					end },
+					end, "NimbusDaily" },
 					{ "the Shop", function()
 						U7.client("Controllers/ShopController").Open({})
 					end, function()
 						pcall(U7.client("Controllers/ShopController").Close, true)
-					end },
+					end, "NimbusShop" },
 					{ "the Pets window", function()
 						U7.client("Controllers/PetsController").Open({})
 					end, function()
 						pcall(U7.client("Controllers/PetsController").Close, true)
-					end },
+					end, "NimbusPets" },
 					{ "an NPC's dialog", function()
 						U99.npc(1)
 					end, function()
 						U99.npcClose()
 						U99.npcGone()
-					end },
+					end, "NimbusNpcDialog" },
+					{ "the Ring window", function()
+						U97.open("ring")
+					end, function()
+						U97.close()
+					end, "NimbusArena", s[3] and "hides" or "shows" },
+					{ "the Dungeon window", function()
+						U97.open("dungeon")
+					end, function()
+						U97.close()
+					end, "NimbusDungeon", s[3] and "hides" or nil },
+					{ "the Food Machine", function()
+						-- (as the U9-5 family opens it; that U9 is out of scope here)
+						LKC.toClient("OpenPanel", "Pets", { Tab = "Pets", Action = "Feed" })
+						LKC.advance(1)
+					end, function()
+						pcall(U7.client("Controllers/CareController").Close)
+						pcall(U7.client("Controllers/PetsController").Close, true)
+						pcall(U7.client("Controllers/MenuController").Close)
+						LKC.advance(0.5)
+					end, "NimbusCare", s[3] and "hides" or nil },
 				}
 				if s[3] then
 					-- (a phone: the party countdown's chip in Roblox's top band; a desktop shows the side card instead)
@@ -17377,18 +17490,67 @@ local function clientScenarios()
 						assert(chip and U8.shown(chip), "the countdown's chip is not up")
 					end, function()
 						U97.close()
-					end }
+					end, "NimbusDungeonRun", nil, "RunChip" }
 				end
+				local hider = nil
 				for _, c in ipairs(covers) do
-					local slide = guide()
+					local slide, main = guide()
 					if T.check(seen(slide), tag .. ": (setup) the guide shows before " .. c[1]) then
 						local ok, err = pcall(c[2])
 						LKC.advance(1.2)
-						T.check(ok and not seen(slide), tag .. ": " .. c[1] .. " hides the guide (card and strip)", ok and "still shown" or tostring(err))
+						local gui = pg:FindFirstChild(c[4])
+						local part = gui and c[6] and gui:FindFirstChild(c[6], true) or gui
+						local box = guideBox(slide)
+						local shown = seen(slide)
+						local note = fmt("guide %s, %s", box and U8.show(box) or "-", shown and "shown" or "hidden")
+						local guideGui = pg:FindFirstChild("NimbusTutorial")
+						if ok and part and box then
+							if shown then
+								local hits = inkOver(part, box, 0, guideGui)
+								T.check(#hits == 0, tag .. ": " .. c[1] .. " lies over no shown part of the guide", note .. " | " .. table.concat(hits, "; "))
+							else
+								hider = hider or c
+								local hits = inkOver(part, box, 6, guideGui)
+								T.check(#hits > 0, tag .. ": " .. c[1] .. " hides the guide only where it lies over it", note)
+								T.info(fmt("*%s: %s lies over the guide (%s): %s", tag, c[1], note, table.concat({ hits[1] or "-", hits[2] }, "; ")))
+							end
+							T.check(main ~= nil and main.Visible == false, tag .. ": " .. c[1] .. " folds the card")
+							if c[5] then
+								T.check((c[5] == "hides") == not shown, tag .. ": " .. c[1] .. " " .. c[5] .. " the guide", note)
+							end
+						else
+							T.check(false, tag .. ": " .. c[1] .. " opened", ok and ("no " .. tostring(c[6] or c[4])) or tostring(err))
+						end
 						pcall(c[3])
 						LKC.advance(1.2)
 						T.check(seen(slide), tag .. ": the guide is back once " .. c[1] .. " goes")
 					end
+				end
+				-- (C17 review) sent away under a window (the tutorial ends; a phone's dungeon room), the hidden guide slides out
+				-- unseen: it popped back in for its 0.3 s slide-out, 9 of 14 frames. Then whole again on its next step
+				if T.check(hider ~= nil, tag .. ": (setup) a window hides the guide") then
+					local slide, _, root = guide()
+					pcall(hider[2])
+					LKC.advance(1.2)
+					if T.check(slide and not seen(slide), tag .. ": (setup) the guide is hidden under " .. hider[1]) then
+						local n = #LoadingH.shared("TutorialSteps").Steps
+						LKC.toClient("TutorialState", { Step = n, Total = n, Id = "done", Text = "", Done = true, Completed = false, Skipped = true, Reward = 0 })
+						local step = (Mock.Options and Mock.Options.StepSize) or (1 / 30)
+						local frames, popped = 0, 0
+						for _ = 1, math.ceil(0.6 / step) do
+							Mock.Advance(step)
+							frames = frames + 1
+							if root.Visible and slide.Visible then
+								popped = popped + 1
+							end
+						end
+						T.check(popped == 0 and not root.Visible, tag .. ": sent away under " .. hider[1] .. ", the guide slides out unseen",
+							fmt("drawn %d of %d frames, panel %s", popped, frames, root.Visible and "still up" or "gone"))
+					end
+					pcall(hider[3])
+					LKC.advance(1.2)
+					local again = guide()
+					T.check(seen(again), tag .. ": the guide is whole on its next step")
 				end
 				U99.tutorialOff()
 			end)

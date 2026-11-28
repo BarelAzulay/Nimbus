@@ -157,6 +157,7 @@ local K = {
 	NEXT_LOCK = 2.5,
 	SKIP_LOCK = 3,
 	LAYOUT_EVERY = 0.5,
+	COVER_EVERY = 0.15, -- (C17 review) seconds between two reads of a covering window's ink over the guide (Cover.underWindow)
 	PORTRAIT_STEP = 1 / 30,
 	PORTRAIT_FOLDED_STEP = 1 / 15, -- the folded bubble keeps flapping at half the rate (bug batch 2 #23; phone battery)
 	FINALE_SECONDS = 4.5,
@@ -385,6 +386,21 @@ local function loadModule(container, name, timeout)
 	return nil
 end
 
+-- (2026-11-28 playtest C17 review) the windows over the guide: which fold the card and where they draw (one table: the
+-- chunk is near Lua's 200 locals)
+local Cover = {}
+-- (at 667 x 375 the Ring, Dungeon and Arena windows, the Food Machine and the garden picker the steps send the player to
+-- lay over the open card and the strip, 'The Champion Rin'; the Sky Trove and Fusion too, Fusion over the card on a PC)
+-- every window family that answers IsOpen, after MenuController's (its windows, Pets, the Shop, the egg stage): one open
+-- folds the card as a menu window does (windowCovering)
+Cover.WINDOWS = { "IndexController", "DailyController", "NpcController", "ArenaController", "DungeonController",
+	"CareController", "TrainController", "FusionController", "TroveController", "RaidGateController", "ObbyController",
+	"LossScreen", "PetPicker" }
+Cover.CONTROLLERS = {}
+for _, name in ipairs(Cover.WINDOWS) do
+	Cover.CONTROLLERS[name] = name ~= "PetPicker" -- (a UI module)
+end
+
 -- Optional collaborators, loaded on first use (missing ones simply switch a feature off).
 local function mod(name)
 	local cached = Mods[name]
@@ -392,8 +408,10 @@ local function mod(name)
 		local loaded
 		if name == "CloudUI" or name == "PixelCrisp" then
 			loaded = loadModule(Client:FindFirstChild("UI"), name, 5)
+		elseif name == "PetPicker" then -- (2026-11-28 playtest C17 review: windowCovering, the garden picker)
+			loaded = loadModule(Client:FindFirstChild("UI"), name)
 		elseif name == "MenuController" or name == "IndexController" or name == "HudController" or name == "PromptController"
-			or name == "DailyController" or name == "NpcController" then -- (2026-11-28 playtest C17: windowCovering)
+			or Cover.CONTROLLERS[name] then -- (2026-11-28 playtest C17: windowCovering)
 			loaded = loadModule(script.Parent, name)
 		else
 			loaded = loadModule(Shared, name, 5)
@@ -1025,8 +1043,9 @@ local function windowCovering()
 			return true
 		end
 	end
-	-- (2026-11-28 playtest C17) the Gifts window and an NPC's dialog stacked on the open card: they cover it too
-	for _, name in ipairs({ "IndexController", "DailyController", "NpcController" }) do
+	-- (2026-11-28 playtest C17) the Gifts window and an NPC's dialog stacked on the open card: they cover it too, as every
+	-- other window family does (Cover.WINDOWS, C17 review)
+	for _, name in ipairs(Cover.WINDOWS) do
 		local m = mod(name)
 		if m and type(m.IsOpen) == "function" then
 			local ok, open = pcall(m.IsOpen)
@@ -2193,7 +2212,10 @@ local function buildPanel()
 		Position = UDim2.new(0.5, 0, 0.5, -2),
 		Size = UDim2.new(1, -2 * (K.TAB_INSET - K.NAME_SLACK), 1, -(6 + K.NAME_LIP)),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		TextTruncate = Enum.TextTruncate.AtEnd,
+		-- (2026-11-28 playtest C42 review: the offline fit cannot see the engine's own measure, which drew the name about
+		-- 3 px wider than its box) never cut: the plank is sized to the name, so a name the engine draws a little wider
+		-- stays on the plank's insets instead of reading "NIMB..."
+		TextTruncate = Enum.TextTruncate.None,
 		ZIndex = 7,
 	})
 	UI.Name.TextScaled = true -- (U9-9 look) under UI.NameFit (applyGeometry): never cut to "NIMB..."
@@ -2774,6 +2796,7 @@ local function setPanelShown(on)
 	local k = math.max(0.1, UI.Scale.Scale)
 	local hiddenX = -math.floor((UI.Root.AbsolutePosition.X / k) + UI.Root.Size.X.Offset + 40)
 	if on then
+		S.coverRead = 0 -- (C17 review) a window it comes back under is read at once (Step)
 		safe("layout", layout)
 		UI.Root.Visible = true
 		UI.Slide.Position = UDim2.fromOffset(hiddenX, 0)
@@ -2787,6 +2810,8 @@ local function setPanelShown(on)
 		out.Completed:Connect(function()
 			if not S.shown and UI.Root then
 				UI.Root.Visible = false
+				-- (C17 review) a guide that slid out unseen under a window is whole again for its next show
+				UI.Slide.Visible = true
 			end
 		end)
 	end
@@ -4761,6 +4786,103 @@ local function applyState(payload)
 	ensureLoop()
 end
 
+-- where each covering window (Cover.WINDOWS) draws: its ScreenGui; of NimbusMenu (it holds the menu column too) only the
+-- Window_ frames, of NimbusDungeonRun (its run card) only the party's chip
+Cover.GUIS = {
+	{ "NimbusMenu", Prefix = "Window_" }, { "NimbusPets" }, { "NimbusShop" }, { "NimbusHatch" }, { "NimbusIndex" },
+	{ "NimbusDaily" }, { "NimbusNpcDialog" }, { "NimbusDungeonRun", Part = "RunChip" }, { "NimbusArena" }, { "NimbusDungeon" },
+	{ "NimbusCare" }, { "NimbusTrain" }, { "NimbusFusion" }, { "NimbusTrove" }, { "NimbusRaidGate" }, { "NimbusObby" },
+	{ "NimbusLoss" }, { "NimbusPetPicker" },
+}
+
+-- what a part draws, not its box (as spotClaimed reads it: a window's holder is a transparent frame over the screen)
+function Cover.drawn(o)
+	if o.BackgroundTransparency < 0.99 or o:FindFirstChildOfClass("UIStroke") then
+		return true
+	end
+	if (o:IsA("ImageLabel") or o:IsA("ImageButton")) and o.Image ~= "" and o.ImageTransparency < 0.99 then
+		return true
+	end
+	return (o:IsA("TextLabel") or o:IsA("TextButton")) and o.Text ~= "" and o.TextTransparency < 0.99
+end
+
+-- true when `obj` (shown) or a shown part under it draws ink meeting `box` (screen px; a clipping part's children are cut
+-- to its box, so one clear of `box` is not walked)
+function Cover.meets(obj, box)
+	if not (obj:IsA("GuiObject") and obj.Visible) then
+		return false
+	end
+	local r = inkRect(obj)
+	local hit = r.x0 < box.x1 and box.x0 < r.x1 and r.y0 < box.y1 and box.y0 < r.y1
+	if hit and obj.AbsoluteSize.X > 1 and obj.AbsoluteSize.Y > 1 and Cover.drawn(obj) then
+		return true
+	end
+	if obj.ClipsDescendants and not hit then
+		return false
+	end
+	for _, c in ipairs(obj:GetChildren()) do
+		if Cover.meets(c, box) then
+			return true
+		end
+	end
+	return false
+end
+
+-- the guide's ink where it rests (the card with its name plank and portrait, or the strip; the slide's offset taken off,
+-- so its slide-in reads as its place), screen px; nil while it is not up
+function Cover.guideInk()
+	local slide, root = UI.Slide, UI.Root
+	if not (slide and root and root.Visible) then
+		return nil
+	end
+	local box = nil
+	local function walk(o)
+		for _, c in ipairs(o:GetChildren()) do
+			if c:IsA("GuiObject") and c.Visible then
+				if c.AbsoluteSize.X > 1 and c.AbsoluteSize.Y > 1 and Cover.drawn(c) then
+					local r = inkRect(c)
+					box = box and { x0 = math.min(box.x0, r.x0), y0 = math.min(box.y0, r.y0), x1 = math.max(box.x1, r.x1), y1 = math.max(box.y1, r.y1) } or r
+				end
+				walk(c)
+			end
+		end
+	end
+	walk(slide)
+	if not box then
+		return nil
+	end
+	local dx = slide.Position.X.Offset * math.max(0.01, UI.Scale.Scale)
+	return { x0 = box.x0 - dx, y0 = box.y0, x1 = box.x1 - dx, y1 = box.y1 }
+end
+
+-- a covering window's ink meets the guide's (the strip beside the docked Ring window at 1920 x 1080 stays; the Ring window
+-- over the strip at 667 x 375, or the Pets window over its right end at 1920 x 1080, does not)
+function Cover.underWindow()
+	local pg = playerGui()
+	local box = pg and Cover.guideInk()
+	if not box then
+		return false
+	end
+	for _, spec in ipairs(Cover.GUIS) do
+		local gui = pg:FindFirstChild(spec[1])
+		if gui and gui:IsA("ScreenGui") and gui.Enabled then
+			if spec.Part then
+				local part = gui:FindFirstChild(spec.Part, true)
+				if part and part:IsA("GuiObject") and shownIn(part, gui) and Cover.meets(part, box) then
+					return true
+				end
+			else
+				for _, c in ipairs(gui:GetChildren()) do
+					if (not spec.Prefix or c.Name:sub(1, #spec.Prefix) == spec.Prefix) and Cover.meets(c, box) then
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
 -- One frame of every tutorial visual (RenderStepped). Public so tests can drive it.
 function TutorialController.Step(dt)
 	dt = math.min(tonumber(dt) or 0, 0.25)
@@ -4788,12 +4910,27 @@ function TutorialController.Step(dt)
 	end
 	if covered ~= (S.windowOpen == true) then
 		S.windowOpen = covered
-		-- (2026-11-28 playtest C17: the Shop left 'Pick a B' of the folded strip showing, its '5/21' under the window) the
-		-- folded guide steps out of sight too while it is covered, back when the window closes
-		if UI.Slide then
-			UI.Slide.Visible = not covered
-		end
+		S.coverRead = 0
 		safe("layout", layout)
+	end
+	-- (2026-11-28 playtest C17: the Shop left 'Pick a B' of the folded strip showing, its '5/21' under the window) the
+	-- folded guide steps out of sight while a covering window's ink meets its own (Cover.underWindow; C17 review: hidden
+	-- under every window, it also went where nothing lay over it, as the Gifts window and an NPC's dialog at 1920 x 1080), read
+	-- every COVER_EVERY s and at once when a window comes or goes. Written only while the panel shows (C17 review: a guide
+	-- sent away under a window popped back in for its slide-out); the slide-out's end makes it whole again
+	if S.shown and UI.Slide then
+		S.coverRead = (S.coverRead or 0) - dt
+		if S.coverRead <= 0 then
+			S.coverRead = K.COVER_EVERY
+			local ok, under = true, false
+			if covered then
+				ok, under = pcall(Cover.underWindow)
+			end
+			local hide = ok and under == true
+			if UI.Slide.Visible == hide then
+				UI.Slide.Visible = not hide
+			end
+		end
 	end
 	if S.shown then
 		safe("typewriter", updateTypewriter, dt)
