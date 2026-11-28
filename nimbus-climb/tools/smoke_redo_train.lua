@@ -345,7 +345,11 @@ local function clientScenarios()
 					"train ui: ...and the timer ('Rank 4 - 2:10 left')", timeText)
 				T.check(TC_.SkillState("Speed") == "Busy" and TC_.SkillState("Ability") == "Busy" and TC_.SkillState("Defense") == "Busy"
 					and H.skill("Speed"):GetAttribute("State") == "Busy", "train ui: the other three skills are 'Busy'", H.states())
-				T.check(H.text(H.part("Speed", "Action")) == "Busy training" and H.disabled(H.part("Speed", "Action")), "train ui: ...'Busy training', disabled")
+				-- (playtest 2026-11-28 C58) the pet is busy, not the skill (was 'Busy training' on idle skills)
+				T.check(H.text(H.part("Speed", "Action")) == "Pet is busy" and H.disabled(H.part("Speed", "Action")), "train ui: ...'Pet is busy', disabled")
+				-- (playtest 2026-11-28 C39) Defense's minus says what it takes off ('Rank 1: -3%' in green read as a penalty)
+				local defNext = H.text(H.part("Defense", "Next"))
+				T.check(defNext:find("-%d+%% damage taken$") ~= nil, "train ui: Defense's next rank reads '-3% damage taken'", defNext)
 				T.eq(H.text(H.find("SpotsChip")), "Training spots: 1 / 3 in use", "train ui: the spots chip")
 				T.check(H.text(H.find("Name", H.skill("Speed"))):upper() == "ATTACK SPEED", "train ui: Speed reads 'Attack Speed'")
 				-- the rank and the bar

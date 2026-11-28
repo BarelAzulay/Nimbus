@@ -732,7 +732,7 @@ S.fixsrv_prestige_pad = guarded("fixsrv_prestige_pad", function()
 		T.check(prompt.ActionText == "Prestige" and prompt.HoldDuration >= 1 and prompt.KeyboardKeyCode == Enum.KeyCode.E and prompt.Enabled,
 			"prestige pad: its prompt says 'Prestige' (not 'Buy') and needs a long hold (>= 1 s)", prompt.ActionText .. " / " .. tostring(prompt.HoldDuration))
 		local press = buyPrompt(info, "Press1") or buyPrompt(info, "Kitchen")
-		T.check(press == nil or (press.ActionText == "Buy" and abs(press.HoldDuration - 0.25) < 1e-6), "prestige pad: the station pads keep 'Buy' (0.25 s)")
+		T.check(press == nil or ((press.ActionText == "Buy" or press.ActionText == "Upgrade") and abs(press.HoldDuration - 0.25) < 1e-6), "prestige pad: the station pads keep 'Buy' / 'Upgrade' (0.25 s)")
 		D.AddCash(p, 123456)
 		local cash0 = D.GetCash(p)
 		local stations0 = stationsText(D.GetHome(p).Stations)

@@ -860,6 +860,22 @@ function H.jobText(job)
 	return "Training " .. Bits.jobLeft(job)
 end
 
+-- (playtest 2026-11-28 C40) "Twilight Dragon" -> "T. Dragon" (every word but the last as its initial); nil for one word
+function H.initialed(name)
+	local words = {}
+	for word in tostring(name or ""):gmatch("%S+") do
+		words[#words + 1] = word
+	end
+	if #words < 2 then
+		return nil
+	end
+	local out = {}
+	for i = 1, #words - 1 do
+		out[i] = (words[i]:match("^[%w]") or words[i]:sub(1, 1)) .. "."
+	end
+	return table.concat(out, " ") .. " " .. words[#words]
+end
+
 function H.paintCard(item, e)
 	local ctx = S.Context
 	local tint = CloudUI.RarityColor(e.Rarity)
@@ -871,12 +887,16 @@ function H.paintCard(item, e)
 	item.Stroke.Thickness = selected and 4 or 3
 	item.Button:SetAttribute("Selected", selected)
 	-- the name, then (a Golden / Rainbow copy) its finish + last word, then the last word
+	-- (playtest 2026-11-28 C40) and before the last word alone, the initials + last word ('T. Dragon'): 'Dragon' sat
+	-- beside 'Cloudy Dragon' with nothing to tell which dragon
 	local last = string.match(e.Name, "(%S+)%s*$") or e.Name
 	local tier = not e.Hybrid and Bits.tierOf(e.Key, e.Def) or "Normal"
-	item.Names = { e.Name, last }
+	item.Names = { e.Name }
 	if tier ~= "Normal" then
-		item.Names = { e.Name, tier .. " " .. last, last }
+		item.Names[#item.Names + 1] = tier .. " " .. last
 	end
+	item.Names[#item.Names + 1] = H.initialed(e.Name)
+	item.Names[#item.Names + 1] = last
 	local levelText, stars = H.levelText(e)
 	item.Level.Text = levelText
 	item.Level:SetAttribute("Stars", stars)

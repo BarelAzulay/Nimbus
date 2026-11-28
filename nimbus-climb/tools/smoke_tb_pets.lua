@@ -999,18 +999,89 @@ local function clientScenarios()
 			end
 			local a, b = H.find(detail, "Row_Income"), H.find(detail, "Row_Power")
 			T.check(not touches(a, b), tag .. ": the two columns of rows don't touch")
+			-- (playtest 2026-11-28 C44) the team row's drawn wood edge (4 px outside its box) keeps 4 px of the panel clear
+			-- under the Health / Speed tiles (at 1274x580 Remove sat on their foot)
+			local tilesB = 0
+			for _, id in ipairs({ "Health", "Speed" }) do
+				local r = H.find(detail, "Row_" .. id)
+				tilesB = math.max(tilesB, r.AbsolutePosition.Y + r.AbsoluteSize.Y)
+			end
+			for _, name in ipairs({ "ActPut", "ActFighter", "ActRemove" }) do
+				local btn = H.find(detail, name)
+				if btn and H.shown(btn) then
+					T.check(btn.AbsolutePosition.Y - 4 >= tilesB + 4 - 0.5, tag .. ": " .. name .. " starts clear under the stat tiles",
+						fmt("button at %.1f, tiles end %.1f", btn.AbsolutePosition.Y, tilesB))
+				end
+			end
 			for _, target in ipairs(H.targets(win)) do
 				if touch then
 					T.check(target.AbsoluteSize.Y >= 44, tag .. ": " .. target.Name .. " >= 44 px", fmt("%.1f", target.AbsoluteSize.Y))
 				end
 			end
+			-- (playtest 2026-11-28 C15) a pet with a Special and perks (K1, Ember Phoenix) shows its Special strip and every perk
+			-- (one a row, else packed side by side): at 1920x1080 an Epic showed neither
+			Mock.Click(H.card(K1))
+			KC.advance(0.2)
+			local PetCatalog = H.req("shared/PetCatalog")
+			local def1 = PetCatalog and PetCatalog.Get and PetCatalog.Get(K1)
+			-- the perks in PerkOrder (PetCatalog.PerkLines), plus the evolved pet's Reach line; they show in the Perks rows or
+			-- after the Special's name on its strip, and any left out are counted ('+1 more'), never dropped silently
+			local want = #(PetCatalog and PetCatalog.PerkLines and PetCatalog.PerkLines(def1) or {})
+			local special, perks, strip = H.find(detail, "Special"), H.find(detail, "Perks"), H.find(detail, "SpecialText")
+			local shownPerks, counted, reach = 0, 0, 0
+			local function tally(text, skipFirst)
+				for line in (text .. "\n"):gmatch("(.-)\n") do
+					local i = 0
+					for part in (line .. "  ·  "):gmatch("(.-)  ·  ") do
+						i = i + 1
+						local more = part:match("^%+(%d+) more$")
+						if more then
+							counted = counted + tonumber(more)
+						elseif part ~= "" and not (skipFirst and i == 1) then
+							shownPerks = shownPerks + 1
+							reach = reach + (part:match("^Reach ") and 1 or 0)
+						end
+					end
+				end
+			end
+			if perks and H.shown(perks) then
+				tally(perks.Text, false)
+			end
+			if strip and special and H.shown(special) then
+				tally(strip.Text, true)
+			end
+			want = want + reach
+			-- (the pet on top of the panel; the short side layout, 960x640 and 1274x580, has no row for them yet: C15 partial)
+			local pic, nameL = H.find(detail, "Picture"), H.find(detail, "Name")
+			local onTop = pic and nameL and pic.AbsolutePosition.Y + pic.AbsoluteSize.Y <= nameL.AbsolutePosition.Y + 0.5
+			T.check(not onTop or (def1 ~= nil and want > 0 and special ~= nil and H.shown(special) and shownPerks + counted == want),
+				tag .. ": Ember Phoenix's Special shows and each of its " .. want .. " perks shows or is counted ('+1 more')",
+				fmt("special %s, %d shown + %d counted: %s / %s", tostring(special and H.shown(special)), shownPerks, counted, strip and strip.Text or "-", perks and perks.Text or "-"))
+			if (tonumber(tag:match("x(%d+)")) or 0) >= 1000 then
+				T.check(counted == 0, tag .. ": ...and at 1080p every one of them shows", fmt("%d counted", counted))
+			end
+			-- (playtest 2026-11-28 C53) a card's busy word ('Gardening', 'Training') draws at the 14 px floor or more (16 design
+			-- px drew 12.8 under the 0.8 window), and an empty "+" well is a button (it opens the Shop's Eggs)
+			local small, inert = {}, 0
+			for _, d in ipairs(win:GetDescendants()) do
+				if d.Name == "Busy" and d:IsA("TextLabel") and H.shown(d) and d.Text ~= "" and d.Size.Y.Offset > 0 then
+					local px = d.TextSize * d.AbsoluteSize.Y / d.Size.Y.Offset
+					if px < 14 - 0.05 then
+						small[#small + 1] = fmt("%s %s %.1f px", d.Parent and d.Parent.Name or "?", d.Text, px)
+					end
+				elseif d:GetAttribute("Slot") == "Empty" and not d:IsA("GuiButton") then
+					inert = inert + 1
+				end
+			end
+			T.check(#small == 0, tag .. ": the cards' busy words draw at 14 px or more", table.concat(small, ", "))
+			T.check(inert == 0, tag .. ": the grid's empty '+' wells are buttons", inert .. " inert")
 			-- nothing falls off: the grid keeps at least three cards a row
 			local grid = H.find(win, "Grid")
 			T.check(grid.AbsoluteSize.X >= 3 * H.card(K1).AbsoluteSize.X, tag .. ": the grid keeps three cards a row", fmt("%.0f against %.0f", grid.AbsoluteSize.X, H.card(K1).AbsoluteSize.X))
 			PC.Close(true)
 			KC.advance(0.3)
 		end
-		for _, size in ipairs({ { 1024, 768, true }, { 1024, 768, false }, { 1080, 810, true }, { 1112, 834, true }, { 1180, 820, true }, { 960, 640, false }, { 1280, 720, false }, { 1366, 768, false }, { 1600, 900, false }, { 1920, 1080, false }, { 2560, 1440, false } }) do
+		for _, size in ipairs({ { 1024, 768, true }, { 1024, 768, false }, { 1080, 810, true }, { 1112, 834, true }, { 1180, 820, true }, { 960, 640, false }, { 1274, 580, false }, { 1280, 720, false }, { 1366, 768, false }, { 1600, 900, false }, { 1920, 1080, false }, { 2560, 1440, false } }) do
 			local tag = fmt("tb pets fit %dx%d", size[1], size[2])
 			H.at(size[1], size[2], size[3], "client_tb_pets_fit", function(PC)
 				checkSizes(tag, PC, size[3])
@@ -1128,6 +1199,14 @@ local function clientScenarios()
 							T.check(b.AbsoluteSize.Y >= 44, tag .. ": " .. label .. ": " .. name .. " >= 44 px", fmt("%.1f", b.AbsoluteSize.Y))
 							if b.Text ~= "" and name ~= "PickBanner" then
 								T.check(b.TextBounds.X <= b.AbsoluteSize.X - 2, tag .. ": " .. label .. ": " .. name .. " '" .. b.Text .. "' fits", fmt("%.0f in %.0f", b.TextBounds.X, b.AbsoluteSize.X))
+							end
+							-- (playtest 2026-11-28 C36) the sort word on one line ('Stronges / t' before) with its chevron inside the plank
+							if name == "SortButton" then
+								local chev = b:FindFirstChild("LeadIcon")
+								local cx = chev and chev.AbsolutePosition.X or -1
+								T.check(b.TextWrapped == false and chev ~= nil and cx >= b.AbsolutePosition.X + 2 and b.TextBounds.X + 2 * (chev.AbsoluteSize.X + 2) <= b.AbsoluteSize.X,
+									tag .. ": " .. label .. ": the sort word stays on one line, the plank holds it and its chevron",
+									fmt("wrapped %s, chevron at %.0f, plank %.0f..%.0f, text %.0f px", tostring(b.TextWrapped), cx, b.AbsolutePosition.X, b.AbsolutePosition.X + b.AbsoluteSize.X, b.TextBounds.X))
 							end
 						end
 					end

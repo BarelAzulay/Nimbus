@@ -20,7 +20,7 @@
 --   HomeBuilder.SetPads(spotInfo, pads)         the buy pads `Pad_<StationId>` (Home/Pads) for TycoonCatalog.AvailablePads
 --                                               entries: a slate pad with a neon plate + a pixel sign `PadSign` (icon,
 --                                               name, "Lv a -> b", price or the lock reason; HomeFx hides the unsigned
---                                               ones) + ProximityPrompt `BuyPrompt` (ActionText "Buy", HoldDuration 0.25,
+--                                               ones) + ProximityPrompt `BuyPrompt` ("Buy"; "Upgrade" once built, HoldDuration 0.25,
 --                                               attributes StationId, OwnerUserId; disabled while locked; the Prestige
 --                                               pad's says "Prestige" and needs a 1.5 s hold). Pads missing from the list
 --                                               are removed, unchanged pads are kept. Locked "Unlocks at Prestige" /
@@ -62,7 +62,7 @@
 --                                "Food Bowl" / "Pets eat here, then poop Cloud Cash!", 40 studs; point BowlCenter),
 --                                12 beds at Slot.Beds: Attachments Spot<i> (attributes Slot, Open) on the lawn; an open
 --                                bed = bed + cushion + tiny roof with PromptPoint<i> -> `GardenSpotPrompt` ("Put a pet
---                                here", E, attributes Slot / OwnerUserId / StationId, MaxActivationDistance 3, no line of
+--                                here", E, attributes Slot / OwnerUserId / StationId, MaxActivationDistance 4, no line of
 --                                sight); a closed bed = soil + Stem + Sprout + `ClosedSign` ("Prestige to open"). The
 --                                lawn top is y 0.2; the interior stays clear for the roaming pets (HomeRoam)
 --                              * FoodMachine (Kitchen): the glass `Hopper` part (PetCareService's FeedPrompt), the
@@ -1074,7 +1074,10 @@ end
 ----------------------------------------------------------------------
 local Garden = {}
 
-Garden.PROMPT_RANGE = 3 -- studs (contract 3.6)
+-- studs (contract 3.6). (playtest 2026-11-28 C8) was 3: the reach is measured from the root part, ~1.7 studs over
+-- the prompt point, so 3 reached only ~2.5 studs across the lawn and the guide's stop at the bed (3.3) was out of it.
+-- 4 reaches ~3.6 across; the middle of the lawn stays clear of the side beds (7.4 studs from their prompts).
+Garden.PROMPT_RANGE = 4
 Garden.CUSHION_TOP = 0.95
 Garden.LAWN_TOP = 0.2
 Garden.CUSHIONS = { rgb(246, 150, 188), rgb(150, 224, 176), rgb(130, 170, 255), rgb(250, 214, 92) }
@@ -2943,6 +2946,29 @@ local function padSlot(id)
 	return nil, def
 end
 
+-- (playtest 2026-11-28 C8) a pad's BuyPrompt reach: PROMPT_RANGE, cut so it never meets a Garden bed's reach. The
+-- Garden pad (10.6 studs from beds 1/2), the Fence and the Podium pads reached into the beds' reach, and E goes to
+-- whichever prompt the camera faces, so the bed the guide called "you're here" bought the $15K Garden upgrade. A
+-- purchase stays one deliberate step onto (or beside) its 4 x 4 pad: never less than PAD_REACH_MIN.
+local PAD_REACH_MIN = 5
+local function padReach(slotCF)
+	local cat = catalog()
+	local gdef = cat and cat.Get("Garden")
+	local gcf = type(gdef) == "table" and type(gdef.Slot) == "table" and gdef.Slot.CFrame
+	if typeof(gcf) ~= "CFrame" then
+		return PROMPT_RANGE
+	end
+	local at = (slotCF * CFrame.new(0, 0.2, 0)).Position
+	local reach = PROMPT_RANGE
+	for i = 1, #Garden.places(gdef) do
+		local p = Garden.promptPoint(gdef, i)
+		if p then
+			reach = math.min(reach, ((gcf * CFrame.new(p)).Position - at).Magnitude - Garden.PROMPT_RANGE)
+		end
+	end
+	return math.max(PAD_REACH_MIN, math.floor(reach * 10) / 10)
+end
+
 -- "x1.25" (two decimals at most, no trailing zeros)
 local function multText(m)
 	local text = string.format("%.2f", m):gsub("0+$", ""):gsub("%.$", "")
@@ -3084,7 +3110,7 @@ local function updatePad(rec, pad)
 		prompt.ActionText = prestigePad and "Prestige" or "Buy"
 		prompt.KeyboardKeyCode = Enum.KeyCode.E
 		prompt.HoldDuration = prestigePad and PRESTIGE_HOLD or 0.25
-		prompt.MaxActivationDistance = PROMPT_RANGE
+		prompt.MaxActivationDistance = padReach(slotCF) -- (playtest 2026-11-28 C8) never into a Garden bed's reach
 		prompt.RequiresLineOfSight = false
 		prompt:SetAttribute("StationId", id)
 		prompt.Parent = base or m
@@ -3093,6 +3119,10 @@ local function updatePad(rec, pad)
 		m.Parent = rec.PadFolder
 	end
 	local m = entry.Model
+	if id ~= "Prestige" then
+		-- (playtest 2026-11-28 C8) a built station's pad says what E does: "Upgrade" (it said "Buy" at every level)
+		entry.Prompt.ActionText = (tonumber(pad.Level) or 0) >= 1 and "Upgrade" or "Buy"
+	end
 	if entry.Sign then
 		entry.Sign:Destroy()
 	end

@@ -6936,8 +6936,11 @@ local function clientScenarios()
 					local spareL, spareR, why = U8.stripSpare(cb)
 					T.check(spareL >= 3 - 0.01 and spareR >= 3 - 0.01, tag .. ": ...the card strip's mark and word inside it, 3 px or more to spare at each end",
 						fmt("%.1f left, %.1f right%s", spareL, spareR, why or ""))
-					T.check(level and cb.TextSize <= level.TextSize and (phone or cb.TextSize <= 16) and sameColor(cb.TextColor3, Sign.OnGrass),
-						tag .. ": ...the strip's word the mock's small tag (under the level's size, 16 px on PC) in the grass ink",
+					-- (playtest 2026-11-28 C53) 16 px on PC, or the 14 px screen floor's size under a smaller window (16 drew 12.8
+					-- under the 0.8 window)
+					local floorPx = math.max(16, math.ceil(14 / math.max(U8.scaleOf(cb), 0.01)))
+					T.check(level and cb.TextSize <= level.TextSize and (phone or cb.TextSize <= floorPx) and sameColor(cb.TextColor3, Sign.OnGrass),
+						tag .. ": ...the strip's word the mock's small tag (under the level's size, 16 px on PC or the 14 px floor's) in the grass ink",
 						fmt("%s px (level %s), ink %s", tostring(cb.TextSize), tostring(level and level.TextSize), tostring(cb.TextColor3)))
 					local lip, shine = cb:FindFirstChild("Lip"), cb:FindFirstChild("FinishShine")
 					local lr, sr = lip and U8.rect(lip), shine and U8.rect(shine)
@@ -7541,7 +7544,10 @@ local function clientScenarios()
 			local cy = (r.Y + r.B) / 2
 			return { X = r.X, R = r.R, Y = cy - half, B = cy + half }
 		end
-		for _, s in ipairs(U8.SIZES) do
+		-- (playtest 2026-11-28 C41) and a 360 x 640 phone: its 0.8 window put the strip's paging between two tabs
+		local sizes = { table.unpack(U8.SIZES) }
+		sizes[#sizes + 1] = { 360, 640, true }
+		for _, s in ipairs(sizes) do
 			U8.at(s[1], s[2], s[3], "index badge", function(tag)
 				U8.feed(nil, nil, nil, nil, { Discovered = disc, IndexClaimed = { [g2.Id] = true } })
 				Menu.Open("Index")
@@ -7606,6 +7612,13 @@ local function clientScenarios()
 				else
 					-- the strip: a swipe that stops half way snaps back to whole tabs; the page dots say there is more
 					local view = U8.rect(list)
+					-- (playtest 2026-11-28 C41) opened on a group past the first page, the strip pages to its tab ('MYTHIC PETS
+					-- 2/4' showed with the Common / Uncommon tabs in the strip)
+					Menu.Open("Index", { Tab = "Mythic", GroupId = "Mythic" })
+					LKC.advance(1)
+					local mythic = list:FindFirstChild("Group_Mythic", true)
+					T.check(mythic ~= nil and U8.shown(mythic) and inside(U8.rect(mythic), view), tag .. ": opened on Mythic, the strip shows the Mythic tab whole",
+						mythic and (U8.show(U8.rect(mythic)) .. " | view " .. U8.show(view)) or "no Group_Mythic")
 					list.CanvasPosition = Vector2.new(37, 0)
 					LKC.advance(0.8)
 					local cut = {}
@@ -11826,7 +11839,8 @@ local function clientScenarios()
 	S.home_prestige_fits = guarded("home_prestige_fits", function()
 		local ready = { Level = 41, Prestige = 0, Garden = {}, Gym = {}, CollectorCash = 0, Stations = { Press1 = 40, Garden = 8, Kitchen = 5, Gym = 5,
 			Vault = 5, House = 4, FusionMachine = 3, ArenaGate = 1, DecorFence = 3, DecorFountain = 3, DecorPodium = 3 } }
-		for _, s in ipairs({ { 390, 844, true }, { 844, 390, true } }) do
+		-- (playtest 2026-11-28 C35) and 640x360, where the list scrolls
+		for _, s in ipairs({ { 390, 844, true }, { 844, 390, true }, { 640, 360, true } }) do
 			U9.at(s[1], s[2], s[3], "home prestige", false, function(tag, win)
 				U8.feed(nil, nil, nil, ready)
 				LKC.advance(0.5)
@@ -11870,6 +11884,31 @@ local function clientScenarios()
 				if s[2] > s[1] then
 					T.check(#cut == 0, tag .. ": the three lines are whole in the list, no scroll (the window has the room)",
 						table.concat(cut, ", ") .. " | list " .. U8.show(l))
+				end
+				-- (playtest 2026-11-28 C35) a list that scrolls stops at a whole line (no line sliced at rest), and Prestige!
+				-- waits until the player has scrolled to its end: 'You keep' / 'You get' were below the fold beside a live
+				-- Prestige! on landscape phones
+				local yes = box:FindFirstChild("ConfirmPrestige", true)
+				local sliced = {}
+				for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
+					local line = list:FindFirstChild("Line_" .. id)
+					local lr = line and U8.rect(line)
+					if lr and not inside(lr, l) and lr.Y < l.B - 0.5 and lr.B > l.Y + 0.5 then
+						sliced[#sliced + 1] = id .. " " .. U8.show(lr)
+					end
+				end
+				T.check(#sliced == 0, tag .. ": the confirm's list shows whole lines only (none sliced at its edge)", table.concat(sliced, ", ") .. " | list " .. U8.show(l))
+				local off = yes and (yes:GetAttribute("Disabled") == true or yes.Active == false)
+				if #cut > 0 then
+					T.check(off == true and yes.Text ~= "Prestige!", tag .. ": with lines below the fold Prestige! waits (disabled, 'Read all') until the list is read",
+						yes and (yes.Text .. " disabled=" .. tostring(off)) or "no button")
+					list.CanvasPosition = Vector2.new(0, 100000)
+					LKC.advance(0.1)
+					local offEnd = yes and (yes:GetAttribute("Disabled") == true or yes.Active == false)
+					T.check(yes ~= nil and offEnd == false and yes.Text == "Prestige!", tag .. ": scrolled to the end, Prestige! is live",
+						yes and (yes.Text .. " disabled=" .. tostring(offEnd)) or "no button")
+				else
+					T.check(off == false and yes.Text == "Prestige!", tag .. ": every line in view: Prestige! is live", yes and (yes.Text .. " disabled=" .. tostring(off)) or "no button")
 				end
 				local gui = win:FindFirstAncestorWhichIsA("LayerCollector")
 				local b = U8.rect(box)

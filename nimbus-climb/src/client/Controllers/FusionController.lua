@@ -1780,10 +1780,32 @@ function H.setView(rec, def, sig, stage, detail)
 end
 
 -- the name of a pet on a card: the whole name, else the last word
+-- (playtest 2026-11-28 C40) a pet's name keeps its first words as initials before the last word alone ('A. Fox', not
+-- 'Fox': the Fusion result lost which fox); a muted placeholder ('Pick a pet') keeps the old fallback. A Golden /
+-- Rainbow name drops its finish word first: the card's GOLDEN / RAINBOW label already says it ('Maple Fox', 'M. Fox')
 function H.cardName(item, text, color)
 	item.PetName.TextColor3 = color or C.Ink
 	local last = tostring(text):match("(%S+)%s*$") or tostring(text)
-	H.fit(item.PetName, { text, last }, item.PetName.Size.X.Offset, item.NameMax or 28, item.NameMin or 15)
+	local names = { text }
+	if color ~= C.Muted then
+		local words = {}
+		for word in tostring(text):gmatch("%S+") do
+			words[#words + 1] = word
+		end
+		if #words >= 3 and (words[1] == "Golden" or words[1] == "Rainbow") then
+			table.remove(words, 1)
+			names[#names + 1] = table.concat(words, " ")
+		end
+		if #words >= 2 then
+			local out = {}
+			for i = 1, #words - 1 do
+				out[i] = words[i]:sub(1, 1) .. "."
+			end
+			names[#names + 1] = table.concat(out, " ") .. " " .. words[#words]
+		end
+	end
+	names[#names + 1] = last
+	H.fit(item.PetName, names, item.PetName.Size.X.Offset, item.NameMax or 28, item.NameMin or 15)
 end
 
 function H.subOf(def, pc)
@@ -2763,6 +2785,15 @@ end
 
 function H.syncBack()
 	local want = S.Open
+	-- (playtest 2026-11-28 C57) the header shows the Tokens and Gems beside the cost: the HUD's currency strips step aside
+	-- while the machine is open (they showed twice), as the Shop's do
+	if S.CurrencyOff ~= (want == true) then
+		local hud = H.controller("HudController")
+		if hud and type(hud.SetCurrencyHidden) == "function" then
+			S.CurrencyOff = want == true
+			safe("currency", hud.SetCurrencyHidden, "Fusion", S.CurrencyOff)
+		end
+	end
 	if want and not S.BackBound then
 		S.BackBound = true
 		pcall(function()

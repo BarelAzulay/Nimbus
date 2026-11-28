@@ -226,7 +226,9 @@ local EFFECT = {
 	Speed = { Per = 0.04, Words = "attack speed", Sign = "+" },
 	Physique = { Per = 0.05, Words = "max health", Sign = "+" },
 	Ability = { Per = 0.04, Words = "special power and charge", Short = "special power", Sign = "+" },
-	Defense = { Per = 0.03, Words = "damage taken", Sign = "-" },
+	-- (playtest 2026-11-28 C39) a minus skill always says what goes down ('Rank 1: -3%' in green read as a penalty);
+	-- Lead heads the one-line card's "Hits 0% -> -3%"
+	Defense = { Per = 0.03, Words = "damage taken", Sign = "-", Lead = "Hits" },
 }
 local HINTS = {
 	NoPet = "Pick a pet first",
@@ -1979,11 +1981,12 @@ function H.paintSkill(item)
 	-- rank 0 has no bonus yet ("-0% damage taken" would read oddly)
 	local nowShort = rank > 0 and (eff.Sign .. nowPct .. "%") or "0%"
 	local words = rank > 0 and (eff.Sign .. nowPct .. "% " .. eff.Words) or "no bonus yet"
+	local tail = eff.Sign == "-" and (" " .. eff.Words) or "" -- (playtest 2026-11-28 C39) "-3% damage taken"
 	if noPet then
 		nowText = ""
 	elseif st == "Training" then
 		nowText = "Now: " .. words
-		nextText = "Rank " .. jobRank .. ": " .. eff.Sign .. H.pct(id, jobRank) .. "%"
+		nextText = "Rank " .. jobRank .. ": " .. eff.Sign .. H.pct(id, jobRank) .. "%" .. tail
 		timeText = "Rank " .. jobRank .. " " .. G.Dot .. " " .. H.clock(left) .. " left"
 		timeColor = C.PurpleInk
 	elseif st == "Max" then
@@ -1991,7 +1994,7 @@ function H.paintSkill(item)
 		nextText, nextColor = "Top rank!", C.Ink
 	else
 		nowText = "Now: " .. words
-		nextText = "Rank " .. (rank + 1) .. ": " .. eff.Sign .. nextPct .. "%"
+		nextText = "Rank " .. (rank + 1) .. ": " .. eff.Sign .. nextPct .. "%" .. tail
 		costText = H.commas(cost)
 		timeText = H.minutes(seconds)
 	end
@@ -2005,7 +2008,14 @@ function H.paintSkill(item)
 		elseif not noPet then
 			line = nowShort .. " " .. G.Arrow .. " " .. eff.Sign .. nextPct .. "% " .. G.Dot .. " " .. timeText
 		end
-		H.fit(item.Now, { line, (line:gsub(" " .. G.Dot .. " .*$", "")) }, item.Now.Size.X.Offset - 2, m.Line, m.Line)
+		local plain = (line:gsub(" " .. G.Dot .. " .*$", ""))
+		local fits = { line, plain }
+		if eff.Lead and not noPet and st ~= "Training" then
+			-- (playtest 2026-11-28 C39) "Hits 0% -> -3% - 1 min": the lead says what the minus takes off
+			table.insert(fits, 1, eff.Lead .. " " .. line)
+			table.insert(fits, 3, eff.Lead .. " " .. plain)
+		end
+		H.fit(item.Now, fits, item.Now.Size.X.Offset - 2, m.Line, m.Line)
 		item.Now.TextColor3 = st == "Training" and timeColor or C.Ink
 	else
 		local fits = { nowText }
@@ -2017,7 +2027,9 @@ function H.paintSkill(item)
 		end
 		H.fit(item.Now, fits, item.Now.Size.X.Offset - 2, m.Line, math.max(18, m.Line - 2))
 		item.Now.TextColor3 = C.Ink
-		item.Next.Text, item.Next.TextColor3 = nextText, nextColor
+		item.Next.TextColor3 = nextColor
+		-- (playtest 2026-11-28 C39) a minus skill's words drop only when its line has no room for them
+		H.fit(item.Next, { nextText, (nextText:gsub(tail ~= "" and (" " .. eff.Words .. "$") or "^$", "")) }, item.Next.Size.X.Offset - 2, m.Line, m.Line)
 		item.Cost.Text = costText
 		item.Cost.TextColor3 = st == "Short" and C.Bad or C.Good
 		item.Time.Text, item.Time.TextColor3 = timeText, timeColor
@@ -2039,7 +2051,8 @@ function H.paintSkill(item)
 		elseif st == "Training" then
 			text, colorName = "STOP", "Pink"
 		elseif st == "Busy" then
-			text, disabled = "Busy training", true
+			-- (playtest 2026-11-28 C58) the PET is busy (training another skill), not this skill: 'Busy training' sat on idle ones
+			text, disabled = "Pet is busy", true
 		elseif st == "Full" then
 			text, disabled = "Spots full", true
 		elseif st == "Match" then

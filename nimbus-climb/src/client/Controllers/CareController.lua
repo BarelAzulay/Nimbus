@@ -1946,10 +1946,35 @@ function H.feed(key)
 	local cost = H.berryFeed(key, def, level, machine).Cost
 	local have = H.berries()
 	if have < cost then
+		-- (playtest 2026-11-28 C59) a feed bigger than the basket can ever hold: waiting never helps, the Berry Farm does
+		-- (a pet levelled in battles before the farm was built); it said 'Your garden pets grow more!' all the same
+		local cap = H.basketCap(home)
+		if cap and cost > cap then
+			H.hint("Your basket holds " .. H.commas(cap) .. " berries: level up the Berry Farm to feed this pet", "bad")
+			return
+		end
 		H.hint("Not enough berries: a feed needs " .. H.commas(cost) .. " (you have " .. H.commas(have) .. "). Your garden pets grow more!", "bad")
 		return
 	end
 	H.fire("feed:" .. key, "PetCare", "Feed", key)
+end
+
+-- (playtest 2026-11-28 C59) the Berry Basket's size: the plot's BerryCap, else TycoonCatalog.BasketCap from its income;
+-- nil when neither is known
+function H.basketCap(home)
+	local plot = H.plot()
+	local cap = plot and plot:GetAttribute("BerryCap")
+	if type(cap) == "number" and cap > 0 then
+		return math.floor(cap)
+	end
+	local income = plot and plot:GetAttribute("IncomePerSecond")
+	if TycoonCatalog and type(TycoonCatalog.BasketCap) == "function" and type(income) == "number" then
+		local ok, v = pcall(TycoonCatalog.BasketCap, home, income)
+		if ok and type(v) == "number" and v > 0 then
+			return math.floor(v)
+		end
+	end
+	return nil
 end
 
 function H.showConfirm(spec)

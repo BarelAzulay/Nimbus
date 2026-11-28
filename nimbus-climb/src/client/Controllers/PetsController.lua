@@ -1091,6 +1091,9 @@ function H.build()
 			end
 		end
 	end)
+	-- (playtest 2026-11-28 C36) the sort chip shows one word: it never wraps (it broke 'Stronges / t' at 640x360)
+	U.Sort.TextWrapped = false
+	U.Sort.TextTruncate = Enum.TextTruncate.AtEnd
 	-- (Pitch 2 F0 A, look review of finish pass A, major 4) the sort row's pet count on its right, the team's busy helpers
 	-- ("2 helpers in the garden") under a dotted rule below the breakdown, and the grid's empty slots (H.fillEmpty)
 	U.PetCount = text(U.Content, "PetCount", "", "Heading", 20, MUTED, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Visible = false })
@@ -1250,9 +1253,19 @@ function H.layoutCard(item)
 	-- as the mock's band: across the card's whole face, the word its small tag (K.BUSY_TEXT on PC, the phone card's own size
 	-- there), its lit top and lip (H.busyFinish)
 	place(item.Busy, 0, 7 + K.CHIP + 3, w, phone and 24 or 28)
-	item.Busy.TextSize = phone and fs or K.BUSY_TEXT
+	-- (playtest 2026-11-28 C53) never under the 14 px floor on screen: 16 design px drew 12.8 px under the 0.8 window
+	item.Busy.TextSize = phone and fs or math.max(K.BUSY_TEXT, math.ceil(14 / math.max(S.Scale or 1, 0.01)))
+	if item.Busy.Text == "Gardening" or item.Busy.Text == "Garden" then
+		item.Busy.Text = H.gardenWord(item)
+	end
 	H.padTop(item.Busy, 0)
 	item.Busy.TextWrapped = false
+end
+
+-- (playtest 2026-11-28 C53) a grid card's garden word: "Gardening", or "Garden" on a PC card whose word went up to the
+-- 14 px screen floor (a window under 1.0): the mark and "Gardening" at 18 design px filled the strip edge to edge
+function H.gardenWord(item)
+	return (S.Mode ~= "Phone" and item.Busy.TextSize > K.BUSY_TEXT) and "Garden" or "Gardening"
 end
 
 -- (Pitch 2 fix round B; was LOOK-ui kitb-look1's corner mark over the opaque cover) the card's busy mark is a slim strip now (layoutCard): the mark leads the word on its line, as on
@@ -1457,6 +1470,7 @@ function H.layoutDetail(w, h)
 		local rowX = (narrow or not phone) and pad or x
 		local rowH = phone and 26 or ROW2_H
 		H.placeRows(rowX, y, w - rowX - pad, rowH, 8, phone)
+		d.RowsAt = { rowX, y, w - rowX - pad, rowH, 8, phone } -- (playtest 2026-11-28 C44) for the short panel's nudge
 		y = y + 2 * rowH + ROW_VGAP + 4
 		if phone and not narrow then
 			y = math.max(y, pic + 12)
@@ -1464,7 +1478,8 @@ function H.layoutDetail(w, h)
 	else
 		-- the pet on top
 		-- (merge kitb-look1) the 130 px picture too for a pet whose special strip and perks need its 40 px (TightPerks)
-		local pic = (h >= 620 and not d.TightPerks) and 170 or 130
+		-- (playtest 2026-11-28 C15) and the 96 px one when even that left no row for the perks (H.detailPic)
+		local pic = H.detailPic(h, d.TightPerks)
 		place(d.Glow, math.floor(w / 2 - pic / 2) + 8, 12, pic - 16, pic - 16)
 		place(d.Picture, math.floor(w / 2 - pic / 2), 4, pic, pic)
 		y = pic + 6
@@ -1475,12 +1490,38 @@ function H.layoutDetail(w, h)
 		y = y + 104
 		local rowH = phone and 30 or ROW2_H
 		H.placeRows(pad, y, textW, rowH, 10, phone)
+		d.RowsAt = nil
 		y = y + 2 * rowH + ROW_VGAP + 6
 	end
 	d.TextY = y
 	d.TextW = textW
 	d.Pad = pad
 	d.W = w
+	-- (playtest 2026-11-28 C44) a short PC panel (1274x580) put the team row on the Health / Speed tiles' foot: the
+	-- three button rows give up height (never under the touch size), then their gaps (never under 4 px), so the team
+	-- row's drawn wood edge (5 px outside its box) starts 5 px under the tiles
+	if not phone then
+		local rowsBottom = y - 4 -- the rows' foot (y adds a 4-6 px gap under them)
+		local need = rowsBottom + 10 - (bottomY - 2 * (buttonH + gap))
+		if need > 0 then
+			local cut = math.max(0, math.min(buttonH - H.touchSize(), math.ceil(need / 3)))
+			buttonH, need = buttonH - cut, need - 3 * cut
+			if need > 0 then
+				local g = math.max(0, math.min(gap - 4, math.ceil(need / 2)))
+				gap, need = gap - g, need - 2 * g
+			end
+			-- last, the tiles move up into the 9 px under the XP bar (it keeps 5) beside the picture
+			local at = d.RowsAt
+			if need > 0 and at and at[2] == y - (2 * at[4] + ROW_VGAP + 4) then
+				local shift = math.min(need, 4)
+				H.placeRows(at[1], at[2] - shift, at[3], at[4], at[5], at[6])
+				y = y - shift
+				d.TextY = y
+			end
+			bottomY = h - pad - buttonH
+			d.ButtonH, d.Gap, d.BottomY, d.CareY = buttonH, gap, bottomY, bottomY - gap - buttonH
+		end
+	end
 	if phone then
 		place(d.Close, w - 50, 6, 44, 44)
 	end
@@ -1565,11 +1606,14 @@ function H.placeActions()
 	local perksY = d.TextY + workH + 2
 	-- (LOOK-ui) the special's strip first, the other perks under it
 	local specialH = (d.HasSpecial and (phone and 26 or 32)) or 0
+	-- (playtest 2026-11-28 C15) the strip is tested against its own bottom: the trailing gap under it hid the Special
+	-- at 1080p with 6 px to spare (a 2-line work note), so a pet's Special vanished without notice; it may take 2 px of
+	-- the gap over the buttons (a landscape phone came 1 px short)
+	d.Special.Visible = specialH > 0 and perksY + specialH <= bottomText + 2
 	if specialH > 0 then
 		place(d.Special, pad, perksY, d.TextW, specialH)
 		perksY = perksY + specialH + (phone and 4 or 6)
 	end
-	d.Special.Visible = specialH > 0 and perksY <= bottomText
 	local perksH = bottomText - perksY
 	place(d.Perks, pad, perksY, d.TextW, math.max(0, perksH))
 	d.PerksH = perksH
@@ -1725,6 +1769,21 @@ function H.layoutPhone(W, H0)
 		local chips = K.PHONE_CHIPS
 		local fit = math.min(1, (W - closeW - 12 - x - 2 * 4) / (chips[1] + chips[2] + chips[3]))
 		local sortW, fillW, clearW = math.floor(chips[1] * fit), math.floor(chips[2] * fit), math.floor(chips[3] * fit)
+		-- (playtest 2026-11-28 C36) the sort chip gets the room its longest word needs, from Clear's spare first, then
+		-- Auto-fill's (it wraps 'Auto-fill / best' at its space): an even squeeze cut 'Strongest' at 640x360
+		local sortNeed = 0
+		for _, mode in ipairs(K.SORTS) do
+			sortNeed = math.max(sortNeed, H.chipNeed(U.Sort, mode, 15, 9)) -- its chevron: 9 px at the 15 px text
+		end
+		local short = sortNeed - sortW
+		if short > 0 then
+			local spare = math.max(0, clearW - math.max(H.chipNeed(U.Clear, U.Clear.Text, 15), H.chipNeed(U.Undo, U.Undo.Text, 16)))
+			local give = math.min(short, spare)
+			clearW, sortW, short = clearW - give, sortW + give, short - give
+			spare = math.max(0, fillW - H.chipNeed(U.AutoFill, "Auto-fill", 15))
+			give = math.min(short, spare)
+			fillW, sortW = fillW - give, sortW + give
+		end
 		place(U.Sort, x, top, sortW, chipH)
 		x = x + sortW + 4
 		place(U.AutoFill, x, top, fillW, chipH)
@@ -1846,6 +1905,9 @@ function H.layout()
 	end
 	local r = H.rect()
 	local modeChanged = S.Mode ~= r.mode or S.Portrait ~= r.portrait or S.Laid == nil
+	-- (playtest 2026-11-28 C53) the cards' busy word sizes from the window's scale (the 14 px floor): a new scale lays them
+	-- out again too (1920 -> 1024 kept the 1.0 window's 16 px, 12.8 on screen)
+	local cardsStale = modeChanged or S.Scale ~= r.scale
 	S.Mode, S.Portrait, S.Scale = r.mode, r.portrait, r.scale
 	local W, H0 = r.w / r.scale, r.h / r.scale
 	U.Holder.AnchorPoint = Vector2.new(0, 0)
@@ -1883,7 +1945,7 @@ function H.layout()
 	-- (F0 review) the sort plank leads with its chevron (led once it has its size and text)
 	PixelIcon.Lead(U.Sort, "down", { Px = phone and 12 or 18 })
 	H.showTeamExtras()
-	if modeChanged then
+	if cardsStale then
 		for _, item in pairs(U.Cards) do
 			H.layoutCard(item)
 		end
@@ -1995,7 +2057,7 @@ function H.refreshSlots(keys)
 		end
 		if def then
 			local level = Bits.petLevel(key)
-			item.Name.Text = Bits.displayName(key, def)
+			item.Name.Text = H.slotName(item.Name, Bits.displayName(key, def))
 			item.Level.Text = "L" .. level
 			item.Power.Text = commas(H.powerOf(key))
 		end
@@ -2116,12 +2178,22 @@ function H.fillEmpty()
 		local well = U.Empties[i]
 		if i <= want then
 			if not well then
-				well = Instance.new("Frame")
+				-- (playtest 2026-11-28 C53) the "+" well does what it says: a tap opens the Shop's Eggs (it was an inert
+				-- Frame that invited a tap); not while picking a pet for the team
+				well = Instance.new("TextButton")
+				well.Text = ""
+				well.AutoButtonColor = false
 				well.Name = "EmptySlot_" .. i
 				well.BorderSizePixel = 0
 				well.ZIndex = 3
 				well:SetAttribute("Slot", "Empty")
 				CloudUI.SignBlock(well, "Off")
+				well.Activated:Connect(function()
+					local menu = S.Pick == nil and H.controller("MenuController")
+					if menu then
+						safe("shop", menu.Open, "Shop", { Tab = "Eggs" })
+					end
+				end)
 				local icon = PixelIcon.New(well, "plus", 18, tint)
 				icon.AnchorPoint = Vector2.new(0.5, 0.5)
 				icon.Position = UDim2.fromScale(0.5, 0.5)
@@ -2275,7 +2347,7 @@ function H.refreshCards(keys)
 		item.Count.Text = "x" .. copies
 		local busy = Bits.busyOf(key)
 		item.Busy.Visible = busy ~= nil
-		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
+		item.Busy.Text = busy == "Training" and "Training" or (busy and H.gardenWord(item) or "")
 		H.busyMark(item, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
 		item.Busy.BackgroundColor3 = busy == "Training" and TRAIN_COLOR or GARDEN_COLOR
 	end
@@ -2332,6 +2404,41 @@ function H.careNeed(button, size)
 	local p = button:FindFirstChildOfClass("UIPadding")
 	local inset = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) or 0
 	return math.ceil(H.metaTextW(button.Text, size) * META_SPARE) + inset + 4
+end
+
+-- (playtest 2026-11-28 C44) a team slot's name: whole while it fits its label, else the first words as initials and the
+-- last word ('O. Golem'), which keeps which pet it is where 'Obsidian...' cut it; a name that still runs over truncates
+function H.slotName(label, name)
+	local room = label.Size.X.Offset
+	-- (the measure alone, 5 % over allowed: 'Biscuit Bear' measures 108 in a 104 px label and draws whole there)
+	local function fits(text)
+		return room <= 0 or H.metaTextW(text, label.TextSize) <= room * 1.05
+	end
+	if fits(name) then
+		return name
+	end
+	local words = {}
+	for word in tostring(name):gmatch("%S+") do
+		words[#words + 1] = word
+	end
+	if #words < 2 then
+		return name
+	end
+	local out = {}
+	for i = 1, #words - 1 do
+		out[i] = words[i]:sub(1, 1) .. "."
+	end
+	local short = table.concat(out, " ") .. " " .. words[#words]
+	return fits(short) and short or name
+end
+
+-- (playtest 2026-11-28 C36) the room a top-row chip needs for `text` on one line at `size` (its padding included; a
+-- lead icon of `leadPx` sits left of the centred text, so it needs its width and a 6 px gap on both sides)
+function H.chipNeed(button, text, size, leadPx)
+	local p = button:FindFirstChildOfClass("UIPadding")
+	local inset = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) or 0
+	local leadW = (tonumber(leadPx) or 0) > 0 and (leadPx + 6) or 0
+	return math.ceil(H.metaTextW(text, size) * META_SPARE) + inset + 12 + 2 * leadW -- 6 px clear of each wood edge
 end
 
 function H.fitMetaRow()
@@ -2579,6 +2686,14 @@ function H.refreshDetail(keys, order)
 		work = work .. "Ready to evolve!"
 		mark = mark or ICON.Evolve
 	end
+	if lines == 2 and d.TextW then
+		-- (playtest 2026-11-28 C15) the two notes share one line where it holds them ('Working in your Garden  ·  Ready to
+		-- evolve!'): the second line took the Special's room on landscape phones and at 1080p
+		local joined = work:gsub("\n", "  ·  ")
+		if math.ceil(H.metaTextW(joined, d.Work.TextSize) * META_SPARE) <= d.TextW then
+			work, lines = joined, 1
+		end
+	end
 	d.Work.Text = work
 	PixelIcon.Mark(d.Work, lines == 1 and mark or nil) -- (kit-b U7b) a one-line work note leads with its mark
 	d.WorkLines = lines
@@ -2588,6 +2703,7 @@ function H.refreshDetail(keys, order)
 	d.HasSpecial = type(def.Special) == "table"
 	if d.HasSpecial then
 		d.SpecialText.Text = "Special: " .. tostring(BattleCatalog.FormNameOf(def.Id, def.Special.Kind, stage) or def.Special.Name or "Special")
+		d.SpecialBase = d.SpecialText.Text
 		PixelIcon.Mark(d.SpecialText, ICON.Star, { Colour = SIGN.GoldLip })
 	end
 	if stage >= 1 then
@@ -2620,20 +2736,125 @@ function H.refreshDetail(keys, order)
 	H.placeActions()
 	-- (merge kitb-look1) the special's strip took the perks' room under the 170 px picture (PerksH 2 at 1080p: a pet with
 	-- a special showed no perk at all): such a pet takes the 130 px one, the others keep the big picture
-	if S.Mode ~= "Phone" and d.LayoutH and d.LayoutH >= 620 then
-		local need = #d.PerkLines * d.PerkLineH
-		local tight = (d.TightPerks and (d.PerksH - 40) or d.PerksH) < need
-		if tight ~= (d.TightPerks == true) then
-			d.TightPerks = tight
+	-- (playtest 2026-11-28 C15) TightPerks is a step (0 = 170 px, 1 = 130, 2 = 96): the biggest picture that still
+	-- shows the Special and every perk (one a row, else packed side by side); at 1080p the 130 px one left a pet's
+	-- perks no row at all
+	if S.Mode ~= "Phone" and d.LayoutH and d.LayoutH >= 560 then
+		local now = H.detailPic(d.LayoutH, d.TightPerks)
+		local want = 2
+		for step = 0, 2 do
+			local room = d.PerksH + now - H.detailPic(d.LayoutH, step)
+			local rows = math.floor(room / d.PerkLineH)
+			local specialOk = not d.HasSpecial or room >= -6
+			local perksOk = #d.PerkLines == 0 or #d.PerkLines <= rows or (rows >= 1 and #H.packPerks(d.PerkLines, math.huge, d.TextW) <= rows)
+			if specialOk and perksOk then
+				want = step
+				break
+			end
+		end
+		if want ~= (d.TightPerks or 0) then
+			d.TightPerks = want
 			H.layoutDetail(d.LayoutW, d.LayoutH)
 		end
 	end
 	d.Perks.Visible = d.PerksH >= d.PerkLineH
-	local shown = {}
-	for i = 1, math.min(#d.PerkLines, math.floor(d.PerksH / d.PerkLineH)) do
-		shown[i] = d.PerkLines[i]
+	-- (playtest 2026-11-28 C15) the perks the rows cannot hold (a landscape phone, a short PC panel, 1080p) ride first on
+	-- the Special's strip after its name, as far as they fit it ('Special: Aurora Mark  ·  Reach +15%'); the rest go in
+	-- the rows, and what still does not fit is counted ('+1 more') so none goes without notice
+	local rows = d.Perks.Visible and math.floor(d.PerksH / d.PerkLineH) or 0
+	local rest = d.PerkLines
+	if d.HasSpecial and d.SpecialBase then
+		local line = d.SpecialBase
+		if d.Special.Visible and #rest > 0 and #H.packPerks(rest, math.huge, d.TextW) > rows then
+			local room = d.TextW - 16 - math.ceil(d.SpecialText.TextSize * 1.5) -- the strip's pads and its star
+			-- (the measure alone: the strip's text truncates at its end if the face runs wider)
+			local function fits(text)
+				return H.metaTextW(text, d.SpecialText.TextSize) <= room
+			end
+			local n, taken = #rest, 0
+			for i, perk in ipairs(rest) do
+				local left = n - i
+				local nextLine = line .. "  ·  " .. perk
+				-- with no rows the strip keeps room for the count of the ones it leaves out
+				if not fits((rows == 0 and left > 0) and (nextLine .. "  ·  +" .. left .. " more") or nextLine) then
+					break
+				end
+				line, taken = nextLine, i
+			end
+			local left = {}
+			for i = taken + 1, n do
+				left[#left + 1] = rest[i]
+			end
+			rest = left
+			if rows == 0 and #rest > 0 and fits(line .. "  ·  +" .. #rest .. " more") then
+				line = line .. "  ·  +" .. #rest .. " more"
+			end
+		end
+		if d.SpecialText.Text ~= line then
+			d.SpecialText.Text = line
+		end
 	end
-	d.Perks.Text = table.concat(shown, "\n")
+	d.Perks.Text = table.concat(H.packPerks(rest, rows, d.TextW), "\n")
+end
+
+-- (playtest 2026-11-28 C15) the perk lines for `rows` rows of `w` px: one perk a row while they fit, else whole perks
+-- side by side ("Reach +15%  ·  +14% Tokens") so a short panel (1080p, landscape phones) still shows them all; it cut
+-- the list at the room's last row before, silently
+function H.packPerks(lines, rows, w)
+	if rows <= 0 then
+		return {}
+	end
+	if #lines <= rows and rows ~= math.huge then
+		return lines
+	end
+	local SEP = "  ·  "
+	local function fits(text)
+		return H.perkTextW(text) <= w -- (the Body measure runs wide of the drawn face; the label wraps, never runs on)
+	end
+	local packed, cur = {}, nil
+	for _, line in ipairs(lines) do
+		if cur and not fits(table.concat(cur, SEP) .. SEP .. line) then
+			packed[#packed + 1] = cur
+			cur = nil
+		end
+		cur = cur or {}
+		cur[#cur + 1] = line
+	end
+	packed[#packed + 1] = cur
+	if #packed > rows then
+		-- the rows left say how many perks did not fit ('+2 more'), so none goes without notice
+		local hidden = 0
+		for i = rows + 1, #packed do
+			hidden = hidden + #packed[i]
+			packed[i] = nil
+		end
+		local last = packed[rows]
+		while #last > 0 and not fits(table.concat(last, SEP) .. SEP .. "+" .. hidden .. " more") do
+			table.remove(last)
+			hidden = hidden + 1
+		end
+		last[#last + 1] = "+" .. hidden .. " more"
+	end
+	local out = {}
+	for i, row in ipairs(packed) do
+		out[i] = table.concat(row, SEP)
+	end
+	return out
+end
+
+-- (playtest 2026-11-28 C15) the detail's picture on top: 170 px on a tall panel, 130 when the perks need the room
+-- (step 1), 96 when they need more (step 2)
+function H.detailPic(h, step)
+	step = tonumber(step) or 0
+	if step >= 2 then
+		return 96
+	end
+	return (h >= 620 and step == 0) and 170 or 130
+end
+
+function H.perkTextW(text)
+	local ok, v = pcall(Theme.Measure, text, "Body", 18)
+	return math.ceil((ok and typeof(v) == "Vector2" and v.X > 0) and v.X or #text * 18 * 0.6)
 end
 
 function H.refresh()
