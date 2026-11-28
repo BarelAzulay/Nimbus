@@ -1205,8 +1205,26 @@ local function serverScenarios()
 		everyPad[#everyPad + 1] = { StationId = "Prestige", NextLevel = 1, Level = 0, Price = 0, BasePrice = 0, MaxLevel = 1, Name = "Prestige", Title = "Prestige 1",
 			Kind = "Prestige", LevelText = "0 -> 1", Prestige = true }
 		HB.SetPads(spot, everyPad)
+		-- (C8 review) a standing root is 3 studs over the floor, up to ~4.5 on tall avatars (MatchService GROUND_REACH):
+		-- every reach below is tested over that whole span, not at one 3-stud root
+		local ROOT_LO, ROOT_HI, ROOT_STEP = 3.0, 4.5, 0.25
+		local gLawn = find(home:FindFirstChild("Station_Garden"), "Lawn")
+		local lawnTop = gLawn and (gLawn.Position.Y + gLawn.Size.Y / 2) or nil
+		local bedWorst = ""
 		for _, bed in pairs(gp12) do
-			reachOk = reachOk and bed.MaxActivationDistance >= 3.5
+			-- the guide's stop at a bed: the root 3.3 studs across from its prompt (the playtest's spot), any avatar height
+			local at = promptAt(bed)
+			if not (at and lawnTop) then
+				reachOk, bedWorst = false, "bed " .. tostring(bed:GetAttribute("Slot")) .. ": no prompt point or lawn"
+			else
+				for h = ROOT_LO, ROOT_HI + 1e-6, ROOT_STEP do
+					local d = math.sqrt(3.3 * 3.3 + (at.Y - (lawnTop + h)) ^ 2)
+					if d > bed.MaxActivationDistance then
+						reachOk = false
+						bedWorst = string.format("bed %s: a %.2f-stud root 3.3 across is %.2f from the prompt, reach %.1f", tostring(bed:GetAttribute("Slot")), h, d, bed.MaxActivationDistance)
+					end
+				end
+			end
 			for _, buy in ipairs(findAll(home, function(d)
 				return d:IsA("ProximityPrompt") and d.Name == "BuyPrompt"
 			end)) do
@@ -1223,27 +1241,49 @@ local function serverScenarios()
 		end
 		apart:case(gardenPad and apart.n >= 12 * #everyPad, "every pad's BuyPrompt and the 12 bed prompts were all measured (" .. apart.n .. " pairs)")
 		apart:report(apart.n .. " pairs; closest " .. closest .. string.format(" (slack %.3f)", slack))
-		-- the cut reach still buys from the pad: a player standing on any corner of its 4 x 4 top (the root part ~3 studs
-		-- over it) is in the BuyPrompt's reach
-		local onPad = T.tally("home plot: a player standing anywhere on a pad is in its BuyPrompt's reach (a cut reach still buys)")
+		-- the cut reach still buys from the pad: a player standing anywhere on its top (centre and corners; the root 3 to
+		-- 4.5 studs over the Base or the Glow plate, C8 review: a 3-stud root only, before) is in the BuyPrompt's reach
+		local onPad = T.tally("home plot: a player standing anywhere on a pad is in its BuyPrompt's reach (a cut reach still buys; roots 3 to 4.5 studs up)")
 		for _, buy in ipairs(findAll(home, function(d)
 			return d:IsA("ProximityPrompt") and d.Name == "BuyPrompt"
 		end)) do
-			local base = buy.Parent
-			if base and base:IsA("BasePart") then
-				local far = 0
-				for _, c in ipairs({ { 2, 2 }, { 2, -2 }, { -2, 2 }, { -2, -2 } }) do
-					local root = (base.CFrame * CFrame.new(c[1], base.Size.Y / 2 + 3, c[2])).Position
-					far = math.max(far, (root - base.Position).Magnitude)
+			local node, pad = buy.Parent, nil
+			while node and node ~= home do
+				if node:IsA("Model") and string.sub(node.Name, 1, 4) == "Pad_" then
+					pad = node
+					break
 				end
-				onPad:case(far <= buy.MaxActivationDistance, string.format("%s: a pad corner is %.2f studs from the prompt, reach %.1f", tostring(buy:GetAttribute("StationId")), far, buy.MaxActivationDistance))
+				node = node.Parent
+			end
+			local base = pad and pad:FindFirstChild("Base")
+			local at = promptAt(buy)
+			if base and base:IsA("BasePart") and at then
+				local far, worst = 0, ""
+				local tops = { base.Size.Y / 2 }
+				local glow = pad:FindFirstChild("Glow")
+				if glow and glow:IsA("BasePart") then
+					tops[#tops + 1] = base.CFrame:PointToObjectSpace(glow.Position).Y + glow.Size.Y / 2
+				end
+				local hx, hz = base.Size.X / 2, base.Size.Z / 2
+				for _, top in ipairs(tops) do
+					for h = ROOT_LO, ROOT_HI + 1e-6, ROOT_STEP do
+						for _, c in ipairs({ { 0, 0 }, { hx, hz }, { hx, -hz }, { -hx, hz }, { -hx, -hz } }) do
+							local root = (base.CFrame * CFrame.new(c[1], top + h, c[2])).Position
+							local d = (root - at).Magnitude
+							if d > far then
+								far, worst = d, string.format("(%.1f, %.1f) root %.2f up", c[1], c[2], h)
+							end
+						end
+					end
+				end
+				onPad:case(far <= buy.MaxActivationDistance, string.format("%s: the farthest standing root %s is %.2f studs from the prompt, reach %.1f", tostring(buy:GetAttribute("StationId")), worst, far, buy.MaxActivationDistance))
 			else
 				onPad:case(false, tostring(buy:GetAttribute("StationId")) .. ": the BuyPrompt sits on no pad base")
 			end
 		end
 		onPad:report(onPad.n .. " pads")
 		HB.SetPads(spot, TC.AvailablePads(state))
-		T.check(reachOk, "home plot: every GardenSpotPrompt reaches >= 3.5 studs (the guide's stop at a bed is 3.3)")
+		T.check(reachOk, "home plot: every GardenSpotPrompt reaches where the guide stops at its bed (3.3 studs across) for a root 3 to 4.5 studs over the lawn", bedWorst)
 		HB.SetGarden(spot, {}, 40)
 		T.check(home:FindFirstChild("Station_Garden"):GetAttribute("Open") == 12, "home plot: SetGarden clamps the open count to the 12 drawn places")
 		HB.SetGarden(spot, {}, open0)
@@ -1656,6 +1696,15 @@ local function clientScenarios()
 				return d:IsA("ProximityPrompt") and names[d.Name]
 			end)
 		end
+		-- a BuyPrompt's pad model (Pad_<Id>): up the chain (C8 review, round 3: the prompt hangs on the Base's PromptPoint
+		-- attachment now, so the pad is no longer its grandparent)
+		local function padOf(p)
+			local node = p.Parent
+			while node and not (node:IsA("Model") and string.sub(node.Name, 1, 4) == "Pad_") do
+				node = node.Parent
+			end
+			return node
+		end
 		local ownerOnly = { BuyPrompt = true, GardenSpotPrompt = true, FusionPrompt = true }
 		local theirPrompts = prompts(theirHome, ownerOnly)
 		local enabledTheirs = 0
@@ -1679,7 +1728,7 @@ local function clientScenarios()
 		local mineOk = true
 		local myPads = 0
 		for _, p in ipairs(prompts(mineHome, { BuyPrompt = true })) do
-			local pad = p.Parent and p.Parent.Parent
+			local pad = padOf(p)
 			local locked = pad and pad:GetAttribute("Locked")
 			myPads = myPads + 1
 			if p.Enabled ~= (locked == nil or locked == "") then
@@ -1972,7 +2021,7 @@ local function clientScenarios()
 		local back = 0
 		local should = 0
 		for _, p in ipairs(prompts(theirHome, { BuyPrompt = true })) do
-			local pad2 = p.Parent and p.Parent.Parent
+			local pad2 = padOf(p)
 			local locked = pad2 and pad2:GetAttribute("Locked")
 			if locked == nil or locked == "" then
 				should = should + 1

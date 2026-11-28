@@ -8,9 +8,10 @@
 --            firstFreeSlot, growth, stage, job, jobLeft, skillName, canEvolve, coinsPerSecond, formatCash, formatRate,
 --            busyOf (nil | "Training" | "Garden": State.Busy, or the same answer from the home / the job on an old snapshot)
 --   UI:      frame, text, corner, round, stroke, pad (the windows' Theme-styled building blocks)
---   PetBits.askRecall(gui, key, target, onYes, onNo, send): "This pet is gardening! Take it out of the garden and put it in
---            your team?" [Yes] [No]. Yes = ONE request (send("GardenRecall", { Key, To, Preset, Keys }), the server checks
---            everything and takes it out + stores the team); No = nothing. PetBits.closeRecall() -> true when one was up.
+--   PetBits.askRecall(gui, key, target, onYes, onNo, send): "<Pet name> is gardening! ("This pet ..." when the name does
+--            not fit) Take it out of the garden and put it in your team?" [Yes] [No]. Yes = ONE request
+--            (send("GardenRecall", { Key, To, Preset, Keys }), the server checks everything and takes it out + stores the
+--            team); No = nothing. PetBits.closeRecall() -> true when one was up.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

@@ -1461,7 +1461,9 @@ function H.layoutDetail(w, h)
 	local y
 	if phone or h < 560 then
 		-- the pet beside its name
-		local pic = phone and (narrow and 96 or 120) or 96
+		-- (playtest 2026-11-28 C15 review, round 3) a narrow sheet's last step (360x640) takes an 80 px picture, so its tiles
+		-- move up under the XP bar (the wide sheet's 6 px) and a pet with two plank rows keeps its Special's strip
+		local pic = phone and (narrow and ((squeeze >= 2) and 80 or 96) or 120) or 96
 		place(d.Glow, pad + 4, 12, pic - 8, pic - 8)
 		place(d.Picture, pad, 8, pic, pic)
 		local x = pad + pic + 8
@@ -1473,10 +1475,10 @@ function H.layoutDetail(w, h)
 		place(d.Xp.Root, x, phone and 65 or 75, w - x - pad, 24)
 		y = phone and 95 or 108
 		if narrow then
-			y = pic + 14
+			y = math.max(y, pic + 14)
 		end
 		local rowX = (narrow or not phone) and pad or x
-		local rowH = phone and ((squeeze >= 2 and not narrow) and 24 or 26) or ROW2_H
+		local rowH = phone and ((squeeze >= 2) and 24 or 26) or ROW2_H
 		-- (playtest 2026-11-28 C15) a short PC panel's tiles on one line (the phone's tile: the name beside its number) when
 		-- the Special has no room under the two-line ones
 		local oneLine = phone or squeeze >= 1
@@ -1586,6 +1588,10 @@ function H.placeActions()
 	end
 	for _, button in ipairs({ d.ActPut, d.ActFighter, d.ActRemove, d.ActFeed, d.ActTrain, d.ActGarden, d.ActEvolve }) do
 		button.TextSize = fs
+	end
+	-- (C15 review, round 3) the planks are laid out on the Train plank's own word; the countdown goes on it after
+	if d.TrainBase and d.ActTrain.Text ~= d.TrainBase then
+		d.ActTrain.Text = d.TrainBase
 	end
 	-- (gate U9 round 3) a phone keeps one care row only while every label fits its cell on one line; otherwise (Evolve
 	-- showing at 390 px, 'Leave Garden') it takes the PC's two rows: Feed | Train over Garden | Evolve
@@ -1701,6 +1707,19 @@ function H.placeActions()
 	PixelIcon.Mark(d.Work, (workText ~= "" and (workText ~= full or (d.WorkFullLines or 1) == 1)) and d.WorkMark or nil) -- (kit-b U7b)
 	place(d.Work, pad, d.TextY, d.TextW, workH)
 	d.Work.Visible = workH > 0 and d.TextY + workH <= bottomText
+	-- (playtest 2026-11-28 C15 review, round 3) a training pet's note was the only place its time left showed ('Training
+	-- Attack Speed (2:07 left)'): where the note drops (a landscape sheet, the short PC panel) the Train plank keeps the
+	-- countdown ('Training 2:07', else '2:07 left', else '2:07' beside its training icon: what its cell holds)
+	if d.TrainLeft and not (d.Work.Visible and string.find(workText, d.TrainLeft, 1, true)) then
+		local cellW = d.ActTrain.Size.X.Offset
+		for _, t in ipairs({ d.TrainBase .. " " .. d.TrainLeft, d.TrainLeft .. " left", d.TrainLeft }) do
+			d.ActTrain.Text = t
+			if H.careNeed(d.ActTrain, fs) <= cellW then
+				break
+			end
+			d.ActTrain.Text = d.TrainBase
+		end
+	end
 	d.Special.Visible = specialH > 0 and fits
 	if specialH > 0 then
 		place(d.Special, pad, stripTop, d.TextW, specialH)
@@ -2150,7 +2169,7 @@ function H.refreshSlots(keys)
 		end
 		if def then
 			local level = Bits.petLevel(key)
-			item.Name.Text = H.slotName(item.Name, Bits.displayName(key, def))
+			item.Name.Text = H.slotName(item.Name, Bits.displayName(key, def), Bits.tierOf(key, def))
 			item.Level.Text = "L" .. level
 			item.Power.Text = commas(H.powerOf(key))
 		end
@@ -2500,29 +2519,51 @@ function H.careNeed(button, size)
 end
 
 -- (playtest 2026-11-28 C44) a team slot's name: whole while it fits its label, else the first words as initials and the
--- last word ('O. Golem'), which keeps which pet it is where 'Obsidian...' cut it; a name that still runs over truncates
-function H.slotName(label, name)
+-- last word ('O. Golem'), which keeps which pet it is where 'Obsidian...' cut it; a name that still runs over truncates.
+-- (C44 review, round 3) a Golden / Rainbow copy (`tier`) keeps its finish word first ('Golden S. Owl', as
+-- PetPicker.paintCard), then every word's initial ('G. S. Owl'), then the pet's own initials ('S. Owl': the slot's face
+-- shows the finish) before a cut name
+function H.slotName(label, name, tier)
 	local room = label.Size.X.Offset
-	-- (the measure alone, 5 % over allowed: 'Biscuit Bear' measures 108 in a 104 px label and draws whole there)
+	-- (C44 review, round 3) strictly inside the label: the measure with the chips' spare (META_SPARE). The 5 % it let
+	-- over drew 'Candy Unic...' (102 px of text in its 92 px label at 960x640)
 	local function fits(text)
-		return room <= 0 or H.metaTextW(text, label.TextSize) <= room * 1.05
+		return room <= 0 or math.ceil(H.metaTextW(text, label.TextSize) * META_SPARE) <= room
 	end
 	if fits(name) then
 		return name
 	end
-	local words = {}
-	for word in tostring(name):gmatch("%S+") do
-		words[#words + 1] = word
+	local function initialed(text)
+		local words = {}
+		for word in tostring(text):gmatch("%S+") do
+			words[#words + 1] = word
+		end
+		if #words < 2 then
+			return nil
+		end
+		local out = {}
+		for i = 1, #words - 1 do
+			out[i] = words[i]:sub(1, 1) .. "."
+		end
+		return table.concat(out, " ") .. " " .. words[#words]
 	end
-	if #words < 2 then
-		return name
+	local tries = {}
+	local own = nil
+	if tier == "Golden" or tier == "Rainbow" then
+		local base = tostring(name):gsub("^" .. tier .. "%s+", "")
+		own = base ~= name and (initialed(base) or base) or nil
+		if own and own ~= base then
+			tries[#tries + 1] = tier .. " " .. own
+		end
 	end
-	local out = {}
-	for i = 1, #words - 1 do
-		out[i] = words[i]:sub(1, 1) .. "."
+	tries[#tries + 1] = initialed(name)
+	tries[#tries + 1] = own
+	for _, short in ipairs(tries) do
+		if fits(short) then
+			return short
+		end
 	end
-	local short = table.concat(out, " ") .. " " .. words[#words]
-	return fits(short) and short or name
+	return name
 end
 
 -- (playtest 2026-11-28 C36) the room a top-row chip needs for `text` on one line at `size` (its padding included; a
@@ -2598,11 +2639,34 @@ function H.fitMetaRow()
 end
 
 -- (playtest 2026-11-28 C44 review) a "Pill" row's rarity tag: its word with the measure's spare and 4 px each side, no
--- wider than the room the level line leaves (d.PillW, H.fitMetaRow)
+-- wider than the room the level line leaves (d.PillW, H.fitMetaRow).
+-- (C44 review, round 3) the word gets its room before it is cut: a px smaller (never under the 14 screen px floor), then
+-- 3 px each side ('Legend..' at 390x844: the word needed 86 of the tag's 80 px). Narrower rows (360-375 px portrait
+-- sheets, 50-66 px of tag) still cut it: a layout call
 function H.sizePill(tag, def)
 	local d = U.D
-	local want = math.ceil(H.metaTextW(tostring(def.Rarity), H.metaSize()) * META_SPARE) + 8
-	tag.Size = UDim2.fromOffset(math.min(want, math.max(0, d.PillW or want)), H.metaChipH())
+	local word = tostring(def.Rarity)
+	local size = H.metaSize()
+	local room = math.max(0, d.PillW or math.huge)
+	local floorPx = math.ceil(((Theme.Readability and Theme.Readability.MinPx) or 14) / math.max(S.Scale or 1, 0.01))
+	local function need(px, pad)
+		return math.ceil(H.metaTextW(word, px) * META_SPARE) + 2 * pad
+	end
+	local px, pad = size, 4
+	if need(size, 4) > room then
+		for _, try in ipairs({ { size - 1, 4 }, { size - 1, 3 } }) do
+			if try[1] >= floorPx and need(try[1], try[2]) <= room then
+				px, pad = try[1], try[2]
+				break
+			end
+		end
+	end
+	tag.TextSize = px
+	local p = tag:FindFirstChildOfClass("UIPadding")
+	if p and (p.PaddingLeft.Offset ~= pad or p.PaddingRight.Offset ~= pad) then
+		p.PaddingLeft, p.PaddingRight = UDim.new(0, pad), UDim.new(0, pad)
+	end
+	tag.Size = UDim2.fromOffset(math.min(need(px, pad), room), H.metaChipH())
 end
 
 -- (LOOK-ui, kitb-look1) the detail's chips after its level line: the rarity's tag in its colour (CloudUI.RarityColor; the
@@ -2860,7 +2924,11 @@ function H.refreshDetail(keys, order)
 	d.InTeam = at ~= nil
 	d.IsFighter = at == 1
 	d.ActEvolve.Visible = ready ~= nil
-	d.ActTrain.Text = job and "Training" or "Train"
+	-- (playtest 2026-11-28 C15 review, round 3) the plank's word, and the countdown H.placeActions puts on it where the
+	-- work note (the only other place the time shows) drops
+	d.TrainBase = job and "Training" or "Train"
+	d.TrainLeft = job and Bits.jobLeft(job) or nil
+	d.ActTrain.Text = d.TrainBase
 	d.ActGarden.Text = placed and "Leave Garden" or "Garden"
 	H.placeActions()
 	-- (merge kitb-look1) the special's strip took the perks' room under the 170 px picture (PerksH 2 at 1080p: a pet with
@@ -3015,14 +3083,16 @@ function H.fitLead(key)
 		return
 	end
 	-- (the note's digits as zeros: a training timer's tick changes nothing here)
+	-- (the Train plank's own word: H.placeActions may add the ticking countdown to it)
 	local sig = table.concat({ tostring(key), d.LayoutW, d.LayoutH, tostring(S.Mode), (tostring(d.WorkFull):gsub("%d", "0")), tostring(d.HasSpecial), #(d.PerkLines or {}),
-		tostring(d.ActEvolve.Visible), tostring(d.InTeam), tostring(d.IsFighter), d.ActGarden.Text, d.ActTrain.Text, tostring(UserInputService.TouchEnabled) }, "|")
+		tostring(d.ActEvolve.Visible), tostring(d.InTeam), tostring(d.IsFighter), d.ActGarden.Text, tostring(d.TrainBase or d.ActTrain.Text), tostring(UserInputService.TouchEnabled) }, "|")
 	if d.SqueezeSig == sig then
 		return
 	end
 	d.SqueezeSig = sig
-	-- a phone: 1 = the planks at the touch size, 2 = a landscape sheet's tiles 24 px; a short PC panel: 1 = one-line tiles
-	local top = phone and ((d.LayoutW < 420) and 1 or 2) or 1
+	-- a phone: 1 = the planks at the touch size, 2 = the tiles 24 px (and a narrow sheet's 80 px picture, C15 review
+	-- round 3: the 360x640 sheet had no step past 1); a short PC panel: 1 = one-line tiles
+	local top = phone and 2 or 1
 	local pick, leadOnly = nil, nil
 	for s = 0, top do
 		d.Squeeze = s
