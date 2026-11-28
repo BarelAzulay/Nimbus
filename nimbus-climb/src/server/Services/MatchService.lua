@@ -87,6 +87,21 @@ if type(Config.Course) == "table" and type(Config.Course.Clearance) == "number" 
 	PAD_ABOVE = math.max(6, math.min(12, Config.Course.Clearance + 1))
 end
 
+-- (playtest 2026-11-28 C22) the finish is accepted only from a player who went the way: a client teleport onto the
+-- finish pad won Easy in 0:59. Each member keeps their OWN trail (rec.Checkpoint: the last checkpoint they were at, in
+-- order, like the team's), and the finish needs the trail complete plus the match older than the course's shortest
+-- honest time. The trail must never refuse an honest player, so a pad counts when the player is anywhere NEAR it
+-- (TRAIL_PAD studs past its edge, TRAIL_ABOVE over its top: a dash-jump across a 14-stud pad at 85 studs/s still has a
+-- 0.25 s poll inside that window, and Touched counts too) and every place the SERVER puts a player (a void rescue, a
+-- revive, a respawn: all at the team checkpoint) counts as that checkpoint. A refusal is logged once per player.
+local TRAIL_PAD = 12
+local TRAIL_ABOVE = 20
+-- The shortest honest time: the straight chain start -> each checkpoint -> finish (a lower bound on any path) at
+-- FINISH_SPEED_MARGIN x DashSpeed (85). Nothing in a course carries a player along the chain faster: a dash is 85 for
+-- 0.18 s of every 1.6 s, a bounce launches under 30 studs/s sideways, a cannon flies at most ~110 studs/s of chain
+-- for its >= 1 s flight. A real run is several times slower than this floor; a teleport run is under it.
+local FINISH_SPEED_MARGIN = 1.5
+
 ----------------------------------------------------------------------
 -- Module state
 ----------------------------------------------------------------------
@@ -592,16 +607,76 @@ end
 ----------------------------------------------------------------------
 -- Checkpoints, finish, void
 ----------------------------------------------------------------------
--- The checkpoint the team takes next: the lowest usable index above the current one (nil after the last).
+-- The checkpoint taken next after `from`: the lowest usable index above it (nil after the last).
 -- Checkpoints count in order only, so a cannon flight or a lucky jump onto a later stage never skips one (bug #8).
-local function nextCheckpointIndex(match)
+local function nextCheckpointFrom(match, from)
 	local checkpoints = match.Course.Checkpoints
-	for index = match.Checkpoint + 1, match.MaxCheckpoint do
+	for index = from + 1, match.MaxCheckpoint do
 		if checkpoints[index] then
 			return index
 		end
 	end
 	return nil
+end
+
+local function nextCheckpointIndex(match)
+	return nextCheckpointFrom(match, match.Checkpoint)
+end
+
+-- (C22) the player's own trail: `index` is the checkpoint they are at now (reached by them, or the server put them
+-- there); it only ever moves forward
+local function markTrail(match, player, index)
+	local rec = match.Recs[player]
+	if rec and type(index) == "number" and index > (rec.Checkpoint or 0) then
+		rec.Checkpoint = index
+	end
+end
+
+-- (C22) the server placed the player at the team checkpoint (void rescue, revive, respawn): their trail is there
+local function placedAtTeamCheckpoint(match, player)
+	markTrail(match, player, match.Checkpoint)
+end
+
+-- (C22) is the player near this checkpoint pad (standing on it, or passing it within TRAIL_PAD / TRAIL_ABOVE)?
+local function nearPad(cp, pos)
+	local part = cp and cp.Part
+	return part ~= nil and part.Parent ~= nil and isOverPart(part, pos, TRAIL_PAD, PAD_BELOW, TRAIL_ABOVE)
+end
+
+-- (C22) why the finish does not count for this player yet -> text | nil when it does
+local function finishRefusal(match, player, t)
+	local rec = match.Recs[player]
+	local at = rec and rec.Checkpoint or 0
+	local missing = nextCheckpointFrom(match, at)
+	if missing then
+		return string.format("their trail ends at checkpoint %d of %d (next %d)", at, match.MaxCheckpoint, missing)
+	end
+	local played = match.StartedAt and ((t or clock()) - match.StartedAt) or 0
+	if type(match.MinSeconds) == "number" and played < match.MinSeconds then
+		return string.format("%.1f s played, the course cannot be run under %.1f s", played, match.MinSeconds)
+	end
+	return nil
+end
+
+-- (C22) the shortest honest time to the finish of this course (seconds): see FINISH_SPEED_MARGIN
+local function minFinishSeconds(match)
+	local course = match.Course
+	local points = { course.StartCFrame.Position }
+	for index = 1, match.MaxCheckpoint do
+		local cp = course.Checkpoints[index]
+		if cp and typeof(cp.SpawnCFrame) == "CFrame" then
+			points[#points + 1] = cp.SpawnCFrame.Position
+		end
+	end
+	if course.Finish then
+		points[#points + 1] = course.Finish.Position
+	end
+	local length = 0
+	for i = 2, #points do
+		length = length + (points[i] - points[i - 1]).Magnitude
+	end
+	local speed = (Config.Physics.DashSpeed or 85) * FINISH_SPEED_MARGIN
+	return length / speed
 end
 
 reachCheckpoint = function(match, index, byPlayer)
@@ -616,6 +691,9 @@ reachCheckpoint = function(match, index, byPlayer)
 		return
 	end
 	match.Checkpoint = index
+	if byPlayer then
+		markTrail(match, byPlayer, index) -- (C22) the one who took it is there
+	end
 	notifyAll(match, string.format("Checkpoint %d/%d reached!", index, match.TotalCheckpoints), "good", 3.5)
 
 	-- heal everyone who is up (pets can boost their owner's heal), collect the downed
@@ -634,6 +712,7 @@ reachCheckpoint = function(match, index, byPlayer)
 	-- lift up the downed teammates right here
 	for i, p in ipairs(downedList) do
 		teleportTo(p, spreadCFrame(cp.SpawnCFrame, i, #downedList, CHECKPOINT_SPREAD))
+		placedAtTeamCheckpoint(match, p) -- (C22)
 		callDep("DamageService", "Revive", p)
 		local who = "your team"
 		if byPlayer and byPlayer ~= p then
@@ -662,6 +741,11 @@ local function onCheckpointTouched(match, index, hit)
 	if not hum or hum.Health <= 0 then
 		return
 	end
+	-- (C22) the player's own trail: this pad, when it is the next one on it
+	local rec = match.Recs[player]
+	if rec and index == nextCheckpointFrom(match, rec.Checkpoint or 0) then
+		markTrail(match, player, index)
+	end
 	reachCheckpoint(match, index, player)
 end
 
@@ -670,6 +754,18 @@ markFinished = function(match, player)
 		return
 	end
 	if isDowned(player) or not isMember(match, player) then
+		return
+	end
+	-- (C22) the finish counts only after the player's own trail (every checkpoint, in order, or the server placing
+	-- them at the team's) and never before the course's shortest honest time; a refusal is logged once per player
+	local why = finishRefusal(match, player)
+	if why then
+		local rec = match.Recs[player]
+		if rec and not rec.FinishRefused then
+			rec.FinishRefused = true
+			warn(string.format("[MatchService] finish refused for %s (match %d, %s): %s", nameOf(player), match.Id, tostring(match.DifficultyId), why))
+			notify(player, "Reach every checkpoint first!", "bad", 3)
+		end
 		return
 	end
 	match.Finished[player] = true
@@ -709,6 +805,7 @@ local function handleVoid(match, player, wasDowned, finished)
 		callDep("DamageService", "Damage", player, dmg, "Void", { IgnoreIFrames = true })
 	end
 	teleportTo(player, jitterCFrame(teamSpawnCFrame(match), CHECKPOINT_SPREAD))
+	placedAtTeamCheckpoint(match, player) -- (C22)
 	if not isDowned(player) then
 		callDep("DamageService", "GrantInvulnerability", player, 1.5)
 	end
@@ -841,6 +938,9 @@ local function onCharacterAdded(match, player, char)
 				teleportTo(player, jitterCFrame(target, CHECKPOINT_SPREAD))
 			end
 		end
+		if not finished then
+			placedAtTeamCheckpoint(match, player) -- (C22) a respawn comes back at the team checkpoint
+		end
 
 		-- respawn rule: back at the checkpoint immediately, 50% health, no penalty
 		setAttr(player, Config.Attr.Downed, false)
@@ -875,7 +975,7 @@ end
 local function enrollPlayer(match, player, index, count)
 	playerMatch[player] = match
 	match.Tokens[player] = 0
-	match.Recs[player] = { Conns = {} }
+	match.Recs[player] = { Conns = {}, Checkpoint = 0 }
 	-- InMatch first: the lobby watchdog would otherwise yank a player standing at y=800 home
 	setAttr(player, Config.Attr.InMatch, true)
 	setAttr(player, Config.Attr.Downed, false)
@@ -1131,6 +1231,14 @@ local function processPlayerPlaying(match, player)
 	if cp and cp.Part and cp.Part.Parent and isOverPart(cp.Part, pos, 2, PAD_BELOW, PAD_ABOVE) then
 		reachCheckpoint(match, nextIndex, player)
 	end
+	-- (C22) the player's own trail: their next pad, when they are near it (looser than the team's test on purpose)
+	local rec = match.Recs[player]
+	if rec then
+		local mine = nextCheckpointFrom(match, rec.Checkpoint or 0)
+		if mine and nearPad(course.Checkpoints[mine], pos) then
+			markTrail(match, player, mine)
+		end
+	end
 
 	local pad = course.Finish
 	if pad and pad.Parent and isOverPart(pad, pos, 1, PAD_BELOW, PAD_ABOVE) then
@@ -1372,6 +1480,7 @@ local function setupCourse(match)
 	info.Checkpoints = clean
 	match.TotalCheckpoints = count
 	match.MaxCheckpoint = maxIndex
+	match.MinSeconds = minFinishSeconds(match) -- (C22)
 
 	-- hazards pause unless the match is actually being played
 	local hazardHandle = {
@@ -1526,7 +1635,8 @@ function MatchService.StartMatch(difficultyId, players)
 		LastStateAt = 0,
 		Tokens = {}, -- Player -> tokens paid out this match (pet bonus included)
 		Finished = {}, -- Player -> true
-		Recs = {}, -- Player -> { Conns, DiedConn }
+		Recs = {}, -- Player -> { Conns, DiedConn, Checkpoint (C22: the player's own trail), FinishRefused }
+		MinSeconds = 0, -- (C22) the course's shortest honest time, set by setupCourse
 		Connections = {}, -- match-level connections (checkpoint / finish Touched)
 		Stopped = false,
 		CleanedUp = false,
@@ -1608,6 +1718,7 @@ function MatchService.GetRespawnCFrame(player)
 	if match.Checkpoint < 1 then
 		spread = START_SPREAD
 	end
+	placedAtTeamCheckpoint(match, player) -- (C22) PlayerService spawns them at the team checkpoint
 	return jitterCFrame(teamSpawnCFrame(match), spread)
 end
 

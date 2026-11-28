@@ -5606,22 +5606,30 @@ local function clientScenarios()
 	-- Champion Ring, the Dungeon, the Training Place, the Home window, the Food Machine and the garden picker, the Obby
 	-- picker; `look()` runs after each
 	function U7.openU7b(look)
+		-- (playtest 2026-11-28 C62) each panel closes through its owning controller (there is no ClosePanel remote: the old
+		-- call did nothing) and the walk checks that it closed, so the next panel is looked at alone
 		local panels = {
-			{ "Arena", { Tab = "Duels" } }, { "Arena", { Tab = "Raid" } }, { "Arena", { Tab = "Leaderboard" } }, { "Ring", {} },
-			{ "Dungeon", {} }, { "Train", {} }, { "Home", {} }, { "Pets", { Tab = "Pets", Action = "Feed" } },
-			{ "Pets", { Action = "Garden", Slot = 3 } }, { "Obby", {} },
+			{ "Arena", { Tab = "Duels" }, "ArenaController" }, { "Arena", { Tab = "Raid" }, "ArenaController" },
+			{ "Arena", { Tab = "Leaderboard" }, "ArenaController" }, { "Ring", {}, "ArenaController" },
+			{ "Dungeon", {}, "DungeonController" }, { "Train", {}, "CareController" }, { "Home", {}, "MenuController" },
+			{ "Pets", { Tab = "Pets", Action = "Feed" }, "CareController" },
+			{ "Pets", { Action = "Garden", Slot = 3 }, "CareController" }, { "Obby", {}, "ObbyController" },
 		}
 		for _, p in ipairs(panels) do
-			U7.try("the " .. p[1] .. " panel " .. tostring(p[2].Tab or p[2].Action or ""), function()
+			local what = "the " .. p[1] .. " panel " .. tostring(p[2].Tab or p[2].Action or "")
+			U7.try(what, function()
 				LKC.toClient("OpenPanel", p[1], p[2])
 				LKC.advance(1)
 			end)
 			look()
-			pcall(function()
-				LKC.toClient("ClosePanel", p[1])
+			local owner = U7.client("Controllers/" .. p[3])
+			local okClose, errClose = pcall(function()
+				owner.Close()
 			end)
 			pcall(U7.client("Controllers/MenuController").Close)
 			LKC.advance(0.3)
+			local stillOpen = owner and type(owner.IsOpen) == "function" and owner.IsOpen() == true
+			T.check(okClose and not stillOpen, "u7b walk: " .. what .. " closes through " .. p[3] .. ".Close", okClose and "still open" or tostring(errClose))
 		end
 	end
 
@@ -11434,10 +11442,29 @@ local function clientScenarios()
 						table.concat(hits, "; ", 1, math.min(#hits, 6)))
 					local cx, cy = (cr.X + cr.R) / 2, (cr.Y + cr.B) / 2
 					T.check(not (cx > W / 3 and cx < 2 * W / 3 and cy > Hh / 3 and cy < 2 * Hh / 3), tag .. ": the chip is not in the screen's centre third", U8.show(cr))
+					-- (playtest 2026-11-28 C34) the countdown's words are whole and keep the seconds ("Dung..." lost them on a 360 px
+					-- portrait phone: DungeonController's short form "In 4..." takes over when the long one would truncate)
+					if view == "dungeon:countdown" then
+						local words = chip and chip:FindFirstChild("Text", true)
+						local shown = words and U8.shown(words) and words.Text or ""
+						local fits = words ~= nil and words.TextBounds.X <= words.AbsoluteSize.X + 0.5
+						T.check(shown:match("%d") ~= nil and fits, tag .. ": the countdown chip's words are whole and carry the seconds", fmt("%q %.0f px in %.0f px", shown, words and words.TextBounds.X or 0, words and words.AbsoluteSize.X or 0))
+					end
 					U97.close()
 				end)
 			end
 		end
+		-- (C34) the 360 x 640 phone of the finding too: the chip there is narrower than at 390 x 844
+		U8.at(360, 640, true, "dungeon chip dungeon:countdown", function(tag)
+			U97.open("dungeon:countdown")
+			local pg = U8.pg()
+			local chip = pg:FindFirstChild("NimbusDungeonRun") and pg.NimbusDungeonRun:FindFirstChild("RunChip")
+			local words = chip and chip:FindFirstChild("Text", true)
+			local shown = words and U8.shown(words) and words.Text or ""
+			local fits = words ~= nil and words.TextBounds.X <= words.AbsoluteSize.X + 0.5
+			T.check(shown:match("%d") ~= nil and fits, tag .. ": the countdown chip's words are whole and carry the seconds", fmt("%q %.0f px in %.0f px", shown, words and words.TextBounds.X or 0, words and words.AbsoluteSize.X or 0))
+			U97.close()
+		end)
 		LKC.flushErrors("dungeon_chip_leave_reachable")
 	end)
 

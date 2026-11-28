@@ -25,7 +25,8 @@ DEFAULTS = {"loss:ring": "loss", "hatch": "hatch:reveal"}
 NOT_WALKED = {"store"}
 # the header's prose: battle[:<mode>[:<phase>]] phases, the ring's rounds, arena[:<view>] views, ring[:<view>] views
 PROSE = [
-    "battle:trial:ready", "battle:trial:retreat", "battle:trial:result", "battle:trial:lost", "battle:duel:overtime",
+    # (playtest 2026-11-28 C62) battle:trial:* and battle:duel:overtime are gone (BattleSim 10.5); the phases on dungeon
+    "battle:dungeon:ready", "battle:dungeon:lost", "battle:dungeon:cleared",
     "battle:ring:fight8", "battle:ring:next8", "battle:ring:result8", "battle:ring:record8",
     "arena:side", "arena:team4", "arena:newteam", "arena:duels", "arena:raid", "arena:leaders",
     "ring:record", "ring:new",

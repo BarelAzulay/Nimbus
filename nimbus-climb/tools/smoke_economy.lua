@@ -1578,6 +1578,7 @@ S.match_difficulties = guarded("match_difficulties", function()
 			-- win
 			local fin = m.Course.Finish
 			mark = logSize()
+			m.StartedAt = m.StartedAt - 120 -- (playtest 2026-11-28 C22) a teleport run is under the course's shortest honest time
 			local before = {
 				a = profileOf(a) and profileOf(a).Stats.Matches, b = profileOf(b) and profileOf(b).Stats.Matches,
 				wins = profileOf(a) and profileOf(a).Stats.Wins, tokens = a:GetAttribute("CloudTokens"),
@@ -1786,8 +1787,8 @@ S.match_pets = guarded("match_pets", function()
 	MS().LeaveMatch(c)
 	advance(0.8)
 	T.eq(profileOf(c).Stats.Matches, statsC, "a player who leaves mid-match records no match")
-	-- win with a and b
-	for i = 2, Config.GetDifficulty("Easy").Stages do
+	-- win with a and b (playtest 2026-11-28 C22: from checkpoint 1, which only a took above: b's own trail needs every pad)
+	for i = 1, Config.GetDifficulty("Easy").Stages do
 		local cp = m.Course.Checkpoints[i]
 		Mock.Teleport(a, cp.Part.Position + Vector3.new(0, 3.5, 0))
 		Mock.Teleport(b, cp.Part.Position + Vector3.new(0, 3.5, 0))
@@ -1797,6 +1798,7 @@ S.match_pets = guarded("match_pets", function()
 	local lifetime = a:GetAttribute("CloudTokens")
 	local statsA, statsB = profileOf(a).Stats.Matches, profileOf(b).Stats.Matches
 	local mark = logSize()
+	m.StartedAt = m.StartedAt - 120 -- (C22) a teleport run is under the course's shortest honest time
 	Mock.Teleport(a, fin.Position + Vector3.new(0, fin.Size.Y / 2 + 3.5, 0))
 	Mock.Teleport(b, fin.Position + Vector3.new(0, fin.Size.Y / 2 + 3.5, 0))
 	advance(1.2)

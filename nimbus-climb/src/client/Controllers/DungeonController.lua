@@ -1016,15 +1016,19 @@ function W.myReady(mine)
 	return false
 end
 
+-- -> the countdown line, its short form (playtest 2026-11-28 C34: a 360 px portrait phone's chip holds about 66 design
+-- px of words beside the five blocks, so "Dungeon in 4..." read "Dung..." and the seconds were lost; R.fitChip swaps in
+-- the short form when the long one would truncate)
 function W.countdownText(mine)
 	local left = W.countdown(mine)
 	if not left then
 		return nil
 	end
 	if W.allReady(mine) then
-		return "Dungeon in " .. left .. "..."
+		return "Dungeon in " .. left .. "...", "In " .. left .. "..."
 	end
-	return "Starting in " .. left .. " - press READY"
+	-- (the short form beside the chip's green READY: "Starts in 19" was still 5 px too wide for a 360 px portrait phone)
+	return "Starting in " .. left .. " - press READY", "In " .. left
 end
 
 -- the party box when the player has no party: SOLO / PARTY + the open parties
@@ -1921,8 +1925,16 @@ function R.fitChip()
 		return
 	end
 	local ix = U.ChipIcon.Visible and (K.ICON_TILE + 4) or 0
-	local m = R.measure(U.ChipText, (U.ChipText.Text:gsub("%d", "8")), nil)
-	local textW = m and math.ceil(m.X) or math.ceil(#U.ChipText.Text * U.ChipText.TextSize * 0.6)
+	local function wordsW()
+		local m = R.measure(U.ChipText, (U.ChipText.Text:gsub("%d", "8")), nil)
+		return m and math.ceil(m.X) or math.ceil(#U.ChipText.Text * U.ChipText.TextSize * 0.6)
+	end
+	-- (playtest 2026-11-28 C34) a countdown starts from its long form every pass (a chip that grew back shows it again)
+	local words = S.ChipWords
+	if words and words.Full and U.ChipText.Text ~= words.Full then
+		U.ChipText.Text = words.Full
+	end
+	local textW = wordsW()
 	local blocks = nil
 	if U.ChipCount.Visible then
 		blocks = U.ChipCount
@@ -1945,6 +1957,23 @@ function R.fitChip()
 	local width = math.min(maxW, want)
 	-- the words fill what is left of the chip; the blocks sit right after them, inside it
 	local textBox = width - 12 - ix - blocksW - buttonW - 8
+	-- (C34) the long form would truncate ("Dung..." at 360 x 640, the seconds gone): the short form, measured again
+	if words and words.Short and textBox < textW then
+		U.ChipText.Text = words.Short
+		textW = wordsW()
+		want = 12 + ix + textW + blocksW + buttonW + 8 + 16
+		width = math.min(maxW, want)
+		textBox = width - 12 - ix - blocksW - buttonW - 8
+	end
+	-- (C34) still no room (a portrait phone's chip with its READY button beside the five blocks left the words 0 px): the
+	-- blocks step aside, the words carry the seconds; they come back with the next refresh on a wider chip
+	if words and textBox < textW and U.ChipCount.Visible then
+		U.ChipCount.Visible = false
+		blocksW = 0
+		want = 12 + ix + textW + buttonW + 8 + 16
+		width = math.min(maxW, want)
+		textBox = width - 12 - ix - buttonW - 8
+	end
 	U.ChipText.Size = UDim2.new(0, math.max(0, textBox), 1, 0)
 	if U.ChipCount.Visible then
 		U.ChipCount.Position = UDim2.new(1, -(buttonW + 8), 0.5, 0)
@@ -2669,7 +2698,8 @@ function R.refresh()
 	end
 	if view == "Countdown" then
 		local mine = S.Lobby.Mine
-		local cd = W.countdownText(mine) or ""
+		local cd, cdShort = W.countdownText(mine)
+		cd = cd or ""
 		local isLeader = LocalPlayer and mine.Leader == LocalPlayer.UserId
 		local needReady = not isLeader and not W.myReady(mine)
 		local f = math.floor(tonumber(mine.Floor) or 1)
@@ -2690,6 +2720,7 @@ function R.refresh()
 		U.CardLeave.Visible = false
 		U.ChipText.Visible = true
 		U.ChipText.Text = cd
+		S.ChipWords = { Full = cd, Short = cdShort } -- (C34) R.fitChip falls back to the short form on a narrow chip
 		U.ChipCount.Visible = true
 		SignKit.FillBlocks(U.ChipCount, math.min(5, W.countdown(mine) or 0))
 		R.pips(U.ChipText, nil) -- (no room blocks before a run)
@@ -2768,6 +2799,7 @@ function R.refresh()
 	local armed = now <= S.LeaveArmed
 	U.CardLeave.Text = armed and "Sure? Tap again" or "Leave"
 	-- the phone chip: room / wave or the toast or the status
+	S.ChipWords = nil -- (C34) only the countdown has a long / short pair
 	U.ChipText.Text = toast and (toast.Short or toast.Text) or R.chipText(room, count)
 	-- (kit-b U9-7) the loot flash takes the whole chip for its few seconds (beside LEAVE it ran past a portrait phone's chip);
 	-- (U9-7 review) a chip that is its LEAVE alone (a fight: R.placeChip) keeps LEAVE and shows no text
