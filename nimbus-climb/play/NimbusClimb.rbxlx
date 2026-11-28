@@ -153109,7 +153109,7 @@ NpcDialog.Npcs = {
 		Accent = Color3.fromRGB(240, 174, 70),
 		Keywords = { "yours to keep", "Dungeon", "Training Place", "Champion Ring", "record", "Open Pets", "trophies", "fighter", "helpers" },
 		Lines = {
-			"Woof! Coins you grab on a climb are yours to keep. Open Pets, then duel friends in the arena: +" .. trophyWin .. " trophies a win!",
+			"Woof! Cloud Tokens you grab on a climb are yours to keep. Open Pets, then duel friends in the arena: +" .. trophyWin .. " trophies a win!",
 			"The Dungeon portal on the plaza has " .. floorCount .. " floors of rooms, waves and bosses. Every first clear pays big token bonuses and Gems!",
 			trainLine(skillList),
 			"Try the Champion Ring on the plaza: one champion after another, each stronger. Beat your record for "
@@ -153130,7 +153130,7 @@ NpcDialog.Npcs = {
 			"Your garden pets roam your yard, eat at the Food Bowl and poop Cloud Cash. Only you can scoop it: walk over it!",
 			"Level up your Berry Farm: bigger berries make bigger Cloud Cash, and more berries for the Food Machine!",
 			"Home Level " .. prestigeLevel .. " and a " .. castleName .. "? Prestige! You get x" .. prestigeMul
-				.. " coins forever, " .. prestigeGems .. " Gems and " .. placeWord .. ".",
+				.. " Cash forever, " .. prestigeGems .. " Gems and " .. placeWord .. ".",
 			"Tap Home in the menu to see your stations. Go home opens a magic portal just for you and your pets!",
 		},
 	},
@@ -161331,7 +161331,7 @@ PetCatalog.RoleBlurbs = {
 	Combat = "Fights in the arena with strong attacks.",
 }
 PetCatalog.StatOrder = { "Income", "Power", "Health", "Speed" }
-PetCatalog.StatNames = { Income = "Coins", Power = "Power", Health = "Health", Speed = "Speed" } -- Phase 4: pets make coins
+PetCatalog.StatNames = { Income = "Cash", Power = "Power", Health = "Health", Speed = "Speed" } -- Phase 4: pets make coins
 PetCatalog.SpecialKinds = { "Blast", "Heal", "Shield", "Storm", "Pounce", "Freeze", "Beam", "Rally", "Haste" } -- Phase 5: + Rally / Haste (Support kinds)
 PetCatalog.SupportKinds = { "Heal", "Shield", "Rally", "Haste" } -- Phase 5 contract 3.2: the kinds an Economy (Support) pet may have
 
@@ -161362,7 +161362,7 @@ local RAW = {
 	------------------------------------------------------------ Common (6): 3 Economy, 3 Combat
 	{
 		Id = "pebble_pup", Name = "Pebble Pup", Rarity = "Common",
-		Blurb = "A loyal little pup who fetches stray cloud tokens for you.",
+		Blurb = "A loyal little pup who fetches stray Cloud Tokens for you.", -- (playtest 2026-11-28 C20)
 		Look = {
 			Species = "Dog", Primary = C(190, 154, 114), Secondary = C(238, 222, 196), Eye = C(50, 36, 32),
 			Glow = false, WingStyle = "Feather", WingColor = C(226, 208, 182),
@@ -167227,6 +167227,11 @@ end
 -- own fit stays). It never moves or resizes the part, so no window's layout or fit changes. A UIPadding on the part (a
 -- text block's LipPad) would move its children: the holders reach back out by it, now and whenever it changes. Calling a
 -- finish again updates its one holder. A part built with opts.Finish = false (the approved Credits window) gets none.
+-- (playtest 2026-11-28 C2 / C3) nor does a part whose children a layout (list, grid, page, table) places, or whose size
+-- AutomaticSize takes from its children, now or when that comes later (most callers add the layout after SignBlock):
+-- a layout laid the holders out as rows (the Ring champion and rewards cards and the Raid tier card came out empty,
+-- the trophy chip blank, a stray shadow line beside the x2 countdown) and an AutomaticSize part grew round holders that
+-- reach `out` px past it, which grew with it (the arena "pets can battle here" notice became a 568x157 board)
 local FIN = Theme.Finish
 local WHITE = Color3.new(1, 1, 1)
 local FIN_PARTS = setmetatable({}, { __mode = "k" }) -- [part] = { [holder] = true }: refit when its padding or size changes
@@ -167244,6 +167249,51 @@ local function cover(obj, h, out)
 	local l, t, r, b = padOf(obj)
 	h.Position = UDim2.fromOffset(-l - out, -t - out)
 	h.Size = UDim2.new(1, l + r + 2 * out, 1, t + b + 2 * out)
+end
+
+-- the finish parts of a part that has them (holders, its shine / top line; not an awning's trim)
+local function finishParts(obj)
+	local out = {}
+	for _, c in ipairs(obj:GetChildren()) do
+		local k = c:GetAttribute("Finish")
+		if k ~= nil and k ~= "Awning" then
+			out[#out + 1] = c
+		end
+	end
+	return out
+end
+
+-- (C2 review) every layout class that places a part's children (Roblox's UIGridStyleLayout family, named one by one:
+-- the test mock has no UIGridStyleLayout base class)
+local LAYOUTS = { "UIListLayout", "UIGridLayout", "UIPageLayout", "UITableLayout" }
+local function isLayout(c)
+	for _, class in ipairs(LAYOUTS) do
+		if c:IsA(class) then
+			return true
+		end
+	end
+	return false
+end
+
+-- (C2 / C3) true when a layout places obj's children or AutomaticSize sizes obj: it takes no finish parts
+local function finishless(obj)
+	if obj:IsA("GuiObject") and obj.AutomaticSize ~= Enum.AutomaticSize.None then
+		return true
+	end
+	for _, c in ipairs(obj:GetChildren()) do
+		if isLayout(c) then
+			return true
+		end
+	end
+	return false
+end
+SignKit.Finishless = finishless
+
+local function shed(obj)
+	for _, c in ipairs(finishParts(obj)) do
+		c:SetAttribute("FinishOff", true)
+		c.Visible = false
+	end
 end
 
 local function track(obj, h)
@@ -167269,8 +167319,18 @@ local function track(obj, h)
 			if c:IsA("UIPadding") or c.Name == "CloseMark" then
 				again()
 			end
+			if isLayout(c) then
+				shed(obj) -- (C2) a layout came after the finish: its parts leave the layout
+			end
 		end)
 		obj:GetPropertyChangedSignal("Size"):Connect(again)
+		if obj:IsA("GuiObject") then
+			obj:GetPropertyChangedSignal("AutomaticSize"):Connect(function()
+				if finishless(obj) then
+					shed(obj) -- (C3)
+				end
+			end)
+		end
 	end
 	set[h] = true
 end
@@ -167285,6 +167345,9 @@ local function holderOf(obj, name, kind)
 	h:SetAttribute("FinishOff", nil)
 	h.Visible = true
 	track(obj, h)
+	if finishless(obj) then
+		shed(obj) -- (C2 / C3) built, so a repaint keeps one holder, but never shown
+	end
 	return h
 end
 
@@ -167442,6 +167505,9 @@ function SignKit.Shine(face, opts)
 	s:SetAttribute("FinishOff", nil)
 	s.Visible = true
 	track(face, s)
+	if finishless(face) then
+		shed(face) -- (C2 / C3)
+	end
 	scaleWatch[s] = true
 	local px = tonumber(opts.Px) or FIN.Shine
 	SignKit.Whole(s, function(sc)
@@ -171996,7 +172062,8 @@ TutorialSteps.Steps = {
 		Chapter = 1,
 		ChapterEnd = true,
 		Title = "You're a Natural!",
-		Text = "That's the basics, climber! Here are {FinishTokens} Cloud Tokens to celebrate. Next up: your very own home in the sky!",
+		-- (2026-11-28 playtest C19) was "Next up: your very own home in the sky!", read after step 2 had claimed it
+		Text = "That's the basics, climber! Here are {FinishTokens} Cloud Tokens to celebrate. Next up: your home in the sky!",
 		Target = nil,
 		CompleteOn = "Next",
 		Button = "Collect!",
@@ -172117,7 +172184,9 @@ TutorialSteps.Steps = {
 		Id = "ring",
 		Chapter = 4,
 		Title = "The Champion Ring",
-		Text = "Claim your home, then press E at the Champion Ring portal on the plaza. Beat the champion: Cash and XP!",
+		-- (2026-11-28 playtest C19) was "Claim your home, then press E ...": at step 20 the home is long claimed (the
+		-- Ring window still says "Claim your home first" to a player without one)
+		Text = "Press E at the Champion Ring portal on the plaza and send your team in. Beat the champion: Cash and XP!",
 		Target = { Kind = "Arena", Place = "Ring", Label = "Champion Ring" },
 		CompleteOn = "RingWon",
 		Hint = "Win a round in the Champion Ring",
@@ -172578,7 +172647,7 @@ local STATIONS = {
 	},
 	{
 		Id = "Vault", Name = "Vault", Kind = "Vault", Icon = ICON.Bank,
-		Blurb = "Your lawn holds more Cloud Cash, and coins while you are away.",
+		Blurb = "Your lawn holds more Cloud Cash, and more while you are away.", -- (playtest 2026-11-28 C20: no "coins")
 		MaxLevel = 5, TierCaps = caps(1, 2, 4, 5),
 		Requires = { Press1 = 6 },
 		Price = { 11000, 110000, 460000, 1000000, 2500000 },
@@ -172702,7 +172771,7 @@ end
 -- The prestige pad (not a station: TycoonService handles it with its Prestige()). Get("Prestige") returns this.
 local PRESTIGE_PAD = {
 	Id = "Prestige", Name = "Prestige", Kind = "Prestige", Icon = ICON.Star, IsPrestige = true,
-	Blurb = "Start over with +1 star: x1.25 coins forever, +1 garden place and Gems.",
+	Blurb = "Start over with +1 star: x1.25 Cash forever, +1 garden place and Gems.", -- (playtest 2026-11-28 C20)
 	MaxLevel = 1, TierCaps = caps(0, 0, 0, 1), Requires = { House = "SkyCastle" },
 	LevelRequires = {}, Price = { 0 }, Effects = { {} },
 	Slot = { CFrame = at(-8, 18, 0), Footprint = V3(4, 1, 4), Walkable = true, Pad = padAt(-8, 12, -8, 18) },
@@ -177947,13 +178016,11 @@ local function writePartCount(info)
 end
 
 -- Global world rules. LightingService applies them too; this copy makes sure they hold even if
--- that service failed to load.
+-- that service failed to load. (playtest 2026-11-28 C46: FallenPartsDestroyHeight is not written here any more; it
+-- is PluginSecurity, so the write only warned at every boot. The place file carries -2000: default.project.json.)
 local function applyWorldRules()
 	pcall(function()
 		Workspace.Gravity = Config.Physics.Gravity
-	end)
-	pcall(function()
-		Workspace.FallenPartsDestroyHeight = -2000
 	end)
 end
 
@@ -217783,7 +217850,8 @@ return HazardService
 --   HomeBuilder.SetPads(spotInfo, pads)         the buy pads `Pad_<StationId>` (Home/Pads) for TycoonCatalog.AvailablePads
 --                                               entries: a slate pad with a neon plate + a pixel sign `PadSign` (icon,
 --                                               name, "Lv a -> b", price or the lock reason; HomeFx hides the unsigned
---                                               ones) + ProximityPrompt `BuyPrompt` (ActionText "Buy", HoldDuration 0.25,
+--                                               ones) + ProximityPrompt `BuyPrompt` ("Buy"; "Upgrade" once built, HoldDuration 0.25,
+--                                               on the Base's Attachment `PromptPoint` 3 studs over the pad's top;
 --                                               attributes StationId, OwnerUserId; disabled while locked; the Prestige
 --                                               pad's says "Prestige" and needs a 1.5 s hold). Pads missing from the list
 --                                               are removed, unchanged pads are kept. Locked "Unlocks at Prestige" /
@@ -217825,8 +217893,8 @@ return HazardService
 --                                "Food Bowl" / "Pets eat here, then poop Cloud Cash!", 40 studs; point BowlCenter),
 --                                12 beds at Slot.Beds: Attachments Spot<i> (attributes Slot, Open) on the lawn; an open
 --                                bed = bed + cushion + tiny roof with PromptPoint<i> -> `GardenSpotPrompt` ("Put a pet
---                                here", E, attributes Slot / OwnerUserId / StationId, MaxActivationDistance 3, no line of
---                                sight); a closed bed = soil + Stem + Sprout + `ClosedSign` ("Prestige to open"). The
+--                                here", E, attributes Slot / OwnerUserId / StationId, MaxActivationDistance 4, no line of
+--                                sight; the point 3 studs over the lawn); a closed bed = soil + Stem + Sprout + `ClosedSign` ("Prestige to open"). The
 --                                lawn top is y 0.2; the interior stays clear for the roaming pets (HomeRoam)
 --                              * FoodMachine (Kitchen): the glass `Hopper` part (PetCareService's FeedPrompt), the
 --                                BillboardGui `MachineSign` (Title "Food Machine", Info "Berries -> XP: press E", the
@@ -217896,6 +217964,11 @@ local MAT = Enum.Material
 local HOME_TAG = "NC_Home"
 local FARM_BELL_TAG = "NC_FarmBell" -- bug #20: the farm's ship bell ("calls the pets to dinner"), for the audio branch
 local PROMPT_RANGE = 9 -- studs: buy pads and station prompts
+-- (playtest 2026-11-28 C8 review) studs over the floor a player stands on where a pad's BuyPrompt and a Garden bed's
+-- GardenSpotPrompt hang: a standing root's height (HipHeight 2 + half the root = 3, up to ~4.5 on tall avatars,
+-- MatchService GROUND_REACH), so their short reaches run near-level for every avatar. On the pad's Base (0.2 up) a
+-- tall avatar's root was 4.8 from the prompt even dead centre, out of the 4.3 reach.
+local PROMPT_LIFT = 3
 local PRESTIGE_HOLD = 1.5 -- seconds: the Prestige pad's prompt (it opens the prestige confirmation, never a quick tap)
 local CLAIM_RANGE = 12
 local PAD_SIGN_RANGE = 60 -- studs: pad signs (pixel tags) hide beyond this
@@ -218837,7 +218910,12 @@ end
 ----------------------------------------------------------------------
 local Garden = {}
 
-Garden.PROMPT_RANGE = 3 -- studs (contract 3.6)
+-- studs (contract 3.6). (playtest 2026-11-28 C8) was 3: the reach is measured from the root part, ~1.7 studs over
+-- the prompt point, so 3 reached only ~2.5 studs across the lawn and the guide's stop at the bed (3.3) was out of it.
+-- 4 reaches ~3.6 across; the middle of the lawn stays clear of the side beds (7.4 studs from their prompts).
+-- (C8 review) the prompt point now hangs PROMPT_LIFT over the lawn (root height): 4 reaches >= 3.7 across for a
+-- root 3 to 4.5 studs up (it was 2.4 for a 4.5-stud root from 1.5 up).
+Garden.PROMPT_RANGE = 4
 Garden.CUSHION_TOP = 0.95
 Garden.LAWN_TOP = 0.2
 Garden.CUSHIONS = { rgb(246, 150, 188), rgb(150, 224, 176), rgb(130, 170, 255), rgb(250, 214, 92) }
@@ -218873,14 +218951,15 @@ function Garden.bedFrame(def, v)
 	return CFrame.lookAt(pos, pos - out)
 end
 
--- the prompt point of bed i (station frame): on the bed's interior side, half a stud over the cushion
+-- the prompt point of bed i (station frame): on the bed's interior side, PROMPT_LIFT over the lawn (a standing
+-- root's height; (C8 review) it was 1.3, half a stud over the cushion)
 function Garden.promptPoint(def, i)
 	local v = Garden.places(def)[i]
 	if typeof(v) ~= "Vector3" then
 		return nil
 	end
 	local size = def.Slot.BedSize or 2.5
-	return (Garden.bedFrame(def, v) * CFrame.new(0, 1.3, -(size / 2 + 0.35))).Position
+	return (Garden.bedFrame(def, v) * CFrame.new(0, PROMPT_LIFT, -(size / 2 + 0.35))).Position
 end
 
 -- the "Prestige to open" sign of a closed bed (World text rule: 50 px per stud, letters 0.6 stud). (kit-b world signs) a
@@ -219978,6 +220057,7 @@ end
 -- the pad's parts for one state, built once (origin = pad centre on the ground, front -Z = toward the station).
 -- Four parts: a stone base (walkable; it carries the BuyPrompt and the sign), the glowing plate in the state's
 -- colour and a two-part neon emblem: "+" build, an arrow toward the station upgrade, a padlock, a star (prestige).
+local PAD_TOP = 0.5 -- the pad's walkable top (the Glow plate), over its origin
 local function padTemplate(state)
 	local key = "Pad:" .. state
 	if templates[key] then
@@ -220706,6 +220786,36 @@ local function padSlot(id)
 	return nil, def
 end
 
+-- (playtest 2026-11-28 C8) a pad's BuyPrompt reach: PROMPT_RANGE, cut so it never meets a Garden bed's reach. The
+-- Garden pad (10.6 studs from beds 1/2), the Fence and the Podium pads reached into the beds' reach, and E goes to
+-- whichever prompt the camera faces, so the bed the guide called "you're here" bought the $15K Garden upgrade. A
+-- purchase stays one deliberate step onto (or beside) its 4 x 4 pad: never less than PAD_REACH_MIN. (C8 review) 4.3,
+-- not 5: the reach is measured centre to centre (the root part ~3 studs over the pad: a corner of its top is ~3.9 from
+-- the prompt, so 4.3 still covers the whole pad); at 5 the Gym and ArenaGate pads (8.4 / 8.3 studs from beds 1, 3, 5)
+-- were held at 5 and met the beds' 4. (C8 review, round 3) the prompt hangs on an Attachment PromptPoint PROMPT_LIFT
+-- over the pad's top (PAD_PROMPT_Y): on the Base a 4.5-stud root was 4.8 from it even dead centre. Lifted, the floor is
+-- 4.0: it reaches >= 3.7 across for a root 3 to 4.5 studs up (the pad's corner is 2.8 out), and the lifted bed prompts
+-- sit level with it (8.24 studs from the ArenaGate pad's, so 4.3 + 4 would meet; the cut gives it 4.2).
+local PAD_REACH_MIN = 4.0
+local PAD_PROMPT_Y = PAD_TOP + PROMPT_LIFT -- the BuyPrompt's point over the pad's origin
+local function padReach(slotCF)
+	local cat = catalog()
+	local gdef = cat and cat.Get("Garden")
+	local gcf = type(gdef) == "table" and type(gdef.Slot) == "table" and gdef.Slot.CFrame
+	if typeof(gcf) ~= "CFrame" then
+		return PROMPT_RANGE
+	end
+	local at = (slotCF * CFrame.new(0, PAD_PROMPT_Y, 0)).Position
+	local reach = PROMPT_RANGE
+	for i = 1, #Garden.places(gdef) do
+		local p = Garden.promptPoint(gdef, i)
+		if p then
+			reach = math.min(reach, ((gcf * CFrame.new(p)).Position - at).Magnitude - Garden.PROMPT_RANGE)
+		end
+	end
+	return math.max(PAD_REACH_MIN, math.floor(reach * 10) / 10)
+end
+
 -- "x1.25" (two decimals at most, no trailing zeros)
 local function multText(m)
 	local text = string.format("%.2f", m):gsub("0+$", ""):gsub("%.$", "")
@@ -220847,15 +220957,28 @@ local function updatePad(rec, pad)
 		prompt.ActionText = prestigePad and "Prestige" or "Buy"
 		prompt.KeyboardKeyCode = Enum.KeyCode.E
 		prompt.HoldDuration = prestigePad and PRESTIGE_HOLD or 0.25
-		prompt.MaxActivationDistance = PROMPT_RANGE
+		prompt.MaxActivationDistance = padReach(slotCF) -- (playtest 2026-11-28 C8) never into a Garden bed's reach
 		prompt.RequiresLineOfSight = false
 		prompt:SetAttribute("StationId", id)
-		prompt.Parent = base or m
+		if base then
+			-- (playtest 2026-11-28 C8 review) at a standing root's height over the pad, not on the Base (0.2 up)
+			local point = Instance.new("Attachment")
+			point.Name = "PromptPoint"
+			point.CFrame = base.CFrame:Inverse() * (rec.CF * slotCF * CFrame.new(0, PAD_PROMPT_Y, 0))
+			point.Parent = base
+			prompt.Parent = point
+		else
+			prompt.Parent = m
+		end
 		entry = { Model = m, Prompt = prompt, Anchor = base, State = state }
 		rec.Pads[id] = entry
 		m.Parent = rec.PadFolder
 	end
 	local m = entry.Model
+	if id ~= "Prestige" then
+		-- (playtest 2026-11-28 C8) a built station's pad says what E does: "Upgrade" (it said "Buy" at every level)
+		entry.Prompt.ActionText = (tonumber(pad.Level) or 0) >= 1 and "Upgrade" or "Buy"
+	end
 	if entry.Sign then
 		entry.Sign:Destroy()
 	end
@@ -222684,10 +222807,12 @@ end
 
 -- Global physics / world rules. StreamingEnabled is deliberately left alone (false). Spawning is NOT decided
 -- here: Main / PlayerService hold the character until the menu's PLAY (7.2), so CharacterAutoLoads is untouched.
+-- (playtest 2026-11-28 C46) Workspace.FallenPartsDestroyHeight is PluginSecurity: a server Script cannot write it
+-- (every boot warned "lacking capability PluginOrOpenCloud" and the value never applied). It is -2000 in the place
+-- itself now (default.project.json's Workspace $properties), far below the lobby and every course kill plane.
 function LightingService.ApplyWorldRules()
 	setProps(Workspace, {
 		Gravity = Config.Physics.Gravity,
-		FallenPartsDestroyHeight = -2000, -- far below the lobby kill plane and every course kill plane
 	})
 end
 
@@ -229075,6 +229200,42 @@ if type(Config.Course) == "table" and type(Config.Course.Clearance) == "number" 
 	PAD_ABOVE = math.max(6, math.min(12, Config.Course.Clearance + 1))
 end
 
+-- (playtest 2026-11-28 C22) the finish is accepted only from a player who went the way: a client teleport onto the
+-- finish pad won Easy in 0:59. Each member keeps their OWN trail (rec.Checkpoint: the last checkpoint they were at, in
+-- order, like the team's), and the finish needs the trail complete plus the match older than the course's shortest
+-- honest time. The trail must never refuse an honest player, so a pad counts when the player is anywhere NEAR it
+-- (TRAIL_PAD studs past its edge, TRAIL_ABOVE over its top: a dash-jump across a 14-stud pad at 85 studs/s still has a
+-- 0.25 s poll inside that window, and Touched counts too) and every place the SERVER puts a player (a void rescue, a
+-- revive, a respawn: all at the team checkpoint) counts as that checkpoint. A refusal is logged once per player.
+local TRAIL_PAD = 12
+local TRAIL_ABOVE = 20
+-- (C22 review) A Touched event counts only with the toucher's root AT the part (TOUCH_SLACK studs past its edge: a foot or
+-- a hand on the rim, never a touch reported from across the course: an exploit client can fire touches for its own parts
+-- from anywhere). The trail takes a touch inside nearPad like the poll does.
+local TOUCH_SLACK = 4
+-- The shortest honest time (match.MinSeconds), from honest pace instead of 1.5 x DashSpeed (review: the old floor was
+-- 3.6-4.9 s on Easy, a pad-by-pad teleport won after 4.3 s). The path: the horizontal chain start -> each checkpoint pad ->
+-- the finish pad, less what touching each pad anywhere in its touch window can cut at a turn (minFinishSeconds), so it
+-- is a LOWER bound on any honest path. The pace: run + a dash every cooldown, the best average a climber can hold
+-- (Config.Physics: 27 run, 85 for 0.18 s of every 1.6 s = 33.5 studs/s, and stamina makes it lower), x FLOOR_PACE_MARGIN
+-- for a moving cloud's carry (<= 4.2), a hazard's knock and the first dash. A cannon leg counts as its flight time
+-- (CourseLayout: 25-60 studs in 1.0-2.2 s). A refusal only makes the player wait on the pad, so an honest record run is
+-- delayed at worst, never lost. Floors over 200 seeds: Easy 8.8-12.9 s, Medium 8.4-16.1, Hard 8.7-18.3, Extreme
+-- 11.6-25.9, Saint 13.1-32.7 (about 1-2 % of each time limit).
+local FLOOR_PACE_MARGIN = 1.2
+local HONEST_PACE = 33.5 -- recomputed from Config.Physics below
+do
+	local ph = Config.Physics
+	local run, dash = ph.RunSpeed or 27, ph.DashSpeed or 85
+	local burst, cooldown = ph.DashDuration or 0.18, math.max(ph.DashCooldown or 1.6, ph.DashDuration or 0.18, 0.1)
+	HONEST_PACE = ((cooldown - burst) * run + burst * dash) / cooldown
+end
+local FLOOR_PACE = HONEST_PACE * FLOOR_PACE_MARGIN
+-- an accepted finish under this x the floor is logged (for review, nothing is refused): a waited-out teleport run lands
+-- right at the floor, a stand-in at the honest pace on the straight chain at 1.39 x or more (200 seeds a difficulty)
+local FAST_FINISH_LOG = 1.25
+local REFUSAL_TOAST_EVERY = 4 -- seconds between two refusal toasts while a player keeps standing on the finish
+
 ----------------------------------------------------------------------
 -- Module state
 ----------------------------------------------------------------------
@@ -229536,7 +229697,7 @@ local function queueTokenToast(match, player, gained, base)
 		if player.Parent == nil or playerMatch[player] ~= match then
 			return
 		end
-		local text = "+" .. pending.Gained .. " cloud token"
+		local text = "+" .. pending.Gained .. " Cloud Token" -- (playtest 2026-11-28 C20: the Theme.Currency name's case)
 		if pending.Gained ~= 1 then
 			text = text .. "s"
 		end
@@ -229580,16 +229741,120 @@ end
 ----------------------------------------------------------------------
 -- Checkpoints, finish, void
 ----------------------------------------------------------------------
--- The checkpoint the team takes next: the lowest usable index above the current one (nil after the last).
+-- The checkpoint taken next after `from`: the lowest usable index above it (nil after the last).
 -- Checkpoints count in order only, so a cannon flight or a lucky jump onto a later stage never skips one (bug #8).
-local function nextCheckpointIndex(match)
+local function nextCheckpointFrom(match, from)
 	local checkpoints = match.Course.Checkpoints
-	for index = match.Checkpoint + 1, match.MaxCheckpoint do
+	for index = from + 1, match.MaxCheckpoint do
 		if checkpoints[index] then
 			return index
 		end
 	end
 	return nil
+end
+
+local function nextCheckpointIndex(match)
+	return nextCheckpointFrom(match, match.Checkpoint)
+end
+
+-- (C22) the player's own trail: `index` is the checkpoint they are at now (reached by them, or the server put them
+-- there); it only ever moves forward
+local function markTrail(match, player, index)
+	local rec = match.Recs[player]
+	if rec and type(index) == "number" and index > (rec.Checkpoint or 0) then
+		rec.Checkpoint = index
+	end
+end
+
+-- (C22) the server placed the player at the team checkpoint (void rescue, revive, respawn): their trail is there
+local function placedAtTeamCheckpoint(match, player)
+	markTrail(match, player, match.Checkpoint)
+end
+
+-- (C22) is the player near this checkpoint pad (standing on it, or passing it within TRAIL_PAD / TRAIL_ABOVE)?
+local function nearPad(cp, pos)
+	local part = cp and cp.Part
+	return part ~= nil and part.Parent ~= nil and isOverPart(part, pos, TRAIL_PAD, PAD_BELOW, TRAIL_ABOVE)
+end
+
+-- (C22) why the finish does not count for this player yet -> log text, toast text | nil when it does
+local function finishRefusal(match, player, t)
+	local rec = match.Recs[player]
+	local at = rec and rec.Checkpoint or 0
+	local missing = nextCheckpointFrom(match, at)
+	if missing then
+		return string.format("their trail ends at checkpoint %d of %d (next %d)", at, match.MaxCheckpoint, missing),
+			string.format("Checkpoint %d first!", missing) -- (C22 review) the pad they missed, also when the team has it
+	end
+	local played = match.StartedAt and ((t or clock()) - match.StartedAt) or 0
+	if type(match.MinSeconds) == "number" and played < match.MinSeconds then
+		-- the wait as a clock ("0:12", like BattleService's waits): one short line, no lone "s" wrapped onto a second one
+		local wait = math.max(1, math.ceil(match.MinSeconds - played))
+		return string.format("%.1f s played, the course cannot be run under %.1f s", played, match.MinSeconds),
+			string.format("Finish opens in %d:%02d", math.floor(wait / 60), wait % 60)
+	end
+	return nil
+end
+
+-- (C22 review) how far a footprint reaches along the horizontal vector w: the part's top rectangle grown `slack` studs
+-- past each edge (the window isOverPart tests), in the part's own axes so a pad at any heading works
+local function footprintReach(part, w, slack)
+	local cf, hs = part.CFrame, part.Size * 0.5
+	return math.abs(w:Dot(cf.RightVector)) * (hs.X + slack) + math.abs(w:Dot(cf.LookVector)) * (hs.Z + slack)
+end
+
+local function flatOf(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+-- (C22) the shortest honest time to the finish of this course (seconds), see FLOOR_PACE. The chain's nodes are the start
+-- spot (players start within START_SPREAD of it), every checkpoint pad and the finish pad (each within TOUCH_SLACK of
+-- its edge). A path that visits node i at c_i + d_i is at least sum u_k . (p_{k+1} - p_k) long (u_k the unit direction of
+-- chain link k), which is the chain's length plus sum d_i . (u_{i-1} - u_i): so the chain less each node's reach along
+-- its turn u_{i-1} - u_i is a lower bound (exact on a straight chain, no guess at the real route).
+local function minFinishSeconds(match)
+	local course = match.Course
+	local nodes = { { Pos = flatOf(course.StartCFrame.Position), Part = nil, Slack = START_SPREAD } }
+	for index = 1, match.MaxCheckpoint do
+		local cp = course.Checkpoints[index]
+		if cp and cp.Part then
+			nodes[#nodes + 1] = { Pos = flatOf(cp.Part.Position), Part = cp.Part, Slack = TOUCH_SLACK }
+		end
+	end
+	if course.Finish then
+		nodes[#nodes + 1] = { Pos = flatOf(course.Finish.Position), Part = course.Finish, Slack = TOUCH_SLACK }
+	end
+	local zero = Vector3.new(0, 0, 0)
+	local dirs = {}
+	local length = 0
+	for i = 2, #nodes do
+		local d = nodes[i].Pos - nodes[i - 1].Pos
+		local m = d.Magnitude
+		length = length + m
+		dirs[i - 1] = (m > 1e-6) and (d / m) or zero
+	end
+	for i, node in ipairs(nodes) do
+		local turn = (dirs[i - 1] or zero) - (dirs[i] or zero)
+		if node.Part then
+			length = length - footprintReach(node.Part, turn, node.Slack)
+		else
+			length = length - node.Slack * turn.Magnitude
+		end
+	end
+	-- cannon legs: a flight carries its rider at most `carried` studs (pad centre to Target, plus the pad, a touch and the
+	-- launch spot's drift) in FlightTime seconds; the 0.35 s charge is not counted
+	local carried, flights = 0, 0
+	local layout = match.Layout
+	if type(layout) == "table" and type(layout.Steps) == "table" then
+		for _, step in ipairs(layout.Steps) do
+			local h = step.Hazard
+			if step.Kind == "CannonPad" and type(h) == "table" and typeof(h.Pos) == "Vector3" and typeof(h.Target) == "Vector3" then
+				carried = carried + flatOf(h.Target - h.Pos).Magnitude + numberOr(h.PadRadius, 3) * 1.5 + TOUCH_SLACK
+				flights = flights + math.max(0, numberOr(h.FlightTime, 0))
+			end
+		end
+	end
+	return math.max(0, length - carried) / FLOOR_PACE + flights
 end
 
 reachCheckpoint = function(match, index, byPlayer)
@@ -229604,6 +229869,9 @@ reachCheckpoint = function(match, index, byPlayer)
 		return
 	end
 	match.Checkpoint = index
+	if byPlayer then
+		markTrail(match, byPlayer, index) -- (C22) the one who took it is there
+	end
 	notifyAll(match, string.format("Checkpoint %d/%d reached!", index, match.TotalCheckpoints), "good", 3.5)
 
 	-- heal everyone who is up (pets can boost their owner's heal), collect the downed
@@ -229622,6 +229890,7 @@ reachCheckpoint = function(match, index, byPlayer)
 	-- lift up the downed teammates right here
 	for i, p in ipairs(downedList) do
 		teleportTo(p, spreadCFrame(cp.SpawnCFrame, i, #downedList, CHECKPOINT_SPREAD))
+		placedAtTeamCheckpoint(match, p) -- (C22)
 		callDep("DamageService", "Revive", p)
 		local who = "your team"
 		if byPlayer and byPlayer ~= p then
@@ -229646,11 +229915,22 @@ local function onCheckpointTouched(match, index, hit)
 	if isDowned(player) or match.Finished[player] then
 		return
 	end
-	local hum = Util.GetHumanoid(player)
-	if not hum or hum.Health <= 0 then
+	local hum, root = getLive(player)
+	if not hum or not root then
 		return
 	end
-	reachCheckpoint(match, index, player)
+	-- (C22 review) the touch counts only with the player AT the pad (the poll's windows): an exploit client can fire
+	-- touches for its own parts from anywhere on the course
+	local cp = match.Course.Checkpoints[index]
+	local pos = root.Position
+	-- (C22) the player's own trail: this pad, when it is the next one on it
+	local rec = match.Recs[player]
+	if rec and index == nextCheckpointFrom(match, rec.Checkpoint or 0) and nearPad(cp, pos) then
+		markTrail(match, player, index)
+	end
+	if cp and cp.Part and cp.Part.Parent and isOverPart(cp.Part, pos, TOUCH_SLACK, PAD_BELOW, PAD_ABOVE) then
+		reachCheckpoint(match, index, player)
+	end
 end
 
 markFinished = function(match, player)
@@ -229659,6 +229939,30 @@ markFinished = function(match, player)
 	end
 	if isDowned(player) or not isMember(match, player) then
 		return
+	end
+	-- (C22) the finish counts only after the player's own trail (every checkpoint, in order, or the server placing
+	-- them at the team's) and never before the course's shortest honest time; a refusal is logged once per player and
+	-- (review) told every REFUSAL_TOAST_EVERY seconds while they stay on the pad: the missing pad, or the wait
+	local now = clock()
+	local why, toast = finishRefusal(match, player, now)
+	if why then
+		local rec = match.Recs[player]
+		if rec then
+			if not rec.FinishRefused then
+				rec.FinishRefused = true
+				warn(string.format("[MatchService] finish refused for %s (match %d, %s): %s", nameOf(player), match.Id, tostring(match.DifficultyId), why))
+			end
+			if not rec.RefusalToastAt or now - rec.RefusalToastAt >= REFUSAL_TOAST_EVERY then
+				rec.RefusalToastAt = now
+				notify(player, toast, "bad", 3)
+			end
+		end
+		return
+	end
+	-- (C22 review) a finish close to the floor is accepted and logged: a waited-out teleport run looks like this
+	local played = match.StartedAt and (now - match.StartedAt) or 0
+	if type(match.MinSeconds) == "number" and match.MinSeconds > 0 and played < match.MinSeconds * FAST_FINISH_LOG then
+		warn(string.format("[MatchService] fast finish by %s (match %d, %s): %.1f s played, the floor is %.1f s", nameOf(player), match.Id, tostring(match.DifficultyId), played, match.MinSeconds))
 	end
 	match.Finished[player] = true
 	match.FinishCount = match.FinishCount + 1
@@ -229679,8 +229983,13 @@ local function onFinishTouched(match, hit)
 	if not player or not isMember(match, player) then
 		return
 	end
-	local hum = Util.GetHumanoid(player)
-	if not hum or hum.Health <= 0 then
+	local hum, root = getLive(player)
+	if not hum or not root then
+		return
+	end
+	-- (C22 review) only with the player AT the finish pad (a reported touch from anywhere else is ignored)
+	local pad = match.Course.Finish
+	if not (pad and pad.Parent and isOverPart(pad, root.Position, TOUCH_SLACK, PAD_BELOW, PAD_ABOVE)) then
 		return
 	end
 	markFinished(match, player)
@@ -229697,6 +230006,7 @@ local function handleVoid(match, player, wasDowned, finished)
 		callDep("DamageService", "Damage", player, dmg, "Void", { IgnoreIFrames = true })
 	end
 	teleportTo(player, jitterCFrame(teamSpawnCFrame(match), CHECKPOINT_SPREAD))
+	placedAtTeamCheckpoint(match, player) -- (C22)
 	if not isDowned(player) then
 		callDep("DamageService", "GrantInvulnerability", player, 1.5)
 	end
@@ -229829,6 +230139,9 @@ local function onCharacterAdded(match, player, char)
 				teleportTo(player, jitterCFrame(target, CHECKPOINT_SPREAD))
 			end
 		end
+		if not finished then
+			placedAtTeamCheckpoint(match, player) -- (C22) a respawn comes back at the team checkpoint
+		end
 
 		-- respawn rule: back at the checkpoint immediately, 50% health, no penalty
 		setAttr(player, Config.Attr.Downed, false)
@@ -229863,7 +230176,7 @@ end
 local function enrollPlayer(match, player, index, count)
 	playerMatch[player] = match
 	match.Tokens[player] = 0
-	match.Recs[player] = { Conns = {} }
+	match.Recs[player] = { Conns = {}, Checkpoint = 0 }
 	-- InMatch first: the lobby watchdog would otherwise yank a player standing at y=800 home
 	setAttr(player, Config.Attr.InMatch, true)
 	setAttr(player, Config.Attr.Downed, false)
@@ -230119,6 +230432,14 @@ local function processPlayerPlaying(match, player)
 	if cp and cp.Part and cp.Part.Parent and isOverPart(cp.Part, pos, 2, PAD_BELOW, PAD_ABOVE) then
 		reachCheckpoint(match, nextIndex, player)
 	end
+	-- (C22) the player's own trail: their next pad, when they are near it (looser than the team's test on purpose)
+	local rec = match.Recs[player]
+	if rec then
+		local mine = nextCheckpointFrom(match, rec.Checkpoint or 0)
+		if mine and nearPad(course.Checkpoints[mine], pos) then
+			markTrail(match, player, mine)
+		end
+	end
 
 	local pad = course.Finish
 	if pad and pad.Parent and isOverPart(pad, pos, 1, PAD_BELOW, PAD_ABOVE) then
@@ -230360,6 +230681,7 @@ local function setupCourse(match)
 	info.Checkpoints = clean
 	match.TotalCheckpoints = count
 	match.MaxCheckpoint = maxIndex
+	match.MinSeconds = minFinishSeconds(match) -- (C22)
 
 	-- hazards pause unless the match is actually being played
 	local hazardHandle = {
@@ -230514,7 +230836,8 @@ function MatchService.StartMatch(difficultyId, players)
 		LastStateAt = 0,
 		Tokens = {}, -- Player -> tokens paid out this match (pet bonus included)
 		Finished = {}, -- Player -> true
-		Recs = {}, -- Player -> { Conns, DiedConn }
+		Recs = {}, -- Player -> { Conns, DiedConn, Checkpoint (C22: the player's own trail), FinishRefused, RefusalToastAt }
+		MinSeconds = 0, -- (C22) the course's shortest honest time, set by setupCourse
 		Connections = {}, -- match-level connections (checkpoint / finish Touched)
 		Stopped = false,
 		CleanedUp = false,
@@ -230596,6 +230919,7 @@ function MatchService.GetRespawnCFrame(player)
 	if match.Checkpoint < 1 then
 		spread = START_SPREAD
 	end
+	placedAtTeamCheckpoint(match, player) -- (C22) PlayerService spawns them at the team checkpoint
 	return jitterCFrame(teamSpawnCFrame(match), spread)
 end
 
@@ -232358,7 +232682,7 @@ function Care.coinsText(def, level, stage)
 	if catalog and type(catalog.PetPower) == "function" then
 		local ok, power = pcall(catalog.PetPower, def, level, nil, stage)
 		if ok and isFinite(power) and power > 0 then
-			return "Coins " .. Care.factorText(power)
+			return "Cash " .. Care.factorText(power) -- (playtest 2026-11-28 C20: was "Coins")
 		end
 	end
 	return ""
@@ -234877,7 +235201,7 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 		end
 	end
 	ctx.Price = ctx.UnitPrice * spins -- computed once: the balance check and the charge use it
-	local poor = ctx.Currency == "Gems" and "Not enough Gems" or "Not enough cloud tokens"
+	local poor = ctx.Currency == "Gems" and "Not enough Gems" or "Not enough Cloud Tokens" -- (playtest 2026-11-28 C20: Theme.Currency.Tokens.Name)
 	local balance = ctx.Currency == "Gems" and DataService.GetGems(player) or DataService.GetTokens(player)
 	if balance < ctx.Price then
 		return false, poor
@@ -247186,7 +247510,7 @@ local function milestoneToasts(player, before, after)
 		end
 	end
 	if stationLevel(before, "Garden") < 1 and stationLevel(after, "Garden") >= 1 then
-		notify(player, "Put pets in your Pet Garden: they eat and pop out rainbow coins!", "info", 6)
+		notify(player, "Put pets in your Pet Garden: they eat and pop out Cloud Cash!", "info", 6) -- (playtest 2026-11-28 C20: one name per currency)
 	end
 end
 
@@ -247447,7 +247771,7 @@ function TycoonService.Prestige(player)
 	if type(catalog.PrestigeMultiplier) == "function" then
 		mult = catalog.PrestigeMultiplier(stars)
 	end
-	local text = "Prestige " .. stars .. "! Coins x" .. multiplierText(mult) .. " forever"
+	local text = "Prestige " .. stars .. "! Cash x" .. multiplierText(mult) .. " forever" -- (playtest 2026-11-28 C20: was "Coins")
 	if gems > 0 then
 		text = text .. ", +" .. gems .. " Gems"
 	end
@@ -247588,7 +247912,7 @@ function Garden.announceSolo(player, keys)
 		list = list .. " and " .. (#keys - #names) .. " more"
 	end
 	notify(player, "New rule: a pet does one job at a time! " .. list .. (#keys == 1 and " stays" or " stay")
-		.. " with you and your team, so " .. (#keys == 1 and "it" or "they") .. " left your garden. Put other pets in the garden to keep the coins coming!", "info", 10)
+		.. " with you and your team, so " .. (#keys == 1 and "it" or "they") .. " left your garden. Put other pets in the garden to keep the Cloud Cash coming!", "info", 10) -- (C20)
 end
 
 -- after a Garden write: the coin epochs and the plot (X5 / Y8: the epoch rule, right away)
@@ -250042,19 +250366,21 @@ function Ring.startTile(ui, round, order)
 		Parent = ui.Picker,
 	})
 	local face = makeFrame(tile.Button, "PressFace", { Size = UDim2.new(1, 0, 1, -CloudUI.SignMetrics.Lip), ZIndex = 3 })
+	-- (playtest 2026-11-28 C32) caption and number stacked in the 50 px face: the caption 1..20, the number 20..50 (were a
+	-- 4..26 caption over a 36 px number from 12: the ROUND / BOSS glyphs sat on the round's digits at every size)
 	local caption = makeText(face, "Caption", boss and "BOSS" or "ROUND", "Heading", 18, boss and INK or MUTED, {
-		Position = UDim2.fromOffset(0, 4),
-		Size = UDim2.new(1, 0, 0, 22),
+		Position = UDim2.fromOffset(0, 1),
+		Size = UDim2.new(1, 0, 0, 19),
 		ZIndex = 3,
 	})
 	if boss then
 		PixelIcon.Lead(caption, ICON.Crown, { Colour = SIGN.RedLip })
 	end
 	tile.Caption = caption
-	makeText(face, "Number", tostring(round), "Display", 30, INK, {
+	makeText(face, "Number", tostring(round), "Display", 28, INK, {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -2),
-		Size = UDim2.new(1, 0, 0, 36),
+		Position = UDim2.new(0.5, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 30),
 		ZIndex = 3,
 	})
 	tile.Button.Activated:Connect(function()
@@ -250265,7 +250591,7 @@ function Ring.build()
 	})
 	ui.StartButton = CloudUI.Button({
 		Name = "Start",
-		Text = "START",
+		Text = "Start", -- (playtest 2026-11-28 C47) the kit's buttons read in sentence case (was START / CONTINUE)
 		Size = UDim2.new(1, 0, 0, Ring.BUTTON_H),
 		Style = "Green",
 		Skin = "Sign", -- (kit-b U9-7) THE green action of the window
@@ -250436,8 +250762,8 @@ function Ring.refresh(win, ui)
 		recordText = "Beat round " .. (best + 1) .. " for a new record: x" .. tostring(Ring.cfg().RecordMult or 3) .. " Cash!"
 	end
 	ui.RecordLine.Text = recordText
-	ui.CashNote.Text = Ring.income() > 0 and "Each win pays a few seconds of your garden's coins (more every round) and XP to every fighter."
-		or "Put pets in your Pet Garden: ring wins pay more when your garden makes coins!"
+	ui.CashNote.Text = Ring.income() > 0 and "Each win pays a few seconds of your garden's Cash (more every round) and XP to every fighter."
+		or "Put pets in your Pet Garden: ring wins pay more when your garden makes Cash!" -- (playtest 2026-11-28 C20)
 	Ring.live(win, ui)
 	ui.Faces.Refresh()
 end
@@ -250453,7 +250779,7 @@ function Ring.live(_win, ui)
 	if Ring.Pending then
 		ui.StartButton.Text = "Starting..."
 	else
-		ui.StartButton.Text = start > 1 and "CONTINUE" or "START"
+		ui.StartButton.Text = start > 1 and "Continue" or "Start"
 	end
 	ui.Why.Text = why or ""
 	ui.Why.Visible = why ~= nil
@@ -251240,7 +251566,7 @@ local function buildArena()
 		local share = math.floor((tonumber(tier.MinShare) or 0) * 100 + 0.5)
 		local text = (share > 0 and (share .. "%+ damage: ") or "Any damage: ") .. commas(tier.Tokens or 0) .. " tokens"
 		if (tonumber(tier.Gems) or 0) > 0 then
-			text = text .. ", " .. math.floor((tonumber(tier.GemChance) or 0) * 100 + 0.5) .. "% for " .. commas(tier.Gems) .. " gems"
+			text = text .. ", " .. math.floor((tonumber(tier.GemChance) or 0) * 100 + 0.5) .. "% for " .. commas(tier.Gems) .. (tonumber(tier.Gems) == 1 and " gem" or " gems") -- (playtest 2026-11-28 C45: "1 gem")
 		end
 		makeText(row, "Text", text, "Body", 19, INK, {
 			Size = UDim2.new(1, -96, 0, 0),
@@ -251544,6 +251870,66 @@ local function buildSide()
 	U.SideCards = {}
 end
 
+-- (playtest 2026-11-28 C13) `part` of the ScreenGui `g` as { X, Y, R, B } in the px of the ScreenGui `side`.
+-- (C13 review) measured as HomeFx.measureHud does: a gui that ignores the inset from its own AbsolutePosition, one that
+-- keeps it from below the top bar, so it is right whether Roblox counts an IgnoreGuiInset gui from the screen's top (as
+-- the mock does) or from below the top bar (the engine keeps that for old games: its top reads -inset; subtracting the
+-- inset as well put the pill's foot at -63 instead of -5 at 640x360, and the stack never stepped). Smoke: _SideRect
+local function sideRect(g, part, side)
+	local ix, iy = 0, 0
+	pcall(function()
+		local inset = game:GetService("GuiService"):GetGuiInset()
+		if typeof(inset) == "Vector2" then
+			ix, iy = inset.X, inset.Y
+		end
+	end)
+	local ox, oy = ix, iy -- to screen px
+	if g.IgnoreGuiInset then
+		local origin = g.AbsolutePosition
+		ox, oy = -origin.X, -origin.Y
+	end
+	if not side.IgnoreGuiInset then -- to our gui's px (below the top bar)
+		ox, oy = ox - ix, oy - iy
+	end
+	local p, z = part.AbsolutePosition, part.AbsoluteSize
+	return { X = p.X + ox, Y = p.Y + oy, R = p.X + ox + z.X, B = p.Y + oy + z.Y }
+end
+ArenaController._SideRect = sideRect
+
+-- (playtest 2026-11-28 C13) a shown part of another ScreenGui as { X, Y, R, B } in our side gui's px; nil while hidden
+local function sideNeighbour(guiName, partName)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local g = pg and pg:FindFirstChild(guiName)
+	if not (g and g:IsA("ScreenGui") and g.Enabled and U.SideGui) then
+		return nil
+	end
+	local part = g:FindFirstChild(partName, true)
+	if not (part and part:IsA("GuiObject") and part.AbsoluteSize.X > 0) then
+		return nil
+	end
+	local cur = part
+	while cur and cur ~= g do
+		if cur:IsA("GuiObject") and not cur.Visible then
+			return nil
+		end
+		cur = cur.Parent
+	end
+	return sideRect(g, part, U.SideGui)
+end
+
+-- (C13) the menu tiles step aside while the shown stack lies on them (a portrait phone: NimbusMenu draws over the stack,
+-- "uel challenge!" / "mChaser wants to battle" at 360x640), as they do for a window (MenuController.SetColumnCovered)
+local function sideCoverMenu(left)
+	if (U.SideCover ~= nil) == (left ~= nil) and (left == nil or math.abs(U.SideCover - left) < 1) then
+		return
+	end
+	U.SideCover = left
+	local menu = otherController("MenuController")
+	if menu and type(menu.SetColumnCovered) == "function" then
+		pcall(menu.SetColumnCovered, left, "ArenaSide")
+	end
+end
+
 local function relayoutSide()
 	if not U.Side then
 		return
@@ -251569,7 +251955,41 @@ local function relayoutSide()
 			right = math.max(right, math.ceil(area.X - left + 8))
 		end
 	end
+	-- (playtest 2026-11-28 C13, review) the stack keeps clear of the top bar's pill above it (the pill draws over it:
+	-- "Practice duel" half under it at 640x360) and of the vitals card's name tab below it (the stack draws over that: the
+	-- player's name and trophies). Only where one really covers it (their boxes overlap, not only the edges' strokes) and
+	-- the stack fits between them, 6 px off each and under Roblox's band, it moves the least that clears both (667x375 and
+	-- 844x390: its foot was on the tab). Where it does not fit (640x360 either card, a practice card at 667x375 and
+	-- 844x390) it keeps its place: stepping down only put it on the name tab, and which of the two gives way (a card that
+	-- fits, or the tab held aside) is the owner's look call (playtest 1128 group C, held). Where it lies on the menu tiles,
+	-- they step aside (sideCoverMenu). Nothing to look up while the stack holds no card (its 10 px minimum)
+	local size = U.Side.AbsoluteSize
+	local cards = #U.SideCards > 0 and size.Y > 0
+	local gap = 6
+	local foot = area.Y - bottom
+	local x0, x1 = area.X - right - size.X, area.X - right
+	local function across(r)
+		return (r and r.R > x0 and r.X < x1) and r or nil
+	end
+	local pill = cards and across(sideNeighbour("NimbusTopBar", "Pill"))
+	local tab = cards and across(sideNeighbour("NimbusHud", "NameTab"))
+	if tab and tab.Y <= foot - size.Y then
+		tab = nil -- (above the stack's top: no floor)
+	end
+	if pill or tab then
+		local lo = math.max(0, pill and (pill.B + gap) or 0) -- the stack's highest top
+		local hi = tab and (tab.Y - gap) or area.Y -- its lowest foot
+		local covered = (pill and foot - size.Y < pill.B) or (tab and foot > tab.Y)
+		if covered and lo + size.Y <= hi then
+			foot = math.min(math.max(foot, lo + size.Y), hi)
+			bottom = area.Y - foot
+		end
+	end
+	local top = foot - size.Y
 	U.Side.Position = UDim2.new(1, -right, 1, -math.floor(bottom + 0.5))
+	local column = cards and U.Side.Visible and sideNeighbour("NimbusMenu", "MenuColumn")
+	local covers = column and column.R + gap > x0 and column.X < x1 and column.B > top and column.Y < top + size.Y
+	sideCoverMenu(covers and x0 or nil)
 end
 
 -- true while a menu window, the Pet Index or the Fusion window covers the screen (the side cards step back)
@@ -251622,6 +252042,7 @@ function refreshSide()
 	local hidden = inMatch() or battleId() ~= nil or S.Open ~= nil or otherWindowOpen()
 	U.Side.Visible = not hidden
 	if hidden then
+		sideCoverMenu(nil) -- (C13) the menu tiles come back with the stack gone
 		return
 	end
 	relayoutSide() -- (U9-7 look) the HUD publishes its top-right block after it builds: follow it
@@ -251792,6 +252213,10 @@ function refreshSide()
 				end
 			end)
 		end
+		-- (playtest 2026-11-28 C13 review) placed again at the new cards' size (the call above used the old stack's: a new
+		-- invite was drawn for a tick under the pill or the menu tiles); U.Side's AbsoluteSize signal catches the automatic
+		-- size settling a frame later in Roblox (ArenaController.Init)
+		relayoutSide()
 	end
 	for _, tick in ipairs(U.SideCards) do
 		pcall(tick)
@@ -252073,6 +252498,11 @@ function ArenaController.Init()
 	U.Gui = gui
 	buildSide()
 	relayoutSide()
+	-- (playtest 2026-11-28 C13 review) the stack's place follows its own size (its cards' automatic size settles after a
+	-- rebuild): it keeps clear of the pill, the vitals' name tab and the menu tiles at the size it really has
+	U.Side:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		safe("side size", relayoutSide)
+	end)
 	-- the hint (right edge, a third down: clear of the toasts at the top and the side cards at the bottom)
 	U.HintGui = gui
 	U.HintFrame = makeFrame(gui, "Hint", {
@@ -257980,6 +258410,7 @@ local K = {
 	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule)
 	MIN_TEXT_PX_TALL = 15, -- ...on a screen 1000 px tall or more
 	RESULT_W = 440,
+	RESULT_MIN_W = 300, -- (playtest 2026-11-28 C33) the narrowest a landscape phone's card gets to clear a touch button
 	-- LEAVE (Ring and Raid): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
 	LEAVE_CONFIRM = 3,
 	LEAVE_W = 150,
@@ -258738,6 +259169,7 @@ function Fx.Number(adornee, height, text, color, px, life)
 	n.lift = 0 -- (Fx.Pop: px its total stands over the unit's plate)
 	n.jx = (math.random() - 0.5) * 1.4
 	n.gui.StudsOffset = Vector3.new(n.jx, height, 0)
+	n.gui.StudsOffsetWorldSpace = Vector3.new(0, 0, 0) -- (C60 round 2: a boss's pop takes its total's world height, Fx.Pop)
 	n.gui.SizeOffset = Vector2.new(0, 0) -- (Pitch 2 item 04) a hit's pop moves beside its total (the hit handler)
 	n.gui.Enabled = true
 	St.numbers[#St.numbers + 1] = n
@@ -258781,10 +259213,21 @@ function Fx.UpdateNumbers(now)
 	end
 end
 
+-- (C60 round 2: over a boss the total stood at Root + height + 1.4, inside the focus arrow's span, and its opaque
+-- AlwaysOnTop chip hid "who my pet attacks") the studs over a boss's Root the focus arrow reaches at most: its anchor
+-- (Units.UpdateFocus: height + 2), its 0.35 bob and its top half (the Part arrow's 0.25, the fx_arrow mesh's 0.41 at 1.4)
+Fx.ARROW_OVER = 0.8
+function Fx.ArrowTop(u)
+	return (u.height or 20) + 2 + Fx.ARROW_OVER
+end
+
 -- the studs over a unit's centre its numbers start at (a boss's over its head)
 function Fx.NumberHeight(u)
 	if u.isBoss then
-		return (u.height or 20) * 0.5 + 2
+		-- (playtest 2026-11-28 C60: height x 0.5 + 2 put the total mid-body on a 20-stud boss) BossBuilder roots a boss at its
+		-- feet (buildUnit's worldFrame at y 0; the lock mark's top is height + 2 too): over its head is the whole height,
+		-- (round 2) and over the focus arrow there (the total stands on the arrow's top: Fx.Total)
+		return Fx.ArrowTop(u) + 0.6
 	end
 	return (u.height or 3) / 2 + 1.8
 end
@@ -258920,12 +259363,19 @@ function Fx.Total(u, dmg)
 	-- plate's own anchor, its chip K.TOTAL_GAP px over the plate's top edge (SizeOffset: a share of its own px size, true
 	-- at every distance and screen). No plate (a raid boss): over its head as before
 	local plate = Fx.PlateOf(u)
-	local height, lift = Fx.NumberHeight(u) - 0.6, 0
+	local height, lift, world = Fx.NumberHeight(u) - 0.6, 0, 0
 	if plate then
 		height = plate.StudsOffset.Y
 		lift = plate.Size.Y.Offset / 2 + Theme.ScaledSize(K.TOTAL_GAP, 3) + (t.chip.Size.Y.Offset + 2 * K.TOTAL_EDGE) / 2
+	elseif u.isBoss then
+		-- (C60 round 2) a boss: on the focus arrow's top (Fx.ArrowTop), the whole chip K.TOTAL_GAP px over it at every
+		-- distance. The arrow stands in world studs (Units.UpdateFocus), so the anchor does too: a camera-space StudsOffset
+		-- of ~28 studs leans with the camera's tilt and would drift off the arrow
+		height, world = 0, Fx.ArrowTop(u)
+		lift = Theme.ScaledSize(K.TOTAL_GAP, 3) + (t.chip.Size.Y.Offset + 2 * K.TOTAL_EDGE) / 2
 	end
 	t.lift = lift
+	t.gui.StudsOffsetWorldSpace = Vector3.new(0, world, 0)
 	t.gui.StudsOffset = Vector3.new(0, height, 0)
 	t.gui.SizeOffset = Vector2.new(0, lift / max(1, t.gui.Size.Y.Offset))
 	t.gui.Enabled = true
@@ -258953,6 +259403,7 @@ function Fx.Pop(u, adornee, height, text, color, px, dmg)
 		-- the total's anchor, lifted the same px (the stack below adds the lift to its steps)
 		pop.base, pop.lift = total.gui.StudsOffset.Y + 0.6, total.lift or 0
 		pop.gui.StudsOffset = Vector3.new(pop.jx, pop.base, 0)
+		pop.gui.StudsOffsetWorldSpace = total.gui.StudsOffsetWorldSpace -- (C60 round 2: a boss's total stands in world studs)
 	end
 	if type(u) ~= "table" then
 		return pop, total
@@ -266131,8 +266582,20 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- the number's box: as wide as "max / max" (the widest it gets), centred behind the divider
 		local numPx = px(20)
 		local maxText = Theme.Short(bossUnit.maxHp)
-		local ok, ms = pcall(Theme.Measure, maxText .. " / " .. maxText, "Display", numPx)
-		local nw = math.ceil(max((ok and typeof(ms) == "Vector2") and ms.X or 0, #(maxText .. " / " .. maxText) * numPx * 0.56) * 1.04) + 16
+		local function numW(s)
+			local ok, ms = pcall(Theme.Measure, s, "Display", numPx)
+			return math.ceil(max((ok and typeof(ms) == "Vector2") and ms.X or 0, #s * numPx * 0.56) * 1.04) + 16
+		end
+		local nw = numW(maxText .. " / " .. maxText)
+		-- (playtest 2026-11-28 C6: beside the phone's boss head a 640 x 360 track left the blocks 10 design px, six 0 px
+		-- blocks, and 667 x 375 six 2 px slivers) where "max / max" leaves the blocks less than six 12 px blocks (their 3 px
+		-- gaps), the number is the boss's HP alone (Hud.Update reads Hud.bossShort)
+		Hud.bossShort = tw - 2 * e - 4 * pad - 2 - nw < 6 * (12 + 3) - 3
+		if Hud.bossShort then
+			nw = numW(maxText)
+		end
+		local hpNow = Theme.Short(clamp(bossUnit.hp or 0, 0, bossUnit.maxHp or 0))
+		setText(Hud.bossText, Hud.bossShort and hpNow or (hpNow .. " / " .. maxText))
 		local numX = tw - e - pad - nw
 		local divX = numX - pad - 2
 		Hud.bossDivider.Position = UDim2.fromOffset(divX, e)
@@ -266144,7 +266607,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- 20 blocks (14 on a phone); a narrow track (a tall phone's right column) fewer, each still a chunky >= 12 px block
 		local n = compact and K.BOSS_BLOCKS_COMPACT or K.BOSS_BLOCKS
 		local room = divX - pad - (e + pad)
-		n = clamp(floor((room + 3) / (12 + 3)), 6, n)
+		-- (playtest 2026-11-28 C6: the floor of six kept six blocks in 10 design px, each 0 px) under six 12 px blocks of
+		-- room, fewer blocks (never under three), each still 12 px or more
+		n = clamp(floor((room + 3) / (12 + 3)), min(6, max(3, floor((room + 3) / (12 + 3)))), n)
 		if Hud.bossBar.count ~= n then
 			SignKit.SetBlockCount(Hud.bossBar.Root, n, KB.Loss, SIGN.RedLip)
 			Hud.bossBar.count = n
@@ -266520,7 +266985,7 @@ function Hud.Update(B, now, force)
 			-- every screen, in the track behind its divider
 			setBlocks(Hud.bossBar, healthBlocks(clamp(bossUnit.hp / bossUnit.maxHp, 0, 1), Hud.bossBar.count))
 			local hpText = Theme.Short(clamp(bossUnit.hp, 0, bossUnit.maxHp))
-			setText(Hud.bossText, hpText .. " / " .. Theme.Short(bossUnit.maxHp))
+			setText(Hud.bossText, Hud.bossShort and hpText or (hpText .. " / " .. Theme.Short(bossUnit.maxHp))) -- (playtest 2026-11-28 C6: a narrow track, the HP alone)
 		end
 	end
 	if Hud.pills.Visible and Hud.topArgs then
@@ -266913,34 +267378,41 @@ function Hud.ResultModel(B, payload)
 		why = why:sub(1, 1):lower() .. why:sub(2)
 	end
 	M.sub = mode and (why ~= "" and (mode .. " - " .. why) or mode) or why
-	-- the stat rows (key, icon, label, value)
-	local function stat(key, icon, text, value)
-		M.stats[#M.stats + 1] = { key, icon, text, tostring(value) }
+	-- the stat rows (key, icon, label, value, achieved: the green tick)
+	-- (playtest 2026-11-28 C9) a tick only on a row the player achieved: a lost raid read "Tier Loss / Lives left 1 /
+	-- Damage 100%" all ticked, a ring run that ended at 8 ticked "Best round 12"
+	local won = outcome == "Win"
+	local function stat(key, icon, text, value, achieved)
+		M.stats[#M.stats + 1] = { key, icon, text, tostring(value), achieved == true }
 	end
 	local run = B.Mode == "Ring" and type(rw.Run) == "table" and rw.Run or nil
 	if run then
-		stat("Rounds", "crown", "Rounds won", num(run.Wins, 0))
-		stat("Round", "sword", "Last round", num(run.Round, num(rw.Round, B.Round)))
+		stat("Rounds", "crown", "Rounds won", num(run.Wins, 0), num(run.Wins, 0) > 0)
+		stat("Round", "sword", "Last round", num(run.Round, num(rw.Round, B.Round)), run.Record ~= nil)
 		if run.Record ~= nil then
-			stat("Best", "star", "Best round", tostring(run.Record))
+			stat("Best", "star", "Best round", tostring(run.Record), true)
 		elseif num(run.Best, 0) > 0 then
-			stat("Best", "star", "Best round", num(run.Best, 0))
+			stat("Best", "star", "Best round", num(run.Best, 0), false)
 		end
 	end
+	-- (C9) the server's "Loss" medal (BattleCatalog.RaidTier on a lost raid) is no tier to show
 	local realTier = rw.Tier and rw.Tier ~= "None" and rw.Tier ~= "Cooldown"
 	if raid and realTier then
-		stat("Damage", "sword", "Damage", tostring(floor(num(rw.Share, 0) * 100 + 0.5)) .. "%")
-		stat("Tier", "crown", "Tier", tostring(rw.Tier))
+		stat("Damage", "sword", "Your share", tostring(floor(num(rw.Share, 0) * 100 + 0.5)) .. "%", won) -- (C9) the share of the damage, not "Damage"
+		if rw.Tier ~= "Loss" then
+			stat("Tier", "crown", "Tier", tostring(rw.Tier), won)
+		end
 	end
-	if B.Fighter and B.Mode ~= "Ring" then
-		stat("Lives", "heart", "Lives left", B.lives or 0)
+	-- (C9) on a loss only the dungeon keeps Lives left (the run's tries); a lost raid or duel had "Lives left 1" ticked
+	if B.Fighter and B.Mode ~= "Ring" and (won or B.Mode == "Dungeon") then
+		stat("Lives", "heart", "Lives left", B.lives or 0, won and num(B.lives, 0) > 0)
 	end
 	if B.Mode ~= "Ring" and num(B.renderT, 0) > 0 then
-		stat("Time", "clock", "Fight time", fmtTime(B.renderT))
+		stat("Time", "clock", "Fight time", fmtTime(B.renderT), won)
 	end
 	-- (look review round 1) a duel's trophy total after the fight (BattleService sends Rewards.TrophiesTotal)
 	if B.Mode == "Duel" and rw.Practice ~= true and rw.Void ~= true and tonumber(rw.TrophiesTotal) then
-		stat("Trophies", "trophy", "Trophies", Theme.Short(max(0, num(rw.TrophiesTotal, 0))))
+		stat("Trophies", "trophy", "Trophies", Theme.Short(max(0, num(rw.TrophiesTotal, 0))), won)
 	end
 	-- the reward chips (key, icon, number, word)
 	local function chip(key, icon, number, word)
@@ -267097,7 +267569,9 @@ function Hud.BuildResult(body, M, opts)
 		ic.Name = "Icon"
 		ic.Position = UDim2.fromOffset(0, floor((rowH - 18) / 2))
 		-- the tick: a green kit block (26 drawn: 22 + its 2 px edge) with the check
-		local tick = make("Frame", { Name = "Tick", BackgroundColor3 = SIGN.Grass, BorderSizePixel = 0, Position = UDim2.fromOffset(colw - 24, floor((rowH - 22) / 2)), Size = UDim2.fromOffset(22, 22) }, row)
+		-- (playtest 2026-11-28 C9) not on a row the player did not achieve (s[5] false; a model without the field keeps it;
+		-- the dungeon's End card sets it too, R.endModel); the value keeps its place either way
+		local tick = make("Frame", { Name = "Tick", Visible = s[5] ~= false, BackgroundColor3 = SIGN.Grass, BorderSizePixel = 0, Position = UDim2.fromOffset(colw - 24, floor((rowH - 22) / 2)), Size = UDim2.fromOffset(22, 22) }, row)
 		signEdge(tick, SIGN.GrassLip, 2)
 		local ck = PixelIcon.New(tick, "check", 18, SIGN.OnGrass)
 		ck.Name = "Check"
@@ -267250,11 +267724,13 @@ end
 -- (Pitch 2 item 02 B, look review round 1) a phone's place for the result card -> left, top (design px). A landscape phone:
 -- the pitch's top middle (844x390: x 222, y 62), under the top-right stack only where the card reaches it (else left of it),
 -- then slid left of / ended above a touch button it would lie on (the right edge put the card on DASH and RUN's top). A
--- portrait phone: the top right, under the top-right stack (the menu column steps aside where the card covers it)
+-- portrait phone: the top right, under the top-right stack (the menu column steps aside where the card covers it).
+-- (playtest 2026-11-28 C33) -> a 4th value, the width that clears a touch button the card can go neither left of nor
+-- above (640x360: the RUN OVER card on RUN): the card at the left limit, Hud.ShowResult narrows it to that width
 function Hud.ResultSpot(m, w, h, landscape)
 	local gap = 8
 	local stackBottom, stackLeft = Hud.TopRightBottom(m)
-	local x, y
+	local x, y, fitW
 	local corner = false
 	if landscape then
 		local menuRight = Hud.MenuRight(m)
@@ -267275,6 +267751,10 @@ function Hud.ResultSpot(m, w, h, landscape)
 					x = lx
 				else
 					y = max(6, floor(r.Y - gap - h))
+					if y + h + gap > r.Y then -- (C33) still on it
+						x = lo
+						fitW = min(fitW or math.huge, floor(r.X - gap - lo))
+					end
 				end
 			end
 		end
@@ -267296,7 +267776,7 @@ function Hud.ResultSpot(m, w, h, landscape)
 	if y + h > m.H - 8 then
 		y = max(6, floor(m.H - 8 - h))
 	end
-	return x, y, corner
+	return x, y, corner, fitW
 end
 
 -- (P2 fix A) the HUD's currency strips step aside while a portrait phone's result card takes the corner (Hud.ResultSpot)
@@ -267378,12 +267858,39 @@ function Hud.ShowResult(B, payload)
 		w = min(K.RESULT_W, m.W - 16)
 	end
 	w = floor(w)
-	local built = Hud.BuildResult(body, M, { W = w, F = m.F, Compact = compact, Landscape = landscape, OnOk = function()
-		Hud.HideResult()
-	end })
+	local built, h
+	local noReason = false
+	local function build()
+		built = Hud.BuildResult(body, M, { W = w, F = m.F, Compact = compact, Landscape = landscape, NoReason = noReason, OnOk = function()
+			Hud.HideResult()
+		end })
+		h = built.H + K.PLANK_LIP
+	end
+	build()
+	if landscape then
+		-- (playtest 2026-11-28 C33) a card that can go neither left of nor above a touch button (the RUN OVER card on RUN
+		-- at 640x360) is narrowed to end before it (not under K.RESULT_MIN_W)
+		-- (C33 review) only to a form that ends on the screen (its highest top 6, 8 px clear of the foot: Hud.ResultSpot): a
+		-- narrower card is taller (the raid win's reason wrapped to two lines and its card ran past 640x360's foot, OK's
+		-- timer lip off it), so it drops the reason line where only that fits (the dungeon End card's rule, NoReason), else
+		-- it keeps its width
+		local _, _, _, fitW = Hud.ResultSpot(m, w, h, landscape)
+		if fitW and fitW < w and fitW >= K.RESULT_MIN_W then
+			local fullW = w
+			w = fitW
+			build()
+			if 6 + h > m.H - 8 then
+				noReason = true
+				build()
+			end
+			if 6 + h > m.H - 8 then
+				w, noReason = fullW, false
+				build()
+			end
+		end
+	end
 	Hud.resultTimer = { segs = built.Segs, count = 5, lit = -1 }
 	Hud.SetResultTimer(1)
-	local h = built.H + K.PLANK_LIP
 	res.Size = UDim2.fromOffset(w, h)
 	Hud.SetTopReserve(nil) -- (P2 fix A) the boss strip goes with the fight: the HUD's strips back at the top first
 	local top = Hud.TopRightBottom(m)
@@ -268254,6 +268761,12 @@ function CheerUp.TeamSpots(m)
 		return spots, w, h
 	end
 	local top = (cells > 0) and (hy + hh) or (ty + Hud.team.Size.Y.Offset)
+	local fc = Hud.fighterCard and Hud.fighterCard.Root
+	if cells == 0 and fc and fc.Parent == Hud.team then
+		-- (playtest 2026-11-28 C5: a raid with no helpers put CHEER / BACK on Roblox's stick at 667 x 375; the Team block
+		-- keeps the empty helpers' height, so its foot is the screen's) no helpers: the row under the fighter card itself
+		top = ty + fc.Position.Y.Offset + fc.Size.Y.Offset
+	end
 	if Hud.listX and Hud.enemies and Hud.enemies.Visible then
 		-- (keys look r4: the "+n more" tag hangs past the list frame's height, its frame 2.8 px off CHEER's at 360 x 640) the
 		-- list's foot is its lowest shown row or tag
@@ -273269,7 +273782,7 @@ function H.newFeedRow(key, def)
 	row.Feed.LayoutOrder = 1
 	row.Feed.RichText = true -- (a short basket shows the price in red: H.paintFeedRow)
 	-- (Phase 5: no "Level up" button: ONE Feed button = one feed)
-	row.Evolve = H.button(buttons, "Evolve", "EVOLVE!", "Gray", UDim2.fromOffset(122, 58), 20, function()
+	row.Evolve = H.button(buttons, "Evolve", "Evolve!", "Gray", UDim2.fromOffset(122, 58), 20, function()
 		CareController.ConfirmEvolve(key)
 	end)
 	row.Evolve.LayoutOrder = 3
@@ -273379,7 +273892,7 @@ function H.paintFeedRow(row, home, cash)
 	-- EVOLVE when ready
 	local nextStage = H.canEvolve(key, def, level)
 	row.Evolve.Visible = nextStage ~= nil
-	row.Evolve.Text = S.Tall and "EVOLVE" or "EVOLVE!"
+	row.Evolve.Text = S.Tall and "Evolve" or "Evolve!" -- (playtest 2026-11-28 C47) sentence case, as the kit's other buttons
 	if (row.Ready ~= nil) ~= (nextStage ~= nil) then
 		row.Ready = nextStage
 		H.layoutFeedRow(row)
@@ -273414,7 +273927,7 @@ function H.newGardenRow(key, def)
 	row.RoleShort = role
 	row.Role = H.pill(info, "Role", row.RoleText, ROLE_COLORS[role] or Theme.Buttons.Blue, 18, 1)
 	-- (LOOK-ui2: a darkened green pill) the coins as the stone fact tag with the cash icon
-	row.Coins = H.pill(info, "Coins", "Coins $0/s", SIGN.Tile, 18, 2)
+	row.Coins = H.pill(info, "Coins", "Cash $0/s", SIGN.Tile, 18, 2) -- (playtest 2026-11-28 C20: the currency's name)
 	row.Coins.TextXAlignment = Enum.TextXAlignment.Left -- (the tag hugs its text: the icon at its padded box's left edge)
 	PixelIcon.Lead(row.Coins, Config.Icons and Config.Icons.Cash or "note")
 	row.Put = H.button(f, "PutHere", "Put here", "Gray", UDim2.fromOffset(170, 56), 21, function()
@@ -273489,7 +274002,7 @@ function H.paintGardenRow(row, home)
 	H.paintHead(row, key, def, home)
 	local role0, coins0 = row.Role.Text, row.Coins.Text
 	row.Role.Text = S.Tall and row.RoleShort or row.RoleText
-	row.Coins.Text = "Coins " .. H.rate(H.coinsPerSecond(key, def, home)) .. "/s"
+	row.Coins.Text = "Cash " .. H.rate(H.coinsPerSecond(key, def, home)) .. "/s"
 	if (S.Tall or S.Short) and (role0 ~= row.Role.Text or coins0 ~= row.Coins.Text) then
 		H.layoutSimpleRow(row) -- (the tags' widths decide the row's height)
 	end
@@ -274038,10 +274551,35 @@ function H.feed(key)
 	local cost = H.berryFeed(key, def, level, machine).Cost
 	local have = H.berries()
 	if have < cost then
+		-- (playtest 2026-11-28 C59) a feed bigger than the basket can ever hold: waiting never helps, the Berry Farm does
+		-- (a pet levelled in battles before the farm was built); it said 'Your garden pets grow more!' all the same
+		local cap = H.basketCap(home)
+		if cap and cost > cap then
+			H.hint("Your basket holds " .. H.commas(cap) .. " berries: level up the Berry Farm to feed this pet", "bad")
+			return
+		end
 		H.hint("Not enough berries: a feed needs " .. H.commas(cost) .. " (you have " .. H.commas(have) .. "). Your garden pets grow more!", "bad")
 		return
 	end
 	H.fire("feed:" .. key, "PetCare", "Feed", key)
+end
+
+-- (playtest 2026-11-28 C59) the Berry Basket's size: the plot's BerryCap, else TycoonCatalog.BasketCap from its income;
+-- nil when neither is known
+function H.basketCap(home)
+	local plot = H.plot()
+	local cap = plot and plot:GetAttribute("BerryCap")
+	if type(cap) == "number" and cap > 0 then
+		return math.floor(cap)
+	end
+	local income = plot and plot:GetAttribute("IncomePerSecond")
+	if TycoonCatalog and type(TycoonCatalog.BasketCap) == "function" and type(income) == "number" then
+		local ok, v = pcall(TycoonCatalog.BasketCap, home, income)
+		if ok and type(v) == "number" and v > 0 then
+			return math.floor(v)
+		end
+	end
+	return nil
 end
 
 function H.showConfirm(spec)
@@ -274408,8 +274946,8 @@ function CareController.ConfirmEvolve(key)
 		Key = key,
 		Title = "Evolve " .. name .. "?",
 		Text = name .. " changes into its " .. (nextStage == 2 and "Evolved II" or "Evolved") .. " form: Level bonus x" .. bonusText
-			.. " (battle power, health and coins). It keeps its level.",
-		YesText = "EVOLVE!",
+			.. " (battle power, health and Cash). It keeps its level.",
+		YesText = "Evolve!",
 		Style = "Gold",
 		Color = GOLD,
 		Yes = function()
@@ -274866,7 +275404,8 @@ local K = {
 	},
 	WINDOW_POLL = 0.25, -- seconds: no shared close signal exists, so a watcher re-lays the button out when that answer changes
 	WINDOW_RETRY = 2, -- seconds before a K.WINDOWS module not found yet is looked up again (review round 1)
-	PIP = 10,
+	PIP = 18, -- (playtest 2026-11-28 C45) the menu tiles' red badge with its "!" (was a bare 10 px square), small enough
+	-- for the Gifts block: its top on the block's top edge, clear of the strip above
 	BAR_SEGS = 4, -- (U9-4 look review) the PlayBar's blocks in the button's lip ...
 	BAR_GAP = 2, -- ... and the px of lip between two
 	SHAKE = { 4, -4, 3, -3, 2, -2, 1, 0 }, -- px offsets, one per SHAKE_STEP (0.4 s)
@@ -275011,6 +275550,7 @@ local TEXT = {
 	Getting = "Getting your gifts ready...",
 	Keep = "Come back tomorrow to keep your streak!",
 	KeepClaim = "Claim today's gift to keep your streak!", -- (Pitch 2 09 B) the line by a claim that is due
+	KeepLocked = "Your streak is safe while it unlocks.", -- (playtest 2026-11-28 C29) by a held claim: the hold loses no day
 	Prize = "DAY 7 PRIZE", -- (Pitch 2 09 B) the prize card's label (TODAY when it is due); look review r0: the mock's capitals
 	Week = "WEEK DONE! Week Wisp is yours!",
 	Unlock = "Unlocks after %d min of play",
@@ -275593,7 +276133,7 @@ function H.buildButton()
 	pip.BackgroundColor3 = Theme.Sign.Red -- (kit-b U8) a small red square in a wood edge
 	pip.BorderSizePixel = 0
 	pip.AnchorPoint = Vector2.new(0.5, 0.5)
-	pip.Position = UDim2.new(1, -4, 0, 4)
+	pip.Position = UDim2.new(1, -2, 0, K.PIP / 2) -- (C45: the bigger badge's top on the block's top, not over the strip)
 	pip.Size = UDim2.fromOffset(K.PIP, K.PIP)
 	pip.ZIndex = 5
 	pip.Visible = false
@@ -275601,7 +276141,15 @@ function H.buildButton()
 	pipEdge.Color = Theme.Sign.Wood
 	pipEdge.Thickness = 2
 	pipEdge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	pipEdge.LineJoinMode = Enum.LineJoinMode.Miter
 	pipEdge.Parent = pip
+	-- (playtest 2026-11-28 C45) the brown "!" of the menu tiles' badges (NeonKit): an empty red square read as a stray pixel
+	local pipMark = Theme.Label("!", "Button", {
+		Size = 16,
+		Color = Theme.Sign.Text,
+		Props = { Name = "Mark", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 6 },
+	})
+	pipMark.Parent = pip
 	pip.Parent = U.Button
 	U.Pip = pip
 	-- (owner 2026-11-13) the button only opens: it hides while its window is open (X / Esc / gamepad B close it)
@@ -275626,11 +276174,13 @@ function H.paintRing()
 	U.PlayBar:SetAttribute("Paused", paused)
 	local w = U.Button and U.Button.Size.X.Offset or 0
 	local segW = math.max(1, math.floor((w - (n - 1) * K.BAR_GAP) / n))
+	-- (playtest 2026-11-28 C45) every block the same width, the row centred (the last one took the rounding: 11 vs 9 px)
+	local x0 = math.floor((w - (n * segW + (n - 1) * K.BAR_GAP)) / 2)
 	local Sign = Theme.Sign
 	for i, seg in ipairs(U.BarSegs) do
-		local x = (i - 1) * (segW + K.BAR_GAP)
+		local x = x0 + (i - 1) * (segW + K.BAR_GAP)
 		seg.Position = UDim2.fromOffset(x, 0)
-		seg.Size = UDim2.new(0, i == n and math.max(1, w - x) or segW, 1, 0)
+		seg.Size = UDim2.new(0, segW, 1, 0)
 		seg.BackgroundColor3 = i <= k and (paused and Sign.GoldLip or Sign.Gold) or Sign.RoofLip
 		seg.BackgroundTransparency = 0
 	end
@@ -276445,7 +276995,9 @@ function H.placeHero(cell, M)
 		place(U.WispText, colX, y, colW, wispH)
 		place(U.WispBar, colX, y + wispH + g, colW, M.BarH)
 		local over = cell.SpeciesRoom and speciesH + g or 0
-		place(U.Banner, colX, y - over, colW, over + wispH)
+		-- (playtest 2026-11-28 C28) the banner also takes the bar's row (the bar hides while it shows): on a short card
+		-- (over 0) one 15 px line held the two-line "WEEK DONE!" text, which ran under the plank and onto the blocks
+		place(U.Banner, colX, y - over, colW, over + wispH + g + M.BarH)
 	else
 		cell.SpeciesRoom = true
 		cell.Day.Visible = true
@@ -276543,7 +277095,7 @@ function H.placeBottom(M, slotW)
 		local room = math.max(40, G.RowRight - x)
 		-- (two even lines where one does not fit: "Claim today's gift to / keep your streak!", no lone last word)
 		local font = Theme.FontOf(U.Keep)
-		local long = math.max(H.width(TEXT.KeepClaim, M.KeepText, font), H.width(TEXT.Keep, M.KeepText, font))
+		local long = math.max(H.width(TEXT.KeepClaim, M.KeepText, font), H.width(TEXT.Keep, M.KeepText, font), H.width(TEXT.KeepLocked, M.KeepText, font))
 		local w = long + K.FIT_SLACK <= room and room or math.min(room, math.ceil(long * 0.56))
 		place(U.Keep, x, G.ClaimY, w, G.ClaimH)
 		U.Keep.TextXAlignment = Enum.TextXAlignment.Left
@@ -277086,6 +277638,7 @@ function H.renderDaily(st, M)
 	U.Banner.Visible = banner
 	U.WispText.Text = loading and "" or H.wispText(cellNo)
 	U.WispText.Visible = not banner and not loading
+	U.WispBar.Visible = not (banner and S.Mode == "Portrait") -- (playtest 2026-11-28 C28: the portrait banner covers its row)
 	for i, seg in ipairs(U.Segs) do
 		local e = entryAt(list, i)
 		local state = (e.Claimed == true and "Claimed") or ((e.Today == true and not waiting) and "Today") or "Open"
@@ -277111,7 +277664,7 @@ function H.renderDaily(st, M)
 		U.Line1.Visible, U.Line2.Visible = false, false
 	end
 	U.Countdown.Text = due and "" or (view.Line1 or "")
-	U.Keep.Text = due and TEXT.KeepClaim or TEXT.Keep -- (Pitch 2 09 B: by a due claim it says to claim today's gift)
+	U.Keep.Text = (view.Mode == "Locked" and TEXT.KeepLocked) or (due and TEXT.KeepClaim) or TEXT.Keep -- (Pitch 2 09 B: by a due claim it says to claim today's gift)
 	U.Keep.Visible = not waiting
 end
 
@@ -278359,6 +278912,8 @@ local K = {
 	EDGE = 12, -- KEEP IN SYNC with HudController.lua: EDGE and TOUCH_EDGE (screen px)
 	TOUCH_EDGE = 20,
 	GAP = 8, -- screen px kept free around every neighbour
+	KEY_AIR = 8, -- (playtest 2026-11-28 C48: a Leave tap opened the DEV panel) screen px more off a thumb key or the run chip
+	RIGHT_SHARE = 0.62, -- (C48 round 2) the tile sits on the right edge: its centre right of this share of the width
 	CENTRE_TOL = 0.145, -- the middle of the screen: |dx| < 14.5% of the width and |dy| < 14.5% of the height
 	SCAN_STEP = 4, -- screen px between two candidate spots of the tile
 	TILE = 84, -- same size as a menu tile
@@ -279141,7 +279696,7 @@ local function shownIn(inst, root)
 	return true
 end
 
-local function addRect(list, inst, root, dy)
+local function addRect(list, inst, root, dy, pad)
 	if not (inst and inst:IsA("GuiObject")) then
 		return
 	end
@@ -279149,7 +279704,8 @@ local function addRect(list, inst, root, dy)
 	if s.X <= 0 or s.Y <= 0 or not shownIn(inst, root) then
 		return
 	end
-	list[#list + 1] = { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + s.Y + dy }
+	local e = tonumber(pad) or 0 -- (playtest 2026-11-28 C48) a thumb key's extra air (K.KEY_AIR)
+	list[#list + 1] = { x0 = p.X - e, y0 = p.Y + dy - e, x1 = p.X + s.X + e, y1 = p.Y + s.Y + dy + e }
 end
 
 local function enabledGui(pg, name)
@@ -279220,10 +279776,21 @@ local function neighbours(area, factor)
 				if block.Name == "Commands" then
 					for _, b in ipairs(block:GetChildren()) do
 						if b:IsA("GuiObject") then
-							addRect(out, b, battle, dy)
+							addRect(out, b, battle, dy, K.KEY_AIR) -- (C48: a thumb key)
 						end
 					end
 				end
+			end
+		end
+	end
+	-- (playtest 2026-11-28 C48: at 667 x 375 the tile lay on the dungeon run chip's Leave, and a Leave tap opened the DEV
+	-- panel) the dungeon run's chip and cards (DungeonController's NimbusDungeonRun: RunChip, RunCard, EndCard)
+	local run = enabledGui(pg, "NimbusDungeonRun")
+	if run then
+		local dy = insetShift(run)
+		for _, block in ipairs(run:GetChildren()) do
+			if block:IsA("GuiObject") and block.Visible then
+				addRect(out, block, run, dy, K.KEY_AIR)
 			end
 		end
 	end
@@ -279241,7 +279808,7 @@ local function neighbours(area, factor)
 		local dy = insetShift(mobile)
 		for _, d in ipairs(mobile:GetDescendants()) do
 			if d:IsA("TextButton") or d:IsA("ImageButton") then
-				addRect(out, d, mobile, dy)
+				addRect(out, d, mobile, dy, K.KEY_AIR)
 			end
 		end
 	end
@@ -279355,6 +279922,32 @@ local function placeTile(area, side, size, layout, band)
 			local y1 = lowestFreeSpot(area, side, right, size * shrink, blockers, band, true)
 			if y1 then
 				return right, y1, shrink
+			end
+		end
+	end
+	-- (playtest 2026-11-28 C48: at 667 x 375 the right edge had no gap even for the shrunk tile, so it went to the top-right
+	-- corner over the currency strips, the gift and the run chip) the same search in columns further left (a quarter tile
+	-- apart, the right half of the screen, never into the centre band)
+	-- (C48 round 2: in a 640 x 360 dungeon run the search reached x 360 .. 428, its centre left of the right-edge rule) the
+	-- tile's centre stays right of K.RIGHT_SHARE of the width; the column at that limit is tried last
+	local step = math.max(K.SCAN_STEP, math.floor(size / 4))
+	local function limit(shrink) -- the right edge that puts the tile's centre at the rule's line (whole px, past it)
+		return math.ceil(area.X * K.RIGHT_SHARE + size * shrink / 2 + 0.5)
+	end
+	local last = limit(K.TILE_MIN_SHRINK)
+	local columns = {}
+	for x = right - step, last + 1, -step do
+		columns[#columns + 1] = x
+	end
+	columns[#columns + 1] = limit(1)
+	columns[#columns + 1] = last
+	for _, x in ipairs(columns) do
+		for _, shrink in ipairs({ 1, K.TILE_MIN_SHRINK }) do
+			if x < right and x >= limit(shrink) then
+				local y1 = lowestFreeSpot(area, side, x, size * shrink, layout.Others, band, true)
+				if y1 then
+					return x, y1, shrink
+				end
 			end
 		end
 	end
@@ -281659,15 +282252,19 @@ function W.myReady(mine)
 	return false
 end
 
+-- -> the countdown line, its short form (playtest 2026-11-28 C34: a 360 px portrait phone's chip holds about 66 design
+-- px of words beside the five blocks, so "Dungeon in 4..." read "Dung..." and the seconds were lost; R.fitChip swaps in
+-- the short form when the long one would truncate)
 function W.countdownText(mine)
 	local left = W.countdown(mine)
 	if not left then
 		return nil
 	end
 	if W.allReady(mine) then
-		return "Dungeon in " .. left .. "..."
+		return "Dungeon in " .. left .. "...", "In " .. left .. "..."
 	end
-	return "Starting in " .. left .. " - press READY"
+	-- (the short form beside the chip's green READY: "Starts in 19" was still 5 px too wide for a 360 px portrait phone)
+	return "Starting in " .. left .. " - press READY", "In " .. left
 end
 
 -- the party box when the player has no party: SOLO / PARTY + the open parties
@@ -282564,8 +283161,16 @@ function R.fitChip()
 		return
 	end
 	local ix = U.ChipIcon.Visible and (K.ICON_TILE + 4) or 0
-	local m = R.measure(U.ChipText, (U.ChipText.Text:gsub("%d", "8")), nil)
-	local textW = m and math.ceil(m.X) or math.ceil(#U.ChipText.Text * U.ChipText.TextSize * 0.6)
+	local function wordsW()
+		local m = R.measure(U.ChipText, (U.ChipText.Text:gsub("%d", "8")), nil)
+		return m and math.ceil(m.X) or math.ceil(#U.ChipText.Text * U.ChipText.TextSize * 0.6)
+	end
+	-- (playtest 2026-11-28 C34) a countdown starts from its long form every pass (a chip that grew back shows it again)
+	local words = S.ChipWords
+	if words and words.Full and U.ChipText.Text ~= words.Full then
+		U.ChipText.Text = words.Full
+	end
+	local textW = wordsW()
 	local blocks = nil
 	if U.ChipCount.Visible then
 		blocks = U.ChipCount
@@ -282588,6 +283193,23 @@ function R.fitChip()
 	local width = math.min(maxW, want)
 	-- the words fill what is left of the chip; the blocks sit right after them, inside it
 	local textBox = width - 12 - ix - blocksW - buttonW - 8
+	-- (C34) the long form would truncate ("Dung..." at 360 x 640, the seconds gone): the short form, measured again
+	if words and words.Short and textBox < textW then
+		U.ChipText.Text = words.Short
+		textW = wordsW()
+		want = 12 + ix + textW + blocksW + buttonW + 8 + 16
+		width = math.min(maxW, want)
+		textBox = width - 12 - ix - blocksW - buttonW - 8
+	end
+	-- (C34) still no room (a portrait phone's chip with its READY button beside the five blocks left the words 0 px): the
+	-- blocks step aside, the words carry the seconds; they come back with the next refresh on a wider chip
+	if words and textBox < textW and U.ChipCount.Visible then
+		U.ChipCount.Visible = false
+		blocksW = 0
+		want = 12 + ix + textW + buttonW + 8 + 16
+		width = math.min(maxW, want)
+		textBox = width - 12 - ix - buttonW - 8
+	end
 	U.ChipText.Size = UDim2.new(0, math.max(0, textBox), 1, 0)
 	if U.ChipCount.Visible then
 		U.ChipCount.Position = UDim2.new(1, -(buttonW + 8), 0.5, 0)
@@ -283312,7 +283934,8 @@ function R.refresh()
 	end
 	if view == "Countdown" then
 		local mine = S.Lobby.Mine
-		local cd = W.countdownText(mine) or ""
+		local cd, cdShort = W.countdownText(mine)
+		cd = cd or ""
 		local isLeader = LocalPlayer and mine.Leader == LocalPlayer.UserId
 		local needReady = not isLeader and not W.myReady(mine)
 		local f = math.floor(tonumber(mine.Floor) or 1)
@@ -283333,6 +283956,7 @@ function R.refresh()
 		U.CardLeave.Visible = false
 		U.ChipText.Visible = true
 		U.ChipText.Text = cd
+		S.ChipWords = { Full = cd, Short = cdShort } -- (C34) R.fitChip falls back to the short form on a narrow chip
 		U.ChipCount.Visible = true
 		SignKit.FillBlocks(U.ChipCount, math.min(5, W.countdown(mine) or 0))
 		R.pips(U.ChipText, nil) -- (no room blocks before a run)
@@ -283411,6 +284035,7 @@ function R.refresh()
 	local armed = now <= S.LeaveArmed
 	U.CardLeave.Text = armed and "Sure? Tap again" or "Leave"
 	-- the phone chip: room / wave or the toast or the status
+	S.ChipWords = nil -- (C34) only the countdown has a long / short pair
 	U.ChipText.Text = toast and (toast.Short or toast.Text) or R.chipText(room, count)
 	-- (kit-b U9-7) the loot flash takes the whole chip for its few seconds (beside LEAVE it ran past a portrait phone's chip);
 	-- (U9-7 review) a chip that is its LEAVE alone (a fight: R.placeChip) keeps LEAVE and shows no text
@@ -283524,11 +284149,14 @@ function R.endModel(e)
 	if count > 0 then
 		done = math.min(done, count)
 	end
-	M.stats[#M.stats + 1] = { "Floor", "castle", "Floor", tostring(f) }
-	M.stats[#M.stats + 1] = { "Rooms", "key", "Rooms", (count > 0) and (done .. " / " .. count) or tostring(done) }
+	-- (playtest 2026-11-28 C9 review) the green tick (a row's 5th field, Hud.BuildResult) only on what the player achieved,
+	-- as on the battle's cards: the floor and its rooms on a cleared floor, a new best always (a wipe read "Floor 5 [tick] /
+	-- Rooms 2 / 4 [tick]")
+	M.stats[#M.stats + 1] = { "Floor", "castle", "Floor", tostring(f), cleared }
+	M.stats[#M.stats + 1] = { "Rooms", "key", "Rooms", (count > 0) and (done .. " / " .. count) or tostring(done), cleared }
 	if e.NewBest then
 		local best = (type(e.NewBest) == "number") and math.floor(e.NewBest) or f
-		M.stats[#M.stats + 1] = { "Best", "star", "New best", tostring(best) }
+		M.stats[#M.stats + 1] = { "Best", "star", "New best", tostring(best), true }
 	end
 	local t = type(e.Totals) == "table" and e.Totals or S.Totals
 	local function chip(key, icon, number, word)
@@ -285008,7 +285636,8 @@ function R.onState(kind, payload)
 			text = ((room >= 4) and "Boss beaten!" or ("Room " .. room .. " cleared!")) .. " +$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. " tokens +"
 				.. H.commas(payload.Xp) .. " XP"
 			if (tonumber(payload.LevelUps) or 0) > 0 then
-				text = text .. " (" .. math.floor(payload.LevelUps) .. " level up!)"
+				local ups = math.floor(payload.LevelUps) -- (playtest 2026-11-28 C45: "3 level ups!", as BattleController says it)
+				text = text .. " (" .. (ups == 1 and "1 level up!" or (ups .. " level ups!")) .. ")"
 			end
 		end
 		R.toast(text, payload.Loss and C.Blue or C.Gold, nil, "+$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. " tokens +" .. H.commas(payload.Xp) .. "XP",
@@ -288445,10 +289074,32 @@ function H.setView(rec, def, sig, stage, detail)
 end
 
 -- the name of a pet on a card: the whole name, else the last word
+-- (playtest 2026-11-28 C40) a pet's name keeps its first words as initials before the last word alone ('A. Fox', not
+-- 'Fox': the Fusion result lost which fox); a muted placeholder ('Pick a pet') keeps the old fallback. A Golden /
+-- Rainbow name drops its finish word first: the card's GOLDEN / RAINBOW label already says it ('Maple Fox', 'M. Fox')
 function H.cardName(item, text, color)
 	item.PetName.TextColor3 = color or C.Ink
 	local last = tostring(text):match("(%S+)%s*$") or tostring(text)
-	H.fit(item.PetName, { text, last }, item.PetName.Size.X.Offset, item.NameMax or 28, item.NameMin or 15)
+	local names = { text }
+	if color ~= C.Muted then
+		local words = {}
+		for word in tostring(text):gmatch("%S+") do
+			words[#words + 1] = word
+		end
+		if #words >= 3 and (words[1] == "Golden" or words[1] == "Rainbow") then
+			table.remove(words, 1)
+			names[#names + 1] = table.concat(words, " ")
+		end
+		if #words >= 2 then
+			local out = {}
+			for i = 1, #words - 1 do
+				out[i] = words[i]:sub(1, 1) .. "."
+			end
+			names[#names + 1] = table.concat(out, " ") .. " " .. words[#words]
+		end
+	end
+	names[#names + 1] = last
+	H.fit(item.PetName, names, item.PetName.Size.X.Offset, item.NameMax or 28, item.NameMin or 15)
 end
 
 function H.subOf(def, pc)
@@ -289428,6 +290079,15 @@ end
 
 function H.syncBack()
 	local want = S.Open
+	-- (playtest 2026-11-28 C57) the header shows the Tokens and Gems beside the cost: the HUD's currency strips step aside
+	-- while the machine is open (they showed twice), as the Shop's do
+	if S.CurrencyOff ~= (want == true) then
+		local hud = H.controller("HudController")
+		if hud and type(hud.SetCurrencyHidden) == "function" then
+			S.CurrencyOff = want == true
+			safe("currency", hud.SetCurrencyHidden, "Fusion", S.CurrencyOff)
+		end
+	end
 	if want and not S.BackBound then
 		S.BackBound = true
 		pcall(function()
@@ -295710,6 +296370,9 @@ local layoutKey = nil
 local layoutPoll = 0
 local published = {} -- the geometry attributes on the gui
 local vitalsRect = nil -- wave 6: the vitals card's last laid-out rect (gui-area px: X, Y = top-left, W, H); GetLayout().Vitals
+-- (playtest 2026-11-28 C31 r2) the top-right strips' own box for Overlaps (gui-area px: Left, Bottom = their foot, or the gift's
+-- dock under them), nil with no strips in the top-right corner; TopRightLeft is the whole block's left (the gift beside)
+local stripsBox = nil
 
 local UI = {} -- instance references
 local Items = {} -- sliding panels, see present()
@@ -296565,6 +297228,7 @@ local function applyMargins(animate, force)
 	local stackH = n * K.STRIP_H + (n - 1) * K.STRIP_GAP
 	local topRightBottom, topRightLeft = 0, 0
 	local giftLeft, giftTop, giftSize = 0, 0, 0
+	stripsBox = nil
 	local mode = "TopRight"
 	if UI.Currency and topBand then
 		-- one row in the top band (above the gui area: the gui starts below Roblox's top bar)
@@ -296619,6 +297283,7 @@ local function applyMargins(animate, force)
 		end
 		UI.Currency.Position = UDim2.new(1, -side, 0, stripTop)
 		topRightBottom = stripTop + blockH * k
+		stripsBox = { Left = topRightLeft, Bottom = topRightBottom }
 		-- a card that takes the corner for a moment (a dungeon run's result on a phone) hides the strips meanwhile
 		local strips = { x0 = topRightLeft, y0 = stripTop, x1 = area.X - side, y1 = topRightBottom }
 		local yield = cornerCard ~= nil and cornerCard.x0 < strips.x1 and strips.x0 < cornerCard.x1
@@ -296635,7 +297300,37 @@ local function applyMargins(animate, force)
 			giftSize = math.max(K.GIFT_MIN, math.floor(K.GIFT * k)) -- (44 on a 844x390 phone, as the button was)
 			giftTop = math.floor(topRightBottom + K.GIFT_GAP * k + 0.5)
 			giftLeft = math.floor(area.X - side - giftSize + 0.5)
-			topRightBottom = giftTop + giftSize
+			-- (playtest 2026-11-28 C31: three strips stacked put the gift square on DASH at 640 x 360) where the square under
+			-- the strips would meet a touch key (its wood edge and OBSTACLE_TIGHT of air counted), it docks left of the strips
+			-- at their top, as the HUD without a dock had it (DailyController.layoutButton's fallback)
+			local keys = {}
+			for _, r in ipairs(buttons) do
+				table.insert(keys, r)
+			end
+			if touch then
+				table.insert(keys, robloxTouchRects(area, vp)[2])
+			end
+			local air = K.OBSTACLE_TIGHT + 3
+			local onKey = false
+			for _, r in ipairs(keys) do
+				if giftLeft - air < r.x1 and r.x0 < giftLeft + giftSize + air and giftTop - air < r.y1 and r.y0 < giftTop + giftSize + air then
+					onKey = true
+				end
+			end
+			local besideLeft = math.floor(topRightLeft - K.GIFT_GAP * k - giftSize + 0.5)
+			if onKey and besideLeft >= side and not (hasPanel and besideLeft < topLeft + panelW * k + K.GIFT_GAP * k and stripTop < K.EDGE + topH * k + shadowPx) then
+				giftLeft, giftTop = besideLeft, stripTop
+				-- (playtest 2026-11-28 C31 r2: the toasts, the tutorial's strip and the arena's side stack dock left of
+				-- TopRightLeft, which still named the strips' edge, so they landed on the gift) the block's left is the gift's
+				topRightLeft = giftLeft
+			elseif onKey then
+				-- (C31 r2: on the party pad at 640 x 360 the panel holds the row beside the strips and the square stayed on
+				-- DASH) no room beside them either: the gift steps aside meanwhile (a dock of 0, as for a corner card)
+				giftLeft, giftTop, giftSize = 0, 0, 0
+			else
+				stripsBox.Bottom = giftTop -- (Overlaps: the strips' box runs down to the gift's dock under them, as before)
+			end
+			topRightBottom = math.max(topRightBottom, giftTop + giftSize)
 		end
 	end
 	S.currencyMode = mode
@@ -299507,7 +300202,9 @@ end
 -- (LOOK-ui, kitb-look1: the Index and Home windows lay over the vitals card and the strips) which HUD parts a docked
 -- window lies over by more than a shared edge (4 px): `rect` its box in screen px (NeonKit.SideRect: x, y, w, h, the top
 -- bar included), `above` px of awning over its top. Returns vitals, strips (booleans). The strips' box is the one the
--- layout publishes (TopRightLeft .. the screen's right, the top .. the gift's dock), whether they show or not
+-- layout placed (their left .. the screen's right, the top .. the gift's dock under them, else their own foot), whether
+-- they show or not. (playtest 2026-11-28 C31 r2: with the gift docked beside the strips, GiftTop is the strips' top, and
+-- the box read from it was 12 px tall)
 function HudController.Overlaps(rect, above)
 	if type(rect) ~= "table" or not (tonumber(rect.x) and tonumber(rect.y) and tonumber(rect.w) and tonumber(rect.h)) then
 		return false, false
@@ -299523,10 +300220,9 @@ function HudController.Overlaps(rect, above)
 	end
 	local vitals = vitalsRect ~= nil and over(vitalsRect.X, vitalsRect.Y, vitalsRect.X + vitalsRect.W, vitalsRect.Y + vitalsRect.H)
 	local strips = false
-	local left = published.TopRightLeft
+	local left = stripsBox and math.floor(stripsBox.Left + 0.5) -- (whole px, as the layout publishes them)
 	if left and left > 0 then
-		local bottom = (published.GiftSize or 0) > 0 and published.GiftTop or published.TopRightBottom or 0
-		strips = over(left, 0, math.huge, bottom)
+		strips = over(left, 0, math.huge, math.floor(stripsBox.Bottom + 0.5))
 	end
 	return vitals, strips
 end
@@ -300643,7 +301339,9 @@ local function renderFooter()
 		U.FooterText.Text = string.format("Unlocked: %d/%d", unlocked, total)
 		local n = U.FooterBlocks:GetAttribute("Count") or 10
 		SignKit.FillBlocks(U.FooterBlocks, total > 0 and math.floor(unlocked / total * n) or 0)
-		U.FooterPercent.Text = string.format("%d%%", total > 0 and math.floor(unlocked / total * 100) or 0)
+		-- (playtest 2026-11-28 C45) rounded, not floored (1/35 read "2%"); 100% only once every pet is in
+		local pct = total > 0 and math.floor(unlocked / total * 100 + 0.5) or 0
+		U.FooterPercent.Text = string.format("%d%%", unlocked < total and math.min(pct, 99) or pct)
 	end
 	-- the compact layout has no footer: the title carries the count
 	if U.Panel then
@@ -300790,12 +301488,28 @@ local function H_tabCount()
 	return n + (S.FusionTile and 1 or 0)
 end
 
+-- (playtest 2026-11-28 C41) the strip canvas's units per design px: the window's resting scale (0.8 on a 360 px phone)
+-- when the canvas counts screen px (its window size matches its screen size), else 1; the tab pitch is in design px, so
+-- the snap, the dots and the reveal landed between tabs under a 0.8 window. Never the pop-in scale: it runs only while
+-- the window opens, and a position outlives it
+local function H_stripUnit()
+	local list = U.GroupList
+	local unit = math.max((U.Fit and U.Fit.Scale) or 1, 0.01)
+	local okW, win = pcall(function()
+		return list.AbsoluteWindowSize
+	end)
+	if okW and typeof(win) == "Vector2" and win.X > 0 and list.AbsoluteSize.X > 0 and win.X / list.AbsoluteSize.X < 0.98 then
+		unit = 1
+	end
+	return unit
+end
+
 local function H_paintDots()
 	local dots = U.PageDots
 	if not (dots and S.Tall and S.StripN and S.StripTabW) then
 		return
 	end
-	local pitch = S.StripTabW + K.STRIP_GAP
+	local pitch = (S.StripTabW + K.STRIP_GAP) * H_stripUnit()
 	local idx = math.floor((U.GroupList.CanvasPosition.X) / pitch + 0.5)
 	local pages = dots:GetAttribute("Pages") or 0
 	local now = math.min(pages, math.floor(idx / S.StripN + 0.5) + 1)
@@ -300857,7 +301571,7 @@ local function H_snapStrip()
 	if not (list and S.Tall and S.StripTabW) then
 		return
 	end
-	local pitch = S.StripTabW + K.STRIP_GAP
+	local pitch = (S.StripTabW + K.STRIP_GAP) * H_stripUnit() -- (playtest 2026-11-28 C41) in the canvas's units
 	local x = list.CanvasPosition.X
 	local last = math.max(0, H_tabCount() - (S.StripN or 1))
 	local idx = math.max(0, math.min(last, math.floor(x / pitch + 0.5)))
@@ -301947,7 +302661,22 @@ function revealGroupTile(groupId)
 		return
 	end
 	if S.Tall then
-		return -- the sideways strip of the portrait layout: the player scrolls it (the header names the group)
+		-- (playtest 2026-11-28 C41) the sideways strip of the portrait layout pages to the selected tab when it is out of
+		-- view ('MYTHIC PETS 2/4' showed with the Common / Uncommon tabs in the strip); a tab in view stays put
+		if not S.StripTabW then
+			return
+		end
+		local unit = H_stripUnit()
+		local pitch = S.StripTabW + K.STRIP_GAP
+		local n = math.max(1, S.StripN or 1)
+		local first = math.floor(list.CanvasPosition.X / unit / pitch + 0.5)
+		if index - 1 >= first and index - 1 < first + n then
+			return
+		end
+		local last = math.max(0, H_tabCount() - n)
+		local want = math.min(last, math.floor((index - 1) / n) * n) * pitch * unit
+		list.CanvasPosition = Vector2.new(want, list.CanvasPosition.Y)
+		return
 	end
 	-- CanvasPosition is in the list's own (pre-UIScale) pixels, like the tile sizes; the window's pop-in UIScale
 	-- may still be running (it starts at 0.86)
@@ -306057,6 +306786,7 @@ function Win.close()
 	end
 	Win.bindBack(false)
 	Win.touch(false)
+	Win.strips(false) -- (playtest 2026-11-28 C27) the currency strips back
 end
 
 -- what lies behind a window that opens: the game's windows close on MenuController.WindowOpened (as they do for each
@@ -306158,10 +306888,57 @@ function Win.holder(name, prefW, prefH, fit)
 	local fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
 	W.Dock = NeonKit.Dock(holder, fit, prefW, prefH)
 	W.Name, W.Holder = name, holder
+	Win.cover(holder)
 	Win.clearBehind(name)
 	Win.bindBack(true)
 	Win.touch(true)
 	return holder
+end
+
+-- (playtest 2026-11-28 C27: on a landscape phone the docked window left half pieces peeking from under it: the title
+-- board's PLAY / UPDATES cut in half where Win.clearOfBoard gave up narrowing, and the HUD's wallet strip beside the
+-- awning after PLAY) on a landscape screen a window that still meets the board hides the board (Win.close brings it back,
+-- as a portrait sheet's); on a landscape touch screen the currency strips step aside while the window's column reaches
+-- under them (HudController.SetCurrencyHidden "MainMenuWin", let go by Win.close).
+-- (C27 round 2: on the touch tablets, 1024 x 768 .. 1366 x 1024, the window starts 100+ px under the strips, yet a test of
+-- x alone hid the wallet while Settings / What's New / Credits was open) the window's docked box (NeonKit.Dock's Rect, not
+-- the holder's AbsolutePosition of the frame that placed it) with its awning decides, by HudController.Overlaps, as the
+-- game's windows do (MenuController's HideCurrency "Over")
+function Win.cover(holder)
+	local vp = H.viewport()
+	local rect = M.Win.Dock and M.Win.Dock.Rect
+	if vp.X <= vp.Y or not (holder and holder.Parent and rect) then
+		return
+	end
+	local board = M.Ui and M.Ui.Board
+	if board and board.Parent and M.Ui.Swing and M.Ui.Swing.Visible ~= false then
+		local right = board.AbsolutePosition.X + board.AbsoluteSize.X + 3 + 5 + 4 + 5 -- (Win.clearOfBoard's edge)
+		if right > rect.x then
+			M.Ui.Swing.Visible = false
+		end
+	end
+	local uis = game:GetService("UserInputService")
+	local hud = H.mod("HudController")
+	local over = false
+	if uis.TouchEnabled and hud and type(hud.Overlaps) == "function" then
+		-- (the awning: SignKit.Roof seated at RoofSeat(HEAD_Y), over the window's top by that many design px)
+		local above = math.max(0, -SignKit.RoofSeat(K.WIN.HEAD_Y)) * (rect.scale or 1)
+		local ok, _, strips = pcall(hud.Overlaps, rect, above)
+		over = ok and strips == true
+	end
+	Win.strips(over)
+end
+
+function Win.strips(on)
+	on = on == true
+	if on == (M.Win.StripsOff == true) then
+		return
+	end
+	M.Win.StripsOff = on
+	local hud = H.mod("HudController")
+	if hud and type(hud.SetCurrencyHidden) == "function" then
+		H.safe("currency strips", hud.SetCurrencyHidden, "MainMenuWin", on)
+	end
 end
 
 -- (kit-b gate U9 r4) on a touch-only device Roblox's thumbstick and jump button go while a menu window (Settings, What's
@@ -306274,7 +307051,9 @@ function Win.open(name, title, icon, prefH, reopen, fit)
 	local size = Theme.RoleSize("Title")
 	while size > 22 do
 		local ok, m = pcall(Theme.Measure, title, "Title", size)
-		if not ok or not m or m.X <= room then
+		-- (playtest 2026-11-28 C25: at 667 x 375 the text filled its box to 0.6 px and the ribbon's band lay flush on the
+		-- letters) the room less the ribbon's least pads, 2 px a side (Theme's ribbonLayout)
+		if not ok or not m or m.X + 4 <= room then
 			break
 		end
 		size = size - 2
@@ -308501,7 +309280,7 @@ local G = {
 	Bullet = "\194\183", -- middle dot
 }
 -- (kit-b U7b) the Home window's PixelIcons
-local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "nub" }
+local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "nub", Up = "arrowup" }
 
 ----------------------------------------------------------------------
 -- Module state
@@ -308958,6 +309737,139 @@ function P5.paintHintChip(kind)
 	end
 end
 
+-- (playtest 2026-11-28 C24: the hint, centred on the column, lay on the vitals card's name plank at 640 x 360 / 844 x 390
+-- and reached the Gift block at 360 x 640) its centre moved (from the column's, Hint.BaseY) so the block ends GAP above
+-- the vitals card's name tab and starts GAP under the gift, where it shares their columns (NimbusHud's published rects);
+-- where both cannot hold, the vitals card wins.
+-- (C24 round 2: at 568 x 320 the vitals' limit lifted the block 34 px over the gui's top, under the top bar's pill; on the
+-- party pad at 360 x 640 it ended on RUN) the touch keys in its columns are limits too (above: under them; below: over
+-- them), as the vitals card; where the limits cross, the text wraps wider (fewer lines, a shorter block) up to the room
+-- left of the HUD's top-right block; and the block's top never goes over the gui's top + 4 px
+function P5.hintLimits(x0, w, h, cy)
+	local hud = gui and gui.Parent and gui.Parent:FindFirstChild("NimbusHud")
+	local x1 = x0 + w
+	local GAP = 8
+	local lo, hi = h / 2 + 4, math.huge
+	local function num(name)
+		return hud and tonumber(hud:GetAttribute(name)) or nil
+	end
+	local gl, gt, gs = num("GiftLeft"), num("GiftTop"), num("GiftSize")
+	if gl and gt and gs and gs > 0 and x1 + GAP > gl and x0 - GAP < gl + gs then
+		lo = math.max(lo, gt + gs + GAP + h / 2)
+	end
+	local vt, vl, vr = num("BottomCentreTop"), num("BottomCentreLeft"), num("BottomCentreRight")
+	if vt and vl and vr and vt > 0 and x1 + GAP > vl and x0 - GAP < vr then
+		hi = vt - GAP - h / 2
+	end
+	local mobile = gui and gui.Parent and gui.Parent:FindFirstChild("MobileControls")
+	if mobile and mobile:IsA("LayerCollector") and mobile.Enabled then
+		local dy = mobile.IgnoreGuiInset and P5.inset() or 0 -- (its keys in our gui-area px)
+		for _, key in ipairs(mobile:GetDescendants()) do
+			if key:IsA("GuiButton") and key.Visible and key.AbsoluteSize.X > 0 then
+				local kx0, ky0 = key.AbsolutePosition.X, key.AbsolutePosition.Y - dy
+				local kx1, ky1 = kx0 + key.AbsoluteSize.X, ky0 + key.AbsoluteSize.Y
+				local shown = true
+				local cur = key.Parent
+				while cur and cur ~= mobile do
+					if cur:IsA("GuiObject") and not cur.Visible then
+						shown = false
+					end
+					cur = cur.Parent
+				end
+				if shown and x1 + GAP > kx0 and x0 - GAP < kx1 then
+					if (ky0 + ky1) / 2 > cy then
+						hi = math.min(hi, ky0 - GAP - h / 2)
+					else
+						lo = math.max(lo, ky1 + GAP + h / 2)
+					end
+				end
+			end
+		end
+	end
+	return lo, hi, num("TopRightLeft"), gl
+end
+
+function P5.clampHint()
+	local f = Hint.Frame
+	if not (f and Hint.Scale) then
+		return
+	end
+	local base = Hint.MaxW or 300
+	local s = Hint.ReadScale or Hint.Scale.Scale -- (the screen's read scale relayoutMenu set; a block shrunk below is put back)
+	if Hint.Wide then
+		-- (widened or shrunk for an earlier screen) back to the column's width and the read scale first
+		Hint.Wide = nil
+		Hint.Scale.Scale = s
+		P5.sizeHint(base)
+	end
+	local x0 = f.Position.X.Offset
+	local cy = Hint.BaseY or f.Position.Y.Offset
+	local w, h = f.Size.X.Offset * s, f.Size.Y.Offset * s
+	local lo, hi, blockLeft, giftLeft = P5.hintLimits(x0, w, h, cy)
+	if hi < lo and Hint.Label and Hint.Label.Text ~= "" then
+		-- the limits cross: wider, so fewer lines, while the block stays left of the HUD's top-right block (and the gift);
+		-- then (568 x 320: no room to widen) the block a little smaller, its text never under 14 screen px
+		local right = (gui and gui.AbsoluteSize.X or 0) - 8
+		for _, edge in ipairs({ blockLeft or 0, giftLeft or 0 }) do
+			if edge > x0 then
+				right = math.min(right, edge - 8)
+			end
+		end
+		local chrome = 28 + Hint.CHIP + Hint.CHIP_GAP -- (the block's padding and the chip beside the text, design px)
+		local floorScale = 14 / math.max(1, Hint.Label.TextSize)
+		local scales = { s }
+		for sc = s - 0.05, floorScale, -0.05 do
+			scales[#scales + 1] = sc
+		end
+		if s > floorScale then
+			scales[#scales + 1] = floorScale
+		end
+		local fits = false
+		local best = { Short = lo - hi, Scale = s, MaxW = base }
+		for _, sc in ipairs(scales) do
+			local most = math.floor((right - x0) / sc) - chrome
+			local tries = {}
+			if sc < s then
+				tries[1] = base
+			end
+			for maxW = base + 20, most - 1, 20 do
+				tries[#tries + 1] = maxW
+			end
+			if most > base then
+				tries[#tries + 1] = most -- (the whole room last)
+			end
+			for _, maxW in ipairs(tries) do
+				Hint.Scale.Scale = sc
+				P5.sizeHint(maxW)
+				Hint.Wide = true
+				w, h = f.Size.X.Offset * sc, f.Size.Y.Offset * sc
+				lo, hi = P5.hintLimits(x0, w, h, cy)
+				if hi >= lo then
+					fits = true
+					break
+				end
+				if lo - hi < best.Short - 0.5 then
+					best = { Short = lo - hi, Scale = sc, MaxW = maxW }
+				end
+			end
+			if fits then
+				break
+			end
+		end
+		if not fits and Hint.Wide then
+			-- nothing fits: the shortest block tried (the least it lies over), the vitals card's limit over the gift's, the
+			-- top's over both
+			Hint.Scale.Scale = best.Scale
+			P5.sizeHint(best.MaxW)
+			Hint.Wide = best.Scale ~= s or best.MaxW ~= base or nil
+			w, h = f.Size.X.Offset * best.Scale, f.Size.Y.Offset * best.Scale
+			lo, hi = P5.hintLimits(x0, w, h, cy)
+		end
+	end
+	cy = math.max(math.min(math.max(cy, lo), hi), h / 2 + 4)
+	f.Position = UDim2.new(0, x0, 0, math.floor(cy + 0.5))
+end
+
 function showHint(text, kind)
 	if not Hint.Frame then
 		return
@@ -308973,7 +309885,20 @@ function showHint(text, kind)
 		lip.BackgroundColor3 = HINT_LIP[kind or "info"] or SIGN.StoneLip
 	end
 	P5.paintHintChip(kind)
-	local maxW = Hint.MaxW or 300
+	Hint.Wide = nil
+	Hint.Scale.Scale = Hint.ReadScale or Hint.Scale.Scale -- (a block shrunk for the last text: the screen's read scale back)
+	P5.sizeHint(Hint.MaxW or 300)
+	P5.clampHint()
+	Hint.Frame.Visible = true
+	task.delay(K.HINT_SECONDS, function()
+		if Hint.Token == mine and Hint.Frame then
+			Hint.Frame.Visible = false
+		end
+	end)
+end
+
+-- the hint's block for its text wrapped at `maxW` design px: one line when it fits, the label as tall as its lines
+function P5.sizeHint(maxW)
 	local width = maxW
 	local ok, bounds = pcall(function()
 		return Theme.MeasureLabel(Hint.Label, Hint.Label.Text, Hint.Label.TextSize, 4000)
@@ -309008,12 +309933,6 @@ function showHint(text, kind)
 	Hint.Label.Size = UDim2.fromOffset(width, textH)
 	Hint.Label.Position = UDim2.fromOffset(Hint.CHIP + Hint.CHIP_GAP, math.floor((rowH - textH) / 2))
 	Hint.Frame.Size = UDim2.fromOffset(width + 28 + Hint.CHIP + Hint.CHIP_GAP, rowH + 16 + CloudUI.SignMetrics.Lip)
-	Hint.Frame.Visible = true
-	task.delay(K.HINT_SECONDS, function()
-		if Hint.Token == mine and Hint.Frame then
-			Hint.Frame.Visible = false
-		end
-	end)
 end
 
 ----------------------------------------------------------------------
@@ -310120,8 +311039,11 @@ function relayoutMenu()
 		local hintLeft = left + w * scale + 10
 		local room = math.max(120, area.X * 0.34 - hintLeft - 28 * factor)
 		Hint.Scale.Scale = factor
-		Hint.Frame.Position = UDim2.new(0, hintLeft, 0, math.floor(top + h * scale / 2 + 0.5))
+		Hint.ReadScale = factor -- (C24 round 2: P5.clampHint may shrink the block a little, never under this read scale's 14 px floor)
+		Hint.BaseY = math.floor(top + h * scale / 2 + 0.5) -- (playtest 2026-11-28 C24: P5.clampHint moves it off the HUD)
+		Hint.Frame.Position = UDim2.new(0, hintLeft, 0, Hint.BaseY)
 		Hint.MaxW = math.min(300, math.floor(room / factor))
+		P5.clampHint()
 	end
 	for _, win in pairs(windows) do
 		if win.Shown then
@@ -310185,7 +311107,7 @@ P5.STAT_TILES = {
 	{ "Matches", "Matches played", "mountain", Theme.Sign.Sky },
 	{ "Wins", "Victories", "trophy", Theme.Sign.Sky },
 	{ "WinRate", "Win rate", "target", Theme.Sign.Sky },
-	{ "Tokens", "Cloud tokens", "token", Theme.Sign.Gold }, -- the chip's coin is the token icon (U7a: no second coin)
+	{ "Tokens", "Cloud Tokens", "token", Theme.Sign.Gold }, -- (playtest 2026-11-28 C20: Theme.Currency.Tokens.Name) -- the chip's coin is the token icon (U7a: no second coin)
 	{ "Earned", "Tokens earned", "token", Theme.Sign.Gold },
 	{ "Spins", "Roulette spins", "gumball", Theme.Sign.Roof },
 	{ "Found", "Pets discovered", "book", Theme.Sign.Violet },
@@ -310564,18 +311486,19 @@ K.HERO_H_SHORT = 76 -- ... on short windows (landscape phones)
 P5.HERO = {
 	-- (kit-b U7a) the house and the badge draw PixelIcons
 	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "house", Badge = "arrow" },
-	ClaimHome = { Title = "Claim a home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "house", Badge = "sparkle" },
+	-- (playtest 2026-11-28 C23 review) Tiny: the line a narrow card fits ('Your own sky i...' at 640x360)
+	ClaimHome = { Title = "Claim a home", ShortTitle = "Claim home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Tiny = "Free sky island!", Glyph = "house", Badge = "sparkle" },
 }
 -- the Prestige confirm's fixed lines, and a long "You get" line (H.Layout sizes the lines to the widest of these); Short:
 -- (kit-b U9-1) the same said in fewer words for a short window (a landscape phone), so the three lines fit its box
 P5.PRESTIGE_TEXT = {
 	Reset = "Your Cash, the Cloud Cash on your lawn and your stations (not the Garden)",
 	Keep = "Pets, levels, evolutions, training, your teams, berries, the Garden and decor",
-	Gain = "Star 10: x9.31 coins, garden place 12 and 1,000 Gems",
+	Gain = "Star 10: x9.31 Cash, garden place 12 and 1,000 Gems", -- (playtest 2026-11-28 C20: Cash, not "coins")
 	Short = {
-		Reset = "Cash, lawn coins and stations (not the Garden)",
+		Reset = "Cash, lawn Cash and stations (not the Garden)",
 		Keep = "Pets, teams, berries, the Garden and decor",
-		Gain = "Star 2: x1.56 coins, garden place 5 and 25 Gems",
+		Gain = "Star 2: x1.56 Cash, garden place 5 and 25 Gems",
 	},
 }
 -- what a home gives (the claim view's "Your home" tiles)
@@ -310713,25 +311636,27 @@ function P5.buildHomeHero(H, win, onGoHome, onClaim)
 		LayoutOrder = 10,
 	})
 	local gets = makeFrame(steps, "Gets", { Size = UDim2.new(1, 0, 0, 132), LayoutOrder = 11 })
-	Util.Create("UIGridLayout", {
+	H.ClaimGetsGrid = Util.Create("UIGridLayout", {
 		CellSize = UDim2.new(1 / 3, -8, 1, 0),
 		CellPadding = UDim2.new(0, 12, 0, 0),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = gets,
 	})
+	H.ClaimGetTiles = {}
 	for i, item in ipairs(P5.CLAIM_GETS) do
 		local tile = P5.signBlock(gets, "Get" .. i, { Size = UDim2.fromOffset(160, 132), LayoutOrder = i }, item.Color)
 		local chip = P5.signChip(tile, "Orb", item.Color, item.Glyph, 48)
 		chip.AnchorPoint = Vector2.new(0.5, 0)
 		chip.Position = UDim2.new(0.5, 0, 0, 10)
-		makeText(tile, "Title", item.Title, "Heading", 20, P5.HS.Text, {
+		local title = makeText(tile, "Title", item.Title, "Heading", 20, P5.HS.Text, {
 			Position = UDim2.new(0, 6, 0, 66),
 			Size = UDim2.new(1, -12, 0, 24),
 		})
-		makeText(tile, "Text", item.Text, "Body", 18, P5.HS.TextMuted, {
+		local body = makeText(tile, "Text", item.Text, "Body", 18, P5.HS.TextMuted, {
 			Position = UDim2.new(0, 6, 0, 92),
 			Size = UDim2.new(1, -12, 0, 24),
 		})
+		H.ClaimGetTiles[i] = { Chip = chip, Title = title, Text = body }
 	end
 	H.ClaimGets = gets
 	H.ClaimSteps = steps
@@ -310773,11 +311698,89 @@ function P5.layoutHomeHero(H, short, w)
 		hero.Sub.Size = UDim2.new(1, -(x + 76), 0, 26)
 		local spec = P5.HERO[hero.Id]
 		hero.Sub.Text = (short or (tonumber(w) or 999) < 640) and spec.Short or spec.Sub
+		-- (playtest 2026-11-28 C23 review) the line under the title whole: the card's text box (the window less the
+		-- content's and the hero's 12 px sides, the orb column and the badge's 76) takes the first line that fits it by the
+		-- measure (a 15 % spare: the Body face drew wider than Theme.Measure), then Tiny; else it truncates as before
+		local subRoom = (tonumber(w) or 0) - 48 - (x + 76)
+		if subRoom > 0 then
+			for _, line in ipairs({ hero.Sub.Text, spec.Tiny }) do
+				if line and math.ceil(Theme.MeasureLabel(hero.Sub, line, hero.Sub.TextSize).X * 1.15) <= subRoom then
+					hero.Sub.Text = line
+					break
+				end
+				hero.Sub.Text = line or hero.Sub.Text
+			end
+		end
 		hero.Badge.Size = UDim2.fromOffset(short and 44 or 52, short and 44 or 52)
 	end
+	-- (playtest 2026-11-28 C23) the claim title on ONE line: TextScaled with MinTextSize 24 wrapped 'CLAIM A / HOME' in
+	-- its 32 px box at 640-667 px (the second line clipped or spilled over the card); the size steps down to 18 by
+	-- the measure (with a 25 % spare: Theme.Measure read 23 % short of the drawn capitals in the renders), then the
+	-- short title ("Claim home", 640 px), then truncates. The box:
+	-- the window less the content's and the hero's 12 px sides, the orb column and the badge's 76
+	local title = H.ClaimHero.Title
+	local room = (tonumber(w) or 0) - 48 - ((short and 76 or 96) + 76)
+	local function need(text, px)
+		return math.ceil(Theme.MeasureLabel(title, text, px).X * 1.25)
+	end
+	local spec = P5.HERO.ClaimHome
+	local text = (room > 0 and need(spec.Title, 18) > room and spec.ShortTitle) or spec.Title
+	title.Text = text
+	local size = short and 32 or 34
+	while room > 0 and size > 18 and need(text, size) > room do
+		size = size - 1
+	end
+	local fit = title:FindFirstChildOfClass("UITextSizeConstraint")
+	if fit then
+		fit.MinTextSize = 18
+	end
+	title.TextScaled = false
+	title.TextWrapped = false
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.TextSize = size
+	P5.layoutClaimGets(H, w)
 	H.ClaimSteps.Position = UDim2.fromOffset(12, h + 22)
 	H.ClaimSteps.Size = UDim2.new(1, -24, 1, -(h + 32))
 	return h
+end
+
+-- (playtest 2026-11-28 C23) the "Your home has" tiles: three across while a tile holds its words (160 px tiles on a
+-- PC), else one row each (the chip at the left, the title and its line beside it): at 640-667 px the tiles were 93 px
+-- and cut 'Pets roam and play' / 'Pet Garden'
+function P5.layoutClaimGets(H, w)
+	if not (H.ClaimGetsGrid and H.ClaimGetTiles) then
+		return
+	end
+	-- a tile: the window less the content's and the steps' sides (24 + 40), a third, less the grid's gap
+	local tileW = math.floor(((tonumber(w) or 999) - 64) / 3) - 8
+	local rows = false
+	for _, t in ipairs(H.ClaimGetTiles) do
+		for _, pair in ipairs({ { t.Title, 20 }, { t.Text, 18 } }) do
+			rows = rows or math.ceil(Theme.MeasureLabel(pair[1], nil, pair[2]).X * 1.15) > tileW - 12
+		end
+	end
+	local n = #H.ClaimGetTiles
+	if rows then
+		H.ClaimGetsGrid.CellSize = UDim2.new(1, 0, 0, 64)
+		H.ClaimGetsGrid.CellPadding = UDim2.new(0, 0, 0, 10)
+		H.ClaimGets.Size = UDim2.new(1, 0, 0, n * 64 + (n - 1) * 10)
+	else
+		H.ClaimGetsGrid.CellSize = UDim2.new(1 / 3, -8, 1, 0)
+		H.ClaimGetsGrid.CellPadding = UDim2.new(0, 12, 0, 0)
+		H.ClaimGets.Size = UDim2.new(1, 0, 0, 132)
+	end
+	for _, t in ipairs(H.ClaimGetTiles) do
+		t.Chip.AnchorPoint = rows and Vector2.new(0, 0.5) or Vector2.new(0.5, 0)
+		t.Chip.Position = rows and UDim2.new(0, 10, 0.5, -2) or UDim2.new(0.5, 0, 0, 10)
+		for _, label in ipairs({ t.Title, t.Text }) do
+			label.TextXAlignment = rows and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+			label.TextTruncate = Enum.TextTruncate.AtEnd
+		end
+		t.Title.Position = rows and UDim2.new(0, 70, 0, 6) or UDim2.new(0, 6, 0, 66)
+		t.Title.Size = rows and UDim2.new(1, -80, 0, 24) or UDim2.new(1, -12, 0, 24)
+		t.Text.Position = rows and UDim2.new(0, 70, 0, 32) or UDim2.new(0, 6, 0, 92)
+		t.Text.Size = rows and UDim2.new(1, -80, 0, 24) or UDim2.new(1, -12, 0, 24)
+	end
 end
 
 local buildHome -- (the window's helpers live in this do-block: Lua's 200-local limit of the main chunk)
@@ -310824,9 +311827,9 @@ do
 		elseif kind == "Garden" then
 			local lucky = tonumber(e.Lucky) or 0
 			if lucky <= 0 then
-				return "Rainbow coins"
+				return "Cloud Cash" -- (playtest 2026-11-28 C20: was "Rainbow coins")
 			end
-			return shortPercent(lucky) .. " Lucky coins"
+			return shortPercent(lucky) .. " Lucky Cash"
 		elseif kind == "FoodMachine" then
 			return "Feeds fill " .. shortPercent(e.FeedShare) .. " of a bar"
 		elseif kind == "Training" then
@@ -311441,7 +312444,7 @@ do
 				H.ConfirmLines.Reset.Text = words.Reset
 				H.ConfirmLines.Keep.Text = words.Keep
 				local places = math.min(tonumber(P.GardenSlotsMax) or 12, (tonumber(P.GardenSlotsBase) or 3) + (tonumber(P.GardenSlotsPerStar) or 1) * (stars + 1))
-				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " coins, garden place " .. places .. " and " .. commas(gems) .. " Gems"
+				local gain = "Star " .. (stars + 1) .. ": x" .. shortNumber(math.floor(mult * 100 + 0.5) / 100) .. " Cash, garden place " .. places .. " and " .. commas(gems) .. " Gems"
 				if stars + 1 == (tonumber(P.FusionUnlock) or 1) then
 					gain = gain .. ", the Fusion Machine"
 				end
@@ -311449,8 +312452,48 @@ do
 			end
 			confirm.Visible = on == true
 			if on then
+				H.ConfirmRead = false -- (playtest 2026-11-28 C35) read from the top again
+				H.ConfirmList.CanvasPosition = Vector2.new(0, 0)
 				H.FitConfirm()
 			end
+		end
+
+		-- (playtest 2026-11-28 C35) a list that scrolls keeps Prestige! off ('Read all') until the player has scrolled to
+		-- its end: on landscape phones 'You keep' / 'You get' sat below the fold beside a live Prestige!
+		-- (playtest 2026-11-28 C35 review) whether the list scrolls and where its end is, from the frame's own numbers
+		-- (AbsoluteCanvasSize - AbsoluteWindowSize is the engine's reachable end; FitConfirm's sum only where the engine
+		-- has none): an end computed a few px past the reachable one never unlocked Prestige!
+		function H.ConfirmScroll()
+			local ok, canvas, window = pcall(function()
+				return lines.AbsoluteCanvasSize.Y, lines.AbsoluteWindowSize.Y
+			end)
+			if ok and type(canvas) == "number" and type(window) == "number" and window > 0 then
+				return canvas - window > 1, canvas - window
+			end
+			return H.ConfirmEndY ~= nil, H.ConfirmEndY or 0
+		end
+		function H.PaintConfirmYes()
+			local wait = H.ConfirmScroll() and not H.ConfirmRead
+			H.ConfirmYes:SetAttribute("Disabled", wait)
+			H.ConfirmYes.Text = wait and "Read all" or "Prestige!"
+		end
+		-- only a scroll to the end reads the list (a fit never does: a first fit that did not scroll left Prestige! live
+		-- once the real text arrived and scrolled)
+		lines:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+			local scrolls, endY = H.ConfirmScroll()
+			if scrolls and not H.ConfirmRead and lines.CanvasPosition.Y >= endY - 2 then
+				H.ConfirmRead = true
+				H.PaintConfirmYes()
+			end
+		end)
+		for _, prop in ipairs({ "AbsoluteCanvasSize", "AbsoluteWindowSize" }) do
+			pcall(function()
+				lines:GetPropertyChangedSignal(prop):Connect(function()
+					if confirm.Visible then
+						H.PaintConfirmYes()
+					end
+				end)
+			end)
 		end
 
 		-- (kit-b U9-1 review) each line as tall as the text it really shows (its TextBounds at the column's width: the first
@@ -311473,6 +312516,7 @@ do
 			end
 			local words = fit.Short and P5.PRESTIGE_TEXT.Short or P5.PRESTIGE_TEXT
 			local content = 2 * 8
+			local heights = {}
 			for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
 				local text = H.ConfirmLines[id]
 				local okB, bounds = pcall(function()
@@ -311489,10 +312533,25 @@ do
 				text.Parent.Size = UDim2.new(1, -12, 0, lineH)
 				text.Size = UDim2.new(1, -144, 0, lineH - 6) -- the lip's room below
 				content = content + lineH
+				heights[#heights + 1] = lineH
 			end
-			local boxH = math.min(fit.Top + content + fit.Foot, fit.Room)
-			H.ConfirmList.Size = UDim2.new(1, -32, 0, boxH - fit.Top - fit.Foot)
-			box.Size = UDim2.fromOffset(fit.BoxW, boxH)
+			local listH = math.min(content, fit.Room - fit.Top - fit.Foot)
+			if listH < content then
+				-- (playtest 2026-11-28 C35) a list that scrolls stops at a whole line (it sliced a line mid-text)
+				local whole = 0
+				for i, lineH in ipairs(heights) do
+					local next = whole + lineH + (i > 1 and 8 or 0)
+					if next > listH then
+						break
+					end
+					whole = next
+				end
+				listH = whole > 0 and whole or listH
+			end
+			H.ConfirmEndY = listH < content and math.max(0, (content - listH) * scale) or nil
+			H.ConfirmList.Size = UDim2.new(1, -32, 0, listH)
+			box.Size = UDim2.fromOffset(fit.BoxW, fit.Top + listH + fit.Foot)
+			H.PaintConfirmYes()
 		end
 		-- a text whose bounds arrive or change after the fit (Roblox lays text out on its next frame) fits again
 		for _, text in pairs(H.ConfirmLines) do
@@ -311639,7 +312698,8 @@ do
 			else
 				H.NextHouse.Text = "Your " .. ((type(tier) == "table" and tier.Name) or "house") .. " is complete!"
 			end
-			PixelIcon.Mark(H.NextHouse, H.NextHouse.Text:sub(1, 7) == "Upgrade" and HOME_ICON.Check or nil) -- (kit-b U7b)
+			-- (playtest 2026-11-28 C58) a tip to act on leads with an up arrow; the done-check read as 'already done'
+			PixelIcon.Mark(H.NextHouse, H.NextHouse.Text:sub(1, 7) == "Upgrade" and HOME_ICON.Up or nil) -- (kit-b U7b)
 			-- prestige
 			local P = TycoonCatalog and TycoonCatalog.Prestige or {}
 			local need = tonumber(P.HomeLevel) or 40
@@ -311657,7 +312717,7 @@ do
 				H.PrestigeNeed.TextColor3 = P5.HS.TextMuted
 			end
 			local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0
-			local reward = "Reward: x" .. shortNumber(P.IncomeMultiplier or 1.25) .. " coins forever, +1 garden place, " .. commas(gems) .. " Gems"
+			local reward = "Reward: x" .. shortNumber(P.IncomeMultiplier or 1.25) .. " Cash forever, +1 garden place, " .. commas(gems) .. " Gems"
 			if stars + 1 == (tonumber(P.FusionUnlock) or 1) then
 				reward = reward .. " + the Fusion Machine"
 			end
@@ -311703,15 +312763,15 @@ do
 			local maxPlaces = tonumber(P.GardenSlotsMax) or 12
 			H.CoinsWaiting.Text = P2.formatCash(waiting) .. " waiting"
 			H.CoinsWaiting.TextColor3 = waiting > 0 and P5.GOOD or P5.HS.TextMuted
-			H.CoinsPerMin.Text = "Coins " .. P2.formatCash(math.floor(income * 60 + 0.5)) .. "/min"
+			H.CoinsPerMin.Text = "Cash " .. P2.formatCash(math.floor(income * 60 + 0.5)) .. "/min"
 			H.Places.Text = built and ("Places " .. math.floor(open) .. "/" .. maxPlaces) or "Not built"
 			local tips = {}
 			local legacySlots = tonumber(home.LegacySlots)
 			local kept = legacySlots and legacySlots > (tonumber(P.GardenSlotsBase) or 3) + math.floor(tonumber(home.Prestige) or 0)
 			if not built then
-				tips[1] = "Build your free Pet Garden: pets eat there and pop out rainbow coins."
+				tips[1] = "Build your free Pet Garden: pets eat there and pop out Cloud Cash." -- (playtest 2026-11-28 C20)
 			elseif kept or home.LegacyPrices == true then
-				tips[1] = "Walk over your rainbow coins to scoop them!"
+				tips[1] = "Walk over your Cloud Cash to scoop it!"
 				if kept and home.LegacyPrices == true then
 					tips[2] = "Kept from your old home: " .. math.floor(legacySlots) .. " places and old prices until your next Prestige."
 				elseif kept then
@@ -311720,7 +312780,7 @@ do
 					tips[2] = "Old prices until your next Prestige."
 				end
 			else
-				tips[1] = "Walk over your rainbow coins to scoop them! " .. tostring(P.GardenSlotsBase or 3) .. " places + 1 per prestige."
+				tips[1] = "Walk over your Cloud Cash to scoop it! " .. tostring(P.GardenSlotsBase or 3) .. " places + 1 per prestige."
 			end
 			H.GardenTip.Text = table.concat(tips, " ")
 		end
@@ -322278,6 +323338,7 @@ local K = {
 	BUSY_TEXT = 16,
 	BUSY_LIP = 3,
 	BUSY_GAP = 4,
+	TEAM_BUSY_TEXT = 18, -- (F0 review) the team's busy line under Team power; (C19 review) down to the 14 screen px floor to fit
 }
 
 -- (kit-b U8) the Signboard palette: brown ink on stone, the role tags on red / sky, the busy covers on violet / grass
@@ -322292,7 +323353,8 @@ local TRAIN_COLOR = SIGN.Violet
 local TIER_COLORS = { Golden = Color3.fromRGB(246, 196, 64), Rainbow = Color3.fromRGB(226, 110, 214), Hybrid = Color3.fromRGB(150, 110, 232) }
 local XP_COLOR = SIGN.Sky
 -- id, name, the short name a one-line tile falls back to (LOOK-ui: "Battle powe13,213" ran into its number)
-local ROWS = { { "Income", "Coins", "Coins" }, { "Power", "Battle power", "Power" }, { "Health", "Health", "Health" }, { "Speed", "Speed", "Speed" } }
+-- (playtest 2026-11-28 C20) Income is "Cash" (Theme.Currency.Cash.Name; was "Coins")
+local ROWS = { { "Income", "Cash", "Cash" }, { "Power", "Battle power", "Power" }, { "Health", "Health", "Health" }, { "Speed", "Speed", "Speed" } }
 
 -- typography (kit-b U7b: the sword, the stars and the busy / work marks are PixelIcons, ICON; the emoji went)
 local G = {
@@ -322301,7 +323363,8 @@ local G = {
 }
 local ICON = { Power = "sword", Star = "star", Training = "weight", Garden = "sprout", Evolve = "sparkle" }
 -- (LOOK-ui, kitb-look1) the detail's stat tiles (icon, role colour: the pitch's .ci) and the actions' lead icons
-local ROW_LOOK = { Income = { "coin", Theme.Sign.Gold }, Power = { "sword", Theme.Sign.Red }, Health = { "heart", Theme.Sign.Roof }, Speed = { "dash", Theme.Sign.Sky } }
+-- (playtest 2026-11-28 C20) Income is Cash: the banknote (Theme.Currency.Cash.Icon); a gold coin read as Cloud Tokens
+local ROW_LOOK = { Income = { Theme.Currency.Cash.Icon or "note", Theme.Sign.Gold }, Power = { "sword", Theme.Sign.Red }, Health = { "heart", Theme.Sign.Roof }, Speed = { "dash", Theme.Sign.Sky } }
 local ACT_ICON = { ActPut = "plus", ActFeed = "apple", ActTrain = "bell", ActGarden = "sprout", ActEvolve = "sparkle", ActFighter = "sword" }
 
 local frame, text, stroke = Bits.frame, Bits.text, Bits.stroke
@@ -323251,11 +324314,14 @@ function H.build()
 			end
 		end
 	end)
+	-- (playtest 2026-11-28 C36) the sort chip shows one word: it never wraps (it broke 'Stronges / t' at 640x360)
+	U.Sort.TextWrapped = false
+	U.Sort.TextTruncate = Enum.TextTruncate.AtEnd
 	-- (Pitch 2 F0 A, look review of finish pass A, major 4) the sort row's pet count on its right, the team's busy helpers
 	-- ("2 helpers in the garden") under a dotted rule below the breakdown, and the grid's empty slots (H.fillEmpty)
 	U.PetCount = text(U.Content, "PetCount", "", "Heading", 20, MUTED, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Visible = false })
 	U.TeamRule = SignKit.Rule(U.Content, { Name = "TeamRule", ZIndex = 2, Visible = false })
-	U.TeamBusy = text(U.Content, "TeamBusy", "", "Body", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2, Visible = false })
+	U.TeamBusy = text(U.Content, "TeamBusy", "", "Body", K.TEAM_BUSY_TEXT, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2, Visible = false })
 	U.Empties = {}
 	-- pick mode's banner: a small navy sign with the gold words
 	U.Banner = text(U.Content, "PickBanner", "", "Heading", 20, GOLD, {
@@ -323410,9 +324476,19 @@ function H.layoutCard(item)
 	-- as the mock's band: across the card's whole face, the word its small tag (K.BUSY_TEXT on PC, the phone card's own size
 	-- there), its lit top and lip (H.busyFinish)
 	place(item.Busy, 0, 7 + K.CHIP + 3, w, phone and 24 or 28)
-	item.Busy.TextSize = phone and fs or K.BUSY_TEXT
+	-- (playtest 2026-11-28 C53) never under the 14 px floor on screen: 16 design px drew 12.8 px under the 0.8 window
+	item.Busy.TextSize = phone and fs or math.max(K.BUSY_TEXT, math.ceil(14 / math.max(S.Scale or 1, 0.01)))
+	if item.Busy.Text == "Gardening" or item.Busy.Text == "Garden" then
+		item.Busy.Text = H.gardenWord(item)
+	end
 	H.padTop(item.Busy, 0)
 	item.Busy.TextWrapped = false
+end
+
+-- (playtest 2026-11-28 C53) a grid card's garden word: "Gardening", or "Garden" on a PC card whose word went up to the
+-- 14 px screen floor (a window under 1.0): the mark and "Gardening" at 18 design px filled the strip edge to edge
+function H.gardenWord(item)
+	return (S.Mode ~= "Phone" and item.Busy.TextSize > K.BUSY_TEXT) and "Garden" or "Gardening"
 end
 
 -- (Pitch 2 fix round B; was LOOK-ui kitb-look1's corner mark over the opaque cover) the card's busy mark is a slim strip now (layoutCard): the mark leads the word on its line, as on
@@ -323517,6 +324593,7 @@ local ROW_VGAP = 6
 -- on top, the number under it in the Heading face (45 design px: whole px under the 0.8 Fit). A phone tile keeps one
 -- line, its name fitted beside the number (H.fitRows)
 local ROW2_H = 45
+local ROW1_H = 30 -- (playtest 2026-11-28 C15) a short PC panel's one-line tile (its 22 px icon square and 18 px name)
 function H.placeRows(x, y, totalW, rowH, gap, phone)
 	-- (two lines: both columns the same width, the long name no longer shares its line with the number)
 	local leftW = math.floor((totalW - gap) / 2)
@@ -323592,7 +324669,14 @@ function H.layoutDetail(w, h)
 		row.Value.TextSize = phone and 15 or 19
 	end
 	d.Xp.Root.Parent = d.Frame
+	-- (playtest 2026-11-28 C15) a panel that cannot grow (a phone's sheet, the short PC panel) steps down until the pet's
+	-- Special has its line (H.fitLead picks the step): 1 = a phone's planks at the touch size (44), a short PC panel's
+	-- tiles on one line with the Special's room kept over its planks; 2 = a landscape phone's tiles 24 px tall
+	local squeeze = d.Squeeze or 0
 	local buttonH = phone and 48 or math.max(h < 560 and 52 or 58, H.touchSize())
+	if phone and squeeze >= 1 then
+		buttonH = math.min(buttonH, H.touchSize())
+	end
 	local gap = phone and 6 or 8
 	local bottomY = h - pad - buttonH
 	d.ButtonH, d.Gap, d.BottomY, d.CareY = buttonH, gap, bottomY, bottomY - gap - buttonH
@@ -323600,7 +324684,9 @@ function H.layoutDetail(w, h)
 	local y
 	if phone or h < 560 then
 		-- the pet beside its name
-		local pic = phone and (narrow and 96 or 120) or 96
+		-- (playtest 2026-11-28 C15 review, round 3) a narrow sheet's last step (360x640) takes an 80 px picture, so its tiles
+		-- move up under the XP bar (the wide sheet's 6 px) and a pet with two plank rows keeps its Special's strip
+		local pic = phone and (narrow and ((squeeze >= 2) and 80 or 96) or 120) or 96
 		place(d.Glow, pad + 4, 12, pic - 8, pic - 8)
 		place(d.Picture, pad, 8, pic, pic)
 		local x = pad + pic + 8
@@ -323612,11 +324698,19 @@ function H.layoutDetail(w, h)
 		place(d.Xp.Root, x, phone and 65 or 75, w - x - pad, 24)
 		y = phone and 95 or 108
 		if narrow then
-			y = pic + 14
+			y = math.max(y, pic + 14)
 		end
 		local rowX = (narrow or not phone) and pad or x
-		local rowH = phone and 26 or ROW2_H
-		H.placeRows(rowX, y, w - rowX - pad, rowH, 8, phone)
+		local rowH = phone and ((squeeze >= 2) and 24 or 26) or ROW2_H
+		-- (playtest 2026-11-28 C15) a short PC panel's tiles on one line (the phone's tile: the name beside its number) when
+		-- the Special has no room under the two-line ones
+		local oneLine = phone or squeeze >= 1
+		if not phone and oneLine then
+			rowH = ROW1_H
+		end
+		H.placeRows(rowX, y, w - rowX - pad, rowH, 8, oneLine)
+		d.RowsAt = { rowX, y, w - rowX - pad, rowH, 8, oneLine } -- (playtest 2026-11-28 C44) for the short panel's nudge
+		d.RowsBottom = y + 2 * rowH + ROW_VGAP
 		y = y + 2 * rowH + ROW_VGAP + 4
 		if phone and not narrow then
 			y = math.max(y, pic + 12)
@@ -323624,7 +324718,8 @@ function H.layoutDetail(w, h)
 	else
 		-- the pet on top
 		-- (merge kitb-look1) the 130 px picture too for a pet whose special strip and perks need its 40 px (TightPerks)
-		local pic = (h >= 620 and not d.TightPerks) and 170 or 130
+		-- (playtest 2026-11-28 C15) and the 96 px one when even that left no row for the perks (H.detailPic)
+		local pic = H.detailPic(h, d.TightPerks)
 		place(d.Glow, math.floor(w / 2 - pic / 2) + 8, 12, pic - 16, pic - 16)
 		place(d.Picture, math.floor(w / 2 - pic / 2), 4, pic, pic)
 		y = pic + 6
@@ -323635,12 +324730,49 @@ function H.layoutDetail(w, h)
 		y = y + 104
 		local rowH = phone and 30 or ROW2_H
 		H.placeRows(pad, y, textW, rowH, 10, phone)
+		d.RowsAt = nil
+		d.RowsBottom = y + 2 * rowH + ROW_VGAP
 		y = y + 2 * rowH + ROW_VGAP + 6
 	end
 	d.TextY = y
 	d.TextW = textW
 	d.Pad = pad
 	d.W = w
+	-- (playtest 2026-11-28 C44) a short PC panel (1274x580) put the team row on the Health / Speed tiles' foot: the
+	-- three button rows give up height (never under the touch size), then their gaps (never under 4 px), so the team
+	-- row's drawn wood edge (5 px outside its box) starts 5 px under the tiles
+	if not phone then
+		local rowsBottom = y - 4 -- the rows' foot (y adds a 4-6 px gap under them)
+		-- (playtest 2026-11-28 C15) squeezed, the Special's strip keeps its room between the tiles and the team row: its
+		-- 32 px, the clear px and the edges over it (5) and under it (the strip's 2, 1, the plank's 5)
+		local lead = (squeeze >= 1 and h < 560) and (5 + 32 + 8 - 10) or 0
+		local need = rowsBottom + 10 + lead - (bottomY - 2 * (buttonH + gap))
+		if need > 0 then
+			-- (playtest 2026-11-28 C15) a mouse screen's planks may go down to the short panel's own 52 (the touch size is
+			-- for fingers: 55 under the 0.8 window)
+			local floor = H.touchSize()
+			if lead > 0 and not UserInputService.TouchEnabled then
+				floor = math.min(floor, 52)
+			end
+			local cut = math.max(0, math.min(buttonH - floor, math.ceil(need / 3)))
+			buttonH, need = buttonH - cut, need - 3 * cut
+			if need > 0 then
+				local g = math.max(0, math.min(gap - 4, math.ceil(need / 2)))
+				gap, need = gap - g, need - 2 * g
+			end
+			-- last, the tiles move up into the 9 px under the XP bar (it keeps 5) beside the picture
+			local at = d.RowsAt
+			if need > 0 and at and at[2] == y - (2 * at[4] + ROW_VGAP + 4) then
+				local shift = math.min(need, 4)
+				H.placeRows(at[1], at[2] - shift, at[3], at[4], at[5], at[6])
+				y = y - shift
+				d.TextY = y
+				d.RowsBottom = d.RowsBottom - shift
+			end
+			bottomY = h - pad - buttonH
+			d.ButtonH, d.Gap, d.BottomY, d.CareY = buttonH, gap, bottomY, bottomY - gap - buttonH
+		end
+	end
 	if phone then
 		place(d.Close, w - 50, 6, 44, 44)
 	end
@@ -323680,18 +324812,36 @@ function H.placeActions()
 	for _, button in ipairs({ d.ActPut, d.ActFighter, d.ActRemove, d.ActFeed, d.ActTrain, d.ActGarden, d.ActEvolve }) do
 		button.TextSize = fs
 	end
+	-- (C15 review, round 3) the planks are laid out on the Train plank's own word; the countdown goes on it after
+	if d.TrainBase and d.ActTrain.Text ~= d.TrainBase then
+		d.ActTrain.Text = d.TrainBase
+	end
 	-- (gate U9 round 3) a phone keeps one care row only while every label fits its cell on one line; otherwise (Evolve
 	-- showing at 390 px, 'Leave Garden') it takes the PC's two rows: Feed | Train over Garden | Evolve
 	local careTop = careY
 	if phone then
 		local cellW = math.floor((innerW - (#list - 1) * gap) / #list)
 		local fits = true
-		for _, button in ipairs(list) do
-			fits = fits and H.careNeed(button, fs) <= cellW
+		local needs, total = {}, 0
+		for i, button in ipairs(list) do
+			needs[i] = H.careNeed(button, fs)
+			total = total + needs[i]
+			fits = fits and needs[i] <= cellW
 		end
 		if fits then
 			for i, button in ipairs(list) do
 				place(button, pad + (i - 1) * (cellW + gap), careY, cellW, d.ButtonH)
+			end
+		elseif total + (#list - 1) * gap <= innerW then
+			-- (playtest 2026-11-28 C15, the phone twin of C44) one row still holds every label when each plank takes its
+			-- label's room and an even share of the rest: the two rows put Feed / Train on the Health / Speed tiles of a
+			-- 640-667 px landscape sheet ('Leave Garden' beside Evolve)
+			local share = math.floor((innerW - (#list - 1) * gap - total) / #list)
+			local x = pad
+			for i, button in ipairs(list) do
+				local cw = (i == #list) and (pad + innerW - x) or (needs[i] + share)
+				place(button, x, careY, cw, d.ButtonH)
+				x = x + cw + gap
 			end
 		else
 			local half = math.floor((innerW - gap) / 2)
@@ -323718,22 +324868,91 @@ function H.placeActions()
 			place(d.ActGarden, pad, y2, innerW, d.ButtonH)
 		end
 	end
-	local bottomText = (phone and careTop or teamY) - gap
-	local workH = d.Work.Text ~= "" and (phone and 20 or 24) * (d.WorkLines or 1) or 0
-	place(d.Work, pad, d.TextY, d.TextW, workH)
-	d.Work.Visible = workH > 0 and d.TextY + workH <= bottomText
-	local perksY = d.TextY + workH + 2
+	local buttonsTop = phone and careTop or teamY
+	local bottomText = buttonsTop - gap
+	d.PerkLineH = phone and 18 or 22
+	-- (playtest 2026-11-28 C15 review) the strip's foot keeps one clear px over the planks' drawn edge: its own edge 2 px
+	-- under its box, the clear px, the plank's 5 px over its box (it borrowed 2 px of the gap and touched them at
+	-- 844x390); its top one clear px under the tiles' edge (both 2 px outside their boxes)
+	local stripLimit = buttonsTop - 8
+	local short = phone or (d.LayoutH or 0) < 560
+	local stripTop0 = math.max(d.TextY + (short and 0 or 2), (d.RowsBottom or d.TextY) + 5)
+	local lineH = phone and 20 or 24
+	local full = d.WorkFull or d.Work.Text
+	local fullH = full ~= "" and lineH * (d.WorkFullLines or d.WorkLines or 1) or 0
 	-- (LOOK-ui) the special's strip first, the other perks under it
 	local specialH = (d.HasSpecial and (phone and 26 or 32)) or 0
-	if specialH > 0 then
-		place(d.Special, pad, perksY, d.TextW, specialH)
-		perksY = perksY + specialH + (phone and 4 or 6)
+	local afterSpecial = phone and 4 or 6
+	-- the lead line under a work note `workH` tall: the Special's strip, or for a pet without one its first perk row
+	local function lead(workH)
+		local top = workH > 0 and math.max(d.TextY + workH + 2, stripTop0) or stripTop0
+		if specialH > 0 then
+			return top + specialH <= stripLimit, top, top + specialH + afterSpecial
+		end
+		top = d.TextY + ((workH > 0 and workH + 2) or (short and 0 or 2))
+		return top + d.PerkLineH <= bottomText, top, top
 	end
-	d.Special.Visible = specialH > 0 and perksY <= bottomText
+	-- the room the perk rows had under the whole work note and the strip, wherever they land: the tall panel's picture
+	-- steps read it (refreshDetail's TightPerks)
+	local _, _, seqPerksY = lead(fullH)
+	d.PerksFull = bottomText - seqPerksY
+	-- (playtest 2026-11-28 C15) the work note, the strip and the perks fill the room in turn on a tall PC panel (its
+	-- picture steps down first). A panel that cannot grow (a phone's sheet, the short PC panel, the tall one at its
+	-- smallest picture) gives the Special's line its place first, then the work note (whole; or its first note while
+	-- the whole one leaves perks only counted: the Evolve plank says 'ready'), then the perk rows: the note took the
+	-- Special's room at 960x640 and on landscape phones
+	local workText, workH = full, fullH
+	local fits, stripTop, perksY = lead(fullH)
+	local grows = not short and (d.TightPerks or 0) < 2
+	if not grows and fullH > 0 then
+		-- every perk shows (on the strip or in the rows) under the whole note: H.planPerks, as refreshDetail lays them
+		local _, _, lost = H.planPerks(math.max(0, math.floor((bottomText - perksY) / d.PerkLineH)), fits)
+		local wholeOk = fits and lost == 0
+		if not wholeOk then
+			local firstOk = false
+			if d.WorkShort and d.WorkShort ~= full then
+				firstOk, stripTop, perksY = lead(lineH)
+				if firstOk then
+					workText, workH, fits = d.WorkShort, lineH, true
+				end
+			end
+			if not firstOk and not fits then
+				workText, workH = "", 0
+				fits, stripTop, perksY = lead(0)
+			elseif not firstOk then
+				fits, stripTop, perksY = lead(fullH)
+			end
+		end
+	end
+	if d.Work.Text ~= workText then
+		d.Work.Text = workText
+	end
+	PixelIcon.Mark(d.Work, (workText ~= "" and (workText ~= full or (d.WorkFullLines or 1) == 1)) and d.WorkMark or nil) -- (kit-b U7b)
+	place(d.Work, pad, d.TextY, d.TextW, workH)
+	d.Work.Visible = workH > 0 and d.TextY + workH <= bottomText
+	-- (playtest 2026-11-28 C15 review, round 3) a training pet's note was the only place its time left showed ('Training
+	-- Attack Speed (2:07 left)'): where the note drops (a landscape sheet, the short PC panel) the Train plank keeps the
+	-- countdown ('Training 2:07', else '2:07 left', else '2:07' beside its training icon: what its cell holds)
+	if d.TrainLeft and not (d.Work.Visible and string.find(workText, d.TrainLeft, 1, true)) then
+		local cellW = d.ActTrain.Size.X.Offset
+		for _, t in ipairs({ d.TrainBase .. " " .. d.TrainLeft, d.TrainLeft .. " left", d.TrainLeft }) do
+			d.ActTrain.Text = t
+			if H.careNeed(d.ActTrain, fs) <= cellW then
+				break
+			end
+			d.ActTrain.Text = d.TrainBase
+		end
+	end
+	d.Special.Visible = specialH > 0 and fits
+	if specialH > 0 then
+		place(d.Special, pad, stripTop, d.TextW, specialH)
+	end
+	-- for the step search (H.fitLead): the Special's line has its place; the whole work note shows too
+	d.LeadFits = fits
+	d.WorkFits = fullH == 0 or (d.Work.Visible and workText == full)
 	local perksH = bottomText - perksY
 	place(d.Perks, pad, perksY, d.TextW, math.max(0, perksH))
 	d.PerksH = perksH
-	d.PerkLineH = phone and 18 or 22
 end
 
 function H.gridPad(px)
@@ -323798,6 +325017,7 @@ function H.layoutPC(W, H0)
 		U.TeamRule.Position = UDim2.fromOffset(powerX, top + 100)
 		place(U.TeamBusy, powerX, top + 108, powerW, 26)
 		S.BusyRoom = true
+		H.fitTeamBusy()
 		place(U.AutoFill, buttonX, top + 8, buttonW, 60)
 		place(U.Clear, buttonX, top + 80, buttonW, 60)
 		for i, button in ipairs(U.Presets) do
@@ -323885,6 +325105,21 @@ function H.layoutPhone(W, H0)
 		local chips = K.PHONE_CHIPS
 		local fit = math.min(1, (W - closeW - 12 - x - 2 * 4) / (chips[1] + chips[2] + chips[3]))
 		local sortW, fillW, clearW = math.floor(chips[1] * fit), math.floor(chips[2] * fit), math.floor(chips[3] * fit)
+		-- (playtest 2026-11-28 C36) the sort chip gets the room its longest word needs, from Clear's spare first, then
+		-- Auto-fill's (it wraps 'Auto-fill / best' at its space): an even squeeze cut 'Strongest' at 640x360
+		local sortNeed = 0
+		for _, mode in ipairs(K.SORTS) do
+			sortNeed = math.max(sortNeed, H.chipNeed(U.Sort, mode, 15, 9)) -- its chevron: 9 px at the 15 px text
+		end
+		local short = sortNeed - sortW
+		if short > 0 then
+			local spare = math.max(0, clearW - math.max(H.chipNeed(U.Clear, U.Clear.Text, 15), H.chipNeed(U.Undo, U.Undo.Text, 16)))
+			local give = math.min(short, spare)
+			clearW, sortW, short = clearW - give, sortW + give, short - give
+			spare = math.max(0, fillW - H.chipNeed(U.AutoFill, "Auto-fill", 15))
+			give = math.min(short, spare)
+			fillW, sortW = fillW - give, sortW + give
+		end
 		place(U.Sort, x, top, sortW, chipH)
 		x = x + sortW + 4
 		place(U.AutoFill, x, top, fillW, chipH)
@@ -324006,6 +325241,9 @@ function H.layout()
 	end
 	local r = H.rect()
 	local modeChanged = S.Mode ~= r.mode or S.Portrait ~= r.portrait or S.Laid == nil
+	-- (playtest 2026-11-28 C53) the cards' busy word sizes from the window's scale (the 14 px floor): a new scale lays them
+	-- out again too (1920 -> 1024 kept the 1.0 window's 16 px, 12.8 on screen)
+	local cardsStale = modeChanged or S.Scale ~= r.scale
 	S.Mode, S.Portrait, S.Scale = r.mode, r.portrait, r.scale
 	local W, H0 = r.w / r.scale, r.h / r.scale
 	U.Holder.AnchorPoint = Vector2.new(0, 0)
@@ -324043,7 +325281,7 @@ function H.layout()
 	-- (F0 review) the sort plank leads with its chevron (led once it has its size and text)
 	PixelIcon.Lead(U.Sort, "down", { Px = phone and 12 or 18 })
 	H.showTeamExtras()
-	if modeChanged then
+	if cardsStale then
 		for _, item in pairs(U.Cards) do
 			H.layoutCard(item)
 		end
@@ -324155,7 +325393,7 @@ function H.refreshSlots(keys)
 		end
 		if def then
 			local level = Bits.petLevel(key)
-			item.Name.Text = Bits.displayName(key, def)
+			item.Name.Text = H.slotName(item.Name, Bits.displayName(key, def), Bits.tierOf(key, def))
 			item.Level.Text = "L" .. level
 			item.Power.Text = commas(H.powerOf(key))
 		end
@@ -324276,12 +325514,22 @@ function H.fillEmpty()
 		local well = U.Empties[i]
 		if i <= want then
 			if not well then
-				well = Instance.new("Frame")
+				-- (playtest 2026-11-28 C53) the "+" well does what it says: a tap opens the Shop's Eggs (it was an inert
+				-- Frame that invited a tap); not while picking a pet for the team
+				well = Instance.new("TextButton")
+				well.Text = ""
+				well.AutoButtonColor = false
 				well.Name = "EmptySlot_" .. i
 				well.BorderSizePixel = 0
 				well.ZIndex = 3
 				well:SetAttribute("Slot", "Empty")
 				CloudUI.SignBlock(well, "Off")
+				well.Activated:Connect(function()
+					local menu = S.Pick == nil and H.controller("MenuController")
+					if menu then
+						safe("shop", menu.Open, "Shop", { Tab = "Eggs" })
+					end
+				end)
 				local icon = PixelIcon.New(well, "plus", 18, tint)
 				icon.AnchorPoint = Vector2.new(0.5, 0.5)
 				icon.Position = UDim2.fromScale(0.5, 0.5)
@@ -324295,6 +325543,31 @@ function H.fillEmpty()
 			well.Visible = false
 		end
 	end
+end
+
+-- (2026-11-28 playtest C19 review: one row as wide as the Team power column, 257 design px at 1280 x 720, and "1 fighter,
+-- 1 helper in the garden" ran 14 px past it onto the Clear button, a whole busy team 126 px) the busy line fits its box:
+-- the fighter and helpers named (S.BusyWords[1]) at TEAM_BUSY_TEXT or smaller down to the 14 screen px floor, else the
+-- counts alone ("2 in the garden, 1 in training", as the training count always read) the same way; the short form at
+-- the floor (cut at its end) only if neither fits
+function H.fitTeamBusy()
+	local words = S.BusyWords
+	if not (U.TeamBusy and type(words) == "table") then
+		return
+	end
+	local room = U.TeamBusy.Size.X.Offset
+	local top = K.TEAM_BUSY_TEXT
+	local floor = math.min(top, math.ceil(Theme.Readability.MinPx / math.max(0.01, S.Scale or 1) - 0.001))
+	for _, line in ipairs(words) do
+		for size = top, floor, -1 do
+			local ok, m = pcall(Theme.Measure, line, "Body", size)
+			if ok and typeof(m) == "Vector2" and m.X <= room then
+				U.TeamBusy.Text, U.TeamBusy.TextSize = line, size
+				return
+			end
+		end
+	end
+	U.TeamBusy.Text, U.TeamBusy.TextSize = words[#words], floor
 end
 
 -- the pet count and the busy helpers' line where the layout gave them room (not while picking: the banner and Cancel
@@ -324435,7 +325708,7 @@ function H.refreshCards(keys)
 		item.Count.Text = "x" .. copies
 		local busy = Bits.busyOf(key)
 		item.Busy.Visible = busy ~= nil
-		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
+		item.Busy.Text = busy == "Training" and "Training" or (busy and H.gardenWord(item) or "")
 		H.busyMark(item, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
 		item.Busy.BackgroundColor3 = busy == "Training" and TRAIN_COLOR or GARDEN_COLOR
 	end
@@ -324484,7 +325757,7 @@ end
 -- the measure's spare: Theme.Measure came out about 13 % short of the drawn FredokaOne in the renders, so the row steps
 -- down early; the chips size themselves (AutomaticSize) and H.metaOverflow steps down once more if they still overrun
 local META_SPARE = 1.15
-local META_RANK = { Full = 1, Tight = 2, Hide = 3 }
+local META_RANK = { Full = 1, Tight = 2, Hide = 3, Pill = 4 }
 
 -- (gate U9 round 3) the room a care plank's label needs on one line: its text in the Button face with the measure's
 -- spare, its icon's padding (PixelIcon.Lead) and a 4 px margin, whole px
@@ -324492,6 +325765,63 @@ function H.careNeed(button, size)
 	local p = button:FindFirstChildOfClass("UIPadding")
 	local inset = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) or 0
 	return math.ceil(H.metaTextW(button.Text, size) * META_SPARE) + inset + 4
+end
+
+-- (playtest 2026-11-28 C44) a team slot's name: whole while it fits its label, else the first words as initials and the
+-- last word ('O. Golem'), which keeps which pet it is where 'Obsidian...' cut it; a name that still runs over truncates.
+-- (C44 review, round 3) a Golden / Rainbow copy (`tier`) keeps its finish word first ('Golden S. Owl', as
+-- PetPicker.paintCard), then every word's initial ('G. S. Owl'), then the pet's own initials ('S. Owl': the slot's face
+-- shows the finish) before a cut name
+function H.slotName(label, name, tier)
+	local room = label.Size.X.Offset
+	-- (C44 review, round 3) strictly inside the label: the measure with the chips' spare (META_SPARE). The 5 % it let
+	-- over drew 'Candy Unic...' (102 px of text in its 92 px label at 960x640)
+	local function fits(text)
+		return room <= 0 or math.ceil(H.metaTextW(text, label.TextSize) * META_SPARE) <= room
+	end
+	if fits(name) then
+		return name
+	end
+	local function initialed(text)
+		local words = {}
+		for word in tostring(text):gmatch("%S+") do
+			words[#words + 1] = word
+		end
+		if #words < 2 then
+			return nil
+		end
+		local out = {}
+		for i = 1, #words - 1 do
+			out[i] = words[i]:sub(1, 1) .. "."
+		end
+		return table.concat(out, " ") .. " " .. words[#words]
+	end
+	local tries = {}
+	local own = nil
+	if tier == "Golden" or tier == "Rainbow" then
+		local base = tostring(name):gsub("^" .. tier .. "%s+", "")
+		own = base ~= name and (initialed(base) or base) or nil
+		if own and own ~= base then
+			tries[#tries + 1] = tier .. " " .. own
+		end
+	end
+	tries[#tries + 1] = initialed(name)
+	tries[#tries + 1] = own
+	for _, short in ipairs(tries) do
+		if fits(short) then
+			return short
+		end
+	end
+	return name
+end
+
+-- (playtest 2026-11-28 C36) the room a top-row chip needs for `text` on one line at `size` (its padding included; a
+-- lead icon of `leadPx` sits left of the centred text, so it needs its width and a 6 px gap on both sides)
+function H.chipNeed(button, text, size, leadPx)
+	local p = button:FindFirstChildOfClass("UIPadding")
+	local inset = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) or 0
+	local leadW = (tonumber(leadPx) or 0) > 0 and (leadPx + 6) or 0
+	return math.ceil(H.metaTextW(text, size) * META_SPARE) + inset + 12 + 2 * leadW -- 6 px clear of each wood edge
 end
 
 function H.fitMetaRow()
@@ -324523,6 +325853,12 @@ function H.fitMetaRow()
 	end
 	-- (last: a 390 px portrait sheet with an evolved pet) the element chips stay off the line; the rarity keeps its tag
 	local mode = (d.Meta.Size.X.Offset + chips > rowW and "Hide") or (tight and "Tight") or "Full"
+	-- (playtest 2026-11-28 C44 review) and when the tag alone still runs past the row ('Legendary' 9 px onto the wood at
+	-- 1024x768), it sizes to the room left: 4 px each side of its word (H.metaChips)
+	if mode == "Hide" and d.Meta.Size.X.Offset + rarity > rowW then
+		mode = "Pill"
+	end
+	d.PillW = math.max(0, rowW - d.Meta.Size.X.Offset - gap)
 	-- (LOOK-ui) a step H.metaOverflow took for this pet at this width holds (no flicker back up on the next refresh)
 	local floorKey = tostring(key) .. "|" .. rowW .. "|" .. size
 	if d.MetaFloorKey == floorKey and d.MetaFloor and META_RANK[d.MetaFloor] > META_RANK[mode] then
@@ -324535,6 +325871,11 @@ function H.fitMetaRow()
 	if d.MetaRow:GetAttribute("Fit") ~= mode then
 		d.MetaRow:SetAttribute("Fit", mode)
 		H.metaChips(def)
+	elseif mode == "Pill" then
+		local tag = d.MetaRow:FindFirstChild("RarityChip")
+		if tag then
+			H.sizePill(tag, def)
+		end
 	end
 	-- a frame later, laid out, once more (the list's signal does not see an AutomaticSize chip growing inside it)
 	if not d.MetaCheck then
@@ -324544,6 +325885,37 @@ function H.fitMetaRow()
 			safe("metaOverflow", H.metaOverflow)
 		end)
 	end
+end
+
+-- (playtest 2026-11-28 C44 review) a "Pill" row's rarity tag: its word with the measure's spare and 4 px each side, no
+-- wider than the room the level line leaves (d.PillW, H.fitMetaRow).
+-- (C44 review, round 3) the word gets its room before it is cut: a px smaller (never under the 14 screen px floor), then
+-- 3 px each side ('Legend..' at 390x844: the word needed 86 of the tag's 80 px). Narrower rows (360-375 px portrait
+-- sheets, 50-66 px of tag) still cut it: a layout call
+function H.sizePill(tag, def)
+	local d = U.D
+	local word = tostring(def.Rarity)
+	local size = H.metaSize()
+	local room = math.max(0, d.PillW or math.huge)
+	local floorPx = math.ceil(((Theme.Readability and Theme.Readability.MinPx) or 14) / math.max(S.Scale or 1, 0.01))
+	local function need(px, pad)
+		return math.ceil(H.metaTextW(word, px) * META_SPARE) + 2 * pad
+	end
+	local px, pad = size, 4
+	if need(size, 4) > room then
+		for _, try in ipairs({ { size - 1, 4 }, { size - 1, 3 } }) do
+			if try[1] >= floorPx and need(try[1], try[2]) <= room then
+				px, pad = try[1], try[2]
+				break
+			end
+		end
+	end
+	tag.TextSize = px
+	local p = tag:FindFirstChildOfClass("UIPadding")
+	if p and (p.PaddingLeft.Offset ~= pad or p.PaddingRight.Offset ~= pad) then
+		p.PaddingLeft, p.PaddingRight = UDim.new(0, pad), UDim.new(0, pad)
+	end
+	tag.Size = UDim2.fromOffset(math.min(need(px, pad), room), H.metaChipH())
 end
 
 -- (LOOK-ui, kitb-look1) the detail's chips after its level line: the rarity's tag in its colour (CloudUI.RarityColor; the
@@ -324580,8 +325952,17 @@ function H.metaChips(def)
 	local tagEdge = stroke(tag, SIGN.Wood, 2, 0)
 	tagEdge.Name = "SignEdge"
 	tagEdge.LineJoinMode = Enum.LineJoinMode.Miter
-	Bits.pad(tag, 8, 0, 8, 0)
-	for i, element in ipairs(fit == "Hide" and {} or Bits.elementsOf(def)) do
+	if fit == "Pill" then
+		-- (playtest 2026-11-28 C44 review) the tag no wider than the row's room: 4 px each side of its word, the word cut at
+		-- its end only if even that runs over (H.fitMetaRow; the AutomaticSize tag ran 9 px onto the panel's wood)
+		Bits.pad(tag, 4, 0, 4, 0)
+		tag.AutomaticSize = Enum.AutomaticSize.None
+		tag.TextTruncate = Enum.TextTruncate.AtEnd
+		H.sizePill(tag, def)
+	else
+		Bits.pad(tag, 8, 0, 8, 0)
+	end
+	for i, element in ipairs((fit == "Hide" or fit == "Pill") and {} or Bits.elementsOf(def)) do
 		CloudUI.ElementChip(d.MetaRow, element, 25, {
 			Label = not tight and element or nil,
 			TextSize = size,
@@ -324631,6 +326012,9 @@ function H.metaOverflow()
 		return
 	elseif fit == "Tight" then
 		fit = "Hide"
+	elseif fit == "Hide" then
+		fit = "Pill" -- (playtest 2026-11-28 C44 review) the tag sizes to the row's room
+		d.PillW = math.max(0, d.MetaRow.Size.X.Offset - d.Meta.Size.X.Offset - 6)
 	else
 		return
 	end
@@ -324739,15 +326123,29 @@ function H.refreshDetail(keys, order)
 		work = work .. "Ready to evolve!"
 		mark = mark or ICON.Evolve
 	end
+	-- (playtest 2026-11-28 C15 review) the first note alone, for a panel whose room the whole note would take from the
+	-- perks or the Special (H.placeActions): 'Ready to evolve!' is the Evolve plank's word too
+	d.WorkShort = (lines == 2) and work:match("^([^\n]*)\n") or nil
+	if lines == 2 and d.TextW then
+		-- (playtest 2026-11-28 C15) the two notes share one line where it holds them ('Working in your Garden  ·  Ready to
+		-- evolve!'): the second line took the Special's room on landscape phones and at 1080p
+		local joined = work:gsub("\n", "  ·  ")
+		if math.ceil(H.metaTextW(joined, d.Work.TextSize) * META_SPARE) <= d.TextW then
+			work, lines = joined, 1
+		end
+	end
 	d.Work.Text = work
-	PixelIcon.Mark(d.Work, lines == 1 and mark or nil) -- (kit-b U7b) a one-line work note leads with its mark
+	-- (kit-b U7b) a one-line work note leads with its mark (H.placeActions sets it for the note it shows)
+	d.WorkFull, d.WorkFullLines, d.WorkMark = work, lines, mark
 	d.WorkLines = lines
 	-- the special, then the follow perks
 	-- (LOOK-ui) the special on its own strip (d.Special), the other perks in the list under it
 	local perkLines = {}
 	d.HasSpecial = type(def.Special) == "table"
 	if d.HasSpecial then
-		d.SpecialText.Text = "Special: " .. tostring(BattleCatalog.FormNameOf(def.Id, def.Special.Kind, stage) or def.Special.Name or "Special")
+		d.SpecialName = tostring(BattleCatalog.FormNameOf(def.Id, def.Special.Kind, stage) or def.Special.Name or "Special")
+		d.SpecialText.Text = "Special: " .. d.SpecialName
+		d.SpecialBase = d.SpecialText.Text
 		PixelIcon.Mark(d.SpecialText, ICON.Star, { Colour = SIGN.GoldLip })
 	end
 	if stage >= 1 then
@@ -324775,25 +326173,207 @@ function H.refreshDetail(keys, order)
 	d.InTeam = at ~= nil
 	d.IsFighter = at == 1
 	d.ActEvolve.Visible = ready ~= nil
-	d.ActTrain.Text = job and "Training" or "Train"
+	-- (playtest 2026-11-28 C15 review, round 3) the plank's word, and the countdown H.placeActions puts on it where the
+	-- work note (the only other place the time shows) drops
+	d.TrainBase = job and "Training" or "Train"
+	d.TrainLeft = job and Bits.jobLeft(job) or nil
+	d.ActTrain.Text = d.TrainBase
 	d.ActGarden.Text = placed and "Leave Garden" or "Garden"
 	H.placeActions()
 	-- (merge kitb-look1) the special's strip took the perks' room under the 170 px picture (PerksH 2 at 1080p: a pet with
 	-- a special showed no perk at all): such a pet takes the 130 px one, the others keep the big picture
-	if S.Mode ~= "Phone" and d.LayoutH and d.LayoutH >= 620 then
-		local need = #d.PerkLines * d.PerkLineH
-		local tight = (d.TightPerks and (d.PerksH - 40) or d.PerksH) < need
-		if tight ~= (d.TightPerks == true) then
-			d.TightPerks = tight
+	-- (playtest 2026-11-28 C15) TightPerks is a step (0 = 170 px, 1 = 130, 2 = 96): the biggest picture that still
+	-- shows the Special and every perk (one a row, else packed side by side); at 1080p the 130 px one left a pet's
+	-- perks no row at all
+	if S.Mode ~= "Phone" and d.LayoutH and d.LayoutH >= 560 then
+		local now = H.detailPic(d.LayoutH, d.TightPerks)
+		local want = 2
+		for step = 0, 2 do
+			-- (playtest 2026-11-28 C15 review) the room under the whole work note (PerksFull): the smallest picture lets the
+			-- note shorten (H.placeActions), which must not read as room for a bigger picture
+			local room = (d.PerksFull or d.PerksH) + now - H.detailPic(d.LayoutH, step)
+			local rows = math.floor(room / d.PerkLineH)
+			local specialOk = not d.HasSpecial or room >= -6
+			local perksOk = #d.PerkLines == 0 or #d.PerkLines <= rows or (rows >= 1 and #H.packPerks(d.PerkLines, math.huge, d.TextW) <= rows)
+			if specialOk and perksOk then
+				want = step
+				break
+			end
+		end
+		if want ~= (d.TightPerks or 0) then
+			d.TightPerks = want
 			H.layoutDetail(d.LayoutW, d.LayoutH)
 		end
 	end
+	H.fitLead(key)
 	d.Perks.Visible = d.PerksH >= d.PerkLineH
-	local shown = {}
-	for i = 1, math.min(#d.PerkLines, math.floor(d.PerksH / d.PerkLineH)) do
-		shown[i] = d.PerkLines[i]
+	local rows = d.Perks.Visible and math.floor(d.PerksH / d.PerkLineH) or 0
+	local line, perkRows = H.planPerks(rows, d.Special.Visible)
+	if d.HasSpecial and line and d.SpecialText.Text ~= line then
+		d.SpecialText.Text = line
 	end
-	d.Perks.Text = table.concat(shown, "\n")
+	d.Perks.Text = table.concat(perkRows, "\n")
+end
+
+-- (playtest 2026-11-28 C15) the perks the rows cannot hold (a landscape phone, a short PC panel, 1080p) ride first on
+-- the Special's strip after its name, as far as they fit it ('Special: Aurora Mark  ·  Reach +15%'); the rest go in
+-- the rows, and what still does not fit is counted ('+1 more') so none goes without notice. Returns the strip's line,
+-- the rows' lines and how many perks are only counted (H.placeActions reads that to choose the work note's length)
+function H.planPerks(rows, stripOn)
+	local d = U.D
+	local rest = d.PerkLines or {}
+	local line = d.SpecialBase
+	local counted = 0
+	if d.HasSpecial and d.SpecialBase then
+		if stripOn and #rest > 0 and #H.packPerks(rest, math.huge, d.TextW) > rows then
+			local room = d.TextW - 16 - math.ceil(d.SpecialText.TextSize * 1.5) -- the strip's pads and its star
+			-- (the measure alone: the strip's text truncates at its end if the face runs wider)
+			local function fits(text)
+				return H.metaTextW(text, d.SpecialText.TextSize) <= room
+			end
+			local n, taken = #rest, 0
+			for i, perk in ipairs(rest) do
+				local left = n - i
+				local nextLine = line .. "  ·  " .. perk
+				-- with no rows the strip keeps room for the count of the ones it leaves out
+				if not fits((rows == 0 and left > 0) and (nextLine .. "  ·  +" .. left .. " more") or nextLine) then
+					break
+				end
+				line, taken = nextLine, i
+			end
+			local left = {}
+			for i = taken + 1, n do
+				left[#left + 1] = rest[i]
+			end
+			rest = left
+			if rows == 0 and #rest > 0 then
+				-- (playtest 2026-11-28 C15 review) the count always shows: at 960x640 'Special: Aurora Mark  ·  +3 more' ran
+				-- past the strip and the perks went without notice; the strip's star says "Special", so the word goes first
+				counted = #rest
+				local count = "  ·  +" .. #rest .. " more"
+				local name = d.SpecialName or line
+				for _, try in ipairs({ line .. count, name .. count, name .. "  ·  +" .. #rest }) do
+					if fits(try) then
+						line = try
+						break
+					end
+					line = (try == name .. "  ·  +" .. #rest) and try or line
+				end
+			end
+		end
+	end
+	local out, hidden = H.packPerks(rest, rows, d.TextW)
+	if rows <= 0 and not (d.HasSpecial and stripOn) then
+		hidden = #rest
+	end
+	return line, out, counted + (hidden or 0)
+end
+
+-- (playtest 2026-11-28 C15) the perk lines for `rows` rows of `w` px: one perk a row while they fit, else whole perks
+-- side by side ("Reach +15%  ·  +14% Tokens") so a short panel (1080p, landscape phones) still shows them all; it cut
+-- the list at the room's last row before, silently
+function H.packPerks(lines, rows, w)
+	if rows <= 0 then
+		return {}
+	end
+	if #lines <= rows and rows ~= math.huge then
+		return lines
+	end
+	local SEP = "  ·  "
+	local function fits(text)
+		return H.perkTextW(text) <= w -- (the Body measure runs wide of the drawn face; the label wraps, never runs on)
+	end
+	local packed, cur = {}, nil
+	for _, line in ipairs(lines) do
+		if cur and not fits(table.concat(cur, SEP) .. SEP .. line) then
+			packed[#packed + 1] = cur
+			cur = nil
+		end
+		cur = cur or {}
+		cur[#cur + 1] = line
+	end
+	packed[#packed + 1] = cur
+	local hidden = 0 -- (playtest 2026-11-28 C15 review) returned too: how many only got counted
+	if #packed > rows then
+		-- the rows left say how many perks did not fit ('+2 more'), so none goes without notice
+		for i = rows + 1, #packed do
+			hidden = hidden + #packed[i]
+			packed[i] = nil
+		end
+		local last = packed[rows]
+		while #last > 0 and not fits(table.concat(last, SEP) .. SEP .. "+" .. hidden .. " more") do
+			table.remove(last)
+			hidden = hidden + 1
+		end
+		last[#last + 1] = "+" .. hidden .. " more"
+	end
+	local out = {}
+	for i, row in ipairs(packed) do
+		out[i] = table.concat(row, SEP)
+	end
+	return out, hidden
+end
+
+-- (playtest 2026-11-28 C15 review) a panel that cannot grow (a phone's sheet, the short PC panel under 560 px) takes the
+-- smallest step (d.Squeeze, H.layoutDetail) that gives the pet's Special its line: on a phone the one that keeps the
+-- whole work note too where a step does. The 640-667 px landscape sheets and the 1274x580 / 960x640 panels showed no
+-- Special and no perk at all. Searched again only when what decides it changes (the pet, the panel, the planks shown)
+function H.fitLead(key)
+	local d = U.D
+	if not (d and d.LayoutW and d.LayoutH) then
+		return
+	end
+	local phone = S.Mode == "Phone"
+	if not phone and d.LayoutH >= 560 then
+		if (d.Squeeze or 0) ~= 0 then
+			d.Squeeze, d.SqueezeSig = 0, nil
+			H.layoutDetail(d.LayoutW, d.LayoutH)
+		end
+		return
+	end
+	-- (the note's digits as zeros: a training timer's tick changes nothing here)
+	-- (the Train plank's own word: H.placeActions may add the ticking countdown to it)
+	local sig = table.concat({ tostring(key), d.LayoutW, d.LayoutH, tostring(S.Mode), (tostring(d.WorkFull):gsub("%d", "0")), tostring(d.HasSpecial), #(d.PerkLines or {}),
+		tostring(d.ActEvolve.Visible), tostring(d.InTeam), tostring(d.IsFighter), d.ActGarden.Text, tostring(d.TrainBase or d.ActTrain.Text), tostring(UserInputService.TouchEnabled) }, "|")
+	if d.SqueezeSig == sig then
+		return
+	end
+	d.SqueezeSig = sig
+	-- a phone: 1 = the planks at the touch size, 2 = the tiles 24 px (and a narrow sheet's 80 px picture, C15 review
+	-- round 3: the 360x640 sheet had no step past 1); a short PC panel: 1 = one-line tiles
+	local top = phone and 2 or 1
+	local pick, leadOnly = nil, nil
+	for s = 0, top do
+		d.Squeeze = s
+		H.layoutDetail(d.LayoutW, d.LayoutH)
+		if d.LeadFits and (d.WorkFits or not phone) then
+			pick = s
+			break
+		end
+		if d.LeadFits and leadOnly == nil then
+			leadOnly = s
+		end
+	end
+	local want = pick or leadOnly or 0
+	if want ~= d.Squeeze then
+		d.Squeeze = want
+		H.layoutDetail(d.LayoutW, d.LayoutH)
+	end
+end
+
+-- (playtest 2026-11-28 C15) the detail's picture on top: 170 px on a tall panel, 130 when the perks need the room
+-- (step 1), 96 when they need more (step 2)
+function H.detailPic(h, step)
+	step = tonumber(step) or 0
+	if step >= 2 then
+		return 96
+	end
+	return (h >= 620 and step == 0) and 170 or 130
+end
+
+function H.perkTextW(text)
+	local ok, v = pcall(Theme.Measure, text, "Body", 18)
+	return math.ceil((ok and typeof(v) == "Vector2" and v.X > 0) and v.X or #text * 18 * 0.6)
 end
 
 function H.refresh()
@@ -324823,23 +326403,37 @@ function H.refresh()
 	H.refreshDetail(keys, order)
 	-- (F0 review) the pet count, the busy helpers' line and the grid's empty wells follow the pets
 	U.PetCount.Text = #order == 1 and "1 pet" or (#order .. " pets")
-	local garden, training = 0, 0
-	for _, key in ipairs(keys) do
+	-- (2026-11-28 playtest C19) slot 1 is the fighter: a gardening fighter was counted as a "helper"
+	local garden, training, fighter = 0, 0, 0
+	for i, key in ipairs(keys) do
 		local busy = Bits.busyOf(key)
 		if busy == "Training" then
 			training = training + 1
+		elseif busy and i == 1 then
+			fighter = 1
 		elseif busy then
 			garden = garden + 1
 		end
 	end
-	local lines = {}
-	if garden > 0 then
-		lines[#lines + 1] = string.format("%d %s in the garden", garden, garden == 1 and "helper" or "helpers")
+	-- (C19 review) and the counts alone, the line's short form where the named one does not fit (H.fitTeamBusy)
+	local named, counted = {}, {}
+	if fighter + garden > 0 then
+		local who = {}
+		if fighter > 0 then
+			who[#who + 1] = "1 fighter"
+		end
+		if garden > 0 then
+			who[#who + 1] = string.format("%d %s", garden, garden == 1 and "helper" or "helpers")
+		end
+		named[#named + 1] = table.concat(who, ", ") .. " in the garden"
+		counted[#counted + 1] = string.format("%d in the garden", fighter + garden)
 	end
 	if training > 0 then
-		lines[#lines + 1] = string.format("%d in training", training)
+		named[#named + 1] = string.format("%d in training", training)
+		counted[#counted + 1] = named[#named]
 	end
-	U.TeamBusy.Text = table.concat(lines, ", ")
+	S.BusyWords = { table.concat(named, ", "), table.concat(counted, ", ") }
+	H.fitTeamBusy()
 	H.fillEmpty()
 	H.showTeamExtras()
 end
@@ -330392,6 +331986,8 @@ function ShopController.Open(args)
 	H.syncBack()
 	if focus then
 		safe("focus", ShopEggs.Focus, U.EggsPage, focus)
+	elseif not wasOpen then
+		safe("home", ShopEggs.ScrollHome, U.EggsPage) -- (playtest 2026-11-28 C18) the pill's open: the top, not the last machine
 	end
 	if not wasOpen then
 		SignKit.Rise(U.Holder) -- (Pitch 2 F0, finish pass A) the kit's open: the window rises 12 px in 3 hard steps
@@ -334250,7 +335846,9 @@ local K = {
 		-- (PC buttons stay >= 56 design px: 44+ screen px at the smallest PC scale, 0.8)
 		tight = { Pad = 10, Top = 6, TopH = 26, Name = 20, NameMin = 18, Rank = 18, BarH = 12, Line = 18, LineH = 24, BtnH = 56, BtnText = 20, BtnMin = 18, Bottom = 6, MaxText = 22 },
 		phone = { Pad = 8, Top = 2, TopH = 20, Name = 16, NameMin = 15, Rank = 15, BarH = 10, Line = 15, LineH = 18, BtnH = 44, BtnText = 16, BtnMin = 15, Bottom = 3, MaxText = 18 },
-		row = { Pad = 10, Name = 16, NameMin = 15, Rank = 15, BtnW = 140, BtnH = 44, BtnText = 16, BtnMin = 15, Line = 15, MaxText = 18 },
+		-- (playtest 2026-11-28 C39 review, round 3) Lip: the card's lip under its body; Min: the shortest card that holds the
+		-- compact stack (name 18, bar 10, one line 17, gaps 2 + 3, 2 px of air each end) over that lip
+		row = { Pad = 10, Name = 16, NameMin = 15, Rank = 15, BtnW = 140, BtnH = 44, BtnText = 16, BtnMin = 15, Line = 15, MaxText = 18, Lip = 6, Min = 60 },
 	},
 }
 
@@ -334323,7 +335921,9 @@ local EFFECT = {
 	Speed = { Per = 0.04, Words = "attack speed", Sign = "+" },
 	Physique = { Per = 0.05, Words = "max health", Sign = "+" },
 	Ability = { Per = 0.04, Words = "special power and charge", Short = "special power", Sign = "+" },
-	Defense = { Per = 0.03, Words = "damage taken", Sign = "-" },
+	-- (playtest 2026-11-28 C39) a minus skill always says what goes down ('Rank 1: -3%' in green read as a penalty);
+	-- Lead heads the one-line card's "Hits 0% -> -3%"
+	Defense = { Per = 0.03, Words = "damage taken", Sign = "-", Lead = "Hits" },
 }
 local HINTS = {
 	NoPet = "Pick a pet first",
@@ -335258,6 +336858,21 @@ function H.layoutPortrait(W, Hh)
 	H.layoutMats(W - 2 * pad, 60, K.MAT.mini.Gap)
 	local y0 = 72
 	local cardW, cardH = 150, 140
+	local gap = 8
+	-- (playtest 2026-11-28 C39 review, round 3) a short portrait phone (360x640: 53 px cards, the line half under the lip)
+	-- gives the skill cards the compact stack's height (K.CARD.row.Min): their gaps go to 6, then the pet card gives up
+	-- height down to the landscape card's (M.CardH; its rest note hides under 30 px, as on a landscape phone)
+	local rowMin = K.CARD.row.Min
+	local function cardsH(cH, g)
+		return math.floor((bodyH - (y0 + cH + 10) - 6 - 3 * g) / 4)
+	end
+	if cardsH(cardH, gap) < rowMin then
+		gap = 6
+		local short = rowMin - cardsH(cardH, gap)
+		if short > 0 then
+			cardH = math.max(M.CardH, cardH - 4 * short)
+		end
+	end
 	place(U.Card.Root, pad, y0, cardW, cardH)
 	H.layoutCardInside(cardW, cardH, true)
 	local rx = pad + cardW + 10
@@ -335276,7 +336891,6 @@ function H.layoutPortrait(W, Hh)
 	U.Note.TextSize = 15
 	S.NoteOn = U.Note.Size.Y.Offset >= 30
 	local sy = y0 + cardH + 10
-	local gap = 8
 	local A = bodyH - sy - 6
 	place(U.SkillsFrame, pad, sy, W - 2 * pad, A)
 	local ch = math.floor((A - 3 * gap) / 4)
@@ -335435,18 +337049,28 @@ function H.layoutSkillRow(item, w, h, m)
 	local lw = bx - pad - 8
 	local rankW = math.ceil(H.width("10/10", m.Rank, Theme.FontOf(item.RankL))) + 6
 	local top = math.max(4, math.floor((h - 64) / 2))
-	place(item.NameL, pad, top, lw - rankW - 4, 20)
+	-- the name 20, the bar at +24 (10), the line at +40 (20), the button centred on the card
+	local nameH, barY, lineY, lineH, btnY = 20, top + 24, top + 40, 20, (h - m.BtnH) / 2
+	local bodyH = h - (m.Lip or 6)
+	if top + 60 > bodyH then
+		-- (playtest 2026-11-28 C39 review, round 3) a short card (53 px at 360x640) ran the line 17 px past its body, half
+		-- under the lip: the compact stack (name 18, bar 10, line 17; 2 and 3 px apart), centred in the body with the button
+		top = math.max(1, math.floor((bodyH - 50) / 2))
+		nameH, barY, lineY, lineH = 18, top + 20, top + 33, 17
+		btnY = math.max(0, math.floor((bodyH - m.BtnH) / 2))
+	end
+	place(item.NameL, pad, top, lw - rankW - 4, nameH)
 	H.fit(item.NameL, { item.NameL.Text }, lw - rankW - 4, m.Name, m.NameMin)
-	place(item.RankL, pad + lw - rankW, top, rankW, 20)
+	place(item.RankL, pad + lw - rankW, top, rankW, nameH)
 	item.RankL.TextSize = m.Rank
 	item.RankL.TextXAlignment = Enum.TextXAlignment.Right
-	H.layoutBar(item, pad, top + 24, lw, 10)
+	H.layoutBar(item, pad, barY, lw, 10)
 	item.Next.Visible, item.Cost.Visible, item.Time.Visible = false, false, false
 	item.Now.Visible = true
-	place(item.Now, pad, top + 40, lw, 20)
+	place(item.Now, pad, lineY, lw, lineH)
 	item.Now.TextSize = m.Line
-	place(item.Action, bx, (h - m.BtnH) / 2, m.BtnW, m.BtnH)
-	place(item.MaxTag, bx, (h - m.BtnH) / 2, m.BtnW, m.BtnH)
+	place(item.Action, bx, btnY, m.BtnW, m.BtnH)
+	place(item.MaxTag, bx, btnY, m.BtnW, m.BtnH)
 	item.MaxTag.TextSize = m.MaxText
 	item.Lay = m
 end
@@ -336076,11 +337700,12 @@ function H.paintSkill(item)
 	-- rank 0 has no bonus yet ("-0% damage taken" would read oddly)
 	local nowShort = rank > 0 and (eff.Sign .. nowPct .. "%") or "0%"
 	local words = rank > 0 and (eff.Sign .. nowPct .. "% " .. eff.Words) or "no bonus yet"
+	local tail = eff.Sign == "-" and (" " .. eff.Words) or "" -- (playtest 2026-11-28 C39) "-3% damage taken"
 	if noPet then
 		nowText = ""
 	elseif st == "Training" then
 		nowText = "Now: " .. words
-		nextText = "Rank " .. jobRank .. ": " .. eff.Sign .. H.pct(id, jobRank) .. "%"
+		nextText = "Rank " .. jobRank .. ": " .. eff.Sign .. H.pct(id, jobRank) .. "%" .. tail
 		timeText = "Rank " .. jobRank .. " " .. G.Dot .. " " .. H.clock(left) .. " left"
 		timeColor = C.PurpleInk
 	elseif st == "Max" then
@@ -336088,7 +337713,7 @@ function H.paintSkill(item)
 		nextText, nextColor = "Top rank!", C.Ink
 	else
 		nowText = "Now: " .. words
-		nextText = "Rank " .. (rank + 1) .. ": " .. eff.Sign .. nextPct .. "%"
+		nextText = "Rank " .. (rank + 1) .. ": " .. eff.Sign .. nextPct .. "%" .. tail
 		costText = H.commas(cost)
 		timeText = H.minutes(seconds)
 	end
@@ -336102,7 +337727,15 @@ function H.paintSkill(item)
 		elseif not noPet then
 			line = nowShort .. " " .. G.Arrow .. " " .. eff.Sign .. nextPct .. "% " .. G.Dot .. " " .. timeText
 		end
-		H.fit(item.Now, { line, (line:gsub(" " .. G.Dot .. " .*$", "")) }, item.Now.Size.X.Offset - 2, m.Line, m.Line)
+		local plain = (line:gsub(" " .. G.Dot .. " .*$", ""))
+		local fits = { line, plain }
+		if eff.Lead and not noPet and st ~= "Training" then
+			-- (playtest 2026-11-28 C39) "Hits 0% -> -3% - 1 min": the lead says what the minus takes off. Both lead lines
+			-- come first: the time drops before the lead does (at 360x640 the bare "0% -> -3% - 1 min" won over
+			-- "Hits 0% -> -3%", the penalty look the playtest named)
+			fits = { eff.Lead .. " " .. line, eff.Lead .. " " .. plain, line, plain }
+		end
+		H.fit(item.Now, fits, item.Now.Size.X.Offset - 2, m.Line, m.Line)
 		item.Now.TextColor3 = st == "Training" and timeColor or C.Ink
 	else
 		local fits = { nowText }
@@ -336114,7 +337747,9 @@ function H.paintSkill(item)
 		end
 		H.fit(item.Now, fits, item.Now.Size.X.Offset - 2, m.Line, math.max(18, m.Line - 2))
 		item.Now.TextColor3 = C.Ink
-		item.Next.Text, item.Next.TextColor3 = nextText, nextColor
+		item.Next.TextColor3 = nextColor
+		-- (playtest 2026-11-28 C39) a minus skill's words drop only when its line has no room for them
+		H.fit(item.Next, { nextText, (nextText:gsub(tail ~= "" and (" " .. eff.Words .. "$") or "^$", "")) }, item.Next.Size.X.Offset - 2, m.Line, m.Line)
 		item.Cost.Text = costText
 		item.Cost.TextColor3 = st == "Short" and C.Bad or C.Good
 		item.Time.Text, item.Time.TextColor3 = timeText, timeColor
@@ -336136,7 +337771,8 @@ function H.paintSkill(item)
 		elseif st == "Training" then
 			text, colorName = "STOP", "Pink"
 		elseif st == "Busy" then
-			text, disabled = "Busy training", true
+			-- (playtest 2026-11-28 C58) the PET is busy (training another skill), not this skill: 'Busy training' sat on idle ones
+			text, disabled = "Pet is busy", true
 		elseif st == "Full" then
 			text, disabled = "Spots full", true
 		elseif st == "Match" then
@@ -338056,6 +339692,9 @@ local K = {
 	TAB_H = 35, -- ... and height: it ends 8 px into the card, clear above the counter tag and the fold (TAG_Y)
 	TAB_INSET = 22, -- the name starts this far in from each end of its plank (12 px clear of a brass rivet; the NPC's)
 	TAB_TEXT = 24, -- the name's largest size on the plank
+	-- (2026-11-28 playtest C42: "NIMB..." on a 667x375 card, the engine drawing the name wider than TextService measured it
+	-- at its floor) the name's box reaches this far into each inset past its plank's fit, 4 px clear of the rivets
+	NAME_SLACK = 8,
 	POP_EDGE = 6, -- at the screen's top edge the portrait and the plank may ride up to this far from the top (layout)
 	TAG_Y = 16, -- the counter tag and the fold block (30 high), under the name plank's row
 	TAG_H = 30,
@@ -338112,6 +339751,7 @@ local K = {
 	NEXT_LOCK = 2.5,
 	SKIP_LOCK = 3,
 	LAYOUT_EVERY = 0.5,
+	COVER_EVERY = 0.15, -- (C17 review) seconds between two reads of a covering window's ink over the guide (Cover.underWindow)
 	PORTRAIT_STEP = 1 / 30,
 	PORTRAIT_FOLDED_STEP = 1 / 15, -- the folded bubble keeps flapping at half the rate (bug batch 2 #23; phone battery)
 	FINALE_SECONDS = 4.5,
@@ -338340,6 +339980,21 @@ local function loadModule(container, name, timeout)
 	return nil
 end
 
+-- (2026-11-28 playtest C17 review) the windows over the guide: which fold the card and where they draw (one table: the
+-- chunk is near Lua's 200 locals)
+local Cover = {}
+-- (at 667 x 375 the Ring, Dungeon and Arena windows, the Food Machine and the garden picker the steps send the player to
+-- lay over the open card and the strip, 'The Champion Rin'; the Sky Trove and Fusion too, Fusion over the card on a PC)
+-- every window family that answers IsOpen, after MenuController's (its windows, Pets, the Shop, the egg stage): one open
+-- folds the card as a menu window does (windowCovering)
+Cover.WINDOWS = { "IndexController", "DailyController", "NpcController", "ArenaController", "DungeonController",
+	"CareController", "TrainController", "FusionController", "TroveController", "RaidGateController", "ObbyController",
+	"LossScreen", "PetPicker" }
+Cover.CONTROLLERS = {}
+for _, name in ipairs(Cover.WINDOWS) do
+	Cover.CONTROLLERS[name] = name ~= "PetPicker" -- (a UI module)
+end
+
 -- Optional collaborators, loaded on first use (missing ones simply switch a feature off).
 local function mod(name)
 	local cached = Mods[name]
@@ -338347,7 +340002,10 @@ local function mod(name)
 		local loaded
 		if name == "CloudUI" or name == "PixelCrisp" then
 			loaded = loadModule(Client:FindFirstChild("UI"), name, 5)
-		elseif name == "MenuController" or name == "IndexController" or name == "HudController" or name == "PromptController" then
+		elseif name == "PetPicker" then -- (2026-11-28 playtest C17 review: windowCovering, the garden picker)
+			loaded = loadModule(Client:FindFirstChild("UI"), name)
+		elseif name == "MenuController" or name == "IndexController" or name == "HudController" or name == "PromptController"
+			or name == "MainMenuController" or Cover.CONTROLLERS[name] then -- (2026-11-28 playtest C17: windowCovering)
 			loaded = loadModule(script.Parent, name)
 		else
 			loaded = loadModule(Shared, name, 5)
@@ -338979,12 +340637,33 @@ local function windowCovering()
 			return true
 		end
 	end
-	local index = mod("IndexController")
-	if index and type(index.IsOpen) == "function" then
-		local ok, open = pcall(index.IsOpen)
-		if ok and open == true then
+	-- (2026-11-28 playtest C17) the Gifts window and an NPC's dialog stacked on the open card: they cover it too, as every
+	-- other window family does (Cover.WINDOWS, C17 review)
+	for _, name in ipairs(Cover.WINDOWS) do
+		local m = mod(name)
+		if m and type(m.IsOpen) == "function" then
+			local ok, open = pcall(m.IsOpen)
+			if ok and open == true then
+				return true
+			end
+		end
+	end
+	-- (C17 review 2: the top bar gear's Settings window lay over the open card and the strip on the phones, the card still
+	-- open) the game menu's own windows (Settings, What's New, Credits: MainMenuController.Window) cover it too
+	local mmc = mod("MainMenuController")
+	if mmc and type(mmc.Window) == "function" then
+		local ok, holder = pcall(mmc.Window)
+		if ok and holder ~= nil then
 			return true
 		end
+	end
+	-- (C17) and a phone's dungeon chip in the top band (DungeonController's RunChip: the party countdown, the run) lay
+	-- under the strip, 'Door: tap Enter' read 'Enter'
+	local pg = playerGui()
+	local run = pg and pg:FindFirstChild("NimbusDungeonRun")
+	local chip = run and run:FindFirstChild("RunChip", true)
+	if chip and chip:IsA("GuiObject") and run:IsA("ScreenGui") and chip.AbsoluteSize.X > 0 and shownIn(chip, run) then
+		return true
 	end
 	return false
 end
@@ -339349,11 +341028,15 @@ local function applyGeometry(width, height, bodyH, hintH, titleExtra)
 	UI.SkipLink.TextSize = cap
 	UI.ConfirmQuestion.TextSize = math.max(19, cap)
 	-- (kit-b backlog items 10 / 16) one line from TITLE_SIZE down to TITLE_FLOOR, else its lines at TITLE_FLOOR
-	-- (titleLines); it was cut at the 14.4 px floor on a narrow card. Its box: from the title row's top to 1 px over the
+	-- (titleLines); it was cut at the 14.4 px floor on a narrow card. Its box: from the title row's top to 7 px over the
 	-- well with the progress row moved up, or the row's 26 px; each line past those TITLE_LINE taller (titleExtra)
 	UI.StepTitle.TextWrapped = wraps
 	UI.StepTitle.TextYAlignment = wraps and Enum.TextYAlignment.Bottom or Enum.TextYAlignment.Center
-	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, (progUp and (K.HEADER_H - 1 - 46) or 26) + titleExtra)
+	-- (2026-11-28 playtest C49: its descender touched the well's frame, 0.8 px, on phones; C49 review: 4 px over the well
+	-- only moved the tail onto the frame, which is a 2 px edge drawn outside the well, the 'y' of 'Pick a Buddy' and the
+	-- 'g' of 'Into the Dungeon!' drawn about 1 px under the box) the moved-up box ends 7 px over the well, 5 clear of its
+	-- 2 px edge (4.1 - 4.5 on a phone card, whose edge is 2 screen px); 42 px still holds two 20 px lines
+	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, (progUp and (K.HEADER_H - 7 - 46) or 26) + titleExtra)
 	UI.StepTitle.TextSize = wraps and K.TITLE_FLOOR or fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_FLOOR, cap), "Heading", headRoom)
 	layoutProgress(progUp and (headRoom - K.FOLD_W - 6) or headRoom)
 	-- narrow footers: "Skip tutorial" shortens to "Skip" and the Next button narrows, so they never overlap
@@ -340132,9 +341815,12 @@ local function buildPanel()
 	UI.Name = label(nameTab, "GuideName", "Nimbus", "Title", K.TAB_TEXT, SIGN.Gold, {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, -2),
-		Size = UDim2.new(1, -2 * K.TAB_INSET, 1, -(6 + K.NAME_LIP)),
+		Size = UDim2.new(1, -2 * (K.TAB_INSET - K.NAME_SLACK), 1, -(6 + K.NAME_LIP)),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		TextTruncate = Enum.TextTruncate.AtEnd,
+		-- (2026-11-28 playtest C42 review: the offline fit cannot see the engine's own measure, which drew the name about
+		-- 3 px wider than its box) never cut: the plank is sized to the name, so a name the engine draws a little wider
+		-- stays on the plank's insets instead of reading "NIMB..."
+		TextTruncate = Enum.TextTruncate.None,
 		ZIndex = 7,
 	})
 	UI.Name.TextScaled = true -- (U9-9 look) under UI.NameFit (applyGeometry): never cut to "NIMB..."
@@ -340715,6 +342401,7 @@ local function setPanelShown(on)
 	local k = math.max(0.1, UI.Scale.Scale)
 	local hiddenX = -math.floor((UI.Root.AbsolutePosition.X / k) + UI.Root.Size.X.Offset + 40)
 	if on then
+		S.coverRead = 0 -- (C17 review) a window it comes back under is read at once (Step)
 		safe("layout", layout)
 		UI.Root.Visible = true
 		UI.Slide.Position = UDim2.fromOffset(hiddenX, 0)
@@ -340728,6 +342415,8 @@ local function setPanelShown(on)
 		out.Completed:Connect(function()
 			if not S.shown and UI.Root then
 				UI.Root.Visible = false
+				-- (C17 review) a guide that slid out unseen under a window is whole again for its next show
+				UI.Slide.Visible = true
 			end
 		end)
 	end
@@ -340841,9 +342530,15 @@ local function menuButtonRects(except)
 	return out
 end
 
--- What the pointer arrow must not cover: the other menu tiles and the tutorial card / bubble.
-local function pointerObstacles(button)
+-- What the pointer arrow must not cover: the other menu tiles and the tutorial card / bubble; (2026-11-28 playtest C51:
+-- at 640x360 the step-21 arrow pointed up at Home from inside the thumbstick's zone) on touch, Roblox's thumbstick and
+-- the RUN / DASH buttons too, as for the guide chip
+local function pointerObstacles(button, area)
 	local list = menuButtonRects(button)
+	for _, r in ipairs(touchButtonRects()) do
+		list[#list + 1] = r
+	end
+	list[#list + 1] = area and thumbstickRect(area) or nil
 	if UI.Root and UI.Root.Visible then
 		local part = (collapsed() and S.stripChip) and UI.Portrait or UI.Root -- (Pitch 2 03 B: folded, the root is the strip)
 		if part and part.AbsoluteSize.X > 0 then
@@ -340878,7 +342573,7 @@ end
 local function choosePointerSide(r, k, area, button)
 	local len, thick = 68 * k, 44 * k
 	local push = 15 * k -- the farthest point of the bounce
-	local obstacles = pointerObstacles(button)
+	local obstacles = pointerObstacles(button, area)
 	for _, spec in ipairs(POINTER_SIDES) do
 		local cx, cy, w, h = pointerCentre(spec[1], r, len, thick, push)
 		local box = { x0 = cx - w / 2, y0 = cy - h / 2, x1 = cx + w / 2, y1 = cy + h / 2 }
@@ -342696,6 +344391,104 @@ local function applyState(payload)
 	ensureLoop()
 end
 
+-- where each covering window (Cover.WINDOWS) draws: its ScreenGui; of NimbusMenu (it holds the menu column too) and of
+-- NimbusMainMenu (the title screen's board too; C17 review 2) only the Window_ frames, of NimbusDungeonRun (its run card)
+-- only the party's chip
+Cover.GUIS = {
+	{ "NimbusMenu", Prefix = "Window_" }, { "NimbusPets" }, { "NimbusShop" }, { "NimbusHatch" }, { "NimbusIndex" },
+	{ "NimbusDaily" }, { "NimbusNpcDialog" }, { "NimbusDungeonRun", Part = "RunChip" }, { "NimbusArena" }, { "NimbusDungeon" },
+	{ "NimbusCare" }, { "NimbusTrain" }, { "NimbusFusion" }, { "NimbusTrove" }, { "NimbusRaidGate" }, { "NimbusObby" },
+	{ "NimbusLoss" }, { "NimbusPetPicker" }, { "NimbusMainMenu", Prefix = "Window_" },
+}
+
+-- what a part draws, not its box (as spotClaimed reads it: a window's holder is a transparent frame over the screen)
+function Cover.drawn(o)
+	if o.BackgroundTransparency < 0.99 or o:FindFirstChildOfClass("UIStroke") then
+		return true
+	end
+	if (o:IsA("ImageLabel") or o:IsA("ImageButton")) and o.Image ~= "" and o.ImageTransparency < 0.99 then
+		return true
+	end
+	return (o:IsA("TextLabel") or o:IsA("TextButton")) and o.Text ~= "" and o.TextTransparency < 0.99
+end
+
+-- true when `obj` (shown) or a shown part under it draws ink meeting `box` (screen px; a clipping part's children are cut
+-- to its box, so one clear of `box` is not walked)
+function Cover.meets(obj, box)
+	if not (obj:IsA("GuiObject") and obj.Visible) then
+		return false
+	end
+	local r = inkRect(obj)
+	local hit = r.x0 < box.x1 and box.x0 < r.x1 and r.y0 < box.y1 and box.y0 < r.y1
+	if hit and obj.AbsoluteSize.X > 1 and obj.AbsoluteSize.Y > 1 and Cover.drawn(obj) then
+		return true
+	end
+	if obj.ClipsDescendants and not hit then
+		return false
+	end
+	for _, c in ipairs(obj:GetChildren()) do
+		if Cover.meets(c, box) then
+			return true
+		end
+	end
+	return false
+end
+
+-- the guide's ink where it rests (the card with its name plank and portrait, or the strip; the slide's offset taken off,
+-- so its slide-in reads as its place), screen px; nil while it is not up
+function Cover.guideInk()
+	local slide, root = UI.Slide, UI.Root
+	if not (slide and root and root.Visible) then
+		return nil
+	end
+	local box = nil
+	local function walk(o)
+		for _, c in ipairs(o:GetChildren()) do
+			if c:IsA("GuiObject") and c.Visible then
+				if c.AbsoluteSize.X > 1 and c.AbsoluteSize.Y > 1 and Cover.drawn(c) then
+					local r = inkRect(c)
+					box = box and { x0 = math.min(box.x0, r.x0), y0 = math.min(box.y0, r.y0), x1 = math.max(box.x1, r.x1), y1 = math.max(box.y1, r.y1) } or r
+				end
+				walk(c)
+			end
+		end
+	end
+	walk(slide)
+	if not box then
+		return nil
+	end
+	local dx = slide.Position.X.Offset * math.max(0.01, UI.Scale.Scale)
+	return { x0 = box.x0 - dx, y0 = box.y0, x1 = box.x1 - dx, y1 = box.y1 }
+end
+
+-- a covering window's ink meets the guide's (the strip beside the docked Ring window at 1920 x 1080 stays; the Ring window
+-- over the strip at 667 x 375, or the Pets window over its right end at 1920 x 1080, does not)
+function Cover.underWindow()
+	local pg = playerGui()
+	local box = pg and Cover.guideInk()
+	if not box then
+		return false
+	end
+	for _, spec in ipairs(Cover.GUIS) do
+		local gui = pg:FindFirstChild(spec[1])
+		if gui and gui:IsA("ScreenGui") and gui.Enabled then
+			if spec.Part then
+				local part = gui:FindFirstChild(spec.Part, true)
+				if part and part:IsA("GuiObject") and shownIn(part, gui) and Cover.meets(part, box) then
+					return true
+				end
+			else
+				for _, c in ipairs(gui:GetChildren()) do
+					if (not spec.Prefix or c.Name:sub(1, #spec.Prefix) == spec.Prefix) and Cover.meets(c, box) then
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
 -- One frame of every tutorial visual (RenderStepped). Public so tests can drive it.
 function TutorialController.Step(dt)
 	dt = math.min(tonumber(dt) or 0, 0.25)
@@ -342723,7 +344516,27 @@ function TutorialController.Step(dt)
 	end
 	if covered ~= (S.windowOpen == true) then
 		S.windowOpen = covered
+		S.coverRead = 0
 		safe("layout", layout)
+	end
+	-- (2026-11-28 playtest C17: the Shop left 'Pick a B' of the folded strip showing, its '5/21' under the window) the
+	-- folded guide steps out of sight while a covering window's ink meets its own (Cover.underWindow; C17 review: hidden
+	-- under every window, it also went where nothing lay over it, as the Gifts window and an NPC's dialog at 1920 x 1080), read
+	-- every COVER_EVERY s and at once when a window comes or goes. Written only while the panel shows (C17 review: a guide
+	-- sent away under a window popped back in for its slide-out); the slide-out's end makes it whole again
+	if S.shown and UI.Slide then
+		S.coverRead = (S.coverRead or 0) - dt
+		if S.coverRead <= 0 then
+			S.coverRead = K.COVER_EVERY
+			local ok, under = true, false
+			if covered then
+				ok, under = pcall(Cover.underWindow)
+			end
+			local hide = ok and under == true
+			if UI.Slide.Visible == hide then
+				UI.Slide.Visible = not hide
+			end
+		end
 	end
 	if S.shown then
 		safe("typewriter", updateTypewriter, dt)
@@ -353014,12 +354827,20 @@ function H.placeWord(roll, lay)
 	local word = roll.UI.Crack
 	if word and lay then
 		local cr = lay.Crack
-		if roll.CrackWord then
-			roll.CrackWord:SetSize(cr.WordH) -- (the outline follows the size)
-		else
-			word.TextSize = cr.WordH
+		-- (playtest 2026-11-28 C30) a word wider than the screen's room shrinks to fit it: "LEGENDARY EGG!" at 40 px ran
+		-- out of its clamped box to within 5 px of both edges at 360x640
+		local size, tw = cr.WordH, H.textW(word.Text, cr.WordH, "Title")
+		local room = lay.W - 24 - 40
+		if tw > room and tw > 0 then
+			size = math.max(12, math.floor(cr.WordH * room / tw))
+			tw = H.textW(word.Text, size, "Title")
 		end
-		local w = math.min(lay.W - 24, H.textW(word.Text, cr.WordH, "Title") + 40)
+		if roll.CrackWord then
+			roll.CrackWord:SetSize(size) -- (the outline follows the size)
+		else
+			word.TextSize = size
+		end
+		local w = math.min(lay.W - 24, tw + 40)
 		H.place(word, (lay.W - w) / 2, cr.WordY, w, cr.WordH)
 	end
 end
@@ -360368,9 +362189,10 @@ return NeonKit
 --            firstFreeSlot, growth, stage, job, jobLeft, skillName, canEvolve, coinsPerSecond, formatCash, formatRate,
 --            busyOf (nil | "Training" | "Garden": State.Busy, or the same answer from the home / the job on an old snapshot)
 --   UI:      frame, text, corner, round, stroke, pad (the windows' Theme-styled building blocks)
---   PetBits.askRecall(gui, key, target, onYes, onNo, send): "This pet is gardening! Take it out of the garden and put it in
---            your team?" [Yes] [No]. Yes = ONE request (send("GardenRecall", { Key, To, Preset, Keys }), the server checks
---            everything and takes it out + stores the team); No = nothing. PetBits.closeRecall() -> true when one was up.
+--   PetBits.askRecall(gui, key, target, onYes, onNo, send): "<Pet name> is gardening! ("This pet ..." when the name does
+--            not fit) Take it out of the garden and put it in your team?" [Yes] [No]. Yes = ONE request
+--            (send("GardenRecall", { Key, To, Preset, Keys }), the server checks everything and takes it out + stores the
+--            team); No = nothing. PetBits.closeRecall() -> true when one was up.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -360961,7 +362783,13 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 	CloudUI.SignBlock(box, "Stone", { Face = SIGN.Stone, EdgePx = 6, LipPx = 8 })
 	local SignKit = require(Shared:WaitForChild("SignKit"))
 	SignKit.Nails(box, { Inset = 5, ZIndex = 63 })
-	local title = Theme.StyleTitle(PetBits.text(box, "Title", "This pet is gardening!", "Title", 28, SIGN.Text, { -- (kit-b U7b: no seedling emoji)
+	-- (playtest 2026-11-28 C58) the question names the pet ('Aurora Fox is gardening!'); the old words when it cannot fit
+	local generic = "This pet is gardening!"
+	local okName, petName = pcall(function()
+		return PetBits.displayName(key, PetBits.defOfKey(key))
+	end)
+	local named = (okName and type(petName) == "string" and petName ~= "") and (petName .. " is gardening!") or generic
+	local title = Theme.StyleTitle(PetBits.text(box, "Title", named, "Title", 28, SIGN.Text, { -- (kit-b U7b: no seedling emoji)
 		Position = UDim2.fromOffset(16, 14), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
 	}), "Section") -- (kit-b prep) a dialog's title: the ribbon is for window titles only
 	-- (kit-b gate U9 r4: "THIS PET IS GARDENING!" at 28 px ran past its box on a 390 px phone) the title steps down 2 px at
@@ -360982,6 +362810,14 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 			size = size - 2
 		end
 		title.TextSize = size
+		-- (playtest 2026-11-28 C58) a pet's name too long for the box at 18 px: the old words
+		if size <= 18 and title.Text ~= Theme.Caps(generic) and title.Text ~= generic then
+			local ok, m = pcall(Theme.MeasureLabel, title, title.Text, 18)
+			if ok and typeof(m) == "Vector2" and m.X * 1.12 > room then
+				title.Text = (title.Text == title.Text:upper()) and Theme.Caps(generic) or generic -- (the Section style's capitals kept)
+				fitTitle()
+			end
+		end
 	end
 	fitTitle()
 	title:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitTitle)
@@ -362546,6 +364382,22 @@ function H.jobText(job)
 	return "Training " .. Bits.jobLeft(job)
 end
 
+-- (playtest 2026-11-28 C40) "Twilight Dragon" -> "T. Dragon" (every word but the last as its initial); nil for one word
+function H.initialed(name)
+	local words = {}
+	for word in tostring(name or ""):gmatch("%S+") do
+		words[#words + 1] = word
+	end
+	if #words < 2 then
+		return nil
+	end
+	local out = {}
+	for i = 1, #words - 1 do
+		out[i] = (words[i]:match("^[%w]") or words[i]:sub(1, 1)) .. "."
+	end
+	return table.concat(out, " ") .. " " .. words[#words]
+end
+
 function H.paintCard(item, e)
 	local ctx = S.Context
 	local tint = CloudUI.RarityColor(e.Rarity)
@@ -362557,12 +364409,23 @@ function H.paintCard(item, e)
 	item.Stroke.Thickness = selected and 4 or 3
 	item.Button:SetAttribute("Selected", selected)
 	-- the name, then (a Golden / Rainbow copy) its finish + last word, then the last word
+	-- (playtest 2026-11-28 C40) and before the last word alone, the initials + last word ('T. Dragon'): 'Dragon' sat
+	-- beside 'Cloudy Dragon' with nothing to tell which dragon
 	local last = string.match(e.Name, "(%S+)%s*$") or e.Name
 	local tier = not e.Hybrid and Bits.tierOf(e.Key, e.Def) or "Normal"
-	item.Names = { e.Name, last }
+	item.Names = { e.Name }
+	-- (C40 review) a Golden / Rainbow copy keeps its finish and its initials first ('Golden C. Dragon'): 'Golden Dragon'
+	-- dropped 'Cloudy' and the initials of the whole name lost the finish ('G. C. Dragon')
+	local base = tier ~= "Normal" and (e.Name:gsub("^" .. tier .. "%s+", "")) or e.Name
+	local short = H.initialed(base)
 	if tier ~= "Normal" then
-		item.Names = { e.Name, tier .. " " .. last, last }
+		if short then
+			item.Names[#item.Names + 1] = tier .. " " .. short
+		end
+		item.Names[#item.Names + 1] = tier .. " " .. last
 	end
+	item.Names[#item.Names + 1] = short
+	item.Names[#item.Names + 1] = last
 	local levelText, stars = H.levelText(e)
 	item.Level.Text = levelText
 	item.Level:SetAttribute("Stars", stars)
@@ -365733,6 +367596,18 @@ function ShopEggs.Focus(page, rouletteId)
 	return true
 end
 
+-- (playtest 2026-11-28 C18) a fresh open with no machine to focus starts the page at the top-left: a machine's Focus
+-- left its scroll behind, so the next pill open showed the Secret hero cut under the header
+function ShopEggs.ScrollHome(page)
+	local P = PAGES[page or CUR.Page]
+	if not P then
+		return false
+	end
+	P.Scroll.CanvasPosition = Vector2.new(0, 0)
+	P.Row.CanvasPosition = Vector2.new(0, 0)
+	return true
+end
+
 function ShopEggs.HeroPulse(page)
 	local P = PAGES[page or CUR.Page]
 	return P and P.Hero.Pulse or nil
@@ -367324,6 +369199,13 @@ return UiGate
     <Properties>
       <string name="Name">TextChatService</string>
       <token name="ChatVersion">1</token>
+    </Properties>
+  </Item>
+  <Item class="Workspace" referent="1202">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <float name="FallenPartsDestroyHeight">-2000</float>
+      <bool name="NeedsPivotMigration">false</bool>
     </Properties>
   </Item>
 </roblox>
