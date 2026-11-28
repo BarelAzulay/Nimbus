@@ -305,8 +305,10 @@ reports.
 * Scenarios: `lobby`, `title` (title card up), `match` / `match:hit` (a quarter second after a hit), `countdown`,
   `party` (portal party panel), `results`, `menu:<Window>[:<Tab or Index group>]`,
   `tutorial[:<step>[:open|fold|match[:<players>|:full]|party[:leader]|countdown]]`, `npc[:<n>]`,
-  `dev` (owner panel), `toasts`, `gallery`, `portal[:<Id>[:<players>[:<studs>]]]`, or a `.json` dump written earlier
-  with `--json`. `--list` prints them.
+  `dev` (owner panel), `dev:<scene>[:<arg>]` (that scene drawn with the closed DEV tile placed over it, e.g.
+  `dev:dungeon:run` or `dev:battle:raid`: where the tile lands beside the run chip and the thumb keys), `toasts`,
+  `gallery`, `portal[:<Id>[:<players>[:<studs>]]]`, or a `.json` dump written earlier with `--json`. `--list` prints
+  them.
 * `battle[:<mode>[:<phase>]]` (BattleController): the battle HUD fed by a real BattleSim stepped at 10 Hz through
   BattleState. Since Phase 5 this is the fighter / helpers HUD (see the Phase 5 scenarios below); the Phase 3 team rows,
   ATTACK, the old per-slot RETREAT and the regroup countdown are gone (a raid HUD shows the boss raids' RETREAT button next to
@@ -327,7 +329,8 @@ reports.
 * Phase 5 scenarios (`dump_gui.lua`, one named block per owner): `neon[:window|hud|party]` (the Neon kit gallery; a
   docked side panel; the HUD with the stamina ticks; the obby party panel with the level row and CHANGE), the battle HUD
   `battle[:fighter|raid|dungeon|duel|spectate|ring[:<phase>]]` with the phases `fight` / `ready` / `result` / `lost` /
-  `cleared` (fighter card, helper portraits, enemy rows, the action cluster), `home` / `feed` / `garden` / `train` /
+  `cleared` (fighter card, helper portraits, enemy rows, the action cluster) and `solo` (a fight with my fighter alone,
+  no helpers: `battle:raid:solo`, `battle:dungeon:solo`, the action keys with no helper column), `home` / `feed` / `garden` / `train` /
   `team` / `looks[:epic]` / `stats` / `fusion[:mix]` (the care windows on NeonKit: the Home strip, the one-button Food
   Machine with the Berry Basket, the Team of 3 with FIGHTER / HELPER, evolved looks), `mainmenu[:updates|credits]`,
   `loading` and `settings[:hud]` (the loading screen, the main menu before PLAY and the settings window),

@@ -1656,13 +1656,23 @@ scenario("npc", function(which)
 	advance(6)
 end)
 
-scenario("dev", function()
+scenario("dev", function(scene, arg)
 	local Dev = req("client/Controllers/DevController", true)
 	if not Dev then
 		fail("client/Controllers/DevController.lua does not exist")
 	end
 	-- DevService's hint lives on the developer's PlayerGui (only that player's client receives it)
 	local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui", 5)
+	-- (playtest 2026-11-28 C48: the owner's DEV tile lay on the dungeon run chip's Leave at 667 x 375) dev:<scenario>[:<arg>]
+	-- draws that scene with the closed DEV tile placed over it (e.g. dev:dungeon:run, dev:battle:raid)
+	if type(scene) == "string" and scene ~= "" and SCENARIOS[scene] then
+		SCENARIOS[scene](arg)
+		if pg then
+			pg:SetAttribute("NC_Dev", true)
+		end
+		advance(1.5)
+		return
+	end
 	if pg then
 		pg:SetAttribute("NC_Dev", true)
 	end
@@ -3391,8 +3401,16 @@ scenario("battle", function(mode, phase)
 		phase = "won"
 	end
 	local fullRaid = mode == "raid" and phase == "full"
-	local myPets = BCDUMP.team(3, 0, 30)
-	myPets[2].Evo = 1
+	-- (playtest 2026-11-28 C5: a raid with one pet, no helpers, put CHEER / BACK on Roblox's stick at 667 x 375) phase
+	-- "solo": my team is the fighter alone (battle:raid:solo, battle:dungeon:solo)
+	local solo = phase == "solo"
+	if solo then
+		phase = "fight"
+	end
+	local myPets = BCDUMP.team(solo and 1 or 3, 0, 30)
+	if myPets[2] then
+		myPets[2].Evo = 1
+	end
 	local mine = { Owner = me, Side = 1, Pets = myPets, Auto = not spectate }
 	local setup = { Seed = 11, Id = id }
 	local extra = {}

@@ -1285,6 +1285,7 @@ function Fx.Number(adornee, height, text, color, px, life)
 	n.lift = 0 -- (Fx.Pop: px its total stands over the unit's plate)
 	n.jx = (math.random() - 0.5) * 1.4
 	n.gui.StudsOffset = Vector3.new(n.jx, height, 0)
+	n.gui.StudsOffsetWorldSpace = Vector3.new(0, 0, 0) -- (C60 round 2: a boss's pop takes its total's world height, Fx.Pop)
 	n.gui.SizeOffset = Vector2.new(0, 0) -- (Pitch 2 item 04) a hit's pop moves beside its total (the hit handler)
 	n.gui.Enabled = true
 	St.numbers[#St.numbers + 1] = n
@@ -1328,10 +1329,21 @@ function Fx.UpdateNumbers(now)
 	end
 end
 
+-- (C60 round 2: over a boss the total stood at Root + height + 1.4, inside the focus arrow's span, and its opaque
+-- AlwaysOnTop chip hid "who my pet attacks") the studs over a boss's Root the focus arrow reaches at most: its anchor
+-- (Units.UpdateFocus: height + 2), its 0.35 bob and its top half (the Part arrow's 0.25, the fx_arrow mesh's 0.41 at 1.4)
+Fx.ARROW_OVER = 0.8
+function Fx.ArrowTop(u)
+	return (u.height or 20) + 2 + Fx.ARROW_OVER
+end
+
 -- the studs over a unit's centre its numbers start at (a boss's over its head)
 function Fx.NumberHeight(u)
 	if u.isBoss then
-		return (u.height or 20) * 0.5 + 2
+		-- (playtest 2026-11-28 C60: height x 0.5 + 2 put the total mid-body on a 20-stud boss) BossBuilder roots a boss at its
+		-- feet (buildUnit's worldFrame at y 0; the lock mark's top is height + 2 too): over its head is the whole height,
+		-- (round 2) and over the focus arrow there (the total stands on the arrow's top: Fx.Total)
+		return Fx.ArrowTop(u) + 0.6
 	end
 	return (u.height or 3) / 2 + 1.8
 end
@@ -1467,12 +1479,19 @@ function Fx.Total(u, dmg)
 	-- plate's own anchor, its chip K.TOTAL_GAP px over the plate's top edge (SizeOffset: a share of its own px size, true
 	-- at every distance and screen). No plate (a raid boss): over its head as before
 	local plate = Fx.PlateOf(u)
-	local height, lift = Fx.NumberHeight(u) - 0.6, 0
+	local height, lift, world = Fx.NumberHeight(u) - 0.6, 0, 0
 	if plate then
 		height = plate.StudsOffset.Y
 		lift = plate.Size.Y.Offset / 2 + Theme.ScaledSize(K.TOTAL_GAP, 3) + (t.chip.Size.Y.Offset + 2 * K.TOTAL_EDGE) / 2
+	elseif u.isBoss then
+		-- (C60 round 2) a boss: on the focus arrow's top (Fx.ArrowTop), the whole chip K.TOTAL_GAP px over it at every
+		-- distance. The arrow stands in world studs (Units.UpdateFocus), so the anchor does too: a camera-space StudsOffset
+		-- of ~28 studs leans with the camera's tilt and would drift off the arrow
+		height, world = 0, Fx.ArrowTop(u)
+		lift = Theme.ScaledSize(K.TOTAL_GAP, 3) + (t.chip.Size.Y.Offset + 2 * K.TOTAL_EDGE) / 2
 	end
 	t.lift = lift
+	t.gui.StudsOffsetWorldSpace = Vector3.new(0, world, 0)
 	t.gui.StudsOffset = Vector3.new(0, height, 0)
 	t.gui.SizeOffset = Vector2.new(0, lift / max(1, t.gui.Size.Y.Offset))
 	t.gui.Enabled = true
@@ -1500,6 +1519,7 @@ function Fx.Pop(u, adornee, height, text, color, px, dmg)
 		-- the total's anchor, lifted the same px (the stack below adds the lift to its steps)
 		pop.base, pop.lift = total.gui.StudsOffset.Y + 0.6, total.lift or 0
 		pop.gui.StudsOffset = Vector3.new(pop.jx, pop.base, 0)
+		pop.gui.StudsOffsetWorldSpace = total.gui.StudsOffsetWorldSpace -- (C60 round 2: a boss's total stands in world studs)
 	end
 	if type(u) ~= "table" then
 		return pop, total
@@ -8678,8 +8698,20 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- the number's box: as wide as "max / max" (the widest it gets), centred behind the divider
 		local numPx = px(20)
 		local maxText = Theme.Short(bossUnit.maxHp)
-		local ok, ms = pcall(Theme.Measure, maxText .. " / " .. maxText, "Display", numPx)
-		local nw = math.ceil(max((ok and typeof(ms) == "Vector2") and ms.X or 0, #(maxText .. " / " .. maxText) * numPx * 0.56) * 1.04) + 16
+		local function numW(s)
+			local ok, ms = pcall(Theme.Measure, s, "Display", numPx)
+			return math.ceil(max((ok and typeof(ms) == "Vector2") and ms.X or 0, #s * numPx * 0.56) * 1.04) + 16
+		end
+		local nw = numW(maxText .. " / " .. maxText)
+		-- (playtest 2026-11-28 C6: beside the phone's boss head a 640 x 360 track left the blocks 10 design px, six 0 px
+		-- blocks, and 667 x 375 six 2 px slivers) where "max / max" leaves the blocks less than six 12 px blocks (their 3 px
+		-- gaps), the number is the boss's HP alone (Hud.Update reads Hud.bossShort)
+		Hud.bossShort = tw - 2 * e - 4 * pad - 2 - nw < 6 * (12 + 3) - 3
+		if Hud.bossShort then
+			nw = numW(maxText)
+		end
+		local hpNow = Theme.Short(clamp(bossUnit.hp or 0, 0, bossUnit.maxHp or 0))
+		setText(Hud.bossText, Hud.bossShort and hpNow or (hpNow .. " / " .. maxText))
 		local numX = tw - e - pad - nw
 		local divX = numX - pad - 2
 		Hud.bossDivider.Position = UDim2.fromOffset(divX, e)
@@ -8691,7 +8723,9 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- 20 blocks (14 on a phone); a narrow track (a tall phone's right column) fewer, each still a chunky >= 12 px block
 		local n = compact and K.BOSS_BLOCKS_COMPACT or K.BOSS_BLOCKS
 		local room = divX - pad - (e + pad)
-		n = clamp(floor((room + 3) / (12 + 3)), 6, n)
+		-- (playtest 2026-11-28 C6: the floor of six kept six blocks in 10 design px, each 0 px) under six 12 px blocks of
+		-- room, fewer blocks (never under three), each still 12 px or more
+		n = clamp(floor((room + 3) / (12 + 3)), min(6, max(3, floor((room + 3) / (12 + 3)))), n)
 		if Hud.bossBar.count ~= n then
 			SignKit.SetBlockCount(Hud.bossBar.Root, n, KB.Loss, SIGN.RedLip)
 			Hud.bossBar.count = n
@@ -9067,7 +9101,7 @@ function Hud.Update(B, now, force)
 			-- every screen, in the track behind its divider
 			setBlocks(Hud.bossBar, healthBlocks(clamp(bossUnit.hp / bossUnit.maxHp, 0, 1), Hud.bossBar.count))
 			local hpText = Theme.Short(clamp(bossUnit.hp, 0, bossUnit.maxHp))
-			setText(Hud.bossText, hpText .. " / " .. Theme.Short(bossUnit.maxHp))
+			setText(Hud.bossText, Hud.bossShort and hpText or (hpText .. " / " .. Theme.Short(bossUnit.maxHp))) -- (playtest 2026-11-28 C6: a narrow track, the HP alone)
 		end
 	end
 	if Hud.pills.Visible and Hud.topArgs then
@@ -10843,6 +10877,12 @@ function CheerUp.TeamSpots(m)
 		return spots, w, h
 	end
 	local top = (cells > 0) and (hy + hh) or (ty + Hud.team.Size.Y.Offset)
+	local fc = Hud.fighterCard and Hud.fighterCard.Root
+	if cells == 0 and fc and fc.Parent == Hud.team then
+		-- (playtest 2026-11-28 C5: a raid with no helpers put CHEER / BACK on Roblox's stick at 667 x 375; the Team block
+		-- keeps the empty helpers' height, so its foot is the screen's) no helpers: the row under the fighter card itself
+		top = ty + fc.Position.Y.Offset + fc.Size.Y.Offset
+	end
 	if Hud.listX and Hud.enemies and Hud.enemies.Visible then
 		-- (keys look r4: the "+n more" tag hangs past the list frame's height, its frame 2.8 px off CHEER's at 360 x 640) the
 		-- list's foot is its lowest shown row or tag

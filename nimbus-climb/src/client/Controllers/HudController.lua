@@ -331,6 +331,9 @@ local layoutKey = nil
 local layoutPoll = 0
 local published = {} -- the geometry attributes on the gui
 local vitalsRect = nil -- wave 6: the vitals card's last laid-out rect (gui-area px: X, Y = top-left, W, H); GetLayout().Vitals
+-- (playtest 2026-11-28 C31 r2) the top-right strips' own box for Overlaps (gui-area px: Left, Bottom = their foot, or the gift's
+-- dock under them), nil with no strips in the top-right corner; TopRightLeft is the whole block's left (the gift beside)
+local stripsBox = nil
 
 local UI = {} -- instance references
 local Items = {} -- sliding panels, see present()
@@ -1186,6 +1189,7 @@ local function applyMargins(animate, force)
 	local stackH = n * K.STRIP_H + (n - 1) * K.STRIP_GAP
 	local topRightBottom, topRightLeft = 0, 0
 	local giftLeft, giftTop, giftSize = 0, 0, 0
+	stripsBox = nil
 	local mode = "TopRight"
 	if UI.Currency and topBand then
 		-- one row in the top band (above the gui area: the gui starts below Roblox's top bar)
@@ -1240,6 +1244,7 @@ local function applyMargins(animate, force)
 		end
 		UI.Currency.Position = UDim2.new(1, -side, 0, stripTop)
 		topRightBottom = stripTop + blockH * k
+		stripsBox = { Left = topRightLeft, Bottom = topRightBottom }
 		-- a card that takes the corner for a moment (a dungeon run's result on a phone) hides the strips meanwhile
 		local strips = { x0 = topRightLeft, y0 = stripTop, x1 = area.X - side, y1 = topRightBottom }
 		local yield = cornerCard ~= nil and cornerCard.x0 < strips.x1 and strips.x0 < cornerCard.x1
@@ -1256,7 +1261,37 @@ local function applyMargins(animate, force)
 			giftSize = math.max(K.GIFT_MIN, math.floor(K.GIFT * k)) -- (44 on a 844x390 phone, as the button was)
 			giftTop = math.floor(topRightBottom + K.GIFT_GAP * k + 0.5)
 			giftLeft = math.floor(area.X - side - giftSize + 0.5)
-			topRightBottom = giftTop + giftSize
+			-- (playtest 2026-11-28 C31: three strips stacked put the gift square on DASH at 640 x 360) where the square under
+			-- the strips would meet a touch key (its wood edge and OBSTACLE_TIGHT of air counted), it docks left of the strips
+			-- at their top, as the HUD without a dock had it (DailyController.layoutButton's fallback)
+			local keys = {}
+			for _, r in ipairs(buttons) do
+				table.insert(keys, r)
+			end
+			if touch then
+				table.insert(keys, robloxTouchRects(area, vp)[2])
+			end
+			local air = K.OBSTACLE_TIGHT + 3
+			local onKey = false
+			for _, r in ipairs(keys) do
+				if giftLeft - air < r.x1 and r.x0 < giftLeft + giftSize + air and giftTop - air < r.y1 and r.y0 < giftTop + giftSize + air then
+					onKey = true
+				end
+			end
+			local besideLeft = math.floor(topRightLeft - K.GIFT_GAP * k - giftSize + 0.5)
+			if onKey and besideLeft >= side and not (hasPanel and besideLeft < topLeft + panelW * k + K.GIFT_GAP * k and stripTop < K.EDGE + topH * k + shadowPx) then
+				giftLeft, giftTop = besideLeft, stripTop
+				-- (playtest 2026-11-28 C31 r2: the toasts, the tutorial's strip and the arena's side stack dock left of
+				-- TopRightLeft, which still named the strips' edge, so they landed on the gift) the block's left is the gift's
+				topRightLeft = giftLeft
+			elseif onKey then
+				-- (C31 r2: on the party pad at 640 x 360 the panel holds the row beside the strips and the square stayed on
+				-- DASH) no room beside them either: the gift steps aside meanwhile (a dock of 0, as for a corner card)
+				giftLeft, giftTop, giftSize = 0, 0, 0
+			else
+				stripsBox.Bottom = giftTop -- (Overlaps: the strips' box runs down to the gift's dock under them, as before)
+			end
+			topRightBottom = math.max(topRightBottom, giftTop + giftSize)
 		end
 	end
 	S.currencyMode = mode
@@ -4128,7 +4163,9 @@ end
 -- (LOOK-ui, kitb-look1: the Index and Home windows lay over the vitals card and the strips) which HUD parts a docked
 -- window lies over by more than a shared edge (4 px): `rect` its box in screen px (NeonKit.SideRect: x, y, w, h, the top
 -- bar included), `above` px of awning over its top. Returns vitals, strips (booleans). The strips' box is the one the
--- layout publishes (TopRightLeft .. the screen's right, the top .. the gift's dock), whether they show or not
+-- layout placed (their left .. the screen's right, the top .. the gift's dock under them, else their own foot), whether
+-- they show or not. (playtest 2026-11-28 C31 r2: with the gift docked beside the strips, GiftTop is the strips' top, and
+-- the box read from it was 12 px tall)
 function HudController.Overlaps(rect, above)
 	if type(rect) ~= "table" or not (tonumber(rect.x) and tonumber(rect.y) and tonumber(rect.w) and tonumber(rect.h)) then
 		return false, false
@@ -4144,10 +4181,9 @@ function HudController.Overlaps(rect, above)
 	end
 	local vitals = vitalsRect ~= nil and over(vitalsRect.X, vitalsRect.Y, vitalsRect.X + vitalsRect.W, vitalsRect.Y + vitalsRect.H)
 	local strips = false
-	local left = published.TopRightLeft
+	local left = stripsBox and math.floor(stripsBox.Left + 0.5) -- (whole px, as the layout publishes them)
 	if left and left > 0 then
-		local bottom = (published.GiftSize or 0) > 0 and published.GiftTop or published.TopRightBottom or 0
-		strips = over(left, 0, math.huge, bottom)
+		strips = over(left, 0, math.huge, math.floor(stripsBox.Bottom + 0.5))
 	end
 	return vitals, strips
 end
