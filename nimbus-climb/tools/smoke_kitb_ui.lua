@@ -187,7 +187,8 @@
 --   tutorial_fits_phone       (client) the phones, steps 1 and 5, as shown and opened: inside the screen, clear of the
 --                             thumb zones and RUN / DASH, words inside and >= 14 px (a warning on a 360 / 375 px tall phone,
 --                             where the opened card's 0.7 last resort reaches into the thumbstick's zone: known, the
---                             owner's call)
+--                             owner's call); every step opened on the phones and 360x640: the name's room, a moved-up
+--                             title's box about 5 design px over the well's wood edge (C42, C49)
 --   tutorial_pointer_kitb     (client) the menu pointer: a square gold ring between wood lines (no glow, no fade) on whole
 --                             px; the pixel arrow in kit colours at round(2k) / 2, its box on a whole px
 --   npc_signboard_skin        (client) the NPC dialog: wood frame, stone body and lip, the navy name plank (a gold Section
@@ -17155,14 +17156,27 @@ local function clientScenarios()
 		end
 		-- (2026-11-28 playtest) every step's opened card on the phones: (C42: "NIMB..." live at 667x375, the engine drawing the
 		-- name a few px wider than TextService measures it) the name's box holds the name at the size it is asked to show with
-		-- its outline's room and 10 design px to spare; (C49: a wrapped title's descender touched the well's frame, 0.8 px)
-		-- the step title's box ends over the well's wood edge, 2 design px (1 or more after the whole-px nudge; it was 1 px
-		-- into it), its glyphs, ending over the box's foot, about 4
+		-- its outline's room and 10 design px to spare; (C49: a wrapped title's descender touched the well's frame, 0.8 px;
+		-- C49 review: a box 2 design px over the well's wood edge, 1 after the whole-px nudge, passed here while the 'y' of
+		-- 'Pick a Buddy' at 390 x 844 and the 'g' of 'Into the Dungeon!' at 360 x 640, drawn about 1 px under the box, ended on
+		-- the frame) a moved-up step title's box ends TITLE_AIR design px over the well (5 over the kit's 2 px edge; a phone
+		-- card draws that edge 2 screen px, 2 / k design px, so 4 or more over its outer line on the smallest card, 0.7), and
+		-- as drawn the whole-px nudge takes a screen px at most; on the phones and 360 x 640 (most of its titles move up)
 		local Theme = LoadingH.shared("Theme")
 		local count = #LoadingH.shared("TutorialSteps").Steps
+		local TITLE_AIR, EDGE_AIR = 7, 4
+		-- the sizes C49 was found at and their moved-up titles with a descender on the last line, 'Up, Up and Away!' and
+		-- 'Into the Dungeon!' (this world's 0.5 em text measure wraps fewer titles than FredokaOne: 'Pick a Buddy' at
+		-- 390 x 844 and 'The Cloud Shop' at 360 x 640 keep one line here; render_gui measured their glyphs, fix-b review2)
+		local CASES = { ["390x844"] = {}, ["360x640"] = { 8, 17 } }
+		local sizes = {}
 		for _, s in ipairs(U99.PHONES) do
+			sizes[#sizes + 1] = s
+		end
+		sizes[#sizes + 1] = { 360, 640 }
+		for _, s in ipairs(sizes) do
 			U99.atPhone(s[1], s[2], "tutorial phone steps", function(tag)
-				local tight, wrapped = {}, 0
+				local tight, wrapped, movedUp = {}, 0, {}
 				for step = 1, count do
 					local _, root = U99.tutorial(step, true)
 					local main = root and root:FindFirstChild("Main", true)
@@ -17183,17 +17197,44 @@ local function clientScenarios()
 						local title, well = root:FindFirstChild("StepTitle", true), root:FindFirstChild("Well", true)
 						if title and well and U8.shown(title) and title.Size.Y.Offset > 26 then
 							wrapped = wrapped + 1
+							movedUp[step] = title.Text
 							local k = math.max(0.01, U8.scaleOf(title))
 							local e = well:FindFirstChild("SignEdge")
-							local gap = (U8.rect(well).Y - (e and e.Thickness or 0) * k - U8.rect(title).B) / k
-							if gap < 1 - 0.01 then
-								tight[#tight + 1] = fmt("step %d title %.1f px over the well's edge", step, gap)
+							local edge = e and e.Thickness or 0
+							-- laid out, in design px (the whole-px nudge lives in the Scales: PixelCrisp) ...
+							local header = title.Parent
+							local laid = header and header:IsA("GuiObject") and header.Parent == well.Parent
+								and well.Position.Y.Offset - (header.Position.Y.Offset + title.Position.Y.Offset + title.Size.Y.Offset)
+							if not laid or laid < TITLE_AIR - 0.01 or laid - edge < EDGE_AIR - 0.01 then
+								tight[#tight + 1] = fmt("step %d title laid %s design px over the well, %s over its %.2f px edge (< %d, %d)", step, laid and fmt("%.2f", laid) or "?",
+									laid and fmt("%.2f", laid - edge) or "?", edge, TITLE_AIR, EDGE_AIR)
+							end
+							-- ... and as drawn, over the edge's outer line: the nudge takes a screen px at most
+							local gap = (U8.rect(well).Y - edge * k - U8.rect(title).B) / k
+							if laid and gap < laid - edge - 1 / k - 0.01 then
+								tight[#tight + 1] = fmt("step %d title drawn %.2f design px over the well's edge (laid %.2f, less a screen px %.2f)", step, gap, laid - edge, laid - edge - 1 / k)
 							end
 						end
 					end
 				end
 				T.check(#tight == 0, tag .. ": every step's name has room to spare (no 'NIMB...') and its title clears the well's edge ("
 					.. wrapped .. " moved-up titles)", table.concat(tight, "; "))
+				local list = {}
+				for step = 1, count do
+					if movedUp[step] then
+						list[#list + 1] = fmt("%d '%s'", step, movedUp[step])
+					end
+				end
+				T.info("*" .. tag .. ": moved-up titles " .. (#list > 0 and table.concat(list, ", ") or "none"))
+				local cases = CASES[fmt("%dx%d", s[1], s[2])]
+				if cases then
+					T.check(wrapped > 0, tag .. ": (setup) C49's size has moved-up titles to measure")
+					for _, step in ipairs(cases) do
+						local text = movedUp[step]
+						T.check(text ~= nil and text:match("[gjpqy]%S*$") ~= nil, tag .. fmt(": step %d's title is moved up with a descender on its last line (C49's case, measured above)", step),
+							tostring(text))
+					end
+				end
 				U99.tutorialOff()
 			end)
 		end
@@ -17364,7 +17405,8 @@ local function clientScenarios()
 		-- every window, also where nothing lay over it. Each window folds the card; the guide (card or strip) is out of sight
 		-- exactly while the window's ink meets its own (measured here: the guide's drawn parts against the window's shown,
 		-- drawn parts, clipped to their clipping frames); both back when the window goes. Pinned: at 667 x 375 the Ring,
-		-- Dungeon and Food Machine windows hide it, at 1920 x 1080 the docked Ring window leaves the strip in view
+		-- Dungeon and Food Machine windows, (C17 review 2) the Settings window and the dungeon run's chip hide it, at
+		-- 1920 x 1080 the docked Ring window leaves the strip in view
 		local function draws(o)
 			if o.BackgroundTransparency < 0.99 or o:FindFirstChildOfClass("UIStroke") then
 				return true
@@ -17481,6 +17523,16 @@ local function clientScenarios()
 						LKC.advance(0.5)
 					end, "NimbusCare", s[3] and "hides" or nil },
 				}
+				-- (C17 review 2: the top bar gear's Settings window, MainMenuController's, lay over the open card and the strip on
+				-- the phones, the card still open; at 1920 x 1080 it lies over neither)
+				covers[#covers + 1] = { "the Settings window", function()
+					U7.client("Controllers/MenuController").OpenSettings()
+					LKC.advance(0.6)
+					local win = U7.client("Controllers/MainMenuController").Window()
+					assert(win ~= nil and win.Name == "Window_Settings", "the Settings window is not up")
+				end, function()
+					pcall(U7.client("Controllers/MainMenuController").CloseWindows)
+				end, "NimbusMainMenu", s[3] and "hides" or nil, "Window_Settings" }
 				if s[3] then
 					-- (a phone: the party countdown's chip in Roblox's top band; a desktop shows the side card instead)
 					covers[#covers + 1] = { "the dungeon party's chip", function()
@@ -17491,6 +17543,16 @@ local function clientScenarios()
 					end, function()
 						U97.close()
 					end, "NimbusDungeonRun", nil, "RunChip" }
+					-- (C17 review 2: the reported chip, 'Door: tap Enter' under the strip, is the run's; the countdown's sits in
+					-- the top band clear of the strip) the run's chip in the chest room meets the strip's right end: it hides
+					covers[#covers + 1] = { "the dungeon run's chip", function()
+						U97.open("dungeon:treasure")
+						local run = pg and pg:FindFirstChild("NimbusDungeonRun")
+						local chip = run and run:FindFirstChild("RunChip", true)
+						assert(chip and U8.shown(chip), "the run's chip is not up")
+					end, function()
+						U97.close()
+					end, "NimbusDungeonRun", "hides", "RunChip" }
 				end
 				local hider = nil
 				for _, c in ipairs(covers) do

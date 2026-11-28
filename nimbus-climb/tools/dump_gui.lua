@@ -89,7 +89,8 @@
 --   petcards              the floating pet cards (PetController's own followers + one sample of every PetCard mode)
 --                         mirrored flat into the ScreenGui WorldMirror
 --   tutorial[:<step>]     the tutorial side panel at step n (default 1); tutorial:<step>:open|fold:<window> then opens a
---                         window over it (ring, dungeon, feed, garden, train, trove, fusion, gifts, shop, pets)
+--                         window over it (ring, dungeon, feed, garden, train, trove, fusion, gifts, shop, pets, settings,
+--                         run = the dungeon run's chip in the chest room)
 --   npc[:<n>]             the NPC dialog of NPC n (default 1); the NPCs are built by the real NpcService
 --   dev                   the owner-only DEV panel (NC_Dev attribute), when DevController exists
 --   toasts                four side toasts (info / good / bad / token)
@@ -1493,6 +1494,14 @@ scenario("tutorial", function(step, mode, arg)
 		end,
 		pets = function()
 			SCENARIOS.pets()
+		end,
+		-- (C17 review 2) the top bar gear's Settings window (MainMenuController's), the dungeon run's chip (its chest room)
+		settings = function()
+			SCENARIOS.settings()
+		end,
+		run = function()
+			SCENARIOS.dungeon("treasure")
+			advance(4.4) -- the room's Loot toast takes the chip's place for its 4 s (smoke U97.open)
 		end,
 	}
 	if (mode == "open" or mode == "fold") and windows[arg] then

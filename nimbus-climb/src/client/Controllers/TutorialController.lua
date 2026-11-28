@@ -411,7 +411,7 @@ local function mod(name)
 		elseif name == "PetPicker" then -- (2026-11-28 playtest C17 review: windowCovering, the garden picker)
 			loaded = loadModule(Client:FindFirstChild("UI"), name)
 		elseif name == "MenuController" or name == "IndexController" or name == "HudController" or name == "PromptController"
-			or Cover.CONTROLLERS[name] then -- (2026-11-28 playtest C17: windowCovering)
+			or name == "MainMenuController" or Cover.CONTROLLERS[name] then -- (2026-11-28 playtest C17: windowCovering)
 			loaded = loadModule(script.Parent, name)
 		else
 			loaded = loadModule(Shared, name, 5)
@@ -1054,6 +1054,15 @@ local function windowCovering()
 			end
 		end
 	end
+	-- (C17 review 2: the top bar gear's Settings window lay over the open card and the strip on the phones, the card still
+	-- open) the game menu's own windows (Settings, What's New, Credits: MainMenuController.Window) cover it too
+	local mmc = mod("MainMenuController")
+	if mmc and type(mmc.Window) == "function" then
+		local ok, holder = pcall(mmc.Window)
+		if ok and holder ~= nil then
+			return true
+		end
+	end
 	-- (C17) and a phone's dungeon chip in the top band (DungeonController's RunChip: the party countdown, the run) lay
 	-- under the strip, 'Door: tap Enter' read 'Enter'
 	local pg = playerGui()
@@ -1425,13 +1434,15 @@ local function applyGeometry(width, height, bodyH, hintH, titleExtra)
 	UI.SkipLink.TextSize = cap
 	UI.ConfirmQuestion.TextSize = math.max(19, cap)
 	-- (kit-b backlog items 10 / 16) one line from TITLE_SIZE down to TITLE_FLOOR, else its lines at TITLE_FLOOR
-	-- (titleLines); it was cut at the 14.4 px floor on a narrow card. Its box: from the title row's top to 4 px over the
+	-- (titleLines); it was cut at the 14.4 px floor on a narrow card. Its box: from the title row's top to 7 px over the
 	-- well with the progress row moved up, or the row's 26 px; each line past those TITLE_LINE taller (titleExtra)
 	UI.StepTitle.TextWrapped = wraps
 	UI.StepTitle.TextYAlignment = wraps and Enum.TextYAlignment.Bottom or Enum.TextYAlignment.Center
-	-- (2026-11-28 playtest C49: its descender touched the well's frame, 0.8 px, on phones) the moved-up box ends 4 px over
-	-- the well
-	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, (progUp and (K.HEADER_H - 4 - 46) or 26) + titleExtra)
+	-- (2026-11-28 playtest C49: its descender touched the well's frame, 0.8 px, on phones; C49 review: 4 px over the well
+	-- only moved the tail onto the frame, which is a 2 px edge drawn outside the well, the 'y' of 'Pick a Buddy' and the
+	-- 'g' of 'Into the Dungeon!' drawn about 1 px under the box) the moved-up box ends 7 px over the well, 5 clear of its
+	-- 2 px edge (4.1 - 4.5 on a phone card, whose edge is 2 screen px); 42 px still holds two 20 px lines
+	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, (progUp and (K.HEADER_H - 7 - 46) or 26) + titleExtra)
 	UI.StepTitle.TextSize = wraps and K.TITLE_FLOOR or fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_FLOOR, cap), "Heading", headRoom)
 	layoutProgress(progUp and (headRoom - K.FOLD_W - 6) or headRoom)
 	-- narrow footers: "Skip tutorial" shortens to "Skip" and the Next button narrows, so they never overlap
@@ -4786,13 +4797,14 @@ local function applyState(payload)
 	ensureLoop()
 end
 
--- where each covering window (Cover.WINDOWS) draws: its ScreenGui; of NimbusMenu (it holds the menu column too) only the
--- Window_ frames, of NimbusDungeonRun (its run card) only the party's chip
+-- where each covering window (Cover.WINDOWS) draws: its ScreenGui; of NimbusMenu (it holds the menu column too) and of
+-- NimbusMainMenu (the title screen's board too; C17 review 2) only the Window_ frames, of NimbusDungeonRun (its run card)
+-- only the party's chip
 Cover.GUIS = {
 	{ "NimbusMenu", Prefix = "Window_" }, { "NimbusPets" }, { "NimbusShop" }, { "NimbusHatch" }, { "NimbusIndex" },
 	{ "NimbusDaily" }, { "NimbusNpcDialog" }, { "NimbusDungeonRun", Part = "RunChip" }, { "NimbusArena" }, { "NimbusDungeon" },
 	{ "NimbusCare" }, { "NimbusTrain" }, { "NimbusFusion" }, { "NimbusTrove" }, { "NimbusRaidGate" }, { "NimbusObby" },
-	{ "NimbusLoss" }, { "NimbusPetPicker" },
+	{ "NimbusLoss" }, { "NimbusPetPicker" }, { "NimbusMainMenu", Prefix = "Window_" },
 }
 
 -- what a part draws, not its box (as spotClaimed reads it: a window's holder is a transparent frame over the screen)
