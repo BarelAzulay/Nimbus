@@ -3154,7 +3154,8 @@ local function clientScenarios()
 	-- the capitals of the owner's approved U2-U5 boards until the owner rules on it).
 	local CASING_SWEPT = { NimbusMenu = true, NimbusBattle = true, NimbusHud = true, NimbusIndex = true, NimbusNotify = true,
 		NimbusDungeon = true, NimbusDungeonRun = true, NimbusDaily = true, NimbusTrove = true, -- (U9-4) the Gifts window and the Sky Trove
-		NimbusHatch = true } -- (U9-2b) the hatch stage
+		NimbusHatch = true, -- (U9-2b) the hatch stage
+		NimbusArena = true, NimbusCare = true } -- (playtest 2026-11-28 C47) the Ring's Start / Continue, Care's Evolve (they only warned)
 	S.kitb_casing_rule = guarded("kitb_casing_rule", function()
 		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
 		if not T.check(pg ~= nil, "kitb casing: PlayerGui exists") then
@@ -8273,6 +8274,46 @@ local function clientScenarios()
 		inked.Parent = win
 		CloudUI.SignBlock(inked, "Stone", { Edge = Sg.Text })
 		T.check(not shown(inked:FindFirstChild("FinishBevel")), "finish pass block: an ink edge takes no wood light")
+		-- (playtest 2026-11-28 C2 / C3) no finish part on a block whose children a layout places (a layout added after
+		-- SignBlock, as the Ring champion card and the trophy chip do, laid the holders out as rows) or whose size
+		-- AutomaticSize takes (the arena notice grew round its holders); a repaint keeps them hidden
+		local function finishShown(o)
+			local seen = {}
+			for _, c in ipairs(o:GetChildren()) do
+				if c:GetAttribute("Finish") ~= nil and c:GetAttribute("Finish") ~= "Awning" and shown(c) then
+					seen[#seen + 1] = c.Name
+				end
+			end
+			return seen
+		end
+		local listed = Instance.new("Frame")
+		listed.Size = UDim2.fromOffset(300, 120)
+		listed.Parent = win
+		CloudUI.SignBlock(listed, "Stone", { EdgePx = 2, LipPx = 0 })
+		local hadFinish = #finishShown(listed) > 0
+		Instance.new("UIListLayout").Parent = listed
+		CloudUI.SignBlock(listed, "Stone", { EdgePx = 2, LipPx = 0 })
+		local gridded = Instance.new("Frame")
+		gridded.Size = UDim2.fromOffset(300, 120)
+		gridded.Parent = win
+		Instance.new("UIGridLayout").Parent = gridded
+		CloudUI.SignBlock(gridded, "Stone")
+		T.check(hadFinish and #finishShown(listed) == 0 and #finishShown(gridded) == 0,
+			"finish pass block: a block a UIListLayout / UIGridLayout lays out shows no finish part (added before or after SignBlock, repainted)",
+			table.concat(finishShown(listed), ",") .. " / " .. table.concat(finishShown(gridded), ","))
+		local grown = Instance.new("Frame")
+		grown.Size = UDim2.fromOffset(0, 0)
+		grown.AutomaticSize = Enum.AutomaticSize.XY
+		grown.Parent = win
+		CloudUI.SignBlock(grown, "Stone", { LipPx = 0 })
+		local later = Instance.new("Frame")
+		later.Size = UDim2.fromOffset(0, 46)
+		later.Parent = win
+		CloudUI.SignBlock(later, "Navy", { EdgePx = 3, LipPx = 0 })
+		later.AutomaticSize = Enum.AutomaticSize.X
+		T.check(#finishShown(grown) == 0 and #finishShown(later) == 0 and SK.Finishless(grown) and SK.Finishless(later) and not SK.Finishless(inked),
+			"finish pass block: an AutomaticSize block shows no finish part (its holders reach past it and grew it)",
+			table.concat(finishShown(grown), ",") .. " / " .. table.concat(finishShown(later), ","))
 		-- a Sign button: one darker frame on the press
 		local claim = CloudUI.Button({ Text = "Claim!", Style = "Green", Skin = "Sign", Size = UDim2.fromOffset(200, 56), Parent = win })
 		local up = claim.BackgroundColor3
@@ -8345,7 +8386,7 @@ local function clientScenarios()
 						end
 						local e = d:FindFirstChild("SignEdge")
 						if e and e:IsA("UIStroke") and sameColor(e.Color, Sg.Wood) and d.BackgroundTransparency == 0 and d.Size.Y.Scale == 0 and d.Size.Y.Offset >= 30
-							and d:GetAttribute("SignLook") ~= "Off" and not sameColor(d.BackgroundColor3, Sg.Well) then
+							and d:GetAttribute("SignLook") ~= "Off" and not sameColor(d.BackgroundColor3, Sg.Well) and not SK.Finishless(d) then
 							blocks = blocks + 1
 							if not shown(d:FindFirstChild("FinishShine")) then
 								bad[#bad + 1] = family .. ": " .. d.Name .. " has no shine"
@@ -9041,6 +9082,36 @@ local function clientScenarios()
 					fmt("'%s' shown %s, rule %s with %d dots", busy and busy.Text or "missing", tostring(busy and U8.shown(busy)), tostring(rule and U8.shown(rule)), dots))
 				PC.Close(true)
 				LKC.advance(0.4)
+			end)
+		end
+		-- (playtest 2026-11-28 C2 / C3) the arena family at the four grid sizes: no shown finish part sits in a block a
+		-- layout lays out or AutomaticSize sizes (the empty Ring champion / rewards cards, the empty Raid tier card, the
+		-- blank trophy chip, the countdown's stray shadow line, the arena notice's growth)
+		local ARENA = { { "ring", "NimbusArena" }, { "arena:raid", "NimbusArena" }, { "arena:duels", "NimbusArena" }, { "arena:side", "NimbusArenaSide" } }
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "finish off layouts", function(tag)
+				local bad, met = {}, 0
+				for _, f in ipairs(ARENA) do
+					U97.open(f[1])
+					LKC.advance(0.6)
+					local roots = { U8.pg():FindFirstChild(f[2]), U8.pg():FindFirstChild("NimbusArena") }
+					for _, root in ipairs(roots) do
+						for _, d in ipairs(root and root:GetDescendants() or {}) do
+							local k = d:GetAttribute("Finish")
+							if k ~= nil and k ~= "Awning" and d.Parent and d.Parent:IsA("GuiObject") then
+								met = met + 1
+								if d.Visible and SK.Finishless(d.Parent) then
+									bad[#bad + 1] = f[1] .. ": " .. d.Parent.Name .. "." .. d.Name
+								end
+							end
+						end
+					end
+					U97.close()
+					LKC.advance(0.4)
+				end
+				local hint = U8.pg():FindFirstChild("NimbusArena") and U8.pg().NimbusArena:FindFirstChild("Hint")
+				T.check(hint ~= nil and met >= 20 and #bad == 0, fmt("%s: no shown finish part in a laid-out or auto-sized arena block, the notice included (%d off of %d)", tag, #bad, met),
+					table.concat(bad, "; ", 1, math.min(#bad, 20)))
 			end)
 		end
 		LKC.flushErrors("finish_pass_kit")
@@ -10082,6 +10153,64 @@ local function clientScenarios()
 			end
 		end
 		restoreMeasure()
+		-- (playtest 2026-11-28 C13) the side stack's neighbours that draw over it: at 360x640 (touch) the menu tiles hid a
+		-- duel challenge's left side ("uel challenge!", "mChaser wants to battle"), at 640x360 the top bar's pill a practice
+		-- duel's title. Every shown side card keeps clear of the shown pill and of every shown menu tile
+		local function srect(o)
+			local r = U8.rect(o)
+			local g = o:FindFirstAncestorWhichIsA("LayerCollector")
+			local dy = (g and g:IsA("ScreenGui") and not g.IgnoreGuiInset) and (Mock.TopInset or 0) or 0
+			return { X = r.X, R = r.R, Y = r.Y + dy, B = r.B + dy }
+		end
+		for _, sz in ipairs({ { 360, 640, false }, { 640, 360, true }, { 844, 390, false }, { 390, 844, false } }) do
+			U8.at(sz[1], sz[2], true, "side stack clear" .. (sz[3] and " (practice)" or ""), function(tag)
+				U97.open("arena:side")
+				if sz[3] then
+					LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 },
+						Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 1210, Power = 2380, ExpiresIn = 24, Practice = true } } })
+				end
+				LKC.advance(2)
+				local side = U8.pg():FindFirstChild("NimbusArenaSide")
+				local cards = {}
+				for _, c in ipairs(side and side:FindFirstChild("SideStack") and side.SideStack:GetChildren() or {}) do
+					if c:IsA("GuiObject") and U8.shown(c) and c.AbsoluteSize.Y > 0 then
+						cards[#cards + 1] = c
+					end
+				end
+				local over = {}
+				local bar = U8.pg():FindFirstChild("NimbusTopBar")
+				local pill = bar and bar:FindFirstChild("Pill", true)
+				local others = {}
+				if pill and U8.shown(pill) then
+					others[#others + 1] = pill
+				end
+				local menu = U8.pg():FindFirstChild("NimbusMenu")
+				local column = menu and menu:FindFirstChild("MenuColumn", true)
+				for _, d in ipairs(column and column:GetDescendants() or {}) do
+					if d:IsA("GuiButton") and U8.shown(d) and d.AbsoluteSize.X > 0 then
+						others[#others + 1] = d
+					end
+				end
+				for _, c in ipairs(cards) do
+					for _, o in ipairs(others) do
+						if U8.overlap(srect(c), srect(o)) then
+							over[#over + 1] = c.Name .. " under " .. o.Name .. " " .. U8.show(srect(o))
+						end
+					end
+				end
+				T.check(#cards >= 1 and #over == 0, tag .. ": no side card under the top bar's pill or a menu tile (they draw over it)",
+					fmt("%d cards; %s", #cards, table.concat(over, "; ", 1, math.min(#over, 6))))
+				U97.close()
+				LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
+				LKC.advance(1)
+				local col = U8.pg():FindFirstChild("NimbusMenu") and U8.pg().NimbusMenu:FindFirstChild("MenuColumn", true)
+				local tiles = 0
+				for _, d in ipairs(col and col:GetDescendants() or {}) do
+					tiles = tiles + ((d:IsA("GuiButton") and U8.shown(d)) and 1 or 0)
+				end
+				T.check(tiles >= 4, tag .. ": with the cards gone the menu tiles are back", tostring(tiles))
+			end)
+		end
 		LKC.flushErrors("arena_family_fits")
 	end)
 
@@ -16420,8 +16549,8 @@ local function clientScenarios()
 		local VARIANTS = {
 			{ "raid won", "battle:raid", { Mode = "Raid", Outcome = "Win", Won = true, Reason = "BossDown",
 				Rewards = { Tokens = 640, Xp = 180, LevelUps = 3, Tier = "Gold", Share = 0.41 } }, "BOSS DEFEATED!", Sign.Grass },
-			{ "raid lost", "battle:raid", { Mode = "Raid", Outcome = "Loss", Won = false, Reason = "Timeout",
-				Rewards = { Tokens = 420, Xp = 180, LevelUps = 2, Tier = "Bronze", Share = 0.34 } }, "THE BOSS WON", Sign.Red },
+			{ "raid lost", "battle:raid", { Mode = "Raid", Outcome = "Loss", Won = false, Reason = "Timeout", -- (C9) the server's "Loss" medal, as live (was "Bronze")
+				Rewards = { Tokens = 420, Xp = 180, LevelUps = 2, Tier = "Loss", Share = 0.34 } }, "THE BOSS WON", Sign.Red },
 			{ "ring run", "battle:ring", { Mode = "Ring", Outcome = "Left", Won = false, Reason = "Forfeit", Round = 8,
 				Rewards = { Won = false, Final = true, Round = 8, Cash = 0, Xp = 0, LevelUps = 2, Run = { Wins = 8, Cash = 2571, Xp = 806, Tokens = 0, Round = 8, Start = 1, Best = 12 } } },
 				"RUN OVER", Sign.Violet },
@@ -16468,6 +16597,58 @@ local function clientScenarios()
 			if not portrait then
 				T.check(math.abs((cr.X + cr.R) / 2 - w / 2) <= w * 0.12, tag .. ": a landscape phone's card is the pitch's top middle", U8.show(cr))
 			end
+		end
+		-- (playtest 2026-11-28 C33) at 640x360 (touch) the ring's RUN OVER card lay on RUN (no room left of it or above
+		-- it): the card narrows to end before it; a lost raid's card too. First Hud.ResultSpot with the live game's numbers
+		-- (design px at 0.8: the menu column ends at 194, RUN at 568.75..641.25 x 275..347.5, DASH above it)
+		do
+			local Hud = BC._Hud
+			local saved = { Hud.MenuRight, Hud.TopRightBottom, Hud.TouchBoxes }
+			Hud.MenuRight = function()
+				return 194
+			end
+			Hud.TopRightBottom = function()
+				return 0, nil
+			end
+			Hud.TouchBoxes = function()
+				return { { Name = "dash", X = 658.75, Y = 170, R = 741.25, B = 252.5 }, { Name = "run", X = 568.75, Y = 275, R = 641.25, B = 347.5 },
+					{ Name = "jump", X = 656.25, Y = 265, R = 743.75, B = 352.5 } }
+			end
+			local m = { W = 800, H = 377.5, F = 0.8 }
+			local ok, x, y, _, fitW = pcall(Hud.ResultSpot, m, 384, 314, true)
+			local ok2, x2, _, _, fit2 = false, nil, nil, nil, nil
+			if ok and fitW then
+				ok2, x2, _, _, fit2 = pcall(Hud.ResultSpot, m, fitW, 330, true)
+			end
+			Hud.MenuRight, Hud.TopRightBottom, Hud.TouchBoxes = saved[1], saved[2], saved[3]
+			T.check(ok and fitW == 358 and x == 202 and ok2 and fit2 == nil and x2 + fitW + 8 <= 568.75 + 0.5,
+				"result card B 640x360: a card with no room left of RUN or above it is offered the width that ends before RUN (Hud.ResultSpot)",
+				fmt("%s: x %s y %s fit %s, then x %s fit %s", tostring(ok), tostring(x), tostring(y), tostring(fitW), tostring(x2), tostring(fit2)))
+		end
+		for _, v in ipairs({ VARIANTS[3], VARIANTS[2] }) do
+			U99.atPhone(640, 360, "result card B " .. v[1], function(tag)
+				U96.open(v[2])
+				local d = U96.d
+				if not T.check(d and BC._St.battle, tag .. ": (setup) the fight is up") then
+					U96.close()
+					return
+				end
+				local payload = {}
+				for k2, x in pairs(v[3]) do
+					payload[k2] = x
+				end
+				payload.BattleId, payload.Spectator = d.id, false
+				LKC.toClient("BattleState", "End", payload, d.id)
+				LKC.advance(0.9)
+				local gui = U8.pg():FindFirstChild("NimbusBattle")
+				local card = gui and gui.Root:FindFirstChild("ResultCard")
+				if T.check(card and U8.shown(card), tag .. ": the result card shows") then
+					local cr = U8.rect(card)
+					local hits = U99.overTouch(gui, cr, false, nil)
+					T.check(#hits == 0 and cr.X >= 8 - 0.5, tag .. ": the card keeps off DASH, RUN and the jump button, on the screen", table.concat(hits, "; ") .. " | card " .. U8.show(cr))
+				end
+				U96.close()
+			end)
 		end
 		local battleW = {} -- (P2 fix A) the battle result card's width per size ("WxH")
 		for _, s in ipairs(U8.SIZES) do
@@ -16518,18 +16699,35 @@ local function clientScenarios()
 						tag .. ": the head band in the result's colour with its icon and word", head and (hex(head.BackgroundColor3) .. " " .. (title and title.Text or "?")) or "no head")
 					-- stat rows: label, value right-aligned before a green tick block with its check
 					local stats = body and body:FindFirstChild("Stats")
-					local rows, badRow = 0, {}
+					-- (playtest 2026-11-28 C9) the green tick only on a row the player achieved: none on a lost raid (no "Loss"
+					-- tier, no Lives left) or a knock-out, every row of a win, on a ring run the rounds won but not an old best
+					local rows, badRow, ticked = 0, {}, {}
 					for _, row in ipairs(stats and stats:GetChildren() or {}) do
 						if row.Name:match("^Stat_") and U8.shown(row) then
 							rows = rows + 1
 							local lab, val, tick = row:FindFirstChild("Label"), row:FindFirstChild("Value"), row:FindFirstChild("Tick")
-							if not (lab and val and tick and U8.shown(tick) and sameColor(tick.BackgroundColor3, Sign.Grass) and tick:FindFirstChild("Check")
-								and val.TextXAlignment == Enum.TextXAlignment.Right and U8.rect(val).R <= U8.rect(tick).X + 0.5 and U8.rect(lab).R <= U8.rect(val).X + 1) then
+							local on = tick ~= nil and U8.shown(tick)
+							if on then
+								ticked[#ticked + 1] = row.Name
+							end
+							if not (lab and val and tick and (not on or (sameColor(tick.BackgroundColor3, Sign.Grass) and tick:FindFirstChild("Check")))
+								and val.TextXAlignment == Enum.TextXAlignment.Right and U8.rect(val).R <= U8.rect(tick).X + 0.5 and U8.rect(lab).R <= U8.rect(val).X + 1
+								and not (row.Name == "Stat_Tier" and val.Text == "Loss")) then
 								badRow[#badRow + 1] = row.Name
 							end
 						end
 					end
-					T.check(rows >= 2 and #badRow == 0, tag .. ": stat rows: label, the value right-aligned, a green tick each", fmt("%d rows; bad: %s", rows, table.concat(badRow, ", ")))
+					T.check(rows >= 2 and #badRow == 0, tag .. ": stat rows: label, the value right-aligned, room for the tick", fmt("%d rows; bad: %s", rows, table.concat(badRow, ", ")))
+					local wantTicks = ({ ["raid won"] = rows, worst = rows, ["raid lost"] = 0, dungeon = 0 })[v[1]]
+					local tickOk = (wantTicks ~= nil and #ticked == wantTicks) or (v[1] == "ring run" and table.concat(ticked, ",") == "Stat_Rounds")
+					local lostRows = {}
+					for _, n in ipairs({ "Stat_Tier", "Stat_Lives" }) do
+						if v[1] == "raid lost" and stats and stats:FindFirstChild(n) then
+							lostRows[#lostRows + 1] = n
+						end
+					end
+					T.check(tickOk and #lostRows == 0, tag .. ": a green tick only on what the player achieved (a lost raid: none, no Tier / Lives rows)",
+						fmt("ticked %s of %d; on the loss: %s", table.concat(ticked, ","), rows, table.concat(lostRows, ",")))
 					-- (P2 fix A look review r1, minor: the ring's 3 stats in 2 columns at 844x390 left an empty cell) every stat
 					-- line is filled across the stats' width: an odd last stat spans the line
 					if stats and U8.shown(stats) then

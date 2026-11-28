@@ -526,6 +526,7 @@ local K = {
 	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule)
 	MIN_TEXT_PX_TALL = 15, -- ...on a screen 1000 px tall or more
 	RESULT_W = 440,
+	RESULT_MIN_W = 300, -- (playtest 2026-11-28 C33) the narrowest a landscape phone's card gets to clear a touch button
 	-- LEAVE (Ring and Raid): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
 	LEAVE_CONFIRM = 3,
 	LEAVE_W = 150,
@@ -9459,34 +9460,41 @@ function Hud.ResultModel(B, payload)
 		why = why:sub(1, 1):lower() .. why:sub(2)
 	end
 	M.sub = mode and (why ~= "" and (mode .. " - " .. why) or mode) or why
-	-- the stat rows (key, icon, label, value)
-	local function stat(key, icon, text, value)
-		M.stats[#M.stats + 1] = { key, icon, text, tostring(value) }
+	-- the stat rows (key, icon, label, value, achieved: the green tick)
+	-- (playtest 2026-11-28 C9) a tick only on a row the player achieved: a lost raid read "Tier Loss / Lives left 1 /
+	-- Damage 100%" all ticked, a ring run that ended at 8 ticked "Best round 12"
+	local won = outcome == "Win"
+	local function stat(key, icon, text, value, achieved)
+		M.stats[#M.stats + 1] = { key, icon, text, tostring(value), achieved == true }
 	end
 	local run = B.Mode == "Ring" and type(rw.Run) == "table" and rw.Run or nil
 	if run then
-		stat("Rounds", "crown", "Rounds won", num(run.Wins, 0))
-		stat("Round", "sword", "Last round", num(run.Round, num(rw.Round, B.Round)))
+		stat("Rounds", "crown", "Rounds won", num(run.Wins, 0), num(run.Wins, 0) > 0)
+		stat("Round", "sword", "Last round", num(run.Round, num(rw.Round, B.Round)), run.Record ~= nil)
 		if run.Record ~= nil then
-			stat("Best", "star", "Best round", tostring(run.Record))
+			stat("Best", "star", "Best round", tostring(run.Record), true)
 		elseif num(run.Best, 0) > 0 then
-			stat("Best", "star", "Best round", num(run.Best, 0))
+			stat("Best", "star", "Best round", num(run.Best, 0), false)
 		end
 	end
+	-- (C9) the server's "Loss" medal (BattleCatalog.RaidTier on a lost raid) is no tier to show
 	local realTier = rw.Tier and rw.Tier ~= "None" and rw.Tier ~= "Cooldown"
 	if raid and realTier then
-		stat("Damage", "sword", "Damage", tostring(floor(num(rw.Share, 0) * 100 + 0.5)) .. "%")
-		stat("Tier", "crown", "Tier", tostring(rw.Tier))
+		stat("Damage", "sword", "Your share", tostring(floor(num(rw.Share, 0) * 100 + 0.5)) .. "%", won) -- (C9) the share of the damage, not "Damage"
+		if rw.Tier ~= "Loss" then
+			stat("Tier", "crown", "Tier", tostring(rw.Tier), won)
+		end
 	end
-	if B.Fighter and B.Mode ~= "Ring" then
-		stat("Lives", "heart", "Lives left", B.lives or 0)
+	-- (C9) on a loss only the dungeon keeps Lives left (the run's tries); a lost raid or duel had "Lives left 1" ticked
+	if B.Fighter and B.Mode ~= "Ring" and (won or B.Mode == "Dungeon") then
+		stat("Lives", "heart", "Lives left", B.lives or 0, won and num(B.lives, 0) > 0)
 	end
 	if B.Mode ~= "Ring" and num(B.renderT, 0) > 0 then
-		stat("Time", "clock", "Fight time", fmtTime(B.renderT))
+		stat("Time", "clock", "Fight time", fmtTime(B.renderT), won)
 	end
 	-- (look review round 1) a duel's trophy total after the fight (BattleService sends Rewards.TrophiesTotal)
 	if B.Mode == "Duel" and rw.Practice ~= true and rw.Void ~= true and tonumber(rw.TrophiesTotal) then
-		stat("Trophies", "trophy", "Trophies", Theme.Short(max(0, num(rw.TrophiesTotal, 0))))
+		stat("Trophies", "trophy", "Trophies", Theme.Short(max(0, num(rw.TrophiesTotal, 0))), won)
 	end
 	-- the reward chips (key, icon, number, word)
 	local function chip(key, icon, number, word)
@@ -9643,7 +9651,9 @@ function Hud.BuildResult(body, M, opts)
 		ic.Name = "Icon"
 		ic.Position = UDim2.fromOffset(0, floor((rowH - 18) / 2))
 		-- the tick: a green kit block (26 drawn: 22 + its 2 px edge) with the check
-		local tick = make("Frame", { Name = "Tick", BackgroundColor3 = SIGN.Grass, BorderSizePixel = 0, Position = UDim2.fromOffset(colw - 24, floor((rowH - 22) / 2)), Size = UDim2.fromOffset(22, 22) }, row)
+		-- (playtest 2026-11-28 C9) not on a row the player did not achieve (s[5] false; a model without the field, the
+		-- dungeon's End card, keeps it); the value keeps its place either way
+		local tick = make("Frame", { Name = "Tick", Visible = s[5] ~= false, BackgroundColor3 = SIGN.Grass, BorderSizePixel = 0, Position = UDim2.fromOffset(colw - 24, floor((rowH - 22) / 2)), Size = UDim2.fromOffset(22, 22) }, row)
 		signEdge(tick, SIGN.GrassLip, 2)
 		local ck = PixelIcon.New(tick, "check", 18, SIGN.OnGrass)
 		ck.Name = "Check"
@@ -9796,11 +9806,13 @@ end
 -- (Pitch 2 item 02 B, look review round 1) a phone's place for the result card -> left, top (design px). A landscape phone:
 -- the pitch's top middle (844x390: x 222, y 62), under the top-right stack only where the card reaches it (else left of it),
 -- then slid left of / ended above a touch button it would lie on (the right edge put the card on DASH and RUN's top). A
--- portrait phone: the top right, under the top-right stack (the menu column steps aside where the card covers it)
+-- portrait phone: the top right, under the top-right stack (the menu column steps aside where the card covers it).
+-- (playtest 2026-11-28 C33) -> a 4th value, the width that clears a touch button the card can go neither left of nor
+-- above (640x360: the RUN OVER card on RUN): the card at the left limit, Hud.ShowResult narrows it to that width
 function Hud.ResultSpot(m, w, h, landscape)
 	local gap = 8
 	local stackBottom, stackLeft = Hud.TopRightBottom(m)
-	local x, y
+	local x, y, fitW
 	local corner = false
 	if landscape then
 		local menuRight = Hud.MenuRight(m)
@@ -9821,6 +9833,10 @@ function Hud.ResultSpot(m, w, h, landscape)
 					x = lx
 				else
 					y = max(6, floor(r.Y - gap - h))
+					if y + h + gap > r.Y then -- (C33) still on it
+						x = lo
+						fitW = min(fitW or math.huge, floor(r.X - gap - lo))
+					end
 				end
 			end
 		end
@@ -9842,7 +9858,7 @@ function Hud.ResultSpot(m, w, h, landscape)
 	if y + h > m.H - 8 then
 		y = max(6, floor(m.H - 8 - h))
 	end
-	return x, y, corner
+	return x, y, corner, fitW
 end
 
 -- (P2 fix A) the HUD's currency strips step aside while a portrait phone's result card takes the corner (Hud.ResultSpot)
@@ -9924,12 +9940,25 @@ function Hud.ShowResult(B, payload)
 		w = min(K.RESULT_W, m.W - 16)
 	end
 	w = floor(w)
-	local built = Hud.BuildResult(body, M, { W = w, F = m.F, Compact = compact, Landscape = landscape, OnOk = function()
-		Hud.HideResult()
-	end })
+	local built, h
+	local function build()
+		built = Hud.BuildResult(body, M, { W = w, F = m.F, Compact = compact, Landscape = landscape, OnOk = function()
+			Hud.HideResult()
+		end })
+		h = built.H + K.PLANK_LIP
+	end
+	build()
+	if landscape then
+		-- (playtest 2026-11-28 C33) a card that can go neither left of nor above a touch button (the RUN OVER card on RUN
+		-- at 640x360) is narrowed to end before it (not under K.RESULT_MIN_W)
+		local _, _, _, fitW = Hud.ResultSpot(m, w, h, landscape)
+		if fitW and fitW < w and fitW >= K.RESULT_MIN_W then
+			w = fitW
+			build()
+		end
+	end
 	Hud.resultTimer = { segs = built.Segs, count = 5, lit = -1 }
 	Hud.SetResultTimer(1)
-	local h = built.H + K.PLANK_LIP
 	res.Size = UDim2.fromOffset(w, h)
 	Hud.SetTopReserve(nil) -- (P2 fix A) the boss strip goes with the fight: the HUD's strips back at the top first
 	local top = Hud.TopRightBottom(m)

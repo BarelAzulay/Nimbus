@@ -1177,7 +1177,7 @@ function H.newFeedRow(key, def)
 	row.Feed.LayoutOrder = 1
 	row.Feed.RichText = true -- (a short basket shows the price in red: H.paintFeedRow)
 	-- (Phase 5: no "Level up" button: ONE Feed button = one feed)
-	row.Evolve = H.button(buttons, "Evolve", "EVOLVE!", "Gray", UDim2.fromOffset(122, 58), 20, function()
+	row.Evolve = H.button(buttons, "Evolve", "Evolve!", "Gray", UDim2.fromOffset(122, 58), 20, function()
 		CareController.ConfirmEvolve(key)
 	end)
 	row.Evolve.LayoutOrder = 3
@@ -1287,7 +1287,7 @@ function H.paintFeedRow(row, home, cash)
 	-- EVOLVE when ready
 	local nextStage = H.canEvolve(key, def, level)
 	row.Evolve.Visible = nextStage ~= nil
-	row.Evolve.Text = S.Tall and "EVOLVE" or "EVOLVE!"
+	row.Evolve.Text = S.Tall and "Evolve" or "Evolve!" -- (playtest 2026-11-28 C47) sentence case, as the kit's other buttons
 	if (row.Ready ~= nil) ~= (nextStage ~= nil) then
 		row.Ready = nextStage
 		H.layoutFeedRow(row)
@@ -2317,7 +2317,7 @@ function CareController.ConfirmEvolve(key)
 		Title = "Evolve " .. name .. "?",
 		Text = name .. " changes into its " .. (nextStage == 2 and "Evolved II" or "Evolved") .. " form: Level bonus x" .. bonusText
 			.. " (battle power, health and coins). It keeps its level.",
-		YesText = "EVOLVE!",
+		YesText = "Evolve!",
 		Style = "Gold",
 		Color = GOLD,
 		Yes = function()

@@ -1037,19 +1037,21 @@ function Ring.startTile(ui, round, order)
 		Parent = ui.Picker,
 	})
 	local face = makeFrame(tile.Button, "PressFace", { Size = UDim2.new(1, 0, 1, -CloudUI.SignMetrics.Lip), ZIndex = 3 })
+	-- (playtest 2026-11-28 C32) caption and number stacked in the 50 px face: the caption 1..20, the number 20..50 (were a
+	-- 4..26 caption over a 36 px number from 12: the ROUND / BOSS glyphs sat on the round's digits at every size)
 	local caption = makeText(face, "Caption", boss and "BOSS" or "ROUND", "Heading", 18, boss and INK or MUTED, {
-		Position = UDim2.fromOffset(0, 4),
-		Size = UDim2.new(1, 0, 0, 22),
+		Position = UDim2.fromOffset(0, 1),
+		Size = UDim2.new(1, 0, 0, 19),
 		ZIndex = 3,
 	})
 	if boss then
 		PixelIcon.Lead(caption, ICON.Crown, { Colour = SIGN.RedLip })
 	end
 	tile.Caption = caption
-	makeText(face, "Number", tostring(round), "Display", 30, INK, {
+	makeText(face, "Number", tostring(round), "Display", 28, INK, {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -2),
-		Size = UDim2.new(1, 0, 0, 36),
+		Position = UDim2.new(0.5, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 30),
 		ZIndex = 3,
 	})
 	tile.Button.Activated:Connect(function()
@@ -1260,7 +1262,7 @@ function Ring.build()
 	})
 	ui.StartButton = CloudUI.Button({
 		Name = "Start",
-		Text = "START",
+		Text = "Start", -- (playtest 2026-11-28 C47) the kit's buttons read in sentence case (was START / CONTINUE)
 		Size = UDim2.new(1, 0, 0, Ring.BUTTON_H),
 		Style = "Green",
 		Skin = "Sign", -- (kit-b U9-7) THE green action of the window
@@ -1448,7 +1450,7 @@ function Ring.live(_win, ui)
 	if Ring.Pending then
 		ui.StartButton.Text = "Starting..."
 	else
-		ui.StartButton.Text = start > 1 and "CONTINUE" or "START"
+		ui.StartButton.Text = start > 1 and "Continue" or "Start"
 	end
 	ui.Why.Text = why or ""
 	ui.Why.Visible = why ~= nil
@@ -2539,6 +2541,46 @@ local function buildSide()
 	U.SideCards = {}
 end
 
+-- (playtest 2026-11-28 C13) a shown part of another ScreenGui as { X, Y, R, B } in our side gui's px; nil while hidden
+local function sideNeighbour(guiName, partName)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local g = pg and pg:FindFirstChild(guiName)
+	if not (g and g:IsA("ScreenGui") and g.Enabled and U.SideGui) then
+		return nil
+	end
+	local part = g:FindFirstChild(partName, true)
+	if not (part and part:IsA("GuiObject") and part.AbsoluteSize.X > 0) then
+		return nil
+	end
+	local cur = part
+	while cur and cur ~= g do
+		if cur:IsA("GuiObject") and not cur.Visible then
+			return nil
+		end
+		cur = cur.Parent
+	end
+	local ok, inset = pcall(function()
+		return game:GetService("GuiService"):GetGuiInset().Y
+	end)
+	inset = ok and tonumber(inset) or 0
+	local dy = (g.IgnoreGuiInset and 0 or inset) - (U.SideGui.IgnoreGuiInset and 0 or inset)
+	local p, z = part.AbsolutePosition, part.AbsoluteSize
+	return { X = p.X, Y = p.Y + dy, R = p.X + z.X, B = p.Y + dy + z.Y }
+end
+
+-- (C13) the menu tiles step aside while the shown stack lies on them (a portrait phone: NimbusMenu draws over the stack,
+-- "uel challenge!" / "mChaser wants to battle" at 360x640), as they do for a window (MenuController.SetColumnCovered)
+local function sideCoverMenu(left)
+	if (U.SideCover ~= nil) == (left ~= nil) and (left == nil or math.abs(U.SideCover - left) < 1) then
+		return
+	end
+	U.SideCover = left
+	local menu = otherController("MenuController")
+	if menu and type(menu.SetColumnCovered) == "function" then
+		pcall(menu.SetColumnCovered, left, "ArenaSide")
+	end
+end
+
 local function relayoutSide()
 	if not U.Side then
 		return
@@ -2564,7 +2606,22 @@ local function relayoutSide()
 			right = math.max(right, math.ceil(area.X - left + 8))
 		end
 	end
+	-- (playtest 2026-11-28 C13) the stack (its size as last laid out) keeps its top under the top bar's pill, which draws
+	-- over it ("Practice duel" half under it at 640x360): it steps down by the overlap (its foot then lies over the vitals
+	-- card's tab, under it in draw order); where it still lies on the menu tiles, they step aside (sideCoverMenu)
+	local size = U.Side.AbsoluteSize
+	local gap = 6
+	local top = area.Y - bottom - size.Y
+	local x0, x1 = area.X - right - size.X, area.X - right
+	local pill = size.Y > 0 and sideNeighbour("NimbusTopBar", "Pill")
+	if pill and pill.R > x0 and pill.X < x1 and top < pill.B + gap then
+		bottom = math.max(0, bottom - (pill.B + gap - top))
+		top = area.Y - bottom - size.Y
+	end
 	U.Side.Position = UDim2.new(1, -right, 1, -math.floor(bottom + 0.5))
+	local column = U.Side.Visible and size.Y > 0 and sideNeighbour("NimbusMenu", "MenuColumn")
+	local covers = column and column.R + gap > x0 and column.X < x1 and column.B > top and column.Y < top + size.Y
+	sideCoverMenu(covers and x0 or nil)
 end
 
 -- true while a menu window, the Pet Index or the Fusion window covers the screen (the side cards step back)
@@ -2617,6 +2674,7 @@ function refreshSide()
 	local hidden = inMatch() or battleId() ~= nil or S.Open ~= nil or otherWindowOpen()
 	U.Side.Visible = not hidden
 	if hidden then
+		sideCoverMenu(nil) -- (C13) the menu tiles come back with the stack gone
 		return
 	end
 	relayoutSide() -- (U9-7 look) the HUD publishes its top-right block after it builds: follow it
