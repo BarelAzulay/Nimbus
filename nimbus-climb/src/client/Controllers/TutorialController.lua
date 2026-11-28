@@ -98,6 +98,9 @@ local K = {
 	TAB_H = 35, -- ... and height: it ends 8 px into the card, clear above the counter tag and the fold (TAG_Y)
 	TAB_INSET = 22, -- the name starts this far in from each end of its plank (12 px clear of a brass rivet; the NPC's)
 	TAB_TEXT = 24, -- the name's largest size on the plank
+	-- (2026-11-28 playtest C42: "NIMB..." on a 667x375 card, the engine drawing the name wider than TextService measured it
+	-- at its floor) the name's box reaches this far into each inset past its plank's fit, 4 px clear of the rivets
+	NAME_SLACK = 8,
 	POP_EDGE = 6, -- at the screen's top edge the portrait and the plank may ride up to this far from the top (layout)
 	TAG_Y = 16, -- the counter tag and the fold block (30 high), under the name plank's row
 	TAG_H = 30,
@@ -389,7 +392,8 @@ local function mod(name)
 		local loaded
 		if name == "CloudUI" or name == "PixelCrisp" then
 			loaded = loadModule(Client:FindFirstChild("UI"), name, 5)
-		elseif name == "MenuController" or name == "IndexController" or name == "HudController" or name == "PromptController" then
+		elseif name == "MenuController" or name == "IndexController" or name == "HudController" or name == "PromptController"
+			or name == "DailyController" or name == "NpcController" then -- (2026-11-28 playtest C17: windowCovering)
 			loaded = loadModule(script.Parent, name)
 		else
 			loaded = loadModule(Shared, name, 5)
@@ -1021,12 +1025,23 @@ local function windowCovering()
 			return true
 		end
 	end
-	local index = mod("IndexController")
-	if index and type(index.IsOpen) == "function" then
-		local ok, open = pcall(index.IsOpen)
-		if ok and open == true then
-			return true
+	-- (2026-11-28 playtest C17) the Gifts window and an NPC's dialog stacked on the open card: they cover it too
+	for _, name in ipairs({ "IndexController", "DailyController", "NpcController" }) do
+		local m = mod(name)
+		if m and type(m.IsOpen) == "function" then
+			local ok, open = pcall(m.IsOpen)
+			if ok and open == true then
+				return true
+			end
 		end
+	end
+	-- (C17) and a phone's dungeon chip in the top band (DungeonController's RunChip: the party countdown, the run) lay
+	-- under the strip, 'Door: tap Enter' read 'Enter'
+	local pg = playerGui()
+	local run = pg and pg:FindFirstChild("NimbusDungeonRun")
+	local chip = run and run:FindFirstChild("RunChip", true)
+	if chip and chip:IsA("GuiObject") and run:IsA("ScreenGui") and chip.AbsoluteSize.X > 0 and shownIn(chip, run) then
+		return true
 	end
 	return false
 end
@@ -1391,11 +1406,13 @@ local function applyGeometry(width, height, bodyH, hintH, titleExtra)
 	UI.SkipLink.TextSize = cap
 	UI.ConfirmQuestion.TextSize = math.max(19, cap)
 	-- (kit-b backlog items 10 / 16) one line from TITLE_SIZE down to TITLE_FLOOR, else its lines at TITLE_FLOOR
-	-- (titleLines); it was cut at the 14.4 px floor on a narrow card. Its box: from the title row's top to 1 px over the
+	-- (titleLines); it was cut at the 14.4 px floor on a narrow card. Its box: from the title row's top to 4 px over the
 	-- well with the progress row moved up, or the row's 26 px; each line past those TITLE_LINE taller (titleExtra)
 	UI.StepTitle.TextWrapped = wraps
 	UI.StepTitle.TextYAlignment = wraps and Enum.TextYAlignment.Bottom or Enum.TextYAlignment.Center
-	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, (progUp and (K.HEADER_H - 1 - 46) or 26) + titleExtra)
+	-- (2026-11-28 playtest C49: its descender touched the well's frame, 0.8 px, on phones) the moved-up box ends 4 px over
+	-- the well
+	UI.StepTitle.Size = UDim2.new(1, -(x0 + K.PAD), 0, (progUp and (K.HEADER_H - 4 - 46) or 26) + titleExtra)
 	UI.StepTitle.TextSize = wraps and K.TITLE_FLOOR or fitTextSize(UI.StepTitle.Text, K.TITLE_SIZE, math.min(K.TITLE_FLOOR, cap), "Heading", headRoom)
 	layoutProgress(progUp and (headRoom - K.FOLD_W - 6) or headRoom)
 	-- narrow footers: "Skip tutorial" shortens to "Skip" and the Next button narrows, so they never overlap
@@ -2174,7 +2191,7 @@ local function buildPanel()
 	UI.Name = label(nameTab, "GuideName", "Nimbus", "Title", K.TAB_TEXT, SIGN.Gold, {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, -2),
-		Size = UDim2.new(1, -2 * K.TAB_INSET, 1, -(6 + K.NAME_LIP)),
+		Size = UDim2.new(1, -2 * (K.TAB_INSET - K.NAME_SLACK), 1, -(6 + K.NAME_LIP)),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		ZIndex = 7,
@@ -2883,9 +2900,15 @@ local function menuButtonRects(except)
 	return out
 end
 
--- What the pointer arrow must not cover: the other menu tiles and the tutorial card / bubble.
-local function pointerObstacles(button)
+-- What the pointer arrow must not cover: the other menu tiles and the tutorial card / bubble; (2026-11-28 playtest C51:
+-- at 640x360 the step-21 arrow pointed up at Home from inside the thumbstick's zone) on touch, Roblox's thumbstick and
+-- the RUN / DASH buttons too, as for the guide chip
+local function pointerObstacles(button, area)
 	local list = menuButtonRects(button)
+	for _, r in ipairs(touchButtonRects()) do
+		list[#list + 1] = r
+	end
+	list[#list + 1] = area and thumbstickRect(area) or nil
 	if UI.Root and UI.Root.Visible then
 		local part = (collapsed() and S.stripChip) and UI.Portrait or UI.Root -- (Pitch 2 03 B: folded, the root is the strip)
 		if part and part.AbsoluteSize.X > 0 then
@@ -2920,7 +2943,7 @@ end
 local function choosePointerSide(r, k, area, button)
 	local len, thick = 68 * k, 44 * k
 	local push = 15 * k -- the farthest point of the bounce
-	local obstacles = pointerObstacles(button)
+	local obstacles = pointerObstacles(button, area)
 	for _, spec in ipairs(POINTER_SIDES) do
 		local cx, cy, w, h = pointerCentre(spec[1], r, len, thick, push)
 		local box = { x0 = cx - w / 2, y0 = cy - h / 2, x1 = cx + w / 2, y1 = cy + h / 2 }
@@ -4765,6 +4788,11 @@ function TutorialController.Step(dt)
 	end
 	if covered ~= (S.windowOpen == true) then
 		S.windowOpen = covered
+		-- (2026-11-28 playtest C17: the Shop left 'Pick a B' of the folded strip showing, its '5/21' under the window) the
+		-- folded guide steps out of sight too while it is covered, back when the window closes
+		if UI.Slide then
+			UI.Slide.Visible = not covered
+		end
 		safe("layout", layout)
 	end
 	if S.shown then

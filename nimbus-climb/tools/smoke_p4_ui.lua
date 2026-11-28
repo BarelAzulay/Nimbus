@@ -134,6 +134,16 @@ local function serverScenarios()
 		T.check(s[20].CompleteOn == "RingWon" and t(20).Kind == "Arena" and t(20).Place == "Ring", "p4ui: 'ring' points at the Champion Ring portal; RingWon")
 		T.check(s[21].CompleteOn == "PortalUsed" and t(21).Kind == "Menu" and t(21).Id == "Home" and s[21].ChapterEnd == true,
 			"p4ui: 'portal' rings the Home menu tile; PortalUsed ends chapter 4")
+		-- (2026-11-28 playtest C19) step 2 claims the home: no later step but chapter 2's 'claim' (it passes by itself with a
+		-- home) asks for it again or promises it ('your very own home' at step 9, 'Claim your home' at step 20)
+		local stale = {}
+		for i = 3, #s do
+			local words = string.lower(s[i].Text .. " " .. (s[i].Hint or ""))
+			if s[i].Id ~= "claim" and (words:find("claim your home", 1, true) or words:find("very own home", 1, true)) then
+				stale[#stale + 1] = i .. " " .. s[i].Id
+			end
+		end
+		T.check(#stale == 0, "p4ui: no step after the home is claimed asks to claim it or promises it again", table.concat(stale, "; "))
 		T.eq(Steps.IndexOf and Steps.IndexOf.portal, 7, "p4ui: IndexOf keeps the first step of an id (chapter 1's 'portal' = 7)")
 		local all = ""
 		for i = 10, #s do

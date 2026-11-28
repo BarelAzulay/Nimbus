@@ -9039,6 +9039,11 @@ local function clientScenarios()
 					and U8.rect(rule).Y >= U8.rect(crumbs).Y and U8.rect(busy).Y >= U8.rect(rule).B,
 					tag .. ": the team's busy helpers under a dotted rule ('2 helpers in the garden')",
 					fmt("'%s' shown %s, rule %s with %d dots", busy and busy.Text or "missing", tostring(busy and U8.shown(busy)), tostring(rule and U8.shown(rule)), dots))
+				-- (2026-11-28 playtest C19) the fighter (slot 1) in the garden is a fighter, not a "helper"
+				U8.feed({ U8.KEYS[1], U8.KEYS[2], U8.KEYS[3] }, { U8.KEYS[1], U8.KEYS[2] }, nil, nil, nil, { Garden = 3 })
+				LKC.advance(0.6)
+				T.check(busy and busy.Text == "1 fighter, 1 helper in the garden", tag .. ": a gardening fighter is named a fighter ('1 fighter, 1 helper in the garden')",
+					busy and busy.Text or "missing")
 				PC.Close(true)
 				LKC.advance(0.4)
 			end)
@@ -17126,6 +17131,45 @@ local function clientScenarios()
 				T.check(not (after and after.VitalsSlot) or after.Vitals ~= nil, tag .. ": the vitals card is back once the tutorial goes")
 			end)
 		end
+		-- (2026-11-28 playtest) every step's opened card on the phones: (C42: "NIMB..." live at 667x375, the engine drawing the
+		-- name a few px wider than TextService measures it) the name's box holds the name at the size it is asked to show with
+		-- its outline's room and 10 design px to spare; (C49: a wrapped title's descender touched the well's frame, 0.8 px)
+		-- the step title's box ends over the well's wood edge, 2 design px (1 or more after the whole-px nudge; it was 1 px
+		-- into it), its glyphs, ending over the box's foot, about 4
+		local Theme = LoadingH.shared("Theme")
+		local count = #LoadingH.shared("TutorialSteps").Steps
+		for _, s in ipairs(U99.PHONES) do
+			U99.atPhone(s[1], s[2], "tutorial phone steps", function(tag)
+				local tight, wrapped = {}, 0
+				for step = 1, count do
+					local _, root = U99.tutorial(step, true)
+					local main = root and root:FindFirstChild("Main", true)
+					if root and main and U8.shown(main) then
+						local name = root:FindFirstChild("GuideName", true)
+						local fit = name and name:FindFirstChildOfClass("UITextSizeConstraint")
+						local okM, m = pcall(Theme.Measure, name and name.Text or "", "Title", fit and fit.MaxTextSize or name and name.TextSize or 24)
+						local need = (okM and typeof(m) == "Vector2" and m.X or 1e9) + 6 + 10
+						local boxW = name and name.AbsoluteSize.X / math.max(0.01, U8.scaleOf(name)) or 0
+						if boxW < need - 0.5 then
+							tight[#tight + 1] = fmt("step %d name box %.1f < %.1f", step, boxW, need)
+						end
+						local title, well = root:FindFirstChild("StepTitle", true), root:FindFirstChild("Well", true)
+						if title and well and U8.shown(title) and title.Size.Y.Offset > 26 then
+							wrapped = wrapped + 1
+							local k = math.max(0.01, U8.scaleOf(title))
+							local e = well:FindFirstChild("SignEdge")
+							local gap = (U8.rect(well).Y - (e and e.Thickness or 0) * k - U8.rect(title).B) / k
+							if gap < 1 - 0.01 then
+								tight[#tight + 1] = fmt("step %d title %.1f px over the well's edge", step, gap)
+							end
+						end
+					end
+				end
+				T.check(#tight == 0, tag .. ": every step's name has room to spare (no 'NIMB...') and its title clears the well's edge ("
+					.. wrapped .. " moved-up titles)", table.concat(tight, "; "))
+				U99.tutorialOff()
+			end)
+		end
 		LKC.flushErrors("tutorial_fits_phone")
 	end)
 
@@ -17286,6 +17330,69 @@ local function clientScenarios()
 				U99.tutorialOff()
 			end)
 		end
+		-- (2026-11-28 playtest C17) a window over the guide: the Shop left 'Pick a B' of the folded strip showing, the Gifts
+		-- window and an NPC's dialog stacked on the open card, a phone's dungeon chip lay under the strip ('Door: tap Enter'
+		-- read 'Enter'). Each of them (and the Pets window) now hides the card and the strip; both back when it goes
+		for _, s in ipairs({ { 1920, 1080, false }, { 667, 375, true } }) do
+			U8.at(s[1], s[2], s[3], "tutorial covered", function(tag)
+				local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+				local function guide()
+					local gui, root = U99.tutorial(5, true)
+					local slide = root and root:FindFirstChild("Slide")
+					local main = root and root:FindFirstChild("Main", true)
+					return slide, main
+				end
+				local function seen(slide)
+					return slide ~= nil and U8.shown(slide)
+				end
+				local covers = {
+					{ "the Gifts window", function()
+						U7.client("Controllers/DailyController").Open({})
+					end, function()
+						pcall(U7.client("Controllers/DailyController").Close, true)
+					end },
+					{ "the Shop", function()
+						U7.client("Controllers/ShopController").Open({})
+					end, function()
+						pcall(U7.client("Controllers/ShopController").Close, true)
+					end },
+					{ "the Pets window", function()
+						U7.client("Controllers/PetsController").Open({})
+					end, function()
+						pcall(U7.client("Controllers/PetsController").Close, true)
+					end },
+					{ "an NPC's dialog", function()
+						U99.npc(1)
+					end, function()
+						U99.npcClose()
+						U99.npcGone()
+					end },
+				}
+				if s[3] then
+					-- (a phone: the party countdown's chip in Roblox's top band; a desktop shows the side card instead)
+					covers[#covers + 1] = { "the dungeon party's chip", function()
+						U97.open("dungeon:countdown")
+						local run = pg and pg:FindFirstChild("NimbusDungeonRun")
+						local chip = run and run:FindFirstChild("RunChip")
+						assert(chip and U8.shown(chip), "the countdown's chip is not up")
+					end, function()
+						U97.close()
+					end }
+				end
+				for _, c in ipairs(covers) do
+					local slide = guide()
+					if T.check(seen(slide), tag .. ": (setup) the guide shows before " .. c[1]) then
+						local ok, err = pcall(c[2])
+						LKC.advance(1.2)
+						T.check(ok and not seen(slide), tag .. ": " .. c[1] .. " hides the guide (card and strip)", ok and "still shown" or tostring(err))
+						pcall(c[3])
+						LKC.advance(1.2)
+						T.check(seen(slide), tag .. ": the guide is back once " .. c[1] .. " goes")
+					end
+				end
+				U99.tutorialOff()
+			end)
+		end
 		LKC.flushErrors("tutorial_dock_b")
 	end)
 
@@ -17365,6 +17472,67 @@ local function clientScenarios()
 				U99.tutorialOff()
 				LKC.advance(1.2)
 				T.check(tile and not sameColor(tile.BackgroundColor3, Sign.Gold), tag .. ": the tile's own look back once the step goes", tile and hex(tile.BackgroundColor3) or "")
+			end)
+		end
+		-- (2026-11-28 playtest C51: at 640x360 the step-21 arrow to Home pointed up from inside the thumbstick's zone) on the
+		-- phones, with the game's real RUN / DASH, the arrow of step 5 (Pets) and step 21 (Home) lies over no thumb zone and
+		-- no touch button (no free side: the gold tile alone marks the button). "21 crowded": the shot's 2 x 2 grid (Stats
+		-- right of Home, Pets over it; the mock's column is one tile wide), stand-in tiles there, so only below or left is left
+		for _, s in ipairs(U99.PHONES) do
+			U99.atPhone(s[1], s[2], "tutorial pointer touch", function(tag)
+				for _, step in ipairs({ 5, 21, "21 crowded" }) do
+					U99.tutorial(step == "21 crowded" and 21 or step, false)
+					LKC.advance(1.2)
+					local standIns = {}
+					if step == "21 crowded" then
+						local menu = U99.gui("NimbusMenu")
+						local home = menu and (menu:FindFirstChild("MenuButton_Spot", true) or menu:FindFirstChild("MenuButton_Home", true))
+						if home then
+							local p, z = home.AbsolutePosition, home.AbsoluteSize
+							for i, off in ipairs({ { z.X + 6, 0 }, { 0, -(z.Y + 6) } }) do
+								local f = Instance.new("Frame")
+								f.Name = "MenuButton_SmokeStandIn" .. i
+								f.BackgroundTransparency = 0
+								f.Position = UDim2.fromOffset(p.X + off[1], p.Y + off[2])
+								f.Size = UDim2.fromOffset(z.X, z.Y)
+								f.Parent = menu
+								standIns[#standIns + 1] = f
+							end
+							-- and Home on the grid's bottom row: the tiles under it (Stats in the mock's column) step out
+							for _, d in ipairs(menu:GetDescendants()) do
+								if d:IsA("GuiObject") and d.Name:match("^MenuButton_") and d ~= home and d.Visible and d.AbsolutePosition.Y > p.Y + 1 then
+									d.Visible = false
+									standIns[#standIns + 1] = d
+								end
+							end
+						end
+						LKC.advance(2.2)
+					end
+					local pg = U99.gui("NimbusTutorialPointer")
+					local arrow = pg and pg:FindFirstChild("Arrow")
+					if arrow and U8.shown(arrow) then
+						-- its footprint as drawn: turned a quarter (above / below), the box's sides swap round its centre
+						local a = U8.rect(arrow)
+						if math.abs(math.abs(arrow.Rotation) - 90) < 1 then
+							local cx, cy, hw, hh = (a.X + a.R) / 2, (a.Y + a.B) / 2, (a.B - a.Y) / 2, (a.R - a.X) / 2
+							a = { X = cx - hw, R = cx + hw, Y = cy - hh, B = cy + hh }
+						end
+						local hits = U99.overTouch(pg, a, s[2] > s[1])
+						T.check(#hits == 0, fmt("%s step %s: the arrow over no thumb zone and no RUN / DASH", tag, tostring(step)), table.concat(hits, "; ") .. " | " .. U8.show(a)
+							.. " rot " .. tostring(arrow.Rotation))
+					else
+						T.info(fmt("*%s step %s: no free side for the arrow, the gold tile alone marks the button", tag, tostring(step)))
+					end
+					for _, f in ipairs(standIns) do
+						if f.Name:match("^MenuButton_SmokeStandIn") then
+							f:Destroy()
+						else
+							f.Visible = true
+						end
+					end
+				end
+				U99.tutorialOff()
+				LKC.advance(1.2)
 			end)
 		end
 		LKC.flushErrors("tutorial_pointer_kitb")

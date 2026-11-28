@@ -2663,18 +2663,28 @@ function H.refresh()
 	H.refreshDetail(keys, order)
 	-- (F0 review) the pet count, the busy helpers' line and the grid's empty wells follow the pets
 	U.PetCount.Text = #order == 1 and "1 pet" or (#order .. " pets")
-	local garden, training = 0, 0
-	for _, key in ipairs(keys) do
+	-- (2026-11-28 playtest C19) slot 1 is the fighter: a gardening fighter was counted as a "helper"
+	local garden, training, fighter = 0, 0, 0
+	for i, key in ipairs(keys) do
 		local busy = Bits.busyOf(key)
 		if busy == "Training" then
 			training = training + 1
+		elseif busy and i == 1 then
+			fighter = 1
 		elseif busy then
 			garden = garden + 1
 		end
 	end
 	local lines = {}
-	if garden > 0 then
-		lines[#lines + 1] = string.format("%d %s in the garden", garden, garden == 1 and "helper" or "helpers")
+	if fighter + garden > 0 then
+		local who = {}
+		if fighter > 0 then
+			who[#who + 1] = "1 fighter"
+		end
+		if garden > 0 then
+			who[#who + 1] = string.format("%d %s", garden, garden == 1 and "helper" or "helpers")
+		end
+		lines[#lines + 1] = table.concat(who, ", ") .. " in the garden"
 	end
 	if training > 0 then
 		lines[#lines + 1] = string.format("%d in training", training)
