@@ -2011,9 +2011,10 @@ function H.paintSkill(item)
 		local plain = (line:gsub(" " .. G.Dot .. " .*$", ""))
 		local fits = { line, plain }
 		if eff.Lead and not noPet and st ~= "Training" then
-			-- (playtest 2026-11-28 C39) "Hits 0% -> -3% - 1 min": the lead says what the minus takes off
-			table.insert(fits, 1, eff.Lead .. " " .. line)
-			table.insert(fits, 3, eff.Lead .. " " .. plain)
+			-- (playtest 2026-11-28 C39) "Hits 0% -> -3% - 1 min": the lead says what the minus takes off. Both lead lines
+			-- come first: the time drops before the lead does (at 360x640 the bare "0% -> -3% - 1 min" won over
+			-- "Hits 0% -> -3%", the penalty look the playtest named)
+			fits = { eff.Lead .. " " .. line, eff.Lead .. " " .. plain, line, plain }
 		end
 		H.fit(item.Now, fits, item.Now.Size.X.Offset - 2, m.Line, m.Line)
 		item.Now.TextColor3 = st == "Training" and timeColor or C.Ink

@@ -797,6 +797,22 @@ local function clientScenarios()
 			-- (Task 8) the five mats sit in their band, apart and clear of the pet card and the skills
 			H.matsApart(label .. " (mats)")
 		end)
+		-- (playtest 2026-11-28 C39) a 360x640 phone's one-line skill card: Defense's minus says what it takes off ("Hits 0%
+		-- -> -3%" or "... damage taken"); the bare "0% -> -3% - 1 min" read as a penalty
+		RedoGeom.at(360, 640, true, "train portrait 360x640", function()
+			H.with("train portrait 360x640", nil, function(TC)
+				TC.Open({})
+				KC.advance(0.6)
+				TC.Select("maple_fox")
+				KC.advance(0.3)
+				local now = H.part("Defense", "Now")
+				local text = H.text(now)
+				T.check(TC.SkillState("Defense") ~= "Busy" and H.shown(now) and (text:sub(1, 5) == "Hits " or text:find("damage taken", 1, true) ~= nil),
+					"train portrait 360x640: Defense's one-line card says what the minus takes off ('Hits 0% -> -3%')", text .. " / " .. tostring(TC.SkillState("Defense")))
+				T.check(now ~= nil and now.TextBounds.X <= now.AbsoluteSize.X + 0.5, "train portrait 360x640: ...and that line fits its card",
+					now and fmt("%.1f in %.1f", now.TextBounds.X, now.AbsoluteSize.X) or "-")
+			end)
+		end)
 	end)
 
 	------------------------------------------------------------------------------------------------

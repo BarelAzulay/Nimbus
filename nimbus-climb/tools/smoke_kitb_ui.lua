@@ -11828,6 +11828,54 @@ local function clientScenarios()
 			end)
 			T.eq(GuiService.TouchControlsEnabled, before, fmt("home phone %dx%d: the touch controls are back as they were after Close", s[1], s[2]))
 		end
+		-- (playtest 2026-11-28 C23) the Home window before a home: the claim card's title on ONE line (it wrapped 'CLAIM A /
+		-- HOME' in its 32 px box, the second line clipped or spilled over the card at 640-667 px), whole in its box and inside
+		-- the card; the line under it whole ('Your own sky i...'); each "Your home has" tile's title and line whole in their
+		-- labels and the tiles inside their frame (texts cut at 640-667 px)
+		for _, s in ipairs({ { 640, 360, true }, { 667, 375, true }, { 360, 640, true }, { 390, 844, true }, { 1280, 720, false }, { 1920, 1080, false } }) do
+			U9.at(s[1], s[2], s[3], "home claim", true, function(tag, win)
+				local function whole(l)
+					return l ~= nil and U8.shown(l) and l.TextBounds.X <= l.AbsoluteSize.X + 0.5 and l.TextBounds.Y <= l.AbsoluteSize.Y + 0.5
+				end
+				local function inside(r, o)
+					return r.X >= o.X - 0.5 and r.R <= o.R + 0.5 and r.Y >= o.Y - 0.5 and r.B <= o.B + 0.5
+				end
+				local function desc(l)
+					return l and fmt("'%s' %.0fx%.0f text in %.0fx%.0f", l.Text, l.TextBounds.X, l.TextBounds.Y, l.AbsoluteSize.X, l.AbsoluteSize.Y) or "missing"
+				end
+				local hero = win:FindFirstChild("ClaimHome", true)
+				if not T.check(hero ~= nil and U8.shown(hero), tag .. ": (setup) no home: the Claim a home card shows") then
+					return
+				end
+				local h = U8.rect(hero)
+				local title, sub = hero:FindFirstChild("Title"), hero:FindFirstChild("Sub")
+				local px = title and title.TextSize * U8.scaleOf(title) or 0
+				T.check(title ~= nil and not title.TextScaled and not title.TextWrapped and title.TextBounds.Y <= 1.5 * px,
+					tag .. ": the claim title stays on one line (not scaled, not wrapped)",
+					title and fmt("%s, scaled %s, wrapped %s", desc(title), tostring(title.TextScaled), tostring(title.TextWrapped)) or "missing")
+				T.check(whole(title) and inside(U8.rect(title), h), tag .. ": ...whole in its box and inside the card", desc(title) .. " | card " .. U8.show(h))
+				T.check(whole(sub) and inside(U8.rect(sub), h), tag .. ": the line under it is whole and inside the card", desc(sub))
+				local gets = win:FindFirstChild("Gets", true)
+				local g = gets and U8.rect(gets)
+				local bad, tiles = {}, 0
+				for i = 1, 3 do
+					local tile = gets and gets:FindFirstChild("Get" .. i)
+					if tile then
+						tiles = tiles + 1
+						if not inside(U8.rect(tile), g) then
+							bad[#bad + 1] = tile.Name .. " " .. U8.show(U8.rect(tile)) .. " out of " .. U8.show(g)
+						end
+						for _, name in ipairs({ "Title", "Text" }) do
+							local l = tile:FindFirstChild(name)
+							if not whole(l) then
+								bad[#bad + 1] = tile.Name .. "." .. name .. " " .. desc(l)
+							end
+						end
+					end
+				end
+				T.check(tiles == 3 and #bad == 0, tag .. ": each 'Your home has' tile's title and line are whole, the tiles inside their frame", table.concat(bad, "; "))
+			end)
+		end
 		LKC.flushErrors("home_fits_phone")
 	end)
 
@@ -11933,6 +11981,42 @@ local function clientScenarios()
 				T.check(#greens == 1 and greens[1] == "ConfirmPrestige", tag .. ": Prestige! is the dialog's one green plank", table.concat(greens, ", "))
 			end)
 		end
+		-- (playtest 2026-11-28 C35 review) a fit that does not scroll never counts as read: opened on a portrait phone (the
+		-- three lines whole, Prestige! live) and turned to a 640x360 landscape one, where the list scrolls, Prestige! waits
+		-- again ('Read all') until the list is scrolled to its end (the first fit latched 'read' and left it live)
+		U9.at(390, 844, true, "home prestige turned", false, function(tag, win)
+			U8.feed(nil, nil, nil, ready)
+			LKC.advance(0.5)
+			local button = win:FindFirstChild("Prestige", true)
+			if button then
+				Mock.Click(button)
+				LKC.advance(0.5)
+			end
+			local confirm = win:FindFirstChild("PrestigeConfirm", true)
+			local box = confirm and confirm:FindFirstChild("Box")
+			local yes = box and box:FindFirstChild("ConfirmPrestige", true)
+			local list = box and box:FindFirstChild("Lines")
+			if not T.check(yes ~= nil and list ~= nil and U8.shown(box) and yes.Text == "Prestige!", tag .. ": (setup) the confirm opens with every line in view, Prestige! live",
+				yes and yes.Text or "no confirm") then
+				return
+			end
+			Mock.SetViewport(640, 360)
+			LKC.advance(1)
+			local l = U8.rect(list)
+			local below = false
+			for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
+				local line = list:FindFirstChild("Line_" .. id)
+				below = below or (line ~= nil and U8.rect(line).B > l.B + 0.5)
+			end
+			local off = yes:GetAttribute("Disabled") == true or yes.Active == false
+			T.check(U8.shown(box) and below, tag .. " -> 640x360: (setup) the confirm stays up and its list now scrolls", "below the fold: " .. tostring(below))
+			T.check(off and yes.Text == "Read all", tag .. " -> 640x360: Prestige! waits ('Read all') for the list that now scrolls",
+				yes.Text .. " disabled=" .. tostring(off))
+			list.CanvasPosition = Vector2.new(0, 100000)
+			LKC.advance(0.1)
+			off = yes:GetAttribute("Disabled") == true or yes.Active == false
+			T.check(not off and yes.Text == "Prestige!", tag .. " -> 640x360: ...and goes live scrolled to its end", yes.Text .. " disabled=" .. tostring(off))
+		end)
 		LKC.flushErrors("home_prestige_fits")
 	end)
 

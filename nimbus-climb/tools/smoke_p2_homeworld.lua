@@ -1193,8 +1193,18 @@ local function serverScenarios()
 		local apart = T.tally("home plot: no spot is in reach of a pad's BuyPrompt and a GardenSpotPrompt at once (a bed's E never buys)")
 		local reachOk, closest, gardenPad = true, "", false
 		local slack = huge
-		-- an early home's pads (the Garden at level 1 sells its level 2, the playtest's $15K), measured, then put back
-		HB.SetPads(spot, TC.AvailablePads({ Stations = { Garden = 1 }, Prestige = 0 }))
+		-- every pad a home can show, measured, then put back: each station's pad (the Garden's at level 1 sells its level
+		-- 2, the playtest's $15K) and the Prestige pad. (playtest 2026-11-28 C8 review: an early home's pads only, before)
+		local everyPad = {}
+		for _, def in ipairs(TC.Stations) do
+			if type(def.Slot) == "table" and def.Slot.Pad then
+				everyPad[#everyPad + 1] = { StationId = def.Id, NextLevel = 2, Level = 1, Price = 15, BasePrice = 15, MaxLevel = def.MaxLevel, Name = def.Name,
+					Title = def.Name, Kind = def.Kind, Icon = def.Icon, LevelText = "Lv 1 -> 2" }
+			end
+		end
+		everyPad[#everyPad + 1] = { StationId = "Prestige", NextLevel = 1, Level = 0, Price = 0, BasePrice = 0, MaxLevel = 1, Name = "Prestige", Title = "Prestige 1",
+			Kind = "Prestige", LevelText = "0 -> 1", Prestige = true }
+		HB.SetPads(spot, everyPad)
 		for _, bed in pairs(gp12) do
 			reachOk = reachOk and bed.MaxActivationDistance >= 3.5
 			for _, buy in ipairs(findAll(home, function(d)
@@ -1211,8 +1221,27 @@ local function serverScenarios()
 				apart:case(gap >= bed.MaxActivationDistance + buy.MaxActivationDistance, why)
 			end
 		end
-		apart:case(gardenPad and apart.n >= 12, "the Garden pad's BuyPrompt and the 12 bed prompts were all measured (" .. apart.n .. " pairs)")
-		apart:report(apart.n .. " pairs; closest " .. closest)
+		apart:case(gardenPad and apart.n >= 12 * #everyPad, "every pad's BuyPrompt and the 12 bed prompts were all measured (" .. apart.n .. " pairs)")
+		apart:report(apart.n .. " pairs; closest " .. closest .. string.format(" (slack %.3f)", slack))
+		-- the cut reach still buys from the pad: a player standing on any corner of its 4 x 4 top (the root part ~3 studs
+		-- over it) is in the BuyPrompt's reach
+		local onPad = T.tally("home plot: a player standing anywhere on a pad is in its BuyPrompt's reach (a cut reach still buys)")
+		for _, buy in ipairs(findAll(home, function(d)
+			return d:IsA("ProximityPrompt") and d.Name == "BuyPrompt"
+		end)) do
+			local base = buy.Parent
+			if base and base:IsA("BasePart") then
+				local far = 0
+				for _, c in ipairs({ { 2, 2 }, { 2, -2 }, { -2, 2 }, { -2, -2 } }) do
+					local root = (base.CFrame * CFrame.new(c[1], base.Size.Y / 2 + 3, c[2])).Position
+					far = math.max(far, (root - base.Position).Magnitude)
+				end
+				onPad:case(far <= buy.MaxActivationDistance, string.format("%s: a pad corner is %.2f studs from the prompt, reach %.1f", tostring(buy:GetAttribute("StationId")), far, buy.MaxActivationDistance))
+			else
+				onPad:case(false, tostring(buy:GetAttribute("StationId")) .. ": the BuyPrompt sits on no pad base")
+			end
+		end
+		onPad:report(onPad.n .. " pads")
 		HB.SetPads(spot, TC.AvailablePads(state))
 		T.check(reachOk, "home plot: every GardenSpotPrompt reaches >= 3.5 studs (the guide's stop at a bed is 3.3)")
 		HB.SetGarden(spot, {}, 40)

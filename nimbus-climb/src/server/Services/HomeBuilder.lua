@@ -2949,8 +2949,11 @@ end
 -- (playtest 2026-11-28 C8) a pad's BuyPrompt reach: PROMPT_RANGE, cut so it never meets a Garden bed's reach. The
 -- Garden pad (10.6 studs from beds 1/2), the Fence and the Podium pads reached into the beds' reach, and E goes to
 -- whichever prompt the camera faces, so the bed the guide called "you're here" bought the $15K Garden upgrade. A
--- purchase stays one deliberate step onto (or beside) its 4 x 4 pad: never less than PAD_REACH_MIN.
-local PAD_REACH_MIN = 5
+-- purchase stays one deliberate step onto (or beside) its 4 x 4 pad: never less than PAD_REACH_MIN. (C8 review) 4.3,
+-- not 5: the reach is measured centre to centre (the root part ~3 studs over the pad: a corner of its top is ~3.9 from
+-- the prompt, so 4.3 still covers the whole pad); at 5 the Gym and ArenaGate pads (8.4 / 8.3 studs from beds 1, 3, 5)
+-- were held at 5 and met the beds' 4.
+local PAD_REACH_MIN = 4.3
 local function padReach(slotCF)
 	local cat = catalog()
 	local gdef = cat and cat.Get("Garden")

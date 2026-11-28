@@ -2341,7 +2341,8 @@ K.HERO_H_SHORT = 76 -- ... on short windows (landscape phones)
 P5.HERO = {
 	-- (kit-b U7a) the house and the badge draw PixelIcons
 	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "house", Badge = "arrow" },
-	ClaimHome = { Title = "Claim a home", ShortTitle = "Claim home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "house", Badge = "sparkle" },
+	-- (playtest 2026-11-28 C23 review) Tiny: the line a narrow card fits ('Your own sky i...' at 640x360)
+	ClaimHome = { Title = "Claim a home", ShortTitle = "Claim home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Tiny = "Free sky island!", Glyph = "house", Badge = "sparkle" },
 }
 -- the Prestige confirm's fixed lines, and a long "You get" line (H.Layout sizes the lines to the widest of these); Short:
 -- (kit-b U9-1) the same said in fewer words for a short window (a landscape phone), so the three lines fit its box
@@ -2552,6 +2553,19 @@ function P5.layoutHomeHero(H, short, w)
 		hero.Sub.Size = UDim2.new(1, -(x + 76), 0, 26)
 		local spec = P5.HERO[hero.Id]
 		hero.Sub.Text = (short or (tonumber(w) or 999) < 640) and spec.Short or spec.Sub
+		-- (playtest 2026-11-28 C23 review) the line under the title whole: the card's text box (the window less the
+		-- content's and the hero's 12 px sides, the orb column and the badge's 76) takes the first line that fits it by the
+		-- measure (a 15 % spare: the Body face drew wider than Theme.Measure), then Tiny; else it truncates as before
+		local subRoom = (tonumber(w) or 0) - 48 - (x + 76)
+		if subRoom > 0 then
+			for _, line in ipairs({ hero.Sub.Text, spec.Tiny }) do
+				if line and math.ceil(Theme.MeasureLabel(hero.Sub, line, hero.Sub.TextSize).X * 1.15) <= subRoom then
+					hero.Sub.Text = line
+					break
+				end
+				hero.Sub.Text = line or hero.Sub.Text
+			end
+		end
 		hero.Badge.Size = UDim2.fromOffset(short and 44 or 52, short and 44 or 52)
 	end
 	-- (playtest 2026-11-28 C23) the claim title on ONE line: TextScaled with MinTextSize 24 wrapped 'CLAIM A / HOME' in
@@ -3301,17 +3315,41 @@ do
 
 		-- (playtest 2026-11-28 C35) a list that scrolls keeps Prestige! off ('Read all') until the player has scrolled to
 		-- its end: on landscape phones 'You keep' / 'You get' sat below the fold beside a live Prestige!
+		-- (playtest 2026-11-28 C35 review) whether the list scrolls and where its end is, from the frame's own numbers
+		-- (AbsoluteCanvasSize - AbsoluteWindowSize is the engine's reachable end; FitConfirm's sum only where the engine
+		-- has none): an end computed a few px past the reachable one never unlocked Prestige!
+		function H.ConfirmScroll()
+			local ok, canvas, window = pcall(function()
+				return lines.AbsoluteCanvasSize.Y, lines.AbsoluteWindowSize.Y
+			end)
+			if ok and type(canvas) == "number" and type(window) == "number" and window > 0 then
+				return canvas - window > 1, canvas - window
+			end
+			return H.ConfirmEndY ~= nil, H.ConfirmEndY or 0
+		end
 		function H.PaintConfirmYes()
-			local wait = H.ConfirmEndY ~= nil and not H.ConfirmRead
+			local wait = H.ConfirmScroll() and not H.ConfirmRead
 			H.ConfirmYes:SetAttribute("Disabled", wait)
 			H.ConfirmYes.Text = wait and "Read all" or "Prestige!"
 		end
+		-- only a scroll to the end reads the list (a fit never does: a first fit that did not scroll left Prestige! live
+		-- once the real text arrived and scrolled)
 		lines:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
-			if H.ConfirmEndY and not H.ConfirmRead and lines.CanvasPosition.Y >= H.ConfirmEndY - 2 then
+			local scrolls, endY = H.ConfirmScroll()
+			if scrolls and not H.ConfirmRead and lines.CanvasPosition.Y >= endY - 2 then
 				H.ConfirmRead = true
 				H.PaintConfirmYes()
 			end
 		end)
+		for _, prop in ipairs({ "AbsoluteCanvasSize", "AbsoluteWindowSize" }) do
+			pcall(function()
+				lines:GetPropertyChangedSignal(prop):Connect(function()
+					if confirm.Visible then
+						H.PaintConfirmYes()
+					end
+				end)
+			end)
+		end
 
 		-- (kit-b U9-1 review) each line as tall as the text it really shows (its TextBounds at the column's width: the first
 		-- star's "You get" names the Fusion Machine too, longer than any estimate from the sample words), the list as tall
@@ -3366,7 +3404,6 @@ do
 				listH = whole > 0 and whole or listH
 			end
 			H.ConfirmEndY = listH < content and math.max(0, (content - listH) * scale) or nil
-			H.ConfirmRead = H.ConfirmRead or H.ConfirmEndY == nil
 			H.ConfirmList.Size = UDim2.new(1, -32, 0, listH)
 			box.Size = UDim2.fromOffset(fit.BoxW, fit.Top + listH + fit.Foot)
 			H.PaintConfirmYes()

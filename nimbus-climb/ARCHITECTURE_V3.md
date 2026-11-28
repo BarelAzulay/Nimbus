@@ -936,8 +936,9 @@ ScoopRadius(home) = Magnet Radius (6 studs without)
   `GardenSpotPrompt` ("Put a pet here", E; attributes `Slot`, `OwnerUserId`) at the cushion's far edge with
   MaxActivationDistance 4 and RequiresLineOfSight false (playtest 2026-11-28 C8: was 3, which reached only ~2.5 studs
   across the lawn from the root part, so the guide's stop at the bed was out of it); the middle of the lawn stays clear.
-  No buy pad's BuyPrompt reaches into a bed's reach (HomeBuilder `padReach`: 9, cut for the Garden / Fence / Podium
-  pads, never under 5), so E at a bed never buys; a built station's pad says "Upgrade". It opens `OpenPanel("Pets", { Action = "Garden", Slot = n })`.
+  No buy pad's BuyPrompt reaches into a bed's reach (HomeBuilder `padReach`: 9, cut for the Garden / Fence / Podium /
+  Gym / ArenaGate pads, never under 4.3; reaches are measured centre to centre in 3D, the prompt point to the
+  player's root part, and the smoke check adds the two reaches over every pad a home can show), so E at a bed never buys; a built station's pad says "Upgrade". It opens `OpenPanel("Pets", { Action = "Garden", Slot = n })`.
 * Open places come from `HomeBuilder.SetGarden(spotInfo, valid, open)` (the hook TycoonService already calls at
   :666), NOT from the Garden level; the template cache key (:2549-2553) becomes `Garden:<level>:<open>`.
 * HomeFx: `K.MAX_GARDEN_SLOTS = 12`; pets on cushions dip into the bowl twice per meal, wiggle, a coin pops out onto

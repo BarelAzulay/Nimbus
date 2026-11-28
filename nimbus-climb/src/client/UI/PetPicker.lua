@@ -892,10 +892,17 @@ function H.paintCard(item, e)
 	local last = string.match(e.Name, "(%S+)%s*$") or e.Name
 	local tier = not e.Hybrid and Bits.tierOf(e.Key, e.Def) or "Normal"
 	item.Names = { e.Name }
+	-- (C40 review) a Golden / Rainbow copy keeps its finish and its initials first ('Golden C. Dragon'): 'Golden Dragon'
+	-- dropped 'Cloudy' and the initials of the whole name lost the finish ('G. C. Dragon')
+	local base = tier ~= "Normal" and (e.Name:gsub("^" .. tier .. "%s+", "")) or e.Name
+	local short = H.initialed(base)
 	if tier ~= "Normal" then
+		if short then
+			item.Names[#item.Names + 1] = tier .. " " .. short
+		end
 		item.Names[#item.Names + 1] = tier .. " " .. last
 	end
-	item.Names[#item.Names + 1] = H.initialed(e.Name)
+	item.Names[#item.Names + 1] = short
 	item.Names[#item.Names + 1] = last
 	local levelText, stars = H.levelText(e)
 	item.Level.Text = levelText

@@ -767,6 +767,40 @@ local function clientScenarios()
 						KC.advance(0.6)
 						local names = topRow(PP, ctx)
 						RedoGeom.check(H.win(), label, { NoOverlap = names })
+						-- (playtest 2026-11-28 C40 review) a name cut short keeps what tells the pet apart: no card shows a bare
+						-- last word another pet's name ends in ('Dragon' beside 'Cloudy Dragon'), and a Golden / Rainbow copy keeps
+						-- its finish and a letter of each word ('Golden S. Owl', not 'Golden Owl')
+						local entries, bad, cut = {}, {}, 0
+						for _, e in ipairs(PP.Entries(ctx)) do
+							entries[e.Key] = e
+						end
+						local function words(s)
+							local n = 0
+							for _ in tostring(s):gmatch("%S+") do
+								n = n + 1
+							end
+							return n
+						end
+						for _, key in ipairs(PP.Shown()) do
+							local e, card = entries[key], H.card(key)
+							local nm = card and RedoGeom.find(card, "Name")
+							if e and nm and nm.Text ~= e.Name then
+								cut = cut + 1
+								local tier = string.match(tostring(key), "@(%a+)$")
+								if words(nm.Text) == 1 then
+									for _, other in pairs(entries) do
+										if other.Name ~= e.Name and (other.Name == nm.Text or other.Name:sub(-#nm.Text - 1) == " " .. nm.Text) then
+											bad[#bad + 1] = fmt("%s shows '%s' beside '%s'", key, nm.Text, other.Name)
+											break
+										end
+									end
+								end
+								if tier and not e.Hybrid and (nm.Text:sub(1, #tier + 1) ~= tier .. " " or words(nm.Text) ~= words(e.Name)) then
+									bad[#bad + 1] = fmt("%s ('%s') shows '%s'", key, e.Name, nm.Text)
+								end
+							end
+						end
+						T.check(#bad == 0, fmt("%s: a cut name keeps what tells the pet apart (%d cut)", label, cut), table.concat(bad, "; "))
 						local search, grid = H.find("Search"), H.find("Grid")
 						local all = H.find("Filter_All")
 						if size[1] == 844 then
