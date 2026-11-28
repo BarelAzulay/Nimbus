@@ -51,8 +51,9 @@ SCENARIOS = ["battle:raid", "battle:raid:full", "battle:raid:ready", "battle:dun
              "dungeon:end", "dungeon:wipe",
              # (kit-b backlog 9: the Champion Ring's fight and the trial's, never listed here: at 360 x 640 enemy row 1 lay
              # 15-18 px on the fighter card, 'Round 8' read 'Ro...'; 375 x 667 'Biscuit B...'; 390 x 844 the top card 37.6 px
-             # on the fighter card)
-             "battle:fighter", "battle:ring:fight8", "battle:trial:ready",
+             # on the fighter card) (playtest 2026-11-28 C62: battle:trial:ready rendered a ring round, the Trial setup is
+             # gone; the ready phase is walked on the dungeon fight)
+             "battle:fighter", "battle:ring:fight8", "battle:dungeon:ready",
              # (kitb-matchhud look0 N2: the card between two ring rounds, 'ROUND 8 WON! Round 9 in 3', never listed either:
              # with the ring's strip across a portrait phone's top (kit-b backlog 9) the team moved down under it and the
              # card did not - at 360 x 640 it lay 32.8 px on the helpers ('HA', 'T... ME'), at 375 x 667 19.4, at 384 x 640

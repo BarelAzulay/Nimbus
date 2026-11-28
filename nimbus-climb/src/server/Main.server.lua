@@ -145,13 +145,11 @@ local function writePartCount(info)
 end
 
 -- Global world rules. LightingService applies them too; this copy makes sure they hold even if
--- that service failed to load.
+-- that service failed to load. (playtest 2026-11-28 C46: FallenPartsDestroyHeight is not written here any more; it
+-- is PluginSecurity, so the write only warned at every boot. The place file carries -2000: default.project.json.)
 local function applyWorldRules()
 	pcall(function()
 		Workspace.Gravity = Config.Physics.Gravity
-	end)
-	pcall(function()
-		Workspace.FallenPartsDestroyHeight = -2000
 	end)
 end
 

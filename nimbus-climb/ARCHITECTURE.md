@@ -83,8 +83,9 @@ LightingService.Init()
 Sets: Lighting (ClockTime ~ 17.5 golden hour, soft pink/blue ambient), `Atmosphere`, `Sky` (no asset
 ids: leave default sky, tweak star count/celestial bodies), `Bloom`, `SunRays`,
 `ColorCorrection`, `DepthOfField` (subtle). `workspace.Gravity = Config.Physics.Gravity`,
-`workspace.FallenPartsDestroyHeight = -2000`, `Players.CharacterAutoLoads = true`,
-`workspace.StreamingEnabled` is left false. Idempotent.
+`Players.CharacterAutoLoads = true`, `workspace.StreamingEnabled` is left false. Idempotent.
+`workspace.FallenPartsDestroyHeight` is NOT set at runtime (PluginSecurity: a server Script cannot write it);
+the place carries -2000 through `default.project.json`'s `Workspace.$properties` (playtest 2026-11-28 C46).
 
 ### LobbyBuilder — `LobbyBuilder.lua`
 Builds the cloud village **procedurally** at `Config.Lobby.Origin`.

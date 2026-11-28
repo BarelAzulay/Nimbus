@@ -234,10 +234,12 @@ end
 
 -- Global physics / world rules. StreamingEnabled is deliberately left alone (false). Spawning is NOT decided
 -- here: Main / PlayerService hold the character until the menu's PLAY (7.2), so CharacterAutoLoads is untouched.
+-- (playtest 2026-11-28 C46) Workspace.FallenPartsDestroyHeight is PluginSecurity: a server Script cannot write it
+-- (every boot warned "lacking capability PluginOrOpenCloud" and the value never applied). It is -2000 in the place
+-- itself now (default.project.json's Workspace $properties), far below the lobby and every course kill plane.
 function LightingService.ApplyWorldRules()
 	setProps(Workspace, {
 		Gravity = Config.Physics.Gravity,
-		FallenPartsDestroyHeight = -2000, -- far below the lobby kill plane and every course kill plane
 	})
 end
 

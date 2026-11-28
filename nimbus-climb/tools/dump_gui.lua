@@ -57,8 +57,9 @@
 --                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
 --   daily[:locked|:play|:week]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block); week (kit-b U9-4) =
 --                         a paid Day 7 claim caught mid-celebration (the banner and the kit confetti)
---   trove[:done|:preview] (kit-b U9-4) the Sky Trove panel (TroveController) opened by the chest's prompt, its Group row
---                         open (Join); done = claimed (Done), preview = the Studio preview (GroupId 0)
+--   trove[:done|:preview|:soon] (kit-b U9-4) the Sky Trove panel (TroveController) opened by the chest's prompt, its Group
+--                         row open (Join); done = claimed (Done), preview = the Studio preview (GroupId 0), soon = the
+--                         group ask not open yet ("Coming soon"; playtest 2026-11-28 C62)
 --   gems[:store]          lobby-shop Task 15: the drawn cut gem at every size, piles, chips, the HUD coin; store = the Shop's
 --                         Gems tab with the gem pack piles ([lobby-shop] block)
 --   shop[:<tab>]          lobby-shop Tasks 21/22: the one Shop window (ShopController) on Eggs (default) / Gems / Packs /
@@ -97,12 +98,13 @@
 --   arena[:<view>[:<arg>]]  Phase 3 UI with a battle profile (team, trophies, trials 1-6 cleared): view team (default)
 --                         | team4 (Prestige 1) | newteam | trials[:<level>] | duels | raid | leaders | side (the duel
 --                         invite card, the queue and the Double Rewards countdown, no window)
---   battle[:<mode>[:<phase>]]  the Phase 3 battle HUD (BattleController) fed by a real BattleSim stepped at 10 Hz:
---                         mode trial (default) | duel | raid | spectate | ring, phase fight (default) | ready (two SPECIAL
---                         buttons lit) | retreat | result (victory card) | lost (defeat card) | overtime (the duel
---                         OVERTIME banner); Phase 4 ring phases end in the round number (default 8): fight<n> (the
---                         ring HUD vs the round's champion team) | next<n> (the next-round card after a win) |
---                         result<n> (the run's result card) | record<n> (the result card with a new best round)
+--   battle[:<mode>[:<phase>]]  the Phase 5 battle HUD (BattleController) fed by a real BattleSim stepped at 10 Hz (the
+--                         [owner: battleclient] block): mode fighter (default: a Champion Ring round) | raid | dungeon |
+--                         duel | spectate | ring, phase fight (default) | ready (a full energy bar, a buff and a swap
+--                         cooling) | result (the won card) | lost (the defeat card) | cleared (dungeon: the room cleared)
+--                         | full (raid: every top-card pill); the ring's phases end in the round number (default 8):
+--                         fight<n> | next<n> | result<n> | record<n>. (playtest 2026-11-28 C62: the Phase 3 trial phases
+--                         retreat / overtime are gone with BattleSim 10.5; "trial" renders the dungeon fight)
 --   portal[:<Id>[:<n>[:<studs>]]]  no game HUD: the real LobbyBuilder + PortalService with n players (default 1) on
 --                         the ONE obby pad (Id 'Obby' = lobby.Portals.Obby, or a level id: Easy .. Saint picks that
 --                         party level; Phase 5 6.3); its world GUIs mirrored flat into the ScreenGui
@@ -3386,6 +3388,10 @@ end
 scenario("battle", function(mode, phase)
 	mode = (mode and mode ~= "") and mode:lower() or "fighter"
 	phase = (phase and phase ~= "") and phase:lower() or "fight"
+	if mode == "trial" then
+		-- (playtest 2026-11-28 C62) the Phase 3 Trial setup is gone (BattleSim 10.5): battle:trial:* rendered a ring round
+		mode = "dungeon"
+	end
 	local BC = req("client/Controllers/BattleController", true)
 	local Sim = req("shared/BattleSim", true)
 	local BCat = req("shared/BattleCatalog", true)
@@ -4277,7 +4283,7 @@ end
 --                        the Group row open (Join), done = claimed (Done, disabled), preview = GroupId 0 under StorePreview
 scenario("trove", function(view)
 	view = tostring(view or ""):lower()
-	local state = (view == "done" and "Done") or (view == "preview" and "Preview") or "Open"
+	local state = (view == "done" and "Done") or (view == "preview" and "Preview") or (view == "soon" and "Soon") or "Open"
 	CAREUI.profile() -- (the HUD's balances as in play: the panel docks under them)
 	toClient("OpenPanel", "Trove")
 	toClient("TroveState", { GroupId = state == "Preview" and 0 or 777, Preview = state == "Preview",

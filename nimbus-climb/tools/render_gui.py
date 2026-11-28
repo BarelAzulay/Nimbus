@@ -105,6 +105,8 @@ SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "matc
              # and :3d (Egg3D's MeshLibrary stubbed: the hero eggs' frames drawn from their card pictures, labelled)
              "hatch:strip:pics", "hatch:strip3:pics", "hatch3:4.6:3d:pics",
              "shop", "shop:restricted", "shop:Gems", "shop:Packs", "shop:Passes", "shop:Boosts",
+             # (playtest 2026-11-28 C62) the Shop as it SHIPS (the Store switch off): one Eggs tab, and with the gem packs
+             "shop:off", "shop:offgems",
              # (shop-area T3) the Secret card away from the Storm Altar (greyed, AltarChip, TRAVEL) and at it
              "shop_secret_locked", "shop_secret_altar",
              "lobbyboard", "lobbyboard:2", "lobbyboard:3",
@@ -113,11 +115,14 @@ SCENARIOS = ["gallery", "signkit", "lobby", "title", "match", "match:hit", "matc
              # the Sky Trove, the Credits / Settings / Updates over the HUD, the lobby gift / boost chips / side hint,
              # the week's confetti, the world boards (homes, arena), the gardening question, the battle phases and the
              # ring rounds, the arena's side card / Prestige team / new team, the ring with a record
-             "trove", "trove:done", "trove:preview", "mainmenu:credits", "settings:hud", "updates:hud",
+             "trove", "trove:done", "trove:preview", "trove:soon", "mainmenu:credits", "settings:hud", "updates:hud",
              "lobby:gift", "lobby:boosts", "lobby:hint", "lobby:hintbad", "daily:week", "homepads", "arenaboards",
              "pets:recall",
-             "battle:trial:ready", "battle:trial:retreat", "battle:trial:result", "battle:trial:lost",
-             "battle:duel:overtime", "battle:ring:fight8", "battle:ring:next8", "battle:ring:result8", "battle:ring:record8",
+             # (playtest 2026-11-28 C62) the Phase 3 battle:trial:* phases and battle:duel:overtime are gone: BattleSim 10.5
+             # deleted the Trial setup and Overtime, so they rendered other states (a ring round, a plain duel); the fight
+             # phases live on the Phase 5 modes (battle:dungeon:ready, battle:raid:ready ...)
+             "battle:dungeon:ready", "battle:dungeon:lost", "battle:dungeon:cleared",
+             "battle:ring:fight8", "battle:ring:next8", "battle:ring:result8", "battle:ring:record8",
              "arena:side", "arena:team4", "arena:newteam", "ring:record", "battle", "hatch3",
              # (Pitch 2 world lane, look review r0) the world parts of items 04 B / 13 A by their real builders, mirrored
              # into WorldMirror at their on-screen size, and the folded menu tab with its red '!' block
@@ -1919,7 +1924,7 @@ def main():
     ap.add_argument("scenario", nargs="?", help="lobby, title, match[:hit], countdown, party, results[:loss], menu:<Window>[:<Tab>], "
                     "tutorial[:<step>[:open]], npc[:<n>], dev, toasts, mousehint, portal[:<Id>[:<players>[:<studs>]]], homepads[:<tier>], "
                     "home[:coins], feed, garden[:<slot>], train[:<key>], evolve, ring[:<new|record>], petcards, "
-                    "battle[:<mode>[:<phase>]] (battle:ring:<fight|next|result|record><round>, battle:duel:overtime, "
+                    "battle[:<mode>[:<phase>]] (battle:ring:<fight|next|result|record><round>, battle:dungeon:<ready|lost|cleared>, "
                     "battle:<fighter|raid|duel|spectate|dungeon>), arena[:<view>] (arena:practice, arena:dungeon[:<view>]), "
                     "dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], portal:Obby, "
                     "picker[:train|upgrade|mix], train:mats, daily[:locked|play], fusion[:upgrade|mix], "

@@ -596,16 +596,31 @@ local function serverScenarios()
 				T.check(toast.kind == "bad" and has(toast.text, case[2]), "hudtools ban: refuses " .. case[3], toast.text)
 			end
 			T.check(admin.Parent ~= nil, "hudtools ban: ...the developer stays")
-			-- a group-owned game: the group's owner cannot be told apart offline here, so nothing happens (no ban on a guess)
+			-- a group-owned game: the group's owner is read through GroupService:GetGroupInfoAsync (playtest 2026-11-28 C62:
+			-- the mock lacked it, so this path never ran): the owner is a developer and cannot be banned, anyone else can be;
+			-- while the API fails nothing happens (no ban on a guess)
 			game.CreatorType = Enum.CreatorType.Group
 			game.CreatorId = 4040
 			local savedRank = Mock.Classes.Player.methods.GetRankInGroup
 			Mock.Classes.Player.methods.GetRankInGroup = function(self)
 				return self.UserId == OWNER_ID and 255 or 0
 			end
-			mark = chat(owner, "/ban 43009")
+			Mock.GroupInfo = { Id = 4040, Name = "Sky Guild", Owner = { Id = 43010, Name = "GroupBoss" } }
+			mark = chat(owner, "/ban 43010")
 			toast = lastToast(owner, mark)
-			T.check(toast.kind == "bad" and has(toast.text, "nothing was done"), "hudtools ban: a group game whose owner cannot be read refuses an offline ban", toast.text)
+			-- (review) "cannot be banned", not "developer": the could-not-check refusal says "developer" too, so the old match
+			-- passed on a mock without GetGroupInfoAsync
+			T.check(toast.kind == "bad" and has(toast.text, "cannot be banned"), "hudtools ban: a group game's owner (GetGroupInfoAsync) is a developer and cannot be banned", toast.text)
+			bans = #Mock.BanLog
+			mark = chat(owner, "/ban 43009")
+			T.check(#Mock.BanLog == bans + 1 and Mock.BanLog[#Mock.BanLog].UserIds[1] == 43009, "hudtools ban: ...another offline account in a group game is banned", lastToast(owner, mark).text)
+			Mock.GroupInfoFail = true
+			mark = chat(owner, "/ban 43011")
+			toast = lastToast(owner, mark)
+			T.check(toast.kind == "bad" and has(toast.text, "nothing was done"), "hudtools ban: a group game whose owner cannot be read (GetGroupInfoAsync fails) refuses an offline ban", toast.text)
+			Mock.GroupInfoFail = false
+			Mock.GroupInfo = nil
+			bans = #Mock.BanLog -- (the junk loop below expects no ban after this point)
 			Mock.Classes.Player.methods.GetRankInGroup = savedRank
 			game.CreatorType = Enum.CreatorType.User
 			game.CreatorId = OWNER_ID

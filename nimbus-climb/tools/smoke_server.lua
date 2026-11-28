@@ -867,7 +867,43 @@ S.boot = guarded("boot", function()
 	local dof = Lighting:FindFirstChildOfClass("DepthOfFieldEffect")
 	T.check(dof == nil or dof.Enabled == false or (dof.FarIntensity <= 0.2 and dof.NearIntensity <= 0.2), "DepthOfField is off or extremely subtle")
 	T.near(workspace.Gravity, Config.Physics.Gravity, 0.001, "workspace.Gravity == Config.Physics.Gravity")
-	T.eq(workspace.FallenPartsDestroyHeight, -2000, "FallenPartsDestroyHeight is -2000")
+	-- (playtest 2026-11-28 C46) FallenPartsDestroyHeight is PluginSecurity: the engine refuses a server write ("lacking
+	-- capability PluginOrOpenCloud"), so the mock refuses it too (the old check passed only because the mock accepted the
+	-- write) and the -2000 lives in the place file: default.project.json's Workspace $properties
+	local okWrite, errWrite = pcall(function()
+		workspace.FallenPartsDestroyHeight = -2000
+	end)
+	T.check(not okWrite and tostring(errWrite):find("PluginOrOpenCloud", 1, true) ~= nil, "the mock refuses a runtime write of FallenPartsDestroyHeight like the engine (PluginOrOpenCloud)", tostring(errWrite))
+	do
+		local here = (debug.getinfo(1, "S").source or ""):match("^=(.*)smoke_server%.lua$") or ""
+		local text
+		for _, path in ipairs({ "default.project.json", here .. "../default.project.json", "../default.project.json" }) do
+			local fh = io.open(path, "r")
+			if fh then
+				text = fh:read("*a")
+				fh:close()
+				break
+			end
+		end
+		local ws = text and text:match('"Workspace"%s*:%s*(%b{})')
+		local props = ws and ws:match('"%$properties"%s*:%s*(%b{})') or ""
+		local height = tonumber(props:match('"FallenPartsDestroyHeight"%s*:%s*(%-?%d+)'))
+		T.eq(height, -2000, "default.project.json sets Workspace.FallenPartsDestroyHeight = -2000 in the place itself (no runtime write)")
+		local srcWrites = {}
+		for _, rel in ipairs({ "src/server/Main.server.lua", "src/server/Services/LightingService.lua" }) do
+			local fh = io.open(rel, "r") or io.open(here .. "../" .. rel, "r")
+			if fh then
+				local src = fh:read("*a")
+				fh:close()
+				for line in src:gmatch("[^\n]+") do
+					if line:find("FallenPartsDestroyHeight%s*=") and not line:match("^%s*%-%-") then
+						srcWrites[#srcWrites + 1] = rel
+					end
+				end
+			end
+		end
+		T.eq(#srcWrites, 0, "no server script writes FallenPartsDestroyHeight at runtime", table.concat(srcWrites, ", "))
+	end
 	T.eq(Players.CharacterAutoLoads, false, "Players.CharacterAutoLoads stays false (PlayerService spawns, 7.2)")
 	T.eq(workspace.StreamingEnabled, false, "StreamingEnabled stays false")
 	-- LightingService.Init is idempotent
@@ -2976,6 +3012,7 @@ S.match_victory = guarded("match_victory", function()
 	-- only one player finishes: the match keeps going
 	local fin = m.Course.Finish
 	local mark = logSize()
+	m.StartedAt = m.StartedAt - 120 -- (playtest 2026-11-28 C22) a teleport run is under the course's shortest honest time
 	Mock.Teleport(a, fin.Position + Vector3.new(0, fin.Size.Y / 2 + 3.5, 0))
 	advance(1.0)
 	T.eq(m.State, "Playing", "victory needs ALL alive players at the finish")

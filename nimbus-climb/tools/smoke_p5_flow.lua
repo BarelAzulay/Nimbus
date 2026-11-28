@@ -1064,6 +1064,7 @@ local function climbObby(p)
 		advance(0.6)
 	end
 	local fin = m.Course.Finish
+	m.StartedAt = m.StartedAt - 120 -- (playtest 2026-11-28 C22) a teleport run is under the course's shortest honest time
 	Mock.Teleport(p, fin.Position + Vector3.new(0, fin.Size.Y / 2 + 3.5, 0))
 	K.waitFor(function()
 		return p:GetAttribute(config().Attr.InMatch) ~= true

@@ -5773,6 +5773,13 @@ service("Workspace", {
 			return findChildByName(st, "Terrain")
 		end,
 	},
+	setters = {
+		-- (playtest 2026-11-28 C46) PluginSecurity in the engine: a Script's write errors like Roblox's does (the old prop
+		-- accepted it, so smoke_server's "-2000 applied" check passed in the mock while every real boot warned)
+		FallenPartsDestroyHeight = function()
+			error("The current thread cannot write 'FallenPartsDestroyHeight' (lacking capability PluginOrOpenCloud)", 3)
+		end,
+	},
 	methods = {
 		GetPartBoundsInBox = function(self, cframe, size, params)
 			if typeof(cframe) ~= "CFrame" or typeof(size) ~= "Vector3" then
@@ -6863,7 +6870,26 @@ service("MarketplaceService", {
 	},
 	events = { "PromptGamePassPurchaseFinished", "PromptProductPurchaseFinished" },
 })
-service("GroupService", { props = { PromptJoinAsync = T.any(function() return Enum.GroupMembershipStatus.None end) } })
+service("GroupService", {
+	props = {
+		PromptJoinAsync = T.any(function() return Enum.GroupMembershipStatus.None end),
+		-- (playtest 2026-11-28 C62) GetGroupInfoAsync(groupId) -> Mock.GroupInfo (a table shaped like Roblox's answer: Id,
+		-- Name, Owner = { Id, Name }) or a nobody-owned default; errors while Mock.GroupInfoFail (a web call that failed).
+		-- DevService reads the owner of a group-owned game through it; before, the mock lacked it so that path never ran.
+		GetGroupInfoAsync = T.any(function(_, groupId)
+			if Mock.GroupInfoFail then
+				error("GroupService:GetGroupInfoAsync() failed: HTTP 503 (Mock.GroupInfoFail)", 2)
+			end
+			local info = Mock.GroupInfo
+			if rawtype(info) == "table" then
+				return info
+			end
+			return { Id = groupId, Name = "Group " .. tostring(groupId), Description = "", Owner = { Id = 0, Name = "" }, Roles = {} }
+		end),
+	},
+})
+Mock.GroupInfo = nil
+Mock.GroupInfoFail = false
 -- [lobby-shop 16.12] PolicyService answers like Roblox (and Studio) does for an ordinary account: paid random items
 -- allowed. A test double replaces it (PolS.GetPolicyInfoForPlayerAsync = fn); writing nil brings this answer back;
 -- writing false means "no API at all" (GemService then never learns an answer: the account stays unchecked).
