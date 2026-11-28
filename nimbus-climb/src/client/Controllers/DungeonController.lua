@@ -2881,11 +2881,14 @@ function R.endModel(e)
 	if count > 0 then
 		done = math.min(done, count)
 	end
-	M.stats[#M.stats + 1] = { "Floor", "castle", "Floor", tostring(f) }
-	M.stats[#M.stats + 1] = { "Rooms", "key", "Rooms", (count > 0) and (done .. " / " .. count) or tostring(done) }
+	-- (playtest 2026-11-28 C9 review) the green tick (a row's 5th field, Hud.BuildResult) only on what the player achieved,
+	-- as on the battle's cards: the floor and its rooms on a cleared floor, a new best always (a wipe read "Floor 5 [tick] /
+	-- Rooms 2 / 4 [tick]")
+	M.stats[#M.stats + 1] = { "Floor", "castle", "Floor", tostring(f), cleared }
+	M.stats[#M.stats + 1] = { "Rooms", "key", "Rooms", (count > 0) and (done .. " / " .. count) or tostring(done), cleared }
 	if e.NewBest then
 		local best = (type(e.NewBest) == "number") and math.floor(e.NewBest) or f
-		M.stats[#M.stats + 1] = { "Best", "star", "New best", tostring(best) }
+		M.stats[#M.stats + 1] = { "Best", "star", "New best", tostring(best), true }
 	end
 	local t = type(e.Totals) == "table" and e.Totals or S.Totals
 	local function chip(key, icon, number, word)

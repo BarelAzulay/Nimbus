@@ -3499,7 +3499,8 @@ scenario("battle", function(mode, phase)
 		local won = phase ~= "lost"
 		local rewards
 		if mode == "raid" then
-			rewards = { Tokens = 420, Gems = won and 5 or 0, Xp = 180, LevelUps = 2, Tier = won and "Gold" or "Bronze", Share = 0.34, Damage = 5120 }
+			-- (playtest 2026-11-28 C9) a lost raid carries the server's "Loss" medal (BattleCatalog.RaidTier), as live (was "Bronze")
+			rewards = { Tokens = 420, Gems = won and 5 or 0, Xp = 180, LevelUps = 2, Tier = won and "Gold" or "Loss", Share = 0.34, Damage = 5120 }
 		elseif mode == "dungeon" then
 			rewards = { Dungeon = true, Extra = extra.Dungeon }
 		else

@@ -1037,19 +1037,21 @@ function Ring.startTile(ui, round, order)
 		Parent = ui.Picker,
 	})
 	local face = makeFrame(tile.Button, "PressFace", { Size = UDim2.new(1, 0, 1, -CloudUI.SignMetrics.Lip), ZIndex = 3 })
+	-- (playtest 2026-11-28 C32) caption and number stacked in the 50 px face: the caption 1..20, the number 20..50 (were a
+	-- 4..26 caption over a 36 px number from 12: the ROUND / BOSS glyphs sat on the round's digits at every size)
 	local caption = makeText(face, "Caption", boss and "BOSS" or "ROUND", "Heading", 18, boss and INK or MUTED, {
-		Position = UDim2.fromOffset(0, 4),
-		Size = UDim2.new(1, 0, 0, 22),
+		Position = UDim2.fromOffset(0, 1),
+		Size = UDim2.new(1, 0, 0, 19),
 		ZIndex = 3,
 	})
 	if boss then
 		PixelIcon.Lead(caption, ICON.Crown, { Colour = SIGN.RedLip })
 	end
 	tile.Caption = caption
-	makeText(face, "Number", tostring(round), "Display", 30, INK, {
+	makeText(face, "Number", tostring(round), "Display", 28, INK, {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -2),
-		Size = UDim2.new(1, 0, 0, 36),
+		Position = UDim2.new(0.5, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 30),
 		ZIndex = 3,
 	})
 	tile.Button.Activated:Connect(function()
@@ -1260,7 +1262,7 @@ function Ring.build()
 	})
 	ui.StartButton = CloudUI.Button({
 		Name = "Start",
-		Text = "START",
+		Text = "Start", -- (playtest 2026-11-28 C47) the kit's buttons read in sentence case (was START / CONTINUE)
 		Size = UDim2.new(1, 0, 0, Ring.BUTTON_H),
 		Style = "Green",
 		Skin = "Sign", -- (kit-b U9-7) THE green action of the window
@@ -1448,7 +1450,7 @@ function Ring.live(_win, ui)
 	if Ring.Pending then
 		ui.StartButton.Text = "Starting..."
 	else
-		ui.StartButton.Text = start > 1 and "CONTINUE" or "START"
+		ui.StartButton.Text = start > 1 and "Continue" or "Start"
 	end
 	ui.Why.Text = why or ""
 	ui.Why.Visible = why ~= nil
@@ -2539,6 +2541,66 @@ local function buildSide()
 	U.SideCards = {}
 end
 
+-- (playtest 2026-11-28 C13) `part` of the ScreenGui `g` as { X, Y, R, B } in the px of the ScreenGui `side`.
+-- (C13 review) measured as HomeFx.measureHud does: a gui that ignores the inset from its own AbsolutePosition, one that
+-- keeps it from below the top bar, so it is right whether Roblox counts an IgnoreGuiInset gui from the screen's top (as
+-- the mock does) or from below the top bar (the engine keeps that for old games: its top reads -inset; subtracting the
+-- inset as well put the pill's foot at -63 instead of -5 at 640x360, and the stack never stepped). Smoke: _SideRect
+local function sideRect(g, part, side)
+	local ix, iy = 0, 0
+	pcall(function()
+		local inset = game:GetService("GuiService"):GetGuiInset()
+		if typeof(inset) == "Vector2" then
+			ix, iy = inset.X, inset.Y
+		end
+	end)
+	local ox, oy = ix, iy -- to screen px
+	if g.IgnoreGuiInset then
+		local origin = g.AbsolutePosition
+		ox, oy = -origin.X, -origin.Y
+	end
+	if not side.IgnoreGuiInset then -- to our gui's px (below the top bar)
+		ox, oy = ox - ix, oy - iy
+	end
+	local p, z = part.AbsolutePosition, part.AbsoluteSize
+	return { X = p.X + ox, Y = p.Y + oy, R = p.X + ox + z.X, B = p.Y + oy + z.Y }
+end
+ArenaController._SideRect = sideRect
+
+-- (playtest 2026-11-28 C13) a shown part of another ScreenGui as { X, Y, R, B } in our side gui's px; nil while hidden
+local function sideNeighbour(guiName, partName)
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	local g = pg and pg:FindFirstChild(guiName)
+	if not (g and g:IsA("ScreenGui") and g.Enabled and U.SideGui) then
+		return nil
+	end
+	local part = g:FindFirstChild(partName, true)
+	if not (part and part:IsA("GuiObject") and part.AbsoluteSize.X > 0) then
+		return nil
+	end
+	local cur = part
+	while cur and cur ~= g do
+		if cur:IsA("GuiObject") and not cur.Visible then
+			return nil
+		end
+		cur = cur.Parent
+	end
+	return sideRect(g, part, U.SideGui)
+end
+
+-- (C13) the menu tiles step aside while the shown stack lies on them (a portrait phone: NimbusMenu draws over the stack,
+-- "uel challenge!" / "mChaser wants to battle" at 360x640), as they do for a window (MenuController.SetColumnCovered)
+local function sideCoverMenu(left)
+	if (U.SideCover ~= nil) == (left ~= nil) and (left == nil or math.abs(U.SideCover - left) < 1) then
+		return
+	end
+	U.SideCover = left
+	local menu = otherController("MenuController")
+	if menu and type(menu.SetColumnCovered) == "function" then
+		pcall(menu.SetColumnCovered, left, "ArenaSide")
+	end
+end
+
 local function relayoutSide()
 	if not U.Side then
 		return
@@ -2564,7 +2626,41 @@ local function relayoutSide()
 			right = math.max(right, math.ceil(area.X - left + 8))
 		end
 	end
+	-- (playtest 2026-11-28 C13, review) the stack keeps clear of the top bar's pill above it (the pill draws over it:
+	-- "Practice duel" half under it at 640x360) and of the vitals card's name tab below it (the stack draws over that: the
+	-- player's name and trophies). Only where one really covers it (their boxes overlap, not only the edges' strokes) and
+	-- the stack fits between them, 6 px off each and under Roblox's band, it moves the least that clears both (667x375 and
+	-- 844x390: its foot was on the tab). Where it does not fit (640x360 either card, a practice card at 667x375 and
+	-- 844x390) it keeps its place: stepping down only put it on the name tab, and which of the two gives way (a card that
+	-- fits, or the tab held aside) is the owner's look call (playtest 1128 group C, held). Where it lies on the menu tiles,
+	-- they step aside (sideCoverMenu). Nothing to look up while the stack holds no card (its 10 px minimum)
+	local size = U.Side.AbsoluteSize
+	local cards = #U.SideCards > 0 and size.Y > 0
+	local gap = 6
+	local foot = area.Y - bottom
+	local x0, x1 = area.X - right - size.X, area.X - right
+	local function across(r)
+		return (r and r.R > x0 and r.X < x1) and r or nil
+	end
+	local pill = cards and across(sideNeighbour("NimbusTopBar", "Pill"))
+	local tab = cards and across(sideNeighbour("NimbusHud", "NameTab"))
+	if tab and tab.Y <= foot - size.Y then
+		tab = nil -- (above the stack's top: no floor)
+	end
+	if pill or tab then
+		local lo = math.max(0, pill and (pill.B + gap) or 0) -- the stack's highest top
+		local hi = tab and (tab.Y - gap) or area.Y -- its lowest foot
+		local covered = (pill and foot - size.Y < pill.B) or (tab and foot > tab.Y)
+		if covered and lo + size.Y <= hi then
+			foot = math.min(math.max(foot, lo + size.Y), hi)
+			bottom = area.Y - foot
+		end
+	end
+	local top = foot - size.Y
 	U.Side.Position = UDim2.new(1, -right, 1, -math.floor(bottom + 0.5))
+	local column = cards and U.Side.Visible and sideNeighbour("NimbusMenu", "MenuColumn")
+	local covers = column and column.R + gap > x0 and column.X < x1 and column.B > top and column.Y < top + size.Y
+	sideCoverMenu(covers and x0 or nil)
 end
 
 -- true while a menu window, the Pet Index or the Fusion window covers the screen (the side cards step back)
@@ -2617,6 +2713,7 @@ function refreshSide()
 	local hidden = inMatch() or battleId() ~= nil or S.Open ~= nil or otherWindowOpen()
 	U.Side.Visible = not hidden
 	if hidden then
+		sideCoverMenu(nil) -- (C13) the menu tiles come back with the stack gone
 		return
 	end
 	relayoutSide() -- (U9-7 look) the HUD publishes its top-right block after it builds: follow it
@@ -2787,6 +2884,10 @@ function refreshSide()
 				end
 			end)
 		end
+		-- (playtest 2026-11-28 C13 review) placed again at the new cards' size (the call above used the old stack's: a new
+		-- invite was drawn for a tick under the pill or the menu tiles); U.Side's AbsoluteSize signal catches the automatic
+		-- size settling a frame later in Roblox (ArenaController.Init)
+		relayoutSide()
 	end
 	for _, tick in ipairs(U.SideCards) do
 		pcall(tick)
@@ -3068,6 +3169,11 @@ function ArenaController.Init()
 	U.Gui = gui
 	buildSide()
 	relayoutSide()
+	-- (playtest 2026-11-28 C13 review) the stack's place follows its own size (its cards' automatic size settles after a
+	-- rebuild): it keeps clear of the pill, the vitals' name tab and the menu tiles at the size it really has
+	U.Side:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		safe("side size", relayoutSide)
+	end)
 	-- the hint (right edge, a third down: clear of the toasts at the top and the side cards at the bottom)
 	U.HintGui = gui
 	U.HintFrame = makeFrame(gui, "Hint", {

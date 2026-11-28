@@ -402,7 +402,7 @@ local function clientScenarios()
 		T.check(H.find(win, "FightersTitle") == nil and H.find(win, "Fighter1") == nil, label .. ": no fighter title, no old cards")
 		T.check(not H.anyText(win, "your strongest pets") and not H.anyText(win, "equipped") and not H.anyText(win, "Your fighters"), label .. ": no fallback words", tostring(H.anyText(win, "Your fighters")))
 		T.check(H.find(win, "TeamValue") and H.find(win, "TeamValue").Text:find(H.commas(power), 1, true) ~= nil and H.find(win, "TeamCaption").Text == "Your team", label .. ": the champion box compares with Your team")
-		T.eq(start.Text, "CONTINUE", label .. ": a boss start reads CONTINUE")
+		T.eq(start.Text, "Continue", label .. ": a boss start reads Continue") -- (playtest 2026-11-28 C47) sentence case
 		T.check(not start:GetAttribute("Disabled"), label .. ": ...and is on")
 		local mark = #Mock.RemoteLog
 		Mock.Click(start)
@@ -487,7 +487,7 @@ local function clientScenarios()
 			for _, name in ipairs({ "Start1", "Start10", "Start20", "Start30" }) do
 				T.check(H.shown(H.find(win, name)), "tb ring pick: tile " .. name .. " stays", name)
 			end
-			T.eq(H.find(win, "Start").Text, "CONTINUE", "tb ring pick: a boss start reads CONTINUE")
+			T.eq(H.find(win, "Start").Text, "Continue", "tb ring pick: a boss start reads Continue")
 			T.check(H.find(win, "Verdict").Text:find("look ready", 1, true) ~= nil, "tb ring pick: the panel's verdict agrees with the pick", H.find(win, "Verdict").Text)
 			-- a tile picked in the visit stays: through a sync, through Edit team and back
 			Mock.Click(H.find(win, "Start30"))
@@ -519,7 +519,7 @@ local function clientScenarios()
 			shut()
 			-- a weak team: round 1, the boss starts stay pickable
 			T.eq(opened().Start, 1, "tb ring pick: 3 L1 Commons with Best 37 open on round 1")
-			T.eq(H.find(H.ringWin(), "Start").Text, "START", "tb ring pick: ...which reads START")
+			T.eq(H.find(H.ringWin(), "Start").Text, "Start", "tb ring pick: ...which reads Start")
 			T.check(H.shown(H.find(H.ringWin(), "Start30")), "tb ring pick: ...and start 30 can still be picked")
 			shut()
 			-- the server's OpenPanel without a start is a visit like the portal's; with one it is that start
