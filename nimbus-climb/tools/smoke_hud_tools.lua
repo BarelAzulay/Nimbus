@@ -608,7 +608,9 @@ local function serverScenarios()
 			Mock.GroupInfo = { Id = 4040, Name = "Sky Guild", Owner = { Id = 43010, Name = "GroupBoss" } }
 			mark = chat(owner, "/ban 43010")
 			toast = lastToast(owner, mark)
-			T.check(toast.kind == "bad" and has(toast.text, "developer"), "hudtools ban: a group game's owner (GetGroupInfoAsync) is a developer and cannot be banned", toast.text)
+			-- (review) "cannot be banned", not "developer": the could-not-check refusal says "developer" too, so the old match
+			-- passed on a mock without GetGroupInfoAsync
+			T.check(toast.kind == "bad" and has(toast.text, "cannot be banned"), "hudtools ban: a group game's owner (GetGroupInfoAsync) is a developer and cannot be banned", toast.text)
 			bans = #Mock.BanLog
 			mark = chat(owner, "/ban 43009")
 			T.check(#Mock.BanLog == bans + 1 and Mock.BanLog[#Mock.BanLog].UserIds[1] == 43009, "hudtools ban: ...another offline account in a group game is banned", lastToast(owner, mark).text)

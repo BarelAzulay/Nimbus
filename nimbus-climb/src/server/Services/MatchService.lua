@@ -96,11 +96,32 @@ end
 -- revive, a respawn: all at the team checkpoint) counts as that checkpoint. A refusal is logged once per player.
 local TRAIL_PAD = 12
 local TRAIL_ABOVE = 20
--- The shortest honest time: the straight chain start -> each checkpoint -> finish (a lower bound on any path) at
--- FINISH_SPEED_MARGIN x DashSpeed (85). Nothing in a course carries a player along the chain faster: a dash is 85 for
--- 0.18 s of every 1.6 s, a bounce launches under 30 studs/s sideways, a cannon flies at most ~110 studs/s of chain
--- for its >= 1 s flight. A real run is several times slower than this floor; a teleport run is under it.
-local FINISH_SPEED_MARGIN = 1.5
+-- (C22 review) A Touched event counts only with the toucher's root AT the part (TOUCH_SLACK studs past its edge: a foot or
+-- a hand on the rim, never a touch reported from across the course: an exploit client can fire touches for its own parts
+-- from anywhere). The trail takes a touch inside nearPad like the poll does.
+local TOUCH_SLACK = 4
+-- The shortest honest time (match.MinSeconds), from honest pace instead of 1.5 x DashSpeed (review: the old floor was
+-- 3.6-4.9 s on Easy, a pad-by-pad teleport won after 4.3 s). The path: the horizontal chain start -> each checkpoint pad ->
+-- the finish pad, less what touching each pad anywhere in its touch window can cut at a turn (minFinishSeconds), so it
+-- is a LOWER bound on any honest path. The pace: run + a dash every cooldown, the best average a climber can hold
+-- (Config.Physics: 27 run, 85 for 0.18 s of every 1.6 s = 33.5 studs/s, and stamina makes it lower), x FLOOR_PACE_MARGIN
+-- for a moving cloud's carry (<= 4.2), a hazard's knock and the first dash. A cannon leg counts as its flight time
+-- (CourseLayout: 25-60 studs in 1.0-2.2 s). A refusal only makes the player wait on the pad, so an honest record run is
+-- delayed at worst, never lost. Floors over 200 seeds: Easy 8.8-12.9 s, Medium 8.4-16.1, Hard 8.7-18.3, Extreme
+-- 11.6-25.9, Saint 13.1-32.7 (about 1-2 % of each time limit).
+local FLOOR_PACE_MARGIN = 1.2
+local HONEST_PACE = 33.5 -- recomputed from Config.Physics below
+do
+	local ph = Config.Physics
+	local run, dash = ph.RunSpeed or 27, ph.DashSpeed or 85
+	local burst, cooldown = ph.DashDuration or 0.18, math.max(ph.DashCooldown or 1.6, ph.DashDuration or 0.18, 0.1)
+	HONEST_PACE = ((cooldown - burst) * run + burst * dash) / cooldown
+end
+local FLOOR_PACE = HONEST_PACE * FLOOR_PACE_MARGIN
+-- an accepted finish under this x the floor is logged (for review, nothing is refused): a waited-out teleport run lands
+-- right at the floor, a stand-in at the honest pace on the straight chain at 1.39 x or more (200 seeds a difficulty)
+local FAST_FINISH_LOG = 1.25
+local REFUSAL_TOAST_EVERY = 4 -- seconds between two refusal toasts while a player keeps standing on the finish
 
 ----------------------------------------------------------------------
 -- Module state
@@ -643,40 +664,84 @@ local function nearPad(cp, pos)
 	return part ~= nil and part.Parent ~= nil and isOverPart(part, pos, TRAIL_PAD, PAD_BELOW, TRAIL_ABOVE)
 end
 
--- (C22) why the finish does not count for this player yet -> text | nil when it does
+-- (C22) why the finish does not count for this player yet -> log text, toast text | nil when it does
 local function finishRefusal(match, player, t)
 	local rec = match.Recs[player]
 	local at = rec and rec.Checkpoint or 0
 	local missing = nextCheckpointFrom(match, at)
 	if missing then
-		return string.format("their trail ends at checkpoint %d of %d (next %d)", at, match.MaxCheckpoint, missing)
+		return string.format("their trail ends at checkpoint %d of %d (next %d)", at, match.MaxCheckpoint, missing),
+			string.format("Checkpoint %d first!", missing) -- (C22 review) the pad they missed, also when the team has it
 	end
 	local played = match.StartedAt and ((t or clock()) - match.StartedAt) or 0
 	if type(match.MinSeconds) == "number" and played < match.MinSeconds then
-		return string.format("%.1f s played, the course cannot be run under %.1f s", played, match.MinSeconds)
+		-- the wait as a clock ("0:12", like BattleService's waits): one short line, no lone "s" wrapped onto a second one
+		local wait = math.max(1, math.ceil(match.MinSeconds - played))
+		return string.format("%.1f s played, the course cannot be run under %.1f s", played, match.MinSeconds),
+			string.format("Finish opens in %d:%02d", math.floor(wait / 60), wait % 60)
 	end
 	return nil
 end
 
--- (C22) the shortest honest time to the finish of this course (seconds): see FINISH_SPEED_MARGIN
+-- (C22 review) how far a footprint reaches along the horizontal vector w: the part's top rectangle grown `slack` studs
+-- past each edge (the window isOverPart tests), in the part's own axes so a pad at any heading works
+local function footprintReach(part, w, slack)
+	local cf, hs = part.CFrame, part.Size * 0.5
+	return math.abs(w:Dot(cf.RightVector)) * (hs.X + slack) + math.abs(w:Dot(cf.LookVector)) * (hs.Z + slack)
+end
+
+local function flatOf(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+-- (C22) the shortest honest time to the finish of this course (seconds), see FLOOR_PACE. The chain's nodes are the start
+-- spot (players start within START_SPREAD of it), every checkpoint pad and the finish pad (each within TOUCH_SLACK of
+-- its edge). A path that visits node i at c_i + d_i is at least sum u_k . (p_{k+1} - p_k) long (u_k the unit direction of
+-- chain link k), which is the chain's length plus sum d_i . (u_{i-1} - u_i): so the chain less each node's reach along
+-- its turn u_{i-1} - u_i is a lower bound (exact on a straight chain, no guess at the real route).
 local function minFinishSeconds(match)
 	local course = match.Course
-	local points = { course.StartCFrame.Position }
+	local nodes = { { Pos = flatOf(course.StartCFrame.Position), Part = nil, Slack = START_SPREAD } }
 	for index = 1, match.MaxCheckpoint do
 		local cp = course.Checkpoints[index]
-		if cp and typeof(cp.SpawnCFrame) == "CFrame" then
-			points[#points + 1] = cp.SpawnCFrame.Position
+		if cp and cp.Part then
+			nodes[#nodes + 1] = { Pos = flatOf(cp.Part.Position), Part = cp.Part, Slack = TOUCH_SLACK }
 		end
 	end
 	if course.Finish then
-		points[#points + 1] = course.Finish.Position
+		nodes[#nodes + 1] = { Pos = flatOf(course.Finish.Position), Part = course.Finish, Slack = TOUCH_SLACK }
 	end
+	local zero = Vector3.new(0, 0, 0)
+	local dirs = {}
 	local length = 0
-	for i = 2, #points do
-		length = length + (points[i] - points[i - 1]).Magnitude
+	for i = 2, #nodes do
+		local d = nodes[i].Pos - nodes[i - 1].Pos
+		local m = d.Magnitude
+		length = length + m
+		dirs[i - 1] = (m > 1e-6) and (d / m) or zero
 	end
-	local speed = (Config.Physics.DashSpeed or 85) * FINISH_SPEED_MARGIN
-	return length / speed
+	for i, node in ipairs(nodes) do
+		local turn = (dirs[i - 1] or zero) - (dirs[i] or zero)
+		if node.Part then
+			length = length - footprintReach(node.Part, turn, node.Slack)
+		else
+			length = length - node.Slack * turn.Magnitude
+		end
+	end
+	-- cannon legs: a flight carries its rider at most `carried` studs (pad centre to Target, plus the pad, a touch and the
+	-- launch spot's drift) in FlightTime seconds; the 0.35 s charge is not counted
+	local carried, flights = 0, 0
+	local layout = match.Layout
+	if type(layout) == "table" and type(layout.Steps) == "table" then
+		for _, step in ipairs(layout.Steps) do
+			local h = step.Hazard
+			if step.Kind == "CannonPad" and type(h) == "table" and typeof(h.Pos) == "Vector3" and typeof(h.Target) == "Vector3" then
+				carried = carried + flatOf(h.Target - h.Pos).Magnitude + numberOr(h.PadRadius, 3) * 1.5 + TOUCH_SLACK
+				flights = flights + math.max(0, numberOr(h.FlightTime, 0))
+			end
+		end
+	end
+	return math.max(0, length - carried) / FLOOR_PACE + flights
 end
 
 reachCheckpoint = function(match, index, byPlayer)
@@ -737,16 +802,22 @@ local function onCheckpointTouched(match, index, hit)
 	if isDowned(player) or match.Finished[player] then
 		return
 	end
-	local hum = Util.GetHumanoid(player)
-	if not hum or hum.Health <= 0 then
+	local hum, root = getLive(player)
+	if not hum or not root then
 		return
 	end
+	-- (C22 review) the touch counts only with the player AT the pad (the poll's windows): an exploit client can fire
+	-- touches for its own parts from anywhere on the course
+	local cp = match.Course.Checkpoints[index]
+	local pos = root.Position
 	-- (C22) the player's own trail: this pad, when it is the next one on it
 	local rec = match.Recs[player]
-	if rec and index == nextCheckpointFrom(match, rec.Checkpoint or 0) then
+	if rec and index == nextCheckpointFrom(match, rec.Checkpoint or 0) and nearPad(cp, pos) then
 		markTrail(match, player, index)
 	end
-	reachCheckpoint(match, index, player)
+	if cp and cp.Part and cp.Part.Parent and isOverPart(cp.Part, pos, TOUCH_SLACK, PAD_BELOW, PAD_ABOVE) then
+		reachCheckpoint(match, index, player)
+	end
 end
 
 markFinished = function(match, player)
@@ -757,16 +828,28 @@ markFinished = function(match, player)
 		return
 	end
 	-- (C22) the finish counts only after the player's own trail (every checkpoint, in order, or the server placing
-	-- them at the team's) and never before the course's shortest honest time; a refusal is logged once per player
-	local why = finishRefusal(match, player)
+	-- them at the team's) and never before the course's shortest honest time; a refusal is logged once per player and
+	-- (review) told every REFUSAL_TOAST_EVERY seconds while they stay on the pad: the missing pad, or the wait
+	local now = clock()
+	local why, toast = finishRefusal(match, player, now)
 	if why then
 		local rec = match.Recs[player]
-		if rec and not rec.FinishRefused then
-			rec.FinishRefused = true
-			warn(string.format("[MatchService] finish refused for %s (match %d, %s): %s", nameOf(player), match.Id, tostring(match.DifficultyId), why))
-			notify(player, "Reach every checkpoint first!", "bad", 3)
+		if rec then
+			if not rec.FinishRefused then
+				rec.FinishRefused = true
+				warn(string.format("[MatchService] finish refused for %s (match %d, %s): %s", nameOf(player), match.Id, tostring(match.DifficultyId), why))
+			end
+			if not rec.RefusalToastAt or now - rec.RefusalToastAt >= REFUSAL_TOAST_EVERY then
+				rec.RefusalToastAt = now
+				notify(player, toast, "bad", 3)
+			end
 		end
 		return
+	end
+	-- (C22 review) a finish close to the floor is accepted and logged: a waited-out teleport run looks like this
+	local played = match.StartedAt and (now - match.StartedAt) or 0
+	if type(match.MinSeconds) == "number" and match.MinSeconds > 0 and played < match.MinSeconds * FAST_FINISH_LOG then
+		warn(string.format("[MatchService] fast finish by %s (match %d, %s): %.1f s played, the floor is %.1f s", nameOf(player), match.Id, tostring(match.DifficultyId), played, match.MinSeconds))
 	end
 	match.Finished[player] = true
 	match.FinishCount = match.FinishCount + 1
@@ -787,8 +870,13 @@ local function onFinishTouched(match, hit)
 	if not player or not isMember(match, player) then
 		return
 	end
-	local hum = Util.GetHumanoid(player)
-	if not hum or hum.Health <= 0 then
+	local hum, root = getLive(player)
+	if not hum or not root then
+		return
+	end
+	-- (C22 review) only with the player AT the finish pad (a reported touch from anywhere else is ignored)
+	local pad = match.Course.Finish
+	if not (pad and pad.Parent and isOverPart(pad, root.Position, TOUCH_SLACK, PAD_BELOW, PAD_ABOVE)) then
 		return
 	end
 	markFinished(match, player)
@@ -1635,7 +1723,7 @@ function MatchService.StartMatch(difficultyId, players)
 		LastStateAt = 0,
 		Tokens = {}, -- Player -> tokens paid out this match (pet bonus included)
 		Finished = {}, -- Player -> true
-		Recs = {}, -- Player -> { Conns, DiedConn, Checkpoint (C22: the player's own trail), FinishRefused }
+		Recs = {}, -- Player -> { Conns, DiedConn, Checkpoint (C22: the player's own trail), FinishRefused, RefusalToastAt }
 		MinSeconds = 0, -- (C22) the course's shortest honest time, set by setupCourse
 		Connections = {}, -- match-level connections (checkpoint / finish Touched)
 		Stopped = false,
