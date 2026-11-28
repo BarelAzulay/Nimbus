@@ -718,7 +718,7 @@ function Care.coinsText(def, level, stage)
 	if catalog and type(catalog.PetPower) == "function" then
 		local ok, power = pcall(catalog.PetPower, def, level, nil, stage)
 		if ok and isFinite(power) and power > 0 then
-			return "Coins " .. Care.factorText(power)
+			return "Cash " .. Care.factorText(power) -- (playtest 2026-11-28 C20: was "Coins")
 		end
 	end
 	return ""

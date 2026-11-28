@@ -4176,9 +4176,14 @@ end)
 do
 	local lobbyScene = SCENARIOS.lobby
 	SCENARIOS.lobby = function(arg)
-		if tostring(arg or ""):lower() == "gift" then
+		local a = tostring(arg or ""):lower()
+		if a == "gift" or a == "giftpip" then
 			toClient("DailyState", dailyPayload(""))
 			advance(1.2)
+			if a == "giftpip" then
+				toClient("TutorialState", { Done = true, Completed = true, Step = 1, Total = 1 })
+				advance(21) -- (playtest 2026-11-28 C45) lobby:giftpip: past PipDelaySeconds, the ready claim's red "!" badge shows
+			end
 			return
 		end
 		return lobbyScene(arg)
@@ -4815,7 +4820,17 @@ local function shopScene(tab, via)
 		end
 	end
 	local Shop = req("client/Controllers/ShopController")
-	req("client/Controllers/" .. (via or "ShopController")).Open({ Tab = tab or "Eggs" })
+	if view == "reopen" then
+		-- (playtest 2026-11-28 C18) shop:reopen: a machine's open (Celestial focused, scrolled to it), Close, then the
+		-- pill's plain Open(): the Eggs page must start at the top again (it kept the machine's scroll, the hero cut)
+		Shop.Open({ RouletteId = "Celestial" })
+		advance(3)
+		Shop.Close()
+		advance(0.5)
+		Shop.Open()
+	else
+		req("client/Controllers/" .. (via or "ShopController")).Open({ Tab = tab or "Eggs" })
+	end
 	advance(1.5)
 	note(fmt("shop:%s layout %s", tostring(Shop.Tab()), tostring(Shop.Layout())))
 end

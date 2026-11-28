@@ -693,7 +693,7 @@ local function clientScenarios()
 			label, value = row("Speed")
 			T.check(label == "Speed" and value == tostring(math.floor(PCat.GetStats(K2, 10).Speed + 0.5)), "tb pets: the Speed row keeps the garden number", tostring(value))
 			label, value = row("Income")
-			T.check(label == "Coins" and value:find("/s", 1, true) ~= nil, "tb pets: the Coins row", tostring(value))
+			T.check(label == "Cash" and value:find("/s", 1, true) ~= nil, "tb pets: the Cash row (C20)", tostring(value))
 			T.check(H.find(detail, "Perks") ~= nil and H.find(detail, "XpBar") ~= nil, "tb pets: the perks and the XP bar")
 			-- Put in team
 			local mark = #Mock.RemoteLog

@@ -1322,7 +1322,7 @@ function H.newGardenRow(key, def)
 	row.RoleShort = role
 	row.Role = H.pill(info, "Role", row.RoleText, ROLE_COLORS[role] or Theme.Buttons.Blue, 18, 1)
 	-- (LOOK-ui2: a darkened green pill) the coins as the stone fact tag with the cash icon
-	row.Coins = H.pill(info, "Coins", "Coins $0/s", SIGN.Tile, 18, 2)
+	row.Coins = H.pill(info, "Coins", "Cash $0/s", SIGN.Tile, 18, 2) -- (playtest 2026-11-28 C20: the currency's name)
 	row.Coins.TextXAlignment = Enum.TextXAlignment.Left -- (the tag hugs its text: the icon at its padded box's left edge)
 	PixelIcon.Lead(row.Coins, Config.Icons and Config.Icons.Cash or "note")
 	row.Put = H.button(f, "PutHere", "Put here", "Gray", UDim2.fromOffset(170, 56), 21, function()
@@ -1397,7 +1397,7 @@ function H.paintGardenRow(row, home)
 	H.paintHead(row, key, def, home)
 	local role0, coins0 = row.Role.Text, row.Coins.Text
 	row.Role.Text = S.Tall and row.RoleShort or row.RoleText
-	row.Coins.Text = "Coins " .. H.rate(H.coinsPerSecond(key, def, home)) .. "/s"
+	row.Coins.Text = "Cash " .. H.rate(H.coinsPerSecond(key, def, home)) .. "/s"
 	if (S.Tall or S.Short) and (role0 ~= row.Role.Text or coins0 ~= row.Coins.Text) then
 		H.layoutSimpleRow(row) -- (the tags' widths decide the row's height)
 	end
@@ -2316,7 +2316,7 @@ function CareController.ConfirmEvolve(key)
 		Key = key,
 		Title = "Evolve " .. name .. "?",
 		Text = name .. " changes into its " .. (nextStage == 2 and "Evolved II" or "Evolved") .. " form: Level bonus x" .. bonusText
-			.. " (battle power, health and coins). It keeps its level.",
+			.. " (battle power, health and Cash). It keeps its level.",
 		YesText = "EVOLVE!",
 		Style = "Gold",
 		Color = GOLD,

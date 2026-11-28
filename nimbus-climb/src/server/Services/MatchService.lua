@@ -548,7 +548,7 @@ local function queueTokenToast(match, player, gained, base)
 		if player.Parent == nil or playerMatch[player] ~= match then
 			return
 		end
-		local text = "+" .. pending.Gained .. " cloud token"
+		local text = "+" .. pending.Gained .. " Cloud Token" -- (playtest 2026-11-28 C20: the Theme.Currency name's case)
 		if pending.Gained ~= 1 then
 			text = text .. "s"
 		end

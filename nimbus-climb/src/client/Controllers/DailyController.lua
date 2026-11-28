@@ -163,7 +163,8 @@ local K = {
 	},
 	WINDOW_POLL = 0.25, -- seconds: no shared close signal exists, so a watcher re-lays the button out when that answer changes
 	WINDOW_RETRY = 2, -- seconds before a K.WINDOWS module not found yet is looked up again (review round 1)
-	PIP = 10,
+	PIP = 18, -- (playtest 2026-11-28 C45) the menu tiles' red badge with its "!" (was a bare 10 px square), small enough
+	-- for the Gifts block: its top on the block's top edge, clear of the strip above
 	BAR_SEGS = 4, -- (U9-4 look review) the PlayBar's blocks in the button's lip ...
 	BAR_GAP = 2, -- ... and the px of lip between two
 	SHAKE = { 4, -4, 3, -3, 2, -2, 1, 0 }, -- px offsets, one per SHAKE_STEP (0.4 s)
@@ -308,6 +309,7 @@ local TEXT = {
 	Getting = "Getting your gifts ready...",
 	Keep = "Come back tomorrow to keep your streak!",
 	KeepClaim = "Claim today's gift to keep your streak!", -- (Pitch 2 09 B) the line by a claim that is due
+	KeepLocked = "Your streak is safe while it unlocks.", -- (playtest 2026-11-28 C29) by a held claim: the hold loses no day
 	Prize = "DAY 7 PRIZE", -- (Pitch 2 09 B) the prize card's label (TODAY when it is due); look review r0: the mock's capitals
 	Week = "WEEK DONE! Week Wisp is yours!",
 	Unlock = "Unlocks after %d min of play",
@@ -890,7 +892,7 @@ function H.buildButton()
 	pip.BackgroundColor3 = Theme.Sign.Red -- (kit-b U8) a small red square in a wood edge
 	pip.BorderSizePixel = 0
 	pip.AnchorPoint = Vector2.new(0.5, 0.5)
-	pip.Position = UDim2.new(1, -4, 0, 4)
+	pip.Position = UDim2.new(1, -2, 0, K.PIP / 2) -- (C45: the bigger badge's top on the block's top, not over the strip)
 	pip.Size = UDim2.fromOffset(K.PIP, K.PIP)
 	pip.ZIndex = 5
 	pip.Visible = false
@@ -898,7 +900,15 @@ function H.buildButton()
 	pipEdge.Color = Theme.Sign.Wood
 	pipEdge.Thickness = 2
 	pipEdge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	pipEdge.LineJoinMode = Enum.LineJoinMode.Miter
 	pipEdge.Parent = pip
+	-- (playtest 2026-11-28 C45) the brown "!" of the menu tiles' badges (NeonKit): an empty red square read as a stray pixel
+	local pipMark = Theme.Label("!", "Button", {
+		Size = 16,
+		Color = Theme.Sign.Text,
+		Props = { Name = "Mark", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 6 },
+	})
+	pipMark.Parent = pip
 	pip.Parent = U.Button
 	U.Pip = pip
 	-- (owner 2026-11-13) the button only opens: it hides while its window is open (X / Esc / gamepad B close it)
@@ -923,11 +933,13 @@ function H.paintRing()
 	U.PlayBar:SetAttribute("Paused", paused)
 	local w = U.Button and U.Button.Size.X.Offset or 0
 	local segW = math.max(1, math.floor((w - (n - 1) * K.BAR_GAP) / n))
+	-- (playtest 2026-11-28 C45) every block the same width, the row centred (the last one took the rounding: 11 vs 9 px)
+	local x0 = math.floor((w - (n * segW + (n - 1) * K.BAR_GAP)) / 2)
 	local Sign = Theme.Sign
 	for i, seg in ipairs(U.BarSegs) do
-		local x = (i - 1) * (segW + K.BAR_GAP)
+		local x = x0 + (i - 1) * (segW + K.BAR_GAP)
 		seg.Position = UDim2.fromOffset(x, 0)
-		seg.Size = UDim2.new(0, i == n and math.max(1, w - x) or segW, 1, 0)
+		seg.Size = UDim2.new(0, segW, 1, 0)
 		seg.BackgroundColor3 = i <= k and (paused and Sign.GoldLip or Sign.Gold) or Sign.RoofLip
 		seg.BackgroundTransparency = 0
 	end
@@ -1742,7 +1754,9 @@ function H.placeHero(cell, M)
 		place(U.WispText, colX, y, colW, wispH)
 		place(U.WispBar, colX, y + wispH + g, colW, M.BarH)
 		local over = cell.SpeciesRoom and speciesH + g or 0
-		place(U.Banner, colX, y - over, colW, over + wispH)
+		-- (playtest 2026-11-28 C28) the banner also takes the bar's row (the bar hides while it shows): on a short card
+		-- (over 0) one 15 px line held the two-line "WEEK DONE!" text, which ran under the plank and onto the blocks
+		place(U.Banner, colX, y - over, colW, over + wispH + g + M.BarH)
 	else
 		cell.SpeciesRoom = true
 		cell.Day.Visible = true
@@ -1840,7 +1854,7 @@ function H.placeBottom(M, slotW)
 		local room = math.max(40, G.RowRight - x)
 		-- (two even lines where one does not fit: "Claim today's gift to / keep your streak!", no lone last word)
 		local font = Theme.FontOf(U.Keep)
-		local long = math.max(H.width(TEXT.KeepClaim, M.KeepText, font), H.width(TEXT.Keep, M.KeepText, font))
+		local long = math.max(H.width(TEXT.KeepClaim, M.KeepText, font), H.width(TEXT.Keep, M.KeepText, font), H.width(TEXT.KeepLocked, M.KeepText, font))
 		local w = long + K.FIT_SLACK <= room and room or math.min(room, math.ceil(long * 0.56))
 		place(U.Keep, x, G.ClaimY, w, G.ClaimH)
 		U.Keep.TextXAlignment = Enum.TextXAlignment.Left
@@ -2383,6 +2397,7 @@ function H.renderDaily(st, M)
 	U.Banner.Visible = banner
 	U.WispText.Text = loading and "" or H.wispText(cellNo)
 	U.WispText.Visible = not banner and not loading
+	U.WispBar.Visible = not (banner and S.Mode == "Portrait") -- (playtest 2026-11-28 C28: the portrait banner covers its row)
 	for i, seg in ipairs(U.Segs) do
 		local e = entryAt(list, i)
 		local state = (e.Claimed == true and "Claimed") or ((e.Today == true and not waiting) and "Today") or "Open"
@@ -2408,7 +2423,7 @@ function H.renderDaily(st, M)
 		U.Line1.Visible, U.Line2.Visible = false, false
 	end
 	U.Countdown.Text = due and "" or (view.Line1 or "")
-	U.Keep.Text = due and TEXT.KeepClaim or TEXT.Keep -- (Pitch 2 09 B: by a due claim it says to claim today's gift)
+	U.Keep.Text = (view.Mode == "Locked" and TEXT.KeepLocked) or (due and TEXT.KeepClaim) or TEXT.Keep -- (Pitch 2 09 B: by a due claim it says to claim today's gift)
 	U.Keep.Visible = not waiting
 end
 

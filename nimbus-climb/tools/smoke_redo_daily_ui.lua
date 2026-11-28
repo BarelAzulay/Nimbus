@@ -461,6 +461,12 @@ local function clientScenarios()
 					local ok1, d1 = RedoGeom.fits(l1)
 					local ok2, d2 = RedoGeom.fits(l2)
 					T.check(ok1 and ok2 and H.inside(l1, claim) and H.inside(l2, claim), label .. ": ...both fit inside the button (real font widths)", d1 .. " / " .. d2)
+					-- (playtest 2026-11-28 C29) the hold loses no streak day (2026-11-07), so the line by a locked claim says the
+					-- streak is safe, not "Claim today's gift to keep your streak!" beside a button that cannot be pressed
+					local keep = H.find("Keep")
+					local okK, dK = RedoGeom.fits(keep)
+					T.check(H.shown(keep) and H.text(keep) == "Your streak is safe while it unlocks." and okK, label .. ": the keep line by the locked claim says the streak is safe, and fits",
+						H.text(keep) .. " / " .. tostring(dK))
 					if sz[4] == "Phone" then
 						T.check(claim and H.near(claim.AbsoluteSize.X, 230) and H.near(claim.AbsoluteSize.Y, 64), label .. ": the button stays 230 x 64", RedoGeom.desc(claim))
 						T.check(l1 and l2 and l1.TextSize >= 15 and l2.TextSize >= 15, label .. ": both lines >= 15 px on the phone", fmt("%s / %s", tostring(l1 and l1.TextSize), tostring(l2 and l2.TextSize)))

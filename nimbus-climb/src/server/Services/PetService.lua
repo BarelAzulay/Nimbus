@@ -1310,7 +1310,7 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 		end
 	end
 	ctx.Price = ctx.UnitPrice * spins -- computed once: the balance check and the charge use it
-	local poor = ctx.Currency == "Gems" and "Not enough Gems" or "Not enough cloud tokens"
+	local poor = ctx.Currency == "Gems" and "Not enough Gems" or "Not enough Cloud Tokens" -- (playtest 2026-11-28 C20: Theme.Currency.Tokens.Name)
 	local balance = ctx.Currency == "Gems" and DataService.GetGems(player) or DataService.GetTokens(player)
 	if balance < ctx.Price then
 		return false, poor

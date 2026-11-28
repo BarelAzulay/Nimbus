@@ -1622,6 +1622,26 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			end
 			ES.Done()
 			G.advance(0.2)
+			-- (playtest 2026-11-28 C30) the longest crack word, "LEGENDARY EGG!", fits its box at Roblox's real font widths
+			-- (it ran out of its clamped box to within 5 px of both edges at 360x640)
+			do
+				local savedMeasure = ES.Metrics.MEASURE
+				ES.Metrics.MEASURE = function(text, size, font)
+					return RedoGeom.realWidth(text, size, font)
+				end
+				local tl = os.clock()
+				ES.Show(G.result("Storm", "Tokens", { G.pull(PC, "Storm", leg) }))
+				G.until_(tl, 1.45)
+				local word = G.hero("CrackWord")
+				local okW, dW = RedoGeom.fits(word)
+				local wb = word and G.box(word)
+				T.check(ES.Phase() == "Crack" and word ~= nil and word.Text == "LEGENDARY EGG!" and okW and wb.x >= 12 - 0.6 and wb.x + wb.w <= w - 12 + 0.6,
+					label .. " x1: 'LEGENDARY EGG!' fits its crack word box, 12 px or more inside the screen (real font widths)", tostring(dW) .. (wb and fmt(" at %.0f..%.0f", wb.x, wb.x + wb.w) or ""))
+				ES.Metrics.MEASURE = savedMeasure
+				G.until_(tl, 3) -- (DONE closes the stage from the reveal)
+				ES.Done()
+				G.advance(0.2)
+			end
 			-- x3 during Crack (fast: the cracks start at 1.51 s) and on the reveal
 			t0 = os.clock()
 			ES.Show(x3())

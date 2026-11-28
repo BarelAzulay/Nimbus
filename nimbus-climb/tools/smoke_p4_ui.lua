@@ -199,7 +199,7 @@ local function serverScenarios()
 			"grow " .. faster .. " faster per level", "level " .. levels[1], "at " .. levels[2], "Gems")
 		T.check(ok1, "p4ui: Granny Owl explains the Berry Basket, the Food Machine, EVOLVE (a new look, " .. faster .. " faster, levels " .. levels[1] .. " / " .. levels[2] .. ") and Gem spins", why1)
 		local ok2, why2 = says("mayor_panda", "free gate", "Food Bowl", "Cloud Cash", "Berry Farm", "Food Machine",
-			"Home Level " .. tostring(P.HomeLevel or 40), "x" .. tostring(P.IncomeMultiplier or 1.25) .. " coins", tostring(P.GemReward or 100) .. " Gems",
+			"Home Level " .. tostring(P.HomeLevel or 40), "x" .. tostring(P.IncomeMultiplier or 1.25) .. " Cash", tostring(P.GemReward or 100) .. " Gems",
 			"one more garden place", "portal")
 		T.check(ok2, "p4ui: Mayor Panda explains the Food Bowl, Cloud Cash, the Berry Farm, Prestige and the home portal", why2)
 		local mult = BC and BC.Ring and BC.Ring.RecordMult or 3

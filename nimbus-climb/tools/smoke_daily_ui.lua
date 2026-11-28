@@ -751,8 +751,14 @@ local function clientScenarios()
 		T.check(DC.PipShown() == true and H.shown(H.find(H.btn(), "Pip")), "daily pip: shown PipDelaySeconds after the spawn when a claim is ready")
 		local pip = H.find(H.btn(), "Pip")
 		local Theme = select(3, KC.env())
-		T.check(pip ~= nil and pip.AbsoluteSize.X == 10 and pip.BackgroundColor3 == Theme.Sign.Red and pip:FindFirstChildOfClass("UICorner") == nil,
-			"daily pip: a 10 px Sign red square (kit-b U8; was a Neon.Red dot)")
+		-- (playtest 2026-11-28 C45) the menu tiles' attention badge (a red block, a brown "!"), not an empty 10 px square; its top
+		-- on the Gifts block's top (clear of the strip above)
+		local mark = pip and pip:FindFirstChild("Mark")
+		T.check(pip ~= nil and pip.AbsoluteSize.X == 18 and pip.BackgroundColor3 == Theme.Sign.Red and pip:FindFirstChildOfClass("UICorner") == nil
+			and mark ~= nil and mark:IsA("TextLabel") and mark.Text == "!" and mark.TextColor3 == Theme.Sign.Text
+			and abs(pip.AbsolutePosition.Y - H.btn().AbsolutePosition.Y) <= 0.5,
+			"daily pip: an 18 px Sign red square with the brown '!' of the menu tiles' badges, its top on the block's (kit-b U8; was a Neon.Red dot)",
+			pip and fmt("%dpx, mark %s", pip.AbsoluteSize.X, mark and mark.Text or "none") or "no pip")
 		KC.toClient("TutorialState", H.tutorial("shop"))
 		KC.advance(0.2)
 		T.eq(DC.PipShown(), false, "daily pip: not before the tutorial's spin step (Id shop, Step 3)")
@@ -826,6 +832,16 @@ local function clientScenarios()
 		local g, d, r, a, gr = segs()
 		T.check(ring ~= nil and g == 3 and d == 0 and r == 1 and not a and not gr, "daily pip: the play bar's blocks: 3 of 4 gold while the clock counts (no alpha, no gradient)",
 			fmt("gold %d, dim %d, rest %d, alpha %s, gradient %s", g, d, r, tostring(a), tostring(gr)))
+		-- (playtest 2026-11-28 C45) the four blocks one width (the last took the rounding: 11 px beside 9), inside the block
+		local widths, inside = {}, true
+		for i = 1, 4 do
+			local s = ring and ring:FindFirstChild("Seg" .. i)
+			widths[i] = s and s.AbsoluteSize.X or -1
+			inside = inside and s ~= nil and s.AbsolutePosition.X >= ring.AbsolutePosition.X - 0.5
+				and s.AbsolutePosition.X + s.AbsoluteSize.X <= ring.AbsolutePosition.X + ring.AbsoluteSize.X + 0.5
+		end
+		T.check(widths[1] > 0 and widths[1] == widths[2] and widths[2] == widths[3] and widths[3] == widths[4] and inside,
+			"daily pip: the play bar's four blocks are one width, inside the button", table.concat(widths, " / "))
 		local paused = H.base(now)
 		paused.Play.Active = false
 		H.fire(paused)

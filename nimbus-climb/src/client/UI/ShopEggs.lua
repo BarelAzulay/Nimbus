@@ -2278,6 +2278,18 @@ function ShopEggs.Focus(page, rouletteId)
 	return true
 end
 
+-- (playtest 2026-11-28 C18) a fresh open with no machine to focus starts the page at the top-left: a machine's Focus
+-- left its scroll behind, so the next pill open showed the Secret hero cut under the header
+function ShopEggs.ScrollHome(page)
+	local P = PAGES[page or CUR.Page]
+	if not P then
+		return false
+	end
+	P.Scroll.CanvasPosition = Vector2.new(0, 0)
+	P.Row.CanvasPosition = Vector2.new(0, 0)
+	return true
+end
+
 function ShopEggs.HeroPulse(page)
 	local P = PAGES[page or CUR.Page]
 	return P and P.Hero.Pulse or nil

@@ -900,7 +900,9 @@ local function renderFooter()
 		U.FooterText.Text = string.format("Unlocked: %d/%d", unlocked, total)
 		local n = U.FooterBlocks:GetAttribute("Count") or 10
 		SignKit.FillBlocks(U.FooterBlocks, total > 0 and math.floor(unlocked / total * n) or 0)
-		U.FooterPercent.Text = string.format("%d%%", total > 0 and math.floor(unlocked / total * 100) or 0)
+		-- (playtest 2026-11-28 C45) rounded, not floored (1/35 read "2%"); 100% only once every pet is in
+		local pct = total > 0 and math.floor(unlocked / total * 100 + 0.5) or 0
+		U.FooterPercent.Text = string.format("%d%%", unlocked < total and math.min(pct, 99) or pct)
 	end
 	-- the compact layout has no footer: the title carries the count
 	if U.Panel then

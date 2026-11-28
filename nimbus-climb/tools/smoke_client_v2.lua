@@ -806,6 +806,35 @@ local function indexWindowChecks(PetCatalog)
 		end
 	end
 	T.check(findText("unlocked: " .. unlocked .. "/" .. total, window) ~= nil, "Pet Index: the footer reads 'Unlocked: " .. unlocked .. "/" .. total .. "' (every pet in the catalog)", allShownText():sub(1, 300))
+	-- (playtest 2026-11-28 C45) the percent is rounded (1/35 read a floored "2%"), never 100% before the last pet: one more
+	-- non-Mythic pet found for a count whose floor and round differ, then the feed as it was
+	do
+		local more, extra = {}, nil
+		for k, v in pairs(discovered) do
+			more[k] = v
+		end
+		for _, def in ipairs(PetCatalog.Pets) do
+			local n = unlocked + 1
+			if not extra and not more[def.Id] and def.Rarity ~= "Mythic" and def.Id ~= CONTRACT.v2.mascotPetId and def.Id ~= "pebble_pup" and def.Id ~= "biscuit_bear"
+				and math.floor(n / total * 100) ~= math.floor(n / total * 100 + 0.5) then
+				extra = def.Id
+			end
+		end
+		if extra then
+			more[extra] = true
+			feed({ Discovered = more, IndexClaimed = {} })
+			advance(0.6)
+		end
+		local n = unlocked + (extra and 1 or 0)
+		local pctWant = math.floor(n / total * 100 + 0.5)
+		pctWant = n < total and math.min(pctWant, 99) or pctWant
+		local footerF = descendantNamed(window, "Footer")
+		local pctLabel = footerF and footerF:FindFirstChild("Percent")
+		T.check(extra ~= nil and pctLabel ~= nil and pctLabel.Text == pctWant .. "%", "Pet Index: the footer's percent is rounded (" .. n .. "/" .. total .. " -> " .. pctWant .. "%)",
+			pctLabel and pctLabel.Text or "no FooterPercent")
+		feed({ Discovered = discovered, IndexClaimed = {} })
+		advance(0.6)
+	end
 	-- the Mythic group: the mascot is shown by name, the undiscovered Mythic is a black ??? silhouette
 	Index.Open("Mythic")
 	advance(1.5)

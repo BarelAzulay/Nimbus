@@ -421,7 +421,7 @@ local STATIONS = {
 	},
 	{
 		Id = "Vault", Name = "Vault", Kind = "Vault", Icon = ICON.Bank,
-		Blurb = "Your lawn holds more Cloud Cash, and coins while you are away.",
+		Blurb = "Your lawn holds more Cloud Cash, and more while you are away.", -- (playtest 2026-11-28 C20: no "coins")
 		MaxLevel = 5, TierCaps = caps(1, 2, 4, 5),
 		Requires = { Press1 = 6 },
 		Price = { 11000, 110000, 460000, 1000000, 2500000 },
@@ -545,7 +545,7 @@ end
 -- The prestige pad (not a station: TycoonService handles it with its Prestige()). Get("Prestige") returns this.
 local PRESTIGE_PAD = {
 	Id = "Prestige", Name = "Prestige", Kind = "Prestige", Icon = ICON.Star, IsPrestige = true,
-	Blurb = "Start over with +1 star: x1.25 coins forever, +1 garden place and Gems.",
+	Blurb = "Start over with +1 star: x1.25 Cash forever, +1 garden place and Gems.", -- (playtest 2026-11-28 C20)
 	MaxLevel = 1, TierCaps = caps(0, 0, 0, 1), Requires = { House = "SkyCastle" },
 	LevelRequires = {}, Price = { 0 }, Effects = { {} },
 	Slot = { CFrame = at(-8, 18, 0), Footprint = V3(4, 1, 4), Walkable = true, Pad = padAt(-8, 12, -8, 18) },

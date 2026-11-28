@@ -864,7 +864,7 @@ local function clientScenarios()
 		local want = rate < 100 and ((string.format("%.1f", floor(rate * 10 + 0.5) / 10)):gsub("%.0$", "")) or nil
 		local coinsRow = find(inv, "Row_Income")
 		local coinsValue = coinsRow and find(coinsRow, "Value")
-		T.check(coinsRow and find(coinsRow, "Label").Text == "Coins" and (want == nil or coinsValue.Text:find("$" .. want, 1, true)),
+		T.check(coinsRow and find(coinsRow, "Label").Text == "Cash" and (want == nil or coinsValue.Text:find("$" .. want, 1, true)),
 			"p2ui pets: the Coins row shows what the pet makes in the Garden", (coinsValue and coinsValue.Text or "") .. " want $" .. tostring(want))
 		-- Feed -> the Food Machine list (CareController), this pet first
 		local Care = moduleAt("client", "Controllers/CareController")

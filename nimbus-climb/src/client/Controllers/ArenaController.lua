@@ -1431,8 +1431,8 @@ function Ring.refresh(win, ui)
 		recordText = "Beat round " .. (best + 1) .. " for a new record: x" .. tostring(Ring.cfg().RecordMult or 3) .. " Cash!"
 	end
 	ui.RecordLine.Text = recordText
-	ui.CashNote.Text = Ring.income() > 0 and "Each win pays a few seconds of your garden's coins (more every round) and XP to every fighter."
-		or "Put pets in your Pet Garden: ring wins pay more when your garden makes coins!"
+	ui.CashNote.Text = Ring.income() > 0 and "Each win pays a few seconds of your garden's Cash (more every round) and XP to every fighter."
+		or "Put pets in your Pet Garden: ring wins pay more when your garden makes Cash!" -- (playtest 2026-11-28 C20)
 	Ring.live(win, ui)
 	ui.Faces.Refresh()
 end
@@ -2235,7 +2235,7 @@ local function buildArena()
 		local share = math.floor((tonumber(tier.MinShare) or 0) * 100 + 0.5)
 		local text = (share > 0 and (share .. "%+ damage: ") or "Any damage: ") .. commas(tier.Tokens or 0) .. " tokens"
 		if (tonumber(tier.Gems) or 0) > 0 then
-			text = text .. ", " .. math.floor((tonumber(tier.GemChance) or 0) * 100 + 0.5) .. "% for " .. commas(tier.Gems) .. " gems"
+			text = text .. ", " .. math.floor((tonumber(tier.GemChance) or 0) * 100 + 0.5) .. "% for " .. commas(tier.Gems) .. (tonumber(tier.Gems) == 1 and " gem" or " gems") -- (playtest 2026-11-28 C45: "1 gem")
 		end
 		makeText(row, "Text", text, "Body", 19, INK, {
 			Size = UDim2.new(1, -96, 0, 0),
