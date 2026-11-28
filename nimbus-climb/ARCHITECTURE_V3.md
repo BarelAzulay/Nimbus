@@ -933,9 +933,16 @@ ScoopRadius(home) = Magnet Radius (6 studs without)
   off the pad. Validate: every coin point inside the yard, >= 1.5 studs apart, on no pad, inside the footprint or the
   entrance strip.
 * Places beyond the open count show a seedling bed with a small sign "Prestige to open". Open empty places carry a
-  `GardenSpotPrompt` ("Put a pet here", E; attributes `Slot`, `OwnerUserId`) at the cushion's far edge with
-  MaxActivationDistance 3 and RequiresLineOfSight false, so it never pops up for a kid walking the walks (>= 3.5 studs
-  away). It opens `OpenPanel("Pets", { Action = "Garden", Slot = n })`.
+  `GardenSpotPrompt` ("Put a pet here", E; attributes `Slot`, `OwnerUserId`) at the cushion's far edge, 3 studs over
+  the lawn (a standing root's height), with MaxActivationDistance 4 and RequiresLineOfSight false (playtest 2026-11-28
+  C8: was 3 from 1.3 studs up, which reached only ~2.5 studs across the lawn from the root part, so the guide's stop at
+  the bed was out of it); the middle of the lawn stays clear.
+  No buy pad's BuyPrompt reaches into a bed's reach (HomeBuilder `padReach`: 9, cut for the Garden / Fence / Podium /
+  Gym / ArenaGate pads, never under 4.0; reaches are measured centre to centre in 3D, the prompt point to the
+  player's root part, and the smoke check adds the two reaches over every pad a home can show), so E at a bed never
+  buys; a built station's pad says "Upgrade". The BuyPrompt hangs on the pad Base's Attachment `PromptPoint` 3 studs
+  over the pad's top (C8 review: on the Base a 4.5-stud root was out of the cut reach even dead centre); the checks
+  test roots 3 to 4.5 studs up on the whole pad and at the bed's 3.3-stud stop. It opens `OpenPanel("Pets", { Action = "Garden", Slot = n })`.
 * Open places come from `HomeBuilder.SetGarden(spotInfo, valid, open)` (the hook TycoonService already calls at
   :666), NOT from the Garden level; the template cache key (:2549-2553) becomes `Garden:<level>:<open>`.
 * HomeFx: `K.MAX_GARDEN_SLOTS = 12`; pets on cushions dip into the bowl twice per meal, wiggle, a coin pops out onto
@@ -1405,7 +1412,7 @@ Every action: type / range / NaN checks, a per-action cooldown and the shared pe
 10 refill 5/s; PetCare 12 / 6 per s; BattleRequest token bucket); refusal toasts throttled (existing patterns).
 
 #### 5.2 Prompts (server-made ProximityPrompts; HomeFx's owner-only rule hides home prompts from visitors; `applyOwnerAttr` writes `OwnerUserId`)
-* `GardenSpotPrompt` "Put a pet here" on each open empty place (attributes `Slot`, `OwnerUserId`; MaxActivationDistance 3) -> client `OpenPanel("Pets", {Action = "Garden", Slot})`.
+* `GardenSpotPrompt` "Put a pet here" on each open empty place (attributes `Slot`, `OwnerUserId`; MaxActivationDistance 4) -> client `OpenPanel("Pets", {Action = "Garden", Slot})`.
 * `FeedPrompt` "Feed pets" on the Food Machine's `Hopper` part (PetCareService `ensurePrompts` :1620-1660 replaces the CookPrompts; `CARE_SIG` gains a "p4:" marker so stale Kitchen prompts rebuild) -> server `OpenPanel("Pets", {Action = "Feed"})`.
 * `TrainPrompt` "Train pets" on `Station_Gym` -> `OpenPanel("Train")`.
 * `RingPrompt` "Champion Ring" on `Portal_Ring` with attribute `OpenPanel = "Ring"` (opened on the client like Portal_Trials, ArenaController `onPromptTriggered` :2569).
@@ -2025,7 +2032,7 @@ pipes, <= 90), `Art.ArenaGate` (a half-size `WorldStyle.BuildGate` look in Red, 
 `home:FusionMachine:2`, `home:ArenaGate:1` at the W2 gate. Rules of 6.4 (materials, plinths, chamfers, muted big faces, `NC_Detail` tags on
 pure decor). Per-station BUDGET table: Farm 150, Garden 95, FoodMachine 55, Training 90, House 150, Fusion 90, Fence 90, Fountain 80,
 default 80; a fully built plot <= **950** parts (`render_model.py homeplot:SkyCastle:pads`). Prompts: `GardenSpotPrompt` on each open
-EMPTY bed (attrs `Slot`, `OwnerUserId`, MaxActivationDistance 3), `FeedPrompt` on the Hopper, `TrainPrompt` on `Station_Gym` (both
+EMPTY bed (attrs `Slot`, `OwnerUserId`, MaxActivationDistance 4), `FeedPrompt` on the Hopper, `TrainPrompt` on `Station_Gym` (both
 move with the swap; `CARE_SIG` gains "p5:").
 
 #### 3.7 Evolved looks everywhere (home 5; the rule and its 14 sites)

@@ -153,7 +153,9 @@ local K = {
 		-- (PC buttons stay >= 56 design px: 44+ screen px at the smallest PC scale, 0.8)
 		tight = { Pad = 10, Top = 6, TopH = 26, Name = 20, NameMin = 18, Rank = 18, BarH = 12, Line = 18, LineH = 24, BtnH = 56, BtnText = 20, BtnMin = 18, Bottom = 6, MaxText = 22 },
 		phone = { Pad = 8, Top = 2, TopH = 20, Name = 16, NameMin = 15, Rank = 15, BarH = 10, Line = 15, LineH = 18, BtnH = 44, BtnText = 16, BtnMin = 15, Bottom = 3, MaxText = 18 },
-		row = { Pad = 10, Name = 16, NameMin = 15, Rank = 15, BtnW = 140, BtnH = 44, BtnText = 16, BtnMin = 15, Line = 15, MaxText = 18 },
+		-- (playtest 2026-11-28 C39 review, round 3) Lip: the card's lip under its body; Min: the shortest card that holds the
+		-- compact stack (name 18, bar 10, one line 17, gaps 2 + 3, 2 px of air each end) over that lip
+		row = { Pad = 10, Name = 16, NameMin = 15, Rank = 15, BtnW = 140, BtnH = 44, BtnText = 16, BtnMin = 15, Line = 15, MaxText = 18, Lip = 6, Min = 60 },
 	},
 }
 
@@ -226,7 +228,9 @@ local EFFECT = {
 	Speed = { Per = 0.04, Words = "attack speed", Sign = "+" },
 	Physique = { Per = 0.05, Words = "max health", Sign = "+" },
 	Ability = { Per = 0.04, Words = "special power and charge", Short = "special power", Sign = "+" },
-	Defense = { Per = 0.03, Words = "damage taken", Sign = "-" },
+	-- (playtest 2026-11-28 C39) a minus skill always says what goes down ('Rank 1: -3%' in green read as a penalty);
+	-- Lead heads the one-line card's "Hits 0% -> -3%"
+	Defense = { Per = 0.03, Words = "damage taken", Sign = "-", Lead = "Hits" },
 }
 local HINTS = {
 	NoPet = "Pick a pet first",
@@ -1161,6 +1165,21 @@ function H.layoutPortrait(W, Hh)
 	H.layoutMats(W - 2 * pad, 60, K.MAT.mini.Gap)
 	local y0 = 72
 	local cardW, cardH = 150, 140
+	local gap = 8
+	-- (playtest 2026-11-28 C39 review, round 3) a short portrait phone (360x640: 53 px cards, the line half under the lip)
+	-- gives the skill cards the compact stack's height (K.CARD.row.Min): their gaps go to 6, then the pet card gives up
+	-- height down to the landscape card's (M.CardH; its rest note hides under 30 px, as on a landscape phone)
+	local rowMin = K.CARD.row.Min
+	local function cardsH(cH, g)
+		return math.floor((bodyH - (y0 + cH + 10) - 6 - 3 * g) / 4)
+	end
+	if cardsH(cardH, gap) < rowMin then
+		gap = 6
+		local short = rowMin - cardsH(cardH, gap)
+		if short > 0 then
+			cardH = math.max(M.CardH, cardH - 4 * short)
+		end
+	end
 	place(U.Card.Root, pad, y0, cardW, cardH)
 	H.layoutCardInside(cardW, cardH, true)
 	local rx = pad + cardW + 10
@@ -1179,7 +1198,6 @@ function H.layoutPortrait(W, Hh)
 	U.Note.TextSize = 15
 	S.NoteOn = U.Note.Size.Y.Offset >= 30
 	local sy = y0 + cardH + 10
-	local gap = 8
 	local A = bodyH - sy - 6
 	place(U.SkillsFrame, pad, sy, W - 2 * pad, A)
 	local ch = math.floor((A - 3 * gap) / 4)
@@ -1338,18 +1356,28 @@ function H.layoutSkillRow(item, w, h, m)
 	local lw = bx - pad - 8
 	local rankW = math.ceil(H.width("10/10", m.Rank, Theme.FontOf(item.RankL))) + 6
 	local top = math.max(4, math.floor((h - 64) / 2))
-	place(item.NameL, pad, top, lw - rankW - 4, 20)
+	-- the name 20, the bar at +24 (10), the line at +40 (20), the button centred on the card
+	local nameH, barY, lineY, lineH, btnY = 20, top + 24, top + 40, 20, (h - m.BtnH) / 2
+	local bodyH = h - (m.Lip or 6)
+	if top + 60 > bodyH then
+		-- (playtest 2026-11-28 C39 review, round 3) a short card (53 px at 360x640) ran the line 17 px past its body, half
+		-- under the lip: the compact stack (name 18, bar 10, line 17; 2 and 3 px apart), centred in the body with the button
+		top = math.max(1, math.floor((bodyH - 50) / 2))
+		nameH, barY, lineY, lineH = 18, top + 20, top + 33, 17
+		btnY = math.max(0, math.floor((bodyH - m.BtnH) / 2))
+	end
+	place(item.NameL, pad, top, lw - rankW - 4, nameH)
 	H.fit(item.NameL, { item.NameL.Text }, lw - rankW - 4, m.Name, m.NameMin)
-	place(item.RankL, pad + lw - rankW, top, rankW, 20)
+	place(item.RankL, pad + lw - rankW, top, rankW, nameH)
 	item.RankL.TextSize = m.Rank
 	item.RankL.TextXAlignment = Enum.TextXAlignment.Right
-	H.layoutBar(item, pad, top + 24, lw, 10)
+	H.layoutBar(item, pad, barY, lw, 10)
 	item.Next.Visible, item.Cost.Visible, item.Time.Visible = false, false, false
 	item.Now.Visible = true
-	place(item.Now, pad, top + 40, lw, 20)
+	place(item.Now, pad, lineY, lw, lineH)
 	item.Now.TextSize = m.Line
-	place(item.Action, bx, (h - m.BtnH) / 2, m.BtnW, m.BtnH)
-	place(item.MaxTag, bx, (h - m.BtnH) / 2, m.BtnW, m.BtnH)
+	place(item.Action, bx, btnY, m.BtnW, m.BtnH)
+	place(item.MaxTag, bx, btnY, m.BtnW, m.BtnH)
 	item.MaxTag.TextSize = m.MaxText
 	item.Lay = m
 end
@@ -1979,11 +2007,12 @@ function H.paintSkill(item)
 	-- rank 0 has no bonus yet ("-0% damage taken" would read oddly)
 	local nowShort = rank > 0 and (eff.Sign .. nowPct .. "%") or "0%"
 	local words = rank > 0 and (eff.Sign .. nowPct .. "% " .. eff.Words) or "no bonus yet"
+	local tail = eff.Sign == "-" and (" " .. eff.Words) or "" -- (playtest 2026-11-28 C39) "-3% damage taken"
 	if noPet then
 		nowText = ""
 	elseif st == "Training" then
 		nowText = "Now: " .. words
-		nextText = "Rank " .. jobRank .. ": " .. eff.Sign .. H.pct(id, jobRank) .. "%"
+		nextText = "Rank " .. jobRank .. ": " .. eff.Sign .. H.pct(id, jobRank) .. "%" .. tail
 		timeText = "Rank " .. jobRank .. " " .. G.Dot .. " " .. H.clock(left) .. " left"
 		timeColor = C.PurpleInk
 	elseif st == "Max" then
@@ -1991,7 +2020,7 @@ function H.paintSkill(item)
 		nextText, nextColor = "Top rank!", C.Ink
 	else
 		nowText = "Now: " .. words
-		nextText = "Rank " .. (rank + 1) .. ": " .. eff.Sign .. nextPct .. "%"
+		nextText = "Rank " .. (rank + 1) .. ": " .. eff.Sign .. nextPct .. "%" .. tail
 		costText = H.commas(cost)
 		timeText = H.minutes(seconds)
 	end
@@ -2005,7 +2034,15 @@ function H.paintSkill(item)
 		elseif not noPet then
 			line = nowShort .. " " .. G.Arrow .. " " .. eff.Sign .. nextPct .. "% " .. G.Dot .. " " .. timeText
 		end
-		H.fit(item.Now, { line, (line:gsub(" " .. G.Dot .. " .*$", "")) }, item.Now.Size.X.Offset - 2, m.Line, m.Line)
+		local plain = (line:gsub(" " .. G.Dot .. " .*$", ""))
+		local fits = { line, plain }
+		if eff.Lead and not noPet and st ~= "Training" then
+			-- (playtest 2026-11-28 C39) "Hits 0% -> -3% - 1 min": the lead says what the minus takes off. Both lead lines
+			-- come first: the time drops before the lead does (at 360x640 the bare "0% -> -3% - 1 min" won over
+			-- "Hits 0% -> -3%", the penalty look the playtest named)
+			fits = { eff.Lead .. " " .. line, eff.Lead .. " " .. plain, line, plain }
+		end
+		H.fit(item.Now, fits, item.Now.Size.X.Offset - 2, m.Line, m.Line)
 		item.Now.TextColor3 = st == "Training" and timeColor or C.Ink
 	else
 		local fits = { nowText }
@@ -2017,7 +2054,9 @@ function H.paintSkill(item)
 		end
 		H.fit(item.Now, fits, item.Now.Size.X.Offset - 2, m.Line, math.max(18, m.Line - 2))
 		item.Now.TextColor3 = C.Ink
-		item.Next.Text, item.Next.TextColor3 = nextText, nextColor
+		item.Next.TextColor3 = nextColor
+		-- (playtest 2026-11-28 C39) a minus skill's words drop only when its line has no room for them
+		H.fit(item.Next, { nextText, (nextText:gsub(tail ~= "" and (" " .. eff.Words .. "$") or "^$", "")) }, item.Next.Size.X.Offset - 2, m.Line, m.Line)
 		item.Cost.Text = costText
 		item.Cost.TextColor3 = st == "Short" and C.Bad or C.Good
 		item.Time.Text, item.Time.TextColor3 = timeText, timeColor
@@ -2039,7 +2078,8 @@ function H.paintSkill(item)
 		elseif st == "Training" then
 			text, colorName = "STOP", "Pink"
 		elseif st == "Busy" then
-			text, disabled = "Busy training", true
+			-- (playtest 2026-11-28 C58) the PET is busy (training another skill), not this skill: 'Busy training' sat on idle ones
+			text, disabled = "Pet is busy", true
 		elseif st == "Full" then
 			text, disabled = "Spots full", true
 		elseif st == "Match" then

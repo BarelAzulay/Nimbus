@@ -278,7 +278,7 @@ local G = {
 	Bullet = "\194\183", -- middle dot
 }
 -- (kit-b U7b) the Home window's PixelIcons
-local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "nub" }
+local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "nub", Up = "arrowup" }
 
 ----------------------------------------------------------------------
 -- Module state
@@ -2484,7 +2484,8 @@ K.HERO_H_SHORT = 76 -- ... on short windows (landscape phones)
 P5.HERO = {
 	-- (kit-b U7a) the house and the badge draw PixelIcons
 	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "house", Badge = "arrow" },
-	ClaimHome = { Title = "Claim a home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "house", Badge = "sparkle" },
+	-- (playtest 2026-11-28 C23 review) Tiny: the line a narrow card fits ('Your own sky i...' at 640x360)
+	ClaimHome = { Title = "Claim a home", ShortTitle = "Claim home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Tiny = "Free sky island!", Glyph = "house", Badge = "sparkle" },
 }
 -- the Prestige confirm's fixed lines, and a long "You get" line (H.Layout sizes the lines to the widest of these); Short:
 -- (kit-b U9-1) the same said in fewer words for a short window (a landscape phone), so the three lines fit its box
@@ -2633,25 +2634,27 @@ function P5.buildHomeHero(H, win, onGoHome, onClaim)
 		LayoutOrder = 10,
 	})
 	local gets = makeFrame(steps, "Gets", { Size = UDim2.new(1, 0, 0, 132), LayoutOrder = 11 })
-	Util.Create("UIGridLayout", {
+	H.ClaimGetsGrid = Util.Create("UIGridLayout", {
 		CellSize = UDim2.new(1 / 3, -8, 1, 0),
 		CellPadding = UDim2.new(0, 12, 0, 0),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = gets,
 	})
+	H.ClaimGetTiles = {}
 	for i, item in ipairs(P5.CLAIM_GETS) do
 		local tile = P5.signBlock(gets, "Get" .. i, { Size = UDim2.fromOffset(160, 132), LayoutOrder = i }, item.Color)
 		local chip = P5.signChip(tile, "Orb", item.Color, item.Glyph, 48)
 		chip.AnchorPoint = Vector2.new(0.5, 0)
 		chip.Position = UDim2.new(0.5, 0, 0, 10)
-		makeText(tile, "Title", item.Title, "Heading", 20, P5.HS.Text, {
+		local title = makeText(tile, "Title", item.Title, "Heading", 20, P5.HS.Text, {
 			Position = UDim2.new(0, 6, 0, 66),
 			Size = UDim2.new(1, -12, 0, 24),
 		})
-		makeText(tile, "Text", item.Text, "Body", 18, P5.HS.TextMuted, {
+		local body = makeText(tile, "Text", item.Text, "Body", 18, P5.HS.TextMuted, {
 			Position = UDim2.new(0, 6, 0, 92),
 			Size = UDim2.new(1, -12, 0, 24),
 		})
+		H.ClaimGetTiles[i] = { Chip = chip, Title = title, Text = body }
 	end
 	H.ClaimGets = gets
 	H.ClaimSteps = steps
@@ -2693,11 +2696,89 @@ function P5.layoutHomeHero(H, short, w)
 		hero.Sub.Size = UDim2.new(1, -(x + 76), 0, 26)
 		local spec = P5.HERO[hero.Id]
 		hero.Sub.Text = (short or (tonumber(w) or 999) < 640) and spec.Short or spec.Sub
+		-- (playtest 2026-11-28 C23 review) the line under the title whole: the card's text box (the window less the
+		-- content's and the hero's 12 px sides, the orb column and the badge's 76) takes the first line that fits it by the
+		-- measure (a 15 % spare: the Body face drew wider than Theme.Measure), then Tiny; else it truncates as before
+		local subRoom = (tonumber(w) or 0) - 48 - (x + 76)
+		if subRoom > 0 then
+			for _, line in ipairs({ hero.Sub.Text, spec.Tiny }) do
+				if line and math.ceil(Theme.MeasureLabel(hero.Sub, line, hero.Sub.TextSize).X * 1.15) <= subRoom then
+					hero.Sub.Text = line
+					break
+				end
+				hero.Sub.Text = line or hero.Sub.Text
+			end
+		end
 		hero.Badge.Size = UDim2.fromOffset(short and 44 or 52, short and 44 or 52)
 	end
+	-- (playtest 2026-11-28 C23) the claim title on ONE line: TextScaled with MinTextSize 24 wrapped 'CLAIM A / HOME' in
+	-- its 32 px box at 640-667 px (the second line clipped or spilled over the card); the size steps down to 18 by
+	-- the measure (with a 25 % spare: Theme.Measure read 23 % short of the drawn capitals in the renders), then the
+	-- short title ("Claim home", 640 px), then truncates. The box:
+	-- the window less the content's and the hero's 12 px sides, the orb column and the badge's 76
+	local title = H.ClaimHero.Title
+	local room = (tonumber(w) or 0) - 48 - ((short and 76 or 96) + 76)
+	local function need(text, px)
+		return math.ceil(Theme.MeasureLabel(title, text, px).X * 1.25)
+	end
+	local spec = P5.HERO.ClaimHome
+	local text = (room > 0 and need(spec.Title, 18) > room and spec.ShortTitle) or spec.Title
+	title.Text = text
+	local size = short and 32 or 34
+	while room > 0 and size > 18 and need(text, size) > room do
+		size = size - 1
+	end
+	local fit = title:FindFirstChildOfClass("UITextSizeConstraint")
+	if fit then
+		fit.MinTextSize = 18
+	end
+	title.TextScaled = false
+	title.TextWrapped = false
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.TextSize = size
+	P5.layoutClaimGets(H, w)
 	H.ClaimSteps.Position = UDim2.fromOffset(12, h + 22)
 	H.ClaimSteps.Size = UDim2.new(1, -24, 1, -(h + 32))
 	return h
+end
+
+-- (playtest 2026-11-28 C23) the "Your home has" tiles: three across while a tile holds its words (160 px tiles on a
+-- PC), else one row each (the chip at the left, the title and its line beside it): at 640-667 px the tiles were 93 px
+-- and cut 'Pets roam and play' / 'Pet Garden'
+function P5.layoutClaimGets(H, w)
+	if not (H.ClaimGetsGrid and H.ClaimGetTiles) then
+		return
+	end
+	-- a tile: the window less the content's and the steps' sides (24 + 40), a third, less the grid's gap
+	local tileW = math.floor(((tonumber(w) or 999) - 64) / 3) - 8
+	local rows = false
+	for _, t in ipairs(H.ClaimGetTiles) do
+		for _, pair in ipairs({ { t.Title, 20 }, { t.Text, 18 } }) do
+			rows = rows or math.ceil(Theme.MeasureLabel(pair[1], nil, pair[2]).X * 1.15) > tileW - 12
+		end
+	end
+	local n = #H.ClaimGetTiles
+	if rows then
+		H.ClaimGetsGrid.CellSize = UDim2.new(1, 0, 0, 64)
+		H.ClaimGetsGrid.CellPadding = UDim2.new(0, 0, 0, 10)
+		H.ClaimGets.Size = UDim2.new(1, 0, 0, n * 64 + (n - 1) * 10)
+	else
+		H.ClaimGetsGrid.CellSize = UDim2.new(1 / 3, -8, 1, 0)
+		H.ClaimGetsGrid.CellPadding = UDim2.new(0, 12, 0, 0)
+		H.ClaimGets.Size = UDim2.new(1, 0, 0, 132)
+	end
+	for _, t in ipairs(H.ClaimGetTiles) do
+		t.Chip.AnchorPoint = rows and Vector2.new(0, 0.5) or Vector2.new(0.5, 0)
+		t.Chip.Position = rows and UDim2.new(0, 10, 0.5, -2) or UDim2.new(0.5, 0, 0, 10)
+		for _, label in ipairs({ t.Title, t.Text }) do
+			label.TextXAlignment = rows and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+			label.TextTruncate = Enum.TextTruncate.AtEnd
+		end
+		t.Title.Position = rows and UDim2.new(0, 70, 0, 6) or UDim2.new(0, 6, 0, 66)
+		t.Title.Size = rows and UDim2.new(1, -80, 0, 24) or UDim2.new(1, -12, 0, 24)
+		t.Text.Position = rows and UDim2.new(0, 70, 0, 32) or UDim2.new(0, 6, 0, 92)
+		t.Text.Size = rows and UDim2.new(1, -80, 0, 24) or UDim2.new(1, -12, 0, 24)
+	end
 end
 
 local buildHome -- (the window's helpers live in this do-block: Lua's 200-local limit of the main chunk)
@@ -3369,8 +3450,48 @@ do
 			end
 			confirm.Visible = on == true
 			if on then
+				H.ConfirmRead = false -- (playtest 2026-11-28 C35) read from the top again
+				H.ConfirmList.CanvasPosition = Vector2.new(0, 0)
 				H.FitConfirm()
 			end
+		end
+
+		-- (playtest 2026-11-28 C35) a list that scrolls keeps Prestige! off ('Read all') until the player has scrolled to
+		-- its end: on landscape phones 'You keep' / 'You get' sat below the fold beside a live Prestige!
+		-- (playtest 2026-11-28 C35 review) whether the list scrolls and where its end is, from the frame's own numbers
+		-- (AbsoluteCanvasSize - AbsoluteWindowSize is the engine's reachable end; FitConfirm's sum only where the engine
+		-- has none): an end computed a few px past the reachable one never unlocked Prestige!
+		function H.ConfirmScroll()
+			local ok, canvas, window = pcall(function()
+				return lines.AbsoluteCanvasSize.Y, lines.AbsoluteWindowSize.Y
+			end)
+			if ok and type(canvas) == "number" and type(window) == "number" and window > 0 then
+				return canvas - window > 1, canvas - window
+			end
+			return H.ConfirmEndY ~= nil, H.ConfirmEndY or 0
+		end
+		function H.PaintConfirmYes()
+			local wait = H.ConfirmScroll() and not H.ConfirmRead
+			H.ConfirmYes:SetAttribute("Disabled", wait)
+			H.ConfirmYes.Text = wait and "Read all" or "Prestige!"
+		end
+		-- only a scroll to the end reads the list (a fit never does: a first fit that did not scroll left Prestige! live
+		-- once the real text arrived and scrolled)
+		lines:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+			local scrolls, endY = H.ConfirmScroll()
+			if scrolls and not H.ConfirmRead and lines.CanvasPosition.Y >= endY - 2 then
+				H.ConfirmRead = true
+				H.PaintConfirmYes()
+			end
+		end)
+		for _, prop in ipairs({ "AbsoluteCanvasSize", "AbsoluteWindowSize" }) do
+			pcall(function()
+				lines:GetPropertyChangedSignal(prop):Connect(function()
+					if confirm.Visible then
+						H.PaintConfirmYes()
+					end
+				end)
+			end)
 		end
 
 		-- (kit-b U9-1 review) each line as tall as the text it really shows (its TextBounds at the column's width: the first
@@ -3393,6 +3514,7 @@ do
 			end
 			local words = fit.Short and P5.PRESTIGE_TEXT.Short or P5.PRESTIGE_TEXT
 			local content = 2 * 8
+			local heights = {}
 			for _, id in ipairs({ "Reset", "Keep", "Gain" }) do
 				local text = H.ConfirmLines[id]
 				local okB, bounds = pcall(function()
@@ -3409,10 +3531,25 @@ do
 				text.Parent.Size = UDim2.new(1, -12, 0, lineH)
 				text.Size = UDim2.new(1, -144, 0, lineH - 6) -- the lip's room below
 				content = content + lineH
+				heights[#heights + 1] = lineH
 			end
-			local boxH = math.min(fit.Top + content + fit.Foot, fit.Room)
-			H.ConfirmList.Size = UDim2.new(1, -32, 0, boxH - fit.Top - fit.Foot)
-			box.Size = UDim2.fromOffset(fit.BoxW, boxH)
+			local listH = math.min(content, fit.Room - fit.Top - fit.Foot)
+			if listH < content then
+				-- (playtest 2026-11-28 C35) a list that scrolls stops at a whole line (it sliced a line mid-text)
+				local whole = 0
+				for i, lineH in ipairs(heights) do
+					local next = whole + lineH + (i > 1 and 8 or 0)
+					if next > listH then
+						break
+					end
+					whole = next
+				end
+				listH = whole > 0 and whole or listH
+			end
+			H.ConfirmEndY = listH < content and math.max(0, (content - listH) * scale) or nil
+			H.ConfirmList.Size = UDim2.new(1, -32, 0, listH)
+			box.Size = UDim2.fromOffset(fit.BoxW, fit.Top + listH + fit.Foot)
+			H.PaintConfirmYes()
 		end
 		-- a text whose bounds arrive or change after the fit (Roblox lays text out on its next frame) fits again
 		for _, text in pairs(H.ConfirmLines) do
@@ -3559,7 +3696,8 @@ do
 			else
 				H.NextHouse.Text = "Your " .. ((type(tier) == "table" and tier.Name) or "house") .. " is complete!"
 			end
-			PixelIcon.Mark(H.NextHouse, H.NextHouse.Text:sub(1, 7) == "Upgrade" and HOME_ICON.Check or nil) -- (kit-b U7b)
+			-- (playtest 2026-11-28 C58) a tip to act on leads with an up arrow; the done-check read as 'already done'
+			PixelIcon.Mark(H.NextHouse, H.NextHouse.Text:sub(1, 7) == "Upgrade" and HOME_ICON.Up or nil) -- (kit-b U7b)
 			-- prestige
 			local P = TycoonCatalog and TycoonCatalog.Prestige or {}
 			local need = tonumber(P.HomeLevel) or 40

@@ -619,7 +619,8 @@ local function clientScenarios()
 		local grid = find(win, "Grid")
 		local picks = {}
 		for _, c in ipairs(grid and grid:GetChildren() or {}) do
-			if c:IsA("TextButton") then
+			-- (playtest 2026-11-28 C53) the empty "+" wells are buttons too (they open the Shop's Eggs), not pet copies
+			if c:IsA("TextButton") and c:GetAttribute("Slot") ~= "Empty" then
 				picks[c.Name] = c
 			end
 		end
@@ -729,8 +730,9 @@ local function clientScenarios()
 		local box = recallBox()
 		local title = box and find(box, "Title")
 		local body = box and find(box, "Body")
-		T.check(box and title and title.Text:upper():find("THIS PET IS GARDENING!", 1, true) and body and body.Text:find("Take it out of the garden", 1, true) and body.Text:find("put it in your team?", 1, true),
-			"p3ui recall: picking a gardening pet opens NimbusPets.GardenRecall ('This pet is gardening! Take it out of the garden and put it in your team?')", body and body.Text)
+		-- (playtest 2026-11-28 C58) the question names the pet ('Bubble Axolotl is gardening!'; it said 'This pet')
+		T.check(box and title and title.Text:upper():find("BUBBLE AXOLOTL IS GARDENING!", 1, true) and body and body.Text:find("Take it out of the garden", 1, true) and body.Text:find("put it in your team?", 1, true),
+			"p3ui recall: picking a gardening pet opens NimbusPets.GardenRecall ('Bubble Axolotl is gardening! Take it out of the garden and put it in your team?')", (title and title.Text or "-") .. " / " .. tostring(body and body.Text))
 		T.check(box and find(box, "RecallYes") and find(box, "RecallNo"), "p3ui recall: ...with Yes and No")
 		-- (kit-b gate U9 round 3) the question is a kit B notice: square (no corner, no gradient), a mitred wood edge and a
 		-- lip, Yes the one green Sign plank and No a stone one

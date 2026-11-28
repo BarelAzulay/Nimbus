@@ -345,7 +345,11 @@ local function clientScenarios()
 					"train ui: ...and the timer ('Rank 4 - 2:10 left')", timeText)
 				T.check(TC_.SkillState("Speed") == "Busy" and TC_.SkillState("Ability") == "Busy" and TC_.SkillState("Defense") == "Busy"
 					and H.skill("Speed"):GetAttribute("State") == "Busy", "train ui: the other three skills are 'Busy'", H.states())
-				T.check(H.text(H.part("Speed", "Action")) == "Busy training" and H.disabled(H.part("Speed", "Action")), "train ui: ...'Busy training', disabled")
+				-- (playtest 2026-11-28 C58) the pet is busy, not the skill (was 'Busy training' on idle skills)
+				T.check(H.text(H.part("Speed", "Action")) == "Pet is busy" and H.disabled(H.part("Speed", "Action")), "train ui: ...'Pet is busy', disabled")
+				-- (playtest 2026-11-28 C39) Defense's minus says what it takes off ('Rank 1: -3%' in green read as a penalty)
+				local defNext = H.text(H.part("Defense", "Next"))
+				T.check(defNext:find("-%d+%% damage taken$") ~= nil, "train ui: Defense's next rank reads '-3% damage taken'", defNext)
 				T.eq(H.text(H.find("SpotsChip")), "Training spots: 1 / 3 in use", "train ui: the spots chip")
 				T.check(H.text(H.find("Name", H.skill("Speed"))):upper() == "ATTACK SPEED", "train ui: Speed reads 'Attack Speed'")
 				-- the rank and the bar
@@ -792,6 +796,39 @@ local function clientScenarios()
 			RedoGeom.check(H.win(), label .. " (empty)", { NoOverlap = NAMES })
 			-- (Task 8) the five mats sit in their band, apart and clear of the pet card and the skills
 			H.matsApart(label .. " (mats)")
+		end)
+		-- (playtest 2026-11-28 C39) a 360x640 phone's one-line skill card: Defense's minus says what it takes off ("Hits 0%
+		-- -> -3%" or "... damage taken"); the bare "0% -> -3% - 1 min" read as a penalty
+		RedoGeom.at(360, 640, true, "train portrait 360x640", function()
+			H.with("train portrait 360x640", nil, function(TC)
+				TC.Open({})
+				KC.advance(0.6)
+				TC.Select("maple_fox")
+				KC.advance(0.3)
+				local now = H.part("Defense", "Now")
+				local text = H.text(now)
+				T.check(TC.SkillState("Defense") ~= "Busy" and H.shown(now) and (text:sub(1, 5) == "Hits " or text:find("damage taken", 1, true) ~= nil),
+					"train portrait 360x640: Defense's one-line card says what the minus takes off ('Hits 0% -> -3%')", text .. " / " .. tostring(TC.SkillState("Defense")))
+				T.check(now ~= nil and now.TextBounds.X <= now.AbsoluteSize.X + 0.5, "train portrait 360x640: ...and that line fits its card",
+					now and fmt("%.1f in %.1f", now.TextBounds.X, now.AbsoluteSize.X) or "-")
+				-- (C39 review, round 3) ...and every skill's line (and its name and bar) sits inside its card, over the card's
+				-- lip: at 360x640 the line was laid out at 591..611 of a card whose lip starts at 594 (all four skills)
+				local outside = {}
+				for _, id in ipairs({ "Speed", "Physique", "Ability", "Defense" }) do
+					local card = H.skill(id)
+					local lip = card and card:FindFirstChild("Lip")
+					for _, name in ipairs({ "Name", "Bar", "Now" }) do
+						local o = H.part(id, name)
+						if not (card and lip and o and H.shown(o)) then
+							outside[#outside + 1] = id .. "." .. name .. " missing"
+						elseif o.AbsolutePosition.Y < card.AbsolutePosition.Y - 0.5 or o.AbsolutePosition.Y + o.AbsoluteSize.Y > lip.AbsolutePosition.Y + 0.5 then
+							outside[#outside + 1] = fmt("%s.%s %.0f..%.0f, card %.0f, lip from %.0f", id, name, o.AbsolutePosition.Y, o.AbsolutePosition.Y + o.AbsoluteSize.Y,
+								card.AbsolutePosition.Y, lip.AbsolutePosition.Y)
+						end
+					end
+				end
+				T.check(#outside == 0, "train portrait 360x640: every skill's name, bar and line sit inside its card, over its lip", table.concat(outside, "; "))
+			end)
 		end)
 	end)
 

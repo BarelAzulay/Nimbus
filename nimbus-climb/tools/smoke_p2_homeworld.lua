@@ -10,7 +10,7 @@
 --                   Starberry tree 38-40, the FarmSign "Berry Farm Lv N" / 70 studs, BerryPoint), the Food Machine's
 --                   glass Hopper + MachineSign with the BasketLine, the Training Place's mats (Spot1..level at
 --                   Slot.Spots), the Garden's 12 beds for every open count 0..12 (Spot1..12 at Slot.Beds, a
---                   GardenSpotPrompt beside each open bed only: E, MaxActivationDistance 3, no line of sight; seedling
+--                   GardenSpotPrompt beside each open bed only: E, MaxActivationDistance 4, no line of sight; seedling
 --                   beds with "Prestige to open" signs; an open inside and entrance; <= 95 parts), the Food Bowl at
 --                   Slot.Bowl with its sign (40 studs), the Garden:<level>:<open> cache, the House tiers, the Fusion
 --                   Machine (pods, chamber, Swirl, FusionPrompt), the Arena Gate (ArenaGatePrompt, Teleport Arena), the
@@ -475,7 +475,7 @@ local function serverScenarios()
 		local hx, hz, ft = gs.Footprint.X / 2, gs.Footprint.Z / 2, gs.Fence
 		local ent = gs.Entrance
 		local garden = T.tally("station art: the Pet Garden has 12 beds (Attachments Spot1..12, attribute Slot / Open) at Slot.Beds for every open count 0..12, within 95 parts")
-		local prompts = T.tally("station art: every OPEN bed (and only those) carries a GardenSpotPrompt 'Put a pet here' (E, MaxActivationDistance 3, no line of sight, attribute Slot) beside the bed")
+		local prompts = T.tally("station art: every OPEN bed (and only those) carries a GardenSpotPrompt 'Put a pet here' (E, MaxActivationDistance 4, no line of sight, attribute Slot) beside the bed")
 		local closed = T.tally("station art: every bed beyond the open count is a seedling bed (Stem + Sprout) with a 'Prestige to open' sign (40-60 px per stud); open beds have a cushion under a little roof")
 		local clearIn = T.tally("station art: the Garden's inside stays clear for the roaming pets (no solid or decor part between 0.7 and 3 studs except the beds and the bowl) and its entrance is open")
 		for _, level in ipairs({ 1, 4, gdef.MaxLevel }) do
@@ -499,7 +499,7 @@ local function serverScenarios()
 							local at = d.Parent and d.Parent:IsA("Attachment") and d.Parent.WorldPosition
 							local bed = beds[slot or 0]
 							local dist = (bed and at) and (Vector3.new(at.X, 0, at.Z) - Vector3.new(bed.X, 0, bed.Z)).Magnitude or huge
-							if not (bed and slot <= open and d.ActionText == "Put a pet here" and d.KeyboardKeyCode == Enum.KeyCode.E and d.MaxActivationDistance == 3
+							if not (bed and slot <= open and d.ActionText == "Put a pet here" and d.KeyboardKeyCode == Enum.KeyCode.E and d.MaxActivationDistance == 4
 								and d.RequiresLineOfSight == false and d:GetAttribute("StationId") == "Garden" and dist <= 2.2 and dist >= 1.2) then
 								promptBad = "slot " .. tostring(slot) .. string.format(" %.2f from its bed", dist)
 							end
@@ -968,7 +968,7 @@ local function serverScenarios()
 		end
 		local maxParts, maxAt, steps = 0, "", 0
 		local stationOk = T.tally("home plot: every purchase builds Station_<Id> under Home with StationId / Level / BuiltAt; the pads follow")
-		local padOk = T.tally("home plot: every pad is Pad_<Id> under Home/Pads with a BuyPrompt 'Buy' (E, 0.25 s, StationId, OwnerUserId; the Prestige pad's says 'Prestige' with a hold >= 1 s), enabled only when unlocked")
+		local padOk = T.tally("home plot: every pad is Pad_<Id> under Home/Pads with a BuyPrompt 'Buy' / 'Upgrade' once built (E, 0.25 s, StationId, OwnerUserId; the Prestige pad's says 'Prestige' with a hold >= 1 s), enabled only when unlocked")
 		local signOk = T.tally("home plot: every pad sign is a pixel-sized billboard (names >= 22 px, info >= 18 px, LightInfluence 0, MaxDistance 50-150) showing the name and 'Lv a -> b' + price or the lock reason; kit-b world signs: a stone card (its Plate: SignEdge + Lip, inside the gui; NameRow / InfoRow) with ink text, no outline, round corner or gradient")
 		local ghostOk = T.tally("home plot: stations that unlock later ('Unlocks at Prestige', 'Coming soon') show a cheap ghost (<= 12 parts, no prompts, no collisions)")
 		local function checkPads(pads)
@@ -981,7 +981,8 @@ local function serverScenarios()
 					local prompt = find(m, "BuyPrompt", "ProximityPrompt")
 					local locked = pad.Locked ~= nil and pad.Locked ~= ""
 					-- the Prestige pad buys nothing: "Prestige" with a long hold (it opens the prestige confirmation)
-					local wantText, holdOk = "Buy", prompt ~= nil and abs(prompt.HoldDuration - 0.25) < 1e-6
+					-- (playtest 2026-11-28 C8) a built station's pad says "Upgrade"
+					local wantText, holdOk = (tonumber(pad.Level) or 0) >= 1 and "Upgrade" or "Buy", prompt ~= nil and abs(prompt.HoldDuration - 0.25) < 1e-6
 					if pad.StationId == "Prestige" then
 						wantText, holdOk = "Prestige", prompt ~= nil and prompt.HoldDuration >= 1
 					end
@@ -1178,6 +1179,111 @@ local function serverScenarios()
 			end
 		end
 		T.check(en12 == 12 and home:FindFirstChild("Station_Garden"):GetAttribute("Open") == 12, "home plot: 12 open places (the cap) show 12 prompts")
+		-- (playtest 2026-11-28 C8) at the bed the guide called "you're here" E bought the $15K Garden upgrade: the pad's
+		-- BuyPrompt (reach 9) reached into the beds' reach, and E goes to whichever prompt the camera faces. A purchase is
+		-- never one E away from a bed: no spot is in reach of a BuyPrompt and a GardenSpotPrompt at once (centre distance
+		-- >= the two reaches), and a bed's reach covers where the guide stops at it (3.3 studs in the playtest).
+		local function promptAt(pr)
+			local p = pr.Parent
+			if p and p:IsA("Attachment") then
+				return p.WorldPosition
+			end
+			return p and p:IsA("BasePart") and p.Position or nil
+		end
+		local apart = T.tally("home plot: no spot is in reach of a pad's BuyPrompt and a GardenSpotPrompt at once (a bed's E never buys)")
+		local reachOk, closest, gardenPad = true, "", false
+		local slack = huge
+		-- every pad a home can show, measured, then put back: each station's pad (the Garden's at level 1 sells its level
+		-- 2, the playtest's $15K) and the Prestige pad. (playtest 2026-11-28 C8 review: an early home's pads only, before)
+		local everyPad = {}
+		for _, def in ipairs(TC.Stations) do
+			if type(def.Slot) == "table" and def.Slot.Pad then
+				everyPad[#everyPad + 1] = { StationId = def.Id, NextLevel = 2, Level = 1, Price = 15, BasePrice = 15, MaxLevel = def.MaxLevel, Name = def.Name,
+					Title = def.Name, Kind = def.Kind, Icon = def.Icon, LevelText = "Lv 1 -> 2" }
+			end
+		end
+		everyPad[#everyPad + 1] = { StationId = "Prestige", NextLevel = 1, Level = 0, Price = 0, BasePrice = 0, MaxLevel = 1, Name = "Prestige", Title = "Prestige 1",
+			Kind = "Prestige", LevelText = "0 -> 1", Prestige = true }
+		HB.SetPads(spot, everyPad)
+		-- (C8 review) a standing root is 3 studs over the floor, up to ~4.5 on tall avatars (MatchService GROUND_REACH):
+		-- every reach below is tested over that whole span, not at one 3-stud root
+		local ROOT_LO, ROOT_HI, ROOT_STEP = 3.0, 4.5, 0.25
+		local gLawn = find(home:FindFirstChild("Station_Garden"), "Lawn")
+		local lawnTop = gLawn and (gLawn.Position.Y + gLawn.Size.Y / 2) or nil
+		local bedWorst = ""
+		for _, bed in pairs(gp12) do
+			-- the guide's stop at a bed: the root 3.3 studs across from its prompt (the playtest's spot), any avatar height
+			local at = promptAt(bed)
+			if not (at and lawnTop) then
+				reachOk, bedWorst = false, "bed " .. tostring(bed:GetAttribute("Slot")) .. ": no prompt point or lawn"
+			else
+				for h = ROOT_LO, ROOT_HI + 1e-6, ROOT_STEP do
+					local d = math.sqrt(3.3 * 3.3 + (at.Y - (lawnTop + h)) ^ 2)
+					if d > bed.MaxActivationDistance then
+						reachOk = false
+						bedWorst = string.format("bed %s: a %.2f-stud root 3.3 across is %.2f from the prompt, reach %.1f", tostring(bed:GetAttribute("Slot")), h, d, bed.MaxActivationDistance)
+					end
+				end
+			end
+			for _, buy in ipairs(findAll(home, function(d)
+				return d:IsA("ProximityPrompt") and d.Name == "BuyPrompt"
+			end)) do
+				gardenPad = gardenPad or buy:GetAttribute("StationId") == "Garden"
+				local a, b = promptAt(bed), promptAt(buy)
+				local gap = (a and b) and (a - b).Magnitude or 0
+				local why = string.format("bed %s vs %s: %.1f studs apart, reaches %.1f + %.1f", tostring(bed:GetAttribute("Slot")), tostring(buy:GetAttribute("StationId")),
+					gap, bed.MaxActivationDistance, buy.MaxActivationDistance)
+				if gap - bed.MaxActivationDistance - buy.MaxActivationDistance < slack then
+					slack, closest = gap - bed.MaxActivationDistance - buy.MaxActivationDistance, why
+				end
+				apart:case(gap >= bed.MaxActivationDistance + buy.MaxActivationDistance, why)
+			end
+		end
+		apart:case(gardenPad and apart.n >= 12 * #everyPad, "every pad's BuyPrompt and the 12 bed prompts were all measured (" .. apart.n .. " pairs)")
+		apart:report(apart.n .. " pairs; closest " .. closest .. string.format(" (slack %.3f)", slack))
+		-- the cut reach still buys from the pad: a player standing anywhere on its top (centre and corners; the root 3 to
+		-- 4.5 studs over the Base or the Glow plate, C8 review: a 3-stud root only, before) is in the BuyPrompt's reach
+		local onPad = T.tally("home plot: a player standing anywhere on a pad is in its BuyPrompt's reach (a cut reach still buys; roots 3 to 4.5 studs up)")
+		for _, buy in ipairs(findAll(home, function(d)
+			return d:IsA("ProximityPrompt") and d.Name == "BuyPrompt"
+		end)) do
+			local node, pad = buy.Parent, nil
+			while node and node ~= home do
+				if node:IsA("Model") and string.sub(node.Name, 1, 4) == "Pad_" then
+					pad = node
+					break
+				end
+				node = node.Parent
+			end
+			local base = pad and pad:FindFirstChild("Base")
+			local at = promptAt(buy)
+			if base and base:IsA("BasePart") and at then
+				local far, worst = 0, ""
+				local tops = { base.Size.Y / 2 }
+				local glow = pad:FindFirstChild("Glow")
+				if glow and glow:IsA("BasePart") then
+					tops[#tops + 1] = base.CFrame:PointToObjectSpace(glow.Position).Y + glow.Size.Y / 2
+				end
+				local hx, hz = base.Size.X / 2, base.Size.Z / 2
+				for _, top in ipairs(tops) do
+					for h = ROOT_LO, ROOT_HI + 1e-6, ROOT_STEP do
+						for _, c in ipairs({ { 0, 0 }, { hx, hz }, { hx, -hz }, { -hx, hz }, { -hx, -hz } }) do
+							local root = (base.CFrame * CFrame.new(c[1], top + h, c[2])).Position
+							local d = (root - at).Magnitude
+							if d > far then
+								far, worst = d, string.format("(%.1f, %.1f) root %.2f up", c[1], c[2], h)
+							end
+						end
+					end
+				end
+				onPad:case(far <= buy.MaxActivationDistance, string.format("%s: the farthest standing root %s is %.2f studs from the prompt, reach %.1f", tostring(buy:GetAttribute("StationId")), worst, far, buy.MaxActivationDistance))
+			else
+				onPad:case(false, tostring(buy:GetAttribute("StationId")) .. ": the BuyPrompt sits on no pad base")
+			end
+		end
+		onPad:report(onPad.n .. " pads")
+		HB.SetPads(spot, TC.AvailablePads(state))
+		T.check(reachOk, "home plot: every GardenSpotPrompt reaches where the guide stops at its bed (3.3 studs across) for a root 3 to 4.5 studs over the lawn", bedWorst)
 		HB.SetGarden(spot, {}, 40)
 		T.check(home:FindFirstChild("Station_Garden"):GetAttribute("Open") == 12, "home plot: SetGarden clamps the open count to the 12 drawn places")
 		HB.SetGarden(spot, {}, open0)
@@ -1590,6 +1696,15 @@ local function clientScenarios()
 				return d:IsA("ProximityPrompt") and names[d.Name]
 			end)
 		end
+		-- a BuyPrompt's pad model (Pad_<Id>): up the chain (C8 review, round 3: the prompt hangs on the Base's PromptPoint
+		-- attachment now, so the pad is no longer its grandparent)
+		local function padOf(p)
+			local node = p.Parent
+			while node and not (node:IsA("Model") and string.sub(node.Name, 1, 4) == "Pad_") do
+				node = node.Parent
+			end
+			return node
+		end
 		local ownerOnly = { BuyPrompt = true, GardenSpotPrompt = true, FusionPrompt = true }
 		local theirPrompts = prompts(theirHome, ownerOnly)
 		local enabledTheirs = 0
@@ -1613,7 +1728,7 @@ local function clientScenarios()
 		local mineOk = true
 		local myPads = 0
 		for _, p in ipairs(prompts(mineHome, { BuyPrompt = true })) do
-			local pad = p.Parent and p.Parent.Parent
+			local pad = padOf(p)
 			local locked = pad and pad:GetAttribute("Locked")
 			myPads = myPads + 1
 			if p.Enabled ~= (locked == nil or locked == "") then
@@ -1906,7 +2021,7 @@ local function clientScenarios()
 		local back = 0
 		local should = 0
 		for _, p in ipairs(prompts(theirHome, { BuyPrompt = true })) do
-			local pad2 = p.Parent and p.Parent.Parent
+			local pad2 = padOf(p)
 			local locked = pad2 and pad2:GetAttribute("Locked")
 			if locked == nil or locked == "" then
 				should = should + 1

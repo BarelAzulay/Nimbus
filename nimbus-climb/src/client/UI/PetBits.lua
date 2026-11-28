@@ -8,9 +8,10 @@
 --            firstFreeSlot, growth, stage, job, jobLeft, skillName, canEvolve, coinsPerSecond, formatCash, formatRate,
 --            busyOf (nil | "Training" | "Garden": State.Busy, or the same answer from the home / the job on an old snapshot)
 --   UI:      frame, text, corner, round, stroke, pad (the windows' Theme-styled building blocks)
---   PetBits.askRecall(gui, key, target, onYes, onNo, send): "This pet is gardening! Take it out of the garden and put it in
---            your team?" [Yes] [No]. Yes = ONE request (send("GardenRecall", { Key, To, Preset, Keys }), the server checks
---            everything and takes it out + stores the team); No = nothing. PetBits.closeRecall() -> true when one was up.
+--   PetBits.askRecall(gui, key, target, onYes, onNo, send): "<Pet name> is gardening! ("This pet ..." when the name does
+--            not fit) Take it out of the garden and put it in your team?" [Yes] [No]. Yes = ONE request
+--            (send("GardenRecall", { Key, To, Preset, Keys }), the server checks everything and takes it out + stores the
+--            team); No = nothing. PetBits.closeRecall() -> true when one was up.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -601,7 +602,13 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 	CloudUI.SignBlock(box, "Stone", { Face = SIGN.Stone, EdgePx = 6, LipPx = 8 })
 	local SignKit = require(Shared:WaitForChild("SignKit"))
 	SignKit.Nails(box, { Inset = 5, ZIndex = 63 })
-	local title = Theme.StyleTitle(PetBits.text(box, "Title", "This pet is gardening!", "Title", 28, SIGN.Text, { -- (kit-b U7b: no seedling emoji)
+	-- (playtest 2026-11-28 C58) the question names the pet ('Aurora Fox is gardening!'); the old words when it cannot fit
+	local generic = "This pet is gardening!"
+	local okName, petName = pcall(function()
+		return PetBits.displayName(key, PetBits.defOfKey(key))
+	end)
+	local named = (okName and type(petName) == "string" and petName ~= "") and (petName .. " is gardening!") or generic
+	local title = Theme.StyleTitle(PetBits.text(box, "Title", named, "Title", 28, SIGN.Text, { -- (kit-b U7b: no seedling emoji)
 		Position = UDim2.fromOffset(16, 14), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
 	}), "Section") -- (kit-b prep) a dialog's title: the ribbon is for window titles only
 	-- (kit-b gate U9 r4: "THIS PET IS GARDENING!" at 28 px ran past its box on a 390 px phone) the title steps down 2 px at
@@ -622,6 +629,14 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 			size = size - 2
 		end
 		title.TextSize = size
+		-- (playtest 2026-11-28 C58) a pet's name too long for the box at 18 px: the old words
+		if size <= 18 and title.Text ~= Theme.Caps(generic) and title.Text ~= generic then
+			local ok, m = pcall(Theme.MeasureLabel, title, title.Text, 18)
+			if ok and typeof(m) == "Vector2" and m.X * 1.12 > room then
+				title.Text = (title.Text == title.Text:upper()) and Theme.Caps(generic) or generic -- (the Section style's capitals kept)
+				fitTitle()
+			end
+		end
 	end
 	fitTitle()
 	title:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitTitle)

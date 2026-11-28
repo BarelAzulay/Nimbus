@@ -754,6 +754,21 @@ local function clientScenarios()
 			end
 		end
 		T.check(#missing == 0, "p2ui menu: the Home window lists every station of TycoonCatalog", table.concat(missing, ", "))
+		-- (playtest 2026-11-28 C58) the house tip ('Upgrade the House to a Manor!') leads with an up arrow, not the
+		-- done-check (it read as already done). A Villa at Home Level 20 (Press 12) is ready for the Manor
+		do
+			local ready = snapshot("mid")
+			ready.Home.Stations.Press1 = 12
+			toClient("ProfileSync", ready)
+			advance(0.4)
+			local tip = find(win, "NextHouse")
+			local tipIcon = tip and tip:FindFirstChild("LeadIcon")
+			local tipMark = tipIcon and tipIcon:GetAttribute("PixelIcon")
+			T.check(tip ~= nil and tip.Text:sub(1, 7) == "Upgrade" and tipMark == "arrowup", "p2ui menu: the house tip to act on ('Upgrade the House to a Manor!') leads with an up arrow, never the done-check",
+				(tip and tip.Text or "-") .. " / " .. tostring(tipMark))
+			toClient("ProfileSync", snapshot("mid"))
+			advance(0.4)
+		end
 		local houseName = find(win, "Tier")
 		local homeLevel = find(win, "HomeLevel")
 		local wantLevel = TC.HomeLevelOf(snapshot("mid").Home)

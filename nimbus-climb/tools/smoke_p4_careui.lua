@@ -447,6 +447,40 @@ S.client_p4careui_feed = guarded("client_p4careui_feed", function()
 	Mock.Click(feedBtn)
 	advance(0.4)
 	T.eq(#calls("PetCare", mark), cost1 > 1240 and 0 or 1, "careui feed: Feed with too few berries sends nothing (the hint says how many it needs)")
+	-- (playtest 2026-11-28 C59) a feed bigger than the whole basket: the hint sends the player to the Berry Farm (waiting
+	-- never helps); it said 'Your garden pets grow more!' all the same
+	if M and type(M.Hint) == "function" and cost1 > 1 then
+		local said = {}
+		local realHint = M.Hint
+		M.Hint = function(text, kind)
+			said[#said + 1] = tostring(text)
+			return realHint(text, kind)
+		end
+		local ok, err = pcall(function()
+			local keep = LocalPlayer:GetAttribute(Config.Attr.Berries or "Berries")
+			LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", 0)
+			setPlot({ BerryCap = 3000 })
+			advance(0.4)
+			Mock.Click(feedBtn)
+			advance(0.4)
+			local short = said[#said] or ""
+			T.check(cost1 > 3000 or (short:find("Not enough berries", 1, true) and short:find("garden pets grow more", 1, true)),
+				"careui feed: a feed the basket can hold, short of berries -> 'Not enough berries ... Your garden pets grow more!'", short)
+			setPlot({ BerryCap = cost1 - 1 })
+			advance(0.4)
+			mark = #Mock.RemoteLog
+			Mock.Click(feedBtn)
+			advance(0.4)
+			local over = said[#said] or ""
+			T.check(#calls("PetCare", mark) == 0 and over == "Your basket holds " .. Util.Commas(cost1 - 1) .. " berries: level up the Berry Farm to feed this pet",
+				"careui feed: a feed bigger than the basket -> 'Your basket holds N berries: level up the Berry Farm to feed this pet' (nothing sent)", over)
+			setPlot({ BerryCap = 3000 })
+			LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", keep)
+			advance(0.4)
+		end)
+		M.Hint = realHint
+		T.check(ok, "careui feed: the basket-cap hint check ran", tostring(err))
+	end
 	LocalPlayer:SetAttribute(Config.Attr.Berries or "Berries", cost1 + 500)
 	advance(0.6)
 	T.eq(feedBtn and feedBtn.Text, "Feed  " .. Util.Commas(cost1) .. " berries  (+" .. Util.Commas(TC.FeedXp(12, 2)) .. " XP)",

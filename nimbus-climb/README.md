@@ -587,8 +587,8 @@ Your pets make the money here. Build the free **Pet Garden** (the first pad of e
 empty pet bed (*Put a pet here*) and pick a pet, or open **Pets**, pick a pet and press **Garden**. The Garden
 has **3 places** at first and gets **+1 every Prestige** (up to 12 places). Any pet can work there, Economy or
 Combat. A pet does one job at a time: a garden pet leaves your side and keeps its team slot (it is back by itself when
-it leaves the garden), and picking it for a team asks *This pet is gardening! Take it out of the garden and put it in
-your team?* (**Yes** takes it out and puts it in the team in one go). In **Pets** its card is dimmed with a green *Gardening* badge. A pet asleep on a bed that a Prestige
+it leaves the garden), and picking it for a team asks by its name, e.g. *Aurora Fox is gardening! Take it out of the
+garden and put it in your team?* (*This pet is gardening!* when the name does not fit) (**Yes** takes it out and puts it in the team in one go). In **Pets** its card is dimmed with a green *Gardening* badge. A pet asleep on a bed that a Prestige
 closed (its sign says *Prestige to open*; it earns nothing there) is not busy: put it in a team and it
 simply leaves that bed, no question asked. A pet in training cannot garden either (see
 [the Training Place](#the-training-place)).

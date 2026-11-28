@@ -732,7 +732,16 @@ S.fixsrv_prestige_pad = guarded("fixsrv_prestige_pad", function()
 		T.check(prompt.ActionText == "Prestige" and prompt.HoldDuration >= 1 and prompt.KeyboardKeyCode == Enum.KeyCode.E and prompt.Enabled,
 			"prestige pad: its prompt says 'Prestige' (not 'Buy') and needs a long hold (>= 1 s)", prompt.ActionText .. " / " .. tostring(prompt.HoldDuration))
 		local press = buyPrompt(info, "Press1") or buyPrompt(info, "Kitchen")
-		T.check(press == nil or (press.ActionText == "Buy" and abs(press.HoldDuration - 0.25) < 1e-6), "prestige pad: the station pads keep 'Buy' (0.25 s)")
+		-- (playtest 2026-11-28 C8) a built station's pad says "Upgrade", an unbuilt one "Buy": the word by the pad's
+		-- Level attribute, as p2home_plot asserts it (C8 review round 3: "Buy or Upgrade" accepted either at any level)
+		local padLevel, node = nil, press
+		while padLevel == nil and typeof(node) == "Instance" do
+			padLevel = node:GetAttribute("Level")
+			node = node.Parent
+		end
+		local wantWord = (tonumber(padLevel) or 0) >= 1 and "Upgrade" or "Buy"
+		T.check(press == nil or (press.ActionText == wantWord and abs(press.HoldDuration - 0.25) < 1e-6), "prestige pad: the station pads keep 'Buy' / 'Upgrade' by their level (0.25 s)",
+			press and (press.ActionText .. " at level " .. tostring(padLevel)) or "no pad")
 		D.AddCash(p, 123456)
 		local cash0 = D.GetCash(p)
 		local stations0 = stationsText(D.GetHome(p).Stations)

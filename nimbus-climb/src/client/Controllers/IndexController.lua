@@ -1049,12 +1049,28 @@ local function H_tabCount()
 	return n + (S.FusionTile and 1 or 0)
 end
 
+-- (playtest 2026-11-28 C41) the strip canvas's units per design px: the window's resting scale (0.8 on a 360 px phone)
+-- when the canvas counts screen px (its window size matches its screen size), else 1; the tab pitch is in design px, so
+-- the snap, the dots and the reveal landed between tabs under a 0.8 window. Never the pop-in scale: it runs only while
+-- the window opens, and a position outlives it
+local function H_stripUnit()
+	local list = U.GroupList
+	local unit = math.max((U.Fit and U.Fit.Scale) or 1, 0.01)
+	local okW, win = pcall(function()
+		return list.AbsoluteWindowSize
+	end)
+	if okW and typeof(win) == "Vector2" and win.X > 0 and list.AbsoluteSize.X > 0 and win.X / list.AbsoluteSize.X < 0.98 then
+		unit = 1
+	end
+	return unit
+end
+
 local function H_paintDots()
 	local dots = U.PageDots
 	if not (dots and S.Tall and S.StripN and S.StripTabW) then
 		return
 	end
-	local pitch = S.StripTabW + K.STRIP_GAP
+	local pitch = (S.StripTabW + K.STRIP_GAP) * H_stripUnit()
 	local idx = math.floor((U.GroupList.CanvasPosition.X) / pitch + 0.5)
 	local pages = dots:GetAttribute("Pages") or 0
 	local now = math.min(pages, math.floor(idx / S.StripN + 0.5) + 1)
@@ -1116,7 +1132,7 @@ local function H_snapStrip()
 	if not (list and S.Tall and S.StripTabW) then
 		return
 	end
-	local pitch = S.StripTabW + K.STRIP_GAP
+	local pitch = (S.StripTabW + K.STRIP_GAP) * H_stripUnit() -- (playtest 2026-11-28 C41) in the canvas's units
 	local x = list.CanvasPosition.X
 	local last = math.max(0, H_tabCount() - (S.StripN or 1))
 	local idx = math.max(0, math.min(last, math.floor(x / pitch + 0.5)))
@@ -2206,7 +2222,22 @@ function revealGroupTile(groupId)
 		return
 	end
 	if S.Tall then
-		return -- the sideways strip of the portrait layout: the player scrolls it (the header names the group)
+		-- (playtest 2026-11-28 C41) the sideways strip of the portrait layout pages to the selected tab when it is out of
+		-- view ('MYTHIC PETS 2/4' showed with the Common / Uncommon tabs in the strip); a tab in view stays put
+		if not S.StripTabW then
+			return
+		end
+		local unit = H_stripUnit()
+		local pitch = S.StripTabW + K.STRIP_GAP
+		local n = math.max(1, S.StripN or 1)
+		local first = math.floor(list.CanvasPosition.X / unit / pitch + 0.5)
+		if index - 1 >= first and index - 1 < first + n then
+			return
+		end
+		local last = math.max(0, H_tabCount() - n)
+		local want = math.min(last, math.floor((index - 1) / n) * n) * pitch * unit
+		list.CanvasPosition = Vector2.new(want, list.CanvasPosition.Y)
+		return
 	end
 	-- CanvasPosition is in the list's own (pre-UIScale) pixels, like the tile sizes; the window's pop-in UIScale
 	-- may still be running (it starts at 0.86)

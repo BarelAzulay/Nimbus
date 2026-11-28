@@ -1094,6 +1094,9 @@ function H.build()
 			end
 		end
 	end)
+	-- (playtest 2026-11-28 C36) the sort chip shows one word: it never wraps (it broke 'Stronges / t' at 640x360)
+	U.Sort.TextWrapped = false
+	U.Sort.TextTruncate = Enum.TextTruncate.AtEnd
 	-- (Pitch 2 F0 A, look review of finish pass A, major 4) the sort row's pet count on its right, the team's busy helpers
 	-- ("2 helpers in the garden") under a dotted rule below the breakdown, and the grid's empty slots (H.fillEmpty)
 	U.PetCount = text(U.Content, "PetCount", "", "Heading", 20, MUTED, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Visible = false })
@@ -1253,9 +1256,19 @@ function H.layoutCard(item)
 	-- as the mock's band: across the card's whole face, the word its small tag (K.BUSY_TEXT on PC, the phone card's own size
 	-- there), its lit top and lip (H.busyFinish)
 	place(item.Busy, 0, 7 + K.CHIP + 3, w, phone and 24 or 28)
-	item.Busy.TextSize = phone and fs or K.BUSY_TEXT
+	-- (playtest 2026-11-28 C53) never under the 14 px floor on screen: 16 design px drew 12.8 px under the 0.8 window
+	item.Busy.TextSize = phone and fs or math.max(K.BUSY_TEXT, math.ceil(14 / math.max(S.Scale or 1, 0.01)))
+	if item.Busy.Text == "Gardening" or item.Busy.Text == "Garden" then
+		item.Busy.Text = H.gardenWord(item)
+	end
 	H.padTop(item.Busy, 0)
 	item.Busy.TextWrapped = false
+end
+
+-- (playtest 2026-11-28 C53) a grid card's garden word: "Gardening", or "Garden" on a PC card whose word went up to the
+-- 14 px screen floor (a window under 1.0): the mark and "Gardening" at 18 design px filled the strip edge to edge
+function H.gardenWord(item)
+	return (S.Mode ~= "Phone" and item.Busy.TextSize > K.BUSY_TEXT) and "Garden" or "Gardening"
 end
 
 -- (Pitch 2 fix round B; was LOOK-ui kitb-look1's corner mark over the opaque cover) the card's busy mark is a slim strip now (layoutCard): the mark leads the word on its line, as on
@@ -1360,6 +1373,7 @@ local ROW_VGAP = 6
 -- on top, the number under it in the Heading face (45 design px: whole px under the 0.8 Fit). A phone tile keeps one
 -- line, its name fitted beside the number (H.fitRows)
 local ROW2_H = 45
+local ROW1_H = 30 -- (playtest 2026-11-28 C15) a short PC panel's one-line tile (its 22 px icon square and 18 px name)
 function H.placeRows(x, y, totalW, rowH, gap, phone)
 	-- (two lines: both columns the same width, the long name no longer shares its line with the number)
 	local leftW = math.floor((totalW - gap) / 2)
@@ -1435,7 +1449,14 @@ function H.layoutDetail(w, h)
 		row.Value.TextSize = phone and 15 or 19
 	end
 	d.Xp.Root.Parent = d.Frame
+	-- (playtest 2026-11-28 C15) a panel that cannot grow (a phone's sheet, the short PC panel) steps down until the pet's
+	-- Special has its line (H.fitLead picks the step): 1 = a phone's planks at the touch size (44), a short PC panel's
+	-- tiles on one line with the Special's room kept over its planks; 2 = a landscape phone's tiles 24 px tall
+	local squeeze = d.Squeeze or 0
 	local buttonH = phone and 48 or math.max(h < 560 and 52 or 58, H.touchSize())
+	if phone and squeeze >= 1 then
+		buttonH = math.min(buttonH, H.touchSize())
+	end
 	local gap = phone and 6 or 8
 	local bottomY = h - pad - buttonH
 	d.ButtonH, d.Gap, d.BottomY, d.CareY = buttonH, gap, bottomY, bottomY - gap - buttonH
@@ -1443,7 +1464,9 @@ function H.layoutDetail(w, h)
 	local y
 	if phone or h < 560 then
 		-- the pet beside its name
-		local pic = phone and (narrow and 96 or 120) or 96
+		-- (playtest 2026-11-28 C15 review, round 3) a narrow sheet's last step (360x640) takes an 80 px picture, so its tiles
+		-- move up under the XP bar (the wide sheet's 6 px) and a pet with two plank rows keeps its Special's strip
+		local pic = phone and (narrow and ((squeeze >= 2) and 80 or 96) or 120) or 96
 		place(d.Glow, pad + 4, 12, pic - 8, pic - 8)
 		place(d.Picture, pad, 8, pic, pic)
 		local x = pad + pic + 8
@@ -1455,11 +1478,19 @@ function H.layoutDetail(w, h)
 		place(d.Xp.Root, x, phone and 65 or 75, w - x - pad, 24)
 		y = phone and 95 or 108
 		if narrow then
-			y = pic + 14
+			y = math.max(y, pic + 14)
 		end
 		local rowX = (narrow or not phone) and pad or x
-		local rowH = phone and 26 or ROW2_H
-		H.placeRows(rowX, y, w - rowX - pad, rowH, 8, phone)
+		local rowH = phone and ((squeeze >= 2) and 24 or 26) or ROW2_H
+		-- (playtest 2026-11-28 C15) a short PC panel's tiles on one line (the phone's tile: the name beside its number) when
+		-- the Special has no room under the two-line ones
+		local oneLine = phone or squeeze >= 1
+		if not phone and oneLine then
+			rowH = ROW1_H
+		end
+		H.placeRows(rowX, y, w - rowX - pad, rowH, 8, oneLine)
+		d.RowsAt = { rowX, y, w - rowX - pad, rowH, 8, oneLine } -- (playtest 2026-11-28 C44) for the short panel's nudge
+		d.RowsBottom = y + 2 * rowH + ROW_VGAP
 		y = y + 2 * rowH + ROW_VGAP + 4
 		if phone and not narrow then
 			y = math.max(y, pic + 12)
@@ -1467,7 +1498,8 @@ function H.layoutDetail(w, h)
 	else
 		-- the pet on top
 		-- (merge kitb-look1) the 130 px picture too for a pet whose special strip and perks need its 40 px (TightPerks)
-		local pic = (h >= 620 and not d.TightPerks) and 170 or 130
+		-- (playtest 2026-11-28 C15) and the 96 px one when even that left no row for the perks (H.detailPic)
+		local pic = H.detailPic(h, d.TightPerks)
 		place(d.Glow, math.floor(w / 2 - pic / 2) + 8, 12, pic - 16, pic - 16)
 		place(d.Picture, math.floor(w / 2 - pic / 2), 4, pic, pic)
 		y = pic + 6
@@ -1478,12 +1510,49 @@ function H.layoutDetail(w, h)
 		y = y + 104
 		local rowH = phone and 30 or ROW2_H
 		H.placeRows(pad, y, textW, rowH, 10, phone)
+		d.RowsAt = nil
+		d.RowsBottom = y + 2 * rowH + ROW_VGAP
 		y = y + 2 * rowH + ROW_VGAP + 6
 	end
 	d.TextY = y
 	d.TextW = textW
 	d.Pad = pad
 	d.W = w
+	-- (playtest 2026-11-28 C44) a short PC panel (1274x580) put the team row on the Health / Speed tiles' foot: the
+	-- three button rows give up height (never under the touch size), then their gaps (never under 4 px), so the team
+	-- row's drawn wood edge (5 px outside its box) starts 5 px under the tiles
+	if not phone then
+		local rowsBottom = y - 4 -- the rows' foot (y adds a 4-6 px gap under them)
+		-- (playtest 2026-11-28 C15) squeezed, the Special's strip keeps its room between the tiles and the team row: its
+		-- 32 px, the clear px and the edges over it (5) and under it (the strip's 2, 1, the plank's 5)
+		local lead = (squeeze >= 1 and h < 560) and (5 + 32 + 8 - 10) or 0
+		local need = rowsBottom + 10 + lead - (bottomY - 2 * (buttonH + gap))
+		if need > 0 then
+			-- (playtest 2026-11-28 C15) a mouse screen's planks may go down to the short panel's own 52 (the touch size is
+			-- for fingers: 55 under the 0.8 window)
+			local floor = H.touchSize()
+			if lead > 0 and not UserInputService.TouchEnabled then
+				floor = math.min(floor, 52)
+			end
+			local cut = math.max(0, math.min(buttonH - floor, math.ceil(need / 3)))
+			buttonH, need = buttonH - cut, need - 3 * cut
+			if need > 0 then
+				local g = math.max(0, math.min(gap - 4, math.ceil(need / 2)))
+				gap, need = gap - g, need - 2 * g
+			end
+			-- last, the tiles move up into the 9 px under the XP bar (it keeps 5) beside the picture
+			local at = d.RowsAt
+			if need > 0 and at and at[2] == y - (2 * at[4] + ROW_VGAP + 4) then
+				local shift = math.min(need, 4)
+				H.placeRows(at[1], at[2] - shift, at[3], at[4], at[5], at[6])
+				y = y - shift
+				d.TextY = y
+				d.RowsBottom = d.RowsBottom - shift
+			end
+			bottomY = h - pad - buttonH
+			d.ButtonH, d.Gap, d.BottomY, d.CareY = buttonH, gap, bottomY, bottomY - gap - buttonH
+		end
+	end
 	if phone then
 		place(d.Close, w - 50, 6, 44, 44)
 	end
@@ -1523,18 +1592,36 @@ function H.placeActions()
 	for _, button in ipairs({ d.ActPut, d.ActFighter, d.ActRemove, d.ActFeed, d.ActTrain, d.ActGarden, d.ActEvolve }) do
 		button.TextSize = fs
 	end
+	-- (C15 review, round 3) the planks are laid out on the Train plank's own word; the countdown goes on it after
+	if d.TrainBase and d.ActTrain.Text ~= d.TrainBase then
+		d.ActTrain.Text = d.TrainBase
+	end
 	-- (gate U9 round 3) a phone keeps one care row only while every label fits its cell on one line; otherwise (Evolve
 	-- showing at 390 px, 'Leave Garden') it takes the PC's two rows: Feed | Train over Garden | Evolve
 	local careTop = careY
 	if phone then
 		local cellW = math.floor((innerW - (#list - 1) * gap) / #list)
 		local fits = true
-		for _, button in ipairs(list) do
-			fits = fits and H.careNeed(button, fs) <= cellW
+		local needs, total = {}, 0
+		for i, button in ipairs(list) do
+			needs[i] = H.careNeed(button, fs)
+			total = total + needs[i]
+			fits = fits and needs[i] <= cellW
 		end
 		if fits then
 			for i, button in ipairs(list) do
 				place(button, pad + (i - 1) * (cellW + gap), careY, cellW, d.ButtonH)
+			end
+		elseif total + (#list - 1) * gap <= innerW then
+			-- (playtest 2026-11-28 C15, the phone twin of C44) one row still holds every label when each plank takes its
+			-- label's room and an even share of the rest: the two rows put Feed / Train on the Health / Speed tiles of a
+			-- 640-667 px landscape sheet ('Leave Garden' beside Evolve)
+			local share = math.floor((innerW - (#list - 1) * gap - total) / #list)
+			local x = pad
+			for i, button in ipairs(list) do
+				local cw = (i == #list) and (pad + innerW - x) or (needs[i] + share)
+				place(button, x, careY, cw, d.ButtonH)
+				x = x + cw + gap
 			end
 		else
 			local half = math.floor((innerW - gap) / 2)
@@ -1561,22 +1648,91 @@ function H.placeActions()
 			place(d.ActGarden, pad, y2, innerW, d.ButtonH)
 		end
 	end
-	local bottomText = (phone and careTop or teamY) - gap
-	local workH = d.Work.Text ~= "" and (phone and 20 or 24) * (d.WorkLines or 1) or 0
-	place(d.Work, pad, d.TextY, d.TextW, workH)
-	d.Work.Visible = workH > 0 and d.TextY + workH <= bottomText
-	local perksY = d.TextY + workH + 2
+	local buttonsTop = phone and careTop or teamY
+	local bottomText = buttonsTop - gap
+	d.PerkLineH = phone and 18 or 22
+	-- (playtest 2026-11-28 C15 review) the strip's foot keeps one clear px over the planks' drawn edge: its own edge 2 px
+	-- under its box, the clear px, the plank's 5 px over its box (it borrowed 2 px of the gap and touched them at
+	-- 844x390); its top one clear px under the tiles' edge (both 2 px outside their boxes)
+	local stripLimit = buttonsTop - 8
+	local short = phone or (d.LayoutH or 0) < 560
+	local stripTop0 = math.max(d.TextY + (short and 0 or 2), (d.RowsBottom or d.TextY) + 5)
+	local lineH = phone and 20 or 24
+	local full = d.WorkFull or d.Work.Text
+	local fullH = full ~= "" and lineH * (d.WorkFullLines or d.WorkLines or 1) or 0
 	-- (LOOK-ui) the special's strip first, the other perks under it
 	local specialH = (d.HasSpecial and (phone and 26 or 32)) or 0
-	if specialH > 0 then
-		place(d.Special, pad, perksY, d.TextW, specialH)
-		perksY = perksY + specialH + (phone and 4 or 6)
+	local afterSpecial = phone and 4 or 6
+	-- the lead line under a work note `workH` tall: the Special's strip, or for a pet without one its first perk row
+	local function lead(workH)
+		local top = workH > 0 and math.max(d.TextY + workH + 2, stripTop0) or stripTop0
+		if specialH > 0 then
+			return top + specialH <= stripLimit, top, top + specialH + afterSpecial
+		end
+		top = d.TextY + ((workH > 0 and workH + 2) or (short and 0 or 2))
+		return top + d.PerkLineH <= bottomText, top, top
 	end
-	d.Special.Visible = specialH > 0 and perksY <= bottomText
+	-- the room the perk rows had under the whole work note and the strip, wherever they land: the tall panel's picture
+	-- steps read it (refreshDetail's TightPerks)
+	local _, _, seqPerksY = lead(fullH)
+	d.PerksFull = bottomText - seqPerksY
+	-- (playtest 2026-11-28 C15) the work note, the strip and the perks fill the room in turn on a tall PC panel (its
+	-- picture steps down first). A panel that cannot grow (a phone's sheet, the short PC panel, the tall one at its
+	-- smallest picture) gives the Special's line its place first, then the work note (whole; or its first note while
+	-- the whole one leaves perks only counted: the Evolve plank says 'ready'), then the perk rows: the note took the
+	-- Special's room at 960x640 and on landscape phones
+	local workText, workH = full, fullH
+	local fits, stripTop, perksY = lead(fullH)
+	local grows = not short and (d.TightPerks or 0) < 2
+	if not grows and fullH > 0 then
+		-- every perk shows (on the strip or in the rows) under the whole note: H.planPerks, as refreshDetail lays them
+		local _, _, lost = H.planPerks(math.max(0, math.floor((bottomText - perksY) / d.PerkLineH)), fits)
+		local wholeOk = fits and lost == 0
+		if not wholeOk then
+			local firstOk = false
+			if d.WorkShort and d.WorkShort ~= full then
+				firstOk, stripTop, perksY = lead(lineH)
+				if firstOk then
+					workText, workH, fits = d.WorkShort, lineH, true
+				end
+			end
+			if not firstOk and not fits then
+				workText, workH = "", 0
+				fits, stripTop, perksY = lead(0)
+			elseif not firstOk then
+				fits, stripTop, perksY = lead(fullH)
+			end
+		end
+	end
+	if d.Work.Text ~= workText then
+		d.Work.Text = workText
+	end
+	PixelIcon.Mark(d.Work, (workText ~= "" and (workText ~= full or (d.WorkFullLines or 1) == 1)) and d.WorkMark or nil) -- (kit-b U7b)
+	place(d.Work, pad, d.TextY, d.TextW, workH)
+	d.Work.Visible = workH > 0 and d.TextY + workH <= bottomText
+	-- (playtest 2026-11-28 C15 review, round 3) a training pet's note was the only place its time left showed ('Training
+	-- Attack Speed (2:07 left)'): where the note drops (a landscape sheet, the short PC panel) the Train plank keeps the
+	-- countdown ('Training 2:07', else '2:07 left', else '2:07' beside its training icon: what its cell holds)
+	if d.TrainLeft and not (d.Work.Visible and string.find(workText, d.TrainLeft, 1, true)) then
+		local cellW = d.ActTrain.Size.X.Offset
+		for _, t in ipairs({ d.TrainBase .. " " .. d.TrainLeft, d.TrainLeft .. " left", d.TrainLeft }) do
+			d.ActTrain.Text = t
+			if H.careNeed(d.ActTrain, fs) <= cellW then
+				break
+			end
+			d.ActTrain.Text = d.TrainBase
+		end
+	end
+	d.Special.Visible = specialH > 0 and fits
+	if specialH > 0 then
+		place(d.Special, pad, stripTop, d.TextW, specialH)
+	end
+	-- for the step search (H.fitLead): the Special's line has its place; the whole work note shows too
+	d.LeadFits = fits
+	d.WorkFits = fullH == 0 or (d.Work.Visible and workText == full)
 	local perksH = bottomText - perksY
 	place(d.Perks, pad, perksY, d.TextW, math.max(0, perksH))
 	d.PerksH = perksH
-	d.PerkLineH = phone and 18 or 22
 end
 
 function H.gridPad(px)
@@ -1729,6 +1885,21 @@ function H.layoutPhone(W, H0)
 		local chips = K.PHONE_CHIPS
 		local fit = math.min(1, (W - closeW - 12 - x - 2 * 4) / (chips[1] + chips[2] + chips[3]))
 		local sortW, fillW, clearW = math.floor(chips[1] * fit), math.floor(chips[2] * fit), math.floor(chips[3] * fit)
+		-- (playtest 2026-11-28 C36) the sort chip gets the room its longest word needs, from Clear's spare first, then
+		-- Auto-fill's (it wraps 'Auto-fill / best' at its space): an even squeeze cut 'Strongest' at 640x360
+		local sortNeed = 0
+		for _, mode in ipairs(K.SORTS) do
+			sortNeed = math.max(sortNeed, H.chipNeed(U.Sort, mode, 15, 9)) -- its chevron: 9 px at the 15 px text
+		end
+		local short = sortNeed - sortW
+		if short > 0 then
+			local spare = math.max(0, clearW - math.max(H.chipNeed(U.Clear, U.Clear.Text, 15), H.chipNeed(U.Undo, U.Undo.Text, 16)))
+			local give = math.min(short, spare)
+			clearW, sortW, short = clearW - give, sortW + give, short - give
+			spare = math.max(0, fillW - H.chipNeed(U.AutoFill, "Auto-fill", 15))
+			give = math.min(short, spare)
+			fillW, sortW = fillW - give, sortW + give
+		end
 		place(U.Sort, x, top, sortW, chipH)
 		x = x + sortW + 4
 		place(U.AutoFill, x, top, fillW, chipH)
@@ -1850,6 +2021,9 @@ function H.layout()
 	end
 	local r = H.rect()
 	local modeChanged = S.Mode ~= r.mode or S.Portrait ~= r.portrait or S.Laid == nil
+	-- (playtest 2026-11-28 C53) the cards' busy word sizes from the window's scale (the 14 px floor): a new scale lays them
+	-- out again too (1920 -> 1024 kept the 1.0 window's 16 px, 12.8 on screen)
+	local cardsStale = modeChanged or S.Scale ~= r.scale
 	S.Mode, S.Portrait, S.Scale = r.mode, r.portrait, r.scale
 	local W, H0 = r.w / r.scale, r.h / r.scale
 	U.Holder.AnchorPoint = Vector2.new(0, 0)
@@ -1887,7 +2061,7 @@ function H.layout()
 	-- (F0 review) the sort plank leads with its chevron (led once it has its size and text)
 	PixelIcon.Lead(U.Sort, "down", { Px = phone and 12 or 18 })
 	H.showTeamExtras()
-	if modeChanged then
+	if cardsStale then
 		for _, item in pairs(U.Cards) do
 			H.layoutCard(item)
 		end
@@ -1999,7 +2173,7 @@ function H.refreshSlots(keys)
 		end
 		if def then
 			local level = Bits.petLevel(key)
-			item.Name.Text = Bits.displayName(key, def)
+			item.Name.Text = H.slotName(item.Name, Bits.displayName(key, def), Bits.tierOf(key, def))
 			item.Level.Text = "L" .. level
 			item.Power.Text = commas(H.powerOf(key))
 		end
@@ -2120,12 +2294,22 @@ function H.fillEmpty()
 		local well = U.Empties[i]
 		if i <= want then
 			if not well then
-				well = Instance.new("Frame")
+				-- (playtest 2026-11-28 C53) the "+" well does what it says: a tap opens the Shop's Eggs (it was an inert
+				-- Frame that invited a tap); not while picking a pet for the team
+				well = Instance.new("TextButton")
+				well.Text = ""
+				well.AutoButtonColor = false
 				well.Name = "EmptySlot_" .. i
 				well.BorderSizePixel = 0
 				well.ZIndex = 3
 				well:SetAttribute("Slot", "Empty")
 				CloudUI.SignBlock(well, "Off")
+				well.Activated:Connect(function()
+					local menu = S.Pick == nil and H.controller("MenuController")
+					if menu then
+						safe("shop", menu.Open, "Shop", { Tab = "Eggs" })
+					end
+				end)
 				local icon = PixelIcon.New(well, "plus", 18, tint)
 				icon.AnchorPoint = Vector2.new(0.5, 0.5)
 				icon.Position = UDim2.fromScale(0.5, 0.5)
@@ -2304,7 +2488,7 @@ function H.refreshCards(keys)
 		item.Count.Text = "x" .. copies
 		local busy = Bits.busyOf(key)
 		item.Busy.Visible = busy ~= nil
-		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
+		item.Busy.Text = busy == "Training" and "Training" or (busy and H.gardenWord(item) or "")
 		H.busyMark(item, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
 		item.Busy.BackgroundColor3 = busy == "Training" and TRAIN_COLOR or GARDEN_COLOR
 	end
@@ -2353,7 +2537,7 @@ end
 -- the measure's spare: Theme.Measure came out about 13 % short of the drawn FredokaOne in the renders, so the row steps
 -- down early; the chips size themselves (AutomaticSize) and H.metaOverflow steps down once more if they still overrun
 local META_SPARE = 1.15
-local META_RANK = { Full = 1, Tight = 2, Hide = 3 }
+local META_RANK = { Full = 1, Tight = 2, Hide = 3, Pill = 4 }
 
 -- (gate U9 round 3) the room a care plank's label needs on one line: its text in the Button face with the measure's
 -- spare, its icon's padding (PixelIcon.Lead) and a 4 px margin, whole px
@@ -2361,6 +2545,63 @@ function H.careNeed(button, size)
 	local p = button:FindFirstChildOfClass("UIPadding")
 	local inset = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) or 0
 	return math.ceil(H.metaTextW(button.Text, size) * META_SPARE) + inset + 4
+end
+
+-- (playtest 2026-11-28 C44) a team slot's name: whole while it fits its label, else the first words as initials and the
+-- last word ('O. Golem'), which keeps which pet it is where 'Obsidian...' cut it; a name that still runs over truncates.
+-- (C44 review, round 3) a Golden / Rainbow copy (`tier`) keeps its finish word first ('Golden S. Owl', as
+-- PetPicker.paintCard), then every word's initial ('G. S. Owl'), then the pet's own initials ('S. Owl': the slot's face
+-- shows the finish) before a cut name
+function H.slotName(label, name, tier)
+	local room = label.Size.X.Offset
+	-- (C44 review, round 3) strictly inside the label: the measure with the chips' spare (META_SPARE). The 5 % it let
+	-- over drew 'Candy Unic...' (102 px of text in its 92 px label at 960x640)
+	local function fits(text)
+		return room <= 0 or math.ceil(H.metaTextW(text, label.TextSize) * META_SPARE) <= room
+	end
+	if fits(name) then
+		return name
+	end
+	local function initialed(text)
+		local words = {}
+		for word in tostring(text):gmatch("%S+") do
+			words[#words + 1] = word
+		end
+		if #words < 2 then
+			return nil
+		end
+		local out = {}
+		for i = 1, #words - 1 do
+			out[i] = words[i]:sub(1, 1) .. "."
+		end
+		return table.concat(out, " ") .. " " .. words[#words]
+	end
+	local tries = {}
+	local own = nil
+	if tier == "Golden" or tier == "Rainbow" then
+		local base = tostring(name):gsub("^" .. tier .. "%s+", "")
+		own = base ~= name and (initialed(base) or base) or nil
+		if own and own ~= base then
+			tries[#tries + 1] = tier .. " " .. own
+		end
+	end
+	tries[#tries + 1] = initialed(name)
+	tries[#tries + 1] = own
+	for _, short in ipairs(tries) do
+		if fits(short) then
+			return short
+		end
+	end
+	return name
+end
+
+-- (playtest 2026-11-28 C36) the room a top-row chip needs for `text` on one line at `size` (its padding included; a
+-- lead icon of `leadPx` sits left of the centred text, so it needs its width and a 6 px gap on both sides)
+function H.chipNeed(button, text, size, leadPx)
+	local p = button:FindFirstChildOfClass("UIPadding")
+	local inset = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) or 0
+	local leadW = (tonumber(leadPx) or 0) > 0 and (leadPx + 6) or 0
+	return math.ceil(H.metaTextW(text, size) * META_SPARE) + inset + 12 + 2 * leadW -- 6 px clear of each wood edge
 end
 
 function H.fitMetaRow()
@@ -2392,6 +2633,12 @@ function H.fitMetaRow()
 	end
 	-- (last: a 390 px portrait sheet with an evolved pet) the element chips stay off the line; the rarity keeps its tag
 	local mode = (d.Meta.Size.X.Offset + chips > rowW and "Hide") or (tight and "Tight") or "Full"
+	-- (playtest 2026-11-28 C44 review) and when the tag alone still runs past the row ('Legendary' 9 px onto the wood at
+	-- 1024x768), it sizes to the room left: 4 px each side of its word (H.metaChips)
+	if mode == "Hide" and d.Meta.Size.X.Offset + rarity > rowW then
+		mode = "Pill"
+	end
+	d.PillW = math.max(0, rowW - d.Meta.Size.X.Offset - gap)
 	-- (LOOK-ui) a step H.metaOverflow took for this pet at this width holds (no flicker back up on the next refresh)
 	local floorKey = tostring(key) .. "|" .. rowW .. "|" .. size
 	if d.MetaFloorKey == floorKey and d.MetaFloor and META_RANK[d.MetaFloor] > META_RANK[mode] then
@@ -2404,6 +2651,11 @@ function H.fitMetaRow()
 	if d.MetaRow:GetAttribute("Fit") ~= mode then
 		d.MetaRow:SetAttribute("Fit", mode)
 		H.metaChips(def)
+	elseif mode == "Pill" then
+		local tag = d.MetaRow:FindFirstChild("RarityChip")
+		if tag then
+			H.sizePill(tag, def)
+		end
 	end
 	-- a frame later, laid out, once more (the list's signal does not see an AutomaticSize chip growing inside it)
 	if not d.MetaCheck then
@@ -2413,6 +2665,37 @@ function H.fitMetaRow()
 			safe("metaOverflow", H.metaOverflow)
 		end)
 	end
+end
+
+-- (playtest 2026-11-28 C44 review) a "Pill" row's rarity tag: its word with the measure's spare and 4 px each side, no
+-- wider than the room the level line leaves (d.PillW, H.fitMetaRow).
+-- (C44 review, round 3) the word gets its room before it is cut: a px smaller (never under the 14 screen px floor), then
+-- 3 px each side ('Legend..' at 390x844: the word needed 86 of the tag's 80 px). Narrower rows (360-375 px portrait
+-- sheets, 50-66 px of tag) still cut it: a layout call
+function H.sizePill(tag, def)
+	local d = U.D
+	local word = tostring(def.Rarity)
+	local size = H.metaSize()
+	local room = math.max(0, d.PillW or math.huge)
+	local floorPx = math.ceil(((Theme.Readability and Theme.Readability.MinPx) or 14) / math.max(S.Scale or 1, 0.01))
+	local function need(px, pad)
+		return math.ceil(H.metaTextW(word, px) * META_SPARE) + 2 * pad
+	end
+	local px, pad = size, 4
+	if need(size, 4) > room then
+		for _, try in ipairs({ { size - 1, 4 }, { size - 1, 3 } }) do
+			if try[1] >= floorPx and need(try[1], try[2]) <= room then
+				px, pad = try[1], try[2]
+				break
+			end
+		end
+	end
+	tag.TextSize = px
+	local p = tag:FindFirstChildOfClass("UIPadding")
+	if p and (p.PaddingLeft.Offset ~= pad or p.PaddingRight.Offset ~= pad) then
+		p.PaddingLeft, p.PaddingRight = UDim.new(0, pad), UDim.new(0, pad)
+	end
+	tag.Size = UDim2.fromOffset(math.min(need(px, pad), room), H.metaChipH())
 end
 
 -- (LOOK-ui, kitb-look1) the detail's chips after its level line: the rarity's tag in its colour (CloudUI.RarityColor; the
@@ -2449,8 +2732,17 @@ function H.metaChips(def)
 	local tagEdge = stroke(tag, SIGN.Wood, 2, 0)
 	tagEdge.Name = "SignEdge"
 	tagEdge.LineJoinMode = Enum.LineJoinMode.Miter
-	Bits.pad(tag, 8, 0, 8, 0)
-	for i, element in ipairs(fit == "Hide" and {} or Bits.elementsOf(def)) do
+	if fit == "Pill" then
+		-- (playtest 2026-11-28 C44 review) the tag no wider than the row's room: 4 px each side of its word, the word cut at
+		-- its end only if even that runs over (H.fitMetaRow; the AutomaticSize tag ran 9 px onto the panel's wood)
+		Bits.pad(tag, 4, 0, 4, 0)
+		tag.AutomaticSize = Enum.AutomaticSize.None
+		tag.TextTruncate = Enum.TextTruncate.AtEnd
+		H.sizePill(tag, def)
+	else
+		Bits.pad(tag, 8, 0, 8, 0)
+	end
+	for i, element in ipairs((fit == "Hide" or fit == "Pill") and {} or Bits.elementsOf(def)) do
 		CloudUI.ElementChip(d.MetaRow, element, 25, {
 			Label = not tight and element or nil,
 			TextSize = size,
@@ -2500,6 +2792,9 @@ function H.metaOverflow()
 		return
 	elseif fit == "Tight" then
 		fit = "Hide"
+	elseif fit == "Hide" then
+		fit = "Pill" -- (playtest 2026-11-28 C44 review) the tag sizes to the row's room
+		d.PillW = math.max(0, d.MetaRow.Size.X.Offset - d.Meta.Size.X.Offset - 6)
 	else
 		return
 	end
@@ -2608,15 +2903,29 @@ function H.refreshDetail(keys, order)
 		work = work .. "Ready to evolve!"
 		mark = mark or ICON.Evolve
 	end
+	-- (playtest 2026-11-28 C15 review) the first note alone, for a panel whose room the whole note would take from the
+	-- perks or the Special (H.placeActions): 'Ready to evolve!' is the Evolve plank's word too
+	d.WorkShort = (lines == 2) and work:match("^([^\n]*)\n") or nil
+	if lines == 2 and d.TextW then
+		-- (playtest 2026-11-28 C15) the two notes share one line where it holds them ('Working in your Garden  ·  Ready to
+		-- evolve!'): the second line took the Special's room on landscape phones and at 1080p
+		local joined = work:gsub("\n", "  ·  ")
+		if math.ceil(H.metaTextW(joined, d.Work.TextSize) * META_SPARE) <= d.TextW then
+			work, lines = joined, 1
+		end
+	end
 	d.Work.Text = work
-	PixelIcon.Mark(d.Work, lines == 1 and mark or nil) -- (kit-b U7b) a one-line work note leads with its mark
+	-- (kit-b U7b) a one-line work note leads with its mark (H.placeActions sets it for the note it shows)
+	d.WorkFull, d.WorkFullLines, d.WorkMark = work, lines, mark
 	d.WorkLines = lines
 	-- the special, then the follow perks
 	-- (LOOK-ui) the special on its own strip (d.Special), the other perks in the list under it
 	local perkLines = {}
 	d.HasSpecial = type(def.Special) == "table"
 	if d.HasSpecial then
-		d.SpecialText.Text = "Special: " .. tostring(BattleCatalog.FormNameOf(def.Id, def.Special.Kind, stage) or def.Special.Name or "Special")
+		d.SpecialName = tostring(BattleCatalog.FormNameOf(def.Id, def.Special.Kind, stage) or def.Special.Name or "Special")
+		d.SpecialText.Text = "Special: " .. d.SpecialName
+		d.SpecialBase = d.SpecialText.Text
 		PixelIcon.Mark(d.SpecialText, ICON.Star, { Colour = SIGN.GoldLip })
 	end
 	if stage >= 1 then
@@ -2644,25 +2953,207 @@ function H.refreshDetail(keys, order)
 	d.InTeam = at ~= nil
 	d.IsFighter = at == 1
 	d.ActEvolve.Visible = ready ~= nil
-	d.ActTrain.Text = job and "Training" or "Train"
+	-- (playtest 2026-11-28 C15 review, round 3) the plank's word, and the countdown H.placeActions puts on it where the
+	-- work note (the only other place the time shows) drops
+	d.TrainBase = job and "Training" or "Train"
+	d.TrainLeft = job and Bits.jobLeft(job) or nil
+	d.ActTrain.Text = d.TrainBase
 	d.ActGarden.Text = placed and "Leave Garden" or "Garden"
 	H.placeActions()
 	-- (merge kitb-look1) the special's strip took the perks' room under the 170 px picture (PerksH 2 at 1080p: a pet with
 	-- a special showed no perk at all): such a pet takes the 130 px one, the others keep the big picture
-	if S.Mode ~= "Phone" and d.LayoutH and d.LayoutH >= 620 then
-		local need = #d.PerkLines * d.PerkLineH
-		local tight = (d.TightPerks and (d.PerksH - 40) or d.PerksH) < need
-		if tight ~= (d.TightPerks == true) then
-			d.TightPerks = tight
+	-- (playtest 2026-11-28 C15) TightPerks is a step (0 = 170 px, 1 = 130, 2 = 96): the biggest picture that still
+	-- shows the Special and every perk (one a row, else packed side by side); at 1080p the 130 px one left a pet's
+	-- perks no row at all
+	if S.Mode ~= "Phone" and d.LayoutH and d.LayoutH >= 560 then
+		local now = H.detailPic(d.LayoutH, d.TightPerks)
+		local want = 2
+		for step = 0, 2 do
+			-- (playtest 2026-11-28 C15 review) the room under the whole work note (PerksFull): the smallest picture lets the
+			-- note shorten (H.placeActions), which must not read as room for a bigger picture
+			local room = (d.PerksFull or d.PerksH) + now - H.detailPic(d.LayoutH, step)
+			local rows = math.floor(room / d.PerkLineH)
+			local specialOk = not d.HasSpecial or room >= -6
+			local perksOk = #d.PerkLines == 0 or #d.PerkLines <= rows or (rows >= 1 and #H.packPerks(d.PerkLines, math.huge, d.TextW) <= rows)
+			if specialOk and perksOk then
+				want = step
+				break
+			end
+		end
+		if want ~= (d.TightPerks or 0) then
+			d.TightPerks = want
 			H.layoutDetail(d.LayoutW, d.LayoutH)
 		end
 	end
+	H.fitLead(key)
 	d.Perks.Visible = d.PerksH >= d.PerkLineH
-	local shown = {}
-	for i = 1, math.min(#d.PerkLines, math.floor(d.PerksH / d.PerkLineH)) do
-		shown[i] = d.PerkLines[i]
+	local rows = d.Perks.Visible and math.floor(d.PerksH / d.PerkLineH) or 0
+	local line, perkRows = H.planPerks(rows, d.Special.Visible)
+	if d.HasSpecial and line and d.SpecialText.Text ~= line then
+		d.SpecialText.Text = line
 	end
-	d.Perks.Text = table.concat(shown, "\n")
+	d.Perks.Text = table.concat(perkRows, "\n")
+end
+
+-- (playtest 2026-11-28 C15) the perks the rows cannot hold (a landscape phone, a short PC panel, 1080p) ride first on
+-- the Special's strip after its name, as far as they fit it ('Special: Aurora Mark  ·  Reach +15%'); the rest go in
+-- the rows, and what still does not fit is counted ('+1 more') so none goes without notice. Returns the strip's line,
+-- the rows' lines and how many perks are only counted (H.placeActions reads that to choose the work note's length)
+function H.planPerks(rows, stripOn)
+	local d = U.D
+	local rest = d.PerkLines or {}
+	local line = d.SpecialBase
+	local counted = 0
+	if d.HasSpecial and d.SpecialBase then
+		if stripOn and #rest > 0 and #H.packPerks(rest, math.huge, d.TextW) > rows then
+			local room = d.TextW - 16 - math.ceil(d.SpecialText.TextSize * 1.5) -- the strip's pads and its star
+			-- (the measure alone: the strip's text truncates at its end if the face runs wider)
+			local function fits(text)
+				return H.metaTextW(text, d.SpecialText.TextSize) <= room
+			end
+			local n, taken = #rest, 0
+			for i, perk in ipairs(rest) do
+				local left = n - i
+				local nextLine = line .. "  ·  " .. perk
+				-- with no rows the strip keeps room for the count of the ones it leaves out
+				if not fits((rows == 0 and left > 0) and (nextLine .. "  ·  +" .. left .. " more") or nextLine) then
+					break
+				end
+				line, taken = nextLine, i
+			end
+			local left = {}
+			for i = taken + 1, n do
+				left[#left + 1] = rest[i]
+			end
+			rest = left
+			if rows == 0 and #rest > 0 then
+				-- (playtest 2026-11-28 C15 review) the count always shows: at 960x640 'Special: Aurora Mark  ·  +3 more' ran
+				-- past the strip and the perks went without notice; the strip's star says "Special", so the word goes first
+				counted = #rest
+				local count = "  ·  +" .. #rest .. " more"
+				local name = d.SpecialName or line
+				for _, try in ipairs({ line .. count, name .. count, name .. "  ·  +" .. #rest }) do
+					if fits(try) then
+						line = try
+						break
+					end
+					line = (try == name .. "  ·  +" .. #rest) and try or line
+				end
+			end
+		end
+	end
+	local out, hidden = H.packPerks(rest, rows, d.TextW)
+	if rows <= 0 and not (d.HasSpecial and stripOn) then
+		hidden = #rest
+	end
+	return line, out, counted + (hidden or 0)
+end
+
+-- (playtest 2026-11-28 C15) the perk lines for `rows` rows of `w` px: one perk a row while they fit, else whole perks
+-- side by side ("Reach +15%  ·  +14% Tokens") so a short panel (1080p, landscape phones) still shows them all; it cut
+-- the list at the room's last row before, silently
+function H.packPerks(lines, rows, w)
+	if rows <= 0 then
+		return {}
+	end
+	if #lines <= rows and rows ~= math.huge then
+		return lines
+	end
+	local SEP = "  ·  "
+	local function fits(text)
+		return H.perkTextW(text) <= w -- (the Body measure runs wide of the drawn face; the label wraps, never runs on)
+	end
+	local packed, cur = {}, nil
+	for _, line in ipairs(lines) do
+		if cur and not fits(table.concat(cur, SEP) .. SEP .. line) then
+			packed[#packed + 1] = cur
+			cur = nil
+		end
+		cur = cur or {}
+		cur[#cur + 1] = line
+	end
+	packed[#packed + 1] = cur
+	local hidden = 0 -- (playtest 2026-11-28 C15 review) returned too: how many only got counted
+	if #packed > rows then
+		-- the rows left say how many perks did not fit ('+2 more'), so none goes without notice
+		for i = rows + 1, #packed do
+			hidden = hidden + #packed[i]
+			packed[i] = nil
+		end
+		local last = packed[rows]
+		while #last > 0 and not fits(table.concat(last, SEP) .. SEP .. "+" .. hidden .. " more") do
+			table.remove(last)
+			hidden = hidden + 1
+		end
+		last[#last + 1] = "+" .. hidden .. " more"
+	end
+	local out = {}
+	for i, row in ipairs(packed) do
+		out[i] = table.concat(row, SEP)
+	end
+	return out, hidden
+end
+
+-- (playtest 2026-11-28 C15 review) a panel that cannot grow (a phone's sheet, the short PC panel under 560 px) takes the
+-- smallest step (d.Squeeze, H.layoutDetail) that gives the pet's Special its line: on a phone the one that keeps the
+-- whole work note too where a step does. The 640-667 px landscape sheets and the 1274x580 / 960x640 panels showed no
+-- Special and no perk at all. Searched again only when what decides it changes (the pet, the panel, the planks shown)
+function H.fitLead(key)
+	local d = U.D
+	if not (d and d.LayoutW and d.LayoutH) then
+		return
+	end
+	local phone = S.Mode == "Phone"
+	if not phone and d.LayoutH >= 560 then
+		if (d.Squeeze or 0) ~= 0 then
+			d.Squeeze, d.SqueezeSig = 0, nil
+			H.layoutDetail(d.LayoutW, d.LayoutH)
+		end
+		return
+	end
+	-- (the note's digits as zeros: a training timer's tick changes nothing here)
+	-- (the Train plank's own word: H.placeActions may add the ticking countdown to it)
+	local sig = table.concat({ tostring(key), d.LayoutW, d.LayoutH, tostring(S.Mode), (tostring(d.WorkFull):gsub("%d", "0")), tostring(d.HasSpecial), #(d.PerkLines or {}),
+		tostring(d.ActEvolve.Visible), tostring(d.InTeam), tostring(d.IsFighter), d.ActGarden.Text, tostring(d.TrainBase or d.ActTrain.Text), tostring(UserInputService.TouchEnabled) }, "|")
+	if d.SqueezeSig == sig then
+		return
+	end
+	d.SqueezeSig = sig
+	-- a phone: 1 = the planks at the touch size, 2 = the tiles 24 px (and a narrow sheet's 80 px picture, C15 review
+	-- round 3: the 360x640 sheet had no step past 1); a short PC panel: 1 = one-line tiles
+	local top = phone and 2 or 1
+	local pick, leadOnly = nil, nil
+	for s = 0, top do
+		d.Squeeze = s
+		H.layoutDetail(d.LayoutW, d.LayoutH)
+		if d.LeadFits and (d.WorkFits or not phone) then
+			pick = s
+			break
+		end
+		if d.LeadFits and leadOnly == nil then
+			leadOnly = s
+		end
+	end
+	local want = pick or leadOnly or 0
+	if want ~= d.Squeeze then
+		d.Squeeze = want
+		H.layoutDetail(d.LayoutW, d.LayoutH)
+	end
+end
+
+-- (playtest 2026-11-28 C15) the detail's picture on top: 170 px on a tall panel, 130 when the perks need the room
+-- (step 1), 96 when they need more (step 2)
+function H.detailPic(h, step)
+	step = tonumber(step) or 0
+	if step >= 2 then
+		return 96
+	end
+	return (h >= 620 and step == 0) and 170 or 130
+end
+
+function H.perkTextW(text)
+	local ok, v = pcall(Theme.Measure, text, "Body", 18)
+	return math.ceil((ok and typeof(v) == "Vector2" and v.X > 0) and v.X or #text * 18 * 0.6)
 end
 
 function H.refresh()

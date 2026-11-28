@@ -244,6 +244,195 @@ local function clientScenarios()
 		end
 		return BC.TeamPower(entries)
 	end
+	-- (playtest 2026-11-28 C15 / C44 review) the render scenarios looks and looks:epic as a profile: Candy Unicorn
+	-- (Legendary, Lv 100, Evolved II) the fighter; Aurora Fox (Epic, Lv 57, Evolved I, ready to evolve) a helper working in
+	-- the Garden, the fullest detail there is (the work note's two notes, Leave Garden + Evolve, Make fighter + Remove)
+	local LOOKS = { "candy_unicorn", "aurora_fox" }
+	function H.feedLooks()
+		local legend, epic = LOOKS[1], LOOKS[2]
+		local snap = H.snapshot({ Teams = { Presets = { { legend, epic, K3 }, { K4 }, {} }, Active = 1, Slots = 3 } })
+		for _, key in ipairs(LOOKS) do
+			snap.Pets[key] = 1
+			snap.Discovered[key] = true
+		end
+		snap.PetLevels[legend] = { Level = 100, Xp = 0 }
+		snap.PetLevels[epic] = { Level = 57, Xp = 9000 }
+		snap.PetGrowth[legend] = { Evo = 2 }
+		snap.PetGrowth[epic] = { Evo = 1 }
+		snap.Home.Garden = { GARDEN, epic }
+		snap.Teams.Busy[epic] = "Garden"
+		snap.Equipped = { legend, K3 }
+		KC.toClient("ProfileSync", snap)
+		KC.advance(0.3)
+	end
+	-- (playtest 2026-11-28 C15 / C44 review) the selected pet's detail (`panel`: the PC Detail or the phone Sheet): its
+	-- Special's strip shows; each perk (PetCatalog.PerkLines, plus Reach once evolved) shows in the rows or on the strip or
+	-- is counted there ('+2 more'); the strip's line is whole; the strip and the stat tiles keep one clear px from the
+	-- planks' drawn edges (the strip's and the tiles' 2 px, the planks' 5 px outside their boxes); the rarity tag ends
+	-- inside its row
+	function H.checkLead(tag, panel, key, opts)
+		local PetCatalog, State = H.req("shared/PetCatalog"), H.req("client/State")
+		local def = PetCatalog and PetCatalog.Get and PetCatalog.Get(key)
+		local stage = (State and State.PetStage and State.PetStage(key)) or 0
+		local want = #(PetCatalog and PetCatalog.PerkLines and def and PetCatalog.PerkLines(def) or {}) + ((stage >= 1) and 1 or 0)
+		local special, perks, strip = H.find(panel, "Special"), H.find(panel, "Perks"), H.find(panel, "SpecialText")
+		local shownPerks, counted = 0, 0
+		local function tally(text, skipFirst)
+			for line in (text .. "\n"):gmatch("(.-)\n") do
+				local i = 0
+				for part in (line .. "  ·  "):gmatch("(.-)  ·  ") do
+					i = i + 1
+					local more = part:match("^%+(%d+) more$")
+					if more then
+						counted = counted + tonumber(more)
+					elseif part ~= "" and not (skipFirst and i == 1) then
+						shownPerks = shownPerks + 1
+					end
+				end
+			end
+		end
+		if perks and H.shown(perks) then
+			tally(perks.Text, false)
+		end
+		local stripOn = special ~= nil and H.shown(special)
+		if stripOn and strip then
+			tally(strip.Text, true)
+		end
+		local name = def and def.Name or key
+		T.check(def ~= nil and want > 0 and stripOn and shownPerks + counted == want,
+			fmt("%s: %s's Special shows and each of its %d perks shows or is counted", tag, name, want),
+			fmt("special %s, %d shown + %d counted: %s / %s", tostring(stripOn), shownPerks, counted, strip and strip.Text or "-", perks and H.shown(perks) and perks.Text or "-"))
+		if stripOn and strip then
+			T.check(strip.TextBounds.X <= strip.AbsoluteSize.X + 0.5, tag .. ": ...the strip's line is whole", fmt("'%s' %.1f in %.1f", strip.Text, strip.TextBounds.X, strip.AbsoluteSize.X))
+		end
+		local feed = H.find(panel, "ActFeed")
+		local s = (feed and feed.Size.Y.Offset > 0) and feed.AbsoluteSize.Y / feed.Size.Y.Offset or 1
+		local tilesB = 0
+		for _, id in ipairs({ "Health", "Speed" }) do
+			local r = H.find(panel, "Row_" .. id)
+			tilesB = math.max(tilesB, r.AbsolutePosition.Y + r.AbsoluteSize.Y)
+		end
+		local stripB = stripOn and special.AbsolutePosition.Y + special.AbsoluteSize.Y or nil
+		local touching = {}
+		for _, n in ipairs({ "ActPut", "ActFighter", "ActRemove", "ActFeed", "ActTrain", "ActGarden", "ActEvolve" }) do
+			local b = H.find(panel, n)
+			if b and H.shown(b) then
+				local top = b.AbsolutePosition.Y
+				if top - tilesB < 7 * s + 0.5 then
+					touching[#touching + 1] = fmt("%s at %.1f, tiles end %.1f", n, top, tilesB)
+				end
+				if stripB and top > stripB - 0.5 and top - stripB < 7 * s + 0.5 then
+					touching[#touching + 1] = fmt("%s at %.1f, strip ends %.1f", n, top, stripB)
+				end
+			end
+		end
+		T.check(#touching == 0, tag .. ": ...the planks' drawn edges keep clear of the stat tiles and the strip", table.concat(touching, "; "))
+		local chip, row = H.find(panel, "RarityChip"), H.find(panel, "MetaRow")
+		T.check(chip ~= nil and row ~= nil and chip.AbsolutePosition.X + chip.AbsoluteSize.X <= row.AbsolutePosition.X + row.AbsoluteSize.X + 0.5,
+			tag .. ": ...the rarity tag ends inside its row", chip and fmt("tag %.1f..%.1f, row ends %.1f", chip.AbsolutePosition.X, chip.AbsolutePosition.X + chip.AbsoluteSize.X, row.AbsolutePosition.X + row.AbsoluteSize.X) or "missing")
+		-- (C44 review, round 3) ...and a tag sized to its row (the "Pill" fit, the one that cuts its word: TextTruncate) keeps
+		-- the word whole: its text fits the tag less its pads, by the engine's bounds and by the window's own measure with its
+		-- spare (META_SPARE 1.15: the drawn face runs ~13 % wider than Theme.Measure). 'Legend..' passed the check above at
+		-- 390x844, cut inside a tag that ended in its row. opts.TagHeld: a size whose row is too narrow for the word at the
+		-- floor (a layout call): reported, not checked
+		if chip and chip.TextTruncate ~= Enum.TextTruncate.None then
+			local s = chip.Size.Y.Offset > 0 and chip.AbsoluteSize.Y / chip.Size.Y.Offset or 1
+			local p = chip:FindFirstChildOfClass("UIPadding")
+			local pads = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) or 0
+			local Theme = H.req("shared/Theme")
+			local okM, m = pcall(Theme.Measure, chip.Text, "Heading", chip.TextSize)
+			local spared = math.ceil(((okM and typeof(m) == "Vector2") and m.X or #chip.Text * chip.TextSize * 0.6) * 1.15)
+			local whole = chip.TextBounds.X <= chip.AbsoluteSize.X - pads * s + 0.5 and spared <= chip.Size.X.Offset - pads
+			local why = fmt("'%s' at %d px: %.1f px drawn (%d by the spared measure) in %.1f less %.1f of pads", chip.Text, chip.TextSize, chip.TextBounds.X, spared,
+				chip.AbsoluteSize.X, pads * s)
+			if opts and opts.TagHeld then
+				T.info(tag .. ": the rarity tag's word (held: " .. opts.TagHeld .. ") " .. (whole and "is whole" or "is cut") .. ": " .. why)
+			else
+				T.check(whole, tag .. ": ...the rarity tag's word is whole (sized to its row, it keeps its word)", why)
+			end
+		end
+	end
+	-- (playtest 2026-11-28 C40 / C44 review) the team slots' names with three long two-word names: each shown name is the
+	-- whole name or a letter of each word and the whole last word ('S. Unicorn'), and it fits its label; 'Obsidian...' cut
+	-- the word that told the pets apart. (C44 review, round 3) strictly inside the label (the 5 % this check allowed let
+	-- 'Candy Unic...' through at 960x640), and a Golden copy keeps its finish word ('Golden S. Unicorn', PetPicker's
+	-- form; 'G. S. Unicorn' lost it) wherever that fits, else every word's initial
+	local LONG = { "starlight_unicorn", "obsidian_phoenix", "frostling_penguin" }
+	local LONG_GOLD = { "starlight_unicorn@Golden", "candy_unicorn", "obsidian_phoenix@Golden" }
+	function H.checkSlotNames(tag)
+		local PetCatalog, State = H.req("shared/PetCatalog"), H.req("client/State")
+		local function initials(words, from)
+			local out = {}
+			for i = from, #words - 1 do
+				out[#out + 1] = words[i]:sub(1, 1) .. "."
+			end
+			out[#out + 1] = words[#words]
+			return table.concat(out, " ")
+		end
+		local function measureW(label, text)
+			local Theme = H.req("shared/Theme")
+			local ok, v = pcall(Theme.Measure, text, "Heading", label.TextSize)
+			return (ok and typeof(v) == "Vector2") and v.X or #text * label.TextSize * 0.6
+		end
+		for _, team in ipairs({ LONG, LONG_GOLD }) do
+			local snap = H.snapshot({ Teams = { Presets = { team, { K4 }, {} }, Active = 1, Slots = 3 } })
+			for _, key in ipairs(team) do
+				snap.Pets[key] = 1
+				snap.Discovered[key] = true
+				snap.PetLevels[key] = { Level = 30, Xp = 0 }
+			end
+			snap.Equipped = { team[1], team[2], team[3] }
+			KC.toClient("ProfileSync", snap)
+			KC.advance(0.3)
+			local bad, seen = {}, 0
+			for i, key in ipairs(team) do
+				local label = H.slot(i) and H.slotPart(i, "PetName")
+				local def = (State and State.DefOf and State.DefOf(key)) or (PetCatalog and PetCatalog.Get(key))
+				local full = def and (def.DisplayName or def.Name) or key
+				if label and H.shown(label) and label.Text ~= "" then
+					seen = seen + 1
+					local words = {}
+					for w in full:gmatch("%S+") do
+						words[#words + 1] = w
+					end
+					-- the forms in their order: whole; a finish word + the pet's initials ('Golden S. Unicorn'); every word's
+					-- initial ('G. S. Unicorn'); the pet's own initials ('S. Unicorn': the slot's face shows the finish)
+					local finish = (words[1] == "Golden" or words[1] == "Rainbow") and #words >= 3 and words[1] or nil
+					local forms = { full }
+					if finish then
+						forms[#forms + 1] = finish .. " " .. initials(words, 2)
+					end
+					if #words >= 2 then
+						forms[#forms + 1] = initials(words, 1)
+					end
+					if finish then
+						forms[#forms + 1] = initials(words, 2)
+					end
+					local at = 0
+					for k, f in ipairs(forms) do
+						if label.Text == f then
+							at = k
+						end
+					end
+					local earlier = nil -- an earlier (fuller) form that fits the label by the same measure
+					for k = 2, at - 1 do
+						if not earlier and math.ceil(measureW(label, forms[k]) * 1.15) <= label.Size.X.Offset then
+							earlier = forms[k]
+						end
+					end
+					if at == 0 then
+						bad[#bad + 1] = fmt("slot %d '%s' shows '%s'", i, full, label.Text)
+					elseif label.TextBounds.X > label.AbsoluteSize.X + 0.5 then
+						bad[#bad + 1] = fmt("slot %d '%s' runs %.1f in %.1f", i, label.Text, label.TextBounds.X, label.AbsoluteSize.X)
+					elseif earlier then
+						bad[#bad + 1] = fmt("slot %d '%s' shows '%s' where '%s' fits", i, full, label.Text, earlier)
+					end
+				end
+			end
+			T.check(seen > 0 and #bad == 0, fmt("%s: the team slots name their pets whole or by a letter of each word, inside their labels%s (%d shown)", tag,
+				team == LONG_GOLD and "; a Golden copy keeps 'Golden' where a form with it fits" or "", seen), table.concat(bad, "; "))
+		end
+	end
 	-- runs fn at a screen size with a clean profile and everything closed; restores the screen after
 	function H.at(w, h, touch, label, fn)
 		local PC = H.mod("PetsController")
@@ -999,18 +1188,123 @@ local function clientScenarios()
 			end
 			local a, b = H.find(detail, "Row_Income"), H.find(detail, "Row_Power")
 			T.check(not touches(a, b), tag .. ": the two columns of rows don't touch")
+			-- (playtest 2026-11-28 C44) the team row's drawn wood edge (4 px outside its box) keeps 4 px of the panel clear
+			-- under the Health / Speed tiles (at 1274x580 Remove sat on their foot)
+			local tilesB = 0
+			for _, id in ipairs({ "Health", "Speed" }) do
+				local r = H.find(detail, "Row_" .. id)
+				tilesB = math.max(tilesB, r.AbsolutePosition.Y + r.AbsoluteSize.Y)
+			end
+			for _, name in ipairs({ "ActPut", "ActFighter", "ActRemove" }) do
+				local btn = H.find(detail, name)
+				if btn and H.shown(btn) then
+					T.check(btn.AbsolutePosition.Y - 4 >= tilesB + 4 - 0.5, tag .. ": " .. name .. " starts clear under the stat tiles",
+						fmt("button at %.1f, tiles end %.1f", btn.AbsolutePosition.Y, tilesB))
+				end
+			end
 			for _, target in ipairs(H.targets(win)) do
 				if touch then
 					T.check(target.AbsoluteSize.Y >= 44, tag .. ": " .. target.Name .. " >= 44 px", fmt("%.1f", target.AbsoluteSize.Y))
 				end
 			end
+			-- (playtest 2026-11-28 C15) a pet with a Special and perks (K1, Ember Phoenix) shows its Special strip and every perk
+			-- (one a row, else packed side by side): at 1920x1080 an Epic showed neither
+			Mock.Click(H.card(K1))
+			KC.advance(0.2)
+			local PetCatalog = H.req("shared/PetCatalog")
+			local def1 = PetCatalog and PetCatalog.Get and PetCatalog.Get(K1)
+			-- the perks in PerkOrder (PetCatalog.PerkLines), plus the evolved pet's Reach line; they show in the Perks rows or
+			-- after the Special's name on its strip, and any left out are counted ('+1 more'), never dropped silently
+			local want = #(PetCatalog and PetCatalog.PerkLines and PetCatalog.PerkLines(def1) or {})
+			local special, perks, strip = H.find(detail, "Special"), H.find(detail, "Perks"), H.find(detail, "SpecialText")
+			local shownPerks, counted, reach = 0, 0, 0
+			local function tally(text, skipFirst)
+				for line in (text .. "\n"):gmatch("(.-)\n") do
+					local i = 0
+					for part in (line .. "  ·  "):gmatch("(.-)  ·  ") do
+						i = i + 1
+						local more = part:match("^%+(%d+) more$")
+						if more then
+							counted = counted + tonumber(more)
+						elseif part ~= "" and not (skipFirst and i == 1) then
+							shownPerks = shownPerks + 1
+							reach = reach + (part:match("^Reach ") and 1 or 0)
+						end
+					end
+				end
+			end
+			if perks and H.shown(perks) then
+				tally(perks.Text, false)
+			end
+			if strip and special and H.shown(special) then
+				tally(strip.Text, true)
+			end
+			want = want + reach
+			-- (playtest 2026-11-28 C15 review) at every size, the short side layout too (960x640, 1274x580: the check let
+			-- them pass while they showed no Special)
+			T.check(def1 ~= nil and want > 0 and special ~= nil and H.shown(special) and shownPerks + counted == want,
+				tag .. ": Ember Phoenix's Special shows and each of its " .. want .. " perks shows or is counted ('+1 more')",
+				fmt("special %s, %d shown + %d counted: %s / %s", tostring(special and H.shown(special)), shownPerks, counted, strip and strip.Text or "-", perks and perks.Text or "-"))
+			if (tonumber(tag:match("x(%d+)")) or 0) >= 1000 then
+				T.check(counted == 0, tag .. ": ...and at 1080p every one of them shows", fmt("%d counted", counted))
+			end
+			-- (playtest 2026-11-28 C53) a card's busy word ('Gardening', 'Training') draws at the 14 px floor or more (16 design
+			-- px drew 12.8 under the 0.8 window), and an empty "+" well is a button (it opens the Shop's Eggs)
+			local small, inert = {}, 0
+			for _, d in ipairs(win:GetDescendants()) do
+				if d.Name == "Busy" and d:IsA("TextLabel") and H.shown(d) and d.Text ~= "" and d.Size.Y.Offset > 0 then
+					local px = d.TextSize * d.AbsoluteSize.Y / d.Size.Y.Offset
+					if px < 14 - 0.05 then
+						small[#small + 1] = fmt("%s %s %.1f px", d.Parent and d.Parent.Name or "?", d.Text, px)
+					end
+				elseif d:GetAttribute("Slot") == "Empty" and not d:IsA("GuiButton") then
+					inert = inert + 1
+				end
+			end
+			T.check(#small == 0, tag .. ": the cards' busy words draw at 14 px or more", table.concat(small, ", "))
+			T.check(inert == 0, tag .. ": the grid's empty '+' wells are buttons", inert .. " inert")
+			-- (playtest 2026-11-28 C40 / C53 review) ...and a tap on one opens the Shop on its Eggs tab
+			local well
+			for _, d in ipairs(win:GetDescendants()) do
+				if d:GetAttribute("Slot") == "Empty" and d:IsA("GuiObject") and H.shown(d) then
+					well = d
+					break
+				end
+			end
+			local MC = H.mod("MenuController")
+			local opened
+			if well and MC then
+				local open = MC.Open
+				MC.Open = function(id, spec)
+					opened = { id, type(spec) == "table" and spec.Tab or nil }
+				end
+				local ok, err = pcall(Mock.Click, well)
+				KC.advance(0.1)
+				MC.Open = open
+				if not ok then
+					opened = { "error", tostring(err) }
+				end
+			end
+			if well then -- (a size whose grid ends on a full row shows none)
+				T.check(opened ~= nil and opened[1] == "Shop" and opened[2] == "Eggs", tag .. ": ...and a tap on one opens the Shop's Eggs",
+					opened and (tostring(opened[1]) .. " / " .. tostring(opened[2])) or "nothing opened")
+			end
 			-- nothing falls off: the grid keeps at least three cards a row
 			local grid = H.find(win, "Grid")
 			T.check(grid.AbsoluteSize.X >= 3 * H.card(K1).AbsoluteSize.X, tag .. ": the grid keeps three cards a row", fmt("%.0f against %.0f", grid.AbsoluteSize.X, H.card(K1).AbsoluteSize.X))
+			-- (playtest 2026-11-28 C15 / C44 review) the looks / looks:epic pets: their Special and perks at every size, the
+			-- strip and the tiles clear of the planks, the rarity tag inside its row ('Legendary' ran onto the wood at 1024x768)
+			H.feedLooks()
+			for _, key in ipairs(LOOKS) do
+				Mock.Click(H.card(key))
+				KC.advance(0.3)
+				H.checkLead(tag .. " " .. key, H.find(win, "Detail"), key)
+			end
+			H.checkSlotNames(tag)
 			PC.Close(true)
 			KC.advance(0.3)
 		end
-		for _, size in ipairs({ { 1024, 768, true }, { 1024, 768, false }, { 1080, 810, true }, { 1112, 834, true }, { 1180, 820, true }, { 960, 640, false }, { 1280, 720, false }, { 1366, 768, false }, { 1600, 900, false }, { 1920, 1080, false }, { 2560, 1440, false } }) do
+		for _, size in ipairs({ { 1024, 768, true }, { 1024, 768, false }, { 1080, 810, true }, { 1112, 834, true }, { 1180, 820, true }, { 960, 640, false }, { 1274, 580, false }, { 1280, 720, false }, { 1366, 768, false }, { 1600, 900, false }, { 1920, 1080, false }, { 2560, 1440, false } }) do
 			local tag = fmt("tb pets fit %dx%d", size[1], size[2])
 			H.at(size[1], size[2], size[3], "client_tb_pets_fit", function(PC)
 				checkSizes(tag, PC, size[3])
@@ -1129,6 +1423,14 @@ local function clientScenarios()
 							if b.Text ~= "" and name ~= "PickBanner" then
 								T.check(b.TextBounds.X <= b.AbsoluteSize.X - 2, tag .. ": " .. label .. ": " .. name .. " '" .. b.Text .. "' fits", fmt("%.0f in %.0f", b.TextBounds.X, b.AbsoluteSize.X))
 							end
+							-- (playtest 2026-11-28 C36) the sort word on one line ('Stronges / t' before) with its chevron inside the plank
+							if name == "SortButton" then
+								local chev = b:FindFirstChild("LeadIcon")
+								local cx = chev and chev.AbsolutePosition.X or -1
+								T.check(b.TextWrapped == false and chev ~= nil and cx >= b.AbsolutePosition.X + 2 and b.TextBounds.X + 2 * (chev.AbsoluteSize.X + 2) <= b.AbsoluteSize.X,
+									tag .. ": " .. label .. ": the sort word stays on one line, the plank holds it and its chevron",
+									fmt("wrapped %s, chevron at %.0f, plank %.0f..%.0f, text %.0f px", tostring(b.TextWrapped), cx, b.AbsolutePosition.X, b.AbsolutePosition.X + b.AbsoluteSize.X, b.TextBounds.X))
+							end
 						end
 					end
 				end
@@ -1182,6 +1484,80 @@ local function clientScenarios()
 			PC.Close(true)
 			KC.advance(0.3)
 		end)
+		-- (playtest 2026-11-28 C15 review) the phone sheet of the looks / looks:epic pets on landscape phones (640x360 and
+		-- 667x375 showed no Special, no perk and no work note; their care planks covered the Health / Speed tiles; at
+		-- 844x390 the strip's edge sat on the planks') and on a portrait one. (C15 review, round 3) 360x640 for the pet with
+		-- two plank rows (Candy Unicorn: its sheet's last step, an 80 px picture, gives the strip its room; it showed no
+		-- Special and no perk). Aurora Fox there (three plank rows) is held for a layout call: the sheet under the slots is
+		-- too short for the header, the tiles and three plank rows (on 91aa9a7a too)
+		for _, size in ipairs({ { 640, 360 }, { 667, 375 }, { 844, 390 }, { 390, 844 }, { 360, 640, { LOOKS[1] } } }) do
+			local tag = fmt("tb pets phone sheet %dx%d", size[1], size[2])
+			H.at(size[1], size[2], true, "client_tb_pets_phone", function(PC)
+				PC.Open({})
+				KC.advance(0.5)
+				H.feedLooks()
+				local win = H.win()
+				for _, key in ipairs(size[3] or LOOKS) do
+					Mock.Click(H.card(key))
+					KC.advance(0.3)
+					local sheet = H.find(win, "Sheet")
+					if T.check(sheet ~= nil and H.shown(sheet), tag .. " " .. key .. ": tapping the pet opens the sheet") then
+						-- (C44 review, round 3) a 360 px portrait sheet leaves the rarity tag 50-66 px beside 'Lv 100' and two
+						-- stars, under the sheet's X: 'Legendary' needs ~80 at the 14 px floor. Held for a layout call
+						H.checkLead(tag .. " " .. key, sheet, key, { TagHeld = size[1] < 375 and "a 360 px sheet's row is too narrow for the word; layout call" or nil })
+						for _, b in ipairs(H.targets(sheet)) do
+							T.check(b.AbsoluteSize.Y >= 44, tag .. " " .. key .. ": " .. b.Name .. " >= 44 px", fmt("%.1f", b.AbsoluteSize.Y))
+						end
+						H.clickName("SheetClose")
+						KC.advance(0.2)
+					end
+				end
+			end)
+		end
+		-- (playtest 2026-11-28 C15 review, round 3) a pet in training: its time left shows on the detail (the work note, or
+		-- the Train plank where the note drops), whole. The note was the only place it showed ('Training Attack Speed (2:07
+		-- left)'; the plank says 'Training'), and the short sheets / panel drop the note for the Special
+		for _, size in ipairs({ { 640, 360, true }, { 844, 390, true }, { 1274, 580, false } }) do
+			local tag = fmt("tb pets training %dx%d", size[1], size[2])
+			H.at(size[1], size[2], size[3], "client_tb_pets_phone", function(PC)
+				PC.Open({})
+				KC.advance(0.5)
+				local legend, epic = LOOKS[1], LOOKS[2]
+				local snap = H.snapshot({ Teams = { Presets = { { legend, epic, K3 }, { K4 }, {} }, Active = 1, Slots = 3 } })
+				for _, key in ipairs(LOOKS) do
+					snap.Pets[key] = 1
+					snap.Discovered[key] = true
+				end
+				snap.PetLevels[legend] = { Level = 100, Xp = 0 }
+				snap.PetLevels[epic] = { Level = 57, Xp = 9000 }
+				snap.PetGrowth[legend] = { Evo = 2 }
+				snap.PetGrowth[epic] = { Evo = 1, Job = { Stat = "Speed", Ends = os.time() + 127, Rank = 1, Slot = 2, From = "Follow", Paid = 0 } }
+				snap.Teams.Busy[epic] = "Training"
+				snap.Equipped = { legend, K3 }
+				KC.toClient("ProfileSync", snap)
+				KC.advance(0.3)
+				local win = H.win()
+				Mock.Click(H.card(epic))
+				KC.advance(0.3)
+				local panel = H.find(win, size[3] and "Sheet" or "Detail")
+				if T.check(panel ~= nil and H.shown(panel), tag .. ": the training pet's detail is open") then
+					local work, train = H.find(panel, "Work"), H.find(panel, "ActTrain")
+					local where, whole = nil, true
+					if work and H.shown(work) and work.Text:find("%d+:%d%d") then
+						where = "note '" .. work.Text .. "'"
+					elseif train and H.shown(train) and train.Text:find("%d+:%d%d") then
+						where = "Train plank '" .. train.Text .. "'"
+						local s = train.Size.Y.Offset > 0 and train.AbsoluteSize.Y / train.Size.Y.Offset or 1
+						local p = train:FindFirstChildOfClass("UIPadding")
+						local inset = p and (p.PaddingLeft.Offset + p.PaddingRight.Offset) * s or 0
+						whole = train.TextBounds.X <= train.AbsoluteSize.X - inset + 0.5
+					end
+					T.check(where ~= nil and whole, tag .. ": ...its time left shows (the note, or the Train plank where the note drops), whole",
+						(where or ("nowhere: note '" .. tostring(work and H.shown(work) and work.Text) .. "', plank '" .. tostring(train and train.Text) .. "'")) .. (whole and "" or " (cut)"))
+					T.info(tag .. ": the time left is on the " .. tostring(where) .. (train and fmt(" (plank %.0f px)", train.AbsoluteSize.X) or ""))
+				end
+			end)
+		end
 	end)
 
 	return S

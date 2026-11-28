@@ -105,6 +105,18 @@ local function clientScenarios()
 	function H.config()
 		return H.req("shared/Config")
 	end
+	-- (playtest 2026-11-28 C57) the HUD's currency strips on the screen now
+	function H.strips()
+		local hud = H.pg() and H.pg():FindFirstChild("NimbusHud")
+		local n = 0
+		for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+			if d.Name:match("^Currency_") and d:IsA("GuiObject") and H.shown(d) then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
 	function H.pg()
 		return LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	end
@@ -674,6 +686,20 @@ local function clientScenarios()
 						local win = H.win()
 						RedoGeom.check(win, l, { NoOverlap = (tab == "Mix") and (sz[3] and MIX_PHONE or MIX_NAMES) or UP_NAMES })
 						H.fitsAll(l, tab)
+						-- (playtest 2026-11-28 C40) a short card keeps the pet's first words as initials ('M. Fox'), never the
+						-- bare last word ('Fox' on both the copies and the Golden result)
+						local names, bare = {}, {}
+						for _, d in ipairs(win:GetDescendants()) do
+							if d.Name == "PetName" and d:IsA("TextLabel") and d.Text ~= "" and H.shown(d) then
+								names[#names + 1] = d.Text
+								if not d.Text:find(" ", 1, true) and d.Text ~= "Foxby" then
+									bare[#bare + 1] = d.Text
+								end
+							end
+						end
+						T.check(#bare == 0, l .. ": no pet card is cut to its bare last word", table.concat(names, ", "))
+						-- (playtest 2026-11-28 C57) the header carries the balances: the HUD's currency strips step aside (they showed twice)
+						T.eq(H.strips(), 0, l .. ": the HUD's currency strips step aside while the machine is open")
 						if sz[3] then
 							T.eq(FC.Layout(), "Phone", l .. ": Layout() == 'Phone'")
 						else
@@ -692,6 +718,7 @@ local function clientScenarios()
 					if sz[1] == 844 then
 						T.check(GuiService.TouchControlsEnabled == touchBefore, label .. ": ...and come back after")
 					end
+					T.check(H.strips() > 0, label .. ": the HUD's currency strips come back after Close", tostring(H.strips()))
 					-- the empty Upgrade state (the sheet closed without a pick)
 					FC.Open("Upgrade", { Key = "maple_fox" })
 					KC.advance(0.3)

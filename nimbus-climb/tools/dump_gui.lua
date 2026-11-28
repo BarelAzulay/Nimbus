@@ -3701,8 +3701,16 @@ scenario("loss", function(view)
 end)
 
 scenario("looks", function(which)
-	local ids = CAREUI.profile()
-	toClient("OpenPanel", "Pets", { Tab = "Pets", Key = (which == "epic") and ids.Epic or ids.Legend })
+	local ids, snap = CAREUI.profile()
+	if which == "train" then
+		-- (playtest 2026-11-28 C15 review, round 3) looks:train = the Epic in training (ready to evolve) instead of in the
+		-- Garden: where a short sheet drops its work note, the Train plank keeps the countdown
+		snap.PetGrowth[ids.Epic].Job = { Stat = "Speed", Ends = os.time() + 127, Rank = 3, Slot = 2, From = "Follow", Paid = 0 }
+		snap.Home.Garden = { ids.Garden1, ids.Garden2, "", "" }
+		toClient("ProfileSync", snap)
+		advance(0.3)
+	end
+	toClient("OpenPanel", "Pets", { Tab = "Pets", Key = (which == "epic" or which == "train") and ids.Epic or ids.Legend })
 	advance(3)
 end)
 
